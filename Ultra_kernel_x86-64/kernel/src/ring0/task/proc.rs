@@ -330,14 +330,56 @@ fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
 
     // Sections: assigned sequentially from USER_IMAGE_BASE, honoring each
     // section's alignment. entry_offset is relative to the Code section.
-    let mut va_cursor = vmm::USER_IMAGE_BASE;
+    // ★ PASE 1: DÓNDE VA CADA SECCIÓN, sin reservar ni un marco.
+    //
+    // Hacía falta partir el bucle en dos, y el motivo es concreto: una
+    // relocation dice *"en `.data`+8 escribe la dirección de `.rodata`+17"*, y
+    // eso no se puede resolver hasta conocer las VA de **todas** las secciones.
+    // Antes se calculaba la VA y se copiaba y mapeaba en la misma vuelta, así
+    // que al llegar a `.data` la de `.rodata` ya se había perdido.
+    //
+    // La cuenta es la de siempre y no cambia —alinear, tantas páginas como pida
+    // `mem_size`, y la siguiente empieza tras ellas—, sólo se hace antes.
+    let mut va_de = [0u64; bex::MAX_BEX_SECTIONS];
+    {
+        let mut va_cursor = vmm::USER_IMAGE_BASE;
+        for i in 0..plan.section_count {
+            let s = plan.sections[i];
+            let align = s.alignment as u64;
+            va_cursor = (va_cursor + align - 1) & !(align - 1);
+            va_de[i] = va_cursor;
+            let pages = (s.mem_size + mm::PAGE - 1) / mm::PAGE;
+            va_cursor = va_cursor + pages * mm::PAGE;
+        }
+    }
+
+    // La VA de una sección por su CÓDIGO DE RELOCATION (`0` = code, `1` = data,
+    // `2` = rodata), que **no** es el de `SECTION_*`. La traducción se hace aquí,
+    // en un solo sitio, porque es exactamente donde se cruzarían las dos
+    // numeraciones.
+    let va_por_codigo_reloc = |cod: u8| -> Option<u64> {
+        let buscado = match cod {
+            0 => bex::SECTION_CODE,
+            1 => bex::SECTION_DATA,
+            2 => bex::SECTION_RODATA,
+            _ => return None,
+        };
+        for i in 0..plan.section_count {
+            if plan.sections[i].kind == buscado {
+                return Some(va_de[i]);
+            }
+        }
+        None
+    };
+
+    // ★ PASE 2: reservar, copiar, PARCHEAR y mapear.
     let mut entry_va: u64 = 0;
     let mut code_bytes: u32 = 0;
+    let total_relocs = bex::cuantas_relocs(plan.relocs_file_size);
+    let mut aplicadas = 0usize;
     for i in 0..plan.section_count {
         let s = plan.sections[i];
-        let align = s.alignment as u64;
-        va_cursor = (va_cursor + align - 1) & !(align - 1);
-        let va_start = va_cursor;
+        let va_start = va_de[i];
         let pages = (s.mem_size + mm::PAGE - 1) / mm::PAGE;
         let writable = s.flags & bex::SECTION_FLAG_EXEC == 0;
         for p in 0..pages {
@@ -354,7 +396,59 @@ fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
                     );
                 }
             }
-            if vmm::map_page(aspace, va_start + p * mm::PAGE, frame, true, writable).is_err() {
+            // ★ LAS RELOCATIONS QUE CAEN EN ESTA PÁGINA.
+            //
+            // Se parchea AQUÍ, con el marco todavía alcanzable por
+            // `phys_to_virt` y ANTES de mapearlo: así no hay que caminar las
+            // tablas del proceso para escribir en su memoria, ni dejar una
+            // página escribible que luego habría que volver a proteger.
+            let pagina_va = va_start + p * mm::PAGE;
+            for r in 0..total_relocs {
+                let Some(rel) = bex::leer_reloc(
+                    bytes,
+                    plan.relocs_file_offset,
+                    plan.relocs_file_size,
+                    r,
+                ) else {
+                    log("[proc] FATAL: tabla de relocations mal formada\n");
+                    return None;
+                };
+                if rel.kind != bex::RELOC_SECCION_ABS64 {
+                    // Aplicar una reloc que no se entiende sería escribir un
+                    // número inventado en la memoria de un proceso. Se rechaza
+                    // el programa entero.
+                    log("[proc] FATAL: tipo de relocation desconocido\n");
+                    return None;
+                }
+                let (Some(base_donde), Some(base_destino)) = (
+                    va_por_codigo_reloc(rel.donde_sec),
+                    va_por_codigo_reloc(rel.destino_sec),
+                ) else {
+                    log("[proc] FATAL: relocation a una seccion que no existe\n");
+                    return None;
+                };
+                let donde_va = base_donde.wrapping_add(rel.donde_off);
+                // ¿Cae en esta página? Los ocho bytes, enteros: un puntero
+                // partido entre dos páginas se escribiría a medias y el proceso
+                // arrancaría con una dirección mitad buena mitad cero. No puede
+                // pasar —los punteros van alineados a 8 y la página es múltiplo
+                // de 8— pero se comprueba en vez de confiarlo.
+                if donde_va < pagina_va || donde_va + 8 > pagina_va + mm::PAGE {
+                    if donde_va >= pagina_va && donde_va < pagina_va + mm::PAGE {
+                        log("[proc] FATAL: relocation partida entre dos paginas\n");
+                        return None;
+                    }
+                    continue;
+                }
+                let valor = (base_destino as i64).wrapping_add(rel.destino_off) as u64;
+                let dentro = (donde_va - pagina_va) as usize;
+                unsafe {
+                    let dst = (mm::phys_to_virt(frame) as *mut u8).add(dentro);
+                    core::ptr::copy_nonoverlapping(valor.to_le_bytes().as_ptr(), dst, 8);
+                }
+                aplicadas += 1;
+            }
+            if vmm::map_page(aspace, pagina_va, frame, true, writable).is_err() {
                 log("[proc] FATAL: section map failed\n");
                 return None;
             }
@@ -363,7 +457,16 @@ fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
             entry_va = va_start + plan.entry_offset;
         }
         code_bytes = code_bytes.saturating_add(s.mem_size as u32);
-        va_cursor = va_start + pages * mm::PAGE;
+    }
+    // ★ Y SE COMPRUEBA QUE SE APLICARON TODAS.
+    //
+    // Una reloc que no cae en ninguna página es una que apunta fuera de su
+    // sección, y su síntoma sería un puntero a cero — o sea el bug que todo esto
+    // existe para matar, otra vez y en silencio. Mejor no arrancar.
+    if aplicadas != total_relocs {
+        log("[proc] FATAL: quedaron relocations sin aplicar\n");
+        crate::ring0::cabina::warn("proc", "relocs sin aplicar", (total_relocs - aplicadas) as u64);
+        return None;
     }
     if entry_va == 0 {
         log("[proc] FATAL: no entry point\n");

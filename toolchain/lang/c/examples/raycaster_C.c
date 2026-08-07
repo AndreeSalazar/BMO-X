@@ -7,14 +7,26 @@
  * dibujar un fotograma, leer el teclado y repetirlo sesenta veces por segundo,
  * en el metal?**
  *
- * DOOM son ~35.000 líneas en cincuenta ficheros, y hoy chocaría con dos techos
- * del compilador que están medidos: la tabla de cadenas del IR (256 cadenas,
- * 4096 bytes) y una libc de ocho funciones sin E/S de ficheros. Este programa
- * **no toca ninguno de los dos**: cabe en una unidad de traducción, no abre
- * archivos y usa tres literales.
+ * DOOM son ~35.000 líneas en cincuenta ficheros. Si esto corre, DOOM deja de
+ * ser "¿se puede?" y pasa a ser "cuánta libc falta", que es una lista y no una
+ * pregunta.
  *
- * Si esto corre, DOOM deja de ser "¿se puede?" y pasa a ser "cuánta libc
- * falta", que es una lista y no una pregunta.
+ * ── Los techos, RE-MEDIDOS el 2026-08-07 ──
+ *
+ * Aquí decía que DOOM chocaría con «la tabla de cadenas del IR (256 cadenas)» y
+ * con «una libc de ocho funciones sin E/S de ficheros». **Las dos eran falsas**,
+ * y conviene corregirlas porque mandaban a preocuparse por lo que no toca:
+ *
+ *   · **El IR no está en el camino de compilación.** `compile_source_to_bef` va
+ *     `parse` → `codegen` directo a bytes; los topes de `bmo_abi::ir` (64
+ *     funciones, 256 sentencias) no los ve nadie. Medido: 2.500 funciones y
+ *     20.006 líneas compilan en 0,67 s.
+ *   · **La E/S de ficheros existe** desde `b791ce4b`: `fopen`/`fread`/`fseek`/
+ *     `fclose` sobre `KIND_ARCHIVO`.
+ *
+ * Los techos de verdad, con su número: el `.bex` de esas 20.006 líneas mide
+ * 1.007.536 bytes y **`MAX_BEX` es 1.048.576 — el 96%**; y siguen sin existir
+ * `sprintf`, `atoi` y `exit`.
  *
  * ══ Por qué NO hay un solo `float` ══
  *
@@ -58,25 +70,42 @@
 /* Puntero al literal y no `char mapa[]`: BMO C todavía no deduce el tamaño de
  * un array desde su inicializador, y aquí no hace falta — se indexa igual.
  *
- * ⚠️ Y SE ASIGNA EN `main`, NO AQUÍ. Esto era
+ * ★ Y AQUÍ HAY UNA HISTORIA, porque esta línea estuvo mintiendo meses.
  *
- *     char *mapa = "1111...";
- *
- * y **el mapa valía CERO**. Un global inicializado con una cadena tiene que
- * guardar la DIRECCIÓN del literal, que no se conoce hasta cargar el programa;
- * el codegen no sabía ponerla y rellenaba de ceros sin decir nada. Así que
- * `pared()` leía `mapa[y*16+x]` desde la dirección 0 —el primer byte de la
- * imagen, o sea el `push rbp` de la primera función— y **las paredes de este
- * laberinto eran el código máquina del propio programa**.
+ * Un global inicializado con una cadena guarda la DIRECCIÓN del literal, y ésa
+ * no se conoce hasta cargar el programa. El codegen no sabía ponerla y
+ * **rellenaba de ceros sin decir nada**, así que `pared()` leía
+ * `mapa[y*16+x]` desde la dirección 0 —el primer byte de la imagen, o sea el
+ * `push rbp` de la primera función— y **las paredes de este laberinto eran el
+ * código máquina del propio programa**.
  *
  * No se notó porque un raycaster que dibuja paredes desde bytes cualesquiera
  * sigue dibujando paredes: salía un laberinto plausible que no era éste. Lo
- * destapó el 2026-08-07 un test de globales, no una foto de la pantalla.
+ * destapó un test de globales, no una foto de la pantalla.
  *
- * Hasta que el BEF tenga relocations `Abs64` —que es lo que permitiría al
- * cargador escribir esa dirección—, el sitio de un puntero a literal es dentro
- * de una función. */
-char *mapa;
+ * El 2026-08-07 se arregló primero moviendo la asignación a `main` —el remedio
+ * que el propio mensaje de error recomendaba— y después de verdad: **el BEF ya
+ * tiene relocations `SeccionAbs64`** y el cargador de Ring 0 las aplica, así
+ * que el mapa puede volver a estar donde se escribió. El compilador deja el
+ * hueco a cero y anota quién lo rellena; la dirección la pone el cargador, que
+ * es el único que la sabe. */
+char *mapa =
+    "1111111111111111"
+    "1000000000000001"
+    "1011110000111101"
+    "1010000000000101"
+    "1010111011101101"
+    "1010001010001001"
+    "1011101010111011"
+    "1000101000100001"
+    "1110101110101111"
+    "1000100010100001"
+    "1011111010111101"
+    "1000001000100001"
+    "1111101111101111"
+    "1000001000000001"
+    "1000001000000001"
+    "1111111111111111";
 
 int pared(int x, int y) {
     if (x < 0) return 1;
@@ -147,28 +176,6 @@ int main() {
      * cediera la pantalla a cualquiera que la pida sería un compositor que no
      * sirve. Lo que falta es que el escritorio sepa PRESTARLA y recuperarla, y
      * eso es trabajo suyo, no de un ejemplo. */
-    /* ⚠️ EL MAPA, LO PRIMERO DE TODO. Ver la nota de su declaración: aquí es
-     * donde tiene que estar mientras el BEF no tenga relocations, y va antes de
-     * cualquier otra cosa porque `pared()` lo lee y no hay nada que avise si
-     * llega tarde — valdría cero, que es la dirección del propio código. */
-    mapa =
-        "1111111111111111"
-        "1000000000000001"
-        "1011110000111101"
-        "1010000000000101"
-        "1010111011101101"
-        "1010001010001001"
-        "1011101010111011"
-        "1000101000100001"
-        "1110101110101111"
-        "1000100010100001"
-        "1011111010111101"
-        "1000001000100001"
-        "1111101111101111"
-        "1000001000000001"
-        "1000001000000001"
-        "1111111111111111";
-
     pant = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_PANTALLA_RECLAMAR, 0, 0, 0);
     if (pant == 0) {
         printf("la pantalla ya tiene dueno: el escritorio la reclamo al arrancar\n");

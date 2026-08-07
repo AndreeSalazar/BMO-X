@@ -126,3 +126,85 @@ fn static_assert_sizes() {
     assert_eq!(core::mem::size_of::<bmo_abi::values::net::BmoIpv4Addr>(), 4);
     assert_eq!(core::mem::size_of::<bmo_abi::values::net::BmoIpv6Addr>(), 16);
 }
+
+// ── El contrato de bytes de una `SeccionAbs64` ────────────────────────
+//
+// ★ POR QUÉ ESTE TEST EXISTE, y no es redundante con `size_of == 24`.
+//
+// El cargador de Ring 0 **no importa este crate**: `bmo-abi` es el contrato y el
+// kernel lo implementa leyendo bytes a mano (`ring0/task/bex.rs::leer_reloc`),
+// igual que hace con la tabla de secciones. Así que hay dos lectores del mismo
+// formato en dos sitios, y **el compilador no puede comprobar que coincidan**.
+//
+// Si alguien reordena los campos de `Relocation`, este crate seguiría
+// compilando, el `.bex` saldría con otra disposición, y el kernel leería el
+// `kind` donde está el `addend`. El síntoma: direcciones inventadas escritas en
+// la memoria de un proceso, o sea el bug que las relocations existen para matar.
+//
+// Este test fija los OFFSETS que el kernel usa. Si cambian, se pone rojo aquí y
+// no en el Ryzen.
+
+/// Los mismos offsets que `ring0/task/bex.rs::leer_reloc`. Copiados a mano a
+/// propósito: si se importaran, no se estaría probando nada.
+const OFF_DONDE: usize = 0; //  u64  <- Relocation::offset
+const OFF_DESTINO_SEC: usize = 8; //  u32  <- Relocation::symbol_idx
+const OFF_KIND: usize = 12; //  u8
+const OFF_DONDE_SEC: usize = 13; //  u8   <- Relocation::target_section
+const OFF_ADDEND: usize = 16; //  i64
+
+#[test]
+fn una_seccion_abs64_se_descodifica_como_la_lee_el_kernel() {
+    use bmo_abi::bef::relocations::{Relocation, RelocationKind, SEC_DATA, SEC_RODATA};
+
+    // "en .data+8 escribe la direccion de .rodata+17" — la reloc real de
+    // `char *nombres[] = {"…", "imp", …}`.
+    let r = Relocation::seccion_abs64(SEC_DATA, 8, SEC_RODATA, 17);
+
+    let bytes: &[u8] = unsafe {
+        core::slice::from_raw_parts(
+            &r as *const Relocation as *const u8,
+            core::mem::size_of::<Relocation>(),
+        )
+    };
+    assert_eq!(bytes.len(), Relocation::SIZE, "la reloc tiene que medir 24");
+
+    let donde_off = u64::from_le_bytes(bytes[OFF_DONDE..OFF_DONDE + 8].try_into().unwrap());
+    let destino_sec =
+        u32::from_le_bytes(bytes[OFF_DESTINO_SEC..OFF_DESTINO_SEC + 4].try_into().unwrap());
+    let kind = bytes[OFF_KIND];
+    let donde_sec = bytes[OFF_DONDE_SEC];
+    let addend = i64::from_le_bytes(bytes[OFF_ADDEND..OFF_ADDEND + 8].try_into().unwrap());
+
+    assert_eq!(donde_off, 8, "el offset donde se escribe");
+    assert_eq!(donde_sec, SEC_DATA, "la seccion donde se escribe");
+    assert_eq!(destino_sec as u8, SEC_RODATA, "la seccion del destino");
+    assert_eq!(addend, 17, "el offset del destino");
+    assert_eq!(kind, RelocationKind::SeccionAbs64 as u8);
+    assert_eq!(kind, 0x04, "el kernel compara contra 0x04 literal");
+}
+
+/// ⚠️ Y la trampa de las DOS numeraciones de sección, fijada con números.
+///
+/// Los códigos de una reloc no son los de `SectionKind`: `data` y `rodata`
+/// están cambiados. Es la parte del formato más fácil de cruzar, así que el
+/// número está escrito y no deducido.
+#[test]
+fn los_codigos_de_seccion_de_una_reloc_no_son_los_de_sectionkind() {
+    use bmo_abi::bef::relocations::{SEC_CODE, SEC_DATA, SEC_RODATA};
+    use bmo_abi::bef::sections::SectionKind;
+
+    assert_eq!(SEC_CODE, 0);
+    assert_eq!(SEC_DATA, 1);
+    assert_eq!(SEC_RODATA, 2);
+
+    assert_eq!(SectionKind::Code as u8, 1);
+    assert_eq!(SectionKind::RoData as u8, 2);
+    assert_eq!(SectionKind::Data as u8, 3);
+
+    // Lo que hace que esto sea una trampa y no una curiosidad: rodata COINCIDE
+    // en 2, así que un cruce de las dos tablas acierta en rodata y falla en las
+    // otras dos — el peor caso posible, porque parece funcionar a medias.
+    assert_eq!(SEC_RODATA, SectionKind::RoData as u8);
+    assert_ne!(SEC_DATA, SectionKind::Data as u8);
+    assert_ne!(SEC_CODE, SectionKind::Code as u8);
+}

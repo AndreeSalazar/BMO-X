@@ -20,6 +20,10 @@ pub const SECTION_CODE: u8 = 0x01;
 pub const SECTION_RODATA: u8 = 0x02;
 pub const SECTION_DATA: u8 = 0x03;
 pub const SECTION_BSS: u8 = 0x04;
+/// Tabla de relocations. **NO se mapea** —no es memoria del programa— pero sí
+/// se LEE: dice qué punteros de `.data` hay que rellenar con direcciones que
+/// sólo se conocen aquí. Ver `BexLoadPlan::relocs_*`.
+pub const SECTION_RELOCS: u8 = 0x07;
 
 /// ¿Esta sección se MAPEA en el espacio del programa?
 ///
@@ -76,6 +80,16 @@ pub struct BexLoadPlan {
     /// (manifiesto, firma, depuración… o un tipo que este kernel no conoce).
     /// Se cuenta para poder DECIRLO, no para decidir nada con ello.
     pub skipped_sections: usize,
+    /// ★ Dónde está la tabla de relocations DENTRO DEL FICHERO, si la hay.
+    ///
+    /// No es un `BexMapping` porque no se mapea: el cargador la lee, aplica lo
+    /// que dice sobre las secciones ya copiadas, y la olvida. Cero páginas en el
+    /// proceso.
+    ///
+    /// `relocs_file_size == 0` significa "este programa no tiene punteros que
+    /// rellenar", que es el caso de todos los `.bex` escritos hasta hoy.
+    pub relocs_file_offset: u64,
+    pub relocs_file_size: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -169,6 +183,8 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
         sections: [EMPTY_MAPPING; MAX_BEX_SECTIONS],
         section_count: 0,
         skipped_sections: 0,
+        relocs_file_offset: 0,
+        relocs_file_size: 0,
     };
     let mut code_size = None;
     let mut loadable = 0usize;
@@ -200,6 +216,21 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
                 return Err(BexError::InvalidSection);
             }
             code_size = Some(mem_size);
+        }
+        // ★ LAS RELOCATIONS se apuntan pero NO se mapean.
+        //
+        // No son memoria del programa —el proceso nunca las ve— pero el
+        // cargador las necesita para rellenar los punteros de `.data` con
+        // direcciones que sólo se conocen al colocar las secciones. Sus límites
+        // ya se validaron arriba contra el tamaño del archivo, igual que las
+        // demás.
+        //
+        // Va antes del filtro de `is_loadable` para que NO cuente como
+        // "saltada": saltada significa "no la usa nadie", y ésta sí.
+        if kind == SECTION_RELOCS {
+            plan.relocs_file_offset = file_offset;
+            plan.relocs_file_size = file_size;
+            continue;
         }
         // ★ Solo lo CARGABLE entra al plan. Lo demás se validó (sus límites
         // tienen que caber en el archivo: una sección mal formada sigue siendo
@@ -242,6 +273,59 @@ fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
 fn read_u64(bytes: &[u8], offset: usize) -> Option<u64> {
     let end = offset.checked_add(8)?;
     Some(u64::from_le_bytes(bytes.get(offset..end)?.try_into().ok()?))
+}
+
+/// ★ UNA RELOCATION, leída del fichero. Ver `SECTION_RELOCS`.
+///
+/// Tamaño y disposición fijados por `bmo_abi::bef::relocations::Relocation`, que
+/// este kernel **no importa a propósito**: `bmo-abi` es el CONTRATO y aquí se
+/// implementa contra él leyendo bytes, igual que con la tabla de secciones. Si
+/// el struct cambiara de forma, `RELOC_SIZE` y estos offsets son el único sitio
+/// a tocar.
+pub const RELOC_SIZE: usize = 24;
+/// `SeccionAbs64`: escribe la dirección de `(sección, offset)`. El único tipo
+/// que este cargador aplica; cualquier otro se rechaza diciéndolo, porque
+/// aplicar una reloc que no se entiende es escribir un número inventado en la
+/// memoria de un proceso.
+pub const RELOC_SECCION_ABS64: u8 = 0x04;
+
+/// Lo que hace falta de una reloc, ya descodificado.
+#[derive(Clone, Copy)]
+pub struct BexReloc {
+    /// En qué sección se escribe (`0` = code, `1` = data, `2` = rodata).
+    ///
+    /// ⚠️ **Esta numeración NO es la de `SECTION_*`** (donde code=1, rodata=2,
+    /// data=3): es la del propio struct de relocations, donde data y rodata
+    /// están cambiados. Ver la nota en `bmo_abi::bef::relocations`.
+    pub donde_sec: u8,
+    /// Offset dentro de esa sección.
+    pub donde_off: u64,
+    /// En qué sección vive el destino, misma numeración que `donde_sec`.
+    pub destino_sec: u8,
+    /// Offset del destino dentro de su sección.
+    pub destino_off: i64,
+    pub kind: u8,
+}
+
+/// Descodifica la reloc número `n` de la tabla, o `None` si no cabe.
+pub fn leer_reloc(bytes: &[u8], tabla_off: u64, tabla_size: u64, n: usize) -> Option<BexReloc> {
+    let dentro = n.checked_mul(RELOC_SIZE)?;
+    if (dentro + RELOC_SIZE) as u64 > tabla_size {
+        return None;
+    }
+    let base = (tabla_off as usize).checked_add(dentro)?;
+    Some(BexReloc {
+        donde_off: read_u64(bytes, base)?,
+        destino_sec: read_u32(bytes, base + 8)? as u8,
+        kind: *bytes.get(base + 12)?,
+        donde_sec: *bytes.get(base + 13)?,
+        destino_off: read_u64(bytes, base + 16)? as i64,
+    })
+}
+
+/// Cuántas relocations hay en la tabla.
+pub fn cuantas_relocs(tabla_size: u64) -> usize {
+    (tabla_size as usize) / RELOC_SIZE
 }
 
 /// Report the currently available BEX admission capability over serial.
