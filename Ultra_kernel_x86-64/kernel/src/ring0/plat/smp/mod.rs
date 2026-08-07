@@ -56,7 +56,17 @@ use mapa::*;
 /// Va como parámetro y no como una llamada a CABINA desde aquí por dos razones:
 /// once líneas seguidas inundarían un anillo de 48 eventos, y **`plat/` no tiene
 /// por qué saber pintar**. Quien llama decide cómo se enseña.
-pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
+///
+/// ★ `cuantos` es el CONTROL, y es lo que el dueño pidió: **0 no despierta a
+/// nadie** y sólo contesta el censo, `u32::MAX` despierta a todos, y cualquier
+/// otro número despierta exactamente esos, en el orden en que los lista el
+/// firmware.
+///
+/// Que el caso por defecto sea *"mira y no toques"* no es prudencia: mandar
+/// INIT+SIPI es la única operación de todo el sistema que cambia el estado del
+/// hardware de forma que no se puede deshacer sin reiniciar. Un mando así se
+/// dispara **a propósito**, no por escribir su nombre.
+pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
     // ── A quién llamar: lo dice el FIRMWARE, no una suposición ──────────
     //
     // La MADT es la lista de núcleos que declara la placa. Antes esto suponía
@@ -109,6 +119,19 @@ pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
         }
     };
 
+    // ★ MIRA Y NO TOQUES. Con `cuantos == 0` se sale AQUÍ, antes de resetear los
+    // contadores y antes de escribir un solo byte en la memoria baja. Es lo que
+    // hace que el caso por defecto sea de verdad inofensivo y no "inofensivo
+    // salvo por lo que ya había hecho al llegar".
+    //
+    // Y se contesta lo que hay ahora mismo: si ya se despertaron antes, este
+    // camino lo dice sin volver a despertarlos.
+    if cuantos == 0 {
+        crate::ring0::core::phase::dashboard_log("[smp] censo pedido, no se desperto a nadie");
+        return (tramp::VIVOS.load(Ordering::SeqCst), esperados);
+    }
+
+    let pedidos = cuantos.min(esperados);
     tramp::VIVOS.store(0, Ordering::SeqCst);
     tramp::MASCARA.store(0, Ordering::SeqCst);
     let yo = tramp::apic_id();
@@ -179,7 +202,7 @@ pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
             // ★ La lista del firmware, tal cual. Ni se inventa ni se ordena.
             Some(c) => {
                 for &id in c.ids() {
-                    if id != yo {
+                    if id != yo && (ranura as u32) < cuantos {
                         llamar(id, &mut ranura);
                     }
                 }
@@ -187,7 +210,7 @@ pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
             // El camino de respaldo, ya avisado más arriba.
             None => {
                 for id in 0..esperados + 1 {
-                    if id != yo {
+                    if id != yo && (ranura as u32) < cuantos {
                         llamar(id, &mut ranura);
                     }
                 }
@@ -196,21 +219,38 @@ pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
     }
 
     // 6. Contar, con tope. Un AP que no viene no puede colgar al que pregunta.
+    // Se espera a los PEDIDOS, no a todos: con `smp 3` esperar a los once sería
+    // colgar el comando un segundo entero para contar hasta tres.
     let mut vueltas = 0u32;
-    while tramp::VIVOS.load(Ordering::SeqCst) < esperados && vueltas < 1000 {
+    while tramp::VIVOS.load(Ordering::SeqCst) < pedidos && vueltas < 1000 {
         lapic::esperar_us(1000);
         vueltas += 1;
     }
 
     let vivos = tramp::VIVOS.load(Ordering::SeqCst);
     let mascara = tramp::MASCARA.load(Ordering::SeqCst);
-    if vivos == esperados {
-        crate::ring0::cabina::info("smp", "todos los nucleos contestaron", vivos as u64 + 1);
+
+    // ★ TAMBIÉN AL KLOG, y esto era un fallo mío de bulto: todo el relato del
+    // bring-up iba **sólo a CABINA**, que Ring 3 no puede leer. El mensaje del
+    // compositor decía "(F11 lo cuenta entero)" y F11 enseña el KLOG, que es
+    // otro sitio. O sea: se prometía un dato en una ventana donde no estaba.
+    //
+    // Son dos sumideros distintos a propósito —CABINA es el narrador con
+    // severidad, el klog es la transcripción— y quien escribe tiene que elegir
+    // los dos cuando quiere que se vea desde fuera.
+    crate::ring0::core::phase::dashboard_log(if vivos == pedidos {
+        "[smp] contestaron todos los que se llamaron"
+    } else {
+        "[smp] FALTAN nucleos por contestar"
+    });
+
+    if vivos == pedidos {
+        crate::ring0::cabina::info("smp", "contestaron todos los llamados", vivos as u64 + 1);
     } else {
         crate::ring0::cabina::warn(
             "smp",
             "faltan nucleos por contestar",
-            (esperados - vivos) as u64,
+            (pedidos - vivos) as u64,
         );
         crate::ring0::cabina::warn("smp", "mascara de los que SI contestaron", mascara as u64);
     }

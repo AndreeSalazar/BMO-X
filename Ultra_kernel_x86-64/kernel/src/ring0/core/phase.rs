@@ -1281,7 +1281,9 @@ fn shell_smp() {
         row("firmware", |l| l.txt("sin MADT: se supondran los APIC IDs"));
     }
 
-    let (vivos, esperados) = crate::ring0::plat::smp::despertar(|id| {
+    // El shell de Ring 0 despierta a TODOS: aquí no hay línea que escribir un
+    // argumento, y quien llega a este shell es porque el escritorio no arrancó.
+    let (vivos, esperados) = crate::ring0::plat::smp::despertar(u32::MAX, |id| {
         row("  ->", |l| {
             l.txt("APIC ");
             l.dec(id as u64);

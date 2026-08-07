@@ -75,9 +75,10 @@ pub(crate) enum Orden<'a> {
     Informe,
     Cpu,
     Memoria,
-    /// **Despertar los otros núcleos.** Es la única orden de esta caja que
-    /// puede tardar casi un segundo, y por eso el mensaje va ANTES de llamar.
-    Smp,
+    /// **Los núcleos.** Sin argumento sólo censa; con `all` o con un número,
+    /// despierta. Es la única orden de esta caja que puede tardar casi un
+    /// segundo, y por eso el mensaje va ANTES de llamar.
+    Smp(&'a [u8]),
     /// `reboot` — reinicia la máquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aquí contestaba "no lo
@@ -197,7 +198,10 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         b"cpu" | b"procesador" => Orden::Cpu,
         b"mem" | b"ram" | b"memoria" => Orden::Memoria,
         b"reboot" | b"reinicia" | b"reiniciar" => Orden::Reiniciar,
-        b"smp" | b"nucleos" => Orden::Smp,
+        // `smp` a secas CENSA y no toca nada; `smp all` despierta a todos;
+        // `smp N` despierta exactamente N. El caso sin argumento es el
+        // inofensivo a propósito: ver `sys::smp_despertar`.
+        b"smp" | b"nucleos" => Orden::Smp(resto),
         b"help" | b"?" | b"ayuda" => Orden::Ayuda,
         _ if parece_programa(linea) => Orden::Lanzar(linea),
         // Parece un archivo pero no es un programa. Antes esto caia en

@@ -106,16 +106,52 @@ impl CajaKlog {
 /// Cuántas familias hay, contando `TODO`.
 pub(crate) const FAMILIAS: u8 = 5;
 
+/// ¿Aparece `aguja` en algún sitio de `linea`?
+///
+/// ★ **AQUÍ ESTABA EL FALLO, y llevaba puesto desde antes del filtro.** Esto
+/// comparaba contra el PRINCIPIO de la línea (`&linea[..p.len()] == p`), y
+/// ninguna línea del klog empieza por su etiqueta: **todas empiezan por la
+/// hora**, porque `klog::guardar_con_hora` antepone `[     0ms] ` a lo que le
+/// den. Lo que se comparaba era un `[` contra un `[`, y nada más.
+///
+/// Consecuencia, que se vio en las fotos del dueño: el filtro no dejaba pasar
+/// **ni una línea** en ninguna familia, y el coloreado —que ya existía y usaba
+/// la misma comparación— **nunca había pintado un solo color**. Un fallo que
+/// llevaba ahí sin que nadie lo notara porque su síntoma era "todo blanco", que
+/// es exactamente lo que uno espera de un log.
+///
+/// Se busca como SUBCADENA y no saltando el prefijo de la hora a propósito: así
+/// da igual si mañana alguien cambia ese formato, y una línea que mencione
+/// `[usb]` en mitad del texto también es del bus — que es la respuesta correcta.
+fn contiene(linea: &[u8], aguja: &[u8]) -> bool {
+    if aguja.len() > linea.len() {
+        return false;
+    }
+    let mut i = 0usize;
+    while i + aguja.len() <= linea.len() {
+        if &linea[i..i + aguja.len()] == aguja {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
 /// A qué familia pertenece una línea. `0` es "ninguna conocida".
 fn familia_de(linea: &[u8]) -> u8 {
-    let empieza = |p: &[u8]| linea.len() >= p.len() && &linea[..p.len()] == p;
+    let empieza = |p: &[u8]| contiene(linea, p);
     if empieza(b"[uhid]") || empieza(b"[usb]") || empieza(b"[xhci]") {
         1 // el bus
     } else if empieza(b"[ahci]") || empieza(b"[fs]") || empieza(b"[estratos]") {
         2 // el almacenamiento
-    } else if empieza(b"[s1_cpu]") || empieza(b"[s2_mem]") || empieza(b"[kernel]") {
-        3 // el arranque
-    } else if empieza(b"gui") || empieza(b"[ring3]") {
+    } else if empieza(b"[s1_cpu]") || empieza(b"[s2_mem]") || empieza(b"[kernel]")
+        || empieza(b"[ring0]") || empieza(b"[cpu]") || empieza(b"[smp]")
+    {
+        3 // el arranque y el silicio
+    } else if empieza(b"gui.bex>") || empieza(b"[ring3]") {
+        // `gui.bex>` con el `>` incluido y no un `gui` suelto: buscando como
+        // subcadena, un `gui` a secas se comería la línea de la entrega
+        // (`se cede … a sys/gui.bex`), que es del arranque y no de Ring 3.
         4 // lo que dice Ring 3
     } else {
         0

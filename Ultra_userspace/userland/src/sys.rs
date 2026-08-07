@@ -150,8 +150,15 @@ pub fn klog_total() -> u64 {
 /// ⚠️ **Bloquea**, y bastante: hasta ~10 ms por núcleo, más la espera final. Es
 /// la única llamada del userland que puede tardar un segundo entero, así que
 /// quien la use debería pintar el aviso **antes** y no después.
-pub fn smp_despertar() -> (u32, u32) {
-    let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 0, 0).value;
+/// `cuantos`: **0 no despierta a nadie** y sólo contesta el censo, `u32::MAX`
+/// despierta a todos, y cualquier otro número despierta exactamente esos.
+///
+/// ★ Que se pueda pedir un número, y que el 0 sea inofensivo, es lo que separa
+/// un botón de un mando. Mandar INIT+SIPI es la única operación del sistema que
+/// cambia el hardware de forma que no se deshace sin reiniciar: se dispara **a
+/// propósito**, no por escribir su nombre.
+pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
+    let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, cuantos as u64, 0, 0).value;
     ((v >> 32) as u32, v as u32)
 }
 

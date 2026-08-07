@@ -1293,11 +1293,41 @@ pub extern "C" fn _start() -> ! {
                             // nada: para entonces la espera ya pasó, y lo que
                             // el dueño habría visto es un escritorio congelado
                             // sin motivo.
-                            Orden::Smp => {
-                                salida.texto(b"  despertando nucleos (esto tarda)...\n");
+                            Orden::Smp(arg) => {
+                                // ★ El CONTROL, y el reparto de quién decide:
+                                // aquí sólo se traduce lo que el dueño escribió
+                                // a un número. `smp` a secas censa y no toca
+                                // nada — que sea el caso por defecto es la
+                                // diferencia entre un mando y un botón.
+                                let cuantos = if arg.is_empty() {
+                                    0
+                                } else if arg == b"all" || arg == b"todos" {
+                                    u32::MAX
+                                } else {
+                                    let mut v = 0u32;
+                                    let mut ok = false;
+                                    for &b in arg {
+                                        if b >= b'0' && b <= b'9' {
+                                            v = v.saturating_mul(10) + (b - b'0') as u32;
+                                            ok = true;
+                                        } else {
+                                            ok = false;
+                                            break;
+                                        }
+                                    }
+                                    // Un argumento que no se entiende NO se
+                                    // interpreta como "todos": eso convertiría
+                                    // un dedazo en once INIT+SIPI.
+                                    if ok { v } else { 0 }
+                                };
+                                if cuantos == 0 {
+                                    salida.texto(b"  censando (no se despierta a nadie)\n");
+                                } else {
+                                    salida.texto(b"  despertando nucleos (esto tarda)...\n");
+                                }
                                 pintar_salida(&p, &caja, &salida);
                                 p.volcar();
-                                let (vivos, esperados) = bmo::smp_despertar();
+                                let (vivos, esperados) = bmo::smp_despertar(cuantos);
                                 salida.con_tinta(if vivos == esperados {
                                     TINTA_BIEN
                                 } else {
@@ -1312,6 +1342,13 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(&b[..k]);
                                 salida.texto(b"   (F11 lo cuenta entero)\n");
                                 salida.con_tinta(TINTA_NORMAL);
+                                // La guía va donde se necesita: justo después
+                                // de censar, que es cuando uno se pregunta
+                                // "¿y ahora cómo los enciendo?". Un atajo que
+                                // sólo vive en la documentación no existe.
+                                if cuantos == 0 {
+                                    salida.texto(b"  'smp all' los despierta todos, 'smp 3' solo tres\n");
+                                }
                                 pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
                                 n = 0;
                             }

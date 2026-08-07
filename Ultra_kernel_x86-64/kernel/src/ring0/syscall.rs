@@ -492,8 +492,10 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // El aviso por núcleo se traga aquí: cruzar el borde de Ring 3 once
         // veces para pintar una línea costaría más que el propio bring-up. Lo
         // que sí queda es CABINA, que ya recibe el relato entero desde dentro.
+        // `arg0` es el CONTROL: 0 = sólo censar, `u32::MAX` = todos, N = esos.
         TASK_OP_SMP_DESPERTAR => {
-            let (vivos, esperados) = crate::ring0::plat::smp::despertar(|_| {});
+            let cuantos = if arg0 > u32::MAX as u64 { u32::MAX } else { arg0 as u32 };
+            let (vivos, esperados) = crate::ring0::plat::smp::despertar(cuantos, |_| {});
             BmoStatus::ok_value(((vivos as u64) << 32) | esperados as u64)
         }
         // ★ Escribe en el disco. Se apunta en CABINA ANTES y DESPUES, pase lo
