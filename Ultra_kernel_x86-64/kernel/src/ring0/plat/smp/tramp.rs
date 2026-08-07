@@ -13,6 +13,28 @@
 //!
 //! Se comprobó sacando los bytes del ELF ya enlazado:
 //! `fa · 31 c0 · 8e d8 · 66 0f 01 16` y **cero bytes `0x48`**.
+//!
+//! ═══ ⚠️ DOS INVARIANTES DE FUERA DE LOS QUE ESTO DEPENDE ═══
+//!
+//! Ninguno se ve desde este fichero, y romper cualquiera de los dos mata al AP
+//! sin dejar un mensaje. Quedan escritos aquí porque es donde se muere:
+//!
+//! 1. **El identity map NO puede tener NX.** Este código enciende la paginación
+//!    con el `CR3` del kernel **mientras se ejecuta en `0x8000`**: la instrucción
+//!    siguiente al `mov cr0, eax` ya se busca a través de las tablas. Hoy
+//!    funciona porque `s2_mem` mapea `0..4 GiB` con `PTE_PRESENT | PTE_WRITABLE`
+//!    y **sin** el bit NX. El día que alguien endurezca ese mapa poniendo NX en
+//!    lo que no es kernel, esto se convierte en un `#PF` en la primera
+//!    instrucción tras activar paginación — y sin nadie que lo cuente, porque el
+//!    AP todavía no ha llegado a ningún sitio.
+//!
+//! 2. **Un AP que toma una excepción está muerto de una forma fea.** Carga la
+//!    IDT del kernel, pero **no tiene GS por-CPU** y **no tiene `CR4.OSXSAVE`**;
+//!    los stubs de trampa hacen `swapgs` y `xsave64`. O sea: cualquier excepción
+//!    aquí es `#UD` dentro del manejador → doble fallo → triple fallo. Es
+//!    aceptable *sólo* porque este AP no hace nada que pueda fallar —dos
+//!    atómicas y `hlt`—, y **deja de serlo el día que se le dé trabajo de
+//!    verdad**. Entonces hace falta GS por-CPU antes de soltarlo.
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -55,10 +77,26 @@ smp_pm32:
     mov ss, ax
     mov esp, 0x9FF0
 
-    // PAE, que el modo largo exige.
+    // PAE (0x20), que el modo largo exige, y SSE en la misma escritura:
+    // OSFXSR (bit 9) + OSXMMEXCPT (bit 10) = 0x600.
+    //
+    // ★ SIN ESTO HAY UN #UD ESPERANDO. Un AP sale del reset con CR4 = 0, o sea
+    // con SSE apagado — y el destino de este salto es codigo RUST compilado para
+    // x86-64, cuya linea base INCLUYE SSE2: en cuanto el compilador emita un
+    // `movaps` para mover 16 bytes o poner a cero un hueco, el nucleo se muere
+    // con una excepcion que no dice nada. Hoy `smp_ap_entrada` es tan pequeña
+    // que probablemente no emita ninguna; el dia que ese obrero haga trabajo de
+    // verdad, seguro. Cuesta un OR y quita una clase entera de fallo futuro.
     mov eax, cr4
-    or eax, 0x20
+    or eax, 0x620
     mov cr4, eax
+
+    // Y CR0 en condiciones para SSE: MP (bit 1) puesto, EM (bit 2) quitado.
+    // EM=1 significa "emula la FPU", y con eso SSE tambien es #UD.
+    mov eax, cr0
+    and eax, 0xFFFFFFFB
+    or eax, 0x2
+    mov cr0, eax
 
     // ★ El CR3 DEL KERNEL. No se construye una tabla nueva: la del kernel ya
     // identity-mapea 0..32 MiB, que es todo lo que hay que ver desde aqui.

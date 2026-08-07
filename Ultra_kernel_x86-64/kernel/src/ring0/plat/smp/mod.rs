@@ -114,6 +114,20 @@ pub fn despertar(aviso: impl Fn(u32)) -> (u32, u32) {
         // 5. Y a llamar, de uno en uno. Cada AP recoge SU pila del mismo sitio,
         //    así que hay que dejarla puesta antes de cada SIPI. De ahí que esto
         //    no sea un broadcast.
+        //
+        // ⚠️ SE SUPONE QUE LOS APIC IDs SON `0..hilos-1`, y hay que decirlo.
+        //
+        // Es cierto en un Zen 3 de un solo CCD y **es una suposición** en
+        // cualquier otra cosa: nada en BMO enumera los APIC IDs de verdad.
+        // `Topology::cpus` **parece** ese censo y no lo es —se rellena con 64
+        // copias del BSP, ver su doc—, y la fuente buena son las entradas de
+        // tipo 0 de la **MADT**, que `s2_mem` localiza y no recorre.
+        //
+        // Consecuencias de que la suposición falle, para saber qué se está
+        // mirando si pasa: a un ID que no existe la IPI se va al vacío —el
+        // `Delivery Status` acaba por bajar y se sigue—, y un núcleo real con
+        // un ID fuera del rango no se llamaría nunca. Las dos cosas se ven
+        // igual desde fuera: **faltan núcleos**. Por eso se imprime la máscara.
         for id in 0..esperados + 1 {
             if id == yo {
                 continue;
