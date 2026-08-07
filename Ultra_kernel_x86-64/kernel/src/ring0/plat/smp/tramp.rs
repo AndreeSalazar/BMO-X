@@ -194,8 +194,12 @@ pub fn apic_id() -> u32 {
 pub extern "C" fn smp_ap_entrada() -> ! {
     let id = apic_id();
     MASCARA.fetch_or(1u32 << (id & 31), Ordering::SeqCst);
-    VIVOS.fetch_add(1, Ordering::SeqCst);
-    loop {
-        unsafe { core::arch::asm!("cli; hlt", options(nomem, nostack)) };
-    }
+    // ★ `fetch_add` devuelve el valor ANTERIOR, y eso es justo un índice único
+    // 0..n-1 sin repartirlo desde fuera ni pasarlo por la página compartida.
+    // El contador y el reparto de índices salen de la misma operación atómica.
+    let indice = VIVOS.fetch_add(1, Ordering::SeqCst);
+    // Y de aquí al bucle de trabajo. Antes esto era `cli; hlt` para siempre: un
+    // núcleo despierto al que no se le puede dar una tarea sirve exactamente lo
+    // mismo que uno dormido.
+    super::obra::obrero(indice)
 }

@@ -38,6 +38,8 @@
 
 pub mod lapic;
 pub mod mapa;
+/// El reparto de trabajo. Sin esto, los núcleos despiertos no sirven de nada.
+pub mod obra;
 pub mod tramp;
 
 use core::sync::atomic::Ordering;

@@ -162,6 +162,24 @@ pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
     ((v >> 32) as u32, v as u32)
 }
 
+/// **Desactiva los obreros**: vuelven a `hlt` y ahí se quedan.
+///
+/// La otra mitad del mando. Un obrero en espera **gira**, no duerme —sacarlo de
+/// `hlt` pediría una IPI, y para atenderla haría falta GS por-CPU—, así que con
+/// los doce en pie hay once núcleos al 100 %. Esto es lo que lo apaga.
+pub fn smp_parar() {
+    let _ = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 1, 0);
+}
+
+/// **La prueba de reparto.** Devuelve la aceleración **×100**: `842` son 8,42×.
+///
+/// Corre la misma cuenta pura con un núcleo y con todos. Es el caso MÁS
+/// favorable que existe —sin memoria compartida ni bloqueos—, así que el número
+/// que salga es **el techo** y no lo que dará un programa de verdad.
+pub fn smp_prueba() -> u64 {
+    invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 2, 0).value
+}
+
 /// **Cierra una transacción vacía en ESTRATOS.** Devuelve la generación nueva,
 /// o **0** si no se pudo.
 ///

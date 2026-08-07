@@ -492,11 +492,39 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // El aviso por núcleo se traga aquí: cruzar el borde de Ring 3 once
         // veces para pintar una línea costaría más que el propio bring-up. Lo
         // que sí queda es CABINA, que ya recibe el relato entero desde dentro.
-        // `arg0` es el CONTROL: 0 = sólo censar, `u32::MAX` = todos, N = esos.
+        // `arg0` = cuántos despertar (0 = sólo censar, `u32::MAX` = todos).
+        // `arg1` = el modo: 0 despertar · 1 PARAR · 2 la prueba de reparto.
         TASK_OP_SMP_DESPERTAR => {
+            use crate::ring0::plat::smp::{self, obra};
             let cuantos = if arg0 > u32::MAX as u64 { u32::MAX } else { arg0 as u32 };
-            let (vivos, esperados) = crate::ring0::plat::smp::despertar(cuantos, |_| {});
-            BmoStatus::ok_value(((vivos as u64) << 32) | esperados as u64)
+            match arg1 {
+                // Desactivar: los obreros vuelven a `hlt` y ahí se quedan.
+                1 => {
+                    obra::parar();
+                    crate::ring0::core::phase::dashboard_log("[smp] obreros PARADOS");
+                    BmoStatus::ok_value(0)
+                }
+                // La prueba. Devuelve la aceleración ×100 —`842` son 8,42×—
+                // porque por la puerta sólo cabe un número y una fracción no
+                // se puede mandar entera. El detalle en crudo va a CABINA.
+                2 => {
+                    let (vivos, _) = smp::vivos();
+                    let (uno, todos, partes) = obra::prueba(vivos);
+                    crate::ring0::cabina::info("smp", "ticks con UN nucleo", uno);
+                    crate::ring0::cabina::info("smp", "ticks con todos", todos);
+                    crate::ring0::cabina::info("smp", "partes que corrieron", partes as u64);
+                    crate::ring0::core::phase::dashboard_log("[smp] prueba de reparto hecha");
+                    if todos > 0 && partes > 0 {
+                        BmoStatus::ok_value(uno.saturating_mul(100) / todos)
+                    } else {
+                        BmoStatus::ok_value(0)
+                    }
+                }
+                _ => {
+                    let (vivos, esperados) = smp::despertar(cuantos, |_| {});
+                    BmoStatus::ok_value(((vivos as u64) << 32) | esperados as u64)
+                }
+            }
         }
         // ★ Escribe en el disco. Se apunta en CABINA ANTES y DESPUES, pase lo
         // que pase: la primera operacion que cambia el almacen no puede ser

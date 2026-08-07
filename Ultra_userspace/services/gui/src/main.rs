@@ -1299,6 +1299,44 @@ pub extern "C" fn _start() -> ! {
                                 // a un número. `smp` a secas censa y no toca
                                 // nada — que sea el caso por defecto es la
                                 // diferencia entre un mando y un botón.
+                                // Los dos mandos que no son un número: parar y
+                                // medir. Se resuelven aquí y salen, porque no
+                                // comparten NADA con el camino de despertar.
+                                if arg == b"parar" || arg == b"para" {
+                                    bmo::smp_parar();
+                                    salida.texto(b"  obreros parados (vuelven a hlt)\n");
+                                    pintar_salida(&p, &caja, &salida);
+                                    pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
+                                    n = 0;
+                                    continue;
+                                }
+                                if arg == b"prueba" || arg == b"bench" {
+                                    salida.texto(b"  midiendo reparto (esto tarda)...\n");
+                                    pintar_salida(&p, &caja, &salida);
+                                    p.volcar();
+                                    let x100 = bmo::smp_prueba();
+                                    let mut b = [0u8; 10];
+                                    salida.con_tinta(if x100 >= 150 { TINTA_BIEN } else { TINTA_MAL });
+                                    salida.texto(b"  aceleracion: ");
+                                    let k = decimal(x100 / 100, &mut b);
+                                    salida.texto(&b[..k]);
+                                    salida.texto(b".");
+                                    // Los dos decimales, con su cero delante:
+                                    // "8.4" y "8.04" no son el mismo numero.
+                                    if x100 % 100 < 10 {
+                                        salida.texto(b"0");
+                                    }
+                                    let k = decimal(x100 % 100, &mut b);
+                                    salida.texto(&b[..k]);
+                                    salida.texto(b"x   (F11 trae los ticks)\n");
+                                    salida.con_tinta(TINTA_NORMAL);
+                                    if x100 == 0 {
+                                        salida.texto(b"  0 = falto una parte: el numero no vale\n");
+                                    }
+                                    pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
+                                    n = 0;
+                                    continue;
+                                }
                                 let cuantos = if arg.is_empty() {
                                     0
                                 } else if arg == b"all" || arg == b"todos" {
