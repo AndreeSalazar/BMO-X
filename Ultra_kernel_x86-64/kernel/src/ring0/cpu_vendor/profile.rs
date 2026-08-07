@@ -13,6 +13,31 @@
 //!   3. Point `active()` at it (compile-time; boot-time selection can
 //!      layer on later without changing this contract).
 
+/// **Cuántos núcleos hay**, dicho sin nombrar a ningún fabricante.
+///
+/// ★ Existe porque el contrato de arriba estaba ROTO en tres sitios: `informe`,
+/// el shell y el bring-up de SMP llamaban a
+/// `cpu_vendor::ryzen_5_5600x::bmo_cpu::topology()` **por su nombre**, que es
+/// exactamente lo que la cabecera de este fichero prohíbe. Compilaba, funcionaba
+/// y dejaba tres sitios que habría que editar para estrenar otro CPU — o sea, la
+/// definición de lo que el perfil existe para evitar.
+///
+/// La estructura del fabricante puede tener veinte campos más; aquí sólo suben
+/// los cuatro que Ring 0 necesita para repartir trabajo. Ver `docs/SMP_MAESTRO.md`.
+#[derive(Clone, Copy, Debug)]
+pub struct Nucleos {
+    /// Núcleos FÍSICOS. Es el número que manda para repartir cómputo.
+    pub nucleos: u32,
+    /// Hilos lógicos. Con SMT son el doble, y **no son el doble de potencia**:
+    /// dos hilos del mismo núcleo comparten L1, L2 y unidades de ejecución.
+    pub hilos: u32,
+    /// Grupos que comparten L3. En un 5600X es **1**; en un Zen 2 son 2, y ahí
+    /// hablar entre grupos cuesta un viaje por el Infinity Fabric.
+    pub ccx: u32,
+    /// Chiplets.
+    pub ccd: u32,
+}
+
 /// Everything Ring 0 is allowed to know about the CPU it runs on.
 pub struct CpuProfile {
     /// Vendor string, e.g. "AMD".
@@ -64,6 +89,13 @@ pub struct CpuProfile {
     pub xsave_xcr0: u64,
     /// Bytes del área de XSAVE que se esperan para esos componentes.
     pub xsave_area: u32,
+
+    /// Cuántos núcleos e hilos hay, ya detectados por `init`.
+    ///
+    /// ★ Es un puntero a función y no un número: los núcleos **se le preguntan
+    /// al silicio**, no se declaran. Es la misma regla que gobierna el área de
+    /// XSAVE — se hardcodean los contratos, se preguntan los hechos.
+    pub nucleos: fn() -> Option<Nucleos>,
 }
 
 /// The compiled-in profile. Today: Ryzen 5 5600X. On another bench this

@@ -54,4 +54,20 @@ pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
     // PKRU harian falta 2440. Reservamos 1024, que cubre lo primero con holgura
     // — y `xsave::init` se planta al arrancar si algun dia no cubriera.
     xsave_area: 2440,
+    nucleos: nucleos,
 };
+
+/// Sube la topología del Ryzen al contrato neutral del perfil.
+///
+/// Aquí abajo `Topology` tiene ocho campos y un array de 64 `CpuId`; hacia
+/// arriba salen cuatro números. **Esa reducción es el contrato**: Ring 0 no
+/// tiene por qué saber qué es un CCD, sólo cuántos hay.
+fn nucleos() -> Option<super::profile::Nucleos> {
+    let t = bmo_cpu::topology()?;
+    Some(super::profile::Nucleos {
+        nucleos: t.total_cores,
+        hilos: t.total_threads,
+        ccx: t.total_ccxs,
+        ccd: t.total_ccds,
+    })
+}

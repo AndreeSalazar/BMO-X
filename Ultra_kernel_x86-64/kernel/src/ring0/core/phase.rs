@@ -1249,21 +1249,28 @@ fn shell_ktest() {
 fn shell_smp() {
     dashboard_log_color("== smp ==", SH_TITLE);
 
-    let topo = crate::ring0::cpu_vendor::ryzen_5_5600x::bmo_cpu::topology();
-    if let Some(t) = topo {
+    // Por el PERFIL, no por el nombre del fabricante: ver `profile.rs`.
+    if let Some(t) = (crate::ring0::cpu_vendor::profile::active().nucleos)() {
         row("silicio", |l| {
-            l.dec(t.total_cores as u64);
+            l.dec(t.nucleos as u64);
             l.txt(" nucleos   ");
-            l.dec(t.total_threads as u64);
+            l.dec(t.hilos as u64);
             l.txt(" hilos   ");
-            l.dec(t.total_ccxs as u64);
+            l.dec(t.ccx as u64);
             l.txt(" CCX");
         });
     }
 
     row("   ", |l| l.txt("despertando... (si se queda aqui, reinicia a boton)"));
 
-    let (vivos, esperados) = crate::ring0::plat::smp::despertar();
+    // ★ Una línea POR NÚCLEO y antes de mandarle nada. Es lo único de este
+    // comando que puede colgarse, y así el cuelgue deja dicho en cuál fue.
+    let (vivos, esperados) = crate::ring0::plat::smp::despertar(|id| {
+        row("  ->", |l| {
+            l.txt("APIC ");
+            l.dec(id as u64);
+        });
+    });
     let (_, mascara) = crate::ring0::plat::smp::vivos();
 
     // El BSP cuenta: es un núcleo que está corriendo esto mismo.

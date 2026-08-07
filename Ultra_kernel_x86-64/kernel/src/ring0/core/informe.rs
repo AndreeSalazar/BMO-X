@@ -83,8 +83,8 @@ pub fn campo(n: u64) -> u64 {
         INFO_TSC_HZ => crate::ring0::task::scheduler::tsc_freq(),
         // La topología está cacheada desde `init_bmo_cpu`: aquí no se vuelve a
         // preguntar al CPUID. Un panel que se repinta no debe costar CPUID.
-        INFO_CPU_HILOS => cpu_topo().map(|t| t.total_threads as u64).unwrap_or(0),
-        INFO_CPU_NUCLEOS => cpu_topo().map(|t| t.total_cores as u64).unwrap_or(0),
+        INFO_CPU_HILOS => cpu_topo().map(|t| t.hilos as u64).unwrap_or(0),
+        INFO_CPU_NUCLEOS => cpu_topo().map(|t| t.nucleos as u64).unwrap_or(0),
         INFO_TAREAS_TOTAL => crate::ring0::task::scheduler::counts().0 as u64,
         INFO_TAREAS_LISTAS => crate::ring0::task::scheduler::counts().1 as u64,
         INFO_TAREAS_LIBRES => crate::ring0::task::scheduler::huecos_libres() as u64,
@@ -138,8 +138,14 @@ pub fn campo(n: u64) -> u64 {
     }
 }
 
-fn cpu_topo() -> Option<&'static crate::ring0::cpu_vendor::ryzen_5_5600x::topology::Topology> {
-    crate::ring0::cpu_vendor::ryzen_5_5600x::bmo_cpu::topology()
+/// La topología, **por el perfil y no por el nombre del fabricante**.
+///
+/// Esta función nombraba `cpu_vendor::ryzen_5_5600x::bmo_cpu::topology()`
+/// directamente, y la cabecera de `profile.rs` dice literalmente que el resto de
+/// Ring 0 *"nunca nombra un módulo de fabricante directamente"*. La regla estaba
+/// escrita en el propio fichero que define la abstracción, y rota aquí.
+fn cpu_topo() -> Option<crate::ring0::cpu_vendor::profile::Nucleos> {
+    (crate::ring0::cpu_vendor::profile::active().nucleos)()
 }
 
 /// Ocho bytes del campo de texto, empaquetados en little-endian.
