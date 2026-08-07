@@ -185,22 +185,43 @@ ya están escritas**.
 
 ---
 
-## 1 · EL ENLAZADOR — 5 piezas, y una ya está
+## 1 · EL ENLAZADOR — ★★ 5/5, CERRADO EL 2026-08-07
 
 **Camino B** (funciones sintetizadas), el decidido en `forge/README.md`.
 
 | # | Pieza | Estado |
 |---|---|---|
-| 1 | Tabla de funciones sintetizables: nombre → bytes | el mecanismo **ya corre en metal** con `__bmo_syscall_stub` |
-| 2 | El codegen inyecta la función una vez y relocaliza las llamadas | — |
-| 3 | `malloc`/`free` de verdad sobre `KIND_MEMORIA` | ★ **escrita y probada**: `bmo-rt::heap::freelist`, 247 líneas — **"probada" es cierto desde el 2026-08-07 y no antes**: los 6 tests no enlazaban en el host por el `_start` de `crt0`, así que `cargo test -p bmo-rt` no ejecutaba ninguno. Ahora 6/6 |
-| 4 | `printf` mínimo (`%d %s %x %c`) | — |
-| 5 | Cadenas: `strlen` `strcpy` `memcpy` `memset` | — |
+| 1 | Tabla de funciones sintetizables: nombre → bytes | ✅ el mecanismo **ya corría en metal** con `__bmo_syscall_stub`, cableado para un único nombre |
+| 2 | El codegen inyecta la función una vez y relocaliza las llamadas | ✅ `ea3429f4` — `codegen/sintetizadas.rs`. El stub es la primera entrada de la tabla a propósito: si no reprodujera el caso que ya funcionaba, no serviría |
+| 3 | `malloc`/`free` de verdad sobre `KIND_MEMORIA` | ✅ `bmo-rt::heap::freelist`, 247 líneas — **"probada" es cierto desde el 2026-08-07 y no antes** (`7b2a3a73`): los 6 tests no enlazaban en el host por el `_start` de `crt0`, así que `cargo test -p bmo-rt` no ejecutaba ninguno. Ahora 6/6 |
+| 4 | `printf` mínimo (`%d %s %x %c`) | ✅ `5f644aae` — las cinco conversiones a la tabla. **−8,2% de código en los seis ejemplos** (−25,2% en `holac`) |
+| 5 | Cadenas: `strlen` `strcpy` `memcpy` `memset` | ✅ `bfcaf45b` — más `strcmp`, `strchr`, `strncmp`, `memcmp`. **−32,2%** en un programa que las usa |
 
-★★ **Es el hueco más barato de todo el sistema y el que más desbloquea.** Con
-esto caen: `CALL` de COBOL, la libc entera, C++ con unidades separadas, y el
-Nivel 0 de este documento — DOOM, Lua y SQLite dejan de estar bloqueados por el
-lenguaje.
+★★ **Era el hueco más barato de todo el sistema y el que más desbloquea**, y ya
+no está. Con esto **DOOM, Lua y SQLite dejan de estar bloqueados por el
+lenguaje** — que no es lo mismo que estar listos: siguen bloqueados por la
+compilación separada a partir de ~100k líneas (§ *Qué desbloquea qué*, fila 2).
+
+### ⚠️ Tres cosas que este 5/5 **no** significa, y conviene leerlas
+
+**1. El ahorro no se ve en el `.bex`.** Los seis ejemplos miden exactamente lo
+mismo que antes, byte por byte. La sección de código se rellena a 4096
+(`pad_to_page`, con `0xCC`) y 2 KB de ahorro caben dentro del relleno. Ese
+relleno existe porque **BEF no tiene relocations** — lo dice la cabecera de
+`patch_all_fixups`—, así que hasta que las tenga, todo ahorro de código por
+debajo de una página es invisible en el fichero. Es la deuda que hay que pagar
+para que esto se note.
+
+**2. Lo que quedó fuera, y con criterio medido.** Enlazar cuesta ~10 bytes por
+llamada; en línea, ~3 más el cuerpo. Así que **`abs` (13 bytes) se queda en
+línea**: apenas pasa del coste de llamarlo. Y `malloc`/`free` no pueden entrar
+todavía porque usan `fresh_label()`, que es estado del `Codegen`, y un
+`Sintetizador` sólo recibe `&mut Vec<u8>`. La regla no es "todo a la tabla".
+
+**3. `memmove` sigue roto.** Comparte el `copiar` de `memcpy`, que avanza de
+principio a fin, así que con solapamiento y `dst > src` corrompe — que es
+exactamente lo que `memmove` promete y `memcpy` no. **Hoy es un `memcpy` con
+otro nombre.**
 
 ---
 
