@@ -351,6 +351,110 @@ pub const TASK_OP_KLOG_TEXTO: u64 = 0x17;
 pub const KLOG_DISPONIBLES: u64 = 0x00;
 pub const KLOG_TOTAL: u64 = 0x01;
 
+// ═══════════════════════════════════════════════════════════════════════
+//  LIENZO — una app pinta donde se va a ver
+// ═══════════════════════════════════════════════════════════════════════
+//
+// El contrato completo está en `docs/LIENZO.md`. Aquí va lo que el ABI necesita
+// saber, y **la aritmética de páginas**, que es la parte que puede dar acceso a
+// los píxeles del vecino si se hace mal.
+//
+// ★ Está aquí y no en el kernel A PROPÓSITO: `bmo-abi` se prueba en el
+// anfitrión. Esta cuenta se verifica con tests **antes** de que exista una sola
+// línea que mapee una página — que es la única forma sensata de estrenar algo
+// que, si se equivoca, deja a una app escribiendo en la ventana de al lado.
+
+/// **Pedir una banda de ancho completo del lienzo del compositor.**
+///
+/// `arg0` = filas que se piden · `arg1` = formato ([`LIENZO_FMT_XRGB32`]…).
+/// Devuelve `base<<32 | stride_px`, o `0` si no hay banda que prestar.
+///
+/// ★ **De ancho completo, y no un rectángulo cualquiera.** Las filas de un
+/// rectángulo de enmedio no son contiguas —entre una y la siguiente hay el
+/// ancho entero de la pantalla— y la unidad con la que se reparte memoria es la
+/// página. Prestar un rectángulo significa prestar bandas horizontales enteras,
+/// o sea los píxeles de los vecinos. De ancho completo **sí** es un bloque de
+/// páginas limpio, y por eso el reflejo empieza por ahí.
+pub const TASK_OP_LIENZO_REFLEJO: u64 = 0x1C;
+
+/// El formato **lo declara la app**, no lo fija el kernel.
+///
+/// Decisión del dueño el 2026-08-07, y tiene destinatario: DOOM pinta en 8 bits
+/// con paleta. Fijar 32 bits ahora obligaría a reabrir el contrato el día que
+/// llegue — y un contrato que se reabre no era un contrato.
+pub const LIENZO_FMT_XRGB32: u64 = 0x00;
+/// 8 bits con paleta. **Todavía no se acepta**: se declara para que el número
+/// esté reservado y nadie lo use para otra cosa. Quien lo pida hoy recibe un no,
+/// que es distinto de que el campo no exista.
+pub const LIENZO_FMT_PAL8: u64 = 0x01;
+
+/// **Cuántas filas hay que respetar para que una banda empiece y acabe en
+/// límite de página.**
+///
+/// ═══ El truco, explicado con el número delante ═══
+///
+/// Una fila del lienzo mide `stride × 4` bytes. Con un stride de 1920 son
+/// **7680 bytes**, que no es múltiplo de 4096: sólo cada ocho filas cae en un
+/// límite de página. Si el kernel presta una banda que empieza a media página,
+/// tiene dos salidas y las dos son malas — dar de menos (la app pinta fuera) o
+/// dar de más (la app pisa al vecino).
+///
+/// La cuenta es `4096 / mcd(bytes_por_fila, 4096)`, y sale de que el primer
+/// sitio donde coinciden fila y página es su mínimo común múltiplo.
+///
+/// Ejemplos reales: stride 1024 → **1** (cada fila cae en página); 1920 → **8**;
+/// 800 → **32**. O sea que el grano **depende de la pantalla** y no se puede
+/// hardcodear, que es justo por lo que esto es una función y no una constante.
+pub const fn lienzo_grano_filas(stride_px: u32) -> u32 {
+    let bytes = stride_px as u64 * 4;
+    if bytes == 0 {
+        return 0;
+    }
+    // Máximo común divisor por Euclides, en `const fn`: sin bucles `for` ni
+    // recursión, que es lo que este contexto permite.
+    let mut a = bytes;
+    let mut b = 4096u64;
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
+    }
+    (4096 / a) as u32
+}
+
+/// **Redondea una petición de filas hacia ARRIBA al grano.**
+///
+/// Hacia arriba y no hacia abajo: una app que pide 200 filas y recibe 192
+/// pintaría ocho filas fuera de lo suyo sin enterarse. Dándole 208 sobra
+/// memoria y no falta seguridad — y el que sobra es del lienzo, que ya estaba
+/// reservado de todas formas.
+pub const fn lienzo_filas_redondeadas(filas: u32, stride_px: u32) -> u32 {
+    let g = lienzo_grano_filas(stride_px);
+    if g == 0 || filas == 0 {
+        return 0;
+    }
+    ((filas + g - 1) / g) * g
+}
+
+/// **Dónde empieza la banda, contando desde ABAJO del lienzo.**
+///
+/// Abajo y no arriba porque arriba está la barra del escritorio, y porque una
+/// banda que crece hacia arriba deja el borde superior quieto — el sitio donde
+/// el compositor tiene sus cosas.
+///
+/// Devuelve la fila de inicio, ya alineada, o `alto` si no cabe.
+pub const fn lienzo_fila_inicio(alto: u32, filas: u32, stride_px: u32) -> u32 {
+    let f = lienzo_filas_redondeadas(filas, stride_px);
+    if f == 0 || f > alto {
+        return alto;
+    }
+    let inicio = alto - f;
+    // El inicio también tiene que caer en el grano, no sólo el tamaño: una
+    // banda alineada que empieza a media página sigue empezando a media página.
+    let g = lienzo_grano_filas(stride_px);
+    (inicio / g) * g
+}
+
 /// **Despertar los otros núcleos.** Devuelve `vivos<<32 | esperados`, ambos sin
 /// contar el BSP.
 ///
@@ -561,5 +665,73 @@ mod tests {
         assert_eq!(task_operation_for_legacy_syscall(super::super::NR_PROC_GET_TID), Some(TASK_OP_GET_TID));
         assert_eq!(task_operation_for_legacy_syscall(super::super::NR_PROC_YIELD), Some(TASK_OP_YIELD));
         assert_eq!(task_operation_for_legacy_syscall(super::super::NR_FS_OPEN), None);
+    }
+
+    // ═══════ LIENZO: la aritmética que puede dar acceso al vecino ═══════
+    //
+    // Se prueba aquí, en el anfitrión, ANTES de que exista una línea que mapee
+    // una página. Si esta cuenta se equivoca, el fallo no es un error: es una
+    // app escribiendo en la ventana de al lado, y eso no se depura a fotos.
+
+    /// El grano depende de la pantalla, y por eso no puede ser una constante.
+    #[test]
+    fn el_grano_sale_de_la_pantalla_y_no_de_una_constante() {
+        // 1024 × 4 = 4096 bordes: cada fila cae justo en una página.
+        assert_eq!(lienzo_grano_filas(1024), 1);
+        // 1920 × 4 = 7680, que no es multiplo de 4096. mcd = 512 → 8 filas.
+        assert_eq!(lienzo_grano_filas(1920), 8);
+        // 800 × 4 = 3200. mcd = 128 → 32 filas. Un grano MUY grueso, y es real.
+        assert_eq!(lienzo_grano_filas(800), 32);
+        // 1280 × 4 = 5120. mcd = 1024 → 4.
+        assert_eq!(lienzo_grano_filas(1280), 4);
+    }
+
+    /// La propiedad que de verdad importa: el resultado, en bytes, **siempre**
+    /// tiene que ser un múltiplo de la página. Da igual el stride.
+    #[test]
+    fn una_banda_del_grano_mide_paginas_enteras() {
+        for stride in [640u32, 800, 1024, 1280, 1366, 1600, 1920, 2560, 3840] {
+            let g = lienzo_grano_filas(stride);
+            assert_ne!(g, 0, "stride {stride}");
+            let bytes = g as u64 * stride as u64 * 4;
+            assert_eq!(bytes % 4096, 0, "stride {stride}: {g} filas no son paginas enteras");
+        }
+    }
+
+    /// Redondear hacia ARRIBA, y el motivo: hacia abajo se le da a la app menos
+    /// de lo que pidió, y pinta fuera sin enterarse.
+    #[test]
+    fn redondear_siempre_da_de_mas_nunca_de_menos() {
+        assert_eq!(lienzo_filas_redondeadas(200, 1920), 200); // ya cuadra
+        assert_eq!(lienzo_filas_redondeadas(201, 1920), 208); // sube al grano
+        assert_eq!(lienzo_filas_redondeadas(1, 1920), 8);
+        assert_eq!(lienzo_filas_redondeadas(1, 800), 32);
+        for filas in 1u32..300 {
+            assert!(lienzo_filas_redondeadas(filas, 1920) >= filas);
+        }
+    }
+
+    /// La banda va abajo, y su fila de inicio también cae en el grano: una
+    /// banda alineada que empieza a media página sigue empezando a media
+    /// página, y eso es exactamente lo que se quiere evitar.
+    #[test]
+    fn la_fila_de_inicio_tambien_cae_en_el_grano() {
+        // 1080 filas, se piden 200 → ya son múltiplo de 8, así que empieza en
+        // 1080-200 = 880 = 110×8.
+        let inicio = lienzo_fila_inicio(1080, 200, 1920);
+        assert_eq!(inicio % lienzo_grano_filas(1920), 0);
+        assert_eq!(inicio, 880);
+        // Y con una petición que NO cuadra: 201 sube a 208, y 1080-208 = 872.
+        assert_eq!(lienzo_fila_inicio(1080, 201, 1920), 872);
+        // Y el byte de inicio es página entera, que es lo que se persigue.
+        assert_eq!((inicio as u64 * 1920 * 4) % 4096, 0);
+    }
+
+    /// Pedir más de lo que hay no da una banda mala: no da banda.
+    #[test]
+    fn pedir_mas_de_lo_que_cabe_no_da_nada() {
+        assert_eq!(lienzo_fila_inicio(1080, 2000, 1920), 1080);
+        assert_eq!(lienzo_filas_redondeadas(0, 1920), 0);
+        assert_eq!(lienzo_grano_filas(0), 0);
     }
 }
