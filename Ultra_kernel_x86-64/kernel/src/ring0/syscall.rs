@@ -137,10 +137,10 @@ const TASK_OP_ES_NODO: u64 = 0x19;
 const TASK_OP_ES_TEXTO: u64 = 0x1A;
 /// Despertar los otros núcleos. Espejo de `bmo_abi::…::TASK_OP_SMP_DESPERTAR`.
 const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
-/// Pedir el reflejo del lienzo. Espejo de `bmo_abi::…::TASK_OP_LIENZO_REFLEJO`.
-const TASK_OP_LIENZO_REFLEJO: u64 = 0x1C;
-/// El compositor declara cuál es su lienzo. Espejo de `…::TASK_OP_LIENZO_DECLARAR`.
-const TASK_OP_LIENZO_DECLARAR: u64 = 0x1D;
+/// Tomar lo que otro proceso me haya ofrecido. Espejo de `…::TASK_OP_TOMAR`.
+const TASK_OP_TOMAR: u64 = 0x1C;
+/// Ofrecer un trozo del bloque propio. Es una operación sobre `KIND_MEMORIA`.
+const MEM_OP_OFRECER: u64 = 0x03;
 /// Las preguntas del cursor. Espejo de `bmo_abi::…::ES_NODO_*`.
 const ES_NODO_RAIZ: u64 = 0x00;
 const ES_NODO_HIJOS: u64 = 0x01;
@@ -466,39 +466,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 Err(code) => BmoStatus::err(code),
             }
         }
-        // ★ El compositor CUELGA EL CARTEL: "este bloque mío es el lienzo".
-        //
-        // `arg0` es el handle de su bloque, `arg1` el stride en píxeles. Que lo
-        // declare él, en vez de que el kernel dé por hecho cuál es el escritorio,
-        // es lo que evita que Ring 0 se sepa un nombre propio — y hace que un
-        // compositor de prueba de cincuenta líneas funcione sin tocar el kernel.
-        TASK_OP_LIENZO_DECLARAR => {
+        // ★ TOMAR lo que otro me ofrecio. El mapeo ocurre AQUI, en el espacio
+        // del que llama — por eso se toma y no se empuja: mapear en el espacio
+        // de otro exigiria el `CR3` de un proceso que no esta corriendo, y esa
+        // infraestructura no existe. Asi el destino es `read_cr3()` y ya.
+        TASK_OP_TOMAR => {
             let pid = scheduler::current_pid();
-            match cap::resolve(pid, arg0, cap::RIGHT_WRITE) {
-                Ok(b) if b.kind == cap::KIND_MEMORIA => {
-                    let bytes = crate::ring0::obj::memoria::entregado_por(pid);
-                    let ok = crate::ring0::obj::lienzo::declarar(
-                        pid,
-                        crate::ring0::mm::vmm::read_cr3(),
-                        b.object,
-                        bytes,
-                        arg1 as u32,
-                    );
-                    BmoStatus::ok_value(ok as u64)
-                }
-                Ok(_) => unsupported(),
-                Err(err) => cap_err(err),
-            }
-        }
-        // Y una app PIDE el reflejo. `arg0` = páginas, `arg1` = formato.
-        TASK_OP_LIENZO_REFLEJO => {
-            let pid = scheduler::current_pid();
-            match crate::ring0::obj::lienzo::reflejo(
-                pid,
-                crate::ring0::mm::vmm::read_cr3(),
-                arg0,
-                arg1,
-            ) {
+            match crate::ring0::obj::prestamo::tomar(pid, crate::ring0::mm::vmm::read_cr3()) {
                 Some(h) => BmoStatus::ok_value(h),
                 None => BmoStatus::ok_value(0),
             }
@@ -875,15 +849,38 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // que el proceso escribe con un `mov` y el kernel no se entera.
             // Ése es el punto: un syscall por byte sería justo lo contrario
             // de entregar memoria.
-            // El reflejo contesta lo mismo que la pantalla: dónde está, cuánto
-            // mide y cuál es el stride. Y no se escribe por aquí — **está
-            // mapeado**, así que la app pinta con un `mov` y el kernel no se
-            // entera. Ése es el punto entero de que exista.
-            cap::KIND_LIENZO => {
-                match crate::ring0::obj::lienzo::operacion(resolved.object, frame.rsi) {
+            // Lo prestado contesta dónde está y cuánto mide, y **no se escribe
+            // por aquí**: está MAPEADO, así que el proceso lo toca con un `mov`
+            // y el kernel no se entera. Ése es el punto entero de que exista —
+            // un syscall por byte sería justo lo contrario de prestar memoria.
+            cap::KIND_PRESTADO => {
+                match crate::ring0::obj::prestamo::operacion(
+                    resolved.object, frame.rsi, scheduler::current_pid(),
+                ) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
+            }
+            // ★ OFRECER un trozo del bloque propio. Va aquí y no dentro de
+            // `memoria` porque necesita tres argumentos y el espacio de
+            // direcciones del que ofrece — cosas que sólo hay en este borde.
+            //
+            // El bloque ya está resuelto por SU capability, o sea que es suyo
+            // por construcción. La única comprobación que queda es que el trozo
+            // quepa dentro, y eso es una resta: el rango lo concedió el kernel.
+            cap::KIND_MEMORIA if frame.rsi == MEM_OP_OFRECER => {
+                let pid = scheduler::current_pid();
+                let entregado = crate::ring0::obj::memoria::entregado_por(pid);
+                let ok = crate::ring0::obj::prestamo::ofrecer(
+                    pid,
+                    crate::ring0::mm::vmm::read_cr3(),
+                    resolved.object,
+                    entregado,
+                    frame.rdx,
+                    frame.r10,
+                    frame.r8 as u32,
+                );
+                BmoStatus::ok_value(ok as u64)
             }
             cap::KIND_MEMORIA => {
                 match crate::ring0::obj::memoria::operacion(
