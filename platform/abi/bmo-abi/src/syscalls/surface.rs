@@ -364,17 +364,32 @@ pub const KLOG_TOTAL: u64 = 0x01;
 // línea que mapee una página — que es la única forma sensata de estrenar algo
 // que, si se equivoca, deja a una app escribiendo en la ventana de al lado.
 
-/// **Pedir una banda de ancho completo del lienzo del compositor.**
+/// **Pedir el REFLEJO: pintar directamente donde se ve.**
 ///
-/// `arg0` = filas que se piden · `arg1` = formato ([`LIENZO_FMT_XRGB32`]…).
-/// Devuelve `base<<32 | stride_px`, o `0` si no hay banda que prestar.
+/// `arg0` = **páginas** de 4 KiB · `arg1` = formato. Devuelve un handle
+/// (`KIND_LIENZO`), o `0` si no hay reflejo que prestar.
 ///
-/// ★ **De ancho completo, y no un rectángulo cualquiera.** Las filas de un
-/// rectángulo de enmedio no son contiguas —entre una y la siguiente hay el
-/// ancho entero de la pantalla— y la unidad con la que se reparte memoria es la
-/// página. Prestar un rectángulo significa prestar bandas horizontales enteras,
-/// o sea los píxeles de los vecinos. De ancho completo **sí** es un bloque de
-/// páginas limpio, y por eso el reflejo empieza por ahí.
+/// ═══ Por qué se pide en PÁGINAS y no en filas ═══
+///
+/// Porque es la unidad que el kernel sabe repartir y proteger. Pedirlo en filas
+/// obligaba a traducir filas↔páginas, y esa traducción es donde vivía todo lo
+/// difícil: una fila mide `stride×4` bytes —7680 con stride 1920— que no es
+/// múltiplo de 4096, así que sólo cada ocho filas cae en un límite de página.
+/// Había que calcular ese grano con un máximo común divisor, en los dos lados, y
+/// que los dos lados coincidieran para siempre.
+///
+/// ★ **Ese problema no se resuelve: se elimina.** Cada lado habla en su unidad:
+///
+/// | | Habla en | Porque |
+/// |---|---|---|
+/// | el kernel | **páginas** | es lo único que sabe repartir |
+/// | la app | **filas** | es lo único que sabe pintar |
+/// | el contrato | **bytes** | `base`, `bytes`, `stride` |
+///
+/// Las últimas N páginas de un bloque alineado están alineadas **siempre**, sin
+/// una cuenta. El kernel adelanta la `base` hasta el principio de fila —una
+/// división local, no una fórmula compartida— y la app saca sus filas con
+/// `bytes / (stride×4)`. **Ninguno necesita la aritmética del otro.**
 pub const TASK_OP_LIENZO_REFLEJO: u64 = 0x1C;
 
 /// El formato **lo declara la app**, no lo fija el kernel.
@@ -383,122 +398,67 @@ pub const TASK_OP_LIENZO_REFLEJO: u64 = 0x1C;
 /// con paleta. Fijar 32 bits ahora obligaría a reabrir el contrato el día que
 /// llegue — y un contrato que se reabre no era un contrato.
 pub const LIENZO_FMT_XRGB32: u64 = 0x00;
-/// 8 bits con paleta. **Todavía no se acepta**: se declara para que el número
-/// esté reservado y nadie lo use para otra cosa. Quien lo pida hoy recibe un no,
-/// que es distinto de que el campo no exista.
+/// 8 bits con paleta. **Todavía no se sirve**: el número queda reservado para
+/// que nadie lo use para otra cosa. Pedirlo hoy recibe un no, que es distinto de
+/// que el campo no exista.
 pub const LIENZO_FMT_PAL8: u64 = 0x01;
 
-/// **Cuántas filas hay que respetar para que una banda empiece y acabe en
-/// límite de página.**
+/// Operaciones sobre el handle del reflejo. Mismo trato que el framebuffer:
+/// se pregunta dónde está y cuánto mide, y se pinta sin volver a llamar.
+pub const LIENZO_OP_BASE: u64 = 0x01;
+/// Bytes utilizables **desde `BASE`**, ya descontado lo que se perdió al
+/// alinear a fila.
+pub const LIENZO_OP_BYTES: u64 = 0x02;
+/// Stride **en píxeles**, el del panel. La app indexa `y*stride + x`.
 ///
-/// ═══ El truco, explicado con el número delante ═══
-///
-/// Una fila del lienzo mide `stride × 4` bytes. Con un stride de 1920 son
-/// **7680 bytes**, que no es múltiplo de 4096: sólo cada ocho filas cae en un
-/// límite de página. Si el kernel presta una banda que empieza a media página,
-/// tiene dos salidas y las dos son malas — dar de menos (la app pinta fuera) o
-/// dar de más (la app pisa al vecino).
-///
-/// La cuenta es `4096 / mcd(bytes_por_fila, 4096)`, y sale de que el primer
-/// sitio donde coinciden fila y página es su mínimo común múltiplo.
-///
-/// Ejemplos reales: stride 1024 → **1** (cada fila cae en página); 1920 → **8**;
-/// 800 → **32**. O sea que el grano **depende de la pantalla** y no se puede
-/// hardcodear, que es justo por lo que esto es una función y no una constante.
-pub const fn lienzo_grano_filas(stride_px: u32) -> u32 {
-    let bytes = stride_px as u64 * 4;
-    if bytes == 0 {
-        return 0;
-    }
-    // Máximo común divisor por Euclides, en `const fn`: sin bucles `for` ni
-    // recursión, que es lo que este contexto permite.
-    let mut a = bytes;
-    let mut b = 4096u64;
-    while b != 0 {
-        let t = a % b;
-        a = b;
-        b = t;
-    }
-    (4096 / a) as u32
-}
+/// ⚠️ No es el ancho de la banda: es el ancho del lienzo entero. Usar el ancho
+/// en vez del stride es el bug más viejo de los gráficos — la imagen sale
+/// inclinada en diagonal y compila perfectamente.
+pub const LIENZO_OP_STRIDE: u64 = 0x03;
 
-/// **Redondea una petición de filas hacia ARRIBA al grano.**
+/// **Sólo hay UN reflejo, y es a pantalla completa.**
 ///
-/// Hacia arriba y no hacia abajo: una app que pide 200 filas y recibe 192
-/// pintaría ocho filas fuera de lo suyo sin enterarse. Dándole 208 sobra
-/// memoria y no falta seguridad — y el que sobra es del lienzo, que ya estaba
-/// reservado de todas formas.
-pub const fn lienzo_filas_redondeadas(filas: u32, stride_px: u32) -> u32 {
-    let g = lienzo_grano_filas(stride_px);
-    if g == 0 || filas == 0 {
-        return 0;
-    }
-    ((filas + g - 1) / g) * g
-}
+/// No hay tabla de bandas, ni apilado, ni cuentas de lo reservado: un
+/// `Option<pid>` en el kernel y ya. Cubre exactamente el caso que importa —DOOM
+/// y el raycaster van a pantalla completa— y el día que hagan falta dos
+/// programas a la vez, ése es el **modo ventana con copia**, que es el que
+/// compone de verdad.
+///
+/// Reflejo = uno, sin copias. Ventana = varios, con copia. Dos modos con un
+/// trabajo cada uno, y ninguno intentando ser el otro.
+pub const LIENZO_UNICO: bool = true;
 
-/// **Dónde empieza la banda, contando desde ABAJO del lienzo.**
+/// Filas del lienzo que **nunca** se prestan: la barra del escritorio y su caja
+/// de Ejecutar viven arriba.
 ///
-/// Abajo y no arriba porque arriba está la barra del escritorio, y porque una
-/// banda que crece hacia arriba deja el borde superior quieto — el sitio donde
-/// el compositor tiene sus cosas.
-///
-/// Devuelve la fila de inicio, ya alineada, o `alto` si no cabe.
-pub const fn lienzo_fila_inicio(alto: u32, filas: u32, stride_px: u32) -> u32 {
-    let f = lienzo_filas_redondeadas(filas, stride_px);
-    if f == 0 || f > alto {
-        return alto;
-    }
-    let inicio = alto - f;
-    // El inicio también tiene que caer en el grano, no sólo el tamaño: una
-    // banda alineada que empieza a media página sigue empezando a media página.
-    let g = lienzo_grano_filas(stride_px);
-    (inicio / g) * g
-}
-
-/// Filas del lienzo que **nunca** se prestan: la barra del escritorio y su
-/// caja de Ejecutar viven arriba.
-///
-/// Que sea un número y no "lo que el compositor diga" es a propósito: el kernel
-/// no puede preguntarle a un proceso de Ring 3 cuánto sitio necesita para
+/// Que sea un número fijo y no "lo que el compositor diga" es a propósito: el
+/// kernel no puede preguntarle a un proceso de Ring 3 cuánto sitio necesita para
 /// decidir si le presta memoria a otro. Un mínimo fijo se audita de un vistazo.
 pub const LIENZO_FILAS_RESERVADAS_ARRIBA: u32 = 64;
 
-/// **Dónde cae la banda siguiente**, contando las que ya se prestaron.
+/// **Adelanta un desplazamiento hasta el principio de la fila siguiente.**
 ///
-/// Devuelve `(fila_inicio, filas)` alineadas, o `None` si no cabe.
+/// Lo usa el kernel al prestar: las últimas N páginas empiezan donde empiezan, y
+/// eso puede caer a media fila. Adelantar pierde menos de una fila —8 KB en el
+/// peor caso— y le ahorra a la app tener que saberlo.
 ///
-/// ═══ Por qué se reparte DESDE ABAJO ═══
-///
-/// Las bandas se van apilando hacia arriba desde el borde inferior, y el borde
-/// de arriba se queda quieto. Así el sitio del compositor —la barra, la caja de
-/// Ejecutar— **no se mueve cuando alguien pide o suelta un lienzo**, que es lo
-/// que pasaría repartiendo desde arriba: una app que arranca le movería la barra
-/// al dueño.
-///
-/// ⚠️ Y la comprobación que importa: `reservadas` son las filas YA prestadas.
-/// Sin ese parámetro, dos apps recibirían la misma banda y **se pintarían
-/// encima la una a la otra** — que es exactamente el fallo que este contrato
-/// existe para impedir.
-pub const fn lienzo_asignar(
-    alto: u32,
-    reservadas: u32,
-    filas: u32,
-    stride_px: u32,
-) -> Option<(u32, u32)> {
-    let g = lienzo_grano_filas(stride_px);
-    if g == 0 || filas == 0 || alto == 0 {
-        return None;
+/// ★ Es una división, no un máximo común divisor. Ésa es toda la diferencia con
+/// el diseño anterior: aquí no hay nada que dos lados tengan que calcular igual.
+pub const fn lienzo_alinear_a_fila(offset_bytes: u64, stride_px: u32) -> u64 {
+    let fila = stride_px as u64 * 4;
+    if fila == 0 {
+        return offset_bytes;
     }
-    let pedidas = lienzo_filas_redondeadas(filas, stride_px);
-    // Lo ya prestado también sube al grano: si no, la banda nueva empezaría a
-    // media página aunque su tamaño estuviera alineado.
-    let ya = lienzo_filas_redondeadas(reservadas, stride_px);
-    let techo = LIENZO_FILAS_RESERVADAS_ARRIBA;
-    // `ya + pedidas` no puede comerse ni el techo ni la pantalla.
-    if pedidas > alto || ya > alto || ya + pedidas + techo > alto {
-        return None;
+    offset_bytes.div_ceil(fila) * fila
+}
+
+/// **Cuántas filas enteras caben en `bytes`.** La cuenta de la app.
+pub const fn lienzo_filas(bytes: u64, stride_px: u32) -> u32 {
+    let fila = stride_px as u64 * 4;
+    if fila == 0 {
+        return 0;
     }
-    Some((alto - ya - pedidas, pedidas))
+    (bytes / fila) as u32
 }
 
 /// **Despertar los otros núcleos.** Devuelve `vivos<<32 | esperados`, ambos sin
@@ -713,109 +673,74 @@ mod tests {
         assert_eq!(task_operation_for_legacy_syscall(super::super::NR_FS_OPEN), None);
     }
 
-    // ═══════ LIENZO: la aritmética que puede dar acceso al vecino ═══════
+    // ═══════ LIENZO: lo poco que queda de aritmética ═══════
     //
-    // Se prueba aquí, en el anfitrión, ANTES de que exista una línea que mapee
-    // una página. Si esta cuenta se equivoca, el fallo no es un error: es una
-    // app escribiendo en la ventana de al lado, y eso no se depura a fotos.
+    // El diseño anterior necesitaba un máximo común divisor para traducir filas
+    // a páginas, y que el kernel y la app lo calcularan IGUAL para siempre. Este
+    // no traduce nada: el kernel presta páginas, la app cuenta filas, y lo único
+    // compartido son bytes. Lo que queda son dos divisiones.
 
-    /// El grano depende de la pantalla, y por eso no puede ser una constante.
+    /// Adelantar a fila no se pasa nunca, y nunca se queda corto.
     #[test]
-    fn el_grano_sale_de_la_pantalla_y_no_de_una_constante() {
-        // 1024 × 4 = 4096 bordes: cada fila cae justo en una página.
-        assert_eq!(lienzo_grano_filas(1024), 1);
-        // 1920 × 4 = 7680, que no es multiplo de 4096. mcd = 512 → 8 filas.
-        assert_eq!(lienzo_grano_filas(1920), 8);
-        // 800 × 4 = 3200. mcd = 128 → 32 filas. Un grano MUY grueso, y es real.
-        assert_eq!(lienzo_grano_filas(800), 32);
-        // 1280 × 4 = 5120. mcd = 1024 → 4.
-        assert_eq!(lienzo_grano_filas(1280), 4);
-    }
-
-    /// La propiedad que de verdad importa: el resultado, en bytes, **siempre**
-    /// tiene que ser un múltiplo de la página. Da igual el stride.
-    #[test]
-    fn una_banda_del_grano_mide_paginas_enteras() {
-        for stride in [640u32, 800, 1024, 1280, 1366, 1600, 1920, 2560, 3840] {
-            let g = lienzo_grano_filas(stride);
-            assert_ne!(g, 0, "stride {stride}");
-            let bytes = g as u64 * stride as u64 * 4;
-            assert_eq!(bytes % 4096, 0, "stride {stride}: {g} filas no son paginas enteras");
+    fn alinear_a_fila_siempre_avanza_hasta_el_principio_de_una() {
+        let stride = 1920u32;
+        let fila = stride as u64 * 4; // 7680
+        for off in [0u64, 1, 7679, 7680, 7681, 61440, 999_999] {
+            let a = lienzo_alinear_a_fila(off, stride);
+            assert!(a >= off, "no puede retroceder");
+            assert_eq!(a % fila, 0, "{a} no es principio de fila");
+            assert!(a - off < fila, "se paso mas de una fila entera");
         }
     }
 
-    /// Redondear hacia ARRIBA, y el motivo: hacia abajo se le da a la app menos
-    /// de lo que pidió, y pinta fuera sin enterarse.
+    /// Lo que ya está alineado no se mueve: prestar no puede costar una fila
+    /// cuando no hacía falta.
     #[test]
-    fn redondear_siempre_da_de_mas_nunca_de_menos() {
-        assert_eq!(lienzo_filas_redondeadas(200, 1920), 200); // ya cuadra
-        assert_eq!(lienzo_filas_redondeadas(201, 1920), 208); // sube al grano
-        assert_eq!(lienzo_filas_redondeadas(1, 1920), 8);
-        assert_eq!(lienzo_filas_redondeadas(1, 800), 32);
-        for filas in 1u32..300 {
-            assert!(lienzo_filas_redondeadas(filas, 1920) >= filas);
+    fn lo_que_ya_cuadra_no_se_toca() {
+        assert_eq!(lienzo_alinear_a_fila(0, 1920), 0);
+        assert_eq!(lienzo_alinear_a_fila(7680, 1920), 7680);
+        assert_eq!(lienzo_alinear_a_fila(7680 * 13, 1920), 7680 * 13);
+    }
+
+    /// Las filas salen de una división, y lo que sobra se ignora — nunca se
+    /// devuelve una fila a medias, que es lo que haría pintar fuera.
+    #[test]
+    fn las_filas_salen_de_una_division_y_lo_que_sobra_no_cuenta() {
+        assert_eq!(lienzo_filas(7680, 1920), 1);
+        assert_eq!(lienzo_filas(7680 * 200, 1920), 200);
+        assert_eq!(lienzo_filas(7680 * 200 + 7679, 1920), 200, "la fila a medias no cuenta");
+        assert_eq!(lienzo_filas(0, 1920), 0);
+        assert_eq!(lienzo_filas(100, 1920), 0, "menos de una fila son cero filas");
+    }
+
+    /// La propiedad de punta a punta: prestar N páginas, alinear, contar filas —
+    /// y que lo contado quepa SIEMPRE en lo prestado. Si esto falla, la app
+    /// pinta fuera de lo suyo.
+    #[test]
+    fn lo_que_se_cuenta_cabe_en_lo_que_se_presta() {
+        for stride in [640u32, 800, 1024, 1280, 1366, 1920, 2560, 3840] {
+            for paginas in [1u64, 2, 7, 64, 512, 2048] {
+                let bytes = paginas * 4096;
+                // El peor caso: la banda empieza justo despues de un principio
+                // de fila, asi que se pierde casi una fila entera al alinear.
+                let perdido = lienzo_alinear_a_fila(1, stride) - 1;
+                if perdido >= bytes {
+                    continue; // no cabe ni una fila: no hay nada que comprobar
+                }
+                let utiles = bytes - perdido;
+                let filas = lienzo_filas(utiles, stride) as u64;
+                assert!(
+                    filas * (stride as u64 * 4) <= utiles,
+                    "stride {stride}, {paginas} paginas: {filas} filas no caben"
+                );
+            }
         }
     }
 
-    /// La banda va abajo, y su fila de inicio también cae en el grano: una
-    /// banda alineada que empieza a media página sigue empezando a media
-    /// página, y eso es exactamente lo que se quiere evitar.
+    /// Un stride de cero no revienta: contesta cero filas.
     #[test]
-    fn la_fila_de_inicio_tambien_cae_en_el_grano() {
-        // 1080 filas, se piden 200 → ya son múltiplo de 8, así que empieza en
-        // 1080-200 = 880 = 110×8.
-        let inicio = lienzo_fila_inicio(1080, 200, 1920);
-        assert_eq!(inicio % lienzo_grano_filas(1920), 0);
-        assert_eq!(inicio, 880);
-        // Y con una petición que NO cuadra: 201 sube a 208, y 1080-208 = 872.
-        assert_eq!(lienzo_fila_inicio(1080, 201, 1920), 872);
-        // Y el byte de inicio es página entera, que es lo que se persigue.
-        assert_eq!((inicio as u64 * 1920 * 4) % 4096, 0);
-    }
-
-    /// Dos apps NO pueden recibir la misma banda. Es el fallo que este
-    /// contrato existe para impedir, así que se fija con un test.
-    #[test]
-    fn dos_bandas_seguidas_no_se_pisan() {
-        let (i1, f1) = lienzo_asignar(1080, 0, 200, 1920).unwrap();
-        let (i2, f2) = lienzo_asignar(1080, f1, 100, 1920).unwrap();
-        // La segunda va ENCIMA de la primera, y no comparten ni una fila.
-        assert_eq!(i1 + f1, 1080, "la primera pega con el borde de abajo");
-        assert_eq!(i2 + f2, i1, "la segunda acaba justo donde empieza la primera");
-        assert!(i2 < i1);
-    }
-
-    /// El techo del escritorio no se toca: la barra y la caja viven arriba.
-    #[test]
-    fn el_techo_del_escritorio_no_se_presta() {
-        // 1080 - 64 de techo = 1016 utiles. Pedir 1016 cabe justo...
-        assert!(lienzo_asignar(1080, 0, 1016, 1920).is_some());
-        // ...y una fila más ya no, aunque la pantalla tenga sitio físico.
-        assert!(lienzo_asignar(1080, 0, 1017, 1920).is_none());
-    }
-
-    /// Y el inicio sigue cayendo en el grano aunque haya bandas debajo.
-    #[test]
-    fn apilar_bandas_no_rompe_la_alineacion() {
-        let g = lienzo_grano_filas(1920);
-        let mut reservadas = 0u32;
-        for _ in 0..5 {
-            let (inicio, filas) = lienzo_asignar(1080, reservadas, 101, 1920).unwrap();
-            assert_eq!(inicio % g, 0, "inicio {inicio} no cae en el grano");
-            assert_eq!(filas % g, 0);
-            assert_eq!((inicio as u64 * 1920 * 4) % 4096, 0);
-            reservadas += filas;
-        }
-    }
-
-    /// Pedir más de lo que hay no da una banda mala: no da banda.
-    #[test]
-    fn pedir_mas_de_lo_que_cabe_no_da_nada() {
-        assert!(lienzo_asignar(1080, 0, 5000, 1920).is_none());
-        assert!(lienzo_asignar(1080, 1000, 200, 1920).is_none());
-        assert!(lienzo_asignar(0, 0, 8, 1920).is_none());
-        assert_eq!(lienzo_fila_inicio(1080, 2000, 1920), 1080);
-        assert_eq!(lienzo_filas_redondeadas(0, 1920), 0);
-        assert_eq!(lienzo_grano_filas(0), 0);
+    fn un_stride_de_cero_no_revienta() {
+        assert_eq!(lienzo_filas(4096, 0), 0);
+        assert_eq!(lienzo_alinear_a_fila(123, 0), 123);
     }
 }
