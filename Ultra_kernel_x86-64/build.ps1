@@ -339,7 +339,12 @@ $cEjemplos = @(
     @{ src = 'toolchain\lang\c\examples\hola_C.c';   out = 'holac.bex'  ; dir = 'c' },
     @{ src = 'toolchain\lang\c\examples\scroll_C.c'; out = 'scrollc.bex' ; dir = 'c' },
     @{ src = 'toolchain\lang\c\examples\pregunta_C.c'; out = 'pregc.bex'  ; dir = 'c' },
-    @{ src = 'toolchain\lang\c\examples\memoria_C.c'; out = 'memc.bex'   ; dir = 'c' }
+    @{ src = 'toolchain\lang\c\examples\memoria_C.c'; out = 'memc.bex'   ; dir = 'c' },
+    # El ensayo general de DOOM: 2.5D en punto fijo sobre la pantalla real.
+    @{ src = 'toolchain\lang\c\examples\raycaster_C.c'; out = 'ray.bex'    ; dir = 'c' },
+    # La prueba de fopen/fread/fseek. Lee `datos\salida.txt` DOS veces y
+    # compara: si las dos lecturas coinciden, la cadena de ficheros funciona.
+    @{ src = 'toolchain\lang\c\examples\leer_C.c';      out = 'leer.bex'   ; dir = 'c' }
 )
 
 $repo = Split-Path -Parent $root

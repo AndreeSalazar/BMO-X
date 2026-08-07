@@ -21,6 +21,68 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > está APARCADO con plan escrito** (`PLAN_VULKAN.md`), que no es lo mismo que
 > descartado. Siguen fuera Wine y la libc completa.
 
+## ★★★ 2026-08-07 — SMP ARRANCA (12/12 EN METAL), Y LA CADENA DE FICHEROS EN C
+
+### 1 · ✅ DOCE HILOS EN PIE, en el Ryzen
+
+`nucleos en pie: 12 de 12`. El trampolín de SMP —escrito de cero: modo real de
+16 bits, saltos lejanos emitidos byte a byte, y el `CR3` del kernel en vez de
+tablas propias— levantó los once APs **a la primera**.
+
+El de `s1_cpu` que llevaba ahí sin llamarse **no podía funcionar**: estaba
+ensamblado como código de 64 bits para un núcleo que arranca en 16 (un `0x48` es
+`dec ax` en modo real), sus tablas de páginas se solapaban, el contador de vivos
+vivía dentro de la PML4 que el paso anterior ponía a cero, y estaba colocado
+*antes* de `ExitBootServices`, donde los núcleos todavía son del firmware.
+
+**El mando, que es lo que se pidió y no un botón:**
+
+```
+smp          censa y NO TOCA NADA        smp parar    los obreros a hlt
+smp all      despierta a todos           smp prueba   mide el reparto
+smp 3        despierta exactamente tres
+```
+
+El caso por defecto es el inofensivo a propósito: INIT+SIPI no se deshace sin
+reiniciar. Y a quién llamar **lo dice la MADT**, no una suposición — `plat/madt.rs`
+enumera los APIC IDs de verdad y contrasta contra CPUID.
+
+★ Y el reparto de trabajo (`plat/smp/obra.rs`): el BSP publica una función y n
+partes, cada obrero hace la suya, barrera al final. **No es un planificador**, y
+ser tan poca cosa es lo que lo hace seguro con los 209 `static mut` del kernel.
+⚠️ Un obrero en espera **gira**, no duerme: con los doce en pie hay once núcleos
+al 100 %, y por eso existe `smp parar`.
+
+### 2 · La cadena de ficheros en C: `fopen` · `fread` · `fseek` · `fclose`
+
+`ARCH_OP_LEER` daba **siete bytes por llamada** —un WAD de DOOM serían 600 000
+syscalls— y no había `seek`. El motivo estaba escrito: *"pasar un puntero de
+Ring 3 obligaría al kernel a validar el rango contra el espacio del llamante, y
+esa infraestructura no existe"*.
+
+★ **La salida no fue construir esa infraestructura: fue no necesitarla.**
+`ARCH_OP_LEER_EN` escribe dentro de **un bloque que concedió el kernel**, así que
+comprobar es una resta contra lo que entregó. Contrato en vez de comprobación —
+la misma razón por la que reclamar la pantalla ya era seguro.
+
+Y `fopen` **no es un builtin del compilador, es una cabecera** (`<bmo/archivo.h>`),
+porque abrir un fichero son varias llamadas y eso en opcodes a mano serían
+doscientas líneas ilegibles. Lo que sí hizo falta tocar en el compilador:
+`malloc` **publica ahora el handle de su bloque**, que antes tiraba.
+
+### 3 · Dos programas nuevos en C
+
+- **`c/ray.bex`** — un raycaster 2.5D en punto fijo, sin un solo `float` y sin
+  tablas de senos, sobre la pantalla real. El ensayo general de DOOM.
+- **`c/leer.bex`** — abre `datos/salida.txt`, lee un bloque, hace `fseek` y
+  **relee para comparar**. Que las dos lecturas coincidan es lo que separa
+  *"leyó el fichero"* de *"escribió algo en mi buffer"*.
+
+⚠️ Anomalía abierta: `leer.bex` compila a **1,1 MB** cuando debería rondar los
+20 KB, y **cortando el fichero por la mitad sale más grande**. Ninguna pieza por
+separado lo reproduce. Es relleno o alineación de sección, no código emitido; la
+bisección está hecha y anotada en el commit.
+
 ## ★★★ 2026-08-06 — EL TECLADO QUE SE "DESCONECTABA", LAS AGUJAS, Y DOS ALMACENES DE PRUEBAS
 
 Sesión de endurecimiento, no de features. Cuatro commits y ninguno añade una

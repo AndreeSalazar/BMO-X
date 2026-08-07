@@ -637,6 +637,48 @@ RESUCITADO`, y que el teclado siga escribiendo después.
 
 ---
 
+## Ep. 28 — El SMP que llevaba meses escrito y no podía funcionar
+**Síntoma**: `smp_startup()` existía en `s1_cpu` desde hacía tiempo, con
+trampolín, INIT+SIPI y GDT. **Nadie lo llamaba.** La lectura fácil era "está
+hecho y falta enchufarlo".
+
+**Culpable**: no estaba hecho. Leído de cerca, tenía cuatro fallos que lo hacían
+imposible, y el primero es el que enseña algo:
+
+1. **El trampolín estaba ensamblado como código de 64 bits** —`mov rax, …`,
+   `retfq`— para un núcleo que arranca en **modo real de 16 bits**. Ahí un
+   prefijo REX no existe: `0x48` es `dec ax`. Ejecutaba basura desde la primera
+   instrucción, y ninguna cantidad de llamarlo lo habría arreglado.
+2. Las tablas de páginas se pisaban entre sí: la PML4 en `0x7000` ocupa 4 KiB y
+   el PDPT se ponía en `0x7100`, dentro.
+3. El contador de núcleos vivos estaba en `0x7FF8`, **dentro de esa misma PML4**
+   que el paso anterior ponía a cero.
+4. La GDT no tenía segmento de datos de 32 bits: cargaba `0x18` creyendo que lo
+   era, y en esa tabla `0x18` era el código de 64 bits.
+
+Y un quinto que no era de código sino de sitio: vivía **antes de
+`ExitBootServices`**, donde los otros núcleos todavía son del firmware (UEFI los
+tiene en su MP Services) y la memoria baja tampoco es nuestra.
+
+**Cómo se arregló**: reescrito en el kernel, después de EBS, con `.code16` de
+verdad, los saltos lejanos emitidos byte a byte (`66 EA imm32 imm16`) y **usando
+el `CR3` del kernel** en vez de construir tablas nuevas — una tabla menos que
+pueda quedarse desincronizada. Se comprobó sacando los bytes del ELF ya
+enlazado: `fa · 31 c0 · 8e d8 · 66 0f 01 16`, cero bytes `0x48`.
+
+**Resultado**: `nucleos en pie: 12 de 12`, a la primera, en el Ryzen.
+
+**Moraleja**: *código escrito no es código que funcione, y "está hecho, sólo
+falta llamarlo" es una hipótesis, no un hecho.* Lo que decidió el diagnóstico
+fue **leerlo entero antes de ejecutarlo** — y en un trampolín de modo real eso
+importa el doble, porque ahí no hay quien te cuente lo que pasó: un fallo son
+doce núcleos que no contestan y ni una línea de log.
+
+*Nota de método*: la comprobación que valió no fue compilar, fue **mirar los
+bytes emitidos**. Un `.code16` mal puesto compila perfectamente.
+
+---
+
 ## Las leyes que dejó esta guerra
 
 1. **QEMU miente por omisión**: sin IRQs vivos, sin tiempos físicos, sin
@@ -702,6 +744,12 @@ RESUCITADO`, y que el teclado siga escribiendo después.
    valor con pinta de buen dato: un `unwrap_or(0)` donde 0 es una dirección
    física, un cluster libre, un pid con dueño o un índice de cadena. No
    revientan: **mienten**, y el síntoma sale después y lejos.
+16. **"Está hecho, sólo falta llamarlo" es una hipótesis** (Ep. 28). El SMP
+   llevaba meses escrito y tenía cuatro fallos que lo hacían imposible, el
+   primero de ellos código de 64 bits para un núcleo que arranca en 16. La
+   comprobación que valió no fue compilar —un `.code16` mal puesto compila
+   perfectamente— sino **mirar los bytes emitidos**. Donde no hay quien te
+   cuente lo que pasó, se lee antes de ejecutar.
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*
