@@ -58,6 +58,7 @@ use bmo_userland as bmo;
 mod escena;
 mod ordenes;
 mod texto;
+mod vigilante;
 
 use escena::calc::{pintar_calc, Calc, CalcCaja};
 use escena::cursor::Bajo;
@@ -68,6 +69,7 @@ use ordenes::historial::Historial;
 use ordenes::informes::{informe_cpu, informe_memoria, informe_sistema};
 use ordenes::*;
 use texto::{decimal, es_punto};
+use vigilante::{vigilar_corrida, Corrida};
 
 
 // ── El programa ─────────────────────────────────────────────────────────
@@ -462,103 +464,17 @@ pub extern "C" fn _start() -> ! {
     //
     // Con ella, el volcado sólo ocurre en el flanco `vivo → muerto`, que es lo
     // único que significa "terminó".
-    struct Corrida {
-        marca: usize,
-        /// Cuántos fotogramas han pasado desde que se lanzó.
-        ///
-        /// ★★ Esto era una bandera `visto` que exigía **haber visto al hijo
-        /// vivo** antes de volcar, y ahí estaba el fallo que costó tres
-        /// sesiones: un programa que arranca y termina ENTRE DOS FOTOGRAMAS no
-        /// se le ve vivo nunca, así que no volcaba jamás.
-        ///
-        /// La evidencia lo dijo entera desde el disco: de todo lo que se corrió,
-        /// **el único que dejó su `.txt` fue `c/pregc.bex`** — el único
-        /// interactivo, el único que se pasa segundos esperando a que teclees.
-        /// Los diez de COBOL y `memc` duran milisegundos y no volcaron ni uno.
-        ///
-        /// Con un contador no hace falta ver nada: se espera un par de vueltas
-        /// —el margen que necesita el lanzamiento para registrarse— y a partir
-        /// de ahí, *no hay hijo* significa *terminó*.
-        esperas: u32,
-        /// `datos/<programa>.txt`, ya montada al lanzar.
-        destino: [u8; 32],
-        destino_n: usize,
-    }
+    // `Corrida` y su vigilante viven en `vigilante.rs`: es el unico bloque de
+    // esta funcion que toca solo TRES variables del estado, asi que es el unico
+    // que se puede sacar sin arrastrar media firma. Ver la cabecera del modulo.
     let mut corrida: Option<Corrida> = None;
 
     loop {
         // ── ¿Terminó el programa que se lanzó? Entonces, a guardarlo ──
-        if let Some(c) = corrida.as_mut() {
-            c.esperas = c.esperas.saturating_add(1);
-            let vivo = salida_cap.as_ref().map(|cc| cc.hay_hijo()).unwrap_or(false);
-            // Mientras haya hijo, no ha terminado. Y las dos primeras vueltas
-            // no cuentan: son el margen que necesita `ejecutar_en` para que el
-            // kernel registre al hijo en la tabla de la consola. Sin ese
-            // margen se volcaria un archivo vacio en el acto.
-            if !vivo && c.esperas > 2 {
-                // ★★ SE DRENA ANTES DE GUARDAR, y esto lo enseñó el disco.
-                //
-                // El primer `salida.txt` que llegó a Windows tenía las cuatro
-                // líneas del ECO y **ni una del programa**. El motivo: este
-                // vigilante corre al principio del fotograma y el drenado de la
-                // consola del hijo está mucho más abajo. Cuando `hay_hijo()`
-                // dice que no, lo último que escribió el programa **sigue en el
-                // anillo del kernel** — se guardaba un archivo de lo que el
-                // terminal había dicho, no de lo que había contestado.
-                //
-                // Aquí se vacía el anillo entero antes de tocar el disco. El
-                // tope es alto pero existe: un programa que muere dejando
-                // megabytes no puede quedarse con el bucle.
-                if let Some(cc) = salida_cap.as_ref() {
-                    let mut buf = [0u8; 8];
-                    let mut vueltas = 0u32;
-                    while vueltas < 8192 {
-                        let leidos = cc.leer(&mut buf);
-                        if leidos == 0 {
-                            break;
-                        }
-                        salida.texto(&buf[..leidos]);
-                        vueltas += 1;
-                    }
-                }
-                let destino = {
-                    let d = c.destino;
-                    let n = c.destino_n;
-                    (d, n)
-                };
-                let (desde, hasta) = salida.filas_desde(c.marca);
-                match volcar_salida(&salida, &destino.0[..destino.1], desde, hasta) {
-                    Ok(_) => {
-                        salida.con_tinta(TINTA_BIEN);
-                        salida.texto(b"  [salida guardada en ");
-                        salida.texto(&destino.0[..destino.1]);
-                        salida.texto(b"]\n");
-                        salida.con_tinta(TINTA_NORMAL);
-                    }
-                    // Se dice y no se calla, **y se dice QUÉ y POR QUÉ**. La
-                    // primera versión ponía "no se pudo guardar, F11 dice por
-                    // qué", y eso obliga a abrir otra ventana para saber lo que
-                    // el mensaje ya tenía en la mano. Un error que manda a otro
-                    // sitio a buscar el motivo es medio error.
-                    Err(e) => {
-                        salida.con_tinta(TINTA_MAL);
-                        salida.texto(b"  [NO se guardo ");
-                        salida.texto(&destino.0[..destino.1]);
-                        salida.texto(b": ");
-                        if e == 0 {
-                            // El cero es el `cerrar` que contesta que no. El
-                            // kernel no dice más, y eso también se dice.
-                            salida.texto(b"el cierre fallo (disco lleno? no cabe?)");
-                        } else {
-                            salida.texto(motivo_archivo(e));
-                        }
-                        salida.texto(b"]\n");
-                        salida.con_tinta(TINTA_NORMAL);
-                    }
-                }
-                corrida = None;
-            }
-        }
+        //
+        // 71 lineas que estaban aqui dentro. Se fueron ENTERAS a
+        // `vigilante.rs`, sin tocar una coma de su logica.
+        vigilar_corrida(&mut corrida, &salida_cap, &mut salida);
 
         vueltas = vueltas.wrapping_add(1);
         let mut repintar_campo = false;
