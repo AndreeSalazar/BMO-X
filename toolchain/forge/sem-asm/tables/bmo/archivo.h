@@ -94,10 +94,22 @@ struct BMO_FILE {
 };
 typedef struct BMO_FILE FILE;
 
-/* El bloque que `malloc` reparte, y su handle. Lo publica `bmo_rt` al arrancar;
- * aquí se leen para poder traducir punteros a desplazamientos. */
-extern unsigned long long __bmo_bloque_cap;
-extern unsigned long long __bmo_bloque_base;
+/* ★ El bloque que reparte `malloc`, y su handle.
+ *
+ * Las escribe EL COMPILADOR: la emisión de `malloc` guarda aquí el handle que
+ * le devolvió el kernel y la base del bloque, justo antes de devolver el
+ * puntero. Antes ese handle se tiraba —se usaba para pedir la base y adiós— y
+ * sin él `fread` no puede existir, porque el kernel sólo acepta escribir en un
+ * bloque si le dices CUÁL.
+ *
+ * Van declaradas aquí y no en el compilador a propósito: si un programa no
+ * incluye esta cabecera, estas globales no existen y `malloc` no emite ni un
+ * byte para publicarlas. Quien no lee ficheros no paga por los que sí.
+ *
+ * Valen 0 hasta el primer `malloc`, y eso es lo correcto: antes de pedir
+ * memoria no hay bloque del que hablar. */
+unsigned long long __bmo_bloque_cap;
+unsigned long long __bmo_bloque_base;
 
 FILE *fopen(char *ruta, char *modo) {
     FILE *f;

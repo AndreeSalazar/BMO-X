@@ -866,6 +866,31 @@ impl Codegen {
         }
     }
 
+    /// Deja el handle (`rdx` de la primera llamada, hoy perdido) y la base
+    /// (`rax`) en las globales que `<bmo/archivo.h>` declara.
+    ///
+    /// Se llama con **`rax` = base** y con el handle todavía recuperable: no lo
+    /// está, así que hay que haberlo guardado antes. Ver el uso en `malloc`.
+    ///
+    /// Si el programa no declara esas globales, esto no emite **nada**: un
+    /// programa que no lee ficheros no debe pagar por la maquinaria de los que
+    /// sí. Por eso se pregunta por el nombre en vez de reservarlas siempre.
+    fn publicar_bloque(&mut self) {
+        for (nombre, reg) in [("__bmo_bloque_base", 0u8), ("__bmo_bloque_cap", 1u8)] {
+            if !self.global_offsets.contains_key(nombre) {
+                continue;
+            }
+            // lea rdi, [rip+0]  (el fixup pone la dirección de la global)
+            self.code.extend_from_slice(&[0x48, 0x8D, 0x3D, 0, 0, 0, 0]);
+            self.global_fixups.push((self.code.len() - 4, nombre.to_string()));
+            if reg == 0 {
+                self.code.extend_from_slice(&[0x48, 0x89, 0x07]); // mov [rdi], rax
+            } else {
+                self.code.extend_from_slice(&[0x4C, 0x89, 0x07]); // mov [rdi], r8
+            }
+        }
+    }
+
     fn emit_xor_eax(&mut self) {
         self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);
     }
@@ -1340,15 +1365,36 @@ impl Codegen {
                 // Si el código no es 0, no hay bloque: se devuelve 0.
                 self.code.extend_from_slice(&[0x85, 0xC0]);        // test eax, eax
                 self.emit_jnz_reloc(sin_bloque);
+                // ★ El handle a la pila ANTES de la segunda llamada, que pisa
+                // `rdx`. Es el dato que `fread` necesita y que hasta ahora se
+                // perdía justo aquí: se usaba para pedir la base y se tiraba.
+                self.code.push(0x52);                              // push rdx
                 // Segunda llamada: MEM_OP_BASE sobre el handle.
                 self.emit_asm(|a| { a.mov_reg(Reg::Rdi, Reg::Rdx).unwrap(); });
                 self.emit_asm(|a| { a.mov_imm64(Reg::Rsi, 0x01).unwrap(); });
                 self.code.extend_from_slice(&[0x48, 0x31, 0xD2]);  // xor rdx, rdx
                 self.code.extend_from_slice(&[0xB8, 0, 0, 0, 0]);  // mov eax, NR_INVOKE
                 self.emit_call_to_syscall_stub();
+                // El `pop` va ANTES del test, y eso no es estilo: por el camino
+                // de fallo se salta a `sin_bloque`, y saltar con algo aún en la
+                // pila la descuadra para el resto de la función.
+                self.code.extend_from_slice(&[0x41, 0x58]);        // pop r8 (el handle)
                 self.code.extend_from_slice(&[0x85, 0xC0]);        // test eax, eax
                 self.emit_jnz_reloc(sin_bloque);
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);  // mov rax, rdx (la base)
+                // ★ PUBLICAR EL BLOQUE. Sin esto `fread` no puede existir.
+                //
+                // El kernel sólo acepta escribir dentro de un bloque que él
+                // concedió, y para pedírselo hay que darle SU handle y un
+                // desplazamiento. `malloc` es el único que tiene las dos cosas
+                // —el handle vino en la primera llamada, la base en la segunda—
+                // y hasta ahora tiraba el handle en cuanto sacaba la base.
+                //
+                // Se guardan en dos globales **sólo si el programa las
+                // declaró** (las trae `<bmo/archivo.h>`). Un programa que no
+                // lee ficheros no paga ni un byte por esto, que es la razón de
+                // preguntar por el nombre en vez de emitirlas siempre.
+                self.publicar_bloque();
                 self.emit_jmp_reloc(fin);
                 self.resolve_label(sin_bloque);
                 self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);  // xor rax, rax
