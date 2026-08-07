@@ -1233,6 +1233,30 @@ impl Codegen {
                 memoria::largo(&mut self.code);
                 Some(())
             }
+            // `strncmp` y `memcmp` comparten emisión y se distinguen en UN bool:
+            // si el terminador corta o no. Ver `memoria::comparar_n`.
+            ("strncmp", 3) | ("memcmp", 3) => {
+                let parar_en_cero = name == "strncmp";
+                self.emit_expr(&args[2]);
+                self.code.push(0x50); // push n
+                self.emit_expr(&args[1]);
+                self.code.push(0x50); // push b
+                self.emit_expr(&args[0]);
+                self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
+                self.code.push(0x5E); // pop rsi (b)
+                self.code.push(0x5A); // pop rdx (n)
+                memoria::comparar_n(&mut self.code, parar_en_cero);
+                Some(())
+            }
+            ("strchr", 2) => {
+                self.emit_expr(&args[1]);
+                self.code.push(0x50); // push c
+                self.emit_expr(&args[0]);
+                self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
+                self.code.push(0x5E); // pop rsi (c)
+                memoria::buscar(&mut self.code);
+                Some(())
+            }
             ("strcmp", 2) => {
                 self.emit_expr(&args[1]);
                 self.code.push(0x50); // push

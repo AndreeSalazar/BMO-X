@@ -136,6 +136,108 @@ pub fn comparar(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0x63, 0xC0]);       // movsxd rax, eax
 }
 
+/// `comparar_n(a, b, n)` — como [`comparar`] pero **con tope**.
+///
+/// `RDI`=a, `RSI`=b, `RDX`=n. Resultado en `RAX`: la diferencia con signo del
+/// primer byte que cambia, o `0` si los `n` primeros bytes son iguales.
+///
+/// `parar_en_cero` decide cuál de las dos funciones de C es:
+///
+/// - `true` → **`strncmp`**: además del tope, se para en el terminador. Si los
+///   dos llegan al `\0` a la vez son iguales aunque queden bytes de cupo.
+/// - `false` → **`memcmp`**: sólo el tope. El cero es un byte más.
+///
+/// ★ La diferencia importa y se paga cara al confundirla: `memcmp` sobre dos
+/// nombres cortos seguiría comparando **lo que hubiera detrás del cero**, que
+/// es memoria de otro y basura distinta en cada ejecución. Es el fallo que da
+/// "a veces sí y a veces no" y se busca en el sitio equivocado.
+pub fn comparar_n(code: &mut Vec<u8>, parar_en_cero: bool) {
+    // Con n = 0 son iguales por definición, y hay que salir ANTES de leer: los
+    // punteros pueden ser inválidos si no hay nada que comparar, y eso es legal
+    // en C.
+    code.extend_from_slice(&[0x48, 0x31, 0xC0]); // xor rax, rax
+    code.extend_from_slice(&[0x48, 0x85, 0xD2]); // test rdx, rdx
+    let vacio = salto_pendiente(code, 0x74); // jz fin
+
+    let bucle = code.len();
+    code.extend_from_slice(&[0x0F, 0xB6, 0x07]); // movzx eax, byte [rdi]
+    code.extend_from_slice(&[0x0F, 0xB6, 0x0E]); // movzx ecx, byte [rsi]
+    code.extend_from_slice(&[0x29, 0xC8]); // sub eax, ecx
+    let distintos = salto_pendiente(code, 0x75); // jnz fin
+
+    let iguales = if parar_en_cero {
+        code.extend_from_slice(&[0x84, 0xC9]); // test cl, cl
+        Some(salto_pendiente(code, 0x74)) // jz fin (los dos acabaron)
+    } else {
+        None
+    };
+
+    code.extend_from_slice(&[0x48, 0xFF, 0xC7]); // inc rdi
+    code.extend_from_slice(&[0x48, 0xFF, 0xC6]); // inc rsi
+    code.extend_from_slice(&[0x48, 0xFF, 0xCA]); // dec rdx
+    code.extend_from_slice(&[0x48, 0x85, 0xD2]); // test rdx, rdx
+    let agotado = salto_pendiente(code, 0x74); // jz fin
+    salto_atras(code, 0xEB, bucle); // jmp bucle
+
+    // Se agotó el cupo sin diferencias: iguales. `rax` trae el último `sub`,
+    // que fue cero — pero se pone a cero explícitamente porque depender de eso
+    // es depender de por dónde se salió.
+    aterriza_aqui(code, agotado);
+    code.extend_from_slice(&[0x48, 0x31, 0xC0]); // xor rax, rax
+    let sal = salto_pendiente(code, 0xEB);
+
+    aterriza_aqui(code, distintos);
+    if let Some(h) = iguales {
+        aterriza_aqui(code, h);
+    }
+    code.extend_from_slice(&[0x48, 0x63, 0xC0]); // movsxd rax, eax
+    aterriza_aqui(code, sal);
+    aterriza_aqui(code, vacio);
+}
+
+/// `buscar(s, c)` — **`strchr`**: dirección de la primera `c` en `s`, o `0`.
+///
+/// `RDI`=s, `RSI`=c (byte en `SIL`). Resultado en `RAX`.
+///
+/// ★ Buscar el `\0` **encuentra el terminador**, no devuelve `0`. Es lo que
+/// dice el estándar y es la forma normal de saber dónde acaba una cadena; un
+/// `strchr` que tratara el cero como "no encontrado" fallaría sólo en el caso
+/// en que alguien lo use a propósito.
+/// ⚠️ **Sin registros de 8 bits con prefijo REX.** La primera versión usaba
+/// `cmp al, sil` (`40 38 F0`) y el emulador la rechazó con
+/// *"opcode 0x38 no emitido por BMO"* — que es exactamente para lo que sirve
+/// ese `panic!`: el decodificador sólo entiende lo que BMO emite de verdad, así
+/// que estrenar una forma nueva se nota en el acto en vez de dar un resultado
+/// raro. Aquí se compara con `movzx` + `sub`, igual que [`comparar`].
+pub fn buscar(code: &mut Vec<u8>) {
+    // El byte buscado, aislado en `rcx`: llega en `rsi` como entero y hay que
+    // quedarse sólo con el byte bajo, o `strchr(s, 0x141)` encontraría una 'A'.
+    code.extend_from_slice(&[0x48, 0x89, 0xF1]); // mov rcx, rsi
+    code.extend_from_slice(&[0x0F, 0xB6, 0xC9]); // movzx ecx, cl
+
+    let bucle = code.len();
+    code.extend_from_slice(&[0x0F, 0xB6, 0x07]); // movzx eax, byte [rdi]
+    code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
+    let cero = salto_pendiente(code, 0x74); // jz -> es el final
+    code.extend_from_slice(&[0x0F, 0xB6, 0x07]); // movzx eax, byte [rdi]
+    code.extend_from_slice(&[0x29, 0xC8]); // sub eax, ecx
+    let encontrado = salto_pendiente(code, 0x74); // jz encontrado
+    code.extend_from_slice(&[0x48, 0xFF, 0xC7]); // inc rdi
+    salto_atras(code, 0xEB, bucle);
+
+    // El terminador: se encuentra si es lo que se buscaba, y si no, no hay.
+    aterriza_aqui(code, cero);
+    code.extend_from_slice(&[0x48, 0x85, 0xC9]); // test rcx, rcx
+    let buscaba_el_cero = salto_pendiente(code, 0x74); // jz encontrado
+    code.extend_from_slice(&[0x48, 0x31, 0xC0]); // xor rax, rax
+    let sal = salto_pendiente(code, 0xEB);
+
+    aterriza_aqui(code, encontrado);
+    aterriza_aqui(code, buscaba_el_cero);
+    code.extend_from_slice(&[0x48, 0x89, 0xF8]); // mov rax, rdi
+    aterriza_aqui(code, sal);
+}
+
 /// `absoluto(n)` — el valor absoluto de `RAX`, en `RAX`. Sin ramas.
 ///
 /// La forma clásica: propagar el signo con un desplazamiento aritmético y

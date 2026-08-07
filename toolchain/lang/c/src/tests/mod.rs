@@ -36,6 +36,7 @@ use super::*;
 
 mod agregados;
 mod almacenamiento;
+mod cadenas;
 mod cargador;
 mod ejecucion;
 mod entrada;
