@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
+use bmo_abi::bef::relocations::{Relocation, SEC_DATA, SEC_RODATA};
 use crate::ast::*;
 use crate::CError;
 
@@ -114,6 +115,21 @@ struct Codegen {
     global_offsets: HashMap<String, (u32, TypeSpec)>,
     global_data: Vec<u8>,
     global_fixups: Vec<(usize, String)>,
+    /// ★ Punteros DENTRO de `.data` que hay que rellenar con la dirección de una
+    /// cadena de `.rodata`: `(offset en .data, índice en `strings`)`.
+    ///
+    /// Son relocations, no fixups del compilador, y la diferencia es el motivo
+    /// de que exista esta lista: un `lea [rip+disp]` lo puede resolver el
+    /// compilador porque la distancia entre dos secciones de la misma imagen es
+    /// fija, pero **un puntero guardado en un dato necesita la dirección
+    /// absoluta**, y ésa depende de dónde cargue el programa. Eso sólo lo sabe
+    /// el cargador.
+    ///
+    /// Se acumulan aquí y se convierten en `Relocation` en `patch_all_fixups`,
+    /// que es donde ya se conocen los offsets de las cadenas.
+    relocs_a_cadena: Vec<(u32, usize)>,
+    /// Las relocations ya resueltas que van en la sección `Relocs` del BEF.
+    relocs: Vec<bmo_abi::bef::relocations::Relocation>,
     instruction_end: usize,
     string_data_end: usize,
     /// Functions from userland_ring3 that need imports.
@@ -156,6 +172,8 @@ impl Codegen {
             entry_offset: 0, is_entry_function: false,
             global_offsets: HashMap::new(), global_data: Vec::new(),
             global_fixups: Vec::new(),
+            relocs_a_cadena: Vec::new(),
+            relocs: Vec::new(),
             instruction_end: 0, string_data_end: 0,
             stdlib_imports: std::collections::HashSet::new(),
             enum_values: HashMap::new(),
@@ -208,16 +226,34 @@ impl Codegen {
                 let off = self.global_data.len() as u32;
                 for _ in 0..size { self.global_data.push(0); }
                 for e in escrituras {
+                    // ★ UNA CADENA en la tabla -> RELOCATION.
+                    //
+                    // `char *nombres[] = {"imp", "cyberdemon"}` y, en DOOM,
+                    // `char *sprnames[]`. Cada elemento es un puntero y cada
+                    // puntero es una reloc: el hueco queda a cero y el cargador
+                    // escribe la dirección.
+                    if let Expr::StringLit(s) = &e.valor {
+                        let idx = match self.strings.iter().position(|t| t == s) {
+                            Some(i) => i,
+                            None => {
+                                self.strings.push(s.clone());
+                                self.strings.len() - 1
+                            }
+                        };
+                        self.relocs_a_cadena.push((off + e.offset, idx));
+                        continue;
+                    }
                     let Some(valor) = Self::constante_de(&e.valor) else {
-                        // Lo que NO se puede poner aqui, y el motivo es el
-                        // mismo que con `char *p = "x"`: una direccion no se
-                        // conoce hasta cargar. Las tablas de punteros a cadena
-                        // y a funcion son justo esto, y son la mitad de las
-                        // tablas de DOOM.
+                        // Lo que sigue sin poderse poner. El caso vivo es una
+                        // tabla de punteros a FUNCION (el campo `action` de cada
+                        // `state_t` de DOOM): hace falta la misma relocation
+                        // pero con destino en `.code`, y el codegen todavía no
+                        // sabe el offset de una función en este punto — se
+                        // registran más abajo, al emitirlas.
                         self.errors.push(format!(
                             "en la tabla global '{name}', el valor del offset {} no es una \
-                             constante entera. Si es una cadena o la direccion de algo, hace \
-                             falta una relocation Abs64 en el BEF: por ahora, rellena esa \
+                             constante entera ni una cadena. Si es la direccion de una funcion, \
+                             eso necesita una relocation a `.code` y todavia no esta: rellena esa \
                              posicion dentro de una funcion",
                             e.offset
                         ));
@@ -297,21 +333,37 @@ impl Codegen {
                     (None, _) => {
                         for _ in 0..size { self.global_data.push(0); }
                     }
-                    // ★ CON inicializador que no sabemos poner: se DICE.
+                    // ★ UNA CADENA: ya no es un error, es una RELOCATION.
+                    //
+                    // `char *mapa = "1111…"` tiene que guardar la DIRECCION de
+                    // la cadena, y ésa depende de dónde cargue el programa. El
+                    // compilador deja el hueco a cero y anota quién lo rellena;
+                    // lo escribe el cargador, que es el único que sabe la VA.
+                    //
+                    // Esto es lo que hacía falta para que el mapa del raycaster
+                    // pudiera vivir donde estaba escrito.
+                    (Some(Expr::StringLit(s)), _) => {
+                        let idx = match self.strings.iter().position(|t| t == s) {
+                            Some(i) => i,
+                            None => {
+                                // `collect_strings` sólo recorre FUNCIONES, así
+                                // que una cadena que aparece únicamente en un
+                                // global no entraría nunca en la tabla. Se
+                                // interna aquí; el dedup es por valor, así que
+                                // si además sale en una función, es la misma.
+                                self.strings.push(s.clone());
+                                self.strings.len() - 1
+                            }
+                        };
+                        self.relocs_a_cadena.push((off, idx));
+                        for _ in 0..size { self.global_data.push(0); }
+                    }
+                    // Lo que sigue sin poderse poner: se DICE.
                     (Some(otro), _) => {
                         let que = match otro {
-                            Expr::StringLit(_) => {
-                                // El caso que destapó esto, y merece su propio
-                                // mensaje porque la salida es la que más
-                                // desconcierta: bytes de código.
-                                "una cadena literal, y eso necesita guardar la DIRECCION de la \
-                                 cadena, que sólo se conoce al cargar (hace falta una relocation \
-                                 Abs64 en el BEF). Asigna dentro de una funcion: \
-                                 `char *p; int main() { p = \"...\"; }`"
-                            }
                             Expr::FloatLit(_) => "un literal de coma flotante, que aun no se convierte",
                             _ => "una expresion que este compilador no evalua en tiempo de \
-                                  compilacion (aqui sólo caben constantes enteras)",
+                                  compilacion (aqui caben constantes enteras y cadenas)",
                         };
                         self.errors.push(format!(
                             "el global '{name}' se inicializa con {que}. Antes esto se rellenaba \
@@ -671,6 +723,40 @@ impl Codegen {
         let globals = core::mem::take(&mut self.global_data);
         self.code.extend_from_slice(&globals);
         self.global_data = globals;
+
+        // ★ LAS RELOCATIONS, que es lo único que el compilador NO puede
+        // resolver por su cuenta.
+        //
+        // Todo lo de arriba son desplazamientos: la distancia entre dos
+        // secciones de la misma imagen es fija, así que un `lea [rip+disp]` se
+        // puede calcular aquí. Un PUNTERO GUARDADO EN UN DATO es otra cosa —
+        // lleva la dirección absoluta, y ésa depende de dónde cargue el
+        // programa. Se anota y la escribe el cargador.
+        //
+        // Los offsets van dentro de su sección, no del búfer: el del puntero es
+        // relativo a `.data` (ya lo es, sale de `global_data`) y el de la cadena
+        // relativo a `.rodata`.
+        let mut off_cadena: Vec<usize> = Vec::with_capacity(self.strings.len());
+        let mut acc = 0usize;
+        for s in &self.strings {
+            off_cadena.push(acc);
+            acc += s.len() + 1;
+        }
+        for &(off_en_data, idx) in &self.relocs_a_cadena {
+            let Some(&destino) = off_cadena.get(idx) else {
+                self.errors.push(format!(
+                    "reloc a una cadena que no esta en la tabla (indice {idx}): esto es un bug \
+                     del compilador, no del programa"
+                ));
+                continue;
+            };
+            self.relocs.push(Relocation::seccion_abs64(
+                SEC_DATA,
+                off_en_data as u64,
+                SEC_RODATA,
+                destino as i64,
+            ));
+        }
     }
 
     fn patch_goto_relocs(&mut self) {
@@ -2848,6 +2934,19 @@ impl Codegen {
             let mut data_sec = BefSection::data(data_bytes.to_vec());
             data_sec.alignment = 4096;
             b.add_section(data_sec);
+        }
+
+        // ★ LA SECCIÓN `Relocs`, y va DESPUÉS de las tres cargables a propósito:
+        // sus offsets son relativos a `.data` y `.rodata`, o sea que se refiere
+        // a las que ya están puestas. Y no es cargable —`is_loadable` la
+        // excluye— así que no ocupa una página en el proceso: el cargador la
+        // lee del fichero, aplica lo que dice y la olvida.
+        //
+        // Sólo se emite si hay alguna. Un `.bex` sin punteros en datos no lleva
+        // sección de relocs, igual que uno sin syscalls dejó de llevar el stub.
+        if !self.relocs.is_empty() {
+            let relocs = core::mem::take(&mut self.relocs);
+            b.add_section(BefSection::relocs(relocs));
         }
 
         b.entry_offset = self.entry_offset as u64;

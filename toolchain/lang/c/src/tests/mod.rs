@@ -156,7 +156,15 @@ fn maquina_de_bef_con(
     // la máquina para en vez de seguir por basura interpretable.
     const PAGINA: usize = 4096;
     let mut code = Vec::new();
-    for kind in [SectionKind::Code, SectionKind::RoData, SectionKind::Data] {
+    // Dónde acabó cada sección en la imagen, indexado por el CÓDIGO DE SECCIÓN
+    // DE LAS RELOCS (`0` = code, `1` = data, `2` = rodata), que **no es** el de
+    // `SectionKind` — ver la nota en `bef::relocations`.
+    let mut base = [usize::MAX; 3];
+    for (kind, cod_reloc) in [
+        (SectionKind::Code, 0usize),
+        (SectionKind::RoData, 2usize),
+        (SectionKind::Data, 1usize),
+    ] {
         for i in 0..hdr.section_count as usize {
             let e = sec_off + i * SectionEntry::SIZE;
             if bef[e] == kind as u8 {
@@ -165,11 +173,58 @@ fn maquina_de_bef_con(
                 while !code.is_empty() && code.len() % PAGINA != 0 {
                     code.push(0xCC);
                 }
+                base[cod_reloc] = code.len();
                 code.extend_from_slice(&bef[off..off + size]);
             }
         }
     }
     assert!(!code.is_empty(), "el BEF no tiene seccion CODE");
+
+    // ★ LAS RELOCATIONS, aplicadas como las aplicará el cargador.
+    //
+    // Sin esto un `char *p = "x"` global se quedaría en cero y el test lo vería
+    // como el mapa del raycaster: leyendo desde el byte 0 de la imagen. Aquí la
+    // "dirección virtual" de una sección es su offset en esta imagen plana,
+    // porque el emulador direcciona desde cero.
+    //
+    // Se hace en el arnés y no dentro del emulador a propósito: aplicar
+    // relocations es trabajo del CARGADOR, y el emulador es un CPU. Meterlo
+    // dentro sería darle al modelo de la máquina un trabajo que la máquina no
+    // hace.
+    for i in 0..hdr.section_count as usize {
+        let e = sec_off + i * SectionEntry::SIZE;
+        if bef[e] != SectionKind::Relocs as u8 {
+            continue;
+        }
+        let off = u64::from_le_bytes(bef[e + 8..e + 16].try_into().unwrap()) as usize;
+        let size = u64::from_le_bytes(bef[e + 16..e + 24].try_into().unwrap()) as usize;
+        let n = size / bmo_abi::bef::relocations::Relocation::SIZE;
+        for k in 0..n {
+            let r = off + k * bmo_abi::bef::relocations::Relocation::SIZE;
+            let donde_off = u64::from_le_bytes(bef[r..r + 8].try_into().unwrap()) as usize;
+            let destino_sec = u32::from_le_bytes(bef[r + 8..r + 12].try_into().unwrap()) as usize;
+            let kind = bef[r + 12];
+            let donde_sec = bef[r + 13] as usize;
+            let addend = i64::from_le_bytes(bef[r + 16..r + 24].try_into().unwrap());
+            assert_eq!(
+                kind,
+                bmo_abi::bef::relocations::RelocationKind::SeccionAbs64 as u8,
+                "el arnes solo sabe aplicar SeccionAbs64; salio kind={kind}"
+            );
+            assert!(
+                donde_sec < 3 && destino_sec < 3,
+                "codigo de seccion fuera de rango en una reloc"
+            );
+            assert!(
+                base[donde_sec] != usize::MAX && base[destino_sec] != usize::MAX,
+                "una reloc nombra una seccion que este .bex no lleva"
+            );
+            let donde = base[donde_sec] + donde_off;
+            let valor = (base[destino_sec] as i64 + addend) as u64;
+            assert!(donde + 8 <= code.len(), "reloc fuera de la imagen");
+            code[donde..donde + 8].copy_from_slice(&valor.to_le_bytes());
+        }
+    }
 
     let mut machine = Machine::new(code);
     machine.rip = entry; // `main` no tiene por que estar al principio

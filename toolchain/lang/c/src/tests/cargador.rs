@@ -162,24 +162,32 @@ fn un_global_se_alcanza_tras_dos_fronteras_de_pagina() {
 // se decia, y nada lo miraba porque `globales.rs` sólo comprobaba que el
 // programa COMPILARA.
 
-/// ★ Un global con un inicializador que no se sabe poner se RECHAZA, con el
-/// nombre de la variable y el motivo.
+/// ★★ EL GLOBAL QUE VALIA CERO, AHORA APUNTA DONDE DEBE.
 ///
-/// El caso de la cadena es el que más desconcierta —la salida son instrucciones
-/// legibles como texto— y es también el que señala el trabajo que falta: para
-/// guardar la dirección de la cadena hace falta una relocation `Abs64` en el
-/// BEF, porque esa dirección **no se conoce hasta cargar**. Es el primer
-/// cliente concreto de las relocations de verdad.
+/// Este test nacio al reves: comprobaba que `char *texto = "eltexto"` **se
+/// RECHAZARA**, porque el codegen no sabia poner una direccion y rellenar de
+/// ceros en silencio era peor que negarse. Con las relocations `SeccionAbs64`
+/// ya se puede poner, asi que el test cambio de sentido — y se deja dicho,
+/// porque un test que un dia exigio lo contrario es la mejor prueba de que algo
+/// avanzo de verdad.
+///
+/// Lo que se arreglo por debajo: el compilador deja el hueco a cero y anota la
+/// reloc; la direccion la escribe el cargador, que es el unico que la sabe.
 #[test]
-fn un_global_inicializado_con_cadena_se_rechaza_diciendolo() {
-    let err = compile_source_to_bef("char *texto = \"eltexto\"; int main() { return 0; }")
+fn un_global_inicializado_con_cadena_apunta_a_la_cadena() {
+    let fuente = "char *texto = \"eltexto\";                   int main() { printf(\"[%s]\", texto); return 0; }";
+    assert_eq!(run_c(fuente), "[eltexto]");
+}
+
+/// Y lo que SIGUE rechazado, para que el mensaje no se pierda: un literal de
+/// coma flotante en un global. Ahi no falta una reloc — falta convertir el
+/// valor, que es otro trabajo.
+#[test]
+fn un_global_con_float_sigue_rechazado_diciendolo() {
+    let err = compile_source_to_bef("double d = 1.5; int main() { return 0; }")
         .expect_err("un cero inventado es peor que un error");
     let msg = format!("{err:?}");
-    assert!(msg.contains("texto"), "tiene que decir QUE global: {msg}");
-    assert!(
-        msg.contains("Abs64") || msg.contains("relocation"),
-        "y que hace falta para arreglarlo: {msg}"
-    );
+    assert!(msg.contains("'d'"), "tiene que decir QUE global: {msg}");
 }
 
 /// Y de paso, lo que sí se puede poner y antes valía cero: un entero negativo.

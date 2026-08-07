@@ -100,19 +100,39 @@ fn en_una_tabla_de_char_cada_elemento_ocupa_un_byte() {
     assert_eq!(run_c(fuente), "ABC");
 }
 
-/// ★ Y el límite, dicho: una tabla de PUNTEROS necesita direcciones, que no se
-/// conocen hasta cargar. Es la mitad de las tablas de DOOM (`char *sprnames[]`,
-/// las de punteros a función) y lo que hace falta es una relocation `Abs64`.
-/// Mientras no exista, se rechaza con el offset y el motivo.
+/// ★★ UNA TABLA DE PUNTEROS A CADENA, QUE YA FUNCIONA.
+///
+/// Esto se rechazaba con un error hasta que existieron las relocations
+/// `SeccionAbs64`: el valor de cada elemento es la DIRECCIÓN de una cadena, y
+/// ésa depende de dónde cargue el programa. El compilador deja el hueco a cero
+/// y anota quién lo rellena; lo escribe el cargador.
+///
+/// Es `char *sprnames[]` de DOOM, y es la mitad de sus tablas.
 #[test]
-fn una_tabla_global_de_punteros_a_cadena_se_rechaza_diciendolo() {
-    let err = compile_source_to_bef(
-        "char *nombres[2] = {\"imp\", \"cyberdemon\"}; int main() { return 0; }",
-    )
-    .expect_err("una direccion no se puede poner en compilacion");
-    let msg = format!("{err:?}");
-    assert!(msg.contains("nombres"), "tiene que decir QUE tabla: {msg}");
-    assert!(msg.contains("Abs64"), "y que hace falta: {msg}");
+fn una_tabla_global_de_punteros_a_cadena_funciona() {
+    let fuente = "char *nombres[3] = {\"imp\", \"shotgun\", \"cyberdemon\"};                   int main() { int i; i = 0;                   while (i < 3) { printf(\"%s|\", nombres[i]); i = i + 1; } return 0; }";
+    assert_eq!(run_c(fuente), "imp|shotgun|cyberdemon|");
+}
+
+/// ★★ Y EL CASO QUE LO PIDIÓ: `char *mapa = "…"` como global suelto.
+///
+/// Es exactamente lo que tenía `raycaster_C.c` y valía CERO, con las paredes
+/// del laberinto siendo el código máquina del propio programa.
+#[test]
+fn un_puntero_global_a_cadena_apunta_a_la_cadena() {
+    let fuente = "char *mapa = \"1111000011110000\";                   int main() { printf(\"%s,%d,%d\", mapa, mapa[0], mapa[4]); return 0; }";
+    assert_eq!(run_c(fuente), "1111000011110000,49,48");
+}
+
+/// El mismo puntero, leído por dos sitios: si la reloc escribiera una dirección
+/// plausible pero equivocada, un `%s` podría dar algo y el índice otra cosa.
+/// Aquí los dos tienen que cuadrar con la misma cadena.
+#[test]
+fn dos_punteros_globales_a_la_misma_cadena_coinciden() {
+    let fuente = "char *a = \"hola\"; char *b = \"hola\"; char *c = \"otra\";                   int main() { printf(\"%d,%d,%s\", a == b, a == c, c); return 0; }";
+    // La tabla de cadenas deduplica por valor, asi que `a` y `b` apuntan al
+    // MISMO sitio. Que no sea asi seria un desperdicio silencioso.
+    assert_eq!(run_c(fuente), "1,0,otra");
 }
 
 /// ⚠️ Un struct GLOBAL y el global de al lado. Sonda: si el struct no reserva
