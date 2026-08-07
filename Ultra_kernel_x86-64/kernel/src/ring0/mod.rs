@@ -36,6 +36,9 @@ pub mod obj {
     pub mod endpoint;
     pub mod fb;
     pub mod input;
+    /// `KIND_LIENZO`: páginas del lienzo del compositor prestadas a otra app,
+    /// para que pinte donde se ve. **Sin copias.** Ver `docs/LIENZO.md`.
+    pub mod lienzo;
     /// `KIND_MEMORIA`: bloques que un proceso PIDE. No es un asignador — ver
     /// la cabecera del módulo.
     pub mod memoria;

@@ -137,6 +137,10 @@ const TASK_OP_ES_NODO: u64 = 0x19;
 const TASK_OP_ES_TEXTO: u64 = 0x1A;
 /// Despertar los otros núcleos. Espejo de `bmo_abi::…::TASK_OP_SMP_DESPERTAR`.
 const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
+/// Pedir el reflejo del lienzo. Espejo de `bmo_abi::…::TASK_OP_LIENZO_REFLEJO`.
+const TASK_OP_LIENZO_REFLEJO: u64 = 0x1C;
+/// El compositor declara cuál es su lienzo. Espejo de `…::TASK_OP_LIENZO_DECLARAR`.
+const TASK_OP_LIENZO_DECLARAR: u64 = 0x1D;
 /// Las preguntas del cursor. Espejo de `bmo_abi::…::ES_NODO_*`.
 const ES_NODO_RAIZ: u64 = 0x00;
 const ES_NODO_HIJOS: u64 = 0x01;
@@ -460,6 +464,43 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             ) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
+            }
+        }
+        // ★ El compositor CUELGA EL CARTEL: "este bloque mío es el lienzo".
+        //
+        // `arg0` es el handle de su bloque, `arg1` el stride en píxeles. Que lo
+        // declare él, en vez de que el kernel dé por hecho cuál es el escritorio,
+        // es lo que evita que Ring 0 se sepa un nombre propio — y hace que un
+        // compositor de prueba de cincuenta líneas funcione sin tocar el kernel.
+        TASK_OP_LIENZO_DECLARAR => {
+            let pid = scheduler::current_pid();
+            match cap::resolve(pid, arg0, cap::RIGHT_WRITE) {
+                Ok(b) if b.kind == cap::KIND_MEMORIA => {
+                    let bytes = crate::ring0::obj::memoria::entregado_por(pid);
+                    let ok = crate::ring0::obj::lienzo::declarar(
+                        pid,
+                        crate::ring0::mm::vmm::read_cr3(),
+                        b.object,
+                        bytes,
+                        arg1 as u32,
+                    );
+                    BmoStatus::ok_value(ok as u64)
+                }
+                Ok(_) => unsupported(),
+                Err(err) => cap_err(err),
+            }
+        }
+        // Y una app PIDE el reflejo. `arg0` = páginas, `arg1` = formato.
+        TASK_OP_LIENZO_REFLEJO => {
+            let pid = scheduler::current_pid();
+            match crate::ring0::obj::lienzo::reflejo(
+                pid,
+                crate::ring0::mm::vmm::read_cr3(),
+                arg0,
+                arg1,
+            ) {
+                Some(h) => BmoStatus::ok_value(h),
+                None => BmoStatus::ok_value(0),
             }
         }
         TASK_OP_RUTA => {
@@ -834,6 +875,16 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // que el proceso escribe con un `mov` y el kernel no se entera.
             // Ése es el punto: un syscall por byte sería justo lo contrario
             // de entregar memoria.
+            // El reflejo contesta lo mismo que la pantalla: dónde está, cuánto
+            // mide y cuál es el stride. Y no se escribe por aquí — **está
+            // mapeado**, así que la app pinta con un `mov` y el kernel no se
+            // entera. Ése es el punto entero de que exista.
+            cap::KIND_LIENZO => {
+                match crate::ring0::obj::lienzo::operacion(resolved.object, frame.rsi) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
             cap::KIND_MEMORIA => {
                 match crate::ring0::obj::memoria::operacion(
                     resolved.object, frame.rsi, scheduler::current_pid(),

@@ -50,6 +50,13 @@ pub const KIND_ARCHIVO: u8 = 0x41;
 /// Un bloque de memoria que el proceso PIDIO. Ver `obj::memoria`: es memoria
 /// entregada entera, no un asignador.
 pub const KIND_MEMORIA: u8 = 0x50;
+/// Un REFLEJO del lienzo del compositor: páginas suyas mapeadas en otra app,
+/// para que pinte donde se ve y sin copias. Ver `obj::lienzo`.
+///
+/// No es `KIND_MEMORIA` aunque también sea memoria, y la diferencia importa:
+/// un bloque de memoria es **del proceso**, y esto es **prestado**. Al morir,
+/// uno se libera y el otro sólo se desmapea.
+pub const KIND_LIENZO: u8 = 0x51;
 pub const KIND_CHANNEL: u8 = 0x60;
 /// Endpoint RPC: el derecho a llamar (cliente) o a atender (servidor).
 pub const KIND_ENDPOINT: u8 = 0x70;
@@ -235,6 +242,12 @@ pub fn revoke_all(pid: u32) {
     // Sus bloques de memoria no hay que desmapearlos —el espacio entero se
     // destruye—, pero SÍ hay que soltar el contador de peticiones: sin esto un
     // pid reutilizado heredaría las del muerto y no podría pedir nada.
+    // ★ ANTES que la memoria, y el orden NO es indiferente: el reflejo se
+    // desmapea del espacio del muerto, y ese espacio tiene que existir todavía.
+    // Va primero también porque `unmap_page` devuelve el marco sin liberarlo —
+    // son del compositor— y liberarlos aquí sería entregarle el escritorio a
+    // otro proceso.
+    crate::ring0::obj::lienzo::soltar(pid, crate::ring0::mm::vmm::read_cr3());
     crate::ring0::obj::memoria::proceso_muerto(pid);
     // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
