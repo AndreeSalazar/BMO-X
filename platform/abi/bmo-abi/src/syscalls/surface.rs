@@ -271,6 +271,34 @@ pub const ARCH_OP_LEER: u64 = 0x01;
 pub const ARCH_OP_LEER_LINEA: u64 = 0x05;
 /// Mete hasta 7 bytes: `arg0 = (n << 56) | bytes_LE`. Devuelve los aceptados.
 pub const ARCH_OP_ESCRIBIR: u64 = 0x02;
+/// **Lee un BLOQUE entero de golpe, dentro de memoria que el kernel concedió.**
+///
+/// `arg0` = handle del bloque (`TASK_OP_MEMORIA_PEDIR`), `arg1` = desplazamiento
+/// dentro del bloque, `arg2` = cuántos bytes. Devuelve los leídos de verdad.
+///
+/// ═══ Por qué existe, y por qué así ═══
+///
+/// [`ARCH_OP_LEER`] devuelve **siete bytes** metidos en un registro. Para un WAD
+/// de DOOM de 4 MB eso son **seiscientas mil llamadas al sistema** para cargarlo
+/// una vez. No era pereza: `core/informe.rs` lo dejó escrito — *"pasar un
+/// puntero de Ring 3 obligaría al kernel a validar el rango entero contra el
+/// espacio del llamante, y esa infraestructura no existe"*.
+///
+/// ★ Y la salida no es construir esa infraestructura: es **no necesitarla**. El
+/// destino no es un puntero que el llamante inventa, es **un bloque que el
+/// kernel concedió y cuyos límites tiene apuntados**. No hay nada que validar
+/// contra el espacio de nadie: se comprueba `desplazamiento + n` contra lo que
+/// se entregó, y ya. Es la misma razón por la que reclamar la pantalla es
+/// seguro — el kernel no comprueba el framebuffer, **lo dio él**.
+///
+/// Un contrato en vez de una comprobación, que es como crece todo aquí.
+pub const ARCH_OP_LEER_EN: u64 = 0x06;
+/// **Mueve el cursor** a un desplazamiento absoluto. Devuelve dónde quedó.
+///
+/// Es `fseek`, y cuesta lo que cuesta poner un número porque **el archivo ya
+/// está entero en un búfer del kernel** desde que se abrió. Sin esto, DOOM no
+/// puede leer su WAD ni empezando: el directorio de lumps está al FINAL.
+pub const ARCH_OP_SALTAR: u64 = 0x07;
 /// Bytes que quedan por leer, o los acumulados si es de escritura.
 pub const ARCH_OP_TAMANO: u64 = 0x03;
 /// Cierra. En uno de escritura **es donde el contenido llega al disco**.

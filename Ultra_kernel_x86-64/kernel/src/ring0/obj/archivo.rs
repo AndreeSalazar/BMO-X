@@ -122,6 +122,12 @@ pub const ARCH_OP_CERRAR: u64 = 0x04;
 /// El corte lo hace el kernel porque **el cursor es del kernel**. Es la misma
 /// razón por la que `siguiente` vive en `directorio.rs` y no en Ring 3.
 pub const ARCH_OP_LEER_LINEA: u64 = 0x05;
+/// Leer un bloque entero en memoria concedida. Espejo de
+/// `bmo_abi::…::ARCH_OP_LEER_EN`; lo despacha `syscall.rs`, que es quien tiene
+/// las capabilities a mano.
+pub const ARCH_OP_LEER_EN: u64 = 0x06;
+/// Mover el cursor. Espejo de `bmo_abi::…::ARCH_OP_SALTAR`.
+pub const ARCH_OP_SALTAR: u64 = 0x07;
 
 // ── El buffer de cada archivo abierto ───────────────────────────────────
 //
@@ -496,8 +502,48 @@ pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
         ARCH_OP_TAMANO => Some(unsafe {
             if escribe { LARGO[i] as u64 } else { (LARGO[i] - CURSOR[i]) as u64 }
         }),
+        // ★ `fseek`. Cuesta lo que cuesta poner un número porque el archivo ya
+        // está entero en el búfer desde que se abrió. Se acota al tamaño en vez
+        // de rechazar: un cursor más allá del final significa "no queda nada",
+        // que es lo que contesta `ARCH_OP_TAMANO` sin inventarse un error.
+        ARCH_OP_SALTAR if !escribe => Some(unsafe {
+            let d = if arg0 as usize > LARGO[i] { LARGO[i] } else { arg0 as usize };
+            CURSOR[i] = d;
+            d as u64
+        }),
         ARCH_OP_CERRAR => Some(cerrar(i)),
         _ => None,
+    }
+}
+
+/// **Copia hasta `n` bytes desde el cursor a `dst`, y avanza.** Devuelve los
+/// copiados de verdad.
+///
+/// ⚠️ `dst` **tiene que estar validado por el llamante**: aquí no se puede
+/// comprobar nada porque es una dirección a secas. Quien la resuelve es
+/// `syscall.rs`, y lo hace de la única forma que no exige inventarse un
+/// validador de punteros — pidiendo la *capability* del bloque que el kernel
+/// concedió y midiendo contra lo que entregó.
+///
+/// # Safety
+/// `dst` debe apuntar a `n` bytes escribibles y mapeados en el CR3 actual.
+pub unsafe fn leer_en(idx: u64, dst: *mut u8, n: usize) -> usize {
+    let i = idx as usize;
+    if i >= MAX_ABIERTOS || dst.is_null() || n == 0 {
+        return 0;
+    }
+    unsafe {
+        if ESCRIBE[i] {
+            return 0;
+        }
+        let quedan = LARGO[i].saturating_sub(CURSOR[i]);
+        let cuantos = if n > quedan { quedan } else { n };
+        if cuantos == 0 {
+            return 0;
+        }
+        core::ptr::copy_nonoverlapping(buf(i).as_ptr().add(CURSOR[i]), dst, cuantos);
+        CURSOR[i] += cuantos;
+        cuantos
     }
 }
 

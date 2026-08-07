@@ -773,6 +773,46 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // abrir y no es un argumento aqui: pedirle bytes a un archivo de
             // escritura no es un error de permisos, es una pregunta que ese
             // objeto no responde.
+            // ★ LEER UN BLOQUE ENTERO, y por qué se despacha AQUÍ y no dentro
+            // de `archivo`: hace falta resolver una SEGUNDA capability —la del
+            // bloque de memoria— y las capabilities viven en este borde.
+            //
+            // Y ésta es la pieza que hacía falta para `fopen`. `ARCH_OP_LEER`
+            // da siete bytes por llamada: un WAD de 4 MB serían seiscientas mil
+            // llamadas. No se arregla validando punteros de Ring 3 —eso es la
+            // infraestructura que `informe.rs` dice que no existe—; se arregla
+            // **no necesitándola**: el destino es un bloque que concedió el
+            // kernel, así que comprobar es una resta contra lo que se entregó.
+            cap::KIND_ARCHIVO
+                if frame.rsi == crate::ring0::obj::archivo::ARCH_OP_LEER_EN =>
+            {
+                let pid = scheduler::current_pid();
+                // El bloque tiene que ser SUYO y con permiso de escritura: se va
+                // a escribir dentro. Que lo diga la capability y no un puntero
+                // es la diferencia entera.
+                let bloque = match cap::resolve(pid, frame.rdx, cap::RIGHT_WRITE) {
+                    Ok(b) if b.kind == cap::KIND_MEMORIA => b,
+                    Ok(_) => return unsupported(),
+                    Err(err) => return cap_err(err),
+                };
+                let base = bloque.object;
+                let tam = crate::ring0::obj::memoria::entregado_por(pid);
+                let desde = frame.r10;
+                let cuantos = frame.r8;
+                // La única comprobación, y cabe en una línea porque el rango lo
+                // dimos nosotros. Un desbordamiento en la suma también cae aquí.
+                if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {
+                    return BmoStatus::err(1);
+                }
+                let n = unsafe {
+                    crate::ring0::obj::archivo::leer_en(
+                        resolved.object,
+                        (base + desde) as *mut u8,
+                        cuantos as usize,
+                    )
+                };
+                BmoStatus::ok_value(n as u64)
+            }
             cap::KIND_ARCHIVO => {
                 match crate::ring0::obj::archivo::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => {
