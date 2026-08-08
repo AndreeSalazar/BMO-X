@@ -60,8 +60,8 @@ fn phase1_ui(_ctx: &BootContext) {
 static mut DASH_LOG_ROW: usize = 0;
 
 /// Filas del log rodante: el panel entero MENOS la banda inferior que ocupa
-/// CABINA. Sin este reparto los dos escribían en las mismas filas y se
-/// borraban mutuamente (el log se comía la bitácora y viceversa).
+/// CABINA. Sin este reparto los dos escribian en las mismas filas y se
+/// borraban mutuamente (el log se comia la bitacora y viceversa).
 fn log_rows() -> usize {
     let total = splash::dash_rows();
     if total == 0 { return 1; }
@@ -86,53 +86,53 @@ pub fn dashboard_log(msg: &str) {
 /// Igual, pero eligiendo el color a mano.
 ///
 /// El color por prefijo sirve para el log del kernel, donde el emisor SE
-/// reconoce. Un informe del shell no tiene emisor: tiene estructura — títulos,
-/// etiquetas y valores — y quien la conoce es quien lo escribe.
+/// reconoce. Un informe del shell no tiene emisor: tiene estructura -- titulos,
+/// etiquetas y valores -- y quien la conoce es quien lo escribe.
 pub fn dashboard_log_color(msg: &str, color: u32) {
     dashboard_log_impl(msg, Some(color));
 }
 
 fn dashboard_log_impl(msg: &str, color: Option<u32>) {
-    // ★ GUARDAR VA PRIMERO, antes de cualquier `return`.
+    // * GUARDAR VA PRIMERO, antes de cualquier `return`.
     //
     // Y el orden es el punto entero de que esto exista. Debajo hay dos salidas
-    // tempranas —sin framebuffer, sin filas— que son razones para no PINTAR, no
-    // para no RECORDAR. Guardar después de ellas dejaría sin log justo los dos
-    // casos en los que un log hace más falta: el arranque antes de que haya
-    // pantalla, y la máquina que ya cedió la pantalla a Ring 3.
+    // tempranas --sin framebuffer, sin filas-- que son razones para no PINTAR, no
+    // para no RECORDAR. Guardar despues de ellas dejaria sin log justo los dos
+    // casos en los que un log hace mas falta: el arranque antes de que haya
+    // pantalla, y la maquina que ya cedio la pantalla a Ring 3.
     //
-    // Ese segundo caso es el de todos los días desde que el escritorio es el
-    // arranque: el panel del kernel no se pinta, así que sin esto el relato de
-    // cómo arrancó la máquina no existía en ninguna parte.
+    // Ese segundo caso es el de todos los dias desde que el escritorio es el
+    // arranque: el panel del kernel no se pinta, asi que sin esto el relato de
+    // como arranco la maquina no existia en ninguna parte.
     //
-    // ★★ Y va con la HORA delante. `[  1234ms] usb: ...`
+    // ** Y va con la HORA delante. `[  1234ms] usb: ...`
     //
-    // El arranque no estaba cronometrado en ninguna parte: se sabía que tarda
-    // "unos diez segundos" y **no se sabía en qué**. Optimizar sin ese número
-    // es mover cosas a ver si suena distinto — y lo primero que hay que
+    // El arranque no estaba cronometrado en ninguna parte: se sabia que tarda
+    // "unos diez segundos" y **no se sabia en que**. Optimizar sin ese numero
+    // es mover cosas a ver si suena distinto -- y lo primero que hay que
     // descartar es que esos segundos sean del firmware de la placa y no de
-    // BMO, en cuyo caso no hay nada que arreglar aquí.
+    // BMO, en cuyo caso no hay nada que arreglar aqui.
     //
-    // No cuesta un cronómetro nuevo: `timer::ticks()` ya corre y cada evento de
-    // la CABINA **ya guardaba su marca** — sólo que no se enseñaba. Con esto,
-    // una sola foto de F11 dice dónde se van los segundos, línea por línea.
+    // No cuesta un cronometro nuevo: `timer::ticks()` ya corre y cada evento de
+    // la CABINA **ya guardaba su marca** -- solo que no se ensenaba. Con esto,
+    // una sola foto de F11 dice donde se van los segundos, linea por linea.
     crate::ring0::core::klog::guardar_con_hora(crate::ring0::plat::timer::ticks(), msg);
 
     if !crate::info::has_fb() { return; }
     let rows = log_rows();
     if rows == 0 { return; }
 
-    // ── Líneas repetidas: se cuentan, no se apilan ──────────────────────────
+    // -- Lineas repetidas: se cuentan, no se apilan --------------------------
     //
-    // El censo de puertos del AHCI escupe una línea por puerto y la mayoría
-    // son idénticas: catorce `p0x0 ssts=0x0` seguidas se comían medio panel y
-    // barrían el arranque entero fuera de la pantalla. Y el panel es la única
-    // ventana que hay — aquí no se puede hacer scroll hacia atrás.
+    // El censo de puertos del AHCI escupe una linea por puerto y la mayoria
+    // son identicas: catorce `p0x0 ssts=0x0` seguidas se comian medio panel y
+    // barrian el arranque entero fuera de la pantalla. Y el panel es la unica
+    // ventana que hay -- aqui no se puede hacer scroll hacia atras.
     //
-    // Una repetición NO es información nueva; el número de veces SÍ. Así que
-    // la fila se queda donde está y se le añade el contador. Catorce líneas
+    // Una repeticion NO es informacion nueva; el numero de veces SI. Asi que
+    // la fila se queda donde esta y se le anade el contador. Catorce lineas
     // pasan a ser una que dice `x14`, y las trece filas que ganamos son trece
-    // hechos distintos que antes no cabían.
+    // hechos distintos que antes no cabian.
     const KEEP: usize = 96;
     static mut LAST_LINE: [u8; KEEP] = [0u8; KEEP];
     static mut LAST_LEN: usize = 0;
@@ -147,7 +147,7 @@ fn dashboard_log_impl(msg: &str, color: Option<u32>) {
         if LAST_LEN == n && LAST_ROW < rows && last[..n] == b[..n] {
             REPEATS += 1;
             // Repintar la MISMA fila con la cuenta al final. El prefijo no
-            // cambia, así que el color de la línea sigue siendo el suyo.
+            // cambia, asi que el color de la linea sigue siendo el suyo.
             let mut buf = [0u8; KEEP + 12];
             let mut o = 0usize;
             for i in 0..n { buf[o] = b[i]; o += 1; }
@@ -178,16 +178,16 @@ fn dashboard_log_impl(msg: &str, color: Option<u32>) {
     }
 }
 
-// ── Constructor de líneas del shell ─────────────────────────────────────────
+// -- Constructor de lineas del shell -----------------------------------------
 //
-// Cada comando del shell traía sus propias closures `txt`/`dec` copiadas.
+// Cada comando del shell traia sus propias closures `txt`/`dec` copiadas.
 // Esto es una sola, con lo que hace falta para alinear columnas y para decir
-// un tamaño en la unidad que se entiende.
+// un tamano en la unidad que se entiende.
 
-/// Colores de los informes del shell. Etiqueta apagada, valor claro, título
-/// ámbar: la misma jerarquía en todos los comandos, para que `info` y `disk`
+/// Colores de los informes del shell. Etiqueta apagada, valor claro, titulo
+/// ambar: la misma jerarquia en todos los comandos, para que `info` y `disk`
 /// se lean como partes del mismo sistema y no como dos programas distintos.
-const SH_TITLE: u32 = 0xFFF6C445; // ámbar
+const SH_TITLE: u32 = 0xFFF6C445; // ambar
 const SH_LABEL: u32 = 0xFF00F0FF; // cian
 const SH_VALUE: u32 = 0xFFE6EDF7; // texto
 
@@ -212,15 +212,15 @@ impl L {
         }
     }
     /// Rellena con espacios hasta la columna `col`. Es lo que mantiene las
-    /// etiquetas alineadas sin contar caracteres a mano en cada línea.
+    /// etiquetas alineadas sin contar caracteres a mano en cada linea.
     fn col(&mut self, col: usize) {
         while self.o < col && self.o < self.b.len() { self.b[self.o] = b' '; self.o += 1; }
     }
-    /// Un tamaño en la unidad que se entiende, con dos decimales.
+    /// Un tamano en la unidad que se entiende, con dos decimales.
     ///
     /// Sin coma flotante: la parte fraccionaria se saca multiplicando el resto
-    /// por 100 antes de dividir. En Ring 0 no hay `f64` que valga — y aunque
-    /// lo hubiera, el estado SSE de la tarea no se preserva todavía.
+    /// por 100 antes de dividir. En Ring 0 no hay `f64` que valga -- y aunque
+    /// lo hubiera, el estado SSE de la tarea no se preserva todavia.
     ///
     /// Unidades binarias (1 KiB = 1024 B) porque es lo que cuenta el
     /// asignador: sus marcos son de 4096 bytes, no de 4000.
@@ -258,21 +258,21 @@ fn row(label: &str, build: impl FnOnce(&mut L)) {
     l.txt(label);
     // Un espacio SIEMPRE, y luego la columna. Rellenar solo hasta la columna 10
     // dejaba pegados los valores de las etiquetas de 9 letras: en pantalla
-    // salía "particion3" y "generacion1", que se leen como una sola palabra.
+    // salia "particion3" y "generacion1", que se leen como una sola palabra.
     l.txt(" ");
     l.col(12);
     build(&mut l);
     // La etiqueta va en cian y el valor en blanco, pero el panel pinta una
-    // línea de un solo color: se elige el del VALOR, que es lo que se lee.
+    // linea de un solo color: se elige el del VALOR, que es lo que se lee.
     dashboard_log_color(l.as_str(), SH_VALUE);
     crate::ring0::dev::console::serial_write(l.as_str());
     crate::ring0::dev::console::serial_write("\n");
 }
 
 // Mirror the current in-progress shell line to the framebuffer's prompt area,
-// con CURSOR PARPADEANTE. Antes se repintaba en CADA iteración del loop del
-// shell (limpiar+dibujar sin cambio) → ese era el ghosting ocasional del
-// prompt. Ahora solo repinta cuando: cambia la línea, parpadea el cursor, o
+// con CURSOR PARPADEANTE. Antes se repintaba en CADA iteracion del loop del
+// shell (limpiar+dibujar sin cambio) -> ese era el ghosting ocasional del
+// prompt. Ahora solo repinta cuando: cambia la linea, parpadea el cursor, o
 // hubo un clear. Pantalla estable + cursor vivo.
 fn dash_prompt(line: &str, cursor: usize) {
     if !crate::info::has_fb() { return; }
@@ -284,8 +284,8 @@ fn dash_prompt(line: &str, cursor: usize) {
     static mut LAST_BLINK: bool = false;
     static mut LAST_GEN: u32 = u32::MAX;
     static mut LAST_LOCKS: u8 = 0xFF;
-    // El estado de los bloqueos entra en la firma: al pulsar Bloq Mayús la
-    // línea no cambia, pero el indicador sí — y hay que repintarlo.
+    // El estado de los bloqueos entra en la firma: al pulsar Bloq Mayus la
+    // linea no cambia, pero el indicador si -- y hay que repintarlo.
     let (caps, num) = crate::ring0::dev::keyboard::lock_state();
     let locks = (caps as u8) | ((num as u8) << 1);
     unsafe {
@@ -295,8 +295,8 @@ fn dash_prompt(line: &str, cursor: usize) {
         LAST_N = n; LAST_CUR = cursor; LAST_BLINK = blink; LAST_GEN = gen; LAST_LOCKS = locks;
     }
     splash::splash_dashboard_prompt(line, cursor, blink);
-    // Indicadores a la derecha de la barra: distribución activa y bloqueos.
-    // Los LEDs físicos de este teclado no responden; la pantalla nunca miente.
+    // Indicadores a la derecha de la barra: distribucion activa y bloqueos.
+    // Los LEDs fisicos de este teclado no responden; la pantalla nunca miente.
     splash::splash_status_right(crate::ring0::dev::keyboard::layout_name(), caps, num);
 }
 
@@ -305,19 +305,19 @@ fn shell_prompt() {
     dash_prompt("", 0);
 }
 
-/// Generación de pantalla: se incrementa en cada limpieza. Los paneles de fila
+/// Generacion de pantalla: se incrementa en cada limpieza. Los paneles de fila
 /// FIJA (heartbeat, usb) la comparan para FORZAR un repintado tras un clear,
-/// aunque sus valores no hayan cambiado — si no, la detección de cambios los
-/// dejaría en blanco para siempre después de limpiar (bug real observado).
+/// aunque sus valores no hayan cambiado -- si no, la deteccion de cambios los
+/// dejaria en blanco para siempre despues de limpiar (bug real observado).
 static mut SCREEN_GEN: u32 = 0;
 
-/// Generación de pantalla actual — CABINA la usa para repintar su cockpit tras
+/// Generacion de pantalla actual -- CABINA la usa para repintar su cockpit tras
 /// un clear (mismo mecanismo anti-ghosting que los paneles fijos).
 pub(crate) fn screen_gen() -> u32 { unsafe { SCREEN_GEN } }
 
-/// Limpia la pantalla y re-dibuja el dashboard vacío (comando `cls` y
+/// Limpia la pantalla y re-dibuja el dashboard vacio (comando `cls` y
 /// auto-limpieza al terminar un proceso). Reinicia el cursor rodante del log
-/// para que el panel arranque de cero, como una terminal recién abierta.
+/// para que el panel arranque de cero, como una terminal recien abierta.
 pub(crate) fn clear_screen() {
     if !crate::info::has_fb() { return; }
     splash::splash_clear();
@@ -329,30 +329,30 @@ pub(crate) fn clear_screen() {
 }
 
 // Los paneles de fila fija `dash_heartbeat` (r3hb, fila 10) y `dash_usb_status`
-// (usb, fila 12) VIVÍAN aquí. CABINA los absorbió: su banda inferior muestra la
-// misma telemetría (ticks/switches/estado de Ring 3/USB detallado) en una vista
-// coherente y con color semántico, y además con la bitácora de eventos que
-// aquellos no tenían. Ya nadie los llamaba — código muerto pintando filas que
-// el log rodante volvía a borrar. Se eliminan: CABINA es el único observador.
+// (usb, fila 12) VIVIAN aqui. CABINA los absorbio: su banda inferior muestra la
+// misma telemetria (ticks/switches/estado de Ring 3/USB detallado) en una vista
+// coherente y con color semantico, y ademas con la bitacora de eventos que
+// aquellos no tenian. Ya nadie los llamaba -- codigo muerto pintando filas que
+// el log rodante volvia a borrar. Se eliminan: CABINA es el unico observador.
 
-/// Último total de tareas visto por el shell, para detectar cuándo un proceso
-/// TERMINÓ (el total baja) y limpiar la pantalla automáticamente.
+/// Ultimo total de tareas visto por el shell, para detectar cuando un proceso
+/// TERMINO (el total baja) y limpiar la pantalla automaticamente.
 static mut LAST_TASK_TOTAL: usize = 0;
 
-// ── Historial de comandos ───────────────────────────────────────────────────
+// -- Historial de comandos ---------------------------------------------------
 //
-// Un anillo de las últimas líneas ejecutadas, recorrible con las flechas
+// Un anillo de las ultimas lineas ejecutadas, recorrible con las flechas
 // arriba/abajo. Sin esto, repetir un comando es volver a teclearlo entero.
 
 const HIST_MAX: usize = 16;
 const HIST_LINE: usize = 64;
 static mut HIST: [[u8; HIST_LINE]; HIST_MAX] = [[0; HIST_LINE]; HIST_MAX];
 static mut HIST_LEN: [usize; HIST_MAX] = [0; HIST_MAX];
-static mut HIST_COUNT: usize = 0; // cuántas líneas hay (tope HIST_MAX)
-static mut HIST_HEAD: usize = 0;  // dónde se escribe la siguiente
+static mut HIST_COUNT: usize = 0; // cuantas lineas hay (tope HIST_MAX)
+static mut HIST_HEAD: usize = 0;  // donde se escribe la siguiente
 
-/// Guarda una línea en el historial. No repite la inmediatamente anterior:
-/// pulsar Enter tres veces sobre el mismo comando no debería llenar el
+/// Guarda una linea en el historial. No repite la inmediatamente anterior:
+/// pulsar Enter tres veces sobre el mismo comando no deberia llenar el
 /// historial de copias.
 fn hist_push(line: &[u8]) {
     if line.is_empty() || line.len() > HIST_LINE { return; }
@@ -368,7 +368,7 @@ fn hist_push(line: &[u8]) {
     }
 }
 
-/// Entrada `back` posiciones hacia atrás (1 = la última ejecutada).
+/// Entrada `back` posiciones hacia atras (1 = la ultima ejecutada).
 fn hist_get(back: usize) -> Option<&'static [u8]> {
     unsafe {
         if back == 0 || back > HIST_COUNT { return None; }
@@ -377,17 +377,17 @@ fn hist_get(back: usize) -> Option<&'static [u8]> {
     }
 }
 
-/// Lee una línea del teclado con edición completa: cursor, historial y los
+/// Lee una linea del teclado con edicion completa: cursor, historial y los
 /// atajos de Ctrl de toda la vida.
 ///
-/// Devuelve `(largo, cancelada)`; cancelada = el usuario pulsó Ctrl+C.
+/// Devuelve `(largo, cancelada)`; cancelada = el usuario pulso Ctrl+C.
 fn shell_read_line(buf: &mut [u8]) -> usize {
     use crate::ring0::dev::keyboard as kb;
-    let mut n = 0;     // largo de la línea
-    let mut cur = 0;   // posición del cursor dentro de la línea
-    let mut hist_at = 0; // 0 = línea nueva; >0 = navegando el historial
+    let mut n = 0;     // largo de la linea
+    let mut cur = 0;   // posicion del cursor dentro de la linea
+    let mut hist_at = 0; // 0 = linea nueva; >0 = navegando el historial
 
-    // Inserta un byte en la posición del cursor, desplazando lo que haya.
+    // Inserta un byte en la posicion del cursor, desplazando lo que haya.
     fn insert(buf: &mut [u8], n: &mut usize, cur: &mut usize, c: u8) {
         if *n >= buf.len() { return; }
         let mut i = *n;
@@ -406,8 +406,8 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
     }
 
     loop {
-        // Auto-limpieza: si un proceso terminó (el total de tareas bajó) y NO
-        // estás escribiendo (línea vacía), limpia la pantalla — como una
+        // Auto-limpieza: si un proceso termino (el total de tareas bajo) y NO
+        // estas escribiendo (linea vacia), limpia la pantalla -- como una
         // terminal que se refresca al acabar el programa. Nunca borra a media
         // escritura (solo con n==0).
         let (total, _) = crate::ring0::task::scheduler::counts();
@@ -419,24 +419,24 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
             LAST_TASK_TOTAL = total;
         }
         dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""), cur);
-        // CABINA — cockpit omnisciente en la banda inferior.
+        // CABINA -- cockpit omnisciente en la banda inferior.
         crate::ring0::cabina::render_hud();
 
         // Entrada: serial (COM1), teclado USB o PS/2, lo que tenga un byte.
         //
-        // ★ El SERIAL nunca se cede. Es el cable del que depura, y sigue
-        // hablando aunque Ring 3 sea dueño de la pantalla y del teclado — que
-        // es justo cuando más falta hace.
+        // * El SERIAL nunca se cede. Es el cable del que depura, y sigue
+        // hablando aunque Ring 3 sea dueno de la pantalla y del teclado -- que
+        // es justo cuando mas falta hace.
         let mut byte = crate::ring0::dev::console::serial_read_byte();
-        // ★ El teclado FÍSICO sí. Si un proceso reclamó `KIND_INPUT`, las
+        // * El teclado FISICO si. Si un proceso reclamo `KIND_INPUT`, las
         // teclas son suyas y este shell no las toca: los dos drenan la MISMA
-        // cola, así que leer aquí no sería "leer también", sería robarle letras
-        // sueltas a la caja. Cedido es cedido, también para el que la cedió.
+        // cola, asi que leer aqui no seria "leer tambien", seria robarle letras
+        // sueltas a la caja. Cedido es cedido, tambien para el que la cedio.
         if byte.is_none() && !crate::ring0::obj::input::cedido() {
             byte = crate::ring0::dev::usb::poll_ascii();
             if byte.is_none() {
                 // PS/2 i8042 (mudo post-EBS en esta placa). Se conserva por si
-                // algún día reviviera (adaptador PS/2, otra placa).
+                // algun dia reviviera (adaptador PS/2, otra placa).
                 if let Some((_raw, ascii)) = kb::poll_event() {
                     byte = ascii;
                 }
@@ -465,7 +465,7 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
             kb::KEY_HOME  => { cur = 0; }
             kb::KEY_END   => { cur = n; }
             kb::KEY_UP => {
-                // Hacia atrás en el historial.
+                // Hacia atras en el historial.
                 if let Some(h) = hist_get(hist_at + 1) {
                     hist_at += 1;
                     n = h.len().min(buf.len());
@@ -482,7 +482,7 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
                         cur = n;
                     }
                 } else {
-                    // Se acabó el historial: vuelta a la línea en blanco.
+                    // Se acabo el historial: vuelta a la linea en blanco.
                     hist_at = 0;
                     n = 0;
                     cur = 0;
@@ -490,19 +490,19 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
             }
             0x01 => { cur = 0; }              // Ctrl+A: al principio
             0x05 => { cur = n; }              // Ctrl+E: al final
-            0x03 => {                          // Ctrl+C: cancelar la línea
+            0x03 => {                          // Ctrl+C: cancelar la linea
                 crate::ring0::dev::console::serial_write("^C\n");
                 return 0;
             }
             0x0C => { clear_screen(); }        // Ctrl+L: limpiar pantalla
-            0x15 => { n = 0; cur = 0; }        // Ctrl+U: borrar la línea entera
+            0x15 => { n = 0; cur = 0; }        // Ctrl+U: borrar la linea entera
             0x0B => { n = cur; }               // Ctrl+K: borrar hasta el final
             0x17 => {                          // Ctrl+W: borrar la palabra
                 while cur > 0 && buf[cur - 1] == b' ' { erase(buf, &mut n, &mut cur); }
                 while cur > 0 && buf[cur - 1] != b' ' { erase(buf, &mut n, &mut cur); }
             }
-            // Imprimible = ASCII visible O byte Latin-1 alto (ñ, á, ¿, ...).
-            // El teclado español entrega un byte por carácter y el font sabe
+            // Imprimible = ASCII visible O byte Latin-1 alto (n, a, , ...).
+            // El teclado espanol entrega un byte por caracter y el font sabe
             // dibujarlos: dejarlos pasar es todo lo que hace falta.
             c if c >= 0x20 && c != 0x7f && !kb::is_nav(c) => {
                 insert(buf, &mut n, &mut cur, c);
@@ -514,9 +514,9 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
 }
 
 fn shell_help() {
-    // Por categorías y con las columnas alineadas por el mismo constructor que
+    // Por categorias y con las columnas alineadas por el mismo constructor que
     // usan `info` y `disk`: antes cada comando alineaba a ojo con espacios
-    // contados a mano, y bastaba una palabra más larga para torcer la columna.
+    // contados a mano, y bastaba una palabra mas larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
     row("sistema", |l| l.txt("info  cpu  mem  tasks  disk  ls  estratos  cabina  hist"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
@@ -526,9 +526,9 @@ fn shell_help() {
     row("ayuda", |l| l.txt("help"));
 }
 
-/// `disk` — qué disco tiene BMO delante y qué hay en él.
+/// `disk` -- que disco tiene BMO delante y que hay en el.
 ///
-/// La tabla de particiones es cómo el kernel RECONOCE su disco: no se fía del
+/// La tabla de particiones es como el kernel RECONOCE su disco: no se fia del
 /// orden en que el PCI enumere ni de que el firmware repita el mismo orden dos
 /// veces. El disco propio es el que lleva estas particiones y no otras.
 fn shell_disk() {
@@ -549,9 +549,9 @@ fn shell_disk() {
         while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
     }
 
-    // Quién es el disco, según él mismo. Con tres discos en la máquina y el
-    // sistema del dueño en uno de ellos, esta línea es la que autoriza (o no)
-    // a escribir algún día.
+    // Quien es el disco, segun el mismo. Con tres discos en la maquina y el
+    // sistema del dueno en uno de ellos, esta linea es la que autoriza (o no)
+    // a escribir algun dia.
     {
         let mut b = [0u8; 80];
         let mut o = 0usize;
@@ -591,7 +591,7 @@ fn shell_disk() {
         txt(&mut b, &mut o, " ");
         dec(&mut b, &mut o, p.index as u64, 2);
         dec(&mut b, &mut o, p.first_lba, 12);
-        // Sectores de 512 B → GiB: >>21 es dividir entre 2 Mi sectores.
+        // Sectores de 512 B -> GiB: >>21 es dividir entre 2 Mi sectores.
         dec(&mut b, &mut o, p.sectors() >> 21, 9);
         txt(&mut b, &mut o, "  ");
         let tipo = if p.is_esp() { "ESP/boot " }
@@ -601,8 +601,8 @@ fn shell_disk() {
         txt(&mut b, &mut o, p.name_str());
         if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
     }
-    // El veredicto del gate, en palabras. Es la línea que decide si este disco
-    // se puede escribir, así que se pinta siempre — diga que sí o que no.
+    // El veredicto del gate, en palabras. Es la linea que decide si este disco
+    // se puede escribir, asi que se pinta siempre -- diga que si o que no.
     {
         let mut b = [0u8; 80];
         let mut o = 0usize;
@@ -623,11 +623,11 @@ fn shell_disk() {
     }
 }
 
-/// `cabina` — vuelca la bitácora de vuelo a disco.
+/// `cabina` -- vuelca la bitacora de vuelo a disco.
 ///
-/// Es el punto donde todo lo demás cobra sentido: hasta ahora CABINA lo veía
+/// Es el punto donde todo lo demas cobra sentido: hasta ahora CABINA lo veia
 /// todo y lo olvidaba al apagar. Un registrador que solo existe mientras vuela
-/// el avión no sirve para investigar la caída.
+/// el avion no sirve para investigar la caida.
 fn shell_cabina() {
     use crate::ring0::fsys::fs;
     if !fs::data_mounted() {
@@ -655,15 +655,15 @@ fn shell_cabina() {
     if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
 }
 
-/// `ls` — recorre `EFI\BOOT\BOOTX64.EFI` de la partición de arranque y lo lee.
+/// `ls` -- recorre `EFI\BOOT\BOOTX64.EFI` de la particion de arranque y lo lee.
 ///
-/// Lo que esto demuestra: que el camino entero —AHCI, GPT, FAT32, directorios,
-/// cadena de clústeres— funciona de punta a punta contra un archivo real.
+/// Lo que esto demuestra: que el camino entero --AHCI, GPT, FAT32, directorios,
+/// cadena de clusteres-- funciona de punta a punta contra un archivo real.
 ///
-/// Lo que NO demuestra: que ese archivo sea el nuestro. La versión anterior
+/// Lo que NO demuestra: que ese archivo sea el nuestro. La version anterior
 /// remataba con "es un ejecutable UEFI: SOY YO" a partir de la firma `MZ`, que
-/// la lleva CUALQUIER ejecutable de Windows. En este disco la partición de
-/// arranque es la ESP de 0,6 GB que comparte con el sistema del dueño, así que
+/// la lleva CUALQUIER ejecutable de Windows. En este disco la particion de
+/// arranque es la ESP de 0,6 GB que comparte con el sistema del dueno, asi que
 /// bien puede ser su cargador. Se dice lo que se sabe.
 fn shell_ls() {
     use crate::ring0::fsys::fs;
@@ -675,7 +675,7 @@ fn shell_ls() {
     dashboard_log_color("== volumen de arranque ==", SH_TITLE);
     row("formato", |l| { l.txt(fs::fs_name()); l.txt("  LBA "); l.dec(fs::mounted_lba()); l.txt("  solo lectura"); });
 
-    // Los nombres van en 8.3 crudo: 8 de nombre + 3 de extensión, con
+    // Los nombres van en 8.3 crudo: 8 de nombre + 3 de extension, con
     // espacios de relleno. Feo, pero es como FAT los guarda en disco.
     let efi = match fs::find_dir(b"EFI        ") {
         Some(c) => c,
@@ -685,7 +685,7 @@ fn shell_ls() {
         Some(c) => c,
         None => { s_log("[fs] no encuentro EFI\\BOOT"); return; }
     };
-    // ★ Y buscar el archivo DENTRO de `boot`, no en la raiz. El primer
+    // * Y buscar el archivo DENTRO de `boot`, no en la raiz. El primer
     // intento encontro los dos directorios y luego pregunto por el archivo en
     // la raiz de todas formas: tenia el cluster correcto en la mano y lo tiro.
     let (cluster, size) = match fs::find_in(b"BOOTX64 EFI", boot) {
@@ -709,10 +709,10 @@ fn shell_ls() {
     }
 }
 
-/// `cpu` — qué estado extendido tiene este procesador y si el perfil acierta.
+/// `cpu` -- que estado extendido tiene este procesador y si el perfil acierta.
 ///
-/// La pregunta que responde: **¿hay registros que el cambio de contexto está
-/// perdiendo hoy?** Todos los números salen de `CPUID` hoja 0xD; el perfil solo
+/// La pregunta que responde: **hay registros que el cambio de contexto esta
+/// perdiendo hoy?** Todos los numeros salen de `CPUID` hoja 0xD; el perfil solo
 /// sirve para avisar si el silicio no es el que esperaba.
 fn shell_cpu() {
     use crate::ring0::cpu_vendor::xsave;
@@ -743,7 +743,7 @@ fn shell_cpu() {
         }
     });
 
-    // Cada componente con su tamaño y su sitio, tal como los declara el CPU.
+    // Cada componente con su tamano y su sitio, tal como los declara el CPU.
     for c in inf.comps() {
         let mut l = L::new();
         l.txt("   bit ");
@@ -760,7 +760,7 @@ fn shell_cpu() {
     // El veredicto contra el perfil, y el aviso que justifica todo esto.
     row("perfil dice", |l| { l.txt("0x"); l.hex(p.xsave_componentes, 4); l.txt("   area "); l.dec(p.xsave_area as u64); l.txt(" B"); });
     // XCR0 aparte: lo habilitado no es lo soportado, y este lo pone el firmware,
-    // no el kernel — es el unico de los tres que puede moverse por debajo.
+    // no el kernel -- es el unico de los tres que puede moverse por debajo.
     row("perfil xcr0", |l| { l.txt("0x"); l.hex(p.xsave_xcr0, 4); l.txt("   habilitado que se espera"); });
     // El MISMO veredicto que dio el arranque. Antes esta linea tenia su propia
     // comparacion y contestaba distinto a la misma pregunta.
@@ -784,10 +784,10 @@ fn shell_cpu() {
     }
 }
 
-/// `estratos` — el estado del volumen propio y su raíz.
+/// `estratos` -- el estado del volumen propio y su raiz.
 ///
 /// Es la primera vez que BMO-X lee un sistema de ficheros **suyo**: FAT32 es
-/// un formato prestado que había que entender; ESTRATOS lo escribió él.
+/// un formato prestado que habia que entender; ESTRATOS lo escribio el.
 fn shell_estratos() {
     use crate::ring0::fsys::estratos as est;
     if !est::is_mounted() {
@@ -802,12 +802,12 @@ fn shell_estratos() {
     row("generacion", |l| { l.dec(sb.generation); l.txt("   bloques "); l.dec(sb.total_blocks); });
     row("log", |l| { l.txt("cabeza en el bloque "); l.dec(sb.log_head); });
 
-    // ── El espacio, que es lo que decide si se puede escribir ──
+    // -- El espacio, que es lo que decide si se puede escribir --
     //
     // Un FS que no sobreescribe se llena AUNQUE nadie cree un archivo: cada
-    // version se queda. Por eso esto no es un adorno del panel — es la
+    // version se queda. Por eso esto no es un adorno del panel -- es la
     // condicion previa al paso 5 del diseno, y el aviso que impide que el
-    // volumen se llene por sorpresa (§9).
+    // volumen se llene por sorpresa (section 9).
     if let Some(oc) = est::ocupacion() {
         row("espacio", |l| {
             l.size(oc.bytes_usados());
@@ -822,7 +822,7 @@ fn shell_estratos() {
             l.txt("   ");
             l.txt(oc.nivel().nombre());
         });
-        // Lo que de verdad contesta "¿cuando hara falta el recolector?": no un
+        // Lo que de verdad contesta "cuando hara falta el recolector?": no un
         // porcentaje, sino cuantas VERSIONES mas caben. Con 414 GiB la
         // respuesta son millones, y por eso el GC es "algun dia".
         row("caben", |l| {
@@ -837,8 +837,8 @@ fn shell_estratos() {
             );
         }
     }
-    // El gate del diseño: si el volumen no nació aquí, se dice EN ALTO. Hoy
-    // solo se lee, pero el día que se escriba esta línea es la que decide.
+    // El gate del diseno: si el volumen no nacio aqui, se dice EN ALTO. Hoy
+    // solo se lee, pero el dia que se escriba esta linea es la que decide.
     row("identidad", |l| {
         l.txt(if est::identidad_ok() { "es de ESTE disco" } else { "NO nacio en este disco (clonado?)" });
     });
@@ -873,15 +873,15 @@ fn shell_estratos() {
     }
 }
 
-/// `run <ruta>` — carga un `.bex` del disco y lo ejecuta.
+/// `run <ruta>` -- carga un `.bex` del disco y lo ejecuta.
 ///
 /// Es el punto donde el trabajo del disco cobra sentido. Hasta ahora los
-/// programas Ring 3 vivían DENTRO del kernel (`include_bytes!`): cambiar un
+/// programas Ring 3 vivian DENTRO del kernel (`include_bytes!`): cambiar un
 /// "hola mundo" obligaba a recompilar el sistema operativo entero y
-/// reflashear. Ahora se copia el `.bex` a la partición desde el anfitrión y se
+/// reflashear. Ahora se copia el `.bex` a la particion desde el anfitrion y se
 /// escribe `run c/holac.bex`.
 ///
-/// El buffer es estático y no local: un `.bex` son varios KiB y la pila del
+/// El buffer es estatico y no local: un `.bex` son varios KiB y la pila del
 /// kernel son 64 KiB para todo.
 fn shell_run(arg: &[u8]) {
     use crate::ring0::fsys::estratos as est;
@@ -892,7 +892,7 @@ fn shell_run(arg: &[u8]) {
         Err(_) => { s_log("[run] la ruta tiene bytes que no son texto"); return; }
     };
 
-    // Buscar el archivo, comprobar la firma y admitirlo ya NO se hace aquí: lo
+    // Buscar el archivo, comprobar la firma y admitirlo ya NO se hace aqui: lo
     // hace `lanzar::ruta`, que es EL MISMO camino que usa la caja de Ring 3.
     // Tener dos versiones del gate de firma era tener dos versiones que se
     // separan en cuanto alguien toque una. Al shell le queda lo suyo, que es
@@ -920,10 +920,10 @@ fn shell_run(arg: &[u8]) {
     dashboard_log_color("== run ==", SH_TITLE);
     row("archivo", |l| { l.txt(path); });
 
-    // Origen, tamaño y firma sólo si se llegó a LEER el archivo. Con
-    // `SinHueco` u `Ocupado` no se abrió nada, y pintar entonces "FAT32 no
-    // puede llevar firma" sería contestar una pregunta que no se hizo — el
-    // informe hablaría de un archivo que nadie miró.
+    // Origen, tamano y firma solo si se llego a LEER el archivo. Con
+    // `SinHueco` u `Ocupado` no se abrio nada, y pintar entonces "FAT32 no
+    // puede llevar firma" seria contestar una pregunta que no se hizo -- el
+    // informe hablaria de un archivo que nadie miro.
     if inf.bytes > 0 {
         row("origen", |l| { l.txt(inf.origen); });
         row("leido", |l| { l.size(inf.bytes as u64); });
@@ -931,10 +931,10 @@ fn shell_run(arg: &[u8]) {
             Some(est::Firma::Cuadra) => row("firma", |l| l.txt("cuadra con el contenido")),
             Some(est::Firma::NoCuadra) => row("firma", |l| l.txt("NO CUADRA: el archivo no es el que se guardo")),
             Some(est::Firma::Ausente) => row("firma", |l| l.txt("el nodo no lleva :firma")),
-            // Honestidad sobre la asimetría: FAT32 no tiene atributos con
-            // nombre, así que un binario de ahí no PUEDE traer su firma
+            // Honestidad sobre la asimetria: FAT32 no tiene atributos con
+            // nombre, asi que un binario de ahi no PUEDE traer su firma
             // pegada. No es que no se compruebe por pereza: es que no hay
-            // dónde guardarla.
+            // donde guardarla.
             None => row("firma", |l| l.txt("FAT32 no puede llevar firma (sin atributos)")),
         }
     }
@@ -952,7 +952,7 @@ fn shell_run(arg: &[u8]) {
     }
 }
 
-/// `hist` — la lista de comandos ejecutados, numerada. Lo mismo que recorren
+/// `hist` -- la lista de comandos ejecutados, numerada. Lo mismo que recorren
 /// las flechas arriba/abajo, pero de un vistazo.
 fn shell_hist() {
     let count = unsafe { HIST_COUNT };
@@ -976,9 +976,9 @@ fn shell_hist() {
     }
 }
 
-/// `layout` — muestra o cambia la distribución del teclado EN CALIENTE.
-/// El scancode dice qué tecla se pulsó, no qué letra es; si lo que sale no
-/// coincide con lo impreso en tus teclas, prueba otra aquí mismo.
+/// `layout` -- muestra o cambia la distribucion del teclado EN CALIENTE.
+/// El scancode dice que tecla se pulso, no que letra es; si lo que sale no
+/// coincide con lo impreso en tus teclas, prueba otra aqui mismo.
 fn shell_layout(arg: &[u8]) {
     use crate::ring0::dev::keyboard::{self, Layout};
     let chosen = match arg {
@@ -1003,10 +1003,10 @@ fn shell_layout(arg: &[u8]) {
     if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
 }
 
-/// `info` — el informe completo de la máquina.
+/// `info` -- el informe completo de la maquina.
 ///
-/// Antes escribía TODO al puerto serie y al panel no llegaba nada: en una
-/// máquina sin cable serie el comando parecía no hacer nada. Ahora cada línea
+/// Antes escribia TODO al puerto serie y al panel no llegaba nada: en una
+/// maquina sin cable serie el comando parecia no hacer nada. Ahora cada linea
 /// va a los dos sitios.
 fn shell_info(ctx: &BootContext) {
     use crate::ring0::mm::phys;
@@ -1014,7 +1014,7 @@ fn shell_info(ctx: &BootContext) {
 
     dashboard_log_color("== BMO-X : informe del sistema ==", SH_TITLE);
 
-    // ── CPU ──
+    // -- CPU --
     let p = crate::ring0::cpu_vendor::profile::active();
     row("cpu", |l| { l.txt(p.vendor); l.txt(" "); l.txt(p.name); });
     row("uarch", |l| { l.txt(p.microarch); l.txt("  familia "); l.txt(p.family_model); });
@@ -1028,12 +1028,12 @@ fn shell_info(ctx: &BootContext) {
         l.txt(" GHz");
     });
 
-    // ── MEMORIA: lo que hay, lo que se está comiendo y en qué ──
+    // -- MEMORIA: lo que hay, lo que se esta comiendo y en que --
     //
     // `used` es lo que el asignador de marcos NO tiene disponible: la imagen
-    // del kernel, su bitmap, las pilas, las tablas de páginas, los buffers de
-    // DMA y las regiones que el firmware declaró inutilizables. No se desglosa
-    // más porque el asignador no lo sabe, y un desglose inventado sería peor
+    // del kernel, su bitmap, las pilas, las tablas de paginas, los buffers de
+    // DMA y las regiones que el firmware declaro inutilizables. No se desglosa
+    // mas porque el asignador no lo sabe, y un desglose inventado seria peor
     // que ninguno.
     let (total_frames, free_frames) = phys::stats();
     let total_b = total_frames * PAGE;
@@ -1045,9 +1045,9 @@ fn shell_info(ctx: &BootContext) {
     row("usada", |l| { l.size(used_b); l.txt("   "); l.pct(used_b, total_b); l.txt("   "); l.dec(total_frames - free_frames); l.txt(" marcos"); });
     row("libre", |l| { l.size(free_b); l.txt("   "); l.pct(free_b, total_b); l.txt("   "); l.dec(free_frames); l.txt(" marcos"); });
 
-    // El tamaño REAL del kernel en RAM: desde donde lo linkea el script hasta
+    // El tamano REAL del kernel en RAM: desde donde lo linkea el script hasta
     // el final de su .bss (que incluye la pila de 64 KiB). Es un dato medido,
-    // no el tamaño del archivo.
+    // no el tamano del archivo.
     extern "C" { static __bss_end: u8; }
     let kernel_end = unsafe { &__bss_end as *const u8 as u64 };
     row("kernel", |l| { l.size(kernel_end.saturating_sub(0x400000)); l.txt("   en 0x400000"); });
@@ -1057,7 +1057,7 @@ fn shell_info(ctx: &BootContext) {
         row("video", |l| { l.size(fs * fh * 4); l.txt("   "); l.dec(fw); l.txt("x"); l.dec(fh); l.txt("x32  fb 0x"); l.hex(unsafe { crate::info::FB_ADDR }, 8); });
     }
 
-    // ── ALMACENAMIENTO ──
+    // -- ALMACENAMIENTO --
     {
         use crate::ring0::dev::disk;
         dashboard_log_color("== almacenamiento ==", SH_TITLE);
@@ -1078,7 +1078,7 @@ fn shell_info(ctx: &BootContext) {
         }
     }
 
-    // ── PROCESOS Y ARRANQUE ──
+    // -- PROCESOS Y ARRANQUE --
     dashboard_log_color("== sistema ==", SH_TITLE);
     let (tasks, runnable) = crate::ring0::task::scheduler::counts();
     row("tareas", |l| { l.dec(tasks as u64); l.txt(" totales   "); l.dec(runnable as u64); l.txt(" ejecutables"); });
@@ -1131,11 +1131,11 @@ fn shell_splash() {
     s_log("[splash] done");
 }
 
-/// `bex` — la tabla de programas que este kernel ha ejecutado.
+/// `bex` -- la tabla de programas que este kernel ha ejecutado.
 ///
-/// El log cuenta la historia según pasa y se la lleva el desplazamiento; esto
-/// es la FOTO, consultable en cualquier momento: qué se admitió, de qué
-/// tamaño, dónde entra, con qué pid, cómo acabó y cuánto llegó a escribir.
+/// El log cuenta la historia segun pasa y se la lleva el desplazamiento; esto
+/// es la FOTO, consultable en cualquier momento: que se admitio, de que
+/// tamano, donde entra, con que pid, como acabo y cuanto llego a escribir.
 fn shell_bex() {
     let progs = crate::ring0::task::proc::programs();
     if progs.is_empty() {
@@ -1200,7 +1200,7 @@ fn shell_bex() {
 
 /// F1 demo task: runs preempted by the timer, parks on a WAIT deadline,
 /// wakes, and exits through the reaper. Watch the interleaving with the
-/// shell prompt on serial — that interleaving IS the context switch.
+/// shell prompt on serial -- that interleaving IS the context switch.
 extern "C" fn ktest_main(arg: u64) -> ! {
     use crate::ring0::dev::console::{serial_write, serial_write_u64};
     serial_write("[ktest] start tid=");
@@ -1239,12 +1239,12 @@ fn shell_ktest() {
     }
 }
 
-/// **Despierta los otros núcleos y cuenta cuántos contestan.**
+/// **Despierta los otros nucleos y cuenta cuantos contestan.**
 ///
-/// ⚠️ Es una orden a mano y no un paso del arranque **a propósito**. El
-/// trampolín corre en modo real, antes de que exista nada, y no lo ha ejecutado
-/// ningún CPU todavía. Si está mal, lo que se cuelga es este comando y no la
-/// máquina al encenderla; la salida es un reinicio a botón. Ver
+/// [!] Es una orden a mano y no un paso del arranque **a proposito**. El
+/// trampolin corre en modo real, antes de que exista nada, y no lo ha ejecutado
+/// ningun CPU todavia. Si esta mal, lo que se cuelga es este comando y no la
+/// maquina al encenderla; la salida es un reinicio a boton. Ver
 /// `plat/smp.rs` y `docs/SMP_MAESTRO.md`.
 fn shell_smp() {
     dashboard_log_color("== smp ==", SH_TITLE);
@@ -1263,10 +1263,10 @@ fn shell_smp() {
 
     row("   ", |l| l.txt("despertando... (si se queda aqui, reinicia a boton)"));
 
-    // ★ Una línea POR NÚCLEO y antes de mandarle nada. Es lo único de este
-    // comando que puede colgarse, y así el cuelgue deja dicho en cuál fue.
+    // * Una linea POR NUCLEO y antes de mandarle nada. Es lo unico de este
+    // comando que puede colgarse, y asi el cuelgue deja dicho en cual fue.
     // El censo se pinta ANTES de llamar a nadie: si algo cuelga, ya se sabe a
-    // quién se iba a llamar y con qué lista.
+    // quien se iba a llamar y con que lista.
     if let Some(c) = crate::ring0::plat::madt::censo() {
         row("firmware", |l| {
             l.dec(c.ids().len() as u64);
@@ -1281,8 +1281,8 @@ fn shell_smp() {
         row("firmware", |l| l.txt("sin MADT: se supondran los APIC IDs"));
     }
 
-    // El shell de Ring 0 despierta a TODOS: aquí no hay línea que escribir un
-    // argumento, y quien llega a este shell es porque el escritorio no arrancó.
+    // El shell de Ring 0 despierta a TODOS: aqui no hay linea que escribir un
+    // argumento, y quien llega a este shell es porque el escritorio no arranco.
     let (vivos, esperados) = crate::ring0::plat::smp::despertar(u32::MAX, |id| {
         row("  ->", |l| {
             l.txt("APIC ");
@@ -1291,14 +1291,14 @@ fn shell_smp() {
     });
     let (_, mascara) = crate::ring0::plat::smp::vivos();
 
-    // El BSP cuenta: es un núcleo que está corriendo esto mismo.
+    // El BSP cuenta: es un nucleo que esta corriendo esto mismo.
     row("en pie", |l| {
         l.dec(vivos as u64 + 1);
         l.txt(" / ");
         l.dec(esperados as u64 + 1);
         l.txt(" hilos");
     });
-    // ★ Cuáles, y no sólo cuántos: "faltan dos" no dice a cuál mirar.
+    // * Cuales, y no solo cuantos: "faltan dos" no dice a cual mirar.
     row("mascara", |l| {
         l.txt("APIC IDs que contestaron: ");
         l.hex(mascara as u64, 8);
@@ -1315,9 +1315,9 @@ fn shell_mem() {
     let free_b = free * PAGE;
     let used_b = total_b.saturating_sub(free_b);
 
-    // Antes esto pintaba en el panel la línea "[mem] stats printed on serial",
-    // que es la definición de un comando inútil: te dice que la información
-    // existe en un sitio donde no estás mirando.
+    // Antes esto pintaba en el panel la linea "[mem] stats printed on serial",
+    // que es la definicion de un comando inutil: te dice que la informacion
+    // existe en un sitio donde no estas mirando.
     dashboard_log_color("== memoria ==", SH_TITLE);
     row("total", |l| { l.size(total_b); l.txt("   "); l.dec(total); l.txt(" marcos"); });
     row("usada", |l| { l.size(used_b); l.txt("   "); l.pct(used_b, total_b); });
@@ -1336,8 +1336,8 @@ fn shell_panic() -> ! {
 }
 
 fn shell_reboot() -> ! {
-    // El pulso del 8042 a secas no reiniciaba nada en esta placa —su i8042
-    // solo entrega ruido— asi que el comando se quedaba colgado en el `hlt`
+    // El pulso del 8042 a secas no reiniciaba nada en esta placa --su i8042
+    // solo entrega ruido-- asi que el comando se quedaba colgado en el `hlt`
     // de despues. `reinicio::ahora` prueba 0xCF9, luego el 8042, y si nada
     // funciona provoca un triple fault, que no depende de ningun chipset.
     s_log("[shell] reboot");
@@ -1349,64 +1349,64 @@ fn shell_halt() -> ! {
     loop { unsafe { core::arch::asm!("sti; hlt"); } }
 }
 
-/// Dónde vive el escritorio en el volumen de datos.
+/// Donde vive el escritorio en el volumen de datos.
 ///
 /// Es un CONTRATO, no una constante de conveniencia: quien quiera otro
-/// escritorio deja su `.bex` ahí y arranca. Eso es exactamente lo que NO se
-/// podía hacer mientras el compositor viajaba dentro del kernel.
+/// escritorio deja su `.bex` ahi y arranca. Eso es exactamente lo que NO se
+/// podia hacer mientras el compositor viajaba dentro del kernel.
 ///
-/// ★ `gui` y no `compositor` porque **el nombre tiene que caber en 8.3**. El
+/// * `gui` y no `compositor` porque **el nombre tiene que caber en 8.3**. El
 /// driver FAT32 de `fs.rs` no lee nombres largos y se NIEGA a recortar: un
 /// nombre recortado en silencio abre otro archivo, y en un cargador de
 /// programas eso significa ejecutar otro binario. `compositor` son diez
-/// caracteres; no cabía, y el fallo habría salido como `NameTooLong` después
-/// de copiarlo — o sea, después de creer que ya estaba.
+/// caracteres; no cabia, y el fallo habria salido como `NameTooLong` despues
+/// de copiarlo -- o sea, despues de creer que ya estaba.
 ///
-/// `gui` además es el nombre que ya usa el crate (`bmo-service-gui`) y la
+/// `gui` ademas es el nombre que ya usa el crate (`bmo-service-gui`) y la
 /// etiqueta con la que habla en CABINA. Un nombre, no tres.
 const RUTA_COMPOSITOR: &str = "sys/gui.bex";
 
-/// Arranca el escritorio desde el disco. Va DESPUÉS de montar el volumen de
-/// datos — antes no habría de dónde leerlo.
+/// Arranca el escritorio desde el disco. Va DESPUES de montar el volumen de
+/// datos -- antes no habria de donde leerlo.
 ///
-/// ★ Si arranca, el panel del kernel deja de verse: al reclamar la pantalla el
+/// * Si arranca, el panel del kernel deja de verse: al reclamar la pantalla el
 /// kernel deja de dibujar, y el compositor no termina nunca (si terminara,
-/// `revoke_all` devolvería la pantalla y el panel se repintaría encima). Los
+/// `revoke_all` devolveria la pantalla y el panel se repintaria encima). Los
 /// logs siguen enteros por serie y en CABINA, y un fault de kernel recupera la
 /// pantalla para contarlo.
 ///
-/// ★ Si NO arranca, no pasa nada malo: queda el panel y el shell de Ring 0, que
-/// es un sistema perfectamente usable. Por eso esto no se planta ni reintenta —
-/// pero lo DICE, y dice qué hacer. Un escritorio que no sale sin explicar por
-/// qué manda a alguien a leer código.
-/// El tid del escritorio, para poder preguntar después si sigue vivo.
-/// `0` = no se admitió.
+/// * Si NO arranca, no pasa nada malo: queda el panel y el shell de Ring 0, que
+/// es un sistema perfectamente usable. Por eso esto no se planta ni reintenta --
+/// pero lo DICE, y dice que hacer. Un escritorio que no sale sin explicar por
+/// que manda a alguien a leer codigo.
+/// El tid del escritorio, para poder preguntar despues si sigue vivo.
+/// `0` = no se admitio.
 static mut ESCRITORIO_TID: u32 = 0;
-/// ★ Y su PID, que **no es el mismo número**. `vive()` pregunta por tid (el
-/// hilo) y `uconsole` guarda las líneas por pid (el proceso). Confundirlos aquí
-/// haría que el informe de defunción leyera las últimas palabras de otro — o de
-/// nadie, que es peor, porque parecería que se murió callado.
+/// * Y su PID, que **no es el mismo numero**. `vive()` pregunta por tid (el
+/// hilo) y `uconsole` guarda las lineas por pid (el proceso). Confundirlos aqui
+/// haria que el informe de defuncion leyera las ultimas palabras de otro -- o de
+/// nadie, que es peor, porque pareceria que se murio callado.
 static mut ESCRITORIO_PID: u32 = 0;
 
-/// ¿Se admitió el escritorio y ya no está?
+/// Se admitio el escritorio y ya no esta?
 ///
-/// Admitir no es arrancar: el compositor puede morirse a los pocos ticks —y se
-/// ha muerto— dejando la máquina en el panel del kernel. Hasta ahora eso no lo
-/// decía nadie y había que deducirlo de que la ventana no salía.
+/// Admitir no es arrancar: el compositor puede morirse a los pocos ticks --y se
+/// ha muerto-- dejando la maquina en el panel del kernel. Hasta ahora eso no lo
+/// decia nadie y habia que deducirlo de que la ventana no salia.
 fn escritorio_murio() -> bool {
     let tid = unsafe { ESCRITORIO_TID };
     tid != 0 && !crate::ring0::task::scheduler::vive(tid)
 }
 
-/// Cuántas veces se ha intentado levantar el escritorio.
+/// Cuantas veces se ha intentado levantar el escritorio.
 static mut ESCRITORIO_INTENTOS: u32 = 0;
-/// Tope de relanzamientos automáticos.
+/// Tope de relanzamientos automaticos.
 ///
-/// Dos y no infinitos: un compositor que muere por una condición de carrera del
-/// arranque se levanta al segundo intento, y uno que muere por un bug lo hará
-/// las veces que se le pida. Reintentar sin tope convertiría un fallo visible
-/// en una máquina que parpadea para siempre — y encima borrando su propio log
-/// en cada vuelta. Es la misma lección que los puertos USB.
+/// Dos y no infinitos: un compositor que muere por una condicion de carrera del
+/// arranque se levanta al segundo intento, y uno que muere por un bug lo hara
+/// las veces que se le pida. Reintentar sin tope convertiria un fallo visible
+/// en una maquina que parpadea para siempre -- y encima borrando su propio log
+/// en cada vuelta. Es la misma leccion que los puertos USB.
 const ESCRITORIO_MAX_INTENTOS: u32 = 2;
 
 fn arrancar_escritorio() {
@@ -1416,9 +1416,9 @@ fn arrancar_escritorio() {
     let inf = lanzar::ruta(RUTA_COMPOSITOR);
     match inf.res {
         Ok(tid) => {
-            // ★ Arrancar y no decir su pid es un caso RARO, y por eso mismo
-            // valía la pena distinguirlo: `unwrap_or(0)` lo dejaba en 0, que es
-            // un pid con dueño. A partir de ahí, todo lo que se decida "para el
+            // * Arrancar y no decir su pid es un caso RARO, y por eso mismo
+            // valia la pena distinguirlo: `unwrap_or(0)` lo dejaba en 0, que es
+            // un pid con dueno. A partir de ahi, todo lo que se decida "para el
             // escritorio" mirando `ESCRITORIO_PID` apunta a otro.
             let pid = match inf.pid {
                 Some(p) => p,
@@ -1450,20 +1450,20 @@ fn arrancar_escritorio() {
     }
 }
 
-/// **El informe de defunción del escritorio.**
+/// **El informe de defuncion del escritorio.**
 ///
-/// ★ Antes esto decía *"mira el panico en el log de arriba"*. Y el pánico SÍ
-/// estaba: el manejador del compositor imprime archivo y línea exactos. Sólo que
-/// el log del kernel sigue corriendo, así que para cuando se mira la pantalla
-/// esa línea ya subió y salió — tres arranques seguidos con la respuesta
+/// * Antes esto decia *"mira el panico en el log de arriba"*. Y el panico SI
+/// estaba: el manejador del compositor imprime archivo y linea exactos. Solo que
+/// el log del kernel sigue corriendo, asi que para cuando se mira la pantalla
+/// esa linea ya subio y salio -- tres arranques seguidos con la respuesta
 /// delante y sin poder leerla.
 ///
-/// Ahora se reimprimen **sus últimas palabras**, guardadas por `uconsole`
-/// mientras aún vivía. Un registrador de vuelo que borra la caja negra al
+/// Ahora se reimprimen **sus ultimas palabras**, guardadas por `uconsole`
+/// mientras aun vivia. Un registrador de vuelo que borra la caja negra al
 /// aterrizar no es un registrador de vuelo.
 fn informe_de_defuncion() {
     let tid = unsafe { ESCRITORIO_TID };
-    // ★ Por PID, no por tid. Ver la nota de `ESCRITORIO_PID`.
+    // * Por PID, no por tid. Ver la nota de `ESCRITORIO_PID`.
     let pid = unsafe { ESCRITORIO_PID };
     row("escritorio", |l| {
         l.txt("MURIO tras arrancar, tid ");
@@ -1475,8 +1475,8 @@ fn informe_de_defuncion() {
             row("   |", |l| { l.txt(linea); });
         });
     } else {
-        // Que no dijera nada TAMBIÉN es un dato: significa que se murió antes
-        // de llegar a su primer mensaje, o que ni siquiera entró a CPL3.
+        // Que no dijera nada TAMBIEN es un dato: significa que se murio antes
+        // de llegar a su primer mensaje, o que ni siquiera entro a CPL3.
         row("   |", |l| { l.txt("(nada: murio antes de decir una sola linea)"); });
     }
     row("   relanzar", |l| { l.txt("run "); l.txt(RUTA_COMPOSITOR); });
@@ -1486,14 +1486,14 @@ fn informe_de_defuncion() {
 /// Espera a que los programas de ejemplo de Ring 3 terminen.
 ///
 /// Con tope de tiempo: uno que se cuelgue no puede impedir que arranque el
-/// escritorio. Y con `hlt` en el bucle — girar en vacío aquí sería quitarle al
+/// escritorio. Y con `hlt` en el bucle -- girar en vacio aqui seria quitarle al
 /// planificador el CPU que necesita justo para que esos programas avancen.
 fn esperar_a_los_demos() {
     use crate::ring0::plat::timer;
     let limite = timer::ticks() + 400; // ~400 ms si el tick es de 1 ms
     loop {
         let (_total, listos) = crate::ring0::task::scheduler::counts();
-        // 1 = sólo queda la tarea del kernel. Los demos han acabado.
+        // 1 = solo queda la tarea del kernel. Los demos han acabado.
         if listos <= 1 {
             break;
         }
@@ -1507,20 +1507,20 @@ fn esperar_a_los_demos() {
 }
 
 fn run_shell(ctx: &BootContext) -> ! {
-    // Normalize the i8042 (translation → Set 1, re-enable scanning) so the
+    // Normalize the i8042 (translation -> Set 1, re-enable scanning) so the
     // physical keyboard reaches shell_read_line. No-op if the controller is
     // dead/absent (bounded timeouts inside). El stack USB real (xHCI+HID)
-    // ya despertó en el Acto I de main().
+    // ya desperto en el Acto I de main().
     crate::ring0::dev::keyboard::init();
-    // ★ Si el escritorio se admitió y ya no está, DECIRLO aquí y decir qué
-    // hacer. Estar en este shell después de haber lanzado el compositor no es
-    // lo normal: significa que se murió, y quien lo mira sólo ve un shell.
+    // * Si el escritorio se admitio y ya no esta, DECIRLO aqui y decir que
+    // hacer. Estar en este shell despues de haber lanzado el compositor no es
+    // lo normal: significa que se murio, y quien lo mira solo ve un shell.
     if escritorio_murio() {
         informe_de_defuncion();
-        // ★ Y se vuelve a intentar UNA vez. La entrada a Ring 3 es el estado
-        // normal de esta máquina: quedarse en el shell de Ring 0 porque el
-        // primer intento se cruzó con algo del arranque es conformarse.
-        // Con tope, y diciéndolo — un relanzamiento silencioso convierte un
+        // * Y se vuelve a intentar UNA vez. La entrada a Ring 3 es el estado
+        // normal de esta maquina: quedarse en el shell de Ring 0 porque el
+        // primer intento se cruzo con algo del arranque es conformarse.
+        // Con tope, y diciendolo -- un relanzamiento silencioso convierte un
         // fallo en un misterio.
         if unsafe { ESCRITORIO_INTENTOS } < ESCRITORIO_MAX_INTENTOS {
             row("   reintento", |l| {
@@ -1617,13 +1617,13 @@ pub fn main(ctx: &mut BootContext) {
 
     kbar!(90, 0xFF00_FF00u32); // green @90: past the magenta paint, before s_log
     s_log("[ring0] validating BootContext");
-    // Guardar el `rsdp` — sólo un número, no se lee ninguna tabla aquí. Lo
-    // necesita el censo de la MADT, que lo pide más tarde y desde sitios que no
+    // Guardar el `rsdp` -- solo un numero, no se lee ninguna tabla aqui. Lo
+    // necesita el censo de la MADT, que lo pide mas tarde y desde sitios que no
     // tienen el `BootContext` delante (el manejador de syscall, por ejemplo).
     crate::ring0::plat::madt::recordar(ctx.rsdp);
     if !ctx.is_valid() {
         // Make an invalid BootContext VISIBLE (red @90) instead of a silent
-        // halt — otherwise a magic mismatch looks identical to a hang.
+        // halt -- otherwise a magic mismatch looks identical to a hang.
         kbar!(90, 0xFFFF_0000u32);
         s_log("[ring0] FATAL: BootContext magic mismatch");
         loop { unsafe { core::arch::asm!("hlt"); } }
@@ -1633,17 +1633,17 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::console::serial_write("[ring0] BootContext OK, version=");
     crate::ring0::dev::console::serial_write_u64(ctx.version as u64, 10);
     crate::ring0::dev::console::serial_write("\n");
-    // Primera entrada de la bitácora, ANTES de que exista framebuffer: CABINA
+    // Primera entrada de la bitacora, ANTES de que exista framebuffer: CABINA
     // graba desde el minuto cero y lo muestra cuando haya pantalla. Si el
-    // kernel muere entre aquí y el shell, el anillo ya tiene lo que pasó.
+    // kernel muere entre aqui y el shell, el anillo ya tiene lo que paso.
     crate::ring0::cabina::info("ring0", "BootContext valido, kernel arrancando", ctx.version as u64);
 
     // Kernel-init checkpoints live in the empty band starting at row 140
     // (well below the boot bars that end near row 120), so any new bar is
-    // unmistakably kernel progress — not a repeat of an s1/s2 color.
-    // ★ ANTES que nada que pueda atrapar. Los stubs de trap guardan el estado
-    // extendido con XSAVE en un área de tamaño FIJO, y el tamaño que este CPU
-    // necesita solo lo sabe él. Si no cabe, hay que enterarse AHORA y no
+    // unmistakably kernel progress -- not a repeat of an s1/s2 color.
+    // * ANTES que nada que pueda atrapar. Los stubs de trap guardan el estado
+    // extendido con XSAVE en un area de tamano FIJO, y el tamano que este CPU
+    // necesita solo lo sabe el. Si no cabe, hay que enterarse AHORA y no
     // cuando el primer tick del timer desborde una pila de tarea.
     crate::ring0::cpu_vendor::xsave::init();
     crate::ring0::task::percpu::init_bsp();
@@ -1680,7 +1680,7 @@ pub fn main(ctx: &mut BootContext) {
 
     // Populate the active BMO CPU profile (today: Ryzen 5 5600X).
     // Identity, SMT/CCX topology, cache hierarchy, TSC calibration and
-    // errata/speculation mitigations all live behind the profile —
+    // errata/speculation mitigations all live behind the profile --
     // changing CPU or vendor is a profile swap, never a kernel edit.
     let cpu_profile = crate::ring0::cpu_vendor::active();
     (cpu_profile.init)();
@@ -1742,10 +1742,10 @@ pub fn main(ctx: &mut BootContext) {
     crate::info::init_from(ctx);
     phase0_fb(ctx);
 
-    // ── Intro cinemática (logo → preparando → RING 0 → RING 3) ──────────
-    // Escenas centradas con fundido y transición, al estilo de un arranque
+    // -- Intro cinematica (logo -> preparando -> RING 0 -> RING 3) ----------
+    // Escenas centradas con fundido y transicion, al estilo de un arranque
     // moderno. Al terminar aterrizamos en el dashboard, donde el trabajo
-    // REAL de cada etapa fluye como log (igual que Windows: la animación
+    // REAL de cada etapa fluye como log (igual que Windows: la animacion
     // juega, luego apareces en el escritorio).
     if crate::info::has_fb() {
         splash::boot_intro();
@@ -1756,7 +1756,7 @@ pub fn main(ctx: &mut BootContext) {
     // Aterrizar en el dashboard persistente.
     phase1_ui(ctx);
 
-    // ── Acto I: RING 0 despierta el hardware (log real) ─────────────────
+    // -- Acto I: RING 0 despierta el hardware (log real) -----------------
     // Los encabezados "==" se pintan en cyan (dash_line_color).
     dash_log("== RING 0 : despertando hardware ==");
     s_log("[ring0] cpu Zen 3 perfilado + GDT/IDT propias");
@@ -1776,32 +1776,32 @@ pub fn main(ctx: &mut BootContext) {
         if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
     }
     s_log("[ring0] scheduler preemptivo + capabilities armados");
-    // CABINA abre los ojos y censa el almacenamiento (scan PCI). Va AQUÍ, en el
-    // acto donde el kernel despierta hardware — antes vivía dentro del render y
+    // CABINA abre los ojos y censa el almacenamiento (scan PCI). Va AQUI, en el
+    // acto donde el kernel despierta hardware -- antes vivia dentro del render y
     // clavaba ~65k lecturas de config PCI en el primer frame del cockpit.
     crate::ring0::cabina::boot_probe();
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::dev::usb::init(ctx);
-    // Y el disco: el HBA SATA (no el NVMe — ahi vive el sistema del dueño) y
+    // Y el disco: el HBA SATA (no el NVMe -- ahi vive el sistema del dueno) y
     // su tabla de particiones. Ver dev/disk.rs.
     crate::ring0::dev::disk::init();
     crate::ring0::dev::disk::scan_partitions();
-    // Y el sistema de ficheros: de sectores a ARCHIVOS. Monta la partición de
+    // Y el sistema de ficheros: de sectores a ARCHIVOS. Monta la particion de
     // arranque, que es donde vive el BOOTX64.EFI con el que arrancamos.
     crate::ring0::fsys::fs::mount();
-    // El gate: el disco tiene que decir QUIÉN ES antes de que se le pueda
-    // escribir. Va DESPUÉS de leer la GPT porque una de las pruebas es que la
+    // El gate: el disco tiene que decir QUIEN ES antes de que se le pueda
+    // escribir. Va DESPUES de leer la GPT porque una de las pruebas es que la
     // tabla cuadre con los sectores que el propio disco declara.
     crate::ring0::dev::disk::verify_identity();
-    // Y si convenció, el volumen de datos se monta con escritor. La partición
-    // de arranque sigue montada sin él, y así se queda.
+    // Y si convencio, el volumen de datos se monta con escritor. La particion
+    // de arranque sigue montada sin el, y asi se queda.
     crate::ring0::fsys::fs::mount_data();
-    // Y ESTRATOS, si alguna partición lleva uno. Solo lectura: el módulo no
-    // sabe escribir, así que montarlo no puede estropear nada.
+    // Y ESTRATOS, si alguna particion lleva uno. Solo lectura: el modulo no
+    // sabe escribir, asi que montarlo no puede estropear nada.
     crate::ring0::fsys::estratos::mount();
     dash_log("== RING 0 : hardware al mando ==");
 
-    // ── Acto II: RING 3 — el userspace nace ─────────────────────────────
+    // -- Acto II: RING 3 -- el userspace nace -----------------------------
     dash_log("== RING 3 : userspace ==");
     // Surface the Ring 3 init outcome on the (now cleared) dashboard so the
     // demo's state is visible without serial. If a tid was admitted, the next
@@ -1820,30 +1820,30 @@ pub fn main(ctx: &mut BootContext) {
         if let Ok(s) = core::str::from_utf8(&summary[..off]) { s_log(s); }
     }
 
-    // Y el escritorio, que ya NO viaja dentro del kernel. Va aquí y no en
-    // `spawn_init` por una razón dura: `spawn_init` corre en el Acto I, cuando
+    // Y el escritorio, que ya NO viaja dentro del kernel. Va aqui y no en
+    // `spawn_init` por una razon dura: `spawn_init` corre en el Acto I, cuando
     // el HBA SATA ni se ha tocado. Este es el primer punto del arranque en el
     // que existe un volumen de datos del que leerlo.
     //
-    // ★ Y se ANUNCIA. El paso de Ring 0 a Ring 3 era invisible: el kernel
-    // dejaba de pintar y o aparecía un escritorio o no aparecía nada, sin
-    // forma de saber cuál de los dos lados había fallado. Decir qué se cede y
-    // a quién convierte ese silencio en un acto con testigos.
-    // ★ PRIMERO que acaben los demos, LUEGO la entrega.
+    // * Y se ANUNCIA. El paso de Ring 0 a Ring 3 era invisible: el kernel
+    // dejaba de pintar y o aparecia un escritorio o no aparecia nada, sin
+    // forma de saber cual de los dos lados habia fallado. Decir que se cede y
+    // a quien convierte ese silencio en un acto con testigos.
+    // * PRIMERO que acaben los demos, LUEGO la entrega.
     //
-    // Los demos de Ring 3 y el escritorio se admitían todos antes de encender
-    // el timer, así que arrancaban **a la vez** — y `init_hello` reclama la
-    // pantalla para demostrar que Ring 3 puede. Ganaba él, pintaba sus tres
-    // líneas, terminaba, y al morir el kernel recuperaba la pantalla y
+    // Los demos de Ring 3 y el escritorio se admitian todos antes de encender
+    // el timer, asi que arrancaban **a la vez** -- y `init_hello` reclama la
+    // pantalla para demostrar que Ring 3 puede. Ganaba el, pintaba sus tres
+    // lineas, terminaba, y al morir el kernel recuperaba la pantalla y
     // repintaba su panel... encima del escritorio que acababa de nacer.
     //
-    // De ahí las dos cosas que se veían y nadie explicaba: el aviso de "el
-    // dueño de la pantalla MURIO" en cada arranque (era el demo, no el
+    // De ahi las dos cosas que se veian y nadie explicaba: el aviso de "el
+    // dueno de la pantalla MURIO" en cada arranque (era el demo, no el
     // compositor) y el panel del kernel dibujado sobre la ventana.
     //
     // Los demos ya demostraron lo suyo. Ahora se les deja terminar antes de
     // entregar la pantalla, con tope: si uno se cuelga, el escritorio arranca
-    // igual — esperar para siempre a un programa de ejemplo sería cambiar un
+    // igual -- esperar para siempre a un programa de ejemplo seria cambiar un
     // arranque feo por uno que no llega.
     if timer_ready {
         crate::ring0::plat::timer::enable();

@@ -159,11 +159,11 @@ impl BootContext {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Preload handoff (unified-EFI boot)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
-/// "BMOPRLD1" — magic of the shim→s1 preload handoff block.
+/// "BMOPRLD1" -- magic of the shim->s1 preload handoff block.
 pub const PRELOAD_MAGIC: u64 = 0x424D_4F50_524C_4431;
 
 /// Handoff from the UEFI shim when s2_mem and the kernel were embedded in
@@ -173,7 +173,7 @@ pub const PRELOAD_MAGIC: u64 = 0x424D_4F50_524C_4431;
 ///
 /// Rationale: some firmwares (MSI A320M AMI fast path) load the boot
 /// application with an internal FAT reader and never bind
-/// SimpleFileSystem to any handle — the ESP is unreadable through UEFI
+/// SimpleFileSystem to any handle -- the ESP is unreadable through UEFI
 /// protocols even after a recursive ConnectController pass.
 #[repr(C)]
 #[derive(Clone, Copy)]

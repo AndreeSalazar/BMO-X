@@ -1,39 +1,39 @@
-//! **El compositor de BMO.** El proceso Ring 3 que es dueño de la pantalla.
+//! **El compositor de BMO.** El proceso Ring 3 que es dueno de la pantalla.
 //!
 //! ## La caja
 //!
-//! No hay terminal. Había uno planeado —`apps/terminal`, doce líneas de
-//! esqueleto— y se ha quitado, porque un terminal de verdad es una pila entera:
-//! scrollback, PTY, señales, un intérprete, edición de línea, historial. Nada de
-//! eso hace falta para lo único que hoy se quiere hacer desde la pantalla, que
+//! No hay terminal. Habia uno planeado --`apps/terminal`, doce lineas de
+//! esqueleto-- y se ha quitado, porque un terminal de verdad es una pila entera:
+//! scrollback, PTY, senales, un interprete, edicion de linea, historial. Nada de
+//! eso hace falta para lo unico que hoy se quiere hacer desde la pantalla, que
 //! es **arrancar un programa**.
 //!
-//! Así que lo que hay es una caja de una línea, como el `Win+R` de Windows.
-//! Escribes una ruta, pulsas Enter, y el `.bex` corre. Es la forma más pequeña
-//! de "terminal" que sigue siendo útil, y no arrastra nada de lo otro.
+//! Asi que lo que hay es una caja de una linea, como el `Win+R` de Windows.
+//! Escribes una ruta, pulsas Enter, y el `.bex` corre. Es la forma mas pequena
+//! de "terminal" que sigue siendo util, y no arrastra nada de lo otro.
 //!
-//! ★ Y no es una API prestada de nadie: `Win+R` tampoco lo es allí. Es UI del
-//! shell, y por debajo acaba llamando a lo mismo que llamaría cualquiera. Aquí
-//! por debajo hay `OP_EJECUTAR` sobre `CURRENT_TASK`, que es una operación más
-//! en una tabla — **el ABI de tres syscalls no se toca para esto**.
+//! * Y no es una API prestada de nadie: `Win+R` tampoco lo es alli. Es UI del
+//! shell, y por debajo acaba llamando a lo mismo que llamaria cualquiera. Aqui
+//! por debajo hay `OP_EJECUTAR` sobre `CURRENT_TASK`, que es una operacion mas
+//! en una tabla -- **el ABI de tres syscalls no se toca para esto**.
 //!
-//! ## Quién manda sobre el teclado
+//! ## Quien manda sobre el teclado
 //!
-//! Reclamar `KIND_INPUT` ahora cede el teclado además del ratón, y eso tiene
+//! Reclamar `KIND_INPUT` ahora cede el teclado ademas del raton, y eso tiene
 //! consecuencia al otro lado: mientras este proceso viva, el shell de Ring 0 no
-//! lee el teclado físico. No es un reparto —los dos drenarían la misma cola y
-//! se robarían letras— es una cesión. El cable serie sigue siendo del kernel,
+//! lee el teclado fisico. No es un reparto --los dos drenarian la misma cola y
+//! se robarian letras-- es una cesion. El cable serie sigue siendo del kernel,
 //! que es lo que hace falta cuando esto se rompa.
 //!
 //! ## La tira de medida sigue
 //!
-//! Los seis parches de color siguen ahí abajo porque la pregunta que hacen
-//! sigue abierta: en la primera foto en hardware la geometría salió exacta pero
-//! los colores mucho más claros de lo que dice el código. Hasta que una foto lo
-//! zanje, se quedan —
+//! Los seis parches de color siguen ahi abajo porque la pregunta que hacen
+//! sigue abierta: en la primera foto en hardware la geometria salio exacta pero
+//! los colores mucho mas claros de lo que dice el codigo. Hasta que una foto lo
+//! zanje, se quedan --
 //!
 //! - si el parche `0x00FF0000` sale ROJO, el formato es XRGB como creemos;
-//! - si sale AZUL, los canales están al revés (BGR) y hay que voltearlos;
+//! - si sale AZUL, los canales estan al reves (BGR) y hay que voltearlos;
 //! - si `0x00202020` sale gris medio en vez de casi negro, no es orden de
 //!   canales: algo toca la intensidad (el panel, o el propio GOP).
 
@@ -42,7 +42,7 @@
 
 use bmo_userland as bmo;
 
-// ── El reparto ──────────────────────────────────────────────────────────
+// -- El reparto ----------------------------------------------------------
 //
 // Eran 2308 lineas en un solo fichero: colores, geometria, la rejilla de
 // salida, el historial, la calculadora, los informes del sistema, el
@@ -51,8 +51,8 @@ use bmo_userland as bmo;
 //
 // Dos carpetas, y la frontera es la que importa:
 //
-//   escena/   lo que se PINTA   — no sabe que es un comando
-//   ordenes/  lo que se INTERPRETA — no sabe de que color es la ventana
+//   escena/   lo que se PINTA   -- no sabe que es un comando
+//   ordenes/  lo que se INTERPRETA -- no sabe de que color es la ventana
 //
 // `main.rs` se queda con lo unico que necesita a las dos: el bucle.
 mod escena;
@@ -72,43 +72,43 @@ use texto::{decimal, es_punto};
 use vigilante::{vigilar_corrida, Corrida};
 
 
-// ── El programa ─────────────────────────────────────────────────────────
+// -- El programa ---------------------------------------------------------
 
-/// Cada cuántas vueltas del bucle parpadea el cursor de escritura.
+/// Cada cuantas vueltas del bucle parpadea el cursor de escritura.
 ///
-/// Se cuenta en fotogramas y no en tiempo porque aquí no hay reloj: los tres
-/// syscalls no incluyen "qué hora es". Es un parpadeo que depende de la
-/// velocidad de la máquina, y para decir "aquí se escribe" eso basta.
+/// Se cuenta en fotogramas y no en tiempo porque aqui no hay reloj: los tres
+/// syscalls no incluyen "que hora es". Es un parpadeo que depende de la
+/// velocidad de la maquina, y para decir "aqui se escribe" eso basta.
 const PARPADEO: u32 = 12_000;
 
-/// Dónde va el volcado cuando nadie dice otra cosa.
+/// Donde va el volcado cuando nadie dice otra cosa.
 ///
-/// ★ En `datos/`, que vive en la partición **FAT32** — la misma que se enchufa
-/// a un Windows y se abre con el bloc de notas. Ése es el motivo entero de que
-/// esto exista: hasta hoy, saber qué había hecho una corrida de BMO-X era
+/// * En `datos/`, que vive en la particion **FAT32** -- la misma que se enchufa
+/// a un Windows y se abre con el bloc de notas. Ese es el motivo entero de que
+/// esto exista: hasta hoy, saber que habia hecho una corrida de BMO-X era
 /// hacerle una foto a la pantalla. Una foto no se compara con la de ayer, no se
-/// busca dentro, y no se le puede enseñar a nadie que no esté delante.
+/// busca dentro, y no se le puede ensenar a nadie que no este delante.
 ///
 /// **No va a ESTRATOS aunque ESTRATOS sea el sistema de ficheros bueno**, y no
-/// es una concesión: ningún otro sistema operativo sabe leerlo. Un volcado que
-/// sólo BMO puede abrir no resuelve el problema para el que se escribió.
+/// es una concesion: ningun otro sistema operativo sabe leerlo. Un volcado que
+/// solo BMO puede abrir no resuelve el problema para el que se escribio.
 ///
-/// `SALIDA.TXT` es 8.3 — el driver FAT32 del kernel se niega a recortar.
+/// `SALIDA.TXT` es 8.3 -- el driver FAT32 del kernel se niega a recortar.
 pub(crate) const VOLCADO_POR_DEFECTO: &[u8] = b"datos/salida.txt";
 
-/// Monta `datos/<programa>.txt` a partir de la ruta que se lanzó.
+/// Monta `datos/<programa>.txt` a partir de la ruta que se lanzo.
 ///
-/// ═══ Por qué un archivo POR PROGRAMA y no siempre el mismo ═══
+/// === Por que un archivo POR PROGRAMA y no siempre el mismo ===
 ///
-/// Porque la forma de trabajar es *"corre los doce ejemplos y mírame el
-/// disco"*. Con un `salida.txt` único, correr los doce deja **uno**: el del
-/// último. Con el nombre del programa dentro, deja doce, y se pueden comparar
-/// entre sí y con los de ayer.
+/// Porque la forma de trabajar es *"corre los doce ejemplos y mirame el
+/// disco"*. Con un `salida.txt` unico, correr los doce deja **uno**: el del
+/// ultimo. Con el nombre del programa dentro, deja doce, y se pueden comparar
+/// entre si y con los de ayer.
 ///
 /// De `cobol/10/maestro.bex` sale `datos/maestro.txt`: se coge lo que hay tras
-/// la última barra y se corta en el punto. **Ocho letras como mucho**, porque
-/// el driver FAT32 del kernel se niega a recortar y un nombre largo no crearía
-/// el archivo — fallaría al cerrar, en silencio, que es justo lo que se acaba
+/// la ultima barra y se corta en el punto. **Ocho letras como mucho**, porque
+/// el driver FAT32 del kernel se niega a recortar y un nombre largo no crearia
+/// el archivo -- fallaria al cerrar, en silencio, que es justo lo que se acaba
 /// de arreglar.
 fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
     // El verbo `run` delante, si lo lleva: `run cobol/1/hola.bex`.
@@ -125,15 +125,15 @@ fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
         Some(i) => &base[..i],
         None => base,
     };
-    // ★★ LA CARPETA VA DELANTE, y esto no es adorno.
+    // ** LA CARPETA VA DELANTE, y esto no es adorno.
     //
-    // Con sólo el nombre del programa, `cobol/8/cierre.bex` y `ada/cierre.bex`
-    // escribían **los dos en `datos/cierre.txt`**: el segundo se comía al
+    // Con solo el nombre del programa, `cobol/8/cierre.bex` y `ada/cierre.bex`
+    // escribian **los dos en `datos/cierre.txt`**: el segundo se comia al
     // primero sin decir nada. Correr la escalera entera y perder un resultado
     // por el camino es justo lo que este volcado existe para impedir.
     //
     // Con la carpeta delante quedan `8cierre` y `adacierr`, y de paso el
-    // número del nivel se lee en el nombre: `2banco`, `10maestr`, `9comisio`.
+    // numero del nivel se lee en el nombre: `2banco`, `10maestr`, `9comisio`.
     let carpeta: &[u8] = match corte {
         Some(i) => {
             let arriba = &ruta[..i];
@@ -149,8 +149,8 @@ fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
         dst[n] = b;
         n += 1;
     }
-    // Ocho letras y ni una más: el driver FAT32 del kernel **se niega a
-    // recortar**, así que un nombre largo no fallaría al crear — fallaría al
+    // Ocho letras y ni una mas: el driver FAT32 del kernel **se niega a
+    // recortar**, asi que un nombre largo no fallaria al crear -- fallaria al
     // cerrar, que es donde ya sabemos que duele.
     let inicio = n;
     for &b in carpeta.iter().chain(tallo.iter()) {
@@ -178,10 +178,10 @@ fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
 /// Escribe las filas `[desde..=hasta]` del historial en un archivo de texto.
 ///
 /// Devuelve `Ok(bytes)` o el motivo. **Nada llega al disco hasta `cerrar`**, y
-/// por eso el resultado de `cerrar` es el que se mira: es el único que sabe si
+/// por eso el resultado de `cerrar` es el que se mira: es el unico que sabe si
 /// el archivo existe de verdad. Que se guarde encima de uno anterior es
-/// deliberado — un volcado que fallara la segunda vez obligaría a inventar
-/// nombres, y un `salida1.txt`, `salida2.txt`… es exactamente el desorden que
+/// deliberado -- un volcado que fallara la segunda vez obligaria a inventar
+/// nombres, y un `salida1.txt`, `salida2.txt`... es exactamente el desorden que
 /// este archivo viene a evitar.
 fn volcar_salida(salida: &Salida, ruta: &[u8], desde: usize, hasta: usize) -> Result<usize, u32> {
     let a = bmo::Archivo::crear(ruta)?;
@@ -190,14 +190,14 @@ fn volcar_salida(salida: &Salida, ruta: &[u8], desde: usize, hasta: usize) -> Re
         let linea = salida.linea(f);
         bytes += a.escribir(linea);
         // `\r\n` y no `\n`: esto lo va a abrir el bloc de notas de Windows, y
-        // el Notepad viejo enseña un archivo con saltos de Unix como una sola
-        // línea kilométrica. Aquí el destinatario manda sobre la elegancia.
+        // el Notepad viejo ensena un archivo con saltos de Unix como una sola
+        // linea kilometrica. Aqui el destinatario manda sobre la elegancia.
         bytes += a.escribir(b"\r\n");
     }
     if a.cerrar() {
         Ok(bytes)
     } else {
-        // El kernel no dice el motivo — se queda en la CABINA (F11). Lo que sí
+        // El kernel no dice el motivo -- se queda en la CABINA (F11). Lo que si
         // se sabe con certeza es que en el disco NO hay nada, y eso es lo que
         // el que mira la pantalla necesita saber.
         Err(0)
@@ -206,20 +206,20 @@ fn volcar_salida(salida: &Salida, ruta: &[u8], desde: usize, hasta: usize) -> Re
 
 /// **Devuelve la caja de Ejecutar a la pantalla** tras haberla tapado.
 ///
-/// ═══ Por qué es una función y no tres líneas ═══
+/// === Por que es una funcion y no tres lineas ===
 ///
-/// Porque eran tres líneas **trece veces**, y no idénticas: unas llevaban
-/// `borrar_ventana` delante, otras `arriba_antes` detrás, y en alguna faltaba
-/// `salida.sucia`. Esa última variación no da un error de compilación — da una
+/// Porque eran tres lineas **trece veces**, y no identicas: unas llevaban
+/// `borrar_ventana` delante, otras `arriba_antes` detras, y en alguna faltaba
+/// `salida.sucia`. Esa ultima variacion no da un error de compilacion -- da una
 /// rejilla de salida que se queda en blanco hasta que algo *no relacionado*
 /// vuelve a ensuciarla, y entonces se busca el fallo en el terminal cuando
 /// estaba en el gestor de ventanas.
 ///
 /// Trece copias de una secuencia no son un estilo: son doce oportunidades de
-/// que una se quede atrás. Aquí sólo se puede olvidar en un sitio.
+/// que una se quede atras. Aqui solo se puede olvidar en un sitio.
 ///
-/// El `arriba_antes` se queda FUERA a propósito: eso es el orden de las
-/// ventanas, otra pregunta. Meterlo dentro haría que esta función mintiera
+/// El `arriba_antes` se queda FUERA a proposito: eso es el orden de las
+/// ventanas, otra pregunta. Meterlo dentro haria que esta funcion mintiera
 /// sobre lo que hace.
 fn destapar(
     p: &bmo::Pantalla,
@@ -233,43 +233,43 @@ fn destapar(
     }
     pintar_caja(p, caja);
     *repintar_campo = true;
-    // La rejilla se marca sucia y NO se pinta aquí: pintarla ahora la dibujaría
+    // La rejilla se marca sucia y NO se pinta aqui: pintarla ahora la dibujaria
     // por debajo de una ventana que a lo mejor sigue encima. Quien decide eso es
-    // el bloque de pintado, que sabe quién está arriba.
+    // el bloque de pintado, que sabe quien esta arriba.
     salida.sucia = true;
 }
 
-/// ★ ¿Este `.bex` DECLARA que quiere la pantalla?
+/// * Este `.bex` DECLARA que quiere la pantalla?
 ///
-/// Se lee la cabecera BEF del archivo antes de lanzarlo: `flags` está en el
+/// Se lee la cabecera BEF del archivo antes de lanzarlo: `flags` esta en el
 /// offset 8 y el bit 10 es `BefFlags::WANTS_SCREEN`, que **pone el compilador**
 /// al ver que el programa invoca `BMO_OP_PANTALLA_RECLAMAR`.
 ///
-/// # Por qué esto es lo que hacía falta, y `presta` no
+/// # Por que esto es lo que hacia falta, y `presta` no
 ///
-/// `presta <ruta>` funcionaba y era el diseño equivocado: ponía la POLÍTICA en
-/// los dedos del usuario, que tenía que saberse de memoria qué programas son
-/// gráficos. Con la bandera, **el compositor decide** — que es su trabajo, y la
-/// razón de que exista un compositor.
+/// `presta <ruta>` funcionaba y era el diseno equivocado: ponia la POLITICA en
+/// los dedos del usuario, que tenia que saberse de memoria que programas son
+/// graficos. Con la bandera, **el compositor decide** -- que es su trabajo, y la
+/// razon de que exista un compositor.
 ///
-/// Tres capas, cada una con lo suyo: el kernel arbitra (un dueño, `soltar`), el
-/// BEF declara, y aquí se manda. La misma separación que un planificador de GPU:
-/// el hardware no sabe qué es importante, el planificador sí.
+/// Tres capas, cada una con lo suyo: el kernel arbitra (un dueno, `soltar`), el
+/// BEF declara, y aqui se manda. La misma separacion que un planificador de GPU:
+/// el hardware no sabe que es importante, el planificador si.
 ///
 /// # Doce bytes que cuestan una lectura entera, y hay que decirlo
 ///
 /// Se leen doce bytes, pero `Archivo::leer_de` **se trae el archivo COMPLETO** al
-/// abrirlo (por eso una lectura posterior no puede fallar a mitad). Así que cada
-/// `run` toca el disco dos veces: una aquí y otra al lanzar.
+/// abrirlo (por eso una lectura posterior no puede fallar a mitad). Asi que cada
+/// `run` toca el disco dos veces: una aqui y otra al lanzar.
 ///
 /// Para un `.bex` de 7 KB desde un SATA no se nota, y se acepta a cambio de que
-/// la política viva en el sitio correcto. **La forma barata sería que el kernel
+/// la politica viva en el sitio correcto. **La forma barata seria que el kernel
 /// devolviera la bandera desde `EJECUTAR`**, que ya tiene el binario en la mano
-/// — queda anotado como lo que es: una optimización pendiente, no un misterio.
+/// -- queda anotado como lo que es: una optimizacion pendiente, no un misterio.
 ///
-/// No se valida el binario: de eso ya se encarga el gate de admisión del kernel,
-/// que es quien tiene autoridad para rechazarlo. Aquí un archivo raro o ilegible
-/// contesta `false` y sigue el camino normal — **la duda se resuelve NO
+/// No se valida el binario: de eso ya se encarga el gate de admision del kernel,
+/// que es quien tiene autoridad para rechazarlo. Aqui un archivo raro o ilegible
+/// contesta `false` y sigue el camino normal -- **la duda se resuelve NO
 /// prestando**, que es el lado seguro.
 fn quiere_pantalla(ruta: &[u8]) -> bool {
     let Ok(f) = bmo::Archivo::leer_de(ruta) else { return false };
@@ -278,7 +278,7 @@ fn quiere_pantalla(ruta: &[u8]) -> bool {
         return false;
     }
     // El magic se comprueba antes de creerse los flags: doce bytes de un `.txt`
-    // también tienen un bit 10.
+    // tambien tienen un bit 10.
     let magic = u32::from_le_bytes([cab[0], cab[1], cab[2], cab[3]]);
     if magic != bmo_abi_magic() {
         return false;
@@ -289,45 +289,45 @@ fn quiere_pantalla(ruta: &[u8]) -> bool {
 
 /// El magic de un BEF: los cuatro bytes `BEF1`.
 ///
-/// Escrito aquí y no importado de `bmo-abi` por el mismo motivo que el kernel lo
+/// Escrito aqui y no importado de `bmo-abi` por el mismo motivo que el kernel lo
 /// lee a mano en `bex.rs`: el compositor es `no_std` sin `alloc` y no enlaza esa
-/// crate. Se construye desde el literal —`from_le_bytes(*b"BEF1")`— y no como un
-/// hexadecimal a mano: un número copiado se equivoca de orden de bytes en
+/// crate. Se construye desde el literal --`from_le_bytes(*b"BEF1")`-- y no como un
+/// hexadecimal a mano: un numero copiado se equivoca de orden de bytes en
 /// silencio, y las cuatro letras no.
 const fn bmo_abi_magic() -> u32 {
     u32::from_le_bytes(*b"BEF1")
 }
 
-/// ★ PRESTAR LA PANTALLA a un programa y recuperarla cuando muera.
+/// * PRESTAR LA PANTALLA a un programa y recuperarla cuando muera.
 ///
 /// Consume la `Pantalla` y devuelve otra: entre medias **este proceso no tiene
 /// pantalla**, y que el tipo lo refleje es lo que impide pintar en un puntero ya
 /// desmapeado. Ver `bmo::Pantalla::soltar`.
 ///
-/// # Por qué se PREGUNTA quién la tiene, en vez de intentar tomarla
+/// # Por que se PREGUNTA quien la tiene, en vez de intentar tomarla
 ///
-/// La tentación es un bucle de `Pantalla::reclamar()` hasta que salga. No sirve:
-/// justo después de soltarla **está libre**, así que el primer intento acierta y
+/// La tentacion es un bucle de `Pantalla::reclamar()` hasta que salga. No sirve:
+/// justo despues de soltarla **esta libre**, asi que el primer intento acierta y
 /// se la quitamos al programa antes de que llegue a pedirla. Reclamar para
-/// averiguar si está libre te la deja puesta.
+/// averiguar si esta libre te la deja puesta.
 ///
-/// De ahí `INFO_PANTALLA_DUENO`, que contesta el `pid` del dueño (o `0`) sin
+/// De ahi `INFO_PANTALLA_DUENO`, que contesta el `pid` del dueno (o `0`) sin
 /// tocar nada.
 ///
-/// # Y por qué no vale `hay_hijo()`
+/// # Y por que no vale `hay_hijo()`
 ///
-/// Porque contesta *"el hijo ha escrito en la consola"*, no *"el hijo está
-/// vivo"* — lo dice el vigilante de la corrida en este mismo archivo. `ray.bex`
-/// dibuja durante minutos sin imprimir una letra, así que esperarlo por ahí
-/// habría vuelto en el primer fotograma. Lo que sí es exacto es la propiedad de
-/// la pantalla: el kernel la libera en `fb::proceso_muerto`, o sea que el dueño
+/// Porque contesta *"el hijo ha escrito en la consola"*, no *"el hijo esta
+/// vivo"* -- lo dice el vigilante de la corrida en este mismo archivo. `ray.bex`
+/// dibuja durante minutos sin imprimir una letra, asi que esperarlo por ahi
+/// habria vuelto en el primer fotograma. Lo que si es exacto es la propiedad de
+/// la pantalla: el kernel la libera en `fb::proceso_muerto`, o sea que el dueno
 /// volviendo a `0` **es** el programa terminando.
 ///
 /// # Las dos fases, y el tope de la primera
 ///
-/// 1. Esperar a que la TOME, con tope de 500 ms. Si no la toma, no la quería —
+/// 1. Esperar a que la TOME, con tope de 500 ms. Si no la toma, no la queria --
 ///    un `presta ls` no puede colgar el escritorio para siempre.
-/// 2. Esperar a que la SUELTE, sin tope: aquí sí se sabe que hay alguien
+/// 2. Esperar a que la SUELTE, sin tope: aqui si se sabe que hay alguien
 ///    dentro, y un juego puede durar lo que quiera.
 fn prestar_pantalla(
     p: bmo::Pantalla,
@@ -335,10 +335,10 @@ fn prestar_pantalla(
     objetivo: &[u8],
     consola: u64,
 ) -> Option<(bmo::Pantalla, Option<bmo::Entrada>)> {
-    // ★★ SE PRESTAN LAS DOS, Y ESTO ES UN ARREGLO EN METAL.
+    // ** SE PRESTAN LAS DOS, Y ESTO ES UN ARREGLO EN METAL.
     //
     // La primera version presto solo la PANTALLA. En el Ryzen, `ray.bex` pinto
-    // cielo y suelo — y se quedo dentro para siempre, porque el escritorio se
+    // cielo y suelo -- y se quedo dentro para siempre, porque el escritorio se
     // habia quedado la ENTRADA y el raycaster no podia leer su propio ESC. La
     // maquina sin teclado y sin forma de volver.
     //
@@ -359,12 +359,12 @@ fn prestar_pantalla(
         Some((p, e))
     };
     if !p.soltar() {
-        // No éramos el dueño: raro, pero no se sigue a ciegas. Se intenta
+        // No eramos el dueno: raro, pero no se sigue a ciegas. Se intenta
         // recuperar y punto.
         return recuperar();
     }
     if bmo::ejecutar_en(objetivo, consola).is_err() {
-        // El programa no arrancó, así que nadie va a tomar la pantalla: se
+        // El programa no arranco, asi que nadie va a tomar la pantalla: se
         // recupera YA en vez de esperar los 500 ms de la fase 1.
         return recuperar();
     }
@@ -390,8 +390,8 @@ fn prestar_pantalla(
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // El aviso va ANTES de reclamar: en cuanto la cesión se consuma, el kernel
-    // deja de dibujar y nada de lo que se imprima después llega al panel.
+    // El aviso va ANTES de reclamar: en cuanto la cesion se consuma, el kernel
+    // deja de dibujar y nada de lo que se imprima despues llega al panel.
     bmo::consola("reclamo pantalla y entrada\n");
 
     let Some(mut p) = bmo::Pantalla::reclamar() else {
@@ -399,13 +399,13 @@ pub extern "C" fn _start() -> ! {
         bmo::salir()
     };
 
-    // ── ★ EL DOBLE BÚFER ──
+    // -- * EL DOBLE BUFER --
     //
-    // Se pide ANTES de pintar nada, que es cuando la RAM está menos
-    // fragmentada: el bloque tiene que ser contiguo en físico y son ~8 MB.
+    // Se pide ANTES de pintar nada, que es cuando la RAM esta menos
+    // fragmentada: el bloque tiene que ser contiguo en fisico y son ~8 MB.
     //
-    // Y se dice en los dos casos. Que no haya doble búfer **no impide arrancar**
-    // —se dibuja en el panel, como siempre—, pero cambia dos cosas que se notan:
+    // Y se dice en los dos casos. Que no haya doble bufer **no impide arrancar**
+    // --se dibuja en el panel, como siempre--, pero cambia dos cosas que se notan:
     // vuelve el riesgo de tearing y el cursor tiene que poner una barrera antes
     // de leer. Un escritorio que se degrada en silencio es un escritorio del que
     // no se puede diagnosticar nada.
@@ -414,66 +414,66 @@ pub extern "C" fn _start() -> ! {
     } else {
         bmo::consola("SIN doble bufer: no hubo bloque, pinto directo al panel\n");
     }
-    // La entrada es opcional a propósito: sin ella hay escritorio, sólo que
+    // La entrada es opcional a proposito: sin ella hay escritorio, solo que
     // quieto y mudo. Un compositor que se niega a arrancar porque falta un
-    // periférico es un compositor que no arranca el día que el periférico falla.
+    // periferico es un compositor que no arranca el dia que el periferico falla.
     // `mut` porque `presta` la SUELTA y la vuelve a reclamar: la capability se
     // va y vuelve, asi que el binding tiene que poder cambiar.
     let mut entrada = bmo::Entrada::reclamar();
 
-    // La consola de este terminal. Desde aquí, todo lo que lance escribe en
-    // ESTE anillo y no en el panel del kernel — que es lo único que separaba
+    // La consola de este terminal. Desde aqui, todo lo que lance escribe en
+    // ESTE anillo y no en el panel del kernel -- que es lo unico que separaba
     // una caja de lanzar de un terminal de verdad.
     let salida_cap = bmo::Consola::crear();
 
     let caja = Caja::nueva(p.ancho, p.alto);
 
-    // ── LA ENTRADA A RING 3 ──
+    // -- LA ENTRADA A RING 3 --
     //
     // Antes de dibujar nada del escritorio, decir lo que acaba de pasar: el
-    // userspace tiene la máquina. Hasta hoy este paso era invisible y por eso
-    // un compositor muerto y un compositor que no pinta se veían igual — un
-    // shell donde debía haber un escritorio.
+    // userspace tiene la maquina. Hasta hoy este paso era invisible y por eso
+    // un compositor muerto y un compositor que no pinta se veian igual -- un
+    // shell donde debia haber un escritorio.
     //
     // Y lleva las dos capabilities OPCIONALES escritas en la cara, que es lo
     // que distingue "no funciona" de "no me la dieron".
-    // ★ Y la espera del final se puede SALTAR con una tecla, por eso va la
+    // * Y la espera del final se puede SALTAR con una tecla, por eso va la
     // capability y no un `bool`: 1.100 de los 1.205 ms hasta el escritorio eran
-    // esa espera, y el dueño la leyó como un fallo mirando el cronómetro del
-    // klog. Tenía razón en sospechar.
+    // esa espera, y el dueno la leyo como un fallo mirando el cronometro del
+    // klog. Tenia razon en sospechar.
     escena::entrada::pintar(&p, entrada.as_ref(), salida_cap.is_some());
     bmo::consola("entrada a Ring 3 pintada\n");
 
-    // ── El escritorio ──
+    // -- El escritorio --
     //
-    // ★ Aquí vivían los SEIS PARCHES DE MEDIDA y el PULSÓMETRO del ratón, y se
-    // han quitado el 2026-08-04. No eran decoración: los parches contestaban
-    // "¿el orden de canales es el que creo?" y la barra contestaba "¿llegan
-    // informes del ratón?". **Las dos preguntas están contestadas** — los
+    // * Aqui vivian los SEIS PARCHES DE MEDIDA y el PULSOMETRO del raton, y se
+    // han quitado el 2026-08-04. No eran decoracion: los parches contestaban
+    // "el orden de canales es el que creo?" y la barra contestaba "llegan
+    // informes del raton?". **Las dos preguntas estan contestadas** -- los
     // colores salen bien desde hace semanas y el puntero se mueve donde se
-    // mueve la mano, o sea que el propio cursor ES el pulsómetro.
+    // mueve la mano, o sea que el propio cursor ES el pulsometro.
     //
     // Un instrumento que ya no mide nada deja de ser un instrumento y pasa a
     // ser ruido: seis cuadrados de colores puros y una barra en mitad del
-    // escritorio son lo que hacía que esto pareciera un panel de pruebas y no
-    // una máquina. Si algún día hay que volver a medir el formato del
-    // framebuffer, el `git log` tiene los valores exactos con su porqué.
+    // escritorio son lo que hacia que esto pareciera un panel de pruebas y no
+    // una maquina. Si algun dia hay que volver a medir el formato del
+    // framebuffer, el `git log` tiene los valores exactos con su porque.
     pintar_fondo(&p);
     p.rect(16, 13, 14, 14, ACENTO);
     p.texto(38, 14, "BMO-X", TEXTO);
-    // Las fichas se pintan en el bucle: dependen de qué esté abierto y de
-    // quién tenga el foco, y las dos cosas cambian.
+    // Las fichas se pintan en el bucle: dependen de que este abierto y de
+    // quien tenga el foco, y las dos cosas cambian.
     let mut barra_sucia = true;
     let mut estado_barra_antes = (false, 0u8, false, false);
 
-    // Lo que SÍ era información y no instrumento: si la entrada no se pudo
+    // Lo que SI era informacion y no instrumento: si la entrada no se pudo
     // reclamar hay que decirlo, y ahora se dice con palabras en la barra en vez
     // de con el color de un marco. Un rojo sin texto obliga a saberse el
-    // código de colores.
+    // codigo de colores.
     if entrada.is_none() {
-        // El aviso se coloca por su LARGO REAL y no por un número a ojo: son
+        // El aviso se coloca por su LARGO REAL y no por un numero a ojo: son
         // cuarenta letras, y con un hueco puesto a mano de treinta y cuatro se
-        // saldría por la derecha justo el día que haga falta leerlo.
+        // saldria por la derecha justo el dia que haga falta leerlo.
         const AVISO: &str = "SIN ENTRADA: teclado y raton son de otro";
         let ancho = bmo::Pantalla::ancho_escala(AVISO, 1);
         p.texto(p.ancho.saturating_sub(ancho + 16), 14, AVISO, TEXTO_MAL);
@@ -494,8 +494,8 @@ pub extern "C" fn _start() -> ! {
     let mut porta_n = 0usize;
     let mut calc = Calc::nueva();
     let calc_caja = CalcCaja::nueva(&caja);
-    // Flanco del botón del ratón: un clic es una BAJADA, no "el botón está
-    // pulsado". Sin esto, mantener pulsado teclearía cien veces por segundo.
+    // Flanco del boton del raton: un clic es una BAJADA, no "el boton esta
+    // pulsado". Sin esto, mantener pulsado teclearia cien veces por segundo.
     let mut boton_antes = false;
     // Mientras el motor no conteste, su salida NO va a la rejilla: es el
     // resultado, no un mensaje. Se acumula aparte.
@@ -509,79 +509,79 @@ pub extern "C" fn _start() -> ! {
     if entrada.is_some() {
         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
     } else {
-        // Decirlo, y decir por qué. Una caja que no responde y no explica nada
+        // Decirlo, y decir por que. Una caja que no responde y no explica nada
         // es peor que no tener caja.
         pintar_estado(&p, &caja, "sin teclado: la entrada no se pudo reclamar", TEXTO_MAL);
     }
 
     bmo::consola("escritorio pintado\n");
 
-    // ── El bucle de vida ──
+    // -- El bucle de vida --
     //
-    // No termina: si saliera, `revoke_all` devolvería la pantalla y el kernel
-    // repintaría su panel encima. Un escritorio es un proceso que VIVE — y de
+    // No termina: si saliera, `revoke_all` devolveria la pantalla y el kernel
+    // repintaria su panel encima. Un escritorio es un proceso que VIVE -- y de
     // paso esto ejerce el cambio de contexto miles de veces por segundo, que es
-    // justo el camino que costó una foto de madrugada.
+    // justo el camino que costo una foto de madrugada.
     let (mut ax, mut ay) = (u32::MAX, u32::MAX);
     let mut vueltas = 0u32;
     let mut caret = true;
-    // Vueltas desde la última tecla. Se reinicia al escribir para que el
-    // cursor esté SIEMPRE encendido mientras se teclea.
+    // Vueltas desde la ultima tecla. Se reinicia al escribir para que el
+    // cursor este SIEMPRE encendido mientras se teclea.
     let mut desde_tecla: u32 = 0;
-    // ── El atajo: un TOQUE de Ctrl+Alt ──
+    // -- El atajo: un TOQUE de Ctrl+Alt --
     //
-    // Se dispara al SOLTAR, y sólo si no llegó ningún carácter mientras
-    // estaban pulsados. No es una floritura: en la distribución española
-    // `Ctrl+Alt` **es** `AltGr` —lo que produce `@`, `#`, `[`, `]`, `\`, `|`
-    // y `€`— así que disparar al pulsarlos rompería escribir todos esos
+    // Se dispara al SOLTAR, y solo si no llego ningun caracter mientras
+    // estaban pulsados. No es una floritura: en la distribucion espanola
+    // `Ctrl+Alt` **es** `AltGr` --lo que produce `@`, `#`, `[`, `]`, `\`, `|`
+    // y `EUR`-- asi que disparar al pulsarlos romperia escribir todos esos
     // caracteres. Con el toque, `Ctrl+Alt` a secas invoca la ventana y
     // `Ctrl+Alt+2` sigue dando `@`.
     let mut combo_antes = false;
     let mut hubo_tecla_en_combo = false;
     let mut visible = true;
-    // ── La consola de DATOS (F12) ──
+    // -- La consola de DATOS (F12) --
     //
     // Una tecla de funcion no produce caracter en NINGUNA distribucion, asi que
     // no puede chocar con escribir. Es lo unico que importa en un atajo del
     // sistema, y es lo que `Ctrl+Alt` no puede ofrecer: en espanol ES AltGr.
     let mut caja_datos = escena::datos::CajaDatos::nueva(&p);
-    // ★ ABIERTA no es lo mismo que ARRIBA. Abierta es "existe y esta dibujada";
+    // * ABIERTA no es lo mismo que ARRIBA. Abierta es "existe y esta dibujada";
     // arriba es "es la que tapa a la otra". Se separan porque aqui no hay
     // recorte: las ventanas se pintan enteras una encima de otra, y la ultima
     // que se pinta gana. Sin la distincion, Alt+Tab podria dejar el teclado en
-    // Ejecutar con Datos delante — escribiendo en una linea que no se ve, que
+    // Ejecutar con Datos delante -- escribiendo en una linea que no se ve, que
     // es el mismo fallo de antes al reves.
     let mut datos_abierta = false;
 
-    // ── La consola del KERNEL (F11) ──
+    // -- La consola del KERNEL (F11) --
     //
-    // Lo que dice Ring 0, leído desde aquí. **No es "ir a Ring 0"**: este
-    // proceso sigue en Ring 3 con sus capabilities contadas y lo único que hace
+    // Lo que dice Ring 0, leido desde aqui. **No es "ir a Ring 0"**: este
+    // proceso sigue en Ring 3 con sus capabilities contadas y lo unico que hace
     // es preguntar (`TASK_OP_KLOG_*`). Ver `escena::klog`.
     //
-    // Y F11 en vez de un comando por una razón de hoy: **no hace falta teclear
+    // Y F11 en vez de un comando por una razon de hoy: **no hace falta teclear
     // nada para abrirla**. Cuando lo que falla es el campo donde se escribe, un
-    // diagnóstico que exige escribir un comando no sirve de nada.
+    // diagnostico que exige escribir un comando no sirve de nada.
     let caja_klog = escena::klog::CajaKlog::nueva(&p);
     let mut klog_abierta = false;
-    // Cuántas líneas hacia atrás empieza la ventana. RePág/AvPág la mueven, que
-    // es lo que permite llegar al PRINCIPIO del arranque — donde están las
-    // respuestas de por qué algo no arrancó.
+    // Cuantas lineas hacia atras empieza la ventana. RePag/AvPag la mueven, que
+    // es lo que permite llegar al PRINCIPIO del arranque -- donde estan las
+    // respuestas de por que algo no arranco.
     let mut klog_desplazamiento = 0u64;
-    // Qué familia de módulos deja pasar la ventana del kernel. `0` = todas.
-    // Vive aquí y no dentro de `klog.rs` por lo mismo que el desplazamiento:
-    // es estado de la SESIÓN, y el módulo que pinta no debe recordar nada.
+    // Que familia de modulos deja pasar la ventana del kernel. `0` = todas.
+    // Vive aqui y no dentro de `klog.rs` por lo mismo que el desplazamiento:
+    // es estado de la SESION, y el modulo que pinta no debe recordar nada.
     let mut klog_filtro = 0u8;
 
-    /// Qué tecla de la calculadora tiene el puntero encima, si alguna.
+    /// Que tecla de la calculadora tiene el puntero encima, si alguna.
     ///
-    /// Se lleva como estado porque el realce sólo se repinta **cuando cambia**:
-    /// repintar la calculadora entera en cada fotograma que el ratón se mueva
-    /// un píxel serían veinte rectángulos y veinte glifos por vuelta para
-    /// enseñar exactamente lo mismo.
+    /// Se lleva como estado porque el realce solo se repinta **cuando cambia**:
+    /// repintar la calculadora entera en cada fotograma que el raton se mueva
+    /// un pixel serian veinte rectangulos y veinte glifos por vuelta para
+    /// ensenar exactamente lo mismo.
     let mut calc_encima: Option<u8> = None;
 
-    // ── El FOCO ──
+    // -- El FOCO --
     //
     // Quien recibe las teclas cuando hay mas de una ventana. La politica vive
     // en `bmo_input::foco` y se prueba ALLI (12 tests); aqui solo se le
@@ -597,39 +597,39 @@ pub extern "C" fn _start() -> ! {
     foco.abrir(V_EJECUTAR);
     let mut alt_antes = false;
     let mut conmutador_pintado = false;
-    // Quién tapaba a quién en la vuelta anterior, para pintar sólo cuando
+    // Quien tapaba a quien en la vuelta anterior, para pintar solo cuando
     // cambia. `datos_abierta && foco.es_para(V_DATOS)` es la cuenta entera:
     // **la que tiene el teclado es la que se ve**.
     let mut arriba_antes = V_EJECUTAR;
 
-    // Lo que hay DEBAJO del cursor del ratón. Ver `escena::cursor::Bajo`: se
+    // Lo que hay DEBAJO del cursor del raton. Ver `escena::cursor::Bajo`: se
     // quita al principio del fotograma y se pone al final, y en medio se pinta.
     let mut bajo = Bajo::nuevo();
     // Estado anterior de los botones EN PANTALLA, para no repintar el testigo
-    // del pulsómetro sesenta veces por segundo con el mismo color.
+    // del pulsometro sesenta veces por segundo con el mismo color.
 
-    // ── ★ EL VIGILANTE DE LA CORRIDA ──
+    // -- * EL VIGILANTE DE LA CORRIDA --
     //
-    // Cuando se lanza un programa se apunta aquí dónde empieza su salida; en
-    // cuanto muere, lo que escribió se vuelca solo a `datos/salida.txt`.
+    // Cuando se lanza un programa se apunta aqui donde empieza su salida; en
+    // cuanto muere, lo que escribio se vuelca solo a `datos/salida.txt`.
     //
-    // ═══ Por qué hace falta el `visto` ═══
+    // === Por que hace falta el `visto` ===
     //
     // `ejecutar_en` vuelve en cuanto el hijo arranca, y **`hay_hijo()` puede
     // contestar `false` en el fotograma siguiente sin que el programa haya
-    // terminado**: todavía no se ha puesto a escribir en la consola. Sin la
-    // bandera, cada lanzamiento volcaría un archivo vacío en el acto y luego
-    // no volcaría el de verdad.
+    // terminado**: todavia no se ha puesto a escribir en la consola. Sin la
+    // bandera, cada lanzamiento volcaria un archivo vacio en el acto y luego
+    // no volcaria el de verdad.
     //
-    // Con ella, el volcado sólo ocurre en el flanco `vivo → muerto`, que es lo
-    // único que significa "terminó".
+    // Con ella, el volcado solo ocurre en el flanco `vivo -> muerto`, que es lo
+    // unico que significa "termino".
     // `Corrida` y su vigilante viven en `vigilante.rs`: es el unico bloque de
     // esta funcion que toca solo TRES variables del estado, asi que es el unico
     // que se puede sacar sin arrastrar media firma. Ver la cabecera del modulo.
     let mut corrida: Option<Corrida> = None;
 
     loop {
-        // ── ¿Terminó el programa que se lanzó? Entonces, a guardarlo ──
+        // -- Termino el programa que se lanzo? Entonces, a guardarlo --
         //
         // 71 lineas que estaban aqui dentro. Se fueron ENTERAS a
         // `vigilante.rs`, sin tocar una coma de su logica.
@@ -638,32 +638,32 @@ pub extern "C" fn _start() -> ! {
         vueltas = vueltas.wrapping_add(1);
         let mut repintar_campo = false;
 
-        // ── ¿Va a pintar algo este fotograma? ──
+        // -- Va a pintar algo este fotograma? --
         //
-        // Hay que saberlo ANTES de pintar, porque el cursor del ratón se quita
+        // Hay que saberlo ANTES de pintar, porque el cursor del raton se quita
         // al principio y se pone al final: hacerlo en todos los fotogramas
-        // dejaría el puntero ausente la mitad del tiempo y en pantalla se vería
-        // pálido y parpadeante. Y como leer una tecla la CONSUME, "¿hay
+        // dejaria el puntero ausente la mitad del tiempo y en pantalla se veria
+        // palido y parpadeante. Y como leer una tecla la CONSUME, "hay
         // teclas?" obliga a tenerlas ya en la mano.
         //
-        // Lo que se lee aquí no se interpreta aquí: esto sólo recoge.
+        // Lo que se lee aqui no se interpreta aqui: esto solo recoge.
         let mut va_a_pintar = salida.sucia || desde_tecla + 1 >= PARPADEO;
 
         if let Some(e) = entrada.as_ref() {
-            // ── El atajo, ANTES de leer teclas ──
+            // -- El atajo, ANTES de leer teclas --
             let m = e.modificadores();
             let ctrl = m & bmo::MOD_CTRL != 0;
             let combo = ctrl && m & bmo::MOD_ALT != 0;
-            // ★ Alt SOLO, sin Ctrl. La distincion no es cosmetica: `Ctrl+Alt`
+            // * Alt SOLO, sin Ctrl. La distincion no es cosmetica: `Ctrl+Alt`
             // **es AltGr** en espanol, y ya tiene dueno (invocar la ventana).
             // El driver ademas da el Alt DERECHO como `SC_ALTGR` con codigo
-            // propio, asi que `MOD_ALT` es el izquierdo — el de Alt+Tab de toda
+            // propio, asi que `MOD_ALT` es el izquierdo -- el de Alt+Tab de toda
             // la vida.
             let alt_solo = m & bmo::MOD_ALT != 0 && !ctrl;
 
             // El tope no descarta: lo que no quepa se queda en el anillo del
             // kernel y llega en el fotograma siguiente. Drenar sin tope y tirar
-            // el sobrante sería perder letras justo cuando se escribe rápido.
+            // el sobrante seria perder letras justo cuando se escribe rapido.
             let mut teclas = [0u8; 64];
             let mut nt = 0usize;
             while nt < teclas.len() {
@@ -686,27 +686,27 @@ pub extern "C" fn _start() -> ! {
                 || alt_solo != alt_antes
                 || combo != combo_antes;
 
-            // A partir de aquí se PINTA, así que el cursor se aparta.
+            // A partir de aqui se PINTA, asi que el cursor se aparta.
             if va_a_pintar {
                 bajo.quitar(&p);
             }
 
-            // ── Alt+Tab: el conmutador ──
+            // -- Alt+Tab: el conmutador --
             //
             // La pila se reordena al SOLTAR, no en cada Tab: eso es lo que hace
             // que pulsarlo dos veces te devuelva a donde estabas. Ver
             // `bmo_input::foco`.
-            // ★★ La guarda es `conmutador_pintado`, NO `foco.conmutando()`.
+            // ** La guarda es `conmutador_pintado`, NO `foco.conmutando()`.
             //
             // Eran dos estados distintos gobernando la misma cosa: uno dice
-            // *qué hay dibujado en la pantalla* y el otro *qué cree la política
-            // de foco*. Mientras coincidan, bien; el día que no —y en el Ryzen
-            // no coincidieron— el conmutador se queda pintado para siempre,
-            // porque el único que sabía borrarlo estaba esperando permiso del
-            // que no lo pintó.
+            // *que hay dibujado en la pantalla* y el otro *que cree la politica
+            // de foco*. Mientras coincidan, bien; el dia que no --y en el Ryzen
+            // no coincidieron-- el conmutador se queda pintado para siempre,
+            // porque el unico que sabia borrarlo estaba esperando permiso del
+            // que no lo pinto.
             //
-            // Lo que hay que borrar lo decide quien lo pintó. `soltar_conmutador`
-            // se llama igual: pedirle a la política que se suelte no puede
+            // Lo que hay que borrar lo decide quien lo pinto. `soltar_conmutador`
+            // se llama igual: pedirle a la politica que se suelte no puede
             // depender de que ella misma diga que estaba conmutando.
             if !alt_solo && alt_antes && conmutador_pintado {
                 foco.soltar_conmutador();
@@ -722,9 +722,9 @@ pub extern "C" fn _start() -> ! {
                 // es el unico orden que deja la pantalla como estaba. Y quien
                 // va arriba lo acaba de decidir el Alt que se solto.
                 //
-                // ★ Con tres ventanas esto se escribe como lo que es: pintar
-                // TODAS las abiertas, y la que tiene el foco la ÚLTIMA. La
-                // versión de dos ventanas enumeraba los casos a mano, y con
+                // * Con tres ventanas esto se escribe como lo que es: pintar
+                // TODAS las abiertas, y la que tiene el foco la ULTIMA. La
+                // version de dos ventanas enumeraba los casos a mano, y con
                 // tres eso son seis ramas que dicen una sola regla.
                 let arriba_ahora = if klog_abierta && foco.es_para(V_KLOG) {
                     V_KLOG
@@ -772,12 +772,12 @@ pub extern "C" fn _start() -> ! {
             }
             combo_antes = combo;
 
-            // ── Teclado ──
+            // -- Teclado --
             //
             // Se atienden TODAS las de la vuelta, no una por fotograma:
-            // escribiendo rápido llegan varias entre vuelta y vuelta, y
-            // quedarse con una sería perder letras de forma que parecería un
-            // teclado malo. Ya están recogidas arriba.
+            // escribiendo rapido llegan varias entre vuelta y vuelta, y
+            // quedarse con una seria perder letras de forma que pareceria un
+            // teclado malo. Ya estan recogidas arriba.
             for &c in &teclas[..nt] {
                 // Tab con Alto pulsado NO llega a ninguna ventana: es del
                 // conmutador. Shift lo recorre al reves.
@@ -790,18 +790,18 @@ pub extern "C" fn _start() -> ! {
                     escena::conmutador::pintar(
                         &p,
                         foco.lista(),
-                        foco.indice_señalado(),
+                        foco.indice_senalado(),
                         foco.modo().nombre(),
                     );
                     conmutador_pintado = true;
                     continue;
                 }
-                // ── Alt+M: cambiar el MODO del foco ──
+                // -- Alt+M: cambiar el MODO del foco --
                 //
                 // Sin una tecla, los tres modos son decoracion: `Fijo` y
                 // `Puntero` existirian sin forma de llegar a ellos. Va con Alt
-                // por lo mismo que el Tab —`Alt` solo no produce caracter en
-                // ninguna distribucion, `Ctrl+Alt` SI (es AltGr)— y se anuncia
+                // por lo mismo que el Tab --`Alt` solo no produce caracter en
+                // ninguna distribucion, `Ctrl+Alt` SI (es AltGr)-- y se anuncia
                 // en la propia ventanita, que es donde se lee el modo.
                 if alt_solo && (c == b'm' || c == b'M') {
                     foco.poner_modo(foco.modo().siguiente());
@@ -809,7 +809,7 @@ pub extern "C" fn _start() -> ! {
                         escena::conmutador::pintar(
                             &p,
                             foco.lista(),
-                            foco.indice_señalado(),
+                            foco.indice_senalado(),
                             foco.modo().nombre(),
                         );
                     } else if visible {
@@ -826,11 +826,11 @@ pub extern "C" fn _start() -> ! {
                     hubo_tecla_en_combo = true;
                 }
 
-                // ── F12 es del SISTEMA, no de una ventana ──
+                // -- F12 es del SISTEMA, no de una ventana --
                 //
                 // Se atiende ANTES de preguntar por el foco, y tiene que ser
                 // asi: un atajo que solo funciona si ya estas en la ventana que
-                // abre no sirve para abrirla — y peor, no sirve para cerrarla,
+                // abre no sirve para abrirla -- y peor, no sirve para cerrarla,
                 // porque para entonces el foco ya es suyo.
                 //
                 // ESC cierra la de arriba, que es lo que hace ESC en todas
@@ -871,11 +871,11 @@ pub extern "C" fn _start() -> ! {
                     continue;
                 }
 
-                // ── F11: la consola del KERNEL ──
+                // -- F11: la consola del KERNEL --
                 //
                 // Calcada de F12 y por los mismos motivos: se atiende ANTES de
-                // preguntar por el foco, porque un atajo que sólo funciona si ya
-                // estás dentro de la ventana no sirve para abrirla.
+                // preguntar por el foco, porque un atajo que solo funciona si ya
+                // estas dentro de la ventana no sirve para abrirla.
                 let conmutar_klog = if c == 0x93 {
                     Some(!klog_abierta)
                 } else if c == 0x1B && klog_abierta && foco.es_para(V_KLOG) {
@@ -886,9 +886,9 @@ pub extern "C" fn _start() -> ! {
                 if let Some(abrir) = conmutar_klog {
                     klog_abierta = abrir;
                     if abrir {
-                        // Se abre SIEMPRE por lo último, que es lo que se quiere
-                        // ver el 90% de las veces. Para ir al arranque están
-                        // RePág/AvPág.
+                        // Se abre SIEMPRE por lo ultimo, que es lo que se quiere
+                        // ver el 90% de las veces. Para ir al arranque estan
+                        // RePag/AvPag.
                         klog_desplazamiento = 0;
                         foco.abrir(V_KLOG);
                         escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
@@ -912,20 +912,20 @@ pub extern "C" fn _start() -> ! {
                     continue;
                 }
 
-                // RePág/AvPág dentro de la consola del kernel: recorrer el log.
+                // RePag/AvPag dentro de la consola del kernel: recorrer el log.
                 //
-                // Va aquí y no en el editor de línea porque **es de esta
+                // Va aqui y no en el editor de linea porque **es de esta
                 // ventana**: con el foco en el kernel, esas teclas no tienen
                 // nada que ver con el historial de salida de Ejecutar.
-                // ── F: cambiar el filtro de la ventana del kernel ──
+                // -- F: cambiar el filtro de la ventana del kernel --
                 //
-                // Sólo con el foco AQUÍ: con el foco en Ejecutar, una `f` es una
-                // letra que el dueño está escribiendo, y robársela para un atajo
-                // sería el peor intercambio posible.
+                // Solo con el foco AQUI: con el foco en Ejecutar, una `f` es una
+                // letra que el dueno esta escribiendo, y robarsela para un atajo
+                // seria el peor intercambio posible.
                 //
                 // Se reinicia el desplazamiento al cambiar: lo que se estaba
-                // mirando en la lista vieja no señala nada en la nueva, y dejar
-                // el número puesto haría que la ventana pareciera vacía.
+                // mirando en la lista vieja no senala nada en la nueva, y dejar
+                // el numero puesto haria que la ventana pareciera vacia.
                 if klog_abierta && foco.es_para(V_KLOG) && (c == b'f' || c == b'F') {
                     klog_filtro = (klog_filtro + 1) % escena::klog::FAMILIAS;
                     klog_desplazamiento = 0;
@@ -935,7 +935,7 @@ pub extern "C" fn _start() -> ! {
                 if klog_abierta && foco.es_para(V_KLOG) && (c == 0x87 || c == 0x88) {
                     let hay = bmo::klog_lineas();
                     if c == 0x87 {
-                        // Hacia atrás en el tiempo, sin pasarse del principio.
+                        // Hacia atras en el tiempo, sin pasarse del principio.
                         klog_desplazamiento = (klog_desplazamiento + 8).min(hay.saturating_sub(1));
                     } else {
                         klog_desplazamiento = klog_desplazamiento.saturating_sub(8);
@@ -944,25 +944,25 @@ pub extern "C" fn _start() -> ! {
                     continue;
                 }
 
-                // ── ★ La consola de DATOS: cambiar de vista y recorrer el árbol ──
+                // -- * La consola de DATOS: cambiar de vista y recorrer el arbol --
                 //
-                // Va aquí, junto al bloque del klog y por el mismo motivo: son
+                // Va aqui, junto al bloque del klog y por el mismo motivo: son
                 // teclas DE ESTA VENTANA. Con Datos delante, las flechas no
                 // tienen nada que ver con el historial de comandos de Ejecutar,
-                // y hasta hoy iban allí — se navegaba una ventana tapada.
+                // y hasta hoy iban alli -- se navegaba una ventana tapada.
                 if datos_abierta && foco.es_para(V_DATOS) {
                     use escena::datos::Vista;
                     let mut atendida = true;
                     match c {
-                        // TAB: números ⇄ nodos. Es la misma tecla que cambia de
-                        // pestaña en todas partes.
+                        // TAB: numeros <-> nodos. Es la misma tecla que cambia de
+                        // pestana en todas partes.
                         b'\t' => {
                             caja_datos.vista = match caja_datos.vista {
                                 Vista::Numeros => {
-                                    // Al entrar en el árbol se empieza por la
-                                    // raíz. Conservar el sitio de la última vez
-                                    // enseñaría un directorio que ya no se sabe
-                                    // cuál es.
+                                    // Al entrar en el arbol se empieza por la
+                                    // raiz. Conservar el sitio de la ultima vez
+                                    // ensenaria un directorio que ya no se sabe
+                                    // cual es.
                                     bmo::estratos::a_la_raiz();
                                     caja_datos.al_principio();
                                     Vista::Nodos
@@ -979,9 +979,9 @@ pub extern "C" fn _start() -> ! {
                         0x81 => { caja_datos.mover_sel(1, bmo::estratos::hijos() as usize); caja_datos.verificado = None; }
                         0x87 => caja_datos.mover_sel(-5, bmo::estratos::hijos() as usize),
                         0x88 => caja_datos.mover_sel(5, bmo::estratos::hijos() as usize),
-                        // ENTRAR / DERECHA: bajar al hijo señalado. `entrar`
+                        // ENTRAR / DERECHA: bajar al hijo senalado. `entrar`
                         // dice que no si es un archivo, y entonces no pasa nada
-                        // — que es lo correcto: un archivo no tiene dentro.
+                        // -- que es lo correcto: un archivo no tiene dentro.
                         b'\r' | b'\n' | 0x83 => {
                             if bmo::estratos::entrar(caja_datos.sel as u64) {
                                 caja_datos.al_principio();
@@ -995,11 +995,11 @@ pub extern "C" fn _start() -> ! {
                                 caja_datos.verificado = None;
                             }
                         }
-                        // ★ V: COMPROBAR LA FIRMA del nodo señalado.
+                        // * V: COMPROBAR LA FIRMA del nodo senalado.
                         //
                         // Se pide a mano y no se calcula al pintar: lee el
                         // archivo entero y le hace el BLAKE3, y hacer eso
-                        // sesenta veces por segundo convertiría este panel en
+                        // sesenta veces por segundo convertiria este panel en
                         // un martillo sobre el disco.
                         b'v' | b'V' => {
                             caja_datos.verificado =
@@ -1013,7 +1013,7 @@ pub extern "C" fn _start() -> ! {
                     }
                 }
 
-                // ── ★ ¿DE QUIEN es esta tecla? ──
+                // -- * DE QUIEN es esta tecla? --
                 //
                 // La pregunta que faltaba, y la razon de que exista
                 // `bmo_input::foco`. Hasta ahora TODA tecla se editaba en la
@@ -1021,7 +1021,7 @@ pub extern "C" fn _start() -> ! {
                 // encima: escribias en una ventana tapada, sin verlo. Con una
                 // tercera, chocan.
                 //
-                // Ninguna abierta —todas escondidas— tampoco es "Ejecutar por
+                // Ninguna abierta --todas escondidas-- tampoco es "Ejecutar por
                 // defecto": las teclas se descartan y vuelven al invocarla.
                 if !foco.es_para(V_EJECUTAR) {
                     continue;
@@ -1033,9 +1033,9 @@ pub extern "C" fn _start() -> ! {
                 repintar_campo = true;
                 match c {
                     b'\r' | b'\n' => {
-                        // Eco SIEMPRE, también de lo que no se entiende: un
+                        // Eco SIEMPRE, tambien de lo que no se entiende: un
                         // terminal que se traga lo que escribiste deja al
-                        // usuario sin saber qué llegó.
+                        // usuario sin saber que llego.
                         // El eco lleva un punto medio (0xB7) y no `>`. El `>`
                         // es la marca de Unix y este sistema no es Unix; el
                         // punto medio separa igual de bien y no arrastra la
@@ -1051,10 +1051,10 @@ pub extern "C" fn _start() -> ! {
                         salida.byte(b'\n');
                         salida.con_tinta(TINTA_NORMAL);
 
-                        // ¿Hay un programa vivo escuchando en esta consola?
+                        // Hay un programa vivo escuchando en esta consola?
                         // Entonces la linea NO es un comando: es SUYA. Es lo
                         // que hace cualquier shell, y sin esto un `ACCEPT` de
-                        // COBOL no puede recibir nada nunca — el terminal se
+                        // COBOL no puede recibir nada nunca -- el terminal se
                         // come la respuesta y contesta "no lo conozco".
                         //
                         // La calculadora se excluye a proposito: mientras
@@ -1102,13 +1102,13 @@ pub extern "C" fn _start() -> ! {
                                             };
                                             let mut nom = [0u8; 12];
                                             let largo = e.legible(&mut nom);
-                                            // `.` y `..` no se enseñan: aqui
+                                            // `.` y `..` no se ensenan: aqui
                                             // no hay carpeta actual a la que
                                             // volver, asi que son ruido.
                                             if es_punto(&nom[..largo]) { continue; }
                                             salida.texto(b"  ");
                                             salida.texto(&nom[..largo]);
-                                            // Alinear la columna del tamaño.
+                                            // Alinear la columna del tamano.
                                             let mut k = largo;
                                             while k < 14 { salida.byte(b' '); k += 1; }
                                             if e.es_dir {
@@ -1127,20 +1127,20 @@ pub extern "C" fn _start() -> ! {
                                         }
                                         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                                     }
-                                    // ★ El MOTIVO, no un "no pude" para todo.
+                                    // * El MOTIVO, no un "no pude" para todo.
                                     //
-                                    // Esto tiraba el código con `Err(_)` y
-                                    // decía siempre "no puedo abrir esa
+                                    // Esto tiraba el codigo con `Err(_)` y
+                                    // decia siempre "no puedo abrir esa
                                     // carpeta". Cuando la tabla de directorios
-                                    // del kernel se llenó, eso fue una mentira
-                                    // exacta: la carpeta estaba ahí, lo que no
-                                    // había era ranura. Y mandó a buscar el
+                                    // del kernel se lleno, eso fue una mentira
+                                    // exacta: la carpeta estaba ahi, lo que no
+                                    // habia era ranura. Y mando a buscar el
                                     // fallo al disco, que estaba perfecto.
                                     //
                                     // Un error que no distingue sus causas es
                                     // un error que manda a mirar donde no es.
                                     Err(cod) => {
-                                        // 25 = sin hueco, 26 = no está. Ver
+                                        // 25 = sin hueco, 26 = no esta. Ver
                                         // `ring0/obj/directorio.rs`.
                                         let (linea, estado): (&[u8], &str) = if cod == 25 {
                                             (
@@ -1161,10 +1161,10 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
-                            // ── Leer un archivo ──
+                            // -- Leer un archivo --
                             //
                             // El hermano de `ls`: aquel dice QUE hay, este
-                            // enseña lo de DENTRO. Es la primera vez que un
+                            // ensena lo de DENTRO. Es la primera vez que un
                             // programa de Ring 3 abre un archivo del disco.
                             Orden::Leer(ruta_arch) => {
                                 match bmo::Archivo::leer_de(ruta_arch) {
@@ -1212,7 +1212,7 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
-                            // ── Escribir un archivo ──
+                            // -- Escribir un archivo --
                             //
                             // Lo que NUNCA habia pasado: un programa de Ring 3
                             // dejando algo en el disco. Hasta hoy todo lo que
@@ -1226,7 +1226,7 @@ pub extern "C" fn _start() -> ! {
                                         // sin el ultimo salto es el clasico
                                         // que descuadra al siguiente que lo lee.
                                         a.escribir(b"\n");
-                                        // ★ Aqui es donde llega al disco. Antes
+                                        // * Aqui es donde llega al disco. Antes
                                         // de esto no hay nada escrito.
                                         if a.cerrar() {
                                             salida.texto(b"  guardado: ");
@@ -1251,10 +1251,10 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
-                            // ── Volcar el historial a un .txt ──
+                            // -- Volcar el historial a un .txt --
                             //
-                            // El hermano manual del volcado automático: aquél
-                            // guarda lo de UNA corrida, éste guarda todo lo que
+                            // El hermano manual del volcado automatico: aquel
+                            // guarda lo de UNA corrida, este guarda todo lo que
                             // quede en el historial, que es lo que hace falta
                             // cuando lo interesante son tres comandos juntos.
                             Orden::Guardar(arg) => {
@@ -1262,7 +1262,7 @@ pub extern "C" fn _start() -> ! {
                                 // El rango se toma ANTES de escribir nada:
                                 // los mensajes de abajo son de esta orden, no
                                 // de lo que se estaba guardando, y colarlos
-                                // dentro haría que el archivo hablara de sí
+                                // dentro haria que el archivo hablara de si
                                 // mismo.
                                 let (desde, hasta) = salida.filas_todas();
                                 match volcar_salida(&salida, destino, desde, hasta) {
@@ -1298,7 +1298,7 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
-                            // ★ La primera orden del escritorio que ESCRIBE EN
+                            // * La primera orden del escritorio que ESCRIBE EN
                             // EL DISCO. Ver `bmo::estratos_sellar`.
                             Orden::EstratosSellar => {
                                 let g = bmo::estratos_sellar();
@@ -1325,12 +1325,12 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
-                            // ★ `perf` — el número antes que la tarjeta.
+                            // * `perf` -- el numero antes que la tarjeta.
                             //
                             // Se pinta ANTES de leer los contadores no: se leen
-                            // aquí y se imprimen, y el fotograma que los pinta
-                            // sumará el suyo. Da igual: lo que interesa es el
-                            // orden de magnitud y el peor caso, no un dígito.
+                            // aqui y se imprimen, y el fotograma que los pinta
+                            // sumara el suyo. Da igual: lo que interesa es el
+                            // orden de magnitud y el peor caso, no un digito.
                             Orden::Pintado => {
                                 let v = p.volcado();
                                 salida.texto(b"  pintado\n");
@@ -1349,8 +1349,8 @@ pub extern "C" fn _start() -> ! {
                                     let k = decimal(v.bytes / v.fotogramas / 1024, &mut d);
                                     salida.texto(&d[..k]);
                                     salida.texto(b" KiB por fotograma\n");
-                                    // El PEOR caso va aparte y a propósito: un
-                                    // tirón se nota y una media buena lo tapa.
+                                    // El PEOR caso va aparte y a proposito: un
+                                    // tiron se nota y una media buena lo tapa.
                                     salida.texto(b"    peor       ");
                                     let k = decimal(v.peor / 1024, &mut d);
                                     salida.texto(&d[..k]);
@@ -1420,7 +1420,7 @@ pub extern "C" fn _start() -> ! {
                                 n = 0;
                             }
                             // Ni se intenta lanzar. Se dice lo que es y con
-                            // que se abre — un mensaje sobre la FIRMA aqui
+                            // que se abre -- un mensaje sobre la FIRMA aqui
                             // manda a buscar un permiso que no hace falta.
                             Orden::NoEsPrograma(r) => {
                                 salida.con_tinta(TINTA_MAL);
@@ -1447,21 +1447,21 @@ pub extern "C" fn _start() -> ! {
                                 pintar_estado(&p, &caja, "memoria", TEXTO_TENUE);
                                 n = 0;
                             }
-                            // ★ El aviso va ANTES y se VUELCA antes, porque la
+                            // * El aviso va ANTES y se VUELCA antes, porque la
                             // llamada bloquea hasta un segundo entero mientras
-                            // el kernel manda INIT+SIPI a cada núcleo. Un
-                            // mensaje escrito después de volver no explica
-                            // nada: para entonces la espera ya pasó, y lo que
-                            // el dueño habría visto es un escritorio congelado
+                            // el kernel manda INIT+SIPI a cada nucleo. Un
+                            // mensaje escrito despues de volver no explica
+                            // nada: para entonces la espera ya paso, y lo que
+                            // el dueno habria visto es un escritorio congelado
                             // sin motivo.
                             Orden::Smp(arg) => {
-                                // ★ El CONTROL, y el reparto de quién decide:
-                                // aquí sólo se traduce lo que el dueño escribió
-                                // a un número. `smp` a secas censa y no toca
-                                // nada — que sea el caso por defecto es la
-                                // diferencia entre un mando y un botón.
-                                // Los dos mandos que no son un número: parar y
-                                // medir. Se resuelven aquí y salen, porque no
+                                // * El CONTROL, y el reparto de quien decide:
+                                // aqui solo se traduce lo que el dueno escribio
+                                // a un numero. `smp` a secas censa y no toca
+                                // nada -- que sea el caso por defecto es la
+                                // diferencia entre un mando y un boton.
+                                // Los dos mandos que no son un numero: parar y
+                                // medir. Se resuelven aqui y salen, porque no
                                 // comparten NADA con el camino de despertar.
                                 if arg == b"parar" || arg == b"para" {
                                     bmo::smp_parar();
@@ -1517,7 +1517,7 @@ pub extern "C" fn _start() -> ! {
                                         }
                                     }
                                     // Un argumento que no se entiende NO se
-                                    // interpreta como "todos": eso convertiría
+                                    // interpreta como "todos": eso convertiria
                                     // un dedazo en once INIT+SIPI.
                                     if ok { v } else { 0 }
                                 };
@@ -1543,10 +1543,10 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(&b[..k]);
                                 salida.texto(b"   (F11 lo cuenta entero)\n");
                                 salida.con_tinta(TINTA_NORMAL);
-                                // La guía va donde se necesita: justo después
+                                // La guia va donde se necesita: justo despues
                                 // de censar, que es cuando uno se pregunta
-                                // "¿y ahora cómo los enciendo?". Un atajo que
-                                // sólo vive en la documentación no existe.
+                                // "y ahora como los enciendo?". Un atajo que
+                                // solo vive en la documentacion no existe.
                                 if cuantos == 0 {
                                     salida.texto(b"  'smp all' los despierta todos, 'smp 3' solo tres\n");
                                 }
@@ -1567,20 +1567,20 @@ pub extern "C" fn _start() -> ! {
                             }
                             Orden::Desconocida => {
                                 // El mensaje honesto. Antes se contestaba "no
-                                // esta: revisa la ruta" a quien escribía
+                                // esta: revisa la ruta" a quien escribia
                                 // `reboot`, y eso manda a buscar un archivo que
-                                // nunca existió en vez de decir la verdad.
+                                // nunca existio en vez de decir la verdad.
                                 salida.texto(b"  no es un comando ni una ruta. escribe 'help'.\n");
                                 pintar_estado(&p, &caja, "no lo conozco: prueba help", TEXTO_MAL);
                                 n = 0;
                             }
                             Orden::Lanzar(objetivo) => {
                                 let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
-                                // ★★ `run` DECIDE SOLO.
+                                // ** `run` DECIDE SOLO.
                                 //
-                                // Si el `.bex` declara `WANTS_SCREEN` —bandera
+                                // Si el `.bex` declara `WANTS_SCREEN` --bandera
                                 // que pone el COMPILADOR al ver que el programa
-                                // reclama la pantalla— el escritorio se aparta
+                                // reclama la pantalla-- el escritorio se aparta
                                 // sin que nadie tenga que pedirlo.
                                 //
                                 // Esto es lo que `presta` deberia haber sido
@@ -1615,20 +1615,20 @@ pub extern "C" fn _start() -> ! {
                                 match bmo::ejecutar_en(objetivo, cap) {
                                     Ok(_) => {
                                         pintar_estado(&p, &caja, "lanzado", TEXTO_BIEN);
-                                        // ★ Se apunta DÓNDE empieza esta
+                                        // * Se apunta DONDE empieza esta
                                         // corrida. El volcado no puede hacerse
-                                        // aquí: `ejecutar_en` vuelve en cuanto
-                                        // el hijo arranca y todavía no ha
+                                        // aqui: `ejecutar_en` vuelve en cuanto
+                                        // el hijo arranca y todavia no ha
                                         // escrito ni una letra. Lo que se
                                         // guarda es la marca, y el volcado
-                                        // ocurre cuando el hijo MUERE — ver el
+                                        // ocurre cuando el hijo MUERE -- ver el
                                         // vigilante del bucle principal.
                                         // `-1` para que el ECO entre en el
                                         // volcado. El archivo se sobreescribe
-                                        // en cada corrida, así que sin la
-                                        // línea del comando dentro no hay
-                                        // forma de saber QUÉ lo produjo — y un
-                                        // volcado anónimo es la mitad de un
+                                        // en cada corrida, asi que sin la
+                                        // linea del comando dentro no hay
+                                        // forma de saber QUE lo produjo -- y un
+                                        // volcado anonimo es la mitad de un
                                         // volcado.
                                         let mut destino = [0u8; 32];
                                         let destino_n = nombre_volcado(objetivo, &mut destino);
@@ -1638,21 +1638,21 @@ pub extern "C" fn _start() -> ! {
                                             destino,
                                             destino_n,
                                         });
-                                        // El campo se vacía al lanzar, como el
-                                        // Win+R: la caja está para el SIGUIENTE
+                                        // El campo se vacia al lanzar, como el
+                                        // Win+R: la caja esta para el SIGUIENTE
                                         // programa, no para admirar el anterior.
                                         n = 0;
                                     }
-                                    // ⚠️ Este código tapa DOS causas: que el
-                                    // archivo no esté, y que esté pero no se
-                                    // pueda cargar —por ejemplo si pasa de
-                                    // `MAX_BEX`, 1 MiB—. Le pasó al dueño con
-                                    // `c/leer.bex`, que SALÍA EN `ls` y aquí
-                                    // decía que no estaba.
+                                    // [!] Este codigo tapa DOS causas: que el
+                                    // archivo no este, y que este pero no se
+                                    // pueda cargar --por ejemplo si pasa de
+                                    // `MAX_BEX`, 1 MiB--. Le paso al dueno con
+                                    // `c/leer.bex`, que SALIA EN `ls` y aqui
+                                    // decia que no estaba.
                                     //
                                     // Separarlas de verdad es tocar el ABI. Lo
                                     // que se hace ya es mandar a mirar donde el
-                                    // kernel SÍ cuenta el motivo entero.
+                                    // kernel SI cuenta el motivo entero.
                                     Err(bmo::ERROR_NO_ESTA) => pintar_estado(
                                         &p,
                                         &caja,
@@ -1677,7 +1677,7 @@ pub extern "C" fn _start() -> ! {
                         // El cursor detras de la linea, SIEMPRE. Las ramas que
                         // vacian el campo ponian `n = 0` y dejaban `cur` donde
                         // estaba: la tecla siguiente se escribia en `ruta[cur]`
-                        // —fuera de lo que se dibuja— y el campo ensenaba los
+                        // --fuera de lo que se dibuja-- y el campo ensenaba los
                         // bytes VIEJOS del comando anterior. Escribir `2` tras
                         // `run apps/calc.bex` mostraba una `r`. Las ramas de
                         // error conservan la ruta a proposito para poder
@@ -1709,23 +1709,23 @@ pub extern "C" fn _start() -> ! {
                             repintar_campo = true;
                         }
                     }
-                    // Escape: borrar la línea entera, igual que en el Win+R.
+                    // Escape: borrar la linea entera, igual que en el Win+R.
                     0x1B => {
                         n = 0;
                         cur = 0;
                         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                         repintar_campo = true;
                     }
-                    // ── El portapapeles ──
+                    // -- El portapapeles --
                     //
-                    // Ctrl+C copia la línea entera; Ctrl+V la pega donde esté
+                    // Ctrl+C copia la linea entera; Ctrl+V la pega donde este
                     // el cursor. No es un lujo: la mitad de lo que se teclea en
-                    // un terminal es una variación de lo anterior, y sin copiar
+                    // un terminal es una variacion de lo anterior, y sin copiar
                     // hay que reescribirlo todo.
                     //
                     // Ctrl+C para copiar y no para interrumpir, que es lo que
-                    // significa en Unix. Aquí no hay señales que mandar, y el
-                    // dedo que ya sabe Ctrl+C sabe copiar — no interrumpir.
+                    // significa en Unix. Aqui no hay senales que mandar, y el
+                    // dedo que ya sabe Ctrl+C sabe copiar -- no interrumpir.
                     0x03 => {
                         porta_n = n;
                         porta[..n].copy_from_slice(&ruta[..n]);
@@ -1733,7 +1733,7 @@ pub extern "C" fn _start() -> ! {
                     }
                     0x16 => {
                         if porta_n > 0 && n + porta_n <= RUTA_MAX {
-                            // Hueco del tamaño del pegado, y meterlo.
+                            // Hueco del tamano del pegado, y meterlo.
                             let mut k = n;
                             while k > cur {
                                 ruta[k + porta_n - 1] = ruta[k - 1];
@@ -1745,7 +1745,7 @@ pub extern "C" fn _start() -> ! {
                             repintar_campo = true;
                         }
                     }
-                    // Ctrl+U — borra la línea. Ctrl+L — borra la salida.
+                    // Ctrl+U -- borra la linea. Ctrl+L -- borra la salida.
                     // Los mismos que el shell de Ring 0, porque los dedos ya
                     // los tienen y un atajo que cambia entre dos ventanas del
                     // mismo sistema es peor que no tenerlo.
@@ -1758,12 +1758,12 @@ pub extern "C" fn _start() -> ! {
                         salida.limpiar();
                         repintar_campo = true;
                     }
-                    // FLECHA ARRIBA / ABAJO — el historial. Llegan por la misma
+                    // FLECHA ARRIBA / ABAJO -- el historial. Llegan por la misma
                     // cola que las letras, con bytes del rango C1 (0x80..0x9F)
-                    // que no tienen glifo: el driver los eligió justo para que
+                    // que no tienen glifo: el driver los eligio justo para que
                     // no puedan confundirse con texto.
                     // Ctrl+ARRIBA copia, Ctrl+ABAJO pega. Lo mismo que
-                    // Ctrl+C / Ctrl+V, con las flechas — porque los dedos que
+                    // Ctrl+C / Ctrl+V, con las flechas -- porque los dedos que
                     // ya andan por el historial no tienen que irse a buscar
                     // otra tecla para copiar lo que acaban de recuperar.
                     0x80 if ctrl => {
@@ -1798,7 +1798,7 @@ pub extern "C" fn _start() -> ! {
                             repintar_campo = true;
                         }
                     }
-                    // IZQUIERDA / DERECHA — mover el cursor.
+                    // IZQUIERDA / DERECHA -- mover el cursor.
                     0x82 => {
                         if cur > 0 { cur -= 1; repintar_campo = true; }
                     }
@@ -1808,7 +1808,7 @@ pub extern "C" fn _start() -> ! {
                     // INICIO / FIN.
                     0x84 => { cur = 0; repintar_campo = true; }
                     0x85 => { cur = n; repintar_campo = true; }
-                    // ── Los atajos de edicion de linea ──
+                    // -- Los atajos de edicion de linea --
                     //
                     // Los de toda la vida en una consola: Ctrl+A al principio,
                     // Ctrl+E al final, Ctrl+K corta hasta el final, Ctrl+W
@@ -1825,7 +1825,7 @@ pub extern "C" fn _start() -> ! {
                     }
                     // Ctrl+W: borrar la palabra de atras. Primero se comen los
                     // espacios y luego las letras, que es lo que espera
-                    // cualquiera que lo haya usado — si no, borrar tras un
+                    // cualquiera que lo haya usado -- si no, borrar tras un
                     // espacio no haria nada.
                     0x17 => {
                         let mut k = cur;
@@ -1843,7 +1843,7 @@ pub extern "C" fn _start() -> ! {
                             repintar_campo = true;
                         }
                     }
-                    // SUPRIMIR — borra HACIA ADELANTE, al reves que el
+                    // SUPRIMIR -- borra HACIA ADELANTE, al reves que el
                     // retroceso. Son dos teclas porque son dos intenciones.
                     0x86 => {
                         if cur < n {
@@ -1853,7 +1853,7 @@ pub extern "C" fn _start() -> ! {
                             repintar_campo = true;
                         }
                     }
-                    // ★ PgUp / PgDn — el historial de la salida.
+                    // * PgUp / PgDn -- el historial de la salida.
                     //
                     // Estaban ignoradas "explicitamente", que era honesto pero
                     // inutil: lo que salia por arriba se perdia para siempre, y
@@ -1866,15 +1866,15 @@ pub extern "C" fn _start() -> ! {
                     0x88 => {
                         salida.mover_vista(-(SAL_ROWS as i32 - 1));
                     }
-                    // ★ F12 (0x94) NO esta aqui: se atiende arriba, antes de
+                    // * F12 (0x94) NO esta aqui: se atiende arriba, antes de
                     // preguntar por el foco, porque es del sistema y no de esta
                     // ventana. Ver la conmutacion de la consola de datos.
                     //
-                    // El resto de navegación se ignora, pero EXPLÍCITAMENTE:
-                    // dejarlas caer al comodín las dibujaría como basura.
+                    // El resto de navegacion se ignora, pero EXPLICITAMENTE:
+                    // dejarlas caer al comodin las dibujaria como basura.
                     0x89..=0x9F => {}
-                    // Todo lo demás imprimible, incluido el Latin-1 alto: la
-                    // `ñ` llega como 0xF1 y la fuente la tiene.
+                    // Todo lo demas imprimible, incluido el Latin-1 alto: la
+                    // `n` llega como 0xF1 y la fuente la tiene.
                     c if c >= 0x20 => {
                         if n < RUTA_MAX {
                             // Hueco en el cursor y meter ahi: escribir en
@@ -1894,17 +1894,17 @@ pub extern "C" fn _start() -> ! {
                 }
             }
 
-            // ── Ratón ──
+            // -- Raton --
             // La rueda, primero: mueve el historial de la salida. Es lo que
-            // pidio Eddi —"ver y scrollear"— y funciona con la rueda o con
+            // pidio Eddi --"ver y scrollear"-- y funciona con la rueda o con
             // PgUp/PgDn, porque un teclado siempre hay.
-            // ★ La rueda se atiende MAS ABAJO, cuando ya se sabe sobre que
+            // * La rueda se atiende MAS ABAJO, cuando ya se sabe sobre que
             // ventana esta el puntero. Antes se atendia aqui y siempre movia el
             // historial de salida: con la consola del kernel abierta y encima,
             // girar la rueda desplazaba una rejilla que ni siquiera se veia.
             //
             // Ver `bajo_el_puntero`.
-            // ── Los botones de la calculadora ──
+            // -- Los botones de la calculadora --
             let boton = pos.botones != 0;
             if calc.visible && boton && !boton_antes && !calc.esperando {
                 if let Some(t) = calc_caja.tecla_en(pos.x, pos.y) {
@@ -1941,19 +1941,19 @@ pub extern "C" fn _start() -> ! {
                     pintar_calc(&p, &calc_caja, &calc, calc_encima);
                 }
             }
-            // ── El raton tambien manda en el foco ──
+            // -- El raton tambien manda en el foco --
             //
             // Sin esto, dos de los tres modos son decoracion: `click-to-focus`
             // no existiria y `focus-follows-mouse` no tendria quien le dijera
             // por donde va el puntero.
             //
-            // ★ El orden de estas dos preguntas ES el Z-order: Datos se pinta
+            // * El orden de estas dos preguntas ES el Z-order: Datos se pinta
             // ENCIMA de Ejecutar, asi que se pregunta primero, y un clic en la
             // zona compartida es de la de arriba. `bmo_input::foco` no sabe que
             // ventana tapa a cual y no tiene por que: eso lo sabe el que pinta.
-            // ★ Con TRES ventanas, el orden de las preguntas deja de caber en
+            // * Con TRES ventanas, el orden de las preguntas deja de caber en
             // un `if/else` escrito a mano por pares. Se pregunta primero por la
-            // que está ARRIBA —sea cual sea— y después por las demás: un clic
+            // que esta ARRIBA --sea cual sea-- y despues por las demas: un clic
             // en la zona compartida es siempre de la de encima, y eso es una
             // regla, no una lista de casos.
             let en = |v: u8| match v {
@@ -1968,24 +1968,24 @@ pub extern "C" fn _start() -> ! {
                     .into_iter()
                     .find(|&v| v != arriba_antes && en(v))
             };
-            // ── ★ LA RUEDA VA A LA VENTANA QUE HAY DEBAJO ──
+            // -- * LA RUEDA VA A LA VENTANA QUE HAY DEBAJO --
             //
             // Es lo que hace cualquier sistema y lo que la mano espera sin
             // pensarlo: se gira donde se mira. Antes iba SIEMPRE al historial
-            // de salida, así que con la consola del kernel delante la rueda
-            // movía una rejilla tapada — el gesto no hacía nada visible y
-            // parecía que la rueda no funcionaba.
+            // de salida, asi que con la consola del kernel delante la rueda
+            // movia una rejilla tapada -- el gesto no hacia nada visible y
+            // parecia que la rueda no funcionaba.
             //
-            // Sin ventana debajo no se hace nada, y eso también es una
-            // decisión: mandar el giro a la ventana con el foco cuando el
-            // puntero está en el escritorio mueve cosas que no se están
+            // Sin ventana debajo no se hace nada, y eso tambien es una
+            // decision: mandar el giro a la ventana con el foco cuando el
+            // puntero esta en el escritorio mueve cosas que no se estan
             // mirando.
             if giro != 0 {
                 match bajo_el_puntero {
                     Some(V_KLOG) => {
                         // Positivo es hacia arriba, y en un log "arriba" es
-                        // hacia ATRÁS en el tiempo: el desplazamiento cuenta
-                        // líneas hacia el pasado, así que suma.
+                        // hacia ATRAS en el tiempo: el desplazamiento cuenta
+                        // lineas hacia el pasado, asi que suma.
                         let hay = bmo::klog_lineas();
                         let paso = (giro * 3) as i64;
                         let nuevo = klog_desplazamiento as i64 + paso;
@@ -1995,14 +1995,14 @@ pub extern "C" fn _start() -> ! {
                     }
                     Some(V_EJECUTAR) => {
                         // Tres filas por muesca: una sola se queda corta y una
-                        // página entera se pasa. Es el paso de un terminal.
+                        // pagina entera se pasa. Es el paso de un terminal.
                         salida.mover_vista(giro * 3);
                     }
-                    // La rueda sobre el árbol de nodos mueve la selección. En la
-                    // pestaña de números no hay nada que desplazar: cabe entera.
+                    // La rueda sobre el arbol de nodos mueve la seleccion. En la
+                    // pestana de numeros no hay nada que desplazar: cabe entera.
                     Some(V_DATOS) if caja_datos.vista == escena::datos::Vista::Nodos => {
                         // Girar hacia arriba sube por la lista: `giro` positivo
-                        // es hacia arriba y la selección de arriba es la menor.
+                        // es hacia arriba y la seleccion de arriba es la menor.
                         let cuantos = bmo::estratos::hijos() as usize;
                         caja_datos.mover_sel(-giro, cuantos);
                         escena::datos::pintar(&p, &caja_datos);
@@ -2011,12 +2011,12 @@ pub extern "C" fn _start() -> ! {
                 }
             }
 
-            // ── El realce de la calculadora ──
+            // -- El realce de la calculadora --
             //
-            // Sólo cuando CAMBIA la tecla señalada, y sólo si la calculadora se
-            // ve y no está tapada. Al salir de ella el realce se apaga, que es
-            // la mitad que se olvida siempre: un botón que se queda encendido
-            // cuando ya no lo señalas miente sobre dónde está el ratón.
+            // Solo cuando CAMBIA la tecla senalada, y solo si la calculadora se
+            // ve y no esta tapada. Al salir de ella el realce se apaga, que es
+            // la mitad que se olvida siempre: un boton que se queda encendido
+            // cuando ya no lo senalas miente sobre donde esta el raton.
             let encima_ahora = if calc.visible && arriba_antes == V_EJECUTAR {
                 calc_caja.tecla_en(pos.x, pos.y)
             } else {
@@ -2031,7 +2031,7 @@ pub extern "C" fn _start() -> ! {
 
             if let Some(v) = bajo_el_puntero {
                 // Pasar por encima: solo hace algo en modo `Puntero`, y la
-                // guarda esta DENTRO de la politica — aqui solo se cuenta lo
+                // guarda esta DENTRO de la politica -- aqui solo se cuenta lo
                 // que pasa, no se decide lo que significa.
                 if pos.x != ax || pos.y != ay {
                     foco.puntero_en(v);
@@ -2044,17 +2044,17 @@ pub extern "C" fn _start() -> ! {
                 }
             }
 
-            // ── ★ EL RATÓN SOBRE LA VENTANA DE DATOS ──
+            // -- * EL RATON SOBRE LA VENTANA DE DATOS --
             //
             // Tres gestos que comparten estructura: los BOTONES de la barra,
-            // ARRASTRAR por el asa y ESTIRAR por la esquina. Quién decide cuál
-            // es el marco, no esto: aquí sólo se le cuenta lo que pasó.
+            // ARRASTRAR por el asa y ESTIRAR por la esquina. Quien decide cual
+            // es el marco, no esto: aqui solo se le cuenta lo que paso.
             if datos_abierta && !caja_datos.marco.minimizada {
                 use escena::marco::Boton;
 
-                // El realce de los botones. Sólo cuando CAMBIA — repintarlo
-                // cada fotograma serían 1.700 píxeles de memoria de vídeo sin
-                // caché para dejarlo igual, y además pisaría el cursor.
+                // El realce de los botones. Solo cuando CAMBIA -- repintarlo
+                // cada fotograma serian 1.700 pixeles de memoria de video sin
+                // cache para dejarlo igual, y ademas pisaria el cursor.
                 let encima_ahora = caja_datos.marco.boton_en(pos.x, pos.y);
                 if encima_ahora != caja_datos.marco.encima {
                     caja_datos.marco.encima = encima_ahora;
@@ -2063,10 +2063,10 @@ pub extern "C" fn _start() -> ! {
                 }
 
                 if boton && !boton_antes {
-                    // Un botón se dispara al PULSAR y no al soltar. Es lo que
+                    // Un boton se dispara al PULSAR y no al soltar. Es lo que
                     // hace todo el mundo, y con `cerrar` importa: soltar fuera
-                    // para arrepentirse no funciona en ningún escritorio, así
-                    // que fingirlo aquí sería inventarse una costumbre.
+                    // para arrepentirse no funciona en ningun escritorio, asi
+                    // que fingirlo aqui seria inventarse una costumbre.
                     match caja_datos.marco.boton_en(pos.x, pos.y) {
                         Some(Boton::Cerrar) => {
                             datos_abierta = false;
@@ -2080,7 +2080,7 @@ pub extern "C" fn _start() -> ! {
                         }
                         Some(Boton::Minimizar) => {
                             // Minimizar NO es cerrar: la ventana sigue abierta
-                            // y conserva su sitio, su tamaño y lo que estuviera
+                            // y conserva su sitio, su tamano y lo que estuviera
                             // mirando. Se va a su ficha de la barra.
                             let (vx, vy, va, vl) = (
                                 caja_datos.x(), caja_datos.y(),
@@ -2096,8 +2096,8 @@ pub extern "C" fn _start() -> ! {
                         Some(Boton::Maximizar) => {
                             let (vx, vy, va, vl) = caja_datos.marco.alternar_maximizada(&p);
                             // Al restaurar, el hueco que deja hay que
-                            // devolvérselo al escritorio; al maximizar no sobra
-                            // nada, pero borrar el rectángulo viejo entero
+                            // devolverselo al escritorio; al maximizar no sobra
+                            // nada, pero borrar el rectangulo viejo entero
                             // cubre los dos casos con una sola regla.
                             borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
                             destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
@@ -2106,10 +2106,10 @@ pub extern "C" fn _start() -> ! {
                             arriba_antes = V_DATOS;
                         }
                         None => {
-                            // ── ★ CLIC DENTRO DEL GRAFO ──
+                            // -- * CLIC DENTRO DEL GRAFO --
                             //
-                            // El gesto que faltaba: hasta ahora el ratón sólo
-                            // servía para mover la ventana, y una ventana llena
+                            // El gesto que faltaba: hasta ahora el raton solo
+                            // servia para mover la ventana, y una ventana llena
                             // de cajas en la que no se puede pulsar ninguna es
                             // una ventana que parece interactiva y no lo es.
                             let cuantos = bmo::estratos::hijos() as usize;
@@ -2126,14 +2126,14 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 Some(i) => {
                                     caja_datos.sel = i;
-                                    // El resultado de una verificación es de UN
+                                    // El resultado de una verificacion es de UN
                                     // archivo: al cambiar de caja se borra. Si
-                                    // no, un `CUADRA` viejo se quedaría debajo
+                                    // no, un `CUADRA` viejo se quedaria debajo
                                     // del nombre de otro.
                                     caja_datos.verificado = None;
-                                    // ★ Ctrl+clic BAJA de una vez, sin tener que
-                                    // señalar y pulsar ENTRAR. El clic a secas
-                                    // sólo señala, porque señalar tiene que
+                                    // * Ctrl+clic BAJA de una vez, sin tener que
+                                    // senalar y pulsar ENTRAR. El clic a secas
+                                    // solo senala, porque senalar tiene que
                                     // poder hacerse sin miedo a moverte de sitio.
                                     if ctrl && bmo::estratos::entrar(i as u64) {
                                         caja_datos.al_principio();
@@ -2151,11 +2151,11 @@ pub extern "C" fn _start() -> ! {
                     caja_datos.marco.soltar();
                 } else if boton && caja_datos.marco.agarrado() {
                     // El sitio VIEJO hay que borrarlo antes de mover. Si no, la
-                    // ventana deja un rastro de copias de sí misma: aquí no hay
+                    // ventana deja un rastro de copias de si misma: aqui no hay
                     // recorte ni compositor que repinte lo de debajo solo.
                     //
-                    // Al ESTIRAR pasa lo mismo pero sólo al encoger; borrar el
-                    // rectángulo viejo entero cubre los dos casos con una regla
+                    // Al ESTIRAR pasa lo mismo pero solo al encoger; borrar el
+                    // rectangulo viejo entero cubre los dos casos con una regla
                     // en vez de con dos.
                     let (vx, vy, va, vl) = (
                         caja_datos.x(), caja_datos.y(),
@@ -2171,18 +2171,18 @@ pub extern "C" fn _start() -> ! {
                 }
             }
 
-            // ── Clic en una FICHA de la barra: traer esa ventana ──
+            // -- Clic en una FICHA de la barra: traer esa ventana --
             //
             // Es la mitad que hace que minimizar signifique algo. Sin esto, el
-            // botón de minimizar sería uno de "desaparece para siempre".
-            // ★ Una ficha hace SIEMPRE lo mismo: **trae su ventana y le da el
-            // foco**, esté minimizada, escondida o simplemente detrás.
+            // boton de minimizar seria uno de "desaparece para siempre".
+            // * Una ficha hace SIEMPRE lo mismo: **trae su ventana y le da el
+            // foco**, este minimizada, escondida o simplemente detras.
             //
-            // La primera versión sólo actuaba `si estaba minimizada` o `si
+            // La primera version solo actuaba `si estaba minimizada` o `si
             // estaba escondida`, y por eso pulsar la ficha de una ventana que
-            // ya se veía no hacía nada. En el Ryzen eso se lee como *"la barra
-            // se olvida de mis clics"*, y con razón: un control que a veces
-            // responde y a veces no es peor que uno que no está.
+            // ya se veia no hacia nada. En el Ryzen eso se lee como *"la barra
+            // se olvida de mis clics"*, y con razon: un control que a veces
+            // responde y a veces no es peor que uno que no esta.
             if boton && !boton_antes && pos.y < BARRA_ALTO {
                 if let Some(i) = escena::ficha_en(pos.x, pos.y, 2) {
                     if i == 1 && datos_abierta {
@@ -2210,10 +2210,10 @@ pub extern "C" fn _start() -> ! {
             }
             boton_antes = boton;
 
-            // ── ★ El foco arrastra el Z-order ──
+            // -- * El foco arrastra el Z-order --
             //
-            // Levantar una ventana no da el teclado —eso es mezclar dos cosas y
-            // es el error clasico de un gestor de ventanas—, pero **al reves si
+            // Levantar una ventana no da el teclado --eso es mezclar dos cosas y
+            // es el error clasico de un gestor de ventanas--, pero **al reves si
             // vale**: la que tiene el teclado tiene que verse. Aqui no hay
             // recorte, asi que "verse" es pintarse la ultima.
             //
@@ -2239,23 +2239,23 @@ pub extern "C" fn _start() -> ! {
                 arriba_antes = arriba;
             }
 
-            // El cursor ya no se borra aquí: se pone al final del fotograma y
-            // se quita al principio del siguiente, con lo que había debajo
-            // guardado. Aquí sólo se apunta dónde está.
+            // El cursor ya no se borra aqui: se pone al final del fotograma y
+            // se quita al principio del siguiente, con lo que habia debajo
+            // guardado. Aqui solo se apunta donde esta.
             ax = pos.x;
             ay = pos.y;
 
-            // ★ Aquí se pintaban el PULSÓMETRO y el testigo de botones. Fuera
+            // * Aqui se pintaban el PULSOMETRO y el testigo de botones. Fuera
             // el 2026-08-04, con los seis parches de medida: contestaban
-            // "¿llegan informes del ratón?" y esa pregunta la contesta ya el
-            // propio puntero moviéndose. Ver la nota del escritorio.
+            // "llegan informes del raton?" y esa pregunta la contesta ya el
+            // propio puntero moviendose. Ver la nota del escritorio.
         }
 
-        // ── Drenar la salida de los hijos ──
+        // -- Drenar la salida de los hijos --
         //
-        // Con tope por fotograma. Un programa que escupe sin parar podría
+        // Con tope por fotograma. Un programa que escupe sin parar podria
         // quedarse con el bucle entero y congelar el cursor: es preferible que
-        // la salida vaya un poco por detrás a que el escritorio deje de
+        // la salida vaya un poco por detras a que el escritorio deje de
         // responder. Lo que no se lea ahora sigue en el anillo del kernel.
         if let Some(c) = salida_cap.as_ref() {
             let mut buf = [0u8; 8];
@@ -2278,21 +2278,21 @@ pub extern "C" fn _start() -> ! {
                                 calc.guardado_n = 0;
                                 calc.op = 0;
                                 calc.esperando = false;
-                                // ★ El cursor SE APARTA antes de pintar aquí.
+                                // * El cursor SE APARTA antes de pintar aqui.
                                 //
-                                // Éste es el único pintado del bucle que no
+                                // Este es el unico pintado del bucle que no
                                 // dispara la ENTRADA: lo dispara el HIJO al
-                                // contestar. Así que puede caer en un fotograma
-                                // con `va_a_pintar` en falso — o sea con el
-                                // puntero todavía en pantalla y lo que hay
+                                // contestar. Asi que puede caer en un fotograma
+                                // con `va_a_pintar` en falso -- o sea con el
+                                // puntero todavia en pantalla y lo que hay
                                 // debajo ya guardado. Pintar encima **caduca**
                                 // ese guardado, y el `quitar` de la vuelta
-                                // siguiente devolvería los píxeles viejos
-                                // encima del resultado recién escrito: un
-                                // rectángulo fantasma sobre la calculadora.
+                                // siguiente devolveria los pixeles viejos
+                                // encima del resultado recien escrito: un
+                                // rectangulo fantasma sobre la calculadora.
                                 //
-                                // `quitar` es idempotente —si no está puesto no
-                                // hace nada—, así que llamarlo aquí no cuesta
+                                // `quitar` es idempotente --si no esta puesto no
+                                // hace nada--, asi que llamarlo aqui no cuesta
                                 // nada en los fotogramas que ya lo apartaron.
                                 bajo.quitar(&p);
                                 pintar_calc(&p, &calc_caja, &calc, calc_encima);
@@ -2308,23 +2308,23 @@ pub extern "C" fn _start() -> ! {
                 vueltas += 1;
             }
         }
-        // ★ Y sólo en un fotograma que haya apartado el cursor. Un hijo que
-        // escribe no es motivo suficiente: pintar aquí dejaría el puntero
-        // enterrado bajo la rejilla y, al quitarlo, devolvería píxeles viejos
-        // encima de lo recién escrito. `sucia` se queda puesto y la vuelta
+        // * Y solo en un fotograma que haya apartado el cursor. Un hijo que
+        // escribe no es motivo suficiente: pintar aqui dejaria el puntero
+        // enterrado bajo la rejilla y, al quitarlo, devolveria pixeles viejos
+        // encima de lo recien escrito. `sucia` se queda puesto y la vuelta
         // siguiente ya empieza sabiendo que hay que pintar.
         if salida.sucia && va_a_pintar {
-            // Se pinta sólo si se ve; el contenido sigue acumulándose oculto,
-            // así que al invocar la ventana está todo lo que pasó mientras.
+            // Se pinta solo si se ve; el contenido sigue acumulandose oculto,
+            // asi que al invocar la ventana esta todo lo que paso mientras.
             //
-            // ★ Y NO si la consola de datos está ARRIBA. Sin este guardia, el
-            // fotograma siguiente repintaría la rejilla POR DEBAJO y la
-            // dibujaría encima de la ventana de datos, dejándola a trozos. La
+            // * Y NO si la consola de datos esta ARRIBA. Sin este guardia, el
+            // fotograma siguiente repintaria la rejilla POR DEBAJO y la
+            // dibujaria encima de la ventana de datos, dejandola a trozos. La
             // salida no se pierde: `sucia` se queda puesto y se pinta entera
             // cuando esta ventana vuelva a estar arriba.
             //
-            // Y es ARRIBA, no ABIERTA: con Datos abierta pero detrás, la
-            // rejilla se ve y tiene que seguir escribiéndose.
+            // Y es ARRIBA, no ABIERTA: con Datos abierta pero detras, la
+            // rejilla se ve y tiene que seguir escribiendose.
             if visible && arriba_antes != V_DATOS && !conmutador_pintado {
                 pintar_salida(&p, &caja, &salida);
                 salida.sucia = false;
@@ -2333,16 +2333,16 @@ pub extern "C" fn _start() -> ! {
             }
         }
 
-        // ── Las FICHAS de la barra ──
+        // -- Las FICHAS de la barra --
         //
-        // Se repintan sólo cuando algo cambia de estado. Son la lista de lo que
-        // hay abierto, y la única forma de volver a una ventana minimizada.
+        // Se repintan solo cuando algo cambia de estado. Son la lista de lo que
+        // hay abierto, y la unica forma de volver a una ventana minimizada.
         //
-        // ★ Lo que las ensucia se calcula AQUÍ, comparando el estado con el del
+        // * Lo que las ensucia se calcula AQUI, comparando el estado con el del
         // fotograma anterior, en vez de poner `barra_sucia = true` en los seis
         // sitios que cambian algo. Un `sucio` que hay que acordarse de poner es
-        // un `sucio` que un día no se pone, y entonces la barra enseña un
-        // estado viejo sin que nada falle — el peor tipo de fallo de interfaz.
+        // un `sucio` que un dia no se pone, y entonces la barra ensena un
+        // estado viejo sin que nada falle -- el peor tipo de fallo de interfaz.
         let estado_barra = (visible, arriba_antes, datos_abierta, caja_datos.marco.minimizada);
         if estado_barra != estado_barra_antes {
             estado_barra_antes = estado_barra;
@@ -2357,21 +2357,21 @@ pub extern "C" fn _start() -> ! {
                 );
             } else {
                 // Cerrada: su hueco vuelve al color de la barra. Una ficha que
-                // se queda tras cerrar la ventana promete algo que ya no está.
+                // se queda tras cerrar la ventana promete algo que ya no esta.
                 let (fx, fy, fw, fh) = escena::ficha_caja(1);
                 p.rect(fx, fy, fw, fh, BARRA);
             }
             barra_sucia = false;
         }
 
-        // El parpadeo del cursor de escritura. Sólo repinta cuando cambia de
-        // estado — repintar el campo cada vuelta sería reescribir la ruta
+        // El parpadeo del cursor de escritura. Solo repinta cuando cambia de
+        // estado -- repintar el campo cada vuelta seria reescribir la ruta
         // miles de veces por segundo para que se vea igual.
         //
-        // ★ El contador se REINICIA con cada tecla (ver el manejador). Antes
-        // era `vueltas % PARPADEO`, un reloj que corría solo: si te ponías a
-        // escribir justo cuando tocaba apagarlo, el cursor desaparecía a mitad
-        // de la palabra y no volvía hasta la siguiente vuelta entera. Un
+        // * El contador se REINICIA con cada tecla (ver el manejador). Antes
+        // era `vueltas % PARPADEO`, un reloj que corria solo: si te ponias a
+        // escribir justo cuando tocaba apagarlo, el cursor desaparecia a mitad
+        // de la palabra y no volvia hasta la siguiente vuelta entera. Un
         // cursor que se esconde mientras escribes es lo contrario de lo que
         // un cursor existe para decir.
         desde_tecla = desde_tecla.wrapping_add(1);
@@ -2389,38 +2389,38 @@ pub extern "C" fn _start() -> ! {
             pintar_campo(&p, &caja, &ruta[..n], cur, caret);
         }
 
-        // ★ UNA sola vez, al cerrar el primer fotograma entero. Con esto, las
-        // últimas palabras que guarda el kernel dicen DÓNDE murió sin tener que
+        // * UNA sola vez, al cerrar el primer fotograma entero. Con esto, las
+        // ultimas palabras que guarda el kernel dicen DONDE murio sin tener que
         // adivinarlo:
         //
-        //   "reclamo pantalla y entrada"  -> murió en el arranque o en la intro
-        //   "escritorio pintado"          -> murió sin cerrar el primer cuadro
-        //   "primer fotograma completo"   -> murió ya en el bucle
+        //   "reclamo pantalla y entrada"  -> murio en el arranque o en la intro
+        //   "escritorio pintado"          -> murio sin cerrar el primer cuadro
+        //   "primer fotograma completo"   -> murio ya en el bucle
         //
-        // Tres mensajes que ya existían más éste, y el diagnóstico deja de ser
-        // una teoría. Cuesta una línea en el log y se dice una vez en la vida
+        // Tres mensajes que ya existian mas este, y el diagnostico deja de ser
+        // una teoria. Cuesta una linea en el log y se dice una vez en la vida
         // del proceso.
         if vueltas == 1 {
             bmo::consola("primer fotograma completo\n");
         }
 
-        // ── El cursor del ratón, ENCIMA de todo y lo último ──
+        // -- El cursor del raton, ENCIMA de todo y lo ultimo --
         //
-        // Aquí ya no queda nada por pintar en este fotograma, así que lo que se
-        // guarda debajo es lo definitivo. Ponerlo antes obligaría a que cada
-        // ventana supiera esquivarlo — que es justo lo que no se puede pedir a
-        // una ventana que todavía no existe.
+        // Aqui ya no queda nada por pintar en este fotograma, asi que lo que se
+        // guarda debajo es lo definitivo. Ponerlo antes obligaria a que cada
+        // ventana supiera esquivarlo -- que es justo lo que no se puede pedir a
+        // una ventana que todavia no existe.
         if ax != u32::MAX {
-            // ★ QUÉ ESTÁ DICIENDO EL PUNTERO.
+            // * QUE ESTA DICIENDO EL PUNTERO.
             //
-            // Se decide aquí, al final del fotograma, porque es aquí donde ya
-            // se sabe todo lo que pasó en él: qué ventana quedó arriba, dónde
-            // acabó el ratón y si la calculadora está abierta.
+            // Se decide aqui, al final del fotograma, porque es aqui donde ya
+            // se sabe todo lo que paso en el: que ventana quedo arriba, donde
+            // acabo el raton y si la calculadora esta abierta.
             //
-            // El orden de las preguntas es el Z-order otra vez: lo que está
-            // encima manda. Un botón de la calculadora tapado por la consola
-            // del kernel no puede pedir la mano — señalaría algo que no se
-            // puede pulsar, que es peor que no señalar nada.
+            // El orden de las preguntas es el Z-order otra vez: lo que esta
+            // encima manda. Un boton de la calculadora tapado por la consola
+            // del kernel no puede pedir la mano -- senalaria algo que no se
+            // puede pulsar, que es peor que no senalar nada.
             let forma = if calc.visible
                 && arriba_antes == V_EJECUTAR
                 && calc_caja.tecla_en(ax, ay).is_some()
@@ -2434,16 +2434,16 @@ pub extern "C" fn _start() -> ! {
             bajo.poner(&p, ax, ay, forma);
         }
 
-        // ★ Y ahora EMPUJARLO a la pantalla.
+        // * Y ahora EMPUJARLO a la pantalla.
         //
-        // El framebuffer está mapeado en write-combining: el CPU acumula las
-        // escrituras y las suelta cuando el búfer se llena. Sin esta línea, lo
+        // El framebuffer esta mapeado en write-combining: el CPU acumula las
+        // escrituras y las suelta cuando el bufer se llena. Sin esta linea, lo
         // pintado en este fotograma se queda esperando a que alguien escriba
-        // más — y el síntoma es exactamente el que apareció en el Ryzen:
-        // teclear no pintaba nada hasta que se movía el ratón, porque mover el
-        // ratón era lo que llenaba el búfer.
+        // mas -- y el sintoma es exactamente el que aparecio en el Ryzen:
+        // teclear no pintaba nada hasta que se movia el raton, porque mover el
+        // raton era lo que llenaba el bufer.
         //
-        // Una instrucción, una vez por fotograma, al final de todo. Ver
+        // Una instruccion, una vez por fotograma, al final de todo. Ver
         // `Pantalla::vaciar`.
         p.vaciar();
 
@@ -2451,19 +2451,19 @@ pub extern "C" fn _start() -> ! {
     }
 }
 
-/// Un pánico aquí no puede tumbar nada más que a este proceso: lo dice y sale
-/// por la puerta normal. El kernel revoca sus capabilities —incluidas la
-/// pantalla y la entrada— y sigue vivo.
+/// Un panico aqui no puede tumbar nada mas que a este proceso: lo dice y sale
+/// por la puerta normal. El kernel revoca sus capabilities --incluidas la
+/// pantalla y la entrada-- y sigue vivo.
 ///
-/// ★ **Y DICE DÓNDE.** Esto era `_info` —el guion bajo delata el bug— y
-/// escribía "panico en el compositor" y nada más. El escritorio se moría al
-/// arrancar, dejaba la máquina en el shell de Ring 0, y el único que sabía el
-/// archivo y la línea era este manejador, que los tiraba.
+/// * **Y DICE DONDE.** Esto era `_info` --el guion bajo delata el bug-- y
+/// escribia "panico en el compositor" y nada mas. El escritorio se moria al
+/// arrancar, dejaba la maquina en el shell de Ring 0, y el unico que sabia el
+/// archivo y la linea era este manejador, que los tiraba.
 ///
-/// Se escribe en la consola del KERNEL a propósito: cuando esto corre, la
-/// pantalla puede estar reclamada por nosotros y a medio pintar, así que el
-/// único sitio donde el mensaje sobrevive es el panel del kernel — que es
-/// justo donde se queda la máquina cuando el escritorio no arranca.
+/// Se escribe en la consola del KERNEL a proposito: cuando esto corre, la
+/// pantalla puede estar reclamada por nosotros y a medio pintar, asi que el
+/// unico sitio donde el mensaje sobrevive es el panel del kernel -- que es
+/// justo donde se queda la maquina cuando el escritorio no arranca.
 #[panic_handler]
 fn panico(info: &core::panic::PanicInfo) -> ! {
     bmo::consola("panico en el compositor\n");
@@ -2471,7 +2471,7 @@ fn panico(info: &core::panic::PanicInfo) -> ! {
         bmo::consola("  en ");
         bmo::consola(l.file());
         bmo::consola(":");
-        // El número a mano: aquí no hay `format!` ni asignador.
+        // El numero a mano: aqui no hay `format!` ni asignador.
         let mut buf = [0u8; 12];
         let mut n = 0usize;
         let mut v = l.line();

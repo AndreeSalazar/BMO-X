@@ -16,8 +16,8 @@ fn parses_float_double() {
 
 #[test]
 fn float_in_int_context_truncates() {
-    // Evolución del test de Fase 0: 1.5 ya NO se rechaza. En contexto ENTERO
-    // (int x = 1.5) se trunca vía cvttsd2si — semántica C correcta.
+    // Evolucion del test de Fase 0: 1.5 ya NO se rechaza. En contexto ENTERO
+    // (int x = 1.5) se trunca via cvttsd2si -- semantica C correcta.
     let src = "int main() { int x; x = 1.5; return x; }";
     let bef = compile_source_to_bef(src).unwrap();
     assert!(bef.windows(5).any(|w| w == [0xF2, 0x48, 0x0F, 0x2C, 0xC0]),
@@ -43,7 +43,7 @@ fn float_literal_is_number_now() {
 
 #[test]
 fn double_arithmetic_uses_sse() {
-    // d = a + b * c → addsd/mulsd, no aritmética entera.
+    // d = a + b * c -> addsd/mulsd, no aritmetica entera.
     let src = r#"
 int main() {
 double a; double b; double c; double d;
@@ -59,7 +59,7 @@ return 0;
 
 #[test]
 fn double_from_int_converts() {
-    // double d = 5; → cvtsi2sd (entero a double).
+    // double d = 5; -> cvtsi2sd (entero a double).
     let src = "int main() { double d; d = 5; return 0; }";
     let bef = compile_source_to_bef(src).unwrap();
     assert!(bef.windows(5).any(|w| w == [0xF2, 0x48, 0x0F, 0x2A, 0xC0]), "falta cvtsi2sd de 5");
@@ -67,7 +67,7 @@ fn double_from_int_converts() {
 
 #[test]
 fn float_to_int_truncates() {
-    // int x = (int)2.7; → cvttsd2si (double a entero, trunca).
+    // int x = (int)2.7; -> cvttsd2si (double a entero, trunca).
     let src = "int main() { int x; x = (int)2.7; return x; }";
     let bef = compile_source_to_bef(src).unwrap();
     assert!(bef.windows(5).any(|w| w == [0xF2, 0x48, 0x0F, 0x2C, 0xC0]), "falta cvttsd2si");
@@ -75,7 +75,7 @@ fn float_to_int_truncates() {
 
 #[test]
 fn double_comparison_uses_comisd() {
-    // if (d > 0.5) → comisd + seta, NO comparación entera de bits.
+    // if (d > 0.5) -> comisd + seta, NO comparacion entera de bits.
     let src = r#"
 int main() {
 double d; d = 1.0;
@@ -90,23 +90,23 @@ return 0;
 
 #[test]
 fn float_f32_narrows_on_store() {
-    // float f = 1.5; → cvtsd2ss (double a float) + movss store.
+    // float f = 1.5; -> cvtsd2ss (double a float) + movss store.
     let src = "int main() { float f; f = 1.5; return 0; }";
     let bef = compile_source_to_bef(src).unwrap();
     assert!(bef.windows(4).any(|w| w == [0xF2, 0x0F, 0x5A, 0xC0]), "falta cvtsd2ss");
     assert!(bef.windows(3).any(|w| w == [0xF3, 0x0F, 0x11]), "falta movss store");
 }
 
-/// ★ **Un `double` como PARÁMETRO se rechaza con motivo.**
+/// * **Un `double` como PARAMETRO se rechaza con motivo.**
 ///
-/// Antes compilaba en silencio y devolvía basura: BMO C evalúa floats por la
+/// Antes compilaba en silencio y devolvia basura: BMO C evalua floats por la
 /// ruta paralela de xmm, pero **los argumentos van por la pila como enteros**,
-/// así que `g(1.5)` empujaba los bits del double en una ranura y el prólogo
-/// los leía como si fueran un `long`.
+/// asi que `g(1.5)` empujaba los bits del double en una ranura y el prologo
+/// los leia como si fueran un `long`.
 ///
 /// Los floats GLOBALES ya se rechazaban desde el principio; esta puerta se
-/// quedó abierta porque nadie había escrito una función que tomara un
-/// `double`. Lo destapó **C++** al probar una sobrecarga `f(int)`/`f(double)`,
+/// quedo abierta porque nadie habia escrito una funcion que tomara un
+/// `double`. Lo destapo **C++** al probar una sobrecarga `f(int)`/`f(double)`,
 /// que es lo que pasa cuando un lenguaje nuevo se apoya en el mismo backend.
 #[test]
 fn un_parametro_double_se_rechaza_con_motivo() {
@@ -122,12 +122,12 @@ fn un_parametro_double_se_rechaza_con_motivo() {
     );
 }
 
-/// La asimetría, fijada a propósito: **devolver** un double sí se puede.
-/// Si algún día se rechazara, este test lo dice antes de que alguien lo
+/// La asimetria, fijada a proposito: **devolver** un double si se puede.
+/// Si algun dia se rechazara, este test lo dice antes de que alguien lo
 /// descubra con un programa.
 #[test]
 fn double_return_value_in_xmm0() {
-    // double f() { return d; } — el valor de retorno queda en xmm0.
+    // double f() { return d; } -- el valor de retorno queda en xmm0.
     let src = r#"
 double half(void) { double d; d = 0.5; return d; }
 int main() { return 0; }

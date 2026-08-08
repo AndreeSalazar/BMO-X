@@ -2,8 +2,8 @@
 //!
 //! s1_cpu, s2_mem and the kernel are **embedded in this PE** at build time
 //! (`include_bytes!` from paths in BMO_S1_BIN / BMO_S2_BIN / BMO_KERNEL_BIN,
-//! set by build.ps1). The shim only needs two firmware services — console
-//! output and AllocatePages — so it boots even on firmwares that never
+//! set by build.ps1). The shim only needs two firmware services -- console
+//! output and AllocatePages -- so it boots even on firmwares that never
 //! bind SimpleFileSystem to any handle (MSI A320M AMI fast path: the boot
 //! manager reads FAT with an internal reader; LocateHandle(ByProtocol,
 //! SimpleFS) returns NOT_FOUND and HandleProtocol on the boot device
@@ -54,7 +54,7 @@ fn hex(mut v: u64) { unsafe { if v == 0 { put(b'0'); return; } let mut b = [0u8;
 fn dec(mut v: usize) { unsafe { if v == 0 { put(b'0'); return; } let mut b = [0u8; 20]; let mut i = 0; while v > 0 { b[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; } for j in (0..i).rev() { put(b[j]); } } }
 fn init_serial() { unsafe { outb(COM1+1, 0); outb(COM1+3, 0x80); outb(COM1+0, 1); outb(COM1+1, 0); outb(COM1+3, 3); outb(COM1+2, 0xC7); outb(COM1+4, 0xB); } }
 
-// ── ConOut: visible screen output (serial alone hides errors from the user) ──
+// -- ConOut: visible screen output (serial alone hides errors from the user) --
 
 unsafe fn con_call1(st: *const EfiSystemTable, index: usize, arg: *const u16) {
     let con = (*st)._cout_h as *const *mut core::ffi::c_void;

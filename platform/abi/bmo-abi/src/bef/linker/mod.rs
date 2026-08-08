@@ -36,7 +36,7 @@ pub fn register_exports(table: &ExportTable, image_base: u64) -> u32 {
     count
 }
 
-/// Registra exports con namespace de librería.
+/// Registra exports con namespace de libreria.
 pub fn register_library_exports(lib_name: &str, table: &ExportTable, image_base: u64) -> u32 {
     let mut count = 0u32;
     for entry in table.entries {
@@ -50,12 +50,12 @@ pub fn register_library_exports(lib_name: &str, table: &ExportTable, image_base:
     count
 }
 
-/// Registra un símbolo individual.
+/// Registra un simbolo individual.
 pub fn register_symbol(lib: &str, name: &str, addr: u64) {
     Registry::insert(lib, name, addr);
 }
 
-/// Busca un símbolo.
+/// Busca un simbolo.
 pub fn lookup(lib: &str, name: &str) -> u64 {
     Registry::lookup(lib, name)
 }
@@ -65,7 +65,7 @@ pub fn lookup_by_hash(hash: u32, name: &str) -> u64 {
     Registry::lookup_by_hash(hash, name)
 }
 
-/// Cantidad de símbolos registrados.
+/// Cantidad de simbolos registrados.
 pub fn symbol_count() -> usize {
     Registry::len()
 }

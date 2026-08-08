@@ -53,7 +53,7 @@ impl Emitter {
         match s {
             // El camino de IR solo sabe de literales todavia. Una variable
             // necesita formateo en ejecucion, que es codigo y no una cadena en
-            // una tabla — se emite por `codegen.rs`, no por aqui.
+            // una tabla -- se emite por `codegen.rs`, no por aqui.
             CobolStatement::Display(DisplayArg::Literal(msg)) => {
                 let nr = 0x1F0u32; // NR_DIAG_PRINT
                 let str_idx = self.module.add_string(msg).unwrap_or(0);
@@ -76,7 +76,7 @@ impl Emitter {
                 }));
             }
             CobolStatement::Move(src, dst) => {
-                // MOVE src TO dst → assign
+                // MOVE src TO dst -> assign
                 let _d = self.module.add_string(dst);
                 let _s = self.module.add_string(src);
                 block.push(IrStmt::Assign(0, IrExpr::ConstI64(0)));

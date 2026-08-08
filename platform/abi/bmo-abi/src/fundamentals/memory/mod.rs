@@ -1,15 +1,15 @@
-//! `memory` — tipos de memoria del BMO ABI.
+//! `memory` -- tipos de memoria del BMO ABI.
 //!
-//! Reemplaza `void* + size_t` de C con tipos que llevan la semántica
+//! Reemplaza `void* + size_t` de C con tipos que llevan la semantica
 //! incorporada: BmoSlice (ptr + len), BmoRange (offset + size), BmoAligned
-//! (alineación garantizada).
+//! (alineacion garantizada).
 
 use crate::bmo_abi::primitives::bx_u64;
 
 /// Slice de memoria: puntero + longitud. FFI-safe (16 bytes).
 ///
-/// Reemplaza `void* + size_t` como argumento de función.
-/// No hay aserción de ownership — es prestado (borrowed).
+/// Reemplaza `void* + size_t` como argumento de funcion.
+/// No hay asercion de ownership -- es prestado (borrowed).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BmoSlice {
@@ -94,9 +94,9 @@ impl BmoSliceMut {
     }
 }
 
-/// Rango de memoria: offset + tamaño.
+/// Rango de memoria: offset + tamano.
 ///
-/// Útil para operaciones de mapeo, scatter-gather, y acceso a secciones.
+/// Util para operaciones de mapeo, scatter-gather, y acceso a secciones.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BmoRange {
@@ -124,9 +124,9 @@ impl BmoRange {
     }
 }
 
-/// Memoria con alineación garantizada.
+/// Memoria con alineacion garantizada.
 ///
-/// Garantiza que `ptr` cumple `align` bytes de alineación.
+/// Garantiza que `ptr` cumple `align` bytes de alineacion.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BmoAligned {
@@ -145,7 +145,7 @@ impl BmoAligned {
     }
 }
 
-// ─── Constantes de alineación ──────────────────────────────────────
+// --- Constantes de alineacion --------------------------------------
 
 pub const BMO_ALIGN_1: bx_u64 = 1;
 pub const BMO_ALIGN_2: bx_u64 = 2;

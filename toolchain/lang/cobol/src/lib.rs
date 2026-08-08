@@ -6,8 +6,8 @@ pub mod ir_emit;
 pub mod lexer;
 pub mod parser;
 pub mod pic;
-/// La disposición de un registro: qué byte ocupa cada campo dentro de su `01`.
-/// NO reutiliza el cursor de `bmo-abi` porque aquél ALINEA, y aquí un byte de
+/// La disposicion de un registro: que byte ocupa cada campo dentro de su `01`.
+/// NO reutiliza el cursor de `bmo-abi` porque aquel ALINEA, y aqui un byte de
 /// relleno es un byte que aparece en el disco. Ver la cabecera de `registro.rs`.
 pub mod registro;
 pub mod tparser;
@@ -36,17 +36,17 @@ mod generated_tests {
     #[test]
     fn parser_knows_full_cobol_vocabulary() {
         use crate::parser::Parser;
-        // Un verbo COBOL reservado pero aún sin codegen → error que cita el
-        // estándar (las tablas generadas por Python alimentan el parser).
+        // Un verbo COBOL reservado pero aun sin codegen -> error que cita el
+        // estandar (las tablas generadas por Python alimentan el parser).
         //
-        // Era `EVALUATE`, que dejó de servir de ejemplo el 2026-08-03 porque ya
-        // compila. Ahora es `CANCEL`, también COBOL-85 y también sin codegen —
-        // y cuando le toque a él, aquí hará falta otro. Que este test haya que
-        // cambiarlo es la señal de que el compilador crece.
+        // Era `EVALUATE`, que dejo de servir de ejemplo el 2026-08-03 porque ya
+        // compila. Ahora es `CANCEL`, tambien COBOL-85 y tambien sin codegen --
+        // y cuando le toque a el, aqui hara falta otro. Que este test haya que
+        // cambiarlo es la senal de que el compilador crece.
         let src = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\nPROCEDURE DIVISION.\nCANCEL X.\n";
         let err = Parser::new(src).parse_program().unwrap_err();
         assert!(err.message.contains("COBOL85"), "esperaba estándar: {}", err.message);
-        // Algo que no es COBOL → error distinto.
+        // Algo que no es COBOL -> error distinto.
         let src2 = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\nPROCEDURE DIVISION.\nXYZZY 1.\n";
         let err2 = Parser::new(src2).parse_program().unwrap_err();
         assert!(err2.message.contains("no es COBOL"), "esperaba no-COBOL: {}", err2.message);
@@ -55,13 +55,13 @@ mod generated_tests {
     #[test]
     fn standard_tagging_and_intrinsics() {
         use crate::generated::words;
-        // Cada palabra sabe de qué era viene (Grace Hopper -> ISO 2023).
+        // Cada palabra sabe de que era viene (Grace Hopper -> ISO 2023).
         assert_eq!(words::reserved_since("MOVE"), Some("COBOL74"));
         assert_eq!(words::reserved_since("EVALUATE"), Some("COBOL85"));
         assert_eq!(words::reserved_since("CLASS-ID"), Some("COBOL2002"));
         assert_eq!(words::reserved_since("JSON"), Some("COBOL2023"));
         assert_eq!(words::reserved_since("NOPE"), None);
-        // Funciones intrínsecas.
+        // Funciones intrinsecas.
         assert!(words::is_intrinsic("CURRENT-DATE"));
         assert!(words::is_intrinsic("NUMVAL"));
         assert!(!words::is_intrinsic("MOVE"));
@@ -70,13 +70,13 @@ mod generated_tests {
     #[test]
     fn essence_vs_vendor_separation() {
         use crate::generated::words;
-        // Esencia estándar (Grace Hopper → ISO): el núcleo del idioma.
+        // Esencia estandar (Grace Hopper -> ISO): el nucleo del idioma.
         assert!(words::is_essence("MOVE"));
         assert!(words::is_essence("PERFORM"));
         assert!(words::is_essence("OCCURS"));
         assert!(!words::is_vendor("MOVE"));
         // Extensiones de vendor (VAX DBMS / IBM obsoletas): reconocidas pero
-        // NO son la esencia — BMO COBOL las devora pero las marca aparte.
+        // NO son la esencia -- BMO COBOL las devora pero las marca aparte.
         assert!(words::is_vendor("CONNECT"));   // VAX DBMS
         assert!(words::is_vendor("EXAMINE"));   // IBM obsoleta
         assert!(!words::is_essence("CONNECT"));
@@ -100,7 +100,7 @@ pub fn parse(source: &str) -> Result<CobolProgram, CobolError> {
 }
 
 /// Parse under an explicit dialect. Every dialect lowers to the same BMO
-/// ABI v2 surface — only what the parser accepts changes.
+/// ABI v2 surface -- only what the parser accepts changes.
 pub fn parse_with_dialect(
     source: &str,
     dialect: DialectConfig,
@@ -115,13 +115,13 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
     compile_source_to_bex(source)
 }
 
-/// ★ EL VISOR: un fichero de registros binarios, decodificado con el copybook
-/// del programa que lo escribió.
+/// * EL VISOR: un fichero de registros binarios, decodificado con el copybook
+/// del programa que lo escribio.
 ///
-/// `registro` elige cuál de los `01` se usa; si es `None`, se coge el primero
-/// que cuelgue de un `FD` — que es el que de verdad cruza al disco.
+/// `registro` elige cual de los `01` se usa; si es `None`, se coge el primero
+/// que cuelgue de un `FD` -- que es el que de verdad cruza al disco.
 ///
-/// Lee con **la misma regla** que escribió el programa: los decodificadores son
+/// Lee con **la misma regla** que escribio el programa: los decodificadores son
 /// los de `bmo-lower`, y hay tests que los comparan contra los EMITIDOS sobre
 /// todos los patrones de dos bytes.
 pub fn ver_registros(
@@ -150,12 +150,12 @@ pub fn ver_registros(
     Ok(d.ver(&elegido, datos, max))
 }
 
-/// ★ El COPYBOOK de un programa: el byte exacto de cada campo de cada registro.
+/// * El COPYBOOK de un programa: el byte exacto de cada campo de cada registro.
 ///
-/// Sale del PARSER y no del binario a propósito: quien tiene que acordar el
-/// formato de un fichero con otro equipo no puede esperar a que el batch esté
+/// Sale del PARSER y no del binario a proposito: quien tiene que acordar el
+/// formato de un fichero con otro equipo no puede esperar a que el batch este
 /// terminado. Y sale de **la misma tabla que usa el codegen** para emitir el
-/// `READ` y el `WRITE`, así que no hay dos sitios donde pueda divergir.
+/// `READ` y el `WRITE`, asi que no hay dos sitios donde pueda divergir.
 pub fn copybook_de(source: &str) -> Result<String, CobolError> {
     let program = parser::Parser::new(source).parse_program()?;
     let d = registro::calcular(&program.data_items)?;

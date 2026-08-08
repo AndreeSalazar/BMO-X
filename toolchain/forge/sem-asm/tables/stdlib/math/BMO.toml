@@ -1,4 +1,4 @@
-# stdlib/math module — basic math functions
+# stdlib/math module -- basic math functions
 
 [exports]
 sqrt = "double -> double"

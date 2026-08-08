@@ -1,9 +1,9 @@
-//! Operaciones sobre la propia tarea — L1.
+//! Operaciones sobre la propia tarea -- L1.
 //!
 //! `CURRENT_TASK` es un pseudo-handle process-local: no otorga autoridad
-//! sobre nadie más y nunca debe transferirse. Por eso estas operaciones no
+//! sobre nadie mas y nunca debe transferirse. Por eso estas operaciones no
 //! necesitan una capability previa y sirven de bootstrap para cualquier
-//! programa recién nacido.
+//! programa recien nacido.
 
 use bmo_abi::syscalls::surface::{CURRENT_TASK, NR_INVOKE, TASK_OP_EXIT, TASK_OP_YIELD};
 
@@ -22,9 +22,9 @@ fn invoke_current_task(code: &mut Vec<u8>, operation: u64) {
 
 /// Termina el proceso. No retorna: el scheduler lo cosecha.
 ///
-/// Emite además una red de seguridad (`pause`/`jmp -4`) por si `EXIT` alguna
-/// vez retornara — sin ella el CPU se saldría del final del código y
-/// ejecutaría lo que hubiera después. Es el mismo cierre que usa
+/// Emite ademas una red de seguridad (`pause`/`jmp -4`) por si `EXIT` alguna
+/// vez retornara -- sin ella el CPU se saldria del final del codigo y
+/// ejecutaria lo que hubiera despues. Es el mismo cierre que usa
 /// `tools/hello-bex`.
 pub fn exit(code: &mut Vec<u8>) {
     invoke_current_task(code, TASK_OP_EXIT);
@@ -37,17 +37,17 @@ pub fn yield_now(code: &mut Vec<u8>) {
     invoke_current_task(code, TASK_OP_YIELD);
 }
 
-/// `INVOKE(CURRENT_TASK, <op>)` para una operación sin argumentos que el
-/// frontend elija — el resultado queda en `rdx`, el estado en `rax`.
+/// `INVOKE(CURRENT_TASK, <op>)` para una operacion sin argumentos que el
+/// frontend elija -- el resultado queda en `rdx`, el estado en `rax`.
 ///
 /// Existe para que una L2 pueda usar `GET_PID`/`GET_TID` sin que L1 tenga
-/// que crecer una función por operación.
+/// que crecer una funcion por operacion.
 pub fn invoke_no_args(code: &mut Vec<u8>, operation: u64) {
     invoke_current_task(code, operation);
 }
 
-/// Las operaciones que hoy acepta `CURRENT_TASK`. Se listan aquí —en vez de
-/// reexportar el módulo del ABI, que es privado— para que una L2 las nombre
+/// Las operaciones que hoy acepta `CURRENT_TASK`. Se listan aqui --en vez de
+/// reexportar el modulo del ABI, que es privado-- para que una L2 las nombre
 /// sin declarar `bmo-abi` como dependencia propia.
 pub mod ops {
     use bmo_abi::syscalls::surface;

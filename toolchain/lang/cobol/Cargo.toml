@@ -6,19 +6,19 @@ authors = ["BMO Project"]
 description = "BMO COBOL frontend — parses COBOL and compiles native BEX executables"
 
 [dependencies]
-# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui — es el
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui -- es el
 # "unico checkpoint comun" de la filosofia.
 bmo-verify = { path = "../../forge/bmo-verify" }
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
-# forge: encoder compartido (elegido, no embudo) — sustituye el hardcodeo
+# forge: encoder compartido (elegido, no embudo) -- sustituye el hardcodeo
 # de bytes (mov imm64/reg, syscall) por la tabla TOML.
 bmo-sem-asm = { path = "../../forge/sem-asm" }
 # forge: L1, la puerta al ABI (INVOKE/subsyscalls). Elegida, no embudo.
 bmo-lower = { path = "../../forge/bmo-lower" }
 
-# NOTA: gnucobol-rs (GPL) ELIMINADO — la PIC ahora la parsea nuestro propio
-# src/pic.rs. El submódulo extern/gnucobol-rs queda solo como oráculo de
-# validación cruzada, jamás enlazado. COBOL 100% BMO.
+# NOTA: gnucobol-rs (GPL) ELIMINADO -- la PIC ahora la parsea nuestro propio
+# src/pic.rs. El submodulo extern/gnucobol-rs queda solo como oraculo de
+# validacion cruzada, jamas enlazado. COBOL 100% BMO.
 
 [lib]
 name = "bmo_cobol_front"

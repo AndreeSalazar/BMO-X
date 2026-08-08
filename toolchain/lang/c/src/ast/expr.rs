@@ -1,4 +1,4 @@
-//! C Abstract Syntax Tree — expression nodes.
+//! C Abstract Syntax Tree -- expression nodes.
 
 use super::types::*;
 
@@ -15,7 +15,7 @@ pub struct SyscallDef {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Int(i64),
-    /// Literal de punto flotante (1.5, 3.14). Se computa en doble precisión
+    /// Literal de punto flotante (1.5, 3.14). Se computa en doble precision
     /// por la ruta SSE (xmm), no por la ruta entera (rax).
     FloatLit(f64),
     StringLit(String),
@@ -53,28 +53,28 @@ pub enum Expr {
     Deref(Box<Expr>),
     AddrOf(Box<Expr>),
     Subscript(String, Box<Expr>, u8),
-    /// arr[i] = val — antes la asignación a subscript se DESCARTABA en silencio.
+    /// arr[i] = val -- antes la asignacion a subscript se DESCARTABA en silencio.
     AssignSubscript(String, Box<Expr>, u8, Box<Expr>),
-    /// base[i] donde base es una EXPRESIÓN que da un puntero (p->arr[i],
-    /// (a+1)[i]): (base, índice, tipo del elemento). Antes se rechazaba.
+    /// base[i] donde base es una EXPRESION que da un puntero (p->arr[i],
+    /// (a+1)[i]): (base, indice, tipo del elemento). Antes se rechazaba.
     IndexPtr(Box<Expr>, Box<Expr>, TypeSpec),
     /// base[i] = val para bases compuestas.
     AssignIndexPtr(Box<Expr>, Box<Expr>, TypeSpec, Box<Expr>),
-    /// (*fp)(args) — llamada a través de un puntero a función CALCULADO
-    /// (no una simple variable). callee da la dirección; args por la pila.
+    /// (*fp)(args) -- llamada a traves de un puntero a funcion CALCULADO
+    /// (no una simple variable). callee da la direccion; args por la pila.
     CallPtr(Box<Expr>, Vec<Expr>),
-    /// base.campo — (base, nombre, offset, TIPO del campo).
-    /// El tipo viaja en el AST para que codegen cargue/guarde el tamaño EXACTO:
-    /// antes pt.x=10 con x:int escribía 8 bytes y pisaba al campo siguiente.
+    /// base.campo -- (base, nombre, offset, TIPO del campo).
+    /// El tipo viaja en el AST para que codegen cargue/guarde el tamano EXACTO:
+    /// antes pt.x=10 con x:int escribia 8 bytes y pisaba al campo siguiente.
     Field(Box<Expr>, String, u32, TypeSpec),
     Arrow(Box<Expr>, String, u32, TypeSpec),
     AssignField(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
     AssignArrow(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
     AssignDeref(Box<Expr>, Box<Expr>),
-    /// (tipo)expr — cast REAL: trunca/extiende; antes era no-op silencioso.
+    /// (tipo)expr -- cast REAL: trunca/extiende; antes era no-op silencioso.
     Cast(TypeSpec, Box<Expr>),
-    /// __nombre(args...) — la FUSIÓN sem-asm↔C: instrucción de la tabla
-    /// intrinsics.toml invocada como función. El nombre va SIN el prefijo __.
+    /// __nombre(args...) -- la FUSION sem-asm<->C: instruccion de la tabla
+    /// intrinsics.toml invocada como funcion. El nombre va SIN el prefijo __.
     /// Los argumentos van a los registros que dicta la tabla (dx, al, ecx...).
     Intrinsic(String, Vec<Expr>),
     Syscall(SyscallDef, Vec<Expr>),

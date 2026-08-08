@@ -93,21 +93,21 @@ fn main() {
             let out_path = out_override
                 .unwrap_or_else(|| Path::new(path).with_extension("bef"));
 
-            // ── ★ EL GATE, ANTES DE ESCRIBIR ──────────────────────────
+            // -- * EL GATE, ANTES DE ESCRIBIR --------------------------
             //
-            // `bmo-verify` es lo que la filosofía llama **el ÚNICO checkpoint
-            // común**: lo que reemplaza al rol de seguridad de un IR central,
-            // pero como CONTRATO y no como embudo — cada lenguaje emite su BEF
+            // `bmo-verify` es lo que la filosofia llama **el UNICO checkpoint
+            // comun**: lo que reemplaza al rol de seguridad de un IR central,
+            // pero como CONTRATO y no como embudo -- cada lenguaje emite su BEF
             // por su cuenta y el verificador lo revisa por separado.
             //
-            // Y hasta hoy **no lo llamaba nadie**. El crate existía, delegaba
+            // Y hasta hoy **no lo llamaba nadie**. El crate existia, delegaba
             // en el validador real de `bmo_abi::bef::validator` (15 tests), y
-            // ningún frontend lo consultaba: el gate estaba escrito y abierto.
+            // ningun frontend lo consultaba: el gate estaba escrito y abierto.
             //
-            // Va ANTES del `write` a propósito. Verificar después dejaría un
+            // Va ANTES del `write` a proposito. Verificar despues dejaria un
             // fichero malo en el disco con un mensaje de error al lado, y el
-            // que lo encuentre mañana verá el `.bex` y no el mensaje. Un gate
-            // que avisa cuando el daño ya está hecho es un informe, no un gate.
+            // que lo encuentre manana vera el `.bex` y no el mensaje. Un gate
+            // que avisa cuando el dano ya esta hecho es un informe, no un gate.
             if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify(&bef_bytes) {
                 eprintln!("error: el BEF no pasa el gate de verificacion:");
                 for r in &razones {

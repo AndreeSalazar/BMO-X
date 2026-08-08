@@ -4,7 +4,7 @@
 //! if it was set on entry. This makes the lock safe to take from both
 //! interrupt and non-interrupt context on the BSP, and SMP-ready once
 //! application processors come online (contention is real then, so critical
-//! sections must stay short — no waits, no logging inside the lock).
+//! sections must stay short -- no waits, no logging inside the lock).
 
 use core::sync::atomic::{AtomicBool, Ordering};
 

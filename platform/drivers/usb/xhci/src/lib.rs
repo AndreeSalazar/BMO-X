@@ -1,4 +1,4 @@
-//! xHCI USB Controller Driver — full device lifecycle + HID interrupt transfers.
+//! xHCI USB Controller Driver -- full device lifecycle + HID interrupt transfers.
 //!
 //! Modeled after the proven xhci-nostd crate at github.com/suhteevah/xhci-nostd.
 
@@ -7,18 +7,18 @@
 
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  HAL trait
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 pub trait XhciHal {
     fn alloc_dma_pages(&self, count: usize) -> Option<u64>;
     fn phys_to_virt(&self, phys: u64) -> *mut u8;
     fn log(&self, msg: &str);
     fn log_u64(&self, msg: &str, val: u64);
-    /// Espera de tiempo REAL en milisegundos. Los tiempos físicos del USB
-    /// (debounce de conexión, reset de puerto, recovery) son del orden de
-    /// decenas de ms — imposibles de cubrir con spin-counts sin depender de
+    /// Espera de tiempo REAL en milisegundos. Los tiempos fisicos del USB
+    /// (debounce de conexion, reset de puerto, recovery) son del orden de
+    /// decenas de ms -- imposibles de cubrir con spin-counts sin depender de
     /// la frecuencia del CPU. El default es un spin grosero (para QEMU/tests);
     /// el kernel lo sobreescribe con una espera exacta por TSC.
     fn delay_ms(&self, ms: u64) {
@@ -46,9 +46,9 @@ pub fn get_mmio() -> Option<u64> {
 }
 pub fn is_controller_initialized() -> bool { unsafe { CTRL.is_some() } }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Registers
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 const CAPLENGTH: u32 = 0x00; const HCSPARAMS1: u32 = 0x04;
 #[allow(dead_code)] const HCSPARAMS2: u32 = 0x08;
@@ -60,19 +60,19 @@ const USBCMD: u32 = 0x00; const USBSTS: u32 = 0x04;
 const RT_IMAN: u32 = 0x20; #[allow(dead_code)] const RT_IMOD: u32 = 0x24;
 const RT_ERSTSZ: u32 = 0x28; const RT_ERSTBA: u32 = 0x30;
 const RT_ERDP: u32 = 0x38;
-/// `ERDP` bit 3 — **EHB, Event Handler Busy**. Lo pone el xHC al publicar un
-/// evento y es *write-1-to-clear*: el software lo baja escribiéndole un 1 al
+/// `ERDP` bit 3 -- **EHB, Event Handler Busy**. Lo pone el xHC al publicar un
+/// evento y es *write-1-to-clear*: el software lo baja escribiendole un 1 al
 /// actualizar el ERDP.
 ///
-/// ★ No bajarlo NO es un detalle cosmético: el xHC considera que el manejador
+/// * No bajarlo NO es un detalle cosmetico: el xHC considera que el manejador
 /// sigue ocupado, el anillo de eventos se llena, entra en **Event Ring Full**
-/// y **deja de publicar eventos para siempre**. El síntoma en esta máquina era
-/// exacto: aporrear el teclado mientras arranca (cuando todavía nadie drena el
-/// anillo) lo llenaba, y a partir de ahí el teclado estaba muerto hasta
+/// y **deja de publicar eventos para siempre**. El sintoma en esta maquina era
+/// exacto: aporrear el teclado mientras arranca (cuando todavia nadie drena el
+/// anillo) lo llenaba, y a partir de ahi el teclado estaba muerto hasta
 /// reiniciar. Sin aporrear, el anillo nunca se llenaba y no se notaba.
 ///
-/// Como `erdp` va alineado a 16 bytes, el bit 3 salía siempre 0 — o sea que
-/// se escribía "EHB sigue ocupado" en cada vuelta.
+/// Como `erdp` va alineado a 16 bytes, el bit 3 salia siempre 0 -- o sea que
+/// se escribia "EHB sigue ocupado" en cada vuelta.
 const ERDP_EHB: u64 = 1 << 3;
 const PORTSC: u32 = 0x00;
 const USBCMD_RS: u32 = 1 << 0; const USBCMD_HCRST: u32 = 1 << 1;
@@ -99,9 +99,9 @@ const LAST_TRB_IDX: usize = RING_SIZE - 1; // Link TRB lives here
 const CC_SUCCESS: u32 = 1;
 const CC_SHORT: u32 = 13;
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  TRB  (16 bytes, 4 DWORDs)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 #[derive(Clone, Copy)]
 pub struct Trb { dw0: u32, dw1: u32, dw2: u32, dw3: u32 }
@@ -115,9 +115,9 @@ impl Trb {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Transfer Ring
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 pub struct TransferRing {
     dma_virt: *mut u32,
@@ -140,10 +140,10 @@ impl TransferRing {
         r
     }
 
-    /// Anillo SIN Link TRB — para el **Event Ring**, que no lleva uno: el xHC
-    /// conoce su tamaño por el ERST y da la vuelta solo. Escribirle un Link TRB
-    /// (lo que hacía `new`) dejaba basura en la última entrada que el consumidor
-    /// leía como si fuera un evento real en la primera vuelta.
+    /// Anillo SIN Link TRB -- para el **Event Ring**, que no lleva uno: el xHC
+    /// conoce su tamano por el ERST y da la vuelta solo. Escribirle un Link TRB
+    /// (lo que hacia `new`) dejaba basura en la ultima entrada que el consumidor
+    /// leia como si fuera un evento real en la primera vuelta.
     pub unsafe fn new_unlinked(dma_virt: *mut u32, dma_phys: u64) -> Self {
         Self { dma_virt, dma_phys: dma_phys & !0xF, enqueue: 0, pcs: true }
     }
@@ -189,18 +189,18 @@ impl TransferRing {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  USB Descriptor types  (for external consumers)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 pub const USB_REQ_GET_DESCRIPTOR: u8 = 0x06;
 pub const USB_REQ_SET_CONFIG: u8 = 0x09;
 pub const USB_DESC_DEVICE: u16 = 1;
 pub const USB_DESC_CONFIG: u16 = 2;
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Controller
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 pub struct XhciController {
     pub mmio: u64, pub op_base: u32, pub rt_base: u32, pub db_base: u32,
@@ -217,9 +217,9 @@ static mut CTRL: Option<XhciController> = None;
 pub fn controller() -> Option<&'static XhciController> { unsafe { CTRL.as_ref() } }
 pub fn controller_mut() -> Option<&'static mut XhciController> { unsafe { CTRL.as_mut() } }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  MMIO helpers
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 unsafe fn r32(addr: u64) -> u32 { core::ptr::read_volatile(addr as *const u32) }
 unsafe fn w32(addr: u64, val: u32) { core::ptr::write_volatile(addr as *mut u32, val); }
@@ -229,20 +229,20 @@ unsafe fn rt_w(m: u64, r: u32, off: u32, v: u32) { w32(m + r as u64 + off as u64
 
 fn ctx_sz(c: &XhciController) -> usize { if c.ctx_size != 0 { 64 } else { 32 } }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Event ring consumer
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
-/// Qué evento espera quien se bloquea.
+/// Que evento espera quien se bloquea.
 ///
 /// **El anillo de eventos es UNO para todo el controlador.** Un teclado, un
-/// ratón, una compleción de comando y un cambio de puerto salen todos por el
+/// raton, una complecion de comando y un cambio de puerto salen todos por el
 /// mismo sitio, en el orden en que el xHC los postea. Por eso quien espera
-/// tiene que decir QUÉ espera: coger el primero que pase es coger el de otro.
+/// tiene que decir QUE espera: coger el primero que pase es coger el de otro.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Espera {
-    /// Una compleción de comando. El anillo de comandos se usa de uno en uno,
-    /// así que no hace falta distinguir cuál.
+    /// Una complecion de comando. El anillo de comandos se usa de uno en uno,
+    /// asi que no hace falta distinguir cual.
     Comando,
     /// Un Transfer Event de un endpoint CONCRETO.
     Transferencia { slot: u8, ep: u8 },
@@ -260,32 +260,32 @@ fn cuadra(ev: &(u32, u32, u32, u32), esp: Espera) -> bool {
     }
 }
 
-// ── El aparcadero de eventos ────────────────────────────────────────
+// -- El aparcadero de eventos ----------------------------------------
 //
-// ★ ESTA ES LA PIEZA QUE FALTABA, y costó el teclado entero.
+// * ESTA ES LA PIEZA QUE FALTABA, y costo el teclado entero.
 //
 // Antes, esperar bloqueando sacaba del anillo **el primer evento de cualquier
-// tipo** y lo daba por bueno; los tres bucles que sí miraban el tipo
+// tipo** y lo daba por bueno; los tres bucles que si miraban el tipo
 // (`send_cmd`, `control_transfer`) **descartaban** lo que no era suyo, y
-// `address_device` y `configure_endpoint` ni siquiera miraban el tipo: leían
-// el `cc` de lo que hubiera. Como un Transfer Event correcto también trae
-// `cc=1`, un informe del ratón se leía como "el comando salió bien".
+// `address_device` y `configure_endpoint` ni siquiera miraban el tipo: leian
+// el `cc` de lo que hubiera. Como un Transfer Event correcto tambien trae
+// `cc=1`, un informe del raton se leia como "el comando salio bien".
 //
-// Mientras nada estuviera bombeando durante la enumeración, no se notaba. En
-// cuanto un endpoint de interrupción quedó vivo **mientras se enumeraba el
-// siguiente puerto**, cada control transfer del teclado se comía un informe
-// del ratón: el evento desaparecía, `uhid::poll` no lo veía nunca, y sin ese
+// Mientras nada estuviera bombeando durante la enumeracion, no se notaba. En
+// cuanto un endpoint de interrupcion quedo vivo **mientras se enumeraba el
+// siguiente puerto**, cada control transfer del teclado se comia un informe
+// del raton: el evento desaparecia, `uhid::poll` no lo veia nunca, y sin ese
 // evento **nadie vuelve a encolar la transferencia**. La bomba no arranca, el
 // endpoint se queda en `Running` para siempre y el aparato enmudece sin un
-// solo error. Los dos, ratón y teclado, por el mismo camino.
+// solo error. Los dos, raton y teclado, por el mismo camino.
 //
-// La regla ahora: **un evento que no es mío se APARCA, jamás se tira.**
+// La regla ahora: **un evento que no es mio se APARCA, jamas se tira.**
 const APARCADOS_MAX: usize = 64;
 static mut APARCADOS: [(u32, u32, u32, u32); APARCADOS_MAX] = [(0, 0, 0, 0); APARCADOS_MAX];
 static mut APARCADOS_N: usize = 0;
-/// Cuántos se han aparcado en total y cuántos se han PERDIDO por aparcadero
-/// lleno. Lo segundo tiene que ser cero; si un día no lo es, hay que subir el
-/// tope — y se verá, que es justo lo que no pasaba antes.
+/// Cuantos se han aparcado en total y cuantos se han PERDIDO por aparcadero
+/// lleno. Lo segundo tiene que ser cero; si un dia no lo es, hay que subir el
+/// tope -- y se vera, que es justo lo que no pasaba antes.
 static mut APARCADOS_TOTAL: u32 = 0;
 static mut APARCADOS_PERDIDOS: u32 = 0;
 
@@ -296,7 +296,7 @@ pub fn evt_park_stats() -> (u32, u32, u32) {
 
 unsafe fn aparcar(ev: (u32, u32, u32, u32)) {
     if APARCADOS_N >= APARCADOS_MAX {
-        // Perder uno aquí vuelve a matar un endpoint. Se cuenta para que se
+        // Perder uno aqui vuelve a matar un endpoint. Se cuenta para que se
         // vea en CABINA en vez de repetir el silencio de antes.
         APARCADOS_PERDIDOS = APARCADOS_PERDIDOS.wrapping_add(1);
         return;
@@ -309,7 +309,7 @@ unsafe fn aparcar(ev: (u32, u32, u32, u32)) {
 /// Saca del aparcadero el primero que cuadre con lo que se espera, si lo hay.
 ///
 /// Hace falta porque una espera anterior pudo aparcar justo lo que ahora se
-/// busca: una compleción de comando aparcada mientras un control transfer
+/// busca: una complecion de comando aparcada mientras un control transfer
 /// esperaba su Transfer Event.
 unsafe fn desaparcar_que_cuadre(esp: Espera) -> Option<(u32, u32, u32, u32)> {
     let mut i = 0;
@@ -329,7 +329,7 @@ unsafe fn desaparcar_que_cuadre(esp: Espera) -> Option<(u32, u32, u32, u32)> {
     None
 }
 
-/// El más viejo del aparcadero, sea de quien sea. Lo drena el bucle de sondeo.
+/// El mas viejo del aparcadero, sea de quien sea. Lo drena el bucle de sondeo.
 unsafe fn desaparcar_cualquiera() -> Option<(u32, u32, u32, u32)> {
     if APARCADOS_N == 0 {
         return None;
@@ -370,10 +370,10 @@ unsafe fn evt_ring_pop(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)
     Some((dw0, dw1, dw2, dw3))
 }
 
-/// Espera **lo que se le pide**, aparcando todo lo demás.
+/// Espera **lo que se le pide**, aparcando todo lo demas.
 ///
-/// Devuelve `None` sólo si se agota el plazo sin que llegue: eso sí es un
-/// fallo del controlador, y ahora se distingue de "llegó lo de otro".
+/// Devuelve `None` solo si se agota el plazo sin que llegue: eso si es un
+/// fallo del controlador, y ahora se distingue de "llego lo de otro".
 unsafe fn evt_poll_block(
     ctrl: &mut XhciController,
     esp: Espera,
@@ -406,11 +406,11 @@ unsafe fn evt_poll_nb(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)>
         let ndq = if dq + 1 >= RING_SIZE as u32 { 0 } else { dq + 1 };
         let ncy = if ndq == 0 { ctrl.evt_cycle ^ 1 } else { ctrl.evt_cycle };
         let erdp = ctrl.erst_phys + (ndq as u64) * (TRB_SIZE as u64);
-        // ★ La mitad ALTA primero, la baja después. La baja es la que lleva el
-        // EHB y la que el xHC toma como "ya está": escribir primero la baja
-        // dejaría, durante unos ciclos, una dirección con la mitad nueva y la
-        // mitad vieja. Aquí casi nunca cambia la alta, pero el orden correcto
-        // no cuesta nada y el incorrecto sólo falla el día que el anillo cruce
+        // * La mitad ALTA primero, la baja despues. La baja es la que lleva el
+        // EHB y la que el xHC toma como "ya esta": escribir primero la baja
+        // dejaria, durante unos ciclos, una direccion con la mitad nueva y la
+        // mitad vieja. Aqui casi nunca cambia la alta, pero el orden correcto
+        // no cuesta nada y el incorrecto solo falla el dia que el anillo cruce
         // una frontera de 4 GiB.
         w32(ctrl.mmio + ctrl.rt_base as u64 + RT_ERDP as u64 + 4, ((erdp >> 32) & 0xFFFF_FFFF) as u32);
         // Y con EHB puesto, que es lo que lo BAJA (RW1C). Ver `ERDP_EHB`: sin
@@ -421,9 +421,9 @@ unsafe fn evt_poll_nb(ctrl: &mut XhciController) -> Option<(u32, u32, u32, u32)>
     } else { None }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Helpers
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 unsafe fn dcbaa_get(slot: u8) -> Option<u64> {
     let ctrl = CTRL.as_ref()?;
@@ -436,8 +436,8 @@ unsafe fn send_cmd(trb: Trb) -> Option<(u32, u32, u32, u32)> {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
     ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
-    // El bucle que había aquí descartaba en silencio todo lo que no fuera una
-    // compleción. Ahora la selección la hace `evt_poll_block`, que además lo
+    // El bucle que habia aqui descartaba en silencio todo lo que no fuera una
+    // complecion. Ahora la seleccion la hace `evt_poll_block`, que ademas lo
     // aparca en vez de tirarlo.
     let ev = evt_poll_block(ctrl, Espera::Comando)?;
     let cc = (ev.2 >> 24) & 0xFF;
@@ -445,9 +445,9 @@ unsafe fn send_cmd(trb: Trb) -> Option<(u32, u32, u32, u32)> {
     None
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Init  (unchanged logic, proven)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 /// Reset the global controller state so init() can be called again
 /// (needed when switching between CPU SoC and chipset XHCI controllers).
@@ -527,7 +527,7 @@ pub unsafe fn init(mmio: u64) -> bool {
 
     // Build ring wrappers
     let cmd_ring = TransferRing::new(cv, ca & !0x3F);
-    // El event ring NO lleva Link TRB (el xHC lo recorre por tamaño del ERST).
+    // El event ring NO lleva Link TRB (el xHC lo recorre por tamano del ERST).
     let event_ring = TransferRing::new_unlinked(ev, eo);
 
     CTRL = Some(XhciController {
@@ -543,9 +543,9 @@ pub unsafe fn init(mmio: u64) -> bool {
     true
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Port ops
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 pub unsafe fn port_speed(port: u8) -> u8 {
     let c = match CTRL.as_ref() { Some(c) => c, None => return 0 };
@@ -559,18 +559,18 @@ pub unsafe fn port_peek(port: u8) -> u32 {
     r32(c.mmio + pb + PORTSC as u64)
 }
 
-/// Enciende la corriente del puerto **y espera** la estabilización de VBUS.
+/// Enciende la corriente del puerto **y espera** la estabilizacion de VBUS.
 /// Para encender UNO. Quien encienda varios debe usar [`port_power_solo`] y
-/// esperar una sola vez al final — ver ahí por qué.
+/// esperar una sola vez al final -- ver ahi por que.
 pub unsafe fn port_power_on(port: u8) {
     port_power_solo(port);
-    // Spec: >=20 ms de estabilización de VBUS antes de confiar en CCS.
+    // Spec: >=20 ms de estabilizacion de VBUS antes de confiar en CCS.
     hal().delay_ms(20);
 }
 
 /// Enciende la corriente y **no espera**.
 ///
-/// ★ La espera de VBUS es un tiempo FÍSICO del puerto, y los puertos se
+/// * La espera de VBUS es un tiempo FISICO del puerto, y los puertos se
 /// estabilizan **en paralelo**: encender ocho y esperar 20 ms una vez es tan
 /// correcto como esperar 20 ms ocho veces, y tarda 160 ms menos. Con dos
 /// controladores en esta placa, eso es un tercio de segundo de arranque que no
@@ -582,14 +582,14 @@ pub unsafe fn port_power_solo(port: u8) {
 }
 
 /// Reset del puerto con TIEMPOS REALES. Un reset USB2 tarda ~10-50 ms; el
-/// firmware/PHY latchea PED sólo cuando termina. Poll a 1 ms, hasta 120 ms.
+/// firmware/PHY latchea PED solo cuando termina. Poll a 1 ms, hasta 120 ms.
 pub unsafe fn port_reset(port: u8) -> bool {
     let c = match CTRL.as_mut() { Some(c) => c, None => return false };
     let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
     let sc = r32(c.mmio + pb + PORTSC as u64);
     if sc & PORTSC_CCS == 0 { return false; }
     // Escribir PR preservando bits RW1C (no re-limpiar cambios por error):
-    // sólo PP + PR, el resto a 0 (los bits de estado son RO/RW1C).
+    // solo PP + PR, el resto a 0 (los bits de estado son RO/RW1C).
     w32(c.mmio + pb + PORTSC as u64, (sc & PORTSC_PP) | PORTSC_PR);
     for _ in 0..120 {
         hal().delay_ms(1);
@@ -599,7 +599,7 @@ pub unsafe fn port_reset(port: u8) -> bool {
             if s & PORTSC_PRC != 0 {
                 w32(c.mmio + pb + PORTSC as u64, (s & PORTSC_PP) | PORTSC_PRC);
             }
-            // Recovery post-reset (spec: 10 ms) y comprobar habilitación.
+            // Recovery post-reset (spec: 10 ms) y comprobar habilitacion.
             hal().delay_ms(10);
             let e = r32(c.mmio + pb + PORTSC as u64);
             return e & PORTSC_PED != 0;
@@ -608,9 +608,9 @@ pub unsafe fn port_reset(port: u8) -> bool {
     false
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Enable Slot
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 pub unsafe fn enable_slot() -> Option<u8> {
     hal().log("[xhci] enable_slot\n");
@@ -625,19 +625,19 @@ pub unsafe fn enable_slot() -> Option<u8> {
 /// **Devolver un slot al controlador.** La pareja de `enable_slot`, y sin ella
 /// el controlador se queda sin slots.
 ///
-/// ★ Esto faltaba, y se vio en la primera foto: los slots subían `0x30`,
-/// `0x31`, … `0x40` en el registro de arranque. Cada intento de adopción que
+/// * Esto faltaba, y se vio en la primera foto: los slots subian `0x30`,
+/// `0x31`, ... `0x40` en el registro de arranque. Cada intento de adopcion que
 /// no acababa en un aparato instalado se llevaba un slot **para siempre**;
-/// al llegar a los 64 que declara este xHC, el `Address Device` empezó a
-/// contestar `cc=0x9` — *No Slots Available* — y a partir de ahí no se pudo
-/// enumerar nada más en toda la sesión.
+/// al llegar a los 64 que declara este xHC, el `Address Device` empezo a
+/// contestar `cc=0x9` -- *No Slots Available* -- y a partir de ahi no se pudo
+/// enumerar nada mas en toda la sesion.
 ///
 /// Un recurso que se pide en un camino que puede fallar necesita su
-/// devolución **en el mismo sitio**, no en el camino feliz.
+/// devolucion **en el mismo sitio**, no en el camino feliz.
 ///
-/// Lo que NO devuelve: las páginas DMA del anillo EP0 y del contexto de
-/// dispositivo. El HAL no tiene `free_dma_pages` todavía, así que eso sigue
-/// siendo una fuga — acotada, porque ahora los intentos están contados.
+/// Lo que NO devuelve: las paginas DMA del anillo EP0 y del contexto de
+/// dispositivo. El HAL no tiene `free_dma_pages` todavia, asi que eso sigue
+/// siendo una fuga -- acotada, porque ahora los intentos estan contados.
 pub unsafe fn disable_slot(slot: u8) -> bool {
     if slot == 0 { return false; }
     let ok = send_cmd(Trb {
@@ -649,7 +649,7 @@ pub unsafe fn disable_slot(slot: u8) -> bool {
     hal().log(if ok { " ok\n" } else { " FALLO\n" });
     // El puntero del contexto de dispositivo se retira SIEMPRE, salga bien el
     // comando o no: dejarlo puesto apuntando a un slot que el xHC ya no cree
-    // suyo es peor que retirarlo de más.
+    // suyo es peor que retirarlo de mas.
     if let Some(c) = CTRL.as_ref() {
         let dcbaa = hal().phys_to_virt(c.dcbaa_phys) as *mut u64;
         dcbaa.add(slot as usize).write_volatile(0);
@@ -660,9 +660,9 @@ pub unsafe fn disable_slot(slot: u8) -> bool {
     ok
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Per-slot EP0 ring storage
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 const MAX_SLOTS: usize = 255;
 #[derive(Clone, Copy)]
@@ -679,17 +679,17 @@ fn ep0_mut(slot: u8) -> Option<&'static mut Ep0Info> {
     else { None }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Address Device
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 /// Pide un slot y direcciona el aparato del puerto.
 ///
-/// ★ **Si algo falla después de tener el slot, el slot se DEVUELVE.** Antes se
-/// salía por cinco sitios distintos con un `?` o un `return None` y el slot se
-/// quedaba pedido para siempre; el bucle de adopción del arranque los fue
+/// * **Si algo falla despues de tener el slot, el slot se DEVUELVE.** Antes se
+/// salia por cinco sitios distintos con un `?` o un `return None` y el slot se
+/// quedaba pedido para siempre; el bucle de adopcion del arranque los fue
 /// gastando de uno en uno hasta agotar los 64 del controlador. La pareja
-/// pedir/devolver tiene que estar en la misma función o no está.
+/// pedir/devolver tiene que estar en la misma funcion o no esta.
 pub unsafe fn address_device(port: u8, speed: u8) -> Option<u8> {
     let slot = enable_slot()?;
     match direccionar_en_slot(port, speed, slot) {
@@ -711,7 +711,7 @@ unsafe fn direccionar_en_slot(port: u8, speed: u8, slot: u8) -> Option<u8> {
     core::ptr::write_bytes(ep0_virt as *mut u8, 0, 4096);
     let mut ring = TransferRing::new(ep0_virt, ep0_phys);
     // El productor (control_transfer) alterna su cycle state al dar la
-    // vuelta — el Link TRB necesita Toggle Cycle para que el xHC haga lo
+    // vuelta -- el Link TRB necesita Toggle Cycle para que el xHC haga lo
     // mismo, o el anillo se desincroniza tras el primer wrap.
     ring.enable_toggle_cycle();
     ep0_reg(slot, ep0_phys & !0xF, ep0_virt);
@@ -757,10 +757,10 @@ unsafe fn direccionar_en_slot(port: u8, speed: u8, slot: u8) -> Option<u8> {
     };
     ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
-    // ★ Esto tomaba el primer evento SIN MIRAR EL TIPO y le leía el `cc`. Un
-    // Transfer Event correcto también trae `cc=1`, así que un informe del
-    // ratón se leía como "el Address Device salió bien" — y de paso ese
-    // informe desaparecía.
+    // * Esto tomaba el primer evento SIN MIRAR EL TIPO y le leia el `cc`. Un
+    // Transfer Event correcto tambien trae `cc=1`, asi que un informe del
+    // raton se leia como "el Address Device salio bien" -- y de paso ese
+    // informe desaparecia.
     let ev = evt_poll_block(ctrl, Espera::Comando)?;
     let cc = (ev.2 >> 24) & 0xFF;
     h.log_u64(" addr_dev cc=", cc as u64);
@@ -774,9 +774,9 @@ unsafe fn direccionar_en_slot(port: u8, speed: u8, slot: u8) -> Option<u8> {
     Some(slot)
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  Control Transfer — uses per-slot EP0 ring
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
+//  Control Transfer -- uses per-slot EP0 ring
+// ===================================================================
 
 pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
     w_value: u16, w_index: u16, buf: &mut [u8], data_in: bool) -> usize
@@ -787,10 +787,10 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
 
     let has_data = !buf.is_empty();
     let data_page = if has_data {
-        // Quedarse sin páginas DMA se trataba igual que "el aparato no mandó
-        // nada": devolver 0. Dos causas opuestas —una es memoria del sistema,
-        // la otra es el periférico— con la misma cara, y sin una línea. La de
-        // arriba (`no ep0 ring`) sí gritaba; ésta no. Ahora las dos.
+        // Quedarse sin paginas DMA se trataba igual que "el aparato no mando
+        // nada": devolver 0. Dos causas opuestas --una es memoria del sistema,
+        // la otra es el periferico-- con la misma cara, y sin una linea. La de
+        // arriba (`no ep0 ring`) si gritaba; esta no. Ahora las dos.
         let dp = h.alloc_dma_pages(1).unwrap_or(0);
         if dp == 0 {
             h.log("[xhci] control_transfer: SIN PAGINAS DMA (no es el aparato, es la memoria)\n");
@@ -805,7 +805,7 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
 
     let trt = if !has_data { 0u32 } else if data_in { 3u32 } else { 2u32 };
 
-    // Setup Stage. Spec 4.11.2.2: Setup/Data/Status son TDs SEPARADOS —
+    // Setup Stage. Spec 4.11.2.2: Setup/Data/Status son TDs SEPARADOS --
     // CH=0 en cada stage. Encadenarlos (CH=1) lo tolera QEMU pero el
     // silicio real (AMD) responde con Transaction Error (cc=4).
     let setup = Trb {
@@ -855,11 +855,11 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
     // Ring EP0 doorbell
     ring_doorbell(slot, 1);
 
-    // Espera el Transfer Event de ESTE EP0 y de nadie más.
+    // Espera el Transfer Event de ESTE EP0 y de nadie mas.
     //
-    // El bucle de antes descartaba todo lo que no fuera suyo — incluidos los
-    // informes de interrupción de un ratón ya enumerado, que es exactamente el
-    // camino por el que el teclado y el ratón se quedaban mudos los dos.
+    // El bucle de antes descartaba todo lo que no fuera suyo -- incluidos los
+    // informes de interrupcion de un raton ya enumerado, que es exactamente el
+    // camino por el que el teclado y el raton se quedaban mudos los dos.
     let ev = match evt_poll_block(ctrl, Espera::Transferencia { slot, ep: 1 }) {
         Some(e) => e,
         None => return 0,
@@ -879,9 +879,9 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
     xfer
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Descriptor helpers
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 pub unsafe fn get_device_descriptor(slot: u8, buf: &mut [u8]) -> usize {
     let len = if buf.len() > 18 { 18 } else { buf.len() };
@@ -892,9 +892,9 @@ pub unsafe fn get_config_descriptor(slot: u8, index: u8, buf: &mut [u8]) -> usiz
     control_transfer(slot, 0x80, USB_REQ_GET_DESCRIPTOR, (USB_DESC_CONFIG << 8) | index as u16, 0, buf, true)
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Per-endpoint transfer ring storage (for non-EP0 endpoints)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 const MAX_DCI: usize = 32;
 #[derive(Clone, Copy)]
@@ -909,31 +909,31 @@ fn ep_ring_mut(slot: u8, dci: u8) -> Option<&'static mut EpRing> {
     } else { None }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Configure Endpoint
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 /// Convierte el `bInterval` del descriptor de endpoint al campo **Interval**
 /// del Endpoint Context.
 ///
-/// ★ EL BUG QUE MATABA AL TECLADO: ese campo NO es lineal. El xHC sirve el
-/// endpoint cada `2^Interval × 125 µs`, o sea es un EXPONENTE. Escribíamos el
+/// * EL BUG QUE MATABA AL TECLADO: ese campo NO es lineal. El xHC sirve el
+/// endpoint cada `2^Interval x 125 us`, o sea es un EXPONENTE. Escribiamos el
 /// `bInterval` crudo, que en Low/Full Speed viene en MILISEGUNDOS (10, 24,
-/// 32...). Un teclado que pide 24 ms terminaba programado como 2^24 × 125 µs =
+/// 32...). Un teclado que pide 24 ms terminaba programado como 2^24 x 125 us =
 /// **35 minutos** entre sondeos; con 32, 149 horas. El endpoint queda
-/// "configurado" y el Configure Endpoint devuelve éxito — el xHC sencillamente
-/// no lo consulta jamás. Se ve idéntico a un driver muerto.
+/// "configurado" y el Configure Endpoint devuelve exito -- el xHC sencillamente
+/// no lo consulta jamas. Se ve identico a un driver muerto.
 ///
 /// Reglas (xHCI 6.2.3.6):
-///   - Low/Full Speed interrupt: `bInterval` en FRAMES de 1 ms (1..255) →
-///     `Interval = 3 + floor(log2(bInterval))` (125 µs × 2^3 = 1 ms).
-///   - High/Super Speed: `bInterval` YA es un exponente (1..16) →
+///   - Low/Full Speed interrupt: `bInterval` en FRAMES de 1 ms (1..255) ->
+///     `Interval = 3 + floor(log2(bInterval))` (125 us x 2^3 = 1 ms).
+///   - High/Super Speed: `bInterval` YA es un exponente (1..16) ->
 ///     `Interval = bInterval - 1`.
-/// El campo tiene 4 bits útiles: se acota a 0..15.
+/// El campo tiene 4 bits utiles: se acota a 0..15.
 pub fn encode_interval(speed: u8, b_interval: u8) -> u8 {
     match speed {
         1 | 2 => {
-            // Full (1) / Low (2): milisegundos → exponente de 125 µs.
+            // Full (1) / Low (2): milisegundos -> exponente de 125 us.
             let ms = if b_interval == 0 { 1u32 } else { b_interval as u32 };
             let mut e = 0u32;
             while (1u32 << (e + 1)) <= ms { e += 1; } // floor(log2(ms))
@@ -949,8 +949,8 @@ pub fn encode_interval(speed: u8, b_interval: u8) -> u8 {
     }
 }
 
-// Diagnóstico del último endpoint configurado: qué pidió el descriptor y qué
-// programamos de verdad. Con esto CABINA puede decir "pediste 24 ms, programé
+// Diagnostico del ultimo endpoint configurado: que pidio el descriptor y que
+// programamos de verdad. Con esto CABINA puede decir "pediste 24 ms, programe
 // exponente 7 (16 ms)" en vez de dejarnos adivinando.
 static mut LAST_EP_BINTERVAL: u8 = 0;
 static mut LAST_EP_INTERVAL: u8 = 0;
@@ -961,9 +961,9 @@ pub fn last_ep_timing() -> (u8, u8, u8) {
     unsafe { (LAST_EP_BINTERVAL, LAST_EP_INTERVAL, LAST_EP_SPEED) }
 }
 
-/// Estado del endpoint leído del **Device Context** (el que mantiene el xHC,
+/// Estado del endpoint leido del **Device Context** (el que mantiene el xHC,
 /// no el que le mandamos): 0=Disabled 1=Running 2=Halted 3=Stopped 4=Error.
-/// Si tras configurar no está en Running, el endpoint no está agendado y
+/// Si tras configurar no esta en Running, el endpoint no esta agendado y
 /// ninguna cantidad de doorbells lo va a despertar.
 pub unsafe fn ep_state(slot: u8, dci: u8) -> u8 {
     let ctrl = match CTRL.as_ref() { Some(c) => c, None => return 0xFF };
@@ -974,9 +974,9 @@ pub unsafe fn ep_state(slot: u8, dci: u8) -> u8 {
     (ep.read_volatile() & 0x7) as u8
 }
 
-/// USBSTS crudo. Bit 2 = HSE (Host System Error, típicamente un DMA a memoria
+/// USBSTS crudo. Bit 2 = HSE (Host System Error, tipicamente un DMA a memoria
 /// que el xHC no puede tocar) y bit 12 = HCE (Host Controller Error). Si
-/// alguno está encendido el controlador está muerto y todo lo demás es ruido.
+/// alguno esta encendido el controlador esta muerto y todo lo demas es ruido.
 pub unsafe fn usbsts() -> u32 {
     match CTRL.as_ref() { Some(c) => op_r(c.mmio, c.op_base, USBSTS), None => 0 }
 }
@@ -1012,7 +1012,7 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     let tr_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no ring\n"); return false; } };
     let tr_virt = h.phys_to_virt(tr_phys) as *mut u32;
     core::ptr::write_bytes(tr_virt as *mut u8, 0, 4096);
-    // El Link TRB del final del anillo necesita **Toggle Cycle**: sin él, al dar
+    // El Link TRB del final del anillo necesita **Toggle Cycle**: sin el, al dar
     // la primera vuelta (255 reportes) el productor invierte su PCS pero el
     // consumidor no, el ciclo deja de coincidir y el endpoint se congela para
     // siempre. Una bomba de tiempo a ~255 pulsaciones de tecla.
@@ -1027,7 +1027,7 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     let dq = (tr_phys & !0xF) | 1;
     let ep = in_virt.add((dci as usize + 1) * cs) as *mut u32;
     // La velocidad la sabe el propio Slot Context que acabamos de copiar del
-    // Device Context (bits 23:20) — no hace falta que el caller la adivine ni
+    // Device Context (bits 23:20) -- no hace falta que el caller la adivine ni
     // arrastrarla por media pila de llamadas: se la preguntamos al hardware.
     let speed = ((old_dw0 >> 20) & 0xF) as u8;
     let enc = encode_interval(speed, interval);
@@ -1041,7 +1041,7 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     ep.add(2).write_volatile((dq & 0xFFFF_FFFF) as u32);
     ep.add(3).write_volatile(((dq >> 32) & 0xFFFF_FFFF) as u32);
     // DW4: Max ESIT Payload Lo (bits 31:16) | Average TRB Length (bits 15:0).
-    // ★ EL BUG DEL TECLADO: sin Max ESIT Payload, el xHC asigna CERO ancho de
+    // * EL BUG DEL TECLADO: sin Max ESIT Payload, el xHC asigna CERO ancho de
     // banda periodico al endpoint de INTERRUPCION -> nunca lo sirve -> las
     // teclas jamas completan (tev pegado, kev=0). Para un teclado boot el
     // payload por intervalo = max_pkt (8 bytes). Con esto el DCI del teclado
@@ -1058,17 +1058,17 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
     // Igual que en `address_device`: esto tomaba el primer evento sin mirar el
-    // tipo, así que podía dar por configurado un endpoint leyendo el `cc` del
+    // tipo, asi que podia dar por configurado un endpoint leyendo el `cc` del
     // informe de otro aparato.
     let ev = evt_poll_block(ctrl, Espera::Comando);
     match ev {
         Some((_, _, dw2, _)) => {
             let cc = (dw2 >> 24) & 0xFF;
             if cc != CC_SUCCESS {
-                // El CÓDIGO, no un "FAIL" mudo. Los que importan aquí:
+                // El CODIGO, no un "FAIL" mudo. Los que importan aqui:
                 // 4=Transaction Error, 8=Bandwidth Error (el intervalo pedido
-                // no cabe en la agenda periódica), 11=Trb Error,
-                // 17=Parameter Error (algún campo del contexto no vale).
+                // no cabe en la agenda periodica), 11=Trb Error,
+                // 17=Parameter Error (algun campo del contexto no vale).
                 h.log_u64("[xhci] cfg_ep cc=", cc as u64);
                 h.log("\n");
             }
@@ -1081,28 +1081,28 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  RESUCITAR UN ENDPOINT PARADO
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //
-// ★ EL AGUJERO QUE ESTO TAPA: el driver sabía VER que un endpoint estaba
-// Halted (`ep_state` lo documenta desde hace tiempo) y no tenía con qué
-// levantarlo. Los dos comandos que hacen falta —Reset Endpoint (14) y Set TR
-// Dequeue Pointer (16)— sencillamente no estaban escritos.
+// * EL AGUJERO QUE ESTO TAPA: el driver sabia VER que un endpoint estaba
+// Halted (`ep_state` lo documenta desde hace tiempo) y no tenia con que
+// levantarlo. Los dos comandos que hacen falta --Reset Endpoint (14) y Set TR
+// Dequeue Pointer (16)-- sencillamente no estaban escritos.
 //
-// El síntoma es el que contó el dueño: **el teclado deja de responder al
-// pulsar, sin que nadie lo desenchufe**. Un error de transacción del bus
-// —cable, ruido, un paquete que llega mal— deja el endpoint parado, y a partir
-// de ahí `rearmar()` encola y toca el timbre para nada: **el xHC ignora el
-// doorbell de un endpoint Halted**. Se veía idéntico a un aparato desconectado.
+// El sintoma es el que conto el dueno: **el teclado deja de responder al
+// pulsar, sin que nadie lo desenchufe**. Un error de transaccion del bus
+// --cable, ruido, un paquete que llega mal-- deja el endpoint parado, y a partir
+// de ahi `rearmar()` encola y toca el timbre para nada: **el xHC ignora el
+// doorbell de un endpoint Halted**. Se veia identico a un aparato desconectado.
 //
 // La secuencia es de la spec (xHCI 4.6.8) y el ORDEN no es negociable:
 //
-//   1. Reset Endpoint      Halted → Stopped. Sin esto, lo demás no vale.
-//   2. Set TR Dequeue      decirle POR DÓNDE seguir. El endpoint parado dejó
+//   1. Reset Endpoint      Halted -> Stopped. Sin esto, lo demas no vale.
+//   2. Set TR Dequeue      decirle POR DONDE seguir. El endpoint parado dejo
 //                          el puntero a mitad del anillo; si no se recoloca,
 //                          al arrancar lee TRBs viejos con el ciclo cambiado.
-//   3. ← el llamante encola y toca el timbre (`rearmar`)
+//   3. <- el llamante encola y toca el timbre (`rearmar`)
 //
 // El paso 2 es el que se olvida y el que hace que "el reset no sirviera de
 // nada": resetear sin recolocar deja el endpoint listo para leer basura.
@@ -1110,8 +1110,8 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
 /// Los `cc` de un Transfer Event que dejan el endpoint **parado**, y por tanto
 /// exigen recuperarlo en vez de reintentar.
 ///
-/// `3` Babble (el aparato mandó más de lo que cabía), `4` USB Transaction Error
-/// (el bus falló), `6` Stall (el aparato dijo que no). Cualquier otro `cc` malo
+/// `3` Babble (el aparato mando mas de lo que cabia), `4` USB Transaction Error
+/// (el bus fallo), `6` Stall (el aparato dijo que no). Cualquier otro `cc` malo
 /// es informativo: molesta, pero el endpoint sigue agendado.
 pub fn cc_halta_endpoint(cc: u8) -> bool { matches!(cc, 3 | 4 | 6) }
 
@@ -1120,17 +1120,17 @@ static mut RECUPERACIONES_FALLIDAS: u32 = 0;
 
 /// `(endpoints resucitados, intentos que no salieron)`.
 ///
-/// El segundo número es el que hay que mirar: si sube, el aparato no vuelve con
-/// un reset y el problema está más abajo (el puerto o el propio cable).
+/// El segundo numero es el que hay que mirar: si sube, el aparato no vuelve con
+/// un reset y el problema esta mas abajo (el puerto o el propio cable).
 pub fn recuperaciones() -> (u32, u32) {
     unsafe { (RECUPERACIONES, RECUPERACIONES_FALLIDAS) }
 }
 
-/// Manda un comando y devuelve su `cc` — a diferencia de `send_cmd`, que
-/// convierte cualquier fallo en `None` y se lleva el número por delante. Aquí
-/// el número ES el diagnóstico: `19` (Context State Error) significa "el
+/// Manda un comando y devuelve su `cc` -- a diferencia de `send_cmd`, que
+/// convierte cualquier fallo en `None` y se lleva el numero por delante. Aqui
+/// el numero ES el diagnostico: `19` (Context State Error) significa "el
 /// endpoint no estaba en el estado que este comando espera", que es distinto de
-/// "el controlador no contestó".
+/// "el controlador no contesto".
 unsafe fn cmd_cc(trb: Trb) -> Option<u32> {
     let ctrl = CTRL.as_mut()?;
     ctrl.cmd_ring.enqueue(&trb);
@@ -1141,27 +1141,27 @@ unsafe fn cmd_cc(trb: Trb) -> Option<u32> {
 
 /// Levanta un endpoint parado y lo deja listo para que el llamante encole.
 ///
-/// Devuelve `true` si el endpoint quedó en condiciones de volver a bombear. **No
-/// encola ni toca el timbre**: eso es trabajo del dueño del endpoint, que es
-/// quien sabe qué buffer y qué largo le tocan.
+/// Devuelve `true` si el endpoint quedo en condiciones de volver a bombear. **No
+/// encola ni toca el timbre**: eso es trabajo del dueno del endpoint, que es
+/// quien sabe que buffer y que largo le tocan.
 ///
-/// ⚠️ Bloquea, porque espera la compleción de dos comandos. Es aceptable por lo
-/// mismo que la adopción en caliente: ocurre **sólo cuando algo ya ha fallado**,
-/// no en el camino normal. El día que haya un hilo de kernel para el bus, esto
-/// se muda ahí con lo demás.
+/// [!] Bloquea, porque espera la complecion de dos comandos. Es aceptable por lo
+/// mismo que la adopcion en caliente: ocurre **solo cuando algo ya ha fallado**,
+/// no en el camino normal. El dia que haya un hilo de kernel para el bus, esto
+/// se muda ahi con lo demas.
 pub unsafe fn recuperar_endpoint(slot: u8, dci: u8) -> bool {
     let h = hal();
 
-    // El estado lo dice el xHC, no nosotros. Si ya está Running no hay nada que
-    // resetear y hacerlo daría Context State Error: un `cc=19` en el log que
-    // parecería un fallo cuando en realidad no había avería.
+    // El estado lo dice el xHC, no nosotros. Si ya esta Running no hay nada que
+    // resetear y hacerlo daria Context State Error: un `cc=19` en el log que
+    // pareceria un fallo cuando en realidad no habia averia.
     let estado = ep_state(slot, dci);
     if estado == 1 {
         return true;
     }
     if estado == 0 || estado == 0xFF {
-        // Disabled: el endpoint no está configurado. Un reset no lo arregla —
-        // esto es re-enumerar, y no se decide aquí.
+        // Disabled: el endpoint no esta configurado. Un reset no lo arregla --
+        // esto es re-enumerar, y no se decide aqui.
         h.log_u64("[xhci] recuperar: endpoint sin configurar, dci=", dci as u64);
         h.log("\n");
         RECUPERACIONES_FALLIDAS = RECUPERACIONES_FALLIDAS.wrapping_add(1);
@@ -1170,11 +1170,11 @@ pub unsafe fn recuperar_endpoint(slot: u8, dci: u8) -> bool {
 
     let campos = ((slot as u32) << 24) | ((dci as u32) << 16);
 
-    // ── 1. Reset Endpoint: Halted → Stopped ──────────────────────────
+    // -- 1. Reset Endpoint: Halted -> Stopped --------------------------
     //
-    // El bit TSP (9) se deja a 0 a propósito: preservar el estado de
-    // transferencia es justo lo que NO se quiere aquí. Lo que había en vuelo
-    // cuando el endpoint se paró es exactamente lo que falló.
+    // El bit TSP (9) se deja a 0 a proposito: preservar el estado de
+    // transferencia es justo lo que NO se quiere aqui. Lo que habia en vuelo
+    // cuando el endpoint se paro es exactamente lo que fallo.
     if estado == 2 {
         match cmd_cc(Trb { dw0: 0, dw1: 0, dw2: 0, dw3: campos | (TRB_RESET_EP << 10) }) {
             Some(CC_SUCCESS) => {}
@@ -1192,13 +1192,13 @@ pub unsafe fn recuperar_endpoint(slot: u8, dci: u8) -> bool {
         }
     }
 
-    // ── 2. Set TR Dequeue Pointer: volver al principio del anillo ─────
+    // -- 2. Set TR Dequeue Pointer: volver al principio del anillo -----
     //
     // Se recoloca al TRB 0 con ciclo 1 y **la contabilidad nuestra se pone a
     // juego** (`enqueue = 0`, `pcs = true`). Las dos mitades tienen que decir lo
-    // mismo: el xHC leerá donde le decimos, y nosotros escribiremos ahí con el
+    // mismo: el xHC leera donde le decimos, y nosotros escribiremos ahi con el
     // ciclo que le hemos declarado. Descuadrarlas es congelar el endpoint de la
-    // forma más difícil de ver — el mismo fallo que el Toggle Cycle del Link.
+    // forma mas dificil de ver -- el mismo fallo que el Toggle Cycle del Link.
     let ring_phys = match ep_ring_mut(slot, dci) {
         Some(r) => {
             r.enqueue = 0;
@@ -1240,9 +1240,9 @@ pub unsafe fn recuperar_endpoint(slot: u8, dci: u8) -> bool {
     true
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Queue interrupt IN transfer
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 pub unsafe fn queue_interrupt_in(slot: u8, dci: u8, buf_phys: u64, len: u16) -> bool {
     let ring = match ep_ring_mut(slot, dci) { Some(r) => r, None => return false };
@@ -1257,7 +1257,7 @@ pub unsafe fn queue_interrupt_in(slot: u8, dci: u8, buf_phys: u64, len: u16) -> 
     if ring.enqueue >= LAST_TRB_IDX {
         // Al dar la vuelta hay que dejar el Link TRB con el ciclo ACTUAL antes
         // de invertir el nuestro; si no, el xHC llega al Link, ve un ciclo que
-        // no es el suyo, y se detiene ahí para siempre. (El bit Toggle Cycle lo
+        // no es el suyo, y se detiene ahi para siempre. (El bit Toggle Cycle lo
         // pusimos al crear el anillo en configure_endpoint.)
         let lb = LAST_TRB_IDX * 4;
         let dw3 = ring.ring_virt.add(lb + 3).read_volatile();
@@ -1269,9 +1269,9 @@ pub unsafe fn queue_interrupt_in(slot: u8, dci: u8, buf_phys: u64, len: u16) -> 
     true
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Public non-blocking event poll
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 /// Returns (slot, endpoint_id, cc) for the next transfer event, or None.
 /// Ring doorbell for a slot+endpoint. EP0=1, EP1 OUT=2, EP1 IN=3, etc.
@@ -1282,9 +1282,9 @@ pub unsafe fn ring_doorbell(slot: u8, endpoint_id: u8) {
     }
 }
 
-/// Diagnóstico: cuántos Transfer Events ha posteado el xHC (cualquier slot/ep)
-/// y cuántos eventos crudos de cualquier tipo. Si al presionar teclas TEV no
-/// sube, el controlador no está completando la transferencia de interrupción
+/// Diagnostico: cuantos Transfer Events ha posteado el xHC (cualquier slot/ep)
+/// y cuantos eventos crudos de cualquier tipo. Si al presionar teclas TEV no
+/// sube, el controlador no esta completando la transferencia de interrupcion
 /// (endpoint/ring/doorbell), no el parseo. Ojos en metal desnudo.
 static mut XFER_EVENTS: u32 = 0;
 static mut RAW_EVENTS: u32 = 0;
@@ -1301,12 +1301,12 @@ pub fn last_event() -> (u8, u8, u8) { unsafe { (LAST_SLOT, LAST_EP, LAST_CC) } }
 pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
     loop {
-        // ★ Lo APARCADO primero, y en orden.
+        // * Lo APARCADO primero, y en orden.
         //
-        // Un evento que llegó mientras la enumeración esperaba otra cosa es
-        // tan válido como uno recién posteado — y es justamente el primer
+        // Un evento que llego mientras la enumeracion esperaba otra cosa es
+        // tan valido como uno recien posteado -- y es justamente el primer
         // informe de cada aparato, el que arranca la bomba. Si el aparcadero
-        // no se drenara aquí, se habría cambiado tirar eventos por guardarlos
+        // no se drenara aqui, se habria cambiado tirar eventos por guardarlos
         // donde nadie los mira, que es el mismo silencio con otra cara.
         let ev = match desaparcar_cualquiera() {
             Some(e) => e,
@@ -1322,7 +1322,7 @@ pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
             LAST_SLOT = slot; LAST_EP = ep; LAST_CC = cc;
             return Some((slot, ep, cc));
         }
-        // ── Cambio de puerto: enchufaron o desenchufaron algo ──
+        // -- Cambio de puerto: enchufaron o desenchufaron algo --
         //
         // Esto se estaba DESCARTANDO junto con las compleciones, y por eso no
         // habia hot-plug: el xHC avisa de que un puerto cambio de estado, y
@@ -1332,8 +1332,8 @@ pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
         // El Port ID viene en los bits 31:24 del primer dword del TRB, y es
         // 1-based (el puerto 1 del xHC es el indice 0 de PORTSC).
         //
-        // ★ Hay que limpiar CSC SI O SI. Es write-1-to-clear: mientras siga
-        // puesto, el xHC no vuelve a avisar de ese puerto — el segundo
+        // * Hay que limpiar CSC SI O SI. Es write-1-to-clear: mientras siga
+        // puesto, el xHC no vuelve a avisar de ese puerto -- el segundo
         // enchufe pasaria en silencio. Se escribe preservando PP y poniendo
         // SOLO el bit que se quiere limpiar: los demas bits de estado son
         // RW1C y escribirles un 1 limpiaria cambios que no hemos atendido.
@@ -1359,10 +1359,10 @@ pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
     }
 }
 
-// ── Hot-plug: lo que el driver ve, para que otro decida ──────────────
+// -- Hot-plug: lo que el driver ve, para que otro decida --------------
 //
 // El driver NO re-enumera solo. Reconstruir un dispositivo es asignar slot,
-// direccionarlo y configurar endpoints — decisiones que toma la capa de
+// direccionarlo y configurar endpoints -- decisiones que toma la capa de
 // arriba (`uhid` + `dev::usb`), que es la que sabe si lo que se enchufo es un
 // teclado, un raton o un disco. Aqui solo se anota el hecho.
 

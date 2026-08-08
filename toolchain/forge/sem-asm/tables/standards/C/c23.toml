@@ -1,4 +1,4 @@
-# c23.toml — ISO/IEC 9899:2024 (C23)
+# c23.toml -- ISO/IEC 9899:2024 (C23)
 [standard]
 iso_number = "ISO/IEC 9899:2024"
 year = 2024

@@ -1,5 +1,5 @@
 [workspace]
-# Ultra_kernel_x86-64/ — workspace root.
+# Ultra_kernel_x86-64/ -- workspace root.
 #
 # This is the x86-64-specific kernel for FastOS. It contains:
 #   boot_context/   shared lib (the BootContext ABI struct)
@@ -30,7 +30,7 @@ members = [
 ]
 resolver = "2"
 
-# ── Workspace default release profile ──
+# -- Workspace default release profile --
 # All our stages and the kernel are `no_std` with their own
 # `panic_handler`, so `panic = "abort"` is the right default.
 # lto + codegen-units=1 + strip keep binaries small.
@@ -44,7 +44,7 @@ debug = false
 debug-assertions = false
 overflow-checks = false
 
-# ── Per-package overrides: opt-level only (size-critical bins) ──
+# -- Per-package overrides: opt-level only (size-critical bins) --
 # Allowed fields in [profile.release.package."..."]:
 #   opt-level, debug, debug-assertions, overflow-checks, incremental
 # NOT allowed per-package: panic, lto, codegen-units, strip

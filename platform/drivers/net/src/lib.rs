@@ -1,4 +1,4 @@
-//! BMO Network Stack — NIC driver (Intel e1000) + packet I/O.
+//! BMO Network Stack -- NIC driver (Intel e1000) + packet I/O.
 //!
 //! ## Architecture
 //!   - Ring 0: NIC detection (PCIe class=0x02), MMIO setup, TX/RX rings
@@ -27,7 +27,7 @@ pub trait NetBackend {
 /// MAC address (6 bytes).
 pub type MacAddr = [u8; 6];
 
-// ── e1000 Registers (BAR0 MMIO) ────────────────────────────────────────
+// -- e1000 Registers (BAR0 MMIO) ----------------------------------------
 
 struct Regs(*mut u32);
 

@@ -1,4 +1,4 @@
-//! crt0 — C runtime startup for Ring 3 BEF apps.
+//! crt0 -- C runtime startup for Ring 3 BEF apps.
 //!
 //! This is the first code executed when a BEF binary is loaded into
 //! a Ring 3 process. Sets up the stack, calls main(), and exits.

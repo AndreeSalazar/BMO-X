@@ -1,4 +1,4 @@
-//! BMO ABI type system — function signatures, field descriptors, calling conventions.
+//! BMO ABI type system -- function signatures, field descriptors, calling conventions.
 //!
 //! Companion to `runtime::types` (TypeMeta/TypeRegistry). This module defines the
 //! **typed** metadata that TypeRegistry can optionally carry: field layouts,
@@ -7,13 +7,13 @@
 //! # Relationship with runtime::types
 //!
 //! ```text
-//! runtime::types::TypeMeta          ←  32-byte fixed header (BEF-compatible)
+//! runtime::types::TypeMeta          <-  32-byte fixed header (BEF-compatible)
 //!   name_hash, size, align, kind, field_count
 //!
-//! types::TypeField                  ←  per-field descriptor (name + type + offset)
-//! types::FunctionSignature          ←  params + return type + calling convention
-//! types::CallingConvention          ←  register assignment, stack rules
-//! types::TypeKind                   ←  extends runtime type kind with signature info
+//! types::TypeField                  <-  per-field descriptor (name + type + offset)
+//! types::FunctionSignature          <-  params + return type + calling convention
+//! types::CallingConvention          <-  register assignment, stack rules
+//! types::TypeKind                   <-  extends runtime type kind with signature info
 //! ```
 //!
 //! Language frontends emit these into a BEF `.type_map` section (SectionKind::TypeMap).
@@ -24,7 +24,7 @@
 //! - Debug symbol resolution
 
 pub mod convention;
-/// La regla de disposición de agregados — dónde cae cada miembro y cuánto
+/// La regla de disposicion de agregados -- donde cae cada miembro y cuanto
 /// mide el conjunto. **Una sola copia**, compartida por los frontends: estaba
 /// escrita tres veces y una divergencia no da un error, da un programa que
 /// escribe en el campo de al lado.

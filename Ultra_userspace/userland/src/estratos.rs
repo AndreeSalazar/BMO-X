@@ -1,19 +1,19 @@
-//! **El cursor de ESTRATOS**: recorrer el almacén desde Ring 3.
+//! **El cursor de ESTRATOS**: recorrer el almacen desde Ring 3.
 //!
-//! ═══ Qué es y qué NO es ═══
+//! === Que es y que NO es ===
 //!
-//! Un cursor, no un puñado de handles. La ventana que lo usa mira un sitio a la
-//! vez y lo que quiere es *bajar, subir y listar* — y un puntero que se mueve
-//! es exactamente eso. Una capability por nodo abierto pediría tabla, ciclo de
-//! vida y revocación para modelar lo mismo.
+//! Un cursor, no un punado de handles. La ventana que lo usa mira un sitio a la
+//! vez y lo que quiere es *bajar, subir y listar* -- y un puntero que se mueve
+//! es exactamente eso. Una capability por nodo abierto pediria tabla, ciclo de
+//! vida y revocacion para modelar lo mismo.
 //!
-//! ★ **No concede nada**: aquí no hay ni una operación que escriba. Es el mismo
-//! trato que [`info`] y que [`klog_texto`] — contesta, no autoriza.
+//! * **No concede nada**: aqui no hay ni una operacion que escriba. Es el mismo
+//! trato que [`info`] y que [`klog_texto`] -- contesta, no autoriza.
 //!
-//! ⚠ **El cursor es UNO y es del sistema**, no de este proceso. Dos ventanas
-//! recorriendo el árbol a la vez se pisarían. Hoy sólo lo usa el panel de
-//! Datos; el día que sean dos, esto pide un handle por cliente y se dice ahora
-//! para que nadie lo descubra por el síntoma.
+//! [!] **El cursor es UNO y es del sistema**, no de este proceso. Dos ventanas
+//! recorriendo el arbol a la vez se pisarian. Hoy solo lo usa el panel de
+//! Datos; el dia que sean dos, esto pide un handle por cliente y se dice ahora
+//! para que nadie lo descubra por el sintoma.
 //!
 //! Era un `pub mod` dentro de `lib.rs`. Mismo codigo, fichero propio.
 
@@ -22,7 +22,7 @@ use crate::*;
 /// Tipo de un nodo, tal como lo cuenta el cursor.
 pub const ARCHIVO: u64 = 0;
 pub const DIRECTORIO: u64 = 1;
-/// No hay nodo ahí, o no se pudo leer. **Es distinto de "es un archivo"**:
+/// No hay nodo ahi, o no se pudo leer. **Es distinto de "es un archivo"**:
 /// confundirlos pinta una caja para algo que no existe.
 pub const NADA: u64 = 2;
 
@@ -30,20 +30,20 @@ fn pregunta(que: u64, arg: u64) -> u64 {
     invoke(CURRENT_TASK, OP_ES_NODO, que, arg, 0).value
 }
 
-/// Pone el cursor en la raíz. `false` si no hay volumen montado.
+/// Pone el cursor en la raiz. `false` si no hay volumen montado.
 pub fn a_la_raiz() -> bool {
     pregunta(0x00, 0) != 0
 }
-/// Cuántos hijos tiene el nodo actual.
+/// Cuantos hijos tiene el nodo actual.
 pub fn hijos() -> u64 {
     pregunta(0x01, 0)
 }
-/// ¿Se quedó el listado corto? Un directorio truncado en silencio se ve
+/// Se quedo el listado corto? Un directorio truncado en silencio se ve
 /// igual que uno con pocos archivos.
 pub fn truncado() -> bool {
     pregunta(0x02, 0) != 0
 }
-/// Cuántos niveles se ha bajado desde la raíz.
+/// Cuantos niveles se ha bajado desde la raiz.
 pub fn hondo() -> u64 {
     pregunta(0x03, 0)
 }
@@ -59,24 +59,24 @@ pub fn hijo_tipo(i: u64) -> u64 {
 pub fn entrar(i: u64) -> bool {
     pregunta(0x06, i) != 0
 }
-/// Vuelve al padre. `false` si ya estaba en la raíz.
+/// Vuelve al padre. `false` si ya estaba en la raiz.
 pub fn subir() -> bool {
     pregunta(0x07, 0) != 0
 }
 
-// ── El DETALLE del hijo `i` ─────────────────────────────────────────
+// -- El DETALLE del hijo `i` -----------------------------------------
 
 /// Bytes de su contenido. Un directorio contesta lo que ocupa su LISTA de
 /// entradas, que es un dato distinto de lo que hay dentro.
 pub fn hijo_bytes(i: u64) -> u64 {
     pregunta(0x08, i)
 }
-/// Cuántos atributos lleva. Es el número que dice que un nodo de ESTRATOS
+/// Cuantos atributos lleva. Es el numero que dice que un nodo de ESTRATOS
 /// **es un conjunto de atributos** y no una carpeta con cosas.
 pub fn hijo_atributos(i: u64) -> u64 {
     pregunta(0x09, i)
 }
-/// ¿Lleva `:firma`? **Sólo si la lleva, no si cuadra.**
+/// Lleva `:firma`? **Solo si la lleva, no si cuadra.**
 pub fn hijo_firmado(i: u64) -> bool {
     pregunta(0x0A, i) != 0
 }
@@ -86,29 +86,29 @@ pub const FIRMA_AUSENTE: u64 = 0;
 pub const FIRMA_CUADRA: u64 = 1;
 pub const FIRMA_NO_CUADRA: u64 = 2;
 pub const FIRMA_ILEGIBLE: u64 = 3;
-/// ★ **El archivo no cabe en el buffer de verificación**, y eso es un límite
-/// NUESTRO, no una avería del disco.
+/// * **El archivo no cabe en el buffer de verificacion**, y eso es un limite
+/// NUESTRO, no una averia del disco.
 ///
-/// Compartía número con `FIRMA_ILEGIBLE`, así que un archivo perfectamente sano
-/// de más de 256 KiB se pintaba **en rojo** como "no se pudo leer" — y en esta
+/// Compartia numero con `FIRMA_ILEGIBLE`, asi que un archivo perfectamente sano
+/// de mas de 256 KiB se pintaba **en rojo** como "no se pudo leer" -- y en esta
 /// ventana el rojo significa *"hay un problema en el disco"*. El archivo se lee
-/// sin problema; lo que no cabe es la comprobación.
+/// sin problema; lo que no cabe es la comprobacion.
 pub const FIRMA_NO_CABE: u64 = 4;
 
-/// ★ Lee el hijo entero y compara su BLAKE3 con su `:firma`.
+/// * Lee el hijo entero y compara su BLAKE3 con su `:firma`.
 ///
 /// **Se pide a mano**: leer un archivo y hacerle un hash sesenta veces por
-/// segundo convertiría un panel en un martillo sobre el disco.
+/// segundo convertiria un panel en un martillo sobre el disco.
 ///
-/// ⚠ Demuestra que los bytes son los que se guardaron. **No demuestra
-/// autenticidad** — quien pueda escribir en el volumen puede cambiar el
+/// [!] Demuestra que los bytes son los que se guardaron. **No demuestra
+/// autenticidad** -- quien pueda escribir en el volumen puede cambiar el
 /// archivo *y* recalcular su hash.
 pub fn verificar(i: u64) -> u64 {
     pregunta(0x0B, i)
 }
 
-/// El nombre del nivel `nivel` de la ruta en `dst`. `0` es la raíz y
-/// contesta vacío — quien pinta escribe `/`.
+/// El nombre del nivel `nivel` de la ruta en `dst`. `0` es la raiz y
+/// contesta vacio -- quien pinta escribe `/`.
 ///
 /// Va por la misma puerta que [`hijo_nombre`] con un `1` en los bits altos:
 /// es el mismo mecanismo pidiendo otra cosa, y una puerta por cada texto
@@ -118,11 +118,11 @@ pub fn nombre_nivel(nivel: u64, dst: &mut [u8]) -> usize {
     texto_de(nivel | (1u64 << 32), dst)
 }
 
-/// El nombre del hijo `i` en `dst`. Devuelve cuántos bytes se escribieron.
+/// El nombre del hijo `i` en `dst`. Devuelve cuantos bytes se escribieron.
 ///
 /// Viaja de ocho en ocho, igual que el klog: la superficie congelada no
-/// acepta punteros. Se para en el primer trozo vacío o cuando `dst` se
-/// llena — lo que pase antes.
+/// acepta punteros. Se para en el primer trozo vacio o cuando `dst` se
+/// llena -- lo que pase antes.
 pub fn hijo_nombre(i: u64, dst: &mut [u8]) -> usize {
     texto_de(i, dst)
 }

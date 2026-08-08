@@ -1,11 +1,11 @@
-//! `strncmp`, `memcmp` y `strchr` — las que DOOM usa en cada línea
+//! `strncmp`, `memcmp` y `strchr` -- las que DOOM usa en cada linea
 //!
 //! Parte del banco de pruebas de BMO C. Los ayudantes (`run_c`,
 //! `run_c_sembrado`, `ejecutar_bef`) viven en `tests/mod.rs`.
 
 use super::*;
 
-// ═══════════════ El tope, y el cero que corta ═══════════════
+// =============== El tope, y el cero que corta ===============
 
 #[test]
 fn strncmp_solo_mira_los_primeros_n() {
@@ -23,9 +23,9 @@ fn strncmp_encuentra_la_diferencia_dentro_del_tope() {
     assert_eq!(out, "1\n");
 }
 
-/// ★ La diferencia entera entre `strncmp` y `memcmp`, y la razón de que sean
+/// * La diferencia entera entre `strncmp` y `memcmp`, y la razon de que sean
 /// dos funciones: con el tope pasado del final, `strncmp` se para en el
-/// terminador y `memcmp` seguiría leyendo lo que hubiera detrás.
+/// terminador y `memcmp` seguiria leyendo lo que hubiera detras.
 #[test]
 fn strncmp_se_para_en_el_terminador_aunque_quede_cupo() {
     let out = run_c(
@@ -50,11 +50,11 @@ fn strncmp_conserva_el_orden() {
     assert_eq!(out, "1\n", "'A' va antes que 'B', y el signo lo dice");
 }
 
-// ═══════════════ `memcmp`: el cero es un byte más ═══════════════
+// =============== `memcmp`: el cero es un byte mas ===============
 
 #[test]
 fn memcmp_compara_bytes_y_no_cadenas() {
-    // Dos buffers iguales salvo DETRÁS del terminador. `strncmp` los da por
+    // Dos buffers iguales salvo DETRAS del terminador. `strncmp` los da por
     // iguales; `memcmp` con el tope entero tiene que ver la diferencia.
     let out = run_c(
         "int main() {\n\
@@ -70,7 +70,7 @@ fn memcmp_compara_bytes_y_no_cadenas() {
     );
 }
 
-// ═══════════════ `strchr` ═══════════════
+// =============== `strchr` ===============
 
 #[test]
 fn strchr_encuentra_y_devuelve_el_resto() {
@@ -88,8 +88,8 @@ fn strchr_que_no_esta_devuelve_cero() {
     assert_eq!(out, "1\n");
 }
 
-/// Buscar el terminador **lo encuentra**: es lo que dice el estándar y es la
-/// forma normal de saber dónde acaba una cadena.
+/// Buscar el terminador **lo encuentra**: es lo que dice el estandar y es la
+/// forma normal de saber donde acaba una cadena.
 #[test]
 fn strchr_del_cero_encuentra_el_final() {
     let out = run_c(

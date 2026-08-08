@@ -1,4 +1,4 @@
-//! GRUPOS — 6 pruebas.
+//! GRUPOS -- 6 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,18 +7,18 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-// ── EL ÁREA DE REGISTRO: grupos con los campos en su byte ───────────
+// -- EL AREA DE REGISTRO: grupos con los campos en su byte -----------
 //
-// Camino B de PLAN_BANCA §1.0. Un grupo tiene dos representaciones: las
-// ranuras de trabajo (un entero escalado por campo) y el ÁREA (los bytes
-// tal cual irían al disco). `MOVE` de grupo pasa por el área.
+// Camino B de PLAN_BANCA section 1.0. Un grupo tiene dos representaciones: las
+// ranuras de trabajo (un entero escalado por campo) y el AREA (los bytes
+// tal cual irian al disco). `MOVE` de grupo pasa por el area.
 
-/// ★ LA PRUEBA QUE NO SE PUEDE FINGIR: un `MOVE` de grupo pasa por los
-/// BYTES, así que sobrevive a que los dos grupos tengan **nombres
-/// distintos** en los campos — sólo tienen que coincidir en la forma.
+/// * LA PRUEBA QUE NO SE PUEDE FINGIR: un `MOVE` de grupo pasa por los
+/// BYTES, asi que sobrevive a que los dos grupos tengan **nombres
+/// distintos** en los campos -- solo tienen que coincidir en la forma.
 ///
-/// Un emisor que copiara campo a campo por nombre fallaría aquí, y uno que
-/// copiara por posición de declaración pasaría este test pero fallaría el
+/// Un emisor que copiara campo a campo por nombre fallaria aqui, y uno que
+/// copiara por posicion de declaracion pasaria este test pero fallaria el
 /// de abajo.
 #[test]
 fn un_move_de_grupo_copia_los_bytes_no_los_nombres() {
@@ -36,17 +36,17 @@ fn un_move_de_grupo_copia_los_bytes_no_los_nombres() {
     assert_eq!(run_cobol(&src), "1234\n-99.95\n");
 }
 
-/// ★ Y ÉSTA es la que prueba que el área son BYTES DE VERDAD y no un
+/// * Y ESTA es la que prueba que el area son BYTES DE VERDAD y no un
 /// atajo: los dos grupos tienen la **misma forma en bytes** pero **cortada
-/// distinta**. Origen: un campo de 6 dígitos. Destino: dos de 3.
+/// distinta**. Origen: un campo de 6 digitos. Destino: dos de 3.
 ///
-/// Copiar campo a campo no puede dar esto. Sólo sale bien si lo que viaja
-/// son los bytes zonados — `123456` escrito como seis caracteres, y el
+/// Copiar campo a campo no puede dar esto. Solo sale bien si lo que viaja
+/// son los bytes zonados -- `123456` escrito como seis caracteres, y el
 /// destino leyendo `123` y `456` de su sitio.
 ///
 /// Es exactamente lo que un programa de banca hace para reinterpretar un
-/// registro, y la razón por la que el estándar dice que un `MOVE` de grupo
-/// no mira qué hay dentro.
+/// registro, y la razon por la que el estandar dice que un `MOVE` de grupo
+/// no mira que hay dentro.
 #[test]
 fn el_area_son_bytes_de_verdad_y_se_puede_recortar_distinto() {
     let src = program(
@@ -66,8 +66,8 @@ fn el_area_son_bytes_de_verdad_y_se_puede_recortar_distinto() {
     );
 }
 
-/// El signo sobrevive al viaje por el área, que es donde vive
-/// sobrepunzado en el último dígito.
+/// El signo sobrevive al viaje por el area, que es donde vive
+/// sobrepunzado en el ultimo digito.
 #[test]
 fn el_signo_sobrevive_al_area() {
     let src = program(
@@ -101,7 +101,7 @@ fn un_move_de_grupo_arrastra_los_grupos_de_dentro() {
 }
 
 /// Dos campos con el mismo nombre no se pueden distinguir en un `MOVE`.
-/// COBOL lo resuelve con `A OF REG`, que todavía no existe — así que se
+/// COBOL lo resuelve con `A OF REG`, que todavia no existe -- asi que se
 /// dice en vez de quedarse con uno de los dos en silencio.
 #[test]
 fn dos_campos_con_el_mismo_nombre_se_rechazan() {

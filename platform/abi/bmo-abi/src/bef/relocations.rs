@@ -1,9 +1,9 @@
-//! Relocations BEF — solo 3 tipos (vs 38 de ELF x86_64, 16 de PE).
+//! Relocations BEF -- solo 3 tipos (vs 38 de ELF x86_64, 16 de PE).
 //!
 //! Modelo BEF:
-//!   - **Abs64**  — escribir dirección absoluta de 64 bits.
-//!   - **Rel32**  — escribir delta de 32 bits (PC-relative).
-//!   - **Got64**  — escribir dirección via Global Offset Table.
+//!   - **Abs64**  -- escribir direccion absoluta de 64 bits.
+//!   - **Rel32**  -- escribir delta de 32 bits (PC-relative).
+//!   - **Got64**  -- escribir direccion via Global Offset Table.
 //!
 //! Eso cubre el 100 % de los casos que ELF resuelve con sus 38 tipos. El
 //! resto eran legacy (R_X86_64_8, R_X86_64_16, R_X86_64_TPOFF*, etc.).
@@ -21,46 +21,46 @@ pub enum RelocationKind {
     /// Escribe `symbol_addr + addend - reloc_addr` (32 bits, PC-relative).
     /// ELF: `R_X86_64_PC32`/`R_X86_64_PLT32`.
     Rel32 = 0x02,
-    /// Escribe la dirección del slot GOT del símbolo (64 bits).
+    /// Escribe la direccion del slot GOT del simbolo (64 bits).
     /// ELF: `R_X86_64_GLOB_DAT`/`R_X86_64_JUMP_SLOT`.
     Got64 = 0x03,
-    /// ★ Escribe la dirección de **una posición dentro de otra sección de este
-    /// mismo binario**, 64 bits. No hay símbolo de por medio.
+    /// * Escribe la direccion de **una posicion dentro de otra seccion de este
+    /// mismo binario**, 64 bits. No hay simbolo de por medio.
     ///
-    /// `symbol_idx` no es un símbolo aquí: es **el código de sección donde vive
-    /// el destino**, con la misma numeración que [`Relocation::target_section`]
+    /// `symbol_idx` no es un simbolo aqui: es **el codigo de seccion donde vive
+    /// el destino**, con la misma numeracion que [`Relocation::target_section`]
     /// (`0` = code, `1` = data, `2` = rodata). Y `addend` es el **offset dentro
-    /// de esa sección**.
+    /// de esa seccion**.
     ///
-    /// # Por qué hacía falta un tipo nuevo
+    /// # Por que hacia falta un tipo nuevo
     ///
-    /// Los otros tres apuntan a un SÍMBOLO, y BMO **no tiene tabla de
-    /// símbolos**: la sección `Symbols` está declarada y nadie la escribe. Lo
-    /// que un `.bex` de una sola unidad necesita no es "la dirección de
-    /// `printf`" — es "la dirección de la cadena que está en rodata+40", que el
-    /// compilador no puede saber porque depende de dónde cargue el programa.
+    /// Los otros tres apuntan a un SIMBOLO, y BMO **no tiene tabla de
+    /// simbolos**: la seccion `Symbols` esta declarada y nadie la escribe. Lo
+    /// que un `.bex` de una sola unidad necesita no es "la direccion de
+    /// `printf`" -- es "la direccion de la cadena que esta en rodata+40", que el
+    /// compilador no puede saber porque depende de donde cargue el programa.
     ///
-    /// El caso que lo pidió:
+    /// El caso que lo pidio:
     ///
     /// ```c
-    /// char *mapa = "1111...";        // global: guarda una DIRECCIÓN
+    /// char *mapa = "1111...";        // global: guarda una DIRECCION
     /// char *nombres[] = {"a", "b"};  // tabla de punteros
     /// ```
     ///
-    /// Antes esto valía **cero en silencio** — y así estuvo el raycaster
-    /// leyendo su mapa desde el byte 0 de su propio código.
+    /// Antes esto valia **cero en silencio** -- y asi estuvo el raycaster
+    /// leyendo su mapa desde el byte 0 de su propio codigo.
     ///
-    /// # Por qué no se reusó `symbol_idx` sin un tipo propio
+    /// # Por que no se reuso `symbol_idx` sin un tipo propio
     ///
-    /// Porque eso es *un campo con dos significados según el contexto*, que es
+    /// Porque eso es *un campo con dos significados segun el contexto*, que es
     /// exactamente el bug que se acababa de arreglar en `bef::writer` (el
-    /// `alignment` que servía a la vez para memoria y para fichero, y metía 6
+    /// `alignment` que servia a la vez para memoria y para fichero, y metia 6
     /// KB de agujeros). Con un `kind` distinto, el significado del campo lo
-    /// dice el propio dato y no hace falta saber de dónde vino.
+    /// dice el propio dato y no hace falta saber de donde vino.
     ///
-    /// Aplicar esto es idéntico a [`RelocationKind::Abs64`] —escribir
-    /// `destino + addend`— y la diferencia entera está en quién resuelve el
-    /// `destino`: allí un símbolo, aquí la VA de una sección.
+    /// Aplicar esto es identico a [`RelocationKind::Abs64`] --escribir
+    /// `destino + addend`-- y la diferencia entera esta en quien resuelve el
+    /// `destino`: alli un simbolo, aqui la VA de una seccion.
     SeccionAbs64 = 0x04,
 }
 
@@ -76,17 +76,17 @@ impl RelocationKind {
     }
 }
 
-/// Una relocation — 24 bytes.
+/// Una relocation -- 24 bytes.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy)]
 pub struct Relocation {
-    /// Offset en la sección target donde aplicar la reloc.
+    /// Offset en la seccion target donde aplicar la reloc.
     pub offset: bx_u64,
-    /// Índice del símbolo en la sección Symbols (o Imports).
+    /// Indice del simbolo en la seccion Symbols (o Imports).
     pub symbol_idx: bx_u32,
     /// Tipo `RelocationKind as u8`.
     pub kind: bx_u8,
-    /// `0` = sección target es `.code`, `1` = `.data`, `2` = `.rodata`.
+    /// `0` = seccion target es `.code`, `1` = `.data`, `2` = `.rodata`.
     pub target_section: bx_u8,
     /// Padding.
     pub _pad: [bx_u8; 2],
@@ -95,21 +95,21 @@ pub struct Relocation {
 }
 const _: () = assert!(core::mem::size_of::<Relocation>() == 24);
 
-/// ⚠️ LOS CÓDIGOS DE SECCIÓN DE UNA RELOCATION **NO SON LOS DE
+/// [!] LOS CODIGOS DE SECCION DE UNA RELOCATION **NO SON LOS DE
 /// `SectionKind`**, y esto es una trampa real del formato.
 ///
 /// ```text
 ///                code   rodata   data
 ///   SectionKind    1       2       3
-///   aquí           0       2       1     <-- ojo: data y rodata cambian
+///   aqui           0       2       1     <-- ojo: data y rodata cambian
 /// ```
 ///
-/// Es la numeración que ya usaba [`Relocation::target_section`] desde que se
-/// escribió el struct, y **no se cambia** porque cambiarla ahora rompería
-/// cualquier `.bex` que llevara relocs — aunque hoy no haya ninguno, la regla
+/// Es la numeracion que ya usaba [`Relocation::target_section`] desde que se
+/// escribio el struct, y **no se cambia** porque cambiarla ahora romperia
+/// cualquier `.bex` que llevara relocs -- aunque hoy no haya ninguno, la regla
 /// de este proyecto es que un formato publicado no se toca por comodidad.
 ///
-/// Lo que sí se hace es darles nombre, para que nadie vuelva a escribir un `1`
+/// Lo que si se hace es darles nombre, para que nadie vuelva a escribir un `1`
 /// creyendo que es rodata: escribir `SEC_DATA` no se puede confundir.
 pub const SEC_CODE: bx_u8 = 0;
 /// Ver [`SEC_CODE`]. **Vale 1, no 3.**
@@ -125,12 +125,12 @@ impl Relocation {
     }
 
     /// Una [`RelocationKind::SeccionAbs64`]: *"en `donde_sec + donde_off`
-    /// escribe la dirección de `destino_sec + destino_off`"*.
+    /// escribe la direccion de `destino_sec + destino_off`"*.
     ///
-    /// Existe para que los dos pares (sección, offset) se pasen por nombre. A
+    /// Existe para que los dos pares (seccion, offset) se pasen por nombre. A
     /// mano hay que poner el destino en `symbol_idx` y en `addend`, que no se
-    /// llaman como lo que llevan — y con cuatro números del mismo tipo, cruzar
-    /// dos es cuestión de tiempo.
+    /// llaman como lo que llevan -- y con cuatro numeros del mismo tipo, cruzar
+    /// dos es cuestion de tiempo.
     pub fn seccion_abs64(
         donde_sec: bx_u8,
         donde_off: bx_u64,
@@ -149,10 +149,10 @@ impl Relocation {
 }
 
 /// Aplica una relocation single sobre un buffer mutable que representa la
-/// sección target ya cargada en memoria.
+/// seccion target ya cargada en memoria.
 ///
-/// `reloc_va` es la dirección virtual final de `target[reloc.offset]`.
-/// `symbol_addr` es la dirección virtual final del símbolo.
+/// `reloc_va` es la direccion virtual final de `target[reloc.offset]`.
+/// `symbol_addr` es la direccion virtual final del simbolo.
 pub fn apply(
     reloc: &Relocation,
     target: &mut [u8],
@@ -162,11 +162,11 @@ pub fn apply(
     let off = reloc.offset as usize;
     let kind = reloc.kind().ok_or("kind de relocation desconocido")?;
     match kind {
-        // Los dos escriben `destino + addend` en 64 bits. La diferencia está en
-        // quién resolvió `symbol_addr` antes de llegar aquí: en `Abs64` es la
-        // dirección de un símbolo; en `SeccionAbs64`, la de la SECCIÓN que
-        // nombra `symbol_idx`. Comparten el brazo a propósito — dos copias del
-        // mismo `copy_from_slice` serían dos sitios donde equivocarse.
+        // Los dos escriben `destino + addend` en 64 bits. La diferencia esta en
+        // quien resolvio `symbol_addr` antes de llegar aqui: en `Abs64` es la
+        // direccion de un simbolo; en `SeccionAbs64`, la de la SECCION que
+        // nombra `symbol_idx`. Comparten el brazo a proposito -- dos copias del
+        // mismo `copy_from_slice` serian dos sitios donde equivocarse.
         RelocationKind::Abs64 | RelocationKind::SeccionAbs64 => {
             if off + 8 > target.len() {
                 return Err("offset Abs64 fuera de rango");
@@ -188,8 +188,8 @@ pub fn apply(
             if off + 8 > target.len() {
                 return Err("offset Got64 fuera de rango");
             }
-            // En BEF, el GOT slot ya fue resuelto por el loader; aquí escribimos
-            // su dirección. El addend se suma como offset dentro del slot (raro).
+            // En BEF, el GOT slot ya fue resuelto por el loader; aqui escribimos
+            // su direccion. El addend se suma como offset dentro del slot (raro).
             let v = symbol_addr.wrapping_add(reloc.addend as u64);
             target[off..off + 8].copy_from_slice(&v.to_le_bytes());
         }

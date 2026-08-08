@@ -1,48 +1,48 @@
-//! **Lexer de BMO C++** — fuente a tokens, con la línea real de cada uno.
+//! **Lexer de BMO C++** -- fuente a tokens, con la linea real de cada uno.
 //!
-//! ═══ Por qué esto existe (y qué reemplaza) ═══
+//! === Por que esto existe (y que reemplaza) ===
 //!
-//! El frontend anterior no tenía lexer: el parser miraba la fuente carácter a
-//! carácter con `peek_str("return")`. Dos consecuencias que costaron caro:
+//! El frontend anterior no tenia lexer: el parser miraba la fuente caracter a
+//! caracter con `peek_str("return")`. Dos consecuencias que costaron caro:
 //!
-//! 1. **El identificador `x` se leía como un número.** El bucle de dígitos
-//!    aceptaba `x`, `X` y las letras `a`–`f` para poder leer hexadecimales,
-//!    así que `x * 2` entraba por la rama numérica antes de ser un nombre.
+//! 1. **El identificador `x` se leia como un numero.** El bucle de digitos
+//!    aceptaba `x`, `X` y las letras `a`-`f` para poder leer hexadecimales,
+//!    asi que `x * 2` entraba por la rama numerica antes de ser un nombre.
 //! 2. **`returnx` empezaba por `return`.** Sin tokens no hay frontera de
 //!    palabra, y `peek_str` no la puede inventar.
 //!
-//! Aquí un número es un número y una palabra clave es una palabra **entera**.
+//! Aqui un numero es un numero y una palabra clave es una palabra **entera**.
 //!
-//! ═══ El lexer no corta ═══
+//! === El lexer no corta ===
 //!
 //! Igual que el de C: cuando algo no se puede leer, se **anota el error y se
 //! sigue**, porque el parser necesita recibir un vector completo. Cortar en el
-//! primer carácter raro obligaría a devolver un token inventado, y un token
+//! primer caracter raro obligaria a devolver un token inventado, y un token
 //! inventado se propaga hasta un mensaje que manda a mirar donde no es.
 
 use crate::CppError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    // ── Literales y nombres ──
+    // -- Literales y nombres --
     Ident(String), IntLit(i64), FloatLit(f64), StringLit(String), CharLit(u8),
 
-    // ── Tipos ──
+    // -- Tipos --
     Void, Bool, Char, Short, Int, Long, Float, Double, Unsigned, Signed, Auto,
 
-    // ── Control ──
+    // -- Control --
     If, Else, While, Do, For, Switch, Case, Default, Break, Continue, Return,
 
-    // ── C++ ──
+    // -- C++ --
     Class, Struct, Namespace, Template, Typename,
     Public, Private, Protected, Virtual, Override,
     New, Delete, This, Nullptr, True, False, Operator, Friend, Using, Enum,
     Const, Static, Sizeof,
 
-    // ── Signos ──
+    // -- Signos --
     OpenParen, CloseParen, OpenBrace, CloseBrace, OpenBracket, CloseBracket,
     Semicolon, Comma, Colon, Question, Tilde,
-    /// `::` — el que hace que un nombre de C++ no sea un nombre de C.
+    /// `::` -- el que hace que un nombre de C++ no sea un nombre de C.
     ColonColon,
     Dot, Arrow,
     Plus, Minus, Star, Slash, Percent,
@@ -55,12 +55,12 @@ pub enum Token {
     ShlAssign, ShrAssign, AndAssign, XorAssign, OrAssign,
     /// `...`
     Puntos,
-    /// `#` — una directiva del preprocesador.
+    /// `#` -- una directiva del preprocesador.
     ///
-    /// Token propio **aunque no haya preprocesador todavía**, por la misma
-    /// razón que en C: sin él, el catch-all se traga el `#` y un `#define`
-    /// dentro de una función compila y se ignora en silencio. Con token
-    /// propio, el parser puede decir la verdad — *aquí todavía no hay
+    /// Token propio **aunque no haya preprocesador todavia**, por la misma
+    /// razon que en C: sin el, el catch-all se traga el `#` y un `#define`
+    /// dentro de una funcion compila y se ignora en silencio. Con token
+    /// propio, el parser puede decir la verdad -- *aqui todavia no hay
     /// preprocesador, llega en la segunda mitad del paso 1*.
     Hash,
     Eof,
@@ -69,9 +69,9 @@ pub enum Token {
 impl Token {
     /// La palabra clave que corresponde a un identificador, si lo es.
     ///
-    /// Va en una tabla y no en una cadena de `if`s **a propósito**: añadir una
-    /// palabra al lenguaje es añadir una fila. Es la misma regla que hace que
-    /// un intrínseco de C sea una fila de `intrinsics.toml`.
+    /// Va en una tabla y no en una cadena de `if`s **a proposito**: anadir una
+    /// palabra al lenguaje es anadir una fila. Es la misma regla que hace que
+    /// un intrinseco de C sea una fila de `intrinsics.toml`.
     fn palabra_clave(s: &str) -> Option<Token> {
         Some(match s {
             "void" => Token::Void, "bool" => Token::Bool, "char" => Token::Char,
@@ -119,7 +119,7 @@ pub fn tokenizar(fuente: &str) -> Lexemas {
     while i < c.len() {
         let ch = c[i];
 
-        // ── Espacios y comentarios ──
+        // -- Espacios y comentarios --
         if ch == '\n' { linea += 1; i += 1; continue; }
         if ch.is_whitespace() { i += 1; continue; }
         if ch == '/' && i + 1 < c.len() && c[i + 1] == '/' {
@@ -142,7 +142,7 @@ pub fn tokenizar(fuente: &str) -> Lexemas {
             continue;
         }
 
-        // ── Nombres y palabras clave ──
+        // -- Nombres y palabras clave --
         if ch.is_alphabetic() || ch == '_' {
             let ini = i;
             while i < c.len() && (c[i].is_alphanumeric() || c[i] == '_') { i += 1; }
@@ -153,10 +153,10 @@ pub fn tokenizar(fuente: &str) -> Lexemas {
             continue;
         }
 
-        // ── Números ──
+        // -- Numeros --
         //
-        // ★ La frontera de palabra es lo que arregla el bug de origen: un
-        // número empieza por un DÍGITO. `x` ya se fue por la rama de arriba.
+        // * La frontera de palabra es lo que arregla el bug de origen: un
+        // numero empieza por un DIGITO. `x` ya se fue por la rama de arriba.
         if ch.is_ascii_digit() {
             let ini = i;
             let hex = ch == '0' && i + 1 < c.len() && (c[i + 1] == 'x' || c[i + 1] == 'X');
@@ -171,7 +171,7 @@ pub fn tokenizar(fuente: &str) -> Lexemas {
                 continue;
             }
             while i < c.len() && c[i].is_ascii_digit() { i += 1; }
-            // Punto decimal: sólo si detrás viene un dígito, para que `1..2`
+            // Punto decimal: solo si detras viene un digito, para que `1..2`
             // o un `x.f` mal escrito no se coman el punto.
             let es_float = i < c.len() && c[i] == '.'
                 && i + 1 < c.len() && c[i + 1].is_ascii_digit();
@@ -185,7 +185,7 @@ pub fn tokenizar(fuente: &str) -> Lexemas {
                 }
             } else {
                 let s: String = c[ini..i].iter().collect();
-                // Sufijos `u`, `l`, `ul`, `ll`… se leen y se tiran: no cambian
+                // Sufijos `u`, `l`, `ul`, `ll`... se leen y se tiran: no cambian
                 // lo que el programa hace en un entero que ya cabe.
                 while i < c.len() && matches!(c[i], 'u' | 'U' | 'l' | 'L') { i += 1; }
                 match s.parse::<i64>() {
@@ -196,7 +196,7 @@ pub fn tokenizar(fuente: &str) -> Lexemas {
             continue;
         }
 
-        // ── Cadenas ──
+        // -- Cadenas --
         if ch == '"' {
             i += 1;
             let mut s = String::new();
@@ -220,7 +220,7 @@ pub fn tokenizar(fuente: &str) -> Lexemas {
             continue;
         }
 
-        // ── Caracteres ──
+        // -- Caracteres --
         if ch == '\'' {
             i += 1;
             let v = if i < c.len() && c[i] == '\\' && i + 1 < c.len() {
@@ -238,10 +238,10 @@ pub fn tokenizar(fuente: &str) -> Lexemas {
             continue;
         }
 
-        // ── Signos: SIEMPRE de más largo a más corto ──
+        // -- Signos: SIEMPRE de mas largo a mas corto --
         //
-        // Si `<` se probara antes que `<<=`, un `x <<= 1` saldría como tres
-        // tokens y el parser vería una comparación. El orden de estas ramas
+        // Si `<` se probara antes que `<<=`, un `x <<= 1` saldria como tres
+        // tokens y el parser veria una comparacion. El orden de estas ramas
         // ES el desempate.
         let tres: String = c[i..(i + 3).min(c.len())].iter().collect();
         match tres.as_str() {

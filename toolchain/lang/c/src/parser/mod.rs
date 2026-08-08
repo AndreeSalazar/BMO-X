@@ -1,8 +1,8 @@
 //! C Parser -- tokens a AST (gramatica completa) + preprocesador.
 
 pub mod preprocessor;
-/// Las listas `{ … }`, en su propio fichero. Ver su cabecera para el porqué del
-/// reparto y para qué hicieron GCC, Clang, chibicc, TCC y MSVC con esto mismo.
+/// Las listas `{ ... }`, en su propio fichero. Ver su cabecera para el porque del
+/// reparto y para que hicieron GCC, Clang, chibicc, TCC y MSVC con esto mismo.
 mod inicializador;
 
 use std::collections::HashMap;
@@ -13,18 +13,18 @@ use crate::module;
 use crate::{CError, StandardFeatures};
 
 /// Lo que puede haber en el nivel de fichero cuando algo empieza como una
-/// función.
+/// funcion.
 ///
 /// Eran dos casos (`Some`/`None`) y hacen falta **tres**: un prototipo no es
-/// una función —no tiene cuerpo que emitir— pero tampoco es "esto no era una
-/// función", porque sus tokens ya se han consumido. Devolver `None` ahí hacía
+/// una funcion --no tiene cuerpo que emitir-- pero tampoco es "esto no era una
+/// funcion", porque sus tokens ya se han consumido. Devolver `None` ahi hacia
 /// que el llamante rebobinara y lo intentara leer como una variable global,
-/// y el error que salía acusaba de lo que no era.
+/// y el error que salia acusaba de lo que no era.
 enum Tope {
     Funcion(Function),
-    /// `int f(int);` — declarada, no definida. Consumida.
+    /// `int f(int);` -- declarada, no definida. Consumida.
     Prototipo,
-    /// No era una función. Los tokens están rebobinados.
+    /// No era una funcion. Los tokens estan rebobinados.
     NoEsFuncion,
 }
 
@@ -43,32 +43,32 @@ pub(crate) struct Parser {
     /// Constantes de `enum` con su VALOR.
     ///
     /// Antes el parser calculaba el valor y lo tiraba: registraba el nombre
-    /// como si fuera una variable `int` y nunca guardaba a qué equivalia,
+    /// como si fuera una variable `int` y nunca guardaba a que equivalia,
     /// asi que `enum { ROJO, VERDE }` dejaba `VERDE` como una variable sin
     /// definir. El aviso `value assigned to val is never read` del propio
     /// compilador estaba senalando justo este bug.
     enum_constants: HashMap<String, i64>,
-    /// ★ Locales `static`: nombre visible → nombre real de la global.
+    /// * Locales `static`: nombre visible -> nombre real de la global.
     ///
-    /// Una `static` dentro de una función **no es una local**: sobrevive entre
-    /// llamadas, así que vive donde viven las globales. Pero su NOMBRE sólo se
-    /// ve dentro de su función, y dos funciones pueden tener cada una su
-    /// `static int n`. Se resuelve renombrando en la declaración y traduciendo
-    /// en el único sitio donde un identificador se vuelve variable.
+    /// Una `static` dentro de una funcion **no es una local**: sobrevive entre
+    /// llamadas, asi que vive donde viven las globales. Pero su NOMBRE solo se
+    /// ve dentro de su funcion, y dos funciones pueden tener cada una su
+    /// `static int n`. Se resuelve renombrando en la declaracion y traduciendo
+    /// en el unico sitio donde un identificador se vuelve variable.
     ///
-    /// Se vacía al empezar cada función: ese ámbito es justo lo que este mapa
+    /// Se vacia al empezar cada funcion: ese ambito es justo lo que este mapa
     /// representa.
     static_alias: HashMap<String, String>,
     /// Tipo base del ultimo declarador parseado, para los que vengan detras de
     /// una coma. Ver `declaradores_tras_coma`.
     base_del_declarador: TypeSpec,
-    /// Globales que una función ha ido creando al declarar sus `static`.
-    /// `parse_program` las recoge al terminar cada función.
+    /// Globales que una funcion ha ido creando al declarar sus `static`.
+    /// `parse_program` las recoge al terminar cada funcion.
     globales_pendientes: Vec<GlobalDecl>,
     syscalls: HashMap<String, SyscallDef>,
     /// Lo que el LEXER no pudo leer. Se comprueba antes de parsear: seguir
     /// con un token inventado produce un programa que compila y no dice lo
-    /// que está escrito.
+    /// que esta escrito.
     lex_errores: Vec<CError>,
     pub(crate) features: StandardFeatures,
 }
@@ -100,7 +100,7 @@ impl Parser {
     fn peek(&self) -> &Token { &self.tokens[self.pos] }
     fn advance(&mut self) -> Token { let t = self.tokens[self.pos].clone(); self.pos += 1; t }
 
-    /// Línea del token actual (para errores con ubicación REAL, no "línea 1").
+    /// Linea del token actual (para errores con ubicacion REAL, no "linea 1").
     fn line(&self) -> usize {
         self.token_lines.get(self.pos.min(self.token_lines.len().saturating_sub(1)))
             .copied().unwrap_or(1)
@@ -128,8 +128,8 @@ impl Parser {
         }
     }
 
-    /// Tipo estático de una expresión, hasta donde el parser puede saberlo.
-    /// Devuelve None si no es resoluble (y el offset caerá a 0 — visible en tests).
+    /// Tipo estatico de una expresion, hasta donde el parser puede saberlo.
+    /// Devuelve None si no es resoluble (y el offset caera a 0 -- visible en tests).
     fn resolve_expr_type(&self, expr: &Expr) -> Option<TypeSpec> {
         match expr {
             Expr::Var(n) => self.var_types.get(n).cloned(),
@@ -166,12 +166,12 @@ impl Parser {
         }
     }
 
-    /// Struct/union del que la expresión ES valor (para `expr.field`).
+    /// Struct/union del que la expresion ES valor (para `expr.field`).
     fn resolve_struct_type(&self, expr: &Expr) -> Option<String> {
         let t = self.resolve_expr_type(expr)?;
         match &t {
             TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
-            // permisivo histórico: p[i] con p: struct* ya cae en resolve_expr_type
+            // permisivo historico: p[i] con p: struct* ya cae en resolve_expr_type
             _ => None,
         }
     }
@@ -206,7 +206,7 @@ impl Parser {
             .unwrap_or(0)
     }
 
-    /// Tamaño del elemento apuntado/contenido por `base` (para escalar subíndices).
+    /// Tamano del elemento apuntado/contenido por `base` (para escalar subindices).
     fn pointee_size(&self, base: &TypeSpec) -> u8 {
         match base {
             TypeSpec::Char | TypeSpec::UnsignedChar => 1,
@@ -233,9 +233,9 @@ impl Parser {
         } else { 8 }
     }
 
-    /// La regla de disposición **ya no está aquí**: vive una sola vez en
+    /// La regla de disposicion **ya no esta aqui**: vive una sola vez en
     /// `bmo_abi::types::disposicion`. Estaba copiada a mano en tres sitios
-    /// —este, `codegen::build_struct_layout` y el parser de C++— y una
+    /// --este, `codegen::build_struct_layout` y el parser de C++-- y una
     /// divergencia entre ellas no da un error: da un programa que escribe en
     /// el campo de al lado.
     fn compute_struct_layout(&mut self, name: &str, members: &[StructMember]) {
@@ -281,10 +281,10 @@ impl Parser {
         let mut globals = Vec::new();
         let mut functions = Vec::new();
         while *self.peek() != Token::Eof {
-        // ★ Una directiva del preprocesador. No hay preprocesador, y hasta
+        // * Una directiva del preprocesador. No hay preprocesador, y hasta
         // ahora eso no se decia: el `#` se lo tragaba el lexer, asi que un
         // `#define X 5` dentro de una funcion compilaba **y se ignoraba en
-        // silencio** — el programa corria con X sin sustituir. Un no-op
+        // silencio** -- el programa corria con X sin sustituir. Un no-op
         // callado es peor que un "no".
         if *self.peek() == Token::Hash {
             return Err(CError::new(
@@ -308,15 +308,15 @@ impl Parser {
                             Token::Ident(n) => n,
                             t => return Err(CError::new(self.line(),format!("expected member name, got {:?}", t))),
                         };
-                        // ★ `char nombre[8];` — un ARRAY como miembro.
+                        // * `char nombre[8];` -- un ARRAY como miembro.
                         //
-                        // Faltaba, y el error que salía —"expected type, got
-                        // OpenBracket"— mandaba a mirar el tipo, que estaba
-                        // perfecto. La sonda lo encontró en la union, pero
+                        // Faltaba, y el error que salia --"expected type, got
+                        // OpenBracket"-- mandaba a mirar el tipo, que estaba
+                        // perfecto. La sonda lo encontro en la union, pero
                         // fallaba **igual en un struct**: es el declarador, no
                         // el agregado.
                         //
-                        // El tamaño y el alineado salen solos: `stack_size()`
+                        // El tamano y el alineado salen solos: `stack_size()`
                         // de un `Array(t,n)` ya es `t*n`, y el reparto de
                         // offsets se calcula con eso.
                         let mtype = if *self.peek() == Token::OpenBracket {
@@ -332,20 +332,20 @@ impl Parser {
                         } else {
                             mtype
                         };
-                        // ★ Campo de bits: `unsigned a:3;`.
+                        // * Campo de bits: `unsigned a:3;`.
                         //
                         // Se ACEPTA la sintaxis y se le da al campo su tipo
-                        // entero entero — **sin empaquetar**. Y se dice aquí
-                        // por qué, porque es una decisión y no un descuido:
+                        // entero entero -- **sin empaquetar**. Y se dice aqui
+                        // por que, porque es una decision y no un descuido:
                         // empaquetar de verdad obliga a que cada lectura lleve
-                        // su desplazamiento y su máscara, y cada escritura sea
-                        // leer-modificar-escribir. Eso es correcto sólo si se
+                        // su desplazamiento y su mascara, y cada escritura sea
+                        // leer-modificar-escribir. Eso es correcto solo si se
                         // hace entero; a medias da campos que se pisan.
                         //
-                        // Mientras no esté, un `unsigned a:3` ocupa sus cuatro
+                        // Mientras no este, un `unsigned a:3` ocupa sus cuatro
                         // bytes y **guarda lo que le metas**: el programa hace
-                        // lo que dice, sólo que la estructura mide más. Lo que
-                        // NO vale es un layout binario ajeno — ver BRECHA.md.
+                        // lo que dice, solo que la estructura mide mas. Lo que
+                        // NO vale es un layout binario ajeno -- ver BRECHA.md.
                         if *self.peek() == Token::Colon {
                             self.advance();
                             match self.advance() {
@@ -367,15 +367,15 @@ impl Parser {
                         globals.push(GlobalDecl::Struct(name, members));
                     }
                 } else {
-                    // `struct P nombre` — o una variable global, o una función
+                    // `struct P nombre` -- o una variable global, o una funcion
                     // que DEVUELVE el struct.
                     if let Token::Ident(vname) = self.advance() {
-                        // ★ Devolver un agregado por valor es un mecanismo
-                        // aparte (puntero oculto) y todavía no está. Decirlo
-                        // AQUÍ y con el nombre delante: si se deja caer, el
+                        // * Devolver un agregado por valor es un mecanismo
+                        // aparte (puntero oculto) y todavia no esta. Decirlo
+                        // AQUI y con el nombre delante: si se deja caer, el
                         // parser encuentra el `(` donde esperaba un `;` y suelta
                         // "expected type, got OpenParen", que manda a mirar el
-                        // tipo — y el tipo está perfectamente.
+                        // tipo -- y el tipo esta perfectamente.
                         if *self.peek() == Token::OpenParen {
                             return Err(CError::new(
                                 self.line(),
@@ -386,14 +386,14 @@ impl Parser {
                             ));
                         }
                         let mut typ = if is_union { TypeSpec::UnionRef(name) } else { TypeSpec::StructRef(name) };
-                        // ★ `struct P tabla[N]` — el declarador de array se
-                        // IGNORABA en esta rama, así que una tabla de N structs
+                        // * `struct P tabla[N]` -- el declarador de array se
+                        // IGNORABA en esta rama, asi que una tabla de N structs
                         // se declaraba como UNO SOLO y el parser reventaba al
                         // encontrarse el `[` suelto donde esperaba un tipo
                         // ("expected type, got OpenBracket").
                         //
-                        // `parse_type_and_name` sí lo hacía; esta rama es un
-                        // camino aparte para `struct`, y se quedó sin él.
+                        // `parse_type_and_name` si lo hacia; esta rama es un
+                        // camino aparte para `struct`, y se quedo sin el.
                         if *self.peek() == Token::OpenBracket {
                             self.advance();
                             let size_expr = self.parse_expr()?;
@@ -477,19 +477,19 @@ impl Parser {
                 globals.push(GlobalDecl::Var(typ, name, None));
                 continue;
             }
-            // ★ `static` EN EL NIVEL DE FICHERO: se acepta y se sigue de largo.
+            // * `static` EN EL NIVEL DE FICHERO: se acepta y se sigue de largo.
             //
-            // Ahí `static` significa "este nombre no sale de esta unidad de
-            // traducción" — enlace interno. BMO C compila **una** unidad, así
+            // Ahi `static` significa "este nombre no sale de esta unidad de
+            // traduccion" -- enlace interno. BMO C compila **una** unidad, asi
             // que no hay nadie de quien esconderse: una global static y una
             // global normal se comportan exactamente igual.
             //
-            // No es tragárselo por comodidad: es que aquí no cambia lo que el
-            // programa hace, y emitir algo distinto sería inventarse una
-            // diferencia. El día que haya compilación separada, esta línea es
+            // No es tragarselo por comodidad: es que aqui no cambia lo que el
+            // programa hace, y emitir algo distinto seria inventarse una
+            // diferencia. El dia que haya compilacion separada, esta linea es
             // el sitio donde ponerle el enlace interno de verdad.
             //
-            // Dentro de una función es OTRA COSA y sí cambia el programa: ver
+            // Dentro de una funcion es OTRA COSA y si cambia el programa: ver
             // `terminar_declaracion_static`.
             if *self.peek() == Token::Static {
                 self.advance();
@@ -509,33 +509,33 @@ impl Parser {
             match self.try_parse_function()? {
                 Tope::Funcion(f) => {
                     functions.push(f);
-                    // Las `static` que esa función haya declarado ya no son
+                    // Las `static` que esa funcion haya declarado ya no son
                     // suyas: son globales con nombre propio.
                     globals.append(&mut self.globales_pendientes);
                     continue;
                 }
-                // Un PROTOTIPO: `int f(int);`. No emite nada — sólo dice que
-                // esa función existirá. Ya se consumió, así que se sigue.
+                // Un PROTOTIPO: `int f(int);`. No emite nada -- solo dice que
+                // esa funcion existira. Ya se consumio, asi que se sigue.
                 Tope::Prototipo => continue,
                 Tope::NoEsFuncion => {}
             }
             {
                 let (typ, name) = self.parse_type_and_name()?;
-                // ★ `= { … }` A NIVEL GLOBAL.
+                // * `= { ... }` A NIVEL GLOBAL.
                 //
                 // Antes esto reventaba con `unexpected token: OpenBrace`:
-                // `parse_assign` no empieza por `{`, y un global sólo admitía
-                // una expresión. Dentro de una función funcionaba desde
-                // siempre, así que **la diferencia era el ámbito, no el
+                // `parse_assign` no empieza por `{`, y un global solo admitia
+                // una expresion. Dentro de una funcion funcionaba desde
+                // siempre, asi que **la diferencia era el ambito, no el
                 // inicializador**.
                 //
-                // Importa porque es la forma de las TABLAS ESTÁTICAS, y un
+                // Importa porque es la forma de las TABLAS ESTATICAS, y un
                 // programa grande de C es en buena parte tablas: el `info.c`
-                // de DOOM son cuatro mil líneas de `{ … }` a nivel global.
+                // de DOOM son cuatro mil lineas de `{ ... }` a nivel global.
                 //
                 // Se reusa `parse_inicializador`, el mismo aplanador que usan
-                // los locales, así que los designadores (`{[2].y = 8}`) y el
-                // relleno implícito valen aquí sin escribir nada nuevo.
+                // los locales, asi que los designadores (`{[2].y = 8}`) y el
+                // relleno implicito valen aqui sin escribir nada nuevo.
                 if *self.peek() == Token::Assign
                     && self.tokens.get(self.pos + 1) == Some(&Token::OpenBrace)
                 {
@@ -569,11 +569,11 @@ impl Parser {
     ) -> Result<Program, CError> {
         let mut program = self.parse_program()?;
         // Syscall defs and module manifests are loaded AFTER parse_program().
-        // We must post-process the AST to convert Expr::Call â†’ Expr::Syscall
+        // We must post-process the AST to convert Expr::Call -> Expr::Syscall
         // for any function names that match a loaded syscall definition.
         let usings = std::mem::take(&mut self.usings);
         for path in &usings {
-            // Load module sources (optional â€” module may not exist for syscall-only paths)
+            // Load module sources (optional -- module may not exist for syscall-only paths)
             if let Ok(manifest) = resolver.find_manifest(path) {
                 let mod_dir = resolver.find_base_dir(path);
                 for src_file in &manifest.source_files {
@@ -618,7 +618,7 @@ impl Parser {
                 }
             }
         }
-        // Post-process: convert Expr::Call(name,args) â†’ Expr::Syscall(def,args)
+        // Post-process: convert Expr::Call(name,args) -> Expr::Syscall(def,args)
         // for any function calls whose name matches a loaded syscall definition.
         self.resolve_syscalls_in_program(&mut program);
         // Validate syscall argument counts
@@ -719,7 +719,7 @@ impl Parser {
         Ok(())
     }
 
-    /// Walk all function bodies and convert Expr::Call â†’ Expr::Syscall for
+    /// Walk all function bodies and convert Expr::Call -> Expr::Syscall for
     /// any function calls whose name matches a loaded syscall definition.
     fn resolve_syscalls_in_program(&self, program: &mut Program) {
         for func in &mut program.functions {
@@ -817,8 +817,8 @@ impl Parser {
     fn try_parse_function(&mut self) -> Result<Tope, CError> {
         let save = self.pos;
         let start_line = self.line();
-        // `static int f(){...}` — el `static` de una función es enlace interno,
-        // y aquí sólo hay una unidad de traducción. Se acepta y se sigue.
+        // `static int f(){...}` -- el `static` de una funcion es enlace interno,
+        // y aqui solo hay una unidad de traduccion. Se acepta y se sigue.
         if *self.peek() == Token::Static {
             self.advance();
         }
@@ -834,10 +834,10 @@ impl Parser {
         let mut anonimos = 0usize;
         let mut variadica = false;
         while *self.peek() != Token::CloseParen && *self.peek() != Token::Eof {
-            // ★ `...` — el resto de los argumentos, sin nombre ni tipo.
+            // * `...` -- el resto de los argumentos, sin nombre ni tipo.
             //
-            // Va SIEMPRE al final, y por eso se corta el bucle aquí: lo que
-            // viniera detrás no sería un parámetro de nadie.
+            // Va SIEMPRE al final, y por eso se corta el bucle aqui: lo que
+            // viniera detras no seria un parametro de nadie.
             if *self.peek() == Token::Puntos {
                 self.advance();
                 variadica = true;
@@ -847,16 +847,16 @@ impl Parser {
                 self.advance(); break;
             }
             let ptype = self.parse_type_spec()?;
-            // ★ El nombre del parámetro es OPCIONAL.
+            // * El nombre del parametro es OPCIONAL.
             //
             // `int f(int);` es C legal y es como se escriben los prototipos en
-            // las cabeceras de cualquier programa de verdad — DOOM incluido.
-            // Aquí se exigía nombre siempre, así que un prototipo moría con
+            // las cabeceras de cualquier programa de verdad -- DOOM incluido.
+            // Aqui se exigia nombre siempre, asi que un prototipo moria con
             // "expected param name, got CloseParen": un mensaje que acusa al
-            // programa de algo que el estándar permite.
+            // programa de algo que el estandar permite.
             //
             // Sin nombre no se puede referenciar dentro del cuerpo, y por eso
-            // sólo aparece en declaraciones. Se le pone uno inventado para que
+            // solo aparece en declaraciones. Se le pone uno inventado para que
             // el resto del compilador no tenga que saber que puede faltar.
             let pname = match self.peek().clone() {
                 Token::Ident(n) => { self.advance(); n }
@@ -866,32 +866,32 @@ impl Parser {
                 }
                 t => return Err(CError::new(self.line(),format!("expected param name, got {:?}", t))),
             };
-            // ★ El tipo de un PARÁMETRO también se registra.
+            // * El tipo de un PARAMETRO tambien se registra.
             //
-            // Sólo se guardaba el de las variables locales, así que dentro de
-            // `int suma(struct P p)` el parser no sabía que `p` era un struct:
-            // `p.x` salía como un campo de offset 0 y tipo `long`, y los tres
-            // campos leían **la misma dirección y ocho bytes**. Daba
-            // `0x200000001` — las dos primeras `int` juntas — en vez de 1.
+            // Solo se guardaba el de las variables locales, asi que dentro de
+            // `int suma(struct P p)` el parser no sabia que `p` era un struct:
+            // `p.x` salia como un campo de offset 0 y tipo `long`, y los tres
+            // campos leian **la misma direccion y ocho bytes**. Daba
+            // `0x200000001` -- las dos primeras `int` juntas -- en vez de 1.
             //
-            // Mientras un parámetro sólo pudo ser un escalar esto no se notaba:
-            // ningún escalar tiene campos que consultar.
+            // Mientras un parametro solo pudo ser un escalar esto no se notaba:
+            // ningun escalar tiene campos que consultar.
             self.var_types.insert(pname.clone(), ptype.clone());
             params.push(Param { typ: ptype, name: pname });
             if *self.peek() == Token::Comma { self.advance(); }
         }
         self.expect(&Token::CloseParen)?;
-        // ★ PROTOTIPO: `int f(int a);` — declarar sin definir.
+        // * PROTOTIPO: `int f(int a);` -- declarar sin definir.
         //
-        // Sin esto no se puede llamar a una función antes de escribirla, y eso
-        // no es una comodidad: **la recursión mutua es imposible sin ella**. Un
-        // programa de cincuenta ficheros —DOOM son unos cincuenta— está lleno
-        // de funciones que se llaman en círculo, y ninguna puede ir "antes" de
-        // todas las demás. Era el hueco más caro de los que quedaban, y no se
-        // sabía que estaba: el lexer no tiene la culpa de nada aquí.
+        // Sin esto no se puede llamar a una funcion antes de escribirla, y eso
+        // no es una comodidad: **la recursion mutua es imposible sin ella**. Un
+        // programa de cincuenta ficheros --DOOM son unos cincuenta-- esta lleno
+        // de funciones que se llaman en circulo, y ninguna puede ir "antes" de
+        // todas las demas. Era el hueco mas caro de los que quedaban, y no se
+        // sabia que estaba: el lexer no tiene la culpa de nada aqui.
         //
-        // No emite código. Lo único que deja es el tipo de retorno anotado,
-        // para que una llamada anterior a la definición sepa qué recibe.
+        // No emite codigo. Lo unico que deja es el tipo de retorno anotado,
+        // para que una llamada anterior a la definicion sepa que recibe.
         if *self.peek() == Token::Semicolon {
             self.advance();
             self.var_types.insert(name.clone(), ret_type);
@@ -900,8 +900,8 @@ impl Parser {
         // After expect advances past ), pos should be at {
         if self.pos >= self.tokens.len() || *self.peek() != Token::OpenBrace { self.pos = save; return Ok(Tope::NoEsFuncion); }
         self.advance();
-        // Cada función empieza sin `static` heredadas de la anterior: el mapa
-        // ES el ámbito.
+        // Cada funcion empieza sin `static` heredadas de la anterior: el mapa
+        // ES el ambito.
         self.static_alias.clear();
         let mut var_count = 0u32;
         let mut var_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
@@ -920,8 +920,8 @@ impl Parser {
                             continue;
                         }
                     }
-                    // ★ Una local `static` NO es una local: se va a las
-                    // globales y aquí no queda nada.
+                    // * Una local `static` NO es una local: se va a las
+                    // globales y aqui no queda nada.
                     if *self.peek() == Token::Static {
                         self.advance();
                         let Some((typ, vname)) = self.try_parse_decl()? else {
@@ -936,7 +936,7 @@ impl Parser {
                         var_count += 1;
                         var_names.push(name.clone());
                         body.push(self.terminar_declaracion(typ, name)?);
-                        // `int a, b;` — los de detras de la coma comparten el
+                        // `int a, b;` -- los de detras de la coma comparten el
                         // tipo BASE y traen su propio `*` y su propio `[n]`.
                         let mut mas = Vec::new();
                         self.declaradores_tras_coma(&base, &mut mas)?;
@@ -954,22 +954,22 @@ impl Parser {
         Ok(Tope::Funcion(Function { ret_type, name, params, var_count, var_names, body, line: start_line, variadica }))
     }
 
-    /// **Una `static` dentro de una función.**
+    /// **Una `static` dentro de una funcion.**
     ///
-    /// Aquí `static` sí cambia lo que el programa hace, y en dos cosas a la vez:
+    /// Aqui `static` si cambia lo que el programa hace, y en dos cosas a la vez:
     ///
     /// 1. **Sobrevive entre llamadas.** No puede vivir en la pila, que se
     ///    deshace al volver: vive donde viven las globales.
     /// 2. **Su inicializador corre UNA vez**, no en cada llamada. Por eso el
     ///    valor viaja con la global y **no se emite ninguna sentencia** en el
-    ///    cuerpo — si se emitiera una asignación, un contador `static int n=0`
-    ///    se pondría a cero en cada llamada y parecería que no cuenta nada.
+    ///    cuerpo -- si se emitiera una asignacion, un contador `static int n=0`
+    ///    se pondria a cero en cada llamada y pareceria que no cuenta nada.
     ///
-    /// Lo que NO cambia es su ámbito: el nombre sólo se ve dentro de su
-    /// función, y dos funciones pueden tener cada una su `static int n`. De ahí
-    /// el renombrado: la global se llama `funcion.variable` —con un punto, que
-    /// un identificador de C no puede contener, así que no puede chocar con
-    /// nada que el programa escriba— y el mapa de alias traduce.
+    /// Lo que NO cambia es su ambito: el nombre solo se ve dentro de su
+    /// funcion, y dos funciones pueden tener cada una su `static int n`. De ahi
+    /// el renombrado: la global se llama `funcion.variable` --con un punto, que
+    /// un identificador de C no puede contener, asi que no puede chocar con
+    /// nada que el programa escriba-- y el mapa de alias traduce.
     fn declarar_static_local(
         &mut self,
         funcion: &str,
@@ -990,12 +990,12 @@ impl Parser {
         Ok(())
     }
 
-    /// Los declaradores que van detrás de una coma: `int a, *b, c[4];`.
+    /// Los declaradores que van detras de una coma: `int a, *b, c[4];`.
     ///
-    /// ★ Cada uno tiene su propio `*` y su propio `[n]`, y **comparte sólo el
-    /// tipo BASE**. Es el detalle de C que más se salta al implementarlo: en
+    /// * Cada uno tiene su propio `*` y su propio `[n]`, y **comparte solo el
+    /// tipo BASE**. Es el detalle de C que mas se salta al implementarlo: en
     /// `int *a, b;` la `b` es un `int`, **no** un puntero. El asterisco es del
-    /// declarador, no del tipo — y quien lo trate al revés compila el programa
+    /// declarador, no del tipo -- y quien lo trate al reves compila el programa
     /// y le cambia el significado.
     fn declaradores_tras_coma(
         &mut self,
@@ -1035,7 +1035,7 @@ impl Parser {
             Ok(t) => t,
             Err(_) => { self.pos = save; return Ok(None); }
         };
-        // puntero a función: RETTYPE (*name)(params) — variable de tipo puntero.
+        // puntero a funcion: RETTYPE (*name)(params) -- variable de tipo puntero.
         // Es lo que sostiene las vtables de C++ y las tablas de drivers.
         if *self.peek() == Token::OpenParen
             && self.tokens.get(self.pos + 1) == Some(&Token::Star)
@@ -1055,7 +1055,7 @@ impl Parser {
             self.pos = save; return Ok(None);
         }
         self.advance();
-        // array declarator: name[size] — el tamaño SE GUARDA (antes se tiraba)
+        // array declarator: name[size] -- el tamano SE GUARDA (antes se tiraba)
         if *self.peek() == Token::OpenBracket {
             self.advance();
             let size_expr = self.parse_expr()?;
@@ -1063,11 +1063,11 @@ impl Parser {
             let n = match size_expr { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
             typ = TypeSpec::Array(Box::new(typ), n);
         }
-        // ★ La COMA también cierra un declarador: `int a, b;`.
+        // * La COMA tambien cierra un declarador: `int a, b;`.
         //
-        // Antes sólo valían `;` y `=`, así que `int a, b;` no se reconocía como
-        // declaración y caía al camino de las expresiones — donde `b` no existe
-        // todavía. Lo destapó una sonda de `memcpy` que declaraba
+        // Antes solo valian `;` y `=`, asi que `int a, b;` no se reconocia como
+        // declaracion y caia al camino de las expresiones -- donde `b` no existe
+        // todavia. Lo destapo una sonda de `memcpy` que declaraba
         // `char a[4],b[4];` y acusaba a `memcpy`, que estaba perfecto.
         if *self.peek() != Token::Semicolon
             && *self.peek() != Token::Assign
@@ -1078,7 +1078,7 @@ impl Parser {
         Ok(Some((typ, name)))
     }
 
-    /// Consume la cola de un puntero a función: `(*name)(param-types)`.
+    /// Consume la cola de un puntero a funcion: `(*name)(param-types)`.
     /// Asume estar en el `(` inicial. Devuelve el nombre. El tipo del
     /// puntero es opaco (se trata como Ptr): las llamadas son indirectas.
     fn parse_fnptr_tail(&mut self) -> Result<String, CError> {
@@ -1089,7 +1089,7 @@ impl Parser {
             t => return Err(CError::new(self.line(), format!("expected fnptr name, got {:?}", t))),
         };
         self.expect(&Token::CloseParen)?;
-        // saltar la lista de parámetros ( ... ) balanceada
+        // saltar la lista de parametros ( ... ) balanceada
         self.expect(&Token::OpenParen)?;
         let mut depth = 1;
         while depth > 0 {
@@ -1105,7 +1105,7 @@ impl Parser {
 
     fn parse_type_and_name(&mut self) -> Result<(TypeSpec, String), CError> {
         let mut typ = self.parse_type_spec()?;
-        // puntero a función en globals/params: RETTYPE (*name)(params)
+        // puntero a funcion en globals/params: RETTYPE (*name)(params)
         if *self.peek() == Token::OpenParen
             && self.tokens.get(self.pos + 1) == Some(&Token::Star)
         {
@@ -1116,7 +1116,7 @@ impl Parser {
             Token::Ident(n) => n,
             t => return Err(CError::new(self.line(),format!("expected identifier, got {:?}", t))),
         };
-        // array declarator [size] — el tamaño SE GUARDA (antes se tiraba)
+        // array declarator [size] -- el tamano SE GUARDA (antes se tiraba)
         if *self.peek() == Token::OpenBracket {
             self.advance();
             let size_expr = self.parse_expr()?;
@@ -1195,9 +1195,9 @@ impl Parser {
             }
             t => return Err(CError::new(self.line(),format!("expected type, got {:?}", t))),
         };
-        // ★ El tipo BASE, **antes** de los asteriscos. Lo necesitan los
+        // * El tipo BASE, **antes** de los asteriscos. Lo necesitan los
         // declaradores que vengan detras de una coma: en `int *a, b;` la `b`
-        // es un `int`, no un puntero — el asterisco es del DECLARADOR.
+        // es un `int`, no un puntero -- el asterisco es del DECLARADOR.
         self.base_del_declarador = base.clone();
         // punteros multinivel: int **pp, char ***ppp, ...
         let mut typ = base;
@@ -1345,8 +1345,8 @@ impl Parser {
                     let val = match self.advance() {
                         Token::IntLit(n) => n,
                         // Una constante de enum es una constante entera, y
-                        // el estándar la admite como etiqueta de `case`.
-                        // Es el uso más natural de un enum: `switch (fase)`.
+                        // el estandar la admite como etiqueta de `case`.
+                        // Es el uso mas natural de un enum: `switch (fase)`.
                         Token::Ident(name) if self.enum_constants.contains_key(&name) => {
                             self.enum_constants[&name]
                         }
@@ -1384,10 +1384,10 @@ impl Parser {
             match self.peek() {
                 Token::CloseBrace => { self.advance(); break; }
                 Token::Eof => return Err(CError::new(self.line(),"unexpected eof in block")),
-                // ★ La directiva se caza AQUI, antes que nada. Es donde se
+                // * La directiva se caza AQUI, antes que nada. Es donde se
                 // colaba: `try_parse_decl` miraba el `#`, decia "esto no es una
                 // declaracion" y devolvia None sin consumirlo, y el bucle
-                // seguia adelante — asi que un `#define X 5` dentro de una
+                // seguia adelante -- asi que un `#define X 5` dentro de una
                 // funcion compilaba y se ignoraba EN SILENCIO. El programa
                 // corria con la X sin sustituir y nadie decia nada.
                 Token::Hash => {
@@ -1423,14 +1423,14 @@ impl Parser {
         let expr = self.parse_expr()?;
         self.skip_semicolon();
         match &expr {
-            // Atajo para `printf("literal")` SIN argumentos variádicos: baja
+            // Atajo para `printf("literal")` SIN argumentos variadicos: baja
             // directo a la puerta de consola, sin runtime ni imports.
             //
-            // El `args.len() == 1` es la condición que faltaba: antes
-            // `printf("%d\n", x)` también entraba aquí y los argumentos se
-            // DESCARTABAN en silencio — el programa imprimía literalmente
-            // "%d". Con más de un argumento debe seguir por la ruta
-            // variádica, que sí los formatea.
+            // El `args.len() == 1` es la condicion que faltaba: antes
+            // `printf("%d\n", x)` tambien entraba aqui y los argumentos se
+            // DESCARTABAN en silencio -- el programa imprimia literalmente
+            // "%d". Con mas de un argumento debe seguir por la ruta
+            // variadica, que si los formatea.
             Expr::Call(name, args) if name == "printf" && args.len() == 1 => {
                 if let Some(Expr::StringLit(s)) = args.first() {
                     return Ok(if s.ends_with('\n') { let mut t = s.clone(); t.pop(); Stmt::PrintfLn(t) } else { Stmt::Printf(s.clone()) });
@@ -1667,7 +1667,7 @@ impl Parser {
                         if *self.peek() == Token::CloseParen {
                             self.advance();
                             let expr = self.parse_unary()?;
-                            // cast REAL: codegen trunca/extiende al tamaño del tipo
+                            // cast REAL: codegen trunca/extiende al tamano del tipo
                             return Ok(Expr::Cast(typ, Box::new(expr)));
                         }
                     }
@@ -1686,7 +1686,7 @@ impl Parser {
                 Token::PlusPlus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostInc(n.clone()), _ => {} } }
                 Token::MinusMinus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostDec(n.clone()), _ => {} } }
                 Token::OpenParen => {
-                    // (*fp)(args) — llamada a través de un puntero CALCULADO.
+                    // (*fp)(args) -- llamada a traves de un puntero CALCULADO.
                     // (fp(args) con fp variable ya lo maneja parse_primary.)
                     self.advance();
                     let mut args = Vec::new();
@@ -1747,7 +1747,7 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, CError> {
-        let tok_line = self.line(); // línea del token que vamos a consumir
+        let tok_line = self.line(); // linea del token que vamos a consumir
         let tok = self.advance();
         match tok {
             Token::IntLit(n) => Ok(Expr::Int(n)),
@@ -1760,7 +1760,7 @@ impl Parser {
                     let mut args = Vec::new();
                     while *self.peek() != Token::CloseParen && *self.peek() != Token::Eof {
                         // Use parse_assign (not parse_expr) to avoid the comma operator
-                        // consuming argument separators â€” C grammar requires
+                        // consuming argument separators -- C grammar requires
                         // argument_expression_list: assignment_expression (',' assignment_expression)*
                         args.push(self.parse_assign()?);
                         if *self.peek() == Token::Comma { self.advance(); }
@@ -1776,11 +1776,11 @@ impl Parser {
                         }
                         Ok(Expr::Syscall(def, args))
                     } else if let Some(stripped) = name.strip_prefix("__") {
-                        // FUSIÓN sem-asm↔C: __hlt(), __outb(p,v), __rdtsc()... =
-                        // instrucción de la tabla como función. El namespace __
-                        // es reservado a la implementación — aquí ES la
-                        // implementación. La aridad la valida el codegen contra
-                        // la tabla (donde vive la verdad de cada intrínseco).
+                        // FUSION sem-asm<->C: __hlt(), __outb(p,v), __rdtsc()... =
+                        // instruccion de la tabla como funcion. El namespace __
+                        // es reservado a la implementacion -- aqui ES la
+                        // implementacion. La aridad la valida el codegen contra
+                        // la tabla (donde vive la verdad de cada intrinseco).
                         Ok(Expr::Intrinsic(stripped.to_string(), args))
                     } else {
                         Ok(Expr::Call(name, args))
@@ -1790,10 +1790,10 @@ impl Parser {
                     // tiene direccion ni hueco en la pila.
                     Ok(Expr::Int(value))
                 } else if let Some(real) = self.static_alias.get(&name) {
-                    // ★ El ÚNICO sitio donde un identificador se vuelve
-                    // variable, y por eso el único que hace falta tocar para
+                    // * El UNICO sitio donde un identificador se vuelve
+                    // variable, y por eso el unico que hace falta tocar para
                     // que las `static` locales funcionen. Si hubiera dos
-                    // caminos, uno se quedaría sin traducir y el bug sería
+                    // caminos, uno se quedaria sin traducir y el bug seria
                     // "a veces la static es la global de otro".
                     Ok(Expr::Var(real.clone()))
                 } else {

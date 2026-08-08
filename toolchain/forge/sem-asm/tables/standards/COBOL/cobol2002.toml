@@ -1,4 +1,4 @@
-# cobol2002.toml — ISO/IEC 1989:2002 (COBOL 2002)
+# cobol2002.toml -- ISO/IEC 1989:2002 (COBOL 2002)
 [standard]
 iso_number = "ISO/IEC 1989:2002"
 year = 2002

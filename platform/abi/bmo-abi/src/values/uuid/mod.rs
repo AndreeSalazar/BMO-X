@@ -1,4 +1,4 @@
-//! `uuid` — BmoUuid, identificador único universal de 128 bits.
+//! `uuid` -- BmoUuid, identificador unico universal de 128 bits.
 //!
 //! Reemplaza `UUID` / `GUID` de COM/Win32 y `uuid_t` de POSIX.
 //! Compatible con RFC 4122.

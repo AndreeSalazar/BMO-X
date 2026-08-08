@@ -1,27 +1,27 @@
-/* archivo.h — leer ficheros desde C, de verdad.
+/* archivo.h -- leer ficheros desde C, de verdad.
  *
- * ══ Por qué esto es una CABECERA y no un builtin del compilador ══
+ * == Por que esto es una CABECERA y no un builtin del compilador ==
  *
- * Es la misma razón que da `bmo.h` de sí misma: aquí no hay libc que enlazar,
- * así que **la cabecera trae el cuerpo**. Y hay un motivo más fuerte para que
+ * Es la misma razon que da `bmo.h` de si misma: aqui no hay libc que enlazar,
+ * asi que **la cabecera trae el cuerpo**. Y hay un motivo mas fuerte para que
  * `fopen` no sea un caso del `match` del codegen: abrir un fichero son varias
- * llamadas —empujar la ruta en paquetes de ocho bytes y luego pedir el
- * handle—, y eso escrito a mano en opcodes serían doscientas líneas de bytes
- * que nadie podría leer. En C se lee, se prueba y se corrige.
+ * llamadas --empujar la ruta en paquetes de ocho bytes y luego pedir el
+ * handle--, y eso escrito a mano en opcodes serian doscientas lineas de bytes
+ * que nadie podria leer. En C se lee, se prueba y se corrige.
  *
- * Los intrínsecos del compilador se quedan para lo que es UNA instrucción.
+ * Los intrinsecos del compilador se quedan para lo que es UNA instruccion.
  *
- * ══ Lo que hace que esto sea rápido, y no lo era ══
+ * == Lo que hace que esto sea rapido, y no lo era ==
  *
  * `ARCH_OP_LEER` devuelve **siete bytes por llamada**. Cargar un WAD de DOOM de
- * 4 MB así son ~600.000 llamadas al sistema.
+ * 4 MB asi son ~600.000 llamadas al sistema.
  *
  * `ARCH_OP_LEER_EN` copia un bloque entero de golpe. Y no hace falta que el
- * kernel valide ningún puntero —infraestructura que no existe— porque el
- * destino **es un bloque que concedió el kernel**: comprobar es una resta
- * contra lo que entregó. Contrato en vez de comprobación.
+ * kernel valide ningun puntero --infraestructura que no existe-- porque el
+ * destino **es un bloque que concedio el kernel**: comprobar es una resta
+ * contra lo que entrego. Contrato en vez de comprobacion.
  *
- * ══ Cómo se usa ══
+ * == Como se usa ==
  *
  *     FILE *f = fopen("apps/doom1.wad", "r");
  *     char *mem = malloc(4*1024*1024);
@@ -29,7 +29,7 @@
  *     fseek(f, 0, 0);
  *     fclose(f);
  *
- * ⚠️ `fread` sólo puede escribir dentro del bloque que dio `malloc`, porque es
+ * [!] `fread` solo puede escribir dentro del bloque que dio `malloc`, porque es
  * ese bloque el que el kernel conoce. Un puntero a la pila NO vale, y contesta
  * cero en vez de escribir donde no debe.
  */
@@ -44,11 +44,11 @@
 #define BMO_ARCH_LEER_EN  0x06
 #define BMO_ARCH_SALTAR   0x07
 
-/* ── La ruta, en paquetes de ocho ─────────────────────────────────────
+/* -- La ruta, en paquetes de ocho -------------------------------------
  *
  * El kernel acumula la ruta llamada a llamada y corta en el primer byte cero.
- * Si la ruta mide un múltiplo de ocho, el último paquete va entero y hace falta
- * uno más con el cero: el bucle lo hace solo porque `fin` sólo se pone cuando
+ * Si la ruta mide un multiplo de ocho, el ultimo paquete va entero y hace falta
+ * uno mas con el cero: el bucle lo hace solo porque `fin` solo se pone cuando
  * se ha VISTO el terminador, no cuando se llenan ocho.
  */
 unsigned long long bmo_abrir(char *ruta) {
@@ -80,12 +80,12 @@ unsigned long long bmo_abrir(char *ruta) {
     return bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ARCHIVO_ABRIR, 0, 0, 0);
 }
 
-/* ── `FILE` ───────────────────────────────────────────────────────────
+/* -- `FILE` -----------------------------------------------------------
  *
  * Tres campos y ninguno de adorno: el handle del archivo, el del BLOQUE donde
- * se puede leer, y dónde empieza ese bloque en memoria. El tercero hace falta
+ * se puede leer, y donde empieza ese bloque en memoria. El tercero hace falta
  * para traducir el puntero que da el usuario a un desplazamiento dentro del
- * bloque, que es lo único que el kernel acepta.
+ * bloque, que es lo unico que el kernel acepta.
  */
 struct BMO_FILE {
     unsigned long long cap;
@@ -94,17 +94,17 @@ struct BMO_FILE {
 };
 typedef struct BMO_FILE FILE;
 
-/* ★ El bloque que reparte `malloc`, y su handle.
+/* * El bloque que reparte `malloc`, y su handle.
  *
- * Las escribe EL COMPILADOR: la emisión de `malloc` guarda aquí el handle que
- * le devolvió el kernel y la base del bloque, justo antes de devolver el
- * puntero. Antes ese handle se tiraba —se usaba para pedir la base y adiós— y
- * sin él `fread` no puede existir, porque el kernel sólo acepta escribir en un
- * bloque si le dices CUÁL.
+ * Las escribe EL COMPILADOR: la emision de `malloc` guarda aqui el handle que
+ * le devolvio el kernel y la base del bloque, justo antes de devolver el
+ * puntero. Antes ese handle se tiraba --se usaba para pedir la base y adios-- y
+ * sin el `fread` no puede existir, porque el kernel solo acepta escribir en un
+ * bloque si le dices CUAL.
  *
- * Van declaradas aquí y no en el compilador a propósito: si un programa no
+ * Van declaradas aqui y no en el compilador a proposito: si un programa no
  * incluye esta cabecera, estas globales no existen y `malloc` no emite ni un
- * byte para publicarlas. Quien no lee ficheros no paga por los que sí.
+ * byte para publicarlas. Quien no lee ficheros no paga por los que si.
  *
  * Valen 0 hasta el primer `malloc`, y eso es lo correcto: antes de pedir
  * memoria no hay bloque del que hablar. */
@@ -114,8 +114,8 @@ unsigned long long __bmo_bloque_base;
 FILE *fopen(char *ruta, char *modo) {
     FILE *f;
     unsigned long long cap;
-    /* El modo se ignora a propósito: hoy sólo se puede leer, y aceptar "w"
-     * para luego no escribir sería la clase de promesa que aquí no se hace. */
+    /* El modo se ignora a proposito: hoy solo se puede leer, y aceptar "w"
+     * para luego no escribir seria la clase de promesa que aqui no se hace. */
     (void)modo;
     cap = bmo_abrir(ruta);
     if (cap == 0) return 0;
@@ -127,14 +127,14 @@ FILE *fopen(char *ruta, char *modo) {
     return f;
 }
 
-/* Devuelve ELEMENTOS leídos, como `fread` de verdad — no bytes. */
+/* Devuelve ELEMENTOS leidos, como `fread` de verdad -- no bytes. */
 unsigned long long fread(void *dst, unsigned long long tam,
                         unsigned long long n, FILE *f) {
     unsigned long long desde;
     unsigned long long leidos;
     if (f == 0 || tam == 0) return 0;
-    /* El desplazamiento dentro del bloque. Si `dst` no está dentro, esto sale
-     * un número enorme y el kernel lo rechaza por la comprobación de rango —
+    /* El desplazamiento dentro del bloque. Si `dst` no esta dentro, esto sale
+     * un numero enorme y el kernel lo rechaza por la comprobacion de rango --
      * que es exactamente lo que tiene que pasar. */
     desde = (unsigned long long)dst - f->base;
     leidos = bmo_valor(f->cap, BMO_ARCH_LEER_EN, f->bloque, desde, tam * n);
@@ -143,7 +143,7 @@ unsigned long long fread(void *dst, unsigned long long tam,
 
 int fseek(FILE *f, unsigned long long pos, int desde) {
     if (f == 0) return -1;
-    (void)desde; /* sólo SEEK_SET por ahora, y se dice */
+    (void)desde; /* solo SEEK_SET por ahora, y se dice */
     bmo_valor(f->cap, BMO_ARCH_SALTAR, pos, 0, 0);
     return 0;
 }

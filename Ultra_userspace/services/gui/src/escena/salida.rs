@@ -7,35 +7,35 @@ use bmo_userland as bmo;
 
 use super::*;
 
-// ── La salida ───────────────────────────────────────────────────────────
+// -- La salida -----------------------------------------------------------
 
-/// Rejilla de caracteres con desplazamiento. Es lo mínimo que se puede llamar
+/// Rejilla de caracteres con desplazamiento. Es lo minimo que se puede llamar
 /// terminal: sin colores por celda, sin secuencias de escape, sin scrollback
-/// más allá de lo que se ve.
+/// mas alla de lo que se ve.
 ///
-/// Deliberado. Un emulador de terminal completo —ANSI, cursor direccionable,
-/// regiones— es una pila entera, y hoy lo único que hay al otro lado son
-/// programas que escriben líneas. Cuando algo pida más, se añade; adivinarlo
-/// ahora sería escribir código que nadie ejercita.
-// ── La tinta ────────────────────────────────────────────────────────────
+/// Deliberado. Un emulador de terminal completo --ANSI, cursor direccionable,
+/// regiones-- es una pila entera, y hoy lo unico que hay al otro lado son
+/// programas que escriben lineas. Cuando algo pida mas, se anade; adivinarlo
+/// ahora seria escribir codigo que nadie ejercita.
+// -- La tinta ------------------------------------------------------------
 //
-// El color va POR LÍNEA y no por celda. Una rejilla de atributos costaría
-// 88x16 bytes para decir dieciséis veces lo mismo: este terminal escribe
-// líneas enteras —el eco de un comando, un mensaje de error, la salida de un
-// programa— y nunca media línea de un color y media de otro.
+// El color va POR LINEA y no por celda. Una rejilla de atributos costaria
+// 88x16 bytes para decir dieciseis veces lo mismo: este terminal escribe
+// lineas enteras --el eco de un comando, un mensaje de error, la salida de un
+// programa-- y nunca media linea de un color y media de otro.
 //
-// Antes el único color lo daba `f == s.fila`, o sea "la fila donde está el
-// cursor". Eso pinta de otro color la ÚLTIMA línea escrita, que casi nunca es
-// la que te interesa: si un programa imprime diez líneas, la marcada es la
-// décima y no el comando que lo lanzó.
+// Antes el unico color lo daba `f == s.fila`, o sea "la fila donde esta el
+// cursor". Eso pinta de otro color la ULTIMA linea escrita, que casi nunca es
+// la que te interesa: si un programa imprime diez lineas, la marcada es la
+// decima y no el comando que lo lanzo.
 
 /// Salida corriente de un programa.
 pub(crate) const TINTA_NORMAL: u8 = 0;
 /// El comando que escribiste. Es el ancla para leer hacia abajo.
 pub(crate) const TINTA_ECO: u8 = 1;
-/// Algo salió mal.
+/// Algo salio mal.
 pub(crate) const TINTA_MAL: u8 = 2;
-/// Algo salió bien y merece verse.
+/// Algo salio bien y merece verse.
 pub(crate) const TINTA_BIEN: u8 = 3;
 
 pub(crate) fn color_tinta(t: u8) -> u32 {
@@ -48,40 +48,40 @@ pub(crate) fn color_tinta(t: u8) -> u32 {
 }
 
 pub(crate) struct Salida {
-    /// El historial entero. Se ESCRIBE aquí; la ventana visible es un trozo.
+    /// El historial entero. Se ESCRIBE aqui; la ventana visible es un trozo.
     pub(crate) celdas: [[u8; SAL_COLS]; SAL_HIST],
-    /// Con qué color se pinta cada fila.
+    /// Con que color se pinta cada fila.
     pub(crate) tinta: [u8; SAL_HIST],
-    /// Con qué color se escribe a partir de ahora.
+    /// Con que color se escribe a partir de ahora.
     pub(crate) tinta_actual: u8,
     pub(crate) fila: usize,
     pub(crate) col: usize,
-    /// Cuántas filas se ha subido el usuario. 0 = pegado abajo, viendo lo
-    /// último. Escribir algo nuevo vuelve abajo, como cualquier terminal: si no,
-    /// el programa hablaría y nadie lo vería.
+    /// Cuantas filas se ha subido el usuario. 0 = pegado abajo, viendo lo
+    /// ultimo. Escribir algo nuevo vuelve abajo, como cualquier terminal: si no,
+    /// el programa hablaria y nadie lo veria.
     pub(crate) vista: usize,
     /// Hay algo nuevo que pintar. Repintar la rejilla entera cada fotograma
-    /// serían 88x16 glifos por vuelta sobre memoria de vídeo sin caché.
+    /// serian 88x16 glifos por vuelta sobre memoria de video sin cache.
     pub(crate) sucia: bool,
-    /// Cuántas líneas se han CERRADO desde que arrancó el terminal. Sólo sube.
+    /// Cuantas lineas se han CERRADO desde que arranco el terminal. Solo sube.
     ///
-    /// ★ El índice de fila no sirve para acordarse de un sitio: en cuanto el
-    /// historial se llena, `fila` se queda clavada en la última y las de
-    /// debajo se van desplazando. Guardar "empecé en la fila 187" y volver a
-    /// mirar ahí un minuto después señala a otra línea.
+    /// * El indice de fila no sirve para acordarse de un sitio: en cuanto el
+    /// historial se llena, `fila` se queda clavada en la ultima y las de
+    /// debajo se van desplazando. Guardar "empece en la fila 187" y volver a
+    /// mirar ahi un minuto despues senala a otra linea.
     ///
-    /// Un contador que sólo sube sí sirve: la diferencia entre dos marcas es
-    /// **cuántas líneas se escribieron entre medias**, y eso no se mueve
+    /// Un contador que solo sube si sirve: la diferencia entre dos marcas es
+    /// **cuantas lineas se escribieron entre medias**, y eso no se mueve
     /// aunque el historial se desplace veinte veces.
     pub(crate) escritas: usize,
-    /// Cuántas filas del historial tienen CONTENIDO ahora mismo, contando la
-    /// que se está escribiendo. Nunca pasa de [`SAL_HIST`].
+    /// Cuantas filas del historial tienen CONTENIDO ahora mismo, contando la
+    /// que se esta escribiendo. Nunca pasa de [`SAL_HIST`].
     ///
-    /// Es distinto de `escritas` y hacen falta las dos: aquél dice *cuánto se
-    /// ha escrito nunca* —y por eso sirve de marca—, ésta dice *cuánto queda
+    /// Es distinto de `escritas` y hacen falta las dos: aquel dice *cuanto se
+    /// ha escrito nunca* --y por eso sirve de marca--, esta dice *cuanto queda
     /// guardado*. Un `clear` no puede tocar el primero sin que las marcas
-    /// viejas se vuelvan del futuro, pero sí tiene que poner el segundo a cero
-    /// — si no, volcar el historial escupiría doscientas líneas en blanco.
+    /// viejas se vuelvan del futuro, pero si tiene que poner el segundo a cero
+    /// -- si no, volcar el historial escupiria doscientas lineas en blanco.
     vivas: usize,
 }
 
@@ -92,54 +92,54 @@ impl Salida {
             tinta: [TINTA_NORMAL; SAL_HIST],
             vista: 0,
             tinta_actual: TINTA_NORMAL,
-            // ★★ SE ESCRIBE EN LA ÚLTIMA FILA, no en la primera.
+            // ** SE ESCRIBE EN LA ULTIMA FILA, no en la primera.
             //
-            // Aquí vivía el bug que hacía que `ls` "no mostrara nada": el
+            // Aqui vivia el bug que hacia que `ls` "no mostrara nada": el
             // ESCRITOR empezaba arriba (`fila = 0`) y el LECTOR
-            // (`pintar_salida`) enseña **las últimas** `SAL_ROWS` filas del
+            // (`pintar_salida`) ensena **las ultimas** `SAL_ROWS` filas del
             // historial, o sea `celdas[184..200]`. Los dos miraban extremos
             // opuestos del mismo buffer.
             //
-            // Consecuencia exacta: las **184 primeras líneas que escribiera
-            // cualquier programa eran invisibles**. `ls` escupe una docena, así
-            // que no llegaba ni de lejos — el comando corría, la línea de
-            // estado decía `listo`, y la rejilla se quedaba en blanco. Un fallo
+            // Consecuencia exacta: las **184 primeras lineas que escribiera
+            // cualquier programa eran invisibles**. `ls` escupe una docena, asi
+            // que no llegaba ni de lejos -- el comando corria, la linea de
+            // estado decia `listo`, y la rejilla se quedaba en blanco. Un fallo
             // que se ve como "no hace nada" y en realidad es "lo hace donde no
             // se mira".
             //
-            // Llegó con el historial con scroll (`8ee091e2`): la ventana pasó a
-            // ser un trozo de 200 filas y **el escritor se quedó donde estaba**,
+            // Llego con el historial con scroll (`8ee091e2`): la ventana paso a
+            // ser un trozo de 200 filas y **el escritor se quedo donde estaba**,
             // que era correcto cuando la rejilla eran 16 filas y punto.
             //
-            // Con `fila` en la última, `salto()` siempre entra por la rama de
-            // `desplazar()`: la línea nueva está SIEMPRE abajo del todo y
+            // Con `fila` en la ultima, `salto()` siempre entra por la rama de
+            // `desplazar()`: la linea nueva esta SIEMPRE abajo del todo y
             // siempre dentro de la ventana. Que es como se comporta cualquier
             // terminal.
             fila: SAL_HIST - 1,
             col: 0,
             sucia: true,
             escritas: 0,
-            // La línea en curso ya cuenta: está vacía, pero es una fila del
+            // La linea en curso ya cuenta: esta vacia, pero es una fila del
             // historial y no un hueco.
             vivas: 1,
         }
     }
 
-    /// Dónde estamos ahora, para poder volver. Ver [`Salida::escritas`].
+    /// Donde estamos ahora, para poder volver. Ver [`Salida::escritas`].
     pub(crate) fn marca(&self) -> usize {
         self.escritas
     }
 
     /// Las filas del historial escritas **desde una marca**, como rango
-    /// inclusivo de índices en `celdas`.
+    /// inclusivo de indices en `celdas`.
     ///
     /// Se recorta a lo que de verdad queda guardado: si desde la marca han
-    /// pasado más de [`SAL_HIST`] líneas —o si hubo un `clear` en medio—, esas
-    /// líneas ya no están y se devuelven sólo las que hay. Prometer un rango
-    /// más largo daría filas en blanco que parecerían salida vacía del
-    /// programa, que es justo la conclusión equivocada.
+    /// pasado mas de [`SAL_HIST`] lineas --o si hubo un `clear` en medio--, esas
+    /// lineas ya no estan y se devuelven solo las que hay. Prometer un rango
+    /// mas largo daria filas en blanco que parecerian salida vacia del
+    /// programa, que es justo la conclusion equivocada.
     pub(crate) fn filas_desde(&self, marca: usize) -> (usize, usize) {
-        // +1 por la línea en curso, que aún no ha cerrado pero ya tiene texto.
+        // +1 por la linea en curso, que aun no ha cerrado pero ya tiene texto.
         let cerradas = self.escritas.saturating_sub(marca);
         let cuantas = (cerradas + 1).min(self.vivas);
         (self.fila + 1 - cuantas, self.fila)
@@ -151,7 +151,7 @@ impl Salida {
     }
 
     /// Una fila **sin la cola de espacios**. Un volcado con las 88 columnas
-    /// rellenas es ilegible y pesa cuatro veces más de lo que dice.
+    /// rellenas es ilegible y pesa cuatro veces mas de lo que dice.
     pub(crate) fn linea(&self, f: usize) -> &[u8] {
         let fila = &self.celdas[f];
         let mut n = fila.len();
@@ -161,7 +161,7 @@ impl Salida {
         &fila[..n]
     }
 
-    /// A partir de aquí se escribe con esta tinta. La fila en curso se marca
+    /// A partir de aqui se escribe con esta tinta. La fila en curso se marca
     /// ya: quien cambia el color antes de escribir espera que valga para lo
     /// que va a escribir, no para lo siguiente.
     pub(crate) fn con_tinta(&mut self, t: u8) {
@@ -169,8 +169,8 @@ impl Salida {
         self.tinta[self.fila] = t;
     }
 
-    /// Sube todo una línea y deja la última en blanco. La tinta viaja con su
-    /// línea: si no, al desplazarse el color se quedaría marcando la fila de
+    /// Sube todo una linea y deja la ultima en blanco. La tinta viaja con su
+    /// linea: si no, al desplazarse el color se quedaria marcando la fila de
     /// otro.
     pub(crate) fn desplazar(&mut self) {
         for f in 1..SAL_HIST {
@@ -181,10 +181,10 @@ impl Salida {
         self.tinta[SAL_HIST - 1] = self.tinta_actual;
     }
 
-    /// Sube o baja la ventana. Positivo = hacia atrás en el tiempo.
+    /// Sube o baja la ventana. Positivo = hacia atras en el tiempo.
     ///
-    /// Se topa sola en los dos extremos: no se puede subir más allá de lo
-    /// guardado ni bajar más allá de lo último. Un scroll que se sale enseña
+    /// Se topa sola en los dos extremos: no se puede subir mas alla de lo
+    /// guardado ni bajar mas alla de lo ultimo. Un scroll que se sale ensena
     /// filas en blanco y parece que se ha perdido todo.
     pub(crate) fn mover_vista(&mut self, filas: i32) {
         let tope = SAL_HIST - SAL_ROWS;
@@ -254,27 +254,27 @@ impl Salida {
         self.vista = 0;
         self.tinta_actual = TINTA_NORMAL;
         // La misma fila que en `nueva`, y por el mismo motivo: si `clear`
-        // devolviera el cursor arriba, el bug volvería sólo después de limpiar
-        // — que es la clase de fallo que aparece una vez cada mil y no se
+        // devolviera el cursor arriba, el bug volveria solo despues de limpiar
+        // -- que es la clase de fallo que aparece una vez cada mil y no se
         // reproduce nunca.
         self.fila = SAL_HIST - 1;
         self.col = 0;
         self.sucia = true;
-        // `escritas` NO se reinicia: sigue contando desde que arrancó el
-        // terminal. Ponerlo a cero haría que una marca tomada antes del `clear`
-        // pareciera del futuro y la resta se diera la vuelta. Lo que sí se
-        // reinicia es `vivas` — ya no queda nada guardado — y así un volcado
-        // justo después de limpiar escribe un archivo vacío y no doscientas
-        // líneas de espacios.
+        // `escritas` NO se reinicia: sigue contando desde que arranco el
+        // terminal. Ponerlo a cero haria que una marca tomada antes del `clear`
+        // pareciera del futuro y la resta se diera la vuelta. Lo que si se
+        // reinicia es `vivas` -- ya no queda nada guardado -- y asi un volcado
+        // justo despues de limpiar escribe un archivo vacio y no doscientas
+        // lineas de espacios.
         self.escritas += 1;
         self.vivas = 1;
     }
 
-    // ── Lo que hace falta para PINTAR un informe ────────────────────────
+    // -- Lo que hace falta para PINTAR un informe ------------------------
     //
-    // Todo esto es de Ring 3 a propósito. El kernel contesta enteros crudos y
+    // Todo esto es de Ring 3 a proposito. El kernel contesta enteros crudos y
     // no sabe nada de KiB, de porcentajes ni de barras: un kernel que decide
-    // cómo se ve un número es un kernel con opiniones sobre la interfaz.
+    // como se ve un numero es un kernel con opiniones sobre la interfaz.
 
     /// Un entero en decimal.
     pub(crate) fn dec(&mut self, mut v: u64) {
@@ -296,7 +296,7 @@ impl Salida {
     }
 
     /// Un entero alineado a la DERECHA en `ancho` columnas. Es lo que hace que
-    /// una columna de números se lea de un vistazo en vez de bailar.
+    /// una columna de numeros se lea de un vistazo en vez de bailar.
     pub(crate) fn dec_der(&mut self, v: u64, ancho: usize) {
         let mut cifras = 1;
         let mut t = v;
@@ -312,8 +312,8 @@ impl Salida {
 
     /// Bytes en la unidad que toca, con un decimal: `15.9 GiB`.
     ///
-    /// Se hace con enteros, dividiendo y sacando el resto — igual que el
-    /// decimal de COBOL. Aquí no hay coma flotante y no hace falta.
+    /// Se hace con enteros, dividiendo y sacando el resto -- igual que el
+    /// decimal de COBOL. Aqui no hay coma flotante y no hace falta.
     pub(crate) fn tamano(&mut self, bytes: u64) {
         const U: [&[u8]; 5] = [b"B", b"KiB", b"MiB", b"GiB", b"TiB"];
         let mut i = 0;
@@ -322,7 +322,7 @@ impl Salida {
             v /= 1024;
             i += 1;
         }
-        // El primer decimal, sin flotantes: el resto de la última división.
+        // El primer decimal, sin flotantes: el resto de la ultima division.
         let frac = if i == 0 {
             0
         } else {
@@ -348,10 +348,10 @@ impl Salida {
         self.byte(b'%');
     }
 
-    /// Una barra de ocupación de `ancho` columnas: `[####------]`.
+    /// Una barra de ocupacion de `ancho` columnas: `[####------]`.
     ///
-    /// Con caracteres y no con píxeles porque la salida ES una rejilla de
-    /// caracteres: una barra dibujada aparte se quedaría quieta cuando el log
+    /// Con caracteres y no con pixeles porque la salida ES una rejilla de
+    /// caracteres: una barra dibujada aparte se quedaria quieta cuando el log
     /// desplaza, y una barra que miente de sitio es peor que no tenerla.
     pub(crate) fn barra(&mut self, parte: u64, total: u64, ancho: usize) {
         let llenas = if total == 0 {
@@ -369,9 +369,9 @@ impl Salida {
 
 
 pub(crate) fn pintar_salida(p: &bmo::Pantalla, c: &Caja, s: &Salida) {
-    // Fondo entero de la rejilla y encima las filas. Es un rectángulo de
+    // Fondo entero de la rejilla y encima las filas. Es un rectangulo de
     // 704x256 px: nada comparado con la pantalla, y evita tener que llevar la
-    // cuenta de qué celda cambió.
+    // cuenta de que celda cambio.
     p.rect(
         c.salida_x,
         c.salida_y,

@@ -48,19 +48,19 @@ return g;
 }
 
 
-// ── TABLAS GLOBALES: `int t[4] = {…}` a nivel de fichero ──────────────
+// -- TABLAS GLOBALES: `int t[4] = {...}` a nivel de fichero --------------
 //
 // Hasta el 2026-08-07 esto no se PARSEABA: `unexpected token: OpenBrace`.
-// Dentro de una función funcionaba desde siempre, así que la diferencia era el
-// ÁMBITO y no el inicializador. Importa porque es la forma de las tablas
-// estáticas, y un programa grande de C es en buena parte tablas — el `info.c`
-// de DOOM son cuatro mil líneas de `{ … }` a nivel global.
+// Dentro de una funcion funcionaba desde siempre, asi que la diferencia era el
+// AMBITO y no el inicializador. Importa porque es la forma de las tablas
+// estaticas, y un programa grande de C es en buena parte tablas -- el `info.c`
+// de DOOM son cuatro mil lineas de `{ ... }` a nivel global.
 //
-// Estos tests EJECUTAN. Los tres que ya había en este fichero sólo comprobaban
+// Estos tests EJECUTAN. Los tres que ya habia en este fichero solo comprobaban
 // que el programa compilara, y por eso nadie vio nunca que un global con
-// inicializador que el codegen no entendía valía cero.
+// inicializador que el codegen no entendia valia cero.
 
-/// ★ Una tabla de enteros, leída por índice.
+/// * Una tabla de enteros, leida por indice.
 #[test]
 fn una_tabla_global_de_enteros_conserva_sus_valores() {
     let fuente = "int numeros[4] = {10, 20, 30, 40}; \
@@ -71,7 +71,7 @@ fn una_tabla_global_de_enteros_conserva_sus_valores() {
 
 /// Los designadores valen igual que en un local, porque el parser reusa el
 /// MISMO aplanador (`parse_inicializador`). Y lo que la lista no menciona
-/// queda a cero, que es lo que dice C — aquí el índice 1.
+/// queda a cero, que es lo que dice C -- aqui el indice 1.
 #[test]
 fn una_tabla_global_con_designadores_deja_los_huecos_a_cero() {
     let fuente = "int t[5] = {[2] = 30, 40}; \
@@ -81,7 +81,7 @@ fn una_tabla_global_con_designadores_deja_los_huecos_a_cero() {
 }
 
 /// Las constantes se PLIEGAN: `{2*3, 100-1, 0-7}`. Un `.bex` lleva los bytes ya
-/// puestos, así que si esto no se evaluara en compilación no habría dónde
+/// puestos, asi que si esto no se evaluara en compilacion no habria donde
 /// calcularlo.
 #[test]
 fn una_tabla_global_pliega_constantes_incluida_la_negativa() {
@@ -91,7 +91,7 @@ fn una_tabla_global_pliega_constantes_incluida_la_negativa() {
 }
 
 /// Cada elemento toma el ancho de SU tipo, no ocho bytes. Si un `char` de la
-/// tabla escribiera ocho, se llevaría por delante a los tres siguientes — y el
+/// tabla escribiera ocho, se llevaria por delante a los tres siguientes -- y el
 /// terminador de esta cadena es justamente el cuarto.
 #[test]
 fn en_una_tabla_de_char_cada_elemento_ocupa_un_byte() {
@@ -100,12 +100,12 @@ fn en_una_tabla_de_char_cada_elemento_ocupa_un_byte() {
     assert_eq!(run_c(fuente), "ABC");
 }
 
-/// ★★ UNA TABLA DE PUNTEROS A CADENA, QUE YA FUNCIONA.
+/// ** UNA TABLA DE PUNTEROS A CADENA, QUE YA FUNCIONA.
 ///
 /// Esto se rechazaba con un error hasta que existieron las relocations
-/// `SeccionAbs64`: el valor de cada elemento es la DIRECCIÓN de una cadena, y
-/// ésa depende de dónde cargue el programa. El compilador deja el hueco a cero
-/// y anota quién lo rellena; lo escribe el cargador.
+/// `SeccionAbs64`: el valor de cada elemento es la DIRECCION de una cadena, y
+/// esa depende de donde cargue el programa. El compilador deja el hueco a cero
+/// y anota quien lo rellena; lo escribe el cargador.
 ///
 /// Es `char *sprnames[]` de DOOM, y es la mitad de sus tablas.
 #[test]
@@ -114,19 +114,19 @@ fn una_tabla_global_de_punteros_a_cadena_funciona() {
     assert_eq!(run_c(fuente), "imp|shotgun|cyberdemon|");
 }
 
-/// ★★ Y EL CASO QUE LO PIDIÓ: `char *mapa = "…"` como global suelto.
+/// ** Y EL CASO QUE LO PIDIO: `char *mapa = "..."` como global suelto.
 ///
-/// Es exactamente lo que tenía `raycaster_C.c` y valía CERO, con las paredes
-/// del laberinto siendo el código máquina del propio programa.
+/// Es exactamente lo que tenia `raycaster_C.c` y valia CERO, con las paredes
+/// del laberinto siendo el codigo maquina del propio programa.
 #[test]
 fn un_puntero_global_a_cadena_apunta_a_la_cadena() {
     let fuente = "char *mapa = \"1111000011110000\";                   int main() { printf(\"%s,%d,%d\", mapa, mapa[0], mapa[4]); return 0; }";
     assert_eq!(run_c(fuente), "1111000011110000,49,48");
 }
 
-/// El mismo puntero, leído por dos sitios: si la reloc escribiera una dirección
-/// plausible pero equivocada, un `%s` podría dar algo y el índice otra cosa.
-/// Aquí los dos tienen que cuadrar con la misma cadena.
+/// El mismo puntero, leido por dos sitios: si la reloc escribiera una direccion
+/// plausible pero equivocada, un `%s` podria dar algo y el indice otra cosa.
+/// Aqui los dos tienen que cuadrar con la misma cadena.
 #[test]
 fn dos_punteros_globales_a_la_misma_cadena_coinciden() {
     let fuente = "char *a = \"hola\"; char *b = \"hola\"; char *c = \"otra\";                   int main() { printf(\"%d,%d,%s\", a == b, a == c, c); return 0; }";
@@ -135,8 +135,8 @@ fn dos_punteros_globales_a_la_misma_cadena_coinciden() {
     assert_eq!(run_c(fuente), "1,0,otra");
 }
 
-/// ⚠️ Un struct GLOBAL y el global de al lado. Sonda: si el struct no reserva
-/// su tamaño, lo que venga después cae encima.
+/// [!] Un struct GLOBAL y el global de al lado. Sonda: si el struct no reserva
+/// su tamano, lo que venga despues cae encima.
 #[test]
 fn un_struct_global_no_pisa_al_global_siguiente() {
     let fuente = "struct P { int x; int y; }; \
@@ -147,12 +147,12 @@ fn un_struct_global_no_pisa_al_global_siguiente() {
     assert_eq!(run_c(fuente), "7,9,12345");
 }
 
-/// ★★ LA FORMA DE DOOM: una tabla global de STRUCTS.
+/// ** LA FORMA DE DOOM: una tabla global de STRUCTS.
 ///
 /// `state_t states[]` y `mobjinfo_t mobjinfo[]` son esto, y el `info.c` de DOOM
-/// son cuatro mil líneas así. Antes esta rama del parser ni lo intentaba:
-/// ignoraba el `[N]` —o sea que una tabla de dos structs se declaraba como
-/// UNO— y luego reventaba con "expected type, got OpenBracket".
+/// son cuatro mil lineas asi. Antes esta rama del parser ni lo intentaba:
+/// ignoraba el `[N]` --o sea que una tabla de dos structs se declaraba como
+/// UNO-- y luego reventaba con "expected type, got OpenBracket".
 #[test]
 fn una_tabla_global_de_structs_es_indexable() {
     let fuente = "struct estado { int tics; int siguiente; }; \
@@ -174,8 +174,8 @@ fn una_tabla_global_de_structs_admite_designadores_anidados() {
     assert_eq!(run_c(fuente), "0,8,0,5");
 }
 
-/// El tamaño de la tabla tiene que ser el de N structs, no el de uno: el global
-/// que venga después no puede caer dentro.
+/// El tamano de la tabla tiene que ser el de N structs, no el de uno: el global
+/// que venga despues no puede caer dentro.
 #[test]
 fn una_tabla_de_structs_reserva_el_tamano_de_todos() {
     let fuente = "struct P { int x; int y; }; \

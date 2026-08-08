@@ -1,26 +1,26 @@
-//! BMO Intermediate Representation (IR) — the unified AST that all language
+//! BMO Intermediate Representation (IR) -- the unified AST that all language
 //! frontends emit and all backends consume.
 //!
 //! # Architecture
 //!
 //! ```text
 //!  C frontend    COBOL frontend    C++ frontend    Rust frontend
-//!      │               │               │               │
-//!      ▼               ▼               ▼               ▼
-//!  ┌─────────────────────────────────────────────────────────┐
-//!  │                    bmo_abi::ir                          │
-//!  │                                                         │
-//!  │  IrModule → IrType → IrFunction → IrBlock → IrStmt      │
-//!  │                                                         │
-//!  │  → IrExpr (const, local, binop, call, load, store)      │
-//!  └────────────────────────┬────────────────────────────────┘
-//!                           │
-//!                           ▼
-//!  ┌─────────────────────────────────────────────────────────┐
-//!  │              x86-64 codegen  /  ARM64 codegen           │
-//!  └────────────────────────┬────────────────────────────────┘
-//!                           │
-//!                           ▼
+//!      |               |               |               |
+//!      v               v               v               v
+//!  +---------------------------------------------------------+
+//!  |                    bmo_abi::ir                          |
+//!  |                                                         |
+//!  |  IrModule -> IrType -> IrFunction -> IrBlock -> IrStmt      |
+//!  |                                                         |
+//!  |  -> IrExpr (const, local, binop, call, load, store)      |
+//!  +------------------------+--------------------------------+
+//!                           |
+//!                           v
+//!  +---------------------------------------------------------+
+//!  |              x86-64 codegen  /  ARM64 codegen           |
+//!  +------------------------+--------------------------------+
+//!                           |
+//!                           v
 //!                     BEF binary
 //! ```
 //!
@@ -73,7 +73,7 @@ pub struct IrImport {
     pub bef_len: u32,
 }
 
-// ── IrType ──────────────────────────────────────────────────────────
+// -- IrType ----------------------------------------------------------
 
 /// Unified type representation.
 ///
@@ -132,10 +132,10 @@ impl IrType {
             | Self::PointerTo(_)
             | Self::Function(_) => 8,
             Self::Array { elem: _, len } => {
-                // Approximate — actual size depends on elem type
+                // Approximate -- actual size depends on elem type
                 len * 8
             }
-            Self::Struct(_) => 0, // Unknown at IR level — resolved during codegen
+            Self::Struct(_) => 0, // Unknown at IR level -- resolved during codegen
         }
     }
 
@@ -181,9 +181,9 @@ impl IrType {
     }
 }
 
-// ── IrExpr ──────────────────────────────────────────────────────────
+// -- IrExpr ----------------------------------------------------------
 
-/// An expression — produces a value.
+/// An expression -- produces a value.
 #[derive(Debug, Clone, Copy)]
 pub enum IrExpr {
     /// Signed 64-bit integer literal.
@@ -264,9 +264,9 @@ pub enum IrUnOp {
     BitNot,
 }
 
-// ── IrStmt ──────────────────────────────────────────────────────────
+// -- IrStmt ----------------------------------------------------------
 
-/// A statement — produces no value, has a side effect.
+/// A statement -- produces no value, has a side effect.
 #[derive(Debug, Clone, Copy)]
 pub enum IrStmt {
     /// Assign: local[idx] = expr.
@@ -289,7 +289,7 @@ pub enum IrStmt {
     DefLocal { idx: u16, ty: IrType },
 }
 
-// ── IrBlock ─────────────────────────────────────────────────────────
+// -- IrBlock ---------------------------------------------------------
 
 /// A basic block: a linear sequence of statements ending with a terminator.
 #[derive(Debug, Clone)]
@@ -318,7 +318,7 @@ impl IrBlock {
     }
 }
 
-// ── IrFunction ──────────────────────────────────────────────────────
+// -- IrFunction ------------------------------------------------------
 
 /// A function definition.
 #[derive(Debug, Clone)]
@@ -393,7 +393,7 @@ impl IrFunction {
     }
 }
 
-// ── IrGlobal ────────────────────────────────────────────────────────
+// -- IrGlobal --------------------------------------------------------
 
 /// A global variable declaration.
 #[derive(Debug, Clone, Copy)]
@@ -404,9 +404,9 @@ pub struct IrGlobal {
     pub read_only: bool,
 }
 
-// ── IrModule ────────────────────────────────────────────────────────
+// -- IrModule --------------------------------------------------------
 
-/// A complete compilation unit — the output of a language frontend.
+/// A complete compilation unit -- the output of a language frontend.
 #[derive(Debug, Clone)]
 pub struct IrModule {
     /// Module name (index into string table).
@@ -558,16 +558,16 @@ impl IrModule {
 
     /// Load all syscall definitions from the embedded registry.
     ///
-    /// ★ Devuelve `Err` en vez de tragarse el fallo, y esto es una trampa que
-    /// todavía no había saltado: `add_string` devuelve `None` cuando la tabla
+    /// * Devuelve `Err` en vez de tragarse el fallo, y esto es una trampa que
+    /// todavia no habia saltado: `add_string` devuelve `None` cuando la tabla
     /// de cadenas se llena (256 entradas o 4 KiB), y el `unwrap_or(0)` que
-    /// había aquí registraba entonces el syscall **con el nombre de la cadena
-    /// 0** — o sea, con el nombre de otro. Un syscall mal nombrado en el IR no
-    /// falla al compilar: falla al mirar el binario y no entender qué llama.
+    /// habia aqui registraba entonces el syscall **con el nombre de la cadena
+    /// 0** -- o sea, con el nombre de otro. Un syscall mal nombrado en el IR no
+    /// falla al compilar: falla al mirar el binario y no entender que llama.
     ///
     /// Hoy no lo llama nadie, y por eso mismo se arregla ahora: es gratis
     /// cambiar la firma antes de que exista el primer llamante, y el `Result`
-    /// obliga al que llegue a decidir qué hacer en vez de heredar el silencio.
+    /// obliga al que llegue a decidir que hacer en vez de heredar el silencio.
     #[must_use = "si la tabla de cadenas se lleno, los syscalls quedan mal nombrados"]
     pub fn load_embedded_syscalls(&mut self) -> Result<(), &'static str> {
         let defs = crate::bmo_abi::asm::defs::syscalls();

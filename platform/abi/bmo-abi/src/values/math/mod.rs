@@ -1,14 +1,14 @@
-//! `math` — funciones matemáticas básicas del BMO ABI.
+//! `math` -- funciones matematicas basicas del BMO ABI.
 //!
 //! Reemplaza `<math.h>` de C con implementaciones ligeras, sin depender de
 //! `libm` del host (no disponible en Ring 0).
 //!
-//! Precisión: ~1 ULP para f64, suficiente para gráficos y física de juego.
+//! Precision: ~1 ULP para f64, suficiente para graficos y fisica de juego.
 
 use crate::bmo_abi::primitives::floats::{bx_f32, bx_f64};
 use crate::bmo_abi::primitives::{bx_i64, bx_u64};
 
-// ─── Square root (Newton-Raphson) ──────────────────────────────────
+// --- Square root (Newton-Raphson) ----------------------------------
 
 /// Square root, IEEE 754 exact para f64.
 pub fn sqrt_f64(x: bx_f64) -> bx_f64 {
@@ -27,7 +27,7 @@ pub fn sqrt_f32(x: bx_f32) -> bx_f32 {
     sqrt_f64(x as f64) as f32
 }
 
-// ─── Core sin Taylor (|x| ≤ π/4) ──────────────────────────────────
+// --- Core sin Taylor (|x| <= pi/4) ----------------------------------
 
 fn sin_taylor(x: bx_f64) -> bx_f64 {
     let x2 = x * x;
@@ -43,9 +43,9 @@ fn cos_taylor(x: bx_f64) -> bx_f64 {
         + x2 * x2 * x2 * x2 * x2 * x2 / 479001600.0
 }
 
-// ─── Sin (range-reduced to [0, π/4]) ───────────────────────────────
+// --- Sin (range-reduced to [0, pi/4]) -------------------------------
 
-/// Sine (f64), ~1e-12 precisión.
+/// Sine (f64), ~1e-12 precision.
 pub fn sin_f64(x: bx_f64) -> bx_f64 {
     let mut x = x % (core::f64::consts::TAU);
     if x < 0.0 {
@@ -74,7 +74,7 @@ pub fn sin_f32(x: bx_f32) -> bx_f32 {
     sin_f64(x as f64) as f32
 }
 
-// ─── Cosine ────────────────────────────────────────────────────────
+// --- Cosine --------------------------------------------------------
 
 pub fn cos_f64(x: bx_f64) -> bx_f64 {
     let mut x = x % core::f64::consts::TAU;
@@ -104,7 +104,7 @@ pub fn cos_f32(x: bx_f32) -> bx_f32 {
     cos_f64(x as f64) as f32
 }
 
-// ─── Power (exponentiation by squaring) ────────────────────────────
+// --- Power (exponentiation by squaring) ----------------------------
 
 pub fn pow_f64(base: bx_f64, exp: bx_i64) -> bx_f64 {
     if exp == 0 {
@@ -127,7 +127,7 @@ pub fn pow_f32(base: bx_f32, exp: bx_i64) -> bx_f32 {
     pow_f64(base as f64, exp) as f32
 }
 
-// ─── Absolute value ────────────────────────────────────────────────
+// --- Absolute value ------------------------------------------------
 
 pub fn abs_f64(x: bx_f64) -> bx_f64 {
     if x < 0.0 {
@@ -145,7 +145,7 @@ pub fn abs_f32(x: bx_f32) -> bx_f32 {
     }
 }
 
-// ─── Floor / Ceil ─────────────────────────────────────────────────
+// --- Floor / Ceil -------------------------------------------------
 
 pub fn floor_f64(x: bx_f64) -> bx_f64 {
     let trunc = x as i64 as f64;
@@ -172,7 +172,7 @@ pub fn ceil_f32(x: bx_f32) -> bx_f32 {
     ceil_f64(x as f64) as f32
 }
 
-// ─── Min/max ───────────────────────────────────────────────────────
+// --- Min/max -------------------------------------------------------
 
 pub fn min_f64(a: bx_f64, b: bx_f64) -> bx_f64 {
     if a < b {
@@ -219,7 +219,7 @@ pub fn max_u64(a: bx_u64, b: bx_u64) -> bx_u64 {
     }
 }
 
-// ─── Constants ─────────────────────────────────────────────────────
+// --- Constants -----------------------------------------------------
 
 pub const PI_F64: bx_f64 = core::f64::consts::PI;
 pub const PI_F32: bx_f32 = core::f32::consts::PI;

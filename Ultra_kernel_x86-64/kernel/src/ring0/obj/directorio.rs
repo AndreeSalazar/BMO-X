@@ -1,42 +1,42 @@
-//! `KIND_DIRECTORIO` — **preguntar qué hay**, como capability.
+//! `KIND_DIRECTORIO` -- **preguntar que hay**, como capability.
 //!
-//! Hasta ahora Ring 3 podía LANZAR un programa pero no MIRAR el disco: había
+//! Hasta ahora Ring 3 podia LANZAR un programa pero no MIRAR el disco: habia
 //! que saberse la ruta de memoria y teclearla entera. Sin esto no hay `ls`, no
-//! hay autocompletado y no hay iconos de carpeta — no por falta de dibujo,
-//! sino porque no existía la pregunta.
+//! hay autocompletado y no hay iconos de carpeta -- no por falta de dibujo,
+//! sino porque no existia la pregunta.
 //!
 //! ## Esto NO es como abrir un archivo por su nombre
 //!
-//! Y ahí está la diferencia con un sistema de ficheros clásico, que merece
+//! Y ahi esta la diferencia con un sistema de ficheros clasico, que merece
 //! estar escrita porque es el modelo entero:
 //!
 //! - En Unix, **una ruta es un NOMBRE**. Cualquiera puede escribir `/etc/passwd`
-//!   y el kernel decide después si le deja. El nombre siempre es nombrable.
-//! - Aquí una ruta abierta es un **HANDLE que a alguien le concedieron**. Lo
+//!   y el kernel decide despues si le deja. El nombre siempre es nombrable.
+//! - Aqui una ruta abierta es un **HANDLE que a alguien le concedieron**. Lo
 //!   que no te han dado no existe para tu proceso: no es que te lo nieguen, es
-//!   que no tienes con qué preguntar.
+//!   que no tienes con que preguntar.
 //!
-//! Por eso `abrir` es una operación sobre `CURRENT_TASK` —lo que uno pide por
-//! ser quien es— y el listado es una operación sobre el handle resultante. El
-//! día que haya varios usuarios, quién puede abrir qué se decide en `abrir` y
+//! Por eso `abrir` es una operacion sobre `CURRENT_TASK` --lo que uno pide por
+//! ser quien es-- y el listado es una operacion sobre el handle resultante. El
+//! dia que haya varios usuarios, quien puede abrir que se decide en `abrir` y
 //! el resto del sistema no se entera.
 //!
 //! ## Sin cursor en el driver
 //!
-//! El handle guarda `(cluster, índice)` y el driver contesta "dame la entrada
-//! n". Es O(n) por llamada, o sea O(n²) por listado — irrelevante con
+//! El handle guarda `(cluster, indice)` y el driver contesta "dame la entrada
+//! n". Es O(n) por llamada, o sea O(n^2) por listado -- irrelevante con
 //! directorios de decenas de entradas, y a cambio **dos listados a la vez no se
-//! pisan** y una entrada que desaparece no deja un cursor apuntando al vacío.
+//! pisan** y una entrada que desaparece no deja un cursor apuntando al vacio.
 //!
 //! ## Los nombres salen en 8.3 crudo
 //!
-//! `COBOL   BEX` con sus espacios, tal cual está en el disco. Convertirlo a
-//! `COBOL.BEX` es presentación, y la presentación es de Ring 3 — la misma línea
-//! que deja el cursor del ratón fuera del kernel.
+//! `COBOL   BEX` con sus espacios, tal cual esta en el disco. Convertirlo a
+//! `COBOL.BEX` es presentacion, y la presentacion es de Ring 3 -- la misma linea
+//! que deja el cursor del raton fuera del kernel.
 
 use crate::ring0::obj::cap;
 
-/// Cuántos directorios pueden estar abiertos a la vez.
+/// Cuantos directorios pueden estar abiertos a la vez.
 pub const MAX_ABIERTOS: usize = 8;
 
 pub const SIN_DUENO: u32 = u32::MAX;
@@ -47,37 +47,37 @@ pub const ERROR_SIN_HUECO: u32 = 25;
 pub const ERROR_NO_ESTA: u32 = 26;
 
 /// Avanza a la siguiente entrada y devuelve lo que se sabe de ella:
-/// `(hay << 63) | (es_dir << 62) | tamaño`. `hay == 0` = se acabó el
+/// `(hay << 63) | (es_dir << 62) | tamano`. `hay == 0` = se acabo el
 /// directorio.
 ///
-/// El NOMBRE no viaja aquí: son 11 bytes y no caben con los demás campos.
-/// Se pide aparte con `DIR_OP_NOMBRE`, que es la misma decisión que ya se tomó
-/// en la consola — un contador honesto vale más que un byte apretado.
+/// El NOMBRE no viaja aqui: son 11 bytes y no caben con los demas campos.
+/// Se pide aparte con `DIR_OP_NOMBRE`, que es la misma decision que ya se tomo
+/// en la consola -- un contador honesto vale mas que un byte apretado.
 pub const DIR_OP_SIGUIENTE: u64 = 0x01;
 /// Los 11 bytes del nombre 8.3 de la entrada ACTUAL, de 7 en 7.
 /// `arg0` = desplazamiento (0 o 7). Devuelve `(n << 56) | bytes_LE`.
 pub const DIR_OP_NOMBRE: u64 = 0x02;
 /// **Cerrar. Devuelve la ranura.**
 ///
-/// ═══ Por qué faltaba, y lo que costó ═══
+/// === Por que faltaba, y lo que costo ===
 ///
-/// No existía, así que la ÚNICA forma de liberar una ranura era
-/// [`proceso_muerto`] — o sea, que el proceso se muriera. Y el cliente de esto
+/// No existia, asi que la UNICA forma de liberar una ranura era
+/// [`proceso_muerto`] -- o sea, que el proceso se muriera. Y el cliente de esto
 /// es **el compositor, que no muere nunca**: es el escritorio.
 ///
 /// Resultado: cada `ls` se quedaba una ranura para siempre, y al noveno la
-/// tabla estaba llena. A partir de ahí `ls` contestaba **"no puedo abrir esa
-/// carpeta"** — un mensaje falso, porque la carpeta estaba perfectamente ahí.
-/// Lo que no había era sitio para abrirla.
+/// tabla estaba llena. A partir de ahi `ls` contestaba **"no puedo abrir esa
+/// carpeta"** -- un mensaje falso, porque la carpeta estaba perfectamente ahi.
+/// Lo que no habia era sitio para abrirla.
 ///
-/// `KIND_ARCHIVO` sí tenía su `ARCH_OP_CERRAR` desde el principio. Ésta es la
-/// misma clase de recurso y se quedó sin él; la asimetría no se ve leyendo
+/// `KIND_ARCHIVO` si tenia su `ARCH_OP_CERRAR` desde el principio. Esta es la
+/// misma clase de recurso y se quedo sin el; la asimetria no se ve leyendo
 /// ninguno de los dos archivos por separado.
 ///
-/// Es el **patrón 17** de nuevo —una tabla de recursos vivos que sólo se libera
-/// con un evento que no ocurre— y ya se pagó hoy en `KIND_MEMORIA`, donde el
-/// contador se indexaba por un pid que sólo sube. La pregunta que lo caza en
-/// los dos casos es la misma: **¿quién devuelve esto, y ocurre alguna vez?**
+/// Es el **patron 17** de nuevo --una tabla de recursos vivos que solo se libera
+/// con un evento que no ocurre-- y ya se pago hoy en `KIND_MEMORIA`, donde el
+/// contador se indexaba por un pid que solo sube. La pregunta que lo caza en
+/// los dos casos es la misma: **quien devuelve esto, y ocurre alguna vez?**
 pub const DIR_OP_CERRAR: u64 = 0x03;
 
 static mut CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
@@ -86,7 +86,7 @@ static mut NOMBRE: [[u8; 11]; MAX_ABIERTOS] = [[b' '; 11]; MAX_ABIERTOS];
 static mut DUENO: [u32; MAX_ABIERTOS] = [SIN_DUENO; MAX_ABIERTOS];
 
 /// Abre un directorio del volumen de datos y entrega su handle a `pid`.
-/// Ruta vacía = la raíz.
+/// Ruta vacia = la raiz.
 pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
     let cluster = match crate::ring0::fsys::fs::dir_datos(ruta) {
         Some(c) => c,
@@ -99,9 +99,9 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
             None => return Err(ERROR_SIN_HUECO),
         };
         CLUSTER[i] = cluster;
-        // ★ Empieza en usize::MAX para que el PRIMER `SIGUIENTE` caiga en la
-        // entrada 0. Si empezara en 0, la primera llamada devolvería la
-        // segunda entrada y la primera no la vería nadie — el clásico error
+        // * Empieza en usize::MAX para que el PRIMER `SIGUIENTE` caiga en la
+        // entrada 0. Si empezara en 0, la primera llamada devolveria la
+        // segunda entrada y la primera no la veria nadie -- el clasico error
         // de un cursor que ya apunta a algo antes de que le pidan avanzar.
         INDICE[i] = usize::MAX;
         NOMBRE[i] = [b' '; 11];

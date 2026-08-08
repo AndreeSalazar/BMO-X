@@ -1,60 +1,60 @@
-//! **Cuánto queda** — la contabilidad del espacio, y los avisos de la §9.
+//! **Cuanto queda** -- la contabilidad del espacio, y los avisos de la section 9.
 //!
-//! ═══ Por qué esto va antes que escribir ═══
+//! === Por que esto va antes que escribir ===
 //!
-//! Un sistema de ficheros que no sabe cuánto le queda no puede decidir si
-//! acepta una escritura. Y uno que **no sobreescribe nunca** —que es la idea
-//! entera de ESTRATOS— se llena aunque nadie cree un archivo: cada versión se
-//! queda. Saber la ocupación no es un adorno del panel: es la condición previa
-//! al paso 5 del diseño.
+//! Un sistema de ficheros que no sabe cuanto le queda no puede decidir si
+//! acepta una escritura. Y uno que **no sobreescribe nunca** --que es la idea
+//! entera de ESTRATOS-- se llena aunque nadie cree un archivo: cada version se
+//! queda. Saber la ocupacion no es un adorno del panel: es la condicion previa
+//! al paso 5 del diseno.
 //!
-//! ═══ La cuenta es trivial, y eso es una decisión ═══
+//! === La cuenta es trivial, y eso es una decision ===
 //!
-//! ESTRATOS reserva con un **puntero que sólo avanza**: `log_head` es el primer
-//! bloque libre, y todo lo de debajo está usado. No hay mapa de bits, no hay
-//! listas de huecos, no hay fragmentación que medir. La ocupación es una resta.
+//! ESTRATOS reserva con un **puntero que solo avanza**: `log_head` es el primer
+//! bloque libre, y todo lo de debajo esta usado. No hay mapa de bits, no hay
+//! listas de huecos, no hay fragmentacion que medir. La ocupacion es una resta.
 //!
 //! Eso es posible *porque* nada se sobreescribe. El precio es que el espacio no
-//! vuelve solo: quien lo devuelve es el recolector (§9), y hasta que exista,
-//! esta cuenta sólo sube. Que suba y se vea es exactamente lo que se quiere —
+//! vuelve solo: quien lo devuelve es el recolector (section 9), y hasta que exista,
+//! esta cuenta solo sube. Que suba y se vea es exactamente lo que se quiere --
 //! un FS que se llena por sorpresa es el que pierde datos.
 //!
-//! ═══ Sobre el recolector, dicho aquí porque es donde se nota ═══
+//! === Sobre el recolector, dicho aqui porque es donde se nota ===
 //!
-//! La observación de Eddi es correcta y ya estaba en el diseño: **para un disco
+//! La observacion de Eddi es correcta y ya estaba en el diseno: **para un disco
 //! personal grande, el GC importa poco**. 414 GiB son ~108 millones de bloques;
 //! un `.bex` ocupa cinco. Se pueden hacer *millones* de estratos antes de que
 //! haga falta soltar uno.
 //!
-//! Y para quien acumula a propósito —una empresa que quiere poder retroceder—
+//! Y para quien acumula a proposito --una empresa que quiere poder retroceder--
 //! el historial **es el producto**, no la basura. Es la misma postura de Git:
-//! `git gc` no borra tu historia, sólo lo que ya nadie alcanza, y el reflog
-//! guarda 90 días por si acaso. Por eso aquí el recolector será **explícito y
+//! `git gc` no borra tu historia, solo lo que ya nadie alcanza, y el reflog
+//! guarda 90 dias por si acaso. Por eso aqui el recolector sera **explicito y
 //! con la lista delante**, nunca un demonio que decide solo.
 //!
-//! Lo que sí hace falta desde el primer día es **el aviso**. Eso es esto.
+//! Lo que si hace falta desde el primer dia es **el aviso**. Eso es esto.
 
-/// Los cuatro estados del volumen, y qué significa cada uno.
+/// Los cuatro estados del volumen, y que significa cada uno.
 ///
-/// Los umbrales están en el diseño (§9) y no se eligen aquí: se copian. Cambiar
+/// Los umbrales estan en el diseno (section 9) y no se eligen aqui: se copian. Cambiar
 /// uno es cambiar el documento primero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Nivel {
     /// Por debajo del 70 %. No hay nada que decir.
     Holgado,
-    /// 70 % — ámbar. Se avisa con cuánto ocupa el historial.
+    /// 70 % -- ambar. Se avisa con cuanto ocupa el historial.
     Ambar,
-    /// 85 % — FAULT rojo, y con una propuesta concreta de qué soltar.
+    /// 85 % -- FAULT rojo, y con una propuesta concreta de que soltar.
     Rojo,
-    /// 95 % — **solo lectura**. Antes de perder datos por falta de sitio, el
-    /// sistema se planta y lo dice. No es una degradación: es la respuesta
+    /// 95 % -- **solo lectura**. Antes de perder datos por falta de sitio, el
+    /// sistema se planta y lo dice. No es una degradacion: es la respuesta
     /// correcta, porque un FS transaccional necesita sitio para *escribir* la
-    /// transacción que libera sitio.
+    /// transaccion que libera sitio.
     SoloLectura,
 }
 
 impl Nivel {
-    /// Para el panel: qué tan grave, en una palabra.
+    /// Para el panel: que tan grave, en una palabra.
     pub fn nombre(self) -> &'static str {
         match self {
             Nivel::Holgado => "holgado",
@@ -64,10 +64,10 @@ impl Nivel {
         }
     }
 
-    /// ¿Se puede escribir en este estado?
+    /// Se puede escribir en este estado?
     ///
-    /// Es la pregunta que hará el paso 5, y vive aquí para que la respuesta sea
-    /// **una** y no una comparación repetida en cada sitio que escribe.
+    /// Es la pregunta que hara el paso 5, y vive aqui para que la respuesta sea
+    /// **una** y no una comparacion repetida en cada sitio que escribe.
     pub fn admite_escritura(self) -> bool {
         !matches!(self, Nivel::SoloLectura)
     }
@@ -91,14 +91,14 @@ pub struct Ocupacion {
 impl Ocupacion {
     /// La cuenta, a partir de lo que dice el superbloque.
     ///
-    /// `log_head` es el primer bloque LIBRE, así que también es cuántos hay
-    /// usados — los bloques se numeran desde cero. Un volumen recién formateado
+    /// `log_head` es el primer bloque LIBRE, asi que tambien es cuantos hay
+    /// usados -- los bloques se numeran desde cero. Un volumen recien formateado
     /// tiene `log_head = 2`: los dos superbloques.
     pub fn de(log_head: u64, total_blocks: u64, bloque: u32) -> Self {
         Self {
             // Un `log_head` mayor que el total es un superbloque corrupto, y se
             // trata como "lleno" en vez de dar la vuelta a la resta. Un
-            // underflow aquí diría "quedan 18 trillones de bloques libres".
+            // underflow aqui diria "quedan 18 trillones de bloques libres".
             usados: log_head.min(total_blocks),
             totales: total_blocks,
             bloque,
@@ -109,7 +109,7 @@ impl Ocupacion {
         self.totales - self.usados
     }
 
-    /// Ocupación en tantos por mil. Sin flotantes y sin desbordar: con 108
+    /// Ocupacion en tantos por mil. Sin flotantes y sin desbordar: con 108
     /// millones de bloques, `usados * 1000` cabe de sobra en 64 bits.
     pub fn por_mil(&self) -> u32 {
         if self.totales == 0 {
@@ -118,7 +118,7 @@ impl Ocupacion {
         ((self.usados.saturating_mul(1000)) / self.totales) as u32
     }
 
-    /// Ocupación en enteros, para el panel.
+    /// Ocupacion en enteros, para el panel.
     pub fn por_ciento(&self) -> u32 {
         self.por_mil() / 10
     }
@@ -144,10 +144,10 @@ impl Ocupacion {
         }
     }
 
-    /// Cuántos bloques caben todavía de un objeto de `bytes`.
+    /// Cuantos bloques caben todavia de un objeto de `bytes`.
     ///
-    /// Para contestar "¿cuántos estratos más caben?" sin que quien pregunta
-    /// tenga que saber el tamaño de bloque. Redondea hacia arriba: medio bloque
+    /// Para contestar "cuantos estratos mas caben?" sin que quien pregunta
+    /// tenga que saber el tamano de bloque. Redondea hacia arriba: medio bloque
     /// ocupa un bloque.
     pub fn caben_de(&self, bytes: u64) -> u64 {
         if bytes == 0 {
@@ -173,18 +173,18 @@ mod tests {
         assert!(o.nivel().admite_escritura());
     }
 
-    /// ★ La respuesta concreta a "¿cuándo hará falta el recolector?".
+    /// * La respuesta concreta a "cuando hara falta el recolector?".
     ///
     /// Un `.bex` de C ocupa ~20 KiB = 5 bloques. Aunque cada estrato guardara
-    /// uno entero sin compartir nada, caben más de VEINTE MILLONES antes de
-    /// llegar al 70 %. Por eso el GC es "algún día" y no "antes de escribir".
+    /// uno entero sin compartir nada, caben mas de VEINTE MILLONES antes de
+    /// llegar al 70 %. Por eso el GC es "algun dia" y no "antes de escribir".
     #[test]
     fn en_414_gib_caben_millones_de_estratos() {
         let o = Ocupacion::de(2, BLOQUES_BMO_DATA, 4096);
         let bex = 20 * 1024;
         assert!(
             o.caben_de(bex) > 20_000_000,
-            "sólo caben {} de {} bytes",
+            "solo caben {} de {} bytes",
             o.caben_de(bex),
             bex
         );
@@ -201,8 +201,8 @@ mod tests {
         assert_eq!(en(95), Nivel::SoloLectura);
     }
 
-    /// ★ Al 95 % se deja de escribir, y no es una degradación: un FS
-    /// transaccional necesita sitio **para escribir la transacción que libera
+    /// * Al 95 % se deja de escribir, y no es una degradacion: un FS
+    /// transaccional necesita sitio **para escribir la transaccion que libera
     /// sitio**. Llegar a cero sin margen es no poder ni recoger basura.
     #[test]
     fn al_95_por_ciento_ya_no_se_admite_escritura() {
@@ -210,11 +210,11 @@ mod tests {
         assert!(Ocupacion::de(949, 1000, 4096).nivel().admite_escritura());
     }
 
-    /// Un superbloque que dice que la cabeza del log está más allá del final
-    /// del volumen está corrupto. Se trata como lleno.
+    /// Un superbloque que dice que la cabeza del log esta mas alla del final
+    /// del volumen esta corrupto. Se trata como lleno.
     ///
     /// Sin el `min`, la resta da la vuelta y `libres()` anuncia dieciocho
-    /// trillones de bloques libres — y el que pregunte se lo cree.
+    /// trillones de bloques libres -- y el que pregunte se lo cree.
     #[test]
     fn una_cabeza_de_log_imposible_no_da_la_vuelta_a_la_resta() {
         let o = Ocupacion::de(u64::MAX, 1000, 4096);

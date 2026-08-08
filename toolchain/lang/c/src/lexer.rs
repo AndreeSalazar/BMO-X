@@ -8,12 +8,12 @@ pub(crate) enum Token {
     Float, Double,
     Return, Sizeof, Struct, Union, Typedef, Enum, Goto, Use,
     Const, Volatile, Extern,
-    /// `static`. Ver `parser::mod` — significa DOS cosas distintas según dónde
-    /// esté, y ésa es la mitad del trabajo de implementarla.
+    /// `static`. Ver `parser::mod` -- significa DOS cosas distintas segun donde
+    /// este, y esa es la mitad del trabajo de implementarla.
     Static,
     OpenParen, CloseParen, OpenBrace, CloseBrace, OpenBracket, CloseBracket,
     Semicolon, Comma, Colon, Question,
-    /// `#` — una directiva del preprocesador.
+    /// `#` -- una directiva del preprocesador.
     ///
     /// Tiene token PROPIO aunque no haya preprocesador, y ahi esta el motivo:
     /// el catch-all del lexer se tragaba cualquier caracter desconocido, asi
@@ -29,21 +29,21 @@ pub(crate) enum Token {
     LAnd, LOr,
     Shl, Shr,
     Arrow, Dot,
-    /// `...` — el resto de los argumentos.
+    /// `...` -- el resto de los argumentos.
     Puntos,
     Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign,
     ShlAssign, ShrAssign, AndAssign, XorAssign, OrAssign,
     Eof,
 }
 
-/// Vec de tokens que registra la LÍNEA de cada uno (para errores con línea real).
+/// Vec de tokens que registra la LINEA de cada uno (para errores con linea real).
 struct TokStream {
     toks: Vec<Token>,
     lines: Vec<usize>,
     cur_line: usize,
-    /// Lo que salió mal AQUÍ, con su línea. El lexer no puede cortar —tiene
-    /// que seguir hasta el final para que el parser reciba un vector— así que
-    /// los guarda y el parser se niega a seguir al verlos. Sin esto, la única
+    /// Lo que salio mal AQUI, con su linea. El lexer no puede cortar --tiene
+    /// que seguir hasta el final para que el parser reciba un vector-- asi que
+    /// los guarda y el parser se niega a seguir al verlos. Sin esto, la unica
     /// salida era un valor inventado.
     errores: Vec<crate::CError>,
 }
@@ -127,8 +127,8 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                 } else if i + 1 < c.len() && c[i+1] == '=' { t.push(Token::Ge); i += 2; }
                 else { t.push(Token::Gt); i += 1; }
             }
-            // `...` antes que `.`: el más largo primero, o `...` saldría como
-            // tres accesos a campo y el error hablaría de un campo sin nombre.
+            // `...` antes que `.`: el mas largo primero, o `...` saldria como
+            // tres accesos a campo y el error hablaria de un campo sin nombre.
             '.' => {
                 if i + 2 < c.len() && c[i+1] == '.' && c[i+2] == '.' {
                     t.push(Token::Puntos); i += 3;
@@ -160,7 +160,7 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                         }
                     } else { s.push(c[i]); } i += 1;
                 } i += 1;
-                // string literal concatenation: "foo" "bar" â†’ "foobar"
+                // string literal concatenation: "foo" "bar" -> "foobar"
                 let mut combined = s;
                 while i < c.len() && (c[i] == ' ' || c[i] == '\t' || c[i] == '\n' || c[i] == '\r') { i += 1; }
                 while i < c.len() && c[i] == '"' {
@@ -217,22 +217,22 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                 if d == '0' && i + 1 < c.len() && (c[i+1] == 'x' || c[i+1] == 'X') {
                     n.push_str("0x"); i += 2;
                     while i < c.len() && c[i].is_ascii_hexdigit() { n.push(c[i]); i += 1; }
-                    // ★ Por `u64` y no por `i64`. Un hexadecimal es un PATRÓN DE
-                    // BITS, no un número con signo: `0xFFFFFFFFFFFFFFFE` no cabe
-                    // en un `i64` y `i64::from_str_radix` fallaba, así que el
-                    // `unwrap_or(0)` lo convertía en **cero, en silencio**.
+                    // * Por `u64` y no por `i64`. Un hexadecimal es un PATRON DE
+                    // BITS, no un numero con signo: `0xFFFFFFFFFFFFFFFE` no cabe
+                    // en un `i64` y `i64::from_str_radix` fallaba, asi que el
+                    // `unwrap_or(0)` lo convertia en **cero, en silencio**.
                     //
                     // Eso dejaba fuera del lenguaje toda la mitad alta de 64
-                    // bits — empezando por `CURRENT_TASK` (0xFF..FE), que es el
-                    // pseudo-handle con el que un programa se nombra a sí mismo.
+                    // bits -- empezando por `CURRENT_TASK` (0xFF..FE), que es el
+                    // pseudo-handle con el que un programa se nombra a si mismo.
                     // Escribir la constante correcta compilaba y llamaba a la
                     // capability 0.
                     let bits = u64::from_str_radix(&n[2..], 16)
                         .or_else(|_| i64::from_str_radix(&n[2..], 16).map(|v| v as u64));
                     match bits {
                         Ok(v) => t.push(Token::IntLit(v as i64)),
-                        // Más de 16 dígitos no es un entero de esta máquina.
-                        // Callarlo sería repetir el mismo error con otro valor.
+                        // Mas de 16 digitos no es un entero de esta maquina.
+                        // Callarlo seria repetir el mismo error con otro valor.
                         Err(_) => {
                             let linea = t.cur_line;
                             t.errores.push(crate::CError::new(
@@ -244,7 +244,7 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                     }
                 } else {
                     while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
-                    // literal float: 1.5, 3.14f — antes "1.5" se partía en 1 . 5
+                    // literal float: 1.5, 3.14f -- antes "1.5" se partia en 1 . 5
                     if i + 1 < c.len() && c[i] == '.' && c[i+1].is_ascii_digit() {
                         n.push('.'); i += 1;
                         while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
@@ -279,11 +279,11 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                     "static" => t.push(Token::Static),
                     // `auto` y `register` se ACEPTAN Y SE TIRAN. No es pereza:
                     // `register` es una sugerencia que todos los compiladores
-                    // del mundo ignoran desde hace treinta años, y `auto` es
-                    // redundante desde 1978 (una local ya es automática). No
-                    // cambian lo que el programa HACE, así que emitir algo por
-                    // ellas sería emitir ruido. Se comen aquí para que el
-                    // código ajeno que las trae compile sin tocarlo.
+                    // del mundo ignoran desde hace treinta anos, y `auto` es
+                    // redundante desde 1978 (una local ya es automatica). No
+                    // cambian lo que el programa HACE, asi que emitir algo por
+                    // ellas seria emitir ruido. Se comen aqui para que el
+                    // codigo ajeno que las trae compile sin tocarlo.
                     "auto" | "register" => {}
                     "float" => t.push(Token::Float),
                     "double" => t.push(Token::Double),

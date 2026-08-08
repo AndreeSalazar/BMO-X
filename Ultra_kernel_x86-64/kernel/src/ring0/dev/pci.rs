@@ -1,14 +1,14 @@
 //! PCI config-space: acceso directo por puertos 0xCF8/0xCFC + scan completo.
 //!
 //! Motivo: el `pci_devices` del BootContext (scan de s2) no ve los
-//! controladores que cuelgan detrás de bridges — y en los Ryzen los xHC USB
-//! viven exactamente ahí (buses > 0). Este módulo escanea TODO el espacio
-//! bus/dev/función por fuerza bruta (barato: unos miles de lecturas de
+//! controladores que cuelgan detras de bridges -- y en los Ryzen los xHC USB
+//! viven exactamente ahi (buses > 0). Este modulo escanea TODO el espacio
+//! bus/dev/funcion por fuerza bruta (barato: unos miles de lecturas de
 //! config una sola vez) y encuentra el dispositivo por su clase real,
 //! incluyendo el prog-if que el BootContext no captura.
 //!
-//! También habilita Memory Space + Bus Master en el command register del
-//! dispositivo — sin BME el xHC no puede hacer DMA y el driver ve silencio.
+//! Tambien habilita Memory Space + Bus Master en el command register del
+//! dispositivo -- sin BME el xHC no puede hacer DMA y el driver ve silencio.
 
 const CONFIG_ADDR: u16 = 0xCF8;
 const CONFIG_DATA: u16 = 0xCFC;
@@ -49,7 +49,7 @@ pub struct XhciLoc {
     pub bus: u8,
     pub dev: u8,
     pub func: u8,
-    /// Dirección FÍSICA del MMIO (BAR0, con BAR1 como mitad alta si es
+    /// Direccion FISICA del MMIO (BAR0, con BAR1 como mitad alta si es
     /// 64-bit). El caller decide el mapeo virtual.
     pub mmio: u64,
 }
@@ -80,11 +80,11 @@ pub struct StorageLoc {
 /// Escanea el PCI buscando un controlador de ALMACENAMIENTO (clase 0x01) de un
 /// TIPO CONCRETO: subclase 0x06=SATA(AHCI), 0x08=NVMe, 0x01=IDE, 0x04=RAID.
 ///
-/// ★ POR QUÉ POR TIPO Y NO "EL PRIMERO": en esta máquina el primer controlador
+/// * POR QUE POR TIPO Y NO "EL PRIMERO": en esta maquina el primer controlador
 /// del barrido es el NVMe, y en el NVMe vive WINDOWS. El disco de BMO (A: con
 /// el arranque, y BMO-DATA) cuelga de SATA. Pedir "el primer disco que
-/// encuentres" y escribir en él habría sido escribir en el sistema del dueño.
-/// Un driver de almacenamiento no adivina a quién le habla: se le dice.
+/// encuentres" y escribir en el habria sido escribir en el sistema del dueno.
+/// Un driver de almacenamiento no adivina a quien le habla: se le dice.
 ///
 /// `skip` salta los primeros N hallazgos de ese tipo (placas con dos HBA).
 pub fn find_storage_of(kind: StorageKind, skip: usize) -> Option<StorageLoc> {
@@ -107,8 +107,8 @@ fn enable_mem_bus_master(bus: u8, dev: u8, func: u8) {
     cfg_write32(bus, dev, func, 0x04, cmd | 0x0006);
 }
 
-/// El controlador de almacenamiento número `index` del barrido, SIN tocar su
-/// configuración. Para hacer censo (mirar) sin habilitar nada (actuar).
+/// El controlador de almacenamiento numero `index` del barrido, SIN tocar su
+/// configuracion. Para hacer censo (mirar) sin habilitar nada (actuar).
 pub fn storage_at(index: usize) -> Option<StorageLoc> {
     let mut seen = 0usize;
     for bus in 0u16..=255 {
@@ -191,7 +191,7 @@ pub fn find_storage() -> Option<StorageLoc> {
 }
 
 /// Escanea todos los buses buscando xHCI (clase 0x0C, subclase 0x03,
-/// prog-if 0x30). Al encontrarlo habilita MEM+BME y devuelve su ubicación.
+/// prog-if 0x30). Al encontrarlo habilita MEM+BME y devuelve su ubicacion.
 /// `skip` permite saltar los primeros N hallazgos (para probar el segundo
 /// controlador si el primero no tiene el teclado).
 pub fn find_xhci(skip: usize) -> Option<XhciLoc> {
@@ -199,7 +199,7 @@ pub fn find_xhci(skip: usize) -> Option<XhciLoc> {
     for bus in 0u16..=255 {
         let bus = bus as u8;
         for dev in 0u8..32 {
-            // ¿Existe la función 0? Si no, el device entero está vacío.
+            // Existe la funcion 0? Si no, el device entero esta vacio.
             let vd0 = cfg_read32(bus, dev, 0, 0x00);
             if vd0 == 0xFFFF_FFFF {
                 continue;

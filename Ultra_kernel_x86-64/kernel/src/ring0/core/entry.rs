@@ -1,4 +1,4 @@
-//! Kernel entry point — `_start` naked asm + `kernel_main_real`.
+//! Kernel entry point -- `_start` naked asm + `kernel_main_real`.
 //!
 //! Called from `s12_devices` via `jmp` with `rdi = *const BootContext`.
 //!
@@ -33,7 +33,7 @@ unsafe extern "C" fn _start() -> ! {
         // The UEFI stack may be unmapped after s9_paging.
         // The stack lives in the kernel's .bss at KERNEL_STACK + 65536,
         // which s9_paging identity-maps. The next block zeros BSS
-        // (including the stack), which is fine — we're not using
+        // (including the stack), which is fine -- we're not using
         // any old stack contents.
         "lea rsp, [rip + {stack_end}]",
 

@@ -1,4 +1,4 @@
-# cpp23.toml — ISO/IEC 14882:2023 (C++23)
+# cpp23.toml -- ISO/IEC 14882:2023 (C++23)
 [standard]
 iso_number = "ISO/IEC 14882:2023"
 year = 2023

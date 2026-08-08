@@ -1,4 +1,4 @@
-//! Formatted output — vsnprintf with %d, %u, %x, %X, %s, %c, %p, %%.
+//! Formatted output -- vsnprintf with %d, %u, %x, %X, %s, %c, %p, %%.
 //!
 //! No heap, no allocation, pure stack. Designed for Ring 3 BEF apps.
 

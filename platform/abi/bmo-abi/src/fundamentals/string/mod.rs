@@ -1,15 +1,15 @@
-//! `string` — BmoStr y BmoString, strings UTF-8 del BMO ABI.
+//! `string` -- BmoStr y BmoString, strings UTF-8 del BMO ABI.
 //!
 //! Reemplaza `char*` null-terminated con una pareja (ptr, len) que elimina
-//! las vulnerabilidades clásicas de C (buffer over-read, string truncation).
+//! las vulnerabilidades clasicas de C (buffer over-read, string truncation).
 //!
-//! - `BmoStr` — vista prestada (ptr + len), similar a `&str`.
-//! - `BmoString` — owned (ptr + len + capacity), similar a `String`.
+//! - `BmoStr` -- vista prestada (ptr + len), similar a `&str`.
+//! - `BmoString` -- owned (ptr + len + capacity), similar a `String`.
 
 use crate::bmo_abi::primitives::bx_u64;
 use alloc::string::String;
 
-// ─── BmoStr: string prestado (borrowed) ────────────────────────────
+// --- BmoStr: string prestado (borrowed) ----------------------------
 
 /// Vista prestada de una secuencia UTF-8. FFI-safe: (ptr, len).
 ///
@@ -82,7 +82,7 @@ impl BmoStr {
     }
 }
 
-// ─── BmoString: string owned ───────────────────────────────────────
+// --- BmoString: string owned ---------------------------------------
 
 /// String owned del BMO ABI. FFI-safe: (ptr, len, capacity).
 ///
@@ -180,7 +180,7 @@ impl Drop for BmoString {
     }
 }
 
-// ─── Constants ─────────────────────────────────────────────────────
+// --- Constants -----------------------------------------------------
 
 impl BmoStr {
     pub const EMPTY: Self = Self {

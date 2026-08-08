@@ -1,4 +1,4 @@
-# cpp17.toml — ISO/IEC 14882:2017 (C++17)
+# cpp17.toml -- ISO/IEC 14882:2017 (C++17)
 [standard]
 iso_number = "ISO/IEC 14882:2017"
 year = 2017

@@ -1,4 +1,4 @@
-//! Semantic_ASM loader — shared syscall, type, and stdlib registry.
+//! Semantic_ASM loader -- shared syscall, type, and stdlib registry.
 //!
 //! Single source of truth for all language frontends (C, COBOL, C++).
 //! Each frontend reads files from disk and passes the content here.
@@ -15,7 +15,7 @@ fn str_to_string(s: &str) -> String {
     String::from(s)
 }
 
-// ─ Syscall definitions ─────────────────────────────────────────────
+// - Syscall definitions ---------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyscallDef {
@@ -57,7 +57,7 @@ pub fn parse_syscall_file(content: &str) -> Vec<SyscallDef> {
     defs
 }
 
-// ─ Type aliases ──────────────────────────────────────────────────
+// - Type aliases --------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeAlias {
@@ -94,7 +94,7 @@ pub fn parse_types_file(content: &str) -> Vec<TypeAlias> {
     aliases
 }
 
-// ─ Stdlib manifest ────────────────────────────────────────────────
+// - Stdlib manifest ------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StdlibExport {
@@ -157,7 +157,7 @@ pub fn parse_stdlib_manifest(content: &str) -> StdlibManifest {
     StdlibManifest { exports }
 }
 
-// ─ Module manifest ─────────────────────────────────────────────────
+// - Module manifest -------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct ModuleManifest {
@@ -224,7 +224,7 @@ pub fn parse_module_manifest(content: &str, default_name: &str) -> ModuleManifes
     }
 }
 
-// ─ ABI data model ──────────────────────────────────────────────────
+// - ABI data model --------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct AbiDataModel {

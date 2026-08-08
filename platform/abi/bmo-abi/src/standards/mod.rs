@@ -1,4 +1,4 @@
-//! Language standard profiles — embedded definitions for C, C++, COBOL.
+//! Language standard profiles -- embedded definitions for C, C++, COBOL.
 //!
 //! Each profile defines which language features, type rules, and predefined
 //! macros are active for a given standard version. Frontends query these at
@@ -18,9 +18,9 @@ pub struct StandardProfile {
     pub short_name: &'static str,
     /// Language: "c", "cpp", "cobol"
     pub language: &'static str,
-    /// Feature flags: name → enabled/disabled.
+    /// Feature flags: name -> enabled/disabled.
     pub features: &'static [(&'static str, bool)],
-    /// Predefined macros: name → value.
+    /// Predefined macros: name -> value.
     pub macros: &'static [(&'static str, i64)],
     /// Parent standard (for inheritance).
     pub parent: Option<&'static str>,

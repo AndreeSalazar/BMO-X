@@ -1,15 +1,15 @@
-# BMO ABI — Especificación v2.0
+# BMO ABI -- Especificacion v2.0
 
-> **Estado**: vivo, en evolución.
-> **Última revisión**: v2.0 (post-Opus).
+> **Estado**: vivo, en evolucion.
+> **Ultima revision**: v2.0 (post-Opus).
 > **Mantenedor**: proyecto BMO.
 
 ---
 
-## 0. ¿Qué es BMO ABI?
+## 0. Que es BMO ABI?
 
-**BMO ABI** es la **interfaz binaria y de programación** que define cómo un
-programa (compilado a BEF) interactúa con BMO.
+**BMO ABI** es la **interfaz binaria y de programacion** que define como un
+programa (compilado a BEF) interactua con BMO.
 
 Reemplaza:
 
@@ -26,30 +26,30 @@ resuelve imports y ofrece syscalls BMO; no compila lenguajes en Ring 0.
 
 ---
 
-## 1. Principios de diseño
+## 1. Principios de diseno
 
 | # | Principio | Significado |
 |---|-----------|-------------|
-| 1 | **Modular** | Cada sub-módulo es autocontenido. Una app puede importar solo lo que necesita. |
+| 1 | **Modular** | Cada sub-modulo es autocontenido. Una app puede importar solo lo que necesita. |
 | 2 | **Sin VM obligatoria** | AOT es preferido, pero se permite runtime modular por lenguaje. |
-| 3 | **BEF es el formato canónico** | Todo programa compilado a BEF puede cargarse. |
-| 4 | **ABI explícito, no implícito** | Tamaños, alineaciones, layouts documentados + `static_assert!` en código. |
+| 3 | **BEF es el formato canonico** | Todo programa compilado a BEF puede cargarse. |
+| 4 | **ABI explicito, no implicito** | Tamanos, alineaciones, layouts documentados + `static_assert!` en codigo. |
 | 5 | **Manejo de errores unificado** | `BmoStatus` de 16 bytes en RAX:RDX. Sin TLS, sin errno. |
 | 6 | **Zero-copy donde sea posible** | IPC, surfaces, strings: pasar `(ptr, len)`, no copiar. |
 | 7 | **Handles opacos** | `BmoHandle(0xABCD)` con tag + generation + index. |
-| 8 | **Determinismo** | `BmoInstant` es monotónico RDTSC-backed, no afectado por NTP. |
+| 8 | **Determinismo** | `BmoInstant` es monotonico RDTSC-backed, no afectado por NTP. |
 
 ---
 
 ## 1.1 Perfil de CPU BMO v1
 
-BMO v1 define un contrato nativo, no un objetivo genérico de escritorio:
+BMO v1 define un contrato nativo, no un objetivo generico de escritorio:
 
 | Propiedad | Contrato v1 |
 |---|---|
 | Arquitectura | x86-64, little-endian |
 | Modelo de datos | punteros y `usize` de 64 bits |
-| Páginas base | 4 KiB |
+| Paginas base | 4 KiB |
 | CPU base | AMD Zen 3 (`target-cpu=znver3`) |
 | ISA requerida | SSE4.2, AVX, AVX2, FMA, BMI1/2, AES, PCLMULQDQ, RDTSCP, invariant TSC |
 | Perfil por defecto | AMD Ryzen 5 5600X |
@@ -59,8 +59,8 @@ El perfil se selecciona en Cargo (`cpu-ryzen-5-5600x` o
 `cpu-epyc-zen3`) y queda disponible para registrarse en el manifest BEF.
 El loader debe validar
 los requisitos mediante CPUID antes de transferir control al programa.
-Una futura arquitectura conservará el modelo de datos BMO y BEF, pero
-definirá su propio contrato de registros e instrucciones.
+Una futura arquitectura conservara el modelo de datos BMO y BEF, pero
+definira su propio contrato de registros e instrucciones.
 
 ---
 
@@ -68,63 +68,63 @@ definirá su propio contrato de registros e instrucciones.
 
 ```
 bmo_abi/
-├── fundamentals/       Tipos que TODO código usa
-│   ├── primitives/     bx_u8..u128, bx_i8..i128, bx_f32/64, bx_f16, bx_bool
-│   ├── status/         BmoStatus (16 B), StatusFlags
-│   ├── handle/         BmoHandle (64-bit), HandleKind (34 variants), ops trait
-│   ├── capability/     BmoCap, BmoCapSet (bitset 64)
-│   ├── option/         BmoOption<T> repr(C) FFI-safe
-│   ├── result/         BmoResult<T,E> repr(C) FFI-safe
-│   ├── error/          BmoError (16 B, code+flags+context)
-│   ├── convert/        BmoStatus ↔ BmoError ↔ ErrorCode
-│   ├── string/         BmoStr (16 B borrowed), BmoString (24 B owned)
-│   ├── memory/         BmoSlice, BmoSliceMut, BmoRange, BmoAligned
-│   ├── buffer/         BmoBuffer (32 B shared memory descriptor)
-│   ├── allocator/      BmoAllocator trait, GlobalAllocator wrapper
-│   ├── io/             BmoRead, BmoWrite, BmoSeek traits + BmoPipe
-│   ├── fmt/            BmoFormatter stack-allocated (256 B buffer)
-│   └── sync/           BmoAtomicU32/U64/Bool, BmoSpinLock
-│
-├── values/             Tipos valor con semántica propia
-│   ├── time/           BmoInstant (RDTSC), BmoDuration
-│   ├── clock/          BmoClockId, sleep, sleep_until
-│   ├── uuid/           BmoUuid 128-bit (RFC 4122)
-│   ├── version/        BmoVersion semver (major.minor.patch)
-│   ├── math/           sqrt, sin, cos, pow (Newton/Taylor, no_std)
-│   ├── hash/           FNV-1a 32/64, CRC32c (SSE4.2), CRC32
-│   ├── net/            BmoIpv4Addr, BmoIpv6Addr, BmoSocketAddr
-│   └── reflect/        BmoTypeInfo, ReflectQuery (hooked to TypeRegistry)
-│
-├── runtime/            TypeRegistry, VTableStore, LangBridge
-├── windowing/          BmoWindowClass, events (paint/key/mouse/resize)
-├── fs/                 BmoFileHandle, BmoOpenFlags, BmoStat, BmoDirEntry
-├── surface/            BmoFormat (22 pixel formats), BmoSurfaceInfo
-├── error_code/         BmoErrorCode enum (21 codes), severity, flags
-├── bef/                Formato BEF completo
-│   ├── header/         BefHeader 48 B, BefMagic::detect()
-│   ├── sections/       SectionKind (10 types), SectionEntry 48 B
-│   ├── symbols/        Symbol 32 B, SymbolKind, SymbolTable
-│   ├── relocations/    Relocation 24 B (Abs64/Rel32/Got64)
-│   ├── imports/        ImportEntry 24 B, ImportTable
-│   ├── exports/        ExportEntry 32 B, ExportTable
-│   ├── manifest/       Manifest, Identity, Provenance (Native/PeDevoured/ElfDevoured)
-│   ├── tls/            TlsTemplate 24 B, TLS setup
-│   ├── signing/        SectionHash 40 B, SignatureHeader 8 B, BLAKE3
-│   ├── blake3/         BLAKE3 implementation (294 L, no_std)
-│   ├── writer/         BefBuilder + BefSection — produce BEF válido
-│   ├── validator/      validate() — comprobación estructural completa
-│   └── loader/         load() — runtime loader con callback de imports
-│
-├── syscalls/           Tabla única 0x100..0x1FF + syscall0..syscall6 wrappers
-└── profile/            BmoLanguageProfile + ALL_PROFILES
++-- fundamentals/       Tipos que TODO codigo usa
+|   +-- primitives/     bx_u8..u128, bx_i8..i128, bx_f32/64, bx_f16, bx_bool
+|   +-- status/         BmoStatus (16 B), StatusFlags
+|   +-- handle/         BmoHandle (64-bit), HandleKind (34 variants), ops trait
+|   +-- capability/     BmoCap, BmoCapSet (bitset 64)
+|   +-- option/         BmoOption<T> repr(C) FFI-safe
+|   +-- result/         BmoResult<T,E> repr(C) FFI-safe
+|   +-- error/          BmoError (16 B, code+flags+context)
+|   +-- convert/        BmoStatus <-> BmoError <-> ErrorCode
+|   +-- string/         BmoStr (16 B borrowed), BmoString (24 B owned)
+|   +-- memory/         BmoSlice, BmoSliceMut, BmoRange, BmoAligned
+|   +-- buffer/         BmoBuffer (32 B shared memory descriptor)
+|   +-- allocator/      BmoAllocator trait, GlobalAllocator wrapper
+|   +-- io/             BmoRead, BmoWrite, BmoSeek traits + BmoPipe
+|   +-- fmt/            BmoFormatter stack-allocated (256 B buffer)
+|   +-- sync/           BmoAtomicU32/U64/Bool, BmoSpinLock
+|
++-- values/             Tipos valor con semantica propia
+|   +-- time/           BmoInstant (RDTSC), BmoDuration
+|   +-- clock/          BmoClockId, sleep, sleep_until
+|   +-- uuid/           BmoUuid 128-bit (RFC 4122)
+|   +-- version/        BmoVersion semver (major.minor.patch)
+|   +-- math/           sqrt, sin, cos, pow (Newton/Taylor, no_std)
+|   +-- hash/           FNV-1a 32/64, CRC32c (SSE4.2), CRC32
+|   +-- net/            BmoIpv4Addr, BmoIpv6Addr, BmoSocketAddr
+|   +-- reflect/        BmoTypeInfo, ReflectQuery (hooked to TypeRegistry)
+|
++-- runtime/            TypeRegistry, VTableStore, LangBridge
++-- windowing/          BmoWindowClass, events (paint/key/mouse/resize)
++-- fs/                 BmoFileHandle, BmoOpenFlags, BmoStat, BmoDirEntry
++-- surface/            BmoFormat (22 pixel formats), BmoSurfaceInfo
++-- error_code/         BmoErrorCode enum (21 codes), severity, flags
++-- bef/                Formato BEF completo
+|   +-- header/         BefHeader 48 B, BefMagic::detect()
+|   +-- sections/       SectionKind (10 types), SectionEntry 48 B
+|   +-- symbols/        Symbol 32 B, SymbolKind, SymbolTable
+|   +-- relocations/    Relocation 24 B (Abs64/Rel32/Got64)
+|   +-- imports/        ImportEntry 24 B, ImportTable
+|   +-- exports/        ExportEntry 32 B, ExportTable
+|   +-- manifest/       Manifest, Identity, Provenance (Native/PeDevoured/ElfDevoured)
+|   +-- tls/            TlsTemplate 24 B, TLS setup
+|   +-- signing/        SectionHash 40 B, SignatureHeader 8 B, BLAKE3
+|   +-- blake3/         BLAKE3 implementation (294 L, no_std)
+|   +-- writer/         BefBuilder + BefSection -- produce BEF valido
+|   +-- validator/      validate() -- comprobacion estructural completa
+|   +-- loader/         load() -- runtime loader con callback de imports
+|
++-- syscalls/           Tabla unica 0x100..0x1FF + syscall0..syscall6 wrappers
++-- profile/            BmoLanguageProfile + ALL_PROFILES
 ```
 
-### Tipos repr(C) y tamaños verificados
+### Tipos repr(C) y tamanos verificados
 
-Cada tipo `#[repr(C)]` tiene un `static_assert!` en línea que verifica su
-tamaño en tiempo de compilación. 34 aserciones activas:
+Cada tipo `#[repr(C)]` tiene un `static_assert!` en linea que verifica su
+tamano en tiempo de compilacion. 34 aserciones activas:
 
-| Tipo | Tamaño | Área |
+| Tipo | Tamano | Area |
 |------|--------|------|
 | `BefHeader` | 48 B | bef |
 | `SectionEntry` | 48 B | bef |
@@ -207,7 +207,7 @@ Estado de migracion:
 
 Ver `syscalls/mod.rs` para la lista completa.
 
-### Convención de syscall (x86_64)
+### Convencion de syscall (x86_64)
 
 ```
 RAX = syscall number
@@ -228,43 +228,43 @@ Wrappers: `syscall0()` .. `syscall6()` en `syscalls/` (inline asm, `no_std`).
 ## 4. BEF (Binary Executable Format)
 
 ```
-┌──────────────────────────────────────┐
-│ BefHeader (48 bytes, align 16)       │
-│   magic: "BEF1" (u32 LE)             │
-│   version: (1, 0)                    │
-│   flags: BefFlags (EXECUTABLE, PIE)  │
-│   arch: X86_64                       │
-│   entry_offset: u64                  │
-│   section_table_offset: u64          │
-│   section_count: u32                 │
-│   total_size: u32                    │
-├──────────────────────────────────────┤
-│ Section table (entries × 48 B)       │
-│   10 tipos: Code, RoData, Data, Bss, │
-│   Imports, Exports, Relocs, Symbols, │
-│   Manifest, Tls, Signature           │
-├──────────────────────────────────────┤
-│ Section data (alin. a 8..4096)       │
-├──────────────────────────────────────┤
-│ Signature trailer (BLAKE3 hashes)    │
-└──────────────────────────────────────┘
++--------------------------------------+
+| BefHeader (48 bytes, align 16)       |
+|   magic: "BEF1" (u32 LE)             |
+|   version: (1, 0)                    |
+|   flags: BefFlags (EXECUTABLE, PIE)  |
+|   arch: X86_64                       |
+|   entry_offset: u64                  |
+|   section_table_offset: u64          |
+|   section_count: u32                 |
+|   total_size: u32                    |
++--------------------------------------+
+| Section table (entries x 48 B)       |
+|   10 tipos: Code, RoData, Data, Bss, |
+|   Imports, Exports, Relocs, Symbols, |
+|   Manifest, Tls, Signature           |
++--------------------------------------+
+| Section data (alin. a 8..4096)       |
++--------------------------------------+
+| Signature trailer (BLAKE3 hashes)    |
++--------------------------------------+
 ```
 
 - **Header fijo de 48 B** (vs 64+ ELF, 264+ PE).
-- **21 tipos de sección** planeados, 10 implementados.
-- **3 tipos de relocación**: Abs64, Rel32, Got64.
-- **Hashing**: BLAKE3 256-bit por sección.
+- **21 tipos de seccion** planeados, 10 implementados.
+- **3 tipos de relocacion**: Abs64, Rel32, Got64.
+- **Hashing**: BLAKE3 256-bit por seccion.
 - **Firma**: Ed25519 (infraestructura lista).
-- **Multiboot**: detecta PE (`MZ`) y ELF (`\x7FELF`) vía `BefMagic::detect()`.
-- **Devour**: PE/ELF → BEF (traducción nativa).
+- **Multiboot**: detecta PE (`MZ`) y ELF (`\x7FELF`) via `BefMagic::detect()`.
+- **Devour**: PE/ELF -> BEF (traduccion nativa).
 
 ### Writer, Validator, Loader
 
-| Componente | Archivo | Función |
+| Componente | Archivo | Funcion |
 |------------|---------|---------|
-| Writer | `bef/writer.rs` | `BefBuilder` + `BefSection` → produce `Vec<u8>` BEF |
-| Validator | `bef/validator.rs` | `validate()` — comprueba magic, bounds, duplicados, firma |
-| Loader | `bef/loader.rs` | `load()` — parsea, asigna memoria, resuelve imports, aplica relocs, TLS |
+| Writer | `bef/writer.rs` | `BefBuilder` + `BefSection` -> produce `Vec<u8>` BEF |
+| Validator | `bef/validator.rs` | `validate()` -- comprueba magic, bounds, duplicados, firma |
+| Loader | `bef/loader.rs` | `load()` -- parsea, asigna memoria, resuelve imports, aplica relocs, TLS |
 
 ---
 
@@ -291,25 +291,25 @@ bits 62..63  = reserved
 `BmoStatus` (16 B, repr(C)) es el return value universal:
 
 ```
-[0..3]  code:   u32  — 0 = OK, >0 = error
-[4..7]  flags:  u32  — StatusFlags (partial, retry, truncated, etc.)
-[8..15] value:  u64  — handle, contador, offset, etc.
+[0..3]  code:   u32  -- 0 = OK, >0 = error
+[4..7]  flags:  u32  -- StatusFlags (partial, retry, truncated, etc.)
+[8..15] value:  u64  -- handle, contador, offset, etc.
 ```
 
-`BmoError` (16 B) es análogo pero con semántica de error:
+`BmoError` (16 B) es analogo pero con semantica de error:
 
 ```
-[0..3]  code:    u32  — error_code::* (21 códigos)
-[4..7]  flags:   u32  — StatusFlags
-[8..15] context: u64  — payload contextual
+[0..3]  code:    u32  -- error_code::* (21 codigos)
+[4..7]  flags:   u32  -- StatusFlags
+[8..15] context: u64  -- payload contextual
 ```
 
-Todos los `BmoStatus` ↔ `BmoError` ↔ `ErrorCode` tienen conversiones
+Todos los `BmoStatus` <-> `BmoError` <-> `ErrorCode` tienen conversiones
 bidireccionales en `fundamentals/convert/`.
 
 ---
 
-## 7. Convención de llamada (BMO Call)
+## 7. Convencion de llamada (BMO Call)
 
 ```
 Argument registers (7 GPRs): RDI, RSI, RDX, RCX, R8, R9, R10
@@ -324,14 +324,14 @@ Scratch registers: RAX, RCX, RDX, RSI, RDI, R8-R11
 
 ## 8. Punto de entrada
 
-Todo programa BMO ABI exporta un símbolo `_bmo_start`:
+Todo programa BMO ABI exporta un simbolo `_bmo_start`:
 
 ```rust
 #[no_mangle]
 pub extern "sysv64" fn _bmo_start(argc: u64, argv: *const *const u8) -> !;
 ```
 
-El loader de BEF salta a `_bmo_start` después de:
+El loader de BEF salta a `_bmo_start` despues de:
 1. Mapear secciones en memoria
 2. Aplicar relocalizaciones
 3. Resolver imports
@@ -340,33 +340,33 @@ El loader de BEF salta a `_bmo_start` después de:
 
 ---
 
-## 9. Garantías
+## 9. Garantias
 
-1. **ABI v2 estable**: los tres números core no cambian dentro de v2.x.
-2. **Migración gradual**: el kernel v2 acepta BEX ABI 1.0 temporalmente;
+1. **ABI v2 estable**: los tres numeros core no cambian dentro de v2.x.
+2. **Migracion gradual**: el kernel v2 acepta BEX ABI 1.0 temporalmente;
    nuevos productores escriben ABI 2.0.
-3. **Handles son procesos-locales**: un handle de un proceso no es válido
-   en otro (salvo vía IPC explícito).
-4. **Strings son UTF-8 válido obligatorio**. Una función que recibe un
-   `BmoStr` puede asumir UTF-8 válido.
-5. **Time es monotónico**: `BmoInstant::now()` usa RDTSC, no retrocede.
-6. **Todos los tipos repr(C) tienen static_assert!** que verifica su tamaño
-   en compilación. Si el layout cambia, el build falla.
+3. **Handles son procesos-locales**: un handle de un proceso no es valido
+   en otro (salvo via IPC explicito).
+4. **Strings son UTF-8 valido obligatorio**. Una funcion que recibe un
+   `BmoStr` puede asumir UTF-8 valido.
+5. **Time es monotonico**: `BmoInstant::now()` usa RDTSC, no retrocede.
+6. **Todos los tipos repr(C) tienen static_assert!** que verifica su tamano
+   en compilacion. Si el layout cambia, el build falla.
 
 ---
 
 ## 10. Glosario
 
 - **ABI**: Application Binary Interface.
-- **AOT**: Ahead-Of-Time (compilación antes de ejecutar).
+- **AOT**: Ahead-Of-Time (compilacion antes de ejecutar).
 - **BEF**: BMO Executable Format.
-- **BEFCore**: protocolo de mensajes app ↔ BMO CORE.
+- **BEFCore**: protocolo de mensajes app <-> BMO CORE.
 - **BMO**: plataforma nativa y contrato binario de BMO.
-- **BLAKE3**: hash criptográfico rápido (sección hashing de BEF).
-- **Devour**: traducción de PE/ELF a BEF nativo.
+- **BLAKE3**: hash criptografico rapido (seccion hashing de BEF).
+- **Devour**: traduccion de PE/ELF a BEF nativo.
 - **Handle**: referencia opaca a un objeto del kernel.
 - **Ring 0**: kernel (CPU privilege level 0).
 - **Ring 3**: userland (CPU privilege level 3).
-- **Runtime**: código que un lenguaje necesita para ejecutarse.
-- **Syscall**: llamada al kernel mediante instrucción `syscall`.
-- **TypeRegistry**: registro fijo de 256 TypeMeta para reflexión.
+- **Runtime**: codigo que un lenguaje necesita para ejecutarse.
+- **Syscall**: llamada al kernel mediante instruccion `syscall`.
+- **TypeRegistry**: registro fijo de 256 TypeMeta para reflexion.

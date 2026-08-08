@@ -1,4 +1,4 @@
-# cobol2023.toml — ISO/IEC 1989:2023 (COBOL 2023)
+# cobol2023.toml -- ISO/IEC 1989:2023 (COBOL 2023)
 [standard]
 iso_number = "ISO/IEC 1989:2023"
 year = 2023

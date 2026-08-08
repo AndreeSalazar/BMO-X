@@ -5,12 +5,12 @@
 
 use super::*;
 
-// ═══════════════ BMO C/Control: la puerta como instrucción ═══════════════
+// =============== BMO C/Control: la puerta como instruccion ===============
 
-/// El literal que hacía falta antes que ningún otro: `CURRENT_TASK`.
+/// El literal que hacia falta antes que ningun otro: `CURRENT_TASK`.
 ///
 /// `i64::from_str_radix` no puede con `0xFFFFFFFFFFFFFFFE` y el
-/// `unwrap_or(0)` lo convertía en **cero, en silencio** — o sea, en la
+/// `unwrap_or(0)` lo convertia en **cero, en silencio** -- o sea, en la
 /// capability 0. Escribir la constante correcta compilaba y llamaba a otro.
 #[test]
 fn hex_de_64_bits_no_se_convierte_en_cero() {
@@ -19,7 +19,7 @@ fn hex_de_64_bits_no_se_convierte_en_cero() {
     assert_eq!(out.trim(), "fffffffffffffffe");
 }
 
-/// Y si de verdad no cabe, se dice. Callarlo sería el mismo error con otro
+/// Y si de verdad no cabe, se dice. Callarlo seria el mismo error con otro
 /// valor.
 #[test]
 fn hex_mas_alla_de_64_bits_es_un_error_no_un_cero() {
@@ -29,11 +29,11 @@ fn hex_mas_alla_de_64_bits_es_un_error_no_un_cero() {
 }
 
 /// `__syscall` es una fila de la tabla sem-asm, no una caja negra: sus
-/// argumentos van a rdi/rsi/rdx/r10/r8, que es la convención de la puerta.
+/// argumentos van a rdi/rsi/rdx/r10/r8, que es la convencion de la puerta.
 ///
-/// Se comprueba sobre `CONSOLE_WRITE` porque es la única operación cuyo
+/// Se comprueba sobre `CONSOLE_WRITE` porque es la unica operacion cuyo
 /// efecto se ve desde fuera: si un argumento cayera en otro registro, no
-/// saldría este texto.
+/// saldria este texto.
 #[test]
 fn syscall_intrinseco_coloca_los_argumentos_donde_dice_la_tabla() {
     // "hola" en little-endian dentro de un solo u64, que es como viaja la
@@ -44,7 +44,7 @@ fn syscall_intrinseco_coloca_los_argumentos_donde_dice_la_tabla() {
     assert_eq!(out, "hola");
 }
 
-/// La puerta contesta DOS cosas: el código en rax y el valor en rdx. Las
+/// La puerta contesta DOS cosas: el codigo en rax y el valor en rdx. Las
 /// dos filas de la tabla existen para poder recoger cada una.
 #[test]
 fn syscall_valor_recoge_rdx_y_syscall_recoge_rax() {
@@ -55,12 +55,12 @@ fn syscall_valor_recoge_rdx_y_syscall_recoge_rax() {
          c = __syscall(0, 0xFFFFFFFFFFFFFFFE, 0x0F, 0, 0, 0); \
          printf(\"valor=%x codigo=%d\\n\", v, (int)c); return 0; }";
     let out = run_c_sembrado(fuente, |m| m.poner_entrada("AB"));
-    // n=2, bytes = 'A','B' → 0x0200000000004241. La segunda lectura ya no
-    // tiene nada, así que el código sigue siendo 0 pero el valor sería 0.
+    // n=2, bytes = 'A','B' -> 0x0200000000004241. La segunda lectura ya no
+    // tiene nada, asi que el codigo sigue siendo 0 pero el valor seria 0.
     assert_eq!(out.trim(), "valor=200000000004241 codigo=0");
 }
 
-// ═══════════════ <bmo/bmo.h>: la superficie en C ═══════════════
+// =============== <bmo/bmo.h>: la superficie en C ===============
 
 #[test]
 fn la_cabecera_baja_a_la_puerta_sin_runtime_que_enlazar() {
@@ -72,11 +72,11 @@ fn la_cabecera_baja_a_la_puerta_sin_runtime_que_enlazar() {
     assert_eq!(out, "pid=0\ncedi\n");
 }
 
-// ═══════════════ <bmo/entrada.h>: el ratón y el teclado ═══════════════
+// =============== <bmo/entrada.h>: el raton y el teclado ===============
 
-/// Sin ceder la entrada, reclamarla da 0. Es el caso NORMAL —el compositor
-/// la tiene— y un programa que no lo comprueba lee ceros para siempre y
-/// parece un ratón roto.
+/// Sin ceder la entrada, reclamarla da 0. Es el caso NORMAL --el compositor
+/// la tiene-- y un programa que no lo comprueba lee ceros para siempre y
+/// parece un raton roto.
 #[test]
 fn reclamar_la_entrada_puede_fallar_y_se_nota() {
     let fuente = "#include <bmo/entrada.h>\n\
@@ -88,7 +88,7 @@ fn reclamar_la_entrada_puede_fallar_y_se_nota() {
 }
 
 /// Las teclas salen una por llamada, y `-1` significa "no hay", que es el
-/// convenio de `getchar` y no un byte válido.
+/// convenio de `getchar` y no un byte valido.
 #[test]
 fn las_teclas_salen_en_orden_y_el_final_es_menos_uno() {
     let fuente = "#include <bmo/entrada.h>\n\
@@ -103,9 +103,9 @@ fn las_teclas_salen_en_orden_y_el_final_es_menos_uno() {
     assert_eq!(out.trim(), "97 98 135 fin");
 }
 
-/// ★ La rueda **consume**: dos lecturas seguidas sin girar dan cero la
-/// segunda. Es la propiedad que decide si un scroll se mueve solo, y sólo
-/// se distingue de un acumulado EJECUTÁNDOLA.
+/// * La rueda **consume**: dos lecturas seguidas sin girar dan cero la
+/// segunda. Es la propiedad que decide si un scroll se mueve solo, y solo
+/// se distingue de un acumulado EJECUTANDOLA.
 #[test]
 fn la_rueda_se_vacia_al_leerla() {
     let fuente = "#include <bmo/entrada.h>\n\
@@ -118,9 +118,9 @@ fn la_rueda_se_vacia_al_leerla() {
     assert_eq!(out.trim(), "4 0");
 }
 
-/// Girar hacia atrás es NEGATIVO. Sin el `(int)` de la cabecera, el valor
-/// viaja como i32 dentro de un u64 y una muesca hacia abajo daría cuatro
-/// mil millones — un scroll que salta al principio del historial.
+/// Girar hacia atras es NEGATIVO. Sin el `(int)` de la cabecera, el valor
+/// viaja como i32 dentro de un u64 y una muesca hacia abajo daria cuatro
+/// mil millones -- un scroll que salta al principio del historial.
 #[test]
 fn la_rueda_hacia_atras_es_negativa() {
     let fuente = "#include <bmo/entrada.h>\n\
@@ -147,10 +147,10 @@ fn el_puntero_se_desempaqueta_bien() {
     assert_eq!(out.trim(), "1024,600 b=1 ev=1");
 }
 
-// ═══════════════ <bmo/scroll.h>: la ventana sobre el historial ═══════════
+// =============== <bmo/scroll.h>: la ventana sobre el historial ===========
 
-/// Los dos topes. Pasarse por arriba enseña filas en blanco —parece que se
-/// ha perdido todo—; pasarse por abajo deja la vista en negativo.
+/// Los dos topes. Pasarse por arriba ensena filas en blanco --parece que se
+/// ha perdido todo--; pasarse por abajo deja la vista en negativo.
 #[test]
 fn el_scroll_se_topa_solo_en_los_dos_extremos() {
     let out = run_c_con_pp(
@@ -163,7 +163,7 @@ fn el_scroll_se_topa_solo_en_los_dos_extremos() {
     assert_eq!(out.trim(), "0 184 10");
 }
 
-/// Un historial que todavía no llena la ventana sólo tiene un sitio válido.
+/// Un historial que todavia no llena la ventana solo tiene un sitio valido.
 #[test]
 fn sin_historial_suficiente_la_unica_vista_es_el_fondo() {
     let out = run_c_con_pp(
@@ -173,8 +173,8 @@ fn sin_historial_suficiente_la_unica_vista_es_el_fondo() {
     assert_eq!(out.trim(), "0");
 }
 
-/// Tres filas por muesca, y hacia atrás resta. Es el mismo paso que el
-/// compositor: si divergieran, la rueda haría una cosa en Rust y otra en C.
+/// Tres filas por muesca, y hacia atras resta. Es el mismo paso que el
+/// compositor: si divergieran, la rueda haria una cosa en Rust y otra en C.
 #[test]
 fn la_rueda_mueve_tres_filas_por_muesca_en_los_dos_sentidos() {
     let out = run_c_con_pp(
@@ -185,8 +185,8 @@ fn la_rueda_mueve_tres_filas_por_muesca_en_los_dos_sentidos() {
     assert_eq!(out.trim(), "9 3");
 }
 
-/// Una página es `visibles - 1`: la fila que se solapa es lo que deja
-/// seguir leyendo sin volver atrás.
+/// Una pagina es `visibles - 1`: la fila que se solapa es lo que deja
+/// seguir leyendo sin volver atras.
 #[test]
 fn repag_y_avpag_dejan_una_fila_de_solape() {
     let out = run_c_con_pp(
@@ -198,7 +198,7 @@ fn repag_y_avpag_dejan_una_fila_de_solape() {
 }
 
 /// Una tecla que no es de scroll no mueve la vista. Sin esto, escribir
-/// movería el historial bajo los pies del que escribe.
+/// moveria el historial bajo los pies del que escribe.
 #[test]
 fn una_tecla_cualquiera_no_mueve_el_historial() {
     let out = run_c_con_pp(
@@ -232,10 +232,10 @@ fn la_primera_fila_visible_sigue_a_la_vista() {
 }
 
 
-// ═══════════════ El ejemplo del repositorio, ejecutado ═══════════════
+// =============== El ejemplo del repositorio, ejecutado ===============
 
 /// Con el compositor vivo la entrada es SUYA, y esto lo dice en vez de
-/// quedarse leyendo ceros — que se ve igual que un ratón roto y manda a
+/// quedarse leyendo ceros -- que se ve igual que un raton roto y manda a
 /// depurar el USB sin motivo.
 #[test]
 fn scroll_sin_entrada_lo_dice_y_se_va() {
@@ -246,9 +246,9 @@ fn scroll_sin_entrada_lo_dice_y_se_va() {
 
 /// El programa entero: rueda hacia el pasado, RePag, Fin y ESC.
 ///
-/// Es la mitad de la prueba que el Ryzen no puede dar todavía —el ratón
-/// sigue sin verificar en metal—, y RePag/AvPag no dependen del ratón, así
-/// que esa mitad se puede cerrar aquí.
+/// Es la mitad de la prueba que el Ryzen no puede dar todavia --el raton
+/// sigue sin verificar en metal--, y RePag/AvPag no dependen del raton, asi
+/// que esa mitad se puede cerrar aqui.
 #[test]
 fn scroll_recorre_el_historial_con_la_rueda_y_con_las_teclas() {
     let out = run_c_sembrado(include_str!("../../examples/scroll_C.c"), |m| {
@@ -271,8 +271,8 @@ fn scroll_recorre_el_historial_con_la_rueda_y_con_las_teclas() {
     assert!(out.ends_with("hasta luego.
 "), "salida completa:
 {out}");
-    // Y las filas son las que dicen ser: si el índice se calculara mal, la
-    // cabecera seguiría cuadrando y el contenido no.
+    // Y las filas son las que dicen ser: si el indice se calculara mal, la
+    // cabecera seguiria cuadrando y el contenido no.
     assert!(out.contains("  fila 052
 "), "salida completa:
 {out}");
@@ -281,10 +281,10 @@ fn scroll_recorre_el_historial_con_la_rueda_y_con_las_teclas() {
 {out}");
 }
 
-/// ★ La rueda se drena en la PRIMERA vuelta del bucle. Si el programa la
-/// volviera a sumar en la siguiente, el historial seguiría subiendo solo
-/// después de soltarla — el bug que la semántica de "consumir" evita, y que
-/// sólo se ve dando varias vueltas al bucle.
+/// * La rueda se drena en la PRIMERA vuelta del bucle. Si el programa la
+/// volviera a sumar en la siguiente, el historial seguiria subiendo solo
+/// despues de soltarla -- el bug que la semantica de "consumir" evita, y que
+/// solo se ve dando varias vueltas al bucle.
 #[test]
 fn el_scroll_no_sigue_moviendose_solo_tras_soltar_la_rueda() {
     let out = run_c_sembrado(include_str!("../../examples/scroll_C.c"), |m| {
@@ -307,7 +307,7 @@ fn el_scroll_no_sigue_moviendose_solo_tras_soltar_la_rueda() {
 }
 
 /// Volver de `main` debe terminar el proceso por la puerta. Si no, la
-/// ejecución sigue de largo hacia lo que haya después del código.
+/// ejecucion sigue de largo hacia lo que haya despues del codigo.
 #[test]
 fn returning_from_main_exits_through_the_door() {
     let bef = compile_source_to_bef("int main() { return 0; }").unwrap();

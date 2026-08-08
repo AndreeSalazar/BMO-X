@@ -105,17 +105,17 @@ impl Scheduler {
     /// Free kernel stacks of exited tasks and recycle their slots.
     /// Never reaps the running task.
     ///
-    /// ★ NI LA PILA QUE ESTAMOS PISANDO. `current_tid` ya es la tarea
+    /// * NI LA PILA QUE ESTAMOS PISANDO. `current_tid` ya es la tarea
     /// ENTRANTE cuando esto corre: la que acaba de hacer EXIT pasa el filtro,
-    /// y sus frames volvían al mapa de bits **con RSP todavía dentro de
-    /// ellos**. El epílogo aún tiene que ejecutarse ahí —`mov rsp, rax`, el
-    /// retorno del `call`— sobre memoria que ya es de cualquiera. No revienta
+    /// y sus frames volvian al mapa de bits **con RSP todavia dentro de
+    /// ellos**. El epilogo aun tiene que ejecutarse ahi --`mov rsp, rax`, el
+    /// retorno del `call`-- sobre memoria que ya es de cualquiera. No revienta
     /// en el acto: revienta cuando el siguiente `alloc_frames_contig` (una
     /// pila nueva, un buffer de DMA del AHCI) escribe encima. Ese retraso es
-    /// justo lo que lo hace difícil de encontrar.
+    /// justo lo que lo hace dificil de encontrar.
     ///
-    /// La comprobación es directa: si el RSP de ahora cae dentro de la pila de
-    /// esa tarea, no se libera **y la tarea se queda `Exited`**, no se vacía
+    /// La comprobacion es directa: si el RSP de ahora cae dentro de la pila de
+    /// esa tarea, no se libera **y la tarea se queda `Exited`**, no se vacia
     /// el hueco. La recoge la siguiente pasada, ya desde otra pila. Un turno
     /// de retraso a cambio de no tirar el suelo.
     fn reap(&mut self) {
@@ -188,21 +188,21 @@ pub fn init(tsc_hz: u64) {
     s.next_tid = 2;
 }
 
-/// ¿Hay un contexto saliente que guardar?
+/// Hay un contexto saliente que guardar?
 ///
 /// `percpu::trap_rsp()` lo publica el stub de entrada de cada trap. Los stubs
-/// de fault (#UD/#GP/#PF) **no publican nada a propósito**: el contexto que se
-/// muere no se guarda. Pero entonces el valor que sigue ahí es el del trap
-/// ANTERIOR —ya consumido por su epílogo, con la pila por encima libre para
-/// que la pise cualquier cosa— y guardarlo como contexto de nadie es sembrar
+/// de fault (#UD/#GP/#PF) **no publican nada a proposito**: el contexto que se
+/// muere no se guarda. Pero entonces el valor que sigue ahi es el del trap
+/// ANTERIOR --ya consumido por su epilogo, con la pila por encima libre para
+/// que la pise cualquier cosa-- y guardarlo como contexto de nadie es sembrar
 /// un `iretq` con basura para dentro de un rato.
 ///
-/// Por eso la decisión es un argumento y no una suposición sobre un global.
+/// Por eso la decision es un argumento y no una suposicion sobre un global.
 #[derive(Clone, Copy, PartialEq)]
 enum Saliente {
-    /// Venimos de un stub que publicó contexto: guardarlo.
+    /// Venimos de un stub que publico contexto: guardarlo.
     Publicado,
-    /// Nadie publicó (ruta de fault): la tarea que sale ya está muerta y su
+    /// Nadie publico (ruta de fault): la tarea que sale ya esta muerta y su
     /// `context_rsp` no se toca.
     Ninguno,
 }
@@ -210,37 +210,37 @@ enum Saliente {
 /// Commit a context switch if a better task exists. Must run with the lock
 /// held and from a trap boundary only.
 ///
-/// ★ **UN CONTEXTO SÓLO SE GUARDA SI EL CAMBIO SE CONSUMA.** Esto costó tres
-/// días y tres fotos, así que merece estar escrito entero.
+/// * **UN CONTEXTO SOLO SE GUARDA SI EL CAMBIO SE CONSUMA.** Esto costo tres
+/// dias y tres fotos, asi que merece estar escrito entero.
 ///
-/// Antes `context_rsp` se guardaba nada más entrar, **antes** de saber si iba a
-/// haber cambio. Cuando no lo había —`next == current`, o el destino sin
-/// contexto— el epílogo restauraba ese mismo contexto en el acto y lo
-/// **consumía**: `xrstor`, `pop`×15, `iretq`, y la ejecución seguía por encima
-/// de él. A partir de ese instante esa dirección es pila libre. Pero en la
-/// tabla seguía anotada como "el contexto de esta tarea".
+/// Antes `context_rsp` se guardaba nada mas entrar, **antes** de saber si iba a
+/// haber cambio. Cuando no lo habia --`next == current`, o el destino sin
+/// contexto-- el epilogo restauraba ese mismo contexto en el acto y lo
+/// **consumia**: `xrstor`, `pop`x15, `iretq`, y la ejecucion seguia por encima
+/// de el. A partir de ese instante esa direccion es pila libre. Pero en la
+/// tabla seguia anotada como "el contexto de esta tarea".
 ///
 /// Con las tareas de usuario no se notaba: entran siempre por `TSS.RSP0`, o sea
-/// por la cima de su pila, así que su contexto cae siempre en el mismo sitio y
-/// una dirección caducada resulta ser la buena por casualidad.
+/// por la cima de su pila, asi que su contexto cae siempre en el mismo sitio y
+/// una direccion caducada resulta ser la buena por casualidad.
 ///
 /// **La tarea 0 no.** Es el shell, corre en la pila de arranque, y el timer la
-/// interrumpe a la profundidad a la que esté en ese momento. Su contexto se
+/// interrumpe a la profundidad a la que este en ese momento. Su contexto se
 /// guarda a una profundidad distinta cada vez. Secuencia mortal:
 ///
-/// 1. El timer interrumpe a la tarea 0 hondo; se publica el área A y se anota.
-/// 2. No hay otra tarea lista: `next == current`, no hay cambio. El epílogo
-///    restaura A y la tarea 0 sigue — A queda consumida.
-/// 3. La tarea 0 sube por la pila; un trap posterior, más arriba, extiende su
-///    propia área 1256 bytes hacia abajo y **escribe encima de A**.
+/// 1. El timer interrumpe a la tarea 0 hondo; se publica el area A y se anota.
+/// 2. No hay otra tarea lista: `next == current`, no hay cambio. El epilogo
+///    restaura A y la tarea 0 sigue -- A queda consumida.
+/// 3. La tarea 0 sube por la pila; un trap posterior, mas arriba, extiende su
+///    propia area 1256 bytes hacia abajo y **escribe encima de A**.
 /// 4. El compositor cede el turno. El planificador elige la tarea 0 y restaura
 ///    A, que ya es basura.
 ///
-/// El síntoma exacto de la foto: el `xsave64` del vándalo dejó su `FCW`
+/// El sintoma exacto de la foto: el `xsave64` del vandalo dejo su `FCW`
 /// (`0x37F`) justo en el `XSTATE_BV` de A. `XSTATE_BV = 0x37F` enciende bits
-/// que `XCR0 = 0x7` no tiene, y eso es `#GP(0)` en `xrstor64` por definición.
+/// que `XCR0 = 0x7` no tiene, y eso es `#GP(0)` en `xrstor64` por definicion.
 /// Con el compositor cediendo miles de veces por segundo, el paso 4 pasa
-/// constantemente; por eso apareció justo ahora.
+/// constantemente; por eso aparecio justo ahora.
 fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
     let outgoing = percpu::trap_rsp();
     if s.tasks[s.current].state == TaskState::Running {
@@ -262,18 +262,18 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
         }
         return;
     }
-    // ── El cambio VA a ocurrir. Ahora, y sólo ahora, se guarda el saliente ──
+    // -- El cambio VA a ocurrir. Ahora, y solo ahora, se guarda el saliente --
     //
-    // A partir de aquí no hay vuelta atrás: el epílogo va a restaurar
-    // `next_rsp`, así que el contexto que entró por este trap NO se consume y
-    // su dirección sigue siendo válida hasta que esta tarea vuelva a entrar.
+    // A partir de aqui no hay vuelta atras: el epilogo va a restaurar
+    // `next_rsp`, asi que el contexto que entro por este trap NO se consume y
+    // su direccion sigue siendo valida hasta que esta tarea vuelva a entrar.
     // Guardarlo antes de este punto era anotar como vigente un contexto que un
-    // instante después se restauraba y quedaba caduco.
+    // instante despues se restauraba y quedaba caduco.
     if saliente == Saliente::Publicado && outgoing != 0 {
         s.tasks[s.current].context_rsp = outgoing;
-        // El dueño, en el propio contexto. El stub ya puso la firma en
-        // ensamblador; el tid lo sabe Rust. Con los dos, un epílogo que se
-        // encuentre algo raro puede decir DE QUIÉN era, no sólo que estaba
+        // El dueno, en el propio contexto. El stub ya puso la firma en
+        // ensamblador; el tid lo sabe Rust. Con los dos, un epilogo que se
+        // encuentre algo raro puede decir DE QUIEN era, no solo que estaba
         // roto.
         crate::ring0::plat::trap::sellar(outgoing, s.tasks[s.current].tid);
     }
@@ -290,12 +290,12 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
         mm::vmm::switch_to(next_cr3);
     }
     // Las rampas de aterrizaje de Ring 3 (TSS.RSP0 y la pila de SYSCALL)
-    // siguen a la tarea SIEMPRE que ésta tenga pila propia, no solo cuando es
+    // siguen a la tarea SIEMPRE que esta tenga pila propia, no solo cuando es
     // de usuario. Si solo se actualizan para tareas de usuario, al cambiar a
-    // una tarea de kernel se quedan apuntando a la pila de la última tarea de
-    // usuario — que puede estar ya muerta y liberada. Es un puntero colgando
-    // en el TSS: inofensivo mientras nadie entre por ahí, y catastrófico el
-    // día que alguien entre.
+    // una tarea de kernel se quedan apuntando a la pila de la ultima tarea de
+    // usuario -- que puede estar ya muerta y liberada. Es un puntero colgando
+    // en el TSS: inofensivo mientras nadie entre por ahi, y catastrofico el
+    // dia que alguien entre.
     if next_task.kernel_stack_top != 0 {
         crate::ring0::task::proc::set_tss_rsp0(next_task.kernel_stack_top);
         percpu::set_syscall_stack_top(next_task.kernel_stack_top);
@@ -312,10 +312,10 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
             SWITCH_SNAP[1] = ((next_rsp + crate::ring0::plat::trap::XSAVE_AREA as u64) as *const u64).read_volatile();
             SWITCH_SNAP[2] = mm::vmm::read_cr3();
             SWITCH_SNAP[3] = SWITCH_SNAP[3].wrapping_add(1);
-            // El PRIMER cruce a CPL3 de la vida del sistema. Momento histórico
-            // y, sobre todo, el punto exacto donde antes moríamos: si CABINA lo
-            // graba, el iretq a usuario ocurrió de verdad. Una sola vez — esto
-            // corre dentro del IRQ del timer, no puede ser charlatán.
+            // El PRIMER cruce a CPL3 de la vida del sistema. Momento historico
+            // y, sobre todo, el punto exacto donde antes moriamos: si CABINA lo
+            // graba, el iretq a usuario ocurrio de verdad. Una sola vez -- esto
+            // corre dentro del IRQ del timer, no puede ser charlatan.
             if SWITCH_SNAP[3] == 1 {
                 crate::ring0::cabina::info("sched", "primer switch a CPL3 (userspace corre)", next_task.tid as u64);
             }
@@ -324,7 +324,7 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
     s.reap();
 }
 
-/// Debug: last switch into a user task — `[context_rsp, backptr@switch,
+/// Debug: last switch into a user task -- `[context_rsp, backptr@switch,
 /// cr3@switch, ordinal]`. See the capture in `schedule_locked`.
 pub static mut SWITCH_SNAP: [u64; 4] = [0; 4];
 
@@ -341,7 +341,7 @@ pub fn user_switches() -> u64 {
 /// Fault isolation: the CURRENT task took a CPU fault it cannot survive.
 /// Mark it Exited (never the shell at index 0), commit a switch to the next
 /// runnable context, and return the context_rsp the fault stub must restore.
-/// Called from the #UD/#GP/#PF stubs when the fault came from CPL3 — the
+/// Called from the #UD/#GP/#PF stubs when the fault came from CPL3 -- the
 /// dying context is NOT saved (it is dead by definition), so unlike the
 /// voluntary paths this never touches the outgoing frame.
 pub fn kill_current_and_pick() -> u64 {
@@ -354,7 +354,7 @@ pub fn kill_current_and_pick() -> u64 {
     percpu::trap_rsp()
 }
 
-/// Lock-free diagnostic read of a task's state by TID. Racy by design —
+/// Lock-free diagnostic read of a task's state by TID. Racy by design --
 /// telemetry only. 255 = no live task with that TID (never existed, or
 /// exited and was reaped).
 pub fn tid_state(tid: u32) -> u8 {
@@ -371,19 +371,19 @@ pub fn tid_state(tid: u32) -> u8 {
 ///
 /// Lo necesita Endpoint RPC para escribir el resultado de una llamada **en el
 /// frame guardado del llamante**. Un syscall que bloquea no puede calcular su
-/// valor de retorno después de bloquearse: `wait_current_checked` vuelve en el
-/// acto y el cambio de contexto se consuma en el epílogo, así que para cuando
-/// hubiera respuesta ese código ya se ejecutó. La respuesta se deja donde el
-/// epílogo la va a recoger.
-/// ★ Solo devuelve el contexto de una tarea **bloqueada**.
+/// valor de retorno despues de bloquearse: `wait_current_checked` vuelve en el
+/// acto y el cambio de contexto se consuma en el epilogo, asi que para cuando
+/// hubiera respuesta ese codigo ya se ejecuto. La respuesta se deja donde el
+/// epilogo la va a recoger.
+/// * Solo devuelve el contexto de una tarea **bloqueada**.
 ///
-/// `context_rsp` es donde quedó guardada la tarea la última vez que salió del
-/// CPU. Para una tarea que está CORRIENDO ese valor es viejo: su estado real
-/// vive en los registros, no en memoria. Escribir ahí no le llega — pisa lo
-/// que haya ahora en esa dirección de pila, que es de otra cosa.
+/// `context_rsp` es donde quedo guardada la tarea la ultima vez que salio del
+/// CPU. Para una tarea que esta CORRIENDO ese valor es viejo: su estado real
+/// vive en los registros, no en memoria. Escribir ahi no le llega -- pisa lo
+/// que haya ahora en esa direccion de pila, que es de otra cosa.
 ///
-/// Devolver 0 salvo que esté `Blocked` convierte ese error en un no-op en vez
-/// de en una corrupción silenciosa de otro contexto.
+/// Devolver 0 salvo que este `Blocked` convierte ese error en un no-op en vez
+/// de en una corrupcion silenciosa de otro contexto.
 pub fn context_rsp_of(tid: u32) -> u64 {
     let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
     for t in &s.tasks {
@@ -431,23 +431,23 @@ pub fn wake_by_key(key: u64) {
 
 /// Spawn a kernel task running `entry(arg)` on its own 8 KiB stack.
 /// Returns the new TID.
-/// ¿Queda una ranura de tarea libre?
+/// Queda una ranura de tarea libre?
 ///
-/// Es la ÚNICA respuesta honesta a "¿cabe otro programa?": las ranuras se
-/// reciclan cuando `reap` recoge una tarea que terminó, así que la capacidad
+/// Es la UNICA respuesta honesta a "cabe otro programa?": las ranuras se
+/// reciclan cuando `reap` recoge una tarea que termino, asi que la capacidad
 /// es la de AHORA y no la de todo lo que se ha lanzado desde el arranque.
 ///
-/// Nació de un bug de esa forma exacta: `proc::has_room` miraba la longitud de
-/// un registro histórico de ocho entradas, y como ese registro no baja nunca,
-/// tras ocho lanzamientos —cinco de ellos los demos del arranque— la máquina no
-/// admitía un programa más hasta reiniciar.
+/// Nacio de un bug de esa forma exacta: `proc::has_room` miraba la longitud de
+/// un registro historico de ocho entradas, y como ese registro no baja nunca,
+/// tras ocho lanzamientos --cinco de ellos los demos del arranque-- la maquina no
+/// admitia un programa mas hasta reiniciar.
 pub fn hay_hueco() -> bool {
     let _g = SCHED_LOCK.lock();
     let s = sched();
     s.tasks.iter().any(|t| t.state == TaskState::Empty)
 }
 
-/// Cuántas ranuras están libres, para contarlo en CABINA.
+/// Cuantas ranuras estan libres, para contarlo en CABINA.
 pub fn huecos_libres() -> usize {
     let _g = SCHED_LOCK.lock();
     let s = sched();
@@ -456,7 +456,7 @@ pub fn huecos_libres() -> usize {
 
 pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
     // Contiguous: the stack is addressed linearly through the physmap, and
-    // `reap` frees it as `stack_phys + p*PAGE` — both are only sound when
+    // `reap` frees it as `stack_phys + p*PAGE` -- both are only sound when
     // the frames really are physical neighbors.
     let stack_base = phys::alloc_frames_contig(TASK_STACK_PAGES)?;
     let stack_top = mm::phys_to_virt(stack_base) + TASK_STACK_PAGES * mm::PAGE;
@@ -520,7 +520,7 @@ pub fn spawn_user(
     Some(tid)
 }
 
-// ── Voluntary operations ─────────────────────────────────────────────
+// -- Voluntary operations ---------------------------------------------
 // Each has a trap variant (immediate switch, used by the SYSCALL
 // dispatcher) and a mark-only variant (kernel tasks; the next trap
 // commits the switch while the task parks in `hlt`).
@@ -558,9 +558,9 @@ pub fn exit_current() {
     let s = sched();
     let tid = s.tasks[s.current].tid;
     let user = s.tasks[s.current].is_user;
-    // Salida VOLUNTARIA (INVOKE EXIT). La distinción con la muerte por fault
-    // (faults.rs) importa en la bitácora: una terminó su trabajo, la otra la
-    // mataron. Antes ambas se veían igual: un contador que bajaba.
+    // Salida VOLUNTARIA (INVOKE EXIT). La distincion con la muerte por fault
+    // (faults.rs) importa en la bitacora: una termino su trabajo, la otra la
+    // mataron. Antes ambas se veian igual: un contador que bajaba.
     crate::ring0::cabina::info(
         if user { "ring3" } else { "sched" },
         "proceso termino por su cuenta (EXIT)",
@@ -597,7 +597,7 @@ pub fn wait_current_checked(
     schedule_locked(s, Saliente::Publicado);
     // Still pre-switch on this stack: the context switch commits at the
     // trap epilogue. The value returned here is what the caller sees when
-    // resumed, so it is advisory — userland re-reads the shared page.
+    // resumed, so it is advisory -- userland re-reads the shared page.
     observed
 }
 
@@ -644,11 +644,11 @@ pub fn current_pid() -> u32 {
 
 /// El espacio de direcciones (`cr3`) del proceso `pid`, si vive.
 ///
-/// ★ Existe para poder RESCATAR la máquina. Quitarle la pantalla a un proceso
-/// no es sólo marcarla libre: hay que **desmapear sus páginas de framebuffer**,
+/// * Existe para poder RESCATAR la maquina. Quitarle la pantalla a un proceso
+/// no es solo marcarla libre: hay que **desmapear sus paginas de framebuffer**,
 /// y para eso hace falta su `cr3`. Sin esto, un programa al que se le retira la
-/// pantalla seguiría teniéndola mapeada y seguiría escribiendo encima del
-/// escritorio — dos dueños pintando el mismo sitio, que es peor que uno solo
+/// pantalla seguiria teniendola mapeada y seguiria escribiendo encima del
+/// escritorio -- dos duenos pintando el mismo sitio, que es peor que uno solo
 /// pintando mal.
 ///
 /// Se busca por `pid` y no por `tid` porque las capabilities son del PROCESO:
@@ -662,12 +662,12 @@ pub fn cr3_de_pid(pid: u32) -> Option<u64> {
         .map(|t| t.cr3)
 }
 
-/// ¿Sigue viva la tarea `tid`?
+/// Sigue viva la tarea `tid`?
 ///
 /// Existe para poder comprobar si el ESCRITORIO sigue en pie. Cuando el
-/// compositor se muere al arrancar, la máquina se queda en el panel del kernel
-/// y hasta ahora no lo decía nadie: había que deducirlo de que la ventana no
-/// salía. Un sistema que sabe algo y no lo cuenta obliga a adivinarlo.
+/// compositor se muere al arrancar, la maquina se queda en el panel del kernel
+/// y hasta ahora no lo decia nadie: habia que deducirlo de que la ventana no
+/// salia. Un sistema que sabe algo y no lo cuenta obliga a adivinarlo.
 pub fn vive(tid: u32) -> bool {
     let _g = SCHED_LOCK.lock();
     let s = sched();
@@ -676,9 +676,9 @@ pub fn vive(tid: u32) -> bool {
 
 /// El `pid` de la tarea `tid`, si vive.
 ///
-/// Existe porque Ring 3 sólo conoce **tids** —`ejecutar_en` devuelve uno— y los
-/// préstamos de memoria van a un `pid`. Traducirlo aquí evita que el userland
-/// tenga que aprender un concepto que no usa para nada más.
+/// Existe porque Ring 3 solo conoce **tids** --`ejecutar_en` devuelve uno-- y los
+/// prestamos de memoria van a un `pid`. Traducirlo aqui evita que el userland
+/// tenga que aprender un concepto que no usa para nada mas.
 pub fn pid_de(tid: u32) -> Option<u32> {
     let _g = SCHED_LOCK.lock();
     let s = sched();

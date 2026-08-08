@@ -1,4 +1,4 @@
-# Faggin — 2 consolidated pre-kernel stages
+# Faggin -- 2 consolidated pre-kernel stages
 
 The active hardware boot chain is:
 
@@ -11,9 +11,9 @@ Both stages are independent Cargo workspaces and are built by
 `Ultra_kernel_x86-64/build.ps1`. The sections below document the former twelve-stage
 design for historical context only; those crate names and addresses are not active.
 
-> Federico Faggin (1941–) diseñó el Zilog Z80 en 1974. Su principio:
+> Federico Faggin (1941-) diseno el Zilog Z80 en 1974. Su principio:
 > cada chip hace **una sola cosa**, mide pocos transistores, y se
-> conecta al siguiente por una interfaz mínima.
+> conecta al siguiente por una interfaz minima.
 
 We apply the same principle to the boot chain. Each `s*_*.rs` is a
 **single-purpose** stage that:
@@ -31,7 +31,7 @@ We apply the same principle to the boot chain. Each `s*_*.rs` is a
 | 1 | `s1_serial`  | 0x100000    | COM1 init                     | (none)                          |
 | 2 | `s2_gdt`     | 0x110000    | GDT + TSS + IST stacks        | `gdt_ptr`, `tss_ptr`, `kernel_stack_top` |
 | 3 | `s3_idt`     | 0x120000    | 256-entry IDT                 | `idt_ptr`                       |
-| 4 | `s4_cpuid`   | 0x130000    | vendor + brand + features     | (none — read by s5 directly)    |
+| 4 | `s4_cpuid`   | 0x130000    | vendor + brand + features     | (none -- read by s5 directly)    |
 | 5 | `s5_control` | 0x140000    | CR0 + CR4 + XCR0              | (CPU registers)                 |
 | 6 | `s6_fpu`     | 0x150000    | fninit + MXCSR + xsave        | (FPU state)                     |
 | 7 | `s7_tsc`     | 0x160000    | TSC calibration               | `tsc_freq`                      |
@@ -108,7 +108,7 @@ path dependencies.
 
 The faggin principle is "do one thing, do it small". The compiler
 flag `opt-level = "z"` optimizes for binary size at the cost of
-speed — perfect for a 30-line boot stage. With LTO + 1 codegen
+speed -- perfect for a 30-line boot stage. With LTO + 1 codegen
 unit + `panic = "abort"` + `strip = "symbols"`, a typical faggin
 stage lands at 1-3 KB flat binary after `llvm-objcopy -O binary`.
 
@@ -119,23 +119,23 @@ optimizes for speed and produces binaries 2-3x larger.
 
 Each stage assumes a specific CPU state set by previous stages:
 
-- `s1_serial` — needs nothing.
-- `s2_gdt` — needs nothing.
-- `s3_idt` — needs GDT (s2).
-- `s4_cpuid` — needs working IDT for fault handlers.
-- `s5_control` — needs CPUID to know which CR4 bits are supported.
-- `s6_fpu` — needs CR4.OSFXSR (s5) and AVX detection.
-- `s7_tsc` — needs nothing (reads CPUID directly).
-- `s8_syscall` — needs GDT selectors (s2) for STAR.
-- `s9_paging` — needs frame allocator (s10 — but s9 has its own local
+- `s1_serial` -- needs nothing.
+- `s2_gdt` -- needs nothing.
+- `s3_idt` -- needs GDT (s2).
+- `s4_cpuid` -- needs working IDT for fault handlers.
+- `s5_control` -- needs CPUID to know which CR4 bits are supported.
+- `s6_fpu` -- needs CR4.OSFXSR (s5) and AVX detection.
+- `s7_tsc` -- needs nothing (reads CPUID directly).
+- `s8_syscall` -- needs GDT selectors (s2) for STAR.
+- `s9_paging` -- needs frame allocator (s10 -- but s9 has its own local
   bitmap of 64 frames for PTE pages).
-- `s10_heap` — needs paging off (so it can use identity-mapped
+- `s10_heap` -- needs paging off (so it can use identity-mapped
   physical addresses).
-- `s11_acpi` — needs paging on (s9), needs memory map (from
+- `s11_acpi` -- needs paging on (s9), needs memory map (from
   BootContext filled by UEFI chain).
-- `s12_devices` — needs RSDP (s11), needs APIC access (no paging
+- `s12_devices` -- needs RSDP (s11), needs APIC access (no paging
   yet for MMIO since identity map covers 0-2GB).
-- `kernel@0x400000` — needs everything.
+- `kernel@0x400000` -- needs everything.
 
 The `validate_chain.ps1` script verifies that each stage's `jmp`
 target matches the expected next stage.

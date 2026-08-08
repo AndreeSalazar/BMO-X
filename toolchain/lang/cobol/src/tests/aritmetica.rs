@@ -1,4 +1,4 @@
-//! ARITMETICA — 12 pruebas.
+//! ARITMETICA -- 12 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,27 +7,27 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-/// ★ Un bug de precisión que este trabajo destapó, y que no era de
-/// `ROUNDED`: `COMPUTE` evaluaba TODO en la escala del destino, así que un
-/// literal con más decimales se recortaba **antes** de operar.
+/// * Un bug de precision que este trabajo destapo, y que no era de
+/// `ROUNDED`: `COMPUTE` evaluaba TODO en la escala del destino, asi que un
+/// literal con mas decimales se recortaba **antes** de operar.
 ///
 /// `BASE * 0.075` con un destino de dos decimales multiplicaba por `0.07`.
-/// El resultado salía mal en el tercer decimal y ningún redondeo podía
-/// arreglarlo, porque para cuando llegaba el dígito ya no estaba.
+/// El resultado salia mal en el tercer decimal y ningun redondeo podia
+/// arreglarlo, porque para cuando llegaba el digito ya no estaba.
 ///
-/// Ahora se calcula en la escala más alta que aparezca y se baja **una
-/// vez**, al final. Sin `ROUNDED` el resultado sigue truncándose — pero
-/// truncando el número bueno.
+/// Ahora se calcula en la escala mas alta que aparezca y se baja **una
+/// vez**, al final. Sin `ROUNDED` el resultado sigue truncandose -- pero
+/// truncando el numero bueno.
 #[test]
 fn compute_no_recorta_los_operandos_antes_de_operar() {
-    // 133.33 × 0.075 = 9.99975. Con el fallo daba 9.33 (× 0.07).
+    // 133.33 x 0.075 = 9.99975. Con el fallo daba 9.33 (x 0.07).
     let src = program(
         "01 BASE PIC S9(7)V99 VALUE 133.33.\n01 R PIC S9(7)V99.",
         "COMPUTE R = BASE * 0.075.\nDISPLAY R.",
     );
     assert_eq!(run_cobol(&src), "9.99\n", "el literal se recorto antes de multiplicar");
 
-    // Y con una variable de más decimales, no sólo con un literal.
+    // Y con una variable de mas decimales, no solo con un literal.
     let src = program(
         "01 BASE PIC S9(7)V99 VALUE 100.00.\n01 TASA PIC S9V9(4) VALUE 0.0725.\n\
          01 R PIC S9(7)V99.",
@@ -42,7 +42,7 @@ fn perform_times_repeats_exactly_n_times() {
     assert_eq!(out, "X\nX\nX\n");
 }
 
-/// Cero iteraciones también es una respuesta: el contador se prueba
+/// Cero iteraciones tambien es una respuesta: el contador se prueba
 /// ANTES de entrar.
 #[test]
 fn perform_zero_times_does_not_enter() {
@@ -50,8 +50,8 @@ fn perform_zero_times_does_not_enter() {
     assert_eq!(out, "");
 }
 
-/// La aritmética tiene que aceptar VARIABLES, no solo literales: antes
-/// todo operando se parseaba como número y `ADD A TO T` sumaba cero.
+/// La aritmetica tiene que aceptar VARIABLES, no solo literales: antes
+/// todo operando se parseaba como numero y `ADD A TO T` sumaba cero.
 #[test]
 fn arithmetic_accepts_variables_as_operands() {
     let out = run_cobol(&program(
@@ -72,8 +72,8 @@ fn subtract_computes_dst_minus_src() {
     assert_eq!(out, "SIETE\n");
 }
 
-/// `COMPUTE` con precedencia real. Antes intentaba parsear la expresión
-/// entera como un número, fallaba, y guardaba 0 sin decir nada.
+/// `COMPUTE` con precedencia real. Antes intentaba parsear la expresion
+/// entera como un numero, fallaba, y guardaba 0 sin decir nada.
 #[test]
 fn compute_respects_precedence() {
     let out = run_cobol(&program(
@@ -104,7 +104,7 @@ fn money_arithmetic_stays_exact() {
     assert_eq!(out, "EXACTO\n");
 }
 
-/// Mezclar PICs de distinta escala exige reescalar; si no, se sumarían
+/// Mezclar PICs de distinta escala exige reescalar; si no, se sumarian
 /// pesos con centavos.
 #[test]
 fn mixed_scales_rescale_before_operating() {
@@ -116,9 +116,9 @@ fn mixed_scales_rescale_before_operating() {
     assert_eq!(out, "EXACTO\n");
 }
 
-/// ★ El `OR` dentro de un `PERFORM UNTIL` — que es donde vive de verdad en
+/// * El `OR` dentro de un `PERFORM UNTIL` -- que es donde vive de verdad en
 /// un batch: *"hasta que se acabe el fichero **o** hasta que algo vaya
-/// mal"*. Sin él, un proceso nocturno no puede pararse por error.
+/// mal"*. Sin el, un proceso nocturno no puede pararse por error.
 #[test]
 fn un_perform_until_para_con_cualquiera_de_las_dos() {
     let src = program(

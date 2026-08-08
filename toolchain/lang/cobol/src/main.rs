@@ -25,13 +25,13 @@ fn main() {
                     process::exit(2);
                 }
             }
-            // ★ El COPYBOOK: el byte exacto de cada campo, sacado de la MISMA
-            // tabla que emite el READ y el WRITE. No compila nada — enseña el
+            // * El COPYBOOK: el byte exacto de cada campo, sacado de la MISMA
+            // tabla que emite el READ y el WRITE. No compila nada -- ensena el
             // formato del fichero y se va.
             "--copybook" => {
                 solo_copybook = true;
             }
-            // ★ El VISOR: enseña un fichero de registros binarios decodificado
+            // * El VISOR: ensena un fichero de registros binarios decodificado
             // con el copybook de este programa. Desde que un COMP-3 sale al
             // disco, ese fichero no se puede mirar con un `cat`.
             "--ver" => {
@@ -83,9 +83,9 @@ fn main() {
         }
     };
 
-    // ★ El copybook sale del PARSER, no del binario: enseña el formato aunque
-    // el programa todavía no compile entero. Quien tiene que acordar un fichero
-    // con otro equipo no puede esperar a que el batch esté terminado.
+    // * El copybook sale del PARSER, no del binario: ensena el formato aunque
+    // el programa todavia no compile entero. Quien tiene que acordar un fichero
+    // con otro equipo no puede esperar a que el batch este terminado.
     if let Some(datos_path) = ver_datos {
         let datos = match fs::read(&datos_path) {
             Ok(d) => d,
@@ -135,11 +135,11 @@ fn main() {
             let out_path = out_override.unwrap_or_else(|| {
                 Path::new(path).with_extension(bmo_abi::bex::BEX_EXTENSION)
             });
-                        // ── ★ EL GATE, ANTES DE ESCRIBIR ──────────────────────────
+                        // -- * EL GATE, ANTES DE ESCRIBIR --------------------------
             //
             // `bmo-verify` es el "unico checkpoint comun" de la filosofia: el
             // papel de seguridad que tendria un IR central, pero como CONTRATO
-            // — cada lenguaje emite su BEF por su cuenta y el verificador lo
+            // -- cada lenguaje emite su BEF por su cuenta y el verificador lo
             // revisa por separado. Hasta hoy no lo llamaba ningun frontend.
             //
             // Va ANTES del `write` a proposito: verificar despues dejaria un
@@ -152,7 +152,7 @@ fn main() {
             }
             match fs::write(&out_path, &bef_bytes) {
                 Ok(_) => {
-                    println!("ok: wrote {} bytes â†’ {}", bef_bytes.len(), out_path.display());
+                    println!("ok: wrote {} bytes -> {}", bef_bytes.len(), out_path.display());
                 }
                 Err(err) => {
                     eprintln!("error: cannot write {}: {}", out_path.display(), err);

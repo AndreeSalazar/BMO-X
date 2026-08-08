@@ -1,7 +1,7 @@
 //! Virtual memory: address spaces built on the `s2_mem` physmap.
 //!
 //! Every user address space is a private PML4 that shares the kernel half
-//! (PML4[256..512] — the physmap and future kernel higher-half mappings) and
+//! (PML4[256..512] -- the physmap and future kernel higher-half mappings) and
 //! owns a private PDPT under PML4[0]. Entry 0 of that PDPT is a copy of the
 //! kernel's supervisor identity map (0..32 MiB); everything the user touches
 //! lives at PDPT index >= 1 so the shared identity tables are never polluted.
@@ -19,13 +19,13 @@ pub const PTE_PRESENT: u64 = 1 << 0;
 pub const PTE_WRITABLE: u64 = 1 << 1;
 pub const PTE_USER: u64 = 1 << 2;
 pub const PTE_HUGE: u64 = 1 << 7;
-/// ★ En una PTE de 4 KiB el bit 7 **no** es "página grande": es el bit alto
-/// del índice de PAT. Con `PWT`(3) y `PCD`(4) a cero, ponerlo selecciona la
-/// entrada **4** de la tabla — la que `s1_cpu` deja en Write-Combining.
+/// * En una PTE de 4 KiB el bit 7 **no** es "pagina grande": es el bit alto
+/// del indice de PAT. Con `PWT`(3) y `PCD`(4) a cero, ponerlo selecciona la
+/// entrada **4** de la tabla -- la que `s1_cpu` deja en Write-Combining.
 ///
-/// El mismo número significa dos cosas distintas según el nivel de tabla, y
-/// por eso lleva nombre propio: en una PDE sería `PS` y convertiría la entrada
-/// en una página de 2 MiB.
+/// El mismo numero significa dos cosas distintas segun el nivel de tabla, y
+/// por eso lleva nombre propio: en una PDE seria `PS` y convertiria la entrada
+/// en una pagina de 2 MiB.
 pub const PTE_PAT_4K: u64 = 1 << 7;
 const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
 
@@ -39,16 +39,16 @@ pub const CHANNEL_VA_BASE: u64 = 0x0000_0000_C000_0000;
 pub const FRAMEBUFFER_VA_BASE: u64 = 0x0000_0000_D000_0000;
 /// Donde empiezan los bloques que un proceso PIDE (`KIND_MEMORIA`).
 ///
-/// Detrás del framebuffer y con 256 MiB de hueco antes: el tope por petición
-/// son 64 MiB y hay cuatro peticiones, así que el peor caso cabe entero sin
-/// acercarse a nada. Cada proceso avanza su propio cursor desde aquí — dos
+/// Detras del framebuffer y con 256 MiB de hueco antes: el tope por peticion
+/// son 64 MiB y hay cuatro peticiones, asi que el peor caso cabe entero sin
+/// acercarse a nada. Cada proceso avanza su propio cursor desde aqui -- dos
 /// bloques del mismo proceso no se pisan y cada uno tiene su rango.
 pub const MEMORIA_VA_BASE: u64 = 0x0000_0000_E000_0000;
 
 static mut KERNEL_PML4: u64 = 0;
 
 /// Kernel-half PML4 slots that were still empty at init and could not get a
-/// pre-populated PDPT (allocator exhaustion — should never happen at boot).
+/// pre-populated PDPT (allocator exhaustion -- should never happen at boot).
 static mut KERNEL_HALF_HOLES: u32 = 0;
 
 /// Capture the boot CR3 (installed by `s2_mem`) and **pre-populate the whole
@@ -59,8 +59,8 @@ static mut KERNEL_HALF_HOLES: u32 = 0;
 /// share-by-pointer forever: user PML4s copy these 256 entries once, so any
 /// higher-half mapping the kernel adds later (physmap growth toward 1 TiB,
 /// MMIO windows, a kernel heap) lands *inside* a PDPT every address space
-/// already points at — visible under every CR3, no per-process patching.
-/// Cost: ≤256 frames (1 MiB), once.
+/// already points at -- visible under every CR3, no per-process patching.
+/// Cost: <=256 frames (1 MiB), once.
 pub fn init() {
     unsafe { KERNEL_PML4 = read_cr3() };
     let kernel = table(kernel_pml4());
@@ -169,11 +169,11 @@ pub fn map_page(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Resu
     map_page_tipo(pml4, va, pa, user, writable, false)
 }
 
-/// Igual, pero eligiendo **Write-Combining** para esta página.
+/// Igual, pero eligiendo **Write-Combining** para esta pagina.
 ///
-/// Se usa para el framebuffer y nada más: es donde se escriben millones de
-/// píxeles seguidos y donde juntar las escrituras cambia el orden de magnitud.
-/// Para memoria normal sería lo contrario de lo que se quiere — WC no garantiza
+/// Se usa para el framebuffer y nada mas: es donde se escriben millones de
+/// pixeles seguidos y donde juntar las escrituras cambia el orden de magnitud.
+/// Para memoria normal seria lo contrario de lo que se quiere -- WC no garantiza
 /// el orden de las escrituras, y eso en una estructura de datos es un bug.
 pub fn map_page_wc(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Result<(), ()> {
     map_page_tipo(pml4, va, pa, user, writable, true)

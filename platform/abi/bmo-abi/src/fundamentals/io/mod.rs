@@ -1,13 +1,13 @@
-//! `io` — traits de E/S del BMO ABI.
+//! `io` -- traits de E/S del BMO ABI.
 //!
 //! Reemplaza `<stdio.h>` de C con un triplete de traits: Read, Write, Seek.
-//! Cada uno devuelve `BmoStatus` para composición FFI-safe.
+//! Cada uno devuelve `BmoStatus` para composicion FFI-safe.
 
 use crate::bmo_abi::fundamentals::memory::BmoSliceMut;
 use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::primitives::{bx_i64, bx_u64};
 
-/// Resultado de una operación Read.
+/// Resultado de una operacion Read.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ReadResult {
@@ -16,7 +16,7 @@ pub struct ReadResult {
 }
 const _: () = assert!(core::mem::size_of::<ReadResult>() == 24);
 
-/// Resultado de una operación Write.
+/// Resultado de una operacion Write.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct WriteResult {
@@ -25,7 +25,7 @@ pub struct WriteResult {
 }
 const _: () = assert!(core::mem::size_of::<WriteResult>() == 24);
 
-/// Resultado de una operación Seek.
+/// Resultado de una operacion Seek.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct SeekResult {
@@ -63,10 +63,10 @@ pub trait BmoSeek {
     fn seek(&mut self, from: BmoSeekFrom) -> SeekResult;
 }
 
-// ─── Pipe de un solo sentido (Ring 0 ↔ Ring 3) ─────────────────────
+// --- Pipe de un solo sentido (Ring 0 <-> Ring 3) ---------------------
 
 /// Pipe unidireccional con buffer circular interno.
-/// Diseñado para comunicación simple sin syscalls costosas.
+/// Disenado para comunicacion simple sin syscalls costosas.
 pub struct BmoPipe {
     buf: [u8; 4096],
     read_pos: usize,

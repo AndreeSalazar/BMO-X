@@ -1,28 +1,28 @@
-//! **El teclado USB, y nada más.**
+//! **El teclado USB, y nada mas.**
 //!
-//! Todo lo que sabe de un teclado vive aquí: cómo es su informe de 8 bytes en
-//! protocolo boot, la tabla que lleva un HID Usage a un scancode Set 1, qué
-//! bits son los modificadores, y cómo se le encienden las lucecitas.
+//! Todo lo que sabe de un teclado vive aqui: como es su informe de 8 bytes en
+//! protocolo boot, la tabla que lleva un HID Usage a un scancode Set 1, que
+//! bits son los modificadores, y como se le encienden las lucecitas.
 //!
-//! ## Qué se ganó al separarlo
+//! ## Que se gano al separarlo
 //!
-//! Esto estaba mezclado con el ratón dentro de un `poll()` de 120 líneas, en el
-//! mismo fichero que la enumeración del bus. Tres trabajos distintos —recorrer
-//! puertos, decidir qué interfaz es qué, y descifrar informes— compartiendo
-//! variables. El precio ya se pagó: con las dos ramas de decodificación
-//! seguidas y disparadas por `if` independientes, un informe podía entrar por
+//! Esto estaba mezclado con el raton dentro de un `poll()` de 120 lineas, en el
+//! mismo fichero que la enumeracion del bus. Tres trabajos distintos --recorrer
+//! puertos, decidir que interfaz es que, y descifrar informes-- compartiendo
+//! variables. El precio ya se pago: con las dos ramas de decodificacion
+//! seguidas y disparadas por `if` independientes, un informe podia entrar por
 //! las dos. Ver [`crate::dir::Direccion`].
 //!
-//! Aquí dentro no se menciona al ratón ni una vez, y ésa es la prueba de que
-//! están separados de verdad.
+//! Aqui dentro no se menciona al raton ni una vez, y esa es la prueba de que
+//! estan separados de verdad.
 
 use crate::dir::Direccion;
 use bmo_input::event::InputEvent;
 
 /// El informe del protocolo BOOT: 8 bytes, fijos, iguales en todo teclado.
 ///
-/// Se pide con `SET_PROTOCOL(boot)` justo por esto — el informe "de verdad"
-/// (report protocol) lo describe el HID Report Descriptor y habría que
+/// Se pide con `SET_PROTOCOL(boot)` justo por esto -- el informe "de verdad"
+/// (report protocol) lo describe el HID Report Descriptor y habria que
 /// interpretarlo, que es un parser entero. Boot es un contrato de ocho bytes.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -32,7 +32,7 @@ struct Informe {
     teclas: [u8; 6],
 }
 
-// ── USB HID usage → PS/2 Set 1 scancode ─────────────────────
+// -- USB HID usage -> PS/2 Set 1 scancode ---------------------
 
 static HID_TO_PS2: [u8; 104] = [
     0,0,0,0, 0x1E,0x30,0x2E,0x20,0x12,0x21,0x22,0x23,
@@ -40,7 +40,7 @@ static HID_TO_PS2: [u8; 104] = [
     0x1F,0x14,0x16,0x2F,0x11,0x2D,0x15,0x2C,
     0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,
     // El indice 50 (usage 0x32, "Non-US # and ~") es la tecla junto al Enter
-    // de los teclados ISO: en español es la de } ] `. Mapea al mismo Set 1
+    // de los teclados ISO: en espanol es la de } ] `. Mapea al mismo Set 1
     // 0x2B que la barra invertida; estaba en 0 = tecla muerta de verdad.
     0x1C,0x01,0x0E,0x0F,0x39,0x0C,0x0D,0x1A,0x1B,0x2B,0x2B,
     0x27,0x28,0x29,0x33,0x34,0x35,
@@ -53,13 +53,13 @@ static HID_TO_PS2: [u8; 104] = [
     SC_RIGHT,SC_LEFT,SC_DOWN,SC_UP,0x45,
     // El '/' del teclado NUMERICO (usage 0x54) llevaba 0x35, el mismo Set 1
     // que la tecla '/' de la fila principal. En US da igual porque ambas son
-    // '/', pero en español esa tecla es '-': el numpad escribia guiones.
+    // '/', pero en espanol esa tecla es '-': el numpad escribia guiones.
     // Set 1 real es 0xE0 0x35 (dos bytes); 0x62 esta libre y el consumidor lo
     // resuelve como '/' en cualquier distribucion.
     0x62,0x37,0x4A,0x4E,0x1C,0x4F,0x50,0x51,0x4B,0x4C,0x4D,0x47,0x48,0x49,0x52,0x53,
     // 0x64 = la tecla EXTRA de los teclados ISO (la de < > junto al Shift
     // izquierdo, que los US no tienen): Set 1 la llama 0x56. Estaba en 0 =
-    // ignorada, así que en un teclado español faltaba una tecla entera.
+    // ignorada, asi que en un teclado espanol faltaba una tecla entera.
     0x56,0,0,0,
 ];
 
@@ -75,9 +75,9 @@ fn hid_to_ps2(usage: u8) -> Option<u8> {
 
 /// Scancode propio para AltGr (Alt derecho). Set 1 lo expresa como la
 /// secuencia `0xE0 0x38`, imposible de meter en un solo byte de InputEvent;
-/// 0x63 está libre en Set 1 y el consumidor lo trata como AltGr. Sin esto
+/// 0x63 esta libre en Set 1 y el consumidor lo trata como AltGr. Sin esto
 /// AltGr llegaba como 0x38 (Alt izquierdo) y el tercer nivel del teclado
-/// español — @ # \ | { } [ ] — era inalcanzable.
+/// espanol -- @ # \ | { } [ ] -- era inalcanzable.
 pub const SC_ALTGR: u8 = 0x63;
 
 // Teclas de navegacion con codigo propio (ver la nota en HID_TO_PS2).
@@ -103,8 +103,8 @@ const MOD_RGUI: u8 = 1 << 7;
 
 /// Cada bit de modificador con el scancode que le corresponde.
 ///
-/// Era una escalera de ocho `if` copiados, y en uno de ellos —el Ctrl
-/// derecho— se coló el scancode del izquierdo. Una tabla no se puede
+/// Era una escalera de ocho `if` copiados, y en uno de ellos --el Ctrl
+/// derecho-- se colo el scancode del izquierdo. Una tabla no se puede
 /// equivocar de esa forma: la fila es el dato.
 const MODIFICADORES: [(u8, u8); 8] = [
     (MOD_LCTRL, 0x1D),
@@ -119,20 +119,20 @@ const MODIFICADORES: [(u8, u8); 8] = [
     (MOD_RGUI, 0x5C),
 ];
 
-/// Cuántos bytes ocupa el informe boot de un teclado.
+/// Cuantos bytes ocupa el informe boot de un teclado.
 pub const INFORME_BYTES: u16 = 8;
 
 /// Un teclado USB enumerado y listo.
 pub struct Teclado {
     dir: Direccion,
-    /// Número de interface HID: lo pide `SET_REPORT` para encender los LEDs
-    /// (Bloq Mayús / Num).
+    /// Numero de interface HID: lo pide `SET_REPORT` para encender los LEDs
+    /// (Bloq Mayus / Num).
     iface: u8,
     buf_phys: u64,
     buf_virt: *mut u8,
     previo_mod: u8,
     previas: [u8; 6],
-    /// ¿Hay una transferencia encolada esperando informe?
+    /// Hay una transferencia encolada esperando informe?
     ///
     /// **Si esto se queda en `false`, el teclado enmudece para siempre**: el
     /// endpoint sigue en `Running` y nadie vuelve a pedirle nada.
@@ -141,9 +141,9 @@ pub struct Teclado {
     mps: u16,
     /// Transferencias que volvieron con error.
     ///
-    /// El ratón llevaba esta cuenta desde el principio y el teclado no: su rama
-    /// de error era un `if` sin `else`, así que **un teclado que fallaba lo
-    /// hacía en absoluto silencio**. Justo el aparato del que se dijo "se
+    /// El raton llevaba esta cuenta desde el principio y el teclado no: su rama
+    /// de error era un `if` sin `else`, asi que **un teclado que fallaba lo
+    /// hacia en absoluto silencio**. Justo el aparato del que se dijo "se
     /// desconecta sin sentido".
     errores: u32,
 }
@@ -163,11 +163,11 @@ impl Teclado {
         }
     }
 
-    /// Cuántos bytes se le piden al bus.
+    /// Cuantos bytes se le piden al bus.
     ///
-    /// Aquí siempre habían coincidido —el informe boot de un teclado mide 8 y
-    /// su `mps` es 8—, y por eso este camino nunca falló mientras el del ratón
-    /// sí. Se pone igual: una regla que sólo se cumple por casualidad en la
+    /// Aqui siempre habian coincidido --el informe boot de un teclado mide 8 y
+    /// su `mps` es 8--, y por eso este camino nunca fallo mientras el del raton
+    /// si. Se pone igual: una regla que solo se cumple por casualidad en la
     /// mitad de los sitios es una trampa esperando al aparato siguiente.
     fn largo(&self) -> u16 {
         if self.mps == 0 { INFORME_BYTES } else { self.mps }
@@ -178,14 +178,14 @@ impl Teclado {
     pub fn dci(&self) -> u8 { self.dir.dci }
     pub fn bombeando(&self) -> bool { self.bombeando }
 
-    /// Errores de transferencia vistos, igual que en el ratón.
+    /// Errores de transferencia vistos, igual que en el raton.
     pub fn errores(&self) -> u32 { self.errores }
 
     /// Encola la primera transferencia y toca el timbre. **Hasta que esto se
-    /// llama, el teclado está enumerado pero mudo.**
+    /// llama, el teclado esta enumerado pero mudo.**
     ///
-    /// Se hace al FINAL de la enumeración, no al reconocerlo: un endpoint que
-    /// empieza a postear informes mientras todavía se enumera el puerto
+    /// Se hace al FINAL de la enumeracion, no al reconocerlo: un endpoint que
+    /// empieza a postear informes mientras todavia se enumera el puerto
     /// siguiente mete sus eventos en medio de los control transfers del otro
     /// aparato.
     pub fn arrancar(&mut self) -> bool {
@@ -201,15 +201,15 @@ impl Teclado {
 
     /// Atiende un Transfer Event que YA se ha comprobado que es suyo.
     ///
-    /// Devuelve cuántos eventos de entrada escribió en `salida`. Rearma la
-    /// transferencia siempre, incluso si el informe vino con un código de
+    /// Devuelve cuantos eventos de entrada escribio en `salida`. Rearma la
+    /// transferencia siempre, incluso si el informe vino con un codigo de
     /// error: dejar de rearmar por un informe malo apaga el teclado por un
     /// tropiezo.
     pub fn atender(&mut self, cc: u8, salida: &mut [InputEvent]) -> usize {
         let mut n = 0usize;
         self.bombeando = false;
 
-        // 1 = Success, 13 = Short Packet. Un informe más corto de lo pedido es
+        // 1 = Success, 13 = Short Packet. Un informe mas corto de lo pedido es
         // normal y trae datos buenos.
         if cc == 1 || cc == 13 {
             let informe = unsafe { core::ptr::read_volatile(self.buf_virt as *const Informe) };
@@ -217,11 +217,11 @@ impl Teclado {
             self.previo_mod = informe.modificadores;
             self.previas = informe.teclas;
         } else {
-            // Un `cc` malo NO se descifra —el buffer trae lo que trajera— pero
-            // sí se dice. Antes esta rama no existía: el informe se tiraba, se
-            // rearmaba, y si el endpoint había quedado parado el teclado moría
-            // sin dejar una línea. Quien resucita el endpoint es el reparto
-            // (`Hid::poll`), que ya sabe de quién es el evento; aquí sólo se
+            // Un `cc` malo NO se descifra --el buffer trae lo que trajera-- pero
+            // si se dice. Antes esta rama no existia: el informe se tiraba, se
+            // rearmaba, y si el endpoint habia quedado parado el teclado moria
+            // sin dejar una linea. Quien resucita el endpoint es el reparto
+            // (`Hid::poll`), que ya sabe de quien es el evento; aqui solo se
             // cuenta y se cuenta EN VOZ ALTA.
             self.errores = self.errores.saturating_add(1);
             let h = bmo_xhci::hal();
@@ -245,11 +245,11 @@ impl Teclado {
         }
     }
 
-    /// El informe → eventos de pulsar y soltar.
+    /// El informe -> eventos de pulsar y soltar.
     ///
-    /// Un informe boot dice **qué teclas están abajo AHORA**, no qué cambió.
+    /// Un informe boot dice **que teclas estan abajo AHORA**, no que cambio.
     /// Las pulsaciones y las sueltas salen de comparar con el informe anterior;
-    /// por eso `previas` no es una optimización, es de dónde sale la mitad de
+    /// por eso `previas` no es una optimizacion, es de donde sale la mitad de
     /// los eventos.
     fn descifrar(&self, informe: &Informe, salida: &mut [InputEvent]) -> usize {
         let mut n = 0usize;
@@ -262,7 +262,7 @@ impl Teclado {
             }
         }
 
-        // Soltadas: estaban antes y ya no están.
+        // Soltadas: estaban antes y ya no estan.
         for &antes in &self.previas {
             if antes == 0 { continue; }
             if !informe.teclas.contains(&antes) {
@@ -274,7 +274,7 @@ impl Teclado {
                 }
             }
         }
-        // Pulsadas: están ahora y no estaban.
+        // Pulsadas: estan ahora y no estaban.
         for &ahora in &informe.teclas {
             if ahora == 0 { continue; }
             if !self.previas.contains(&ahora) {
@@ -290,11 +290,11 @@ impl Teclado {
         n
     }
 
-    /// Enciende/apaga los LEDs (bit0 Num, bit1 Mayús, bit2 Scroll).
+    /// Enciende/apaga los LEDs (bit0 Num, bit1 Mayus, bit2 Scroll).
     ///
     /// Las lucecitas NO las maneja el teclado por su cuenta: es el HOST quien
-    /// le dice cómo dejarlas, con un `SET_REPORT` de tipo Output. Por eso Bloq
-    /// Mayús funcionaba por dentro mientras la luz seguía apagada — nadie se lo
+    /// le dice como dejarlas, con un `SET_REPORT` de tipo Output. Por eso Bloq
+    /// Mayus funcionaba por dentro mientras la luz seguia apagada -- nadie se lo
     /// estaba contando al teclado.
     pub fn leds(&self, leds: u8) -> bool {
         let mut datos = [leds];

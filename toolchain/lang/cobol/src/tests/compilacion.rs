@@ -1,4 +1,4 @@
-//! COMPILACION — 11 pruebas.
+//! COMPILACION -- 11 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -47,7 +47,7 @@ STOP RUN.
 /// Matriz de conformidad de COBOL: ejecuta cada verbo y compara.
 ///
 /// Misma idea que la de C. Antes de existir, `IF` ejecutaba las dos
-/// ramas y `PERFORM` no repetía nada — y el BEF validaba.
+/// ramas y `PERFORM` no repetia nada -- y el BEF validaba.
 #[test]
 fn cobol_feature_matrix_runs_correctly() {
     let cases: &[(&str, &str, &str, &str)] = &[
@@ -85,39 +85,39 @@ fn cobol_feature_matrix_runs_correctly() {
         ("decimal exacto", "01 S PIC 9(5)V99.", "MOVE 10.05 TO S.\nADD 0.20 TO S.\nIF S = 10.25\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
         ("escalas mixtas", "01 S PIC 9(5)V99.\n01 N PIC 9(3).", "MOVE 2 TO N.\nMOVE 1.50 TO S.\nADD N TO S.\nIF S = 3.50\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
         ("cond en palabras", "01 A PIC 9(3).", "MOVE 5 TO A.\nIF A IS EQUAL TO 5\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
-        // ── PICTURE de edición, EN EJECUCIÓN ──
+        // -- PICTURE de edicion, EN EJECUCION --
         //
-        // La línea del extracto. El dato sigue siendo un entero de
-        // centavos; lo que cambia es que al enseñarlo se recorre la
-        // máscara, y ese recorrido son instrucciones dentro del .bex.
+        // La linea del extracto. El dato sigue siendo un entero de
+        // centavos; lo que cambia es que al ensenarlo se recorre la
+        // mascara, y ese recorrido son instrucciones dentro del .bex.
         ("PIC moneda", "01 L PIC $$$,$$9.99.", "MOVE 12345.67 TO L.\nDISPLAY L.", "$12,345.67\n"),
         ("PIC moneda pequena", "01 L PIC $$$,$$9.99.", "MOVE 0.45 TO L.\nDISPLAY L.", "     $0.45\n"),
-        // ★ El símbolo flotante cuando la supresión muere JUSTO tras la
+        // * El simbolo flotante cuando la supresion muere JUSTO tras la
         // coma: el `$` va en la casilla de la coma, porque los separadores
         // de dentro del grupo flotante son parte del grupo. Daba
-        // `  $ 105.00` —con un hueco en medio— y los 238 casos de
-        // `edicion.rs` no lo veían porque comparan las dos
-        // implementaciones entre sí, y las dos se equivocaban igual.
+        // `  $ 105.00` --con un hueco en medio-- y los 238 casos de
+        // `edicion.rs` no lo veian porque comparan las dos
+        // implementaciones entre si, y las dos se equivocaban igual.
         ("PIC moneda tras coma", "01 L PIC $$$,$$9.99.", "MOVE 105.00 TO L.\nDISPLAY L.", "   $105.00\n"),
         ("PIC cheque", "01 L PIC **,**9.99.", "MOVE 0.45 TO L.\nDISPLAY L.", "*****0.45\n"),
         ("PIC saldo en rojo", "01 L PIC Z,ZZ9.99CR.", "MOVE -120.00 TO L.\nDISPLAY L.", "  120.00CR\n"),
         ("PIC saldo en verde", "01 L PIC Z,ZZ9.99CR.", "MOVE 120.00 TO L.\nDISPLAY L.", "  120.00  \n"),
         ("PIC supresion", "01 L PIC Z,ZZ9.", "MOVE 7 TO L.\nDISPLAY L.", "    7\n"),
         ("PIC signo flotante", "01 L PIC ---9.", "MOVE -7 TO L.\nDISPLAY L.", "  -7\n"),
-        // La edición no toca la aritmética: el campo se totaliza como
-        // cualquier otro y sólo al final se enseña con su máscara.
+        // La edicion no toca la aritmetica: el campo se totaliza como
+        // cualquier otro y solo al final se ensena con su mascara.
         ("PIC se puede sumar", "01 L PIC $$$,$$9.99.", "MOVE 10.05 TO L.\nADD 0.20 TO L.\nDISPLAY L.", "    $10.25\n"),
         // Y el signo del literal sobrevive al camino entero.
         ("literal negativo", "01 A PIC S9(3)V99.", "MOVE -1.50 TO A.\nIF A < 0\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
-        // ── NIVEL 88: nombres de condición ──
+        // -- NIVEL 88: nombres de condicion --
         //
-        // Un 88 no ocupa memoria: le pone nombre a una comparación. Es lo
+        // Un 88 no ocupa memoria: le pone nombre a una comparacion. Es lo
         // que convierte `PERFORM UNTIL FIN = 1` en
         // `PERFORM UNTIL FIN-DE-FICHERO`, que es COBOL bancario del que se
         // lee en voz alta.
         ("88 verdadero", "01 F PIC 9.\n88 FIN VALUE 1.", "MOVE 1 TO F.\nIF FIN\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
         ("88 falso", "01 F PIC 9.\n88 FIN VALUE 1.", "MOVE 0 TO F.\nIF FIN\nDISPLAY \"no\"\nELSE\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
-        // ★ Para lo que existe: el bucle del batch, legible.
+        // * Para lo que existe: el bucle del batch, legible.
         ("88 en PERFORM UNTIL", "01 F PIC 9.\n88 SE-ACABO VALUE 1.\n01 I PIC 9(3).", "MOVE 0 TO F.\nMOVE 0 TO I.\nPERFORM UNTIL SE-ACABO\nADD 1 TO I\nIF I >= 3\nMOVE 1 TO F\nEND-IF\nEND-PERFORM.\nIF I = 3\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
         // Varios 88 sobre el MISMO dato, que es como se usa de verdad.
         ("88 varios sobre uno", "01 E PIC 9.\n88 ACTIVO VALUE 1.\n88 CERRADO VALUE 2.", "MOVE 2 TO E.\nIF CERRADO\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
@@ -126,25 +126,25 @@ fn cobol_feature_matrix_runs_correctly() {
         // Con decimales: el valor se escala como cualquier literal.
         ("88 con decimales", "01 S PIC S9(5)V99.\n88 SALDADO VALUE 0.00.", "MOVE 0 TO S.\nIF SALDADO\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
         ("88 y AND", "01 F PIC 9.\n88 FIN VALUE 1.\n01 N PIC 9(3).", "MOVE 1 TO F.\nMOVE 7 TO N.\nIF FIN AND N = 7\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
-        // ── OCCURS: tablas ──
+        // -- OCCURS: tablas --
         //
         // El subindice literal se resuelve al compilar (sin multiplicar y
         // sin comprobar nada en ejecucion); el variable, con su guarda.
         ("OCCURS literal", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.", "MOVE 5 TO E(1).\nIF E(1) = 5\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
         ("OCCURS variable", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.\n01 I PIC 9(3).", "MOVE 2 TO I.\nMOVE 7 TO E(I).\nIF E(I) = 7\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
         // Cada elemento es SUYO. Si el paso estuviera mal, escribir en el
-        // segundo se vería en el primero — y un total por concepto saldría
+        // segundo se veria en el primero -- y un total por concepto saldria
         // sumado en la casilla del vecino.
         ("OCCURS no se pisan", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.", "MOVE 1 TO E(1).\nMOVE 2 TO E(2).\nMOVE 3 TO E(3).\nIF E(1) = 1 AND E(2) = 2 AND E(3) = 3\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
-        // ★ Para lo que existe OCCURS: recorrer la tabla y totalizar.
+        // * Para lo que existe OCCURS: recorrer la tabla y totalizar.
         ("OCCURS totaliza", "01 T.\n05 E PIC S9(7)V99 OCCURS 3 TIMES.\n01 I PIC 9(3).\n01 TOT PIC S9(7)V99.", "MOVE 10.05 TO E(1).\nMOVE 0.20 TO E(2).\nMOVE 1.75 TO E(3).\nMOVE 0 TO TOT.\nMOVE 1 TO I.\nPERFORM UNTIL I > 3\nADD E(I) TO TOT\nADD 1 TO I\nEND-PERFORM.\nIF TOT = 12.00\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
-        // Un elemento con PIC editada enseña su mascara, como cualquier
+        // Un elemento con PIC editada ensena su mascara, como cualquier
         // otro dato: la edicion es de la tabla, no de la casilla.
         ("OCCURS PIC editada", "01 T.\n05 L PIC $$$,$$9.99 OCCURS 2 TIMES.", "MOVE 10.05 TO L(2).\nDISPLAY L(2).", "    $10.05\n"),
         // El subindice puede ser OTRO elemento de tabla. Es lo que prueba
         // que el valor a guardar sobrevive al calculo de la direccion.
         ("OCCURS subindice de tabla", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.\n01 X.\n05 IDX PIC 9(3) OCCURS 2 TIMES.", "MOVE 3 TO IDX(1).\nMOVE 9 TO E(IDX(1)).\nIF E(3) = 9\nDISPLAY \"ok\"\nEND-IF.", "ok\n"),
-        // ★ Y el subindice que se sale PARA el programa diciendo cual.
+        // * Y el subindice que se sale PARA el programa diciendo cual.
         // Seguir con una direccion inventada escribiria encima del campo de
         // al lado, y el descuadre apareceria semanas despues en otro sitio.
         ("OCCURS fuera de rango", "01 T.\n05 E PIC 9(3) OCCURS 3 TIMES.\n01 I PIC 9(3).", "MOVE 4 TO I.\nMOVE 1 TO E(I).\nDISPLAY \"no deberia llegar\".", "SUBINDICE FUERA DE RANGO EN E (1..3)\n"),
@@ -160,12 +160,12 @@ fn cobol_feature_matrix_runs_correctly() {
         }
     }
 
-    // ── E/S DE FICHEROS ─────────────────────────────────────────────
+    // -- E/S DE FICHEROS ---------------------------------------------
     //
-    // Estos casos necesitan DISCO, así que van con su propio banco: se
-    // siembra `d/e.txt`, se ejecuta, y se mira la consola Y lo que quedó
-    // en `d/s.txt`. Mirar sólo la consola dejaría pasar un `WRITE` que no
-    // escribe, y mirar sólo el fichero dejaría pasar un `AT END` que nunca
+    // Estos casos necesitan DISCO, asi que van con su propio banco: se
+    // siembra `d/e.txt`, se ejecuta, y se mira la consola Y lo que quedo
+    // en `d/s.txt`. Mirar solo la consola dejaria pasar un `WRITE` que no
+    // escribe, y mirar solo el fichero dejaria pasar un `AT END` que nunca
     // salta.
     //
     // Campos: nombre, declaraciones, cuerpo, lo sembrado, consola
@@ -188,7 +188,7 @@ fn cobol_feature_matrix_runs_correctly() {
             None,
         ),
         // El bucle del batch: leer hasta el final y totalizar. Es LA forma
-        // del proceso por lotes, y sin `AT END` no terminaría nunca.
+        // del proceso por lotes, y sin `AT END` no terminaria nunca.
         (
             "PERFORM sobre fichero",
             "FILE SECTION.\nFD ENTRADA.\n01 R PIC S9(7)V99.\nWORKING-STORAGE SECTION.\n01 T PIC S9(7)V99.\n01 F PIC 9.",
@@ -197,8 +197,8 @@ fn cobol_feature_matrix_runs_correctly() {
             "ok\n",
             None,
         ),
-        // Un registro leído es un decimal EXACTO, no un float: cinco
-        // céntimos no pueden convertirse en cincuenta al cruzar el disco.
+        // Un registro leido es un decimal EXACTO, no un float: cinco
+        // centimos no pueden convertirse en cincuenta al cruzar el disco.
         (
             "READ decimal exacto",
             "FILE SECTION.\nFD ENTRADA.\n01 R PIC S9(7)V99.",
@@ -215,8 +215,8 @@ fn cobol_feature_matrix_runs_correctly() {
             "ok\n",
             None,
         ),
-        // El fichero viene del anfitrión con `\r\n`. Ese `\r` dentro del
-        // número lo convertiría en otro.
+        // El fichero viene del anfitrion con `\r\n`. Ese `\r` dentro del
+        // numero lo convertiria en otro.
         (
             "READ con CRLF",
             "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).",
@@ -225,7 +225,7 @@ fn cobol_feature_matrix_runs_correctly() {
             "ok\n",
             None,
         ),
-        // El clásico que se come el movimiento de más valor: el último.
+        // El clasico que se come el movimiento de mas valor: el ultimo.
         (
             "READ sin salto final",
             "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).",
@@ -242,9 +242,9 @@ fn cobol_feature_matrix_runs_correctly() {
             "",
             Some("1135.00\n"),
         ),
-        // ★ El registro con PIC editada escribe su LINEA, no su número:
+        // * El registro con PIC editada escribe su LINEA, no su numero:
         // eso es un informe bancario. Antes de `emitir_en_buffer` esto
-        // habría escrito `10.25` callando que había máscara.
+        // habria escrito `10.25` callando que habia mascara.
         (
             "WRITE PIC editada",
             "FILE SECTION.\nFD SALIDA.\n01 S PIC $$$,$$9.99.",
@@ -272,7 +272,7 @@ fn cobol_feature_matrix_runs_correctly() {
             None,
         ),
         // Y la vuelta entera: lo escrito se puede volver a leer. Es el
-        // contrato entre `WRITE` y `leer_linea` — un registro por línea.
+        // contrato entre `WRITE` y `leer_linea` -- un registro por linea.
         (
             "lo escrito se relee",
             "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).\nFD SALIDA.\n01 S PIC 9(5).",
@@ -311,9 +311,9 @@ fn cobol_feature_matrix_runs_correctly() {
     assert!(broken.is_empty(), "\n{}/{} FUNCIONAN. ROTOS:\n{}", total - broken.len(), total, broken.join("\n"));
 }
 
-/// Un dato que nadie declaró se rechaza. Antes `load_var`/`store_var` no
-/// emitían NADA: `DISPLAY PEPE` imprimía lo que hubiera en `rax` y
-/// `MOVE 1 TO PEPE` se perdía sin una palabra.
+/// Un dato que nadie declaro se rechaza. Antes `load_var`/`store_var` no
+/// emitian NADA: `DISPLAY PEPE` imprimia lo que hubiera en `rax` y
+/// `MOVE 1 TO PEPE` se perdia sin una palabra.
 #[test]
 fn un_dato_sin_declarar_se_rechaza() {
     let src = program("01 A PIC 9(3).", "MOVE 1 TO PEPE.");
@@ -321,13 +321,13 @@ fn un_dato_sin_declarar_se_rechaza() {
     assert!(t.contains("PEPE") && t.contains("no esta declarado"), "{t}");
 }
 
-/// El puente L2→L1: `DISPLAY "texto"` debe bajar a la puerta de consola
-/// del ABI, con el salto de línea que COBOL exige al final (cada DISPLAY
+/// El puente L2->L1: `DISPLAY "texto"` debe bajar a la puerta de consola
+/// del ABI, con el salto de linea que COBOL exige al final (cada DISPLAY
 /// ocupa su propia fila porque `\n` dispara el flush del kernel).
 ///
-/// Antes de esto, COBOL emitía `syscall NR_DEBUG_PRINT` con un puntero —
-/// número que el kernel no despacha y forma que la superficie congelada
-/// rechaza. En hardware no imprimía nada.
+/// Antes de esto, COBOL emitia `syscall NR_DEBUG_PRINT` con un puntero --
+/// numero que el kernel no despacha y forma que la superficie congelada
+/// rechaza. En hardware no imprimia nada.
 #[test]
 fn display_lowers_to_the_console_door() {
     let src = r#"
@@ -347,7 +347,7 @@ STOP RUN.
 }
 
 /// El cierre del programa no puede usar `hlt`: es privilegiada, y en
-/// Ring 3 provoca el #GP del que pretendía proteger.
+/// Ring 3 provoca el #GP del que pretendia proteger.
 #[test]
 fn program_epilogue_has_no_privileged_instruction() {
     let src = r#"
@@ -383,8 +383,8 @@ STOP RUN.
 /// La E/S de ficheros, tal y como se escribe de verdad: el `SELECT` le da
 /// la ruta, el `FD` le da el registro y el `READ` lleva su `AT END`.
 ///
-/// Este test decía antes `READ INFILE INTO WS-REC.` sin `SELECT`, sin `FD`
-/// y sin `AT END`, y pasaba — porque el parser guardaba dos cadenas y el
+/// Este test decia antes `READ INFILE INTO WS-REC.` sin `SELECT`, sin `FD`
+/// y sin `AT END`, y pasaba -- porque el parser guardaba dos cadenas y el
 /// codegen las tiraba. Ahora un fichero es un fichero: si le falta la ruta
 /// o el registro, no compila.
 #[test]
@@ -427,8 +427,8 @@ STOP RUN.
     }
 }
 
-/// `PERFORM` ahora exige cuerpo y cierre: sin ellos no había nada que
-/// repetir, y la versión anterior lo aceptaba emitiendo un no-op.
+/// `PERFORM` ahora exige cuerpo y cierre: sin ellos no habia nada que
+/// repetir, y la version anterior lo aceptaba emitiendo un no-op.
 #[test]
 fn parses_perform() {
     let src = r#"

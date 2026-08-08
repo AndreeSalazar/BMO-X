@@ -41,7 +41,7 @@ return a;
 
 #[test]
 fn resolves_nested_arrow_offsets() {
-    // a->b->c ANIDADO: antes devolvía offset 0 silencioso. Ahora el parser
+    // a->b->c ANIDADO: antes devolvia offset 0 silencioso. Ahora el parser
     // sigue los tipos de campo y calcula el offset REAL de cada salto.
     let src = r#"
 struct Inner { int x; long y; };
@@ -113,7 +113,7 @@ return a;
 
 #[test]
 fn subscript_on_compound_base_now_works() {
-    // p->arr[i] con arr: int* — antes ERROR honesto, ahora compila.
+    // p->arr[i] con arr: int* -- antes ERROR honesto, ahora compila.
     let src = r#"
 struct S { int pad; int* arr; };
 int main() {
@@ -135,7 +135,7 @@ return x;
 
 #[test]
 fn subscript_compound_base_assign_and_compound() {
-    // p->arr[i] = v  y  p->arr[i] += v — no se descartan.
+    // p->arr[i] = v  y  p->arr[i] += v -- no se descartan.
     let src = r#"
 struct S { int* arr; };
 int main() {
@@ -154,7 +154,7 @@ return s->arr[0];
 
 #[test]
 fn field_assign_carries_exact_type() {
-    // pt.x = 10 con x:int — el AssignField lleva TypeSpec::Int para que
+    // pt.x = 10 con x:int -- el AssignField lleva TypeSpec::Int para que
     // codegen escriba 4 bytes, NO 8 (antes pisaba a pt.y).
     let src = r#"
 struct Point { int x; long y; };
@@ -194,7 +194,7 @@ fn cast_is_real_node() {
 
 #[test]
 fn array_decl_records_size() {
-    // int arr[4] debe ser Array(Int, 4) — antes el tamaño se TIRABA.
+    // int arr[4] debe ser Array(Int, 4) -- antes el tamano se TIRABA.
     let src = "int main() { int arr[4]; return 0; }";
     let p = parse(src).unwrap();
     let main_fn = &p.functions[0];
@@ -244,7 +244,7 @@ fn subscript_compound_assign() {
 
 #[test]
 fn subscript_on_compound_base_via_field() {
-    // s.arr[0] con arr: int* — evolución del test de Fase 0: antes se
+    // s.arr[0] con arr: int* -- evolucion del test de Fase 0: antes se
     // rechazaba (honesto pero limitado), en Fase 2 ya COMPILA como IndexPtr.
     let src = r#"
 struct S { int* arr; };

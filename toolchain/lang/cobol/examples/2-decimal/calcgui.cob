@@ -9,9 +9,9 @@
       *
       *     codigo: 1 sumar   2 restar   3 multiplicar   4 dividir
       *
-      * ★ La cara la dibuja el compositor, en Rust. El CALCULO es esto, en
+      * * La cara la dibuja el compositor, en Rust. El CALCULO es esto, en
       * COBOL, con decimal exacto en centavos. Es la separacion que Windows no
-      * hace —su calculadora lleva el motor dentro de la app— y es la que
+      * hace --su calculadora lleva el motor dentro de la app-- y es la que
       * permite cambiar la una sin tocar la otra.
       *
       * Compilar:
@@ -51,9 +51,9 @@
                MOVE 1 TO VALE
            END-IF.
 
-      *    ★ Un codigo que no es ninguno de los cuatro NO es cero: es una
+      *    * Un codigo que no es ninguno de los cuatro NO es cero: es una
       *    pregunta que este programa no sabe contestar. Antes salia 0.00 y
-      *    quien lo leia no tenia forma de distinguir "no se" de "da cero" —
+      *    quien lo leia no tenia forma de distinguir "no se" de "da cero" --
       *    que en una calculadora de dinero son cosas muy distintas.
            IF VALE = 1
                DISPLAY RES

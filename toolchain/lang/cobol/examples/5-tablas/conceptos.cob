@@ -1,4 +1,4 @@
-      * CONCEPTOS — totalizar por concepto, que es para lo que existe OCCURS.
+      * CONCEPTOS -- totalizar por concepto, que es para lo que existe OCCURS.
       *
       * Lee dos ficheros en paralelo: uno con el CONCEPTO de cada movimiento
       * (1..4) y otro con su IMPORTE. Va sumando cada importe en la casilla de
@@ -12,7 +12,7 @@
       * Por que DOS ficheros y no uno con dos columnas: un registro de este
       * COBOL es UN campo con UNA PIC. Partir la linea en columnas es otra
       * cosa (y se dira cuando llegue), asi que aqui cada dato tiene su
-      * fichero y su PIC — que ademas es como se leen las cintas de verdad.
+      * fichero y su PIC -- que ademas es como se leen las cintas de verdad.
       *
       * El subindice va de 1 a 4 y el compilador lo comprueba: con un literal
       * fuera de rango no compila, y con una variable fuera de rango el
@@ -21,7 +21,7 @@
       * despues en otro informe.
       *
       * Compilar (el nombre de salida cabe en 8.3 a proposito: el volumen es
-      * FAT32 y `apps/conceptos.bex` —nueve letras— NO se puede cargar):
+      * FAT32 y `apps/conceptos.bex` --nueve letras-- NO se puede cargar):
       *   cargo run -p bmo-cobol-front -- \
       *     toolchain/lang/cobol/examples/conceptos.cob -o apps/concep.bex
        IDENTIFICATION DIVISION.

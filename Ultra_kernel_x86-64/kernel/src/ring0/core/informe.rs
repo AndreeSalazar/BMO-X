@@ -1,34 +1,34 @@
 //! El informe del sistema, servido a Ring 3.
 //!
-//! ## Por qué esto baja de anillo
+//! ## Por que esto baja de anillo
 //!
-//! El shell de Ring 0 tenía `info`, `cpu`, `mem` y `tasks` desde siempre, y no
+//! El shell de Ring 0 tenia `info`, `cpu`, `mem` y `tasks` desde siempre, y no
 //! porque hiciera falta el privilegio: **porque los datos estaban a su
-//! alcance**. Contar cuánta RAM hay no ejerce ningún poder — leer un contador
-//! no es tocar un puerto, ni mapear una página, ni reiniciar la máquina.
+//! alcance**. Contar cuanta RAM hay no ejerce ningun poder -- leer un contador
+//! no es tocar un puerto, ni mapear una pagina, ni reiniciar la maquina.
 //!
-//! Con este módulo el reparto queda donde debe: en Ring 0 se queda lo que **de
-//! verdad** necesita el privilegio (E/S de puertos, tablas de páginas,
-//! reinicio, la admisión de un `.bex`), y la información baja a Ring 3, que es
+//! Con este modulo el reparto queda donde debe: en Ring 0 se queda lo que **de
+//! verdad** necesita el privilegio (E/S de puertos, tablas de paginas,
+//! reinicio, la admision de un `.bex`), y la informacion baja a Ring 3, que es
 //! quien tiene la pantalla y sabe pintarla.
 //!
-//! ## Una tabla, no una operación por dato
+//! ## Una tabla, no una operacion por dato
 //!
 //! Dos operaciones (`TASK_OP_INFO` y `TASK_OP_INFO_TEXTO`) y una tabla de
-//! campos. Añadir "cuántos programas se han lanzado" es **una fila**, no un
-//! número de syscall nuevo — que es la misma forma que tienen las tablas de
-//! `sem-asm` y la razón de que la superficie no crezca.
+//! campos. Anadir "cuantos programas se han lanzado" es **una fila**, no un
+//! numero de syscall nuevo -- que es la misma forma que tienen las tablas de
+//! `sem-asm` y la razon de que la superficie no crezca.
 //!
-//! ## Lo que este módulo NO hace
+//! ## Lo que este modulo NO hace
 //!
 //! No formatea. Devuelve enteros y bytes crudos: los KiB, los porcentajes, las
-//! barras y el color son de Ring 3. Un kernel que decide cómo se ve un número
+//! barras y el color son de Ring 3. Un kernel que decide como se ve un numero
 //! es un kernel que tiene opiniones sobre la interfaz.
 
-// Los códigos de campo, copiados de `bmo_abi::syscalls::surface`. Se
-// redeclaran aquí por la misma razón que `syscall.rs` redeclara los suyos: Ring
+// Los codigos de campo, copiados de `bmo_abi::syscalls::surface`. Se
+// redeclaran aqui por la misma razon que `syscall.rs` redeclara los suyos: Ring
 // 0 no enlaza el ABI completo, que usa `alloc`. **La fuente de verdad es
-// `surface.rs`** — si estos números se separan, el que está mal es este
+// `surface.rs`** -- si estos numeros se separan, el que esta mal es este
 // archivo.
 const INFO_RAM_TOTAL: u64 = 0x01;
 const INFO_RAM_LIBRE: u64 = 0x02;
@@ -37,14 +37,14 @@ const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
 const INFO_TSC_HZ: u64 = 0x05;
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
-/// ★ Quién tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
+/// * Quien tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
 ///
-/// Existe para que el escritorio pueda PRESTARLA y esperar. Hacía falta
-/// preguntar, no tomar: intentar reclamarla para saber si está libre te la deja
-/// puesta, y entonces se la robas al programa que ibas a prestársela.
+/// Existe para que el escritorio pueda PRESTARLA y esperar. Hacia falta
+/// preguntar, no tomar: intentar reclamarla para saber si esta libre te la deja
+/// puesta, y entonces se la robas al programa que ibas a prestarsela.
 ///
 /// `0` como "de nadie" y no `u32::MAX`: el pid 0 no se concede a un proceso de
-/// Ring 3, así que no hay ambigüedad, y desde Ring 3 un `0` se lee sin tener
+/// Ring 3, asi que no hay ambiguedad, y desde Ring 3 un `0` se lee sin tener
 /// que conocer el centinela del kernel.
 const INFO_PANTALLA_DUENO: u64 = 0x1A;
 const INFO_TAREAS_TOTAL: u64 = 0x08;
@@ -56,7 +56,7 @@ const INFO_PROGRAMAS: u64 = 0x0D;
 const INFO_PROGRAMAS_OLVIDADOS: u64 = 0x0E;
 const INFO_DISCO_LISTO: u64 = 0x0F;
 const INFO_DATOS_MONTADO: u64 = 0x10;
-// ── ESTRATOS ──
+// -- ESTRATOS --
 //
 // El volumen grande. Ring 3 los necesita para poder ENSENAR el estado del
 // almacen; anadirlos es una fila cada uno, no una operacion nueva.
@@ -80,9 +80,9 @@ const PAGE: u64 = 4096;
 
 /// El valor del campo, o 0 si no existe.
 ///
-/// Cero y no un error: un campo que este kernel todavía no sabe contestar tiene
-/// que poder pedirse sin que el programa se caiga. Ring 3 pinta "—" y sigue,
-/// que es lo que hace un panel cuando un dato no está.
+/// Cero y no un error: un campo que este kernel todavia no sabe contestar tiene
+/// que poder pedirse sin que el programa se caiga. Ring 3 pinta "--" y sigue,
+/// que es lo que hace un panel cuando un dato no esta.
 pub fn campo(n: u64) -> u64 {
     use crate::ring0::mm::phys;
     match n {
@@ -91,7 +91,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_RAM_MARCOS => phys::stats().0,
         INFO_RAM_MARCOS_LIBRES => phys::stats().1,
         INFO_TSC_HZ => crate::ring0::task::scheduler::tsc_freq(),
-        // La topología está cacheada desde `init_bmo_cpu`: aquí no se vuelve a
+        // La topologia esta cacheada desde `init_bmo_cpu`: aqui no se vuelve a
         // preguntar al CPUID. Un panel que se repinta no debe costar CPUID.
         INFO_CPU_HILOS => cpu_topo().map(|t| t.hilos as u64).unwrap_or(0),
         INFO_CPU_NUCLEOS => cpu_topo().map(|t| t.nucleos as u64).unwrap_or(0),
@@ -135,26 +135,26 @@ pub fn campo(n: u64) -> u64 {
                 bmo_estratos::Nivel::SoloLectura => 3,
             }
         }),
-        // ★ Hoy SIEMPRE cero, y a proposito. La maquina de estados de la
+        // * Hoy SIEMPRE cero, y a proposito. La maquina de estados de la
         // transaccion existe y esta probada, pero **nadie la ha cableado al
         // dispositivo**: no hay `write` ni `FLUSH CACHE`. Contestar 1 aqui
-        // seria prometer una escritura que no ocurre — y en un almacen, una
+        // seria prometer una escritura que no ocurre -- y en un almacen, una
         // promesa de escritura que no ocurre es como se pierde el trabajo.
         INFO_ES_ESCRIBIBLE => 0,
         // Lo que Ring 3 ha PEDIDO. Cero hasta que un programa llame a
-        // `KIND_MEMORIA` — y por eso vale: es la única fila del informe que
-        // sólo se mueve si alguien ejerció la capability.
+        // `KIND_MEMORIA` -- y por eso vale: es la unica fila del informe que
+        // solo se mueve si alguien ejercio la capability.
         INFO_MEM_ENTREGADA => crate::ring0::obj::memoria::total_entregado(),
         _ => 0,
     }
 }
 
-/// La topología, **por el perfil y no por el nombre del fabricante**.
+/// La topologia, **por el perfil y no por el nombre del fabricante**.
 ///
-/// Esta función nombraba `cpu_vendor::ryzen_5_5600x::bmo_cpu::topology()`
+/// Esta funcion nombraba `cpu_vendor::ryzen_5_5600x::bmo_cpu::topology()`
 /// directamente, y la cabecera de `profile.rs` dice literalmente que el resto de
-/// Ring 0 *"nunca nombra un módulo de fabricante directamente"*. La regla estaba
-/// escrita en el propio fichero que define la abstracción, y rota aquí.
+/// Ring 0 *"nunca nombra un modulo de fabricante directamente"*. La regla estaba
+/// escrita en el propio fichero que define la abstraccion, y rota aqui.
 fn cpu_topo() -> Option<crate::ring0::cpu_vendor::profile::Nucleos> {
     (crate::ring0::cpu_vendor::profile::active().nucleos)()
 }
@@ -163,8 +163,8 @@ fn cpu_topo() -> Option<crate::ring0::cpu_vendor::profile::Nucleos> {
 ///
 /// `trozo` cuenta de 8 en 8. Fuera del texto devuelve 0, y el cero es el final:
 /// el llamante lee trozos hasta que llega uno con un cero dentro, igual que en
-/// `console::write_const`. Es feo y es seguro, y lo segundo importa más — pasar
-/// un puntero de Ring 3 obligaría al kernel a validar el rango entero contra el
+/// `console::write_const`. Es feo y es seguro, y lo segundo importa mas -- pasar
+/// un puntero de Ring 3 obligaria al kernel a validar el rango entero contra el
 /// espacio del llamante, y esa infraestructura no existe.
 pub fn texto(n: u64, trozo: u64) -> u64 {
     let p = crate::ring0::cpu_vendor::profile::active();

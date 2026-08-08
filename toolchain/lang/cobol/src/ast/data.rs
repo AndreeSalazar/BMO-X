@@ -4,14 +4,14 @@ use crate::pic::{parse_pic, PicField, Usage};
 
 /// Uno de los valores de un nivel 88.
 ///
-/// Un nombre de condición no compara con UN valor: compara con un conjunto.
+/// Un nombre de condicion no compara con UN valor: compara con un conjunto.
 /// `88 LABORABLE VALUE 1 THRU 5.` y `88 FESTIVO VALUE 6, 7.` son las dos formas
 /// que escribe todo el mundo, y las dos estaban rechazadas porque expandirlas
-/// pide un `OR` que el analizador de condiciones no tenía.
+/// pide un `OR` que el analizador de condiciones no tenia.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Valor88 {
     Uno(String),
-    /// `VALUE 1 THRU 5` — los dos extremos INCLUIDOS, como manda el estándar.
+    /// `VALUE 1 THRU 5` -- los dos extremos INCLUIDOS, como manda el estandar.
     Rango(String, String),
 }
 
@@ -21,40 +21,40 @@ pub struct DataItem {
     pub name: String,
     pub pic: Option<String>,
     pub pic_field: Option<PicField>,
-    /// La plantilla de edición, si la PIC es de PRESENTACIÓN
-    /// (`$$$,$$9.99`) en vez de de cálculo (`S9(7)V99`). Lo que la lleva no
-    /// se guarda distinto —sigue siendo un entero escalado— pero al
-    /// enseñarlo no se escribe el número: se escribe la máscara.
+    /// La plantilla de edicion, si la PIC es de PRESENTACION
+    /// (`$$$,$$9.99`) en vez de de calculo (`S9(7)V99`). Lo que la lleva no
+    /// se guarda distinto --sigue siendo un entero escalado-- pero al
+    /// ensenarlo no se escribe el numero: se escribe la mascara.
     pub edicion: Option<Plantilla>,
     pub value: Option<String>,
     pub usage: Usage,
-    /// De quién es este `88`. Un nombre de condición no es un dato: es un
-    /// APODO de una comparación sobre el dato que lo precede. `None` en todo
+    /// De quien es este `88`. Un nombre de condicion no es un dato: es un
+    /// APODO de una comparacion sobre el dato que lo precede. `None` en todo
     /// lo que no sea nivel 88.
     pub padre: Option<String>,
-    /// Los valores con los que compara un nivel 88. Vacío en todo lo demás.
+    /// Los valores con los que compara un nivel 88. Vacio en todo lo demas.
     ///
     /// Va aparte de `value` porque un 88 puede tener varios y `value` es uno
-    /// solo: dejarlo ahí obligaría a que cada consumidor volviera a partir el
-    /// texto, y el que se olvidara compararía sólo con el primero **en
-    /// silencio** — que es como estaba antes de rechazarlo.
+    /// solo: dejarlo ahi obligaria a que cada consumidor volviera a partir el
+    /// texto, y el que se olvidara compararia solo con el primero **en
+    /// silencio** -- que es como estaba antes de rechazarlo.
     pub valores: Vec<Valor88>,
-    /// `OCCURS <n> TIMES` — cuántas veces se repite el dato.
+    /// `OCCURS <n> TIMES` -- cuantas veces se repite el dato.
     ///
     /// `None` = un dato suelto. `Some(n)` = una TABLA de `n` elementos, y
-    /// entonces el nombre **exige subíndice**: `TOTAL(I)`. Un `MOVE 0 TO
+    /// entonces el nombre **exige subindice**: `TOTAL(I)`. Un `MOVE 0 TO
     /// TOTAL` sobre una tabla no es "el primero", es una pregunta sin
     /// respuesta, y se rechaza.
     pub occurs: Option<u32>,
 }
 
-/// Analiza una PIC decidiendo primero de cuál de las dos familias es.
+/// Analiza una PIC decidiendo primero de cual de las dos familias es.
 ///
-/// Son dos gramáticas distintas y por eso hay dos analizadores: `parse_pic`
-/// sabe de `9`, `S` y `V` —cuántos dígitos y dónde cae la coma— y se atraganta
-/// con un `$`. Mandarle una PIC editada devolvía error, y como el error se
+/// Son dos gramaticas distintas y por eso hay dos analizadores: `parse_pic`
+/// sabe de `9`, `S` y `V` --cuantos digitos y donde cae la coma-- y se atraganta
+/// con un `$`. Mandarle una PIC editada devolvia error, y como el error se
 /// tragaba con `.ok()`, el dato acababa con escala 0: `MOVE 19.99` guardaba
-/// 19 y los centavos desaparecían sin que nadie dijera nada.
+/// 19 y los centavos desaparecian sin que nadie dijera nada.
 fn analizar_pic(pic: &str, usage: Usage) -> Result<(PicField, Option<Plantilla>), String> {
     if !Plantilla::es_editada(pic) {
         return Ok((parse_pic(pic, usage)?, None));
@@ -64,9 +64,9 @@ fn analizar_pic(pic: &str, usage: Usage) -> Result<(PicField, Option<Plantilla>)
     let campo = PicField {
         integer_digits: plantilla.digitos() as u32 - escala,
         scale: escala,
-        // Una PIC editada puede enseñar signo (`-`, `CR`, `DB`), así que el
-        // dato que la alimenta se guarda con signo. Al revés —guardarlo sin
-        // signo— un saldo en rojo saldría en verde.
+        // Una PIC editada puede ensenar signo (`-`, `CR`, `DB`), asi que el
+        // dato que la alimenta se guarda con signo. Al reves --guardarlo sin
+        // signo-- un saldo en rojo saldria en verde.
         signed: true,
         numeric: true,
         char_count: 0,
@@ -97,17 +97,17 @@ impl DataItem {
         }
     }
 
-    /// Bytes de almacenamiento del item (mínimo 8, alineado por el codegen).
+    /// Bytes de almacenamiento del item (minimo 8, alineado por el codegen).
     pub fn storage_size(&self) -> usize {
         self.pic_field.as_ref().map(|p| p.size()).unwrap_or(8)
     }
 
-    /// Cuántos elementos tiene. Un dato suelto es una tabla de uno.
+    /// Cuantos elementos tiene. Un dato suelto es una tabla de uno.
     pub fn elementos(&self) -> u32 {
         self.occurs.unwrap_or(1)
     }
 
-    /// Escala decimal (dígitos tras la V). 0 = entero. Es la llave del
+    /// Escala decimal (digitos tras la V). 0 = entero. Es la llave del
     /// decimal exacto: el codegen escala los operandos a esta escala.
     pub fn scale(&self) -> u32 {
         self.pic_field.as_ref().map(|p| p.scale).unwrap_or(0)

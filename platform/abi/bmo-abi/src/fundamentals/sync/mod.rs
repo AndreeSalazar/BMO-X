@@ -1,4 +1,4 @@
-//! `bmo_abi::sync::atomic` — Atomic operations with BMO ABI types.
+//! `bmo_abi::sync::atomic` -- Atomic operations with BMO ABI types.
 //!
 //! Thin wrapper around `core::sync::atomic` to keep BMO ABI types
 //! (BxU64 instead of u64) in the type signature. The wrapper is `const`

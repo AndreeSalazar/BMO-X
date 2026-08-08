@@ -64,12 +64,12 @@ unsafe fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
 }
 
 pub fn apply_all() -> u32 {
-    // Mitigation result bitmask — bit i set = mitigation i applied
+    // Mitigation result bitmask -- bit i set = mitigation i applied
     //   0: IBRS  via IA32_SPEC_CTRL   3: IBPB via IA32_PRED_CMD
     //   1: STIBP via IA32_SPEC_CTRL   4: TSX  via IA32_TSX_CTRL
     //   2: SSBD  via IA32_SPEC_CTRL
     //
-    // GOLDEN RULE: never touch an MSR the CPU does not enumerate — writing
+    // GOLDEN RULE: never touch an MSR the CPU does not enumerate -- writing
     // an unimplemented MSR raises #GP. On real Zen 3 the old unconditional
     // TSX_CTRL (0x122, an Intel-only MSR; AMD has no TSX) reset the kernel.
     let mut applied: u32 = 0;
@@ -102,7 +102,7 @@ pub fn apply_all() -> u32 {
     }
 
     // TSX_CTRL only exists on CPUs that enumerate RTM (CPUID.7.0 EBX[11]).
-    // Zen 3 has no TSX, so this is skipped — which is the fix.
+    // Zen 3 has no TSX, so this is skipped -- which is the fix.
     let (_, ebx7, _, _) = unsafe { cpuid(7, 0) };
     if ebx7 & (1 << 11) != 0 {
         unsafe {

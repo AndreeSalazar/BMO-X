@@ -1,22 +1,22 @@
-//! Motor de codificación semántica (`sem-asm`) — la 3ª librería del pipeline.
+//! Motor de codificacion semantica (`sem-asm`) -- la 3a libreria del pipeline.
 //!
-//! Lee las tablas TOML de `tables/` y encodea mnemónicos → bytes. Reemplaza
+//! Lee las tablas TOML de `tables/` y encodea mnemonicos -> bytes. Reemplaza
 //! el hardcodeo de bytes DUPLICADO en `lang/c/src/codegen.rs` y
-//! `lang/cobol/src/codegen.rs` (ambos escriben 0x48/0xB8… a mano).
+//! `lang/cobol/src/codegen.rs` (ambos escriben 0x48/0xB8... a mano).
 //!
-//! Librería que el frontend ELIGE enlazar, no un embudo.
+//! Libreria que el frontend ELIGE enlazar, no un embudo.
 
 use std::path::{Path, PathBuf};
 
 pub mod x86_64;
 
-/// Ubica `tables/` relativo a este crate — sin depender de las rutas muertas
+/// Ubica `tables/` relativo a este crate -- sin depender de las rutas muertas
 /// `X:\FastOS\...` que arrastraban los frontends.
 pub fn tables_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tables")
 }
 
-/// Bytes de una instrucción (x86-64: 1..15 bytes).
+/// Bytes de una instruccion (x86-64: 1..15 bytes).
 pub type Encoded = Vec<u8>;
 
 #[derive(Debug)]
@@ -28,9 +28,9 @@ pub enum SemAsmError {
 
 /// Tabla de instrucciones cargada desde `arch/<isa>/instructions.toml`.
 ///
-/// El TOML es heterogéneo (unas entradas traen `opcode = [..]`, otras
-/// `opcode_base`, otras una lista `forms`), así que se navega como
-/// `toml::Value` en vez de forzar un `struct` rígido — robusto a la forma.
+/// El TOML es heterogeneo (unas entradas traen `opcode = [..]`, otras
+/// `opcode_base`, otras una lista `forms`), asi que se navega como
+/// `toml::Value` en vez de forzar un `struct` rigido -- robusto a la forma.
 pub struct Instructions {
     root: toml::Table,
 }
@@ -45,14 +45,14 @@ impl Instructions {
         Ok(Self { root })
     }
 
-    /// Nombre de la ISA (`[instruction_set].name`), si está.
+    /// Nombre de la ISA (`[instruction_set].name`), si esta.
     pub fn isa_name(&self) -> Option<&str> {
         self.root.get("instruction_set")?.get("name")?.as_str()
     }
 
-    /// Opcode base de un mnemónico. Cubre las tres formas del TOML:
-    /// `opcode = [..]`, `opcode_base = 0x..`, o la 1ª entrada de `forms`.
-    /// Es el primer ladrillo del encoder; la codificación completa de
+    /// Opcode base de un mnemonico. Cubre las tres formas del TOML:
+    /// `opcode = [..]`, `opcode_base = 0x..`, o la 1a entrada de `forms`.
+    /// Es el primer ladrillo del encoder; la codificacion completa de
     /// operandos (ModRM/REX/imm) se construye encima en pasos siguientes.
     pub fn opcode(&self, mnemonic: &str) -> Result<Encoded, SemAsmError> {
         let entry = self
@@ -68,7 +68,7 @@ impl Instructions {
         if let Some(b) = entry.get("opcode_base").and_then(toml_byte) {
             return Ok(vec![b]);
         }
-        // Forma C: forms = [ { opcode = [..] }, .. ] — toma la primera.
+        // Forma C: forms = [ { opcode = [..] }, .. ] -- toma la primera.
         if let Some(forms) = entry.get("forms").and_then(|v| v.as_array()) {
             if let Some(first) = forms.first() {
                 if let Some(arr) = first.get("opcode").and_then(|v| v.as_array()) {
@@ -85,19 +85,19 @@ fn toml_byte(v: &toml::Value) -> Option<u8> {
     v.as_integer().and_then(|i| u8::try_from(i).ok())
 }
 
-/// Un intrínseco: bytes exactos + cómo entran los argumentos y sale el valor.
-/// La fusión lenguaje↔ASM: los frontends los exponen como `__nombre(...)`.
+/// Un intrinseco: bytes exactos + como entran los argumentos y sale el valor.
+/// La fusion lenguaje<->ASM: los frontends los exponen como `__nombre(...)`.
 pub struct IntrinsicDef {
     pub bytes: Vec<u8>,
     /// Registro destino de cada argumento, en orden ("dx", "al", "ecx",
-    /// "u64_edx_eax"...). Vacío = intrínseco sin operandos.
+    /// "u64_edx_eax"...). Vacio = intrinseco sin operandos.
     pub args: Vec<String>,
-    /// De dónde sale el valor de retorno: "al"/"ax"/"eax"/"u64_edx_eax",
+    /// De donde sale el valor de retorno: "al"/"ax"/"eax"/"u64_edx_eax",
     /// o None para los que no devuelven nada.
     pub returns: Option<String>,
 }
 
-/// Tabla de intrínsecos cargada desde `arch/<isa>/intrinsics.toml`.
+/// Tabla de intrinsecos cargada desde `arch/<isa>/intrinsics.toml`.
 pub struct Intrinsics {
     map: std::collections::HashMap<String, IntrinsicDef>,
 }
@@ -111,7 +111,7 @@ impl Intrinsics {
         let root: toml::Table = text.parse().map_err(|e| SemAsmError::Parse(format!("{e}")))?;
         let mut map = std::collections::HashMap::new();
         for (name, entry) in &root {
-            // entradas sin `bytes` (p.ej. [meta]) no son intrínsecos
+            // entradas sin `bytes` (p.ej. [meta]) no son intrinsecos
             let Some(arr) = entry.get("bytes").and_then(|v| v.as_array()) else { continue };
             let bytes: Vec<u8> = arr.iter().filter_map(toml_byte).collect();
             if bytes.is_empty() { continue; }
@@ -132,9 +132,9 @@ impl Intrinsics {
     /// Todos los nombres de la tabla, ordenados.
     ///
     /// Existe para que un frontend pueda montar una **matriz de conformidad**:
-    /// compilar una llamada a cada intrínseco y comprobar que sale. Sin poder
+    /// compilar una llamada a cada intrinseco y comprobar que sale. Sin poder
     /// recorrerla, una fila con el nombre de un registro mal escrito no falla
-    /// hasta que alguien la usa — y "alguien la usa" en una tabla de driver
+    /// hasta que alguien la usa -- y "alguien la usa" en una tabla de driver
     /// puede ser dentro de seis meses y en metal.
     pub fn names(&self) -> Vec<&str> {
         let mut v: Vec<&str> = self.map.keys().map(|s| s.as_str()).collect();
@@ -184,10 +184,10 @@ mod tests {
     #[test]
     fn encodes_known_opcodes_from_the_table() {
         let isa = Instructions::load_x86_64().unwrap();
-        // mov r/m, r → 0x89 (primera forma de [mov]).
+        // mov r/m, r -> 0x89 (primera forma de [mov]).
         assert_eq!(isa.opcode("mov").unwrap(), vec![0x89]);
-        // mov_imm → opcode_base 0xB8.
+        // mov_imm -> opcode_base 0xB8.
         assert_eq!(isa.opcode("mov_imm").unwrap(), vec![0xB8]);
-        // El motor ya LEE la tabla: sem-asm dejó de ser TOML muerto.
+        // El motor ya LEE la tabla: sem-asm dejo de ser TOML muerto.
     }
 }

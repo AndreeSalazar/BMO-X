@@ -1,4 +1,4 @@
-# cobol85.toml — ANSI X3.23-1985 / ISO 1989:1985 (COBOL-85)
+# cobol85.toml -- ANSI X3.23-1985 / ISO 1989:1985 (COBOL-85)
 [standard]
 iso_number = "ISO 1989:1985"
 year = 1985

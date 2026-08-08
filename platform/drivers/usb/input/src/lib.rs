@@ -1,13 +1,13 @@
-//! BMO Input Subsystem — HAL-based keyboard/mouse driver.
+//! BMO Input Subsystem -- HAL-based keyboard/mouse driver.
 //!
 //! ## Architecture
 //!
 //! ```text
-//! bmo_input::hal          ← InputHal trait (contract)
-//! bmo_input::hal_ps2      ← PS/2 backend (ports 0x60/0x64)
-//! bmo_input::event        ← InputEvent + InputEventQueue (lock-free ring)
-//! bmo_input::keyboard     ← Scancode + HID Usage → VK translation
-//! bmo_input::mouse        ← Pointer state tracking
+//! bmo_input::hal          <- InputHal trait (contract)
+//! bmo_input::hal_ps2      <- PS/2 backend (ports 0x60/0x64)
+//! bmo_input::event        <- InputEvent + InputEventQueue (lock-free ring)
+//! bmo_input::keyboard     <- Scancode + HID Usage -> VK translation
+//! bmo_input::mouse        <- Pointer state tracking
 //! ```
 //!
 //! ## Usage from kernel
@@ -29,7 +29,7 @@ pub mod hal;
 pub mod hal_ps2;
 pub mod event;
 /// El FOCO: quien recibe las teclas cuando hay mas de una ventana. Vive aqui
-/// porque enrutar entrada es el oficio de este crate — y porque aqui se puede
+/// porque enrutar entrada es el oficio de este crate -- y porque aqui se puede
 /// probar: el compositor es `no_main` para un target sin sistema operativo y no
 /// corre un test.
 pub mod foco;

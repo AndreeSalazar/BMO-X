@@ -1,10 +1,10 @@
-//! `reflect` — reflexión sobre tipos BMO y BEF cargados.
+//! `reflect` -- reflexion sobre tipos BMO y BEF cargados.
 //!
-//! Permite a lenguajes dinámicos (Python, JS, Lua) inspeccionar
-//! estructuras, enumeraciones y firmas de función en tiempo de ejecución.
+//! Permite a lenguajes dinamicos (Python, JS, Lua) inspeccionar
+//! estructuras, enumeraciones y firmas de funcion en tiempo de ejecucion.
 //!
 //! ## Nota
-//! Este módulo es un esqueleto funcional. El registro completo de tipos
+//! Este modulo es un esqueleto funcional. El registro completo de tipos
 //! se integra con `runtime::TypeRegistry`.
 
 use crate::bmo_abi::fundamentals::string::BmoStr;
@@ -34,7 +34,7 @@ impl TypeKind {
     }
 }
 
-/// Un tipo registrado en el sistema de reflexión.
+/// Un tipo registrado en el sistema de reflexion.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BmoTypeInfo {
@@ -45,7 +45,7 @@ pub struct BmoTypeInfo {
 }
 const _: () = assert!(core::mem::size_of::<BmoTypeInfo>() == 40);
 
-/// Query de reflexión sobre un BEF cargado.
+/// Query de reflexion sobre un BEF cargado.
 pub struct ReflectQuery;
 
 impl ReflectQuery {

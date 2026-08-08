@@ -6,15 +6,15 @@
 
 use crate::*;
 
-// ── El disco ────────────────────────────────────────────────────────────
+// -- El disco ------------------------------------------------------------
 
-/// Una entrada de directorio, ya leída.
+/// Una entrada de directorio, ya leida.
 ///
-/// `EntradaDir` y no `Entrada` porque `Entrada` ya es el ratón+teclado. Dos
+/// `EntradaDir` y no `Entrada` porque `Entrada` ya es el raton+teclado. Dos
 /// cosas distintas no pueden llamarse igual aunque en castellano suenen igual.
 pub struct EntradaDir {
     /// Nombre 8.3 CRUDO, con sus espacios de relleno: `"COBOL   BEX"`.
-    /// Convertirlo a `COBOL.BEX` es presentación, y eso es cosa de quien pinta.
+    /// Convertirlo a `COBOL.BEX` es presentacion, y eso es cosa de quien pinta.
     pub nombre: [u8; 11],
     pub es_dir: bool,
     pub bytes: u32,
@@ -22,13 +22,13 @@ pub struct EntradaDir {
 
 impl EntradaDir {
     /// El nombre en forma legible, `cobol.bex`, escrito en `dst`. Devuelve
-    /// cuántos bytes ocupó.
+    /// cuantos bytes ocupo.
     ///
-    /// ★ En MINÚSCULA. FAT32 los guarda en mayúscula porque el formato es de
-    /// 1980 y no distinguía; eso es un detalle del disco, no del nombre. Un
+    /// * En MINUSCULA. FAT32 los guarda en mayuscula porque el formato es de
+    /// 1980 y no distinguia; eso es un detalle del disco, no del nombre. Un
     /// listado a gritos se lee peor, y el kernel acepta las dos formas al
-    /// abrir — así que no se pierde nada bajándolos aquí, que es donde se
-    /// decide cómo se ve.
+    /// abrir -- asi que no se pierde nada bajandolos aqui, que es donde se
+    /// decide como se ve.
     pub fn legible(&self, dst: &mut [u8; 12]) -> usize {
         let baja = |c: u8| if c.is_ascii_uppercase() { c + 32 } else { c };
         let mut n = 0;
@@ -52,16 +52,16 @@ impl EntradaDir {
 
 /// Un directorio abierto.
 ///
-/// ★ Esto NO es "una ruta que cualquiera puede escribir". Es un handle que te
+/// * Esto NO es "una ruta que cualquiera puede escribir". Es un handle que te
 /// concedieron: lo que no te hayan dado no existe para este proceso. Es la
-/// misma disciplina que la pantalla y la entrada — un nombre es adivinable, un
+/// misma disciplina que la pantalla y la entrada -- un nombre es adivinable, un
 /// permiso no.
 pub struct Directorio {
     pub cap: u64,
 }
 
 impl Directorio {
-    /// Abre un directorio del volumen de datos. Ruta vacía = la raíz.
+    /// Abre un directorio del volumen de datos. Ruta vacia = la raiz.
     pub fn abrir(ruta: &[u8]) -> Result<Self, u32> {
         for trozo in ruta.chunks(8) {
             let mut w = [0u8; 8];
@@ -80,7 +80,7 @@ impl Directorio {
         }
         let es_dir = (v >> 62) & 1 != 0;
         let bytes = v as u32;
-        // El nombre viene aparte: son 11 bytes y no caben con lo demás.
+        // El nombre viene aparte: son 11 bytes y no caben con lo demas.
         let mut nombre = [b' '; 11];
         let mut puesto = 0usize;
         for desde in [0u64, 7] {
@@ -100,21 +100,21 @@ impl Directorio {
 
 /// **Cerrar es del `Drop`, no de quien llama.**
 ///
-/// ═══ El bug que esto arregla ═══
+/// === El bug que esto arregla ===
 ///
-/// No había forma de cerrar un directorio, y la tabla del kernel son OCHO
-/// ranuras que sólo se liberaban al **morir el proceso**. El cliente es el
-/// compositor, que **no muere nunca** — es el escritorio.
+/// No habia forma de cerrar un directorio, y la tabla del kernel son OCHO
+/// ranuras que solo se liberaban al **morir el proceso**. El cliente es el
+/// compositor, que **no muere nunca** -- es el escritorio.
 ///
-/// Así que cada `ls` se quedaba una ranura para siempre y al noveno la tabla
+/// Asi que cada `ls` se quedaba una ranura para siempre y al noveno la tabla
 /// estaba llena: `ls` empezaba a contestar *"no puedo abrir esa carpeta"* y ya
-/// no se recuperaba hasta reiniciar. Un fallo que aparece **después de un rato
-/// de uso normal** y no se puede reproducir recién arrancado, que es de los
+/// no se recuperaba hasta reiniciar. Un fallo que aparece **despues de un rato
+/// de uso normal** y no se puede reproducir recien arrancado, que es de los
 /// peores de encontrar.
 ///
-/// Y va en `Drop` y no en un método `cerrar()` a propósito: un cierre que hay
-/// que acordarse de llamar es un cierre que un día no se llama. Aquí el
-/// compositor no cambia ni una línea — el `Directorio` sale de ámbito al
+/// Y va en `Drop` y no en un metodo `cerrar()` a proposito: un cierre que hay
+/// que acordarse de llamar es un cierre que un dia no se llama. Aqui el
+/// compositor no cambia ni una linea -- el `Directorio` sale de ambito al
 /// terminar el `ls` y la ranura vuelve sola.
 impl Drop for Directorio {
     fn drop(&mut self) {
@@ -122,12 +122,12 @@ impl Drop for Directorio {
     }
 }
 
-// ── Un archivo ──────────────────────────────────────────────────────────
+// -- Un archivo ----------------------------------------------------------
 
 /// Un archivo abierto del volumen de datos.
 ///
-/// Hermano de [`Directorio`]: aquel deja PREGUNTAR qué hay, éste deja mover
-/// los bytes de dentro. Y la misma disciplina — no es una ruta que cualquiera
+/// Hermano de [`Directorio`]: aquel deja PREGUNTAR que hay, este deja mover
+/// los bytes de dentro. Y la misma disciplina -- no es una ruta que cualquiera
 /// escriba, es un handle que te concedieron.
 ///
 /// El MODO se fija al abrir: [`Archivo::leer_de`] da uno de lectura y
@@ -135,9 +135,9 @@ impl Drop for Directorio {
 /// devuelve un error de permisos: devuelve que esa pregunta no existe para ese
 /// objeto.
 ///
-/// **Límite de hoy**: 4 KiB por archivo. Los bytes cruzan de 7 en 7 (la
+/// **Limite de hoy**: 4 KiB por archivo. Los bytes cruzan de 7 en 7 (la
 /// superficie congelada no acepta punteros) y hace falta un buffer en el
-/// kernel donde juntarlos. Ver `ring0/archivo.rs`; lo que lo quitará es un
+/// kernel donde juntarlos. Ver `ring0/archivo.rs`; lo que lo quitara es un
 /// escritor por sectores en `bmo_fat32`, que es otra pieza.
 pub struct Archivo {
     pub cap: u64,
@@ -146,7 +146,7 @@ pub struct Archivo {
 
 impl Archivo {
     fn con_ruta(ruta: &[u8], op: u32, escribe: bool) -> Result<Self, u32> {
-        // El mismo renglón que usan `ejecutar` y `Directorio::abrir`. No hay
+        // El mismo renglon que usan `ejecutar` y `Directorio::abrir`. No hay
         // un segundo mecanismo para lo mismo.
         for trozo in ruta.chunks(8) {
             let mut w = [0u8; 8];
@@ -157,14 +157,14 @@ impl Archivo {
         if st.ok() { Ok(Self { cap: st.value, escribe }) } else { Err(st.code) }
     }
 
-    /// Abre un archivo para LEER. Se trae entero al abrir, así que a partir de
-    /// aquí una lectura no puede fallar a mitad por un error de disco.
+    /// Abre un archivo para LEER. Se trae entero al abrir, asi que a partir de
+    /// aqui una lectura no puede fallar a mitad por un error de disco.
     pub fn leer_de(ruta: &[u8]) -> Result<Self, u32> {
         Self::con_ruta(ruta, OP_ARCHIVO_ABRIR, false)
     }
 
     /// Abre un archivo para ESCRIBIR. Acepta subdirectorios
-    /// (`datos/movim.dat`); el nombre tiene que ser un 8.3 válido.
+    /// (`datos/movim.dat`); el nombre tiene que ser un 8.3 valido.
     ///
     /// **Nada llega al disco hasta [`Archivo::cerrar`]**. Un proceso que muere
     /// a medias no deja un archivo a medias: no deja nada.
@@ -172,8 +172,8 @@ impl Archivo {
         Self::con_ruta(ruta, OP_ARCHIVO_CREAR, true)
     }
 
-    /// Llena `dst` con lo que quede. Devuelve cuántos bytes se leyeron; `0` =
-    /// se acabó el archivo.
+    /// Llena `dst` con lo que quede. Devuelve cuantos bytes se leyeron; `0` =
+    /// se acabo el archivo.
     pub fn leer(&self, dst: &mut [u8]) -> usize {
         if self.escribe {
             return 0;
@@ -196,8 +196,8 @@ impl Archivo {
         puestos
     }
 
-    /// Añade bytes. Devuelve cuántos se aceptaron — menos de los pedidos
-    /// significa que se llenó, y entonces `cerrar` devolverá `false`.
+    /// Anade bytes. Devuelve cuantos se aceptaron -- menos de los pedidos
+    /// significa que se lleno, y entonces `cerrar` devolvera `false`.
     ///
     /// Los bytes viajan de 7 en 7 con su cuenta en el byte alto, no cortando
     /// en el primer cero: un archivo no es texto y un `\0` en medio es un dato
@@ -226,36 +226,36 @@ impl Archivo {
     }
 
     /// Cierra. En uno de escritura es **donde el contenido llega al disco**:
-    /// `false` significa que no se guardó nada, no que se guardara a medias.
+    /// `false` significa que no se guardo nada, no que se guardara a medias.
     pub fn cerrar(self) -> bool {
         let ok = invoke(self.cap, ARCH_OP_CERRAR, 0, 0, 0).value != 0;
-        // ★ Y NO se deja caer el `Drop` encima.
+        // * Y NO se deja caer el `Drop` encima.
         //
-        // `Drop` cierra lo que se olvidaron de cerrar; éste ya está cerrado, y
-        // cerrarlo dos veces mandaría un `ARCH_OP_CERRAR` sobre un handle que
-        // el kernel acaba de revocar. No rompe nada —contestaría "handle
-        // inválido"— pero es una llamada que miente sobre lo que está pasando,
+        // `Drop` cierra lo que se olvidaron de cerrar; este ya esta cerrado, y
+        // cerrarlo dos veces mandaria un `ARCH_OP_CERRAR` sobre un handle que
+        // el kernel acaba de revocar. No rompe nada --contestaria "handle
+        // invalido"-- pero es una llamada que miente sobre lo que esta pasando,
         // y las que mienten son las que confunden un log.
         //
-        // `forget` es gratis aquí: esto son un `u64` y un `bool`, no hay nada
+        // `forget` es gratis aqui: esto son un `u64` y un `bool`, no hay nada
         // que liberar en Ring 3.
         core::mem::forget(self);
         ok
     }
 }
 
-/// **Cerrar es del `Drop` cuando nadie se acordó.**
+/// **Cerrar es del `Drop` cuando nadie se acordo.**
 ///
 /// `cerrar()` sigue existiendo y sigue siendo la forma correcta de cerrar un
 /// archivo de ESCRITURA: es donde el contenido llega al disco, y **devuelve si
-/// salió bien**. Un `Drop` no puede devolver nada, así que soltar la escritura
-/// en el `Drop` sería tirar la única señal de que se guardó.
+/// salio bien**. Un `Drop` no puede devolver nada, asi que soltar la escritura
+/// en el `Drop` seria tirar la unica senal de que se guardo.
 ///
-/// Lo que hace esto es tapar el otro caso: el archivo que se abrió, se leyó, y
+/// Lo que hace esto es tapar el otro caso: el archivo que se abrio, se leyo, y
 /// alguien se fue por un `return` en medio. Hoy el compositor cierra bien en
-/// los dos caminos — pero eso es **disciplina, no construcción**, y la
-/// disciplina se rompe el día que se añade un comando nuevo con una rama de
-/// error más. La tabla son 16 ranuras y los handles 64 por proceso.
+/// los dos caminos -- pero eso es **disciplina, no construccion**, y la
+/// disciplina se rompe el dia que se anade un comando nuevo con una rama de
+/// error mas. La tabla son 16 ranuras y los handles 64 por proceso.
 impl Drop for Archivo {
     fn drop(&mut self) {
         invoke(self.cap, ARCH_OP_CERRAR, 0, 0, 0);

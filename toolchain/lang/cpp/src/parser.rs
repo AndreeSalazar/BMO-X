@@ -1,36 +1,36 @@
-//! **Parser de BMO C++** — tokens a AST, por descenso recursivo.
+//! **Parser de BMO C++** -- tokens a AST, por descenso recursivo.
 //!
-//! ═══ La decisión más cara de deshacer, tomada aquí ═══
+//! === La decision mas cara de deshacer, tomada aqui ===
 //!
-//! > **El parser y la tabla de símbolos se hablan.**
+//! > **El parser y la tabla de simbolos se hablan.**
 //!
 //! No es una preferencia de estilo: **C++ no se puede parsear sin resolver
-//! nombres a la vez**, y conviene tenerlo escrito antes de la primera línea en
-//! vez de descubrirlo en el paso 6. Cuatro sitios donde la gramática se muerde
+//! nombres a la vez**, y conviene tenerlo escrito antes de la primera linea en
+//! vez de descubrirlo en el paso 6. Cuatro sitios donde la gramatica se muerde
 //! la cola, con lo que hace este fichero en cada uno:
 //!
-//! 1. **`a<b>(c)`** — ¿instanciar la plantilla `a` con `b` y llamarla, o
+//! 1. **`a<b>(c)`** -- instanciar la plantilla `a` con `b` y llamarla, o
 //!    `(a<b)>(c)`, dos comparaciones? **Depende de si `a` es un nombre de
-//!    plantilla**, que sólo lo sabe la tabla. Hoy `plantillas` está vacío y
-//!    todo `<` es comparación; el paso 6 puebla el conjunto y esta rama pasa a
-//!    decidir. El punto de decisión ya existe: [`Parser::es_plantilla`].
-//! 2. **El *most vexing parse*** — `T x(y);` ¿declara `x` o declara una
-//!    función? El estándar dice **si puede ser declaración, es declaración**, y
-//!    aquí se implementa a propósito en [`Parser::parece_declaracion`].
-//! 3. **Sentencia-declaración vs sentencia-expresión** — `T(x);` otra vez las
+//!    plantilla**, que solo lo sabe la tabla. Hoy `plantillas` esta vacio y
+//!    todo `<` es comparacion; el paso 6 puebla el conjunto y esta rama pasa a
+//!    decidir. El punto de decision ya existe: [`Parser::es_plantilla`].
+//! 2. **El *most vexing parse*** -- `T x(y);` declara `x` o declara una
+//!    funcion? El estandar dice **si puede ser declaracion, es declaracion**, y
+//!    aqui se implementa a proposito en [`Parser::parece_declaracion`].
+//! 3. **Sentencia-declaracion vs sentencia-expresion** -- `T(x);` otra vez las
 //!    dos cosas. Mismo desempate.
-//! 4. **`>>` en plantillas** — `Vector<Vector<int>>` es dos cierres, no un
+//! 4. **`>>` en plantillas** -- `Vector<Vector<int>>` es dos cierres, no un
 //!    desplazamiento. Se arregla **en el parser** partiendo el token, nunca en
-//!    el lexer: en el lexer no hay contexto para saber cuál de los dos es.
-//!    Llega con el paso 6; el sitio está marcado.
+//!    el lexer: en el lexer no hay contexto para saber cual de los dos es.
+//!    Llega con el paso 6; el sitio esta marcado.
 //!
-//! ═══ La regla ═══
+//! === La regla ===
 //!
-//! > Lo que no se sabe leer se **RECHAZA diciendo qué se esperaba**. Nunca en
+//! > Lo que no se sabe leer se **RECHAZA diciendo que se esperaba**. Nunca en
 //! > silencio.
 //!
-//! El parser anterior hacía `pos += 1` con lo que no reconocía, así que un
-//! cuerpo entero podía desaparecer y el programa "compilaba". Aquí no hay
+//! El parser anterior hacia `pos += 1` con lo que no reconocia, asi que un
+//! cuerpo entero podia desaparecer y el programa "compilaba". Aqui no hay
 //! ninguna rama que descarte tokens.
 
 use crate::ast::*;
@@ -40,7 +40,7 @@ use std::collections::{HashMap, HashSet};
 
 /// El nombre del puntero a la vtabla dentro del objeto.
 ///
-/// Lleva un punto —ilegal en C++— para que no pueda chocar con un campo que
+/// Lleva un punto --ilegal en C++-- para que no pueda chocar con un campo que
 /// alguien escriba. Mismo truco que el mangling y que el `funcion.variable` de
 /// BMO C.
 pub const VPTR: &str = "vptr.";
@@ -53,11 +53,11 @@ pub fn parse(fuente: &str) -> Result<Program, CppError> {
     Parser::nuevo(lex.toks, lex.lineas).programa()
 }
 
-// ── La tabla de símbolos ────────────────────────────────────────────
+// -- La tabla de simbolos --------------------------------------------
 
-/// Ámbitos anidados: el de dentro tapa al de fuera, y al salir se descarta.
+/// Ambitos anidados: el de dentro tapa al de fuera, y al salir se descarta.
 ///
-/// Guarda **el tipo** de cada nombre, no sólo que exista, porque el parser lo
+/// Guarda **el tipo** de cada nombre, no solo que exista, porque el parser lo
 /// necesita para tres cosas concretas: resolver `auto`, calcular la escala de
 /// un `v[i]`, y saber si un identificador es un tipo o un valor.
 #[derive(Default)]
@@ -76,37 +76,37 @@ impl Ambitos {
     }
 }
 
-// ── El parser ───────────────────────────────────────────────────────
+// -- El parser -------------------------------------------------------
 
 /// Lo que el parser sabe de una clase: es lo que hace falta para resolver
-/// `p.x` sin volver a mirar la declaración.
+/// `p.x` sin volver a mirar la declaracion.
 #[derive(Clone)]
 struct Clase {
-    /// *(nombre, offset, tipo)* en orden de declaración.
+    /// *(nombre, offset, tipo)* en orden de declaracion.
     campos: Vec<(String, u32, TypeSpec)>,
-    /// Los métodos por nombre simple; varias firmas es una sobrecarga.
+    /// Los metodos por nombre simple; varias firmas es una sobrecarga.
     metodos: HashMap<String, Vec<Firma>>,
-    /// Los constructores, que son una sobrecarga más — sólo que el nombre lo
-    /// pone el lenguaje y la llamada es implícita.
+    /// Los constructores, que son una sobrecarga mas -- solo que el nombre lo
+    /// pone el lenguaje y la llamada es implicita.
     constructores: Vec<Firma>,
-    /// La clase base, si la hay. **Simple**: la múltiple y la virtual están
+    /// La clase base, si la hay. **Simple**: la multiple y la virtual estan
     /// descartadas con motivo en `BRECHA.md`.
     base: Option<String>,
-    /// ★ **La vtabla: una ranura por método virtual, y el ORDEN es la tabla.**
+    /// * **La vtabla: una ranura por metodo virtual, y el ORDEN es la tabla.**
     ///
     /// Un derivado empieza copiando la del padre; un `override` **sustituye**
-    /// su ranura y un virtual nuevo se **añade** al final. Por eso un puntero
+    /// su ranura y un virtual nuevo se **anade** al final. Por eso un puntero
     /// a la base sirve tal cual sobre un derivado: las primeras ranuras
     /// significan lo mismo en los dos.
     vtabla: Vec<String>,
-    /// Nombre de método → ranura. Es lo que convierte una llamada en un
-    /// despacho: si el nombre está aquí, la llamada es virtual.
+    /// Nombre de metodo -> ranura. Es lo que convierte una llamada en un
+    /// despacho: si el nombre esta aqui, la llamada es virtual.
     ranura_de: HashMap<String, usize>,
-    /// Tamaño total, que el derivado necesita para colocar sus campos detrás.
+    /// Tamano total, que el derivado necesita para colocar sus campos detras.
     tam: u32,
-    // El TAMAÑO no está aquí a propósito: el parser no lo necesita para nada
-    // —resolver `p.x` sólo pide offset y tipo— y viaja en `Class::size`, que
-    // es donde lo leerá `new P()` en el paso 3. Guardar una copia que nadie
+    // El TAMANO no esta aqui a proposito: el parser no lo necesita para nada
+    // --resolver `p.x` solo pide offset y tipo-- y viaja en `Class::size`, que
+    // es donde lo leera `new P()` en el paso 3. Guardar una copia que nadie
     // lee es exactamente la clase de dato que se queda obsoleto en silencio.
 }
 
@@ -116,11 +116,11 @@ impl Clase {
     }
 }
 
-/// Una declaración de función o método, con su símbolo ya manglado.
+/// Una declaracion de funcion o metodo, con su simbolo ya manglado.
 ///
-/// Es lo que la resolución de sobrecarga compara. El **retorno** viaja aquí y
-/// no en el símbolo (C++ no sobrecarga por retorno) porque hace falta para
-/// saber de qué tipo es una llamada cuando es argumento de otra.
+/// Es lo que la resolucion de sobrecarga compara. El **retorno** viaja aqui y
+/// no en el simbolo (C++ no sobrecarga por retorno) porque hace falta para
+/// saber de que tipo es una llamada cuando es argumento de otra.
 #[derive(Clone)]
 struct Firma {
     params: Vec<TypeSpec>,
@@ -128,27 +128,27 @@ struct Firma {
     simbolo: String,
 }
 
-/// Lo bien que encaja un argumento en un parámetro. **Menos es mejor.**
+/// Lo bien que encaja un argumento en un parametro. **Menos es mejor.**
 ///
-/// ═══ Cómo lo hace GCC, y qué se le quita ═══
+/// === Como lo hace GCC, y que se le quita ===
 ///
-/// `gcc/cp/call.cc` —uno de los ficheros más grandes del frontend de C++, y
-/// sorprende que lo sea— construye para cada argumento una *secuencia de
-/// conversión implícita* con hasta tres eslabones (lvalue, promoción,
-/// cualificación) y luego ordena secuencias parcialmente. Eso es lo que hace
+/// `gcc/cp/call.cc` --uno de los ficheros mas grandes del frontend de C++, y
+/// sorprende que lo sea-- construye para cada argumento una *secuencia de
+/// conversion implicita* con hasta tres eslabones (lvalue, promocion,
+/// cualificacion) y luego ordena secuencias parcialmente. Eso es lo que hace
 /// falta para resolver contra plantillas, conversiones definidas por el
 /// usuario y ADL.
 ///
-/// BMO no tiene ninguna de las tres, así que el orden colapsa a **tres
-/// escalones** que se comparan sumando. Es lo que `MAESTROS.md` fijó como
-/// alcance: *ranking mínimo — exacto > promoción > conversión*.
+/// BMO no tiene ninguna de las tres, asi que el orden colapsa a **tres
+/// escalones** que se comparan sumando. Es lo que `MAESTROS.md` fijo como
+/// alcance: *ranking minimo -- exacto > promocion > conversion*.
 #[derive(PartialEq, PartialOrd, Clone, Copy)]
 enum Encaje {
     Exacto,
-    /// `char`/`short` → `int`, `float` → `double`. No pierde información.
+    /// `char`/`short` -> `int`, `float` -> `double`. No pierde informacion.
     Promocion,
-    /// Cualquier aritmético a cualquier aritmético. **Puede perder**, y por eso
-    /// es el último escalón: si hay una alternativa mejor, gana la otra.
+    /// Cualquier aritmetico a cualquier aritmetico. **Puede perder**, y por eso
+    /// es el ultimo escalon: si hay una alternativa mejor, gana la otra.
     Conversion,
 }
 
@@ -158,23 +158,23 @@ struct Parser {
     pos: usize,
     ambitos: Ambitos,
     /// Las funciones declaradas, por nombre **simple**. Un nombre con varias
-    /// firmas es una sobrecarga, y ahí entra [`Parser::resolver`].
+    /// firmas es una sobrecarga, y ahi entra [`Parser::resolver`].
     ///
     /// Se consulta con lo declarado **hasta ese punto**, que es la regla de C:
-    /// para llamar a algo definido más abajo hace falta un prototipo. Es lo
-    /// que ya desbloqueaba la recursión mutua en el paso 1.
+    /// para llamar a algo definido mas abajo hace falta un prototipo. Es lo
+    /// que ya desbloqueaba la recursion mutua en el paso 1.
     funciones: HashMap<String, Vec<Firma>>,
-    /// El símbolo de cada función, para saber su retorno al tipar una llamada.
+    /// El simbolo de cada funcion, para saber su retorno al tipar una llamada.
     retornos: HashMap<String, TypeSpec>,
     /// Los espacios de nombres abiertos ahora mismo.
     espacios: Vec<String>,
-    /// ★ Nombres de plantilla. **Vacío hasta el paso 6** — y mientras esté
-    /// vacío, todo `<` es una comparación. Ver [`Parser::es_plantilla`].
+    /// * Nombres de plantilla. **Vacio hasta el paso 6** -- y mientras este
+    /// vacio, todo `<` es una comparacion. Ver [`Parser::es_plantilla`].
     plantillas: HashSet<String>,
     /// Las clases vistas. Es lo que hace que `P` sea un tipo y no un nombre.
     clases: HashMap<String, Clase>,
-    /// La clase cuyo método se está parseando, si alguno. Es lo que le da
-    /// sentido a `this` y a un campo nombrado a secas dentro de un método.
+    /// La clase cuyo metodo se esta parseando, si alguno. Es lo que le da
+    /// sentido a `this` y a un campo nombrado a secas dentro de un metodo.
     clase_actual: Option<String>,
 }
 
@@ -190,7 +190,7 @@ impl Parser {
             clases: HashMap::new(),
             clase_actual: None,
         };
-        p.ambitos.entrar(); // ámbito de fichero
+        p.ambitos.entrar(); // ambito de fichero
         p
     }
 
@@ -217,20 +217,20 @@ impl Parser {
         ))
     }
 
-    /// ★ El punto de decisión de `a<b>(c)`, aislado a propósito.
+    /// * El punto de decision de `a<b>(c)`, aislado a proposito.
     ///
-    /// Hoy siempre devuelve `false` —no hay plantillas— y por tanto todo `<`
-    /// es una comparación, que es lo correcto para el lenguaje que hay. El
-    /// paso 6 puebla `plantillas` y esta función pasa a partir la gramática en
-    /// dos sin tocar nada más.
+    /// Hoy siempre devuelve `false` --no hay plantillas-- y por tanto todo `<`
+    /// es una comparacion, que es lo correcto para el lenguaje que hay. El
+    /// paso 6 puebla `plantillas` y esta funcion pasa a partir la gramatica en
+    /// dos sin tocar nada mas.
     #[allow(dead_code)]
     fn es_plantilla(&self, nombre: &str) -> bool {
         self.plantillas.contains(nombre)
     }
 
-    // ── Resolución de sobrecarga ────────────────────────────────────
+    // -- Resolucion de sobrecarga ------------------------------------
 
-    /// ¿Es un tipo con el que se puede hacer aritmética?
+    /// Es un tipo con el que se puede hacer aritmetica?
     fn es_numero(t: &TypeSpec) -> bool {
         use TypeSpec as T;
         matches!(t, T::Bool | T::Char | T::UnsignedChar | T::Short | T::UnsignedShort
@@ -238,22 +238,22 @@ impl Parser {
             | T::LongLong | T::UnsignedLongLong | T::Float | T::Double)
     }
 
-    /// Lo bien que un argumento de tipo `dado` encaja en un parámetro `quiere`.
+    /// Lo bien que un argumento de tipo `dado` encaja en un parametro `quiere`.
     fn encaje(dado: &TypeSpec, quiere: &TypeSpec) -> Option<Encaje> {
         use TypeSpec as T;
         if dado == quiere { return Some(Encaje::Exacto); }
         // Una referencia se ata al valor: `f(int&)` acepta un `int`. Encaja
-        // exacto porque no hay conversión ninguna — sólo se pasa la dirección.
+        // exacto porque no hay conversion ninguna -- solo se pasa la direccion.
         if let T::Ref(d) = quiere {
             if &**d == dado { return Some(Encaje::Exacto); }
         }
         // Un array decae a puntero a su elemento, que es lo que C hace en toda
-        // llamada. Sin esto, `f(char*)` no aceptaría un `char[8]`.
+        // llamada. Sin esto, `f(char*)` no aceptaria un `char[8]`.
         if let (T::Array(e, _), T::Ptr(p)) = (dado, quiere) {
             if e == p { return Some(Encaje::Exacto); }
         }
         if !Self::es_numero(dado) || !Self::es_numero(quiere) { return None; }
-        // La promoción entera y la de coma flotante: NO pierden información.
+        // La promocion entera y la de coma flotante: NO pierden informacion.
         let promociona = matches!(
             (dado, quiere),
             (T::Char | T::UnsignedChar | T::Short | T::UnsignedShort | T::Bool, T::Int)
@@ -262,12 +262,12 @@ impl Parser {
         Some(if promociona { Encaje::Promocion } else { Encaje::Conversion })
     }
 
-    /// Elige la firma que mejor encaja, o dice por qué no puede.
+    /// Elige la firma que mejor encaja, o dice por que no puede.
     ///
     /// El criterio es la **suma** de los escalones de cada argumento, y el
-    /// empate es un error con los dos candidatos escritos. Una ambigüedad que
-    /// se resolviera sola —eligiendo "el primero", por ejemplo— haría que
-    /// añadir una sobrecarga cambiara a qué función va una llamada existente,
+    /// empate es un error con los dos candidatos escritos. Una ambiguedad que
+    /// se resolviera sola --eligiendo "el primero", por ejemplo-- haria que
+    /// anadir una sobrecarga cambiara a que funcion va una llamada existente,
     /// en silencio.
     fn resolver<'f>(&self, que: &str, firmas: &'f [Firma], args: &[TypeSpec])
         -> Result<&'f Firma, CppError>
@@ -313,10 +313,10 @@ impl Parser {
         }
     }
 
-    /// El tipo de una expresión. Se usa para resolver `.` y para tipar los
+    /// El tipo de una expresion. Se usa para resolver `.` y para tipar los
     /// argumentos de una llamada.
     ///
-    /// Cubre poco a propósito: en cuanto cubriera de más sería un comprobador
+    /// Cubre poco a proposito: en cuanto cubriera de mas seria un comprobador
     /// de tipos, y eso no es lo que este paso promete. Lo que no sabe tipar
     /// lo dice, en vez de suponer `int`.
     fn tipo_de(&self, e: &Expr) -> Option<TypeSpec> {
@@ -348,15 +348,15 @@ impl Parser {
             Expr::Neg(b) | Expr::BitNot(b) => self.tipo_de(b)?,
             Expr::PreInc(n) | Expr::PreDec(n) | Expr::PostInc(n) | Expr::PostDec(n) =>
                 self.ambitos.tipo(n)?.clone(),
-            // Comparaciones y lógicos dan un entero, como en C.
+            // Comparaciones y logicos dan un entero, como en C.
             Expr::Eq(..) | Expr::Neq(..) | Expr::Lt(..) | Expr::Gt(..) | Expr::Le(..)
             | Expr::Ge(..) | Expr::And(..) | Expr::Or(..) | Expr::Not(_) => T::Int,
-            // Las conversiones aritméticas al uso, recortadas: si alguno es
+            // Las conversiones aritmeticas al uso, recortadas: si alguno es
             // `double`, el resultado es `double`; si no, `int`. Sin esto, un
-            // `f(1 + 2.0)` elegiría la sobrecarga entera.
+            // `f(1 + 2.0)` elegiria la sobrecarga entera.
             Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) => {
                 let (ta, tb) = (self.tipo_de(a)?, self.tipo_de(b)?);
-                // La aritmética de punteros conserva el puntero.
+                // La aritmetica de punteros conserva el puntero.
                 if matches!(ta, T::Ptr(_) | T::Array(..)) { ta }
                 else if matches!(tb, T::Ptr(_) | T::Array(..)) { tb }
                 else if ta == T::Double || tb == T::Double { T::Double }
@@ -369,7 +369,7 @@ impl Parser {
         })
     }
 
-    /// Los tipos de una lista de argumentos, o un error que dice cuál no se
+    /// Los tipos de una lista de argumentos, o un error que dice cual no se
     /// supo tipar.
     fn tipos_de(&self, args: &[Expr], que: &str) -> Result<Vec<TypeSpec>, CppError> {
         let mut out = Vec::new();
@@ -380,7 +380,7 @@ impl Parser {
         Ok(out)
     }
 
-    // ── Nivel de fichero ────────────────────────────────────────────
+    // -- Nivel de fichero --------------------------------------------
 
     fn programa(&mut self) -> Result<Program, CppError> {
         let mut p = Program::new();
@@ -404,8 +404,8 @@ impl Parser {
         Ok(p)
     }
 
-    /// Una función o una variable global. Se distinguen por lo que hay
-    /// **detrás del nombre**: un paréntesis es una función.
+    /// Una funcion o una variable global. Se distinguen por lo que hay
+    /// **detras del nombre**: un parentesis es una funcion.
     fn declaracion_de_fichero(&mut self, p: &mut Program) -> Result<(), CppError> {
         self.come(&Token::Static);
         self.come(&Token::Const);
@@ -422,8 +422,8 @@ impl Parser {
 
             if self.come(&Token::Semicolon) {
                 // Prototipo. Se registra la firma y no se emite nada: sirve
-                // para que una llamada anterior a la definición se pueda
-                // resolver, que es lo que desbloquea la recursión mutua.
+                // para que una llamada anterior a la definicion se pueda
+                // resolver, que es lo que desbloquea la recursion mutua.
                 return Ok(());
             }
 
@@ -431,8 +431,8 @@ impl Parser {
             for pa in &params { self.ambitos.declarar(&pa.name, pa.typ.clone()); }
             let cuerpo = self.bloque()?;
             self.ambitos.salir();
-            // ★ `main` NO se mangla. Es el punto de entrada que el codegen de C
-            // busca por nombre, y manglarlo dejaría un `.bef` sin `main`.
+            // * `main` NO se mangla. Es el punto de entrada que el codegen de C
+            // busca por nombre, y manglarlo dejaria un `.bef` sin `main`.
             let emitido = if nombre == "main" && self.espacios.is_empty() {
                 "main".to_string()
             } else { simbolo };
@@ -448,14 +448,14 @@ impl Parser {
         Ok(())
     }
 
-    // ── Clases ──────────────────────────────────────────────────────
+    // -- Clases ------------------------------------------------------
 
-    /// `class P { public: int x; int doble() { … } };`
+    /// `class P { public: int x; int doble() { ... } };`
     ///
-    /// ★ Se parsea en **dos vueltas**, y no por gusto: un método puede usar un
-    /// campo declarado **más abajo** en la clase —eso es legal en C++ y no lo
-    /// es en C— así que la disposición tiene que estar completa antes de mirar
-    /// un solo cuerpo. Primero se recogen las firmas y los campos; después se
+    /// * Se parsea en **dos vueltas**, y no por gusto: un metodo puede usar un
+    /// campo declarado **mas abajo** en la clase --eso es legal en C++ y no lo
+    /// es en C-- asi que la disposicion tiene que estar completa antes de mirar
+    /// un solo cuerpo. Primero se recogen las firmas y los campos; despues se
     /// parsean los cuerpos con la clase ya registrada.
     fn clase(&mut self) -> Result<Class, CppError> {
         let es_struct = *self.peek() == Token::Struct;
@@ -464,13 +464,13 @@ impl Parser {
             Token::Ident(n) => n,
             otro => return Err(self.err(format!("se esperaba el nombre de la clase y vino {otro:?}"))),
         };
-        // ── La herencia, simple ──
+        // -- La herencia, simple --
         //
-        // `class B : public A` — el derivado **empieza por** la base entera.
+        // `class B : public A` -- el derivado **empieza por** la base entera.
         // Eso es todo el mecanismo: un `B*` vale como `A*` sin ajustar nada,
-        // porque los campos de `A` están en los mismos offsets. La herencia
-        // MÚLTIPLE necesitaría ajustar el `this` al llamar (thunks) y la
-        // VIRTUAL localizar la base compartida en ejecución; las dos están
+        // porque los campos de `A` estan en los mismos offsets. La herencia
+        // MULTIPLE necesitaria ajustar el `this` al llamar (thunks) y la
+        // VIRTUAL localizar la base compartida en ejecucion; las dos estan
         // descartadas con motivo en `BRECHA.md`.
         let mut base = None;
         if self.come(&Token::Colon) {
@@ -494,9 +494,9 @@ impl Parser {
         }
         self.exige(&Token::OpenBrace)?;
 
-        // ── Vuelta 1: campos y firmas ──
+        // -- Vuelta 1: campos y firmas --
         let mut campos: Vec<MemberVar> = Vec::new();
-        let mut cuerpos: Vec<(usize, Method)> = Vec::new(); // (posición del `{`, firma)
+        let mut cuerpos: Vec<(usize, Method)> = Vec::new(); // (posicion del `{`, firma)
         let mut ctores: Vec<(usize, Method)> = Vec::new();
         let mut dtor: Option<(usize, Method)> = None;
         let mut acceso = if es_struct { Access::Public } else { Access::Private };
@@ -514,7 +514,7 @@ impl Parser {
                 Token::Static => return Err(self.pendiente("los miembros `static`", 4)),
                 Token::Operator => return Err(self.pendiente("la sobrecarga de operadores", 4)),
 
-                // ── Destructor: `~P() { … }` ──
+                // -- Destructor: `~P() { ... }` --
                 Token::Tilde => {
                     self.avanzar();
                     match self.avanzar() {
@@ -540,17 +540,17 @@ impl Parser {
                     continue;
                 }
 
-                // ── Constructor: `P(…) { … }` — el nombre de la clase
-                //    seguido de paréntesis, y SIN tipo de retorno delante.
+                // -- Constructor: `P(...) { ... }` -- el nombre de la clase
+                //    seguido de parentesis, y SIN tipo de retorno delante.
                 Token::Ident(n) if n == nombre && *self.peek_en(1) == Token::OpenParen => {
                     self.avanzar();
                     self.avanzar();
                     let params = self.parametros()?;
                     self.exige(&Token::CloseParen)?;
-                    // `P() : x(0) {}` — la lista de inicialización de miembros.
-                    // No entra todavía: pide resolver un inicializador POR
-                    // MIEMBRO en el orden de declaración (que no es el orden en
-                    // que se escriben), y ése es trabajo del paso 4. Mientras
+                    // `P() : x(0) {}` -- la lista de inicializacion de miembros.
+                    // No entra todavia: pide resolver un inicializador POR
+                    // MIEMBRO en el orden de declaracion (que no es el orden en
+                    // que se escriben), y ese es trabajo del paso 4. Mientras
                     // tanto el cuerpo `{ x = 0; }` hace lo mismo.
                     if *self.peek() == Token::Colon {
                         return Err(self.pendiente(
@@ -569,7 +569,7 @@ impl Parser {
             }
 
             let base = self.tipo_base()?;
-            // `int operator+(int)` — el `operator` viene DETRÁS del tipo, así
+            // `int operator+(int)` -- el `operator` viene DETRAS del tipo, asi
             // que no lo caza la criba de arriba.
             if *self.peek() == Token::Operator {
                 return Err(self.pendiente("la sobrecarga de operadores", 4));
@@ -582,7 +582,7 @@ impl Parser {
                 self.exige(&Token::CloseParen)?;
                 let es_const = self.come(&Token::Const);
                 let es_override = self.come(&Token::Override);
-                // `virtual int f() = 0;` — una pura. Pide una clase abstracta
+                // `virtual int f() = 0;` -- una pura. Pide una clase abstracta
                 // y una ranura que nadie rellena; llega despues.
                 if *self.peek() == Token::Assign {
                     return Err(self.pendiente("las funciones virtuales PURAS (`= 0`)", 6));
@@ -590,8 +590,8 @@ impl Parser {
                 if self.come(&Token::Semicolon) {
                     return Err(self.pendiente("declarar un metodo y definirlo fuera de la clase", 4));
                 }
-                // Se anota dónde empieza el cuerpo y se salta: se parseará en
-                // la vuelta 2, cuando la disposición esté completa.
+                // Se anota donde empieza el cuerpo y se salta: se parseara en
+                // la vuelta 2, cuando la disposicion este completa.
                 let inicio = self.pos;
                 self.saltar_bloque()?;
                 cuerpos.push((inicio, Method {
@@ -611,16 +611,16 @@ impl Parser {
         self.avanzar(); // `}`
         self.exige(&Token::Semicolon)?;
 
-        // ── La disposición ──
+        // -- La disposicion --
         //
-        // La regla NO está escrita aquí: vive una sola vez en
+        // La regla NO esta escrita aqui: vive una sola vez en
         // `bmo_abi::types::disposicion`, con sus tests. El parser de C++ tiene
-        // que calcularla igualmente —los nodos `Field` de C llevan el offset
-        // dentro— pero calcula con la MISMA regla que el codegen de C, que es
+        // que calcularla igualmente --los nodos `Field` de C llevan el offset
+        // dentro-- pero calcula con la MISMA regla que el codegen de C, que es
         // lo que importa.
         //
-        // Y el descenso emite el `struct` con miembros y no con offsets, así
-        // que el codegen recalcula por su cuenta: si algún día las dos
+        // Y el descenso emite el `struct` con miembros y no con offsets, asi
+        // que el codegen recalcula por su cuenta: si algun dia las dos
         // llamadas dieran cosas distintas, la fila `clase-disposicion` de la
         // matriz se pone roja en vez de pasar muda.
         let padre = base.as_ref().and_then(|b| self.clases.get(b)).cloned();
@@ -631,19 +631,19 @@ impl Parser {
         let mut d = bmo_abi::types::Disposicion::nueva();
 
         if let Some(p) = &padre {
-            // ★ El derivado **empieza por la base entera**, campos incluidos y
-            // en los MISMOS offsets. Ése es todo el mecanismo de la herencia
+            // * El derivado **empieza por la base entera**, campos incluidos y
+            // en los MISMOS offsets. Ese es todo el mecanismo de la herencia
             // simple: un `B*` vale como `A*` sin ajustar nada.
             for (n, off, t) in &p.campos {
                 layout.push((n.clone(), *off, t.clone()));
             }
             for _ in 0..p.tam { d.coloca(1); }
         } else if hay_virtuales {
-            // ★ **El `vptr` va en el offset 0**, no en medio de la tabla como
-            // en Itanium: el *offset-to-top* y la ranura de RTTI sólo hacen
-            // falta con herencia múltiple y RTTI, y las dos están descartadas.
-            // Al principio es lo que se escribiría a mano en C — y es lo que
-            // hace que el despacho sea una indirección y no una resta.
+            // * **El `vptr` va en el offset 0**, no en medio de la tabla como
+            // en Itanium: el *offset-to-top* y la ranura de RTTI solo hacen
+            // falta con herencia multiple y RTTI, y las dos estan descartadas.
+            // Al principio es lo que se escribiria a mano en C -- y es lo que
+            // hace que el despacho sea una indireccion y no una resta.
             let vptr = TypeSpec::Ptr(Box::new(TypeSpec::Void));
             layout.push((VPTR.to_string(), d.coloca(vptr.size()), vptr));
         }
@@ -653,9 +653,9 @@ impl Parser {
         }
         let tam = d.total();
 
-        // Las firmas de los métodos, con su símbolo. Se registran ANTES de
-        // bajar ningún cuerpo, que es lo que permite que un método llame a otro
-        // declarado más abajo — y a sí mismo.
+        // Las firmas de los metodos, con su simbolo. Se registran ANTES de
+        // bajar ningun cuerpo, que es lo que permite que un metodo llame a otro
+        // declarado mas abajo -- y a si mismo.
         let mut metodos: HashMap<String, Vec<Firma>> = HashMap::new();
         for (_, m) in &cuerpos {
             let tipos: Vec<TypeSpec> = m.params.iter().map(|p| p.typ.clone()).collect();
@@ -680,10 +680,10 @@ impl Parser {
                 params: tipos, ret: TypeSpec::Void, simbolo: simbolo.clone() });
             self.retornos.insert(simbolo, TypeSpec::Void);
         }
-        // ── La vtabla ──
+        // -- La vtabla --
         //
         // Se parte de la del padre. Un `override` **sustituye** su ranura; un
-        // virtual nuevo se **añade** al final. Ése es el motivo por el que un
+        // virtual nuevo se **anade** al final. Ese es el motivo por el que un
         // puntero a la base sirve sobre un derivado sin tocar nada: las
         // primeras ranuras significan lo mismo en los dos.
         let mut vtabla = padre.as_ref().map(|p| p.vtabla.clone()).unwrap_or_default();
@@ -703,8 +703,8 @@ impl Parser {
                 None => { ranura_de.insert(m.name.clone(), vtabla.len()); vtabla.push(simbolo); }
             }
         }
-        // Los métodos del padre que el hijo NO redefine se heredan tal cual:
-        // sus firmas siguen valiendo, y su ranura ya está puesta arriba.
+        // Los metodos del padre que el hijo NO redefine se heredan tal cual:
+        // sus firmas siguen valiendo, y su ranura ya esta puesta arriba.
         if let Some(p) = &padre {
             for (n, fs) in &p.metodos {
                 metodos.entry(n.clone()).or_insert_with(|| fs.clone());
@@ -717,7 +717,7 @@ impl Parser {
         };
         self.clases.insert(nombre.clone(), info);
 
-        // ── Vuelta 2: los cuerpos, con la clase ya registrada ──
+        // -- Vuelta 2: los cuerpos, con la clase ya registrada --
         let vuelta = self.pos;
         let mut cuerpo_de = |p: &mut Self, inicio: usize, m: &mut Method| -> Result<(), CppError> {
             p.pos = inicio;
@@ -746,14 +746,14 @@ impl Parser {
         };
         self.pos = vuelta;
 
-        // ★ Los miembros del AST salen de `layout`, **no de `campos`**, porque
-        // un derivado tiene que llevar también los campos de la base: el
-        // `struct` que verá el codegen de C es el objeto ENTERO. Antes se
-        // emparejaban `campos` (sólo los propios) con `layout` (base incluida)
-        // y el resultado era un struct al que le faltaban los heredados — y
-        // además con los offsets corridos, porque el emparejado se desalineaba.
+        // * Los miembros del AST salen de `layout`, **no de `campos`**, porque
+        // un derivado tiene que llevar tambien los campos de la base: el
+        // `struct` que vera el codegen de C es el objeto ENTERO. Antes se
+        // emparejaban `campos` (solo los propios) con `layout` (base incluida)
+        // y el resultado era un struct al que le faltaban los heredados -- y
+        // ademas con los offsets corridos, porque el emparejado se desalineaba.
         //
-        // El `vptr` se salta: lo añade el descenso, que es quien decide cómo
+        // El `vptr` se salta: lo anade el descenso, que es quien decide como
         // se llama el campo del lado de C.
         let acceso_de: HashMap<&str, Access> =
             campos.iter().map(|m| (m.name.as_str(), m.access)).collect();
@@ -780,7 +780,7 @@ impl Parser {
         })
     }
 
-    /// Salta un bloque `{ … }` contando llaves, sin interpretarlo.
+    /// Salta un bloque `{ ... }` contando llaves, sin interpretarlo.
     fn saltar_bloque(&mut self) -> Result<(), CppError> {
         self.exige(&Token::OpenBrace)?;
         let mut hondo = 1;
@@ -811,8 +811,8 @@ impl Parser {
     /// Elige el constructor de `cls` para estos argumentos.
     ///
     /// `None` significa *"esta clase no tiene constructor"*, que es legal y
-    /// deja el objeto sin inicializar — igual que un `struct` de C. Pedir
-    /// argumentos a una clase sin constructor sí es error.
+    /// deja el objeto sin inicializar -- igual que un `struct` de C. Pedir
+    /// argumentos a una clase sin constructor si es error.
     fn resolver_ctor(&self, cls: &str, args: &[Expr]) -> Result<Option<String>, CppError> {
         let Some(info) = self.clases.get(cls) else {
             return Err(self.err(format!("la clase `{cls}` no esta definida")));
@@ -829,11 +829,11 @@ impl Parser {
         Ok(Some(self.resolver(cls, &firmas, &tipos)?.simbolo.clone()))
     }
 
-    /// Registra una función y devuelve su símbolo.
+    /// Registra una funcion y devuelve su simbolo.
     ///
     /// Rechaza redeclarar la MISMA firma con otro retorno, que es lo que C++
-    /// prohíbe: no se puede sobrecargar por retorno, así que dos `f(int)` con
-    /// retornos distintos son la misma función declarada dos veces mal.
+    /// prohibe: no se puede sobrecargar por retorno, asi que dos `f(int)` con
+    /// retornos distintos son la misma funcion declarada dos veces mal.
     fn declarar_funcion(&mut self, nombre: &str, params: &[Param], ret: &TypeSpec)
         -> Result<String, CppError>
     {
@@ -871,7 +871,7 @@ impl Parser {
             }
             self.come(&Token::Const);
             let base = self.tipo_base()?;
-            // El nombre del parámetro es opcional: `int f(int);` es legal.
+            // El nombre del parametro es opcional: `int f(int);` es legal.
             let (tipo, nombre) = if matches!(self.peek(), Token::Ident(_))
                 || matches!(self.peek(), Token::Star | Token::And)
             {
@@ -882,10 +882,10 @@ impl Parser {
             let defecto = if self.come(&Token::Assign) {
                 return Err(self.pendiente("los argumentos por defecto", 4));
             } else { None };
-            // ⚠ Un parámetro de coma flotante NO se puede pasar todavía: BMO C
-            // evalúa floats por la ruta SSE pero **no los pasa como
+            // [!] Un parametro de coma flotante NO se puede pasar todavia: BMO C
+            // evalua floats por la ruta SSE pero **no los pasa como
             // argumento** (falta la ABI de xmm), y lo peor es que los acepta
-            // en silencio — `int g(double a)` compila y no hace lo que dice.
+            // en silencio -- `int g(double a)` compila y no hace lo que dice.
             // Es deuda de C; mientras exista, C++ no la emite.
             if matches!(tipo, TypeSpec::Float | TypeSpec::Double) {
                 return Err(self.err(format!(
@@ -900,7 +900,7 @@ impl Parser {
         Ok(out)
     }
 
-    // ── Tipos ───────────────────────────────────────────────────────
+    // -- Tipos -------------------------------------------------------
 
     fn tipo_base(&mut self) -> Result<TypeSpec, CppError> {
         self.come(&Token::Const);
@@ -950,12 +950,12 @@ impl Parser {
         Ok(t)
     }
 
-    /// ★ **El asterisco es del DECLARADOR, no del tipo base.**
+    /// * **El asterisco es del DECLARADOR, no del tipo base.**
     ///
-    /// En `int *a, b;` la `b` es un `int`. Es un bug que BMO C ya pagó una vez
-    /// —guardaba como base el tipo *ya con punteros*— y por eso aquí el tipo
+    /// En `int *a, b;` la `b` es un `int`. Es un bug que BMO C ya pago una vez
+    /// --guardaba como base el tipo *ya con punteros*-- y por eso aqui el tipo
     /// base se pasa **por valor** a cada declarador: cada uno se lleva su
-    /// copia y le añade lo suyo.
+    /// copia y le anade lo suyo.
     fn declarador(&mut self, base: TypeSpec) -> Result<(TypeSpec, String), CppError> {
         let mut t = base;
         loop {
@@ -967,7 +967,7 @@ impl Parser {
             Token::Ident(n) => n,
             otro => return Err(self.err(format!("se esperaba un nombre y vino {otro:?}"))),
         };
-        // `v[n]` — el corchete es del declarador, igual que el asterisco.
+        // `v[n]` -- el corchete es del declarador, igual que el asterisco.
         while self.come(&Token::OpenBracket) {
             let n = match self.avanzar() {
                 Token::IntLit(v) if v > 0 => v as u32,
@@ -980,18 +980,18 @@ impl Parser {
         Ok((t, nombre))
     }
 
-    /// ¿Lo que viene es una declaración?
+    /// Lo que viene es una declaracion?
     ///
-    /// ★ Aquí vive el ***most vexing parse***: `T x(y);` puede leerse como una
-    /// variable `x` inicializada con `y`, o como la declaración de una función
-    /// `x` que toma un `y`. El estándar zanja que **si puede ser declaración,
-    /// es declaración** — y como aquí lo único que puede empezar una
-    /// declaración es una palabra clave de tipo, la regla sale sola: si el
-    /// token es un tipo, es declaración; si no, es expresión.
+    /// * Aqui vive el ***most vexing parse***: `T x(y);` puede leerse como una
+    /// variable `x` inicializada con `y`, o como la declaracion de una funcion
+    /// `x` que toma un `y`. El estandar zanja que **si puede ser declaracion,
+    /// es declaracion** -- y como aqui lo unico que puede empezar una
+    /// declaracion es una palabra clave de tipo, la regla sale sola: si el
+    /// token es un tipo, es declaracion; si no, es expresion.
     ///
-    /// El día que un identificador pueda ser un tipo (paso 2, clases), esta
-    /// función es el único sitio que cambia — y necesitará la tabla de
-    /// símbolos, que ya está aquí.
+    /// El dia que un identificador pueda ser un tipo (paso 2, clases), esta
+    /// funcion es el unico sitio que cambia -- y necesitara la tabla de
+    /// simbolos, que ya esta aqui.
     fn parece_declaracion(&self) -> bool {
         if matches!(self.peek(),
             Token::Void | Token::Bool | Token::Char | Token::Short | Token::Int
@@ -1000,30 +1000,30 @@ impl Parser {
         {
             return true;
         }
-        // ★★ **`P *q` es una declaración o una multiplicación, y sólo la
-        // tabla de símbolos lo sabe.**
+        // ** **`P *q` es una declaracion o una multiplicacion, y solo la
+        // tabla de simbolos lo sabe.**
         //
-        // Éste es el caso que justifica, él solo, que el parser y la tabla se
+        // Este es el caso que justifica, el solo, que el parser y la tabla se
         // hablen. `P * q` con `P` desconocida es el producto de dos variables;
         // con `P` declarada como clase es *"puntero a P llamado q"*. La misma
-        // secuencia de tokens, dos árboles distintos, y **las dos compilan**:
+        // secuencia de tokens, dos arboles distintos, y **las dos compilan**:
         // si se elige mal, el programa hace otra cosa sin quejarse.
         //
-        // Es el hermano pequeño de `a<b>(c)` (ver `MAESTROS.md`), y llegó en
-        // cuanto existieron las clases — antes de lo previsto, porque no hace
+        // Es el hermano pequeno de `a<b>(c)` (ver `MAESTROS.md`), y llego en
+        // cuanto existieron las clases -- antes de lo previsto, porque no hace
         // falta una plantilla para que C++ muerda.
         let Token::Ident(n) = self.peek() else { return false };
         if !self.clases.contains_key(n) {
-            // Dos identificadores seguidos sólo pueden ser `Tipo nombre`. Se
+            // Dos identificadores seguidos solo pueden ser `Tipo nombre`. Se
             // reconoce aunque el tipo no exista, para que el error sea
             // *"`P` no es un tipo conocido"* y no *"se esperaba `;`"*, que
-            // manda a mirar la puntuación.
+            // manda a mirar la puntuacion.
             return matches!(self.peek_en(1), Token::Ident(_));
         }
         matches!(self.peek_en(1), Token::Ident(_) | Token::Star | Token::And)
     }
 
-    // ── Sentencias ──────────────────────────────────────────────────
+    // -- Sentencias --------------------------------------------------
 
     fn bloque(&mut self) -> Result<Vec<Stmt>, CppError> {
         self.exige(&Token::OpenBrace)?;
@@ -1081,23 +1081,23 @@ impl Parser {
         }
     }
 
-    /// `T a = 1, b;` — el tipo base se comparte, cada declarador trae lo suyo.
+    /// `T a = 1, b;` -- el tipo base se comparte, cada declarador trae lo suyo.
     fn declaracion_local(&mut self) -> Result<Stmt, CppError> {
         self.come(&Token::Static);
         let base = self.tipo_base()?;
         let mut decls = Vec::new();
         loop {
             let (tipo, nombre) = self.declarador(base.clone())?;
-            // ── Declarar un objeto de clase ──
+            // -- Declarar un objeto de clase --
             if let TypeSpec::ClassRef(cls) = &tipo {
                 let cls = cls.clone();
                 let args = if *self.peek() == Token::OpenParen {
                     self.avanzar();
-                    // ★★ **El *most vexing parse*, aquí mismo.**
+                    // ** **El *most vexing parse*, aqui mismo.**
                     //
-                    // `P p();` NO declara un objeto: declara una FUNCIÓN `p`
-                    // que no toma nada y devuelve `P`. El estándar zanja que
-                    // si algo puede leerse como declaración, es declaración —
+                    // `P p();` NO declara un objeto: declara una FUNCION `p`
+                    // que no toma nada y devuelve `P`. El estandar zanja que
+                    // si algo puede leerse como declaracion, es declaracion --
                     // y esto puede. Es el error que todo el mundo comete una
                     // vez, y el compilador que lo acepta en silencio deja un
                     // objeto sin construir.
@@ -1125,11 +1125,11 @@ impl Parser {
                 if self.come(&Token::Comma) { continue; }
                 break;
             }
-            // ★ El inicializador es una `assignment-expression`, NO una
+            // * El inicializador es una `assignment-expression`, NO una
             // `expression`. Con la coma completa, `int a = 20, b = 22;` se
-            // leería `a = (20, b = 22)` usando el operador coma. El escalón de
-            // la gramática existe exactamente para esto — es un bug que BMO C
-            // ya pagó.
+            // leeria `a = (20, b = 22)` usando el operador coma. El escalon de
+            // la gramatica existe exactamente para esto -- es un bug que BMO C
+            // ya pago.
             let init = if self.come(&Token::Assign) { Some(self.asignacion()?) } else { None };
             self.ambitos.declarar(&nombre, tipo.clone());
             decls.push(Stmt::DeclVar(tipo, nombre, init));
@@ -1168,11 +1168,11 @@ impl Parser {
         Ok(Stmt::DoWhile(cuerpo, cond))
     }
 
-    /// `for(T i = 0; …)` se desazucara a `{ T i = 0; for(; …) cuerpo }`.
+    /// `for(T i = 0; ...)` se desazucara a `{ T i = 0; for(; ...) cuerpo }`.
     ///
     /// Es lo mismo que hace el parser de C, y por el mismo motivo: el nodo
-    /// `For` lleva una **expresión** en el init, y una declaración no es una
-    /// expresión. Envolver en un bloque además le da a `i` el ámbito correcto.
+    /// `For` lleva una **expresion** en el init, y una declaracion no es una
+    /// expresion. Envolver en un bloque ademas le da a `i` el ambito correcto.
     fn para(&mut self) -> Result<Stmt, CppError> {
         self.avanzar();
         self.exige(&Token::OpenParen)?;
@@ -1251,20 +1251,20 @@ impl Parser {
         Ok(Stmt::Switch(sujeto, casos))
     }
 
-    // ── Expresiones, por precedencia ────────────────────────────────
+    // -- Expresiones, por precedencia --------------------------------
     //
-    // De menor a mayor: coma → asignación → ternario → || → && → | → ^ → &
-    // → ==/!= → </>/<=/>= → <</>> → +/- → */÷/% → unario → sufijo → primario.
+    // De menor a mayor: coma -> asignacion -> ternario -> || -> && -> | -> ^ -> &
+    // -> ==/!= -> </>/<=/>= -> <</>> -> +/- -> *///% -> unario -> sufijo -> primario.
     //
-    // Cada nivel es una función y llama al de más arriba. Es la escalera de la
-    // gramática de C tal cual: no está aquí por copiarla, está porque **el
-    // escalón de la asignación es lo único que impide que `int a = 20, b = 22`
+    // Cada nivel es una funcion y llama al de mas arriba. Es la escalera de la
+    // gramatica de C tal cual: no esta aqui por copiarla, esta porque **el
+    // escalon de la asignacion es lo unico que impide que `int a = 20, b = 22`
     // se lea con el operador coma**.
 
     fn expresion(&mut self) -> Result<Expr, CppError> {
         let e = self.asignacion()?;
-        // El operador coma no está en el AST de C++ todavía. En vez de
-        // tragárselo (que daría el valor equivocado en silencio), se dice.
+        // El operador coma no esta en el AST de C++ todavia. En vez de
+        // tragarselo (que daria el valor equivocado en silencio), se dice.
         if *self.peek() == Token::Comma {
             return Err(self.pendiente("el operador coma en una expresion", 4));
         }
@@ -1290,7 +1290,7 @@ impl Parser {
         };
         let Some(op) = op else { return Ok(izq) };
         self.avanzar();
-        // La asignación asocia a la DERECHA: `a = b = c` es `a = (b = c)`.
+        // La asignacion asocia a la DERECHA: `a = b = c` es `a = (b = c)`.
         let der = self.asignacion()?;
         let valor = |lhs: Expr| match op {
             None => der.clone(),
@@ -1331,8 +1331,8 @@ impl Parser {
     }
 
     /// Los binarios por **escalada de precedencia**: un solo bucle con una
-    /// tabla, en vez de nueve funciones que sólo se diferencian en la fila.
-    /// Añadir un operador es añadir una fila de [`Self::precedencia`].
+    /// tabla, en vez de nueve funciones que solo se diferencian en la fila.
+    /// Anadir un operador es anadir una fila de [`Self::precedencia`].
     fn binario(&mut self, minima: u8) -> Result<Expr, CppError> {
         let mut izq = self.unario()?;
         loop {
@@ -1356,10 +1356,10 @@ impl Parser {
             Token::And => (5, Expr::BitAnd),
             Token::EqEq => (6, Expr::Eq),
             Token::Neq => (6, Expr::Neq),
-            // ★ Aquí es donde el paso 6 tendrá que preguntar a la tabla de
-            // símbolos: un `<` detrás de un nombre de plantilla abre una lista
-            // de argumentos, no una comparación. Mientras `plantillas` esté
-            // vacío, todo `<` es comparación — que es la verdad de hoy.
+            // * Aqui es donde el paso 6 tendra que preguntar a la tabla de
+            // simbolos: un `<` detras de un nombre de plantilla abre una lista
+            // de argumentos, no una comparacion. Mientras `plantillas` este
+            // vacio, todo `<` es comparacion -- que es la verdad de hoy.
             Token::Lt => (7, Expr::Lt),
             Token::Gt => (7, Expr::Gt),
             Token::Le => (7, Expr::Le),
@@ -1393,8 +1393,8 @@ impl Parser {
             } }
             Token::New => Err(self.pendiente("`new`", 3)),
             Token::Sizeof => Err(self.pendiente("`sizeof`", 2)),
-            // `(T)e` — una conversión. Se distingue de `(expr)` porque dentro
-            // del paréntesis hay una palabra clave de tipo.
+            // `(T)e` -- una conversion. Se distingue de `(expr)` porque dentro
+            // del parentesis hay una palabra clave de tipo.
             Token::OpenParen if Self::empieza_tipo(self.peek_en(1)) => {
                 self.avanzar();
                 let base = self.tipo_base()?;
@@ -1423,7 +1423,7 @@ impl Parser {
                     let Expr::Var(n) = e else {
                         return Err(self.pendiente("indexar algo que no es una variable", 2));
                     };
-                    // La escala sale de la tabla de símbolos: es el tamaño del
+                    // La escala sale de la tabla de simbolos: es el tamano del
                     // ELEMENTO, no el del array.
                     let escala = match self.ambitos.tipo(&n) {
                         Some(TypeSpec::Array(t, _)) => t.size() as u8,
@@ -1447,12 +1447,12 @@ impl Parser {
                     let Expr::Var(n) = e else {
                         return Err(self.pendiente("llamar a algo que no es un nombre", 2));
                     };
-                    // ★ Un método propio llamado a secas ES `this->metodo(…)`.
+                    // * Un metodo propio llamado a secas ES `this->metodo(...)`.
                     //
                     // El mismo caso que un campo a secas, y con el mismo
-                    // desempate: una función libre del mismo nombre tapa al
-                    // método sólo si el método no existe. Al revés, una clase
-                    // con un método `abs` haría que `abs(x)` llamara al método
+                    // desempate: una funcion libre del mismo nombre tapa al
+                    // metodo solo si el metodo no existe. Al reves, una clase
+                    // con un metodo `abs` haria que `abs(x)` llamara al metodo
                     // desde fuera de la clase.
                     let propio = self.clase_actual.clone().and_then(|c| {
                         self.clases.get(&c).and_then(|i| {
@@ -1466,14 +1466,14 @@ impl Parser {
                             let tipos = self.tipos_de(&args, &n)?;
                             let s = self.resolver(&format!("{cls}::{n}"), &firmas, &tipos)?
                                 .simbolo.clone();
-                            // ★ Un método propio llamado a secas **también
-                            // despacha virtualmente**. Es el caso que más se
+                            // * Un metodo propio llamado a secas **tambien
+                            // despacha virtualmente**. Es el caso que mas se
                             // olvida: `int doble() { return f() * 2; }` con `f`
                             // virtual tiene que llamar a la `f` del objeto
-                            // REAL, no a la de la clase donde está escrito
-                            // `doble`. Un compilador que lo resuelve estático
+                            // REAL, no a la de la clase donde esta escrito
+                            // `doble`. Un compilador que lo resuelve estatico
                             // devuelve el resultado de la base y nadie sabe por
-                            // qué.
+                            // que.
                             match ranura {
                                 Some(r) => Expr::VirtualCall(
                                     Box::new(Expr::This), n, r as u32, args),
@@ -1481,12 +1481,12 @@ impl Parser {
                             }
                         }
                         None => {
-                            // ★ Un nombre que no está en la tabla de C++ pasa
+                            // * Un nombre que no esta en la tabla de C++ pasa
                             // TAL CUAL, sin manglar. Es el puente con lo de C
-                            // —`printf`, `getchar`, los intrínsecos— y es lo
-                            // que `extern "C"` nombra en el estándar: una
-                            // función de C tiene el símbolo que tiene, porque
-                            // el que la escribió no sabía que C++ existía.
+                            // --`printf`, `getchar`, los intrinsecos-- y es lo
+                            // que `extern "C"` nombra en el estandar: una
+                            // funcion de C tiene el simbolo que tiene, porque
+                            // el que la escribio no sabia que C++ existia.
                             match self.funciones.get(&n) {
                                 Some(firmas) => {
                                     let firmas = firmas.clone();
@@ -1515,8 +1515,8 @@ impl Parser {
                     let info = self.clases.get(&cls).cloned()
                         .ok_or_else(|| self.err(format!("la clase `{cls}` no esta definida")))?;
 
-                    // ¿Método o campo? Se decide con el paréntesis, y el
-                    // parser ya sabe cuál de los dos nombres existe.
+                    // Metodo o campo? Se decide con el parentesis, y el
+                    // parser ya sabe cual de los dos nombres existe.
                     if *self.peek() == Token::OpenParen {
                         let Some(firmas) = info.metodos.get(&miembro) else {
                             return Err(self.err(format!("`{cls}` no tiene el metodo `{miembro}`")));
@@ -1534,15 +1534,15 @@ impl Parser {
                         let simbolo = self.resolver(
                             &format!("{cls}::{miembro}"), firmas, &tipos)?.simbolo.clone();
                         // El objeto viaja como el `this` que el descenso
-                        // pondrá de primer parámetro. Con `->` la base YA es
-                        // un puntero; con `.` hay que tomarle la dirección.
+                        // pondra de primer parametro. Con `->` la base YA es
+                        // un puntero; con `.` hay que tomarle la direccion.
                         let objeto = if flecha { e } else { Expr::AddrOf(Box::new(e)) };
-                        // ★ Si el método tiene ranura, la llamada es VIRTUAL:
-                        // no va al símbolo que dice el tipo estático, va al que
+                        // * Si el metodo tiene ranura, la llamada es VIRTUAL:
+                        // no va al simbolo que dice el tipo estatico, va al que
                         // haya en esa ranura de la tabla que el objeto lleva
-                        // dentro. Es la única diferencia entre las dos, y está
-                        // decidida aquí, en el parser, que es quien sabe si el
-                        // método es virtual.
+                        // dentro. Es la unica diferencia entre las dos, y esta
+                        // decidida aqui, en el parser, que es quien sabe si el
+                        // metodo es virtual.
                         e = match info.ranura_de.get(&miembro) {
                             Some(&r) => Expr::VirtualCall(
                                 Box::new(objeto), miembro, r as u32, args),
@@ -1572,10 +1572,10 @@ impl Parser {
     }
 
     fn primario(&mut self) -> Result<Expr, CppError> {
-        // ★ La línea se captura ANTES de consumir el token. Si se leyera
-        // después, `self.pos` ya apunta al siguiente y el error saldría con la
-        // línea de lo que viene detrás — que en `int y = ;` es el `return` de
-        // la línea siguiente, y manda a mirar donde no es.
+        // * La linea se captura ANTES de consumir el token. Si se leyera
+        // despues, `self.pos` ya apunta al siguiente y el error saldria con la
+        // linea de lo que viene detras -- que en `int y = ;` es el `return` de
+        // la linea siguiente, y manda a mirar donde no es.
         let l = self.linea();
         let culpa = |m: String| CppError::new(l, m);
         match self.avanzar() {
@@ -1590,12 +1590,12 @@ impl Parser {
                 Some(_) => Ok(Expr::This),
                 None => Err(CppError::new(l, "`this` fuera de un metodo")),
             },
-            // ★ Un campo nombrado a secas dentro de un método ES `this->campo`.
+            // * Un campo nombrado a secas dentro de un metodo ES `this->campo`.
             //
-            // Y el orden importa: primero se mira el ámbito local, porque un
-            // parámetro o una local **tapan** al campo. Al revés, `int doble(int x)`
-            // leería el campo `x` en vez del argumento — y las dos versiones
-            // compilan, así que el bug sería mudo.
+            // Y el orden importa: primero se mira el ambito local, porque un
+            // parametro o una local **tapan** al campo. Al reves, `int doble(int x)`
+            // leeria el campo `x` en vez del argumento -- y las dos versiones
+            // compilan, asi que el bug seria mudo.
             Token::Ident(n) => {
                 if self.ambitos.tipo(&n).is_none() {
                     if let Some(cls) = self.clase_actual.clone() {

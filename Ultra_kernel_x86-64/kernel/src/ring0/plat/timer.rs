@@ -68,18 +68,18 @@ unsafe extern "C" fn timer_entry() -> ! {
         "sub rsp, {reserva}",
         "and rsp, -64",                // XSAVE exige 64 bytes de alineacion
         // La CABECERA a cero ANTES del xsave64. No es precaucion: `XSAVE` NO
-        // escribe los 48 bytes reservados de la cabecera (528..575) — escribe
+        // escribe los 48 bytes reservados de la cabecera (528..575) -- escribe
         // XSTATE_BV, pone XCOMP_BV a cero, y el resto lo deja COMO ESTABA. Y
         // `XRSTOR` da #GP(0) si no son todos cero.
         //
         // El area se talla en la pila con un `sub`+`and`, o sea sobre lo que
         // hubiera ahi. Sin esto, la basura que trajera la pila en esos 48 bytes
-        // sobrevivia al guardado y reventaba en el `xrstor64` del epilogo —
+        // sobrevivia al guardado y reventaba en el `xrstor64` del epilogo --
         // intermitente, y peor en la pila de arranque, donde lo que hay debajo
         // cambia. `trap::fabricate` ya lo hacia bien (pone a cero los 1024); los
         // stubs no. Esta era la asimetria.
         //
-        // ★ Y EL XSTATE_BV TAMBIEN, que es la mitad que faltaba.
+        // * Y EL XSTATE_BV TAMBIEN, que es la mitad que faltaba.
         //
         // `XSAVE` no escribe XSTATE_BV entero. Lo que hace es:
         //
@@ -91,7 +91,7 @@ unsafe extern "C" fn timer_entry() -> ! {
         // `XRSTOR` da #GP(0) por encender componentes que este CPU no tiene.
         //
         // La firma que lo delato: los dos volcados dieron 0x5F0FCB y 0x37B, y
-        // los dos son "el valor viejo con los tres bits bajos puestos a 3" —
+        // los dos son "el valor viejo con los tres bits bajos puestos a 3" --
         // 3 es justo XINUSE&7 (x87 y SSE en uso, AVX en estado inicial).
         "mov qword ptr [rsp+{bv}], 0",
         // Se ponen a cero LAS MISMAS siete palabras que el epilogo comprueba.
@@ -123,7 +123,7 @@ unsafe extern "C" fn timer_entry() -> ! {
         "jne 3f",
         // La CABECERA, antes de borrar el sello: asi el informe la lee intacta
         // y puede decir de quien era el contexto. rax/rdx se pueden pisar aqui
-        // — los recuperan los pops de abajo.
+        // -- los recuperan los pops de abajo.
         "mov rdx, qword ptr [rsp+{bv}]",
         "and rdx, qword ptr [rip+{no_xcr0}]",
         "jnz 8f",
@@ -136,7 +136,7 @@ unsafe extern "C" fn timer_entry() -> ! {
         "or rax, qword ptr [rsp+{cero}+48]",
         "jnz 8f",
         // UN SOLO USO: al restaurarlo se borra el sello. Un contexto que ya
-        // se consumio no puede volver a pasar por bueno — si alguien lo
+        // se consumio no puede volver a pasar por bueno -- si alguien lo
         // intenta, se planta con nombre en vez de reventar en el xrstor.
         "mov qword ptr [rsp+{firma}], 0",
         "mov eax, -1", "mov edx, -1",
@@ -181,8 +181,8 @@ unsafe extern "C" fn spurious_entry() -> ! {
 
 #[unsafe(no_mangle)]
 extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
-    // Dónde talló su área este trap, y para quién. Ver `trap::publicaciones`:
-    // es lo que permite ver DOS áreas solapadas en la misma pila cuando un
+    // Donde tallo su area este trap, y para quien. Ver `trap::publicaciones`:
+    // es lo que permite ver DOS areas solapadas en la misma pila cuando un
     // contexto aparece pisado con el sello intacto.
     crate::ring0::plat::trap::registrar_publicacion(
         crate::ring0::task::percpu::trap_rsp(),
@@ -196,7 +196,7 @@ extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
     crate::ring0::task::scheduler::on_timer();
     // Heartbeat from IRQ context every 64 ticks: paints even when no task
     // ever reaches the shell poll loop. If this row stops updating, ticks
-    // stopped — the hang is running with IF masked (a syscall dispatch or a
+    // stopped -- the hang is running with IF masked (a syscall dispatch or a
     // cli section); if it updates, the counters say where execution lives.
     // NOTA: CABINA se pinta desde el loop del shell (bajo CR3 del kernel,
     // seguro). Pintar desde AQUI (contexto IRQ: switch de CR3 + 4 filas de

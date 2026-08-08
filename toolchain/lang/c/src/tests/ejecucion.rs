@@ -5,10 +5,10 @@
 
 use super::*;
 
-/// Los operadores NO conmutativos estaban invertidos: se emitían sobre
+/// Los operadores NO conmutativos estaban invertidos: se emitian sobre
 /// `b - a` en vez de `a - b`. Con `+` y `*` no se notaba; con `-`, `/`,
-/// `%` y los desplazamientos, sí. Nadie lo vio en 1.600 líneas de
-/// codegen porque ningún test los ejecutaba.
+/// `%` y los desplazamientos, si. Nadie lo vio en 1.600 lineas de
+/// codegen porque ningun test los ejecutaba.
 #[test]
 fn non_commutative_operators_respect_operand_order() {
     for (expr, expected) in [
@@ -26,8 +26,8 @@ fn non_commutative_operators_respect_operand_order() {
     }
 }
 
-/// La división entera es CON SIGNO. Antes dividía sin signo, así que un
-/// negativo daba un número astronómico.
+/// La division entera es CON SIGNO. Antes dividia sin signo, asi que un
+/// negativo daba un numero astronomico.
 #[test]
 fn integer_division_is_signed() {
     let out = run_c("int main() { printf(\"%d %d\\n\", 0 - 10, (0 - 10) / 3); return 0; }");
@@ -52,8 +52,8 @@ fn comparisons_answer_in_the_right_direction() {
 }
 
 /// `setcc` solo escribe `al`. Sin extender a cero el resto de `rax`, el
-/// resultado de una comparación arrastraba los bits altos del operando
-/// derecho: parecía correcto con valores chicos y fallaba con grandes.
+/// resultado de una comparacion arrastraba los bits altos del operando
+/// derecho: parecia correcto con valores chicos y fallaba con grandes.
 #[test]
 fn comparison_result_is_clean_with_large_operands() {
     let out = run_c(
@@ -63,7 +63,7 @@ fn comparison_result_is_clean_with_large_operands() {
 }
 
 /// Un `int` con signo debe releerse con signo. Antes `mov eax,[..]`
-/// rellenaba de ceros y `-7` volvía como 4294967289.
+/// rellenaba de ceros y `-7` volvia como 4294967289.
 #[test]
 fn negative_int_survives_a_round_trip_through_memory() {
     let out = run_c("int main() { int y = 0 - 7; printf(\"%d\\n\", y); return 0; }");
@@ -72,7 +72,7 @@ fn negative_int_survives_a_round_trip_through_memory() {
 
 #[test]
 fn errors_report_real_line() {
-    // Antes TODO error decía "línea 1".
+    // Antes TODO error decia "linea 1".
     let src = "int main() {\n    int x;\n    x = ;\n    return 0;\n}";
     let err = parse(src).unwrap_err();
     assert_eq!(err.line, 3, "el error de 'x = ;' está en la línea 3, no la 1");

@@ -18,16 +18,16 @@ pub struct ModuleResolver {
     pub base_paths: Vec<PathBuf>,
 }
 
-/// Descubre dónde viven los módulos: las raíces de `bmo_mods` más
-/// `standards/C`, que se añade aparte porque `use "c11"` se escribe sin
+/// Descubre donde viven los modulos: las raices de `bmo_mods` mas
+/// `standards/C`, que se anade aparte porque `use "c11"` se escribe sin
 /// prefijo de directorio.
 ///
-/// NOTA HISTÓRICA: esto tenía copiada a mano la misma lista de cinco rutas
-/// candidatas que `standard.rs`. Buscaba "Semantic_ASM/" —directorio muerto
-/// tras la reorganización— y el descubrimiento fallaba **en silencio**, que
-/// se parece demasiado a "no hacía falta". Una lista copiada en dos sitios se
+/// NOTA HISTORICA: esto tenia copiada a mano la misma lista de cinco rutas
+/// candidatas que `standard.rs`. Buscaba "Semantic_ASM/" --directorio muerto
+/// tras la reorganizacion-- y el descubrimiento fallaba **en silencio**, que
+/// se parece demasiado a "no hacia falta". Una lista copiada en dos sitios se
 /// queda vieja en uno de los dos; ahora vive en `bmo_mods::Roots`, y de paso
-/// `$BMO_MODS` entra por aquí sin tocar nada.
+/// `$BMO_MODS` entra por aqui sin tocar nada.
 pub fn discover_include_paths() -> Vec<PathBuf> {
     let roots = bmo_mods::Roots::find();
     let mut paths = Vec::new();
@@ -76,10 +76,10 @@ impl ModuleResolver {
 
     /// Lee un `BMO.toml`.
     ///
-    /// El FORMATO lo entiende `bmo_mods` —un parser de TOML de verdad, no
-    /// `split_once('=')`—; lo que queda aquí es POLÍTICA de este frontend:
-    /// que un módulo sin `[sources]` compila los `.c` de su carpeta. Esa
-    /// regla es de C y no tiene por qué valer para COBOL o Ada, así que no
+    /// El FORMATO lo entiende `bmo_mods` --un parser de TOML de verdad, no
+    /// `split_once('=')`--; lo que queda aqui es POLITICA de este frontend:
+    /// que un modulo sin `[sources]` compila los `.c` de su carpeta. Esa
+    /// regla es de C y no tiene por que valer para COBOL o Ada, asi que no
     /// baja al contrato compartido.
     fn parse_manifest(path: &Path) -> Result<ModuleManifest, CError> {
         let m = bmo_mods::Manifest::load(path)

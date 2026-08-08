@@ -1,11 +1,11 @@
 //! El puntero del raton, dibujado en Ring 3.
 //!
 //! Su forma, su color y su contorno son decisiones de ASPECTO, y ninguna tiene
-//! nada que hacer en Ring 0 — por eso el kernel entrega coordenadas y se aparta.
+//! nada que hacer en Ring 0 -- por eso el kernel entrega coordenadas y se aparta.
 
 use bmo_userland as bmo;
 
-// ── El cursor ───────────────────────────────────────────────────────────
+// -- El cursor -----------------------------------------------------------
 
 pub(crate) const CUR_ANCHO: usize = 10;
 pub(crate) const CUR_ALTO: usize = 16;
@@ -13,7 +13,7 @@ pub(crate) const CUR_ALTO: usize = 16;
 ///
 /// Borde oscuro alrededor del relleno claro: es lo que hace que una flecha se
 /// vea igual de bien sobre un fondo claro que sobre uno oscuro. No es adorno,
-/// es la razón de que todos los cursores del mundo tengan contorno.
+/// es la razon de que todos los cursores del mundo tengan contorno.
 pub(crate) const FLECHA: [[u8; CUR_ANCHO]; CUR_ALTO] = [
     [2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [2, 2, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -34,7 +34,7 @@ pub(crate) const FLECHA: [[u8; CUR_ANCHO]; CUR_ALTO] = [
 ];
 /// **La barra de texto.** Donde se puede escribir.
 ///
-/// No es adorno: es la única forma que tiene el escritorio de decir "aquí
+/// No es adorno: es la unica forma que tiene el escritorio de decir "aqui
 /// dentro el clic coloca el cursor de escritura" **antes** de que lo intentes.
 /// Un campo de texto que se ve igual que el fondo obliga a probar.
 pub(crate) const BARRA: [[u8; CUR_ANCHO]; CUR_ALTO] = [
@@ -59,7 +59,7 @@ pub(crate) const BARRA: [[u8; CUR_ANCHO]; CUR_ALTO] = [
 /// **La mano.** Esto se pulsa.
 ///
 /// La usa lo que reacciona a un clic y no lo parece: los botones de la
-/// calculadora. Un botón dibujado es una promesa; la mano es la que la
+/// calculadora. Un boton dibujado es una promesa; la mano es la que la
 /// confirma sin gastar un clic en comprobarlo.
 pub(crate) const MANO: [[u8; CUR_ANCHO]; CUR_ALTO] = [
     [0, 0, 0, 2, 2, 0, 0, 0, 0, 0],
@@ -80,19 +80,19 @@ pub(crate) const MANO: [[u8; CUR_ANCHO]; CUR_ALTO] = [
     [0, 0, 0, 0, 2, 2, 2, 2, 0, 0],
 ];
 
-/// Qué está diciendo el puntero ahora mismo.
+/// Que esta diciendo el puntero ahora mismo.
 ///
-/// ★ **La forma del cursor es información, no decoración.** Es lo único del
-/// escritorio que contesta "¿qué pasa si pulso aquí?" **sin que haya que
+/// * **La forma del cursor es informacion, no decoracion.** Es lo unico del
+/// escritorio que contesta "que pasa si pulso aqui?" **sin que haya que
 /// pulsar**. Un sistema con una sola forma obliga a probar cada sitio, y probar
 /// donde no se debe es exactamente lo que un puntero existe para evitar.
 ///
-/// Las tres son las que de verdad significan algo distinto aquí. No hay reloj
-/// de espera a propósito: nada de este escritorio bloquea, así que un cursor
-/// de "espera" sería una forma que nunca es verdad.
+/// Las tres son las que de verdad significan algo distinto aqui. No hay reloj
+/// de espera a proposito: nada de este escritorio bloquea, asi que un cursor
+/// de "espera" seria una forma que nunca es verdad.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Forma {
-    /// Lo normal: señalar y elegir.
+    /// Lo normal: senalar y elegir.
     Flecha,
     /// Sobre un campo donde se escribe.
     Texto,
@@ -125,35 +125,35 @@ fn dibujar_cursor(p: &bmo::Pantalla, x: u32, y: u32, forma: Forma) {
     }
 }
 
-/// **Lo que hay debajo del cursor**, guardado píxel a píxel.
+/// **Lo que hay debajo del cursor**, guardado pixel a pixel.
 ///
-/// ═══ Por qué esto y no preguntarle a la escena ═══
+/// === Por que esto y no preguntarle a la escena ===
 ///
-/// Antes el cursor se borraba repintando `color_escena`: "¿qué debería haber
-/// aquí?". Eso vale mientras la escena conozca **todo** lo que hay en pantalla,
-/// y dejó de valer en cuanto aparecieron ventanas que no están en ese modelo —
-/// la consola de datos y el conmutador. Pasar el ratón por encima de ellas
+/// Antes el cursor se borraba repintando `color_escena`: "que deberia haber
+/// aqui?". Eso vale mientras la escena conozca **todo** lo que hay en pantalla,
+/// y dejo de valer en cuanto aparecieron ventanas que no estan en ese modelo --
+/// la consola de datos y el conmutador. Pasar el raton por encima de ellas
 /// dejaba un rastro de agujeros con el color del fondo del escritorio, porque
-/// la escena contestaba con lo que había *antes* de que esa ventana existiera.
+/// la escena contestaba con lo que habia *antes* de que esa ventana existiera.
 ///
-/// Con `save-under` la pregunta desaparece: no hace falta saber qué hay debajo
-/// porque se guarda. Son 160 píxeles —640 bytes de pila— y funciona igual con
+/// Con `save-under` la pregunta desaparece: no hace falta saber que hay debajo
+/// porque se guarda. Son 160 pixeles --640 bytes de pila-- y funciona igual con
 /// las ventanas de hoy y con las que vengan, sin que ninguna tenga que
-/// registrarse en ningún sitio.
+/// registrarse en ningun sitio.
 ///
-/// ═══ El precio, dicho entero ═══
+/// === El precio, dicho entero ===
 ///
-/// Lo guardado **caduca** si alguien pinta ahí mientras el cursor está puesto:
-/// devolverlo taparía lo nuevo con lo viejo. Por eso el compositor lo quita al
-/// PRINCIPIO del fotograma y lo pone al FINAL, con todo el dibujo en medio —
+/// Lo guardado **caduca** si alguien pinta ahi mientras el cursor esta puesto:
+/// devolverlo taparia lo nuevo con lo viejo. Por eso el compositor lo quita al
+/// PRINCIPIO del fotograma y lo pone al FINAL, con todo el dibujo en medio --
 /// que es la disciplina de cualquier cursor por software.
 pub(crate) struct Bajo {
     px: [u32; CUR_ANCHO * CUR_ALTO],
     x: u32,
     y: u32,
     puesto: bool,
-    /// Con qué forma está dibujado ahora mismo. Hace falta guardarla para poder
-    /// notar que cambió sin que el puntero se mueva.
+    /// Con que forma esta dibujado ahora mismo. Hace falta guardarla para poder
+    /// notar que cambio sin que el puntero se mueva.
     forma: Forma,
 }
 
@@ -170,47 +170,47 @@ impl Bajo {
 
     /// Guarda lo que hay y dibuja el cursor encima. Al FINAL del fotograma.
     ///
-    /// ★★ **LA SINCRONIZACIÓN DE ANTES DE LEER, Y POR QUÉ FALTABA.**
+    /// ** **LA SINCRONIZACION DE ANTES DE LEER, Y POR QUE FALTABA.**
     ///
-    /// Este es el único sitio de todo el compositor que **lee** la pantalla. Y
+    /// Este es el unico sitio de todo el compositor que **lee** la pantalla. Y
     /// desde que el framebuffer se mapea en **write-combining** (`952681c7`),
     /// leerlo sin barrera no devuelve lo que acabas de pintar: devuelve lo que
-    /// había **antes**.
+    /// habia **antes**.
     ///
-    /// ★ Con el doble búfer activo, `sincronizar_lectura` **no hace nada** — y
-    /// eso es lo mejor que le puede pasar a esta línea. Se lee del lienzo, que
+    /// * Con el doble bufer activo, `sincronizar_lectura` **no hace nada** -- y
+    /// eso es lo mejor que le puede pasar a esta linea. Se lee del lienzo, que
     /// es RAM normal y cacheada: el problema no se arregla, deja de existir.
     ///
-    /// Con WC el CPU acumula las escrituras en un búfer y las suelta cuando se
-    /// llena. Una lectura de memoria WC **no está ordenada** contra esas
-    /// escrituras pendientes — el manual lo dice y no hay forma de saltárselo.
-    /// Así que la secuencia del fotograma era:
+    /// Con WC el CPU acumula las escrituras en un bufer y las suelta cuando se
+    /// llena. Una lectura de memoria WC **no esta ordenada** contra esas
+    /// escrituras pendientes -- el manual lo dice y no hay forma de saltarselo.
+    /// Asi que la secuencia del fotograma era:
     ///
     /// ```text
     ///   1. quitar        -> escribe (al bufer)
     ///   2. pintar todo   -> escribe (al bufer)
     ///   3. poner: LEER   -> ve la pantalla de HACE UN FOTOGRAMA
-    ///   4. vaciar        -> sfence, ahora sí llega todo
+    ///   4. vaciar        -> sfence, ahora si llega todo
     /// ```
     ///
-    /// El paso 3 guardaba píxeles caducados, y el `quitar` del fotograma
-    /// siguiente los devolvía **encima de lo nuevo**: un rectángulo de 10×16
+    /// El paso 3 guardaba pixeles caducados, y el `quitar` del fotograma
+    /// siguiente los devolvia **encima de lo nuevo**: un rectangulo de 10x16
     /// con contenido viejo persiguiendo al puntero. Eso es el ghosting.
     ///
-    /// Es el Ep. 20 otra vez y por el otro lado. Allí se descubrió que **la
-    /// pantalla** no veía nuestras escrituras sin `sfence`; lo que nadie miró es
+    /// Es el Ep. 20 otra vez y por el otro lado. Alli se descubrio que **la
+    /// pantalla** no veia nuestras escrituras sin `sfence`; lo que nadie miro es
     /// que **nosotros** tampoco las vemos. La barrera hace falta en los dos
-    /// sentidos, y va aquí dentro y no en quien llama: la invariante es de la
+    /// sentidos, y va aqui dentro y no en quien llama: la invariante es de la
     /// lectura, no del sitio desde donde se pide.
     pub(crate) fn poner(&mut self, p: &bmo::Pantalla, x: u32, y: u32, forma: Forma) {
         if self.puesto {
-            // ★ Y si la FORMA cambió, hay que redibujar aunque no se haya
-            // movido: pasar del ratón quieto sobre el escritorio al campo de
-            // texto no mueve un píxel el puntero, y aun así tiene que cambiar.
+            // * Y si la FORMA cambio, hay que redibujar aunque no se haya
+            // movido: pasar del raton quieto sobre el escritorio al campo de
+            // texto no mueve un pixel el puntero, y aun asi tiene que cambiar.
             //
             // Se quita y se vuelve a poner en vez de dibujar encima: las tres
-            // formas ocupan píxeles distintos, así que pintar la nueva sobre la
-            // vieja dejaría los trozos que la nueva no cubre.
+            // formas ocupan pixeles distintos, asi que pintar la nueva sobre la
+            // vieja dejaria los trozos que la nueva no cubre.
             if self.forma == forma {
                 return;
             }
@@ -230,7 +230,7 @@ impl Bajo {
     }
 
     /// Devuelve lo guardado. Al PRINCIPIO del fotograma, antes de pintar nada.
-    /// Si no estaba puesto no hace nada, así que se puede llamar siempre.
+    /// Si no estaba puesto no hace nada, asi que se puede llamar siempre.
     pub(crate) fn quitar(&mut self, p: &bmo::Pantalla) {
         if !self.puesto {
             return;

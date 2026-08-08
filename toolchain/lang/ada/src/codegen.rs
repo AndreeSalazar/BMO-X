@@ -1,21 +1,21 @@
 //! De Ada a bytes x86-64. Sin IR, sin optimizador central, sin runtime.
 //!
-//! ## El decimal, que es la razón de todo
+//! ## El decimal, que es la razon de todo
 //!
 //! Un `type Saldo is delta 0.01 digits 12` se guarda como **entero escalado**:
-//! `19.99` es el entero `1999`. Sumar dos saldos es un `add` — suma decimal
+//! `19.99` es el entero `1999`. Sumar dos saldos es un `add` -- suma decimal
 //! exacta, sin coma flotante y sin redondeo. Multiplicar dos escalas de 2 da
-//! escala 4, así que se divide entre 100 para volver; dividir hace lo
+//! escala 4, asi que se divide entre 100 para volver; dividir hace lo
 //! contrario, preescalar el dividendo.
 //!
 //! Es exactamente lo que hace el frontend de COBOL, y no es copia: **es que
-//! Annex F de Ada copió las reglas de COBOL**. Dos lenguajes que dicen lo mismo
-//! acaban en la misma aritmética.
+//! Annex F de Ada copio las reglas de COBOL**. Dos lenguajes que dicen lo mismo
+//! acaban en la misma aritmetica.
 //!
 //! ## Lo que NO hay
 //!
 //! Ni una llamada a un runtime de Ada. `Put_Line` baja a `bmo_lower::console`
-//! y de ahí al único syscall que existe. Un `.bex` de Ada no enlaza nada.
+//! y de ahi al unico syscall que existe. Un `.bex` de Ada no enlaza nada.
 
 use std::collections::HashMap;
 
@@ -41,13 +41,13 @@ pub fn compilar(p: &Programa) -> Result<Vec<u8>, AdaError> {
 
 struct Codegen {
     code: Vec<u8>,
-    /// Dónde vive cada variable, respecto de `rbp`.
+    /// Donde vive cada variable, respecto de `rbp`.
     huecos: HashMap<String, i32>,
-    /// Y con cuántos decimales. Es la llave del decimal exacto.
+    /// Y con cuantos decimales. Es la llave del decimal exacto.
     escalas: HashMap<String, u32>,
     pila: i32,
     errores: Vec<AdaError>,
-    /// Saltos pendientes de resolver: (posición del campo, etiqueta).
+    /// Saltos pendientes de resolver: (posicion del campo, etiqueta).
     saltos: Vec<(usize, u32)>,
     etiquetas: HashMap<u32, usize>,
     siguiente: u32,
@@ -86,7 +86,7 @@ impl Codegen {
 
     /// `jcc rel32` con el segundo byte del opcode. Siempre rel32: el cuerpo de
     /// un bucle puede pasar de 127 bytes, y un salto que se desborda en
-    /// silencio es peor que uno largo de más.
+    /// silencio es peor que uno largo de mas.
     fn saltar_si(&mut self, cc: u8, l: u32) {
         self.code.extend_from_slice(&[0x0F, cc]);
         self.saltos.push((self.code.len(), l));
@@ -106,7 +106,7 @@ impl Codegen {
         }
     }
 
-    // ── Memoria ─────────────────────────────────────────────────────────
+    // -- Memoria ---------------------------------------------------------
 
     fn cargar(&mut self, nombre: &str) {
         match self.huecos.get(nombre).copied() {
@@ -140,10 +140,10 @@ impl Codegen {
         self.escalas.get(nombre).copied().unwrap_or(0)
     }
 
-    /// Un literal escrito a su entero escalado. `"19.99"` con escala 2 → 1999.
+    /// Un literal escrito a su entero escalado. `"19.99"` con escala 2 -> 1999.
     ///
     /// **Trunca** los decimales que sobran, que es lo que hace un tipo decimal
-    /// cuando le das más precisión de la que declara.
+    /// cuando le das mas precision de la que declara.
     pub fn escalar(lit: &str, escala: u32) -> i64 {
         let t = lit.trim();
         let negativo = t.starts_with('-');
@@ -181,7 +181,7 @@ impl Codegen {
         }
     }
 
-    // ── Expresiones ─────────────────────────────────────────────────────
+    // -- Expresiones -----------------------------------------------------
 
     /// Deja el valor de `e` en `rax`, en la escala `destino`.
     fn expresion(&mut self, e: &Expr, destino: u32) {
@@ -199,7 +199,7 @@ impl Codegen {
                 match op {
                     '+' | '-' => {
                         // Los dos lados en la MISMA escala; entonces sumar es
-                        // sumar céntimos.
+                        // sumar centimos.
                         self.expresion(a, destino);
                         self.code.push(0x50); // push rax
                         self.expresion(b, destino);
@@ -213,8 +213,8 @@ impl Codegen {
                         }
                     }
                     '*' => {
-                        // Escala n × escala n = escala 2n; se vuelve dividiendo
-                        // entre 10^n. $2.00 × 3 = $6.00, exacto.
+                        // Escala n x escala n = escala 2n; se vuelve dividiendo
+                        // entre 10^n. $2.00 x 3 = $6.00, exacto.
                         self.expresion(a, destino);
                         self.code.push(0x50);
                         self.expresion(b, destino);
@@ -228,8 +228,8 @@ impl Codegen {
                     }
                     _ => {
                         // Dividir: se PREESCALA el dividendo, si no el
-                        // resultado saldría en escala 0 y se perderían los
-                        // céntimos. $10.00 / 4 = $2.50.
+                        // resultado saldria en escala 0 y se perderian los
+                        // centimos. $10.00 / 4 = $2.50.
                         self.expresion(b, destino); // divisor
                         self.code.push(0x50);
                         self.expresion(a, destino); // dividendo
@@ -259,7 +259,7 @@ impl Codegen {
         }
     }
 
-    /// Salta a `destino` cuando la condición es FALSA.
+    /// Salta a `destino` cuando la condicion es FALSA.
     fn saltar_si_falsa(&mut self, c: &Condicion, destino: u32) {
         let escala = self.escala_expr(&c.izq).max(self.escala_expr(&c.der));
         self.expresion(&c.izq, escala);
@@ -267,7 +267,7 @@ impl Codegen {
         self.expresion(&c.der, escala);
         self.code.push(0x5A); // pop rdx  (el izquierdo)
         x86::cmp_r64_r64(&mut self.code, RDX, RAX);
-        // El código de condición es el CONTRARIO: se salta cuando NO se cumple.
+        // El codigo de condicion es el CONTRARIO: se salta cuando NO se cumple.
         let cc = match c.op.as_str() {
             "=" => 0x85,  // jne
             "/=" => 0x84, // je
@@ -280,13 +280,13 @@ impl Codegen {
         self.saltar_si(cc, destino);
     }
 
-    // ── Sentencias ──────────────────────────────────────────────────────
+    // -- Sentencias ------------------------------------------------------
 
     fn sentencia(&mut self, s: &Sentencia) {
         match s {
             // `null;` no emite nada, y eso NO es un no-op silencioso: es lo
             // que la sentencia significa. La diferencia con un hueco es que
-            // aquí alguien lo escribió.
+            // aqui alguien lo escribio.
             Sentencia::Nada => {}
             Sentencia::PutLiteral(t) => {
                 let mut bytes = t.as_bytes().to_vec();
@@ -346,11 +346,11 @@ impl Codegen {
         }
     }
 
-    // ── El programa entero ──────────────────────────────────────────────
+    // -- El programa entero ----------------------------------------------
 
     fn programa(&mut self, p: &Programa) -> Result<(), AdaError> {
         // Un hueco de 8 bytes por variable. Todo valor es un entero de 64 bits
-        // con signo: la escala dice dónde cae la coma, no cuánto ocupa.
+        // con signo: la escala dice donde cae la coma, no cuanto ocupa.
         for d in &p.declaraciones {
             if self.huecos.contains_key(&d.nombre) {
                 return Err(AdaError::nuevo(
@@ -363,7 +363,7 @@ impl Codegen {
             self.escalas.insert(d.nombre.clone(), d.escala);
         }
 
-        // Prólogo. Se reserva y se alinea a 64 igual que los demás frontends:
+        // Prologo. Se reserva y se alinea a 64 igual que los demas frontends:
         // a la entrada de un proceso BEF no se puede suponer nada del RSP.
         self.code.extend_from_slice(&[0x55]); // push rbp
         self.code.extend_from_slice(&[0x48, 0x89, 0xE5]); // mov rbp, rsp
@@ -372,8 +372,8 @@ impl Codegen {
         self.code.extend_from_slice(&[0x48, 0x83, 0xE4, 0xC0]); // and rsp, -64
 
         // Los valores iniciales. En Ada una variable sin `:=` no tiene valor
-        // definido; aquí se pone a cero, que es lo único honesto que se puede
-        // hacer sin inventar: leer basura de la pila sería peor.
+        // definido; aqui se pone a cero, que es lo unico honesto que se puede
+        // hacer sin inventar: leer basura de la pila seria peor.
         for d in &p.declaraciones {
             let v = match &d.inicial {
                 Some(lit) => Self::escalar(lit, d.escala),
@@ -387,8 +387,8 @@ impl Codegen {
             self.sentencia(s);
         }
 
-        // Salir por la puerta. No hay `hlt`: es privilegiada, y en Ring 3 sería
-        // un #GP — la red de seguridad provocando justo el fallo del que
+        // Salir por la puerta. No hay `hlt`: es privilegiada, y en Ring 3 seria
+        // un #GP -- la red de seguridad provocando justo el fallo del que
         // protege. La puerta gira en `pause`.
         bmo_lower::task::exit(&mut self.code);
         self.resolver_saltos();
@@ -411,11 +411,11 @@ mod tests {
         assert_eq!(Codegen::escalar("0.01", 2), 1);
         assert_eq!(Codegen::escalar("7", 2), 700);
         assert_eq!(Codegen::escalar("-120.00", 2), -12000);
-        // Y sumar céntimos es exacto, que es todo lo que se pide:
+        // Y sumar centimos es exacto, que es todo lo que se pide:
         assert_eq!(Codegen::escalar("10.05", 2) + Codegen::escalar("3.20", 2), 1325);
     }
 
-    /// Más decimales de los que declara el tipo: se truncan, no se redondean.
+    /// Mas decimales de los que declara el tipo: se truncan, no se redondean.
     #[test]
     fn los_decimales_que_sobran_se_truncan() {
         assert_eq!(Codegen::escalar("1.999", 2), 199);

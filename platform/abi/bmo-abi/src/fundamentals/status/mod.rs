@@ -1,4 +1,4 @@
-//! `status` — códigos de retorno BMO ABI.
+//! `status` -- codigos de retorno BMO ABI.
 //!
 //! `BmoStatus` reemplaza:
 //!   - Win32 `HRESULT` (32-bit) + `GetLastError()` (TLS global)

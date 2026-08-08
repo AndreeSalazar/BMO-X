@@ -1,4 +1,4 @@
-//! TEXTO — 7 pruebas.
+//! TEXTO -- 7 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,12 +7,12 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-// ── TEXTO: `PIC X(n)` con caracteres de verdad ──────────────────────
+// -- TEXTO: `PIC X(n)` con caracteres de verdad ----------------------
 //
-// Hasta aquí un `PIC X` reservaba sitio y se cargaba como un entero de 64
-// bits: no había campos de texto. Por eso `VALUE "HOLA"` se rechazaba.
+// Hasta aqui un `PIC X` reservaba sitio y se cargaba como un entero de 64
+// bits: no habia campos de texto. Por eso `VALUE "HOLA"` se rechazaba.
 
-/// Lo mínimo: declarar, inicializar y enseñar.
+/// Lo minimo: declarar, inicializar y ensenar.
 #[test]
 fn un_campo_de_texto_guarda_caracteres() {
     let src = program(
@@ -23,8 +23,8 @@ fn un_campo_de_texto_guarda_caracteres() {
     assert_eq!(run_cobol(&src), "BANCO BMO \n");
 }
 
-/// ★ El `VALUE` con ESPACIOS dentro. El troceado por espacios lo partía, y
-/// `VALUE "SIN SALDO"` guardaba `SIN` y leía el resto como cláusulas.
+/// * El `VALUE` con ESPACIOS dentro. El troceado por espacios lo partia, y
+/// `VALUE "SIN SALDO"` guardaba `SIN` y leia el resto como clausulas.
 #[test]
 fn un_value_de_texto_admite_espacios() {
     let src = program("01 T PIC X(12) VALUE \"SIN SALDO\".", "DISPLAY T.");
@@ -32,7 +32,7 @@ fn un_value_de_texto_admite_espacios() {
 }
 
 /// `MOVE` de literal y de campo a campo, con el relleno de espacios que
-/// manda el estándar.
+/// manda el estandar.
 #[test]
 fn el_texto_se_mueve_y_se_rellena_con_espacios() {
     let src = program(
@@ -42,7 +42,7 @@ fn el_texto_se_mueve_y_se_rellena_con_espacios() {
     assert_eq!(run_cobol(&src), "HOLA    \n");
 }
 
-/// ★ LA COMPARACIÓN, que es para lo que existe `FILE STATUS`.
+/// * LA COMPARACION, que es para lo que existe `FILE STATUS`.
 #[test]
 fn el_texto_se_compara_con_un_literal() {
     for (valor, esperado) in [("00", "bien\n"), ("10", "fin\n"), ("35", "otro\n")] {
@@ -72,7 +72,7 @@ fn el_texto_se_compara_de_las_dos_formas() {
     assert_eq!(run_cobol(&src), "iguales\ndistintos\n");
 }
 
-/// Un campo de más de ocho caracteres: la comparación recorre varios trozos
+/// Un campo de mas de ocho caracteres: la comparacion recorre varios trozos
 /// y la diferencia puede estar en cualquiera.
 #[test]
 fn el_texto_largo_se_compara_entero() {
@@ -86,7 +86,7 @@ fn el_texto_largo_se_compara_entero() {
 }
 
 /// Lo que no se puede hacer se dice. Comparar cadenas por ORDEN depende del
-/// juego de caracteres, y decidirlo por ASCII a la callada daría un orden
+/// juego de caracteres, y decidirlo por ASCII a la callada daria un orden
 /// que no es el de un mainframe.
 #[test]
 fn el_texto_no_se_compara_por_orden_ni_se_mezcla_con_numeros() {
@@ -103,9 +103,9 @@ fn el_texto_no_se_compara_por_orden_ni_se_mezcla_con_numeros() {
     }
 }
 
-/// ★ Y el relleno IMPORTA: un `MOVE` corto detrás de uno largo no puede
+/// * Y el relleno IMPORTA: un `MOVE` corto detras de uno largo no puede
 /// dejar la cola del anterior. Un `FILE STATUS` que arrastra la letra de la
-/// operación de antes es peor que uno vacío.
+/// operacion de antes es peor que uno vacio.
 #[test]
 fn un_move_corto_borra_lo_que_habia_detras() {
     let src = program(

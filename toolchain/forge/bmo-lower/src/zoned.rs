@@ -1,50 +1,50 @@
-//! Decimal ZONADO (`DISPLAY`) — **librería, no puerta**.
+//! Decimal ZONADO (`DISPLAY`) -- **libreria, no puerta**.
 //!
-//! # Qué es
+//! # Que es
 //!
-//! **Un byte por dígito**, en ASCII, y el signo *sobrepunzado* en el último.
-//! Es la otra mitad de [`crate::packed`]: las dos son cómo un número vive en un
+//! **Un byte por digito**, en ASCII, y el signo *sobrepunzado* en el ultimo.
+//! Es la otra mitad de [`crate::packed`]: las dos son como un numero vive en un
 //! fichero, y entre las dos cubren lo que un registro de banca trae dentro.
 //!
 //! ```text
-//!   -1234 en PIC S9(5)  →  5 bytes
+//!   -1234 en PIC S9(5)  ->  5 bytes
 //!
-//!   ┌────┬────┬────┬────┬────┐
-//!   │'0' │'1' │'2' │'3' │ 't'│   ← 't' = 0x74 = el dígito 4 con el signo encima
-//!   └────┴────┴────┴────┴────┘
-//!     ▲                    ▲
-//!     relleno         el SIGNO va DENTRO del dígito, no aparte
+//!   +----+----+----+----+----+
+//!   |'0' |'1' |'2' |'3' | 't'|   <- 't' = 0x74 = el digito 4 con el signo encima
+//!   +----+----+----+----+----+
+//!     ^                    ^
+//!     relleno         el SIGNO va DENTRO del digito, no aparte
 //! ```
 //!
-//! # ★ El sobrepunzado, y por qué no es una rareza
+//! # * El sobrepunzado, y por que no es una rareza
 //!
-//! Un `PIC S9(5)` mide **cinco** bytes, no seis: la `S` no ocupa posición. El
-//! signo tiene que caber *dentro* de un dígito, y la forma de hacerlo es
-//! cambiarle la zona alta al último byte. En EBCDIC eso es cambiar `F` por `D`;
-//! en ASCII, la convención que usa todo el mundo (y GnuCOBOL) es la banda
-//! `p`–`y` (`0x70`–`0x79`).
+//! Un `PIC S9(5)` mide **cinco** bytes, no seis: la `S` no ocupa posicion. El
+//! signo tiene que caber *dentro* de un digito, y la forma de hacerlo es
+//! cambiarle la zona alta al ultimo byte. En EBCDIC eso es cambiar `F` por `D`;
+//! en ASCII, la convencion que usa todo el mundo (y GnuCOBOL) es la banda
+//! `p`-`y` (`0x70`-`0x79`).
 //!
 //! Es feo y es de 1959. Pero es **lo que hay en los ficheros**, y un lector que
 //! no lo entienda no ve un signo: ve una letra en medio de un importe.
 //!
-//! ⚠ Aquí se hace **ASCII**. Los ficheros que vienen de un mainframe son
-//! EBCDIC, y ésa es otra tarea (`PLAN_BANCA.md` §1.6) — una tabla de 256
+//! [!] Aqui se hace **ASCII**. Los ficheros que vienen de un mainframe son
+//! EBCDIC, y esa es otra tarea (`PLAN_BANCA.md` section 1.6) -- una tabla de 256
 //! entradas, que en esta casa significa una tabla y no un cerebro.
 //!
-//! # Por qué vive aquí y no en el frontend de COBOL
+//! # Por que vive aqui y no en el frontend de COBOL
 //!
 //! Por la regla de la cabecera de [`crate::fmt`]: se comparten **contratos y
-//! librerías, nunca cerebros**. Escribir un entero como una tira de dígitos con
-//! el signo encima del último es una REPRESENTACIÓN — el `Decimal` del Annex F
-//! de Ada la pide igual. Lo que se queda en COBOL es *quién* es zonado y
-//! *cuántos* dígitos tiene, que lo dice la PICTURE.
+//! librerias, nunca cerebros**. Escribir un entero como una tira de digitos con
+//! el signo encima del ultimo es una REPRESENTACION -- el `Decimal` del Annex F
+//! de Ada la pide igual. Lo que se queda en COBOL es *quien* es zonado y
+//! *cuantos* digitos tiene, que lo dice la PICTURE.
 
 use crate::x86::{self, Jump, RAX, RCX, RDI, RDX, RSI, R11};
 
-/// La banda ASCII del signo negativo: `p`(0x70) … `y`(0x79).
+/// La banda ASCII del signo negativo: `p`(0x70) ... `y`(0x79).
 const NEGATIVO_BASE: u32 = 0x70;
 
-/// Cuántos bytes ocupa un campo zonado de `digitos` dígitos. Uno cada uno — la
+/// Cuantos bytes ocupa un campo zonado de `digitos` digitos. Uno cada uno -- la
 /// `S` no ocupa, porque va sobrepunzada.
 pub const fn bytes_para(digitos: u32) -> usize {
     if digitos == 0 {
@@ -54,24 +54,24 @@ pub const fn bytes_para(digitos: u32) -> usize {
     }
 }
 
-/// Emite código que ESCRIBE `rax` como zonado en `[rcx]`.
+/// Emite codigo que ESCRIBE `rax` como zonado en `[rcx]`.
 ///
 /// - Entrada: `rax` = el entero escalado con signo, `rcx` = destino.
 /// - Escribe exactamente `digitos` bytes.
 /// - Ensucia `rax`, `rdx`, `rdi`, `rsi` y `r11`. `rcx` queda intacto.
 ///
 /// Igual que en el empaquetado, un campo **sin `S` guarda el valor absoluto**:
-/// es lo que dice el estándar, y es lo que impide que el mismo byte se lea
-/// distinto según quién lo mire.
+/// es lo que dice el estandar, y es lo que impide que el mismo byte se lea
+/// distinto segun quien lo mire.
 ///
 /// Y **trunca** por arriba lo que no cabe, como manda COBOL al mover a una PIC
-/// más corta.
+/// mas corta.
 pub fn escribir(code: &mut Vec<u8>, digitos: u32, con_signo: bool) {
     let n = bytes_para(digitos);
     assert!(n <= 127, "campo zonado de {n} bytes fuera de rango");
 
     // r11 = 1 si era negativo. Se mira ANTES de quitarle el signo, porque
-    // después ya no hay forma de saberlo.
+    // despues ya no hay forma de saberlo.
     x86::zero_r32(code, R11);
     x86::test_r64_r64(code, RAX, RAX);
     let no_negativo = x86::emit_jump(code, Jump::IfNotSign);
@@ -83,14 +83,14 @@ pub fn escribir(code: &mut Vec<u8>, digitos: u32, con_signo: bool) {
 
     x86::mov_r32_imm32(code, RDI, 10);
 
-    // Los dígitos salen del `div` de menos a más peso, así que se escriben de
-    // derecha a izquierda — que es justo el orden en el que están en el campo.
+    // Los digitos salen del `div` de menos a mas peso, asi que se escriben de
+    // derecha a izquierda -- que es justo el orden en el que estan en el campo.
     for i in (0..n).rev() {
         x86::zero_r32(code, RDX);
         x86::div_r64(code, RDI); // rax = resto del numero, rdx = digito
         if i == n - 1 {
-            // ★ El último byte lleva el signo encima. `'0'+d` si es positivo,
-            // `0x70+d` si es negativo — la misma banda, otra zona alta.
+            // * El ultimo byte lleva el signo encima. `'0'+d` si es positivo,
+            // `0x70+d` si es negativo -- la misma banda, otra zona alta.
             x86::mov_r64_r64(code, RSI, RDX);
             x86::test_r64_r64(code, R11, R11);
             let positivo = x86::emit_jump(code, Jump::IfZero);
@@ -107,17 +107,17 @@ pub fn escribir(code: &mut Vec<u8>, digitos: u32, con_signo: bool) {
     }
 }
 
-/// Emite código que LEE `digitos` bytes zonados de `[rcx]` a `rax`.
+/// Emite codigo que LEE `digitos` bytes zonados de `[rcx]` a `rax`.
 ///
 /// - Entrada: `rcx` = origen. Salida: `rax` = el entero escalado con signo.
 /// - Ensucia `rax`, `rdx`, `rdi` y `r11`. `rcx` queda intacto.
 ///
-/// ## Al leer se es GENEROSO con el último byte
+/// ## Al leer se es GENEROSO con el ultimo byte
 ///
-/// Un compilador escribe `'0'`–`'9'` o `p`–`y`, pero los datos de fuera traen
-/// también la banda `0x40`–`0x49` (el `+` explícito de algunas conversiones).
-/// Se toma el **nibble bajo** como dígito siempre, y sólo la banda `0x70` marca
-/// negativo. Leer un `p` como positivo convertiría un cargo en un abono sin que
+/// Un compilador escribe `'0'`-`'9'` o `p`-`y`, pero los datos de fuera traen
+/// tambien la banda `0x40`-`0x49` (el `+` explicito de algunas conversiones).
+/// Se toma el **nibble bajo** como digito siempre, y solo la banda `0x70` marca
+/// negativo. Leer un `p` como positivo convertiria un cargo en un abono sin que
 /// saltara nada: no rompe, descuadra.
 pub fn leer(code: &mut Vec<u8>, digitos: u32) {
     let n = bytes_para(digitos);
@@ -129,7 +129,7 @@ pub fn leer(code: &mut Vec<u8>, digitos: u32) {
     for i in 0..n {
         x86::movzx_r32_byte_at_reg_disp(code, RDX, RCX, i as u8);
         if i == n - 1 {
-            // El último: guardar la zona alta antes de quedarse con el dígito.
+            // El ultimo: guardar la zona alta antes de quedarse con el digito.
             x86::mov_r64_r64(code, R11, RDX);
             x86::and_r64_imm32(code, R11, 0xF0);
         }
@@ -138,14 +138,14 @@ pub fn leer(code: &mut Vec<u8>, digitos: u32) {
         x86::add_r64_r64(code, RAX, RDX);
     }
 
-    // Y el signo, al final: sólo la banda 0x70 es negativa.
+    // Y el signo, al final: solo la banda 0x70 es negativa.
     x86::cmp_r64_imm8(code, R11, NEGATIVO_BASE as i8);
     let positivo = x86::emit_jump(code, Jump::IfNotZero);
     x86::neg_r64(code, RAX);
     x86::patch_jump(code, positivo);
 }
 
-/// La MISMA lectura, resuelta en el anfitrión. Hermana de
+/// La MISMA lectura, resuelta en el anfitrion. Hermana de
 /// [`crate::packed::desempaquetar_en_rust`] y por el mismo motivo: una
 /// herramienta que mire un fichero sin ejecutarlo tiene que leer los mismos
 /// bytes que el programa.
@@ -156,7 +156,7 @@ pub fn leer_en_rust(bruto: &[u8]) -> i64 {
     for (i, b) in bruto.iter().enumerate() {
         v = v * 10 + (b & 0x0F) as i64;
         if i + 1 == n {
-            // Sólo la banda de las letras es negativa; la del `+` explícito no.
+            // Solo la banda de las letras es negativa; la del `+` explicito no.
             negativo = (b & 0xF0) as u32 == NEGATIVO_BASE;
         }
     }
@@ -193,15 +193,15 @@ mod tests {
         run(m, 200_000).regs[RAX as usize] as i64
     }
 
-    /// ★ Los bytes EXACTOS. Un ida y vuelta no valdría: si los dos emisores
-    /// compartieran el mismo error de sobrepunzado, cuadrarían entre ellos y no
+    /// * Los bytes EXACTOS. Un ida y vuelta no valdria: si los dos emisores
+    /// compartieran el mismo error de sobrepunzado, cuadrarian entre ellos y no
     /// con el fichero de un banco.
     #[test]
     fn un_byte_por_digito_y_el_signo_encima_del_ultimo() {
-        // Positivo: dígitos ASCII normales, y el último también.
+        // Positivo: digitos ASCII normales, y el ultimo tambien.
         assert_eq!(escribe(1234, 5, true), b"01234".to_vec());
-        // Negativo: los cuatro primeros IGUALES y sólo cambia el último —
-        // `'4'`(0x34) pasa a `'t'`(0x74). El signo va DENTRO del dígito, que es
+        // Negativo: los cuatro primeros IGUALES y solo cambia el ultimo --
+        // `'4'`(0x34) pasa a `'t'`(0x74). El signo va DENTRO del digito, que es
         // lo que hace que un `PIC S9(5)` mida cinco bytes y no seis.
         assert_eq!(escribe(-1234, 5, true), b"0123\x74".to_vec());
         assert_eq!(escribe(0, 3, true), b"000".to_vec());
@@ -209,9 +209,9 @@ mod tests {
         assert_eq!(escribe(-0, 3, true), b"000".to_vec());
     }
 
-    /// Sin `S` se guarda el valor absoluto y el último byte es un dígito
-    /// normal. Lo contrario haría que el mismo byte se leyera distinto según
-    /// quién lo mirase.
+    /// Sin `S` se guarda el valor absoluto y el ultimo byte es un digito
+    /// normal. Lo contrario haria que el mismo byte se leyera distinto segun
+    /// quien lo mirase.
     #[test]
     fn sin_signo_guarda_el_valor_absoluto() {
         assert_eq!(escribe(-42, 4, false), b"0042".to_vec());
@@ -226,24 +226,24 @@ mod tests {
         }
     }
 
-    /// Al leer, la banda `0x40` (el `+` explícito de algunas conversiones) es
-    /// POSITIVA y sólo la `0x70` es negativa.
+    /// Al leer, la banda `0x40` (el `+` explicito de algunas conversiones) es
+    /// POSITIVA y solo la `0x70` es negativa.
     #[test]
     fn al_leer_solo_la_banda_de_las_letras_es_negativa() {
         assert_eq!(lee(b"0123\x34"), 1234); // '4' normal
-        assert_eq!(lee(b"0123\x74"), -1234); // 't' → negativo
-        assert_eq!(lee(b"0123\x44"), 1234); // 0x44 → el `+` explicito, positivo
+        assert_eq!(lee(b"0123\x74"), -1234); // 't' -> negativo
+        assert_eq!(lee(b"0123\x44"), 1234); // 0x44 -> el `+` explicito, positivo
     }
 
     /// Lo que no cabe se pierde por arriba, igual que en el empaquetado y que
-    /// en el estándar.
+    /// en el estandar.
     #[test]
     fn lo_que_no_cabe_se_trunca_por_arriba() {
         assert_eq!(escribe(1_234_567, 3, false), b"567".to_vec());
     }
 
-    /// Ni un byte de más: el vecino de la derecha se queda como estaba. Un
-    /// `off by one` aquí pisa el campo de al lado dentro del registro.
+    /// Ni un byte de mas: el vecino de la derecha se queda como estaba. Un
+    /// `off by one` aqui pisa el campo de al lado dentro del registro.
     #[test]
     fn no_se_sale_del_campo() {
         let mut code = Vec::new();
@@ -257,9 +257,9 @@ mod tests {
         assert_eq!(m.read_u8_pub(dir + 4), 0x5A);
     }
 
-    /// ★ La lectura emitida y la del anfitrión, byte a byte sobre todos los
-    /// patrones de dos bytes — incluidas las zonas altas que ningún emisor de
-    /// aquí escribe. Ahí es donde un visor y un programa se separarían.
+    /// * La lectura emitida y la del anfitrion, byte a byte sobre todos los
+    /// patrones de dos bytes -- incluidas las zonas altas que ningun emisor de
+    /// aqui escribe. Ahi es donde un visor y un programa se separarian.
     #[test]
     fn la_lectura_emitida_y_la_del_anfitrion_dicen_lo_mismo() {
         for a in 0u8..=255 {
@@ -270,8 +270,8 @@ mod tests {
         }
     }
 
-    /// El ancho es el de la PICTURE: la `S` **no ocupa**, y ésa es la diferencia
-    /// con el empaquetado, donde el signo sí se lleva medio byte.
+    /// El ancho es el de la PICTURE: la `S` **no ocupa**, y esa es la diferencia
+    /// con el empaquetado, donde el signo si se lleva medio byte.
     #[test]
     fn la_s_no_ocupa_posicion() {
         assert_eq!(bytes_para(5), 5);

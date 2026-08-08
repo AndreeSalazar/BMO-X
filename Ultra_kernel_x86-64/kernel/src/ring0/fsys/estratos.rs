@@ -1,22 +1,22 @@
 //! ESTRATOS montado: el kernel leyendo su propio sistema de ficheros.
 //!
-//! Paso 4d del orden de construcción. **Solo lectura, y es estructural**: este
-//! módulo no llama a `write` en ningún sitio. Escribir es el paso 5 y necesita
-//! el log, las barreras y el recolector; nada de eso existe todavía, y un
+//! Paso 4d del orden de construccion. **Solo lectura, y es estructural**: este
+//! modulo no llama a `write` en ningun sitio. Escribir es el paso 5 y necesita
+//! el log, las barreras y el recolector; nada de eso existe todavia, y un
 //! ESTRATOS que escribe a medias no es medio sistema de ficheros, es uno roto.
 //!
 //! ## Habla con el contrato, no con SATA
 //!
-//! Todo lo de aquí pasa por [`bmo_block::device()`]. Es lo que el diseño pedía
-//! en su §10.3 y la razón de que la capa de bloques se hiciera antes: el día
-//! que haya un NVMe cableado, este módulo no se entera.
+//! Todo lo de aqui pasa por [`bmo_block::device()`]. Es lo que el diseno pedia
+//! en su section 10.3 y la razon de que la capa de bloques se hiciera antes: el dia
+//! que haya un NVMe cableado, este modulo no se entera.
 //!
-//! ## Dónde busca
+//! ## Donde busca
 //!
-//! No se le dice en qué partición está: se le pregunta al disco. Se recorren
+//! No se le dice en que particion esta: se le pregunta al disco. Se recorren
 //! las particiones de la GPT leyendo su primer bloque, y la que lleve la firma
-//! `ESTRATOS` gana. Las demás devuelven `BadMagic`, que significa "aquí no hay
-//! un volumen ESTRATOS" y **no** "está corrupto" — distinguir las dos cosas es
+//! `ESTRATOS` gana. Las demas devuelven `BadMagic`, que significa "aqui no hay
+//! un volumen ESTRATOS" y **no** "esta corrupto" -- distinguir las dos cosas es
 //! lo que permite mirar una NTFS sin dar un susto.
 
 use bmo_estratos as es;
@@ -26,20 +26,20 @@ use crate::ring0::dev::disk;
 /// Sectores de 512 B por bloque de ESTRATOS.
 const SECTORES_POR_BLOQUE: u16 = (BLOQUE / 512) as u16;
 
-// ── Estado del montaje ──────────────────────────────────────────────────────
+// -- Estado del montaje ------------------------------------------------------
 
 static mut MONTADO: bool = false;
 static mut BASE_LBA: u64 = 0;
 static mut PARTICION: u32 = 0;
 static mut SUPER: Option<es::Superblock> = None;
-/// ¿El volumen dice haber nacido en ESTE disco?
+/// El volumen dice haber nacido en ESTE disco?
 static mut IDENTIDAD_OK: bool = false;
 
-/// Buffers de trabajo, uno por nivel de indirección.
+/// Buffers de trabajo, uno por nivel de indireccion.
 ///
-/// Estáticos y no locales: bajar por un árbol de cuatro niveles con un buffer
+/// Estaticos y no locales: bajar por un arbol de cuatro niveles con un buffer
 /// de 4 KiB en cada marco son 16 KiB de pila, y la del kernel son 64 KiB para
-/// todo. Aquí el gasto es fijo, visible y está en `.bss`.
+/// todo. Aqui el gasto es fijo, visible y esta en `.bss`.
 const NIVELES: usize = 5; // NIVELES_MAX + 1
 static mut SCRATCH: [[u8; BLOQUE]; NIVELES] = [[0u8; BLOQUE]; NIVELES];
 
@@ -49,16 +49,16 @@ pub fn base_lba() -> u64 { unsafe { BASE_LBA } }
 pub fn identidad_ok() -> bool { unsafe { IDENTIDAD_OK } }
 pub fn superbloque() -> Option<es::Superblock> { unsafe { SUPER } }
 
-/// Cuánto del volumen está usado, y en qué nivel de aviso está.
+/// Cuanto del volumen esta usado, y en que nivel de aviso esta.
 ///
-/// ★ La cuenta es una resta porque ESTRATOS reserva con un puntero que **sólo
-/// avanza**: `log_head` es el primer bloque libre, así que todo lo de debajo
-/// está usado. No hay mapa de bits ni fragmentación que medir, y eso es
+/// * La cuenta es una resta porque ESTRATOS reserva con un puntero que **solo
+/// avanza**: `log_head` es el primer bloque libre, asi que todo lo de debajo
+/// esta usado. No hay mapa de bits ni fragmentacion que medir, y eso es
 /// consecuencia directa de no sobreescribir nunca.
 ///
-/// La política —dónde caen el ámbar, el rojo y el solo-lectura— vive en
-/// `bmo_estratos::espacio` y **se prueba en el anfitrión**. Aquí sólo se le
-/// pasan los dos números que tiene el superbloque: un umbral escrito a mano en
+/// La politica --donde caen el ambar, el rojo y el solo-lectura-- vive en
+/// `bmo_estratos::espacio` y **se prueba en el anfitrion**. Aqui solo se le
+/// pasan los dos numeros que tiene el superbloque: un umbral escrito a mano en
 /// el kernel es un umbral que nadie puede ejecutar en un test.
 pub fn ocupacion() -> Option<es::Ocupacion> {
     let sb = unsafe { SUPER }?;
@@ -72,7 +72,7 @@ fn leer_bloque(bloque: u64, dst: &mut [u8; BLOQUE]) -> bool {
     matches!(dev.read(lba, SECTORES_POR_BLOQUE, dst), Ok(n) if n == SECTORES_POR_BLOQUE)
 }
 
-/// Igual, pero sobre una partición concreta — para sondear antes de montar.
+/// Igual, pero sobre una particion concreta -- para sondear antes de montar.
 fn leer_bloque_de(base: u64, bloque: u64, dst: &mut [u8; BLOQUE]) -> bool {
     let dev = match bmo_block::device() { Some(d) => d, None => return false };
     let lba = base + bloque * SECTORES_POR_BLOQUE as u64;
@@ -81,14 +81,14 @@ fn leer_bloque_de(base: u64, bloque: u64, dst: &mut [u8; BLOQUE]) -> bool {
 
 /// **Escribe un bloque de ESTRATOS.** El espejo exacto de [`leer_bloque_de`].
 ///
-/// El índice es de BLOQUE, no de sector: la conversión vive aquí y en un solo
-/// sitio, porque mezclar las dos unidades es como se escribe ocho veces más
-/// lejos de donde se quería.
+/// El indice es de BLOQUE, no de sector: la conversion vive aqui y en un solo
+/// sitio, porque mezclar las dos unidades es como se escribe ocho veces mas
+/// lejos de donde se queria.
 ///
 /// Delante hay dos guardianes que este archivo **no** implementa y de los que
 /// depende: el gate de identidad del disco (`disk::write_armed`) y la ventana
-/// de la partición (`disk::write_window`). Aquí no se repiten — repetir un
-/// guardián es tener dos sitios donde relajarlo.
+/// de la particion (`disk::write_window`). Aqui no se repiten -- repetir un
+/// guardian es tener dos sitios donde relajarlo.
 #[allow(dead_code)] // lo estrena el primer objeto con datos
 fn escribir_bloque(bloque: u64, src: &[u8; BLOQUE]) -> bool {
     let base = unsafe { BASE_LBA };
@@ -96,47 +96,47 @@ fn escribir_bloque(bloque: u64, src: &[u8; BLOQUE]) -> bool {
     disk::write(lba, SECTORES_POR_BLOQUE, src) == SECTORES_POR_BLOQUE
 }
 
-/// **Escribe el superbloque: UN SOLO SECTOR.** Y ése es el punto entero.
+/// **Escribe el superbloque: UN SOLO SECTOR.** Y ese es el punto entero.
 ///
-/// ═══ Por qué no se reutiliza [`escribir_bloque`] ═══
+/// === Por que no se reutiliza [`escribir_bloque`] ===
 ///
-/// Porque escribiría **ocho sectores**, y con eso se cae la única garantía
-/// sobre la que está construido ESTRATOS. La cabecera de
-/// `bmo_estratos::escritura` lo dice sin ambigüedad:
+/// Porque escribiria **ocho sectores**, y con eso se cae la unica garantia
+/// sobre la que esta construido ESTRATOS. La cabecera de
+/// `bmo_estratos::escritura` lo dice sin ambiguedad:
 ///
 /// > *el punto de no retorno cabe en **un solo sector**, que es la unidad que
-/// > el disco garantiza atómica.*
+/// > el disco garantiza atomica.*
 ///
 /// Un `Superblock` mide [`es::SUPER_LEN`] = **512 bytes**, o sea exactamente un
 /// sector. Escribir el bloque de 4 KiB que lo contiene convierte el commit en
 /// una escritura de ocho sectores: si el corte llega a mitad, el disco puede
-/// haber puesto unos sí y otros no. Los siete de relleno no importan — pero
-/// **el commit deja de ser una operación atómica y pasa a ser ocho**, y toda la
-/// transacción se apoyaba en que no lo fuera.
+/// haber puesto unos si y otros no. Los siete de relleno no importan -- pero
+/// **el commit deja de ser una operacion atomica y pasa a ser ocho**, y toda la
+/// transaccion se apoyaba en que no lo fuera.
 ///
-/// Y hay un segundo motivo, más silencioso: escribir el bloque entero **pone a
-/// cero los 3.5 KiB restantes**. Hoy ahí no hay nada, así que no se nota; el
-/// día que el formato guarde algo detrás del superbloque, esto se lo comería
+/// Y hay un segundo motivo, mas silencioso: escribir el bloque entero **pone a
+/// cero los 3.5 KiB restantes**. Hoy ahi no hay nada, asi que no se nota; el
+/// dia que el formato guarde algo detras del superbloque, esto se lo comeria
 /// sin decir una palabra.
 ///
-/// La regla que deja: **la unidad de escritura la decide la garantía que hace
-/// falta, no el tamaño del buffer que hay a mano.**
+/// La regla que deja: **la unidad de escritura la decide la garantia que hace
+/// falta, no el tamano del buffer que hay a mano.**
 fn escribir_superbloque(bloque: u64, sb: &[u8; es::SUPER_LEN]) -> bool {
     let base = unsafe { BASE_LBA };
     let lba = base + bloque * SECTORES_POR_BLOQUE as u64;
     disk::write(lba, 1, sb) == 1
 }
 
-/// Por qué no se pudo cerrar una transacción. Cada una manda a mirar otra cosa.
+/// Por que no se pudo cerrar una transaccion. Cada una manda a mirar otra cosa.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FalloEscritura {
     /// No hay volumen montado.
     SinVolumen,
-    /// La máquina de estados dijo que no. Trae su motivo.
+    /// La maquina de estados dijo que no. Trae su motivo.
     Rechazada(es::escritura::Rechazo),
-    /// El disco no aceptó los sectores del superbloque.
+    /// El disco no acepto los sectores del superbloque.
     NoEscribio,
-    /// **El `FLUSH CACHE` falló**, y por eso NO se hizo el commit.
+    /// **El `FLUSH CACHE` fallo**, y por eso NO se hizo el commit.
     SinBarrera,
 }
 
@@ -151,59 +151,59 @@ impl FalloEscritura {
     }
 }
 
-/// **SELLAR: la transacción más pequeña que existe, y la que estrena el camino.**
+/// **SELLAR: la transaccion mas pequena que existe, y la que estrena el camino.**
 ///
-/// ═══ Qué hace ═══
+/// === Que hace ===
 ///
-/// Una transacción **sin datos**: no reserva ni un bloque, no toca ni un
-/// objeto, y hace el commit apuntando **al mismo estrato que ya había**. Lo
-/// único que cambia en el volumen es el número de generación, y se escribe en
-/// **la copia del superbloque que NO está en uso**.
+/// Una transaccion **sin datos**: no reserva ni un bloque, no toca ni un
+/// objeto, y hace el commit apuntando **al mismo estrato que ya habia**. Lo
+/// unico que cambia en el volumen es el numero de generacion, y se escribe en
+/// **la copia del superbloque que NO esta en uso**.
 ///
-/// ═══ Por qué esto primero, y no crear un archivo ═══
+/// === Por que esto primero, y no crear un archivo ===
 ///
-/// Porque recorre el camino ENTERO —reservar, cerrar, `FLUSH CACHE`, barrera,
-/// commit, escribir el superbloque alterno, volver a vaciar— y **no puede
+/// Porque recorre el camino ENTERO --reservar, cerrar, `FLUSH CACHE`, barrera,
+/// commit, escribir el superbloque alterno, volver a vaciar-- y **no puede
 /// perder un dato aunque salga mal**:
 ///
 /// - Si falla antes del commit, el volumen es exactamente el de antes.
 /// - Si falla escribiendo el superbloque nuevo, se estropea **la copia que no
 ///   manda**; la que manda sigue entera y el volumen monta igual.
-/// - Y como el estrato es el mismo, no hay ningún objeto nuevo al que apuntar
+/// - Y como el estrato es el mismo, no hay ningun objeto nuevo al que apuntar
 ///   mal.
 ///
-/// Es el instrumento antes que la teoría: si esto funciona, el camino de
-/// escritura está vivo y lo siguiente es sólo poner datos dentro. Si no
-/// funciona, se sabe **exactamente** dónde falla y no hay nada que lamentar.
+/// Es el instrumento antes que la teoria: si esto funciona, el camino de
+/// escritura esta vivo y lo siguiente es solo poner datos dentro. Si no
+/// funciona, se sabe **exactamente** donde falla y no hay nada que lamentar.
 ///
-/// ═══ La comprobación, y es preciosa ═══
+/// === La comprobacion, y es preciosa ===
 ///
-/// Después de sellar, `F12` tiene que decir **`generacion 2`**. Y después de
-/// **reiniciar**, tiene que seguir diciendo 2 — eso último es lo que prueba que
-/// llegó al plato y no se quedó en la caché del SSD.
+/// Despues de sellar, `F12` tiene que decir **`generacion 2`**. Y despues de
+/// **reiniciar**, tiene que seguir diciendo 2 -- eso ultimo es lo que prueba que
+/// llego al plato y no se quedo en la cache del SSD.
 pub fn sellar() -> Result<u64, FalloEscritura> {
     let sb = match superbloque() {
         Some(s) => s,
         None => return Err(FalloEscritura::SinVolumen),
     };
-    // Cuál de las dos copias mandó al montar. `pick_superblock` eligió la de
-    // generación más alta; aquí se deduce igual para no guardar otro estado que
+    // Cual de las dos copias mando al montar. `pick_superblock` eligio la de
+    // generacion mas alta; aqui se deduce igual para no guardar otro estado que
     // pueda separarse del primero.
     let copia = copia_en_uso();
 
     let mut t = es::escritura::Transaccion::abrir(&sb, copia, identidad_ok())
         .map_err(FalloEscritura::Rechazada)?;
 
-    // Sin datos: se cierra la fase inmediatamente. `reservar(0)` no haría falta
-    // y se omite a propósito — una llamada que no hace nada en el camino que
+    // Sin datos: se cierra la fase inmediatamente. `reservar(0)` no haria falta
+    // y se omite a proposito -- una llamada que no hace nada en el camino que
     // estrena el disco es una llamada que confunde al leer el log.
     t.cerrar_datos().map_err(FalloEscritura::Rechazada)?;
 
-    // ★ LA BARRERA. No es opcional y no se puede fingir.
+    // * LA BARRERA. No es opcional y no se puede fingir.
     //
-    // Aquí no hay nada escrito todavía, así que este `flush` no protege ningún
-    // dato — protege el ORDEN, y sobre todo prueba que el disco **sabe hacer la
-    // barrera**. El día que haya datos delante, este mismo `flush` es lo único
+    // Aqui no hay nada escrito todavia, asi que este `flush` no protege ningun
+    // dato -- protege el ORDEN, y sobre todo prueba que el disco **sabe hacer la
+    // barrera**. El dia que haya datos delante, este mismo `flush` es lo unico
     // que separa un commit honesto de un superbloque que apunta a bloques que
     // no llegaron al plato.
     if !disk::flush() {
@@ -215,22 +215,22 @@ pub fn sellar() -> Result<u64, FalloEscritura> {
     let (destino, nuevo) = t.commit(sb.estrato).map_err(FalloEscritura::Rechazada)?;
 
     // El superbloque serializado: 512 bytes, o sea UN SECTOR. Ver
-    // `escribir_superbloque` — el tamaño de esta escritura es la garantía de
-    // atomicidad, no un detalle de implementación.
+    // `escribir_superbloque` -- el tamano de esta escritura es la garantia de
+    // atomicidad, no un detalle de implementacion.
     let sector = nuevo.encode();
 
     if !escribir_superbloque(destino, &sector) {
-        // El commit no ocurrió. La copia que manda sigue siendo la de antes, y
-        // el volumen entero también.
+        // El commit no ocurrio. La copia que manda sigue siendo la de antes, y
+        // el volumen entero tambien.
         crate::ring0::cabina::fault("estratos", "no se pudo escribir el superbloque", destino);
         return Err(FalloEscritura::NoEscribio);
     }
 
-    // ★ Y VACIAR OTRA VEZ. El commit tampoco vale si se queda en la caché.
+    // * Y VACIAR OTRA VEZ. El commit tampoco vale si se queda en la cache.
     //
-    // Sin esto, apagar la máquina justo después de "sellado" dejaría el volumen
-    // en la generación vieja — y el mensaje en pantalla habría mentido. Un
-    // commit que no se puede confirmar no es un commit, es una intención.
+    // Sin esto, apagar la maquina justo despues de "sellado" dejaria el volumen
+    // en la generacion vieja -- y el mensaje en pantalla habria mentido. Un
+    // commit que no se puede confirmar no es un commit, es una intencion.
     if !disk::flush() {
         crate::ring0::cabina::warn("estratos", "el commit no se pudo vaciar al plato", destino);
         return Err(FalloEscritura::SinBarrera);
@@ -241,11 +241,11 @@ pub fn sellar() -> Result<u64, FalloEscritura> {
     Ok(nuevo.generation)
 }
 
-/// Cuál de las dos copias del superbloque manda ahora mismo.
+/// Cual de las dos copias del superbloque manda ahora mismo.
 ///
 /// Se recalcula leyendo, en vez de guardarse al montar: dos fuentes de la misma
-/// verdad se separan, y ésta decide **dónde se escribe el commit**. Equivocarse
-/// aquí es pisar la copia buena.
+/// verdad se separan, y esta decide **donde se escribe el commit**. Equivocarse
+/// aqui es pisar la copia buena.
 fn copia_en_uso() -> u64 {
     let (a, b) = unsafe {
         let s = &mut *core::ptr::addr_of_mut!(SCRATCH);
@@ -265,12 +265,12 @@ fn copia_en_uso() -> u64 {
 /// Busca un volumen ESTRATOS entre las particiones del disco y lo monta.
 pub fn mount() {
     unsafe { MONTADO = false; IDENTIDAD_OK = false; SUPER = None; }
-    // ★ La ventana se quita ANTES de nada.
+    // * La ventana se quita ANTES de nada.
     //
     // Si este montaje falla, o encuentra otro volumen, o la identidad no
     // cuadra, no puede quedar en pie la ventana del montaje anterior. Una
-    // autorización que sobrevive a la razón que la concedió es exactamente
-    // cómo se escribe donde no se debe.
+    // autorizacion que sobrevive a la razon que la concedio es exactamente
+    // como se escribe donde no se debe.
     disk::desarmar_ventana_estratos();
     if bmo_block::device().is_none() {
         crate::ring0::cabina::warn("estratos", "sin dispositivo de bloques", 0);
@@ -279,7 +279,7 @@ pub fn mount() {
 
     // Dos buffers: las dos copias del superbloque. Se leen ANTES de decidir,
     // porque `pick_superblock` necesita las dos para poder descartar la que
-    // se quedó a medias.
+    // se quedo a medias.
     let (a, b) = unsafe {
         let s = &mut *core::ptr::addr_of_mut!(SCRATCH);
         let (x, y) = s.split_at_mut(1);
@@ -287,17 +287,17 @@ pub fn mount() {
     };
 
     for p in disk::partitions() {
-        // La de arranque no se toca: ahí vive el BOOTX64.EFI con el que se
-        // arrancó, y ESTRATOS no vive nunca en ella (regla del §2.6).
+        // La de arranque no se toca: ahi vive el BOOTX64.EFI con el que se
+        // arranco, y ESTRATOS no vive nunca en ella (regla del section 2.6).
         if p.is_esp() { continue; }
         if !leer_bloque_de(p.first_lba, es::SUPER_A_BLOCK, a) { continue; }
         if !leer_bloque_de(p.first_lba, es::SUPER_B_BLOCK, b) { continue; }
 
         let (sb, copia) = match es::pick_superblock(&a[..es::SUPER_LEN], &b[..es::SUPER_LEN]) {
             Ok(v) => v,
-            Err(es::FormatError::BadMagic) => continue, // aquí no hay ESTRATOS
+            Err(es::FormatError::BadMagic) => continue, // aqui no hay ESTRATOS
             Err(e) => {
-                // Magia correcta pero algo no cuadra: ESO sí merece un grito.
+                // Magia correcta pero algo no cuadra: ESO si merece un grito.
                 crate::ring0::cabina::fault("estratos", e.name(), p.first_lba);
                 continue;
             }
@@ -310,21 +310,21 @@ pub fn mount() {
             MONTADO = true;
         }
 
-        // El gate del §5: ¿nació este volumen en el disco que tenemos delante?
+        // El gate del section 5: nacio este volumen en el disco que tenemos delante?
         // Modelo, serie Y capacidad. Si no cuadra es un volumen clonado, y con
-        // escritura sería un desastre; hoy solo se lee, así que se avisa.
+        // escritura seria un desastre; hoy solo se lee, asi que se avisa.
         let id = bmo_block::device().map(|d| es::disk_id_of(&d.identity())).unwrap_or([0u8; 32]);
         let ok = sb.belongs_to(&id);
         unsafe { IDENTIDAD_OK = ok; }
         if ok {
             crate::ring0::cabina::info("estratos", "volumen montado y es de este disco", p.first_lba);
-            // ★ Y AQUI, y sólo aquí, se abre la puerta de escribir.
+            // * Y AQUI, y solo aqui, se abre la puerta de escribir.
             //
-            // Las dos condiciones juntas: hay volumen y **nació en este
+            // Las dos condiciones juntas: hay volumen y **nacio en este
             // disco**. Un volumen clonado se monta y se lee, pero no registra
-            // ventana — así que sus escrituras las para `write_window` aunque
-            // el disco esté armado. Dos cerrojos distintos para dos preguntas
-            // distintas: "¿es mi disco?" y "¿es mi volumen?".
+            // ventana -- asi que sus escrituras las para `write_window` aunque
+            // el disco este armado. Dos cerrojos distintos para dos preguntas
+            // distintas: "es mi disco?" y "es mi volumen?".
             disk::armar_ventana_estratos(p.first_lba, p.last_lba);
         } else {
             crate::ring0::cabina::warn("estratos", "el volumen NO nacio en este disco (clonado?)", p.first_lba);
@@ -337,13 +337,13 @@ pub fn mount() {
     crate::ring0::cabina::info("estratos", "ninguna particion tiene un volumen ESTRATOS", 0);
 }
 
-// ── Seguir punteros ─────────────────────────────────────────────────────────
+// -- Seguir punteros ---------------------------------------------------------
 
 /// Lee lo que un puntero promete y **lo comprueba**.
 ///
 /// Devuelve los bytes dentro del scratch del nivel indicado. Un bloque que no
 /// cuadra con su suma es un FAULT en CABINA, no un archivo raro: es el
-/// principio 2 del diseño y la única razón de que el puntero lleve la suma.
+/// principio 2 del diseno y la unica razon de que el puntero lleve la suma.
 fn seguir(p: &BlockPtr, nivel: usize) -> Option<&'static [u8]> {
     if nivel >= NIVELES { return None; }
     let buf = unsafe {
@@ -385,11 +385,11 @@ impl es::Fuente for DelDisco {
 
 /// Reconstruye un flujo entero en `dst`. Devuelve los bytes escritos.
 ///
-/// El recorrido del árbol NO vive aquí: es `bmo_estratos::descender`, el mismo
-/// que usa el formateador del anfitrión. Tenerlo dos veces —una en cada lado—
+/// El recorrido del arbol NO vive aqui: es `bmo_estratos::descender`, el mismo
+/// que usa el formateador del anfitrion. Tenerlo dos veces --una en cada lado--
 /// era la trampa que casi cuesta el BLAKE3: dos copias que pueden separarse, y
-/// el síntoma sería "un archivo que se lee mal" sin nada que apunte al
-/// recorrido. Aquí solo se pone el disco, la memoria de trabajo y dónde cae.
+/// el sintoma seria "un archivo que se lee mal" sin nada que apunte al
+/// recorrido. Aqui solo se pone el disco, la memoria de trabajo y donde cae.
 pub fn flujo(a: &Attr, dst: &mut [u8]) -> Option<usize> {
     if let Some(d) = a.datos_residentes() {
         if dst.len() < d.len() { return None; }
@@ -399,7 +399,7 @@ pub fn flujo(a: &Attr, dst: &mut [u8]) -> Option<usize> {
     let raiz = a.raiz()?;
 
     // El nivel 0 del scratch lo usa `seguir()` para nodos y estratos; el
-    // recorrido se queda con los de abajo para no pisárselo.
+    // recorrido se queda con los de abajo para no pisarselo.
     let scratch = unsafe {
         let s = &mut *core::ptr::addr_of_mut!(SCRATCH);
         &mut s[1..]
@@ -424,16 +424,16 @@ pub fn flujo(a: &Attr, dst: &mut [u8]) -> Option<usize> {
     Some((a.size as usize).min(escritos))
 }
 
-// ── Directorios ─────────────────────────────────────────────────────────────
+// -- Directorios -------------------------------------------------------------
 
 /// Entradas que caben en un listado de una vez.
 ///
-/// Tope honesto: sin `alloc`, el buffer es fijo. Un directorio con más
-/// entradas se lista TRUNCADO y se dice — no se calla.
+/// Tope honesto: sin `alloc`, el buffer es fijo. Un directorio con mas
+/// entradas se lista TRUNCADO y se dice -- no se calla.
 pub const ENTRADAS_MAX: usize = 64;
 static mut DIR_BUF: [u8; ENTRADAS_MAX * ENTRADA_LEN] = [0u8; ENTRADAS_MAX * ENTRADA_LEN];
 
-/// El nodo raíz del volumen, siguiendo superbloque → estrato → raíz.
+/// El nodo raiz del volumen, siguiendo superbloque -> estrato -> raiz.
 pub fn raiz() -> Option<(BlockPtr, Nodo)> {
     let sb = superbloque()?;
     if sb.estrato.es_nulo() { return None; }
@@ -445,7 +445,7 @@ pub fn raiz() -> Option<(BlockPtr, Nodo)> {
     Some((e.raiz, n))
 }
 
-/// El estrato más reciente.
+/// El estrato mas reciente.
 pub fn estrato() -> Option<es::Estrato> {
     let sb = superbloque()?;
     if sb.estrato.es_nulo() { return None; }
@@ -458,8 +458,8 @@ pub fn estrato() -> Option<es::Estrato> {
 /// Existe separada de [`entradas`] porque hay dos listados en vuelo a la vez y
 /// **no pueden compartir buffer**: el de `abrir()`, que recorre una ruta y lo
 /// pisa entero en cada tramo, y el del cursor de Ring 3, que tiene que seguir
-/// siendo válido entre dos preguntas del panel. Con un solo buffer, lanzar un
-/// programa mientras la ventana de Datos está abierta le cambiaba los nombres
+/// siendo valido entre dos preguntas del panel. Con un solo buffer, lanzar un
+/// programa mientras la ventana de Datos esta abierta le cambiaba los nombres
 /// bajo los pies.
 fn listar_en(dir: &Nodo, buf: &mut [u8]) -> Option<(usize, bool)> {
     let a = dir.attr(bmo_estratos::objects::ATTR_ENTRADAS)?;
@@ -468,68 +468,68 @@ fn listar_en(dir: &Nodo, buf: &mut [u8]) -> Option<(usize, bool)> {
     Some((n / ENTRADA_LEN, !cabe_todo))
 }
 
-/// Lee las entradas de un directorio al buffer estático.
+/// Lee las entradas de un directorio al buffer estatico.
 /// Devuelve `(cuantas, si_se_trunco)`.
 pub fn entradas(dir: &Nodo) -> Option<(usize, bool)> {
     let buf = unsafe { &mut *core::ptr::addr_of_mut!(DIR_BUF) };
     listar_en(dir, buf)
 }
 
-/// La entrada número `i` del último `entradas()`.
+/// La entrada numero `i` del ultimo `entradas()`.
 pub fn entrada(i: usize) -> Option<Entrada> {
     if i >= ENTRADAS_MAX { return None; }
     let buf = unsafe { &*core::ptr::addr_of!(DIR_BUF) };
     Entrada::decode(&buf[i * ENTRADA_LEN..(i + 1) * ENTRADA_LEN]).ok()
 }
 
-// ── El CURSOR: ESTRATOS recorrido desde Ring 3 ──────────────────────────────
+// -- El CURSOR: ESTRATOS recorrido desde Ring 3 ------------------------------
 //
-// ═══ Por qué un cursor y no un handle por nodo ═══
+// === Por que un cursor y no un handle por nodo ===
 //
-// Un `KIND_ESTRATOS_NODO` con su capability por cada nodo abierto sería lo
+// Un `KIND_ESTRATOS_NODO` con su capability por cada nodo abierto seria lo
 // ortodoxo, y es exactamente lo que no hace falta: la ventana de Datos mira UN
 // sitio a la vez y lo que quiere es *bajar, subir y listar*. Un handle por nodo
-// pediría tabla, ciclo de vida y revocación para modelar un puntero que se
-// mueve — y un puntero que se mueve es un cursor.
+// pediria tabla, ciclo de vida y revocacion para modelar un puntero que se
+// mueve -- y un puntero que se mueve es un cursor.
 //
-// ═══ Por qué esto no concede nada ═══
+// === Por que esto no concede nada ===
 //
 // Es el mismo trato que `OP_INFO` y que el klog: **contesta, no autoriza**.
-// Leer los nombres de un directorio no ejerce ningún poder que Ring 3 no tenga
-// ya —`ls` sobre FAT32 hace justo eso—, y ESCRIBIR sigue sin existir aquí: el
-// cursor no tiene ninguna operación que cambie el volumen.
+// Leer los nombres de un directorio no ejerce ningun poder que Ring 3 no tenga
+// ya --`ls` sobre FAT32 hace justo eso--, y ESCRIBIR sigue sin existir aqui: el
+// cursor no tiene ninguna operacion que cambie el volumen.
 //
-// ═══ Lo que faltaba, dicho ═══
+// === Lo que faltaba, dicho ===
 //
 // `raiz`, `nodo`, `entradas` y `entrada` llevaban desde el principio siendo
-// funciones de Ring 0 sin puerta. La ventana F12 podía enseñar los NÚMEROS del
-// volumen —generación, ocupación, nivel— y no podía enseñar **qué hay dentro**,
-// porque no tenía de dónde sacarlo. Esto es esa puerta.
+// funciones de Ring 0 sin puerta. La ventana F12 podia ensenar los NUMEROS del
+// volumen --generacion, ocupacion, nivel-- y no podia ensenar **que hay dentro**,
+// porque no tenia de donde sacarlo. Esto es esa puerta.
 pub mod cursor {
     use super::*;
 
-    /// Cuánto se puede bajar. Dieciséis niveles de directorio es más de lo que
-    /// tiene ningún volumen razonable, y un tope explícito es mejor que una
+    /// Cuanto se puede bajar. Dieciseis niveles de directorio es mas de lo que
+    /// tiene ningun volumen razonable, y un tope explicito es mejor que una
     /// pila que crece hasta que algo se rompe.
     pub const HONDO_MAX: usize = 16;
-    /// Lo que se guarda del nombre de cada nivel de la ruta. Un nombre más
-    /// largo se recorta **y se dice** — ver `nombre_nivel`.
+    /// Lo que se guarda del nombre de cada nivel de la ruta. Un nombre mas
+    /// largo se recorta **y se dice** -- ver `nombre_nivel`.
     pub const NOMBRE_NIVEL: usize = 32;
 
     /// El buffer del cursor, SUYO. Ver [`super::listar_en`].
     static mut BUF: [u8; ENTRADAS_MAX * ENTRADA_LEN] = [0u8; ENTRADAS_MAX * ENTRADA_LEN];
-    /// La ruta desde la raíz: `PILA[0]` es la raíz y `PILA[HONDO]` el actual.
+    /// La ruta desde la raiz: `PILA[0]` es la raiz y `PILA[HONDO]` el actual.
     static mut PILA: [Option<BlockPtr>; HONDO_MAX] = [None; HONDO_MAX];
-    /// El NOMBRE de cada nivel, para poder enseñar la ruta de verdad.
+    /// El NOMBRE de cada nivel, para poder ensenar la ruta de verdad.
     ///
-    /// ★ Se guarda al bajar y no se reconstruye después, y ése es el motivo de
-    /// que exista: un `BlockPtr` sabe DÓNDE está un nodo y **no sabe cómo se
-    /// llama** — el nombre vive en la entrada del padre, no en el hijo. Para
-    /// sacarlo a posteriori habría que releer el directorio de arriba y buscar
-    /// qué entrada apunta aquí. Anotarlo al pasar cuesta 64 bytes por nivel.
+    /// * Se guarda al bajar y no se reconstruye despues, y ese es el motivo de
+    /// que exista: un `BlockPtr` sabe DONDE esta un nodo y **no sabe como se
+    /// llama** -- el nombre vive en la entrada del padre, no en el hijo. Para
+    /// sacarlo a posteriori habria que releer el directorio de arriba y buscar
+    /// que entrada apunta aqui. Anotarlo al pasar cuesta 64 bytes por nivel.
     ///
-    /// Sin esto, la ventana sólo puede decir `profundidad 2`, y dos carpetas
-    /// distintas con los mismos nombres dentro se ven idénticas.
+    /// Sin esto, la ventana solo puede decir `profundidad 2`, y dos carpetas
+    /// distintas con los mismos nombres dentro se ven identicas.
     static mut NOMBRES: [[u8; NOMBRE_NIVEL]; HONDO_MAX] = [[0; NOMBRE_NIVEL]; HONDO_MAX];
     static mut NOMBRES_LEN: [usize; HONDO_MAX] = [0; HONDO_MAX];
     static mut HONDO: usize = 0;
@@ -537,7 +537,7 @@ pub mod cursor {
     static mut CUANTAS: usize = 0;
     static mut TRUNCADO: bool = false;
 
-    /// Relista el nodo actual. Todo lo que mueve el cursor acaba aquí.
+    /// Relista el nodo actual. Todo lo que mueve el cursor acaba aqui.
     fn relistar() -> bool {
         unsafe {
             let Some(n) = ACTUAL else {
@@ -563,7 +563,7 @@ pub mod cursor {
         }
     }
 
-    /// Pone el cursor en la raíz del volumen. `false` si no hay volumen.
+    /// Pone el cursor en la raiz del volumen. `false` si no hay volumen.
     pub fn a_la_raiz() -> bool {
         let Some((ptr, n)) = super::raiz() else {
             unsafe { ACTUAL = None; HONDO = 0; CUANTAS = 0; }
@@ -577,18 +577,18 @@ pub mod cursor {
         relistar()
     }
 
-    /// Cuántos hijos tiene el nodo actual.
+    /// Cuantos hijos tiene el nodo actual.
     pub fn hijos() -> u64 {
         unsafe { CUANTAS as u64 }
     }
 
-    /// 1 si el listado no cabía entero. **Se dice en vez de callarse**: un
+    /// 1 si el listado no cabia entero. **Se dice en vez de callarse**: un
     /// directorio truncado en silencio se ve igual que uno corto.
     pub fn truncado() -> u64 {
         unsafe { TRUNCADO as u64 }
     }
 
-    /// Cuántos niveles se ha bajado desde la raíz.
+    /// Cuantos niveles se ha bajado desde la raiz.
     pub fn hondo() -> u64 {
         unsafe { HONDO as u64 }
     }
@@ -614,8 +614,8 @@ pub mod cursor {
     /// El tipo del hijo `i`: 0 archivo, 1 directorio, 2 no se pudo leer.
     ///
     /// Cuesta un salto al disco porque el tipo vive en el NODO y la entrada
-    /// sólo guarda el nombre y a dónde apunta. Es lo que hay: meter el tipo en
-    /// la entrada sería duplicar un dato que el nodo ya tiene, y dos copias de
+    /// solo guarda el nombre y a donde apunta. Es lo que hay: meter el tipo en
+    /// la entrada seria duplicar un dato que el nodo ya tiene, y dos copias de
     /// un dato es una que puede mentir.
     pub fn hijo_tipo(i: usize) -> u64 {
         let Some(e) = entrada_i(i) else { return 2 };
@@ -627,7 +627,7 @@ pub mod cursor {
 
     /// Ocho bytes del nombre del hijo `i`, empaquetados en LE. `trozo` los
     /// numera. Es el mismo trato que `klog_texto`: la superficie no acepta
-    /// punteros, así que un nombre viaja de ocho en ocho.
+    /// punteros, asi que un nombre viaja de ocho en ocho.
     pub fn hijo_nombre(i: usize, trozo: usize) -> u64 {
         let Some(e) = entrada_i(i) else { return 0 };
         let nombre = e.nombre_str().as_bytes();
@@ -640,7 +640,7 @@ pub mod cursor {
     }
 
     /// Baja al hijo `i`. `false` si no existe, si no es directorio, o si ya no
-    /// se puede bajar más.
+    /// se puede bajar mas.
     pub fn entrar(i: usize) -> bool {
         let Some(e) = entrada_i(i) else { return false };
         unsafe {
@@ -651,8 +651,8 @@ pub mod cursor {
         unsafe {
             HONDO += 1;
             PILA[HONDO] = Some(e.nodo);
-            // El nombre se anota AL PASAR. Después ya no se sabe: la entrada
-            // que lo lleva es del padre y aquí ya no la tenemos delante.
+            // El nombre se anota AL PASAR. Despues ya no se sabe: la entrada
+            // que lo lleva es del padre y aqui ya no la tenemos delante.
             let b = e.nombre_str().as_bytes();
             let k = b.len().min(NOMBRE_NIVEL);
             NOMBRES[HONDO][..k].copy_from_slice(&b[..k]);
@@ -663,7 +663,7 @@ pub mod cursor {
     }
 
     /// Ocho bytes del nombre del nivel `nivel` de la ruta. `nivel = 0` es la
-    /// raíz, que no tiene nombre y contesta vacío — la ventana pinta `/`.
+    /// raiz, que no tiene nombre y contesta vacio -- la ventana pinta `/`.
     pub fn nombre_nivel(nivel: usize, trozo: usize) -> u64 {
         unsafe {
             if nivel == 0 || nivel > HONDO || nivel >= HONDO_MAX {
@@ -681,14 +681,14 @@ pub mod cursor {
         }
     }
 
-    // ── El DETALLE de un hijo ───────────────────────────────────────────
+    // -- El DETALLE de un hijo -------------------------------------------
     //
-    // ★ Un grafo que sólo enseña nombres contesta *qué hay*; no contesta *qué
+    // * Un grafo que solo ensena nombres contesta *que hay*; no contesta *que
     // es esto*. Lo de abajo es lo que el nodo ya lleva dentro y la ventana no
-    // podía pedir: cuánto mide, cuántos atributos tiene y si va firmado.
+    // podia pedir: cuanto mide, cuantos atributos tiene y si va firmado.
 
-    /// Bytes del contenido del hijo `i`. Un directorio contesta el tamaño de su
-    /// lista de entradas, que también es un dato: dice cuánto ocupa el propio
+    /// Bytes del contenido del hijo `i`. Un directorio contesta el tamano de su
+    /// lista de entradas, que tambien es un dato: dice cuanto ocupa el propio
     /// directorio, no lo que hay dentro.
     pub fn hijo_bytes(i: usize) -> u64 {
         let Some(e) = entrada_i(i) else { return 0 };
@@ -701,22 +701,22 @@ pub mod cursor {
         n.attr(cual).map(|a| a.size).unwrap_or(0)
     }
 
-    /// Cuántos atributos lleva el hijo `i`.
+    /// Cuantos atributos lleva el hijo `i`.
     ///
-    /// Es el número que dice que ESTRATOS no es un sistema de archivos de
+    /// Es el numero que dice que ESTRATOS no es un sistema de archivos de
     /// carpetas: un nodo es **un conjunto de atributos**, y la diferencia entre
-    /// un archivo y un directorio es cuál lleva, no dos estructuras distintas.
+    /// un archivo y un directorio es cual lleva, no dos estructuras distintas.
     pub fn hijo_atributos(i: usize) -> u64 {
         let Some(e) = entrada_i(i) else { return 0 };
         let Some(n) = super::nodo(&e.nodo) else { return 0 };
         n.attrs().count() as u64
     }
 
-    /// ¿Lleva `:firma` el hijo `i`? `1` sí, `0` no.
+    /// Lleva `:firma` el hijo `i`? `1` si, `0` no.
     ///
-    /// **Sólo dice si LA LLEVA, no si cuadra.** Comprobarlo exige leer el
+    /// **Solo dice si LA LLEVA, no si cuadra.** Comprobarlo exige leer el
     /// contenido entero y hacerle el BLAKE3, y eso no puede pasar en cada
-    /// repintado de una ventana. Para eso está [`verificar`], que se pide.
+    /// repintado de una ventana. Para eso esta [`verificar`], que se pide.
     pub fn hijo_firmado(i: usize) -> u64 {
         let Some(e) = entrada_i(i) else { return 0 };
         let Some(n) = super::nodo(&e.nodo) else { return 0 };
@@ -724,29 +724,29 @@ pub mod cursor {
     }
 
     /// El buffer donde se lee un archivo para verificarlo. Un tope honesto:
-    /// más grande que esto no se puede comprobar y **se dice** en vez de
-    /// contestar "no cuadra", que mandaría a buscar una corrupción que no hay.
+    /// mas grande que esto no se puede comprobar y **se dice** en vez de
+    /// contestar "no cuadra", que mandaria a buscar una corrupcion que no hay.
     const VERIFICA_MAX: usize = 256 * 1024;
     static mut VERIFICA_BUF: [u8; VERIFICA_MAX] = [0u8; VERIFICA_MAX];
 
     /// **Lee el hijo `i` y compara su BLAKE3 con su `:firma`.**
     ///
-    /// `0` no lleva firma · `1` CUADRA · `2` NO CUADRA · `3` no se pudo leer ·
-    /// `4` **no cabe** en el buffer de verificación.
+    /// `0` no lleva firma - `1` CUADRA - `2` NO CUADRA - `3` no se pudo leer -
+    /// `4` **no cabe** en el buffer de verificacion.
     ///
-    /// ★ El `4` no estaba y hacía falta: "no cabe" contestaba `3`, o sea **el
-    /// mismo código que un fallo de lectura**. El panel lo pintaba en rojo como
+    /// * El `4` no estaba y hacia falta: "no cabe" contestaba `3`, o sea **el
+    /// mismo codigo que un fallo de lectura**. El panel lo pintaba en rojo como
     /// *"no se pudo leer"*, y en esa ventana el rojo significa "hay un problema
-    /// en el disco". Un archivo sano de 300 KiB acusaba al disco de una avería
-    /// que no existía. El tope es NUESTRO y ahora lo dice él.
+    /// en el disco". Un archivo sano de 300 KiB acusaba al disco de una averia
+    /// que no existia. El tope es NUESTRO y ahora lo dice el.
     ///
     /// Se pide a mano y no se calcula al pintar: leer un archivo entero y
-    /// hacerle un hash sesenta veces por segundo convertiría un panel en un
+    /// hacerle un hash sesenta veces por segundo convertiria un panel en un
     /// martillo sobre el disco.
     ///
-    /// ⚠ Lo que esto demuestra y lo que no, dicho aquí como en `super::firma`:
-    /// demuestra que **los bytes son los que se guardaron** —caza corrupción,
-    /// una escritura a medias, un bloque mal leído—. NO demuestra
+    /// [!] Lo que esto demuestra y lo que no, dicho aqui como en `super::firma`:
+    /// demuestra que **los bytes son los que se guardaron** --caza corrupcion,
+    /// una escritura a medias, un bloque mal leido--. NO demuestra
     /// autenticidad: quien pueda escribir en el volumen puede cambiar el
     /// archivo *y* recalcular su hash.
     pub fn verificar(i: usize) -> u64 {
@@ -760,7 +760,7 @@ pub mod cursor {
             None => return 3,
         };
         if a.size as usize > VERIFICA_MAX {
-            return 4; // no cabe — el límite es nuestro, no del disco
+            return 4; // no cabe -- el limite es nuestro, no del disco
         }
         let buf = unsafe { &mut *core::ptr::addr_of_mut!(VERIFICA_BUF) };
         let leidos = match super::flujo(a, buf) {
@@ -774,7 +774,7 @@ pub mod cursor {
         }
     }
 
-    /// Vuelve al padre. `false` si ya se está en la raíz.
+    /// Vuelve al padre. `false` si ya se esta en la raiz.
     pub fn subir() -> bool {
         unsafe {
             if HONDO == 0 { return false; }
@@ -787,7 +787,7 @@ pub mod cursor {
     }
 }
 
-/// Busca un hijo por nombre dentro de un directorio, sin distinguir mayúsculas.
+/// Busca un hijo por nombre dentro de un directorio, sin distinguir mayusculas.
 fn buscar_en(dir: &Nodo, nombre: &str) -> Option<BlockPtr> {
     let (n, _) = entradas(dir)?;
     for i in 0..n {
@@ -817,39 +817,39 @@ pub fn abrir(ruta: &str) -> Option<Nodo> {
     nodo(&ptr)
 }
 
-/// Lee el `:datos` de un nodo. Devuelve los bytes leídos.
+/// Lee el `:datos` de un nodo. Devuelve los bytes leidos.
 pub fn leer(n: &Nodo, dst: &mut [u8]) -> Option<usize> {
     if n.tipo != Tipo::Archivo { return None; }
     let a = n.attr(bmo_estratos::objects::ATTR_DATOS)?;
     flujo(a, dst)
 }
 
-/// Qué dijo la firma.
+/// Que dijo la firma.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Firma {
-    /// El `:firma` del nodo cuadra con el contenido leído.
+    /// El `:firma` del nodo cuadra con el contenido leido.
     Cuadra,
-    /// Hay `:firma` y NO cuadra: el archivo no es el que se guardó.
+    /// Hay `:firma` y NO cuadra: el archivo no es el que se guardo.
     NoCuadra,
     /// El nodo no lleva `:firma`.
     Ausente,
 }
 
-/// El gate del §7: `abrir(nodo, EJECUTAR)`.
+/// El gate del section 7: `abrir(nodo, EJECUTAR)`.
 ///
 /// Compara el atributo `:firma` con el BLAKE3 del contenido que se acaba de
-/// leer. **Lo que esto demuestra**: que los bytes son los que se guardaron —
-/// caza corrupción del disco, una escritura a medias o un bloque mal leído.
+/// leer. **Lo que esto demuestra**: que los bytes son los que se guardaron --
+/// caza corrupcion del disco, una escritura a medias o un bloque mal leido.
 ///
 /// **Lo que NO demuestra**: autenticidad. Quien pueda escribir en el volumen
 /// puede cambiar el archivo *y* recalcular su hash; no hay clave por medio.
 /// Para eso hace falta firmar el hash con una clave que el kernel conozca y el
 /// atacante no (esqueleto en `bmo-abi/src/bef/signing.rs`). Se dice en vez de
-/// dejar que la palabra "firma" prometa de más.
+/// dejar que la palabra "firma" prometa de mas.
 ///
 /// Y esto es lo que un `.bex` en FAT32 **no puede tener**: un sistema de
 /// ficheros sin atributos con nombre obliga a un `.sig` suelto que se pierde
-/// al copiar. Aquí la firma viaja dentro del mismo nodo que los datos.
+/// al copiar. Aqui la firma viaja dentro del mismo nodo que los datos.
 pub fn firma(n: &Nodo, datos: &[u8]) -> Firma {
     let a = match n.attr(bmo_estratos::objects::ATTR_FIRMA) {
         Some(a) => a,

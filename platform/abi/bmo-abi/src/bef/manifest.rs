@@ -1,14 +1,14 @@
-//! Manifest BEF — TOML inline declarando metadata + capabilities.
+//! Manifest BEF -- TOML inline declarando metadata + capabilities.
 //!
 //! Reemplaza:
 //!   - PE: IMAGE_RESOURCE_DIRECTORY con manifest XML embebido.
-//!   - ELF: .note.gnu.property (sintaxis críptica) y archivos .desktop aparte.
+//!   - ELF: .note.gnu.property (sintaxis criptica) y archivos .desktop aparte.
 //!
-//! El loader lo lee ANTES de mapear código, decide sandbox + capabilities.
+//! El loader lo lee ANTES de mapear codigo, decide sandbox + capabilities.
 //!
 //! ## Capability-based linking
-//! Cada BEF declara qué capacidades PROVEE (provides) y cuáles REQUIERE (requires).
-//! El kernel/linker resuelve requires → provides entre módulos al cargar.
+//! Cada BEF declara que capacidades PROVEE (provides) y cuales REQUIERE (requires).
+//! El kernel/linker resuelve requires -> provides entre modulos al cargar.
 
 #![allow(dead_code)]
 
@@ -92,7 +92,7 @@ impl Manifest {
         }
     }
 
-    /// Full TOML parser — identity, capabilities, provides, requires, dependencies.
+    /// Full TOML parser -- identity, capabilities, provides, requires, dependencies.
     pub fn parse_toml(bytes: &[u8], prov: Provenance) -> Self {
         let text = match core::str::from_utf8(bytes) {
             Ok(s) => s,

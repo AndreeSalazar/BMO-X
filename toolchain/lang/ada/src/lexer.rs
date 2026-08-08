@@ -1,34 +1,34 @@
-//! El léxico de Ada. Propio, como manda la regla: cada lenguaje entero.
+//! El lexico de Ada. Propio, como manda la regla: cada lenguaje entero.
 //!
 //! ## Lo que Ada tiene y COBOL no
 //!
-//! - **Identificadores insensibles a mayúsculas**: `Saldo`, `SALDO` y `saldo`
-//!   son el MISMO nombre. Se guardan en mayúscula para comparar.
-//! - **Comentarios con `--`** hasta el final de línea.
-//! - **`:=` para asignar y `=` para comparar**, que es al revés de C y es una
-//!   de las razones por las que Ada se eligió para lo crítico: un `=` donde
+//! - **Identificadores insensibles a mayusculas**: `Saldo`, `SALDO` y `saldo`
+//!   son el MISMO nombre. Se guardan en mayuscula para comparar.
+//! - **Comentarios con `--`** hasta el final de linea.
+//! - **`:=` para asignar y `=` para comparar**, que es al reves de C y es una
+//!   de las razones por las que Ada se eligio para lo critico: un `=` donde
 //!   iba un `:=` no compila en vez de asignar en silencio.
-//! - **Guiones bajos dentro de los números**: `1_000_000`. Se ignoran; son
+//! - **Guiones bajos dentro de los numeros**: `1_000_000`. Se ignoran; son
 //!   para el ojo.
 //! - **Las comillas se duplican** dentro de un literal: `"di ""hola"""`.
 
-/// Un componente léxico ya clasificado.
+/// Un componente lexico ya clasificado.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tok {
-    /// Un nombre, siempre en MAYÚSCULA (Ada no distingue).
+    /// Un nombre, siempre en MAYUSCULA (Ada no distingue).
     Ident(String),
-    /// Un número tal cual se escribió, sin los guiones bajos: `19.99`.
+    /// Un numero tal cual se escribio, sin los guiones bajos: `19.99`.
     Numero(String),
     /// El texto entre comillas, ya con las comillas dobles resueltas.
     Texto(String),
-    /// Un símbolo: `:=`, `=>`, `..`, `(`, `)`, `;`, `,`, `:`, `+`, `-`, `*`,
+    /// Un simbolo: `:=`, `=>`, `..`, `(`, `)`, `;`, `,`, `:`, `+`, `-`, `*`,
     /// `/`, `=`, `/=`, `<`, `>`, `<=`, `>=`, `.`, `'`.
     Simbolo(String),
     /// Fin de la entrada.
     Fin,
 }
 
-/// Un componente con la línea en la que apareció, para poder señalarla.
+/// Un componente con la linea en la que aparecio, para poder senalarla.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Componente {
     pub tok: Tok,
@@ -37,9 +37,9 @@ pub struct Componente {
 
 /// Parte el fuente en componentes.
 ///
-/// No falla: lo que no reconoce sale como `Simbolo` de un carácter y lo
-/// rechaza el análisis, que es quien sabe qué esperaba. Un lexer que opina
-/// sobre gramática es un lexer que hay que tocar dos veces.
+/// No falla: lo que no reconoce sale como `Simbolo` de un caracter y lo
+/// rechaza el analisis, que es quien sabe que esperaba. Un lexer que opina
+/// sobre gramatica es un lexer que hay que tocar dos veces.
 pub fn lexar(fuente: &str) -> Vec<Componente> {
     let b: Vec<char> = fuente.chars().collect();
     let mut out = Vec::new();
@@ -58,7 +58,7 @@ pub fn lexar(fuente: &str) -> Vec<Componente> {
             i += 1;
             continue;
         }
-        // Comentario: `--` hasta el final de la línea.
+        // Comentario: `--` hasta el final de la linea.
         if c == '-' && i + 1 < b.len() && b[i + 1] == '-' {
             while i < b.len() && b[i] != '\n' {
                 i += 1;
@@ -88,7 +88,7 @@ pub fn lexar(fuente: &str) -> Vec<Componente> {
             out.push(Componente { tok: Tok::Texto(s), linea });
             continue;
         }
-        // Nombre: letra seguida de letras, dígitos y guiones bajos.
+        // Nombre: letra seguida de letras, digitos y guiones bajos.
         if c.is_alphabetic() {
             let mut s = String::new();
             while i < b.len() && (b[i].is_alphanumeric() || b[i] == '_') {
@@ -98,7 +98,7 @@ pub fn lexar(fuente: &str) -> Vec<Componente> {
             out.push(Componente { tok: Tok::Ident(s.to_ascii_uppercase()), linea });
             continue;
         }
-        // Número. El punto sólo entra si le sigue un dígito: en `1..5` los dos
+        // Numero. El punto solo entra si le sigue un digito: en `1..5` los dos
         // puntos son el rango, no la coma decimal del 1.
         if c.is_ascii_digit() {
             let mut s = String::new();
@@ -119,7 +119,7 @@ pub fn lexar(fuente: &str) -> Vec<Componente> {
             out.push(Componente { tok: Tok::Numero(s), linea });
             continue;
         }
-        // Símbolos de dos caracteres primero: `:=` contiene `:`.
+        // Simbolos de dos caracteres primero: `:=` contiene `:`.
         let dos: String = b[i..(i + 2).min(b.len())].iter().collect();
         if matches!(dos.as_str(), ":=" | "=>" | ".." | "/=" | "<=" | ">=" | "**" | "<>") {
             out.push(Componente { tok: Tok::Simbolo(dos), linea });
@@ -160,7 +160,7 @@ mod tests {
         ]);
     }
 
-    /// Asignar y comparar son símbolos DISTINTOS. Es la diferencia que hace
+    /// Asignar y comparar son simbolos DISTINTOS. Es la diferencia que hace
     /// que un `=` donde iba un `:=` no compile en vez de asignar callando.
     #[test]
     fn asignar_y_comparar_son_distintos() {
@@ -174,7 +174,7 @@ mod tests {
     }
 
     /// El punto de `19.99` es coma decimal; el de `1..5` es un rango. Se
-    /// distinguen mirando si detrás hay un dígito.
+    /// distinguen mirando si detras hay un digito.
     #[test]
     fn el_punto_decimal_no_se_confunde_con_el_rango() {
         assert_eq!(toks("19.99")[0], Tok::Numero("19.99".into()));

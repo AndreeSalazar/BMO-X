@@ -1,16 +1,16 @@
-//! Parser sobre TOKENS — aplica la arquitectura (Lexer → Tokens → AST).
+//! Parser sobre TOKENS -- aplica la arquitectura (Lexer -> Tokens -> AST).
 //!
-//! Reemplaza incrementalmente al parser por-líneas (`parser.rs`). Empieza por
-//! el nivel de SENTENCIA (el núcleo de COBOL) y produce el MISMO AST
-//! (`CobolStatement`) que el codegen ya sabe compilar. Así crece sin romper
-//! nada: el codegen decimal exacto sigue igual, solo cambia quién arma el AST.
+//! Reemplaza incrementalmente al parser por-lineas (`parser.rs`). Empieza por
+//! el nivel de SENTENCIA (el nucleo de COBOL) y produce el MISMO AST
+//! (`CobolStatement`) que el codegen ya sabe compilar. Asi crece sin romper
+//! nada: el codegen decimal exacto sigue igual, solo cambia quien arma el AST.
 
 use crate::ast::error::CobolError;
 use crate::ast::{CobolProgram, CobolStatement, DataItem, DisplayArg};
 use crate::lexer::{lex, Tok, Token};
 
-/// Texto fuente de un token — para reensamblar una cláusula PIC que el lexer
-/// partió (`9(5)V99` → Number "9", `(`, "5", `)`, Ident "V99").
+/// Texto fuente de un token -- para reensamblar una clausula PIC que el lexer
+/// partio (`9(5)V99` -> Number "9", `(`, "5", `)`, Ident "V99").
 fn tok_text(t: &Tok) -> String {
     match t {
         Tok::Keyword(w) | Tok::Ident(w) | Tok::Number(w) => w.clone(),
@@ -72,7 +72,7 @@ impl Cursor {
     }
 }
 
-/// Un operando: número / cadena / identificador → su texto (como espera el
+/// Un operando: numero / cadena / identificador -> su texto (como espera el
 /// AST, que guarda `String`).
 fn operand(c: &mut Cursor, line: usize, what: &str) -> Result<String, CobolError> {
     match c.bump() {
@@ -83,7 +83,7 @@ fn operand(c: &mut Cursor, line: usize, what: &str) -> Result<String, CobolError
     }
 }
 
-/// Parsea UNA sentencia desde la posición actual del cursor.
+/// Parsea UNA sentencia desde la posicion actual del cursor.
 pub fn parse_statement(c: &mut Cursor) -> Result<CobolStatement, CobolError> {
     let line = c.line();
     let kw = match c.peek() {
@@ -93,7 +93,7 @@ pub fn parse_statement(c: &mut Cursor) -> Result<CobolStatement, CobolError> {
     c.bump(); // consume el verbo
 
     let st = match kw.as_str() {
-        // ★ Un literal ENTRE COMILLAS sale tal cual; un IDENTIFICADOR se
+        // * Un literal ENTRE COMILLAS sale tal cual; un IDENTIFICADOR se
         // formatea en ejecucion. Es el token el que lo dice, no una
         // heuristica sobre el contenido: `DISPLAY "SALDO"` imprime la palabra
         // SALDO, y `DISPLAY SALDO` imprime lo que vale. Adivinarlo por el
@@ -154,11 +154,11 @@ pub fn parse_statement(c: &mut Cursor) -> Result<CobolStatement, CobolError> {
     Ok(st)
 }
 
-// ── DATA DIVISION: records con PIC (la esencia de datos de COBOL) ────────
+// -- DATA DIVISION: records con PIC (la esencia de datos de COBOL) --------
 
 impl Cursor {
-    /// Reensambla una cláusula PIC concatenando los textos de los tokens
-    /// contiguos hasta un keyword (VALUE/…) o Period. `9(5)V99` vuelve a ser
+    /// Reensambla una clausula PIC concatenando los textos de los tokens
+    /// contiguos hasta un keyword (VALUE/...) o Period. `9(5)V99` vuelve a ser
     /// un solo string que `pic::parse_pic` entiende.
     fn read_pic(&mut self) -> String {
         let mut s = String::new();
@@ -192,7 +192,7 @@ pub fn parse_data_item(c: &mut Cursor) -> Result<DataItem, CobolError> {
 
     let mut pic: Option<String> = None;
     let mut value: Option<String> = None;
-    // Cláusulas en cualquier orden hasta el punto.
+    // Clausulas en cualquier orden hasta el punto.
     loop {
         if c.eat_kw("PIC") || c.eat_kw("PICTURE") {
             c.eat_kw("IS"); // opcional
@@ -203,7 +203,7 @@ pub fn parse_data_item(c: &mut Cursor) -> Result<DataItem, CobolError> {
         } else if matches!(c.peek(), Some(Tok::Period)) || c.done() {
             break;
         } else {
-            // Cláusula aún no soportada (USAGE, OCCURS…): sáltala.
+            // Clausula aun no soportada (USAGE, OCCURS...): saltala.
             c.bump();
         }
     }
@@ -212,7 +212,7 @@ pub fn parse_data_item(c: &mut Cursor) -> Result<DataItem, CobolError> {
 }
 
 /// Parsea la WORKING-STORAGE / DATA DIVISION: items mientras empiece por un
-/// número de nivel.
+/// numero de nivel.
 pub fn parse_data_items(src: &str) -> Result<Vec<DataItem>, CobolError> {
     let mut c = Cursor::from_source(src);
     let mut out = Vec::new();
@@ -236,11 +236,11 @@ pub fn parse_statements(src: &str) -> Result<Vec<CobolStatement>, CobolError> {
     Ok(out)
 }
 
-// ── Programa completo (IDENTIFICATION / DATA / PROCEDURE) sobre tokens ────
+// -- Programa completo (IDENTIFICATION / DATA / PROCEDURE) sobre tokens ----
 
 /// Parsea un programa COBOL entero desde el fuente al AST `CobolProgram`.
-/// Este es el camino que jubila al parser por-líneas: Source → lexer →
-/// tparser → CobolProgram → codegen → BEF.
+/// Este es el camino que jubila al parser por-lineas: Source -> lexer ->
+/// tparser -> CobolProgram -> codegen -> BEF.
 pub fn parse_program(src: &str) -> Result<CobolProgram, CobolError> {
     let mut c = Cursor::from_source(src);
 
@@ -261,7 +261,7 @@ pub fn parse_program(src: &str) -> Result<CobolProgram, CobolError> {
     }
     let mut prog = CobolProgram::new(program_id);
 
-    // 2. Recorre divisiones. Los items de datos empiezan por número de nivel;
+    // 2. Recorre divisiones. Los items de datos empiezan por numero de nivel;
     //    al llegar a PROCEDURE DIVISION se parsean las sentencias.
     while !c.done() {
         if matches!(c.peek(), Some(Tok::Number(_))) {
@@ -270,7 +270,7 @@ pub fn parse_program(src: &str) -> Result<CobolProgram, CobolError> {
         }
         if c.eat_kw("PROCEDURE") {
             c.eat_kw("DIVISION");
-            // Cabecera (USING …) hasta el punto.
+            // Cabecera (USING ...) hasta el punto.
             while !matches!(c.peek(), Some(Tok::Period)) && !c.done() {
                 c.bump();
             }
@@ -285,7 +285,7 @@ pub fn parse_program(src: &str) -> Result<CobolProgram, CobolError> {
             }
             break;
         }
-        // Cabeceras de división/sección y demás: saltar.
+        // Cabeceras de division/seccion y demas: saltar.
         c.bump();
     }
     Ok(prog)
@@ -328,13 +328,13 @@ mod tests {
 
     #[test]
     fn parses_data_item_with_pic_scale() {
-        // El corazón de COBOL: un record con PIC decimal, desde tokens.
+        // El corazon de COBOL: un record con PIC decimal, desde tokens.
         let items = parse_data_items("01 SALDO PIC 9(5)V99 VALUE 0.").unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].level, 1);
         assert_eq!(items[0].name, "SALDO");
         assert_eq!(items[0].pic.as_deref(), Some("9(5)V99"));
-        assert_eq!(items[0].scale(), 2); // ← centavos: la esencia bancaria
+        assert_eq!(items[0].scale(), 2); // <- centavos: la esencia bancaria
     }
 
     #[test]
@@ -370,7 +370,7 @@ STOP RUN.
         assert_eq!(prog.statements.len(), 4);
         assert_eq!(prog.statements[0], CobolStatement::Move("10.05".into(), "SALDO".into()));
 
-        // Pipeline NUEVO completo: tokens → AST → BEF (ejecutable real).
+        // Pipeline NUEVO completo: tokens -> AST -> BEF (ejecutable real).
         let bef = crate::codegen::compile_to_bef_bytes(&prog).unwrap();
         assert!(bef.len() > 48, "el BEF debe tener cabecera + codigo");
         assert_eq!(&bef[..4], b"BEF1"); // magic del contenedor

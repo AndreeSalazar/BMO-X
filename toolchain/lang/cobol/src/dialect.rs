@@ -1,8 +1,8 @@
-//! COBOL dialect library — the BMO toolchain ingredient.
+//! COBOL dialect library -- the BMO toolchain ingredient.
 //!
 //! COBOL never lives in Ring 0: it is a *library* of dialects at the
 //! toolchain layer. Every dialect lowers to the same BMO ABI v2 surface
-//! (BEF → linker → BEX), the way LLVM frontends lower to one IR — except
+//! (BEF -> linker -> BEX), the way LLVM frontends lower to one IR -- except
 //! the BMO pipeline carries no patches: one canonical contract, enforced
 //! by `bmo-abi` validation at every step.
 //!
@@ -24,7 +24,7 @@ pub enum SourceFormat {
 /// A COBOL dialect the BMO frontend can parse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
-    /// ANSI X3.23 / ISO 1989 — the portable baseline. Default.
+    /// ANSI X3.23 / ISO 1989 -- the portable baseline. Default.
     Ansi85,
     /// ISO/IEC 1989:2002 (free-form source, inline comments).
     Cobol2002,

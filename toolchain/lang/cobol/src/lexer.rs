@@ -1,24 +1,24 @@
-//! Lexer de COBOL — Source → Tokens. La base del pipeline.
+//! Lexer de COBOL -- Source -> Tokens. La base del pipeline.
 //!
-//! Convierte el texto COBOL en un flujo de tokens con número de línea. Usa
-//! las tablas GENERADAS por la fábrica Python (`generated::words`) para
-//! clasificar palabras reservadas/verbos/intrínsecas — así el vocabulario
+//! Convierte el texto COBOL en un flujo de tokens con numero de linea. Usa
+//! las tablas GENERADAS por la fabrica Python (`generated::words`) para
+//! clasificar palabras reservadas/verbos/intrinsecas -- asi el vocabulario
 //! crece solo al ampliar `definition.py`.
 //!
 //! Sutileza clave de COBOL: el punto `.` es un TERMINADOR de sentencia, pero
-//! también el punto decimal de `10.05`. Regla: un `.` entre dígitos es
+//! tambien el punto decimal de `10.05`. Regla: un `.` entre digitos es
 //! decimal; un `.` seguido de espacio/fin es terminador.
 
 use crate::generated::words;
 
-/// Clase léxica de un token.
+/// Clase lexica de un token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tok {
-    /// Palabra reservada de COBOL (MAYÚSCULAS canónicas).
+    /// Palabra reservada de COBOL (MAYUSCULAS canonicas).
     Keyword(String),
-    /// Nombre de dato / párrafo / identificador de usuario.
+    /// Nombre de dato / parrafo / identificador de usuario.
     Ident(String),
-    /// Literal numérico, PRESERVADO como texto para no perder la escala
+    /// Literal numerico, PRESERVADO como texto para no perder la escala
     /// decimal ("10.05", "007", "3.20").
     Number(String),
     /// Literal de cadena (sin las comillas).
@@ -30,11 +30,11 @@ pub enum Tok {
     RParen,
     /// `=` (COMPUTE, condiciones).
     Equal,
-    /// Cualquier otro carácter suelto (`+ - * / < >` …).
+    /// Cualquier otro caracter suelto (`+ - * / < >` ...).
     Punct(char),
 }
 
-/// Token con su posición.
+/// Token con su posicion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub tok: Tok,
@@ -42,7 +42,7 @@ pub struct Token {
 }
 
 impl Token {
-    /// ¿Es la palabra reservada `kw`?
+    /// Es la palabra reservada `kw`?
     pub fn is_keyword(&self, kw: &str) -> bool {
         matches!(&self.tok, Tok::Keyword(w) if w == kw)
     }
@@ -70,8 +70,8 @@ fn lex_line(line: &str, line_no: usize, out: &mut Vec<Token>) {
     let n = chars.len();
     let mut i = 0;
 
-    // Comentario de línea entera (formato fijo: '*' o '/' en col 7 → aquí
-    // simplificado a línea que empieza por '*').
+    // Comentario de linea entera (formato fijo: '*' o '/' en col 7 -> aqui
+    // simplificado a linea que empieza por '*').
     if let Some(first) = line.trim_start().chars().next() {
         if first == '*' {
             return;
@@ -87,7 +87,7 @@ fn lex_line(line: &str, line_no: usize, out: &mut Vec<Token>) {
             continue;
         }
 
-        // Comentario libre '*>' hasta fin de línea.
+        // Comentario libre '*>' hasta fin de linea.
         if c == '*' && i + 1 < n && chars[i + 1] == '>' {
             return;
         }
@@ -108,13 +108,13 @@ fn lex_line(line: &str, line_no: usize, out: &mut Vec<Token>) {
             continue;
         }
 
-        // Número (con posible punto DECIMAL, no terminador).
+        // Numero (con posible punto DECIMAL, no terminador).
         if c.is_ascii_digit() {
             let start = i;
             while i < n && chars[i].is_ascii_digit() {
                 i += 1;
             }
-            // Punto decimal solo si le sigue un dígito.
+            // Punto decimal solo si le sigue un digito.
             if i + 1 < n && chars[i] == '.' && chars[i + 1].is_ascii_digit() {
                 i += 1; // el '.'
                 while i < n && chars[i].is_ascii_digit() {
@@ -142,7 +142,7 @@ fn lex_line(line: &str, line_no: usize, out: &mut Vec<Token>) {
             continue;
         }
 
-        // Puntuación.
+        // Puntuacion.
         let t = match c {
             '.' => Tok::Period,
             ',' => Tok::Comma,
@@ -168,7 +168,7 @@ mod tests {
         assert_eq!(kinds[1], &Tok::Number("10.05".into())); // decimal, no terminador
         assert_eq!(kinds[2], &Tok::Keyword("TO".into()));
         assert_eq!(kinds[3], &Tok::Ident("PRECIO".into()));
-        assert_eq!(kinds[4], &Tok::Period); // ESTE punto sí es terminador
+        assert_eq!(kinds[4], &Tok::Period); // ESTE punto si es terminador
     }
 
     #[test]
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn skips_comments_and_tracks_lines() {
         let toks = lex("* comentario\nADD 1 TO X.");
-        // La línea de comentario no produce tokens; ADD está en la línea 2.
+        // La linea de comentario no produce tokens; ADD esta en la linea 2.
         assert_eq!(toks[0].tok, Tok::Keyword("ADD".into()));
         assert_eq!(toks[0].line, 2);
     }

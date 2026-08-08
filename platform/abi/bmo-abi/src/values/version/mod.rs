@@ -1,7 +1,7 @@
-//! `version` — BmoVersion, tipo semver del BMO ABI.
+//! `version` -- BmoVersion, tipo semver del BMO ABI.
 //!
-//! Reemplaza la práctica de C de pasar `u32 major << 16 | minor << 8 | patch`
-//! con un tipo explícito que tiene operaciones de comparación semántica.
+//! Reemplaza la practica de C de pasar `u32 major << 16 | minor << 8 | patch`
+//! con un tipo explicito que tiene operaciones de comparacion semantica.
 
 use crate::bmo_abi::error_code;
 use crate::bmo_abi::fundamentals::status::BmoStatus;

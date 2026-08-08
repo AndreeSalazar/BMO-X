@@ -1,27 +1,27 @@
-//! Header BEF â€” 48 bytes fijos al inicio del archivo.
+//! Header BEF -- 48 bytes fijos al inicio del archivo.
 //!
-//! Mucho mÃ¡s compacto que ELF (64 B + Phdr) o PE (264 B DOS stub + IMAGE_NT).
+//! Mucho mas compacto que ELF (64 B + Phdr) o PE (264 B DOS stub + IMAGE_NT).
 
 #![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64, bx_u8};
 use crate::{supports_abi, BMO_ABI_VERSION};
 
-/// Magic constant â€” `b"BEF1"` (4 bytes LE).
+/// Magic constant -- `b"BEF1"` (4 bytes LE).
 pub const BEF_MAGIC: bx_u32 = u32::from_le_bytes(*b"BEF1");
 
-/// VersiÃ³n actual del formato.
+/// Version actual del formato.
 pub const BEF_VERSION_MAJOR: bx_u16 = 1;
 pub const BEF_VERSION_MINOR: bx_u16 = 0;
 
 /// Magic alternativo aceptado por el loader (para devour).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BefMagic {
-    /// `b"BEF1"` â€” formato nativo.
+    /// `b"BEF1"` -- formato nativo.
     BefNative,
-    /// `b"MZ"` â€” PE/COFF de Windows (debe procesarse por `loader::pe`).
+    /// `b"MZ"` -- PE/COFF de Windows (debe procesarse por `loader::pe`).
     PeWindows,
-    /// `0x7F b"ELF"` â€” ELF de Linux/Unix (procesar por `loader::elf`).
+    /// `0x7F b"ELF"` -- ELF de Linux/Unix (procesar por `loader::elf`).
     ElfUnix,
     /// Formato desconocido.
     Unknown,
@@ -46,53 +46,53 @@ bitflags::bitflags! {
     /// Flags del header BEF.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct BefFlags: bx_u32 {
-        /// El binario es ejecutable (vs. librerÃ­a compartida).
+        /// El binario es ejecutable (vs. libreria compartida).
         const EXECUTABLE         = 1 << 0;
-        /// Es una librerÃ­a compartida (.bef.so equivalent).
+        /// Es una libreria compartida (.bef.so equivalent).
         const SHARED_LIBRARY     = 1 << 1;
-        /// Tiene secciÃ³n de manifest TOML vÃ¡lida.
+        /// Tiene seccion de manifest TOML valida.
         const HAS_MANIFEST       = 1 << 2;
-        /// Tiene secciÃ³n de shaders/IR pre-compilados.
+        /// Tiene seccion de shaders/IR pre-compilados.
         const HAS_SHADERS        = 1 << 3;
         /// Tiene secciones comprimidas con GDeflate.
         const COMPRESSED         = 1 << 4;
-        /// EstÃ¡ firmado con Ed25519.
+        /// Esta firmado con Ed25519.
         const SIGNED             = 1 << 5;
         /// Posee TLS (Thread Local Storage).
         const HAS_TLS            = 1 << 6;
         /// Soporta hot-reload de secciones en runtime.
         const HOT_RELOADABLE     = 1 << 7;
-        /// Marca PIE (Position Independent Executable) â€” siempre verdadero
-        /// para BEF nativo, pero Ãºtil para PE/ELF devorados.
+        /// Marca PIE (Position Independent Executable) -- siempre verdadero
+        /// para BEF nativo, pero util para PE/ELF devorados.
         const PIE                = 1 << 8;
         /// Importa la API BareX (vs solo usar syscalls BMO).
         const USES_BAREX         = 1 << 9;
-        /// ★ **El binario QUIERE LA PANTALLA.** Lo pone el compilador, no el autor.
+        /// * **El binario QUIERE LA PANTALLA.** Lo pone el compilador, no el autor.
         ///
-        /// # Por qué existe
+        /// # Por que existe
         ///
-        /// Hasta el 2026-08-07 la pantalla era del primero que la pedía — orden
-        /// de llegada, no autoridad. Y `gui.bex` la reclama al arrancar, así que
-        /// cualquier programa gráfico se llevaba un "ya tiene dueño".
+        /// Hasta el 2026-08-07 la pantalla era del primero que la pedia -- orden
+        /// de llegada, no autoridad. Y `gui.bex` la reclama al arrancar, asi que
+        /// cualquier programa grafico se llevaba un "ya tiene dueno".
         ///
         /// El arreglo provisional fue un verbo en el escritorio (`presta
-        /// <ruta>`), y era el diseño equivocado: ponía la POLÍTICA en los dedos
+        /// <ruta>`), y era el diseno equivocado: ponia la POLITICA en los dedos
         /// del usuario. Con esta bandera, el compositor **lee la cabecera antes
-        /// de lanzar** y decide él — a quién, cuándo, con qué prioridad, o que
-        /// no. El kernel sigue dando sólo el mecanismo (un dueño, `soltar`).
+        /// de lanzar** y decide el -- a quien, cuando, con que prioridad, o que
+        /// no. El kernel sigue dando solo el mecanismo (un dueno, `soltar`).
         ///
         /// Tres capas: el kernel arbitra, el BEF declara, el compositor manda.
-        /// Es la misma separación que un planificador de GPU.
+        /// Es la misma separacion que un planificador de GPU.
         ///
-        /// # Por qué la pone el COMPILADOR y no el autor
+        /// # Por que la pone el COMPILADOR y no el autor
         ///
-        /// Porque así **no puede mentir**: dice lo que el programa HACE, no lo
+        /// Porque asi **no puede mentir**: dice lo que el programa HACE, no lo
         /// que promete. El codegen la pone al ver una llamada a la puerta de
-        /// syscalls con `BMO_OP_PANTALLA_RECLAMAR` (`0x09`) como operación.
+        /// syscalls con `BMO_OP_PANTALLA_RECLAMAR` (`0x09`) como operacion.
         ///
-        /// ⚠️ Límite honesto: si un programa calculara ese número en tiempo de
-        /// ejecución, la detección no lo ve. Todo el código real usa el
-        /// `#define`, que expande a un literal — pero el hueco existe y queda
+        /// [!] Limite honesto: si un programa calculara ese numero en tiempo de
+        /// ejecucion, la deteccion no lo ve. Todo el codigo real usa el
+        /// `#define`, que expande a un literal -- pero el hueco existe y queda
         /// escrito en vez de descubierto.
         const WANTS_SCREEN       = 1 << 10;
         /// Origen: PE devorado (set por el loader, no por el compilador).
@@ -140,15 +140,15 @@ impl BefCpuFeature {
     pub const KNOWN: u16 = Self::WIDE_VECTORS | Self::WIDER_VECTORS;
 }
 
-/// Header BEF â€” 48 bytes, alineado a 16.
+/// Header BEF -- 48 bytes, alineado a 16.
 ///
-/// Campos pequeÃ±os primero (BMO ABI struct layout).
+/// Campos pequenos primero (BMO ABI struct layout).
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy)]
 pub struct BefHeader {
     /// `BEF_MAGIC` = `BEF1` LE.
     pub magic: bx_u32,
-    /// VersiÃ³n del formato.
+    /// Version del formato.
     pub version_major: bx_u16,
     pub version_minor: bx_u16,
     /// Flags `BefFlags`.
@@ -159,7 +159,7 @@ pub struct BefHeader {
     ///
     /// Reservado y CONGELADO aqui aunque hoy solo exista little. El dia que
     /// haya un objetivo big-endian (PowerPC, un RISC-V configurado asi), este
-    /// byte es la diferencia entre añadir una comprobacion y reescribir todos
+    /// byte es la diferencia entre anadir una comprobacion y reescribir todos
     /// los parsers del sistema. Cuesta cero ahora.
     pub endianness: bx_u8,
     /// **Extensiones de CPU que la imagen USA** (mapa de bits, ver
@@ -172,19 +172,19 @@ pub struct BefHeader {
     /// una seccion que no entiendo es data inerte, pero una extension de CPU
     /// que no entiendo es estado que no voy a saber preservar.
     pub cpu_features: bx_u16,
-    /// VersiÃ³n del BMO ABI esperado (major, minor).
+    /// Version del BMO ABI esperado (major, minor).
     pub abi_version_major: bx_u8,
     pub abi_version_minor: bx_u8,
     /// Reservado. DEBE ser cero: un productor que escriba basura aqui se
     /// encontrara con que el campo significa algo en una version futura.
     pub _reserved: [bx_u8; 6],
-    /// Offset del entry point dentro de la secciÃ³n `.code`.
+    /// Offset del entry point dentro de la seccion `.code`.
     pub entry_offset: bx_u64,
     /// Offset absoluto del section table.
     pub section_table_offset: bx_u64,
     /// Cantidad de secciones.
     pub section_count: bx_u32,
-    /// TamaÃ±o total del archivo en bytes (validaciÃ³n rÃ¡pida).
+    /// Tamano total del archivo en bytes (validacion rapida).
     pub total_size: bx_u32,
 }
 

@@ -5,13 +5,13 @@
 
 use super::*;
 
-// ═══════════════ Structs POR VALOR ═══════════════
+// =============== Structs POR VALOR ===============
 //
-// Ver `codegen/agregados.rs` para la ABI de agregados de BMO y para qué
-// hacen SysV (clasificación por eightbytes) y Win64 (referencia oculta).
+// Ver `codegen/agregados.rs` para la ABI de agregados de BMO y para que
+// hacen SysV (clasificacion por eightbytes) y Win64 (referencia oculta).
 
-/// `q = p` copia TODOS los bytes. Antes emitía `mov rax,[p]; mov [q],rax`
-/// — ocho— y un struct de 12 se copiaba a medias, en silencio.
+/// `q = p` copia TODOS los bytes. Antes emitia `mov rax,[p]; mov [q],rax`
+/// -- ocho-- y un struct de 12 se copiaba a medias, en silencio.
 #[test]
 fn asignar_un_struct_copia_todos_sus_bytes() {
     let out = run_c("struct P { int x; int y; int z; }; \
@@ -29,7 +29,7 @@ fn la_copia_de_un_struct_es_independiente() {
     assert_eq!(out.trim(), "2 99");
 }
 
-/// Pasarlo a una función manda sus bytes, no su primera palabra.
+/// Pasarlo a una funcion manda sus bytes, no su primera palabra.
 #[test]
 fn un_struct_viaja_entero_a_una_funcion() {
     let out = run_c("struct P { int x; int y; int z; }; \
@@ -39,8 +39,8 @@ fn un_struct_viaja_entero_a_una_funcion() {
     assert_eq!(out.trim(), "6");
 }
 
-/// ★ Y corre a los que vienen detrás. Un agregado de 12 bytes ocupa DOS
-/// ranuras; con el `16 + i*8` de antes, el parámetro siguiente se leía
+/// * Y corre a los que vienen detras. Un agregado de 12 bytes ocupa DOS
+/// ranuras; con el `16 + i*8` de antes, el parametro siguiente se leia
 /// desde la mitad del anterior.
 #[test]
 fn un_struct_corre_los_parametros_que_van_detras() {
@@ -51,7 +51,7 @@ fn un_struct_corre_los_parametros_que_van_detras() {
     assert_eq!(out.trim(), "707");
 }
 
-/// La función recibe una COPIA: modificarla no toca la del llamante.
+/// La funcion recibe una COPIA: modificarla no toca la del llamante.
 #[test]
 fn la_funcion_recibe_una_copia_no_el_original() {
     let out = run_c("struct P { int x; int y; }; \
@@ -61,9 +61,9 @@ fn la_funcion_recibe_una_copia_no_el_original() {
     assert_eq!(out.trim(), "99 1");
 }
 
-/// Devolver un struct es un TERCER mecanismo (puntero oculto) y todavía no
-/// está. Se dice con el nombre delante: devolver ocho bytes de un struct de
-/// doce sería exactamente la mentira que este compilador no cuenta.
+/// Devolver un struct es un TERCER mecanismo (puntero oculto) y todavia no
+/// esta. Se dice con el nombre delante: devolver ocho bytes de un struct de
+/// doce seria exactamente la mentira que este compilador no cuenta.
 #[test]
 fn devolver_un_struct_por_valor_se_rechaza_con_motivo() {
     let err = compile_source_to_bef(
@@ -75,15 +75,15 @@ fn devolver_un_struct_por_valor_se_rechaza_con_motivo() {
     assert!(err.message.contains("haz"), "mensaje: {}", err.message);
 }
 
-// ── Arrays DENTRO de un agregado ──────────────────────────────────────
+// -- Arrays DENTRO de un agregado --------------------------------------
 //
 // La sonda de c-gen los encontro en una `union`, pero fallaban **igual en un
 // struct**: no era el agregado, era el declarador. Un `char nombre[8]` dentro
-// de una estructura es lo primero que trae cualquier formato de fichero — DOOM
+// de una estructura es lo primero que trae cualquier formato de fichero -- DOOM
 // nombra asi cada lump de su WAD.
 
 /// El array convive con los otros campos y **no los pisa**: es lo que prueba
-/// que el reparto de offsets contó su tamaño entero y no el de un elemento.
+/// que el reparto de offsets conto su tamano entero y no el de un elemento.
 #[test]
 fn un_struct_puede_llevar_un_array_dentro() {
     let fuente = "struct S { int i; char c[4]; int z; }; \
@@ -105,7 +105,7 @@ fn una_union_reparte_el_mismo_sitio_entre_el_entero_y_los_bytes() {
 }
 
 /// Un campo de bits se ACEPTA y **guarda lo que le metas**. No esta
-/// empaquetado —la estructura mide mas de lo que mediria en GCC— y eso esta
+/// empaquetado --la estructura mide mas de lo que mediria en GCC-- y eso esta
 /// dicho en BRECHA.md: lo que no vale es un layout binario ajeno, no el
 /// programa.
 #[test]

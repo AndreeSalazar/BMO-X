@@ -1,4 +1,4 @@
-      * CARTERA — el mismo batch, escrito como se LEE en un banco.
+      * CARTERA -- el mismo batch, escrito como se LEE en un banco.
       *
       * Lee movimientos y los reparte en tres cubos segun su importe. Todo lo
       * que decide esta escrito con NOMBRES, no con numeros:
@@ -7,7 +7,7 @@
       *     IF ES-DEVOLUCION                en vez de   IF SIGNO = 2
       *
       * Eso es el nivel 88: no reserva ni un byte, le pone nombre a una
-      * comparacion. La prueba esta en el compilador — declarar veinte no
+      * comparacion. La prueba esta en el compilador -- declarar veinte no
       * cambia una sola instruccion del .bex.
       *
       * Y es la razon por la que COBOL se lee en voz alta en una auditoria:
@@ -37,7 +37,7 @@
        01 COBROS   PIC $$$,$$9.99.
       * Las devoluciones llevan CR: son un saldo en contra, y una mascara sin
       * signo las imprimiria como si fueran cobros. `$$$,$$9.99` se come el
-      * menos — correcto segun el estandar, y mentira en un informe.
+      * menos -- correcto segun el estandar, y mentira en un informe.
        01 DEVOLS   PIC $$$,$$9.99CR.
        PROCEDURE DIVISION.
            DISPLAY "CARTERA DEL DIA - BANCO BMO".

@@ -1,4 +1,4 @@
-      * MAESTRO — el FICHERO DE UN BANCO, en su formato de verdad.
+      * MAESTRO -- el FICHERO DE UN BANCO, en su formato de verdad.
       *
       * Los nueve niveles anteriores leen y escriben TEXTO: una linea, un
       * numero. Un banco no da eso. Da registros de LARGO FIJO con los campos en
@@ -8,13 +8,13 @@
       * Este es el escalon que separa "COBOL que compila" de "COBOL que abre los
       * datos que ya tienes".
       *
-      * ── El registro, byte a byte ──
+      * -- El registro, byte a byte --
       *
       *   01 REG-CUENTA.                        desde  bytes  como
       *       05 CTA-NUMERO PIC 9(10).              0     10  zonado
       *       05 CTA-SALDO  PIC S9(7)V99 COMP-3.   10      5  nibbles
       *       05 CTA-ESTADO PIC 9.                 15      1  zonado
-      *                                          ─────────────
+      *                                          -------------
       *                                   REG-CUENTA:    16
       *
       * Diecisiete bytes NO: dieciseis. Un registro va PEGADO, sin relleno,
@@ -25,7 +25,7 @@
       * separador. El que lo lea ya sabe cuanto mide, y un `\n` correria todo lo
       * de detras un byte.
       *
-      * ── Las dos herramientas que van con esto ──
+      * -- Las dos herramientas que van con esto --
       *
       *   bmo-cobol --copybook maestro.cob
       *       El byte exacto de cada campo. En banca ese documento es lo que se
@@ -65,7 +65,7 @@
        01 EN-ROJO  PIC 9(5)            VALUE ZERO.
        01 FIN      PIC 9               VALUE ZERO.
            88 SE-ACABO                 VALUE 1.
-      * ★ La mascara lleva CR, y eso NO es decoracion. Con `$$$,$$9.99` a
+      * * La mascara lleva CR, y eso NO es decoracion. Con `$$$,$$9.99` a
       * secas, un saldo de -890,10 sale impreso como `$890.10`: el numero es
       * negativo por dentro y el extracto dice que no. Un campo editado sin
       * simbolo de signo NO ENSENA EL SIGNO, y ese es el fallo que convierte un
@@ -104,7 +104,7 @@
        2000-LEER-Y-CUADRAR.
       *    Y ahora se vuelve a leer el MISMO fichero. Que los importes salgan
       *    iguales es lo que prueba que empaquetar y desempaquetar dicen lo
-      *    mismo — un ida y vuelta que no cuadra es un descuadre en el disco.
+      *    mismo -- un ida y vuelta que no cuadra es un descuadre en el disco.
            OPEN INPUT ENTRADA.
            PERFORM UNTIL SE-ACABO
                READ ENTRADA

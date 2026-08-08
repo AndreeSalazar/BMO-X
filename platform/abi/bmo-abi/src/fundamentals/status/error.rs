@@ -4,7 +4,7 @@
 //! This file re-exports them so existing code using
 //! `crate::bmo_abi::fundamentals::status::error_code::*` continues to compile.
 
-/// Devuelve un texto humano para el código de error. Cero asignación.
+/// Devuelve un texto humano para el codigo de error. Cero asignacion.
 pub const fn message(code: u32) -> &'static str {
     match code {
         0 => "ok",

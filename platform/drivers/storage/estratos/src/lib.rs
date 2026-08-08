@@ -1,37 +1,37 @@
-//! ESTRATOS — el formato en disco.
+//! ESTRATOS -- el formato en disco.
 //!
-//! Diseño completo en `platform/services/timeback/ESTRATOS.md`. Esta crate es
-//! el **paso 4** de su §10, y solo la primera mitad: el FORMATO. Aquí no se
-//! lee ni se escribe un sector — se declara cómo son las estructuras y cómo se
+//! Diseno completo en `platform/services/timeback/ESTRATOS.md`. Esta crate es
+//! el **paso 4** de su section 10, y solo la primera mitad: el FORMATO. Aqui no se
+//! lee ni se escribe un sector -- se declara como son las estructuras y como se
 //! comprueban. La E/S vive en quien tenga el dispositivo.
 //!
-//! Está separado a propósito, y por la razón que el propio documento da: *"este
-//! documento existe para que el formato se decida ANTES de tocar un sector —
+//! Esta separado a proposito, y por la razon que el propio documento da: *"este
+//! documento existe para que el formato se decida ANTES de tocar un sector --
 //! en un sistema de ficheros, equivocarse cuesta datos"*. Una crate sin E/S se
-//! puede probar entera en el anfitrión, y el formateador y el kernel leen
-//! exactamente la misma definición: si divergieran, el síntoma sería un
+//! puede probar entera en el anfitrion, y el formateador y el kernel leen
+//! exactamente la misma definicion: si divergieran, el sintoma seria un
 //! volumen que se formatea bien y no se monta.
 //!
 //! ## Lo que hay y lo que no
 //!
-//! - ✅ **Superbloque**: el único sitio con posición fija, el gate de identidad
-//!   grabado en el volumen y el contador de generación que decide cuál de las
+//! - [OK] **Superbloque**: el unico sitio con posicion fija, el gate de identidad
+//!   grabado en el volumen y el contador de generacion que decide cual de las
 //!   dos copias manda.
-//! - ✅ **Estrato**: la raíz. El commit que también es el superbloque.
-//! - ✅ **Nodos y atributos**: el modelo de objetos (§4). Ver [`objects`], que
-//!   documenta las tres decisiones que el diseño dejaba abiertas: el puntero
-//!   lleva dirección Y suma, los archivos crecen por niveles de indirección, y
-//!   lo pequeño vive dentro del atributo sin gastar bloque.
-//! - ⬜ **Formateador** y **montaje**: los dos necesitan E/S, así que viven
-//!   fuera de aquí — en el toolchain y en el kernel.
+//! - [OK] **Estrato**: la raiz. El commit que tambien es el superbloque.
+//! - [OK] **Nodos y atributos**: el modelo de objetos (section 4). Ver [`objects`], que
+//!   documenta las tres decisiones que el diseno dejaba abiertas: el puntero
+//!   lleva direccion Y suma, los archivos crecen por niveles de indireccion, y
+//!   lo pequeno vive dentro del atributo sin gastar bloque.
+//! - [ ] **Formateador** y **montaje**: los dos necesitan E/S, asi que viven
+//!   fuera de aqui -- en el toolchain y en el kernel.
 
 #![cfg_attr(not(test), no_std)]
 
-/// La contabilidad del espacio y los avisos de la §9. Va aparte porque es lo
+/// La contabilidad del espacio y los avisos de la section 9. Va aparte porque es lo
 /// unico de esta crate que es POLITICA y no formato: los umbrales salen del
 /// diseno, no del disco.
 /// El LOG de escritura: la maquina de estados de una transaccion. Aqui no se
-/// escribe un sector — se decide el ORDEN, que es lo que cuesta datos si se
+/// escribe un sector -- se decide el ORDEN, que es lo que cuesta datos si se
 /// equivoca, y por eso se prueba en el anfitrion.
 pub mod escritura;
 pub mod espacio;
@@ -45,7 +45,7 @@ pub use read::{descender, Fuente};
 pub use bmo_hash::hash as blake3;
 
 /// Suma BLAKE3 de 256 bits. Todo en ESTRATOS se identifica y se comprueba con
-/// esto — contenido, raíces y la identidad del disco.
+/// esto -- contenido, raices y la identidad del disco.
 pub type Hash = [u8; 32];
 
 /// Hash de todo ceros: "no hay". Un estrato con `padre` a cero es el primero.
@@ -54,41 +54,41 @@ pub const NO_HASH: Hash = [0u8; 32];
 /// Firma del volumen. Ocho bytes, en el primer sector de cada superbloque.
 pub const MAGIC: [u8; 8] = *b"ESTRATOS";
 
-/// Versión del formato. Se sube cuando cambia el LAYOUT, no cuando cambia el
-/// código: montar un volumen de una versión que no se entiende es solo lectura
-/// y un aviso, nunca una interpretación a la buena de dios.
+/// Version del formato. Se sube cuando cambia el LAYOUT, no cuando cambia el
+/// codigo: montar un volumen de una version que no se entiende es solo lectura
+/// y un aviso, nunca una interpretacion a la buena de dios.
 pub const VERSION: u32 = 1;
 
-/// Tamaño de bloque de ESTRATOS. Ocho sectores de 512 B.
+/// Tamano de bloque de ESTRATOS. Ocho sectores de 512 B.
 pub const BLOCK_SIZE: u32 = 4096;
 
 /// El superbloque se escribe en un sector completo aunque no lo llene: es la
-/// unidad que el disco garantiza atómica, y el punto de no retorno de una
-/// transacción tiene que caber en ella.
+/// unidad que el disco garantiza atomica, y el punto de no retorno de una
+/// transaccion tiene que caber en ella.
 pub const SUPER_LEN: usize = 512;
 
 /// Las DOS copias, en bloques 0 y 1 del volumen. Se escribe siempre la que NO
-/// está en uso; si el corte llega a media escritura, la otra sigue entera.
+/// esta en uso; si el corte llega a media escritura, la otra sigue entera.
 pub const SUPER_A_BLOCK: u64 = 0;
 pub const SUPER_B_BLOCK: u64 = 1;
 
-/// Qué puede ir mal al leer una estructura del disco.
+/// Que puede ir mal al leer una estructura del disco.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormatError {
-    /// El buffer no tiene el tamaño de la estructura.
+    /// El buffer no tiene el tamano de la estructura.
     ShortBuffer,
-    /// No lleva la firma `ESTRATOS`. Casi siempre significa "aquí no hay un
-    /// volumen de ESTRATOS", no "está corrupto" — y son cosas distintas.
+    /// No lleva la firma `ESTRATOS`. Casi siempre significa "aqui no hay un
+    /// volumen de ESTRATOS", no "esta corrupto" -- y son cosas distintas.
     BadMagic,
-    /// La versión del formato es de otra época.
+    /// La version del formato es de otra epoca.
     BadVersion,
-    /// La suma no cuadra con el contenido: esto SÍ es corrupción.
+    /// La suma no cuadra con el contenido: esto SI es corrupcion.
     BadChecksum,
     /// Un campo tiene un valor imposible.
     BadField,
-    /// El dispositivo no entregó el bloque.
+    /// El dispositivo no entrego el bloque.
     Io,
-    /// No hay buffer para bajar otro nivel del árbol.
+    /// No hay buffer para bajar otro nivel del arbol.
     SinScratch,
 }
 
@@ -106,20 +106,20 @@ impl FormatError {
     }
 }
 
-// ── Identidad del disco ─────────────────────────────────────────────────────
+// -- Identidad del disco -----------------------------------------------------
 
 /// Calcula el `disco_id` que se graba en el volumen.
 ///
-/// **Desviación deliberada del documento**, que lo describe como `[u8; 20]`
+/// **Desviacion deliberada del documento**, que lo describe como `[u8; 20]`
 /// con "modelo+serie". No caben: el modelo de ATA son 40 bytes y la serie 20.
-/// Guardar un recorte sería un gate de identidad que acepta dos discos cuyos
-/// primeros 20 bytes coinciden — justo lo que el campo existe para impedir.
+/// Guardar un recorte seria un gate de identidad que acepta dos discos cuyos
+/// primeros 20 bytes coinciden -- justo lo que el campo existe para impedir.
 ///
-/// Así que se graba el BLAKE3 de modelo, serie **y capacidad**, que es
+/// Asi que se graba el BLAKE3 de modelo, serie **y capacidad**, que es
 /// exactamente lo que compara `bmo_block::DeviceId::same_device`: el modelo
-/// dice qué disco es, la serie cuál, y la capacidad caza la imagen clonada a
-/// un disco de otro tamaño. Tamaño fijo, comparación exacta, y el mismo hash
-/// que todo lo demás.
+/// dice que disco es, la serie cual, y la capacidad caza la imagen clonada a
+/// un disco de otro tamano. Tamano fijo, comparacion exacta, y el mismo hash
+/// que todo lo demas.
 pub fn disk_id(model: &[u8], serial: &[u8], blocks: u64) -> Hash {
     let mut h = bmo_hash::Hasher::new();
     h.update(model);
@@ -135,29 +135,29 @@ pub fn disk_id_of(id: &bmo_block::DeviceId) -> Hash {
     disk_id(&id.model[..id.model_len], &id.serial[..id.serial_len], id.blocks)
 }
 
-// ── Superbloque ─────────────────────────────────────────────────────────────
+// -- Superbloque -------------------------------------------------------------
 
-/// La raíz del volumen: el único sitio con posición fija.
+/// La raiz del volumen: el unico sitio con posicion fija.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Superblock {
     pub version: u32,
     pub block_size: u32,
-    /// La más alta de las dos copias es la que manda. Es lo que convierte dos
-    /// sectores en una transacción.
+    /// La mas alta de las dos copias es la que manda. Es lo que convierte dos
+    /// sectores en una transaccion.
     pub generation: u64,
     /// Bloques que ocupa el volumen.
     pub total_blocks: u64,
     /// Primer bloque libre del log. El log solo crece hacia adelante.
     pub log_head: u64,
-    /// Quién es el disco donde nació este volumen. Ver [`disk_id`].
+    /// Quien es el disco donde nacio este volumen. Ver [`disk_id`].
     pub disk_id: Hash,
-    /// El estrato más reciente. Nulo = volumen recién formateado.
+    /// El estrato mas reciente. Nulo = volumen recien formateado.
     ///
-    /// **Es un puntero, no un hash a secas** — corrección al diseño, que lo
-    /// describía como `Hash`. Con un hash solo no se puede *encontrar* nada:
-    /// haría falta un índice hash→dirección, y la decisión 1 del modelo de
-    /// objetos es justamente que **el que lee no necesita índice**. Un puntero
-    /// lleva las dos cosas: dónde está y qué debe contener.
+    /// **Es un puntero, no un hash a secas** -- correccion al diseno, que lo
+    /// describia como `Hash`. Con un hash solo no se puede *encontrar* nada:
+    /// haria falta un indice hash->direccion, y la decision 1 del modelo de
+    /// objetos es justamente que **el que lee no necesita indice**. Un puntero
+    /// lleva las dos cosas: donde esta y que debe contener.
     pub estrato: BlockPtr,
 }
 
@@ -177,10 +177,10 @@ const OFF_ESTRATO: usize = 72;
 const OFF_SUPER_SUM: usize = SUPER_LEN - 32;
 
 impl Superblock {
-    /// Un volumen recién formateado: sin estratos todavía.
+    /// Un volumen recien formateado: sin estratos todavia.
     ///
     /// `log_head` arranca en 2 porque los bloques 0 y 1 son las dos copias del
-    /// superbloque y no se pueden pisar jamás.
+    /// superbloque y no se pueden pisar jamas.
     pub fn new(disk_id: Hash, total_blocks: u64) -> Self {
         Self {
             version: VERSION,
@@ -209,11 +209,11 @@ impl Superblock {
         b
     }
 
-    /// Lee un superbloque de un sector, comprobándolo entero.
+    /// Lee un superbloque de un sector, comprobandolo entero.
     ///
     /// El orden de las comprobaciones importa: primero la firma (para poder
-    /// decir "aquí no hay un ESTRATOS" en vez de "está corrupto"), después la
-    /// versión, y la suma la última — porque una suma que no cuadra en algo
+    /// decir "aqui no hay un ESTRATOS" en vez de "esta corrupto"), despues la
+    /// version, y la suma la ultima -- porque una suma que no cuadra en algo
     /// que ni siquiera es un superbloque no informa de nada.
     pub fn decode(b: &[u8]) -> Result<Self, FormatError> {
         if b.len() < SUPER_LEN { return Err(FormatError::ShortBuffer); }
@@ -228,10 +228,10 @@ impl Superblock {
         let generation = read_u64(b, OFF_GENERATION);
         let total_blocks = read_u64(b, OFF_TOTAL_BLOCKS);
         let log_head = read_u64(b, OFF_LOG_HEAD);
-        // El log jamás puede empezar sobre las copias del superbloque, ni
-        // salirse del volumen. Un valor así solo llega por corrupción o por un
+        // El log jamas puede empezar sobre las copias del superbloque, ni
+        // salirse del volumen. Un valor asi solo llega por corrupcion o por un
         // formateador roto, y en cualquiera de los dos casos seguir leyendo
-        // sería inventarse el volumen.
+        // seria inventarse el volumen.
         if log_head < 2 || (total_blocks != 0 && log_head > total_blocks) {
             return Err(FormatError::BadField);
         }
@@ -242,24 +242,24 @@ impl Superblock {
         Ok(Self { version, block_size, generation, total_blocks, log_head, disk_id, estrato })
     }
 
-    /// ¿Nació este volumen en el disco que tenemos delante?
+    /// Nacio este volumen en el disco que tenemos delante?
     ///
-    /// El gate de identidad del §5 del diseño. Si no cuadra, el volumen se
+    /// El gate de identidad del section 5 del diseno. Si no cuadra, el volumen se
     /// monta **solo lectura** y CABINA grita: un volumen clonado a otro disco
     /// no se escribe por accidente.
     pub fn belongs_to(&self, disk: &Hash) -> bool {
         self.disk_id == *disk
     }
 
-    /// ¿Está recién formateado, sin ningún estrato?
+    /// Esta recien formateado, sin ningun estrato?
     pub fn is_empty(&self) -> bool { self.estrato.es_nulo() }
 }
 
 /// De las dos copias del superbloque, la que manda.
 ///
-/// Gana la generación más alta **de las que son válidas**. Ese matiz es la
-/// mitad del valor de tener dos: si el corte llegó escribiendo la copia nueva,
-/// esa no pasa la suma y gana la vieja — que es exactamente el estado
+/// Gana la generacion mas alta **de las que son validas**. Ese matiz es la
+/// mitad del valor de tener dos: si el corte llego escribiendo la copia nueva,
+/// esa no pasa la suma y gana la vieja -- que es exactamente el estado
 /// consistente anterior. Sin comprobar la suma, dos copias son dos formas de
 /// leer basura.
 pub fn pick_superblock(a: &[u8], b: &[u8]) -> Result<(Superblock, u64), FormatError> {
@@ -271,18 +271,18 @@ pub fn pick_superblock(a: &[u8], b: &[u8]) -> Result<(Superblock, u64), FormatEr
         }
         (Ok(sa), Err(_)) => Ok((sa, SUPER_A_BLOCK)),
         (Err(_), Ok(sb)) => Ok((sb, SUPER_B_BLOCK)),
-        // Si ninguna vale, se devuelve el fallo de la copia A: es el más
+        // Si ninguna vale, se devuelve el fallo de la copia A: es el mas
         // informativo, porque B suele fallar por lo mismo.
         (Err(e), Err(_)) => Err(e),
     }
 }
 
-/// En qué bloque toca escribir el superbloque siguiente: siempre el OTRO.
+/// En que bloque toca escribir el superbloque siguiente: siempre el OTRO.
 pub fn next_super_block(current: u64) -> u64 {
     if current == SUPER_A_BLOCK { SUPER_B_BLOCK } else { SUPER_A_BLOCK }
 }
 
-// ── Estrato ─────────────────────────────────────────────────────────────────
+// -- Estrato -----------------------------------------------------------------
 
 /// Longitud fija de un estrato en disco.
 pub const ESTRATO_LEN: usize = 224;
@@ -296,7 +296,7 @@ const OFF_E_MOTIVO: usize = 112;
 const MOTIVO_LEN: usize = 64;
 const OFF_E_SUM: usize = ESTRATO_LEN - 32;
 
-/// Quién creó un estrato.
+/// Quien creo un estrato.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Autor {
     Kernel,
@@ -312,24 +312,24 @@ impl Autor {
     }
 }
 
-/// Una raíz: el commit que también es el superbloque.
+/// Una raiz: el commit que tambien es el superbloque.
 ///
-/// Montar el sistema de ficheros es leer el último estrato válido; volver
-/// atrás en el tiempo es leer uno anterior. **Son la misma operación** — por
-/// eso no hay código de "restaurar", solo de "montar", y se le pasa otro.
+/// Montar el sistema de ficheros es leer el ultimo estrato valido; volver
+/// atras en el tiempo es leer uno anterior. **Son la misma operacion** -- por
+/// eso no hay codigo de "restaurar", solo de "montar", y se le pasa otro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Estrato {
-    /// El nodo raíz del árbol de directorios. Puntero, no hash: ver la nota de
+    /// El nodo raiz del arbol de directorios. Puntero, no hash: ver la nota de
     /// `Superblock::estrato`.
     pub raiz: BlockPtr,
     /// El estrato anterior. Nulo = este es el primero. Recorrer la cadena hacia
-    /// atrás es recorrer la historia, y por eso también tiene que ser un
+    /// atras es recorrer la historia, y por eso tambien tiene que ser un
     /// puntero: montar un estrato viejo es *encontrarlo*, no reconocerlo.
     pub padre: BlockPtr,
     pub tiempo: u64,
     pub autor: Autor,
-    /// Por qué existe este estrato. Los que llevan motivo escrito a mano son
-    /// los que el recolector **no suelta jamás** (§9).
+    /// Por que existe este estrato. Los que llevan motivo escrito a mano son
+    /// los que el recolector **no suelta jamas** (section 9).
     pub motivo: [u8; MOTIVO_LEN],
 }
 
@@ -346,7 +346,7 @@ impl Estrato {
         core::str::from_utf8(&self.motivo[..n]).unwrap_or("")
     }
 
-    /// ¿Tiene nombre puesto a mano? Los que sí, son permanentes.
+    /// Tiene nombre puesto a mano? Los que si, son permanentes.
     pub fn con_nombre(&self) -> bool { self.motivo[0] != 0 }
 
     pub fn encode(&self) -> [u8; ESTRATO_LEN] {
@@ -376,7 +376,7 @@ impl Estrato {
     }
 
     /// La identidad del estrato es el hash de su forma en disco. Direccionado
-    /// por contenido, igual que todo lo demás.
+    /// por contenido, igual que todo lo demas.
     pub fn id(&self) -> Hash { blake3(&self.encode()) }
 }
 
@@ -412,9 +412,9 @@ mod tests {
 
     #[test]
     fn un_bit_cambiado_es_corrupcion_detectada() {
-        // Esto es el principio 2 del diseño: el sistema de ficheros detecta su
-        // propia corrupción en vez de confiar en que el disco devuelve lo que
-        // guardó.
+        // Esto es el principio 2 del diseno: el sistema de ficheros detecta su
+        // propia corrupcion en vez de confiar en que el disco devuelve lo que
+        // guardo.
         let sb = Superblock::new(id_de_prueba(), 108_003_328);
         let mut bytes = sb.encode();
         bytes[OFF_LOG_HEAD] ^= 0x01;
@@ -423,8 +423,8 @@ mod tests {
 
     #[test]
     fn un_sector_ajeno_no_es_un_volumen_corrupto() {
-        // Distinguir "aquí no hay ESTRATOS" de "está roto" importa: lo primero
-        // es lo que pasa al mirar una partición NTFS, y no debe alarmar.
+        // Distinguir "aqui no hay ESTRATOS" de "esta roto" importa: lo primero
+        // es lo que pasa al mirar una particion NTFS, y no debe alarmar.
         let ajeno = [0x55u8; SUPER_LEN];
         assert_eq!(Superblock::decode(&ajeno), Err(FormatError::BadMagic));
     }
@@ -442,15 +442,15 @@ mod tests {
 
     #[test]
     fn si_la_copia_nueva_se_corta_gana_la_vieja() {
-        // El escenario que justifica tener dos copias: el corte llegó a mitad
-        // de escribir la nueva. La vieja está entera y es un estado
+        // El escenario que justifica tener dos copias: el corte llego a mitad
+        // de escribir la nueva. La vieja esta entera y es un estado
         // consistente; la nueva no pasa la suma y se descarta.
         let mut vieja = Superblock::new(id_de_prueba(), 1000);
         vieja.generation = 41;
         let mut nueva = vieja;
         nueva.generation = 42;
         let mut rota = nueva.encode();
-        rota[100] ^= 0xFF; // el disco escribió a medias
+        rota[100] ^= 0xFF; // el disco escribio a medias
         let (elegido, donde) = pick_superblock(&vieja.encode(), &rota).unwrap();
         assert_eq!(elegido.generation, 41);
         assert_eq!(donde, SUPER_A_BLOCK);
@@ -459,7 +459,7 @@ mod tests {
     #[test]
     fn el_log_no_puede_empezar_sobre_los_superbloques() {
         let mut sb = Superblock::new(id_de_prueba(), 1000);
-        sb.log_head = 1; // pisaría la copia B
+        sb.log_head = 1; // pisaria la copia B
         let mut bytes = sb.encode();
         // Re-firmar para que falle por el CAMPO y no por la suma.
         let sum = blake3(&bytes[..OFF_SUPER_SUM]);
@@ -473,7 +473,7 @@ mod tests {
         let sb = Superblock::new(nuestro, 1000);
         assert!(sb.belongs_to(&nuestro));
         // Mismo modelo y misma serie, distinta capacidad: una imagen clonada a
-        // un disco de otro tamaño. No es el nuestro.
+        // un disco de otro tamano. No es el nuestro.
         let clonado = disk_id(b"KINGSTON SA400S37480G", b"50026B76846C2058", 937703087);
         assert!(!sb.belongs_to(&clonado));
     }

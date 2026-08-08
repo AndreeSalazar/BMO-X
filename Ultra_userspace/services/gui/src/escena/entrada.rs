@@ -1,25 +1,25 @@
-//! **La entrada a Ring 3** — lo que se ve cuando el userspace toma la máquina.
+//! **La entrada a Ring 3** -- lo que se ve cuando el userspace toma la maquina.
 //!
-//! ═══ Por qué existe ═══
+//! === Por que existe ===
 //!
 //! Hasta ahora el paso de Ring 0 a Ring 3 era **invisible**: el kernel dejaba
-//! de pintar, el compositor limpiaba la pantalla y aparecía un escritorio. Si
-//! algo fallaba en medio, lo que quedaba era un shell — y nadie podía decir si
-//! el compositor no había arrancado, si había arrancado y muerto, o si estaba
+//! de pintar, el compositor limpiaba la pantalla y aparecia un escritorio. Si
+//! algo fallaba en medio, lo que quedaba era un shell -- y nadie podia decir si
+//! el compositor no habia arrancado, si habia arrancado y muerto, o si estaba
 //! vivo y no pintaba.
 //!
-//! Esta pantalla es el momento **dicho en voz alta**: quién toma la máquina,
-//! qué le acaban de ceder, y sobre qué corre. No es adorno: cada línea es un
+//! Esta pantalla es el momento **dicho en voz alta**: quien toma la maquina,
+//! que le acaban de ceder, y sobre que corre. No es adorno: cada linea es un
 //! dato que, cuando falta, es exactamente lo que hay que preguntar.
 //!
-//! ═══ Está CRONOMETRADA, no contada en vueltas ═══
+//! === Esta CRONOMETRADA, no contada en vueltas ===
 //!
-//! Ring 3 no tiene reloj en los tres syscalls… pero `RDTSC` no es privilegiada
+//! Ring 3 no tiene reloj en los tres syscalls... pero `RDTSC` no es privilegiada
 //! y el kernel publica la frecuencia medida (`INFO_TSC_HZ`). Con eso, una
-//! espera de 900 ms es de 900 ms **en esta máquina y en la siguiente**. Contar
-//! vueltas del bucle habría dado una intro de dos segundos en un Ryzen y de
-//! veinte en algo más lento — que es como se hacían las cosas cuando no había
-//! forma de saber la hora, y aquí sí la hay.
+//! espera de 900 ms es de 900 ms **en esta maquina y en la siguiente**. Contar
+//! vueltas del bucle habria dado una intro de dos segundos en un Ryzen y de
+//! veinte en algo mas lento -- que es como se hacian las cosas cuando no habia
+//! forma de saber la hora, y aqui si la hay.
 
 use bmo_userland as bmo;
 
@@ -31,15 +31,15 @@ const ENT_FONDO: u32 = 0x000A_0E17;
 const ENT_TENUE: u32 = 0x0059_6B8A;
 
 
-/// Espera exacta, cediendo el CPU mientras tanto — y **cortable con una tecla**.
+/// Espera exacta, cediendo el CPU mientras tanto -- y **cortable con una tecla**.
 ///
-/// ★ Cede en el bucle a propósito: un `spin` de 900 ms en un sistema preemptivo
-/// es 900 ms robados al resto de las tareas. Aquí la espera es del que mira, no
+/// * Cede en el bucle a proposito: un `spin` de 900 ms en un sistema preemptivo
+/// es 900 ms robados al resto de las tareas. Aqui la espera es del que mira, no
 /// del que calcula.
 ///
-/// ★★ Y SE PUEDE SALTAR, que es el cambio del 2026-08-07.
+/// ** Y SE PUEDE SALTAR, que es el cambio del 2026-08-07.
 ///
-/// El arranque estaba cronometrado y el propio cronómetro delató la siesta:
+/// El arranque estaba cronometrado y el propio cronometro delato la siesta:
 ///
 /// ```text
 /// [   52ms] == BMO-X operativo ==
@@ -48,12 +48,12 @@ const ENT_TENUE: u32 = 0x0059_6B8A;
 ///
 /// **1.100 de los 1.205 ms hasta el escritorio eran esta espera.** El sistema
 /// estaba listo en 52 ms y se quedaba mirando al techo el 91% del arranque. Y
-/// el dueño lo leyó como un fallo, que es la señal de que algo va mal aunque
+/// el dueno lo leyo como un fallo, que es la senal de que algo va mal aunque
 /// sea intencionado: si tu instrumento de medida hace que la gente sospeche de
-/// la máquina, la espera es demasiado larga.
+/// la maquina, la espera es demasiado larga.
 ///
-/// **No se borra la pantalla y no se acorta el número.** La intro existe para
-/// contestar "¿qué le cedieron al userspace?" cuando algo falla, y eso vale
+/// **No se borra la pantalla y no se acorta el numero.** La intro existe para
+/// contestar "que le cedieron al userspace?" cuando algo falla, y eso vale
 /// justo los segundos que haga falta LEERLO. Lo que se arregla es que fuera
 /// obligatoria: ahora cualquier tecla la cierra. Quien necesita leerla, la lee;
 /// quien no, no paga.
@@ -61,14 +61,14 @@ fn esperar_ms(ms: u64, entrada: Option<&bmo::Entrada>) {
     let hz = bmo::info(bmo::INFO_TSC_HZ);
     if hz == 0 {
         // Sin frecuencia medida no se inventa una: se sigue. Una intro que no
-        // se ve es infinitamente mejor que una espera de duración desconocida.
+        // se ve es infinitamente mejor que una espera de duracion desconocida.
         return;
     }
     let objetivo = bmo::ciclos() + hz / 1000 * ms;
     while bmo::ciclos() < objetivo {
-        // La tecla se consume al leerla, así que la que salta la intro **no**
-        // acaba escrita en la caja de Ejecutar. Un atajo que además teclea algo
-        // sería un atajo que hay que deshacer.
+        // La tecla se consume al leerla, asi que la que salta la intro **no**
+        // acaba escrita en la caja de Ejecutar. Un atajo que ademas teclea algo
+        // seria un atajo que hay que deshacer.
         if let Some(e) = entrada {
             if e.tecla().is_some() {
                 return;
@@ -78,22 +78,22 @@ fn esperar_ms(ms: u64, entrada: Option<&bmo::Entrada>) {
     }
 }
 
-/// ★ Pinta EL GATO desde sus dos máscaras de 1 bit.
+/// * Pinta EL GATO desde sus dos mascaras de 1 bit.
 ///
-/// El fondo no se dibuja: la máscara no lo lleva, porque el fondo del splash ya
-/// es negro. Sólo se encienden los píxeles del trazo y los de los ojos — 1.622
-/// de los 27.360 del rectángulo, o sea que dibujarlo cuesta menos que un `rect`
-/// de ese tamaño.
+/// El fondo no se dibuja: la mascara no lo lleva, porque el fondo del splash ya
+/// es negro. Solo se encienden los pixeles del trazo y los de los ojos -- 1.622
+/// de los 27.360 del rectangulo, o sea que dibujarlo cuesta menos que un `rect`
+/// de ese tamano.
 ///
-/// `escala` multiplica en enteros y a propósito: interpolar un dibujo de líneas
-/// de un píxel lo convierte en una mancha gris. Aquí un píxel de la máscara es
+/// `escala` multiplica en enteros y a proposito: interpolar un dibujo de lineas
+/// de un pixel lo convierte en una mancha gris. Aqui un pixel de la mascara es
 /// un cuadrado exacto, que es como se ve un logo hecho de trazos.
 fn pintar_gato(p: &bmo::Pantalla, x0: u32, y0: u32, escala: u32) {
     let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
     for fy in 0..gato::ALTO {
         for fx in 0..gato::ANCHO {
             let i = (fy * gato::ANCHO + fx) as usize;
-            // Los ojos ganan al trazo: son el único sitio con color y es lo
+            // Los ojos ganan al trazo: son el unico sitio con color y es lo
             // primero que mira quien mira un gato.
             let color = if bit(&gato::OJOS, i) {
                 ACENTO
@@ -123,11 +123,11 @@ fn fila(p: &bmo::Pantalla, x: u32, y: u32, etiqueta: &str, valor: &str, color: u
 ///
 /// La entrada y la consola son las dos capabilities que el compositor puede no
 /// recibir, y sin las cuales el escritorio arranca igual pero **quieto y mudo**.
-/// Que se digan aquí es lo que distingue "no funciona" de "no me la dieron".
+/// Que se digan aqui es lo que distingue "no funciona" de "no me la dieron".
 ///
-/// ★ Recibe la `Entrada` y no un `bool`: antes era `hay_entrada: bool`, que es
-/// el mismo dato con menos información. Con la capability delante se puede
-/// además LEER —y por eso la espera del final se puede saltar con una tecla—,
+/// * Recibe la `Entrada` y no un `bool`: antes era `hay_entrada: bool`, que es
+/// el mismo dato con menos informacion. Con la capability delante se puede
+/// ademas LEER --y por eso la espera del final se puede saltar con una tecla--,
 /// y el `bool` sale de ella sin poder desincronizarse.
 pub(crate) fn pintar(
     p: &bmo::Pantalla,
@@ -138,10 +138,10 @@ pub(crate) fn pintar(
     p.limpiar(ENT_FONDO);
 
     // Una banda de acento a la izquierda, de arriba abajo. Sujeta la
-    // composición y cuesta un rectángulo.
+    // composicion y cuesta un rectangulo.
     p.rect(0, 0, 6, p.alto, ACENTO);
 
-    // ── ★ LA MAQUETA: el gato a la izquierda, el informe a la derecha ──
+    // -- * LA MAQUETA: el gato a la izquierda, el informe a la derecha --
     //
     // Antes era una columna sola pegada al margen. El logo pide dos: un dibujo
     // alto al lado de un bloque de texto se lee de un vistazo, y una columna
@@ -150,7 +150,7 @@ pub(crate) fn pintar(
     // La escala del gato sale de la ALTURA de la pantalla y no de un numero
     // fijo: en 1080 sale a x2 y en 720 a x1, y en las dos ocupa la misma
     // fraccion. Un `3` puesto a mano se sale por abajo en el primer monitor
-    // pequeño que se enchufe.
+    // pequeno que se enchufe.
     let escala = if p.alto >= 900 { 2 } else { 1 };
     let gato_w = gato::ANCHO * escala;
 
@@ -161,19 +161,19 @@ pub(crate) fn pintar(
     // lo que tiene que quedar alineado es lo que se mira junto.
     pintar_gato(p, 120, y + 8, escala);
 
-    // ── El nombre, grande ──
+    // -- El nombre, grande --
     let ancho = bmo::Pantalla::ancho_escala("BMO-X", 6);
     p.texto_escala(x, y, "BMO-X", TEXTO, 6);
-    // Subrayado exacto bajo el título: el ancho se pregunta, no se estima.
+    // Subrayado exacto bajo el titulo: el ancho se pregunta, no se estima.
     p.rect(x, y + 16 * 6 + 8, ancho, 3, ACENTO);
     y += 16 * 6 + 22;
 
-    // ★ METAKERNEL, y no es una etiqueta bonita: es lo que hace.
+    // * METAKERNEL, y no es una etiqueta bonita: es lo que hace.
     //
     // Un kernel normal falla y te deja un shell. Este guarda las ultimas cuatro
-    // lineas de cada proceso (`uconsole`), y cuando el dueño de la pantalla
-    // MUERE las vuelca el a mano —con la CR3 del kernel puesta, que si no es un
-    // #PF recursivo— para poder decir DONDE se rompio. No presume de no fallar:
+    // lineas de cada proceso (`uconsole`), y cuando el dueno de la pantalla
+    // MUERE las vuelca el a mano --con la CR3 del kernel puesta, que si no es un
+    // #PF recursivo-- para poder decir DONDE se rompio. No presume de no fallar:
     // presume de contarlo. De ahi el gato: se cae, se rompe algo, y sigue.
     p.texto(x, y, "BMO METAKERNEL", ENT_TENUE);
     y += bmo::GLIFO_ALTO + 16;
@@ -181,11 +181,11 @@ pub(crate) fn pintar(
     p.texto(x, y, "RING 3   ·   el userspace toma la maquina", ACENTO);
     y += bmo::GLIFO_ALTO + 34;
 
-    // ── Lo que se acaba de ceder ──
+    // -- Lo que se acaba de ceder --
     p.texto(x, y, "SE ME HA CEDIDO", ENT_TENUE);
     y += bmo::GLIFO_ALTO + 10;
 
-    // La pantalla: siempre está, porque sin ella no habría nada que leer.
+    // La pantalla: siempre esta, porque sin ella no habria nada que leer.
     let mut b = [0u8; 10];
     let mut n = decimal(p.ancho as u64, &mut b);
     p.texto(x, y, "la pantalla", ENT_TENUE);
@@ -210,7 +210,7 @@ pub(crate) fn pintar(
     }
     y += bmo::GLIFO_ALTO + 28;
 
-    // ── Sobre qué corre ──
+    // -- Sobre que corre --
     p.texto(x, y, "SOBRE", ENT_TENUE);
     y += bmo::GLIFO_ALTO + 10;
 
@@ -244,7 +244,7 @@ pub(crate) fn pintar(
         y += bmo::GLIFO_ALTO + 6;
     }
 
-    // La memoria, con el número que a esta máquina le gusta enseñar: cuánto
+    // La memoria, con el numero que a esta maquina le gusta ensenar: cuanto
     // ocupa el sistema entero.
     let total = bmo::info(bmo::INFO_RAM_TOTAL);
     let libre = bmo::info(bmo::INFO_RAM_LIBRE);
@@ -267,16 +267,16 @@ pub(crate) fn pintar(
     }
     y += bmo::GLIFO_ALTO + 34;
 
-    // ── La frase, que es la tesis del proyecto ──
+    // -- La frase, que es la tesis del proyecto --
     p.rect(x, y, 560, 1, 0x0022_3040);
     y += 14;
     p.texto(x, y, "tres syscalls congelados.  todo lo demas son capabilities.", ENT_TENUE);
     y += bmo::GLIFO_ALTO + 4;
     p.texto(x, y, "esto no es una API prestada: es la maquina obedeciendo.", ENT_TENUE);
 
-    // ★ Empujar ANTES de esperar. Sin esto la intro se pintaría en el búfer de
-    // write-combining y se quedaría ahí los 1100 ms enteros — o sea que la
-    // pantalla que existe para ser leída sería justo la que no se ve.
+    // * Empujar ANTES de esperar. Sin esto la intro se pintaria en el bufer de
+    // write-combining y se quedaria ahi los 1100 ms enteros -- o sea que la
+    // pantalla que existe para ser leida seria justo la que no se ve.
     p.vaciar();
 
     // Se deja leer, y se puede saltar. Ver `esperar_ms`: es tiempo REAL, no

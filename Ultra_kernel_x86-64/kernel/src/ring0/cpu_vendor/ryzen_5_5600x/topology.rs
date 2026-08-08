@@ -35,26 +35,26 @@ pub struct Topology {
 }
 
 impl Topology {
-    /// ⚠️ **ESTE ARRAY NO ESTÁ ENUMERADO. Son `cpu_count` copias del BSP.**
+    /// [!] **ESTE ARRAY NO ESTA ENUMERADO. Son `cpu_count` copias del BSP.**
     ///
-    /// Se rellena con `[bsp; 64]` y nunca se toca después, así que `cpus()`
-    /// devuelve doce veces el mismo núcleo con el mismo `apic_id`. Tiene forma
-    /// de censo de CPUs y no lo es — la clase de campo que engaña a quien lo
+    /// Se rellena con `[bsp; 64]` y nunca se toca despues, asi que `cpus()`
+    /// devuelve doce veces el mismo nucleo con el mismo `apic_id`. Tiene forma
+    /// de censo de CPUs y no lo es -- la clase de campo que engana a quien lo
     /// lee, porque *parece* un dato y es un relleno.
     ///
-    /// **Dónde está el censo de verdad**: en la tabla **MADT** de ACPI, en sus
+    /// **Donde esta el censo de verdad**: en la tabla **MADT** de ACPI, en sus
     /// entradas de tipo 0 (*Processor Local APIC*), que traen el APIC ID de cada
-    /// hilo. `s2_mem` ya localiza la MADT —`find_table(xsdt, b"APIC")`— pero
-    /// **sólo le lee el campo de la dirección base del LAPIC** (offset 36) y no
+    /// hilo. `s2_mem` ya localiza la MADT --`find_table(xsdt, b"APIC")`-- pero
+    /// **solo le lee el campo de la direccion base del LAPIC** (offset 36) y no
     /// recorre sus entradas. Enumerarlas es el trabajo pendiente.
     ///
     /// Mientras tanto, `plat::smp` despierta suponiendo APIC IDs `0..hilos-1`,
-    /// que es lo correcto en un Zen 3 de un solo CCD y **una suposición** en
+    /// que es lo correcto en un Zen 3 de un solo CCD y **una suposicion** en
     /// cualquier otra cosa. Dicho en `smp/mod.rs`.
     #[deprecated(note = "no enumerado: son copias del BSP. El censo real esta en la MADT")]
     pub fn cpus(&self) -> &[CpuId] { &self.cpus[..self.cpu_count as usize] }
 
-    /// Buscar aquí sólo puede encontrar al BSP. Ver [`Topology::cpus`].
+    /// Buscar aqui solo puede encontrar al BSP. Ver [`Topology::cpus`].
     #[deprecated(note = "el array no esta enumerado; esto solo puede encontrar al BSP")]
     pub fn find_by_apic(&self, apic: u32) -> Option<&CpuId> {
         #[allow(deprecated)]

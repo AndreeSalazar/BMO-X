@@ -1,7 +1,7 @@
-//! BEF Linker Resolver — resuelve imports contra el Registry.
+//! BEF Linker Resolver -- resuelve imports contra el Registry.
 //!
 //! Estrategias:
-//! - **Eager binding**: patchea `binding_offset` con la dirección resuelta.
+//! - **Eager binding**: patchea `binding_offset` con la direccion resuelta.
 //! - **Lazy binding**: escribe un trampoline que se resuelve al primer llamado
 //!   (no implementado en Fase 1; requiere soporte del loader para secciones RX).
 
@@ -10,7 +10,7 @@
 use super::registry::Registry;
 use crate::bmo_abi::bef::imports::{ImportFlags, ImportTable};
 
-/// Resultados de la resolución de imports.
+/// Resultados de la resolucion de imports.
 #[derive(Debug, Clone, Copy)]
 pub struct ResolveResult {
     pub total: u32,
@@ -21,9 +21,9 @@ pub struct ResolveResult {
 
 /// Resuelve todos los imports de una tabla contra el Registry global.
 ///
-/// `binding_data` es un slice mutable de la sección donde se escriben las
+/// `binding_data` es un slice mutable de la seccion donde se escriben las
 /// direcciones resueltas (`.code` o `.data`). `binding_base` es la VA
-/// base de esa sección (para convertir `binding_offset` a índice local).
+/// base de esa seccion (para convertir `binding_offset` a indice local).
 pub fn resolve_imports(
     import_table: &ImportTable,
     binding_data: &mut [u8],

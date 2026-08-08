@@ -1,4 +1,4 @@
-//! `runtime` — el agregador de runtime del BMO ABI.
+//! `runtime` -- el agregador de runtime del BMO ABI.
 //!
 //! Gestiona el registro de tipos, las tablas virtuales (vtables) y los
 //! bridges entre lenguajes. Es el "orquestador" que permite que diferentes
@@ -8,9 +8,9 @@
 //!
 //! ```text
 //! BmoRuntime
-//!   ├── types:      TypeRegistry  (256 slots para tipos BEF)
-//!   ├── vtables:    VTableStore   (64 slots para vtables de interfaz)
-//!   └── bridges:    LangBridge    (8 slots para bridges de lenguaje)
+//!   +-- types:      TypeRegistry  (256 slots para tipos BEF)
+//!   +-- vtables:    VTableStore   (64 slots para vtables de interfaz)
+//!   +-- bridges:    LangBridge    (8 slots para bridges de lenguaje)
 //! ```
 
 pub mod lang_bridge;
@@ -25,7 +25,7 @@ use crate::bmo_abi::error_code;
 use crate::bmo_abi::fundamentals::primitives::bx_u32;
 use crate::bmo_abi::fundamentals::status::BmoStatus;
 
-/// El agregador único de runtime del BMO ABI.
+/// El agregador unico de runtime del BMO ABI.
 ///
 /// Se construye una vez en el boot y se pasa a todo `bmo_core::start`.
 /// Cada campo tiene capacidad fija (sin heap).

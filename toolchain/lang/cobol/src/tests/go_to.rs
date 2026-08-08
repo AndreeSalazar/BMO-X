@@ -1,4 +1,4 @@
-//! GO TO — 5 pruebas.
+//! GO TO -- 5 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,14 +7,14 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-// ── GO TO: el descarte dentro de un rango ───────────────────────────
+// -- GO TO: el descarte dentro de un rango ---------------------------
 
-/// ★ EL CASO POR EL QUE EXISTE: descartar un registro dentro de un
-/// `PERFORM … THRU`, saltando al párrafo de salida.
+/// * EL CASO POR EL QUE EXISTE: descartar un registro dentro de un
+/// `PERFORM ... THRU`, saltando al parrafo de salida.
 ///
-/// Es lo que el ejemplo del nivel 8 escribía con un interruptor porque esto
-/// no existía — y lo decía ahí mismo, porque fingirlo con un `PERFORM` del
-/// párrafo de salida no vale: aquél lo ejecuta y **vuelve**, así que el
+/// Es lo que el ejemplo del nivel 8 escribia con un interruptor porque esto
+/// no existia -- y lo decia ahi mismo, porque fingirlo con un `PERFORM` del
+/// parrafo de salida no vale: aquel lo ejecuta y **vuelve**, asi que el
 /// trabajo de debajo se hace igual.
 #[test]
 fn go_to_descarta_dentro_de_un_rango() {
@@ -38,8 +38,8 @@ fn go_to_descarta_dentro_de_un_rango() {
     assert_eq!(run_cobol(&src), "1\n", "el GO TO no salto el trabajo de en medio");
 }
 
-/// Y **vuelve al PERFORM que lo llamó**: después del rango, el cuerpo
-/// principal sigue. Un salto que se comiera el retorno dejaría el programa
+/// Y **vuelve al PERFORM que lo llamo**: despues del rango, el cuerpo
+/// principal sigue. Un salto que se comiera el retorno dejaria el programa
 /// en cualquier parte.
 #[test]
 fn despues_de_un_go_to_el_perform_vuelve() {
@@ -59,7 +59,7 @@ fn despues_de_un_go_to_el_perform_vuelve() {
     assert_eq!(run_cobol(&src), "a\nvolvi\n", "o no salto, o no volvio");
 }
 
-/// Un `GO TO` hacia ATRÁS es un bucle, y es COBOL legítimo del de siempre.
+/// Un `GO TO` hacia ATRAS es un bucle, y es COBOL legitimo del de siempre.
 #[test]
 fn un_go_to_hacia_atras_es_un_bucle() {
     let src = programa_con_parrafos(
@@ -78,9 +78,9 @@ fn un_go_to_hacia_atras_es_un_bucle() {
     assert_eq!(run_cobol(&src), "4\n");
 }
 
-/// Desde el cuerpo principal NO: aquí un párrafo es una subrutina a la que
+/// Desde el cuerpo principal NO: aqui un parrafo es una subrutina a la que
 /// se entra por `call`, y saltar dentro sin haber entrado por su `PERFORM`
-/// dejaría el `ret` del final sin dirección a la que volver.
+/// dejaria el `ret` del final sin direccion a la que volver.
 #[test]
 fn un_go_to_desde_el_cuerpo_principal_se_rechaza() {
     let src = programa_con_parrafos(
@@ -91,7 +91,7 @@ fn un_go_to_desde_el_cuerpo_principal_se_rechaza() {
     assert!(err.contains("cuerpo principal"), "{err}");
 }
 
-/// Y a un párrafo que no existe, tampoco.
+/// Y a un parrafo que no existe, tampoco.
 #[test]
 fn un_go_to_a_la_nada_se_rechaza() {
     let src = programa_con_parrafos(

@@ -1,7 +1,7 @@
-//! Tabla de símbolos BEF — para debug + dynamic linking + backtraces.
+//! Tabla de simbolos BEF -- para debug + dynamic linking + backtraces.
 //!
 //! Reemplaza `.symtab`/`.dynsym` (ELF) y `IMAGE_SYMBOL` (PE/COFF). Una sola
-//! tabla con visibilidad y binding explícitos.
+//! tabla con visibilidad y binding explicitos.
 
 #![allow(dead_code)]
 
@@ -12,11 +12,11 @@ use crate::bmo_abi::primitives::{bx_u32, bx_u64, bx_u8};
 pub enum SymbolKind {
     /// Marcador (no apunta a nada).
     NoType = 0x00,
-    /// Función.
+    /// Funcion.
     Function = 0x01,
     /// Dato (variable global, constante).
     Object = 0x02,
-    /// Sección entera (símbolo sintetizado).
+    /// Seccion entera (simbolo sintetizado).
     Section = 0x03,
     /// Archivo de origen (debug).
     File = 0x04,
@@ -27,38 +27,38 @@ pub enum SymbolKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SymbolBinding {
-    /// Local — solo visible dentro del módulo.
+    /// Local -- solo visible dentro del modulo.
     Local = 0x00,
-    /// Global — visible para linking dinámico.
+    /// Global -- visible para linking dinamico.
     Global = 0x01,
-    /// Weak — global pero puede ser sobrescrito.
+    /// Weak -- global pero puede ser sobrescrito.
     Weak = 0x02,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SymbolVisibility {
-    /// Default — visible según binding.
+    /// Default -- visible segun binding.
     Default = 0x00,
-    /// Hidden — global pero no exportable a otros módulos.
+    /// Hidden -- global pero no exportable a otros modulos.
     Hidden = 0x01,
-    /// Internal — solo el linker lo ve.
+    /// Internal -- solo el linker lo ve.
     Internal = 0x02,
-    /// Protected — visible global pero no preemptable.
+    /// Protected -- visible global pero no preemptable.
     Protected = 0x03,
 }
 
-/// Una entrada del symbol table — 32 bytes.
+/// Una entrada del symbol table -- 32 bytes.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy)]
 pub struct Symbol {
-    /// Offset al string del nombre (en sección Symbols).
+    /// Offset al string del nombre (en seccion Symbols).
     pub name_off: bx_u32,
     /// Hash BLAKE3-32 del nombre.
     pub name_hash: bx_u32,
-    /// Dirección virtual relativa al base.
+    /// Direccion virtual relativa al base.
     pub virt_addr: bx_u64,
-    /// Tamaño en bytes.
+    /// Tamano en bytes.
     pub size: bx_u64,
     /// `SymbolKind`.
     pub kind: bx_u8,
@@ -66,7 +66,7 @@ pub struct Symbol {
     pub binding: bx_u8,
     /// `SymbolVisibility`.
     pub visibility: bx_u8,
-    /// Índice de sección donde vive (0xFF = ABS, 0xFE = COMMON).
+    /// Indice de seccion donde vive (0xFF = ABS, 0xFE = COMMON).
     pub section_idx: bx_u8,
     /// Reservado.
     pub _reserved: bx_u32,
@@ -108,7 +108,7 @@ impl<'a> SymbolTable<'a> {
     pub fn parse(section_bytes: &'a [u8], entry_count: u32) -> Result<Self, &'static str> {
         let needed = entry_count as usize * Symbol::SIZE;
         if section_bytes.len() < needed {
-            return Err("symbol table demasiado pequeña");
+            return Err("symbol table demasiado pequena");
         }
         let raw_ptr = section_bytes.as_ptr();
         if (raw_ptr as usize) % core::mem::align_of::<Symbol>() != 0 {

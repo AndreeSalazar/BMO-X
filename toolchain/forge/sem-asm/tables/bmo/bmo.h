@@ -1,6 +1,6 @@
-/* bmo.h — la superficie congelada de BMO, en C.
+/* bmo.h -- la superficie congelada de BMO, en C.
  *
- * ══ Por qué esto es UNA cabecera y no un runtime ══
+ * == Por que esto es UNA cabecera y no un runtime ==
  *
  * En Linux o en Windows, `#include <unistd.h>` promete un `libc.so` que el
  * cargador resolvera mas tarde. Aqui no hay cargador que resuelva nada: no hay
@@ -16,7 +16,7 @@
  * Se lee como C, se comporta como ASM, y ninguna de las dos mitades esconde
  * nada de la otra.
  *
- * ══ La superficie ══
+ * == La superficie ==
  *
  * Tres llamadas, y no va a haber una cuarta:
  *
@@ -24,11 +24,11 @@
  *     CHANNEL_KICK(cap, secuencia)         avisar al consumidor
  *     WAIT(esperable, visto, timeout_ns)   bloquearse
  *
- * Todo lo demas —abrir un archivo, leer el raton, reclamar la pantalla— es una
+ * Todo lo demas --abrir un archivo, leer el raton, reclamar la pantalla-- es una
  * OPERACION sobre una capability. La API crece por dentro, en la pareja
  * (tipo de objeto, operacion), y el ABI no se toca.
  *
- * ══ Lo que un programa NO recibe ══
+ * == Lo que un programa NO recibe ==
  *
  * No hay `argv`, no hay `environ`, no hay descriptores heredados. Un proceso
  * Ring 3 recibe *capabilities*, y lo que no le hayan dado no existe para el.
@@ -38,7 +38,7 @@
 #ifndef BMO_BMO_H
 #define BMO_BMO_H
 
-/* ── Los tres numeros de llamada ─────────────────────────────────────── */
+/* -- Los tres numeros de llamada --------------------------------------- */
 #define BMO_INVOKE 0
 #define BMO_CHANNEL_KICK 1
 #define BMO_WAIT 2
@@ -48,12 +48,12 @@
  * No es un handle concedido: es la forma de pedir lo que uno ya tiene por ser
  * quien es. No otorga autoridad sobre nadie mas y nunca debe transferirse.
  *
- * ★ Este literal es la razon por la que el lexer de BMO C tuvo que aprender a
+ * * Este literal es la razon por la que el lexer de BMO C tuvo que aprender a
  *   leer hexadecimales de 64 bits: no cabe en un `long long` con signo, y
- *   antes se convertia en CERO en silencio — o sea, en la capability 0. */
+ *   antes se convertia en CERO en silencio -- o sea, en la capability 0. */
 #define BMO_TAREA_ACTUAL 0xFFFFFFFFFFFFFFFE
 
-/* ── Operaciones sobre BMO_TAREA_ACTUAL ──────────────────────────────── */
+/* -- Operaciones sobre BMO_TAREA_ACTUAL -------------------------------- */
 #define BMO_OP_PID 0x01
 #define BMO_OP_TID 0x02
 #define BMO_OP_CEDER 0x03
@@ -77,7 +77,7 @@
 #define BMO_INFO_CPU_NUCLEOS 0x07
 #define BMO_INFO_TICKS 0x0B
 
-/* ── La puerta ───────────────────────────────────────────────────────── */
+/* -- La puerta --------------------------------------------------------- */
 
 /* El VALOR que devuelve una operacion.
  *
@@ -94,7 +94,7 @@ unsigned long long bmo_valor(unsigned long long cap, unsigned long long op,
 
 /* El CODIGO de la misma operacion. `0` es lo unico que significa exito.
  *
- * Los 32 bits altos llevan las banderas del kernel — por ejemplo la que
+ * Los 32 bits altos llevan las banderas del kernel -- por ejemplo la que
  * distingue "no tienes permiso" de "ese handle no existe". */
 unsigned long long bmo_codigo(unsigned long long cap, unsigned long long op,
                               unsigned long long a0, unsigned long long a1,
@@ -102,7 +102,7 @@ unsigned long long bmo_codigo(unsigned long long cap, unsigned long long op,
     return __syscall(BMO_INVOKE, cap, op, a0, a1, a2);
 }
 
-/* ── Lo que uno tiene por ser quien es ───────────────────────────────── */
+/* -- Lo que uno tiene por ser quien es --------------------------------- */
 
 unsigned long long bmo_pid() {
     return bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_PID, 0, 0, 0);
@@ -111,7 +111,7 @@ unsigned long long bmo_pid() {
 /* Ceder el turno.
  *
  * Un bucle de espera en Ring 3 que no cede se come el quantum entero sin
- * avanzar nada — y como aqui casi todas las lecturas son NO BLOQUEANTES
+ * avanzar nada -- y como aqui casi todas las lecturas son NO BLOQUEANTES
  * (`bmo_entrada_tecla`, `bmo_entrada_rueda`), el bucle de espera es la forma
  * normal de esperar. Sin este `ceder` el sistema entero va a tirones. */
 void bmo_ceder() {

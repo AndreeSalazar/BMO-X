@@ -1,8 +1,8 @@
-//! Numeros a texto. Lo mas pequeño que hace falta y nada mas: una ventana que
+//! Numeros a texto. Lo mas pequeno que hace falta y nada mas: una ventana que
 //! no sabe escribir un numero no sirve para mirar un disco.
 
 /// Un `u64` a decimal en `dst`. Sin `alloc` no hay `format!`, y un terminal
-/// que no sabe escribir un número no sirve para mirar un disco.
+/// que no sabe escribir un numero no sirve para mirar un disco.
 pub(crate) fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
     if v == 0 {
         dst[0] = b'0';
@@ -34,13 +34,13 @@ pub(crate) fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
 ///   avanzar sin riesgo y que opciones te quedan. Es lo que hace bash, y es
 ///   lo unico honesto: adivinar por ti cual de cinco querias es mentir.
 ///
-/// Si el unico candidato es una carpeta, se anade la barra — porque lo
+/// Si el unico candidato es una carpeta, se anade la barra -- porque lo
 /// siguiente que vas a escribir es lo de dentro.
-/// ¿Es la entrada `.` o `..`?
+/// Es la entrada `.` o `..`?
 ///
-/// FAT las guarda como entradas de verdad y `entry_at` las devuelve. Aquí no
-/// sirven para nada —este terminal no tiene "carpeta actual" a la que volver—
-/// y estorban en los dos sitios donde aparecen: envenenan el prefijo común del
+/// FAT las guarda como entradas de verdad y `entry_at` las devuelve. Aqui no
+/// sirven para nada --este terminal no tiene "carpeta actual" a la que volver--
+/// y estorban en los dos sitios donde aparecen: envenenan el prefijo comun del
 /// TAB y ensucian el `ls`.
 pub(crate) fn es_punto(nombre: &[u8]) -> bool {
     nombre == b"." || nombre == b".."

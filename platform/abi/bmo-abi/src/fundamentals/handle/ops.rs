@@ -1,6 +1,6 @@
-//! `ops` — operaciones sobre `BmoHandle`: duplicate, close, wait.
+//! `ops` -- operaciones sobre `BmoHandle`: duplicate, close, wait.
 //!
-//! Este módulo define el trait `BmoHandleOps` que todo backend de handles
+//! Este modulo define el trait `BmoHandleOps` que todo backend de handles
 //! (kernel, driver, biblioteca) debe implementar.
 
 use crate::bmo_abi::fundamentals::handle::BmoHandle;
@@ -46,7 +46,7 @@ pub trait BmoHandleOps {
     fn query(&self, handle: BmoHandle) -> BmoHandleInfo;
 }
 
-/// Información consultable de un handle.
+/// Informacion consultable de un handle.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BmoHandleInfo {

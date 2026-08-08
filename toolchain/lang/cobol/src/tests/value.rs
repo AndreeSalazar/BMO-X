@@ -1,4 +1,4 @@
-//! VALUE — 7 pruebas.
+//! VALUE -- 7 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,13 +7,13 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-// ── VALUE: el valor con el que arranca un dato ──────────────────────
+// -- VALUE: el valor con el que arranca un dato ----------------------
 //
-// Se parseaba desde siempre y no se emitía nunca. Un campo declarado con
-// VALUE arrancaba con lo que hubiera en la pila, y ningún ejemplo lo
+// Se parseaba desde siempre y no se emitia nunca. Un campo declarado con
+// VALUE arrancaba con lo que hubiera en la pila, y ningun ejemplo lo
 // destapaba porque todos inicializan a mano con MOVE.
 
-/// Sin un solo `MOVE`: el dato ya vale lo que dice su declaración.
+/// Sin un solo `MOVE`: el dato ya vale lo que dice su declaracion.
 #[test]
 fn value_inicializa_el_dato() {
     let src = program(
@@ -44,7 +44,7 @@ fn value_acepta_las_figurativas_del_cero() {
     }
 }
 
-/// El estándar dice que un `VALUE` sobre una tabla llena **todas** las
+/// El estandar dice que un `VALUE` sobre una tabla llena **todas** las
 /// casillas, no la primera.
 #[test]
 fn value_sobre_una_tabla_llena_todas_las_casillas() {
@@ -55,8 +55,8 @@ fn value_sobre_una_tabla_llena_todas_las_casillas() {
     assert_eq!(run_cobol(&src), "9.99\n9.99\n9.99\n");
 }
 
-/// El `VALUE` se pone ANTES de la primera sentencia, así que un `MOVE`
-/// posterior manda. Al revés —inicializar al final— borraría lo que el
+/// El `VALUE` se pone ANTES de la primera sentencia, asi que un `MOVE`
+/// posterior manda. Al reves --inicializar al final-- borraria lo que el
 /// programa acaba de calcular.
 #[test]
 fn un_move_posterior_gana_al_value() {
@@ -68,9 +68,9 @@ fn un_move_posterior_gana_al_value() {
 #[test]
 fn los_value_que_no_se_pueden_guardar_se_rechazan() {
     let casos: &[(&str, &str)] = &[
-        // `VALUE "HOLA"` sobre un `PIC X` ya NO está aquí: desde que existe
+        // `VALUE "HOLA"` sobre un `PIC X` ya NO esta aqui: desde que existe
         // el texto (0.7), se guarda como caracteres. Sobre un campo
-        // NUMÉRICO sigue sin tener sentido, y eso es lo que queda.
+        // NUMERICO sigue sin tener sentido, y eso es lo que queda.
         ("01 A PIC 9(3) VALUE \"HOLA\".", "eso no es un numero"),
         ("01 A PIC 9(3) VALUE SPACES.", "eso no es un numero"),
         ("01 A VALUE 5.", "VALUE sin PIC"),
@@ -84,7 +84,7 @@ fn los_value_que_no_se_pueden_guardar_se_rechazan() {
     }
 }
 
-/// Sin `VALUE` no compara nada. Antes de existir el 88, esto habría sido un
+/// Sin `VALUE` no compara nada. Antes de existir el 88, esto habria sido un
 /// dato sin PIC con un nombre suelto.
 #[test]
 fn un_88_sin_value_se_rechaza() {

@@ -1,9 +1,9 @@
-// Generated from bmo_abi::asm::defs — matches old build.rs naming
+// Generated from bmo_abi::asm::defs -- matches old build.rs naming
 // Generated 2026-07-07
 
-// ═══════════════════════════════════════════════
-//  WM — Window Manager (0x100..0x10F)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  WM -- Window Manager (0x100..0x10F)
+// ===============================================
 pub const NR_WM_CREATE_WINDOW: u32 = 0x100;
 pub const NR_WM_DESTROY_WINDOW: u32 = 0x101;
 pub const NR_WM_SHOW_WINDOW: u32 = 0x102;
@@ -21,9 +21,9 @@ pub const NR_WM_REGISTER_CLASS: u32 = 0x10D;
 pub const NR_WM_PUMP_EVENTS: u32 = 0x10E;
 pub const NR_WM_TRANSLATE_MESSAGE: u32 = 0x10F;
 
-// ═══════════════════════════════════════════════
-//  DRAW — Draw (0x110..0x119)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  DRAW -- Draw (0x110..0x119)
+// ===============================================
 pub const NR_DRAW_CLEAR: u32 = 0x110;
 pub const NR_DRAW_PIXEL: u32 = 0x111;
 pub const NR_DRAW_LINE: u32 = 0x112;
@@ -35,9 +35,9 @@ pub const NR_DRAW_GRADIENT_V: u32 = 0x117;
 pub const NR_DRAW_GRADIENT_H: u32 = 0x118;
 pub const NR_DRAW_ROUNDED_RECT: u32 = 0x119;
 
-// ═══════════════════════════════════════════════
-//  WINPAINT — Window Painting (0x120..0x125)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  WINPAINT -- Window Painting (0x120..0x125)
+// ===============================================
 pub const NR_WINPAINT_FILL_RECT: u32 = 0x120;
 pub const NR_WINPAINT_DRAW_TEXT: u32 = 0x121;
 pub const NR_WINPAINT_DRAW_PIXEL: u32 = 0x122;
@@ -45,18 +45,18 @@ pub const NR_WINPAINT_DRAW_LINE: u32 = 0x123;
 pub const NR_WINPAINT_DRAW_BLIT: u32 = 0x124;
 pub const NR_WINPAINT_DRAW_CIRCLE: u32 = 0x125;
 
-// ═══════════════════════════════════════════════
-//  COMPOSITOR — Compositor (0x130..0x134)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  COMPOSITOR -- Compositor (0x130..0x134)
+// ===============================================
 pub const NR_COMPOSITOR_BEGIN_FRAME: u32 = 0x130;
 pub const NR_COMPOSITOR_END_FRAME: u32 = 0x131;
 pub const NR_COMPOSITOR_PRESENT: u32 = 0x132;
 pub const NR_COMPOSITOR_SET_TARGET: u32 = 0x133;
 pub const NR_COMPOSITOR_FLUSH: u32 = 0x134;
 
-// ═══════════════════════════════════════════════
-//  FS — Filesystem (0x140..0x149)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  FS -- Filesystem (0x140..0x149)
+// ===============================================
 pub const NR_FS_OPEN: u32 = 0x140;
 pub const NR_FS_CLOSE: u32 = 0x141;
 pub const NR_FS_READ: u32 = 0x142;
@@ -68,17 +68,17 @@ pub const NR_FS_READDIR: u32 = 0x147;
 pub const NR_FS_DELETE: u32 = 0x148;
 pub const NR_FS_MOUNT: u32 = 0x149;
 
-// ═══════════════════════════════════════════════
-//  TIME — Time (0x150..0x153)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  TIME -- Time (0x150..0x153)
+// ===============================================
 pub const NR_TIME_NOW_NS: u32 = 0x150;
 pub const NR_TIME_NOW_US: u32 = 0x151;
 pub const NR_TIME_SLEEP_NS: u32 = 0x152;
 pub const NR_TIME_SLEEP_MS: u32 = 0x153;
 
-// ═══════════════════════════════════════════════
-//  INPUT — Input (0x160..0x162)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  INPUT -- Input (0x160..0x162)
+// ===============================================
 pub const NR_POLL_KEY: u32 = 0x160;
 pub const NR_INPUT_POLL_KEY: u32 = 0x160;
 pub const NR_POLL_MOUSE: u32 = 0x161;
@@ -86,17 +86,17 @@ pub const NR_INPUT_POLL_MOUSE: u32 = 0x161;
 pub const NR_POLL_EVENT: u32 = 0x162;
 pub const NR_INPUT_POLL_EVENT: u32 = 0x162;
 
-// ═══════════════════════════════════════════════
-//  AUDIO — Audio (0x170..0x173)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  AUDIO -- Audio (0x170..0x173)
+// ===============================================
 pub const NR_AUDIO_PLAY: u32 = 0x170;
 pub const NR_AUDIO_STOP: u32 = 0x171;
 pub const NR_AUDIO_BEEP: u32 = 0x172;
 pub const NR_AUDIO_LOAD_WAVE: u32 = 0x173;
 
-// ═══════════════════════════════════════════════
-//  PROC — Process / Thread (0x180..0x188)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  PROC -- Process / Thread (0x180..0x188)
+// ===============================================
 pub const NR_PROC_SPAWN: u32 = 0x180;
 pub const NR_PROC_EXIT: u32 = 0x181;
 pub const NR_PROC_GET_PID: u32 = 0x182;
@@ -107,9 +107,9 @@ pub const NR_THREAD_EXIT: u32 = 0x186;
 pub const NR_THREAD_JOIN: u32 = 0x187;
 pub const NR_THREAD_SELF: u32 = 0x188;
 
-// ═══════════════════════════════════════════════
-//  MEM — Memory + BEFCore (0x190..0x197)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  MEM -- Memory + BEFCore (0x190..0x197)
+// ===============================================
 pub const NR_MEM_ALLOC: u32 = 0x190;
 pub const NR_MEM_FREE: u32 = 0x191;
 pub const NR_MEM_MAP: u32 = 0x192;
@@ -119,30 +119,30 @@ pub const NR_BEFCORE_RECV: u32 = 0x195;
 pub const NR_BEFCORE_POLL: u32 = 0x196;
 pub const NR_BEFCORE_REGISTER: u32 = 0x197;
 
-// ═══════════════════════════════════════════════
-//  IPC — IPC (0x1A0..0x1A3)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  IPC -- IPC (0x1A0..0x1A3)
+// ===============================================
 pub const NR_IPC_PORT_CREATE: u32 = 0x1A0;
 pub const NR_IPC_PORT_SEND: u32 = 0x1A1;
 pub const NR_IPC_PORT_RECV: u32 = 0x1A2;
 pub const NR_IPC_PORT_CLOSE: u32 = 0x1A3;
 
-// ═══════════════════════════════════════════════
-//  SURFACE — Surface mapping (0x1C0..0x1CF)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  SURFACE -- Surface mapping (0x1C0..0x1CF)
+// ===============================================
 pub const NR_SURFACE_MAP: u32 = 0x1C0;
 pub const NR_SURFACE_UNMAP: u32 = 0x1C1;
 pub const NR_SURFACE_PRESENT: u32 = 0x1C2;
 
-// ═══════════════════════════════════════════════
-//  DIAG — Diagnostics (0x1F0..0x1F3)
-// ═══════════════════════════════════════════════
+// ===============================================
+//  DIAG -- Diagnostics (0x1F0..0x1F3)
+// ===============================================
 pub const NR_DEBUG_PRINT: u32 = 0x1F0;
 pub const NR_DEBUG_TRACE: u32 = 0x1F1;
 pub const NR_DEBUG_ASSERT: u32 = 0x1F2;
 pub const NR_DEBUG_PANIC: u32 = 0x1F3;
 
-// ── Helpers ──
+// -- Helpers --
 
 pub const fn is_bmo_api(nr: u32) -> bool {
     nr >= 0x100 && nr <= 0x1FF

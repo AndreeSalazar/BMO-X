@@ -1,4 +1,4 @@
-//! PERFORM VARYING — 8 pruebas.
+//! PERFORM VARYING -- 8 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,9 +7,9 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-// ── PERFORM VARYING: el bucle CON ÍNDICE ────────────────────────────
+// -- PERFORM VARYING: el bucle CON INDICE ----------------------------
 
-/// Lo mínimo, y con el índice usable dentro del cuerpo.
+/// Lo minimo, y con el indice usable dentro del cuerpo.
 #[test]
 fn perform_varying_recorre_con_indice() {
     let src = program(
@@ -19,17 +19,17 @@ fn perform_varying_recorre_con_indice() {
          END-PERFORM.\n\
          DISPLAY SUMA.\nDISPLAY I.",
     );
-    // 1+2+3+4+5 = 15, y al salir I vale 6 — la vuelta que hizo fallar la
-    // condición también incrementó.
+    // 1+2+3+4+5 = 15, y al salir I vale 6 -- la vuelta que hizo fallar la
+    // condicion tambien incremento.
     assert_eq!(run_cobol(&src), "15\n6\n");
 }
 
-/// ⚠ `UNTIL` dice cuándo **PARAR**, no cuándo seguir. Es al revés que el
-/// `while` de casi todo lo demás, y confundirlo da una vuelta de más o de
-/// menos — que sobre una tabla es un subíndice fuera de rango.
+/// [!] `UNTIL` dice cuando **PARAR**, no cuando seguir. Es al reves que el
+/// `while` de casi todo lo demas, y confundirlo da una vuelta de mas o de
+/// menos -- que sobre una tabla es un subindice fuera de rango.
 #[test]
 fn el_until_dice_cuando_parar() {
-    // `UNTIL I > 3` recorre 1,2,3 — no llega al 4.
+    // `UNTIL I > 3` recorre 1,2,3 -- no llega al 4.
     let src = program(
         "01 I PIC 9(3).\n01 T PIC X(8) VALUE SPACES.",
         "PERFORM VARYING I FROM 1 BY 1 UNTIL I > 3\n\
@@ -39,7 +39,7 @@ fn el_until_dice_cuando_parar() {
     assert_eq!(run_cobol(&src), "1\n2\n3\n");
 }
 
-/// `WITH TEST BEFORE`: si la condición ya se cumple al entrar, el cuerpo
+/// `WITH TEST BEFORE`: si la condicion ya se cumple al entrar, el cuerpo
 /// **no corre ni una vez**.
 #[test]
 fn si_ya_se_cumple_no_da_ni_una_vuelta() {
@@ -52,7 +52,7 @@ fn si_ya_se_cumple_no_da_ni_una_vuelta() {
     assert_eq!(run_cobol(&src), "fin\n");
 }
 
-/// El paso puede ser distinto de uno, y **hacia atrás**.
+/// El paso puede ser distinto de uno, y **hacia atras**.
 #[test]
 fn el_paso_puede_ir_hacia_atras() {
     let src = program(
@@ -64,12 +64,12 @@ fn el_paso_puede_ir_hacia_atras() {
     assert_eq!(run_cobol(&src), "10\n7\n4\n1\n");
 }
 
-/// ★ `AFTER` — y lo que de verdad prueba: el de dentro **se reinicia** cada
+/// * `AFTER` -- y lo que de verdad prueba: el de dentro **se reinicia** cada
 /// vez que el de fuera avanza.
 ///
 /// Sin ese reinicio la tabla se recorre en diagonal: la primera fila entera
-/// y de las demás sólo la última columna. Por eso el test cuenta las
-/// vueltas: tienen que ser 3 × 4, no 3 + 4.
+/// y de las demas solo la ultima columna. Por eso el test cuenta las
+/// vueltas: tienen que ser 3 x 4, no 3 + 4.
 #[test]
 fn el_after_se_reinicia_en_cada_vuelta_de_fuera() {
     let src = program(
@@ -95,10 +95,10 @@ fn se_pueden_encadenar_tres() {
          END-PERFORM.\n\
          DISPLAY N.",
     );
-    assert_eq!(run_cobol(&src), "30\n"); // 2 × 3 × 5
+    assert_eq!(run_cobol(&src), "30\n"); // 2 x 3 x 5
 }
 
-/// ★ EL CASO POR EL QUE EXISTE: recorrer una tabla con `OCCURS`.
+/// * EL CASO POR EL QUE EXISTE: recorrer una tabla con `OCCURS`.
 #[test]
 fn perform_varying_recorre_una_tabla() {
     let src = program(

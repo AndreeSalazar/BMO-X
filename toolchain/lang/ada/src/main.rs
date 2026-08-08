@@ -1,4 +1,4 @@
-//! `bmo-ada-front` — el compilador de Ada, por la línea de órdenes.
+//! `bmo-ada-front` -- el compilador de Ada, por la linea de ordenes.
 
 use std::path::PathBuf;
 use std::process;
@@ -42,8 +42,8 @@ fn main() {
     let bytes = match bmo_ada_front::compilar(&texto) {
         Ok(b) => b,
         Err(e) => {
-            // El error lleva su línea y su motivo. Un compilador que dice "no
-            // se pudo" manda a leer código.
+            // El error lleva su linea y su motivo. Un compilador que dice "no
+            // se pudo" manda a leer codigo.
             eprintln!("{ruta}:{}", e);
             process::exit(1);
         }
@@ -59,11 +59,11 @@ fn main() {
             let _ = std::fs::create_dir_all(padre);
         }
     }
-                // ── ★ EL GATE, ANTES DE ESCRIBIR ──────────────────────────
+                // -- * EL GATE, ANTES DE ESCRIBIR --------------------------
             //
             // `bmo-verify` es el "unico checkpoint comun" de la filosofia: el
             // papel de seguridad que tendria un IR central, pero como CONTRATO
-            // — cada lenguaje emite su BEF por su cuenta y el verificador lo
+            // -- cada lenguaje emite su BEF por su cuenta y el verificador lo
             // revisa por separado. Hasta hoy no lo llamaba ningun frontend.
             //
             // Va ANTES del `write` a proposito: verificar despues dejaria un

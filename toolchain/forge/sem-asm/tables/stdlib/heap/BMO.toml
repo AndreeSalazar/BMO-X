@@ -1,4 +1,4 @@
-# stdlib/heap module — dynamic memory allocation
+# stdlib/heap module -- dynamic memory allocation
 
 [exports]
 malloc = "size_t -> ptr"

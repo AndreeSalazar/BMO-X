@@ -1,4 +1,4 @@
-//! NIVEL88 — 9 pruebas.
+//! NIVEL88 -- 9 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,10 +7,10 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-// ── NIVEL 88: lo que se RECHAZA ─────────────────────────────────────
+// -- NIVEL 88: lo que se RECHAZA -------------------------------------
 
 /// Un `88` con `PIC` no es un 88: es alguien que cree estar declarando un
-/// dato. Se dice qué es un nombre de condición.
+/// dato. Se dice que es un nombre de condicion.
 #[test]
 fn un_88_con_pic_se_rechaza() {
     let src = program("01 F PIC 9.\n88 FIN PIC 9 VALUE 1.", "MOVE 1 TO F.");
@@ -18,8 +18,8 @@ fn un_88_con_pic_se_rechaza() {
     assert!(t.contains("nombre de condicion") && t.contains("no lleva PIC"), "{t}");
 }
 
-/// Un `88` es el apodo de una comparación sobre el dato de arriba. Si no
-/// hay nadie arriba, no hay de qué colgarlo.
+/// Un `88` es el apodo de una comparacion sobre el dato de arriba. Si no
+/// hay nadie arriba, no hay de que colgarlo.
 #[test]
 fn un_88_sin_dato_encima_se_rechaza() {
     let src = program("88 FIN VALUE 1.", "STOP RUN.");
@@ -27,15 +27,15 @@ fn un_88_sin_dato_encima_se_rechaza() {
     assert!(t.contains("no hay ningun dato encima"), "{t}");
 }
 
-/// ★ `88 … VALUE 1 THRU 5` — los dos extremos INCLUIDOS.
+/// * `88 ... VALUE 1 THRU 5` -- los dos extremos INCLUIDOS.
 ///
-/// Estaba rechazado porque expandirlo pide un `OR`. Ya hay `OR`, así que se
-/// expande a `DIA >= 1 AND DIA <= 5` y baja por el mismo emisor de árboles
-/// que una condición escrita a mano.
+/// Estaba rechazado porque expandirlo pide un `OR`. Ya hay `OR`, asi que se
+/// expande a `DIA >= 1 AND DIA <= 5` y baja por el mismo emisor de arboles
+/// que una condicion escrita a mano.
 ///
 /// Se recorre el rango entero y **los dos vecinos de fuera**: un `>` donde
-/// va un `>=` sólo se ve en el extremo, y ahí es donde vive el error de
-/// "el día 1 no era laborable".
+/// va un `>=` solo se ve en el extremo, y ahi es donde vive el error de
+/// "el dia 1 no era laborable".
 #[test]
 fn un_88_con_rango_compara_el_rango_entero() {
     for dia in 0..=7 {
@@ -51,7 +51,7 @@ fn un_88_con_rango_compara_el_rango_entero() {
     }
 }
 
-/// Y varios valores sueltos, que es un `OR`. `THROUGH` es el sinónimo largo
+/// Y varios valores sueltos, que es un `OR`. `THROUGH` es el sinonimo largo
 /// de `THRU` y tiene que valer igual.
 #[test]
 fn un_88_con_varios_valores_es_un_or() {
@@ -74,7 +74,7 @@ fn un_88_con_varios_valores_es_un_or() {
     assert_eq!(run_cobol(&src), "si\n", "THROUGH no vale lo mismo que THRU");
 }
 
-/// Mezclando las dos formas, que es como se escribe una tabla de códigos de
+/// Mezclando las dos formas, que es como se escribe una tabla de codigos de
 /// verdad: unos sueltos y un tramo.
 #[test]
 fn un_88_mezcla_rangos_y_valores_sueltos() {
@@ -89,7 +89,7 @@ fn un_88_mezcla_rangos_y_valores_sueltos() {
 }
 
 /// Un `88` con decimales: el rango se compara en la escala del padre, no en
-/// enteros. Un `9.99` que se leyera como `9` daría un rango de más.
+/// enteros. Un `9.99` que se leyera como `9` daria un rango de mas.
 #[test]
 fn un_88_con_rango_respeta_la_escala_del_padre() {
     let casos: &[(&str, &str)] = &[
@@ -111,8 +111,8 @@ fn un_88_con_rango_respeta_la_escala_del_padre() {
     }
 }
 
-/// Un `88` dentro de una condición compuesta: se combina con lo demás como
-/// cualquier comparación, porque baja por el mismo árbol.
+/// Un `88` dentro de una condicion compuesta: se combina con lo demas como
+/// cualquier comparacion, porque baja por el mismo arbol.
 #[test]
 fn un_88_se_combina_con_otras_condiciones() {
     let src = program(
@@ -123,9 +123,9 @@ fn un_88_se_combina_con_otras_condiciones() {
     assert_eq!(run_cobol(&src), "abre\n");
 }
 
-/// Una palabra suelta en un `IF` que no es ningún 88 se rechaza diciendo
+/// Una palabra suelta en un `IF` que no es ningun 88 se rechaza diciendo
 /// las dos salidas. Antes, `IF LO-QUE-SEA` no encontraba operador y el
-/// mensaje mandaba a buscar un `=` que nadie quería escribir.
+/// mensaje mandaba a buscar un `=` que nadie queria escribir.
 #[test]
 fn un_nombre_de_condicion_que_no_existe_se_rechaza() {
     let src = program("01 F PIC 9.", "MOVE 1 TO F.\nIF PEPE\nDISPLAY \"x\"\nEND-IF.");

@@ -1,41 +1,41 @@
-//! **El HID Report Descriptor, leído.** Dónde está cada campo del informe, y de
-//! cuántos bits — dicho por el aparato.
+//! **El HID Report Descriptor, leido.** Donde esta cada campo del informe, y de
+//! cuantos bits -- dicho por el aparato.
 //!
-//! ═══ Por qué hacía falta ═══
+//! === Por que hacia falta ===
 //!
-//! El driver suponía el informe del protocolo BOOT: cuatro bytes
-//! `[botones, dx, dy, rueda]`, todos de 8 bits. Y este ratón **ignoró el
-//! `SET_PROTOCOL(boot)`** — lo confesó él mismo con `GET_PROTOCOL`:
-//! `protocolo=0x1 (INFORME: el aparato ignoró el BOOT)`.
+//! El driver suponia el informe del protocolo BOOT: cuatro bytes
+//! `[botones, dx, dy, rueda]`, todos de 8 bits. Y este raton **ignoro el
+//! `SET_PROTOCOL(boot)`** -- lo confeso el mismo con `GET_PROTOCOL`:
+//! `protocolo=0x1 (INFORME: el aparato ignoro el BOOT)`.
 //!
 //! El primer parche fue saltarse un byte, porque en protocolo de informe hay un
-//! Report ID delante. Eso arregló el síntoma visible —el puntero se movía al
-//! hacer clic— y dejó abierta la pregunta de fondo: **¿los desplazamientos son
-//! de 8 bits o de 16?** Un ratón de juego manda casi siempre 16, y entonces el
+//! Report ID delante. Eso arreglo el sintoma visible --el puntero se movia al
+//! hacer clic-- y dejo abierta la pregunta de fondo: **los desplazamientos son
+//! de 8 bits o de 16?** Un raton de juego manda casi siempre 16, y entonces el
 //! byte que se lee como `dy` es la mitad alta de `dx`: mover en horizontal
-//! movería también en vertical, y un tirón rápido saldría disparado. La foto
-//! decía `raton x=-4332`, que no es un movimiento de mano.
+//! moveria tambien en vertical, y un tiron rapido saldria disparado. La foto
+//! decia `raton x=-4332`, que no es un movimiento de mano.
 //!
-//! La respuesta a esa pregunta estaba —y está siempre— en el aparato. Se le
-//! pide el Report Descriptor y se lee. Es la ley 11 de la bitácora, la que dejó
+//! La respuesta a esa pregunta estaba --y esta siempre-- en el aparato. Se le
+//! pide el Report Descriptor y se lee. Es la ley 11 de la bitacora, la que dejo
 //! el episodio 22: **a un dispositivo se le pregunta, no se le supone.** Y esta
 //! vez no hay foto que valga: adivinar entre 8 y 16 bits mirando ocho bytes de
 //! log es leer el formato en la variable equivocada.
 //!
-//! ═══ Qué se lee, y qué no ═══
+//! === Que se lee, y que no ===
 //!
-//! Se sacan cuatro campos: botones, X, Y y rueda, con su posición en BITS y su
-//! tamaño. Nada más. No hay tabla de usages completa, ni Feature reports, ni
-//! unidades físicas, ni Push/Pop de estado global — este parser existe para
-//! localizar cuatro números en un informe de ratón, y todo lo que no sirva a eso
+//! Se sacan cuatro campos: botones, X, Y y rueda, con su posicion en BITS y su
+//! tamano. Nada mas. No hay tabla de usages completa, ni Feature reports, ni
+//! unidades fisicas, ni Push/Pop de estado global -- este parser existe para
+//! localizar cuatro numeros en un informe de raton, y todo lo que no sirva a eso
 //! es superficie que mantener sin nadie que la use.
 //!
-//! Lo que sí se respeta es la aritmética real del descriptor: `Report Size` y
+//! Lo que si se respeta es la aritmetica real del descriptor: `Report Size` y
 //! `Report Count` en bits (no en bytes), el desplazamiento acumulado **por
 //! Report ID**, y el reparto de usages entre los elementos de un mismo item
 //! (una lista, o un rango `Usage Minimum`..`Usage Maximum`).
 
-/// Un campo dentro del informe: dónde empieza, en bits, y cuánto mide.
+/// Un campo dentro del informe: donde empieza, en bits, y cuanto mide.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Campo {
     /// Bit donde empieza, contando desde el principio del informe **sin** el
@@ -47,10 +47,10 @@ pub struct Campo {
 impl Campo {
     /// Lee el campo del buffer y lo devuelve **con signo extendido**.
     ///
-    /// Los desplazamientos de un ratón son relativos y con signo, y ahí es
+    /// Los desplazamientos de un raton son relativos y con signo, y ahi es
     /// donde muere un parser descuidado: un `dx` de 12 bits con el valor
-    /// `0xFFF` es −1, no 4095. Extender el signo es responsabilidad de quien
-    /// conoce el ancho, y el único que lo conoce es este campo.
+    /// `0xFFF` es -1, no 4095. Extender el signo es responsabilidad de quien
+    /// conoce el ancho, y el unico que lo conoce es este campo.
     pub fn leer_con_signo(&self, informe: &[u8]) -> i32 {
         let bruto = self.leer_crudo(informe);
         if self.bits == 0 || self.bits >= 32 {
@@ -81,13 +81,13 @@ impl Campo {
     }
 }
 
-/// El formato del informe de un ratón, sacado de su Report Descriptor.
+/// El formato del informe de un raton, sacado de su Report Descriptor.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Formato {
     /// El Report ID que precede al informe, o 0 si el aparato no usa ninguno.
     ///
     /// Cero no es "el informe 0": un descriptor sin `Report ID` **no manda el
-    /// byte**, y ésa es exactamente la diferencia que corría todo un byte.
+    /// byte**, y esa es exactamente la diferencia que corria todo un byte.
     pub report_id: u8,
     pub botones: Option<Campo>,
     pub x: Option<Campo>,
@@ -98,7 +98,7 @@ pub struct Formato {
 }
 
 impl Formato {
-    /// Cuántos bytes hay que saltarse al principio del buffer.
+    /// Cuantos bytes hay que saltarse al principio del buffer.
     pub fn desplazamiento(&self) -> usize {
         if self.report_id != 0 { 1 } else { 0 }
     }
@@ -108,8 +108,8 @@ impl Formato {
     ///
     /// Es el reserva para cuando no hay descriptor que leer o no se entiende.
     /// Que exista no es pereza: un aparato que cumple el protocolo BOOT tiene
-    /// **prohibido** mandar otra cosa, así que esto es un formato correcto y
-    /// no una suposición — la suposición era aplicarlo sin preguntar.
+    /// **prohibido** mandar otra cosa, asi que esto es un formato correcto y
+    /// no una suposicion -- la suposicion era aplicarlo sin preguntar.
     pub const fn boot() -> Self {
         Self {
             report_id: 0,
@@ -124,10 +124,10 @@ impl Formato {
     /// El formato BOOT, con o sin el byte de Report ID delante.
     ///
     /// Es el reserva de cuando el Report Descriptor no se puede leer. El
-    /// `report_id` que se pone aquí es **1 como cualquier otro número**: lo
-    /// único que se sabe es que hay un byte delante, porque `GET_PROTOCOL`
-    /// contestó "protocolo de informe". No se sabe cuál es el informe, y este
-    /// campo sólo se usa para [`Self::desplazamiento`].
+    /// `report_id` que se pone aqui es **1 como cualquier otro numero**: lo
+    /// unico que se sabe es que hay un byte delante, porque `GET_PROTOCOL`
+    /// contesto "protocolo de informe". No se sabe cual es el informe, y este
+    /// campo solo se usa para [`Self::desplazamiento`].
     pub const fn boot_con_id(hay_report_id: bool) -> Self {
         let mut f = Self::boot();
         if hay_report_id {
@@ -136,25 +136,25 @@ impl Formato {
         f
     }
 
-    /// ¿Los desplazamientos son de más de un byte? Es LA pregunta que abrió
-    /// este módulo, y ahora tiene una respuesta que no depende de mirar un log.
+    /// Los desplazamientos son de mas de un byte? Es LA pregunta que abrio
+    /// este modulo, y ahora tiene una respuesta que no depende de mirar un log.
     pub fn ejes_anchos(&self) -> bool {
         self.x.map_or(false, |c| c.bits > 8) || self.y.map_or(false, |c| c.bits > 8)
     }
 }
 
-// ── Usages que este parser reconoce ─────────────────────────────────────
+// -- Usages que este parser reconoce -------------------------------------
 const PAGINA_GENERIC_DESKTOP: u32 = 0x01;
 const PAGINA_BOTONES: u32 = 0x09;
 const USO_X: u32 = 0x30;
 const USO_Y: u32 = 0x31;
 const USO_RUEDA: u32 = 0x38;
 
-/// Cuántos Report ID distintos se siguen a la vez. Un ratón usa uno o dos (el
-/// informe y a veces uno de consumidor); dieciséis es holgura, no ambición.
+/// Cuantos Report ID distintos se siguen a la vez. Un raton usa uno o dos (el
+/// informe y a veces uno de consumidor); dieciseis es holgura, no ambicion.
 const MAX_IDS: usize = 16;
 
-/// Cuántos usages locales se recuerdan por item. Un ratón declara tres ejes y
+/// Cuantos usages locales se recuerdan por item. Un raton declara tres ejes y
 /// cinco botones; ocho cubre cualquier informe sensato y acota el estado.
 const MAX_USOS: usize = 8;
 
@@ -187,9 +187,9 @@ impl Estado {
     /// El usage del elemento `k` de un item con `n` elementos.
     ///
     /// Tres formas, y las tres aparecen en ratones reales:
-    /// - lista (`Usage X`, `Usage Y`): el k-ésimo, y **el último se repite** si
-    ///   hay más elementos que usages, que es lo que dice la especificación.
-    /// - rango (`Usage Minimum 1`, `Usage Maximum 5`): min + k. Así declaran
+    /// - lista (`Usage X`, `Usage Y`): el k-esimo, y **el ultimo se repite** si
+    ///   hay mas elementos que usages, que es lo que dice la especificacion.
+    /// - rango (`Usage Minimum 1`, `Usage Maximum 5`): min + k. Asi declaran
     ///   los botones todos los ratones.
     /// - ninguno: relleno (`Input (Cnst)`), que ocupa bits y no significa nada.
     fn uso_de(&self, k: usize) -> Option<u32> {
@@ -204,8 +204,8 @@ impl Estado {
     }
 
     /// Los locales se olvidan al consumir un Main item. Olvidarlos es parte de
-    /// la especificación, no una limpieza: sin esto, los usages de los botones
-    /// se aplicarían también al relleno que va detrás.
+    /// la especificacion, no una limpieza: sin esto, los usages de los botones
+    /// se aplicarian tambien al relleno que va detras.
     fn olvidar_locales(&mut self) {
         self.n_usos = 0;
         self.uso_min = None;
@@ -213,23 +213,23 @@ impl Estado {
     }
 }
 
-/// **Lee el Report Descriptor y saca el formato del informe de ratón.**
+/// **Lee el Report Descriptor y saca el formato del informe de raton.**
 ///
-/// Devuelve el formato del primer informe que declare X e Y en la página
-/// Generic Desktop — que es lo que define "esto es un ratón" mucho mejor que
+/// Devuelve el formato del primer informe que declare X e Y en la pagina
+/// Generic Desktop -- que es lo que define "esto es un raton" mucho mejor que
 /// el `bInterfaceProtocol`, del que ya sabemos que miente.
 ///
 /// `None` si el descriptor no se entiende o no hay tal informe. El llamante
 /// vuelve al formato BOOT y **lo dice**: un formato adivinado en silencio es
-/// como se llegó hasta aquí.
+/// como se llego hasta aqui.
 pub fn raton(desc: &[u8]) -> Option<Formato> {
-    // Desplazamiento acumulado en bits, por Report ID. El índice 0 es "sin
-    // Report ID", que es un informe distinto de todos los demás.
+    // Desplazamiento acumulado en bits, por Report ID. El indice 0 es "sin
+    // Report ID", que es un informe distinto de todos los demas.
     let mut bits_por_id = [0u16; MAX_IDS];
     let mut e = Estado::nuevo();
 
-    // El informe que se está construyendo: se rellena a medida que aparecen los
-    // Input items, y sólo se devuelve si acaba teniendo X e Y.
+    // El informe que se esta construyendo: se rellena a medida que aparecen los
+    // Input items, y solo se devuelve si acaba teniendo X e Y.
     let mut id_elegido: Option<u8> = None;
     let mut botones = None;
     let mut x = None;
@@ -253,7 +253,7 @@ pub fn raton(desc: &[u8]) -> Option<Formato> {
         }
 
         let tam = match prefijo & 0x03 {
-            3 => 4, // 3 significa CUATRO bytes, no tres. La trampa clásica.
+            3 => 4, // 3 significa CUATRO bytes, no tres. La trampa clasica.
             n => n as usize,
         };
         if i + tam > desc.len() {
@@ -269,14 +269,14 @@ pub fn raton(desc: &[u8]) -> Option<Formato> {
         let tag = prefijo >> 4;
 
         match (tipo, tag) {
-            // ── Global ──
+            // -- Global --
             (1, 0x0) => e.pagina = datos,
             (1, 0x7) => e.report_size = datos,
             (1, 0x8) => e.report_id = datos as u8,
             (1, 0x9) => e.report_count = datos,
-            // ── Local ──
+            // -- Local --
             (2, 0x0) => {
-                // Un usage de 4 bytes trae la página en la mitad alta.
+                // Un usage de 4 bytes trae la pagina en la mitad alta.
                 let u = if tam == 4 { datos & 0xFFFF } else { datos };
                 if e.n_usos < MAX_USOS {
                     e.usos[e.n_usos] = u;
@@ -285,7 +285,7 @@ pub fn raton(desc: &[u8]) -> Option<Formato> {
             }
             (2, 0x1) => e.uso_min = Some(datos),
             (2, 0x2) => e.uso_max = Some(datos),
-            // ── Main: Input ──
+            // -- Main: Input --
             (0, 0x8) => {
                 let idx = (e.report_id as usize).min(MAX_IDS - 1);
                 let constante = datos & 1 != 0;
@@ -298,8 +298,8 @@ pub fn raton(desc: &[u8]) -> Option<Formato> {
                         continue; // relleno: ocupa sitio y no dice nada
                     }
                     let Some(uso) = e.uso_de(k) else { continue };
-                    // Sólo se mira el informe del ratón: el primero que declara
-                    // ejes manda, y los demás Report ID se ignoran enteros.
+                    // Solo se mira el informe del raton: el primero que declara
+                    // ejes manda, y los demas Report ID se ignoran enteros.
                     let de_este_informe =
                         id_elegido.is_none() || id_elegido == Some(e.report_id);
 
@@ -307,7 +307,7 @@ pub fn raton(desc: &[u8]) -> Option<Formato> {
                         (PAGINA_BOTONES, _) if de_este_informe => {
                             // Los botones vienen como N campos de 1 bit
                             // seguidos. Se guardan como UN campo de N bits, que
-                            // es como los usa quien lee: una máscara.
+                            // es como los usa quien lee: una mascara.
                             botones = Some(match botones {
                                 Some(Campo { bit: b, bits: n })
                                     if b as u32 + n as u32 == bit as u32 =>
@@ -341,16 +341,16 @@ pub fn raton(desc: &[u8]) -> Option<Formato> {
                 e.olvidar_locales();
             }
             // Output, Feature, Collection y End Collection: los locales se
-            // olvidan igual. Sus bits NO cuentan para el informe de entrada —
-            // un Output que sumara desplazamiento correría todo lo de detrás.
+            // olvidan igual. Sus bits NO cuentan para el informe de entrada --
+            // un Output que sumara desplazamiento correria todo lo de detras.
             (0, _) => e.olvidar_locales(),
             _ => {}
         }
     }
 
     let id = id_elegido?;
-    // Sin los dos ejes esto no es un ratón, y devolver medio formato sería
-    // peor que no devolver ninguno: el llamante creería que preguntó.
+    // Sin los dos ejes esto no es un raton, y devolver medio formato seria
+    // peor que no devolver ninguno: el llamante creeria que pregunto.
     x?;
     y?;
     Some(Formato {
@@ -367,9 +367,9 @@ pub fn raton(desc: &[u8]) -> Option<Formato> {
 mod tests {
     use super::*;
 
-    /// El descriptor de ratón del apéndice E de la especificación HID: tres
-    /// botones, X e Y de 8 bits, sin Report ID. Lo manda cualquier ratón de
-    /// oficina, y es el formato que el driver suponía para todos.
+    /// El descriptor de raton del apendice E de la especificacion HID: tres
+    /// botones, X e Y de 8 bits, sin Report ID. Lo manda cualquier raton de
+    /// oficina, y es el formato que el driver suponia para todos.
     const BOOT: &[u8] = &[
         0x05, 0x01, //  Usage Page (Generic Desktop)
         0x09, 0x02, //  Usage (Mouse)
@@ -399,8 +399,8 @@ mod tests {
         0xC0, //        End Collection
     ];
 
-    /// El caso que abrió el módulo: **Report ID de por medio y ejes de 16
-    /// bits**, que es lo que manda un ratón de juego en protocolo de informe.
+    /// El caso que abrio el modulo: **Report ID de por medio y ejes de 16
+    /// bits**, que es lo que manda un raton de juego en protocolo de informe.
     const JUEGO_16: &[u8] = &[
         0x05, 0x01, //  Usage Page (Generic Desktop)
         0x09, 0x02, //  Usage (Mouse)
@@ -449,11 +449,11 @@ mod tests {
         assert_eq!(f.bits, 24);
     }
 
-    /// **La pregunta que abrió el módulo, contestada por el aparato.**
+    /// **La pregunta que abrio el modulo, contestada por el aparato.**
     ///
-    /// Con este descriptor, leer `dy` en el byte 2 —como hacía el driver— es
-    /// leer la mitad ALTA de `dx`. Por eso mover en horizontal movía en
-    /// vertical, y por eso salió `x=-4332` en una foto.
+    /// Con este descriptor, leer `dy` en el byte 2 --como hacia el driver-- es
+    /// leer la mitad ALTA de `dx`. Por eso mover en horizontal movia en
+    /// vertical, y por eso salio `x=-4332` en una foto.
     #[test]
     fn el_raton_de_juego_declara_ejes_de_16_bits_detras_de_un_report_id() {
         let f = raton(JUEGO_16).expect("es un raton");
@@ -468,17 +468,17 @@ mod tests {
     }
 
     /// El relleno ocupa bits y no es un campo. Si `Input (Cnst)` se tratara
-    /// como dato, los tres bits de relleno del ratón de juego se llevarían los
-    /// usages de los botones y X empezaría en el bit equivocado.
+    /// como dato, los tres bits de relleno del raton de juego se llevarian los
+    /// usages de los botones y X empezaria en el bit equivocado.
     #[test]
     fn el_relleno_ocupa_sitio_y_no_es_un_campo() {
         let f = raton(BOOT).unwrap();
-        // 3 bits de botón + 5 de relleno = X empieza en el bit 8, no en el 3.
+        // 3 bits de boton + 5 de relleno = X empieza en el bit 8, no en el 3.
         assert_eq!(f.x.unwrap().bit, 8);
     }
 
     /// Los desplazamientos son **con signo**, y ese es el bug que un parser
-    /// nuevo repite: un `dx` de 16 bits con `0xFFFF` es −1, no 65535.
+    /// nuevo repite: un `dx` de 16 bits con `0xFFFF` es -1, no 65535.
     #[test]
     fn los_ejes_se_leen_con_signo() {
         let f = raton(JUEGO_16).unwrap();
@@ -491,8 +491,8 @@ mod tests {
     }
 
     /// Un campo de 8 bits con el bit alto puesto es negativo. Es el caso de
-    /// todos los días en un ratón boot, y el que se rompería si alguien
-    /// "simplificara" la extensión de signo.
+    /// todos los dias en un raton boot, y el que se romperia si alguien
+    /// "simplificara" la extension de signo.
     #[test]
     fn un_eje_de_8_bits_tambien_lleva_signo() {
         let f = raton(BOOT).unwrap();
@@ -503,7 +503,7 @@ mod tests {
     }
 
     /// Un descriptor cortado a la mitad no puede dar un formato a medias: eso
-    /// sería un formato inventado con aire de dato. Se dice que no y el
+    /// seria un formato inventado con aire de dato. Se dice que no y el
     /// llamante vuelve al BOOT.
     #[test]
     fn un_descriptor_truncado_no_da_formato() {
@@ -513,7 +513,7 @@ mod tests {
         assert!(raton(&[0x07, 0x01]).is_none());
     }
 
-    /// Un teclado no es un ratón, aunque sea HID y esté en la misma página.
+    /// Un teclado no es un raton, aunque sea HID y este en la misma pagina.
     #[test]
     fn un_teclado_no_pasa_por_raton() {
         let teclado: &[u8] = &[

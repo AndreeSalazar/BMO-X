@@ -17,15 +17,15 @@ use core::alloc::Layout;
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy)]
 pub struct TlsTemplate {
-    /// Tamaño del template en bytes (datos inicializados).
+    /// Tamano del template en bytes (datos inicializados).
     pub initialized_size: bx_u32,
-    /// Tamaño extra zero-init que sigue al template (estilo .tbss).
+    /// Tamano extra zero-init que sigue al template (estilo .tbss).
     pub zero_size: bx_u32,
-    /// Alineación requerida (potencia de 2).
+    /// Alineacion requerida (potencia de 2).
     pub alignment: bx_u32,
     /// Reservado.
     pub _reserved: bx_u32,
-    /// Offset dentro de la sección Tls donde empiezan los bytes inicializados.
+    /// Offset dentro de la seccion Tls donde empiezan los bytes inicializados.
     pub data_offset: bx_u64,
 }
 const _: () = assert!(core::mem::size_of::<TlsTemplate>() == 24);
@@ -39,7 +39,7 @@ impl TlsTemplate {
         data_offset: 0,
     };
 
-    /// Tamaño total que el kernel debe asignar por thread.
+    /// Tamano total que el kernel debe asignar por thread.
     pub const fn total_size(&self) -> u64 {
         self.initialized_size as u64 + self.zero_size as u64
     }
@@ -48,7 +48,7 @@ impl TlsTemplate {
 /// Setup TLS para un thread nuevo.
 ///
 /// Aloca un buffer de `template.total_size()`, copia los bytes inicializados
-/// y deja el resto a cero. Devuelve la dirección que debe ir en `FSBASE`.
+/// y deja el resto a cero. Devuelve la direccion que debe ir en `FSBASE`.
 pub fn setup_for_thread(template: &TlsTemplate, data: &[u8]) -> Result<u64, &'static str> {
     let total = template.total_size() as usize;
     let align = (template.alignment as usize).max(8);
@@ -93,7 +93,7 @@ pub fn setup_for_thread(template: &TlsTemplate, data: &[u8]) -> Result<u64, &'st
     Ok(fs_base)
 }
 
-/// Teardown TLS for a thread — deallocates the TLS buffer.
+/// Teardown TLS for a thread -- deallocates the TLS buffer.
 ///
 /// SAFETY: `fs_base` must be a valid TLS buffer previously allocated
 /// by `setup_for_thread`, and no other thread must reference it.

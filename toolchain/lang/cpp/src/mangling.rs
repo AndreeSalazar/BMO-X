@@ -1,54 +1,54 @@
-//! **El mangling de BMO C++** — de un nombre del lenguaje a un símbolo único.
+//! **El mangling de BMO C++** -- de un nombre del lenguaje a un simbolo unico.
 //!
-//! ═══ Por qué hace falta, dicho sin rodeos ═══
+//! === Por que hace falta, dicho sin rodeos ===
 //!
 //! En cuanto existe la sobrecarga, **dos funciones distintas necesitan
-//! símbolos distintos** y no hay forma de esquivarlo. `f(int)` y `f(char*)`
-//! son dos funciones; el emisor sólo ve nombres. El mangling se inventó en
+//! simbolos distintos** y no hay forma de esquivarlo. `f(int)` y `f(char*)`
+//! son dos funciones; el emisor solo ve nombres. El mangling se invento en
 //! Cfront exactamente por esto, para poder sobrevivir a un enlazador de C.
 //!
-//! ═══ Por qué NO es el de Itanium ═══
+//! === Por que NO es el de Itanium ===
 //!
 //! El *Itanium C++ ABI* (`_ZN1P5dobleEv`) existe para que objetos de
-//! compiladores distintos se enlacen entre sí. **BMO no enlaza nada de nadie**:
-//! no hay enlazador, no hay `.o` ajenos, no hay carga dinámica, y se compila
-//! una sola unidad de traducción. La compatibilidad no compra nada.
+//! compiladores distintos se enlacen entre si. **BMO no enlaza nada de nadie**:
+//! no hay enlazador, no hay `.o` ajenos, no hay carga dinamica, y se compila
+//! una sola unidad de traduccion. La compatibilidad no compra nada.
 //!
-//! Lo que sí hacen falta son sus tres **propiedades**, y son las que este
+//! Lo que si hacen falta son sus tres **propiedades**, y son las que este
 //! esquema cumple:
 //!
-//! 1. **Determinista** — el mismo nombre da siempre el mismo símbolo.
-//! 2. **Sin colisiones** — dos declaraciones distintas nunca dan el mismo
-//!    símbolo, y **nada que un programa pueda escribir choca con uno generado**.
-//! 3. **Reversible a ojo** — se lee sin herramienta. `_ZN1P5dobleEv` necesita
+//! 1. **Determinista** -- el mismo nombre da siempre el mismo simbolo.
+//! 2. **Sin colisiones** -- dos declaraciones distintas nunca dan el mismo
+//!    simbolo, y **nada que un programa pueda escribir choca con uno generado**.
+//! 3. **Reversible a ojo** -- se lee sin herramienta. `_ZN1P5dobleEv` necesita
 //!    `c++filt`; `P.doble#v` no.
 //!
-//! Hay precedente dentro de casa: BMO C ya promueve una `static` de función a
-//! global llamándola `funcion.variable`, porque **el punto es ilegal en C** y
-//! por tanto no puede chocar. Esto es lo mismo, con más piezas.
+//! Hay precedente dentro de casa: BMO C ya promueve una `static` de funcion a
+//! global llamandola `funcion.variable`, porque **el punto es ilegal en C** y
+//! por tanto no puede chocar. Esto es lo mismo, con mas piezas.
 //!
-//! ═══ ★ La lección de MSVC, que es la razón de que este fichero exista ═══
+//! === * La leccion de MSVC, que es la razon de que este fichero exista ===
 //!
-//! Microsoft nunca publicó la especificación de su ABI. Clang tuvo que hacerle
-//! ingeniería inversa —de ahí `MicrosoftMangle.cpp`— y el ecosistema pagó años
-//! partido en dos por un documento que no se escribió.
+//! Microsoft nunca publico la especificacion de su ABI. Clang tuvo que hacerle
+//! ingenieria inversa --de ahi `MicrosoftMangle.cpp`-- y el ecosistema pago anos
+//! partido en dos por un documento que no se escribio.
 //!
-//! > **Regla, no observación: el ABI de C++ de BMO se escribe el mismo día que
-//! > se implementa.** Está en `CPP_ABI.md`, al lado de este fichero, y se
-//! > actualiza a la vez que el código.
+//! > **Regla, no observacion: el ABI de C++ de BMO se escribe el mismo dia que
+//! > se implementa.** Esta en `CPP_ABI.md`, al lado de este fichero, y se
+//! > actualiza a la vez que el codigo.
 //!
-//! ═══ El esquema ═══
+//! === El esquema ===
 //!
 //! ```text
-//!   [espacio.]…[Clase.]nombre#códigos-de-parámetro
+//!   [espacio.]...[Clase.]nombre#codigos-de-parametro
 //! ```
 //!
 //! - El **punto** separa cualificadores. Ilegal en un identificador de C++.
-//! - La **almohadilla** abre la lista de parámetros. Ilegal también.
-//! - Los parámetros van separados por punto; sin parámetros, no hay nada
-//!   detrás del `#`.
+//! - La **almohadilla** abre la lista de parametros. Ilegal tambien.
+//! - Los parametros van separados por punto; sin parametros, no hay nada
+//!   detras del `#`.
 //!
-//! | C++ | símbolo |
+//! | C++ | simbolo |
 //! |---|---|
 //! | `int f()` | `f#` |
 //! | `int f(int, char)` | `f#i.c` |
@@ -60,9 +60,9 @@
 //! | `P::~P()` | `P.~P#` |
 //! | `n::f(int)` | `n.f#i` |
 //!
-//! ★ **El tipo de retorno NO entra**, y es a propósito: C++ no permite
-//! sobrecargar por retorno, así que meterlo generaría dos símbolos para lo que
-//! el lenguaje considera **la misma función** — y una llamada no sabría a cuál
+//! * **El tipo de retorno NO entra**, y es a proposito: C++ no permite
+//! sobrecargar por retorno, asi que meterlo generaria dos simbolos para lo que
+//! el lenguaje considera **la misma funcion** -- y una llamada no sabria a cual
 //! ir.
 //!
 //! El constructor es `P.P` y el destructor `P.~P` porque ninguno puede chocar:
@@ -71,10 +71,10 @@
 
 use crate::ast::TypeSpec;
 
-/// El código de un tipo dentro de la lista de parámetros.
+/// El codigo de un tipo dentro de la lista de parametros.
 ///
-/// Minúscula con signo, MAYÚSCULA sin signo. Es la única convención que hay
-/// que recordar para leer un símbolo.
+/// Minuscula con signo, MAYUSCULA sin signo. Es la unica convencion que hay
+/// que recordar para leer un simbolo.
 pub fn codigo(t: &TypeSpec) -> String {
     match t {
         TypeSpec::Void => "v".into(),
@@ -95,27 +95,27 @@ pub fn codigo(t: &TypeSpec) -> String {
         TypeSpec::Ref(t) => format!("R{}", codigo(t)),
         TypeSpec::Array(t, n) => format!("A{n}{}", codigo(t)),
         // Las llaves delimitan el nombre para que no se confunda con los
-        // códigos de una letra: sin ellas, una clase llamada `Pi` sería
+        // codigos de una letra: sin ellas, una clase llamada `Pi` seria
         // indistinguible de un `int*`.
         TypeSpec::ClassRef(n) => format!("{{{n}}}"),
         TypeSpec::Template(n, args) => {
             let dentro: Vec<String> = args.iter().map(codigo).collect();
             format!("{{{n}<{}>}}", dentro.join(","))
         }
-        // `auto` nunca llega aquí: el parser lo resuelve antes. Si llegara,
-        // un símbolo con `?` es imposible de generar por accidente y sale en
+        // `auto` nunca llega aqui: el parser lo resuelve antes. Si llegara,
+        // un simbolo con `?` es imposible de generar por accidente y sale en
         // cualquier volcado.
         TypeSpec::Auto => "?".into(),
     }
 }
 
-/// La lista de parámetros de un símbolo, con su `#` delante.
+/// La lista de parametros de un simbolo, con su `#` delante.
 pub fn firma(params: &[TypeSpec]) -> String {
     let codigos: Vec<String> = params.iter().map(codigo).collect();
     format!("#{}", codigos.join("."))
 }
 
-/// El símbolo de una función libre, quizá dentro de espacios de nombres.
+/// El simbolo de una funcion libre, quiza dentro de espacios de nombres.
 pub fn funcion(espacios: &[String], nombre: &str, params: &[TypeSpec]) -> String {
     let mut s = String::new();
     for e in espacios { s.push_str(e); s.push('.'); }
@@ -124,8 +124,8 @@ pub fn funcion(espacios: &[String], nombre: &str, params: &[TypeSpec]) -> String
     s
 }
 
-/// El símbolo de un método. `this` **no** entra en la firma: va implícito en
-/// la clase, y meterlo haría que todos los métodos de una clase compartieran
+/// El simbolo de un metodo. `this` **no** entra en la firma: va implicito en
+/// la clase, y meterlo haria que todos los metodos de una clase compartieran
 /// un prefijo redundante.
 pub fn metodo(espacios: &[String], clase: &str, nombre: &str, params: &[TypeSpec]) -> String {
     let mut s = String::new();
@@ -137,26 +137,26 @@ pub fn metodo(espacios: &[String], clase: &str, nombre: &str, params: &[TypeSpec
     s
 }
 
-/// `P::P(…)` — el constructor.
+/// `P::P(...)` -- el constructor.
 pub fn constructor(espacios: &[String], clase: &str, params: &[TypeSpec]) -> String {
     metodo(espacios, clase, clase, params)
 }
 
-/// `P::~P()` — el destructor. Nunca lleva parámetros.
+/// `P::~P()` -- el destructor. Nunca lleva parametros.
 ///
-/// ★ Y es **uno solo**. El ABI de Itanium define D0/D1/D2 —y C1/C2/C3 para
-/// constructores— pero D1 y D2 difieren **sólo con bases virtuales**, que
-/// están descartadas con motivo. Seis variantes se quedan en dos, y no por
-/// recortar: por una decisión ya tomada por otro motivo. (D0, el que además
-/// libera, aparecerá el día que existan `new`/`delete`.)
+/// * Y es **uno solo**. El ABI de Itanium define D0/D1/D2 --y C1/C2/C3 para
+/// constructores-- pero D1 y D2 difieren **solo con bases virtuales**, que
+/// estan descartadas con motivo. Seis variantes se quedan en dos, y no por
+/// recortar: por una decision ya tomada por otro motivo. (D0, el que ademas
+/// libera, aparecera el dia que existan `new`/`delete`.)
 pub fn destructor(espacios: &[String], clase: &str) -> String {
     metodo(espacios, clase, &format!("~{clase}"), &[])
 }
 
-/// ¿Este nombre lo pudo escribir un programa?
+/// Este nombre lo pudo escribir un programa?
 ///
-/// Sirve de red: si alguna vez un símbolo generado saliera sin `#`, chocaría
-/// con una función de C. Lo usan los tests.
+/// Sirve de red: si alguna vez un simbolo generado saliera sin `#`, chocaria
+/// con una funcion de C. Lo usan los tests.
 pub fn es_generado(simbolo: &str) -> bool {
     simbolo.contains('#')
 }
@@ -170,8 +170,8 @@ mod tests {
 
     #[test]
     fn una_funcion_sin_parametros_lleva_almohadilla_igual() {
-        // Sin el `#`, `f()` daría el símbolo `f` — que es exactamente lo que
-        // escribiría una función de C, y chocarían.
+        // Sin el `#`, `f()` daria el simbolo `f` -- que es exactamente lo que
+        // escribiria una funcion de C, y chocarian.
         assert_eq!(funcion(&[], "f", &[]), "f#");
         assert!(es_generado(&funcion(&[], "f", &[])));
     }
@@ -195,8 +195,8 @@ mod tests {
         assert_eq!(codigo(&T::Ref(Box::new(T::Int))), "Ri");
     }
 
-    /// ★ Sin las llaves, una clase llamada `Pi` daría el mismo código que un
-    /// `int*`, y dos funciones distintas compartirían símbolo.
+    /// * Sin las llaves, una clase llamada `Pi` daria el mismo codigo que un
+    /// `int*`, y dos funciones distintas compartirian simbolo.
     #[test]
     fn una_clase_llamada_Pi_no_choca_con_un_puntero_a_int() {
         let a = funcion(&[], "f", &[cls("Pi")]);
@@ -219,7 +219,7 @@ mod tests {
         assert_eq!(metodo(&[], "P", "doble", &[T::Int]), "P.doble#i");
     }
 
-    /// Dos clases distintas con el mismo método no chocan. Es lo que hace que
+    /// Dos clases distintas con el mismo metodo no chocan. Es lo que hace que
     /// `A::f` y `B::f` puedan coexistir.
     #[test]
     fn el_mismo_metodo_en_dos_clases_no_choca() {
@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(destructor(&[], "P"), "P.~P#");
     }
 
-    /// El constructor no puede chocar con un método: dentro de `P`, un miembro
+    /// El constructor no puede chocar con un metodo: dentro de `P`, un miembro
     /// llamado `P` **es** el constructor. El lenguaje reserva el nombre.
     #[test]
     fn el_constructor_no_choca_con_ningun_metodo() {
@@ -250,17 +250,17 @@ mod tests {
         assert_ne!(funcion(&e, "f", &[T::Int]), funcion(&[], "f", &[T::Int]));
     }
 
-    /// ★ El tipo de RETORNO no entra. C++ no permite sobrecargar por retorno,
-    /// así que meterlo generaría dos símbolos para lo que el lenguaje
-    /// considera la misma función — y una llamada no sabría a cuál ir.
+    /// * El tipo de RETORNO no entra. C++ no permite sobrecargar por retorno,
+    /// asi que meterlo generaria dos simbolos para lo que el lenguaje
+    /// considera la misma funcion -- y una llamada no sabria a cual ir.
     #[test]
     fn el_retorno_no_entra_en_el_simbolo() {
-        // `int f(int)` y `char f(int)` son la MISMA función para C++ (y un
-        // error si se declaran las dos). Tienen que dar el mismo símbolo.
+        // `int f(int)` y `char f(int)` son la MISMA funcion para C++ (y un
+        // error si se declaran las dos). Tienen que dar el mismo simbolo.
         assert_eq!(funcion(&[], "f", &[T::Int]), funcion(&[], "f", &[T::Int]));
     }
 
-    /// Un símbolo generado nunca puede coincidir con algo que un programa
+    /// Un simbolo generado nunca puede coincidir con algo que un programa
     /// escriba: `#`, `.` y `{}` son ilegales en un identificador de C++.
     #[test]
     fn ningun_simbolo_generado_es_escribible_a_mano() {

@@ -1,49 +1,49 @@
 //! **La entrada de C**: `getchar` y `scanf`.
 //!
-//! ═══ Por qué esto es un fichero aparte ═══
+//! === Por que esto es un fichero aparte ===
 //!
 //! Es la mitad que faltaba de `printf`, y no se parece a ella en nada. Escribir
 //! es empujar bytes por una puerta que no puede fallar. **Leer es esperar**: hay
-//! que ceder el turno, guardar lo que llega de más, y decidir qué significa lo
-//! que una persona tecleó. Tres problemas que `emit_printf_variadic` no tiene.
+//! que ceder el turno, guardar lo que llega de mas, y decidir que significa lo
+//! que una persona tecleo. Tres problemas que `emit_printf_variadic` no tiene.
 //!
-//! ═══ Lo que hereda de L1 ═══
+//! === Lo que hereda de L1 ===
 //!
 //! Casi todo. `bmo_lower::console::{read_char, read_line}` ya saben esperar sin
-//! comerse el quantum, y `fmt::parse_decimal_scaled` ya sabe leer dígitos. Aquí
-//! sólo se decide **qué significa cada `%`** — que es lo específico de C y no
-//! tiene por qué bajar a una librería compartida. La misma frontera que en la
+//! comerse el quantum, y `fmt::parse_decimal_scaled` ya sabe leer digitos. Aqui
+//! solo se decide **que significa cada `%`** -- que es lo especifico de C y no
+//! tiene por que bajar a una libreria compartida. La misma frontera que en la
 //! salida: el formato es de C, mover bytes es de todos.
 //!
-//! ═══ Lo que NO hace, y se dice ═══
+//! === Lo que NO hace, y se dice ===
 //!
 //! Un `scanf` de verdad lee **varias conversiones de un flujo**, con reglas de
-//! espacio en blanco que ocupan página y media del estándar (§7.21.6.2), un
-//! valor de retorno que cuenta asignaciones, y `%n`, `%[`, anchuras... Aquí se
-//! admite **una conversión por llamada**, y más de una se rechaza diciendo que
-//! se parta en dos. Fingir el resto sería peor que no tenerlo: un `scanf` que
+//! espacio en blanco que ocupan pagina y media del estandar (section 7.21.6.2), un
+//! valor de retorno que cuenta asignaciones, y `%n`, `%[`, anchuras... Aqui se
+//! admite **una conversion por llamada**, y mas de una se rechaza diciendo que
+//! se parta en dos. Fingir el resto seria peor que no tenerlo: un `scanf` que
 //! ignora la mitad de su formato es un programa que lee mal en silencio.
 
 use crate::ast::*;
 use super::Codegen;
 
 /// El buffer de [`bmo_lower::console::read_char`]: 8 bytes de datos + 1 de
-/// cuenta, redondeado a 16 para no descolocar lo que venga detrás.
+/// cuenta, redondeado a 16 para no descolocar lo que venga detras.
 ///
-/// Es una global OCULTA, y tiene que serlo: `getchar` se emite en línea en cada
-/// sitio donde se llama —aquí no hay runtime que enlazar— y los siete bytes que
+/// Es una global OCULTA, y tiene que serlo: `getchar` se emite en linea en cada
+/// sitio donde se llama --aqui no hay runtime que enlazar-- y los siete bytes que
 /// sobran de un paquete tienen que sobrevivir de una llamada a la siguiente. En
-/// la pila no sobrevivirían.
+/// la pila no sobrevivirian.
 const BUF_ENTRADA: &str = "__bmo_entrada";
 const BUF_ENTRADA_BYTES: u32 = 16;
 
-/// Cuántos bytes de línea acepta un `scanf`. Es el mismo tope que el renglón
+/// Cuantos bytes de linea acepta un `scanf`. Es el mismo tope que el renglon
 /// del kernel y que la caja del compositor: pasarse en uno de los tres deja que
 /// el texto se corte en silencio en otro.
 const LINEA_MAX: u8 = 127;
 
 impl Codegen {
-    /// Reserva el buffer de entrada si todavía no está. Idempotente: dos
+    /// Reserva el buffer de entrada si todavia no esta. Idempotente: dos
     /// `getchar()` comparten el mismo, que es justo el punto.
     fn reservar_buffer_entrada(&mut self) -> String {
         if !self.global_offsets.contains_key(BUF_ENTRADA) {
@@ -68,18 +68,18 @@ impl Codegen {
         self.global_fixups.push((self.code.len() - 4, nombre));
     }
 
-    /// `getchar()` — el siguiente byte, **bloqueando**.
+    /// `getchar()` -- el siguiente byte, **bloqueando**.
     ///
     /// Devuelve el byte en `rax`. No devuelve `EOF` nunca: una consola de BMO
     /// no se acaba, se queda esperando. Un `while ((c = getchar()) != EOF)`
-    /// giraría para siempre, y por eso el ejemplo de la biblioteca corta con
+    /// giraria para siempre, y por eso el ejemplo de la biblioteca corta con
     /// `'\n'` y no con `EOF`.
     pub(super) fn emit_getchar(&mut self) {
         self.emit_lea_rdi_buffer();
         bmo_lower::console::read_char(&mut self.code);
     }
 
-    /// `scanf(fmt, &destino)` — una conversión.
+    /// `scanf(fmt, &destino)` -- una conversion.
     pub(super) fn emit_scanf(&mut self, args: &[Expr]) {
         let Some(Expr::StringLit(formato)) = args.first() else {
             self.errors.push(
@@ -123,15 +123,15 @@ impl Codegen {
 
         match conv {
             'c' => {
-                // Un carácter: ni línea ni espacios de por medio.
+                // Un caracter: ni linea ni espacios de por medio.
                 self.emit_getchar();
                 self.emit_guardar_en_destino(&destino, &TypeSpec::Char);
             }
             'd' | 'i' => {
                 self.emit_leer_linea_a_pila();
-                // `read_line` deja `r8` al FINAL de lo leído; el parser lo
+                // `read_line` deja `r8` al FINAL de lo leido; el parser lo
                 // quiere al principio. Se vuelve a apuntar en vez de guardar
-                // una copia en un registro que el `syscall` de dentro pisaría.
+                // una copia en un registro que el `syscall` de dentro pisaria.
                 self.emit_lea_r8_pila();
                 bmo_lower::fmt::parse_decimal_scaled(&mut self.code, 0);
                 self.emit_cerrar_hueco_pila();
@@ -155,7 +155,7 @@ impl Codegen {
         }
     }
 
-    /// Abre `LINEA_MAX+1` bytes en la pila y lee una línea ahí.
+    /// Abre `LINEA_MAX+1` bytes en la pila y lee una linea ahi.
     fn emit_leer_linea_a_pila(&mut self) {
         let hueco = (LINEA_MAX as i32 + 1 + 15) / 16 * 16;
         self.code.extend_from_slice(&[0x48, 0x81, 0xEC]);
@@ -175,13 +175,13 @@ impl Codegen {
         self.code.extend_from_slice(&(hueco as u32).to_le_bytes());
     }
 
-    /// Guarda `rax` donde apunta `destino`, del tamaño de `tipo`.
+    /// Guarda `rax` donde apunta `destino`, del tamano de `tipo`.
     ///
-    /// `destino` es una expresión que da una DIRECCIÓN — el `&x` del llamante.
-    /// Se aparca el valor porque evaluar la dirección usa `rax` también.
+    /// `destino` es una expresion que da una DIRECCION -- el `&x` del llamante.
+    /// Se aparca el valor porque evaluar la direccion usa `rax` tambien.
     fn emit_guardar_en_destino(&mut self, destino: &Expr, tipo: &TypeSpec) {
-        self.code.push(0x50); // push rax (el valor leído)
-        self.emit_expr(destino); // rax = dirección
+        self.code.push(0x50); // push rax (el valor leido)
+        self.emit_expr(destino); // rax = direccion
         self.code.push(0x5A); // pop rdx (el valor)
         match tipo {
             TypeSpec::Char | TypeSpec::UnsignedChar => {

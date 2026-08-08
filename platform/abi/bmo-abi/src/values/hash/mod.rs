@@ -1,13 +1,13 @@
-//! `hash` — funciones hash del BMO ABI.
+//! `hash` -- funciones hash del BMO ABI.
 //!
 //! Reemplaza el caos de algoritmos hash de C (cada lib su propio CRC, cada
-//! app su propio FNV) con implementaciones canónicas, probadas y constantes.
+//! app su propio FNV) con implementaciones canonicas, probadas y constantes.
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
-// ─── FNV-1a (32-bit) ───────────────────────────────────────────────
+// --- FNV-1a (32-bit) -----------------------------------------------
 
-/// FNV-1a hash de 32 bits. Rápido para claves cortas (nombres de símbolos,
+/// FNV-1a hash de 32 bits. Rapido para claves cortas (nombres de simbolos,
 /// identificadores, strings).
 pub fn fnv1a_32(data: &[u8]) -> bx_u32 {
     const FNV1A_32_OFFSET: u32 = 2166136261;
@@ -40,10 +40,10 @@ pub fn fnv1a_str_64(s: &str) -> bx_u64 {
     fnv1a_64(s.as_bytes())
 }
 
-// ─── CRC32c (Castagnoli) ───────────────────────────────────────────
+// --- CRC32c (Castagnoli) -------------------------------------------
 
 /// CRC32c (polinomio Castagnoli 0x1EDC6F41).
-/// Implementación tabla-based, ~200 MB/s.
+/// Implementacion tabla-based, ~200 MB/s.
 pub fn crc32c(data: &[u8]) -> bx_u32 {
     !data.iter().fold(CRC32C_INIT, |crc, &byte| {
         CRC32C_TABLE[((crc ^ byte as u32) & 0xFF) as usize] ^ (crc >> 8)
@@ -72,7 +72,7 @@ const fn crc32c_table() -> [u32; 256] {
     table
 }
 
-// ─── CRC32 (IEEE 802.3) ───────────────────────────────────────────
+// --- CRC32 (IEEE 802.3) -------------------------------------------
 
 /// CRC32 IEEE 802.3 (polinomio 0x04C11DB7).
 pub fn crc32(data: &[u8]) -> bx_u32 {
@@ -103,7 +103,7 @@ const fn crc32_ieee_table() -> [u32; 256] {
     table
 }
 
-// ─── Constants ─────────────────────────────────────────────────────
+// --- Constants -----------------------------------------------------
 
 pub const CRC32C_INIT: u32 = 0xFFFFFFFF;
 pub const CRC32C_XOR: u32 = 0xFFFFFFFF;

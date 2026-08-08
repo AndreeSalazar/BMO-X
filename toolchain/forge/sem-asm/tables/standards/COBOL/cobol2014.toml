@@ -1,4 +1,4 @@
-# cobol2014.toml — ISO/IEC 1989:2014 (COBOL 2014)
+# cobol2014.toml -- ISO/IEC 1989:2014 (COBOL 2014)
 [standard]
 iso_number = "ISO/IEC 1989:2014"
 year = 2014

@@ -1,4 +1,4 @@
-//! FICHEROS — 6 pruebas.
+//! FICHEROS -- 6 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,11 +7,11 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-/// ★ EL BATCH. Lee un fichero de movimientos, los totaliza en decimal
+/// * EL BATCH. Lee un fichero de movimientos, los totaliza en decimal
 /// exacto y escribe el cierre en otro fichero.
 ///
-/// Es el programa que justifica todo lo demás: hasta ahora BMO COBOL sabía
-/// calcular y sabía presentar, y no tenía de dónde sacar los datos.
+/// Es el programa que justifica todo lo demas: hasta ahora BMO COBOL sabia
+/// calcular y sabia presentar, y no tenia de donde sacar los datos.
 #[test]
 fn el_batch_totaliza_un_fichero_y_escribe_el_cierre() {
     let (salida, m) = run_cobol_con_disco(
@@ -28,13 +28,13 @@ fn el_batch_totaliza_un_fichero_y_escribe_el_cierre() {
     .map(|l| format!("{l}\n"))
     .concat();
     assert_eq!(salida, esperado);
-    // Y en el disco queda el total, no un fichero vacío ni a medias.
+    // Y en el disco queda el total, no un fichero vacio ni a medias.
     assert_eq!(m.archivo_texto("datos/cierre.txt").as_deref(), Some("1135.00\n"));
 }
 
-/// Un fichero que no existe NO es un fichero vacío: el `AT END` salta a la
+/// Un fichero que no existe NO es un fichero vacio: el `AT END` salta a la
 /// primera y el total es cero, sin reventar. En un batch nocturno eso es
-/// la diferencia entre "hoy no hubo movimientos" y una caída.
+/// la diferencia entre "hoy no hubo movimientos" y una caida.
 #[test]
 fn un_fichero_que_falta_da_cero_y_no_revienta() {
     let (salida, m) = run_cobol_con_disco(include_str!("../../examples/4-ficheros/batch.cob"), &[]);
@@ -43,7 +43,7 @@ fn un_fichero_que_falta_da_cero_y_no_revienta() {
     assert_eq!(m.archivo_texto("datos/cierre.txt").as_deref(), Some("0.00\n"));
 }
 
-/// Un `READ` sin `AT END` se RECHAZA. Compilaría a un `PERFORM UNTIL` que
+/// Un `READ` sin `AT END` se RECHAZA. Compilaria a un `PERFORM UNTIL` que
 /// no termina nunca, y eso es peor que no compilar.
 #[test]
 fn un_read_sin_at_end_se_rechaza() {
@@ -58,9 +58,9 @@ fn un_read_sin_at_end_se_rechaza() {
 
 /// Una ruta que no cabe en 8.3 se rechaza AL COMPILAR.
 ///
-/// En la máquina, `apps/movimientos.txt` daría handle nulo, y COBOL lee un
+/// En la maquina, `apps/movimientos.txt` daria handle nulo, y COBOL lee un
 /// handle nulo como "fin de fichero desde el principio": un cierre a cero
-/// sin una sola queja. El nombre se sabe al compilar, así que se dice al
+/// sin una sola queja. El nombre se sabe al compilar, asi que se dice al
 /// compilar.
 #[test]
 fn una_ruta_que_no_cabe_en_8_3_se_rechaza_al_compilar() {
@@ -73,7 +73,7 @@ fn una_ruta_que_no_cabe_en_8_3_se_rechaza_al_compilar() {
     assert!(t.contains("no cabe en 8.3") && t.contains("movimientos.txt"), "{t}");
 }
 
-/// Y las rutas que sí caben siguen pasando, incluida la letra de unidad.
+/// Y las rutas que si caben siguen pasando, incluida la letra de unidad.
 #[test]
 fn las_rutas_de_8_3_con_letra_de_unidad_pasan() {
     let src = "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\n\
@@ -84,7 +84,7 @@ fn las_rutas_de_8_3_con_letra_de_unidad_pasan() {
     assert!(compile_source_to_bef(src).is_ok(), "A:/apps/movim.txt tiene que valer");
 }
 
-/// Usar un fichero que nadie declaró se rechaza con el `SELECT` que falta,
+/// Usar un fichero que nadie declaro se rechaza con el `SELECT` que falta,
 /// no con un "no se pudo".
 #[test]
 fn un_fichero_sin_select_se_rechaza_diciendo_cual() {

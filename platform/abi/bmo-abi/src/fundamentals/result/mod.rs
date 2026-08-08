@@ -1,10 +1,10 @@
-//! `result` — BmoResult<T, E>, un Result<T, E> FFI-safe para el BMO ABI.
+//! `result` -- BmoResult<T, E>, un Result<T, E> FFI-safe para el BMO ABI.
 //!
-//! Layout fijo `#[repr(C)]` con discriminante explícito. Cada variante
+//! Layout fijo `#[repr(C)]` con discriminante explicito. Cada variante
 //! lleva su payload completo; la variante no usada se zero-inicializa.
 //!
 //! Para errores sin detalle, `BmoResult<T, ()>` equivale a
-//! `BmoOption<T>` pero con semántica de error.
+//! `BmoOption<T>` pero con semantica de error.
 
 use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::primitives::bx_u64;
@@ -97,7 +97,7 @@ where
     }
 }
 
-// ─── Specialization: BmoResult<T, BmoStatus> ───────────────────────
+// --- Specialization: BmoResult<T, BmoStatus> -----------------------
 
 impl<T: Copy> BmoResult<T, BmoStatus> {
     /// Convert to a `BmoStatus`, discarding the ok value.
@@ -119,7 +119,7 @@ impl<T: Copy> BmoResult<T, BmoStatus> {
     }
 }
 
-// ─── Conversion ─────────────────────────────────────────────────────
+// --- Conversion -----------------------------------------------------
 
 impl<T: Copy, E: Copy> From<Result<T, E>> for BmoResult<T, E> {
     fn from(r: Result<T, E>) -> Self {

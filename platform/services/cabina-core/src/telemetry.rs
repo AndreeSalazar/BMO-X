@@ -1,6 +1,6 @@
 use crate::event::Event;
 
-// ─── Counter group: snapshot of all atomic counters at a point in time ────
+// --- Counter group: snapshot of all atomic counters at a point in time ----
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +42,7 @@ pub struct IoCounters {
     pub ps2_scancodes: u64,
 }
 
-// ─── Full system telemetry snapshot ───────────────────────────────────────
+// --- Full system telemetry snapshot ---------------------------------------
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -79,7 +79,7 @@ impl TelemetrySnapshot {
     }
 }
 
-// ─── Full CABINA snapshot: telemetry + recent events ──────────────────────
+// --- Full CABINA snapshot: telemetry + recent events ----------------------
 
 pub const SNAPSHOT_EVENTS_MAX: usize = 32;
 
@@ -101,7 +101,7 @@ impl SystemSnapshot {
     }
 }
 
-// ─── Event in Event needs a ZERO constant ────────────────────────────────
+// --- Event in Event needs a ZERO constant --------------------------------
 
 impl Event {
     pub const ZERO: Self = Self {
@@ -118,7 +118,7 @@ impl Event {
     };
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────
+// --- Tests ----------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

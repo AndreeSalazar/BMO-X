@@ -1,4 +1,4 @@
-      * CIERRE — el batch escrito COMO SE ESCRIBE DE VERDAD.
+      * CIERRE -- el batch escrito COMO SE ESCRIBE DE VERDAD.
       *
       * Los siete ejemplos anteriores son programas: una lista de sentencias de
       * arriba abajo. Ningun COBOL de banca esta escrito asi. Un batch de
@@ -72,7 +72,7 @@
        01 LINEA     PIC $$$,$$9.99.
        PROCEDURE DIVISION.
 
-      *    ── EL PROGRAMA ENTERO, y se lee en voz alta ──
+      *    -- EL PROGRAMA ENTERO, y se lee en voz alta --
            PERFORM 1000-INICIO.
            PERFORM 2000-PROCESO UNTIL SE-ACABO.
            PERFORM 3000-CIERRE.
@@ -89,10 +89,10 @@
                NOT AT END PERFORM 4000-VALIDA THRU 4000-SALIR
            END-READ.
 
-      *    ── El RANGO: un PERFORM entra por 4000-VALIDA y no vuelve hasta
+      *    -- El RANGO: un PERFORM entra por 4000-VALIDA y no vuelve hasta
       *    pasar por 4000-SALIR, recorriendo los tres parrafos seguidos.
       *
-      * ★ EL DESCARTE, CON GO TO. Un movimiento de cero no cuenta para nada, y
+      * * EL DESCARTE, CON GO TO. Un movimiento de cero no cuenta para nada, y
       * saltar al parrafo de salida lo dice en una linea.
       *
       * OJO con la diferencia, que es LA trampa de los parrafos:
@@ -111,7 +111,7 @@
        4100-CUENTA.
            ADD IMPORTE TO TOTAL.
            ADD 1 TO CUANTOS.
-      *    ★ LA TABLA DE DECISION. `EVALUATE TRUE` con una condicion entera por
+      *    * LA TABLA DE DECISION. `EVALUATE TRUE` con una condicion entera por
       *    rama es como un banco escribe un escalado, y se lee de arriba abajo:
       *    LA PRIMERA QUE ACIERTA GANA y las de abajo ni se prueban. Escrito
       *    con IF anidados dice lo mismo y no se lee.

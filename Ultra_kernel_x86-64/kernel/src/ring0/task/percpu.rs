@@ -5,7 +5,7 @@
 //! interrupted Ring 0 skip it (they check the saved CS). After `init_bsp`,
 //! any code can reach its per-CPU data as `[gs:OFF]` from asm, or through
 //! the safe Rust accessors below (which read the same static slots on the
-//! BSP — APs get their own slots when SMP lands).
+//! BSP -- APs get their own slots when SMP lands).
 //!
 //! Layout is part of the asm contract:
 //! ```text
@@ -87,7 +87,7 @@ pub fn init_bsp() {
 ///
 /// **gs-relative on purpose.** The trap entry stubs write this slot as
 /// `mov gs:[0x10], rsp`; reading the `PER_CPUS` static instead silently
-/// splits the brain the moment `GS_BASE != &PER_CPUS[0]` — the stub's write
+/// splits the brain the moment `GS_BASE != &PER_CPUS[0]` -- the stub's write
 /// lands elsewhere, this read returns the never-written 0, and the epilogue
 /// restores a context from address 0 (the observed #GP: backptr 0, pops to
 /// rsp 0x78, iretq with cs=0). One access path = writer and reader agree by

@@ -1,75 +1,75 @@
-//! `KIND_ARCHIVO` — **leer y escribir lo que hay dentro**, como capability.
+//! `KIND_ARCHIVO` -- **leer y escribir lo que hay dentro**, como capability.
 //!
-//! Hermano de [`crate::ring0::obj::directorio`]. Aquel deja PREGUNTAR qué hay en el
-//! disco; éste deja abrir uno de esos nombres y mover sus bytes.
+//! Hermano de [`crate::ring0::obj::directorio`]. Aquel deja PREGUNTAR que hay en el
+//! disco; este deja abrir uno de esos nombres y mover sus bytes.
 //!
-//! Hasta ahora el kernel sabía leer archivos (`fs::load`, con el que se carga
+//! Hasta ahora el kernel sabia leer archivos (`fs::load`, con el que se carga
 //! el compositor) y escribirlos (`fs::create`, con el que CABINA deja su caja
-//! negra), y **Ring 3 no tenía con qué pedírselo**. El eslabón que faltaba no
+//! negra), y **Ring 3 no tenia con que pedirselo**. El eslabon que faltaba no
 //! era el sistema de ficheros: era la puerta.
 //!
 //! ## Dos modos, no dos objetos
 //!
 //! El modo se fija AL ABRIR y no cambia. Un handle de lectura no escribe
-//! aunque se le pida — y no por una comprobación de permisos que alguien deba
-//! acordarse de escribir, sino porque en ese modo **no hay a dónde escribir**.
+//! aunque se le pida -- y no por una comprobacion de permisos que alguien deba
+//! acordarse de escribir, sino porque en ese modo **no hay a donde escribir**.
 //! Es la misma idea que hace inmutable el volumen de arranque: no existe la
-//! función.
+//! funcion.
 //!
-//! ## Por qué hay un buffer, y cuánto cabe
+//! ## Por que hay un buffer, y cuanto cabe
 //!
 //! La superficie congelada no acepta punteros: los bytes cruzan de 7 en 7
 //! dentro de un registro. Y `bmo_fat32` escribe un archivo ENTERO de una vez,
 //! no por trozos. Entre esas dos cosas hace falta un sitio donde juntar lo que
 //! llega suelto, y ese sitio es un buffer del kernel.
 //!
-//! ★ **Ese buffer ya no es una fila estática de 4 KiB.** Lo era: cuatro filas
-//! de `[u8; 4096]` en `.bss`, y de ahí salía "un archivo no puede pasar de 4
-//! KiB". Ese número no lo ponía el disco, ni FAT32, ni la superficie de
-//! syscalls — lo ponía **una constante**, en una máquina con 14.8 GiB libres y
+//! * **Ese buffer ya no es una fila estatica de 4 KiB.** Lo era: cuatro filas
+//! de `[u8; 4096]` en `.bss`, y de ahi salia "un archivo no puede pasar de 4
+//! KiB". Ese numero no lo ponia el disco, ni FAT32, ni la superficie de
+//! syscalls -- lo ponia **una constante**, en una maquina con 14.8 GiB libres y
 //! un sistema que ocupa 5.4 MiB.
 //!
-//! Ahora se le pregunta al archivo cuánto mide y se reservan sus marcos al
+//! Ahora se le pregunta al archivo cuanto mide y se reservan sus marcos al
 //! abrir; al escribir, el buffer **crece al doble** cuando se llena. El techo
-//! es la RAM, que es donde debe estar un techo. Lo que queda de límite se dice
+//! es la RAM, que es donde debe estar un techo. Lo que queda de limite se dice
 //! entero, sin adornos:
 //!
 //! - Se piden marcos **contiguos**, porque el buffer se recorre como un `&[u8]`
-//!   lineal. Si la RAM está fragmentada y no hay hueco seguido, se rechaza con
-//!   `ERROR_DEMASIADO_GRANDE` — entregar un archivo a trozos sin que el
-//!   llamante lo sepa sería peor.
-//! - El archivo entero pasa por RAM. Un archivo más grande que la memoria libre
-//!   no se abre. Para eso haría falta un escritor por sectores en `bmo_fat32`,
-//!   que es otra pieza y va después.
-//! - Lo escrito no llega al disco hasta `cerrar`, y ahí `bmo_fat32` lo guarda de
+//!   lineal. Si la RAM esta fragmentada y no hay hueco seguido, se rechaza con
+//!   `ERROR_DEMASIADO_GRANDE` -- entregar un archivo a trozos sin que el
+//!   llamante lo sepa seria peor.
+//! - El archivo entero pasa por RAM. Un archivo mas grande que la memoria libre
+//!   no se abre. Para eso haria falta un escritor por sectores en `bmo_fat32`,
+//!   que es otra pieza y va despues.
+//! - Lo escrito no llega al disco hasta `cerrar`, y ahi `bmo_fat32` lo guarda de
 //!   una vez.
 //!
 //! ## Escribir es un acto de dos pasos
 //!
-//! Lo escrito NO está en el disco hasta `ARCH_OP_CERRAR`. Un proceso que muere
+//! Lo escrito NO esta en el disco hasta `ARCH_OP_CERRAR`. Un proceso que muere
 //! a medias no deja un archivo a medias: no deja nada. Para un fichero de
-//! movimientos eso es lo correcto — un extracto truncado se parece demasiado a
+//! movimientos eso es lo correcto -- un extracto truncado se parece demasiado a
 //! uno completo.
 
 use crate::ring0::obj::cap;
 
-/// Cuántos archivos pueden estar abiertos a la vez, en todo el sistema.
+/// Cuantos archivos pueden estar abiertos a la vez, en todo el sistema.
 ///
-/// Eran **cuatro**, y no por diseño: cada ranura arrastraba una fila estática
-/// de 4 KiB, así que subir el número costaba `.bss` aunque nadie abriera nada.
+/// Eran **cuatro**, y no por diseno: cada ranura arrastraba una fila estatica
+/// de 4 KiB, asi que subir el numero costaba `.bss` aunque nadie abriera nada.
 /// Ahora una ranura son unos pocos punteros y el buffer se reserva al abrir, o
-/// sea que dieciséis cuestan lo mismo que cuatro cuando están vacías. Un batch
+/// sea que dieciseis cuestan lo mismo que cuatro cuando estan vacias. Un batch
 /// que cruza tres ficheros con su salida ya no se queda sin manos.
 pub const MAX_ABIERTOS: usize = 16;
 
-/// Lo que se reserva al CREAR un archivo, antes de saber cuánto va a escribir.
+/// Lo que se reserva al CREAR un archivo, antes de saber cuanto va a escribir.
 ///
-/// No es un techo: cuando se llena, el buffer **crece al doble**. Es sólo la
+/// No es un techo: cuando se llena, el buffer **crece al doble**. Es solo la
 /// primera reserva, elegida para que un informe corriente no tenga que crecer
 /// ni una vez.
 pub const INICIAL: usize = 16 * 1024;
 
-/// Tamaño de página. El buffer se pide en marcos, que es lo que el asignador
+/// Tamano de pagina. El buffer se pide en marcos, que es lo que el asignador
 /// entrega.
 const PAGINA: usize = 4096;
 
@@ -81,80 +81,80 @@ pub const ERROR_SIN_HUECO: u32 = 27;
 pub const ERROR_NO_ESTA: u32 = 28;
 /// El archivo no cabe en el buffer. Se dice en vez de entregar un trozo.
 pub const ERROR_DEMASIADO_GRANDE: u32 = 29;
-/// El nombre no cabe en 8.3 (ocho de nombre, tres de extensión).
+/// El nombre no cabe en 8.3 (ocho de nombre, tres de extension).
 pub const ERROR_NOMBRE: u32 = 30;
 /// No hay volumen de datos montado con escritor.
 pub const ERROR_SOLO_LECTURA: u32 = 31;
 /// La CARPETA de la ruta no existe. Distinto de que falte el archivo: manda a
 /// mirar otra cosa, y un mensaje que no los separa manda a buscar donde no es.
 pub const ERROR_CARPETA: u32 = 32;
-/// La ruta no nombra un archivo — acaba en barra, o es un directorio.
+/// La ruta no nombra un archivo -- acaba en barra, o es un directorio.
 pub const ERROR_ES_CARPETA: u32 = 33;
 
-/// Saca hasta 7 bytes: `(n << 56) | bytes_LE`. `n == 0` = se acabó.
+/// Saca hasta 7 bytes: `(n << 56) | bytes_LE`. `n == 0` = se acabo.
 ///
 /// Siete y no ocho porque el octavo lleva la cuenta. Es el mismo trato que la
-/// consola y que `DIR_OP_NOMBRE`: un contador honesto vale más que un byte
-/// apretado, y aquí además hace que **el NUL viaje** — un archivo no es texto
-/// y cortar en el primer cero corrompería cualquier binario.
+/// consola y que `DIR_OP_NOMBRE`: un contador honesto vale mas que un byte
+/// apretado, y aqui ademas hace que **el NUL viaje** -- un archivo no es texto
+/// y cortar en el primer cero corromperia cualquier binario.
 pub const ARCH_OP_LEER: u64 = 0x01;
 
 /// Mete hasta 7 bytes: `arg0 = (n << 56) | bytes_LE`, el mismo formato que
-/// `LEER` pero al revés. Devuelve cuántos se aceptaron.
+/// `LEER` pero al reves. Devuelve cuantos se aceptaron.
 pub const ARCH_OP_ESCRIBIR: u64 = 0x02;
 
 /// Bytes del archivo (los que quedan por leer, o los escritos hasta ahora).
 pub const ARCH_OP_TAMANO: u64 = 0x03;
 
 /// Cierra. En un archivo de ESCRITURA es donde el contenido llega al disco:
-/// devuelve `1` si se guardó, `0` si no. En uno de lectura devuelve `1`.
+/// devuelve `1` si se guardo, `0` si no. En uno de lectura devuelve `1`.
 pub const ARCH_OP_CERRAR: u64 = 0x04;
 
-/// Saca hasta 7 bytes **sin pasar del salto de línea**:
+/// Saca hasta 7 bytes **sin pasar del salto de linea**:
 /// `(fin << 63) | (n << 56) | bytes_LE`.
 ///
-/// ★ Existe porque `ARCH_OP_LEER` **no sirve para leer registros**. Aquel
+/// * Existe porque `ARCH_OP_LEER` **no sirve para leer registros**. Aquel
 /// devuelve siete bytes y avanza el cursor siete; si el salto cae en medio del
-/// paquete, lo que venía detrás se pierde — el cursor ya pasó por encima y
-/// nadie de fuera puede devolvérselo. Un fichero de movimientos leído así da
-/// bien el primer registro y basura todos los demás.
+/// paquete, lo que venia detras se pierde -- el cursor ya paso por encima y
+/// nadie de fuera puede devolverselo. Un fichero de movimientos leido asi da
+/// bien el primer registro y basura todos los demas.
 ///
 /// El corte lo hace el kernel porque **el cursor es del kernel**. Es la misma
-/// razón por la que `siguiente` vive en `directorio.rs` y no en Ring 3.
+/// razon por la que `siguiente` vive en `directorio.rs` y no en Ring 3.
 pub const ARCH_OP_LEER_LINEA: u64 = 0x05;
 /// Leer un bloque entero en memoria concedida. Espejo de
-/// `bmo_abi::…::ARCH_OP_LEER_EN`; lo despacha `syscall.rs`, que es quien tiene
+/// `bmo_abi::...::ARCH_OP_LEER_EN`; lo despacha `syscall.rs`, que es quien tiene
 /// las capabilities a mano.
 pub const ARCH_OP_LEER_EN: u64 = 0x06;
-/// Mover el cursor. Espejo de `bmo_abi::…::ARCH_OP_SALTAR`.
+/// Mover el cursor. Espejo de `bmo_abi::...::ARCH_OP_SALTAR`.
 pub const ARCH_OP_SALTAR: u64 = 0x07;
 
-// ── El buffer de cada archivo abierto ───────────────────────────────────
+// -- El buffer de cada archivo abierto -----------------------------------
 //
-// ★ Esto era `BUF: [[u8; 4096]; 4]` — cuatro filas estáticas de 4 KiB. El
-// número no era un límite del disco ni del formato: era **el tamaño de una
-// fila**, y de ahí salía "un archivo no puede pasar de 4 KiB". En una máquina
-// con 14.8 GiB libres y un sistema que ocupa 5.4 MiB, ese techo no lo ponía la
-// física: lo ponía una constante.
+// * Esto era `BUF: [[u8; 4096]; 4]` -- cuatro filas estaticas de 4 KiB. El
+// numero no era un limite del disco ni del formato: era **el tamano de una
+// fila**, y de ahi salia "un archivo no puede pasar de 4 KiB". En una maquina
+// con 14.8 GiB libres y un sistema que ocupa 5.4 MiB, ese techo no lo ponia la
+// fisica: lo ponia una constante.
 //
-// Ahora cada ranura guarda un puntero físico y cuántas páginas mide, y el
-// buffer se pide al asignador de marcos AL ABRIR, del tamaño que diga el
-// archivo. El techo pasa a ser la RAM — que es donde debe estar.
+// Ahora cada ranura guarda un puntero fisico y cuantas paginas mide, y el
+// buffer se pide al asignador de marcos AL ABRIR, del tamano que diga el
+// archivo. El techo pasa a ser la RAM -- que es donde debe estar.
 //
 // Se piden marcos CONTIGUOS porque el buffer se recorre como un `&[u8]` lineal.
 // Si no hay un hueco contiguo, se dice: un archivo entregado a trozos sin que
 // el llamante lo sepa es peor que un "no".
 static mut BUF_FIS: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 static mut BUF_PAGS: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
-/// Bytes válidos: lo leído del disco, o lo acumulado para escribir.
+/// Bytes validos: lo leido del disco, o lo acumulado para escribir.
 static mut LARGO: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
-/// Por dónde va la lectura.
+/// Por donde va la lectura.
 static mut CURSOR: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Nombre 8.3 y directorio destino, para el momento de guardar.
 static mut NOMBRE: [[u8; 11]; MAX_ABIERTOS] = [[b' '; 11]; MAX_ABIERTOS];
 static mut DIRECTORIO: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 static mut ESCRIBE: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
-/// Se pidió escribir más de lo que cabe. `cerrar` lo confiesa en vez de
+/// Se pidio escribir mas de lo que cabe. `cerrar` lo confiesa en vez de
 /// guardar un archivo corto que parece entero.
 static mut DESBORDO: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
 static mut DUENO: [u32; MAX_ABIERTOS] = [SIN_DUENO; MAX_ABIERTOS];
@@ -163,10 +163,10 @@ fn hueco() -> Option<usize> {
     unsafe { (0..MAX_ABIERTOS).find(|&i| DUENO[i] == SIN_DUENO) }
 }
 
-/// El buffer de la ranura como rebanada. Vacío si no hay nada reservado.
+/// El buffer de la ranura como rebanada. Vacio si no hay nada reservado.
 ///
-/// La dirección sale de `phys_to_virt`: el kernel ve toda la RAM por el mapa
-/// físico, así que no hace falta mapear nada para tocar estos marcos.
+/// La direccion sale de `phys_to_virt`: el kernel ve toda la RAM por el mapa
+/// fisico, asi que no hace falta mapear nada para tocar estos marcos.
 unsafe fn buf(i: usize) -> &'static mut [u8] {
     if BUF_FIS[i] == 0 {
         return &mut [];
@@ -175,7 +175,7 @@ unsafe fn buf(i: usize) -> &'static mut [u8] {
     core::slice::from_raw_parts_mut(base, (BUF_PAGS[i] as usize) * PAGINA)
 }
 
-/// Cuántos bytes caben ahora mismo en la ranura.
+/// Cuantos bytes caben ahora mismo en la ranura.
 unsafe fn capacidad(i: usize) -> usize {
     (BUF_PAGS[i] as usize) * PAGINA
 }
@@ -195,7 +195,7 @@ unsafe fn reservar(i: usize, bytes: usize) -> bool {
 
 /// Devuelve el buffer de la ranura al asignador. Idempotente.
 ///
-/// Se llama SIEMPRE al soltar la ranura, incluso cuando el guardado falló: un
+/// Se llama SIEMPRE al soltar la ranura, incluso cuando el guardado fallo: un
 /// archivo que no se pudo escribir no es motivo para quedarse con su memoria.
 unsafe fn soltar_buffer(i: usize) {
     if BUF_FIS[i] != 0 {
@@ -210,8 +210,8 @@ unsafe fn soltar_buffer(i: usize) {
 /// Hace sitio para `minimo` bytes DOBLANDO el buffer. `false` = no hay RAM.
 ///
 /// Doblar y no crecer justo lo pedido: escribir un informe son miles de
-/// llamadas de siete bytes, y crecer en cada una sería copiar el archivo entero
-/// miles de veces. Doblando, el número de copias es logarítmico.
+/// llamadas de siete bytes, y crecer en cada una seria copiar el archivo entero
+/// miles de veces. Doblando, el numero de copias es logaritmico.
 unsafe fn crecer(i: usize, minimo: usize) -> bool {
     let mut nueva = capacidad(i).max(PAGINA);
     while nueva < minimo {
@@ -222,7 +222,7 @@ unsafe fn crecer(i: usize, minimo: usize) -> bool {
         Some(f) => f,
         None => return false,
     };
-    // Copiar lo que ya había ANTES de soltar lo viejo.
+    // Copiar lo que ya habia ANTES de soltar lo viejo.
     let destino = crate::ring0::mm::phys_to_virt(fis) as *mut u8;
     let viejo = buf(i);
     let n = LARGO[i].min(viejo.len());
@@ -235,8 +235,8 @@ unsafe fn crecer(i: usize, minimo: usize) -> bool {
 
 /// Abre un archivo del volumen de datos para LEER y entrega su handle a `pid`.
 ///
-/// El archivo entero se trae al buffer aquí, no según se pide. Así una lectura
-/// no puede fallar a mitad por un error de disco: o el archivo está entero en
+/// El archivo entero se trae al buffer aqui, no segun se pide. Asi una lectura
+/// no puede fallar a mitad por un error de disco: o el archivo esta entero en
 /// memoria antes de que Ring 3 vea el primer byte, o `abrir` falla y no hay
 /// handle.
 pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
@@ -301,13 +301,13 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
 /// Abre un archivo del volumen de datos para ESCRIBIR.
 ///
 /// El directorio se resuelve AHORA y el nombre se valida AHORA, aunque no se
-/// escriba nada hasta cerrar. Descubrir al final que la carpeta no existía
-/// significaría haber dejado a un programa acumulando bytes para nada.
+/// escriba nada hasta cerrar. Descubrir al final que la carpeta no existia
+/// significaria haber dejado a un programa acumulando bytes para nada.
 pub fn crear(pid: u32, ruta: &str) -> Result<u64, u32> {
     if !crate::ring0::fsys::fs::data_mounted() {
         return Err(ERROR_SOLO_LECTURA);
     }
-    // Partir la ruta en carpeta + nombre por la ÚLTIMA barra.
+    // Partir la ruta en carpeta + nombre por la ULTIMA barra.
     let limpia = {
         let mut p = ruta.trim();
         if p.len() >= 2 && p.as_bytes()[1] == b':' { p = &p[2..]; }
@@ -351,9 +351,9 @@ pub fn crear(pid: u32, ruta: &str) -> Result<u64, u32> {
         ESCRIBE[i] = true;
         DESBORDO[i] = false;
         DUENO[i] = pid;
-        // Se conceden los dos derechos: `invoke` resuelve con RIGHT_READ, así
-        // que sin él ni siquiera llegaría el `ESCRIBIR`. Lo que impide leer un
-        // archivo de escritura no es el derecho, es el modo — ver `operacion`.
+        // Se conceden los dos derechos: `invoke` resuelve con RIGHT_READ, asi
+        // que sin el ni siquiera llegaria el `ESCRIBIR`. Lo que impide leer un
+        // archivo de escritura no es el derecho, es el modo -- ver `operacion`.
         match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ | cap::RIGHT_WRITE, i as u64) {
             Some(h) => {
                 crate::ring0::cabina::info("arch", "archivo abierto para escribir", pid as u64);
@@ -380,7 +380,7 @@ fn leer(i: usize) -> u64 {
     }
 }
 
-/// Como `leer`, pero se para en el salto de línea y lo consume.
+/// Como `leer`, pero se para en el salto de linea y lo consume.
 fn leer_linea(i: usize) -> u64 {
     unsafe {
         let mut w = [0u8; 8];
@@ -409,8 +409,8 @@ fn escribir(i: usize, palabra: u64) -> u64 {
     unsafe {
         let mut puestos = 0usize;
         for k in 0..n {
-            // Sin sitio: se DOBLA el buffer. Antes aquí se levantaba la bandera
-            // de desbordado contra un techo de 4 KiB; ahora sólo se levanta si
+            // Sin sitio: se DOBLA el buffer. Antes aqui se levantaba la bandera
+            // de desbordado contra un techo de 4 KiB; ahora solo se levanta si
             // de verdad no queda RAM, que es un motivo y no una constante.
             if LARGO[i] >= capacidad(i) && !crecer(i, LARGO[i] + 1) {
                 DESBORDO[i] = true;
@@ -444,14 +444,14 @@ fn cerrar(i: usize) -> u64 {
                 // implicito sobre el `static mut`: la fila primero, el recorte
                 // despues. Encadenarlo en una expresion crea una referencia a
                 // la desreferencia del puntero, que es justo lo que el lint
-                // prohibe — y con razon, porque esconde de donde sale.
+                // prohibe -- y con razon, porque esconde de donde sale.
                 let fila = buf(i);
                 let datos = &fila[..LARGO[i].min(fila.len())];
                 // `guardar_en` y no `crear_en`: si el archivo ya existe, se
-                // REEMPLAZA. `crear_en` contestaba `Exists` y aquí eso se
-                // convertía en un `warn` a la CABINA y un `0` que casi nadie
-                // miraba — o sea que un programa que escribía su salida sólo
-                // era honesto la primera vez que se corría.
+                // REEMPLAZA. `crear_en` contestaba `Exists` y aqui eso se
+                // convertia en un `warn` a la CABINA y un `0` que casi nadie
+                // miraba -- o sea que un programa que escribia su salida solo
+                // era honesto la primera vez que se corria.
                 match crate::ring0::fsys::fs::guardar_en(DIRECTORIO[i], &NOMBRE[i], datos) {
                     Ok(()) => {
                         crate::ring0::cabina::info("arch", "archivo guardado", LARGO[i] as u64);
@@ -473,9 +473,9 @@ fn cerrar(i: usize) -> u64 {
 
 fn soltar(i: usize) {
     unsafe {
-        // La memoria se devuelve AQUÍ y en un solo sitio, pase lo que pase con
+        // La memoria se devuelve AQUI y en un solo sitio, pase lo que pase con
         // el guardado. Un archivo que no se pudo escribir no es motivo para
-        // quedarse con sus marcos: eso es una fuga que sólo se nota tras
+        // quedarse con sus marcos: eso es una fuga que solo se nota tras
         // muchas horas, que es cuando peor se encuentra.
         soltar_buffer(i);
         DUENO[i] = SIN_DUENO;
@@ -502,9 +502,9 @@ pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
         ARCH_OP_TAMANO => Some(unsafe {
             if escribe { LARGO[i] as u64 } else { (LARGO[i] - CURSOR[i]) as u64 }
         }),
-        // ★ `fseek`. Cuesta lo que cuesta poner un número porque el archivo ya
-        // está entero en el búfer desde que se abrió. Se acota al tamaño en vez
-        // de rechazar: un cursor más allá del final significa "no queda nada",
+        // * `fseek`. Cuesta lo que cuesta poner un numero porque el archivo ya
+        // esta entero en el bufer desde que se abrio. Se acota al tamano en vez
+        // de rechazar: un cursor mas alla del final significa "no queda nada",
         // que es lo que contesta `ARCH_OP_TAMANO` sin inventarse un error.
         ARCH_OP_SALTAR if !escribe => Some(unsafe {
             let d = if arg0 as usize > LARGO[i] { LARGO[i] } else { arg0 as usize };
@@ -519,11 +519,11 @@ pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
 /// **Copia hasta `n` bytes desde el cursor a `dst`, y avanza.** Devuelve los
 /// copiados de verdad.
 ///
-/// ⚠️ `dst` **tiene que estar validado por el llamante**: aquí no se puede
-/// comprobar nada porque es una dirección a secas. Quien la resuelve es
-/// `syscall.rs`, y lo hace de la única forma que no exige inventarse un
-/// validador de punteros — pidiendo la *capability* del bloque que el kernel
-/// concedió y midiendo contra lo que entregó.
+/// [!] `dst` **tiene que estar validado por el llamante**: aqui no se puede
+/// comprobar nada porque es una direccion a secas. Quien la resuelve es
+/// `syscall.rs`, y lo hace de la unica forma que no exige inventarse un
+/// validador de punteros -- pidiendo la *capability* del bloque que el kernel
+/// concedio y midiendo contra lo que entrego.
 ///
 /// # Safety
 /// `dst` debe apuntar a `n` bytes escribibles y mapeados en el CR3 actual.

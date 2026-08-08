@@ -2,8 +2,8 @@
 //!
 //! Estaba entero dentro de `lib.rs`: **2520 de sus 2628 lineas eran este
 //! modulo**, y encontrar un test era buscar por nombre en un fichero donde
-//! ya no cabia nada mas. Aqui viven los AYUDANTES —los que compilan y
-//! ejecutan— y cada tema tiene su fichero.
+//! ya no cabia nada mas. Aqui viven los AYUDANTES --los que compilan y
+//! ejecutan-- y cada tema tiene su fichero.
 //!
 //! No se movio a `tests/` de integracion a proposito: alli solo se ve la API
 //! publica, y la mitad de estas pruebas miran el AST o el preprocesador por
@@ -22,10 +22,10 @@
 //!
 //! | | |
 //! |---|---|
-//! | El lenguaje se reconoce | `parseo` 28 · `estructuras` 16 · `enumeraciones` 3 |
-//! | El programa CORRE | `ejecucion` 6 · `flotante` 10 · `globales` 3 · `matriz` 5 |
-//! | El sistema debajo | `syscalls` 6 · `intrinsecos` 8 · `puerta` · `cargador` 5 |
-//! | Lo de siempre | `printf` 11 · `punteros_funcion` 8 · `preprocesador` |
+//! | El lenguaje se reconoce | `parseo` 28 - `estructuras` 16 - `enumeraciones` 3 |
+//! | El programa CORRE | `ejecucion` 6 - `flotante` 10 - `globales` 3 - `matriz` 5 |
+//! | El sistema debajo | `syscalls` 6 - `intrinsecos` 8 - `puerta` - `cargador` 5 |
+//! | Lo de siempre | `printf` 11 - `punteros_funcion` 8 - `preprocesador` |
 //!
 //! Y los que ya estaban: `agregados`, `almacenamiento`, `entrada`,
 //! `inicializadores`, `memoria`, `semantic`, `silencios`.
@@ -55,25 +55,25 @@ mod puerta;
 mod punteros_funcion;
 mod semantic;
 mod silencios;
-/// Las funciones SINTETIZADAS: emitidas una vez, alcanzadas con `call`. Aquí
-/// se cuenta **cuántas veces sale el cuerpo**, que es lo que un test de
+/// Las funciones SINTETIZADAS: emitidas una vez, alcanzadas con `call`. Aqui
+/// se cuenta **cuantas veces sale el cuerpo**, que es lo que un test de
 /// comportamiento no puede ver.
 mod sintetizadas;
 mod syscalls;
 
-// ── Banco de pruebas: EJECUTAR el programa, no mirarlo ──────────────
+// -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
-// Mismo criterio que en COBOL: un formateo que produce dígitos erróneos
+// Mismo criterio que en COBOL: un formateo que produce digitos erroneos
 // se ve perfectamente sano en un volcado de bytes.
 
-/// Compila y ejecuta un programa C, devolviendo lo que el kernel habría
+/// Compila y ejecuta un programa C, devolviendo lo que el kernel habria
 /// pintado.
 fn run_c(source: &str) -> String {
     let bef = compile_source_to_bef(source).expect("el programa debe compilar");
     ejecutar_bef(&bef)
 }
 
-/// Igual, pero pasando ANTES por el preprocesador — que es lo que hace la
+/// Igual, pero pasando ANTES por el preprocesador -- que es lo que hace la
 /// linea de ordenes y lo que el camino de biblioteca NO hace.
 fn run_c_con_pp(source: &str) -> String {
     let bef = compile_with_preprocessor(source, std::path::Path::new("prueba.c"), CStandard::C11)
@@ -81,11 +81,11 @@ fn run_c_con_pp(source: &str) -> String {
     ejecutar_bef(&bef)
 }
 
-/// Compila con preprocesador y ejecuta SEMBRANDO la máquina antes.
+/// Compila con preprocesador y ejecuta SEMBRANDO la maquina antes.
 ///
 /// Hace falta desde que C puede emitir la puerta: un programa que lee el
-/// ratón necesita que haya un ratón que leer. Sin esto, todo lo que use
-/// `<bmo/entrada.h>` se probaría contra ceros, que es indistinguible de
+/// raton necesita que haya un raton que leer. Sin esto, todo lo que use
+/// `<bmo/entrada.h>` se probaria contra ceros, que es indistinguible de
 /// un driver muerto.
 fn run_c_sembrado(source: &str, sembrar: impl FnOnce(&mut bmo_lower::emu::Machine)) -> String {
     let bef = compile_with_preprocessor(source, std::path::Path::new("prueba.c"), CStandard::C11)
@@ -97,10 +97,10 @@ fn ejecutar_bef(bef: &[u8]) -> String {
     ejecutar_bef_con(bef, |_| {})
 }
 
-/// Igual que [`run_c`], pero devuelve **la máquina entera**.
+/// Igual que [`run_c`], pero devuelve **la maquina entera**.
 ///
-/// Para lo que un programa no puede contarse a sí mismo: cuánta memoria le
-/// entregó el kernel, qué llamadas cruzaron la puerta y en qué orden. Un
+/// Para lo que un programa no puede contarse a si mismo: cuanta memoria le
+/// entrego el kernel, que llamadas cruzaron la puerta y en que orden. Un
 /// programa que imprime "todo bien" es un testigo, no una prueba.
 fn run_c_maquina(source: &str) -> bmo_lower::emu::Machine {
     let bef = compile_source_to_bef(source).expect("el programa debe compilar");
@@ -130,35 +130,35 @@ fn maquina_de_bef_con(
     let sec_off = hdr.section_table_offset as usize;
 
     // La imagen se rearma en el MISMO orden en que el codegen la dispuso:
-    // código, luego rodata, luego data. El `lea rax,[rip+disp]` con el que se
-    // alcanzan las cadenas se calculó contando desde el código; cargar sólo la
-    // sección CODE dejaba esos punteros apuntando al vacío y un `%s` imprimía
-    // cadena vacía.
+    // codigo, luego rodata, luego data. El `lea rax,[rip+disp]` con el que se
+    // alcanzan las cadenas se calculo contando desde el codigo; cargar solo la
+    // seccion CODE dejaba esos punteros apuntando al vacio y un `%s` imprimia
+    // cadena vacia.
     //
-    // ★ Y CADA SECCIÓN EMPIEZA EN SU PROPIA PÁGINA, porque es lo que hace el
+    // * Y CADA SECCION EMPIEZA EN SU PROPIA PAGINA, porque es lo que hace el
     // cargador de verdad.
     //
-    // Antes se pegaban una detrás de otra. Con el relleno a página que emite
-    // `pad_to_page` eso daba el mismo resultado —el código ya es múltiplo de
-    // 4096— así que el banco de pruebas pasaba igual. Pero era una coincidencia,
+    // Antes se pegaban una detras de otra. Con el relleno a pagina que emite
+    // `pad_to_page` eso daba el mismo resultado --el codigo ya es multiplo de
+    // 4096-- asi que el banco de pruebas pasaba igual. Pero era una coincidencia,
     // no una equivalencia: `ring0/task/proc.rs` hace
     //
     //     va_cursor = va_start + pages * PAGE
     //
-    // o sea que coloca cada sección en la página siguiente **sea cual sea** el
-    // tamaño de la anterior. Un compilador que dejara de rellenar habría
-    // seguido pasando aquí y habría fallado en el Ryzen, que es exactamente el
+    // o sea que coloca cada seccion en la pagina siguiente **sea cual sea** el
+    // tamano de la anterior. Un compilador que dejara de rellenar habria
+    // seguido pasando aqui y habria fallado en el Ryzen, que es exactamente el
     // punto ciego que denuncia la cabecera de `patch_all_fixups`: *"esto NO lo
     // puede detectar el emulador de pruebas"*.
     //
-    // Ahora sí lo puede. El hueco se rellena con `0xCC` y no con ceros por el
-    // mismo motivo que lo hace el compilador: si el flujo se sale del código,
-    // la máquina para en vez de seguir por basura interpretable.
+    // Ahora si lo puede. El hueco se rellena con `0xCC` y no con ceros por el
+    // mismo motivo que lo hace el compilador: si el flujo se sale del codigo,
+    // la maquina para en vez de seguir por basura interpretable.
     const PAGINA: usize = 4096;
     let mut code = Vec::new();
-    // Dónde acabó cada sección en la imagen, indexado por el CÓDIGO DE SECCIÓN
+    // Donde acabo cada seccion en la imagen, indexado por el CODIGO DE SECCION
     // DE LAS RELOCS (`0` = code, `1` = data, `2` = rodata), que **no es** el de
-    // `SectionKind` — ver la nota en `bef::relocations`.
+    // `SectionKind` -- ver la nota en `bef::relocations`.
     let mut base = [usize::MAX; 3];
     for (kind, cod_reloc) in [
         (SectionKind::Code, 0usize),
@@ -180,16 +180,16 @@ fn maquina_de_bef_con(
     }
     assert!(!code.is_empty(), "el BEF no tiene seccion CODE");
 
-    // ★ LAS RELOCATIONS, aplicadas como las aplicará el cargador.
+    // * LAS RELOCATIONS, aplicadas como las aplicara el cargador.
     //
-    // Sin esto un `char *p = "x"` global se quedaría en cero y el test lo vería
-    // como el mapa del raycaster: leyendo desde el byte 0 de la imagen. Aquí la
-    // "dirección virtual" de una sección es su offset en esta imagen plana,
+    // Sin esto un `char *p = "x"` global se quedaria en cero y el test lo veria
+    // como el mapa del raycaster: leyendo desde el byte 0 de la imagen. Aqui la
+    // "direccion virtual" de una seccion es su offset en esta imagen plana,
     // porque el emulador direcciona desde cero.
     //
-    // Se hace en el arnés y no dentro del emulador a propósito: aplicar
+    // Se hace en el arnes y no dentro del emulador a proposito: aplicar
     // relocations es trabajo del CARGADOR, y el emulador es un CPU. Meterlo
-    // dentro sería darle al modelo de la máquina un trabajo que la máquina no
+    // dentro seria darle al modelo de la maquina un trabajo que la maquina no
     // hace.
     for i in 0..hdr.section_count as usize {
         let e = sec_off + i * SectionEntry::SIZE;

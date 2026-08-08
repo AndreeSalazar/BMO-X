@@ -1,19 +1,19 @@
-      * COMISION — la TABLA DE DECISION y el REDONDEO LEGAL.
+      * COMISION -- la TABLA DE DECISION y el REDONDEO LEGAL.
       *
       * Los ocho niveles de antes ensenan lo que un compilador tiene que saber.
       * Este ensena lo que un BANCO tiene que decidir, que no es lo mismo.
       *
-      * ── 1. EVALUATE TRUE: el escalado ──
+      * -- 1. EVALUATE TRUE: el escalado --
       *
       * Un tramo de comisiones se escribe asi y se lee en voz alta. Cada rama es
-      * una condicion entera y LA PRIMERA QUE ACIERTA GANA — por eso van de
+      * una condicion entera y LA PRIMERA QUE ACIERTA GANA -- por eso van de
       * mayor a menor, y por eso un saldo de 1500 cae en la primera aunque
       * tambien cumpla las dos de abajo.
       *
       * Con IF anidados dice exactamente lo mismo y no se lee. Y quien audita un
       * escalado necesita leerlo, no descifrarlo.
       *
-      * ── 2. ROUNDED: el redondeo es una DECISION LEGAL ──
+      * -- 2. ROUNDED: el redondeo es una DECISION LEGAL --
       *
       * El 0,75 % de 133,33 son 0,99999... Sin ROUNDED se guarda 0,99; con
       * ROUNDED, 1,00. Ese centimo no es un detalle de formato.
@@ -28,7 +28,7 @@
       * jurisdicciones que obligan al del banquero. No es una preferencia de
       * estilo: es de quien responde del cuadre.
       *
-      * ── 3. El 88 que le pone nombre al tramo ──
+      * -- 3. El 88 que le pone nombre al tramo --
       *
       * `IF ES-PREFERENTE` en vez de `IF SALDO > 1000.00`. El programa dice QUE
       * significa el numero, no cual es.
@@ -68,7 +68,7 @@
            DISPLAY "----------------------".
 
        2000-UN-CLIENTE.
-      *    ★ LA TABLA DE DECISION. De mayor a menor, y la primera gana.
+      *    * LA TABLA DE DECISION. De mayor a menor, y la primera gana.
            EVALUATE TRUE
                WHEN SALDO > 1000.00
                    MOVE 0.0025 TO TASA
@@ -102,7 +102,7 @@
            END-IF.
 
        3000-EL-SESGO.
-      *    ★ Los dos redondeos sobre CUATRO EMPATES seguidos.
+      *    * Los dos redondeos sobre CUATRO EMPATES seguidos.
       *
       *    La suma exacta de 0,005 + 0,015 + 0,025 + 0,035 es 0,08.
       *    El clasico sube los cuatro y da 0,10 - dos centimos de la nada.

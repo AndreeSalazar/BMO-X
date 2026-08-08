@@ -1,10 +1,10 @@
-//! `types` — TypeRegistry: registro de tipos del BMO ABI.
+//! `types` -- TypeRegistry: registro de tipos del BMO ABI.
 //!
 //! Almacena metadatos de hasta 256 tipos (estructuras, enums, uniones,
-//! funciones) para que el sistema de reflexión y los bridges de lenguaje
-//! puedan inspeccionar firmas y layouts en tiempo de ejecución.
+//! funciones) para que el sistema de reflexion y los bridges de lenguaje
+//! puedan inspeccionar firmas y layouts en tiempo de ejecucion.
 //!
-//! ## Integración con `bmo_abi::types`
+//! ## Integracion con `bmo_abi::types`
 //!
 //! TypeMeta es el header fijo de 32 bytes. Para tipos compuestos (structs,
 //! funciones), el TypeRegistry puede opcionalmente almacenar:
@@ -15,7 +15,7 @@
 use crate::bmo_abi::primitives::{bx_u32, bx_u64, bx_u8};
 use crate::bmo_abi::types::{FieldTable, FunctionSignature, ParamDescriptor};
 
-/// Capacidad máxima del registro de tipos.
+/// Capacidad maxima del registro de tipos.
 pub const TYPE_REGISTRY_CAP: usize = 256;
 
 /// Kind constants for TypeMeta.kind field.
@@ -37,13 +37,13 @@ pub mod type_kind {
 pub struct TypeMeta {
     /// FNV-1a 64-bit hash del nombre del tipo.
     pub name_hash: bx_u64,
-    /// Tamaño en bytes del tipo.
+    /// Tamano en bytes del tipo.
     pub size: bx_u64,
-    /// Alineación en bytes.
+    /// Alineacion en bytes.
     pub align: bx_u32,
     /// Kind: 0=struct, 1=enum, 2=union, 3=fn, 4=primitive, 5=pointer, 6=array, 7=alias
     pub kind: bx_u8,
-    /// Número de campos (0 para primitivos).
+    /// Numero de campos (0 para primitivos).
     pub field_count: bx_u32,
 }
 const _: () = assert!(core::mem::size_of::<TypeMeta>() == 32);

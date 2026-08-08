@@ -6,7 +6,7 @@
 //! and fall back to the known 5600X base frequency (3,700,000,000 Hz).
 //!
 //! References:
-//! - AMD64 APM Vol. 2, §13.1 (TSC)
+//! - AMD64 APM Vol. 2, section 13.1 (TSC)
 //! - AMD Zen 3 Family 19h BKDG (Crystal Clock / PState accounting)
 
 use super::cpuid::cpuid;

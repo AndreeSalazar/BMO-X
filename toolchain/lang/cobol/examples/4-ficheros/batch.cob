@@ -1,4 +1,4 @@
-      * BATCH — el programa que justifica todo lo demas.
+      * BATCH -- el programa que justifica todo lo demas.
       *
       * Lee un fichero de movimientos, los totaliza en decimal EXACTO y
       * escribe el total en otro fichero. Eso es un proceso por lotes, y es

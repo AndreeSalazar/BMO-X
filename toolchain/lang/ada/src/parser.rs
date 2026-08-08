@@ -1,4 +1,4 @@
-//! El análisis de Ada. Lo que no se sabe compilar se RECHAZA con su motivo.
+//! El analisis de Ada. Lo que no se sabe compilar se RECHAZA con su motivo.
 //!
 //! ## El alcance, dicho entero
 //!
@@ -16,14 +16,14 @@
 //! end Cierre;
 //! ```
 //!
-//! **Un fichero, una unidad.** Ada de verdad son especificación y cuerpo con
-//! orden de elaboración (RM 10.2.1), y eso es semántica del lenguaje, no
-//! comodidad: no se puede fingir. Lo que se hace aquí es acotar honestamente
-//! —un procedimiento suelto, que el estándar permite— y **rechazar con su
+//! **Un fichero, una unidad.** Ada de verdad son especificacion y cuerpo con
+//! orden de elaboracion (RM 10.2.1), y eso es semantica del lenguaje, no
+//! comodidad: no se puede fingir. Lo que se hace aqui es acotar honestamente
+//! --un procedimiento suelto, que el estandar permite-- y **rechazar con su
 //! motivo** todo lo que pida el modelo de unidades: `package`, `with` de
-//! cualquier cosa que no sea `Ada.Text_IO`, `separate`, genéricos y tareas.
+//! cualquier cosa que no sea `Ada.Text_IO`, `separate`, genericos y tareas.
 //!
-//! Prometer que compila Ada entero sería el fallo de Vib-OS otra vez.
+//! Prometer que compila Ada entero seria el fallo de Vib-OS otra vez.
 
 use crate::ast::*;
 use crate::lexer::{lexar, Componente, Tok};
@@ -52,7 +52,7 @@ impl Parser {
         }
     }
 
-    /// ¿El componente actual es esta palabra reservada?
+    /// El componente actual es esta palabra reservada?
     fn es_palabra(&self, p: &str) -> bool {
         matches!(self.actual(), Tok::Ident(s) if s == p)
     }
@@ -89,7 +89,7 @@ impl Parser {
         }
     }
 
-    // ── El programa ─────────────────────────────────────────────────────
+    // -- El programa -----------------------------------------------------
 
     pub fn programa(&mut self) -> Result<Programa, AdaError> {
         self.contexto()?;
@@ -144,8 +144,8 @@ impl Parser {
 
         let cuerpo = self.sentencias(&["END"])?;
         self.comer_palabra("END")?;
-        // `end Cierre;` — el nombre repetido es opcional en el estándar, pero
-        // si está TIENE que coincidir. Es la comprobación que caza un `end`
+        // `end Cierre;` -- el nombre repetido es opcional en el estandar, pero
+        // si esta TIENE que coincidir. Es la comprobacion que caza un `end`
         // colocado en el sitio equivocado.
         if let Tok::Ident(n) = self.actual().clone() {
             if n != nombre {
@@ -161,7 +161,7 @@ impl Parser {
         Ok(Programa { nombre, tipos, declaraciones, cuerpo })
     }
 
-    /// `with Ada.Text_IO; use Ada.Text_IO;` — y nada más.
+    /// `with Ada.Text_IO; use Ada.Text_IO;` -- y nada mas.
     fn contexto(&mut self) -> Result<(), AdaError> {
         while self.es_palabra("WITH") || self.es_palabra("USE") {
             let clausula = if self.es_palabra("WITH") { "with" } else { "use" };
@@ -181,8 +181,8 @@ impl Parser {
                 }
             }
             self.comer_simbolo(";")?;
-            // La única unidad que existe aquí. Aceptar cualquier otra sería
-            // prometer una biblioteca estándar que no está.
+            // La unica unidad que existe aqui. Aceptar cualquier otra seria
+            // prometer una biblioteca estandar que no esta.
             if unidad != "ADA.TEXT_IO" {
                 return Err(AdaError::nuevo(
                     self.linea(),
@@ -198,7 +198,7 @@ impl Parser {
         Ok(())
     }
 
-    /// Una declaración: un tipo decimal o una variable.
+    /// Una declaracion: un tipo decimal o una variable.
     fn declaracion(
         &mut self,
         tipos: &mut Vec<TipoDecimal>,
@@ -208,7 +208,7 @@ impl Parser {
             self.avanzar();
             let nombre = self.nombre()?;
             self.comer_palabra("IS")?;
-            // ★ `delta <d> digits <n>` — el decimal de Annex F.
+            // * `delta <d> digits <n>` -- el decimal de Annex F.
             if !self.es_palabra("DELTA") {
                 return Err(AdaError::nuevo(
                     self.linea(),
@@ -239,9 +239,9 @@ impl Parser {
                 }
                 _ => return Err(AdaError::nuevo(self.linea(), "tras 'digits' va cuantas cifras")),
             };
-            // El límite de verdad: un entero de 64 bits con signo llega a 18
-            // cifras. El Information Systems Annex exige 18 como mínimo, así
-            // que el tipo que pide más de lo que cabe se dice AQUÍ.
+            // El limite de verdad: un entero de 64 bits con signo llega a 18
+            // cifras. El Information Systems Annex exige 18 como minimo, asi
+            // que el tipo que pide mas de lo que cabe se dice AQUI.
             if digitos > 18 {
                 return Err(AdaError::nuevo(
                     self.linea(),
@@ -313,7 +313,7 @@ impl Parser {
         Ok(())
     }
 
-    // ── Sentencias ──────────────────────────────────────────────────────
+    // -- Sentencias ------------------------------------------------------
 
     fn sentencias(&mut self, hasta: &[&str]) -> Result<Vec<Sentencia>, AdaError> {
         let mut out = Vec::new();
@@ -399,14 +399,14 @@ impl Parser {
             return Ok(s);
         }
 
-        // `null;` — la sentencia que no hace nada, y hay que escribirla.
+        // `null;` -- la sentencia que no hace nada, y hay que escribirla.
         if self.es_palabra("NULL") {
             self.avanzar();
             self.comer_simbolo(";")?;
             return Ok(Sentencia::Nada);
         }
 
-        // Asignación: `Nombre := expr;`
+        // Asignacion: `Nombre := expr;`
         let nombre = self.nombre()?;
         if self.es_simbolo("=") {
             return Err(AdaError::nuevo(
@@ -441,7 +441,7 @@ impl Parser {
         Ok(Condicion { izq, op, der })
     }
 
-    // ── Expresiones, con precedencia de verdad ──────────────────────────
+    // -- Expresiones, con precedencia de verdad --------------------------
 
     fn expresion(&mut self) -> Result<Expr, AdaError> {
         let mut izq = self.termino()?;

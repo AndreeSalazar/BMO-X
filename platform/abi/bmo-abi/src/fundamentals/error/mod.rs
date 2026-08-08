@@ -1,8 +1,8 @@
-//! `error` — BmoError, el tipo de error unificado del BMO ABI.
+//! `error` -- BmoError, el tipo de error unificado del BMO ABI.
 //!
-//! Reemplaza el caos de códigos sueltos de C y los enums/thiserror de Rust
+//! Reemplaza el caos de codigos sueltos de C y los enums/thiserror de Rust
 //! con un solo tipo de 16 bytes que puede representar cualquier error del
-//! sistema, incluyendo el código de error, flags de contexto, y un payload
+//! sistema, incluyendo el codigo de error, flags de contexto, y un payload
 //! opcional de 64 bits.
 
 use crate::bmo_abi::error_code;
@@ -10,13 +10,13 @@ use crate::bmo_abi::fundamentals::status::error::message as error_message;
 use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
-/// Error unificado del BMO ABI — 16 bytes, cabe en RAX:RDX.
+/// Error unificado del BMO ABI -- 16 bytes, cabe en RAX:RDX.
 ///
 /// # Layout
 /// ```text
-/// [0..3]  code:    u32  — error_code::* (0 = OK)
-/// [4..7]  flags:   u32  — StatusFlags bits
-/// [8..15] context: u64  — handle, dirección, offset, lo que aplique
+/// [0..3]  code:    u32  -- error_code::* (0 = OK)
+/// [4..7]  flags:   u32  -- StatusFlags bits
+/// [8..15] context: u64  -- handle, direccion, offset, lo que aplique
 /// ```
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,7 +89,7 @@ impl BmoError {
     }
 }
 
-// ─── Constructors convenience ───────────────────────────────────────
+// --- Constructors convenience ---------------------------------------
 
 impl BmoError {
     pub const fn out_of_memory() -> Self {

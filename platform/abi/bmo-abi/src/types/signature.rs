@@ -1,4 +1,4 @@
-//! Function signature — typed parameter list and return type for function pointers,
+//! Function signature -- typed parameter list and return type for function pointers,
 //! syscalls, VTable methods, and LangBridge calls.
 
 use super::convention::{CallingConvention, ScalarKind};
@@ -40,7 +40,7 @@ impl ParamDescriptor {
 
 /// A complete function signature: parameters + return type + calling convention.
 ///
-/// This is the typed equivalent of `extern "C" fn(...)` — it carries enough
+/// This is the typed equivalent of `extern "C" fn(...)` -- it carries enough
 /// metadata for:
 /// - Code generation (register assignment per calling convention)
 /// - LangBridge marshaling (type-safe FFI argument conversion)

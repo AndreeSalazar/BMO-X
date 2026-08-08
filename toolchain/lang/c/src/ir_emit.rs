@@ -22,7 +22,7 @@ impl Emitter {
         Self { module: IrModule::new(0) }
     }
 
-    // ── Type conversion ───────────────────────────────────────────
+    // -- Type conversion -------------------------------------------
 
     fn ir_type(&mut self, ts: &TypeSpec) -> u16 {
         let ir = match ts {
@@ -41,7 +41,7 @@ impl Emitter {
         self.module.add_type(ir).unwrap_or(0)
     }
 
-    // ── Program → Module ──────────────────────────────────────────
+    // -- Program -> Module ------------------------------------------
 
     fn emit_program(&mut self, p: &Program) {
         self.module.name = self.module.add_string("main").unwrap_or(0);
@@ -67,20 +67,20 @@ impl Emitter {
                     read_only: false,
                 });
             }
-            // ★ `int t[4] = {1,2,3,4}` NO SE PUEDE REPRESENTAR AQUÍ, y se dice.
+            // * `int t[4] = {1,2,3,4}` NO SE PUEDE REPRESENTAR AQUI, y se dice.
             //
             // `IrGlobal::init` es **un** `Option<IrExpr>`, y una lista de
-            // inicialización son N escrituras con su offset. No es que falte
-            // escribir la conversión: es que el tipo no da para expresarla.
+            // inicializacion son N escrituras con su offset. No es que falte
+            // escribir la conversion: es que el tipo no da para expresarla.
             //
-            // Se registra el global —existe, tiene tipo y tamaño— **sin** su
+            // Se registra el global --existe, tiene tipo y tamano-- **sin** su
             // inicializador, y esto NO es un cero silencioso disfrazado: este
-            // módulo está fuera del camino de compilación. `compile_source_to_bef`
-            // va `parse` → `codegen` directo a bytes; el único llamante de
-            // `compile_to_ir` es su propia función pública en `lib.rs`, que nadie
-            // usa. Si algún día se cablea, **esto es lo primero que hay que
+            // modulo esta fuera del camino de compilacion. `compile_source_to_bef`
+            // va `parse` -> `codegen` directo a bytes; el unico llamante de
+            // `compile_to_ir` es su propia funcion publica en `lib.rs`, que nadie
+            // usa. Si algun dia se cablea, **esto es lo primero que hay que
             // arreglar**, y hace falta un `IrGlobal` con bytes iniciales en vez
-            // de una expresión.
+            // de una expresion.
             GlobalDecl::VarLista(ts, name, _escrituras) => {
                 let name_idx = self.module.add_string(name).unwrap_or(0);
                 let ty_idx = self.ir_type(ts);
@@ -146,7 +146,7 @@ impl Emitter {
         }
     }
 
-    // ── Statement emission ────────────────────────────────────────
+    // -- Statement emission ----------------------------------------
 
     fn emit_stmts(
         &mut self,
@@ -220,7 +220,7 @@ impl Emitter {
         // Placeholder for While, For, Switch, Goto, Label, Printf, etc.
     }
 
-    // ── Expression emission ───────────────────────────────────────
+    // -- Expression emission ---------------------------------------
 
     fn emit_expr(&mut self, e: &Expr, locals: &mut Vec<IrExpr>) -> IrExpr {
         match e {
@@ -230,7 +230,7 @@ impl Emitter {
                 IrExpr::ConstStr(idx)
             }
             Expr::CharLit(c) => IrExpr::ConstI64(*c as i64),
-            Expr::Var(name) => IrExpr::Local(0), // Simplified — need local_map
+            Expr::Var(name) => IrExpr::Local(0), // Simplified -- need local_map
             Expr::Call(name, args) => {
                 let name_idx = self.module.add_string(name).unwrap_or(0);
                 IrExpr::Call { func: name_idx, args: 0, arg_count: args.len() as u16 }

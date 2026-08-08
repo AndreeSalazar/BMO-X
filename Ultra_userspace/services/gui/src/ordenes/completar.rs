@@ -10,9 +10,9 @@ pub(crate) fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida
     // El ultimo token: lo que hay tras el ultimo espacio. Asi `corre app<TAB>`
     // completa la ruta y no el verbo.
     let inicio = ruta[..n].iter().rposition(|&c| c == b' ').map_or(0, |i| i + 1);
-    // ★ La carpeta y el prefijo se COPIAN a locales antes de tocar nada.
+    // * La carpeta y el prefijo se COPIAN a locales antes de tocar nada.
     // Tomarlos prestados de `ruta` y luego escribir en `ruta` es exactamente
-    // lo que el prestamista de Rust no deja — y hace bien: escribir sobre lo
+    // lo que el prestamista de Rust no deja -- y hace bien: escribir sobre lo
     // que estas leyendo es como se corrompe un buffer sin enterarse.
     let mut dir = [0u8; RUTA_MAX];
     let mut dir_n = 0usize;
@@ -55,7 +55,7 @@ pub(crate) fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida
         vueltas += 1;
         let mut nom = [0u8; 12];
         let largo = e.legible(&mut nom);
-        // ★ `.` y `..` FUERA. Eran el motivo de que el TAB no completara
+        // * `.` y `..` FUERA. Eran el motivo de que el TAB no completara
         // NUNCA dentro de una carpeta: entran como candidatos, y el prefijo
         // comun de `.`, `..` y `gui.bex` es la cadena vacia. El TAB listaba
         // todo y no avanzaba ni una letra, que parecia "no busca referencias"
@@ -122,11 +122,11 @@ pub(crate) fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida
     fin
 }
 
-/// El motivo, en una línea que dice qué hacer.
+/// El motivo, en una linea que dice que hacer.
 ///
 /// Antes los siete casos se aplanaban en "no puedo crear ahi (nombre 8.3?
-/// carpeta?)" — un mensaje que le pasa la pregunta al usuario en vez de
-/// contestarla. El kernel SÍ sabe cuál de los dos fue.
+/// carpeta?)" -- un mensaje que le pasa la pregunta al usuario en vez de
+/// contestarla. El kernel SI sabe cual de los dos fue.
 pub(crate) fn motivo_archivo(e: u32) -> &'static [u8] {
     match e {
         bmo::ERROR_ARCH_CARPETA => b"esa carpeta no existe.",

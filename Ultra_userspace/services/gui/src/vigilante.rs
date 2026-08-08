@@ -1,57 +1,57 @@
-//! **El vigilante de la corrida**: saber que el programa lanzado terminó, y
+//! **El vigilante de la corrida**: saber que el programa lanzado termino, y
 //! guardar lo que dijo.
 //!
-//! ## Por qué esto sale de `_start`
+//! ## Por que esto sale de `_start`
 //!
-//! El `_start` del compositor son **1960 líneas en una sola función**, y no es
+//! El `_start` del compositor son **1960 lineas en una sola funcion**, y no es
 //! un problema de longitud: es un problema de ESTADO. Treinta y cinco variables
-//! viven la vuelta entera, y el bloque de teclado toca veintiséis de ellas. Por
-//! eso no se parte extrayendo funciones a ojo — la mayoría de los bloques se
-//! llevarían veinte parámetros, que es mover el problema a la firma.
+//! viven la vuelta entera, y el bloque de teclado toca veintiseis de ellas. Por
+//! eso no se parte extrayendo funciones a ojo -- la mayoria de los bloques se
+//! llevarian veinte parametros, que es mover el problema a la firma.
 //!
-//! Éste no. Toca **tres**: la corrida, la consola del hijo y la salida. Es el
+//! Este no. Toca **tres**: la corrida, la consola del hijo y la salida. Es el
 //! corte que se puede hacer sin inventar nada, y por eso es el primero.
 //!
-//! ★ Y se lleva algo más: dentro de este bloque vivían las **dos sombras** del
-//! fichero — un `let n` y un `let mut vueltas` que tapaban a las variables del
-//! mismo nombre del prólogo. Con el bloque fuera, `n` y `vueltas` dejan de estar
-//! ensombrecidas en `_start`, que es justo lo que hacía insegura una renombrada
-//! mecánica del estado. Esto no es limpieza: es **desbloquear el corte
+//! * Y se lleva algo mas: dentro de este bloque vivian las **dos sombras** del
+//! fichero -- un `let n` y un `let mut vueltas` que tapaban a las variables del
+//! mismo nombre del prologo. Con el bloque fuera, `n` y `vueltas` dejan de estar
+//! ensombrecidas en `_start`, que es justo lo que hacia insegura una renombrada
+//! mecanica del estado. Esto no es limpieza: es **desbloquear el corte
 //! siguiente**.
 
 use crate::escena::salida::{Salida, TINTA_BIEN, TINTA_MAL, TINTA_NORMAL};
 use crate::ordenes::completar::motivo_archivo;
 use bmo_userland as bmo;
 
-/// Un programa lanzado del que todavía se espera el final.
+/// Un programa lanzado del que todavia se espera el final.
 pub(crate) struct Corrida {
     pub marca: usize,
-    /// Cuántos fotogramas han pasado desde que se lanzó.
+    /// Cuantos fotogramas han pasado desde que se lanzo.
     ///
-    /// ★★ Esto era una bandera `visto` que exigía **haber visto al hijo
-    /// vivo** antes de volcar, y ahí estaba el fallo que costó tres
+    /// ** Esto era una bandera `visto` que exigia **haber visto al hijo
+    /// vivo** antes de volcar, y ahi estaba el fallo que costo tres
     /// sesiones: un programa que arranca y termina ENTRE DOS FOTOGRAMAS no
-    /// se le ve vivo nunca, así que no volcaba jamás.
+    /// se le ve vivo nunca, asi que no volcaba jamas.
     ///
-    /// La evidencia lo dijo entera desde el disco: de todo lo que se corrió,
-    /// **el único que dejó su `.txt` fue `c/pregc.bex`** — el único
-    /// interactivo, el único que se pasa segundos esperando a que teclees.
+    /// La evidencia lo dijo entera desde el disco: de todo lo que se corrio,
+    /// **el unico que dejo su `.txt` fue `c/pregc.bex`** -- el unico
+    /// interactivo, el unico que se pasa segundos esperando a que teclees.
     /// Los diez de COBOL y `memc` duran milisegundos y no volcaron ni uno.
     ///
     /// Con un contador no hace falta ver nada: se espera un par de vueltas
-    /// —el margen que necesita el lanzamiento para registrarse— y a partir
-    /// de ahí, *no hay hijo* significa *terminó*.
+    /// --el margen que necesita el lanzamiento para registrarse-- y a partir
+    /// de ahi, *no hay hijo* significa *termino*.
     pub esperas: u32,
     /// `datos/<programa>.txt`, ya montada al lanzar.
     pub destino: [u8; 32],
     pub destino_n: usize,
 }
 
-/// Cuántas lecturas de 8 bytes como mucho al drenar. Alto, pero existe: un
+/// Cuantas lecturas de 8 bytes como mucho al drenar. Alto, pero existe: un
 /// programa que muere dejando megabytes no puede quedarse con el bucle.
 const DRENADO_MAX: u32 = 8192;
 
-/// ¿Terminó el programa que se lanzó? Entonces, a guardarlo.
+/// Termino el programa que se lanzo? Entonces, a guardarlo.
 ///
 /// Se llama una vez por fotograma, lo primero.
 pub(crate) fn vigilar_corrida(
@@ -71,17 +71,17 @@ pub(crate) fn vigilar_corrida(
         return;
     }
 
-    // ★★ SE DRENA ANTES DE GUARDAR, y esto lo enseñó el disco.
+    // ** SE DRENA ANTES DE GUARDAR, y esto lo enseno el disco.
     //
-    // El primer `salida.txt` que llegó a Windows tenía las cuatro
-    // líneas del ECO y **ni una del programa**. El motivo: este
+    // El primer `salida.txt` que llego a Windows tenia las cuatro
+    // lineas del ECO y **ni una del programa**. El motivo: este
     // vigilante corre al principio del fotograma y el drenado de la
-    // consola del hijo está mucho más abajo. Cuando `hay_hijo()`
-    // dice que no, lo último que escribió el programa **sigue en el
-    // anillo del kernel** — se guardaba un archivo de lo que el
-    // terminal había dicho, no de lo que había contestado.
+    // consola del hijo esta mucho mas abajo. Cuando `hay_hijo()`
+    // dice que no, lo ultimo que escribio el programa **sigue en el
+    // anillo del kernel** -- se guardaba un archivo de lo que el
+    // terminal habia dicho, no de lo que habia contestado.
     //
-    // Aquí se vacía el anillo entero antes de tocar el disco.
+    // Aqui se vacia el anillo entero antes de tocar el disco.
     if let Some(cc) = salida_cap.as_ref() {
         let mut buf = [0u8; 8];
         let mut leidas = 0u32;
@@ -106,10 +106,10 @@ pub(crate) fn vigilar_corrida(
             salida.texto(b"]\n");
             salida.con_tinta(TINTA_NORMAL);
         }
-        // Se dice y no se calla, **y se dice QUÉ y POR QUÉ**. La
-        // primera versión ponía "no se pudo guardar, F11 dice por
-        // qué", y eso obliga a abrir otra ventana para saber lo que
-        // el mensaje ya tenía en la mano. Un error que manda a otro
+        // Se dice y no se calla, **y se dice QUE y POR QUE**. La
+        // primera version ponia "no se pudo guardar, F11 dice por
+        // que", y eso obliga a abrir otra ventana para saber lo que
+        // el mensaje ya tenia en la mano. Un error que manda a otro
         // sitio a buscar el motivo es medio error.
         Err(e) => {
             salida.con_tinta(TINTA_MAL);
@@ -118,7 +118,7 @@ pub(crate) fn vigilar_corrida(
             salida.texto(b": ");
             if e == 0 {
                 // El cero es el `cerrar` que contesta que no. El
-                // kernel no dice más, y eso también se dice.
+                // kernel no dice mas, y eso tambien se dice.
                 salida.texto(b"el cierre fallo (disco lleno? no cabe?)");
             } else {
                 salida.texto(motivo_archivo(e));

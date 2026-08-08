@@ -1,4 +1,4 @@
-//! El historial de COMANDOS — el de la flecha arriba.
+//! El historial de COMANDOS -- el de la flecha arriba.
 //!
 //! No confundir con el historial de SALIDA (`escena::salida`): aquel guarda lo
 //! que los programas imprimieron, este lo que tu escribiste.
@@ -6,7 +6,7 @@
 use crate::escena::RUTA_MAX;
 
 /// Historial de lo escrito. Lo que un terminal sin esto obliga a hacer es
-/// reteclear la ruta entera cada vez que te equivocas en una letra — y eso es
+/// reteclear la ruta entera cada vez que te equivocas en una letra -- y eso es
 /// justo lo que pasaba: seis intentos de `apps/COBOL.bex` escritos a mano.
 ///
 /// Anillo de ocho. No guarda duplicados seguidos: repetir `ls` cinco veces no

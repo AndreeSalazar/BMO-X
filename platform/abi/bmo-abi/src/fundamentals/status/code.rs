@@ -1,12 +1,12 @@
-//! `BmoStatus` — el "return value" universal del BMO ABI.
+//! `BmoStatus` -- el "return value" universal del BMO ABI.
 //!
 //! 16 bytes empacados:
 //!   - `code`  (4 B): 0 = OK; >0 = `BxError as u32`
 //!   - `flags` (4 B): partial, retry, truncated, etc.
 //!   - `value` (8 B): handle, contador, lo que aplique
 //!
-//! Cabe íntegro en `RAX:RDX`, sin tocar memoria. Reemplaza `HRESULT` y la
-//! pareja "código + GetLastError + valor en out param" del C/Win32.
+//! Cabe integro en `RAX:RDX`, sin tocar memoria. Reemplaza `HRESULT` y la
+//! pareja "codigo + GetLastError + valor en out param" del C/Win32.
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
@@ -93,17 +93,17 @@ bitflags::bitflags! {
     /// Flags auxiliares de `BmoStatus.flags`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct StatusFlags: bx_u32 {
-        /// Operación completada parcialmente (`value` indica cuánto se hizo).
+        /// Operacion completada parcialmente (`value` indica cuanto se hizo).
         const PARTIAL    = 1 << 0;
-        /// La operación es reintentable (errno-like EAGAIN).
+        /// La operacion es reintentable (errno-like EAGAIN).
         const RETRY      = 1 << 1;
         /// El buffer de salida fue truncado.
         const TRUNCATED  = 1 << 2;
-        /// La operación se encoló (async) y se reportará por CQ.
+        /// La operacion se encolo (async) y se reportara por CQ.
         const QUEUED     = 1 << 3;
-        /// Se requiere descomposición de privilegios (capability faltante).
+        /// Se requiere descomposicion de privilegios (capability faltante).
         const NEEDS_CAP  = 1 << 4;
-        /// El valor devuelto es estimado, no exacto (ej. RTT estadístico).
+        /// El valor devuelto es estimado, no exacto (ej. RTT estadistico).
         const ESTIMATED  = 1 << 5;
     }
 }

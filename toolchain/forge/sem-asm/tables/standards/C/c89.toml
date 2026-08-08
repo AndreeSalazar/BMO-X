@@ -1,4 +1,4 @@
-# c89.toml — ANSI X3.159-1989 / ISO/IEC 9899:1990 (C89/C90)
+# c89.toml -- ANSI X3.159-1989 / ISO/IEC 9899:1990 (C89/C90)
 [standard]
 iso_number = "ISO/IEC 9899:1990"
 year = 1990
@@ -16,7 +16,7 @@ const = true
 volatile = true
 string_literals_concat = true
 trigraphs = true
-# C89 NO tiene lo de C99 — explícitos para que el gating del parser los apague
+# C89 NO tiene lo de C99 -- explicitos para que el gating del parser los apague
 # (el default de StandardFeatures es C99-ish; sin estas claves C89 heredaba C99)
 line_comments = false
 long_long = false

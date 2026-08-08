@@ -1,4 +1,4 @@
-# stdlib/stdlib module — general utility functions
+# stdlib/stdlib module -- general utility functions
 
 [exports]
 atoi = "ptr -> int"

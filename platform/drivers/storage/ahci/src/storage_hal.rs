@@ -1,4 +1,4 @@
-//! StorageHal — trait for kernel services needed by storage drivers.
+//! StorageHal -- trait for kernel services needed by storage drivers.
 //!
 //! Implemented by the kernel and injected via global function pointers.
 
@@ -16,15 +16,15 @@ pub trait StorageHal {
     fn log(&self, msg: &str);
     /// Log a message followed by a value in HEX. Los registros de un
     /// controlador se leen en hexadecimal; obligar a cada driver a fabricar
-    /// la cadena a mano es cómo se acaba sin imprimir el número que hacía
+    /// la cadena a mano es como se acaba sin imprimir el numero que hacia
     /// falta.
     fn log_hex(&self, msg: &str, value: u64);
     /// Espera de tiempo REAL en milisegundos.
     ///
-    /// Los tiempos del SATA son físicos: un COMRESET dura milisegundos, y
+    /// Los tiempos del SATA son fisicos: un COMRESET dura milisegundos, y
     /// negociar el enlace o arrancar un disco, decenas o cientos. Contar
-    /// vueltas de bucle mide la velocidad del CPU, no el tiempo — y por eso
-    /// un mismo número funciona en una máquina y falla en otra.
+    /// vueltas de bucle mide la velocidad del CPU, no el tiempo -- y por eso
+    /// un mismo numero funciona en una maquina y falla en otra.
     fn delay_ms(&self, ms: u64);
 }
 

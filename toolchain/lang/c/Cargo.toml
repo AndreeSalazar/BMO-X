@@ -3,7 +3,7 @@ name = "bmo-c-front"
 version = "0.1.0"
 edition = "2021"
 authors = ["BMO Project"]
-description = "C frontend for BMO BMO ABI â€” compiles minimal C to BEF"
+description = "C frontend for BMO BMO ABI -- compiles minimal C to BEF"
 
 [dependencies]
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
@@ -15,7 +15,7 @@ bmo-lower = { path = "../../forge/bmo-lower" }
 # de TOML hechos a mano que habia en standard.rs y module.rs.
 bmo-mods = { path = "../../forge/bmo-mods" }
 # forge: EL GATE. Ningun `.bex` se escribe sin pasar por aqui. Es el "unico
-# checkpoint comun" de la filosofia — el papel de seguridad que tendria un IR
+# checkpoint comun" de la filosofia -- el papel de seguridad que tendria un IR
 # central, pero como CONTRATO: cada lenguaje emite lo suyo y esto lo revisa.
 bmo-verify = { path = "../../forge/bmo-verify" }
 

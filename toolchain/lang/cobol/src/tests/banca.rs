@@ -1,4 +1,4 @@
-//! BANCA — 9 pruebas.
+//! BANCA -- 9 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,18 +7,18 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-/// ★ EL NIVEL 9, ejecutado: la tabla de decisión y el redondeo legal.
+/// * EL NIVEL 9, ejecutado: la tabla de decision y el redondeo legal.
 #[test]
 fn el_ejemplo_de_decision_calcula_las_comisiones() {
     let salida = run_cobol(include_str!("../../examples/9-decision/comision.cob"));
-    // Tres clientes, tres tramos. 1500 × 0,25 % = 3,75 exacto.
+    // Tres clientes, tres tramos. 1500 x 0,25 % = 3,75 exacto.
     assert!(salida.contains(" $1,500.00"), "{salida}");
     assert!(salida.contains("     $3.75"), "el tramo preferente:\n{salida}");
-    // 500 × 0,50 % = 2,50 exacto.
+    // 500 x 0,50 % = 2,50 exacto.
     assert!(salida.contains("     $2.50"), "{salida}");
-    // 50 × 0,75 % = 0,375 → redondeado, 0,38. Truncado sería 0,37.
+    // 50 x 0,75 % = 0,375 -> redondeado, 0,38. Truncado seria 0,37.
     assert!(salida.contains("     $0.38"), "el ROUNDED del tercer tramo:\n{salida}");
-    // ★ Y el sesgo: el clásico inventa dos céntimos, el banquero cuadra.
+    // * Y el sesgo: el clasico inventa dos centimos, el banquero cuadra.
     assert!(salida.contains("0.10"), "el clasico tenia que subir los cuatro:\n{salida}");
     assert!(salida.contains("0.08"), "el del banquero tenia que cuadrar:\n{salida}");
 }
@@ -45,7 +45,7 @@ fn hola_cobol_payload_output_is_what_the_kernel_will_show() {
 }
 
 /// El extracto entero, ejecutado. Es la prueba de que la cadena completa
-/// —fuente COBOL, parser, codegen, BEF, CPU— produce la linea que un
+/// --fuente COBOL, parser, codegen, BEF, CPU-- produce la linea que un
 /// banco imprimiria, y no una aproximacion.
 ///
 /// Cada columna esta alineada porque cada campo mide lo que su PIC
@@ -70,8 +70,8 @@ fn el_extracto_imprime_las_lineas_de_un_banco() {
     assert_eq!(out, esperado);
 }
 
-/// Los ficheros escritos desde el anfitrión traen `\r\n`. Ese `\r` dentro
-/// del número lo convertiría en otro.
+/// Los ficheros escritos desde el anfitrion traen `\r\n`. Ese `\r` dentro
+/// del numero lo convertiria en otro.
 #[test]
 fn el_batch_aguanta_los_finales_de_windows() {
     let (salida, _) = run_cobol_con_disco(
@@ -81,13 +81,13 @@ fn el_batch_aguanta_los_finales_de_windows() {
     assert!(salida.contains(" $1,234.56"), "{salida}");
 }
 
-/// ★ EL CIERRE POR CONCEPTO. `OCCURS` y File I/O juntos: dos ficheros en
+/// * EL CIERRE POR CONCEPTO. `OCCURS` y File I/O juntos: dos ficheros en
 /// paralelo, cada importe a la casilla de su concepto, y el informe con
-/// máscara.
+/// mascara.
 ///
-/// Es para esto que existe `OCCURS`: sin él harían falta `TOTAL-1`…
-/// `TOTAL-4` y el mismo `IF` cuatro veces. Y el subíndice viene **de un
-/// fichero**, o sea que la comprobación de rango no es teórica: la decide
+/// Es para esto que existe `OCCURS`: sin el harian falta `TOTAL-1`...
+/// `TOTAL-4` y el mismo `IF` cuatro veces. Y el subindice viene **de un
+/// fichero**, o sea que la comprobacion de rango no es teorica: la decide
 /// el dato, no el programador.
 #[test]
 fn el_cierre_por_concepto_totaliza_en_su_casilla() {
@@ -101,7 +101,7 @@ fn el_cierre_por_concepto_totaliza_en_su_casilla() {
     let esperado = [
         "CIERRE POR CONCEPTO - BANCO BMO",
         "totales por concepto:",
-        // 100.00 + 5.00 · 25.50 · 50.00 + 10.00 · nada
+        // 100.00 + 5.00 - 25.50 - 50.00 + 10.00 - nada
         "   $105.00",
         "    $25.50",
         "    $60.00",
@@ -113,7 +113,7 @@ fn el_cierre_por_concepto_totaliza_en_su_casilla() {
 }
 
 /// Y si el concepto que trae el fichero se sale de la tabla, el programa
-/// **para diciendo cuál** en vez de sumar en la casilla del vecino.
+/// **para diciendo cual** en vez de sumar en la casilla del vecino.
 #[test]
 fn un_concepto_fuera_de_la_tabla_para_el_cierre() {
     let (salida, _) = run_cobol_con_disco(
@@ -127,11 +127,11 @@ fn un_concepto_fuera_de_la_tabla_para_el_cierre() {
     assert!(!salida.contains("totales por concepto"), "no debe seguir: {salida}");
 }
 
-/// ★ LA CARTERA. El mismo batch escrito con nombres en vez de números:
+/// * LA CARTERA. El mismo batch escrito con nombres en vez de numeros:
 /// `PERFORM UNTIL SE-ACABO` y `IF NO-HUBO-NADA`.
 ///
-/// Es el nivel 88 haciendo lo único que hace: que la condición se lea en
-/// voz alta. Quien audite esto no tiene que acordarse de qué significaba
+/// Es el nivel 88 haciendo lo unico que hace: que la condicion se lea en
+/// voz alta. Quien audite esto no tiene que acordarse de que significaba
 /// el 1.
 #[test]
 fn la_cartera_reparte_cobros_y_devoluciones() {
@@ -144,9 +144,9 @@ fn la_cartera_reparte_cobros_y_devoluciones() {
         "cobros:",
         " $1,235.00",
         "devoluciones:",
-        // `CR` y no un menos: una máscara sin signo se come el negativo —
-        // correcto según el estándar, y mentira en un informe. Escribirlo
-        // así fue el error de quien montó este test, no del compilador.
+        // `CR` y no un menos: una mascara sin signo se come el negativo --
+        // correcto segun el estandar, y mentira en un informe. Escribirlo
+        // asi fue el error de quien monto este test, no del compilador.
         "   $150.00CR",
     ]
     .map(|l| format!("{l}\n"))
@@ -155,7 +155,7 @@ fn la_cartera_reparte_cobros_y_devoluciones() {
 }
 
 /// Y sin movimientos lo DICE, en vez de imprimir ceros callando. En un
-/// cierre nocturno, un fichero vacío y uno que no se pudo leer se parecen
+/// cierre nocturno, un fichero vacio y uno que no se pudo leer se parecen
 /// demasiado si los dos dan cero.
 #[test]
 fn la_cartera_sin_movimientos_lo_dice_con_su_nombre() {
@@ -173,12 +173,12 @@ fn banco_example_produces_its_documented_output() {
     let out = run_cobol(include_str!("../../examples/2-decimal/banco.cob"));
     assert_eq!(
         out,
-        // ★ `59.97` y `19.99` NO son literales del programa: son el
-        // contenido de SALDO formateado en ejecución por el código que
-        // emite `emit_display_var`. Antes el ejemplo imprimía una cadena
-        // escrita a mano que decía el resultado — la aritmética era real
-        // pero lo que se veía no lo demostraba. Ahora sí: si el decimal se
-        // perdiera, este test lo cazaría solo.
+        // * `59.97` y `19.99` NO son literales del programa: son el
+        // contenido de SALDO formateado en ejecucion por el codigo que
+        // emite `emit_display_var`. Antes el ejemplo imprimia una cadena
+        // escrita a mano que decia el resultado -- la aritmetica era real
+        // pero lo que se veia no lo demostraba. Ahora si: si el decimal se
+        // perdiera, este test lo cazaria solo.
         "BMO-X: caja COBOL\n\
          cobrada una cuota\ncobrada una cuota\ncobrada una cuota\n\
          saldo tras 3 cuotas:\n59.97\ncuadra\n\
@@ -188,8 +188,8 @@ fn banco_example_produces_its_documented_output() {
     );
 }
 
-/// El último registro cuenta aunque el fichero no acabe en salto de línea.
-/// Es el clásico que se come el movimiento de más valor: el último.
+/// El ultimo registro cuenta aunque el fichero no acabe en salto de linea.
+/// Es el clasico que se come el movimiento de mas valor: el ultimo.
 #[test]
 fn el_ultimo_registro_cuenta_sin_salto_final() {
     let (salida, _) = run_cobol_con_disco(

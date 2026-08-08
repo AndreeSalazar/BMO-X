@@ -1,4 +1,4 @@
-//! FAT32 and exFAT filesystem reader/writer — minimal implementation.
+//! FAT32 and exFAT filesystem reader/writer -- minimal implementation.
 //!
 //! Supports both FAT32 (S: FASTOS-EFI) and exFAT (T: FastOS-Data, X: Commit-Real).
 //! Reads BPB, locates root directory, finds files by 8.3 name,
@@ -19,7 +19,7 @@ pub enum FsType {
 }
 
 /// exFAT BIOS Parameter Block at sector 0, offset 0.
-/// exFAT has a different layout than FAT32 — see exFAT spec section 3.1.
+/// exFAT has a different layout than FAT32 -- see exFAT spec section 3.1.
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
 pub struct ExFatBpb {
@@ -96,18 +96,18 @@ pub struct DirEntry {
     pub file_size: u32,
 }
 
-/// Una entrada de directorio YA LOCALIZADA: dónde están sus 32 bytes en el
-/// disco, además de lo que dicen.
+/// Una entrada de directorio YA LOCALIZADA: donde estan sus 32 bytes en el
+/// disco, ademas de lo que dicen.
 ///
-/// No es un `DirEntry`: aquel son los bytes del formato, éste es *el sitio*.
-/// La diferencia importa al reemplazar — para apuntar un nombre a otra cadena
-/// hay que reescribir el sector donde vive, y eso sólo se sabe habiéndolo
+/// No es un `DirEntry`: aquel son los bytes del formato, este es *el sitio*.
+/// La diferencia importa al reemplazar -- para apuntar un nombre a otra cadena
+/// hay que reescribir el sector donde vive, y eso solo se sabe habiendolo
 /// encontrado.
 #[derive(Debug, Clone, Copy)]
 pub struct EntradaDir {
-    /// LBA relativo a la partición del sector que la contiene.
+    /// LBA relativo a la particion del sector que la contiene.
     pub lba: u64,
-    /// Byte de esa entrada dentro del sector. Siempre múltiplo de 32.
+    /// Byte de esa entrada dentro del sector. Siempre multiplo de 32.
     pub offset: usize,
     pub first_cluster: u32,
     pub size: u32,
@@ -133,7 +133,7 @@ pub struct ExFatFileEntry {
     _reserved2: [u8; 7],
 }
 
-/// exFAT Stream Extension Entry (type 0xC0) — follows File Entry
+/// exFAT Stream Extension Entry (type 0xC0) -- follows File Entry
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
 pub struct ExFatStreamEntry {
@@ -150,7 +150,7 @@ pub struct ExFatStreamEntry {
     pub data_length: u64,
 }
 
-/// exFAT Filename Entry (type 0xC1) — follows Stream Entry
+/// exFAT Filename Entry (type 0xC1) -- follows Stream Entry
 /// Contains up to 15 UTF-16 characters of the filename
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
@@ -185,7 +185,7 @@ pub struct FatVolume {
     /// Primer LBA de la PARTICION dentro del disco. El sistema de ficheros
     /// piensa en sectores relativos a su volumen y no sabe que existe una
     /// tabla de particiones; aqui se suma. Sin esto, `mount` leia el sector 0
-    /// del DISCO —la GPT— creyendo que era el arranque del volumen.
+    /// del DISCO --la GPT-- creyendo que era el arranque del volumen.
     part_lba: u64,
     pub fs_type: FsType,
     #[allow(dead_code)]
@@ -205,17 +205,17 @@ pub struct FatVolume {
     /// da un LBA FUERA del volumen. Es la diferencia entre "no cabe" y
     /// "escribir en la particion del vecino".
     max_cluster: u32,
-    /// ★ **Operaciones que fallaron y NO cambiaron el resultado.**
+    /// * **Operaciones que fallaron y NO cambiaron el resultado.**
     ///
     /// Este driver tiene sitios donde un fallo del dispositivo no puede
-    /// convertirse en un `false` sin mentir al revés: rellenar de ceros la cola
+    /// convertirse en un `false` sin mentir al reves: rellenar de ceros la cola
     /// de un cluster cuyos datos YA se escribieron bien, o soltar el resto de
-    /// una cadena de clusters. Ahí el fallo no cambia lo que se le contesta al
-    /// llamante — y antes de esto tampoco dejaba rastro en ningún sitio.
+    /// una cadena de clusters. Ahi el fallo no cambia lo que se le contesta al
+    /// llamante -- y antes de esto tampoco dejaba rastro en ningun sitio.
     ///
-    /// Un disco que empieza a fallar lo hace primero en operaciones así. Si
-    /// esta cuenta no es cero, el volumen está peor de lo que dice cualquier
-    /// código de retorno. Se lee con [`FatVolume::fallos_mudos`].
+    /// Un disco que empieza a fallar lo hace primero en operaciones asi. Si
+    /// esta cuenta no es cero, el volumen esta peor de lo que dice cualquier
+    /// codigo de retorno. Se lee con [`FatVolume::fallos_mudos`].
     fallos_mudos: u32,
     buf: [u8; 512],
     fat_cache: [u8; 512],
@@ -307,10 +307,10 @@ fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf
 }
 
 impl FatVolume {
-    /// Fallos del dispositivo que no cambiaron ningún código de retorno.
+    /// Fallos del dispositivo que no cambiaron ningun codigo de retorno.
     ///
     /// **Tiene que ser cero.** Si no lo es, el volumen ha fallado en sitios
-    /// donde nadie se entera por la vía normal, y eso precede a fallar donde sí
+    /// donde nadie se entera por la via normal, y eso precede a fallar donde si
     /// se nota. Ver el campo.
     pub fn fallos_mudos(&self) -> u32 { self.fallos_mudos }
 
@@ -328,7 +328,7 @@ impl FatVolume {
     }
 
     /// Escribe uno de los buffers internos. `false` si el volumen se monto en
-    /// solo lectura — no hay writer que llamar.
+    /// solo lectura -- no hay writer que llamar.
     fn write_sector(&mut self, lba: u64, which: Buf) -> bool {
         let wr = match self.write { Some(w) => w, None => return false };
         let abs = self.part_lba + lba;
@@ -397,13 +397,13 @@ impl FatVolume {
         self.find_entry_fat32_from(name, start_cluster).map(|e| (e.first_cluster, e.size))
     }
 
-    /// Igual que [`Self::find_file_fat32_from`], pero devolviendo **dónde vive
-    /// la entrada de directorio**, no sólo lo que dice.
+    /// Igual que [`Self::find_file_fat32_from`], pero devolviendo **donde vive
+    /// la entrada de directorio**, no solo lo que dice.
     ///
-    /// ★ Hace falta para REEMPLAZAR. Buscar el archivo por su nombre contesta
+    /// * Hace falta para REEMPLAZAR. Buscar el archivo por su nombre contesta
     /// "empieza en el cluster N y mide M"; para apuntarlo a otra cadena hay que
-    /// volver a escribir esos 32 bytes, y para eso hay que saber en qué sector
-    /// están. La versión que sólo devuelve el par obliga a recorrer el
+    /// volver a escribir esos 32 bytes, y para eso hay que saber en que sector
+    /// estan. La version que solo devuelve el par obliga a recorrer el
     /// directorio **dos veces** y a esperar que la segunda pasada encuentre lo
     /// mismo que la primera.
     fn find_entry_fat32_from(&mut self, name: &[u8], start_cluster: u32) -> Option<EntradaDir> {
@@ -452,7 +452,7 @@ impl FatVolume {
                     if entry_type == 0x00 { return None; } // end of directory
                     if entry_type == 0x05 { continue; }   // deleted
                     if entry_type == 0x85 {
-                        // File Entry — next entries are Stream + Filename
+                        // File Entry -- next entries are Stream + Filename
                         let file_entry = unsafe {
                             &*(self.buf[entry_offset..].as_ptr() as *const ExFatFileEntry)
                         };
@@ -463,7 +463,7 @@ impl FatVolume {
                             if sec_offset + 32 > 512 { break; }
                             let sec_type = self.buf[sec_offset];
                             if sec_type == 0xC0 {
-                                // Stream Extension — has first_cluster and name_length
+                                // Stream Extension -- has first_cluster and name_length
                                 let stream = unsafe {
                                     &*(self.buf[sec_offset..].as_ptr() as *const ExFatStreamEntry)
                                 };
@@ -574,7 +574,7 @@ impl FatVolume {
     /// Escribe una entrada de la FAT en TODAS las copias.
     ///
     /// Actualizar solo la primera deja el volumen incoherente: cualquier
-    /// sistema que lea la segunda copia —o un chequeo de disco— vera una
+    /// sistema que lea la segunda copia --o un chequeo de disco-- vera una
     /// cadena distinta de la real.
     fn set_fat_entry(&mut self, cluster: u32, value: u32) -> bool {
         if cluster < 2 || cluster > self.max_cluster { return false; }
@@ -611,11 +611,11 @@ impl FatVolume {
         let mut c = first;
         let mut guard = 0u32;
         while c >= 2 && c <= self.max_cluster {
-            // ★ `unwrap_or(0)` hacía que esta función hiciera LO CONTRARIO de
-            // lo que existe para hacer, y en silencio: si la FAT no se podía
-            // leer, `next` valía 0, la comprobación de abajo lo tomaba por fin
-            // de cadena y se salía dejando perdidos justo los clusters que
-            // venía a devolver. "No se pudo leer" y "aquí se acaba la cadena"
+            // * `unwrap_or(0)` hacia que esta funcion hiciera LO CONTRARIO de
+            // lo que existe para hacer, y en silencio: si la FAT no se podia
+            // leer, `next` valia 0, la comprobacion de abajo lo tomaba por fin
+            // de cadena y se salia dejando perdidos justo los clusters que
+            // venia a devolver. "No se pudo leer" y "aqui se acaba la cadena"
             // no son lo mismo y ya no comparten valor.
             let next = match self.raw_fat_entry(c) {
                 Some(n) => n,
@@ -800,8 +800,8 @@ impl FatVolume {
 
     /// La entrada numero `n` de un directorio: `(nombre 8.3, es_dir, tamano)`.
     ///
-    /// Devuelve `None` cuando se acaban. Existia `find_file_in` —buscar un
-    /// nombre que ya conoces— pero no habia forma de PREGUNTAR QUE HAY, y sin
+    /// Devuelve `None` cuando se acaban. Existia `find_file_in` --buscar un
+    /// nombre que ya conoces-- pero no habia forma de PREGUNTAR QUE HAY, y sin
     /// eso no puede haber un `ls` ni iconos de carpeta: hay que saberse los
     /// nombres de memoria.
     ///
@@ -871,19 +871,19 @@ impl FatVolume {
         }
     }
 
-    /// **Guarda, exista o no**: crea si el nombre está libre y REEMPLAZA si ya
-    /// está. Es lo que significa `OPEN OUTPUT` y lo que hace un `>` de shell.
+    /// **Guarda, exista o no**: crea si el nombre esta libre y REEMPLAZA si ya
+    /// esta. Es lo que significa `OPEN OUTPUT` y lo que hace un `>` de shell.
     ///
-    /// ═══ Por qué no es `create_file_in_dir` con un flag ═══
+    /// === Por que no es `create_file_in_dir` con un flag ===
     ///
     /// Porque son dos operaciones con riesgos distintos y quien llama tiene
     /// derecho a elegir. Crear un archivo nuevo no puede destruir nada;
-    /// reemplazar SÍ — se lleva por delante lo que hubiera. Un `bool` al final
-    /// de la lista de argumentos es la forma clásica de borrar un fichero
+    /// reemplazar SI -- se lleva por delante lo que hubiera. Un `bool` al final
+    /// de la lista de argumentos es la forma clasica de borrar un fichero
     /// creyendo que lo estabas creando.
     ///
     /// `create_file_in_dir` sigue rechazando con `Exists`, y quien quiera
-    /// pisar tiene que decirlo llamando aquí.
+    /// pisar tiene que decirlo llamando aqui.
     pub fn save_file_in_dir(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8])
         -> Result<(), WriteError>
     {
@@ -899,27 +899,27 @@ impl FatVolume {
 
     /// Apunta una entrada que YA EXISTE a un contenido nuevo.
     ///
-    /// ═══ ★ El ORDEN, que es lo único que importa aquí ═══
+    /// === * El ORDEN, que es lo unico que importa aqui ===
     ///
-    /// Reemplazar tiene tres pasos y **sólo un orden es seguro**:
+    /// Reemplazar tiene tres pasos y **solo un orden es seguro**:
     ///
     /// 1. Escribir la cadena NUEVA entera, sin tocar la vieja.
     /// 2. Apuntar la entrada de directorio a la nueva (**un solo sector**).
     /// 3. Y AHORA soltar la cadena vieja.
     ///
     /// Un corte de corriente entre 1 y 2 deja unos clusters marcados como
-    /// ocupados que no son de nadie —una fuga, molesta y recuperable— y el
+    /// ocupados que no son de nadie --una fuga, molesta y recuperable-- y el
     /// archivo **sigue entero con su contenido de antes**. Un corte entre 2 y 3
-    /// deja la fuga al revés, con el contenido nuevo ya en pie. En ningún
+    /// deja la fuga al reves, con el contenido nuevo ya en pie. En ningun
     /// instante hay un nombre apuntando a datos a medias.
     ///
-    /// El orden tentador —soltar lo viejo primero para tener sitio— es el que
+    /// El orden tentador --soltar lo viejo primero para tener sitio-- es el que
     /// convierte un corte de luz en un archivo perdido. **Escribir encima de la
-    /// cadena vieja es peor todavía**: durante la escritura el archivo no es ni
+    /// cadena vieja es peor todavia**: durante la escritura el archivo no es ni
     /// el de antes ni el de ahora, y si falla a mitad no queda ninguno de los
     /// dos.
     ///
-    /// ═══ Lo que esto CUESTA, dicho ═══
+    /// === Lo que esto CUESTA, dicho ===
     ///
     /// Durante el paso 1 el volumen aguanta **las dos copias a la vez**.
     /// Reemplazar un archivo de 1 GiB pide 1 GiB libre aunque el archivo final
@@ -933,7 +933,7 @@ impl FatVolume {
         //    vecinos con lo que hubiera quedado en el buffer.
         // Se RELEE el sector aunque `find_entry_fat32_from` lo dejara en `buf`
         // hace un momento. Apoyarse en eso seria un acoplamiento invisible:
-        // `escribir_cadena` no tiene ninguna obligacion de respetar `buf` —hoy
+        // `escribir_cadena` no tiene ninguna obligacion de respetar `buf` --hoy
         // usa `fat_cache`, y el dia que eso cambie el reemplazo escribiria en
         // el directorio lo que hubiera quedado en el buffer. Releer cuesta un
         // sector; el fallo que evita se lleva a los quince archivos vecinos.
@@ -943,8 +943,8 @@ impl FatVolume {
                 return Err(WriteError::Io);
             }
         }
-        // Sólo cambian el puntero y el tamaño: el nombre y los atributos son
-        // los que ya había, y reescribirlos sería inventarse una entrada nueva
+        // Solo cambian el puntero y el tamano: el nombre y los atributos son
+        // los que ya habia, y reescribirlos seria inventarse una entrada nueva
         // encima de una que ya estaba bien.
         let de = unsafe { &mut *(self.buf.as_mut_ptr().add(vieja.offset) as *mut DirEntry) };
         de.first_cluster_hi = (nueva >> 16) as u16;
@@ -958,7 +958,7 @@ impl FatVolume {
             return Err(WriteError::Io);
         }
 
-        // 3. Y ahora sí. Si esto falla a medias es una fuga de clusters, no una
+        // 3. Y ahora si. Si esto falla a medias es una fuga de clusters, no una
         //    perdida de datos: el archivo ya es el nuevo y esta completo.
         if vieja.first_cluster >= 2 {
             self.free_chain(vieja.first_cluster);
@@ -970,7 +970,7 @@ impl FatVolume {
     ///
     /// Cada cluster se marca como fin de cadena en cuanto se coge: asi la
     /// siguiente busqueda de hueco ya no lo ve libre y no se entrega dos veces.
-    /// Si algo falla a mitad, se suelta lo cogido — un archivo a medias es un
+    /// Si algo falla a mitad, se suelta lo cogido -- un archivo a medias es un
     /// error; unos clusters marcados como ocupados que ya no pertenecen a nadie
     /// son una fuga permanente.
     ///
@@ -1006,8 +1006,8 @@ impl FatVolume {
             let lba = self.cluster_to_lba(cluster);
             for s in 0..spc {
                 // El buffer se reinicia a CEROS en cada sector. Reutilizar uno
-                // sucio dejaba la cola del ultimo sector —y el resto del
-                // cluster— llena de los datos anteriores, justo donde el
+                // sucio dejaba la cola del ultimo sector --y el resto del
+                // cluster-- llena de los datos anteriores, justo donde el
                 // comentario prometia ceros.
                 let mut temp = [0u8; 512];
                 let off = i * cluster_bytes + s * 512;
@@ -1035,7 +1035,7 @@ impl FatVolume {
 
         let first = self.escribir_cadena(data)?;
 
-        // ── La entrada de directorio, lo ultimo ──
+        // -- La entrada de directorio, lo ultimo --
         //
         // Se apunta cuando los datos YA estan en el disco. Al reves, un corte
         // entre ambos pasos dejaria un nombre visible apuntando a basura.
@@ -1102,9 +1102,9 @@ impl FatVolume {
                 if !self.write_from(lba + s, &temp) { return false; }
             }
         }
-        // El relleno de la cola del cluster. Aquí un fallo NO puede devolver
-        // `false` —los datos del archivo ya están escritos y el llamante
-        // creería que no—, pero tampoco puede desaparecer: era un `let _ =`.
+        // El relleno de la cola del cluster. Aqui un fallo NO puede devolver
+        // `false` --los datos del archivo ya estan escritos y el llamante
+        // creeria que no--, pero tampoco puede desaparecer: era un `let _ =`.
         // Se cuenta, y `fallos_mudos` es lo que hay que mirar cuando el disco
         // "va bien" y algo no cuadra.
         for s in write_n..spc {
@@ -1205,13 +1205,13 @@ fn name_match(entry: &[u8; 11], query: &[u8]) -> bool {
     true
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  PRUEBAS — sobre un volumen FAT32 de mentira, en RAM
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
+//  PRUEBAS -- sobre un volumen FAT32 de mentira, en RAM
+// ===========================================================================
 //
-// ★ Este modulo no existia, y era el agujero mas caro del arbol: el unico
+// * Este modulo no existia, y era el agujero mas caro del arbol: el unico
 // codigo de BMO que ESCRIBE en un disco de verdad era tambien el unico sin una
-// sola prueba. Se verificaba flasheando y mirando la pantalla — o sea,
+// sola prueba. Se verificaba flasheando y mirando la pantalla -- o sea,
 // arriesgando el volumen para averiguar si el driver lo respetaba.
 //
 // El contrato de bloques (`BlockReader`/`BlockWriter`) son punteros a funcion
@@ -1246,7 +1246,7 @@ mod tests {
 
     /// El disco entero como rebanada. Se construye desde el puntero crudo y no
     /// desreferenciando el `static mut`: encadenarlo crearia una referencia a
-    /// la desreferencia del puntero, que es lo que el lint prohibe — y con
+    /// la desreferencia del puntero, que es lo que el lint prohibe -- y con
     /// razon, porque esconde de donde sale. Mismo trato que en
     /// `ring0/obj/archivo.rs`.
     fn disco() -> &'static mut [u8] {
@@ -1279,7 +1279,7 @@ mod tests {
     fn volumen() -> (std::sync::MutexGuard<'static, ()>, FatVolume) {
         // `into_inner` y no `unwrap`: si una prueba anterior revento con el
         // candado en la mano, el resto tiene que poder seguir. El disco se
-        // formatea entero aqui abajo, asi que lo que dejara no importa —
+        // formatea entero aqui abajo, asi que lo que dejara no importa --
         // envenenar la tanda entera solo escondaria el fallo de verdad.
         let turno = CANDADO.lock().unwrap_or_else(|e| e.into_inner());
         disco().fill(0);
@@ -1353,7 +1353,7 @@ mod tests {
         assert!(matches!(r, Err(WriteError::Exists)), "crear NO puede pisar: {r:?}");
     }
 
-    /// ★★ LA PRUEBA QUE JUSTIFICA TODO ESTO.
+    /// ** LA PRUEBA QUE JUSTIFICA TODO ESTO.
     ///
     /// Es el nivel 10 de COBOL corrido dos veces: la segunda escritura tiene
     /// que ganar. Antes daba `Exists`, el `CLOSE` devolvia `0`, y en el disco
@@ -1391,10 +1391,10 @@ mod tests {
         assert_eq!(cuantas, 1, "reemplazar no puede dejar dos entradas con el mismo nombre");
     }
 
-    /// ★ Y sin FUGAR clusters: la cadena vieja tiene que quedar suelta.
+    /// * Y sin FUGAR clusters: la cadena vieja tiene que quedar suelta.
     ///
-    /// Un reemplazo que no libera lo anterior no rompe nada visible —el
-    /// archivo se lee bien— pero el volumen se llena solo, y el dia que se
+    /// Un reemplazo que no libera lo anterior no rompe nada visible --el
+    /// archivo se lee bien-- pero el volumen se llena solo, y el dia que se
     /// llene el motivo llevara meses enterrado.
     #[test]
     fn reemplazar_suelta_la_cadena_vieja() {
@@ -1437,17 +1437,17 @@ mod tests {
         assert_eq!(&dst[..n], b"hola");
     }
 
-    /// ★ Reemplazar NO puede tocar al archivo de al lado.
+    /// * Reemplazar NO puede tocar al archivo de al lado.
     ///
     /// Es el fallo silencioso que mas miedo da de esta operacion: la entrada
     /// de directorio se reescribe dentro de un sector que comparte con otras
     /// quince, y escribir ese sector con un buffer que no sea el suyo se lleva
     /// a los vecinos por delante.
     ///
-    /// ⚠ Y hay que decir lo que esta prueba NO demuestra hoy: quitar el
+    /// [!] Y hay que decir lo que esta prueba NO demuestra hoy: quitar el
     /// `read_sector` de `replace_file_fat32` **no la hace caer**, porque `buf`
     /// resulta que todavia conserva ese sector de cuando se busco la entrada.
-    /// Eso es un accidente del orden de las llamadas, no una garantia — se
+    /// Eso es un accidente del orden de las llamadas, no una garantia -- se
     /// comprobo mutandolo. La relectura se queda por eso mismo, y esta prueba
     /// vale como red para la implementacion que venga despues, no como
     /// demostracion de la de ahora.

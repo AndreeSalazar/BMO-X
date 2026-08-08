@@ -1,7 +1,7 @@
-//! `convert` — conversiones entre los tipos de error del BMO ABI.
+//! `convert` -- conversiones entre los tipos de error del BMO ABI.
 //!
-//! BmoStatus ↔ BmoError ↔ ErrorCode ↔ BmoResult. Un solo punto de
-//! traducción para que el resto del kernel nunca tenga que pensar en esto.
+//! BmoStatus <-> BmoError <-> ErrorCode <-> BmoResult. Un solo punto de
+//! traduccion para que el resto del kernel nunca tenga que pensar en esto.
 
 use crate::bmo_abi::fundamentals::error::BmoError;
 use crate::bmo_abi::fundamentals::result::BmoResult;
@@ -9,7 +9,7 @@ use crate::bmo_abi::fundamentals::status::code::StatusFlags;
 use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::primitives::bx_u32;
 
-// ─── BmoStatus → BmoError ──────────────────────────────────────────
+// --- BmoStatus -> BmoError ------------------------------------------
 
 impl From<BmoStatus> for BmoError {
     fn from(s: BmoStatus) -> Self {
@@ -23,7 +23,7 @@ impl From<BmoError> for BmoStatus {
     }
 }
 
-// ─── u32 (raw error_code) → BmoError/BmoStatus ─────────────────────
+// --- u32 (raw error_code) -> BmoError/BmoStatus ---------------------
 
 impl From<bx_u32> for BmoError {
     fn from(code: bx_u32) -> Self {
@@ -37,7 +37,7 @@ impl From<bx_u32> for BmoStatus {
     }
 }
 
-// ─── BmoResult<T, BmoStatus> / BmoResult<T, BmoError> bridges ──────
+// --- BmoResult<T, BmoStatus> / BmoResult<T, BmoError> bridges ------
 
 impl<T: Copy> BmoResult<T, BmoError> {
     /// Collapse into BmoStatus (losing the ok value).
@@ -61,7 +61,7 @@ impl<T: Copy> BmoResult<T, BmoStatus> {
     }
 }
 
-// ─── StatusFlags helpers ───────────────────────────────────────────
+// --- StatusFlags helpers -------------------------------------------
 
 impl BmoStatus {
     /// True if this status indicates a retryable operation.
@@ -82,7 +82,7 @@ impl BmoError {
     }
 }
 
-// ─── Tests ─────────────────────────────────────────────────────────
+// --- Tests ---------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

@@ -1,29 +1,29 @@
-//! El contrato de bloques: lo único que un sistema de ficheros necesita saber
+//! El contrato de bloques: lo unico que un sistema de ficheros necesita saber
 //! del almacenamiento.
 //!
-//! Es el **paso 3** del orden de construcción de ESTRATOS
-//! (la especificacion de ESTRATOS, §10): *"el contrato único
+//! Es el **paso 3** del orden de construccion de ESTRATOS
+//! (la especificacion de ESTRATOS, section 10): *"el contrato unico
 //! leer / escribir / capacidad / identidad, con AHCI y NVMe debajo. ESTRATOS
 //! habla con eso, no con SATA."*
 //!
-//! ## Por qué esto es un contrato y no una capa
+//! ## Por que esto es un contrato y no una capa
 //!
-//! La regla de la casa es **contratos y formatos, nunca cerebros**. Aquí no se
-//! procesa nada: no hay caché, ni planificador de peticiones, ni traducción de
+//! La regla de la casa es **contratos y formatos, nunca cerebros**. Aqui no se
+//! procesa nada: no hay cache, ni planificador de peticiones, ni traduccion de
 //! direcciones. Solo se declara la forma que tiene un dispositivo de bloques
-//! para todo el que esté por encima. Por eso esta crate **no depende de nadie**
-//! — en cuanto dependiera de un driver concreto dejaría de ser la frontera
-//! entre las capas para pasar a ser una capa más.
+//! para todo el que este por encima. Por eso esta crate **no depende de nadie**
+//! -- en cuanto dependiera de un driver concreto dejaria de ser la frontera
+//! entre las capas para pasar a ser una capa mas.
 //!
-//! El día que haya un NVMe cableado, ESTRATOS y FAT32 no se enteran: alguien
-//! registra otro dispositivo y ya está.
+//! El dia que haya un NVMe cableado, ESTRATOS y FAT32 no se enteran: alguien
+//! registra otro dispositivo y ya esta.
 //!
-//! ## Por qué la IDENTIDAD es parte del contrato
+//! ## Por que la IDENTIDAD es parte del contrato
 //!
-//! Podría parecer que un dispositivo de bloques es solo `leer` y `escribir`.
-//! No en esta máquina. Aquí hay tres discos y en uno vive el sistema
-//! operativo del dueño; un dispositivo que no puede decir QUIÉN ES no se puede
-//! escribir con seguridad, así que la identidad no es un extra informativo:
+//! Podria parecer que un dispositivo de bloques es solo `leer` y `escribir`.
+//! No en esta maquina. Aqui hay tres discos y en uno vive el sistema
+//! operativo del dueno; un dispositivo que no puede decir QUIEN ES no se puede
+//! escribir con seguridad, asi que la identidad no es un extra informativo:
 //! es la mitad del contrato. El superbloque de ESTRATOS graba el `disco_id`
 //! DENTRO del volumen justamente para poder comparar contra esto al montar, y
 //! negarse a escribir en un volumen clonado a otro disco.
@@ -32,24 +32,24 @@
 //!
 //! Implementado por AHCI/SATA en el kernel (`ring0/dev/disk.rs`). **NVMe no**:
 //! la crate `bmo-nvme` existe y tiene lectura y escritura, pero nadie la ha
-//! puesto detrás de este contrato todavía, y en esta máquina el NVMe es el
-//! disco de Windows. Se dice, no se insinúa.
+//! puesto detras de este contrato todavia, y en esta maquina el NVMe es el
+//! disco de Windows. Se dice, no se insinua.
 
 #![no_std]
 
-/// Bytes de un bloque lógico. Todo LBA de BMO es de 512 B por ahora; el campo
-/// existe en [`DeviceId`] porque los discos de 4 KiB nativos existen y el día
+/// Bytes de un bloque logico. Todo LBA de BMO es de 512 B por ahora; el campo
+/// existe en [`DeviceId`] porque los discos de 4 KiB nativos existen y el dia
 /// que aparezca uno, el que se rompa tiene que ser el driver, no el contrato.
 pub const SECTOR: usize = 512;
 
-/// Por qué falló una operación de bloques.
+/// Por que fallo una operacion de bloques.
 ///
-/// Un `bool` no distingue "el disco está roto" de "me pediste un sector que no
+/// Un `bool` no distingue "el disco esta roto" de "me pediste un sector que no
 /// existe", y son dos conversaciones distintas: una es un fallo de hardware y
 /// la otra un bug de quien llama.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockError {
-    /// No hay dispositivo, o no terminó de inicializarse.
+    /// No hay dispositivo, o no termino de inicializarse.
     NotReady,
     /// El rango pedido se sale de la capacidad del dispositivo.
     OutOfRange,
@@ -57,11 +57,11 @@ pub enum BlockError {
     ReadOnly,
     /// El buffer del llamante no da para los bloques pedidos.
     ShortBuffer,
-    /// El dispositivo respondió con error.
+    /// El dispositivo respondio con error.
     Device,
-    /// La operación no terminó dentro del límite.
+    /// La operacion no termino dentro del limite.
     Timeout,
-    /// El dispositivo no implementa esta operación.
+    /// El dispositivo no implementa esta operacion.
     Unsupported,
 }
 
@@ -79,12 +79,12 @@ impl BlockError {
     }
 }
 
-/// Quién es este dispositivo, según él mismo.
+/// Quien es este dispositivo, segun el mismo.
 ///
-/// Los tamaños salen de lo que declara `IDENTIFY DEVICE` de ATA: 40 bytes de
-/// modelo y 20 de serie. Se guardan como bytes con su longitud útil y no como
+/// Los tamanos salen de lo que declara `IDENTIFY DEVICE` de ATA: 40 bytes de
+/// modelo y 20 de serie. Se guardan como bytes con su longitud util y no como
 /// cadenas porque en Ring 0 no hay reservas de memoria: el buffer viaja
-/// entero y el que lo lee decide qué hacer con él.
+/// entero y el que lo lee decide que hacer con el.
 #[derive(Clone, Copy)]
 pub struct DeviceId {
     pub model: [u8; 40],
@@ -110,17 +110,17 @@ impl DeviceId {
     pub fn serial_str(&self) -> &str {
         core::str::from_utf8(&self.serial[..self.serial_len]).unwrap_or("")
     }
-    /// ¿Ha dicho el dispositivo quién es? Sin modelo Y serie no hay identidad
+    /// Ha dicho el dispositivo quien es? Sin modelo Y serie no hay identidad
     /// que comparar, y sin identidad no se escribe.
     pub fn is_known(&self) -> bool {
         self.model_len > 0 && self.serial_len > 0 && self.blocks > 0
     }
-    /// ¿Son el mismo disco físico?
+    /// Son el mismo disco fisico?
     ///
-    /// Es la comparación que ESTRATOS hace al montar contra el `disco_id`
+    /// Es la comparacion que ESTRATOS hace al montar contra el `disco_id`
     /// grabado en su superbloque. Modelo Y serie Y capacidad: el modelo solo
-    /// dice qué disco ES, la serie dice CUÁL, y la capacidad caza el caso de
-    /// una imagen clonada a un disco de otro tamaño.
+    /// dice que disco ES, la serie dice CUAL, y la capacidad caza el caso de
+    /// una imagen clonada a un disco de otro tamano.
     pub fn same_device(&self, other: &DeviceId) -> bool {
         self.is_known() && other.is_known()
             && self.model_len == other.model_len
@@ -131,14 +131,14 @@ impl DeviceId {
     }
 }
 
-/// Un dispositivo de bloques. Cuatro operaciones y ni una más.
+/// Un dispositivo de bloques. Cuatro operaciones y ni una mas.
 ///
-/// `&self` y no `&mut self` a propósito: por debajo hay un motor de DMA con su
+/// `&self` y no `&mut self` a proposito: por debajo hay un motor de DMA con su
 /// propio estado, no una estructura de datos de Rust. Quien implemente esto se
-/// hace responsable de su exclusión mutua — y mientras no haya SMP eso
-/// significa que **no puede haber dos escritores** (ESTRATOS §12).
+/// hace responsable de su exclusion mutua -- y mientras no haya SMP eso
+/// significa que **no puede haber dos escritores** (ESTRATOS section 12).
 pub trait BlockDevice {
-    /// Quién es. Ver [`DeviceId`].
+    /// Quien es. Ver [`DeviceId`].
     fn identity(&self) -> DeviceId;
 
     /// Bloques direccionables.
@@ -147,51 +147,51 @@ pub trait BlockDevice {
     /// Bytes por bloque.
     fn block_size(&self) -> u32 { self.identity().block_size }
 
-    /// Lee `count` bloques desde `lba`. Devuelve los leídos de verdad.
+    /// Lee `count` bloques desde `lba`. Devuelve los leidos de verdad.
     fn read(&self, lba: u64, count: u16, buf: &mut [u8]) -> Result<u16, BlockError>;
 
     /// Escribe `count` bloques en `lba`. Devuelve los escritos de verdad.
     ///
-    /// Un dispositivo puede negarse con [`BlockError::ReadOnly`] — y debe
+    /// Un dispositivo puede negarse con [`BlockError::ReadOnly`] -- y debe
     /// hacerlo si no ha podido establecer su identidad.
     fn write(&self, lba: u64, count: u16, data: &[u8]) -> Result<u16, BlockError>;
 
-    /// Obliga al dispositivo a bajar a la superficie lo que aceptó.
+    /// Obliga al dispositivo a bajar a la superficie lo que acepto.
     ///
     /// **No es opcional.** Es el paso 4 de la escritura de ESTRATOS: la
-    /// barrera antes del superbloque. Un disco que dice "ya está" con el dato
-    /// todavía en su caché convierte cualquier diseño transaccional en
-    /// decoración.
+    /// barrera antes del superbloque. Un disco que dice "ya esta" con el dato
+    /// todavia en su cache convierte cualquier diseno transaccional en
+    /// decoracion.
     fn flush(&self) -> Result<(), BlockError>;
 
-    /// ¿Se puede escribir en este dispositivo ahora mismo?
+    /// Se puede escribir en este dispositivo ahora mismo?
     ///
     /// Separado de que `write` falle: quien va a formatear o montar para
     /// escritura quiere saberlo ANTES de empezar, no a mitad.
     fn writable(&self) -> bool { false }
 }
 
-// ── El registro ─────────────────────────────────────────────────────────────
+// -- El registro -------------------------------------------------------------
 
 static mut DEVICE: Option<&'static dyn BlockDevice> = None;
 
 /// Registra EL dispositivo de bloques de BMO.
 ///
-/// Uno solo, y es deliberado. En esta máquina hay tres discos y dos de ellos
-/// son ajenos; un registro que aceptara varios invitaría a que algo de arriba
-/// recorriera la lista y eligiera mal. El que elige QUÉ disco es de BMO es el
-/// kernel, una vez, mirando el tipo de controlador — no un bucle sobre un
+/// Uno solo, y es deliberado. En esta maquina hay tres discos y dos de ellos
+/// son ajenos; un registro que aceptara varios invitaria a que algo de arriba
+/// recorriera la lista y eligiera mal. El que elige QUE disco es de BMO es el
+/// kernel, una vez, mirando el tipo de controlador -- no un bucle sobre un
 /// vector.
 pub fn register(dev: &'static dyn BlockDevice) {
     unsafe { DEVICE = Some(dev); }
 }
 
-/// El dispositivo de bloques de BMO, si ya se registró.
+/// El dispositivo de bloques de BMO, si ya se registro.
 pub fn device() -> Option<&'static dyn BlockDevice> {
     unsafe { DEVICE }
 }
 
-/// ¿Hay dispositivo y sabe quién es?
+/// Hay dispositivo y sabe quien es?
 pub fn is_identified() -> bool {
     match device() {
         Some(d) => d.identity().is_known(),

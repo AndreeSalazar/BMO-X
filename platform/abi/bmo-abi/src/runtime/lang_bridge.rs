@@ -1,6 +1,6 @@
-//! `lang_bridge` — bridges entre lenguajes del BMO ABI.
+//! `lang_bridge` -- bridges entre lenguajes del BMO ABI.
 //!
-//! Cada bridge sabe cómo llamar funciones de un lenguaje específico:
+//! Cada bridge sabe como llamar funciones de un lenguaje especifico:
 //! convertir argumentos, manejar excepciones, gestionar GC.
 //!
 //! Soportes planificados: Rust nativo, C ABI, COBOL, JVM, CLR, Python, Lua, Wasm.
@@ -22,7 +22,7 @@ pub enum BmoLanguage {
     Cobol,
 }
 
-/// Función de entrada del bridge: recibe un ID de función y argumentos
+/// Funcion de entrada del bridge: recibe un ID de funcion y argumentos
 /// empaquetados, devuelve un resultado empaquetado.
 pub type BridgeCallFn = extern "C" fn(
     fn_id: bx_u32,
@@ -37,7 +37,7 @@ pub type BridgeCallFn = extern "C" fn(
 pub struct LangBridge {
     pub language: BmoLanguage,
     pub call: BridgeCallFn,
-    /// FNV-1a hash del nombre del lenguaje (para lookup rápido).
+    /// FNV-1a hash del nombre del lenguaje (para lookup rapido).
     pub name_hash: bx_u64,
 }
 

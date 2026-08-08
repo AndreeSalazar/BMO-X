@@ -1,35 +1,35 @@
-//! Operaciones sobre bloques de TEXTO — **librería, no puerta**.
+//! Operaciones sobre bloques de TEXTO -- **libreria, no puerta**.
 //!
-//! # Qué hay aquí
+//! # Que hay aqui
 //!
 //! Contar, sustituir y partir sobre un bloque de bytes **de largo conocido**.
-//! Nada de esto sabe qué es un `PIC X`, ni un `INSPECT`, ni un `UNSTRING`: son
-//! recorridos de bytes, y por eso viven aquí y no en el frontend.
+//! Nada de esto sabe que es un `PIC X`, ni un `INSPECT`, ni un `UNSTRING`: son
+//! recorridos de bytes, y por eso viven aqui y no en el frontend.
 //!
 //! Es la misma frontera que [`crate::memoria`], que ya trae `copiar`,
 //! `rellenar` y `comparar`. Aquello son los verbos de C (`memcpy`, `memset`);
 //! esto son los que COBOL escribe `INSPECT` y Ada `Index`/`Replace_Slice`.
-//! **La misma emisión.**
+//! **La misma emision.**
 //!
-//! # Por qué el largo va por REGISTRO y no hay NUL
+//! # Por que el largo va por REGISTRO y no hay NUL
 //!
 //! `memoria::comparar` recorre hasta el cero, que es lo que hace una cadena de
 //! C. Un campo de COBOL **no termina en cero**: mide lo que dice su PICTURE y
 //! el hueco va a espacios. Un cero en medio es un dato, no un final.
 //!
-//! Mezclar las dos convenciones es de donde salen los bugs de cadenas, así que
-//! aquí el largo es explícito y no se busca ningún terminador.
+//! Mezclar las dos convenciones es de donde salen los bugs de cadenas, asi que
+//! aqui el largo es explicito y no se busca ningun terminador.
 
 use crate::x86::{self, Jump, RAX, RCX, RDI, RDX, RSI};
 
-/// Cuenta cuántas veces aparece un byte.
+/// Cuenta cuantas veces aparece un byte.
 ///
-/// - Entrada: `rdi` = principio, `rcx` = cuántos bytes, `rdx` = el byte.
+/// - Entrada: `rdi` = principio, `rcx` = cuantos bytes, `rdx` = el byte.
 /// - Salida: `rax` = las veces que estaba.
 /// - Ensucia `rax`, `rcx`, `rdi` y `rsi`.
 ///
-/// Es lo que COBOL escribe `INSPECT … TALLYING n FOR ALL "x"`, y su uso más
-/// corriente en banca es contar espacios para saber cuánto mide de verdad un
+/// Es lo que COBOL escribe `INSPECT ... TALLYING n FOR ALL "x"`, y su uso mas
+/// corriente en banca es contar espacios para saber cuanto mide de verdad un
 /// campo que viene rellenado.
 pub fn contar_byte(code: &mut Vec<u8>) {
     x86::zero_r32(code, RAX);
@@ -53,11 +53,11 @@ pub fn contar_byte(code: &mut Vec<u8>) {
 
 /// Cambia un byte por otro, **en todas** sus apariciones.
 ///
-/// - Entrada: `rdi` = principio, `rcx` = cuántos, `rdx` = el viejo,
+/// - Entrada: `rdi` = principio, `rcx` = cuantos, `rdx` = el viejo,
 ///   `rsi` = el nuevo.
 /// - Ensucia `rax`, `rcx` y `rdi`.
 ///
-/// `INSPECT … REPLACING ALL " " BY "0"` — así se rellena de ceros un importe
+/// `INSPECT ... REPLACING ALL " " BY "0"` -- asi se rellena de ceros un importe
 /// que viene con espacios, que es lo que trae medio fichero de intercambio.
 pub fn reemplazar_byte(code: &mut Vec<u8>) {
     x86::test_r64_r64(code, RCX, RCX);
@@ -78,13 +78,13 @@ pub fn reemplazar_byte(code: &mut Vec<u8>) {
     x86::patch_jump(code, vacio);
 }
 
-/// Igual, pero **sólo por delante**: para en cuanto encuentra otro byte.
+/// Igual, pero **solo por delante**: para en cuanto encuentra otro byte.
 ///
 /// Mismos registros que [`reemplazar_byte`].
 ///
-/// ★ Y no es un capricho tener las dos. `REPLACING LEADING " " BY "0"` sobre
-/// `"  12 34"` da `"0012 34"`; con `ALL` daría `"0012034"`, que es otro número.
-/// Elegir mal ahí cambia un importe sin que nada avise.
+/// * Y no es un capricho tener las dos. `REPLACING LEADING " " BY "0"` sobre
+/// `"  12 34"` da `"0012 34"`; con `ALL` daria `"0012034"`, que es otro numero.
+/// Elegir mal ahi cambia un importe sin que nada avise.
 pub fn reemplazar_delante(code: &mut Vec<u8>) {
     x86::test_r64_r64(code, RCX, RCX);
     let vacio = x86::emit_jump(code, Jump::IfZero);
@@ -152,8 +152,8 @@ mod tests {
         assert_eq!(reemplazar(b"AAA", b'A', b'B', false), b"BBB".to_vec());
     }
 
-    /// ★ La diferencia entre `ALL` y `LEADING`, que sobre un importe es otro
-    /// número. Ésta es la razón por la que existen los dos emisores.
+    /// * La diferencia entre `ALL` y `LEADING`, que sobre un importe es otro
+    /// numero. Esta es la razon por la que existen los dos emisores.
     #[test]
     fn delante_para_en_el_primero_que_no_coincide() {
         assert_eq!(reemplazar(b"  12 34", b' ', b'0', true), b"0012 34".to_vec());
@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(reemplazar(b"    ", b' ', b'0', true), b"0000".to_vec());
     }
 
-    /// Ni un byte de más: el vecino de la derecha se queda como estaba. Dentro
+    /// Ni un byte de mas: el vecino de la derecha se queda como estaba. Dentro
     /// de un registro, pasarse un byte pisa el campo de al lado.
     #[test]
     fn no_se_sale_del_bloque() {

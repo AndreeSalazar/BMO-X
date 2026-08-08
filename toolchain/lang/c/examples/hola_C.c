@@ -1,4 +1,4 @@
-/* hola_C.bex — el programa que BMO-X ejecuta en el Ryzen 5 5600X real.
+/* hola_C.bex -- el programa que BMO-X ejecuta en el Ryzen 5 5600X real.
  *
  * No es un "hola mundo" de adorno: cada linea prueba algo que estaba ROTO
  * hasta esta semana y que solo se puede confirmar en metal.

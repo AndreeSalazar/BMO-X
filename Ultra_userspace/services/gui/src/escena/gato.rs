@@ -1,24 +1,24 @@
-//! **EL GATO** — el logo de BMO-X, en dos mascaras de 1 bit.
+//! **EL GATO** -- el logo de BMO-X, en dos mascaras de 1 bit.
 //!
-//! ★ GENERADO. No se edita a mano: sale de `docs/arte/gato_a_mascara.py`, que
+//! * GENERADO. No se edita a mano: sale de `docs/arte/gato_a_mascara.py`, que
 //! lee `docs/arte/bmo-x-gato.jpg`. Si el logo cambia, se vuelve a correr.
 //!
-//! ═══ Por que un bitmap y no una imagen ═══
+//! === Por que un bitmap y no una imagen ===
 //!
 //! El logo es **97% negro plano, 1,6% blanco y 0,9% cian**, medido. Guardarlo
 //! como imagen seria pagar 24 bits por pixel para almacenar "negro" cuarenta
-//! mil veces — y una pantalla completa en BGRA son 8 MB contra el 1 MiB de
+//! mil veces -- y una pantalla completa en BGRA son 8 MB contra el 1 MiB de
 //! `MAX_BEX`. Un decodificador JPEG en `no_std` serian miles de lineas para
 //! dibujar tres colores.
 //!
 //! Asi que el trazo va en un bit y los ojos en otro, y **el fondo no se
 //! guarda** porque el fondo del splash ya es negro. Dibujar es un test de bit.
 //!
-//! 152x180 px · 3420 B de trazo + 3420 B de ojos =
+//! 152x180 px - 3420 B de trazo + 3420 B de ojos =
 //! **6840 bytes**. Pixeles encendidos: 1346 de trazo,
 //! 276 de ojos.
 //!
-//! ═══ Y por que un GATO ═══
+//! === Y por que un GATO ===
 //!
 //! Porque un gato se cae, se rompe algo y sigue andando. Este sistema se niega
 //! a arrancar un programa antes que escribir en su memoria una direccion que no

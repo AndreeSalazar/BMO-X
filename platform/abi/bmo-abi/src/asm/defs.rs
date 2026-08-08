@@ -1,4 +1,4 @@
-//! Embedded syscall, type, and ABI definitions — no filesystem needed.
+//! Embedded syscall, type, and ABI definitions -- no filesystem needed.
 //!
 //! These constants are the compiled-in source of truth, replacing the
 //! Semantic_ASM/*.toml files. Frontends call `bmo_abi::asm::syscalls()`
@@ -8,10 +8,10 @@ use super::{AbiDataModel, SyscallDef, TypeAlias};
 use alloc::string::String;
 use alloc::vec::Vec;
 
-/// ── All syscall definitions (14 categories, ~100 entries) ─────────
+/// -- All syscall definitions (14 categories, ~100 entries) ---------
 
 pub const SYSCALLS: &[(&str, u32, u8)] = &[
-    // ── wm (0x100..0x10F): Window Manager ─────────────────────────
+    // -- wm (0x100..0x10F): Window Manager -------------------------
     ("bmo_wm_create_window", 0x100, 4),
     ("bmo_wm_destroy_window", 0x101, 1),
     ("bmo_wm_show_window", 0x102, 1),
@@ -28,7 +28,7 @@ pub const SYSCALLS: &[(&str, u32, u8)] = &[
     ("bmo_wm_register_class", 0x10D, 2),
     ("bmo_wm_pump_events", 0x10E, 2),
     ("bmo_wm_translate_message", 0x10F, 2),
-    // ── draw (0x110..0x119) ────────────────────────────────────────
+    // -- draw (0x110..0x119) ----------------------------------------
     ("bmo_draw_clear", 0x110, 1),
     ("bmo_draw_pixel", 0x111, 3),
     ("bmo_draw_line", 0x112, 5),
@@ -39,20 +39,20 @@ pub const SYSCALLS: &[(&str, u32, u8)] = &[
     ("bmo_draw_gradient_v", 0x117, 6),
     ("bmo_draw_gradient_h", 0x118, 6),
     ("bmo_draw_rounded_rect", 0x119, 6),
-    // ── winpaint (0x120..0x125) ────────────────────────────────────
+    // -- winpaint (0x120..0x125) ------------------------------------
     ("bmo_winpaint_fill_rect", 0x120, 5),
     ("bmo_winpaint_draw_text", 0x121, 5),
     ("bmo_winpaint_draw_pixel", 0x122, 3),
     ("bmo_winpaint_draw_line", 0x123, 5),
     ("bmo_winpaint_draw_blit", 0x124, 6),
     ("bmo_winpaint_draw_circle", 0x125, 4),
-    // ── compositor (0x130..0x134) ──────────────────────────────────
+    // -- compositor (0x130..0x134) ----------------------------------
     ("bmo_compositor_begin_frame", 0x130, 0),
     ("bmo_compositor_end_frame", 0x131, 0),
     ("bmo_compositor_present", 0x132, 1),
     ("bmo_compositor_set_target", 0x133, 1),
     ("bmo_compositor_flush", 0x134, 0),
-    // ── fs / io (0x140..0x149) ─────────────────────────────────────
+    // -- fs / io (0x140..0x149) -------------------------------------
     ("bmo_open", 0x140, 2),
     ("bmo_fs_open", 0x140, 2),
     ("bmo_close", 0x141, 1),
@@ -73,25 +73,25 @@ pub const SYSCALLS: &[(&str, u32, u8)] = &[
     ("bmo_fs_delete", 0x148, 1),
     ("bmo_mount", 0x149, 2),
     ("bmo_fs_mount", 0x149, 2),
-    // ── time (0x150..0x153) ────────────────────────────────────────
+    // -- time (0x150..0x153) ----------------------------------------
     ("bmo_time_now_ns", 0x150, 0),
     ("bmo_time_now_us", 0x151, 0),
     ("bmo_time_sleep_ns", 0x152, 1),
     ("bmo_time_sleep_ms", 0x153, 1),
-    // ── input (0x160..0x162) ───────────────────────────────────────
+    // -- input (0x160..0x162) ---------------------------------------
     ("bmo_poll_key", 0x160, 0),
     ("bmo_input_poll_key", 0x160, 0),
     ("bmo_poll_mouse", 0x161, 0),
     ("bmo_input_poll_mouse", 0x161, 0),
     ("bmo_poll_event", 0x162, 1),
     ("bmo_input_poll_event", 0x162, 1),
-    // ── audio (0x170..0x173) ───────────────────────────────────────
+    // -- audio (0x170..0x173) ---------------------------------------
     ("bmo_audio_play", 0x170, 2),
     ("bmo_audio_stop", 0x171, 0),
     ("bmo_beep", 0x172, 2),
     ("bmo_audio_beep", 0x172, 2),
     ("bmo_audio_load_wave", 0x173, 2),
-    // ── proc (0x180..0x188) ────────────────────────────────────────
+    // -- proc (0x180..0x188) ----------------------------------------
     ("bmo_spawn", 0x180, 1),
     ("bmo_proc_spawn", 0x180, 1),
     ("bmo_exit", 0x181, 1),
@@ -106,7 +106,7 @@ pub const SYSCALLS: &[(&str, u32, u8)] = &[
     ("bmo_thread_exit", 0x186, 1),
     ("bmo_thread_join", 0x187, 1),
     ("bmo_thread_self", 0x188, 0),
-    // ── mem (0x190..0x197) ─────────────────────────────────────────
+    // -- mem (0x190..0x197) -----------------------------------------
     ("bmo_mem_alloc", 0x190, 1),
     ("bmo_mem_free", 0x191, 2),
     ("bmo_mem_map", 0x192, 2),
@@ -115,16 +115,16 @@ pub const SYSCALLS: &[(&str, u32, u8)] = &[
     ("bmo_befcore_recv", 0x195, 2),
     ("bmo_befcore_poll", 0x196, 0),
     ("bmo_befcore_register", 0x197, 2),
-    // ── ipc (0x1A0..0x1A3) ─────────────────────────────────────────
+    // -- ipc (0x1A0..0x1A3) -----------------------------------------
     ("bmo_ipc_port_create", 0x1A0, 0),
     ("bmo_ipc_port_send", 0x1A1, 3),
     ("bmo_ipc_port_recv", 0x1A2, 3),
     ("bmo_ipc_port_close", 0x1A3, 1),
-    // ── surface (0x1C0..0x1CF) ─────────────────────────────────────
+    // -- surface (0x1C0..0x1CF) -------------------------------------
     ("bmo_surface_map", 0x1C0, 2),
     ("bmo_surface_unmap", 0x1C1, 1),
     ("bmo_surface_present", 0x1C2, 1),
-    // ── diag (0x1F0..0x1F3) ────────────────────────────────────────
+    // -- diag (0x1F0..0x1F3) ----------------------------------------
     ("bmo_debug_print", 0x1F0, 2),
     ("bmo_diag_print", 0x1F0, 2),
     ("bmo_debug_trace", 0x1F1, 1),
@@ -135,7 +135,7 @@ pub const SYSCALLS: &[(&str, u32, u8)] = &[
     ("bmo_diag_panic", 0x1F3, 1),
 ];
 
-/// ── Type aliases (from types.toml) ────────────────────────────────
+/// -- Type aliases (from types.toml) --------------------------------
 
 pub const TYPE_ALIASES: &[(&str, &str, Option<i64>)] = &[
     ("size_t", "u64", None),
@@ -167,7 +167,7 @@ pub const TYPE_ALIASES: &[(&str, &str, Option<i64>)] = &[
     ("BMO_API_END", "", Some(0x1FF)),
 ];
 
-/// ── ABI data model (from abi.toml) ────────────────────────────────
+/// -- ABI data model (from abi.toml) --------------------------------
 
 pub const POINTER_SIZE: u8 = 8;
 pub const ENDIANNESS: &str = "little";
@@ -184,7 +184,7 @@ pub const TYPE_SIZES: &[(&str, u8)] = &[
     ("pointer", 8),
 ];
 
-// ── Helper functions ───────────────────────────────────────────────
+// -- Helper functions -----------------------------------------------
 
 /// All embedded syscall definitions (no filesystem needed).
 pub fn syscalls() -> Vec<SyscallDef> {

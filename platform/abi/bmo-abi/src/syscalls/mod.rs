@@ -1,9 +1,9 @@
-//! `bmo_abi::syscalls` — Tabla única de syscall numbers 0x100..0x1FF.
+//! `bmo_abi::syscalls` -- Tabla unica de syscall numbers 0x100..0x1FF.
 //!
-//! **Constants y `name()` generados automáticamente** desde
+//! **Constants y `name()` generados automaticamente** desde
 //! `Semantic_ASM/bmo/*.toml` por `build.rs`.
 //!
-//! Este archivo conserva los wrappers arquitectura-específicos
+//! Este archivo conserva los wrappers arquitectura-especificos
 //! (`syscall0..6`, `SyscallResult`) y los helpers.
 //!
 //! ## Layout
@@ -24,9 +24,9 @@
 //! | 0x1C0..0x1C2 | Surface | map/unmap/present |
 //! | 0x1F0..0x1F3 | Diagnostics | print/trace/assert/panic |
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Constants + name() — EMBEDIDOS desde asm::defs
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
+//  Constants + name() -- EMBEDIDOS desde asm::defs
+// ===========================================================================
 mod generated;
 pub use generated::*;
 
@@ -34,15 +34,15 @@ pub use generated::*;
 /// only while v1 producers and runtimes are migrated.
 pub mod surface;
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Syscall wrappers (x86_64). Arquitectura-específicos.
-//  Cuando se añada ARM: arch/aarch64.rs, arch/riscv64.rs, etc.
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
+//  Syscall wrappers (x86_64). Arquitectura-especificos.
+//  Cuando se anada ARM: arch/aarch64.rs, arch/riscv64.rs, etc.
+// ===========================================================================
 
 /// Resultado de un syscall: (code, value) = (RAX, RDX).
 ///
 /// El kernel siempre devuelve `BmoStatus` en RAX:RDX, donde:
-/// - RAX bits [31:0] = código de estado (0 = OK)
+/// - RAX bits [31:0] = codigo de estado (0 = OK)
 /// - RDX = valor adicional (handle, contador, etc.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SyscallResult(pub u64, pub u64);

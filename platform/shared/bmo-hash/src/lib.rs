@@ -1,35 +1,35 @@
-//! BLAKE3 â€” implementaciÃ³n nativa no_std para BMO.
+//! BLAKE3 -- implementacion nativa no_std para BMO.
 //!
 //! Spec: https://github.com/BLAKE3-team/BLAKE3-specs (v20211102).
 //!
-//! Soporta hash arbitrariamente largo en modo Ã¡rbol (chunks de 1024 B
-//! combinados pairwise hasta llegar a la raÃ­z). Single-thread, suficiente
+//! Soporta hash arbitrariamente largo en modo arbol (chunks de 1024 B
+//! combinados pairwise hasta llegar a la raiz). Single-thread, suficiente
 //! para verificar secciones BEF al cargar (~1 GB/s en Zen 3).
 
-//! ## Por qué esto es una crate y no un módulo de `bmo-abi`
+//! ## Por que esto es una crate y no un modulo de `bmo-abi`
 //!
 //! ESTRATOS exige **un solo algoritmo de hash en todo el sistema**: contenido,
-//! firmas y verificación tienen que hablar el mismo idioma, o dos capas
+//! firmas y verificacion tienen que hablar el mismo idioma, o dos capas
 //! calculan sumas distintas del mismo bloque y nadie se entera hasta que un
 //! archivo no cuadra.
 //!
-//! Vivía dentro de `bmo-abi`, que arrastra `alloc` — y en Ring 0 no hay
+//! Vivia dentro de `bmo-abi`, que arrastra `alloc` -- y en Ring 0 no hay
 //! reservas de memoria. El sistema de ficheros del kernel no puede depender de
-//! toda la ABI para calcular una suma. Así que el hash sale a su propia crate,
-//! sin dependencias, y `bmo-abi` pasa a reexportarla: **la implementación
+//! toda la ABI para calcular una suma. Asi que el hash sale a su propia crate,
+//! sin dependencias, y `bmo-abi` pasa a reexportarla: **la implementacion
 //! sigue siendo una sola**, que es lo que importaba.
 
 #![cfg_attr(not(test), no_std)]
 #![allow(dead_code)]
 
-// Los alias de `bmo-abi` no viajan aquí: son de la ABI, y esta crate no
-// depende de nada a propósito. Se definen localmente para no tocar ni una
-// línea del algoritmo al mudarlo.
+// Los alias de `bmo-abi` no viajan aqui: son de la ABI, y esta crate no
+// depende de nada a proposito. Se definen localmente para no tocar ni una
+// linea del algoritmo al mudarlo.
 #[allow(non_camel_case_types)] type bx_u8 = u8;
 #[allow(non_camel_case_types)] type bx_u32 = u32;
 #[allow(non_camel_case_types)] type bx_u64 = u64;
 
-// â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Constantes -------------------------------------------------------
 const OUT_LEN: usize = 32;
 const KEY_LEN: usize = 32;
 const BLOCK_LEN: usize = 64;
@@ -41,7 +41,7 @@ const CHUNK_END: bx_u32 = 1 << 1;
 const PARENT: bx_u32 = 1 << 2;
 const ROOT: bx_u32 = 1 << 3;
 
-// IV (idÃ©ntico a SHA-256)
+// IV (identico a SHA-256)
 const IV: [bx_u32; 8] = [
     0x6A09_E667,
     0xBB67_AE85,
@@ -53,10 +53,10 @@ const IV: [bx_u32; 8] = [
     0x5BE0_CD19,
 ];
 
-// PermutaciÃ³n de mensaje aplicada antes de cada ronda (6 veces).
+// Permutacion de mensaje aplicada antes de cada ronda (6 veces).
 const MSG_PERMUTATION: [usize; 16] = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8];
 
-// â”€â”€â”€ G function + rounds â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- G function + rounds ----------------------------------------------
 #[inline(always)]
 fn g(state: &mut [bx_u32; 16], a: usize, b: usize, c: usize, d: usize, mx: bx_u32, my: bx_u32) {
     state[a] = state[a].wrapping_add(state[b]).wrapping_add(mx);
@@ -91,7 +91,7 @@ fn permute(m: &mut [bx_u32; 16]) {
     }
 }
 
-/// CompresiÃ³n de un bloque de 64 bytes. Devuelve el state de 16 palabras.
+/// Compresion de un bloque de 64 bytes. Devuelve el state de 16 palabras.
 fn compress(
     chaining: &[bx_u32; 8],
     block: &[bx_u32; 16],
@@ -150,7 +150,7 @@ fn words_from_bytes(bytes: &[u8; BLOCK_LEN]) -> [bx_u32; 16] {
     out
 }
 
-// â”€â”€â”€ Chunk state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Chunk state ------------------------------------------------------
 struct ChunkState {
     chaining: [bx_u32; 8],
     chunk_counter: bx_u64,
@@ -186,7 +186,7 @@ impl ChunkState {
 
     fn update(&mut self, mut input: &[u8]) {
         while !input.is_empty() {
-            // Si el bloque actual estÃ¡ lleno, comprimirlo.
+            // Si el bloque actual esta lleno, comprimirlo.
             if self.block_len as usize == BLOCK_LEN {
                 let block_words = words_from_bytes(&self.block);
                 let new_state = compress(
@@ -270,11 +270,11 @@ fn parent_cv(
     ]
 }
 
-/// Hasher BLAKE3 stateful â€” modo "regular hash" (sin keyed/derive).
+/// Hasher BLAKE3 stateful -- modo "regular hash" (sin keyed/derive).
 pub struct Hasher {
     chunk: ChunkState,
     /// Stack de CVs pendientes de combinar.
-    cv_stack: [[bx_u32; 8]; 54], // 54 niveles â†’ input mÃ¡ximo 2^54 chunks
+    cv_stack: [[bx_u32; 8]; 54], // 54 niveles -> input maximo 2^54 chunks
     cv_stack_len: u8,
 }
 
@@ -288,7 +288,7 @@ impl Hasher {
     }
 
     fn push_cv(&mut self, cv: [bx_u32; 8], total_chunks: bx_u64) {
-        // Lo combinamos pairwise mientras los dos topes pertenezcan al mismo subÃ¡rbol.
+        // Lo combinamos pairwise mientras los dos topes pertenezcan al mismo subarbol.
         let mut new_cv = cv;
         let mut total = total_chunks;
         while total & 1 == 0 {
@@ -321,7 +321,7 @@ impl Hasher {
         if self.cv_stack_len == 0 {
             return cv_to_bytes(self.chunk.output(true));
         }
-        // Caso 2: vaciar el stack hacia la raÃ­z.
+        // Caso 2: vaciar el stack hacia la raiz.
         let mut output_cv = self.chunk.output(false);
         let mut idx = self.cv_stack_len as usize;
         while idx > 0 {
@@ -342,7 +342,7 @@ fn cv_to_bytes(cv: [bx_u32; 8]) -> [u8; OUT_LEN] {
     out
 }
 
-/// Hash one-shot â€” atajo para hashear un buffer Ãºnico.
+/// Hash one-shot -- atajo para hashear un buffer unico.
 pub fn hash(bytes: &[u8]) -> [u8; OUT_LEN] {
     let mut h = Hasher::new();
     h.update(bytes);
@@ -358,7 +358,7 @@ mod vectores_oficiales {
     //
     // Por que esto importa mas que cualquier otro test del repo: esta
     // implementacion se escribio a mano y NADIE habia comprobado nunca que
-    // produjera los hashes correctos. Y de ella cuelga todo — las firmas del
+    // produjera los hashes correctos. Y de ella cuelga todo -- las firmas del
     // BEF, el gate de bmo-verify, las sumas del superbloque de ESTRATOS y el
     // direccionamiento por contenido. Un fallo aqui no da un error: da un
     // sistema entero que se cree integro y no lo es.
@@ -418,7 +418,7 @@ mod vectores_oficiales {
         // El fallo mas probable de un hash escrito a mano no es la funcion de
         // compresion: es el BUFFER. Si `update` no acumula bien los restos
         // entre llamadas, hashear "abc" de una vez y en tres trozos da
-        // resultados distintos — y en un sistema de ficheros los datos SIEMPRE
+        // resultados distintos -- y en un sistema de ficheros los datos SIEMPRE
         // llegan a trozos.
         for &(n, esperado) in VECTORES {
             if n == 0 { continue; }

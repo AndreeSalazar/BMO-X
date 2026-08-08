@@ -1,19 +1,19 @@
 //! USB HID bridge: xHCI controller + boot-protocol keyboard/mouse en Ring 0.
 //!
-//! Motivo: la emulación USB→PS/2 del firmware MSI muere tras ExitBootServices
-//! (el i8042 solo entrega ruido: 0xFE/0x6D), así que el teclado y el mouse
-//! USB reales necesitan un driver xHCI de verdad. Este módulo es el PUENTE
-//! entre el kernel y los drivers agnósticos `bmo-xhci`/`bmo-uhid`:
+//! Motivo: la emulacion USB->PS/2 del firmware MSI muere tras ExitBootServices
+//! (el i8042 solo entrega ruido: 0xFE/0x6D), asi que el teclado y el mouse
+//! USB reales necesitan un driver xHCI de verdad. Este modulo es el PUENTE
+//! entre el kernel y los drivers agnosticos `bmo-xhci`/`bmo-uhid`:
 //!
-//!   - Implementa `XhciHal` (DMA vía el frame allocator, phys→virt vía el
+//!   - Implementa `XhciHal` (DMA via el frame allocator, phys->virt via el
 //!     physmap, log al panel de kernel coloreado).
 //!   - Descubre el controlador xHCI en `ctx.pci_devices` (clase 0x0C serial
 //!     bus, subclase 0x03 USB) y le pasa el MMIO del BAR0.
 //!   - Traduce los `InputEvent` (scancodes Set 1) a ASCII con la MISMA tabla
 //!     que el path PS/2, y los ofrece al shell por `poll_ascii`.
 //!
-//! v1 vive en Ring 0 (como el PS/2). Migrará a servidor Ring 3 vía Endpoint
-//! RPC — el patrón DEVICE/DMA/IRQ como capabilities (roadmap F4).
+//! v1 vive en Ring 0 (como el PS/2). Migrara a servidor Ring 3 via Endpoint
+//! RPC -- el patron DEVICE/DMA/IRQ como capabilities (roadmap F4).
 
 use boot_context::BootContext;
 
@@ -30,7 +30,7 @@ use crate::ring0::dev::keyboard;
 
 // Line buffer for the driver's diagnostic stream. The driver logs in
 // fragments (`log("[uhid] slot=")` then `log_u64(..)` then `log("\n")`), so
-// we accumulate to '\n' and flush the whole line to the on-screen panel —
+// we accumulate to '\n' and flush the whole line to the on-screen panel --
 // otherwise every xHCI/HID diagnostic is invisible on a headless board and
 // we debug blind (exactly what "init sin teclado" left us).
 const DLOG_MAX: usize = 96;
@@ -82,13 +82,13 @@ fn dlog_u64(val: u64) {
     }
 }
 
-/// El HAL que `bmo-xhci` invoca para DMA / traducción de direcciones / log.
+/// El HAL que `bmo-xhci` invoca para DMA / traduccion de direcciones / log.
 struct KernelXhciHal;
 
 impl XhciHal for KernelXhciHal {
     fn alloc_dma_pages(&self, count: usize) -> Option<u64> {
-        // Frames FÍSICAMENTE CONTIGUOS: los anillos TRB y buffers de reporte
-        // se direccionan linealmente y el xHC los lee por dirección física.
+        // Frames FISICAMENTE CONTIGUOS: los anillos TRB y buffers de reporte
+        // se direccionan linealmente y el xHC los lee por direccion fisica.
         phys::alloc_frames_contig(count as u64)
     }
     fn phys_to_virt(&self, phys: u64) -> *mut u8 {
@@ -112,51 +112,51 @@ static mut HID: UsbHidHal = UsbHidHal::new();
 static mut READY: bool = false;
 static mut SHIFT: bool = false;
 static mut CAPS: bool = false;
-/// AltGr mantenido (Alt derecho): abre el tercer nivel del teclado español.
+/// AltGr mantenido (Alt derecho): abre el tercer nivel del teclado espanol.
 static mut ALTGR: bool = false;
 /// Ctrl mantenido (cualquiera de los dos).
 static mut CTRL: bool = false;
 /// Alt IZQUIERDO mantenido. Windows acepta Ctrl+Alt como AltGr, y quien
-/// aprendió ahí lo tiene en los dedos: aquí también vale.
+/// aprendio ahi lo tiene en los dedos: aqui tambien vale.
 static mut LALT: bool = false;
 
-// ── Repetición al mantener (typematic) ──────────────────────────────────────
+// -- Repeticion al mantener (typematic) --------------------------------------
 //
 // El teclado USB no repite solo: manda un reporte cuando la tecla BAJA y otro
 // cuando SUBE, y entre medias silencio. Repetir es trabajo del host. Sin esto,
-// mantener el retroceso borra UN carácter y se queda mirando.
+// mantener el retroceso borra UN caracter y se queda mirando.
 
-/// Última tecla que sigue pulsada (0 = ninguna) y su contexto.
+/// Ultima tecla que sigue pulsada (0 = ninguna) y su contexto.
 static mut HELD_CODE: u8 = 0;
 static mut HELD_SHIFT: bool = false;
 static mut HELD_ALTGR: bool = false;
 static mut HELD_CTRL: bool = false;
-/// TSC del momento en que se pulsó, y del último disparo automático.
+/// TSC del momento en que se pulso, y del ultimo disparo automatico.
 static mut HELD_SINCE: u64 = 0;
 static mut HELD_LAST: u64 = 0;
 /// Espera antes de empezar a repetir, y periodo entre repeticiones (ms).
 /// Los mismos valores de siempre: medio segundo de gracia, luego ~30 por
-/// segundo — lo bastante rápido para borrar una línea sin pasarse.
+/// segundo -- lo bastante rapido para borrar una linea sin pasarse.
 const REPEAT_DELAY_MS: u64 = 500;
 const REPEAT_RATE_MS: u64 = 33;
 static mut PRESENT: bool = false;
-// Diagnóstico DETALLADO del HID (pedido del usuario: "llamar al mouse, más
-// detallado total"). Estado por dispositivo + telemetría viva del mouse, para
-// que la próxima foto diga exactamente qué enumeró y si el mouse late.
+// Diagnostico DETALLADO del HID (pedido del usuario: "llamar al mouse, mas
+// detallado total"). Estado por dispositivo + telemetria viva del mouse, para
+// que la proxima foto diga exactamente que enumero y si el mouse late.
 static mut KBD_RDY: bool = false;
 static mut MOUSE_RDY: bool = false;
 static mut KBD_SLOT: u8 = 0;
 static mut MOUSE_SLOT: u8 = 0;
-static mut MOUSE_EVENTS: u32 = 0;   // nº de reportes de movimiento/botón vistos
-static mut MOUSE_X: i32 = 0;        // posición acumulada (relativa) X
-static mut MOUSE_Y: i32 = 0;        // posición acumulada (relativa) Y
+static mut MOUSE_EVENTS: u32 = 0;   // no de reportes de movimiento/boton vistos
+static mut MOUSE_X: i32 = 0;        // posicion acumulada (relativa) X
+static mut MOUSE_Y: i32 = 0;        // posicion acumulada (relativa) Y
 static mut MOUSE_BTN: u8 = 0;       // bitmap de botones actual
-static mut KEY_EVENTS: u32 = 0;     // nº de teclas imprimibles entregadas
-static mut FIRST_KEY: bool = false;   // ¿ya se grabó la primera tecla en CABINA?
-static mut FIRST_MOUSE: bool = false; // ídem para el primer movimiento de mouse
+static mut KEY_EVENTS: u32 = 0;     // no de teclas imprimibles entregadas
+static mut FIRST_KEY: bool = false;   // ya se grabo la primera tecla en CABINA?
+static mut FIRST_MOUSE: bool = false; // idem para el primer movimiento de mouse
 /// Vueltas de rueda acumuladas desde la ultima lectura. Se vacia al leerlo.
 static mut MOUSE_WHEEL: i32 = 0;
-static mut HID_EVENTS: u32 = 0;     // nº TOTAL de InputEvents de hid.poll (kbd+mouse)
+static mut HID_EVENTS: u32 = 0;     // no TOTAL de InputEvents de hid.poll (kbd+mouse)
 
 fn log(msg: &str) {
     serial_write(msg);
@@ -166,9 +166,9 @@ fn log(msg: &str) {
 }
 
 /// Espera real en milisegundos por TSC. El spec USB pide tiempos HUMANOS
-/// (100 ms de debounce de conexión, 20+ ms de estabilización de power) — los
+/// (100 ms de debounce de conexion, 20+ ms de estabilizacion de power) -- los
 /// spin-counts heredados de QEMU duran microsegundos y en hardware real los
-/// puertos aún no reportan CCS cuando el driver pregunta.
+/// puertos aun no reportan CCS cuando el driver pregunta.
 fn delay_ms(ms: u64) {
     let f = crate::ring0::task::scheduler::tsc_freq();
     if f == 0 {
@@ -186,13 +186,13 @@ fn delay_ms(ms: u64) {
 /// Descubre e inicializa xHCI + HID. Reporta al panel.
 ///
 /// Estrategia hardware-real:
-/// 1. Scan PCI propio (dev::pci, detrás de bridges, MEM+BME habilitados).
+/// 1. Scan PCI propio (dev::pci, detras de bridges, MEM+BME habilitados).
 /// 2. Los Ryzen traen VARIOS xHC (CPU + chipset): se prueban en orden.
-/// 3. Por controlador: init → power a TODOS los puertos → 200 ms de settle
-///    (spec: 100 ms debounce) → censo PORTSC. Si algún puerto tiene CCS=1
-///    (dispositivo FÍSICAMENTE presente), ese controlador gana y el HID
-///    enumera ahí. El censo se pinta: dice dónde está el teclado
-///    eléctricamente aunque la enumeración posterior fallara.
+/// 3. Por controlador: init -> power a TODOS los puertos -> 200 ms de settle
+///    (spec: 100 ms debounce) -> censo PORTSC. Si algun puerto tiene CCS=1
+///    (dispositivo FISICAMENTE presente), ese controlador gana y el HID
+///    enumera ahi. El censo se pinta: dice donde esta el teclado
+///    electricamente aunque la enumeracion posterior fallara.
 pub fn init(_ctx: &BootContext) {
     bmo_xhci::init_hal(&HAL);
 
@@ -203,10 +203,10 @@ pub fn init(_ctx: &BootContext) {
             None => break,
         };
         // MMIO virtual: SIEMPRE por el physmap. La identidad de s2 vive en
-        // PML4[0] y un espacio de Ring 3 sólo hereda su primer GiB, así que
+        // PML4[0] y un espacio de Ring 3 solo hereda su primer GiB, asi que
         // tocar un BAR de ~4 GiB bajo el CR3 de un proceso es un #PF en Ring 0.
-        // Aquí no se notaba porque el sondeo del xHC corre en una tarea de
-        // Ring 0; el mismo fallo SÍ mataba al disco. Ver la nota larga en
+        // Aqui no se notaba porque el sondeo del xHC corre en una tarea de
+        // Ring 0; el mismo fallo SI mataba al disco. Ver la nota larga en
         // `dev/disk.rs`.
         let mmio_va = mm::phys_to_virt(loc.mmio);
         dlog_push("[usb] xHC pci ");
@@ -233,10 +233,10 @@ pub fn init(_ctx: &BootContext) {
             None => continue,
         };
         // Power a todos los puertos y settle REAL (el uhid hace su propio
-        // power+reset después; para entonces CCS ya estará latcheado).
-        // ★ Encender los ocho y esperar UNA vez, no ocho.
+        // power+reset despues; para entonces CCS ya estara latcheado).
+        // * Encender los ocho y esperar UNA vez, no ocho.
         //
-        // La estabilización de VBUS es un tiempo físico del puerto y los
+        // La estabilizacion de VBUS es un tiempo fisico del puerto y los
         // puertos se estabilizan en paralelo. Antes cada `port_power_on`
         // esperaba sus 20 ms por su cuenta: ocho puertos por dos controladores
         // eran 320 ms de arranque comprando exactamente nada.
@@ -244,7 +244,7 @@ pub fn init(_ctx: &BootContext) {
             unsafe { bmo_xhci::port_power_solo(p) };
         }
         delay_ms(200);
-        // Censo: qué puertos tienen un dispositivo físico (PORTSC.CCS).
+        // Censo: que puertos tienen un dispositivo fisico (PORTSC.CCS).
         let mut connected = 0u64;
         for p in 0..nports {
             let sc = unsafe { bmo_xhci::port_peek(p) };
@@ -267,7 +267,7 @@ pub fn init(_ctx: &BootContext) {
             chosen = true;
             break;
         }
-        // Nada conectado aquí: probar el siguiente controlador.
+        // Nada conectado aqui: probar el siguiente controlador.
     }
 
     if !chosen {
@@ -286,22 +286,22 @@ pub fn init(_ctx: &BootContext) {
         PRESENT = true;
         READY = ok;
     }
-    // Resumen detallado en serial + panel (además del status fijo en pantalla).
+    // Resumen detallado en serial + panel (ademas del status fijo en pantalla).
     unsafe {
         if KBD_RDY {
             log("[usb] teclado USB listo (slot ");
             dlog_u64(KBD_SLOT as u64);
             log(")\n");
             crate::ring0::cabina::info("usb", "teclado enumerado y configurado", KBD_SLOT as u64);
-            // Lo que de verdad decide si el teclado hablará: el estado del
-            // endpoint según el xHC y el intervalo que quedó programado.
+            // Lo que de verdad decide si el teclado hablara: el estado del
+            // endpoint segun el xHC y el intervalo que quedo programado.
             let (st, bi, iv, _sp, sts) = kbd_ep_debug();
             crate::ring0::cabina::info("xhci", "kbd bInterval->Interval programado", ((bi as u64) << 8) | iv as u64);
             if st != 1 {
                 crate::ring0::cabina::fault("xhci", "endpoint del teclado NO quedo Running", st as u64);
             }
-            // HSE (bit 2) o HCE (bit 12): el controlador se cayó, todo lo demás
-            // que veamos después es ruido.
+            // HSE (bit 2) o HCE (bit 12): el controlador se cayo, todo lo demas
+            // que veamos despues es ruido.
             if sts & ((1 << 2) | (1 << 12)) != 0 {
                 crate::ring0::cabina::fault("xhci", "controlador en error (USBSTS HSE/HCE)", sts as u64);
             }
@@ -321,7 +321,7 @@ pub fn init(_ctx: &BootContext) {
     }
 }
 
-/// ¿Se inicializó un teclado USB?
+/// Se inicializo un teclado USB?
 pub fn is_ready() -> bool {
     unsafe { READY }
 }
@@ -330,36 +330,36 @@ pub fn is_ready() -> bool {
 /// tecla imprimible (o Enter/Backspace/Tab). Mantiene el estado de Shift.
 /// Alimenta `shell_read_line` igual que `keyboard::poll_ascii`.
 ///
-/// ## Por qué esto se envuelve en un cambio de CR3
+/// ## Por que esto se envuelve en un cambio de CR3
 ///
 /// Tocar el xHCI es **escribir MMIO**: el `ERDP` del interrupter 0 vive en
-/// `base + RTSOFF + 0x38`, que en esta placa cae en `0xFC2004F8`. Ese rango está
+/// `base + RTSOFF + 0x38`, que en esta placa cae en `0xFC2004F8`. Ese rango esta
 /// mapeado en el PML4 del kernel y **no** en el de una tarea de usuario.
 ///
-/// Mientras el único que llamaba aquí era el shell de Ring 0 —una tarea de
-/// kernel, con el CR3 del kernel cargado— eso no se notaba. Pero desde que
+/// Mientras el unico que llamaba aqui era el shell de Ring 0 --una tarea de
+/// kernel, con el CR3 del kernel cargado-- eso no se notaba. Pero desde que
 /// `KIND_INPUT` entrega teclas, este camino se recorre **desde dentro de un
 /// SYSCALL**, y en un SYSCALL desde Ring 3 el CR3 sigue siendo el del llamante:
-/// el cambio de CR3 solo ocurre en un cambio de contexto, y ahí todavía no ha
-/// habido ninguno. El resultado fue un `#PF` de escritura sobre página ausente
-/// en Ring 0 —`err=0x2`, `cr2=0xFC2004F8`— a los 144 ticks: en cuanto el
-/// compositor pidió su primera tecla.
+/// el cambio de CR3 solo ocurre en un cambio de contexto, y ahi todavia no ha
+/// habido ninguno. El resultado fue un `#PF` de escritura sobre pagina ausente
+/// en Ring 0 --`err=0x2`, `cr2=0xFC2004F8`-- a los 144 ticks: en cuanto el
+/// compositor pidio su primera tecla.
 ///
-/// Es la misma trampa que ya está anotada en `fault_dispatch` para el
-/// framebuffer ("el CR3 de usuario puede no mapear el rango identidad"). Aquí
+/// Es la misma trampa que ya esta anotada en `fault_dispatch` para el
+/// framebuffer ("el CR3 de usuario puede no mapear el rango identidad"). Aqui
 /// la respuesta es la misma: ponerse el CR3 del kernel para tocar el hardware y
 /// devolverlo al salir.
 ///
-/// ★ No es gratis: dos escrituras de CR3 son dos vaciados de TLB, y esto se
-/// llama una vez por fotograma. La solución barata de verdad sería mapear el
-/// agujero de MMIO en todo espacio de direcciones —es memoria de supervisor,
-/// así que Ring 3 no la vería igualmente— y eso ahorraría los dos vaciados. Se
-/// deja anotado y no hecho: primero que funcione y esté aislado en un sitio.
+/// * No es gratis: dos escrituras de CR3 son dos vaciados de TLB, y esto se
+/// llama una vez por fotograma. La solucion barata de verdad seria mapear el
+/// agujero de MMIO en todo espacio de direcciones --es memoria de supervisor,
+/// asi que Ring 3 no la veria igualmente-- y eso ahorraria los dos vaciados. Se
+/// deja anotado y no hecho: primero que funcione y este aislado en un sitio.
 pub fn poll_ascii() -> Option<u8> {
     use crate::ring0::mm::vmm;
     let kpml4 = vmm::kernel_pml4();
     let previo = vmm::read_cr3();
-    // `kpml4 == 0` = todavía no hay PML4 de kernel publicado (arranque muy
+    // `kpml4 == 0` = todavia no hay PML4 de kernel publicado (arranque muy
     // temprano). Entonces el CR3 que hay ES el bueno y no se toca nada.
     let cambiado = kpml4 != 0 && previo != kpml4;
     if cambiado {
@@ -367,8 +367,8 @@ pub fn poll_ascii() -> Option<u8> {
     }
     let r = tecla_del_dueno(poll_ascii_interno());
     // Se devuelve SIEMPRE, por un solo camino. `poll_ascii_interno` tiene
-    // varios `return` y dejar el CR3 del kernel puesto al volver a Ring 3 sería
-    // mucho peor que el fallo original: la tarea seguiría corriendo con el
+    // varios `return` y dejar el CR3 del kernel puesto al volver a Ring 3 seria
+    // mucho peor que el fallo original: la tarea seguiria corriendo con el
     // espacio de direcciones de otro.
     if cambiado {
         vmm::switch_to(previo);
@@ -376,20 +376,20 @@ pub fn poll_ascii() -> Option<u8> {
     r
 }
 
-/// ★★ LA TECLA QUE NO SE PUEDE QUITAR: `Ctrl+Alt+Esc`.
+/// ** LA TECLA QUE NO SE PUEDE QUITAR: `Ctrl+Alt+Esc`.
 ///
-/// Se mira AQUÍ y no en Ring 3, y esa es toda la idea. `poll_ascii` es el punto
-/// único por el que pasan las teclas —el shell de Ring 0 y el
-/// `INPUT_OP_TECLA` de cualquier proceso que tenga la capability— así que una
-/// comprobación en este sitio **la ve nadie puede saltar**.
+/// Se mira AQUI y no en Ring 3, y esa es toda la idea. `poll_ascii` es el punto
+/// unico por el que pasan las teclas --el shell de Ring 0 y el
+/// `INPUT_OP_TECLA` de cualquier proceso que tenga la capability-- asi que una
+/// comprobacion en este sitio **la ve nadie puede saltar**.
 ///
-/// # Por qué el kernel y no el compositor
+/// # Por que el kernel y no el compositor
 ///
 /// Porque la entrada es EXCLUSIVA. Un programa que tiene `KIND_INPUT` se queda
-/// todas las teclas, incluido el atajo que serviría para quitárselas. Si el
+/// todas las teclas, incluido el atajo que serviria para quitarselas. Si el
 /// rescate viviera en el escritorio, el primer programa que tomara la entrada lo
-/// desactivaría — y eso ya pasó: el raycaster se quedó pantalla y entrada, y no
-/// había forma de volver que no fuera el botón de reinicio.
+/// desactivaria -- y eso ya paso: el raycaster se quedo pantalla y entrada, y no
+/// habia forma de volver que no fuera el boton de reinicio.
 ///
 /// Eddi lo dijo con la palabra exacta: **"eso me recuerda a ransomware"**. La
 /// forma es la misma, y da igual si la causa es malicia o un `if` que falta.
@@ -397,15 +397,15 @@ pub fn poll_ascii() -> Option<u8> {
 /// > Un sistema donde un programa puede quedarse el teclado para siempre no es
 /// > un sistema seguro: es un sistema con suerte.
 ///
-/// # Qué hace
+/// # Que hace
 ///
-/// Le quita la pantalla al dueño actual (ver `fb::rescatar`, que no echa al
-/// compositor) y la entrada. El escritorio está esperando en su bucle a que el
-/// dueño vuelva a `0`, así que **se recupera solo** — no hace falta avisarle.
+/// Le quita la pantalla al dueno actual (ver `fb::rescatar`, que no echa al
+/// compositor) y la entrada. El escritorio esta esperando en su bucle a que el
+/// dueno vuelva a `0`, asi que **se recupera solo** -- no hace falta avisarle.
 ///
 /// # Y la tecla NO se entrega
 ///
-/// Devuelve `None` para que el atajo no acabe además escrito en la caja del
+/// Devuelve `None` para que el atajo no acabe ademas escrito en la caja del
 /// escritorio ni movido al programa. Un atajo que hace dos cosas es un atajo que
 /// hay que deshacer.
 fn tecla_del_dueno(t: Option<u8>) -> Option<u8> {
@@ -422,61 +422,61 @@ fn tecla_del_dueno(t: Option<u8>) -> Option<u8> {
     }
     match crate::ring0::obj::fb::rescatar() {
         Some(pid) => {
-            // La entrada va DETRÁS de la pantalla: si sólo se pudiera hacer una,
+            // La entrada va DETRAS de la pantalla: si solo se pudiera hacer una,
             // la que importa es la que devuelve la imagen.
             let _ = crate::ring0::obj::input::soltar(pid);
             crate::ring0::cabina::warn("input", "entrada RESCATADA por el teclado", pid as u64);
             None
         }
-        // No había a quién rescatar: el ESC es de quien lo pulsó.
+        // No habia a quien rescatar: el ESC es de quien lo pulso.
         None => Some(b),
     }
 }
 
 fn poll_ascii_interno() -> Option<u8> {
-    // Correr si hay CUALQUIER dispositivo enumerado (no solo teclado): así el
-    // mouse late en el diagnóstico aunque el teclado no haya enumerado.
+    // Correr si hay CUALQUIER dispositivo enumerado (no solo teclado): asi el
+    // mouse late en el diagnostico aunque el teclado no haya enumerado.
     if !unsafe { PRESENT } {
         return None;
     }
-    // Lo que dejó pendiente la pulsación anterior sale primero: una tecla
-    // muerta que no combina produce DOS caracteres (´ + q = ´q).
+    // Lo que dejo pendiente la pulsacion anterior sale primero: una tecla
+    // muerta que no combina produce DOS caracteres (' + q = 'q).
     if let Some(b) = drain() { return Some(b); }
 
-    // ── ¿Enchufaron algo? Adoptarlo ─────────────────────────────────────
+    // -- Enchufaron algo? Adoptarlo -------------------------------------
     //
-    // ★ La enumeración del arranque era una carrera de UN SOLO INTENTO. El
+    // * La enumeracion del arranque era una carrera de UN SOLO INTENTO. El
     // bucle recorre los puertos una vez y lo que no estuviera listo en ese
-    // instante se perdía **hasta el siguiente reinicio** — y un ratón con
-    // firmware RGB tarda en engancharse más que un teclado.
+    // instante se perdia **hasta el siguiente reinicio** -- y un raton con
+    // firmware RGB tarda en engancharse mas que un teclado.
     //
-    // De ahí el síntoma que no encajaba con nada: unas veces arrancaba el
-    // teclado y otras el ratón, nunca los dos, sin cambiar una línea entre
-    // arranque y arranque. No era hardware intermitente: era quién llegaba a
-    // tiempo. La foto lo dijo entero —`k=OK(s2) m=OK(s2)`, o sea el ratón era
-    // otra vez la interfaz de medios del teclado, y tres líneas más arriba
-    // `puerto: algo se ENCHUFO (sin re-enumerar aun) =3`: el ratón de verdad
-    // anunciándose en el puerto 3 **después** de que el bucle ya hubiera
-    // pasado, y nadie recogiéndolo.
+    // De ahi el sintoma que no encajaba con nada: unas veces arrancaba el
+    // teclado y otras el raton, nunca los dos, sin cambiar una linea entre
+    // arranque y arranque. No era hardware intermitente: era quien llegaba a
+    // tiempo. La foto lo dijo entero --`k=OK(s2) m=OK(s2)`, o sea el raton era
+    // otra vez la interfaz de medios del teclado, y tres lineas mas arriba
+    // `puerto: algo se ENCHUFO (sin re-enumerar aun) =3`: el raton de verdad
+    // anunciandose en el puerto 3 **despues** de que el bucle ya hubiera
+    // pasado, y nadie recogiendolo.
     //
     // El aviso ya llegaba desde el commit anterior; lo que faltaba era actuar.
-    // Y actuar aquí es seguro por dos cosas que ya están puestas: este camino
+    // Y actuar aqui es seguro por dos cosas que ya estan puestas: este camino
     // corre con el CR3 del kernel (ver la cabecera de `poll_ascii`), y los
     // informes del aparato que YA bombea no se pierden mientras se enumera el
     // nuevo porque el aparcadero de `bmo_xhci` los guarda.
     //
-    // ★ Lo que SÍ cuesta, dicho claro: enumerar lleva esperas (hasta seis
+    // * Lo que SI cuesta, dicho claro: enumerar lleva esperas (hasta seis
     // reintentos de 50 ms), y esto se recorre desde dentro de un syscall. Un
-    // enchufe puede congelar al que pidió la tecla casi un tercio de segundo.
-    // Se acepta porque ocurre **una vez por enchufe** —`tomar_cambio_puerto`
-    // consume el aviso— y porque la alternativa era no tener nunca los dos
-    // aparatos. Cuando haya un hilo de kernel para el bus, esto se muda ahí.
+    // enchufe puede congelar al que pidio la tecla casi un tercio de segundo.
+    // Se acepta porque ocurre **una vez por enchufe** --`tomar_cambio_puerto`
+    // consume el aviso-- y porque la alternativa era no tener nunca los dos
+    // aparatos. Cuando haya un hilo de kernel para el bus, esto se muda ahi.
     if let Some((puerto, conectado)) = bmo_xhci::tomar_cambio_puerto() {
         if conectado {
             let adoptado = unsafe {
                 let hid = &mut *core::ptr::addr_of_mut!(HID);
-                // `port_reset` y compañía trabajan en índice 0-based; el Port
-                // ID del evento es 1-based. Restar aquí y no en el driver: el
+                // `port_reset` y compania trabajan en indice 0-based; el Port
+                // ID del evento es 1-based. Restar aqui y no en el driver: el
                 // que traduce es el que conoce las dos convenciones.
                 hid.adoptar_puerto(puerto.saturating_sub(1))
             };
@@ -486,15 +486,15 @@ fn poll_ascii_interno() -> Option<u8> {
             } else {
                 // No es un fallo: puede que ya no faltara nada, que lo
                 // enchufado no sea un HID, o que a ese puerto ya no se le
-                // toque (ver `bmo_uhid::puertos`). Decirlo distingue "no hacía
-                // falta" de "se intentó y no salió".
+                // toque (ver `bmo_uhid::puertos`). Decirlo distingue "no hacia
+                // falta" de "se intento y no salio".
                 crate::ring0::cabina::info("usb", "puerto: ENCHUFADO, nada que adoptar", puerto as u64);
             }
         } else {
-            // ★ Desenchufar LIBERA el puerto y le devuelve los intentos. Sin
-            // esto, enchufar y desenchufar tres veces dejaría un puerto
+            // * Desenchufar LIBERA el puerto y le devuelve los intentos. Sin
+            // esto, enchufar y desenchufar tres veces dejaria un puerto
             // inservible hasta el siguiente reinicio: los intentos son para
-            // "este aparato tarda", no para "este puerto está prohibido".
+            // "este aparato tarda", no para "este puerto esta prohibido".
             unsafe {
                 let hid = &mut *core::ptr::addr_of_mut!(HID);
                 hid.soltar_puerto(puerto.saturating_sub(1));
@@ -517,8 +517,8 @@ fn poll_ascii_interno() -> Option<u8> {
                     unsafe { SHIFT = true };
                     continue;
                 }
-                // AltGr: el tercer nivel del teclado español. Llega con
-                // código propio (ver bmo_uhid::SC_ALTGR) para no confundirse
+                // AltGr: el tercer nivel del teclado espanol. Llega con
+                // codigo propio (ver bmo_uhid::SC_ALTGR) para no confundirse
                 // con el Alt izquierdo.
                 if ev.code == bmo_uhid::SC_ALTGR {
                     unsafe { ALTGR = true };
@@ -531,7 +531,7 @@ fn poll_ascii_interno() -> Option<u8> {
                     unsafe { CAPS = !CAPS };
                     continue;
                 }
-                // La distribución activa decide qué letra es. Lo que produzca
+                // La distribucion activa decide que letra es. Lo que produzca
                 // (0, 1 o 2 caracteres) queda en la cola del teclado: nada se
                 // pierde aunque lleguen varias teclas en el mismo sondeo.
                 unsafe {
@@ -551,30 +551,30 @@ fn poll_ascii_interno() -> Option<u8> {
                 if ev.code == bmo_uhid::SC_ALTGR { unsafe { ALTGR = false }; }
                 if ev.code == 0x38 { unsafe { LALT = false }; }
                 if ev.code == 0x1D { unsafe { CTRL = false }; }
-                // Soltar la tecla corta la repetición.
+                // Soltar la tecla corta la repeticion.
                 unsafe { if HELD_CODE == ev.code { HELD_CODE = 0; } }
             }
             // MOUSE: antes se descartaba (esperaba el compositor F5). Ahora lo
-            // "llamamos": acumulamos posición y botones para el diagnóstico y,
+            // "llamamos": acumulamos posicion y botones para el diagnostico y,
             // a futuro, el cursor del compositor.
             InputEventKind::MouseMove => unsafe {
-                // ★★ SE RECORTA EL ACUMULADOR, no sólo lo que se lee.
+                // ** SE RECORTA EL ACUMULADOR, no solo lo que se lee.
                 //
-                // Antes esto sumaba sin tope y el recorte estaba únicamente en
-                // `INPUT_OP_PUNTERO`, al contestar. O sea que empujar el ratón
+                // Antes esto sumaba sin tope y el recorte estaba unicamente en
+                // `INPUT_OP_PUNTERO`, al contestar. O sea que empujar el raton
                 // contra el borde de arriba dejaba el puntero pegado a `y = 0`
-                // —correcto en pantalla— mientras `MOUSE_Y` seguía bajando a
-                // −500, −2000, lo que hiciera falta. Y para volver al centro
-                // había que **deshacer primero todo ese exceso**: el ratón se
-                // movía y el puntero no, durante un rato largo.
+                // --correcto en pantalla-- mientras `MOUSE_Y` seguia bajando a
+                // -500, -2000, lo que hiciera falta. Y para volver al centro
+                // habia que **deshacer primero todo ese exceso**: el raton se
+                // movia y el puntero no, durante un rato largo.
                 //
-                // Eddi lo describió exacto: *"cuando voy arriba, el puntero se
+                // Eddi lo describio exacto: *"cuando voy arriba, el puntero se
                 // demora en ir al centro"*. Ese retraso es la deuda acumulada
-                // contra el borde, cobrándose.
+                // contra el borde, cobrandose.
                 //
                 // El recorte tiene que estar DONDE SE SUMA. Recortar al leer
-                // enseña bien el número y deja el estado mintiendo, que es la
-                // forma más cara de tener razón.
+                // ensena bien el numero y deja el estado mintiendo, que es la
+                // forma mas cara de tener razon.
                 let (ancho, alto) = (
                     crate::info::FB_WIDTH.max(1) as i32 - 1,
                     crate::info::FB_HEIGHT.max(1) as i32 - 1,
@@ -591,7 +591,7 @@ fn poll_ascii_interno() -> Option<u8> {
                 MOUSE_BTN = ev.mouse_buttons();
                 MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
             },
-            // ★ El delta de la rueda se TIRABA: solo se contaba el evento.
+            // * El delta de la rueda se TIRABA: solo se contaba el evento.
             // Otro valor que el sistema tenia y no decia. Se acumula y se
             // entrega al leerlo, que es como se consume un evento.
             InputEventKind::MouseWheel => unsafe {
@@ -601,22 +601,22 @@ fn poll_ascii_interno() -> Option<u8> {
         }
     }
 
-    // Sincronizar las lucecitas: si el estado de los bloqueos cambió, hay que
-    // DECÍRSELO al teclado. No se encienden solas.
+    // Sincronizar las lucecitas: si el estado de los bloqueos cambio, hay que
+    // DECIRSELO al teclado. No se encienden solas.
     sync_leds();
-    // Repetición de la tecla mantenida.
+    // Repeticion de la tecla mantenida.
     repeat_held();
     drain()
 }
 
-/// ¿Está activo el tercer nivel? AltGr, o el Ctrl+Alt al que acostumbra
+/// Esta activo el tercer nivel? AltGr, o el Ctrl+Alt al que acostumbra
 /// Windows (y por tanto los dedos de medio mundo).
-/// Máscara de modificadores VIVA, para Ring 3.
+/// Mascara de modificadores VIVA, para Ring 3.
 ///
-/// El byte que entrega `INPUT_OP_TECLA` viene ya resuelto —la `ñ` es `0xF1`—
+/// El byte que entrega `INPUT_OP_TECLA` viene ya resuelto --la `n` es `0xF1`--
 /// y eso es lo correcto para escribir, pero deja fuera los atajos: un
 /// compositor no puede distinguir `Ctrl+Alt` de nada porque `Ctrl+Alt` sin
-/// otra tecla no produce carácter. Esto lo abre sin tocar el camino de
+/// otra tecla no produce caracter. Esto lo abre sin tocar el camino de
 /// escritura.
 pub const MOD_SHIFT: u8 = 1 << 0;
 pub const MOD_CTRL: u8 = 1 << 1;
@@ -636,8 +636,8 @@ pub fn modificadores() -> u8 {
     }
 }
 
-/// ★ OJO al usar esto para atajos: en la distribucion espanola `Ctrl+Alt` ES
-/// `AltGr` — es lo que produce `@`, `#`, `[`, `]`, `\`, `|` y `EUR`. Un atajo
+/// * OJO al usar esto para atajos: en la distribucion espanola `Ctrl+Alt` ES
+/// `AltGr` -- es lo que produce `@`, `#`, `[`, `]`, `\`, `|` y `EUR`. Un atajo
 /// que dispare al PULSAR `Ctrl+Alt` rompe escribir todos esos caracteres. Ver
 /// como lo resuelve el compositor: dispara al SOLTAR, y solo si no se escribio
 /// nada mientras estaban pulsados.
@@ -646,7 +646,7 @@ fn altgr_active() -> bool {
 }
 
 /// Manda al teclado el estado de sus LEDs cuando cambia. Un SET_REPORT por
-/// cambio, no por sondeo: es un control transfer y no hace falta más.
+/// cambio, no por sondeo: es un control transfer y no hace falta mas.
 fn sync_leds() {
     static mut LAST_LEDS: u8 = 0xFF;
     let want = crate::ring0::dev::keyboard::led_mask();
@@ -659,7 +659,7 @@ fn sync_leds() {
 }
 
 /// Repite la tecla mantenida: tras `REPEAT_DELAY_MS` empieza a inyectarla
-/// cada `REPEAT_RATE_MS`. El teclado USB solo avisa de bajada y subida —
+/// cada `REPEAT_RATE_MS`. El teclado USB solo avisa de bajada y subida --
 /// repetir es trabajo del host, y sin esto mantener el retroceso no borra.
 fn repeat_held() {
     unsafe {
@@ -676,9 +676,9 @@ fn repeat_held() {
     }
 }
 
-/// Saca un carácter de la cola del teclado y lleva la cuenta. Aquí se graba
-/// la PRIMERA tecla que cruza de verdad — en el instante exacto, no deducida
-/// después comparando contadores.
+/// Saca un caracter de la cola del teclado y lleva la cuenta. Aqui se graba
+/// la PRIMERA tecla que cruza de verdad -- en el instante exacto, no deducida
+/// despues comparando contadores.
 fn drain() -> Option<u8> {
     let b = crate::ring0::dev::keyboard::pop_out()?;
     unsafe {
@@ -691,7 +691,7 @@ fn drain() -> Option<u8> {
     Some(b)
 }
 
-/// Estado DETALLADO del HID para el panel de diagnóstico (fila fija, sobrevive
+/// Estado DETALLADO del HID para el panel de diagnostico (fila fija, sobrevive
 /// al auto-clear). Devuelve: (teclado_listo, mouse_listo, slot_kbd, slot_mouse,
 /// eventos_mouse, x_mouse, y_mouse, botones, eventos_tecla).
 /// El puntero: `(x, y, botones, eventos)`.
@@ -725,23 +725,23 @@ pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
 
 /// Contadores de bajo nivel del xHC + HID para cazar el corte del teclado:
 /// (transfer_events_del_xHC, raw_events_del_xHC, hid_events_totales).
-/// Si al teclear TEV no sube → el xHC no completa la interrupción (endpoint/
-/// ring/doorbell). Si TEV sube pero HEV no → el evento no matchea al teclado.
-/// Si HEV sube pero kev no → mapeo (ya no deberia tras el keypad).
+/// Si al teclear TEV no sube -> el xHC no completa la interrupcion (endpoint/
+/// ring/doorbell). Si TEV sube pero HEV no -> el evento no matchea al teclado.
+/// Si HEV sube pero kev no -> mapeo (ya no deberia tras el keypad).
 pub fn xfer_stats() -> (u32, u32, u32) {
     (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), unsafe { HID_EVENTS })
 }
 
-/// Vuelve a leer del driver quién hay y en qué slot.
+/// Vuelve a leer del driver quien hay y en que slot.
 ///
-/// Se llama tras enumerar Y tras cada adopción en caliente. Antes esto estaba
-/// copiado en línea dentro de `init` y por eso no existía la posibilidad de
-/// actualizarlo: un ratón adoptado más tarde habría seguido saliendo como
-/// ausente en el panel aunque estuviera bombeando, y la fila del diagnóstico
-/// habría mentido justo cuando por fin decía la verdad.
+/// Se llama tras enumerar Y tras cada adopcion en caliente. Antes esto estaba
+/// copiado en linea dentro de `init` y por eso no existia la posibilidad de
+/// actualizarlo: un raton adoptado mas tarde habria seguido saliendo como
+/// ausente en el panel aunque estuviera bombeando, y la fila del diagnostico
+/// habria mentido justo cuando por fin decia la verdad.
 ///
 /// # Safety
-/// Toca los estáticos del módulo; sólo desde el camino de USB.
+/// Toca los estaticos del modulo; solo desde el camino de USB.
 unsafe fn refrescar_presencia() {
     let hid = &*core::ptr::addr_of!(HID);
     KBD_RDY = hid.has_kbd();
@@ -755,7 +755,7 @@ unsafe fn refrescar_presencia() {
 /// Los dos primeros son la pregunta que no se podia hacer: un periferico sin
 /// transferencia encolada esta enumerado, con el endpoint en `Running`, y mudo
 /// para siempre. El tercero cuenta los Transfer Events que no eran de ningun
-/// periferico conocido — antes se descartaban sin dejar rastro.
+/// periferico conocido -- antes se descartaban sin dejar rastro.
 pub fn reparto_stats() -> (bool, bool, u32) {
     unsafe {
         let hid = &*core::ptr::addr_of!(HID);
@@ -766,23 +766,23 @@ pub fn reparto_stats() -> (bool, bool, u32) {
 
 /// El aparcadero de eventos del xHC: `(aparcados en total, PERDIDOS, ahora)`.
 ///
-/// El anillo de eventos es uno para todo el controlador, así que quien espera
-/// una compleción de comando se cruza con los informes de los aparatos que ya
-/// están bombeando. Antes los descartaba, y descartar el primer informe de un
-/// endpoint lo deja mudo para siempre — nadie vuelve a encolar la
+/// El anillo de eventos es uno para todo el controlador, asi que quien espera
+/// una complecion de comando se cruza con los informes de los aparatos que ya
+/// estan bombeando. Antes los descartaba, y descartar el primer informe de un
+/// endpoint lo deja mudo para siempre -- nadie vuelve a encolar la
 /// transferencia. Ahora se aparcan; `PERDIDOS` es lo que hay que vigilar.
 pub fn park_stats() -> (u32, u32, u32) {
     bmo_xhci::evt_park_stats()
 }
 
-/// Salud del endpoint de interrupción del teclado leída DEL HARDWARE, no de
+/// Salud del endpoint de interrupcion del teclado leida DEL HARDWARE, no de
 /// nuestras suposiciones: `(ep_state, bInterval_del_descriptor,
 /// Interval_programado, speed, usbsts)`.
 ///
 /// `ep_state` sale del Device Context que mantiene el xHC: 1=Running es lo
-/// único aceptable. 2=Halted, 3=Stopped o 4=Error significan que el endpoint no
-/// está agendado y ningún doorbell lo va a revivir. `bi`/`iv` delatan el bug
-/// clásico del Interval (ver `bmo_xhci::encode_interval`).
+/// unico aceptable. 2=Halted, 3=Stopped o 4=Error significan que el endpoint no
+/// esta agendado y ningun doorbell lo va a revivir. `bi`/`iv` delatan el bug
+/// clasico del Interval (ver `bmo_xhci::encode_interval`).
 pub fn kbd_ep_debug() -> (u8, u8, u8, u8, u32) {
     let (slot, dci) = unsafe {
         let hid = &*core::ptr::addr_of!(HID);
@@ -793,8 +793,8 @@ pub fn kbd_ep_debug() -> (u8, u8, u8, u8, u32) {
     (st, bi, iv, sp, unsafe { bmo_xhci::usbsts() })
 }
 
-/// DCI del teclado + último Transfer Event (slot, ep, cc) del xHC. Si el ep del
-/// último evento ≠ dci del teclado, el evento no matchea y no se re-encola →
+/// DCI del teclado + ultimo Transfer Event (slot, ep, cc) del xHC. Si el ep del
+/// ultimo evento != dci del teclado, el evento no matchea y no se re-encola ->
 /// tev pegado en 1. Ese es el corte que buscamos.
 pub fn kbd_debug() -> (u8, u8, u8, u8) {
     let dci = unsafe {

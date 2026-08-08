@@ -98,7 +98,7 @@ where
         current_va += size as u64;
     }
 
-    // Resolve imports — collect entries first to avoid borrow conflict with patch_binding
+    // Resolve imports -- collect entries first to avoid borrow conflict with patch_binding
     let import_entries: Vec<(u64, u64)> = {
         let imports_section = loaded.iter().find(|s| s.kind == SectionKind::Imports);
         match imports_section.and_then(|s| ImportTable::parse(&s.data, 256).ok()) {
@@ -149,18 +149,18 @@ where
             }
             let reloc_va = loaded[target_idx].virt_addr + reloc.offset;
             let symbol_addr = reloc.symbol_idx as u64;
-            // ★ ESTE RESULTADO NO SE TIRA, y antes sí.
+            // * ESTE RESULTADO NO SE TIRA, y antes si.
             //
-            // `apply` devuelve por qué no pudo —"offset Abs64 fuera de rango",
-            // "kind de relocation desconocido"— y ese error se descartaba. Una
-            // relocación que no se aplica deja en el binario la dirección SIN
-            // CORREGIR: el cargador decía "cargado" y el programa saltaba a
-            // donde apuntara la basura. El fallo aparecía luego, lejos, como un
-            // #PF con una dirección sin sentido y nada que lo relacionara con
+            // `apply` devuelve por que no pudo --"offset Abs64 fuera de rango",
+            // "kind de relocation desconocido"-- y ese error se descartaba. Una
+            // relocacion que no se aplica deja en el binario la direccion SIN
+            // CORREGIR: el cargador decia "cargado" y el programa saltaba a
+            // donde apuntara la basura. El fallo aparecia luego, lejos, como un
+            // #PF con una direccion sin sentido y nada que lo relacionara con
             // este momento.
             //
             // Un binario mal relocado no es un binario degradado: es otro
-            // binario. Por eso aquí se corta y no se avisa y sigue.
+            // binario. Por eso aqui se corta y no se avisa y sigue.
             relocations::apply(&reloc, &mut loaded[target_idx].data, reloc_va, symbol_addr)?;
         }
     }
@@ -180,10 +180,10 @@ where
             } else {
                 &[]
             };
-            // El `unwrap_or(0)` que había aquí confundía dos cosas MUY
+            // El `unwrap_or(0)` que habia aqui confundia dos cosas MUY
             // distintas: "este binario no usa TLS" (base 0, correcto) y "usa
             // TLS y no se pudo preparar" (base 0, y el primer acceso a una
-            // variable de hilo lee la página cero). Dos causas, un valor.
+            // variable de hilo lee la pagina cero). Dos causas, un valor.
             crate::bmo_abi::bef::tls::setup_for_thread(&template, data)?
         } else {
             0
@@ -192,10 +192,10 @@ where
         0
     };
 
-    // ★ Un BEF sin sección de código daba `entry_point = 0` y el cargador
-    // devolvía `Ok`. O sea: "cargado correctamente, salta a la dirección cero".
-    // El fallo no era el salto —eso al menos hace ruido—: era que ESTA función
-    // decía que todo había ido bien.
+    // * Un BEF sin seccion de codigo daba `entry_point = 0` y el cargador
+    // devolvia `Ok`. O sea: "cargado correctamente, salta a la direccion cero".
+    // El fallo no era el salto --eso al menos hace ruido--: era que ESTA funcion
+    // decia que todo habia ido bien.
     let entry_point = loaded
         .iter()
         .find(|s| s.kind == SectionKind::Code)

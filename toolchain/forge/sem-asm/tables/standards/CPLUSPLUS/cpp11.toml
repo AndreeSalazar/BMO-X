@@ -1,4 +1,4 @@
-# cpp11.toml — ISO/IEC 14882:2011 (C++11)
+# cpp11.toml -- ISO/IEC 14882:2011 (C++11)
 [standard]
 iso_number = "ISO/IEC 14882:2011"
 year = 2011

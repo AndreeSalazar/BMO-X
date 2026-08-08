@@ -9,17 +9,17 @@ use crate::*;
 #[allow(unused_imports)]
 use std::path::PathBuf;
 
-// ── Banco de pruebas: EJECUTAR el programa, no mirarlo ──────────────
+// -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
 // El flujo de control de COBOL estuvo fingiendo durante toda la vida
-// del frontend: `IF` emitía un `jcc` con desplazamiento 0 que nadie
-// parcheaba (o sea, ejecutaba las DOS ramas) y `PERFORM` emitía
-// `xor rax,rax` repetido. Compilaba, validaba el BEF y no hacía nada de
-// lo que decía. Ningún test de bytes lo habría cazado — por eso estos
+// del frontend: `IF` emitia un `jcc` con desplazamiento 0 que nadie
+// parcheaba (o sea, ejecutaba las DOS ramas) y `PERFORM` emitia
+// `xor rax,rax` repetido. Compilaba, validaba el BEF y no hacia nada de
+// lo que decia. Ningun test de bytes lo habria cazado -- por eso estos
 // corren el programa en el emulador de `bmo-lower` y comparan lo que el
-// kernel habría pintado.
+// kernel habria pintado.
 
-/// Extrae la sección CODE del BEF para poder ejecutarla.
+/// Extrae la seccion CODE del BEF para poder ejecutarla.
 pub(crate) fn code_section(bef: &[u8]) -> Vec<u8> {
     use bmo_abi::bef::sections::{SectionEntry, SectionKind};
     let sec_off = u64::from_le_bytes(bef[32..40].try_into().unwrap()) as usize;
@@ -35,7 +35,7 @@ pub(crate) fn code_section(bef: &[u8]) -> Vec<u8> {
     panic!("el BEF no tiene seccion CODE");
 }
 
-/// Compila y ejecuta, devolviendo lo que el kernel habría mostrado.
+/// Compila y ejecuta, devolviendo lo que el kernel habria mostrado.
 pub(crate) fn run_cobol(src: &str) -> String {
     use bmo_lower::emu::{run, Machine};
     let bef = compile_source_to_bef(src).expect("el programa debe compilar");
@@ -45,10 +45,10 @@ pub(crate) fn run_cobol(src: &str) -> String {
 }
 
 /// Compila y ejecuta CON DISCO: se siembran los ficheros de entrada y se
-/// devuelve `(consola, maquina)` para poder mirar lo que quedó escrito.
+/// devuelve `(consola, maquina)` para poder mirar lo que quedo escrito.
 ///
-/// Sin esto, `OPEN`/`READ`/`WRITE` sólo se distinguirían de un no-op
-/// leyendo el ensamblador — que es exactamente lo que este banco de
+/// Sin esto, `OPEN`/`READ`/`WRITE` solo se distinguirian de un no-op
+/// leyendo el ensamblador -- que es exactamente lo que este banco de
 /// pruebas existe para no tener que hacer.
 pub(crate) fn run_cobol_con_disco(
 
@@ -66,12 +66,12 @@ pub(crate) fn run_cobol_con_disco(
     (m.console.clone(), m)
 }
 
-/// Igual, pero con el disco NEGÁNDOSE a guardar las rutas que se le digan.
+/// Igual, pero con el disco NEGANDOSE a guardar las rutas que se le digan.
 ///
-/// Es el único ayudante que puede probar el camino del `CLOSE` que falla, y
+/// Es el unico ayudante que puede probar el camino del `CLOSE` que falla, y
 /// hace falta porque ese camino **no se puede provocar desde COBOL**: el
 /// programa hace lo mismo en los dos casos y es el disco el que decide. Sin
-/// esto, `emit_close` podía escribir `"00"` a pelo y ninguna prueba lo veía.
+/// esto, `emit_close` podia escribir `"00"` a pelo y ninguna prueba lo veia.
 pub(crate) fn run_cobol_sin_poder_guardar(
 
     src: &str,
@@ -94,7 +94,7 @@ pub(crate) fn run_cobol_sin_poder_guardar(
 
 /// Igual, pero sembrando BYTES CRUDOS. Hace falta desde que un fichero
 /// puede no ser texto: un registro binario tiene nibbles dentro, y pasarlo
-/// por un `&str` lo destrozaría.
+/// por un `&str` lo destrozaria.
 pub(crate) fn run_cobol_con_disco_bytes(
 
     src: &str,
@@ -131,13 +131,13 @@ pub(crate) fn program(data: &str, body: &str) -> String {
     )
 }
 
-/// Igual, pero **sin** añadir el `STOP RUN` del final.
+/// Igual, pero **sin** anadir el `STOP RUN` del final.
 ///
-/// Con párrafos, el `STOP RUN` que `program` pega al final ya no cae donde
-/// debe: cae DENTRO del último párrafo, así que el programa termina la
-/// primera vez que alguien hace `PERFORM` de él. Quien escribe párrafos
-/// tiene que decir dónde acaba el cuerpo principal, y por eso este ayudante
-/// no lo decide por él.
+/// Con parrafos, el `STOP RUN` que `program` pega al final ya no cae donde
+/// debe: cae DENTRO del ultimo parrafo, asi que el programa termina la
+/// primera vez que alguien hace `PERFORM` de el. Quien escribe parrafos
+/// tiene que decir donde acaba el cuerpo principal, y por eso este ayudante
+/// no lo decide por el.
 pub(crate) fn programa_con_parrafos(data: &str, body: &str) -> String {
     format!(
         "IDENTIFICATION DIVISION.\nPROGRAM-ID. TEST.\nDATA DIVISION.\n\
@@ -145,7 +145,7 @@ pub(crate) fn programa_con_parrafos(data: &str, body: &str) -> String {
     )
 }
 
-/// La versión con ficheros, también sin `STOP RUN` implícito.
+/// La version con ficheros, tambien sin `STOP RUN` implicito.
 pub(crate) fn ficheros_con_parrafos(decls: &str, body: &str) -> String {
     format!(
         "IDENTIFICATION DIVISION.\nPROGRAM-ID. TEST.\n\
@@ -156,14 +156,14 @@ pub(crate) fn ficheros_con_parrafos(decls: &str, body: &str) -> String {
     )
 }
 
-// ── FILE STATUS: lo que un batch mira después de CADA operación ─────
+// -- FILE STATUS: lo que un batch mira despues de CADA operacion -----
 //
 // No es ceremonia: un batch nocturno que revienta es peor que uno que
 // escribe "no pude abrir el maestro" y para ordenadamente.
 
 /// Un programa con UN fichero y su `FILE STATUS` declarado. El ayudante
-/// general no sirve: sus `SELECT` no lo llevan, y ése es justo el trozo que
-/// se está probando.
+/// general no sirve: sus `SELECT` no lo llevan, y ese es justo el trozo que
+/// se esta probando.
 pub(crate) fn programa_con_estado(decls: &str, body: &str) -> String {
     format!(
         "IDENTIFICATION DIVISION.
@@ -181,7 +181,7 @@ STOP RUN.
     )
 }
 
-/// Un programa que ESCRIBE `d/s.txt` y mira su estado después del `CLOSE`.
+/// Un programa que ESCRIBE `d/s.txt` y mira su estado despues del `CLOSE`.
 pub(crate) fn programa_que_guarda(body: &str) -> String {
     format!(
         "IDENTIFICATION DIVISION.\nPROGRAM-ID. T.\n\

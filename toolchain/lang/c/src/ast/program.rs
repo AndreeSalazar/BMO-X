@@ -1,4 +1,4 @@
-//! C Abstract Syntax Tree — top-level program nodes.
+//! C Abstract Syntax Tree -- top-level program nodes.
 
 use super::expr::Expr;
 use super::types::TypeSpec;
@@ -13,20 +13,20 @@ pub struct StructMember {
 #[derive(Debug, Clone, PartialEq)]
 pub enum GlobalDecl {
     Var(TypeSpec, String, Option<Expr>),
-    /// ★ Un global con LISTA de inicialización: `int t[4] = {1,2,3,4}`,
+    /// * Un global con LISTA de inicializacion: `int t[4] = {1,2,3,4}`,
     /// `struct P tabla[2] = {{1,2},{3,4}}`.
     ///
-    /// Lleva las escrituras ya **aplanadas** —offset absoluto, tipo del
-    /// subobjeto y valor— porque es exactamente lo que
+    /// Lleva las escrituras ya **aplanadas** --offset absoluto, tipo del
+    /// subobjeto y valor-- porque es exactamente lo que
     /// `parser::inicializador` produce para los locales desde que existen los
     /// inicializadores designados. Reusar esa salida en vez de inventar una
-    /// representación para globales es lo que hace que `{[2].y = 8}` funcione
+    /// representacion para globales es lo que hace que `{[2].y = 8}` funcione
     /// igual en los dos sitios sin escribirlo dos veces.
     ///
     /// Es una variante aparte de [`GlobalDecl::Var`] y no un tercer campo
-    /// porque son dos cosas distintas: `Var` lleva UNA expresión y ésta lleva
-    /// N escrituras con su sitio. Meterlas en el mismo sitio obligaría a todo
-    /// consumidor a preguntar cuál de las dos es.
+    /// porque son dos cosas distintas: `Var` lleva UNA expresion y esta lleva
+    /// N escrituras con su sitio. Meterlas en el mismo sitio obligaria a todo
+    /// consumidor a preguntar cual de las dos es.
     VarLista(TypeSpec, String, Vec<super::stmt::Escritura>),
     Struct(String, Vec<StructMember>),
     Union(String, Vec<StructMember>),
@@ -41,8 +41,8 @@ pub struct Function {
     pub var_names: Vec<String>,
     pub body: Vec<Stmt>,
     pub line: usize,
-    /// ¿Declara `...`? Lo necesita el codegen para saber si `__va_arg()` tiene
-    /// algo que leer — y para poder DECIRLO cuando no lo tiene.
+    /// Declara `...`? Lo necesita el codegen para saber si `__va_arg()` tiene
+    /// algo que leer -- y para poder DECIRLO cuando no lo tiene.
     pub variadica: bool,
 }
 

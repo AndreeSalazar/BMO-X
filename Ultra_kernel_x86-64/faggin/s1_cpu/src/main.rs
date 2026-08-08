@@ -1,9 +1,9 @@
-//! s1_cpu — AMD Ryzen 5 5600X (Zen 3) optimized UEFI handoff + CPU init.
+//! s1_cpu -- AMD Ryzen 5 5600X (Zen 3) optimized UEFI handoff + CPU init.
 //!
 //! This stage is the ONE place that knows the target CPU. Everything
 //! CPU-specific lives here, not in the kernel, because:
 //!   - It's a one-time setup (boot time only)
-//!   - It's CPU-specific (not portable — each CPU has its quirks)
+//!   - It's CPU-specific (not portable -- each CPU has its quirks)
 //!   - The kernel should be generic (portable to AArch64/RISC-V later)
 //!   - CPU optimizations like Zen 3 mitigations need to be applied early
 //!
@@ -28,9 +28,9 @@ use core::panic::PanicInfo;
 use core::arch::{asm, naked_asm};
 use boot_context::{BootContext, MemoryEntry, MAX_MEMORY_ENTRIES, KERNEL_STAGE_INDEX, MAX_STAGES};
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  UEFI TYPES AND CONSTANTS
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 type EfiHandle = *mut core::ffi::c_void;
 type EfiStatus = u64;
@@ -88,9 +88,9 @@ static mut FILE_SYSTEM_GUID: EfiGuid = EfiGuid { data1: 0x964e5b22, data2: 0x640
 static mut LOADED_IMAGE_GUID: EfiGuid = EfiGuid { data1: 0x5b1b31a1, data2: 0x9562, data3: 0x11d2, data4: [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b] };
 static mut GOP_GUID: EfiGuid = EfiGuid { data1: 0x9042a9de, data2: 0x23dc, data3: 0x4a38, data4: [0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a] };
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  AMD-SPECIFIC MSR ADDRESSES (Zen 3 / Family 19h)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 const MSR_TSC: u32                = 0x00000010;
 const MSR_APIC_BASE: u32         = 0x0000001B;
@@ -155,9 +155,9 @@ const SYSCFG_FSGS: u64   = 1 << 18;  // FSGS (deprecated)
 // HWCR bits (AMD)
 const HWCR_FFDIS: u64    = 1 << 6;  // Flush filter disable
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  COM1 SERIAL
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 #[inline] unsafe fn outb(port: u16, val: u8) { asm!("out dx, al", in("dx") port, in("al") val); }
 #[inline] unsafe fn inb(port: u16) -> u8 { let v: u8; asm!("in al, dx", in("dx") port, out("al") v); v }
@@ -170,9 +170,9 @@ macro_rules! ser_print { ($s:expr) => { unsafe { put_str($s); } }; }
 macro_rules! ser_hex { ($v:expr) => { unsafe { put_hex($v); } }; }
 macro_rules! ser_dec { ($v:expr) => { unsafe { put_dec($v); } }; }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  GDT + TSS (universal x86-64)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 const KERNEL_CS: u16 = 0x08;
 const KERNEL_DS: u16 = 0x10;
@@ -197,9 +197,9 @@ static mut IST1: IstStack = IstStack([0; IST1_SIZE]);
 static mut IST3: McStack  = McStack([0; IST3_SIZE]);
 static mut KSTK: KernelStack = KernelStack([0; KSTACK_SIZE]);
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  IDT
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 #[repr(C, packed)] #[derive(Clone, Copy)]
 struct IdtEntry { off_lo: u16, sel: u16, ist: u8, attr: u8, off_mid: u16, off_hi: u32, _r: u32 }
@@ -229,16 +229,16 @@ extern "x86-interrupt" fn exc_double_fault(_sf: u64, _e: u64) { unsafe { put_str
 extern "x86-interrupt" fn exc_gpf(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] #GP General Protection — halting\n"); } loop { unsafe { asm!("hlt"); } } }
 extern "x86-interrupt" fn exc_page_fault(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] #PF Page Fault — halting\n"); } loop { unsafe { asm!("hlt"); } } }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  FPU STATE
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 #[repr(align(64))] struct Align64([u8; 1024]);
 static mut FPU_STATE: Align64 = Align64([0; 1024]);
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  AMD RYZEN 5 5600X (Zen 3) CPU PROFILE
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
@@ -304,9 +304,9 @@ impl CpuProfile {
 
 static mut CPU: CpuProfile = CpuProfile::empty();
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  CPUID WRAPPER (preserves RBX per SysV ABI)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 #[inline]
 fn cpuid(leaf: u32, sub: u32) -> (u32, u32, u32, u32) {
@@ -333,9 +333,9 @@ unsafe fn rdmsr(msr: u32) -> u64 {
     ((hi as u64) << 32) | (lo as u64)
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  AMD ZEN 3 CPU DETECTION (Ryzen 5 5600X)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 unsafe fn detect_cpu() {
     let cpu = &mut CPU;
@@ -526,9 +526,9 @@ unsafe fn detect_cpu() {
     cpu.boost_freq_mhz = 4600;
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  AMD ZEN 3 EFER / SYSCFG / HARDWARE CONFIG
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 unsafe fn init_amd_msrs() {
     // ONLY the MSR writes actually required to boot. Early boot must not
@@ -547,16 +547,16 @@ unsafe fn init_amd_msrs() {
     ser_print!("\n");
 
     // Deliberately NOT written here (all optional / hazardous early):
-    //   * SYSCFG bit 25 — FSGSBASE is enabled via CR4.FSGSBASE (done in
+    //   * SYSCFG bit 25 -- FSGSBASE is enabled via CR4.FSGSBASE (done in
     //     init_cr0_cr4); that SYSCFG bit is reserved and writing it #GPs.
-    //   * HWCR flush-filter — a micro perf tweak, not needed to boot.
+    //   * HWCR flush-filter -- a micro perf tweak, not needed to boot.
 }
 
 fn cpu_has_sme() -> bool { unsafe { CPU.has_sme } }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  CR0/CR4/XCR0 (universal x86-64, but tuned for Zen 3)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 unsafe fn init_cr0_cr4() {
     // CR0: MP=1, NE=1, EM=0, WP=0 (framebuffer WC writes)
@@ -596,58 +596,58 @@ unsafe fn init_cr0_cr4() {
 
 /// **PAT: dejar una entrada en Write-Combining** para el framebuffer.
 ///
-/// ═══ Qué arregla ═══
+/// === Que arregla ===
 ///
 /// El framebuffer es un BAR de PCIe y los MTRR del firmware lo dejan en **UC**:
-/// cada escritura de píxel es una transacción de bus por su cuenta, sin
+/// cada escritura de pixel es una transaccion de bus por su cuenta, sin
 /// juntarse con la de al lado. Con Write-Combining el CPU **acumula** escrituras
-/// seguidas en un búfer y las suelta de golpe. Para un compositor que pinta
-/// ventanas enteras eso no es una micro-optimización: es la diferencia entre
+/// seguidas en un bufer y las suelta de golpe. Para un compositor que pinta
+/// ventanas enteras eso no es una micro-optimizacion: es la diferencia entre
 /// repintar una caja en milisegundos o en decenas.
 ///
-/// ═══ Por qué PAT y no MTRR ═══
+/// === Por que PAT y no MTRR ===
 ///
-/// Cambiar los MTRR es tocar un reparto global del mapa físico que el firmware
-/// ya dejó montado, y equivocarse ahí afecta a **todo** el sistema. PAT deja
-/// elegir el tipo **por página**, que es exactamente el grano que hace falta:
-/// sólo las páginas del framebuffer, y sólo para quien las mapee así.
+/// Cambiar los MTRR es tocar un reparto global del mapa fisico que el firmware
+/// ya dejo montado, y equivocarse ahi afecta a **todo** el sistema. PAT deja
+/// elegir el tipo **por pagina**, que es exactamente el grano que hace falta:
+/// solo las paginas del framebuffer, y solo para quien las mapee asi.
 ///
-/// Y sobre la combinación: con el MTRR diciendo UC y el PAT diciendo WC, el
+/// Y sobre la combinacion: con el MTRR diciendo UC y el PAT diciendo WC, el
 /// tipo efectivo es **WC**. Es el mismo camino que usa `ioremap_wc()` de Linux
 /// para framebuffers cuyo MTRR es UC, y por eso no hace falta tocar los MTRR.
 ///
-/// ═══ La secuencia, que NO es opcional ═══
+/// === La secuencia, que NO es opcional ===
 ///
-/// Escribir el MSR de PAT con las cachés vivas y los MTRR armados es como
+/// Escribir el MSR de PAT con las caches vivas y los MTRR armados es como
 /// cambiarle las ruedas a un coche en marcha. El manual pide un orden exacto y
-/// aquí está entero: apagar caché sin write-back, vaciarla, desarmar MTRR,
+/// aqui esta entero: apagar cache sin write-back, vaciarla, desarmar MTRR,
 /// tirar el TLB, escribir PAT, tirar el TLB otra vez, rearmar MTRR, vaciar y
-/// volver a encender. Saltarse un paso no da un error: da una máquina que se
-/// cuelga o que corrompe memoria más tarde.
+/// volver a encender. Saltarse un paso no da un error: da una maquina que se
+/// cuelga o que corrompe memoria mas tarde.
 ///
-/// ═══ Si falla ═══
+/// === Si falla ===
 ///
 /// Si el CPU no declara PAT, no se toca nada y se dice. El modo de fallo del
-/// camino entero es **quedarse como está** (UC), que es lo de hoy: lento, no
+/// camino entero es **quedarse como esta** (UC), que es lo de hoy: lento, no
 /// roto.
 unsafe fn init_pat() {
-    // ¿Hay PAT? CPUID.01H:EDX[16]. Sin esto no se toca el MSR.
+    // Hay PAT? CPUID.01H:EDX[16]. Sin esto no se toca el MSR.
     let (_, _, _, edx1) = cpuid(1, 0);
     if edx1 & (1 << 16) == 0 {
         ser_print!("[s1_cpu] sin PAT: el framebuffer se queda en UC\n");
         return;
     }
 
-    // La tabla que se quiere. Sólo se cambia la entrada 4; las cuatro
+    // La tabla que se quiere. Solo se cambia la entrada 4; las cuatro
     // primeras se dejan como el reset las deja, porque son las que usa todo
-    // lo demás del sistema y cambiarlas sería cambiarle el tipo de memoria a
-    // código que no lo pidió.
+    // lo demas del sistema y cambiarlas seria cambiarle el tipo de memoria a
+    // codigo que no lo pidio.
     //
     //   PA0 = 06 WB    PA1 = 04 WT    PA2 = 07 UC-   PA3 = 00 UC
-    //   PA4 = 01 WC ←  PA5 = 04 WT    PA6 = 07 UC-   PA7 = 00 UC
+    //   PA4 = 01 WC <-  PA5 = 04 WT    PA6 = 07 UC-   PA7 = 00 UC
     const PAT_DESEADO: u64 = 0x0007_0401_0007_0406;
 
-    // 1. Caché apagada SIN write-back (CD=1, NW=0) y vaciada.
+    // 1. Cache apagada SIN write-back (CD=1, NW=0) y vaciada.
     let cr0: u64;
     asm!("mov {}, cr0", out(reg) cr0);
     let cr0_sin_cache = (cr0 | (1 << 30)) & !(1 << 29); // CD=1, NW=0
@@ -658,7 +658,7 @@ unsafe fn init_pat() {
     let deftype = rdmsr(MSR_MTRR_DEF_TYPE);
     wrmsr(MSR_MTRR_DEF_TYPE, deftype & !(1 << 11));
 
-    // 3. Tirar el TLB: CR3 a sí mismo.
+    // 3. Tirar el TLB: CR3 a si mismo.
     let cr3: u64;
     asm!("mov {}, cr3", out(reg) cr3);
     asm!("mov cr3, {}", in(reg) cr3);
@@ -694,7 +694,7 @@ unsafe fn init_zen3_perf() {
     // The previous version RDMSR'd a list of undocumented, model-specific
     // Zen 3 config MSRs (LS_CFG, IC_CFG, DC_CFG, CU_CFG, L2_CFG,
     // PF2_INSTR_CTL) purely to print them. Reading an MSR that the silicon
-    // does not implement raises #GP — which is exactly what reset this
+    // does not implement raises #GP -- which is exactly what reset this
     // machine (QEMU returns 0 for the same reads, so it never surfaced).
     // None of these reads affect booting, so they are gone. If cache/
     // prefetch tuning is ever wanted, it belongs in a Ring 0 driver behind
@@ -702,9 +702,9 @@ unsafe fn init_zen3_perf() {
     ser_print!("[s1_cpu] zen3 perf tuning skipped (safe boot)\n");
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  AMD SYSCALL (different from Intel: uses STAR[47:32] as CS, STAR[63:48] as SS)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text.syscall_entry")]
@@ -739,9 +739,9 @@ unsafe fn init_syscall() {
     ser_print!("\n");
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  TSC CALIBRATION (Zen 3: 3.7 GHz base, 4.6 GHz boost)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 fn calibrate_tsc() -> u64 {
     // AMD Zen 3 has CPUID 0x15 with:
@@ -766,9 +766,9 @@ unsafe fn init_tsc() {
     ser_print!(" Hz\n");
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  GDT / IDT init
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 fn make_segment(dpl: u8, code: bool) -> u64 {
     let mut d: u64 = 0xFFFF | (0x0F << 48);
@@ -808,7 +808,7 @@ unsafe fn init_gdt() {
     let gdtr = Gdtr { limit: (core::mem::size_of::<Gdt>() - 1) as u16, base: core::ptr::addr_of!(GDT) as u64 };
     // lgdt alone does NOT reload CS: the CPU keeps executing on the stale
     // UEFI code descriptor cached in the CS shadow register (cs=0x38 on this
-    // firmware). That works silently — until anything RE-validates that
+    // firmware). That works silently -- until anything RE-validates that
     // selector against OUR table (the first trap-return iretq), which finds
     // entry 7 empty and #GPs with err=0x38. It also poisons every
     // `cmp cs, 0x08` kernel-vs-user check in the trap stubs (spurious
@@ -854,9 +854,9 @@ unsafe fn init_idt() {
     asm!("lidt [{}]", in(reg) &idtr);
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  UEFI STAGES (memory map, GOP, load, ExitBootServices)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 unsafe fn get_memory_map(bs: *mut EfiBootServices, buf: &mut [u8; 32768]) -> (usize, usize, usize, u32) {
     let mut map_size = buf.len();
@@ -926,8 +926,8 @@ unsafe fn try_gop_handle(ctx: &mut BootContext, gop_handle: EfiHandle) -> bool {
 
 /// Acquire the framebuffer, robustly. Some firmwares (MSI A320M AMI fast
 /// path) render text through their own console yet never publish a GOP
-/// protocol via LocateProtocol. We escalate: LocateProtocol → enumerate
-/// every GOP handle → ConnectController connect-all then re-enumerate.
+/// protocol via LocateProtocol. We escalate: LocateProtocol -> enumerate
+/// every GOP handle -> ConnectController connect-all then re-enumerate.
 unsafe fn fill_gop(ctx: &mut BootContext, system_table: *mut EfiSystemTable) -> bool {
     let bs = (*system_table).boot_services;
     let base = &(*bs).hdr as *const EfiTableHeader as *const *mut core::ffi::c_void;
@@ -1125,7 +1125,7 @@ unsafe fn exit_boot_services_and_jump(ctx_ptr: *mut BootContext, system_table: *
 
     // Firmware is dead: 0x400000..+16 MiB is ours now. Place the kernel
     // that the unified shim kept inside its own image (AllocateAddress on
-    // this range fails on firmwares that park Boot Services data there —
+    // this range fails on firmwares that park Boot Services data there --
     // observed on MSI A320M; post-EBS the range is conventional memory).
     let ksrc = PRELOAD_KERNEL_SRC;
     let ksize = PRELOAD_KERNEL_SIZE as usize;
@@ -1165,7 +1165,7 @@ unsafe fn exit_boot_services_and_jump(ctx_ptr: *mut BootContext, system_table: *
 }
 
 //  BOOTCONTEXT (statically allocated in .bss)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 static mut CTX: BootContext = unsafe { core::mem::zeroed() };
 
@@ -1177,9 +1177,9 @@ static mut PRELOAD_KERNEL_SIZE: u64 = 0;
 /// Scratch buffer for GOP/connect-all handle enumeration.
 static mut ALL_GOP: [EfiHandle; 256] = [core::ptr::null_mut(); 256];
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  ENTRY POINT
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text._start")]
@@ -1195,7 +1195,7 @@ pub extern "efiapi" fn s1_entry(
     let ctx_ptr: *mut BootContext = core::ptr::addr_of_mut!(CTX);
     let ctx = unsafe { &mut *ctx_ptr };
     ctx.magic = boot_context::MAGIC;
-    // Must match boot_context::VERSION exactly — the kernel's is_valid()
+    // Must match boot_context::VERSION exactly -- the kernel's is_valid()
     // rejects any other value. Use the shared constant so the two never
     // drift again (this hardcoded 2-vs-3 mismatch halted the kernel right
     // after entry on real hardware).
@@ -1218,7 +1218,7 @@ pub extern "efiapi" fn s1_entry(
         else { con_mark(system_table as *mut EfiSystemTable, "gop- "); }
     }
     // 4. Load s2_mem + kernel. Preferred path: the unified shim already
-    // copied both to their fixed addresses and handed off sizes in r8 —
+    // copied both to their fixed addresses and handed off sizes in r8 --
     // no ESP access needed (some firmwares never expose SimpleFS). The
     // ESP loader remains as fallback for legacy/QEMU boots.
     let preloaded = !preload.is_null()
@@ -1256,11 +1256,11 @@ pub extern "efiapi" fn s1_entry(
 
     unsafe { con_mark(system_table as *mut EfiSystemTable, "cpu "); }
 
-    // ── Disable interrupts before swapping the descriptor tables ──────
+    // -- Disable interrupts before swapping the descriptor tables ------
     // The firmware handed off with interrupts ENABLED. If a device IRQ
     // (timer, keyboard, SATA...) fires between `lgdt` and our IDT being
     // installed, the CPU dispatches it through an inconsistent GDT/IDT
-    // state and triple-faults — a reset, not a fault we can catch. This
+    // state and triple-faults -- a reset, not a fault we can catch. This
     // is the classic reason a kernel boots under QEMU (no live IRQs at
     // boot) but resets on real hardware. Do what Linux does at its first
     // boot steps: mask everything now, re-enable only once the kernel has
@@ -1326,12 +1326,12 @@ pub extern "efiapi" fn s1_entry(
     unsafe { exit_boot_services_and_jump(ctx_ptr, system_table as *mut EfiSystemTable, image_handle, S2_ADDR); }
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  AMD SMP STARTUP (Zen 3: 6C/12T on Ryzen 5 5600X)
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //
 // Everything SMP-related lives here, written as inline ASM via
-// `#[naked]` + `naked_asm!` — no global_asm, no separate sections,
+// `#[naked]` + `naked_asm!` -- no global_asm, no separate sections,
 // no linker relocation issues.
 //
 // AP startup flow:
@@ -1340,17 +1340,17 @@ pub extern "efiapi" fn s1_entry(
 //   3. BSP writes IDT pointer to 0x8138 (shared with APs)
 //   4. BSP initializes the LAPIC (MSR 0x1B, SIVR, TPR)
 //   5. BSP sends INIT IPI + 2x SIPI to each AP (APIC IDs 0..15)
-//   6. APs wake at 0x8000, transition 16→32→64-bit, jump to ap_entry
+//   6. APs wake at 0x8000, transition 16->32->64-bit, jump to ap_entry
 //   7. APs signal online via atomic counter, halt
 //   8. BSP waits for all APs to come online
 //
 // Memory layout (all identity-mapped by PML4):
 //   0x7000-0x7FFF: PML4 (4KB) + online counter at 0x7FF8
 //   0x8000-0x80FF: Trampoline (256 bytes)
-//   0x8100-0x81FF: Shared BSP↔AP data
+//   0x8100-0x81FF: Shared BSP<->AP data
 //   0x8200-...:    Per-AP stacks (4KB each)
 
-// ── Shared GDT (BSP + APs use the same one) ─────────────────────
+// -- Shared GDT (BSP + APs use the same one) ---------------------
 
 #[repr(C, align(16))]
 struct SmpGdt { entries: [u64; 4] } // null + 16-bit code + 32-bit code + 64-bit code
@@ -1365,7 +1365,7 @@ static mut SMP_GDT: SmpGdt = SmpGdt { entries: [
 struct SmpGdtr { limit: u16, base: u64 }
 static mut SMP_GDTR: SmpGdtr = SmpGdtr { limit: 31, base: 0 };
 
-// ── AP entry: naked function with 16→32→64 transition ───────────
+// -- AP entry: naked function with 16->32->64 transition -----------
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text.ap_entry")]
@@ -1385,7 +1385,7 @@ pub unsafe extern "C" fn ap_entry() {
     //   0x8138: IDT pointer (10 bytes: limit + base, set by BSP)
     //   0x7FF8: Online counter (u32, atomic)
     naked_asm!(
-        // ═══ 16-bit real mode → 32-bit protected mode ═══
+        // === 16-bit real mode -> 32-bit protected mode ===
         // Load GDT pointer from 0x8058 (BSP wrote it there)
         // In 64-bit mode, lgdt needs an 80-bit memory operand (10 bytes)
         // We use a register to avoid the 16-bit mode encoding issue.
@@ -1398,7 +1398,7 @@ pub unsafe extern "C" fn ap_entry() {
         "push offset pmode32",           // entry point in 32-bit mode
         "retfq",
 
-        // ═══ 32-bit protected mode ═══
+        // === 32-bit protected mode ===
         "pmode32:",
         "mov ax, 0x18",                  // 32-bit data selector
         "mov ds, ax",
@@ -1435,7 +1435,7 @@ pub unsafe extern "C" fn ap_entry() {
         "push offset pmode64",           // entry point in 64-bit mode
         "retfq",
 
-        // ═══ 64-bit long mode ═══
+        // === 64-bit long mode ===
         "pmode64:",
         // Clear segment registers (not used in 64-bit mode)
         "xor ax, ax",
@@ -1458,7 +1458,7 @@ pub unsafe extern "C" fn ap_entry() {
     );
 }
 
-// ── 64-bit AP entry: signals online, then halts ──────────────────
+// -- 64-bit AP entry: signals online, then halts ------------------
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text.ap_entry64")]
@@ -1478,7 +1478,7 @@ pub unsafe extern "C" fn ap_entry64() {
     }
 }
 
-// ── LAPIC (Local APIC) ───────────────────────────────────────────
+// -- LAPIC (Local APIC) -------------------------------------------
 
 unsafe fn lapic_base() -> u64 {
     let lo: u32; let hi: u32;
@@ -1522,7 +1522,7 @@ unsafe fn send_sipi(apic_id: u32, vector: u8) {
     while lapic_read(0x300) & (1 << 12) != 0 {}
 }
 
-// ── PML4 setup (minimal identity-mapped 0..4GB) ──────────────────
+// -- PML4 setup (minimal identity-mapped 0..4GB) ------------------
 
 unsafe fn setup_smp_pml4() {
     let pml4 = 0x7000 as *mut u64;
@@ -1539,7 +1539,7 @@ unsafe fn setup_smp_pml4() {
     }
 }
 
-// ── Trampoline copy: copies the ap_entry naked function to 0x8000 ─
+// -- Trampoline copy: copies the ap_entry naked function to 0x8000 -
 
 unsafe fn copy_trampoline() {
     let src = ap_entry as *const u8;
@@ -1552,7 +1552,7 @@ unsafe fn copy_trampoline() {
     }
 }
 
-// ── TSC-based delay ──────────────────────────────────────────────
+// -- TSC-based delay ----------------------------------------------
 
 fn rdtsc() -> u64 {
     let lo: u32; let hi: u32;
@@ -1569,7 +1569,7 @@ fn delay_ms(ms: u32) {
     }
 }
 
-// ── SMP startup (BSP wakes all APs via INIT+SIPI) ────────────────
+// -- SMP startup (BSP wakes all APs via INIT+SIPI) ----------------
 
 unsafe fn smp_startup() {
     ser_print!("\n[s1_cpu] === AMD SMP STARTUP (Zen 3) ===\n");
@@ -1584,7 +1584,7 @@ unsafe fn smp_startup() {
 
     // 3. Write GDT pointer to 0x8058 (APs load it with lgdt [0x8058])
     let gdt_base = core::ptr::addr_of!(SMP_GDT) as u64;
-    core::ptr::write_volatile(0x8058 as *mut u16, 31u16);  // limit = 31 (4 entries × 8 - 1)
+    core::ptr::write_volatile(0x8058 as *mut u16, 31u16);  // limit = 31 (4 entries x 8 - 1)
     core::ptr::write_volatile(0x805A as *mut u64, gdt_base);  // base
 
     // 4. Write IDT pointer to 0x8138 (APs load it with lidt [0x8138])
@@ -1626,10 +1626,10 @@ unsafe fn smp_startup() {
         ser_dec!(apic_id as usize);
         ser_print!("...");
 
-        // INIT IPI → 10ms wait → SIPI #1 → 1ms wait → SIPI #2 → 1ms wait
+        // INIT IPI -> 10ms wait -> SIPI #1 -> 1ms wait -> SIPI #2 -> 1ms wait
         send_init_ipi(apic_id);
         delay_ms(10);
-        send_sipi(apic_id, 8);  // vector=8 → address 0x8000
+        send_sipi(apic_id, 8);  // vector=8 -> address 0x8000
         delay_ms(1);
         send_sipi(apic_id, 8);
         delay_ms(1);

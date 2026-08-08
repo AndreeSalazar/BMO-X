@@ -1,24 +1,24 @@
-//! **`malloc` sobre `KIND_MEMORIA`** — la capability que un programa PIDE.
+//! **`malloc` sobre `KIND_MEMORIA`** -- la capability que un programa PIDE.
 //!
-//! Hasta que existió esto, un `malloc` en un test devolvía **0 sin decirlo**:
-//! el emulador no modelaba `TASK_OP_MEMORIA_PEDIR`, caía en el `_ => {}` del
-//! despacho y salía por el epílogo de éxito con el valor a cero. O sea que
-//! contestaba "toma tu bloque" y entregaba el puntero nulo — y ningún test lo
-//! notaba porque ninguno pedía memoria.
+//! Hasta que existio esto, un `malloc` en un test devolvia **0 sin decirlo**:
+//! el emulador no modelaba `TASK_OP_MEMORIA_PEDIR`, caia en el `_ => {}` del
+//! despacho y salia por el epilogo de exito con el valor a cero. O sea que
+//! contestaba "toma tu bloque" y entregaba el puntero nulo -- y ningun test lo
+//! notaba porque ninguno pedia memoria.
 //!
-//! Lo que se prueba aquí es lo que **el programa** puede notar: que hay
+//! Lo que se prueba aqui es lo que **el programa** puede notar: que hay
 //! bloque, que las bases avanzan, que el tope de cuatro peticiones se cumple y
-//! que la quinta devuelve 0. Lo que NO se puede probar aquí es la física —que
-//! los marcos sean contiguos, que dos páginas no sean la misma— porque la
-//! memoria del emulador es un mapa disperso donde toda dirección funciona.
-//! Eso lo prueba `examples/memoria_C.c` **en el Ryzen**, y en ningún otro
+//! que la quinta devuelve 0. Lo que NO se puede probar aqui es la fisica --que
+//! los marcos sean contiguos, que dos paginas no sean la misma-- porque la
+//! memoria del emulador es un mapa disperso donde toda direccion funciona.
+//! Eso lo prueba `examples/memoria_C.c` **en el Ryzen**, y en ningun otro
 //! sitio.
 
 use super::*;
 
 /// El primer bloque cae en `MEMORIA_VA_BASE` y no en otro sitio.
 ///
-/// Es un número del contrato, no un detalle: `vmm::MEMORIA_VA_BASE` está
+/// Es un numero del contrato, no un detalle: `vmm::MEMORIA_VA_BASE` esta
 /// elegido para que quepan las cuatro peticiones del tope sin acercarse al
 /// framebuffer. Si alguien lo mueve, este test lo dice.
 #[test]
@@ -29,8 +29,8 @@ fn el_primer_bloque_cae_en_la_base_declarada() {
     assert_eq!(out, "e0000000\n");
 }
 
-/// Se escribe y se relee. Un puntero no nulo sólo prueba que el kernel
-/// contestó; que la memoria EXISTA lo prueba leer lo que se escribió.
+/// Se escribe y se relee. Un puntero no nulo solo prueba que el kernel
+/// contesto; que la memoria EXISTA lo prueba leer lo que se escribio.
 #[test]
 fn el_bloque_se_escribe_y_se_relee() {
     let out = run_c(
@@ -48,9 +48,9 @@ fn el_bloque_se_escribe_y_se_relee() {
 
 /// Dos peticiones son dos rangos, y el segundo va POR ENCIMA del primero.
 ///
-/// El kernel redondea a páginas hacia arriba, así que pedir 1024 gasta 4096 y
-/// el bloque siguiente empieza detrás. Si el redondeo fuera hacia abajo los dos
-/// bloques se solaparían, y ése es un fallo que no duele hasta que alguien
+/// El kernel redondea a paginas hacia arriba, asi que pedir 1024 gasta 4096 y
+/// el bloque siguiente empieza detras. Si el redondeo fuera hacia abajo los dos
+/// bloques se solaparian, y ese es un fallo que no duele hasta que alguien
 /// escribe en los dos.
 #[test]
 fn dos_peticiones_no_se_pisan() {
@@ -64,11 +64,11 @@ fn dos_peticiones_no_se_pisan() {
     assert_eq!(out, "e0000000 e0001000 4096\n");
 }
 
-/// **El tope se cumple: la quinta petición devuelve 0.**
+/// **El tope se cumple: la quinta peticion devuelve 0.**
 ///
-/// No hay forma de devolver memoria, así que el número de peticiones ES el
-/// número de fugas posibles. Que la quinta falle no es una limitación
-/// incómoda: es lo que hace que un programa que pide en un bucle se rompa
+/// No hay forma de devolver memoria, asi que el numero de peticiones ES el
+/// numero de fugas posibles. Que la quinta falle no es una limitacion
+/// incomoda: es lo que hace que un programa que pide en un bucle se rompa
 /// pronto en vez de comerse la RAM en silencio.
 #[test]
 fn la_quinta_peticion_devuelve_cero() {
@@ -84,11 +84,11 @@ fn la_quinta_peticion_devuelve_cero() {
     assert_eq!(out, "11110\n");
 }
 
-/// Pedir más del tope por petición se rechaza, y **sin gastar petición**.
+/// Pedir mas del tope por peticion se rechaza, y **sin gastar peticion**.
 ///
-/// El kernel comprueba el tamaño ANTES de tocar el contador. Si lo hiciera al
-/// revés, cuatro peticiones absurdas dejarían al programa sin poder pedir la
-/// que sí cabía.
+/// El kernel comprueba el tamano ANTES de tocar el contador. Si lo hiciera al
+/// reves, cuatro peticiones absurdas dejarian al programa sin poder pedir la
+/// que si cabia.
 #[test]
 fn pasarse_del_tope_por_peticion_no_gasta_peticion() {
     let out = run_c(
@@ -101,9 +101,9 @@ fn pasarse_del_tope_por_peticion_no_gasta_peticion() {
     assert_eq!(out, "1 e0000000\n");
 }
 
-/// `free` no devuelve nada al kernel — y eso se DICE, no se finge.
+/// `free` no devuelve nada al kernel -- y eso se DICE, no se finge.
 ///
-/// Lo que sí tiene que hacer es evaluar su argumento, por si lleva efectos
+/// Lo que si tiene que hacer es evaluar su argumento, por si lleva efectos
 /// secundarios, y no cruzar la puerta: una llamada al kernel que no hace nada
 /// es peor que ninguna.
 #[test]
@@ -122,8 +122,8 @@ fn free_no_cruza_la_puerta() {
 
 /// El ejemplo del repositorio, ejecutado entero.
 ///
-/// Es el `.bex` que se va a lanzar en el Ryzen (`c/memc.bex`), así que esta
-/// salida es **la que hay que ver en la pantalla**. Si cambia aquí y no allí,
+/// Es el `.bex` que se va a lanzar en el Ryzen (`c/memc.bex`), asi que esta
+/// salida es **la que hay que ver en la pantalla**. Si cambia aqui y no alli,
 /// lo desplegado no corresponde a esta fuente.
 #[test]
 fn el_ejemplo_de_memoria_pasa_sus_cuatro_pruebas() {
@@ -143,17 +143,17 @@ fn el_ejemplo_de_memoria_pasa_sus_cuatro_pruebas() {
     .concat();
     assert_eq!(m.console, esperado);
 
-    // Y lo que el programa NO puede contarse a sí mismo: lo que el kernel dice
-    // que entregó. 4096 + 65536 + 4096 + 4096 — el primer bloque son 1024
-    // bytes pedidos y una página entregada.
+    // Y lo que el programa NO puede contarse a si mismo: lo que el kernel dice
+    // que entrego. 4096 + 65536 + 4096 + 4096 -- el primer bloque son 1024
+    // bytes pedidos y una pagina entregada.
     assert_eq!(m.memoria_entregada(), 4096 + 65536 + 4096 + 4096);
 }
 
 /// **Compilar C para Ring 0 se RECHAZA, y con su motivo.**
 ///
-/// Emitía `syscall; ret` en línea, y ese `ret` retornaba de la función entera
-/// en cuanto volvía el syscall — el stub es un *llamable* y ponerlo en línea se
-/// come el `call` y deja el `ret`. No lo cazó nadie porque nada construye este
+/// Emitia `syscall; ret` en linea, y ese `ret` retornaba de la funcion entera
+/// en cuanto volvia el syscall -- el stub es un *llamable* y ponerlo en linea se
+/// come el `call` y deja el `ret`. No lo cazo nadie porque nada construye este
 /// perfil; un camino muerto que emite bytes incorrectos es peor que uno que no
 /// existe.
 #[test]
@@ -174,19 +174,19 @@ fn alloc_fmt(e: &CError) -> String {
     format!("{e:?}")
 }
 
-// ══ COMA FLOTANTE, EJECUTADA ══════════════════════════════════════════
+// == COMA FLOTANTE, EJECUTADA ==========================================
 //
-// De los 9 tests de `float`/`double` que ya existían, **ninguno ejecutaba**:
+// De los 9 tests de `float`/`double` que ya existian, **ninguno ejecutaba**:
 // los nueve comparaban ventanas de bytes (`bef.windows(3).any(...)`), que es
-// exactamente el método que la cabecera de `bmo_lower::emu` declara
-// insuficiente — «si el autor entendió mal una codificación, el test la repite
-// y pasa igual de mal».
+// exactamente el metodo que la cabecera de `bmo_lower::emu` declara
+// insuficiente -- "si el autor entendio mal una codificacion, el test la repite
+// y pasa igual de mal".
 //
-// Estos corren. Es la primera vez que la ruta SSE de BMO C se ejecuta en algún
+// Estos corren. Es la primera vez que la ruta SSE de BMO C se ejecuta en algun
 // sitio.
 
 /// Suma y resta de doubles, impresas como entero para no depender de `%f`
-/// (que todavía no se compila).
+/// (que todavia no se compila).
 #[test]
 fn los_doubles_suman_y_restan() {
     let out = run_c(
@@ -198,8 +198,8 @@ fn los_doubles_suman_y_restan() {
 
 /// **El orden importa en las NO conmutativas.**
 ///
-/// Es el mismo fallo que el banco ya cazó una vez en los enteros: se emitían
-/// sobre `b - a`. Con `+` y `*` no se nota; con `-` y `/`, sí.
+/// Es el mismo fallo que el banco ya cazo una vez en los enteros: se emitian
+/// sobre `b - a`. Con `+` y `*` no se nota; con `-` y `/`, si.
 #[test]
 fn las_no_conmutativas_respetan_el_orden() {
     let out = run_c(
@@ -209,7 +209,7 @@ fn las_no_conmutativas_respetan_el_orden() {
     assert_eq!(out, "6 2\n");
 }
 
-/// `cvtsi2sd` es **con signo**: −7 tiene que dar −7.0, no 1.8e19.
+/// `cvtsi2sd` es **con signo**: -7 tiene que dar -7.0, no 1.8e19.
 #[test]
 fn el_entero_negativo_a_double_conserva_el_signo() {
     let out = run_c(
@@ -229,7 +229,7 @@ fn el_cast_a_entero_trunca_no_redondea() {
 }
 
 /// `comisd` deja el resultado en ZF/CF, y los saltos que le siguen son los
-/// SIN signo. Si el emulador lo modelara con SF, esto saltaría al revés.
+/// SIN signo. Si el emulador lo modelara con SF, esto saltaria al reves.
 #[test]
 fn las_comparaciones_de_double_deciden_bien() {
     let out = run_c(
@@ -242,8 +242,8 @@ fn las_comparaciones_de_double_deciden_bien() {
     assert_eq!(out, "menor\nmayor\nigual\n");
 }
 
-/// Un `float` guarda MENOS precisión que un `double`, y tiene que perderla.
-/// Si `cvtsd2ss` no recortara, el test vería más dígitos que el silicio.
+/// Un `float` guarda MENOS precision que un `double`, y tiene que perderla.
+/// Si `cvtsd2ss` no recortara, el test veria mas digitos que el silicio.
 #[test]
 fn un_float_pierde_precision_y_eso_se_ve() {
     let out = run_c(

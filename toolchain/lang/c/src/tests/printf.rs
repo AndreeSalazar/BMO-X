@@ -13,8 +13,8 @@ fn printf_prints_signed_integers() {
     assert_eq!(out, "x=42 y=-7\n");
 }
 
-/// El caso que motivó todo: antes `printf(\"%d\", x)` descartaba `x` en
-/// el parser e imprimía el literal `%d`.
+/// El caso que motivo todo: antes `printf(\"%d\", x)` descartaba `x` en
+/// el parser e imprimia el literal `%d`.
 #[test]
 fn printf_no_longer_prints_the_format_specifier() {
     let out = run_c("int main() { printf(\"%d\\n\", 5); return 0; }");
@@ -44,7 +44,7 @@ fn printf_computes_its_arguments() {
     assert_eq!(out, "42\n");
 }
 
-/// Un formato que aún no se compila debe FALLAR, no imprimir basura.
+/// Un formato que aun no se compila debe FALLAR, no imprimir basura.
 #[test]
 fn printf_rejects_unsupported_conversions() {
     let err = compile_source_to_bef("int main() { printf(\"%f\\n\", 1); return 0; }").unwrap_err();
@@ -57,12 +57,12 @@ fn printf_rejects_missing_arguments() {
     assert!(err.message.contains("argumento"), "mensaje: {}", err.message);
 }
 
-/// El puente L2→L1: `printf("literal")` debe bajar a la puerta de
+/// El puente L2->L1: `printf("literal")` debe bajar a la puerta de
 /// consola del ABI, byte por byte igual que lo que emite `bmo-lower`.
 ///
-/// Antes de esto, C emitía `syscall 0x1F0` con un puntero — número que
+/// Antes de esto, C emitia `syscall 0x1F0` con un puntero -- numero que
 /// el kernel no despacha y forma que la superficie congelada rechaza.
-/// Compilaba, validaba, y en hardware no imprimía nada.
+/// Compilaba, validaba, y en hardware no imprimia nada.
 #[test]
 fn printf_literal_lowers_to_the_console_door() {
     let bef = compile_source_to_bef("int main() { printf(\"hola\\n\"); return 0; }").unwrap();
@@ -75,7 +75,7 @@ fn printf_literal_lowers_to_the_console_door() {
 }
 
 /// `printf` con argumentos NO puede tomar el atajo del literal: hacerlo
-/// descartaba los argumentos en silencio e imprimía "%d" tal cual.
+/// descartaba los argumentos en silencio e imprimia "%d" tal cual.
 #[test]
 fn printf_with_arguments_keeps_them() {
     let program = parse("int main() { int x = 7; printf(\"%d\\n\", x); return 0; }").unwrap();
@@ -89,15 +89,15 @@ fn printf_with_arguments_keeps_them() {
     );
 }
 
-/// ★ **Los argumentos de `printf` se evalúan ANTES de escribir un byte.**
+/// * **Los argumentos de `printf` se evaluan ANTES de escribir un byte.**
 ///
-/// Antes no: el emisor recorría la plantilla y evaluaba cada argumento al
+/// Antes no: el emisor recorria la plantilla y evaluaba cada argumento al
 /// llegar a su `%`, intercalado con la salida de los literales. Con argumentos
-/// sin efectos daba igual — por eso ninguna fila de la matriz lo cazó— pero
+/// sin efectos daba igual -- por eso ninguna fila de la matriz lo cazo-- pero
 /// `printf("[%d]", f())` con `f` imprimiendo sacaba `[` **antes** que lo de
-/// `f`, y en C estándar todos los argumentos se evalúan antes de la llamada.
+/// `f`, y en C estandar todos los argumentos se evaluan antes de la llamada.
 ///
-/// Lo destapó la matriz de **C++** al probar RAII: un destructor que imprime
+/// Lo destapo la matriz de **C++** al probar RAII: un destructor que imprime
 /// es justo un argumento con efectos.
 #[test]
 fn los_argumentos_de_printf_se_evaluan_antes_de_imprimir() {
@@ -109,7 +109,7 @@ int main() { printf("[%d]", ruido(7)); return 0; }
         "el argumento tiene que ejecutarse ENTERO antes de que salga el `[`");
 }
 
-/// Y con varios argumentos, el orden entre ellos también es el de evaluación.
+/// Y con varios argumentos, el orden entre ellos tambien es el de evaluacion.
 #[test]
 fn printf_evalua_todos_sus_argumentos_en_orden() {
     let src = r#"

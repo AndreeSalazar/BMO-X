@@ -1,4 +1,4 @@
-//! C Abstract Syntax Tree — type system definitions.
+//! C Abstract Syntax Tree -- type system definitions.
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeSpec {

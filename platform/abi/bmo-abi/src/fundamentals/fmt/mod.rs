@@ -1,9 +1,9 @@
-//! `fmt` — BmoFormatter, formateador stack-allocated del BMO ABI.
+//! `fmt` -- BmoFormatter, formateador stack-allocated del BMO ABI.
 //!
 //! Reemplaza `sprintf`/`snprintf` de C y `core::fmt` de Rust con un
 //! buffer stack-allocated (sin heap) y un subset de formatos.
 //!
-//! Útil para logging en Ring 0 (donde no hay heap disponible) y para
+//! Util para logging en Ring 0 (donde no hay heap disponible) y para
 //! construir mensajes de error cortos sin dependencias.
 
 use crate::bmo_abi::fundamentals::memory::BmoSlice;
@@ -149,7 +149,7 @@ impl BmoFormatter {
     }
 }
 
-// ─── Convenience macro ─────────────────────────────────────────────
+// --- Convenience macro ---------------------------------------------
 
 /// Format into a `BmoFormatter`.
 #[macro_export]

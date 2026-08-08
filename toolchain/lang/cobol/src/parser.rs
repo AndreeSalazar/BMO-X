@@ -70,7 +70,7 @@ impl Parser {
             }
 
             // `SELECT <nombre> ASSIGN TO "<ruta>"`. Vive en FILE-CONTROL, que
-            // esta en la ENVIRONMENT DIVISION — antes de la DATA, asi que se
+            // esta en la ENVIRONMENT DIVISION -- antes de la DATA, asi que se
             // reconoce fuera del bloque de datos.
             if upper.starts_with("SELECT ") {
                 program.files.push(Self::parse_select(&normalized, line_no)?);
@@ -152,7 +152,7 @@ impl Parser {
 
             if !self.in_procedure { continue; }
 
-            // ★ Un NOMBRE DE PÁRRAFO abre uno nuevo. Todo lo que venga detrás
+            // * Un NOMBRE DE PARRAFO abre uno nuevo. Todo lo que venga detras
             // es suyo hasta el siguiente nombre.
             if let Some(nombre) = Self::nombre_de_parrafo(&line) {
                 if program.parrafo(&nombre).is_some() {
@@ -203,16 +203,16 @@ impl Parser {
         }
     }
 
-    /// `PERFORM [<párrafo>] VARYING <v> FROM <x> BY <y> UNTIL <cond>`,
-    /// con cero o más `AFTER` detrás.
+    /// `PERFORM [<parrafo>] VARYING <v> FROM <x> BY <y> UNTIL <cond>`,
+    /// con cero o mas `AFTER` detras.
     ///
-    /// ★ La cabecera sigue mientras la línea siguiente **empiece por `AFTER`**.
-    /// Ésa es la regla entera, y es la que se escribe: un `AFTER` por renglón,
-    /// alineado bajo el `VARYING`. Sin una regla así habría que adivinar dónde
+    /// * La cabecera sigue mientras la linea siguiente **empiece por `AFTER`**.
+    /// Esa es la regla entera, y es la que se escribe: un `AFTER` por renglon,
+    /// alineado bajo el `VARYING`. Sin una regla asi habria que adivinar donde
     /// acaba la cabecera y empieza el cuerpo.
     ///
-    /// Si delante del `VARYING` hay un nombre, es el párrafo que hace de cuerpo
-    /// — y entonces no hay `END-PERFORM` que leer.
+    /// Si delante del `VARYING` hay un nombre, es el parrafo que hace de cuerpo
+    /// -- y entonces no hay `END-PERFORM` que leer.
     fn parse_perform_varying(
         &mut self,
         rest: &str,
@@ -234,7 +234,7 @@ impl Parser {
         };
 
         let mut controles = vec![Self::parse_control(&rest[i_varying + 7..], line_no)?];
-        // Los `AFTER` que vengan detrás, uno por línea.
+        // Los `AFTER` que vengan detras, uno por linea.
         loop {
             let Some((_, raw)) = self.current().cloned() else { break };
             let linea = Self::strip_comment(&raw).trim().to_string();
@@ -250,7 +250,7 @@ impl Parser {
             controles.push(Self::parse_control(&linea[6..], line_no)?);
         }
 
-        // El cuerpo: el párrafo, o las líneas hasta `END-PERFORM`.
+        // El cuerpo: el parrafo, o las lineas hasta `END-PERFORM`.
         let cuerpo = match &parrafo {
             Some(p) => vec![CobolStatement::PerformFuera {
                 desde: p.clone(),
@@ -327,8 +327,8 @@ impl Parser {
     /// `PERFORM <parrafo> [THRU <otro>] [<n> TIMES | UNTIL <cond>]`.
     ///
     /// El orden en el que se recorta importa: primero el `UNTIL`, que se lleva
-    /// todo lo que queda a su derecha, y después el `THRU`. Al revés, un
-    /// nombre de párrafo con la palabra dentro se partiría mal.
+    /// todo lo que queda a su derecha, y despues el `THRU`. Al reves, un
+    /// nombre de parrafo con la palabra dentro se partiria mal.
     fn parse_perform_fuera(rest: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let upper = rest.to_ascii_uppercase();
 
@@ -391,9 +391,9 @@ impl Parser {
         Ok(CobolStatement::PerformFuera { desde, hasta, veces, hasta_que })
     }
 
-    /// Dónde empieza una palabra COMPLETA dentro de un texto ya en mayúsculas.
+    /// Donde empieza una palabra COMPLETA dentro de un texto ya en mayusculas.
     ///
-    /// Palabra completa y no subcadena: un párrafo llamado `9000-TIMES-UP` no
+    /// Palabra completa y no subcadena: un parrafo llamado `9000-TIMES-UP` no
     /// puede activar el recorte del `TIMES`.
     fn pos_palabra(upper: &str, palabra: &str) -> Option<usize> {
         let bytes = upper.as_bytes();
@@ -412,22 +412,22 @@ impl Parser {
         None
     }
 
-    /// ¿Esta línea de la PROCEDURE DIVISION es un NOMBRE DE PÁRRAFO?
+    /// Esta linea de la PROCEDURE DIVISION es un NOMBRE DE PARRAFO?
     ///
-    /// Un párrafo es **una palabra sola terminada en punto**, y ahí está toda
+    /// Un parrafo es **una palabra sola terminada en punto**, y ahi esta toda
     /// la regla: `1000-INICIO.` lo es y `MOVE 0 TO A.` no, porque tiene cuatro.
-    /// El punto es obligatorio —sin él no hay forma de distinguir un nombre de
-    /// párrafo de un verbo mal escrito— y por eso se mira la línea CRUDA, antes
+    /// El punto es obligatorio --sin el no hay forma de distinguir un nombre de
+    /// parrafo de un verbo mal escrito-- y por eso se mira la linea CRUDA, antes
     /// de que el analizador de arriba se lo quite.
     ///
     /// Y no puede ser una palabra reservada: `EXIT.` es el verbo, no un
-    /// párrafo llamado EXIT. Sin esa comprobación, un `EXIT.` suelto abriría un
-    /// párrafo fantasma y se tragaría el resto del programa.
+    /// parrafo llamado EXIT. Sin esa comprobacion, un `EXIT.` suelto abriria un
+    /// parrafo fantasma y se tragaria el resto del programa.
     ///
-    /// `<nombre> SECTION.` se acepta como si fuera un párrafo: para lo que hoy
-    /// hace falta —ser el destino de un `PERFORM`— una sección es un párrafo
-    /// con otro nombre, y fingir lo contrario sería rechazar programas que
-    /// funcionarían igual.
+    /// `<nombre> SECTION.` se acepta como si fuera un parrafo: para lo que hoy
+    /// hace falta --ser el destino de un `PERFORM`-- una seccion es un parrafo
+    /// con otro nombre, y fingir lo contrario seria rechazar programas que
+    /// funcionarian igual.
     fn nombre_de_parrafo(linea: &str) -> Option<String> {
         let t = linea.trim();
         if !t.ends_with('.') {
@@ -447,23 +447,23 @@ impl Parser {
         if crate::generated::words::is_reserved(&arriba) {
             return None;
         }
-        // Un nombre de COBOL: letras, dígitos y guiones. Sin esto, un `.` de
-        // más en cualquier sitio abriría un párrafo.
+        // Un nombre de COBOL: letras, digitos y guiones. Sin esto, un `.` de
+        // mas en cualquier sitio abriria un parrafo.
         if !nombre.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return None;
         }
         Some(arriba)
     }
 
-    /// Los valores de un `88`, tal cual los escribió quien lo declaró.
+    /// Los valores de un `88`, tal cual los escribio quien lo declaro.
     ///
-    /// `rest` es la línea entera sin el nivel: `NOMBRE VALUE 1 THRU 5` o
+    /// `rest` es la linea entera sin el nivel: `NOMBRE VALUE 1 THRU 5` o
     /// `NOMBRE VALUES 6, 7`. Se busca el `VALUE`/`VALUES` y se parte lo que
-    /// venga detrás por comas; cada trozo puede ser un valor o un rango.
+    /// venga detras por comas; cada trozo puede ser un valor o un rango.
     ///
-    /// La coma es separador Y puede ser parte de un número en algunas
-    /// convenciones — aquí no: BMO COBOL usa el punto decimal, así que una coma
-    /// separa siempre. Está dicho para que nadie lo descubra por su cuenta.
+    /// La coma es separador Y puede ser parte de un numero en algunas
+    /// convenciones -- aqui no: BMO COBOL usa el punto decimal, asi que una coma
+    /// separa siempre. Esta dicho para que nadie lo descubra por su cuenta.
     fn parse_valores_88(
         rest: &str,
         name: &str,
@@ -496,11 +496,11 @@ impl Parser {
     ///
     /// La comparten el `VALUE` de un nivel 88 y el `WHEN` de un `EVALUATE` con
     /// sujeto. Son **la misma lista**: `1, 3 THRU 5, 9` significa lo mismo en
-    /// los dos sitios, y tenerla dos veces sería tener dos gramáticas para una
+    /// los dos sitios, y tenerla dos veces seria tener dos gramaticas para una
     /// coma.
     ///
-    /// La coma separa SIEMPRE: BMO COBOL usa el punto decimal, así que nunca
-    /// forma parte de un número. Está dicho para que nadie lo descubra solo.
+    /// La coma separa SIEMPRE: BMO COBOL usa el punto decimal, asi que nunca
+    /// forma parte de un numero. Esta dicho para que nadie lo descubra solo.
     fn partir_valores(texto: &str, line_no: usize) -> Result<Vec<crate::ast::Valor88>, CobolError> {
         use crate::ast::Valor88;
         let mut out = Vec::new();
@@ -536,8 +536,8 @@ impl Parser {
     ///
     /// `SPACE`, `HIGH-VALUE`, `LOW-VALUE` y `QUOTE` se dejan pasar TAL CUAL a
     /// proposito: son de texto, y el sitio donde se rechazan es la comprobacion
-    /// de "esto no es un numero", que da un mensaje mejor —dice cuales SI
-    /// valen— que uno generico de aqui.
+    /// de "esto no es un numero", que da un mensaje mejor --dice cuales SI
+    /// valen-- que uno generico de aqui.
     fn normalizar_figurativa(v: &str) -> String {
         match v.trim().to_ascii_uppercase().as_str() {
             "ZERO" | "ZEROS" | "ZEROES" => "0".to_string(),
@@ -545,7 +545,7 @@ impl Parser {
         }
     }
 
-    /// ¿Es un literal numerico de COBOL? Signo opcional, digitos, y como mucho
+    /// Es un literal numerico de COBOL? Signo opcional, digitos, y como mucho
     /// un punto decimal.
     fn es_numero_cobol(v: &str) -> bool {
         let s = v.trim().trim_start_matches(['+', '-']);
@@ -567,7 +567,7 @@ impl Parser {
         s.chars().any(|c| c.is_ascii_digit()) && !s.ends_with('.')
     }
 
-    /// ¿Esta palabra es un `USAGE` escrito sin la palabra `USAGE` delante?
+    /// Esta palabra es un `USAGE` escrito sin la palabra `USAGE` delante?
     ///
     /// Incluye las que NO se compilan, y a proposito: reconocerlas aqui es lo
     /// que permite decir "COMP-1 es coma flotante y la banca no lo usa" en vez
@@ -586,7 +586,7 @@ impl Parser {
     /// Traduce la palabra a la representacion, o dice por que no.
     ///
     /// Solo hay DOS que se compilan: `DISPLAY` (lo de siempre) y el
-    /// empaquetado. Las demas se rechazan CON SU MOTIVO — aceptar `COMP` y
+    /// empaquetado. Las demas se rechazan CON SU MOTIVO -- aceptar `COMP` y
     /// guardar exactamente lo mismo que un `DISPLAY` seria compilar una palabra
     /// que promete un formato y no lo da, que es el fallo que este compilador
     /// no comete.
@@ -660,14 +660,14 @@ impl Parser {
                 }
             } else if uw == "VALUE" {
                 if i + 1 < parts.len() {
-                    // ★ Un literal ENTRECOMILLADO se saca de la LÍNEA CRUDA, no
-                    // de los trozos: el troceado es por espacios, así que
-                    // `VALUE "  12 34"` ya venía sin los dos de delante y sin
-                    // saber cuántos había en medio.
+                    // * Un literal ENTRECOMILLADO se saca de la LINEA CRUDA, no
+                    // de los trozos: el troceado es por espacios, asi que
+                    // `VALUE "  12 34"` ya venia sin los dos de delante y sin
+                    // saber cuantos habia en medio.
                     //
                     // No es un detalle: en un `PIC X` los espacios son datos.
-                    // Un `INSPECT … REPLACING LEADING SPACE BY ZERO` sobre un
-                    // campo al que le faltan espacios da otro número.
+                    // Un `INSPECT ... REPLACING LEADING SPACE BY ZERO` sobre un
+                    // campo al que le faltan espacios da otro numero.
                     if let Some(t) = Self::literal_entrecomillado(rest) {
                         value = Some(t);
                         // Saltar los trozos que formaban el literal.
@@ -720,7 +720,7 @@ impl Parser {
         let value = value.map(|v| Self::normalizar_figurativa(&v));
         let mut item = DataItem::new_with_usage(level, name, pic, value, usage);
 
-        // ── Donde un COMP-3 no tiene sentido ──
+        // -- Donde un COMP-3 no tiene sentido --
         //
         // Empaquetar son DIGITOS: dos por byte y un nibble de signo. Sin PIC no
         // se sabe cuantos, y sobre una PIC X no hay digitos que empaquetar. Las
@@ -763,12 +763,12 @@ impl Parser {
             }
         }
 
-        // ── Nivel 88: un NOMBRE DE CONDICIÓN, que no es un dato ──
+        // -- Nivel 88: un NOMBRE DE CONDICION, que no es un dato --
         //
         // `88 FIN-DE-FICHERO VALUE 1.` no reserva memoria: le pone nombre a la
-        // comparación `<el dato de arriba> = 1`. Es lo que convierte
+        // comparacion `<el dato de arriba> = 1`. Es lo que convierte
         // `PERFORM UNTIL FIN = 1` en `PERFORM UNTIL FIN-DE-FICHERO`, y es COBOL
-        // bancario idiomático puro: la condición se lee, no se descifra.
+        // bancario idiomatico puro: la condicion se lee, no se descifra.
         if item.level == 88 {
             if item.pic.is_some() {
                 return Err(CobolError::new(
@@ -782,14 +782,14 @@ impl Parser {
                     format!("{} necesita su VALUE: un nombre de condicion sin valor no compara nada", item.name),
                 ));
             }
-            // ★ `VALUE 1 THRU 5` y `VALUE 6, 7` — las dos formas que escribe
+            // * `VALUE 1 THRU 5` y `VALUE 6, 7` -- las dos formas que escribe
             // todo el mundo, y que estaban rechazadas porque expandirlas pide un
             // OR. Ya hay OR.
             item.valores = Self::parse_valores_88(rest, &item.name, line_no)?;
             return Ok(Some(item));
         }
 
-        // ── `VALUE` en un dato: el valor con el que ARRANCA ──
+        // -- `VALUE` en un dato: el valor con el que ARRANCA --
         //
         // Se parseaba desde siempre y **no se emitia nunca**: `codegen.rs` solo
         // miraba `item.value` para los 88, asi que `01 SALDO PIC 9(5)V99 VALUE
@@ -809,8 +809,8 @@ impl Parser {
                     ),
                 ));
             };
-            // ★ Un campo alfanumérico guarda su VALUE como CARACTERES, y por eso
-            // no pasa por la comprobación de "esto es un número". `VALUE "00"`
+            // * Un campo alfanumerico guarda su VALUE como CARACTERES, y por eso
+            // no pasa por la comprobacion de "esto es un numero". `VALUE "00"`
             // en un `PIC XX` es exactamente lo que escribe un `FILE STATUS`.
             if !campo.numeric {
                 return Ok(Some(item));
@@ -829,7 +829,7 @@ impl Parser {
 
         if let Some(n) = occurs {
             // Donde el estandar NO deja OCCURS: 01 (y 66/77/88). No es rigor
-            // por rigor — un `01` es el registro entero, y repetir el registro
+            // por rigor -- un `01` es el registro entero, y repetir el registro
             // es otra cosa que repetir un campo de dentro. La forma buena es
             // el grupo, y es la que un banco escribe.
             if matches!(item.level, 1 | 66 | 77 | 88) {
@@ -989,18 +989,18 @@ impl Parser {
             Ok(CobolStatement::StopRun)
         } else if upper == "EXIT" || upper == "EXIT." {
             // `EXIT` no hace nada, y ese es su trabajo: es el destino de un
-            // `PERFORM … THRU X-SALIR`. Emitir nada es lo correcto.
+            // `PERFORM ... THRU X-SALIR`. Emitir nada es lo correcto.
             Ok(CobolStatement::Exit)
         } else if upper == "CONTINUE" || upper == "CONTINUE." {
-            // Igual que EXIT pero en medio de una sentencia: el hueco explícito
+            // Igual que EXIT pero en medio de una sentencia: el hueco explicito
             // de una rama del `IF` que no hace nada.
             Ok(CobolStatement::Exit)
         } else {
-            // Vocabulario COBOL COMPLETO vía las tablas generadas por Python
+            // Vocabulario COBOL COMPLETO via las tablas generadas por Python
             // (cobol-gen): el parser distingue un verbo COBOL conocido pero
-            // aún sin codegen, de una palabra reservada de cierto estándar,
+            // aun sin codegen, de una palabra reservada de cierto estandar,
             // de algo que sencillamente no es COBOL. Conoce todo el idioma
-            // aunque todavía no compile cada forma.
+            // aunque todavia no compile cada forma.
             use crate::generated::words;
             let first = upper.split_whitespace().next().unwrap_or("");
             if let Some(kind) = words::verb_kind(first) {
@@ -1019,17 +1019,17 @@ impl Parser {
         }
     }
 
-    /// `IF <cond> [THEN] … [ELSE …] END-IF`.
+    /// `IF <cond> [THEN] ... [ELSE ...] END-IF`.
     ///
     /// Se exige `END-IF` (COBOL-85) en vez de aceptar el alcance por punto
-    /// del COBOL clásico. No es pereza: el alcance por punto es ambiguo de
-    /// leer y es una fuente clásica de bugs silenciosos —justo lo que este
-    /// compilador acaba de dejar de hacer—. Si falta, el error lo dice.
+    /// del COBOL clasico. No es pereza: el alcance por punto es ambiguo de
+    /// leer y es una fuente clasica de bugs silenciosos --justo lo que este
+    /// compilador acaba de dejar de hacer--. Si falta, el error lo dice.
     /// `SELECT <nombre> ASSIGN TO "<ruta>"`.
     ///
     /// La ruta va entre comillas y es un literal: se resuelve al COMPILAR y
     /// viaja dentro del `.bex` como inmediatos. Un `ASSIGN TO` a una variable
-    /// exigiría pasar la ruta byte a byte en ejecución, y eso es otra puerta.
+    /// exigiria pasar la ruta byte a byte en ejecucion, y eso es otra puerta.
     fn parse_select(line: &str, line_no: usize) -> Result<crate::ast::CobolFile, CobolError> {
         let resto = line[6..].trim().trim_end_matches('.').trim();
         let arriba = resto.to_ascii_uppercase();
@@ -1040,13 +1040,13 @@ impl Parser {
         if name.is_empty() {
             return Err(CobolError::new(line_no, "SELECT sin nombre de fichero"));
         }
-        // Tras `ASSIGN` puede venir `TO` o no; el estándar lo permite.
+        // Tras `ASSIGN` puede venir `TO` o no; el estandar lo permite.
         let cola = resto[corte + 6..].trim();
         let cola = Self::strip_leading_word(cola, "TO");
 
-        // ★ `FILE STATUS IS <campo>` — el campo donde el sistema deja el
-        // resultado de cada operación. Se recorta ANTES de leer la ruta, porque
-        // viene detrás de ella y si no acabaría dentro del nombre del fichero.
+        // * `FILE STATUS IS <campo>` -- el campo donde el sistema deja el
+        // resultado de cada operacion. Se recorta ANTES de leer la ruta, porque
+        // viene detras de ella y si no acabaria dentro del nombre del fichero.
         let arriba_cola = cola.to_ascii_uppercase();
         let (cola, estado) = match Self::pos_palabra(&arriba_cola, "FILE") {
             Some(i) if arriba_cola[i..].starts_with("FILE STATUS") => {
@@ -1074,7 +1074,7 @@ impl Parser {
         // La ruta se comprueba AQUI y no en ejecucion. El volumen de datos es
         // FAT32 y su tabla guarda nombres 8.3: `apps/movimientos.txt` abriria
         // un handle nulo en la maquina, y COBOL lo leeria como "fichero vacio"
-        // — o sea, un cierre a cero sin una sola queja. Es exactamente el fallo
+        // -- o sea, un cierre a cero sin una sola queja. Es exactamente el fallo
         // que este compilador no comete: el nombre lo sabe al compilar, asi que
         // lo dice al compilar.
         if let Err(motivo) = Self::cabe_en_8_3(&path) {
@@ -1083,11 +1083,11 @@ impl Parser {
         Ok(crate::ast::CobolFile { name, path, record: String::new(), estado })
     }
 
-    /// ¿Cada tramo de la ruta cabe en un nombre 8.3 de FAT32?
+    /// Cada tramo de la ruta cabe en un nombre 8.3 de FAT32?
     ///
     /// Ocho de nombre y tres de extension, por tramo. Es limite del volumen de
     /// hoy, no del lenguaje: cuando ESTRATOS acepte escritura y nombres largos,
-    /// esta comprobacion se relaja — y hasta entonces mentir sale mas caro.
+    /// esta comprobacion se relaja -- y hasta entonces mentir sale mas caro.
     fn cabe_en_8_3(ruta: &str) -> Result<(), String> {
         for tramo in ruta.split(['/', '\\']) {
             // La letra de unidad (`A:`) y los tramos vacios de `//` no cuentan.
@@ -1124,13 +1124,13 @@ impl Parser {
 
     /// `READ <fichero> AT END <stmts> [NOT AT END <stmts>] END-READ`.
     ///
-    /// El `AT END` es OBLIGATORIO y no por rigor: es lo único que puede parar
-    /// un `PERFORM UNTIL` sobre un fichero. Un `READ` sin él compila a un
+    /// El `AT END` es OBLIGATORIO y no por rigor: es lo unico que puede parar
+    /// un `PERFORM UNTIL` sobre un fichero. Un `READ` sin el compila a un
     /// bucle infinito, y eso es peor que no compilar.
     fn parse_read(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let resto = line[4..].trim().trim_end_matches('.').trim();
-        // El nombre es la primera palabra; lo que siga en la MISMA línea se
-        // trata como si fuera la línea siguiente.
+        // El nombre es la primera palabra; lo que siga en la MISMA linea se
+        // trata como si fuera la linea siguiente.
         let corte = resto.find(char::is_whitespace).unwrap_or(resto.len());
         let fichero = resto[..corte].trim().to_ascii_uppercase();
         if fichero.is_empty() {
@@ -1140,7 +1140,7 @@ impl Parser {
 
         let mut al_final = Vec::new();
         let mut si_hay = Vec::new();
-        // 0 = todavía no se ha visto ninguna cláusula.
+        // 0 = todavia no se ha visto ninguna clausula.
         let mut rama = 0u8;
         let mut visto_at_end = false;
 
@@ -1168,7 +1168,7 @@ impl Parser {
             if up == "END-READ" {
                 break;
             }
-            // Las cláusulas pueden traer su primera sentencia pegada:
+            // Las clausulas pueden traer su primera sentencia pegada:
             // `AT END MOVE 1 TO FIN`.
             let (etiqueta, sobra) = if up.starts_with("NOT AT END") {
                 (2u8, texto.trim()[10..].trim().to_string())
@@ -1257,22 +1257,22 @@ impl Parser {
         Ok(CobolStatement::If(conditions, then_branch, else_branch))
     }
 
-    /// Separa el destino de una aritmética de su cláusula `ROUNDED`.
+    /// Separa el destino de una aritmetica de su clausula `ROUNDED`.
     ///
     /// ```text
-    ///   SALDO                                → truncar (el default de COBOL)
-    ///   SALDO ROUNDED                        → NEAREST-AWAY-FROM-ZERO
-    ///   SALDO ROUNDED MODE IS NEAREST-EVEN   → el redondeo del banquero
+    ///   SALDO                                -> truncar (el default de COBOL)
+    ///   SALDO ROUNDED                        -> NEAREST-AWAY-FROM-ZERO
+    ///   SALDO ROUNDED MODE IS NEAREST-EVEN   -> el redondeo del banquero
     /// ```
     ///
-    /// ★ **El default sin `ROUNDED` es TRUNCAR, y eso no es un descuido del
-    /// estándar**: en un desglose de asiento hay que truncar para que la suma
-    /// de las partes cuadre con el total, y en un interés hay que redondear.
-    /// Por eso la cláusula va en la OPERACIÓN y no en el dato: el mismo campo
-    /// hace las dos cosas en dos líneas seguidas.
+    /// * **El default sin `ROUNDED` es TRUNCAR, y eso no es un descuido del
+    /// estandar**: en un desglose de asiento hay que truncar para que la suma
+    /// de las partes cuadre con el total, y en un interes hay que redondear.
+    /// Por eso la clausula va en la OPERACION y no en el dato: el mismo campo
+    /// hace las dos cosas en dos lineas seguidas.
     ///
     /// Y `ROUNDED` a secas es `NEAREST-AWAY-FROM-ZERO` porque es lo que dice el
-    /// estándar y lo que espera cualquiera que lo escriba sin pensar. El del
+    /// estandar y lo que espera cualquiera que lo escriba sin pensar. El del
     /// banquero **hay que pedirlo**: cambia el resultado y no puede colarse.
     fn partir_rounded(
         texto: &str,
@@ -1282,7 +1282,7 @@ impl Parser {
         Ok((t, crate::ast::Aritmetica::con(redondeo)))
     }
 
-    /// Igual, pero leyendo además las cláusulas `ON SIZE ERROR`.
+    /// Igual, pero leyendo ademas las clausulas `ON SIZE ERROR`.
     ///
     /// ```text
     ///   ADD A TO B ON SIZE ERROR
@@ -1292,10 +1292,10 @@ impl Parser {
     ///   END-ADD
     /// ```
     ///
-    /// ★ La cláusula tiene que **empezar en la línea del verbo**. Sin eso, un
+    /// * La clausula tiene que **empezar en la linea del verbo**. Sin eso, un
     /// `ADD A TO B` a secas y un `ADD A TO B` que sigue abajo se leen igual, y
-    /// habría que adivinar mirando adelante. Adivinar aquí significa tragarse
-    /// las sentencias de después como si fueran del `ADD`.
+    /// habria que adivinar mirando adelante. Adivinar aqui significa tragarse
+    /// las sentencias de despues como si fueran del `ADD`.
     fn leer_aritmetica(
         &mut self,
         cola: &str,
@@ -1316,7 +1316,7 @@ impl Parser {
         let (destino, mut arit) = Self::partir_rounded(&cola[..i], line_no)?;
         let fin = format!("END-{verbo}");
 
-        // La primera rama empieza en esta misma línea, detrás de la cláusula.
+        // La primera rama empieza en esta misma linea, detras de la clausula.
         let mut resto = cola[i..].trim().to_string();
         let mut en_desborda = resto.to_ascii_uppercase().starts_with("ON SIZE ERROR");
         resto = if en_desborda {
@@ -1399,9 +1399,9 @@ impl Parser {
             "TOWARD-GREATER" => Redondeo::HaciaArriba,
             "TOWARD-LESSER" => Redondeo::HaciaAbajo,
             "TRUNCATION" => Redondeo::Truncar,
-            // `PROHIBITED` obliga a que la operación sea exacta y a fallar si
+            // `PROHIBITED` obliga a que la operacion sea exacta y a fallar si
             // no lo es. Eso no es un modo de redondeo: es un `ON SIZE ERROR`
-            // sobre la parte decimal, y necesita a dónde saltar cuando pasa.
+            // sobre la parte decimal, y necesita a donde saltar cuando pasa.
             "PROHIBITED" => {
                 return Err(CobolError::new(
                     line_no,
@@ -1425,9 +1425,9 @@ impl Parser {
         Ok((destino, modo))
     }
 
-    /// El literal entre comillas de una línea, **con sus espacios intactos**.
+    /// El literal entre comillas de una linea, **con sus espacios intactos**.
     ///
-    /// Devuelve `None` si no hay comillas — entonces el `VALUE` es un número o
+    /// Devuelve `None` si no hay comillas -- entonces el `VALUE` es un numero o
     /// una figurativa y el troceado por espacios vale.
     fn literal_entrecomillado(linea: &str) -> Option<String> {
         let bytes = linea.as_bytes();
@@ -1437,12 +1437,12 @@ impl Parser {
         Some(linea[abre + 1..cierra].to_string())
     }
 
-    /// Un literal de UN carácter entre comillas, o la figurativa `SPACE`.
+    /// Un literal de UN caracter entre comillas, o la figurativa `SPACE`.
     ///
-    /// Sólo un carácter: buscar o sustituir una CADENA es búsqueda de
-    /// subcadena, que es otra cosa y bastante más grande. Se dice en vez de
-    /// mirar sólo la primera letra y callar el resto — eso contaría de más y
-    /// sustituiría donde no toca.
+    /// Solo un caracter: buscar o sustituir una CADENA es busqueda de
+    /// subcadena, que es otra cosa y bastante mas grande. Se dice en vez de
+    /// mirar solo la primera letra y callar el resto -- eso contaria de mas y
+    /// sustituiria donde no toca.
     fn un_caracter(texto: &str, que: &str, line_no: usize) -> Result<char, CobolError> {
         let t = texto.trim();
         let arriba = t.to_ascii_uppercase();
@@ -1520,13 +1520,13 @@ impl Parser {
 
     /// `STRING <fuentes> DELIMITED BY SIZE INTO <destino>`.
     ///
-    /// Sólo `DELIMITED BY SIZE`: cada fuente entra con TODO su ancho. Las otras
-    /// formas —`DELIMITED BY SPACE` o por un carácter— cortan por un largo que
-    /// sólo se sabe en ejecución, y eso es otro emisor. Se dice.
+    /// Solo `DELIMITED BY SIZE`: cada fuente entra con TODO su ancho. Las otras
+    /// formas --`DELIMITED BY SPACE` o por un caracter-- cortan por un largo que
+    /// solo se sabe en ejecucion, y eso es otro emisor. Se dice.
     ///
-    /// ★ Se lee en VARIAS LÍNEAS, porque así se escribe siempre: una fuente por
-    /// renglón. Se sigue leyendo hasta el `INTO`, y ahí acaba — con `END-STRING`
-    /// detrás o sin él, que las dos formas son legales.
+    /// * Se lee en VARIAS LINEAS, porque asi se escribe siempre: una fuente por
+    /// renglon. Se sigue leyendo hasta el `INTO`, y ahi acaba -- con `END-STRING`
+    /// detras o sin el, que las dos formas son legales.
     fn parse_string(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let mut junto = line[7..].trim().trim_end_matches('.').trim().to_string();
         while Self::pos_palabra(&junto.to_ascii_uppercase(), "INTO").is_none() {
@@ -1541,7 +1541,7 @@ impl Parser {
             junto.push(' ');
             junto.push_str(siguiente.trim_end_matches('.').trim());
         }
-        // Un `END-STRING` detrás del destino es legal y aquí sobra.
+        // Un `END-STRING` detras del destino es legal y aqui sobra.
         let junto = junto.trim().to_string();
         let junto = match Self::pos_palabra(&junto.to_ascii_uppercase(), "END-STRING") {
             Some(i) => junto[..i].trim().to_string(),
@@ -1560,14 +1560,14 @@ impl Parser {
         // Las fuentes van separadas por sus `DELIMITED BY SIZE`.
         let cabeza = &resto[..i];
         let mut fuentes = Vec::new();
-        // La forma es `<f1> DELIMITED BY SIZE <f2> DELIMITED BY SIZE …`, así que
-        // partir por `DELIMITED` deja el primer trozo limpio y los demás con su
+        // La forma es `<f1> DELIMITED BY SIZE <f2> DELIMITED BY SIZE ...`, asi que
+        // partir por `DELIMITED` deja el primer trozo limpio y los demas con su
         // `BY SIZE` delante.
         //
-        // ★ Se quitan por TOKENS y no recortando texto: `strip_leading_word` no
-        // corta una palabra que esté al final de la cadena, y un `SIZE` que
-        // sobrevivía a eso se colaba como si fuera un campo. Sus dos primeras
-        // letras acababan escritas dentro del destino — un fallo que compila,
+        // * Se quitan por TOKENS y no recortando texto: `strip_leading_word` no
+        // corta una palabra que este al final de la cadena, y un `SIZE` que
+        // sobrevivia a eso se colaba como si fuera un campo. Sus dos primeras
+        // letras acababan escritas dentro del destino -- un fallo que compila,
         // no avisa, y mete basura en un registro.
         for trozo in Self::split_on_word(cabeza, "DELIMITED") {
             let mut tokens: Vec<&str> = trozo.split_whitespace().collect();
@@ -1613,9 +1613,9 @@ impl Parser {
         Ok(CobolStatement::StringInto { fuentes, destino })
     }
 
-    /// ★ `EVALUATE … WHEN … END-EVALUATE` — el `switch` de COBOL.
+    /// * `EVALUATE ... WHEN ... END-EVALUATE` -- el `switch` de COBOL.
     ///
-    /// Dos formas, las dos corrientes en banca y las dos aquí:
+    /// Dos formas, las dos corrientes en banca y las dos aqui:
     ///
     /// ```text
     ///   EVALUATE TIPO-MOV              EVALUATE TRUE
@@ -1630,14 +1630,14 @@ impl Parser {
     ///   END-EVALUATE
     /// ```
     ///
-    /// La de la derecha es **la tabla de decisión**, y es como un banco escribe
-    /// un escalado de comisiones: cada `WHEN` es una condición entera. La de la
-    /// izquierda es el `switch` clásico, y sus `WHEN` se traducen **aquí** a
-    /// comparaciones contra el sujeto, con la misma expansión que usa un nivel
-    /// 88 — `THRU` es un rango cerrado y la coma es un `OR`.
+    /// La de la derecha es **la tabla de decision**, y es como un banco escribe
+    /// un escalado de comisiones: cada `WHEN` es una condicion entera. La de la
+    /// izquierda es el `switch` clasico, y sus `WHEN` se traducen **aqui** a
+    /// comparaciones contra el sujeto, con la misma expansion que usa un nivel
+    /// 88 -- `THRU` es un rango cerrado y la coma es un `OR`.
     ///
-    /// Las sentencias van en las líneas de DEBAJO de su `WHEN`. La forma de
-    /// meterlas en la misma línea existe en el estándar y se rechaza con su
+    /// Las sentencias van en las lineas de DEBAJO de su `WHEN`. La forma de
+    /// meterlas en la misma linea existe en el estandar y se rechaza con su
     /// motivo: separar "el valor" de "la sentencia" sin tokens es adivinar, y
     /// adivinar mal manda el programa a otra rama.
     fn parse_evaluate(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
@@ -1645,7 +1645,7 @@ impl Parser {
         if sujeto.is_empty() {
             return Err(CobolError::new(line_no, "EVALUATE sin sujeto"));
         }
-        // `EVALUATE TRUE` no compara con nada: cada WHEN trae su condición.
+        // `EVALUATE TRUE` no compara con nada: cada WHEN trae su condicion.
         let por_condicion = sujeto.eq_ignore_ascii_case("TRUE");
         if sujeto.eq_ignore_ascii_case("FALSE") {
             return Err(CobolError::new(
@@ -1711,8 +1711,8 @@ impl Parser {
                 let cond = if por_condicion {
                     Self::parse_condicion(texto, inner_no)?
                 } else {
-                    // La MISMA expansión que un nivel 88, y por eso `THRU` y la
-                    // coma funcionan aquí sin escribir nada nuevo.
+                    // La MISMA expansion que un nivel 88, y por eso `THRU` y la
+                    // coma funcionan aqui sin escribir nada nuevo.
                     let valores = Self::partir_valores(texto, inner_no)?;
                     Condicion::de_valores(&sujeto, &valores).ok_or_else(|| {
                         CobolError::new(inner_no, "WHEN sin ningun valor con el que comparar")
@@ -1722,7 +1722,7 @@ impl Parser {
                 continue;
             }
 
-            // Una sentencia: es del último WHEN abierto.
+            // Una sentencia: es del ultimo WHEN abierto.
             let Some((_, cuerpo)) = ramas.last_mut() else {
                 return Err(CobolError::new(
                     inner_no,
@@ -1747,8 +1747,8 @@ impl Parser {
     ///
     /// ```text
     ///   EN LINEA (el cuerpo va entre PERFORM y END-PERFORM)
-    ///     PERFORM <n> TIMES … END-PERFORM
-    ///     PERFORM UNTIL <cond> … END-PERFORM
+    ///     PERFORM <n> TIMES ... END-PERFORM
+    ///     PERFORM UNTIL <cond> ... END-PERFORM
     ///
     ///   FUERA DE LINEA (el cuerpo es un parrafo con nombre)
     ///     PERFORM <parrafo>
@@ -1758,20 +1758,20 @@ impl Parser {
     ///     PERFORM <parrafo> THRU <parrafo> UNTIL <cond>
     /// ```
     ///
-    /// Se distinguen por lo PRIMERO que viene detrás de `PERFORM`: si es
-    /// `UNTIL` o un número, el cuerpo viene abajo; si es un nombre, el cuerpo
-    /// es ese párrafo. No hace falta mirar más lejos, y eso es lo que hace que
+    /// Se distinguen por lo PRIMERO que viene detras de `PERFORM`: si es
+    /// `UNTIL` o un numero, el cuerpo viene abajo; si es un nombre, el cuerpo
+    /// es ese parrafo. No hace falta mirar mas lejos, y eso es lo que hace que
     /// la regla se pueda explicar en una frase.
     fn parse_perform(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let rest = line[8..].trim().trim_end_matches('.').trim();
         let upper = rest.to_ascii_uppercase();
 
-        // ── `PERFORM [<párrafo>] VARYING … [AFTER …] ──
+        // -- `PERFORM [<parrafo>] VARYING ... [AFTER ...] --
         if let Some(i) = Self::pos_palabra(&upper, "VARYING") {
             return self.parse_perform_varying(rest, i, line_no);
         }
 
-        // ── El PERFORM fuera de línea ──
+        // -- El PERFORM fuera de linea --
         let primera = upper.split_whitespace().next().unwrap_or("");
         let es_fuera_de_linea = !primera.is_empty()
             && primera != "UNTIL"
@@ -1835,20 +1835,20 @@ impl Parser {
         })
     }
 
-    /// Parsea una condición COBOL, con operadores simbólicos y con palabras.
+    /// Parsea una condicion COBOL, con operadores simbolicos y con palabras.
     ///
     /// Acepta `A = B`, `A > B`, `A >= B`, `A NOT = B`, y las formas del
-    /// estándar en palabras: `A IS EQUAL TO B`, `A IS GREATER THAN B`,
-    /// `A IS NOT LESS THAN B`… Varias condiciones se unen con `AND`.
+    /// estandar en palabras: `A IS EQUAL TO B`, `A IS GREATER THAN B`,
+    /// `A IS NOT LESS THAN B`... Varias condiciones se unen con `AND`.
     ///
-    /// Se combinan con `AND` y con `OR`, y **`AND` liga más fuerte**: por eso
-    /// hay dos niveles de análisis y no una lista plana. `A OR B AND C` es
-    /// `A OR (B AND C)`, como manda el estándar — leerlo al revés manda el
+    /// Se combinan con `AND` y con `OR`, y **`AND` liga mas fuerte**: por eso
+    /// hay dos niveles de analisis y no una lista plana. `A OR B AND C` es
+    /// `A OR (B AND C)`, como manda el estandar -- leerlo al reves manda el
     /// programa a la otra rama sin que nada avise.
     ///
-    /// La normalización de las formas en palabras corre PRIMERO, y eso no es
+    /// La normalizacion de las formas en palabras corre PRIMERO, y eso no es
     /// casualidad: `IS GREATER THAN OR EQUAL TO` lleva un `OR` dentro que no es
-    /// un `OR` lógico. Partir antes de normalizar lo cortaría por la mitad.
+    /// un `OR` logico. Partir antes de normalizar lo cortaria por la mitad.
     fn parse_condicion(text: &str, line_no: usize) -> Result<Condicion, CobolError> {
         let normalized = Self::normalize_condition_words(text);
         Self::parse_condicion_o(&normalized, line_no)
@@ -1868,7 +1868,7 @@ impl Parser {
         acc.ok_or_else(|| CobolError::new(line_no, "condicion vacia"))
     }
 
-    /// El nivel de más fuerza: `AND`.
+    /// El nivel de mas fuerza: `AND`.
     fn parse_condicion_y(text: &str, line_no: usize) -> Result<Condicion, CobolError> {
         let partes = Self::split_on_word(text, "AND");
         let mut acc: Option<Condicion> = None;
@@ -1882,11 +1882,11 @@ impl Parser {
         acc.ok_or_else(|| CobolError::new(line_no, "condicion vacia"))
     }
 
-    /// Convierte las formas en palabras del estándar al operador simbólico
-    /// equivalente, para que el análisis quede en un solo sitio.
+    /// Convierte las formas en palabras del estandar al operador simbolico
+    /// equivalente, para que el analisis quede en un solo sitio.
     fn normalize_condition_words(text: &str) -> String {
         // El orden importa: las formas largas primero, si no `NOT LESS`
-        // se comería el `LESS` de `NOT LESS THAN`.
+        // se comeria el `LESS` de `NOT LESS THAN`.
         const REPLACEMENTS: &[(&str, &str)] = &[
             ("IS NOT GREATER THAN OR EQUAL TO", " < "),
             ("IS NOT LESS THAN OR EQUAL TO", " > "),
@@ -1971,10 +1971,10 @@ impl Parser {
                 _ => unreachable!(),
             });
         }
-        // Sin operador: puede ser un NOMBRE DE CONDICIÓN (`IF FIN-DE-FICHERO`).
-        // Aquí no se puede saber —el parser no conoce los datos—, así que se
-        // pasa por nombre y lo resuelve el codegen, que sí sabe de quién cuelga
-        // y puede decir "eso no es ningún 88" cuando no existe.
+        // Sin operador: puede ser un NOMBRE DE CONDICION (`IF FIN-DE-FICHERO`).
+        // Aqui no se puede saber --el parser no conoce los datos--, asi que se
+        // pasa por nombre y lo resuelve el codegen, que si sabe de quien cuelga
+        // y puede decir "eso no es ningun 88" cuando no existe.
         let limpio = text.trim();
         if !limpio.is_empty() && !limpio.contains(char::is_whitespace) {
             return Ok(CobolCondition::Nombre(limpio.to_ascii_uppercase()));
@@ -1985,7 +1985,7 @@ impl Parser {
         ))
     }
 
-    /// Quita una palabra final (`TIMES`, `THEN`) si está presente.
+    /// Quita una palabra final (`TIMES`, `THEN`) si esta presente.
     fn strip_trailing_word<'a>(text: &'a str, word: &str) -> &'a str {
         let trimmed = text.trim();
         if trimmed.len() >= word.len() {

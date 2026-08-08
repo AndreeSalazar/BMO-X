@@ -1,4 +1,4 @@
-# c17.toml — ISO/IEC 9899:2018 (C17/C18)
+# c17.toml -- ISO/IEC 9899:2018 (C17/C18)
 [standard]
 iso_number = "ISO/IEC 9899:2018"
 year = 2018

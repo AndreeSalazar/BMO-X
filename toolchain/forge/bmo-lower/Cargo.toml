@@ -12,10 +12,10 @@ path = "src/lib.rs"
 
 [features]
 # Banco de pruebas: expone `emu`, el emulador x86-64 con el que cada
-# frontend verifica su descenso ejecutándolo. Fuera de las builds normales.
+# frontend verifica su descenso ejecutandolo. Fuera de las builds normales.
 emulator = []
 
 [dependencies]
-# La ÚNICA fuente de verdad de la superficie congelada. Nada de números
+# La UNICA fuente de verdad de la superficie congelada. Nada de numeros
 # duplicados a mano: si el ABI cambia, esta crate deja de compilar.
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }

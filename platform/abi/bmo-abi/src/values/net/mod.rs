@@ -1,13 +1,13 @@
-//! `net` — tipos de red del BMO ABI.
+//! `net` -- tipos de red del BMO ABI.
 //!
 //! Reemplaza `<netinet/in.h>`, `<sys/socket.h>`, y todo el caos de tipos
 //! de red de POSIX/Win32 con representaciones limpias y FFI-safe.
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u8};
 
-// ─── IPv4 ──────────────────────────────────────────────────────────
+// --- IPv4 ----------------------------------------------------------
 
-/// Dirección IPv4. 4 bytes, network byte order.
+/// Direccion IPv4. 4 bytes, network byte order.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BmoIpv4Addr {
@@ -66,9 +66,9 @@ impl BmoIpv4Addr {
     }
 }
 
-// ─── IPv6 ──────────────────────────────────────────────────────────
+// --- IPv6 ----------------------------------------------------------
 
-/// Dirección IPv6. 16 bytes.
+/// Direccion IPv6. 16 bytes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BmoIpv6Addr {
@@ -87,9 +87,9 @@ impl BmoIpv6Addr {
     }
 }
 
-// ─── SocketAddr ────────────────────────────────────────────────────
+// --- SocketAddr ----------------------------------------------------
 
-/// Dirección de socket: IPv4 o IPv6 + puerto.
+/// Direccion de socket: IPv4 o IPv6 + puerto.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BmoSocketAddr {
@@ -115,7 +115,7 @@ pub struct BmoSocketAddrV6 {
     pub scope_id: bx_u32,
 }
 
-// ─── Protocol ──────────────────────────────────────────────────────
+// --- Protocol ------------------------------------------------------
 
 /// Raw protocol number.
 #[repr(C)]
@@ -131,7 +131,7 @@ pub enum BmoProtocol {
     Raw(BmoRawProtocol),
 }
 
-// ─── Constants ─────────────────────────────────────────────────────
+// --- Constants -----------------------------------------------------
 
 impl BmoIpv4Addr {
     pub const LOCALHOST: Self = Self::LOOPBACK;

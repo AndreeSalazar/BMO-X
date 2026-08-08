@@ -1,4 +1,4 @@
-//! s2_mem — Memory + device initialization stage.
+//! s2_mem -- Memory + device initialization stage.
 //!
 //! Combines: PML4 page tables, heap bitmap, ACPI RSDP scan,
 //! PCI bus scan, LAPIC/IOAPIC/HPET/i8042 init.
@@ -8,7 +8,7 @@
 //!   2. Map BootContext page + GOP framebuffer
 //!   3. Write ctx.pml4 BEFORE CR3 switch
 //!   4. Switch to safe stack in BSS
-//!   5. mov cr3 + jmp kernel (ATOMIC — no stages in between)
+//!   5. mov cr3 + jmp kernel (ATOMIC -- no stages in between)
 //!   6. After jmp: kernel does BSS zero + kernel_main_real
 //!
 //! Device init happens AFTER the CR3 switch but BEFORE jumping to
@@ -36,11 +36,11 @@ const PTE_CACHE_DISABLE: u64 = 1 << 4;
 
 const fn pte_addr(e: u64) -> u64 { e & 0x000F_FFFF_FFFF_F000 }
 
-// ── Safe stack in .bss (within identity-mapped region) ────────────
+// -- Safe stack in .bss (within identity-mapped region) ------------
 
 // The 64 KiB transition stack is reserved by linker.ld.
 
-// ── Frame pool (page table frames) ───────────────────────────────
+// -- Frame pool (page table frames) -------------------------------
 
 const POOL_SIZE: usize = 64;
 static mut POOL: [u64; POOL_SIZE / 64] = [0u64; POOL_SIZE / 64];
@@ -142,7 +142,7 @@ unsafe fn map_2m_huge(pml4: *mut u64, v_start: u64, p_start: u64, count_2m: usiz
     }
 }
 
-// ── Heap bitmap ───────────────────────────────────────────────────
+// -- Heap bitmap ---------------------------------------------------
 
 const MAX_FRAMES: usize = 32768; // 128 MB
 static mut FRAME_BITMAP: [u64; MAX_FRAMES / 64] = [0u64; MAX_FRAMES / 64];
@@ -170,7 +170,7 @@ unsafe fn heap_init(ctx: &boot_context::BootContext) {
     serial_shared::puts(" frames\n");
 }
 
-// ── ACPI ──────────────────────────────────────────────────────────
+// -- ACPI ----------------------------------------------------------
 
 const RSDP_SIG: [u8; 8] = *b"RSD PTR ";
 const MCFG_SIG: [u8; 4] = *b"MCFG";
@@ -273,7 +273,7 @@ unsafe fn acpi_parse(rsdp: u64) -> AcpiInfo {
         // HPET table: 36-byte SDT header, then Event Timer Block ID (4B,
         // offset 36), then a Generic Address Structure at offset 40 whose
         // 8-byte Address field is at offset 44 (40 + 4B GAS header), NOT
-        // offset 48. The old +8 read garbage → a bogus base that page-
+        // offset 48. The old +8 read garbage -> a bogus base that page-
         // faulted in hpet_init on real hardware.
         let base = (addr + 44) as *const u64;
         info.hpet = Some(base.read());
@@ -306,7 +306,7 @@ unsafe fn acpi_parse(rsdp: u64) -> AcpiInfo {
     info
 }
 
-// ── PCI ───────────────────────────────────────────────────────────
+// -- PCI -----------------------------------------------------------
 
 const PCI_CFG_ADDR: u16 = 0xCF8;
 const PCI_CFG_DATA: u16 = 0xCFC;
@@ -360,7 +360,7 @@ fn pci_scan(ctx: &mut boot_context::BootContext, acpi: &AcpiInfo) {
     serial_shared::puts(" devices\n");
 }
 
-// ── LAPIC ─────────────────────────────────────────────────────────
+// -- LAPIC ---------------------------------------------------------
 
 fn pic_mask_all() {
     // BMO uses LAPIC/IOAPIC. Keep the legacy 8259 from delivering stale
@@ -409,7 +409,7 @@ unsafe fn lapic_init(tsc_freq: u64) {
     (base as *mut u32).add(0x380 / 4).write_volatile((hz / 1000) as u32);
 }
 
-// ── I/O APIC ──────────────────────────────────────────────────────
+// -- I/O APIC ------------------------------------------------------
 
 unsafe fn ioapic_init(base: u64) {
     let select = phys_to_virt(base) as *mut u32;
@@ -427,7 +427,7 @@ unsafe fn ioapic_init(base: u64) {
     serial_shared::puts("[s2_mem] I/O APIC all masked\n");
 }
 
-// ── HPET ──────────────────────────────────────────────────────────
+// -- HPET ----------------------------------------------------------
 
 unsafe fn hpet_init(base: u64) {
     let v = phys_to_virt(base) as *mut u64;
@@ -437,7 +437,7 @@ unsafe fn hpet_init(base: u64) {
     serial_shared::dec(period as usize);
     serial_shared::puts(" fs\n");
     // Register offsets (as u64 index): General Config = 0x010 = index 2,
-    // General Interrupt Status = 0x020 = index 4. (Was index 1/2 — the
+    // General Interrupt Status = 0x020 = index 4. (Was index 1/2 -- the
     // 0x008 slot is reserved.)
     let cfg = v.add(2).read_volatile();
     // Enable the main counter but do not claim legacy PIT/RTC routing.
@@ -445,7 +445,7 @@ unsafe fn hpet_init(base: u64) {
     v.add(4).write_volatile(0);
 }
 
-// ── i8042 PS/2 ────────────────────────────────────────────────────
+// -- i8042 PS/2 ----------------------------------------------------
 
 unsafe fn i8042_init() {
     outb(0x64, 0xAD); outb(0x64, 0xA7);
@@ -462,7 +462,7 @@ unsafe fn i8042_init() {
     serial_shared::puts("[s2_mem] i8042 PS/2 ready\n");
 }
 
-// ── Entry point ───────────────────────────────────────────────────
+// -- Entry point ---------------------------------------------------
 
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".text._start")]
@@ -530,7 +530,7 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     serial_shared::hex(pml4_phys);
     serial_shared::puts("\n");
 
-    // 3. Identity-map 0..4 GiB (2048 × 2 MiB huge pages).
+    // 3. Identity-map 0..4 GiB (2048 x 2 MiB huge pages).
     //    ACPI tables, PCI ECAM and device MMIO all live at physical
     //    addresses above 32 MiB (typically just under 4 GiB), and s2
     //    reads them by raw physical address. Mapping only 32 MiB made
@@ -542,7 +542,7 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     }
     serial_shared::puts("[s2_mem] identity-mapped 0..4GB\n");
 
-    // 4. Higher-half mirror: 0..16 GiB → 0xFFFF_8000_0000_0000
+    // 4. Higher-half mirror: 0..16 GiB -> 0xFFFF_8000_0000_0000
     unsafe {
         map_2m_huge(pml4.as_mut_ptr(), HIGH_MEM_BASE, 0x0, 8192,
             PTE_PRESENT | PTE_WRITABLE | PTE_GLOBAL);
@@ -585,14 +585,14 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     // 7. Write ctx.pml4 BEFORE CR3 switch
     ctx.pml4 = pml4_phys;
 
-    // ═══════════════════════════════════════════════════════════════
+    // ===============================================================
     // 8. CRITICAL: Switch to safe stack + CR3 NOW.
     //
     //    After this point, the higher-half mapping is active, so
     //    phys_to_virt() works for MMIO access (LAPIC, IOAPIC, HPET).
     //    The identity map (0..32 MiB) keeps our code accessible.
     //    The safe stack is in .BSS at 0x200000 (identity-mapped).
-    // ═══════════════════════════════════════════════════════════════
+    // ===============================================================
     serial_shared::puts("[s2_mem] switching CR3 → 0x");
     serial_shared::hex(pml4_phys);
     serial_shared::puts("\n");
@@ -602,9 +602,9 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
         asm!("mov cr3, {}", in(reg) pml4_phys, options(nostack));
     }
 
-    // ═══════════════════════════════════════════════════════════════
+    // ===============================================================
     //  NOW ON NEW PAGE TABLES. phys_to_virt() works.
-    // ═══════════════════════════════════════════════════════════════
+    // ===============================================================
     serial_shared::puts("[s2_mem] CR3 switched OK\n");
     // YELLOW rows 16..24: paging switched + framebuffer re-mapped OK.
     s2_bar(ctx, 16, 0xFFFF_FF00);

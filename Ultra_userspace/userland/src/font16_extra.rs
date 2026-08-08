@@ -1,4 +1,4 @@
-// AUTO-GENERADO por toolchain/tools/fontgen — NO editar a mano.
+// AUTO-GENERADO por toolchain/tools/fontgen -- NO editar a mano.
 // Byte Latin-1 de cada glifo extra, en el orden en que estan en
 // font16_data.rs a partir del indice 95.
 [

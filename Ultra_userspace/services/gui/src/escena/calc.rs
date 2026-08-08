@@ -7,12 +7,12 @@ use bmo_userland as bmo;
 
 use super::*;
 
-// ── La calculadora ──────────────────────────────────────────────────────
+// -- La calculadora ------------------------------------------------------
 //
-// La CARA. El cálculo lo hace `cobol/calcgui.bex`, en COBOL, con decimal
-// exacto en centavos. Es la separación que Windows no hace —su calculadora
-// lleva el motor dentro de la app— y es la que permite cambiar la una sin
-// tocar la otra: mañana el motor puede ser Ada y esto no se entera.
+// La CARA. El calculo lo hace `cobol/calcgui.bex`, en COBOL, con decimal
+// exacto en centavos. Es la separacion que Windows no hace --su calculadora
+// lleva el motor dentro de la app-- y es la que permite cambiar la una sin
+// tocar la otra: manana el motor puede ser Ada y esto no se entera.
 
 pub(crate) const CALC_COLS: usize = 4;
 pub(crate) const CALC_ROWS: usize = 5;
@@ -33,11 +33,11 @@ pub(crate) const CALC_TECLAS: [[u8; CALC_COLS]; CALC_ROWS] = [
 ];
 
 /// Estado de la calculadora. Los operandos se guardan como TEXTO, no como
-/// número: quien sabe de números aquí es el COBOL, y convertir dos veces sólo
-/// añade sitios donde perder un decimal.
+/// numero: quien sabe de numeros aqui es el COBOL, y convertir dos veces solo
+/// anade sitios donde perder un decimal.
 pub(crate) struct Calc {
     pub(crate) visible: bool,
-    /// Lo que se está tecleando ahora.
+    /// Lo que se esta tecleando ahora.
     pub(crate) entrada: [u8; 20],
     pub(crate) n: usize,
     /// El operando de la izquierda, ya cerrado.
@@ -45,7 +45,7 @@ pub(crate) struct Calc {
     pub(crate) guardado_n: usize,
     /// 0 = ninguno; 1..4 = + - * /
     pub(crate) op: u8,
-    /// Se lanzó el motor y se espera su respuesta.
+    /// Se lanzo el motor y se espera su respuesta.
     pub(crate) esperando: bool,
 }
 
@@ -76,7 +76,7 @@ impl Calc {
         self.esperando = false;
     }
 
-    /// Cierra el operando de la izquierda y anota qué operación viene.
+    /// Cierra el operando de la izquierda y anota que operacion viene.
     pub(crate) fn operador(&mut self, op: u8) {
         if self.n > 0 {
             self.guardado[..self.n].copy_from_slice(&self.entrada[..self.n]);
@@ -86,8 +86,8 @@ impl Calc {
         self.op = op;
     }
 
-    /// Lo que se enseña en la pantallita: lo que se teclea, o `0` si no hay
-    /// nada — una calculadora en blanco confunde.
+    /// Lo que se ensena en la pantallita: lo que se teclea, o `0` si no hay
+    /// nada -- una calculadora en blanco confunde.
     pub(crate) fn mostrado(&self) -> &[u8] {
         if self.n == 0 {
             b"0"
@@ -97,7 +97,7 @@ impl Calc {
     }
 }
 
-/// Geometría del panel, a la derecha de la caja.
+/// Geometria del panel, a la derecha de la caja.
 pub(crate) struct CalcCaja {
     pub(crate) x: u32,
     pub(crate) y: u32,
@@ -121,7 +121,7 @@ impl CalcCaja {
         }
     }
 
-    /// Rectángulo de la tecla `(fila, col)`.
+    /// Rectangulo de la tecla `(fila, col)`.
     pub(crate) fn boton(&self, fila: usize, col: usize) -> (u32, u32) {
         (
             self.x + CALC_HUECO + col as u32 * (CALC_BOTON + CALC_HUECO),
@@ -129,7 +129,7 @@ impl CalcCaja {
         )
     }
 
-    /// Qué tecla hay bajo `(px, py)`, si hay alguna.
+    /// Que tecla hay bajo `(px, py)`, si hay alguna.
     pub(crate) fn tecla_en(&self, px: u32, py: u32) -> Option<u8> {
         for fila in 0..CALC_ROWS {
             for col in 0..CALC_COLS {
@@ -151,17 +151,17 @@ impl CalcCaja {
     }
 }
 
-/// Cuánto se aclara un botón cuando el puntero está encima.
+/// Cuanto se aclara un boton cuando el puntero esta encima.
 ///
-/// ★ El realce va por SUMA y no por un color aparte, y es a propósito: cada
-/// clase de tecla tiene el suyo —igual, operador, dígito— y una tabla de
-/// colores "de encima" sería el doble de constantes que mantener sincronizadas.
-/// Sumar conserva la familia del botón y sólo dice "éste".
+/// * El realce va por SUMA y no por un color aparte, y es a proposito: cada
+/// clase de tecla tiene el suyo --igual, operador, digito-- y una tabla de
+/// colores "de encima" seria el doble de constantes que mantener sincronizadas.
+/// Sumar conserva la familia del boton y solo dice "este".
 const REALCE: u32 = 0x0020_2830;
 
 fn aclarar(color: u32) -> u32 {
-    // Canal a canal y con tope: sumar sobre el `u32` entero desbordaría de un
-    // componente al siguiente y un botón azul se volvería verde al pasar por
+    // Canal a canal y con tope: sumar sobre el `u32` entero desbordaria de un
+    // componente al siguiente y un boton azul se volveria verde al pasar por
     // encima.
     let r = ((color >> 16) & 0xFF).min(0xFF - ((REALCE >> 16) & 0xFF)) + ((REALCE >> 16) & 0xFF);
     let g = ((color >> 8) & 0xFF).min(0xFF - ((REALCE >> 8) & 0xFF)) + ((REALCE >> 8) & 0xFF);
@@ -175,7 +175,7 @@ pub(crate) fn pintar_calc(p: &bmo::Pantalla, cc: &CalcCaja, c: &Calc, encima: Op
     p.rect(cc.x + 2, cc.y + 2, cc.ancho - 4, cc.alto - 4, CALC_FONDO);
 
     // La pantallita, alineada a la DERECHA como cualquier calculadora: los
-    // números se comparan por la unidad, no por la primera cifra.
+    // numeros se comparan por la unidad, no por la primera cifra.
     p.rect(cc.x + CALC_HUECO, cc.pantalla_y, cc.ancho - CALC_HUECO * 2, 40, CAMPO_FONDO);
     let texto = c.mostrado();
     let ancho_texto = texto.len() as u32 * bmo::GLIFO_ANCHO;
@@ -194,8 +194,8 @@ pub(crate) fn pintar_calc(p: &bmo::Pantalla, cc: &CalcCaja, c: &Calc, encima: Op
                 b'+' | b'-' | b'*' | b'/' | b'C' => CALC_TECLA_OP,
                 _ => CALC_TECLA,
             };
-            // El botón bajo el puntero se aclara. Es la otra mitad de la mano:
-            // el cursor dice "aquí se pulsa" y esto dice "esto de aquí".
+            // El boton bajo el puntero se aclara. Es la otra mitad de la mano:
+            // el cursor dice "aqui se pulsa" y esto dice "esto de aqui".
             let color = if encima == Some(t) { aclarar(base) } else { base };
             p.rect(bx, by, CALC_BOTON, CALC_BOTON, color);
             // La etiqueta, centrada.

@@ -5,15 +5,15 @@
 //! **Quien lee el TOML es `bmo-mods`**, no este modulo. Aqui habia un lector
 //! hecho a mano que partia lineas por `=` e IGNORABA las secciones: metia
 //! `[features]`, `[type_rules]` y `[predefined_macros]` en el mismo saco.
-//! Funcionaba porque ninguna clave se repetia entre secciones — por suerte,
-//! no por diseño. Y llevaba copiada la lista de rutas candidatas que un dia
+//! Funcionaba porque ninguna clave se repetia entre secciones -- por suerte,
+//! no por diseno. Y llevaba copiada la lista de rutas candidatas que un dia
 //! se quedo muerta y dejo el gating cayendo al default en silencio.
 //!
 //! `StandardFeatures` sigue siendo el struct de las once caracteristicas que
 //! el parser consulta a diario, porque preguntarlas por cadena en el camino
 //! caliente no mejora nada. Lo que cambia es que **ya no es la unica forma de
 //! preguntar**: `StandardFeatures::table()` da la tabla entera, y por ahi se
-//! lee cualquier clave que un mod haya añadido sin que este Rust la conozca.
+//! lee cualquier clave que un mod haya anadido sin que este Rust la conozca.
 
 use bmo_mods::{Roots, Standard};
 use std::path::Path;
@@ -72,8 +72,8 @@ pub struct StandardFeatures {
     pub implicit_int: bool,
     pub implicit_function_decl: bool,
     pub return_without_value: bool,
-    /// La tabla entera, si se cargó. Es la puerta a lo que este struct no
-    /// sabe: un mod que añade `mi_extension = true` se lee por aquí sin
+    /// La tabla entera, si se cargo. Es la puerta a lo que este struct no
+    /// sabe: un mod que anade `mi_extension = true` se lee por aqui sin
     /// tocar Rust. Ver `bmo_mods`.
     tabla: Option<Standard>,
 }
@@ -101,13 +101,13 @@ impl StandardFeatures {
     /// Load features from a forge/sem-asm/tables/standards/C/cXX.toml file.
     ///
     /// Se conserva porque tiene llamadores y porque cargar un fichero suelto
-    /// —uno que un tercero acaba de escribir— es legítimo. Por dentro ya no
-    /// parte líneas: delega en el parser de verdad.
+    /// --uno que un tercero acaba de escribir-- es legitimo. Por dentro ya no
+    /// parte lineas: delega en el parser de verdad.
     pub fn load_from_toml(path: &Path) -> Option<Self> {
         let dir = path.parent()?;
         let name = path.file_stem()?.to_str()?;
         // Un fichero suelto se carga tratando su propio directorio como la
-        // raíz: `<dir>/standards/C/<x>.toml` no existe, así que se apunta a
+        // raiz: `<dir>/standards/C/<x>.toml` no existe, asi que se apunta a
         // la abuela para que la ruta relativa cuadre.
         let raiz = dir.parent().and_then(|p| p.parent())?;
         let lang = dir.file_name()?.to_str()?;
@@ -117,11 +117,11 @@ impl StandardFeatures {
 
     /// Carga desde las tablas sem-asm, o desde donde diga `$BMO_MODS`.
     ///
-    /// NOTA HISTÓRICA: las rutas viejas apuntaban a "Semantic_ASM/"
-    /// (directorio que ya no existe tras la reorganización) y el gating caía
+    /// NOTA HISTORICA: las rutas viejas apuntaban a "Semantic_ASM/"
+    /// (directorio que ya no existe tras la reorganizacion) y el gating caia
     /// al default **en silencio**. Ahora el descubrimiento sube desde el cwd
-    /// buscando la raíz del repo, y vive en un solo sitio (`bmo_mods::Roots`)
-    /// en vez de copiado aquí y en `module.rs`.
+    /// buscando la raiz del repo, y vive en un solo sitio (`bmo_mods::Roots`)
+    /// en vez de copiado aqui y en `module.rs`.
     pub fn load_standard(std: CStandard) -> Self {
         let roots = Roots::find();
         match Standard::load(&roots, "C", std.table_name()) {
@@ -133,12 +133,12 @@ impl StandardFeatures {
     /// Traduce la tabla a las once que el parser consulta a diario.
     ///
     /// Cada `unwrap_or` lleva el default del struct, que es C99-ish: un
-    /// estándar que no menciona una característica hereda la base, y eso es
-    /// justo por lo que C89 tiene que apagarlas **explícitamente** en su TOML.
+    /// estandar que no menciona una caracteristica hereda la base, y eso es
+    /// justo por lo que C89 tiene que apagarlas **explicitamente** en su TOML.
     fn from_table(t: Standard) -> Self {
         let d = Self::default();
         Self {
-            // `[features]` — lo que el lenguaje TIENE.
+            // `[features]` -- lo que el lenguaje TIENE.
             line_comments: t.flag("features", "line_comments").unwrap_or(d.line_comments),
             long_long: t.flag("features", "long_long").unwrap_or(d.long_long),
             inline: t.flag("features", "inline").unwrap_or(d.inline),
@@ -151,9 +151,9 @@ impl StandardFeatures {
             mixed_declarations: t
                 .flag("features", "mixed_declarations_and_code")
                 .unwrap_or(d.mixed_declarations),
-            // `[type_rules]` — lo que el lenguaje PERMITE. Son otra sección y
+            // `[type_rules]` -- lo que el lenguaje PERMITE. Son otra seccion y
             // ahora se leen de ella: antes daba igual porque el lector era
-            // plano, y habría bastado una clave repetida para cruzarlas.
+            // plano, y habria bastado una clave repetida para cruzarlas.
             implicit_int: t.rule("implicit_int").unwrap_or(d.implicit_int),
             implicit_function_decl: t
                 .rule("implicit_function_decl")
@@ -165,15 +165,15 @@ impl StandardFeatures {
         }
     }
 
-    /// La tabla de la que salió esto, si salió de alguna.
+    /// La tabla de la que salio esto, si salio de alguna.
     ///
     /// Es la puerta de los mods: `feats.table().map(|t| t.on("mi_extension"))`
-    /// lee una clave que ningún Rust de este repo conoce.
+    /// lee una clave que ningun Rust de este repo conoce.
     pub fn table(&self) -> Option<&Standard> {
         self.tabla.as_ref()
     }
 
-    /// ¿Está encendida esta característica? Pregunta por nombre, para lo que
+    /// Esta encendida esta caracteristica? Pregunta por nombre, para lo que
     /// el struct no tiene campo. Sin tabla cargada, `false`.
     pub fn on(&self, feature: &str) -> bool {
         self.tabla.as_ref().is_some_and(|t| t.on(feature))
@@ -187,8 +187,8 @@ mod tests {
     #[test]
     fn c89_gating_loads_from_real_tables() {
         // Prueba que load_standard ENCUENTRA las tablas sem-asm de verdad.
-        // C89: line_comments=false difiere del default (true) → si esto pasa,
-        // el TOML se leyó (con la ruta muerta de antes, caía al default en silencio).
+        // C89: line_comments=false difiere del default (true) -> si esto pasa,
+        // el TOML se leyo (con la ruta muerta de antes, caia al default en silencio).
         let f = StandardFeatures::load_standard(CStandard::C89);
         assert!(!f.line_comments, "C89 no tiene // (si esto falla, el TOML no cargó)");
         assert!(!f.long_long, "C89 no tiene long long");

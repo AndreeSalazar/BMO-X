@@ -1,10 +1,10 @@
-//! `BmoInstant` — punto en el tiempo, monotónico, ns desde boot.
+//! `BmoInstant` -- punto en el tiempo, monotonico, ns desde boot.
 //!
 //! Backend: TSC (Time Stamp Counter) del Zen 3, escalado a ns por el HPET o
-//! invariant-TSC frequency leído al boot. Resolución típica: ~0.3 ns por tick.
-//! Latencia de `now()`: ~7 ciclos (≈ 2 ns en el 5600X a 3.7 GHz base).
+//! invariant-TSC frequency leido al boot. Resolucion tipica: ~0.3 ns por tick.
+//! Latencia de `now()`: ~7 ciclos (~= 2 ns en el 5600X a 3.7 GHz base).
 //!
-//! ## Inicialización
+//! ## Inicializacion
 //!
 //! `BmoInstant::now()` solo retorna `ZERO` hasta que el kernel llama a
 //! `init(timestamp, tsc_freq)`. Una vez inicializado, todos los `now()`
@@ -17,7 +17,7 @@ use crate::bmo_abi::values::time::duration::BmoDuration;
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BmoInstant {
-    /// Nanosegundos desde el boot (no Unix epoch). Monotónico, jamás retrocede.
+    /// Nanosegundos desde el boot (no Unix epoch). Monotonico, jamas retrocede.
     pub ns_since_boot: bx_u64,
 }
 
@@ -80,9 +80,9 @@ impl BmoInstant {
     }
 }
 
-// ─── Init state — tsc_freq, tsc_at_boot, fixed-point multiplier ──────
+// --- Init state -- tsc_freq, tsc_at_boot, fixed-point multiplier ------
 //
-// Para evitar división entera en `now()` (cuesta ~20+ ciclos), precalculamos
+// Para evitar division entera en `now()` (cuesta ~20+ ciclos), precalculamos
 // un multiplicador de punto fijo: ns_per_tick_num / ns_per_tick_den.
 //
 // `ns_per_tick = 1_000_000_000 / tsc_freq_hz` (en punto fijo, Q32.32).
@@ -95,7 +95,7 @@ static INITIALIZED: BmoAtomicU64 = BmoAtomicU64::new(0);
 const Q32_SHIFT: u32 = 32;
 
 /// Inicializa el backend de tiempo. Llamar UNA vez durante el boot del
-/// kernel, después de calibrar el TSC.
+/// kernel, despues de calibrar el TSC.
 ///
 /// - `tsc_at_boot`: valor de TSC en el momento de init.
 pub fn init(tsc_at_boot: u64, tsc_freq_hz: u64) {
@@ -111,7 +111,7 @@ pub fn init(tsc_at_boot: u64, tsc_freq_hz: u64) {
     INITIALIZED.store(1, MemOrder::Release);
 }
 
-/// Indica si el backend de tiempo está inicializado.
+/// Indica si el backend de tiempo esta inicializado.
 #[inline(always)]
 pub fn is_initialized() -> bool {
     INITIALIZED.load(MemOrder::Acquire) != 0
@@ -134,7 +134,7 @@ pub fn tsc_to_ns(tsc: u64) -> u64 {
     let delta = tsc.wrapping_sub(tsc_at_boot);
     // ns = (delta * xfp) >> 32
     // Para evitar overflow 64-bit con delta muy grandes, dividimos primero.
-    // delta_max = 2^64, xfp_max = 2^32, product = 2^96 → overflow.
+    // delta_max = 2^64, xfp_max = 2^32, product = 2^96 -> overflow.
     // Estrategia: si delta > 2^32, dividirlo por 2^16 primero, xfp por 2^16.
     let (d, x) = if delta > (1u64 << 32) {
         (delta >> 16, xfp >> 16)
@@ -157,7 +157,7 @@ pub fn ns_to_tsc(ns: u64) -> u64 {
     tsc_at_boot.wrapping_add(tsc)
 }
 
-/// Backoff busy-wait usando TSC. Aproximación basada en freq calibrada.
+/// Backoff busy-wait usando TSC. Aproximacion basada en freq calibrada.
 #[inline]
 pub fn sleep(d: BmoDuration) {
     let start = rdtsc();

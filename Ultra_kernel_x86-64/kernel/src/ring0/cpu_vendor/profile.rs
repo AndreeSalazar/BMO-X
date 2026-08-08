@@ -3,7 +3,7 @@
 //!
 //! A profile owns everything the kernel must know about one exact CPU:
 //! identity, topology/cache init, TSC calibration, MSR setup and errata.
-//! The rest of Ring 0 consumes only this descriptor — it never names a
+//! The rest of Ring 0 consumes only this descriptor -- it never names a
 //! vendor module directly.
 //!
 //! Adding a CPU:
@@ -13,25 +13,25 @@
 //!   3. Point `active()` at it (compile-time; boot-time selection can
 //!      layer on later without changing this contract).
 
-/// **Cuántos núcleos hay**, dicho sin nombrar a ningún fabricante.
+/// **Cuantos nucleos hay**, dicho sin nombrar a ningun fabricante.
 ///
-/// ★ Existe porque el contrato de arriba estaba ROTO en tres sitios: `informe`,
+/// * Existe porque el contrato de arriba estaba ROTO en tres sitios: `informe`,
 /// el shell y el bring-up de SMP llamaban a
 /// `cpu_vendor::ryzen_5_5600x::bmo_cpu::topology()` **por su nombre**, que es
-/// exactamente lo que la cabecera de este fichero prohíbe. Compilaba, funcionaba
-/// y dejaba tres sitios que habría que editar para estrenar otro CPU — o sea, la
-/// definición de lo que el perfil existe para evitar.
+/// exactamente lo que la cabecera de este fichero prohibe. Compilaba, funcionaba
+/// y dejaba tres sitios que habria que editar para estrenar otro CPU -- o sea, la
+/// definicion de lo que el perfil existe para evitar.
 ///
-/// La estructura del fabricante puede tener veinte campos más; aquí sólo suben
+/// La estructura del fabricante puede tener veinte campos mas; aqui solo suben
 /// los cuatro que Ring 0 necesita para repartir trabajo. Ver `docs/SMP_MAESTRO.md`.
 #[derive(Clone, Copy, Debug)]
 pub struct Nucleos {
-    /// Núcleos FÍSICOS. Es el número que manda para repartir cómputo.
+    /// Nucleos FISICOS. Es el numero que manda para repartir computo.
     pub nucleos: u32,
-    /// Hilos lógicos. Con SMT son el doble, y **no son el doble de potencia**:
-    /// dos hilos del mismo núcleo comparten L1, L2 y unidades de ejecución.
+    /// Hilos logicos. Con SMT son el doble, y **no son el doble de potencia**:
+    /// dos hilos del mismo nucleo comparten L1, L2 y unidades de ejecucion.
     pub hilos: u32,
-    /// Grupos que comparten L3. En un 5600X es **1**; en un Zen 2 son 2, y ahí
+    /// Grupos que comparten L3. En un 5600X es **1**; en un Zen 2 son 2, y ahi
     /// hablar entre grupos cuesta un viaje por el Infinity Fabric.
     pub ccx: u32,
     /// Chiplets.
@@ -53,48 +53,48 @@ pub struct CpuProfile {
     /// `phase::main` on the BSP.
     pub init: fn(),
 
-    // ── Lo que este perfil ESPERA del estado extendido (XSAVE) ────────────
+    // -- Lo que este perfil ESPERA del estado extendido (XSAVE) ------------
     //
-    // ★ Esto es una EXPECTATIVA, jamás la fuente de la verdad. El tamaño del
-    // área de XSAVE y qué componentes existen se le preguntan SIEMPRE al
-    // silicio (CPUID hoja 0xD); lo de aquí solo sirve para poder AVISAR
-    // cuando el CPU que hay delante no es el que el perfil creía.
+    // * Esto es una EXPECTATIVA, jamas la fuente de la verdad. El tamano del
+    // area de XSAVE y que componentes existen se le preguntan SIEMPRE al
+    // silicio (CPUID hoja 0xD); lo de aqui solo sirve para poder AVISAR
+    // cuando el CPU que hay delante no es el que el perfil creia.
     //
     // Es la regla de la casa aplicada al procesador: se hardcodean los
     // CONTRATOS, se le preguntan los HECHOS al hardware. Un perfil que
-    // dictara el tamaño del área sería un kernel que se rompe —en silencio y
-    // corrompiendo registros— el día que alguien enchufe otro CPU.
+    // dictara el tamano del area seria un kernel que se rompe --en silencio y
+    // corrompiendo registros-- el dia que alguien enchufe otro CPU.
     /// Componentes que se espera que el CPU **soporte** (bit 0 x87, 1 SSE,
     /// 2 AVX...). Se contrasta con `CPUID.D.0:EDX:EAX`.
     pub xsave_componentes: u64,
-    /// Componentes que se espera que estén **HABILITADOS** en `XCR0`.
+    /// Componentes que se espera que esten **HABILITADOS** en `XCR0`.
     ///
-    /// ★ No es lo mismo que `xsave_componentes`, y confundirlos se paga caro:
+    /// * No es lo mismo que `xsave_componentes`, y confundirlos se paga caro:
     /// *soportado* es lo que el silicio sabe hacer, *habilitado* es lo que
-    /// alguien encendió. Soportado ⊇ habilitado, siempre.
+    /// alguien encendio. Soportado superset of habilitado, siempre.
     ///
     /// Este campo existe porque **`XCR0` no lo decide el kernel**. En esta
-    /// máquina el firmware ya lo dejó puesto antes de que BMO arrancara (ver
-    /// la cabecera de `trap.rs`: AVX venía habilitado de fábrica). O sea que es
-    /// un número que llega de fuera, que cambia el tamaño del área de contexto,
-    /// y que hasta ahora no vigilaba nadie — una actualización de BIOS podía
-    /// moverlo sin que saliera una sola línea.
+    /// maquina el firmware ya lo dejo puesto antes de que BMO arrancara (ver
+    /// la cabecera de `trap.rs`: AVX venia habilitado de fabrica). O sea que es
+    /// un numero que llega de fuera, que cambia el tamano del area de contexto,
+    /// y que hasta ahora no vigilaba nadie -- una actualizacion de BIOS podia
+    /// moverlo sin que saliera una sola linea.
     ///
-    /// Y desde que existe la guardia de cabecera de los epílogos, `XCR0` además
-    /// **sostiene una comprobación en el camino más caliente del kernel**. Un
-    /// dato con ese peso no puede ser el único del perfil que nadie contrasta.
+    /// Y desde que existe la guardia de cabecera de los epilogos, `XCR0` ademas
+    /// **sostiene una comprobacion en el camino mas caliente del kernel**. Un
+    /// dato con ese peso no puede ser el unico del perfil que nadie contrasta.
     ///
     /// Sigue siendo EXPECTATIVA, como los otros dos: si el silicio dice otra
     /// cosa, manda el silicio y el verificador lo grita.
     pub xsave_xcr0: u64,
-    /// Bytes del área de XSAVE que se esperan para esos componentes.
+    /// Bytes del area de XSAVE que se esperan para esos componentes.
     pub xsave_area: u32,
 
-    /// Cuántos núcleos e hilos hay, ya detectados por `init`.
+    /// Cuantos nucleos e hilos hay, ya detectados por `init`.
     ///
-    /// ★ Es un puntero a función y no un número: los núcleos **se le preguntan
-    /// al silicio**, no se declaran. Es la misma regla que gobierna el área de
-    /// XSAVE — se hardcodean los contratos, se preguntan los hechos.
+    /// * Es un puntero a funcion y no un numero: los nucleos **se le preguntan
+    /// al silicio**, no se declaran. Es la misma regla que gobierna el area de
+    /// XSAVE -- se hardcodean los contratos, se preguntan los hechos.
     pub nucleos: fn() -> Option<Nucleos>,
 }
 

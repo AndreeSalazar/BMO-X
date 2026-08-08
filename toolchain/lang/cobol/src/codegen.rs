@@ -11,29 +11,29 @@ use crate::edicion::Plantilla;
 type Result<T> = core::result::Result<T, CobolError>;
 
 // BMO x86-64 SYSCALL argument registers: RDI, RSI, RDX, R10, R8, R9.
-// RCX lo pisa el CPU con la dirección de retorno del usuario. Antes esto era
+// RCX lo pisa el CPU con la direccion de retorno del usuario. Antes esto era
 // la tabla REG_MOV de bytes a mano; ahora el mov reg,rax lo emite el encoder
-// sem-asm (mismos bytes, leídos de la tabla TOML).
+// sem-asm (mismos bytes, leidos de la tabla TOML).
 const ARG_REGS: [Reg; 6] = [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::R10, Reg::R8, Reg::R9];
 
 pub fn compile_to_bef_bytes(program: &CobolProgram) -> Result<Vec<u8>> {
-    // ★ Sin PROCEDURE DIVISION no hay programa.
+    // * Sin PROCEDURE DIVISION no hay programa.
     //
-    // Antes, un fichero VACÍO —o uno con sólo WORKING-STORAGE— producía un
-    // `.bex` de 4 192 bytes que se escribía sin quejarse. El punto de entrada
-    // apuntaba al principio de una sección de código vacía.
+    // Antes, un fichero VACIO --o uno con solo WORKING-STORAGE-- producia un
+    // `.bex` de 4 192 bytes que se escribia sin quejarse. El punto de entrada
+    // apuntaba al principio de una seccion de codigo vacia.
     //
-    // Es la misma clase de fallo que tenía C (un fichero vacío daba un BEF de
+    // Es la misma clase de fallo que tenia C (un fichero vacio daba un BEF de
     // 8 240 bytes sin `main`) y se arregla por el mismo motivo: un binario con
-    // punto de entrada inventado falla en el metal y no en la compilación, que
-    // es donde se puede leer el porqué.
+    // punto de entrada inventado falla en el metal y no en la compilacion, que
+    // es donde se puede leer el porque.
     //
-    // Se comprueba aquí y no en el parser a propósito: el parser puede leer
-    // legítimamente un programa sin sentencias mientras construye; quien no
-    // puede entregar un binario vacío es el que lo escribe.
-    // ★ "Sin nada que ejecutar" son las DOS listas vacías, no sólo la primera:
-    // desde que hay párrafos, un programa puede tener el cuerpo principal vacío
-    // y todo el trabajo dentro de ellos — que es una de las dos formas
+    // Se comprueba aqui y no en el parser a proposito: el parser puede leer
+    // legitimamente un programa sin sentencias mientras construye; quien no
+    // puede entregar un binario vacio es el que lo escribe.
+    // * "Sin nada que ejecutar" son las DOS listas vacias, no solo la primera:
+    // desde que hay parrafos, un programa puede tener el cuerpo principal vacio
+    // y todo el trabajo dentro de ellos -- que es una de las dos formas
     // corrientes de escribirlo.
     let sin_parrafos_con_algo = program.parrafos.iter().all(|p| p.statements.is_empty());
     if program.statements.is_empty() && sin_parrafos_con_algo {
@@ -58,105 +58,105 @@ struct Codegen {
     call_relocs: Vec<CallReloc>,
     function_offsets: HashMap<String, usize>,
     var_offsets: HashMap<String, i32>,
-    /// Escala decimal por variable (dígitos tras la V del PIC). El alma
-    /// bancaria: un `PIC 9(3)V99` tiene escala 2 → guarda centavos.
+    /// Escala decimal por variable (digitos tras la V del PIC). El alma
+    /// bancaria: un `PIC 9(3)V99` tiene escala 2 -> guarda centavos.
     var_scales: HashMap<String, u32>,
-    /// Plantilla de edición por variable, para las PIC de PRESENTACIÓN.
-    /// Sólo cambia cómo se ESCRIBE: el dato sigue siendo el mismo entero
-    /// escalado y la aritmética no se entera de que existe.
+    /// Plantilla de edicion por variable, para las PIC de PRESENTACION.
+    /// Solo cambia como se ESCRIBE: el dato sigue siendo el mismo entero
+    /// escalado y la aritmetica no se entera de que existe.
     var_edicion: HashMap<String, Plantilla>,
-    /// Las variables `COMP-3`: cuántos bytes ocupa el empaquetado y si su PIC
+    /// Las variables `COMP-3`: cuantos bytes ocupa el empaquetado y si su PIC
     /// llevaba `S`.
     ///
-    /// A diferencia de la edición, esto SÍ cambia el dato: el campo no guarda
+    /// A diferencia de la edicion, esto SI cambia el dato: el campo no guarda
     /// un entero de 64 bits, guarda nibbles. Por eso lo miran `load_var` y
-    /// `store_var` —las dos únicas puertas a la memoria de una variable— y no
-    /// se entera nadie más. La aritmética sigue viendo el entero escalado de
-    /// siempre, que es lo que la mantiene exacta y ajena a la representación.
+    /// `store_var` --las dos unicas puertas a la memoria de una variable-- y no
+    /// se entera nadie mas. La aritmetica sigue viendo el entero escalado de
+    /// siempre, que es lo que la mantiene exacta y ajena a la representacion.
     var_packed: HashMap<String, (usize, bool)>,
-    /// La PIC ya analizada de cada dato. La necesita el ÁREA: para escribir un
-    /// campo zonado hay que saber cuántos dígitos declara y si lleva `S`, y eso
+    /// La PIC ya analizada de cada dato. La necesita el AREA: para escribir un
+    /// campo zonado hay que saber cuantos digitos declara y si lleva `S`, y eso
     /// no se puede sacar de la escala.
     pic_fields: HashMap<String, crate::pic::PicField>,
     /// Los ficheros de `FILE-CONTROL`, por nombre.
     files: HashMap<String, crate::ast::CobolFile>,
-    /// Dónde vive el handle de cada fichero: una ranura de pila sin nombre en
+    /// Donde vive el handle de cada fichero: una ranura de pila sin nombre en
     /// COBOL. Entre el `OPEN` y el `CLOSE` pasa el programa entero, y
     /// cualquier `DISPLAY` hace un `syscall` que destruye medio banco de
-    /// registros — así que un registro no vale.
+    /// registros -- asi que un registro no vale.
     file_handles: HashMap<String, i32>,
-    /// Y su ESTADO: la ranura donde el último `READ` dejó "hubo registro".
+    /// Y su ESTADO: la ranura donde el ultimo `READ` dejo "hubo registro".
     ///
-    /// Va en la pila por la misma razón que el handle, y con una razón de más:
-    /// entre leer y decidir la rama pasa la conversión del registro, y
+    /// Va en la pila por la misma razon que el handle, y con una razon de mas:
+    /// entre leer y decidir la rama pasa la conversion del registro, y
     /// `fmt::parse_decimal_scaled` usa `r10` y `r11` para su propio recuento.
     /// Guardar la bandera en un registro caller-saved daba un `AT END` que
-    /// saltaba con el fichero LLENO — y sólo se notaba si la PIC no tenía
+    /// saltaba con el fichero LLENO -- y solo se notaba si la PIC no tenia
     /// decimales, porque con `V99` el `r11` acababa valiendo 1 de casualidad.
     file_estado: HashMap<String, i32>,
-    /// De qué fichero es cada registro. Es lo que hace que `WRITE SALDO` sepa
-    /// a dónde va sin que nadie se lo diga.
+    /// De que fichero es cada registro. Es lo que hace que `WRITE SALDO` sepa
+    /// a donde va sin que nadie se lo diga.
     record_owner: HashMap<String, i32>,
-    /// Las TABLAS (`OCCURS`): cuántos elementos y cuántos bytes ocupa cada uno.
+    /// Las TABLAS (`OCCURS`): cuantos elementos y cuantos bytes ocupa cada uno.
     ///
-    /// El paso es el mismo hueco alineado que se le daría al dato suelto, así
-    /// la regla de reparto de la pila es UNA: cada elemento vive donde viviría
-    /// él solo. Un elemento y un dato suelto se cargan con el mismo `mov`.
+    /// El paso es el mismo hueco alineado que se le daria al dato suelto, asi
+    /// la regla de reparto de la pila es UNA: cada elemento vive donde viviria
+    /// el solo. Un elemento y un dato suelto se cargan con el mismo `mov`.
     tablas: HashMap<String, (u32, i32)>,
-    /// Los NOMBRES DE CONDICIÓN (nivel 88): apodo → (dato del que cuelga,
-    /// valor con el que se compara). No ocupan memoria: son una comparación
+    /// Los NOMBRES DE CONDICION (nivel 88): apodo -> (dato del que cuelga,
+    /// valor con el que se compara). No ocupan memoria: son una comparacion
     /// con nombre, y por eso viven en un mapa y no en la pila.
     cond_88: HashMap<String, (String, Vec<crate::ast::Valor88>)>,
-    /// La etiqueta del bloque "subíndice fuera de rango" de cada tabla.
+    /// La etiqueta del bloque "subindice fuera de rango" de cada tabla.
     ///
-    /// Uno por tabla y no uno por acceso: el bloque termina el programa, así
+    /// Uno por tabla y no uno por acceso: el bloque termina el programa, asi
     /// que se llega por `jmp` y nadie vuelve. Cada acceso cuesta doce bytes
     /// (un `cmp` y un `jae`) en vez de arrastrar el mensaje entero.
     oob_labels: HashMap<String, u32>,
     next_label: u32,
-    /// Offset donde quedó fijada cada etiqueta.
+    /// Offset donde quedo fijada cada etiqueta.
     label_offsets: HashMap<u32, usize>,
     /// Saltos pendientes: (offset del campo rel32, etiqueta destino).
     ///
-    /// Esto es lo que faltaba y hacía que el flujo de control fuera una
-    /// mentira: antes se emitían `jcc` con desplazamiento 0 —o sea, "saltar
-    /// a la instrucción siguiente"— y nadie los parcheaba nunca. El `IF`
-    /// ejecutaba las dos ramas y el `PERFORM` no repetía nada, pero el BEF
+    /// Esto es lo que faltaba y hacia que el flujo de control fuera una
+    /// mentira: antes se emitian `jcc` con desplazamiento 0 --o sea, "saltar
+    /// a la instruccion siguiente"-- y nadie los parcheaba nunca. El `IF`
+    /// ejecutaba las dos ramas y el `PERFORM` no repetia nada, pero el BEF
     /// compilaba y validaba igual.
     jump_fixups: Vec<(usize, u32)>,
-    /// La ranura de pila donde vive "en qué párrafo hay que volver".
+    /// La ranura de pila donde vive "en que parrafo hay que volver".
     ///
-    /// `None` = el programa no tiene párrafos y no se reserva nada. Ver
-    /// `emit_parrafos` para por qué un número en memoria y no un `ret` a secas.
+    /// `None` = el programa no tiene parrafos y no se reserva nada. Ver
+    /// `emit_parrafos` para por que un numero en memoria y no un `ret` a secas.
     perform_exit: Option<i32>,
-    /// La disposición de los registros: qué byte ocupa cada campo dentro de su
+    /// La disposicion de los registros: que byte ocupa cada campo dentro de su
     /// `01`. Ver `registro.rs`.
     disposicion: crate::registro::Disposicion,
-    /// El ÁREA DE REGISTRO de cada `01` que es un grupo: la ranura de pila
+    /// El AREA DE REGISTRO de cada `01` que es un grupo: la ranura de pila
     /// donde viven sus bytes.
     ///
-    /// Es el camino B de `PLAN_BANCA.md` §1.0: el área es la representación
-    /// EXTERNA —lo que va y viene del disco— y cada campo conserva además su
-    /// ranura de trabajo de 64 bits. La traducción entre las dos vive
+    /// Es el camino B de `PLAN_BANCA.md` section 1.0: el area es la representacion
+    /// EXTERNA --lo que va y viene del disco-- y cada campo conserva ademas su
+    /// ranura de trabajo de 64 bits. La traduccion entre las dos vive
     /// exactamente en los puntos donde el registro cruza, que es lo que dice
-    /// COBOL: el área sólo vale entre un `READ` y el siguiente.
+    /// COBOL: el area solo vale entre un `READ` y el siguiente.
     areas: HashMap<String, i32>,
-    /// ¿Se está emitiendo DENTRO de un párrafo?
+    /// Se esta emitiendo DENTRO de un parrafo?
     ///
-    /// Lo mira `GO TO`: aquí un párrafo es una subrutina a la que se entra por
-    /// `call`, así que saltar dentro de una desde el cuerpo principal dejaría el
-    /// `ret` del final sin dirección a la que volver.
+    /// Lo mira `GO TO`: aqui un parrafo es una subrutina a la que se entra por
+    /// `call`, asi que saltar dentro de una desde el cuerpo principal dejaria el
+    /// `ret` del final sin direccion a la que volver.
     en_parrafo: bool,
-    /// Los párrafos por nombre → su número de orden (1..n). El **orden manda**:
-    /// un `PERFORM A THRU B` ejecuta todo lo que hay entre los dos, así que
-    /// comparar índices es lo que dice si el rango tiene sentido.
+    /// Los parrafos por nombre -> su numero de orden (1..n). El **orden manda**:
+    /// un `PERFORM A THRU B` ejecuta todo lo que hay entre los dos, asi que
+    /// comparar indices es lo que dice si el rango tiene sentido.
     parrafos: HashMap<String, u32>,
     /// Errores detectados durante la emision (expresiones malformadas).
     /// Se acumulan y se reportan al final en vez de emitir codigo que
     /// calcula cualquier cosa.
     errors: Vec<CobolError>,
     stack_size: i32,
-    /// Tabla de instrucciones sem-asm (opcodes leídos de la TOML).
+    /// Tabla de instrucciones sem-asm (opcodes leidos de la TOML).
     isa: Instructions,
 }
 
@@ -195,21 +195,21 @@ impl Codegen {
     }
 
     /// Escala decimal de una variable (0 = entero / no declarada).
-    /// La escala de un dato — y de un elemento de tabla es la de su tabla: el
-    /// `OCCURS` repite el campo, no cambia dónde cae la coma.
+    /// La escala de un dato -- y de un elemento de tabla es la de su tabla: el
+    /// `OCCURS` repite el campo, no cambia donde cae la coma.
     fn var_scale(&self, name: &str) -> u32 {
         *self.var_scales.get(&Self::nombre_base(name)).unwrap_or(&0)
     }
 
     /// Convierte un literal COBOL a su ENTERO escalado por `scale`. Es el
-    /// corazón del decimal exacto: `"10.05"` con escala 2 → `1005` centavos;
-    /// `"3.2"` → `320`; `"7"` → `700`. Trunca los decimales sobrantes (el
+    /// corazon del decimal exacto: `"10.05"` con escala 2 -> `1005` centavos;
+    /// `"3.2"` -> `320`; `"7"` -> `700`. Trunca los decimales sobrantes (el
     /// default de COBOL sin `ROUNDED`). Un entero con escala 0 queda igual.
     ///
     /// El signo se aplica al final. Antes se quitaba con `trim_start_matches`
-    /// y no se volvía a poner nunca: `MOVE -120.00 TO SALDO` guardaba +12000
-    /// y un descubierto aparecía en verde. La aritmética de abajo ya es con
-    /// signo (`idiv`, `jl`/`jg`), así que el complemento a dos vale tal cual.
+    /// y no se volvia a poner nunca: `MOVE -120.00 TO SALDO` guardaba +12000
+    /// y un descubierto aparecia en verde. La aritmetica de abajo ya es con
+    /// signo (`idiv`, `jl`/`jg`), asi que el complemento a dos vale tal cual.
     fn scaled_imm(lit: &str, scale: u32) -> u64 {
         let t = lit.trim();
         let negativo = t.starts_with('-');
@@ -240,19 +240,19 @@ impl Codegen {
 
     /// Igual, pero aplicando el modo a los decimales que no caben.
     ///
-    /// Se resuelve **al compilar**, con la misma regla que el código emitido:
+    /// Se resuelve **al compilar**, con la misma regla que el codigo emitido:
     /// `bmo_lower::redondeo::dividir_en_rust` es la hermana de `dividir`, y hay
     /// un test que las compara valor a valor. Un literal nunca llega a
-    /// ejecutarse — se convierte en un inmediato antes— así que si las dos
-    /// reglas divergieran, `ADD 1.005` daría una cosa y `ADD IMPORTE` otra con
-    /// el mismo número dentro.
+    /// ejecutarse -- se convierte en un inmediato antes-- asi que si las dos
+    /// reglas divergieran, `ADD 1.005` daria una cosa y `ADD IMPORTE` otra con
+    /// el mismo numero dentro.
     fn load_scaled_imm_redondeado(&mut self, lit: &str, scale: u32, redondeo: Redondeo) {
         let v = if redondeo == Redondeo::Truncar {
             Self::scaled_imm(lit, scale)
         } else {
-            // Un dígito de más, y luego la regla. Es la única forma de saber si
-            // había que subir: con la escala justa, el dígito que lo decide ya
-            // se tiró.
+            // Un digito de mas, y luego la regla. Es la unica forma de saber si
+            // habia que subir: con la escala justa, el digito que lo decide ya
+            // se tiro.
             let con_uno_mas = Self::scaled_imm(lit, scale + 1) as i64;
             bmo_lower::redondeo::dividir_en_rust(con_uno_mas, 10, redondeo) as u64
         };
@@ -268,7 +268,7 @@ impl Codegen {
 
     fn fresh_label(&mut self) -> u32 { let l = self.next_label; self.next_label += 1; l }
 
-    /// Fija una etiqueta en la posición actual del código.
+    /// Fija una etiqueta en la posicion actual del codigo.
     fn bind_label(&mut self, label: u32) {
         let here = self.code.len();
         self.label_offsets.insert(label, here);
@@ -285,8 +285,8 @@ impl Codegen {
     /// `0x85`=jne, `0x8C`=jl, `0x8D`=jge, `0x8E`=jle, `0x8F`=jg).
     ///
     /// Siempre rel32: el cuerpo de un `PERFORM` o de un `IF` puede crecer
-    /// más allá de los 127 bytes de un rel8, y un salto que se desborda en
-    /// silencio es peor que uno largo de más.
+    /// mas alla de los 127 bytes de un rel8, y un salto que se desborda en
+    /// silencio es peor que uno largo de mas.
     fn emit_jcc(&mut self, cc: u8, label: u32) {
         self.code.extend_from_slice(&[0x0F, cc]);
         self.jump_fixups.push((self.code.len(), label));
@@ -307,11 +307,11 @@ impl Codegen {
         }
     }
 
-    /// ¿Este nombre es un dato declarado, o un literal?
+    /// Este nombre es un dato declarado, o un literal?
     ///
-    /// Es la pregunta que el descenso nunca hacía: todo operando se trataba
-    /// como literal, así que `ADD PRECIO TO TOTAL` sumaba cero (el parseo
-    /// numérico de "PRECIO" fallaba y caía a `unwrap_or(0)`).
+    /// Es la pregunta que el descenso nunca hacia: todo operando se trataba
+    /// como literal, asi que `ADD PRECIO TO TOTAL` sumaba cero (el parseo
+    /// numerico de "PRECIO" fallaba y caia a `unwrap_or(0)`).
     fn is_variable(&self, name: &str) -> bool {
         match Self::subindice(name) {
             Some((base, _)) => self.var_offsets.contains_key(&base),
@@ -319,18 +319,18 @@ impl Codegen {
         }
     }
 
-    // ── TABLAS (`OCCURS`) ────────────────────────────────────────────────
+    // -- TABLAS (`OCCURS`) ------------------------------------------------
     //
     // Un elemento de tabla se escribe `TOTAL(I)` y se guarda como cualquier
-    // otro dato: un entero escalado en un hueco de la pila. Lo único que
-    // cambia es que la DIRECCIÓN se calcula, y por eso todo pasa por los
+    // otro dato: un entero escalado en un hueco de la pila. Lo unico que
+    // cambia es que la DIRECCION se calcula, y por eso todo pasa por los
     // mismos cuatro sitios que un dato suelto (`is_variable`, `var_scale`,
-    // `load_var`, `store_var`). Así `MOVE`, `ADD`, `IF` y `DISPLAY` heredan los
-    // subíndices sin tocar ni una línea de sus emisores.
+    // `load_var`, `store_var`). Asi `MOVE`, `ADD`, `IF` y `DISPLAY` heredan los
+    // subindices sin tocar ni una linea de sus emisores.
 
-    /// Parte `TOTAL(I)` en `("TOTAL", "I")`. `None` si no lleva subíndice.
+    /// Parte `TOTAL(I)` en `("TOTAL", "I")`. `None` si no lleva subindice.
     ///
-    /// El subíndice puede ser un literal o el nombre de un dato — que es como
+    /// El subindice puede ser un literal o el nombre de un dato -- que es como
     /// COBOL recorre una tabla, con la variable del bucle.
     fn subindice(name: &str) -> Option<(String, String)> {
         let abre = name.find('(')?;
@@ -346,18 +346,18 @@ impl Codegen {
         Some((base, idx))
     }
 
-    /// El nombre sin subíndice — para preguntar por la escala o la edición, que
+    /// El nombre sin subindice -- para preguntar por la escala o la edicion, que
     /// son de la tabla entera y no de un elemento.
     fn nombre_base(name: &str) -> String {
         Self::subindice(name).map(|(b, _)| b).unwrap_or_else(|| name.to_string())
     }
 
-    /// La plantilla de edición del dato, mirando por su nombre base.
+    /// La plantilla de edicion del dato, mirando por su nombre base.
     fn edicion_de(&self, name: &str) -> Option<Plantilla> {
         self.var_edicion.get(&Self::nombre_base(name)).cloned()
     }
 
-    /// Deja en `rcx` la DIRECCIÓN del elemento, o `None` si algo no cuadra.
+    /// Deja en `rcx` la DIRECCION del elemento, o `None` si algo no cuadra.
     ///
     /// Ensucia `rax`, `rcx` y `rdx`. Los llamantes que traigan un valor vivo en
     /// `rax` lo apilan antes: eso es cosa de `store_var`.
@@ -375,10 +375,10 @@ impl Codegen {
             return None;
         };
 
-        // ── El subíndice literal se resuelve al COMPILAR ──
+        // -- El subindice literal se resuelve al COMPILAR --
         //
-        // Es el caso corriente (`TOTAL(1)`) y sale gratis: ni multiplicación ni
-        // comprobación en ejecución. Y si se sale de la tabla, no compila: un
+        // Es el caso corriente (`TOTAL(1)`) y sale gratis: ni multiplicacion ni
+        // comprobacion en ejecucion. Y si se sale de la tabla, no compila: un
         // `TOTAL(13)` sobre doce elementos es un error del programa, no una
         // desgracia que descubrir de noche.
         if let Ok(fijo) = idx.parse::<i64>() {
@@ -399,7 +399,7 @@ impl Codegen {
             return Some(());
         }
 
-        // ── El subíndice variable se resuelve en EJECUCIÓN ──
+        // -- El subindice variable se resuelve en EJECUCION --
         let escala = self.var_scale(idx);
         if escala != 0 {
             self.errors.push(CobolError::new(
@@ -412,7 +412,7 @@ impl Codegen {
             return None;
         }
         self.load_operand(idx, 0); // rax = el subindice, base 1
-        self.code.extend_from_slice(&[0x48, 0xFF, 0xC8]); // dec rax → base 0
+        self.code.extend_from_slice(&[0x48, 0xFF, 0xC8]); // dec rax -> base 0
 
         // El guarda. `jae` (SIN signo) coge los dos lados con UNA comparacion:
         // el subindice 0 se convirtio en -1, que sin signo es enorme.
@@ -429,9 +429,9 @@ impl Codegen {
         // opcode nuevo aqui seria una forma mas que mantener en dos sitios.
         self.code.extend_from_slice(&[0x48, 0x81, 0xF8]);
         self.code.extend_from_slice(&(n as i32).to_le_bytes());
-        self.emit_jcc(0x83, fuera); // jae (SIN signo) → fuera de rango
+        self.emit_jcc(0x83, fuera); // jae (SIN signo) -> fuera de rango
 
-        // rax *= paso, por `mov rcx, paso` + `imul rax, rcx` — la misma pareja
+        // rax *= paso, por `mov rcx, paso` + `imul rax, rcx` -- la misma pareja
         // que usa `rescale`, en vez de un `imul rax, imm32` que nadie mas emite.
         self.emit_asm(|a| {
             a.mov_imm64(Reg::Rcx, paso as u64).unwrap();
@@ -446,7 +446,7 @@ impl Codegen {
 
     /// Los bloques de "subindice fuera de rango", uno por tabla.
     ///
-    /// Termina el programa DICIENDO qué tabla fue. La alternativa era seguir
+    /// Termina el programa DICIENDO que tabla fue. La alternativa era seguir
     /// con una direccion inventada: en un batch eso escribe encima del campo
     /// de al lado y el descuadre aparece semanas despues, en otro sitio. Un
     /// proceso bancario que se para y lo cuenta es infinitamente mejor que uno
@@ -466,18 +466,18 @@ impl Codegen {
     /// El reescalado es lo que hace que el decimal siga siendo exacto al
     /// mezclar datos de distinta PIC: sumar un `PIC 9(3)` (escala 0) a un
     /// `PIC 9(3)V99` (escala 2) exige multiplicar por 100 primero, si no se
-    /// sumarían centavos con pesos.
+    /// sumarian centavos con pesos.
     fn load_operand(&mut self, name: &str, scale: u32) {
         self.load_operand_redondeado(name, scale, Redondeo::Truncar);
     }
 
     /// La escala DECIMAL de un operando, sea dato o literal.
     ///
-    /// Hace falta para elegir la escala en la que se calcula: **la operación se
+    /// Hace falta para elegir la escala en la que se calcula: **la operacion se
     /// hace donde no se pierde nada, y se redondea AL FINAL**. Cargar un
-    /// `1.005` en un campo de dos decimales antes de sumarlo redondearía el
-    /// OPERANDO en vez del RESULTADO, y con los modos asimétricos eso da otro
-    /// número — el techo de `-9.995` es `-9.99`, pero si primero se redondea el
+    /// `1.005` en un campo de dos decimales antes de sumarlo redondearia el
+    /// OPERANDO en vez del RESULTADO, y con los modos asimetricos eso da otro
+    /// numero -- el techo de `-9.995` es `-9.99`, pero si primero se redondea el
     /// `9.995` a `10.00` sale `-10.00`.
     fn escala_operando(&self, name: &str) -> u32 {
         if self.is_variable(name) {
@@ -489,7 +489,7 @@ impl Codegen {
             .unwrap_or(0)
     }
 
-    /// Igual, pero diciendo qué hacer con los decimales que no caben.
+    /// Igual, pero diciendo que hacer con los decimales que no caben.
     fn load_operand_redondeado(&mut self, name: &str, scale: u32, redondeo: Redondeo) {
         if self.is_variable(name) {
             let from = self.var_scale(name);
@@ -511,7 +511,7 @@ impl Codegen {
         }
         if to > from {
             // Subir de escala es EXACTO: multiplicar por una potencia de diez no
-            // pierde nada, así que aquí no hay nada que redondear.
+            // pierde nada, asi que aqui no hay nada que redondear.
             let factor = 10u64.pow(to - from);
             self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, factor).unwrap(); });
             self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]); // imul rax, rcx
@@ -522,7 +522,7 @@ impl Codegen {
         }
     }
 
-    /// Escala común en la que comparar dos operandos: la mayor de las dos,
+    /// Escala comun en la que comparar dos operandos: la mayor de las dos,
     /// para no perder decimales al comparar.
     fn comparison_scale(&self, a: &str, b: &str) -> u32 {
         let sa = if self.is_variable(a) { self.var_scale(a) } else { 0 };
@@ -532,13 +532,13 @@ impl Codegen {
 
     fn emit_program(&mut self, program: &CobolProgram) -> Result<()> {
         self.stack_size = 0;
-        // ★ La disposición ANTES de repartir la pila: dice qué grupos hay y
-        // cuánto mide el área de cada uno. Y de paso caza los nombres
-        // duplicados, que sin ella se resolvían quedándose con uno de los dos.
+        // * La disposicion ANTES de repartir la pila: dice que grupos hay y
+        // cuanto mide el area de cada uno. Y de paso caza los nombres
+        // duplicados, que sin ella se resolvian quedandose con uno de los dos.
         self.disposicion = crate::registro::calcular(&program.data_items)?;
         for item in &program.data_items {
-            // ★ Un 88 NO es un dato: no se le reserva ni un byte. Es el apodo
-            // de una comparación sobre el campo del que cuelga.
+            // * Un 88 NO es un dato: no se le reserva ni un byte. Es el apodo
+            // de una comparacion sobre el campo del que cuelga.
             if item.level == 88 {
                 if let Some(padre) = &item.padre {
                     self.cond_88.insert(
@@ -551,21 +551,21 @@ impl Codegen {
             let size = item.storage_size();
             let aligned = (size as i32 + 7) & !7;
             // Una tabla son `n` huecos seguidos. El offset que se guarda es el
-            // del PRIMER elemento, así que se reserva todo y se apunta al
+            // del PRIMER elemento, asi que se reserva todo y se apunta al
             // principio: los offsets crecen hacia abajo (`-stack_size`) y el
-            // subíndice suma hacia arriba.
+            // subindice suma hacia arriba.
             let n = item.elementos();
             self.stack_size += aligned * n as i32;
             if item.occurs.is_some() {
                 self.tablas.insert(item.name.clone(), (n, aligned));
             }
             self.var_offsets.insert(item.name.clone(), -(self.stack_size));
-            // Recuerda la escala decimal del PIC para la aritmética exacta.
+            // Recuerda la escala decimal del PIC para la aritmetica exacta.
             self.var_scales.insert(item.name.clone(), item.scale());
             if let Some(p) = &item.edicion {
                 self.var_edicion.insert(item.name.clone(), p.clone());
             }
-            // ★ COMP-3: el hueco reservado ya es el del empaquetado (lo da
+            // * COMP-3: el hueco reservado ya es el del empaquetado (lo da
             // `storage_size`), y aqui se apunta COMO se lee y se escribe.
             if item.usage == crate::pic::Usage::Comp3 {
                 if let Some(campo) = &item.pic_field {
@@ -576,26 +576,26 @@ impl Codegen {
                 self.pic_fields.insert(item.name.to_ascii_uppercase(), campo.clone());
             }
         }
-        // ★ El ÁREA DE REGISTRO de cada `01` que es un grupo. Va DESPUÉS de los
-        // datos y con el mismo mecanismo: es una variable más, sólo que su
-        // contenido son los bytes tal cual irían al disco.
+        // * El AREA DE REGISTRO de cada `01` que es un grupo. Va DESPUES de los
+        // datos y con el mismo mecanismo: es una variable mas, solo que su
+        // contenido son los bytes tal cual irian al disco.
         for raiz in self.disposicion.raices().to_vec() {
             let Some(campo) = self.disposicion.campo(&raiz) else { continue };
             if !campo.es_grupo || campo.bytes == 0 {
                 continue;
             }
-            // ★ El área lleva 16 bytes DETRÁS: son el resto de la última tirada
+            // * El area lleva 16 bytes DETRAS: son el resto de la ultima tirada
             // de siete que `archivo::leer_bytes` guarda para el registro
-            // siguiente. Sin ellos, un fichero de registros de 5 bytes daría
-            // bien el primero y basura todos los demás.
+            // siguiente. Sin ellos, un fichero de registros de 5 bytes daria
+            // bien el primero y basura todos los demas.
             let bytes = ((campo.bytes as i32) + 16 + 7) & !7;
             self.stack_size += bytes;
             self.areas.insert(raiz.clone(), -(self.stack_size));
         }
 
-        // ★ La ranura del PERFORM: en qué párrafo tiene que volver el que está
-        // corriendo ahora. Vive en la pila y no en un registro por la razón de
-        // siempre — entre el `call` y el `ret` pasa el párrafo entero, y
+        // * La ranura del PERFORM: en que parrafo tiene que volver el que esta
+        // corriendo ahora. Vive en la pila y no en un registro por la razon de
+        // siempre -- entre el `call` y el `ret` pasa el parrafo entero, y
         // cualquier `DISPLAY` de dentro hace un `syscall` que destruye medio
         // banco de registros.
         if !program.parrafos.is_empty() {
@@ -606,7 +606,7 @@ impl Codegen {
             }
         }
 
-        // Dos ranuras de pila por fichero: su handle y su estado. Van DESPUÉS
+        // Dos ranuras de pila por fichero: su handle y su estado. Van DESPUES
         // de los datos y con el mismo mecanismo: son variables que COBOL no
         // nombra.
         for f in &program.files {
@@ -617,10 +617,10 @@ impl Codegen {
             self.file_handles.insert(f.name.clone(), off);
             self.files.insert(f.name.clone(), f.clone());
             if !f.record.is_empty() {
-                // ★ El campo de FILE STATUS tiene que existir y medir DOS letras.
-            // Si no, el programa compararía contra basura y decidiría por ella:
-            // `IF ST = "00"` daría falso siempre y el batch se pararía cada
-            // noche sin motivo. Se comprueba aquí, que es donde se sabe qué
+                // * El campo de FILE STATUS tiene que existir y medir DOS letras.
+            // Si no, el programa compararia contra basura y decidiria por ella:
+            // `IF ST = "00"` daria falso siempre y el batch se pararia cada
+            // noche sin motivo. Se comprueba aqui, que es donde se sabe que
             // datos hay.
             if let Some(campo) = &f.estado {
                 match self.pic_fields.get(&campo.to_ascii_uppercase()) {
@@ -661,18 +661,18 @@ impl Codegen {
         self.code.extend_from_slice(&((self.stack_size as u32) + 63).to_le_bytes());
         self.code.extend_from_slice(&[0x48, 0x83, 0xE4, 0xC0]); // and rsp, -64
 
-        // ★ Los VALUE, antes de la primera sentencia y despues de repartir la
+        // * Los VALUE, antes de la primera sentencia y despues de repartir la
         // pila: el valor inicial de un dato tiene que estar puesto ANTES de que
         // el programa mire nada, y la direccion donde ponerlo no existe hasta
         // que el reparto esta hecho.
         self.emit_valores_iniciales(program);
 
-        // ── El CUERPO PRINCIPAL ──
+        // -- El CUERPO PRINCIPAL --
         //
-        // Si el programa empieza directamente con un párrafo (la otra forma
-        // corriente de escribirlo), el cuerpo principal está vacío y arrancar
-        // seria salir sin hacer nada. En ese caso se ejecuta el PRIMER párrafo,
-        // que es lo que dice el estándar: la PROCEDURE DIVISION se recorre de
+        // Si el programa empieza directamente con un parrafo (la otra forma
+        // corriente de escribirlo), el cuerpo principal esta vacio y arrancar
+        // seria salir sin hacer nada. En ese caso se ejecuta el PRIMER parrafo,
+        // que es lo que dice el estandar: la PROCEDURE DIVISION se recorre de
         // arriba abajo.
         if program.statements.is_empty() && !program.parrafos.is_empty() {
             let primero = program.parrafos[0].nombre.clone();
@@ -687,16 +687,16 @@ impl Codegen {
             self.emit_statement(stmt);
         }
 
-        // STOP RUN implícito al final del programa.
+        // STOP RUN implicito al final del programa.
         //
         // Antes el cierre era `INVOKE(EXIT)` + `hlt`. Pero `hlt` es una
-        // instrucción PRIVILEGIADA: si EXIT alguna vez retornara, en Ring 3
-        // eso es un #GP inmediato — una "red de seguridad" que provoca
+        // instruccion PRIVILEGIADA: si EXIT alguna vez retornara, en Ring 3
+        // eso es un #GP inmediato -- una "red de seguridad" que provoca
         // justo el fallo del que protege. La red correcta es girar en
         // `pause`, que es lo que emite la puerta.
         bmo_lower::task::exit(&mut self.code);
 
-        // ★ Los PÁRRAFOS, después del final del cuerpo principal.
+        // * Los PARRAFOS, despues del final del cuerpo principal.
         self.emit_parrafos(program);
 
         // Los bloques de subindice fuera de rango van DESPUES del final: son
@@ -717,18 +717,18 @@ impl Codegen {
         Ok(())
     }
 
-    // ── PÁRRAFOS ────────────────────────────────────────────────────────
+    // -- PARRAFOS --------------------------------------------------------
     //
-    // ## Por qué un número en memoria y no un `ret` a secas
+    // ## Por que un numero en memoria y no un `ret` a secas
     //
-    // Si cada párrafo terminara en `ret`, `PERFORM A` funcionaría y
-    // `PERFORM A THRU C` no: al acabar `A` volvería en vez de seguir por `B`.
-    // Y no se puede decidir al compilar cuál de las dos cosas hace `A`, porque
-    // el MISMO párrafo puede ser el final de un rango en una línea y estar en
+    // Si cada parrafo terminara en `ret`, `PERFORM A` funcionaria y
+    // `PERFORM A THRU C` no: al acabar `A` volveria en vez de seguir por `B`.
+    // Y no se puede decidir al compilar cual de las dos cosas hace `A`, porque
+    // el MISMO parrafo puede ser el final de un rango en una linea y estar en
     // medio de otro en la de abajo.
     //
-    // Así que la decisión se toma en EJECUCIÓN, con una pregunta de dos
-    // instrucciones al final de cada párrafo:
+    // Asi que la decision se toma en EJECUCION, con una pregunta de dos
+    // instrucciones al final de cada parrafo:
     //
     // ```text
     //   PERFORM A THRU C:                    fin de cada parrafo P:
@@ -738,18 +738,18 @@ impl Codegen {
     //     pop  [salida]      restaurar
     // ```
     //
-    // El `push`/`pop` alrededor es lo que deja que un párrafo llame a otro: la
-    // salida del de fuera se guarda en la pila de máquina, debajo de la
-    // dirección de retorno, y vuelve a su sitio al terminar. Sin eso, un
-    // `PERFORM` anidado se comería la salida del que lo contiene y el de fuera
-    // no volvería nunca.
+    // El `push`/`pop` alrededor es lo que deja que un parrafo llame a otro: la
+    // salida del de fuera se guarda en la pila de maquina, debajo de la
+    // direccion de retorno, y vuelve a su sitio al terminar. Sin eso, un
+    // `PERFORM` anidado se comeria la salida del que lo contiene y el de fuera
+    // no volveria nunca.
     //
     // Es la misma forma que usa GnuCOBOL, y por el mismo motivo.
 
-    /// El nombre con el que un párrafo entra en `function_offsets`.
+    /// El nombre con el que un parrafo entra en `function_offsets`.
     fn simbolo_parrafo(nombre: &str) -> String {
-        // El `:` es ilegal en un nombre de COBOL, así que un párrafo llamado
-        // como un símbolo interno no puede chocar. Mismo truco que el punto de
+        // El `:` es ilegal en un nombre de COBOL, asi que un parrafo llamado
+        // como un simbolo interno no puede chocar. Mismo truco que el punto de
         // `funcion.variable` en BMO C.
         format!("parrafo:{}", nombre.to_ascii_uppercase())
     }
@@ -780,10 +780,10 @@ impl Codegen {
         self.code.extend_from_slice(&valor.to_le_bytes());
     }
 
-    /// Los párrafos, en el orden en que se escribieron.
+    /// Los parrafos, en el orden en que se escribieron.
     ///
-    /// El orden no es estético: un `PERFORM A THRU C` **cae** de `A` a `B` y de
-    /// `B` a `C` porque están seguidos en el código. Reordenarlos cambiaría lo
+    /// El orden no es estetico: un `PERFORM A THRU C` **cae** de `A` a `B` y de
+    /// `B` a `C` porque estan seguidos en el codigo. Reordenarlos cambiaria lo
     /// que hace el programa.
     fn emit_parrafos(&mut self, program: &CobolProgram) {
         let Some(salida) = self.perform_exit else { return };
@@ -795,39 +795,39 @@ impl Codegen {
             for s in &p.statements {
                 self.emit_statement(s);
             }
-            // El epílogo: ¿es aquí donde había que volver?
+            // El epilogo: es aqui donde habia que volver?
             let sigue = self.fresh_label();
             self.emit_cmp_mem_imm(salida, id);
-            self.emit_jcc(0x85, sigue); // jne → cae al párrafo siguiente
+            self.emit_jcc(0x85, sigue); // jne -> cae al parrafo siguiente
             self.code.push(0xC3); // ret
             self.bind_label(sigue);
         }
         self.en_parrafo = false;
-        // Detrás del último no hay párrafo al que caer. Llegar aquí querría
-        // decir que la salida apuntaba a uno que ya pasó; el `ret` devuelve el
+        // Detras del ultimo no hay parrafo al que caer. Llegar aqui querria
+        // decir que la salida apuntaba a uno que ya paso; el `ret` devuelve el
         // control a quien llamara, que es lo menos malo y no inventa un salto.
         self.code.push(0xC3);
     }
 
     /// `PERFORM VARYING`, un control cada vez.
     ///
-    /// ## Por qué es recursivo, y qué sale gratis de serlo
+    /// ## Por que es recursivo, y que sale gratis de serlo
     ///
     /// Cada control monta su bucle y **dentro** llama al siguiente. Eso hace
-    /// que un `AFTER` se **reinicie** cada vez que el de fuera avanza — que es
-    /// exactamente lo que dice el estándar— sin escribir nada para ello: el
+    /// que un `AFTER` se **reinicie** cada vez que el de fuera avanza -- que es
+    /// exactamente lo que dice el estandar-- sin escribir nada para ello: el
     /// `MOVE <desde> TO <v>` del interior queda dentro del bucle exterior
-    /// porque ahí es donde lo pone la recursión.
+    /// porque ahi es donde lo pone la recursion.
     ///
-    /// Escrito como un bucle plano habría que acordarse de reiniciar a mano, y
+    /// Escrito como un bucle plano habria que acordarse de reiniciar a mano, y
     /// olvidarlo da una tabla recorrida en diagonal: la primera fila entera y
-    /// de las demás sólo la última columna.
+    /// de las demas solo la ultima columna.
     ///
     /// ## `WITH TEST BEFORE`
     ///
-    /// La condición se prueba **antes** de cada vuelta, que es el default del
-    /// estándar. Un `UNTIL I > 12` con `I` empezando en 13 no ejecuta el cuerpo
-    /// ni una vez, y eso es lo correcto: el bucle no tiene por qué correr.
+    /// La condicion se prueba **antes** de cada vuelta, que es el default del
+    /// estandar. Un `UNTIL I > 12` con `I` empezando en 13 no ejecuta el cuerpo
+    /// ni una vez, y eso es lo correcto: el bucle no tiene por que correr.
     fn emit_varying(&mut self, controles: &[crate::ast::ControlBucle], cuerpo: &[CobolStatement]) {
         let Some((c, resto)) = controles.split_first() else {
             for s in cuerpo {
@@ -836,7 +836,7 @@ impl Codegen {
             return;
         };
 
-        // `MOVE <desde> TO <v>` — por la puerta de siempre, así que el índice
+        // `MOVE <desde> TO <v>` -- por la puerta de siempre, asi que el indice
         // puede ser un `COMP-3` y nadie se entera.
         let escala = self.var_scale(&c.variable);
         self.load_operand(&c.desde, escala);
@@ -847,8 +847,8 @@ impl Codegen {
         let fin = self.fresh_label();
 
         self.bind_label(top);
-        // ⚠ La condición dice cuándo PARAR, no cuándo seguir: mientras sea
-        // FALSA se ejecuta. Al revés que el `while` de casi todo lo demás.
+        // [!] La condicion dice cuando PARAR, no cuando seguir: mientras sea
+        // FALSA se ejecuta. Al reves que el `while` de casi todo lo demas.
         self.emit_jump_if_false(&c.hasta_que, cuerpo_lbl);
         self.emit_jmp(fin);
 
@@ -867,7 +867,7 @@ impl Codegen {
         self.bind_label(fin);
     }
 
-    /// `PERFORM <párrafo> [THRU <otro>] [<n> TIMES | UNTIL <cond>]`.
+    /// `PERFORM <parrafo> [THRU <otro>] [<n> TIMES | UNTIL <cond>]`.
     fn emit_perform_fuera(
         &mut self,
         desde: &str,
@@ -907,7 +907,7 @@ impl Codegen {
         };
         // Un rango al reves no es un rango. El estandar lo deja "indefinido", y
         // aqui indefinido significa que el programa se sale de los parrafos y
-        // ejecuta lo que haya detras — asi que se dice.
+        // ejecuta lo que haya detras -- asi que se dice.
         if i_hasta < i_desde {
             self.errors.push(CobolError::new(
                 0,
@@ -939,14 +939,14 @@ impl Codegen {
         match (veces, hasta_que) {
             (None, None) => llamada!(self),
 
-            // `PERFORM P <n> TIMES` — el contador en la pila, igual que el
-            // PERFORM en línea, y por el mismo motivo: el párrafo de dentro
+            // `PERFORM P <n> TIMES` -- el contador en la pila, igual que el
+            // PERFORM en linea, y por el mismo motivo: el parrafo de dentro
             // puede hacer un `syscall` y llevarse los registros por delante.
             (Some(n), None) => {
                 let top = self.fresh_label();
                 let done = self.fresh_label();
                 self.emit_asm(|a| { a.mov_imm64(Reg::Rax, n as u64).unwrap(); });
-                self.code.push(0x50); // push rax → contador
+                self.code.push(0x50); // push rax -> contador
                 self.bind_label(top);
                 self.code.extend_from_slice(&[0x48, 0x83, 0x3C, 0x24, 0x00]); // cmp qword [rsp], 0
                 self.emit_jcc(0x8E, done); // jle
@@ -957,9 +957,9 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 0x08]); // add rsp, 8
             }
 
-            // `PERFORM P UNTIL <cond>` — se prueba ANTES de cada vuelta
+            // `PERFORM P UNTIL <cond>` -- se prueba ANTES de cada vuelta
             // (`WITH TEST BEFORE`, el default). Es EL bucle de un batch: el
-            // párrafo lee un registro y el UNTIL mira si se acabó.
+            // parrafo lee un registro y el UNTIL mira si se acabo.
             (None, Some(cond)) => {
                 let top = self.fresh_label();
                 let cuerpo = self.fresh_label();
@@ -986,32 +986,32 @@ impl Codegen {
         }
     }
 
-    // ── EL ÁREA DE REGISTRO ─────────────────────────────────────────────
+    // -- EL AREA DE REGISTRO ---------------------------------------------
     //
-    // Camino B de `PLAN_BANCA.md` §1.0. Un grupo tiene DOS representaciones:
+    // Camino B de `PLAN_BANCA.md` section 1.0. Un grupo tiene DOS representaciones:
     //
     //   las RANURAS de trabajo   un entero escalado de 64 bits por campo,
     //                            que es donde se calcula
-    //   el ÁREA                  los bytes tal cual irían al disco: zonado
+    //   el AREA                  los bytes tal cual irian al disco: zonado
     //                            para un DISPLAY, nibbles para un COMP-3
     //
-    // Y la traducción entre las dos vive **sólo** donde el registro cruza:
-    // empaquetar antes de sacarlo, desempaquetar después de traerlo. Eso no es
-    // un rodeo — es lo que dice COBOL, que el área de registro sólo vale entre
+    // Y la traduccion entre las dos vive **solo** donde el registro cruza:
+    // empaquetar antes de sacarlo, desempaquetar despues de traerlo. Eso no es
+    // un rodeo -- es lo que dice COBOL, que el area de registro solo vale entre
     // un `READ` y el siguiente.
     //
     // Lo que se paga, dicho en el plan: un `REDEFINES` no aliasa de verdad,
-    // porque dos vistas del mismo espacio serían dos juegos de ranuras.
+    // porque dos vistas del mismo espacio serian dos juegos de ranuras.
 
-    /// `lea rcx, [rbp + area(raiz) + offset]` — dónde vive un campo dentro de
-    /// su área.
+    /// `lea rcx, [rbp + area(raiz) + offset]` -- donde vive un campo dentro de
+    /// su area.
     fn emit_direccion_en_area(&mut self, raiz: &str, offset: u32) -> Option<()> {
         let base = *self.areas.get(raiz)?;
         self.emit_direccion_dato(base + offset as i32);
         Some(())
     }
 
-    /// Vuelca las ranuras de trabajo del grupo a su área, campo por campo.
+    /// Vuelca las ranuras de trabajo del grupo a su area, campo por campo.
     fn emit_empaquetar_area(&mut self, raiz: &str) {
         let hojas: Vec<(String, crate::registro::Campo)> = self
             .disposicion
@@ -1028,8 +1028,8 @@ impl Codegen {
                 Some((bytes, signo)) => {
                     bmo_lower::packed::empaquetar(&mut self.code, bytes, signo)
                 }
-                // Un `DISPLAY` en el área es ZONADO: un byte por dígito y el
-                // signo sobrepunzado en el último. Dentro sigue siendo el mismo
+                // Un `DISPLAY` en el area es ZONADO: un byte por digito y el
+                // signo sobrepunzado en el ultimo. Dentro sigue siendo el mismo
                 // entero escalado de siempre.
                 None => {
                     let (digitos, signo) = self.digitos_de(&nombre);
@@ -1039,7 +1039,7 @@ impl Codegen {
         }
     }
 
-    /// Y al revés: del área a las ranuras.
+    /// Y al reves: del area a las ranuras.
     fn emit_desempaquetar_area(&mut self, raiz: &str) {
         let hojas: Vec<(String, crate::registro::Campo)> = self
             .disposicion
@@ -1062,30 +1062,30 @@ impl Codegen {
         }
     }
 
-    // ── ON SIZE ERROR ───────────────────────────────────────────────────
+    // -- ON SIZE ERROR ---------------------------------------------------
     //
-    // ## Qué significa "no cabe"
+    // ## Que significa "no cabe"
     //
-    // Un `PIC S9(5)V99` declara SIETE dígitos, así que su mayor valor en
-    // centavos es `9 999 999`. Un resultado más grande **no entra**, y sin la
-    // cláusula COBOL lo guarda recortado por arriba: `100 000.00` en ese campo
+    // Un `PIC S9(5)V99` declara SIETE digitos, asi que su mayor valor en
+    // centavos es `9 999 999`. Un resultado mas grande **no entra**, y sin la
+    // clausula COBOL lo guarda recortado por arriba: `100 000.00` en ese campo
     // se convierte en `0.00` y el programa sigue tan tranquilo.
     //
-    // ## Y por qué el campo NO SE TOCA
+    // ## Y por que el campo NO SE TOCA
     //
-    // Ésa es la parte que importa. El estándar dice que cuando hay desborde el
+    // Esa es la parte que importa. El estandar dice que cuando hay desborde el
     // destino **se queda como estaba**, y no es un tecnicismo: deja el saldo
     // anterior intacto para que el programa pueda escribirlo en un informe de
-    // rechazos y seguir. Guardar el número recortado y avisar después sería
+    // rechazos y seguir. Guardar el numero recortado y avisar despues seria
     // avisar de un descuadre que ya se ha hecho.
     //
-    // Por eso la comprobación va ANTES del `store_var`, y por eso la rama de
-    // error no pasa por él.
+    // Por eso la comprobacion va ANTES del `store_var`, y por eso la rama de
+    // error no pasa por el.
 
-    /// Emite el guardado del resultado que está en `rax`, con su guarda.
+    /// Emite el guardado del resultado que esta en `rax`, con su guarda.
     ///
-    /// Los saltos se dan hechos desde fuera cuando la operación necesita saltar
-    /// antes —una división por cero no llega ni a calcular— y por eso esto
+    /// Los saltos se dan hechos desde fuera cuando la operacion necesita saltar
+    /// antes --una division por cero no llega ni a calcular-- y por eso esto
     /// recibe las etiquetas en vez de crearlas.
     fn emit_guardar_con_desborde(
         &mut self,
@@ -1097,8 +1097,8 @@ impl Codegen {
             self.store_var(destino);
             return;
         };
-        // ¿Cabe? El límite es 10^dígitos: por encima, el número necesita una
-        // posición más de las que la PICTURE declara.
+        // Cabe? El limite es 10^digitos: por encima, el numero necesita una
+        // posicion mas de las que la PICTURE declara.
         let digitos = self.digitos_de(destino).0;
         let limite = 10u64.checked_pow(digitos).unwrap_or(u64::MAX);
         self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
@@ -1109,9 +1109,9 @@ impl Codegen {
         self.bind_label(no_negativo);
         self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, limite).unwrap(); });
         x86::cmp_r64_r64(&mut self.code, x86::RDX, x86::RCX);
-        self.emit_jcc(0x83, desborda); // jae → no cabe
+        self.emit_jcc(0x83, desborda); // jae -> no cabe
 
-        // Cabe: se guarda, y sólo entonces corre el `NOT ON SIZE ERROR`.
+        // Cabe: se guarda, y solo entonces corre el `NOT ON SIZE ERROR`.
         self.store_var(destino);
         if let Some(cuerpo) = arit.si_cabe.clone() {
             for s in &cuerpo {
@@ -1130,13 +1130,13 @@ impl Codegen {
         self.bind_label(fin);
     }
 
-    /// Las dos etiquetas del desborde, si la sentencia lleva la cláusula.
+    /// Las dos etiquetas del desborde, si la sentencia lleva la clausula.
     fn etiquetas_desborde(&mut self, arit: &crate::ast::Aritmetica) -> Option<(u32, u32)> {
         arit.si_desborda.as_ref()?;
         Some((self.fresh_label(), self.fresh_label()))
     }
 
-    /// Cuántos dígitos declara la PIC de un campo, y si lleva `S`.
+    /// Cuantos digitos declara la PIC de un campo, y si lleva `S`.
     fn digitos_de(&self, nombre: &str) -> (u32, bool) {
         self.pic_fields
             .get(&Self::nombre_base(nombre))
@@ -1144,11 +1144,11 @@ impl Codegen {
             .unwrap_or((1, false))
     }
 
-    /// `MOVE <grupo> TO <grupo>` — **una copia de BYTES**, no campo a campo.
+    /// `MOVE <grupo> TO <grupo>` -- **una copia de BYTES**, no campo a campo.
     ///
-    /// Y eso importa: el estándar dice que un `MOVE` de grupo mueve el área tal
-    /// cual, sin mirar qué hay dentro. Hacerlo campo a campo daría otra cosa en
-    /// cuanto los dos grupos no tuvieran la misma forma — que es justo el caso
+    /// Y eso importa: el estandar dice que un `MOVE` de grupo mueve el area tal
+    /// cual, sin mirar que hay dentro. Hacerlo campo a campo daria otra cosa en
+    /// cuanto los dos grupos no tuvieran la misma forma -- que es justo el caso
     /// en el que un programa de banca lo usa, para reinterpretar un registro.
     fn emit_move_grupo(&mut self, origen: &str, destino: &str) {
         let (o, d) = (origen.to_ascii_uppercase(), destino.to_ascii_uppercase());
@@ -1158,8 +1158,8 @@ impl Codegen {
         ) else {
             return;
         };
-        // Se mueve lo que quepa en el destino, que es lo que manda el estándar:
-        // si el origen es más corto, lo que sobra del destino se queda como
+        // Se mueve lo que quepa en el destino, que es lo que manda el estandar:
+        // si el origen es mas corto, lo que sobra del destino se queda como
         // estaba (rellenar con espacios pide el texto, que es la tarea 0.7).
         let n = co.bytes.min(cd.bytes);
         let (Some(&base_o), Some(&base_d)) = (self.areas.get(&o), self.areas.get(&d)) else {
@@ -1171,7 +1171,7 @@ impl Codegen {
         };
 
         self.emit_empaquetar_area(&o);
-        // rdi = destino, rsi = origen, rcx = cuántos. El contrato de `copiar`.
+        // rdi = destino, rsi = origen, rcx = cuantos. El contrato de `copiar`.
         self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi, [rbp+disp32]
         self.code.extend_from_slice(&base_d.to_le_bytes());
         self.code.extend_from_slice(&[0x48, 0x8D, 0xB5]); // lea rsi, [rbp+disp32]
@@ -1181,33 +1181,33 @@ impl Codegen {
         self.emit_desempaquetar_area(&d);
     }
 
-    // ── TEXTO (`PIC X(n)`) ──────────────────────────────────────────────
+    // -- TEXTO (`PIC X(n)`) ----------------------------------------------
     //
-    // ## Por qué el texto no pasa por `rax`
+    // ## Por que el texto no pasa por `rax`
     //
-    // Todo lo demás de este codegen vive en un registro: un importe es un entero
+    // Todo lo demas de este codegen vive en un registro: un importe es un entero
     // escalado, y `load_var`/`store_var` lo llevan y lo traen. El texto no cabe
-    // en esa forma — un `PIC X(30)` son treinta bytes— así que tiene su propio
-    // camino, que trabaja con **dirección y largo** en vez de con un valor.
+    // en esa forma -- un `PIC X(30)` son treinta bytes-- asi que tiene su propio
+    // camino, que trabaja con **direccion y largo** en vez de con un valor.
     //
-    // ## Y por qué está DESENROLLADO
+    // ## Y por que esta DESENROLLADO
     //
-    // Un literal se conoce al compilar, así que mover `"00"` a un campo no es un
-    // bucle de copia: son dos `mov` de inmediato. Igual la comparación. Sólo el
+    // Un literal se conoce al compilar, asi que mover `"00"` a un campo no es un
+    // bucle de copia: son dos `mov` de inmediato. Igual la comparacion. Solo el
     // caso variable-a-variable necesita el copiador de `bmo_lower::memoria`.
     //
-    // Es la misma decisión que `console::write_const`: el texto viaja DENTRO de
-    // las instrucciones, sin sección de datos y sin relocations.
+    // Es la misma decision que `console::write_const`: el texto viaja DENTRO de
+    // las instrucciones, sin seccion de datos y sin relocations.
     //
-    // ## El relleno con ESPACIOS no es cosmético
+    // ## El relleno con ESPACIOS no es cosmetico
     //
-    // COBOL rellena un campo alfanumérico con espacios, y compara rellenando. Un
+    // COBOL rellena un campo alfanumerico con espacios, y compara rellenando. Un
     // `FILE STATUS` de dos letras comparado contra `"00"` tiene que dar igual, y
-    // si el hueco llevara ceros o basura no lo daría. Por eso el campo se llena
-    // ENTERO —hasta su ancho alineado— cada vez que se escribe: así comparar es
+    // si el hueco llevara ceros o basura no lo daria. Por eso el campo se llena
+    // ENTERO --hasta su ancho alineado-- cada vez que se escribe: asi comparar es
     // mirar los mismos bytes por los dos lados.
 
-    /// Cuántos caracteres declara un `PIC X(n)`, si el dato es de texto.
+    /// Cuantos caracteres declara un `PIC X(n)`, si el dato es de texto.
     fn texto_de(&self, nombre: &str) -> Option<u32> {
         self.pic_fields
             .get(&Self::nombre_base(nombre))
@@ -1218,8 +1218,8 @@ impl Codegen {
     /// El hueco que ocupa de verdad: los caracteres redondeados a ocho.
     ///
     /// Se compara y se rellena sobre ESTE ancho y no sobre el declarado, para
-    /// que los bytes de sobra estén siempre a espacios y nunca decidan una
-    /// comparación con basura.
+    /// que los bytes de sobra esten siempre a espacios y nunca decidan una
+    /// comparacion con basura.
     fn ancho_alineado(chars: u32) -> u32 {
         (chars + 7) & !7
     }
@@ -1239,8 +1239,8 @@ impl Codegen {
             .collect()
     }
 
-    /// `MOVE "literal" TO <campo de texto>` — sin bucle: el literal se conoce
-    /// al compilar, así que son `mov` de inmediato y ya.
+    /// `MOVE "literal" TO <campo de texto>` -- sin bucle: el literal se conoce
+    /// al compilar, asi que son `mov` de inmediato y ya.
     fn emit_store_texto_literal(&mut self, off: i32, texto: &str, chars: u32) {
         let ancho = Self::ancho_alineado(chars);
         for (i, w) in Self::trozos_de_texto(texto, ancho).into_iter().enumerate() {
@@ -1251,11 +1251,11 @@ impl Codegen {
         }
     }
 
-    /// `MOVE <texto> TO <texto>` — copia lo que quepa y rellena con espacios.
+    /// `MOVE <texto> TO <texto>` -- copia lo que quepa y rellena con espacios.
     ///
-    /// Rellenar es obligatorio: si el origen es más corto, lo que quedara del
-    /// destino sería del MOVE anterior, y un `FILE STATUS` que arrastra la letra
-    /// de la operación de antes es peor que uno vacío.
+    /// Rellenar es obligatorio: si el origen es mas corto, lo que quedara del
+    /// destino seria del MOVE anterior, y un `FILE STATUS` que arrastra la letra
+    /// de la operacion de antes es peor que uno vacio.
     fn emit_move_texto_var(&mut self, dst: &str, src: &str) {
         let (Some(dst_chars), Some(src_chars)) = (self.texto_de(dst), self.texto_de(src)) else {
             return;
@@ -1269,9 +1269,9 @@ impl Codegen {
         let ancho = Self::ancho_alineado(dst_chars);
         let n = dst_chars.min(src_chars);
 
-        // Primero el relleno ENTERO, y luego encima lo que se copia. Al revés
-        // —copiar y luego rellenar la cola— haría falta calcular dos
-        // direcciones y una resta; así es una regla y no dos.
+        // Primero el relleno ENTERO, y luego encima lo que se copia. Al reves
+        // --copiar y luego rellenar la cola-- haria falta calcular dos
+        // direcciones y una resta; asi es una regla y no dos.
         self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi, [rbp+disp32]
         self.code.extend_from_slice(&dst_off.to_le_bytes());
         self.emit_asm(|a| { a.mov_imm64(Reg::Rax, b' ' as u64).unwrap(); });
@@ -1286,7 +1286,7 @@ impl Codegen {
         bmo_lower::memoria::copiar(&mut self.code);
     }
 
-    /// `DISPLAY <campo de texto>` — los bytes tal cual, y su salto de línea.
+    /// `DISPLAY <campo de texto>` -- los bytes tal cual, y su salto de linea.
     fn emit_display_texto(&mut self, nombre: &str, chars: u32) {
         let Some(off) = self.exige_declarado(&Self::nombre_base(nombre)) else { return };
         self.code.extend_from_slice(&[0x4C, 0x8D, 0x85]); // lea r8, [rbp+disp32]
@@ -1298,9 +1298,9 @@ impl Codegen {
 
     /// Deja en `rax` **cero si el campo es igual** al otro operando.
     ///
-    /// Cero-es-igual y no uno-es-igual porque así la comparación se acumula con
+    /// Cero-es-igual y no uno-es-igual porque asi la comparacion se acumula con
     /// un `or`: se van juntando las diferencias de cada trozo y al final basta
-    /// un `test`. Un booleano por trozo pediría un salto por trozo.
+    /// un `test`. Un booleano por trozo pediria un salto por trozo.
     fn emit_texto_diferencia(&mut self, campo: &str, otro: &str) -> Option<()> {
         let chars = self.texto_de(campo)?;
         let ancho = Self::ancho_alineado(chars);
@@ -1331,7 +1331,7 @@ impl Codegen {
         Some(())
     }
 
-    /// `VALUE` — el valor con el que arranca cada dato.
+    /// `VALUE` -- el valor con el que arranca cada dato.
     ///
     /// Se emite como una tanda de `MOVE` implicitos al principio del programa,
     /// y **pasa por `store_var`** a proposito: es la unica puerta a la memoria
@@ -1351,8 +1351,8 @@ impl Codegen {
             }
             let Some(valor) = item.value.clone() else { continue };
             // Un `VALUE "TEXTO"` se guarda como caracteres, rellenando el campo
-            // entero con espacios. Sin el relleno, comparar contra `"00"` daría
-            // distinto por lo que hubiera detrás.
+            // entero con espacios. Sin el relleno, comparar contra `"00"` daria
+            // distinto por lo que hubiera detras.
             if let Some(chars) = self.texto_de(&item.name) {
                 if let Some(off) = self.exige_declarado(&item.name) {
                     self.emit_store_texto_literal(off, &valor, chars);
@@ -1387,9 +1387,9 @@ impl Codegen {
         }
     }
 
-    /// Antes, un nombre que no existía hacía que estas dos funciones no
-    /// emitieran NADA: `DISPLAY PEPE` imprimía lo que hubiera en `rax` y
-    /// `MOVE 1 TO PEPE` se perdía. Ahora falta el dato o falta el subíndice, y
+    /// Antes, un nombre que no existia hacia que estas dos funciones no
+    /// emitieran NADA: `DISPLAY PEPE` imprimia lo que hubiera en `rax` y
+    /// `MOVE 1 TO PEPE` se perdia. Ahora falta el dato o falta el subindice, y
     /// las dos cosas se dicen.
     fn exige_declarado(&mut self, name: &str) -> Option<i32> {
         match self.var_offsets.get(name) {
@@ -1420,11 +1420,11 @@ impl Codegen {
         self.var_packed.get(&Self::nombre_base(name)).copied()
     }
 
-    /// `lea rcx, [rbp + off]` — la dirección de un dato suelto.
+    /// `lea rcx, [rbp + off]` -- la direccion de un dato suelto.
     ///
-    /// Un dato normal no necesita su dirección: se lee y se escribe con `mov`
-    /// sobre `[rbp+off]` directamente. Un COMP-3 sí, porque el emisor de
-    /// nibbles trabaja sobre un puntero — el mismo que ya le da
+    /// Un dato normal no necesita su direccion: se lee y se escribe con `mov`
+    /// sobre `[rbp+off]` directamente. Un COMP-3 si, porque el emisor de
+    /// nibbles trabaja sobre un puntero -- el mismo que ya le da
     /// `emit_direccion_elemento` a un elemento de tabla.
     fn emit_direccion_dato(&mut self, off: i32) {
         self.code.extend_from_slice(&[0x48, 0x8D, 0x8D]);
@@ -1479,7 +1479,7 @@ impl Codegen {
         let Some(off) = self.exige_declarado(name) else { return };
         if let Some((bytes, signo)) = packed {
             // La direccion se calcula en `rcx`, que el emisor de nibbles NO
-            // toca — asi el valor sigue en `rax` sin apilar nada.
+            // toca -- asi el valor sigue en `rax` sin apilar nada.
             self.emit_direccion_dato(off);
             bmo_lower::packed::empaquetar(&mut self.code, bytes, signo);
             return;
@@ -1494,30 +1494,30 @@ impl Codegen {
 
     fn load_imm64(&mut self, val: &str) {
         let num: u64 = val.parse().unwrap_or(0);
-        // mov rax, imm64 — antes [0x48,0xB8]+imm a mano; ahora el encoder.
+        // mov rax, imm64 -- antes [0x48,0xB8]+imm a mano; ahora el encoder.
         self.emit_asm(|a| { a.mov_imm64(Reg::Rax, num).unwrap(); });
     }
 
-    /// `DISPLAY "literal"` — la L2 de COBOL sobre la puerta genérica (L1).
+    /// `DISPLAY "literal"` -- la L2 de COBOL sobre la puerta generica (L1).
     ///
-    /// Lo específico de COBOL que se decide AQUÍ: que `DISPLAY` termina
-    /// siempre en salto de línea (el kernel hace flush de la línea con
-    /// `\n`, así que cada DISPLAY ocupa su propia fila, como manda el
-    /// lenguaje). Cuando llegue `DISPLAY <variable>`, la edición PIC se
-    /// aplicará también aquí y el resultado saldrá por
-    /// `bmo_lower::console::write_buffer` — L1 seguirá sin saber qué es una
+    /// Lo especifico de COBOL que se decide AQUI: que `DISPLAY` termina
+    /// siempre en salto de linea (el kernel hace flush de la linea con
+    /// `\n`, asi que cada DISPLAY ocupa su propia fila, como manda el
+    /// lenguaje). Cuando llegue `DISPLAY <variable>`, la edicion PIC se
+    /// aplicara tambien aqui y el resultado saldra por
+    /// `bmo_lower::console::write_buffer` -- L1 seguira sin saber que es una
     /// PIC.
     ///
-    /// Antes esto emitía `lea rdi,[str]; mov esi,len; syscall NR_DEBUG_PRINT`:
-    /// número plano que el kernel ya no despacha, y encima pasando un
-    /// puntero, que la superficie congelada rechaza. No imprimía nada.
+    /// Antes esto emitia `lea rdi,[str]; mov esi,len; syscall NR_DEBUG_PRINT`:
+    /// numero plano que el kernel ya no despacha, y encima pasando un
+    /// puntero, que la superficie congelada rechaza. No imprimia nada.
     fn emit_display(&mut self, s: &str) {
         let mut text = s.as_bytes().to_vec();
         text.push(b'\n');
         bmo_lower::console::write_const(&mut self.code, &text);
     }
 
-    /// `DISPLAY <variable>` — el valor, formateado EN EJECUCION.
+    /// `DISPLAY <variable>` -- el valor, formateado EN EJECUCION.
     ///
     /// Tiene que ser en ejecucion: el compilador no sabe cuanto vale `SALDO`
     /// despues de tres `ADD`. Se carga el entero escalado y se llama al
@@ -1527,8 +1527,8 @@ impl Codegen {
     /// dejado de ser un entero; lo unico que cambia es donde va la coma al
     /// escribirlo.
     fn emit_display_var(&mut self, nombre: &str) {
-        // Un campo de texto se enseña TAL CUAL: sus bytes. Pasarlo por el
-        // formateador decimal imprimiría el número que forman, que no es lo que
+        // Un campo de texto se ensena TAL CUAL: sus bytes. Pasarlo por el
+        // formateador decimal imprimiria el numero que forman, que no es lo que
         // hay escrito.
         if let Some(chars) = self.texto_de(nombre) {
             let nombre = nombre.to_string();
@@ -1537,9 +1537,9 @@ impl Codegen {
         }
         let escala = self.var_scale(nombre);
         self.load_var(nombre);
-        // ★ Si el dato lleva PIC de EDICION, lo que sale no es el numero: es
+        // * Si el dato lleva PIC de EDICION, lo que sale no es el numero: es
         // la mascara. `12345.67` deja de ser "12345.67" y pasa a ser
-        // "$12,345.67" — que es la linea de un extracto, no un volcado.
+        // "$12,345.67" -- que es la linea de un extracto, no un volcado.
         //
         // La plantilla se consume AQUI, al compilar: lo que va al `.bex` es
         // el recorrido convertido en instrucciones, no la plantilla ni un
@@ -1556,7 +1556,7 @@ impl Codegen {
         bmo_lower::console::write_const(&mut self.code, b"\n");
     }
 
-    /// `ACCEPT <variable>` — lee una linea y la guarda con la escala de su PIC.
+    /// `ACCEPT <variable>` -- lee una linea y la guarda con la escala de su PIC.
     ///
     /// El buffer vive en la pila del programa: 64 bytes, que es mas de lo que
     /// nadie teclea en un importe y menos de lo que estorba.
@@ -1578,25 +1578,25 @@ impl Codegen {
         self.store_var(destino);
     }
 
-    // ── E/S de ficheros ─────────────────────────────────────────────────
+    // -- E/S de ficheros -------------------------------------------------
     //
     // El HANDLE de cada fichero vive en una ranura de la pila, como una
-    // variable mas — solo que sin nombre en COBOL. Va en la pila y no en un
+    // variable mas -- solo que sin nombre en COBOL. Va en la pila y no en un
     // registro porque entre el `OPEN` y el `CLOSE` pasa el programa entero:
     // cualquier `DISPLAY` hace un `syscall`, y eso destruye medio banco de
     // registros.
 
-    // ── FILE STATUS ─────────────────────────────────────────────────────
+    // -- FILE STATUS -----------------------------------------------------
     //
-    // El código de dos letras que COBOL deja después de CADA operación de
-    // fichero. Todo programa de banca lo mira, y por una razón que no es
+    // El codigo de dos letras que COBOL deja despues de CADA operacion de
+    // fichero. Todo programa de banca lo mira, y por una razon que no es
     // ceremonia: **un batch nocturno que revienta es peor que uno que escribe
     // "no pude abrir el maestro" y para ordenadamente**.
     //
-    // ## Qué códigos se pueden dar DE VERDAD, y cuáles no
+    // ## Que codigos se pueden dar DE VERDAD, y cuales no
     //
-    // El estándar define decenas. Aquí sólo se ponen los que la puerta permite
-    // distinguir, porque inventar el resto sería peor que no darlos:
+    // El estandar define decenas. Aqui solo se ponen los que la puerta permite
+    // distinguir, porque inventar el resto seria peor que no darlos:
     //
     // ```text
     //   00  la operacion fue bien
@@ -1605,24 +1605,24 @@ impl Codegen {
     //   35  el fichero no existe      <- lo dice el handle 0 del OPEN
     // ```
     //
-    // Los demás (`37` modo incompatible, `39` conflicto de atributos, `41`/`42`
-    // doble apertura o cierre) **no se pueden separar todavía**: `KIND_ARCHIVO`
-    // devuelve un handle o cero, y de un cero no se saca el motivo. El día que
-    // la puerta traiga un código, aquí sólo hay que ampliar la tabla — y hasta
-    // entonces, un `37` inventado mandaría a arreglar lo que no está roto.
+    // Los demas (`37` modo incompatible, `39` conflicto de atributos, `41`/`42`
+    // doble apertura o cierre) **no se pueden separar todavia**: `KIND_ARCHIVO`
+    // devuelve un handle o cero, y de un cero no se saca el motivo. El dia que
+    // la puerta traiga un codigo, aqui solo hay que ampliar la tabla -- y hasta
+    // entonces, un `37` inventado mandaria a arreglar lo que no esta roto.
     const EST_OK: &'static str = "00";
     const EST_FIN: &'static str = "10";
-    /// Error permanente de E/S. **Es el del `CLOSE` que no guardó.**
+    /// Error permanente de E/S. **Es el del `CLOSE` que no guardo.**
     ///
-    /// El estándar lo define como *error permanente, sin más detalle*, y aquí
+    /// El estandar lo define como *error permanente, sin mas detalle*, y aqui
     /// eso es exactamente lo que se sabe: `ARCH_OP_CERRAR` contesta `1` si el
-    /// contenido llegó al disco y `0` si no, sin decir por qué. El motivo queda
-    /// en la CABINA (`F11`); el programa se entera de que **no se guardó**, que
+    /// contenido llego al disco y `0` si no, sin decir por que. El motivo queda
+    /// en la CABINA (`F11`); el programa se entera de que **no se guardo**, que
     /// es lo que necesita para no seguir como si tal cosa.
     const EST_ERROR_E_S: &'static str = "30";
     const EST_NO_EXISTE: &'static str = "35";
 
-    /// De qué fichero es este `01`. `WRITE` nombra el registro, no el fichero.
+    /// De que fichero es este `01`. `WRITE` nombra el registro, no el fichero.
     fn fichero_de_registro(&self, registro: &str) -> String {
         self.files
             .values()
@@ -1631,7 +1631,7 @@ impl Codegen {
             .unwrap_or_default()
     }
 
-    /// Deja el código de dos letras en el campo de `FILE STATUS`, si lo hay.
+    /// Deja el codigo de dos letras en el campo de `FILE STATUS`, si lo hay.
     fn emit_estado(&mut self, fichero: &str, codigo: &str) {
         let Some(f) = self.files.get(&fichero.to_ascii_uppercase()).cloned() else { return };
         let Some(campo) = f.estado else { return };
@@ -1639,10 +1639,10 @@ impl Codegen {
         self.emit_store_texto_literal(off, codigo, 2);
     }
 
-    /// Igual, pero eligiendo entre dos códigos según `rax`: cero = el malo.
+    /// Igual, pero eligiendo entre dos codigos segun `rax`: cero = el malo.
     ///
-    /// Se usa justo después de abrir o de leer, que son las dos operaciones que
-    /// contestan con un sí o un no en `rax` y las únicas de las que hoy se puede
+    /// Se usa justo despues de abrir o de leer, que son las dos operaciones que
+    /// contestan con un si o un no en `rax` y las unicas de las que hoy se puede
     /// sacar un motivo.
     fn emit_estado_segun_rax(&mut self, fichero: &str, si_hay: &str, si_cero: &str) {
         let Some(f) = self.files.get(&fichero.to_ascii_uppercase()).cloned() else { return };
@@ -1652,7 +1652,7 @@ impl Codegen {
         let malo = self.fresh_label();
         let fin = self.fresh_label();
         self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
-        self.emit_jcc(0x84, malo); // je → el camino malo
+        self.emit_jcc(0x84, malo); // je -> el camino malo
         self.emit_store_texto_literal(off, si_hay, 2);
         self.emit_jmp(fin);
         self.bind_label(malo);
@@ -1703,10 +1703,10 @@ impl Codegen {
         let escribe = match m.as_str() {
             "INPUT" => false,
             "OUTPUT" => true,
-            // `EXTEND` es AÑADIR al final, y la puerta que hay abre con
+            // `EXTEND` es ANADIR al final, y la puerta que hay abre con
             // `TASK_OP_ARCHIVO_CREAR`: crea de cero. Compilarlo como OUTPUT
-            // BORRARIA el historico entero y el programa parecería funcionar
-            // —el fichero existe, tiene lineas nuevas— hasta que alguien
+            // BORRARIA el historico entero y el programa pareceria funcionar
+            // --el fichero existe, tiene lineas nuevas-- hasta que alguien
             // buscara el mes pasado. Se rechaza.
             "EXTEND" => {
                 self.errors.push(CobolError::new(
@@ -1743,10 +1743,10 @@ impl Codegen {
 
     /// `CLOSE <fichero>`. En uno de salida, **aqui es donde llega al disco**.
     ///
-    /// ★ Y por eso es la operacion cuyo `FILE STATUS` mas importa: hasta el
+    /// * Y por eso es la operacion cuyo `FILE STATUS` mas importa: hasta el
     /// `CLOSE` no hay nada escrito. Esto ponia `"00"` a pelo, sin mirar `rax`,
-    /// asi que un programa que declaraba `FILE STATUS` —y por tanto se habia
-    /// molestado en preguntar— recibia "todo bien" con el fichero sin guardar.
+    /// asi que un programa que declaraba `FILE STATUS` --y por tanto se habia
+    /// molestado en preguntar-- recibia "todo bien" con el fichero sin guardar.
     ///
     /// Pasa DE VERDAD, y no en un caso raro: `TASK_OP_ARCHIVO_CREAR` no puede
     /// reemplazar un fichero que ya existe, asi que la SEGUNDA corrida de
@@ -1765,11 +1765,11 @@ impl Codegen {
         self.emit_estado_segun_rax(&fichero_s, Self::EST_OK, Self::EST_ERROR_E_S);
     }
 
-    /// `READ <f> AT END … NOT AT END … END-READ`.
+    /// `READ <f> AT END ... NOT AT END ... END-READ`.
     ///
     /// Lee una linea a un buffer de pila, la convierte al entero escalado del
     /// REGISTRO del fichero y lo guarda ahi. La conversion usa la misma
-    /// pareja que `ACCEPT` — `parse_decimal_scaled` — porque un registro de
+    /// pareja que `ACCEPT` -- `parse_decimal_scaled` -- porque un registro de
     /// texto y una linea tecleada son el mismo problema.
     fn emit_read(
         &mut self,
@@ -1787,13 +1787,13 @@ impl Codegen {
             ));
             return;
         }
-        // ★ REGISTRO BINARIO DE LARGO FIJO — el camino de un fichero de verdad.
+        // * REGISTRO BINARIO DE LARGO FIJO -- el camino de un fichero de verdad.
         //
         // Si el `01` del `FD` es un GRUPO, el fichero no es texto: son
         // registros de largo fijo con los campos en su byte. Se leen los bytes
-        // crudos al ÁREA y se desempaqueta cada campo a su ranura de trabajo.
-        // El de texto (una línea, un número) se queda para los ficheros que ya
-        // existían — y son dos cosas distintas, no dos modos del mismo.
+        // crudos al AREA y se desempaqueta cada campo a su ranura de trabajo.
+        // El de texto (una linea, un numero) se queda para los ficheros que ya
+        // existian -- y son dos cosas distintas, no dos modos del mismo.
         if self.disposicion.es_grupo(&f.record) {
             let Some(campo) = self.disposicion.campo(&f.record).cloned() else { return };
             let Some(&area) = self.areas.get(&f.record.to_ascii_uppercase()) else { return };
@@ -1801,7 +1801,7 @@ impl Codegen {
 
             self.load_slot(off);
             self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
-            // r8 = el área. `leer_bytes` busca el resto pendiente en `r8+n`.
+            // r8 = el area. `leer_bytes` busca el resto pendiente en `r8+n`.
             self.code.extend_from_slice(&[0x4C, 0x8D, 0x85]); // lea r8, [rbp+disp32]
             self.code.extend_from_slice(&area.to_le_bytes());
             bmo_lower::archivo::leer_bytes(&mut self.code, campo.bytes);
@@ -1810,8 +1810,8 @@ impl Codegen {
             let fichero_s = fichero.to_string();
             self.emit_estado_segun_rax(&fichero_s, Self::EST_OK, Self::EST_FIN);
 
-            // Del área a las ranuras, y sólo si hubo registro: desempaquetar
-            // basura llenaría los campos con lo que hubiera antes.
+            // Del area a las ranuras, y solo si hubo registro: desempaquetar
+            // basura llenaria los campos con lo que hubiera antes.
             let sin_registro = self.fresh_label();
             self.load_slot(estado);
             self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
@@ -1863,7 +1863,7 @@ impl Codegen {
         let fin = self.fresh_label();
         self.load_slot(estado);
         self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
-        self.emit_jcc(0x84, al_end); // je → se acabo
+        self.emit_jcc(0x84, al_end); // je -> se acabo
         for s in si_hay {
             self.emit_statement(s);
         }
@@ -1875,7 +1875,7 @@ impl Codegen {
         self.bind_label(fin);
     }
 
-    /// `WRITE <registro>` — el valor del registro como una linea.
+    /// `WRITE <registro>` -- el valor del registro como una linea.
     fn emit_write(&mut self, registro: &str) {
         let reg = registro.trim().to_ascii_uppercase();
         // `WRITE X FROM Y` todavia no: se dice en vez de escribir X callando
@@ -1894,10 +1894,10 @@ impl Codegen {
             ));
             return;
         };
-        // ★ Y el WRITE de un registro BINARIO: empaquetar las ranuras al área y
-        // sacar sus bytes tal cual. **Sin salto de línea** — un registro de
-        // largo fijo no lleva separador: el que lo lea ya sabe cuánto mide, y
-        // meterle un `\n` correría todo lo de detrás un byte.
+        // * Y el WRITE de un registro BINARIO: empaquetar las ranuras al area y
+        // sacar sus bytes tal cual. **Sin salto de linea** -- un registro de
+        // largo fijo no lleva separador: el que lo lea ya sabe cuanto mide, y
+        // meterle un `\n` correria todo lo de detras un byte.
         if self.disposicion.es_grupo(&reg) {
             let Some(campo) = self.disposicion.campo(&reg).cloned() else { return };
             let Some(&area) = self.areas.get(&reg) else { return };
@@ -1931,7 +1931,7 @@ impl Codegen {
         // `r8 + r9` cae justo en el final del hueco reservado: escribir ahi el
         // salto de linea seria un byte FUERA, sobre la pila del llamante. El
         // salto va en una segunda escritura, usando la parte baja del mismo
-        // buffer —que esta libre porque un numero nunca lo llena entero.
+        // buffer --que esta libre porque un numero nunca lo llena entero.
         let pila = match &plantilla {
             Some(p) => match p.emitir_en_buffer(&mut self.code) {
                 Ok(total) => total,
@@ -1980,21 +1980,21 @@ impl Codegen {
                 DisplayArg::Literal(s) => self.emit_display(s),
                 DisplayArg::Variable(v) => self.emit_display_var(v),
             },
-            // ★ ACCEPT YA SE COMPILA.
+            // * ACCEPT YA SE COMPILA.
             //
-            // El error que habia aqui —"no hay puerta de entrada en la
-            // superficie congelada"— dejo de ser verdad: `TASK_OP_CONSOLE_READ`
+            // El error que habia aqui --"no hay puerta de entrada en la
+            // superficie congelada"-- dejo de ser verdad: `TASK_OP_CONSOLE_READ`
             // existe y el terminal que lanza el programa le pasa lo que se
             // teclea. Un mensaje de error que se queda cuando el motivo se ha
             // arreglado es peor que no tenerlo: manda a no intentarlo.
             CobolStatement::Accept(destino) => self.emit_accept(destino),
 
             // Decimal EXACTO: el literal se escala a la escala del destino,
-            // así $10.05 en un PIC 9(3)V99 se guarda como el entero 1005.
+            // asi $10.05 en un PIC 9(3)V99 se guarda como el entero 1005.
             CobolStatement::Move(src, dst) => {
-                // ★ Un MOVE de GRUPO no es un MOVE de campo con otro nombre:
-                // mueve el ÁREA tal cual, sin mirar qué hay dentro. Se
-                // distingue aquí porque sólo el codegen sabe quién es grupo.
+                // * Un MOVE de GRUPO no es un MOVE de campo con otro nombre:
+                // mueve el AREA tal cual, sin mirar que hay dentro. Se
+                // distingue aqui porque solo el codegen sabe quien es grupo.
                 if self.disposicion.es_grupo(src) && self.disposicion.es_grupo(dst) {
                     let (src, dst) = (src.clone(), dst.clone());
                     self.emit_move_grupo(&src, &dst);
@@ -2011,15 +2011,15 @@ impl Codegen {
                     ));
                     return;
                 }
-                // ── TEXTO ──
+                // -- TEXTO --
                 if let Some(chars) = self.texto_de(dst) {
                     let (src, dst) = (src.clone(), dst.clone());
                     if self.texto_de(&src).is_some() {
                         self.emit_move_texto_var(&dst, &src);
                     } else if let Some(off) = self.exige_declarado(&Self::nombre_base(&dst)) {
-                        // Un literal, o un número que se mueve a un campo de
+                        // Un literal, o un numero que se mueve a un campo de
                         // texto: en los dos casos lo que entra son sus
-                        // caracteres, que es lo que dice el estándar.
+                        // caracteres, que es lo que dice el estandar.
                         self.emit_store_texto_literal(off, &src, chars);
                     }
                     return;
@@ -2039,14 +2039,14 @@ impl Codegen {
                 self.load_operand(src, sc);
                 self.store_var(dst);
             }
-            // ADD a misma escala: ambos operandos en centavos → `add` es
+            // ADD a misma escala: ambos operandos en centavos -> `add` es
             // suma decimal exacta (sin float, sin redondeo). El alma bancaria.
-            // ★ La suma se hace en la escala MAYOR de las dos y se redondea AL
-            // FINAL. Subir de escala es exacto —multiplicar por diez no pierde
-            // nada—, así que no se tira ningún dígito antes de tiempo.
+            // * La suma se hace en la escala MAYOR de las dos y se redondea AL
+            // FINAL. Subir de escala es exacto --multiplicar por diez no pierde
+            // nada--, asi que no se tira ningun digito antes de tiempo.
             //
-            // Ésa es la diferencia entre redondear el RESULTADO y redondear un
-            // OPERANDO, y con los modos asimétricos **no dan lo mismo**: el
+            // Esa es la diferencia entre redondear el RESULTADO y redondear un
+            // OPERANDO, y con los modos asimetricos **no dan lo mismo**: el
             // techo de `-9.995` es `-9.99`, pero si primero se redondea el
             // `9.995` a `10.00` y luego se resta, sale `-10.00`.
             CobolStatement::Add(src, dst, arit) => {
@@ -2057,13 +2057,13 @@ impl Codegen {
                 self.load_var(dst);
                 self.rescale(sc, calc);                  // exacto: hacia arriba
                 self.code.push(0x50);                    // push rax
-                self.load_operand(src, calc);            // exacto: su escala o más
+                self.load_operand(src, calc);            // exacto: su escala o mas
                 self.code.push(0x5A);                    // pop rdx
                 self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
                 self.rescale_redondeado(calc, sc, arit.redondeo);
                 self.emit_guardar_con_desborde(dst, &arit, etq);
             }
-            // SUBTRACT src FROM dst → dst = dst - src. Misma regla de escala
+            // SUBTRACT src FROM dst -> dst = dst - src. Misma regla de escala
             // que el ADD: se calcula donde no se pierde nada y se redondea al
             // final.
             CobolStatement::Subtract(src, dst, arit) => {
@@ -2081,11 +2081,11 @@ impl Codegen {
                 self.rescale_redondeado(calc, sc, arit.redondeo);
                 self.emit_guardar_con_desborde(dst, &arit, etq);
             }
-            // ★ El multiplicando se carga EN SU PROPIA ESCALA, no en la del
-            // destino: así el producto no pierde ni un dígito antes de tiempo.
-            // `3.003 × 3.33` con destino de dos decimales se calcula entero y
+            // * El multiplicando se carga EN SU PROPIA ESCALA, no en la del
+            // destino: asi el producto no pierde ni un digito antes de tiempo.
+            // `3.003 x 3.33` con destino de dos decimales se calcula entero y
             // se redondea UNA vez; cargando el `3.003` en dos decimales primero
-            // se estaría multiplicando por `3.00`.
+            // se estaria multiplicando por `3.00`.
             CobolStatement::Multiply(src, dst, arit) => {
                 let etq = self.etiquetas_desborde(arit);
                 let arit = arit.clone();
@@ -2095,8 +2095,8 @@ impl Codegen {
                 self.load_operand(src, so);                      // su escala: exacto
                 self.code.push(0x5A);                            // pop rdx
                 self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]); // imul rax, rdx
-                // El producto quedó en escala sc+so. Volver a sc es dividir
-                // entre 10^so, y AHÍ es donde manda la cláusula ROUNDED.
+                // El producto quedo en escala sc+so. Volver a sc es dividir
+                // entre 10^so, y AHI es donde manda la clausula ROUNDED.
                 if so > 0 {
                     let p = 10u64.pow(so);
                     self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); });
@@ -2120,9 +2120,9 @@ impl Codegen {
                     self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]);    // imul rax, rcx
                 }
                 self.code.push(0x59);                            // pop rcx (divisor)
-                // ★ DIVIDIR ENTRE CERO ES UN DESBORDE, no un fallo del CPU. Sin
+                // * DIVIDIR ENTRE CERO ES UN DESBORDE, no un fallo del CPU. Sin
                 // esto, un `idiv` con rcx a cero levanta #DE y el proceso muere
-                // sin decir por que — y en un batch eso es peor que un numero
+                // sin decir por que -- y en un batch eso es peor que un numero
                 // malo: se lleva por delante el proceso entero por un registro.
                 if let Some((desborda, _)) = etq {
                     self.code.extend_from_slice(&[0x48, 0x85, 0xC9]); // test rcx, rcx
@@ -2140,9 +2140,9 @@ impl Codegen {
                 self.emit_compute(expr, sc, arit.redondeo);
                 self.emit_guardar_con_desborde(dst, &arit, etq);
             }
-            // IF/ELSE con bifurcación REAL. Las condiciones se conjugan con
+            // IF/ELSE con bifurcacion REAL. Las condiciones se conjugan con
             // AND: la primera que falle salta a ELSE sin evaluar el resto
-            // (cortocircuito, como manda el estándar).
+            // (cortocircuito, como manda el estandar).
             CobolStatement::If(cond, then_stmts, else_stmts) => {
                 let else_label = self.fresh_label();
                 let end_label = self.fresh_label();
@@ -2164,16 +2164,16 @@ impl Codegen {
             // PERFORM <n> TIMES con un contador REAL en la pila.
             //
             // El contador vive en `[rsp]` y no en un registro porque el
-            // cuerpo puede contener cualquier cosa —un DISPLAY hace un
-            // `syscall`, que destruye rcx y r11—. Todos los emisores de
-            // sentencias dejan la pila equilibrada, así que `[rsp]` sigue
-            // apuntando al contador en cada iteración.
+            // cuerpo puede contener cualquier cosa --un DISPLAY hace un
+            // `syscall`, que destruye rcx y r11--. Todos los emisores de
+            // sentencias dejan la pila equilibrada, asi que `[rsp]` sigue
+            // apuntando al contador en cada iteracion.
             CobolStatement::PerformTimes(n, body) => {
                 let top = self.fresh_label();
                 let done = self.fresh_label();
 
                 self.emit_asm(|a| { a.mov_imm64(Reg::Rax, *n as u64).unwrap(); });
-                self.code.push(0x50); // push rax → contador
+                self.code.push(0x50); // push rax -> contador
 
                 self.bind_label(top);
                 self.code.extend_from_slice(&[0x48, 0x83, 0x3C, 0x24, 0x00]); // cmp qword [rsp], 0
@@ -2190,22 +2190,22 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 0x08]); // add rsp, 8
             }
 
-            // PERFORM UNTIL <cond>: se prueba ANTES de cada iteración
-            // (`WITH TEST BEFORE`, el default del estándar) y se sale cuando
-            // la condición se cumple.
-            // ★ `EVALUATE` — la primera rama que acierta gana, y las de abajo
+            // PERFORM UNTIL <cond>: se prueba ANTES de cada iteracion
+            // (`WITH TEST BEFORE`, el default del estandar) y se sale cuando
+            // la condicion se cumple.
+            // * `EVALUATE` -- la primera rama que acierta gana, y las de abajo
             // ni se prueban.
             //
-            // Que se emita en cinco líneas es la prueba de que la forma del AST
-            // es la buena: las dos sintaxis —con sujeto y `EVALUATE TRUE`— ya
-            // llegan aquí como el MISMO árbol de condiciones, así que heredan el
-            // cortocircuito y la precedencia sin una línea de más. Si el codegen
-            // tuviera que distinguirlas, el parser habría hecho mal su trabajo.
-            // ── INSPECT ──
+            // Que se emita en cinco lineas es la prueba de que la forma del AST
+            // es la buena: las dos sintaxis --con sujeto y `EVALUATE TRUE`-- ya
+            // llegan aqui como el MISMO arbol de condiciones, asi que heredan el
+            // cortocircuito y la precedencia sin una linea de mas. Si el codegen
+            // tuviera que distinguirlas, el parser habria hecho mal su trabajo.
+            // -- INSPECT --
             //
             // El campo se recorre por su ancho DECLARADO, no por el alineado:
-            // los bytes de relleno de detrás no son del programa y contarlos
-            // daría espacios que nadie escribió.
+            // los bytes de relleno de detras no son del programa y contarlos
+            // daria espacios que nadie escribio.
             CobolStatement::InspectContar { campo, contador, buscado } => {
                 let (campo, contador, buscado) = (campo.clone(), contador.clone(), *buscado);
                 let Some(chars) = self.texto_de(&campo) else {
@@ -2221,7 +2221,7 @@ impl Codegen {
                 self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, chars as u64).unwrap(); });
                 self.emit_asm(|a| { a.mov_imm64(Reg::Rdx, buscado as u64).unwrap(); });
                 bmo_lower::texto::contar_byte(&mut self.code);
-                // El contador es NUMÉRICO: la cuenta entra por la puerta de
+                // El contador es NUMERICO: la cuenta entra por la puerta de
                 // siempre, reescalada a su PIC.
                 let escala = self.var_scale(&contador);
                 self.rescale(0, escala);
@@ -2250,12 +2250,12 @@ impl Codegen {
                 }
             }
 
-            // ── STRING … DELIMITED BY SIZE ──
+            // -- STRING ... DELIMITED BY SIZE --
             //
-            // ★ Se resuelve ENTERO al compilar. Cada fuente tiene un ancho
-            // conocido —el de su PICTURE, o el del literal— así que el destino
+            // * Se resuelve ENTERO al compilar. Cada fuente tiene un ancho
+            // conocido --el de su PICTURE, o el del literal-- asi que el destino
             // se llena por trozos con `mov` de inmediato y copias de largo fijo.
-            // No hay puntero que avance ni cuenta que llevar en ejecución.
+            // No hay puntero que avance ni cuenta que llevar en ejecucion.
             CobolStatement::StringInto { fuentes, destino } => {
                 let (fuentes, destino) = (fuentes.clone(), destino.clone());
                 let Some(ancho) = self.texto_de(&destino) else {
@@ -2275,7 +2275,7 @@ impl Codegen {
                 let mut cursor = 0u32;
                 for f in &fuentes {
                     if cursor >= ancho {
-                        break; // lo que no cabe se descarta, como manda el estándar
+                        break; // lo que no cabe se descarta, como manda el estandar
                     }
                     let hueco = ancho - cursor;
                     match self.texto_de(f) {
@@ -2329,7 +2329,7 @@ impl Codegen {
                             self.bind_label(siguiente);
                         }
                         // `WHEN OTHER`: no compara, y el parser ya garantiza que
-                        // es el último.
+                        // es el ultimo.
                         None => {
                             for s in cuerpo {
                                 self.emit_statement(s);
@@ -2348,26 +2348,26 @@ impl Codegen {
             }
 
             // `EXIT` y `CONTINUE` no emiten nada, y eso es lo correcto: son el
-            // hueco explícito. El destino de un `PERFORM … THRU X-SALIR` tiene
-            // que existir como párrafo, no como instrucción.
-            // ★ `PERFORM VARYING … [AFTER …]` — el bucle con índice.
+            // hueco explicito. El destino de un `PERFORM ... THRU X-SALIR` tiene
+            // que existir como parrafo, no como instruccion.
+            // * `PERFORM VARYING ... [AFTER ...]` -- el bucle con indice.
             CobolStatement::PerformVarying { controles, cuerpo } => {
                 let (controles, cuerpo) = (controles.clone(), cuerpo.clone());
                 self.emit_varying(&controles, &cuerpo);
             }
 
-            // ★ `GO TO` — un salto a un párrafo, sin vuelta.
+            // * `GO TO` -- un salto a un parrafo, sin vuelta.
             //
-            // Se emite como un `jmp rel32` al mismo símbolo al que `PERFORM`
+            // Se emite como un `jmp rel32` al mismo simbolo al que `PERFORM`
             // hace `call`, y se parchea con la misma tabla: los dos son rel32
-            // contra la instrucción siguiente, así que el parcheador no
-            // distingue — y no tiene por qué.
+            // contra la instruccion siguiente, asi que el parcheador no
+            // distingue -- y no tiene por que.
             //
-            // Lo que pasa después es lo interesante y sale gratis: el párrafo al
-            // que se salta corre, y al llegar a su epílogo pregunta si es ahí
-            // donde había que volver. Si el `GO TO` fue a la salida de un
-            // `PERFORM … THRU`, vuelve. Si fue a otro sitio, sigue cayendo hasta
-            // encontrarla. Es exactamente lo que dice el estándar, y no hizo
+            // Lo que pasa despues es lo interesante y sale gratis: el parrafo al
+            // que se salta corre, y al llegar a su epilogo pregunta si es ahi
+            // donde habia que volver. Si el `GO TO` fue a la salida de un
+            // `PERFORM ... THRU`, vuelve. Si fue a otro sitio, sigue cayendo hasta
+            // encontrarla. Es exactamente lo que dice el estandar, y no hizo
             // falta escribir nada para ello.
             CobolStatement::GoTo(destino) => {
                 let destino = destino.clone();
@@ -2406,8 +2406,8 @@ impl Codegen {
                 let done = self.fresh_label();
 
                 self.bind_label(top);
-                // Se SALE cuando la condición se cumple, así que mientras sea
-                // falsa se va al cuerpo. La condición compuesta se emite
+                // Se SALE cuando la condicion se cumple, asi que mientras sea
+                // falsa se va al cuerpo. La condicion compuesta se emite
                 // entera: `UNTIL FIN = 1 OR ERROR = 1` para con cualquiera de
                 // las dos, y ese `OR` es la forma en la que un batch de verdad
                 // dice "hasta que se acabe o hasta que algo vaya mal".
@@ -2424,13 +2424,13 @@ impl Codegen {
                 self.bind_label(done);
             }
             // E/S de ficheros y ACCEPT: se RECHAZAN en vez de emitir el
-            // `syscall NR_FS_*` / `NR_INPUT_POLL_EVENT` de antes, números
+            // `syscall NR_FS_*` / `NR_INPUT_POLL_EVENT` de antes, numeros
             // planos que el kernel no despacha. Un programa que "compila" y
             // cuyo READ no lee nada es peor que uno que no compila: el
             // fichero se necesita como capability sobre BMO Channel, y esa
-            // capa todavía no existe.
-            // ★ E/S DE FICHEROS. El error que habia aqui —"necesita una
-            // capability de sistema de ficheros que todavia no existe"— dejo
+            // capa todavia no existe.
+            // * E/S DE FICHEROS. El error que habia aqui --"necesita una
+            // capability de sistema de ficheros que todavia no existe"-- dejo
             // de ser verdad: `KIND_ARCHIVO` existe y `bmo-lower::archivo` es
             // su puerta.
             CobolStatement::Open(modo, fichero) => self.emit_open(modo, fichero),
@@ -2439,17 +2439,17 @@ impl Codegen {
                 self.emit_read(fichero, al_final, si_hay)
             }
             CobolStatement::Write(registro) => self.emit_write(registro),
-            // ★ `STOP RUN` TERMINA EL PROGRAMA, y hasta hoy no emitía nada.
+            // * `STOP RUN` TERMINA EL PROGRAMA, y hasta hoy no emitia nada.
             //
-            // Colaba porque siempre era la última línea y detrás venía el
-            // `exit` implícito del final. En cuanto hay párrafos deja de colar:
-            // el `STOP RUN` del cuerpo principal tiene los párrafos DETRÁS, así
+            // Colaba porque siempre era la ultima linea y detras venia el
+            // `exit` implicito del final. En cuanto hay parrafos deja de colar:
+            // el `STOP RUN` del cuerpo principal tiene los parrafos DETRAS, asi
             // que no emitir nada significaba caerse dentro del primero y
             // ejecutarlo por segunda vez.
             //
-            // Y ya estaba mal antes: un `STOP RUN` dentro de un `IF` —la forma
-            // normal de abortar un batch cuando algo no cuadra— se ignoraba en
-            // silencio y el proceso seguía.
+            // Y ya estaba mal antes: un `STOP RUN` dentro de un `IF` --la forma
+            // normal de abortar un batch cuando algo no cuadra-- se ignoraba en
+            // silencio y el proceso seguia.
             CobolStatement::StopRun => {
                 bmo_lower::task::exit(&mut self.code);
             }
@@ -2457,27 +2457,27 @@ impl Codegen {
         }
     }
 
-    /// `COMPUTE dst = <expresión>` con precedencia real.
+    /// `COMPUTE dst = <expresion>` con precedencia real.
     ///
     /// Antes esto llamaba a `load_scaled_imm(expr)`, que intenta parsear la
-    /// expresión ENTERA como un número: `COMPUTE T = A + B` no fallaba, se
-    /// evaluaba a 0 y seguía.
+    /// expresion ENTERA como un numero: `COMPUTE T = A + B` no fallaba, se
+    /// evaluaba a 0 y seguia.
     ///
-    /// ## En qué escala se calcula, y por qué no en la del destino
+    /// ## En que escala se calcula, y por que no en la del destino
     ///
-    /// Se evalúa en la escala **más alta que aparezca** —la del destino o la
-    /// del operando que más decimales traiga— y se baja a la del destino
-    /// **una sola vez, al final**, aplicando ahí la cláusula `ROUNDED`.
+    /// Se evalua en la escala **mas alta que aparezca** --la del destino o la
+    /// del operando que mas decimales traiga-- y se baja a la del destino
+    /// **una sola vez, al final**, aplicando ahi la clausula `ROUNDED`.
     ///
-    /// Antes se evaluaba directamente en la del destino, y eso tenía un fallo
-    /// que no se veía: `COMPUTE R = BASE * 0.075` con `R PIC V99` cargaba el
+    /// Antes se evaluaba directamente en la del destino, y eso tenia un fallo
+    /// que no se veia: `COMPUTE R = BASE * 0.075` con `R PIC V99` cargaba el
     /// literal en dos decimales, o sea **multiplicaba por `0.07`**. El
-    /// resultado salía mal en el tercer decimal y ningún `ROUNDED` podía
-    /// arreglarlo, porque para cuando llegaba, el dígito ya no estaba.
+    /// resultado salia mal en el tercer decimal y ningun `ROUNDED` podia
+    /// arreglarlo, porque para cuando llegaba, el digito ya no estaba.
     ///
-    /// ⚠ **Dónde sigue sin llegar al estándar**: COBOL manda que los
-    /// intermedios lleven precisión de sobra, no la del operando más largo. Con
-    /// una división en medio (`A / 3 * 3`) eso se nota. Está dicho aquí para
+    /// [!] **Donde sigue sin llegar al estandar**: COBOL manda que los
+    /// intermedios lleven precision de sobra, no la del operando mas largo. Con
+    /// una division en medio (`A / 3 * 3`) eso se nota. Esta dicho aqui para
     /// que no se descubra en un cuadre.
     fn emit_compute(&mut self, expr: &str, scale: u32, redondeo: Redondeo) {
         // Un subindice DENTRO de la expresion no se puede leer aqui: para este
@@ -2499,8 +2499,8 @@ impl Codegen {
             }
         }
         let tokens = Self::tokenize_expr(expr);
-        // La escala de trabajo: la del destino o la del operando más largo.
-        // Subir de escala es exacto, así que calcular arriba nunca empeora.
+        // La escala de trabajo: la del destino o la del operando mas largo.
+        // Subir de escala es exacto, asi que calcular arriba nunca empeora.
         let calc = tokens
             .iter()
             .filter(|t| !matches!(t.as_str(), "+" | "-" | "*" | "/" | "(" | ")"))
@@ -2508,7 +2508,7 @@ impl Codegen {
             .fold(scale, u32::max);
         let mut pos = 0usize;
         self.emit_expr_sum(&tokens, &mut pos, calc, redondeo);
-        // Y la bajada a la escala del destino, una sola vez y con la cláusula.
+        // Y la bajada a la escala del destino, una sola vez y con la clausula.
         self.rescale_redondeado(calc, scale, redondeo);
         if pos != tokens.len() {
             self.errors.push(CobolError::new(
@@ -2518,7 +2518,7 @@ impl Codegen {
         }
     }
 
-    /// Parte la expresión en operandos, operadores y paréntesis.
+    /// Parte la expresion en operandos, operadores y parentesis.
     fn tokenize_expr(expr: &str) -> Vec<String> {
         let mut out = Vec::new();
         let mut current = String::new();
@@ -2633,28 +2633,28 @@ impl Codegen {
         self.load_operand(&token, scale);
     }
 
-    /// Compara los dos operandos y salta a `label` si la condición es FALSA.
+    /// Compara los dos operandos y salta a `label` si la condicion es FALSA.
     ///
     /// Es la primitiva de todo el flujo de control: un `IF` salta al `ELSE`
     /// cuando falla, y un `PERFORM UNTIL` salta al cuerpo cuando la
-    /// condición de salida aún no se cumple.
+    /// condicion de salida aun no se cumple.
     ///
     /// Deja `rdx` = izquierdo y `rax` = derecho, y compara `rdx - rax`, de
-    /// modo que el código de condición se lee en el mismo orden que el
-    /// COBOL: `A > B` es `jg`. La versión anterior cargaba los operandos
-    /// cruzados y elegía condiciones invertidas a ojo — otra fuente de
-    /// error que aquí desaparece.
-    /// Salta a `label` si la condición COMPUESTA es **falsa**.
+    /// modo que el codigo de condicion se lee en el mismo orden que el
+    /// COBOL: `A > B` es `jg`. La version anterior cargaba los operandos
+    /// cruzados y elegia condiciones invertidas a ojo -- otra fuente de
+    /// error que aqui desaparece.
+    /// Salta a `label` si la condicion COMPUESTA es **falsa**.
     ///
     /// Es la primitiva que usan `IF` (salta al `ELSE`) y `PERFORM UNTIL`.
     ///
-    /// ## El cortocircuito no es una optimización
+    /// ## El cortocircuito no es una optimizacion
     ///
     /// `A AND B` salta al primer fallo sin evaluar `B`, y `A OR B` deja de
-    /// mirar en cuanto una acierta. Se emite así porque es lo que dice el
-    /// estándar, y porque evaluar de más en COBOL no es gratis: un operando
-    /// puede ser un elemento de tabla, y ahí la evaluación lleva **guarda de
-    /// rango** — un `IF I <= 12 AND TOTAL(I) > 0` con `I = 13` tiene que parar
+    /// mirar en cuanto una acierta. Se emite asi porque es lo que dice el
+    /// estandar, y porque evaluar de mas en COBOL no es gratis: un operando
+    /// puede ser un elemento de tabla, y ahi la evaluacion lleva **guarda de
+    /// rango** -- un `IF I <= 12 AND TOTAL(I) > 0` con `I = 13` tiene que parar
     /// en la primera, no reventar en la segunda.
     fn emit_jump_if_false(&mut self, cond: &Condicion, label: u32) {
         match cond {
@@ -2663,7 +2663,7 @@ impl Codegen {
                 self.emit_jump_if_condition_false(&c, label);
             }
             // Las dos tienen que valer: cualquiera que falle manda al mismo
-            // sitio, y la segunda ni se mira si la primera ya falló.
+            // sitio, y la segunda ni se mira si la primera ya fallo.
             Condicion::Y(izq, der) => {
                 self.emit_jump_if_false(izq, label);
                 self.emit_jump_if_false(der, label);
@@ -2679,10 +2679,10 @@ impl Codegen {
         }
     }
 
-    /// La otra mitad: salta a `label` si la condición es **verdadera**.
+    /// La otra mitad: salta a `label` si la condicion es **verdadera**.
     ///
-    /// Hace falta por el `OR`, y con ella el emisor queda simétrico — no hay
-    /// forma de tener una rama del árbol sin su contraria.
+    /// Hace falta por el `OR`, y con ella el emisor queda simetrico -- no hay
+    /// forma de tener una rama del arbol sin su contraria.
     fn emit_jump_if_true(&mut self, cond: &Condicion, label: u32) {
         match cond {
             Condicion::Simple(c) => {
@@ -2690,8 +2690,8 @@ impl Codegen {
                 self.emit_jump_if_condition_true(&c, label);
             }
             // Para que un AND sea verdad tienen que serlo las dos: se salta
-            // fuera al primer fallo, y sólo se llega al salto final si ninguna
-            // falló.
+            // fuera al primer fallo, y solo se llega al salto final si ninguna
+            // fallo.
             Condicion::Y(izq, der) => {
                 let falla = self.fresh_label();
                 self.emit_jump_if_false(izq, falla);
@@ -2706,26 +2706,26 @@ impl Codegen {
         }
     }
 
-    /// Un nivel 88 convertido en la condición que de verdad es.
+    /// Un nivel 88 convertido en la condicion que de verdad es.
     ///
-    /// La expansión la hace [`Condicion::de_valores`], compartida con el `WHEN`
-    /// de un `EVALUATE` con sujeto: son la misma pregunta —"¿está este campo en
-    /// este conjunto?"— y tenerla dos veces sería copiar el mismo error de
+    /// La expansion la hace [`Condicion::de_valores`], compartida con el `WHEN`
+    /// de un `EVALUATE` con sujeto: son la misma pregunta --"esta este campo en
+    /// este conjunto?"-- y tenerla dos veces seria copiar el mismo error de
     /// extremo abierto en dos sitios.
     fn expandir_88(padre: &str, valores: &[crate::ast::Valor88]) -> Condicion {
-        // Un 88 sin valores no llega hasta aquí: el parser lo rechaza. Si
+        // Un 88 sin valores no llega hasta aqui: el parser lo rechaza. Si
         // llegara, comparar contra nada es falso, no verdadero.
         Condicion::de_valores(padre, valores).unwrap_or_else(|| {
             Condicion::Simple(CobolCondition::NotEqual("0".to_string(), "0".to_string()))
         })
     }
 
-    /// Salta si una comparación SIMPLE es verdadera.
+    /// Salta si una comparacion SIMPLE es verdadera.
     ///
-    /// Comparte con su contraria la carga de operandos y la expansión de los
-    /// nombres de condición; lo único que cambia es el código de condición del
-    /// `jcc`, y por eso viven en la misma función con un interruptor en vez de
-    /// duplicadas — dos copias del reparto `push`/`pop` es donde se cuela un
+    /// Comparte con su contraria la carga de operandos y la expansion de los
+    /// nombres de condicion; lo unico que cambia es el codigo de condicion del
+    /// `jcc`, y por eso viven en la misma funcion con un interruptor en vez de
+    /// duplicadas -- dos copias del reparto `push`/`pop` es donde se cuela un
     /// operando cruzado.
     fn emit_jump_if_condition_true(&mut self, cond: &CobolCondition, label: u32) {
         self.emit_comparacion(cond, label, true);
@@ -2736,12 +2736,12 @@ impl Codegen {
     }
 
     fn emit_comparacion(&mut self, cond: &CobolCondition, label: u32, salta_si_cierta: bool) {
-        // ── Un nombre de condición se expande AQUÍ ──
+        // -- Un nombre de condicion se expande AQUI --
         //
         // `IF FIN-DE-FICHERO` es `IF FIN = 1` con otro nombre, y el otro nombre
-        // es el que se lee. La expansión vive en el codegen y no en el parser
-        // porque sólo aquí se sabe qué datos existen — y por tanto sólo aquí se
-        // puede decir "eso no es ningún 88" en vez de tratarlo como una
+        // es el que se lee. La expansion vive en el codegen y no en el parser
+        // porque solo aqui se sabe que datos existen -- y por tanto solo aqui se
+        // puede decir "eso no es ningun 88" en vez de tratarlo como una
         // variable que no existe y comparar contra basura.
         if let CobolCondition::Nombre(n) = cond {
             let Some((padre, valores)) = self.cond_88.get(n).cloned() else {
@@ -2754,9 +2754,9 @@ impl Codegen {
                 ));
                 return;
             };
-            // ★ Un 88 con varios valores es un OR, y uno con THRU es un AND de
-            // dos comparaciones. Los dos se expanden AQUÍ y bajan por el mismo
-            // emisor de árboles que un `IF A > 1 OR B = 2` escrito a mano: no
+            // * Un 88 con varios valores es un OR, y uno con THRU es un AND de
+            // dos comparaciones. Los dos se expanden AQUI y bajan por el mismo
+            // emisor de arboles que un `IF A > 1 OR B = 2` escrito a mano: no
             // hay un camino especial para los 88, y por eso heredan el
             // cortocircuito gratis.
             let expandida = Self::expandir_88(&padre, &valores);
@@ -2768,12 +2768,12 @@ impl Codegen {
             return;
         }
 
-        // ── Comparación de TEXTO ──
+        // -- Comparacion de TEXTO --
         //
-        // Se detecta aquí y no en el parser porque sólo el codegen sabe qué
-        // datos existen y cuál de ellos es alfanumérico. Sólo `=` y `NOT =`:
-        // un `>` entre cadenas es orden de COLACIÓN, y eso depende del juego de
-        // caracteres — decidirlo por ASCII a la callada daría un orden que no es
+        // Se detecta aqui y no en el parser porque solo el codegen sabe que
+        // datos existen y cual de ellos es alfanumerico. Solo `=` y `NOT =`:
+        // un `>` entre cadenas es orden de COLACION, y eso depende del juego de
+        // caracteres -- decidirlo por ASCII a la callada daria un orden que no es
         // el de un mainframe.
         let (izq, der) = match cond {
             CobolCondition::Equal(a, b) | CobolCondition::NotEqual(a, b) => (a.clone(), b.clone()),
@@ -2812,11 +2812,11 @@ impl Codegen {
             return;
         }
 
-        // `cc_falsa` salta cuando la comparación NO se cumple; `cc_cierta`
-        // cuando sí. Van en pareja para que no haya forma de escribir una sin
+        // `cc_falsa` salta cuando la comparacion NO se cumple; `cc_cierta`
+        // cuando si. Van en pareja para que no haya forma de escribir una sin
         // su contraria y que se despareen con el tiempo.
         let (a, b, cc_falsa, cc_cierta) = match cond {
-            // Ya se resolvió arriba; llegar aquí sería un bug del emisor.
+            // Ya se resolvio arriba; llegar aqui seria un bug del emisor.
             CobolCondition::Nombre(_) => return,
             CobolCondition::Equal(a, b) => (a, b, 0x85, 0x84),          // jne / je
             CobolCondition::NotEqual(a, b) => (a, b, 0x84, 0x85),       // je  / jne
@@ -2854,7 +2854,7 @@ impl Codegen {
     }
 
     fn emit_imm64_syscall_arg(&mut self, index: usize, value: u64) {
-        // mov rax, imm64 ; mov <arg_reg>, rax — todo por el encoder sem-asm.
+        // mov rax, imm64 ; mov <arg_reg>, rax -- todo por el encoder sem-asm.
         let dst = ARG_REGS[index];
         self.emit_asm(|a| {
             a.mov_imm64(Reg::Rax, value).unwrap();
@@ -2909,10 +2909,10 @@ mod tests {
 
     #[test]
     fn decimal_literals_scale_to_exact_cents() {
-        // El alma bancaria: literal decimal → entero escalado exacto.
-        assert_eq!(Codegen::scaled_imm("10.05", 2), 1005); // $10.05 → 1005 centavos
-        assert_eq!(Codegen::scaled_imm("3.2", 2), 320);    // $3.20  → 320
-        assert_eq!(Codegen::scaled_imm("7", 2), 700);      // $7.00  → 700
+        // El alma bancaria: literal decimal -> entero escalado exacto.
+        assert_eq!(Codegen::scaled_imm("10.05", 2), 1005); // $10.05 -> 1005 centavos
+        assert_eq!(Codegen::scaled_imm("3.2", 2), 320);    // $3.20  -> 320
+        assert_eq!(Codegen::scaled_imm("7", 2), 700);      // $7.00  -> 700
         assert_eq!(Codegen::scaled_imm("0.99", 2), 99);    // 99 centavos
         // Suma exacta de centavos, sin float:
         assert_eq!(
@@ -2935,13 +2935,13 @@ mod tests {
     }
 
     /// Un literal negativo tiene que llegar negativo. Sin esto, `MOVE -120.00`
-    /// guardaba +12000 y el `CR` de un extracto no salía nunca.
+    /// guardaba +12000 y el `CR` de un extracto no salia nunca.
     #[test]
     fn negative_literals_keep_their_sign() {
         assert_eq!(Codegen::scaled_imm("-120.00", 2) as i64, -12_000);
         assert_eq!(Codegen::scaled_imm("-7", 0) as i64, -7);
         assert_eq!(Codegen::scaled_imm("-0.05", 2) as i64, -5);
-        // El `+` explícito sigue siendo positivo.
+        // El `+` explicito sigue siendo positivo.
         assert_eq!(Codegen::scaled_imm("+120.00", 2) as i64, 12_000);
     }
 }

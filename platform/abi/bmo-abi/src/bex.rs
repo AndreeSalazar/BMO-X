@@ -1,4 +1,4 @@
-//! BEX — BMO Executable.
+//! BEX -- BMO Executable.
 //!
 //! A BEX file is the executable artifact consumed by BMO Ring 3.  Version 1
 //! deliberately uses the existing, stable BEF1 wire layout; `bex` names the

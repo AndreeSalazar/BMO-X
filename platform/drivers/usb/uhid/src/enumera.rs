@@ -1,20 +1,20 @@
 //! **El bus, no los aparatos.**
 //!
-//! Aquí vive lo que hay que hacer para que un endpoint de interrupción esté
-//! listo, y es *idéntico* para un teclado, un ratón o cualquier otro HID:
+//! Aqui vive lo que hay que hacer para que un endpoint de interrupcion este
+//! listo, y es *identico* para un teclado, un raton o cualquier otro HID:
 //! descifrar descriptores, mandar `SET_CONFIGURATION`, configurar el endpoint
 //! en el xHC, poner el protocolo boot y reservar el buffer de DMA.
 //!
-//! Estaba metido en la misma función que la decodificación de informes. Ese es
-//! el reparto que se estaba pidiendo a gritos: **esto no sabe qué es un
-//! teclado**, y [`crate::teclado`] no sabe qué es un puerto. Cuando entre un
-//! tercer aparato —un mando, una tableta— no se toca nada de aquí.
+//! Estaba metido en la misma funcion que la decodificacion de informes. Ese es
+//! el reparto que se estaba pidiendo a gritos: **esto no sabe que es un
+//! teclado**, y [`crate::teclado`] no sabe que es un puerto. Cuando entre un
+//! tercer aparato --un mando, una tableta-- no se toca nada de aqui.
 
 
-/// Máximo de interfaces que consideramos por dispositivo (fijo, sin alloc: el
+/// Maximo de interfaces que consideramos por dispositivo (fijo, sin alloc: el
 /// driver corre dentro de Ring 0 de BMO, que no tiene allocator).
 pub const MAX_IFACES: usize = 8;
-/// Tamaño máximo aceptado del config descriptor completo (fijo, sin alloc).
+/// Tamano maximo aceptado del config descriptor completo (fijo, sin alloc).
 pub const MAX_CFG: usize = 512;
 
 /// Clase HID de una interfaz, ya interpretada.
@@ -48,13 +48,13 @@ pub fn interfaces(cfg: &[u8], out: &mut [(u8, u8, u8, u8); MAX_IFACES]) -> usize
     n
 }
 
-/// El endpoint de interrupción IN de UNA interfaz concreta:
+/// El endpoint de interrupcion IN de UNA interfaz concreta:
 /// `(direccion_del_endpoint, max_packet, bInterval, dci)`.
 ///
 /// El seguimiento de `iface_actual` no es un detalle: los descriptores de
-/// endpoint vienen sueltos detrás del de su interfaz, sin decir de quién son.
-/// Sin llevar la cuenta, un teclado compuesto daría el endpoint de su interfaz
-/// de medios para la de teclado — y ésa sólo habla si pulsas subir volumen.
+/// endpoint vienen sueltos detras del de su interfaz, sin decir de quien son.
+/// Sin llevar la cuenta, un teclado compuesto daria el endpoint de su interfaz
+/// de medios para la de teclado -- y esa solo habla si pulsas subir volumen.
 pub fn intr_in(cfg: &[u8], iface_num: u8) -> Option<(u8, u16, u8, u8)> {
     let total = if cfg.len() >= 2 { le_u16(cfg, 2) as usize } else { 0 };
     let limit = if total > 0 && total <= cfg.len() { total } else { cfg.len() };
@@ -70,7 +70,7 @@ pub fn intr_in(cfg: &[u8], iface_num: u8) -> Option<(u8, u16, u8, u8)> {
             let attr = cfg[off + 3];
             let mps = le_u16(cfg, off + 4);
             let interval = cfg[off + 6];
-            // IN + tipo interrupción (bits 1:0 = 3)
+            // IN + tipo interrupcion (bits 1:0 = 3)
             if (ep_addr & 0x80) != 0 && (attr & 3) == 3 {
                 let ep_num = ep_addr & 0x0F;
                 let dci = if ep_num == 0 { 1 } else { ep_num * 2 + 1 };
@@ -82,13 +82,13 @@ pub fn intr_in(cfg: &[u8], iface_num: u8) -> Option<(u8, u16, u8, u8)> {
     None
 }
 
-/// **Cuánto mide el Report Descriptor de una interfaz**, según su descriptor
+/// **Cuanto mide el Report Descriptor de una interfaz**, segun su descriptor
 /// HID.
 ///
-/// Detrás de cada interfaz HID viene un descriptor de clase (`bDescriptorType`
-/// = 0x21) que dice qué descriptores subordinados tiene y de qué tamaño. Sin
+/// Detras de cada interfaz HID viene un descriptor de clase (`bDescriptorType`
+/// = 0x21) que dice que descriptores subordinados tiene y de que tamano. Sin
 /// leer esa longitud no se puede pedir el Report Descriptor: a un
-/// `GET_DESCRIPTOR` hay que decirle cuántos bytes se esperan, y pedir de más a
+/// `GET_DESCRIPTOR` hay que decirle cuantos bytes se esperan, y pedir de mas a
 /// un endpoint de control no es gratis en todos los aparatos.
 ///
 /// Se busca **dentro de la interfaz pedida**, no el primero que aparezca: un
@@ -124,12 +124,12 @@ pub fn hid_report_len(cfg: &[u8], iface_num: u8) -> Option<u16> {
     None
 }
 
-/// ¿Este aparato trae interfaz de teclado **y** de ratón?
+/// Este aparato trae interfaz de teclado **y** de raton?
 ///
-/// Un aparato con las dos es un teclado compuesto: la de ratón son sus teclas
-/// de medios. Uno que sólo trae la de ratón es un ratón de verdad. Distinguirlo
+/// Un aparato con las dos es un teclado compuesto: la de raton son sus teclas
+/// de medios. Uno que solo trae la de raton es un raton de verdad. Distinguirlo
 /// es lo que impide que las teclas de volumen de un teclado se lleven el puesto
-/// del ratón.
+/// del raton.
 pub fn es_compuesto(ifaces: &[(u8, u8, u8, u8)]) -> bool {
     let tiene = |p: u8| {
         ifaces
@@ -139,14 +139,14 @@ pub fn es_compuesto(ifaces: &[(u8, u8, u8, u8)]) -> bool {
     tiene(PROTO_TECLADO) && tiene(PROTO_RATON)
 }
 
-/// Deja un endpoint de interrupción LISTO para bombear, y reserva su buffer.
+/// Deja un endpoint de interrupcion LISTO para bombear, y reserva su buffer.
 ///
-/// Devuelve `(buf_phys, buf_virt)`. Lo que NO hace, a propósito, es encolar la
+/// Devuelve `(buf_phys, buf_virt)`. Lo que NO hace, a proposito, es encolar la
 /// primera transferencia: eso lo decide el llamante y va al final de toda la
-/// enumeración. Un endpoint que empieza a postear informes mientras todavía se
+/// enumeracion. Un endpoint que empieza a postear informes mientras todavia se
 /// enumera el puerto siguiente mete sus eventos en medio de los control
-/// transfers del otro aparato — y ése fue el camino por el que el teclado y el
-/// ratón enmudecieron los dos.
+/// transfers del otro aparato -- y ese fue el camino por el que el teclado y el
+/// raton enmudecieron los dos.
 pub unsafe fn preparar_endpoint(
     slot: u8,
     dci: u8,
@@ -161,13 +161,13 @@ pub unsafe fn preparar_endpoint(
     h.log_u64(" mps=", mps as u64);
     h.log_u64(" bInterval=", interval as u64);
 
-    // SET_CONFIGURATION. Sin esto el firmware del aparato ni arranca — es lo
-    // que enciende las luces de un ratón RGB, y por eso el RGB apagado fue la
-    // pista de que a uno nunca se le había mandado.
+    // SET_CONFIGURATION. Sin esto el firmware del aparato ni arranca -- es lo
+    // que enciende las luces de un raton RGB, y por eso el RGB apagado fue la
+    // pista de que a uno nunca se le habia mandado.
     bmo_xhci::control_transfer(slot, 0x00, 0x09, cfg_val as u16, 0, &mut [], false);
 
-    // `interval` es el bInterval CRUDO del descriptor; la conversión al
-    // exponente que espera el Endpoint Context la hace `encode_interval` — el
+    // `interval` es el bInterval CRUDO del descriptor; la conversion al
+    // exponente que espera el Endpoint Context la hace `encode_interval` -- el
     // frontend no debe adivinar codificaciones del controlador.
     if !bmo_xhci::configure_endpoint(slot, dci, 7, mps, interval) {
         h.log("[uhid] cfg_ep FAIL\n");
@@ -179,25 +179,25 @@ pub unsafe fn preparar_endpoint(
     // Protocolo BOOT: informes de formato fijo, sin tener que interpretar el
     // HID Report Descriptor (que es un parser entero).
     bmo_xhci::control_transfer(slot, 0x21, 0x0B, 0, iface as u16, &mut [], false);
-    // SET_IDLE(0): que sólo informe cuando algo CAMBIE, no periódicamente.
+    // SET_IDLE(0): que solo informe cuando algo CAMBIE, no periodicamente.
     bmo_xhci::control_transfer(slot, 0x21, 0x0A, 0, iface as u16, &mut [], false);
 
-    // ★ Y AHORA SE LE PREGUNTA EN QUÉ PROTOCOLO SE QUEDÓ.
+    // * Y AHORA SE LE PREGUNTA EN QUE PROTOCOLO SE QUEDO.
     //
-    // `SET_PROTOCOL` se mandaba y **nadie miraba si sirvió de algo**. Un aparato
+    // `SET_PROTOCOL` se mandaba y **nadie miraba si sirvio de algo**. Un aparato
     // que lo ignora sigue mandando su informe de protocolo de INFORME, que
-    // empieza por un byte de Report ID — y entonces todo va corrido una
-    // posición: los botones caen donde el driver espera el desplazamiento en X.
+    // empieza por un byte de Report ID -- y entonces todo va corrido una
+    // posicion: los botones caen donde el driver espera el desplazamiento en X.
     //
     // Eso es exactamente lo que se vio en el Ryzen: `bot=0b01` fijo (el Report
     // ID, que nunca cambia), `x=0` (los botones, cero mientras no pulses) y la
-    // `y` derivando sola al mover en horizontal. Y el síntoma que lo delató, en
-    // palabras del dueño: *"muevo y no funciona, pero al hacer clic se mueve"* —
-    // porque el byte de botones caía en el campo del movimiento.
+    // `y` derivando sola al mover en horizontal. Y el sintoma que lo delato, en
+    // palabras del dueno: *"muevo y no funciona, pero al hacer clic se mueve"* --
+    // porque el byte de botones caia en el campo del movimiento.
     //
     // `GET_PROTOCOL` (0xA1, 0x03) devuelve 0 = Boot, 1 = Informe. Preguntarlo
-    // cuesta un control transfer al arrancar y convierte una suposición en un
-    // dato. Si el aparato no contesta, `0xFF`: quien decide qué hacer con eso
+    // cuesta un control transfer al arrancar y convierte una suposicion en un
+    // dato. Si el aparato no contesta, `0xFF`: quien decide que hacer con eso
     // es el que descifra, no el que enumera.
     let mut prot = [0u8; 1];
     let n = bmo_xhci::control_transfer(slot, 0xA1, 0x03, 0, iface as u16, &mut prot, true);
@@ -215,13 +215,13 @@ pub unsafe fn preparar_endpoint(
 
 /// **Le pide al aparato su Report Descriptor** y lo descifra.
 ///
-/// Es la respuesta a la pregunta que se quedó abierta cuando el ratón confesó
-/// `protocolo=0x1`: *¿los desplazamientos son de 8 o de 16 bits?*. Se contestaba
-/// mirando ocho bytes crudos en un log y decidiendo a ojo. Aquí se pregunta.
+/// Es la respuesta a la pregunta que se quedo abierta cuando el raton confeso
+/// `protocolo=0x1`: *los desplazamientos son de 8 o de 16 bits?*. Se contestaba
+/// mirando ocho bytes crudos en un log y decidiendo a ojo. Aqui se pregunta.
 ///
 /// `None` con su motivo dicho en cada salida. El llamante vuelve al formato
 /// BOOT, que es un formato **correcto** para un aparato que respeta el
-/// protocolo — lo que no era correcto es aplicarlo sin preguntar.
+/// protocolo -- lo que no era correcto es aplicarlo sin preguntar.
 ///
 /// # Safety
 /// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
@@ -246,7 +246,7 @@ pub unsafe fn leer_formato_raton(
     };
 
     let mut desc = [0u8; MAX_REPORT];
-    // GET_DESCRIPTOR estándar a la INTERFAZ (0x81), tipo 0x22 = Report.
+    // GET_DESCRIPTOR estandar a la INTERFAZ (0x81), tipo 0x22 = Report.
     let n = bmo_xhci::control_transfer(slot, 0x81, 0x06, 0x2200, iface as u16, &mut desc[..largo], true);
     if n < largo {
         h.log_u64("[uhid] report desc corto: ", n as u64);
@@ -279,17 +279,17 @@ pub unsafe fn leer_formato_raton(
     }
 }
 
-/// Tope del Report Descriptor que se acepta. Los de ratón rondan los 60-200
+/// Tope del Report Descriptor que se acepta. Los de raton rondan los 60-200
 /// bytes; 512 cubre cualquiera con macros sin dejar que un descriptor absurdo
 /// se lleve la pila de Ring 0.
 pub const MAX_REPORT: usize = 512;
 
-/// Lee los descriptores de un dispositivo recién direccionado.
+/// Lee los descriptores de un dispositivo recien direccionado.
 ///
 /// Devuelve `(cfg_val, longitud_util)` habiendo llenado `cfg`. Los reintentos
-/// no son paranoia: la enumeración demostró ser inestable entre arranques — un
+/// no son paranoia: la enumeracion demostro ser inestable entre arranques -- un
 /// mismo binario da "no dev desc" en un encendido y enumera bien en el
-/// siguiente. Un dispositivo recién reseteado puede no estar listo para el
+/// siguiente. Un dispositivo recien reseteado puede no estar listo para el
 /// primer control transfer.
 pub unsafe fn leer_descriptores(slot: u8, cfg: &mut [u8; MAX_CFG]) -> Option<(u8, usize)> {
     let h = bmo_xhci::hal();
@@ -335,13 +335,13 @@ pub unsafe fn leer_descriptores(slot: u8, cfg: &mut [u8; MAX_CFG]) -> Option<(u8
     Some((cfg_val, total_len))
 }
 
-/// Enciende un puerto y direcciona lo que haya. `None` = ahí no hay nada, o no
+/// Enciende un puerto y direcciona lo que haya. `None` = ahi no hay nada, o no
 /// se pudo.
 ///
-/// ★ Los tres caminos de salida HABLAN. Eran `continue` mudos, y por eso hizo
-/// falta más de una ronda de fotos para entender por qué el ratón no aparecía:
-/// un puerto que falla al resetear, uno vacío y uno que no acepta dirección se
-/// veían **exactamente igual**, o sea nada. El vacío sigue callado porque no es
+/// * Los tres caminos de salida HABLAN. Eran `continue` mudos, y por eso hizo
+/// falta mas de una ronda de fotos para entender por que el raton no aparecia:
+/// un puerto que falla al resetear, uno vacio y uno que no acepta direccion se
+/// veian **exactamente igual**, o sea nada. El vacio sigue callado porque no es
 /// un fallo.
 pub unsafe fn direccionar_puerto(port: u8) -> Option<u8> {
     let h = bmo_xhci::hal();

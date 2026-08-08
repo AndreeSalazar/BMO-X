@@ -1,27 +1,27 @@
 //! Genera el par **cliente/servidor** que prueba Endpoint RPC en hardware.
 //!
 //! Un IPC bloqueante que compila no demuestra nada: lo que hay que ver es el
-//! viaje completo — el cliente llama y se queda parado, el kernel lleva la
+//! viaje completo -- el cliente llama y se queda parado, el kernel lleva la
 //! llamada, el servidor la atiende y responde, y el cliente despierta con la
 //! respuesta. Si alguno de los tres guardias del kernel (el one-shot, la
-//! generación, la ranura preparada antes de despertar) estuviera mal, se ve
-//! aquí y no en un comentario.
+//! generacion, la ranura preparada antes de despertar) estuviera mal, se ve
+//! aqui y no en un comentario.
 //!
-//! ## Por qué a mano y no en BMO C
+//! ## Por que a mano y no en BMO C
 //!
 //! El frontend de C mapea los argumentos de `syscall` a rdi/rsi/rdx/r10/r8/r9,
-//! que es justo la convención correcta — pero estos dos programas necesitan
-//! **bucles con condición** sobre el valor devuelto (el cliente reintenta
+//! que es justo la convencion correcta -- pero estos dos programas necesitan
+//! **bucles con condicion** sobre el valor devuelto (el cliente reintenta
 //! hasta que el servidor exista) y guardar handles entre llamadas. Escribirlos
 //! a mano es unas pocas decenas de instrucciones y no arrastra al frontend a
-//! una función que todavía no tiene. Cuando C sepa expresarlo, se reescriben.
+//! una funcion que todavia no tiene. Cuando C sepa expresarlo, se reescriben.
 
 use std::path::PathBuf;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 
 const CURRENT_TASK: u64 = 0xFFFF_FFFF_FFFF_FFFE;
 
-// Los tres números de syscall. La superficie congelada.
+// Los tres numeros de syscall. La superficie congelada.
 const NR_INVOKE: u32 = 0;
 const NR_WAIT: u32 = 2;
 
@@ -33,39 +33,39 @@ const OP_CONSOLE_WRITE: u32 = 6;
 const OP_ENDPOINT_CREATE: u32 = 7;
 const OP_ENDPOINT_CONNECT: u32 = 8;
 
-/// Registros que usamos. Codificación de x86-64 en el orden de la ISA.
+/// Registros que usamos. Codificacion de x86-64 en el orden de la ISA.
 #[derive(Clone, Copy, PartialEq)]
 #[allow(dead_code)]
 enum R { Rax = 0, Rcx = 1, Rdx = 2, Rbx = 3, Rsp = 4, Rbp = 5, Rsi = 6, Rdi = 7 }
 
-/// Emisor mínimo. Solo lo que hacen falta estos dos programas.
+/// Emisor minimo. Solo lo que hacen falta estos dos programas.
 struct Asm { c: Vec<u8> }
 
 impl Asm {
     fn new() -> Self { Self { c: Vec::new() } }
 
-    /// `mov <r64>, imm64`  — REX.W B8+rd
+    /// `mov <r64>, imm64`  -- REX.W B8+rd
     fn mov_imm64(&mut self, r: R, v: u64) {
         self.c.push(0x48);
         self.c.push(0xB8 + r as u8);
         self.c.extend_from_slice(&v.to_le_bytes());
     }
 
-    /// `mov <e32>, imm32` — pone a cero la mitad alta, que es lo que queremos
-    /// para los números de operación.
+    /// `mov <e32>, imm32` -- pone a cero la mitad alta, que es lo que queremos
+    /// para los numeros de operacion.
     fn mov_imm32(&mut self, r: R, v: u32) {
         self.c.push(0xB8 + r as u8);
         self.c.extend_from_slice(&v.to_le_bytes());
     }
 
-    /// `mov dst, src` (64 bits) — REX.W 89 /r
+    /// `mov dst, src` (64 bits) -- REX.W 89 /r
     fn mov_reg(&mut self, dst: R, src: R) {
         self.c.push(0x48);
         self.c.push(0x89);
         self.c.push(0xC0 | ((src as u8) << 3) | dst as u8);
     }
 
-    /// `xor <e32>, <e32>` — pone el registro a cero.
+    /// `xor <e32>, <e32>` -- pone el registro a cero.
     fn zero(&mut self, r: R) {
         self.c.push(0x31);
         self.c.push(0xC0 | ((r as u8) << 3) | r as u8);
@@ -73,10 +73,10 @@ impl Asm {
 
     fn syscall(&mut self) { self.c.extend_from_slice(&[0x0F, 0x05]); }
 
-    /// `test eax, eax` — pone ZF si el código de estado es 0 (OK).
+    /// `test eax, eax` -- pone ZF si el codigo de estado es 0 (OK).
     fn test_eax(&mut self) { self.c.extend_from_slice(&[0x85, 0xC0]); }
 
-    /// `test rdx, rdx` — ZF si el valor devuelto es 0.
+    /// `test rdx, rdx` -- ZF si el valor devuelto es 0.
     fn test_rdx(&mut self) { self.c.extend_from_slice(&[0x48, 0x85, 0xD2]); }
 
     /// Salto condicional hacia una etiqueta ya emitida.
@@ -89,7 +89,7 @@ impl Asm {
     }
 
     /// Salto condicional/incondicional de 32 bits, con destino por parchear.
-    /// Devuelve la posición del desplazamiento.
+    /// Devuelve la posicion del desplazamiento.
     fn jmp_placeholder(&mut self, cond: Option<u8>) -> usize {
         match cond {
             Some(cc) => { self.c.push(0x0F); self.c.push(cc); }
@@ -100,11 +100,11 @@ impl Asm {
         at
     }
 
-    /// Ata un salto pendiente a la posición actual.
+    /// Ata un salto pendiente a la posicion actual.
     ///
-    /// El desplazamiento es relativo al final de la instrucción, no a su
-    /// principio. Equivocarse en eso es el bug que este proyecto ya se comió
-    /// tres veces —el `IF` de COBOL, `PERFORM`, los bucles de C— siempre igual:
+    /// El desplazamiento es relativo al final de la instruccion, no a su
+    /// principio. Equivocarse en eso es el bug que este proyecto ya se comio
+    /// tres veces --el `IF` de COBOL, `PERFORM`, los bucles de C-- siempre igual:
     /// un salto que compila y no salta a donde dice.
     fn atar(&mut self, at: usize) {
         let destino = self.c.len() as i32;
@@ -122,7 +122,7 @@ impl Asm {
         self.c.extend_from_slice(&rel.to_le_bytes());
     }
 
-    // ── Envoltorios de la superficie ──
+    // -- Envoltorios de la superficie --
 
     /// `INVOKE(CURRENT_TASK, op, arg0)`.
     fn invoke_task(&mut self, op: u32, arg0: u64) {
@@ -155,7 +155,7 @@ impl Asm {
 fn servidor() -> Vec<u8> {
     let mut a = Asm::new();
 
-    // Estuario 0: por ahí le llegarán las llamadas.
+    // Estuario 0: por ahi le llegaran las llamadas.
     a.invoke_task(OP_CHANNEL_OPEN, 0);
     // Endpoint atado a ese estuario. rdx = handle.
     a.invoke_task(OP_ENDPOINT_CREATE, 0);
@@ -163,7 +163,7 @@ fn servidor() -> Vec<u8> {
 
     a.imprimir("ventanilla abierta\n");
 
-    // ── bucle de atención ──
+    // -- bucle de atencion --
     let bucle = a.aqui();
     // WAIT(endpoint, 0, 0) -> rax = code, rdx = handle de respuesta
     a.mov_reg(R::Rdi, R::Rbx);
@@ -172,7 +172,7 @@ fn servidor() -> Vec<u8> {
     a.mov_imm32(R::Rax, NR_WAIT);
     a.syscall();
     a.test_eax();
-    let al_final = a.jmp_placeholder(Some(0x85)); // jnz: code != 0 -> se acabó
+    let al_final = a.jmp_placeholder(Some(0x85)); // jnz: code != 0 -> se acabo
     // value = 0 significa "todavia nada, vuelve a preguntar". El kernel deja
     // la espera puesta y devuelve; quien reintenta es este bucle, desde Ring 3.
     // Que el reintento viva AQUI y no dentro del kernel es lo que impide el
@@ -202,8 +202,8 @@ fn servidor() -> Vec<u8> {
 fn cliente() -> Vec<u8> {
     let mut a = Asm::new();
 
-    // El servidor puede no haber creado el endpoint todavía: el planificador
-    // es round-robin y no hay garantía de orden. Reintentar cediendo el turno
+    // El servidor puede no haber creado el endpoint todavia: el planificador
+    // es round-robin y no hay garantia de orden. Reintentar cediendo el turno
     // es la forma honesta de esperarle sin quemar CPU.
     let reintentar = a.aqui();
     a.invoke_task(OP_ENDPOINT_CONNECT, 0);

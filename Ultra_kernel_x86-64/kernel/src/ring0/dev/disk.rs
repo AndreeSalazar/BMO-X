@@ -1,47 +1,47 @@
 //! Disco: el puente entre Ring 0 y el driver AHCI/SATA.
 //!
-//! El kernel no sabe de puertos SATA ni de FIS: eso vive en `bmo-ahci`. Aquí
+//! El kernel no sabe de puertos SATA ni de FIS: eso vive en `bmo-ahci`. Aqui
 //! solo se le prestan al driver los tres servicios que no puede tener por su
-//! cuenta (memoria DMA contigua, traducción física→virtual y una salida de
-//! log) y se le dice A QUÉ CONTROLADOR hablar.
+//! cuenta (memoria DMA contigua, traduccion fisica->virtual y una salida de
+//! log) y se le dice A QUE CONTROLADOR hablar.
 //!
-//! ## Por qué AHCI y no NVMe
+//! ## Por que AHCI y no NVMe
 //!
-//! Esta máquina tiene los dos. El primer controlador del barrido PCI es el
-//! NVMe, y en el NVMe vive el Windows del dueño; el disco de BMO — el que
-//! lleva la partición de arranque y BMO-DATA — cuelga de SATA. Pedir "el
-//! primer disco" y escribir habría sido escribir en el sistema ajeno. Por eso
-//! se pide el controlador POR TIPO, nunca por orden de aparición.
+//! Esta maquina tiene los dos. El primer controlador del barrido PCI es el
+//! NVMe, y en el NVMe vive el Windows del dueno; el disco de BMO -- el que
+//! lleva la particion de arranque y BMO-DATA -- cuelga de SATA. Pedir "el
+//! primer disco" y escribir habria sido escribir en el sistema ajeno. Por eso
+//! se pide el controlador POR TIPO, nunca por orden de aparicion.
 //!
-//! ## La escritura pasa por un gate, y el gate es código
+//! ## La escritura pasa por un gate, y el gate es codigo
 //!
 //! `bmo-ahci` sabe escribir sectores. Este puente solo abre esa puerta cuando
-//! `verify_identity()` ha demostrado tres cosas: que el disco dijo QUIÉN ES
+//! `verify_identity()` ha demostrado tres cosas: que el disco dijo QUIEN ES
 //! (modelo y serie por IDENTIFY), que su tabla de particiones es coherente con
-//! los sectores que él mismo declara, y que es un disco del que se arranca por
-//! EFI. Hasta entonces `write()` devuelve 0 y dice por qué.
+//! los sectores que el mismo declara, y que es un disco del que se arranca por
+//! EFI. Hasta entonces `write()` devuelve 0 y dice por que.
 //!
 //! **Lo que el gate demuestra y lo que no.** Demuestra que este disco es un
-//! disco de arranque EFI coherente consigo mismo, y que no se está escribiendo
-//! a ciegas en "el primero que apareció" — que era el peligro real, porque el
-//! primero que aparece en esta máquina es el NVMe donde vive el Windows del
-//! dueño. NO demuestra todavía que sea *este* disco y no otro igual: para eso
+//! disco de arranque EFI coherente consigo mismo, y que no se esta escribiendo
+//! a ciegas en "el primero que aparecio" -- que era el peligro real, porque el
+//! primero que aparece en esta maquina es el NVMe donde vive el Windows del
+//! dueno. NO demuestra todavia que sea *este* disco y no otro igual: para eso
 //! hace falta grabar la identidad DENTRO del volumen (el `disco_id` de
-//! ESTRATOS) y compararla al montar. Mientras tanto la segunda línea de
-//! defensa es la VENTANA: ningún sector fuera de una partición de datos
-//! reconocida es escribible, y la partición de arranque EFI no lo es nunca.
+//! ESTRATOS) y compararla al montar. Mientras tanto la segunda linea de
+//! defensa es la VENTANA: ningun sector fuera de una particion de datos
+//! reconocida es escribible, y la particion de arranque EFI no lo es nunca.
 
 use crate::ring0::mm::{self, phys};
 use crate::ring0::dev::pci::{self, StorageKind};
 use bmo_ahci::{storage_hal, StorageHal};
 
-/// Tamaño de sector de un disco SATA moderno visto por LBA de 512 B.
+/// Tamano de sector de un disco SATA moderno visto por LBA de 512 B.
 pub const SECTOR: usize = 512;
 
-// ── Log del driver, línea a línea ───────────────────────────────────────────
+// -- Log del driver, linea a linea -------------------------------------------
 // El driver escribe en fragmentos; se acumulan hasta el '\n' y se vuelca la
-// línea entera al panel. Mismo patrón que el puente USB: sin esto, en una
-// placa sin cable serie el diagnóstico del driver es invisible.
+// linea entera al panel. Mismo patron que el puente USB: sin esto, en una
+// placa sin cable serie el diagnostico del driver es invisible.
 
 const DLOG_MAX: usize = 96;
 static mut DLOG: [u8; DLOG_MAX] = [0u8; DLOG_MAX];
@@ -88,19 +88,19 @@ fn dlog_u64(val: u64) {
     if let Ok(s) = core::str::from_utf8(&tmp[..o]) { dlog(s); }
 }
 
-/// Lo que `bmo-ahci` necesita del kernel. Nada más que esto.
+/// Lo que `bmo-ahci` necesita del kernel. Nada mas que esto.
 struct KernelStorageHal;
 
 impl StorageHal for KernelStorageHal {
     fn alloc_dma_pages(&self, count: usize) -> Option<u64> {
         // CONTIGUOS: la lista de comandos y las tablas de descriptores las
-        // recorre el HBA por dirección física, linealmente. Dos frames que no
-        // se tocan serían dos estructuras rotas.
+        // recorre el HBA por direccion fisica, linealmente. Dos frames que no
+        // se tocan serian dos estructuras rotas.
         phys::alloc_frames_contig(count as u64)
     }
     fn free_dma_pages(&self, _addr: u64, _count: usize) {
         // El disco se abre una vez y vive lo que vive el kernel: no hay ciclo
-        // de vida que liberar. Cuando lo haya, aquí va phys::free_frames.
+        // de vida que liberar. Cuando lo haya, aqui va phys::free_frames.
     }
     fn phys_to_virt(&self, phys: u64) -> *mut u8 {
         mm::phys_to_virt(phys) as *mut u8
@@ -113,7 +113,7 @@ impl StorageHal for KernelStorageHal {
         dlog_u64(value);
     }
     fn delay_ms(&self, ms: u64) {
-        // Tiempo REAL por TSC. Los milisegundos del SATA son físicos: contar
+        // Tiempo REAL por TSC. Los milisegundos del SATA son fisicos: contar
         // vueltas de bucle mide la velocidad del CPU, no el tiempo.
         let f = crate::ring0::task::scheduler::tsc_freq();
         if f == 0 {
@@ -127,7 +127,7 @@ impl StorageHal for KernelStorageHal {
 
 static HAL: KernelStorageHal = KernelStorageHal;
 
-// ── Estado ──────────────────────────────────────────────────────────────────
+// -- Estado ------------------------------------------------------------------
 
 static mut READY: bool = false;
 static mut PORT: u8 = 0xFF;
@@ -135,42 +135,42 @@ static mut MMIO: u64 = 0;
 /// Sectores del disco, si la tabla de particiones lo declara.
 static mut LAST_LBA: u64 = 0;
 
-/// Página de rebote para el DMA. El HBA escribe SIEMPRE aquí, en una
-/// dirección física conocida y contigua, y el kernel copia de aquí al buffer
-/// del llamante. Así ninguna capa de arriba necesita saber de direcciones
-/// físicas ni tener memoria apta para DMA.
+/// Pagina de rebote para el DMA. El HBA escribe SIEMPRE aqui, en una
+/// direccion fisica conocida y contigua, y el kernel copia de aqui al buffer
+/// del llamante. Asi ninguna capa de arriba necesita saber de direcciones
+/// fisicas ni tener memoria apta para DMA.
 static mut DMA_PHYS: u64 = 0;
 
 /// Modelo y serie que el propio disco declara (IDENTIFY DEVICE).
 static mut MODEL: [u8; 40] = [0; 40];
 static mut MODEL_LEN: usize = 0;
-/// Número de serie (palabras 10..19 del IDENTIFY). El modelo dice qué disco
-/// ES; la serie dice CUÁL de ellos. Dos Kingston del mismo modelo comparten
+/// Numero de serie (palabras 10..19 del IDENTIFY). El modelo dice que disco
+/// ES; la serie dice CUAL de ellos. Dos Kingston del mismo modelo comparten
 /// todo menos esto.
 static mut SERIAL: [u8; 20] = [0; 20];
 static mut SERIAL_LEN: usize = 0;
 static mut TOTAL_SECTORS: u64 = 0;
 
-/// ¿Ha pasado el disco el gate de identidad? Mientras sea `false`, `write()`
+/// Ha pasado el disco el gate de identidad? Mientras sea `false`, `write()`
 /// no mueve un solo sector.
 static mut WRITE_ARMED: bool = false;
-/// Por qué el gate dijo que sí o que no. Un booleano no se puede fotografiar.
+/// Por que el gate dijo que si o que no. Un booleano no se puede fotografiar.
 static mut GATE_REASON: &str = "sin comprobar";
 
-/// ¿Hay un disco listo para leer?
+/// Hay un disco listo para leer?
 pub fn is_ready() -> bool { unsafe { READY } }
 /// Puerto AHCI en uso (0xFF = ninguno).
 pub fn port() -> u8 { unsafe { PORT } }
 /// MMIO del HBA.
 pub fn mmio() -> u64 { unsafe { MMIO } }
-/// Modelo declarado por el disco. Vacío si aún no se le preguntó.
+/// Modelo declarado por el disco. Vacio si aun no se le pregunto.
 pub fn model() -> &'static str {
     unsafe {
         let p = core::ptr::addr_of!(MODEL) as *const u8;
         core::str::from_utf8(core::slice::from_raw_parts(p, MODEL_LEN)).unwrap_or("")
     }
 }
-/// Serie declarada por el disco. Vacía si aún no se le preguntó.
+/// Serie declarada por el disco. Vacia si aun no se le pregunto.
 pub fn serial() -> &'static str {
     unsafe {
         let p = core::ptr::addr_of!(SERIAL) as *const u8;
@@ -179,34 +179,34 @@ pub fn serial() -> &'static str {
 }
 /// Sectores totales que declara el disco (IDENTIFY, LBA48).
 pub fn total_sectors() -> u64 { unsafe { TOTAL_SECTORS } }
-/// ¿Está abierta la puerta de escritura?
+/// Esta abierta la puerta de escritura?
 pub fn write_armed() -> bool { unsafe { WRITE_ARMED } }
 
-/// ★ **La segunda ventana de escritura: la de ESTRATOS.**
+/// * **La segunda ventana de escritura: la de ESTRATOS.**
 ///
-/// `write_window` sólo admitía la partición de datos (la FAT32 donde viven los
+/// `write_window` solo admitia la particion de datos (la FAT32 donde viven los
 /// `.bex`), y eso era correcto mientras ESTRATOS no escribiera. Pero ESTRATOS
-/// **vive en otra partición**, así que su primera escritura habría sido
-/// rechazada con `fuera de la particion de datos` — un mensaje correcto y
+/// **vive en otra particion**, asi que su primera escritura habria sido
+/// rechazada con `fuera de la particion de datos` -- un mensaje correcto y
 /// desconcertante.
 ///
-/// La tentación es ensanchar la ventana existente. **No.** Ensanchar un
-/// guardián es quitarlo: la ventana de datos protege de que un bug del sistema
-/// de ficheros se coma la ESP —donde vive el `BOOTX64.EFI` con el que arrancó
-/// la máquina, y en una máquina con Windows también el cargador del dueño— y
+/// La tentacion es ensanchar la ventana existente. **No.** Ensanchar un
+/// guardian es quitarlo: la ventana de datos protege de que un bug del sistema
+/// de ficheros se coma la ESP --donde vive el `BOOTX64.EFI` con el que arranco
+/// la maquina, y en una maquina con Windows tambien el cargador del dueno-- y
 /// eso tiene que seguir protegido aunque ESTRATOS escriba.
 ///
-/// Así que hay DOS ventanas con nombre propio, y ésta se registra sólo cuando
-/// se cumplen las dos condiciones: el volumen está montado **y el gate de
-/// identidad del §5 dijo que nació en este disco**. Un volumen clonado no
-/// registra ventana y por tanto **no puede escribir**, aunque el disco esté
+/// Asi que hay DOS ventanas con nombre propio, y esta se registra solo cuando
+/// se cumplen las dos condiciones: el volumen esta montado **y el gate de
+/// identidad del section 5 dijo que nacio en este disco**. Un volumen clonado no
+/// registra ventana y por tanto **no puede escribir**, aunque el disco este
 /// armado.
 static mut VENTANA_ES: Option<(u64, u64)> = None;
 
 /// Registra la ventana de ESTRATOS. La llama `fsys::estratos::mount`.
 ///
 /// # Safety
-/// Se llama una vez al montar, con las interrupciones donde ya están.
+/// Se llama una vez al montar, con las interrupciones donde ya estan.
 pub fn armar_ventana_estratos(primer_lba: u64, ultimo_lba: u64) {
     unsafe { VENTANA_ES = Some((primer_lba, ultimo_lba)) };
     crate::ring0::cabina::info("estratos", "ventana de escritura armada en", primer_lba);
@@ -219,7 +219,7 @@ pub fn desarmar_ventana_estratos() {
 }
 
 pub fn ventana_estratos() -> Option<(u64, u64)> { unsafe { VENTANA_ES } }
-/// Qué dictaminó el gate de identidad, en palabras.
+/// Que dictamino el gate de identidad, en palabras.
 pub fn gate_reason() -> &'static str { unsafe { GATE_REASON } }
 
 /// Despierta el disco de BMO: busca el HBA **SATA** por PCI, lo prepara y deja
@@ -227,15 +227,15 @@ pub fn gate_reason() -> &'static str { unsafe { GATE_REASON } }
 pub fn init() {
     storage_hal::init_hal(&HAL);
 
-    // Una placa puede traer más de un HBA SATA. Se prueban en orden hasta dar
-    // con uno que tenga un disco enlazado — el mismo patrón que el USB, que ya
-    // nos enseñó que el teclado estaba en el segundo controlador.
+    // Una placa puede traer mas de un HBA SATA. Se prueban en orden hasta dar
+    // con uno que tenga un disco enlazado -- el mismo patron que el USB, que ya
+    // nos enseno que el teclado estaba en el segundo controlador.
     let mut chosen = 0xFFu8;
     let mut loc_ok = None;
     // AHCI primero; si ninguno tiene disco, se prueba el que la BIOS declare
     // en modo RAID. Muchos controladores AMD en "modo RAID" siguen hablando
-    // AHCI por registros — y si no lo hacen, el censo lo dirá con sus propios
-    // números en vez de dejarnos suponiendo que el disco no existe.
+    // AHCI por registros -- y si no lo hacen, el censo lo dira con sus propios
+    // numeros en vez de dejarnos suponiendo que el disco no existe.
     'busqueda: for kind in [StorageKind::Ahci, StorageKind::Raid] {
     for skip in 0..4usize {
         let loc = match pci::find_storage_of(kind, skip) {
@@ -245,22 +245,22 @@ pub fn init() {
         if kind == StorageKind::Raid {
             crate::ring0::cabina::warn("disk", "probando un controlador en modo RAID como AHCI", loc.mmio);
         }
-        // ★ SIEMPRE por el physmap, nunca por la identidad.
+        // * SIEMPRE por el physmap, nunca por la identidad.
         //
         // La identidad 0..4 GiB que monta s2_mem vive en PML4[0], y un espacio
-        // de Ring 3 sólo hereda de ahí la PRIMERA entrada del PDPT — el primer
-        // GiB (ver `vmm::new_address_space`, y no puede heredar más: la imagen
+        // de Ring 3 solo hereda de ahi la PRIMERA entrada del PDPT -- el primer
+        // GiB (ver `vmm::new_address_space`, y no puede heredar mas: la imagen
         // del proceso vive justo en PDPT[1], `USER_IMAGE_BASE = 0x4000_0000`).
         //
         // El ABAR del AHCI cae en `0xFC68_0000`, o sea PDPT[3]. Bajo el CR3 de
-        // un proceso esa entrada NO EXISTE, así que cualquier syscall de Ring 3
-        // que llegara al disco hacía **#PF en Ring 0** dentro de
+        // un proceso esa entrada NO EXISTE, asi que cualquier syscall de Ring 3
+        // que llegara al disco hacia **#PF en Ring 0** dentro de
         // `bmo_ahci::controller::run_command`. Desde el shell de Ring 0 no
-        // pasaba —ahí manda el PML4 del kernel— y por eso parecía funcionar.
+        // pasaba --ahi manda el PML4 del kernel-- y por eso parecia funcionar.
         //
-        // El physmap (0..16 GiB en `HIGH_MEM_BASE`) está en el MEDIO-KERNEL,
-        // que todo espacio comparte por construcción. Misma memoria, mismo
-        // caché, y alcanzable bajo cualquier CR3.
+        // El physmap (0..16 GiB en `HIGH_MEM_BASE`) esta en el MEDIO-KERNEL,
+        // que todo espacio comparte por construccion. Misma memoria, mismo
+        // cache, y alcanzable bajo cualquier CR3.
         let mmio_va = mm::phys_to_virt(loc.mmio);
         crate::ring0::cabina::info("disk", "HBA SATA/AHCI hallado en PCI", loc.mmio);
 
@@ -271,16 +271,16 @@ pub fn init() {
         }
 
         let ctrl = match bmo_ahci::controller() { Some(c) => c, None => continue };
-        // El estado crudo de cada puerto lo pinta el driver (`probe`). Aquí
+        // El estado crudo de cada puerto lo pinta el driver (`probe`). Aqui
         // solo se cuenta y se elige.
         //
-        // ★ Se itera por ÍNDICE, no por `p.port_number`. Las entradas vacías
-        // del array llevan port_number = 0, así que filtrar por su campo hacía
-        // que CADA hueco se colara haciéndose pasar por el puerto 0: catorce
-        // líneas idénticas del mismo puerto inexistente, y una espera de
+        // * Se itera por INDICE, no por `p.port_number`. Las entradas vacias
+        // del array llevan port_number = 0, asi que filtrar por su campo hacia
+        // que CADA hueco se colara haciendose pasar por el puerto 0: catorce
+        // lineas identicas del mismo puerto inexistente, y una espera de
         // enlace completa concedida a cada fantasma (los 3-4 segundos de
-        // arranque). El índice del array ES el número de puerto; el campo solo
-        // significa algo en las entradas que `probe` llenó.
+        // arranque). El indice del array ES el numero de puerto; el campo solo
+        // significa algo en las entradas que `probe` lleno.
         crate::ring0::cabina::info("ahci", "puertos implementados (PI) segun el firmware", ctrl.ports_implemented as u64);
         let mut active = 0u64;
         // TODOS los puertos que CAP declara, no solo los que PI reconoce: el
@@ -288,13 +288,13 @@ pub fn init() {
         for i in 0..(ctrl.port_count as usize).min(32) {
             let p = &ctrl.ports[i];
             // Un puerto que ni siquiera acepta escrituras (cmd sigue en 0 tras
-            // pedirle spin-up) no existe físicamente: no merece una línea.
+            // pedirle spin-up) no existe fisicamente: no merece una linea.
             let declared = ctrl.ports_implemented & (1 << i) != 0;
             if !declared && p.cmd == 0 && p.ssts == 0 { continue; }
-            // El estado de cada puerto va a la BITÁCORA, no solo al log
-            // rodante: un número que se lleva el desplazamiento antes de que
-            // lo fotografíes es un número que no existe. El valor es el PxSSTS
-            // crudo — su dígito bajo (DET) es 3 si el enlace está vivo.
+            // El estado de cada puerto va a la BITACORA, no solo al log
+            // rodante: un numero que se lleva el desplazamiento antes de que
+            // lo fotografies es un numero que no existe. El valor es el PxSSTS
+            // crudo -- su digito bajo (DET) es 3 si el enlace esta vivo.
             let msg = match p.ssts & 0xF {
                 0x3 => "puerto con enlace vivo (DET=3)",
                 0x1 => "puerto con dispositivo pero SIN enlace (DET=1)",
@@ -308,7 +308,7 @@ pub fn init() {
             if p.state == bmo_ahci::PortState::Active {
                 active += 1;
                 // Firma 0x00000101 = disco duro SATA. Un ATAPI (0xEB140101) es
-                // una unidad óptica: no es donde vive BMO.
+                // una unidad optica: no es donde vive BMO.
                 if chosen == 0xFF && p.signature == bmo_ahci::SIG_SATA_DISK {
                     chosen = i as u8;
                 }
@@ -331,7 +331,7 @@ pub fn init() {
         crate::ring0::cabina::fault("disk", "no se pudo preparar el DMA del puerto", chosen as u64);
         return;
     }
-    // Página de rebote para el DMA, contigua y de dirección física conocida.
+    // Pagina de rebote para el DMA, contigua y de direccion fisica conocida.
     let dma = match phys::alloc_frames_contig(1) {
         Some(p) => p,
         None => {
@@ -344,9 +344,9 @@ pub fn init() {
 
     identify();
 
-    // A partir de aquí este disco ES el dispositivo de bloques de BMO. Se
-    // registra UNO, y el que elige cuál es el kernel mirando el tipo de
-    // controlador — nunca un bucle sobre una lista, que es como se acaba
+    // A partir de aqui este disco ES el dispositivo de bloques de BMO. Se
+    // registra UNO, y el que elige cual es el kernel mirando el tipo de
+    // controlador -- nunca un bucle sobre una lista, que es como se acaba
     // escribiendo en el disco del vecino.
     bmo_block::register(&AHCI_DISK);
     crate::ring0::cabina::info("disk", "contrato de bloques registrado", unsafe { TOTAL_SECTORS });
@@ -355,12 +355,12 @@ pub fn init() {
 /// Extrae una cadena del buffer de IDENTIFY, de la palabra `first` a `last`.
 ///
 /// Las cadenas de IDENTIFY vienen en palabras de 16 bits con los dos bytes AL
-/// REVÉS (convención ATA de toda la vida): el carácter que va PRIMERO está en
+/// REVES (convencion ATA de toda la vida): el caracter que va PRIMERO esta en
 /// el byte ALTO de la palabra. Leerlas en orden de memoria da "IKGNTSMOS"
-/// donde pone "KINGSTON" — cada par cambiado. Se emite primero el byte alto
-/// (offset impar en little-endian) y después el bajo.
+/// donde pone "KINGSTON" -- cada par cambiado. Se emite primero el byte alto
+/// (offset impar en little-endian) y despues el bajo.
 ///
-/// Devuelve la longitud útil, ya sin el relleno de espacios del final.
+/// Devuelve la longitud util, ya sin el relleno de espacios del final.
 unsafe fn ata_string(src: *const u8, first: usize, last: usize, dst: &mut [u8]) -> usize {
     let mut n = 0usize;
     for w in first..last {
@@ -374,11 +374,11 @@ unsafe fn ata_string(src: *const u8, first: usize, last: usize, dst: &mut [u8]) 
     n
 }
 
-/// Le pregunta al disco QUIÉN ES.
+/// Le pregunta al disco QUIEN ES.
 ///
-/// Esta máquina tiene tres discos y en uno vive el sistema del dueño. Un
-/// kernel que va a escribir algún día tiene que poder decir "estoy hablando
-/// con el Kingston de 480 GB", no "estoy hablando con el primero que salió".
+/// Esta maquina tiene tres discos y en uno vive el sistema del dueno. Un
+/// kernel que va a escribir algun dia tiene que poder decir "estoy hablando
+/// con el Kingston de 480 GB", no "estoy hablando con el primero que salio".
 fn identify() {
     let dma = unsafe { DMA_PHYS };
     if dma == 0 { return; }
@@ -391,7 +391,7 @@ fn identify() {
     }
     let src = mm::phys_to_virt(dma) as *const u8;
     unsafe {
-        // Palabras 27..46: modelo. Palabras 10..19: número de serie.
+        // Palabras 27..46: modelo. Palabras 10..19: numero de serie.
         MODEL_LEN = ata_string(src, 27, 47, &mut *core::ptr::addr_of_mut!(MODEL));
         SERIAL_LEN = ata_string(src, 10, 20, &mut *core::ptr::addr_of_mut!(SERIAL));
         // Palabras 100..103: sectores direccionables (LBA48).
@@ -407,14 +407,14 @@ fn identify() {
     crate::ring0::cabina::info("disk", model(), unsafe { TOTAL_SECTORS });
 }
 
-/// Lee `count` sectores desde `lba` en `buf`. Devuelve los sectores leídos.
+/// Lee `count` sectores desde `lba` en `buf`. Devuelve los sectores leidos.
 ///
 /// La lectura no tiene ventana ni gate: mirar un sector no rompe nada, y es
-/// justo mirando como BMO averigua de quién es el disco.
+/// justo mirando como BMO averigua de quien es el disco.
 ///
-/// Va por la página de rebote y copia: el llamante puede tener su buffer donde
-/// quiera —la pila, un estático— sin que nada de eso tenga que ser memoria
-/// apta para DMA ni de dirección física contigua.
+/// Va por la pagina de rebote y copia: el llamante puede tener su buffer donde
+/// quiera --la pila, un estatico-- sin que nada de eso tenga que ser memoria
+/// apta para DMA ni de direccion fisica contigua.
 pub fn read(lba: u64, count: u16, buf: &mut [u8]) -> u16 {
     if !is_ready() || count == 0 { return 0; }
     let want = count as usize * SECTOR;
@@ -422,7 +422,7 @@ pub fn read(lba: u64, count: u16, buf: &mut [u8]) -> u16 {
     let dma = unsafe { DMA_PHYS };
     if dma == 0 { return 0; }
 
-    const PER_BATCH: u16 = (4096 / SECTOR) as u16; // 8 sectores por página
+    const PER_BATCH: u16 = (4096 / SECTOR) as u16; // 8 sectores por pagina
     let mut done = 0u16;
     while done < count {
         let batch = (count - done).min(PER_BATCH);
@@ -444,13 +444,13 @@ pub fn read(lba: u64, count: u16, buf: &mut [u8]) -> u16 {
     done
 }
 
-// ── El gate de identidad ────────────────────────────────────────────────────
+// -- El gate de identidad ----------------------------------------------------
 
-/// Comprueba QUIÉN es el disco y, si convence, abre la puerta de escritura.
+/// Comprueba QUIEN es el disco y, si convence, abre la puerta de escritura.
 ///
-/// Se llama una vez, después de `scan_partitions()` y del montaje de arranque.
-/// Devuelve `true` si la escritura queda armada. El motivo —diga que sí o que
-/// no— queda en `gate_reason()` y en la bitácora de CABINA, porque un booleano
+/// Se llama una vez, despues de `scan_partitions()` y del montaje de arranque.
+/// Devuelve `true` si la escritura queda armada. El motivo --diga que si o que
+/// no-- queda en `gate_reason()` y en la bitacora de CABINA, porque un booleano
 /// no se puede fotografiar.
 pub fn verify_identity() -> bool {
     unsafe { WRITE_ARMED = false; }
@@ -463,18 +463,18 @@ pub fn verify_identity() -> bool {
     if !is_ready() {
         return deny("gate: no hay disco que identificar", 0);
     }
-    // 1. El disco tiene que haber dicho quién es. Un IDENTIFY que no contestó
-    //    deja las cadenas vacías, y sobre un desconocido no se escribe.
+    // 1. El disco tiene que haber dicho quien es. Un IDENTIFY que no contesto
+    //    deja las cadenas vacias, y sobre un desconocido no se escribe.
     if unsafe { MODEL_LEN } == 0 || unsafe { SERIAL_LEN } == 0 {
         return deny("gate: el disco no declaro modelo o serie", 0);
     }
     if unsafe { TOTAL_SECTORS } == 0 {
         return deny("gate: el disco no declaro su tamano", 0);
     }
-    // 2. La tabla de particiones tiene que existir y CUADRAR con el tamaño que
-    //    el propio disco declara. Si la GPT dice que el disco es más grande de
-    //    lo que el disco dice ser, uno de los dos miente y no se sabe cuál:
-    //    puede ser una imagen clonada a un disco menor, y escribir ahí es
+    // 2. La tabla de particiones tiene que existir y CUADRAR con el tamano que
+    //    el propio disco declara. Si la GPT dice que el disco es mas grande de
+    //    lo que el disco dice ser, uno de los dos miente y no se sabe cual:
+    //    puede ser una imagen clonada a un disco menor, y escribir ahi es
     //    escribir sobre datos que la tabla cree libres.
     let parts = partitions();
     if parts.is_empty() || last_lba() == 0 {
@@ -490,13 +490,13 @@ pub fn verify_identity() -> bool {
         return deny("gate: la GPT no cuadra con el tamano del disco", total - last);
     }
     // 3. Tiene que ser un disco de arranque EFI. No prueba que sea EL nuestro
-    //    —eso llega con el `disco_id` grabado dentro del volumen— pero descarta
+    //    --eso llega con el `disco_id` grabado dentro del volumen-- pero descarta
     //    el caso que de verdad daba miedo: escribir en un disco de datos ajeno
     //    porque el barrido PCI lo puso primero.
     if !parts.iter().any(|p| p.is_esp()) {
         return deny("gate: el disco no tiene particion de arranque EFI", 0);
     }
-    // 4. Y tiene que haber una partición de datos donde escribir que NO sea la
+    // 4. Y tiene que haber una particion de datos donde escribir que NO sea la
     //    de arranque.
     let win = match data_partition() {
         Some(p) => p,
@@ -512,44 +512,44 @@ pub fn verify_identity() -> bool {
     true
 }
 
-/// La partición donde BMO puede escribir: la primera que NO es la de arranque.
+/// La particion donde BMO puede escribir: la primera que NO es la de arranque.
 ///
-/// La EFI queda fuera por diseño. Ahí vive el `BOOTX64.EFI` con el que arrancó
-/// esta misma ejecución y, en una máquina con Windows, también el cargador del
-/// dueño. Un bug de sistema de ficheros que se coma esa partición no da un
-/// fault bonito: deja la máquina sin arrancar.
+/// La EFI queda fuera por diseno. Ahi vive el `BOOTX64.EFI` con el que arranco
+/// esta misma ejecucion y, en una maquina con Windows, tambien el cargador del
+/// dueno. Un bug de sistema de ficheros que se coma esa particion no da un
+/// fault bonito: deja la maquina sin arrancar.
 pub fn data_partition() -> Option<Partition> {
     partitions().iter().find(|p| !p.is_esp()).copied()
 }
 
-/// ¿Puede escribirse el rango `[lba, lba+count)`? Devuelve el motivo si no.
+/// Puede escribirse el rango `[lba, lba+count)`? Devuelve el motivo si no.
 ///
-/// Es la segunda línea de defensa, independiente del gate: aunque la identidad
-/// esté armada, un sector fuera de la partición de datos sigue siendo
-/// intocable. Los dos fallos que esto ataja son el desbordamiento aritmético
-/// de un cálculo de LBA y un sistema de ficheros que se cree en otro sitio.
+/// Es la segunda linea de defensa, independiente del gate: aunque la identidad
+/// este armada, un sector fuera de la particion de datos sigue siendo
+/// intocable. Los dos fallos que esto ataja son el desbordamiento aritmetico
+/// de un calculo de LBA y un sistema de ficheros que se cree en otro sitio.
 fn write_window(lba: u64, count: u16) -> Result<(), &'static str> {
     if !is_ready() { return Err("sin disco"); }
     if !write_armed() { return Err("la escritura no esta armada (gate de identidad)"); }
     if count == 0 { return Err("cero sectores"); }
-    // Sin `checked_add` un LBA cerca del máximo daría la vuelta y el rango
-    // parecería diminuto y válido.
+    // Sin `checked_add` un LBA cerca del maximo daria la vuelta y el rango
+    // pareceria diminuto y valido.
     let end = match lba.checked_add(count as u64) {
         Some(e) => e,
         None => return Err("el rango de LBA desborda"),
     };
 
-    // ── Ventana 1: la partición de datos (FAT32, los `.bex`) ──
+    // -- Ventana 1: la particion de datos (FAT32, los `.bex`) --
     if let Some(w) = data_partition() {
         if lba >= w.first_lba && end <= w.last_lba + 1 {
             return Ok(());
         }
     }
-    // ── Ventana 2: el volumen ESTRATOS ──
+    // -- Ventana 2: el volumen ESTRATOS --
     //
-    // Sólo existe si el volumen está montado Y nació en este disco. Son dos
-    // ventanas y no una ensanchada: la ESP —donde vive el `BOOTX64.EFI` con el
-    // que arrancó la máquina— no está en ninguna de las dos, y ésa es la
+    // Solo existe si el volumen esta montado Y nacio en este disco. Son dos
+    // ventanas y no una ensanchada: la ESP --donde vive el `BOOTX64.EFI` con el
+    // que arranco la maquina-- no esta en ninguna de las dos, y esa es la
     // propiedad que hay que conservar mientras el resto crece.
     if let Some((primero, ultimo)) = ventana_estratos() {
         if lba >= primero && end <= ultimo + 1 {
@@ -562,7 +562,7 @@ fn write_window(lba: u64, count: u16) -> Result<(), &'static str> {
 /// Escribe `count` sectores en `lba`. Devuelve los sectores escritos.
 ///
 /// Espejo de `read`, con dos guardias delante: el gate de identidad y la
-/// ventana. Un rechazo NUNCA es mudo — dice cuál de las dos lo paró y dónde.
+/// ventana. Un rechazo NUNCA es mudo -- dice cual de las dos lo paro y donde.
 pub fn write(lba: u64, count: u16, data: &[u8]) -> u16 {
     if let Err(why) = write_window(lba, count) {
         crate::ring0::cabina::fault("disk", why, lba);
@@ -575,11 +575,11 @@ pub fn write(lba: u64, count: u16, data: &[u8]) -> u16 {
     let dma = unsafe { DMA_PHYS };
     if dma == 0 { return 0; }
 
-    const PER_BATCH: u16 = (4096 / SECTOR) as u16; // 8 sectores por página
+    const PER_BATCH: u16 = (4096 / SECTOR) as u16; // 8 sectores por pagina
     let mut done = 0u16;
     while done < count {
         let batch = (count - done).min(PER_BATCH);
-        // A la página de rebote primero: el HBA solo lee de memoria física
+        // A la pagina de rebote primero: el HBA solo lee de memoria fisica
         // contigua y conocida, no del buffer que traiga el llamante.
         let dst = mm::phys_to_virt(dma) as *mut u8;
         let src_off = done as usize * SECTOR;
@@ -599,9 +599,9 @@ pub fn write(lba: u64, count: u16, data: &[u8]) -> u16 {
     done
 }
 
-/// Obliga al disco a bajar a la superficie lo que aceptó.
+/// Obliga al disco a bajar a la superficie lo que acepto.
 ///
-/// Una escritura que devuelve OK solo promete que el disco se quedó con los
+/// Una escritura que devuelve OK solo promete que el disco se quedo con los
 /// bytes. La caja negra existe para sobrevivir al corte que se investiga: sin
 /// esto, el registro del vuelo se pierde justo en el accidente.
 pub fn flush() -> bool {
@@ -615,22 +615,22 @@ pub fn flush() -> bool {
     }
 }
 
-// ── GPT: la tabla de particiones ────────────────────────────────────────────
+// -- GPT: la tabla de particiones --------------------------------------------
 //
-// Leerla es cómo BMO reconoce el disco que tiene delante. No hace falta
+// Leerla es como BMO reconoce el disco que tiene delante. No hace falta
 // confiar en el orden del PCI ni en que el firmware enumere igual dos veces:
 // el disco propio es el que lleva estas particiones y no otras.
 
-/// Una partición encontrada en la GPT.
+/// Una particion encontrada en la GPT.
 #[derive(Clone, Copy)]
 pub struct Partition {
     pub index: u32,
     pub first_lba: u64,
     pub last_lba: u64,
-    /// Primeros 4 bytes del GUID de tipo — basta para distinguir las que nos
+    /// Primeros 4 bytes del GUID de tipo -- basta para distinguir las que nos
     /// importan sin arrastrar 16 bytes por todos lados.
     pub type_lo: u32,
-    /// Nombre de la partición (UTF-16 en disco, aquí solo su parte ASCII).
+    /// Nombre de la particion (UTF-16 en disco, aqui solo su parte ASCII).
     pub name: [u8; 36],
     pub name_len: usize,
 }
@@ -640,10 +640,10 @@ impl Partition {
     pub fn name_str(&self) -> &str {
         core::str::from_utf8(&self.name[..self.name_len]).unwrap_or("")
     }
-    /// ¿Es la partición de sistema EFI? (GUID C12A7328-...) Ahí vive el
+    /// Es la particion de sistema EFI? (GUID C12A7328-...) Ahi vive el
     /// arranque de BMO.
     pub fn is_esp(&self) -> bool { self.type_lo == 0xC12A_7328 }
-    /// ¿Datos básicos de Microsoft? (GUID EBD0A0A2-...) BMO-DATA es de este
+    /// Datos basicos de Microsoft? (GUID EBD0A0A2-...) BMO-DATA es de este
     /// tipo mientras siga en NTFS.
     pub fn is_basic_data(&self) -> bool { self.type_lo == 0xEBD0_A0A2 }
 }
@@ -654,7 +654,7 @@ static mut PARTS: [Partition; MAX_PARTS] = [Partition {
 }; MAX_PARTS];
 static mut PART_COUNT: usize = 0;
 
-/// Particiones leídas de la GPT.
+/// Particiones leidas de la GPT.
 pub fn partitions() -> &'static [Partition] {
     unsafe {
         let p = core::ptr::addr_of!(PARTS) as *const Partition;
@@ -662,20 +662,20 @@ pub fn partitions() -> &'static [Partition] {
     }
 }
 
-/// Último LBA utilizable que declara la cabecera GPT (0 = sin leer).
+/// Ultimo LBA utilizable que declara la cabecera GPT (0 = sin leer).
 pub fn last_lba() -> u64 { unsafe { LAST_LBA } }
 
-// ── El contrato de bloques, implementado ────────────────────────────────────
+// -- El contrato de bloques, implementado ------------------------------------
 //
-// `bmo-block` declara la forma (leer / escribir / capacidad / identidad); aquí
-// se dice que el AHCI de esta máquina la cumple. Es el paso 3 del orden de
-// construcción de ESTRATOS: a partir de ahora, lo que hay por encima habla con
+// `bmo-block` declara la forma (leer / escribir / capacidad / identidad); aqui
+// se dice que el AHCI de esta maquina la cumple. Es el paso 3 del orden de
+// construccion de ESTRATOS: a partir de ahora, lo que hay por encima habla con
 // un dispositivo de bloques y no con SATA.
 
 /// El disco SATA de BMO visto como dispositivo de bloques.
 ///
-/// Sin campos: el estado vive en los estáticos del módulo porque hay UN disco
-/// y lo hay durante toda la vida del kernel. Un struct vacío es lo que permite
+/// Sin campos: el estado vive en los estaticos del modulo porque hay UN disco
+/// y lo hay durante toda la vida del kernel. Un struct vacio es lo que permite
 /// tener un `&'static dyn BlockDevice` sin reservar memoria, que en Ring 0 no
 /// se puede.
 pub struct AhciDisk;
@@ -685,7 +685,7 @@ impl bmo_block::BlockDevice for AhciDisk {
     fn identity(&self) -> bmo_block::DeviceId {
         let mut id = bmo_block::DeviceId::EMPTY;
         unsafe {
-            // Slices pedidos explícitamente: tomar `&(*addr_of!(ARR))[..n]`
+            // Slices pedidos explicitamente: tomar `&(*addr_of!(ARR))[..n]`
             // crea una referencia a la desreferencia de un puntero crudo, que
             // es justo lo que el compilador rechaza sobre un `static mut`.
             id.model_len = MODEL_LEN.min(id.model.len());
@@ -708,7 +708,7 @@ impl bmo_block::BlockDevice for AhciDisk {
         let end = lba.checked_add(count as u64).ok_or(E::OutOfRange)?;
         let total = unsafe { TOTAL_SECTORS };
         if total != 0 && end > total { return Err(E::OutOfRange); }
-        // `read` sin `self.` es la función libre del módulo, no este método.
+        // `read` sin `self.` es la funcion libre del modulo, no este metodo.
         match read(lba, count, buf) {
             0 => Err(E::Device),
             n => Ok(n),
@@ -718,8 +718,8 @@ impl bmo_block::BlockDevice for AhciDisk {
     fn write(&self, lba: u64, count: u16, data: &[u8]) -> Result<u16, bmo_block::BlockError> {
         use bmo_block::BlockError as E;
         if !is_ready() { return Err(E::NotReady); }
-        // El gate primero y con su propio código: "no me han autorizado a
-        // escribir" no es lo mismo que "el disco falló", y quien llama va a
+        // El gate primero y con su propio codigo: "no me han autorizado a
+        // escribir" no es lo mismo que "el disco fallo", y quien llama va a
         // hacer cosas distintas con cada respuesta.
         if !write_armed() { return Err(E::ReadOnly); }
         if count == 0 { return Ok(0); }
@@ -728,7 +728,7 @@ impl bmo_block::BlockDevice for AhciDisk {
         let total = unsafe { TOTAL_SECTORS };
         if total != 0 && end > total { return Err(E::OutOfRange); }
         // La VENTANA sigue mandando por debajo: el contrato de bloques no la
-        // sustituye. Un rango fuera de la partición de datos se rechaza aquí
+        // sustituye. Un rango fuera de la particion de datos se rechaza aqui
         // como ReadOnly, que es exactamente lo que es para ese sector.
         if write_window(lba, count).is_err() { return Err(E::ReadOnly); }
         match write(lba, count, data) {
@@ -745,11 +745,11 @@ impl bmo_block::BlockDevice for AhciDisk {
     fn writable(&self) -> bool { write_armed() }
 }
 
-// ── Las funciones sueltas que consume bmo-fat32 ─────────────────────────────
+// -- Las funciones sueltas que consume bmo-fat32 -----------------------------
 //
-// `bmo-fat32` recibe punteros a función, no un objeto de trait, y se queda
-// así: cambiarlo sería tocar un sistema de ficheros que YA funciona en
-// hardware para no ganar nada hoy. Cuando ESTRATOS llegue, hablará con
+// `bmo-fat32` recibe punteros a funcion, no un objeto de trait, y se queda
+// asi: cambiarlo seria tocar un sistema de ficheros que YA funciona en
+// hardware para no ganar nada hoy. Cuando ESTRATOS llegue, hablara con
 // `bmo_block::device()` directamente.
 
 /// Lector de bloques del disco montado. LBA ABSOLUTO del dispositivo.
@@ -761,9 +761,9 @@ pub fn block_read(lba: u64, count: u16, buf: &mut [u8]) -> bool {
 /// Escritor de bloques. LBA ABSOLUTO del dispositivo.
 ///
 /// La otra mitad del contrato. Se le entrega a `bmo-fat32` **solo** para el
-/// volumen de datos: al de arranque se le sigue montando con `None`, y así su
+/// volumen de datos: al de arranque se le sigue montando con `None`, y asi su
 /// inmutabilidad no depende de que nadie se equivoque, sino de que no exista
-/// la función.
+/// la funcion.
 pub fn block_write(lba: u64, count: u16, data: &[u8]) -> bool {
     if count == 0 || data.len() < count as usize * SECTOR { return false; }
     write(lba, count, data) == count
@@ -779,7 +779,7 @@ fn le64(b: &[u8], o: usize) -> u64 {
 }
 
 /// Lee la GPT del disco y guarda sus particiones. `true` si la cabecera es
-/// válida (firma "EFI PART" en el LBA 1).
+/// valida (firma "EFI PART" en el LBA 1).
 pub fn scan_partitions() -> bool {
     if !is_ready() { return false; }
     let mut sec = [0u8; SECTOR];
@@ -824,7 +824,7 @@ pub fn scan_partitions() -> bool {
                     name: [0; 36],
                     name_len: 0,
                 };
-                // El nombre son 36 unidades UTF-16LE. Aquí solo se conserva
+                // El nombre son 36 unidades UTF-16LE. Aqui solo se conserva
                 // lo representable en ASCII: el font es de un byte y el
                 // objetivo es reconocer "BMO", no renderizar cualquier idioma.
                 let mut n = 0usize;

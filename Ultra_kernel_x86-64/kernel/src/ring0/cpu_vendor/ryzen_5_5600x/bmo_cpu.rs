@@ -36,7 +36,7 @@ pub fn tsc_source()  -> Option<TscSource>               { unsafe { CPU_TSC_SRC }
 pub fn is_initialized() -> bool                         { INITIALIZED.load(Ordering::Acquire) }
 
 /// One-shot init: detect everything, log it, apply errata.
-/// Idempotent — second call is a no-op.
+/// Idempotent -- second call is a no-op.
 pub fn init_bmo_cpu() {
     if INITIALIZED.load(Ordering::Acquire) { return; }
 

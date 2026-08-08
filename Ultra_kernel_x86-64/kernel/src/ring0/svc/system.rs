@@ -1,4 +1,4 @@
-//! System service — estuary 0. The first real capability service.
+//! System service -- estuary 0. The first real capability service.
 //!
 //! By-value operations only (no user pointers): liveness, time and
 //! scheduler telemetry. The completion entry echoes the request opcode

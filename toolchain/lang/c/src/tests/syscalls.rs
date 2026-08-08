@@ -27,7 +27,7 @@ fn parses_syscall_with_asm_defs() {
 #[test]
 fn syscall_arg_count_validation() {
     use std::path::PathBuf;
-    // bmo_exit expects 1 arg â†’ passing 0 should fail
+    // bmo_exit expects 1 arg -> passing 0 should fail
     let src = r#"use "bmo/proc"; int main() { bmo_exit(); }"#;
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
     let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");

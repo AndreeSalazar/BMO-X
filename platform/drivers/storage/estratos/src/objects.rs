@@ -1,50 +1,50 @@
 //! El modelo de objetos: bloques, atributos, nodos y entradas de directorio.
 //!
-//! Es la §4 del diseño (`platform/services/timeback/ESTRATOS.md`). Aquí se
-//! deciden las tres cosas que el documento dejaba abiertas: **cómo se
-//! direcciona un bloque, cómo crece un archivo, y cómo se guarda un
+//! Es la section 4 del diseno (`platform/services/timeback/ESTRATOS.md`). Aqui se
+//! deciden las tres cosas que el documento dejaba abiertas: **como se
+//! direcciona un bloque, como crece un archivo, y como se guarda un
 //! directorio**.
 //!
 //! Igual que el resto de la crate: sin E/S. Solo formas y comprobaciones.
 //!
-//! ## Decisión 1 — un puntero lleva la dirección Y la suma
+//! ## Decision 1 -- un puntero lleva la direccion Y la suma
 //!
-//! [`BlockPtr`] no es "dónde está el bloque": es *dónde está y qué debe
-//! contener*. Es la idea que ZFS llamó block pointer, y resuelve dos problemas
+//! [`BlockPtr`] no es "donde esta el bloque": es *donde esta y que debe
+//! contener*. Es la idea que ZFS llamo block pointer, y resuelve dos problemas
 //! con una estructura:
 //!
-//! - **Verificación**: quien lee un bloque puede comprobarlo sin consultar
-//!   nada más. La suma no vive en el bloque (donde se corrompería con él) sino
-//!   en quien apunta a él. Un bloque leído que no cuadra con su puntero es un
+//! - **Verificacion**: quien lee un bloque puede comprobarlo sin consultar
+//!   nada mas. La suma no vive en el bloque (donde se corromperia con el) sino
+//!   en quien apunta a el. Un bloque leido que no cuadra con su puntero es un
 //!   FAULT, no un archivo raro.
-//! - **Árbol de Merkle gratis**: como el puntero contiene la suma del
+//! - **Arbol de Merkle gratis**: como el puntero contiene la suma del
 //!   contenido, y ese contenido puede ser a su vez una lista de punteros, la
-//!   suma de la raíz valida el árbol entero. No hay que construir nada aparte:
+//!   suma de la raiz valida el arbol entero. No hay que construir nada aparte:
 //!   sale de la forma.
 //!
 //! Y separa el **direccionamiento por contenido** de la **necesidad de un
-//! índice**: el que ESCRIBE puede deduplicar (si ya vio ese hash, reusa el
-//! puntero); el que LEE no necesita índice ninguno, solo seguir punteros. Un
-//! índice hash→dirección es una estructura más que mantener coherente, y v1 no
+//! indice**: el que ESCRIBE puede deduplicar (si ya vio ese hash, reusa el
+//! puntero); el que LEE no necesita indice ninguno, solo seguir punteros. Un
+//! indice hash->direccion es una estructura mas que mantener coherente, y v1 no
 //! la necesita para nada.
 //!
-//! ## Decisión 2 — un archivo crece por niveles, no por lista
+//! ## Decision 2 -- un archivo crece por niveles, no por lista
 //!
-//! Un atributo no guarda "la lista de sus bloques": guarda UNA raíz y cuántos
-//! **niveles** de indirección hay debajo. Con `levels = 0` la raíz es el dato;
-//! con 1, la raíz es un bloque lleno de punteros; con 2, dos saltos. Cada
+//! Un atributo no guarda "la lista de sus bloques": guarda UNA raiz y cuantos
+//! **niveles** de indireccion hay debajo. Con `levels = 0` la raiz es el dato;
+//! con 1, la raiz es un bloque lleno de punteros; con 2, dos saltos. Cada
 //! nivel multiplica por [`PTRS_POR_BLOQUE`].
 //!
-//! Se eligió así porque la alternativa —una lista de punteros dentro del
-//! atributo— obliga a poner un tope arbitrario al tamaño de un archivo, y en
+//! Se eligio asi porque la alternativa --una lista de punteros dentro del
+//! atributo-- obliga a poner un tope arbitrario al tamano de un archivo, y en
 //! Ring 0 no hay `alloc` para hacerla crecer. Con niveles, la regla es
 //! recursiva y **no hay tope**: solo se sube un nivel.
 //!
-//! ## Decisión 3 — lo pequeño no gasta bloque
+//! ## Decision 3 -- lo pequeno no gasta bloque
 //!
 //! Lo que le robamos a NTFS: si el contenido cabe en [`RESIDENTE_MAX`], vive
 //! DENTRO del atributo y no se asigna bloque ninguno. Una `:firma` son 32
-//! bytes; darle 4096 sería gastar 128 veces su tamaño y una lectura extra
+//! bytes; darle 4096 seria gastar 128 veces su tamano y una lectura extra
 //! cada vez que se comprueba.
 
 use crate::{blake3, FormatError, Hash, NO_HASH};
@@ -52,27 +52,27 @@ use crate::{blake3, FormatError, Hash, NO_HASH};
 /// Bloque de ESTRATOS. Ocho sectores.
 pub const BLOQUE: usize = 4096;
 
-// ── BlockPtr ────────────────────────────────────────────────────────────────
+// -- BlockPtr ----------------------------------------------------------------
 
 /// Bytes de un puntero en disco.
 pub const PTR_LEN: usize = 48;
 
-/// Cuántos punteros caben en un bloque. Es el factor de ramificación del
-/// árbol: cada nivel de indirección multiplica la capacidad por esto.
+/// Cuantos punteros caben en un bloque. Es el factor de ramificacion del
+/// arbol: cada nivel de indireccion multiplica la capacidad por esto.
 pub const PTRS_POR_BLOQUE: usize = BLOQUE / PTR_LEN; // 85
 
-/// Dónde está un trozo de contenido y qué debe contener.
+/// Donde esta un trozo de contenido y que debe contener.
 ///
-/// `off` existe para que varios objetos pequeños compartan bloque: un nodo
-/// ocupa ~560 bytes y sin desplazamiento gastaría los 4096 enteros. Un
-/// directorio con diez entradas desperdiciaría el 87 % del disco.
+/// `off` existe para que varios objetos pequenos compartan bloque: un nodo
+/// ocupa ~560 bytes y sin desplazamiento gastaria los 4096 enteros. Un
+/// directorio con diez entradas desperdiciaria el 87 % del disco.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlockPtr {
     /// Bloque dentro del volumen.
     pub lba: u64,
     /// Desplazamiento dentro del bloque.
     pub off: u32,
-    /// Bytes útiles.
+    /// Bytes utiles.
     pub len: u32,
     /// BLAKE3 de esos `len` bytes.
     pub hash: Hash,
@@ -88,11 +88,11 @@ impl BlockPtr {
 
     pub fn es_nulo(&self) -> bool { self.len == 0 && self.lba == 0 }
 
-    /// ¿Es esto lo que el puntero prometía?
+    /// Es esto lo que el puntero prometia?
     ///
-    /// El principio 2 del diseño hecho una función: *el sistema de ficheros
-    /// detecta su propia corrupción en vez de confiar en que el disco devuelve
-    /// lo que guardó*.
+    /// El principio 2 del diseno hecho una funcion: *el sistema de ficheros
+    /// detecta su propia corrupcion en vez de confiar en que el disco devuelve
+    /// lo que guardo*.
     pub fn verifica(&self, datos: &[u8]) -> bool {
         datos.len() == self.len as usize && blake3(datos) == self.hash
     }
@@ -109,9 +109,9 @@ impl BlockPtr {
     pub fn decode(b: &[u8]) -> Result<Self, FormatError> {
         if b.len() < PTR_LEN { return Err(FormatError::ShortBuffer); }
         // Un puntero no puede rebasar su bloque: si lo hace, la lectura se
-        // saldría al bloque de al lado y devolvería datos de otro objeto sin
-        // que ninguna suma lo detectara (porque la suma se calcularía sobre lo
-        // que se leyó, no sobre lo que se debía leer).
+        // saldria al bloque de al lado y devolveria datos de otro objeto sin
+        // que ninguna suma lo detectara (porque la suma se calcularia sobre lo
+        // que se leyo, no sobre lo que se debia leer).
         let off = u32::from_le_bytes([b[8], b[9], b[10], b[11]]);
         let len = u32::from_le_bytes([b[12], b[13], b[14], b[15]]);
         if off as usize + len as usize > BLOQUE { return Err(FormatError::BadField); }
@@ -124,11 +124,11 @@ impl BlockPtr {
     }
 }
 
-// ── Atributo ────────────────────────────────────────────────────────────────
+// -- Atributo ----------------------------------------------------------------
 
 /// Bytes de un atributo en disco.
 pub const ATTR_LEN: usize = 128;
-/// Longitud máxima del nombre de un atributo.
+/// Longitud maxima del nombre de un atributo.
 pub const ATTR_NOMBRE_LEN: usize = 16;
 /// Contenido que cabe DENTRO del atributo, sin gastar bloque.
 pub const RESIDENTE_MAX: usize = 96;
@@ -136,8 +136,8 @@ pub const RESIDENTE_MAX: usize = 96;
 /// Marca de atributo residente.
 const ATTR_RESIDENTE: u8 = 1 << 0;
 
-/// Nombres de atributo que el sistema conoce. Los demás son válidos: un nodo
-/// puede llevar los flujos que quiera, y ahí está la gracia.
+/// Nombres de atributo que el sistema conoce. Los demas son validos: un nodo
+/// puede llevar los flujos que quiera, y ahi esta la gracia.
 pub const ATTR_DATOS: &str = ":datos";
 pub const ATTR_ENTRADAS: &str = ":entradas";
 pub const ATTR_FIRMA: &str = ":firma";
@@ -149,9 +149,9 @@ pub const ATTR_ORIGEN: &str = ":origen";
 pub struct Attr {
     nombre: [u8; ATTR_NOMBRE_LEN],
     nombre_len: usize,
-    /// Bytes útiles totales del flujo.
+    /// Bytes utiles totales del flujo.
     pub size: u64,
-    /// Niveles de indirección bajo la raíz. 0 = la raíz ES el dato.
+    /// Niveles de indireccion bajo la raiz. 0 = la raiz ES el dato.
     pub levels: u8,
     residente: bool,
     cuerpo: [u8; RESIDENTE_MAX],
@@ -191,7 +191,7 @@ impl Attr {
     pub fn datos_residentes(&self) -> Option<&[u8]> {
         if self.residente { Some(&self.cuerpo[..self.size as usize]) } else { None }
     }
-    /// La raíz del árbol, si no es residente.
+    /// La raiz del arbol, si no es residente.
     pub fn raiz(&self) -> Option<BlockPtr> {
         if self.residente { None } else { Some(self.raiz) }
     }
@@ -219,7 +219,7 @@ impl Attr {
         let levels = b[24];
         let residente = b[25] & ATTR_RESIDENTE != 0;
         if residente {
-            // Un residente que declara más bytes de los que caben es una
+            // Un residente que declara mas bytes de los que caben es una
             // lectura fuera del atributo esperando a ocurrir.
             if size as usize > RESIDENTE_MAX { return Err(FormatError::BadField); }
             if levels != 0 { return Err(FormatError::BadField); }
@@ -234,12 +234,12 @@ impl Attr {
     }
 }
 
-/// Tope de niveles de indirección. Con 4 son 85^4 bloques ≈ 200 TiB: más de lo
+/// Tope de niveles de indireccion. Con 4 son 85^4 bloques ~= 200 TiB: mas de lo
 /// que cabe en el disco. El tope existe para que un `levels` corrupto no meta
-/// a un lector en una recursión infinita, no para limitar los archivos.
+/// a un lector en una recursion infinita, no para limitar los archivos.
 pub const NIVELES_MAX: usize = 4;
 
-/// Cuántos bytes puede direccionar un árbol de `levels` niveles.
+/// Cuantos bytes puede direccionar un arbol de `levels` niveles.
 pub fn capacidad(levels: u8) -> u64 {
     let mut n = BLOQUE as u64;
     for _ in 0..levels { n = n.saturating_mul(PTRS_POR_BLOQUE as u64); }
@@ -247,7 +247,7 @@ pub fn capacidad(levels: u8) -> u64 {
 }
 
 /// Los niveles que hacen falta para `size` bytes. `None` si no cabe ni con el
-/// tope — error explícito en vez de un árbol truncado en silencio.
+/// tope -- error explicito en vez de un arbol truncado en silencio.
 pub fn niveles_para(size: u64) -> Option<u8> {
     for l in 0..=NIVELES_MAX as u8 {
         if size <= capacidad(l) { return Some(l); }
@@ -263,9 +263,9 @@ fn nombre_a_bytes(nombre: &str) -> Result<([u8; ATTR_NOMBRE_LEN], usize), Format
     Ok((out, b.len()))
 }
 
-// ── Nodo ────────────────────────────────────────────────────────────────────
+// -- Nodo --------------------------------------------------------------------
 
-/// Atributos que caben en un nodo. Cuatro son los del ejemplo del diseño:
+/// Atributos que caben en un nodo. Cuatro son los del ejemplo del diseno:
 /// `:datos`, `:firma`, `:manifiesto` y `:origen`.
 pub const ATTRS_MAX: usize = 4;
 /// Bytes de un nodo en disco: cabecera + atributos + suma.
@@ -275,15 +275,15 @@ const NODO_MAGIC: [u8; 4] = *b"NODO";
 const OFF_N_ATTRS: usize = 16;
 const OFF_N_SUM: usize = NODO_LEN - 32;
 
-/// Qué es este nodo.
+/// Que es este nodo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tipo { Archivo, Directorio }
 
 /// Un archivo o un directorio: un conjunto de atributos.
 ///
-/// La diferencia entre los dos es **qué atributo llevan**, no una estructura
+/// La diferencia entre los dos es **que atributo llevan**, no una estructura
 /// distinta: un directorio es un nodo con `:entradas`. Por eso no hay dos
-/// caminos de código, y por eso un directorio puede tener `:firma` igual que
+/// caminos de codigo, y por eso un directorio puede tener `:firma` igual que
 /// un archivo.
 #[derive(Debug, Clone, Copy)]
 pub struct Nodo {
@@ -296,7 +296,7 @@ impl Nodo {
         Self { tipo, attrs: [None; ATTRS_MAX] }
     }
 
-    /// Añade un atributo. Falla si ya existe uno con ese nombre o no hay sitio.
+    /// Anade un atributo. Falla si ya existe uno con ese nombre o no hay sitio.
     pub fn con(mut self, a: Attr) -> Result<Self, FormatError> {
         if self.attr(a.nombre_str()).is_some() { return Err(FormatError::BadField); }
         for slot in self.attrs.iter_mut() {
@@ -314,11 +314,11 @@ impl Nodo {
         self.attrs.iter().flatten()
     }
 
-    /// ¿Puede este nodo dar una capability EJECUTABLE?
+    /// Puede este nodo dar una capability EJECUTABLE?
     ///
-    /// El gate del §7 del diseño, en su forma mínima: sin `:firma` no hay
-    /// ejecución posible, punto. Comprobar la firma contra el contenido es
-    /// trabajo de `bmo-verify`; lo que se decide aquí es que un binario sin
+    /// El gate del section 7 del diseno, en su forma minima: sin `:firma` no hay
+    /// ejecucion posible, punto. Comprobar la firma contra el contenido es
+    /// trabajo de `bmo-verify`; lo que se decide aqui es que un binario sin
     /// firma **ni se le pregunta**.
     pub fn tiene_firma(&self) -> bool { self.attr(ATTR_FIRMA).is_some() }
 
@@ -354,14 +354,14 @@ impl Nodo {
     }
 }
 
-// ── Entradas de directorio ──────────────────────────────────────────────────
+// -- Entradas de directorio --------------------------------------------------
 
 /// Bytes de una entrada de directorio.
 pub const ENTRADA_LEN: usize = 112;
-/// Longitud máxima de un nombre de archivo.
+/// Longitud maxima de un nombre de archivo.
 pub const NOMBRE_MAX: usize = 63;
 
-/// Nombre → nodo. El contenido del atributo `:entradas` de un directorio.
+/// Nombre -> nodo. El contenido del atributo `:entradas` de un directorio.
 #[derive(Debug, Clone, Copy)]
 pub struct Entrada {
     nombre: [u8; NOMBRE_MAX],
@@ -378,20 +378,20 @@ impl Entrada {
         Ok(Self { nombre: n, nombre_len: b.len(), nodo })
     }
 
-    /// El nombre TAL COMO SE ESCRIBIÓ. Se conserva aunque las comparaciones
-    /// ignoren mayúsculas: es lo que espera cualquiera que venga de Windows y
+    /// El nombre TAL COMO SE ESCRIBIO. Se conserva aunque las comparaciones
+    /// ignoren mayusculas: es lo que espera cualquiera que venga de Windows y
     /// no cuesta nada.
     pub fn nombre_str(&self) -> &str {
         core::str::from_utf8(&self.nombre[..self.nombre_len]).unwrap_or("")
     }
 
-    /// ¿Se llama así? Sin distinguir mayúsculas, en **Latin-1**.
+    /// Se llama asi? Sin distinguir mayusculas, en **Latin-1**.
     ///
     /// Latin-1 y no UTF-8 porque es lo que hablan la consola, el teclado y el
-    /// framebuffer de BMO: un byte por carácter, sin decodificador en el
-    /// camino. Y por eso el plegado cubre también los acentos — `Ñ` y `ñ` son
-    /// 0xD1 y 0xF1, y si no se plegaran, `Año` y `AÑO` serían dos archivos
-    /// distintos en un sistema que dice ignorar mayúsculas.
+    /// framebuffer de BMO: un byte por caracter, sin decodificador en el
+    /// camino. Y por eso el plegado cubre tambien los acentos -- `N` y `n` son
+    /// 0xD1 y 0xF1, y si no se plegaran, `Ano` y `ANO` serian dos archivos
+    /// distintos en un sistema que dice ignorar mayusculas.
     pub fn se_llama(&self, otro: &str) -> bool {
         let a = &self.nombre[..self.nombre_len];
         let b = otro.as_bytes();
@@ -417,7 +417,7 @@ impl Entrada {
     }
 }
 
-/// Minúscula en Latin-1: ASCII más el bloque acentuado (0xC0-0xDE), saltándose
+/// Minuscula en Latin-1: ASCII mas el bloque acentuado (0xC0-0xDE), saltandose
 /// 0xD7, que es el signo de multiplicar y no una letra.
 fn baja(c: u8) -> u8 {
     if c >= b'A' && c <= b'Z' { return c + 32; }

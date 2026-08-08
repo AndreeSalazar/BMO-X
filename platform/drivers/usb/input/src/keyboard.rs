@@ -1,4 +1,4 @@
-//! Keyboard translation tables: PS/2 Set 1 scancode → VK code.
+//! Keyboard translation tables: PS/2 Set 1 scancode -> VK code.
 
 /// Translate a PS/2 Set 1 scancode to a Virtual Key (VK) code.
 /// Returns (vk, released) where released = (sc & 0x80) != 0.
@@ -53,7 +53,7 @@ pub fn scancode_to_vk(sc: u8) -> Option<(u8, bool)> {
     Some((vk, released))
 }
 
-/// USB HID Usage ID → VK code translation table.
+/// USB HID Usage ID -> VK code translation table.
 /// HID Usage IDs for keyboard boot protocol (0x04-0x65 range).
 pub fn hid_usage_to_vk(usage: u8) -> Option<u8> {
     Some(match usage {

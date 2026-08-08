@@ -1,4 +1,4 @@
-//! FILE STATUS — 6 pruebas.
+//! FILE STATUS -- 6 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-/// ★ `35` — el fichero no existe. Es el caso que más se da y el único
+/// * `35` -- el fichero no existe. Es el caso que mas se da y el unico
 /// motivo que la puerta permite distinguir hoy.
 #[test]
 fn file_status_dice_35_cuando_el_fichero_no_esta() {
@@ -30,7 +30,7 @@ END-IF.",
 ");
 }
 
-/// Y `00` cuando sí está.
+/// Y `00` cuando si esta.
 #[test]
 fn file_status_dice_00_cuando_abre() {
     let src = programa_con_estado(
@@ -48,7 +48,7 @@ DISPLAY ST.",
 ");
 }
 
-/// ★ `10` — fin de fichero. Es la forma del estándar de escribir un bucle
+/// * `10` -- fin de fichero. Es la forma del estandar de escribir un bucle
 /// de batch: se lee hasta que el estado deja de ser `00`.
 #[test]
 fn file_status_dice_10_al_acabarse_el_fichero() {
@@ -77,7 +77,7 @@ DISPLAY ST.",
 25.50
 0.50
 ")]);
-    // Tres registros, y el bucle paró POR EL ESTADO y no por una bandera
+    // Tres registros, y el bucle paro POR EL ESTADO y no por una bandera
     // puesta a mano. El CLOSE lo devuelve a `00`.
     assert_eq!(consola, "3
 126.00
@@ -85,18 +85,18 @@ DISPLAY ST.",
 ");
 }
 
-/// ★★ `30` — **el `CLOSE` que no guardó**, que es el estado que más
+/// ** `30` -- **el `CLOSE` que no guardo**, que es el estado que mas
 /// importa de todos.
 ///
 /// Hasta el `CLOSE` no hay nada en el disco: escribir es un acto de dos
-/// pasos y el segundo es éste. `emit_close` ponía `"00"` a pelo sin mirar
-/// lo que contestaba la puerta, así que un programa que se había molestado
-/// en declarar `FILE STATUS` —o sea, uno que preguntaba— recibía "todo
+/// pasos y el segundo es este. `emit_close` ponia `"00"` a pelo sin mirar
+/// lo que contestaba la puerta, asi que un programa que se habia molestado
+/// en declarar `FILE STATUS` --o sea, uno que preguntaba-- recibia "todo
 /// bien" con el fichero sin escribir.
 ///
 /// Y no es un caso de laboratorio: hoy `TASK_OP_ARCHIVO_CREAR` **no puede
-/// reemplazar un fichero que ya existe**, así que la SEGUNDA corrida de
-/// cualquier programa que escriba su salida cae exactamente aquí.
+/// reemplazar un fichero que ya existe**, asi que la SEGUNDA corrida de
+/// cualquier programa que escriba su salida cae exactamente aqui.
 #[test]
 fn file_status_dice_30_cuando_el_close_no_guarda() {
     let src = programa_que_guarda(
@@ -108,10 +108,10 @@ fn file_status_dice_30_cuando_el_close_no_guarda() {
     assert_eq!(m.archivo("d/s.txt"), None, "no se puede guardar un trozo");
 }
 
-/// Y `00` con el mismo programa cuando el disco sí acepta.
+/// Y `00` con el mismo programa cuando el disco si acepta.
 ///
 /// Es la mitad que impide que el arreglo de arriba sea "poner `30` siempre":
-/// las dos pruebas juntas dicen que el estado **depende de lo que pasó**.
+/// las dos pruebas juntas dicen que el estado **depende de lo que paso**.
 #[test]
 fn file_status_dice_00_cuando_el_close_guarda() {
     let src = programa_que_guarda(
@@ -123,8 +123,8 @@ fn file_status_dice_00_cuando_el_close_guarda() {
 }
 
 /// El campo tiene que existir y medir DOS letras. Si no, el programa
-/// compararía contra basura y decidiría por ella — `IF ST = "00"` daría
-/// falso siempre y el batch se pararía cada noche sin motivo.
+/// compararia contra basura y decidiria por ella -- `IF ST = "00"` daria
+/// falso siempre y el batch se pararia cada noche sin motivo.
 #[test]
 fn un_file_status_mal_declarado_se_rechaza() {
     let casos: &[(&str, &str)] = &[
@@ -147,12 +147,12 @@ fn un_file_status_mal_declarado_se_rechaza() {
     }
 }
 
-/// ★ Cerrar una ENTRADA no puede dar `30` por accidente.
+/// * Cerrar una ENTRADA no puede dar `30` por accidente.
 ///
 /// La puerta contesta `1` al cerrar un fichero de lectura porque no hay
 /// nada que guardar. Si eso se leyera como fallo, todo batch que cierre su
-/// fichero de entrada —o sea, todos— se pararía creyendo que el disco está
-/// roto. Ésta es la prueba de que el arreglo no se pasó de listo.
+/// fichero de entrada --o sea, todos-- se pararia creyendo que el disco esta
+/// roto. Esta es la prueba de que el arreglo no se paso de listo.
 #[test]
 fn cerrar_una_entrada_sigue_dando_00() {
     let src = programa_con_estado(

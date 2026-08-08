@@ -15,8 +15,8 @@
 //! ```text
 //!   bit 63        : tag        (0 = recurso, 1 = canal/cola)
 //!   bits 62..56   : kind       (7 bits)
-//!   bits 55..40   : generation (16 bits — invalida UAF)
-//!   bits 39..0    : index      (40 bits — slot en la tabla del proceso)
+//!   bits 55..40   : generation (16 bits -- invalida UAF)
+//!   bits 39..0    : index      (40 bits -- slot en la tabla del proceso)
 //! ```
 
 use crate::ring0::plat::spin::SpinLock;
@@ -44,7 +44,7 @@ pub const KIND_DIRECTORIO: u8 = 0x40;
 ///
 /// Lectura y escritura NO son dos kinds: son dos modos del mismo objeto, y el
 /// modo se fija AL ABRIR. Un handle abierto para leer no escribe aunque se le
-/// pida — no por una comprobacion de permisos, sino porque en ese modo el
+/// pida -- no por una comprobacion de permisos, sino porque en ese modo el
 /// objeto no tiene donde escribir.
 pub const KIND_ARCHIVO: u8 = 0x41;
 /// Un bloque de memoria que el proceso PIDIO. Ver `obj::memoria`: es memoria
@@ -54,8 +54,8 @@ pub const KIND_MEMORIA: u8 = 0x50;
 ///
 /// No es `KIND_MEMORIA` aunque las dos sean memoria, y la diferencia es la que
 /// evita el peor fallo posible: un bloque es **del proceso** y esto es
-/// **prestado**. Al morir, uno se libera y el otro **sólo se desmapea** — si se
-/// liberara, el kernel entregaría a un tercero la memoria de quien la prestó.
+/// **prestado**. Al morir, uno se libera y el otro **solo se desmapea** -- si se
+/// liberara, el kernel entregaria a un tercero la memoria de quien la presto.
 pub const KIND_PRESTADO: u8 = 0x51;
 pub const KIND_CHANNEL: u8 = 0x60;
 /// Endpoint RPC: el derecho a llamar (cliente) o a atender (servidor).
@@ -230,22 +230,22 @@ pub fn revoke(pid: u32, handle: u64) -> bool {
 /// Antes de soltar los handles se cierran sus endpoints: si el proceso era
 /// servidor, todo el que estuviera esperando su respuesta tiene que despertar
 /// con `ERROR_ENDPOINT_DEAD`. Sin esto, matar a un servidor deja a sus
-/// clientes bloqueados para siempre — el fallo que hace inservible cualquier
+/// clientes bloqueados para siempre -- el fallo que hace inservible cualquier
 /// IPC bloqueante.
 pub fn revoke_all(pid: u32) {
     crate::ring0::obj::endpoint::proceso_muerto(pid);
     // Si tenia la pantalla, el kernel la recupera aqui. Corre en TODAS las
-    // salidas —EXIT voluntario y muerte por fault— asi que un compositor que
+    // salidas --EXIT voluntario y muerte por fault-- asi que un compositor que
     // revienta no deja la maquina ciega.
     crate::ring0::obj::fb::proceso_muerto(pid);
     crate::ring0::obj::input::proceso_muerto(pid);
-    // Sus bloques de memoria no hay que desmapearlos —el espacio entero se
-    // destruye—, pero SÍ hay que soltar el contador de peticiones: sin esto un
-    // pid reutilizado heredaría las del muerto y no podría pedir nada.
-    // ★ ANTES que la memoria, y el orden NO es indiferente: el reflejo se
-    // desmapea del espacio del muerto, y ese espacio tiene que existir todavía.
-    // Va primero también porque `unmap_page` devuelve el marco sin liberarlo —
-    // son del compositor— y liberarlos aquí sería entregarle el escritorio a
+    // Sus bloques de memoria no hay que desmapearlos --el espacio entero se
+    // destruye--, pero SI hay que soltar el contador de peticiones: sin esto un
+    // pid reutilizado heredaria las del muerto y no podria pedir nada.
+    // * ANTES que la memoria, y el orden NO es indiferente: el reflejo se
+    // desmapea del espacio del muerto, y ese espacio tiene que existir todavia.
+    // Va primero tambien porque `unmap_page` devuelve el marco sin liberarlo --
+    // son del compositor-- y liberarlos aqui seria entregarle el escritorio a
     // otro proceso.
     crate::ring0::obj::prestamo::proceso_muerto(pid, crate::ring0::mm::vmm::read_cr3());
     crate::ring0::obj::memoria::proceso_muerto(pid);
@@ -277,11 +277,11 @@ fn revoke_all_slots(pid: u32) {
 /// Seed the init process: one capability per BMO Channel estuary with
 /// full transport rights (READ | WRITE | WAIT).
 pub fn seed_init(pid: u32) {
-    // ★ El resultado de `grant` se tiraba. Si la tabla se llena a mitad, el
+    // * El resultado de `grant` se tiraba. Si la tabla se llena a mitad, el
     // primer proceso del sistema arranca con MENOS canales de los que cree
-    // tener, y lo descubre mucho después: un `INVOKE` sobre un handle que
-    // nunca existió, sin nada que lo relacione con este bucle. Una capability
-    // que no se concedió es una capability que no está, y eso se dice aquí.
+    // tener, y lo descubre mucho despues: un `INVOKE` sobre un handle que
+    // nunca existio, sin nada que lo relacione con este bucle. Una capability
+    // que no se concedio es una capability que no esta, y eso se dice aqui.
     let mut fallidas = 0u32;
     for index in 0..boot_context::MAX_CHANNEL_PAGES {
         if grant(

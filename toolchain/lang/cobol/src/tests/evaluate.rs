@@ -1,4 +1,4 @@
-//! EVALUATE — 8 pruebas.
+//! EVALUATE -- 8 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,13 +7,13 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-// ── EVALUATE: el verbo que más falta hacía ──────────────────────────
+// -- EVALUATE: el verbo que mas falta hacia --------------------------
 //
 // Estaba marcado en el plan como bloqueado por el parser de tokens. Era
-// falso: `parser.rs` ya consume varias líneas para `IF … END-IF`, y
-// `EVALUATE … WHEN … END-EVALUATE` tiene la misma forma.
+// falso: `parser.rs` ya consume varias lineas para `IF ... END-IF`, y
+// `EVALUATE ... WHEN ... END-EVALUATE` tiene la misma forma.
 
-/// La forma clásica: un sujeto y sus valores.
+/// La forma clasica: un sujeto y sus valores.
 #[test]
 fn evaluate_con_sujeto_elige_la_rama() {
     for tipo in 1..=4 {
@@ -39,12 +39,12 @@ fn evaluate_con_sujeto_elige_la_rama() {
     }
 }
 
-/// ★ La OTRA forma, y la que un banco usa para un escalado: `EVALUATE TRUE`
-/// con una condición entera por rama. Es la **tabla de decisión**.
+/// * La OTRA forma, y la que un banco usa para un escalado: `EVALUATE TRUE`
+/// con una condicion entera por rama. Es la **tabla de decision**.
 ///
 /// El orden manda: la primera que acierta gana, y las de abajo ni se
 /// prueban. Por eso los tramos se escriben de mayor a menor y `1500` tiene
-/// que dar `alta` aunque también cumpla las dos de abajo.
+/// que dar `alta` aunque tambien cumpla las dos de abajo.
 #[test]
 fn evaluate_true_es_una_tabla_de_decision() {
     let casos: &[(&str, &str)] = &[
@@ -71,10 +71,10 @@ fn evaluate_true_es_una_tabla_de_decision() {
     }
 }
 
-/// ★ `WHEN 2 THRU 5` y `WHEN 6, 7` — la misma expansión que un nivel 88.
+/// * `WHEN 2 THRU 5` y `WHEN 6, 7` -- la misma expansion que un nivel 88.
 ///
 /// Es lo que se gana compartiendo `Condicion::de_valores`: el `THRU` y la
-/// coma funcionaron aquí sin escribir una línea de gramática nueva.
+/// coma funcionaron aqui sin escribir una linea de gramatica nueva.
 #[test]
 fn un_when_admite_rangos_y_listas() {
     for dia in 0..=9 {
@@ -100,9 +100,9 @@ fn un_when_admite_rangos_y_listas() {
     }
 }
 
-/// Sin `WHEN OTHER`, si no acierta ninguna no pasa nada — y sobre todo, se
-/// sigue por la línea de abajo. Un `EVALUATE` que se comiera el resto del
-/// programa cuando no acierta sería un agujero silencioso.
+/// Sin `WHEN OTHER`, si no acierta ninguna no pasa nada -- y sobre todo, se
+/// sigue por la linea de abajo. Un `EVALUATE` que se comiera el resto del
+/// programa cuando no acierta seria un agujero silencioso.
 #[test]
 fn un_evaluate_sin_other_no_se_come_lo_que_viene_despues() {
     let src = program(
@@ -117,7 +117,7 @@ fn un_evaluate_sin_other_no_se_come_lo_que_viene_despues() {
     assert_eq!(run_cobol(&src), "sigo\n");
 }
 
-/// Un `EVALUATE` DENTRO de un párrafo, con `PERFORM` en las ramas: es como
+/// Un `EVALUATE` DENTRO de un parrafo, con `PERFORM` en las ramas: es como
 /// se escribe el despacho de un batch de verdad.
 #[test]
 fn un_evaluate_despacha_a_parrafos() {
@@ -160,8 +160,8 @@ fn los_evaluate_se_anidan() {
     assert_eq!(run_cobol(&src), "1-2\nfin\n");
 }
 
-/// Y un `88` como condición de un `EVALUATE TRUE`, que es lo que hace que
-/// una tabla de decisión se lea en voz alta.
+/// Y un `88` como condicion de un `EVALUATE TRUE`, que es lo que hace que
+/// una tabla de decision se lea en voz alta.
 #[test]
 fn un_evaluate_true_admite_nombres_de_condicion() {
     let src = program(
@@ -176,7 +176,7 @@ fn un_evaluate_true_admite_nombres_de_condicion() {
     assert_eq!(run_cobol(&src), "cierra\n");
 }
 
-/// Lo que no se compila se dice, y lo que no se alcanzaría nunca también.
+/// Lo que no se compila se dice, y lo que no se alcanzaria nunca tambien.
 #[test]
 fn los_evaluate_mal_escritos_se_rechazan() {
     let casos: &[(&str, &str)] = &[
@@ -214,7 +214,7 @@ fn los_evaluate_mal_escritos_se_rechazan() {
     }
 }
 
-/// Varias sentencias por rama, y sólo las de la rama que gana.
+/// Varias sentencias por rama, y solo las de la rama que gana.
 #[test]
 fn una_rama_puede_tener_varias_sentencias() {
     let src = program(

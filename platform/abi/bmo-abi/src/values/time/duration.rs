@@ -1,4 +1,4 @@
-//! `BmoDuration` — intervalo de tiempo en nanosegundos. Reemplaza
+//! `BmoDuration` -- intervalo de tiempo en nanosegundos. Reemplaza
 //! `timespec`, `timeval`, `LARGE_INTEGER` para QPC y todo el zoo de C.
 
 use crate::bmo_abi::primitives::bx_u64;

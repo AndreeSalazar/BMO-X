@@ -1,19 +1,19 @@
-//! `KIND_CONSOLE` — la salida de un programa, como capability.
+//! `KIND_CONSOLE` -- la salida de un programa, como capability.
 //!
-//! ## La asimetría que esto cierra
+//! ## La asimetria que esto cierra
 //!
 //! La pantalla es `KIND_FRAMEBUFFER`. La entrada es `KIND_INPUT`. La consola
-//! era **lo único que no lo era**: `OP_CONSOLE_WRITE` escribía siempre en el
+//! era **lo unico que no lo era**: `OP_CONSOLE_WRITE` escribia siempre en el
 //! mismo sitio global, el panel del kernel. El propio comentario del syscall lo
-//! confesaba — "la consola de arranque, no la salida de nadie en serio".
+//! confesaba -- "la consola de arranque, no la salida de nadie en serio".
 //!
-//! Eso tenía una consecuencia que sólo se ve cuando intentas construir encima:
+//! Eso tenia una consecuencia que solo se ve cuando intentas construir encima:
 //! **un terminal en Ring 3 no puede leer lo que imprime su propio hijo.** Lanza
-//! un programa, el programa escribe, y su salida cae en el panel de Ring 0 —
+//! un programa, el programa escribe, y su salida cae en el panel de Ring 0 --
 //! debajo del escritorio, donde nadie mira. Se compila a ciegas.
 //!
-//! Es exactamente el problema que resuelve un PTY en Unix, y aquí tiene la
-//! forma que tiene todo lo demás: un objeto con dueño.
+//! Es exactamente el problema que resuelve un PTY en Unix, y aqui tiene la
+//! forma que tiene todo lo demas: un objeto con dueno.
 //!
 //! ## El trato
 //!
@@ -23,22 +23,22 @@
 //!   `OP_CONSOLE_WRITE` del hijo aterriza en ese anillo, no en el panel.
 //! - Sin consola asignada, se escribe en la del kernel **exactamente como
 //!   antes**. Los cinco demos embebidos siguen hablando por el panel sin
-//!   cambiar una línea: lo nuevo no rompe lo viejo, lo rodea.
+//!   cambiar una linea: lo nuevo no rompe lo viejo, lo rodea.
 //!
-//! ## Por qué el anillo es del kernel y no memoria compartida
+//! ## Por que el anillo es del kernel y no memoria compartida
 //!
-//! Un estuario (`KIND_CHANNEL`) sería más rápido y algún día será lo correcto.
-//! Pero el escritor es un proceso que puede morir a mitad de línea, y el lector
-//! otro que puede no existir todavía. Un anillo pequeño en el kernel hace que
+//! Un estuario (`KIND_CHANNEL`) seria mas rapido y algun dia sera lo correcto.
+//! Pero el escritor es un proceso que puede morir a mitad de linea, y el lector
+//! otro que puede no existir todavia. Un anillo pequeno en el kernel hace que
 //! ninguno de los dos pueda corromper al otro, y que la salida de un programa
-//! sobreviva a que su terminal se cierre. Cuando el RPC de endpoints esté
+//! sobreviva a que su terminal se cierre. Cuando el RPC de endpoints este
 //! rodado, esto se muda; el contrato de fuera no cambia.
 
 use crate::ring0::obj::cap;
 
-/// Cuántas consolas pueden existir a la vez. Una por terminal abierto.
+/// Cuantas consolas pueden existir a la vez. Una por terminal abierto.
 pub const MAX_CONSOLAS: usize = 4;
-/// Bytes de salida que aguanta cada una antes de descartar lo más viejo.
+/// Bytes de salida que aguanta cada una antes de descartar lo mas viejo.
 const ANILLO: usize = 2048;
 
 pub const SIN_DUENO: u32 = u32::MAX;
@@ -46,35 +46,35 @@ pub const SIN_DUENO: u32 = u32::MAX;
 /// No quedan consolas libres.
 pub const ERROR_SIN_HUECO: u32 = 24;
 
-/// Leer hasta **7** bytes: `(n << 56) | bytes_LE`, con `n` = cuántos son
-/// válidos. `n == 0` = no hay nada.
+/// Leer hasta **7** bytes: `(n << 56) | bytes_LE`, con `n` = cuantos son
+/// validos. `n == 0` = no hay nada.
 ///
-/// ★ Siete y no ocho, y el contador ARRIBA. La primera versión devolvía
-/// `(n << 32) | ocho_bytes` — y eso **pisa el byte 4**: ocho bytes ocupan el
-/// u64 entero y no dejan sitio para decir cuántos valen. Un byte de cada ocho
-/// habría salido corrupto, en una ruta que sólo se nota leyendo texto raro.
+/// * Siete y no ocho, y el contador ARRIBA. La primera version devolvia
+/// `(n << 32) | ocho_bytes` -- y eso **pisa el byte 4**: ocho bytes ocupan el
+/// u64 entero y no dejan sitio para decir cuantos valen. Un byte de cada ocho
+/// habria salido corrupto, en una ruta que solo se nota leyendo texto raro.
 /// Se paga un byte de ancho de banda por tener un contador honesto.
 pub const CONSOLA_OP_LEER: u64 = 0x01;
-/// Cuántos bytes se han descartado por anillo lleno. Un terminal que va lento
-/// tiene derecho a saber que está perdiendo salida en vez de creerse completo.
+/// Cuantos bytes se han descartado por anillo lleno. Un terminal que va lento
+/// tiene derecho a saber que esta perdiendo salida en vez de creerse completo.
 pub const CONSOLA_OP_PERDIDOS: u64 = 0x02;
 
 /// El TERMINAL mete 8 bytes (LE, el cero corta) en el anillo de ENTRADA.
 ///
 /// Es el segundo sentido del canal, y sin el no puede haber `ACCEPT`: un
-/// programa lanzado desde la caja no puede reclamar `KIND_INPUT` —la tiene el
-/// compositor— asi que su unica via para recibir teclas es por el mismo objeto
+/// programa lanzado desde la caja no puede reclamar `KIND_INPUT` --la tiene el
+/// compositor-- asi que su unica via para recibir teclas es por el mismo objeto
 /// que ya usa para hablar. Un canal de un solo sentido deja al hijo mudo de
 /// oido.
 pub const CONSOLA_OP_ESCRIBIR: u64 = 0x03;
-/// ¿Hay algun proceso escribiendo a esta consola ahora mismo?
+/// Hay algun proceso escribiendo a esta consola ahora mismo?
 ///
 /// Lo pregunta el terminal para saber a donde mandar lo que se teclea: si hay
 /// hijo vivo, la linea es PARA EL; si no, es un comando. Sin esto habria que
 /// inventar un prefijo o un modo, y las dos cosas se olvidan.
 pub const CONSOLA_OP_HAY_HIJO: u64 = 0x04;
 
-/// Anillo de ENTRADA, mucho mas pequeño que el de salida: aqui cabe lo que una
+/// Anillo de ENTRADA, mucho mas pequeno que el de salida: aqui cabe lo que una
 /// persona teclea, no lo que un programa escupe.
 const ENTRADA: usize = 256;
 static mut IN_BUF: [[u8; ENTRADA]; MAX_CONSOLAS] = [[0; ENTRADA]; MAX_CONSOLAS];
@@ -88,10 +88,10 @@ static mut PERDIDOS: [u32; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 /// Pid del LECTOR (el terminal). `SIN_DUENO` = ranura libre.
 static mut LECTOR: [u32; MAX_CONSOLAS] = [SIN_DUENO; MAX_CONSOLAS];
 
-/// A qué consola escribe cada proceso. `(pid, indice)`; pid `SIN_DUENO` = vacío.
+/// A que consola escribe cada proceso. `(pid, indice)`; pid `SIN_DUENO` = vacio.
 ///
-/// Tabla aparte y no un campo del proceso a propósito: el planificador no tiene
-/// por qué saber de consolas, y esto se consulta sólo en el borde del syscall.
+/// Tabla aparte y no un campo del proceso a proposito: el planificador no tiene
+/// por que saber de consolas, y esto se consulta solo en el borde del syscall.
 static mut SALIDA: [(u32, usize); MAX_CONSOLAS * 4] = [(SIN_DUENO, 0); MAX_CONSOLAS * 4];
 
 /// Crea una consola y entrega su handle de lectura a `pid`.
@@ -127,7 +127,7 @@ pub fn asignar_salida(pid: u32, idx: usize) {
     }
     unsafe {
         let tabla = &mut *core::ptr::addr_of_mut!(SALIDA);
-        // Si ya tenía una asignada, se reemplaza en su sitio.
+        // Si ya tenia una asignada, se reemplaza en su sitio.
         for e in tabla.iter_mut() {
             if e.0 == pid {
                 e.1 = idx;
@@ -141,19 +141,19 @@ pub fn asignar_salida(pid: u32, idx: usize) {
             }
         }
         // Sin hueco en la tabla: el hijo escribe al panel del kernel. Se pierde
-        // el encauzado, no la salida — y eso es lo correcto: mejor verla en el
+        // el encauzado, no la salida -- y eso es lo correcto: mejor verla en el
         // sitio de siempre que no verla.
         crate::ring0::cabina::warn("consola", "sin hueco para encauzar la salida", pid as u64);
     }
 }
 
-/// A qué consola escribe `pid`, si es que escribe a alguna.
+/// A que consola escribe `pid`, si es que escribe a alguna.
 pub fn salida_de(pid: u32) -> Option<usize> {
     unsafe {
         let tabla = &*core::ptr::addr_of!(SALIDA);
         for e in tabla.iter() {
             if e.0 == pid {
-                // Una consola cuyo lector murió ya no encauza a nadie.
+                // Una consola cuyo lector murio ya no encauza a nadie.
                 if LECTOR[e.1] == SIN_DUENO {
                     return None;
                 }
@@ -164,8 +164,8 @@ pub fn salida_de(pid: u32) -> Option<usize> {
     }
 }
 
-/// Mete bytes en el anillo. Si está lleno, se descarta lo MÁS VIEJO y se
-/// cuenta: en una consola, la línea que acabas de imprimir importa más que la
+/// Mete bytes en el anillo. Si esta lleno, se descarta lo MAS VIEJO y se
+/// cuenta: en una consola, la linea que acabas de imprimir importa mas que la
 /// de hace dos mil bytes.
 pub fn escribir(idx: usize, datos: &[u8]) {
     if idx >= MAX_CONSOLAS {
@@ -175,7 +175,7 @@ pub fn escribir(idx: usize, datos: &[u8]) {
         for &b in datos {
             let sig = (ESCRIBE[idx] + 1) % ANILLO;
             if sig == LEE[idx] {
-                // Lleno: avanza el lector, o sea que se pierde el byte más
+                // Lleno: avanza el lector, o sea que se pierde el byte mas
                 // antiguo. Se anota para que el terminal pueda decirlo.
                 LEE[idx] = (LEE[idx] + 1) % ANILLO;
                 PERDIDOS[idx] = PERDIDOS[idx].saturating_add(1);
@@ -199,7 +199,7 @@ pub fn leer(idx: usize) -> u64 {
             LEE[idx] = (LEE[idx] + 1) % ANILLO;
             n += 1;
         }
-        // w[7] queda a cero por construcción: el bucle para en 7.
+        // w[7] queda a cero por construccion: el bucle para en 7.
         ((n as u64) << 56) | u64::from_le_bytes(w)
     }
 }
@@ -212,7 +212,7 @@ pub fn perdidos(idx: usize) -> u64 {
 }
 
 /// Mete bytes en el anillo de ENTRADA. Si esta lleno se descartan los NUEVOS
-/// —al reves que la salida— porque aqui el orden es el que tecleo una persona:
+/// --al reves que la salida-- porque aqui el orden es el que tecleo una persona:
 /// tirar lo viejo dejaria media linea sin principio.
 pub fn escribir_entrada(idx: usize, datos: &[u8]) {
     if idx >= MAX_CONSOLAS {
@@ -247,7 +247,7 @@ pub fn leer_entrada(idx: usize) -> u64 {
     }
 }
 
-/// ¿Hay algun proceso cuya salida vaya a esta consola?
+/// Hay algun proceso cuya salida vaya a esta consola?
 pub fn hay_hijo(idx: usize) -> bool {
     unsafe {
         let tabla = &*core::ptr::addr_of!(SALIDA);
@@ -273,8 +273,8 @@ pub fn operacion(idx: u64, operacion: u64, arg0: u64) -> Option<u64> {
 }
 
 /// Lo llama `cap::revoke_all`. Si muere el LECTOR, su consola se libera y los
-/// hijos que escribían ahí vuelven al panel del kernel — su salida deja de
-/// encauzarse, pero no desaparece. Si muere un escritor, sólo se suelta su
+/// hijos que escribian ahi vuelven al panel del kernel -- su salida deja de
+/// encauzarse, pero no desaparece. Si muere un escritor, solo se suelta su
 /// entrada de la tabla.
 pub fn proceso_muerto(pid: u32) {
     unsafe {

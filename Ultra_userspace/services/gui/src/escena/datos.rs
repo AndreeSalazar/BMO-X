@@ -1,73 +1,73 @@
-//! **La consola de DATOS** — F12, el centro de control de ESTRATOS.
+//! **La consola de DATOS** -- F12, el centro de control de ESTRATOS.
 //!
-//! ═══ Por qué una ventana aparte y no otro comando ═══
+//! === Por que una ventana aparte y no otro comando ===
 //!
-//! La caja de `Ejecutar` es de una línea: escribes una ruta y algo corre. Eso
-//! sirve para lanzar; no sirve para **mirar un almacén**. Un volumen tiene
-//! estado —generación, ocupación, identidad, nivel— que se lee de un vistazo o
-//! no se lee, y ponerlo detrás de un comando obliga a teclearlo cada vez que
-//! quieres saber si algo cambió.
+//! La caja de `Ejecutar` es de una linea: escribes una ruta y algo corre. Eso
+//! sirve para lanzar; no sirve para **mirar un almacen**. Un volumen tiene
+//! estado --generacion, ocupacion, identidad, nivel-- que se lee de un vistazo o
+//! no se lee, y ponerlo detras de un comando obliga a teclearlo cada vez que
+//! quieres saber si algo cambio.
 //!
-//! ═══ Por qué F12 y no un Ctrl+algo ═══
+//! === Por que F12 y no un Ctrl+algo ===
 //!
-//! ★ **Una tecla de función no produce carácter en NINGUNA distribución.** No
-//! puede chocar con escribir, y eso es lo único que importa en un atajo del
+//! * **Una tecla de funcion no produce caracter en NINGUNA distribucion.** No
+//! puede chocar con escribir, y eso es lo unico que importa en un atajo del
 //! sistema. `Ctrl+Alt` ya lo tiene la ventana de Ejecutar **y es AltGr en
-//! español** —lo que da `@ # [ ] \ | €`—, así que ese atajo lleva una danza
-//! entera para no romper el teclado: dispara al SOLTAR, y sólo si no llegó
-//! ningún carácter mientras estaban pulsados. Encadenar otro combo encima
-//! empeoraría justo lo que costó arreglar.
+//! espanol** --lo que da `@ # [ ] \ | EUR`--, asi que ese atajo lleva una danza
+//! entera para no romper el teclado: dispara al SOLTAR, y solo si no llego
+//! ningun caracter mientras estaban pulsados. Encadenar otro combo encima
+//! empeoraria justo lo que costo arreglar.
 //!
-//! Hasta hoy las teclas de función llegaban al kernel y morían ahí: la
-//! distribución no las resolvía a ningún byte. El hueco estaba limpio.
+//! Hasta hoy las teclas de funcion llegaban al kernel y morian ahi: la
+//! distribucion no las resolvia a ningun byte. El hueco estaba limpio.
 //!
-//! ═══ Lo que ENSEÑA, y lo que todavía no hace ═══
+//! === Lo que ENSENA, y lo que todavia no hace ===
 //!
-//! Enseña. Y dice, en alto, que todavía no escribe.
+//! Ensena. Y dice, en alto, que todavia no escribe.
 //!
-//! La máquina de estados de la transacción existe y está probada
+//! La maquina de estados de la transaccion existe y esta probada
 //! (`bmo_estratos::escritura`, 12 tests), pero **nadie la ha cableado al
 //! dispositivo**: no hay `write` ni `FLUSH CACHE`. Esta ventana lo pone en
-//! pantalla en vez de ofrecer un botón que no hace nada — en un almacén, una
+//! pantalla en vez de ofrecer un boton que no hace nada -- en un almacen, una
 //! promesa de escritura que no ocurre es como se pierde el trabajo de alguien.
 
-//! ═══ ★ LAS DOS CARAS (spec del dueño, CUMPLIDA el 2026-08-03) ═══
+//! === * LAS DOS CARAS (spec del dueno, CUMPLIDA el 2026-08-03) ===
 //!
-//! `[numeros]` contesta *"¿cómo está el almacén?"* — generación, espacio,
-//! identidad, nivel. `[nodos]` contesta *"¿qué hay dentro?"*. Son preguntas
-//! distintas y por eso son dos pestañas y no una pantalla: meter un árbol entre
-//! la generación y la ocupación deja las dos ilegibles. `TAB` cambia.
+//! `[numeros]` contesta *"como esta el almacen?"* -- generacion, espacio,
+//! identidad, nivel. `[nodos]` contesta *"que hay dentro?"*. Son preguntas
+//! distintas y por eso son dos pestanas y no una pantalla: meter un arbol entre
+//! la generacion y la ocupacion deja las dos ilegibles. `TAB` cambia.
 //!
-//! La referencia que puso el dueño era buena y concreta: **un grafo tipo n8n** —
-//! cajas con título y nombre, unidas por líneas, con color por clase. No una
-//! lista con sangrías.
+//! La referencia que puso el dueno era buena y concreta: **un grafo tipo n8n** --
+//! cajas con titulo y nombre, unidas por lineas, con color por clase. No una
+//! lista con sangrias.
 //!
-//! El porqué es el de siempre en este proyecto: **ESTRATOS no es un árbol de
+//! El porque es el de siempre en este proyecto: **ESTRATOS no es un arbol de
 //! carpetas, es un grafo de objetos** (nodos, atributos, flujos, estratos) que
-//! se apuntan entre sí y **nunca se sobreescriben**. Dibujarlo como una lista
+//! se apuntan entre si y **nunca se sobreescriben**. Dibujarlo como una lista
 //! indentada obliga a imaginarse las aristas; dibujarlo como lo que es se
-//! entiende sin explicación.
+//! entiende sin explicacion.
 //!
-//! Los cuatro puntos, y dónde quedó cada uno:
+//! Los cuatro puntos, y donde quedo cada uno:
 //!
-//! 1. ✅ Exponer a Ring 3 lo que el kernel ya sabía leer. Es el **cursor** de
+//! 1. [OK] Exponer a Ring 3 lo que el kernel ya sabia leer. Es el **cursor** de
 //!    `ring0/fsys/estratos.rs`, dos operaciones de la superficie.
-//! 2. ✅ Un color por clase, y el mismo en toda la ventana — `color_clase`.
-//! 3. ✅ Caja con **título** (qué es) y **nombre** (cuál es), que es lo que el
-//!    dueño pidió: *"con títulos y nombres para facilitar"*.
-//! 4. ◐ Teclado sí: flechas, `ENTRAR` baja, `RETROCESO` sube, `RePág`/`AvPág`
-//!    de cinco en cinco. **Con el ratón, sólo arrastrar la ventana**: pulsar una
-//!    caja para seleccionarla todavía no está.
+//! 2. [OK] Un color por clase, y el mismo en toda la ventana -- `color_clase`.
+//! 3. [OK] Caja con **titulo** (que es) y **nombre** (cual es), que es lo que el
+//!    dueno pidio: *"con titulos y nombres para facilitar"*.
+//! 4. o Teclado si: flechas, `ENTRAR` baja, `RETROCESO` sube, `RePag`/`AvPag`
+//!    de cinco en cinco. **Con el raton, solo arrastrar la ventana**: pulsar una
+//!    caja para seleccionarla todavia no esta.
 //!
-//! ═══ Lo que sigue sin hacer, dicho ═══
+//! === Lo que sigue sin hacer, dicho ===
 //!
 //! - **Las versiones no se ven.** Cada commit deja los nodos viejos en pie, y
-//!   eso en un grafo *se vería* — es la historia del volumen dibujada. Hoy el
-//!   cursor sólo llega al estrato más reciente.
-//! - **Escribir sigue sin existir.** La máquina de estados de la transacción
-//!   está probada y `sellar()` ya commitea, pero crear un objeto es otra cosa.
-//!   Esta ventana lo dice en alto en vez de ofrecer un botón que no hace nada:
-//!   en un almacén, una promesa de escritura que no ocurre es como se pierde el
+//!   eso en un grafo *se veria* -- es la historia del volumen dibujada. Hoy el
+//!   cursor solo llega al estrato mas reciente.
+//! - **Escribir sigue sin existir.** La maquina de estados de la transaccion
+//!   esta probada y `sellar()` ya commitea, pero crear un objeto es otra cosa.
+//!   Esta ventana lo dice en alto en vez de ofrecer un boton que no hace nada:
+//!   en un almacen, una promesa de escritura que no ocurre es como se pierde el
 //!   trabajo de alguien.
 
 use bmo_userland as bmo;
@@ -77,20 +77,20 @@ use super::*;
 use crate::texto::decimal;
 
 // La ventana de Datos es VERDE porque es ESTRATOS, y eso se queda: el color
-// dice de qué ventana estás hablando antes de leer su título. Lo que cambia es
-// el tono — el verde de antes era de rotulador, escogido para verse en una foto
+// dice de que ventana estas hablando antes de leer su titulo. Lo que cambia es
+// el tono -- el verde de antes era de rotulador, escogido para verse en una foto
 // de una pantalla que a lo mejor ni arrancaba.
 const DATOS_FONDO: u32 = 0x0013_1C18;
 const DATOS_TITULO_FONDO: u32 = 0x001B_2622;
 /// El borde, discreto. Lo que separa la ventana del fondo es la sombra.
 const DATOS_BORDE: u32 = 0x002C_4038;
-/// Y el acento verde, que sí puede ser vivo: es una línea, no un marco.
+/// Y el acento verde, que si puede ser vivo: es una linea, no un marco.
 const DATOS_TITULO: u32 = 0x0034_D399;
 
 /// Los cuatro niveles de `bmo_estratos::espacio`, con su color.
 ///
-/// El orden es el del ABI (`INFO_ES_NIVEL`), no uno inventado aquí: si
-/// divergieran, el panel pintaría en verde un volumen en solo lectura.
+/// El orden es el del ABI (`INFO_ES_NIVEL`), no uno inventado aqui: si
+/// divergieran, el panel pintaria en verde un volumen en solo lectura.
 fn nivel_texto(n: u64) -> (&'static str, u32) {
     match n {
         0 => ("holgado", TEXTO_BIEN),
@@ -103,49 +103,49 @@ fn nivel_texto(n: u64) -> (&'static str, u32) {
 /// La ventana de Datos: **un marco y lo que hay dentro**.
 ///
 /// Todo lo de mover, estirar, maximizar y los tres botones vive en
-/// [`super::marco::Marco`] y no aquí. Lo que queda en esta estructura es lo
-/// único que de verdad es de ESTRATOS: qué se está enseñando y por dónde va la
-/// vista del árbol.
+/// [`super::marco::Marco`] y no aqui. Lo que queda en esta estructura es lo
+/// unico que de verdad es de ESTRATOS: que se esta ensenando y por donde va la
+/// vista del arbol.
 pub(crate) struct CajaDatos {
     pub(crate) marco: Marco,
-    /// Qué se está enseñando: los números o el árbol. Ver [`Vista`].
+    /// Que se esta ensenando: los numeros o el arbol. Ver [`Vista`].
     pub(crate) vista: Vista,
-    /// Qué hijo está señalado en la vista de nodos.
+    /// Que hijo esta senalado en la vista de nodos.
     pub(crate) sel: usize,
-    /// Primer hijo visible: la lista es más larga que la ventana.
+    /// Primer hijo visible: la lista es mas larga que la ventana.
     pub(crate) desde: usize,
-    /// Lo que dijo la última verificación de firma, si se pidió alguna.
+    /// Lo que dijo la ultima verificacion de firma, si se pidio alguna.
     ///
     /// `None` es "no se ha preguntado", y **no es lo mismo que "sin firma"**:
-    /// enseñar `sin firma` sin haber mirado sería contestar por el disco.
-    /// Se borra al cambiar de nodo — el resultado es de UN archivo.
+    /// ensenar `sin firma` sin haber mirado seria contestar por el disco.
+    /// Se borra al cambiar de nodo -- el resultado es de UN archivo.
     pub(crate) verificado: Option<u64>,
 }
 
 /// Lo que se puede encoger sin que deje de servir. Por debajo de esto el grafo
-/// no cabe y los números se cortan — una ventana que se puede dejar inservible
-/// con el ratón es una trampa, no una libertad.
+/// no cabe y los numeros se cortan -- una ventana que se puede dejar inservible
+/// con el raton es una trampa, no una libertad.
 pub(crate) const DATOS_MIN_ANCHO: u32 = 460;
 pub(crate) const DATOS_MIN_ALTO: u32 = 260;
-/// Y el tamaño con el que nace, **en tantos por ciento de la pantalla**. Un
-/// `640 x 330` en píxeles es correcto en una pantalla y en ninguna otra.
+/// Y el tamano con el que nace, **en tantos por ciento de la pantalla**. Un
+/// `640 x 330` en pixeles es correcto en una pantalla y en ninguna otra.
 const DATOS_PCT_ANCHO: u32 = 46;
 const DATOS_PCT_ALTO: u32 = 44;
 
 /// Las dos caras de esta ventana.
 ///
-/// La de números contesta *¿cómo está el almacén?* y la de nodos *¿qué hay
+/// La de numeros contesta *como esta el almacen?* y la de nodos *que hay
 /// dentro?*. Son preguntas distintas y por eso no se mezclan en una pantalla:
-/// meter un árbol entre la generación y la ocupación deja las dos ilegibles.
+/// meter un arbol entre la generacion y la ocupacion deja las dos ilegibles.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Vista {
     Numeros,
     Nodos,
 }
 
-// El alto de la barra de título —que es el asa— sale de `super::TITULO_ALTO`:
+// El alto de la barra de titulo --que es el asa-- sale de `super::TITULO_ALTO`:
 // el mismo que la caja de Ejecutar. Dos ventanas del mismo sistema con barras
-// de distinta altura se ven como dos programas de distinta época.
+// de distinta altura se ven como dos programas de distinta epoca.
 
 impl CajaDatos {
     pub(crate) fn nueva(p: &bmo::Pantalla) -> Self {
@@ -164,22 +164,22 @@ impl CajaDatos {
         }
     }
 
-    /// ★ **Sobre qué caja del grafo está el puntero**, si sobre alguna.
+    /// * **Sobre que caja del grafo esta el puntero**, si sobre alguna.
     ///
     /// `None` es "en ninguna" y `Some(usize::MAX)` es **la caja del padre**, la
     /// de la izquierda: pulsarla sube un nivel, que es el gesto que la mano
     /// busca sola cuando ya se ha bajado.
     ///
-    /// La geometría se calcula IGUAL que en `pintar_nodos` y ése es el riesgo
-    /// de este método: si una de las dos cambia y la otra no, se pulsa una caja
+    /// La geometria se calcula IGUAL que en `pintar_nodos` y ese es el riesgo
+    /// de este metodo: si una de las dos cambia y la otra no, se pulsa una caja
     /// y se selecciona otra. Las dos usan las mismas constantes y el mismo
-    /// reparto del ancho a propósito.
+    /// reparto del ancho a proposito.
     pub(crate) fn caja_en(&self, px: u32, py: u32, cuantos: usize) -> Option<usize> {
         if self.vista != Vista::Nodos || self.marco.minimizada {
             return None;
         }
         let (tx, ancho_caja, hijos_x, primera_y) = self.geometria_grafo();
-        // ¿La del padre?
+        // La del padre?
         if px >= tx && px < tx + ancho_caja && py >= primera_y && py < primera_y + CAJA_NODO_ALTO {
             return Some(usize::MAX);
         }
@@ -189,7 +189,7 @@ impl CajaDatos {
         let paso = CAJA_NODO_ALTO + CAJA_NODO_HUECO;
         let fila = ((py - primera_y) / paso) as usize;
         // El hueco ENTRE dos cajas no es ninguna de las dos. Sin esta guarda,
-        // pulsar en el aire seleccionaría la de arriba.
+        // pulsar en el aire seleccionaria la de arriba.
         if (py - primera_y) % paso >= CAJA_NODO_ALTO {
             return None;
         }
@@ -210,20 +210,20 @@ impl CajaDatos {
     }
 
     // Los atajos de siempre, para no escribir `.marco.` en cada uso. Son
-    // reenvíos y nada más: la lógica vive en `Marco` y aquí no se repite.
+    // reenvios y nada mas: la logica vive en `Marco` y aqui no se repite.
     pub(crate) fn x(&self) -> u32 { self.marco.x }
     pub(crate) fn y(&self) -> u32 { self.marco.y }
     pub(crate) fn ancho(&self) -> u32 { self.marco.ancho }
     pub(crate) fn alto(&self) -> u32 { self.marco.alto }
 
-    /// ¿Este píxel cae dentro? Lo necesita el borrado para saber qué repintar.
+    /// Este pixel cae dentro? Lo necesita el borrado para saber que repintar.
     pub(crate) fn contiene(&self, px: u32, py: u32) -> bool {
         self.marco.contiene(px, py)
     }
 
-    /// Tras cambiar de tamaño, la selección puede haber quedado fuera de lo que
-    /// se pinta. Se recoloca la ventana de scroll — si no, encoger dejaría el
-    /// cursor señalando una caja que ya no está en pantalla.
+    /// Tras cambiar de tamano, la seleccion puede haber quedado fuera de lo que
+    /// se pinta. Se recoloca la ventana de scroll -- si no, encoger dejaria el
+    /// cursor senalando una caja que ya no esta en pantalla.
     pub(crate) fn recolocar(&mut self) {
         let caben = self.caben();
         if self.sel >= self.desde + caben {
@@ -231,13 +231,13 @@ impl CajaDatos {
         }
     }
 
-    /// Cuántas cajas de hijo caben de una vez en la vista de nodos.
+    /// Cuantas cajas de hijo caben de una vez en la vista de nodos.
     fn caben(&self) -> usize {
         let util = self.marco.alto.saturating_sub(TITULO_ALTO + 56);
         (util / (CAJA_NODO_ALTO + CAJA_NODO_HUECO)).max(1) as usize
     }
 
-    /// Mueve la selección y arrastra la ventana de scroll con ella.
+    /// Mueve la seleccion y arrastra la ventana de scroll con ella.
     pub(crate) fn mover_sel(&mut self, delta: i32, cuantos: usize) {
         if cuantos == 0 {
             self.sel = 0;
@@ -255,44 +255,44 @@ impl CajaDatos {
     }
 
     /// Vuelve al principio de la lista. Se llama al cambiar de nodo: dejar la
-    /// selección donde estaba haría que entrar en un directorio de dos hijos
-    /// señalara al séptimo, que no existe.
+    /// seleccion donde estaba haria que entrar en un directorio de dos hijos
+    /// senalara al septimo, que no existe.
     pub(crate) fn al_principio(&mut self) {
         self.sel = 0;
         self.desde = 0;
     }
 }
 
-// ── El GRAFO ────────────────────────────────────────────────────────────────
+// -- El GRAFO ----------------------------------------------------------------
 //
-// ★ La spec del dueño, cumplida: **un grafo tipo n8n** — cajas con título y
-// nombre, unidas por líneas, con color por clase. No una lista con sangrías.
+// * La spec del dueno, cumplida: **un grafo tipo n8n** -- cajas con titulo y
+// nombre, unidas por lineas, con color por clase. No una lista con sangrias.
 //
-// El porqué es el de siempre en este proyecto: **ESTRATOS no es un árbol de
-// carpetas, es un grafo de objetos** que se apuntan entre sí y nunca se
+// El porque es el de siempre en este proyecto: **ESTRATOS no es un arbol de
+// carpetas, es un grafo de objetos** que se apuntan entre si y nunca se
 // sobreescriben. Dibujarlo como una lista indentada obliga a imaginarse las
-// aristas; dibujarlo como lo que es se entiende sin explicación.
+// aristas; dibujarlo como lo que es se entiende sin explicacion.
 
-/// Ancho MÍNIMO de una caja. El de verdad sale del ancho de la ventana: al
-/// estirarla, las cajas crecen y caben nombres más largos. Una caja de tamaño
+/// Ancho MINIMO de una caja. El de verdad sale del ancho de la ventana: al
+/// estirarla, las cajas crecen y caben nombres mas largos. Una caja de tamano
 /// fijo dentro de una ventana que se estira deja un desierto a la derecha.
 const CAJA_NODO_MIN: u32 = 170;
 const CAJA_NODO_ALTO: u32 = 40;
 const CAJA_NODO_HUECO: u32 = 12;
 const SOMBRA_NODO: u32 = 0x000B_100E;
-/// Las aristas del grafo. Más claras que el borde de la ventana **a propósito**:
-/// son lo que hay que seguir con la vista, y una línea del mismo tono que el
+/// Las aristas del grafo. Mas claras que el borde de la ventana **a proposito**:
+/// son lo que hay que seguir con la vista, y una linea del mismo tono que el
 /// marco se pierde entre los marcos.
 const DATOS_ARISTA: u32 = 0x0045_6B5C;
-/// El cuerpo de una caja del grafo: un peldaño por encima de la ventana, que es
+/// El cuerpo de una caja del grafo: un peldano por encima de la ventana, que es
 /// la misma regla que separa la ventana del escritorio.
 const CAJA_NODO_FONDO: u32 = 0x001B_2622;
-/// Y la señalada, otro peldaño más. La profundidad se lee sola.
+/// Y la senalada, otro peldano mas. La profundidad se lee sola.
 const CAJA_NODO_SEL: u32 = 0x0024_332C;
 
 /// **Un color por clase, y el mismo en toda la ventana.** Es el punto 2 de la
 /// spec: si el verde significara una cosa en el padre y otra en los hijos, el
-/// color dejaría de informar y sólo decoraría.
+/// color dejaria de informar y solo decoraria.
 fn color_clase(tipo: u64) -> (&'static str, u32) {
     match tipo {
         bmo::estratos::DIRECTORIO => ("directorio", 0x0057_C8F0),
@@ -301,11 +301,11 @@ fn color_clase(tipo: u64) -> (&'static str, u32) {
     }
 }
 
-/// Una caja con **título** (qué es) y **nombre** (cuál es). Punto 3 de la spec.
+/// Una caja con **titulo** (que es) y **nombre** (cual es). Punto 3 de la spec.
 ///
-/// El título va arriba y en el color de la clase; el nombre, debajo y en
-/// blanco. Al revés se leería el nombre y habría que buscar el tipo, que es lo
-/// contrario de para qué está el color.
+/// El titulo va arriba y en el color de la clase; el nombre, debajo y en
+/// blanco. Al reves se leeria el nombre y habria que buscar el tipo, que es lo
+/// contrario de para que esta el color.
 fn caja_nodo(
     p: &bmo::Pantalla,
     x: u32,
@@ -313,13 +313,13 @@ fn caja_nodo(
     ancho: u32,
     tipo: u64,
     nombre: &[u8],
-    señalada: bool,
+    senalada: bool,
 ) {
     let (titulo, color) = color_clase(tipo);
-    // La señalada lleva el borde del acento y un cuerpo un punto más claro. Un
-    // borde blanco a secas se lee como "esto está roto"; el realce de una
-    // selección tiene que ser el color del sistema, no una alarma.
-    let (borde, cuerpo) = if señalada {
+    // La senalada lleva el borde del acento y un cuerpo un punto mas claro. Un
+    // borde blanco a secas se lee como "esto esta roto"; el realce de una
+    // seleccion tiene que ser el color del sistema, no una alarma.
+    let (borde, cuerpo) = if senalada {
         (color, CAJA_NODO_SEL)
     } else {
         (DATOS_BORDE, CAJA_NODO_FONDO)
@@ -330,21 +330,21 @@ fn caja_nodo(
     rect_redondeado(p, x, y, ancho, CAJA_NODO_ALTO, borde);
     rect_redondeado(p, x + 1, y + 1, ancho - 2, CAJA_NODO_ALTO - 2, cuerpo);
 
-    // ★ El PUNTO de clase, no una pestaña lateral.
+    // * El PUNTO de clase, no una pestana lateral.
     //
-    // La barra pegada al borde peleaba con la curva de la esquina y se veía
-    // como un defecto. Un punto delante del título es el mismo idioma que usan
+    // La barra pegada al borde peleaba con la curva de la esquina y se veia
+    // como un defecto. Un punto delante del titulo es el mismo idioma que usan
     // la barra del sistema y las dos ventanas: se lee la clase de un vistazo y
-    // no depende de que el título quepa.
+    // no depende de que el titulo quepa.
     p.rect(x + 11, y + 7, 7, 7, color);
     p.texto(x + 24, y + 5, titulo, color);
 
-    // El nombre, en su propia línea y en blanco. El título dice QUÉ es y el
-    // nombre CUÁL es; ponerlos del mismo color obliga a leer los dos para
-    // saber cuál es cuál.
+    // El nombre, en su propia linea y en blanco. El titulo dice QUE es y el
+    // nombre CUAL es; ponerlos del mismo color obliga a leer los dos para
+    // saber cual es cual.
     let cabe = ((ancho.saturating_sub(28)) / bmo::GLIFO_ANCHO) as usize;
     // Recortar por el final y no por el principio: los nombres de un volumen
-    // se distinguen por delante (`maestro.bex`, `movim.txt`), no por detrás.
+    // se distinguen por delante (`maestro.bex`, `movim.txt`), no por detras.
     let n = nombre.len().min(cabe);
     p.texto_bytes(x + 24, y + 5 + bmo::GLIFO_ALTO + 3, &nombre[..n], TEXTO);
     // Si no cupo entero se dice con un punto, no cortando a lo bruto: una
@@ -379,14 +379,14 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     let hondo = bmo::estratos::hondo();
     let cuantos = bmo::estratos::hijos() as usize;
 
-    // ── ★ LA MIGA DE PAN, con nombres de verdad ──
+    // -- * LA MIGA DE PAN, con nombres de verdad --
     //
-    // Antes ponía `profundidad 2`, y eso no dice DÓNDE estás: dos carpetas
-    // distintas con los mismos nombres dentro se veían idénticas. Ahora es
-    // `/ > cobol > 10`, que es la única forma de saber qué estás mirando.
+    // Antes ponia `profundidad 2`, y eso no dice DONDE estas: dos carpetas
+    // distintas con los mismos nombres dentro se veian identicas. Ahora es
+    // `/ > cobol > 10`, que es la unica forma de saber que estas mirando.
     //
-    // Los nombres los guarda el cursor AL BAJAR, porque después ya no se
-    // saben: un nodo no sabe cómo se llama — el nombre vive en la entrada de
+    // Los nombres los guarda el cursor AL BAJAR, porque despues ya no se
+    // saben: un nodo no sabe como se llama -- el nombre vive en la entrada de
     // su padre.
     {
         let mut x = p.texto(tx, ty, "/", DATOS_TITULO);
@@ -395,8 +395,8 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
             let mut nom = [0u8; 40];
             let n = bmo::estratos::nombre_nivel(nivel, &mut nom);
             x = p.texto(x + 2, ty, " > ", TEXTO_TENUE);
-            // El último tramo en blanco y los de antes apagados: se lee de un
-            // vistazo dónde estás sin perder de dónde vienes.
+            // El ultimo tramo en blanco y los de antes apagados: se lee de un
+            // vistazo donde estas sin perder de donde vienes.
             let tinta = if nivel == hondo { TEXTO } else { TEXTO_TENUE };
             x = p.texto_bytes(x, ty, &nom[..n], tinta);
             nivel += 1;
@@ -407,27 +407,27 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         let x = p.texto_bytes(x, ty, &b[..n], TEXTO);
         if bmo::estratos::truncado() {
             // Se DICE. Un listado recortado en silencio se ve igual que un
-            // directorio con pocos archivos, y esa confusión cuesta horas.
+            // directorio con pocos archivos, y esa confusion cuesta horas.
             p.texto(x, ty, "  (RECORTADO)", TEXTO_MAL);
         }
     }
     ty += bmo::GLIFO_ALTO + 10;
 
-    // ── ★ EL REPARTO DEL ANCHO ──
+    // -- * EL REPARTO DEL ANCHO --
     //
-    // Las cajas ya no miden lo mismo pase lo que pase: el ancho útil se parte
+    // Las cajas ya no miden lo mismo pase lo que pase: el ancho util se parte
     // entre las dos columnas y el canal de las ramas. Estirar la ventana hace
-    // que quepan nombres más largos, que es para lo que uno la estira.
+    // que quepan nombres mas largos, que es para lo que uno la estira.
     //
-    // ★★ Y sale de `geometria_grafo`, **la misma que usa el acierto del
-    // ratón**. Tenerlo dos veces era garantizar que un día se pulsara una caja
-    // y se seleccionara otra: dos copias de una geometría se separan solas.
+    // ** Y sale de `geometria_grafo`, **la misma que usa el acierto del
+    // raton**. Tenerlo dos veces era garantizar que un dia se pulsara una caja
+    // y se seleccionara otra: dos copias de una geometria se separan solas.
     let (_, ancho_caja, hijos_x, primera_y) = c.geometria_grafo();
     let espina_x = hijos_x - 22;
 
-    // ── El nodo actual, a la izquierda ──
+    // -- El nodo actual, a la izquierda --
     let padre_y = primera_y;
-    // El nombre del padre: en la raíz `/`, y si no, el último tramo de la ruta.
+    // El nombre del padre: en la raiz `/`, y si no, el ultimo tramo de la ruta.
     let mut nom_padre = [0u8; 40];
     let np = if hondo == 0 {
         nom_padre[0] = b'/';
@@ -437,8 +437,8 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     };
     caja_nodo(p, tx, padre_y, ancho_caja, bmo::estratos::tipo(), &nom_padre[..np], false);
     if hondo > 0 {
-        // Se dice que se puede subir, y cómo. Un gesto que existe y no está
-        // escrito lo conoce sólo quien lo programó.
+        // Se dice que se puede subir, y como. Un gesto que existe y no esta
+        // escrito lo conoce solo quien lo programo.
         p.texto(tx, padre_y + CAJA_NODO_ALTO + 6, "clic aqui SUBE", TEXTO_TENUE);
     }
 
@@ -447,18 +447,18 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         return;
     }
 
-    // ── La espina y las ramas ──
+    // -- La espina y las ramas --
     //
-    // Sin primitiva de línea: un rectángulo de un píxel de ancho ES una línea,
-    // y para un grafo de codos —que es como pinta n8n— no hace falta más.
+    // Sin primitiva de linea: un rectangulo de un pixel de ancho ES una linea,
+    // y para un grafo de codos --que es como pinta n8n-- no hace falta mas.
     let caben = c.caben();
     let ultimo = (c.desde + caben).min(cuantos);
 
     let mut hy = primera_y;
     for i in c.desde..ultimo {
         let centro = hy + CAJA_NODO_ALTO / 2;
-        // La rama, de la espina a la caja. **Dos píxeles de grueso**: a uno
-        // solo, una línea horizontal sobre un fondo oscuro casi no se ve, y
+        // La rama, de la espina a la caja. **Dos pixeles de grueso**: a uno
+        // solo, una linea horizontal sobre un fondo oscuro casi no se ve, y
         // entonces las cajas parecen sueltas en vez de colgadas de un padre.
         p.rect(espina_x, centro, hijos_x - espina_x, 2, DATOS_ARISTA);
         // El punto de enganche en la caja: cierra la arista en vez de dejarla
@@ -470,7 +470,7 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         caja_nodo(p, hijos_x, hy, ancho_caja, tipo, &nombre[..n], i == c.sel);
         hy += CAJA_NODO_ALTO + CAJA_NODO_HUECO;
     }
-    // La espina vertical, del centro de la primera rama al de la última.
+    // La espina vertical, del centro de la primera rama al de la ultima.
     let arriba = primera_y + CAJA_NODO_ALTO / 2;
     let abajo = hy - CAJA_NODO_ALTO - CAJA_NODO_HUECO + CAJA_NODO_ALTO / 2;
     p.rect(espina_x, arriba, 2, abajo.saturating_sub(arriba) + 2, DATOS_ARISTA);
@@ -483,11 +483,11 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         p.rect(espina_x, a, 2, b - a + 2, DATOS_ARISTA);
     }
 
-    // ── ★ EL PANEL DE DETALLE del nodo señalado ──
+    // -- * EL PANEL DE DETALLE del nodo senalado --
     //
-    // Un grafo que sólo enseña nombres contesta *qué hay*; no contesta *qué es
-    // esto*. Va al PIE y en una línea: es información de apoyo, y un panel
-    // lateral se comería el ancho que las cajas necesitan para sus nombres.
+    // Un grafo que solo ensena nombres contesta *que hay*; no contesta *que es
+    // esto*. Va al PIE y en una linea: es informacion de apoyo, y un panel
+    // lateral se comeria el ancho que las cajas necesitan para sus nombres.
     if c.sel < cuantos {
         let dy = c.marco.y + c.marco.alto - TITULO_ALTO - bmo::GLIFO_ALTO - 2;
         p.rect(c.marco.x + 1, dy - 6, c.marco.ancho - 2, 1, DATOS_BORDE);
@@ -498,8 +498,8 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         let x = p.texto(x, dy, " B   atributos ", TEXTO_TENUE);
         let n = decimal(bmo::estratos::hijo_atributos(c.sel as u64), &mut b);
         let x = p.texto_bytes(x, dy, &b[..n], TEXTO);
-        // La firma. **Se dice si la LLEVA; que CUADRE se pide con V** — leer el
-        // archivo entero y hacerle el BLAKE3 en cada repintado convertiría un
+        // La firma. **Se dice si la LLEVA; que CUADRE se pide con V** -- leer el
+        // archivo entero y hacerle el BLAKE3 en cada repintado convertiria un
         // panel en un martillo sobre el disco.
         let x = p.texto(x, dy, "   firma ", TEXTO_TENUE);
         let x = if bmo::estratos::hijo_firmado(c.sel as u64) {
@@ -507,7 +507,7 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         } else {
             p.texto(x, dy, "no", TEXTO_TENUE)
         };
-        // Y el resultado de la última verificación, si se pidió.
+        // Y el resultado de la ultima verificacion, si se pidio.
         match c.verificado {
             None => {
                 p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "V comprueba", TEXTO_TENUE);
@@ -516,17 +516,17 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
                 p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "CUADRA", TEXTO_BIEN);
             }
             Some(bmo::estratos::FIRMA_NO_CUADRA) => {
-                // El único mensaje de esta ventana que significa "hay un
-                // problema en el disco". Por eso es el único en rojo.
+                // El unico mensaje de esta ventana que significa "hay un
+                // problema en el disco". Por eso es el unico en rojo.
                 p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "NO CUADRA", TEXTO_MAL);
             }
             Some(bmo::estratos::FIRMA_AUSENTE) => {
                 p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "sin firma", TEXTO_TENUE);
             }
             Some(bmo::estratos::FIRMA_NO_CABE) => {
-                // TENUE y no rojo: el archivo está bien, lo que no cabe es
-                // nuestro buffer de comprobación. Pintarlo en rojo mandaba a
-                // buscar una corrupción que no existe.
+                // TENUE y no rojo: el archivo esta bien, lo que no cabe es
+                // nuestro buffer de comprobacion. Pintarlo en rojo mandaba a
+                // buscar una corrupcion que no existe.
                 p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "no cabe (>256 KiB)", TEXTO_TENUE);
             }
             _ => {
@@ -535,8 +535,8 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         }
     }
 
-    // Si la lista no cabe entera, decirlo con números y no con puntos
-    // suspensivos: "3-8 de 40" se lee; "..." no dice cuánto falta.
+    // Si la lista no cabe entera, decirlo con numeros y no con puntos
+    // suspensivos: "3-8 de 40" se lee; "..." no dice cuanto falta.
     if cuantos > caben {
         let mut b = [0u8; 10];
         let y = c.marco.y + c.marco.alto - TITULO_ALTO - bmo::GLIFO_ALTO;
@@ -553,26 +553,26 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
 
 /// Pinta la consola de datos entera.
 ///
-/// Se redibuja completa en cada invocación y no por fotograma: los números de
-/// un volumen no cambian solos mientras nadie escriba, y repintar 200k píxeles
-/// sobre memoria de vídeo sin caché sesenta veces por segundo para enseñar los
-/// mismos dígitos es tirar el fotograma.
+/// Se redibuja completa en cada invocacion y no por fotograma: los numeros de
+/// un volumen no cambian solos mientras nadie escriba, y repintar 200k pixeles
+/// sobre memoria de video sin cache sesenta veces por segundo para ensenar los
+/// mismos digitos es tirar el fotograma.
 pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
     if c.marco.minimizada {
         return;
     }
-    // ★ El cromo entero —sombra, borde, cuerpo, barra, los tres botones y el
-    // asa de la esquina— lo pinta el MARCO. Aquí sólo van los colores, que sí
+    // * El cromo entero --sombra, borde, cuerpo, barra, los tres botones y el
+    // asa de la esquina-- lo pinta el MARCO. Aqui solo van los colores, que si
     // son de esta ventana: el verde dice ESTRATOS antes de que nadie lea el
-    // título.
+    // titulo.
     c.marco.pintar_cromo(p, DATOS_BORDE, DATOS_FONDO, DATOS_TITULO_FONDO, DATOS_TITULO);
 
     let tx = c.marco.x + 16;
     p.rect(tx, c.marco.y + 9, 8, 8, DATOS_TITULO);
     let px = p.texto(tx + 16, c.marco.y + 8, "ESTRATOS", TEXTO);
     let px = px + 2 * bmo::GLIFO_ANCHO;
-    // Las pestañas: la activa lleva su subrayado. Un corchete pintado de otro
-    // color se pierde en una foto; una línea debajo no.
+    // Las pestanas: la activa lleva su subrayado. Un corchete pintado de otro
+    // color se pierde en una foto; una linea debajo no.
     let (c1, c2) = match c.vista {
         Vista::Numeros => (TEXTO, TEXTO_TENUE),
         Vista::Nodos => (TEXTO_TENUE, TEXTO),
@@ -646,8 +646,8 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
         }
     });
 
-    // ★ Cuantas VERSIONES mas caben. Es lo que de verdad contesta "¿cuando
-    // hara falta el recolector?" — un porcentaje no lo dice, y la respuesta
+    // * Cuantas VERSIONES mas caben. Es lo que de verdad contesta "cuando
+    // hara falta el recolector?" -- un porcentaje no lo dice, y la respuesta
     // con 414 GiB son millones.
     fila("caben", &mut ty, &|x, y| {
         let libres = bloques.saturating_sub(usados);
@@ -659,7 +659,7 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
     });
 
     ty += 8;
-    // ── La verdad sobre la escritura ──
+    // -- La verdad sobre la escritura --
     if bmo::info(bmo::INFO_ES_ESCRIBIBLE) != 0 {
         p.texto(tx, ty, "escritura: ABIERTA", TEXTO_BIEN);
     } else {
@@ -675,18 +675,18 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
     ty += bmo::GLIFO_ALTO + 10;
     p.texto(tx, ty, "F12 o ESC cierran.   TAB ensena el ARBOL de nodos.", TEXTO_TENUE);
     ty += bmo::GLIFO_ALTO + 2;
-    // ★ Decirlo aquí evita el susto: con esta ventana delante el teclado es
-    // SUYO, así que teclear no escribe en la caja de abajo. Antes sí escribía
-    // —en una ventana tapada, sin verlo—, y eso era el fallo.
+    // * Decirlo aqui evita el susto: con esta ventana delante el teclado es
+    // SUYO, asi que teclear no escribe en la caja de abajo. Antes si escribia
+    // --en una ventana tapada, sin verlo--, y eso era el fallo.
     p.texto(tx, ty, "mientras este abierta, el teclado es de esta ventana.", TEXTO_TENUE);
 }
 
-/// Un número de bytes con su unidad. Devuelve la x donde acabó.
+/// Un numero de bytes con su unidad. Devuelve la x donde acabo.
 ///
 /// Sin coma flotante: la parte fraccionaria sale de multiplicar el resto por
 /// cien antes de dividir. Es la misma cuenta que hace el panel del kernel, y
-/// está aquí duplicada a propósito — cruzar el anillo para formatear un número
-/// sería exactamente lo que un library OS no hace.
+/// esta aqui duplicada a proposito -- cruzar el anillo para formatear un numero
+/// seria exactamente lo que un library OS no hace.
 fn magnitud(p: &bmo::Pantalla, x: u32, y: u32, bytes: u64, color: u32) -> u32 {
     const K: u64 = 1024;
     const M: u64 = K * 1024;

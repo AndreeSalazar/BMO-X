@@ -1,18 +1,18 @@
-//! **El conmutador de ventanas** — la ventanita de Alt+Tab.
+//! **El conmutador de ventanas** -- la ventanita de Alt+Tab.
 //!
-//! La política vive en `bmo_input::foco` y **se prueba allí**; aquí sólo se
-//! pinta lo que esa política ya decidió. Es el mismo reparto de siempre: quien
+//! La politica vive en `bmo_input::foco` y **se prueba alli**; aqui solo se
+//! pinta lo que esa politica ya decidio. Es el mismo reparto de siempre: quien
 //! decide no dibuja, y quien dibuja no decide.
 //!
-//! ═══ Por qué hay que enseñarlo y no basta con conmutar ═══
+//! === Por que hay que ensenarlo y no basta con conmutar ===
 //!
 //! Sin esta ventanita, Alt+Tab es adivinar. Con dos ventanas se aguanta; con
-//! tres ya no se sabe cuántos Tabs faltan, y el resultado es pulsar de más y
-//! acabar donde no querías. Enseñar **la lista y cuál está señalada** convierte
+//! tres ya no se sabe cuantos Tabs faltan, y el resultado es pulsar de mas y
+//! acabar donde no querias. Ensenar **la lista y cual esta senalada** convierte
 //! un atajo de memoria en uno que se mira.
 //!
-//! Es lo que Eddi pidió con estas palabras: *"requiere la pequeña ventana que
-//! hace ver todo para facilitar qué prioridad le da, porque si no chocan"*.
+//! Es lo que Eddi pidio con estas palabras: *"requiere la pequena ventana que
+//! hace ver todo para facilitar que prioridad le da, porque si no chocan"*.
 
 use bmo_userland as bmo;
 
@@ -27,9 +27,9 @@ const CONM_ANCHO: u32 = 420;
 
 /// El nombre de cada ventana, indexado por su id.
 ///
-/// El id es el mismo `u8` que maneja `bmo_input::foco`: ahí es un número sin
-/// significado —la política no sabe qué es una ventana— y aquí se le pone
-/// nombre. Cada ventana nueva es una fila más en esta tabla.
+/// El id es el mismo `u8` que maneja `bmo_input::foco`: ahi es un numero sin
+/// significado --la politica no sabe que es una ventana-- y aqui se le pone
+/// nombre. Cada ventana nueva es una fila mas en esta tabla.
 pub(crate) fn nombre(id: u8) -> &'static str {
     match id {
         0 => "Ejecutar",
@@ -38,8 +38,8 @@ pub(crate) fn nombre(id: u8) -> &'static str {
     }
 }
 
-/// Pinta el conmutador centrado, con la señalada resaltada.
-pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], señalada: usize, modo: &str) {
+/// Pinta el conmutador centrado, con la senalada resaltada.
+pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], senalada: usize, modo: &str) {
     if lista.is_empty() {
         return;
     }
@@ -53,31 +53,31 @@ pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], señalada: usize, modo: &s
 
     let mut fy = y + 10;
     for (i, &v) in lista.iter().enumerate() {
-        if i == señalada {
+        if i == senalada {
             // El resaltado va de borde a borde: una barra a media anchura se
-            // lee como "hay más columnas" y no las hay.
+            // lee como "hay mas columnas" y no las hay.
             p.rect(x + 6, fy - 2, ancho - 12, FILA_ALTO, CONM_SELECC);
         }
-        let color = if i == señalada { TEXTO } else { TEXTO_TENUE };
-        let marca = if i == señalada { "> " } else { "  " };
+        let color = if i == senalada { TEXTO } else { TEXTO_TENUE };
+        let marca = if i == senalada { "> " } else { "  " };
         let nx = p.texto(x + 14, fy + 2, marca, color);
         p.texto(nx, fy + 2, nombre(v), color);
         fy += FILA_ALTO;
     }
 
-    // El modo, abajo: sin esto no hay forma de saber por qué el foco se
-    // comporta distinto de lo que esperabas. Y con él la tecla que lo cambia:
-    // un modo que se lee pero no se toca invita a pensar que está averiado.
+    // El modo, abajo: sin esto no hay forma de saber por que el foco se
+    // comporta distinto de lo que esperabas. Y con el la tecla que lo cambia:
+    // un modo que se lee pero no se toca invita a pensar que esta averiado.
     let mx = p.texto(x + 14, fy + 4, "modo: ", TEXTO_TENUE);
     let mx = p.texto(mx, fy + 4, modo, ACENTO);
     p.texto(mx, fy + 4, "   (Alt+M)", TEXTO_TENUE);
 }
 
-/// Qué rectángulo ocupó, para poder borrarlo después.
+/// Que rectangulo ocupo, para poder borrarlo despues.
 ///
 /// Se calcula igual que en `pintar` y no se guarda: dos copias de una cuenta
 /// divergen, pero una cuenta guardada en un sitio y usada en otro se queda
-/// vieja cuando cambia el número de ventanas — que aquí pasa en cuanto se abre
+/// vieja cuando cambia el numero de ventanas -- que aqui pasa en cuanto se abre
 /// una.
 pub(crate) fn area(p: &bmo::Pantalla, cuantas: usize) -> (u32, u32, u32, u32) {
     let alto = FILA_ALTO * cuantas as u32 + FILA_ALTO + 16;

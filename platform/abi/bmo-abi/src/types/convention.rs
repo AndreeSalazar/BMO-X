@@ -1,4 +1,4 @@
-//! Calling convention — defines register usage, stack rules, and argument passing.
+//! Calling convention -- defines register usage, stack rules, and argument passing.
 //!
 //! Encodes the BMO ABI calling convention as Rust code (not just SPEC.md docs).
 //! Language frontends and code generators query this to know which registers to use.
@@ -17,10 +17,10 @@ pub const X86_64_SYSCALL_RETURN_REGISTERS: &[&str] = &["rax", "rdx"];
 
 /// Red zone size in bytes below RSP.
 ///
-/// ═══ ★ AUDITED 2026-08-02 — declared, and deliberately NOT used ═══
+/// === * AUDITED 2026-08-02 -- declared, and deliberately NOT used ===
 ///
 /// 256 bytes, twice System V's 128. That is free performance for a leaf
-/// function in Ring 3 — and a **hazard everywhere else**, because the red zone
+/// function in Ring 3 -- and a **hazard everywhere else**, because the red zone
 /// is memory below RSP that anything pushing onto that stack overwrites: an
 /// interrupt, a fault handler, a context switch.
 ///
@@ -33,8 +33,8 @@ pub const X86_64_SYSCALL_RETURN_REGISTERS: &[&str] = &["rax", "rdx"];
 ///
 /// So this constant describes a permission the ABI grants and no code takes.
 ///
-/// ⚠️ **Before using it, read this.** The obvious optimisation — "a leaf
-/// function with a small frame can skip the `sub rsp`" — is exactly the change
+/// [!] **Before using it, read this.** The obvious optimisation -- "a leaf
+/// function with a small frame can skip the `sub rsp`" -- is exactly the change
 /// that turns this number into a bug, and only in code that runs with
 /// interrupts enabled. It would work in every test and fail once every few
 /// thousand boots, when the timer lands in the wrong microsecond. If that

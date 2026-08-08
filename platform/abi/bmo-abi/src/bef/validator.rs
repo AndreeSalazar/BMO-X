@@ -1,14 +1,14 @@
-//! BEF validator estructural — verifica integridad y coherencia
+//! BEF validator estructural -- verifica integridad y coherencia
 //! del formato antes de que el loader lo procese.
 //!
 //! Cubre:
 //! - Header (magic, version, arch, entry, total_size)
 //! - Section table (bounds, duplicados, overlap)
-//! - Code section (entry offset, alineación)
+//! - Code section (entry offset, alineacion)
 //! - Imports / Exports / Symbols (parseo, string bounds, binding targets)
-//! - Relocations (offset dentro de target, symbol_idx válido)
+//! - Relocations (offset dentro de target, symbol_idx valido)
 //! - Signature (hashing structure)
-//! - Flags semánticos consistentes por tipo de sección
+//! - Flags semanticos consistentes por tipo de seccion
 
 use crate::bmo_abi::bef::{
     exports::ExportEntry,
@@ -25,7 +25,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// Resultado individual de validación.
+/// Resultado individual de validacion.
 #[derive(Debug, Clone)]
 pub struct ValidationIssue {
     pub severity: IssueSeverity,
@@ -40,7 +40,7 @@ pub enum IssueSeverity {
     Info,
 }
 
-/// Resultado completo de una validación.
+/// Resultado completo de una validacion.
 #[derive(Debug)]
 pub struct ValidationResult {
     pub issues: Vec<ValidationIssue>,
@@ -195,43 +195,43 @@ pub fn validate(bytes: &[u8]) -> ValidationResult {
 
 /// **Que el header no pueda mentir sobre lo que trae dentro.**
 ///
-/// ═══ El agujero que esto tapa ═══
+/// === El agujero que esto tapa ===
 ///
-/// El header declara DOCE banderas y hasta aquí el validador miraba **dos**:
+/// El header declara DOCE banderas y hasta aqui el validador miraba **dos**:
 /// que hubiera `EXECUTABLE` o `SHARED_LIBRARY`, y que no hubiera bits
-/// desconocidos. Las otras diez no se comprobaban contra nada, así que un BEF
-/// podía decir `SIGNED` sin traer firma, `HAS_MANIFEST` sin manifiesto y
-/// `HAS_TLS` sin TLS — y el validador contestaba **válido**.
+/// desconocidos. Las otras diez no se comprobaban contra nada, asi que un BEF
+/// podia decir `SIGNED` sin traer firma, `HAS_MANIFEST` sin manifiesto y
+/// `HAS_TLS` sin TLS -- y el validador contestaba **valido**.
 ///
-/// Eso no es una comprobación pendiente: es un campo que miente por
-/// construcción. Y duele más aquí que en ningún otro sitio, porque el header
-/// del BEF es **la parte congelada** — lo que `CONTRIBUTING.md` promete que no
-/// se mueve para que una auditoría sirva para todos. Un contrato inmutable cuyos
+/// Eso no es una comprobacion pendiente: es un campo que miente por
+/// construccion. Y duele mas aqui que en ningun otro sitio, porque el header
+/// del BEF es **la parte congelada** -- lo que `CONTRIBUTING.md` promete que no
+/// se mueve para que una auditoria sirva para todos. Un contrato inmutable cuyos
 /// campos nadie verifica es un contrato inmutable que miente.
 ///
-/// ═══ Las tres reglas, y por qué cada una tiene la severidad que tiene ═══
+/// === Las tres reglas, y por que cada una tiene la severidad que tiene ===
 ///
-/// 1. **Bandera puesta sin la sección que la respalda → ERROR.** El binario
-///    afirma algo falso sobre sí mismo. Hoy nada en BMO puede producir eso, así
-///    que exigirlo no rompe ningún binario existente.
+/// 1. **Bandera puesta sin la seccion que la respalda -> ERROR.** El binario
+///    afirma algo falso sobre si mismo. Hoy nada en BMO puede producir eso, asi
+///    que exigirlo no rompe ningun binario existente.
 ///
-/// 2. **Sección presente sin su bandera → AVISO.** Es el caso que sí existe hoy:
+/// 2. **Seccion presente sin su bandera -> AVISO.** Es el caso que si existe hoy:
 ///    los frontends escriben las secciones y no ponen las banderas. No es una
-///    mentira, es una omisión — pero *la razón de ser de la bandera es que un
+///    mentira, es una omision -- pero *la razon de ser de la bandera es que un
 ///    consumidor pueda decidir sin recorrer la tabla de secciones*, y un
-///    consumidor que se fíe de ella no mirará. Sube a error el día que los
+///    consumidor que se fie de ella no mirara. Sube a error el dia que los
 ///    productores las pongan.
 ///
-/// 3. **Banderas que prometen lo que el sistema no sabe hacer → ERROR.**
-///    `COMPRESSED` y `HOT_RELOADABLE` están declaradas desde hace mucho y **no
-///    hay una sola línea que las implemente**: cero consumidores en todo el
-///    repositorio. `BEF_EXTENSIONES.md` ya lo dijo — *"o se cablean, o se marcan
-///    como reservadas"*. Esto es marcarlas: quien las ponga se entera aquí y no
-///    en el sitio donde alguien esperaba una sección descomprimida.
+/// 3. **Banderas que prometen lo que el sistema no sabe hacer -> ERROR.**
+///    `COMPRESSED` y `HOT_RELOADABLE` estan declaradas desde hace mucho y **no
+///    hay una sola linea que las implemente**: cero consumidores en todo el
+///    repositorio. `BEF_EXTENSIONES.md` ya lo dijo -- *"o se cablean, o se marcan
+///    como reservadas"*. Esto es marcarlas: quien las ponga se entera aqui y no
+///    en el sitio donde alguien esperaba una seccion descomprimida.
 ///
 /// `PROVENANCE_ELF`/`PROVENANCE_PE` van aparte: las pone **el cargador** al
-/// devorar, no el compilador, y devorar todavía no existe. Aviso y no error,
-/// porque el día que exista serán legítimas y nadie tendrá que volver aquí.
+/// devorar, no el compilador, y devorar todavia no existe. Aviso y no error,
+/// porque el dia que exista seran legitimas y nadie tendra que volver aqui.
 fn validate_flag_coherence(
     header: &BefHeader,
     entries: &[SectionEntry],
@@ -240,7 +240,7 @@ fn validate_flag_coherence(
     let flags = BefFlags::from_bits_truncate(header.flags);
     let hay = |k: SectionKind| entries.iter().any(|e| e.kind == k as u8);
 
-    // (bandera, sección que la respalda, nombre para el mensaje)
+    // (bandera, seccion que la respalda, nombre para el mensaje)
     let pares = [
         (BefFlags::HAS_MANIFEST, SectionKind::Manifest, "manifest"),
         (BefFlags::HAS_SHADERS, SectionKind::Shaders, "shaders"),
@@ -452,7 +452,7 @@ fn validate_section_table(entries: &[SectionEntry], bytes: &[u8], r: &mut Valida
         r.error("no Code section found — BEF must have at least one executable section");
     }
 
-    // Overlap detection: O(n²) but n ≤ 255, cheap.
+    // Overlap detection: O(n^2) but n <= 255, cheap.
     for i in 0..entries.len() {
         let a = &entries[i];
         if a.kind == SectionKind::Bss as u8 || a.file_size == 0 {
@@ -742,7 +742,7 @@ fn validate_reloc_section(
     let raw = data.as_ptr() as *const Relocation;
     let count = data.len() / entry_sz;
 
-    // Map target_section byte → section index lookup
+    // Map target_section byte -> section index lookup
     let target_map: [SectionKind; 3] = [SectionKind::Code, SectionKind::Data, SectionKind::RoData];
 
     for i in 0..count {
@@ -943,7 +943,7 @@ fn validate_section_flags(
     }
 }
 
-/// Obtiene los bytes de datos de una sección (no-BSS, no vacía).
+/// Obtiene los bytes de datos de una seccion (no-BSS, no vacia).
 fn get_section_data<'a>(entry: &SectionEntry, bytes: &'a [u8]) -> Option<&'a [u8]> {
     if entry.kind == SectionKind::Bss as u8 || entry.file_size == 0 {
         return None;
@@ -956,7 +956,7 @@ fn get_section_data<'a>(entry: &SectionEntry, bytes: &'a [u8]) -> Option<&'a [u8
     Some(&bytes[start..end])
 }
 
-// ── Extra methods for ValidationResult ──
+// -- Extra methods for ValidationResult --
 
 impl ValidationIssue {
     pub fn fmt(&self) -> String {
@@ -982,7 +982,7 @@ impl ValidationResult {
     }
 }
 
-// ── Tests ──
+// -- Tests --
 
 #[cfg(test)]
 mod tests {
@@ -1151,12 +1151,12 @@ mod tests {
         );
     }
 
-    // ═══════════ El header no puede mentir sobre lo que trae ═══════════
+    // =========== El header no puede mentir sobre lo que trae ===========
     //
     // Doce banderas y hasta ahora se comprobaban dos. Estas pruebas son las
     // que fijan que las otras diez signifiquen algo.
 
-    /// Decir `SIGNED` sin traer firma es el binario mintiendo sobre sí mismo.
+    /// Decir `SIGNED` sin traer firma es el binario mintiendo sobre si mismo.
     #[test]
     fn una_bandera_sin_su_seccion_invalida_el_bef() {
         let mut b = BefBuilder::new();
@@ -1171,8 +1171,8 @@ mod tests {
         );
     }
 
-    /// Al revés es una omisión, no una mentira: avisa y deja pasar. Sube a
-    /// error el día que los productores pongan las banderas.
+    /// Al reves es una omision, no una mentira: avisa y deja pasar. Sube a
+    /// error el dia que los productores pongan las banderas.
     #[test]
     fn una_seccion_sin_su_bandera_avisa_pero_no_invalida() {
         let mut b = BefBuilder::new();
@@ -1188,7 +1188,7 @@ mod tests {
         );
     }
 
-    /// `COMPRESSED` promete descompresión y no hay una sola línea que la haga.
+    /// `COMPRESSED` promete descompresion y no hay una sola linea que la haga.
     #[test]
     fn compressed_esta_reservada_hasta_que_alguien_la_implemente() {
         let mut b = BefBuilder::new();
@@ -1215,7 +1215,7 @@ mod tests {
     }
 
     /// La procedencia la pone el CARGADOR al devorar, y devorar no existe: se
-    /// avisa, pero no se invalida — el día que exista serán legítimas.
+    /// avisa, pero no se invalida -- el dia que exista seran legitimas.
     #[test]
     fn la_procedencia_avisa_porque_devorar_no_existe_todavia() {
         let mut b = BefBuilder::new();
@@ -1231,7 +1231,7 @@ mod tests {
         );
     }
 
-    /// Y el caso sano: un BEF que no presume de nada sigue siendo válido.
+    /// Y el caso sano: un BEF que no presume de nada sigue siendo valido.
     #[test]
     fn un_bef_que_no_presume_de_nada_sigue_valido() {
         let mut b = BefBuilder::new();

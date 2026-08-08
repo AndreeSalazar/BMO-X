@@ -1,4 +1,4 @@
-//! PS/2 keyboard/mouse backend — controller init, port configuration, polling.
+//! PS/2 keyboard/mouse backend -- controller init, port configuration, polling.
 //!
 //! Implements `InputHal` trait. Reads raw PS/2 ports 0x60/0x64 and converts
 //! bytes to `InputEvent`s.
@@ -55,7 +55,7 @@ unsafe fn send_data(data: u8) -> bool {
     true
 }
 
-// ── Mouse packet reassembly ─────────────────────────────────────
+// -- Mouse packet reassembly -------------------------------------
 
 static mut MOUSE_PKT: [u8; 3] = [0; 3];
 static mut MOUSE_PKT_IDX: usize = 0;
@@ -95,7 +95,7 @@ unsafe fn process_mouse_byte(b: u8, events: &mut [InputEvent], ev_idx: &mut usiz
     }
 }
 
-// ── Ps2Hal struct ────────────────────────────────────────────────
+// -- Ps2Hal struct ------------------------------------------------
 
 pub struct Ps2Hal {
     initialized: bool,
@@ -147,11 +147,11 @@ impl InputHal for Ps2Hal {
             // 6. Enable port 1 (keyboard)
             send_cmd(0xAE);
 
-            // 7. Reset keyboard — if no device, no ACK comes back
+            // 7. Reset keyboard -- if no device, no ACK comes back
             send_data(0xFF);
             let ack = wait_output();
             if ack != Some(0xFA) {
-                // No keyboard (or no ACK) — try one more read for BAT result
+                // No keyboard (or no ACK) -- try one more read for BAT result
                 let bat = wait_output();
                 if ack.is_none() && bat.is_none() {
                     // No device at all

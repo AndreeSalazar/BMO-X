@@ -1,8 +1,8 @@
-//! `handle` — handles opacos del BMO ABI.
+//! `handle` -- handles opacos del BMO ABI.
 //!
 //! Reemplaza `HANDLE` (Win32), `int fd` (POSIX), `IUnknown*` (COM) con un
-//! único tipo `BmoHandle` 64-bit que incluye **generación**: detecta UAF
-//! por construcción.
+//! unico tipo `BmoHandle` 64-bit que incluye **generacion**: detecta UAF
+//! por construccion.
 
 pub mod kind;
 pub mod opaque;

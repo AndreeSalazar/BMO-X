@@ -1,16 +1,16 @@
-//! `bmo_abi::windowing` — Contrato de ventanas.
+//! `bmo_abi::windowing` -- Contrato de ventanas.
 //!
 //! Define los **datos** que un programa maneja cuando crea, modifica o
 //! recibe eventos de una ventana. Los **syscalls** reales (que terminan
-//! en `syscall`) están en `crate::bmo_abi::syscalls`.
+//! en `syscall`) estan en `crate::bmo_abi::syscalls`.
 //!
 //! ## Layout
 //!
 //! Una `BmoWindowClass` se pasa a `bmo_register_class` por referencia.
 //! Una `BmoWindowCreateInfo` se pasa a `bmo_create_window` por referencia.
-//! Los eventos llegan vía BEFCore (`bmo_recv`).
+//! Los eventos llegan via BEFCore (`bmo_recv`).
 //!
-//! ## Tamaños
+//! ## Tamanos
 //!
 //! - `BmoWindowClass`: 64 bytes
 //! - `BmoWindowCreateInfo`: 48 bytes
@@ -22,7 +22,7 @@
 
 use crate::bmo_abi::fundamentals::handle::BmoHandle;
 
-// ─── Window class ────────────────────────────────────────────────────
+// --- Window class ----------------------------------------------------
 
 /// Estilo de borde de la ventana.
 #[repr(u32)]
@@ -32,13 +32,13 @@ pub enum BmoWindowBorder {
     None = 0,
     /// Borde fino.
     Thin = 1,
-    /// Borde estándar redimensionable.
+    /// Borde estandar redimensionable.
     Sizable = 2,
-    /// Solo título, no redimensionable.
+    /// Solo titulo, no redimensionable.
     Fixed = 3,
 }
 
-/// Comportamiento al cerrarse la ventana (botón X).
+/// Comportamiento al cerrarse la ventana (boton X).
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoCloseAction {
@@ -46,21 +46,21 @@ pub enum BmoCloseAction {
     Hide = 0,
     /// Destruir la ventana y liberar recursos.
     Destroy = 1,
-    /// Terminar el proceso que la creó.
+    /// Terminar el proceso que la creo.
     Exit = 2,
 }
 
 /// Registro de clase de ventana. Pasado a `bmo_register_class`.
 ///
-/// Tamaño fijo: 64 bytes. **No agregar campos** sin bump de versión ABI.
+/// Tamano fijo: 64 bytes. **No agregar campos** sin bump de version ABI.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BmoWindowClass {
-    /// Nombre único de la clase (ASCII, null-terminated).
+    /// Nombre unico de la clase (ASCII, null-terminated).
     pub name: [u8; 32],
     /// Estilo de borde.
     pub border: BmoWindowBorder,
-    /// Acción al cerrar.
+    /// Accion al cerrar.
     pub close_action: BmoCloseAction,
     /// Color de fondo por defecto (RGBA).
     pub bg_color: u32,
@@ -91,7 +91,7 @@ impl BmoWindowClass {
     }
 }
 
-// ─── Window create info ─────────────────────────────────────────────
+// --- Window create info ---------------------------------------------
 
 /// Flags para `bmo_create_window`.
 #[repr(u32)]
@@ -109,9 +109,9 @@ pub enum BmoWindowFlag {
     Shadowed = 1 << 4,
 }
 
-/// Información para crear una ventana.
+/// Informacion para crear una ventana.
 ///
-/// Tamaño fijo: 48 bytes.
+/// Tamano fijo: 48 bytes.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BmoWindowCreateInfo {
@@ -134,12 +134,12 @@ impl BmoWindowCreateInfo {
     pub const SIZE: usize = 52;
 }
 
-// ─── Window handle ──────────────────────────────────────────────────
+// --- Window handle --------------------------------------------------
 
 /// Handle de una ventana. Es un `BmoHandle` con kind forzado a Window.
 pub type BmoWindowHandle = BmoHandle;
 
-// ─── Eventos de ventana ─────────────────────────────────────────────
+// --- Eventos de ventana ---------------------------------------------
 
 /// Tipos de eventos que puede recibir una ventana.
 #[repr(u32)]
@@ -151,25 +151,25 @@ pub enum BmoWindowEventKind {
     KeyDown = 2,
     /// Tecla liberada. Datos: `BmoKeyEvent`.
     KeyUp = 3,
-    /// Botón del ratón presionado. Datos: `BmoMouseEvent`.
+    /// Boton del raton presionado. Datos: `BmoMouseEvent`.
     MouseDown = 4,
-    /// Botón del ratón liberado. Datos: `BmoMouseEvent`.
+    /// Boton del raton liberado. Datos: `BmoMouseEvent`.
     MouseUp = 5,
-    /// Movimiento del ratón. Datos: `BmoMouseEvent`.
+    /// Movimiento del raton. Datos: `BmoMouseEvent`.
     MouseMove = 6,
-    /// La ventana cambió de tamaño. Datos: `BmoResizeEvent`.
+    /// La ventana cambio de tamano. Datos: `BmoResizeEvent`.
     Resize = 7,
-    /// La ventana ganó foco. Datos: 0 bytes.
+    /// La ventana gano foco. Datos: 0 bytes.
     FocusGained = 8,
-    /// La ventana perdió foco. Datos: 0 bytes.
+    /// La ventana perdio foco. Datos: 0 bytes.
     FocusLost = 9,
-    /// La ventana se cerró. Datos: 0 bytes.
+    /// La ventana se cerro. Datos: 0 bytes.
     Close = 10,
 }
 
 /// Evento de repintado.
 ///
-/// Tamaño: 32 bytes.
+/// Tamano: 32 bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct BmoPaintEvent {
@@ -185,7 +185,7 @@ pub struct BmoPaintEvent {
 
 /// Tecla (virtual key code, layout-independent).
 ///
-/// Usamos el estándar de Windows VK_* (0x01..0xFF). Solo las más comunes
+/// Usamos el estandar de Windows VK_* (0x01..0xFF). Solo las mas comunes
 /// se enumeran; ver `BmoKey::from_vk` para la lista completa.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -273,7 +273,7 @@ impl BmoModifiers {
 
 /// Evento de teclado.
 ///
-/// Tamaño: 32 bytes.
+/// Tamano: 32 bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct BmoKeyEvent {
@@ -284,7 +284,7 @@ pub struct BmoKeyEvent {
     pub _pad: u32,
 }
 
-/// Botón del ratón.
+/// Boton del raton.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoMouseButton {
@@ -296,9 +296,9 @@ pub enum BmoMouseButton {
     X2 = 5,
 }
 
-/// Evento de ratón.
+/// Evento de raton.
 ///
-/// Tamaño: 32 bytes.
+/// Tamano: 32 bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct BmoMouseEvent {
@@ -338,9 +338,9 @@ impl Clone for BmoWindowEventData {
     }
 }
 
-/// Evento completo recibido por `bmo_recv` (vía BEFCore).
+/// Evento completo recibido por `bmo_recv` (via BEFCore).
 ///
-/// Tamaño total: 48 bytes.
+/// Tamano total: 48 bytes.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BmoWindowEvent {

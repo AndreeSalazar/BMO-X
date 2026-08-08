@@ -6,20 +6,20 @@ authors = ["BMO Project"]
 description = "C++ frontend for BMO ABI — desazucara C++ sobre el AST de BMO C"
 
 [dependencies]
-# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui — es el
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui -- es el
 # "unico checkpoint comun" de la filosofia.
 bmo-verify = { path = "../../forge/bmo-verify" }
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
-# ── LA HERENCIA ────────────────────────────────────────────────────────
-# C++ hereda el DESCENSO de BMO C (`ast::Program` → BEF), NO su frontend.
-# El lexer y el parser de C son `pub(crate)` y así se quedan: C++ escribe
-# los suyos. La frontera es un TIPO DE DATOS —`bmo_c_front::ast::Program`—
+# -- LA HERENCIA --------------------------------------------------------
+# C++ hereda el DESCENSO de BMO C (`ast::Program` -> BEF), NO su frontend.
+# El lexer y el parser de C son `pub(crate)` y asi se quedan: C++ escribe
+# los suyos. La frontera es un TIPO DE DATOS --`bmo_c_front::ast::Program`--
 # que es un formato, no un cerebro.
 #
 # La flecha apunta en UN SOLO SENTIDO: `lang/c/Cargo.toml` no menciona C++
-# jamás, y la suite de C tiene que pasar entera con este crate fuera del
+# jamas, y la suite de C tiene que pasar entera con este crate fuera del
 # workspace. El contrato completo, con las cuatro reglas de "no se
-# combinan" y cuándo tocaría mudar el descenso a `forge/`, está en
+# combinan" y cuando tocaria mudar el descenso a `forge/`, esta en
 # `toolchain/lang/cpp/HERENCIA.md`.
 bmo-c-front = { path = "../c" }
 
@@ -33,5 +33,5 @@ path = "src/main.rs"
 
 [dev-dependencies]
 # Banco de pruebas: EJECUTA los bytes emitidos, no los mira. Mismo criterio
-# que C y COBOL — un codegen roto se ve sanísimo en un volcado de bytes.
+# que C y COBOL -- un codegen roto se ve sanisimo en un volcado de bytes.
 bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }

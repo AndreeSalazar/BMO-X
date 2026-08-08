@@ -1,32 +1,32 @@
-//! Parser de cláusulas PICTURE (PIC) — 100% BMO, sin dependencias ajenas.
+//! Parser de clausulas PICTURE (PIC) -- 100% BMO, sin dependencias ajenas.
 //!
-//! Reemplaza a `gnucobol-rs` (GPL): la PIC es el corazón del DATA DIVISION y
+//! Reemplaza a `gnucobol-rs` (GPL): la PIC es el corazon del DATA DIVISION y
 //! la esencia de COBOL debe ser TUYA. Extrae lo que importa para la
-//! aritmética decimal exacta que Grace Hopper diseñó para la banca:
+//! aritmetica decimal exacta que Grace Hopper diseno para la banca:
 //!
 //! ```text
-//!   PIC 9(5)V99   → 5 dígitos enteros · 2 decimales (scale=2) · sin signo
-//!   PIC S9(7)V99  → signed · 7 enteros · 2 decimales
-//!   PIC X(10)     → 10 caracteres alfanuméricos (no numérico)
+//!   PIC 9(5)V99   -> 5 digitos enteros - 2 decimales (scale=2) - sin signo
+//!   PIC S9(7)V99  -> signed - 7 enteros - 2 decimales
+//!   PIC X(10)     -> 10 caracteres alfanumericos (no numerico)
 //! ```
 //!
-//! La `V` es el punto decimal IMPLÍCITO (no ocupa byte): marca dónde queda la
-//! coma. `scale` = dígitos tras la V = cuántos decimales. Ese número es la
+//! La `V` es el punto decimal IMPLICITO (no ocupa byte): marca donde queda la
+//! coma. `scale` = digitos tras la V = cuantos decimales. Ese numero es la
 //! llave del decimal exacto: un `PIC 9(3)V99` guarda $10.05 como el entero
 //! 1005 (centavos), y sumar centavos con `add` es suma decimal exacta.
 
-/// Representación en memoria del dato.
+/// Representacion en memoria del dato.
 ///
-/// Sólo dos se compilan, y el parser rechaza el resto **diciendo por qué**:
+/// Solo dos se compilan, y el parser rechaza el resto **diciendo por que**:
 ///
-/// - [`Usage::Display`] — lo de siempre. El dato vive como un entero escalado
-///   de 64 bits, así que hoy NO trunca al ancho de su PIC.
-/// - [`Usage::Comp3`] — empaquetado (BCD): dos dígitos por byte y el signo en
-///   el último nibble. Ocupa **exactamente** lo que dice su PICTURE, y por eso
-///   sí trunca. Los emisores viven en `bmo_lower::packed`, porque empaquetar es
-///   una representación y no la semántica de un lenguaje.
-/// - [`Usage::Comp`] — binario. Se reconoce y se calcula su tamaño, pero **no
-///   se compila**: guardar lo mismo que un `DISPLAY` sería aceptar una palabra
+/// - [`Usage::Display`] -- lo de siempre. El dato vive como un entero escalado
+///   de 64 bits, asi que hoy NO trunca al ancho de su PIC.
+/// - [`Usage::Comp3`] -- empaquetado (BCD): dos digitos por byte y el signo en
+///   el ultimo nibble. Ocupa **exactamente** lo que dice su PICTURE, y por eso
+///   si trunca. Los emisores viven en `bmo_lower::packed`, porque empaquetar es
+///   una representacion y no la semantica de un lenguaje.
+/// - [`Usage::Comp`] -- binario. Se reconoce y se calcula su tamano, pero **no
+///   se compila**: guardar lo mismo que un `DISPLAY` seria aceptar una palabra
 ///   que promete un formato y no lo da.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Usage {
@@ -38,13 +38,13 @@ pub enum Usage {
 /// Un campo PIC ya analizado.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PicField {
-    /// Dígitos enteros (antes de la V).
+    /// Digitos enteros (antes de la V).
     pub integer_digits: u32,
-    /// Dígitos decimales (tras la V). **La escala** — cero = entero.
+    /// Digitos decimales (tras la V). **La escala** -- cero = entero.
     pub scale: u32,
     /// Lleva `S` (con signo).
     pub signed: bool,
-    /// Numérico (9/S/V/Z) vs texto (X/A).
+    /// Numerico (9/S/V/Z) vs texto (X/A).
     pub numeric: bool,
     /// Caracteres para PIC X(n)/A(n).
     pub char_count: u32,
@@ -52,22 +52,22 @@ pub struct PicField {
 }
 
 impl PicField {
-    /// Total de dígitos numéricos (enteros + decimales).
+    /// Total de digitos numericos (enteros + decimales).
     pub fn total_digits(&self) -> u32 {
         self.integer_digits + self.scale
     }
 
-    /// Tamaño en bytes del almacenamiento.
+    /// Tamano en bytes del almacenamiento.
     pub fn size(&self) -> usize {
         if !self.numeric {
             return self.char_count.max(1) as usize;
         }
         match self.usage {
-            // DISPLAY: 1 byte por dígito (zoned). El signo va sobrepunzado.
+            // DISPLAY: 1 byte por digito (zoned). El signo va sobrepunzado.
             Usage::Display => self.total_digits().max(1) as usize,
-            // COMP-3 (packed): 2 dígitos por byte + nibble de signo.
+            // COMP-3 (packed): 2 digitos por byte + nibble de signo.
             Usage::Comp3 => (self.total_digits() as usize / 2) + 1,
-            // COMP (binario): según los dígitos.
+            // COMP (binario): segun los digitos.
             Usage::Comp => {
                 let d = self.total_digits();
                 if d <= 4 { 2 } else if d <= 9 { 4 } else { 8 }
@@ -76,7 +76,7 @@ impl PicField {
     }
 }
 
-/// Analiza una cláusula PIC. `usage` viene del `USAGE`/`COMP` del data item.
+/// Analiza una clausula PIC. `usage` viene del `USAGE`/`COMP` del data item.
 pub fn parse_pic(pic: &str, usage: Usage) -> Result<PicField, String> {
     let s = pic.trim().to_uppercase();
     let bytes = s.as_bytes();
@@ -93,7 +93,7 @@ pub fn parse_pic(pic: &str, usage: Usage) -> Result<PicField, String> {
         let sym = bytes[i] as char;
         i += 1;
 
-        // Cuenta de repetición opcional: SÍMBOLO(n).
+        // Cuenta de repeticion opcional: SIMBOLO(n).
         let mut count = 1u32;
         if i < bytes.len() && bytes[i] == b'(' {
             let start = i + 1;
@@ -112,7 +112,7 @@ pub fn parse_pic(pic: &str, usage: Usage) -> Result<PicField, String> {
         }
 
         match sym {
-            // Dígitos (9) y dígitos con supresión de ceros (Z, *): posiciones.
+            // Digitos (9) y digitos con supresion de ceros (Z, *): posiciones.
             '9' | 'Z' | '*' => {
                 numeric = true;
                 if seen_v {
@@ -121,17 +121,17 @@ pub fn parse_pic(pic: &str, usage: Usage) -> Result<PicField, String> {
                     integer_digits += count;
                 }
             }
-            // Signo: no ocupa posición de dígito (DISPLAY lo sobrepunza).
+            // Signo: no ocupa posicion de digito (DISPLAY lo sobrepunza).
             'S' => {
                 signed = true;
                 numeric = true;
             }
-            // Punto decimal implícito.
+            // Punto decimal implicito.
             'V' => {
                 seen_v = true;
                 numeric = true;
             }
-            // Alfanumérico / alfabético.
+            // Alfanumerico / alfabetico.
             'X' | 'A' => {
                 char_count += count;
             }
@@ -164,7 +164,7 @@ mod tests {
     fn money_pic_scale_two() {
         let f = parse_pic("9(5)V99", Usage::Display).unwrap();
         assert_eq!(f.integer_digits, 5);
-        assert_eq!(f.scale, 2); // ← 2 decimales: centavos exactos
+        assert_eq!(f.scale, 2); // <- 2 decimales: centavos exactos
         assert!(!f.signed);
         assert!(f.numeric);
         assert_eq!(f.total_digits(), 7);

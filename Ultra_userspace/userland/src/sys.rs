@@ -6,10 +6,10 @@
 
 use crate::*;
 
-/// Lo que devuelve un syscall: un código y un valor.
+/// Lo que devuelve un syscall: un codigo y un valor.
 ///
-/// `code == 0` es lo único que significa éxito. `flags` lleva pistas del
-/// kernel — por ejemplo `NEEDS_CAP`, que distingue "no tienes permiso" de
+/// `code == 0` es lo unico que significa exito. `flags` lleva pistas del
+/// kernel -- por ejemplo `NEEDS_CAP`, que distingue "no tienes permiso" de
 /// "ese handle no existe".
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Status {
@@ -23,8 +23,8 @@ impl Status {
     pub fn ok(self) -> bool {
         self.code == 0
     }
-    /// El valor si fue bien, o `None`. Para no comprobar el código a mano
-    /// cada vez y acabar olvidándolo una.
+    /// El valor si fue bien, o `None`. Para no comprobar el codigo a mano
+    /// cada vez y acabar olvidandolo una.
     #[inline(always)]
     pub fn valor(self) -> Option<u64> {
         if self.code == 0 {
@@ -61,26 +61,26 @@ fn syscall(nr: u32, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> Status {
     }
 }
 
-/// `INVOKE` — la puerta síncrona.
+/// `INVOKE` -- la puerta sincrona.
 #[inline(always)]
 pub fn invoke(cap: u64, operacion: u32, a0: u64, a1: u64, a2: u64) -> Status {
     syscall(NR_INVOKE, cap, operacion as u64, a0, a1, a2)
 }
 
-/// `CHANNEL_KICK` — avisar al consumidor de un estuario.
+/// `CHANNEL_KICK` -- avisar al consumidor de un estuario.
 #[inline(always)]
 pub fn channel_kick(cap: u64, secuencia: u64) -> Status {
     syscall(NR_CHANNEL_KICK, cap, secuencia, 0, 0, 0)
 }
 
-/// `WAIT` — bloquearse hasta que la secuencia del esperable pase de `visto`,
+/// `WAIT` -- bloquearse hasta que la secuencia del esperable pase de `visto`,
 /// o hasta que venza el plazo. `esperable = 0` es dormir a secas.
 #[inline(always)]
 pub fn wait(esperable: u64, visto: u64, timeout_ns: u64) -> Status {
     syscall(NR_WAIT, esperable, visto, timeout_ns, 0, 0)
 }
 
-// ── Lo que uno tiene por ser quien es ───────────────────────────────────
+// -- Lo que uno tiene por ser quien es -----------------------------------
 
 #[inline]
 pub fn pid() -> u64 {
@@ -99,20 +99,20 @@ pub fn ceder() {
     invoke(CURRENT_TASK, OP_YIELD, 0, 0, 0);
 }
 
-/// ★ El contador de ciclos del CPU. **No es privilegiado: Ring 3 puede.**
+/// * El contador de ciclos del CPU. **No es privilegiado: Ring 3 puede.**
 ///
-/// Vive aquí y no en una escena del compositor porque es una primitiva de la
-/// máquina, no de una pantalla — y porque ya había una copia privada en
-/// `escena::entrada` y una segunda copia habría sido la tercera.
+/// Vive aqui y no en una escena del compositor porque es una primitiva de la
+/// maquina, no de una pantalla -- y porque ya habia una copia privada en
+/// `escena::entrada` y una segunda copia habria sido la tercera.
 ///
-/// # Para qué sirve de verdad
+/// # Para que sirve de verdad
 ///
-/// Los tres syscalls congelados no traen reloj, así que sin esto la única forma
-/// de esperar es **contar vueltas de bucle** — y eso da una espera de dos
-/// segundos en un Ryzen y de veinte en algo más lento, que es como se hacían las
-/// cosas cuando no había forma de saber la hora. Con `rdtsc` y la frecuencia que
+/// Los tres syscalls congelados no traen reloj, asi que sin esto la unica forma
+/// de esperar es **contar vueltas de bucle** -- y eso da una espera de dos
+/// segundos en un Ryzen y de veinte en algo mas lento, que es como se hacian las
+/// cosas cuando no habia forma de saber la hora. Con `rdtsc` y la frecuencia que
 /// el kernel publica en [`crate::INFO_TSC_HZ`], una espera de 900 ms es de 900 ms
-/// **en esta máquina y en la siguiente**.
+/// **en esta maquina y en la siguiente**.
 #[inline]
 pub fn ciclos() -> u64 {
     let (hi, lo): (u32, u32);
@@ -126,77 +126,77 @@ pub fn ciclos() -> u64 {
 /// cambia de contexto en el propio borde del syscall.
 pub fn salir() -> ! {
     invoke(CURRENT_TASK, OP_EXIT, 0, 0, 0);
-    // Si el kernel nos devolviera el control, seguir ejecutando sería peor
+    // Si el kernel nos devolviera el control, seguir ejecutando seria peor
     // que quedarse quieto.
     loop {
         ceder();
     }
 }
 
-/// Un dato numérico del sistema. `0` si el kernel no sabe contestar ese campo.
+/// Un dato numerico del sistema. `0` si el kernel no sabe contestar ese campo.
 ///
-/// Cuánta RAM hay, cuántos hilos tiene el CPU, cuántas ranuras de tarea quedan.
-/// Esto vivía **sólo** en el shell de Ring 0 —`info`, `cpu`, `mem`— y no porque
+/// Cuanta RAM hay, cuantos hilos tiene el CPU, cuantas ranuras de tarea quedan.
+/// Esto vivia **solo** en el shell de Ring 0 --`info`, `cpu`, `mem`-- y no porque
 /// hiciera falta el privilegio: porque los datos estaban a su alcance. Leer un
-/// contador no ejerce ningún poder.
+/// contador no ejerce ningun poder.
 #[inline]
 pub fn info(campo: u64) -> u64 {
     invoke(CURRENT_TASK, OP_INFO, campo, 0, 0).value
 }
 
-// ── El log del kernel, leído desde aquí ─────────────────────────────────
+// -- El log del kernel, leido desde aqui ---------------------------------
 //
-// ★ Esto NO es un salto a Ring 0, y la diferencia importa: no se ejecuta nada
+// * Esto NO es un salto a Ring 0, y la diferencia importa: no se ejecuta nada
 // privilegiado, se piden bytes de texto. El kernel contesta y no cede nada,
 // igual que con `info`. Ver `ring0/core/klog.rs`.
 
-/// Cuántas líneas del log del kernel se pueden leer ahora mismo.
+/// Cuantas lineas del log del kernel se pueden leer ahora mismo.
 pub fn klog_lineas() -> u64 {
     invoke(CURRENT_TASK, OP_KLOG_INFO, 0, 0, 0).value
 }
 
-/// Cuántas ha escrito el kernel desde el arranque. La resta con
-/// [`klog_lineas`] son las que se cayeron por el borde del anillo — y decirlo
-/// es lo que separa "no pasó nada más" de "no cabía".
+/// Cuantas ha escrito el kernel desde el arranque. La resta con
+/// [`klog_lineas`] son las que se cayeron por el borde del anillo -- y decirlo
+/// es lo que separa "no paso nada mas" de "no cabia".
 pub fn klog_total() -> u64 {
     invoke(CURRENT_TASK, OP_KLOG_INFO, 1, 0, 0).value
 }
 
-/// **Despierta los otros núcleos.** Devuelve `(vivos, esperados)`, sin contar
+/// **Despierta los otros nucleos.** Devuelve `(vivos, esperados)`, sin contar
 /// el que ejecuta esto.
 ///
-/// ★ Existe porque el comando `smp` vivía sólo en el shell de Ring 0, y ese
+/// * Existe porque el comando `smp` vivia solo en el shell de Ring 0, y ese
 /// shell **deja de leer el teclado** en cuanto el compositor reclama la
-/// entrada. O sea: había código que no se podía ejecutar desde donde se está
+/// entrada. O sea: habia codigo que no se podia ejecutar desde donde se esta
 /// sentado. Un mando al que no se llega es un mando que no existe.
 ///
-/// ⚠️ **Bloquea**, y bastante: hasta ~10 ms por núcleo, más la espera final. Es
-/// la única llamada del userland que puede tardar un segundo entero, así que
-/// quien la use debería pintar el aviso **antes** y no después.
-/// `cuantos`: **0 no despierta a nadie** y sólo contesta el censo, `u32::MAX`
-/// despierta a todos, y cualquier otro número despierta exactamente esos.
+/// [!] **Bloquea**, y bastante: hasta ~10 ms por nucleo, mas la espera final. Es
+/// la unica llamada del userland que puede tardar un segundo entero, asi que
+/// quien la use deberia pintar el aviso **antes** y no despues.
+/// `cuantos`: **0 no despierta a nadie** y solo contesta el censo, `u32::MAX`
+/// despierta a todos, y cualquier otro numero despierta exactamente esos.
 ///
-/// ★ Que se pueda pedir un número, y que el 0 sea inofensivo, es lo que separa
-/// un botón de un mando. Mandar INIT+SIPI es la única operación del sistema que
+/// * Que se pueda pedir un numero, y que el 0 sea inofensivo, es lo que separa
+/// un boton de un mando. Mandar INIT+SIPI es la unica operacion del sistema que
 /// cambia el hardware de forma que no se deshace sin reiniciar: se dispara **a
-/// propósito**, no por escribir su nombre.
+/// proposito**, no por escribir su nombre.
 pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
     let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, cuantos as u64, 0, 0).value;
     ((v >> 32) as u32, v as u32)
 }
 
-/// **Ofrece un trozo de un bloque MÍO a otra tarea.** `true` si quedó apuntado.
+/// **Ofrece un trozo de un bloque MIO a otra tarea.** `true` si quedo apuntado.
 ///
 /// `bloque` es el handle de la memoria propia; `desde`/`bytes`, el trozo; `tid`,
-/// a quién va — el que devuelve `ejecutar_en`.
+/// a quien va -- el que devuelve `ejecutar_en`.
 ///
-/// ★ Esto es lo que hace posible el LIENZO sin que el kernel sepa qué es un
+/// * Esto es lo que hace posible el LIENZO sin que el kernel sepa que es un
 /// lienzo. El compositor ofrece la parte de abajo de su lienzo, la app la toma,
-/// y pinta ahí directamente: **cero copias**. Y la misma operación sirve para
+/// y pinta ahi directamente: **cero copias**. Y la misma operacion sirve para
 /// audio, captura o cualquier bloque grande entre procesos.
 ///
-/// Quien decide cuánto y a quién es **quien presta**, no el kernel. El kernel
-/// sólo comprueba que el bloque sea tuyo y que el trozo quepa dentro.
+/// Quien decide cuanto y a quien es **quien presta**, no el kernel. El kernel
+/// solo comprueba que el bloque sea tuyo y que el trozo quepa dentro.
 pub fn ofrecer(bloque: u64, desde: u64, bytes: u64, tid: u32) -> bool {
     invoke(bloque, MEM_OP_OFRECER, desde, bytes, tid as u64).value != 0
 }
@@ -204,7 +204,7 @@ pub fn ofrecer(bloque: u64, desde: u64, bytes: u64, tid: u32) -> bool {
 /// **Toma lo que otro me haya ofrecido.** Devuelve `(base, bytes)`, o `None`.
 ///
 /// El mapeo ocurre dentro de esta llamada, en el espacio de direcciones de
-/// quien la hace. A partir de aquí se escribe con un `mov` normal: el kernel no
+/// quien la hace. A partir de aqui se escribe con un `mov` normal: el kernel no
 /// vuelve a enterarse, que es el punto entero de prestar memoria.
 pub fn tomar_prestado() -> Option<(u64, u64)> {
     let h = invoke(CURRENT_TASK, OP_TOMAR, 0, 0, 0).value;
@@ -220,35 +220,35 @@ pub fn tomar_prestado() -> Option<(u64, u64)> {
     }
 }
 
-/// **Desactiva los obreros**: vuelven a `hlt` y ahí se quedan.
+/// **Desactiva los obreros**: vuelven a `hlt` y ahi se quedan.
 ///
-/// La otra mitad del mando. Un obrero en espera **gira**, no duerme —sacarlo de
-/// `hlt` pediría una IPI, y para atenderla haría falta GS por-CPU—, así que con
-/// los doce en pie hay once núcleos al 100 %. Esto es lo que lo apaga.
+/// La otra mitad del mando. Un obrero en espera **gira**, no duerme --sacarlo de
+/// `hlt` pediria una IPI, y para atenderla haria falta GS por-CPU--, asi que con
+/// los doce en pie hay once nucleos al 100 %. Esto es lo que lo apaga.
 pub fn smp_parar() {
     let _ = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 1, 0);
 }
 
-/// **La prueba de reparto.** Devuelve la aceleración **×100**: `842` son 8,42×.
+/// **La prueba de reparto.** Devuelve la aceleracion **x100**: `842` son 8,42x.
 ///
-/// Corre la misma cuenta pura con un núcleo y con todos. Es el caso MÁS
-/// favorable que existe —sin memoria compartida ni bloqueos—, así que el número
-/// que salga es **el techo** y no lo que dará un programa de verdad.
+/// Corre la misma cuenta pura con un nucleo y con todos. Es el caso MAS
+/// favorable que existe --sin memoria compartida ni bloqueos--, asi que el numero
+/// que salga es **el techo** y no lo que dara un programa de verdad.
 pub fn smp_prueba() -> u64 {
     invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 2, 0).value
 }
 
-/// **Cierra una transacción vacía en ESTRATOS.** Devuelve la generación nueva,
+/// **Cierra una transaccion vacia en ESTRATOS.** Devuelve la generacion nueva,
 /// o **0** si no se pudo.
 ///
-/// ★ Es la primera llamada de todo el userland que **ESCRIBE EN EL DISCO**, y
-/// lo hace de la forma más pequeña que existe: sin datos, apuntando al mismo
+/// * Es la primera llamada de todo el userland que **ESCRIBE EN EL DISCO**, y
+/// lo hace de la forma mas pequena que existe: sin datos, apuntando al mismo
 /// estrato, y sobre la copia del superbloque que no manda. Si sale mal, el
 /// volumen es exactamente el de antes.
 ///
-/// El motivo del fallo no vuelve por aquí — vuelve por CABINA y se lee con
-/// **F11**. Es a propósito: caben más motivos en una línea de log que en un
-/// código de retorno, y el que la llama ya tiene la ventana para leerlos.
+/// El motivo del fallo no vuelve por aqui -- vuelve por CABINA y se lee con
+/// **F11**. Es a proposito: caben mas motivos en una linea de log que en un
+/// codigo de retorno, y el que la llama ya tiene la ventana para leerlos.
 pub fn estratos_sellar() -> u64 {
     invoke(CURRENT_TASK, OP_ESTRATOS_SELLAR, 0, 0, 0).value
 }

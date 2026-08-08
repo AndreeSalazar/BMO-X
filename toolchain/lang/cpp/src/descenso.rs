@@ -1,44 +1,44 @@
-//! **El descenso**: AST de C++ → `bmo_c_front::ast::Program`.
+//! **El descenso**: AST de C++ -> `bmo_c_front::ast::Program`.
 //!
-//! ═══ Qué es este fichero y qué NO es ═══
+//! === Que es este fichero y que NO es ===
 //!
-//! Es **la frontera entera** entre BMO C++ y BMO C, y es a propósito lo más
-//! tonto que se puede escribir: una traducción nodo a nodo, sin decisiones.
-//! Lo que sale de aquí es un `Program` de C —un **formato**— y quien lo recibe
-//! (`bmo_c_front::codegen`) no sabe ni sabrá que existe una clase.
+//! Es **la frontera entera** entre BMO C++ y BMO C, y es a proposito lo mas
+//! tonto que se puede escribir: una traduccion nodo a nodo, sin decisiones.
+//! Lo que sale de aqui es un `Program` de C --un **formato**-- y quien lo recibe
+//! (`bmo_c_front::codegen`) no sabe ni sabra que existe una clase.
 //!
 //! Lo que **no** es: no es un puente para que C aprenda C++. La flecha apunta
 //! en un solo sentido y `lang/c` no se entera de que este crate existe. Las
-//! cuatro reglas están en `HERENCIA.md`.
+//! cuatro reglas estan en `HERENCIA.md`.
 //!
-//! ═══ Cómo lo hicieron los maestros ═══
+//! === Como lo hicieron los maestros ===
 //!
-//! **Cfront** (Bjarne, 1983–1993) hacía exactamente esto, y de ahí sale la
-//! forma: clase → `struct`, método → función con `this` de primer parámetro,
-//! virtual → array de punteros a función. Murió por las excepciones, por el
-//! prelinker de plantillas y porque el depurador veía el C generado.
+//! **Cfront** (Bjarne, 1983-1993) hacia exactamente esto, y de ahi sale la
+//! forma: clase -> `struct`, metodo -> funcion con `this` de primer parametro,
+//! virtual -> array de punteros a funcion. Murio por las excepciones, por el
+//! prelinker de plantillas y porque el depurador veia el C generado.
 //!
-//! ★ Aquí **ninguna de las tres aplica**: no hay excepciones (descartadas con
-//! motivo), se compila **una sola unidad de traducción** con monomorfización en
-//! el frontend, y **no se emite texto C** — se emite el AST, así que nunca hay
-//! un `.c` intermedio que confunda a nadie. El estudio completo está en
+//! * Aqui **ninguna de las tres aplica**: no hay excepciones (descartadas con
+//! motivo), se compila **una sola unidad de traduccion** con monomorfizacion en
+//! el frontend, y **no se emite texto C** -- se emite el AST, asi que nunca hay
+//! un `.c` intermedio que confunda a nadie. El estudio completo esta en
 //! `MAESTROS.md`.
 //!
-//! ═══ La regla que gobierna cada rama ═══
+//! === La regla que gobierna cada rama ===
 //!
-//! > Lo que se puede bajar, se baja. **Lo que no, se RECHAZA diciendo en qué
+//! > Lo que se puede bajar, se baja. **Lo que no, se RECHAZA diciendo en que
 //! > paso llega.** Nunca en silencio.
 //!
 //! Esto es lo que arregla el pecado del frontend anterior, cuyo `parse_body`
-//! hacía `pos += 1` con todo lo que no reconocía: un cuerpo entero podía
+//! hacia `pos += 1` con todo lo que no reconocia: un cuerpo entero podia
 //! desaparecer y el programa "compilaba". La regla de BMO es *nada que compile
-//! y no haga lo que dice*, y un descenso parcial en silencio la rompe más
+//! y no haga lo que dice*, y un descenso parcial en silencio la rompe mas
 //! fuerte que un error.
 //!
 //! Por eso hay casos que se rechazan **aunque el tipo encajase**. Una
-//! referencia `T&` es un puntero, y mapearla a `Ptr` compilaría; pero sin la
-//! indirección automática en cada uso —que es trabajo del paso 2— el programa
-//! leería la dirección donde debía leer el valor. Compilaría, y haría otra
+//! referencia `T&` es un puntero, y mapearla a `Ptr` compilaria; pero sin la
+//! indireccion automatica en cada uso --que es trabajo del paso 2-- el programa
+//! leeria la direccion donde debia leer el valor. Compilaria, y haria otra
 //! cosa. Se rechaza.
 
 use bmo_c_front::ast as c;
@@ -46,39 +46,39 @@ use crate::ast as cpp;
 use crate::CppError;
 use std::collections::HashMap;
 
-// ── RAII: la pila de limpieza ───────────────────────────────────────
+// -- RAII: la pila de limpieza ---------------------------------------
 //
-// ═══ Cómo lo hace Clang, y qué se le quita ═══
+// === Como lo hace Clang, y que se le quita ===
 //
-// `CGClass.cpp` lleva una pila de *cleanups* por ámbito (`EHScopeStack`) y la
+// `CGClass.cpp` lleva una pila de *cleanups* por ambito (`EHScopeStack`) y la
 // ejecuta en cada salida. **Con excepciones** eso se bifurca en dos caminos
-// —el normal y el de desenrollado— y ahí es donde se vuelve caro: cada ámbito
-// necesita una tabla que diga qué hay vivo para poder destruirlo desde un
+// --el normal y el de desenrollado-- y ahi es donde se vuelve caro: cada ambito
+// necesita una tabla que diga que hay vivo para poder destruirlo desde un
 // `throw` que venga de cualquier profundidad.
 //
-// ★ **Sin excepciones colapsa a una lista por ámbito que se recorre al revés
-// en cada salida**, y las salidas son cuatro y están todas a la vista:
+// * **Sin excepciones colapsa a una lista por ambito que se recorre al reves
+// en cada salida**, y las salidas son cuatro y estan todas a la vista:
 // el final de las llaves, `return`, `break` y `continue`. Eso es lo que se
-// implementa aquí, y cabe en una pantalla.
+// implementa aqui, y cabe en una pantalla.
 //
-// El orden inverso no es una preferencia: es el lenguaje. Si `a` se construyó
-// antes que `b`, `b` puede depender de `a`, así que `b` se destruye primero.
+// El orden inverso no es una preferencia: es el lenguaje. Si `a` se construyo
+// antes que `b`, `b` puede depender de `a`, asi que `b` se destruye primero.
 
-/// A qué salida corta un `break` o un `continue`.
+/// A que salida corta un `break` o un `continue`.
 #[derive(Clone, Copy, PartialEq)]
 enum Corte {
-    /// Un bloque normal: ni `break` ni `continue` paran aquí.
+    /// Un bloque normal: ni `break` ni `continue` paran aqui.
     Ninguno,
     /// Un bucle: paran los dos.
     Bucle,
-    /// Un `switch`: para `break`, **no** `continue`. Ésa es justo la
-    /// diferencia entre los dos, y meterlos en el mismo saco haría que un
+    /// Un `switch`: para `break`, **no** `continue`. Esa es justo la
+    /// diferencia entre los dos, y meterlos en el mismo saco haria que un
     /// `continue` dentro de un `switch` dentro de un bucle destruyera de menos.
     Switch,
 }
 
 struct Ambito {
-    /// *(variable, clase)* en orden de construcción.
+    /// *(variable, clase)* en orden de construccion.
     objetos: Vec<(String, String)>,
     corte: Corte,
 }
@@ -88,32 +88,32 @@ struct Ambito {
 struct Info {
     ctor: bool,
     dtor: bool,
-    /// ¿Los objetos de esta clase llevan `vptr`? Si sí, hay que apuntarlo a su
-    /// tabla al construir — y **antes** de llamar al constructor, porque el
-    /// constructor puede llamar a un método virtual de sí mismo.
+    /// Los objetos de esta clase llevan `vptr`? Si si, hay que apuntarlo a su
+    /// tabla al construir -- y **antes** de llamar al constructor, porque el
+    /// constructor puede llamar a un metodo virtual de si mismo.
     vtabla: bool,
 }
 
-// Los nombres emitidos salen de `crate::mangling`, que es el ÚNICO sitio del
-// crate donde se decide cómo se llama un símbolo. Antes estaban aquí a mano
-// (`P.P`, `P.~P`) y coincidían con los del mangling por casualidad: ahora
-// coinciden porque son la misma función.
+// Los nombres emitidos salen de `crate::mangling`, que es el UNICO sitio del
+// crate donde se decide como se llama un simbolo. Antes estaban aqui a mano
+// (`P.P`, `P.~P`) y coincidian con los del mangling por casualidad: ahora
+// coinciden porque son la misma funcion.
 use crate::mangling;
 
 /// El nombre de la global que guarda la vtabla de una clase.
 ///
-/// Lleva un punto —ilegal en C++— para que no pueda chocar con una variable
-/// del programa, igual que todo lo demás que genera este crate.
+/// Lleva un punto --ilegal en C++-- para que no pueda chocar con una variable
+/// del programa, igual que todo lo demas que genera este crate.
 fn nombre_vtabla(clase: &str) -> String { format!("vtabla.{clase}") }
 
-/// Baja el cuerpo de una función insertando construcciones y destrucciones.
+/// Baja el cuerpo de una funcion insertando construcciones y destrucciones.
 struct Cuerpo<'a> {
     clases: &'a HashMap<String, Info>,
     pila: Vec<Ambito>,
-    /// Contador de temporales. El nombre lleva un punto —ilegal en C++— para
+    /// Contador de temporales. El nombre lleva un punto --ilegal en C++-- para
     /// que no pueda chocar con una variable del programa.
     temp: u32,
-    /// El tipo que devuelve la función, para poder declarar el temporal del
+    /// El tipo que devuelve la funcion, para poder declarar el temporal del
     /// `return` cuando haya destructores que ejecutar antes de salir.
     ret: cpp::TypeSpec,
 }
@@ -123,7 +123,7 @@ impl<'a> Cuerpo<'a> {
         Self { clases, pila: Vec::new(), temp: 0, ret }
     }
 
-    /// Las destrucciones de un ámbito, **en orden inverso al de construcción**.
+    /// Las destrucciones de un ambito, **en orden inverso al de construccion**.
     fn destruir(a: &Ambito) -> Vec<c::Stmt> {
         a.objetos.iter().rev().map(|(v, cl)| {
             c::Stmt::Expr(c::Expr::Call(
@@ -133,7 +133,7 @@ impl<'a> Cuerpo<'a> {
         }).collect()
     }
 
-    /// Las destrucciones desde el ámbito actual hasta `hasta` (incluido),
+    /// Las destrucciones desde el ambito actual hasta `hasta` (incluido),
     /// contando desde dentro hacia fuera.
     fn destruir_hasta(&self, hasta: usize) -> Vec<c::Stmt> {
         let mut out = Vec::new();
@@ -143,8 +143,8 @@ impl<'a> Cuerpo<'a> {
         out
     }
 
-    /// El ámbito donde para un `break` (bucle o `switch`) o un `continue`
-    /// (sólo bucle). `None` si no hay ninguno — lo que significa un `break`
+    /// El ambito donde para un `break` (bucle o `switch`) o un `continue`
+    /// (solo bucle). `None` si no hay ninguno -- lo que significa un `break`
     /// suelto, que el codegen de C ya rechaza por su cuenta.
     fn objetivo(&self, solo_bucle: bool) -> Option<usize> {
         self.pila.iter().rposition(|a| match a.corte {
@@ -154,17 +154,17 @@ impl<'a> Cuerpo<'a> {
         })
     }
 
-    /// Un bloque completo: entra en un ámbito, baja las sentencias, y si no
-    /// se salió por la puerta de atrás, destruye lo que quede vivo.
+    /// Un bloque completo: entra en un ambito, baja las sentencias, y si no
+    /// se salio por la puerta de atras, destruye lo que quede vivo.
     fn bloque(&mut self, ss: &[cpp::Stmt], corte: Corte) -> Result<Vec<c::Stmt>, CppError> {
         self.pila.push(Ambito { objetos: Vec::new(), corte });
         let mut out = Vec::new();
         let mut cortado = false;
         for s in ss {
             if cortado {
-                // Código detrás de un `return`/`break`/`continue`. No se emite
-                // —nunca se ejecutaría— pero tampoco se calla: emitirlo
-                // pondría destrucciones detrás de la salida.
+                // Codigo detras de un `return`/`break`/`continue`. No se emite
+                // --nunca se ejecutaria-- pero tampoco se calla: emitirlo
+                // pondria destrucciones detras de la salida.
                 return Err(CppError::new(0,
                     "hay sentencias detras de un `return`, `break` o `continue`: \
                      nunca se ejecutarian"));
@@ -180,7 +180,7 @@ impl<'a> Cuerpo<'a> {
         Ok(out)
     }
 
-    /// Un ámbito de una sola sentencia (el cuerpo de un `if` sin llaves, por
+    /// Un ambito de una sola sentencia (el cuerpo de un `if` sin llaves, por
     /// ejemplo). Se envuelve igual para que las reglas sean las mismas.
     fn anidado(&mut self, s: &cpp::Stmt, corte: Corte) -> Result<c::Stmt, CppError> {
         match s {
@@ -192,17 +192,17 @@ impl<'a> Cuerpo<'a> {
     fn stmt(&mut self, s: &cpp::Stmt) -> Result<Vec<c::Stmt>, CppError> {
         use cpp::Stmt as S;
         Ok(match s {
-            // ── La construcción ──
+            // -- La construccion --
             //
-            // El parser ya eligió QUÉ constructor: tenía delante los tipos de
+            // El parser ya eligio QUE constructor: tenia delante los tipos de
             // los argumentos, que es lo que hace falta para resolver la
-            // sobrecarga. Aquí sólo se emite — se reserva el hueco y se llama
-            // con `&objeto` de primer parámetro.
+            // sobrecarga. Aqui solo se emite -- se reserva el hueco y se llama
+            // con `&objeto` de primer parametro.
             S::DeclObj { clase, nombre, ctor, args } => {
                 let info = self.clases.get(clase).copied().unwrap_or_default();
                 let mut out = vec![c::Stmt::DeclAssign(
                     c::TypeSpec::StructRef(clase.clone()), nombre.clone(), None)];
-                // ★ El `vptr` se apunta ANTES de llamar al constructor: un
+                // * El `vptr` se apunta ANTES de llamar al constructor: un
                 // constructor puede llamar a un metodo virtual de si mismo, y
                 // si la tabla no estuviera puesta llamaria a la nada.
                 if info.vtabla {
@@ -224,7 +224,7 @@ impl<'a> Cuerpo<'a> {
                 out
             }
 
-            // ── Las salidas ──
+            // -- Las salidas --
             S::Return(v) => {
                 let limpieza = self.destruir_hasta(0);
                 match (v, limpieza.is_empty()) {
@@ -236,10 +236,10 @@ impl<'a> Cuerpo<'a> {
                         out.push(c::Stmt::Return(None));
                         out
                     }
-                    // ★ El valor se calcula ANTES de destruir. `return
+                    // * El valor se calcula ANTES de destruir. `return
                     // p.valor();` con `p` a punto de morir tiene que leer el
-                    // objeto vivo — si el destructor corriera primero, se
-                    // devolvería lo que quedara en la pila.
+                    // objeto vivo -- si el destructor corriera primero, se
+                    // devolveria lo que quedara en la pila.
                     (Some(e), false) => {
                         self.temp += 1;
                         let t = format!("ret.{}", self.temp);
@@ -261,7 +261,7 @@ impl<'a> Cuerpo<'a> {
                 out
             }
 
-            // ── Lo que abre ámbito ──
+            // -- Lo que abre ambito --
             S::Block(v) => vec![c::Stmt::Block(self.bloque(v, Corte::Ninguno)?)],
             S::If(c_, t, e) => vec![c::Stmt::If(
                 expr(c_)?,
@@ -289,7 +289,7 @@ impl<'a> Cuerpo<'a> {
                 vec![c::Stmt::Switch(sujeto, out)]
             }
 
-            // ── Lo demás, tal cual ──
+            // -- Lo demas, tal cual --
             S::Expr(e) => vec![c::Stmt::Expr(expr(e)?)],
             S::DeclVar(t, n, init) => {
                 let v = match init { Some(e) => Some(expr(e)?), None => None };
@@ -314,18 +314,18 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
 
     let mut out = c::Program::new();
 
-    // ── Las clases: un `struct` y una función suelta por método ──
+    // -- Las clases: un `struct` y una funcion suelta por metodo --
     //
-    // ★ Es Cfront, literalmente. Y el `struct` se emite con sus miembros
-    // **sin offsets**, para que el codegen de C recalcule la disposición con
-    // SU regla. El parser de C++ ya la calculó para poder poner el offset
-    // dentro de cada `Field`; emitir aquí los offsets en vez de los miembros
-    // haría que la única copia que manda fuera la de C++, y el día que las
-    // dos reglas divergieran nadie se enteraría. Así, si divergen, el valor
+    // * Es Cfront, literalmente. Y el `struct` se emite con sus miembros
+    // **sin offsets**, para que el codegen de C recalcule la disposicion con
+    // SU regla. El parser de C++ ya la calculo para poder poner el offset
+    // dentro de cada `Field`; emitir aqui los offsets en vez de los miembros
+    // haria que la unica copia que manda fuera la de C++, y el dia que las
+    // dos reglas divergieran nadie se enteraria. Asi, si divergen, el valor
     // sale mal y la matriz se pone roja.
-    // Quién tiene constructor y quién destructor. Se recoge ANTES de bajar
-    // ningún cuerpo, porque una clase puede usarse en un método de otra que se
-    // declaró antes.
+    // Quien tiene constructor y quien destructor. Se recoge ANTES de bajar
+    // ningun cuerpo, porque una clase puede usarse en un metodo de otra que se
+    // declaro antes.
     let mut info: HashMap<String, Info> = HashMap::new();
     for cl in &p.classes {
         info.insert(cl.name.clone(), Info {
@@ -337,9 +337,9 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
 
     // Las tablas virtuales: una global de `n` ranuras por clase con virtuales,
     // y las instrucciones que la rellenan. No se pueden emitir como un
-    // inicializador estático porque **las globales de BMO C sólo admiten un
-    // entero**, y la dirección de una función no se conoce hasta emitir el
-    // código. Se rellenan al principio de `main`, que es el único sitio por el
+    // inicializador estatico porque **las globales de BMO C solo admiten un
+    // entero**, y la direccion de una funcion no se conoce hasta emitir el
+    // codigo. Se rellenan al principio de `main`, que es el unico sitio por el
     // que pasa todo programa antes de construir nada.
     let mut relleno: Vec<c::Stmt> = Vec::new();
     for cl in &p.classes {
@@ -362,8 +362,8 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
 
     for cl in &p.classes {
         let mut miembros = Vec::new();
-        // El `vptr` es un campo más, y va el PRIMERO. El parser ya lo colocó
-        // en el offset 0; aquí sólo hay que declararlo para que el codegen de
+        // El `vptr` es un campo mas, y va el PRIMERO. El parser ya lo coloco
+        // en el offset 0; aqui solo hay que declararlo para que el codegen de
         // C le reserve su sitio.
         if !cl.vtabla.is_empty() {
             miembros.push(c::StructMember {
@@ -380,8 +380,8 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
             out.functions.push(metodo(cl, m, &info)?);
         }
         // El constructor y el destructor son **funciones normales** con `this`.
-        // Ahí acaba toda la magia: lo único especial de ellos es QUIÉN las
-        // llama y CUÁNDO, y eso lo decide `Cuerpo`.
+        // Ahi acaba toda la magia: lo unico especial de ellos es QUIEN las
+        // llama y CUANDO, y eso lo decide `Cuerpo`.
         for ctor in &cl.constructors {
             let mut f = metodo(cl, ctor, &info)?;
             f.name = mangling::constructor(&[], &cl.name,
@@ -409,13 +409,13 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
         out.functions.push(funcion(f, &info)?);
     }
 
-    // ★ Un programa sin `main` no es un programa.
+    // * Un programa sin `main` no es un programa.
     //
-    // Se comprueba AQUÍ y no en C a propósito. BMO C compila un fichero vacío
-    // a un BEF de 8 240 bytes sin punto de entrada — es deuda **de C**, y la
+    // Se comprueba AQUI y no en C a proposito. BMO C compila un fichero vacio
+    // a un BEF de 8 240 bytes sin punto de entrada -- es deuda **de C**, y la
     // regla 3 de `HERENCIA.md` dice que lo que le falta a C entra en C con su
-    // test y su fila en la matriz DE C, no de rebote desde aquí. Que C++ se
-    // defienda de su lado no toca a nadie; arreglarlo dentro de C sería
+    // test y su fila en la matriz DE C, no de rebote desde aqui. Que C++ se
+    // defienda de su lado no toca a nadie; arreglarlo dentro de C seria
     // combinarlos.
     let Some(main) = out.functions.iter_mut().find(|f| f.name == "main") else {
         return Err(CppError::new(0,
@@ -459,16 +459,16 @@ fn funcion(f: &cpp::Function, info: &HashMap<String, Info>) -> Result<c::Functio
         params.push(c::Param { typ: tipo(&pa.typ)?, name: pa.name.clone() });
     }
 
-    // El cuerpo entero es un ámbito: lo que se declare aquí se destruye al
-    // salir, y `Cuerpo` se encarga de que también se destruya en cada `return`.
+    // El cuerpo entero es un ambito: lo que se declare aqui se destruye al
+    // salir, y `Cuerpo` se encarga de que tambien se destruya en cada `return`.
     let mut cu = Cuerpo::nuevo(info, f.ret_type.clone());
     let cuerpo = cu.bloque(&f.body, Corte::Ninguno)?;
 
     // `var_names` es el camino LEGADO de C: `build_var_map` saca las locales
-    // recorriendo el cuerpo (`collect_decls_stmt`), que es donde está el tipo
-    // real. Aquí se rellena igual que lo hace el parser de C —parámetros
-    // primero, luego las declaradas— para no depender de cuál de los dos
-    // caminos gane el día que alguien toque el otro.
+    // recorriendo el cuerpo (`collect_decls_stmt`), que es donde esta el tipo
+    // real. Aqui se rellena igual que lo hace el parser de C --parametros
+    // primero, luego las declaradas-- para no depender de cual de los dos
+    // caminos gane el dia que alguien toque el otro.
     let mut var_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
     let mut var_count = 0u32;
     for s in &cuerpo {
@@ -490,7 +490,7 @@ fn funcion(f: &cpp::Function, info: &HashMap<String, Info>) -> Result<c::Functio
     })
 }
 
-// ── Tipos ───────────────────────────────────────────────────────────
+// -- Tipos -----------------------------------------------------------
 
 fn tipo(t: &cpp::TypeSpec) -> Result<c::TypeSpec, CppError> {
     use cpp::TypeSpec as T;
@@ -509,16 +509,16 @@ fn tipo(t: &cpp::TypeSpec) -> Result<c::TypeSpec, CppError> {
         T::Float => c::TypeSpec::Float,
         T::Double => c::TypeSpec::Double,
         // `bool` no existe en el AST de C. Un byte con 0 o 1 es lo que emite
-        // cualquiera, y `BoolLit` baja a `Int(0)`/`Int(1)` más abajo.
+        // cualquiera, y `BoolLit` baja a `Int(0)`/`Int(1)` mas abajo.
         T::Bool => c::TypeSpec::Char,
         T::Ptr(t) => c::TypeSpec::Ptr(Box::new(tipo(t)?)),
         T::Array(t, n) => c::TypeSpec::Array(Box::new(tipo(t)?), *n),
 
-        // ── Rechazos con el paso donde llegan ──
+        // -- Rechazos con el paso donde llegan --
         //
-        // `Ref` NO se mapea a `Ptr` aunque quepa: sin la indirección
-        // automática en cada uso, el programa leería la dirección en lugar
-        // del valor. Compilaría y haría otra cosa, que es peor que no
+        // `Ref` NO se mapea a `Ptr` aunque quepa: sin la indireccion
+        // automatica en cada uso, el programa leeria la direccion en lugar
+        // del valor. Compilaria y haria otra cosa, que es peor que no
         // compilar.
         T::Ref(_) => return Err(pendiente("las referencias `T&`", 2,
             "la indirección automática en cada uso")),
@@ -530,7 +530,7 @@ fn tipo(t: &cpp::TypeSpec) -> Result<c::TypeSpec, CppError> {
     })
 }
 
-// ── Sentencias sueltas ──────────────────────────────────────────────
+// -- Sentencias sueltas ----------------------------------------------
 //
 // El descenso de sentencias vive en `Cuerpo`, arriba: desde el paso 3 una
 // sentencia puede convertirse en VARIAS (declarar + construir, destruir +
@@ -540,7 +540,7 @@ fn opt_expr(e: &Option<cpp::Expr>) -> Result<Option<c::Expr>, CppError> {
     match e { Some(x) => Ok(Some(expr(x)?)), None => Ok(None) }
 }
 
-// ── Expresiones ─────────────────────────────────────────────────────
+// -- Expresiones -----------------------------------------------------
 
 fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
     use cpp::Expr as E;
@@ -556,9 +556,9 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
         E::StringLit(s) => c::Expr::StringLit(s.clone()),
         E::CharLit(b) => c::Expr::CharLit(*b),
         E::BoolLit(b) => c::Expr::Int(if *b { 1 } else { 0 }),
-        // `nullptr` es un puntero nulo, y en la máquina eso es un cero. Lo
-        // que `nullptr` aporta sobre `NULL` —que no se convierte solo a
-        // entero— es comprobación del frontend, y cuesta cero al emitir.
+        // `nullptr` es un puntero nulo, y en la maquina eso es un cero. Lo
+        // que `nullptr` aporta sobre `NULL` --que no se convierte solo a
+        // entero-- es comprobacion del frontend, y cuesta cero al emitir.
         E::NullPtr => c::Expr::Int(0),
         E::Var(n) => c::Expr::Var(n.clone()),
         E::Call(n, args) => {
@@ -610,10 +610,10 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
             Box::new(expr(c_)?), Box::new(expr(a)?), Box::new(expr(b)?),
         ),
 
-        // ── Clases (paso 2) ──
+        // -- Clases (paso 2) --
         //
-        // `this` es un parámetro más, así que baja a una variable con ese
-        // nombre. Ahí acaba toda la magia del puntero implícito de C++.
+        // `this` es un parametro mas, asi que baja a una variable con ese
+        // nombre. Ahi acaba toda la magia del puntero implicito de C++.
         E::This => c::Expr::Var("this".into()),
         E::MemberAccess(b, n, off, t) =>
             c::Expr::Field(Box::new(expr(b)?), n.clone(), *off, tipo(t)?),
@@ -623,8 +623,8 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
             c::Expr::AssignField(Box::new(expr(b)?), n.clone(), *off, tipo(t)?, Box::new(expr(v)?)),
         E::AssignArrow(b, n, off, t, v) =>
             c::Expr::AssignArrow(Box::new(expr(b)?), n.clone(), *off, tipo(t)?, Box::new(expr(v)?)),
-        // `objeto.metodo(a, b)` → `Clase.metodo(&objeto, a, b)`. El parser ya
-        // puso el `&` (o lo omitió si la base venía de `->`), así que aquí no
+        // `objeto.metodo(a, b)` -> `Clase.metodo(&objeto, a, b)`. El parser ya
+        // puso el `&` (o lo omitio si la base venia de `->`), asi que aqui no
         // se decide nada: se ordenan los argumentos.
         E::MethodCall(objeto, cls, m, args) => {
             let mut a = vec![expr(objeto)?];
@@ -633,18 +633,18 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
             c::Expr::Call(m.clone(), a)
         }
 
-        // ── Rechazos con el paso donde llegan ──
-        // ★ **El despacho virtual, entero.**
+        // -- Rechazos con el paso donde llegan --
+        // * **El despacho virtual, entero.**
         //
         //   objeto->vptr        el objeto lleva dentro la tabla de SU tipo
-        //   tabla[ranura]       la ranura la fijó el parser
-        //   (…)(objeto, args)   y se llama por el puntero que salga
+        //   tabla[ranura]       la ranura la fijo el parser
+        //   (...)(objeto, args)   y se llama por el puntero que salga
         //
-        // Es exactamente lo que se escribiría a mano en C, y por eso Bjarne
-        // pudo implementarlo como una traducción. Dos objetos del mismo tipo
-        // estático con tablas distintas ejecutan funciones distintas en la
-        // misma línea de código: eso es una función virtual y no hace falta
-        // nada más.
+        // Es exactamente lo que se escribiria a mano en C, y por eso Bjarne
+        // pudo implementarlo como una traduccion. Dos objetos del mismo tipo
+        // estatico con tablas distintas ejecutan funciones distintas en la
+        // misma linea de codigo: eso es una funcion virtual y no hace falta
+        // nada mas.
         E::VirtualCall(objeto, _, ranura, args) => {
             let obj = expr(objeto)?;
             let tabla = c::Expr::Arrow(
@@ -665,13 +665,13 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
     })
 }
 
-// ── El error ────────────────────────────────────────────────────────
+// -- El error --------------------------------------------------------
 
-/// Un rechazo que **dice en qué paso llega** lo que falta.
+/// Un rechazo que **dice en que paso llega** lo que falta.
 ///
-/// La línea va a 0 porque el AST de hoy no lleva posiciones: el parser del
-/// paso 1 las añade, y entonces esto pasa a decir dónde. Mientras tanto es
-/// preferible un error sin línea a un silencio con línea.
+/// La linea va a 0 porque el AST de hoy no lleva posiciones: el parser del
+/// paso 1 las anade, y entonces esto pasa a decir donde. Mientras tanto es
+/// preferible un error sin linea a un silencio con linea.
 fn pendiente(que: &str, paso: u8, necesita: &str) -> CppError {
     CppError::new(0, format!(
         "{que}: llega en el PASO {paso} — necesita {necesita}. \

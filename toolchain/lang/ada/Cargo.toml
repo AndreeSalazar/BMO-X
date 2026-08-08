@@ -5,23 +5,23 @@ edition = "2021"
 authors = ["BMO Project"]
 description = "BMO Ada frontend — compila Ada a ejecutables BEX nativos, sin runtime"
 
-# ── Lo que enlaza, y lo que NO ───────────────────────────────────
+# -- Lo que enlaza, y lo que NO -----------------------------------
 #
-# NO depende de `bmo-cobol-front`, y es una decisión, no un descuido: cada
-# lenguaje es un pipeline individual y completo (regla 2 del proyecto —
+# NO depende de `bmo-cobol-front`, y es una decision, no un descuido: cada
+# lenguaje es un pipeline individual y completo (regla 2 del proyecto --
 # "contratos y formatos, NUNCA cerebros"). Ada mantiene su esencia de principio
-# a fin, con su propio lexer, su propio análisis y su propio emisor.
+# a fin, con su propio lexer, su propio analisis y su propio emisor.
 #
-# Lo único compartido son CONTRATOS y librerías OPCIONALES que el frontend
+# Lo unico compartido son CONTRATOS y librerias OPCIONALES que el frontend
 # elige enlazar:
 #   bmo-abi     el contenedor BEF y la superficie congelada de 3 syscalls
 #   bmo-lower   L1, la puerta al ABI (consola, formateo, archivos)
 #
-# El día que Ada necesite el `PICTURE` de Annex F —que el estándar copió de
-# COBOL— la salida NO es importar `lang/cobol`: es promover ese motor a
-# `forge/` como librería opcional que los dos elijan enlazar.
+# El dia que Ada necesite el `PICTURE` de Annex F --que el estandar copio de
+# COBOL-- la salida NO es importar `lang/cobol`: es promover ese motor a
+# `forge/` como libreria opcional que los dos elijan enlazar.
 [dependencies]
-# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui — es el
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui -- es el
 # "unico checkpoint comun" de la filosofia.
 bmo-verify = { path = "../../forge/bmo-verify" }
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }
@@ -37,5 +37,5 @@ path = "src/main.rs"
 
 [dev-dependencies]
 # El banco de pruebas EJECUTA los bytes emitidos. Un `if` que no bifurca se ve
-# igual que uno que sí en un volcado; sólo se distinguen corriéndolos.
+# igual que uno que si en un volcado; solo se distinguen corriendolos.
 bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }

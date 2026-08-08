@@ -1,10 +1,10 @@
-//! BMO Symbol Linker — reads Ring 3 .elf module files, extracts exported
+//! BMO Symbol Linker -- reads Ring 3 .elf module files, extracts exported
 //! symbols, and generates BMO_SYMBOLS.toml for runtime resolution.
 //!
 //! Usage: bmo-linker <output.toml> <module1.elf> <module2.elf> ...
 //!
 //! Each .elf module contributes its no_mangle/global function symbols.
-//! The output TOML file maps category → symbol → virtual address.
+//! The output TOML file maps category -> symbol -> virtual address.
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -37,7 +37,7 @@ fn main() {
             }
         };
 
-        // Derive category from filename: "mod_timeback.elf" → "timeback"
+        // Derive category from filename: "mod_timeback.elf" -> "timeback"
         let stem = std::path::Path::new(elf_path)
             .file_stem()
             .unwrap_or_default()

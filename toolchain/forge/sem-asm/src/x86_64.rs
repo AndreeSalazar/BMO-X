@@ -1,14 +1,14 @@
-//! Ensamblador x86-64 mínimo sobre el motor sem-asm.
+//! Ensamblador x86-64 minimo sobre el motor sem-asm.
 //!
 //! Encodea el subconjunto que HOY los `codegen.rs` de C y COBOL escriben a
-//! mano (mov reg,imm64 · mov reg,reg · syscall). El **opcode** sale de la
-//! tabla TOML (`Instructions`); el REX/ModRM lo compone esta capa según las
+//! mano (mov reg,imm64 - mov reg,reg - syscall). El **opcode** sale de la
+//! tabla TOML (`Instructions`); el REX/ModRM lo compone esta capa segun las
 //! reglas de x86-64. Migrar los codegens = reemplazar los bytes hardcodeados
 //! por llamadas a `Asm`.
 
 use crate::{Instructions, SemAsmError};
 
-/// Registros de 64 bits con su numeración de encoding x86-64.
+/// Registros de 64 bits con su numeracion de encoding x86-64.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Reg {
@@ -27,7 +27,7 @@ impl Reg {
     fn ext(self) -> bool { self.num() >= 8 }
 }
 
-/// Prefijo REX.W (operando de 64 bits) con los bits R/B según extensión.
+/// Prefijo REX.W (operando de 64 bits) con los bits R/B segun extension.
 fn rex_w(r_ext: bool, b_ext: bool) -> u8 {
     0x48 | (if r_ext { 0x4 } else { 0 }) | (if b_ext { 0x1 } else { 0 })
 }
@@ -46,7 +46,7 @@ impl<'a> Asm<'a> {
     pub fn into_bytes(self) -> Vec<u8> { self.out }
     pub fn bytes(&self) -> &[u8] { &self.out }
 
-    /// `mov r64, imm64` — opcode base `mov_imm` (0xB8) + reg, con REX.W e imm64 LE.
+    /// `mov r64, imm64` -- opcode base `mov_imm` (0xB8) + reg, con REX.W e imm64 LE.
     pub fn mov_imm64(&mut self, dst: Reg, imm: u64) -> Result<&mut Self, SemAsmError> {
         let base = self.isa.opcode("mov_imm")?[0];
         self.out.push(rex_w(false, dst.ext()));
@@ -55,8 +55,8 @@ impl<'a> Asm<'a> {
         Ok(self)
     }
 
-    /// `mov r/m64, r64` — opcode `mov` (0x89), ModRM en modo registro (11).
-    /// Semántica: `dst = src`. dst es el r/m, src es el reg del ModRM.
+    /// `mov r/m64, r64` -- opcode `mov` (0x89), ModRM en modo registro (11).
+    /// Semantica: `dst = src`. dst es el r/m, src es el reg del ModRM.
     pub fn mov_reg(&mut self, dst: Reg, src: Reg) -> Result<&mut Self, SemAsmError> {
         let op = self.isa.opcode("mov")?[0]; // 0x89 (mov r/m, r)
         self.out.push(rex_w(src.ext(), dst.ext()));
@@ -66,8 +66,8 @@ impl<'a> Asm<'a> {
         Ok(self)
     }
 
-    /// `syscall` (0F 05). No está en `instructions.toml`; es un opcode fijo
-    /// de 2 bytes, así que se emite directo.
+    /// `syscall` (0F 05). No esta en `instructions.toml`; es un opcode fijo
+    /// de 2 bytes, asi que se emite directo.
     pub fn syscall(&mut self) -> &mut Self {
         self.out.extend_from_slice(&[0x0F, 0x05]);
         self

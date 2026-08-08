@@ -1,4 +1,4 @@
-//! `primitives` — tipos numéricos y booleanos del BMO ABI.
+//! `primitives` -- tipos numericos y booleanos del BMO ABI.
 //!
 //! Reemplaza `<stdint.h>`, `<stddef.h>` y `<stdbool.h>` con tipos garantizados,
 //! sin sorpresas dependientes de la plataforma.
@@ -9,6 +9,6 @@ pub mod bool;
 pub mod floats;
 pub mod ints;
 
-// Re-exports — `use crate::bmo_abi::primitives::*;`
+// Re-exports -- `use crate::bmo_abi::primitives::*;`
 pub use self::bool::*;
 pub use ints::*;

@@ -1,4 +1,4 @@
---  CIERRE — el primer programa de Ada que BMO-X compila y ejecuta.
+--  CIERRE -- el primer programa de Ada que BMO-X compila y ejecuta.
 --
 --  Tres cuotas de 19.99 y una devolucion, en decimal EXACTO. El mismo calculo
 --  que hace `hola_COBOL.cob`, y da el mismo numero por la misma razon: el
@@ -7,7 +7,7 @@
 --  `type Saldo is delta 0.01 digits 12` no es una convencion ni una libreria:
 --  es un TIPO, y el compilador sabe que sus valores son multiplos de 0.01. Eso
 --  es el Annex F de Ada (Information Systems), que esta definido sobre las
---  reglas de COBOL — por eso este frontend nacio con el decimal ya resuelto.
+--  reglas de COBOL -- por eso este frontend nacio con el decimal ya resuelto.
 --
 --  Y no hay runtime detras. `Put_Line` baja a la puerta de la consola y de ahi
 --  al unico syscall que existe. Un .bex de Ada no enlaza nada.

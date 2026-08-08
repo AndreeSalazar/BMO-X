@@ -1,6 +1,6 @@
-//! El árbol de Ada. Sólo lo que este compilador sabe emitir.
+//! El arbol de Ada. Solo lo que este compilador sabe emitir.
 
-/// Dónde falló, y por qué.
+/// Donde fallo, y por que.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AdaError {
     pub linea: usize,
@@ -21,18 +21,18 @@ impl core::fmt::Display for AdaError {
 
 /// Un tipo declarado por el programa.
 ///
-/// ★ **El decimal de Ada es de primera clase, y por eso Ada está aquí.**
-/// `type Saldo is delta 0.01 digits 12;` no es una convención ni una librería:
-/// es un TIPO, y el compilador sabe que sus valores son múltiplos de 0.01. Se
-/// guarda como entero escalado —céntimos— exactamente igual que un `PIC` de
-/// COBOL, porque es exactamente lo mismo: el Annex F de Ada copió las reglas
-/// de COBOL a propósito.
+/// * **El decimal de Ada es de primera clase, y por eso Ada esta aqui.**
+/// `type Saldo is delta 0.01 digits 12;` no es una convencion ni una libreria:
+/// es un TIPO, y el compilador sabe que sus valores son multiplos de 0.01. Se
+/// guarda como entero escalado --centimos-- exactamente igual que un `PIC` de
+/// COBOL, porque es exactamente lo mismo: el Annex F de Ada copio las reglas
+/// de COBOL a proposito.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TipoDecimal {
     pub nombre: String,
-    /// Cuántos decimales. `delta 0.01` → 2. Es la escala.
+    /// Cuantos decimales. `delta 0.01` -> 2. Es la escala.
     pub escala: u32,
-    /// Cuántas cifras significativas admite. `digits 12` → 12.
+    /// Cuantas cifras significativas admite. `digits 12` -> 12.
     pub digitos: u32,
 }
 
@@ -48,10 +48,10 @@ pub struct Declaracion {
     pub inicial: Option<String>,
 }
 
-/// Una expresión aritmética, ya en árbol.
+/// Una expresion aritmetica, ya en arbol.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    /// Un literal numérico tal cual se escribió.
+    /// Un literal numerico tal cual se escribio.
     Literal(String),
     /// Una variable.
     Nombre(String),
@@ -59,7 +59,7 @@ pub enum Expr {
     Binaria(Box<Expr>, char, Box<Expr>),
 }
 
-/// Una comparación.
+/// Una comparacion.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Condicion {
     pub izq: Expr,
@@ -71,14 +71,14 @@ pub struct Condicion {
 /// Lo que el programa hace.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sentencia {
-    /// `null;` — no hacer nada, DICHO. Ada no permite un `begin end` vacío: si
-    /// el cuerpo no hace nada, hay que escribirlo. Se representa en el árbol en
-    /// vez de tirarla al analizar, porque "aquí no pasa nada a propósito" es
-    /// información y un hueco no lo es.
+    /// `null;` -- no hacer nada, DICHO. Ada no permite un `begin end` vacio: si
+    /// el cuerpo no hace nada, hay que escribirlo. Se representa en el arbol en
+    /// vez de tirarla al analizar, porque "aqui no pasa nada a proposito" es
+    /// informacion y un hueco no lo es.
     Nada,
     /// `Put_Line("texto");`
     PutLiteral(String),
-    /// `Put_Line(X);` — el valor, con su escala.
+    /// `Put_Line(X);` -- el valor, con su escala.
     PutValor(String),
     /// `X := <expr>;`
     Asignar(String, Expr),

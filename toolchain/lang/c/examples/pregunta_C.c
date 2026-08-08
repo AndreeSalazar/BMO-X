@@ -1,22 +1,22 @@
-/* pregunta_C.bex — el primer programa en C que PREGUNTA.
+/* pregunta_C.bex -- el primer programa en C que PREGUNTA.
  *
- * Hasta hoy un programa en C de BMO sólo podía hablar. `printf` bajaba a la
- * puerta de consola y ahí se acababa la conversación: no había forma de leer
- * una tecla, así que ningún programa podía pedir un dato. COBOL tenía `ACCEPT`
- * desde hacía semanas; C no tenía nada.
+ * Hasta hoy un programa en C de BMO solo podia hablar. `printf` bajaba a la
+ * puerta de consola y ahi se acababa la conversacion: no habia forma de leer
+ * una tecla, asi que ningun programa podia pedir un dato. COBOL tenia `ACCEPT`
+ * desde hacia semanas; C no tenia nada.
  *
- * ══ Cómo se lanza ══
+ * == Como se lanza ==
  *
  * Desde la caja del compositor:  c/pregc.bex
  *
  * Y entonces se escribe EN LA CAJA y se pulsa Enter: lo que se teclea llega a
- * este programa por su consola. Ése es el circuito entero —el terminal escribe
- * en la consola del hijo, el hijo la lee— y es la primera vez que se recorre
+ * este programa por su consola. Ese es el circuito entero --el terminal escribe
+ * en la consola del hijo, el hijo la lee-- y es la primera vez que se recorre
  * desde C.
  *
- * ★ Ojo con `getchar`: en BMO **nunca devuelve EOF**. Una consola no se acaba,
+ * * Ojo con `getchar`: en BMO **nunca devuelve EOF**. Una consola no se acaba,
  *   se queda esperando. Un `while ((c = getchar()) != EOF)` copiado de un libro
- *   gira para siempre. Aquí se corta con el salto de línea, que es lo que hay.
+ *   gira para siempre. Aqui se corta con el salto de linea, que es lo que hay.
  *
  * Compilar:
  *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/pregunta_C.c \
@@ -35,12 +35,12 @@ int main() {
 
     printf("cuantos anos tienes? ");
     scanf("%d", &edad);
-    /* Aritmética sobre lo leído: si el parseo devolviera basura, esto lo
-     * enseña. Un eco solo no distingue "lo lei" de "lo copie". */
+    /* Aritmetica sobre lo leido: si el parseo devolviera basura, esto lo
+     * ensena. Un eco solo no distingue "lo lei" de "lo copie". */
     printf("en 10 anos tendras %d\n", edad + 10);
 
     /* Y byte a byte, que es el otro camino. Se cuentan las letras en vez de
-     * repetirlas: contar prueba que llegaron TODAS, y ahí es donde se vería si
+     * repetirlas: contar prueba que llegaron TODAS, y ahi es donde se veria si
      * el buffer perdiera las seis que sobran de cada paquete. */
     printf("escribe algo y cuento sus letras: ");
     letras = 0;

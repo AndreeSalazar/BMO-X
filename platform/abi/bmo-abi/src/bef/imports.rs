@@ -12,19 +12,19 @@
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
-/// Una entrada del import table — 24 bytes.
+/// Una entrada del import table -- 24 bytes.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy)]
 pub struct ImportEntry {
-    /// Offset (dentro de la sección Imports) al string del nombre de la lib.
+    /// Offset (dentro de la seccion Imports) al string del nombre de la lib.
     pub library_name_off: bx_u32,
-    /// Offset al string del nombre del símbolo.
+    /// Offset al string del nombre del simbolo.
     pub symbol_name_off: bx_u32,
-    /// Hash BLAKE3-32 del símbolo (acelera la búsqueda).
+    /// Hash BLAKE3-32 del simbolo (acelera la busqueda).
     pub symbol_hash: bx_u32,
     /// Flags `ImportFlags`.
     pub flags: bx_u32,
-    /// Offset en `.code` o `.data` donde escribir la dirección resuelta.
+    /// Offset en `.code` o `.data` donde escribir la direccion resuelta.
     pub binding_offset: bx_u64,
 }
 const _: () = assert!(core::mem::size_of::<ImportEntry>() == 24);
@@ -36,11 +36,11 @@ bitflags::bitflags! {
         const EAGER          = 1 << 0;
         /// Es un import opcional (no fallar si no se encuentra).
         const WEAK           = 1 << 1;
-        /// El target es un dato (vs. una función).
+        /// El target es un dato (vs. una funcion).
         const DATA           = 1 << 2;
-        /// Lib o símbolo originalmente de Win32 (devour PE).
+        /// Lib o simbolo originalmente de Win32 (devour PE).
         const FROM_PE        = 1 << 8;
-        /// Lib o símbolo originalmente de glibc/musl (devour ELF).
+        /// Lib o simbolo originalmente de glibc/musl (devour ELF).
         const FROM_ELF       = 1 << 9;
     }
 }
@@ -54,7 +54,7 @@ impl<'a> ImportTable<'a> {
     pub fn parse(section_bytes: &'a [u8], entry_count: u32) -> Result<Self, &'static str> {
         let needed = entry_count as usize * core::mem::size_of::<ImportEntry>();
         if section_bytes.len() < needed {
-            return Err("import table demasiado pequeña");
+            return Err("import table demasiado pequena");
         }
         let raw_ptr = section_bytes.as_ptr();
         if (raw_ptr as usize) % core::mem::align_of::<ImportEntry>() != 0 {

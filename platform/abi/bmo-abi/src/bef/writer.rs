@@ -12,44 +12,44 @@ use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64};
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// ★ A cuánto se alinea el OFFSET EN FICHERO de una sección. **Ocho bytes.**
+/// * A cuanto se alinea el OFFSET EN FICHERO de una seccion. **Ocho bytes.**
 ///
-/// # Por qué no es el `alignment` de la sección
+/// # Por que no es el `alignment` de la seccion
 ///
 /// Antes se usaba `section.alignment`, que vale **4096** en los tres frontends
-/// porque es lo que la sección necesita EN MEMORIA: el cargador coloca cada una
-/// en su propia página. Usar el mismo número para el fichero metía un agujero de
-/// hasta 4095 bytes antes de cada sección, y en `holac.bex` eso era
+/// porque es lo que la seccion necesita EN MEMORIA: el cargador coloca cada una
+/// en su propia pagina. Usar el mismo numero para el fichero metia un agujero de
+/// hasta 4095 bytes antes de cada seccion, y en `holac.bex` eso era
 ///
 /// ```text
 /// 3 952 bytes de hueco antes de `code` + 2 642 antes de `rodata`
 ///   = 6 594 de 8 432 bytes de fichero, o sea el 78% aire
 /// ```
 ///
-/// **Son dos requisitos distintos que compartían un campo.** La alineación en
+/// **Son dos requisitos distintos que compartian un campo.** La alineacion en
 /// memoria la sigue declarando `entry.alignment` y la sigue honrando el
-/// cargador; ésta sólo tiene que dejar los datos donde se puedan leer.
+/// cargador; esta solo tiene que dejar los datos donde se puedan leer.
 ///
-/// # Por qué ocho basta
+/// # Por que ocho basta
 ///
 /// El cargador **COPIA**: `ring0/task/proc.rs` hace un `copy_nonoverlapping`
-/// desde `file_offset`, al que le da igual dónde empiece. Y `bex::inspect` sólo
+/// desde `file_offset`, al que le da igual donde empiece. Y `bex::inspect` solo
 /// exige que `alignment` sea potencia de dos y que `file_offset + file_size`
-/// quepa en el archivo — comprobado, no supuesto. Los ocho bytes son para que
+/// quepa en el archivo -- comprobado, no supuesto. Los ocho bytes son para que
 /// las secciones que se leen como structs (`Symbols`, `Relocations`, `Imports`,
 /// de 24 bytes cada entrada) queden alineadas a `u64`.
 ///
-/// # ⚠️ Cuándo dejaría de bastar
+/// # [!] Cuando dejaria de bastar
 ///
-/// Si algún día BMO quisiera **mapear el fichero directamente** a las páginas
-/// del proceso en vez de copiarlo —demand paging—, entonces `file_offset`
-/// tendría que ser **congruente** con la dirección virtual módulo el tamaño de
-/// página, que es la regla `p_offset ≡ p_vaddr (mod pagesize)` de ELF. No es
-/// "alineado a página": es congruente, y son cosas distintas. Mientras el
+/// Si algun dia BMO quisiera **mapear el fichero directamente** a las paginas
+/// del proceso en vez de copiarlo --demand paging--, entonces `file_offset`
+/// tendria que ser **congruente** con la direccion virtual modulo el tamano de
+/// pagina, que es la regla `p_offset == p_vaddr (mod pagesize)` de ELF. No es
+/// "alineado a pagina": es congruente, y son cosas distintas. Mientras el
 /// cargador copie, esto no hace falta.
 const ALINEACION_EN_FICHERO: u64 = 8;
 
-/// Redondea `n` hacia arriba al múltiplo de `a`, que ha de ser potencia de dos.
+/// Redondea `n` hacia arriba al multiplo de `a`, que ha de ser potencia de dos.
 fn alinea(n: u64, a: u64) -> u64 {
     (n + a - 1) & !(a - 1)
 }
@@ -206,13 +206,13 @@ impl BefBuilder {
         let tbl = bytes_from_slice(&entries);
         buf[table_offset as usize..table_offset as usize + tbl.len()].copy_from_slice(tbl);
 
-        // ★ SE ESCRIBE DONDE LA TABLA DICE, y no se recalcula.
+        // * SE ESCRIBE DONDE LA TABLA DICE, y no se recalcula.
         //
-        // Aquí había una segunda copia de la fórmula de alineación, idéntica a
+        // Aqui habia una segunda copia de la formula de alineacion, identica a
         // la de arriba. Dos cuentas separadas que TIENEN que dar lo mismo son un
-        // bug esperando a que alguien toque una sola: la tabla declararía un
-        // offset y los bytes estarían en otro, y el fallo aparecería al CARGAR
-        // —no al compilar—, con el kernel leyendo relleno como si fuera código.
+        // bug esperando a que alguien toque una sola: la tabla declararia un
+        // offset y los bytes estarian en otro, y el fallo apareceria al CARGAR
+        // --no al compilar--, con el kernel leyendo relleno como si fuera codigo.
         //
         // Ahora el destino sale de `entries[i].file_offset`, que es exactamente
         // lo que el fichero declara. Imposible que divirjan.
@@ -258,10 +258,10 @@ impl BefBuilder {
         match sig_idx {
             Some(_) => {}
             None => {
-                // La firma va al final, tras la última sección. Antes se
+                // La firma va al final, tras la ultima seccion. Antes se
                 // apoyaba en el `write_off` que iba corriendo por el bucle de
                 // arriba; ahora que ese bucle escribe donde dice la tabla y no
-                // lleva cursor, el final de los datos es el tamaño del búfer.
+                // lleva cursor, el final de los datos es el tamano del bufer.
                 let sig_off = alinea(buf.len() as u64, ALINEACION_EN_FICHERO);
                 let end = sig_off + sig_data.len() as u64;
                 buf.resize(end as usize, 0);

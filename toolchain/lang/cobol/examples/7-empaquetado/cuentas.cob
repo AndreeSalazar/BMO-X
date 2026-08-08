@@ -1,4 +1,4 @@
-      * CUENTAS — COMP-3, el formato en el que estan los datos de un banco.
+      * CUENTAS -- COMP-3, el formato en el que estan los datos de un banco.
       *
       * Los seis ejemplos anteriores calculan bien y presentan bien, y todos
       * guardan el dinero igual: un entero de 64 bits con la escala de su PIC.
@@ -65,7 +65,7 @@
        PROCEDURE DIVISION.
            DISPLAY "CUENTAS - DECIMAL EMPAQUETADO".
 
-      *    ── 1. El ancho del campo es el de su PICTURE ──
+      *    -- 1. El ancho del campo es el de su PICTURE --
       *    Los dos reciben 12345. El empaquetado tiene sitio para TRES
       *    digitos y se queda con 345; el DISPLAY, hoy, se los queda todos.
       *    Si algun dia estas dos lineas salen iguales, el COMP-3 dejo de
@@ -77,19 +77,19 @@
            DISPLAY "el mismo dato sin empaquetar:".
            DISPLAY ANCHO.
 
-      *    ── 2. El signo vuelve ──
+      *    -- 2. El signo vuelve --
            MOVE 0 TO EN-ROJO.
            SUBTRACT 1234.56 FROM EN-ROJO.
            DISPLAY "una cuenta en rojo:".
            DISPLAY EN-ROJO.
 
-      *    ── 3. Sin S no hay rojo: el campo guarda el valor absoluto ──
+      *    -- 3. Sin S no hay rojo: el campo guarda el valor absoluto --
            MOVE 0 TO SIN-ROJO.
            SUBTRACT 1234.56 FROM SIN-ROJO.
            DISPLAY "el mismo importe en un campo sin signo:".
            DISPLAY SIN-ROJO.
 
-      *    ── 4. El batch: se totaliza empaquetado y cuadra ──
+      *    -- 4. El batch: se totaliza empaquetado y cuadra --
       *    El registro del fichero tambien es COMP-3, asi que cada importe
       *    leido pasa por los nibbles antes de sumarse. Si el empaquetado
       *    perdiera un centimo, el total lo diria.

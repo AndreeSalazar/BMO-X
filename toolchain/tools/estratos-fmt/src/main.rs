@@ -1,8 +1,8 @@
-//! `estratos-fmt` — formatea un volumen ESTRATOS desde el anfitrión.
+//! `estratos-fmt` -- formatea un volumen ESTRATOS desde el anfitrion.
 //!
-//! Paso 4c del orden de construcción (`ESTRATOS.md` §10). El diseño lo pide
-//! así a propósito: *"formatear desde el anfitrión con una herramienta del
-//! toolchain, y que el kernel lo monte y lea. Sin riesgo: si el formato está
+//! Paso 4c del orden de construccion (`ESTRATOS.md` section 10). El diseno lo pide
+//! asi a proposito: *"formatear desde el anfitrion con una herramienta del
+//! toolchain, y que el kernel lo monte y lea. Sin riesgo: si el formato esta
 //! mal, se reformatea"*.
 //!
 //! # Uso
@@ -15,11 +15,11 @@
 //!
 //! Por defecto escribe una **imagen en un archivo**, que no puede romper nada.
 //! Tocar un volumen de verdad exige `--volumen` **y** `--si-estoy-seguro`, y
-//! aun así imprime primero lo que va a destruir.
+//! aun asi imprime primero lo que va a destruir.
 //!
-//! # Se relee a sí mismo
+//! # Se relee a si mismo
 //!
-//! Al terminar, vuelve a abrir lo que acaba de escribir y recorre el árbol
+//! Al terminar, vuelve a abrir lo que acaba de escribir y recorre el arbol
 //! entero comprobando cada suma. Un formateador que no se relee no ha
 //! demostrado nada: solo ha escrito bytes con confianza.
 
@@ -33,15 +33,15 @@ use bmo_estratos::objects::{
     PTRS_POR_BLOQUE, PTR_LEN, RESIDENTE_MAX,
 };
 
-// ── El log: se escribe SIEMPRE hacia adelante ───────────────────────────────
+// -- El log: se escribe SIEMPRE hacia adelante -------------------------------
 //
-// §5 del diseño. No hay "buscar un hueco": el log crece, y los objetos
-// pequeños se empaquetan en el bloque en curso para no gastar 4096 bytes en un
+// section 5 del diseno. No hay "buscar un hueco": el log crece, y los objetos
+// pequenos se empaquetan en el bloque en curso para no gastar 4096 bytes en un
 // nodo de 560.
 
 struct Log {
     f: File,
-    /// Bloque que se está llenando.
+    /// Bloque que se esta llenando.
     actual: u64,
     buf: [u8; BLOQUE],
     usado: usize,
@@ -64,7 +64,7 @@ impl Log {
         Ok(())
     }
 
-    /// Un objeto pequeño (nodo, estrato): comparte bloque con sus vecinos.
+    /// Un objeto pequeno (nodo, estrato): comparte bloque con sus vecinos.
     fn objeto(&mut self, datos: &[u8]) -> std::io::Result<BlockPtr> {
         assert!(datos.len() <= BLOQUE);
         if self.usado + datos.len() > BLOQUE { self.volcar()?; }
@@ -75,7 +75,7 @@ impl Log {
     }
 
     /// Un bloque de datos entero. No comparte: los datos de un archivo se leen
-    /// por bloques completos y partirlos costaría una lectura extra por trozo.
+    /// por bloques completos y partirlos costaria una lectura extra por trozo.
     fn bloque(&mut self, datos: &[u8]) -> std::io::Result<BlockPtr> {
         assert!(datos.len() <= BLOQUE);
         self.volcar()?;
@@ -98,9 +98,9 @@ impl Log {
 
 /// Escribe el contenido de un archivo y devuelve `(raiz, niveles)`.
 ///
-/// Es la decisión 2 del modelo de objetos puesta a trabajar: los datos se
+/// Es la decision 2 del modelo de objetos puesta a trabajar: los datos se
 /// parten en bloques, y si no caben en un puntero se construye un nivel de
-/// indirección encima. Se repite hasta que queda una sola raíz.
+/// indireccion encima. Se repite hasta que queda una sola raiz.
 fn escribir_arbol(log: &mut Log, datos: &[u8]) -> std::io::Result<(BlockPtr, u8)> {
     if datos.len() <= BLOQUE {
         return Ok((log.bloque(datos)?, 0));
@@ -127,31 +127,31 @@ fn escribir_arbol(log: &mut Log, datos: &[u8]) -> std::io::Result<(BlockPtr, u8)
 
 /// Escribe un archivo como nodo con su `:datos` y su `:firma`.
 ///
-/// ## Qué prueba la firma y qué NO
+/// ## Que prueba la firma y que NO
 ///
 /// `:firma` es el BLAKE3 del contenido. Con eso, quien abre el archivo puede
-/// comprobar que **los bytes son los que se guardaron**: detecta corrupción
-/// del disco, una escritura a medias o un bloque que se leyó mal.
+/// comprobar que **los bytes son los que se guardaron**: detecta corrupcion
+/// del disco, una escritura a medias o un bloque que se leyo mal.
 ///
 /// Lo que NO prueba es autenticidad. Quien pueda escribir en el volumen puede
-/// cambiar el archivo *y* recalcular su hash: no hay clave por medio, así que
+/// cambiar el archivo *y* recalcular su hash: no hay clave por medio, asi que
 /// no hay nada que un atacante no pueda rehacer. Para eso hace falta firmar el
-/// hash con una clave que el kernel conozca y el atacante no — el esqueleto
-/// está en `bmo-abi/src/bef/signing.rs` y es trabajo aparte.
+/// hash con una clave que el kernel conozca y el atacante no -- el esqueleto
+/// esta en `bmo-abi/src/bef/signing.rs` y es trabajo aparte.
 ///
-/// Se dice aquí porque la diferencia importa: hoy el gate protege de un disco
+/// Se dice aqui porque la diferencia importa: hoy el gate protege de un disco
 /// que miente, no de alguien que quiere colar un binario.
 fn escribir_archivo(log: &mut Log, datos: &[u8]) -> std::io::Result<BlockPtr> {
     let attr = if datos.len() <= RESIDENTE_MAX {
-        // Lo pequeño no gasta bloque (decisión 3).
+        // Lo pequeno no gasta bloque (decision 3).
         Attr::residente(ATTR_DATOS, datos).expect("residente cabe")
     } else {
         let (raiz, niveles) = escribir_arbol(log, datos)?;
         Attr::en_bloques(ATTR_DATOS, datos.len() as u64, niveles, raiz).expect("niveles validos")
     };
     // 32 bytes: residente, no gasta bloque. Va en el MISMO nodo que los datos,
-    // que es la idea entera de los atributos con nombre — la firma no puede
-    // separarse del binario al copiarlo, como pasaría con un `.sig` suelto.
+    // que es la idea entera de los atributos con nombre -- la firma no puede
+    // separarse del binario al copiarlo, como pasaria con un `.sig` suelto.
     let firma = bmo_hash::hash(datos);
     let nodo = Nodo::nuevo(Tipo::Archivo)
         .con(attr).expect("primer atributo")
@@ -176,7 +176,7 @@ fn escribir_directorio(log: &mut Log, entradas: &[(String, BlockPtr)]) -> std::i
     log.objeto(&nodo.encode())
 }
 
-/// Mete una carpeta del anfitrión en el volumen, recursivamente.
+/// Mete una carpeta del anfitrion en el volumen, recursivamente.
 fn meter_carpeta(log: &mut Log, dir: &Path, sangria: usize) -> std::io::Result<BlockPtr> {
     let mut entradas: Vec<(String, BlockPtr)> = Vec::new();
     let mut hijos: Vec<_> = std::fs::read_dir(dir)?.filter_map(|e| e.ok()).collect();
@@ -200,7 +200,7 @@ fn meter_carpeta(log: &mut Log, dir: &Path, sangria: usize) -> std::io::Result<B
     escribir_directorio(log, &entradas)
 }
 
-// ── Lectura de vuelta ───────────────────────────────────────────────────────
+// -- Lectura de vuelta -------------------------------------------------------
 
 struct Lector { f: File }
 
@@ -212,7 +212,7 @@ impl Lector {
         Ok(b)
     }
 
-    /// Lee lo que un puntero promete, comprobándolo.
+    /// Lee lo que un puntero promete, comprobandolo.
     fn seguir(&mut self, p: &BlockPtr) -> Result<Vec<u8>, String> {
         let b = self.bloque(p.lba).map_err(|e| format!("leyendo bloque {}: {}", p.lba, e))?;
         let ini = p.off as usize;
@@ -290,11 +290,11 @@ fn recorrer(l: &mut Lector, ptr: &BlockPtr, sangria: usize, archivos: &mut usize
     Ok(())
 }
 
-// ── Tomar el volumen (Windows) ──────────────────────────────────────────────
+// -- Tomar el volumen (Windows) ----------------------------------------------
 //
 // Windows no deja escribir sectores crudos de un volumen que tiene montado:
 // el driver de NTFS los considera suyos y la escritura se ignora o falla. Hay
-// que pedirle el volumen formalmente — bloquearlo y desmontarlo — antes de
+// que pedirle el volumen formalmente -- bloquearlo y desmontarlo -- antes de
 // tocarlo. Sin esto, el formateador parece funcionar y no escribe nada.
 
 #[cfg(windows)]
@@ -329,7 +329,7 @@ mod win {
     }
 
     /// Bloquea y desmonta el volumen. El bloqueo falla si alguien tiene
-    /// archivos abiertos ahí, así que se reintenta: normalmente es el
+    /// archivos abiertos ahi, asi que se reintenta: normalmente es el
     /// indexador o el antivirus soltando el volumen.
     pub fn tomar(f: &File) -> Result<(), String> {
         for intento in 0..10 {
@@ -347,7 +347,7 @@ mod win {
     pub fn soltar(f: &File) { let _ = ctl(f, FSCTL_UNLOCK_VOLUME); }
 }
 
-// ── CLI ─────────────────────────────────────────────────────────────────────
+// -- CLI ---------------------------------------------------------------------
 
 struct Opciones {
     destino: PathBuf,
@@ -420,7 +420,7 @@ fn main() {
 
     // Solo mirar. Existe porque su ausencia estuvo a punto de costar caro: al
     // querer comprobar que un volumen corrupto se detectaba, la herramienta lo
-    // REFORMATEO —no tenia otra forma de mirarlo— y borro justo la prueba. Una
+    // REFORMATEO --no tenia otra forma de mirarlo-- y borro justo la prueba. Una
     // herramienta que solo sabe escribir acaba escribiendo donde no debe.
     if o.solo_verificar {
         println!("== estratos-fmt --verificar ==");
@@ -432,13 +432,13 @@ fn main() {
         return;
     }
 
-    // ★ El seguro que de verdad importa. Esta herramienta escribe SIEMPRE
-    // desde el offset 0 de lo que le den, y el offset 0 de un disco físico es
-    // su TABLA DE PARTICIONES. Apuntarla a `\\.\PhysicalDriveN` no formatearía
-    // una partición: se llevaría por delante el mapa del disco entero y con él
-    // todas las demás particiones — incluida la de arranque. Un volumen
+    // * El seguro que de verdad importa. Esta herramienta escribe SIEMPRE
+    // desde el offset 0 de lo que le den, y el offset 0 de un disco fisico es
+    // su TABLA DE PARTICIONES. Apuntarla a `\\.\PhysicalDriveN` no formatearia
+    // una particion: se llevaria por delante el mapa del disco entero y con el
+    // todas las demas particiones -- incluida la de arranque. Un volumen
     // (`\\.\F:`) no tiene ese problema: su offset 0 ES el principio de su
-    // partición, y no puede alcanzar a ninguna otra.
+    // particion, y no puede alcanzar a ninguna otra.
     let destino_txt = o.destino.to_string_lossy().to_ascii_lowercase();
     if destino_txt.contains("physicaldrive") {
         eprintln!("estratos-fmt: me niego a escribir sobre un disco FISICO.");

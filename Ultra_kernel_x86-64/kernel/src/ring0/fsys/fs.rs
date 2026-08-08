@@ -1,28 +1,28 @@
 //! El sistema de ficheros montado: de sectores a ARCHIVOS.
 //!
-//! Un sector es 512 bytes en una posición. Un archivo es un nombre, un tamaño
-//! y una lista de bloques desperdigados. Entre las dos cosas está esta capa.
+//! Un sector es 512 bytes en una posicion. Un archivo es un nombre, un tamano
+//! y una lista de bloques desperdigados. Entre las dos cosas esta esta capa.
 //!
-//! ## Qué monta, y por qué esa partición
+//! ## Que monta, y por que esa particion
 //!
-//! `disk::scan_partitions` lee la GPT del disco. Aquí se elige la partición
-//! **de arranque** (la ESP, tipo GUID C12A7328-…), que es donde vive el propio
-//! `BOOTX64.EFI` con el que este kernel arrancó: el primer archivo que BMO-X
-//! abre es él mismo. No se adivina "la primera FAT32 que aparezca": se pide
-//! por TIPO, la misma lección que dejó el NVMe con el Windows del dueño.
+//! `disk::scan_partitions` lee la GPT del disco. Aqui se elige la particion
+//! **de arranque** (la ESP, tipo GUID C12A7328-...), que es donde vive el propio
+//! `BOOTX64.EFI` con el que este kernel arranco: el primer archivo que BMO-X
+//! abre es el mismo. No se adivina "la primera FAT32 que aparezca": se pide
+//! por TIPO, la misma leccion que dejo el NVMe con el Windows del dueno.
 //!
-//! ## Dos volúmenes, y solo uno se puede escribir
+//! ## Dos volumenes, y solo uno se puede escribir
 //!
 //! - **ARRANQUE** (la ESP): se monta SIN `BlockWriter`. Su inmutabilidad no es
-//!   una política que alguien deba acordarse de respetar: es que no existe la
-//!   función con la que escribir. Ahí vive el `BOOTX64.EFI` con el que arrancó
-//!   esta misma ejecución.
-//! - **DATOS** (la primera partición que no es la de arranque): se monta con
+//!   una politica que alguien deba acordarse de respetar: es que no existe la
+//!   funcion con la que escribir. Ahi vive el `BOOTX64.EFI` con el que arranco
+//!   esta misma ejecucion.
+//! - **DATOS** (la primera particion que no es la de arranque): se monta con
 //!   escritor, y solo si el gate de identidad del disco la ha armado. Es donde
-//!   BMO deja lo suyo — empezando por la caja negra de CABINA.
+//!   BMO deja lo suyo -- empezando por la caja negra de CABINA.
 //!
 //! Separarlos es lo que permite que un bug del sistema de ficheros cueste un
-//! archivo y no la capacidad de arrancar la máquina.
+//! archivo y no la capacidad de arrancar la maquina.
 
 use bmo_fat32::{FatVolume, FsType, WriteError};
 use crate::ring0::dev::disk;
@@ -32,10 +32,10 @@ static mut MOUNTED_LBA: u64 = 0;
 static mut DATA_VOLUME: Option<FatVolume> = None;
 static mut DATA_LBA: u64 = 0;
 
-/// ¿Hay un volumen montado?
+/// Hay un volumen montado?
 pub fn is_mounted() -> bool { unsafe { (*core::ptr::addr_of!(VOLUME)).is_some() } }
 
-/// Primer LBA de la partición montada (0 = ninguna).
+/// Primer LBA de la particion montada (0 = ninguna).
 pub fn mounted_lba() -> u64 { unsafe { MOUNTED_LBA } }
 
 /// Tipo del volumen montado.
@@ -48,14 +48,14 @@ pub fn fs_name() -> &'static str {
     }
 }
 
-/// Monta la partición de arranque del disco. Se llama una vez, tras
+/// Monta la particion de arranque del disco. Se llama una vez, tras
 /// `disk::scan_partitions`.
 pub fn mount() {
     if !disk::is_ready() {
         crate::ring0::cabina::warn("fs", "sin disco: no hay nada que montar", 0);
         return;
     }
-    // La ESP: donde el firmware encontró BOOTX64.EFI, o sea donde vive BMO-X.
+    // La ESP: donde el firmware encontro BOOTX64.EFI, o sea donde vive BMO-X.
     let esp = disk::partitions().iter().find(|p| p.is_esp()).copied();
     let part = match esp {
         Some(p) => p,
@@ -65,7 +65,7 @@ pub fn mount() {
         }
     };
 
-    // Sin writer: solo lectura por construcción (ver la nota de cabecera).
+    // Sin writer: solo lectura por construccion (ver la nota de cabecera).
     match bmo_fat32::mount(disk::block_read, None, part.first_lba) {
         Some(v) => {
             unsafe {
@@ -75,18 +75,18 @@ pub fn mount() {
             crate::ring0::cabina::info("fs", fs_name(), part.first_lba);
         }
         None => {
-            // Distinguir "no hay FAT ahí" de "el disco no contesta" importa:
-            // el LBA dice dónde se miró.
+            // Distinguir "no hay FAT ahi" de "el disco no contesta" importa:
+            // el LBA dice donde se miro.
             crate::ring0::cabina::fault("fs", "la particion no tiene un FAT reconocible", part.first_lba);
         }
     }
 }
 
-/// Busca un archivo en la RAÍZ del volumen. Devuelve `(primer_cluster, bytes)`.
+/// Busca un archivo en la RAIZ del volumen. Devuelve `(primer_cluster, bytes)`.
 ///
-/// El nombre va en formato 8.3 tal como está en disco: `"BOOTX64 EFI"` son
-/// once bytes, ocho de nombre y tres de extensión, rellenos con espacios. Es
-/// feo y es lo que hay: FAT lo guarda así.
+/// El nombre va en formato 8.3 tal como esta en disco: `"BOOTX64 EFI"` son
+/// once bytes, ocho de nombre y tres de extension, rellenos con espacios. Es
+/// feo y es lo que hay: FAT lo guarda asi.
 pub fn find(name: &[u8]) -> Option<(u32, u32)> {
     unsafe {
         let v = (*core::ptr::addr_of_mut!(VOLUME)).as_mut()?;
@@ -102,7 +102,7 @@ pub fn find_in(name: &[u8], dir_cluster: u32) -> Option<(u32, u32)> {
     }
 }
 
-/// Busca un subdirectorio de la raíz y devuelve su cluster.
+/// Busca un subdirectorio de la raiz y devuelve su cluster.
 pub fn find_dir(name: &[u8]) -> Option<u32> {
     unsafe {
         let v = (*core::ptr::addr_of_mut!(VOLUME)).as_mut()?;
@@ -118,7 +118,7 @@ pub fn find_dir_in(name: &[u8], dir_cluster: u32) -> Option<u32> {
     }
 }
 
-/// Lee el contenido de un archivo en `dst`. Devuelve los bytes leídos.
+/// Lee el contenido de un archivo en `dst`. Devuelve los bytes leidos.
 pub fn read(first_cluster: u32, size: u32, dst: &mut [u8]) -> usize {
     unsafe {
         let v = match (*core::ptr::addr_of_mut!(VOLUME)).as_mut() { Some(v) => v, None => return 0 };
@@ -126,7 +126,7 @@ pub fn read(first_cluster: u32, size: u32, dst: &mut [u8]) -> usize {
     }
 }
 
-// ── El volumen de DATOS: el único que se puede escribir ─────────────────────
+// -- El volumen de DATOS: el unico que se puede escribir ---------------------
 
 /// La entrada `n` de un directorio del volumen de DATOS: `(nombre 8.3,
 /// es_dir, tamano)`. `None` cuando se acaban.
@@ -163,16 +163,16 @@ pub fn dir_datos(ruta: &str) -> Option<u32> {
     }
 }
 
-/// La misma conversión, para quien está fuera de este módulo.
+/// La misma conversion, para quien esta fuera de este modulo.
 ///
 /// La necesita `archivo::crear`, que tiene que validar el nombre ANTES de
 /// aceptar un archivo de escritura: descubrir al final que no era un 8.3
-/// válido significaría haber dejado a un programa acumulando bytes para nada.
+/// valido significaria haber dejado a un programa acumulando bytes para nada.
 pub fn nombre_8_3_pub(s: &str) -> Option<[u8; 11]> {
     nombre_8_3(s)
 }
 
-/// Nombre a 8.3 crudo (11 bytes, relleno con espacios). `None` si no cabe —
+/// Nombre a 8.3 crudo (11 bytes, relleno con espacios). `None` si no cabe --
 /// **nunca se recorta**: un nombre recortado en silencio abre otra cosa.
 fn nombre_8_3(s: &str) -> Option<[u8; 11]> {
     let b = s.as_bytes();
@@ -194,17 +194,17 @@ fn nombre_8_3(s: &str) -> Option<[u8; 11]> {
     Some(out)
 }
 
-/// ¿Hay volumen de datos montado para escribir?
+/// Hay volumen de datos montado para escribir?
 pub fn data_mounted() -> bool { unsafe { (*core::ptr::addr_of!(DATA_VOLUME)).is_some() } }
 
 /// Primer LBA del volumen de datos (0 = ninguno).
 pub fn data_lba() -> u64 { unsafe { DATA_LBA } }
 
-/// Monta la partición de datos CON escritor.
+/// Monta la particion de datos CON escritor.
 ///
-/// Se llama después de `disk::verify_identity()`. Si el gate no armó la
-/// escritura, aquí no se monta nada: pasar un escritor que va a rechazar todo
-/// sería montar un volumen que miente sobre lo que puede hacer.
+/// Se llama despues de `disk::verify_identity()`. Si el gate no armo la
+/// escritura, aqui no se monta nada: pasar un escritor que va a rechazar todo
+/// seria montar un volumen que miente sobre lo que puede hacer.
 pub fn mount_data() {
     if !disk::write_armed() {
         crate::ring0::cabina::warn("fs", "sin volumen de datos: el gate no armo la escritura", 0);
@@ -234,20 +234,20 @@ pub fn mount_data() {
     }
 }
 
-// ── Rutas: de "c/holac.bex" a un archivo ──────────────────────────────────
+// -- Rutas: de "c/holac.bex" a un archivo ----------------------------------
 
-/// Por qué no se pudo cargar una ruta.
+/// Por que no se pudo cargar una ruta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoadError {
     /// No hay volumen de datos montado.
     NoVolume,
-    /// La ruta está vacía o tiene un componente vacío.
+    /// La ruta esta vacia o tiene un componente vacio.
     BadPath,
-    /// Un nombre no cabe en 8.3 (ocho de nombre, tres de extensión).
+    /// Un nombre no cabe en 8.3 (ocho de nombre, tres de extension).
     NameTooLong,
     /// No existe un directorio del camino.
     DirNotFound,
-    /// El archivo no está.
+    /// El archivo no esta.
     NotFound,
     /// El archivo no cabe en el buffer del llamante.
     TooBig,
@@ -269,13 +269,13 @@ impl LoadError {
 /// Convierte `hola.bex` en los once bytes que FAT guarda: `"HOLA    BEX"`.
 ///
 /// Devuelve error si no cabe en vez de recortar. Un nombre recortado en
-/// silencio abre otro archivo — y "abrir otro archivo" en un cargador de
+/// silencio abre otro archivo -- y "abrir otro archivo" en un cargador de
 /// programas significa ejecutar otro binario.
 fn to_8_3(name: &str) -> Result<[u8; 11], LoadError> {
     let b = name.as_bytes();
     if b.is_empty() { return Err(LoadError::BadPath); }
     let mut out = [b' '; 11];
-    // El punto separa; el ÚLTIMO punto, porque "a.b.c" tiene extensión "c".
+    // El punto separa; el ULTIMO punto, porque "a.b.c" tiene extension "c".
     let dot = b.iter().rposition(|&c| c == b'.');
     let (stem, ext) = match dot {
         Some(i) => (&b[..i], &b[i + 1..]),
@@ -293,12 +293,12 @@ fn upper(c: u8) -> u8 {
     if c >= b'a' && c <= b'z' { c - 32 } else { c }
 }
 
-/// Carga un archivo del volumen de DATOS en `dst`. Devuelve los bytes leídos.
+/// Carga un archivo del volumen de DATOS en `dst`. Devuelve los bytes leidos.
 ///
-/// Acepta `c/holac.bex`, `/c/holac.bex` y `A:/c/holac.bex` — la letra
-/// es la que Windows le da a esta misma partición, y escribirla es lo que
-/// hace cualquiera que acabe de copiar ahí el archivo desde el anfitrión.
-/// También se aceptan barras invertidas.
+/// Acepta `c/holac.bex`, `/c/holac.bex` y `A:/c/holac.bex` -- la letra
+/// es la que Windows le da a esta misma particion, y escribirla es lo que
+/// hace cualquiera que acabe de copiar ahi el archivo desde el anfitrion.
+/// Tambien se aceptan barras invertidas.
 ///
 /// Es la pieza que saca los programas de dentro del kernel. Hasta ahora los
 /// `.bex` viajaban con `include_bytes!` y cambiar un "hola mundo" obligaba a
@@ -317,20 +317,20 @@ pub fn load(path: &str, dst: &mut [u8]) -> Result<usize, LoadError> {
     Ok(v.read_file(cluster, size, dst))
 }
 
-/// Cuántos bytes mide el archivo, SIN leerlo.
+/// Cuantos bytes mide el archivo, SIN leerlo.
 ///
-/// Existe para poder reservar el buffer del tamaño justo antes de traerlo:
-/// hasta ahora un archivo abierto se copiaba a una fila estática de 4 KiB, y
-/// ese número era el techo de lo que un programa podía leer. Preguntar primero
+/// Existe para poder reservar el buffer del tamano justo antes de traerlo:
+/// hasta ahora un archivo abierto se copiaba a una fila estatica de 4 KiB, y
+/// ese numero era el techo de lo que un programa podia leer. Preguntar primero
 /// convierte el techo en "lo que quepa en la RAM".
 pub fn tamano(path: &str) -> Result<u32, LoadError> {
     resolver(path).map(|(_, size)| size)
 }
 
-/// Recorre la ruta y devuelve `(cluster, tamaño)` del archivo.
+/// Recorre la ruta y devuelve `(cluster, tamano)` del archivo.
 ///
-/// Lo comparten `load` y `tamano` a propósito: dos copias del recorrido de
-/// directorios es la forma clásica de que una acepte una ruta que la otra
+/// Lo comparten `load` y `tamano` a proposito: dos copias del recorrido de
+/// directorios es la forma clasica de que una acepte una ruta que la otra
 /// rechaza.
 fn resolver(path: &str) -> Result<(u32, u32), LoadError> {
     let v = unsafe {
@@ -346,7 +346,7 @@ fn resolver(path: &str) -> Result<(u32, u32), LoadError> {
     while p.starts_with('/') || p.starts_with('\\') { p = &p[1..]; }
     if p.is_empty() { return Err(LoadError::BadPath); }
 
-    // Bajar por los directorios; el último componente es el archivo.
+    // Bajar por los directorios; el ultimo componente es el archivo.
     let mut dir = v.root_cluster();
     let mut rest = p;
     loop {
@@ -368,10 +368,10 @@ fn resolver(path: &str) -> Result<(u32, u32), LoadError> {
     v.find_file_in(&name, dir).ok_or(LoadError::NotFound)
 }
 
-/// Crea un archivo en la raíz del volumen de datos.
+/// Crea un archivo en la raiz del volumen de datos.
 ///
 /// `name_8_3` son once bytes tal como FAT los guarda: `b"CABINA  LOG"`.
-/// Devuelve el motivo cuando falla — el disco lleno, un nombre repetido y un
+/// Devuelve el motivo cuando falla -- el disco lleno, un nombre repetido y un
 /// volumen de solo lectura son tres problemas distintos y se distinguen.
 pub fn create(name_8_3: &[u8; 11], data: &[u8]) -> Result<(), WriteError> {
     let root = unsafe {
@@ -385,12 +385,12 @@ pub fn create(name_8_3: &[u8; 11], data: &[u8]) -> Result<(), WriteError> {
 
 /// Crea un archivo en un directorio CONCRETO del volumen de datos.
 ///
-/// `create` es esto con la raíz. Se separan porque un programa de Ring 3
-/// escribe donde le dijeron —`datos/movim.dat`—, y obligarle a dejarlo todo en
-/// la raíz convertiría el volumen en un cajón: es justo lo que hace ilegible un
+/// `create` es esto con la raiz. Se separan porque un programa de Ring 3
+/// escribe donde le dijeron --`datos/movim.dat`--, y obligarle a dejarlo todo en
+/// la raiz convertiria el volumen en un cajon: es justo lo que hace ilegible un
 /// disco a los seis meses.
 ///
-/// El `dir_cluster` sale de `dir_datos`, que ya recorrió la ruta. Aquí no se
+/// El `dir_cluster` sale de `dir_datos`, que ya recorrio la ruta. Aqui no se
 /// vuelve a interpretar texto: quien llama trae el directorio resuelto.
 pub fn crear_en(dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> Result<(), WriteError> {
     let v = unsafe {
@@ -401,32 +401,32 @@ pub fn crear_en(dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> Result<()
     };
     let r = v.create_file_in_dir(dir_cluster, name_8_3, data);
     if r.is_ok() {
-        // El punto de no retorno: hasta que el disco vacíe su caché, lo escrito
+        // El punto de no retorno: hasta que el disco vacie su cache, lo escrito
         // vive en un chip que un corte se lleva por delante.
         disk::flush();
     }
     r
 }
 
-/// **Guarda un archivo, exista o no.** Si el nombre ya está, lo REEMPLAZA.
+/// **Guarda un archivo, exista o no.** Si el nombre ya esta, lo REEMPLAZA.
 ///
-/// ═══ Por qué existe, y qué tapaba no tenerlo ═══
+/// === Por que existe, y que tapaba no tenerlo ===
 ///
 /// `crear_en` rechaza con `Exists`, que es lo correcto para *crear*. Pero
-/// `OPEN OUTPUT` de COBOL —y un `>` de cualquier shell— no quieren decir
-/// "créalo": quieren decir **"que quede esto"**. Mientras la única puerta fue
-/// `crear_en`, un programa que escribía su salida sólo funcionaba **la primera
-/// vez que se corría**: a partir de la segunda, `cerrar` fallaba y no guardaba
+/// `OPEN OUTPUT` de COBOL --y un `>` de cualquier shell-- no quieren decir
+/// "crealo": quieren decir **"que quede esto"**. Mientras la unica puerta fue
+/// `crear_en`, un programa que escribia su salida solo funcionaba **la primera
+/// vez que se corria**: a partir de la segunda, `cerrar` fallaba y no guardaba
 /// nada.
 ///
-/// Y el fallo no se veía. Si el programa releía lo que creía haber escrito,
-/// leía lo de la corrida anterior y todo parecía normal — el nivel 10 de los
+/// Y el fallo no se veia. Si el programa releia lo que creia haber escrito,
+/// leia lo de la corrida anterior y todo parecia normal -- el nivel 10 de los
 /// ejemplos de COBOL hace exactamente eso. Un fallo que se parece a funcionar
 /// es peor que uno que revienta.
 ///
 /// La seguridad del reemplazo la pone `save_file_in_dir` en el driver: la
 /// cadena nueva se escribe entera **antes** de apuntar el nombre, y la vieja se
-/// suelta **después**. En ningún instante hay un archivo a medias.
+/// suelta **despues**. En ningun instante hay un archivo a medias.
 pub fn guardar_en(dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> Result<(), WriteError> {
     let v = unsafe {
         match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {

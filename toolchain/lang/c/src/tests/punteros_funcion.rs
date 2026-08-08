@@ -5,11 +5,11 @@
 
 use super::*;
 
-// ---- Punteros a función (Fase 2) ----
+// ---- Punteros a funcion (Fase 2) ----
 
 #[test]
 fn parses_function_pointer_declarator() {
-    // int (*op)(int, int); — variable de tipo puntero.
+    // int (*op)(int, int); -- variable de tipo puntero.
     let src = r#"
 int add(int a, int b) { return a + b; }
 int main() {
@@ -32,7 +32,7 @@ return r;
 
 #[test]
 fn function_decays_to_address() {
-    // op = add; — 'add' como valor = lea rax,[rip+add] (48 8D 05).
+    // op = add; -- 'add' como valor = lea rax,[rip+add] (48 8D 05).
     let src = r#"
 int add(int a, int b) { return a + b; }
 int main() { int (*op)(int, int); op = add; return 0; }
@@ -45,7 +45,7 @@ int main() { int (*op)(int, int); op = add; return 0; }
 
 #[test]
 fn indirect_call_through_pointer() {
-    // op(3,4) donde op es variable → call rax (FF D0), no call rel32.
+    // op(3,4) donde op es variable -> call rax (FF D0), no call rel32.
     let src = r#"
 int add(int a, int b) { return a + b; }
 int main() {
@@ -61,7 +61,7 @@ return op(3, 4);
 
 #[test]
 fn addr_of_function_works() {
-    // &myfunc también da la dirección (equivalente a la decadencia).
+    // &myfunc tambien da la direccion (equivalente a la decadencia).
     let src = r#"
 int foo(void) { return 7; }
 int main() { int (*fp)(void); fp = &foo; return fp(); }
@@ -73,7 +73,7 @@ int main() { int (*fp)(void); fp = &foo; return fp(); }
 
 #[test]
 fn explicit_deref_call_works() {
-    // (*fp)(args) — forma explícita del puntero a función.
+    // (*fp)(args) -- forma explicita del puntero a funcion.
     let src = r#"
 int add(int a, int b) { return a + b; }
 int main() {
@@ -91,16 +91,16 @@ return (*fp)(3, 4);
     assert!(bef.windows(2).any(|w| w == [0xFF, 0xD0]), "falta call rax indirecto");
 }
 
-/// ★ **El ladrillo de las vtables, probado en C.**
+/// * **El ladrillo de las vtables, probado en C.**
 ///
-/// Una tabla de punteros a función en una global, rellenada en ejecución y
-/// llamada por índice. Es EXACTAMENTE la forma que una función virtual de C++
-/// necesita, y por eso se prueba aquí: si esto no corre, el paso 5 de C++ no
-/// tiene dónde apoyarse.
+/// Una tabla de punteros a funcion en una global, rellenada en ejecucion y
+/// llamada por indice. Es EXACTAMENTE la forma que una funcion virtual de C++
+/// necesita, y por eso se prueba aqui: si esto no corre, el paso 5 de C++ no
+/// tiene donde apoyarse.
 ///
-/// Se rellena en ejecución y no con un inicializador estático porque las
-/// globales de BMO C sólo admiten `Expr::Int` — una dirección de función no se
-/// conoce hasta que se emite el código.
+/// Se rellena en ejecucion y no con un inicializador estatico porque las
+/// globales de BMO C solo admiten `Expr::Int` -- una direccion de funcion no se
+/// conoce hasta que se emite el codigo.
 #[test]
 fn una_tabla_de_punteros_a_funcion_en_una_global() {
     let src = r#"
@@ -119,8 +119,8 @@ int main() {
     assert_eq!(run_c(src).trim(), "42 42");
 }
 
-/// Y con el índice calculado en EJECUCIÓN, que es lo que hace un despacho
-/// virtual de verdad: la ranura sale del tipo dinámico, no de una constante.
+/// Y con el indice calculado en EJECUCION, que es lo que hace un despacho
+/// virtual de verdad: la ranura sale del tipo dinamico, no de una constante.
 #[test]
 fn la_tabla_se_indexa_con_un_indice_de_ejecucion() {
     let src = r#"
@@ -141,16 +141,16 @@ int main() {
     assert_eq!(run_c(src).trim(), "42 42");
 }
 
-/// ★★ **El despacho virtual entero, escrito en C.**
+/// ** **El despacho virtual entero, escrito en C.**
 ///
-/// Dos objetos del mismo tipo estático con tablas distintas: la misma línea de
-/// código llama a funciones distintas según lo que haya en el `vptr`. Eso es
-/// una función virtual, y no hace falta nada más que esto.
+/// Dos objetos del mismo tipo estatico con tablas distintas: la misma linea de
+/// codigo llama a funciones distintas segun lo que haya en el `vptr`. Eso es
+/// una funcion virtual, y no hace falta nada mas que esto.
 ///
-/// Se prueba en C —y no sólo en C++— porque es el suelo sobre el que el paso 5
-/// se apoya: si esta forma no corre, la vtable de C++ no tiene dónde pisar. Es
-/// lo mismo que se escribiría a mano en C para hacer polimorfismo, que es la
-/// razón por la que Bjarne pudo implementarlo como una traducción.
+/// Se prueba en C --y no solo en C++-- porque es el suelo sobre el que el paso 5
+/// se apoya: si esta forma no corre, la vtable de C++ no tiene donde pisar. Es
+/// lo mismo que se escribiria a mano en C para hacer polimorfismo, que es la
+/// razon por la que Bjarne pudo implementarlo como una traduccion.
 #[test]
 fn el_despacho_virtual_entero_en_c() {
     let src = r#"

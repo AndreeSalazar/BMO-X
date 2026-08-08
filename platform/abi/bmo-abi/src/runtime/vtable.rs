@@ -1,7 +1,7 @@
-//! `vtable` — VTableStore: tabla de interfaces virtuales del BMO ABI.
+//! `vtable` -- VTableStore: tabla de interfaces virtuales del BMO ABI.
 //!
 //! Almacena hasta 64 vtables, cada una con un array de hasta 32 function
-//! pointers. Usado por el sistema de interfaces polimórficas entre lenguajes.
+//! pointers. Usado por el sistema de interfaces polimorficas entre lenguajes.
 //!
 //! ## Companions
 //!
@@ -10,10 +10,10 @@
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
-/// Capacidad máxima de vtables.
+/// Capacidad maxima de vtables.
 pub const VTABLE_CAP: usize = 64;
 
-/// Máximo número de métodos por vtable.
+/// Maximo numero de metodos por vtable.
 pub const VTABLE_METHODS_MAX: usize = 32;
 
 /// Una entrada individual de vtable.
@@ -84,7 +84,7 @@ impl VTable {
     }
 }
 
-/// Almacén de vtables con capacidad fija.
+/// Almacen de vtables con capacidad fija.
 pub struct VTableStore {
     vtables: [VTable; VTABLE_CAP],
     count: usize,

@@ -1,14 +1,14 @@
 //! **El LAPIC del BSP**: mandar IPIs y esperar.
 //!
-//! Sólo lo usa el que despierta. El AP recién llegado no toca esto — ver
+//! Solo lo usa el que despierta. El AP recien llegado no toca esto -- ver
 //! `tramp::apic_id`, que lo resuelve por CPUID justo por eso.
 
 use crate::ring0::mm::HIGH_MEM_BASE;
 
-/// Dónde está el LAPIC, **por el physmap**.
+/// Donde esta el LAPIC, **por el physmap**.
 ///
-/// Su MMIO vive en `0xFEE0_0000` y el identity map del kernel sólo cubre
-/// `0..32 MiB`: tocarlo por su dirección física sería un #PF. Se llega por la
+/// Su MMIO vive en `0xFEE0_0000` y el identity map del kernel solo cubre
+/// `0..32 MiB`: tocarlo por su direccion fisica seria un #PF. Se llega por la
 /// mitad alta, igual que hace `timer.rs`.
 fn base() -> u64 {
     let lo: u32;
@@ -23,7 +23,7 @@ fn base() -> u64 {
 /// Manda una IPI y espera a que salga.
 ///
 /// El orden importa: **primero el ICR alto (el destino) y el bajo AL FINAL**,
-/// porque escribir el bajo es lo que dispara el envío. Al revés se manda la
+/// porque escribir el bajo es lo que dispara el envio. Al reves se manda la
 /// orden al destino anterior.
 pub unsafe fn ipi(destino: u32, orden: u32) {
     let b = base();
@@ -44,10 +44,10 @@ pub unsafe fn ipi(destino: u32, orden: u32) {
 
 /// INIT: pone al AP en su estado de arranque.
 pub const INIT: u32 = 0x0000_4500;
-/// SIPI con vector `0x08` → el AP empieza en `0x8000`.
+/// SIPI con vector `0x08` -> el AP empieza en `0x8000`.
 pub const SIPI: u32 = 0x0000_4608;
 
-/// Espera por TSC. Si no está calibrado, unas vueltas y a otra cosa: aquí el
+/// Espera por TSC. Si no esta calibrado, unas vueltas y a otra cosa: aqui el
 /// objetivo es dar aire al hardware, no medir.
 pub fn esperar_us(us: u64) {
     let hz = crate::ring0::task::scheduler::tsc_freq();

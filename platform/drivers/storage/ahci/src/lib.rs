@@ -1,4 +1,4 @@
-//! BMO AHCI/SATA Storage Driver — HAL-based.
+//! BMO AHCI/SATA Storage Driver -- HAL-based.
 //!
 //! Implements controller detection, port enumeration, DMA setup,
 //! and sector read/write. Uses `StorageHal` trait for kernel services

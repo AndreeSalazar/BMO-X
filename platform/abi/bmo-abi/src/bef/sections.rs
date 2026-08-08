@@ -1,8 +1,8 @@
 //! Tabla de secciones BEF.
 //!
-//! 10 tipos de sección, cada una con propósito claro. Comparado con ELF
-//! (~20 tipos) y PE (~11 tipos) — más limitado pero más limpio: cada
-//! sección tiene una semántica única y obligatoria, no es solo "datos".
+//! 10 tipos de seccion, cada una con proposito claro. Comparado con ELF
+//! (~20 tipos) y PE (~11 tipos) -- mas limitado pero mas limpio: cada
+//! seccion tiene una semantica unica y obligatoria, no es solo "datos".
 
 #![allow(dead_code)]
 
@@ -11,7 +11,7 @@ use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64, bx_u8};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SectionKind {
-    /// Código ejecutable x86-64. Cargada como RX.
+    /// Codigo ejecutable x86-64. Cargada como RX.
     Code = 0x01,
     /// Datos inicializados de solo lectura (rodata). Cargada como R.
     RoData = 0x02,
@@ -21,11 +21,11 @@ pub enum SectionKind {
     Bss = 0x04,
     /// Tabla de imports (lazy/eager binding via BMO).
     Imports = 0x05,
-    /// Tabla de exports (símbolos visibles desde fuera).
+    /// Tabla de exports (simbolos visibles desde fuera).
     Exports = 0x06,
     /// Tabla de relocations.
     Relocs = 0x07,
-    /// Tabla de símbolos (debug + dynamic linking).
+    /// Tabla de simbolos (debug + dynamic linking).
     Symbols = 0x08,
     /// Manifest TOML (capabilities, version, dependencies).
     Manifest = 0x09,
@@ -37,12 +37,12 @@ pub enum SectionKind {
     Tls = 0x0C,
     /// Stack unwind info para excepciones / backtraces.
     Unwind = 0x0D,
-    /// Debug info (DWARF-lite específico de BEF).
+    /// Debug info (DWARF-lite especifico de BEF).
     Debug = 0x0E,
     /// Hashes BLAKE3 + firma Ed25519 opcional.
     Signature = 0x0F,
 
-    // ─── Sesión 8: secciones de metadatos genéricos multi-lenguaje ────
+    // --- Sesion 8: secciones de metadatos genericos multi-lenguaje ----
     /// Tabla de `TypeDescriptor` (consumida por `bmo_gpu::abi::type_system::TypeRegistry`).
     TypeMap = 0x10,
     /// VTables `BmoVTable` empacadas (`bmo_gpu::abi::vtable`).
@@ -92,22 +92,22 @@ bitflags::bitflags! {
         const WRITE         = 1 << 1;
         /// Mapear como executable.
         const EXEC          = 1 << 2;
-        /// Sección comprimida con GDeflate (descomprimir al cargar).
+        /// Seccion comprimida con GDeflate (descomprimir al cargar).
         const COMPRESSED    = 1 << 3;
-        /// Sección requiere alineación a página (4 KB).
+        /// Seccion requiere alineacion a pagina (4 KB).
         const PAGE_ALIGNED  = 1 << 4;
-        /// Sección requiere alineación a huge page (2 MB).
+        /// Seccion requiere alineacion a huge page (2 MB).
         const HUGE_ALIGNED  = 1 << 5;
         /// Lazy: no cargar hasta que se use (file-backed).
         const LAZY          = 1 << 6;
-        /// Sección verificada por hash al cargar.
+        /// Seccion verificada por hash al cargar.
         const HASHED        = 1 << 7;
-        /// Sección sintetizada por el devour-loader (no estaba en el archivo).
+        /// Seccion sintetizada por el devour-loader (no estaba en el archivo).
         const SYNTHETIC     = 1 << 8;
     }
 }
 
-/// Una entrada del section table — 48 bytes.
+/// Una entrada del section table -- 48 bytes.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy)]
 pub struct SectionEntry {
@@ -117,17 +117,17 @@ pub struct SectionEntry {
     pub _pad: [bx_u8; 3],
     /// `SectionFlags`.
     pub flags: bx_u32,
-    /// Offset dentro del archivo (0 si es BSS o sintética).
+    /// Offset dentro del archivo (0 si es BSS o sintetica).
     pub file_offset: bx_u64,
-    /// Tamaño en archivo.
+    /// Tamano en archivo.
     pub file_size: bx_u64,
-    /// Tamaño en memoria (≥ file_size; diferencia es zero-fill).
+    /// Tamano en memoria (>= file_size; diferencia es zero-fill).
     pub mem_size: bx_u64,
-    /// Dirección virtual deseada (0 = elige el loader).
+    /// Direccion virtual deseada (0 = elige el loader).
     pub virt_addr: bx_u64,
-    /// Alineación requerida (potencia de 2, default 8).
+    /// Alineacion requerida (potencia de 2, default 8).
     pub alignment: bx_u16,
-    /// Índice de la sección Signature que contiene su hash, o 0xFFFF si no aplica.
+    /// Indice de la seccion Signature que contiene su hash, o 0xFFFF si no aplica.
     pub hash_index: bx_u16,
     /// Reservado.
     pub _reserved: bx_u32,

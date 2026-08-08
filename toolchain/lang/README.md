@@ -1,60 +1,60 @@
-# `lang/` — los frontends, la esencia de cada lenguaje
+# `lang/` -- los frontends, la esencia de cada lenguaje
 
-Aquí vive **la esencia** de cada lenguaje: lo que sólo ese lenguaje sabe hacer.
-Todo lo compartido está un piso más abajo, en [`../forge/`](../forge/).
+Aqui vive **la esencia** de cada lenguaje: lo que solo ese lenguaje sabe hacer.
+Todo lo compartido esta un piso mas abajo, en [`../forge/`](../forge/).
 
 ## Regla de arquitectura
 
 - **El kernel no compila lenguajes.** Los frontends son herramientas offline.
-- La salida canónica es **BEX** (`.bex`), codificado como BEF1.
-- `bmo-abi` define la superficie, los tipos y el contrato de ejecución.
-- **Los frontends jamás se enlazan entre sí.** Si dos lenguajes necesitan lo
-  mismo, eso se promueve a `forge/` como librería opcional — nunca se importa
+- La salida canonica es **BEX** (`.bex`), codificado como BEF1.
+- `bmo-abi` define la superficie, los tipos y el contrato de ejecucion.
+- **Los frontends jamas se enlazan entre si.** Si dos lenguajes necesitan lo
+  mismo, eso se promueve a `forge/` como libreria opcional -- nunca se importa
   `lang/cobol` desde `lang/ada`.
 
-> ★ **Antes de añadir nada a cualquiera de estos frontends**, leer
-> [`PROPOSITO.md`](PROPOSITO.md): para qué existe cada lenguaje, y por qué eso
-> —y no el estándar— decide qué entra. Incluye el caso de Itanium, que es la
-> razón de que una promesa al optimizador no cuente como trabajo pendiente.
+> ★ **Antes de anadir nada a cualquiera de estos frontends**, leer
+> [`PROPOSITO.md`](PROPOSITO.md): para que existe cada lenguaje, y por que eso
+> --y no el estandar-- decide que entra. Incluye el caso de Itanium, que es la
+> razon de que una promesa al optimizador no cuente como trabajo pendiente.
 
 ## Los cuatro
 
-| Directorio | Estado | Qué corre |
+| Directorio | Estado | Que corre |
 |---|---|---|
-| [`c/`](c/) | El más completo | C de Ritchie hasta ~C11: declaradores y expresiones completos, structs y arrays con tamaños reales, punteros multinivel y a función, structs por valor, listas de inicialización, macros con parámetros, floats SSE, `printf` en línea, `getchar`/`scanf`, e intrínsecos de máquina desde tabla TOML |
-| [`cobol/`](cobol/) | Cerrado en su alcance de banca | Decimal exacto en escala entera, `PICTURE` de edición emitida como instrucciones, File I/O secuencial (`SELECT`/`FD`/`OPEN`/`READ … AT END`/`WRITE`/`CLOSE`), `OCCURS` con guarda de rango, nivel 88, `IF`/`PERFORM`/`COMPUTE` |
-| [`ada/`](ada/) | Primer incremento | Perfil **ZFP secuencial + Annex F**: `type … is delta … digits …`, `Put_Line`, `if/else`, `while … loop`, precedencia real. Crate propio, **sin depender de `cobol/`** |
-| [`cpp/`](cpp/) | Mínimo (~900 líneas) | Alcance decidido: hasta lo esencial de C++17. Fuera: concepts, coroutines, modules, ranges, STL grande |
+| [`c/`](c/) | El mas completo | C de Ritchie hasta ~C11: declaradores y expresiones completos, structs y arrays con tamanos reales, punteros multinivel y a funcion, structs por valor, listas de inicializacion, macros con parametros, floats SSE, `printf` en linea, `getchar`/`scanf`, e intrinsecos de maquina desde tabla TOML |
+| [`cobol/`](cobol/) | Cerrado en su alcance de banca | Decimal exacto en escala entera, `PICTURE` de edicion emitida como instrucciones, File I/O secuencial (`SELECT`/`FD`/`OPEN`/`READ ... AT END`/`WRITE`/`CLOSE`), `OCCURS` con guarda de rango, nivel 88, `IF`/`PERFORM`/`COMPUTE` |
+| [`ada/`](ada/) | Primer incremento | Perfil **ZFP secuencial + Annex F**: `type ... is delta ... digits ...`, `Put_Line`, `if/else`, `while ... loop`, precedencia real. Crate propio, **sin depender de `cobol/`** |
+| [`cpp/`](cpp/) | Minimo (~900 lineas) | Alcance decidido: hasta lo esencial de C++17. Fuera: concepts, coroutines, modules, ranges, STL grande |
 
-## Por qué estos tres (y no otros)
+## Por que estos tres (y no otros)
 
-**COBOL** por el dinero: el decimal exacto no es una característica que se
-añade, tiene que llegar hasta la instrucción emitida. **C** por el control: es
+**COBOL** por el dinero: el decimal exacto no es una caracteristica que se
+anade, tiene que llegar hasta la instruccion emitida. **C** por el control: es
 la herramienta neutra, su trabajo es no estorbar. **Ada** por la seguridad: un
 valor fuera de rango se *detecta*, no se envuelve.
 
-Y el hallazgo que abarató Ada: el Annex F copió las reglas del `PICTURE` de
-COBOL en 1985, así que el decimal exacto ya estaba pagado.
+Y el hallazgo que abarato Ada: el Annex F copio las reglas del `PICTURE` de
+COBOL en 1985, asi que el decimal exacto ya estaba pagado.
 
-## Cómo se verifica
+## Como se verifica
 
 Cada frontend tiene su **matriz de conformidad**, que compila el programa y
-luego **ejecuta los bytes emitidos** comprobando la salida real — no los compara
-contra cadenas escritas a mano. Un `IF` que no bifurca se ve idéntico a uno que
-sí en un volcado de bytes.
+luego **ejecuta los bytes emitidos** comprobando la salida real -- no los compara
+contra cadenas escritas a mano. Un `IF` que no bifurca se ve identico a uno que
+si en un volcado de bytes.
 
-**Al añadir una característica al codegen hay que añadirle su fila.** Por eso
-aquí no se dan porcentajes: un porcentaje necesita un denominador, y el estándar
+**Al anadir una caracteristica al codegen hay que anadirle su fila.** Por eso
+aqui no se dan porcentajes: un porcentaje necesita un denominador, y el estandar
 de COBOL no tiene uno.
 
-Y lo que no está implementado **se rechaza con motivo**, nunca con un stub que
+Y lo que no esta implementado **se rechaza con motivo**, nunca con un stub que
 aparente funcionar.
 
 ## La autoridad
 
 1. El Ryzen real
-2. El documento de la especificación
+2. El documento de la especificacion
 3. El emulador
 
-Cuando el emulador y el hardware no cuadran, **se arregla el emulador**. Está
+Cuando el emulador y el hardware no cuadran, **se arregla el emulador**. Esta
 fijado en [`c/VERDAD.md`](c/VERDAD.md).

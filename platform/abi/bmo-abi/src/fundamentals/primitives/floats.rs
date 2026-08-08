@@ -1,11 +1,11 @@
-//! Tipos float canónicos del BMO ABI.
+//! Tipos float canonicos del BMO ABI.
 //!
-//! - `bx_f32` — IEEE 754 binary32 (`float` C). 32 bits.
-//! - `bx_f64` — IEEE 754 binary64 (`double` C). 64 bits.
-//! - `bx_f16` — IEEE 754 binary16 (half precision). 16 bits.
+//! - `bx_f32` -- IEEE 754 binary32 (`float` C). 32 bits.
+//! - `bx_f64` -- IEEE 754 binary64 (`double` C). 64 bits.
+//! - `bx_f16` -- IEEE 754 binary16 (half precision). 16 bits.
 //!   Soportado nativamente por:
-//!     • backends gráficos modernos cuando existan
-//!     • CPU vía conversión software o instrucciones disponibles
+//!     - backends graficos modernos cuando existan
+//!     - CPU via conversion software o instrucciones disponibles
 //!   El kernel lo expone como struct opaco; las apps lo usan en shaders.
 
 #![allow(non_camel_case_types)]
@@ -15,8 +15,8 @@ pub type bx_f64 = f64;
 
 /// Half precision (IEEE 754 binary16).
 ///
-/// Almacenamiento de 16 bits, sin operaciones aritméticas directas en CPU
-/// pre-AVX-512 FP16. Para hacer cálculo, convertir a `bx_f32` con
+/// Almacenamiento de 16 bits, sin operaciones aritmeticas directas en CPU
+/// pre-AVX-512 FP16. Para hacer calculo, convertir a `bx_f32` con
 /// [`bx_f16::to_f32`].
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,9 +36,9 @@ impl bx_f16 {
         let exp = (bits >> 10) & 0x1F;
         let mant = bits & 0x3FF;
         let f32_bits = match exp {
-            0 if mant == 0 => sign, // ±0
+            0 if mant == 0 => sign, // +/-0
             0 => {
-                // subnormal — renormalizar
+                // subnormal -- renormalizar
                 let mut m = mant;
                 let mut e: i32 = -14;
                 while m & 0x400 == 0 {
@@ -54,7 +54,7 @@ impl bx_f16 {
         f32::from_bits(f32_bits)
     }
 
-    /// Convierte un `f32` a `bx_f16` (con redondeo a más cercano par).
+    /// Convierte un `f32` a `bx_f16` (con redondeo a mas cercano par).
     pub fn from_f32(v: f32) -> Self {
         let bits = v.to_bits();
         let sign = ((bits >> 31) & 0x1) as u16;
@@ -65,10 +65,10 @@ impl bx_f16 {
             let m = if mant != 0 { 0x200 } else { 0 };
             (sign << 15) | 0x7C00 | m
         } else if exp > 142 {
-            // Overflow → ±inf
+            // Overflow -> +/-inf
             (sign << 15) | 0x7C00
         } else if exp < 113 {
-            // Underflow → ±0 o subnormal
+            // Underflow -> +/-0 o subnormal
             if exp < 103 {
                 sign << 15
             } else {
@@ -83,7 +83,7 @@ impl bx_f16 {
     }
 }
 
-// ─── Constantes (sustituye <float.h>) ─────────────────────────────────
+// --- Constantes (sustituye <float.h>) ---------------------------------
 pub const BX_F32_EPSILON: bx_f32 = f32::EPSILON;
 pub const BX_F64_EPSILON: bx_f64 = f64::EPSILON;
 pub const BX_F32_INFINITY: bx_f32 = f32::INFINITY;

@@ -14,13 +14,13 @@ pub use telemetry::{
 };
 pub use traits::{SerialSink, Clock, EventSink, NullSink};
 
-// ─── Version ──────────────────────────────────────────────────────────────
+// --- Version --------------------------------------------------------------
 
 pub const CABINA_VERSION: (u8, u8) = (1, 0);
 pub const CABINA_CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const CABINA_MAGIC: u32 = 0x434142_31; // "CAB1" as u32
 
-// ─── Shared memory buffer protocol constants ──────────────────────────────
+// --- Shared memory buffer protocol constants ------------------------------
 
 /// Maximum events in a shared-memory ring buffer.
 pub const SHM_BUFFER_CAPACITY: u32 = 256;
@@ -29,7 +29,7 @@ pub const SHM_MAGIC: u32 = 0x434142_32; // "CAB2" as u32
 /// Current shared memory protocol version.
 pub const SHM_VERSION: u32 = 1;
 
-// ─── Tests ────────────────────────────────────────────────────────────────
+// --- Tests ----------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

@@ -5,10 +5,10 @@
 
 use super::*;
 
-// ═══════════════ Listas de inicialización ═══════════════
+// =============== Listas de inicializacion ===============
 //
-// No existían: ni siquiera `int a[3] = {1,2,3}`. Ver la cabecera de
-// `parser/inicializador.rs` para el diseño y para qué hicieron GCC, Clang,
+// No existian: ni siquiera `int a[3] = {1,2,3}`. Ver la cabecera de
+// `parser/inicializador.rs` para el diseno y para que hicieron GCC, Clang,
 // chibicc, TCC y MSVC con esto mismo.
 
 #[test]
@@ -26,10 +26,10 @@ fn una_lista_posicional_llena_un_struct() {
     assert_eq!(out.trim(), "1 2 3");
 }
 
-/// ★ C99 §6.7.9/21: lo NO mencionado vale CERO.
+/// * C99 section 6.7.9/21: lo NO mencionado vale CERO.
 ///
-/// Sin el borrado previo, `q.x` y `q.z` traerían lo que hubiera en la pila
-/// — basura distinta en cada ejecución, y un bug que no se repite.
+/// Sin el borrado previo, `q.x` y `q.z` traerian lo que hubiera en la pila
+/// -- basura distinta en cada ejecucion, y un bug que no se repite.
 #[test]
 fn lo_no_mencionado_vale_cero() {
     let out = run_c("struct P { int x; int y; int z; }; \
@@ -39,7 +39,7 @@ fn lo_no_mencionado_vale_cero() {
 }
 
 /// Los designadores pueden ir en cualquier orden: el offset lo pone el
-/// nombre, no la posición.
+/// nombre, no la posicion.
 #[test]
 fn los_designadores_van_en_el_orden_que_quieran() {
     let out = run_c("struct P { int x; int y; int z; }; \
@@ -48,9 +48,9 @@ fn los_designadores_van_en_el_orden_que_quieran() {
     assert_eq!(out.trim(), "5 0 9");
 }
 
-/// ★ La regla que más se olvida al implementar esto a mano: un designador
+/// * La regla que mas se olvida al implementar esto a mano: un designador
 /// **reposiciona el cursor**, y lo siguiente sin designador sigue DESDE
-/// AHÍ. La `d` va al índice 3, no al 0.
+/// AHI. La `d` va al indice 3, no al 0.
 #[test]
 fn tras_un_designador_se_sigue_desde_ahi() {
     let out = run_c("int main() { int b[5] = {[2] = 30, 40}; \
@@ -58,7 +58,7 @@ fn tras_un_designador_se_sigue_desde_ahi() {
     assert_eq!(out.trim(), "0 30 40 0");
 }
 
-/// El último gana, y sale solo de emitir en orden.
+/// El ultimo gana, y sale solo de emitir en orden.
 #[test]
 fn si_un_campo_se_inicializa_dos_veces_gana_el_ultimo() {
     let out = run_c("struct P { int x; int y; }; \
@@ -76,7 +76,7 @@ fn una_lista_anidada_recorre_los_subobjetos() {
     assert_eq!(out.trim(), "1 2 0 4");
 }
 
-/// Cadena de designadores: `[1].y = …` es legal C99.
+/// Cadena de designadores: `[1].y = ...` es legal C99.
 #[test]
 fn una_cadena_de_designadores_baja_dos_niveles() {
     let out = run_c("struct P { int x; int y; }; \
@@ -85,7 +85,7 @@ fn una_cadena_de_designadores_baja_dos_niveles() {
     assert_eq!(out.trim(), "0 8");
 }
 
-/// Una cadena inicializa un `char[]` **byte a byte**. Es la única forma en
+/// Una cadena inicializa un `char[]` **byte a byte**. Es la unica forma en
 /// C de inicializar un agregado sin llaves.
 #[test]
 fn una_cadena_llena_un_array_de_char() {
@@ -94,7 +94,7 @@ fn una_cadena_llena_un_array_de_char() {
     assert_eq!(out.trim(), "hola|0");
 }
 
-/// Y si no cabe, se dice. Escribir uno de más pisaría lo de al lado.
+/// Y si no cabe, se dice. Escribir uno de mas pisaria lo de al lado.
 #[test]
 fn una_cadena_que_no_cabe_es_un_error() {
     let err = compile_source_to_bef("int main() { char s[3] = \"hola\"; return 0; }")
@@ -127,9 +127,9 @@ fn un_campo_inventado_es_un_error() {
     assert!(err.message.contains("pepe"), "mensaje: {}", err.message);
 }
 
-/// ★ La declaración se parsea en TRES sitios (cuerpo de función, bloque
-/// anidado, `parse_stmt`) y estaba copiada en los tres. Al añadir las
-/// listas sólo aprendió uno: dentro de un `if`, `int a[2] = {…}` no
+/// * La declaracion se parsea en TRES sitios (cuerpo de funcion, bloque
+/// anidado, `parse_stmt`) y estaba copiada en los tres. Al anadir las
+/// listas solo aprendio uno: dentro de un `if`, `int a[2] = {...}` no
 /// compilaba. Ahora los tres llaman a `terminar_declaracion`.
 #[test]
 fn una_lista_tambien_compila_dentro_de_un_bloque() {
@@ -138,15 +138,15 @@ fn una_lista_tambien_compila_dentro_de_un_bloque() {
     assert_eq!(out.trim(), "7 8");
 }
 
-/// ★ Y el emulador tiene que escribir el tamaño EXACTO.
+/// * Y el emulador tiene que escribir el tamano EXACTO.
 ///
-/// `mov [mem], eax` toca CUATRO bytes; el emulador escribía ocho rellenando
-/// de ceros. En un registro eso es correcto —escribir uno de 32 bits borra
-/// la mitad alta— pero en memoria destruye lo de al lado. Este caso lo
-/// destapó: con `{.x = 1, .y = 2, .x = 9}`, la última escritura de `x`
-/// borraba la `y` de detrás y salía `9 0`.
+/// `mov [mem], eax` toca CUATRO bytes; el emulador escribia ocho rellenando
+/// de ceros. En un registro eso es correcto --escribir uno de 32 bits borra
+/// la mitad alta-- pero en memoria destruye lo de al lado. Este caso lo
+/// destapo: con `{.x = 1, .y = 2, .x = 9}`, la ultima escritura de `x`
+/// borraba la `y` de detras y salia `9 0`.
 ///
-/// Un emulador que hace fallar código correcto es peor que uno que no
+/// Un emulador que hace fallar codigo correcto es peor que uno que no
 /// existe: manda a buscar el bug al sitio equivocado.
 #[test]
 fn escribir_un_campo_no_toca_al_de_al_lado() {

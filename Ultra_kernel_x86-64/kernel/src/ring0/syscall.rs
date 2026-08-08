@@ -6,12 +6,12 @@
 //! the Rust dispatcher with the frame pointer.
 //!
 //! Return is via `iretq`, never `sysretq`: one return path for traps and
-//! syscalls, no non-canonical-RCX #GP hazard in Ring 0, and — critically —
+//! syscalls, no non-canonical-RCX #GP hazard in Ring 0, and -- critically --
 //! the dispatcher may answer with a *different* context than the one that
 //! entered (YIELD/WAIT/EXIT switch right at the syscall boundary).
 //!
 //! The surface is frozen at `INVOKE`, `CHANNEL_KICK`, `WAIT`. Everything
-//! else is a capability operation resolved through `cap::resolve` — new
+//! else is a capability operation resolved through `cap::resolve` -- new
 //! functionality adds operations and handle kinds, never syscalls.
 
 use core::arch::{asm, naked_asm};
@@ -43,118 +43,118 @@ const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
 ///
 /// Puerta de descubrimiento provisional, con el mismo aviso que lleva
 /// `TASK_OP_CONSOLE_WRITE`: hoy cualquier proceso puede pedir cualquier
-/// endpoint por su índice, y eso NO es disciplina de capabilities. Existe para
+/// endpoint por su indice, y eso NO es disciplina de capabilities. Existe para
 /// arrancar, y muere cuando haya un servicio de nombres que entregue el handle
-/// a quien deba tenerlo. Se dice aquí para que nadie lo confunda con el
-/// diseño final.
+/// a quien deba tenerlo. Se dice aqui para que nadie lo confunda con el
+/// diseno final.
 const TASK_OP_ENDPOINT_CONNECT: u64 = 0x08;
-/// Reclamar la pantalla. Devuelve un handle `KIND_FRAMEBUFFER` y, con él, el
+/// Reclamar la pantalla. Devuelve un handle `KIND_FRAMEBUFFER` y, con el, el
 /// framebuffer mapeado en el espacio del proceso. Ver `ring0/fb.rs`: a partir
-/// de aquí el kernel deja de dibujar y el proceso escribe píxeles con `mov`.
+/// de aqui el kernel deja de dibujar y el proceso escribe pixeles con `mov`.
 const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
-/// Soltar la pantalla siendo su dueño y **seguir vivo**. Pareja de
+/// Soltar la pantalla siendo su dueno y **seguir vivo**. Pareja de
 /// `FRAMEBUFFER_CLAIM`.
 ///
 /// `0x1D` elegido tras listar los opcodes ORDENADOS, que es la regla desde que
-/// `MEMORIA_PEDIR` se puso en `0x12` —ya ocupado por `REINICIAR`— y pedir
-/// memoria habría reiniciado la máquina.
+/// `MEMORIA_PEDIR` se puso en `0x12` --ya ocupado por `REINICIAR`-- y pedir
+/// memoria habria reiniciado la maquina.
 const TASK_OP_PANTALLA_SOLTAR: u64 = 0x1D;
-/// Soltar la ENTRADA siendo su dueño y seguir vivo. Pareja de `INPUT_CLAIM`.
+/// Soltar la ENTRADA siendo su dueno y seguir vivo. Pareja de `INPUT_CLAIM`.
 ///
 /// Va con `PANTALLA_SOLTAR` porque el caso de uso es el mismo y **separarlas fue
-/// el bug**: prestar la pantalla sin la entrada dejó a `ray.bex` pintando sin
+/// el bug**: prestar la pantalla sin la entrada dejo a `ray.bex` pintando sin
 /// poder leer su propio ESC, y a la maquina sin teclado.
 const TASK_OP_ENTRADA_SOLTAR: u64 = 0x1E;
 /// Reclamar el raton. Devuelve un handle `KIND_INPUT`: el kernel lee el HID,
 /// Ring 3 decide que hace con las coordenadas. Ver `ring0/input.rs`.
 const TASK_OP_INPUT_CLAIM: u64 = 0x0A;
-/// Acumula 8 bytes de ruta (LE, el cero corta) en el renglón del proceso.
+/// Acumula 8 bytes de ruta (LE, el cero corta) en el renglon del proceso.
 ///
-/// Mismo formato que `TASK_OP_CONSOLE_WRITE`, y por la misma razón: los
-/// argumentos van en registros y aquí no hay `copy_from_user`. Pasar un puntero
-/// de Ring 3 obligaría al kernel a traducirlo contra el espacio del llamante y
-/// a validar que el rango entero es suyo — infraestructura que no existe todavía
+/// Mismo formato que `TASK_OP_CONSOLE_WRITE`, y por la misma razon: los
+/// argumentos van en registros y aqui no hay `copy_from_user`. Pasar un puntero
+/// de Ring 3 obligaria al kernel a traducirlo contra el espacio del llamante y
+/// a validar que el rango entero es suyo -- infraestructura que no existe todavia
 /// y que no se va a improvisar en el camino de lanzar un programa. Ocho bytes
-/// por llamada es feo y es seguro; lo segundo importa más.
+/// por llamada es feo y es seguro; lo segundo importa mas.
 const TASK_OP_RUTA: u64 = 0x0B;
-/// Lanza lo que se haya acumulado con `TASK_OP_RUTA` y vacía el renglón.
-/// Devuelve el tid admitido. Ver `ring0/lanzar.rs` — el gate de firma es el
+/// Lanza lo que se haya acumulado con `TASK_OP_RUTA` y vacia el renglon.
+/// Devuelve el tid admitido. Ver `ring0/lanzar.rs` -- el gate de firma es el
 /// mismo que el del shell, no una copia.
 const TASK_OP_EJECUTAR: u64 = 0x0C;
 /// Crea una consola y devuelve su handle de LECTURA. Quien la crea es el
 /// terminal: la consola es suya y la drena a su ritmo. Ver `ring0/consola.rs`.
 const TASK_OP_CONSOLA_CREAR: u64 = 0x0D;
 /// Abre un directorio del volumen de datos y devuelve su handle. La ruta se
-/// acumula antes con `TASK_OP_RUTA` — el MISMO renglon que usa `EJECUTAR`, que
+/// acumula antes con `TASK_OP_RUTA` -- el MISMO renglon que usa `EJECUTAR`, que
 /// es lo que hace que no haga falta un segundo mecanismo para lo mismo.
 const TASK_OP_DIR_ABRIR: u64 = 0x0E;
 /// LEE de la consola asignada a este proceso. Devuelve `(n << 56) | bytes`.
 ///
 /// La pareja de `TASK_OP_CONSOLE_WRITE`: el hijo escribe por una y escucha por
 /// la otra, sobre el MISMO objeto. Es lo que permite un `ACCEPT` en un proceso
-/// que no tiene —ni debe tener— la capability del teclado: el terminal que lo
+/// que no tiene --ni debe tener-- la capability del teclado: el terminal que lo
 /// lanzo le pasa lo que se teclea.
 const TASK_OP_CONSOLE_READ: u64 = 0x0F;
 /// Abre un archivo del volumen de datos para LEER. La ruta se acumula antes
-/// con `TASK_OP_RUTA` — el MISMO renglon que `EJECUTAR` y que `DIR_ABRIR`.
+/// con `TASK_OP_RUTA` -- el MISMO renglon que `EJECUTAR` y que `DIR_ABRIR`.
 /// Ver `ring0/archivo.rs`.
 const TASK_OP_ARCHIVO_ABRIR: u64 = 0x10;
-/// Pedir un bloque de memoria. Espejo de `bmo_abi::…::TASK_OP_MEMORIA_PEDIR`
-/// — el drift guard del build comprueba que los dos digan lo mismo.
+/// Pedir un bloque de memoria. Espejo de `bmo_abi::...::TASK_OP_MEMORIA_PEDIR`
+/// -- el drift guard del build comprueba que los dos digan lo mismo.
 const TASK_OP_MEMORIA_PEDIR: u64 = 0x15;
 /// Igual, pero para ESCRIBIR. Son dos operaciones y no un argumento de modo
 /// porque abrir para escribir puede fallar por motivos que abrir para leer no
-/// tiene —volumen de solo lectura, nombre que no es 8.3— y mezclarlas
+/// tiene --volumen de solo lectura, nombre que no es 8.3-- y mezclarlas
 /// obligaria a devolver errores que no aplican a la mitad de las llamadas.
 const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
-/// Reinicia la máquina. No vuelve.
+/// Reinicia la maquina. No vuelve.
 ///
-/// El reinicio de tres pasos (`0xCF9` → 8042 → triple fault) ya existía y sólo
-/// lo tenía el shell del kernel: la caja de Ring 3 contestaba "no lo conozco" a
-/// `reboot`, y la única salida era el botón. Reiniciar es tocar puertos de E/S,
-/// que Ring 3 no puede —ni debe— hacer; por eso es una operación y no un
+/// El reinicio de tres pasos (`0xCF9` -> 8042 -> triple fault) ya existia y solo
+/// lo tenia el shell del kernel: la caja de Ring 3 contestaba "no lo conozco" a
+/// `reboot`, y la unica salida era el boton. Reiniciar es tocar puertos de E/S,
+/// que Ring 3 no puede --ni debe-- hacer; por eso es una operacion y no un
 /// permiso ambiental.
 ///
-/// **Limitación declarada**: hoy no está atada a una capability, igual que
+/// **Limitacion declarada**: hoy no esta atada a una capability, igual que
 /// `EJECUTAR`. Cualquier tarea de Ring 3 puede llamarla. Se apunta en CABINA
 /// antes de reiniciar para que nunca sea silenciosa, y las dos operaciones
-/// quieren la misma capability el día que exista.
+/// quieren la misma capability el dia que exista.
 const TASK_OP_REINICIAR: u64 = 0x12;
-/// Un dato numérico del sistema (`arg0` = campo) y uno de texto (`arg0` =
-/// campo, `arg1` = trozo de 8 bytes). Ver `ring0/core/informe.rs`: leer cuánta
+/// Un dato numerico del sistema (`arg0` = campo) y uno de texto (`arg0` =
+/// campo, `arg1` = trozo de 8 bytes). Ver `ring0/core/informe.rs`: leer cuanta
 /// RAM hay no es un privilegio, es una pregunta.
 const TASK_OP_INFO: u64 = 0x13;
 const TASK_OP_INFO_TEXTO: u64 = 0x14;
-/// El log del kernel, LEÍDO desde Ring 3. `KLOG_INFO` cuántas hay
-/// (`arg0` = 0 disponibles, 1 total), `KLOG_TEXTO` ocho bytes de una línea
-/// (`arg0` = línea, **0 es la más reciente**; `arg1` = trozo).
+/// El log del kernel, LEIDO desde Ring 3. `KLOG_INFO` cuantas hay
+/// (`arg0` = 0 disponibles, 1 total), `KLOG_TEXTO` ocho bytes de una linea
+/// (`arg0` = linea, **0 es la mas reciente**; `arg1` = trozo).
 ///
 /// Mismo criterio que `INFO`: contesta texto y no concede nada. Ver
-/// `ring0/core/klog.rs` — existe porque desde que el escritorio es el arranque,
-/// el panel del kernel no se pinta y el log no lo podía leer nadie.
+/// `ring0/core/klog.rs` -- existe porque desde que el escritorio es el arranque,
+/// el panel del kernel no se pinta y el log no lo podia leer nadie.
 const TASK_OP_KLOG_INFO: u64 = 0x16;
 const TASK_OP_KLOG_TEXTO: u64 = 0x17;
-/// **La primera operación de la superficie que ESCRIBE EN EL DISCO.** Cierra
-/// una transacción vacía en ESTRATOS y devuelve la generación nueva, o 0.
+/// **La primera operacion de la superficie que ESCRIBE EN EL DISCO.** Cierra
+/// una transaccion vacia en ESTRATOS y devuelve la generacion nueva, o 0.
 /// Ver `ring0/fsys/estratos.rs::sellar`.
 const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 /// El CURSOR de ESTRATOS: `arg0` la pregunta, `arg1` su argumento. Y los
 /// nombres, de ocho en ocho.
 ///
-/// Dos operaciones y no diez. `INFO_ES_*` ya contestaba *cómo está* el almacén;
-/// esto contesta **qué hay dentro**, que es lo que la ventana de Datos no podía
-/// enseñar porque `raiz`, `nodo`, `entradas` y `entrada` eran funciones de
+/// Dos operaciones y no diez. `INFO_ES_*` ya contestaba *como esta* el almacen;
+/// esto contesta **que hay dentro**, que es lo que la ventana de Datos no podia
+/// ensenar porque `raiz`, `nodo`, `entradas` y `entrada` eran funciones de
 /// Ring 0 sin puerta. Mismo criterio que `INFO` y que el klog: contesta y no
-/// concede — aquí no hay una sola operación que escriba.
+/// concede -- aqui no hay una sola operacion que escriba.
 const TASK_OP_ES_NODO: u64 = 0x19;
 const TASK_OP_ES_TEXTO: u64 = 0x1A;
-/// Despertar los otros núcleos. Espejo de `bmo_abi::…::TASK_OP_SMP_DESPERTAR`.
+/// Despertar los otros nucleos. Espejo de `bmo_abi::...::TASK_OP_SMP_DESPERTAR`.
 const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
-/// Tomar lo que otro proceso me haya ofrecido. Espejo de `…::TASK_OP_TOMAR`.
+/// Tomar lo que otro proceso me haya ofrecido. Espejo de `...::TASK_OP_TOMAR`.
 const TASK_OP_TOMAR: u64 = 0x1C;
-/// Ofrecer un trozo del bloque propio. Es una operación sobre `KIND_MEMORIA`.
+/// Ofrecer un trozo del bloque propio. Es una operacion sobre `KIND_MEMORIA`.
 const MEM_OP_OFRECER: u64 = 0x03;
-/// Las preguntas del cursor. Espejo de `bmo_abi::…::ES_NODO_*`.
+/// Las preguntas del cursor. Espejo de `bmo_abi::...::ES_NODO_*`.
 const ES_NODO_RAIZ: u64 = 0x00;
 const ES_NODO_HIJOS: u64 = 0x01;
 const ES_NODO_TRUNCADO: u64 = 0x02;
@@ -167,8 +167,8 @@ const ES_NODO_HIJO_BYTES: u64 = 0x08;
 const ES_NODO_HIJO_ATRIBUTOS: u64 = 0x09;
 const ES_NODO_HIJO_FIRMADO: u64 = 0x0A;
 const ES_NODO_VERIFICAR: u64 = 0x0B;
-/// Qué texto pide `ES_TEXTO`, en los bits altos de `arg0`. Espejo de
-/// `bmo_abi::…::ES_TXT_*`.
+/// Que texto pide `ES_TEXTO`, en los bits altos de `arg0`. Espejo de
+/// `bmo_abi::...::ES_TXT_*`.
 const ES_TXT_RUTA: u64 = 1;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
@@ -253,7 +253,7 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "jne 3f",
         // La CABECERA, antes de borrar el sello: asi el informe la lee intacta
         // y puede decir de quien era el contexto. rax/rdx se pueden pisar aqui
-        // — los recuperan los pops de abajo.
+        // -- los recuperan los pops de abajo.
         "mov rdx, qword ptr [rsp+{bv}]",
         "and rdx, qword ptr [rip+{no_xcr0}]",
         "jnz 8f",
@@ -266,7 +266,7 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "or rax, qword ptr [rsp+{cero}+48]",
         "jnz 8f",
         // UN SOLO USO: al restaurarlo se borra el sello. Un contexto que ya
-        // se consumio no puede volver a pasar por bueno — si alguien lo
+        // se consumio no puede volver a pasar por bueno -- si alguien lo
         // intenta, se planta con nombre en vez de reventar en el xrstor.
         "mov qword ptr [rsp+{firma}], 0",
         "mov eax, -1", "mov edx, -1",
@@ -355,10 +355,10 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         }
         // Bootstrap console: render up to 8 packed bytes (LE, NUL-stop) to
         // the kernel's on-screen log + serial. This is how the first Ring 3
-        // program draws — the whole point of the CPL3→CPL0 demo. It writes
+        // program draws -- the whole point of the CPL3->CPL0 demo. It writes
         // nothing but text and cannot escalate; the caller only ever paints
         // into the kernel-owned console surface.
-        // La salida va a la consola ASIGNADA al proceso, si tiene una — o al
+        // La salida va a la consola ASIGNADA al proceso, si tiene una -- o al
         // panel del kernel si no, exactamente como antes. Lo nuevo rodea a lo
         // viejo en vez de romperlo: los cinco demos embebidos siguen hablando
         // por el panel sin cambiar una linea.
@@ -446,9 +446,9 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             }
         }
         // La pantalla. El espacio de direcciones en el que se mapea es el que
-        // está cargado AHORA: durante un SYSCALL desde Ring 3, CR3 sigue
-        // siendo el del llamante — el cambio de CR3 sólo ocurre en un cambio
-        // de contexto, y aquí todavía no ha habido ninguno.
+        // esta cargado AHORA: durante un SYSCALL desde Ring 3, CR3 sigue
+        // siendo el del llamante -- el cambio de CR3 solo ocurre en un cambio
+        // de contexto, y aqui todavia no ha habido ninguno.
         TASK_OP_INPUT_CLAIM => {
             let _ = arg0;
             match crate::ring0::obj::input::reclamar(scheduler::current_pid()) {
@@ -466,14 +466,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 Err(code) => BmoStatus::err(code),
             }
         }
-        // ★ SOLTAR la pantalla sin morirse. La pareja que le faltaba a
-        // `FRAMEBUFFER_CLAIM`: hasta hoy la única forma de dejar de ser dueño
-        // era terminar, así que el escritorio no podía prestarla ni queriendo y
-        // `ray.bex` se llevaba un "la pantalla ya tiene dueño".
+        // * SOLTAR la pantalla sin morirse. La pareja que le faltaba a
+        // `FRAMEBUFFER_CLAIM`: hasta hoy la unica forma de dejar de ser dueno
+        // era terminar, asi que el escritorio no podia prestarla ni queriendo y
+        // `ray.bex` se llevaba un "la pantalla ya tiene dueno".
         //
-        // El `CR3` es el del llamante, igual que al reclamar — y aquí importa
-        // más, porque es de donde hay que DESMAPEAR: el proceso sigue vivo y
-        // dejarle las páginas sería dejarle escribir en una pantalla que ya no
+        // El `CR3` es el del llamante, igual que al reclamar -- y aqui importa
+        // mas, porque es de donde hay que DESMAPEAR: el proceso sigue vivo y
+        // dejarle las paginas seria dejarle escribir en una pantalla que ya no
         // es suya.
         TASK_OP_ENTRADA_SOLTAR => {
             let _ = arg0;
@@ -492,7 +492,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 Err(code) => BmoStatus::err(code),
             }
         }
-        // ★ Pedir memoria. Mismo comentario de CR3 que el framebuffer: durante
+        // * Pedir memoria. Mismo comentario de CR3 que el framebuffer: durante
         // el syscall sigue cargado el espacio del llamante, que es justo donde
         // hay que mapear.
         TASK_OP_MEMORIA_PEDIR => {
@@ -505,8 +505,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 Err(code) => BmoStatus::err(code),
             }
         }
-        // ★ TOMAR lo que otro me ofrecio. El mapeo ocurre AQUI, en el espacio
-        // del que llama — por eso se toma y no se empuja: mapear en el espacio
+        // * TOMAR lo que otro me ofrecio. El mapeo ocurre AQUI, en el espacio
+        // del que llama -- por eso se toma y no se empuja: mapear en el espacio
         // de otro exigiria el `CR3` de un proceso que no esta corriendo, y esa
         // infraestructura no existe. Asi el destino es `read_cr3()` y ya.
         TASK_OP_TOMAR => {
@@ -537,29 +537,29 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_KLOG_TEXTO => {
             BmoStatus::ok_value(crate::ring0::core::klog::texto(arg0, arg1))
         }
-        // ★ Despertar núcleos DESDE Ring 3. Es la única operación de esta tabla
+        // * Despertar nucleos DESDE Ring 3. Es la unica operacion de esta tabla
         // que cambia el estado del hardware en vez de contestar una pregunta, y
-        // por eso conviene decir por qué se acepta: no concede nada al llamante
-        // —los APs quedan parados y sin tocar el kernel— y el resultado es un
-        // número. Ver `plat/smp` y `docs/SMP_MAESTRO.md`.
+        // por eso conviene decir por que se acepta: no concede nada al llamante
+        // --los APs quedan parados y sin tocar el kernel-- y el resultado es un
+        // numero. Ver `plat/smp` y `docs/SMP_MAESTRO.md`.
         //
-        // El aviso por núcleo se traga aquí: cruzar el borde de Ring 3 once
-        // veces para pintar una línea costaría más que el propio bring-up. Lo
-        // que sí queda es CABINA, que ya recibe el relato entero desde dentro.
-        // `arg0` = cuántos despertar (0 = sólo censar, `u32::MAX` = todos).
-        // `arg1` = el modo: 0 despertar · 1 PARAR · 2 la prueba de reparto.
+        // El aviso por nucleo se traga aqui: cruzar el borde de Ring 3 once
+        // veces para pintar una linea costaria mas que el propio bring-up. Lo
+        // que si queda es CABINA, que ya recibe el relato entero desde dentro.
+        // `arg0` = cuantos despertar (0 = solo censar, `u32::MAX` = todos).
+        // `arg1` = el modo: 0 despertar - 1 PARAR - 2 la prueba de reparto.
         TASK_OP_SMP_DESPERTAR => {
             use crate::ring0::plat::smp::{self, obra};
             let cuantos = if arg0 > u32::MAX as u64 { u32::MAX } else { arg0 as u32 };
             match arg1 {
-                // Desactivar: los obreros vuelven a `hlt` y ahí se quedan.
+                // Desactivar: los obreros vuelven a `hlt` y ahi se quedan.
                 1 => {
                     obra::parar();
                     crate::ring0::core::phase::dashboard_log("[smp] obreros PARADOS");
                     BmoStatus::ok_value(0)
                 }
-                // La prueba. Devuelve la aceleración ×100 —`842` son 8,42×—
-                // porque por la puerta sólo cabe un número y una fracción no
+                // La prueba. Devuelve la aceleracion x100 --`842` son 8,42x--
+                // porque por la puerta solo cabe un numero y una fraccion no
                 // se puede mandar entera. El detalle en crudo va a CABINA.
                 2 => {
                     let (vivos, _) = smp::vivos();
@@ -580,7 +580,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 }
             }
         }
-        // ★ Escribe en el disco. Se apunta en CABINA ANTES y DESPUES, pase lo
+        // * Escribe en el disco. Se apunta en CABINA ANTES y DESPUES, pase lo
         // que pase: la primera operacion que cambia el almacen no puede ser
         // silenciosa ni cuando funciona.
         TASK_OP_ESTRATOS_SELLAR => {
@@ -597,10 +597,10 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 }
             }
         }
-        // ── El cursor de ESTRATOS ──
+        // -- El cursor de ESTRATOS --
         //
-        // CONTESTA, no autoriza — el mismo trato que `INFO` y que el klog.
-        // Ninguna de estas preguntas cambia el volumen: no hay aquí una sola
+        // CONTESTA, no autoriza -- el mismo trato que `INFO` y que el klog.
+        // Ninguna de estas preguntas cambia el volumen: no hay aqui una sola
         // operacion que escriba, y por eso no piden capability propia.
         TASK_OP_ES_NODO => {
             use crate::ring0::fsys::estratos::cursor;
@@ -616,7 +616,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 ES_NODO_HIJO_BYTES => cursor::hijo_bytes(arg1 as usize),
                 ES_NODO_HIJO_ATRIBUTOS => cursor::hijo_atributos(arg1 as usize),
                 ES_NODO_HIJO_FIRMADO => cursor::hijo_firmado(arg1 as usize),
-                // ★ La UNICA de la tabla que hace trabajo de verdad: lee el
+                // * La UNICA de la tabla que hace trabajo de verdad: lee el
                 // archivo entero y le hace el BLAKE3. Por eso se pide a mano y
                 // no se calcula al pintar.
                 ES_NODO_VERIFICAR => cursor::verificar(arg1 as usize),
@@ -626,10 +626,10 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 _ => 0,
             })
         }
-        // `arg0` lleva DOS cosas: el índice en los 32 bits bajos y qué texto se
-        // pide en los altos. Se reparte el argumento en vez de añadir otra
-        // operación porque son el mismo mecanismo —sacar un nombre de ocho en
-        // ocho— pidiendo dos cosas distintas.
+        // `arg0` lleva DOS cosas: el indice en los 32 bits bajos y que texto se
+        // pide en los altos. Se reparte el argumento en vez de anadir otra
+        // operacion porque son el mismo mecanismo --sacar un nombre de ocho en
+        // ocho-- pidiendo dos cosas distintas.
         TASK_OP_ES_TEXTO => {
             use crate::ring0::fsys::estratos::cursor;
             let i = (arg0 & 0xFFFF_FFFF) as usize;
@@ -682,13 +682,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
     }
 }
 
-// ── El renglón de ruta ──────────────────────────────────────────────────
+// -- El renglon de ruta --------------------------------------------------
 //
 // Una ruta se arma a trozos de 8 bytes y se consume entera en `EJECUTAR`. El
-// renglón es UNO y lleva el pid de quien lo está llenando: si empieza a
+// renglon es UNO y lleva el pid de quien lo esta llenando: si empieza a
 // escribir otro proceso, lo que hubiera a medias se descarta en vez de
-// mezclarse. Dos procesos lanzando a la vez es un caso que hoy no existe —sólo
-// el compositor tiene la caja— y cuando exista, media ruta de cada uno sería un
+// mezclarse. Dos procesos lanzando a la vez es un caso que hoy no existe --solo
+// el compositor tiene la caja-- y cuando exista, media ruta de cada uno seria un
 // fallo mucho peor que un lanzamiento perdido.
 
 const RUTA_MAX: usize = 128;
@@ -716,8 +716,8 @@ fn ruta_push(pid: u32, empaquetado: u64) {
     }
 }
 
-/// La ruta acumulada, y el renglón queda vacío. Devuelve `""` si el que llama
-/// no es el que la escribió — no se lanza la ruta de otro.
+/// La ruta acumulada, y el renglon queda vacio. Devuelve `""` si el que llama
+/// no es el que la escribio -- no se lanza la ruta de otro.
 fn ruta_tomar(pid: u32) -> &'static str {
     unsafe {
         if RUTA_PID != pid {
@@ -741,10 +741,10 @@ fn invoke_channel(resolved: cap::Resolved, operation: u64) -> BmoStatus {
     }
 }
 
-/// `INVOKE(capability, operation, a0..a3)` — the single synchronous door.
+/// `INVOKE(capability, operation, a0..a3)` -- the single synchronous door.
 fn invoke(frame: &TrapFrame) -> BmoStatus {
     if frame.rdi == CURRENT_TASK {
-        // ★ `frame.r10` y no `rcx`: en SYSCALL el CPU mete ahi el RIP de
+        // * `frame.r10` y no `rcx`: en SYSCALL el CPU mete ahi el RIP de
         // retorno. Es el mismo motivo por el que el prologo hace `push rcx`.
         return invoke_current_task(frame.rsi, frame.rdx, frame.r10);
     }
@@ -756,11 +756,11 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             cap::KIND_ENDPOINT => {
                 // Argumentos: rdi(cap), rsi(op), rdx, r10, r8.
                 //
-                // ★ NO rcx. En `SYSCALL` el CPU mete ahí el RIP de retorno —
-                // por eso el prólogo hace `push rcx` como RIP de usuario— y
+                // * NO rcx. En `SYSCALL` el CPU mete ahi el RIP de retorno --
+                // por eso el prologo hace `push rcx` como RIP de usuario-- y
                 // r11 se lleva RFLAGS. Un argumento en rcx no es el dato del
-                // cliente: es la dirección a la que va a volver. Por eso la
-                // convención salta a r10, igual que en Linux.
+                // cliente: es la direccion a la que va a volver. Por eso la
+                // convencion salta a r10, igual que en Linux.
                 let res = endpoint::llamar(
                     r.object as usize,
                     frame.rsi,
@@ -780,8 +780,8 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
     match cap::resolve(pid, frame.rdi, cap::RIGHT_READ) {
         Ok(resolved) => match resolved.kind {
             cap::KIND_CHANNEL => invoke_channel(resolved, frame.rsi),
-            // La pantalla sólo contesta preguntas: dónde está y qué forma
-            // tiene. Los píxeles no pasan por aquí — para eso está mapeada.
+            // La pantalla solo contesta preguntas: donde esta y que forma
+            // tiene. Los pixeles no pasan por aqui -- para eso esta mapeada.
             // El raton solo contesta donde esta y que botones tiene. Dibujar
             // el cursor es una decision de aspecto, y eso no es del kernel.
             cap::KIND_INPUT => match crate::ring0::obj::input::operacion(frame.rsi) {
@@ -802,19 +802,19 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             cap::KIND_DIRECTORIO => {
                 match crate::ring0::obj::directorio::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => {
-                        // ★★ CERRAR DEVUELVE DOS RECURSOS, NO UNO.
+                        // ** CERRAR DEVUELVE DOS RECURSOS, NO UNO.
                         //
-                        // La ranura del objeto la suelta el módulo; **el handle
-                        // lo tiene que soltar aquí**, que es el único sitio que
-                        // lo conoce — `operacion` recibe el índice del objeto,
-                        // no el handle con el que se pidió.
+                        // La ranura del objeto la suelta el modulo; **el handle
+                        // lo tiene que soltar aqui**, que es el unico sitio que
+                        // lo conoce -- `operacion` recibe el indice del objeto,
+                        // no el handle con el que se pidio.
                         //
                         // Sin esto el arreglo de la fuga de directorios quedaba
                         // a medias y de la peor manera: las 8 ranuras de
-                        // directorio volvían, y los **64 handles por proceso**
+                        // directorio volvian, y los **64 handles por proceso**
                         // no. O sea, el mismo fallo con el contador ocho veces
-                        // más largo — el tipo de bug que parece arreglado
-                        // porque tarda ocho veces más en aparecer.
+                        // mas largo -- el tipo de bug que parece arreglado
+                        // porque tarda ocho veces mas en aparecer.
                         if frame.rsi == crate::ring0::obj::directorio::DIR_OP_CERRAR {
                             cap::revoke(pid, frame.rdi);
                         }
@@ -827,16 +827,16 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // abrir y no es un argumento aqui: pedirle bytes a un archivo de
             // escritura no es un error de permisos, es una pregunta que ese
             // objeto no responde.
-            // ★ LEER UN BLOQUE ENTERO, y por qué se despacha AQUÍ y no dentro
-            // de `archivo`: hace falta resolver una SEGUNDA capability —la del
-            // bloque de memoria— y las capabilities viven en este borde.
+            // * LEER UN BLOQUE ENTERO, y por que se despacha AQUI y no dentro
+            // de `archivo`: hace falta resolver una SEGUNDA capability --la del
+            // bloque de memoria-- y las capabilities viven en este borde.
             //
-            // Y ésta es la pieza que hacía falta para `fopen`. `ARCH_OP_LEER`
-            // da siete bytes por llamada: un WAD de 4 MB serían seiscientas mil
-            // llamadas. No se arregla validando punteros de Ring 3 —eso es la
-            // infraestructura que `informe.rs` dice que no existe—; se arregla
-            // **no necesitándola**: el destino es un bloque que concedió el
-            // kernel, así que comprobar es una resta contra lo que se entregó.
+            // Y esta es la pieza que hacia falta para `fopen`. `ARCH_OP_LEER`
+            // da siete bytes por llamada: un WAD de 4 MB serian seiscientas mil
+            // llamadas. No se arregla validando punteros de Ring 3 --eso es la
+            // infraestructura que `informe.rs` dice que no existe--; se arregla
+            // **no necesitandola**: el destino es un bloque que concedio el
+            // kernel, asi que comprobar es una resta contra lo que se entrego.
             cap::KIND_ARCHIVO
                 if frame.rsi == crate::ring0::obj::archivo::ARCH_OP_LEER_EN =>
             {
@@ -853,8 +853,8 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 let tam = crate::ring0::obj::memoria::entregado_por(pid);
                 let desde = frame.r10;
                 let cuantos = frame.r8;
-                // La única comprobación, y cabe en una línea porque el rango lo
-                // dimos nosotros. Un desbordamiento en la suma también cae aquí.
+                // La unica comprobacion, y cabe en una linea porque el rango lo
+                // dimos nosotros. Un desbordamiento en la suma tambien cae aqui.
                 if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {
                     return BmoStatus::err(1);
                 }
@@ -870,11 +870,11 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             cap::KIND_ARCHIVO => {
                 match crate::ring0::obj::archivo::operacion(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => {
-                        // Lo mismo que el directorio, y aquí llevaba desde el
+                        // Lo mismo que el directorio, y aqui llevaba desde el
                         // principio: `ARCH_OP_CERRAR` soltaba la ranura de las
                         // 16 y dejaba el handle vivo. El compositor cierra
-                        // bien, así que no se notaba — se notaría a los 64
-                        // archivos de una sesión.
+                        // bien, asi que no se notaba -- se notaria a los 64
+                        // archivos de una sesion.
                         if frame.rsi == crate::ring0::obj::archivo::ARCH_OP_CERRAR {
                             cap::revoke(pid, frame.rdi);
                         }
@@ -883,15 +883,15 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     None => unsupported(),
                 }
             }
-            // Un bloque de memoria sólo contesta dos cosas: dónde está y
-            // cuánto es. Escribir en él no pasa por aquí — está MAPEADO, así
+            // Un bloque de memoria solo contesta dos cosas: donde esta y
+            // cuanto es. Escribir en el no pasa por aqui -- esta MAPEADO, asi
             // que el proceso escribe con un `mov` y el kernel no se entera.
-            // Ése es el punto: un syscall por byte sería justo lo contrario
+            // Ese es el punto: un syscall por byte seria justo lo contrario
             // de entregar memoria.
-            // Lo prestado contesta dónde está y cuánto mide, y **no se escribe
-            // por aquí**: está MAPEADO, así que el proceso lo toca con un `mov`
-            // y el kernel no se entera. Ése es el punto entero de que exista —
-            // un syscall por byte sería justo lo contrario de prestar memoria.
+            // Lo prestado contesta donde esta y cuanto mide, y **no se escribe
+            // por aqui**: esta MAPEADO, asi que el proceso lo toca con un `mov`
+            // y el kernel no se entera. Ese es el punto entero de que exista --
+            // un syscall por byte seria justo lo contrario de prestar memoria.
             cap::KIND_PRESTADO => {
                 match crate::ring0::obj::prestamo::operacion(
                     resolved.object, frame.rsi, scheduler::current_pid(),
@@ -900,20 +900,20 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     None => unsupported(),
                 }
             }
-            // ★ OFRECER un trozo del bloque propio. Va aquí y no dentro de
+            // * OFRECER un trozo del bloque propio. Va aqui y no dentro de
             // `memoria` porque necesita tres argumentos y el espacio de
-            // direcciones del que ofrece — cosas que sólo hay en este borde.
+            // direcciones del que ofrece -- cosas que solo hay en este borde.
             //
-            // El bloque ya está resuelto por SU capability, o sea que es suyo
-            // por construcción. La única comprobación que queda es que el trozo
-            // quepa dentro, y eso es una resta: el rango lo concedió el kernel.
+            // El bloque ya esta resuelto por SU capability, o sea que es suyo
+            // por construccion. La unica comprobacion que queda es que el trozo
+            // quepa dentro, y eso es una resta: el rango lo concedio el kernel.
             cap::KIND_MEMORIA if frame.rsi == MEM_OP_OFRECER => {
                 let pid = scheduler::current_pid();
                 let entregado = crate::ring0::obj::memoria::entregado_por(pid);
-                // ★ El destino llega como TID y no como pid: `ejecutar_en`
-                // devuelve un tid, que es lo único que Ring 3 conoce de un hijo.
-                // Traducirlo aquí evita que el userland aprenda un concepto que
-                // no usa para nada más.
+                // * El destino llega como TID y no como pid: `ejecutar_en`
+                // devuelve un tid, que es lo unico que Ring 3 conoce de un hijo.
+                // Traducirlo aqui evita que el userland aprenda un concepto que
+                // no usa para nada mas.
                 let Some(destino) = scheduler::pid_de(frame.r8 as u32) else {
                     return BmoStatus::ok_value(0);
                 };
@@ -948,7 +948,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
     }
 }
 
-/// `CHANNEL_KICK(capability, published_sequence)` — notify the consumer.
+/// `CHANNEL_KICK(capability, published_sequence)` -- notify the consumer.
 /// Services the estuary with the per-kick budget and wakes its waiters.
 fn channel_kick(frame: &TrapFrame) -> BmoStatus {
     let pid = scheduler::current_pid();
@@ -962,7 +962,7 @@ fn channel_kick(frame: &TrapFrame) -> BmoStatus {
     }
 }
 
-/// `WAIT(waitable, observed_sequence, timeout_ns)` — block until the
+/// `WAIT(waitable, observed_sequence, timeout_ns)` -- block until the
 /// waitable's sequence moves past `observed_sequence` or the timeout
 /// expires (0 = no timeout). `waitable = 0` is a pure timed sleep.
 ///
@@ -1006,9 +1006,9 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
 
 #[unsafe(no_mangle)]
 extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
-    // Igual que el timer: dónde talló su área este trap y para quién. Un
+    // Igual que el timer: donde tallo su area este trap y para quien. Un
     // SYSCALL de Ring 3 aterriza en la pila que le haya puesto el planificador,
-    // así que si esa rampa apuntara donde no debe, esto lo enseña.
+    // asi que si esa rampa apuntara donde no debe, esto lo ensena.
     crate::ring0::plat::trap::registrar_publicacion(
         crate::ring0::task::percpu::trap_rsp(),
         scheduler::current_tid(),

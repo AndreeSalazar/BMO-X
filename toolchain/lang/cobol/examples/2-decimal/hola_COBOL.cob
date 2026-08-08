@@ -1,4 +1,4 @@
-      * hola_COBOL.bex — el programa que BMO-X ejecuta en el Ryzen real.
+      * hola_COBOL.bex -- el programa que BMO-X ejecuta en el Ryzen real.
       *
       * Cada seccion prueba algo que estaba FINGIENDO hasta esta semana:
       *

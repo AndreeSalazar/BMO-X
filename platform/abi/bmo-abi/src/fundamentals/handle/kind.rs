@@ -1,4 +1,4 @@
-//! `HandleKind` — taxonomía de recursos del kernel.
+//! `HandleKind` -- taxonomia de recursos del kernel.
 //!
 //! 7 bits = 128 tipos posibles. Tag bit 63 distingue:
 //!   - 0 = recurso pasivo (textura, buffer, sampler)
@@ -9,7 +9,7 @@ use crate::bmo_abi::primitives::bx_u8;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum HandleKind {
-    // ─── Graphics (0x01..0x1F) ───────────────────────────────────────
+    // --- Graphics (0x01..0x1F) ---------------------------------------
     Device = 0x01,
     Queue = 0x02,
     CmdList = 0x03,
@@ -24,45 +24,45 @@ pub enum HandleKind {
     QueryHeap = 0x0C,
     BlasAccelStruct = 0x0D,
     TlasAccelStruct = 0x0E,
-    /// **La pantalla.** El derecho a escribir píxeles directamente: el kernel
+    /// **La pantalla.** El derecho a escribir pixeles directamente: el kernel
     /// mapea el framebuffer en el espacio del proceso UNA VEZ y a partir de
-    /// ahí no vuelve a tocarlo. No hay syscall por píxel porque no hay
-    /// frontera que cruzar — es el momento library-OS del diseño.
+    /// ahi no vuelve a tocarlo. No hay syscall por pixel porque no hay
+    /// frontera que cruzar -- es el momento library-OS del diseno.
     ///
-    /// Es exclusiva por construcción: un solo proceso la tiene a la vez.
+    /// Es exclusiva por construccion: un solo proceso la tiene a la vez.
     Framebuffer = 0x0F,
 
-    // ─── Audio (0x10..0x1F) ──────────────────────────────────────────
+    // --- Audio (0x10..0x1F) ------------------------------------------
     AudioEngine = 0x10,
     AudioVoice = 0x11,
     AudioSpatializer = 0x12,
     AudioStream = 0x13,
 
-    // ─── Input (0x20..0x2F) ──────────────────────────────────────────
+    // --- Input (0x20..0x2F) ------------------------------------------
     InputDevice = 0x20,
     InputProfile = 0x21,
 
-    // ─── Network (0x30..0x3F) ────────────────────────────────────────
+    // --- Network (0x30..0x3F) ----------------------------------------
     NetSocket = 0x30,
     NetEndpoint = 0x31,
     NetTlsCtx = 0x32,
     NetQuicConn = 0x33,
 
-    // ─── VFS / Storage (0x40..0x4F) ──────────────────────────────────
+    // --- VFS / Storage (0x40..0x4F) ----------------------------------
     File = 0x40,
     Directory = 0x41,
     Mount = 0x42,
     StorageOp = 0x43,
 
-    // ─── Procesos / threading (0x50..0x5F) ───────────────────────────
+    // --- Procesos / threading (0x50..0x5F) ---------------------------
     Process = 0x50,
     Thread = 0x51,
     Mutex = 0x52,
     Futex = 0x53,
     Port = 0x54,
 
-    // ─── IPC (0x60..0x6F) ────────────────────────────────────────────
-    /// Estuario BMO Channel: página compartida Ring 0 ↔ Ring 3.
+    // --- IPC (0x60..0x6F) --------------------------------------------
+    /// Estuario BMO Channel: pagina compartida Ring 0 <-> Ring 3.
     /// El objeto que `CHANNEL_KICK`/`WAIT` resuelven en el kernel.
     Channel = 0x60,
 }

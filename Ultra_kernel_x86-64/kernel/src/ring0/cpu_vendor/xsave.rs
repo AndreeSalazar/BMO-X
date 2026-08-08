@@ -1,31 +1,31 @@
-//! El estado extendido del CPU: qué hay, cuánto ocupa y si el perfil acertó.
+//! El estado extendido del CPU: que hay, cuanto ocupa y si el perfil acerto.
 //!
-//! ## Por qué existe este módulo
+//! ## Por que existe este modulo
 //!
 //! Hoy el cambio de contexto usa `FXSAVE`, que guarda 512 bytes: x87 y SSE.
 //! Un programa Ring 3 que use **AVX** tiene la mitad alta de sus registros
-//! `YMM` fuera de esa foto — se pierde en el primer cambio de tarea, sin
+//! `YMM` fuera de esa foto -- se pierde en el primer cambio de tarea, sin
 //! fault, sin aviso y sin forma de notarlo salvo por un resultado que no
-//! cuadra. Es corrupción esperando a ocurrir.
+//! cuadra. Es corrupcion esperando a ocurrir.
 //!
-//! ## Lo que este módulo hace y lo que NO
+//! ## Lo que este modulo hace y lo que NO
 //!
-//! **Hace**: preguntarle al procesador qué componentes de estado tiene, cuánto
-//! ocupa su área y qué instrucciones de guardado ofrece; y contrastarlo con lo
+//! **Hace**: preguntarle al procesador que componentes de estado tiene, cuanto
+//! ocupa su area y que instrucciones de guardado ofrece; y contrastarlo con lo
 //! que el perfil del CPU esperaba.
 //!
 //! **NO hace**: tocar `CR4.OSXSAVE` ni escribir `XCR0`. Y es deliberado:
 //! habilitar el estado extendido ANTES de que el cambio de contexto sepa
-//! guardarlo haría el problema **peor**, porque AVX pasaría de ser inusable
+//! guardarlo haria el problema **peor**, porque AVX pasaria de ser inusable
 //! (`#UD`, ruidoso) a ser usable y corromperse en silencio. Primero se mide,
-//! después se cambia el guardado, y solo entonces se habilita.
+//! despues se cambia el guardado, y solo entonces se habilita.
 //!
 //! ## El perfil es una expectativa, no la verdad
 //!
-//! Todos los números salen de `CPUID` hoja 0xD. Lo que declara el perfil sirve
+//! Todos los numeros salen de `CPUID` hoja 0xD. Lo que declara el perfil sirve
 //! **solo para avisar** si el silicio no coincide. Un kernel cuyo perfil
-//! dictara el tamaño del área sería un kernel que se rompe el día que alguien
-//! enchufe otro CPU — y se rompería corrompiendo registros, que es la peor
+//! dictara el tamano del area seria un kernel que se rompe el dia que alguien
+//! enchufe otro CPU -- y se romperia corrompiendo registros, que es la peor
 //! forma de romperse.
 
 /// Componentes de estado que puede haber en XCR0. Los nombres son los de la
@@ -66,17 +66,17 @@ impl Componente {
 /// Lo que el procesador declara sobre su estado extendido.
 #[derive(Clone, Copy)]
 pub struct Informe {
-    /// CPUID.1:ECX[26] — el procesador implementa XSAVE.
+    /// CPUID.1:ECX[26] -- el procesador implementa XSAVE.
     pub xsave: bool,
-    /// CR4.OSXSAVE — el sistema lo ha habilitado. Hoy: `false`, a propósito.
+    /// CR4.OSXSAVE -- el sistema lo ha habilitado. Hoy: `false`, a proposito.
     pub osxsave: bool,
-    /// Máscara de componentes que el CPU soporta (CPUID.D.0:EDX:EAX).
+    /// Mascara de componentes que el CPU soporta (CPUID.D.0:EDX:EAX).
     pub soportado: u64,
     /// XCR0 actual. Solo se puede leer si `osxsave`; si no, vale 0.
     pub xcr0: u64,
-    /// Bytes que ocupa el área para el XCR0 ACTUAL (CPUID.D.0:EBX).
+    /// Bytes que ocupa el area para el XCR0 ACTUAL (CPUID.D.0:EBX).
     pub area_actual: u32,
-    /// Bytes que ocuparía con TODO lo soportado habilitado (CPUID.D.0:ECX).
+    /// Bytes que ocuparia con TODO lo soportado habilitado (CPUID.D.0:ECX).
     pub area_maxima: u32,
     /// Variantes de guardado disponibles (CPUID.D.1:EAX).
     pub xsaveopt: bool,
@@ -96,17 +96,17 @@ impl Informe {
 
     pub fn comps(&self) -> &[Componente] { &self.componentes[..self.n_componentes] }
 
-    /// ¿Tiene este CPU estado que `FXSAVE` NO guarda?
+    /// Tiene este CPU estado que `FXSAVE` NO guarda?
     ///
-    /// Es la pregunta que importa: si la respuesta es sí, hay componentes que
-    /// el cambio de contexto está perdiendo hoy.
+    /// Es la pregunta que importa: si la respuesta es si, hay componentes que
+    /// el cambio de contexto esta perdiendo hoy.
     pub fn hay_estado_sin_guardar(&self) -> bool {
         // Los bits 0 y 1 (x87 y SSE) son justo lo que FXSAVE cubre.
         self.soportado & !0b11 != 0
     }
 
-    /// El área que haría falta para guardar todo lo que este CPU soporta,
-    /// redondeada a 64 bytes (la alineación que exige XSAVE).
+    /// El area que haria falta para guardar todo lo que este CPU soporta,
+    /// redondeada a 64 bytes (la alineacion que exige XSAVE).
     pub fn area_necesaria(&self) -> u32 {
         (self.area_maxima + 63) & !63
     }
@@ -155,7 +155,7 @@ pub fn medir() -> Informe {
     let mut inf = Informe::VACIO;
 
     // CPUID.1:ECX[26] = XSAVE implementado. Sin esto, la hoja 0xD no existe y
-    // preguntarla devolvería basura.
+    // preguntarla devolveria basura.
     let (_, _, ecx1, _) = cpuid(1, 0);
     inf.xsave = ecx1 & (1 << 26) != 0;
     if !inf.xsave { return inf; }
@@ -174,7 +174,7 @@ pub fn medir() -> Informe {
     inf.xsavec = eax1 & (1 << 1) != 0;
     inf.xsaves = eax1 & (1 << 3) != 0;
 
-    // Subhojas 2 en adelante: una por componente. El tamaño y el sitio de cada
+    // Subhojas 2 en adelante: una por componente. El tamano y el sitio de cada
     // uno los dice el CPU; no se calculan ni se suponen.
     for bit in 2..64u32 {
         if inf.soportado & (1u64 << bit) == 0 { continue; }
@@ -187,40 +187,40 @@ pub fn medir() -> Informe {
     inf
 }
 
-/// Qué dijo el contraste entre el silicio y el perfil.
+/// Que dijo el contraste entre el silicio y el perfil.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Veredicto {
     /// El CPU no implementa XSAVE. Nada que hacer (ni nada que perder).
     SinXsave,
     /// El silicio coincide con lo que el perfil esperaba.
     Coincide,
-    /// El silicio NO coincide. Manda el silicio; el perfil está desfasado.
+    /// El silicio NO coincide. Manda el silicio; el perfil esta desfasado.
     Difiere,
 }
 
-/// ¿El silicio es el que el perfil describía? Sin narrar nada.
+/// El silicio es el que el perfil describia? Sin narrar nada.
 ///
 /// Existe separada porque hay DOS sitios que hacen esta pregunta: `verificar()`
-/// al arrancar (que además la cuenta en CABINA) y el comando `cpu` del shell
-/// (que la pinta cada vez que se escribe). Cuando cada uno tenía su propia
-/// comparación, añadir `XCR0` a una habría dejado a la otra contestando distinto
-/// a la misma pregunta — y el shell es justo donde alguien va a mirar para
+/// al arrancar (que ademas la cuenta en CABINA) y el comando `cpu` del shell
+/// (que la pinta cada vez que se escribe). Cuando cada uno tenia su propia
+/// comparacion, anadir `XCR0` a una habria dejado a la otra contestando distinto
+/// a la misma pregunta -- y el shell es justo donde alguien va a mirar para
 /// confirmar lo que dijo el arranque.
 pub fn coincide(inf: &Informe) -> bool {
     let p = super::profile::active();
     inf.soportado == p.xsave_componentes
         && inf.area_maxima == p.xsave_area
         // Sin `OSXSAVE` no hay `XGETBV`: el cero del informe significa "no lo
-        // sé", no "nada habilitado". No se compara lo que nadie midió.
+        // se", no "nada habilitado". No se compara lo que nadie midio.
         && (!inf.osxsave || inf.xcr0 == p.xsave_xcr0)
 }
 
 /// Contrasta el informe con lo que el perfil activo esperaba, y lo narra.
 ///
-/// Cuando llegue otro CPU —cualquiera— esto es lo que avisa. No se rompe: usa
+/// Cuando llegue otro CPU --cualquiera-- esto es lo que avisa. No se rompe: usa
 /// lo que declara el silicio y **dice en alto** que el perfil ya no describe
-/// la máquina. Un perfil desfasado tiene que ser una línea ámbar en CABINA, no
-/// un montón de registros corrompidos tres semanas después.
+/// la maquina. Un perfil desfasado tiene que ser una linea ambar en CABINA, no
+/// un monton de registros corrompidos tres semanas despues.
 pub fn verificar(inf: &Informe) -> Veredicto {
     use crate::ring0::cabina;
     if !inf.xsave {
@@ -232,7 +232,7 @@ pub fn verificar(inf: &Informe) -> Veredicto {
         cabina::info("cpu", "XSAVE coincide con el perfil del CPU", inf.area_maxima as u64);
         return Veredicto::Coincide;
     }
-    // Ya se sabe que algo no cuadra; ahora se dice QUÉ, campo por campo.
+    // Ya se sabe que algo no cuadra; ahora se dice QUE, campo por campo.
     let mismos = inf.soportado == p.xsave_componentes;
     let misma_area = inf.area_maxima == p.xsave_area;
     let mismo_xcr0 = !inf.osxsave || inf.xcr0 == p.xsave_xcr0;
@@ -241,11 +241,11 @@ pub fn verificar(inf: &Informe) -> Veredicto {
     }
     if !mismo_xcr0 {
         // El aviso que faltaba. `XCR0` lo deja puesto el firmware, no el
-        // kernel, así que puede moverse por debajo —una actualización de BIOS,
-        // otra placa— cambiando el tamaño del área de contexto y la máscara con
-        // la que los epílogos vigilan la cabecera. Que salga en ámbar es la
-        // diferencia entre enterarse aquí y enterarse por un #GP tres semanas
-        // después.
+        // kernel, asi que puede moverse por debajo --una actualizacion de BIOS,
+        // otra placa-- cambiando el tamano del area de contexto y la mascara con
+        // la que los epilogos vigilan la cabecera. Que salga en ambar es la
+        // diferencia entre enterarse aqui y enterarse por un #GP tres semanas
+        // despues.
         cabina::warn("cpu", "XCR0 no es el que el perfil esperaba habilitado", inf.xcr0);
     }
     if !misma_area {
@@ -258,59 +258,59 @@ pub fn verificar(inf: &Informe) -> Veredicto {
 static mut INFORME: Informe = Informe::VACIO;
 static mut MEDIDO: bool = false;
 
-/// Mide, verifica y **comprueba que el área reservada da de sí**.
+/// Mide, verifica y **comprueba que el area reservada da de si**.
 ///
 /// Se llama lo PRIMERO de `phase::main`, antes de percpu, del scheduler y del
-/// timer. La razón es dura: los stubs de trap guardan el estado extendido con
-/// `xsave64` en el área de tamaño fijo `trap::XSAVE_AREA`, y si este CPU
-/// necesitara más, el primer tick del timer escribiría más allá del área y se
-/// llevaría por delante la pila de la tarea. Enterarse de eso *después* sería
-/// enterarse por una corrupción, no por un mensaje.
+/// timer. La razon es dura: los stubs de trap guardan el estado extendido con
+/// `xsave64` en el area de tamano fijo `trap::XSAVE_AREA`, y si este CPU
+/// necesitara mas, el primer tick del timer escribiria mas alla del area y se
+/// llevaria por delante la pila de la tarea. Enterarse de eso *despues* seria
+/// enterarse por una corrupcion, no por un mensaje.
 pub fn init() {
     let inf = medir();
     unsafe { INFORME = inf; MEDIDO = true; }
     let _ = verificar(&inf);
 
     if !inf.xsave {
-        // Sin XSAVE los stubs no pueden funcionar: `xsave64` daría #UD en el
+        // Sin XSAVE los stubs no pueden funcionar: `xsave64` daria #UD en el
         // primer trap. Cualquier x86-64 con soporte de 64 bits lo tiene desde
-        // hace más de una década, pero suponerlo por escrito es distinto de
+        // hace mas de una decada, pero suponerlo por escrito es distinto de
         // suponerlo en silencio.
         pararse("este CPU no implementa XSAVE y los stubs lo necesitan", 0);
     }
 
-    // Lo que hace falta AHORA: el área para los componentes que XCR0 tiene
-    // habilitados. No la máxima teórica — esa incluye componentes que este
+    // Lo que hace falta AHORA: el area para los componentes que XCR0 tiene
+    // habilitados. No la maxima teorica -- esa incluye componentes que este
     // CPU soporta pero nadie ha encendido.
     let necesario = inf.area_actual as usize;
-    // Los últimos 16 bytes del área NO son del CPU: ahí va el sello del
-    // contexto (firma + dueño), y el epílogo se niega a restaurar un contexto
-    // sin él. Si un CPU necesitara llegar hasta ahí, el sello sería basura
-    // aleatoria y la máquina se pararía en cada cambio de contexto — mejor
-    // pararla aquí, con el motivo escrito.
+    // Los ultimos 16 bytes del area NO son del CPU: ahi va el sello del
+    // contexto (firma + dueno), y el epilogo se niega a restaurar un contexto
+    // sin el. Si un CPU necesitara llegar hasta ahi, el sello seria basura
+    // aleatoria y la maquina se pararia en cada cambio de contexto -- mejor
+    // pararla aqui, con el motivo escrito.
     let reservado = crate::ring0::plat::trap::XSAVE_AREA - 16;
     if necesario > reservado {
         pararse("el area de XSAVE reservada se queda corta en este CPU", necesario as u64);
     }
     crate::ring0::cabina::info("cpu", "area de contexto suficiente", necesario as u64);
 
-    // Armar la guardia de cabecera de los epílogos. Hasta esta línea está
-    // inerte, que es lo que debe estar mientras no se sepa contra qué comparar.
-    // A partir de aquí, un `XSTATE_BV` que encienda un componente que este CPU
+    // Armar la guardia de cabecera de los epilogos. Hasta esta linea esta
+    // inerte, que es lo que debe estar mientras no se sepa contra que comparar.
+    // A partir de aqui, un `XSTATE_BV` que encienda un componente que este CPU
     // no tiene habilitado se para con nombre en vez de dar `#GP` dentro del
-    // `xrstor64` — donde el informe sólo puede decir dónde se enteró el CPU.
+    // `xrstor64` -- donde el informe solo puede decir donde se entero el CPU.
     //
-    // ★ SÓLO con `osxsave`. `xcr0` únicamente se puede leer con `XGETBV`, y
-    // `XGETBV` necesita `CR4.OSXSAVE`; sin él el informe trae `xcr0 = 0`, y un
-    // cero aquí no significa "ningún componente habilitado", significa **no lo
-    // pude leer**. Armar con eso pondría `!0` en la máscara y la guardia
-    // saltaría en el primer trap contra cualquier `XSTATE_BV` legítimo,
+    // * SOLO con `osxsave`. `xcr0` unicamente se puede leer con `XGETBV`, y
+    // `XGETBV` necesita `CR4.OSXSAVE`; sin el el informe trae `xcr0 = 0`, y un
+    // cero aqui no significa "ningun componente habilitado", significa **no lo
+    // pude leer**. Armar con eso pondria `!0` en la mascara y la guardia
+    // saltaria en el primer trap contra cualquier `XSTATE_BV` legitimo,
     // acusando a la cabecera de estar podrida cuando lo que pasa es que falta
-    // un bit de CR4. Una máquina muerta con el motivo equivocado es peor que
-    // una muerta sin motivo: manda a arreglar lo que no está roto.
+    // un bit de CR4. Una maquina muerta con el motivo equivocado es peor que
+    // una muerta sin motivo: manda a arreglar lo que no esta roto.
     //
-    // (Sin `OSXSAVE` el `xsave64` de los stubs daría `#UD` de todos modos, así
-    // que la máquina no arranca igual. Lo que esto protege no es el arranque:
+    // (Sin `OSXSAVE` el `xsave64` de los stubs daria `#UD` de todos modos, asi
+    // que la maquina no arranca igual. Lo que esto protege no es el arranque:
     // es la HONESTIDAD del informe con el que alguien va a depurar.)
     if inf.osxsave {
         crate::ring0::plat::trap::armar_guardia_cabecera(inf.xcr0);
@@ -324,8 +324,8 @@ pub fn init() {
     }
 
     if inf.hay_estado_sin_guardar() {
-        // Ya no es un aviso de peligro: es la constancia de QUÉ se está
-        // guardando de más respecto a lo que guardaba FXSAVE.
+        // Ya no es un aviso de peligro: es la constancia de QUE se esta
+        // guardando de mas respecto a lo que guardaba FXSAVE.
         crate::ring0::cabina::info(
             "cpu",
             "estado extendido mas alla de x87/SSE: ahora se preserva",
@@ -334,7 +334,7 @@ pub fn init() {
     }
 }
 
-/// Se planta con un motivo legible. Mejor una máquina parada que una que
+/// Se planta con un motivo legible. Mejor una maquina parada que una que
 /// corrompe pilas de tarea en cada cambio de contexto.
 fn pararse(motivo: &str, valor: u64) -> ! {
     crate::ring0::cabina::panic_ev("cpu", motivo, valor);

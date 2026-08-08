@@ -1,20 +1,20 @@
-//! `bmo_abi::profile` — Perfiles de lenguaje.
+//! `bmo_abi::profile` -- Perfiles de lenguaje.
 //!
 //! Cada frontend (C, COBOL, BMO, Java-BMO, Python-BMO, ...) implementa un
-//! `BmoLanguageProfile` que describe **cómo** se compila el código
+//! `BmoLanguageProfile` que describe **como** se compila el codigo
 //! fuente a BEF.
 //!
 //! ## Modelo
 //!
 //! ```text
-//!  ┌─────────────────────────────────────────────────────────────┐
-//!  │ BmoLanguageProfile                                          │
-//!  │   name:        &'static str                                 │
-//!  │   frontend:    FrontendKind (C | COBOL | BMO | JavaBMO)     │
-//!  │   backend:     BackendKind  (AotX86_64 | PortableIR)        │
-//!  │   runtime:     RuntimeKind  (None | CMin | JavaCore | ...)  │
-//!  │   output:      BEF                                          │
-//!  └─────────────────────────────────────────────────────────────┘
+//!  +-------------------------------------------------------------+
+//!  | BmoLanguageProfile                                          |
+//!  |   name:        &'static str                                 |
+//!  |   frontend:    FrontendKind (C | COBOL | BMO | JavaBMO)     |
+//!  |   backend:     BackendKind  (AotX86_64 | PortableIR)        |
+//!  |   runtime:     RuntimeKind  (None | CMin | JavaCore | ...)  |
+//!  |   output:      BEF                                          |
+//!  +-------------------------------------------------------------+
 //! ```
 //!
 //! El kernel **no compila** nada. Solo provee:
@@ -22,12 +22,12 @@
 //! - los runtimes opcionales (`crate::bmo_abi::profile::RuntimeKind`)
 //! - los syscalls (`crate::bmo_abi::syscalls`)
 //!
-//! Compilar es **offline** (el dev lo hace en su máquina). El kernel
+//! Compilar es **offline** (el dev lo hace en su maquina). El kernel
 //! solo ejecuta.
 
 #![allow(dead_code)]
 
-// ─── Frontend / backend / runtime kinds ───────────────────────────
+// --- Frontend / backend / runtime kinds ---------------------------
 
 /// Frontend soportado.
 #[repr(u32)]
@@ -35,7 +35,7 @@
 pub enum FrontendKind {
     /// Lenguaje BMO nativo.
     Bmo = 0,
-    /// C estándar.
+    /// C estandar.
     C = 1,
     /// C++ (subset + runtime).
     Cpp = 2,
@@ -47,7 +47,7 @@ pub enum FrontendKind {
     PythonBmo = 5,
     /// Ada.
     Ada = 6,
-    /// COBOL clásico/empresarial compilado AOT a BEF.
+    /// COBOL clasico/empresarial compilado AOT a BEF.
     Cobol = 7,
     /// Lenguaje custom / third-party.
     Custom = 0xFF,
@@ -69,7 +69,7 @@ impl FrontendKind {
     }
 }
 
-/// Backend de compilación.
+/// Backend de compilacion.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendKind {
@@ -77,7 +77,7 @@ pub enum BackendKind {
     AotX86_64 = 0,
     /// IR portable (cualquier CPU).
     PortableIR = 1,
-    /// AOT RDNA4 (GPU shaders, no implementado todavía).
+    /// AOT RDNA4 (GPU shaders, no implementado todavia).
     AotRdna4 = 2,
 }
 
@@ -95,19 +95,19 @@ impl BackendKind {
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeKind {
-    /// Sin runtime. AOT puro, binario minúsculo.
+    /// Sin runtime. AOT puro, binario minusculo.
     None = 0,
-    /// Runtime C mínimo (`_start`, `memcpy`, syscall wrappers).
+    /// Runtime C minimo (`_start`, `memcpy`, syscall wrappers).
     CMin = 1,
     /// Runtime C++ (constructors, vtables).
     CppMin = 2,
     /// Runtime Java-BMO (class model, strings, arrays).
     JavaCore = 3,
-    /// Runtime Python-BMO (dicts, types dinámicos).
+    /// Runtime Python-BMO (dicts, types dinamicos).
     PythonCore = 4,
     /// Runtime Rust (panic handler, allocator).
     RustCore = 5,
-    /// Runtime COBOL mínimo: decimal fijo, records, DISPLAY/ACCEPT y archivos.
+    /// Runtime COBOL minimo: decimal fijo, records, DISPLAY/ACCEPT y archivos.
     CobolCore = 6,
 }
 
@@ -125,9 +125,9 @@ impl RuntimeKind {
     }
 }
 
-// ─── Language profile ─────────────────────────────────────────────
+// --- Language profile ---------------------------------------------
 
-/// Perfil de un lenguaje. Define cómo se compila a BEF.
+/// Perfil de un lenguaje. Define como se compila a BEF.
 #[derive(Clone, Copy, Debug)]
 pub struct BmoLanguageProfile {
     /// Nombre legible (ej: "C", "BMO", "Java-BMO").
@@ -147,7 +147,7 @@ pub struct BmoLanguageProfile {
 }
 
 impl BmoLanguageProfile {
-    /// Perfil canónico de C: AOT puro, runtime CMin.
+    /// Perfil canonico de C: AOT puro, runtime CMin.
     pub const C: Self = Self {
         name: "C",
         frontend: FrontendKind::C,
@@ -187,9 +187,9 @@ impl BmoLanguageProfile {
         standard_version: "latest",
     };
 
-    /// Perfil de COBOL: AOT CPU + runtime mínimo orientado a datos/archivos.
+    /// Perfil de COBOL: AOT CPU + runtime minimo orientado a datos/archivos.
     ///
-    /// COBOL no requiere GPU: su valor inicial está en CPU, registros fijos,
+    /// COBOL no requiere GPU: su valor inicial esta en CPU, registros fijos,
     /// decimal empaquetado, batch y FS sobre syscalls BMO.
     pub const COBOL: Self = Self {
         name: "COBOL",
@@ -202,7 +202,7 @@ impl BmoLanguageProfile {
     };
 }
 
-// ─── Profiles predefinidos ────────────────────────────────────────
+// --- Profiles predefinidos ----------------------------------------
 
 /// Todos los perfiles predefinidos.
 pub const ALL_PROFILES: &[BmoLanguageProfile] = &[

@@ -1,16 +1,16 @@
-//! `capability` — BmoCapability, sistema de capacidades del BMO ABI.
+//! `capability` -- BmoCapability, sistema de capacidades del BMO ABI.
 //!
 //! Reemplaza el modelo "todo o nada" de Unix (root/user) y el ACL de
 //! Windows con capacidades finas. Cada `BmoHandle` tiene un conjunto de
-//! capacidades que determinan qué operaciones se permiten.
+//! capacidades que determinan que operaciones se permiten.
 //!
 //! `BmoStatus::NEEDS_CAP` se devuelve cuando falta una capacidad.
 
 use crate::bmo_abi::primitives::bx_u64;
 
-/// Una capacidad individual — 64 bits que identifican un permiso único.
+/// Una capacidad individual -- 64 bits que identifican un permiso unico.
 ///
-/// Diseñado para usarse como flag en un bitset de 64 capacidades.
+/// Disenado para usarse como flag en un bitset de 64 capacidades.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BmoCap(pub bx_u64);
@@ -30,7 +30,7 @@ impl BmoCap {
 ///
 /// # Layout (8 bytes)
 /// ```text
-/// [0..7] bits: u64 — cada bit 1 = capacidad presente
+/// [0..7] bits: u64 -- cada bit 1 = capacidad presente
 /// ```
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +74,7 @@ impl BmoCapSet {
     }
 }
 
-// ─── System capabilities (0..15 reserved) ─────────────────────────
+// --- System capabilities (0..15 reserved) -------------------------
 
 impl BmoCap {
     /// Leer el contenido de un handle.
@@ -89,22 +89,22 @@ impl BmoCap {
     pub const DELETE: Self = Self(4);
     /// Enumerar contenido (directorios, puertos).
     pub const ENUMERATE: Self = Self(5);
-    /// Esperar a que un objeto esté listo (sincronización).
+    /// Esperar a que un objeto este listo (sincronizacion).
     pub const WAIT: Self = Self(6);
     /// Heredar capacidades a hijos.
     pub const INHERIT: Self = Self(7);
-    /// Elevar privilegios (requiere validación adicional).
+    /// Elevar privilegios (requiere validacion adicional).
     pub const ELEVATE: Self = Self(8);
-    /// Acceso a dispositivos físicos (Ring 0).
+    /// Acceso a dispositivos fisicos (Ring 0).
     pub const DEVICE: Self = Self(9);
     /// Acceso a red (sockets).
     pub const NETWORK: Self = Self(10);
     /// Acceso a ventanas / display.
     pub const DISPLAY: Self = Self(11);
-    /// Gestión de memoria física.
+    /// Gestion de memoria fisica.
     pub const MEMORY: Self = Self(12);
-    /// Gestión de procesos/hilos.
+    /// Gestion de procesos/hilos.
     pub const PROCESS: Self = Self(13);
-    /// Depuración de otros procesos.
+    /// Depuracion de otros procesos.
     pub const DEBUG: Self = Self(14);
 }

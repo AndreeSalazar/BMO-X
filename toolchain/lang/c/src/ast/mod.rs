@@ -1,4 +1,4 @@
-//! C Abstract Syntax Tree — re-exports all sub-modules.
+//! C Abstract Syntax Tree -- re-exports all sub-modules.
 
 pub mod types;
 pub mod expr;

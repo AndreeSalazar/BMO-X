@@ -1,5 +1,5 @@
-# intrinsics.toml — instrucciones invocables DESDE los lenguajes BMO.
-# La fusión lenguaje↔ASM: en BMO C se escriben como __nombre() y el
+# intrinsics.toml -- instrucciones invocables DESDE los lenguajes BMO.
+# La fusion lenguaje<->ASM: en BMO C se escriben como __nombre() y el
 # compilador emite estos bytes EXACTOS (no hay caja negra tipo asm("...")).
 # `returns = "u64_edx_eax"` = el resultado sale en edx:eax y el codegen
 # lo combina a rax (shl rdx,32; or rax,rdx).
@@ -119,7 +119,7 @@ returns = "eax"
 # fija BMO y no el CPU: rax = numero de llamada, argumentos en
 # rdi, rsi, rdx, r10, r8.
 #
-# ★ `r10` y no `rcx`: el propio CPU mete en rcx el RIP de retorno y en r11 las
+# * `r10` y no `rcx`: el propio CPU mete en rcx el RIP de retorno y en r11 las
 #   RFLAGS. Un argumento en rcx no seria el dato de nadie, seria la direccion a
 #   la que volver. Ver la cabecera de `Ultra_userspace/userland/src/lib.rs`.
 #
@@ -140,19 +140,19 @@ bytes = [0x0F, 0x05]
 args = ["rax", "rdi", "rsi", "rdx", "r10", "r8"]
 returns = "rdx"
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 #  Lo que un DRIVER necesita de verdad
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 #
 # Hasta aqui la tabla tenia doce instrucciones y servia para un hola-mundo con
-# puertos. Un driver de verdad —xHCI, AHCI, PCI— pide registros de control,
+# puertos. Un driver de verdad --xHCI, AHCI, PCI-- pide registros de control,
 # barreras de TLB, atomicos y cuenta de bits.
 #
 # Cada una de estas es una FILA, y ese es el punto entero: en GCC y Clang los
 # intrinsecos estan cableados en C++ dentro del compilador (`BuiltinsX86.def`,
 # miles de lineas). Aqui anadir una instruccion no toca Rust.
 #
-# ── Como se leen los operandos ──
+# -- Como se leen los operandos --
 #
 # El mecanismo emite BYTES FIJOS, asi que el registro va dentro del opcode o del
 # ModRM y esta ELEGIDO aqui. `args` dice a que registro va cada argumento y el
@@ -160,7 +160,7 @@ returns = "rdx"
 # acepta cualquier registro, aqui acepta uno: esto es una tabla, no un
 # asignador de registros.
 
-# ── Registros de control ──────────────────────────────────────────
+# -- Registros de control ------------------------------------------
 #
 # `mov rax, cr0` no lleva REX.W: en modo largo estos movimientos son de 64 bits
 # siempre. El numero de CR va en el campo `reg` del ModRM.
@@ -200,7 +200,7 @@ description = "Escribe CR4 — aqui viven OSXSAVE, PGE y SMEP (Ring 0)"
 bytes = [0x0F, 0x22, 0xE0]
 args = ["rax"]
 
-# ── TLB y caches ──────────────────────────────────────────────────
+# -- TLB y caches --------------------------------------------------
 
 [invlpg]
 description = "Invalida UNA pagina del TLB: __invlpg(dir) (Ring 0)"
@@ -216,7 +216,7 @@ args = ["rax"]
 description = "Invalida caches SIN escribir lo sucio. Casi siempre es un error: pierde datos (Ring 0)"
 bytes = [0x0F, 0x08]
 
-# ── Descriptores del sistema ──────────────────────────────────────
+# -- Descriptores del sistema --------------------------------------
 #
 # Todos toman la direccion de un pseudo-descriptor de 10 bytes (limite de 2 +
 # base de 8). Construirlo es cosa del llamante.
@@ -251,7 +251,7 @@ description = "Carga LDTR con un selector (Ring 0)"
 bytes = [0x0F, 0x00, 0xD0]
 args = ["ax"]
 
-# ── Tiempo y estado extendido ─────────────────────────────────────
+# -- Tiempo y estado extendido -------------------------------------
 
 [rdtscp]
 description = "Como rdtsc pero SERIALIZA: nada de antes se adelanta. Ademas deja el id del CPU en ecx"
@@ -269,10 +269,10 @@ description = "Escribe uno: __xsetbv(indice, valor) (Ring 0)"
 bytes = [0x0F, 0x01, 0xD1]
 args = ["ecx", "u64_edx_eax"]
 
-# ── RFLAGS ────────────────────────────────────────────────────────
+# -- RFLAGS --------------------------------------------------------
 #
 # Dos instrucciones en una sola fila: no existe `mov rax, rflags`. Es legitimo
-# —la tabla emite BYTES, no instrucciones sueltas— y es la unica forma de leerlas.
+# --la tabla emite BYTES, no instrucciones sueltas-- y es la unica forma de leerlas.
 
 [flags]
 description = "Lee RFLAGS (pushfq + pop rax). Con esto se sabe si las interrupciones estaban activas"
@@ -284,14 +284,14 @@ description = "Escribe RFLAGS (push rax + popfq): __set_flags(v)"
 bytes = [0x50, 0x9D]
 args = ["rax"]
 
-# ── Atomicos ──────────────────────────────────────────────────────
+# -- Atomicos ------------------------------------------------------
 #
 # La direccion va en `rdi` y el valor en `rax`, y el prefijo `F0` (LOCK) es
 # parte de los bytes: sin el, en cuanto haya mas de un nucleo esto deja de ser
 # atomico y el fallo sale una vez cada mil arranques.
 #
-# ★ `xchg` sobre memoria lleva LOCK IMPLICITO —el manual dice que el prefijo se
-#   asume— y por eso es la unica de este bloque sin `F0` delante.
+# * `xchg` sobre memoria lleva LOCK IMPLICITO --el manual dice que el prefijo se
+#   asume-- y por eso es la unica de este bloque sin `F0` delante.
 
 [xchg]
 description = "Intercambia [rdi] con rax y devuelve lo que habia. El cerrojo mas simple que existe"
@@ -326,7 +326,7 @@ description = "AND atomico: apaga bits sin pisar los cambios de otro"
 bytes = [0xF0, 0x48, 0x21, 0x07]
 args = ["rdi", "rax"]
 
-# ── Bits ──────────────────────────────────────────────────────────
+# -- Bits ----------------------------------------------------------
 #
 # Un mapa de bits de marcos de memoria vive de estas: sin `bsf` hay que
 # recorrer bit a bit, y son cuatro millones de bits en 16 GiB.
@@ -373,7 +373,7 @@ bytes = [0x48, 0x0F, 0xC8]
 args = ["rax"]
 returns = "rax"
 
-# ── Azar y parada ─────────────────────────────────────────────────
+# -- Azar y parada -------------------------------------------------
 
 [rdrand]
 description = "Numero del generador del CPU. Pone CF=1 si vale; sin leer CF, comprobar al menos que no sale siempre lo mismo"

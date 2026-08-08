@@ -3,34 +3,34 @@
 //! Antes esta crate re-exportaba `BootContext` "para que userland tuviera la
 //! misma struct que el kernel para el handoff". Eso era de otro sistema y era
 //! el modelo equivocado entero: **un proceso Ring 3 no recibe la estructura de
-//! arranque del kernel.** No sabe cuánta RAM hay, ni dónde está el
-//! framebuffer, ni qué discos existen. Recibe *capabilities*, y cada una es un
+//! arranque del kernel.** No sabe cuanta RAM hay, ni donde esta el
+//! framebuffer, ni que discos existen. Recibe *capabilities*, y cada una es un
 //! permiso concreto sobre un objeto concreto. Lo que no le hayan dado, no
-//! existe para él. Ese es el trato.
+//! existe para el. Ese es el trato.
 //!
 //! ## La superficie, entera
 //!
 //! Tres syscalls. No hay un cuarto y no va a haberlo:
 //!
 //! ```text
-//!   INVOKE(cap, operacion, a0, a1, a2)   la puerta síncrona
+//!   INVOKE(cap, operacion, a0, a1, a2)   la puerta sincrona
 //!   CHANNEL_KICK(cap, secuencia)         avisar al consumidor
 //!   WAIT(esperable, visto, timeout_ns)   bloquearse
 //! ```
 //!
-//! Todo lo demás —abrir un endpoint, escribir en consola, reclamar la
-//! pantalla— es una *operación* sobre una capability. La API crece por dentro,
-//! en la pareja `(tipo de objeto, operación)`, y el ABI no se toca. Añadir
-//! "abrir ventana" no es cambiar la frontera: es un número más en una tabla.
+//! Todo lo demas --abrir un endpoint, escribir en consola, reclamar la
+//! pantalla-- es una *operacion* sobre una capability. La API crece por dentro,
+//! en la pareja `(tipo de objeto, operacion)`, y el ABI no se toca. Anadir
+//! "abrir ventana" no es cambiar la frontera: es un numero mas en una tabla.
 //!
-//! ## Convención de registros
+//! ## Convencion de registros
 //!
-//! `rax` = número de syscall; argumentos en `rdi, rsi, rdx, r10, r8`.
+//! `rax` = numero de syscall; argumentos en `rdi, rsi, rdx, r10, r8`.
 //!
-//! ★ **`r10` y no `rcx`.** En `SYSCALL` el CPU mete el RIP de retorno en `rcx`
-//! y las RFLAGS en `r11`: un argumento en `rcx` no sería el dato de nadie,
-//! sería la dirección a la que volver. Linux salta a `r10` por lo mismo. Este
-//! detalle ya se cobró una tarde en el lado del kernel.
+//! * **`r10` y no `rcx`.** En `SYSCALL` el CPU mete el RIP de retorno en `rcx`
+//! y las RFLAGS en `r11`: un argumento en `rcx` no seria el dato de nadie,
+//! seria la direccion a la que volver. Linux salta a `r10` por lo mismo. Este
+//! detalle ya se cobro una tarde en el lado del kernel.
 //!
 //! De vuelta: `rax` = `codigo | (flags << 32)`, `rdx` = valor.
 
@@ -38,7 +38,7 @@
 
 use core::arch::asm;
 
-// ── La superficie congelada ─────────────────────────────────────────────
+// -- La superficie congelada ---------------------------------------------
 
 pub const NR_INVOKE: u32 = 0;
 pub const NR_CHANNEL_KICK: u32 = 1;
@@ -58,11 +58,11 @@ pub const OP_CONSOLE_WRITE: u32 = 0x06;
 pub const OP_ENDPOINT_CREATE: u32 = 0x07;
 pub const OP_ENDPOINT_CONNECT: u32 = 0x08;
 pub const OP_FRAMEBUFFER_CLAIM: u32 = 0x09;
-/// Soltar la pantalla siendo su dueño y **seguir vivo**. Pareja de
-/// [`OP_FRAMEBUFFER_CLAIM`]: hasta el 2026-08-07 la única forma de dejar de ser
-/// dueño era terminar, así que el escritorio no podía prestarla ni queriendo.
+/// Soltar la pantalla siendo su dueno y **seguir vivo**. Pareja de
+/// [`OP_FRAMEBUFFER_CLAIM`]: hasta el 2026-08-07 la unica forma de dejar de ser
+/// dueno era terminar, asi que el escritorio no podia prestarla ni queriendo.
 pub const OP_PANTALLA_SOLTAR: u32 = 0x1D;
-/// Soltar la ENTRADA siendo su dueño y seguir vivo.
+/// Soltar la ENTRADA siendo su dueno y seguir vivo.
 ///
 /// Va junto a [`OP_PANTALLA_SOLTAR`] porque **separarlas fue el bug**: prestar la
 /// pantalla sin la entrada deja al programa pintando sin poder leer su propia
@@ -76,14 +76,14 @@ pub const OP_DIR_ABRIR: u32 = 0x0E;
 pub const OP_CONSOLE_READ: u32 = 0x0F;
 pub const OP_ARCHIVO_ABRIR: u32 = 0x10;
 pub const OP_ARCHIVO_CREAR: u32 = 0x11;
-/// Reiniciar la máquina. No vuelve. Ver [`reiniciar`].
+/// Reiniciar la maquina. No vuelve. Ver [`reiniciar`].
 pub const OP_REINICIAR: u32 = 0x12;
 /// Un dato del sistema. Ver [`info`] y [`info_texto`].
 pub const OP_INFO: u32 = 0x13;
 pub const OP_INFO_TEXTO: u32 = 0x14;
 /// Pedir un bloque de memoria. Ver [`Memoria`].
 pub const OP_MEMORIA_PEDIR: u32 = 0x15;
-/// El log del kernel, leído desde Ring 3. Ver `klog_lineas`/`klog_texto`.
+/// El log del kernel, leido desde Ring 3. Ver `klog_lineas`/`klog_texto`.
 pub const OP_KLOG_INFO: u32 = 0x16;
 pub const OP_KLOG_TEXTO: u32 = 0x17;
 /// **Escribe en el disco.** Ver [`estratos_sellar`].
@@ -92,22 +92,22 @@ pub const OP_ESTRATOS_SELLAR: u32 = 0x18;
 pub const OP_ES_NODO: u32 = 0x19;
 /// Ocho bytes del nombre del hijo `arg0`; `arg1` numera el trozo.
 pub const OP_ES_TEXTO: u32 = 0x1A;
-/// **Despierta los otros núcleos.** Ver [`crate::sys::smp_despertar`].
+/// **Despierta los otros nucleos.** Ver [`crate::sys::smp_despertar`].
 pub const OP_SMP_DESPERTAR: u32 = 0x1B;
-/// **Toma lo que otro proceso me ofreció.** Ver [`crate::sys::tomar_prestado`].
+/// **Toma lo que otro proceso me ofrecio.** Ver [`crate::sys::tomar_prestado`].
 pub const OP_TOMAR: u32 = 0x1C;
-/// Operación sobre un bloque PROPIO: ofrecer un trozo a otra tarea.
+/// Operacion sobre un bloque PROPIO: ofrecer un trozo a otra tarea.
 pub const MEM_OP_OFRECER: u32 = 0x03;
 /// Operaciones sobre un handle de memoria PRESTADA (`KIND_PRESTADO`).
 pub const PRESTADO_OP_BASE: u32 = 0x01;
 pub const PRESTADO_OP_BYTES: u32 = 0x02;
 
-/// Dónde empieza el bloque, y cuánto se ha entregado a este proceso.
+/// Donde empieza el bloque, y cuanto se ha entregado a este proceso.
 pub const MEM_OP_BASE: u32 = 0x01;
 pub const MEM_OP_BYTES: u32 = 0x02;
 
-// Campos de `OP_INFO`. Son una TABLA: añadir un dato es una fila, no una
-// operación nueva.
+// Campos de `OP_INFO`. Son una TABLA: anadir un dato es una fila, no una
+// operacion nueva.
 pub const INFO_RAM_TOTAL: u64 = 0x01;
 pub const INFO_RAM_LIBRE: u64 = 0x02;
 pub const INFO_RAM_MARCOS: u64 = 0x03;
@@ -117,10 +117,10 @@ pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;
 pub const INFO_TAREAS_LISTAS: u64 = 0x09;
-/// ★ Quién tiene la pantalla: su `pid`, o **`0` si no la tiene nadie**.
+/// * Quien tiene la pantalla: su `pid`, o **`0` si no la tiene nadie**.
 ///
 /// Se PREGUNTA en vez de intentar reclamarla, y la diferencia importa: probar a
-/// reclamarla para saber si está libre **te la deja puesta**, y entonces se la
+/// reclamarla para saber si esta libre **te la deja puesta**, y entonces se la
 /// robas al programa al que se la ibas a prestar.
 pub const INFO_PANTALLA_DUENO: u64 = 0x1A;
 pub const INFO_TAREAS_LIBRES: u64 = 0x0A;
@@ -130,7 +130,7 @@ pub const INFO_PROGRAMAS: u64 = 0x0D;
 pub const INFO_PROGRAMAS_OLVIDADOS: u64 = 0x0E;
 pub const INFO_DISCO_LISTO: u64 = 0x0F;
 pub const INFO_DATOS_MONTADO: u64 = 0x10;
-/// ── ESTRATOS ──────────────────────────────────────────────────────
+/// -- ESTRATOS ------------------------------------------------------
 ///
 /// El volumen de datos grande. Ring 3 los necesita para poder ENSENAR el estado
 /// del almacen sin cruzar a Ring 0 por cada dato: son una fila mas de la tabla
@@ -143,12 +143,12 @@ pub const INFO_ES_USADOS: u64 = 0x14;
 pub const INFO_ES_BLOQUE_TAM: u64 = 0x15;
 /// 0 holgado, 1 ambar, 2 rojo, 3 solo lectura. Ver `bmo_estratos::espacio`.
 pub const INFO_ES_NIVEL: u64 = 0x16;
-/// El gate del §5: 1 si el volumen nacio en ESTE disco.
+/// El gate del section 5: 1 si el volumen nacio en ESTE disco.
 pub const INFO_ES_IDENTIDAD: u64 = 0x17;
 /// 1 si hoy se puede escribir. Hoy siempre 0: falta cablear la E/S.
 pub const INFO_ES_ESCRIBIBLE: u64 = 0x18;
 /// Bytes que Ring 3 ha PEDIDO con `KIND_MEMORIA` desde el arranque. Es lo
-/// único del informe que sólo se mueve si alguien ejerció la capability.
+/// unico del informe que solo se mueve si alguien ejercio la capability.
 pub const INFO_MEM_ENTREGADA: u64 = 0x19;
 
 // Campos de `OP_INFO_TEXTO`.
@@ -160,7 +160,7 @@ pub const INFO_TXT_FAMILIA: u64 = 0x04;
 // Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
 pub const DIR_OP_SIGUIENTE: u32 = 0x01;
 pub const DIR_OP_NOMBRE: u32 = 0x02;
-/// Cierra el directorio y devuelve su ranura. Lo llama `Drop`, no tú.
+/// Cierra el directorio y devuelve su ranura. Lo llama `Drop`, no tu.
 pub const DIR_OP_CERRAR: u32 = 0x03;
 
 // Operaciones sobre un handle de archivo (`KIND_ARCHIVO`).
@@ -188,7 +188,7 @@ pub const INPUT_OP_TECLA: u32 = 0x03;
 pub const INPUT_OP_MODIFICADORES: u32 = 0x04;
 pub const INPUT_OP_RUEDA: u32 = 0x05;
 
-/// Bits de la máscara de modificadores.
+/// Bits de la mascara de modificadores.
 pub const MOD_SHIFT: u8 = 1 << 0;
 pub const MOD_CTRL: u8 = 1 << 1;
 pub const MOD_ALT: u8 = 1 << 2;
@@ -196,11 +196,11 @@ pub const MOD_ALTGR: u8 = 1 << 3;
 pub const MOD_CAPS: u8 = 1 << 4;
 
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 //  LOS MODULOS
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 //
-// ★ Este fichero llego a tener **1624 lineas con siete trabajos dentro**: la
+// * Este fichero llego a tener **1624 lineas con siete trabajos dentro**: la
 // puerta de syscalls, la pantalla con su fuente, los archivos, la consola, la
 // entrada, la memoria y ESTRATOS. Nada de eso tiene que ver con lo demas.
 //
@@ -223,7 +223,7 @@ mod pantalla;
 mod proceso;
 mod sys;
 
-/// ESTRATOS desde Ring 3. Sigue siendo `bmo::estratos::…`.
+/// ESTRATOS desde Ring 3. Sigue siendo `bmo::estratos::...`.
 pub mod estratos;
 
 pub use archivo::*;

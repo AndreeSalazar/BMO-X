@@ -17,8 +17,8 @@ out its memory map differently.
 That is the single most valuable thing anyone can give this project right now,
 and it costs you a USB stick and ten minutes.
 
-If it boots — say so, with your CPU and motherboard.
-If it does not — **that is the more useful result.** Photograph the screen where
+If it boots -- say so, with your CPU and motherboard.
+If it does not -- **that is the more useful result.** Photograph the screen where
 it stops and open an issue. A panic message from unknown hardware is worth more
 to me than a pull request.
 
@@ -33,12 +33,12 @@ This project has a floor and a building. They have different rules.
 
 ### 🔒 The Base does not move
 
-- the three syscalls — `INVOKE`, `CHANNEL_KICK`, `WAIT`
+- the three syscalls -- `INVOKE`, `CHANNEL_KICK`, `WAIT`
 - the BEF/BEX container format
 - the capability model itself
 
 These are frozen **on purpose**. A system aiming at critical sectors is only
-auditable if the thing being audited stops changing — the point is that **one
+auditable if the thing being audited stops changing -- the point is that **one
 audit serves everyone**. A pull request that adds a fourth syscall, or a field
 to BEF, will be declined no matter how good it is. That is not a judgement of
 the code.
@@ -48,16 +48,16 @@ conversation is welcome. A patch is not the way to have it.
 
 ### 🟢 Everything above it is open ground
 
-- **Ports to other CPUs and firmware** — this is the reason the project is
+- **Ports to other CPUs and firmware** -- this is the reason the project is
   opening up at all
-- **Drivers** — network, storage, anything the hardware in front of you has and
+- **Drivers** -- network, storage, anything the hardware in front of you has and
   mine does not
-- **Applications** — anything that compiles to a `.bex`
-- **Table-driven mods** — see the mods contract; tables, not plugins
-- **New instructions** in the semantic layer — it is a TOML table, not a code
+- **Applications** -- anything that compiles to a `.bex`
+- **Table-driven mods** -- see the mods contract; tables, not plugins
+- **New instructions** in the semantic layer -- it is a TOML table, not a code
   generator
 - **New language frontends** on top of the existing toolchain
-- **Documentation, and corrections to it** — including telling me that a 🟢 in
+- **Documentation, and corrections to it** -- including telling me that a 🟢 in
   the README is not actually green
 
 ---
@@ -72,11 +72,11 @@ thing in this repository. It only works if nobody bends it.
 | | State | Meaning |
 |:--:|---|---|
 | 🟢 | **Runs on metal** | You watched it work on a real CPU, and you have a photo or a telemetry line |
-| 🟡 | **Written, never executed** | It compiles, it links, it passes its tests — and no CPU has run it |
+| 🟡 | **Written, never executed** | It compiles, it links, it passes its tests -- and no CPU has run it |
 | ⚪ | **Design only** | Documented, not built |
 
 If your patch compiles and passes tests but you never booted it, it is 🟡. Say
-so in the PR. **That is not a weaker contribution — it is an honest one**, and it
+so in the PR. **That is not a weaker contribution -- it is an honest one**, and it
 will be merged as 🟡 and marked as such.
 
 Claiming 🟢 for something you did not watch run is the only thing here that will
@@ -95,7 +95,7 @@ get a contribution rejected on principle.
 4. **One concern per PR.** A driver and a refactor in the same patch is two
    patches.
 5. **Comments in the language of the surrounding file.** The codebase is
-   bilingual — Spanish in places, English in others. Match what is around you
+   bilingual -- Spanish in places, English in others. Match what is around you
    rather than converting it.
 
 ---
@@ -113,7 +113,7 @@ Also good:
 > says.
 
 Less useful: feature requests for things the roadmap explicitly declines. The
-README has a section called *What it deliberately does not do* — network stack,
+README has a section called *What it deliberately does not do* -- network stack,
 GPU acceleration, a full libc, Wine, a mainframe migration path. Those are not
 oversights and asking for them will not change them.
 
@@ -123,7 +123,7 @@ oversights and asking for them will not change them.
 
 BMO-X is under the [Techne License v2.0](LICENSE.txt). The source is public and
 you may read, build and audit all of it without asking anyone. It is **not OSI
-open source** — the rights stay with the author and commercial use above the
+open source** -- the rights stay with the author and commercial use above the
 threshold is licensed.
 
 What that means for you as a contributor: **by opening a pull request you are
@@ -131,7 +131,7 @@ offering your contribution under that same licence**, and the rights to it sit
 with the project the way they do for the rest of the code.
 
 If that does not work for you, that is a legitimate position and no hard
-feelings — the boot reports above are still enormously useful and carry none of
+feelings -- the boot reports above are still enormously useful and carry none of
 this.
 
 If you are contributing on behalf of an employer, please check with them first.
@@ -141,7 +141,7 @@ I would rather sort that out before a patch than after.
 
 ## Contact
 
-Issues and pull requests are the preferred channel — they leave a public record,
+Issues and pull requests are the preferred channel -- they leave a public record,
 which is the whole spirit of this repository.
 
 Built from scratch in Lima, Peru, by **Eddi Salazar**.

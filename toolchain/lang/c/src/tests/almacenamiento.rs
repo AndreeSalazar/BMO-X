@@ -1,19 +1,19 @@
-//! **`static` y los prototipos** — las dos que separaban "compila programas" de
+//! **`static` y los prototipos** -- las dos que separaban "compila programas" de
 //! "compila un programa de cincuenta ficheros".
 //!
-//! ★ Estos tests EJECUTAN. Que una construcción compile es media prueba y la
+//! * Estos tests EJECUTAN. Que una construccion compile es media prueba y la
 //! menos interesante: lo que define a `static` no es que el parser la acepte,
 //! es que la variable **sobreviva a la llamada** y que su inicializador corra
 //! **una sola vez**. Un compilador que la acepta y la trata como una local
-//! normal pasa cualquier prueba de compilación y falla en la primera vuelta de
-//! un contador — en silencio, dando siempre el mismo número.
+//! normal pasa cualquier prueba de compilacion y falla en la primera vuelta de
+//! un contador -- en silencio, dando siempre el mismo numero.
 
 use super::*;
 
-// ── static: lo que la hace distinta de una local ──────────────────────
+// -- static: lo que la hace distinta de una local ----------------------
 
-/// ★ La propiedad que define `static`: **sobrevive entre llamadas**. Es la
-/// única razón de que exista, y la única que un test de compilación no ve.
+/// * La propiedad que define `static`: **sobrevive entre llamadas**. Es la
+/// unica razon de que exista, y la unica que un test de compilacion no ve.
 #[test]
 fn una_static_local_conserva_su_valor_entre_llamadas() {
     let fuente = "int cuenta() { static int n = 0; n = n + 1; return n; } \
@@ -23,11 +23,11 @@ fn una_static_local_conserva_su_valor_entre_llamadas() {
     assert_eq!(run_c(fuente), "123");
 }
 
-/// ★ Y su inicializador corre **UNA vez**, no en cada llamada.
+/// * Y su inicializador corre **UNA vez**, no en cada llamada.
 ///
-/// Es el mismo test del revés y hace falta: si el inicializador se emitiera
-/// como una asignación dentro del cuerpo, el contador de arriba también daría
-/// `111` — y "no cuenta" y "se reinicia" son dos bugs distintos con la misma
+/// Es el mismo test del reves y hace falta: si el inicializador se emitiera
+/// como una asignacion dentro del cuerpo, el contador de arriba tambien daria
+/// `111` -- y "no cuenta" y "se reinicia" son dos bugs distintos con la misma
 /// cara.
 #[test]
 fn el_inicializador_de_una_static_corre_una_sola_vez() {
@@ -48,8 +48,8 @@ fn dos_funciones_pueden_tener_cada_una_su_static_con_el_mismo_nombre() {
     assert_eq!(run_c(fuente), "11,21,12,22");
 }
 
-/// Una `static` local **no** se ve desde fuera de su función. Si se viera, el
-/// renombrado estaría mal hecho y dos ámbitos serían uno.
+/// Una `static` local **no** se ve desde fuera de su funcion. Si se viera, el
+/// renombrado estaria mal hecho y dos ambitos serian uno.
 #[test]
 fn una_static_local_no_se_ve_desde_otra_funcion() {
     let fuente = "int pone() { static int oculta = 7; return oculta; } \
@@ -58,8 +58,8 @@ fn una_static_local_no_se_ve_desde_otra_funcion() {
             "`oculta` sólo existe dentro de pone()");
 }
 
-/// Una `static` de fichero es una global normal: aquí sólo hay una unidad de
-/// traducción, así que no hay nadie de quien esconderla.
+/// Una `static` de fichero es una global normal: aqui solo hay una unidad de
+/// traduccion, asi que no hay nadie de quien esconderla.
 #[test]
 fn una_static_de_fichero_es_una_global_normal() {
     let fuente = "static int g = 41; \
@@ -67,7 +67,7 @@ fn una_static_de_fichero_es_una_global_normal() {
     assert_eq!(run_c(fuente), "42");
 }
 
-/// `static` delante de una función se acepta (enlace interno) y la función
+/// `static` delante de una funcion se acepta (enlace interno) y la funcion
 /// sigue funcionando igual.
 #[test]
 fn una_funcion_static_se_compila_y_se_llama() {
@@ -76,11 +76,11 @@ fn una_funcion_static_se_compila_y_se_llama() {
     assert_eq!(run_c(fuente), "42");
 }
 
-// ── Prototipos: llamar antes de definir ───────────────────────────────
+// -- Prototipos: llamar antes de definir -------------------------------
 
-/// ★ Sin prototipos **la recursión mutua es imposible**, y un programa de
-/// cincuenta ficheros está lleno de funciones que se llaman en círculo:
-/// ninguna puede ir "antes" que todas las demás.
+/// * Sin prototipos **la recursion mutua es imposible**, y un programa de
+/// cincuenta ficheros esta lleno de funciones que se llaman en circulo:
+/// ninguna puede ir "antes" que todas las demas.
 #[test]
 fn se_puede_llamar_a_una_funcion_declarada_mas_abajo() {
     let fuente = "int tarde(int x); \
@@ -89,7 +89,7 @@ fn se_puede_llamar_a_una_funcion_declarada_mas_abajo() {
     assert_eq!(run_c(fuente), "42");
 }
 
-/// El parámetro de un prototipo puede ir **sin nombre**: es C legal y es como
+/// El parametro de un prototipo puede ir **sin nombre**: es C legal y es como
 /// se escriben las cabeceras de cualquier programa de verdad.
 #[test]
 fn un_prototipo_acepta_parametros_sin_nombre() {
@@ -99,7 +99,7 @@ fn un_prototipo_acepta_parametros_sin_nombre() {
     assert_eq!(run_c(fuente), "42");
 }
 
-/// ★ La recursión MUTUA, que es el caso que justifica todo lo anterior.
+/// * La recursion MUTUA, que es el caso que justifica todo lo anterior.
 #[test]
 fn dos_funciones_pueden_llamarse_en_circulo() {
     let fuente = "int impar(int n); \
@@ -110,7 +110,7 @@ fn dos_funciones_pueden_llamarse_en_circulo() {
 }
 
 /// Un prototipo **no emite nada**: declarar y no definir no puede inventarse
-/// un cuerpo. Se comprueba llamando a algo que se declaró y nunca se escribió.
+/// un cuerpo. Se comprueba llamando a algo que se declaro y nunca se escribio.
 #[test]
 fn un_prototipo_sin_definicion_no_se_inventa_la_funcion() {
     let fuente = "int fantasma(int x); \
@@ -119,12 +119,12 @@ fn un_prototipo_sin_definicion_no_se_inventa_la_funcion() {
             "no hay cuerpo que llamar");
 }
 
-// ── auto y register: se aceptan y no cambian nada ─────────────────────
+// -- auto y register: se aceptan y no cambian nada ---------------------
 
 /// `auto` y `register` se aceptan y se **tiran**. No es pereza: `register` es
-/// una sugerencia que todos los compiladores ignoran desde hace treinta años y
+/// una sugerencia que todos los compiladores ignoran desde hace treinta anos y
 /// `auto` es redundante desde 1978. Lo que importa del test es que el programa
-/// dé **lo mismo** con ellas y sin ellas.
+/// de **lo mismo** con ellas y sin ellas.
 #[test]
 fn auto_y_register_se_aceptan_y_no_cambian_el_resultado() {
     let con = "int main() { register int a = 20; auto int b = 22; \
@@ -135,7 +135,7 @@ fn auto_y_register_se_aceptan_y_no_cambian_el_resultado() {
     assert_eq!(run_c(con), run_c(sin));
 }
 
-// ── varargs: los argumentos que no tienen nombre ──────────────────────
+// -- varargs: los argumentos que no tienen nombre ----------------------
 
 /// Declarar `...` y usar los parametros CON nombre. Es la mitad barata, y sin
 /// ella ni siquiera compila una cabecera que declare `printf`.
@@ -146,7 +146,7 @@ fn una_funcion_variadica_compila_y_usa_sus_parametros_con_nombre() {
     assert_eq!(run_c(fuente), "3");
 }
 
-/// ★ Y LEERLOS, que es la mitad que importa.
+/// * Y LEERLOS, que es la mitad que importa.
 ///
 /// `__va_arg(i)` da el variadico numero `i`. Funciona porque BMO C pasa los
 /// argumentos **por la pila** de derecha a izquierda: los que no tienen nombre
@@ -162,7 +162,7 @@ fn una_funcion_variadica_lee_sus_argumentos_sin_nombre() {
 }
 
 /// El indice es de EJECUCION, no una constante: sin eso no se puede recorrer
-/// los argumentos en un bucle — que es exactamente lo que hace un `vsprintf`,
+/// los argumentos en un bucle -- que es exactamente lo que hace un `vsprintf`,
 /// y `vsprintf` es lo que pide `I_Error(fmt, ...)`.
 #[test]
 fn el_indice_de_va_arg_puede_ser_una_variable() {
@@ -171,14 +171,14 @@ fn el_indice_de_va_arg_puede_ser_una_variable() {
     assert_eq!(run_c(fuente), "7,9");
 }
 
-// ── La biblioteca que se emite EN LINEA ───────────────────────────────
+// -- La biblioteca que se emite EN LINEA -------------------------------
 //
 // No hay libreria que enlazar, y eso NO es una carencia: es el modelo. Un
 // `.bex` es una imagen entera y BEF no resuelve relocaciones contra un `.so`.
 // El bucle cuesta treinta bytes y ahorra un enlazador, un formato de libreria
 // y un cargador dinamico.
 
-/// ★ `memcpy` — por aqui pasa el blit de cada fotograma de DOOM.
+/// * `memcpy` -- por aqui pasa el blit de cada fotograma de DOOM.
 #[test]
 fn memcpy_mueve_los_bytes_y_devuelve_el_destino() {
     let fuente = "int main() { char a[8]; char b[8]; \
@@ -205,7 +205,7 @@ fn memset_rellena_el_bloque() {
     assert_eq!(run_c(fuente), "65,65,65");
 }
 
-/// El terminador NO se cuenta — que es lo que dice `strlen` y lo que mas se
+/// El terminador NO se cuenta -- que es lo que dice `strlen` y lo que mas se
 /// equivoca al reimplementarlo.
 #[test]
 fn strlen_no_cuenta_el_terminador() {
@@ -219,7 +219,7 @@ fn strlen_de_la_cadena_vacia_es_cero() {
     assert_eq!(run_c(fuente), "0");
 }
 
-/// ★ `strcmp` devuelve la DIFERENCIA con signo, no un si/no. Un `comparar`
+/// * `strcmp` devuelve la DIFERENCIA con signo, no un si/no. Un `comparar`
 /// que solo dijera "iguales o distintas" pareceria suficiente hasta el dia
 /// que alguien ordene una lista con el.
 #[test]
@@ -256,7 +256,7 @@ fn abs_da_el_valor_absoluto() {
     assert_eq!(run_c(fuente), "3,3,0");
 }
 
-/// ★ Un literal DENTRO de una condicion apunta a la cadena correcta.
+/// * Un literal DENTRO de una condicion apunta a la cadena correcta.
 ///
 /// Este test no es sobre cadenas: es sobre un fallo que llevaba ahi desde
 /// siempre. `collect_strings` recorria las ramas de un `if` y **tiraba la
@@ -265,7 +265,7 @@ fn abs_da_el_valor_absoluto() {
 /// programa**. No fallaba: apuntaba a otro sitio.
 ///
 /// No se vio nunca porque hacia falta poder escribir algo como
-/// `if (strcmp(s, "salir") == 0)` — y `strcmp` no existia hasta hoy. Lo cazo
+/// `if (strcmp(s, "salir") == 0)` -- y `strcmp` no existia hasta hoy. Lo cazo
 /// el primer test que lo piso, comparando "abc" contra el formato de un
 /// `printf` anterior.
 ///
@@ -279,7 +279,7 @@ fn un_literal_en_una_condicion_apunta_a_su_cadena_y_no_a_la_primera() {
     assert_eq!(run_c(fuente), "hola,if,fin");
 }
 
-// ── Declaradores multiples: `int a, b;` ───────────────────────────────
+// -- Declaradores multiples: `int a, b;` -------------------------------
 
 #[test]
 fn se_pueden_declarar_varias_variables_en_una_linea() {
@@ -295,10 +295,10 @@ fn cada_declarador_lleva_su_propio_inicializador() {
     assert_eq!(run_c(fuente), "42");
 }
 
-/// ★ El detalle de C que mas se salta al implementarlo: en `int *a, b;` la
+/// * El detalle de C que mas se salta al implementarlo: en `int *a, b;` la
 /// `b` es un **int**, NO un puntero. El asterisco es del DECLARADOR, no del
 /// tipo. Quien lo trate al reves compila el programa y le cambia el
-/// significado — que es peor que no compilarlo.
+/// significado -- que es peor que no compilarlo.
 #[test]
 fn el_asterisco_es_del_declarador_y_no_del_tipo() {
     let fuente = "int main(){ int n; int *p, b; n = 7; p = &n; b = 35; \

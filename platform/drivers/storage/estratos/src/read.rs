@@ -1,39 +1,39 @@
-//! Bajar por el árbol. **Un solo recorrido para todo el sistema.**
+//! Bajar por el arbol. **Un solo recorrido para todo el sistema.**
 //!
-//! El formateador del anfitrión y el kernel tienen que reconstruir un flujo
-//! exactamente igual. La primera versión lo implementó dos veces —una en cada
-//! lado— y eso es la misma trampa que casi cuesta el BLAKE3: dos copias del
-//! mismo algoritmo son dos copias que pueden separarse, y el día que se
-//! separen el síntoma es "un archivo que se lee mal", sin nada que apunte al
+//! El formateador del anfitrion y el kernel tienen que reconstruir un flujo
+//! exactamente igual. La primera version lo implemento dos veces --una en cada
+//! lado-- y eso es la misma trampa que casi cuesta el BLAKE3: dos copias del
+//! mismo algoritmo son dos copias que pueden separarse, y el dia que se
+//! separen el sintoma es "un archivo que se lee mal", sin nada que apunte al
 //! recorrido.
 //!
-//! Aquí no se sabe de dónde salen los bloques: quien llama trae su [`Fuente`]
-//! (un archivo en el anfitrión, el contrato de bloques en el kernel) y su
-//! memoria de trabajo. Por eso el mismo código sirve en los dos sitios sin
+//! Aqui no se sabe de donde salen los bloques: quien llama trae su [`Fuente`]
+//! (un archivo en el anfitrion, el contrato de bloques en el kernel) y su
+//! memoria de trabajo. Por eso el mismo codigo sirve en los dos sitios sin
 //! `alloc` en ninguno.
 //!
-//! ## Por qué un buffer POR NIVEL
+//! ## Por que un buffer POR NIVEL
 //!
 //! Al bajar, la lista de punteros del nivel actual tiene que seguir viva
 //! mientras se recorren sus hijos. Con un buffer compartido, el primer hijo la
-//! machacaría y habría que releer el bloque padre en cada iteración: una
+//! machacaria y habria que releer el bloque padre en cada iteracion: una
 //! lectura de disco por puntero. El `split_at_mut` de abajo le da a cada nivel
-//! el suyo y hace imposible el error por construcción — un nivel no puede
+//! el suyo y hace imposible el error por construccion -- un nivel no puede
 //! tocar el buffer de su padre porque no lo tiene.
 
 use crate::objects::{BlockPtr, BLOQUE, PTR_LEN};
 use crate::FormatError;
 
-/// De dónde salen los bloques.
+/// De donde salen los bloques.
 pub trait Fuente {
     /// Lee el bloque `lba` entero. `false` si no se pudo.
     fn bloque(&mut self, lba: u64, dst: &mut [u8; BLOQUE]) -> bool;
 }
 
-/// Recorre el árbol de `raiz` y entrega los trozos de datos EN ORDEN.
+/// Recorre el arbol de `raiz` y entrega los trozos de datos EN ORDEN.
 ///
 /// `salida` devuelve `false` para parar (por ejemplo, cuando el buffer de
-/// quien llama ya está lleno). Cada trozo entregado ya está **comprobado
+/// quien llama ya esta lleno). Cada trozo entregado ya esta **comprobado
 /// contra la suma de su puntero**: quien recibe no tiene que verificar nada.
 pub fn descender(
     src: &mut dyn Fuente,
@@ -55,8 +55,8 @@ fn bajar(
     seguir: &mut bool,
 ) -> Result<(), FormatError> {
     if !*seguir { return Ok(()); }
-    // Sin buffer para este nivel no se sigue. Es también el freno contra un
-    // `levels` corrupto que pidiera bajar más de lo que el árbol admite.
+    // Sin buffer para este nivel no se sigue. Es tambien el freno contra un
+    // `levels` corrupto que pidiera bajar mas de lo que el arbol admite.
     let (mio, resto) = match scratch.split_first_mut() {
         Some(v) => v,
         None => return Err(FormatError::SinScratch),
@@ -102,7 +102,7 @@ mod tests {
             self.bloques.push(b);
             BlockPtr::nuevo(lba, 0, datos)
         }
-        /// Escribe `datos` como árbol y devuelve `(raiz, niveles)`.
+        /// Escribe `datos` como arbol y devuelve `(raiz, niveles)`.
         fn arbol(&mut self, datos: &[u8]) -> (BlockPtr, u8) {
             if datos.len() <= BLOQUE { return (self.poner(datos), 0); }
             let mut nivel: Vec<BlockPtr> = datos.chunks(BLOQUE).map(|c| self.poner(c)).collect();

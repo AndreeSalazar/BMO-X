@@ -1,14 +1,14 @@
-//! `buffer` — BmoBuffer, descriptor de memoria compartida del BMO ABI.
+//! `buffer` -- BmoBuffer, descriptor de memoria compartida del BMO ABI.
 //!
 //! Reemplaza el caos de `void* + size_t` en IPC con un solo tipo que
-//! describe una región de memoria compartida entre procesos/contenedores.
+//! describe una region de memoria compartida entre procesos/contenedores.
 //!
 //! # Layout (32 bytes)
 //! ```text
-//! [0..7]  ptr:      *mut u8  — dirección virtual
-//! [8..15] len:      u64      — tamaño en bytes
-//! [16..23] capacity: u64     — capacidad total (≥ len)
-//! [24..31] flags:    u64     — BmoBufferFlags
+//! [0..7]  ptr:      *mut u8  -- direccion virtual
+//! [8..15] len:      u64      -- tamano en bytes
+//! [16..23] capacity: u64     -- capacidad total (>= len)
+//! [24..31] flags:    u64     -- BmoBufferFlags
 //! ```
 
 use crate::bmo_abi::primitives::bx_u64;
@@ -21,11 +21,11 @@ bitflags::bitflags! {
         const READ_ONLY  = 1 << 0;
         /// El buffer se puede redimensionar.
         const RESIZABLE  = 1 << 1;
-        /// El buffer debe estar alineado a página.
+        /// El buffer debe estar alineado a pagina.
         const PAGE_ALIGN = 1 << 2;
         /// El buffer es persistente (no se libera al cerrar handle).
         const PERSISTENT = 1 << 3;
-        /// El buffer es mapeado como no-caché (para device DMA).
+        /// El buffer es mapeado como no-cache (para device DMA).
         const UNCACHED   = 1 << 4;
     }
 }

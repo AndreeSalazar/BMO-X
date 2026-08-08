@@ -1,4 +1,4 @@
-//! `clock` — tipos de reloj del BMO ABI.
+//! `clock` -- tipos de reloj del BMO ABI.
 //!
 //! Define los IDs de reloj del sistema y operaciones asociadas.
 //! Reemplaza `clock_gettime` / `CLOCK_MONOTONIC` / etc. de POSIX.
@@ -9,11 +9,11 @@ use crate::bmo_abi::values::time::{BmoDuration, BmoInstant};
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BmoClockId {
-    /// Monotónico, tiempo desde boot (equivalente a CLOCK_MONOTONIC).
+    /// Monotonico, tiempo desde boot (equivalente a CLOCK_MONOTONIC).
     Monotonic = 0,
     /// Tiempo real de pared (equivalente a CLOCK_REALTIME).
     Realtime = 1,
-    /// TSC directa (sin calibración, sólo para intervalos).
+    /// TSC directa (sin calibracion, solo para intervalos).
     Tsc = 2,
     /// Tiempo de CPU del proceso actual.
     ProcessCpu = 3,
@@ -32,14 +32,14 @@ impl BmoClockId {
         }
     }
 
-    /// Resolución del reloj en nanosegundos.
+    /// Resolucion del reloj en nanosegundos.
     pub fn resolution(&self) -> BmoDuration {
-        // Todas usan TSC → ~1 ns con calibración, ~1 μs sin ella
+        // Todas usan TSC -> ~1 ns con calibracion, ~1 us sin ella
         BmoDuration::from_ns(1)
     }
 }
 
-// ─── Sleep ─────────────────────────────────────────────────────────
+// --- Sleep ---------------------------------------------------------
 
 /// Suspende el hilo actual por `duration`.
 pub fn sleep(duration: BmoDuration) {

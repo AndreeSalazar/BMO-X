@@ -1,71 +1,71 @@
-//! **El contrato de los mods de BMO** — formato, nunca cerebro.
+//! **El contrato de los mods de BMO** -- formato, nunca cerebro.
 //!
-//! Librería que cada frontend ELIGE enlazar, como el resto de `forge/`. No es
+//! Libreria que cada frontend ELIGE enlazar, como el resto de `forge/`. No es
 //! un embudo: quien no la quiera sigue leyendo sus ficheros a mano.
 //!
-//! ## Qué problema resuelve
+//! ## Que problema resuelve
 //!
-//! Un comité decide qué entra en un lenguaje y cuándo. Eso da estabilidad y
-//! cuesta años por cada cambio. La alternativa que ya practica este repo —
-//! *"añadir una instrucción = 1 entrada TOML, CERO Rust"*— no necesita comité:
-//! el que quiere una extensión la declara y la usa.
+//! Un comite decide que entra en un lenguaje y cuando. Eso da estabilidad y
+//! cuesta anos por cada cambio. La alternativa que ya practica este repo --
+//! *"anadir una instruccion = 1 entrada TOML, CERO Rust"*-- no necesita comite:
+//! el que quiere una extension la declara y la usa.
 //!
-//! Lo que faltaba no era la idea, era **un solo formato**. Había tres:
+//! Lo que faltaba no era la idea, era **un solo formato**. Habia tres:
 //!
-//! - `lang/c/src/module.rs` leía `BMO.toml` partiendo líneas por `=`.
-//! - `lang/c/src/standard.rs` leía `standards/C/*.toml` igual, y **se comía
-//!   las secciones**: `[features]` y `[type_rules]` caían en el mismo saco.
-//!   Funcionaba por suerte, porque ninguna clave se repetía todavía.
-//! - `forge/sem-asm` sí usaba un parser de verdad, para otras tablas.
+//! - `lang/c/src/module.rs` leia `BMO.toml` partiendo lineas por `=`.
+//! - `lang/c/src/standard.rs` leia `standards/C/*.toml` igual, y **se comia
+//!   las secciones**: `[features]` y `[type_rules]` caian en el mismo saco.
+//!   Funcionaba por suerte, porque ninguna clave se repetia todavia.
+//! - `forge/sem-asm` si usaba un parser de verdad, para otras tablas.
 //!
 //! Y los dos primeros llevaban copiada la misma lista de cinco rutas
-//! candidatas para encontrar `tables/`. Cuando esa lista se quedó vieja, el
-//! gating de estándares **cayó al default en silencio** durante meses — está
+//! candidatas para encontrar `tables/`. Cuando esa lista se quedo vieja, el
+//! gating de estandares **cayo al default en silencio** durante meses -- esta
 //! escrito en el comentario de `standard.rs`. Un formato con tres lectores
 //! tiene tres formas de mentir.
 //!
 //! ## La frontera honesta
 //!
-//! Esto quita el Rust de **DECLARAR** una extensión, no de implementarla.
-//! Añadir `mi_extension = true` a un TOML es gratis; que el compilador haga
-//! algo distinto sigue siendo código. Es la misma frontera que la fábrica de
-//! COBOL: lo tabular se genera, la semántica de cada verbo se escribe.
+//! Esto quita el Rust de **DECLARAR** una extension, no de implementarla.
+//! Anadir `mi_extension = true` a un TOML es gratis; que el compilador haga
+//! algo distinto sigue siendo codigo. Es la misma frontera que la fabrica de
+//! COBOL: lo tabular se genera, la semantica de cada verbo se escribe.
 //!
-//! Prometer más que eso sería vender compatibilidad que no existe.
+//! Prometer mas que eso seria vender compatibilidad que no existe.
 //!
-//! ## Dónde se buscan los mods
+//! ## Donde se buscan los mods
 //!
 //! En este orden, y el primero que tenga el fichero gana:
 //!
-//! 1. `$BMO_MODS` — una o varias rutas separadas por `;`. **Es la puerta de
-//!    los terceros**: se dejan ahí y no se toca el repo. Va primero a
-//!    propósito, para poder tapar una tabla del sistema sin editarla.
-//! 2. `mods/` en la raíz del repo, si existe.
-//! 3. `toolchain/forge/sem-asm/tables/` — las tablas del sistema.
+//! 1. `$BMO_MODS` -- una o varias rutas separadas por `;`. **Es la puerta de
+//!    los terceros**: se dejan ahi y no se toca el repo. Va primero a
+//!    proposito, para poder tapar una tabla del sistema sin editarla.
+//! 2. `mods/` en la raiz del repo, si existe.
+//! 3. `toolchain/forge/sem-asm/tables/` -- las tablas del sistema.
 //!
 //! ## Lo que esto NO hace, y hay que decirlo
 //!
-//! Un mod de tabla es **datos**: no ejecuta nada, así que no puede robar
-//! nada. El día que un mod sea un `.bex` con código, esto no basta: haría
-//! falta el gate de firma y `bmo-verify` — que hoy está escrito y **no tiene
-//! un solo usuario**. Ese es el orden correcto y por eso se empieza por aquí.
+//! Un mod de tabla es **datos**: no ejecuta nada, asi que no puede robar
+//! nada. El dia que un mod sea un `.bex` con codigo, esto no basta: haria
+//! falta el gate de firma y `bmo-verify` -- que hoy esta escrito y **no tiene
+//! un solo usuario**. Ese es el orden correcto y por eso se empieza por aqui.
 
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub enum ModError {
-    /// No se encontró ninguna raíz con tablas. Casi siempre es el cwd.
+    /// No se encontro ninguna raiz con tablas. Casi siempre es el cwd.
     SinRaices,
-    /// El fichero no está en ninguna de las raíces.
+    /// El fichero no esta en ninguna de las raices.
     NoEsta { que: String, buscado_en: Vec<PathBuf> },
-    /// El fichero está pero no se puede leer.
+    /// El fichero esta pero no se puede leer.
     NoSeLee(PathBuf),
-    /// El fichero está y no es TOML válido. Se dice CUÁL y POR QUÉ: un mod
-    /// ajeno mal escrito tiene que señalar a su autor, no al sistema.
+    /// El fichero esta y no es TOML valido. Se dice CUAL y POR QUE: un mod
+    /// ajeno mal escrito tiene que senalar a su autor, no al sistema.
     NoEsToml { fichero: PathBuf, motivo: String },
-    /// Una cadena de herencia que se muerde la cola. Se para y se enseña
-    /// entera: `a → b → a` colgaría el compilador, y un compilador colgado no
-    /// dice de quién es la culpa.
+    /// Una cadena de herencia que se muerde la cola. Se para y se ensena
+    /// entera: `a -> b -> a` colgaria el compilador, y un compilador colgado no
+    /// dice de quien es la culpa.
     Ciclo { cadena: Vec<String> },
 }
 
@@ -93,12 +93,12 @@ impl std::fmt::Display for ModError {
 
 impl std::error::Error for ModError {}
 
-// ── Dónde vive todo ─────────────────────────────────────────────────────
+// -- Donde vive todo -----------------------------------------------------
 
-/// Las raíces donde se buscan tablas y módulos, en orden de prioridad.
+/// Las raices donde se buscan tablas y modulos, en orden de prioridad.
 ///
-/// Existe para que la lista de rutas candidatas esté **en un sitio**. Estaba
-/// copiada en dos, y cuando el repo se reorganizó una de las copias apuntó
+/// Existe para que la lista de rutas candidatas este **en un sitio**. Estaba
+/// copiada en dos, y cuando el repo se reorganizo una de las copias apunto
 /// durante meses a un directorio muerto sin que nadie se enterara: el
 /// descubrimiento fallaba devolviendo "no hay", que se parece demasiado a
 /// "no hace falta".
@@ -108,8 +108,8 @@ pub struct Roots {
 }
 
 impl Roots {
-    /// Descubre las raíces. Nunca falla: puede devolver una lista vacía, y
-    /// entonces cada `load` dirá exactamente dónde miró.
+    /// Descubre las raices. Nunca falla: puede devolver una lista vacia, y
+    /// entonces cada `load` dira exactamente donde miro.
     pub fn find() -> Self {
         let mut paths = Vec::new();
 
@@ -124,9 +124,9 @@ impl Roots {
             }
         }
 
-        // 2 y 3. La raíz del repo, buscada hacia arriba desde el cwd. Subir
-        //    en vez de listar rutas relativas a ojo: así funciona igual desde
-        //    la raíz, desde `toolchain/lang/c` o desde donde sea.
+        // 2 y 3. La raiz del repo, buscada hacia arriba desde el cwd. Subir
+        //    en vez de listar rutas relativas a ojo: asi funciona igual desde
+        //    la raiz, desde `toolchain/lang/c` o desde donde sea.
         if let Some(repo) = Self::repo_root() {
             let mods = repo.join("mods");
             if mods.is_dir() {
@@ -141,8 +141,8 @@ impl Roots {
         Self { paths }
     }
 
-    /// Construye unas raíces explícitas. Para los tests y para quien quiera
-    /// mandar él.
+    /// Construye unas raices explicitas. Para los tests y para quien quiera
+    /// mandar el.
     pub fn from_paths(paths: Vec<PathBuf>) -> Self {
         Self { paths }
     }
@@ -171,7 +171,7 @@ impl Roots {
     }
 
     /// Sube desde el cwd hasta encontrar la marca del repo. `Cargo.toml` solo
-    /// no vale —hay uno en cada crate—; la marca es el par raíz.
+    /// no vale --hay uno en cada crate--; la marca es el par raiz.
     fn repo_root() -> Option<PathBuf> {
         let mut dir = std::env::current_dir().ok()?;
         loop {
@@ -193,9 +193,9 @@ fn leer_toml(path: &Path) -> Result<toml::Table, ModError> {
     })
 }
 
-// ── Un estándar (o un dialecto de nadie) ────────────────────────────────
+// -- Un estandar (o un dialecto de nadie) --------------------------------
 
-/// Una capa de la cadena de herencia: un fichero y de dónde salió.
+/// Una capa de la cadena de herencia: un fichero y de donde salio.
 #[derive(Debug, Clone)]
 struct Layer {
     name: String,
@@ -206,40 +206,40 @@ struct Layer {
 /// Un fichero de `standards/<LENGUAJE>/<nombre>.toml`, **con su herencia
 /// resuelta**.
 ///
-/// Se llama "estándar" porque hoy los que hay son de comité (C11, COBOL85,
+/// Se llama "estandar" porque hoy los que hay son de comite (C11, COBOL85,
 /// C++17), pero el formato no distingue: un dialecto propio en
 /// `standards/C/mio.toml` se carga por la misma puerta y con el mismo peso.
-/// **Ésa es la idea entera.**
+/// **Esa es la idea entera.**
 ///
-/// ## Las tres capas, y por qué son tres
+/// ## Las tres capas, y por que son tres
 ///
 /// El mismo mecanismo da tres posturas distintas, y no hace falta un
 /// mecanismo por postura:
 ///
-/// | Quiero… | Se escribe |
+/// | Quiero... | Se escribe |
 /// |---|---|
-/// | el estándar de BMO tal cual | nada |
-/// | **mi propio estándar** | una tabla SIN `parent` |
-/// | **añadir cosas a uno** | una tabla CON `parent` y sólo el delta |
+/// | el estandar de BMO tal cual | nada |
+/// | **mi propio estandar** | una tabla SIN `parent` |
+/// | **anadir cosas a uno** | una tabla CON `parent` y solo el delta |
 ///
-/// La tercera es la que evita que esto sea anarquía. Un mod que declara
-/// `parent = "c11"` y tres claves **no puede bifurcar el resto**: el día que
-/// BMO corrige c11, ese mod se lleva la corrección. Copiar la tabla entera
-/// para cambiar tres líneas sí es una bifurcación, y es lo que había que
+/// La tercera es la que evita que esto sea anarquia. Un mod que declara
+/// `parent = "c11"` y tres claves **no puede bifurcar el resto**: el dia que
+/// BMO corrige c11, ese mod se lleva la correccion. Copiar la tabla entera
+/// para cambiar tres lineas si es una bifurcacion, y es lo que habia que
 /// hacer antes de esto.
 ///
 /// ## Las capas no se funden
 ///
-/// Se guardan en orden hijo→padre y cada consulta baja hasta el primero que
-/// contesta. Cuesta lo mismo y permite `origin()`: saber **qué fichero** puso
-/// un valor. En un sistema donde cualquiera puede tapar una tabla, "¿de dónde
+/// Se guardan en orden hijo->padre y cada consulta baja hasta el primero que
+/// contesta. Cuesta lo mismo y permite `origin()`: saber **que fichero** puso
+/// un valor. En un sistema donde cualquiera puede tapar una tabla, "de donde
 /// ha salido esto?" es la primera pregunta que se hace todo el mundo.
 ///
-/// ## Las características no son un `struct` de Rust
+/// ## Las caracteristicas no son un `struct` de Rust
 ///
-/// Antes lo eran, con un `match` de once claves: añadir una exigía tocar tres
-/// sitios de Rust —el campo, el `Default` y el `match`—, que es exactamente el
-/// trámite de comité del que se quería salir. Aquí se preguntan por nombre y
+/// Antes lo eran, con un `match` de once claves: anadir una exigia tocar tres
+/// sitios de Rust --el campo, el `Default` y el `match`--, que es exactamente el
+/// tramite de comite del que se queria salir. Aqui se preguntan por nombre y
 /// una clave nueva no necesita recompilar nada.
 #[derive(Debug, Clone)]
 pub struct Standard {
@@ -248,15 +248,15 @@ pub struct Standard {
 }
 
 /// Tope de la cadena. Existe para que un error de escritura no se lleve por
-/// delante la pila; el ciclo lo caza la lista de visitados, esto es el cinturón.
+/// delante la pila; el ciclo lo caza la lista de visitados, esto es el cinturon.
 const MAX_HERENCIA: usize = 32;
 
 impl Standard {
     /// Carga `standards/<lang>/<name>.toml` y su cadena de `[based_on] parent`.
     ///
-    /// El padre se busca por las MISMAS raíces, así que un mod puede heredar
-    /// de una tabla del sistema — y si alguien tapó esa tabla, hereda de la
-    /// tapada. Es lo coherente: una raíz que va primero, va primero siempre.
+    /// El padre se busca por las MISMAS raices, asi que un mod puede heredar
+    /// de una tabla del sistema -- y si alguien tapo esa tabla, hereda de la
+    /// tapada. Es lo coherente: una raiz que va primero, va primero siempre.
     pub fn load(roots: &Roots, lang: &str, name: &str) -> Result<Self, ModError> {
         let mut layers: Vec<Layer> = Vec::new();
         let mut vistos: Vec<String> = Vec::new();
@@ -301,20 +301,20 @@ impl Standard {
         &self.layers[0].name
     }
 
-    /// De qué fichero salió. Un mensaje de error que no dice esto obliga a
-    /// adivinar cuál de las raíces ganó.
+    /// De que fichero salio. Un mensaje de error que no dice esto obliga a
+    /// adivinar cual de las raices gano.
     pub fn path(&self) -> &Path {
         &self.layers[0].path
     }
 
-    /// La cadena de herencia, del hijo al ancestro: `["c23","c17","c11",…]`.
+    /// La cadena de herencia, del hijo al ancestro: `["c23","c17","c11",...]`.
     pub fn lineage(&self) -> Vec<&str> {
         self.layers.iter().map(|l| l.name.as_str()).collect()
     }
 
-    /// Qué tabla de la cadena puso este valor. `None` si nadie lo pone.
+    /// Que tabla de la cadena puso este valor. `None` si nadie lo pone.
     ///
-    /// Es la respuesta a "¿por qué mi flag no hace efecto?" — casi siempre
+    /// Es la respuesta a "por que mi flag no hace efecto?" -- casi siempre
     /// porque otra capa lo dice antes.
     pub fn origin(&self, section: &str, key: &str) -> Option<&str> {
         self.layers
@@ -330,22 +330,22 @@ impl Standard {
             .find_map(|l| l.table.get(section).and_then(|s| s.get(key)))
     }
 
-    /// ¿Está encendida esta característica en `[features]`?
+    /// Esta encendida esta caracteristica en `[features]`?
     ///
-    /// Ausente es `false`, y no es lo mismo que un error: un estándar viejo
-    /// simplemente no menciona lo que aún no existía.
+    /// Ausente es `false`, y no es lo mismo que un error: un estandar viejo
+    /// simplemente no menciona lo que aun no existia.
     pub fn on(&self, feature: &str) -> bool {
         self.flag("features", feature).unwrap_or(false)
     }
 
-    /// Una regla de `[type_rules]`. Aquí `None` SÍ importa y por eso no se
-    /// aplana a `false`: "C89 permite `int` implícito" y "esta tabla no dice
-    /// nada del `int` implícito" llevan a compiladores distintos.
+    /// Una regla de `[type_rules]`. Aqui `None` SI importa y por eso no se
+    /// aplana a `false`: "C89 permite `int` implicito" y "esta tabla no dice
+    /// nada del `int` implicito" llevan a compiladores distintos.
     pub fn rule(&self, key: &str) -> Option<bool> {
         self.flag("type_rules", key)
     }
 
-    /// Un booleano de cualquier sección. La sección importa: leer el TOML
+    /// Un booleano de cualquier seccion. La seccion importa: leer el TOML
     /// plano juntaba `[features]` con `[type_rules]` y con
     /// `[predefined_macros]`, y bastaba una clave repetida entre secciones
     /// para que una pisara a la otra.
@@ -353,24 +353,24 @@ impl Standard {
         self.lookup(section, key)?.as_bool()
     }
 
-    /// Un texto de cualquier sección (`[standard].iso_number`, …).
+    /// Un texto de cualquier seccion (`[standard].iso_number`, ...).
     ///
-    /// OJO: `[standard]` también se hereda, así que un mod que no se ponga
-    /// `short_name` enseña el de su padre. Es deliberado — un mod que sólo
-    /// añade tres claves no tiene por qué reescribir la ficha entera.
+    /// OJO: `[standard]` tambien se hereda, asi que un mod que no se ponga
+    /// `short_name` ensena el de su padre. Es deliberado -- un mod que solo
+    /// anade tres claves no tiene por que reescribir la ficha entera.
     pub fn text(&self, section: &str, key: &str) -> Option<&str> {
         self.lookup(section, key)?.as_str()
     }
 
-    /// Un entero de cualquier sección (`[standard].year`, …).
+    /// Un entero de cualquier seccion (`[standard].year`, ...).
     pub fn number(&self, section: &str, key: &str) -> Option<i64> {
         self.lookup(section, key)?.as_integer()
     }
 
-    /// Todas las claves de una sección **de toda la cadena**, ordenadas y sin
+    /// Todas las claves de una seccion **de toda la cadena**, ordenadas y sin
     /// repetir. Con esto un frontend puede recorrer lo que la tabla trae
-    /// **sin conocerlo de antemano** — que es lo que hace falta para que un
-    /// mod añada algo que el compilador no tenía previsto.
+    /// **sin conocerlo de antemano** -- que es lo que hace falta para que un
+    /// mod anada algo que el compilador no tenia previsto.
     pub fn keys(&self, section: &str) -> Vec<&str> {
         let mut out: Vec<&str> = Vec::new();
         for l in &self.layers {
@@ -386,16 +386,16 @@ impl Standard {
         out
     }
 
-    /// Las características encendidas, ordenadas.
+    /// Las caracteristicas encendidas, ordenadas.
     pub fn features_on(&self) -> Vec<&str> {
         self.keys("features").into_iter().filter(|k| self.on(k)).collect()
     }
 }
 
-/// Los estándares que hay para un lenguaje, ordenados por nombre de fichero.
+/// Los estandares que hay para un lenguaje, ordenados por nombre de fichero.
 ///
 /// No hay lista fija en Rust: se mira el directorio. Un dialecto nuevo
-/// aparece aquí por existir.
+/// aparece aqui por existir.
 pub fn standards_for(roots: &Roots, lang: &str) -> Vec<String> {
     let mut out = Vec::new();
     for raiz in roots.paths() {
@@ -416,7 +416,7 @@ pub fn standards_for(roots: &Roots, lang: &str) -> Vec<String> {
     out
 }
 
-/// Los lenguajes que tienen tablas de estándares.
+/// Los lenguajes que tienen tablas de estandares.
 pub fn languages(roots: &Roots) -> Vec<String> {
     let mut out = Vec::new();
     for raiz in roots.paths() {
@@ -435,24 +435,24 @@ pub fn languages(roots: &Roots) -> Vec<String> {
     out
 }
 
-// ── Un módulo ───────────────────────────────────────────────────────────
+// -- Un modulo -----------------------------------------------------------
 
-/// Una función que un módulo ofrece.
+/// Una funcion que un modulo ofrece.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Export {
     pub name: String,
-    /// La firma tal cual la escribió el autor (`"size_t -> ptr"`), si la puso.
-    /// No se interpreta: es documentación con formato, y el día que alguien
-    /// quiera comprobarla ya está aquí.
+    /// La firma tal cual la escribio el autor (`"size_t -> ptr"`), si la puso.
+    /// No se interpreta: es documentacion con formato, y el dia que alguien
+    /// quiera comprobarla ya esta aqui.
     pub signature: Option<String>,
 }
 
 /// Un `BMO.toml`.
 ///
 /// `provides`/`requires` son los mismos nombres de capacidad que ya usa
-/// `BMO_SYMBOLS.toml` en la raíz del repo (`storage.write`, `telemetry.log`).
-/// Estaban en dos formatos distintos describiendo lo mismo; aquí caben en el
-/// manifiesto para que un módulo declare qué NECESITA — que es la pregunta
+/// `BMO_SYMBOLS.toml` en la raiz del repo (`storage.write`, `telemetry.log`).
+/// Estaban en dos formatos distintos describiendo lo mismo; aqui caben en el
+/// manifiesto para que un modulo declare que NECESITA -- que es la pregunta
 /// que un sistema de capabilities tiene que poder hacerle antes de admitirlo.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Manifest {
@@ -479,10 +479,10 @@ impl Manifest {
 
         // `[exports]` admite las dos formas que ya hay escritas en el repo, y
         // no se elige una: romper los ocho manifiestos existentes para que la
-        // gramática quede bonita es pagar con trabajo ajeno.
+        // gramatica quede bonita es pagar con trabajo ajeno.
         //
-        //   functions = "malloc, free"     ← lista de nombres
-        //   malloc = "size_t -> ptr"       ← la clave ES el nombre
+        //   functions = "malloc, free"     <- lista de nombres
+        //   malloc = "size_t -> ptr"       <- la clave ES el nombre
         if let Some(t) = root.get("exports").and_then(|v| v.as_table()) {
             for (k, v) in t {
                 if k == "functions" {
@@ -515,8 +515,8 @@ impl Manifest {
         Ok(m)
     }
 
-    /// Busca `<modulo>/BMO.toml` en las raíces. Devuelve también el
-    /// directorio, que es donde están los fuentes.
+    /// Busca `<modulo>/BMO.toml` en las raices. Devuelve tambien el
+    /// directorio, que es donde estan los fuentes.
     pub fn find(roots: &Roots, module: &str) -> Result<(Self, PathBuf), ModError> {
         let rel = format!("{module}/BMO.toml");
         let path = roots.locate_or_err(&rel)?;
@@ -530,7 +530,7 @@ impl Manifest {
 }
 
 /// Un valor TOML que puede ser una lista o una cadena con comas. Las dos
-/// formas están escritas ya en el repo.
+/// formas estan escritas ya en el repo.
 fn lista(v: Option<&toml::Value>) -> Vec<String> {
     match v {
         Some(toml::Value::Array(a)) => a
@@ -558,8 +558,8 @@ mod tests {
         r
     }
 
-    /// El descubrimiento sube desde el cwd, así que tiene que funcionar igual
-    /// desde la raíz del repo que desde el directorio de esta crate — que es
+    /// El descubrimiento sube desde el cwd, asi que tiene que funcionar igual
+    /// desde la raiz del repo que desde el directorio de esta crate -- que es
     /// donde cargo pone el cwd al correr los tests.
     #[test]
     fn encuentra_las_tablas_suba_desde_donde_suba() {
@@ -568,9 +568,9 @@ mod tests {
         assert!(r.locate("arch/x86_64/instructions.toml").is_some());
     }
 
-    /// ★ Lo que no se podía hacer antes: C++ y COBOL tienen tablas escritas
-    /// desde hace tiempo y NADIE las leía — el cargador estaba clavado a
-    /// `standards/C`. Por la misma puerta, sin una línea de Rust por lenguaje.
+    /// * Lo que no se podia hacer antes: C++ y COBOL tienen tablas escritas
+    /// desde hace tiempo y NADIE las leia -- el cargador estaba clavado a
+    /// `standards/C`. Por la misma puerta, sin una linea de Rust por lenguaje.
     #[test]
     fn cualquier_lenguaje_entra_por_la_misma_puerta() {
         let r = roots();
@@ -581,9 +581,9 @@ mod tests {
         }
     }
 
-    /// Las secciones son de verdad. El lector plano de antes metía
+    /// Las secciones son de verdad. El lector plano de antes metia
     /// `[features]`, `[type_rules]` y `[predefined_macros]` en el mismo saco:
-    /// funcionaba porque ninguna clave se repetía, no porque estuviera bien.
+    /// funcionaba porque ninguna clave se repetia, no porque estuviera bien.
     #[test]
     fn las_secciones_no_se_pisan() {
         let r = roots();
@@ -595,9 +595,9 @@ mod tests {
         assert_eq!(c11.number("standard", "year"), Some(2011));
     }
 
-    /// C89 es el caso que delató el bug histórico: cuando las rutas se
-    /// quedaron muertas, el gating cayó al default en silencio y `//` pasaba
-    /// a estar permitido en C89. Si esto se rompe, volvió a pasar.
+    /// C89 es el caso que delato el bug historico: cuando las rutas se
+    /// quedaron muertas, el gating cayo al default en silencio y `//` pasaba
+    /// a estar permitido en C89. Si esto se rompe, volvio a pasar.
     #[test]
     fn c89_sigue_sin_tener_comentarios_de_linea() {
         let r = roots();
@@ -607,12 +607,12 @@ mod tests {
         assert_eq!(c89.rule("implicit_int"), Some(true));
     }
 
-    /// ★ El defecto que las tablas llevaban dentro desde que se escribieron:
-    /// declaran `[based_on] parent` y NADIE lo leía.
+    /// * El defecto que las tablas llevaban dentro desde que se escribieron:
+    /// declaran `[based_on] parent` y NADIE lo leia.
     ///
-    /// `c17.toml` tiene `[features]` VACÍO —es una corrección de C11, no
-    /// declara nada suyo— así que sin herencia C17 era un lenguaje con cero
-    /// características. Y C23, que sólo lista lo que añade, había perdido
+    /// `c17.toml` tiene `[features]` VACIO --es una correccion de C11, no
+    /// declara nada suyo-- asi que sin herencia C17 era un lenguaje con cero
+    /// caracteristicas. Y C23, que solo lista lo que anade, habia perdido
     /// `_Generic` y `_Atomic`.
     #[test]
     fn los_estandares_heredan_de_su_padre() {
@@ -631,8 +631,8 @@ mod tests {
         assert!(c23.on("long_long"), "heredado de c99");
     }
 
-    /// Y el hijo manda sobre el padre. `c89` permite el `int` implícito;
-    /// `c99` lo prohíbe y hereda de `c89` — si ganara el padre, C99 volvería
+    /// Y el hijo manda sobre el padre. `c89` permite el `int` implicito;
+    /// `c99` lo prohibe y hereda de `c89` -- si ganara el padre, C99 volveria
     /// a permitirlo.
     #[test]
     fn el_hijo_pisa_al_padre() {
@@ -642,18 +642,18 @@ mod tests {
         assert_eq!(c99.origin("type_rules", "implicit_int"), Some("c99"));
         assert!(c99.on("line_comments"));
         assert_eq!(c99.origin("features", "line_comments"), Some("c99"));
-        // Lo que c99 no toca, lo pone c89 y se dice de dónde vino.
+        // Lo que c99 no toca, lo pone c89 y se dice de donde vino.
         assert!(c99.on("trigraphs"));
         assert_eq!(c99.origin("features", "trigraphs"), Some("c89"));
-        // Y lo que no está en ninguna capa no tiene origen.
+        // Y lo que no esta en ninguna capa no tiene origen.
         assert_eq!(c99.origin("features", "nada_de_esto"), None);
     }
 
-    /// ★ La tercera capa de las tres: un mod que sólo dice el DELTA.
+    /// * La tercera capa de las tres: un mod que solo dice el DELTA.
     ///
-    /// Es lo que separa extender de bifurcar. Este mod son cinco líneas y
-    /// hereda C11 entero; el día que BMO corrija c11, se lleva la corrección.
-    /// Copiar la tabla para cambiar una clave sí sería una bifurcación.
+    /// Es lo que separa extender de bifurcar. Este mod son cinco lineas y
+    /// hereda C11 entero; el dia que BMO corrija c11, se lleva la correccion.
+    /// Copiar la tabla para cambiar una clave si seria una bifurcacion.
     #[test]
     fn un_mod_puede_ser_solo_el_delta_sobre_un_estandar() {
         let dir = tempdir("delta");
@@ -684,8 +684,8 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// Una cadena que se muerde la cola se para y se enseña entera. Sin esto
-    /// el compilador se cuelga, y un compilador colgado no dice de quién es
+    /// Una cadena que se muerde la cola se para y se ensena entera. Sin esto
+    /// el compilador se cuelga, y un compilador colgado no dice de quien es
     /// la culpa.
     #[test]
     fn la_herencia_circular_se_caza_en_vez_de_colgarse() {
@@ -703,8 +703,8 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// Un padre que no existe señala al padre, no al hijo. El autor del mod
-    /// se equivocó escribiendo `parent`, y el mensaje tiene que llevarle ahí.
+    /// Un padre que no existe senala al padre, no al hijo. El autor del mod
+    /// se equivoco escribiendo `parent`, y el mensaje tiene que llevarle ahi.
     #[test]
     fn un_padre_que_no_existe_lo_dice() {
         let dir = tempdir("huerfano");
@@ -718,9 +718,9 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// Una clave que ningún Rust conoce se puede leer igual. Es la prueba de
-    /// que declarar una extensión no necesita comité: `_Generic` no está en
-    /// ninguna lista de este crate y aun así se pregunta por su nombre.
+    /// Una clave que ningun Rust conoce se puede leer igual. Es la prueba de
+    /// que declarar una extension no necesita comite: `_Generic` no esta en
+    /// ninguna lista de este crate y aun asi se pregunta por su nombre.
     #[test]
     fn una_clave_que_rust_no_conoce_se_lee_igual() {
         let r = roots();
@@ -728,11 +728,11 @@ mod tests {
         let encendidas = c11.features_on();
         assert!(encendidas.contains(&"_Atomic"));
         assert!(encendidas.contains(&"_Thread_local"));
-        // Y lo que no está, no está — sin confundirlo con un error.
+        // Y lo que no esta, no esta -- sin confundirlo con un error.
         assert!(!c11.on("una_extension_que_nadie_escribio"));
     }
 
-    /// La lista de estándares sale del directorio, no de un `enum`.
+    /// La lista de estandares sale del directorio, no de un `enum`.
     #[test]
     fn los_estandares_se_listan_mirando_el_disco() {
         let r = roots();
@@ -745,7 +745,7 @@ mod tests {
     }
 
     /// Los ocho manifiestos que ya existen se leen con el formato nuevo. Si
-    /// alguno no, el formato está mal — no el manifiesto.
+    /// alguno no, el formato esta mal -- no el manifiesto.
     #[test]
     fn los_manifiestos_que_ya_existen_siguen_valiendo() {
         let r = roots();
@@ -775,7 +775,7 @@ mod tests {
         assert_eq!(ma.name, "clave-es-nombre", "sin [module] name, manda la carpeta");
     }
 
-    /// ★ La prueba del mod de tercero: una tabla que NO está en el repo, en un
+    /// * La prueba del mod de tercero: una tabla que NO esta en el repo, en un
     /// directorio cualquiera, cargada por la misma puerta y **tapando** a la
     /// del sistema. Sin eso, "extensible" quiere decir "haz un fork".
     #[test]
@@ -813,7 +813,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// Un mod ajeno mal escrito señala a su autor, con fichero y motivo. Un
+    /// Un mod ajeno mal escrito senala a su autor, con fichero y motivo. Un
     /// "no cargo" a secas manda a sospechar del sistema.
     #[test]
     fn un_toml_roto_dice_cual_y_por_que() {
@@ -828,7 +828,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// Pedir algo que no está dice DÓNDE se miró. Sin eso, un mod que no
+    /// Pedir algo que no esta dice DONDE se miro. Sin eso, un mod que no
     /// carga se depura a ciegas.
     #[test]
     fn lo_que_no_esta_dice_donde_se_busco() {

@@ -1,11 +1,11 @@
 use core::fmt;
 
-// ─── Constants ────────────────────────────────────────────────────────────
+// --- Constants ------------------------------------------------------------
 
 pub const MODULE_MAX: usize = 32;
 pub const MSG_MAX: usize = 128;
 
-// ─── Severity ─────────────────────────────────────────────────────────────
+// --- Severity -------------------------------------------------------------
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -58,7 +58,7 @@ impl fmt::Display for Severity {
     }
 }
 
-// ─── SeverityMask ─────────────────────────────────────────────────────────
+// --- SeverityMask ---------------------------------------------------------
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,7 +93,7 @@ impl SeverityMask {
     }
 }
 
-// ─── Layer ────────────────────────────────────────────────────────────────
+// --- Layer ----------------------------------------------------------------
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +138,7 @@ impl Layer {
         }
     }
 
-    /// Infiere la capa a partir del nombre del módulo.
+    /// Infiere la capa a partir del nombre del modulo.
     pub fn from_module(name: &str) -> Self {
         let n = name;
         if n.starts_with("ring0") || n.starts_with("cpu") || n.starts_with("mem")
@@ -171,7 +171,7 @@ impl fmt::Display for Layer {
     }
 }
 
-// ─── LayerMask ────────────────────────────────────────────────────────────
+// --- LayerMask ------------------------------------------------------------
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,7 +206,7 @@ impl LayerMask {
     }
 }
 
-// ─── Entity ───────────────────────────────────────────────────────────────
+// --- Entity ---------------------------------------------------------------
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -258,7 +258,7 @@ impl fmt::Display for Entity {
     }
 }
 
-// ─── EntityMask ───────────────────────────────────────────────────────────
+// --- EntityMask -----------------------------------------------------------
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -293,7 +293,7 @@ impl EntityMask {
     }
 }
 
-// ─── Event ────────────────────────────────────────────────────────────────
+// --- Event ----------------------------------------------------------------
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -386,7 +386,7 @@ impl PartialEq for Event {
 
 impl Eq for Event {}
 
-// ─── Fixed-size string helpers ───────────────────────────────────────────
+// --- Fixed-size string helpers -------------------------------------------
 
 pub fn str_to_fixed<const N: usize>(s: &str, buf: &mut [u8; N]) {
     let len = s.len().min(N - 1);
@@ -399,7 +399,7 @@ pub fn fixed_to_str<const N: usize>(buf: &[u8; N]) -> &str {
     core::str::from_utf8(&buf[..end]).unwrap_or("")
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────
+// --- Tests ----------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -516,7 +516,7 @@ mod tests {
     fn event_eq_by_seq() {
         let a = Event::new(Severity::Info, Layer::Ring0, Entity::Module, "a", 0, "x", 0);
         let b = Event::new(Severity::Info, Layer::Ring0, Entity::Module, "b", 0, "y", 0);
-        // seq is 0 for both → they compare equal
+        // seq is 0 for both -> they compare equal
         assert_eq!(a, b);
     }
 

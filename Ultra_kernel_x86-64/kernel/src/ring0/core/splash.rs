@@ -1,37 +1,37 @@
-//! El SPLASH de Ring 0 — lo que se ve cuando UEFI termina.
+//! El SPLASH de Ring 0 -- lo que se ve cuando UEFI termina.
 //!
-//! ═══ Lo que hay ═══
+//! === Lo que hay ===
 //!
 //! - [`boot_intro`]: **el gato**, `BMO-X` y `BMO METAKERNEL`. Una pantalla.
 //! - El PANEL persistente: el log del kernel con su marca de tiempo, la banda
 //!   de CABINA y el prompt del shell de Ring 0.
 //! - La barra de progreso interpolada.
 //!
-//! ═══ Y lo que decía haber y no había ═══
+//! === Y lo que decia haber y no habia ===
 //!
 //! Esta cabecera anunciaba un *"animated concentric logo (inside-out
-//! expansion)"*. Existía —`draw_logo_animated`, `draw_ring`, `fill_circle`,
-//! `isqrt`, cuatro constantes `LOGO_*`— y **no lo llamaba nadie**: unas 120
-//! líneas de anillos concéntricos que ningún arranque dibujó nunca. Se borró el
-//! 2026-08-07 junto con `scene`, la cartelería de texto que sustituyó el logo.
+//! expansion)"*. Existia --`draw_logo_animated`, `draw_ring`, `fill_circle`,
+//! `isqrt`, cuatro constantes `LOGO_*`-- y **no lo llamaba nadie**: unas 120
+//! lineas de anillos concentricos que ningun arranque dibujo nunca. Se borro el
+//! 2026-08-07 junto con `scene`, la carteleria de texto que sustituyo el logo.
 //!
-//! Un comentario que promete una función que no se ejecuta es peor que no tener
+//! Un comentario que promete una funcion que no se ejecuta es peor que no tener
 //! comentario: manda a buscar el bug en el sitio equivocado.
 
 // ?????? Font: 8x16 bitmap, chars 32..126 (space through ~) ??????????????????????????????
 
 use crate::ring0::core::gato;
 
-/// Cuánto se queda el logo a la vista, en ms.
+/// Cuanto se queda el logo a la vista, en ms.
 ///
-/// ⚠️ **Es tiempo de arranque puro.** No hay trabajo con el que solaparlo —el
-/// kernel está operativo a los 52 ms— y no se puede saltar con una tecla porque
-/// el USB no está enumerado todavía.
+/// [!] **Es tiempo de arranque puro.** No hay trabajo con el que solaparlo --el
+/// kernel esta operativo a los 52 ms-- y no se puede saltar con una tecla porque
+/// el USB no esta enumerado todavia.
 ///
-/// El dueño pidió tres segundos. Van 1.600 porque el mismo día se quitaron 4,5 s
-/// de espera artificial (los cuatro carteles de aquí y la siesta del compositor),
-/// y 3.000 devolvería dos tercios de lo ganado. Es una línea: si se quieren los
-/// tres segundos, se cambia el número.
+/// El dueno pidio tres segundos. Van 1.600 porque el mismo dia se quitaron 4,5 s
+/// de espera artificial (los cuatro carteles de aqui y la siesta del compositor),
+/// y 3.000 devolveria dos tercios de lo ganado. Es una linea: si se quieren los
+/// tres segundos, se cambia el numero.
 const GATO_MS: u64 = 1600;
 
 const FONT_H: usize   = 16;
@@ -47,7 +47,7 @@ static FONT_EXTRA: [u8; 25] = include!("font16_extra.rs");
 /// Cuantos glifos ASCII (32..=126) van primero en FONT16.
 const ASCII_GLYPHS: usize = 95;
 
-/// Byte -> indice de glifo. ASCII directo; para el espanol (n~, a-acento, ¿,
+/// Byte -> indice de glifo. ASCII directo; para el espanol (n~, a-acento, ,
 /// ...) se busca el byte Latin-1 en la tabla de extras.
 ///
 /// Latin-1 y no UTF-8 a proposito: en Ring 0 un caracter es UN byte, asi el
@@ -201,10 +201,10 @@ fn draw_char(x: u32, y: u32, c: u8, color: u32) {
         glyph[row as usize] & (0x80u8 >> col) != 0
     };
 
-    // NÍTIDO Y SIMPLE (pedido del usuario, monitor 74 Hz): solo el glifo
-    // exacto, a color pleno. Antes había un pase de "anti-alias" que rellenaba
-    // las esquinas cóncavas con un tono tenue (blend 110) — eso REDONDEA pero
-    // DIFUMINA el texto. Sin ese pase, cada píxel es limpio: letras crujientes.
+    // NITIDO Y SIMPLE (pedido del usuario, monitor 74 Hz): solo el glifo
+    // exacto, a color pleno. Antes habia un pase de "anti-alias" que rellenaba
+    // las esquinas concavas con un tono tenue (blend 110) -- eso REDONDEA pero
+    // DIFUMINA el texto. Sin ese pase, cada pixel es limpio: letras crujientes.
     for row in 0..FONT_H as i32 {
         for col in 0..FONT_W as i32 {
             if lit(col, row) {
@@ -223,7 +223,7 @@ fn draw_str(x: u32, y: u32, s: &str, color: u32) {
     // `draw_char` pinta con `put_pix`, que NO drena el buffer WC. Sin este
     // flush, las letras llegan a VRAM tarde/parciales y dejan estela
     // fantasma (el "ghosting" del log rodante y del prompt). Un solo flush
-    // por línea — barato — mata el efecto en todos los que dibujan texto.
+    // por linea -- barato -- mata el efecto en todos los que dibujan texto.
     wc_flush();
 }
 
@@ -231,15 +231,15 @@ fn text_width(s: &str) -> u32 {
     s.len() as u32 * CHAR_W as u32
 }
 
-// ══ Boot cinematic: escenas escaladas con transiciones ═══════════════════
+// == Boot cinematic: escenas escaladas con transiciones ===================
 //
 // La entrada de BMO-X deja de ser un volcado de texto: una secuencia de
-// escenas centradas (logo → preparando → RING 0 → RING 3) con fundido de
-// entrada y una línea de acento que barre, al estilo de un arranque de SO
+// escenas centradas (logo -> preparando -> RING 0 -> RING 3) con fundido de
+// entrada y una linea de acento que barre, al estilo de un arranque de SO
 // moderno. Luego aterriza en el dashboard donde el trabajo real fluye.
 
 /// Espera de `ms` milisegundos reales (usa la frecuencia TSC ya calibrada;
-/// si aún no existe, aproxima a ~3 GHz).
+/// si aun no existe, aproxima a ~3 GHz).
 fn hold_ms(ms: u64) {
     let f = crate::ring0::task::scheduler::tsc_freq();
     let cycles = if f == 0 { ms * 3_000_000 } else { ms * (f / 1000) };
@@ -253,8 +253,8 @@ fn text_width_scaled(s: &str, scale: u32) -> u32 {
     s.len() as u32 * CHAR_W as u32 * scale
 }
 
-/// Un glifo dibujado a `scale`× (cada píxel = un bloque scale×scale). Sin AA:
-/// a escala ≥3 los bloques ya leen limpios y con peso.
+/// Un glifo dibujado a `scale`x (cada pixel = un bloque scalexscale). Sin AA:
+/// a escala >=3 los bloques ya leen limpios y con peso.
 fn draw_char_scaled(x: u32, y: u32, c: u8, color: u32, scale: u32) {
     let idx = match glyph_index(c) { Some(i) => i, None => return };
     let glyph = &FONT16[idx];
@@ -278,20 +278,20 @@ fn draw_str_scaled(x: u32, y: u32, s: &str, color: u32, scale: u32) {
 
 /// Reproduce la secuencia de arranque completa (4 escenas). Llamar una vez,
 /// con framebuffer disponible, antes de montar el dashboard.
-/// ★ Dibuja EL GATO desde sus dos máscaras de 1 bit. Ver `ring0::core::gato`.
+/// * Dibuja EL GATO desde sus dos mascaras de 1 bit. Ver `ring0::core::gato`.
 ///
-/// El fondo no se pinta: la máscara no lo lleva, porque el fondo del splash ya
-/// es negro. Son 1.346 píxeles de trazo y 276 de ojos de los 27.360 del
-/// rectángulo — dibujarlo cuesta menos que rellenarlo.
+/// El fondo no se pinta: la mascara no lo lleva, porque el fondo del splash ya
+/// es negro. Son 1.346 pixeles de trazo y 276 de ojos de los 27.360 del
+/// rectangulo -- dibujarlo cuesta menos que rellenarlo.
 ///
-/// La escala multiplica en enteros a propósito: interpolar un dibujo de líneas
-/// de un píxel de grosor lo convierte en una mancha gris.
+/// La escala multiplica en enteros a proposito: interpolar un dibujo de lineas
+/// de un pixel de grosor lo convierte en una mancha gris.
 fn draw_gato(x0: u32, y0: u32, escala: u32) {
     let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
     for fy in 0..gato::ALTO {
         for fx in 0..gato::ANCHO {
             let i = (fy * gato::ANCHO + fx) as usize;
-            // Los ojos ganan al trazo: son el único sitio con color.
+            // Los ojos ganan al trazo: son el unico sitio con color.
             let color = if bit(&gato::OJOS, i) {
                 ACCENT
             } else if bit(&gato::TRAZO, i) {
@@ -304,42 +304,42 @@ fn draw_gato(x0: u32, y0: u32, escala: u32) {
     }
 }
 
-/// ★★ LA INTRO DEL ARRANQUE — **el logo, y nada más**.
+/// ** LA INTRO DEL ARRANQUE -- **el logo, y nada mas**.
 ///
-/// ═══ Qué había aquí, y por qué se fue ═══
+/// === Que habia aqui, y por que se fue ===
 ///
 /// Cuatro carteles de texto a pantalla completa:
 ///
 /// ```text
-///   scene("BMO-X", …)       hold_ms(700)
-///   scene("Preparando", …)  hold_ms(350)
-///   scene("RING 0", …)      hold_ms(550)
-///   scene("RING 3", …)      hold_ms(550)
+///   scene("BMO-X", ...)       hold_ms(700)
+///   scene("Preparando", ...)  hold_ms(350)
+///   scene("RING 0", ...)      hold_ms(550)
+///   scene("RING 3", ...)      hold_ms(550)
 /// ```
 ///
-/// **2.150 ms de esperas explícitas**, y `scene` trae dentro otros ~405 ms de
-/// fundidos cada una: en total **casi cuatro segundos de cartelería antes de que
-/// el kernel empiece a hacer nada**. Y encima decía "RING 3 : userspace listo"
-/// cuando el userspace no había arrancado todavía — un cartel que anuncia un
-/// estado que aún no existe.
+/// **2.150 ms de esperas explicitas**, y `scene` trae dentro otros ~405 ms de
+/// fundidos cada una: en total **casi cuatro segundos de carteleria antes de que
+/// el kernel empiece a hacer nada**. Y encima decia "RING 3 : userspace listo"
+/// cuando el userspace no habia arrancado todavia -- un cartel que anuncia un
+/// estado que aun no existe.
 ///
-/// El dueño lo dijo claro: *"eso ya se ve un poco feo"*. Tenía razón dos veces,
-/// porque además de feo era lento.
+/// El dueno lo dijo claro: *"eso ya se ve un poco feo"*. Tenia razon dos veces,
+/// porque ademas de feo era lento.
 ///
-/// ═══ Lo que hay ahora ═══
+/// === Lo que hay ahora ===
 ///
 /// Una pantalla: el gato, `BMO-X`, y `BMO METAKERNEL` debajo. El fundido es
-/// **el de los ojos**, que son 276 píxeles — no un barrido de pantalla completa.
+/// **el de los ojos**, que son 276 pixeles -- no un barrido de pantalla completa.
 ///
 /// Coste total: unos 240 ms contra 3.700. Y el logo se queda puesto hasta que
-/// `phase1_ui` aterriza en el panel, así que **es lo que se ve mientras carga**,
-/// que es exactamente lo que se pedía.
+/// `phase1_ui` aterriza en el panel, asi que **es lo que se ve mientras carga**,
+/// que es exactamente lo que se pedia.
 ///
-/// ═══ Y no se anuncia lo que no ha pasado ═══
+/// === Y no se anuncia lo que no ha pasado ===
 ///
-/// Los estados —RING 0 despierto, RING 3 arrancado— ya los cuenta el log del
+/// Los estados --RING 0 despierto, RING 3 arrancado-- ya los cuenta el log del
 /// panel **cuando ocurren de verdad**, con su marca de tiempo. Un cartel que los
-/// promete antes es una mentira con animación.
+/// promete antes es una mentira con animacion.
 pub fn boot_intro() {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
@@ -348,14 +348,14 @@ pub fn boot_intro() {
     }
     fill_rect(0, 0, w, h, BG);
 
-    // La escala sale de la ALTURA de la pantalla, no de un número fijo: en 1080
-    // sale a x2 y en 720 a x1, y en las dos ocupa la misma fracción. Un `3`
-    // puesto a mano se sale por abajo en el primer monitor pequeño.
+    // La escala sale de la ALTURA de la pantalla, no de un numero fijo: en 1080
+    // sale a x2 y en 720 a x1, y en las dos ocupa la misma fraccion. Un `3`
+    // puesto a mano se sale por abajo en el primer monitor pequeno.
     let escala = if h >= 900 { 2 } else { 1 };
     let gw = gato::ANCHO * escala;
     let gh = gato::ALTO * escala;
 
-    // El bloque entero —gato + título + subtítulo— se centra como una unidad.
+    // El bloque entero --gato + titulo + subtitulo-- se centra como una unidad.
     // Centrar el gato y luego colgarle el texto deja el conjunto bajo.
     const HUECO: u32 = 34;
     let escala_t = if h >= 900 { 5 } else { 4 };
@@ -377,11 +377,11 @@ pub fn boot_intro() {
     draw_str(w.saturating_sub(sw) / 2, ty + th + 10 + 3 + 14, sub, DIM);
     wc_flush();
 
-    // ★ EL FUNDIDO ES DE LOS OJOS, no de la pantalla.
+    // * EL FUNDIDO ES DE LOS OJOS, no de la pantalla.
     //
-    // 276 píxeles parpadeando cuestan nada y dan lo único que un logo estático
-    // no da: la señal de que la máquina está VIVA. Un fundido de pantalla
-    // completa costaría los millones de píxeles que el arranque no tiene que
+    // 276 pixeles parpadeando cuestan nada y dan lo unico que un logo estatico
+    // no da: la senal de que la maquina esta VIVA. Un fundido de pantalla
+    // completa costaria los millones de pixeles que el arranque no tiene que
     // gastar.
     let ex = w.saturating_sub(gw) / 2;
     for &a in &[90u32, 170, 255] {
@@ -399,16 +399,16 @@ pub fn boot_intro() {
         hold_ms(70);
     }
 
-    // ★ Y SE QUEDA A LA VISTA `GATO_MS`.
+    // * Y SE QUEDA A LA VISTA `GATO_MS`.
     //
-    // Aquí no hay trabajo con el que solapar: el kernel está operativo a los
-    // 52 ms, así que para que el logo se VEA hay que esperar. Y **no se puede
+    // Aqui no hay trabajo con el que solapar: el kernel esta operativo a los
+    // 52 ms, asi que para que el logo se VEA hay que esperar. Y **no se puede
     // saltar con una tecla**, a diferencia de la intro del compositor: en este
-    // punto del arranque el USB no se ha enumerado todavía y no hay teclado que
+    // punto del arranque el USB no se ha enumerado todavia y no hay teclado que
     // preguntar.
     //
-    // O sea que este número es tiempo de arranque, todo él. Está en una
-    // constante y con el coste escrito para que subirlo sea una decisión y no un
+    // O sea que este numero es tiempo de arranque, todo el. Esta en una
+    // constante y con el coste escrito para que subirlo sea una decision y no un
     // descuido.
     hold_ms(GATO_MS);
 }
@@ -476,7 +476,7 @@ pub fn splash_init() {
         return;
     }
 
-    // ── Try filling the whole screen using rep stosd ───────────────
+    // -- Try filling the whole screen using rep stosd ---------------
     //    This is the fastest, most reliable way to write a GPU
     //    framebuffer: the CPU's string-store engine does 64-byte
     //    bursts internally and handles WC buffering correctly.
@@ -516,7 +516,7 @@ pub fn splash_init() {
     wc_flush();
     crate::ring0::dev::console::serial_write("[splash] text drawn\n");
 
-    // Skip the animated splash for now — the fill test is priority
+    // Skip the animated splash for now -- the fill test is priority
 }
 
 pub fn splash_progress(pct: u32, label: &str) {
@@ -547,9 +547,9 @@ pub fn splash_clear() {
     fill_rect(0, 0, w, h, BG);
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //  Persistent Dashboard
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 //
 // Once the boot splash finishes, the kernel switches to a
 // persistent dashboard on the framebuffer. This is the visual
@@ -564,13 +564,13 @@ const DASH_LOG_TOP:   u32 = 78;  // y of first log line
 const DASH_LOG_W:     u32 = 80;  // max chars per line
 const DASH_ROWS_MAX:  usize = 64; // tope duro (protege los buffers de filas)
 
-/// Filas de log que CABEN de verdad en el panel, según el alto REAL del
+/// Filas de log que CABEN de verdad en el panel, segun el alto REAL del
 /// framebuffer.
 ///
 /// Antes esto era una constante de 14. En 1080p (CHAR_H=20) caben ~49: se
 /// desperdiciaban dos tercios del panel y, peor, obligaba al log rodante y a
-/// CABINA a pelearse las mismas filas 2-13 borrándose mutuamente. El reparto
-/// ahora lo decide el hardware, no un número mágico: pregúntale al hardware
+/// CABINA a pelearse las mismas filas 2-13 borrandose mutuamente. El reparto
+/// ahora lo decide el hardware, no un numero magico: preguntale al hardware
 /// los HECHOS, hardcodea solo los CONTRATOS.
 pub fn dash_rows() -> usize {
     let h = unsafe { crate::info::FB_HEIGHT };
@@ -579,19 +579,19 @@ pub fn dash_rows() -> usize {
     ((avail as usize) / CHAR_H).min(DASH_ROWS_MAX)
 }
 
-// ── PALETA: neón sobre negro ────────────────────────────────────────────────
+// -- PALETA: neon sobre negro ------------------------------------------------
 //
-// El fondo baja casi a negro puro a propósito: un neón solo brilla si lo que
-// tiene alrededor está apagado. El slate azulado anterior le robaba fuerza a
-// todos los acentos porque ya era luminoso de por sí.
+// El fondo baja casi a negro puro a proposito: un neon solo brilla si lo que
+// tiene alrededor esta apagado. El slate azulado anterior le robaba fuerza a
+// todos los acentos porque ya era luminoso de por si.
 //
-// La familia son tres luces frías (cian, jade, violeta) contra tres cálidas
-// (ámbar, oro, magenta), con el rojo lacado reservado EXCLUSIVAMENTE para lo
+// La familia son tres luces frias (cian, jade, violeta) contra tres calidas
+// (ambar, oro, magenta), con el rojo lacado reservado EXCLUSIVAMENTE para lo
 // que va mal. Que el rojo no se use de adorno es lo que hace que, cuando
 // aparece, la vista vaya sola.
 
-const VOID:           u32 = 0xFF04060C; // fuera del panel — negro con tinte
-const PANEL:          u32 = 0xFF080B14; // fondo del área de log
+const VOID:           u32 = 0xFF04060C; // fuera del panel -- negro con tinte
+const PANEL:          u32 = 0xFF080B14; // fondo del area de log
 const CHROME:         u32 = 0xFF10151F; // barras superior e inferior
 const EDGE:           u32 = 0xFF1E2738; // bordes apagados
 
@@ -610,11 +610,11 @@ const DASH_ACCENT:    u32 = NEON_CYAN;
 const DASH_TEXT:      u32 = 0xFFE6EDF7;
 const DASH_DIM:       u32 = 0xFF55647E;
 
-// Colores-filtro por origen de línea (pedido del usuario): quien emite se
+// Colores-filtro por origen de linea (pedido del usuario): quien emite se
 // reconoce por color sin leer el prefijo.
 const DASH_RING3:     u32 = NEON_GREEN;   // salida de Ring 3
 const DASH_TELEMETRY: u32 = NEON_AMBER;   // heartbeat r3hb (tablero)
-const DASH_KBD:       u32 = NEON_VIOLET;  // entrada — teclado y ratón
+const DASH_KBD:       u32 = NEON_VIOLET;  // entrada -- teclado y raton
 const DASH_FAULT:     u32 = NEON_RED;     // reporter de CPU faults
 const DASH_STORAGE:   u32 = NEON_JADE;    // disco y sistema de ficheros
 const DASH_LANG_C:    u32 = NEON_CYAN;    // programas C
@@ -622,14 +622,14 @@ const DASH_LANG_COB:  u32 = NEON_GOLD;    // programas COBOL
 const DASH_LANG_ASM:  u32 = NEON_MAGENTA; // programas en ensamblador
 const DASH_STAGE:     u32 = NEON_AMBER;   // encabezados de acto
 
-/// Color de una línea del log según su prefijo. Un solo punto de decisión:
+/// Color de una linea del log segun su prefijo. Un solo punto de decision:
 /// TODOS los caminos que pintan al panel (rolling log, CABINA, faults) pasan
-/// por aquí.
+/// por aqui.
 ///
-/// La tabla creció con los emisores que ya existían y salían todos en blanco:
-/// los tres lenguajes tenían el mismo color que un mensaje del kernel, así que
-/// la pantalla más impresionante del proyecto —tres programas propios
-/// entrelazándose— se leía como un párrafo plano. Ahora cada voz tiene la suya.
+/// La tabla crecio con los emisores que ya existian y salian todos en blanco:
+/// los tres lenguajes tenian el mismo color que un mensaje del kernel, asi que
+/// la pantalla mas impresionante del proyecto --tres programas propios
+/// entrelazandose-- se leia como un parrafo plano. Ahora cada voz tiene la suya.
 fn dash_line_color(msg: &str) -> u32 {
     let b = msg.as_bytes();
     // Programas de Ring 3, por lenguaje: cada uno con su luz.
@@ -661,20 +661,20 @@ fn dash_line_color(msg: &str) -> u32 {
     }
 }
 
-// ── Cromo: las piezas que dan el look ───────────────────────────────────────
+// -- Cromo: las piezas que dan el look ---------------------------------------
 
-/// Línea horizontal de 1 px con degradado entre dos colores.
+/// Linea horizontal de 1 px con degradado entre dos colores.
 ///
-/// Es el truco más barato que existe para que una interfaz deje de parecer un
-/// terminal: una sola fila de píxeles interpolada cuesta un bucle y cambia por
-/// completo la sensación de la barra que subraya.
+/// Es el truco mas barato que existe para que una interfaz deje de parecer un
+/// terminal: una sola fila de pixeles interpolada cuesta un bucle y cambia por
+/// completo la sensacion de la barra que subraya.
 fn hline_gradient(x: u32, y: u32, w: u32, c1: u32, c2: u32, scale: u32) {
     if w == 0 { return; }
     let (r1, g1, b1) = ((c1 >> 16) & 0xFF, (c1 >> 8) & 0xFF, c1 & 0xFF);
     let (r2, g2, b2) = ((c2 >> 16) & 0xFF, (c2 >> 8) & 0xFF, c2 & 0xFF);
     for i in 0..w {
         // Media ponderada: multiplicar ANTES de dividir. Interpolar por canal
-        // con una resta encadenada se rompe en cuanto el color destino es más
+        // con una resta encadenada se rompe en cuanto el color destino es mas
         // oscuro que el de origen, y el degradado se queda plano sin avisar.
         let r = (r1 * (w - i) + r2 * i) / w * scale / 255;
         let g = (g1 * (w - i) + g2 * i) / w * scale / 255;
@@ -683,10 +683,10 @@ fn hline_gradient(x: u32, y: u32, w: u32, c1: u32, c2: u32, scale: u32) {
     }
 }
 
-/// Regla de neón: un píxel encendido y otro apagándose debajo.
+/// Regla de neon: un pixel encendido y otro apagandose debajo.
 ///
-/// Dos filas al 100 % se leen como una barra blanca —así salía en la foto del
-/// hardware, porque el brillo satura la cámara y también el ojo—. La caída
+/// Dos filas al 100 % se leen como una barra blanca --asi salia en la foto del
+/// hardware, porque el brillo satura la camara y tambien el ojo--. La caida
 /// abajo es lo que hace que se lea como una LUZ y no como un separador.
 fn neon_rule(x: u32, y: u32, w: u32, c1: u32, c2: u32) {
     hline_gradient(x, y, w, c1, c2, 255);
@@ -695,7 +695,7 @@ fn neon_rule(x: u32, y: u32, w: u32, c1: u32, c2: u32) {
 
 /// Esquinas en L en vez de un marco cerrado.
 ///
-/// Es la firma visual del género: el ojo cierra el rectángulo solo y el panel
+/// Es la firma visual del genero: el ojo cierra el rectangulo solo y el panel
 /// respira. Un borde continuo encajona; cuatro corchetes sugieren.
 fn corner_brackets(x: u32, y: u32, w: u32, h: u32, len: u32, thick: u32, color: u32) {
     if w < len * 2 || h < len * 2 { return; }
@@ -713,10 +713,10 @@ fn corner_brackets(x: u32, y: u32, w: u32, h: u32, len: u32, thick: u32, color: 
     fill_rect(x + w - thick, y + h - len, thick, len, color);
 }
 
-/// Etiqueta de sección con su bloque de acento delante: `▌ TEXTO`.
+/// Etiqueta de seccion con su bloque de acento delante: `| TEXTO`.
 ///
-/// El bloque es un rectángulo, no un glifo: la fuente es de 95 caracteres
-/// ASCII más 25 de Latin-1 y no tiene caracteres de dibujo. Pintar el adorno
+/// El bloque es un rectangulo, no un glifo: la fuente es de 95 caracteres
+/// ASCII mas 25 de Latin-1 y no tiene caracteres de dibujo. Pintar el adorno
 /// en vez de escribirlo evita inventar glifos que no existen.
 fn section_label(x: u32, y: u32, text: &str, accent: u32) {
     fill_rect(x, y + 2, 4, FONT_H as u32 - 4, accent);
@@ -724,30 +724,30 @@ fn section_label(x: u32, y: u32, text: &str, accent: u32) {
 }
 
 /// Draw the persistent dashboard frame. Called once after the
-/// splash finishes — replaces the cleared screen with a UI that
+/// splash finishes -- replaces the cleared screen with a UI that
 /// stays visible for the rest of the kernel's lifetime.
 pub fn splash_dashboard_init() {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
 
-    // 1. El vacío. Todo lo que no es panel ni barra queda casi negro para que
-    //    el neón tenga contra qué brillar.
+    // 1. El vacio. Todo lo que no es panel ni barra queda casi negro para que
+    //    el neon tenga contra que brillar.
     fill_rect(0, 0, w, h, VOID);
 
     // 2. Barra superior: identidad del sistema.
     fill_rect(0, 0, w, DASH_HEADER_H, CHROME);
-    // Marca de acento a la izquierda — el bloque vertical que ancla el título.
+    // Marca de acento a la izquierda -- el bloque vertical que ancla el titulo.
     fill_rect(0, 0, 5, DASH_HEADER_H, NEON_MAGENTA);
-    // El nombre en dos pesos: la marca en ámbar, el subsistema en magenta.
-    // Separarlos dice de un vistazo QUÉ es y DÓNDE está corriendo.
+    // El nombre en dos pesos: la marca en ambar, el subsistema en magenta.
+    // Separarlos dice de un vistazo QUE es y DONDE esta corriendo.
     draw_str(22, 14, "BMO-X", NEON_AMBER);
     let x_after = 22 + text_width("BMO-X") + 12;
     draw_str(x_after, 14, "// RING 0", NEON_MAGENTA);
     let x_sub = x_after + text_width("// RING 0") + 16;
     draw_str(x_sub, 14, "bare metal orchestrator", DASH_DIM);
-    // Subrayado de neón que recorre la barra: cian a la izquierda, magenta a
-    // la derecha. Es la pieza que más cambia la sensación por menos píxeles.
+    // Subrayado de neon que recorre la barra: cian a la izquierda, magenta a
+    // la derecha. Es la pieza que mas cambia la sensacion por menos pixeles.
     neon_rule(0, DASH_HEADER_H - 2, w, NEON_CYAN, NEON_MAGENTA);
 
     // 3. Barra inferior: el prompt.
@@ -756,7 +756,7 @@ pub fn splash_dashboard_init() {
     fill_rect(0, fy, 5, DASH_FOOTER_H, NEON_CYAN);
     neon_rule(0, fy, w, NEON_MAGENTA, NEON_CYAN);
 
-    // 4. El panel del log: fondo propio, un punto más claro que el vacío, para
+    // 4. El panel del log: fondo propio, un punto mas claro que el vacio, para
     //    que se lea como una superficie y no como un agujero.
     let log_y = DASH_LOG_TOP;
     let log_h = h - DASH_FOOTER_H - log_y - 4;
@@ -765,9 +765,9 @@ pub fn splash_dashboard_init() {
     draw_rect_outline(8, log_y - 6, w - 16, log_h, EDGE);
     corner_brackets(8, log_y - 6, w - 16, log_h, 22, 2, NEON_CYAN);
 
-    // 5. Etiqueta de sección. Va anclada al BORDE DE LA CABECERA, no restando
-    //    del log: calculada hacia atrás desde el log caía justo sobre la regla
-    //    de neón y en el hardware el texto salía montado en la línea.
+    // 5. Etiqueta de seccion. Va anclada al BORDE DE LA CABECERA, no restando
+    //    del log: calculada hacia atras desde el log caia justo sobre la regla
+    //    de neon y en el hardware el texto salia montado en la linea.
     section_label(14, DASH_HEADER_H + 8, "KERNEL LOG", NEON_CYAN);
 }
 
@@ -780,16 +780,16 @@ pub fn splash_dashboard_log(row: usize, msg: &str) {
     splash_dashboard_log_color(row, msg, c);
 }
 
-/// Regla de separación con etiqueta, a la altura de una fila del panel.
+/// Regla de separacion con etiqueta, a la altura de una fila del panel.
 ///
 /// Es lo que separa el log rodante del cockpit de CABINA. Antes las dos zonas
-/// se tocaban y la única pista de dónde acababa una era leer el contenido;
-/// ahora hay una frontera que se ve sin leer. La línea se apaga hacia la
+/// se tocaban y la unica pista de donde acababa una era leer el contenido;
+/// ahora hay una frontera que se ve sin leer. La linea se apaga hacia la
 /// derecha para no competir con el texto que viene debajo.
 ///
-/// El texto tiene que ser ASCII: la consola es Latin-1 de un byte por carácter
-/// y un literal Rust con acentos viajaría en UTF-8, o sea dos glifos raros
-/// donde debería haber uno.
+/// El texto tiene que ser ASCII: la consola es Latin-1 de un byte por caracter
+/// y un literal Rust con acentos viajaria en UTF-8, o sea dos glifos raros
+/// donde deberia haber uno.
 pub fn splash_dash_rule(row: usize, label: &str, accent: u32) {
     let w = unsafe { crate::info::FB_WIDTH };
     if w == 0 || row >= dash_rows() { return; }
@@ -804,8 +804,8 @@ pub fn splash_dash_rule(row: usize, label: &str, accent: u32) {
     }
 }
 
-/// Igual que `splash_dashboard_log` pero con COLOR EXPLÍCITO — para que CABINA
-/// pinte cada fila según su estado (verde=bien, ámbar=atención, rojo=problema)
+/// Igual que `splash_dashboard_log` pero con COLOR EXPLICITO -- para que CABINA
+/// pinte cada fila segun su estado (verde=bien, ambar=atencion, rojo=problema)
 /// en vez de un solo color plano.
 pub fn splash_dashboard_log_color(row: usize, msg: &str, color: u32) {
     let w = unsafe { crate::info::FB_WIDTH };
@@ -815,15 +815,15 @@ pub fn splash_dashboard_log_color(row: usize, msg: &str, color: u32) {
     let y = DASH_LOG_TOP + (row as u32) * CHAR_H as u32;
     // Clear the row (background)
     fill_rect(14, y, w - 28, CHAR_H as u32, DASH_BG);
-    // Marca de canaleta: una barrita del color de la línea en el margen.
+    // Marca de canaleta: una barrita del color de la linea en el margen.
     //
-    // El color del texto ya dice quién habla, pero hay que LEER la línea para
+    // El color del texto ya dice quien habla, pero hay que LEER la linea para
     // notarlo. Una columna de marcas alineadas se lee de un vistazo: se ve
-    // cuántas voces distintas hay en pantalla y dónde cambia el turno, sin
+    // cuantas voces distintas hay en pantalla y donde cambia el turno, sin
     // leer una sola palabra. Es lo que convierte el log en algo que se OJEA.
     //
     // El texto normal no lleva marca: si todo estuviera marcado, la columna no
-    // diría nada. Marcar es distinguir.
+    // diria nada. Marcar es distinguir.
     if color != DASH_TEXT {
         fill_rect(14, y + 4, 3, CHAR_H as u32 - 8, color);
     }
@@ -847,9 +847,9 @@ pub fn splash_dashboard_prompt(line: &str, cursor: usize, blink: bool) {
     let y = h - DASH_FOOTER_H + 10;
     fill_rect(20, y, w - 40, CHAR_H as u32, CHROME);
     // El prompt ya no dice "serial": el teclado USB escribe desde hace tiempo
-    // y la etiqueta se había quedado contando una etapa anterior del proyecto.
-    // La marca en ámbar, el signo en magenta — los mismos dos colores del
-    // título, para que cabecera y pie se lean como el mismo sistema.
+    // y la etiqueta se habia quedado contando una etapa anterior del proyecto.
+    // La marca en ambar, el signo en magenta -- los mismos dos colores del
+    // titulo, para que cabecera y pie se lean como el mismo sistema.
     const PROMPT: &str = "bmo-x";
     draw_str(20, y, PROMPT, NEON_AMBER);
     let sign_x = 20 + text_width(PROMPT) + 8;
@@ -862,7 +862,7 @@ pub fn splash_dashboard_prompt(line: &str, cursor: usize, blink: bool) {
     // Cursor de bloque parpadeante EN SU POSICION dentro de la linea, no
     // siempre al final: con las flechas se edita en medio, y el cursor tiene
     // que estar donde va a caer la siguiente letra. Si tapa un caracter, se
-    // redibuja encima en el color del fondo — video inverso, como una terminal
+    // redibuja encima en el color del fondo -- video inverso, como una terminal
     // de verdad.
     if blink {
         let cx = 20 + prefix_w + (cursor.min(n) as u32) * CHAR_W as u32;
@@ -891,7 +891,7 @@ pub fn splash_status_right(layout: &str, caps: bool, num: bool) {
     fill_rect(bar_x, 8, w.saturating_sub(bar_x + 16), DASH_HEADER_H - 12, CHROME);
 
     // Los bloqueos dejan de ser texto suelto y pasan a ser PASTILLAS: fondo
-    // encendido y letra oscura. Un estado activo se ve encendido, no escrito —
+    // encendido y letra oscura. Un estado activo se ve encendido, no escrito --
     // que es justo lo que un teclado cuyas lucecitas no responden necesita.
     let caps_w = text_width("MAYUS") + 14;
     let num_w  = text_width("NUM") + 14;
@@ -920,7 +920,7 @@ pub fn splash_status_right(layout: &str, caps: bool, num: bool) {
     }
 }
 
-// ── Pantalla de fallo ───────────────────────────────────────────────────
+// -- Pantalla de fallo ---------------------------------------------------
 //
 // El informe de un fault de Ring 0 se pintaba en las filas del panel, encima
 // de lo que hubiera. Cuando la pantalla esta cedida a Ring 3 eso deja el

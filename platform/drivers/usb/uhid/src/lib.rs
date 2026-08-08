@@ -1,4 +1,4 @@
-//! **Driver USB HID de BMO** — teclado y ratón, cada uno en su sitio.
+//! **Driver USB HID de BMO** -- teclado y raton, cada uno en su sitio.
 //!
 //! ```text
 //!   dir.rs      la DIRECCION (slot, dci): quien es quien en el bus
@@ -9,45 +9,45 @@
 //!   lib.rs      esto: cableado y reparto. Nada mas.
 //! ```
 //!
-//! ## Por qué se partió
+//! ## Por que se partio
 //!
-//! Era **un fichero de 602 líneas** con cuatro trabajos dentro: recorrer el
-//! bus, decidir qué interfaz es qué, descifrar informes de teclado y descifrar
-//! informes de ratón. Los dos últimos vivían pegados dentro de un `poll()` de
-//! 120 líneas, compartiendo el contador de eventos y el buffer de salida.
+//! Era **un fichero de 602 lineas** con cuatro trabajos dentro: recorrer el
+//! bus, decidir que interfaz es que, descifrar informes de teclado y descifrar
+//! informes de raton. Los dos ultimos vivian pegados dentro de un `poll()` de
+//! 120 lineas, compartiendo el contador de eventos y el buffer de salida.
 //!
-//! Y no era sólo feo: **ya se cobró un bug**. El reparto se escribía así —
+//! Y no era solo feo: **ya se cobro un bug**. El reparto se escribia asi --
 //!
 //! ```ignore
-//! if let Some(k) = &mut self.kbd { if ev_slot == k.slot && ev_ep == k.dci { … } }
-//! if let Some(m) = &mut self.mouse { if ev_slot == m.slot && ev_ep == m.dci { … } }
+//! if let Some(k) = &mut self.kbd { if ev_slot == k.slot && ev_ep == k.dci { ... } }
+//! if let Some(m) = &mut self.mouse { if ev_slot == m.slot && ev_ep == m.dci { ... } }
 //! ```
 //!
-//! — dos `if` INDEPENDIENTES. Mientras el teclado y el ratón tuvieran
+//! -- dos `if` INDEPENDIENTES. Mientras el teclado y el raton tuvieran
 //! direcciones distintas no pasaba nada. Cuando el bug del teclado compuesto
-//! los dejó a los dos en el mismo slot con el mismo DCI, **el mismo informe de
-//! 8 bytes se leía como teclado Y como ratón**: los tres primeros bytes de una
-//! pulsación se interpretaban como botones y desplazamiento. Nada avisaba.
+//! los dejo a los dos en el mismo slot con el mismo DCI, **el mismo informe de
+//! 8 bytes se leia como teclado Y como raton**: los tres primeros bytes de una
+//! pulsacion se interpretaban como botones y desplazamiento. Nada avisaba.
 //!
 //! ## Las dos reglas que ahora son estructura, no cuidado
 //!
-//! 1. **Un informe tiene UN dueño.** El reparto es excluyente y lo que no es de
+//! 1. **Un informe tiene UN dueno.** El reparto es excluyente y lo que no es de
 //!    nadie se CUENTA ([`UsbHidHal::huerfanos`]) en vez de desaparecer.
-//! 2. **Dos periféricos no pueden compartir dirección.** Instalar un ratón en
-//!    la dirección del teclado se rechaza y se dice. Ver [`dir::Direccion::choca_con`].
+//! 2. **Dos perifericos no pueden compartir direccion.** Instalar un raton en
+//!    la direccion del teclado se rechaza y se dice. Ver [`dir::Direccion::choca_con`].
 //!
-//! Añadir un tercer aparato es un módulo más y un brazo más en el reparto; no
+//! Anadir un tercer aparato es un modulo mas y un brazo mas en el reparto; no
 //! se toca ni el bus ni los otros dos.
 
 #![no_std]
 
 pub mod dir;
 pub mod enumera;
-/// El Report Descriptor, leído. Es lo que convierte "¿8 o 16 bits?" de una
-/// discusión sobre una foto en una pregunta que contesta el aparato.
+/// El Report Descriptor, leido. Es lo que convierte "8 o 16 bits?" de una
+/// discusion sobre una foto en una pregunta que contesta el aparato.
 pub mod formato;
-/// La contabilidad de puertos: a cuál se puede tocar y a cuál no. Es la única
-/// parte del driver que se puede probar sin un xHC delante — y era la que
+/// La contabilidad de puertos: a cual se puede tocar y a cual no. Es la unica
+/// parte del driver que se puede probar sin un xHC delante -- y era la que
 /// estaba mal.
 pub mod puertos;
 pub mod raton;
@@ -61,8 +61,8 @@ use raton::Raton;
 use teclado::Teclado;
 
 // Los scancodes propios son parte del contrato con el kernel (`ring0/dev/
-// keyboard.rs` los compara), así que se re-exportan desde la raíz: quien los
-// usa no tiene por qué saber en qué fichero viven.
+// keyboard.rs` los compara), asi que se re-exportan desde la raiz: quien los
+// usa no tiene por que saber en que fichero viven.
 pub use teclado::{
     SC_ALTGR, SC_DELETE, SC_DOWN, SC_END, SC_HOME, SC_INSERT, SC_LEFT, SC_PGDN, SC_PGUP, SC_RIGHT,
     SC_UP,
@@ -72,15 +72,15 @@ pub struct UsbHidHal {
     teclado: Option<Teclado>,
     raton: Option<Raton>,
     inicializado: bool,
-    /// Transfer Events que no eran de ningún periférico conocido.
+    /// Transfer Events que no eran de ningun periferico conocido.
     ///
-    /// Suele haberlos y es normal —restos de control transfers de la
-    /// enumeración—, pero si esto sube **mientras se teclea**, el informe está
-    /// llegando con una dirección que no es la que creemos y por eso nadie
+    /// Suele haberlos y es normal --restos de control transfers de la
+    /// enumeracion--, pero si esto sube **mientras se teclea**, el informe esta
+    /// llegando con una direccion que no es la que creemos y por eso nadie
     /// rearma. Antes se descartaban sin contarlos.
     huerfanos: u32,
-    /// Qué puertos ya dieron un aparato y cuántas veces se ha intentado cada
-    /// uno. Ver [`puertos`]: sin esto, la re-enumeración reactiva se comía a sí
+    /// Que puertos ya dieron un aparato y cuantas veces se ha intentado cada
+    /// uno. Ver [`puertos`]: sin esto, la re-enumeracion reactiva se comia a si
     /// misma reseteando el puerto del teclado que ya estaba funcionando.
     puertos: Puertos,
 }
@@ -102,8 +102,8 @@ impl UsbHidHal {
         }
     }
 
-    /// Se desenchufó algo del puerto: queda libre y con los intentos devueltos.
-    /// Lo llama el kernel al recibir el aviso de desconexión.
+    /// Se desenchufo algo del puerto: queda libre y con los intentos devueltos.
+    /// Lo llama el kernel al recibir el aviso de desconexion.
     pub fn soltar_puerto(&mut self, port: u8) {
         self.puertos.soltar(port);
     }
@@ -113,23 +113,23 @@ impl UsbHidHal {
         &self.puertos
     }
 
-    /// ¿Enumeró un teclado? (interface HID subclass 1 / protocol 1)
+    /// Enumero un teclado? (interface HID subclass 1 / protocol 1)
     pub fn has_kbd(&self) -> bool { self.teclado.is_some() }
-    /// ¿Enumeró un ratón? (interface HID subclass 1 / protocol 2)
+    /// Enumero un raton? (interface HID subclass 1 / protocol 2)
     pub fn has_mouse(&self) -> bool { self.raton.is_some() }
-    /// Slot xHCI del teclado / ratón (0 si ausente) — para diagnóstico.
+    /// Slot xHCI del teclado / raton (0 si ausente) -- para diagnostico.
     pub fn kbd_slot(&self) -> u8 { self.teclado.as_ref().map_or(0, |k| k.slot()) }
     pub fn mouse_slot(&self) -> u8 { self.raton.as_ref().map_or(0, |m| m.slot()) }
-    /// DCI del teclado — para comparar con el endpoint del Transfer Event.
+    /// DCI del teclado -- para comparar con el endpoint del Transfer Event.
     pub fn kbd_dci(&self) -> u8 { self.teclado.as_ref().map_or(0, |k| k.dci()) }
     pub fn mouse_dci(&self) -> u8 { self.raton.as_ref().map_or(0, |m| m.dci()) }
 
-    /// ¿Este `(slot, endpoint)` es de alguno de los dos aparatos?
+    /// Este `(slot, endpoint)` es de alguno de los dos aparatos?
     ///
     /// La misma pregunta que hace el reparto, pero sin pedir prestado el
     /// `&mut`: hace falta antes de repartir, para decidir si toca resucitar el
-    /// endpoint. Un evento huérfano no se recupera — no se sabe de quién es el
-    /// anillo ni quién volvería a encolar.
+    /// endpoint. Un evento huerfano no se recupera -- no se sabe de quien es el
+    /// anillo ni quien volveria a encolar.
     pub fn es_de_alguien(&self, slot: u8, ep: u8) -> bool {
         self.teclado.as_ref().is_some_and(|k| k.direccion().es_mio(slot, ep))
             || self.raton.as_ref().is_some_and(|m| m.direccion().es_mio(slot, ep))
@@ -138,9 +138,9 @@ impl UsbHidHal {
     /// Eventos que llegaron y no eran de nadie. Ver el campo.
     pub fn huerfanos(&self) -> u32 { self.huerfanos }
 
-    /// ¿Están los dos con transferencia encolada?
+    /// Estan los dos con transferencia encolada?
     ///
-    /// Un periférico que deja de bombear queda enumerado y mudo para siempre —
+    /// Un periferico que deja de bombear queda enumerado y mudo para siempre --
     /// el endpoint sigue en `Running` y nadie le vuelve a pedir nada. Es el
     /// estado que hay que poder ver desde fuera.
     pub fn bombeando(&self) -> (bool, bool) {
@@ -150,16 +150,16 @@ impl UsbHidHal {
         )
     }
 
-    /// Enciende/apaga los LEDs del teclado (bit0 Num, bit1 Mayús, bit2 Scroll).
+    /// Enciende/apaga los LEDs del teclado (bit0 Num, bit1 Mayus, bit2 Scroll).
     pub fn set_leds(&self, leds: u8) -> bool {
         self.teclado.as_ref().is_some_and(|k| k.leds(leds))
     }
 
-    /// Instala un ratón, **rechazándolo si chocaría con el teclado**.
+    /// Instala un raton, **rechazandolo si chocaria con el teclado**.
     ///
-    /// Ésta es la regla 2 hecha código. Antes no existía y por eso el teclado y
-    /// el ratón pudieron acabar siendo el mismo endpoint sin que nadie dijera
-    /// nada; el síntoma era un ratón que "funcionaba" leyendo pulsaciones de
+    /// Esta es la regla 2 hecha codigo. Antes no existia y por eso el teclado y
+    /// el raton pudieron acabar siendo el mismo endpoint sin que nadie dijera
+    /// nada; el sintoma era un raton que "funcionaba" leyendo pulsaciones de
     /// tecla como desplazamientos.
     fn instalar_raton(&mut self, nuevo: Raton) -> bool {
         if let Some(k) = self.teclado.as_ref() {
@@ -176,17 +176,17 @@ impl UsbHidHal {
         true
     }
 
-    /// ¿Podemos quedarnos con esta interfaz de ratón?
+    /// Podemos quedarnos con esta interfaz de raton?
     ///
-    /// Sí si no hay ninguno, o si el que hay es el provisional del teclado y
-    /// éste sale de **otro aparato**.
+    /// Si si no hay ninguno, o si el que hay es el provisional del teclado y
+    /// este sale de **otro aparato**.
     ///
-    /// ★ El parámetro es un HECHO, no una adivinanza. Antes se le pasaba
-    /// `es_compuesto` —"este aparato trae interfaz de teclado y de ratón"— y
+    /// * El parametro es un HECHO, no una adivinanza. Antes se le pasaba
+    /// `es_compuesto` --"este aparato trae interfaz de teclado y de raton"-- y
     /// eso describe igual de bien a un teclado con teclas de medios que a un
-    /// **ratón de juego con teclas de macro**. El de esta máquina las tiene:
+    /// **raton de juego con teclas de macro**. El de esta maquina las tiene:
     /// se le miraba, se le clasificaba de "teclado compuesto" y se le
-    /// descartaba, dejando puesto el ratón provisional del teclado de verdad.
+    /// descartaba, dejando puesto el raton provisional del teclado de verdad.
     /// En la foto: `raton ev=0 slot=2(=kbd!)` y "nada que adoptar" tres veces.
     fn raton_libre(&self, sale_del_teclado: bool) -> bool {
         match self.raton.as_ref() {
@@ -195,12 +195,12 @@ impl UsbHidHal {
         }
     }
 
-    /// ¿El ratón que hay es de verdad, o la interfaz de medios de un teclado?
+    /// El raton que hay es de verdad, o la interfaz de medios de un teclado?
     fn raton_dedicado(&self) -> bool {
         self.raton.as_ref().is_some_and(|m| !m.es_provisional())
     }
 
-    /// ¿Ya no hace falta mirar más? Teclado **y** ratón dedicado.
+    /// Ya no hace falta mirar mas? Teclado **y** raton dedicado.
     ///
     /// Es la pregunta que decide si merece la pena tocar el bus. Re-enumerar
     /// cuando no falta nada cuesta control transfers sobre un controlador con
@@ -211,7 +211,7 @@ impl UsbHidHal {
     }
 
     /// Enumera UN puerto e instala lo que falte. El camino compartido por el
-    /// arranque y por el enchufe en caliente: uno solo, así no pueden divergir.
+    /// arranque y por el enchufe en caliente: uno solo, asi no pueden divergir.
     ///
     /// # Safety
     /// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
@@ -234,22 +234,22 @@ impl UsbHidHal {
         let n_ifs = enumera::interfaces(cfg, &mut ifaces);
         let compuesto = enumera::es_compuesto(&ifaces[..n_ifs]);
 
-        // ★ ¿Sale este aparato del MISMO sitio que mi teclado? Es la pregunta
+        // * Sale este aparato del MISMO sitio que mi teclado? Es la pregunta
         // exacta que `es_compuesto` intentaba adivinar contando interfaces, y
-        // que fallaba con un ratón de macros. Aquí se compara el slot, que es
+        // que fallaba con un raton de macros. Aqui se compara el slot, que es
         // la identidad del aparato en el bus: dos interfaces del mismo aparato
         // comparten slot y las de aparatos distintos no.
         //
-        // El segundo término cubre el orden inverso: si la interfaz de ratón
-        // del teclado se mira ANTES que la de teclado, todavía no hay slot con
+        // El segundo termino cubre el orden inverso: si la interfaz de raton
+        // del teclado se mira ANTES que la de teclado, todavia no hay slot con
         // el que comparar y hay que fiarse de la forma del aparato.
         let sale_del_teclado = self.teclado.as_ref().is_some_and(|k| k.slot() == slot)
             || (self.teclado.is_none() && compuesto);
 
         for (iface, clase, subclase, proto) in &ifaces[..n_ifs] {
             // Toda interfaz se DICE antes de juzgarla. Sin esto, un aparato
-            // descartado y un aparato ausente se ven exactamente igual —que es
-            // lo que costó esta ronda de fotos.
+            // descartado y un aparato ausente se ven exactamente igual --que es
+            // lo que costo esta ronda de fotos.
             h.log_u64("[uhid] iface=", *iface as u64);
             h.log_u64(" clase=", *clase as u64);
             h.log_u64(" sub=", *subclase as u64);
@@ -262,13 +262,13 @@ impl UsbHidHal {
                 // Un HID sin protocolo de arranque manda sus informes en el
                 // formato que describa su Report Descriptor.
                 //
-                // ★ Y ese descriptor **ya se sabe leer** ([`formato`]), así que
+                // * Y ese descriptor **ya se sabe leer** ([`formato`]), asi que
                 // el motivo original de este rechazo ha caducado: hoy la puerta
-                // se podría abrir cambiando esta condición por "que su
-                // descriptor declare X e Y". No se hace todavía a propósito —
-                // eso cambia QUÉ aparatos se adoptan en el arranque, y ningún
+                // se podria abrir cambiando esta condicion por "que su
+                // descriptor declare X e Y". No se hace todavia a proposito --
+                // eso cambia QUE aparatos se adoptan en el arranque, y ningun
                 // CPU lo ha ejecutado. Primero se confirma en el Ryzen que el
-                // descriptor del ratón actual se lee bien; después se ensancha.
+                // descriptor del raton actual se lee bien; despues se ensancha.
                 h.log(" (HID sin subclase BOOT: no lo adopto todavia)\n");
                 continue;
             }
@@ -299,20 +299,20 @@ impl UsbHidHal {
                 if sale_del_teclado {
                     h.log("[uhid] iface de raton en MI TECLADO: provisional\n");
                 }
-                // ★ Se le pasa el `mps` del ENDPOINT, no el tamaño del informe:
-                // pedirle menos de lo que puede mandar es un babble, y así fue
-                // como este ratón se paró nada más adoptarlo. Ver `Raton::largo`.
+                // * Se le pasa el `mps` del ENDPOINT, no el tamano del informe:
+                // pedirle menos de lo que puede mandar es un babble, y asi fue
+                // como este raton se paro nada mas adoptarlo. Ver `Raton::largo`.
                 //
-                // Y su FORMATO, sacado del Report Descriptor: qué bit es cada
-                // campo y de cuántos bits. Antes se le pasaba el protocolo a
-                // secas y el ratón deducía una sola cosa —si había un Report ID
-                // delante—, que arreglaba el corrimiento y dejaba abierto el
+                // Y su FORMATO, sacado del Report Descriptor: que bit es cada
+                // campo y de cuantos bits. Antes se le pasaba el protocolo a
+                // secas y el raton deducia una sola cosa --si habia un Report ID
+                // delante--, que arreglaba el corrimiento y dejaba abierto el
                 // ancho de los ejes.
                 //
                 // Si el descriptor no se puede leer o no se entiende, se cae al
                 // formato BOOT **conservando el salto del Report ID**, que es lo
                 // que ya funciona en el Ryzen. Un reserva que pierde lo
-                // aprendido sería una regresión disfrazada de prudencia.
+                // aprendido seria una regresion disfrazada de prudencia.
                 let formato = enumera::leer_formato_raton(slot, *iface, cfg)
                     .unwrap_or_else(|| formato::Formato::boot_con_id(protocolo == 1));
                 if self.instalar_raton(Raton::nuevo(
@@ -330,21 +330,21 @@ impl UsbHidHal {
         }
 
         if cosecha.teclado || cosecha.raton {
-            // De aquí salió algo que funciona: este puerto no se vuelve a
-            // tocar. Resetearlo sólo podría matarlo.
+            // De aqui salio algo que funciona: este puerto no se vuelve a
+            // tocar. Resetearlo solo podria matarlo.
             self.puertos.tomar(port);
         } else {
-            // ★ Y si no salió nada, **el slot se devuelve**. El aparato quedó
+            // * Y si no salio nada, **el slot se devuelve**. El aparato quedo
             // direccionado y nadie lo va a leer; dejar el slot pedido es lo que
-            // agotó los 64 del controlador en el arranque del 2026-07-31, con
-            // el registro contándolo a la vista: 0x30, 0x31, … 0x40, y después
+            // agoto los 64 del controlador en el arranque del 2026-07-31, con
+            // el registro contandolo a la vista: 0x30, 0x31, ... 0x40, y despues
             // `cc=0x9` para siempre.
             //
-            // Con un seguro: **jamás el slot de un aparato instalado**. Un
-            // teclado compuesto puede volver a ofrecer su interfaz de ratón,
-            // que se rechaza por chocar de dirección — y entonces "no se adoptó
-            // nada" sería cierto y devolver el slot mataría al teclado que está
-            // escribiendo en él. Devolver un recurso que otro está usando es
+            // Con un seguro: **jamas el slot de un aparato instalado**. Un
+            // teclado compuesto puede volver a ofrecer su interfaz de raton,
+            // que se rechaza por chocar de direccion -- y entonces "no se adopto
+            // nada" seria cierto y devolver el slot mataria al teclado que esta
+            // escribiendo en el. Devolver un recurso que otro esta usando es
             // peor que no devolverlo.
             if slot == self.kbd_slot() || slot == self.mouse_slot() {
                 h.log_u64("[uhid] no devuelvo el slot: lo usa un aparato vivo, ", slot as u64);
@@ -356,10 +356,10 @@ impl UsbHidHal {
         cosecha
     }
 
-    /// Enciende las bombas de lo que esté instalado y todavía parado.
+    /// Enciende las bombas de lo que este instalado y todavia parado.
     ///
-    /// Se llama al final de la enumeración y tras cada adopción. El guardia
-    /// `bombeando()` no es cosmético: encolar dos veces en el mismo endpoint
+    /// Se llama al final de la enumeracion y tras cada adopcion. El guardia
+    /// `bombeando()` no es cosmetico: encolar dos veces en el mismo endpoint
     /// deja dos TRB vivos y el segundo informe llega a un buffer que ya nadie
     /// espera.
     fn arrancar_bombas(&mut self) {
@@ -367,7 +367,7 @@ impl UsbHidHal {
         if let Some(k) = self.teclado.as_mut() {
             if !k.bombeando() && !k.arrancar() {
                 // Sin anillo no hay transferencia, y sin transferencia el
-                // teclado enmudece para siempre. Callarlo fue lo que costó las
+                // teclado enmudece para siempre. Callarlo fue lo que costo las
                 // fotos.
                 h.log("[uhid] teclado SIN anillo: no se pudo encolar\n");
             }
@@ -379,21 +379,21 @@ impl UsbHidHal {
         }
     }
 
-    /// **Algo se enchufó en `port`: adóptalo.**
+    /// **Algo se enchufo en `port`: adoptalo.**
     ///
-    /// ★ Ésta es la mitad que faltaba. El aviso de cambio de puerto ya llegaba
-    /// —la foto lo enseñó, `usb: puerto: algo se ENCHUFO (sin re-enumerar aun)`—
-    /// y **nadie hacía nada con él**. El comentario decía "primero ver, luego
+    /// * Esta es la mitad que faltaba. El aviso de cambio de puerto ya llegaba
+    /// --la foto lo enseno, `usb: puerto: algo se ENCHUFO (sin re-enumerar aun)`--
+    /// y **nadie hacia nada con el**. El comentario decia "primero ver, luego
     /// hacer"; ya se vio.
     ///
-    /// Sin esto, la enumeración era una carrera de un solo intento contra el
-    /// arranque: un aparato que tarda en engancharse —un ratón con firmware RGB
-    /// tarda— se perdía **hasta el siguiente reinicio**. De ahí el síntoma que
-    /// no encajaba con nada: unas veces arrancaba el teclado y otras el ratón,
-    /// nunca los dos, sin tocar una línea de código entre arranque y arranque.
-    /// No era intermitencia del hardware: era quién llegaba a tiempo.
+    /// Sin esto, la enumeracion era una carrera de un solo intento contra el
+    /// arranque: un aparato que tarda en engancharse --un raton con firmware RGB
+    /// tarda-- se perdia **hasta el siguiente reinicio**. De ahi el sintoma que
+    /// no encajaba con nada: unas veces arrancaba el teclado y otras el raton,
+    /// nunca los dos, sin tocar una linea de codigo entre arranque y arranque.
+    /// No era intermitencia del hardware: era quien llegaba a tiempo.
     ///
-    /// Devuelve `true` si se instaló algo nuevo.
+    /// Devuelve `true` si se instalo algo nuevo.
     ///
     /// # Safety
     /// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
@@ -403,17 +403,17 @@ impl UsbHidHal {
         if self.completo() {
             return false;
         }
-        // ★ Y aunque falte algo: **a este puerto en concreto, ¿se le puede
-        // tocar?** Esto es lo que faltaba, y sin ello la adopción reactiva se
-        // comía a sí misma — resetear un puerto ES un cambio de puerto, así que
+        // * Y aunque falte algo: **a este puerto en concreto, se le puede
+        // tocar?** Esto es lo que faltaba, y sin ello la adopcion reactiva se
+        // comia a si misma -- resetear un puerto ES un cambio de puerto, asi que
         // el aviso que la dispara lo genera ella misma, para siempre. Peor: el
-        // puerto que giraba era el del teclado ya enumerado, que moría con el
+        // puerto que giraba era el del teclado ya enumerado, que moria con el
         // primer reset. Ver [`puertos`].
         if !self.puertos.se_puede_intentar(port) {
             return false;
         }
-        // Contar ANTES de tocar el bus: si la enumeración se va por otro
-        // camino, el intento ya está gastado.
+        // Contar ANTES de tocar el bus: si la enumeracion se va por otro
+        // camino, el intento ya esta gastado.
         self.puertos.anotar_intento(port);
         let cosecha = self.cosechar_puerto(port);
         if cosecha.teclado || cosecha.raton {
@@ -424,7 +424,7 @@ impl UsbHidHal {
     }
 }
 
-/// Qué se instaló al mirar un puerto.
+/// Que se instalo al mirar un puerto.
 struct Cosecha {
     teclado: bool,
     raton: bool,
@@ -443,28 +443,28 @@ impl InputHal for UsbHidHal {
         let ctrl = match bmo_xhci::controller() { Some(c) => c, None => return false };
         let h = bmo_xhci::hal();
 
-        // ── Recorrer los puertos ──────────────────────────────────────────
+        // -- Recorrer los puertos ------------------------------------------
         for port in 0..ctrl.max_ports {
             let cosecha = unsafe { self.cosechar_puerto(port) };
 
-            // Sólo se corta con un ratón DEDICADO. Un teclado compuesto marca
-            // las dos banderas —su interfaz de medios cuenta como ratón— y
-            // cortar ahí dejaba el puerto del ratón de verdad sin visitar jamás.
+            // Solo se corta con un raton DEDICADO. Un teclado compuesto marca
+            // las dos banderas --su interfaz de medios cuenta como raton-- y
+            // cortar ahi dejaba el puerto del raton de verdad sin visitar jamas.
             if cosecha.teclado && cosecha.raton && self.raton_dedicado() {
                 break;
             }
         }
 
-        // ── Arrancar las bombas, AL FINAL ─────────────────────────────────
+        // -- Arrancar las bombas, AL FINAL ---------------------------------
         //
-        // Un endpoint de interrupción, en cuanto se le encola una transferencia
+        // Un endpoint de interrupcion, en cuanto se le encola una transferencia
         // y se toca su timbre, **empieza a postear eventos solo**. Si eso pasa
-        // mientras todavía se enumera el puerto siguiente, sus informes caen en
+        // mientras todavia se enumera el puerto siguiente, sus informes caen en
         // el anillo compartido en medio de los control transfers del otro
         // aparato. Ver el aparcadero de `bmo_xhci`.
         //
-        // Y un segundo motivo: el ratón PROVISIONAL de un teclado compuesto se
-        // arrancaba y luego se sustituía por el dedicado, dejando una
+        // Y un segundo motivo: el raton PROVISIONAL de un teclado compuesto se
+        // arrancaba y luego se sustituia por el dedicado, dejando una
         // transferencia viva en un endpoint que ya no lee nadie.
         self.arrancar_bombas();
         let _ = h;
@@ -475,9 +475,9 @@ impl InputHal for UsbHidHal {
 
     fn name(&self) -> &'static str { "USB-HID" }
 
-    /// El REPARTO. Un evento, un dueño.
+    /// El REPARTO. Un evento, un dueno.
     ///
-    /// `else if` y no dos `if` sueltos: ver la nota de la cabecera del módulo.
+    /// `else if` y no dos `if` sueltos: ver la nota de la cabecera del modulo.
     fn poll(&mut self, buf: &mut [InputEvent]) -> usize {
         if !self.inicializado {
             return 0;
@@ -485,24 +485,24 @@ impl InputHal for UsbHidHal {
         let mut n = 0usize;
         unsafe {
             while let Some((slot, ep, cc)) = bmo_xhci::poll_transfer_event() {
-                // ★ Aunque no quede sitio para más eventos, el informe hay que
+                // * Aunque no quede sitio para mas eventos, el informe hay que
                 // ATENDERLO: atender es lo que rearma la transferencia, y sin
-                // rearmar el periférico se para para siempre. Se le pasa la
-                // rodaja que quede, aunque esté vacía — se pierde el evento de
+                // rearmar el periferico se para para siempre. Se le pasa la
+                // rodaja que quede, aunque este vacia -- se pierde el evento de
                 // entrada, que es recuperable; no la bomba, que no lo es.
                 let desde = n.min(buf.len());
                 let resto = &mut buf[desde..];
 
-                // ★ RESUCITAR ANTES DE ATENDER, y aquí y no dentro de cada
+                // * RESUCITAR ANTES DE ATENDER, y aqui y no dentro de cada
                 // aparato: `atender` termina rearmando, y rearmar un endpoint
-                // parado no hace nada —el xHC ignora el timbre de un endpoint
-                // Halted—. Ése es el aparato que "se desconecta" sin que nadie
+                // parado no hace nada --el xHC ignora el timbre de un endpoint
+                // Halted--. Ese es el aparato que "se desconecta" sin que nadie
                 // lo toque: sigue enumerado, sigue teniendo anillo, y no vuelve.
                 //
-                // Va en el reparto porque el reparto es el único sitio que ya
-                // sabe de quién es el evento. Metido en `teclado` y en `raton`
-                // serían dos copias de la misma decisión, que es exactamente
-                // como se coló el bug del Ctrl derecho.
+                // Va en el reparto porque el reparto es el unico sitio que ya
+                // sabe de quien es el evento. Metido en `teclado` y en `raton`
+                // serian dos copias de la misma decision, que es exactamente
+                // como se colo el bug del Ctrl derecho.
                 if bmo_xhci::cc_halta_endpoint(cc) && self.es_de_alguien(slot, ep) {
                     bmo_xhci::recuperar_endpoint(slot, ep);
                 }

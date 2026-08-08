@@ -1,4 +1,4 @@
-//! Type field descriptor — per-field metadata for structs, enums, and unions.
+//! Type field descriptor -- per-field metadata for structs, enums, and unions.
 //!
 //! Each `TypeField` describes one field: its name (FNV-1a hashed), its type
 //! (index into TypeRegistry), and its byte offset within the parent struct.

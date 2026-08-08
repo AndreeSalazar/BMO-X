@@ -1,7 +1,7 @@
 //! Ring 0 capability services transported over BMO Channel.
 //!
 //! Each service binds to one estuary via `channel::register_service` and
-//! speaks its own opcode space. Services never interpret user pointers —
+//! speaks its own opcode space. Services never interpret user pointers --
 //! everything travels by value in the `(opcode, a0, a1, a2)` entries.
 //! Anything needing bulk data moves to Ring 3 servers (F4) with shared
 //! memory granted by capability.

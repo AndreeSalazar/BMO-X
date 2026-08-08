@@ -30,7 +30,7 @@ pub unsafe extern "C" fn bmo_syscall(
     value_or_code(syscall6(nr, a0, a1, a2, a3, a4, a5))
 }
 
-// ─── Process / Thread ────────────────────────────────────────────────
+// --- Process / Thread ------------------------------------------------
 
 pub unsafe fn proc_exit(code: u32) -> u64 {
     value_or_code(syscalls::surface::invoke(
@@ -76,7 +76,7 @@ pub unsafe fn proc_yield() -> u64 {
     ))
 }
 
-// ─── BMO Channel (ABI v2: capability-addressed IPC) ──────────────────
+// --- BMO Channel (ABI v2: capability-addressed IPC) ------------------
 
 /// Discover this process's estuary capability for channel `index`.
 /// Returns the handle, or an error code (3 = NEEDS_CAP) as value.
@@ -91,7 +91,7 @@ pub unsafe fn channel_open(index: u64) -> u64 {
     ))
 }
 
-/// Completion-side sequence of the estuary behind `handle` — the value
+/// Completion-side sequence of the estuary behind `handle` -- the value
 /// `channel_wait` compares against.
 pub unsafe fn channel_seq(handle: u64) -> u64 {
     value_or_code(syscalls::surface::invoke(
@@ -124,7 +124,7 @@ pub unsafe fn proc_spawn(path: *const u8, path_len: u64) -> u64 {
     bmo_syscall(syscalls::NR_PROC_SPAWN, path as u64, path_len, 0, 0, 0, 0)
 }
 
-// ─── Memory ──────────────────────────────────────────────────────────
+// --- Memory ----------------------------------------------------------
 
 pub unsafe fn mem_alloc(size: u64) -> *mut u8 {
     bmo_syscall(syscalls::NR_MEM_ALLOC, size, 0, 0, 0, 0, 0) as *mut u8
@@ -142,7 +142,7 @@ pub unsafe fn mem_unmap(virt: *mut u8, size: u64) -> u64 {
     bmo_syscall(syscalls::NR_MEM_UNMAP, virt as u64, size, 0, 0, 0, 0)
 }
 
-// ─── Filesystem ──────────────────────────────────────────────────────
+// --- Filesystem ------------------------------------------------------
 
 pub unsafe fn fs_open(path: *const u8, path_len: u64, flags: u64) -> u64 {
     bmo_syscall(syscalls::NR_FS_OPEN, path as u64, path_len, flags, 0, 0, 0)
@@ -164,7 +164,7 @@ pub unsafe fn fs_seek(fd: u64, offset: i64, whence: u64) -> u64 {
     bmo_syscall(syscalls::NR_FS_SEEK, fd, offset as u64, whence, 0, 0, 0)
 }
 
-// ─── Time ────────────────────────────────────────────────────────────
+// --- Time ------------------------------------------------------------
 
 pub unsafe fn time_now_ns() -> u64 {
     bmo_syscall(syscalls::NR_TIME_NOW_NS, 0, 0, 0, 0, 0, 0)
@@ -174,7 +174,7 @@ pub unsafe fn time_sleep_ms(ms: u64) -> u64 {
     bmo_syscall(syscalls::NR_TIME_SLEEP_MS, ms, 0, 0, 0, 0, 0)
 }
 
-// ─── Diagnostics ─────────────────────────────────────────────────────
+// --- Diagnostics -----------------------------------------------------
 
 pub unsafe fn debug_print(msg: *const u8, len: u64) -> u64 {
     bmo_syscall(syscalls::NR_DEBUG_PRINT, msg as u64, len, 0, 0, 0, 0)
@@ -185,7 +185,7 @@ pub unsafe fn debug_panic(msg: *const u8, len: u64) -> ! {
     loop { core::arch::asm!("cli; hlt") }
 }
 
-// ─── Window Manager ──────────────────────────────────────────────────
+// --- Window Manager --------------------------------------------------
 
 pub unsafe fn wm_create_window(x: i64, y: i64, w: u64, h: u64) -> u64 {
     bmo_syscall(syscalls::NR_WM_CREATE_WINDOW, x as u64, y as u64, w, h, 0, 0)
@@ -199,7 +199,7 @@ pub unsafe fn wm_set_title(win: u64, title: *const u8, len: u64) -> u64 {
     bmo_syscall(syscalls::NR_WM_SET_TITLE, win, title as u64, len, 0, 0, 0)
 }
 
-// ─── Drawing ─────────────────────────────────────────────────────────
+// --- Drawing ---------------------------------------------------------
 
 pub unsafe fn draw_rect(x: i64, y: i64, w: u64, h: u64, color: u32) -> u64 {
     bmo_syscall(syscalls::NR_DRAW_RECT, x as u64, y as u64, w, h, color as u64, 0)
@@ -213,7 +213,7 @@ pub unsafe fn draw_pixel(x: i64, y: i64, color: u32) -> u64 {
     bmo_syscall(syscalls::NR_DRAW_PIXEL, x as u64, y as u64, color as u64, 0, 0, 0)
 }
 
-// ─── Input ───────────────────────────────────────────────────────────
+// --- Input -----------------------------------------------------------
 
 pub unsafe fn poll_key() -> u64 {
     bmo_syscall(syscalls::NR_POLL_KEY, 0, 0, 0, 0, 0, 0)
@@ -223,7 +223,7 @@ pub unsafe fn poll_event() -> u64 {
     bmo_syscall(syscalls::NR_POLL_EVENT, 0, 0, 0, 0, 0, 0)
 }
 
-// ─── IPC ─────────────────────────────────────────────────────────────
+// --- IPC -------------------------------------------------------------
 
 pub unsafe fn ipc_port_create() -> u64 {
     bmo_syscall(syscalls::NR_IPC_PORT_CREATE, 0, 0, 0, 0, 0, 0)
@@ -241,7 +241,7 @@ pub unsafe fn ipc_port_close(port: u64) -> u64 {
     bmo_syscall(syscalls::NR_IPC_PORT_CLOSE, port, 0, 0, 0, 0, 0)
 }
 
-// ─── Compositor ──────────────────────────────────────────────────────
+// --- Compositor ------------------------------------------------------
 
 pub unsafe fn compositor_present(win: u64) -> u64 {
     bmo_syscall(syscalls::NR_COMPOSITOR_PRESENT, win, 0, 0, 0, 0, 0)
@@ -255,13 +255,13 @@ pub unsafe fn compositor_end_frame(win: u64) -> u64 {
     bmo_syscall(syscalls::NR_COMPOSITOR_END_FRAME, win, 0, 0, 0, 0, 0)
 }
 
-// ─── Audio ───────────────────────────────────────────────────────────
+// --- Audio -----------------------------------------------------------
 
 pub unsafe fn audio_beep(freq: u32, dur_ms: u32) -> u64 {
     bmo_syscall(syscalls::NR_AUDIO_BEEP, freq as u64, dur_ms as u64, 0, 0, 0, 0)
 }
 
-// ─── Surface ─────────────────────────────────────────────────────────
+// --- Surface ---------------------------------------------------------
 
 pub unsafe fn surface_map(phys: u64, w: u64, h: u64) -> *mut u8 {
     bmo_syscall(syscalls::NR_SURFACE_MAP, phys, w, h, 0, 0, 0) as *mut u8
@@ -275,7 +275,7 @@ pub unsafe fn surface_present(surf: u64, win: u64) -> u64 {
     bmo_syscall(syscalls::NR_SURFACE_PRESENT, surf, win, 0, 0, 0, 0)
 }
 
-// ─── BEFCore ─────────────────────────────────────────────────────────
+// --- BEFCore ---------------------------------------------------------
 
 pub unsafe fn befcore_send(target: u64, msg: *const u8, len: u64) -> u64 {
     bmo_syscall(syscalls::NR_BEFCORE_SEND, target, msg as u64, len, 0, 0, 0)

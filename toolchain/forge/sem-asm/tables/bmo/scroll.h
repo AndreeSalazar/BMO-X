@@ -1,6 +1,6 @@
-/* scroll.h — una ventana que se mueve sobre un historial, en C.
+/* scroll.h -- una ventana que se mueve sobre un historial, en C.
  *
- * ══ Qué problema resuelve ══
+ * == Que problema resuelve ==
  *
  * Una rejilla de salida guarda N filas y ensena M. Lo que sale por arriba se
  * pierde para siempre a menos que alguien lleve la cuenta de CUANTO se ha
@@ -10,14 +10,14 @@
  *     vista = 0   -> se ve lo ultimo (el fondo del historial)
  *     vista = 5   -> se ve cinco filas mas atras
  *
- * ══ Por qué son funciones puras y no un objeto ══
+ * == Por que son funciones puras y no un objeto ==
  *
  * El historial vive donde lo ponga quien llama: aqui no hay heap ni un buffer
- * escondido. Estas funciones no tocan memoria — reciben la `vista` de ahora y
+ * escondido. Estas funciones no tocan memoria -- reciben la `vista` de ahora y
  * devuelven la de despues. Eso las hace probar sin arrancar nada, que es la
  * unica forma de saber que el tope funciona sin encender la maquina.
  *
- * ══ Lo que evita cada tope ══
+ * == Lo que evita cada tope ==
  *
  * El clamp de los dos extremos no es cosmetico. Sin el:
  *   - pasarse por arriba ensena filas en blanco, y parece que se ha perdido
@@ -36,8 +36,8 @@
 
 /* Cuantas filas mueve una muesca de rueda.
  *
- * Tres. Una sola se queda corta —hay que girar una eternidad para recorrer una
- * pantalla— y una pagina entera se pasa: pierdes el hilo de lo que estabas
+ * Tres. Una sola se queda corta --hay que girar una eternidad para recorrer una
+ * pantalla-- y una pagina entera se pasa: pierdes el hilo de lo que estabas
  * leyendo. Es el paso de cualquier terminal. */
 #define BMO_SCROLL_MUESCA 3
 
@@ -47,7 +47,7 @@
  * es `guardadas - visibles`: subir mas seria pedir filas que nunca existieron.
  *
  * Si el historial no llena la ventana todavia (`guardadas <= visibles`), el
- * unico sitio valido es el 0 — y eso se calcula, no se supone. */
+ * unico sitio valido es el 0 -- y eso se calcula, no se supone. */
 int bmo_scroll_mover(int vista, int filas, int guardadas, int visibles) {
     int tope;
     int nueva;
@@ -73,7 +73,7 @@ int bmo_scroll_rueda(int vista, int muescas, int guardadas, int visibles) {
 
 /* La nueva `vista` tras una tecla. Las que no son RePag/AvPag no mueven nada.
  *
- * ★ Una pagina es `visibles - 1`, no `visibles`. La fila que se solapa es lo
+ * * Una pagina es `visibles - 1`, no `visibles`. La fila que se solapa es lo
  *   que deja seguir leyendo: saltar la pantalla entera corta una frase justo
  *   por el borde y obliga a volver atras.
  *
@@ -114,7 +114,7 @@ int bmo_scroll_primera(int vista, int guardadas, int visibles) {
     return base;
 }
 
-/* ¿Se esta mirando el pasado?
+/* Se esta mirando el pasado?
  *
  * Sirve para poner un aviso en pantalla. No es un adorno: una ventana que
  * ensena el pasado sin decirlo se confunde con una que se ha colgado, y la

@@ -1,12 +1,12 @@
-//! BMO Channel — lock-free ring buffer IPC between Ring 0 ↔ Ring 3.
+//! BMO Channel -- lock-free ring buffer IPC between Ring 0 <-> Ring 3.
 //!
 //! ## Architecture
 //!
 //! ```text
-//! ┌────────────────── 4096-byte shared page ──────────────────┐
-//! │  magic  │ doorbell │ submit_h/t │ complete_h/t │  pad     │
-//! │  submit_ring[64]  │  complete_ring[64]                    │
-//! └───────────────────────────────────────────────────────────┘
+//! +------------------ 4096-byte shared page ------------------+
+//! |  magic  | doorbell | submit_h/t | complete_h/t |  pad     |
+//! |  submit_ring[64]  |  complete_ring[64]                    |
+//! +-----------------------------------------------------------+
 //! ```
 //!
 //! ## Protocol
@@ -85,7 +85,7 @@ impl Channel {
     /// submission. `false` si el anillo esta lleno.
     ///
     /// Existe para Endpoint RPC: una llamada de otro proceso no entra por el
-    /// anillo de submissions de ESTE servidor —el que la hizo tiene el suyo—,
+    /// anillo de submissions de ESTE servidor --el que la hizo tiene el suyo--,
     /// pero se le entrega por el mismo camino por el que ya lee todo lo demas.
     /// Asi el servidor no necesita un segundo mecanismo de recepcion.
     pub fn ring0_complete(&self, opcode: u64, arg0: u64, arg1: u64, arg2: u64) -> bool {
@@ -108,7 +108,7 @@ impl Channel {
         true
     }
 
-    // ═══ Ring 3 API ═══════════════════════════════════════════════════
+    // === Ring 3 API ===================================================
 
     /// Ring 3: submit a request. Returns true if there was room.
     pub fn ring3_submit(&self, opcode: u64, arg0: u64, arg1: u64, arg2: u64) -> bool {
@@ -170,7 +170,7 @@ impl Channel {
         count
     }
 
-    // ═══ Ring 0 API ═══════════════════════════════════════════════════
+    // === Ring 0 API ===================================================
 
     /// Ring 0: check doorbell. Called from timer ISR at ~1kHz.
     pub fn ring0_has_work(&self) -> bool {

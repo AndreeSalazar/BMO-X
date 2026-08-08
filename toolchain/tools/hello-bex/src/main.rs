@@ -4,9 +4,9 @@
 //! The whole point is to demonstrate the complete privilege-crossing chain
 //! end to end, on real metal, without a keyboard:
 //!
-//!   Ring 3 program  ──INVOKE(CURRENT_TASK, CONSOLE_WRITE, bytes)──▶  Ring 0
-//!                   ◀── kernel paints the text on the framebuffer ──
-//!   Ring 3 program  ──INVOKE(CURRENT_TASK, EXIT)──▶  scheduler reaps it
+//!   Ring 3 program  --INVOKE(CURRENT_TASK, CONSOLE_WRITE, bytes)-->  Ring 0
+//!                   <-- kernel paints the text on the framebuffer --
+//!   Ring 3 program  --INVOKE(CURRENT_TASK, EXIT)-->  scheduler reaps it
 //!
 //! Like `bef-bootstrap`, this is deliberately assembly-only: no runtime, no
 //! relocations, imports, TLS or privileged instructions. Every byte is
@@ -34,10 +34,10 @@ fn main() {
 
     let mut code: Vec<u8> = Vec::new();
 
-    // mov rdi, CURRENT_TASK        (48 BF <imm64>)   — held across all calls
+    // mov rdi, CURRENT_TASK        (48 BF <imm64>)   -- held across all calls
     code.extend_from_slice(&[0x48, 0xBF]);
     code.extend_from_slice(&CURRENT_TASK.to_le_bytes());
-    // mov esi, TASK_OP_CONSOLE_WRITE (BE <imm32>)    — zero-extends into rsi
+    // mov esi, TASK_OP_CONSOLE_WRITE (BE <imm32>)    -- zero-extends into rsi
     code.push(0xBE);
     code.extend_from_slice(&TASK_OP_CONSOLE_WRITE.to_le_bytes());
 
@@ -47,7 +47,7 @@ fn main() {
     for chunk in MESSAGE.as_bytes().chunks(8) {
         let mut word = [0u8; 8];
         word[..chunk.len()].copy_from_slice(chunk);
-        // xor eax, eax             (31 C0)           — NR_INVOKE
+        // xor eax, eax             (31 C0)           -- NR_INVOKE
         code.extend_from_slice(&[0x31, 0xC0]);
         // mov rdx, <chunk>         (48 BA <imm64>)
         code.extend_from_slice(&[0x48, 0xBA]);
@@ -57,7 +57,7 @@ fn main() {
     }
 
     // INVOKE(CURRENT_TASK, EXIT): rdi still holds CURRENT_TASK.
-    code.extend_from_slice(&[0x31, 0xC0]); // xor eax, eax — NR_INVOKE
+    code.extend_from_slice(&[0x31, 0xC0]); // xor eax, eax -- NR_INVOKE
     code.push(0xBE); // mov esi, TASK_OP_EXIT
     code.extend_from_slice(&TASK_OP_EXIT.to_le_bytes());
     code.extend_from_slice(&[0x0F, 0x05]); // syscall (does not return)

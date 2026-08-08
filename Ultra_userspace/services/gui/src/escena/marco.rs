@@ -1,22 +1,22 @@
-//! **El MARCO**: lo que toda ventana tiene y ninguna debería escribir dos veces.
+//! **El MARCO**: lo que toda ventana tiene y ninguna deberia escribir dos veces.
 //!
-//! ═══ Por qué existe ═══
+//! === Por que existe ===
 //!
-//! Había tres ventanas —Ejecutar, Datos y el log del kernel— y **tres copias
-//! de lo mismo**: cada una con su geometría, su pintado de borde y su barra de
-//! título. En cuanto entró el arrastre, pasaron a ser tres copias de un
+//! Habia tres ventanas --Ejecutar, Datos y el log del kernel-- y **tres copias
+//! de lo mismo**: cada una con su geometria, su pintado de borde y su barra de
+//! titulo. En cuanto entro el arrastre, pasaron a ser tres copias de un
 //! algoritmo, que es la forma en que dos ventanas del mismo sistema acaban
-//! comportándose distinto sin que nadie lo decida.
+//! comportandose distinto sin que nadie lo decida.
 //!
-//! Añadir minimizar, maximizar y cerrar a cada una habría sido escribir tres
-//! veces la misma máquina de estados. Aquí se escribe una.
+//! Anadir minimizar, maximizar y cerrar a cada una habria sido escribir tres
+//! veces la misma maquina de estados. Aqui se escribe una.
 //!
-//! ★ **El criterio no es la estética: es que la CUARTA ventana salga gratis.**
+//! * **El criterio no es la estetica: es que la CUARTA ventana salga gratis.**
 //!
-//! ═══ Lo que el marco SÍ sabe, y lo que no ═══
+//! === Lo que el marco SI sabe, y lo que no ===
 //!
-//! Sabe de rectángulos, de agarres y de botones. **No sabe qué hay dentro** —
-//! ni una línea de este módulo menciona ESTRATOS, el log ni la caja de lanzar.
+//! Sabe de rectangulos, de agarres y de botones. **No sabe que hay dentro** --
+//! ni una linea de este modulo menciona ESTRATOS, el log ni la caja de lanzar.
 //! Es la misma ley que separa `bmo-lower` de los frontends: se comparten
 //! contratos, nunca cerebros.
 
@@ -32,46 +32,46 @@ pub(crate) enum Boton {
     Cerrar,
 }
 
-/// Lado de la zona sensible de cada botón. Veinticuatro píxeles se aciertan sin
+/// Lado de la zona sensible de cada boton. Veinticuatro pixeles se aciertan sin
 /// mirar; doce obligan a apuntar, y apuntar para CERRAR una ventana es como se
 /// cierra la que no era.
 pub(crate) const BOTON_LADO: u32 = 24;
 /// Lo que se puede agarrar en la esquina para estirar.
 const ASA_ESQUINA: u32 = 16;
 
-/// El rojo de cerrar cuando el puntero está encima. Es el único sitio del
+/// El rojo de cerrar cuando el puntero esta encima. Es el unico sitio del
 /// sistema donde el rojo no significa "algo va mal" sino "esto destruye", y por
-/// eso sólo aparece al señalarlo: un aspa roja permanente es una alarma de
+/// eso solo aparece al senalarlo: un aspa roja permanente es una alarma de
 /// fondo.
 const CERRAR_ENCIMA: u32 = 0x00C4_2B1F;
-/// El realce de los otros dos: un peldaño más claro, sin color propio.
+/// El realce de los otros dos: un peldano mas claro, sin color propio.
 const BOTON_ENCIMA: u32 = 0x0039_4457;
 
-/// Geometría y estado de una ventana. **Lo único que hay que llevar.**
+/// Geometria y estado de una ventana. **Lo unico que hay que llevar.**
 pub(crate) struct Marco {
     pub(crate) x: u32,
     pub(crate) y: u32,
     pub(crate) ancho: u32,
     pub(crate) alto: u32,
     /// Por debajo de esto no se puede encoger. Una ventana que se puede dejar
-    /// inservible con el ratón es una trampa, no una libertad.
+    /// inservible con el raton es una trampa, no una libertad.
     min_ancho: u32,
     min_alto: u32,
-    /// Dónde se agarró DENTRO de la ventana, si se está arrastrando.
+    /// Donde se agarro DENTRO de la ventana, si se esta arrastrando.
     ///
-    /// Se guarda el agarre y no la posición del puntero: si no, la ventana pega
-    /// un salto al empezar y se coloca con su esquina bajo el ratón en vez de
+    /// Se guarda el agarre y no la posicion del puntero: si no, la ventana pega
+    /// un salto al empezar y se coloca con su esquina bajo el raton en vez de
     /// quedarse donde la cogiste.
     arrastre: Option<(u32, u32)>,
     estirando: bool,
-    /// La geometría de antes de maximizar, para poder volver.
+    /// La geometria de antes de maximizar, para poder volver.
     guardada: Option<(u32, u32, u32, u32)>,
     /// Abierta pero escondida. **No es lo mismo que cerrada**: una minimizada
-    /// conserva su sitio, su tamaño y lo que estuviera mirando.
+    /// conserva su sitio, su tamano y lo que estuviera mirando.
     pub(crate) minimizada: bool,
-    /// Qué botón tiene el puntero encima, para realzarlo. Se lleva como estado
-    /// porque el realce sólo se repinta cuando CAMBIA — repintarlo cada
-    /// fotograma son 1.700 píxeles de memoria de vídeo sin caché para dejarlo
+    /// Que boton tiene el puntero encima, para realzarlo. Se lleva como estado
+    /// porque el realce solo se repinta cuando CAMBIA -- repintarlo cada
+    /// fotograma son 1.700 pixeles de memoria de video sin cache para dejarlo
     /// igual.
     pub(crate) encima: Option<Boton>,
 }
@@ -79,13 +79,13 @@ pub(crate) struct Marco {
 impl Marco {
     /// Una ventana nueva, **en fracciones de la pantalla**.
     ///
-    /// ═══ Por qué no en píxeles ═══
+    /// === Por que no en pixeles ===
     ///
-    /// Porque `640 x 330` es un tamaño correcto en la pantalla del que lo
-    /// escribió y ninguna otra. En una 4K es un sello de correos; en una
-    /// 1024x768 no cabe. Un tamaño en tantos por ciento se adapta solo, y los
-    /// mínimos —que sí son absolutos, porque el texto mide lo que mide—
-    /// impiden que en una pantalla pequeña quede ilegible.
+    /// Porque `640 x 330` es un tamano correcto en la pantalla del que lo
+    /// escribio y ninguna otra. En una 4K es un sello de correos; en una
+    /// 1024x768 no cabe. Un tamano en tantos por ciento se adapta solo, y los
+    /// minimos --que si son absolutos, porque el texto mide lo que mide--
+    /// impiden que en una pantalla pequena quede ilegible.
     pub(crate) fn nuevo(
         p: &bmo::Pantalla,
         pct_ancho: u32,
@@ -129,14 +129,14 @@ impl Marco {
         self.guardada.is_some()
     }
 
-    // ── Los botones ─────────────────────────────────────────────────────
+    // -- Los botones -----------------------------------------------------
 
-    /// La `x` donde empieza el botón `i` contando desde la derecha.
+    /// La `x` donde empieza el boton `i` contando desde la derecha.
     fn boton_x(&self, i: u32) -> u32 {
         self.x + self.ancho - (3 - i) * BOTON_LADO - 6
     }
 
-    /// Qué botón hay bajo el puntero, si hay alguno.
+    /// Que boton hay bajo el puntero, si hay alguno.
     pub(crate) fn boton_en(&self, px: u32, py: u32) -> Option<Boton> {
         if self.minimizada || py < self.y + 2 || py >= self.y + TITULO_ALTO {
             return None;
@@ -150,16 +150,16 @@ impl Marco {
         None
     }
 
-    /// ¿Cae en la barra de título, o sea en el asa de arrastrar?
+    /// Cae en la barra de titulo, o sea en el asa de arrastrar?
     ///
     /// **Los botones NO cuentan como asa**: si contaran, cada clic en cerrar
-    /// empezaría además un arrastre, y soltar en otro sitio movería la ventana
-    /// justo cuando querías cerrarla.
+    /// empezaria ademas un arrastre, y soltar en otro sitio moveria la ventana
+    /// justo cuando querias cerrarla.
     pub(crate) fn en_el_asa(&self, px: u32, py: u32) -> bool {
         self.contiene(px, py) && py < self.y + TITULO_ALTO && self.boton_en(px, py).is_none()
     }
 
-    /// ¿Cae en la esquina de estirar, la de abajo a la derecha?
+    /// Cae en la esquina de estirar, la de abajo a la derecha?
     pub(crate) fn en_la_esquina(&self, px: u32, py: u32) -> bool {
         !self.minimizada
             && !self.maximizada()
@@ -169,12 +169,12 @@ impl Marco {
             && py < self.y + self.alto
     }
 
-    // ── Mover y estirar ─────────────────────────────────────────────────
+    // -- Mover y estirar -------------------------------------------------
 
-    /// Empieza a arrastrar o a estirar. `true` si agarró algo.
+    /// Empieza a arrastrar o a estirar. `true` si agarro algo.
     ///
-    /// La esquina se mira ANTES que el asa: si se solaparan —una ventana en su
-    /// tamaño mínimo—, gana estirar, porque es la zona más pequeña y la que no
+    /// La esquina se mira ANTES que el asa: si se solaparan --una ventana en su
+    /// tamano minimo--, gana estirar, porque es la zona mas pequena y la que no
     /// se puede acertar de otra forma.
     pub(crate) fn agarrar(&mut self, px: u32, py: u32) -> bool {
         if self.en_la_esquina(px, py) {
@@ -197,11 +197,11 @@ impl Marco {
         self.arrastre.is_some() || self.estirando
     }
 
-    /// Lleva o estira la ventana hasta el puntero. `true` si cambió algo.
+    /// Lleva o estira la ventana hasta el puntero. `true` si cambio algo.
     ///
-    /// Las dos cosas van juntas porque **quien llama no tiene por qué saber
-    /// cuál de las dos está pasando**: agarró, mueve el ratón, y el marco sabe
-    /// lo que había agarrado.
+    /// Las dos cosas van juntas porque **quien llama no tiene por que saber
+    /// cual de las dos esta pasando**: agarro, mueve el raton, y el marco sabe
+    /// lo que habia agarrado.
     pub(crate) fn seguir_al_puntero(&mut self, p: &bmo::Pantalla, px: u32, py: u32) -> bool {
         if let Some((ax, ay)) = self.arrastre {
             let nx = px.saturating_sub(ax).min(p.ancho.saturating_sub(self.ancho));
@@ -235,11 +235,11 @@ impl Marco {
         false
     }
 
-    /// Maximizar, o volver al tamaño de antes. Devuelve la geometría VIEJA para
-    /// que quien llama sepa qué trozo de pantalla tiene que repintar.
+    /// Maximizar, o volver al tamano de antes. Devuelve la geometria VIEJA para
+    /// que quien llama sepa que trozo de pantalla tiene que repintar.
     ///
     /// Maximizada NO es "pantalla completa": deja la barra del sistema a la
-    /// vista. Una ventana que tapa la barra esconde las fichas de las demás, y
+    /// vista. Una ventana que tapa la barra esconde las fichas de las demas, y
     /// entonces no hay forma de volver a ellas sin adivinar un atajo.
     pub(crate) fn alternar_maximizada(&mut self, p: &bmo::Pantalla) -> (u32, u32, u32, u32) {
         let vieja = (self.x, self.y, self.ancho, self.alto);
@@ -263,8 +263,8 @@ impl Marco {
 
     /// Recoloca la ventana si se ha quedado fuera del panel.
     ///
-    /// Hace falta al restaurar una minimizada y al cambiar de resolución: una
-    /// geometría guardada puede haber dejado de ser válida mientras no se veía.
+    /// Hace falta al restaurar una minimizada y al cambiar de resolucion: una
+    /// geometria guardada puede haber dejado de ser valida mientras no se veia.
     pub(crate) fn encajar(&mut self, p: &bmo::Pantalla) {
         self.ancho = self.ancho.min(p.ancho).max(self.min_ancho.min(p.ancho));
         self.alto = self
@@ -278,14 +278,14 @@ impl Marco {
             .min(p.alto.saturating_sub(self.alto));
     }
 
-    // ── Pintar ──────────────────────────────────────────────────────────
+    // -- Pintar ----------------------------------------------------------
 
-    /// El cromo entero: sombra, borde, cuerpo, barra de título y los tres
+    /// El cromo entero: sombra, borde, cuerpo, barra de titulo y los tres
     /// botones. Deja el interior listo para que el contenido se pinte encima.
     ///
     /// Los colores los trae quien llama porque **cada ventana tiene el suyo** y
-    /// eso es información, no decoración: el verde dice ESTRATOS y el azul dice
-    /// el kernel antes de que nadie lea un título.
+    /// eso es informacion, no decoracion: el verde dice ESTRATOS y el azul dice
+    /// el kernel antes de que nadie lea un titulo.
     pub(crate) fn pintar_cromo(
         &self,
         p: &bmo::Pantalla,
@@ -298,7 +298,7 @@ impl Marco {
         rect_redondeado(p, self.x, self.y, self.ancho, self.alto, borde);
         rect_redondeado(p, self.x + 1, self.y + 1, self.ancho - 2, self.alto - 2, cuerpo);
 
-        // La barra, con la MISMA curva que la ventana o asomaría por fuera de
+        // La barra, con la MISMA curva que la ventana o asomaria por fuera de
         // sus esquinas.
         for i in 0..RADIO {
             let s = curva(i);
@@ -317,8 +317,8 @@ impl Marco {
         self.pintar_asa_esquina(p, borde);
     }
 
-    /// Los tres, dibujados con rectángulos porque la fuente no trae sus glifos
-    /// y meterlos en la fuente por tres iconos sería tocar el generador para
+    /// Los tres, dibujados con rectangulos porque la fuente no trae sus glifos
+    /// y meterlos en la fuente por tres iconos seria tocar el generador para
     /// algo que se dibuja con cuatro `rect`.
     pub(crate) fn pintar_botones(&self, p: &bmo::Pantalla, fondo: u32) {
         for (i, b) in [Boton::Minimizar, Boton::Maximizar, Boton::Cerrar].into_iter().enumerate() {
@@ -336,9 +336,9 @@ impl Marco {
             let cy = by + alto / 2;
             let tinta = if self.encima == Some(b) && b == Boton::Cerrar { 0x00FF_FFFF } else { TEXTO };
             match b {
-                // Una raya. Es el icono universal y no necesita más.
+                // Una raya. Es el icono universal y no necesita mas.
                 Boton::Minimizar => p.rect(cx - 5, cy, 10, 1, tinta),
-                // Un cuadrado hueco; DOS solapados cuando ya está maximizada,
+                // Un cuadrado hueco; DOS solapados cuando ya esta maximizada,
                 // que es como se dice "restaurar" en todas partes.
                 Boton::Maximizar => {
                     if self.maximizada() {
@@ -348,8 +348,8 @@ impl Marco {
                         marco_hueco(p, cx - 4, cy - 4, 9, 9, tinta);
                     }
                 }
-                // El aspa, píxel a píxel: no hay primitiva de línea diagonal y
-                // dieciséis puntos no piden uná.
+                // El aspa, pixel a pixel: no hay primitiva de linea diagonal y
+                // dieciseis puntos no piden una.
                 Boton::Cerrar => {
                     for k in 0..9u32 {
                         p.punto(cx - 4 + k, cy - 4 + k, tinta);
@@ -373,7 +373,7 @@ impl Marco {
     }
 }
 
-/// Un rectángulo de un píxel de grosor. Cuatro `rect` y ya.
+/// Un rectangulo de un pixel de grosor. Cuatro `rect` y ya.
 fn marco_hueco(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32, color: u32) {
     p.rect(x, y, w, 1, color);
     p.rect(x, y + h - 1, w, 1, color);

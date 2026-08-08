@@ -37,7 +37,7 @@ pub struct Class {
     /// la tabla**. Cada entrada es el simbolo manglado que va en esa ranura.
     /// La calcula el parser, que es quien tiene delante la jerarquia.
     pub vtabla: Vec<String>,
-    /// Tamaño total, ya alineado. Lo calcula el parser.
+    /// Tamano total, ya alineado. Lo calcula el parser.
     pub size: u32,
 }
 
@@ -57,8 +57,8 @@ pub struct Method {
     pub body: Vec<Stmt>,
     pub is_virtual: bool,
     pub is_override: bool,
-    /// Método `const`. **Cuesta cero al emitir**: es comprobación del
-    /// frontend y punto. Por eso está en el AST y no llega al descenso.
+    /// Metodo `const`. **Cuesta cero al emitir**: es comprobacion del
+    /// frontend y punto. Por eso esta en el AST y no llega al descenso.
     pub is_const: bool,
     pub access: Access,
     pub class_name: String,
@@ -99,7 +99,7 @@ pub enum TypeSpec {
     Float, Double, Bool,
     Ptr(Box<TypeSpec>),
     Ref(Box<TypeSpec>),
-    /// `T v[n]` — un array de verdad: ocupa `n * tam(T)`, no ocho bytes.
+    /// `T v[n]` -- un array de verdad: ocupa `n * tam(T)`, no ocho bytes.
     Array(Box<TypeSpec>, u32),
     ClassRef(String),
     Template(String, Vec<TypeSpec>),
@@ -136,7 +136,7 @@ pub enum Stmt {
     Expr(Expr),
     Return(Option<Expr>),
     DeclVar(TypeSpec, String, Option<Expr>),
-    /// `P p;` o `P p(1, 2);` — declarar un objeto de clase.
+    /// `P p;` o `P p(1, 2);` -- declarar un objeto de clase.
     ///
     /// Variante propia y no un `DeclVar` con un inicializador raro: construir
     /// **no es asignar**. El parser ya resolvio QUE constructor (`ctor`, el
@@ -147,9 +147,9 @@ pub enum Stmt {
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
     DoWhile(Box<Stmt>, Expr),
-    /// `for(init; cond; inc) cuerpo`. Una **declaración** en el init no cabe
-    /// aquí (init es una expresión): el parser la desazucara a
-    /// `{ T i = …; for(; cond; inc) cuerpo }`, igual que hace el de C.
+    /// `for(init; cond; inc) cuerpo`. Una **declaracion** en el init no cabe
+    /// aqui (init es una expresion): el parser la desazucara a
+    /// `{ T i = ...; for(; cond; inc) cuerpo }`, igual que hace el de C.
     For(Option<Expr>, Option<Expr>, Option<Expr>, Box<Stmt>),
     Switch(Expr, Vec<Case>),
     Block(Vec<Stmt>),
@@ -174,21 +174,21 @@ pub enum Expr {
     BoolLit(bool),
     Var(String),
     Call(String, Vec<Expr>),
-    /// `objeto.metodo(args)` — *(objeto, clase, método, argumentos)*.
+    /// `objeto.metodo(args)` -- *(objeto, clase, metodo, argumentos)*.
     ///
-    /// **La clase viaja en el nodo** porque quien la sabía era el parser, que
-    /// tenía delante el tipo del objeto. El descenso sólo desazucara:
-    /// `P.metodo(&objeto, args…)`. Si tuviera que resolver la clase otra vez,
-    /// sabría de tipos por segunda vez — y dos copias de una resolución
-    /// divergen, que es la misma lección que los offsets.
+    /// **La clase viaja en el nodo** porque quien la sabia era el parser, que
+    /// tenia delante el tipo del objeto. El descenso solo desazucara:
+    /// `P.metodo(&objeto, args...)`. Si tuviera que resolver la clase otra vez,
+    /// sabria de tipos por segunda vez -- y dos copias de una resolucion
+    /// divergen, que es la misma leccion que los offsets.
     MethodCall(Box<Expr>, String, String, Vec<Expr>),
     VirtualCall(Box<Expr>, String, u32, Vec<Expr>), // this, method_name, vtable_offset, args
     New(String, Vec<Expr>),
     Assign(String, Box<Expr>),
-    /// `base.campo` — *(base, nombre, offset, TIPO del campo)*.
+    /// `base.campo` -- *(base, nombre, offset, TIPO del campo)*.
     ///
-    /// El tipo viaja para que el codegen cargue y guarde el tamaño EXACTO. Es
-    /// literalmente el bug que BMO C ya pagó: `pt.x = 10` con `x:int` escribía
+    /// El tipo viaja para que el codegen cargue y guarde el tamano EXACTO. Es
+    /// literalmente el bug que BMO C ya pago: `pt.x = 10` con `x:int` escribia
     /// ocho bytes y pisaba el campo siguiente.
     MemberAccess(Box<Expr>, String, u32, TypeSpec),
     Arrow(Box<Expr>, String, u32, TypeSpec),
@@ -212,18 +212,18 @@ pub enum Expr {
     BitXor(Box<Expr>, Box<Expr>),
     Shl(Box<Expr>, Box<Expr>),
     Shr(Box<Expr>, Box<Expr>),
-    /// `v[i]` sobre una variable, con el **tamaño del elemento** ya resuelto.
+    /// `v[i]` sobre una variable, con el **tamano del elemento** ya resuelto.
     ///
-    /// La escala viaja en el AST porque quien tenía delante el tipo era el
-    /// parser, no el emisor — mismo reparto que `Field` en C. Un codegen que
-    /// tuviera que deducirla otra vez sabría de disposiciones **dos veces**, y
-    /// dos copias de un cálculo de offsets divergen.
+    /// La escala viaja en el AST porque quien tenia delante el tipo era el
+    /// parser, no el emisor -- mismo reparto que `Field` en C. Un codegen que
+    /// tuviera que deducirla otra vez sabria de disposiciones **dos veces**, y
+    /// dos copias de un calculo de offsets divergen.
     Subscript(String, Box<Expr>, u8),
     /// `v[i] = valor`.
     AssignSubscript(String, Box<Expr>, u8, Box<Expr>),
     /// `*p = valor`.
     AssignDeref(Box<Expr>, Box<Expr>),
-    /// `(T)e` — conversión de verdad: trunca o extiende.
+    /// `(T)e` -- conversion de verdad: trunca o extiende.
     Cast(TypeSpec, Box<Expr>),
     Not(Box<Expr>),
     Neg(Box<Expr>),

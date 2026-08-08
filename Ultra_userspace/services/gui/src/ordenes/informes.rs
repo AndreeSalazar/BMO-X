@@ -1,4 +1,4 @@
-//! `info`, `cpu`, `mem` — los datos del sistema, escritos a la rejilla.
+//! `info`, `cpu`, `mem` -- los datos del sistema, escritos a la rejilla.
 //!
 //! Leer un contador no ejerce ningun poder, asi que esto vive en Ring 3 y pide
 //! los datos por `OP_INFO` como cualquier otro proceso.
@@ -8,13 +8,13 @@ use bmo_userland as bmo;
 use crate::escena::salida::{Salida, TINTA_BIEN, TINTA_ECO, TINTA_MAL, TINTA_NORMAL};
 use crate::escena::SAL_COLS;
 
-// ── Los informes del sistema ────────────────────────────────────────────
+// -- Los informes del sistema --------------------------------------------
 //
-// Se pintan aquí, en Ring 3, con datos que el kernel contesta por `OP_INFO`.
+// Se pintan aqui, en Ring 3, con datos que el kernel contesta por `OP_INFO`.
 // El kernel da enteros; las unidades, los porcentajes, las barras y el color
 // son de este lado.
 
-/// Un rótulo de sección, para que el informe no sea un muro de renglones.
+/// Un rotulo de seccion, para que el informe no sea un muro de renglones.
 pub(crate) fn seccion(s: &mut Salida, titulo: &[u8]) {
     s.con_tinta(TINTA_ECO);
     s.texto(b"  ");
@@ -29,7 +29,7 @@ pub(crate) fn seccion(s: &mut Salida, titulo: &[u8]) {
     s.con_tinta(TINTA_NORMAL);
 }
 
-/// Un renglón `etiqueta ....... valor`, con la etiqueta a ancho fijo.
+/// Un renglon `etiqueta ....... valor`, con la etiqueta a ancho fijo.
 pub(crate) fn etiqueta(s: &mut Salida, nombre: &[u8]) {
     s.texto(b"    ");
     s.texto(nombre);
@@ -113,7 +113,7 @@ pub(crate) fn informe_memoria(s: &mut Salida) {
     s.tamano(bmo::info(bmo::INFO_KERNEL_BYTES));
     s.texto(b"   en 0x400000\n");
 
-    // ★ Lo que Ring 3 ha PEDIDO. Las cuatro filas de arriba las sabe el kernel
+    // * Lo que Ring 3 ha PEDIDO. Las cuatro filas de arriba las sabe el kernel
     // porque la memoria la reparte el; esta solo se mueve si un programa
     // ejercio `KIND_MEMORIA`. Por eso vale como prueba: es el kernel diciendo
     // que entrego, no el programa diciendo que recibio.

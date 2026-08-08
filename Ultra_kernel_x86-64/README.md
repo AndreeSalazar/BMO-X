@@ -3,8 +3,8 @@
 **The x86-64 kernel tree of BMO-X.**
 
 This directory is the **CPU-specific** kernel tree for the `x86_64` (AMD64 / Intel 64) architecture.
-Everything in this tree — the bootloader, the 2 consolidated faggin stages, the Ring 0 base, and
-the userland workspace that hangs off it — is built around the **System V AMD64** calling
+Everything in this tree -- the bootloader, the 2 consolidated faggin stages, the Ring 0 base, and
+the userland workspace that hangs off it -- is built around the **System V AMD64** calling
 convention, the **x86-64 segmented memory model** (with paging), and the **UEFI x86-64 boot
 protocol**.
 
@@ -22,17 +22,17 @@ For other CPU architectures, the entire tree is duplicated as `Ultra_kernel_<arc
   per-target.
 - `cabina-core`, `byte-defender`, `timeback`, `hw-profile` are pure data + policy code
   that never touches registers or instructions.
-- `bmo-hal` is the **HAL pattern** — it defines `HalServices` as a vtable of function
-  pointers (init, serial, framebuffer, MMU, GDT, syscall, …) so that any port fills in
+- `bmo-hal` is the **HAL pattern** -- it defines `HalServices` as a vtable of function
+  pointers (init, serial, framebuffer, MMU, GDT, syscall, ...) so that any port fills in
   the implementation for its CPU.
 
 The kernel tree (`Ultra_kernel_x86-64/`), by contrast, is **entirely CPU-specific**:
 
-- `uefi_chain/` — 5 UEFI bootloader layers (EFI target, x86-64 only).
-- `faggin/` — 12 pre-kernel stages. Each one contains x86-64 bare-metal inline asm
+- `uefi_chain/` -- 5 UEFI bootloader layers (EFI target, x86-64 only).
+- `faggin/` -- 12 pre-kernel stages. Each one contains x86-64 bare-metal inline asm
   (`lgdt`, `lidt`, `ltr`, `cpuid`, `wrmsr`, `rdmsr`, `fninit`, `xsave`).
-- `kernel/` — the Ring 0 base, also x86-64 asm (`_start` naked function, CR3 load).
-- `Ultra_userspace/` — Ring 3 side; depends on `boot_context` which currently exposes
+- `kernel/` -- the Ring 0 base, also x86-64 asm (`_start` naked function, CR3 load).
+- `Ultra_userspace/` -- Ring 3 side; depends on `boot_context` which currently exposes
   x86-64 fields (`ioapic_base`, `hpet_base`, `tsc_freq`, `cr3`).
 
 The `_x86-64` suffix makes this contract explicit in the directory name itself: anything
@@ -64,8 +64,8 @@ content. The shared contract is `BootContext` (`boot_context/`) and the wider
 **What does NOT change in a port:**
 
 - `platform/` (entire tree: `abi/`, `shared/`, `drivers/`, `services/`)
-  — by design CPU-agnostic.
-- The `bmo-rt` userspace runtime (one 2-line asm change: `syscall` → `svc #0`).
+  -- by design CPU-agnostic.
+- The `bmo-rt` userspace runtime (one 2-line asm change: `syscall` -> `svc #0`).
 - The BEF format and its loader.
 - The C / C++ / COBOL frontends at the parser level (only the AOT codegen backend
   needs a new variant: `AotAArch64` next to `AotX86_64`).
@@ -81,44 +81,44 @@ MMIO patterns and `volatile` reads. For a port, they would either:
 
 ```
 Ultra_kernel_x86-64/
-├── Cargo.toml              # this tree's workspace root
-├── README.md               # this file
-├── build.ps1               # one-shot build + objcopy + flash script
-├── boot_context/           # CPU-agnostic BootContext struct (lib, no_std)
-├── uefi_chain/             # 5-layer UEFI bootloader (UEFI target)
-├── faggin/                 # 2 consolidated pre-kernel stages
-│   ├── serial_shared/      # COM1 helpers used by both stages
-│   ├── s1_cpu/             # CPU, GDT/IDT/TSS, syscall, SMP and devices
-│   └── s2_mem/             # memory map, page tables and kernel handoff
-├── kernel/                 # Ring 0 base (single .bin, loaded at 0x400000)
-│   ├── Cargo.toml
-│   ├── linker.ld           # kernel linker script (loads at 0x400000)
-│   ├── .cargo/config.toml
-│   └── src/ring0/
-│       ├── core/           # entry, phase, splash
-│       ├── cpu/            # CPUID detection (vendor, family, brand, features)
-│       └── dev/            # console, framebuffer
-├── Ultra_userspace/        # Ring 3 side (sibling workspace, also x86-64)
-└── target/                 # cargo target dir (one per cargo workspace)
-    └── staging/EFI/BOOT/   # BOOTX64.EFI + s1/s2 + kernel + SHA-256 manifest
++-- Cargo.toml              # this tree's workspace root
++-- README.md               # this file
++-- build.ps1               # one-shot build + objcopy + flash script
++-- boot_context/           # CPU-agnostic BootContext struct (lib, no_std)
++-- uefi_chain/             # 5-layer UEFI bootloader (UEFI target)
++-- faggin/                 # 2 consolidated pre-kernel stages
+|   +-- serial_shared/      # COM1 helpers used by both stages
+|   +-- s1_cpu/             # CPU, GDT/IDT/TSS, syscall, SMP and devices
+|   +-- s2_mem/             # memory map, page tables and kernel handoff
++-- kernel/                 # Ring 0 base (single .bin, loaded at 0x400000)
+|   +-- Cargo.toml
+|   +-- linker.ld           # kernel linker script (loads at 0x400000)
+|   +-- .cargo/config.toml
+|   +-- src/ring0/
+|       +-- core/           # entry, phase, splash
+|       +-- cpu/            # CPUID detection (vendor, family, brand, features)
+|       +-- dev/            # console, framebuffer
++-- Ultra_userspace/        # Ring 3 side (sibling workspace, also x86-64)
++-- target/                 # cargo target dir (one per cargo workspace)
+    +-- staging/EFI/BOOT/   # BOOTX64.EFI + s1/s2 + kernel + SHA-256 manifest
 ```
 
 ## Boot flow
 
 ```
 Power-on
-   │
+   |
    ▼
 UEFI firmware (on this machine: Kingston SA400S37120GB SSD, partition "FASTOS-EFI")
-   │
+   |
    ▼  /EFI/BOOT/BOOTX64.EFI  (uefi_chain, 5 layers)
-   │
+   |
    ▼  uefi_chain reads s1_cpu.bin from the ESP and jumps to 0x100000
    ▼
-s1_cpu (0x100000) ──► s2_mem (0x200000) ──► bmo-kernel (0x400000)
-   │
+s1_cpu (0x100000) --► s2_mem (0x200000) --► bmo-kernel (0x400000)
+   |
    ▼
-bmo-kernel (Ring 0 base)  — splash animation, framebuffer init, serial shell
+bmo-kernel (Ring 0 base)  -- splash animation, framebuffer init, serial shell
 ```
 
 ## Build
@@ -157,7 +157,7 @@ replacing Ventoy itself. A Ventoy-compatible BMO `.img` remains a separate deliv
   Each stage is 4-5 KB raw because the stages are single-purpose and the linker drops
   anything not used.
 - **kernel**: `opt-level = 3` because the kernel hosts the splash animation loop, the
-  framebuffer blit, and the serial shell — all code that runs forever and benefits
+  framebuffer blit, and the serial shell -- all code that runs forever and benefits
   from speed over size.
 
 ### Cargo workspaces
@@ -166,10 +166,10 @@ There are **three nested workspaces** at play here:
 
 1. The top-level BMO workspace lists shared crates plus `boot_context` and `kernel`.
    Target-specific boot crates remain isolated because they use different targets.
-2. `Ultra_kernel_x86-64/Cargo.toml` — the **kernel sub-workspace**, listing
+2. `Ultra_kernel_x86-64/Cargo.toml` -- the **kernel sub-workspace**, listing
    `boot_context/` and `kernel/`. faggin stages are NOT members (they each have their
    own `[workspace]` stub to keep them isolated).
-3. `Ultra_kernel_x86-64/uefi_chain/Cargo.toml` — the **UEFI sub-workspace**, listing
+3. `Ultra_kernel_x86-64/uefi_chain/Cargo.toml` -- the **UEFI sub-workspace**, listing
    just `uefi-chain/`. Separate from the kernel sub-workspace because it targets
    `x86_64-unknown-uefi`, which would otherwise confuse the bare-metal linker.
 

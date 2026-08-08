@@ -1,11 +1,11 @@
-//! `BmoHandle` — handle opaco 64-bit con generación.
+//! `BmoHandle` -- handle opaco 64-bit con generacion.
 //!
 //! Layout:
 //! ```text
 //!   bit 63        : tag        (0 = recurso, 1 = canal/cola)
-//!   bits 62..56   : kind       (7 bits — 128 tipos)
-//!   bits 55..40   : generation (16 bits — invalida UAF)
-//!   bits 39..0    : index      (40 bits — 1 trillón de slots)
+//!   bits 62..56   : kind       (7 bits -- 128 tipos)
+//!   bits 55..40   : generation (16 bits -- invalida UAF)
+//!   bits 39..0    : index      (40 bits -- 1 trillon de slots)
 //! ```
 
 use super::kind::HandleKind;
@@ -18,8 +18,8 @@ pub struct BmoHandle(pub bx_u64);
 impl BmoHandle {
     pub const NULL: Self = Self(0);
 
-    /// Handle inválido (distinto de NULL para detectar errores).
-    /// Generación = 0xFFFF, index = 0xFFF... — nunca se asigna un handle real.
+    /// Handle invalido (distinto de NULL para detectar errores).
+    /// Generacion = 0xFFFF, index = 0xFFF... -- nunca se asigna un handle real.
     pub const INVALID: Self = Self(0x0000_FFFF_FFFF_FFFF);
 
     #[inline(always)]
@@ -51,7 +51,7 @@ impl BmoHandle {
         ((self.0 >> 56) & 0x7F) as bx_u8
     }
 
-    /// Decodifica el `HandleKind`. `None` si el código es desconocido.
+    /// Decodifica el `HandleKind`. `None` si el codigo es desconocido.
     #[inline(always)]
     pub const fn kind(self) -> Option<HandleKind> {
         HandleKind::from_code(self.kind_code())
@@ -67,7 +67,7 @@ impl BmoHandle {
         self.0 & 0x000000FF_FFFFFFFF
     }
 
-    /// Verifica que el handle es del kind esperado. Útil para asserts en hot paths.
+    /// Verifica que el handle es del kind esperado. Util para asserts en hot paths.
     #[inline(always)]
     pub fn is_kind(self, expected: HandleKind) -> bool {
         self.kind_code() == expected.code()

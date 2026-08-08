@@ -37,7 +37,7 @@ pub fn delay_ms(ms: u64) {
     let target_cycles = if freq > 0 {
         (freq / 1000) * ms
     } else {
-        // Fallback genérico a 3.7 GHz
+        // Fallback generico a 3.7 GHz
         3_700_000 * ms
     };
     
@@ -60,7 +60,7 @@ pub fn beep(freq_hz: u32, duration_ms: u32) {
     beep_ex(freq_hz, duration_ms, vol);
 }
 
-/// Emite un tono en el PC Speaker con volumen explícito.
+/// Emite un tono en el PC Speaker con volumen explicito.
 /// - volume == 0: Silencio
 /// - volume <= 50: Volumen bajo (PIT Modo 2)
 /// - volume > 50: Volumen alto (PIT Modo 3)
@@ -96,7 +96,7 @@ pub fn beep_ex(freq_hz: u32, duration_ms: u32, volume: u8) {
     }
 }
 
-/// Reproduce la melodía típica de logon de Windows 10/11 (pentatónica de G# mayor).
+/// Reproduce la melodia tipica de logon de Windows 10/11 (pentatonica de G# mayor).
 pub fn play_logon_chime() {
     // G#4 (415 Hz), D#5 (622 Hz), C#5 (554 Hz), G#5 (830 Hz)
     beep(415, 120);

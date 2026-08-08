@@ -11,9 +11,9 @@ mod agregados;
 /// bytes; leer es ESPERAR, guardar lo que sobra y decidir que significa lo que
 /// alguien tecleo. Tres problemas que la salida no tiene.
 mod entrada;
-/// El CATÁLOGO de funciones sintetizadas: nombre → los bytes que lo
-/// implementan. Salió de aquí porque dentro no se sabe qué es una expresión de
-/// C — sólo hay nombres y código — y esa frontera se ve en que ese fichero no
+/// El CATALOGO de funciones sintetizadas: nombre -> los bytes que lo
+/// implementan. Salio de aqui porque dentro no se sabe que es una expresion de
+/// C -- solo hay nombres y codigo -- y esa frontera se ve en que ese fichero no
 /// escribe `self` ni una vez. La PASADA sobre las relocs se queda en este.
 mod sintetizadas;
 
@@ -22,14 +22,14 @@ type Result<T> = core::result::Result<T, CError>;
 /// Target execution environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetProfile {
-    /// Ring 0. **NO COMPILA, y se dice por qué** — ver
+    /// Ring 0. **NO COMPILA, y se dice por que** -- ver
     /// [`Codegen::emit_call_to_syscall_stub`].
     ///
-    /// Se conserva la variante en vez de borrarla porque la pregunta *"¿puedo
+    /// Se conserva la variante en vez de borrarla porque la pregunta *"puedo
     /// compilar C para Ring 0?"* se la va a hacer alguien otra vez, y un
-    /// rechazo con su motivo contesta mejor que un enum donde la opción no
-    /// aparece. Es la misma decisión que tomó COBOL con el File I/O antes de
-    /// tenerlo: rechazar diciéndolo, en vez de compilar un `READ` que no lee.
+    /// rechazo con su motivo contesta mejor que un enum donde la opcion no
+    /// aparece. Es la misma decision que tomo COBOL con el File I/O antes de
+    /// tenerlo: rechazar diciendolo, en vez de compilar un `READ` que no lee.
     Ring0Kernel,
     /// Ring 3: emit `__bmo_syscall_stub` and call through it.
     Ring3App,
@@ -83,7 +83,7 @@ struct Codegen {
     function_offsets: HashMap<String, usize>,
     /// Nombres de TODAS las funciones del programa (para distinguir una
     /// llamada directa de una indirecta por puntero, y la decadencia
-    /// función→dirección).
+    /// funcion->direccion).
     known_functions: std::collections::HashSet<String>,
     /// Los TIPOS de los parametros y del retorno de cada funcion.
     ///
@@ -91,20 +91,20 @@ struct Codegen {
     /// llamante tiene que saber cuantas ranuras empuja, y eso lo dice el
     /// PARAMETRO, no la expresion que se le pasa. Antes solo se guardaban los
     /// nombres, asi que pasar un struct empujaba una palabra y la funcion
-    /// recibia el primer campo y basura detras — sin una palabra de aviso.
+    /// recibia el primer campo y basura detras -- sin una palabra de aviso.
     firmas: std::collections::HashMap<String, (Vec<TypeSpec>, TypeSpec)>,
-    /// Sitios donde hay que escribir la dirección (rip-relativa) de una
-    /// función: `lea rax, [rip+func]`. Habilita punteros a función.
+    /// Sitios donde hay que escribir la direccion (rip-relativa) de una
+    /// funcion: `lea rax, [rip+func]`. Habilita punteros a funcion.
     func_addr_fixups: Vec<(usize, String)>,
     break_target: Vec<u32>,
     continue_target: Vec<u32>,
     var_offsets: HashMap<String, (i32, TypeSpec)>,
-    // bytes de stack locales de la función actual (arrays/structs con tamaño REAL)
+    // bytes de stack locales de la funcion actual (arrays/structs con tamano REAL)
     frame_size: i32,
-    /// ¿La función que se está emitiendo declara `...`?
+    /// La funcion que se esta emitiendo declara `...`?
     es_variadica: bool,
-    /// Ranuras que ocupan sus parámetros CON NOMBRE. Justo detrás empiezan los
-    /// variádicos, porque los argumentos van seguidos en la pila.
+    /// Ranuras que ocupan sus parametros CON NOMBRE. Justo detras empiezan los
+    /// variadicos, porque los argumentos van seguidos en la pila.
     ranuras_con_nombre: i32,
     struct_layouts: HashMap<String, Vec<(String, u32, u32)>>,
     struct_sizes: HashMap<String, u32>,
@@ -115,36 +115,36 @@ struct Codegen {
     global_offsets: HashMap<String, (u32, TypeSpec)>,
     global_data: Vec<u8>,
     global_fixups: Vec<(usize, String)>,
-    /// ★ Punteros DENTRO de `.data` que hay que rellenar con la dirección de una
-    /// cadena de `.rodata`: `(offset en .data, índice en `strings`)`.
+    /// * Punteros DENTRO de `.data` que hay que rellenar con la direccion de una
+    /// cadena de `.rodata`: `(offset en .data, indice en `strings`)`.
     ///
     /// Son relocations, no fixups del compilador, y la diferencia es el motivo
     /// de que exista esta lista: un `lea [rip+disp]` lo puede resolver el
     /// compilador porque la distancia entre dos secciones de la misma imagen es
-    /// fija, pero **un puntero guardado en un dato necesita la dirección
-    /// absoluta**, y ésa depende de dónde cargue el programa. Eso sólo lo sabe
+    /// fija, pero **un puntero guardado en un dato necesita la direccion
+    /// absoluta**, y esa depende de donde cargue el programa. Eso solo lo sabe
     /// el cargador.
     ///
-    /// Se acumulan aquí y se convierten en `Relocation` en `patch_all_fixups`,
+    /// Se acumulan aqui y se convierten en `Relocation` en `patch_all_fixups`,
     /// que es donde ya se conocen los offsets de las cadenas.
     relocs_a_cadena: Vec<(u32, usize)>,
-    /// ★ Este programa RECLAMA LA PANTALLA. Lo deduce el compilador; acaba en
+    /// * Este programa RECLAMA LA PANTALLA. Lo deduce el compilador; acaba en
     /// `BefFlags::WANTS_SCREEN` y lo lee el compositor antes de lanzarlo.
     quiere_pantalla: bool,
-    /// Las relocations ya resueltas que van en la sección `Relocs` del BEF.
+    /// Las relocations ya resueltas que van en la seccion `Relocs` del BEF.
     relocs: Vec<bmo_abi::bef::relocations::Relocation>,
     instruction_end: usize,
     string_data_end: usize,
     /// Functions from userland_ring3 that need imports.
     stdlib_imports: std::collections::HashSet<String>,
-    /// Enum constants: name → integer value.
+    /// Enum constants: name -> integer value.
     enum_values: HashMap<String, i64>,
-    /// Tabla de instrucciones sem-asm (opcodes leídos de la TOML de forge).
+    /// Tabla de instrucciones sem-asm (opcodes leidos de la TOML de forge).
     isa: bmo_sem_asm::Instructions,
-    /// Tabla de intrínsecos (la fusión __nombre() ↔ bytes exactos).
+    /// Tabla de intrinsecos (la fusion __nombre() <-> bytes exactos).
     intrinsics: bmo_sem_asm::Intrinsics,
-    /// Errores acumulados durante la emisión (p.ej. intrínseco desconocido) —
-    /// el compilador FALLA con mensaje, jamás emite bytes adivinados.
+    /// Errores acumulados durante la emision (p.ej. intrinseco desconocido) --
+    /// el compilador FALLA con mensaje, jamas emite bytes adivinados.
     errors: Vec<String>,
 }
 
@@ -211,18 +211,18 @@ impl Codegen {
         }
         // allocate space for global variables
         for decl in &program.globals {
-            // ★ Un global con LISTA: `int t[4] = {1,2,3,4}`.
+            // * Un global con LISTA: `int t[4] = {1,2,3,4}`.
             //
             // Las escrituras llegan aplanadas del parser (offset absoluto,
             // tipo del subobjeto, valor), asi que aqui solo hay que evaluar
             // cada valor **en tiempo de compilacion** y ponerlo en su sitio.
             // El objeto entero se reserva a cero primero, que es lo que dice C
-            // de lo que la lista no menciona — y por eso `{[2] = 30}` deja los
+            // de lo que la lista no menciona -- y por eso `{[2] = 30}` deja los
             // huecos a cero sin que nadie los escriba.
             if let GlobalDecl::VarLista(typ, name, escrituras) = decl {
                 // `self.type_stack_size` y NO `typ.stack_size()`: ver el motivo
-                // en el `Var` de abajo. El método del `TypeSpec` devuelve CERO
-                // para un `StructRef`, así que una tabla de structs habría
+                // en el `Var` de abajo. El metodo del `TypeSpec` devuelve CERO
+                // para un `StructRef`, asi que una tabla de structs habria
                 // reservado cero bytes.
                 let size = self.type_stack_size(typ) as usize;
                 let pad = (8 - self.global_data.len() % 8) % 8;
@@ -230,12 +230,12 @@ impl Codegen {
                 let off = self.global_data.len() as u32;
                 for _ in 0..size { self.global_data.push(0); }
                 for e in escrituras {
-                    // ★ UNA CADENA en la tabla -> RELOCATION.
+                    // * UNA CADENA en la tabla -> RELOCATION.
                     //
                     // `char *nombres[] = {"imp", "cyberdemon"}` y, en DOOM,
                     // `char *sprnames[]`. Cada elemento es un puntero y cada
                     // puntero es una reloc: el hueco queda a cero y el cargador
-                    // escribe la dirección.
+                    // escribe la direccion.
                     if let Expr::StringLit(s) = &e.valor {
                         let idx = match self.strings.iter().position(|t| t == s) {
                             Some(i) => i,
@@ -251,9 +251,9 @@ impl Codegen {
                         // Lo que sigue sin poderse poner. El caso vivo es una
                         // tabla de punteros a FUNCION (el campo `action` de cada
                         // `state_t` de DOOM): hace falta la misma relocation
-                        // pero con destino en `.code`, y el codegen todavía no
-                        // sabe el offset de una función en este punto — se
-                        // registran más abajo, al emitirlas.
+                        // pero con destino en `.code`, y el codegen todavia no
+                        // sabe el offset de una funcion en este punto -- se
+                        // registran mas abajo, al emitirlas.
                         self.errors.push(format!(
                             "en la tabla global '{name}', el valor del offset {} no es una \
                              constante entera ni una cadena. Si es la direccion de una funcion, \
@@ -280,47 +280,47 @@ impl Codegen {
                 continue;
             }
             if let GlobalDecl::Var(typ, name, init) = decl {
-                // ★ `self.type_stack_size` y NO `typ.stack_size()`, y la
-                // diferencia era un bug: el método del `TypeSpec` no conoce los
+                // * `self.type_stack_size` y NO `typ.stack_size()`, y la
+                // diferencia era un bug: el metodo del `TypeSpec` no conoce los
                 // layouts de struct y devuelve **CERO** para un `StructRef`
                 // (`ast/types.rs`), mientras el del `Codegen` los consulta en
                 // `struct_sizes`.
                 //
                 // O sea que un `struct P g;` global reservaba **cero bytes**, y
-                // el global declarado justo después caía ENCIMA. La sonda:
+                // el global declarado justo despues caia ENCIMA. La sonda:
                 //
                 //     struct P { int x; int y; };  struct P g;
                 //     int centinela = 12345;
                 //     g.x = 7;   ->  centinela pasaba a valer 7
                 //
-                // Compilaba, ejecutaba y daba un número plausible. Los tres
-                // tests que había en `globales.rs` no lo veían porque sólo
+                // Compilaba, ejecutaba y daba un numero plausible. Los tres
+                // tests que habia en `globales.rs` no lo veian porque solo
                 // comprobaban que el programa COMPILARA.
                 //
-                // Aquí se puede usar el del `Codegen` porque los layouts se
+                // Aqui se puede usar el del `Codegen` porque los layouts se
                 // calculan en el bucle de arriba, antes que este.
                 let size = self.type_stack_size(typ) as u32;
                 let pad = (8 - self.global_data.len() as u32 % 8) % 8;
                 for _ in 0..pad { self.global_data.push(0); }
                 let off = self.global_data.len() as u32;
-                // ★ `None` y `Some(otra_cosa)` NO son lo mismo, y hasta hoy se
+                // * `None` y `Some(otra_cosa)` NO son lo mismo, y hasta hoy se
                 // trataban igual: ceros.
                 //
                 // Un global sin inicializador vale cero, y eso es correcto en C.
                 // Pero un global CON inicializador que este codegen no sabe
                 // convertir tambien se rellenaba de ceros **sin decir nada**, y
-                // eso hacía que
+                // eso hacia que
                 //
                 //     char *texto = "eltexto";
                 //     printf("%s", texto);
                 //
                 // compilara e imprimiera los bytes de la seccion de codigo: el
                 // puntero valia 0, y el byte 0 de la imagen es el `push rbp` de
-                // la primera funcion. Se veia `UH\x89å…` y ningun test lo
-                // miraba, porque `globales.rs` sólo comprobaba que compilara.
+                // la primera funcion. Se veia `UH\x89a...` y ningun test lo
+                // miraba, porque `globales.rs` solo comprobaba que compilara.
                 //
-                // Ahora se dice. Un cero inventado es la peor respuesta a "no sé
-                // hacer esto": es un valor legítimo, así que el error viaja
+                // Ahora se dice. Un cero inventado es la peor respuesta a "no se
+                // hacer esto": es un valor legitimo, asi que el error viaja
                 // hasta donde ya no se puede rastrear.
                 let literal = init.as_ref().and_then(Self::constante_de);
                 match (init, literal) {
@@ -337,24 +337,24 @@ impl Codegen {
                     (None, _) => {
                         for _ in 0..size { self.global_data.push(0); }
                     }
-                    // ★ UNA CADENA: ya no es un error, es una RELOCATION.
+                    // * UNA CADENA: ya no es un error, es una RELOCATION.
                     //
-                    // `char *mapa = "1111…"` tiene que guardar la DIRECCION de
-                    // la cadena, y ésa depende de dónde cargue el programa. El
-                    // compilador deja el hueco a cero y anota quién lo rellena;
-                    // lo escribe el cargador, que es el único que sabe la VA.
+                    // `char *mapa = "1111..."` tiene que guardar la DIRECCION de
+                    // la cadena, y esa depende de donde cargue el programa. El
+                    // compilador deja el hueco a cero y anota quien lo rellena;
+                    // lo escribe el cargador, que es el unico que sabe la VA.
                     //
-                    // Esto es lo que hacía falta para que el mapa del raycaster
+                    // Esto es lo que hacia falta para que el mapa del raycaster
                     // pudiera vivir donde estaba escrito.
                     (Some(Expr::StringLit(s)), _) => {
                         let idx = match self.strings.iter().position(|t| t == s) {
                             Some(i) => i,
                             None => {
-                                // `collect_strings` sólo recorre FUNCIONES, así
-                                // que una cadena que aparece únicamente en un
-                                // global no entraría nunca en la tabla. Se
-                                // interna aquí; el dedup es por valor, así que
-                                // si además sale en una función, es la misma.
+                                // `collect_strings` solo recorre FUNCIONES, asi
+                                // que una cadena que aparece unicamente en un
+                                // global no entraria nunca en la tabla. Se
+                                // interna aqui; el dedup es por valor, asi que
+                                // si ademas sale en una funcion, es la misma.
                                 self.strings.push(s.clone());
                                 self.strings.len() - 1
                             }
@@ -381,8 +381,8 @@ impl Codegen {
             }
         }
         self.collect_strings(program);
-        // registrar todos los nombres de función ANTES de emitir: una llamada
-        // puede referir a una función definida más abajo (forward reference).
+        // registrar todos los nombres de funcion ANTES de emitir: una llamada
+        // puede referir a una funcion definida mas abajo (forward reference).
         for func in &program.functions {
             self.known_functions.insert(func.name.clone());
             self.firmas.insert(
@@ -402,17 +402,17 @@ impl Codegen {
             self.emit_function(func);
         }
         self.is_entry_function = false;
-        // ★ Sin `main` no hay programa.
+        // * Sin `main` no hay programa.
         //
-        // Antes, un fichero vacío —o uno con funciones pero sin punto de
-        // entrada— producía un BEF de 8 240 bytes con `entry_offset = 0`, o
-        // sea apuntando a lo primero que hubiera en la sección de código. Se
-        // escribía sin quejarse. Un binario con un punto de entrada inventado
+        // Antes, un fichero vacio --o uno con funciones pero sin punto de
+        // entrada-- producia un BEF de 8 240 bytes con `entry_offset = 0`, o
+        // sea apuntando a lo primero que hubiera en la seccion de codigo. Se
+        // escribia sin quejarse. Un binario con un punto de entrada inventado
         // es peor que no tener binario: falla en el metal y no en la
-        // compilación, que es donde se puede leer el motivo.
+        // compilacion, que es donde se puede leer el motivo.
         //
-        // Ring 0 se exceptúa porque un módulo de kernel puede no tener `main`
-        // — hoy nadie construye ese perfil, pero la puerta se deja abierta
+        // Ring 0 se exceptua porque un modulo de kernel puede no tener `main`
+        // -- hoy nadie construye ese perfil, pero la puerta se deja abierta
         // con su motivo en vez de cerrada por accidente.
         if self.target == TargetProfile::Ring3App
             && !program.functions.iter().any(|f| f.name == "main")
@@ -422,14 +422,14 @@ impl Codegen {
                     .to_string(),
             );
         }
-        // ★ Las funciones SINTETIZADAS. Ver `SINTETIZABLES` para el por qué.
+        // * Las funciones SINTETIZADAS. Ver `SINTETIZABLES` para el por que.
         //
-        // Aquí estaba cableado el `syscall; ret` del stub, emitido SIEMPRE que
+        // Aqui estaba cableado el `syscall; ret` del stub, emitido SIEMPRE que
         // el perfil fuera Ring 3. Ya no hace falta el `if`: el stub se inyecta
-        // porque alguien lo llama, no porque el perfil lo sugiera —Ring 0 hace
-        // el `syscall` en línea y por eso nunca crea la reloc—, y de paso un
+        // porque alguien lo llama, no porque el perfil lo sugiera --Ring 0 hace
+        // el `syscall` en linea y por eso nunca crea la reloc--, y de paso un
         // programa de Ring 3 que no hace ni una syscall deja de llevar tres
-        // bytes muertos al final del código.
+        // bytes muertos al final del codigo.
         self.sintetizar_referidas();
         // Saltos hacia atras (bucles): se resuelven aqui, cuando ya se
         // conocen todas las etiquetas.
@@ -439,7 +439,7 @@ impl Codegen {
         self.patch_func_addr_fixups();
         self.patch_goto_relocs();
         self.patch_all_fixups();
-        // Errores acumulados durante la emisión: fallar con claridad, no
+        // Errores acumulados durante la emision: fallar con claridad, no
         // entregar un binario que hace algo distinto de lo escrito.
         if let Some(message) = self.errors.first() {
             return Err(CError::new(0, message.clone()));
@@ -447,14 +447,14 @@ impl Codegen {
         Ok(())
     }
 
-    /// Segunda de las tres copias que había de la regla de disposición. Ahora
-    /// las tres llaman a `bmo_abi::types::disposicion`, que es donde está
-    /// escrita — y con sus tests.
+    /// Segunda de las tres copias que habia de la regla de disposicion. Ahora
+    /// las tres llaman a `bmo_abi::types::disposicion`, que es donde esta
+    /// escrita -- y con sus tests.
     ///
     /// Que el codegen la recalcule en vez de recibirla del parser **no es
-    /// duplicación**: es lo que hace que un frontend distinto (C++) que ya
-    /// calculó offsets para sus nodos `Field` no pueda imponer una
-    /// disposición propia sin que se note.
+    /// duplicacion**: es lo que hace que un frontend distinto (C++) que ya
+    /// calculo offsets para sus nodos `Field` no pueda imponer una
+    /// disposicion propia sin que se note.
     fn build_struct_layout(&mut self, name: &str, members: &[StructMember]) {
         let mut layout = Vec::new();
         let mut d = bmo_abi::types::Disposicion::nueva();
@@ -505,15 +505,15 @@ impl Codegen {
             Stmt::Printf(s) | Stmt::PrintfLn(s) => {
                 if !self.strings.iter().any(|t| *t == *s) { self.strings.push(s.clone()); }
             }
-            // ★ LAS CONDICIONES TAMBIÉN. Estaban descartadas —el `_` de cada
-            // una— así que un literal dentro de una condición nunca entraba en
-            // la tabla, y al emitirlo el `unwrap_or(0)` lo hacía apuntar **a la
+            // * LAS CONDICIONES TAMBIEN. Estaban descartadas --el `_` de cada
+            // una-- asi que un literal dentro de una condicion nunca entraba en
+            // la tabla, y al emitirlo el `unwrap_or(0)` lo hacia apuntar **a la
             // primera cadena del programa**.
             //
-            // Llevaba ahí desde siempre y no se veía porque hasta hoy no había
-            // forma de poner un literal en una condición: hacía falta algo como
-            // `if (strcmp(s, "salir") == 0)`, y `strcmp` no existía. El primer
-            // test que lo pisó decía `menor` y no imprimía nada — comparando
+            // Llevaba ahi desde siempre y no se veia porque hasta hoy no habia
+            // forma de poner un literal en una condicion: hacia falta algo como
+            // `if (strcmp(s, "salir") == 0)`, y `strcmp` no existia. El primer
+            // test que lo piso decia `menor` y no imprimia nada -- comparando
             // "abc" contra el formato de un `printf` anterior.
             //
             // Un `unwrap_or(0)` sobre una tabla de direcciones es exactamente
@@ -558,11 +558,11 @@ impl Codegen {
                 | Expr::Shl(a,b) | Expr::Shr(a,b) => { self.collect_expr_strings(a); self.collect_expr_strings(b); }
             Expr::Conditional(c,t,f) => { self.collect_expr_strings(c); self.collect_expr_strings(t); self.collect_expr_strings(f); }
             Expr::Call(nombre, args) => {
-                // ★ AQUI SE DEDUCE `WANTS_SCREEN`, y tiene que ser aqui.
+                // * AQUI SE DEDUCE `WANTS_SCREEN`, y tiene que ser aqui.
                 //
                 // La tentacion es mirarlo en `Expr::Syscall`, donde esta el
                 // INVOKE. No sirve: `bmo_valor` es una FUNCION C de verdad
-                // —vive en `<bmo/bmo.h>`— asi que dentro de ella la operacion es
+                // --vive en `<bmo/bmo.h>`-- asi que dentro de ella la operacion es
                 // un PARAMETRO, no un literal. En el sitio de la llamada si se
                 // ve el numero.
                 //
@@ -592,52 +592,52 @@ impl Codegen {
         }
     }
 
-    // Aquí vivía `pad_to_page`, que rellenaba cada tramo con `int3` hasta la
-    // siguiente frontera de página. Se borra con el relleno: ya no hay a quién
-    // rellenar. La intención buena que tenía —que un CPU que se salga del
-    // código pare en seco en vez de deslizarse por ceros— no se pierde: el
-    // cargador pone a cero los marcos y el resto de la página tras el código no
-    // está mapeado como ejecutable por nadie. Y el arnés de pruebas rellena los
-    // huecos entre secciones con `0xCC` por esa misma razón.
+    // Aqui vivia `pad_to_page`, que rellenaba cada tramo con `int3` hasta la
+    // siguiente frontera de pagina. Se borra con el relleno: ya no hay a quien
+    // rellenar. La intencion buena que tenia --que un CPU que se salga del
+    // codigo pare en seco en vez de deslizarse por ceros-- no se pierde: el
+    // cargador pone a cero los marcos y el resto de la pagina tras el codigo no
+    // esta mapeado como ejecutable por nadie. Y el arnes de pruebas rellena los
+    // huecos entre secciones con `0xCC` por esa misma razon.
 
     /// Coloca las cadenas y los globales, y parchea los `lea [rip+disp]`
     /// que los alcanzan.
     ///
-    /// # Por qué hay relleno a página
+    /// # Por que hay relleno a pagina
     ///
     /// Estos desplazamientos se calculan asumiendo que los datos van
-    /// PEGADOS detrás del código. Pero el cargador del kernel
-    /// (`ring0/proc.rs`) coloca cada sección en la PÁGINA siguiente:
-    /// `va_cursor = va_start + pages * PAGE`. Con el código a 500 bytes, el
+    /// PEGADOS detras del codigo. Pero el cargador del kernel
+    /// (`ring0/proc.rs`) coloca cada seccion en la PAGINA siguiente:
+    /// `va_cursor = va_start + pages * PAGE`. Con el codigo a 500 bytes, el
     /// compilador apunta al byte 500 y el cargador pone la cadena en el
-    /// 4096 — un `%s` leería basura EN HARDWARE.
+    /// 4096 -- un `%s` leeria basura EN HARDWARE.
     ///
-    /// Rellenando cada tramo hasta una página, las dos cuentas coinciden.
-    /// La solución definitiva son relocations en el BEF; esto es el acuerdo
+    /// Rellenando cada tramo hasta una pagina, las dos cuentas coinciden.
+    /// La solucion definitiva son relocations en el BEF; esto es el acuerdo
     /// correcto mientras no existan, y no depende de que el cargador cambie.
     ///
-    /// NOTA: esto NO lo puede detectar el emulador de pruebas, porque allí
+    /// NOTA: esto NO lo puede detectar el emulador de pruebas, porque alli
     /// las secciones se concatenan tal cual. Es un fallo que solo aparece en
-    /// metal — la razón por la que un banco de pruebas localiza bugs pero no
-    /// sustituye a arrancar la máquina.
-    /// El valor de una expresión **en tiempo de compilación**, o `None`.
+    /// metal -- la razon por la que un banco de pruebas localiza bugs pero no
+    /// sustituye a arrancar la maquina.
+    /// El valor de una expresion **en tiempo de compilacion**, o `None`.
     ///
-    /// Es lo único que puede ir dentro de un dato inicializado: el `.bex` se
-    /// escribe con los bytes ya puestos, así que aquí no hay dónde ejecutar
-    /// nada. Un `None` no es un cero — quien llama tiene que decirlo.
+    /// Es lo unico que puede ir dentro de un dato inicializado: el `.bex` se
+    /// escribe con los bytes ya puestos, asi que aqui no hay donde ejecutar
+    /// nada. Un `None` no es un cero -- quien llama tiene que decirlo.
     ///
-    /// # Qué entra, y por qué esto y no un evaluador entero
+    /// # Que entra, y por que esto y no un evaluador entero
     ///
-    /// Enteros, su negación, y las operaciones que aparecen de verdad en una
+    /// Enteros, su negacion, y las operaciones que aparecen de verdad en una
     /// tabla escrita a mano: `{1, -2, 3*4, MAX-1}`. Las constantes de `enum`
-    /// **no** se resuelven aquí porque `enum_values` es estado del `Codegen` y
-    /// esto es una función asociada; es el siguiente paso obvio y está dicho
+    /// **no** se resuelven aqui porque `enum_values` es estado del `Codegen` y
+    /// esto es una funcion asociada; es el siguiente paso obvio y esta dicho
     /// para que no parezca un olvido.
     ///
     /// No se plegaron divisiones por cero ni desbordamientos con `wrapping`:
     /// una tabla con `1/0` dentro es un error del programa, y contestar algo
-    /// sería inventarlo. Con `checked_div` devolvemos `None` y el llamante
-    /// dice que ese valor no es constante — un mensaje impreciso, pero no una
+    /// seria inventarlo. Con `checked_div` devolvemos `None` y el llamante
+    /// dice que ese valor no es constante -- un mensaje impreciso, pero no una
     /// mentira.
     fn constante_de(e: &Expr) -> Option<i64> {
         match e {
@@ -658,66 +658,66 @@ impl Codegen {
         }
     }
 
-    /// Redondea hacia arriba al múltiplo de página. La cuenta del cargador.
+    /// Redondea hacia arriba al multiplo de pagina. La cuenta del cargador.
     fn hasta_pagina(n: usize) -> usize {
         const PAGE: usize = 4096;
         (n + PAGE - 1) & !(PAGE - 1)
     }
 
     fn patch_all_fixups(&mut self) {
-        // ★ EL BÚFER VA APRETADO Y LOS DESPLAZAMIENTOS SE CALCULAN CON LA REGLA
-        // DEL CARGADOR. Antes se rellenaba cada tramo hasta la página, y ese
+        // * EL BUFER VA APRETADO Y LOS DESPLAZAMIENTOS SE CALCULAN CON LA REGLA
+        // DEL CARGADOR. Antes se rellenaba cada tramo hasta la pagina, y ese
         // relleno viajaba DENTRO DEL FICHERO.
         //
-        // El problema que resolvía era real: estos `lea [rip+disp]` se contaban
-        // asumiendo que los datos van PEGADOS detrás del código, y el cargador
+        // El problema que resolvia era real: estos `lea [rip+disp]` se contaban
+        // asumiendo que los datos van PEGADOS detras del codigo, y el cargador
         // (`ring0/task/proc.rs`) hace `va_cursor = va_start + pages * PAGE`, o
-        // sea que pone cada sección en la página siguiente. Con el código a 500
+        // sea que pone cada seccion en la pagina siguiente. Con el codigo a 500
         // bytes, el compilador apuntaba al byte 500 y el cargador dejaba la
-        // cadena en el 4096: un `%s` leía basura EN HARDWARE.
+        // cadena en el 4096: un `%s` leia basura EN HARDWARE.
         //
-        // Rellenar hacía coincidir las dos cuentas. Pero **es la cuenta lo que
-        // había que arreglar, no el tamaño del fichero**: ahora el compilador
-        // modela la regla del cargador —tres sumas— y no necesita empujar 2 642
-        // bytes de `0xCC` por sección para que el mundo cuadre.
+        // Rellenar hacia coincidir las dos cuentas. Pero **es la cuenta lo que
+        // habia que arreglar, no el tamano del fichero**: ahora el compilador
+        // modela la regla del cargador --tres sumas-- y no necesita empujar 2 642
+        // bytes de `0xCC` por seccion para que el mundo cuadre.
         //
         // Lo que esto quita, MEDIDO:
         //
-        //   · los seis ejemplos, de 107 184 a 84 952 bytes (−20,7%), y todo
-        //     ahorro de código futuro deja de ser invisible bajo el relleno.
+        //   - los seis ejemplos, de 107 184 a 84 952 bytes (-20,7%), y todo
+        //     ahorro de codigo futuro deja de ser invisible bajo el relleno.
         //     `holac.bex`: 12 376 -> 8 432
-        //   · el tercer `pad_to_page`, que rellenaba la sección `data` — la
-        //     última, sin nada detrás. Relleno por relleno.
+        //   - el tercer `pad_to_page`, que rellenaba la seccion `data` -- la
+        //     ultima, sin nada detras. Relleno por relleno.
         //
-        // Lo que NO quita, y conviene tenerlo escrito con su número porque es
-        // el siguiente escalón: **el BEF sigue alineando los `file_offset` a
-        // 4096**. En `holac.bex` eso son 3 952 bytes de hueco antes del código
-        // y 2 642 antes de rodata — o sea que **6 594 de sus 8 432 bytes son
-        // agujeros**. El campo `alignment` de una sección se usa para las dos
-        // cosas a la vez, y sólo la dirección VIRTUAL lo necesita: el cargador
+        // Lo que NO quita, y conviene tenerlo escrito con su numero porque es
+        // el siguiente escalon: **el BEF sigue alineando los `file_offset` a
+        // 4096**. En `holac.bex` eso son 3 952 bytes de hueco antes del codigo
+        // y 2 642 antes de rodata -- o sea que **6 594 de sus 8 432 bytes son
+        // agujeros**. El campo `alignment` de una seccion se usa para las dos
+        // cosas a la vez, y solo la direccion VIRTUAL lo necesita: el cargador
         // copia desde `file_offset` con un `copy_nonoverlapping` al que le da
-        // igual dónde empiece.
+        // igual donde empiece.
         //
         // Lo que esto NO quita, y hay que decirlo: **el acoplamiento sigue
-        // ahí**. El compilador conoce la regla de colocación del cargador. La
-        // solución definitiva son relocations de verdad en el BEF, para que el
-        // cargador parchee y el compilador no tenga que adivinar dónde va a
+        // ahi**. El compilador conoce la regla de colocacion del cargador. La
+        // solucion definitiva son relocations de verdad en el BEF, para que el
+        // cargador parchee y el compilador no tenga que adivinar donde va a
         // caer nada. Esto es la mitad del camino: quita el coste, deja la deuda
-        // — y ahora el emulador SÍ distingue las dos cuentas, así que la otra
+        // -- y ahora el emulador SI distingue las dos cuentas, asi que la otra
         // mitad se puede escribir con red.
         let code_len = self.code.len();
         self.instruction_end = code_len;
 
-        // Las direcciones virtuales de cada sección, con la cuenta del
-        // cargador: cada una arranca en la página siguiente a las que ocupa la
-        // anterior. Relativas al inicio del código, que es lo que necesita un
+        // Las direcciones virtuales de cada seccion, con la cuenta del
+        // cargador: cada una arranca en la pagina siguiente a las que ocupa la
+        // anterior. Relativas al inicio del codigo, que es lo que necesita un
         // `lea [rip+disp]`.
         let rodata_len: usize = self.strings.iter().map(|s| s.len() + 1).sum();
         let va_rodata = Self::hasta_pagina(code_len);
         let va_data = va_rodata + Self::hasta_pagina(rodata_len);
 
         // rodata: las cadenas. `off_en_seccion` es el offset DENTRO de rodata,
-        // no dentro del búfer — que es la distinción que este cambio introduce.
+        // no dentro del bufer -- que es la distincion que este cambio introduce.
         let mut off_en_seccion = 0usize;
         for (idx, s) in self.strings.iter().enumerate() {
             for f in &self.fixups {
@@ -747,16 +747,16 @@ impl Codegen {
         self.code.extend_from_slice(&globals);
         self.global_data = globals;
 
-        // ★ LAS RELOCATIONS, que es lo único que el compilador NO puede
+        // * LAS RELOCATIONS, que es lo unico que el compilador NO puede
         // resolver por su cuenta.
         //
         // Todo lo de arriba son desplazamientos: la distancia entre dos
-        // secciones de la misma imagen es fija, así que un `lea [rip+disp]` se
-        // puede calcular aquí. Un PUNTERO GUARDADO EN UN DATO es otra cosa —
-        // lleva la dirección absoluta, y ésa depende de dónde cargue el
+        // secciones de la misma imagen es fija, asi que un `lea [rip+disp]` se
+        // puede calcular aqui. Un PUNTERO GUARDADO EN UN DATO es otra cosa --
+        // lleva la direccion absoluta, y esa depende de donde cargue el
         // programa. Se anota y la escribe el cargador.
         //
-        // Los offsets van dentro de su sección, no del búfer: el del puntero es
+        // Los offsets van dentro de su seccion, no del bufer: el del puntero es
         // relativo a `.data` (ya lo es, sale de `global_data`) y el de la cadena
         // relativo a `.rodata`.
         let mut off_cadena: Vec<usize> = Vec::with_capacity(self.strings.len());
@@ -791,13 +791,13 @@ impl Codegen {
         }
     }
 
-    /// `call rel32` a una función del catálogo de [`sintetizadas`], con su
+    /// `call rel32` a una funcion del catalogo de [`sintetizadas`], con su
     /// reloc pendiente.
     ///
-    /// El nombre no se comprueba contra el catálogo aquí a propósito: si
-    /// alguien se equivoca escribiéndolo, [`Self::patch_call_relocs`] falla
+    /// El nombre no se comprueba contra el catalogo aqui a proposito: si
+    /// alguien se equivoca escribiendolo, [`Self::patch_call_relocs`] falla
     /// diciendo *"no existe la funcion 'X'"* con el nombre delante, que es un
-    /// mejor error que un `panic` del compilador — y ese camino ya está probado
+    /// mejor error que un `panic` del compilador -- y ese camino ya esta probado
     /// (`una_funcion_desconocida_sigue_fallando_con_su_nombre`).
     fn emit_call_sintetizada(&mut self, nombre: &str) {
         self.code.extend_from_slice(&[0xE8]);
@@ -809,27 +809,27 @@ impl Codegen {
     }
 
     /// La PASADA sobre las relocs pendientes: pide a [`sintetizadas`] el cuerpo
-    /// de lo que alguien llama y no está definido, y registra su offset.
+    /// de lo que alguien llama y no esta definido, y registra su offset.
     ///
-    /// El catálogo y los cuerpos NO están aquí, y el corte es deliberado: este
-    /// fichero sabe qué es una reloc y qué es el `Codegen`; aquél sabe qué
-    /// bytes implementan `strlen`. Añadir una función sintetizable no toca este
-    /// método.
+    /// El catalogo y los cuerpos NO estan aqui, y el corte es deliberado: este
+    /// fichero sabe que es una reloc y que es el `Codegen`; aquel sabe que
+    /// bytes implementan `strlen`. Anadir una funcion sintetizable no toca este
+    /// metodo.
     ///
-    /// Va ANTES de [`Self::patch_call_relocs`] y no puede ir después: ése es
+    /// Va ANTES de [`Self::patch_call_relocs`] y no puede ir despues: ese es
     /// quien escribe los desplazamientos, y necesita el offset ya registrado.
     fn sintetizar_referidas(&mut self) {
-        // ⚠️ ESTE GUARDIA VALE MÁS QUE UN COMENTARIO, y el motivo está escrito
-        // en la cabecera de `patch_all_fixups`: la sección de código es
-        // `all[..instruction_end]`, y **`rodata` es lo que viene detrás**. Si
-        // esta pasada se moviera después de `patch_all_fixups`, los cuerpos
-        // sintetizados caerían en `rodata`, que se mapea SIN permiso de
-        // ejecución — y el `.bex` saltaría EN METAL.
+        // [!] ESTE GUARDIA VALE MAS QUE UN COMENTARIO, y el motivo esta escrito
+        // en la cabecera de `patch_all_fixups`: la seccion de codigo es
+        // `all[..instruction_end]`, y **`rodata` es lo que viene detras**. Si
+        // esta pasada se moviera despues de `patch_all_fixups`, los cuerpos
+        // sintetizados caerian en `rodata`, que se mapea SIN permiso de
+        // ejecucion -- y el `.bex` saltaria EN METAL.
         //
         // El banco de pruebas NO puede cazarlo: el emulador reconcatena las
-        // secciones tal cual, así que ejecutaría el cuerpo igual y los 262
-        // tests seguirían verdes. O sea, exactamente la clase de fallo que sólo
-        // aparece con la máquina delante. Por eso se comprueba aquí.
+        // secciones tal cual, asi que ejecutaria el cuerpo igual y los 262
+        // tests seguirian verdes. O sea, exactamente la clase de fallo que solo
+        // aparece con la maquina delante. Por eso se comprueba aqui.
         debug_assert_eq!(
             self.instruction_end, 0,
             "sintetizar_referidas() tiene que ir ANTES de patch_all_fixups():              si no, el cuerpo sintetizado acaba en rodata y no se puede ejecutar"
@@ -839,22 +839,22 @@ impl Codegen {
 
     /// Escribe el destino de cada `call rel32`.
     ///
-    /// ★ Una llamada sin destino es un ERROR, no un hueco.
+    /// * Una llamada sin destino es un ERROR, no un hueco.
     ///
-    /// Antes el `if let` no tenía `else`: el desplazamiento se quedaba en 0, y
-    /// `E8 00000000` es "llama a la instrucción siguiente" — o sea, un `call`
-    /// que empuja una dirección de retorno, no hace nada y vuelve. Un nombre mal
-    /// escrito, o una macro con parámetros que este preprocesador todavía no
-    /// expande, producía un programa que compilaba y **se saltaba la llamada en
+    /// Antes el `if let` no tenia `else`: el desplazamiento se quedaba en 0, y
+    /// `E8 00000000` es "llama a la instruccion siguiente" -- o sea, un `call`
+    /// que empuja una direccion de retorno, no hace nada y vuelve. Un nombre mal
+    /// escrito, o una macro con parametros que este preprocesador todavia no
+    /// expande, producia un programa que compilaba y **se saltaba la llamada en
     /// silencio**.
     ///
-    /// Aquí no hay enlazado que pueda rellenarlo más tarde: no existe tabla de
-    /// importaciones en la salida de este codegen, así que todo lo que se llama
-    /// tiene que estar en esta misma unidad —o en el catálogo de
-    /// [`sintetizadas`], que es lo que la pasada de arriba acaba de inyectar—.
-    /// La prueba de que era un descuido y no una decisión está tres funciones
-    /// más abajo: `patch_func_addr_fixups` ya reportaba exactamente este caso
-    /// para los punteros a función.
+    /// Aqui no hay enlazado que pueda rellenarlo mas tarde: no existe tabla de
+    /// importaciones en la salida de este codegen, asi que todo lo que se llama
+    /// tiene que estar en esta misma unidad --o en el catalogo de
+    /// [`sintetizadas`], que es lo que la pasada de arriba acaba de inyectar--.
+    /// La prueba de que era un descuido y no una decision esta tres funciones
+    /// mas abajo: `patch_func_addr_fixups` ya reportaba exactamente este caso
+    /// para los punteros a funcion.
     fn patch_call_relocs(&mut self) {
         let mut faltan: Vec<String> = Vec::new();
         for reloc in &self.call_relocs {
@@ -874,9 +874,9 @@ impl Codegen {
         }
     }
 
-    /// Escribe la dirección rip-relativa de cada función referida por un
-    /// `lea rax, [rip+func]` (punteros a función). Mismo esquema que las
-    /// call relocs: displacement dentro de la sección de código.
+    /// Escribe la direccion rip-relativa de cada funcion referida por un
+    /// `lea rax, [rip+func]` (punteros a funcion). Mismo esquema que las
+    /// call relocs: displacement dentro de la seccion de codigo.
     fn patch_func_addr_fixups(&mut self) {
         for (off, name) in &self.func_addr_fixups {
             if let Some(&target) = self.function_offsets.get(name) {
@@ -888,25 +888,25 @@ impl Codegen {
         }
     }
 
-    /// `lea rax, [rip+func]` — deja en rax la dirección de una función.
+    /// `lea rax, [rip+func]` -- deja en rax la direccion de una funcion.
     fn emit_func_addr(&mut self, name: &str) {
         self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
         self.func_addr_fixups.push((self.code.len() - 4, name.to_string()));
     }
 
-    /// Fija una etiqueta en la posición actual y resuelve los saltos que ya
+    /// Fija una etiqueta en la posicion actual y resuelve los saltos que ya
     /// la esperaban.
     ///
-    /// El `label_offsets` es lo que faltaba: antes esta función SOLO
-    /// parcheaba los saltos pendientes en ese instante, así que un salto
-    /// emitido DESPUÉS de fijar la etiqueta —es decir, todo salto hacia
-    /// atrás— se quedaba con desplazamiento 0 para siempre. Eso significa
-    /// "seguir a la instrucción siguiente": **ningún bucle de C daba más de
+    /// El `label_offsets` es lo que faltaba: antes esta funcion SOLO
+    /// parcheaba los saltos pendientes en ese instante, asi que un salto
+    /// emitido DESPUES de fijar la etiqueta --es decir, todo salto hacia
+    /// atras-- se quedaba con desplazamiento 0 para siempre. Eso significa
+    /// "seguir a la instruccion siguiente": **ningun bucle de C daba mas de
     /// una vuelta**. `while`, `for`, `do-while`, y por tanto `break` y
-    /// `continue`, ejecutaban el cuerpo exactamente una vez y salían. El
+    /// `continue`, ejecutaban el cuerpo exactamente una vez y salian. El
     /// binario compilaba y validaba igual.
     ///
-    /// Es el mismo defecto que tenía el `IF` de COBOL, en otro lenguaje.
+    /// Es el mismo defecto que tenia el `IF` de COBOL, en otro lenguaje.
     fn resolve_label(&mut self, label: u32) {
         let here = self.code.len();
         self.label_offsets.insert(label, here);
@@ -922,9 +922,9 @@ impl Codegen {
     }
 
     /// Resuelve los saltos que quedaron pendientes: los que apuntan a una
-    /// etiqueta fijada ANTES de emitirlos (saltos hacia atrás).
+    /// etiqueta fijada ANTES de emitirlos (saltos hacia atras).
     ///
-    /// Una etiqueta usada y jamás fijada es un bug del emisor: se aborta en
+    /// Una etiqueta usada y jamas fijada es un bug del emisor: se aborta en
     /// vez de dejar un salto a ninguna parte.
     fn patch_backward_relocs(&mut self) {
         for reloc in std::mem::take(&mut self.pending_relocs) {
@@ -959,7 +959,7 @@ impl Codegen {
 
     /// Recolecta TODAS las DeclAssign del cuerpo, a cualquier profundidad.
     /// Antes solo se miraba el nivel superior: una `int i` dentro de un
-    /// for/if/bloque NO recibía slot — stores descartados, loads = 0.
+    /// for/if/bloque NO recibia slot -- stores descartados, loads = 0.
     fn collect_decls_stmt<'a>(s: &'a Stmt, out: &mut Vec<(&'a String, &'a TypeSpec)>) {
         match s {
             Stmt::DeclAssign(t, n, _) => out.push((n, t)),
@@ -980,14 +980,14 @@ impl Codegen {
 
     fn build_var_map(&mut self, params: &[Param], var_names: &[String], func: &Function) {
         self.var_offsets.clear();
-        // ── Los parámetros, en la pila del llamante ──
+        // -- Los parametros, en la pila del llamante --
         //
-        // Empiezan en `[rbp+16]` (detrás de la dirección de retorno y del `rbp`
+        // Empiezan en `[rbp+16]` (detras de la direccion de retorno y del `rbp`
         // guardado) y avanzan por RANURAS, no de ocho en ocho: un agregado de
-        // 12 bytes ocupa dos y corre el que viene detrás.
+        // 12 bytes ocupa dos y corre el que viene detras.
         //
         // Era `16 + i*8` fijo. Mientras todo cupo en un registro daba lo mismo;
-        // el día que entró un struct por valor, el segundo parámetro empezaba a
+        // el dia que entro un struct por valor, el segundo parametro empezaba a
         // leerse desde la mitad del primero.
         let mut off = 16i32;
         for p in params.iter() {
@@ -995,7 +995,7 @@ impl Codegen {
             let bytes = self.type_stack_size(&p.typ);
             off += agregados::ranuras(bytes) as i32 * 8;
         }
-        // locales: tamaño REAL del tipo (arrays y structs incluidos), alineado a 8
+        // locales: tamano REAL del tipo (arrays y structs incluidos), alineado a 8
         let mut decls = Vec::new();
         for stmt in &func.body { Self::collect_decls_stmt(stmt, &mut decls); }
         let mut cur: i32 = 0;
@@ -1016,12 +1016,12 @@ impl Codegen {
         self.frame_size = -cur;
     }
 
-    /// Guarda `rax` en `[rbp+disp]` con el tamaño EXACTO de `tipo`.
+    /// Guarda `rax` en `[rbp+disp]` con el tamano EXACTO de `tipo`.
     ///
     /// La pareja de `emit_store_var`, pero por offset en vez de por nombre: una
-    /// lista de inicialización escribe **dentro** de una variable, no sobre
-    /// ella. Escribir siempre 8 bytes pisaría el campo siguiente — es el mismo
-    /// bug que ya se pagó con `pt.x = 10` cuando `x` era `int`.
+    /// lista de inicializacion escribe **dentro** de una variable, no sobre
+    /// ella. Escribir siempre 8 bytes pisaria el campo siguiente -- es el mismo
+    /// bug que ya se pago con `pt.x = 10` cuando `x` era `int`.
     fn emit_store_rbp(&mut self, disp: i32, tipo: &TypeSpec) {
         let corto = (-128..=127).contains(&disp);
         let modrm = if corto { 0x45 } else { 0x85 };
@@ -1043,8 +1043,8 @@ impl Codegen {
     /// Pone a cero `bytes` bytes a partir de `[rbp+base]`.
     ///
     /// De ocho en ocho mientras quepa, y el resto byte a byte. Sin memset:
-    /// aquí no hay libc, y para los tamaños de un struct local un bucle
-    /// desenrollado es más corto que la llamada que no existe.
+    /// aqui no hay libc, y para los tamanos de un struct local un bucle
+    /// desenrollado es mas corto que la llamada que no existe.
     fn emit_cero_local(&mut self, base: i32, bytes: u32) {
         if bytes == 0 {
             return;
@@ -1113,7 +1113,7 @@ impl Codegen {
             self.code.extend_from_slice(&(val as i32).to_le_bytes());
             return;
         }
-        // Función usada como VALOR (fp = myfunc): decae a su dirección.
+        // Funcion usada como VALOR (fp = myfunc): decae a su direccion.
         if self.known_functions.contains(name)
             && !self.var_offsets.contains_key(name)
             && !self.global_offsets.contains_key(name)
@@ -1121,7 +1121,7 @@ impl Codegen {
             self.emit_func_addr(name);
             return;
         }
-        // Arrays: decaen a puntero — "cargar" arr es su DIRECCIÓN, no su contenido
+        // Arrays: decaen a puntero -- "cargar" arr es su DIRECCION, no su contenido
         if self.var_is_array(name) {
             if let Some(&(off, _)) = self.var_offsets.get(name) {
                 if off >= -128 && off <= 127 {
@@ -1173,9 +1173,9 @@ impl Codegen {
             }
             // Un `int` con signo debe EXTENDER EL SIGNO al leerse: el resto
             // del codegen trabaja en 64 bits. Antes usaba `mov eax, [..]`,
-            // que rellena de ceros, así que un `int y = -7;` se releía como
-            // 4294967289. Los tipos más chicos ya lo hacían bien (movsx);
-            // solo `int` se había quedado sin su versión con signo.
+            // que rellena de ceros, asi que un `int y = -7;` se releia como
+            // 4294967289. Los tipos mas chicos ya lo hacian bien (movsx);
+            // solo `int` se habia quedado sin su version con signo.
             TypeSpec::Int => {
                 if disp >= -128 && disp <= 127 {
                     self.code.extend_from_slice(&[0x48, 0x63, 0x45, disp as u8]); // movsxd
@@ -1210,16 +1210,16 @@ impl Codegen {
                 TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x00]),
                 TypeSpec::Short => self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0x00]),
                 TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0x00]),
-                // ★ `int` con SIGNO se extiende con signo, y compartía arm con
+                // * `int` con SIGNO se extiende con signo, y compartia arm con
                 // `unsigned int`.
                 //
                 // Era `mov eax,[rax]` para los dos, que rellena de CEROS los 32
-                // bits altos. `char` y `short` sí usaban `movsx` —así que la
-                // intención estaba clara y el `int` se quedó fuera—, y no se
-                // notaba porque **ningún global podía valer negativo**: el
-                // inicializador sólo entendía `Expr::Int` positivo y todo lo
-                // demás se rellenaba de ceros en silencio. Al arreglar aquello,
-                // `int frio = -40;` empezó a imprimir **4294967256**.
+                // bits altos. `char` y `short` si usaban `movsx` --asi que la
+                // intencion estaba clara y el `int` se quedo fuera--, y no se
+                // notaba porque **ningun global podia valer negativo**: el
+                // inicializador solo entendia `Expr::Int` positivo y todo lo
+                // demas se rellenaba de ceros en silencio. Al arreglar aquello,
+                // `int frio = -40;` empezo a imprimir **4294967256**.
                 //
                 // `movsxd rax, dword [rax]` = `48 63 00`.
                 TypeSpec::Int => self.code.extend_from_slice(&[0x48, 0x63, 0x00]),
@@ -1227,17 +1227,17 @@ impl Codegen {
                 _ => self.code.extend_from_slice(&[0x48, 0x8B, 0x00]),
             }
         } else {
-            // ★ Un nombre que no es variable, ni global, ni constante de enum,
-            // ni función, NO VALE CERO: no existe.
+            // * Un nombre que no es variable, ni global, ni constante de enum,
+            // ni funcion, NO VALE CERO: no existe.
             //
-            // Esto era un `xor eax,eax` mudo, y es lo que escondió que
+            // Esto era un `xor eax,eax` mudo, y es lo que escondio que
             // `#include` tiraba los `#define` de la cabecera: `BMO_TECLA_REPAG`
-            // y `BMO_TECLA_AVPAG` llegaban sin expandir, el codegen los ponía a
+            // y `BMO_TECLA_AVPAG` llegaban sin expandir, el codegen los ponia a
             // cero **a los dos**, y `if (t == REPAG)` era cierto para AvPag.
-            // Comparaba cero contra cero y el programa parecía correcto.
+            // Comparaba cero contra cero y el programa parecia correcto.
             //
-            // Un cero inventado es la peor respuesta posible a "no sé qué es
-            // esto": es un valor legítimo en cualquier expresión, así que el
+            // Un cero inventado es la peor respuesta posible a "no se que es
+            // esto": es un valor legitimo en cualquier expresion, asi que el
             // error viaja hasta donde ya no se puede rastrear.
             self.errors.push(format!(
                 "'{name}' no esta declarado (ni variable, ni global, ni constante de enum, \
@@ -1250,18 +1250,18 @@ impl Codegen {
     /// Deja el handle (`rdx` de la primera llamada, hoy perdido) y la base
     /// (`rax`) en las globales que `<bmo/archivo.h>` declara.
     ///
-    /// Se llama con **`rax` = base** y con el handle todavía recuperable: no lo
-    /// está, así que hay que haberlo guardado antes. Ver el uso en `malloc`.
+    /// Se llama con **`rax` = base** y con el handle todavia recuperable: no lo
+    /// esta, asi que hay que haberlo guardado antes. Ver el uso en `malloc`.
     ///
     /// Si el programa no declara esas globales, esto no emite **nada**: un
     /// programa que no lee ficheros no debe pagar por la maquinaria de los que
-    /// sí. Por eso se pregunta por el nombre en vez de reservarlas siempre.
+    /// si. Por eso se pregunta por el nombre en vez de reservarlas siempre.
     fn publicar_bloque(&mut self) {
         for (nombre, reg) in [("__bmo_bloque_base", 0u8), ("__bmo_bloque_cap", 1u8)] {
             if !self.global_offsets.contains_key(nombre) {
                 continue;
             }
-            // lea rdi, [rip+0]  (el fixup pone la dirección de la global)
+            // lea rdi, [rip+0]  (el fixup pone la direccion de la global)
             self.code.extend_from_slice(&[0x48, 0x8D, 0x3D, 0, 0, 0, 0]);
             self.global_fixups.push((self.code.len() - 4, nombre.to_string()));
             if reg == 0 {
@@ -1292,21 +1292,21 @@ impl Codegen {
 
     // ---- Function emit ----
     fn emit_function(&mut self, func: &Function) {
-        // ★ Un parámetro de coma flotante NO se puede pasar todavía, y hasta
+        // * Un parametro de coma flotante NO se puede pasar todavia, y hasta
         // hoy se aceptaba EN SILENCIO.
         //
-        // BMO C evalúa floats por la ruta paralela de xmm, pero **los
+        // BMO C evalua floats por la ruta paralela de xmm, pero **los
         // argumentos van por la pila como enteros**: `g(1.5)` empujaba los
-        // bits del double en una ranura y el prólogo los leía como si fueran
-        // un `long`. Compilaba, escribía un `.bef`, y devolvía basura.
+        // bits del double en una ranura y el prologo los leia como si fueran
+        // un `long`. Compilaba, escribia un `.bef`, y devolvia basura.
         //
         // Los floats GLOBALES ya se rechazaban con motivo desde el principio
-        // (ver `load_float_var`); esta puerta se quedó abierta porque nadie
-        // había escrito una función que tomara un `double` — lo destapó C++ al
+        // (ver `load_float_var`); esta puerta se quedo abierta porque nadie
+        // habia escrito una funcion que tomara un `double` -- lo destapo C++ al
         // probar una sobrecarga `f(int)` / `f(double)`.
         //
-        // Un cero inventado o unos bits mal leídos son la peor respuesta a "no
-        // sé hacer esto": son valores legítimos y el error viaja hasta donde ya
+        // Un cero inventado o unos bits mal leidos son la peor respuesta a "no
+        // se hacer esto": son valores legitimos y el error viaja hasta donde ya
         // no se puede rastrear. Mientras la ABI de xmm no exista, se DICE.
         for p in &func.params {
             if Self::is_float_ty(&p.typ) {
@@ -1318,13 +1318,13 @@ impl Codegen {
                 ));
             }
         }
-        // El RETORNO de coma flotante sí funciona —el valor queda en xmm0, y
-        // hay un test que lo fija (`double_return_value_in_xmm0`)—, así que no
-        // se toca. La asimetría es real y conviene tenerla escrita: **devolver
+        // El RETORNO de coma flotante si funciona --el valor queda en xmm0, y
+        // hay un test que lo fija (`double_return_value_in_xmm0`)--, asi que no
+        // se toca. La asimetria es real y conviene tenerla escrita: **devolver
         // un double se puede, pasarlo no.**
         self.build_var_map(&func.params, &func.var_names, func);
-        // Lo que `__va_arg` necesita saber, y sólo se sabe aquí: si esta
-        // función admite variádicos y dónde acaban los que tienen nombre.
+        // Lo que `__va_arg` necesita saber, y solo se sabe aqui: si esta
+        // funcion admite variadicos y donde acaban los que tienen nombre.
         self.es_variadica = func.variadica;
         self.ranuras_con_nombre = func
             .params
@@ -1333,16 +1333,16 @@ impl Codegen {
             .sum();
         // prologue
         self.code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]); // push rbp; mov rbp, rsp
-        // Copiar los parámetros a su ranura local. Hoy es un no-op —
-        // `build_var_map` los deja donde ya están— y se conserva por si algún
-        // día un parámetro necesita hueco propio. El offset se recalcula igual
-        // que allí: por ranuras, no `i*8`.
+        // Copiar los parametros a su ranura local. Hoy es un no-op --
+        // `build_var_map` los deja donde ya estan-- y se conserva por si algun
+        // dia un parametro necesita hueco propio. El offset se recalcula igual
+        // que alli: por ranuras, no `i*8`.
         let param_count = func.params.len();
         let mut src_off = 16i32;
         for p in func.params.iter() {
             let avance = agregados::ranuras(self.type_stack_size(&p.typ)) as i32 * 8;
-            // Un agregado no se copia con un `mov` de 8 bytes: ya está en su
-            // sitio, y "copiarlo" así se llevaría sólo su primera palabra.
+            // Un agregado no se copia con un `mov` de 8 bytes: ya esta en su
+            // sitio, y "copiarlo" asi se llevaria solo su primera palabra.
             if self.es_agregado(&p.typ) {
                 src_off += avance;
                 continue;
@@ -1366,7 +1366,7 @@ impl Codegen {
             }
             src_off += avance;
         }
-        // allocate local var space — tamaño REAL calculado por build_var_map
+        // allocate local var space -- tamano REAL calculado por build_var_map
         // (antes: var_count*8, y los arrays/structs pisaban a sus vecinos)
         let _ = param_count;
         let stack_size = self.frame_size;
@@ -1385,14 +1385,14 @@ impl Codegen {
     fn emit_epilogue(&mut self) {
         self.code.extend_from_slice(&[0x48, 0x89, 0xEC, 0x5D]); // mov rsp,rbp; pop rbp
         if self.is_entry_function {
-            // Volver de `main` termina el proceso. Antes esto emitía
-            // `mov eax,0x181; syscall`: otro número plano que el kernel no
-            // despacha — el syscall retornaba error y la ejecución seguía
-            // de largo hacia lo que hubiera después del código de main.
+            // Volver de `main` termina el proceso. Antes esto emitia
+            // `mov eax,0x181; syscall`: otro numero plano que el kernel no
+            // despacha -- el syscall retornaba error y la ejecucion seguia
+            // de largo hacia lo que hubiera despues del codigo de main.
             //
             // NOTA: el valor de retorno de `main` se descarta. `TASK_OP_EXIT`
-            // no acepta código de salida hoy (el kernel hace revoke + reap);
-            // cuando lo acepte, se pasa `rax` como argumento aquí.
+            // no acepta codigo de salida hoy (el kernel hace revoke + reap);
+            // cuando lo acepte, se pasa `rax` como argumento aqui.
             bmo_lower::task::exit(&mut self.code);
         } else {
             self.code.push(0xC3); // ret
@@ -1457,20 +1457,20 @@ impl Codegen {
                 self.break_target.pop();
             }
             // `switch`: el valor se guarda en un hueco de pila y cada
-            // comparación lo relee de ahí.
+            // comparacion lo relee de ahi.
             //
-            // El despacho anterior hacía DOS `pop` habiendo empujado una
-            // sola vez, así que comparaba contra un valor de la pila que no
+            // El despacho anterior hacia DOS `pop` habiendo empujado una
+            // sola vez, asi que comparaba contra un valor de la pila que no
             // era suyo: siempre entraba por el primer `case`. Y el
-            // `default:` era inalcanzable — su etiqueta se fijaba DESPUÉS
-            // de todos los cuerpos, o sea al final, saltándose su propio
-            // código.
+            // `default:` era inalcanzable -- su etiqueta se fijaba DESPUES
+            // de todos los cuerpos, o sea al final, saltandose su propio
+            // codigo.
             Stmt::Switch(expr, cases) => {
                 self.emit_expr(expr);
                 let end = self.fresh_label();
                 self.break_target.push(end);
 
-                self.code.push(0x50); // push rax → el valor vive en [rsp]
+                self.code.push(0x50); // push rax -> el valor vive en [rsp]
 
                 let case_labels: Vec<u32> = cases.iter().map(|_| self.fresh_label()).collect();
                 for (i, c) in cases.iter().enumerate() {
@@ -1494,7 +1494,7 @@ impl Codegen {
                 }
 
                 // `end` va ANTES de liberar el hueco para que un `break`
-                // dentro de un caso también lo libere.
+                // dentro de un caso tambien lo libere.
                 self.resolve_label(end);
                 self.code.extend_from_slice(&[0x48, 0x83, 0xC4, 0x08]); // add rsp, 8
                 self.break_target.pop();
@@ -1507,7 +1507,7 @@ impl Codegen {
             }
             Stmt::Return(Some(e)) => {
                 // return de un float: el valor vive en xmm0 (ABI de retorno SSE);
-                // el epílogo preserva xmm0. En contexto entero, emit_expr trunca.
+                // el epilogo preserva xmm0. En contexto entero, emit_expr trunca.
                 if self.expr_is_float(e) && !self.is_entry_function {
                     self.emit_fexpr(e);
                 } else {
@@ -1531,17 +1531,17 @@ impl Codegen {
                     self.emit_store_var(name);
                 }
             }
-            // `T x = { … }` — la lista ya viene APLANADA a escrituras por
-            // `parser/inicializador.rs`. Aquí no se sabe qué es un designador:
-            // sólo "en el byte N va este valor, de este tamaño".
+            // `T x = { ... }` -- la lista ya viene APLANADA a escrituras por
+            // `parser/inicializador.rs`. Aqui no se sabe que es un designador:
+            // solo "en el byte N va este valor, de este tamano".
             Stmt::DeclInit(typ, name, escrituras) => {
                 let Some(&(base, _)) = self.var_offsets.get(name) else {
                     self.errors.push(format!("'{name}' no tiene hueco en la pila"));
                     return;
                 };
-                // ★ C99 §6.7.9/21: lo NO mencionado vale cero. Se borra el
+                // * C99 section 6.7.9/21: lo NO mencionado vale cero. Se borra el
                 // objeto entero ANTES de escribir, y por eso `{.y = 2}` deja la
-                // `x` en 0 en vez de en lo que hubiera en la pila — que sería
+                // `x` en 0 en vez de en lo que hubiera en la pila -- que seria
                 // basura distinta en cada llamada y un bug imposible de repetir.
                 let bytes = self.type_stack_size(typ);
                 self.emit_cero_local(base, bytes);
@@ -1591,104 +1591,104 @@ impl Codegen {
 
     fn emit_drop(&mut self) {}
 
-    /// `printf(fmt, args…)` — la L2 de C sobre la librería de formateo.
+    /// `printf(fmt, args...)` -- la L2 de C sobre la libreria de formateo.
     ///
     /// Antes esto empujaba los argumentos a la pila y llamaba a un
-    /// `bmo_printf` **importado de `userland_ring3`**: un símbolo que en BMO
-    /// nadie resuelve, porque no hay enlazado dinámico de una libc. El
-    /// programa compilaba y luego saltaba a una dirección sin parchear.
+    /// `bmo_printf` **importado de `userland_ring3`**: un simbolo que en BMO
+    /// nadie resuelve, porque no hay enlazado dinamico de una libc. El
+    /// programa compilaba y luego saltaba a una direccion sin parchear.
     ///
-    /// Ahora el formateo se emite EN LÍNEA: cada trozo literal baja por la
-    /// puerta de consola y cada conversión evalúa su argumento y llama al
+    /// Ahora el formateo se emite EN LINEA: cada trozo literal baja por la
+    /// puerta de consola y cada conversion evalua su argumento y llama al
     /// emisor correspondiente de `bmo_lower::fmt`. Sin runtime, sin
     /// importaciones, sin dependencias del cargador.
     ///
-    /// Lo específico de C —qué significa `%d`, que `%x` va en minúsculas,
-    /// que `%%` es un porcentaje— se decide aquí. La librería solo sabe
-    /// convertir un número en dígitos.
-    /// **La superficie de biblioteca que se emite en línea.**
+    /// Lo especifico de C --que significa `%d`, que `%x` va en minusculas,
+    /// que `%%` es un porcentaje-- se decide aqui. La libreria solo sabe
+    /// convertir un numero en digitos.
+    /// **La superficie de biblioteca que se emite en linea.**
     ///
-    /// Devuelve `Some(())` si `name` era una de ellas y ya se emitió.
+    /// Devuelve `Some(())` si `name` era una de ellas y ya se emitio.
     ///
-    /// ★ Cada una carga sus argumentos en registros y llama al emisor de L1.
-    /// El orden importa: se evalúa el último primero y se apila, porque
+    /// * Cada una carga sus argumentos en registros y llama al emisor de L1.
+    /// El orden importa: se evalua el ultimo primero y se apila, porque
     /// evaluar el segundo argumento puede machacar el registro donde estaba el
-    /// primero — un `memcpy(a, f(x), n)` con `f` llamando a otra cosa es el
-    /// caso que lo destapa, y no se destapa en las pruebas fáciles.
+    /// primero -- un `memcpy(a, f(x), n)` con `f` llamando a otra cosa es el
+    /// caso que lo destapa, y no se destapa en las pruebas faciles.
     fn emitir_biblioteca(&mut self, name: &str, args: &[Expr]) -> Option<()> {
         use bmo_lower::memoria;
         use bmo_lower::x86;
         match (name, args.len()) {
-            // ★ `memcpy` YA NO ESTÁ AQUÍ, y su ausencia es el cambio.
+            // * `memcpy` YA NO ESTA AQUI, y su ausencia es el cambio.
             //
             // Cae por el camino de llamada normal y su cuerpo lo pone
             // `SINTETIZABLES`: emitido UNA vez, alcanzado con `call rel32`. Se
-            // eligió éste y no otro porque es el que más se repite —por
-            // `memcpy` pasa el blit de cada fotograma— y porque su cuerpo no
-            // tiene estado, así que compartirlo no cambia lo que hace.
+            // eligio este y no otro porque es el que mas se repite --por
+            // `memcpy` pasa el blit de cada fotograma-- y porque su cuerpo no
+            // tiene estado, asi que compartirlo no cambia lo que hace.
             //
-            // `memmove` se queda en línea, y no por simetría descuidada: se
-            // llama poco, y tocar los dos a la vez habría mezclado en un solo
-            // cambio la conversión y un riesgo que no hacía falta correr.
+            // `memmove` se queda en linea, y no por simetria descuidada: se
+            // llama poco, y tocar los dos a la vez habria mezclado en un solo
+            // cambio la conversion y un riesgo que no hacia falta correr.
             //
-            // ⚠️ Y de paso queda anotado lo que se vio al mirar esto: este arm
+            // [!] Y de paso queda anotado lo que se vio al mirar esto: este arm
             // le da a `memmove` el MISMO `copiar`, que avanza de principio a
-            // fin. Para solapamiento con `dst > src` eso corrompe —es
-            // exactamente lo que `memmove` promete y `memcpy` no—, así que
+            // fin. Para solapamiento con `dst > src` eso corrompe --es
+            // exactamente lo que `memmove` promete y `memcpy` no--, asi que
             // `memmove` hoy es un `memcpy` con otro nombre. **No lo arregla
-            // este cambio** y está sin arreglar, dicho aquí para que no se
+            // este cambio** y esta sin arreglar, dicho aqui para que no se
             // cuente como hecho.
             ("memmove", 3) => {
                 self.cargar_tres(args, x86::RDI, x86::RSI, x86::RCX);
                 memoria::copiar(&mut self.code);
                 // Devuelve el destino, que sigue en la pila porque el bucle se
-                // llevó rdi por delante.
+                // llevo rdi por delante.
                 self.soltar_tres();
                 Some(())
             }
-            // `strncmp` y `memcmp` comparten emisión y se distinguen en UN bool:
+            // `strncmp` y `memcmp` comparten emision y se distinguen en UN bool:
             // si el terminador corta o no. Ver `memoria::comparar_n`.
             ("abs", 1) => {
                 self.emit_expr(&args[0]);
                 memoria::absoluto(&mut self.code);
                 Some(())
             }
-            // ── malloc / free ────────────────────────────────────────
+            // -- malloc / free ----------------------------------------
             //
-            // ★ Cada `malloc` es **una petición al kernel**, no un trozo de un
-            // montón. Y eso NO es un atajo: es lo que hay hoy, dicho como es.
+            // * Cada `malloc` es **una peticion al kernel**, no un trozo de un
+            // monton. Y eso NO es un atajo: es lo que hay hoy, dicho como es.
             //
-            // El kernel entrega bloques enteros y no sabe repartirlos — a
-            // propósito, porque el asignador es política y la política vive en
-            // Ring 3. Un montón de verdad (bump + listas libres) se escribe
-            // encima de `bmo::Memoria`, y ése es el siguiente paso.
+            // El kernel entrega bloques enteros y no sabe repartirlos -- a
+            // proposito, porque el asignador es politica y la politica vive en
+            // Ring 3. Un monton de verdad (bump + listas libres) se escribe
+            // encima de `bmo::Memoria`, y ese es el siguiente paso.
             //
-            // **Límite declarado**: el kernel acepta CUATRO peticiones por
-            // proceso, porque no hay forma de devolver memoria y ese número es
+            // **Limite declarado**: el kernel acepta CUATRO peticiones por
+            // proceso, porque no hay forma de devolver memoria y ese numero es
             // el de fugas posibles. Un quinto `malloc` devuelve **0**, que es
             // lo que un programa de C ya sabe comprobar. Falla pronto y con
             // un valor que significa algo, en vez de agotar la RAM callando.
             //
-            // Para el caso que motivó todo esto —DOOM pide su bloque UNA vez y
-            // se lo administra con `Z_Zone`— esto es exactamente suficiente.
-            // ★ Los dos saltos de aquí van por ETIQUETA, y no es cosmética.
+            // Para el caso que motivo todo esto --DOOM pide su bloque UNA vez y
+            // se lo administra con `Z_Zone`-- esto es exactamente suficiente.
+            // * Los dos saltos de aqui van por ETIQUETA, y no es cosmetica.
             //
-            // La primera versión los emitió con desplazamientos contados a
-            // mano, y el primero se quedó **seis bytes corto**: `jnz +0x1D`
+            // La primera version los emitio con desplazamientos contados a
+            // mano, y el primero se quedo **seis bytes corto**: `jnz +0x1D`
             // cuando el camino hasta el `xor rax,rax` mide 35. O sea que
-            // cuando el kernel RECHAZABA la petición —la quinta, o una
-            // demasiado grande— el salto caía **dentro** del `jnz` siguiente y
-            // el CPU seguía por la mitad de una instrucción.
+            // cuando el kernel RECHAZABA la peticion --la quinta, o una
+            // demasiado grande-- el salto caia **dentro** del `jnz` siguiente y
+            // el CPU seguia por la mitad de una instruccion.
             //
             // Y el detalle que lo hace peor: la rama buena estaba bien. Un
             // `malloc` que funciona cuatro veces y descarrila a la quinta pasa
             // por "el tope se cumple" en cualquier prueba que no llegue a la
-            // quinta. Lo cazó el emulador con `opcode 0x05 no emitido por BMO`
-            // — que es la firma de haber aterrizado a media instrucción.
+            // quinta. Lo cazo el emulador con `opcode 0x05 no emitido por BMO`
+            // -- que es la firma de haber aterrizado a media instruccion.
             //
             // Contar bytes a mano es escribir un enlazador en la cabeza cada
-            // vez que alguien añade una instrucción en medio. Las etiquetas ya
-            // estaban aquí; sólo había que usarlas.
+            // vez que alguien anade una instruccion en medio. Las etiquetas ya
+            // estaban aqui; solo habia que usarlas.
             ("malloc", 1) => {
                 use bmo_sem_asm::x86_64::Reg;
                 let sin_bloque = self.fresh_label();
@@ -1700,13 +1700,13 @@ impl Codegen {
                 self.emit_asm(|a| { a.mov_imm64(Reg::Rsi, 0x15).unwrap(); });
                 self.code.extend_from_slice(&[0xB8, 0, 0, 0, 0]);  // mov eax, NR_INVOKE(0)
                 self.emit_call_to_syscall_stub();
-                // El handle vuelve en rdx (`value`); rax lleva el código.
-                // Si el código no es 0, no hay bloque: se devuelve 0.
+                // El handle vuelve en rdx (`value`); rax lleva el codigo.
+                // Si el codigo no es 0, no hay bloque: se devuelve 0.
                 self.code.extend_from_slice(&[0x85, 0xC0]);        // test eax, eax
                 self.emit_jnz_reloc(sin_bloque);
-                // ★ El handle a la pila ANTES de la segunda llamada, que pisa
+                // * El handle a la pila ANTES de la segunda llamada, que pisa
                 // `rdx`. Es el dato que `fread` necesita y que hasta ahora se
-                // perdía justo aquí: se usaba para pedir la base y se tiraba.
+                // perdia justo aqui: se usaba para pedir la base y se tiraba.
                 self.code.push(0x52);                              // push rdx
                 // Segunda llamada: MEM_OP_BASE sobre el handle.
                 self.emit_asm(|a| { a.mov_reg(Reg::Rdi, Reg::Rdx).unwrap(); });
@@ -1715,23 +1715,23 @@ impl Codegen {
                 self.code.extend_from_slice(&[0xB8, 0, 0, 0, 0]);  // mov eax, NR_INVOKE
                 self.emit_call_to_syscall_stub();
                 // El `pop` va ANTES del test, y eso no es estilo: por el camino
-                // de fallo se salta a `sin_bloque`, y saltar con algo aún en la
-                // pila la descuadra para el resto de la función.
+                // de fallo se salta a `sin_bloque`, y saltar con algo aun en la
+                // pila la descuadra para el resto de la funcion.
                 self.code.extend_from_slice(&[0x41, 0x58]);        // pop r8 (el handle)
                 self.code.extend_from_slice(&[0x85, 0xC0]);        // test eax, eax
                 self.emit_jnz_reloc(sin_bloque);
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);  // mov rax, rdx (la base)
-                // ★ PUBLICAR EL BLOQUE. Sin esto `fread` no puede existir.
+                // * PUBLICAR EL BLOQUE. Sin esto `fread` no puede existir.
                 //
-                // El kernel sólo acepta escribir dentro de un bloque que él
-                // concedió, y para pedírselo hay que darle SU handle y un
-                // desplazamiento. `malloc` es el único que tiene las dos cosas
-                // —el handle vino en la primera llamada, la base en la segunda—
+                // El kernel solo acepta escribir dentro de un bloque que el
+                // concedio, y para pedirselo hay que darle SU handle y un
+                // desplazamiento. `malloc` es el unico que tiene las dos cosas
+                // --el handle vino en la primera llamada, la base en la segunda--
                 // y hasta ahora tiraba el handle en cuanto sacaba la base.
                 //
-                // Se guardan en dos globales **sólo si el programa las
-                // declaró** (las trae `<bmo/archivo.h>`). Un programa que no
-                // lee ficheros no paga ni un byte por esto, que es la razón de
+                // Se guardan en dos globales **solo si el programa las
+                // declaro** (las trae `<bmo/archivo.h>`). Un programa que no
+                // lee ficheros no paga ni un byte por esto, que es la razon de
                 // preguntar por el nombre en vez de emitirlas siempre.
                 self.publicar_bloque();
                 self.emit_jmp_reloc(fin);
@@ -1740,13 +1740,13 @@ impl Codegen {
                 self.resolve_label(fin);
                 Some(())
             }
-            // `free` NO devuelve nada al kernel — no hay forma, y decirlo aquí
-            // vale más que emitir una llamada que no haría nada. El bloque vive
+            // `free` NO devuelve nada al kernel -- no hay forma, y decirlo aqui
+            // vale mas que emitir una llamada que no haria nada. El bloque vive
             // hasta que el proceso muere, y entonces se destruye su espacio de
             // direcciones entero.
             //
-            // Se acepta porque el código ajeno lo llama y quitarlo a mano de
-            // 35.000 líneas no es una opción. Evalúa su argumento, por si tiene
+            // Se acepta porque el codigo ajeno lo llama y quitarlo a mano de
+            // 35.000 lineas no es una opcion. Evalua su argumento, por si tiene
             // efectos secundarios.
             ("free", 1) => {
                 self.emit_expr(&args[0]);
@@ -1759,15 +1759,15 @@ impl Codegen {
 
     /// Tres argumentos a tres registros, evaluando de derecha a izquierda.
     ///
-    /// ★ Los tres se dejan EN LA PILA y los registros se cargan **leyendo**,
-    /// no sacando. La primera versión los sacaba con `pop` y apilaba el
-    /// destino dos veces para poder devolverlo — y eso desalineaba los tres
+    /// * Los tres se dejan EN LA PILA y los registros se cargan **leyendo**,
+    /// no sacando. La primera version los sacaba con `pop` y apilaba el
+    /// destino dos veces para poder devolverlo -- y eso desalineaba los tres
     /// `pop`: `memset` acababa con el valor de relleno en el registro del
-    /// contador. Salió como `-16,-16,-16` donde tenía que salir `65,65,65`.
+    /// contador. Salio como `-16,-16,-16` donde tenia que salir `65,65,65`.
     ///
     /// Leyendo con desplazamiento no hay orden que cuadrar: cada argumento
-    /// está donde se puso. Y quien llama limpia con [`Self::soltar_tres`], que
-    /// es lo que faltaba también — la versión de `pop` dejaba dos valores
+    /// esta donde se puso. Y quien llama limpia con [`Self::soltar_tres`], que
+    /// es lo que faltaba tambien -- la version de `pop` dejaba dos valores
     /// vivos en la pila por cada `memcpy`, y eso no se ve hasta que un bucle
     /// hace mil.
     fn cargar_tres(&mut self, args: &[Expr], r0: u8, r1: u8, r2: u8) {
@@ -1812,24 +1812,24 @@ impl Codegen {
         let mut next_arg = 0usize;
         let mut literal: Vec<u8> = Vec::new();
 
-        // ★ **TODOS los argumentos se evalúan ANTES de escribir un solo byte.**
+        // * **TODOS los argumentos se evaluan ANTES de escribir un solo byte.**
         //
-        // Antes no: el emisor recorría la plantilla y evaluaba cada argumento
+        // Antes no: el emisor recorria la plantilla y evaluaba cada argumento
         // al llegar a su `%`, intercalado con la salida de los literales. Con
         // argumentos sin efectos daba igual, pero `printf("[%d]", f())` con `f`
-        // imprimiendo sacaba `[` **antes** que lo de `f` — y en C estándar
-        // todos los argumentos se evalúan antes de entrar en la llamada.
+        // imprimiendo sacaba `[` **antes** que lo de `f` -- y en C estandar
+        // todos los argumentos se evaluan antes de entrar en la llamada.
         //
-        // Lo destapó la matriz de C++ al probar RAII: un destructor que
+        // Lo destapo la matriz de C++ al probar RAII: un destructor que
         // imprime es justo un argumento con efectos. Es la clase de diferencia
-        // que sólo aparece al portar código de otro, y entonces ya no se sabe
-        // de dónde viene.
+        // que solo aparece al portar codigo de otro, y entonces ya no se sabe
+        // de donde viene.
         //
-        // Se guardan en la PILA y no en ranuras del marco a propósito: los
-        // ayudantes de `bmo_lower::fmt` y `console` están **equilibrados en
-        // rsp** (cada `sub rsp` tiene su `add rsp`), así que un offset
-        // relativo a rsp sigue valiendo entre una conversión y la siguiente.
-        // Y así no hay que reservar sitio en el prólogo para algo que sólo
+        // Se guardan en la PILA y no en ranuras del marco a proposito: los
+        // ayudantes de `bmo_lower::fmt` y `console` estan **equilibrados en
+        // rsp** (cada `sub rsp` tiene su `add rsp`), asi que un offset
+        // relativo a rsp sigue valiendo entre una conversion y la siguiente.
+        // Y asi no hay que reservar sitio en el prologo para algo que solo
         // vive dentro de un `printf`.
         let n = va_args.len();
         for a in &va_args {
@@ -1848,7 +1848,7 @@ impl Codegen {
             }
 
             // Saltar los modificadores de longitud: en BMO todo entero viaja
-            // en 64 bits, así que `%ld` y `%d` producen lo mismo.
+            // en 64 bits, asi que `%ld` y `%d` producen lo mismo.
             let mut j = i + 1;
             while j < chars.len() && matches!(chars[j], 'l' | 'h' | 'z' | 'j' | 't') {
                 j += 1;
@@ -1865,7 +1865,7 @@ impl Codegen {
                 continue;
             }
 
-            // Todo lo literal acumulado sale ANTES de la conversión.
+            // Todo lo literal acumulado sale ANTES de la conversion.
             if !literal.is_empty() {
                 bmo_lower::console::write_const(&mut self.code, &literal);
                 literal.clear();
@@ -1877,16 +1877,16 @@ impl Codegen {
                 ));
                 return;
             }
-            // El valor ya está calculado en la pila: el primero empujado es el
-            // que queda más arriba, así que el i-ésimo está en `n-1-i`.
+            // El valor ya esta calculado en la pila: el primero empujado es el
+            // que queda mas arriba, asi que el i-esimo esta en `n-1-i`.
             self.emit_cargar_de_pila(n - 1 - next_arg);
             next_arg += 1;
 
-            // ★ Aquí estaba el formateador ENTERO, en línea, en cada `%`.
+            // * Aqui estaba el formateador ENTERO, en linea, en cada `%`.
             //
             // Un `printf("%d %d %d")` se llevaba tres copias del mismo
-            // conversor de entero a decimal, y no había programa que no
-            // pagara eso: `printf` es la función que todos usan. Ahora es un
+            // conversor de entero a decimal, y no habia programa que no
+            // pagara eso: `printf` es la funcion que todos usan. Ahora es un
             // `call` de cinco bytes al cuerpo que puso `SINTETIZABLES`.
             match conversion {
                 'd' | 'i' => self.emit_call_sintetizada("__bmo_fmt_i64"),
@@ -1909,8 +1909,8 @@ impl Codegen {
             bmo_lower::console::write_const(&mut self.code, &literal);
         }
 
-        // Devolver la pila. Va DESPUÉS del último literal, no antes: entre
-        // medias todavía se leen ranuras relativas a rsp.
+        // Devolver la pila. Va DESPUES del ultimo literal, no antes: entre
+        // medias todavia se leen ranuras relativas a rsp.
         self.emit_soltar_pila(n);
 
         if next_arg < n {
@@ -1921,7 +1921,7 @@ impl Codegen {
         }
     }
 
-    /// `mov rax, [rsp + ranura*8]` — lee un argumento ya calculado.
+    /// `mov rax, [rsp + ranura*8]` -- lee un argumento ya calculado.
     fn emit_cargar_de_pila(&mut self, ranura: usize) {
         let disp = (ranura * 8) as i64;
         if disp <= 127 {
@@ -1934,7 +1934,7 @@ impl Codegen {
         }
     }
 
-    /// `add rsp, ranuras*8` — suelta los argumentos guardados.
+    /// `add rsp, ranuras*8` -- suelta los argumentos guardados.
     fn emit_soltar_pila(&mut self, ranuras: usize) {
         if ranuras == 0 { return; }
         let bytes = (ranuras * 8) as i64;
@@ -1945,16 +1945,16 @@ impl Codegen {
             self.code.extend_from_slice(&(bytes as u32).to_le_bytes());
         }
     }
-    /// `printf("literal")` — la L2 de C sobre la puerta genérica (L1).
+    /// `printf("literal")` -- la L2 de C sobre la puerta generica (L1).
     ///
-    /// Lo específico de C que se resuelve AQUÍ y en ningún otro sitio: que la
+    /// Lo especifico de C que se resuelve AQUI y en ningun otro sitio: que la
     /// cadena es un literal ya escapado por el lexer y que `\n` va pegado al
     /// final. Los bytes resultantes se los entrega a `bmo_lower::console`,
     /// que no sabe que existe C.
     ///
-    /// Antes esto emitía `lea rdi,[str]; mov esi,len; syscall 0x1F0`: un
-    /// número plano que el kernel no despacha, pasando además un PUNTERO,
-    /// que la superficie congelada rechaza por diseño. No imprimía nada en
+    /// Antes esto emitia `lea rdi,[str]; mov esi,len; syscall 0x1F0`: un
+    /// numero plano que el kernel no despacha, pasando ademas un PUNTERO,
+    /// que la superficie congelada rechaza por diseno. No imprimia nada en
     /// hardware. La cadena ya no necesita vivir en `.rodata`: viaja como
     /// inmediatos dentro de las propias instrucciones.
     fn emit_printf(&mut self, s: &str, newline: bool) {
@@ -1964,11 +1964,11 @@ impl Codegen {
 
     // ---- Expression emit ----
     fn emit_expr(&mut self, expr: &Expr) {
-        // Guard SSE: una expresión FLOTANTE que llega a la ruta entera está en
-        // contexto entero (int x = 1.5; return d;) → calcular en xmm y truncar
+        // Guard SSE: una expresion FLOTANTE que llega a la ruta entera esta en
+        // contexto entero (int x = 1.5; return d;) -> calcular en xmm y truncar
         // a rax (cvttsd2si). Las comparaciones dan int 0/1 (no son float) y se
-        // manejan abajo. emit_fexpr_operand solo llama aquí para NO-floats, así
-        // que no hay recursión infinita.
+        // manejan abajo. emit_fexpr_operand solo llama aqui para NO-floats, asi
+        // que no hay recursion infinita.
         if self.expr_is_float(expr) {
             self.emit_fexpr(expr);
             self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2C, 0xC0]); // cvttsd2si rax, xmm0
@@ -1990,7 +1990,7 @@ impl Codegen {
                 self.emit_asm(|a| { a.mov_imm64(bmo_sem_asm::x86_64::Reg::Rax, v).unwrap(); });
             }
             Expr::StringLit(s) => {
-                // lea rax, [rip + disp] — fixup patched in patch_string_fixups
+                // lea rax, [rip + disp] -- fixup patched in patch_string_fixups
                 self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
                 let idx = self.strings.iter().position(|t| t == s).unwrap_or(0);
                 self.fixups.push(Fixup { lea_offset: self.code.len() - 4, string_idx: idx });
@@ -1999,28 +1999,28 @@ impl Codegen {
                 self.emit_load_var(name);
             }
             Expr::Call(name, args) => {
-                // ★ Las funciones de biblioteca que se emiten EN LÍNEA.
+                // * Las funciones de biblioteca que se emiten EN LINEA.
                 //
-                // No hay librería que enlazar, y no es una carencia: es el
+                // No hay libreria que enlazar, y no es una carencia: es el
                 // modelo. Un `.bex` es una imagen entera y BEF no resuelve
                 // relocaciones contra un `.so`. Emitir el bucle cuesta treinta
-                // bytes y ahorra un enlazador, un formato de librería y un
-                // cargador dinámico.
+                // bytes y ahorra un enlazador, un formato de libreria y un
+                // cargador dinamico.
                 //
                 // Lo que se emite vive en `bmo_lower::memoria` (L1) porque
-                // "mueve estos bytes" no tiene semántica de lenguaje: COBOL
-                // mueve grupos y Ada asigna arrays con la misma emisión. Aquí
-                // sólo se pone el nombre que usa C.
+                // "mueve estos bytes" no tiene semantica de lenguaje: COBOL
+                // mueve grupos y Ada asigna arrays con la misma emision. Aqui
+                // solo se pone el nombre que usa C.
                 if let Some(n) = self.emitir_biblioteca(name, args) {
                     let _ = n;
                     return;
                 }
-                // Special case: printf → emit bmo_printf from userland_ring3
+                // Special case: printf -> emit bmo_printf from userland_ring3
                 if name == "printf" && !args.is_empty() {
                     self.emit_printf_variadic(args);
                     return;
                 }
-                // La pareja de `printf`: se emiten EN LINEA por lo mismo — aqui
+                // La pareja de `printf`: se emiten EN LINEA por lo mismo -- aqui
                 // no hay libc que enlazar ni simbolo que nadie resuelva.
                 if name == "getchar" && args.is_empty() {
                     self.emit_getchar();
@@ -2030,17 +2030,17 @@ impl Codegen {
                     self.emit_scanf(args);
                     return;
                 }
-                // ¿Llamada INDIRECTA? El nombre no es una función pero SÍ una
-                // variable → contiene una dirección (puntero a función).
+                // Llamada INDIRECTA? El nombre no es una funcion pero SI una
+                // variable -> contiene una direccion (puntero a funcion).
                 let is_indirect = !self.known_functions.contains(name)
                     && (self.var_offsets.contains_key(name) || self.global_offsets.contains_key(name));
 
-                // ── Los argumentos, de derecha a izquierda ──
+                // -- Los argumentos, de derecha a izquierda --
                 //
-                // Cuántas ranuras ocupa cada uno lo dice el PARÁMETRO, no la
-                // expresión: un `struct` de 12 bytes ocupa dos aunque quien lo
-                // pase sea una variable. Si no hay firma —llamada indirecta por
-                // puntero— se supone una ranura, que es lo que era antes.
+                // Cuantas ranuras ocupa cada uno lo dice el PARAMETRO, no la
+                // expresion: un `struct` de 12 bytes ocupa dos aunque quien lo
+                // pase sea una variable. Si no hay firma --llamada indirecta por
+                // puntero-- se supone una ranura, que es lo que era antes.
                 let tipos_param: Vec<TypeSpec> = self
                     .firmas
                     .get(name)
@@ -2062,8 +2062,8 @@ impl Codegen {
                     }
                 }
                 // Devolver un agregado es un tercer mecanismo (puntero oculto)
-                // y todavía no está. Se dice: devolver ocho bytes de un struct
-                // de doce sería la clase de mentira que este compilador no
+                // y todavia no esta. Se dice: devolver ocho bytes de un struct
+                // de doce seria la clase de mentira que este compilador no
                 // cuenta.
                 if let Some((_, ret)) = self.firmas.get(name) {
                     if self.es_agregado(&ret.clone()) {
@@ -2074,7 +2074,7 @@ impl Codegen {
                     }
                 }
                 if is_indirect {
-                    self.emit_load_var(name);                 // rax = dirección
+                    self.emit_load_var(name);                 // rax = direccion
                     self.code.extend_from_slice(&[0xFF, 0xD0]); // call rax
                 } else {
                     // call rel32 placeholder (directa)
@@ -2100,9 +2100,9 @@ impl Codegen {
             }
             Expr::Syscall(def, args) => {
                 // x86-64 SysV ABI syscall convention:
-                // args: rdi, rsi, rdx, r10, r8, r9  →  result in rax.
+                // args: rdi, rsi, rdx, r10, r8, r9  ->  result in rax.
                 // El `mov <reg>, rax` lo emite el encoder sem-asm (antes era
-                // la tabla reg_mov de bytes a mano — misma dup que COBOL).
+                // la tabla reg_mov de bytes a mano -- misma dup que COBOL).
                 use bmo_sem_asm::x86_64::Reg;
                 const ARG_REGS: [Reg; 6] =
                     [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::R10, Reg::R8, Reg::R9];
@@ -2120,7 +2120,7 @@ impl Codegen {
             Expr::Assign(name, val) => {
                 // `p = q` con `p` agregado: se copian sus BYTES, todos.
                 //
-                // Antes caía al camino normal —`mov rax,[q]` + `mov [p],rax`—
+                // Antes caia al camino normal --`mov rax,[q]` + `mov [p],rax`--
                 // que se lleva ocho y deja el resto con lo que hubiera. Un
                 // struct de 12 se copiaba a medias, en silencio.
                 if let Some(t) = self.var_type_of(name) {
@@ -2131,7 +2131,7 @@ impl Codegen {
                         return;
                     }
                 }
-                // Asignación a variable float/double → ruta SSE.
+                // Asignacion a variable float/double -> ruta SSE.
                 if self.var_type_of(name).map_or(false, |t| Self::is_float_ty(&t)) {
                     self.emit_fexpr_operand(val);
                     self.store_float_var(name);
@@ -2162,12 +2162,12 @@ impl Codegen {
                 self.emit_dec_var(name);
                 self.code.push(0x58);
             }
-            // `*p` debe leer el TAMAÑO DEL APUNTADO, no siempre 8 bytes.
-            // Antes `*(p+1)` con `int *p` leía 8 bytes desde la posición
-            // correcta, o sea dos enteros pegados: devolvía 504403158366158848
+            // `*p` debe leer el TAMANO DEL APUNTADO, no siempre 8 bytes.
+            // Antes `*(p+1)` con `int *p` leia 8 bytes desde la posicion
+            // correcta, o sea dos enteros pegados: devolvia 504403158366158848
             // en vez de 6.
             Expr::Deref(a) => {
-                self.emit_expr(a); // rax = dirección
+                self.emit_expr(a); // rax = direccion
                 match self.pointee_type(a) {
                     Some(TypeSpec::Char) => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x00]),
                     Some(TypeSpec::UnsignedChar) => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x00]),
@@ -2192,7 +2192,7 @@ impl Codegen {
                             self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
                             self.global_fixups.push((self.code.len() - 4, name.clone()));
                         } else if self.known_functions.contains(name) {
-                            // &myfunc — dirección de la función
+                            // &myfunc -- direccion de la funcion
                             self.emit_func_addr(name);
                         } else { self.emit_xor_eax(); }
                     }
@@ -2206,7 +2206,7 @@ impl Codegen {
                 }
             }
             Expr::Subscript(name, index, scale) => {
-                // dirección exacta (array o puntero) + carga del TAMAÑO del elemento
+                // direccion exacta (array o puntero) + carga del TAMANO del elemento
                 self.emit_subscript_addr(name, index, *scale);
                 let elem = self.elem_type_of(name);
                 self.emit_load_elem(&elem);
@@ -2214,32 +2214,32 @@ impl Codegen {
             Expr::AssignSubscript(name, index, scale, val) => {
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor
-                self.emit_subscript_addr(name, index, *scale); // rax = dirección
+                self.emit_subscript_addr(name, index, *scale); // rax = direccion
                 self.code.push(0x5A);         // pop rdx = valor
                 let elem = self.elem_type_of(name);
-                self.emit_store_elem(&elem);  // [rax] = rdx (tamaño exacto)
+                self.emit_store_elem(&elem);  // [rax] = rdx (tamano exacto)
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor (resultado del assign)
             }
             Expr::IndexPtr(base, index, elem) => {
-                // p->arr[i]: dirección = base(puntero) + i*sizeof(elem), luego load
+                // p->arr[i]: direccion = base(puntero) + i*sizeof(elem), luego load
                 self.emit_index_ptr_addr(base, index, elem);
                 self.emit_load_elem(&elem.clone());
             }
             Expr::AssignIndexPtr(base, index, elem, val) => {
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor
-                self.emit_index_ptr_addr(base, index, elem); // rax = dirección
+                self.emit_index_ptr_addr(base, index, elem); // rax = direccion
                 self.code.push(0x5A);         // pop rdx = valor
                 self.emit_store_elem(&elem.clone());
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
             }
             Expr::CallPtr(callee, args) => {
-                // (*fp)(args): args a la pila, callee da la dirección, call rax
+                // (*fp)(args): args a la pila, callee da la direccion, call rax
                 for arg in args.iter().rev() {
                     self.emit_expr(arg);
                     self.code.push(0x50);
                 }
-                self.emit_expr(callee);                     // rax = dirección de la función
+                self.emit_expr(callee);                     // rax = direccion de la funcion
                 self.code.extend_from_slice(&[0xFF, 0xD0]); // call rax
                 let n = args.len() as u32 * 8;
                 if n > 0 {
@@ -2251,7 +2251,7 @@ impl Codegen {
             // Los operadores conmutativos daban igual; los que no lo son
             // estaban invertidos y nadie lo vio hasta ejecutarlos.
             // `p + n` con `p` puntero avanza n ELEMENTOS, no n bytes. Antes
-            // sumaba bytes: con `int *p`, `*(p+1)` leía desde el byte 1 en
+            // sumaba bytes: con `int *p`, `*(p+1)` leia desde el byte 1 en
             // vez del 4, o sea a caballo entre dos enteros.
             Expr::Add(a, b) => {
                 if let Some(scale) = self.pointer_scale(a) {
@@ -2268,7 +2268,7 @@ impl Codegen {
             // `10 - 3` daba -7.
             Expr::Sub(a, b) => {
                 const SUB: &[u8] = &[
-                    0x48, 0x29, 0xC2, // sub rdx, rax   → rdx = a - b
+                    0x48, 0x29, 0xC2, // sub rdx, rax   -> rdx = a - b
                     0x48, 0x89, 0xD0, // mov rax, rdx
                 ];
                 // `p - n` retrocede n ELEMENTOS (la resta puntero-puntero,
@@ -2283,12 +2283,12 @@ impl Codegen {
             }
             Expr::Mul(a, b) => self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]),
             // `a / b` CON SIGNO. Antes hacia dos `pop` habiendo empujado una
-            // sola vez —se llevaba un valor de la pila que no era suyo— y
+            // sola vez --se llevaba un valor de la pila que no era suyo-- y
             // ademas dividia sin signo. `10 / 3` daba 0.
             Expr::Div(a, b) => self.emit_binop(a, b, &[
-                0x48, 0x89, 0xC1, // mov rcx, rax   → divisor = b
-                0x48, 0x89, 0xD0, // mov rax, rdx   → dividendo = a
-                0x48, 0x99,       // cqo            → extiende el signo
+                0x48, 0x89, 0xC1, // mov rcx, rax   -> divisor = b
+                0x48, 0x89, 0xD0, // mov rax, rdx   -> dividendo = a
+                0x48, 0x99,       // cqo            -> extiende el signo
                 0x48, 0xF7, 0xF9, // idiv rcx
             ]),
             // `a % b`: el resto queda en rdx.
@@ -2297,13 +2297,13 @@ impl Codegen {
                 0x48, 0x89, 0xD0, // mov rax, rdx
                 0x48, 0x99,       // cqo
                 0x48, 0xF7, 0xF9, // idiv rcx
-                0x48, 0x89, 0xD0, // mov rax, rdx  → el resto
+                0x48, 0x89, 0xD0, // mov rax, rdx  -> el resto
             ]),
-            // Comparaciones: si algún operando es float → comisd (setcc unsigned);
-            // si no, la comparación entera de siempre.
+            // Comparaciones: si algun operando es float -> comisd (setcc unsigned);
+            // si no, la comparacion entera de siempre.
             // Comparaciones enteras: todas comparan `a` contra `b` en ese
             // orden y usan el setcc que les toca. Antes `<`, `>` y `>=`
-            // comparaban al reves —`1 < 2` daba 0— porque la comparacion se
+            // comparaban al reves --`1 < 2` daba 0-- porque la comparacion se
             // hacia sobre `b - a` con el setcc de la forma directa.
             Expr::Eq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x94) } else { self.emit_cmp(a, b, 0x94) },
             Expr::Neq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x95) } else { self.emit_cmp(a, b, 0x95) },
@@ -2321,8 +2321,8 @@ impl Codegen {
             // lo correcto para `int`. Un tipo sin signo querria `shr`; hoy
             // el codegen no arrastra esa distincion hasta aqui.
             Expr::Shl(a, b) => self.emit_binop(a, b, &[
-                0x48, 0x89, 0xC1, // mov rcx, rax   → cuenta = b
-                0x48, 0x89, 0xD0, // mov rax, rdx   → valor  = a
+                0x48, 0x89, 0xC1, // mov rcx, rax   -> cuenta = b
+                0x48, 0x89, 0xD0, // mov rax, rdx   -> valor  = a
                 0x48, 0xD3, 0xE0, // shl rax, cl
             ]),
             Expr::Shr(a, b) => self.emit_binop(a, b, &[
@@ -2330,9 +2330,9 @@ impl Codegen {
                 0x48, 0x89, 0xD0, // mov rax, rdx
                 0x48, 0xD3, 0xF8, // sar rax, cl
             ]),
-            // `&&` y `||` valen 0 o 1, no "el operando que quedó". Antes
-            // `0 || 3` daba 3: cortocircuitaba bien pero devolvía el valor
-            // crudo, y el estándar dice que el resultado es `int` 0/1.
+            // `&&` y `||` valen 0 o 1, no "el operando que quedo". Antes
+            // `0 || 3` daba 3: cortocircuitaba bien pero devolvia el valor
+            // crudo, y el estandar dice que el resultado es `int` 0/1.
             Expr::LAnd(a, b) => {
                 let end = self.fresh_label();
                 self.emit_expr(a);
@@ -2362,7 +2362,7 @@ impl Codegen {
                 self.resolve_label(end_lbl);
             }
             Expr::Field(base, _field, offset, ftyp) => {
-                // dirección base + offset, carga del TAMAÑO/SIGNO del campo
+                // direccion base + offset, carga del TAMANO/SIGNO del campo
                 self.emit_expr_as_ptr(base);
                 self.emit_add_offset(*offset);
                 self.emit_load_elem(&ftyp.clone());
@@ -2378,7 +2378,7 @@ impl Codegen {
                 self.emit_expr_as_ptr(base);
                 self.emit_add_offset(*offset);
                 self.code.push(0x5A);
-                // store del TAMAÑO exacto: pt.x=10 con x:int ya no pisa a pt.y
+                // store del TAMANO exacto: pt.x=10 con x:int ya no pisa a pt.y
                 self.emit_store_elem(&ftyp.clone());
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
             }
@@ -2396,12 +2396,12 @@ impl Codegen {
                 self.emit_expr(ptr); // rax = pointer
                 self.emit_add_offset(*offset);
                 self.code.push(0x5A); // pop rdx (value)
-                self.emit_store_elem(&ftyp.clone()); // tamaño exacto del campo
+                self.emit_store_elem(&ftyp.clone()); // tamano exacto del campo
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
             }
             Expr::Intrinsic(name, args) => self.emit_intrinsic(name, args),
             Expr::Cast(t, inner) => {
-                // cast REAL: trunca/extiende rax al tamaño del tipo destino.
+                // cast REAL: trunca/extiende rax al tamano del tipo destino.
                 // Antes era no-op: (char)300 quedaba como 300.
                 self.emit_expr(inner);
                 match t {
@@ -2411,7 +2411,7 @@ impl Codegen {
                     TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0xC0]),
                     TypeSpec::Int => self.code.extend_from_slice(&[0x48, 0x63, 0xC0]), // movsxd rax, eax
                     TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x89, 0xC0]), // mov eax, eax (zero-ext)
-                    _ => {} // 64-bit y punteros: sin cambio de representación
+                    _ => {} // 64-bit y punteros: sin cambio de representacion
                 }
             }
             Expr::Comma(exprs) => {
@@ -2425,15 +2425,15 @@ impl Codegen {
 
     // ---- Subscript helpers (array en memoria vs puntero-valor) ----
 
-    /// ¿`name` es un array (su memoria vive en el slot) o un puntero (el slot
-    /// guarda una dirección)? La distinción que antes no existía y corrompía.
+    /// `name` es un array (su memoria vive en el slot) o un puntero (el slot
+    /// guarda una direccion)? La distincion que antes no existia y corrompia.
     fn var_is_array(&self, name: &str) -> bool {
         if let Some(&(_, ref t)) = self.var_offsets.get(name) { return matches!(t, TypeSpec::Array(_, _)); }
         if let Some(&(_, ref t)) = self.global_offsets.get(name) { return matches!(t, TypeSpec::Array(_, _)); }
         false
     }
 
-    /// Tipo del elemento de un array/puntero (para cargas/stores del tamaño exacto).
+    /// Tipo del elemento de un array/puntero (para cargas/stores del tamano exacto).
     fn elem_type_of(&self, name: &str) -> TypeSpec {
         let t = self.var_offsets.get(name).map(|&(_, ref t)| t.clone())
             .or_else(|| self.global_offsets.get(name).map(|&(_, ref t)| t.clone()));
@@ -2443,7 +2443,7 @@ impl Codegen {
         }
     }
 
-    /// rax = rax * scale (shl si es potencia de 2; imul si no — structs)
+    /// rax = rax * scale (shl si es potencia de 2; imul si no -- structs)
     fn emit_scale_index(&mut self, scale: u8) {
         if scale > 1 {
             if scale.is_power_of_two() {
@@ -2454,12 +2454,12 @@ impl Codegen {
         }
     }
 
-    /// rax = dirección de name[idx]. Array → base = lea del slot;
-    /// puntero → base = VALOR del slot. Local o global.
+    /// rax = direccion de name[idx]. Array -> base = lea del slot;
+    /// puntero -> base = VALOR del slot. Local o global.
     fn emit_subscript_addr(&mut self, name: &str, index: &Expr, scale: u8) {
         self.emit_expr(index);
         self.emit_scale_index(scale);
-        self.code.push(0x50); // push índice escalado
+        self.code.push(0x50); // push indice escalado
         if self.var_is_array(name) {
             if let Some(&(off, _)) = self.var_offsets.get(name) {
                 if off >= -128 && off <= 127 {
@@ -2475,7 +2475,7 @@ impl Codegen {
         } else {
             self.emit_load_var(name); // rax = valor del puntero
         }
-        self.code.push(0x5A); // pop rdx = índice escalado
+        self.code.push(0x5A); // pop rdx = indice escalado
         self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
     }
 
@@ -2491,23 +2491,23 @@ impl Codegen {
         }
     }
 
-    /// rax = base_ptr + index * sizeof(elem), donde `base` es una EXPRESIÓN
-    /// que produce un puntero (p->arr, a+1...). Deja la dirección en rax.
+    /// rax = base_ptr + index * sizeof(elem), donde `base` es una EXPRESION
+    /// que produce un puntero (p->arr, a+1...). Deja la direccion en rax.
     fn emit_index_ptr_addr(&mut self, base: &Expr, index: &Expr, elem: &TypeSpec) {
         let size = self.type_stack_size(elem).max(1) as u8;
         self.emit_expr(base);          // rax = puntero base
         self.code.push(0x50);          // push base
-        self.emit_expr(index);         // rax = índice
-        self.emit_scale_index(size);   // rax = índice * size
+        self.emit_expr(index);         // rax = indice
+        self.emit_scale_index(size);   // rax = indice * size
         self.code.push(0x5A);          // pop rdx = base
         self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
     }
 
-    /// Carga [rax] → rax con el tamaño y signo EXACTOS del elemento.
-    /// Antes siempre era `mov rax,[rax]` (8 bytes): leer int[i] traía basura vecina.
+    /// Carga [rax] -> rax con el tamano y signo EXACTOS del elemento.
+    /// Antes siempre era `mov rax,[rax]` (8 bytes): leer int[i] traia basura vecina.
     fn emit_load_elem(&mut self, elem: &TypeSpec) {
         match elem {
-            // agregados: la dirección ES el valor (a.b.c anidado, arrays en structs)
+            // agregados: la direccion ES el valor (a.b.c anidado, arrays en structs)
             TypeSpec::Array(_, _) | TypeSpec::StructRef(_) | TypeSpec::UnionRef(_) => {}
             TypeSpec::Char => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0x00]), // movsx rax, byte
             TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0x00]), // movzx
@@ -2519,7 +2519,7 @@ impl Codegen {
         }
     }
 
-    /// Guarda rdx → [rax] con el tamaño EXACTO del elemento.
+    /// Guarda rdx -> [rax] con el tamano EXACTO del elemento.
     /// Antes un store de 8 bytes a int[i] pisaba el elemento siguiente.
     fn emit_store_elem(&mut self, elem: &TypeSpec) {
         match self.type_stack_size(elem) {
@@ -2530,28 +2530,28 @@ impl Codegen {
         }
     }
 
-    /// LA FUSIÓN sem-asm↔C: emite un intrínseco de la tabla.
-    /// Evalúa cada argumento, lo apila, y lo vuelca al registro que dicta
-    /// la tabla justo antes de los bytes de la instrucción. Bytes EXACTOS,
-    /// sin caja negra: si el nombre o la aridad no cuadran → error, no adivina.
+    /// LA FUSION sem-asm<->C: emite un intrinseco de la tabla.
+    /// Evalua cada argumento, lo apila, y lo vuelca al registro que dicta
+    /// la tabla justo antes de los bytes de la instruccion. Bytes EXACTOS,
+    /// sin caja negra: si el nombre o la aridad no cuadran -> error, no adivina.
     fn emit_intrinsic(&mut self, name: &str, args: &[Expr]) {
-        // ★ `__va_arg(i)` — el argumento variádico número `i`, contando desde 0
-        // después de los que tienen nombre.
+        // * `__va_arg(i)` -- el argumento variadico numero `i`, contando desde 0
+        // despues de los que tienen nombre.
         //
-        // No sale de la tabla de sem-asm porque no es una instrucción del CPU:
-        // es aritmética sobre el marco de pila, y depende de CUÁNTOS parámetros
-        // con nombre tiene la función que lo pregunta.
+        // No sale de la tabla de sem-asm porque no es una instruccion del CPU:
+        // es aritmetica sobre el marco de pila, y depende de CUANTOS parametros
+        // con nombre tiene la funcion que lo pregunta.
         //
-        // Y es aritmética y no ABI porque BMO C pasa los argumentos **por la
-        // pila**, de derecha a izquierda. En la convención de registros de
-        // SysV esto obligaría a volcar seis registros en el prólogo y a llevar
-        // dos cursores (registros y pila); aquí los argumentos ya están
-        // seguidos en memoria y el número `i` es un desplazamiento. La
-        // convención más vieja resultó ser la que hace los varargs triviales.
+        // Y es aritmetica y no ABI porque BMO C pasa los argumentos **por la
+        // pila**, de derecha a izquierda. En la convencion de registros de
+        // SysV esto obligaria a volcar seis registros en el prologo y a llevar
+        // dos cursores (registros y pila); aqui los argumentos ya estan
+        // seguidos en memoria y el numero `i` es un desplazamiento. La
+        // convencion mas vieja resulto ser la que hace los varargs triviales.
         //
-        // El índice es de EJECUCIÓN, no una constante: sin eso no se puede
+        // El indice es de EJECUCION, no una constante: sin eso no se puede
         // recorrer los argumentos en un bucle, que es justo lo que hace un
-        // `vsprintf` — y un `vsprintf` es lo que pide `I_Error(fmt, ...)`.
+        // `vsprintf` -- y un `vsprintf` es lo que pide `I_Error(fmt, ...)`.
         if name == "va_arg" {
             if args.len() != 1 {
                 self.errors.push(
@@ -2565,7 +2565,7 @@ impl Codegen {
                 return;
             }
             self.emit_expr(&args[0]);                       // rax = i
-            let base = 16 + self.ranuras_con_nombre * 8;    // primer variádico
+            let base = 16 + self.ranuras_con_nombre * 8;    // primer variadico
             // lea rdx, [rbp + base]
             self.code.extend_from_slice(&[0x48, 0x8D, 0x95]);
             self.code.extend_from_slice(&base.to_le_bytes());
@@ -2588,18 +2588,18 @@ impl Codegen {
         let arg_regs = def.args.clone();
         let returns = def.returns.clone();
 
-        // 1) evaluar cada argumento a rax y apilarlo (orden de aparición)
+        // 1) evaluar cada argumento a rax y apilarlo (orden de aparicion)
         for a in args {
             self.emit_expr(a);
             self.code.push(0x50); // push rax
         }
-        // 2) volcar a los registros destino, en REVERSA (el tope es el último
-        //    arg). Cada destino es un registro DISTINTO (rax/rcx/rdx) → pop
+        // 2) volcar a los registros destino, en REVERSA (el tope es el ultimo
+        //    arg). Cada destino es un registro DISTINTO (rax/rcx/rdx) -> pop
         //    directo sin pisarse.
         for reg in arg_regs.iter().rev() {
             self.emit_pop_to_reg(reg);
         }
-        // 3) los bytes exactos de la instrucción
+        // 3) los bytes exactos de la instruccion
         self.code.extend_from_slice(&bytes);
         // 4) normalizar el valor de retorno a rax
         self.emit_intrinsic_return(returns.as_deref());
@@ -2609,9 +2609,9 @@ impl Codegen {
     ///
     /// Los nombres de 64 bits (`rdi`, `rsi`, `r10`, `r8`) no estaban, y esa
     /// ausencia era justo la que dejaba `syscall` fuera del lenguaje: la
-    /// convención de la puerta congelada pasa los argumentos por ahí, así que
-    /// sin estos registros no había forma de escribir la llamada en C. Sólo
-    /// existían los de los puertos de E/S (`dx`, `al`) y los de `rdmsr`.
+    /// convencion de la puerta congelada pasa los argumentos por ahi, asi que
+    /// sin estos registros no habia forma de escribir la llamada en C. Solo
+    /// existian los de los puertos de E/S (`dx`, `al`) y los de `rdmsr`.
     fn emit_pop_to_reg(&mut self, reg: &str) {
         match reg {
             "rax" | "eax" | "ax" | "al" => self.code.push(0x58),  // pop rax
@@ -2620,14 +2620,14 @@ impl Codegen {
             "rbx" => self.code.push(0x5B),
             "rsi" | "esi" | "si" => self.code.push(0x5E),
             "rdi" | "edi" | "di" => self.code.push(0x5F),
-            // r8..r11 llevan REX.B: el `pop` corto sólo alcanza los ocho
-            // registros clásicos.
+            // r8..r11 llevan REX.B: el `pop` corto solo alcanza los ocho
+            // registros clasicos.
             "r8"  => self.code.extend_from_slice(&[0x41, 0x58]),
             "r9"  => self.code.extend_from_slice(&[0x41, 0x59]),
             "r10" => self.code.extend_from_slice(&[0x41, 0x5A]),
             "r11" => self.code.extend_from_slice(&[0x41, 0x5B]),
             "u64_edx_eax" => {
-                // valor de 64 bits en rax → edx:eax (para wrmsr)
+                // valor de 64 bits en rax -> edx:eax (para wrmsr)
                 self.code.push(0x58);                              // pop rax
                 self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
                 self.code.extend_from_slice(&[0x48, 0xC1, 0xEA, 0x20]); // shr rdx, 32
@@ -2636,7 +2636,7 @@ impl Codegen {
         }
     }
 
-    /// Deja el resultado del intrínseco limpio en rax según de dónde salga.
+    /// Deja el resultado del intrinseco limpio en rax segun de donde salga.
     fn emit_intrinsic_return(&mut self, returns: Option<&str>) {
         match returns {
             Some("u64_edx_eax") => {
@@ -2645,7 +2645,7 @@ impl Codegen {
             }
             Some("al") => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]), // movzx rax, al
             Some("ax") => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0xC0]), // movzx rax, ax
-            // La puerta devuelve DOS cosas: el código en rax y el valor en
+            // La puerta devuelve DOS cosas: el codigo en rax y el valor en
             // rdx. Quien pide el valor se lleva rdx a rax, que es donde este
             // codegen espera todo resultado.
             Some("rdx") => self.code.extend_from_slice(&[0x48, 0x89, 0xD0]), // mov rax, rdx
@@ -2654,8 +2654,8 @@ impl Codegen {
         }
     }
 
-    // ═══════════════ Ruta SSE: floats en xmm0 (doble precisión) ═══════════════
-    // C tradicional oculta si un valor es float; aquí el codegen lo SABE y lo
+    // =============== Ruta SSE: floats en xmm0 (doble precision) ===============
+    // C tradicional oculta si un valor es float; aqui el codegen lo SABE y lo
     // rutea por xmm. Se computa todo en double; `float` (f32) se convierte en
     // los bordes (load/store). Registro de trabajo: xmm0; scratch: xmm1.
 
@@ -2666,7 +2666,7 @@ impl Codegen {
 
     fn is_float_ty(t: &TypeSpec) -> bool { matches!(t, TypeSpec::Float | TypeSpec::Double) }
 
-    /// ¿Esta expresión produce un valor de punto flotante?
+    /// Esta expresion produce un valor de punto flotante?
     fn expr_is_float(&self, e: &Expr) -> bool {
         match e {
             Expr::FloatLit(_) => true,
@@ -2682,7 +2682,7 @@ impl Codegen {
         }
     }
 
-    /// cvtsi2sd xmm0, rax — entero (rax) → double (xmm0).
+    /// cvtsi2sd xmm0, rax -- entero (rax) -> double (xmm0).
     fn emit_int_to_double(&mut self) {
         self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2A, 0xC0]);
     }
@@ -2712,7 +2712,7 @@ impl Codegen {
                 self.emit_rbp_disp(off);
             }
         } else {
-            // global float: pendiente (locales primero) → xmm0 = 0
+            // global float: pendiente (locales primero) -> xmm0 = 0
             self.code.extend_from_slice(&[0x66, 0x0F, 0x57, 0xC0]); // xorpd xmm0,xmm0
             self.errors.push(format!("variable float global '{name}' aun no soportada (usa locales)"));
         }
@@ -2736,7 +2736,7 @@ impl Codegen {
         }
     }
 
-    /// Evalúa `e` a xmm0 como double, convirtiendo enteros si hace falta.
+    /// Evalua `e` a xmm0 como double, convirtiendo enteros si hace falta.
     fn emit_fexpr_operand(&mut self, e: &Expr) {
         if self.expr_is_float(e) {
             self.emit_fexpr(e);
@@ -2758,7 +2758,7 @@ impl Codegen {
         self.code.extend_from_slice(op);                             // op xmm0,xmm1
     }
 
-    /// Evalúa una expresión FLOTANTE dejando el resultado (double) en xmm0.
+    /// Evalua una expresion FLOTANTE dejando el resultado (double) en xmm0.
     fn emit_fexpr(&mut self, e: &Expr) {
         match e {
             Expr::FloatLit(f) => {
@@ -2769,12 +2769,12 @@ impl Codegen {
             }
             Expr::Var(n) => self.emit_load_float_var(n),
             Expr::Cast(t, inner) if Self::is_float_ty(t) => {
-                // (double)algo — si algo ya es float, no-op; si es entero, convierte
+                // (double)algo -- si algo ya es float, no-op; si es entero, convierte
                 self.emit_fexpr_operand(inner);
             }
             Expr::Neg(a) => {
                 self.emit_fexpr(a);
-                // xorpd xmm0, sign-bit → negación
+                // xorpd xmm0, sign-bit -> negacion
                 self.code.extend_from_slice(&[0x48, 0xB8]);
                 self.code.extend_from_slice(&0x8000_0000_0000_0000u64.to_le_bytes());
                 self.code.extend_from_slice(&[0x66, 0x48, 0x0F, 0x6E, 0xC8]); // movq xmm1, rax
@@ -2784,13 +2784,13 @@ impl Codegen {
             Expr::Sub(a, b) => self.emit_fbinop(a, b, &[0xF2, 0x0F, 0x5C, 0xC1]), // subsd
             Expr::Mul(a, b) => self.emit_fbinop(a, b, &[0xF2, 0x0F, 0x59, 0xC1]), // mulsd
             Expr::Div(a, b) => self.emit_fbinop(a, b, &[0xF2, 0x0F, 0x5E, 0xC1]), // divsd
-            // cualquier otra cosa: es entera → convertir a double
+            // cualquier otra cosa: es entera -> convertir a double
             _ => self.emit_fexpr_operand(e),
         }
     }
 
-    /// Comparación de floats: a CMP b → 0/1 en rax. `setcc` es el opcode
-    /// SETcc estilo UNSIGNED (comisd fija CF/ZF como comparación sin signo).
+    /// Comparacion de floats: a CMP b -> 0/1 en rax. `setcc` es el opcode
+    /// SETcc estilo UNSIGNED (comisd fija CF/ZF como comparacion sin signo).
     fn emit_fcmp(&mut self, a: &Expr, b: &Expr, setcc: u8) {
         self.emit_fexpr_operand(a);
         self.code.extend_from_slice(&[0x48, 0x83, 0xEC, 0x08]);       // sub rsp,8
@@ -2830,10 +2830,10 @@ impl Codegen {
         }
     }
 
-    /// Tipo al que apunta una expresión de dirección, si se puede deducir.
+    /// Tipo al que apunta una expresion de direccion, si se puede deducir.
     ///
-    /// Cubre lo que aparece en la práctica: una variable puntero o array,
-    /// aritmética de punteros (`p + 1`), y un cast explícito. Cuando no se
+    /// Cubre lo que aparece en la practica: una variable puntero o array,
+    /// aritmetica de punteros (`p + 1`), y un cast explicito. Cuando no se
     /// puede deducir se devuelve `None` y el `deref` lee 8 bytes, que es el
     /// comportamiento anterior.
     fn pointee_type(&self, expr: &Expr) -> Option<TypeSpec> {
@@ -2873,21 +2873,21 @@ impl Codegen {
         self.code.extend_from_slice(op);
     }
 
-    /// Comparación entera `a <op> b` → 0 o 1 en `rax`.
+    /// Comparacion entera `a <op> b` -> 0 o 1 en `rax`.
     ///
     /// `setcc` es el segundo byte del opcode: `0x94`=sete, `0x95`=setne,
     /// `0x9C`=setl, `0x9D`=setge, `0x9E`=setle, `0x9F`=setg.
     ///
-    /// El `movzx` del final NO es decorativo: `setcc` solo escribe `al`, así
-    /// que sin él los 56 bits altos de `rax` conservan el valor del operando
-    /// derecho. Con operandos chicos el resultado parecía correcto de puro
-    /// milagro; `printf("%d", x == y)` con una `x` grande imprimía basura.
+    /// El `movzx` del final NO es decorativo: `setcc` solo escribe `al`, asi
+    /// que sin el los 56 bits altos de `rax` conservan el valor del operando
+    /// derecho. Con operandos chicos el resultado parecia correcto de puro
+    /// milagro; `printf("%d", x == y)` con una `x` grande imprimia basura.
     fn emit_cmp(&mut self, a: &Expr, b: &Expr, setcc: u8) {
         self.emit_expr(a);
         self.code.push(0x50); // push rax (izquierdo)
         self.emit_expr(b); // rax = derecho
         self.code.push(0x5A); // pop rdx (izquierdo)
-        self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax → a - b
+        self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax -> a - b
         self.code.extend_from_slice(&[0x0F, setcc, 0xC0]); // setcc al
         self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
     }
@@ -2898,26 +2898,26 @@ impl Codegen {
         self.emit_call_to_syscall_stub();
     }
 
-    /// La puerta del kernel desde el código emitido.
+    /// La puerta del kernel desde el codigo emitido.
     ///
-    /// ═══ ★ Por qué `Ring0Kernel` NO compila, y lo que emitía ═══
+    /// === * Por que `Ring0Kernel` NO compila, y lo que emitia ===
     ///
-    /// Emitía `0F 05 C3` — `syscall; ret` — con el comentario *"los mismos 3
-    /// bytes, sin relocación"*. Y era falso de una forma que no se ve leyendo:
+    /// Emitia `0F 05 C3` -- `syscall; ret` -- con el comentario *"los mismos 3
+    /// bytes, sin relocacion"*. Y era falso de una forma que no se ve leyendo:
     /// el stub de Ring 3 es un **llamable** (`syscall; ret` al que se llega con
-    /// un `call`, y el `ret` devuelve al llamante). Poniéndolo en línea se
-    /// quita el `call` y **se queda el `ret`**: la función entera retorna en
-    /// cuanto vuelve el syscall, y todo lo que hubiera detrás no se ejecuta.
+    /// un `call`, y el `ret` devuelve al llamante). Poniendolo en linea se
+    /// quita el `call` y **se queda el `ret`**: la funcion entera retorna en
+    /// cuanto vuelve el syscall, y todo lo que hubiera detras no se ejecuta.
     ///
-    /// Y hay una segunda razón, más de fondo: **`syscall` desde Ring 0 no tiene
+    /// Y hay una segunda razon, mas de fondo: **`syscall` desde Ring 0 no tiene
     /// sentido**. Carga CS y SS de `IA32_STAR` y salta a `LSTAR`; desde CPL0 eso
-    /// es reentrar en el manejador del kernel con la pila del kernel. Código de
-    /// Ring 0 no pide servicios — los llama.
+    /// es reentrar en el manejador del kernel con la pila del kernel. Codigo de
+    /// Ring 0 no pide servicios -- los llama.
     ///
-    /// No lo cazó nadie porque **nadie construye este perfil**: es alcanzable
-    /// sólo por `compile_with_target`, y en todo el árbol nada lo pasa. Un
+    /// No lo cazo nadie porque **nadie construye este perfil**: es alcanzable
+    /// solo por `compile_with_target`, y en todo el arbol nada lo pasa. Un
     /// camino muerto que emite bytes incorrectos es peor que uno que no existe,
-    /// porque el día que alguien lo use el fallo no se parecerá a su causa.
+    /// porque el dia que alguien lo use el fallo no se parecera a su causa.
     fn emit_call_to_syscall_stub(&mut self) {
         if self.target == TargetProfile::Ring0Kernel {
             self.errors.push(
@@ -2959,20 +2959,20 @@ impl Codegen {
             b.add_section(data_sec);
         }
 
-        // ★ LA SECCIÓN `Relocs`, y va DESPUÉS de las tres cargables a propósito:
+        // * LA SECCION `Relocs`, y va DESPUES de las tres cargables a proposito:
         // sus offsets son relativos a `.data` y `.rodata`, o sea que se refiere
-        // a las que ya están puestas. Y no es cargable —`is_loadable` la
-        // excluye— así que no ocupa una página en el proceso: el cargador la
+        // a las que ya estan puestas. Y no es cargable --`is_loadable` la
+        // excluye-- asi que no ocupa una pagina en el proceso: el cargador la
         // lee del fichero, aplica lo que dice y la olvida.
         //
-        // Sólo se emite si hay alguna. Un `.bex` sin punteros en datos no lleva
-        // sección de relocs, igual que uno sin syscalls dejó de llevar el stub.
+        // Solo se emite si hay alguna. Un `.bex` sin punteros en datos no lleva
+        // seccion de relocs, igual que uno sin syscalls dejo de llevar el stub.
         if !self.relocs.is_empty() {
             let relocs = core::mem::take(&mut self.relocs);
             b.add_section(BefSection::relocs(relocs));
         }
 
-        // ★ La bandera de la pantalla, deducida al recorrer el programa. Ver
+        // * La bandera de la pantalla, deducida al recorrer el programa. Ver
         // `BefFlags::WANTS_SCREEN`: la pone el compilador y no el autor para que
         // diga lo que el programa HACE y no lo que promete.
         if self.quiere_pantalla {

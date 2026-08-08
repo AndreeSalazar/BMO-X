@@ -5,7 +5,7 @@
 
 use super::*;
 
-// ═══════════════ La ENTRADA: getchar y scanf ═══════════════
+// =============== La ENTRADA: getchar y scanf ===============
 //
 // La mitad que le faltaba a `printf`. Ver `codegen/entrada.rs`.
 
@@ -18,9 +18,9 @@ fn getchar_entrega_los_bytes_en_orden() {
     assert_eq!(out, "[h][o][l][a]");
 }
 
-/// ★ La puerta entrega **hasta 7 bytes de una vez y los CONSUME**. Sin el
-/// buffer, un lector de un byte se comería seis de cada siete pulsaciones y
-/// parecería un teclado que pierde letras. Trece bytes son dos paquetes.
+/// * La puerta entrega **hasta 7 bytes de una vez y los CONSUME**. Sin el
+/// buffer, un lector de un byte se comeria seis de cada siete pulsaciones y
+/// pareceria un teclado que pierde letras. Trece bytes son dos paquetes.
 #[test]
 fn getchar_no_pierde_los_bytes_que_sobran_del_paquete() {
     let fuente = "int main() { int c; int n; n = 0; \
@@ -31,8 +31,8 @@ fn getchar_no_pierde_los_bytes_que_sobran_del_paquete() {
 }
 
 /// El buffer es UNO: dos `getchar()` distintos comparten los bytes que
-/// sobraron. Si cada sitio tuviera el suyo, el segundo empezaría a leer
-/// desde cero y se perderían los del primero.
+/// sobraron. Si cada sitio tuviera el suyo, el segundo empezaria a leer
+/// desde cero y se perderian los del primero.
 #[test]
 fn dos_getchar_distintos_comparten_el_mismo_buffer() {
     let fuente = "int main() { int a; int b; a = getchar(); b = getchar(); \
@@ -49,8 +49,8 @@ fn scanf_lee_un_entero() {
     assert_eq!(out.trim(), "leido=42");
 }
 
-/// Un negativo tecleado es negativo. Sin el signo, `-5` daría 5 y la cuenta
-/// saldría al revés sin una palabra.
+/// Un negativo tecleado es negativo. Sin el signo, `-5` daria 5 y la cuenta
+/// saldria al reves sin una palabra.
 #[test]
 fn scanf_lee_un_entero_negativo() {
     let fuente = "int main() { int x; scanf(\"%d\", &x); \
@@ -59,9 +59,9 @@ fn scanf_lee_un_entero_negativo() {
     assert_eq!(out.trim(), "-5");
 }
 
-/// `%s` lee la línea al buffer del llamante **con su cero final**: en C una
-/// cadena sin terminador no es una cadena, y el `%s` de después imprimiría
-/// hasta el primer cero que hubiera por ahí.
+/// `%s` lee la linea al buffer del llamante **con su cero final**: en C una
+/// cadena sin terminador no es una cadena, y el `%s` de despues imprimiria
+/// hasta el primer cero que hubiera por ahi.
 #[test]
 fn scanf_lee_una_cadena_y_la_termina() {
     let fuente = "int main() { char s[16]; scanf(\"%s\", s); \
@@ -78,9 +78,9 @@ fn scanf_lee_un_caracter() {
     assert_eq!(out.trim(), "ZZ");
 }
 
-/// Más de una conversión se RECHAZA. Un `scanf` que ignora la mitad de su
-/// formato es un programa que lee mal en silencio — y las reglas de espacio
-/// en blanco de §7.21.6.2 ocupan página y media que aquí no están.
+/// Mas de una conversion se RECHAZA. Un `scanf` que ignora la mitad de su
+/// formato es un programa que lee mal en silencio -- y las reglas de espacio
+/// en blanco de section 7.21.6.2 ocupan pagina y media que aqui no estan.
 #[test]
 fn scanf_con_dos_conversiones_se_rechaza_con_motivo() {
     let err = compile_source_to_bef(
@@ -90,7 +90,7 @@ fn scanf_con_dos_conversiones_se_rechaza_con_motivo() {
     assert!(err.message.contains("UNA conversion"), "mensaje: {}", err.message);
 }
 
-/// Y una conversión que no está se dice con cuál es.
+/// Y una conversion que no esta se dice con cual es.
 #[test]
 fn scanf_con_una_conversion_desconocida_se_rechaza() {
     let err = compile_source_to_bef("int main() { float f; scanf(\"%f\", &f); return 0; }")
@@ -98,8 +98,8 @@ fn scanf_con_una_conversion_desconocida_se_rechaza() {
     assert!(err.message.contains("%f"), "mensaje: {}", err.message);
 }
 
-/// Y las escrituras llevan el tamaño EXACTO del campo: escribir 8 bytes
-/// donde hay un `int` pisaría el campo siguiente.
+/// Y las escrituras llevan el tamano EXACTO del campo: escribir 8 bytes
+/// donde hay un `int` pisaria el campo siguiente.
 #[test]
 fn cada_escritura_usa_el_tamano_de_su_campo() {
     let out = run_c("struct M { char a; int b; char c; }; \

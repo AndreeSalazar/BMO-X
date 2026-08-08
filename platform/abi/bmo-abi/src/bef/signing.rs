@@ -1,33 +1,33 @@
 //! Firma + integridad de binarios BEF.
 //!
 //! Esquema BEF:
-//!   - Hash por sección: BLAKE3 256-bit.
+//!   - Hash por seccion: BLAKE3 256-bit.
 //!   - Firma del archivo entero: Ed25519 sobre el conjunto de hashes.
-//!   - Claves públicas confiables en /system/trust/*.pub.
+//!   - Claves publicas confiables en /system/trust/*.pub.
 //!
 //! ## Cadena de confianza
-//!   - Cada BEF cargado → BLAKE3 → apuntado en la bitácora de CABINA
-//!   - Arranque: kernel → compositor → app, cada uno con su suma
+//!   - Cada BEF cargado -> BLAKE3 -> apuntado en la bitacora de CABINA
+//!   - Arranque: kernel -> compositor -> app, cada uno con su suma
 //!
-//! *(La versión anterior de esta nota citaba `timeback` para el journal y el
-//! rollback. Ese crate se borró el 2026-08-02 por llevar seis meses sin un solo
-//! dependiente — ESTRATOS hace ese trabajo, y mejor: copy-on-write donde nada
-//! se sobreescribe, así que el "snapshot válido anterior" es el superbloque de
-//! la generación anterior y no hay que journalizar nada aparte.)*
+//! *(La version anterior de esta nota citaba `timeback` para el journal y el
+//! rollback. Ese crate se borro el 2026-08-02 por llevar seis meses sin un solo
+//! dependiente -- ESTRATOS hace ese trabajo, y mejor: copy-on-write donde nada
+//! se sobreescribe, asi que el "snapshot valido anterior" es el superbloque de
+//! la generacion anterior y no hay que journalizar nada aparte.)*
 //!
-//! ═══════════════════════════════════════════════════════════════════════
-//! ★ DISEÑO PENDIENTE: firma del vendedor + licencia por dueño
-//! ═══════════════════════════════════════════════════════════════════════
+//! =======================================================================
+//! * DISENO PENDIENTE: firma del vendedor + licencia por dueno
+//! =======================================================================
 //!
-//! > **Estado: IDEA, no implementada.** Escrita aquí el 2026-08-02 porque es
-//! > una decisión de producto tanto como técnica, y porque el esqueleto de
+//! > **Estado: IDEA, no implementada.** Escrita aqui el 2026-08-02 porque es
+//! > una decision de producto tanto como tecnica, y porque el esqueleto de
 //! > abajo es exactamente donde va.
 //!
 //! ### Lo que hay hoy, dicho sin adornos
 //!
 //! Lo que BMO-X comprueba antes de ejecutar es **un BLAKE3 del contenido**.
-//! Eso prueba **integridad** —que el fichero no se corrompió ni se tocó— y
-//! **no prueba autoría**: quien pueda escribir en el volumen recalcula la suma
+//! Eso prueba **integridad** --que el fichero no se corrompio ni se toco-- y
+//! **no prueba autoria**: quien pueda escribir en el volumen recalcula la suma
 //! y ya. Es un checksum, no una firma.
 //!
 //! ### La idea
@@ -35,7 +35,7 @@
 //! Dos firmas, cada una contestando una pregunta distinta:
 //!
 //! ```text
-//!   1. FIRMA DEL VENDEDOR   Ed25519 sobre los hashes de sección
+//!   1. FIRMA DEL VENDEDOR   Ed25519 sobre los hashes de seccion
 //!      -> contesta: "esto salio de MI, y nadie lo ha tocado"
 //!
 //!   2. LICENCIA POR DUENO   objeto firmado por el vendedor que nombra
@@ -43,75 +43,75 @@
 //!      -> contesta: "esta copia se emitio para ESTE dueno"
 //! ```
 //!
-//! Cada licencia es única y no se repite —es un par de claves, como en
-//! Bitcoin— y **el dueño se queda con la suya**. Nadie se la puede revocar,
-//! porque la clave la tiene él.
+//! Cada licencia es unica y no se repite --es un par de claves, como en
+//! Bitcoin-- y **el dueno se queda con la suya**. Nadie se la puede revocar,
+//! porque la clave la tiene el.
 //!
-//! ### ★ Lo que esto SÍ hace, y es más de lo que parece
+//! ### * Lo que esto SI hace, y es mas de lo que parece
 //!
-//! - **Procedencia**: este binario salió de ese vendedor, sin tocar. Cubre la
-//!   cadena de suministro entera, que es hoy una preocupación real y creciente.
-//! - **Atribución**: esta copia se emitió a este dueño. Es un recibo firmado,
+//! - **Procedencia**: este binario salio de ese vendedor, sin tocar. Cubre la
+//!   cadena de suministro entera, que es hoy una preocupacion real y creciente.
+//! - **Atribucion**: esta copia se emitio a este dueno. Es un recibo firmado,
 //!   no repudiable por ninguna de las dos partes.
 //! - **Imposibilidad de SUPLANTAR**: un binario modificado no puede seguir
-//!   diciendo que es del vendedor. Puede correr —si el dueño quiere— pero
+//!   diciendo que es del vendedor. Puede correr --si el dueno quiere-- pero
 //!   corre como lo que es: un programa sin firma.
-//! - **Coste cero en ejecución**: se verifica **una vez al cargar**. No hay
+//! - **Coste cero en ejecucion**: se verifica **una vez al cargar**. No hay
 //!   nada corriendo durante la partida.
 //!
-//! ### ★ Lo que esto NO hace, y es estructural
+//! ### * Lo que esto NO hace, y es estructural
 //!
-//! **No impide copiar, y no puede.** Impedirlo exigiría que la máquina
-//! guardase un secreto **de su propio dueño**, y BMO-X es incapaz de eso por
-//! construcción: el dueño lee el log de Ring 0 con F11 y CABINA lo confiesa
-//! todo. No es una carencia que tapar — es la tesis del sistema.
+//! **No impide copiar, y no puede.** Impedirlo exigiria que la maquina
+//! guardase un secreto **de su propio dueno**, y BMO-X es incapaz de eso por
+//! construccion: el dueno lee el log de Ring 0 con F11 y CABINA lo confiesa
+//! todo. No es una carencia que tapar -- es la tesis del sistema.
 //!
-//! La analogía con Bitcoin aguanta en las claves y **se rompe aquí**: la
+//! La analogia con Bitcoin aguanta en las claves y **se rompe aqui**: la
 //! seguridad de Bitcoin es que una RED se pone de acuerdo en que una moneda no
-//! se gasta dos veces. Aquí no hay red. Una máquina local no puede impedir una
+//! se gasta dos veces. Aqui no hay red. Una maquina local no puede impedir una
 //! copia local.
 //!
-//! Así que esto es un **recibo notarizado, no un candado**. Y hay que venderlo
-//! como lo que es: si se promete lo otro, se está prometiendo Denuvo, que es
+//! Asi que esto es un **recibo notarizado, no un candado**. Y hay que venderlo
+//! como lo que es: si se promete lo otro, se esta prometiendo Denuvo, que es
 //! justo lo que este sistema no puede ni quiere hacer.
 //!
-//! ### Por qué encaja con la licencia Techne
+//! ### Por que encaja con la licencia Techne
 //!
-//! Techne v2.0 ya es un modelo de **buena fe con auditoría** —libre para
-//! individuos y por debajo de USD 1M/año, comercial por encima—, no de
-//! prevención. Nunca dependió de impedir copias: depende de que se pueda
-//! **demostrar** qué corre y de quién es.
+//! Techne v2.0 ya es un modelo de **buena fe con auditoria** --libre para
+//! individuos y por debajo de USD 1M/ano, comercial por encima--, no de
+//! prevencion. Nunca dependio de impedir copias: depende de que se pueda
+//! **demostrar** que corre y de quien es.
 //!
-//! Esto hace real esa parte. Y el comprador que más lo paga no es el que teme
-//! la piratería: es el banco o el organismo público que necesita decir *"puedo
-//! demostrar exactamente qué se está ejecutando en esta máquina"*. Que es el
+//! Esto hace real esa parte. Y el comprador que mas lo paga no es el que teme
+//! la pirateria: es el banco o el organismo publico que necesita decir *"puedo
+//! demostrar exactamente que se esta ejecutando en esta maquina"*. Que es el
 //! objetivo declarado del proyecto.
 //!
 //! ### La regla que lo mantiene coherente
 //!
-//! > **Quien decide en qué claves se confía es el DUEÑO.**
+//! > **Quien decide en que claves se confia es el DUENO.**
 //!
-//! Puede añadir la del vendedor, la suya, o ninguna. Un sistema donde la lista
+//! Puede anadir la del vendedor, la suya, o ninguna. Un sistema donde la lista
 //! de confianza la fija el fabricante es exactamente el modelo del firmware
 //! firmado de una GPU: el fabricante manteniendo el control **frente al**
-//! dueño. La dirección contraria a ésta.
+//! dueno. La direccion contraria a esta.
 //!
 //! ### Lo que falta para implementarlo
 //!
-//! 1. **Ed25519 de verdad** — hoy [`SigAlgorithm`] lo nombra y nada lo hace.
-//! 2. **Dónde vive el llavero**: `/system/trust/*.pub` está escrito arriba y no
+//! 1. **Ed25519 de verdad** -- hoy [`SigAlgorithm`] lo nombra y nada lo hace.
+//! 2. **Donde vive el llavero**: `/system/trust/*.pub` esta escrito arriba y no
 //!    existe. Con ESTRATOS montado, un objeto del volumen es mejor sitio que un
-//!    fichero suelto — y su historia queda en el grafo.
-//! 3. **Revocación**: poder decir "esta clave ya no vale", y que eso también
-//!    sea una decisión del dueño.
+//!    fichero suelto -- y su historia queda en el grafo.
+//! 3. **Revocacion**: poder decir "esta clave ya no vale", y que eso tambien
+//!    sea una decision del dueno.
 //! 4. **El objeto licencia**: su formato, y si es transferible. Que lo sea o no
-//!    es política del vendedor, no del sistema — y el sistema debe poder
+//!    es politica del vendedor, no del sistema -- y el sistema debe poder
 //!    expresar las dos.
 //!
-//! ### ★ El factor físico (USB), y la trampa que tiene
+//! ### * El factor fisico (USB), y la trampa que tiene
 //!
 //! La idea de un aparato USB como segundo factor es correcta, pero **hay dos
-//! versiones y sólo una vale**:
+//! versiones y solo una vale**:
 //!
 //! ```text
 //!   HASH GUARDADO EN EL USB   el sistema LEE un secreto del aparato
@@ -125,32 +125,32 @@
 //! ```
 //!
 //! La segunda es la que usan los bancos, y en BMO-X necesita un driver de la
-//! clase **CCID** de USB — otra clase distinta de HID, que es la que hay hoy.
+//! clase **CCID** de USB -- otra clase distinta de HID, que es la que hay hoy.
 //! Mientras eso no exista, un USB de almacenamiento con un fichero de clave es
 //! el intermedio honesto: **es "algo que tienes", y es copiable**. Sirve, y hay
 //! que llamarlo por su nombre en vez de venderlo como lo otro.
 //!
-//! ### ★ Y lo que de verdad vende esto no es la firma
+//! ### * Y lo que de verdad vende esto no es la firma
 //!
-//! Es la **jerarquía**, y en BMO-X no es una funcionalidad: es la forma del
+//! Es la **jerarquia**, y en BMO-X no es una funcionalidad: es la forma del
 //! sistema. Un cajero no es que no tenga *permiso* para autorizar una
-//! transferencia grande — **no tiene el handle**, así que la operación no le
-//! existe. No hay comprobación que saltarse porque no hay comprobación.
+//! transferencia grande -- **no tiene el handle**, asi que la operacion no le
+//! existe. No hay comprobacion que saltarse porque no hay comprobacion.
 //!
-//! Sobre eso, las prácticas que un banco ya tiene se escriben solas: cuatro
-//! ojos son **dos handles en dos procesos**, la segregación de funciones es
-//! que **ninguno tenga los dos**, y la pista de auditoría inmutable **ya
-//! existe** — ESTRATOS no sobreescribe nada, así que el auditor no tiene que
-//! fiarse de que nadie borró: desciende por los estratos y lo ve.
+//! Sobre eso, las practicas que un banco ya tiene se escriben solas: cuatro
+//! ojos son **dos handles en dos procesos**, la segregacion de funciones es
+//! que **ninguno tenga los dos**, y la pista de auditoria inmutable **ya
+//! existe** -- ESTRATOS no sobreescribe nada, asi que el auditor no tiene que
+//! fiarse de que nadie borro: desciende por los estratos y lo ve.
 //!
-//! Ver el README, sección *"Why a capability system is what a bank actually
-//! wants"*, donde está el argumento entero.
+//! Ver el README, seccion *"Why a capability system is what a bank actually
+//! wants"*, donde esta el argumento entero.
 
 #![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u8};
 
-/// Hash BLAKE3 256-bit de una sección.
+/// Hash BLAKE3 256-bit de una seccion.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SectionHash {
@@ -177,7 +177,7 @@ pub enum SigAlgorithm {
     Ed25519 = 1,
 }
 
-/// Cabecera de la sección Signature.
+/// Cabecera de la seccion Signature.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy)]
 pub struct SignatureHeader {
@@ -222,7 +222,7 @@ pub fn chain_hash(hashes: &[SectionHash]) -> [u8; 32] {
     blake3_256(&combined)
 }
 
-/// Verify an Ed25519 signature. Currently a stub — relies on external
+/// Verify an Ed25519 signature. Currently a stub -- relies on external
 /// ed25519-dalek or similar crate for actual verification.
 /// Returns true if sig_algo is None (unsigned binaries are allowed in dev).
 pub fn verify_ed25519(_sig: &Ed25519Signature, _message: &[u8]) -> bool {

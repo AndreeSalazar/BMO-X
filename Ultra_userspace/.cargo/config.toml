@@ -2,7 +2,7 @@
 #
 # `link.ld` no es un detalle de enlazado: reproduce EXACTAMENTE como el kernel
 # coloca las secciones al admitir un `.bex` (ver proc.rs y bex-link). No hay
-# reubicacion — lo que el enlazador escriba como direccion absoluta tiene que
+# reubicacion -- lo que el enlazador escriba como direccion absoluta tiene que
 # caer donde el kernel lo mapee. Los dos lados siguen la misma regla; que
 # coincidan no es suerte, y `bex-link` lo comprueba seccion por seccion.
 [target.x86_64-unknown-none]

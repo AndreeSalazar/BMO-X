@@ -1,150 +1,150 @@
-//! Emulador x86-64 mínimo — el banco de pruebas del toolchain.
+//! Emulador x86-64 minimo -- el banco de pruebas del toolchain.
 //!
-//! # Por qué existe
+//! # Por que existe
 //!
-//! Un emisor de código máquina que solo se testea comparando bytes contra
-//! bytes escritos a mano no prueba nada: si el autor entendió mal una
-//! codificación, el test la repite y pasa igual de mal. Peor aún: un
-//! `IF` que emite un salto con desplazamiento cero **parece** código
+//! Un emisor de codigo maquina que solo se testea comparando bytes contra
+//! bytes escritos a mano no prueba nada: si el autor entendio mal una
+//! codificacion, el test la repite y pasa igual de mal. Peor aun: un
+//! `IF` que emite un salto con desplazamiento cero **parece** codigo
 //! correcto en un volcado de bytes, compila, valida el BEF, y ejecuta las
-//! dos ramas en hardware. Esa clase de mentira solo la caza la ejecución.
+//! dos ramas en hardware. Esa clase de mentira solo la caza la ejecucion.
 //!
-//! Así que este módulo no compara: **ejecuta**. Corre el código emitido y
+//! Asi que este modulo no compara: **ejecuta**. Corre el codigo emitido y
 //! modela la puerta del kernel (`uconsole::write_packed`: 8 bytes LE,
-//! NUL-stop) para reconstruir el texto que aparecería en pantalla. El test
-//! compara ese texto con lo que el programa debería imprimir.
+//! NUL-stop) para reconstruir el texto que apareceria en pantalla. El test
+//! compara ese texto con lo que el programa deberia imprimir.
 //!
-//! Modela también dos cosas que el silicio hace y es fácil olvidar:
-//! - `syscall` destruye `rcx` y `r11` → aquí se llenan de veneno, para que
-//!   cualquier código que dependa de ellos falle en el test y no en el metal.
+//! Modela tambien dos cosas que el silicio hace y es facil olvidar:
+//! - `syscall` destruye `rcx` y `r11` -> aqui se llenan de veneno, para que
+//!   cualquier codigo que dependa de ellos falle en el test y no en el metal.
 //! - Escribir un registro de 32 bits pone a cero la mitad alta del de 64.
 //!
 //! # Alcance
 //!
 //! Cubre el subconjunto que emiten los frontends de BMO: movimientos,
-//! aritmética entera con signo, `imul`/`idiv`, pila, direccionamiento
+//! aritmetica entera con signo, `imul`/`idiv`, pila, direccionamiento
 //! `[rbp+disp]` y `[rsp]`, comparaciones, saltos condicionales e
-//! incondicionales, y `syscall`. Son 58 opcodes de un byte más los grupos
+//! incondicionales, y `syscall`. Son 58 opcodes de un byte mas los grupos
 //! ModRM (`80`/`81`/`83`/`C1`/`D3`/`F7`/`FF`) y unos pocos de dos bytes.
-//! **No** es un emulador general: ante un opcode que ningún emisor de BMO
-//! produce hace panic con el byte, que es la respuesta correcta — significa
-//! que alguien emitió algo sin pensar en cómo lo iba a verificar.
+//! **No** es un emulador general: ante un opcode que ningun emisor de BMO
+//! produce hace panic con el byte, que es la respuesta correcta -- significa
+//! que alguien emitio algo sin pensar en como lo iba a verificar.
 //!
 //! Se activa con la feature `emulator` para que no viaje en las builds
 //! normales del toolchain.
 //!
-//! # ★ FIDELIDAD: qué prueba esto y qué NO puede probar
+//! # * FIDELIDAD: que prueba esto y que NO puede probar
 //!
-//! Esta sección existe porque la pregunta *"¿cuánto se parece esto al Ryzen?"*
-//! tiene una respuesta útil y una engañosa. La engañosa es un porcentaje. La
-//! útil es que **la cobertura no está repartida: está concentrada en un eje y
+//! Esta seccion existe porque la pregunta *"cuanto se parece esto al Ryzen?"*
+//! tiene una respuesta util y una enganosa. La enganosa es un porcentaje. La
+//! util es que **la cobertura no esta repartida: esta concentrada en un eje y
 //! es cero en los otros dos.**
 //!
-//! Y no es teoría de sobremesa: la lista de abajo salió de auditar este módulo
-//! contra `BITACORA.md`, y explica por qué los 24 episodios de aquella —todos—
-//! se cazaron en hardware y ninguno aquí.
+//! Y no es teoria de sobremesa: la lista de abajo salio de auditar este modulo
+//! contra `BITACORA.md`, y explica por que los 24 episodios de aquella --todos--
+//! se cazaron en hardware y ninguno aqui.
 //!
-//! ## Eje 1 — "¿los bytes que emití calculan lo que dice la fuente?" → ALTO
+//! ## Eje 1 -- "los bytes que emiti calculan lo que dice la fuente?" -> ALTO
 //!
-//! Es para lo que se construyó y donde vale su peso. Aritmética, flujo de
+//! Es para lo que se construyo y donde vale su peso. Aritmetica, flujo de
 //! control, marcos de pila, agregados, cadenas, `printf`, File I/O, consola,
-//! entrada. Ejemplo del 2026-08-02: `malloc` emitía su salto de la rama de
-//! fallo **seis bytes corto** y aquí salió como `opcode 0x05 no emitido por
-//! BMO`, que es la firma de aterrizar a media instrucción. En el Ryzen habría
-//! sido un proceso muerto sin explicación, un flasheo y una foto.
+//! entrada. Ejemplo del 2026-08-02: `malloc` emitia su salto de la rama de
+//! fallo **seis bytes corto** y aqui salio como `opcode 0x05 no emitido por
+//! BMO`, que es la firma de aterrizar a media instruccion. En el Ryzen habria
+//! sido un proceso muerto sin explicacion, un flasheo y una foto.
 //!
-//! ## Eje 2 — "¿el sistema de debajo hace lo que el modelo dice?" → CERO
+//! ## Eje 2 -- "el sistema de debajo hace lo que el modelo dice?" -> CERO
 //!
-//! **Este módulo no ejecuta el kernel: lo imita.** De ahí sale la trampa más
+//! **Este modulo no ejecuta el kernel: lo imita.** De ahi sale la trampa mas
 //! fea que tiene, y conviene tenerla escrita: si el modelo y el kernel se
 //! separan, **los dos parecen sanos** y nada avisa.
 //!
-//! Ocurrió el mismo día: `TASK_OP_MEMORIA_PEDIR` no estaba modelado, caía en el
-//! `_ => {}` del despacho y salía por el epílogo de ÉXITO con el valor a cero —
-//! o sea "toma tu bloque" con el puntero nulo—, mientras el kernel de verdad
-//! contesta con un código de error en `rax`. Dos comportamientos incompatibles,
+//! Ocurrio el mismo dia: `TASK_OP_MEMORIA_PEDIR` no estaba modelado, caia en el
+//! `_ => {}` del despacho y salia por el epilogo de EXITO con el valor a cero --
+//! o sea "toma tu bloque" con el puntero nulo--, mientras el kernel de verdad
+//! contesta con un codigo de error en `rax`. Dos comportamientos incompatibles,
 //! cero tests en rojo.
 //!
 //! La regla que deja: **un contrato modelado necesita su prueba en metal
-//! igual**, y el modelo no la sustituye. Lo que sí hace es acotar dónde mirar
+//! igual**, y el modelo no la sustituye. Lo que si hace es acotar donde mirar
 //! cuando falle.
 //!
-//! ## Eje 3 — lo FÍSICO → CERO, y por construcción
+//! ## Eje 3 -- lo FISICO -> CERO, y por construccion
 //!
-//! Paginación y CR3, el cruce de anillos, XSAVE, la preempción por temporizador,
+//! Paginacion y CR3, el cruce de anillos, XSAVE, la preempcion por temporizador,
 //! DMA, el write-combining y las barreras, los tiempos reales, el USB, el
-//! framebuffer, la memoria con huecos. La ley 1 de la bitácora dice que *"QEMU
-//! miente por omisión"*; esto está bastante por debajo de QEMU.
+//! framebuffer, la memoria con huecos. La ley 1 de la bitacora dice que *"QEMU
+//! miente por omision"*; esto esta bastante por debajo de QEMU.
 //!
 //! ## Los agujeros concretos, con nombre (auditado 2026-08-02)
 //!
-//! - ~~**No hay SSE**~~ — **TAPADO el 2026-08-02.** Se modelan las quince
+//! - ~~**No hay SSE**~~ -- **TAPADO el 2026-08-02.** Se modelan las quince
 //!   instrucciones escalares que BMO C emite (`movsd`/`movss`, las cuatro
-//!   aritméticas, `comisd`, `xorpd`, `cvtsi2sd`, `cvttsd2si`, `cvtsd2ss`,
+//!   aritmeticas, `comisd`, `xorpd`, `cvtsi2sd`, `cvttsd2si`, `cvtsd2ss`,
 //!   `cvtss2sd`, `movq xmm,r64`), y con ellas la ruta de coma flotante
-//!   **se ejecuta por primera vez**: 7 tests que corren donde antes había 9
-//!   que sólo miraban bytes. Lo que sigue sin modelarse es SSE **empaquetado**
-//!   — y el `panic` por opcode desconocido lo dirá el día que alguien lo
+//!   **se ejecuta por primera vez**: 7 tests que corren donde antes habia 9
+//!   que solo miraban bytes. Lo que sigue sin modelarse es SSE **empaquetado**
+//!   -- y el `panic` por opcode desconocido lo dira el dia que alguien lo
 //!   emita, que es la respuesta correcta.
-//! - **La memoria es un mapa disperso**: toda dirección funciona. No hay fallo
-//!   de página, ni aliasing, ni marcos no contiguos, así que `KIND_MEMORIA`
-//!   puede probar aquí sus límites y sus rangos, pero **no su física**. Por eso
-//!   la prueba de las 16 páginas vive en `examples/memoria_C.c` y no sólo en un
-//!   test: ahí sólo puede fallar en el Ryzen.
-//! - **No hay tope de pila.** El proceso real recibe 64 KiB; una recursión
-//!   profunda pasa aquí y muere allí.
+//! - **La memoria es un mapa disperso**: toda direccion funciona. No hay fallo
+//!   de pagina, ni aliasing, ni marcos no contiguos, asi que `KIND_MEMORIA`
+//!   puede probar aqui sus limites y sus rangos, pero **no su fisica**. Por eso
+//!   la prueba de las 16 paginas vive en `examples/memoria_C.c` y no solo en un
+//!   test: ahi solo puede fallar en el Ryzen.
+//! - **No hay tope de pila.** El proceso real recibe 64 KiB; una recursion
+//!   profunda pasa aqui y muere alli.
 //! - **No hay cargador.** El banco de pruebas rearma las secciones a mano
 //!   (Code + RoData + Data) y salta a la entrada. El cargador del kernel, la
-//!   alineación a página y la admisión de `bmo-verify` **no se ejercen**.
+//!   alineacion a pagina y la admision de `bmo-verify` **no se ejercen**.
 //! - **El presupuesto de instrucciones** (`run(m, N)`) convierte un bucle
-//!   infinito en un test que falla; en el Ryzen es una máquina colgada. Aquí es
+//!   infinito en un test que falla; en el Ryzen es una maquina colgada. Aqui es
 //!   una ventaja, pero significa que "termina" no quiere decir lo mismo.
 //!
-//! ## Cómo usar esto sin engañarse
+//! ## Como usar esto sin enganarse
 //!
-//! El valor de este módulo no es un porcentaje: es el **coste por bug**. Uno
-//! cazado aquí cuesta segundos; el mismo en el Ryzen cuesta flashear, reiniciar,
-//! fotografiar y una teoría que puede estar equivocada — el Ep. 21 costó tres
-//! arranques culpando al compositor de algo que hacía un programa de ejemplo.
+//! El valor de este modulo no es un porcentaje: es el **coste por bug**. Uno
+//! cazado aqui cuesta segundos; el mismo en el Ryzen cuesta flashear, reiniciar,
+//! fotografiar y una teoria que puede estar equivocada -- el Ep. 21 costo tres
+//! arranques culpando al compositor de algo que hacia un programa de ejemplo.
 //!
-//! Así que la regla de reparto es: **lo que se puede equivocar en la aritmética
-//! o en el flujo, aquí; lo que depende del silicio o del kernel, allí, y con su
-//! número escrito antes de arrancar.**
+//! Asi que la regla de reparto es: **lo que se puede equivocar en la aritmetica
+//! o en el flujo, aqui; lo que depende del silicio o del kernel, alli, y con su
+//! numero escrito antes de arrancar.**
 
 use std::collections::{HashMap, HashSet};
 
-/// Dirección base del área de datos que carga el test.
+/// Direccion base del area de datos que carga el test.
 pub const DATA_BASE: u64 = 0x1_0000;
 /// Tope de pila inicial. Alineado a 64 como pide el contrato de BMO.
 pub const STACK_TOP: u64 = 0x7000_0000;
 
 /// Donde cae el primer bloque de `KIND_MEMORIA`.
 ///
-/// Espejo de `vmm::MEMORIA_VA_BASE`, **que es la fuente de verdad** — el kernel
-/// no enlaza este crate ni al revés. Se copia el número por lo mismo que lo
-/// copia `ring0/core/informe.rs`: si los dos se separan, el que está mal es
-/// éste. Un test que compruebe la dirección exacta está comprobando el
-/// contrato, y por eso vale la pena que sea un número y no "lo que salga".
+/// Espejo de `vmm::MEMORIA_VA_BASE`, **que es la fuente de verdad** -- el kernel
+/// no enlaza este crate ni al reves. Se copia el numero por lo mismo que lo
+/// copia `ring0/core/informe.rs`: si los dos se separan, el que esta mal es
+/// este. Un test que compruebe la direccion exacta esta comprobando el
+/// contrato, y por eso vale la pena que sea un numero y no "lo que salga".
 pub const MEMORIA_VA_BASE: u64 = 0xE000_0000;
 
-/// Cuánto puede pedir un proceso de una vez, y cuántas veces.
+/// Cuanto puede pedir un proceso de una vez, y cuantas veces.
 /// Espejo de `ring0::obj::memoria::{MAX_BYTES, MAX_PETICIONES}`.
 pub const MEMORIA_MAX_BYTES: u64 = 64 * 1024 * 1024;
 pub const MEMORIA_MAX_PETICIONES: usize = 4;
 
-/// Página de 4 KiB: el bloque se redondea hacia ARRIBA, igual que el kernel.
+/// Pagina de 4 KiB: el bloque se redondea hacia ARRIBA, igual que el kernel.
 const MEMORIA_PAGE: u64 = 4096;
 
 const POISON: u64 = 0xDEAD_BEEF_DEAD_BEEF;
 
-/// El handle que devuelve `TASK_OP_INPUT_CLAIM` aquí dentro. Lejos del rango
-/// de los archivos (1..n) a propósito: un programa que confunda los dos
+/// El handle que devuelve `TASK_OP_INPUT_CLAIM` aqui dentro. Lejos del rango
+/// de los archivos (1..n) a proposito: un programa que confunda los dos
 /// handles tiene que fallar en la prueba, no acertar por casualidad.
 const CAP_ENTRADA: u64 = 0x0001_0001;
 
 /// Primer handle de `KIND_MEMORIA`. Por encima del de entrada y muy por encima
 /// de los de archivo (1..n), por el mismo motivo: un programa que confunda dos
-/// handles tiene que fallar aquí, no acertar por casualidad.
+/// handles tiene que fallar aqui, no acertar por casualidad.
 const CAP_MEMORIA: u64 = 0x0002_0001;
 
 const RAX: usize = 0;
@@ -155,7 +155,7 @@ const RSI: usize = 6;
 const RDI: usize = 7;
 const R11: usize = 11;
 
-/// Una llamada observada cruzando CPL3→CPL0.
+/// Una llamada observada cruzando CPL3->CPL0.
 #[derive(Debug, Clone, Copy)]
 pub struct ObservedSyscall {
     pub nr: u64,
@@ -168,8 +168,8 @@ pub struct ObservedSyscall {
 ///
 /// Modela lo mismo que `ring0/archivo.rs`, **incluido que lo escrito no llega
 /// al disco hasta cerrar**. Si el emulador guardara sobre la marcha, un
-/// programa que se olvida del `CLOSE` pasaría los tests y perdería el fichero
-/// en la máquina real — que es exactamente la clase de mentira que este módulo
+/// programa que se olvida del `CLOSE` pasaria los tests y perderia el fichero
+/// en la maquina real -- que es exactamente la clase de mentira que este modulo
 /// existe para no contar.
 struct Abierto {
     ruta: String,
@@ -183,114 +183,114 @@ pub struct Machine {
     pub regs: [u64; 16],
     /// **Los registros SSE, mitad baja.**
     ///
-    /// ═══ Por qué sólo la mitad baja ═══
+    /// === Por que solo la mitad baja ===
     ///
-    /// Un `xmm` son 128 bits, y aquí se guardan 64. No es un atajo: **todo lo
-    /// que BMO emite es SSE ESCALAR** — `movsd`, `addsd`, `comisd`,
+    /// Un `xmm` son 128 bits, y aqui se guardan 64. No es un atajo: **todo lo
+    /// que BMO emite es SSE ESCALAR** -- `movsd`, `addsd`, `comisd`,
     /// `cvtsi2sd`. Ninguna de esas instrucciones toca la mitad alta salvo para
-    /// dejarla como estaba, y nada en el toolchain emite una operación
+    /// dejarla como estaba, y nada en el toolchain emite una operacion
     /// empaquetada.
     ///
-    /// Modelar 128 bits para que 64 estén siempre a cero sería un emulador más
-    /// grande que dice exactamente lo mismo. El día que alguien emita
-    /// `addpd`, el `panic` por opcode desconocido lo dirá — que es la
-    /// respuesta correcta y la razón de que este emulador reviente en vez de
+    /// Modelar 128 bits para que 64 esten siempre a cero seria un emulador mas
+    /// grande que dice exactamente lo mismo. El dia que alguien emita
+    /// `addpd`, el `panic` por opcode desconocido lo dira -- que es la
+    /// respuesta correcta y la razon de que este emulador reviente en vez de
     /// adivinar.
     ///
-    /// ★ La única excepción es `xorpd xmm,xmm`, que sí borra los 128. Como
-    /// sólo se emite consigo mismo (para hacer 0.0), poner la mitad baja a
+    /// * La unica excepcion es `xorpd xmm,xmm`, que si borra los 128. Como
+    /// solo se emite consigo mismo (para hacer 0.0), poner la mitad baja a
     /// cero es exactamente correcto.
     pub xmm: [u64; 16],
     pub code: Vec<u8>,
     pub rip: usize,
-    /// Texto que el kernel habría pintado.
+    /// Texto que el kernel habria pintado.
     pub console: String,
     /// Toda llamada observada, en orden.
     pub syscalls: Vec<ObservedSyscall>,
-    /// True cuando el programa invocó `TASK_OP_EXIT`.
+    /// True cuando el programa invoco `TASK_OP_EXIT`.
     pub exited: bool,
-    /// El disco, modelado: ruta → contenido.
+    /// El disco, modelado: ruta -> contenido.
     ///
-    /// Sin esto el File I/O de COBOL no se podría probar de ninguna forma —
-    /// `OPEN`/`READ`/`WRITE` sólo se distinguen de un no-op **ejecutándolos**,
-    /// que es la lección entera de este módulo. Las pruebas siembran los
+    /// Sin esto el File I/O de COBOL no se podria probar de ninguna forma --
+    /// `OPEN`/`READ`/`WRITE` solo se distinguen de un no-op **ejecutandolos**,
+    /// que es la leccion entera de este modulo. Las pruebas siembran los
     /// archivos con [`Machine::poner_archivo`] y leen lo escrito con
     /// [`Machine::archivo`].
     pub archivos: HashMap<String, Vec<u8>>,
-    /// Rutas cuyo `CERRAR` va a decir que **no se guardó**.
+    /// Rutas cuyo `CERRAR` va a decir que **no se guardo**.
     ///
-    /// ★ Existe porque guardar puede fallar y hasta hoy el emulador no sabía
-    /// fingirlo: `ARCH_OP_CERRAR` devolvía `1` siempre, así que el camino del
-    /// fallo —el que pone `FILE STATUS` a `30`— era código que ninguna prueba
-    /// podía pisar. Y no es un caso raro: hoy `TASK_OP_ARCHIVO_CREAR` **no
+    /// * Existe porque guardar puede fallar y hasta hoy el emulador no sabia
+    /// fingirlo: `ARCH_OP_CERRAR` devolvia `1` siempre, asi que el camino del
+    /// fallo --el que pone `FILE STATUS` a `30`-- era codigo que ninguna prueba
+    /// podia pisar. Y no es un caso raro: hoy `TASK_OP_ARCHIVO_CREAR` **no
     /// puede reemplazar un fichero que ya existe**, o sea que la segunda
-    /// corrida de cualquier programa que escriba su salida cae por aquí.
+    /// corrida de cualquier programa que escriba su salida cae por aqui.
     ///
-    /// Modela el `0` del kernel y nada más: no se escribe el archivo y se
-    /// contesta que no. El motivo (sin sitio, no se pudo reemplazar, desbordó)
-    /// **el kernel tampoco lo distingue** — se queda en la CABINA.
+    /// Modela el `0` del kernel y nada mas: no se escribe el archivo y se
+    /// contesta que no. El motivo (sin sitio, no se pudo reemplazar, desbordo)
+    /// **el kernel tampoco lo distingue** -- se queda en la CABINA.
     fallo_al_guardar: HashSet<String>,
-    /// Lo que el terminal habría tecleado para este proceso. Lo siembra
+    /// Lo que el terminal habria tecleado para este proceso. Lo siembra
     /// [`Machine::poner_entrada`] y lo drena `TASK_OP_CONSOLE_READ`.
     entrada: Vec<u8>,
     entrada_cursor: usize,
-    /// El renglón donde se acumula una ruta byte a byte (`TASK_OP_RUTA`),
+    /// El renglon donde se acumula una ruta byte a byte (`TASK_OP_RUTA`),
     /// igual que en el kernel: la superficie no acepta punteros.
     ruta: Vec<u8>,
     /// Archivos abiertos: `(ruta, contenido, cursor, escribe)`.
     abiertos: Vec<Abierto>,
-    /// ── La entrada, modelada ────────────────────────────────────────────
+    /// -- La entrada, modelada --------------------------------------------
     ///
-    /// Esto no estaba, y el comentario que lo justificaba —"ningún código
-    /// emitido toca el ratón, lo usa el compositor, que es Rust normal"— dejó
+    /// Esto no estaba, y el comentario que lo justificaba --"ningun codigo
+    /// emitido toca el raton, lo usa el compositor, que es Rust normal"-- dejo
     /// de ser verdad en cuanto un frontend pudo emitir la puerta. Mientras no
-    /// estuvo, **la rueda sólo se podía probar en el Ryzen**: un `INPUT_OP_RUEDA`
-    /// que devuelve siempre lo mismo se ve idéntico a uno que consume, y ésa
+    /// estuvo, **la rueda solo se podia probar en el Ryzen**: un `INPUT_OP_RUEDA`
+    /// que devuelve siempre lo mismo se ve identico a uno que consume, y esa
     /// es justo la diferencia que decide si un scroll se mueve solo.
     ///
-    /// El ratón se declara AUSENTE por defecto (`entrada_cedida = false`), que
-    /// es lo que ve un programa cuando otro proceso ya reclamó la entrada.
+    /// El raton se declara AUSENTE por defecto (`entrada_cedida = false`), que
+    /// es lo que ve un programa cuando otro proceso ya reclamo la entrada.
     entrada_cedida: bool,
     /// Teclas pendientes, en orden. Las siembra [`Machine::poner_teclas`] y
     /// las drena `INPUT_OP_TECLA`, una por llamada.
     teclas: Vec<u8>,
     teclas_cursor: usize,
-    /// Teclas que aún no han LLEGADO: un lote por fotograma.
+    /// Teclas que aun no han LLEGADO: un lote por fotograma.
     ///
-    /// Sin esto, todo lo sembrado está disponible en la primera vuelta del
-    /// bucle, y un programa que drena el teclado hasta vaciarlo —que es lo
-    /// correcto— ve la sesión entera de golpe. Un ESC al final de la lista
+    /// Sin esto, todo lo sembrado esta disponible en la primera vuelta del
+    /// bucle, y un programa que drena el teclado hasta vaciarlo --que es lo
+    /// correcto-- ve la sesion entera de golpe. Un ESC al final de la lista
     /// mata el programa antes de que llegue a reaccionar a nada.
     ///
-    /// El reloj es `YIELD`, y no es una convención inventada: un bucle de
-    /// fotograma que no cede se come el quantum, así que ceder **es** el borde
+    /// El reloj es `YIELD`, y no es una convencion inventada: un bucle de
+    /// fotograma que no cede se come el quantum, asi que ceder **es** el borde
     /// del fotograma. Ver [`Machine::poner_teclas_por_fotograma`].
     lotes: Vec<Vec<u8>>,
-    /// Muescas de rueda acumuladas. **Leerlas las vacía**, igual que el kernel.
+    /// Muescas de rueda acumuladas. **Leerlas las vacia**, igual que el kernel.
     rueda: i32,
-    /// `(x, y, botones)` y el pulsómetro de informes HID.
+    /// `(x, y, botones)` y el pulsometro de informes HID.
     puntero: (u32, u32, u8),
     eventos_hid: u64,
     modificadores: u8,
-    /// ── `KIND_MEMORIA`, modelada ────────────────────────────────────────
+    /// -- `KIND_MEMORIA`, modelada ----------------------------------------
     ///
-    /// Sin esto, `TASK_OP_MEMORIA_PEDIR` caía en el `_ => {}` del despacho y
-    /// salía por `finalizar_syscall(0)`: **código 0 (éxito) con handle 0**. O
+    /// Sin esto, `TASK_OP_MEMORIA_PEDIR` caia en el `_ => {}` del despacho y
+    /// salia por `finalizar_syscall(0)`: **codigo 0 (exito) con handle 0**. O
     /// sea que el emulador contestaba "toma tu bloque" y entregaba el puntero
-    /// nulo, y todo `malloc` devolvía 0 sin que nadie pudiera distinguir eso de
-    /// un kernel que rechaza. Un modelo que dice que sí y no da nada es peor
+    /// nulo, y todo `malloc` devolvia 0 sin que nadie pudiera distinguir eso de
+    /// un kernel que rechaza. Un modelo que dice que si y no da nada es peor
     /// que ninguno.
     ///
     /// Se modelan las DOS cosas que un programa puede notar: que cada bloque
     /// cae en un rango propio (el cursor avanza) y que **el tope existe**.
-    /// Lo que no se modela es la física —marcos contiguos, aliasing de
-    /// páginas—, y no se puede: aquí la memoria es un mapa disperso, así que
-    /// toda dirección funciona. Eso se prueba en el Ryzen y en ningún otro
+    /// Lo que no se modela es la fisica --marcos contiguos, aliasing de
+    /// paginas--, y no se puede: aqui la memoria es un mapa disperso, asi que
+    /// toda direccion funciona. Eso se prueba en el Ryzen y en ningun otro
     /// sitio.
     mem_cursor: u64,
     mem_peticiones: usize,
     mem_entregados: u64,
-    /// Base de cada handle concedido, en orden de concesión.
+    /// Base de cada handle concedido, en orden de concesion.
     mem_bloques: Vec<u64>,
     mem: HashMap<u64, u8>,
     data_len: u64,
@@ -339,7 +339,7 @@ impl Machine {
         m
     }
 
-    /// Coloca bytes en memoria y devuelve su dirección.
+    /// Coloca bytes en memoria y devuelve su direccion.
     pub fn load_data(&mut self, bytes: &[u8]) -> u64 {
         let addr = DATA_BASE + self.data_len;
         for (i, b) in bytes.iter().enumerate() {
@@ -350,7 +350,7 @@ impl Machine {
     }
 
     /// Un byte de memoria, para que los tests puedan mirar si el emisor
-    /// escribió donde no debía. Sin esto, un desbordamiento de buffer sólo se
+    /// escribio donde no debia. Sin esto, un desbordamiento de buffer solo se
     /// ve cuando ya ha corrompido otra cosa.
     pub fn read_u8_pub(&self, addr: u64) -> u8 {
         self.read_u8_mem(addr)
@@ -373,11 +373,11 @@ impl Machine {
 
     /// Lee un byte de memoria.
     ///
-    /// Si nadie escribió ahí, cae a la propia imagen: los frontends colocan
-    /// las cadenas y los globales DENTRO de la sección de código, justo
-    /// detrás de las instrucciones, y los alcanzan con `lea [rip+disp]`. Un
-    /// `%s` leería ceros si el emulador no modelara eso. Fuera de la imagen
-    /// devuelve cero, que es lo que hace el kernel con una página nueva.
+    /// Si nadie escribio ahi, cae a la propia imagen: los frontends colocan
+    /// las cadenas y los globales DENTRO de la seccion de codigo, justo
+    /// detras de las instrucciones, y los alcanzan con `lea [rip+disp]`. Un
+    /// `%s` leeria ceros si el emulador no modelara eso. Fuera de la imagen
+    /// devuelve cero, que es lo que hace el kernel con una pagina nueva.
     fn read_u8_mem(&self, addr: u64) -> u8 {
         if let Some(b) = self.mem.get(&addr) {
             return *b;
@@ -448,9 +448,9 @@ impl Machine {
         self.of = false;
     }
 
-    /// Siembra lo que el terminal habría tecleado. El `\n` final hace falta:
-    /// `read_line` espera verlo para dar la línea por cerrada, exactamente
-    /// igual que en la máquina.
+    /// Siembra lo que el terminal habria tecleado. El `\n` final hace falta:
+    /// `read_line` espera verlo para dar la linea por cerrada, exactamente
+    /// igual que en la maquina.
     pub fn poner_entrada(&mut self, texto: &str) {
         self.entrada.extend_from_slice(texto.as_bytes());
     }
@@ -460,20 +460,20 @@ impl Machine {
         self.archivos.insert(ruta.to_string(), datos.to_vec());
     }
 
-    /// Hace que guardar ESA ruta falle: el `CLOSE` contestará `0` y en el disco
-    /// no quedará nada.
+    /// Hace que guardar ESA ruta falle: el `CLOSE` contestara `0` y en el disco
+    /// no quedara nada.
     ///
-    /// Es el disco diciendo que no, que es lo único que un programa puede
-    /// observar. Sirve para probar que el programa **se entera** — un `CLOSE`
-    /// que siempre dice que sí deja el camino del fallo sin pisar, y ése es
-    /// justo el que decide si un fichero se perdió en silencio.
+    /// Es el disco diciendo que no, que es lo unico que un programa puede
+    /// observar. Sirve para probar que el programa **se entera** -- un `CLOSE`
+    /// que siempre dice que si deja el camino del fallo sin pisar, y ese es
+    /// justo el que decide si un fichero se perdio en silencio.
     pub fn fallar_al_guardar(&mut self, ruta: &str) {
         self.fallo_al_guardar.insert(ruta.to_string());
     }
 
-    /// Lo que hay en el disco al terminar. `None` si ese archivo no existe —
-    /// que es distinto de existir vacío, y en un batch bancario esa diferencia
-    /// es la que separa "no se escribió" de "se escribió cero registros".
+    /// Lo que hay en el disco al terminar. `None` si ese archivo no existe --
+    /// que es distinto de existir vacio, y en un batch bancario esa diferencia
+    /// es la que separa "no se escribio" de "se escribio cero registros".
     pub fn archivo(&self, ruta: &str) -> Option<&[u8]> {
         self.archivos.get(ruta).map(|v| v.as_slice())
     }
@@ -483,19 +483,19 @@ impl Machine {
         self.archivo(ruta).map(|b| String::from_utf8_lossy(b).into_owned())
     }
 
-    // ── Sembrar la entrada ──────────────────────────────────────────────
+    // -- Sembrar la entrada ----------------------------------------------
 
-    /// Concede la entrada: a partir de aquí `TASK_OP_INPUT_CLAIM` funciona.
+    /// Concede la entrada: a partir de aqui `TASK_OP_INPUT_CLAIM` funciona.
     ///
-    /// Hay que pedirlo a propósito porque la entrada es **exclusiva**: sin
+    /// Hay que pedirlo a proposito porque la entrada es **exclusiva**: sin
     /// esto, la prueba ve lo mismo que un programa lanzado mientras el
-    /// compositor la tiene tomada, que es el caso que más se equivoca al
+    /// compositor la tiene tomada, que es el caso que mas se equivoca al
     /// escribirlo.
     pub fn ceder_entrada(&mut self) {
         self.entrada_cedida = true;
     }
 
-    /// Teclas que el programa irá recogiendo con `INPUT_OP_TECLA`, una por
+    /// Teclas que el programa ira recogiendo con `INPUT_OP_TECLA`, una por
     /// llamada. Los bytes son Latin-1 ya resueltos; para las que no tienen
     /// glifo, las constantes `TECLA_*` de `bmo_abi::syscalls::surface`.
     pub fn poner_teclas(&mut self, teclas: &[u8]) {
@@ -506,14 +506,14 @@ impl Machine {
     /// fotograma cada `YIELD` que haga el programa.
     ///
     /// Es la diferencia entre probar un programa interactivo y probar una
-    /// ráfaga: con todo disponible de golpe, un bucle que drena el teclado ve
-    /// la sesión entera en la primera vuelta y nunca llega a repintar entre
-    /// pulsación y pulsación — que es justo la conducta que se quiere mirar.
+    /// rafaga: con todo disponible de golpe, un bucle que drena el teclado ve
+    /// la sesion entera en la primera vuelta y nunca llega a repintar entre
+    /// pulsacion y pulsacion -- que es justo la conducta que se quiere mirar.
     ///
-    /// El primer lote llega tras el primer `YIELD`; lo que deba estar ahí
+    /// El primer lote llega tras el primer `YIELD`; lo que deba estar ahi
     /// desde el principio va en [`Machine::poner_teclas`].
     pub fn poner_teclas_por_fotograma(&mut self, lotes: &[&[u8]]) {
-        // Se guardan al revés para poder sacar el siguiente por el final, que
+        // Se guardan al reves para poder sacar el siguiente por el final, que
         // es O(1). El orden que ve el programa es el de la lista.
         for lote in lotes.iter().rev() {
             self.lotes.push(lote.to_vec());
@@ -521,32 +521,32 @@ impl Machine {
     }
 
     /// Suma muescas de rueda. Positivo = hacia arriba. Se acumulan hasta que
-    /// alguien las lea, y leerlas las vacía.
+    /// alguien las lea, y leerlas las vacia.
     pub fn poner_rueda(&mut self, muescas: i32) {
         self.rueda += muescas;
         self.eventos_hid += muescas.unsigned_abs() as u64;
     }
 
-    /// Coloca el puntero y sube el pulsómetro de informes HID.
+    /// Coloca el puntero y sube el pulsometro de informes HID.
     pub fn poner_puntero(&mut self, x: u32, y: u32, botones: u8) {
         self.puntero = (x, y, botones);
         self.eventos_hid += 1;
     }
 
-    /// Modificadores pulsados AHORA (`MOD_SHIFT`, `MOD_CTRL`…). Es estado: se
+    /// Modificadores pulsados AHORA (`MOD_SHIFT`, `MOD_CTRL`...). Es estado: se
     /// queda puesto hasta que se cambie.
     pub fn poner_modificadores(&mut self, mascara: u8) {
         self.modificadores = mascara;
     }
 
     /// Muescas de rueda que quedan sin leer. Un programa que se olvida de
-    /// drenarla las deja aquí, y la prueba puede decirlo.
+    /// drenarla las deja aqui, y la prueba puede decirlo.
     pub fn rueda_pendiente(&self) -> i32 {
         self.rueda
     }
 
-    /// Despacho de la capability de entrada. Copia la semántica de
-    /// `ring0/obj/input.rs` — sobre todo la que se nota: la rueda CONSUME.
+    /// Despacho de la capability de entrada. Copia la semantica de
+    /// `ring0/obj/input.rs` -- sobre todo la que se nota: la rueda CONSUME.
     fn entrada_op(&mut self, op: u64) -> u64 {
         use bmo_abi::syscalls::surface::{
             INPUT_OP_EVENTOS, INPUT_OP_MODIFICADORES, INPUT_OP_PUNTERO, INPUT_OP_RUEDA,
@@ -559,7 +559,7 @@ impl Machine {
             }
             INPUT_OP_EVENTOS => self.eventos_hid,
             // `0x100 | byte` cuando hay una; `0` cuando no. El bit 8 es lo que
-            // distingue "llegó el byte 0" de "no llegó nada".
+            // distingue "llego el byte 0" de "no llego nada".
             INPUT_OP_TECLA => {
                 if self.teclas_cursor < self.teclas.len() {
                     let b = self.teclas[self.teclas_cursor];
@@ -570,7 +570,7 @@ impl Machine {
                 }
             }
             INPUT_OP_MODIFICADORES => self.modificadores as u64,
-            // ★ Consume. Dos lecturas seguidas sin girar dan cero la segunda.
+            // * Consume. Dos lecturas seguidas sin girar dan cero la segunda.
             INPUT_OP_RUEDA => {
                 let v = self.rueda;
                 self.rueda = 0;
@@ -580,8 +580,8 @@ impl Machine {
         }
     }
 
-    /// Abre o crea. Devuelve el handle (el índice + 1, para que 0 no sea uno
-    /// válido) o 0 si no se pudo.
+    /// Abre o crea. Devuelve el handle (el indice + 1, para que 0 no sea uno
+    /// valido) o 0 si no se pudo.
     fn archivo_abrir(&mut self, escribe: bool) -> u64 {
         let ruta = String::from_utf8_lossy(&self.ruta).into_owned();
         self.ruta.clear();
@@ -594,8 +594,8 @@ impl Machine {
             match self.archivos.get(&ruta) {
                 Some(d) => d.clone(),
                 // Abrir para leer lo que no existe FALLA. En el kernel es
-                // `ERROR_NO_ESTA`; aquí es un handle nulo. Devolver uno vacío
-                // haría que un `READ` de un fichero que falta pareciera un
+                // `ERROR_NO_ESTA`; aqui es un handle nulo. Devolver uno vacio
+                // haria que un `READ` de un fichero que falta pareciera un
                 // fichero sin registros.
                 None => return 0,
             }
@@ -667,13 +667,13 @@ impl Machine {
                 if a.escribe {
                     let (ruta, datos) = (a.ruta.clone(), a.datos.clone());
                     // El disco dice que no: no se escribe NADA y se contesta
-                    // `0`. No se guarda un trozo — un archivo a medias se
+                    // `0`. No se guarda un trozo -- un archivo a medias se
                     // parece demasiado a uno entero, que es la misma regla que
                     // sigue `cerrar` en `ring0/archivo.rs`.
                     if self.fallo_al_guardar.contains(&ruta) {
                         return 0;
                     }
-                    // ★ AQUI es donde llega al disco, y sólo aquí. Igual que
+                    // * AQUI es donde llega al disco, y solo aqui. Igual que
                     // en el kernel.
                     self.archivos.insert(ruta, datos);
                 }
@@ -685,18 +685,18 @@ impl Machine {
         }
     }
 
-    /// `TASK_OP_MEMORIA_PEDIR` — el bloque, o el motivo por el que no.
+    /// `TASK_OP_MEMORIA_PEDIR` -- el bloque, o el motivo por el que no.
     ///
     /// Los dos rechazos que un programa puede provocar SOLO son los mismos que
-    /// los del kernel y **con sus mismos códigos**: pedir cero o pasarse del
+    /// los del kernel y **con sus mismos codigos**: pedir cero o pasarse del
     /// tope (`0xE001`), y pedir una quinta vez (`0xE003`).
     ///
-    /// Los otros dos no se modelan, y por el mismo motivo los dos: **aquí sólo
-    /// corre un proceso y la memoria es infinita**. `ERROR_SIN_RAM` necesitaría
-    /// RAM que fragmentar y `ERROR_SIN_RANURA` necesitaría 16 procesos vivos a
-    /// la vez. Fingirlos sería inventarse fallos que este emulador no puede
-    /// reproducir de forma repetible — y son exactamente el tipo de cosa que el
-    /// eje 2 de la sección FIDELIDAD dice que hay que probar en el Ryzen.
+    /// Los otros dos no se modelan, y por el mismo motivo los dos: **aqui solo
+    /// corre un proceso y la memoria es infinita**. `ERROR_SIN_RAM` necesitaria
+    /// RAM que fragmentar y `ERROR_SIN_RANURA` necesitaria 16 procesos vivos a
+    /// la vez. Fingirlos seria inventarse fallos que este emulador no puede
+    /// reproducir de forma repetible -- y son exactamente el tipo de cosa que el
+    /// eje 2 de la seccion FIDELIDAD dice que hay que probar en el Ryzen.
     fn memoria_pedir(&mut self, bytes: u64) -> Result<u64, u64> {
         const ERROR_DEMASIADO: u64 = 0xE001;
         const ERROR_DEMASIADAS: u64 = 0xE003;
@@ -707,10 +707,10 @@ impl Machine {
         if self.mem_peticiones >= MEMORIA_MAX_PETICIONES {
             return Err(ERROR_DEMASIADAS);
         }
-        // Redondeo a páginas ARRIBA: pedir 1024 bytes entrega 4096, y el
-        // siguiente bloque empieza detrás de los 4096. Si esto redondeara hacia
-        // abajo, dos bloques se solaparían y el emulador —memoria dispersa— no
-        // se quejaría nunca. Por eso el programa de prueba compara las bases.
+        // Redondeo a paginas ARRIBA: pedir 1024 bytes entrega 4096, y el
+        // siguiente bloque empieza detras de los 4096. Si esto redondeara hacia
+        // abajo, dos bloques se solaparian y el emulador --memoria dispersa-- no
+        // se quejaria nunca. Por eso el programa de prueba compara las bases.
         let paginas = (bytes + MEMORIA_PAGE - 1) / MEMORIA_PAGE;
         let base = self.mem_cursor;
         self.mem_cursor += paginas * MEMORIA_PAGE;
@@ -733,8 +733,8 @@ impl Machine {
         }
     }
 
-    /// Cuántos bytes de `KIND_MEMORIA` se han entregado. Para que un test pueda
-    /// comprobar lo que el programa pidió sin creerse lo que el programa dice.
+    /// Cuantos bytes de `KIND_MEMORIA` se han entregado. Para que un test pueda
+    /// comprobar lo que el programa pidio sin creerse lo que el programa dice.
     pub fn memoria_entregada(&self) -> u64 {
         self.mem_entregados
     }
@@ -767,7 +767,7 @@ impl Machine {
                     for i in 0..8 {
                         let b = ((call.arg0 >> (i * 8)) & 0xFF) as u8;
                         if b == 0 {
-                            break; // NUL-stop: idéntico al kernel
+                            break; // NUL-stop: identico al kernel
                         }
                         self.console.push(b as char);
                     }
@@ -817,10 +817,10 @@ impl Machine {
                     self.finalizar_syscall(h);
                     return;
                 }
-                // Pedir memoria. Un rechazo NO es "handle 0": es un **código de
-                // error en rax**, y ésa es la diferencia que el emulador tiene
+                // Pedir memoria. Un rechazo NO es "handle 0": es un **codigo de
+                // error en rax**, y esa es la diferencia que el emulador tiene
                 // que respetar. `malloc` mira `rax` primero (`test eax,eax`), y
-                // un modelo que devolviera siempre código 0 dejaría sin probar
+                // un modelo que devolviera siempre codigo 0 dejaria sin probar
                 // justo la rama que decide si el tope se cumple.
                 op if op == TASK_OP_MEMORIA_PEDIR => {
                     match self.memoria_pedir(call.arg0) {
@@ -829,8 +829,8 @@ impl Machine {
                     }
                     return;
                 }
-                // Ceder el turno es el borde del fotograma: aquí es donde
-                // "llega" lo que el usuario tecleó mientras tanto.
+                // Ceder el turno es el borde del fotograma: aqui es donde
+                // "llega" lo que el usuario tecleo mientras tanto.
                 op if op == TASK_OP_YIELD => {
                     if let Some(lote) = self.lotes.pop() {
                         self.teclas.extend_from_slice(&lote);
@@ -849,7 +849,7 @@ impl Machine {
         } else if call.capability != 0 {
             // Cualquier otro handle: aqui solo existen los de archivo. El
             // emulador no modela la pantalla ni el raton porque ningun codigo
-            // EMITIDO los toca — los usa el compositor, que es Rust normal.
+            // EMITIDO los toca -- los usa el compositor, que es Rust normal.
             let v = self.archivo_op(call.capability, call.operation, call.arg0);
             self.finalizar_syscall(v);
             return;
@@ -858,15 +858,15 @@ impl Machine {
         self.finalizar_syscall(0);
     }
 
-    /// El epílogo comun de toda llamada.
+    /// El epilogo comun de toda llamada.
     ///
-    /// ★ El valor vuelve en **rdx**, no en rax. `BmoStatus` es
+    /// * El valor vuelve en **rdx**, no en rax. `BmoStatus` es
     /// `{code, flags, value}`: rax trae el codigo y las banderas, rdx trae el
     /// valor. Se puede leer en el stub de `userland::syscall`.
     ///
     /// Esto estaba MAL modelado: el emulador ponia `rax = 0` y no tocaba rdx,
     /// asi que ahi seguia el argumento de entrada. Por eso `console::read_line`
-    /// —la puerta de `ACCEPT`— no tiene ni un test: en el emulador habria
+    /// --la puerta de `ACCEPT`-- no tiene ni un test: en el emulador habria
     /// visto siempre "no hay nada" y girado para siempre. El emulador mentia
     /// sobre la puerta, que es justo lo que no puede hacer.
     fn finalizar_syscall(&mut self, valor: u64) {
@@ -877,12 +877,12 @@ impl Machine {
         self.regs[RDX] = valor;
     }
 
-    /// El epílogo de una llamada que el kernel RECHAZA: código en `rax` y
+    /// El epilogo de una llamada que el kernel RECHAZA: codigo en `rax` y
     /// **valor envenenado** en `rdx`.
     ///
-    /// Lo segundo es a propósito. Un programa que se salta la comprobación del
-    /// código y usa el valor igual tiene que estropearse aquí, en un test, y no
-    /// en el Ryzen — donde `rdx` traería lo que hubiera quedado y funcionaría
+    /// Lo segundo es a proposito. Un programa que se salta la comprobacion del
+    /// codigo y usa el valor igual tiene que estropearse aqui, en un test, y no
+    /// en el Ryzen -- donde `rdx` traeria lo que hubiera quedado y funcionaria
     /// por casualidad las primeras veces.
     fn fallar_syscall(&mut self, code: u64) {
         self.regs[RCX] = POISON;
@@ -904,8 +904,8 @@ impl Machine {
 
         // mod=00 con rm=101 NO es "[rbp]": en 64 bits es direccionamiento
         // RELATIVO A RIP con disp32. Es como los frontends alcanzan sus
-        // cadenas y variables globales (`lea rax, [rip+disp]`), así que sin
-        // esto el emulador se comía los 4 bytes del desplazamiento como si
+        // cadenas y variables globales (`lea rax, [rip+disp]`), asi que sin
+        // esto el emulador se comia los 4 bytes del desplazamiento como si
         // fueran instrucciones y descarrilaba.
         if md == 0 && rm == 0b101 {
             let disp = self.fetch_u32() as i32 as i64;
@@ -913,12 +913,12 @@ impl Machine {
             return (reg, Operand::Mem(addr));
         }
 
-        // Base (+ índice si hay SIB).
+        // Base (+ indice si hay SIB).
         let (base, index, scale) = if rm == 0b100 {
             let sib = self.fetch_u8();
             let idx = (((sib >> 3) & 7) as usize) | (rex_x << 3);
             let base = ((sib & 7) as usize) | (rex_b << 3);
-            // índice 4 sin REX.X significa "sin índice".
+            // indice 4 sin REX.X significa "sin indice".
             let idx = if idx == 4 { None } else { Some(idx) };
             (base, idx, 1u64 << (sib >> 6))
         } else {
@@ -953,14 +953,14 @@ impl Machine {
         }
     }
 
-    /// Lee un solo byte del operando. En registro es el byte BAJO — con
+    /// Lee un solo byte del operando. En registro es el byte BAJO -- con
     /// REX presente `dl`/`sil` son eso y no los registros altos heredados.
-    /// El operando de una instrucción SSE: registro `xmm` o 64 bits de memoria.
+    /// El operando de una instruccion SSE: registro `xmm` o 64 bits de memoria.
     ///
     /// Existe porque [`Self::load`] resuelve `Operand::Reg` contra los enteros,
-    /// y aquí el mismo número significa otro banco de registros. Confundirlos
-    /// da un `addsd` que suma el valor de `rax` interpretado como double — un
-    /// número enorme y sin sentido, del que costaría volver hasta aquí.
+    /// y aqui el mismo numero significa otro banco de registros. Confundirlos
+    /// da un `addsd` que suma el valor de `rax` interpretado como double -- un
+    /// numero enorme y sin sentido, del que costaria volver hasta aqui.
     fn leer_xmm(&self, op: Operand) -> u64 {
         match op {
             Operand::Reg(r) => self.xmm[r],
@@ -984,20 +984,20 @@ impl Machine {
         }
     }
 
-    /// ★ Un `mov [mem], eax` escribe **CUATRO** bytes, no ocho.
+    /// * Un `mov [mem], eax` escribe **CUATRO** bytes, no ocho.
     ///
-    /// Esto hacía `write_u64(a, value as u32 as u64)`: los cuatro bytes de
-    /// arriba se ponían a CERO. En un registro eso es correcto —escribir un
-    /// registro de 32 bits en modo largo sí borra la mitad alta— pero en
+    /// Esto hacia `write_u64(a, value as u32 as u64)`: los cuatro bytes de
+    /// arriba se ponian a CERO. En un registro eso es correcto --escribir un
+    /// registro de 32 bits en modo largo si borra la mitad alta-- pero en
     /// **memoria** es destruir lo de al lado.
     ///
-    /// Lo pagó el primer struct con dos `int`: `{.x = 1, .y = 2, .x = 9}` daba
-    /// `x=9, y=0`, porque la última escritura de `x` borraba la `y` que hay
-    /// justo detrás. Y llevaba ahí desde siempre — sólo que ningún test tenía
+    /// Lo pago el primer struct con dos `int`: `{.x = 1, .y = 2, .x = 9}` daba
+    /// `x=9, y=0`, porque la ultima escritura de `x` borraba la `y` que hay
+    /// justo detras. Y llevaba ahi desde siempre -- solo que ningun test tenia
     /// dos campos de 4 bytes seguidos donde el segundo se escribiera ANTES que
     /// el primero.
     ///
-    /// Es el peor tipo de mentira de un emulador: la que hace fallar código
+    /// Es el peor tipo de mentira de un emulador: la que hace fallar codigo
     /// correcto, porque manda a buscar el bug al sitio equivocado.
     fn store(&mut self, op: Operand, value: u64, bytes: usize) {
         match op {
@@ -1012,34 +1012,34 @@ impl Machine {
 
     fn step(&mut self) {
         let mut byte = self.fetch_u8();
-        // ★ `0x66` — anular el tamaño de operando: la instrucción trabaja a 16
+        // * `0x66` -- anular el tamano de operando: la instruccion trabaja a 16
         // bits. Va ANTES del REX, que es el orden que manda el manual.
         //
-        // No estaba, así que el emulador reventaba con "opcode 0x66 no emitido
+        // No estaba, asi que el emulador reventaba con "opcode 0x66 no emitido
         // por BMO" en cuanto alguien guardara un `short`. Era una mina: el
-        // codegen SÍ emite `66 89` para los campos de 16 bits desde que existen
-        // los structs, y no había ni un test que guardara uno.
+        // codegen SI emite `66 89` para los campos de 16 bits desde que existen
+        // los structs, y no habia ni un test que guardara uno.
         let mut op16 = false;
         // `F0` (LOCK) y `F3` (REP/obligatorio) son prefijos de grupo, igual que
         // `66`, y pueden venir en cualquier orden delante del REX.
         //
-        // ★ LOCK se acepta y **no cambia nada aquí**: con un solo núcleo emulado
-        // toda instrucción es atómica por construcción. Lo que sí se puede
-        // probar —y es lo que se equivoca— es la SEMANTICA: que `xchg` y
-        // `cmpxchg` devuelvan **lo que había** y no lo que se puso. Eso no se ve
+        // * LOCK se acepta y **no cambia nada aqui**: con un solo nucleo emulado
+        // toda instruccion es atomica por construccion. Lo que si se puede
+        // probar --y es lo que se equivoca-- es la SEMANTICA: que `xchg` y
+        // `cmpxchg` devuelvan **lo que habia** y no lo que se puso. Eso no se ve
         // en un volcado de bytes.
         //
-        // `F3` era "sólo puede ser PAUSE" y hacía `assert`. Desde que la tabla
-        // tiene `popcnt`, `tzcnt` y `lzcnt` —que lo llevan como prefijo
-        // obligatorio— eso reventaba en cuanto alguien contara bits.
+        // `F3` era "solo puede ser PAUSE" y hacia `assert`. Desde que la tabla
+        // tiene `popcnt`, `tzcnt` y `lzcnt` --que lo llevan como prefijo
+        // obligatorio-- eso reventaba en cuanto alguien contara bits.
         let mut lock = false;
         let mut f3 = false;
-        // ★ `F2` — el prefijo del ESCALAR DOBLE, y no estaba.
+        // * `F2` -- el prefijo del ESCALAR DOBLE, y no estaba.
         //
-        // Sin él, el primer `movsd` reventaba el emulador con "opcode 0xF2 no
-        // emitido por BMO" — que era mentira: BMO lo emite desde que C tiene
-        // `double`. Lo que pasaba es que **ningún test ejecutaba coma
-        // flotante**, así que el prefijo nunca llegaba hasta aquí.
+        // Sin el, el primer `movsd` reventaba el emulador con "opcode 0xF2 no
+        // emitido por BMO" -- que era mentira: BMO lo emite desde que C tiene
+        // `double`. Lo que pasaba es que **ningun test ejecutaba coma
+        // flotante**, asi que el prefijo nunca llegaba hasta aqui.
         let mut f2 = false;
         loop {
             match byte {
@@ -1082,14 +1082,14 @@ impl Machine {
                 let v = self.pop();
                 self.regs[r] = v;
             }
-            // ★ `pop qword [mem]` (8F /0). Sin pareja en `0x58`: ese saca a un
-            // REGISTRO y éste a memoria. Lo emite el PERFORM de párrafo de
+            // * `pop qword [mem]` (8F /0). Sin pareja en `0x58`: ese saca a un
+            // REGISTRO y este a memoria. Lo emite el PERFORM de parrafo de
             // COBOL para devolver a su sitio la salida del PERFORM de fuera.
             //
             // El orden importa y es el del manual: se saca de la pila ANTES de
-            // calcular la dirección, porque `pop [rsp+8]` es legal y usa el
-            // `rsp` ya subido. Aquí las direcciones son `[rbp+disp]`, así que no
-            // se nota — pero hacerlo al revés sería una trampa esperando.
+            // calcular la direccion, porque `pop [rsp+8]` es legal y usa el
+            // `rsp` ya subido. Aqui las direcciones son `[rbp+disp]`, asi que no
+            // se nota -- pero hacerlo al reves seria una trampa esperando.
             0x8F => {
                 let v = self.pop();
                 let (ext, dst) = self.modrm(0, rex_x, rex_b);
@@ -1143,7 +1143,7 @@ impl Machine {
                     _ => unreachable!(),
                 }
             }
-            // ALU  reg, r/m  (dirección contraria)
+            // ALU  reg, r/m  (direccion contraria)
             0x8B | 0x0B | 0x03 | 0x2B | 0x3B => {
                 let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                 let a = self.read_reg(reg, wide);
@@ -1169,7 +1169,7 @@ impl Machine {
                     _ => unreachable!(),
                 }
             }
-            // movsxd reg64, r/m32 — carga un int CON SIGNO
+            // movsxd reg64, r/m32 -- carga un int CON SIGNO
             0x63 => {
                 let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                 let v = self.load(src, false) as u32 as i32 as i64 as u64;
@@ -1222,7 +1222,7 @@ impl Machine {
                     // AND. Lo emite `and_r64_imm32`, que usa `read_line` para
                     // quedarse con el byte bajo del paquete. Faltaba, y esa
                     // ausencia es la prueba de que `read_line` nunca se habia
-                    // EJECUTADO aqui — solo emitido.
+                    // EJECUTADO aqui -- solo emitido.
                     4 => {
                         let r = a & imm;
                         self.flags_logic(r);
@@ -1257,29 +1257,29 @@ impl Machine {
                 self.flags_logic(r);
                 self.store(dst, r, ancho);
             }
-            // mov r/m8, r8  — guarda el byte bajo de un registro
+            // mov r/m8, r8  -- guarda el byte bajo de un registro
             0x88 => {
                 let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
                 let v = self.regs[reg] & 0xFF;
                 self.store_u8(dst, v);
             }
-            // ★ mov r8, r/m8 — CARGA un byte. La pareja de `0x88`, y faltaba.
+            // * mov r8, r/m8 -- CARGA un byte. La pareja de `0x88`, y faltaba.
             //
-            // Sin ella, todo lo que recorre bytes de uno en uno —`memcpy`,
-            // `strlen`, `strcmp`— moría en el emulador con "opcode 0x8A no
-            // emitido por BMO". El emulador no mentía: es que nadie había
-            // emitido un bucle de bytes hasta ahora. Es el límite honesto de
-            // un emulador escrito a medida — cubre lo que se emite, y crece
+            // Sin ella, todo lo que recorre bytes de uno en uno --`memcpy`,
+            // `strlen`, `strcmp`-- moria en el emulador con "opcode 0x8A no
+            // emitido por BMO". El emulador no mentia: es que nadie habia
+            // emitido un bucle de bytes hasta ahora. Es el limite honesto de
+            // un emulador escrito a medida -- cubre lo que se emite, y crece
             // cuando el codegen aprende algo nuevo.
             //
-            // Sólo toca el byte bajo del destino: el resto del registro se
+            // Solo toca el byte bajo del destino: el resto del registro se
             // queda como estaba, que es lo que hace el silicio.
             0x8A => {
                 let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                 let v = self.load_u8(src) & 0xFF;
                 self.regs[reg] = (self.regs[reg] & !0xFF) | v;
             }
-            // test r/m8, r8 — la versión de un byte de `0x85`.
+            // test r/m8, r8 -- la version de un byte de `0x85`.
             0x84 => {
                 let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
                 let a = self.load_u8(dst) & 0xFF;
@@ -1322,16 +1322,16 @@ impl Machine {
                 let v = self.load(src, wide);
                 match ext & 7 {
                     // `~x`. Faltaba, y el hueco era invisible: el codegen de C
-                    // lo emitía BIEN desde siempre —un `.bef` con `~0` se
-                    // escribe sin quejarse— pero **ninguna matriz lo podía
-                    // ejecutar**, así que ni C ni COBOL tenían una fila con
-                    // `~`. Lo destapó C++ al escribir la suya desde cero.
+                    // lo emitia BIEN desde siempre --un `.bef` con `~0` se
+                    // escribe sin quejarse-- pero **ninguna matriz lo podia
+                    // ejecutar**, asi que ni C ni COBOL tenian una fila con
+                    // `~`. Lo destapo C++ al escribir la suya desde cero.
                     //
-                    // ★ A diferencia de `neg`, `not` **no toca las banderas**
-                    // en x86-64. Llamar a `flags_logic` aquí sería un no-op
+                    // * A diferencia de `neg`, `not` **no toca las banderas**
+                    // en x86-64. Llamar a `flags_logic` aqui seria un no-op
                     // silencioso el 99% de las veces y una mentira el 1%: un
-                    // `~x` seguido de un salto condicional decidiría por el
-                    // resultado del `not` en vez de por la comparación de
+                    // `~x` seguido de un salto condicional decidiria por el
+                    // resultado del `not` en vez de por la comparacion de
                     // antes, que es lo que el silicio conserva.
                     2 => {
                         let r = !v;
@@ -1343,7 +1343,7 @@ impl Machine {
                         self.store(src, r, ancho);
                     }
                     // div SIN signo: rdx:rax entre el operando. El emisor
-                    // siempre pone rdx=0 antes, así que basta con rax.
+                    // siempre pone rdx=0 antes, asi que basta con rax.
                     6 => {
                         assert_ne!(v, 0, "division por cero en el codigo emitido");
                         assert_eq!(
@@ -1355,8 +1355,8 @@ impl Machine {
                         self.regs[RDX] = dividend % v;
                     }
                     7 => {
-                        // idiv: dividendo en rdx:rax; aquí basta rax con signo
-                        // extendido por cqo, que es lo único que emitimos.
+                        // idiv: dividendo en rdx:rax; aqui basta rax con signo
+                        // extendido por cqo, que es lo unico que emitimos.
                         let divisor = v as i64;
                         assert_ne!(divisor, 0, "division por cero en el codigo emitido");
                         let dividend = self.regs[RAX] as i64;
@@ -1378,8 +1378,8 @@ impl Machine {
                     self.rip = target as usize;
                     return;
                 }
-                // ★ /6 = `push qword [mem]`. No calcula nada y no toca
-                // banderas, así que sale antes del tronco de inc/dec.
+                // * /6 = `push qword [mem]`. No calcula nada y no toca
+                // banderas, asi que sale antes del tronco de inc/dec.
                 if (ext & 7) == 6 {
                     let v = self.load(dst, true);
                     self.push(v);
@@ -1393,7 +1393,7 @@ impl Machine {
                 self.flags_logic(r);
                 self.store(dst, r, ancho);
             }
-            // cqo — extiende el signo de rax a rdx
+            // cqo -- extiende el signo de rax a rdx
             0x99 => {
                 self.regs[RDX] = if (self.regs[RAX] as i64) < 0 {
                     u64::MAX
@@ -1402,7 +1402,7 @@ impl Machine {
                 };
             }
             0x90 => {} // nop
-            // call rel32 / ret — las funciones de C se llaman así.
+            // call rel32 / ret -- las funciones de C se llaman asi.
             0xE8 => {
                 let rel = self.fetch_u32() as i32;
                 let return_to = self.rip as u64;
@@ -1413,7 +1413,7 @@ impl Machine {
                 let target = self.pop();
                 self.rip = target as usize;
             }
-            // cdqe/cwde — extiende eax a rax con signo
+            // cdqe/cwde -- extiende eax a rax con signo
             0x98 => {
                 if wide {
                     self.regs[RAX] = self.regs[RAX] as u32 as i32 as i64 as u64;
@@ -1436,7 +1436,7 @@ impl Machine {
                     self.rip = (self.rip as i64 + rel as i64) as usize;
                 }
             }
-            // `xchg r/m, r` — intercambia y devuelve lo que habia. Sobre
+            // `xchg r/m, r` -- intercambia y devuelve lo que habia. Sobre
             // memoria lleva LOCK implicito, y por eso es el cerrojo mas simple
             // que existe.
             0x87 => {
@@ -1451,20 +1451,20 @@ impl Machine {
                 match second {
                     0x05 => self.do_syscall(),
 
-                    // ══ SSE ESCALAR ══════════════════════════════════════
+                    // == SSE ESCALAR ======================================
                     //
                     // Las catorce que BMO C emite para `float` y `double`, y
-                    // ni una más. Hasta hoy **ninguna se ejecutaba**: los 9
+                    // ni una mas. Hasta hoy **ninguna se ejecutaba**: los 9
                     // tests de coma flotante comparaban ventanas de bytes, que
-                    // es el método que la cabecera de este archivo declara
-                    // insuficiente. La ruta compilaba, daba verde, y ningún
-                    // CPU la había corrido.
+                    // es el metodo que la cabecera de este archivo declara
+                    // insuficiente. La ruta compilaba, daba verde, y ningun
+                    // CPU la habia corrido.
                     //
                     // El prefijo decide el ancho, que es como funciona SSE:
                     // `F2` escalar doble, `F3` escalar simple, `66` entero
-                    // empaquetado o comparación ordenada.
+                    // empaquetado o comparacion ordenada.
 
-                    // movsd/movss xmm, r/m — CARGA
+                    // movsd/movss xmm, r/m -- CARGA
                     0x10 if f2 || f3 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         let v = match src {
@@ -1473,7 +1473,7 @@ impl Machine {
                                 if f3 {
                                     // `movss` carga 32 bits y **pone a cero el
                                     // resto** cuando viene de memoria. Desde
-                                    // otro registro no lo haría; aquí sólo se
+                                    // otro registro no lo haria; aqui solo se
                                     // emite desde memoria.
                                     (self.read_u64(a) & 0xFFFF_FFFF) as u32 as u64
                                 } else {
@@ -1483,15 +1483,15 @@ impl Machine {
                         };
                         self.xmm[reg] = v;
                     }
-                    // movsd/movss r/m, xmm — ALMACENA
+                    // movsd/movss r/m, xmm -- ALMACENA
                     0x11 if f2 || f3 => {
                         let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
                         let v = self.xmm[reg];
                         match dst {
                             Operand::Reg(r) => self.xmm[r] = v,
-                            // ★ El ancho importa: `movss` escribe CUATRO
-                            // bytes. Escribir ocho pisaría el vecino, que es
-                            // exactamente el bug que este emulador ya se comió
+                            // * El ancho importa: `movss` escribe CUATRO
+                            // bytes. Escribir ocho pisaria el vecino, que es
+                            // exactamente el bug que este emulador ya se comio
                             // una vez con `mov [mem], eax`.
                             Operand::Mem(a) => self.store(Operand::Mem(a), v, if f3 { 4 } else { 8 }),
                         }
@@ -1502,7 +1502,7 @@ impl Machine {
                         let b = f64::from_bits(self.leer_xmm(src));
                         let a = f64::from_bits(self.xmm[reg]);
                         // El orden NO es conmutativo en dos de las cuatro, y
-                        // ése fue el bug que el banco de pruebas ya cazó una
+                        // ese fue el bug que el banco de pruebas ya cazo una
                         // vez en los enteros: el destino es el operando
                         // IZQUIERDO.
                         let r = match second {
@@ -1513,32 +1513,32 @@ impl Machine {
                         };
                         self.xmm[reg] = r.to_bits();
                     }
-                    // cvtsd2ss (F2) / cvtss2sd (F3) — cambiar de precisión
+                    // cvtsd2ss (F2) / cvtss2sd (F3) -- cambiar de precision
                     0x5A if f2 || f3 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         let v = self.leer_xmm(src);
                         self.xmm[reg] = if f2 {
-                            // double -> float: **se pierde precisión aquí**, y
+                            // double -> float: **se pierde precision aqui**, y
                             // tiene que perderse. Guardar el double en un
-                            // `float` y leerlo daría más dígitos de los que
-                            // caben, y el test no vería lo que ve el silicio.
+                            // `float` y leerlo daria mas digitos de los que
+                            // caben, y el test no veria lo que ve el silicio.
                             (f64::from_bits(v) as f32).to_bits() as u64
                         } else {
                             (f32::from_bits(v as u32) as f64).to_bits()
                         };
                     }
-                    // comisd — comparar y dejar el resultado en las BANDERAS
+                    // comisd -- comparar y dejar el resultado en las BANDERAS
                     0x2F if op16 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         let b = f64::from_bits(self.leer_xmm(src));
                         let a = f64::from_bits(self.xmm[reg]);
-                        // ★ `comisd` pone ZF/CF/PF, **no** SF ni OF, y por eso
+                        // * `comisd` pone ZF/CF/PF, **no** SF ni OF, y por eso
                         // los saltos que le siguen son los SIN SIGNO (`ja`,
-                        // `jb`), no `jg`/`jl`. Modelarlo con SF sería hacer
-                        // pasar código que en el silicio salta al revés.
+                        // `jb`), no `jg`/`jl`. Modelarlo con SF seria hacer
+                        // pasar codigo que en el silicio salta al reves.
                         //
-                        // No-ordenado (algún NaN) pone las tres a 1. No pasa
-                        // hoy, y está dicho para que el día que pase no
+                        // No-ordenado (algun NaN) pone las tres a 1. No pasa
+                        // hoy, y esta dicho para que el dia que pase no
                         // parezca "menor que".
                         if a.is_nan() || b.is_nan() {
                             self.zf = true;
@@ -1550,29 +1550,29 @@ impl Machine {
                         self.sf = false;
                         self.of = false;
                     }
-                    // xorpd xmm, xmm — el cero de la coma flotante
+                    // xorpd xmm, xmm -- el cero de la coma flotante
                     0x57 if op16 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         let v = self.leer_xmm(src);
                         self.xmm[reg] ^= v;
                     }
-                    // movq xmm, r64 — los BITS de un entero, tal cual
+                    // movq xmm, r64 -- los BITS de un entero, tal cual
                     //
-                    // ★ NO es una conversión: es cómo BMO C mete un literal
+                    // * NO es una conversion: es como BMO C mete un literal
                     // `double` en un registro SSE. El compilador pone los bits
-                    // del número en `rax` con un `mov imm64` y los mueve aquí
-                    // sin tocarlos. Confundir esto con `cvtsi2sd` daría
+                    // del numero en `rax` con un `mov imm64` y los mueve aqui
+                    // sin tocarlos. Confundir esto con `cvtsi2sd` daria
                     // `4614256656552045848.0` donde tiene que haber `3.14`.
                     //
-                    // También lo usa la NEGACIÓN, que en coma flotante es un
-                    // `xor` con el bit de signo — no una resta contra cero,
-                    // que daría `-0.0` mal para el cero.
+                    // Tambien lo usa la NEGACION, que en coma flotante es un
+                    // `xor` con el bit de signo -- no una resta contra cero,
+                    // que daria `-0.0` mal para el cero.
                     0x6E if op16 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         let v = self.load(src, wide);
                         self.xmm[reg] = if wide { v } else { v & 0xFFFF_FFFF };
                     }
-                    // cvtsi2sd xmm, r64 — entero con signo a double
+                    // cvtsi2sd xmm, r64 -- entero con signo a double
                     0x2A if f2 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         // CON SIGNO: `-1` tiene que dar `-1.0` y no
@@ -1580,16 +1580,16 @@ impl Machine {
                         let v = self.load(src, true) as i64;
                         self.xmm[reg] = (v as f64).to_bits();
                     }
-                    // cvttsd2si r64, xmm — double a entero, TRUNCANDO
+                    // cvttsd2si r64, xmm -- double a entero, TRUNCANDO
                     0x2C if f2 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         let v = f64::from_bits(self.leer_xmm(src));
-                        // `cvtt` trunca hacia cero; `cvt` (0x2D) redondearía.
-                        // BMO sólo emite el que trunca, que es lo que manda C
+                        // `cvtt` trunca hacia cero; `cvt` (0x2D) redondearia.
+                        // BMO solo emite el que trunca, que es lo que manda C
                         // para un cast a entero: `(int)2.7` son 2.
                         self.write_reg(reg, (v as i64) as u64, true);
                     }
-                    // movsx reg, r/m8 — carga un char CON signo
+                    // movsx reg, r/m8 -- carga un char CON signo
                     0xBE => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         let v = self.load_u8(src) as u8 as i8 as i64 as u64;
@@ -1615,13 +1615,13 @@ impl Machine {
                         };
                         self.write_reg(reg, v, false);
                     }
-                    // ── Los atomicos: lo que se prueba es que devuelvan lo de
-                    //    ANTES, que es lo que se escribe al reves sin notarlo ──
+                    // -- Los atomicos: lo que se prueba es que devuelvan lo de
+                    //    ANTES, que es lo que se escribe al reves sin notarlo --
                     //
                     // `cmpxchg r/m, r`: compara rax con el destino. Si son
                     // iguales, mete el registro fuente; si no, **rax se queda
-                    // con lo que habia**. Ese detalle —que en el caso de fallo
-                    // rax cambia— es justo el que permite reintentar sin releer.
+                    // con lo que habia**. Ese detalle --que en el caso de fallo
+                    // rax cambia-- es justo el que permite reintentar sin releer.
                     0xB1 => {
                         let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
                         let actual = self.load(dst, wide);
@@ -1644,7 +1644,7 @@ impl Machine {
                         self.store(dst, antes.wrapping_add(suma), ancho);
                         self.write_reg(reg, antes, wide);
                     }
-                    // ── Bits ──
+                    // -- Bits --
                     //
                     // `popcnt` lleva F3 obligatorio; `bsf`/`bsr` no lo llevan, y
                     // con el pasan a ser `tzcnt`/`lzcnt`. El mismo opcode con
@@ -1667,7 +1667,7 @@ impl Machine {
                                 else { (v as u32).leading_zeros() as u64 }
                             }
                             // bsf / bsr: INDEFINIDOS en cero. Aqui se deja el
-                            // destino intacto, que es lo que hace el silicio —
+                            // destino intacto, que es lo que hace el silicio --
                             // asi un mapa de bits lleno pasado sin comprobar da
                             // el indice de la busqueda ANTERIOR, igual que en
                             // metal, y el test lo puede ver.
@@ -1682,7 +1682,7 @@ impl Machine {
                         self.zf = v == 0;
                         self.write_reg(reg, r, wide);
                     }
-                    // `bswap r` — el registro va DENTRO del opcode.
+                    // `bswap r` -- el registro va DENTRO del opcode.
                     0xC8..=0xCF => {
                         let r = ((second & 7) as usize) | (rex_b << 3);
                         let v = self.read_reg(r, wide);
@@ -1693,9 +1693,9 @@ impl Machine {
                         };
                         self.write_reg(r, dado_la_vuelta, wide);
                     }
-                    // `0F AE` — barreras (mfence/lfence/sfence) y `clflush`.
+                    // `0F AE` -- barreras (mfence/lfence/sfence) y `clflush`.
                     //
-                    // ★ Aqui un no-op NO es mentir, y esa distincion importa:
+                    // * Aqui un no-op NO es mentir, y esa distincion importa:
                     // una barrera en un interprete de un solo hilo que ejecuta
                     // en orden **es** un no-op de verdad, no una simplificacion.
                     // Lo que ordena ya estaba ordenado.
@@ -1703,7 +1703,7 @@ impl Machine {
                     // Por eso este opcode se modela y `rdmsr` o `mov rax, cr0`
                     // siguen dando panic: devolver 0 como si fuera el valor de
                     // un MSR seria inventarse un dato, y eso el emulador no lo
-                    // hace. Ver VERDAD.md — hay intrinsecos que solo el metal
+                    // hace. Ver VERDAD.md -- hay intrinsecos que solo el metal
                     // puede contestar.
                     0xAE => {
                         let modrm = self.code[self.rip];
@@ -1721,7 +1721,7 @@ impl Machine {
                         let r = a.wrapping_mul(b) as u64;
                         self.write_reg(reg, r, wide);
                     }
-                    // setcc r/m8 — deja 0 o 1 según la condición
+                    // setcc r/m8 -- deja 0 o 1 segun la condicion
                     0x90..=0x9F => {
                         let (_, dst) = self.modrm(0, rex_x, rex_b);
                         let value = u64::from(self.cond(second & 0x0F));
@@ -1741,7 +1741,7 @@ impl Machine {
         }
     }
 
-    /// Evalúa el código de condición de un `jcc` (el nibble bajo del opcode).
+    /// Evalua el codigo de condicion de un `jcc` (el nibble bajo del opcode).
     fn cond(&self, cc: u8) -> bool {
         match cc {
             0x0 => self.of,
@@ -1769,7 +1769,7 @@ enum Operand {
     Mem(u64),
 }
 
-/// Ejecuta hasta caer del final del código, hasta `EXIT`, o hasta agotar el
+/// Ejecuta hasta caer del final del codigo, hasta `EXIT`, o hasta agotar el
 /// presupuesto de pasos (un bucle que no termina es un bug, y colgar el test
 /// lo esconde en vez de reportarlo).
 pub fn run(mut m: Machine, max_steps: usize) -> Machine {

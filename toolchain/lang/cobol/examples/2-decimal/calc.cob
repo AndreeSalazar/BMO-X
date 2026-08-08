@@ -1,4 +1,4 @@
-      * CALCULADORA — COBOL sobre BMO-X, en metal desnudo.
+      * CALCULADORA -- COBOL sobre BMO-X, en metal desnudo.
       *
       * Lee dos importes por teclado, los suma, y ensena el total. Suena a
       * poco y es la cadena entera de este sistema funcionando de una punta a
@@ -16,7 +16,7 @@
       *                   -> el terminal otra vez, a la pantalla
       *
       * Y el decimal es exacto. `0.10 + 0.20` da `0.30`, no `0.30000000000004`
-      * — porque aqui no hay coma flotante en ningun sitio: los importes viven
+      * -- porque aqui no hay coma flotante en ningun sitio: los importes viven
       * como enteros de centavos y sumar centavos es sumar enteros. Eso es lo
       * que Grace Hopper puso en COBOL y por lo que los bancos siguen usandolo.
       *

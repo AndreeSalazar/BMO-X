@@ -2,9 +2,9 @@
 
 **A native COBOL compiler. No GCC. No LLVM. No transpiling to C.**
 
-COBOL source goes in, a native x86-64 executable comes out — emitted by a
+COBOL source goes in, a native x86-64 executable comes out -- emitted by a
 compiler written from scratch in Rust. Money arithmetic is exact by
-construction: `19.99 × 3 = 59.97`, not `59.969999999999999`.
+construction: `19.99 x 3 = 59.97`, not `59.969999999999999`.
 
 It targets [BMO-X](https://github.com/AndreeSalazar/BMO-X), a bare-metal
 system that boots on real hardware. Not on QEMU. On a real Ryzen.
@@ -20,7 +20,7 @@ You don't need the operating system, a USB stick, or an emulator. Download
 the compiler and run it on your own machine.
 
 <!-- TODO Eddi: sube los binarios a Releases y ajusta el enlace -->
-1. Download `bmo-cobol` from [Releases](../../releases) — Windows and Linux
+1. Download `bmo-cobol` from [Releases](../../releases) -- Windows and Linux
 2. Grab `examples/2-decimal/banco.cob` from this repo
 3. Run it:
 
@@ -35,7 +35,7 @@ install, nothing to build, no runtime.
 
 Every feature listed below has a row in a **conformance matrix** that
 compiles the COBOL and then *executes the emitted machine code*, checking
-the real output. Not a comparison against hand-written byte strings — the
+the real output. Not a comparison against hand-written byte strings -- the
 bytes actually run. Adding a feature to the compiler means adding its row.
 
 That is why there are no percentages on this page. A percentage would need
@@ -48,7 +48,7 @@ a denominator, and the COBOL standard doesn't have one.
 Most languages store money in binary floating point, so `0.1 + 0.2` is not
 `0.3`. Banks cannot work that way, which is one reason COBOL never died.
 
-BMO COBOL keeps every value in **integer scale** — cents, not floats. The
+BMO COBOL keeps every value in **integer scale** -- cents, not floats. The
 compiler knows each field's `PICTURE` and its scale, and emits integer
 instructions. There is no rounding drift because there is no float.
 
@@ -65,30 +65,30 @@ that does not exist.
 **Data and arithmetic**
 - `PICTURE` clauses with exact decimal scale
 - `COMPUTE` with real operator precedence
-- `MOVE`, `ADD`, and edited-picture output generated as instructions —
+- `MOVE`, `ADD`, and edited-picture output generated as instructions --
   no interpreter and no mask survive into the binary
-- **`ROUNDED`, with all six standard modes** — `ROUNDED MODE IS NEAREST-EVEN`
+- **`ROUNDED`, with all six standard modes** -- `ROUNDED MODE IS NEAREST-EVEN`
   is banker's rounding, and it is there because rounding is a **legal
   decision**: the classic mode is biased (ties always go up), and some
   jurisdictions require the unbiased one. The **result** is rounded, not the
-  operands — with the asymmetric modes those are not the same thing
-- `USAGE COMP-3` (packed decimal) — **the format real bank data is stored in**.
+  operands -- with the asymmetric modes those are not the same thing
+- `USAGE COMP-3` (packed decimal) -- **the format real bank data is stored in**.
   Two digits per byte, sign in the last nibble, and the field occupies exactly
   what its PICTURE says, so it truncates like the standard requires. The BCD
   emitters live in `bmo-lower::packed`, because packing is a representation and
   not any language's semantics
 
 **Control flow**
-- `IF` / `ELSE` — real branching
-- `EVALUATE` — both forms: with a subject (`WHEN 1`, `WHEN 2 THRU 5`,
+- `IF` / `ELSE` -- real branching
+- `EVALUATE` -- both forms: with a subject (`WHEN 1`, `WHEN 2 THRU 5`,
   `WHEN 6, 7`, `WHEN OTHER`) and `EVALUATE TRUE`, the **decision table** a bank
   writes a fee tier with. First branch that matches wins; the rest are not tested
 - Conditions combined with `AND` and `OR`, as a tree with correct precedence
   and **short-circuit** evaluation
 - **Paragraphs**, and every out-of-line `PERFORM`: `PERFORM p`,
   `PERFORM p THRU q`, `PERFORM p n TIMES`, `PERFORM p UNTIL cond`. This is how
-  real COBOL is structured — a readable main body and the work in named steps
-- `PERFORM` — real loops, in-line and out-of-line
+  real COBOL is structured -- a readable main body and the work in named steps
+- `PERFORM` -- real loops, in-line and out-of-line
 - Level `88` condition names, including `VALUE 1 THRU 5` and `VALUE 6, 7`
 
 **Tables**
@@ -96,9 +96,9 @@ that does not exist.
 - Range checking with a named error, not silent corruption
 - Nested subscripts, e.g. `E(IDX(1))`
 
-**Files** — sequential batch I/O
-- `SELECT … ASSIGN TO`, `FD` and its record
-- `OPEN INPUT|OUTPUT`, `READ … AT END`, `WRITE`, `CLOSE`
+**Files** -- sequential batch I/O
+- `SELECT ... ASSIGN TO`, `FD` and its record
+- `OPEN INPUT|OUTPUT`, `READ ... AT END`, `WRITE`, `CLOSE`
 
 **Terminal**
 - `DISPLAY`, `DISPLAY <var>`, `ACCEPT`
@@ -108,7 +108,7 @@ separate from vendor extensions.
 
 ---
 
-## What does not run — and says so
+## What does not run -- and says so
 
 Every unsupported construct is **rejected with a reason**. Nothing is
 silently ignored, and nothing is stubbed out to look like it works.
@@ -118,15 +118,15 @@ Not implemented yet: `STRING`, `INSPECT`, `SEARCH`, `CALL`, `SORT`, `GO TO`,
 and the intrinsic function library.
 
 Deliberately rejected with an explanation rather than guessed at:
-- `READ` without `AT END` — it would compile into a loop that never ends
-- `OPEN EXTEND` — the underlying gate creates files from scratch, so this
+- `READ` without `AT END` -- it would compile into a loop that never ends
+- `OPEN EXTEND` -- the underlying gate creates files from scratch, so this
   would silently destroy history
-- `USAGE COMP` / `BINARY` / `COMP-5` — the binary layout is not stored
+- `USAGE COMP` / `BINARY` / `COMP-5` -- the binary layout is not stored
   differently from `DISPLAY` yet, and accepting the word would promise a format
   it does not deliver. `COMP-3` **is** implemented and does store packed
-- `USAGE COMP-1` / `COMP-2` — binary floating point cannot represent `19.99`,
+- `USAGE COMP-1` / `COMP-2` -- binary floating point cannot represent `19.99`,
   and that is where one-cent discrepancies come from
-- `OCCURS` on an `01` level — the error shows the correct group form
+- `OCCURS` on an `01` level -- the error shows the correct group form
 
 A compiler that quietly accepts what it cannot do is worse than one that
 refuses. This one refuses, out loud.
@@ -144,7 +144,7 @@ Real programs, each one compiled and executed by the test suite:
 | `examples/4-ficheros/batch.cob` | Reads transactions, totals in cents, writes the close |
 | `examples/5-tablas/conceptos.cob` | Per-concept close over two parallel files |
 | `examples/6-condiciones/cartera.cob` | Level 88 condition names |
-| `examples/7-empaquetado/cuentas.cob` | `COMP-3` packed decimal — the storage real bank data uses |
+| `examples/7-empaquetado/cuentas.cob` | `COMP-3` packed decimal -- the storage real bank data uses |
 | `examples/8-parrafos/cierre.cob` | An end-of-day close written the way real COBOL is: paragraphs |
 
 `batch.cob` is the one to read first. It is an ordinary end-of-day batch:
@@ -170,17 +170,17 @@ IMPORTE   (5 bytes)  [FICHERO]
 
 In banking, that document is called a **copybook**, and it is what two systems
 exchange so they can read the same file. The one kept by hand **always ends up
-lying** — the code changes and the document does not.
+lying** -- the code changes and the document does not.
 
 This one cannot. It comes out of **the same table the code generator uses** to
 emit the `READ` and the `WRITE`, so there is nowhere for the two to drift apart.
-The document does not describe the format — it *is* the format.
+The document does not describe the format -- it *is* the format.
 
 ---
 
 ## And it can read the file back
 
-Once a `COMP-3` field reaches disk, the file **stops being readable** — packed
+Once a `COMP-3` field reaches disk, the file **stops being readable** -- packed
 nibbles are not text, and `cat` shows garbage. So the compiler decodes it:
 
 ```bash
@@ -197,7 +197,7 @@ bmo-cobol --ver datos/ctas.bin cuentas.cob
 ```
 
 The decoded value *and* the raw bytes, side by side. And the viewer reads with
-**the same rule the program wrote with** — its decoders are checked against the
+**the same rule the program wrote with** -- its decoders are checked against the
 emitted ones over every two-byte pattern, so it cannot show one amount while the
 program reads another.
 
@@ -210,17 +210,17 @@ about it would leave you believing the last record is just odd.
 ## The road to real banking
 
 Having COBOL is not having a banking system. A mainframe one leans on four
-things *besides* the compiler — transaction dispatch, batch scheduling,
-**indexed files**, and IBM's extensions — and until each is named one by one,
+things *besides* the compiler -- transaction dispatch, batch scheduling,
+**indexed files**, and IBM's extensions -- and until each is named one by one,
 "COBOL" promises more than it delivers.
 
-- **[`BANCA_REAL.md`](BANCA_REAL.md)** *(Spanish)* — what is actually missing
+- **[`BANCA_REAL.md`](BANCA_REAL.md)** *(Spanish)* -- what is actually missing
   and why, with a verdict on each piece. Short version: the hardest part is
   already done, because ESTRATOS is transactional at the bottom, which is what
-  took CICS fifty years to bolt on. The real gap is **the key index** — today
+  took CICS fifty years to bolt on. The real gap is **the key index** -- today
   there is sequential file I/O, and without an index you have listings, not
   banking.
-- **[`PLAN_BANCA.md`](PLAN_BANCA.md)** *(Spanish)* — the task list: nine phases
+- **[`PLAN_BANCA.md`](PLAN_BANCA.md)** *(Spanish)* -- the task list: nine phases
   with checkboxes, from the compiler's own floor to a small bank running
   end-to-end on real hardware. Every item says what blocks it and how you know
   it is done.
@@ -245,7 +245,7 @@ Roughly 6,700 lines of Rust, 94 tests. The backend emits x86-64 directly
 through a table-driven assembler: adding an instruction is a row in a TOML
 file, not new Rust code.
 
-The output is a `.bex` — a native binary in BMO-X's own format. C, COBOL,
+The output is a `.bex` -- a native binary in BMO-X's own format. C, COBOL,
 and Ada all compile to that same format, and the system's entry gate never
 asks which language a binary came from.
 
@@ -268,7 +268,7 @@ and would have read garbage on real silicon.
 
 ## Where this came from
 
-BMO-X was never designed for banking. It was designed for **games** — a
+BMO-X was never designed for banking. It was designed for **games** -- a
 minimal bare-metal system to get out of the way of Vulkan.
 
 The graphics stack turned out to be a decade of work for one person. The
@@ -278,7 +278,7 @@ changed the destination.
 
 That origin explains the architecture: three frozen syscalls, no libc, no
 window system, nothing general-purpose. This machine will never open a web
-browser — and neither will an ATM, a payment terminal, or a flight
+browser -- and neither will an ATM, a payment terminal, or a flight
 computer. Some machines exist to do one thing, exactly, for twenty years.
 
 ---

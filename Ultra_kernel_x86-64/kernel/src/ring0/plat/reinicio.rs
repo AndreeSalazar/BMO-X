@@ -1,28 +1,28 @@
-//! Reiniciar la máquina. Tres intentos, del más limpio al más bruto.
+//! Reiniciar la maquina. Tres intentos, del mas limpio al mas bruto.
 //!
-//! ## Por qué tres y no uno
+//! ## Por que tres y no uno
 //!
-//! El `reboot` del shell hacía **sólo** el pulso del 8042 (`0xFE` al puerto
-//! `0x64`), que es el método de 1984. En esta placa el i8042 ni siquiera
-//! entrega datos coherentes —ya está anotado en el driver de teclado: "sólo
-//! entrega ruido"— así que ese `out` no reiniciaba nada y la máquina se
-//! quedaba en el `hlt` de después. Escribir `reboot` y que no pase nada es un
+//! El `reboot` del shell hacia **solo** el pulso del 8042 (`0xFE` al puerto
+//! `0x64`), que es el metodo de 1984. En esta placa el i8042 ni siquiera
+//! entrega datos coherentes --ya esta anotado en el driver de teclado: "solo
+//! entrega ruido"-- asi que ese `out` no reiniciaba nada y la maquina se
+//! quedaba en el `hlt` de despues. Escribir `reboot` y que no pase nada es un
 //! comando que miente.
 //!
-//! Así que se intenta en orden, y **el último no puede fallar**:
+//! Asi que se intenta en orden, y **el ultimo no puede fallar**:
 //!
 //! 1. **`0xCF9`, el registro de reset del PCI.** Es lo que usan las placas
 //!    modernas y lo que usa Linux por defecto. `0x02` arma el reset del
 //!    sistema y `0x06` lo dispara con el CPU incluido.
 //! 2. **El pulso del 8042.** Por si acaso hay un controlador de verdad
 //!    escuchando. Cuesta dos instrucciones.
-//! 3. **Triple fault.** Se carga una IDT vacía y se provoca una excepción: el
+//! 3. **Triple fault.** Se carga una IDT vacia y se provoca una excepcion: el
 //!    CPU no encuentra manejador, no encuentra manejador del fallo del
 //!    manejador, y a la tercera se rinde y se reinicia solo. Es feo, es
-//!    legítimo, y **funciona siempre** — no depende de ningún chipset.
+//!    legitimo, y **funciona siempre** -- no depende de ningun chipset.
 //!
 //! El orden importa: los dos primeros dan al firmware la oportunidad de hacer
-//! un reinicio ordenado. El tercero es la garantía de que la máquina arranca
+//! un reinicio ordenado. El tercero es la garantia de que la maquina arranca
 //! de nuevo pase lo que pase, que es justo lo que hace falta al final de una
 //! pantalla de fallo.
 
@@ -38,13 +38,13 @@ unsafe fn inb(puerto: u16) -> u8 {
     v
 }
 
-/// Espera corta por TSC. En este camino las interrupciones están apagadas y no
-/// hay temporizador que valga: contar vueltas de bucle mediría la velocidad
+/// Espera corta por TSC. En este camino las interrupciones estan apagadas y no
+/// hay temporizador que valga: contar vueltas de bucle mediria la velocidad
 /// del CPU, no el tiempo.
 fn esperar_us(us: u64) {
     let hz = crate::ring0::task::scheduler::tsc_freq();
     if hz == 0 {
-        // Sin TSC calibrado, unas cuantas vueltas y a otra cosa. Aquí el
+        // Sin TSC calibrado, unas cuantas vueltas y a otra cosa. Aqui el
         // objetivo es dar aire al chipset, no medir nada.
         for _ in 0..200_000 {
             core::hint::spin_loop();
@@ -63,7 +63,7 @@ pub fn ahora() -> ! {
         asm!("cli", options(nomem, nostack));
 
         // 1. Reset por PCI (0xCF9). Se conserva lo que hubiera puesto el
-        //    firmware en los bits altos y sólo se tocan los de reset.
+        //    firmware en los bits altos y solo se tocan los de reset.
         let previo = inb(0xCF9) & !0x06;
         outb(0xCF9, previo | 0x02); // SYS_RST armado
         esperar_us(100);
@@ -79,7 +79,7 @@ pub fn ahora() -> ! {
         outb(0x64, 0xFE);
         esperar_us(50_000);
 
-        // 3. Triple fault. Una IDT de límite 0: cualquier excepción no
+        // 3. Triple fault. Una IDT de limite 0: cualquier excepcion no
         //    encuentra manejador y el CPU se rinde a la tercera.
         #[repr(C, packed)]
         struct Idtr {

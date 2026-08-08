@@ -5,24 +5,24 @@
 //!   - ELF: `.dynsym` con binding GLOBAL/WEAK
 //!
 //! Modelo BEF: `(symbol_name, hash, virt_addr, size, flags)`. Sin ordinales
-//! como tipo principal — pero se permite acceso por índice (que actúa como
-//! ordinal estable durante una versión major).
+//! como tipo principal -- pero se permite acceso por indice (que actua como
+//! ordinal estable durante una version major).
 
 #![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
-/// Una entrada del export table — 32 bytes.
+/// Una entrada del export table -- 32 bytes.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy)]
 pub struct ExportEntry {
-    /// Offset al string del nombre del símbolo (en sección Exports).
+    /// Offset al string del nombre del simbolo (en seccion Exports).
     pub symbol_name_off: bx_u32,
-    /// Hash BLAKE3-32 del nombre — acelera la búsqueda.
+    /// Hash BLAKE3-32 del nombre -- acelera la busqueda.
     pub symbol_hash: bx_u32,
-    /// Dirección virtual (relativa al base) del símbolo.
+    /// Direccion virtual (relativa al base) del simbolo.
     pub virt_addr: bx_u64,
-    /// Tamaño en bytes (función o dato).
+    /// Tamano en bytes (funcion o dato).
     pub size: bx_u64,
     /// Flags `ExportFlags`.
     pub flags: bx_u32,
@@ -34,13 +34,13 @@ const _: () = assert!(core::mem::size_of::<ExportEntry>() == 32);
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ExportFlags: bx_u32 {
-        /// Es una función (default; sin esto es un símbolo de dato).
+        /// Es una funcion (default; sin esto es un simbolo de dato).
         const FUNCTION       = 1 << 0;
         /// Es weak (otra lib puede sobrescribir).
         const WEAK           = 1 << 1;
         /// Solo visible dentro del proceso (no para hot-reload externo).
         const PROCESS_LOCAL  = 1 << 2;
-        /// Marca que requiere capability específica para llamar.
+        /// Marca que requiere capability especifica para llamar.
         const NEEDS_CAP      = 1 << 3;
     }
 }
@@ -54,7 +54,7 @@ impl<'a> ExportTable<'a> {
     pub fn parse(section_bytes: &'a [u8], entry_count: u32) -> Result<Self, &'static str> {
         let needed = entry_count as usize * core::mem::size_of::<ExportEntry>();
         if section_bytes.len() < needed {
-            return Err("export table demasiado pequeña");
+            return Err("export table demasiado pequena");
         }
         let ptr = section_bytes.as_ptr() as *const ExportEntry;
         let entries = unsafe { core::slice::from_raw_parts(ptr, entry_count as usize) };
@@ -62,8 +62,8 @@ impl<'a> ExportTable<'a> {
         Ok(Self { entries, strings })
     }
 
-    /// Búsqueda por hash (rápida — O(n) pero comparando solo u32).
-    /// Si hay colisión, fallback a comparar el nombre completo.
+    /// Busqueda por hash (rapida -- O(n) pero comparando solo u32).
+    /// Si hay colision, fallback a comparar el nombre completo.
     pub fn find_by_name(&self, name: &str) -> Option<&ExportEntry> {
         let target_hash = blake3_hash32(name.as_bytes());
         for e in self.entries {
@@ -90,7 +90,7 @@ impl<'a> ExportTable<'a> {
     }
 }
 
-/// Hash BLAKE3 truncado a 32 bits — usa la implementación nativa completa
+/// Hash BLAKE3 truncado a 32 bits -- usa la implementacion nativa completa
 /// de `crate::bef::blake3` y trunca a los primeros 32 bits.
 pub(crate) fn blake3_hash32(bytes: &[u8]) -> u32 {
     let full = crate::bef::blake3::hash(bytes);

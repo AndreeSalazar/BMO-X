@@ -1,8 +1,8 @@
-//! `bmo-cpp-front` — compila C++ a BEF.
+//! `bmo-cpp-front` -- compila C++ a BEF.
 //!
-//! Antes imprimía los contadores de un `IrModule` que nadie consumía: decía
+//! Antes imprimia los contadores de un `IrModule` que nadie consumia: decia
 //! "OK: compiled" sin haber producido un solo byte ejecutable. Ahora escribe
-//! el `.bef` o falla diciendo por qué.
+//! el `.bef` o falla diciendo por que.
 
 use std::env;
 use std::fs;
@@ -37,11 +37,11 @@ fn main() {
         entrada.with_extension("bef")
     };
 
-                // ── ★ EL GATE, ANTES DE ESCRIBIR ──────────────────────────
+                // -- * EL GATE, ANTES DE ESCRIBIR --------------------------
             //
             // `bmo-verify` es el "unico checkpoint comun" de la filosofia: el
             // papel de seguridad que tendria un IR central, pero como CONTRATO
-            // — cada lenguaje emite su BEF por su cuenta y el verificador lo
+            // -- cada lenguaje emite su BEF por su cuenta y el verificador lo
             // revisa por separado. Hasta hoy no lo llamaba ningun frontend.
             //
             // Va ANTES del `write` a proposito: verificar despues dejaria un

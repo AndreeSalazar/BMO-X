@@ -1,4 +1,4 @@
-# c99.toml — ISO/IEC 9899:1999 (C99)
+# c99.toml -- ISO/IEC 9899:1999 (C99)
 [standard]
 iso_number = "ISO/IEC 9899:1999"
 year = 1999

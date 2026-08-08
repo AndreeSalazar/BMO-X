@@ -1,4 +1,4 @@
-# cpp98.toml — ISO/IEC 14882:1998 (C++98)
+# cpp98.toml -- ISO/IEC 14882:1998 (C++98)
 [standard]
 iso_number = "ISO/IEC 14882:1998"
 year = 1998

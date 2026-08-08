@@ -1,16 +1,16 @@
-//! Generador del font Ring 0 de BMO-X — estética terminal 80s/cyberpunk.
+//! Generador del font Ring 0 de BMO-X -- estetica terminal 80s/cyberpunk.
 //!
-//! Cada glifo se define como arte ASCII auditable de 13 filas × 8 columnas
-//! ('#' = píxel), que mapean a las filas 2..14 de la celda 8x16 (filas 0-1 y
+//! Cada glifo se define como arte ASCII auditable de 13 filas x 8 columnas
+//! ('#' = pixel), que mapean a las filas 2..14 de la celda 8x16 (filas 0-1 y
 //! 15 quedan como interlineado). Trazos de 2 px NATIVOS: el renderer ya no
-//! necesita engordar nada — dibuja exacto, con esquinas nítidas.
+//! necesita engordar nada -- dibuja exacto, con esquinas nitidas.
 //!
-//! Salida: `font16_data.rs`, una expresión `[[u8; 16]; 95]` que el kernel
+//! Salida: `font16_data.rs`, una expresion `[[u8; 16]; 95]` que el kernel
 //! embebe con `include!`. Regenerar: `cargo run -p bmo-fontgen`.
 
 const ROWS: usize = 13;
 
-/// ASCII 32..=126, en orden. Filas faltantes = vacías.
+/// ASCII 32..=126, en orden. Filas faltantes = vacias.
 const ART: [[&str; ROWS]; 95] = [
     // ' '
     ["", "", "", "", "", "", "", "", "", "", "", "", ""],
@@ -205,24 +205,24 @@ const ART: [[&str; ROWS]; 95] = [
 ];
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Glifos ESPAÑOLES (Latin-1) — COMPUESTOS, no dibujados a mano
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
+//  Glifos ESPANOLES (Latin-1) -- COMPUESTOS, no dibujados a mano
+// ===========================================================================
 //
-// La ñ es la a con una tilde encima; la á es la a con un acento. Dibujar 23
-// mapas de bits a mano sería copiar 23 veces la misma letra con un adorno
-// distinto — y cada copia envejece por su cuenta. El generador los COMPONE:
+// La n es la a con una tilde encima; la a es la a con un acento. Dibujar 23
+// mapas de bits a mano seria copiar 23 veces la misma letra con un adorno
+// distinto -- y cada copia envejece por su cuenta. El generador los COMPONE:
 // toma el glifo ASCII base y le superpone el signo. Cambiar la 'a' arregla
-// la 'á' sola.
+// la 'a' sola.
 //
-// Las minúsculas ocupan las filas 4..10 del arte, así que el signo entra
-// arriba sin tocarlas. Las mayúsculas ocupan 0..10: se bajan 2 filas (queda
+// Las minusculas ocupan las filas 4..10 del arte, asi que el signo entra
+// arriba sin tocarlas. Las mayusculas ocupan 0..10: se bajan 2 filas (queda
 // sitio de sobra, las filas 11-12 solo las usan los descendentes p/q/g/y).
 
-const ACUTE:  [&str; 2] = ["...##.", "..##.."]; // ´  sube hacia la derecha
-const DIAER:  [&str; 2] = [".##.##", ".##.##"]; // ¨
+const ACUTE:  [&str; 2] = ["...##.", "..##.."]; // '  sube hacia la derecha
+const DIAER:  [&str; 2] = [".##.##", ".##.##"]; // "
 const TILDE:  [&str; 2] = [".##..#", "#..##."]; // ~
-const CEDIL:  [&str; 2] = ["..##..", ".###.."]; // ¸ (debajo)
+const CEDIL:  [&str; 2] = ["..##..", ".###.."]; // , (debajo)
 
 enum Extra {
     /// Arte literal: signos que no derivan de ninguna letra.
@@ -230,39 +230,39 @@ enum Extra {
     /// Letra base + signo ENCIMA, bajando la base `shift` filas.
     Above(char, [&'static str; 2], usize),
     /// Igual, pero borrando la cabeza de la base: la 'i' pierde su punto
-    /// antes de recibir el acento (í, no í con dos cosas encima).
+    /// antes de recibir el acento (i, no i con dos cosas encima).
     AboveDotless(char, [&'static str; 2], usize),
     /// Letra base + signo DEBAJO (cedilla).
     Below(char, [&'static str; 2]),
 }
 
-/// `(byte Latin-1, receta)`. El byte es la codificación en la que el teclado
-/// entrega el carácter y en la que la consola lo guarda: un byte por letra,
+/// `(byte Latin-1, receta)`. El byte es la codificacion en la que el teclado
+/// entrega el caracter y en la que la consola lo guarda: un byte por letra,
 /// sin UTF-8 en Ring 0.
 const EXTRA: [(u8, Extra); 25] = [
-    (0xA1, Extra::Art(["..##..", "..##..", "", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "", ""])), // ¡
-    (0xBF, Extra::Art(["..##..", "..##..", "", "..##..", "..##..", ".##...", "##....", "##....", "##..##", "##..##", ".####.", "", ""])), // ¿
-    (0xAA, Extra::Art([".####.", "....##", ".#####", "##..##", ".#####", "", "######", "", "", "", "", "", ""])), // ª
-    (0xBA, Extra::Art([".####.", "##..##", "##..##", "##..##", ".####.", "", "######", "", "", "", "", "", ""])), // º
-    (0xB0, Extra::Art([".####.", "##..##", "##..##", ".####.", "", "", "", "", "", "", "", "", ""])),             // °
-    (0xB7, Extra::Art(["", "", "", "", "", "..##..", "..##..", "", "", "", "", "", ""])),                          // ·
-    (0xAC, Extra::Art(["", "", "", "", "######", "....##", "....##", "", "", "", "", "", ""])),                    // ¬
-    (0xF1, Extra::Above('n', TILDE, 0)),        // ñ
-    (0xD1, Extra::Above('N', TILDE, 2)),        // Ñ
-    (0xE1, Extra::Above('a', ACUTE, 0)),        // á
-    (0xE9, Extra::Above('e', ACUTE, 0)),        // é
-    (0xED, Extra::AboveDotless('i', ACUTE, 0)), // í
-    (0xF3, Extra::Above('o', ACUTE, 0)),        // ó
-    (0xFA, Extra::Above('u', ACUTE, 0)),        // ú
-    (0xFC, Extra::Above('u', DIAER, 0)),        // ü
-    (0xC1, Extra::Above('A', ACUTE, 2)),        // Á
-    (0xC9, Extra::Above('E', ACUTE, 2)),        // É
-    (0xCD, Extra::Above('I', ACUTE, 2)),        // Í
-    (0xD3, Extra::Above('O', ACUTE, 2)),        // Ó
-    (0xDA, Extra::Above('U', ACUTE, 2)),        // Ú
-    (0xDC, Extra::Above('U', DIAER, 2)),        // Ü
-    (0xE7, Extra::Below('c', CEDIL)),           // ç
-    (0xC7, Extra::Below('C', CEDIL)),           // Ç
+    (0xA1, Extra::Art(["..##..", "..##..", "", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "", ""])), // 
+    (0xBF, Extra::Art(["..##..", "..##..", "", "..##..", "..##..", ".##...", "##....", "##....", "##..##", "##..##", ".####.", "", ""])), // 
+    (0xAA, Extra::Art([".####.", "....##", ".#####", "##..##", ".#####", "", "######", "", "", "", "", "", ""])), // a
+    (0xBA, Extra::Art([".####.", "##..##", "##..##", "##..##", ".####.", "", "######", "", "", "", "", "", ""])), // o
+    (0xB0, Extra::Art([".####.", "##..##", "##..##", ".####.", "", "", "", "", "", "", "", "", ""])),             //  deg
+    (0xB7, Extra::Art(["", "", "", "", "", "..##..", "..##..", "", "", "", "", "", ""])),                          // -
+    (0xAC, Extra::Art(["", "", "", "", "######", "....##", "....##", "", "", "", "", "", ""])),                    // !
+    (0xF1, Extra::Above('n', TILDE, 0)),        // n
+    (0xD1, Extra::Above('N', TILDE, 2)),        // N
+    (0xE1, Extra::Above('a', ACUTE, 0)),        // a
+    (0xE9, Extra::Above('e', ACUTE, 0)),        // e
+    (0xED, Extra::AboveDotless('i', ACUTE, 0)), // i
+    (0xF3, Extra::Above('o', ACUTE, 0)),        // o
+    (0xFA, Extra::Above('u', ACUTE, 0)),        // u
+    (0xFC, Extra::Above('u', DIAER, 0)),        // u
+    (0xC1, Extra::Above('A', ACUTE, 2)),        // A
+    (0xC9, Extra::Above('E', ACUTE, 2)),        // E
+    (0xCD, Extra::Above('I', ACUTE, 2)),        // I
+    (0xD3, Extra::Above('O', ACUTE, 2)),        // O
+    (0xDA, Extra::Above('U', ACUTE, 2)),        // U
+    (0xDC, Extra::Above('U', DIAER, 2)),        // U
+    (0xE7, Extra::Below('c', CEDIL)),           // c
+    (0xC7, Extra::Below('C', CEDIL)),           // C
     // Los dos signos muertos, sueltos: se imprimen cuando el usuario
     // pulsa el acento y despues algo que no combina (o un espacio).
     (0xB4, Extra::Art(["...##.", "..##..", "", "", "", "", "", "", "", "", "", "", ""])), // acento agudo
@@ -294,8 +294,8 @@ fn build_extra(e: &Extra) -> [String; ROWS] {
             }
             // El signo va justo ENCIMA del cuerpo, sin pisarlo: se busca la
             // primera fila con tinta y se colocan las dos filas del signo
-            // arriba. (Escribirlo a mano costó una Ñ decapitada: el signo
-            // sobreescribía las dos primeras filas de la N.)
+            // arriba. (Escribirlo a mano costo una N decapitada: el signo
+            // sobreescribia las dos primeras filas de la N.)
             let top = (0..ROWS).find(|r| out[*r].contains('#')).unwrap_or(2);
             if top >= 2 {
                 out[top - 2] = mark[0].to_string();
@@ -331,8 +331,8 @@ fn main() {
         "Ultra_kernel_x86-64/kernel/src/ring0/core/font16_data.rs".to_string()
     });
     // El segundo archivo (mismo directorio) lleva los bytes Latin-1 de los
-    // glifos extra, EN EL MISMO ORDEN: el kernel busca ahí para traducir un
-    // byte >= 0xA0 a su índice de glifo.
+    // glifos extra, EN EL MISMO ORDEN: el kernel busca ahi para traducir un
+    // byte >= 0xA0 a su indice de glifo.
     let out_extra = out.replace("font16_data.rs", "font16_extra.rs");
 
     let mut s = format!(

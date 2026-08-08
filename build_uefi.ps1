@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    FastOS Build System v3.1 — Maximum Performance Build Pipeline
+    FastOS Build System v3.1 -- Maximum Performance Build Pipeline
 .DESCRIPTION
     Parallel-optimized build pipeline for FastOS:
       1. Parallel builds: bootloader (nightly) + kernel (stable) simultaneously
@@ -33,9 +33,9 @@
     v3.1: SSD-first approach, simplified flash, parallel builds.
 
     SSD Partition Layout (3-partition plan):
-      S: FASTOS-EFI    (10 GB) — UEFI boot partition. BOOTX64.EFI + kernel.elf.
-      T: FastOS-Data   (~50 GB) — Apps, user data, /home.
-      X: Commit-Real   (~60 GB) — TimeBack git repo (commits, trees, blobs).
+      S: FASTOS-EFI    (10 GB) -- UEFI boot partition. BOOTX64.EFI + kernel.elf.
+      T: FastOS-Data   (~50 GB) -- Apps, user data, /home.
+      X: Commit-Real   (~60 GB) -- TimeBack git repo (commits, trees, blobs).
     Run with -Drive S to flash the kernel.efi to S: (FASTOS-EFI).
     Type `layout` in the CABINA to display this layout.
 #>
@@ -53,18 +53,18 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptVersion = "3.1.0"
 
-# ── Colors ─────────────────────────────────────────────────────────────
+# -- Colors -------------------------------------------------------------
 function Step  { param($m) Write-Host "  >> " -NoNewline -ForegroundColor Cyan;    Write-Host $m }
 function OK    { param($m) Write-Host "  OK " -NoNewline -ForegroundColor Green;   Write-Host $m }
 function Warn  { param($m) Write-Host "  !! " -NoNewline -ForegroundColor Yellow;  Write-Host $m }
 function Fail  { param($m) Write-Host "  XX " -NoNewline -ForegroundColor Red;     Write-Host $m; exit 1 }
 
-# ── Timing ─────────────────────────────────────────────────────────────
+# -- Timing -------------------------------------------------------------
 $script:timer = [System.Diagnostics.Stopwatch]::StartNew()
 function PhaseStart { param($n) $t = [System.Diagnostics.Stopwatch]::StartNew(); Write-Host "  >> $n" -ForegroundColor Cyan; return $t }
 function PhaseDone  { param($t, $n) $t.Stop(); Write-Host "  OK $n ($([math]::Round($t.Elapsed.TotalSeconds,1))s)" -ForegroundColor Green }
 
-# ── Banner ─────────────────────────────────────────────────────────────
+# -- Banner -------------------------------------------------------------
 Write-Host ""
 Write-Host "  +============================================+" -ForegroundColor DarkCyan
 Write-Host "  |   FastOS Build System  v$scriptVersion                |" -ForegroundColor Cyan
@@ -72,7 +72,7 @@ Write-Host "  |   Ryzen 5600X · GOP · SSD Boot                   |" -Foregroun
 Write-Host "  +============================================+" -ForegroundColor DarkCyan
 Write-Host ""
 
-# ── Admin elevation ────────────────────────────────────────────────────
+# -- Admin elevation ----------------------------------------------------
 function Test-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     return ([Security.Principal.WindowsPrincipal]$id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -98,7 +98,7 @@ if ($Flash -or $Verify) {
     }
 }
 
-# ── Paths ──────────────────────────────────────────────────────────────
+# -- Paths --------------------------------------------------------------
 $root     = $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $bootDir  = Join-Path $root "crates_Personal\bootloader"
@@ -121,22 +121,22 @@ if (-not (Test-Path (Join-Path $linuxDevourDir "Cargo.toml"))) { Fail "mod_linux
 if (-not (Test-Path (Join-Path $wineDevourDir "Cargo.toml")))  { Fail "mod_wine_devour not found at $wineDevourDir" }
 if (-not (Test-Path (Join-Path $terminalDir "Cargo.toml")))    { Fail "mod_terminal not found at $terminalDir" }
 
-# ── Version ────────────────────────────────────────────────────────────
+# -- Version ------------------------------------------------------------
 $kv = "unknown"
 $toml = Get-Content (Join-Path $kernDir "Cargo.toml") -Raw
 if ($toml -match 'version\s*=\s*"(.+?)"') { $kv = $Matches[1] }
 
-# ── Cargo jobs flag ────────────────────────────────────────────────────
+# -- Cargo jobs flag ----------------------------------------------------
 $jobsFlag = if ($Jobs -gt 0) { @("-j$Jobs") } else { @() }
 $kernelFeatureKey = if ($LLFree) { "llfree" } else { "buddy" }
 $kernelFeatureFlag = if ($LLFree) { @("--no-default-features", "--features", "alloc-llfree") } else { @() }
 
-# ── SHA256 ─────────────────────────────────────────────────────────────
+# -- SHA256 -------------------------------------------------------------
 function Hash256 { param($p) return (Get-FileHash -Path $p -Algorithm SHA256).Hash.ToLower() }
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # ENVIRONMENT CHECK
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 $t0 = PhaseStart "Environment check"
 
 $hasNightly = (rustup toolchain list 2>$null | Select-String "nightly" | Measure-Object).Count -gt 0
@@ -155,18 +155,18 @@ if ($freeGB -lt 0.05) { Fail "Low disk space: ${freeGB}GB free" }
 
 PhaseDone $t0 "Rust nightly+stable OK, UEFI target OK, ${freeGB}GB free"
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # CLEAN
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 if ($Clean) {
     $tc = PhaseStart "Cleaning"
     if (Test-Path $target) { Remove-Item $target -Recurse -Force }
     PhaseDone $tc "Clean"
 }
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # SMART REBUILD DETECTION (content-hash based)
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # Uses content hashing instead of timestamps. Timestamps are unreliable
 # when source files are edited by external tools that don't update mtime.
 $script:srcHashCache = @{}
@@ -239,9 +239,9 @@ if (-not $needBoot -and -not $needKern -and -not $needModule -and -not $needTime
     }
 }
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # PARALLEL BUILD: BOOTLOADER + KERNEL + MODULE
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 $buildTimer = PhaseStart "Building bootloader + kernel + modules (parallel)"
 
 # Define build jobs
@@ -455,9 +455,9 @@ if ($needLinuxDevour) { Save-SourceHash $linuxDevourDir $linuxDevourElf }
 if ($needWineDevour) { Save-SourceHash $wineDevourDir $wineDevourElf }
 if ($needTerminal)  { Save-SourceHash $terminalDir $terminalElf }
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # VALIDATE OUTPUTS
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 $tval = PhaseStart "Validate outputs"
 
 if (-not (Test-Path $bootEfi))      { Fail "Bootloader EFI not found: $bootEfi" }
@@ -501,9 +501,9 @@ Write-Host "    mod_terminal.elf    $([math]::Round($terminalSize/1024,1)) KB  s
 
 PhaseDone $tval "Outputs validated"
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # STAGE EFI BOOT STRUCTURE
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 $tstage = PhaseStart "Stage EFI/BOOT"
 
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
@@ -554,9 +554,9 @@ $manifest | Set-Content -Path (Join-Path $stage "MANIFEST.TXT") -Encoding UTF8
 
 PhaseDone $tstage "Staged $([math]::Round($totalSize/1024,1)) KB total"
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # BUILD SUMMARY
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 Write-Host ""
 Write-Host "  +============================================+" -ForegroundColor Green
 Write-Host "  |            BUILD COMPLETE                   |" -ForegroundColor Green
@@ -566,9 +566,9 @@ Write-Host ""
 
 if ($BuildOnly) { exit 0 }
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # SSD FLASH
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 if ($Flash) {
     Write-Host "  ── Flash to SSD ──────────────────────────────" -ForegroundColor Cyan
     Write-Host ""
@@ -653,9 +653,9 @@ if ($Flash) {
     Write-Host ""
 }
 
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 # STANDALONE VERIFY
-# ══════════════════════════════════════════════════════════════════════
+# ======================================================================
 if ($Verify -and -not $Flash) {
     $tl = $Drive
     if (-not $tl) { $tl = "S" }
@@ -677,6 +677,6 @@ if ($Verify -and -not $Flash) {
     Write-Host ""
 }
 
-# ── Final ──────────────────────────────────────────────────────────────
+# -- Final --------------------------------------------------------------
 Write-Host "  Total: $([math]::Round($script:timer.Elapsed.TotalSeconds,1))s" -ForegroundColor DarkGray
 Write-Host ""

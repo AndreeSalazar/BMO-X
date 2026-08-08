@@ -1,8 +1,8 @@
-//! `bmo_abi::error_code` — Códigos de error extendidos.
+//! `bmo_abi::error_code` -- Codigos de error extendidos.
 //!
 //! Los **tipos** `BmoError` y `BmoStatus` viven en
-//! `crate::bmo_abi::fundamentals::status`. Este módulo solo agrega
-//! los **códigos extendidos** y las utilidades de propagación.
+//! `crate::bmo_abi::fundamentals::status`. Este modulo solo agrega
+//! los **codigos extendidos** y las utilidades de propagacion.
 //!
 //! ## Modelo
 //!
@@ -12,14 +12,14 @@
 //! bits 24..31  = flags (recoverable, transient, ...)
 //! ```
 //!
-//! Los syscalls retornan `BmoStatus` (32 bits). El código de error
-//! es siempre no-cero si la syscall falló. Cero = OK.
+//! Los syscalls retornan `BmoStatus` (32 bits). El codigo de error
+//! es siempre no-cero si la syscall fallo. Cero = OK.
 
 #![allow(dead_code)]
 
-// ─── Codes ──────────────────────────────────────────────────────────
+// --- Codes ----------------------------------------------------------
 
-/// Códigos de error canónicos.
+/// Codigos de error canonicos.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BmoErrorCode {
@@ -27,7 +27,7 @@ pub enum BmoErrorCode {
     Ok = 0,
     /// Sin memoria (heap exhausted, swap full, etc).
     OutOfMemory = 1,
-    /// Handle inválido o de tipo incorrecto.
+    /// Handle invalido o de tipo incorrecto.
     InvalidHandle = 2,
     /// Permiso denegado.
     PermissionDenied = 3,
@@ -37,27 +37,27 @@ pub enum BmoErrorCode {
     Busy = 5,
     /// Timeout alcanzado.
     Timeout = 6,
-    /// Argumento inválido (NULL, out of range, etc).
+    /// Argumento invalido (NULL, out of range, etc).
     InvalidArgument = 7,
     /// Error de I/O (disk, network, etc).
     Io = 8,
     /// Error interno del kernel. Bug probable.
     Internal = 9,
-    /// Operación no soportada en este OS/config.
+    /// Operacion no soportada en este OS/config.
     Unsupported = 10,
-    /// Operación cancelada.
+    /// Operacion cancelada.
     Cancelled = 11,
     /// Deadlock detectado.
     Deadlock = 12,
     /// Recurso temporalmente no disponible, reintentar.
     Again = 13,
-    /// Buffer demasiado pequeño.
+    /// Buffer demasiado pequeno.
     BufferTooSmall = 14,
     /// Estado inconsistente.
     InvalidState = 15,
     /// Checksum o CRC no coincide.
     Checksum = 16,
-    /// Versión incompatible.
+    /// Version incompatible.
     Version = 17,
     /// Path no encontrado o malformado.
     PathNotFound = 18,
@@ -68,19 +68,19 @@ pub enum BmoErrorCode {
 }
 
 impl BmoErrorCode {
-    /// `true` si el código indica éxito.
+    /// `true` si el codigo indica exito.
     #[inline]
     pub fn is_ok(self) -> bool {
         self == Self::Ok
     }
 
-    /// `true` si el código indica un error que vale la pena reintentar.
+    /// `true` si el codigo indica un error que vale la pena reintentar.
     #[inline]
     pub fn is_transient(self) -> bool {
         matches!(self, Self::Busy | Self::Timeout | Self::Again)
     }
 
-    /// Descripción humana corta.
+    /// Descripcion humana corta.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Ok => "ok",
@@ -108,7 +108,7 @@ impl BmoErrorCode {
     }
 }
 
-// ─── Severity ──────────────────────────────────────────────────────
+// --- Severity ------------------------------------------------------
 
 /// Severidad de un error. Ocupa los bits 16..23.
 #[repr(u32)]
@@ -118,9 +118,9 @@ pub enum BmoErrorSeverity {
     None = 0,
     /// Advertencia, el programa puede continuar.
     Warning = 1,
-    /// Error, la operación falló pero el programa sigue vivo.
+    /// Error, la operacion fallo pero el programa sigue vivo.
     Error = 2,
-    /// Error fatal, el programa debería terminar.
+    /// Error fatal, el programa deberia terminar.
     Fatal = 3,
 }
 
@@ -129,7 +129,7 @@ impl BmoErrorSeverity {
     pub const SHIFT: u32 = 16;
 }
 
-// ─── Flags ──────────────────────────────────────────────────────────
+// --- Flags ----------------------------------------------------------
 
 /// Flags extras de un error. Bits 24..31.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -139,9 +139,9 @@ impl BmoErrorFlags {
     pub const NONE: Self = Self(0);
     /// El error es recuperable: reintentar puede funcionar.
     pub const RECOVERABLE: Self = Self(1 << 0);
-    /// El error es transitorio: desaparecerá solo.
+    /// El error es transitorio: desaparecera solo.
     pub const TRANSIENT: Self = Self(1 << 1);
-    /// El error es de usuario (input inválido, etc).
+    /// El error es de usuario (input invalido, etc).
     pub const USER: Self = Self(1 << 2);
     /// El error es interno (bug).
     pub const INTERNAL: Self = Self(1 << 3);
@@ -150,7 +150,7 @@ impl BmoErrorFlags {
     pub const SHIFT: u32 = 24;
 }
 
-// ─── Raw code constants ─────────────────────────────────────────────
+// --- Raw code constants ---------------------------------------------
 
 pub const OK: u32 = 0;
 pub const OUT_OF_MEMORY: u32 = 1;

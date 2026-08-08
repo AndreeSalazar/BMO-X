@@ -1,4 +1,4 @@
-//! App launcher / desktop shell — stub.
+//! App launcher / desktop shell -- stub.
 
 #![no_std]
 

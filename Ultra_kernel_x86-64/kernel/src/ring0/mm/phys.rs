@@ -19,7 +19,7 @@ use boot_context::BootContext;
 use super::{phys_to_virt, PAGE};
 use crate::ring0::plat::spin::SpinLock;
 
-const MAX_PHYS: u64 = super::PHYSMAP_SIZE; // 16 GiB — capped by the physmap
+const MAX_PHYS: u64 = super::PHYSMAP_SIZE; // 16 GiB -- capped by the physmap
 const FRAME_SLOTS: usize = (MAX_PHYS / PAGE) as usize / 64; // 65536 words
 
 static mut BITMAP: [u64; FRAME_SLOTS] = [0; FRAME_SLOTS];
@@ -156,7 +156,7 @@ pub fn alloc_frame() -> Option<u64> {
 /// Required by every multi-page region addressed linearly through the
 /// physmap (kernel task stacks, the Ring 3 trap-landing stacks): the physmap
 /// maps physical memory 1:1, so `phys_to_virt(base) + n*PAGE` is physical
-/// `base + n*PAGE` — N independent `alloc_frame` calls only produce that by
+/// `base + n*PAGE` -- N independent `alloc_frame` calls only produce that by
 /// accident (clean QEMU maps) and not on real memory maps with holes, where
 /// the tail pages would land in frames the caller does not own.
 pub fn alloc_frames_contig(count: u64) -> Option<u64> {
@@ -203,7 +203,7 @@ pub fn alloc_frames_contig(count: u64) -> Option<u64> {
 
 /// Free a frame previously returned by `alloc_frame`. Freeing anything else
 /// (reserved, unaligned, out of range, or double free) is a kernel bug and is
-/// silently ignored — callers must keep their own ownership straight.
+/// silently ignored -- callers must keep their own ownership straight.
 pub fn free_frame(phys: u64) {
     if phys % PAGE != 0 || phys >= MAX_PHYS {
         return;

@@ -75,19 +75,19 @@ fn loaded_bef_has_global_data() {
 }
 
 
-// ── El relleno a página, FUERA ────────────────────────────────────────
+// -- El relleno a pagina, FUERA ----------------------------------------
 //
-// Hasta el 2026-08-07 el codegen rellenaba cada tramo hasta la página con
+// Hasta el 2026-08-07 el codegen rellenaba cada tramo hasta la pagina con
 // `0xCC` y ese relleno viajaba dentro del `.bex`. No era capricho: los
-// `lea [rip+disp]` se contaban asumiendo que los datos van pegados detrás del
-// código, y el cargador (`ring0/task/proc.rs`) pone cada sección en la página
-// siguiente. Rellenar hacía coincidir las dos cuentas.
+// `lea [rip+disp]` se contaban asumiendo que los datos van pegados detras del
+// codigo, y el cargador (`ring0/task/proc.rs`) pone cada seccion en la pagina
+// siguiente. Rellenar hacia coincidir las dos cuentas.
 //
 // Ahora el compilador MODELA la regla del cargador en vez de forzarla, y el
-// arnés de pruebas coloca las secciones por página como el cargador real — sin
-// eso, estos tests no probarían nada.
+// arnes de pruebas coloca las secciones por pagina como el cargador real -- sin
+// eso, estos tests no probarian nada.
 
-/// El tamaño declarado de la sección `kind`.
+/// El tamano declarado de la seccion `kind`.
 fn tamano_seccion(bef: &[u8], kind: bmo_abi::bef::sections::SectionKind) -> Option<usize> {
     use bmo_abi::bef::sections::SectionEntry;
     let hdr = unsafe { &*(bef.as_ptr() as *const bmo_abi::bef::header::BefHeader) };
@@ -101,12 +101,12 @@ fn tamano_seccion(bef: &[u8], kind: bmo_abi::bef::sections::SectionKind) -> Opti
     None
 }
 
-/// ★ Un programa pequeño ocupa lo que ocupa.
+/// * Un programa pequeno ocupa lo que ocupa.
 ///
-/// Antes la sección de código de CUALQUIER programa era múltiplo de 4096, así
-/// que un `hola` medía una página entera y no se podía distinguir de un
-/// programa cuarenta veces mayor. Ese redondeo es lo que hacía invisible
-/// cualquier ahorro de código por debajo de una página.
+/// Antes la seccion de codigo de CUALQUIER programa era multiplo de 4096, asi
+/// que un `hola` media una pagina entera y no se podia distinguir de un
+/// programa cuarenta veces mayor. Ese redondeo es lo que hacia invisible
+/// cualquier ahorro de codigo por debajo de una pagina.
 #[test]
 fn la_seccion_de_codigo_ya_no_se_redondea_a_pagina() {
     use bmo_abi::bef::sections::SectionKind;
@@ -119,16 +119,16 @@ fn la_seccion_de_codigo_ya_no_se_redondea_a_pagina() {
     assert!(code < 4096, "y tiene que caber de sobra en una pagina: {code}");
 }
 
-/// ★ Y LA PRUEBA QUE IMPORTA: la cadena se sigue alcanzando.
+/// * Y LA PRUEBA QUE IMPORTA: la cadena se sigue alcanzando.
 ///
-/// Es el `%s` el que fallaría si la aritmética nueva estuviera mal. El código
-/// de este programa NO llena la página, así que rodata empieza en 4096 mientras
-/// el código acaba mucho antes: si el compilador contara "pegado detrás del
-/// código" —como hacía cuando rellenaba— el puntero caería en el hueco y se
-/// imprimiría basura o nada.
+/// Es el `%s` el que fallaria si la aritmetica nueva estuviera mal. El codigo
+/// de este programa NO llena la pagina, asi que rodata empieza en 4096 mientras
+/// el codigo acaba mucho antes: si el compilador contara "pegado detras del
+/// codigo" --como hacia cuando rellenaba-- el puntero caeria en el hueco y se
+/// imprimiria basura o nada.
 ///
-/// Este test no habría podido fallar antes del 2026-08-07: el arnés concatenaba
-/// las secciones, así que la cuenta equivocada también habría acertado.
+/// Este test no habria podido fallar antes del 2026-08-07: el arnes concatenaba
+/// las secciones, asi que la cuenta equivocada tambien habria acertado.
 #[test]
 fn una_cadena_se_alcanza_aunque_el_codigo_no_llene_la_pagina() {
     let fuente = "int main() { char *s; s = \"cadena en rodata\"; \
@@ -136,11 +136,11 @@ fn una_cadena_se_alcanza_aunque_el_codigo_no_llene_la_pagina() {
     assert_eq!(run_c(fuente), "[cadena en rodata]");
 }
 
-/// Lo mismo para los GLOBALES, que van en la tercera sección — o sea que su
-/// dirección depende de DOS redondeos, no de uno: la página tras el código y la
-/// página tras rodata. Un error en el segundo sumando sólo se ve aquí.
+/// Lo mismo para los GLOBALES, que van en la tercera seccion -- o sea que su
+/// direccion depende de DOS redondeos, no de uno: la pagina tras el codigo y la
+/// pagina tras rodata. Un error en el segundo sumando solo se ve aqui.
 ///
-/// Las dos secciones se ejercitan en la misma línea: el `%d` lee el global (de
+/// Las dos secciones se ejercitan en la misma linea: el `%d` lee el global (de
 /// `data`, tras dos fronteras) y el `%s` la cadena (de `rodata`, tras una).
 #[test]
 fn un_global_se_alcanza_tras_dos_fronteras_de_pagina() {
@@ -150,24 +150,24 @@ fn un_global_se_alcanza_tras_dos_fronteras_de_pagina() {
     assert_eq!(run_c(fuente), "42 eltexto");
 }
 
-// ── El global que valía CERO en silencio ──────────────────────────────
+// -- El global que valia CERO en silencio ------------------------------
 //
 // Estos tres nacieron de escribir el test de arriba con `char *texto =
-// "eltexto"` y ver salir `42 UH\x89åH\x8d\x05õ\x1f` — bytes de codigo maquina.
-// El global valía 0, y el byte 0 de la imagen es el `push rbp` de la primera
+// "eltexto"` y ver salir `42 UH\x89aH\x8d\x05o\x1f` -- bytes de codigo maquina.
+// El global valia 0, y el byte 0 de la imagen es el `push rbp` de la primera
 // funcion.
 //
 // NO era una regresion: fallaba igual con el codegen anterior. Un
 // inicializador que este codegen no sabia convertir se rellenaba de ceros y no
-// se decia, y nada lo miraba porque `globales.rs` sólo comprobaba que el
+// se decia, y nada lo miraba porque `globales.rs` solo comprobaba que el
 // programa COMPILARA.
 
-/// ★★ EL GLOBAL QUE VALIA CERO, AHORA APUNTA DONDE DEBE.
+/// ** EL GLOBAL QUE VALIA CERO, AHORA APUNTA DONDE DEBE.
 ///
 /// Este test nacio al reves: comprobaba que `char *texto = "eltexto"` **se
 /// RECHAZARA**, porque el codegen no sabia poner una direccion y rellenar de
 /// ceros en silencio era peor que negarse. Con las relocations `SeccionAbs64`
-/// ya se puede poner, asi que el test cambio de sentido — y se deja dicho,
+/// ya se puede poner, asi que el test cambio de sentido -- y se deja dicho,
 /// porque un test que un dia exigio lo contrario es la mejor prueba de que algo
 /// avanzo de verdad.
 ///
@@ -180,7 +180,7 @@ fn un_global_inicializado_con_cadena_apunta_a_la_cadena() {
 }
 
 /// Y lo que SIGUE rechazado, para que el mensaje no se pierda: un literal de
-/// coma flotante en un global. Ahi no falta una reloc — falta convertir el
+/// coma flotante en un global. Ahi no falta una reloc -- falta convertir el
 /// valor, que es otro trabajo.
 #[test]
 fn un_global_con_float_sigue_rechazado_diciendolo() {
@@ -190,9 +190,9 @@ fn un_global_con_float_sigue_rechazado_diciendolo() {
     assert!(msg.contains("'d'"), "tiene que decir QUE global: {msg}");
 }
 
-/// Y de paso, lo que sí se puede poner y antes valía cero: un entero negativo.
+/// Y de paso, lo que si se puede poner y antes valia cero: un entero negativo.
 ///
-/// `int x = -5;` es `Neg(Int(5))` en el AST, no `Int(-5)`, así que caía en el
+/// `int x = -5;` es `Neg(Int(5))` en el AST, no `Int(-5)`, asi que caia en el
 /// mismo agujero. Ahora se convierte, que es gratis y claramente correcto.
 #[test]
 fn un_global_negativo_ya_no_vale_cero() {
@@ -201,7 +201,7 @@ fn un_global_negativo_ya_no_vale_cero() {
 }
 
 /// Y el viaje de ida y vuelta, que es lo que cubre la pareja completa: escribir
-/// un negativo en un global EN EJECUCIÓN y volver a leerlo. El `store` guarda 4
+/// un negativo en un global EN EJECUCION y volver a leerlo. El `store` guarda 4
 /// bytes (correcto para con y sin signo); el que fallaba era el `load`.
 #[test]
 fn un_global_int_conserva_el_signo_al_releerlo() {
@@ -212,7 +212,7 @@ fn un_global_int_conserva_el_signo_al_releerlo() {
 }
 
 /// El contraste que prueba que no se ha roto lo otro: `unsigned int` NO se
-/// extiende con signo, y ahí `mov eax,[rax]` es la instrucción correcta.
+/// extiende con signo, y ahi `mov eax,[rax]` es la instruccion correcta.
 #[test]
 fn un_global_unsigned_no_se_extiende_con_signo() {
     let fuente = "unsigned int u = 0; \

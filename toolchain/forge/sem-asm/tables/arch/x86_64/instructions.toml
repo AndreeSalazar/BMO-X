@@ -80,7 +80,7 @@ forms = [
 
 [div]
 description = "Unsigned divide"
-opcode = [0xF7, 0x06] # div r/m (rDX:rax / r/m → rax, rDX = remainder)
+opcode = [0xF7, 0x06] # div r/m (rDX:rax / r/m -> rax, rDX = remainder)
 rex_w = true
 modrm = true
 

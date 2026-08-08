@@ -1,4 +1,4 @@
-﻿# userland_ring3 module — the BMO userland standard library
+# userland_ring3 module -- the BMO userland standard library
 # Every function here is available to C/COBOL frontends via call relocations.
 
 [module]
@@ -6,16 +6,16 @@ name = "bmo_rt"
 version = "1.0.0"
 
 [exports]
-# ── Syscall dispatch ──────────────────────────
+# -- Syscall dispatch --------------------------
 bmo_syscall = "u32, u64, u64, u64, u64, u64, u64 -> u64"
 
-# ── Heap ─────────────────────────────────────
+# -- Heap -------------------------------------
 malloc = "size_t -> ptr"
 free = "ptr -> void"
 calloc = "size_t, size_t -> ptr"
 realloc = "ptr, size_t -> ptr"
 
-# ── String ───────────────────────────────────
+# -- String -----------------------------------
 memcpy = "ptr, ptr, size_t -> ptr"
 memmove = "ptr, ptr, size_t -> ptr"
 memset = "ptr, int, size_t -> ptr"
@@ -33,11 +33,11 @@ strstr = "ptr, ptr -> ptr"
 strdup = "ptr -> ptr"
 strndup = "ptr, size_t -> ptr"
 
-# ── Formatted output ──────────────────────────
+# -- Formatted output --------------------------
 bmo_printf = "ptr, u64, ptr -> int"
 printf = "ptr -> int"
 snprintf = "ptr, size_t, ptr -> int"
 sprintf = "ptr -> int"
 
-# ── Startup ──────────────────────────────────
+# -- Startup ----------------------------------
 _start = "void -> void"

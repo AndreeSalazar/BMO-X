@@ -5,18 +5,18 @@
 
 use super::*;
 
-// ═══════════════ La tabla de intrinsecos, ENTERA ═══════════════
+// =============== La tabla de intrinsecos, ENTERA ===============
 
-/// ★ Compila una llamada a **cada fila** de `intrinsics.toml`.
+/// * Compila una llamada a **cada fila** de `intrinsics.toml`.
 ///
-/// Es la matriz de conformidad de la tabla, y hacía falta desde que dejó de
+/// Es la matriz de conformidad de la tabla, y hacia falta desde que dejo de
 /// tener doce filas: el codegen valida el nombre de cada registro **al
-/// emitir**, así que una fila con `"rex"` en vez de `"rax"` no falla hasta
-/// que alguien la usa — y en una tabla de driver "alguien la usa" puede ser
+/// emitir**, asi que una fila con `"rex"` en vez de `"rax"` no falla hasta
+/// que alguien la usa -- y en una tabla de driver "alguien la usa" puede ser
 /// dentro de seis meses, en metal, buscando otra cosa.
 ///
 /// No comprueba que los bytes sean los correctos: eso lo dice el manual de
-/// Intel y está en la fila. Comprueba que la fila es **emitible**.
+/// Intel y esta en la fila. Comprueba que la fila es **emitible**.
 #[test]
 fn cada_intrinseco_de_la_tabla_compila() {
     let tabla = bmo_sem_asm::Intrinsics::load_x86_64().expect("la tabla tiene que cargar");
@@ -37,8 +37,8 @@ fn cada_intrinseco_de_la_tabla_compila() {
     }
 }
 
-/// Y la aridad se valida contra la tabla: pasarle un argumento de más a una
-/// instrucción que no lo tiene es un error, no un argumento ignorado.
+/// Y la aridad se valida contra la tabla: pasarle un argumento de mas a una
+/// instruccion que no lo tiene es un error, no un argumento ignorado.
 #[test]
 fn un_intrinseco_con_argumentos_de_mas_se_rechaza() {
     let err = compile_source_to_bef("int main() { __hlt(1, 2); return 0; }")
@@ -46,9 +46,9 @@ fn un_intrinseco_con_argumentos_de_mas_se_rechaza() {
     assert!(err.message.contains("hlt"), "mensaje: {}", err.message);
 }
 
-/// Un nombre con `__` que no está en la tabla se dice, y se dice DÓNDE
-/// mirar. El namespace `__` es de la implementación, así que aquí no puede
-/// caer a "función desconocida".
+/// Un nombre con `__` que no esta en la tabla se dice, y se dice DONDE
+/// mirar. El namespace `__` es de la implementacion, asi que aqui no puede
+/// caer a "funcion desconocida".
 #[test]
 fn un_intrinseco_que_no_existe_dice_donde_estan() {
     let err = compile_source_to_bef("int main() { __inventado(); return 0; }")
@@ -56,7 +56,7 @@ fn un_intrinseco_que_no_existe_dice_donde_estan() {
     assert!(err.message.contains("intrinsics.toml"), "mensaje: {}", err.message);
 }
 
-// ═══════════════ La libreria SEMANTIC ═══════════════
+// =============== La libreria SEMANTIC ===============
 //
 // Cada funcion ES una instruccion. Ver `tables/semantic/semantic.h` para
 // que hacen GCC, MSVC y Clang con esto mismo, y en que se diferencia BMO
@@ -71,7 +71,7 @@ fn semantic_compila_entera() {
     assert_eq!(out.trim(), "ok");
 }
 
-/// ★ Un atomico devuelve **lo que HABIA**, no lo que se puso. Es lo que se
+/// * Un atomico devuelve **lo que HABIA**, no lo que se puso. Es lo que se
 /// escribe al reves sin notarlo, y no se ve en un volcado de bytes.
 #[test]
 fn xchg_devuelve_lo_que_habia() {
@@ -114,7 +114,7 @@ fn los_atomicos_sin_retorno_modifican_la_memoria() {
     assert_eq!(out.trim(), "13");
 }
 
-/// Contar y buscar bits — de lo que vive un asignador de marcos.
+/// Contar y buscar bits -- de lo que vive un asignador de marcos.
 #[test]
 fn los_intrinsecos_de_bits_cuentan_bien() {
     let out = run_c_con_pp(
@@ -124,8 +124,8 @@ fn los_intrinsecos_de_bits_cuentan_bien() {
     assert_eq!(out.trim(), "8 20 20 44332211");
 }
 
-/// ★ `bsf` con cero es INDEFINIDO y el emulador lo modela como el silicio:
-/// deja el destino intacto. `tzcnt` sí está definido y da 32. La diferencia
+/// * `bsf` con cero es INDEFINIDO y el emulador lo modela como el silicio:
+/// deja el destino intacto. `tzcnt` si esta definido y da 32. La diferencia
 /// es la que hace que un mapa de bits lleno reserve un marco ya dado.
 #[test]
 fn tzcnt_esta_definido_en_cero_y_bsf_no() {

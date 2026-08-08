@@ -8,4 +8,4 @@ description = "BMO AHCI/SATA Storage Driver — HAL-based controller driver"
 
 [dependencies]
 # Sin dependencias: el driver solo necesita su StorageHal. Tenia bmo-abi,
-# que no usaba para nada y arrastra `alloc` — que en Ring 0 no existe.
+# que no usaba para nada y arrastra `alloc` -- que en Ring 0 no existe.

@@ -1,4 +1,4 @@
-// AUTO-GENERADO por toolchain/tools/fontgen — NO editar a mano.
+// AUTO-GENERADO por toolchain/tools/fontgen -- NO editar a mano.
 // Regenerar: cargo run -p bmo-fontgen
 // Glifos 8x16 (arte en filas 2..14), trazos 2px nativos.
 // Indices 0..94 = ASCII 32..=126; 95..119 = extras Latin-1 (ver font16_extra.rs).

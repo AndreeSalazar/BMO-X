@@ -1,4 +1,4 @@
-//! InputHal trait — contract that every input backend must implement.
+//! InputHal trait -- contract that every input backend must implement.
 
 use crate::event::InputEvent;
 

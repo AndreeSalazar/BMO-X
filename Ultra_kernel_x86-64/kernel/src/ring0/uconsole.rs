@@ -1,8 +1,8 @@
 //! Ring 3 bootstrap console.
 //!
-//! The frozen syscall surface exposes no "print" call — text output is a
+//! The frozen syscall surface exposes no "print" call -- text output is a
 //! capability operation. Until a real display-server estuary exists, the
-//! first Ring 3 program needs *some* auditable door to prove the CPL3→CPL0
+//! first Ring 3 program needs *some* auditable door to prove the CPL3->CPL0
 //! path visually. `INVOKE(CURRENT_TASK, CONSOLE_WRITE, packed)` is that door
 //! (see `syscall::invoke_current_task`): the kernel receives up to 8 bytes
 //! packed little-endian per call and renders them here.
@@ -10,26 +10,26 @@
 //! Semantics: bytes accumulate into a line buffer; `\n` (or a full buffer)
 //! flushes the line to serial and the on-screen kernel-log panel, tagged so
 //! it is unmistakably Ring 3 output. There is no way for the caller to reach
-//! any memory but this kernel-owned surface — it hands over bytes by value,
+//! any memory but this kernel-owned surface -- it hands over bytes by value,
 //! never a pointer.
 //!
 //! Single-core, and syscall dispatch runs with interrupts masked, so the
 //! line buffer needs no lock: a CONSOLE_WRITE cannot be preempted mid-flush.
 //!
-//! # Una línea por proceso
+//! # Una linea por proceso
 //!
-//! Un solo buffer bastaba con un único programa Ring 3. Con VARIOS (el
+//! Un solo buffer bastaba con un unico programa Ring 3. Con VARIOS (el
 //! demo en ensamblador, el de C y el de COBOL corren a la vez), el timer
-//! puede cambiar de tarea entre dos CONSOLE_WRITE de la misma línea: los
-//! textos se entrelazarían a media palabra y la pantalla sería ilegible.
-//! Por eso el buffer está indexado por PID. La etiqueta también: así el
-//! log dice de quién es cada línea sin que el programa tenga que decirlo.
+//! puede cambiar de tarea entre dos CONSOLE_WRITE de la misma linea: los
+//! textos se entrelazarian a media palabra y la pantalla seria ilegible.
+//! Por eso el buffer esta indexado por PID. La etiqueta tambien: asi el
+//! log dice de quien es cada linea sin que el programa tenga que decirlo.
 
 use crate::ring0::dev::console::serial_write_byte;
 
 const LINE_MAX: usize = 96;
-/// Procesos Ring 3 con línea propia. Un PID mayor comparte el slot 0, que
-/// es degradación aceptable: se mezcla, pero nunca se pierde texto.
+/// Procesos Ring 3 con linea propia. Un PID mayor comparte el slot 0, que
+/// es degradacion aceptable: se mezcla, pero nunca se pierde texto.
 const MAX_PROCS: usize = 8;
 const TAG_MAX: usize = 12;
 
@@ -39,13 +39,13 @@ static mut LEN: [usize; MAX_PROCS] = [0usize; MAX_PROCS];
 static mut TAG: [[u8; TAG_MAX]; MAX_PROCS] = [[0u8; TAG_MAX]; MAX_PROCS];
 static mut TAG_LEN: [usize; MAX_PROCS] = [0usize; MAX_PROCS];
 
-/// Slot de línea del proceso que está ejecutando el syscall.
+/// Slot de linea del proceso que esta ejecutando el syscall.
 fn slot() -> usize {
     let pid = crate::ring0::task::scheduler::current_pid() as usize;
     if pid < MAX_PROCS { pid } else { 0 }
 }
 
-/// Registra con qué nombre aparecerán las líneas de `pid` en el log.
+/// Registra con que nombre apareceran las lineas de `pid` en el log.
 ///
 /// Lo llama `proc::admit_payload` al admitir cada programa, para que el
 /// kernel log distinga "C>" de "COBOL>" sin que los programas colaboren.
@@ -73,38 +73,38 @@ pub fn stats() -> (u64, u64) {
     unsafe { (RX_WORDS, FLUSHED) }
 }
 
-/// Líneas que ha escrito CADA proceso. El contador global dice que Ring 3
-/// habló; este dice QUIÉN habló y cuánto — que es lo que hace falta para
-/// mirar una tabla de programas y saber cuál hizo su trabajo.
+/// Lineas que ha escrito CADA proceso. El contador global dice que Ring 3
+/// hablo; este dice QUIEN hablo y cuanto -- que es lo que hace falta para
+/// mirar una tabla de programas y saber cual hizo su trabajo.
 static mut LINES_BY_PID: [u32; MAX_PROCS] = [0; MAX_PROCS];
 
-/// Líneas escritas por `pid` desde el arranque.
+/// Lineas escritas por `pid` desde el arranque.
 pub fn lines_of(pid: u32) -> u32 {
     let slot = pid as usize;
     if slot >= MAX_PROCS { return 0; }
     unsafe { LINES_BY_PID[slot] }
 }
 
-// ── ★ LAS ÚLTIMAS PALABRAS ──────────────────────────────────────────────
+// -- * LAS ULTIMAS PALABRAS ----------------------------------------------
 //
-// Lo que cada proceso dijo justo antes de morir, guardado para DESPUÉS de que
+// Lo que cada proceso dijo justo antes de morir, guardado para DESPUES de que
 // muera.
 //
-// El compositor se moría al arrancar y su manejador de pánico decía el archivo
-// y la línea exactos... **al log del kernel**, que sigue corriendo. Para cuando
-// se miraba la pantalla, ese mensaje ya había subido y salido, y lo único que
-// quedaba era un shell donde debería haber un escritorio. Tres arranques
+// El compositor se moria al arrancar y su manejador de panico decia el archivo
+// y la linea exactos... **al log del kernel**, que sigue corriendo. Para cuando
+// se miraba la pantalla, ese mensaje ya habia subido y salido, y lo unico que
+// quedaba era un shell donde deberia haber un escritorio. Tres arranques
 // seguidos con la respuesta delante y nadie pudo leerla.
 //
 // Un registrador de vuelo que borra la caja negra al aterrizar no es un
-// registrador de vuelo. Estas cuatro líneas por proceso sobreviven a su dueño y
-// se imprimen cuando hace falta — que es justo cuando ya no se le puede
-// preguntar a él.
+// registrador de vuelo. Estas cuatro lineas por proceso sobreviven a su dueno y
+// se imprimen cuando hace falta -- que es justo cuando ya no se le puede
+// preguntar a el.
 const ULTIMAS: usize = 4;
 static mut COLA: [[[u8; LINE_MAX]; ULTIMAS]; MAX_PROCS] = [[[0u8; LINE_MAX]; ULTIMAS]; MAX_PROCS];
 static mut COLA_LEN: [[usize; ULTIMAS]; MAX_PROCS] = [[0usize; ULTIMAS]; MAX_PROCS];
-/// Dónde va la siguiente. Es un anillo: se queda con las ÚLTIMAS, que son las
-/// que dicen por qué se murió — las primeras dicen que arrancó, y eso ya se vio.
+/// Donde va la siguiente. Es un anillo: se queda con las ULTIMAS, que son las
+/// que dicen por que se murio -- las primeras dicen que arranco, y eso ya se vio.
 static mut COLA_PUNTA: [usize; MAX_PROCS] = [0; MAX_PROCS];
 
 fn recordar(slot: usize, linea: &[u8]) {
@@ -117,10 +117,10 @@ fn recordar(slot: usize, linea: &[u8]) {
     }
 }
 
-/// Las últimas líneas que dijo `pid`, de la más vieja a la más nueva.
+/// Las ultimas lineas que dijo `pid`, de la mas vieja a la mas nueva.
 ///
 /// Se entrega por callback y no como slice para no prestar un `static mut`:
-/// quien las lee las pinta y se acabó.
+/// quien las lee las pinta y se acabo.
 pub fn ultimas_palabras(pid: u32, mut pinta: impl FnMut(&str)) {
     let slot = pid as usize;
     if slot >= MAX_PROCS {
@@ -141,8 +141,8 @@ pub fn ultimas_palabras(pid: u32, mut pinta: impl FnMut(&str)) {
     }
 }
 
-/// ¿Dijo algo este proceso alguna vez? Distingue "murió callado" —que ya es un
-/// dato— de "no hay nada guardado".
+/// Dijo algo este proceso alguna vez? Distingue "murio callado" --que ya es un
+/// dato-- de "no hay nada guardado".
 pub fn hubo_palabras(pid: u32) -> bool {
     let slot = pid as usize;
     if slot >= MAX_PROCS {
@@ -156,9 +156,9 @@ pub fn hubo_palabras(pid: u32) -> bool {
 pub fn write_packed(packed: u64) {
     unsafe {
         RX_WORDS += 1;
-        // La PRIMERA palabra que cruza CPL3→CPL0 por esta puerta: el instante
-        // en que el userspace habla. Se graba aquí, en el syscall mismo, no se
-        // deduce después mirando el contador rx.
+        // La PRIMERA palabra que cruza CPL3->CPL0 por esta puerta: el instante
+        // en que el userspace habla. Se graba aqui, en el syscall mismo, no se
+        // deduce despues mirando el contador rx.
         if RX_WORDS == 1 {
             crate::ring0::cabina::info("ring3", "primer CONSOLE_WRITE: userspace habla", packed);
         }
@@ -205,8 +205,8 @@ fn flush() {
     let slot = slot();
     unsafe { LINES_BY_PID[slot] = LINES_BY_PID[slot].wrapping_add(1); }
     let len = unsafe { LEN[slot] };
-    // La línea se marca con el nombre del proceso: en el log compartido
-    // hay que poder ver de quién es cada renglón.
+    // La linea se marca con el nombre del proceso: en el log compartido
+    // hay que poder ver de quien es cada renglon.
     let mut tagged = [0u8; TAG_MAX + 2 + LINE_MAX];
     let tag_len = unsafe { TAG_LEN[slot] };
     let head = if tag_len > 0 {
@@ -221,17 +221,17 @@ fn flush() {
     let head = head + 2;
     let body = unsafe { &LINE[slot][..len] };
     tagged[head..head + len].copy_from_slice(body);
-    // Guardar la línea CRUDA (sin la etiqueta) antes de pintarla: si este
-    // proceso se muere, esto es lo único que quedará de lo que dijo.
+    // Guardar la linea CRUDA (sin la etiqueta) antes de pintarla: si este
+    // proceso se muere, esto es lo unico que quedara de lo que dijo.
     recordar(slot, body);
     if let Ok(s) = core::str::from_utf8(&tagged[..head + len]) {
         // Paint under the KERNEL CR3. This flush runs inside the syscall
-        // dispatch of a Ring 3 caller, i.e. under the USER CR3 — whose
+        // dispatch of a Ring 3 caller, i.e. under the USER CR3 -- whose
         // address space shares kernel identity only for 0..1 GiB (its PDPT
         // slots 1..3 hold the user image/stack/channels). The GOP
         // framebuffer sits at ~3.5 GiB identity, unmapped there: the first
-        // pixel would #PF, and the fault reporter paints too → recursive
-        // #PF on IST1 → the silent total freeze. Kernel code and stacks are
+        // pixel would #PF, and the fault reporter paints too -> recursive
+        // #PF on IST1 -> the silent total freeze. Kernel code and stacks are
         // shared in every address space, so the switch is safe.
         let cur = crate::ring0::mm::vmm::read_cr3();
         let kpml4 = crate::ring0::mm::vmm::kernel_pml4();

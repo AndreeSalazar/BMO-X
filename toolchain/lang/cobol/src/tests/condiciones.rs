@@ -1,4 +1,4 @@
-//! CONDICIONES — 14 pruebas.
+//! CONDICIONES -- 14 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -27,8 +27,8 @@ fn if_takes_only_the_else_branch() {
     assert_eq!(out, "MENOR\n");
 }
 
-/// Las condiciones en palabras del estándar deben decidir igual que los
-/// símbolos.
+/// Las condiciones en palabras del estandar deben decidir igual que los
+/// simbolos.
 #[test]
 fn worded_conditions_decide_the_same() {
     for (cond, expected) in [
@@ -77,20 +77,20 @@ fn unterminated_if_is_an_error() {
     assert!(err.message.contains("END-IF"), "mensaje: {}", err.message);
 }
 
-// ── AND / OR: la condición dejó de ser una lista ────────────────────
+// -- AND / OR: la condicion dejo de ser una lista --------------------
 //
 // Era una `Vec` conjugada siempre con AND, y el `OR` se rechazaba con su
-// motivo. Ahora es un ÁRBOL, y lo que hay que probar no es que compile:
+// motivo. Ahora es un ARBOL, y lo que hay que probar no es que compile:
 // es que **decida bien**, incluida la precedencia y el cortocircuito.
 
 /// Las cuatro combinaciones de un `OR`, ejecutadas. Un emisor que colapsara
-/// el OR en un AND fallaría en las dos de en medio.
+/// el OR en un AND fallaria en las dos de en medio.
 #[test]
 fn el_or_decide_por_las_cuatro_esquinas() {
     let casos: &[(u32, u32, &str)] = &[
         (5, 5, "si\n"), // las dos ciertas
-        (5, 0, "si\n"), // sólo la primera
-        (0, 5, "si\n"), // sólo la segunda
+        (5, 0, "si\n"), // solo la primera
+        (0, 5, "si\n"), // solo la segunda
         (0, 0, "no\n"), // ninguna
     ];
     for &(a, b, esperado) in casos {
@@ -106,7 +106,7 @@ fn el_or_decide_por_las_cuatro_esquinas() {
 }
 
 /// Y las del `AND`, que antes funcionaba pero por otro camino: ahora pasa
-/// por el mismo árbol y hay que volver a ganárselo.
+/// por el mismo arbol y hay que volver a ganarselo.
 #[test]
 fn el_and_sigue_decidiendo_por_las_cuatro_esquinas() {
     let casos: &[(u32, u32, &str)] = &[
@@ -127,12 +127,12 @@ fn el_and_sigue_decidiendo_por_las_cuatro_esquinas() {
     }
 }
 
-/// ★ LA PRECEDENCIA. `AND` liga más fuerte que `OR`, así que
+/// * LA PRECEDENCIA. `AND` liga mas fuerte que `OR`, asi que
 /// `A OR B AND C` es `A OR (B AND C)` y **no** `(A OR B) AND C`.
 ///
-/// Con `A` cierta y `C` falsa las dos lecturas discrepan: la buena dice sí
+/// Con `A` cierta y `C` falsa las dos lecturas discrepan: la buena dice si
 /// (porque `A` sola basta), la mala dice no. Es exactamente el caso que un
-/// árbol mal montado compila sin quejarse y manda a la otra rama.
+/// arbol mal montado compila sin quejarse y manda a la otra rama.
 #[test]
 fn and_liga_mas_fuerte_que_or() {
     let src = program(
@@ -152,8 +152,8 @@ fn and_liga_mas_fuerte_que_or() {
     assert_eq!(run_cobol(&src), "no\n");
 }
 
-/// Tres o más unidas, y mezcladas. Un fold que se dejara la última daría
-/// verde en los casos de dos y fallaría aquí.
+/// Tres o mas unidas, y mezcladas. Un fold que se dejara la ultima daria
+/// verde en los casos de dos y fallaria aqui.
 #[test]
 fn se_encadenan_mas_de_dos() {
     let src = program(
@@ -171,13 +171,13 @@ fn se_encadenan_mas_de_dos() {
     assert_eq!(run_cobol(&src), "si\n");
 }
 
-/// ★ EL CORTOCIRCUITO, y no como optimización: si la primera falla, la
-/// segunda **no se evalúa**. Aquí se ve porque la segunda lleva un
-/// subíndice fuera de rango, y evaluarla mataría el programa con
+/// * EL CORTOCIRCUITO, y no como optimizacion: si la primera falla, la
+/// segunda **no se evalua**. Aqui se ve porque la segunda lleva un
+/// subindice fuera de rango, y evaluarla mataria el programa con
 /// `SUBINDICE FUERA DE RANGO`.
 ///
-/// Es el patrón que un programa de banca escribe todo el rato: comprobar
-/// que el índice vale ANTES de usarlo.
+/// Es el patron que un programa de banca escribe todo el rato: comprobar
+/// que el indice vale ANTES de usarlo.
 #[test]
 fn el_and_corta_antes_de_evaluar_la_segunda() {
     let src = program(
@@ -200,9 +200,9 @@ fn el_or_corta_cuando_la_primera_acierta() {
     assert_eq!(run_cobol(&src), "si\n", "se evaluo T(9) y no debia");
 }
 
-/// Un `OR` dentro de una comparación en palabras no es un `OR` lógico:
+/// Un `OR` dentro de una comparacion en palabras no es un `OR` logico:
 /// `IS GREATER THAN OR EQUAL TO` lleva uno dentro. Partir por `OR` antes de
-/// normalizar cortaría la comparación por la mitad.
+/// normalizar cortaria la comparacion por la mitad.
 #[test]
 fn el_or_de_greater_than_or_equal_no_es_un_or() {
     let src = program(

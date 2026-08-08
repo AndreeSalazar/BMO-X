@@ -8,7 +8,7 @@ param(
     # Ring 3. Vacio = no se toca ningun disco, que es el valor por defecto y la
     # postura de este build: escribir en discos esta cerrado salvo que se pida.
     [string]$Data = '',
-    # ★ Las DOS mitades del despliegue a la misma unidad, que es el caso normal
+    # * Las DOS mitades del despliegue a la misma unidad, que es el caso normal
     # en esta maquina. Equivale a `-Flash -Data <la misma letra de -Drive>`.
     #
     # Existe porque `-Flash` y `-Data` separados tienen una trampa silenciosa:
@@ -38,14 +38,14 @@ function Step { param($m) Write-Host ('  => ' + $m) -ForegroundColor Cyan }
 function Fail { param($m) Write-Host ('  [X] ' + $m) -ForegroundColor Red; exit 1 }
 function Hash256 { param($p) (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() }
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #  EL ESPEJO: lo que hay EN EL DISCO contra lo que acaba de salir del build
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 #
-# ★★ Esto existe por un fallo concreto y caro: el 2026-08-04 se desplego con
+# ** Esto existe por un fallo concreto y caro: el 2026-08-04 se desplego con
 # `-Flash` y sin `-Data`, o sea que se actualizo el ARRANQUE y no los
 # PROGRAMAS. La maquina arranco un kernel nuevo con un `sys\gui.bex` de dos
-# commits antes. **No fallo nada** — simplemente se estuvo probando el build de
+# commits antes. **No fallo nada** -- simplemente se estuvo probando el build de
 # ayer, y las conclusiones de esa tarde eran sobre codigo que ya no existia.
 #
 # Un deploy incompleto que no dice nada es peor que uno que revienta: el que
@@ -129,7 +129,7 @@ foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
 }
 # La lista lleva TODAS las operaciones, no solo las seis primeras. Se habia
 # quedado congelada en las del principio, asi que las que se anadieron despues
-# —EJECUTAR, CONSOLA_CREAR, DIR_ABRIR, las de archivo, REINICIAR e INFO— se
+# --EJECUTAR, CONSOLA_CREAR, DIR_ABRIR, las de archivo, REINICIAR e INFO-- se
 # escribian en el kernel y nadie comprobaba que coincidieran con el ABI. Un
 # guardian que solo mira la mitad da una tranquilidad que no ha ganado.
 foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'TASK_OP_CONSOLE_WRITE', 'TASK_OP_ENDPOINT_CREATE', 'TASK_OP_RUTA', 'TASK_OP_EJECUTAR', 'TASK_OP_CONSOLA_CREAR', 'TASK_OP_DIR_ABRIR', 'TASK_OP_CONSOLE_READ', 'TASK_OP_ARCHIVO_ABRIR', 'TASK_OP_ARCHIVO_CREAR', 'TASK_OP_REINICIAR', 'TASK_OP_INFO', 'TASK_OP_INFO_TEXTO', 'ARCH_OP_LEER', 'ARCH_OP_ESCRIBIR', 'ARCH_OP_TAMANO', 'ARCH_OP_CERRAR', 'ARCH_OP_LEER_LINEA', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
@@ -150,13 +150,13 @@ if (-not ($abiKind -match 'Channel\s*=\s*0x60')) {
     Fail 'capability contract mismatch: bmo-abi HandleKind::Channel must be 0x60'
 }
 
-# NOTE: uefi_chain is now the UNIFIED shim — it embeds the flat binaries
+# NOTE: uefi_chain is now the UNIFIED shim -- it embeds the flat binaries
 # of s1_cpu, s2_mem and the kernel via include_bytes!, so it is built
 # AFTER them (see 'Building unified uefi_chain' below). Rationale: some
 # firmwares (MSI A320M AMI fast path) never bind SimpleFileSystem, so
 # the boot chain cannot read the ESP through UEFI protocols at all.
 
-# ── Build the 2 consolidated stages ───────────────────────────────
+# -- Build the 2 consolidated stages -------------------------------
 $stages = @('s1_cpu', 's2_mem')
 $idx = 0
 foreach ($s in $stages) {
@@ -184,9 +184,9 @@ foreach ($s in $stages) {
     $idx++
 }
 
-# ── Build Ring 3 userspace (Ultra_userspace/) ─────────────────────
+# -- Build Ring 3 userspace (Ultra_userspace/) ---------------------
 #
-# ★ El kernel YA NO EMBEBE el compositor. Antes lo metia con `include_bytes!` y
+# * El kernel YA NO EMBEBE el compositor. Antes lo metia con `include_bytes!` y
 # este paso tenia que ir antes del kernel para que el blob estuviera al dia;
 # ademas dejaba un binario de 24 KiB dentro de kernel/src/ que se reescribia en
 # cada build y ensuciaba el repositorio en cada commit.
@@ -219,11 +219,11 @@ if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
 # copiar al volumen de datos. La ruta de dentro (apps\gui.bex) tiene que cuadrar
 # con `RUTA_COMPOSITOR` de phase.rs: es el contrato entre el build y el arranque.
 #
-# ★ `gui.bex` y no `compositor.bex`: el driver FAT32 del kernel es 8.3 y se
+# * `gui.bex` y no `compositor.bex`: el driver FAT32 del kernel es 8.3 y se
 # NIEGA a recortar nombres (un nombre recortado abre otro archivo, y en un
 # cargador de programas eso es ejecutar otro binario). `compositor` son diez
 # caracteres y no cabe en los ocho del campo.
-# ── El volumen de datos, POR CATEGORIAS ───────────────────────────
+# -- El volumen de datos, POR CATEGORIAS ---------------------------
 #
 # Antes todo caia en un solo `apps\`: los siete .bex de COBOL, los de C, el de
 # Ada, el compositor y los .txt de entrada, revueltos. Un `ls` daba diecisiete
@@ -236,7 +236,7 @@ if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
 #     cobol\  c\  ada\      los ejemplos, por lenguaje
 #     datos\   lo que los programas LEEN y ESCRIBEN
 #
-# ★ Y se teclea MENOS que antes: `cobol/banco.bex` es mas corto que
+# * Y se teclea MENOS que antes: `cobol/banco.bex` es mas corto que
 #   `apps/banco.bex`. Ordenar no ha costado tecleo, lo ha ahorrado.
 #
 # Los nombres de carpeta tambien son 8.3: el driver FAT32 del kernel se NIEGA a
@@ -245,7 +245,7 @@ $dataBase = Join-Path $root 'staging\BMO-DATA'
 foreach ($d in @('sys', 'cobol', 'c', 'ada', 'datos')) {
     New-Item -ItemType Directory -Path (Join-Path $dataBase $d) -Force | Out-Null
 }
-# ★ Y dentro de cobol\, un nivel por carpeta. Ver el bloque de $cobolEjemplos
+# * Y dentro de cobol\, un nivel por carpeta. Ver el bloque de $cobolEjemplos
 # para por que el nombre es el numero a secas.
 foreach ($n in 1..10) {
     New-Item -ItemType Directory -Path (Join-Path $dataBase ('cobol\' + $n)) -Force | Out-Null
@@ -267,7 +267,7 @@ try {
     if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo gui.bex' }
 } finally { Pop-Location }
 
-# ── Programas COBOL de ejemplo ───────────────────────────────────
+# -- Programas COBOL de ejemplo -----------------------------------
 #
 # Se compilan AQUI y salen al mismo staging que el compositor. Antes se
 # generaban a mano dentro de toolchain/lang/cobol/examples/ y nunca llegaban al
@@ -281,7 +281,7 @@ Step 'Building COBOL example programs...'
 # Las rutas llevan el NIVEL delante: los ejemplos estan en escalera (1-basico,
 # 2-decimal, 3-presentacion, 4-ficheros, 5-tablas), ordenados por cuanto COBOL
 # hace falta que el compilador sepa. Ver examples\README.md.
-# ★ POR NIVELES, y no en un monton. Los ejemplos estan en ESCALERA -cada uno
+# * POR NIVELES, y no en un monton. Los ejemplos estan en ESCALERA -cada uno
 # pide una cosa mas que el anterior- y esa escalera se pierde si en el disco
 # caen todos revueltos. Con niveles se puede VERIFICAR de uno en uno:
 #
@@ -292,7 +292,7 @@ Step 'Building COBOL example programs...'
 # Y cuando algo se rompa, el orden dice por donde empezar a mirar: si falla el
 # 10, comprobar primero que el 1 sigue vivo.
 #
-# ⚠ La carpeta es el NUMERO a secas y no el nombre largo. No es pereza: el
+# [!] La carpeta es el NUMERO a secas y no el nombre largo. No es pereza: el
 # driver FAT32 del kernel se NIEGA a recortar, y `3-presentacion` son trece
 # letras. Un `n3presen` seria feo y no diria mas que un `3`; el nombre del nivel
 # vive en examples\README.md, que es donde se lee.
@@ -313,7 +313,7 @@ $cobolEjemplos = @(
     @{ src = 'toolchain\lang\cobol\examples\9-decision\comision.cob';     out = 'comisio.bex'  ; dir = 'cobol\9' },
     @{ src = 'toolchain\lang\cobol\examples\10-binario\maestro.cob';      out = 'maestro.bex'  ; dir = 'cobol\10' }
 )
-# ── Programas ADA de ejemplo ─────────────────────────────────────
+# -- Programas ADA de ejemplo -------------------------------------
 #
 # Crate PROPIO (`bmo-ada-front`), sin dependencia de los otros frontends. El
 # decimal exacto es el mismo que el de COBOL y no por copia: el Annex F de Ada
@@ -322,11 +322,11 @@ $cobolEjemplos = @(
 $adaEjemplos = @(
     @{ src = 'toolchain\lang\ada\examples\1-basico\cierre.adb'; out = 'cierre.bex' ; dir = 'ada' }
 )
-# ── Programas C de ejemplo ───────────────────────────────────────
+# -- Programas C de ejemplo ---------------------------------------
 #
-# ★ Este paso NO EXISTIA. COBOL y Ada llegaban al disco y C no, asi que los
+# * Este paso NO EXISTIA. COBOL y Ada llegaban al disco y C no, asi que los
 # ejemplos de C solo se podian ejecutar si alguien los embebia a mano en el
-# kernel — y `scroll_C.bex` no llegaba al Kingston por eso, no por un fallo del
+# kernel -- y `scroll_C.bex` no llegaba al Kingston por eso, no por un fallo del
 # compilador. Un lenguaje que compila y cuyo binario no se despliega esta a
 # medias.
 #
@@ -391,9 +391,9 @@ try {
         if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
     }
 
-    # ── Los DATOS de los ejemplos ─────────────────────────────────
+    # -- Los DATOS de los ejemplos ---------------------------------
     #
-    # ★ Este paso tampoco existia, y era peor que el de C: los .txt que leen
+    # * Este paso tampoco existia, y era peor que el de C: los .txt que leen
     # `batch`, `conceptos` y `cartera` vivian SOLO en staging\, que esta en el
     # .gitignore. O sea, no eran del repositorio. Un `-Clean` o un disco nuevo
     # los borraba y **no habia forma de regenerarlos**: los ejemplos de ficheros
@@ -410,7 +410,7 @@ try {
     }
 } finally { Pop-Location }
 
-# ── Build kernel (Ring 0 base) ────────────────────────────────────
+# -- Build kernel (Ring 0 base) ------------------------------------
 Step 'Building kernel (Ring 0 base)...'
 $stageDir = Join-Path $root 'kernel'
 Push-Location $stageDir
@@ -426,7 +426,7 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail 'kernel build failed' }
 } finally { Pop-Location }
 
-# ── Embed payloads + build unified uefi_chain ─────────────────────
+# -- Embed payloads + build unified uefi_chain ---------------------
 Step 'Preparing embedded payloads'
 $embedDir = Join-Path $target 'embed'
 New-Item -ItemType Directory -Path $embedDir -Force | Out-Null
@@ -468,7 +468,7 @@ try {
     Remove-Item Env:\BMO_S1_BIN, Env:\BMO_S2_BIN, Env:\BMO_KERNEL_BIN -ErrorAction SilentlyContinue
 }
 
-# ── Validate outputs ──────────────────────────────────────────────
+# -- Validate outputs ----------------------------------------------
 Step 'Validating outputs'
 $uefi_chain = Join-Path $target (Join-Path 'uefi_chain' (Join-Path 'x86_64-unknown-uefi' (Join-Path 'release' 'uefi_chain.efi')))
 
@@ -503,8 +503,8 @@ for ($binaryIndex = 0; $binaryIndex -lt $all_binaries.Count; $binaryIndex++) {
 Write-Host '  --------------------------  -----------  ------------' -ForegroundColor DarkGray
 Write-Host ''
 
-# ── Stage to ESP layout ───────────────────────────────────────────
-# ESP layout — UNA SOLA COSA:
+# -- Stage to ESP layout -------------------------------------------
+# ESP layout -- UNA SOLA COSA:
 #   $stage\BOOTX64.EFI        el shim unificado; lleva s1_cpu, s2_mem y el
 #                             kernel EMBEBIDOS (include_bytes!), asi que es
 #                             todo el sistema en un archivo
@@ -598,7 +598,7 @@ if ($BuildOnly) {
     exit 0
 }
 
-# ── Flash ────────────────────────────────────────────────────────
+# -- Flash --------------------------------------------------------
 if ($Flash -or $Verify) {
     $targetLetter = $Drive.TrimEnd([char]':',[char]'\').ToUpper()
     if ($targetLetter -notmatch '^[A-Z]$') { Fail ('Invalid drive letter: ' + $Drive) }
@@ -676,13 +676,13 @@ if ($Flash -or $Verify) {
     Write-Host ''
 }
 
-# ── Data: los programas de Ring 3 al volumen de datos ─────────────
+# -- Data: los programas de Ring 3 al volumen de datos -------------
 #
 # Separado de -Flash a proposito. Son dos discos distintos con dos riesgos
 # distintos: -Flash toca la ESP de arranque, esto toca BMO-DATA. Que compartan
 # bandera invitaria a escribir en uno cuando se queria el otro.
 #
-# ★ Este es el UNICO sitio del build que escribe fuera del arbol del proyecto.
+# * Este es el UNICO sitio del build que escribe fuera del arbol del proyecto.
 # Por eso lleva tres cierres antes de copiar un byte: no puede ser el disco del
 # sistema, tiene que ser FAT/FAT32, y hay que teclear la frase entera. El NVMe
 # de esta maquina lleva un Windows que no es de BMO.
@@ -720,9 +720,9 @@ if ($Data) {
         if ($conf -ne $esperado) { Write-Host '  Abortado.'; exit 0 }
     }
 
-    # ★ Ya no es una sola carpeta: van a sys\ cobol\ c\ ada\ datos\. El bucle de
+    # * Ya no es una sola carpeta: van a sys\ cobol\ c\ ada\ datos\. El bucle de
     # abajo copia recursivo y crea los directorios que falten, asi que no hay
-    # nada que cambiar aqui salvo el mensaje — pero **la vieja `apps\` del disco
+    # nada que cambiar aqui salvo el mensaje -- pero **la vieja `apps\` del disco
     # NO se borra**: este deploy no borra nada que no haya puesto el. Hay que
     # quitarla a mano una vez, o quedan dos copias de cada programa.
     Step ('Copiando programas de Ring 3 a ' + $dataLetter + ':\  (sys, cobol, c, ada, datos)')

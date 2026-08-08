@@ -1,7 +1,7 @@
-//! `option` — BmoOption<T>, un Option<T> FFI-safe para el BMO ABI.
+//! `option` -- BmoOption<T>, un Option<T> FFI-safe para el BMO ABI.
 //!
-//! A diferencia de `core::option::Option<T>`, el layout está garantizado
-//! por `#[repr(C)]` con un discriminante explícito `bx_u64`. Esto evita
+//! A diferencia de `core::option::Option<T>`, el layout esta garantizado
+//! por `#[repr(C)]` con un discriminante explicito `bx_u64`. Esto evita
 //! las optimizaciones de nicho de Rust (que son geniales para Rust, pero
 //! letales para FFI).
 
@@ -76,7 +76,7 @@ impl<T: Copy + PartialEq> PartialEq for BmoOption<T> {
     }
 }
 
-// ─── Conversion helpers ─────────────────────────────────────────────
+// --- Conversion helpers ---------------------------------------------
 
 impl<T: Copy> From<Option<T>> for BmoOption<T> {
     fn from(o: Option<T>) -> Self {

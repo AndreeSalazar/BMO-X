@@ -1,15 +1,15 @@
-//! `allocator` — BmoAllocator trait, interfaz de asignación del BMO ABI.
+//! `allocator` -- BmoAllocator trait, interfaz de asignacion del BMO ABI.
 //!
 //! Permite pluguear diferentes backends de memoria:
 //! - Slab allocator (Ring 0, fast)
-//! - Buddy system (páginas físicas)
+//! - Buddy system (paginas fisicas)
 //! - Pool allocator (objetos fijos)
 //! - Heap de usuario (Ring 3)
 
 use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::primitives::{bx_u64, bx_usize};
 
-/// Resultado de una asignación.
+/// Resultado de una asignacion.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BmoAllocResult {
@@ -18,7 +18,7 @@ pub struct BmoAllocResult {
 }
 const _: () = assert!(core::mem::size_of::<BmoAllocResult>() == 24);
 
-/// Trait de asignación de memoria.
+/// Trait de asignacion de memoria.
 ///
 /// Reemplaza `malloc`/`free` de C. Sin TLS, sin errno, todo por valor.
 pub trait BmoAllocator {
@@ -46,7 +46,7 @@ pub trait BmoAllocator {
     }
 }
 
-// ─── BmoAllocator for `alloc::alloc::Global` ──────────────────────
+// --- BmoAllocator for `alloc::alloc::Global` ----------------------
 
 /// Wrapper que implementa `BmoAllocator` sobre el global allocator de Rust.
 pub struct BmoGlobalAllocator;

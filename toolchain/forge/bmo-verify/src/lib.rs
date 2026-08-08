@@ -1,13 +1,13 @@
-//! `bmo-verify` — el gate de verificación (único checkpoint común).
+//! `bmo-verify` -- el gate de verificacion (unico checkpoint comun).
 //!
-//! Reemplaza el rol de seguridad que tendría un IR central, pero como
+//! Reemplaza el rol de seguridad que tendria un IR central, pero como
 //! CONTRATO, no como embudo: cada lenguaje emite su BEF por su cuenta y el
 //! verificador lo revisa de forma independiente.
 //!
 //! ```text
-//! BEF (de cualquier lenguaje) → [bmo-verify] → ¿pasa?
-//!                                               sí → admitido al BMO ABI
-//!                                               no → rechazado (con razones)
+//! BEF (de cualquier lenguaje) -> [bmo-verify] -> pasa?
+//!                                               si -> admitido al BMO ABI
+//!                                               no -> rechazado (con razones)
 //! ```
 //!
 //! **NO es un stub**: delega en el validador estructural REAL de
@@ -16,16 +16,16 @@
 //! los frontends llaman `verify()` sin acoplarse a la estructura interna de
 //! bmo-abi.
 //!
-//! **Conexión Singularity**: si el BEF pasa, está probado seguro → puede
-//! correr como Software Isolated Process (mismo espacio, sin transición de
-//! anillo). La verificación —no un IR— habilita el aislamiento barato.
+//! **Conexion Singularity**: si el BEF pasa, esta probado seguro -> puede
+//! correr como Software Isolated Process (mismo espacio, sin transicion de
+//! anillo). La verificacion --no un IR-- habilita el aislamiento barato.
 
 use bmo_abi::bef::validator;
 
-/// Veredicto de la verificación de un BEF.
+/// Veredicto de la verificacion de un BEF.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verdict {
-    /// Pasó: admisible al ABI, apto para SIP.
+    /// Paso: admisible al ABI, apto para SIP.
     Ok,
     /// Rechazado, con las razones (mensajes de error del validador).
     Rejected(Vec<String>),
@@ -40,7 +40,7 @@ impl Verdict {
 /// Verifica un buffer BEF completo. FUNCIONA: corre el validador estructural
 /// real y colapsa su resultado a un veredicto binario con razones.
 ///
-/// Las advertencias (secciones inusuales, etc.) no rechazan — solo los
+/// Las advertencias (secciones inusuales, etc.) no rechazan -- solo los
 /// errores (magic malo, secciones fuera de rango, ABI incompatible...).
 pub fn verify(bef: &[u8]) -> Verdict {
     let result = validator::validate(bef);
@@ -57,7 +57,7 @@ pub fn verify(bef: &[u8]) -> Verdict {
     }
 }
 
-/// Igual que `verify`, pero devuelve TAMBIÉN las advertencias (para
+/// Igual que `verify`, pero devuelve TAMBIEN las advertencias (para
 /// herramientas que quieran inspeccionar sin rechazar).
 pub fn verify_verbose(bef: &[u8]) -> (Verdict, Vec<String>) {
     let result = validator::validate(bef);
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn accepts_a_real_valid_bef() {
-        // FUNCIONA de verdad: construye un BEF válido y lo verifica.
+        // FUNCIONA de verdad: construye un BEF valido y lo verifica.
         assert_eq!(verify(&minimal_valid_bef()), Verdict::Ok);
     }
 
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn verbose_reports_warnings_without_rejecting() {
-        // BEF válido pero con Code duplicada = advertencia, no rechazo.
+        // BEF valido pero con Code duplicada = advertencia, no rechazo.
         let mut b = BefBuilder::new();
         b.add_section(BefSection::code(vec![0xC3; 16]));
         b.add_section(BefSection::code(vec![0xCC; 16]));

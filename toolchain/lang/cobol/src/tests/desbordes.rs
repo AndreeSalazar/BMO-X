@@ -1,4 +1,4 @@
-//! DESBORDES — 7 pruebas.
+//! DESBORDES -- 7 pruebas.
 
 #[allow(unused_imports)]
 use crate::*;
@@ -7,13 +7,13 @@ use std::path::PathBuf;
 #[allow(unused_imports)]
 use super::comun::*;
 
-// ── ON SIZE ERROR: qué pasa cuando el resultado NO CABE ─────────────
+// -- ON SIZE ERROR: que pasa cuando el resultado NO CABE -------------
 //
-// Sin la cláusula, COBOL guarda el número recortado por arriba y sigue. Con
+// Sin la clausula, COBOL guarda el numero recortado por arriba y sigue. Con
 // ella, el campo **no se toca** y el programa decide.
 
-/// ★ LA PARTE QUE IMPORTA: cuando no cabe, **el destino se queda como
-/// estaba**. No es un tecnicismo — deja el saldo anterior intacto para que
+/// * LA PARTE QUE IMPORTA: cuando no cabe, **el destino se queda como
+/// estaba**. No es un tecnicismo -- deja el saldo anterior intacto para que
 /// el programa lo pueda escribir en un informe de rechazos y seguir.
 #[test]
 fn on_size_error_no_toca_el_campo() {
@@ -21,24 +21,24 @@ fn on_size_error_no_toca_el_campo() {
         "01 A PIC 9(3) VALUE 123.",
         "ADD 900 TO A ON SIZE ERROR\nDISPLAY \"no cabe\"\nEND-ADD.\nDISPLAY A.",
     );
-    // 123 + 900 = 1023, y en tres dígitos no entra.
+    // 123 + 900 = 1023, y en tres digitos no entra.
     assert_eq!(run_cobol(&src), "no cabe\n123\n", "el campo se toco igualmente");
 }
 
-/// ⚠ Y sin la cláusula, **BMO se queda con el número entero**: `1023` en un
+/// [!] Y sin la clausula, **BMO se queda con el numero entero**: `1023` en un
 /// `PIC 9(3)`.
 ///
-/// Eso **no es lo que dice el estándar** —COBOL recorta por arriba y
-/// guardaría `023`— y es una divergencia conocida: un campo `DISPLAY` de
+/// Eso **no es lo que dice el estandar** --COBOL recorta por arriba y
+/// guardaria `023`-- y es una divergencia conocida: un campo `DISPLAY` de
 /// BMO sigue siendo un entero de 64 bits y no mide lo que dice su PICTURE.
-/// Es la tarea `1.5` del plan, la única de la fase 1 que sigue abierta.
+/// Es la tarea `1.5` del plan, la unica de la fase 1 que sigue abierta.
 ///
-/// Se fija aquí a propósito. El día que `1.5` entre, este test **tiene que
-/// cambiar**, y ése es justo el aviso que hace falta: un cambio de
+/// Se fija aqui a proposito. El dia que `1.5` entre, este test **tiene que
+/// cambiar**, y ese es justo el aviso que hace falta: un cambio de
 /// almacenamiento que altera resultados no puede pasar callando.
 ///
 /// Mientras tanto tiene una consecuencia buena: hoy `ON SIZE ERROR` es lo
-/// ÚNICO que caza un desbordamiento en BMO.
+/// UNICO que caza un desbordamiento en BMO.
 #[test]
 fn sin_on_size_error_bmo_no_recorta_todavia() {
     let src = program("01 A PIC 9(3) VALUE 123.", "ADD 900 TO A.\nDISPLAY A.");
@@ -49,7 +49,7 @@ fn sin_on_size_error_bmo_no_recorta_todavia() {
     );
 }
 
-/// `NOT ON SIZE ERROR` — lo que se hace cuando SÍ cupo.
+/// `NOT ON SIZE ERROR` -- lo que se hace cuando SI cupo.
 #[test]
 fn not_on_size_error_corre_cuando_cabe() {
     let src = program(
@@ -60,10 +60,10 @@ fn not_on_size_error_corre_cuando_cabe() {
     assert_eq!(run_cobol(&src), "1023\n1\n");
 }
 
-/// ★ DIVIDIR ENTRE CERO es un desborde, no un fallo del CPU.
+/// * DIVIDIR ENTRE CERO es un desborde, no un fallo del CPU.
 ///
-/// Sin esto, el `idiv` levanta `#DE` y el proceso muere sin decir por qué.
-/// En un batch eso es peor que un número malo: se lleva por delante el
+/// Sin esto, el `idiv` levanta `#DE` y el proceso muere sin decir por que.
+/// En un batch eso es peor que un numero malo: se lleva por delante el
 /// proceso entero por culpa de un registro.
 #[test]
 fn dividir_entre_cero_es_un_desborde_y_no_una_muerte() {
@@ -75,7 +75,7 @@ fn dividir_entre_cero_es_un_desborde_y_no_una_muerte() {
     assert_eq!(run_cobol(&src), "division por cero\n100.00\n");
 }
 
-/// La cláusula vale en las cinco, no sólo en `ADD`.
+/// La clausula vale en las cinco, no solo en `ADD`.
 #[test]
 fn on_size_error_vale_en_las_cinco() {
     let casos: &[(&str, &str)] = &[
@@ -91,8 +91,8 @@ fn on_size_error_vale_en_las_cinco() {
     }
 }
 
-/// Un `SUBTRACT` que se pasa por abajo también desborda: `-9899` no cabe en
-/// un `PIC 9(3)`, y el signo no cambia la cuenta de dígitos.
+/// Un `SUBTRACT` que se pasa por abajo tambien desborda: `-9899` no cabe en
+/// un `PIC 9(3)`, y el signo no cambia la cuenta de digitos.
 #[test]
 fn el_desborde_mira_la_magnitud_no_el_signo() {
     let src = program(
@@ -102,8 +102,8 @@ fn el_desborde_mira_la_magnitud_no_el_signo() {
     assert_eq!(run_cobol(&src), "no cabe\n100\n");
 }
 
-/// Sin `END-<verbo>` no se sabe dónde acaba la cláusula, y tragarse lo de
-/// después la convertiría en el resto del programa.
+/// Sin `END-<verbo>` no se sabe donde acaba la clausula, y tragarse lo de
+/// despues la convertiria en el resto del programa.
 #[test]
 fn una_clausula_sin_cierre_se_rechaza() {
     let src = program("01 A PIC 9(3).", "ADD 1 TO A ON SIZE ERROR\nDISPLAY \"x\".");

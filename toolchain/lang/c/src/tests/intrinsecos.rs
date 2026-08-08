@@ -5,11 +5,11 @@
 
 use super::*;
 
-// ---- LA FUSIÓN sem-asm↔C (Fase 1) ----
+// ---- LA FUSION sem-asm<->C (Fase 1) ----
 
 #[test]
 fn intrinsic_emits_exact_table_bytes() {
-    // __pause() y __hlt() = bytes EXACTOS de intrinsics.toml en el código.
+    // __pause() y __hlt() = bytes EXACTOS de intrinsics.toml en el codigo.
     let src = "int main() { __pause(); __hlt(); return 0; }";
     let bef = compile_source_to_bef(src).unwrap();
     assert!(bef.windows(2).any(|w| w == [0xF3, 0x90]), "falta pause (F3 90)");
@@ -28,7 +28,7 @@ fn intrinsic_rdtsc_returns_combined_value() {
 
 #[test]
 fn unknown_intrinsic_fails_honestly() {
-    // __zzz() no está en la tabla → error con nombre y ubicación de la tabla.
+    // __zzz() no esta en la tabla -> error con nombre y ubicacion de la tabla.
     let err = compile_source_to_bef("int main() { __zzz(); return 0; }").unwrap_err();
     assert!(err.message.contains("no existe en la tabla"), "mensaje: {}", err.message);
 }
@@ -42,7 +42,7 @@ fn intrinsic_wrong_arity_fails() {
 
 #[test]
 fn intrinsic_outb_marshals_args_to_registers() {
-    // __outb(0x3F8, 65): puerto→dx, valor→al, luego out dx,al (0xEE).
+    // __outb(0x3F8, 65): puerto->dx, valor->al, luego out dx,al (0xEE).
     let src = "int main() { __outb(1016, 65); return 0; }";
     let bef = compile_source_to_bef(src).unwrap();
     // pop rdx (0x5A) para el puerto, pop rax (0x58) para el valor, out (0xEE)
@@ -63,7 +63,7 @@ fn intrinsic_inb_returns_byte() {
 
 #[test]
 fn intrinsic_wrmsr_splits_value_to_edx_eax() {
-    // __wrmsr(nr, val): nr→ecx, val(64)→edx:eax, wrmsr (0F 30).
+    // __wrmsr(nr, val): nr->ecx, val(64)->edx:eax, wrmsr (0F 30).
     let src = "int main() { unsigned long v; v = 5; __wrmsr(200, v); return 0; }";
     let bef = compile_source_to_bef(src).unwrap();
     assert!(bef.windows(2).any(|w| w == [0x0F, 0x30]), "falta wrmsr (0F 30)");

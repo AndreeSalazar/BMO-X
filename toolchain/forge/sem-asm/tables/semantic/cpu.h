@@ -1,15 +1,15 @@
-/* semantic/cpu.h — el estado del procesador.
+/* semantic/cpu.h -- el estado del procesador.
  *
  * Registros de control, MSR, el contador de ciclos y las interrupciones. Casi
- * todo esto es **Ring 0**: desde Ring 3 da #GP, y eso es lo correcto — son las
- * palancas con las que un kernel decide qué puede hacer todo lo demás.
+ * todo esto es **Ring 0**: desde Ring 3 da #GP, y eso es lo correcto -- son las
+ * palancas con las que un kernel decide que puede hacer todo lo demas.
  */
 #ifndef SEMANTIC_CPU_H
 #define SEMANTIC_CPU_H
 
 #include <semantic/tipos.h>
 
-/* ── Bits de CR0 que importan ── */
+/* -- Bits de CR0 que importan -- */
 #define CR0_PE 0x00000001 /* modo protegido */
 #define CR0_MP 0x00000002 /* monitorizar el coprocesador */
 #define CR0_EM 0x00000004 /* emular FPU: si esta a 1, SSE da #UD */
@@ -17,7 +17,7 @@
 #define CR0_WP 0x00010000 /* el kernel respeta las paginas de solo lectura */
 #define CR0_PG 0x80000000 /* paginacion */
 
-/* ── Bits de CR4 ── */
+/* -- Bits de CR4 -- */
 #define CR4_PSE 0x00000010    /* paginas de 4 MiB */
 #define CR4_PAE 0x00000020    /* extension de direcciones fisicas */
 #define CR4_PGE 0x00000080    /* paginas globales: no se vacian con CR3 */
@@ -26,7 +26,7 @@
 #define CR4_SMEP 0x00100000   /* Ring 0 no ejecuta paginas de usuario */
 #define CR4_SMAP 0x00200000   /* Ring 0 no LEE paginas de usuario sin permiso */
 
-/* ── El bit de RFLAGS que se mira ── */
+/* -- El bit de RFLAGS que se mira -- */
 #define FLAG_IF 0x00000200 /* interrupciones activas */
 
 u64 cpu_cr0() { return __cr0(); }
@@ -38,7 +38,7 @@ u64 cpu_cr2() { return __cr2(); }
 
 u64 cpu_cr3() { return __cr3(); }
 
-/* ★ Escribir CR3 cambia de espacio de direcciones **y vacia el TLB entero**
+/* * Escribir CR3 cambia de espacio de direcciones **y vacia el TLB entero**
  * (salvo las paginas globales). No es gratis: son dos vaciados por cada ida y
  * vuelta, y por eso el camino de teclado de BMO lo evita cuando puede. */
 void cpu_poner_cr3(u64 raiz) { __set_cr3(raiz); }
@@ -46,11 +46,11 @@ void cpu_poner_cr3(u64 raiz) { __set_cr3(raiz); }
 u64 cpu_cr4() { return __cr4(); }
 void cpu_poner_cr4(u64 v) { __set_cr4(v); }
 
-/* ── MSR ── */
+/* -- MSR -- */
 u64 msr_leer(u32 nr) { return __rdmsr(nr); }
 void msr_escribir(u32 nr, u64 v) { __wrmsr(nr, v); }
 
-/* ── Tiempo ──
+/* -- Tiempo --
  *
  * `ciclos()` es rapido y NO serializa: el CPU puede adelantarlo o retrasarlo
  * respecto a lo que hay alrededor, asi que medir un trozo corto con el da
@@ -59,9 +59,9 @@ void msr_escribir(u32 nr, u64 v) { __wrmsr(nr, v); }
 u64 ciclos() { return __rdtsc(); }
 u64 ciclos_exactos() { return __rdtscp(); }
 
-/* ── Interrupciones ──
+/* -- Interrupciones --
  *
- * ★ `sin_interrupciones()` NO se anida. Dos secciones criticas una dentro de
+ * * `sin_interrupciones()` NO se anida. Dos secciones criticas una dentro de
  * otra y la de dentro las vuelve a encender al salir, dejando a la de fuera
  * desprotegida sin decir nada. La forma correcta es guardar RFLAGS antes y
  * restaurarlo:
@@ -76,11 +76,11 @@ void con_interrupciones() { __sti(); }
 u64 cpu_flags() { return __flags(); }
 void cpu_poner_flags(u64 v) { __set_flags(v); }
 
-/* ── Estado extendido (XSAVE) ── */
+/* -- Estado extendido (XSAVE) -- */
 u64 xcr_leer(u32 indice) { return __xgetbv(indice); }
 void xcr_escribir(u32 indice, u64 v) { __xsetbv(indice, v); }
 
-/* ── Parar ──
+/* -- Parar --
  *
  * `esperar()` para el nucleo hasta la siguiente interrupcion. Con las
  * interrupciones apagadas **no vuelve nunca**: eso es como se apaga una maquina

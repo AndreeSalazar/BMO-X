@@ -1,11 +1,11 @@
-//! `bmo_abi::fs` — Tipos del filesystem.
+//! `bmo_abi::fs` -- Tipos del filesystem.
 //!
 //! Define los **datos** que las funciones `fs_*` (declaradas en
 //! `crate::bmo_abi::syscalls`) reciben o devuelven.
 //!
 //! ## Modelo
 //!
-//! - Paths son **UTF-8** válido, separado por `/`.
+//! - Paths son **UTF-8** valido, separado por `/`.
 //! - File handles son procesos-locales.
 //! - Directorios se leen con `bmo_fs_readdir` que devuelve un buffer
 //!   de `BmoDirEntry` contiguos.
@@ -15,7 +15,7 @@
 
 use crate::bmo_abi::fundamentals::handle::BmoHandle;
 
-// ─── Handle ─────────────────────────────────────────────────────────
+// --- Handle ---------------------------------------------------------
 
 /// Handle a un archivo abierto. Proceso-local.
 pub type BmoFileHandle = BmoHandle;
@@ -23,7 +23,7 @@ pub type BmoFileHandle = BmoHandle;
 /// Handle a un directorio abierto (para `readdir`).
 pub type BmoDirHandle = BmoHandle;
 
-// ─── Open flags ─────────────────────────────────────────────────────
+// --- Open flags -----------------------------------------------------
 
 /// Flags para `bmo_fs_open`. Se combinan con `|`.
 ///
@@ -38,7 +38,7 @@ impl BmoOpenFlags {
     pub const WRONLY: Self = Self(0x0000_0001);
     pub const RDWR: Self = Self(0x0000_0002);
 
-    /// Modo de creación (uno de los tres).
+    /// Modo de creacion (uno de los tres).
     pub const CREATE: Self = Self(0x0000_0040);
     pub const EXCLUSIVE: Self = Self(0x0000_0080);
     pub const TRUNCATE: Self = Self(0x0000_0200);
@@ -52,7 +52,7 @@ impl BmoOpenFlags {
     pub const SYMLINK: Self = Self(0x0004_0000);
     pub const CLOSE_ON_EXEC: Self = Self(0x0008_0000);
 
-    /// Bits de modo de acceso (máscara).
+    /// Bits de modo de acceso (mascara).
     pub const ACCESS_MASK: u32 = 0x0000_0003;
 
     #[inline]
@@ -76,19 +76,19 @@ impl BmoOpenFlags {
     pub fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
-    /// Intersección.
+    /// Interseccion.
     #[inline]
     pub fn intersect(self, other: Self) -> Self {
         Self(self.0 & other.0)
     }
-    /// `true` si todos los bits de `other` están en `self`.
+    /// `true` si todos los bits de `other` estan en `self`.
     #[inline]
     pub fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
     }
 }
 
-// ─── Seek whence ────────────────────────────────────────────────────
+// --- Seek whence ----------------------------------------------------
 
 /// Referencia para `bmo_fs_seek`.
 #[repr(u32)]
@@ -96,15 +96,15 @@ impl BmoOpenFlags {
 pub enum BmoSeekWhence {
     /// Desde el inicio del archivo.
     Set = 0,
-    /// Desde la posición actual.
+    /// Desde la posicion actual.
     Cur = 1,
-    /// Desde el final (offset debe ser ≤ 0).
+    /// Desde el final (offset debe ser <= 0).
     End = 2,
-    /// Devuelve el tamaño sin mover el cursor.
+    /// Devuelve el tamano sin mover el cursor.
     Size = 3,
 }
 
-// ─── Stat ───────────────────────────────────────────────────────────
+// --- Stat -----------------------------------------------------------
 
 /// Tipo de archivo (campo `kind` de `BmoStat`).
 #[repr(u32)]
@@ -163,7 +163,7 @@ impl BmoPerms {
 
 /// Resultado de `bmo_fs_stat` / `bmo_fs_fstat`.
 ///
-/// Tamaño: 72 bytes.
+/// Tamano: 72 bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BmoStat {
@@ -171,31 +171,31 @@ pub struct BmoStat {
     pub _pad0: u32,
     pub perms: BmoPerms,
     pub _pad1: u16,
-    /// Tamaño en bytes.
+    /// Tamano en bytes.
     pub size: u64,
-    /// Última modificación (ns desde epoch).
+    /// Ultima modificacion (ns desde epoch).
     pub mtime_ns: u64,
-    /// Creación (ns desde epoch).
+    /// Creacion (ns desde epoch).
     pub ctime_ns: u64,
-    /// Último acceso (ns desde epoch).
+    /// Ultimo acceso (ns desde epoch).
     pub atime_ns: u64,
-    /// Número de links duros.
+    /// Numero de links duros.
     pub nlinks: u32,
     /// ID del dispositivo.
     pub dev: u32,
     /// ID del inodo.
     pub ino: u64,
-    /// UID del dueño.
+    /// UID del dueno.
     pub uid: u32,
     /// GID del grupo.
     pub gid: u32,
 }
 
-// ─── Dir entry ──────────────────────────────────────────────────────
+// --- Dir entry ------------------------------------------------------
 
-/// Una entrada de directorio. Tamaño fijo: 296 bytes.
+/// Una entrada de directorio. Tamano fijo: 296 bytes.
 ///
-/// Los nombres son UTF-8 null-terminated, máximo 255 bytes.
+/// Los nombres son UTF-8 null-terminated, maximo 255 bytes.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BmoDirEntry {
@@ -213,7 +213,7 @@ pub struct BmoDirEntry {
 impl BmoDirEntry {
     pub const SIZE: usize = 320;
 
-    /// Lee el nombre como `&str` (o `""` si no es UTF-8 válido).
+    /// Lee el nombre como `&str` (o `""` si no es UTF-8 valido).
     pub fn name_str(&self) -> &str {
         let end = self
             .name
@@ -224,7 +224,7 @@ impl BmoDirEntry {
     }
 }
 
-/// Capabilities de un proceso (qué puede hacer en el FS).
+/// Capabilities de un proceso (que puede hacer en el FS).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Capabilities(pub u32);
 
