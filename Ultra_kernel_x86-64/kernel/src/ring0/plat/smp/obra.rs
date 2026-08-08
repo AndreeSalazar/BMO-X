@@ -54,6 +54,39 @@ static RONDA: AtomicU32 = AtomicU32::new(0);
 /// Cuando se pone, los obreros vuelven a `hlt` y no salen mas.
 static PARAR: AtomicBool = AtomicBool::new(false);
 
+// =============== LOS TESTIGOS ===============
+//
+// * El 2026-08-08, en metal, `smp prueba` contesto `0.00x` -- o sea que
+// `repartir` se rindio esperando. Y ahi se acababa la informacion: **"falto
+// una parte" no dice cuantas partes llegaron**, ni si los obreros habian
+// entrado siquiera al bucle.
+//
+// Un bit ("salio mal") no se puede depurar. Tres numeros si, y estos tres
+// parten el camino en los tres sitios donde se puede romper:
+//
+//   ENTRARON  el AP llego a `obrero`      -> si es < 11, el fallo esta ANTES,
+//                                            en el trampolin o en la pila
+//   VIERON    el obrero vio la ronda nueva -> si entraron y no vieron, es la
+//                                            publicacion de las atomicas
+//   HECHOS    el obrero termino su parte   -> si vieron y no acabaron, la
+//                                            faena murio a medias
+//
+// Es el metodo de las cinco sondas de XSAVE: un instrumento que puede MATAR la
+// hipotesis vale mas que uno que la confirma.
+/// Cuantos obreros han llegado vivos al bucle de trabajo.
+static ENTRARON: AtomicU32 = AtomicU32::new(0);
+/// Cuantas veces un obrero ha visto una ronda nueva y se ha puesto a ella.
+static VIERON: AtomicU32 = AtomicU32::new(0);
+
+/// `(entraron, vieron, hechos)` -- los tres testigos del ultimo reparto.
+pub fn testigos() -> (u32, u32, u32) {
+    (
+        ENTRARON.load(Ordering::SeqCst),
+        VIERON.load(Ordering::SeqCst),
+        HECHOS.load(Ordering::SeqCst),
+    )
+}
+
 /// La forma de una faena: `(mi parte, de cuantas)`.
 pub type Faena = fn(u32, u32);
 
@@ -63,6 +96,10 @@ pub type Faena = fn(u32, u32);
 /// `0` se la queda el BSP, que tambien trabaja -- tener un nucleo mirando como
 /// trabajan los otros es desperdiciar justo el mas caliente de cache.
 pub fn obrero(indice: u32) -> ! {
+    // Lo primero que hace un obrero es decir que existe. Antes el unico
+    // testigo era `VIVOS`, y ese se incrementa en el trampolin -- o sea, dice
+    // que el nucleo arranco, no que llegara hasta aqui.
+    ENTRARON.fetch_add(1, Ordering::SeqCst);
     let mut vista = 0u32;
     loop {
         if PARAR.load(Ordering::SeqCst) {
@@ -80,6 +117,10 @@ pub fn obrero(indice: u32) -> ! {
             let partes = PARTES.load(Ordering::SeqCst);
             let mia = indice + 1;
             if f != 0 && mia < partes {
+                // Se apunta ANTES de la faena: si el obrero muere dentro, la
+                // diferencia entre `VIERON` y `HECHOS` es exactamente cuantos
+                // se quedaron por el camino.
+                VIERON.fetch_add(1, Ordering::SeqCst);
                 let faena: Faena = unsafe { core::mem::transmute(f) };
                 faena(mia, partes);
                 HECHOS.fetch_add(1, Ordering::SeqCst);
@@ -104,6 +145,7 @@ pub fn repartir(faena: Faena, obreros: u32) -> bool {
     }
 
     HECHOS.store(0, Ordering::SeqCst);
+    VIERON.store(0, Ordering::SeqCst);
     PARTES.store(partes, Ordering::SeqCst);
     TAREA.store(faena as usize as u64, Ordering::SeqCst);
     // La ronda va LA ULTIMA: es la senal, y publicarla antes que los datos
@@ -114,13 +156,25 @@ pub fn repartir(faena: Faena, obreros: u32) -> bool {
     // El BSP hace la suya mientras los demas hacen las suyas.
     faena(0, partes);
 
-    // Y espera, con tope. Un obrero que no contesta no puede colgar la maquina:
-    // el numero de vueltas es generoso pero finito, por lo mismo que el bring-up
-    // no espera para siempre a un AP que no arranca.
-    let mut vueltas = 0u64;
-    while HECHOS.load(Ordering::SeqCst) < obreros && vueltas < 2_000_000_000 {
+    // Y espera, con tope. Un obrero que no contesta no puede colgar la maquina.
+    //
+    // * EL TOPE ES TIEMPO, NO VUELTAS, y el cambio importa. Antes eran
+    // `2_000_000_000` vueltas de `pause`: un numero que **nadie sabe cuanto
+    // dura**. En un Zen 3 un `pause` cuesta unos 35 ciclos, asi que eran ~19
+    // segundos; en un CPU donde `pause` cuesta 10, son cinco. El mismo codigo,
+    // el mismo tope escrito, y dos esperas distintas segun la maquina -- que es
+    // justo lo que un tope no puede hacer.
+    //
+    // Con el TSC son dos segundos en cualquier sitio, y dos segundos es de
+    // sobra: la faena de prueba entera en un solo nucleo dura decimas.
+    let hz = crate::ring0::task::scheduler::tsc_freq();
+    let limite = if hz > 0 { hz * 2 } else { u64::MAX };
+    let t0 = crate::ring0::task::scheduler::rdtsc();
+    while HECHOS.load(Ordering::SeqCst) < obreros {
+        if crate::ring0::task::scheduler::rdtsc().wrapping_sub(t0) > limite {
+            break;
+        }
         core::hint::spin_loop();
-        vueltas += 1;
     }
     let ok = HECHOS.load(Ordering::SeqCst) >= obreros;
     TAREA.store(0, Ordering::SeqCst);

@@ -567,6 +567,25 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     crate::ring0::cabina::info("smp", "ticks con UN nucleo", uno);
                     crate::ring0::cabina::info("smp", "ticks con todos", todos);
                     crate::ring0::cabina::info("smp", "partes que corrieron", partes as u64);
+                    // * LOS TRES TESTIGOS, siempre, salga bien o mal.
+                    //
+                    // En metal el 08-08 esto contesto `0.00x` y no habia nada
+                    // mas que mirar: "falto una parte" no dice cuantas
+                    // llegaron. Estos tres numeros parten el camino en los tres
+                    // sitios donde se puede romper -- entrar al bucle, ver la
+                    // ronda, terminar la faena-- y la diferencia entre dos
+                    // consecutivos senala el tramo culpable.
+                    let (entraron, vieron, hechos) = obra::testigos();
+                    crate::ring0::cabina::info("smp", "obreros que ENTRARON al bucle", entraron as u64);
+                    crate::ring0::cabina::info("smp", "obreros que VIERON la ronda", vieron as u64);
+                    crate::ring0::cabina::info("smp", "obreros que TERMINARON", hechos as u64);
+                    if hechos < alive {
+                        crate::ring0::cabina::warn(
+                            "smp",
+                            "faltan obreros por terminar",
+                            (alive - hechos) as u64,
+                        );
+                    }
                     // * Y la otra mitad del resultado, que no es la velocidad.
                     // Doce nucleos calculando a la vez es justo el momento en
                     // que un choque de cerrojo aparece si va a aparecer, y una

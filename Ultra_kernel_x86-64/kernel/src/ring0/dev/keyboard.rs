@@ -425,6 +425,32 @@ fn resolve(code: u8, shift: bool, altgr: bool, caps: bool) -> Out {
     // La posicion de las letras es la misma en US, Espana y Latinoamerica
     // (todas QWERTY); lo que cambia es la puntuacion.
     let common = match code {
+        // ** ESC. Y esta linea faltaba, con TRES cosas colgando de ella.
+        //
+        // El scancode 0x01 no estaba en NINGUNA tabla --ni aqui, ni en
+        // `nav_key`, ni en las tres distribuciones-- asi que `resolve`
+        // contestaba `Out::Nothing` y **el byte 27 no existia en el sistema**.
+        //
+        // Encima de una tecla que no llegaba habia tres cosas escritas:
+        //
+        //   1. `ESC cierra` en el pie de las ventanas del escritorio, que
+        //      compara contra `0x1B`.
+        //   2. `if (tecla == 27) vivo = 0;` en el raycaster -- su unica salida.
+        //   3. **El rescate `Ctrl+Alt+ESC`**, que empieza por `let b = t?`: sin
+        //      byte, sale por el `?` y no llega ni a mirar los modificadores.
+        //
+        // Las tres se leian como fallos distintos. La 3 se probo en metal el
+        // 2026-08-08 y no respondio; buscando por que, salio que el fallo no
+        // estaba en el rescate sino tres capas mas abajo, en una fila de tabla
+        // que nadie escribio.
+        //
+        // Va en `common` --antes de la distribucion-- a proposito: ESC es la
+        // misma tecla en US, en Espana y en Latinoamerica, y ponerla aqui la
+        // deja fuera del nivel de AltGr. Eso importa, porque en la
+        // distribucion espanola `Ctrl+Alt` ES AltGr (ver `altgr_active`), y si
+        // ESC dependiera del nivel, el atajo de rescate seria justo la
+        // combinacion que lo apaga.
+        0x01 => Some(27),    // ESC
         0x0E => Some(0x08),  // Backspace
         0x0F => Some(b'\t'), // Tab
         0x1C => Some(b'\r'), // Enter
