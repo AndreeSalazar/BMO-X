@@ -18,7 +18,57 @@ Written from scratch in Rust -- the boot chain, the kernel, the drivers, the
 filesystem, and three native compilers. It boots on an AMD Ryzen 5 5600X and
 occupies **5.4 MiB of 14.8 GiB of RAM**.
 
-**950+ commits - 490+ files - 17 April - 2 August 2026 - one developer.**
+**1.110 commits - 574 files - 17 April - 8 August 2026 - one developer.**
+
+---
+
+## The metakernel's Magna Carta
+
+Five clauses. **This is the motive** -- not a mission statement written after the
+fact, but the shape every decision in this repository was measured against. Each
+one is followed by the mechanism that already implements it, because a principle
+with no mechanism under it is a slogan.
+
+**1. Authority is functional, never inherited.**
+What a process may do comes from the handles it holds -- not from who launched
+it, what it is called, or which user is logged in. There is no `root` to inherit
+from and no ambient permission to escalate into. The teller's process does not
+fail a check on a large transfer; **the operation does not exist for it.**
+
+**2. A local server, without a server's friction.**
+The properties people buy a server for -- services that keep running, data that
+survives, a trail of who did what -- should not cost an administrator. Here they
+are not installed on top: the machine boots straight into its own desktop, there
+is nothing to configure, no accounts, no packages, no daemons. The audit trail is
+not a logging product; it is what copy-on-write leaves behind.
+
+**3. The owner's hardware, for whatever the owner wants.**
+The machine belongs to the person in front of it. BMO-X extracts what a component
+can do from the documentation its manufacturer publishes, and it declines to keep
+secrets from its owner -- which is why the signing model proves provenance and
+deliberately does *not* try to prevent copying. The same rule points the other
+way too: **the write window is named, per volume, and the owner's Windows loader
+is outside every one of them.** Owning the machine includes the right not to lose
+the rest of it.
+
+**4. Honest abstraction -- it makes things easier without infantilising you.**
+An abstraction is allowed to save you work. It is not allowed to lie about what
+happened underneath. So an unimplemented feature is **rejected with a reason,
+never stubbed to look like it works**; a global the compiler cannot evaluate is
+an error rather than a silent zero; the loader refuses to start a program rather
+than write an address it could not compute; and when `info` reports 8.4 MiB, that
+number comes from the kernel, not from the program claiming it.
+
+**5. A safety net, because the world fails.**
+Not the promise that nothing breaks -- the guarantee that when something does,
+you are still holding the machine. A fault in Ring 3 kills the task and the
+system keeps going. When the screen's owner dies, the kernel takes the screen
+back and prints the last four lines that process wrote. And **Ctrl+Alt+ESC
+returns the keyboard and the screen to the kernel from any program**, checked at
+the single point in Ring 0 that every key passes through -- so a program that
+holds both cannot keep the machine hostage, whether the cause is malice or a
+missing `if`. A system where a program can keep the keyboard forever is not a
+secure system; it is a lucky one.
 
 ---
 
@@ -377,6 +427,36 @@ A batch that emptied the "written, never executed" list:
   Report Descriptor: me quedo con el BOOT`
 - **Ring 0's log, readable from Ring 3** (F11) -- see below
 
+### Verified on 2026-08-07: twelve cores, with photographs
+
+`nucleos en pie: 12 de 12`. **SMP left the 🟡 list.** The trampoline was written
+from scratch -- 16-bit real mode, far jumps emitted byte by byte, and the
+kernel's own `CR3` instead of private page tables -- and it brought the eleven
+application processors up on the first attempt.
+
+The one that had been sitting in `s1_cpu` for months, uncalled, **could not have
+worked**: it was assembled as 64-bit code for a core that starts in 16-bit (a
+`0x48` prefix is `dec ax` in real mode), its page tables overlapped, the live
+counter lived inside the PML4 that the previous step zeroed, and it ran *before*
+`ExitBootServices`, where the cores still belong to the firmware.
+
+It is a control, not a button, and the default case is the harmless one on
+purpose -- INIT+SIPI cannot be undone without a reboot:
+
+```
+smp          take a census and TOUCH NOTHING     smp parar   workers to hlt
+smp all      wake every core                     smp prueba  measure the split
+smp 3        wake exactly three
+```
+
+Who to call **is what the MADT says**, not an assumption: `plat/madt.rs`
+enumerates the real APIC IDs and cross-checks them against CPUID. And the work
+split (`plat/smp/obra.rs`) is deliberately tiny -- the BSP publishes a function
+and *n* parts, each worker takes its own, barrier at the end. **It is not a
+scheduler**, and being that small is exactly what makes it safe next to the
+kernel's **209 `static mut`**. A waiting worker *spins* rather than sleeping,
+which is why `smp parar` exists.
+
 ---
 
 ## 🟡 Written, never executed on a CPU
@@ -386,10 +466,9 @@ Listed here rather than above, because the difference is the entire point.
 - **ESTRATOS writes** -- now wired to the device, with the smallest transaction
   that exists (`estratos sellar`: no data, same stratum, commit onto the
   superblock copy that is *not* in use). Nothing has run it yet
-- **SMP** -- the code to wake the other cores exists and nothing calls it.
-  Deliberately last, and with a number: the kernel has **195 `static mut` and 3
-  spinlocks**. The trampoline is 10% of the work; auditing the other 192 is the
-  rest
+- *(SMP was the headline entry here until 2026-08-07, when twelve cores came up
+  on the Ryzen. It is now in the green section above -- the list a project's
+  claims are supposed to move in only one direction along.)*
 
 ---
 
@@ -685,9 +764,11 @@ on top of it.
     already programmed it. What is needed is one engine -- the copy engine --
     behind the `Volcador` seam that already exists. Measure with `perf` first:
     the dirty box may well have made a card unnecessary
-20. **SMP, last, and deliberately** -- the trampoline is 10% of the work.
-    Auditing 195 `static mut` is the rest, and the day a second core runs, every
-    one of them is a race
+20. **SMP -- the trampoline landed on 2026-08-07; the audit is the rest.** Twelve
+    cores come up on the Ryzen, and that was the 10%. The other 90% is the
+    kernel's **209 `static mut`**: with a second core running, every one of them
+    is a race. Which is why what runs on those cores today is a barrier and a
+    work split, and not a scheduler
 
 ---
 
