@@ -38,6 +38,25 @@ pub fn compile_with_standard(source: &str, std: CStandard) -> Result<Vec<u8>, CE
     codegen::compile_to_bef_bytes(&program)
 }
 
+/// * Run ONLY the preprocessor and hand back the text it produced.
+///
+/// # Why this exists
+///
+/// Every error the compiler reports carries the line of the EXPANDED text, not
+/// of the file the person wrote. With a couple of headers that is a small
+/// annoyance; with DOOM, where `p_doors.c` expands past seven thousand lines,
+/// it means the message names a line **nobody can look at** -- and then the
+/// only way to find the construct is to guess it.
+///
+/// That happened, and guessing lost twice. So the fix is not a better message:
+/// it is being able to open the line.
+pub fn preprocess_only(source: &str, file_path: &Path, std: CStandard) -> Result<String, CError> {
+    let features = StandardFeatures::load_standard(std);
+    let include_paths = module::discover_include_paths();
+    let mut pp = parser::preprocessor::Preprocessor::new(&features, include_paths);
+    pp.preprocess(source, file_path)
+}
+
 /// Compile with full preprocessor pass (macros, includes, conditionals).
 /// This is the recommended entry point for real C files.
 pub fn compile_with_preprocessor(

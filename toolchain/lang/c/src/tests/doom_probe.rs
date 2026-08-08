@@ -161,6 +161,49 @@ fn a_pointer_to_function_can_be_a_parameter() {
     assert_eq!(out, "42\n");
 }
 
+// =============== `++` and `--` on something that is not a name ===============
+
+/// `--door->topcountdown` -- how `p_doors.c` counts a door's ticks down.
+///
+/// Only `--name` was understood, so this died with "expected CloseParen, got
+/// Arrow": the parser read `door` as the whole operand and the arrow was left
+/// over. The `-E` flag added in the same commit is what made the line
+/// readable; before that the error pointed at line 7354 of a text nobody could
+/// open.
+#[test]
+fn pre_increment_works_on_a_member() {
+    let out = run_c(
+        "typedef struct { int cuenta; } puerta_t; \
+         int main() { puerta_t u; puerta_t *p; u.cuenta = 10; p = &u; \
+         --p->cuenta; ++p->cuenta; ++p->cuenta; \
+         printf(\"%d\\n\", p->cuenta); return 0; }",
+    );
+    assert_eq!(out, "11\n");
+}
+
+/// ** And the one that did not fail: `p->x++` was SILENTLY IGNORED.
+///
+/// The arm was `_ => {}` -- the `++` was consumed and nothing was emitted. So
+/// `s->count++` compiled, ran, and did not increment. No error, no warning,
+/// and a counter that never moves.
+///
+/// This test exists to make that impossible again, and it checks the two
+/// halves separately: that the store happens, and that the VALUE is the old
+/// one, which is what makes a post-increment a post-increment.
+#[test]
+fn post_increment_on_a_member_stores_and_yields_the_old_value() {
+    let out = run_c(
+        "typedef struct { int cuenta; int otro; } puerta_t; \
+         puerta_t tabla[2]; \
+         int main() { puerta_t u; puerta_t *p; \
+         u.cuenta = 10; u.otro = 0; p = &u; \
+         p->cuenta++; u.otro++; tabla[0].cuenta = 5; tabla[0].cuenta++; \
+         printf(\"%d %d %d\\n\", p->cuenta, u.otro, tabla[0].cuenta); \
+         printf(\"%d %d\\n\", p->cuenta++, p->cuenta); return 0; }",
+    );
+    assert_eq!(out, "11 1 6\n11 12\n");
+}
+
 // =============== Declarators: the comma, and the brackets ===============
 
 /// `int alpha, beta;` at FILE scope.

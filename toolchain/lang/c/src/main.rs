@@ -11,6 +11,7 @@ fn main() {
     let mut standard = bmo_c_front::CStandard::DefaultC;
     let mut file_path = None;
     let mut out_override: Option<PathBuf> = None;
+    let mut solo_preprocesar = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -57,6 +58,12 @@ fn main() {
                     process::exit(2);
                 }
             }
+            // `-E`, el mismo nombre que en cualquier compilador de C: escribe
+            // el texto YA preprocesado y no compila nada. Es lo que hace
+            // legible un `error:7354:` -- ver `preprocess_only`.
+            "-E" | "--preprocess" => {
+                solo_preprocesar = true;
+            }
             _ => {
                 file_path = Some(&args[i]);
             }
@@ -76,6 +83,19 @@ fn main() {
             process::exit(1);
         }
     };
+
+    if solo_preprocesar {
+        match bmo_c_front::preprocess_only(&source, Path::new(path), standard) {
+            Ok(texto) => {
+                println!("{texto}");
+                return;
+            }
+            Err(err) => {
+                eprintln!("error:{}: {}", err.line, err.message);
+                process::exit(1);
+            }
+        }
+    }
 
     let result = match (base_paths.is_empty(), asm_paths.is_empty()) {
         (true, true) => {

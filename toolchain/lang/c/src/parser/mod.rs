@@ -166,6 +166,26 @@ impl Parser {
                 let s = Self::pointee_struct_of(&t)?.to_string();
                 self.field_types.get(&(s, fname.clone())).cloned()
             }
+            // * Los que faltaban, y los cuatro son EXACTOS.
+            //
+            // Aparecieron pidiendolos `sizeof`, que desde hoy acepta una
+            // expresion. Se anaden solo estos y no la aritmetica: el tipo de
+            // `a + b` pide las conversiones usuales de C, y **equivocarse aqui
+            // no da un error, da un `memset` de la medida equivocada**. Sin
+            // resolver, `sizeof` lo dice; adivinando, lo escribe.
+            //
+            // `p[i]` ya trae el tipo del elemento dentro del nodo, que es
+            // justo lo que hace que este sea exacto y no una suposicion.
+            Expr::IndexPtr(_, _, elem) => Some(elem.clone()),
+            Expr::Cast(t, _) => Some(t.clone()),
+            Expr::Int(_) => Some(TypeSpec::Int),
+            Expr::CharLit(_) => Some(TypeSpec::Char),
+            // En C `sizeof("abc")` son CUATRO: el literal es un array con su
+            // cero, no un puntero.
+            Expr::StringLit(s) => Some(TypeSpec::Array(
+                Box::new(TypeSpec::Char),
+                s.len() as u32 + 1,
+            )),
             _ => None,
         }
     }
@@ -1271,6 +1291,34 @@ impl Parser {
         Ok(members)
     }
 
+    /// `lvalue++` / `lvalue--` sobre algo que no es un nombre suelto.
+    ///
+    /// El valor de un post-incremento es el ANTERIOR, asi que se escribe la
+    /// asignacion y se deshace por fuera: `(x += 1) - 1`. Exacto para enteros.
+    ///
+    /// Sobre un PUNTERO no lo es --`+1` avanza un elemento y `-1` restaria un
+    /// byte-- y por eso ahi se rechaza con el motivo en vez de emitir algo que
+    /// casi acierta.
+    fn post_sobre_lvalue(&mut self, expr: Expr, mas: bool) -> Result<Expr, CError> {
+        if let Some(TypeSpec::Ptr(_)) = self.resolve_expr_type(&expr) {
+            return Err(CError::new(
+                self.line(),
+                "'++'/'--' detras de un puntero que no es una variable suelta todavia no \
+                 se compila: usa `p = p + 1` y di cual quieres",
+            ));
+        }
+        let op: fn(Box<Expr>, Box<Expr>) -> Expr = if mas { Expr::Add } else { Expr::Sub };
+        let asignacion = asignacion_con_uno(expr, op).ok_or_else(|| {
+            CError::new(self.line(), "'++'/'--' necesita algo a lo que se pueda asignar")
+        })?;
+        // Deshacer por fuera: el valor de la expresion es el de antes.
+        Ok(if mas {
+            Expr::Sub(Box::new(asignacion), Box::new(Expr::Int(1)))
+        } else {
+            Expr::Add(Box::new(asignacion), Box::new(Expr::Int(1)))
+        })
+    }
+
     /// A tag for an aggregate that was written without one.
     ///
     /// The layout tables are keyed by name, so an untagged struct still needs
@@ -1608,6 +1656,16 @@ impl Parser {
         while *self.peek() == Token::Star {
             self.advance();
             typ = TypeSpec::Ptr(Box::new(typ));
+            // * `char * const p` -- el calificador va DETRAS del asterisco, y
+            // ahi califica al PUNTERO, no a lo apuntado.
+            //
+            // Solo se quitaban los de delante, asi que esto moria con
+            // "expected identifier, got Const": el parser pedia el nombre y se
+            // encontraba una palabra clave que en ese sitio es legal.
+            //
+            // Se consume y se tira, como el de delante: BMO C no comprueba
+            // constancia, y fingir que si seria peor que no hacerlo.
+            self.strip_qualifiers();
         }
         Ok(typ)
     }
@@ -1746,17 +1804,24 @@ impl Parser {
                 Token::Case => {
                     if !current.is_empty() { cases.push(Case { value: current_val, stmts: std::mem::take(&mut current) }); }
                     self.advance();
-                    let val = match self.advance() {
-                        Token::IntLit(n) => n,
-                        // Una constante de enum es una constante entera, y
-                        // el estandar la admite como etiqueta de `case`.
-                        // Es el uso mas natural de un enum: `switch (fase)`.
-                        Token::Ident(name) if self.enum_constants.contains_key(&name) => {
-                            self.enum_constants[&name]
-                        }
-                        Token::CharLit(c) => c as i64,
-                        t => return Err(CError::new(self.line(),format!("expected int in case, got {:?}", t))),
-                    };
+                    // * La etiqueta de un `case` es una EXPRESION CONSTANTE.
+                    //
+                    // Se aceptaba un literal, una constante de enum o un
+                    // caracter, y nada mas. `case -1:` moria con "expected int
+                    // in case, got Minus" -- un mensaje que acusa al signo.
+                    //
+                    // Se lee con el mismo `parse_conditional` + `const_eval`
+                    // que los valores de un enum: el signo, `1 << 3` y
+                    // `MAX - 1` son la misma cosa para quien la escribe, y
+                    // ahora tambien para quien la lee.
+                    let e = self.parse_conditional()?;
+                    let val = const_eval(&e).ok_or_else(|| {
+                        CError::new(
+                            self.line(),
+                            "la etiqueta de un 'case' tiene que ser una constante que se \
+                             pueda calcular al compilar".to_string(),
+                        )
+                    })?;
                     current_val = Some(val);
                     self.expect(&Token::Colon)?;
                 }
@@ -2056,11 +2121,82 @@ impl Parser {
             Token::Minus => { self.advance(); let e = self.parse_unary()?; Ok(Expr::Neg(Box::new(e))) }
             Token::Not => { self.advance(); let e = self.parse_unary()?; Ok(Expr::Not(Box::new(e))) }
             Token::Tilde => { self.advance(); let e = self.parse_unary()?; Ok(Expr::BitNot(Box::new(e))) }
-            Token::PlusPlus => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::PreInc(name)) } _ => Err(CError::new(self.line(),"expected variable after ++")) } }
-            Token::MinusMinus => { self.advance(); match &self.peek() { Token::Ident(n) => { let name = n.clone(); self.advance(); Ok(Expr::PreDec(name)) } _ => Err(CError::new(self.line(),"expected variable after --")) } }
+            // * `++` y `--` DELANTE, sobre cualquier lvalue y no solo un nombre.
+            //
+            // Solo se aceptaba `++nombre`. `--door->topcountdown` --que es como
+            // `p_doors.c` cuenta los ticks de una puerta-- moria con "expected
+            // CloseParen, got Arrow": el parser leia `door` como la variable
+            // entera y la flecha sobraba.
+            //
+            // Un pre-incremento ES una asignacion: `--x` vale exactamente
+            // `x = x - 1`, valor nuevo incluido. Asi que se reescribe con la
+            // maquinaria de `+=`, que ya existia para las cinco formas de
+            // lvalue. No hay nada nuevo en el codegen.
+            Token::PlusPlus => {
+                self.advance();
+                if let Token::Ident(n) = self.peek().clone() {
+                    if !matches!(self.tokens.get(self.pos + 1),
+                        Some(Token::Arrow) | Some(Token::Dot) | Some(Token::OpenBracket))
+                    {
+                        self.advance();
+                        return Ok(Expr::PreInc(n));
+                    }
+                }
+                let e = self.parse_unary()?;
+                asignacion_con_uno(e, Expr::Add).ok_or_else(|| {
+                    CError::new(self.line(), "'++' necesita algo a lo que se pueda asignar")
+                })
+            }
+            Token::MinusMinus => {
+                self.advance();
+                if let Token::Ident(n) = self.peek().clone() {
+                    if !matches!(self.tokens.get(self.pos + 1),
+                        Some(Token::Arrow) | Some(Token::Dot) | Some(Token::OpenBracket))
+                    {
+                        self.advance();
+                        return Ok(Expr::PreDec(n));
+                    }
+                }
+                let e = self.parse_unary()?;
+                asignacion_con_uno(e, Expr::Sub).ok_or_else(|| {
+                    CError::new(self.line(), "'--' necesita algo a lo que se pueda asignar")
+                })
+            }
             Token::And => { self.advance(); let expr = self.parse_unary()?; Ok(Expr::AddrOf(Box::new(expr))) }
             Token::Star => { self.advance(); let e = self.parse_unary()?; Ok(Expr::Deref(Box::new(e))) }
-            Token::Sizeof => { self.advance(); self.expect(&Token::OpenParen)?; let t = self.parse_type_spec()?; self.expect(&Token::CloseParen)?; Ok(Expr::Int(t.stack_size() as i64)) }
+            // * `sizeof` de un TIPO y de una EXPRESION.
+            //
+            // Solo entendia el tipo, asi que `sizeof(p->campo)` moria con
+            // "expected type, got Ident(p)" -- un mensaje que manda a buscar un
+            // typedef que no falta. Y la forma con expresion no es un adorno:
+            // es como se escribe `memset(&x, 0, sizeof(x))` sin repetir el
+            // tipo, o sea la forma que NO se rompe cuando el tipo cambia.
+            //
+            // Se intenta primero el tipo y se vuelve atras si no cuela: los dos
+            // empiezan igual y solo el intento distingue `sizeof(int)` de
+            // `sizeof(x)`. La expresion no se EVALUA -- solo se le pregunta el
+            // tipo, que es lo que dice el estandar.
+            Token::Sizeof => {
+                self.advance();
+                self.expect(&Token::OpenParen)?;
+                let guardado = self.pos;
+                if let Ok(t) = self.parse_type_spec() {
+                    if *self.peek() == Token::CloseParen {
+                        self.advance();
+                        return Ok(Expr::Int(self.tamano_de(&t) as i64));
+                    }
+                }
+                self.pos = guardado;
+                let e = self.parse_expr()?;
+                self.expect(&Token::CloseParen)?;
+                let t = self.resolve_expr_type(&e).ok_or_else(|| {
+                    CError::new(
+                        self.line(),
+                        "sizeof: no se de que tipo es esa expresion".to_string(),
+                    )
+                })?;
+                Ok(Expr::Int(self.tamano_de(&t) as i64))
+            }
             Token::OpenParen => {
                 let save = self.pos;
                 self.advance();
@@ -2087,8 +2223,34 @@ impl Parser {
         let mut expr = self.parse_primary()?;
         loop {
             match self.peek() {
-                Token::PlusPlus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostInc(n.clone()), _ => {} } }
-                Token::MinusMinus => { self.advance(); match expr { Expr::Var(ref n) => expr = Expr::PostDec(n.clone()), _ => {} } }
+                // ** `p->x++` SE IGNORABA EN SILENCIO.
+                //
+                // El brazo era `_ => {}`: si el operando no era un nombre
+                // suelto, el `++` se consumia y **no se emitia nada**. O sea
+                // que `s->count++` compilaba, corria, y no incrementaba --
+                // ningun error, ningun aviso, y un contador que no se mueve.
+                // Es la peor forma de fallar que hay en este proyecto.
+                //
+                // Ahora se reescribe, y si no se puede, se DICE.
+                //
+                // * Un post-incremento vale el valor VIEJO, asi que no basta
+                // con `x += 1`: se compensa con la resta de fuera. Es exacto
+                // para enteros -- y por eso se rechaza sobre un puntero, donde
+                // `+1` avanza un elemento y `-1` restaria un byte.
+                Token::PlusPlus => {
+                    self.advance();
+                    match expr {
+                        Expr::Var(ref n) => expr = Expr::PostInc(n.clone()),
+                        otro => expr = self.post_sobre_lvalue(otro, true)?,
+                    }
+                }
+                Token::MinusMinus => {
+                    self.advance();
+                    match expr {
+                        Expr::Var(ref n) => expr = Expr::PostDec(n.clone()),
+                        otro => expr = self.post_sobre_lvalue(otro, false)?,
+                    }
+                }
                 Token::OpenParen => {
                     // (*fp)(args) -- llamada a traves de un puntero CALCULADO.
                     // (fp(args) con fp variable ya lo maneja parse_primary.)
@@ -2249,6 +2411,44 @@ fn const_eval(e: &Expr) -> Option<i64> {
         Expr::BitAnd(a, b) => const_eval(a)? & const_eval(b)?,
         Expr::BitOr(a, b) => const_eval(a)? | const_eval(b)?,
         Expr::BitXor(a, b) => const_eval(a)? ^ const_eval(b)?,
+        _ => return None,
+    })
+}
+
+/// Reescribe `lvalue` + 1 (o - 1) como la ASIGNACION que ya sabe emitir el
+/// codegen, para las cinco formas de lvalue que existen.
+///
+/// Es la misma tabla que usan `+=` y `-=`; sacarla aparte es lo que permite que
+/// `++`, `--` y `+= 1` compartan un solo camino en vez de tres que tienen que
+/// coincidir. Devuelve `None` si lo que llega no es asignable -- y entonces
+/// quien llama lo DICE, que es la mitad que faltaba.
+fn asignacion_con_uno(expr: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr) -> Option<Expr> {
+    let uno = || Box::new(Expr::Int(1));
+    Some(match expr {
+        Expr::Var(n) => {
+            let leer = Box::new(Expr::Var(n.clone()));
+            Expr::Assign(n, Box::new(op(leer, uno())))
+        }
+        Expr::Field(e, f, off, ft) => {
+            let leer = Box::new(Expr::Field(e.clone(), f.clone(), off, ft.clone()));
+            Expr::AssignField(e, f, off, ft, Box::new(op(leer, uno())))
+        }
+        Expr::Arrow(e, f, off, ft) => {
+            let leer = Box::new(Expr::Arrow(e.clone(), f.clone(), off, ft.clone()));
+            Expr::AssignArrow(e, f, off, ft, Box::new(op(leer, uno())))
+        }
+        Expr::Subscript(n, idx, sc) => {
+            let leer = Box::new(Expr::Subscript(n.clone(), idx.clone(), sc));
+            Expr::AssignSubscript(n, idx, sc, Box::new(op(leer, uno())))
+        }
+        Expr::IndexPtr(b, idx, ty) => {
+            let leer = Box::new(Expr::IndexPtr(b.clone(), idx.clone(), ty.clone()));
+            Expr::AssignIndexPtr(b, idx, ty, Box::new(op(leer, uno())))
+        }
+        Expr::Deref(a) => {
+            let leer = Box::new(Expr::Deref(a.clone()));
+            Expr::AssignDeref(a, Box::new(op(leer, uno())))
+        }
         _ => return None,
     })
 }
