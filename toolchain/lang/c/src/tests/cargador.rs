@@ -179,15 +179,23 @@ fn un_global_inicializado_con_cadena_apunta_a_la_cadena() {
     assert_eq!(run_c(fuente), "[eltexto]");
 }
 
-/// Y lo que SIGUE rechazado, para que el mensaje no se pierda: un literal de
-/// coma flotante en un global. Ahi no falta una reloc -- falta convertir el
-/// valor, que es otro trabajo.
+/// ** Y ESTE TAMBIEN CAMBIO DE SENTIDO, el mismo dia y por el mismo motivo.
+///
+/// Exigia que un global de coma flotante **se RECHAZARA**, y el motivo escrito
+/// era *"falta convertir el valor"*. Convertir es justo lo que hace `to_bits`:
+/// un `float` son los cuatro bytes de su representacion IEEE y un `double` los
+/// ocho. Lo que faltaba no era saber hacerlo, era hacerlo.
+///
+/// Salio pidiendolo DOOM: `float mouse_acceleration = 2.0;` en `i_video.c`.
+///
+/// Se comprueba **por el valor y no por el patron de bits**: se multiplica y se
+/// baja a entero, asi que si los bytes guardados fueran los de otro numero, o
+/// la anchura fuera la del `double` en un `float`, el resultado no saldria.
 #[test]
-fn un_global_con_float_sigue_rechazado_diciendolo() {
-    let err = compile_source_to_bef("double d = 1.5; int main() { return 0; }")
-        .expect_err("un cero inventado es peor que un error");
-    let msg = format!("{err:?}");
-    assert!(msg.contains("'d'"), "tiene que decir QUE global: {msg}");
+fn un_global_de_coma_flotante_guarda_su_valor() {
+    let fuente = "float f = 2.5; double d = 1.5; \
+                  int main() { printf(\"%d %d\", (int)(f * 2), (int)(d * 4)); return 0; }";
+    assert_eq!(run_c(fuente), "5 6");
 }
 
 /// Y de paso, lo que si se puede poner y antes valia cero: un entero negativo.

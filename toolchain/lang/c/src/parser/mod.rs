@@ -1067,6 +1067,17 @@ impl Parser {
                         }
                         continue;
                     }
+                    // * Un `enum { ... };` DENTRO de una funcion.
+                    //
+                    // C lo permite y `am_map.c` declara asi las cuatro esquinas
+                    // de su recorte. Las constantes se registran donde se
+                    // registran todas --son constantes de compilacion, no
+                    // ocupan memoria-- y aqui no queda ninguna sentencia.
+                    if *self.peek() == Token::Enum {
+                        self.parse_enum_spec()?;
+                        self.skip_semicolon();
+                        continue;
+                    }
                     // Un prototipo dentro del cuerpo: se consume y ya.
                     if self.saltar_prototipo_local() {
                         continue;
@@ -2077,6 +2088,17 @@ impl Parser {
                             self.var_types.insert(vname, typ);
                             self.skip_semicolon();
                         }
+                        continue;
+                    }
+                    // * Un `enum { ... };` DENTRO de una funcion.
+                    //
+                    // C lo permite y `am_map.c` declara asi las cuatro esquinas
+                    // de su recorte. Las constantes se registran donde se
+                    // registran todas --son constantes de compilacion, no
+                    // ocupan memoria-- y aqui no queda ninguna sentencia.
+                    if *self.peek() == Token::Enum {
+                        self.parse_enum_spec()?;
+                        self.skip_semicolon();
                         continue;
                     }
                     // Un prototipo dentro del cuerpo: se consume y ya.

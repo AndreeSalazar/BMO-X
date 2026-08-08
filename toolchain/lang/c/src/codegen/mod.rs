@@ -459,6 +459,28 @@ impl Codegen {
                         }
                         for _ in 0..size { self.global_data.push(0); }
                     }
+                    // * UN GLOBAL DE COMA FLOTANTE: se guarda su patron IEEE.
+                    //
+                    // `float mouse_acceleration = 2.0;` (i_video.c). Antes esto
+                    // era un error, y el motivo escrito era que no se sabia
+                    // convertir -- pero convertir es exactamente lo que sabe
+                    // hacer `to_bits`: un `float` son los cuatro bytes de su
+                    // representacion y un `double` los ocho.
+                    //
+                    // La anchura la manda el TIPO DECLARADO, no el literal: un
+                    // `2.0` en un `float` son cuatro bytes distintos de los que
+                    // ocuparia en un `double`, y escribir los ocho ahi seria
+                    // pisar el global de al lado.
+                    (Some(Expr::FloatLit(f)), _) => {
+                        let bytes: Vec<u8> = if size == 4 {
+                            (*f as f32).to_bits().to_le_bytes().to_vec()
+                        } else {
+                            f.to_bits().to_le_bytes().to_vec()
+                        };
+                        for k in 0..size {
+                            self.global_data.push(*bytes.get(k as usize).unwrap_or(&0));
+                        }
+                    }
                     // Lo que sigue sin poderse poner: se DICE.
                     (Some(otro), _) => {
                         let que = match otro {
@@ -796,9 +818,60 @@ impl Codegen {
             Expr::Not(a) => Some((Self::constante_de(a)? == 0) as i64),
             // Un cast no cambia el VALOR de una constante entera, solo su
             // anchura -- y la anchura la pone el subobjeto al escribirlo.
-            Expr::Cast(_, a) => Self::constante_de(a),
+            //
+            // * Y si dentro hay COMA FLOTANTE, se pliega y se trunca.
+            //
+            // `(fixed_t)(-.867*FRACUNIT)` -- asi escribe `am_map.c` las flechas
+            // del mapa, y es la forma normal de meter un numero real en punto
+            // fijo: se calcula en flotante **al compilar** y lo que se guarda
+            // es un entero. El programa no lleva un solo `float` dentro.
+            //
+            // Truncar hacia cero es lo que dice C de una conversion de
+            // flotante a entero, y por eso se hace con `as i64` y no
+            // redondeando: redondear daria otro numero, y el numero es el dato.
+            Expr::Cast(t, a) => Self::constante_de(a).or_else(|| {
+                if matches!(t, TypeSpec::Float | TypeSpec::Double) {
+                    return None;
+                }
+                Self::constante_flotante(a).map(|f| f as i64)
+            }),
             _ => None,
         }
+    }
+
+    /// Pliega una expresion constante que tiene coma flotante dentro.
+    ///
+    /// Solo se usa cuando el resultado va a un ENTERO: mientras BMO C no tenga
+    /// la ruta SSE en los datos, un global que se quede en flotante sigue
+    /// diciendo que no puede. Aqui el flotante es una forma de ESCRIBIR el
+    /// numero, no de guardarlo.
+    fn constante_flotante(e: &Expr) -> Option<f64> {
+        // Lo que ya se pliega como entero, se pliega como entero: asi el
+        // desplazamiento, las mascaras y el resto de operaciones que solo
+        // existen sobre enteros no hay que escribirlas dos veces. `FRACUNIT`
+        // es `(1<<16)`, y sin esta linea el `-.867*FRACUNIT` de DOOM no
+        // llegaba a plegarse por culpa del desplazamiento.
+        if let Some(n) = Self::constante_de(e) {
+            return Some(n as f64);
+        }
+        Some(match e {
+            Expr::FloatLit(f) => *f,
+            Expr::Int(n) => *n as f64,
+            Expr::CharLit(c) => *c as f64,
+            Expr::Neg(a) => -Self::constante_flotante(a)?,
+            Expr::Add(a, b) => Self::constante_flotante(a)? + Self::constante_flotante(b)?,
+            Expr::Sub(a, b) => Self::constante_flotante(a)? - Self::constante_flotante(b)?,
+            Expr::Mul(a, b) => Self::constante_flotante(a)? * Self::constante_flotante(b)?,
+            Expr::Div(a, b) => {
+                let d = Self::constante_flotante(b)?;
+                if d == 0.0 {
+                    return None;
+                }
+                Self::constante_flotante(a)? / d
+            }
+            Expr::Cast(_, a) => Self::constante_flotante(a)?,
+            _ => return None,
+        })
     }
 
     /// Redondea hacia arriba al multiplo de pagina. La cuenta del cargador.
@@ -2933,10 +3006,28 @@ impl Codegen {
                 self.code.extend_from_slice(&[0xF2, 0x0F, 0x10]); // movsd xmm0,[rbp+off]
                 self.emit_rbp_disp(off);
             }
+        } else if let Some(&(_, ref typ)) = self.global_offsets.get(name) {
+            // * UN GLOBAL DE COMA FLOTANTE, leido donde vive.
+            //
+            // Antes esto ponia `xmm0` a cero y decia *"usa locales"*. El dato
+            // ya estaba bien guardado --su patron IEEE-- y lo unico que
+            // faltaba era ir a buscarlo: la direccion sale de la misma
+            // `lea rip-relativa` con la que se leen los globales enteros, y de
+            // ahi un `movss`/`movsd` en vez de un `mov`.
+            //
+            // Lo pidio `float mouse_acceleration = 2.0;` de `i_video.c`.
+            let is_f32 = matches!(typ, TypeSpec::Float);
+            self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]); // lea rax,[rip+g]
+            self.global_fixups.push((self.code.len() - 4, name.to_string()));
+            if is_f32 {
+                self.code.extend_from_slice(&[0xF3, 0x0F, 0x10, 0x00]); // movss xmm0,[rax]
+                self.code.extend_from_slice(&[0xF3, 0x0F, 0x5A, 0xC0]); // cvtss2sd
+            } else {
+                self.code.extend_from_slice(&[0xF2, 0x0F, 0x10, 0x00]); // movsd xmm0,[rax]
+            }
         } else {
-            // global float: pendiente (locales primero) -> xmm0 = 0
             self.code.extend_from_slice(&[0x66, 0x0F, 0x57, 0xC0]); // xorpd xmm0,xmm0
-            self.errors.push(format!("variable float global '{name}' aun no soportada (usa locales)"));
+            self.errors.push(format!("variable float '{name}' no esta declarada"));
         }
     }
 
