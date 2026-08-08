@@ -66,7 +66,7 @@ use escena::salida::{pintar_salida, Salida, TINTA_BIEN, TINTA_ECO, TINTA_MAL, TI
 use escena::*;
 use ordenes::complete::{complete, motivo_archivo};
 use ordenes::historial::Historial;
-use ordenes::informes::{informe_cpu, informe_memoria, informe_sistema};
+use ordenes::informes::{informe_autopsia, informe_cpu, informe_memoria, informe_sistema};
 use ordenes::*;
 use texto::{decimal, es_punto};
 use vigilante::{vigilar_corrida, Corrida};
@@ -183,6 +183,51 @@ fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
 /// deliberado -- un volcado que fallara la segunda vez obligaria a inventar
 /// nombres, y un `salida1.txt`, `salida2.txt`... es exactamente el desorden que
 /// este archivo viene a evitar.
+/// ** GUARDA LA AUTOPSIA SOLA, en cuanto el kernel mata una tarea.
+///
+/// El kernel redacta el informe y lo deja en RAM; esto lo saca a disco. La
+/// division es a proposito y esta explicada en `ring0/core/autopsia.rs`:
+/// escribir un fichero DENTRO de un manejador de faults es entrar en el driver
+/// de disco, que puede ser justo lo que acaba de caerse.
+///
+/// * Se llama con el numero de fallos que se vieron la ultima vez. Si no ha
+/// cambiado no hace NADA -- ni abre el fichero, ni lee un renglon. Es una
+/// comparacion de enteros por vuelta del bucle, que es lo que permite que esto
+/// viva en el camino de cada fotograma sin costar nada.
+///
+/// Se ANADE al fichero abriendolo entero cada vez y reescribiendo los cuatro
+/// que el kernel guarda: `Archivo::create` trunca, y llevar un cursor entre
+/// arranques seria estado que hay que sincronizar. Cuatro informes de ocho
+/// renglones son dos kilobytes; reescribirlos es mas barato que acordarse.
+fn guardar_autopsias(vistos: &mut u64) -> bool {
+    let total = bmo::autopsia_total();
+    if total == *vistos {
+        return false;
+    }
+    *vistos = total;
+    let Ok(a) = bmo::Archivo::create(b"datos/fallos.txt") else {
+        // Sin fichero no se pierde el informe: sigue en el kernel y `fallo` lo
+        // ensena. Se contesta `true` igual porque el fallo SI ocurrio, que es
+        // lo que el que mira la pantalla tiene que saber.
+        return true;
+    };
+    let cuantos = bmo::autopsia_disponibles();
+    let mut buf = [0u8; 96];
+    for i in 0..cuantos {
+        let filas = bmo::autopsia_renglones(i);
+        for f in 0..filas {
+            let n = bmo::autopsia_linea(i, f, &mut buf);
+            a.write(&buf[..n]);
+            // `\r\n` por lo mismo que `volcar_salida`: esto se abre en Windows
+            // para mandarlo, y el Notepad viejo junta los saltos de Unix.
+            a.write(b"\r\n");
+        }
+        a.write(b"\r\n");
+    }
+    a.close();
+    true
+}
+
 fn volcar_salida(salida: &Salida, ruta: &[u8], desde: usize, hasta: usize) -> Result<usize, u32> {
     let a = bmo::Archivo::create(ruta)?;
     let mut bytes = 0usize;
@@ -628,12 +673,31 @@ pub extern "C" fn _start() -> ! {
     // que se puede sacar sin arrastrar media firma. Ver la cabecera del modulo.
     let mut corrida: Option<Corrida> = None;
 
+    // Cuantos fallos de Ring 3 se habian visto. Empieza en el total actual y no
+    // en cero: los de antes de arrancar el escritorio ya se guardaron.
+    let mut fallos_vistos = bmo::autopsia_total();
+
     loop {
         // -- Termino el programa que se lanzo? Entonces, a guardarlo --
         //
         // 71 lineas que estaban aqui dentro. Se fueron ENTERAS a
         // `vigilante.rs`, sin tocar una coma de su logica.
         vigilar_corrida(&mut corrida, &salida_cap, &mut salida);
+
+        // ** MURIO ALGO? Entonces la autopsia ya esta escrita, y se guarda.
+        //
+        // Comparar un entero por vuelta cuesta nada; leer el informe solo pasa
+        // cuando de verdad hubo un fallo. Y avisar en la barra importa tanto
+        // como guardarlo: un fichero que nadie sabe que existe es un fichero
+        // que no se manda.
+        if guardar_autopsias(&mut fallos_vistos) {
+            pintar_estado(
+                &p,
+                &caja,
+                "fallo de Ring 3 guardado en datos/fallos.txt -- escribe `fallo`",
+                TEXTO_MAL,
+            );
+        }
 
         vueltas = vueltas.wrapping_add(1);
         let mut repintar_campo = false;
@@ -1430,6 +1494,11 @@ pub extern "C" fn _start() -> ! {
                                 salida.byte(b'\n');
                                 salida.con_tinta(TINTA_NORMAL);
                                 pintar_estado(&p, &caja, "no es un programa: prueba lee", TEXTO_TENUE);
+                                n = 0;
+                            }
+                            Orden::Autopsia => {
+                                informe_autopsia(&mut salida);
+                                pintar_estado(&p, &caja, "ultimo fallo de Ring 3", TEXTO_TENUE);
                                 n = 0;
                             }
                             Orden::Informe => {

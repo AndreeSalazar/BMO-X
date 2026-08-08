@@ -162,6 +162,64 @@ pub fn klog_total() -> u64 {
     invoke(CURRENT_TASK, OP_KLOG_INFO, 1, 0, 0).value
 }
 
+// -- LA AUTOPSIA de un fallo de Ring 3 -----------------------------------
+//
+// El klog cuenta el relato de la maquina; esto es el INFORME de cada muerte:
+// vector, codigo de error en palabras, la direccion que se toco, el `rip`, la
+// pila, **que programa era** y lo ultimo que llego a escribir.
+//
+// Mismo trato que el klog: contesta texto y no concede nada. Ver
+// `ring0/core/autopsia.rs` -- el kernel captura en RAM porque escribir a disco
+// dentro de un fault es entrar en el driver que quiza acaba de caerse.
+
+/// Cuantos fallos de Ring 3 van desde el arranque.
+///
+/// **Este es el numero que se mira en bucle.** Si cambio hay una autopsia
+/// nueva, y eso se sabe sin leer un solo renglon: una comparacion de enteros
+/// por fotograma en vez de un informe por fotograma.
+pub fn autopsia_total() -> u64 {
+    invoke(CURRENT_TASK, OP_AUTOPSIA_INFO, AUTOPSIA_TOTAL, 0, 0).value
+}
+
+/// Cuantos informes se pueden leer ahora mismo.
+pub fn autopsia_disponibles() -> u64 {
+    invoke(CURRENT_TASK, OP_AUTOPSIA_INFO, AUTOPSIA_DISPONIBLES, 0, 0).value
+}
+
+/// Cuantos renglones tiene el informe `n` (**0 = el mas reciente**).
+pub fn autopsia_renglones(n: u64) -> u64 {
+    invoke(CURRENT_TASK, OP_AUTOPSIA_INFO, AUTOPSIA_RENGLONES, n, 0).value
+}
+
+/// Copia el renglon `fila` del informe `n` en `dst`. Devuelve cuantos bytes.
+///
+/// Los dos indices viajan empaquetados en un solo argumento --informe arriba,
+/// fila abajo-- porque la puerta tiene tres y dos los ocupan la operacion y el
+/// trozo. Es la misma aritmetica que usa la entrada para el raton.
+pub fn autopsia_linea(n: u64, fila: u64, dst: &mut [u8]) -> usize {
+    let idx = (n << 32) | fila;
+    let mut escritos = 0usize;
+    let mut trozo = 0u64;
+    // Tope de trozos: el renglon mide 72 bytes, o sea nueve palabras. Con
+    // dieciseis sobra, y que sea finito es lo que impide que un kernel que
+    // conteste raro cuelgue al escritorio.
+    while trozo < 16 {
+        let w = invoke(CURRENT_TASK, OP_AUTOPSIA_TEXTO, idx, trozo, 0).value;
+        if w == 0 {
+            break;
+        }
+        for b in w.to_le_bytes() {
+            if b == 0 || escritos >= dst.len() {
+                return escritos;
+            }
+            dst[escritos] = b;
+            escritos += 1;
+        }
+        trozo += 1;
+    }
+    escritos
+}
+
 /// **Despierta los otros nucleos.** Devuelve `(alive, esperados)`, sin contar
 /// el que ejecuta esto.
 ///

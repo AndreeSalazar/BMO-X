@@ -73,6 +73,8 @@ pub(crate) enum Orden<'a> {
     /// ningun poder. Ahora bajan por `OP_INFO` y se pintan aqui, que es donde
     /// esta la pantalla.
     Informe,
+    /// El informe del ULTIMO fallo de Ring 3, tal como lo redacto el kernel.
+    Autopsia,
     Cpu,
     Memoria,
     /// **Los nucleos.** Sin argumento solo censa; con `all` o con un numero,
@@ -195,6 +197,9 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         // No pide texto como `escribe`: lo que guarda ya esta en la pantalla.
         b"guarda" | b"volcar" | b"dump" => Orden::Guardar(resto),
         b"info" | b"sistema" => Orden::Informe,
+        // `fallo` ensena la ultima autopsia. Se guarda sola en `datos/fallos.txt`
+        // en cuanto ocurre -- esto es para mirarla sin salir del escritorio.
+        b"fallo" | b"fallos" | b"autopsia" => Orden::Autopsia,
         b"cpu" | b"procesador" => Orden::Cpu,
         b"mem" | b"ram" | b"memoria" => Orden::Memoria,
         b"reboot" | b"reinicia" | b"reiniciar" => Orden::Reiniciar,

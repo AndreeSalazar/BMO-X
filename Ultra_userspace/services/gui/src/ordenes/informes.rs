@@ -235,3 +235,46 @@ pub(crate) fn informe_sistema(s: &mut Salida) {
     s.byte(b'\n');
 }
 
+
+/// ** LA AUTOPSIA del ultimo fallo de Ring 3, tal como la redacto el kernel.
+///
+/// No se formatea nada aqui a proposito: el informe **ya viene escrito** desde
+/// Ring 0, renglon a renglon. Y eso no es pereza, es donde tiene que estar --
+/// el unico que sabe el vector, el codigo de error y el `cr2` es quien atendio
+/// la excepcion, y volver a interpretarlos en Ring 3 seria tener dos sitios
+/// donde equivocarse sobre el mismo fallo.
+///
+/// Aqui solo se pinta, y se pinta en ROJO, que es lo que es.
+pub(crate) fn informe_autopsia(s: &mut Salida) {
+    seccion(s, b"ultimo fallo");
+    let total = bmo::autopsia_total();
+    if total == 0 {
+        s.con_tinta(TINTA_BIEN);
+        s.texto(b"    ningun fallo de Ring 3 desde el arranque\n");
+        s.con_tinta(TINTA_NORMAL);
+        return;
+    }
+    let filas = bmo::autopsia_renglones(0);
+    let mut buf = [0u8; 96];
+    for f in 0..filas {
+        let n = bmo::autopsia_linea(0, f, &mut buf);
+        s.texto(b"    ");
+        // El titulo en rojo y el cuerpo normal: lo que se busca de un vistazo
+        // es CUAL fue y cuando, no el `rsp`.
+        if f == 0 {
+            s.con_tinta(TINTA_MAL);
+        }
+        s.texto(&buf[..n]);
+        if f == 0 {
+            s.con_tinta(TINTA_NORMAL);
+        }
+        s.byte(b'\n');
+    }
+    if total > 1 {
+        s.con_tinta(TINTA_ECO);
+        s.texto(b"    (van ");
+        s.dec(total);
+        s.texto(b" desde el arranque; se guardan las 4 ultimas)\n");
+        s.con_tinta(TINTA_NORMAL);
+    }
+}

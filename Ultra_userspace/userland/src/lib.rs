@@ -156,6 +156,17 @@ pub const INFO_SMP_VIVOS: u64 = 0x1B;
 pub const INFO_SPIN_CHOQUES: u64 = 0x1C;
 pub const INFO_SPIN_PICO: u64 = 0x1D;
 
+// ** LA AUTOPSIA de un fallo de Ring 3.
+//
+// El kernel guarda el informe COMPLETO de cada tarea que mata --vector, codigo
+// en palabras, direccion, `rip`, `rsp`, que programa era y lo ultimo que
+// escribio-- y aqui se lee. Contesta texto: no concede nada.
+pub const OP_AUTOPSIA_INFO: u32 = 0x1F;
+pub const OP_AUTOPSIA_TEXTO: u32 = 0x20;
+pub const AUTOPSIA_TOTAL: u64 = 0x00;
+pub const AUTOPSIA_DISPONIBLES: u64 = 0x01;
+pub const AUTOPSIA_RENGLONES: u64 = 0x02;
+
 // Campos de `OP_INFO_TEXTO`.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 pub const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
