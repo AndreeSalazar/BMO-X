@@ -37,6 +37,16 @@ const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
 const INFO_TSC_HZ: u64 = 0x05;
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
+/// ★ Quién tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
+///
+/// Existe para que el escritorio pueda PRESTARLA y esperar. Hacía falta
+/// preguntar, no tomar: intentar reclamarla para saber si está libre te la deja
+/// puesta, y entonces se la robas al programa que ibas a prestársela.
+///
+/// `0` como "de nadie" y no `u32::MAX`: el pid 0 no se concede a un proceso de
+/// Ring 3, así que no hay ambigüedad, y desde Ring 3 un `0` se lee sin tener
+/// que conocer el centinela del kernel.
+const INFO_PANTALLA_DUENO: u64 = 0x1A;
 const INFO_TAREAS_TOTAL: u64 = 0x08;
 const INFO_TAREAS_LISTAS: u64 = 0x09;
 const INFO_TAREAS_LIBRES: u64 = 0x0A;
@@ -87,6 +97,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_CPU_NUCLEOS => cpu_topo().map(|t| t.nucleos as u64).unwrap_or(0),
         INFO_TAREAS_TOTAL => crate::ring0::task::scheduler::counts().0 as u64,
         INFO_TAREAS_LISTAS => crate::ring0::task::scheduler::counts().1 as u64,
+        INFO_PANTALLA_DUENO => crate::ring0::obj::fb::dueno().unwrap_or(0) as u64,
         INFO_TAREAS_LIBRES => crate::ring0::task::scheduler::huecos_libres() as u64,
         INFO_TICKS => crate::ring0::plat::timer::ticks(),
         // Medido, no declarado: desde donde lo enlaza el guion hasta el final

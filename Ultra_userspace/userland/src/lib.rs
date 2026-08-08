@@ -111,6 +111,12 @@ pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;
 pub const INFO_TAREAS_LISTAS: u64 = 0x09;
+/// ★ Quién tiene la pantalla: su `pid`, o **`0` si no la tiene nadie**.
+///
+/// Se PREGUNTA en vez de intentar reclamarla, y la diferencia importa: probar a
+/// reclamarla para saber si está libre **te la deja puesta**, y entonces se la
+/// robas al programa al que se la ibas a prestar.
+pub const INFO_PANTALLA_DUENO: u64 = 0x1A;
 pub const INFO_TAREAS_LIBRES: u64 = 0x0A;
 pub const INFO_TICKS: u64 = 0x0B;
 pub const INFO_KERNEL_BYTES: u64 = 0x0C;

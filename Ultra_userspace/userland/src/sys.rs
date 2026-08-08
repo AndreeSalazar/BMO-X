@@ -99,6 +99,29 @@ pub fn ceder() {
     invoke(CURRENT_TASK, OP_YIELD, 0, 0, 0);
 }
 
+/// ★ El contador de ciclos del CPU. **No es privilegiado: Ring 3 puede.**
+///
+/// Vive aquí y no en una escena del compositor porque es una primitiva de la
+/// máquina, no de una pantalla — y porque ya había una copia privada en
+/// `escena::entrada` y una segunda copia habría sido la tercera.
+///
+/// # Para qué sirve de verdad
+///
+/// Los tres syscalls congelados no traen reloj, así que sin esto la única forma
+/// de esperar es **contar vueltas de bucle** — y eso da una espera de dos
+/// segundos en un Ryzen y de veinte en algo más lento, que es como se hacían las
+/// cosas cuando no había forma de saber la hora. Con `rdtsc` y la frecuencia que
+/// el kernel publica en [`crate::INFO_TSC_HZ`], una espera de 900 ms es de 900 ms
+/// **en esta máquina y en la siguiente**.
+#[inline]
+pub fn ciclos() -> u64 {
+    let (hi, lo): (u32, u32);
+    unsafe {
+        core::arch::asm!("rdtsc", out("edx") hi, out("eax") lo, options(nomem, nostack));
+    }
+    ((hi as u64) << 32) | lo as u64
+}
+
 /// Terminar. No vuelve: el kernel revoca las capabilities del proceso y
 /// cambia de contexto en el propio borde del syscall.
 pub fn salir() -> ! {

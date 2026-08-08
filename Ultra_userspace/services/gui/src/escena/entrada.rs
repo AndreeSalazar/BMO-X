@@ -29,15 +29,6 @@ use crate::texto::decimal;
 const ENT_FONDO: u32 = 0x000A_0E17;
 const ENT_TENUE: u32 = 0x0059_6B8A;
 
-/// Lee el contador de ciclos del CPU. No es privilegiada: Ring 3 puede.
-#[inline]
-fn ciclos() -> u64 {
-    let (hi, lo): (u32, u32);
-    unsafe {
-        core::arch::asm!("rdtsc", out("edx") hi, out("eax") lo, options(nomem, nostack));
-    }
-    ((hi as u64) << 32) | lo as u64
-}
 
 /// Espera exacta, cediendo el CPU mientras tanto — y **cortable con una tecla**.
 ///
@@ -72,8 +63,8 @@ fn esperar_ms(ms: u64, entrada: Option<&bmo::Entrada>) {
         // se ve es infinitamente mejor que una espera de duración desconocida.
         return;
     }
-    let objetivo = ciclos() + hz / 1000 * ms;
-    while ciclos() < objetivo {
+    let objetivo = bmo::ciclos() + hz / 1000 * ms;
+    while bmo::ciclos() < objetivo {
         // La tecla se consume al leerla, así que la que salta la intro **no**
         // acaba escrita en la caja de Ejecutar. Un atajo que además teclea algo
         // sería un atajo que hay que deshacer.

@@ -239,6 +239,72 @@ fn destapar(
     salida.sucia = true;
 }
 
+/// ★ PRESTAR LA PANTALLA a un programa y recuperarla cuando muera.
+///
+/// Consume la `Pantalla` y devuelve otra: entre medias **este proceso no tiene
+/// pantalla**, y que el tipo lo refleje es lo que impide pintar en un puntero ya
+/// desmapeado. Ver `bmo::Pantalla::soltar`.
+///
+/// # Por qué se PREGUNTA quién la tiene, en vez de intentar tomarla
+///
+/// La tentación es un bucle de `Pantalla::reclamar()` hasta que salga. No sirve:
+/// justo después de soltarla **está libre**, así que el primer intento acierta y
+/// se la quitamos al programa antes de que llegue a pedirla. Reclamar para
+/// averiguar si está libre te la deja puesta.
+///
+/// De ahí `INFO_PANTALLA_DUENO`, que contesta el `pid` del dueño (o `0`) sin
+/// tocar nada.
+///
+/// # Y por qué no vale `hay_hijo()`
+///
+/// Porque contesta *"el hijo ha escrito en la consola"*, no *"el hijo está
+/// vivo"* — lo dice el vigilante de la corrida en este mismo archivo. `ray.bex`
+/// dibuja durante minutos sin imprimir una letra, así que esperarlo por ahí
+/// habría vuelto en el primer fotograma. Lo que sí es exacto es la propiedad de
+/// la pantalla: el kernel la libera en `fb::proceso_muerto`, o sea que el dueño
+/// volviendo a `0` **es** el programa terminando.
+///
+/// # Las dos fases, y el tope de la primera
+///
+/// 1. Esperar a que la TOME, con tope de 500 ms. Si no la toma, no la quería —
+///    un `presta ls` no puede colgar el escritorio para siempre.
+/// 2. Esperar a que la SUELTE, sin tope: aquí sí se sabe que hay alguien
+///    dentro, y un juego puede durar lo que quiera.
+fn prestar_pantalla(
+    p: bmo::Pantalla,
+    objetivo: &[u8],
+    consola: u64,
+) -> Option<bmo::Pantalla> {
+    if !p.soltar() {
+        // No éramos el dueño: raro, pero no se sigue a ciegas. Se intenta
+        // recuperar y punto.
+        return bmo::Pantalla::reclamar();
+    }
+    if bmo::ejecutar_en(objetivo, consola).is_err() {
+        // El programa no arrancó, así que nadie va a tomar la pantalla: se
+        // recupera YA en vez de esperar los 500 ms de la fase 1.
+        return bmo::Pantalla::reclamar();
+    }
+    let hz = bmo::info(bmo::INFO_TSC_HZ);
+    let mut la_tomo = false;
+    if hz > 0 {
+        let tope = bmo::ciclos() + hz / 2; // 500 ms, cronometrados
+        while bmo::ciclos() < tope {
+            if bmo::info(bmo::INFO_PANTALLA_DUENO) != 0 {
+                la_tomo = true;
+                break;
+            }
+            bmo::ceder();
+        }
+    }
+    if la_tomo {
+        while bmo::info(bmo::INFO_PANTALLA_DUENO) != 0 {
+            bmo::ceder();
+        }
+    }
+    bmo::Pantalla::reclamar()
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     // El aviso va ANTES de reclamar: en cuanto la cesión se consuma, el kernel
@@ -1243,6 +1309,12 @@ pub extern "C" fn _start() -> ! {
                             Orden::Ayuda => {
                                 salida.texto(b"  <ruta>       lanza un .bex   (cobol/banco.bex)\n");
                                 salida.texto(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
+                                // Va JUSTO detras de `run` porque es su hermana,
+                                // y con la consecuencia delante: lo que sorprende
+                                // no es que lance, es que el escritorio se vaya.
+                                salida.texto(b"  presta <ruta>  se lo lanza CON LA PANTALLA: el\n");
+                                salida.texto(b"               escritorio se aparta y vuelve cuando\n");
+                                salida.texto(b"               el programa termina  (c/ray.bex)\n");
                                 salida.texto(b"  cat <ruta>   ensena lo que hay dentro\n");
                                 salida.texto(b"  write <ruta> <texto>     lo guarda\n");
                                 salida.texto(b"  guarda [ruta]  vuelca esta salida a un .txt\n");
@@ -1415,6 +1487,49 @@ pub extern "C" fn _start() -> ! {
                                 // nunca existió en vez de decir la verdad.
                                 salida.texto(b"  no es un comando ni una ruta. escribe 'help'.\n");
                                 pintar_estado(&p, &caja, "no lo conozco: prueba help", TEXTO_MAL);
+                                n = 0;
+                            }
+                            // ★ `presta <ruta>` — como `Lanzar`, pero cediéndole
+                            // la pantalla y esperándolo.
+                            //
+                            // ⚠️ NO SE TOCA EL FOCO. El préstamo va de quién
+                            // PINTA, y el foco de quién recibe las teclas: son
+                            // dos cosas y mezclarlas rompería Alt+Tab, que
+                            // costó dos sesiones dejar bien (patrón 24 de los
+                            // bugs: una política escrita que nadie consulta).
+                            // Al volver se repinta la escena tal como estaba y
+                            // el foco sigue donde lo dejó el dueño.
+                            Orden::Prestar(objetivo) => {
+                                let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
+                                match prestar_pantalla(p, objetivo, cap) {
+                                    Some(nueva) => {
+                                        p = nueva;
+                                        // Repintado ENTERO, y hace falta: la
+                                        // pantalla la tuvo otro. Es la misma
+                                        // secuencia del arranque, no una
+                                        // versión reducida — lo que se ve tras
+                                        // volver tiene que ser indistinguible
+                                        // de lo que había antes de prestarla.
+                                        p.limpiar(FONDO);
+                                        pintar_caja(&p, &caja);
+                                        pintar_campo(&p, &caja, &ruta[..n], cur, true);
+                                        pintar_salida(&p, &caja, &salida);
+                                        pintar_estado(&p, &caja, "pantalla devuelta", TEXTO_BIEN);
+                                        p.vaciar();
+                                        repintar_campo = true;
+                                    }
+                                    // Sin pantalla no hay escritorio. Se dice y
+                                    // se sale: el kernel la recupera al morir
+                                    // este proceso y vuelve su panel, que es
+                                    // mejor que un compositor vivo y ciego
+                                    // pintando en memoria de nadie.
+                                    None => {
+                                        bmo::consola(
+                                            "no pude recuperar la pantalla tras prestarla\n",
+                                        );
+                                        bmo::salir()
+                                    }
+                                }
                                 n = 0;
                             }
                             Orden::Lanzar(objetivo) => {
