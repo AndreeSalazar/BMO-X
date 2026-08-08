@@ -272,18 +272,42 @@ fn destapar(
 ///    dentro, y un juego puede durar lo que quiera.
 fn prestar_pantalla(
     p: bmo::Pantalla,
+    entrada: Option<bmo::Entrada>,
     objetivo: &[u8],
     consola: u64,
-) -> Option<bmo::Pantalla> {
+) -> Option<(bmo::Pantalla, Option<bmo::Entrada>)> {
+    // ★★ SE PRESTAN LAS DOS, Y ESTO ES UN ARREGLO EN METAL.
+    //
+    // La primera version presto solo la PANTALLA. En el Ryzen, `ray.bex` pinto
+    // cielo y suelo — y se quedo dentro para siempre, porque el escritorio se
+    // habia quedado la ENTRADA y el raycaster no podia leer su propio ESC. La
+    // maquina sin teclado y sin forma de volver.
+    //
+    // **Ceder la pantalla sin ceder la entrada no es prestar: es dejar a alguien
+    // pintando en una habitacion cerrada.**
+    //
+    // La entrada se suelta DESPUES de la pantalla y se recupera ANTES, o sea en
+    // orden inverso: si algo falla en medio, el escritorio prefiere quedarse sin
+    // teclado un momento que sin pantalla.
+    let mut tenia_entrada = false;
+    if let Some(e) = entrada {
+        tenia_entrada = true;
+        e.soltar();
+    }
+    let recuperar = move || {
+        let p = bmo::Pantalla::reclamar()?;
+        let e = if tenia_entrada { bmo::Entrada::reclamar() } else { None };
+        Some((p, e))
+    };
     if !p.soltar() {
         // No éramos el dueño: raro, pero no se sigue a ciegas. Se intenta
         // recuperar y punto.
-        return bmo::Pantalla::reclamar();
+        return recuperar();
     }
     if bmo::ejecutar_en(objetivo, consola).is_err() {
         // El programa no arrancó, así que nadie va a tomar la pantalla: se
         // recupera YA en vez de esperar los 500 ms de la fase 1.
-        return bmo::Pantalla::reclamar();
+        return recuperar();
     }
     let hz = bmo::info(bmo::INFO_TSC_HZ);
     let mut la_tomo = false;
@@ -302,7 +326,7 @@ fn prestar_pantalla(
             bmo::ceder();
         }
     }
-    bmo::Pantalla::reclamar()
+    recuperar()
 }
 
 #[no_mangle]
@@ -334,7 +358,9 @@ pub extern "C" fn _start() -> ! {
     // La entrada es opcional a propósito: sin ella hay escritorio, sólo que
     // quieto y mudo. Un compositor que se niega a arrancar porque falta un
     // periférico es un compositor que no arranca el día que el periférico falla.
-    let entrada = bmo::Entrada::reclamar();
+    // `mut` porque `presta` la SUELTA y la vuelve a reclamar: la capability se
+    // va y vuelve, asi que el binding tiene que poder cambiar.
+    let mut entrada = bmo::Entrada::reclamar();
 
     // La consola de este terminal. Desde aquí, todo lo que lance escribe en
     // ESTE anillo y no en el panel del kernel — que es lo único que separaba
@@ -1501,9 +1527,14 @@ pub extern "C" fn _start() -> ! {
                             // el foco sigue donde lo dejó el dueño.
                             Orden::Prestar(objetivo) => {
                                 let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
-                                match prestar_pantalla(p, objetivo, cap) {
-                                    Some(nueva) => {
+                                // `entrada.take()` y no `&entrada`: `soltar`
+                                // CONSUME la capability, y que el tipo lo exija
+                                // es lo que impide seguir leyendo teclas de un
+                                // handle ya revocado.
+                                match prestar_pantalla(p, entrada.take(), objetivo, cap) {
+                                    Some((nueva, ent)) => {
                                         p = nueva;
+                                        entrada = ent;
                                         // Repintado ENTERO, y hace falta: la
                                         // pantalla la tuvo otro. Es la misma
                                         // secuencia del arranque, no una

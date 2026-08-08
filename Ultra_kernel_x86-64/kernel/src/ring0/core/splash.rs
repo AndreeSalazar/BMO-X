@@ -22,6 +22,18 @@
 
 use crate::ring0::core::gato;
 
+/// Cuánto se queda el logo a la vista, en ms.
+///
+/// ⚠️ **Es tiempo de arranque puro.** No hay trabajo con el que solaparlo —el
+/// kernel está operativo a los 52 ms— y no se puede saltar con una tecla porque
+/// el USB no está enumerado todavía.
+///
+/// El dueño pidió tres segundos. Van 1.600 porque el mismo día se quitaron 4,5 s
+/// de espera artificial (los cuatro carteles de aquí y la siesta del compositor),
+/// y 3.000 devolvería dos tercios de lo ganado. Es una línea: si se quieren los
+/// tres segundos, se cambia el número.
+const GATO_MS: u64 = 1600;
+
 const FONT_H: usize   = 16;
 const FONT_W: usize   = 8;
 const CHAR_W: usize   = 10;  // 2px spacing
@@ -386,6 +398,19 @@ pub fn boot_intro() {
         wc_flush();
         hold_ms(70);
     }
+
+    // ★ Y SE QUEDA A LA VISTA `GATO_MS`.
+    //
+    // Aquí no hay trabajo con el que solapar: el kernel está operativo a los
+    // 52 ms, así que para que el logo se VEA hay que esperar. Y **no se puede
+    // saltar con una tecla**, a diferencia de la intro del compositor: en este
+    // punto del arranque el USB no se ha enumerado todavía y no hay teclado que
+    // preguntar.
+    //
+    // O sea que este número es tiempo de arranque, todo él. Está en una
+    // constante y con el coste escrito para que subirlo sea una decisión y no un
+    // descuido.
+    hold_ms(GATO_MS);
 }
 
 // ?????? Smooth progress bar ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????

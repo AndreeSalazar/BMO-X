@@ -40,6 +40,22 @@ impl Entrada {
         Some(Self { cap })
     }
 
+    /// ★ **Soltarla y seguir vivo.** Consume la `Entrada`, igual que
+    /// `Pantalla::soltar`.
+    ///
+    /// Existe por un fallo concreto: el escritorio aprendió a prestar la PANTALLA
+    /// y se quedó la ENTRADA, así que el programa al que se la prestaba pintaba
+    /// perfectamente y **no podía leer su propia tecla de salida**. Se quedaba
+    /// dentro para siempre y la máquina sin teclado.
+    ///
+    /// **Ceder la pantalla sin ceder la entrada no es prestar: es dejar a alguien
+    /// pintando en una habitación cerrada.** Las dos van juntas.
+    ///
+    /// Devuelve `false` si no era el dueño, en vez de fingir que la soltó.
+    pub fn soltar(self) -> bool {
+        invoke(CURRENT_TASK, OP_ENTRADA_SOLTAR, 0, 0, 0).valor().is_some()
+    }
+
     /// Una llamada por fotograma: los tres datos vienen empaquetados.
     pub fn puntero(&self) -> Punto {
         let v = invoke(self.cap, INPUT_OP_PUNTERO, 0, 0, 0).value;

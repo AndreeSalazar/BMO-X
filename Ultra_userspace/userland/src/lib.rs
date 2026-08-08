@@ -62,6 +62,12 @@ pub const OP_FRAMEBUFFER_CLAIM: u32 = 0x09;
 /// [`OP_FRAMEBUFFER_CLAIM`]: hasta el 2026-08-07 la única forma de dejar de ser
 /// dueño era terminar, así que el escritorio no podía prestarla ni queriendo.
 pub const OP_PANTALLA_SOLTAR: u32 = 0x1D;
+/// Soltar la ENTRADA siendo su dueño y seguir vivo.
+///
+/// Va junto a [`OP_PANTALLA_SOLTAR`] porque **separarlas fue el bug**: prestar la
+/// pantalla sin la entrada deja al programa pintando sin poder leer su propia
+/// tecla de salida, y a la maquina sin teclado hasta reiniciar.
+pub const OP_ENTRADA_SOLTAR: u32 = 0x1E;
 pub const OP_INPUT_CLAIM: u32 = 0x0A;
 pub const OP_RUTA: u32 = 0x0B;
 pub const OP_EJECUTAR: u32 = 0x0C;

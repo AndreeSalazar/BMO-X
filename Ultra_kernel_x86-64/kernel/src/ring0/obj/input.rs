@@ -26,12 +26,16 @@
 //! ★ Y como con la pantalla: hoy la reclama el primero que la pide. La
 //! autoridad correcta es la bandera del BEF verificada por el gate.
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use crate::ring0::obj::cap;
 
 const SIN_DUENO: u32 = u32::MAX;
 static DUENO: AtomicU32 = AtomicU32::new(SIN_DUENO);
+/// El handle concedido al dueño, para poder revocarlo si la SUELTA. Mismo
+/// motivo que en `obj::fb`: `cap` no ofrece "revoca todo lo de este tipo", y
+/// `revoke_all` se llevaria por delante su pantalla y su consola.
+static HANDLE: AtomicU64 = AtomicU64::new(0);
 
 /// Ya la tiene otro proceso.
 pub const ERROR_OCUPADO: u32 = 16;
@@ -105,6 +109,7 @@ pub fn reclamar(pid: u32) -> Result<u64, u32> {
     }
     match cap::grant(pid, cap::KIND_INPUT, cap::RIGHT_READ, 0) {
         Some(h) => {
+            HANDLE.store(h, Ordering::SeqCst);
             crate::ring0::cabina::info("input", "raton cedido a Ring 3", pid as u64);
             Ok(h)
         }
@@ -115,9 +120,52 @@ pub fn reclamar(pid: u32) -> Result<u64, u32> {
     }
 }
 
+/// ★ SOLTAR LA ENTRADA sin morirse. Pareja de [`reclamar`].
+///
+/// # Por qué hizo falta, y es una lección
+///
+/// El 2026-08-07 se añadió `presta <ruta>` al escritorio para que un programa
+/// gráfico pudiera tomar la pantalla. Funcionó: `ray.bex` pintó cielo y suelo en
+/// el Ryzen. Y **se quedó colgado para siempre**, porque el escritorio le presta
+/// la pantalla y se queda la ENTRADA — así que el raycaster no podía leer su
+/// propio ESC para salir, y el escritorio esperaba a que muriese.
+///
+/// La máquina quedaba sin teclado y sin forma de volver. Eddi: *"no me deja
+/// controlar ni puedo llamar el comando con control+alt ni alt+tab ni nada"*.
+///
+/// **Ceder la pantalla sin ceder la entrada no es prestar: es dejar a un
+/// programa pintando en una habitación cerrada.** Las dos capabilities van
+/// juntas o no van.
+///
+/// # Más simple que la de la pantalla, y por qué
+///
+/// Aquí no hay nada que desmapear: la entrada se lee por `INVOKE` sobre un
+/// handle, no por memoria compartida. Así que basta revocar el handle y soltar
+/// la propiedad — y no hace falta el `aspace` del llamante.
+pub fn soltar(pid: u32) -> Result<(), u32> {
+    if DUENO.load(Ordering::SeqCst) != pid {
+        // No es suya. Se dice, en vez de contestar OK a quien no la tenía.
+        return Err(ERROR_OCUPADO);
+    }
+    let h = HANDLE.swap(0, Ordering::SeqCst);
+    if h != 0 {
+        cap::revoke(pid, h);
+    }
+    DUENO.store(SIN_DUENO, Ordering::SeqCst);
+    crate::ring0::cabina::info("input", "entrada SOLTADA por su dueño", pid as u64);
+    Ok(())
+}
+
 /// Lo llama `cap::revoke_all`: si el dueño muere, la entrada vuelve al kernel.
 pub fn proceso_muerto(pid: u32) {
-    let _ = DUENO.compare_exchange(pid, SIN_DUENO, Ordering::SeqCst, Ordering::SeqCst);
+    if DUENO
+        .compare_exchange(pid, SIN_DUENO, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        // El handle muere con el proceso, pero el static no: dejarlo puesto
+        // haría que un `soltar` posterior revocase el handle de un muerto.
+        HANDLE.store(0, Ordering::SeqCst);
+    }
 }
 
 /// Despacho de las operaciones. `None` = operación que no existe.

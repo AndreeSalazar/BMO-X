@@ -59,6 +59,12 @@ const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
 /// `MEMORIA_PEDIR` se puso en `0x12` —ya ocupado por `REINICIAR`— y pedir
 /// memoria habría reiniciado la máquina.
 const TASK_OP_PANTALLA_SOLTAR: u64 = 0x1D;
+/// Soltar la ENTRADA siendo su dueño y seguir vivo. Pareja de `INPUT_CLAIM`.
+///
+/// Va con `PANTALLA_SOLTAR` porque el caso de uso es el mismo y **separarlas fue
+/// el bug**: prestar la pantalla sin la entrada dejó a `ray.bex` pintando sin
+/// poder leer su propio ESC, y a la maquina sin teclado.
+const TASK_OP_ENTRADA_SOLTAR: u64 = 0x1E;
 /// Reclamar el raton. Devuelve un handle `KIND_INPUT`: el kernel lee el HID,
 /// Ring 3 decide que hace con las coordenadas. Ver `ring0/input.rs`.
 const TASK_OP_INPUT_CLAIM: u64 = 0x0A;
@@ -469,6 +475,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // más, porque es de donde hay que DESMAPEAR: el proceso sigue vivo y
         // dejarle las páginas sería dejarle escribir en una pantalla que ya no
         // es suya.
+        TASK_OP_ENTRADA_SOLTAR => {
+            let _ = arg0;
+            match crate::ring0::obj::input::soltar(scheduler::current_pid()) {
+                Ok(()) => BmoStatus::ok_value(0),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
         TASK_OP_PANTALLA_SOLTAR => {
             let _ = arg0;
             match crate::ring0::obj::fb::soltar(
