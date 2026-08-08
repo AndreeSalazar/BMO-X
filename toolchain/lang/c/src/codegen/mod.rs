@@ -128,6 +128,9 @@ struct Codegen {
     /// Se acumulan aquí y se convierten en `Relocation` en `patch_all_fixups`,
     /// que es donde ya se conocen los offsets de las cadenas.
     relocs_a_cadena: Vec<(u32, usize)>,
+    /// ★ Este programa RECLAMA LA PANTALLA. Lo deduce el compilador; acaba en
+    /// `BefFlags::WANTS_SCREEN` y lo lee el compositor antes de lanzarlo.
+    quiere_pantalla: bool,
     /// Las relocations ya resueltas que van en la sección `Relocs` del BEF.
     relocs: Vec<bmo_abi::bef::relocations::Relocation>,
     instruction_end: usize,
@@ -173,6 +176,7 @@ impl Codegen {
             global_offsets: HashMap::new(), global_data: Vec::new(),
             global_fixups: Vec::new(),
             relocs_a_cadena: Vec::new(),
+            quiere_pantalla: false,
             relocs: Vec::new(),
             instruction_end: 0, string_data_end: 0,
             stdlib_imports: std::collections::HashSet::new(),
@@ -553,7 +557,26 @@ impl Codegen {
                 | Expr::BitAnd(a,b) | Expr::BitXor(a,b) | Expr::BitOr(a,b) | Expr::LAnd(a,b) | Expr::LOr(a,b)
                 | Expr::Shl(a,b) | Expr::Shr(a,b) => { self.collect_expr_strings(a); self.collect_expr_strings(b); }
             Expr::Conditional(c,t,f) => { self.collect_expr_strings(c); self.collect_expr_strings(t); self.collect_expr_strings(f); }
-            Expr::Call(_, args) | Expr::Syscall(_, args) => { for a in args { self.collect_expr_strings(a); } }
+            Expr::Call(nombre, args) => {
+                // ★ AQUI SE DEDUCE `WANTS_SCREEN`, y tiene que ser aqui.
+                //
+                // La tentacion es mirarlo en `Expr::Syscall`, donde esta el
+                // INVOKE. No sirve: `bmo_valor` es una FUNCION C de verdad
+                // —vive en `<bmo/bmo.h>`— asi que dentro de ella la operacion es
+                // un PARAMETRO, no un literal. En el sitio de la llamada si se
+                // ve el numero.
+                //
+                // `0x09` es `BMO_OP_PANTALLA_RECLAMAR`. Se pide tambien que el
+                // callee sea una de las dos puertas: un `0x09` suelto como
+                // segundo argumento de cualquier funcion no significa nada.
+                if (nombre == "bmo_valor" || nombre == "bmo_codigo") && args.len() >= 2 {
+                    if let Expr::Int(0x09) = args[1] {
+                        self.quiere_pantalla = true;
+                    }
+                }
+                for a in args { self.collect_expr_strings(a); }
+            }
+            Expr::Syscall(_, args) => { for a in args { self.collect_expr_strings(a); } }
             Expr::Arrow(p,_,_,_) => self.collect_expr_strings(p),
             Expr::AssignArrow(p,_,_,_,v) => { self.collect_expr_strings(p); self.collect_expr_strings(v); }
             Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => self.collect_expr_strings(v),
@@ -2947,6 +2970,13 @@ impl Codegen {
         if !self.relocs.is_empty() {
             let relocs = core::mem::take(&mut self.relocs);
             b.add_section(BefSection::relocs(relocs));
+        }
+
+        // ★ La bandera de la pantalla, deducida al recorrer el programa. Ver
+        // `BefFlags::WANTS_SCREEN`: la pone el compilador y no el autor para que
+        // diga lo que el programa HACE y no lo que promete.
+        if self.quiere_pantalla {
+            b.header.flags |= bmo_abi::bef::header::BefFlags::WANTS_SCREEN.bits();
         }
 
         b.entry_offset = self.entry_offset as u64;

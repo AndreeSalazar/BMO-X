@@ -67,6 +67,34 @@ bitflags::bitflags! {
         const PIE                = 1 << 8;
         /// Importa la API BareX (vs solo usar syscalls BMO).
         const USES_BAREX         = 1 << 9;
+        /// ★ **El binario QUIERE LA PANTALLA.** Lo pone el compilador, no el autor.
+        ///
+        /// # Por qué existe
+        ///
+        /// Hasta el 2026-08-07 la pantalla era del primero que la pedía — orden
+        /// de llegada, no autoridad. Y `gui.bex` la reclama al arrancar, así que
+        /// cualquier programa gráfico se llevaba un "ya tiene dueño".
+        ///
+        /// El arreglo provisional fue un verbo en el escritorio (`presta
+        /// <ruta>`), y era el diseño equivocado: ponía la POLÍTICA en los dedos
+        /// del usuario. Con esta bandera, el compositor **lee la cabecera antes
+        /// de lanzar** y decide él — a quién, cuándo, con qué prioridad, o que
+        /// no. El kernel sigue dando sólo el mecanismo (un dueño, `soltar`).
+        ///
+        /// Tres capas: el kernel arbitra, el BEF declara, el compositor manda.
+        /// Es la misma separación que un planificador de GPU.
+        ///
+        /// # Por qué la pone el COMPILADOR y no el autor
+        ///
+        /// Porque así **no puede mentir**: dice lo que el programa HACE, no lo
+        /// que promete. El codegen la pone al ver una llamada a la puerta de
+        /// syscalls con `BMO_OP_PANTALLA_RECLAMAR` (`0x09`) como operación.
+        ///
+        /// ⚠️ Límite honesto: si un programa calculara ese número en tiempo de
+        /// ejecución, la detección no lo ve. Todo el código real usa el
+        /// `#define`, que expande a un literal — pero el hueco existe y queda
+        /// escrito en vez de descubierto.
+        const WANTS_SCREEN       = 1 << 10;
         /// Origen: PE devorado (set por el loader, no por el compilador).
         const PROVENANCE_PE      = 1 << 14;
         /// Origen: ELF devorado.

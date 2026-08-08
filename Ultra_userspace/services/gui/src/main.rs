@@ -239,6 +239,65 @@ fn destapar(
     salida.sucia = true;
 }
 
+/// ★ ¿Este `.bex` DECLARA que quiere la pantalla?
+///
+/// Se lee la cabecera BEF del archivo antes de lanzarlo: `flags` está en el
+/// offset 8 y el bit 10 es `BefFlags::WANTS_SCREEN`, que **pone el compilador**
+/// al ver que el programa invoca `BMO_OP_PANTALLA_RECLAMAR`.
+///
+/// # Por qué esto es lo que hacía falta, y `presta` no
+///
+/// `presta <ruta>` funcionaba y era el diseño equivocado: ponía la POLÍTICA en
+/// los dedos del usuario, que tenía que saberse de memoria qué programas son
+/// gráficos. Con la bandera, **el compositor decide** — que es su trabajo, y la
+/// razón de que exista un compositor.
+///
+/// Tres capas, cada una con lo suyo: el kernel arbitra (un dueño, `soltar`), el
+/// BEF declara, y aquí se manda. La misma separación que un planificador de GPU:
+/// el hardware no sabe qué es importante, el planificador sí.
+///
+/// # Doce bytes que cuestan una lectura entera, y hay que decirlo
+///
+/// Se leen doce bytes, pero `Archivo::leer_de` **se trae el archivo COMPLETO** al
+/// abrirlo (por eso una lectura posterior no puede fallar a mitad). Así que cada
+/// `run` toca el disco dos veces: una aquí y otra al lanzar.
+///
+/// Para un `.bex` de 7 KB desde un SATA no se nota, y se acepta a cambio de que
+/// la política viva en el sitio correcto. **La forma barata sería que el kernel
+/// devolviera la bandera desde `EJECUTAR`**, que ya tiene el binario en la mano
+/// — queda anotado como lo que es: una optimización pendiente, no un misterio.
+///
+/// No se valida el binario: de eso ya se encarga el gate de admisión del kernel,
+/// que es quien tiene autoridad para rechazarlo. Aquí un archivo raro o ilegible
+/// contesta `false` y sigue el camino normal — **la duda se resuelve NO
+/// prestando**, que es el lado seguro.
+fn quiere_pantalla(ruta: &[u8]) -> bool {
+    let Ok(f) = bmo::Archivo::leer_de(ruta) else { return false };
+    let mut cab = [0u8; 12];
+    if f.leer(&mut cab) < 12 {
+        return false;
+    }
+    // El magic se comprueba antes de creerse los flags: doce bytes de un `.txt`
+    // también tienen un bit 10.
+    let magic = u32::from_le_bytes([cab[0], cab[1], cab[2], cab[3]]);
+    if magic != bmo_abi_magic() {
+        return false;
+    }
+    let flags = u32::from_le_bytes([cab[8], cab[9], cab[10], cab[11]]);
+    flags & (1 << 10) != 0
+}
+
+/// El magic de un BEF: los cuatro bytes `BEF1`.
+///
+/// Escrito aquí y no importado de `bmo-abi` por el mismo motivo que el kernel lo
+/// lee a mano en `bex.rs`: el compositor es `no_std` sin `alloc` y no enlaza esa
+/// crate. Se construye desde el literal —`from_le_bytes(*b"BEF1")`— y no como un
+/// hexadecimal a mano: un número copiado se equivoca de orden de bytes en
+/// silencio, y las cuatro letras no.
+const fn bmo_abi_magic() -> u32 {
+    u32::from_le_bytes(*b"BEF1")
+}
+
 /// ★ PRESTAR LA PANTALLA a un programa y recuperarla cuando muera.
 ///
 /// Consume la `Pantalla` y devuelve otra: entre medias **este proceso no tiene
@@ -1565,6 +1624,42 @@ pub extern "C" fn _start() -> ! {
                             }
                             Orden::Lanzar(objetivo) => {
                                 let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
+                                // ★★ `run` DECIDE SOLO.
+                                //
+                                // Si el `.bex` declara `WANTS_SCREEN` —bandera
+                                // que pone el COMPILADOR al ver que el programa
+                                // reclama la pantalla— el escritorio se aparta
+                                // sin que nadie tenga que pedirlo.
+                                //
+                                // Esto es lo que `presta` deberia haber sido
+                                // desde el principio: la politica en el
+                                // compositor, no en los dedos del usuario.
+                                // `presta` sigue existiendo para forzarlo a
+                                // mano, pero ya no hace falta saberselo.
+                                if quiere_pantalla(objetivo) {
+                                    match prestar_pantalla(p, entrada.take(), objetivo, cap) {
+                                        Some((nueva, ent)) => {
+                                            p = nueva;
+                                            entrada = ent;
+                                            p.limpiar(FONDO);
+                                            pintar_caja(&p, &caja);
+                                            pintar_campo(&p, &caja, &ruta[..n], cur, true);
+                                            pintar_salida(&p, &caja, &salida);
+                                            pintar_estado(&p, &caja, "pantalla devuelta", TEXTO_BIEN);
+                                            p.vaciar();
+                                            repintar_campo = true;
+                                        }
+                                        None => {
+                                            bmo::consola(
+                                                "no pude recuperar la pantalla tras prestarla
+",
+                                            );
+                                            bmo::salir()
+                                        }
+                                    }
+                                    n = 0;
+                                    continue;
+                                }
                                 match bmo::ejecutar_en(objetivo, cap) {
                                     Ok(_) => {
                                         pintar_estado(&p, &caja, "lanzado", TEXTO_BIEN);
