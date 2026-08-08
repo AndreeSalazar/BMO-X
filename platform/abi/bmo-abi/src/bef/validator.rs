@@ -317,9 +317,9 @@ fn validate_header(header: &BefHeader, bytes: &[u8], r: &mut ValidationResult) {
     }
     match header.arch {
         0x01 => {}
-        0x00 => r.warn("arch is Reserved (0x00) — assuming x86-64"),
-        0x02 => r.warn("AArch64 BEF — not supported on this host"),
-        0x03 => r.warn("RISC-V BEF — not supported on this host"),
+        0x00 => r.warn("arch is Reserved (0x00) -- assuming x86-64"),
+        0x02 => r.warn("AArch64 BEF -- not supported on this host"),
+        0x03 => r.warn("RISC-V BEF -- not supported on this host"),
         _ => r.warn(format!("unknown arch: {:#04x}", header.arch)),
     }
     if header.section_count == 0 {
@@ -346,7 +346,7 @@ fn validate_header(header: &BefHeader, bytes: &[u8], r: &mut ValidationResult) {
         ));
     }
     if header.entry_offset == 0 && header.section_count > 0 {
-        r.info("entry_offset is 0 — loader will use start of Code section");
+        r.info("entry_offset is 0 -- loader will use start of Code section");
     }
     let flags = BefFlags::from_bits_truncate(header.flags);
     if !flags.contains(BefFlags::EXECUTABLE) && !flags.contains(BefFlags::SHARED_LIBRARY) {
@@ -391,7 +391,7 @@ fn validate_section_table(entries: &[SectionEntry], bytes: &[u8], r: &mut Valida
                 if end <= bytes.len() {
                     let slice = &bytes[start..end];
                     if slice.iter().any(|&b| b != 0) {
-                        r.warn_at(i, "BSS section has non-zero data in file — will be ignored");
+                        r.warn_at(i, "BSS section has non-zero data in file -- will be ignored");
                     }
                 }
             }
@@ -428,7 +428,7 @@ fn validate_section_table(entries: &[SectionEntry], bytes: &[u8], r: &mut Valida
             r.warn_at(
                 i,
                 format!(
-                    "zero file_size but non-zero mem_size ({}) — zero-filled at load",
+                    "zero file_size but non-zero mem_size ({}) -- zero-filled at load",
                     entry.mem_size
                 ),
             );
@@ -449,7 +449,7 @@ fn validate_section_table(entries: &[SectionEntry], bytes: &[u8], r: &mut Valida
     }
 
     if !has_code {
-        r.error("no Code section found — BEF must have at least one executable section");
+        r.error("no Code section found -- BEF must have at least one executable section");
     }
 
     // Overlap detection: O(n^2) but n <= 255, cheap.

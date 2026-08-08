@@ -739,7 +739,7 @@ fn shell_cpu() {
             // la maxima teorica del CPU.
             l.txt("   habilitado: "); l.dec(inf.area_actual as u64); l.txt(" B");
         } else {
-            l.txt("CR4.OSXSAVE apagado — el estado extendido no esta habilitado");
+            l.txt("CR4.OSXSAVE apagado -- el estado extendido no esta habilitado");
         }
     });
 
@@ -766,7 +766,7 @@ fn shell_cpu() {
     // comparacion y contestaba distinto a la misma pregunta.
     let coincide = xsave::coincide(&inf);
     row("veredicto", |l| l.txt(if coincide { "el silicio coincide con el perfil" }
-                                else { "DIFIERE — manda el silicio, el perfil esta desfasado" }));
+                                else { "DIFIERE -- manda el silicio, el perfil esta desfasado" }));
     // Lo que hace el cambio de contexto HOY. Esta linea decia "AVX aun no es
     // seguro" mucho despues de que dejara de ser cierto: un informe que se
     // queda contando una etapa anterior es peor que no tener informe, porque
@@ -944,7 +944,7 @@ fn shell_run(arg: &[u8]) {
             row("admitido", |l| { l.txt("tid "); l.dec(tid as u64); l.txt("   corre en el siguiente tick"); });
         }
         Err(f @ (lanzar::Fallo::FirmaMala | lanzar::Fallo::SinFirma)) => {
-            row("gate", |l| { l.txt("RECHAZADO — "); l.txt(f.motivo()); });
+            row("gate", |l| { l.txt("RECHAZADO -- "); l.txt(f.motivo()); });
         }
         Err(f) => {
             row("rechazado", |l| { l.txt(f.motivo()); });
@@ -1468,7 +1468,7 @@ fn informe_de_defuncion() {
     row("escritorio", |l| {
         l.txt("MURIO tras arrancar, tid ");
         l.dec(tid as u64);
-        l.txt(" — esto es lo ULTIMO que dijo:");
+        l.txt(" -- esto es lo ULTIMO que dijo:");
     });
     if crate::ring0::uconsole::hubo_palabras(pid) {
         crate::ring0::uconsole::ultimas_palabras(pid, |linea| {
@@ -1852,7 +1852,7 @@ pub fn main(ctx: &mut BootContext) {
 
     dash_log("== RING 3 : LA ENTREGA ==");
     row("se cede", |l| {
-        l.txt("la PANTALLA, la ENTRADA y una CONSOLA — y Ring 0 deja de pintar");
+        l.txt("la PANTALLA, la ENTRADA y una CONSOLA -- y Ring 0 deja de pintar");
     });
     row("a", |l| { l.txt(RUTA_COMPOSITOR); l.txt("   desde el volumen de datos, con su firma"); });
     arrancar_escritorio();

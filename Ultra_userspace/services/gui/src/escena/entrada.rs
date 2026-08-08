@@ -178,7 +178,7 @@ pub(crate) fn pintar(
     p.texto(x, y, "BMO METAKERNEL", ENT_TENUE);
     y += bmo::GLIFO_ALTO + 16;
 
-    p.texto(x, y, "RING 3   ·   el userspace toma la maquina", ACENTO);
+    p.texto(x, y, "RING 3   -   el userspace toma la maquina", ACENTO);
     y += bmo::GLIFO_ALTO + 34;
 
     // -- Lo que se acaba de ceder --

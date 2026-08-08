@@ -503,7 +503,7 @@ pub fn splash_init() {
         );
     }
 
-    crate::ring0::dev::console::serial_write("[splash] fill done — screen should be yellow\n");
+    crate::ring0::dev::console::serial_write("[splash] fill done -- screen should be yellow\n");
 
     // Wait a moment so the user can see the fill
     tsc_wait(300_000_000); // ~100 ms @ 3.7 GHz

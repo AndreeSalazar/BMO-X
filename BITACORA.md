@@ -679,6 +679,96 @@ bytes emitidos**. Un `.code16` mal puesto compila perfectamente.
 
 ---
 
+## Ep. 29 -- Un `& 0xFF` de diferencia entre un programa y un secuestro
+**Sintoma**: `run c/ray.bex` pintaba cielo y suelo, sin una sola pared, y no
+respondia a nada -- ni a su propio ESC. La maquina quedaba de rehen, y el
+diagnostico del dia anterior fue *"no consiguio la entrada"*. Era falso.
+
+**Culpable**: `INPUT_OP_TECLA` no contesta el caracter, contesta `0x100 | byte`
+-- el `0x100` significa "SI hay tecla", y hace falta porque el byte 0 tambien es
+una respuesta valida. El ejemplo comparaba el valor entero, asi que
+`tecla == 27` comparaba **283 contra 27**, que no es cierto jamas. **El programa
+leia el teclado perfectamente y descartaba todo lo que leia.**
+`bmo::Entrada::tecla()`, en Rust, ya lo separaba bien; el ejemplo en C se lo
+comia entero.
+
+Y las paredes eran otros dos, cualquiera de ellos suficiente: salir del bucle
+del rayo con `t = 20 * UNO` en vez de `break` **borra la distancia**, que es lo
+unico que el bucle habia averiguado; y `fdiv(alto, t) >> 16` sobra el
+desplazamiento, porque `alto` son pixeles pelados y `fdiv` ya devuelve enteros.
+
+**Como se diagnostico, y esto es lo nuevo**: sin encender la maquina. Se
+reprodujo la aritmetica 16.16 del programa en el anfitrion y se dibujo el
+fotograma; salio **identico a la foto** -- franja de cielo, franja de suelo, y
+las barritas de ayuda al pie. Una foto borrosa de un monitor se convirtio en una
+prueba reproducible.
+
+**Moraleja**: *un diagnostico que no explica TODOS los sintomas no es el
+diagnostico.* "No consiguio la entrada" explicaba que no saliera, pero no que no
+hubiera paredes; dos fallos distintos se estaban leyendo como uno. Y el segundo
+corolario: **si puedes simular la aritmetica, la foto deja de ser la unica
+prueba.**
+
+## Ep. 30 -- Un acento que se manifestaba como medio megabyte
+**Sintoma**: escribir un comentario en `raycaster_C.c` **rompia el compilador**,
+con un error en una linea que no tenia nada malo, cuatro mas abajo.
+
+**Culpable**: dos, y los dos por la misma causa raiz -- el estandar de C borra
+los comentarios en la **fase 3**, antes de mirar una directiva, y BMO C no lo
+hacia.
+
+1. `#define UNO 65536 /* 1.0 en 16.16 */` guardaba el comentario **dentro del
+   cuerpo**. Como la expansion se aplica tambien dentro de los comentarios,
+   nombrar esa macro en un comentario inyectaba un `*/` que lo cerraba antes de
+   tiempo y convertia el resto del parrafo en codigo.
+2. Buscandolo aparecio el gordo: `b[i] as char` lee cada byte como Latin-1, asi
+   que los DOS bytes UTF-8 de una `n` con tilde salian como dos caracteres que
+   al recodificarse ocupan CUATRO. Y el bucle repite mientras algo cambie, hasta
+   16 veces: **2^16**. Un `hola mundo` con una sola letra acentuada daba un
+   `.bex` de **492.032 bytes** -- ahora 512 -- con 65.536 bytes de basura donde
+   iba la letra.
+
+**Moraleja**: *un fallo de codificacion no se presenta como un fallo de
+codificacion.* Con `MAX_BEX` en 1 MiB, dos palabras con tilde dejan un programa
+que no carga -- y el sintoma es "el binario es enorme", que es el ultimo sitio
+donde uno busca un acento. Por eso las fuentes de BMO-X son ASCII: no por
+estetica, porque el sistema tiene DOS codificaciones y no se hablan.
+
+## Ep. 31 -- La garantia que se comprobaba a si misma
+**Sintoma**: la herramienta que paso 423 ficheros a ASCII prometia no tocar nada
+fuera de los comentarios, y lo comprobaba: quitaba los comentarios del antes y
+del despues y exigia que los dos resultados fueran identicos. Cero ficheros
+rechazados. Todo verde.
+
+**Culpable**: **se comprobaba con el mismo tokenizador que hacia el cambio.**
+Eso demuestra "solo toque lo que YO llamo comentario", no que mi idea de
+comentario sea correcta. Y no lo era: `'"'` --un literal de caracter cuyo
+contenido es una comilla, como en `trim_matches('"')`-- se leia como lifetime, y
+la comilla siguiente abria una cadena falsa que se tragaba nueve lineas de
+comentarios.
+
+Arreglado el tokenizador, la re-auditoria de los 379 ficheros contra HEAD ya
+tenia un juez independiente: **4 divergencias, y las cuatro eran cambios
+escritos a mano a proposito.**
+
+El mismo escaner causo el segundo: corta un tramo de codigo en cada `/ " ' r b`,
+asi que **parte los identificadores** (`nombre` llega como `nom`+`b`+`re`).
+Renombrar por tramos no casaba casi nada, y renombro las referencias entre
+backticks de los comentarios **dejando las funciones sin tocar**. Compilaba
+--nada renombrado sigue siendo coherente-- y la documentacion apuntaba a nombres
+que no existian.
+
+**Moraleja**: *una prueba que usa el mismo modelo que el codigo que prueba no
+prueba nada.* Es el patron del Ep. 26 con otra ropa: el escritor y el lector
+mirando extremos opuestos del mismo buffer, aqui el verificador y el
+transformador compartiendo el error. **El juez tiene que ser otro.**
+
+Y de aqui salio lo que hace que esto no sea un parche: `build.ps1` comprueba la
+codificacion **en el mismo sitio donde comprueba el contrato de syscalls**. Sin
+eso, la regla era una limpieza que hicimos una vez.
+
+---
+
 ## Las leyes que dejo esta guerra
 
 1. **QEMU miente por omision**: sin IRQs vivos, sin tiempos fisicos, sin
@@ -750,6 +840,25 @@ bytes emitidos**. Un `.code16` mal puesto compila perfectamente.
    comprobacion que valio no fue compilar --un `.code16` mal puesto compila
    perfectamente-- sino **mirar los bytes emitidos**. Donde no hay quien te
    cuente lo que paso, se lee antes de ejecutar.
+17. **Un diagnostico que no explica TODOS los sintomas no es el diagnostico**
+   (Ep. 29). "No consiguio la entrada" explicaba que el raycaster no pudiera
+   salir, pero no que no tuviera paredes. Eran dos fallos leyendose como uno, y
+   el primero tapo al segundo durante un dia entero.
+18. **Un fallo de codificacion no se presenta como un fallo de codificacion**
+   (Ep. 30). Se presento como un binario de medio megabyte. El sistema tiene
+   dos codificaciones --fuentes en UTF-8, consola en Latin-1-- y no se hablan;
+   por eso las fuentes son ASCII, y por eso lo comprueba el build y no la buena
+   voluntad.
+19. **Una prueba que usa el mismo modelo que el codigo que prueba no prueba
+   nada** (Ep. 31). El verificador y el transformador compartian tokenizador,
+   asi que la garantia decia "solo toque lo que yo llamo comentario" y no "mi
+   idea de comentario es correcta". El juez tiene que ser otro. Es el Ep. 26
+   otra vez, con otra ropa.
+20. **Lo que no comprueba el build, no es una regla: es una costumbre.** Las
+   doce cadenas que imprimian mojibake se arreglaron a mano; nada impedia la
+   trece. Una limpieza es un parche hasta que hay un portico que la exige --
+   por eso el idioma de las fuentes se valida en el mismo sitio que el contrato
+   de syscalls, y no en un documento.
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*

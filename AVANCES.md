@@ -10,8 +10,14 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-06**: **784 tests en verde y CERO rojos** (57 suites; el conteo
-> excluye `bmo-kernel` y `bmo-rt`, que por diseno no compilan en el anfitrion).
+> **Al 2026-08-08**: **827 tests en verde y CERO rojos** (el conteo excluye
+> `bmo-kernel` y `bmo-rt`, que por diseno no compilan en el anfitrion).
+>
+> Y desde el 08-08 el build valida **la codificacion de las fuentes** en el
+> mismo paso que valida el contrato de syscalls: las fuentes son ASCII y las
+> cadenas que pinta el kernel tambien. No es estetica -- un acento en un
+> literal de C llego a multiplicar un `.bex` por 65.536, y la consola es
+> Latin-1 mientras las cadenas de Rust son UTF-8. Ver `BITACORA.md`, Ep. 30.
 > BMO-X ocupa ~5.4 MiB de 14.8 GiB, y el objetivo declarado sigue siendo
 > **BANCA + Ada**.
 >

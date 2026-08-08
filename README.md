@@ -508,10 +508,43 @@ When the emulator and the hardware disagree, *the emulator gets fixed*. That
 rule caught a broken `lea [rip+disp]` that passed green in simulation and would
 have read garbage on real silicon.
 
-**620 tests, zero failures.** And the zero is recent: the suite carried a
+**827 tests, zero failures.** And the zero is recent: the suite carried a
 permanent red -- a doctest marked `rust` that was pseudocode and could never
 compile. A failure nobody is going to fix trains you not to look at failures,
 which is the opposite of what a suite is for.
+
+### The sources are ASCII, and the screen speaks Spanish
+
+Two different rules, because they answer to two different machines.
+
+**Sources are ASCII, and it is checked by `build.ps1`, in the same step that
+validates the syscall contract.** This is not a style preference, and the two
+bugs that bought the rule are worth naming:
+
+- The BMO C preprocessor copied text one byte at a time. A single accented
+  letter in a string literal grew the resulting `.bex` from **512 bytes to
+  492.032**, with 65.536 bytes of garbage where the letter should have been.
+  `MAX_BEX` is 1 MiB, so two accented words are a program that no longer loads
+  -- and the symptom is "the binary is huge", which is the last place anyone
+  looks for an accent.
+- The kernel console is **Latin-1 on purpose**: one byte per character, no
+  decoder between the keyboard, the shell line and the framebuffer. Rust
+  strings are UTF-8 and every print path hands them over raw. An em dash in a
+  kernel string puts three bytes on screen where one glyph was meant.
+
+Identifiers move to English for the same reason, not for looks: a name that is
+spelled one way in the code and another in its own comment is a name `grep`
+cannot follow, and a `n`-with-tilde in a function name is one more place where
+two encodings have to agree.
+
+**What BMO-X prints stays in Spanish.** The author is Latin American and this is
+his machine; the rule follows the renderer, not the repository. So kernel and
+userspace strings are Spanish **without accents** -- Spanish that the Latin-1
+console can actually draw -- while the toolchain's messages, which go to a host
+console that speaks UTF-8 perfectly well, are left alone.
+
+The tools that enforce this live in `toolchain/tools/ascii-sweep/`, and they
+refuse to touch anything they cannot prove they should.
 
 ### What the test bench cannot prove, stated plainly
 

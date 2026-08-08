@@ -129,7 +129,7 @@ pub fn dump_to_disk() -> usize {
         // Cabecera: sin ella, un archivo de lineas sueltas no dice de que
         // arranque es ni cuanto se perdio.
         let mut h = Buf::new();
-        h.txt("BMO-X CABINA — bitacora de vuelo\n");
+        h.txt("BMO-X CABINA -- bitacora de vuelo\n");
         n = append(n, h.as_str());
         let mut h = Buf::new();
         h.txt("eventos="); h.dec(event_total());
@@ -567,7 +567,7 @@ pub fn render_hud() {
     r.txt(" bmb="); r.txt(if bomba_k { "k+" } else { "k-" });
     r.txt(if bomba_r { "r+" } else { "r-" });
     r.txt(" hu="); r.dec(huerfanos as u64);
-    r.txt("  (ev=0 -> USB · ev sube y x/y quietos -> formato del informe)");
+    r.txt("  (ev=0 -> USB - ev sube y x/y quietos -> formato del informe)");
     let raton_color = if !mouse { C_DIM } else if mev > 0 { C_OK } else { C_FAULT };
     splash_dashboard_log_color(total - 1, r.as_str(), raton_color);
 

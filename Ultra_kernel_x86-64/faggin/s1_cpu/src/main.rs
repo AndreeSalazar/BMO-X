@@ -213,7 +213,7 @@ impl IdtEntry {
 #[repr(C, packed)] struct Idtr { limit: u16, base: u64 }
 static mut IDT: [IdtEntry; 256] = [IdtEntry::empty(); 256];
 
-macro_rules! halt_handler { ($name:ident, $msg:literal) => { extern "x86-interrupt" fn $name(_sf: u64) { unsafe { put_str(concat!("[s1_cpu] ", $msg, " — halting\n")); } loop { unsafe { asm!("hlt"); } } } }; }
+macro_rules! halt_handler { ($name:ident, $msg:literal) => { extern "x86-interrupt" fn $name(_sf: u64) { unsafe { put_str(concat!("[s1_cpu] ", $msg, " -- halting\n")); } loop { unsafe { asm!("hlt"); } } } }; }
 halt_handler!(exc_no_err,      "EXCEPTION (no err)");
 halt_handler!(exc_divide,      "#DE Divide Error");
 halt_handler!(exc_invalid_op,   "#UD Invalid Opcode");
@@ -224,10 +224,10 @@ halt_handler!(exc_mcheck,      "#MC Machine Check");
 halt_handler!(exc_no_err2,     "EXCEPTION (no err, mirror)");
 halt_handler!(irq_stub,        "IRQ stub");
 
-extern "x86-interrupt" fn exc_with_err(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] EXCEPTION (with err) — halting\n"); } loop { unsafe { asm!("hlt"); } } }
-extern "x86-interrupt" fn exc_double_fault(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] #DF Double Fault — halting\n"); } loop { unsafe { asm!("cli; hlt"); } } }
-extern "x86-interrupt" fn exc_gpf(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] #GP General Protection — halting\n"); } loop { unsafe { asm!("hlt"); } } }
-extern "x86-interrupt" fn exc_page_fault(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] #PF Page Fault — halting\n"); } loop { unsafe { asm!("hlt"); } } }
+extern "x86-interrupt" fn exc_with_err(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] EXCEPTION (with err) -- halting\n"); } loop { unsafe { asm!("hlt"); } } }
+extern "x86-interrupt" fn exc_double_fault(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] #DF Double Fault -- halting\n"); } loop { unsafe { asm!("cli; hlt"); } } }
+extern "x86-interrupt" fn exc_gpf(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] #GP General Protection -- halting\n"); } loop { unsafe { asm!("hlt"); } } }
+extern "x86-interrupt" fn exc_page_fault(_sf: u64, _e: u64) { unsafe { put_str("[s1_cpu] #PF Page Fault -- halting\n"); } loop { unsafe { asm!("hlt"); } } }
 
 // ===================================================================
 //  FPU STATE

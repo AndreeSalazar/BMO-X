@@ -94,9 +94,28 @@ get a contribution rejected on principle.
 3. **State the colour.** 🟢 with evidence, or 🟡 honestly.
 4. **One concern per PR.** A driver and a refactor in the same patch is two
    patches.
-5. **Comments in the language of the surrounding file.** The codebase is
-   bilingual -- Spanish in places, English in others. Match what is around you
-   rather than converting it.
+5. **Sources are ASCII. The build checks it.**
+   `python toolchain/tools/ascii-sweep/ascii_sweep.py --check` runs inside
+   `build.ps1`, in the same step that validates the syscall contract, and it
+   fails the build.
+
+   This is not a style rule and it did not come from taste. A single accented
+   letter in a C string literal once grew a `.bex` from 512 bytes to 492.032,
+   and the kernel console is Latin-1 by design -- one byte per character, no
+   decoder -- while Rust strings are UTF-8 and every print path hands them over
+   raw. Two encodings that never agreed. The README explains it under *The
+   sources are ASCII*.
+
+   New identifiers go in **English**. Roughly 900 Spanish ones are still being
+   migrated batch by batch (`rename_to_english.py`), so you will meet both --
+   write English, and do not convert a module you are not otherwise touching:
+   a rename mixed into a feature PR is two patches.
+
+6. **What BMO-X prints stays in Spanish, without accents.** The system speaks
+   Spanish to its author, and the Latin-1 renderer cannot draw an accent that
+   arrives as UTF-8. Kernel and userspace strings are therefore plain ASCII
+   Spanish and the build enforces that too. Toolchain messages go to a host
+   console and are exempt.
 
 ---
 

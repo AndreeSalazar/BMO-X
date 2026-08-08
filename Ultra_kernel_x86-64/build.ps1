@@ -112,6 +112,45 @@ Write-Host ''
 Write-Host '  === BMO Ultra Kernel x86-64 Build (UEFI 5 layers + 2 stages + kernel) ===' -ForegroundColor Magenta
 Write-Host ''
 
+# ---------------------------------------------------------------------------
+# El idioma de las fuentes es un CONTRATO, igual que el de los syscalls, y por
+# eso se comprueba en el mismo sitio y de la misma forma.
+#
+# No es estetica. Son dos fallos que ya se pagaron:
+#
+#   - El preprocesador de BMO C copiaba byte a byte. Una sola letra acentuada
+#     en un literal hacia crecer el .bex de 512 a 492.032 bytes, y con MAX_BEX
+#     en 1 MiB, dos palabras con tilde dejan un programa que ya no carga.
+#   - La consola del kernel es Latin-1 A PROPOSITO --un byte por caracter, sin
+#     decodificador-- y todo el camino de pintado entrega UTF-8 crudo con
+#     `s.as_bytes()`. Una raya larga en una cadena del kernel pone TRES bytes
+#     en pantalla donde iba un glifo.
+#
+# Los dos se arreglaron a mano el 2026-08-08. Esto es lo que impide el
+# siguiente: sin esta comprobacion, la regla es una limpieza que hicimos una
+# vez; con ella, es una propiedad del sistema. Arquitectura, no parche.
+#
+# Si no hay Python se AVISA y se sigue: un portico que no se puede levantar no
+# debe cerrar la puerta. Pero si corre y falla, el build para.
+Step 'Validating source encoding (sources are ASCII)'
+$sweep = Join-Path (Split-Path -Parent $root) 'toolchain\tools\ascii-sweep\ascii_sweep.py'
+$python = (Get-Command python -ErrorAction SilentlyContinue)
+if (-not $python) {
+    Write-Host '  [!] python no encontrado: no se comprueba la codificacion' -ForegroundColor Yellow
+} elseif (-not (Test-Path $sweep)) {
+    Write-Host '  [!] falta ascii_sweep.py: no se comprueba la codificacion' -ForegroundColor Yellow
+} else {
+    $env:PYTHONIOENCODING = 'utf-8'
+    $encOut = & $python.Source $sweep --check
+    if ($LASTEXITCODE -ne 0) {
+        $encOut | ForEach-Object { Write-Host ('    ' + $_) -ForegroundColor Red }
+        Fail 'codificacion: hay no-ASCII donde la regla no lo permite (ver arriba)'
+    }
+    $encOut | Where-Object { $_ -match 'clean:' } | ForEach-Object {
+        Write-Host ('    ' + $_.Trim()) -ForegroundColor DarkGray
+    }
+}
+
 # Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
 Step 'Validating Ring 0 syscall contract'
 # Las operaciones del kernel no viven todas en `syscall.rs`: las de un objeto

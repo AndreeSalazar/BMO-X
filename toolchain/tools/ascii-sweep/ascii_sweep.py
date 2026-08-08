@@ -63,6 +63,34 @@ LANGS = {
 }
 
 # ---------------------------------------------------------------------------
+# The one place where a STRING is also subject to the rule.
+#
+# Code that runs on the machine prints through a Latin-1 renderer: one byte per
+# character, no decoder between the keyboard, the shell line and the
+# framebuffer -- that is a design decision, not an oversight. But a Rust string
+# is UTF-8 and every print path hands it over raw with `s.as_bytes()`.
+#
+# So an em dash in a kernel string is not a style question. `"BMO-X CABINA --
+# bitacora de vuelo"` written with a real em dash puts three bytes on screen
+# where one glyph was meant, and the header of the flight recorder reads
+# `CABINA a,-" bitacora`. Twelve of these were fixed by hand on 2026-08-08;
+# this list is what stops the thirteenth.
+#
+# The toolchain is NOT here on purpose: its messages go to a Windows console
+# that speaks UTF-8 perfectly well, so there is nothing to fix and no reason to
+# forbid it. The rule follows the renderer, not the repository.
+METAL_PREFIXES = ("Ultra_kernel", "Ultra_userspace", "platform")
+
+
+def prints_on_metal(rel, lang):
+    """Does a string in this file end up on the Latin-1 framebuffer?
+
+    Only Rust source: a `Cargo.toml` description is package metadata that no
+    machine ever renders.
+    """
+    return lang == "rust" and rel.replace(os.sep, "/").startswith(METAL_PREFIXES)
+
+# ---------------------------------------------------------------------------
 # The replacement table.
 #
 # Everything here is a deliberate decision, not a guess. Anything NOT in this
@@ -529,7 +557,7 @@ def transliterate(s, unknown, keep_symbols=False):
     return "".join(out)
 
 
-def sweep_text(text, lang, unknown, repaired):
+def sweep_text(text, lang, unknown, repaired, metal=False):
     out = []
     for kind, a, b in scan(text, lang):
         chunk = text[a:b]
@@ -538,12 +566,40 @@ def sweep_text(text, lang, unknown, repaired):
             # broken text into confidently wrong ASCII.
             chunk = transliterate(repair_mojibake(chunk, repaired), unknown,
                                   keep_symbols=(lang == "markdown"))
+        elif metal and chunk[:1] == '"':
+            # A string that reaches the Latin-1 renderer. Same table, same
+            # Spanish words -- Spanish that can actually be READ on the screen.
+            chunk = transliterate(repair_mojibake(chunk, repaired), unknown)
         out.append(chunk)
     return "".join(out)
 
 
-def verify_only_comments_changed(before, after, lang):
-    """The guarantee. Everything that is not a comment must be untouched."""
+def strip_comments_and_strings(text, lang):
+    """The text with comments AND string bodies removed: pure structure."""
+    out = []
+    for kind, a, b in scan(text, lang):
+        seg = text[a:b]
+        if kind == "comment":
+            continue
+        if seg[:1] == '"':
+            out.append('""')          # the literal is there, its text is not
+            continue
+        out.append(seg)
+    return "".join(out)
+
+
+def verify_only_comments_changed(before, after, lang, allow_strings=False):
+    """The guarantee. Everything that is not a comment must be untouched.
+
+    `allow_strings` is for the files whose output goes to the Latin-1 renderer,
+    where the string bodies are in scope too. The guarantee does not disappear
+    there, it narrows: what must survive untouched is the CODE -- every
+    identifier, every operator, and the fact that a literal is where a literal
+    was. Only the text inside the quotes may move.
+    """
+    if allow_strings:
+        return (strip_comments_and_strings(before, lang)
+                == strip_comments_and_strings(after, lang))
     if lang == "markdown":
         # For prose the invariant above is vacuous -- the whole file is the
         # comment -- so it is replaced by the one that actually protects a
@@ -576,6 +632,7 @@ def main():
     touched = changed = refused = 0
     left_in_code = []
     strings_left = []
+    metal_strings = []
 
     for path, lang in iter_sources():
         rel = os.path.relpath(path, REPO)
@@ -600,6 +657,9 @@ def main():
                 n = sum(1 for c in before[a:b] if ord(c) > 127)
                 if not n:
                     continue
+                if kind != "comment" and prints_on_metal(rel, lang)                         and before[a:b][:1] == '"':
+                    metal_strings.append((n, rel))
+                    continue
                 if kind == "comment":
                     if lang == "markdown":
                         n = sum(1 for c in before[a:b]
@@ -618,10 +678,12 @@ def main():
         if all(ord(c) < 128 for c in before):
             continue
         touched += 1
-        after = sweep_text(before, lang, unknown, repaired)
+        after = sweep_text(before, lang, unknown, repaired,
+                               metal=prints_on_metal(rel, lang))
         if after == before:
             continue
-        if not verify_only_comments_changed(before, after, lang):
+        if not verify_only_comments_changed(before, after, lang,
+                                            prints_on_metal(rel, lang)):
             print(f"  REFUSED (would have touched code): {rel}")
             refused += 1
             continue
@@ -641,6 +703,15 @@ def main():
             for n, rel in sorted(strings_left, reverse=True)[:12]:
                 print(f"         {n:>5}  {rel}")
             print()
+        if metal_strings:
+            total = sum(n for n, _ in metal_strings)
+            print(f"FAIL: {total} non-ASCII chars in strings that the Latin-1 "
+                  f"renderer will print, in {len(metal_strings)} places")
+            print("      The screen shows UTF-8 bytes one at a time: an em dash "
+                  "becomes three glyphs.")
+            for n, rel in sorted(metal_strings, reverse=True)[:12]:
+                print(f"  {n:>6}  {rel}")
+            return 1
         if left_in_code:
             total = sum(n for n, _ in left_in_code)
             print(f"FAIL: {total} non-ASCII chars in comments, "

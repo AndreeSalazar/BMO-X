@@ -593,7 +593,7 @@ extern "C" fn s2_main(ctx_ptr: *mut boot_context::BootContext) -> ! {
     //    The identity map (0..32 MiB) keeps our code accessible.
     //    The safe stack is in .BSS at 0x200000 (identity-mapped).
     // ===============================================================
-    serial_shared::puts("[s2_mem] switching CR3 → 0x");
+    serial_shared::puts("[s2_mem] switching CR3 -> 0x");
     serial_shared::hex(pml4_phys);
     serial_shared::puts("\n");
 
