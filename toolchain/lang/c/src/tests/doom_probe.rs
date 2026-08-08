@@ -161,6 +161,63 @@ fn a_pointer_to_function_can_be_a_parameter() {
     assert_eq!(out, "42\n");
 }
 
+// =============== A table of function pointers ===============
+
+/// ** The `action` field of every `state_t` in DOOM -- and with it the whole of
+/// `info.c`, which is the behaviour of every monster in the game.
+///
+/// A function name inside a global initializer is its ADDRESS, and an address
+/// is not known until the program is loaded. The compiler used to say so and
+/// stop; now it writes a `SeccionAbs64` relocation with its target in `.code`
+/// and the loader fills it in -- the same mechanism that made the raycaster's
+/// map real on the Ryzen on 2026-08-08.
+///
+/// The test CALLS through the table on purpose. A table whose bytes look right
+/// and whose calls jump to zero is exactly the failure this is meant to close.
+#[test]
+fn a_global_table_can_hold_function_addresses() {
+    let out = run_c(
+        "int doble(int v) { return v * 2; } \
+         int triple(int v) { return v * 3; } \
+         typedef int (*op_t)(int); \
+         op_t tabla[2] = { doble, triple }; \
+         int main() { printf(\"%d %d\\n\", tabla[0](21), tabla[1](14)); return 0; }",
+    );
+    assert_eq!(out, "42 42\n");
+}
+
+/// La misma forma que usa DOOM de verdad: la funcion es UN CAMPO de un struct
+/// dentro de una tabla, no la tabla entera.
+#[test]
+fn a_function_address_can_be_one_field_of_a_table_row() {
+    let out = run_c(
+        "int suma(int v) { return v + 40; } \
+         typedef struct { int tics; int (*accion)(int); } estado_t; \
+         estado_t estados[2] = { { 7, suma }, { 9, suma } }; \
+         int main() { printf(\"%d %d\\n\", estados[0].tics, estados[1].accion(2)); return 0; }",
+    );
+    assert_eq!(out, "7 42\n");
+}
+
+/// And the third face of the same relocation: the address of another GLOBAL.
+///
+/// `m_config.c` keeps the whole game configuration as a table of
+/// `{ "name", &the_variable, kind }`, and `tables.c` writes
+/// `finecosine = &finesine[FINEANGLES/4]` -- the same table read a quarter turn
+/// later. It is deferred like the others, and for one reason they do not have:
+/// the table may name a global declared BELOW it.
+#[test]
+fn a_global_table_can_hold_addresses_of_other_globals() {
+    let out = run_c(
+        "int destino[4] = { 10, 20, 30, 40 }; \
+         int *punteros[2] = { destino, &destino[2] }; \
+         int suelto = 2; \
+         int *tarde = &suelto; \
+         int main() { printf(\"%d %d %d\\n\", *punteros[0], *punteros[1], *tarde); return 0; }",
+    );
+    assert_eq!(out, "10 30 2\n");
+}
+
 // =============== `++` and `--` on something that is not a name ===============
 
 /// `--door->topcountdown` -- how `p_doors.c` counts a door's ticks down.

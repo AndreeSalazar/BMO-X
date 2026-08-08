@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
-use bmo_abi::bef::relocations::{Relocation, SEC_DATA, SEC_RODATA};
+use bmo_abi::bef::relocations::{Relocation, SEC_CODE, SEC_DATA, SEC_RODATA};
 use crate::ast::*;
 use crate::CError;
 
@@ -128,6 +128,21 @@ struct Codegen {
     /// Se acumulan aqui y se convierten en `Relocation` en `patch_all_fixups`,
     /// que es donde ya se conocen los offsets de las cadenas.
     relocs_a_cadena: Vec<(u32, usize)>,
+    /// Igual, pero el destino es OTRO GLOBAL: `(offset, nombre, sumando)`.
+    ///
+    /// `&key_right` dentro de `doom_defaults`, `&finesine[FINEANGLES/4]` en
+    /// `tables.c`. Tambien se difiere, y por un motivo que las cadenas no
+    /// tienen: la tabla puede nombrar un global **declarado mas abajo**, asi
+    /// que su offset todavia no existe cuando se lee la lista.
+    relocs_a_global: Vec<(u32, String, i64)>,
+    /// Igual, pero el destino es una FUNCION: `(offset en .data, nombre)`.
+    ///
+    /// Es la tabla de punteros a funcion -- el campo `action` de cada `state_t`
+    /// de DOOM, y con el las mil y pico filas de `info.c`. No se puede resolver
+    /// donde se lee, porque ahi todavia no se sabe en que offset va a caer cada
+    /// funcion: se anota y se cierra en `patch_all_fixups`, igual que las
+    /// cadenas y por el mismo motivo.
+    relocs_a_funcion: Vec<(u32, String)>,
     /// * Este programa RECLAMA LA PANTALLA. Lo deduce el compilador; acaba en
     /// `BefFlags::WANTS_SCREEN` y lo lee el compositor antes de lanzarlo.
     quiere_pantalla: bool,
@@ -176,6 +191,8 @@ impl Codegen {
             global_offsets: HashMap::new(), global_data: Vec::new(),
             global_fixups: Vec::new(),
             relocs_a_cadena: Vec::new(),
+            relocs_a_funcion: Vec::new(),
+            relocs_a_global: Vec::new(),
             quiere_pantalla: false,
             relocs: Vec::new(),
             instruction_end: 0, string_data_end: 0,
@@ -209,6 +226,28 @@ impl Codegen {
                 _ => {}
             }
         }
+        // Las funciones que ESTA unidad define. Se necesita antes de leer los
+        // globales: un nombre suelto en una tabla es la direccion de una
+        // funcion solo si la funcion existe aqui -- si solo hay un prototipo,
+        // su direccion vive en otra unidad y eso pide un enlazador.
+        let funciones: std::collections::HashSet<&str> =
+            program.functions.iter().map(|f| f.name.as_str()).collect();
+
+        // Y los globales que son ARRAY. Un array nombrado a secas DECAE a su
+        // direccion (`int *p = tabla;`), y sin esta lista no habria como
+        // distinguirlo de leer el valor de un escalar. Se saca de todo el
+        // programa antes de empezar porque la tabla puede nombrar un array
+        // declarado mas abajo.
+        let arrays: std::collections::HashSet<&str> = program
+            .globals
+            .iter()
+            .filter_map(|g| match g {
+                GlobalDecl::Var(TypeSpec::Array(_, _), n, _)
+                | GlobalDecl::VarLista(TypeSpec::Array(_, _), n, _) => Some(n.as_str()),
+                _ => None,
+            })
+            .collect();
+
         // allocate space for global variables
         for decl in &program.globals {
             // * Un global con LISTA: `int t[4] = {1,2,3,4}`.
@@ -247,18 +286,52 @@ impl Codegen {
                         self.relocs_a_cadena.push((off + e.offset, idx));
                         continue;
                     }
+                    // ** UNA FUNCION en la tabla -> RELOCATION A `.code`.
+                    //
+                    // Es el hueco que este mismo sitio dejaba anotado: el campo
+                    // `action` de cada `state_t` de DOOM, y con el las mil y
+                    // pico filas de `info.c` -- o sea el comportamiento entero
+                    // de todos los monstruos del juego.
+                    //
+                    // El offset de la funcion NO se sabe aqui, porque las
+                    // funciones se emiten despues. Asi que se anota el nombre y
+                    // se cierra en `patch_all_fixups`, exactamente como las
+                    // cadenas. El mecanismo ya existia; lo que faltaba era la
+                    // otra seccion de destino.
+                    if let Expr::Var(fname) = &e.valor {
+                        if funciones.contains(fname.as_str()) {
+                            self.relocs_a_funcion.push((off + e.offset, fname.clone()));
+                            continue;
+                        }
+                    }
+                    // ** LA DIRECCION DE OTRO GLOBAL en la tabla.
+                    //
+                    // `doom_defaults[]` de `m_config.c` es una tabla de
+                    // `{ "nombre", &la_variable, tipo }`: la configuracion
+                    // entera del juego es una lista de PUNTEROS A GLOBALES. Y
+                    // `tables.c` escribe `finecosine = &finesine[FINEANGLES/4]`,
+                    // que es la misma tabla mirada un cuarto de vuelta despues.
+                    //
+                    // Es la tercera cara de la misma relocation, ahora con
+                    // destino `.data`. El sumando lleva el indice ya
+                    // multiplicado por el tamano del elemento.
+                    if let Some((gname, sumando)) = Self::direccion_de_global(&e.valor) {
+                        self.relocs_a_global.push((off + e.offset, gname, sumando));
+                        continue;
+                    }
+                    // Un ARRAY nombrado a secas es su direccion: `int *p = t;`
+                    // vale lo mismo que `&t[0]`. Es la regla de decaimiento de
+                    // C, y es como se escribe la mitad de las tablas de tablas.
+                    if let Expr::Var(gname) = &e.valor {
+                        if arrays.contains(gname.as_str()) {
+                            self.relocs_a_global.push((off + e.offset, gname.clone(), 0));
+                            continue;
+                        }
+                    }
                     let Some(valor) = Self::constante_de(&e.valor) else {
-                        // Lo que sigue sin poderse poner. El caso vivo es una
-                        // tabla de punteros a FUNCION (el campo `action` de cada
-                        // `state_t` de DOOM): hace falta la misma relocation
-                        // pero con destino en `.code`, y el codegen todavia no
-                        // sabe el offset de una funcion en este punto -- se
-                        // registran mas abajo, al emitirlas.
                         self.errors.push(format!(
                             "en la tabla global '{name}', el valor del offset {} no es una \
-                             constante entera ni una cadena. Si es la direccion de una funcion, \
-                             eso necesita una relocation a `.code` y todavia no esta: rellena esa \
-                             posicion dentro de una funcion",
+                             constante entera, ni una cadena, ni una funcion de esta unidad",
                             e.offset
                         ));
                         continue;
@@ -360,6 +433,30 @@ impl Codegen {
                             }
                         };
                         self.relocs_a_cadena.push((off, idx));
+                        for _ in 0..size { self.global_data.push(0); }
+                    }
+                    // Las mismas tres direcciones que en una tabla, y por el
+                    // mismo motivo: un puntero global inicializado es una
+                    // relocation, no una constante. `finecosine` de `tables.c`
+                    // es exactamente esto -- y sin ello el coseno del juego
+                    // entero apuntaria a la nada.
+                    (Some(otro), _)
+                        if Self::direccion_de_global(otro).is_some()
+                            || matches!(otro, Expr::Var(n)
+                                if arrays.contains(n.as_str()) || funciones.contains(n.as_str())) =>
+                    {
+                        match otro {
+                            Expr::Var(n) if funciones.contains(n.as_str()) => {
+                                self.relocs_a_funcion.push((off, n.clone()));
+                            }
+                            Expr::Var(n) => {
+                                self.relocs_a_global.push((off, n.clone(), 0));
+                            }
+                            _ => {
+                                let (gname, sumando) = Self::direccion_de_global(otro).unwrap();
+                                self.relocs_a_global.push((off, gname, sumando));
+                            }
+                        }
                         for _ in 0..size { self.global_data.push(0); }
                     }
                     // Lo que sigue sin poderse poner: se DICE.
@@ -639,6 +736,26 @@ impl Codegen {
     /// seria inventarlo. Con `checked_div` devolvemos `None` y el llamante
     /// dice que ese valor no es constante -- un mensaje impreciso, pero no una
     /// mentira.
+    /// `&global` o `&global[n]` -> `(nombre, sumando en bytes)`.
+    ///
+    /// Devuelve `None` para cualquier otra cosa, incluido `&local`: la
+    /// direccion de una local no existe hasta que hay una pila, asi que en un
+    /// inicializador global no puede aparecer.
+    ///
+    /// El indice tiene que ser constante, y si no lo es se contesta `None` para
+    /// que el error salga arriba con el nombre de la tabla delante.
+    fn direccion_de_global(e: &Expr) -> Option<(String, i64)> {
+        let Expr::AddrOf(interior) = e else { return None };
+        match interior.as_ref() {
+            Expr::Var(n) => Some((n.clone(), 0)),
+            Expr::Subscript(n, idx, escala) => {
+                let i = Self::constante_de(idx)?;
+                Some((n.clone(), i * (*escala as i64)))
+            }
+            _ => None,
+        }
+    }
+
     fn constante_de(e: &Expr) -> Option<i64> {
         match e {
             Expr::Int(n) => Some(*n),
@@ -654,6 +771,32 @@ impl Codegen {
                 Some(Self::constante_de(a)?.wrapping_mul(Self::constante_de(b)?))
             }
             Expr::Div(a, b) => Self::constante_de(a)?.checked_div(Self::constante_de(b)?),
+            // * Lo que faltaba, y cada linea es una tabla de DOOM.
+            //
+            //   'M'        `midiheader[] = {'M','T','h','d', ...}`  (mus2mid.c)
+            //   1 << 16    `FRACUNIT`, o sea la unidad de TODA la aritmetica
+            //              del juego: `xspeed[] = {FRACUNIT, 47000, ...}`
+            //   ~ | & ^    mascaras de banderas en las tablas de estados
+            //
+            // El evaluador se habia quedado en las cuatro operaciones de la
+            // aritmetica, y una tabla que no se puede plegar no da un valor
+            // malo: **da un error y el fichero entero no compila**.
+            Expr::CharLit(c) => Some(*c as i64),
+            Expr::Mod(a, b) => Self::constante_de(a)?.checked_rem(Self::constante_de(b)?),
+            Expr::Shl(a, b) => {
+                Some(Self::constante_de(a)?.wrapping_shl(Self::constante_de(b)? as u32))
+            }
+            Expr::Shr(a, b) => {
+                Some(Self::constante_de(a)?.wrapping_shr(Self::constante_de(b)? as u32))
+            }
+            Expr::BitAnd(a, b) => Some(Self::constante_de(a)? & Self::constante_de(b)?),
+            Expr::BitOr(a, b) => Some(Self::constante_de(a)? | Self::constante_de(b)?),
+            Expr::BitXor(a, b) => Some(Self::constante_de(a)? ^ Self::constante_de(b)?),
+            Expr::BitNot(a) => Some(!Self::constante_de(a)?),
+            Expr::Not(a) => Some((Self::constante_de(a)? == 0) as i64),
+            // Un cast no cambia el VALOR de una constante entera, solo su
+            // anchura -- y la anchura la pone el subobjeto al escribirlo.
+            Expr::Cast(_, a) => Self::constante_de(a),
             _ => None,
         }
     }
@@ -777,6 +920,42 @@ impl Codegen {
                 SEC_DATA,
                 off_en_data as u64,
                 SEC_RODATA,
+                destino as i64,
+            ));
+        }
+
+        // Las de GLOBAL. Se cierran aqui porque una tabla puede nombrar algo
+        // declarado mas abajo que ella.
+        let pendientes_g = core::mem::take(&mut self.relocs_a_global);
+        for (off_en_data, gname, sumando) in pendientes_g {
+            let Some(&(destino, _)) = self.global_offsets.get(&gname) else {
+                self.errors.push(format!(
+                    "la tabla apunta a '{gname}' y ese global no existe en esta unidad"
+                ));
+                continue;
+            };
+            self.relocs.push(Relocation::seccion_abs64(
+                SEC_DATA,
+                off_en_data as u64,
+                SEC_DATA,
+                destino as i64 + sumando,
+            ));
+        }
+
+        // Y las de FUNCION, que ya se pueden cerrar: aqui los offsets del
+        // codigo estan todos.
+        let pendientes = core::mem::take(&mut self.relocs_a_funcion);
+        for (off_en_data, fname) in pendientes {
+            let Some(&destino) = self.function_offsets.get(&fname) else {
+                self.errors.push(format!(
+                    "la tabla apunta a '{fname}' y esa funcion no se emitio en esta unidad"
+                ));
+                continue;
+            };
+            self.relocs.push(Relocation::seccion_abs64(
+                SEC_DATA,
+                off_en_data as u64,
+                SEC_CODE,
                 destino as i64,
             ));
         }
@@ -2859,6 +3038,31 @@ impl Codegen {
             Expr::Add(a, b) | Expr::Sub(a, b) => {
                 self.pointee_type(a).or_else(|| self.pointee_type(b))
             }
+            // * `*tabla[i]` -- la tabla es DE PUNTEROS, y hay que mirar dentro.
+            //
+            // Sin esto el `_ => None` de abajo dejaba caer el deref en el caso
+            // por defecto, que lee OCHO bytes. Y ahi no hay error: `*p` sobre
+            // un `int*` devolvia el entero pedido **y el de al lado en la mitad
+            // alta**, o sea `(20 << 32) | 10` donde tocaba un 10.
+            //
+            // Se ve en cuanto se ejecuta y no se ve nunca mirando el binario,
+            // que es por lo que este banco de pruebas corre los programas.
+            Expr::Subscript(name, _, _) => match self.var_type_of(name) {
+                Some(TypeSpec::Ptr(elem)) | Some(TypeSpec::Array(elem, _)) => match *elem {
+                    TypeSpec::Ptr(dentro) => Some(*dentro),
+                    _ => None,
+                },
+                _ => None,
+            },
+            Expr::IndexPtr(_, _, elem) => match elem {
+                TypeSpec::Ptr(dentro) => Some((**dentro).clone()),
+                _ => None,
+            },
+            // `p->campo` y `p.campo` cuando el campo ES un puntero.
+            Expr::Arrow(_, _, _, ft) | Expr::Field(_, _, _, ft) => match ft {
+                TypeSpec::Ptr(dentro) => Some((**dentro).clone()),
+                _ => None,
+            },
             _ => None,
         }
     }

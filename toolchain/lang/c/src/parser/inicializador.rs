@@ -103,6 +103,11 @@ impl Parser {
         // sale un conjunto de escrituras.
         if *self.peek() == Token::OpenBrace {
             let escrituras = self.parse_inicializador(&typ)?;
+            // `byte endtrack[] = {0xFF, 0x2F, 0x00};` -- la lista dice cuanto
+            // mide. Igual que a nivel de fichero, y por el mismo motivo: el
+            // array no esta vacio, esta INCOMPLETO hasta que se lee su lista.
+            let typ = self.cerrar_array_incompleto(typ, &escrituras);
+            self.var_types.insert(name.clone(), typ.clone());
             self.skip_semicolon();
             return Ok(Stmt::DeclInit(typ, name, escrituras));
         }

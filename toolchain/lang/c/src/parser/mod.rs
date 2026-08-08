@@ -68,6 +68,10 @@ pub(crate) struct Parser {
     /// How many untagged struct/union bodies have been seen. Only used to make
     /// their generated tags unique.
     anon_aggregates: u32,
+    /// La funcion cuyo cuerpo se esta leyendo. La necesita una `static` local
+    /// para su nombre global, y sin ella los bloques ANIDADOS no podian tener
+    /// una -- ver `parse_block`.
+    funcion_actual: String,
     syscalls: HashMap<String, SyscallDef>,
     /// Lo que el LEXER no pudo leer. Se comprueba antes de parsear: seguir
     /// con un token inventado produce un programa que compila y no dice lo
@@ -92,6 +96,7 @@ impl Parser {
             base_del_declarador: TypeSpec::Int,
             globales_pendientes: Vec::new(),
             anon_aggregates: 0,
+            funcion_actual: String::new(),
             syscalls: HashMap::new(),
             features: StandardFeatures::default(),
         }
@@ -148,6 +153,15 @@ impl Parser {
             Expr::Deref(inner) => {
                 match self.resolve_expr_type(inner)? {
                     TypeSpec::Ptr(base) => Some(*base),
+                    // * `*tabla` sobre un ARRAY es su primer elemento.
+                    //
+                    // Un array decae a puntero en cuanto se usa en una
+                    // expresion, y aqui no decaia: solo se aceptaba `Ptr`. El
+                    // precio lo pagaba el modismo mas comun de C --
+                    // `sizeof(t) / sizeof(*t)` para contar los elementos-- que
+                    // aparece en nueve ficheros de DOOM y en casi todo
+                    // programa que recorra una tabla.
+                    TypeSpec::Array(base, _) => Some(*base),
                     _ => None,
                 }
             }
@@ -422,6 +436,27 @@ impl Parser {
             }
             if *self.peek() == Token::Enum {
                 self.parse_enum_spec()?;
+                // * `enum { ... } main_e;` -- el enum DECLARA una variable.
+                //
+                // Es una definicion y un declarador en la misma frase, y
+                // `m_menu.c` la usa para todos sus menus. Se leia el cuerpo, se
+                // buscaba el `;` y **el nombre se quedaba suelto**: la vuelta
+                // siguiente del bucle lo veia como el principio de otra
+                // declaracion y contestaba "expected type, got Ident(main_e)",
+                // que manda a buscar un typedef que nunca existio.
+                //
+                // El tipo es `int`, que es lo que un enum es aqui.
+                if let Token::Ident(vname) = self.peek().clone() {
+                    self.advance();
+                    let mut typ = TypeSpec::Int;
+                    if *self.peek() == Token::OpenBracket {
+                        typ = self.parse_array_suffix(typ)?;
+                    }
+                    self.var_types.insert(vname.clone(), typ.clone());
+                    globals.push(GlobalDecl::Var(typ, vname, None));
+                    let base = TypeSpec::Int;
+                    self.declaradores_globales_tras_coma(&base, &mut globals)?;
+                }
                 self.skip_semicolon();
                 continue;
             }
@@ -940,6 +975,21 @@ impl Parser {
             //
             // Mientras un parametro solo pudo ser un escalar esto no se notaba:
             // ningun escalar tiene campos que consultar.
+            // * `void f(patch_t *c[])` -- un PARAMETRO declarado como array.
+            //
+            // En C un array como parametro ES un puntero (decae al llamar), y
+            // aqui ni siquiera se leian los corchetes: el `[` sobraba y el
+            // error acusaba al tipo. `wi_stuff.c` pasa asi sus tablas de
+            // graficos.
+            let ptype = if *self.peek() == Token::OpenBracket {
+                let t = self.parse_array_suffix(ptype)?;
+                match t {
+                    TypeSpec::Array(base, _) => TypeSpec::Ptr(base),
+                    otro => otro,
+                }
+            } else {
+                ptype
+            };
             self.var_types.insert(pname.clone(), ptype.clone());
             params.push(Param { typ: ptype, name: pname });
             if *self.peek() == Token::Comma { self.advance(); }
@@ -970,6 +1020,9 @@ impl Parser {
         let mut var_count = 0u32;
         let mut var_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
         let mut body = Vec::new();
+        // Quien es la funcion, para las `static` locales de CUALQUIER bloque
+        // suyo -- incluidos los anidados, que hasta ahora no podian tener una.
+        self.funcion_actual = name.clone();
         loop {
             match self.peek() {
                 Token::CloseBrace => { self.advance(); break; }
@@ -983,6 +1036,18 @@ impl Parser {
                             body.push(Stmt::Label(name));
                             continue;
                         }
+                    }
+                    // `extern` en el cuerpo: declara un nombre que vive en otro
+                    // sitio. Se registra el tipo y no se emite nada. Estaba en
+                    // `parse_block` y faltaba aqui, que es el bucle del cuerpo
+                    // de la funcion -- las mismas dos gramaticas otra vez.
+                    if *self.peek() == Token::Extern {
+                        self.advance();
+                        if let Some((t, vname)) = self.try_parse_decl()? {
+                            self.var_types.insert(vname, t);
+                            self.skip_semicolon();
+                        }
+                        continue;
                     }
                     // * Una local `static` NO es una local: se va a las
                     // globales y aqui no queda nada.
@@ -1041,6 +1106,26 @@ impl Parser {
         name: String,
     ) -> Result<(), CError> {
         let real = format!("{}.{}", funcion, name);
+        // * `static event_t st_notify = { ... };` -- una LISTA tambien.
+        //
+        // Solo se admitia una expresion, asi que una `static` local con
+        // inicializador de agregado moria con "unexpected token: OpenBrace".
+        // Y una `static` local con lista no es rara: es como se escribe una
+        // tabla que no hace falta fuera de su funcion -- `am_map.c` guarda ahi
+        // el evento que manda al pulsar una tecla.
+        if *self.peek() == Token::Assign
+            && self.tokens.get(self.pos + 1) == Some(&Token::OpenBrace)
+        {
+            self.advance();
+            let escrituras = self.parse_inicializador(&typ)?;
+            let typ = self.cerrar_array_incompleto(typ, &escrituras);
+            self.skip_semicolon();
+            self.var_types.insert(real.clone(), typ.clone());
+            self.static_alias.insert(name, real.clone());
+            self.globales_pendientes
+                .push(GlobalDecl::VarLista(typ, real, escrituras));
+            return Ok(());
+        }
         let init = if *self.peek() == Token::Assign {
             self.advance();
             Some(self.parse_assign()?)
@@ -1172,13 +1257,19 @@ impl Parser {
             self.pos = save; return Ok(None);
         }
         self.advance();
-        // array declarator: name[size] -- el tamano SE GUARDA (antes se tiraba)
+        // * El MISMO lector de corchetes que el nivel de fichero.
+        //
+        // Este camino tenia su propia copia, que leia una sola dimension y
+        // exigia una medida dentro. Asi que lo que ya funcionaba fuera de una
+        // funcion volvia a fallar dentro de ella:
+        //
+        //   byte endtrack[] = {0xFF, 0x2F, 0x00};   "unexpected token: CloseBracket"
+        //   short caja[2][4];                       el segundo [4] sobraba
+        //
+        // Dos copias de la misma regla es exactamente como se llega a que una
+        // sepa algo que la otra no. Ahora es `parse_array_suffix` en los dos.
         if *self.peek() == Token::OpenBracket {
-            self.advance();
-            let size_expr = self.parse_expr()?;
-            self.expect(&Token::CloseBracket)?;
-            let n = match size_expr { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
-            typ = TypeSpec::Array(Box::new(typ), n);
+            typ = self.parse_array_suffix(typ)?;
         }
         // * La COMA tambien cierra un declarador: `int a, b;`.
         //
@@ -1876,8 +1967,50 @@ impl Parser {
                             continue;
                         }
                     }
+                    // ** LO QUE UN BLOQUE ANIDADO NO SABIA HACER.
+                    //
+                    // El cuerpo de una funcion entendia `static`, `extern` y
+                    // los declaradores separados por coma. Un bloque de dentro
+                    // --el de un `if`, el de un `for`-- no, porque es OTRO
+                    // bucle. Asi que lo mismo compilaba o no segun estuviera
+                    // una llave mas adentro:
+                    //
+                    //   static mobj_t dummy_mobj;      "unexpected token: Static"
+                    //   extern boolean advancedemo;    "unexpected token: Extern"
+                    //   char *startname, *endname;     "unexpected token: Comma"
+                    //
+                    // Ninguno de los tres es raro: son p_mobj.c, d_net.c y
+                    // p_spec.c. Dos bucles con la misma gramatica es como se
+                    // llega a que uno sepa cosas que el otro no.
+                    if *self.peek() == Token::Static {
+                        self.advance();
+                        let Some((typ, vname)) = self.try_parse_decl()? else {
+                            return Err(CError::new(self.line(),
+                                "static: esperaba una declaracion de variable"));
+                        };
+                        let quien = self.funcion_actual.clone();
+                        self.declarar_static_local(&quien, typ, vname)?;
+                        continue;
+                    }
+                    // `extern` DENTRO de una funcion: declara un nombre que
+                    // vive en otro sitio. Se registra el tipo y no se emite
+                    // nada -- que es todo lo que significa.
+                    if *self.peek() == Token::Extern {
+                        self.advance();
+                        if let Some((typ, vname)) = self.try_parse_decl()? {
+                            self.var_types.insert(vname, typ);
+                            self.skip_semicolon();
+                        }
+                        continue;
+                    }
                     if let Some((typ, name)) = self.try_parse_decl()? {
+                        let base = self.base_del_declarador.clone();
                         stmts.push(self.terminar_declaracion(typ, name)?);
+                        let mut mas = Vec::new();
+                        self.declaradores_tras_coma(&base, &mut mas)?;
+                        for (t2, n2) in mas {
+                            stmts.push(self.terminar_declaracion(t2, n2)?);
+                        }
                         continue;
                     } else {
                         stmts.push(self.parse_stmt()?);

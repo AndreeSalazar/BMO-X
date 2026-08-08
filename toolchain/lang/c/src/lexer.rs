@@ -132,6 +132,22 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
             '.' => {
                 if i + 2 < c.len() && c[i+1] == '.' && c[i+2] == '.' {
                     t.push(Token::Puntos); i += 3;
+                } else if i + 1 < c.len() && c[i+1].is_ascii_digit() {
+                    // * `.867` -- un flotante SIN el cero de delante.
+                    //
+                    // C lo permite y `am_map.c` lo usa para las flechas del
+                    // mapa: `(fixed_t)(-.867*(1<<16))`. Salia como un `Dot`
+                    // suelto seguido de un entero, y el error --"unexpected
+                    // token: Dot"-- acusaba a un punto que ahi es parte del
+                    // NUMERO, no un acceso a campo.
+                    //
+                    // Va en la rama del punto y no en la del digito porque
+                    // aqui es donde empieza: el numero no tiene primera cifra.
+                    let mut n = String::from("0.");
+                    i += 1;
+                    while i < c.len() && c[i].is_ascii_digit() { n.push(c[i]); i += 1; }
+                    if i < c.len() && (c[i] == 'f' || c[i] == 'F') { i += 1; }
+                    t.push(Token::FloatLit(n.parse().unwrap_or(0.0)));
                 } else { t.push(Token::Dot); i += 1; }
             }
             '=' => {
