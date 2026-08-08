@@ -99,7 +99,31 @@ impl Preprocessor {
 
         while i < lines.len() {
             self.line = i + 1;
-            let raw = lines[i].trim();
+            let mut raw = lines[i].trim().to_string();
+
+            // * A LINE ENDING IN `\` IS NOT A LINE (C11 phase 2).
+            //
+            // The backslash and the newline are deleted and the two lines
+            // become one, BEFORE anything else looks at them. Without it, a
+            // macro written across several lines -- which is how every
+            // non-trivial macro is written --
+            //
+            //   #define Z_ChangeTag(p,t) \
+            //   { ... Z_ChangeTag2((p),(t)); }
+            //
+            // defines a body of `\` and then drops the second line into the
+            // file as if it were code. The error lands on that line and says
+            // "expected type, got Ident(Z_ChangeTag2)", which is a true
+            // statement about a line that should not exist.
+            //
+            // It joins in the OUTPUT too, not only in directives: the same
+            // rule holds for a long string or a table split across lines.
+            while raw.ends_with('\\') && i + 1 < lines.len() {
+                raw.pop();
+                i += 1;
+                raw.push_str(lines[i].trim());
+            }
+            let raw = raw.as_str();
 
             if raw.starts_with('#') {
                 // * Comments die BEFORE the directive is read.

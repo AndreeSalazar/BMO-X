@@ -147,3 +147,122 @@ fn a_pointer_to_function_can_be_typedefd() {
     );
     assert_eq!(out, "42\n");
 }
+
+/// And it can be a PARAMETER, which is the half that was missing: a callback
+/// could be declared, stored and called, but not passed. `p_map.c` and
+/// `p_sight.c` are built on passing the traverser in -- 24 files.
+#[test]
+fn a_pointer_to_function_can_be_a_parameter() {
+    let out = run_c(
+        "int apply(int (*f)(int), int v) { return f(v); } \
+         int twice(int v) { return v * 2; } \
+         int main() { printf(\"%d\\n\", apply(twice, 21)); return 0; }",
+    );
+    assert_eq!(out, "42\n");
+}
+
+// =============== Declarators: the comma, and the brackets ===============
+
+/// `int alpha, beta;` at FILE scope.
+///
+/// It worked inside a function and not outside it, so the difference was the
+/// scope and not the syntax. The message -- "expected type, got Comma" --
+/// sends you to look at the type, which is perfect.
+#[test]
+fn several_globals_share_one_type_after_a_comma() {
+    let out = run_c(
+        "int alpha, beta; int *ptr, plain; \
+         int main() { alpha = 1; beta = 2; plain = 39; ptr = &alpha; \
+         printf(\"%d\\n\", *ptr + beta + plain); return 0; }",
+    );
+    assert_eq!(out, "42\n");
+}
+
+/// The same inside a struct: `int data1, data2, data3, data4;`
+///
+/// That is `d_event.h`, the event every input in DOOM travels in. One line,
+/// and it was the first error in twenty files.
+#[test]
+fn several_members_share_one_type_after_a_comma() {
+    let out = run_c(
+        "typedef struct { int data1, data2, data3, data4; } event_t; \
+         int main() { event_t e; e.data1 = 1; e.data2 = 2; e.data3 = 3; e.data4 = 36; \
+         printf(\"%d\\n\", e.data1 + e.data2 + e.data3 + e.data4); return 0; }",
+    );
+    assert_eq!(out, "42\n");
+}
+
+/// `int t[] = { ... }` -- the list is what says how long the array is.
+#[test]
+fn an_array_without_a_size_takes_it_from_its_initializer() {
+    let out = run_c(
+        "int table[] = { 10, 20, 12 }; \
+         int main() { printf(\"%d\\n\", table[0] + table[1] + table[2]); return 0; }",
+    );
+    assert_eq!(out, "42\n");
+}
+
+/// Two dimensions, and they fold from the right: `[2][4]` is two arrays of
+/// four. DOOM's `doomdata.h` stores a node's bounding boxes exactly like that,
+/// and `tables.h` its gamma tables -- between them, 39 files.
+#[test]
+fn a_two_dimensional_array_is_read_whole() {
+    let out = run_c(
+        "int grid[2][3] = { { 1, 2, 3 }, { 10, 20, 30 } }; \
+         int main() { \
+           printf(\"%d %d %d %d %d %d\\n\", grid[0][0], grid[0][1], grid[0][2], \
+                  grid[1][0], grid[1][1], grid[1][2]); return 0; }",
+    );
+    assert_eq!(out, "1 2 3 10 20 30\n");
+}
+
+/// A size that cannot be computed is an ERROR, not a 1.
+///
+/// It used to fall back to one element: the program compiled, the array had a
+/// single slot, and every write past the first landed on the next variable.
+#[test]
+fn an_array_size_that_is_not_constant_is_rejected() {
+    let err = compile_source_to_bef("int n; int t[n]; int main() { return 0; }")
+        .expect_err("a variable is not a constant size");
+    assert!(err.message.contains("constante"), "message: {}", err.message);
+}
+
+/// `typedef byte digest_t[20];` -- a typedef OF an array.
+///
+/// `sha1.h` has one, `net_defs.h` includes it and `doomstat.h` includes that,
+/// which is how one line reached most of the game.
+#[test]
+fn an_array_can_be_typedefd() {
+    let out = run_c(
+        "typedef int digest_t[4]; \
+         int main() { digest_t d; d[0] = 40; d[3] = 2; printf(\"%d\\n\", d[0] + d[3]); return 0; }",
+    );
+    assert_eq!(out, "42\n");
+}
+
+// =============== And two words that meant nothing ===============
+
+/// `inline` is a REQUEST, and the standard lets a compiler ignore it. BMO C
+/// does not inline, so honouring it and ignoring it produce the same program --
+/// the only difference was that the word made the file stop.
+#[test]
+fn inline_is_accepted_and_changes_nothing() {
+    let out = run_c(
+        "inline int twice(int v) { return v * 2; } \
+         int main() { printf(\"%d\\n\", twice(21)); return 0; }",
+    );
+    assert_eq!(out, "42\n");
+}
+
+/// A line ending in `\` is not a line (C11 phase 2). Without this, a macro
+/// written across several lines defines a body of `\` and drops the rest into
+/// the file as code -- and the error lands on a line that should not exist.
+#[test]
+fn a_backslash_joins_the_next_line() {
+    let out = run_c_con_pp(
+        "#define PICK(a, b) \\\n\
+         \x20   ((a) > (b) ? (a) : (b))\n\
+         int main() { printf(\"%d\\n\", PICK(11, 42)); return 0; }",
+    );
+    assert_eq!(out.trim(), "42");
+}

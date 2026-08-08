@@ -218,9 +218,9 @@ pub enum Expr {
     /// parser, no el emisor -- mismo reparto que `Field` en C. Un codegen que
     /// tuviera que deducirla otra vez sabria de disposiciones **dos veces**, y
     /// dos copias de un calculo de offsets divergen.
-    Subscript(String, Box<Expr>, u8),
+    Subscript(String, Box<Expr>, u32),
     /// `v[i] = valor`.
-    AssignSubscript(String, Box<Expr>, u8, Box<Expr>),
+    AssignSubscript(String, Box<Expr>, u32, Box<Expr>),
     /// `*p = valor`.
     AssignDeref(Box<Expr>, Box<Expr>),
     /// `(T)e` -- conversion de verdad: trunca o extiende.

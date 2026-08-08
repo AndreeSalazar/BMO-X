@@ -1183,6 +1183,31 @@ impl Machine {
                     Operand::Reg(_) => panic!("lea con operando registro es inválido"),
                 }
             }
+            // * `imul reg, r/m, imm` -- las dos anchuras del inmediato.
+            //
+            // Las emite el escalado de un indice cuando el paso no es potencia
+            // de dos: `int grid[2][3]` avanza DOCE bytes por fila, y
+            // `gammatable[5][256]` doscientos cincuenta y seis.
+            //
+            // No estaban, y el emulador hizo lo correcto: dio panic con el
+            // opcode en la mano en vez de seguir con un valor inventado. Ese
+            // panic es el que descubrio que el paso de un array de arrays se
+            // calculaba mal -- el compilador emitia `0x6B` y nada lo habia
+            // ejecutado nunca.
+            //
+            // `0x6B` lleva imm8 con signo y `0x69` imm32; el resto es el mismo
+            // ModRM de siempre.
+            0x69 | 0x6B => {
+                let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                let imm = if byte == 0x6B {
+                    self.fetch_u8() as i8 as i64
+                } else {
+                    self.fetch_u32() as i32 as i64
+                };
+                let a = self.load(src, wide) as i64;
+                let r = a.wrapping_mul(imm) as u64;
+                self.write_reg(reg, r, wide);
+            }
             // grupo 1 con imm8: /0 add, /5 sub, /7 cmp, /4 and
             0x83 => {
                 let (ext, dst) = self.modrm(0, rex_x, rex_b);

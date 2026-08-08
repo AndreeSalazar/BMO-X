@@ -279,8 +279,17 @@ impl Parser {
         i: usize,
     ) -> Result<(TypeSpec, u32), CError> {
         match tipo {
+            // * `n == 0` es INCOMPLETO, no vacio: `int t[] = { ... }`.
+            //
+            // Aqui no se sabe cuantos van a venir -- eso lo dice esta misma
+            // lista, y el llamante lo cierra despues con
+            // `cerrar_array_incompleto`. Comprobar el rango contra cero
+            // rechazaria el elemento cero de un array perfectamente legal.
+            //
+            // El aviso de rango sigue vivo para todo array que SI declaro su
+            // medida, que es donde puede haber un desbordamiento de verdad.
             TypeSpec::Array(elem, n) => {
-                if i >= *n as usize {
+                if *n > 0 && i >= *n as usize {
                     return Err(CError::new(
                         self.line(),
                         format!("el array tiene {n} elementos y se inicializa el {i}"),
@@ -367,7 +376,7 @@ impl Parser {
     /// usarla aqui ponia todos los elementos de un `struct P v[2]` en el mismo
     /// offset: `v[1]` escribia encima de `v[0]`. Compilaba, corria, y daba
     /// numeros que parecian plausibles.
-    fn tamano_de(&self, tipo: &TypeSpec) -> u32 {
+    pub(super) fn tamano_de(&self, tipo: &TypeSpec) -> u32 {
         match tipo {
             TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => {
                 self.struct_sizes.get(s).copied().unwrap_or(8)

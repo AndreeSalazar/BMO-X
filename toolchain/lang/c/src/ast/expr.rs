@@ -52,9 +52,9 @@ pub enum Expr {
     Comma(Vec<Expr>),
     Deref(Box<Expr>),
     AddrOf(Box<Expr>),
-    Subscript(String, Box<Expr>, u8),
+    Subscript(String, Box<Expr>, u32),
     /// arr[i] = val -- antes la asignacion a subscript se DESCARTABA en silencio.
-    AssignSubscript(String, Box<Expr>, u8, Box<Expr>),
+    AssignSubscript(String, Box<Expr>, u32, Box<Expr>),
     /// base[i] donde base es una EXPRESION que da un puntero (p->arr[i],
     /// (a+1)[i]): (base, indice, tipo del elemento). Antes se rechazaba.
     IndexPtr(Box<Expr>, Box<Expr>, TypeSpec),

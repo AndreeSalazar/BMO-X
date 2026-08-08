@@ -1426,8 +1426,8 @@ impl Parser {
                     // La escala sale de la tabla de simbolos: es el tamano del
                     // ELEMENTO, no el del array.
                     let escala = match self.ambitos.tipo(&n) {
-                        Some(TypeSpec::Array(t, _)) => t.size() as u8,
-                        Some(TypeSpec::Ptr(t)) => t.size() as u8,
+                        Some(TypeSpec::Array(t, _)) => t.size() as u32,
+                        Some(TypeSpec::Ptr(t)) => t.size() as u32,
                         Some(otro) => return Err(self.err(format!(
                             "`{n}` no es un array ni un puntero: es {otro:?}"))),
                         None => return Err(self.err(format!("`{n}` no esta declarada"))),

@@ -2444,19 +2444,32 @@ impl Codegen {
     }
 
     /// rax = rax * scale (shl si es potencia de 2; imul si no -- structs)
-    fn emit_scale_index(&mut self, scale: u8) {
-        if scale > 1 {
-            if scale.is_power_of_two() {
-                self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, scale.trailing_zeros() as u8]);
-            } else {
-                self.code.extend_from_slice(&[0x48, 0x6B, 0xC0, scale]); // imul rax, rax, imm8
-            }
+    /// * Escalar el indice por el tamano de UN paso.
+    ///
+    /// El paso ya no cabe siempre en un byte: en `int grid[2][3]` un paso del
+    /// indice de fuera es una FILA entera --doce bytes--, y en
+    /// `gammatable[5][256]` son 256. Por eso hay tres formas y no dos, y la
+    /// tercera es la que faltaba: `imul` con inmediato de 32 bits.
+    fn emit_scale_index(&mut self, scale: u32) {
+        if scale <= 1 {
+            return;
+        }
+        if scale.is_power_of_two() {
+            // shl rax, log2(scale)
+            self.code.extend_from_slice(&[0x48, 0xC1, 0xE0, scale.trailing_zeros() as u8]);
+        } else if scale <= i8::MAX as u32 {
+            // imul rax, rax, imm8
+            self.code.extend_from_slice(&[0x48, 0x6B, 0xC0, scale as u8]);
+        } else {
+            // imul rax, rax, imm32
+            self.code.extend_from_slice(&[0x48, 0x69, 0xC0]);
+            self.code.extend_from_slice(&scale.to_le_bytes());
         }
     }
 
     /// rax = direccion de name[idx]. Array -> base = lea del slot;
     /// puntero -> base = VALOR del slot. Local o global.
-    fn emit_subscript_addr(&mut self, name: &str, index: &Expr, scale: u8) {
+    fn emit_subscript_addr(&mut self, name: &str, index: &Expr, scale: u32) {
         self.emit_expr(index);
         self.emit_scale_index(scale);
         self.code.push(0x50); // push indice escalado
@@ -2494,7 +2507,7 @@ impl Codegen {
     /// rax = base_ptr + index * sizeof(elem), donde `base` es una EXPRESION
     /// que produce un puntero (p->arr, a+1...). Deja la direccion en rax.
     fn emit_index_ptr_addr(&mut self, base: &Expr, index: &Expr, elem: &TypeSpec) {
-        let size = self.type_stack_size(elem).max(1) as u8;
+        let size = self.type_stack_size(elem).max(1) as u32;
         self.emit_expr(base);          // rax = puntero base
         self.code.push(0x50);          // push base
         self.emit_expr(index);         // rax = indice

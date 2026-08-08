@@ -211,19 +211,31 @@ impl Parser {
     }
 
     /// Tamano del elemento apuntado/contenido por `base` (para escalar subindices).
-    fn pointee_size(&self, base: &TypeSpec) -> u8 {
+    /// * THE STRIDE OF ONE STEP, AND WHY IT IS NOT A `u8`.
+    ///
+    /// For `int grid[2][3]`, one step of the outer index is a whole ROW: three
+    /// ints, twelve bytes. The old version answered 8 for any array-of-array
+    /// (it fell through to a catch-all), so `grid[1][0]` read `grid[0][2]`.
+    /// That compiles, runs, and prints a plausible number -- the failure mode
+    /// this compiler's own test bench exists to catch.
+    ///
+    /// It returns `u32` because a row is not small: `gammatable[5][256]` steps
+    /// 256 bytes, and a table of 1024 ints steps 4096. A `u8` here does not
+    /// clamp, it WRAPS, which is the same bug with a bigger table.
+    fn pointee_size(&self, base: &TypeSpec) -> u32 {
         match base {
             TypeSpec::Char | TypeSpec::UnsignedChar => 1,
             TypeSpec::Short | TypeSpec::UnsignedShort => 2,
             TypeSpec::Int | TypeSpec::UnsignedInt => 4,
             TypeSpec::Float => 4, TypeSpec::Double => 8,
             TypeSpec::Void => 1,
-            TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => *self.struct_sizes.get(s.as_str()).unwrap_or(&8) as u8,
+            TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => *self.struct_sizes.get(s.as_str()).unwrap_or(&8) as u32,
+            TypeSpec::Array(inner, n) => self.pointee_size(inner).saturating_mul(*n),
             _ => 8,
         }
     }
 
-    fn element_size(&self, name: &str) -> u8 {
+    fn element_size(&self, name: &str) -> u32 {
         if let Some(typ) = self.var_types.get(name) {
             match typ {
                 TypeSpec::Char => 1, TypeSpec::UnsignedChar => 1,
@@ -405,7 +417,24 @@ impl Parser {
             }
             if *self.peek() == Token::Extern {
                 self.advance();
+                // A prototype is also `extern`: `extern int f(int);`. It
+                // declares nothing to allocate, and reading it as a variable
+                // would stop at the parenthesis.
+                match self.try_parse_function()? {
+                    Tope::Prototipo => continue,
+                    Tope::Funcion(f) => {
+                        functions.push(f);
+                        globals.append(&mut self.globales_pendientes);
+                        continue;
+                    }
+                    Tope::NoEsFuncion => {}
+                }
                 let (typ, name) = self.parse_type_and_name()?;
+                // Same comma rule as any other declaration. A header full of
+                // `extern int a, b;` is the normal way C shares globals, and
+                // this branch was the one place that did not know it.
+                let base = self.base_del_declarador.clone();
+                self.declaradores_globales_tras_coma(&base, &mut globals)?;
                 self.skip_semicolon();
                 self.var_types.insert(name.clone(), typ.clone());
                 globals.push(GlobalDecl::Var(typ, name, None));
@@ -426,6 +455,16 @@ impl Parser {
             // Dentro de una funcion es OTRA COSA y si cambia el programa: ver
             // `terminar_declaracion_static`.
             if *self.peek() == Token::Static {
+                self.advance();
+                continue;
+            }
+            // `inline` at file scope, same treatment and for the same reason as
+            // `static` above: it changes nothing this compiler does. See
+            // `strip_qualifiers`.
+            if matches!(self.peek(), Token::Ident(n)
+                if n == "inline" || n == "__inline" || n == "__inline__"
+                    || n == "__forceinline")
+            {
                 self.advance();
                 continue;
             }
@@ -454,6 +493,18 @@ impl Parser {
                 let name = match self.advance() {
                     Token::Ident(n) => n,
                     t => return Err(CError::new(self.line(),format!("expected typedef name, got {:?}", t))),
+                };
+                // * `typedef byte sha1_digest_t[20];` -- a typedef OF AN ARRAY.
+                //
+                // The brackets belong to the declarator, exactly as they do in
+                // a variable, and this was the only declarator that did not
+                // read them. `sha1.h` has one, `net_defs.h` includes it, and
+                // `doomstat.h` includes that -- which is how one line reached
+                // most of the game.
+                let typ = if *self.peek() == Token::OpenBracket {
+                    self.parse_array_suffix(typ)?
+                } else {
+                    typ
                 };
                 self.skip_semicolon();
                 self.typedefs.insert(name, typ);
@@ -489,11 +540,20 @@ impl Parser {
                 // Se reusa `parse_inicializador`, el mismo aplanador que usan
                 // los locales, asi que los designadores (`{[2].y = 8}`) y el
                 // relleno implicito valen aqui sin escribir nada nuevo.
+                // The base type, kept before the declarator eats any `*`: in
+                // `int *a, b;` the `b` is an `int`. Captured here because the
+                // declarators after the comma need it below.
+                let base = self.base_del_declarador.clone();
                 if *self.peek() == Token::Assign
                     && self.tokens.get(self.pos + 1) == Some(&Token::OpenBrace)
                 {
                     self.advance(); // el `=`
                     let escrituras = self.parse_inicializador(&typ)?;
+                    // `int t[] = { 10, 20, 30 };` -- the list is what says the
+                    // array is three long. Until now the bracket never got
+                    // this far.
+                    let typ = self.cerrar_array_incompleto(typ, &escrituras);
+                    self.declaradores_globales_tras_coma(&base, &mut globals)?;
                     self.skip_semicolon();
                     self.var_types.insert(name.clone(), typ.clone());
                     globals.push(GlobalDecl::VarLista(typ, name, escrituras));
@@ -505,6 +565,15 @@ impl Parser {
                 } else {
                     None
                 };
+                // * `int alpha, beta;` AT FILE SCOPE.
+                //
+                // It worked inside a function and not outside it -- the local
+                // path already called `declaradores_tras_coma` and this one
+                // did not, so the difference was the SCOPE and not the syntax.
+                // The message, "expected type, got Comma", sends you to look
+                // at the type, which is perfect. It was the first error in 20
+                // of DOOM's files.
+                self.declaradores_globales_tras_coma(&base, &mut globals)?;
                 self.skip_semicolon();
                 self.var_types.insert(name.clone(), typ.clone());
                 globals.push(GlobalDecl::Var(typ, name, init));
@@ -801,6 +870,27 @@ impl Parser {
                 self.advance(); break;
             }
             let ptype = self.parse_type_spec()?;
+            // * A PARAMETER THAT IS A POINTER TO FUNCTION:
+            //   `void P_PathTraverse(..., boolean (*trav)(intercept_t *))`
+            //
+            // The declarator was understood for globals, members, locals and
+            // typedefs, and not here -- so a callback could be declared, stored
+            // and called, but never PASSED. The message, "expected param name,
+            // got OpenParen", blames the parenthesis.
+            //
+            // It was the first error in 24 of DOOM's files, and it is not a
+            // corner of the language there: `p_map.c` and `p_sight.c` are built
+            // on passing the traverser in.
+            if *self.peek() == Token::OpenParen
+                && self.tokens.get(self.pos + 1) == Some(&Token::Star)
+            {
+                let pname = self.parse_fnptr_tail()?;
+                let ptype = TypeSpec::Ptr(Box::new(TypeSpec::Void));
+                self.var_types.insert(pname.clone(), ptype.clone());
+                params.push(Param { typ: ptype, name: pname });
+                if *self.peek() == Token::Comma { self.advance(); }
+                continue;
+            }
             // * El nombre del parametro es OPCIONAL.
             //
             // `int f(int);` es C legal y es como se escriben los prototipos en
@@ -957,25 +1047,78 @@ impl Parser {
         salida: &mut Vec<(TypeSpec, String)>,
     ) -> Result<(), CError> {
         while *self.peek() == Token::Comma {
+            self.declaradores_tras_coma_uno(base, salida)?;
+        }
+        Ok(())
+    }
+
+    /// One declarator after one comma. Split out of the loop above so that the
+    /// file-scope caller can stop between declarators -- at file scope each one
+    /// may carry its own initializer, and reading them all first would leave
+    /// the `=` behind.
+    fn declaradores_tras_coma_uno(
+        &mut self,
+        base: &TypeSpec,
+        salida: &mut Vec<(TypeSpec, String)>,
+    ) -> Result<(), CError> {
+        self.expect(&Token::Comma)?;
+        let mut typ = base.clone();
+        while *self.peek() == Token::Star {
             self.advance();
-            let mut typ = base.clone();
-            while *self.peek() == Token::Star {
-                self.advance();
-                typ = TypeSpec::Ptr(Box::new(typ));
+            typ = TypeSpec::Ptr(Box::new(typ));
+        }
+        let Token::Ident(name) = self.peek().clone() else {
+            return Err(CError::new(self.line(),
+                "esperaba otro nombre despues de la coma en la declaracion"));
+        };
+        self.advance();
+        if *self.peek() == Token::OpenBracket {
+            typ = self.parse_array_suffix(typ)?;
+        }
+        salida.push((typ, name));
+        Ok(())
+    }
+
+    /// The declarators after the comma of a FILE-SCOPE declaration, pushed as
+    /// globals of their own.
+    ///
+    /// A wrapper over `declaradores_tras_coma` so that both scopes share one
+    /// reader for `int *a, b[4], c;`. Each one may also carry its own `=`,
+    /// which is why the initializer is read here and not by the caller.
+    fn declaradores_globales_tras_coma(
+        &mut self,
+        base: &TypeSpec,
+        globals: &mut Vec<GlobalDecl>,
+    ) -> Result<(), CError> {
+        while *self.peek() == Token::Comma {
+            let mut mas = Vec::new();
+            // Reads exactly one declarator: the helper loops on commas, and
+            // the initializer belongs to the one just read.
+            let antes = self.pos;
+            self.declaradores_tras_coma_uno(base, &mut mas)?;
+            if self.pos == antes {
+                break;
             }
-            let Token::Ident(name) = self.peek().clone() else {
-                return Err(CError::new(self.line(),
-                    "esperaba otro nombre despues de la coma en la declaracion"));
-            };
-            self.advance();
-            if *self.peek() == Token::OpenBracket {
-                self.advance();
-                let medida = self.parse_expr()?;
-                self.expect(&Token::CloseBracket)?;
-                let n = match medida { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
-                typ = TypeSpec::Array(Box::new(typ), n);
+            for (typ, name) in mas {
+                if *self.peek() == Token::Assign
+                    && self.tokens.get(self.pos + 1) == Some(&Token::OpenBrace)
+                {
+                    self.advance();
+                    let escrituras = self.parse_inicializador(&typ)?;
+                    let typ = self.cerrar_array_incompleto(typ, &escrituras);
+                    self.var_types.insert(name.clone(), typ.clone());
+                    globals.push(GlobalDecl::VarLista(typ, name, escrituras));
+                    continue;
+                }
+                let init = if *self.peek() == Token::Assign {
+                    self.advance();
+                    Some(self.parse_assign()?)
+                } else {
+                    None
+                };
+                self.var_types.insert(name.clone(), typ.clone());
+                globals.push(GlobalDecl::Var(typ, name, init));
             }
-            salida.push((typ, name));
         }
         Ok(())
     }
@@ -1044,6 +1187,9 @@ impl Parser {
         let mut members = Vec::new();
         while *self.peek() != Token::CloseBrace && *self.peek() != Token::Eof {
             let mtype = self.parse_type_spec()?;
+            // The base type, before the declarator's stars, for the members
+            // after a comma.
+            let base = self.base_del_declarador.clone();
             // A pointer-to-function member: `void (*action)(void);`
             if *self.peek() == Token::OpenParen
                 && self.tokens.get(self.pos + 1) == Some(&Token::Star)
@@ -1070,16 +1216,16 @@ impl Parser {
             // El tamano y el alineado salen solos: `stack_size()` de un
             // `Array(t,n)` ya es `t*n`, y el reparto de offsets se calcula
             // con eso.
+            // Same reader as everywhere else, which is what buys `short
+            // bbox[2][4];` -- a two-dimensional MEMBER. This branch had its
+            // own bracket code that read one dimension and demanded a literal,
+            // so the second `[4]` was left in front of the parser.
+            //
+            // `doomdata.h` is the on-disk map format: nodes carry their
+            // bounding boxes exactly like that, and every file that can read a
+            // level reaches it.
             let mtype = if *self.peek() == Token::OpenBracket {
-                self.advance();
-                let n = match self.advance() {
-                    Token::IntLit(v) if v > 0 => v as u32,
-                    t => return Err(CError::new(self.line(), format!(
-                        "'{mname}[]': la medida de un array dentro de un agregado \
-                         tiene que ser un numero positivo, no {t:?}"))),
-                };
-                self.expect(&Token::CloseBracket)?;
-                TypeSpec::Array(Box::new(mtype), n)
+                self.parse_array_suffix(mtype)?
             } else {
                 mtype
             };
@@ -1104,8 +1250,22 @@ impl Parser {
                         "'{mname}:': la anchura de un campo de bits es un numero, no {t:?}"))),
                 }
             }
-            self.skip_semicolon();
             members.push(StructMember { typ: mtype, name: mname });
+            // * `int data1, data2, data3, data4;` INSIDE the aggregate.
+            //
+            // One member per line was the assumption, and C does not make it.
+            // `d_event.h` -- the event every input in DOOM travels in -- packs
+            // its four payload fields on one line, so this single line was the
+            // first error in twenty files that never even reach their own code.
+            //
+            // Same reader as the other two scopes: the type is the BASE, and
+            // each name brings its own `*` and its own `[n]`.
+            let mut mas = Vec::new();
+            self.declaradores_tras_coma(&base, &mut mas)?;
+            for (t2, n2) in mas {
+                members.push(StructMember { typ: t2, name: n2 });
+            }
+            self.skip_semicolon();
         }
         self.expect(&Token::CloseBrace)?;
         Ok(members)
@@ -1226,13 +1386,92 @@ impl Parser {
         };
         // array declarator [size] -- el tamano SE GUARDA (antes se tiraba)
         if *self.peek() == Token::OpenBracket {
-            self.advance();
-            let size_expr = self.parse_expr()?;
-            self.expect(&Token::CloseBracket)?;
-            let n = match size_expr { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
-            typ = TypeSpec::Array(Box::new(typ), n);
+            typ = self.parse_array_suffix(typ)?;
         }
         Ok((typ, name))
+    }
+
+    /// The `[...]` of a declarator, with or without a size inside.
+    ///
+    /// * WHY AN EMPTY `[]` IS A LENGTH OF ZERO AND NOT AN ERROR
+    ///
+    /// `int t[] = { 10, 20, 30 };` and `extern int t[];` are both ordinary C
+    /// and both used to die on the bracket -- `parse_expr` was called on a `]`
+    /// and reported "unexpected token: CloseBracket", which names the symbol
+    /// and not the situation.
+    ///
+    /// Zero here means INCOMPLETE, not empty. When an initializer follows, the
+    /// length is whatever the initializer wrote (see `cerrar_array_incompleto`)
+    /// -- which is the C rule: the list is what says how long the array is.
+    /// Without an initializer it stays incomplete, which is exactly what
+    /// `extern int t[];` claims: the array is somebody else's.
+    /// * AND IT CONSUMES EVERY BRACKET, NOT JUST THE FIRST.
+    ///
+    /// `extern const byte gammatable[5][256];` -- DOOM's gamma tables, in
+    /// `tables.h`, which almost every file reaches through `r_local.h`. Only
+    /// the first `[5]` was read, so the `[256]` was left in front of the
+    /// parser, which asked for a type and got a bracket. 39 files.
+    ///
+    /// The dimensions fold from the RIGHT, because that is what they mean:
+    /// `[5][256]` is five arrays of 256, not an array of five-by-256.
+    fn parse_array_suffix(&mut self, base: TypeSpec) -> Result<TypeSpec, CError> {
+        let mut dims = Vec::new();
+        while *self.peek() == Token::OpenBracket {
+            self.advance();
+            if *self.peek() == Token::CloseBracket {
+                self.advance();
+                dims.push(0);
+                continue;
+            }
+            let size_expr = self.parse_expr()?;
+            self.expect(&Token::CloseBracket)?;
+            // A size that cannot be computed is an ERROR, not a 1.
+            //
+            // It used to fall back to one element, and that is the worst
+            // possible answer: the program compiles, the array is a single
+            // slot, and every write past the first lands on whatever follows
+            // it. Same rule as a global the compiler cannot evaluate.
+            match const_eval(&size_expr) {
+                Some(n) if n > 0 => dims.push(n as u32),
+                Some(n) => {
+                    return Err(CError::new(
+                        self.line(),
+                        format!("un array no puede medir {n}"),
+                    ))
+                }
+                None => {
+                    return Err(CError::new(
+                        self.line(),
+                        "la medida de un array tiene que ser una constante que se pueda \
+                         calcular al compilar".to_string(),
+                    ))
+                }
+            }
+        }
+        let mut typ = base;
+        for n in dims.into_iter().rev() {
+            typ = TypeSpec::Array(Box::new(typ), n);
+        }
+        Ok(typ)
+    }
+
+    /// Give an incomplete array the length its initializer just implied.
+    ///
+    /// The writes carry absolute offsets, so the last one plus one element is
+    /// the length. Anything that is not an incomplete array passes through.
+    fn cerrar_array_incompleto(
+        &self,
+        typ: TypeSpec,
+        escrituras: &[Escritura],
+    ) -> TypeSpec {
+        let TypeSpec::Array(elem, 0) = &typ else { return typ };
+        let tam = self.tamano_de(elem).max(1);
+        let n = escrituras
+            .iter()
+            .map(|e| e.offset / tam + 1)
+            .max()
+            .unwrap_or(0);
+        TypeSpec::Array(elem.clone(), n.max(1))
     }
 
     fn peek_is_type_start(&self) -> bool {
@@ -1249,6 +1488,25 @@ impl Parser {
         loop {
             match self.peek() {
                 Token::Const | Token::Volatile => { self.advance(); }
+                // * `inline` and its GCC spellings are consumed and dropped.
+                //
+                // Not laziness: `inline` is a REQUEST, and the standard says a
+                // conforming compiler may ignore it. BMO C does not inline, so
+                // honouring it and ignoring it produce the same program -- the
+                // only difference was that the word made the file stop.
+                //
+                // `__inline__` and `__forceinline` are here because DOOM's
+                // `m_misc.c` and `sha1.c` reach for them behind an `#ifdef`
+                // that resolves to whatever the host compiler was.
+                //
+                // The day there IS an inliner, this is where it stops being a
+                // no-op, and nothing else has to move.
+                Token::Ident(n)
+                    if n == "inline" || n == "__inline" || n == "__inline__"
+                        || n == "__forceinline" =>
+                {
+                    self.advance();
+                }
                 _ => break,
             }
         }
@@ -1610,7 +1868,7 @@ impl Parser {
         let arrow_assign_op = |e: Box<Expr>, f: String, off: u32, ft: TypeSpec, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
             Expr::AssignArrow(e.clone(), f.clone(), off, ft.clone(), Box::new(op(Box::new(Expr::Arrow(e, f, off, ft)), Box::new(val))))
         };
-        let sub_assign_op = |n: String, idx: Box<Expr>, sc: u8, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
+        let sub_assign_op = |n: String, idx: Box<Expr>, sc: u32, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
             let lhs = Expr::Subscript(n.clone(), idx.clone(), sc);
             Expr::AssignSubscript(n, idx, sc, Box::new(op(Box::new(lhs), Box::new(val))))
         };
