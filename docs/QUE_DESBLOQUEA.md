@@ -75,6 +75,65 @@ C ya esta en 32/32. Todo esto se porta con el frontend que ya existe.
 | **NetSurf** (navegador propio) | C | ~200k | **red + TLS + FreeType** | bloqueado por RED, no por lenguaje |
 | Git, Vim, CPython | C | 250k-400k | POSIX grande: `fork`, senales, `mmap`, permisos | **no con 22 operaciones** |
 
+### ★★ DOOM, ya no estimado: MEDIDO (2026-08-08)
+
+La fila de arriba decia *"libc (`malloc`, `sprintf`, `atoi`, `exit`), unity
+build"*. Era una suposicion razonable y **tres de sus cuatro partes no eran el
+problema**. Se bajo el codigo (`ozkl/doomgeneric`, GPL-2.0) y se conto.
+
+**El tamano real**: 56.465 lineas de C en **81 ficheros** de nucleo, mas 10.637
+de cabeceras. 49 funciones distintas de libc.
+
+★ **Tres hallazgos que cambian la estimacion, y los tres van en contra de lo
+que se suponia:**
+
+1. **DOOM no necesita coma flotante.** El unico `atan()` del renderer esta
+   dentro de un `#if 0` con el comentario *"UNUSED - now getting from
+   tables.c"*. Quitando `fabs` (aceleracion del raton) y `atof` (parsear el
+   config), el motor entero es punto fijo -- que es exactamente lo que
+   `c/ray.bex` ya demostro en el Ryzen.
+2. **El tope de 4 `malloc` por proceso NO bloquea DOOM.** `I_ZoneBase` pide **un
+   solo bloque** (`DEFAULT_RAM 6` MiB) y `Z_Malloc` reparte todo desde dentro.
+   Es el caso que `KIND_MEMORIA` ya sirve: el compositor tiene 8,4 MiB por esa
+   via.
+3. **Lo que si es trabajo es `fprintf`: 64 llamadas**, mas `vsnprintf` y
+   `vfprintf`. No es una funcion suelta, es la familia de `printf` con destino.
+
+Y la capa de plataforma son **seis funciones** (`DG_Init`, `DG_DrawFrame`,
+`DG_SleepMs`, `DG_GetTicksMs`, `DG_GetKey`, `DG_SetWindowTitle`). Las seis
+existen ya en BMO.
+
+#### El metodo, que vale mas que el resultado
+
+Los 81 ficheros se compilan **UNO A UNO** y se guarda el primer error de cada
+uno. Un unity build se para en el primero y te cuenta UNA cosa; 81 primeros
+errores en una pasada son una **distribucion**: que rompe muchas veces y que
+rompe una sola.
+
+La primera pasada dio **0 de 81, y los 81 fallos eran CINCO causas** -- todas
+del front (preprocesador y declaraciones), ninguna del generador de codigo.
+Arregladas (`ee090428`), la cuenta va por **7 de 81 llegan a codegen**.
+
+⚠ Y dos de esos "fallos del compilador" eran de las cabeceras de sonda: un
+`<stdbool.h>` sin `__bool_true_false_are_defined` se llevo 52 ficheros por
+delante, y un `<inttypes.h>` vacio otros 77. **Un stub equivocado no informa de
+una verdad mas pequena: informa de otra.**
+
+#### Lo que falta para DOOM, en orden
+
+| # | Pieza | Tamano |
+|---|---|---|
+| 1 | Las causas que quedan en el front: declaradores separados por coma a nivel de fichero, `[]` sin medida, `inline`, `size_t`, `#define` con `\` de continuacion, invocacion de macro repartida en varias lineas | dias |
+| 2 | **Compilacion separada, o un unity build de 56k lineas** | ★ el techo de verdad |
+| 3 | La familia `fprintf`/`vsnprintf` | mediana |
+| 4 | ~20 funciones triviales (`toupper`, `isspace`, `atoi`, `strncpy`, `strrchr`, `strstr`, `strdup`, `memmove`, `strcasecmp`, `ftell`, `feof`, `fwrite`) | una tarde |
+| 5 | `system`, `mkdir`, `getenv`, `remove`, `rename` -- todas en buscar el WAD y guardar partida | se apuntalan |
+| 6 | Que el `.bex` quepa en **1 MiB** (`MAX_BEX`) | por medir |
+
+El banco de sonda (cabeceras de sistema minimas y el guion) vive **fuera del
+repo**, en `BMO-externo/doom-port/`: codigo GPL y un WAD no entran en un arbol
+con licencia Techne.
+
 ## Nivel 1 -- C++ acotado + lo que ya hay
 
 Asume los 6 pasos del frontend hechos (ver `toolchain/lang/cpp/BRECHA.md`).

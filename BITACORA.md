@@ -769,6 +769,41 @@ eso, la regla era una limpieza que hicimos una vez.
 
 ---
 
+## Ep. 32 -- El `#if` que no fallaba: contestaba mal
+**Sintoma**: ninguno. Ese es el episodio.
+
+Al medir BMO C contra los 81 ficheros de DOOM aparecieron cinco causas, cuatro
+de ellas ruidosas -- el compilador se paraba y decia algo. La quinta no decia
+nada.
+
+**Culpable**: el evaluador de `#if` buscaba **el primer operador de una lista
+fija, en cualquier posicion de la cadena**, y partia ahi. Con `a == b && c`
+encuentra `==` antes que `&&`, asi que calculaba `a == (b && c)`.
+
+Eso no da error. **Da una respuesta**, y lo que esa respuesta decide es que
+mitad del fichero existe. Un preprocesador que elige la rama equivocada produce
+un programa que compila limpio, pasa los tests que se le pongan, y **no es el
+programa que se escribio**. No hay linea que mirar, porque la linea que sobra ya
+no esta en el texto.
+
+Al lado de eso, `#if (0 == 0)` --que no sabia evaluar por los parentesis-- era
+el sintoma amable: se para y avisa.
+
+**Y una segunda, encontrada por el test de otra cosa.** Escribiendo la fila que
+comprueba que un `//` dentro de una cadena NO es un comentario, salto que
+`sin_comentarios` cortaba en el primer `//` estuviera donde estuviera:
+`#define PATH "http://x/y"` se guardaba como `"http:`. El mensaje que salia era
+*"'PATH' no esta declarado (...) si venia de un #define, la cabecera no llego a
+expandirse"* -- o sea, te manda a revisar los includes. La macro expandia
+perfectamente. Se partia **al guardarla**, tres pasos antes.
+
+**Moraleja**: *un fallo que se para es un regalo; el que contesta es el caro.*
+Y el orden en que se buscan importa -- las cuatro ruidosas se veian en la
+primera pasada de la sonda, y la silenciosa solo aparecio al leer el codigo que
+las cuatro tenian al lado. Por eso ahora es un parser con precedencia de verdad:
+no porque fuera mas elegante, sino porque el modo de fallo de la version vieja
+**no tiene sintoma**.
+
 ## Las leyes que dejo esta guerra
 
 1. **QEMU miente por omision**: sin IRQs vivos, sin tiempos fisicos, sin

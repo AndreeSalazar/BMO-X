@@ -521,12 +521,22 @@ no `.bex` can call it. And it is why `malloc` today is *one syscall per call*
 with a hard limit of four per process: enough for a program that asks for one
 big block, not for one that then carves thousands of small ones out of it.
 
-Two roads, deliberately **left undecided** with the reasoning written down in
+Two roads, with the reasoning written down in
 [`toolchain/forge/README.md`](toolchain/forge/README.md): a real linker (weeks,
 and the only thing that also unlocks separate compilation units for C++), or
 functions synthesised into the image (one session, uses a mechanism that
-*already runs on metal*, and unblocks DOOM). The question that decides it is
-not technical: which arrives first, a large foreign program or DOOM?
+*already runs on metal*).
+
+**The second one was taken, and it is done** -- `strlen`, `strcpy`, `memset`,
+`strcmp`, `strchr`, `strncmp` and `memcmp` are emitted from a table into the
+image, and `printf` covers `%d %s %x %c`. What that bought is precise and worth
+saying precisely: **a program can now call the small libc. It still cannot call
+another file.**
+
+So the paragraph above is half true and the half matters. DOOM is 81 translation
+units that call each other; synthesising `strlen` does nothing for that.
+Separate compilation is still the ceiling, and it is the one thing on this page
+that no amount of small work removes.
 
 ---
 
@@ -587,10 +597,23 @@ When the emulator and the hardware disagree, *the emulator gets fixed*. That
 rule caught a broken `lea [rip+disp]` that passed green in simulation and would
 have read garbage on real silicon.
 
-**827 tests, zero failures.** And the zero is recent: the suite carried a
-permanent red -- a doctest marked `rust` that was pseudocode and could never
-compile. A failure nobody is going to fix trains you not to look at failures,
-which is the opposite of what a suite is for.
+**642 tests, and one red -- named, because the alternative is worse.**
+
+`cargo test --workspace --exclude bmo-kernel --exclude boot-context --exclude
+bmo-rt` is the command, and today it reports 642 passing and **one failure**:
+the C++ conformance matrix runs 108 of 110 -- a global reads `0` where it should
+read `42`, and an indexed string literal comes back empty. It predates this
+page's claim of a clean suite, and this page carried the claim anyway.
+
+That is the failure mode the rule exists to prevent, applied to the rule
+itself: **a failure nobody is going to fix trains you not to look at failures.**
+It is written here until it is fixed, with the number it is at.
+
+The suite has been here before -- it once carried a doctest marked `rust` that
+was pseudocode and could never compile. The fix then was to delete a test that
+was not one. The fix now is to make two rows pass, and the symptoms point where
+to look: both are the data section and relocations, which is exactly the work
+that landed for C.
 
 ### The sources are ASCII, and the screen speaks Spanish
 
@@ -742,12 +765,26 @@ on top of it.
 
 ### Phase D -- Programs worth running
 
-12. **libc for DOOM** -- `fopen`, a real `malloc` on top of the memory block,
-    complete `printf`. The language is already there; **what is missing first
-    is the decision above** -- a libc nobody can call is not a libc, it is a
-    plan. See `toolchain/forge/README.md`
-13. **DOOM.** It is a software renderer: it needs no GPU, no shaders, no Vulkan.
-    It is the first heavy program this system can honestly run
+12. **libc for DOOM** -- `fopen`/`fread`/`fseek`/`fclose` landed on 7 August,
+    and the string functions are synthesised. What is left is the `fprintf`
+    family (64 calls in DOOM) and about twenty small ones
+13. **DOOM -- and it is now measured, not estimated.** On 8 August its 81 core
+    translation units were compiled one at a time against BMO C, keeping the
+    first error of each. **0 of 81 reached codegen, and the 81 failures were
+    five causes** -- all in the preprocessor and in declarations, none in code
+    generation. With those fixed it is 7 of 81, and the remaining list is
+    written down in [`docs/QUE_DESBLOQUEA.md`](docs/QUE_DESBLOQUEA.md).
+
+    Two of its findings cancel long-standing assumptions on this page: **the
+    renderer needs no floating point at all** (the only `atan` sits inside an
+    `#if 0`, the tables come from `tables.c`), and **the four-allocations limit
+    does not block it** -- `I_ZoneBase` asks for one 6 MiB block and DOOM's own
+    allocator carves everything out of it, which is what `KIND_MEMORIA` already
+    serves.
+
+    It is a software renderer: no GPU, no shaders, no Vulkan. It is the first
+    heavy program this system can honestly run, and what stands between here and
+    there is separate compilation, not the language
 14. **C++ continues** -- inheritance and virtuals landed; the scope stays frozen
     at essential C++17
 15. ~~**COMP-3 (packed decimal)**~~ -- ✅ **done 2026-08-03.** What remains is

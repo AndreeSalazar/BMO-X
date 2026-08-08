@@ -10,8 +10,24 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> **Al 2026-08-08**: **827 tests en verde y CERO rojos** (el conteo excluye
-> `bmo-kernel` y `bmo-rt`, que por diseno no compilan en el anfitrion).
+> **Al 2026-08-08**: con el comando que documenta este fichero
+> --`cargo test --workspace --exclude bmo-kernel --exclude boot-context
+> --exclude bmo-rt`-- salen **642 en verde y UNO EN ROJO**. `bmo-c-front` sube a
+> **297** (285 antes): las doce filas nuevas son la sonda de DOOM.
+>
+> ⚠ **El rojo hay que decirlo, no arrastrarlo**: `matriz_cpp_ejecuta_correctamente`
+> va 108/110 -- un global lee `0` donde deberia leer `42`, y un literal de
+> cadena indexado sale vacio. Es **anterior** al 08-08 (lo dice el mensaje de
+> `e4cf8a16`) y los dos sintomas son los que ya se arreglaron en C: seccion de
+> datos y relocations. Este documento decia "827 en verde y CERO rojos" mientras
+> eso pasaba -- y esa es justo la frase que entrena a no mirar los fallos.
+>
+> ⚠ Y el **827** no sale con ese comando. Sale de sumar ejecuciones por crate
+> (`bmo-c-front` 297 + `bmo-cobol-front` 217 + `bmo-abi` 85 + `bmo-cpp-front` 22
+> + `bmo-uhid` 21 + `bmo-ada-front` 20 + `bmo-input` 17 + `bmo-rt` 6 + ...), que
+> es otra cuenta. Mientras las dos convivan sin decir cual es cual, el numero de
+> la portada no se puede comprobar -- y un numero que no se puede comprobar no
+> es una verificacion, es una cifra.
 >
 > Y desde el 08-08 el build valida **la codificacion de las fuentes** en el
 > mismo paso que valida el contrato de syscalls: las fuentes son ASCII y las
@@ -26,6 +42,74 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > y el grafo de ESTRATOS navegable, verificado en el Ryzen el 06-08-- y **Vulkan
 > esta APARCADO con plan escrito** (`PLAN_VULKAN.md`), que no es lo mismo que
 > descartado. Siguen fuera Wine y la libc completa.
+
+## ★★★ 2026-08-08 -- LOS CERROJOS SE CUENTAN, Y DOOM DEJA DE SER UNA SUPOSICION
+
+### 1 - SMP paso 4: **medir antes de dar trabajo de verdad**
+
+`docs/SMP_MAESTRO.md` tiene los pasos numerados y el 4 es este. Los doce nucleos
+llevan en pie desde el 07-08 y **lo unico que llama a `repartir()` es
+`smp prueba`**: antes de darles trabajo que valga hay que poder ver lo que ese
+trabajo cuesta por dentro.
+
+Cada `SpinLock` lleva ahora su nombre y cuenta **choques, vueltas de espera y la
+mayor de todas**. Y lo que lo hace util no es el numero: es que **hoy tiene que
+ser CERO**, por construccion y por dos razones distintas:
+
+1. Con un nucleo nadie puede encontrar un cerrojo tomado -- quien lo tiene corre
+   con IF a cero.
+2. Los obreros de `obra.rs` calculan y nada mas. Un obrero que no entra en el
+   kernel no toca ninguno de los **209 `static mut`**.
+
+Un numero distinto de cero **no mide rendimiento**: dice que una de esas dos
+frases dejo de ser verdad, y llega antes de que se corrompa nada. Misma forma
+que `FatVolume::fallos_mudos()`.
+
+★ Y **no cuesta nada cuando nadie pelea**: el camino rapido es el `swap` de
+siempre y sale antes de tocar un contador. Todas las atomicas nuevas viven en la
+rama que solo corre si el cerrojo YA estaba tomado.
+
+Se ve en `info` (dos renglones, verde a cero y rojo si no), en CABINA al acabar
+`smp prueba`, y en tres campos nuevos de `OP_INFO`.
+
+### 2 - La tabla de `OP_INFO` vivia TRES veces y nadie la vigilaba
+
+La implementa el kernel, la declara el ABI y la consume el userland. Una fila
+escrita en dos de los tres sitios es un campo que contesta otra cosa de la que
+se pidio, **y no falla al compilar**. Al escribir el guardian salio el caso
+real: `INFO_PANTALLA_DUENO` estaba en el kernel y en el userland y **no en el
+ABI**. `build.ps1` lo comprueba ahora, y la lista no se escribe a mano.
+
+⚠ Y otra que no compilaba en `main`: `ordenes/mod.rs` decia `mod complete;` con
+el fichero todavia llamado `completar.rs` -- **el compositor no construia** desde
+el renombrado al ingles del 08-08.
+
+### 3 - DOOM contra BMO C: **81 fallos eran CINCO causas**
+
+Se bajo `ozkl/doomgeneric` y se midio en vez de estimar. Los 81 ficheros del
+nucleo se compilan **uno a uno** y se guarda el primer error de cada uno: 81
+primeros-errores en una pasada, que es lo que convierte "no compila" en una
+distribucion.
+
+```
+   antes:  0 de 81 llegan a codegen
+   ahora:  7 de 81
+```
+
+Las cinco causas, todas del front y ninguna del generador de codigo: el
+comentario que no moria antes de la directiva; el identificador sin definir en
+un `#if`, que en C vale **cero** (45 ficheros); el evaluador de `#if` sin
+parentesis **y con la precedencia mal** --`a == b && c` se calculaba como
+`a == (b && c)`, que no falla: contesta, y lo que decide es que mitad del
+fichero existe--; los agregados sin etiqueta (`typedef struct { ... } x;`, 34
+ficheros); y el valor de un `enum`, que es una expresion constante y no un
+literal.
+
+★ Y el hallazgo de DOOM que cambia la estimacion: **el renderer no necesita coma
+flotante** (el unico `atan()` esta dentro de un `#if 0`), y **el tope de 4
+`malloc` por proceso no lo bloquea** -- `I_ZoneBase` pide un solo bloque de 6
+MiB y `Z_Malloc` reparte desde dentro. Detalle y lo que falta, en
+[`docs/QUE_DESBLOQUEA.md`](docs/QUE_DESBLOQUEA.md).
 
 ## ★★★ 2026-08-07 -- SMP ARRANCA (12/12 EN METAL), Y LA CADENA DE FICHEROS EN C
 
