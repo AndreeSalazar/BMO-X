@@ -29,6 +29,12 @@ fn c_feature_matrix_runs_correctly() {
         ("do-while", "int i=0; int s=0; do{s=s+1; i=i+1;}while(i<3); printf(\"%d\", s);", "3"),
         ("break", "int s=0; for(int i=0;i<10;i=i+1){ if(i==3) break; s=s+1;} printf(\"%d\", s);", "3"),
         ("continue", "int s=0; for(int i=0;i<5;i=i+1){ if(i==2) continue; s=s+1;} printf(\"%d\", s);", "4"),
+        // * `break` desde un `if` ANIDADO dentro de un `while`, y lo que
+        // importa es que el contador CONSERVE su valor al salir. Salir
+        // asignandole el tope tambien corta el bucle, pero borra lo unico que
+        // el bucle habia averiguado -- y eso es lo que dejo al raycaster
+        // dibujando cielo y suelo sin una sola pared. Ver `raycaster_C.c`.
+        ("break-conserva", "int t=0; while(t<100){ t=t+7; if(t>20){ break; } } printf(\"%d\", t);", "21"),
         ("switch", "int x=2; switch(x){case 1: printf(\"uno\"); break; case 2: printf(\"dos\"); break; default: printf(\"otro\");}", "dos"),
         ("switch-default", "int x=9; switch(x){case 1: printf(\"uno\"); break; default: printf(\"otro\");}", "otro"),
         ("goto", "int s=0; i: s=s+1; if(s<3) goto i; printf(\"%d\", s);", "3"),
@@ -58,10 +64,10 @@ fn c_feature_matrix_runs_correctly() {
         ("unsigned", "unsigned int u = 4294967295; printf(\"%u\", u);", "4294967295"),
         ("long", "long l = 9000000000; printf(\"%d\", l);", "9000000000"),
         ("bitops", "printf(\"%d %d %d\", 12 & 10, 12 | 3, 12 ^ 10);", "8 15 6"),
-        // ★ Dos filas que faltaban de siempre, y el hueco era invisible: el
-        // codegen emitía `~` y los desplazamientos BIEN —el .bef se escribe
-        // sin quejarse— pero el emulador no decodificaba el grupo F7 /2, así
-        // que no había forma de EJECUTARLOS y nadie les puso fila. Lo destapó
+        // * Dos filas que faltaban de siempre, y el hueco era invisible: el
+        // codegen emitia `~` y los desplazamientos BIEN --el .bef se escribe
+        // sin quejarse-- pero el emulador no decodificaba el grupo F7 /2, asi
+        // que no habia forma de EJECUTARLOS y nadie les puso fila. Lo destapo
         // C++ al escribir su matriz desde cero (fix en `bmo-lower::emu`).
         ("bitnot", "printf(\"%d %d\", ~0, ~5);", "-1 -6"),
         ("shifts", "printf(\"%d %d\", 21 << 1, 84 >> 1);", "42 42"),
@@ -88,7 +94,7 @@ fn c_feature_matrix_runs_correctly() {
 /// El payload `hola_C.bex` que el kernel EMBEBE, ejecutado.
 ///
 /// Si alguien toca el codegen y esta salida cambia, hay que regenerar
-/// el .bex antes de flashear — si no, el kernel llevaria un binario
+/// el .bex antes de flashear -- si no, el kernel llevaria un binario
 /// que ya no corresponde a su fuente.
 ///
 ///   cargo run -p bmo-c-front -- toolchain/lang/c/examples/hola_C.c     ///       -o Ultra_kernel_x86-64/kernel/src/ring0/hola_C.bex
@@ -113,12 +119,12 @@ fn profile_is_c() {
     assert_eq!(profile().name, "C");
 }
 
-/// ★ **Sin `main` no hay programa.**
+/// * **Sin `main` no hay programa.**
 ///
-/// Un fichero vacío producía un BEF de 8 240 bytes con `entry_offset = 0`, o
-/// sea apuntando a lo primero que hubiera en la sección de código, y se
-/// escribía sin quejarse. Un binario con punto de entrada inventado falla en
-/// el metal y no en la compilación — que es donde se puede leer el motivo.
+/// Un fichero vacio producia un BEF de 8 240 bytes con `entry_offset = 0`, o
+/// sea apuntando a lo primero que hubiera en la seccion de codigo, y se
+/// escribia sin quejarse. Un binario con punto de entrada inventado falla en
+/// el metal y no en la compilacion -- que es donde se puede leer el motivo.
 #[test]
 fn sin_main_no_hay_programa() {
     for fuente in ["", "int suma(int a, int b) { return a + b; }"] {

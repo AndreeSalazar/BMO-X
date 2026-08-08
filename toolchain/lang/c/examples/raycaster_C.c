@@ -1,55 +1,55 @@
-/* raycaster_C.c — 2.5D en BMO C, sobre la pantalla de verdad.
+/* raycaster_C.c -- 2.5D en BMO C, sobre la pantalla de verdad.
  *
- * ══ Para qué existe ══
+ * == Para que existe ==
  *
- * Es el ensayo general de DOOM, y está hecho para contestar UNA pregunta que
- * hoy nadie puede contestar: **¿puede un programa en C tomar la pantalla,
+ * Es el ensayo general de DOOM, y esta hecho para contestar UNA pregunta que
+ * hoy nadie puede contestar: **puede un programa en C tomar la pantalla,
  * dibujar un fotograma, leer el teclado y repetirlo sesenta veces por segundo,
  * en el metal?**
  *
- * DOOM son ~35.000 líneas en cincuenta ficheros. Si esto corre, DOOM deja de
- * ser "¿se puede?" y pasa a ser "cuánta libc falta", que es una lista y no una
+ * DOOM son ~35.000 lineas en cincuenta ficheros. Si esto corre, DOOM deja de
+ * ser "se puede?" y pasa a ser "cuanta libc falta", que es una lista y no una
  * pregunta.
  *
- * ── Los techos, RE-MEDIDOS el 2026-08-07 ──
+ * -- Los techos, RE-MEDIDOS el 2026-08-07 --
  *
- * Aquí decía que DOOM chocaría con «la tabla de cadenas del IR (256 cadenas)» y
- * con «una libc de ocho funciones sin E/S de ficheros». **Las dos eran falsas**,
+ * Aqui decia que DOOM chocaria con "la tabla de cadenas del IR (256 cadenas)" y
+ * con "una libc de ocho funciones sin E/S de ficheros". **Las dos eran falsas**,
  * y conviene corregirlas porque mandaban a preocuparse por lo que no toca:
  *
- *   · **El IR no está en el camino de compilación.** `compile_source_to_bef` va
- *     `parse` → `codegen` directo a bytes; los topes de `bmo_abi::ir` (64
+ *   - **El IR no esta en el camino de compilacion.** `compile_source_to_bef` va
+ *     `parse` -> `codegen` directo a bytes; los topes de `bmo_abi::ir` (64
  *     funciones, 256 sentencias) no los ve nadie. Medido: 2.500 funciones y
- *     20.006 líneas compilan en 0,67 s.
- *   · **La E/S de ficheros existe** desde `b791ce4b`: `fopen`/`fread`/`fseek`/
+ *     20.006 lineas compilan en 0,67 s.
+ *   - **La E/S de ficheros existe** desde `b791ce4b`: `fopen`/`fread`/`fseek`/
  *     `fclose` sobre `KIND_ARCHIVO`.
  *
- * Los techos de verdad, con su número: el `.bex` de esas 20.006 líneas mide
- * 1.007.536 bytes y **`MAX_BEX` es 1.048.576 — el 96%**; y siguen sin existir
+ * Los techos de verdad, con su numero: el `.bex` de esas 20.006 lineas mide
+ * 1.007.536 bytes y **`MAX_BEX` es 1.048.576 -- el 96%**; y siguen sin existir
  * `sprintf`, `atoi` y `exit`.
  *
- * ══ Por qué NO hay un solo `float` ══
+ * == Por que NO hay un solo `float` ==
  *
- * Punto fijo 16.16, como el `fixed_t` de DOOM — y por el mismo motivo que
+ * Punto fijo 16.16, como el `fixed_t` de DOOM -- y por el mismo motivo que
  * tuvieron ellos en 1993, no por nostalgia: la ruta de coma flotante de BMO C
- * es joven (el emulador estrenó SSE hace tres días) y un renderizador es el
- * peor sitio para estrenarla. Aquí un entero de 32 bits vale por un número con
- * dieciséis bits de parte decimal, y las multiplicaciones pasan por 64 bits
+ * es joven (el emulador estreno SSE hace tres dias) y un renderizador es el
+ * peor sitio para estrenarla. Aqui un entero de 32 bits vale por un numero con
+ * dieciseis bits de parte decimal, y las multiplicaciones pasan por 64 bits
  * para no perder nada por el camino.
  *
- * ══ Por qué no hay tabla de senos ══
+ * == Por que no hay tabla de senos ==
  *
- * No hace falta ni una. Se lleva un VECTOR de dirección y un VECTOR de plano de
- * cámara, y girar es multiplicar por dos constantes —el coseno y el seno de un
- * ángulo fijo—. Cero trigonometría en tiempo de ejecución, cero tablas
+ * No hace falta ni una. Se lleva un VECTOR de direccion y un VECTOR de plano de
+ * camara, y girar es multiplicar por dos constantes --el coseno y el seno de un
+ * angulo fijo--. Cero trigonometria en tiempo de ejecucion, cero tablas
  * globales grandes que el compilador tenga que colocar.
  *
- * ══ Y por qué no hay corrección de ojo de pez ══
+ * == Y por que no hay correccion de ojo de pez ==
  *
- * Porque con el plano de cámara **no hace falta**: el rayo se define como
- * `dir + plano*x`, y entonces el parámetro `t` con el que se avanza YA es la
- * distancia perpendicular a la pantalla. La corrección clásica por coseno es lo
- * que se paga por trabajar con ángulos en vez de con vectores.
+ * Porque con el plano de camara **no hace falta**: el rayo se define como
+ * `dir + plano*x`, y entonces el parametro `t` con el que se avanza YA es la
+ * distancia perpendicular a la pantalla. La correccion clasica por coseno es lo
+ * que se paga por trabajar con angulos en vez de con vectores.
  */
 
 #include <bmo/bmo.h>
@@ -57,7 +57,7 @@
 /* Operaciones sobre el handle de pantalla (KIND_FRAMEBUFFER). */
 #define FB_BASE   0x01
 #define FB_DIMS   0x02   /* ancho<<32 | alto */
-#define FB_STRIDE 0x03   /* stride<<32 | formato — stride va en PIXELES */
+#define FB_STRIDE 0x03   /* stride<<32 | formato -- stride va en PIXELES */
 
 /* Operaciones sobre el handle de entrada (KIND_INPUT). */
 #define ENT_TECLA 0x03   /* no bloquea: 0 = no hay nada */
@@ -66,29 +66,29 @@
 #define MAPA_N 16
 
 /* El mundo. Un solo literal, y por eso una sola entrada en la tabla de cadenas
- * del IR — que tiene 256 y conviene no gastarlas en decoración. */
-/* Puntero al literal y no `char mapa[]`: BMO C todavía no deduce el tamaño de
- * un array desde su inicializador, y aquí no hace falta — se indexa igual.
+ * del IR -- que tiene 256 y conviene no gastarlas en decoracion. */
+/* Puntero al literal y no `char mapa[]`: BMO C todavia no deduce el tamano de
+ * un array desde su inicializador, y aqui no hace falta -- se indexa igual.
  *
- * ★ Y AQUÍ HAY UNA HISTORIA, porque esta línea estuvo mintiendo meses.
+ * * Y AQUI HAY UNA HISTORIA, porque esta linea estuvo mintiendo meses.
  *
- * Un global inicializado con una cadena guarda la DIRECCIÓN del literal, y ésa
- * no se conoce hasta cargar el programa. El codegen no sabía ponerla y
- * **rellenaba de ceros sin decir nada**, así que `pared()` leía
- * `mapa[y*16+x]` desde la dirección 0 —el primer byte de la imagen, o sea el
- * `push rbp` de la primera función— y **las paredes de este laberinto eran el
- * código máquina del propio programa**.
+ * Un global inicializado con una cadena guarda la DIRECCION del literal, y esa
+ * no se conoce hasta cargar el programa. El codegen no sabia ponerla y
+ * **rellenaba de ceros sin decir nada**, asi que `pared()` leia
+ * `mapa[y*16+x]` desde la direccion 0 --el primer byte de la imagen, o sea el
+ * `push rbp` de la primera funcion-- y **las paredes de este laberinto eran el
+ * codigo maquina del propio programa**.
  *
- * No se notó porque un raycaster que dibuja paredes desde bytes cualesquiera
- * sigue dibujando paredes: salía un laberinto plausible que no era éste. Lo
- * destapó un test de globales, no una foto de la pantalla.
+ * No se noto porque un raycaster que dibuja paredes desde bytes cualesquiera
+ * sigue dibujando paredes: salia un laberinto plausible que no era este. Lo
+ * destapo un test de globales, no una foto de la pantalla.
  *
- * El 2026-08-07 se arregló primero moviendo la asignación a `main` —el remedio
- * que el propio mensaje de error recomendaba— y después de verdad: **el BEF ya
- * tiene relocations `SeccionAbs64`** y el cargador de Ring 0 las aplica, así
- * que el mapa puede volver a estar donde se escribió. El compilador deja el
- * hueco a cero y anota quién lo rellena; la dirección la pone el cargador, que
- * es el único que la sabe. */
+ * El 2026-08-07 se arreglo primero moviendo la asignacion a `main` --el remedio
+ * que el propio mensaje de error recomendaba-- y despues de verdad: **el BEF ya
+ * tiene relocations `SeccionAbs64`** y el cargador de Ring 0 las aplica, asi
+ * que el mapa puede volver a estar donde se escribio. El compilador deja el
+ * hueco a cero y anota quien lo rellena; la direccion la pone el cargador, que
+ * es el unico que la sabe. */
 char *mapa =
     "1111111111111111"
     "1000000000000001"
@@ -143,13 +143,13 @@ int main() {
     int alto;
     int stride;
 
-    /* Posición y orientación, todo en 16.16. Se empieza mirando al este. */
+    /* Posicion y orientacion, todo en 16.16. Se empieza mirando al este. */
     int posx; int posy;
     int dirx; int diry;
     int plax; int play;
 
-    /* Girar 5 grados: cos = 0.99619, sen = 0.08716. Las dos únicas constantes
-     * trigonométricas del programa. */
+    /* Girar 5 grados: cos = 0.99619, sen = 0.08716. Las dos unicas constantes
+     * trigonometricas del programa. */
     int cosg; int seng;
 
     int x; int y;
@@ -171,12 +171,12 @@ int main() {
      * declaraciones al principio de la funcion, estilo C89. */
     int bx; int by; int bw; int bh;
 
-    /* ★ LA PANTALLA TIENE UN SOLO DUEÑO, y eso no es una limitación de este
+    /* * LA PANTALLA TIENE UN SOLO DUENO, y eso no es una limitacion de este
      * programa: es el modelo. `gui.bex` la reclama al arrancar y no la suelta,
-     * así que mientras el escritorio viva, aquí se contesta que no.
+     * asi que mientras el escritorio viva, aqui se contesta que no.
      *
-     * No es un fallo que haya que arreglar en este fichero — un compositor que
-     * cediera la pantalla a cualquiera que la pida sería un compositor que no
+     * No es un fallo que haya que arreglar en este fichero -- un compositor que
+     * cediera la pantalla a cualquiera que la pida seria un compositor que no
      * sirve. Lo que falta es que el escritorio sepa PRESTARLA y recuperarla, y
      * eso es trabajo suyo, no de un ejemplo. */
     pant = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_PANTALLA_RECLAMAR, 0, 0, 0);
@@ -203,13 +203,13 @@ int main() {
     posx = 3 * UNO + 32768;
     posy = 3 * UNO + 32768;
     dirx = UNO;  diry = 0;
-    plax = 0;    play = 43690;   /* 0.666 — el campo de visión de siempre */
+    plax = 0;    play = 43690;   /* 0.666 -- el campo de vision de siempre */
     cosg = 65286;
     seng = 5712;
 
     vivo = 1;
     while (vivo == 1) {
-        /* ── UNA COLUMNA, UN RAYO ─────────────────────────────────────── */
+        /* -- UNA COLUMNA, UN RAYO --------------------------------------- */
         x = 0;
         while (x < ancho) {
             /* camx va de -1.0 a +1.0 de un borde al otro de la pantalla. */
@@ -218,8 +218,8 @@ int main() {
             rayy = diry + fmul(play, camx);
 
             /* Marchar el rayo. Un paso de 1/32 de casilla: suficiente para que
-             * no se cuele por una esquina, y barato. Se para a 20 casillas —
-             * más lejos no hay nada que enseñar y sí mucho que calcular. */
+             * no se cuele por una esquina, y barato. Se para a 20 casillas --
+             * mas lejos no hay nada que ensenar y si mucho que calcular. */
             t = 0;
             paso = 2048;
             golpe = 0;
@@ -229,15 +229,29 @@ int main() {
                 my = (posy + fmul(rayy, t)) >> 16;
                 if (pared(mx, my) == 1) {
                     golpe = 1;
-                    t = 20 * UNO;
+                    /* * `break`, y NO `t = 20 * UNO`.
+                     *
+                     * Salir del bucle asignandole el tope al contador funciona
+                     * --la condicion deja de cumplirse-- pero **borra la unica
+                     * cosa que el bucle habia averiguado**: a que distancia
+                     * estaba la pared. Y como despues se le restaba ese mismo
+                     * tope, `t` valia CERO en todos los golpes. */
+                    break;
                 }
             }
 
             if (golpe == 1) {
                 /* `t` YA es la distancia perpendicular: ver la cabecera. */
-                t = t - 20 * UNO;
                 if (t < 2048) t = 2048;
-                altura = fdiv(alto, t) >> 16;
+                /* * SIN `>> 16`, y esto es una leccion de unidades.
+                 *
+                 * `fdiv` divide dos numeros en 16.16 y devuelve 16.16. Pero
+                 * aqui el dividendo `alto` son PIXELES --un entero pelado, 768--
+                 * y el divisor `t` si es 16.16, asi que lo que sale ya es un
+                 * entero: (alto<<16) / (d<<16) = alto/d. Desplazar otros 16
+                 * bits daba **cero siempre**, y cero de altura es cielo y suelo
+                 * sin una sola pared. */
+                altura = fdiv(alto, t);
             } else {
                 altura = 0;
             }
@@ -249,7 +263,7 @@ int main() {
             if (y0 < 0) y0 = 0;
             if (y1 > alto) y1 = alto;
 
-            /* El color por distancia: lo único que da sensación de profundidad
+            /* El color por distancia: lo unico que da sensacion de profundidad
              * cuando no hay texturas. Cerca claro, lejos oscuro. */
             color = 255 - (t >> 13);
             if (color < 32) color = 32;
@@ -257,7 +271,7 @@ int main() {
             color = (color << 16) | (color << 8) | color;
 
             /* Cielo, pared, suelo. Tres tramos y ni un pixel sin escribir: el
-             * fotograma anterior está debajo y no se limpia aparte. */
+             * fotograma anterior esta debajo y no se limpia aparte. */
             y = 0;
             while (y < y0) { fb[y * stride + x] = 0x00101820; y = y + 1; }
             while (y < y1) { fb[y * stride + x] = color;      y = y + 1; }
@@ -268,12 +282,17 @@ int main() {
 
         /* COMO SE SALE, DICHO EN LA PANTALLA.
          *
-         * Cuatro barras juntas para W A S D y una aparte, en cian, para ESC.
+         * Seis barras juntas para W A S D Q E y una aparte, en cian, para ESC.
          * No es adorno: es el fallo de usabilidad que costo una sesion. Este
          * programa toma la pantalla ENTERA, asi que el escritorio desaparece y
          * con el el sitio donde uno leeria que hacer. El dueno busco la salida
          * con Alt+Tab y con Ctrl+Alt, que son atajos del escritorio y aqui no
          * existen.
+         *
+         * El que SI existe pase lo que pase es `Ctrl+Alt+ESC`, y no lo pone
+         * aqui a proposito: lo mira el kernel en `poll_ascii`, antes de que
+         * este programa vea la tecla. Es la red de abajo, no la salida normal
+         * -- si hace falta usarla, este bucle tiene un fallo.
          *
          * No hay fuente de texto en este ejemplo, asi que se dibujan BARRAS.
          * No es un manual, pero es mejor que una pantalla que no dice nada. */
@@ -282,7 +301,7 @@ int main() {
         by = alto - 22;
         bx = 24;
         i = 0;
-        while (i < 4) {
+        while (i < 6) {
             y = by;
             while (y < by + bh) {
                 x = bx;
@@ -300,9 +319,37 @@ int main() {
             y = y + 1;
         }
 
-        /* ── ENTRADA ──────────────────────────────────────────────────── */
-        tecla = (int)bmo_valor(ent, ENT_TECLA, 0, 0, 0);
-        if (tecla != 0) {
+        /* -- ENTRADA ------------------------------------------------------
+         *
+         * ** SE DRENA LA COLA, no se lee UNA tecla por fotograma.
+         *
+         * `ENT_TECLA` no bloquea y entrega **una sola** tecla por llamada. Con
+         * una lectura por cuadro, mantener `w` pulsado encola mas deprisa de lo
+         * que se saca --la repeticion automatica del teclado va a 33 ms-- y el
+         * personaje sigue andando despues de soltar. Ocho por cuadro es mas de
+         * lo que produce un dedo, asi que la cola nunca se atrasa. */
+        i = 0;
+        while (i < 8) {
+            i = i + 1;
+            tecla = (int)bmo_valor(ent, ENT_TECLA, 0, 0, 0);
+            if (tecla == 0) break;             /* la cola esta vacia */
+            /* *** EL BIT QUE DEJABA ESTE PROGRAMA SIN CONTROL.
+             *
+             * El kernel no contesta el caracter a secas: contesta
+             * `0x100 | byte`. El `0x100` significa "SI hay tecla" --hace falta
+             * porque el byte 0 tambien es una respuesta valida-- y el caracter
+             * son los ocho bits de abajo. `bmo::Entrada::tecla()`, en Rust, ya
+             * lo separaba asi; este ejemplo en C se lo comia entero.
+             *
+             * Sin quitar ese bit, `tecla == 27` compara **283** contra 27 y no
+             * es cierto jamas. Ni el ESC, ni la W, ni ninguna: el programa leia
+             * el teclado perfectamente y **descartaba todo lo que leia**.
+             *
+             * Y eso es lo que dejo la maquina de rehen en el Ryzen. El
+             * diagnostico de aquel dia --"no consiguio la entrada"-- era falso:
+             * la tenia, la leia, y no reconocia su propia tecla de salida. Un
+             * `& 0xFF` de diferencia entre un programa y un secuestro. */
+            tecla = tecla & 0xFF;
             if (tecla == 27) vivo = 0;                    /* ESC */
             if (tecla == 'w' || tecla == 'W') {
                 nx = posx + fmul(dirx, 6553);
@@ -317,9 +364,9 @@ int main() {
                 if (pared(posx >> 16, ny >> 16) == 0) posy = ny;
             }
             if (tecla == 'a' || tecla == 'A') {
-                /* Girar es rotar los DOS vectores. Si se rota sólo el de
-                 * dirección, el plano deja de ser perpendicular y la imagen se
-                 * va deformando un poco en cada giro — y eso no se ve hasta
+                /* Girar es rotar los DOS vectores. Si se rota solo el de
+                 * direccion, el plano deja de ser perpendicular y la imagen se
+                 * va deformando un poco en cada giro -- y eso no se ve hasta
                  * que llevas veinte. */
                 nx = fmul(dirx, cosg) + fmul(diry, seng);
                 ny = fmul(diry, cosg) - fmul(dirx, seng);
@@ -336,14 +383,36 @@ int main() {
                 ny = fmul(play, cosg) + fmul(plax, seng);
                 plax = nx; play = ny;
             }
+            /* -- ANDAR DE LADO, sin girar la cabeza ----------------------
+             *
+             * El perpendicular a `dir` es `(diry, -dirx)`: mismo largo, asi
+             * que se anda de lado igual de rapido que de frente. NO se usa el
+             * plano de camara para esto aunque tambien sea perpendicular --
+             * mide 0,666 (es el campo de vision) y andar de lado saldria a dos
+             * tercios de velocidad sin que se vea el motivo en ninguna parte.
+             *
+             * El choque se comprueba eje por eje, igual que en W y S: asi uno
+             * se desliza a lo largo de una pared en vez de quedarse pegado. */
+            if (tecla == 'q' || tecla == 'Q') {
+                nx = posx + fmul(diry, 6553);
+                ny = posy - fmul(dirx, 6553);
+                if (pared(nx >> 16, posy >> 16) == 0) posx = nx;
+                if (pared(posx >> 16, ny >> 16) == 0) posy = ny;
+            }
+            if (tecla == 'e' || tecla == 'E') {
+                nx = posx - fmul(diry, 6553);
+                ny = posy + fmul(dirx, 6553);
+                if (pared(nx >> 16, posy >> 16) == 0) posx = nx;
+                if (pared(posx >> 16, ny >> 16) == 0) posy = ny;
+            }
         }
 
         /* Ceder el turno. Sin esto el bucle se come el quantum entero y el
-         * sistema va a tirones — está dicho en `bmo.h` y aquí se cumple. */
+         * sistema va a tirones -- esta dicho en `bmo.h` y aqui se cumple. */
         bmo_ceder();
     }
 
-    /* Dejar la pantalla en negro al salir: quien viene detrás no tiene por qué
+    /* Dejar la pantalla en negro al salir: quien viene detras no tiene por que
      * heredar los restos de otro. */
     fila = fb;
     i = 0;

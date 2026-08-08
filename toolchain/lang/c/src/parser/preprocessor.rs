@@ -1,4 +1,4 @@
-//! C Preprocessor — handles #define, #include, #ifdef, #if, #endif.
+//! C Preprocessor -- handles #define, #include, #ifdef, #if, #endif.
 //!
 //! Runs before the tokenizer. Expands macros, resolves includes,
 //! evaluates conditional compilation, and outputs a clean source string.
@@ -12,34 +12,34 @@ use crate::StandardFeatures;
 #[derive(Debug, Clone)]
 struct MacroDef {
     params: Vec<String>,
-    /// ¿Se definió con paréntesis **pegados** al nombre?
+    /// Se definio con parentesis **pegados** al nombre?
     ///
     /// No se puede deducir de `params.is_empty()`, y confundirlo es un bug con
     /// dos caras:
     ///
     /// ```text
-    ///   #define F() 1      función SIN parámetros  → params vacío, función
-    ///   #define F (1)      OBJETO cuyo cuerpo empieza por paréntesis
+    ///   #define F() 1      funcion SIN parametros  -> params vacio, funcion
+    ///   #define F (1)      OBJETO cuyo cuerpo empieza por parentesis
     /// ```
     ///
-    /// El lector viejo hacía `rest.find('(')` sin mirar si había un espacio
-    /// delante, así que `#define CAJA_ANCHO (760)` se registraba como una
-    /// macro-función con un parámetro llamado `760` y cuerpo **vacío**. La
-    /// constante desaparecía en silencio. En C el espacio es significativo
-    /// aquí, y es el único sitio del lenguaje donde lo es.
+    /// El lector viejo hacia `rest.find('(')` sin mirar si habia un espacio
+    /// delante, asi que `#define CAJA_ANCHO (760)` se registraba como una
+    /// macro-funcion con un parametro llamado `760` y cuerpo **vacio**. La
+    /// constante desaparecia en silencio. En C el espacio es significativo
+    /// aqui, y es el unico sitio del lenguaje donde lo es.
     funcion: bool,
     /// Termina en `...`: el resto de argumentos entra por `__VA_ARGS__`.
     variadica: bool,
     body: String,
 }
 
-/// Cuántas veces se re-recorre una línea buscando más macros que expandir.
+/// Cuantas veces se re-recorre una linea buscando mas macros que expandir.
 ///
 /// Hace falta un tope porque una macro puede producir otra: `#define A B` y
 /// `#define B 1` necesitan dos pasadas. Y hace falta que sea un TOPE porque
-/// `#define A A` es legal y no termina nunca — en C de verdad se evita con la
-/// regla de "una macro no se re-expande dentro de sí misma", que pide llevar un
-/// conjunto de macros en curso; aquí se corta por profundidad, que es más pobre
+/// `#define A A` es legal y no termina nunca -- en C de verdad se evita con la
+/// regla de "una macro no se re-expande dentro de si misma", que pide llevar un
+/// conjunto de macros en curso; aqui se corta por profundidad, que es mas pobre
 /// pero no cuelga el compilador.
 const MAX_PASADAS: usize = 16;
 
@@ -48,9 +48,9 @@ pub struct Preprocessor {
     include_paths: Vec<PathBuf>,
     features: StandardFeatures,
     line: usize,
-    /// Lo que salió mal expandiendo. No puede devolverse en el acto porque la
-    /// expansión ocurre a mitad de recorrer el fichero; se acumula y
-    /// `preprocess` se niega a entregar el texto si hay algo aquí.
+    /// Lo que salio mal expandiendo. No puede devolverse en el acto porque la
+    /// expansion ocurre a mitad de recorrer el fichero; se acumula y
+    /// `preprocess` se niega a entregar el texto si hay algo aqui.
     errores: Vec<CError>,
 }
 
@@ -179,9 +179,9 @@ impl Preprocessor {
             return Err(CError::new(self.line, "unterminated #if/#ifdef (missing #endif)"));
         }
         // Una macro mal invocada NO puede pasar de largo. Antes ni siquiera se
-        // podía detectar —las macros con parámetros no se expandían— y la
-        // llamada sobrevivía hasta el codegen, que emitía un `call` a una
-        // función inexistente.
+        // podia detectar --las macros con parametros no se expandian-- y la
+        // llamada sobrevivia hasta el codegen, que emitia un `call` a una
+        // funcion inexistente.
         if let Some(e) = self.errores.first() {
             return Err(e.clone());
         }
@@ -191,7 +191,7 @@ impl Preprocessor {
 
     fn handle_define(&mut self, rest: &str) -> Result<(), CError> {
         let rest = rest.trim();
-        // El nombre llega hasta el primer carácter que no es de identificador.
+        // El nombre llega hasta el primer caracter que no es de identificador.
         let fin_nombre = rest
             .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
             .unwrap_or(rest.len());
@@ -201,8 +201,8 @@ impl Preprocessor {
         }
         let resto = &rest[fin_nombre..];
 
-        // ★ Es función SÓLO si el paréntesis va PEGADO al nombre. El espacio
-        // manda, y es el único sitio de C donde manda. Ver `MacroDef::funcion`.
+        // * Es funcion SOLO si el parentesis va PEGADO al nombre. El espacio
+        // manda, y es el unico sitio de C donde manda. Ver `MacroDef::funcion`.
         if resto.starts_with('(') {
             let cierre = resto
                 .find(')')
@@ -227,7 +227,7 @@ impl Preprocessor {
                     format!("macro variadica '{name}(...)': este estandar de C no las tiene"),
                 ));
             }
-            let body = resto[cierre + 1..].trim().to_string();
+            let body = sin_comentarios(&resto[cierre + 1..]);
             self.defines.insert(name, MacroDef { params, funcion: true, variadica, body });
         } else {
             self.defines.insert(
@@ -236,7 +236,7 @@ impl Preprocessor {
                     params: vec![],
                     funcion: false,
                     variadica: false,
-                    body: resto.trim().to_string(),
+                    body: sin_comentarios(resto),
                 },
             );
         }
@@ -280,22 +280,22 @@ impl Preprocessor {
                     errores: Vec::new(),
                 };
                 let texto = sub.preprocess(&content, &p)?;
-                // ★ Lo que la cabecera DEFINIÓ se queda.
+                // * Lo que la cabecera DEFINIO se queda.
                 //
-                // Antes no: el sub-preprocesador nacía con una copia de las
-                // macros, expandía el fichero incluido y **se moría con sus
-                // `#define` dentro**. O sea, una cabecera podía traer funciones
-                // pero no constantes — que es justo para lo que sirve una
+                // Antes no: el sub-preprocesador nacia con una copia de las
+                // macros, expandia el fichero incluido y **se moria con sus
+                // `#define` dentro**. O sea, una cabecera podia traer funciones
+                // pero no constantes -- que es justo para lo que sirve una
                 // cabecera.
                 //
-                // Y no fallaba: la directiva se consumía, así que
-                // `BMO_TECLA_REPAG` seguía en el texto como un identificador
+                // Y no fallaba: la directiva se consumia, asi que
+                // `BMO_TECLA_REPAG` seguia en el texto como un identificador
                 // suelto y el parser lo tomaba por una variable. Dos constantes
-                // distintas se volvían la MISMA variable inventada, así que
-                // `if (t == REPAG)` era cierto también para AvPag. Comparaba
-                // basura contra la misma basura y parecía que funcionaba.
+                // distintas se volvian la MISMA variable inventada, asi que
+                // `if (t == REPAG)` era cierto tambien para AvPag. Comparaba
+                // basura contra la misma basura y parecia que funcionaba.
                 //
-                // Se conserva lo que ya había en caso de choque: un `#define`
+                // Se conserva lo que ya habia en caso de choque: un `#define`
                 // del fichero que incluye manda sobre el de la cabecera, que es
                 // lo que espera quien escribe el `#define` antes del `#include`
                 // para configurarla.
@@ -367,22 +367,22 @@ impl Preprocessor {
         None
     }
 
-    /// Expande macros en una línea hasta que deje de cambiar.
+    /// Expande macros en una linea hasta que deje de cambiar.
     ///
-    /// ## Lo que había antes
+    /// ## Lo que habia antes
     ///
     /// Un bucle por CADA macro definida, ordenadas por longitud descendente,
-    /// buscando su nombre por toda la línea. Tres cosas mal:
+    /// buscando su nombre por toda la linea. Tres cosas mal:
     ///
-    /// 1. **Las macros con parámetros no se expandían.** El `if` pedía
-    ///    `m.params.is_empty()`, así que `MAX(a,b)` se quedaba en el texto tal
-    ///    cual y el parser lo tomaba por una llamada a una función `MAX` que no
-    ///    existe. Era el agujero grande de "lo típico de C".
-    /// 2. El orden por longitud era un apaño para que `AB` no se comiera a `A`;
+    /// 1. **Las macros con parametros no se expandian.** El `if` pedia
+    ///    `m.params.is_empty()`, asi que `MAX(a,b)` se quedaba en el texto tal
+    ///    cual y el parser lo tomaba por una llamada a una funcion `MAX` que no
+    ///    existe. Era el agujero grande de "lo tipico de C".
+    /// 2. El orden por longitud era un apano para que `AB` no se comiera a `A`;
     ///    recorrer el texto una vez y mirar identificadores COMPLETOS lo hace
     ///    innecesario.
-    /// 3. Sustituía **dentro de las cadenas**: `printf("BMO_TECLA_REPAG")`
-    ///    imprimía `135`.
+    /// 3. Sustituia **dentro de las cadenas**: `printf("BMO_TECLA_REPAG")`
+    ///    imprimia `135`.
     ///
     /// Ahora se recorre el texto una sola vez por pasada, saltando literales, y
     /// se repite mientras algo cambie (con tope, ver [`MAX_PASADAS`]).
@@ -403,14 +403,35 @@ impl Preprocessor {
         let mut out = String::with_capacity(texto.len());
         let mut i = 0usize;
         while i < b.len() {
-            // Un literal no es código, es dato: lo de dentro se copia entero.
+            // Un literal no es codigo, es dato: lo de dentro se copia entero.
             if b[i] == b'"' || b[i] == b'\'' {
                 i = copiar_literal(texto, i, &mut out);
                 continue;
             }
             if !is_ident_start(b[i]) {
-                out.push(b[i] as char);
-                i += 1;
+                // ** UN BYTE NO ES UN CARACTER, y esto costaba medio megabyte.
+                //
+                // `b[i] as char` interpreta el byte como Latin-1: el `n` de
+                // `"ano"` son DOS bytes en UTF-8 (C3 B1) y salian como dos
+                // caracteres U+00C3 U+00B1, que al volver a codificarse son
+                // **cuatro** bytes. Cada byte no-ASCII se duplicaba por pasada.
+                //
+                // Y las pasadas son 16, porque el bucle repite "mientras algo
+                // cambie" y esto cambiaba siempre: 2^16. Medido, un `hola
+                // mundo` con una sola `n` daba un `.bex` de **492.032 bytes**
+                // --con `MAX_BEX` en 1 MiB, dos palabras con tilde y el programa
+                // ya no carga-- y donde iba la `n` habia 65.536 bytes de basura.
+                //
+                // El acento no "no funcionaba": se convertia en un problema de
+                // tamano de binario, que es el ultimo sitio donde uno lo busca.
+                if b[i] < 0x80 {
+                    out.push(b[i] as char);
+                    i += 1;
+                } else {
+                    let c = texto[i..].chars().next().unwrap();
+                    i += c.len_utf8();
+                    out.push(c);
+                }
                 continue;
             }
             let ini = i;
@@ -426,8 +447,8 @@ impl Preprocessor {
                 out.push_str(&m.body);
                 continue;
             }
-            // Macro-función: sin paréntesis detrás, el nombre a secas NO es una
-            // invocación. En C eso es legal y se deja tal cual — es como se
+            // Macro-funcion: sin parentesis detras, el nombre a secas NO es una
+            // invocacion. En C eso es legal y se deja tal cual -- es como se
             // pasa el nombre de una macro a otra.
             let mut j = i;
             while j < b.len() && (b[j] == b' ' || b[j] == b'\t') {
@@ -438,8 +459,8 @@ impl Preprocessor {
                 continue;
             }
             let Some((args, fin)) = recoger_args(texto, j) else {
-                // Paréntesis sin cerrar en esta línea. Puede ser una invocación
-                // partida en varias líneas, que este preprocesador no junta:
+                // Parentesis sin cerrar en esta linea. Puede ser una invocacion
+                // partida en varias lineas, que este preprocesador no junta:
                 // se dice en vez de expandir a medias.
                 let linea = self.line;
                 self.errores.push(CError::new(
@@ -471,22 +492,33 @@ impl Preprocessor {
     }
 }
 
-/// Copia un literal de cadena o de carácter tal cual. Devuelve dónde sigue.
+/// Copia un literal de cadena o de caracter tal cual. Devuelve donde sigue.
 fn copiar_literal(texto: &str, desde: usize, out: &mut String) -> usize {
     let b = texto.as_bytes();
     let cierre = b[desde];
     out.push(cierre as char);
     let mut i = desde + 1;
     while i < b.len() {
-        // Una comilla escapada no cierra nada.
-        if b[i] == b'\\' && i + 1 < b.len() {
+        // Una comilla escapada no cierra nada. El `\` y lo que le sigue son
+        // ASCII los dos, asi que aqui el byte si es el caracter.
+        if b[i] == b'\\' && i + 1 < b.len() && b[i + 1] < 0x80 {
             out.push(b[i] as char);
             out.push(b[i + 1] as char);
             i += 2;
             continue;
         }
-        out.push(b[i] as char);
-        i += 1;
+        // * Y AQUI ESTABA LA `n`. Copiar el literal byte a byte con
+        // `b[i] as char` es lo mismo que hace `expandir_una_pasada`, con el
+        // mismo resultado: el texto del programa --lo que el usuario LEE-- salia
+        // multiplicado por 2^16. Ver la nota larga alli.
+        if b[i] < 0x80 {
+            out.push(b[i] as char);
+            i += 1;
+        } else {
+            let c = texto[i..].chars().next().unwrap();
+            i += c.len_utf8();
+            out.push(c);
+        }
         if b[i - 1] == cierre {
             break;
         }
@@ -494,11 +526,11 @@ fn copiar_literal(texto: &str, desde: usize, out: &mut String) -> usize {
     i
 }
 
-/// Los argumentos de una invocación, empezando en el `(`.
+/// Los argumentos de una invocacion, empezando en el `(`.
 ///
-/// Devuelve `(argumentos, posición justo detrás del `)`)`. Las comas que hay
-/// **dentro** de paréntesis, corchetes o literales no separan argumentos: sin
-/// eso, `MAX(f(a,b), c)` se leería como tres argumentos.
+/// Devuelve `(argumentos, posicion justo detras del `)`)`. Las comas que hay
+/// **dentro** de parentesis, corchetes o literales no separan argumentos: sin
+/// eso, `MAX(f(a,b), c)` se leeria como tres argumentos.
 fn recoger_args(texto: &str, abre: usize) -> Option<(Vec<String>, usize)> {
     let b = texto.as_bytes();
     let mut nivel = 0i32;
@@ -525,7 +557,7 @@ fn recoger_args(texto: &str, abre: usize) -> Option<(Vec<String>, usize)> {
                 nivel -= 1;
                 if nivel == 0 {
                     let a = actual.trim();
-                    // `F()` con la lista vacía es CERO argumentos, no uno vacío.
+                    // `F()` con la lista vacia es CERO argumentos, no uno vacio.
                     if !(args.is_empty() && a.is_empty()) {
                         args.push(a.to_string());
                     }
@@ -548,11 +580,11 @@ fn recoger_args(texto: &str, abre: usize) -> Option<(Vec<String>, usize)> {
     None
 }
 
-/// El cuerpo de la macro con los parámetros ya sustituidos.
+/// El cuerpo de la macro con los parametros ya sustituidos.
 ///
 /// Hace las tres cosas que un cuerpo puede pedir: `#p` convierte el argumento
-/// en cadena, `a ## b` pega dos piezas en un solo símbolo, y `__VA_ARGS__` es
-/// todo lo que sobró en una variádica.
+/// en cadena, `a ## b` pega dos piezas en un solo simbolo, y `__VA_ARGS__` es
+/// todo lo que sobro en una variadica.
 fn sustituir(m: &MacroDef, args: &[String]) -> String {
     let cuerpo = m.body.as_bytes();
     let mut out = String::with_capacity(m.body.len());
@@ -562,8 +594,8 @@ fn sustituir(m: &MacroDef, args: &[String]) -> String {
             i = copiar_literal(&m.body, i, &mut out);
             continue;
         }
-        // `##` — pegar. Se come el espacio de los dos lados: lo que queda tiene
-        // que ser UN símbolo, no dos separados.
+        // `##` -- pegar. Se come el espacio de los dos lados: lo que queda tiene
+        // que ser UN simbolo, no dos separados.
         if cuerpo[i] == b'#' && i + 1 < cuerpo.len() && cuerpo[i + 1] == b'#' {
             while out.ends_with(' ') || out.ends_with('\t') {
                 out.pop();
@@ -574,7 +606,7 @@ fn sustituir(m: &MacroDef, args: &[String]) -> String {
             }
             continue;
         }
-        // `#p` — convertir el argumento en cadena.
+        // `#p` -- convertir el argumento en cadena.
         if cuerpo[i] == b'#' && i + 1 < cuerpo.len() && is_ident_start(cuerpo[i + 1]) {
             let ini = i + 1;
             let mut j = ini;
@@ -619,6 +651,59 @@ fn sustituir(m: &MacroDef, args: &[String]) -> String {
 
 fn is_ident_start(b: u8) -> bool {
     b.is_ascii_alphabetic() || b == b'_'
+}
+
+/// * El cuerpo de un `#define` NO incluye el comentario que lleva detras.
+///
+/// # El bug que esto arregla, que parecia imposible
+///
+/// El estandar de C borra los comentarios en la **fase 3**, antes de que el
+/// preprocesador mire una sola directiva. Aqui no se hacia, asi que
+///
+/// ```c
+/// #define UNO 65536   /* 1.0 en 16.16 */
+/// ```
+///
+/// definia `UNO` como `65536   /* 1.0 en 16.16 */`, **comentario incluido**. En
+/// codigo no se notaba: un comentario de mas donde ya iba a haber uno.
+///
+/// Pero la expansion tambien se aplica **dentro de los comentarios**, y ahi ese
+/// cuerpo mete un `*/` que **cierra el comentario antes de tiempo**. O sea que
+/// escribir en un comentario el nombre de una macro que lleve comentario
+/// convierte el resto del parrafo en codigo, y el compilador se queja de una
+/// linea que no tiene nada malo, varias mas abajo.
+///
+/// Se cazo escribiendo `t = 20 * UNO` dentro de un comentario del raycaster.
+fn sin_comentarios(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0usize;
+    while i < b.len() {
+        if b[i] == b'/' && i + 1 < b.len() && b[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < b.len() && !(b[i] == b'*' && b[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(b.len());
+            // Un comentario vale por UN espacio: `A/**/B` son dos piezas, no
+            // `AB`. Es lo que dice la fase 3 y aqui importa igual.
+            out.push(' ');
+            continue;
+        }
+        if b[i] == b'/' && i + 1 < b.len() && b[i + 1] == b'/' {
+            break;
+        }
+        if b[i] < 0x80 {
+            out.push(b[i] as char);
+            i += 1;
+        } else {
+            // Ver `expandir_una_pasada`: un byte no es un caracter.
+            let c = s[i..].chars().next().unwrap();
+            i += c.len_utf8();
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
 }
 
 fn split_first_word(s: &str) -> (&str, &str) {
