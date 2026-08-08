@@ -772,8 +772,17 @@ on top of it.
     translation units were compiled one at a time against BMO C, keeping the
     first error of each. **0 of 81 reached codegen, and the 81 failures were
     five causes** -- all in the preprocessor and in declarations, none in code
-    generation. With those fixed it is 7 of 81, and the remaining list is
-    written down in [`docs/QUE_DESBLOQUEA.md`](docs/QUE_DESBLOQUEA.md).
+    generation. Two rounds of fixes later it is **27 of 81**, and the remaining
+    list is written down in
+    [`docs/QUE_DESBLOQUEA.md`](docs/QUE_DESBLOQUEA.md).
+
+    The second round is worth the sentence: accepting `int grid[2][3]` revealed
+    that **`grid[1][0]` was reading `grid[0][2]`** -- one step of the outer
+    index was 8 bytes instead of a whole row. It compiled, it ran, and it
+    printed a plausible number. The new row caught it because it *executes* the
+    program, and the emulator caught the instruction underneath it by refusing
+    to guess: it had no `imul reg, r/m, imm`, which the compiler had been
+    emitting all along with nothing ever running it.
 
     Two of its findings cancel long-standing assumptions on this page: **the
     renderer needs no floating point at all** (the only `atan` sits inside an

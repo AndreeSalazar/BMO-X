@@ -112,7 +112,15 @@ rompe una sola.
 
 La primera pasada dio **0 de 81, y los 81 fallos eran CINCO causas** -- todas
 del front (preprocesador y declaraciones), ninguna del generador de codigo.
-Arregladas (`ee090428`), la cuenta va por **7 de 81 llegan a codegen**.
+Arregladas (`ee090428`) subio a 7; con la segunda tanda (`11004523`) va por
+**27 de 81 llegan a codegen**.
+
+★★ Y la segunda tanda destapo un fallo que no era de DOOM: **`grid[1][0]` leia
+`grid[0][2]`**. El paso de un indice contestaba 8 para cualquier array de
+arrays, cuando un paso del indice de fuera es una FILA entera. Compilaba, corria
+e imprimia un numero plausible. Lo cazo la fila nueva del banco **porque ejecuta
+el programa**; y el emulador, que no tenia `imul reg, r/m, imm`, dio panic con
+el opcode en la mano en vez de inventarse el valor.
 
 ⚠ Y dos de esos "fallos del compilador" eran de las cabeceras de sonda: un
 `<stdbool.h>` sin `__bool_true_false_are_defined` se llevo 52 ficheros por
@@ -123,7 +131,7 @@ una verdad mas pequena: informa de otra.**
 
 | # | Pieza | Tamano |
 |---|---|---|
-| 1 | Las causas que quedan en el front: declaradores separados por coma a nivel de fichero, `[]` sin medida, `inline`, `size_t`, `#define` con `\` de continuacion, invocacion de macro repartida en varias lineas | dias |
+| 1 | ~~Declaradores con coma, `[]` sin medida, `inline`, `#define` con `\`, `[a][b]`, punteros a funcion como parametro~~ -- ✅ **hechas el 08-08**. Lo que queda del front: una invocacion de macro-funcion repartida en varias lineas, `%p` en `printf`, y unos pocos casos sueltos que el guion de la sonda lista uno a uno | dias |
 | 2 | **Compilacion separada, o un unity build de 56k lineas** | ★ el techo de verdad |
 | 3 | La familia `fprintf`/`vsnprintf` | mediana |
 | 4 | ~20 funciones triviales (`toupper`, `isspace`, `atoi`, `strncpy`, `strrchr`, `strstr`, `strdup`, `memmove`, `strcasecmp`, `ftell`, `feof`, `fwrite`) | una tarde |

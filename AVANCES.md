@@ -93,7 +93,7 @@ distribucion.
 
 ```
    antes:  0 de 81 llegan a codegen
-   ahora:  7 de 81
+   ahora: 27 de 81
 ```
 
 Las cinco causas, todas del front y ninguna del generador de codigo: el
@@ -110,6 +110,31 @@ flotante** (el unico `atan()` esta dentro de un `#if 0`), y **el tope de 4
 `malloc` por proceso no lo bloquea** -- `I_ZoneBase` pide un solo bloque de 6
 MiB y `Z_Malloc` reparte desde dentro. Detalle y lo que falta, en
 [`docs/QUE_DESBLOQUEA.md`](docs/QUE_DESBLOQUEA.md).
+
+### ★★ Y lo que salio de debajo: el paso de un array de arrays era 8
+
+La segunda tanda (parametros que son puntero a funcion, `[5][256]`, comas
+dentro de un agregado, `typedef` de array, `[]` sin medida, `inline`, la `\` de
+continuacion) subio la cuenta a **27 de 81**. Pero aceptar `int grid[2][3]`
+destapo algo que ya estaba ahi:
+
+**`grid[1][0]` leia `grid[0][2]`.** La funcion que da el paso de un indice
+contestaba 8 para cualquier array de arrays -- caia en el caso por defecto. Un
+paso del indice de fuera es una FILA ENTERA: doce bytes ahi, 256 en
+`gammatable[5][256]`.
+
+Eso compila, corre e **imprime un numero plausible**. Lo cazo la fila nueva
+porque EJECUTA el programa y compara la salida. El paso pasa de `u8` a `u32` en
+los dos frontends: un `u8` ahi no recorta, **da la vuelta**.
+
+★ Y el emulador **no tenia `imul reg, r/m, imm`**. El compilador emitia `0x6B`
+desde siempre para cualquier paso que no fuera potencia de dos y **ningun test
+lo habia ejecutado nunca**; el emulador dio panic con el opcode en la mano en
+vez de inventarse un valor, y ese panic es el que descubrio lo de arriba.
+
+⚠ Antes de flashear: `build.ps1 -BuildOnly` en verde y **los 27 `.bex` salen
+byte a byte identicos** a los de antes de tocar el compilador. Ningun programa
+que hoy corre en el Ryzen cambia.
 
 ## ★★★ 2026-08-07 -- SMP ARRANCA (12/12 EN METAL), Y LA CADENA DE FICHEROS EN C
 
