@@ -65,6 +65,9 @@ pub(crate) struct Parser {
     /// Globales que una funcion ha ido creando al declarar sus `static`.
     /// `parse_program` las recoge al terminar cada funcion.
     globales_pendientes: Vec<GlobalDecl>,
+    /// How many untagged struct/union bodies have been seen. Only used to make
+    /// their generated tags unique.
+    anon_aggregates: u32,
     syscalls: HashMap<String, SyscallDef>,
     /// Lo que el LEXER no pudo leer. Se comprueba antes de parsear: seguir
     /// con un token inventado produce un programa que compila y no dice lo
@@ -88,6 +91,7 @@ impl Parser {
             static_alias: HashMap::new(),
             base_del_declarador: TypeSpec::Int,
             globales_pendientes: Vec::new(),
+            anon_aggregates: 0,
             syscalls: HashMap::new(),
             features: StandardFeatures::default(),
         }
@@ -281,6 +285,11 @@ impl Parser {
         let mut globals = Vec::new();
         let mut functions = Vec::new();
         while *self.peek() != Token::Eof {
+            // An untagged aggregate is defined wherever its TYPE is written --
+            // inside a typedef, a parameter list, a local. `parse_type_spec`
+            // cannot reach `globals` from there, so it leaves the definition
+            // here and this is where it is collected, once per construct.
+            globals.append(&mut self.globales_pendientes);
         // * Una directiva del preprocesador. No hay preprocesador, y hasta
         // ahora eso no se decia: el `#` se lo tragaba el lexer, asi que un
         // `#define X 5` dentro de una funcion compilaba **y se ignoraba en
@@ -292,7 +301,17 @@ impl Parser {
                 "aqui no hay preprocesador todavia: '#define', '#include' y '#ifdef' no se procesan. Usa 'const int' o 'enum' para las constantes",
             ));
         }
-            if *self.peek() == Token::Struct || *self.peek() == Token::Union {
+            // * TAGGED aggregates only. The untagged ones fall through.
+            //
+            // `struct P { ... };` has its own path here because a bare
+            // definition declares nothing and the generic declarator path
+            // would demand a name after it. `typedef struct { ... } P;` and
+            // `struct { ... } g;` have no tag, and they are handled where the
+            // TYPE is parsed (`parse_type_spec`) -- one place that knows the
+            // whole shape, instead of two that have to agree.
+            if (*self.peek() == Token::Struct || *self.peek() == Token::Union)
+                && matches!(self.tokens.get(self.pos + 1), Some(Token::Ident(_)))
+            {
                 let is_union = *self.peek() == Token::Union;
                 self.advance();
                 let name = match self.advance() {
@@ -300,64 +319,7 @@ impl Parser {
                     t => return Err(CError::new(self.line(),format!("expected struct name, got {:?}", t))),
                 };
                 if *self.peek() == Token::OpenBrace {
-                    self.advance();
-                    let mut members = Vec::new();
-                    while *self.peek() != Token::CloseBrace && *self.peek() != Token::Eof {
-                        let mtype = self.parse_type_spec()?;
-                        let mname = match self.advance() {
-                            Token::Ident(n) => n,
-                            t => return Err(CError::new(self.line(),format!("expected member name, got {:?}", t))),
-                        };
-                        // * `char name[8];` -- un ARRAY como miembro.
-                        //
-                        // Faltaba, y el error que salia --"expected type, got
-                        // OpenBracket"-- mandaba a mirar el tipo, que estaba
-                        // perfecto. La sonda lo encontro en la union, pero
-                        // fallaba **igual en un struct**: es el declarador, no
-                        // el agregado.
-                        //
-                        // El tamano y el alineado salen solos: `stack_size()`
-                        // de un `Array(t,n)` ya es `t*n`, y el reparto de
-                        // offsets se calcula con eso.
-                        let mtype = if *self.peek() == Token::OpenBracket {
-                            self.advance();
-                            let n = match self.advance() {
-                                Token::IntLit(v) if v > 0 => v as u32,
-                                t => return Err(CError::new(self.line(), format!(
-                                    "'{mname}[]': la medida de un array dentro de un agregado \
-                                     tiene que ser un numero positivo, no {t:?}"))),
-                            };
-                            self.expect(&Token::CloseBracket)?;
-                            TypeSpec::Array(Box::new(mtype), n)
-                        } else {
-                            mtype
-                        };
-                        // * Campo de bits: `unsigned a:3;`.
-                        //
-                        // Se ACEPTA la sintaxis y se le da al campo su tipo
-                        // entero entero -- **sin empaquetar**. Y se dice aqui
-                        // por que, porque es una decision y no un descuido:
-                        // empaquetar de verdad obliga a que cada lectura lleve
-                        // su desplazamiento y su mascara, y cada escritura sea
-                        // leer-modificar-escribir. Eso es correcto solo si se
-                        // hace entero; a medias da campos que se pisan.
-                        //
-                        // Mientras no este, un `unsigned a:3` ocupa sus cuatro
-                        // bytes y **guarda lo que le metas**: el programa hace
-                        // lo que dice, solo que la estructura mide mas. Lo que
-                        // NO vale es un layout binario ajeno -- ver BRECHA.md.
-                        if *self.peek() == Token::Colon {
-                            self.advance();
-                            match self.advance() {
-                                Token::IntLit(_) => {}
-                                t => return Err(CError::new(self.line(), format!(
-                                    "'{mname}:': la anchura de un campo de bits es un numero, no {t:?}"))),
-                            }
-                        }
-                        self.skip_semicolon();
-                        members.push(StructMember { typ: mtype, name: mname });
-                    }
-                    self.expect(&Token::CloseBrace)?;
+                    let members = self.parse_aggregate_body()?;
                     self.skip_semicolon();
                     if is_union {
                         self.compute_union_layout(&name, &members);
@@ -427,35 +389,7 @@ impl Parser {
                 continue;
             }
             if *self.peek() == Token::Enum {
-                self.advance();
-                let _name = match self.advance() {
-                    Token::Ident(n) => n,
-                    t => return Err(CError::new(self.line(),format!("expected enum name, got {:?}", t))),
-                };
-                self.expect(&Token::OpenBrace)?;
-                let mut val = 0i64;
-                loop {
-                    match self.advance() {
-                        Token::Ident(en) => {
-                            if *self.peek() == Token::Assign {
-                                self.advance();
-                                let assigned = match self.advance() {
-                                    Token::IntLit(n) => n,
-                                    t => return Err(CError::new(self.line(),format!("expected int in enum, got {:?}", t))),
-                                };
-                                val = assigned;
-                            }
-                            // La constante se resuelve a su VALOR al usarla
-                            // (ver parse_primary); el tipo sigue siendo int.
-                            self.var_types.insert(en.clone(), TypeSpec::Int);
-                            self.enum_constants.insert(en.clone(), val);
-                        }
-                        Token::CloseBrace => { break; }
-                        t => return Err(CError::new(self.line(),format!("expected enum constant, got {:?}", t))),
-                    }
-                    val += 1;
-                    if *self.peek() == Token::Comma { self.advance(); }
-                }
+                self.parse_enum_spec()?;
                 self.skip_semicolon();
                 continue;
             }
@@ -498,6 +432,25 @@ impl Parser {
             if *self.peek() == Token::Typedef {
                 self.advance();
                 let typ = self.parse_type_spec()?;
+                // * `typedef void (*action_t)(void);`
+                //
+                // The pointer-to-function DECLARATOR was already understood
+                // for variables and parameters (`parse_fnptr_tail`); only the
+                // typedef could not use it, and the message said "expected
+                // typedef name, got OpenParen" -- which points at the
+                // parenthesis instead of at the missing feature.
+                //
+                // The type is `void*` like everywhere else here: calls through
+                // it are indirect, so the signature buys nothing at this
+                // altitude. DOOM's `d_think.h` is built out of these.
+                if *self.peek() == Token::OpenParen
+                    && self.tokens.get(self.pos + 1) == Some(&Token::Star)
+                {
+                    let fname = self.parse_fnptr_tail()?;
+                    self.skip_semicolon();
+                    self.typedefs.insert(fname, TypeSpec::Ptr(Box::new(TypeSpec::Void)));
+                    continue;
+                }
                 let name = match self.advance() {
                     Token::Ident(n) => n,
                     t => return Err(CError::new(self.line(),format!("expected typedef name, got {:?}", t))),
@@ -557,6 +510,7 @@ impl Parser {
                 globals.push(GlobalDecl::Var(typ, name, init));
             }
         }
+        globals.append(&mut self.globales_pendientes);
         Ok(Program { globals, functions, exported: Vec::new() })
     }
 
@@ -1078,6 +1032,160 @@ impl Parser {
         Ok(Some((typ, name)))
     }
 
+    /// Consume the `{ ... }` of a struct or a union and return its members.
+    /// Assumes the cursor is on the `{`.
+    ///
+    /// It lives on its own so that the TAGGED form (`struct P { ... };`) and
+    /// the untagged one (`typedef struct { ... } P;`) read the same body with
+    /// the same code. They used to be one path, which is why only the tagged
+    /// one existed.
+    fn parse_aggregate_body(&mut self) -> Result<Vec<StructMember>, CError> {
+        self.expect(&Token::OpenBrace)?;
+        let mut members = Vec::new();
+        while *self.peek() != Token::CloseBrace && *self.peek() != Token::Eof {
+            let mtype = self.parse_type_spec()?;
+            // A pointer-to-function member: `void (*action)(void);`
+            if *self.peek() == Token::OpenParen
+                && self.tokens.get(self.pos + 1) == Some(&Token::Star)
+            {
+                let mname = self.parse_fnptr_tail()?;
+                self.skip_semicolon();
+                members.push(StructMember {
+                    typ: TypeSpec::Ptr(Box::new(TypeSpec::Void)),
+                    name: mname,
+                });
+                continue;
+            }
+            let mname = match self.advance() {
+                Token::Ident(n) => n,
+                t => return Err(CError::new(self.line(),format!("expected member name, got {:?}", t))),
+            };
+            // * `char name[8];` -- un ARRAY como miembro.
+            //
+            // Faltaba, y el error que salia --"expected type, got
+            // OpenBracket"-- mandaba a mirar el tipo, que estaba perfecto. La
+            // sonda lo encontro en la union, pero fallaba **igual en un
+            // struct**: es el declarador, no el agregado.
+            //
+            // El tamano y el alineado salen solos: `stack_size()` de un
+            // `Array(t,n)` ya es `t*n`, y el reparto de offsets se calcula
+            // con eso.
+            let mtype = if *self.peek() == Token::OpenBracket {
+                self.advance();
+                let n = match self.advance() {
+                    Token::IntLit(v) if v > 0 => v as u32,
+                    t => return Err(CError::new(self.line(), format!(
+                        "'{mname}[]': la medida de un array dentro de un agregado \
+                         tiene que ser un numero positivo, no {t:?}"))),
+                };
+                self.expect(&Token::CloseBracket)?;
+                TypeSpec::Array(Box::new(mtype), n)
+            } else {
+                mtype
+            };
+            // * Campo de bits: `unsigned a:3;`.
+            //
+            // Se ACEPTA la sintaxis y se le da al campo su tipo entero
+            // entero -- **sin empaquetar**. Y se dice aqui por que, porque es
+            // una decision y no un descuido: empaquetar de verdad obliga a que
+            // cada lectura lleve su desplazamiento y su mascara, y cada
+            // escritura sea leer-modificar-escribir. Eso es correcto solo si
+            // se hace entero; a medias da campos que se pisan.
+            //
+            // Mientras no este, un `unsigned a:3` ocupa sus cuatro bytes y
+            // **guarda lo que le metas**: el programa hace lo que dice, solo
+            // que la estructura mide mas. Lo que NO vale es un layout binario
+            // ajeno -- ver BRECHA.md.
+            if *self.peek() == Token::Colon {
+                self.advance();
+                match self.advance() {
+                    Token::IntLit(_) => {}
+                    t => return Err(CError::new(self.line(), format!(
+                        "'{mname}:': la anchura de un campo de bits es un numero, no {t:?}"))),
+                }
+            }
+            self.skip_semicolon();
+            members.push(StructMember { typ: mtype, name: mname });
+        }
+        self.expect(&Token::CloseBrace)?;
+        Ok(members)
+    }
+
+    /// A tag for an aggregate that was written without one.
+    ///
+    /// The layout tables are keyed by name, so an untagged struct still needs
+    /// one -- it just needs to be a name no source file can collide with.
+    fn anon_tag(&mut self, is_union: bool) -> String {
+        self.anon_aggregates += 1;
+        let kind = if is_union { "union" } else { "struct" };
+        format!("<anon {kind} {}>", self.anon_aggregates)
+    }
+
+    /// Consume an `enum` specifier: `enum [tag] [{ constants }]`.
+    ///
+    /// One function for the three shapes C allows, because they are the same
+    /// grammar and splitting them is how they drifted apart before:
+    ///
+    /// ```text
+    ///   enum tag { A, B };          a definition
+    ///   enum { A, B };              the SAME, with no tag -- legal, and it
+    ///                               used to fail with "expected enum name"
+    ///   typedef enum { A } thing_t; a definition inside a typedef
+    /// ```
+    ///
+    /// The tag is parsed and dropped on purpose: an enum in this compiler is
+    /// `int` plus a table of constants, so the tag names nothing that outlives
+    /// this call. What matters is the constants, and those are global.
+    ///
+    /// The value of a constant is a CONSTANT EXPRESSION, not an integer
+    /// literal. DOOM needs exactly that -- `sk_noitems = -1` and
+    /// `INVULNTICS = (30*TICRATE)` -- and requiring a literal rejected both.
+    fn parse_enum_spec(&mut self) -> Result<(), CError> {
+        self.expect(&Token::Enum)?;
+        if let Token::Ident(_) = self.peek() {
+            self.advance();
+        }
+        // `enum tag x;` names an existing enum and defines nothing.
+        if *self.peek() != Token::OpenBrace {
+            return Ok(());
+        }
+        self.advance();
+
+        let mut val = 0i64;
+        loop {
+            match self.advance() {
+                Token::Ident(en) => {
+                    if *self.peek() == Token::Assign {
+                        self.advance();
+                        let e = self.parse_conditional()?;
+                        val = const_eval(&e).ok_or_else(|| {
+                            CError::new(
+                                self.line(),
+                                format!("enum '{en}': the value is not a constant expression"),
+                            )
+                        })?;
+                    }
+                    // The constant resolves to its VALUE where it is used (see
+                    // parse_primary); its type stays int.
+                    self.var_types.insert(en.clone(), TypeSpec::Int);
+                    self.enum_constants.insert(en.clone(), val);
+                }
+                Token::CloseBrace => break,
+                t => {
+                    return Err(CError::new(
+                        self.line(),
+                        format!("expected enum constant, got {t:?}"),
+                    ))
+                }
+            }
+            val += 1;
+            if *self.peek() == Token::Comma {
+                self.advance();
+            }
+        }
+        Ok(())
+    }
+
     /// Consume la cola de un puntero a funcion: `(*name)(param-types)`.
     /// Asume estar en el `(` inicial. Devuelve el nombre. El tipo del
     /// puntero es opaco (se trata como Ptr): las llamadas son indirectas.
@@ -1172,19 +1280,57 @@ impl Parser {
             Token::Signed => { self.advance(); TypeSpec::Int }
             Token::Float => TypeSpec::Float,
             Token::Double => TypeSpec::Double,
-            Token::Struct => { 
-                let name = match self.advance() {
-                    Token::Ident(n) => n,
-                    t => return Err(CError::new(self.line(),format!("expected struct name, got {:?}", t))),
+            // * `struct`/`union`, WITH or WITHOUT a tag, with or without a body.
+            //
+            // Only `struct P` was understood here, so the two shapes C code
+            // actually uses for a one-off type both failed on the brace:
+            //
+            //   typedef struct { ... } thing_t;   "expected struct name, got OpenBrace"
+            //   typedef union  { ... } action_t;  "expected union name, got OpenBrace"
+            //
+            // That is 34 of DOOM's 81 files, and `d_think.h` -- the union at
+            // the centre of every thinker in the game -- is one of them.
+            //
+            // An untagged aggregate still gets a tag, because the layout table
+            // is keyed by name. It is generated with characters an identifier
+            // cannot contain, so it can never collide with a real one.
+            tok @ (Token::Struct | Token::Union) => {
+                let is_union = tok == Token::Union;
+                let name = match self.peek() {
+                    Token::Ident(_) => match self.advance() {
+                        Token::Ident(n) => n,
+                        _ => unreachable!(),
+                    },
+                    _ => self.anon_tag(is_union),
                 };
-                TypeSpec::StructRef(name)
+                if *self.peek() == Token::OpenBrace {
+                    let members = self.parse_aggregate_body()?;
+                    if is_union {
+                        self.compute_union_layout(&name, &members);
+                        self.globales_pendientes
+                            .push(GlobalDecl::Union(name.clone(), members));
+                    } else {
+                        self.compute_struct_layout(&name, &members);
+                        self.globales_pendientes
+                            .push(GlobalDecl::Struct(name.clone(), members));
+                    }
+                }
+                if is_union { TypeSpec::UnionRef(name) } else { TypeSpec::StructRef(name) }
             }
-            Token::Union => {
-                let name = match self.advance() {
-                    Token::Ident(n) => n,
-                    t => return Err(CError::new(self.line(),format!("expected union name, got {:?}", t))),
-                };
-                TypeSpec::UnionRef(name)
+            // * An `enum` IS a type, and `int` is the type it is.
+            //
+            // Without this arm the specifier was only understood at file
+            // scope, so `typedef enum { A, B } thing_t;` failed with "expected
+            // type, got Enum" -- and that is the single most common way C code
+            // declares an enum. It reached 30 of DOOM's 81 files.
+            //
+            // The token is pushed back for `parse_enum_spec`, which owns the
+            // whole shape (optional tag, optional body) so the two places
+            // cannot disagree about what an enum looks like.
+            Token::Enum => {
+                self.pos -= 1;
+                self.parse_enum_spec()?;
+                TypeSpec::Int
             }
             Token::Ident(name) => {
                 if let Some(typ) = self.typedefs.get(&name).cloned() {
@@ -1808,4 +1954,43 @@ impl Parser {
             t => Err(CError::new(tok_line, format!("unexpected token: {:?}", t))),
         }
     }
+}
+
+/// Fold a constant expression down to its value, or `None` if it is not one.
+///
+/// It exists for enum values, which C requires to be constant expressions. The
+/// parser already turns macros and previous enum constants into `Expr::Int`
+/// (see `parse_primary`), so what arrives here is arithmetic over literals --
+/// `(30*TICRATE)` reaches this function as `Mul(Int(30), Int(35))`.
+///
+/// Returning `None` instead of guessing is the point: a value that cannot be
+/// computed at compile time is an error with a name, not a silent zero. That
+/// is the same rule the loader applies to a global it cannot evaluate.
+fn const_eval(e: &Expr) -> Option<i64> {
+    Some(match e {
+        Expr::Int(n) => *n,
+        Expr::CharLit(c) => *c as i64,
+        Expr::Neg(a) => const_eval(a)?.wrapping_neg(),
+        Expr::Not(a) => (const_eval(a)? == 0) as i64,
+        Expr::BitNot(a) => !const_eval(a)?,
+        Expr::Add(a, b) => const_eval(a)?.wrapping_add(const_eval(b)?),
+        Expr::Sub(a, b) => const_eval(a)?.wrapping_sub(const_eval(b)?),
+        Expr::Mul(a, b) => const_eval(a)?.wrapping_mul(const_eval(b)?),
+        Expr::Div(a, b) => {
+            let d = const_eval(b)?;
+            if d == 0 { return None; }
+            const_eval(a)? / d
+        }
+        Expr::Mod(a, b) => {
+            let d = const_eval(b)?;
+            if d == 0 { return None; }
+            const_eval(a)? % d
+        }
+        Expr::Shl(a, b) => const_eval(a)?.wrapping_shl(const_eval(b)? as u32),
+        Expr::Shr(a, b) => const_eval(a)?.wrapping_shr(const_eval(b)? as u32),
+        Expr::BitAnd(a, b) => const_eval(a)? & const_eval(b)?,
+        Expr::BitOr(a, b) => const_eval(a)? | const_eval(b)?,
+        Expr::BitXor(a, b) => const_eval(a)? ^ const_eval(b)?,
+        _ => return None,
+    })
 }

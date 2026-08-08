@@ -38,6 +38,7 @@ mod agregados;
 mod almacenamiento;
 mod cadenas;
 mod cargador;
+mod doom_probe;
 mod ejecucion;
 mod entrada;
 mod enumeraciones;

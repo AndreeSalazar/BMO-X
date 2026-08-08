@@ -102,6 +102,26 @@ impl Preprocessor {
             let raw = lines[i].trim();
 
             if raw.starts_with('#') {
+                // * Comments die BEFORE the directive is read.
+                //
+                // In C a comment is removed in translation phase 3, which runs
+                // before directives are executed in phase 4. Doing it later --
+                // or not at all -- makes the comment part of the payload, and
+                // then it fails as something else entirely:
+                //
+                //   #if 0 // UNUSED          -> "cannot evaluate '0 // UNUSED'"
+                //   #include "m_argv.h" // x -> "file not found: m_argv.h" // x"
+                //
+                // Both messages point at the wrong thing: the first blames the
+                // expression, the second blames the path. DOOM hit each of them
+                // in dozens of files.
+                //
+                // It is string-aware because it has to be: `#define URL
+                // "http://x"` carries a `//` that is NOT a comment, and a
+                // stripper that does not know what a string is would cut the
+                // macro in half and leave something that still compiles.
+                let raw = sin_comentarios(raw);
+                let raw = raw.trim();
                 let directive = raw[1..].trim_start();
                 let (cmd, rest) = split_first_word(directive);
 
@@ -327,44 +347,55 @@ impl Preprocessor {
             if expanded.contains(&pattern) { expanded = expanded.replace(&pattern, "1"); }
         }
         expanded = self.expand_line(&expanded, false);
+
+        // * What is left over is ZERO, and that is the C rule, not a shortcut.
+        //
+        // C11 6.10.1p4: after macro expansion, every identifier still standing
+        // in a `#if` is replaced by `0`. Refusing to evaluate it instead looks
+        // stricter and is simply wrong -- `#if ORIGCODE` and `#if _WIN64` are
+        // how a portable program says "not this platform", and DOOM says it in
+        // 45 of its 81 files.
+        //
+        // It also settles `#if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)`:
+        // both sides become 0, the test is true, and the little-endian branch
+        // is taken -- which is the correct branch on x86-64. Getting the right
+        // answer here is luck; getting a defined answer is the rule.
+        let expanded = zero_out_identifiers(&expanded);
+
         Self::eval_simple(&expanded).ok_or_else(||
             CError::new(self.line, format!("#if: cannot evaluate '{}'", expanded)))
     }
 
+    /// Evaluate a `#if` expression.
+    ///
+    /// * WHY THIS IS A REAL PARSER AND NOT A `find(op)` LOOP
+    ///
+    /// The version this replaces scanned for the first operator of a fixed
+    /// list, anywhere in the string, and split there. Two things followed, and
+    /// only one of them was visible:
+    ///
+    ///   1. `#if (0 == 0)` could not be evaluated at all -- parentheses were
+    ///      not a thing it knew about, and DOOM writes them in every
+    ///      endianness test.
+    ///   2. **`a == b && c` split at `==` first**, so it computed
+    ///      `a == (b && c)`. That one does not fail: it answers, and the
+    ///      answer is wrong, and what it decides is which half of a file
+    ///      exists. A preprocessor that picks the wrong branch produces a
+    ///      program that compiles cleanly and is not the program that was
+    ///      written.
+    ///
+    /// So it is precedence climbing over a real token list. Same size, and it
+    /// cannot get (2) wrong by construction.
     fn eval_simple(expr: &str) -> Option<i64> {
-        let expr = expr.trim();
-        if expr.is_empty() { return Some(0); }
-        if let Ok(n) = expr.parse::<i64>() { return Some(n); }
-        if let Some(inner) = expr.strip_prefix('!') {
-            let v = Self::eval_simple(inner)?;
-            return Some(if v == 0 { 1 } else { 0 });
+        let tokens = lex_if_expr(expr)?;
+        let mut p = IfExprParser { t: &tokens, i: 0 };
+        let v = p.expr(0)?;
+        // Trailing junk means it was not understood -- saying so beats
+        // answering with the part that happened to parse.
+        if p.i != p.t.len() {
+            return None;
         }
-        let ops = ["==", "!=", "<=", ">=", "&&", "||", "<<", ">>", "<", ">", "+", "-", "*", "/", "%", "&", "|", "^"];
-        for op in &ops {
-            if let Some(pos) = expr.find(op) {
-                let a = Self::eval_simple(expr[..pos].trim())?;
-                let b = Self::eval_simple(expr[pos+op.len()..].trim())?;
-                return match *op {
-                    "==" => Some(if a == b { 1 } else { 0 }),
-                    "!=" => Some(if a != b { 1 } else { 0 }),
-                    "<=" | ">=" => Some(if (op.as_bytes()[0] == b'<' && a <= b) || (op.as_bytes()[0] == b'>' && a >= b) { 1 } else { 0 }),
-                    "<"  => Some(if a < b  { 1 } else { 0 }),
-                    ">"  => Some(if a > b  { 1 } else { 0 }),
-                    "&&" => Some(if a != 0 && b != 0 { 1 } else { 0 }),
-                    "||" => Some(if a != 0 || b != 0 { 1 } else { 0 }),
-                    "+" => Some(a.wrapping_add(b)),
-                    "-" => Some(a.wrapping_sub(b)),
-                    "*" => Some(a.wrapping_mul(b)),
-                    "/" => if b != 0 { Some(a / b) } else { None },
-                    "%" => if b != 0 { Some(a % b) } else { None },
-                    "&" => Some(a & b), "|" => Some(a | b), "^" => Some(a ^ b),
-                    "<<" => Some(a.wrapping_shl(b as u32)),
-                    ">>" => Some(a.wrapping_shr(b as u32)),
-                    _ => None,
-                };
-            }
-        }
-        None
+        Some(v)
     }
 
     /// Expande macros en una linea hasta que deje de cambiar.
@@ -674,11 +705,57 @@ fn is_ident_start(b: u8) -> bool {
 /// linea que no tiene nada malo, varias mas abajo.
 ///
 /// Se cazo escribiendo `t = 20 * UNO` dentro de un comentario del raycaster.
+/// * AND a `//` INSIDE A STRING IS NOT A COMMENT.
+///
+/// This function used to cut at the first `//` it saw, wherever it was. So
+///
+/// ```c
+/// #define PATH "http://x/y"
+/// ```
+///
+/// stored `PATH` as `"http:` -- an unterminated string. What the user then
+/// gets is *"'PATH' is not declared ... if it came from a #define, the header
+/// did not expand"*, which sends them to look at the include chain. The macro
+/// expanded perfectly; it was cut in half when it was stored.
+///
+/// Found by writing the test for the OTHER half of this rule, which is the
+/// only reason it is not still in here.
 fn sin_comentarios(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = String::with_capacity(s.len());
     let mut i = 0usize;
+    // Which literal we are inside, if any: `"` or `'`.
+    let mut comilla: Option<u8> = None;
     while i < b.len() {
+        if let Some(q) = comilla {
+            // A backslash escapes the next byte, the closing quote included:
+            // without this, `"\""` ends one byte early and the rest of the
+            // line is read as code.
+            if b[i] == b'\\' && i + 1 < b.len() {
+                out.push(b[i] as char);
+                out.push(b[i + 1] as char);
+                i += 2;
+                continue;
+            }
+            if b[i] == q {
+                comilla = None;
+            }
+            if b[i] < 0x80 {
+                out.push(b[i] as char);
+                i += 1;
+            } else {
+                let c = s[i..].chars().next().unwrap();
+                i += c.len_utf8();
+                out.push(c);
+            }
+            continue;
+        }
+        if b[i] == b'"' || b[i] == b'\'' {
+            comilla = Some(b[i]);
+            out.push(b[i] as char);
+            i += 1;
+            continue;
+        }
         if b[i] == b'/' && i + 1 < b.len() && b[i + 1] == b'*' {
             i += 2;
             while i + 1 < b.len() && !(b[i] == b'*' && b[i + 1] == b'/') {
@@ -704,6 +781,193 @@ fn sin_comentarios(s: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+/// One token of a `#if` expression: a number, an operator, or a parenthesis.
+#[derive(Debug, PartialEq)]
+enum IfTok {
+    Num(i64),
+    Op(&'static str),
+    Open,
+    Close,
+}
+
+/// Split a `#if` expression into tokens. `None` if a byte makes no sense here
+/// -- by this point identifiers are already gone (see `zero_out_identifiers`),
+/// so anything left that is not an operator is a genuine surprise.
+fn lex_if_expr(expr: &str) -> Option<Vec<IfTok>> {
+    // Two bytes before one, always: otherwise `<<` lexes as `<` `<` and
+    // `a << 2` quietly becomes a comparison.
+    const OPS2: [&str; 8] = ["==", "!=", "<=", ">=", "&&", "||", "<<", ">>"];
+    const OPS1: [&str; 12] = ["!", "~", "<", ">", "+", "-", "*", "/", "%", "&", "|", "^"];
+
+    let b = expr.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < b.len() {
+        let c = b[i];
+        if c.is_ascii_whitespace() {
+            i += 1;
+        } else if c == b'(' {
+            out.push(IfTok::Open);
+            i += 1;
+        } else if c == b')' {
+            out.push(IfTok::Close);
+            i += 1;
+        } else if c.is_ascii_digit() {
+            let start = i;
+            while i < b.len() && (is_ident_char(b[i]) || b[i] == b'x' || b[i] == b'X') {
+                i += 1;
+            }
+            out.push(IfTok::Num(parse_int_literal(&expr[start..i])?));
+        } else {
+            let dos = if i + 1 < b.len() { &expr[i..i + 2] } else { "" };
+            if let Some(op) = OPS2.iter().find(|o| **o == dos) {
+                out.push(IfTok::Op(op));
+                i += 2;
+            } else if let Some(op) = OPS1.iter().find(|o| o.as_bytes()[0] == c) {
+                out.push(IfTok::Op(op));
+                i += 1;
+            } else {
+                return None;
+            }
+        }
+    }
+    Some(out)
+}
+
+struct IfExprParser<'a> {
+    t: &'a [IfTok],
+    i: usize,
+}
+
+impl IfExprParser<'_> {
+    /// Binding power of a binary operator, lowest first. The order is C's.
+    fn bp(op: &str) -> Option<u8> {
+        Some(match op {
+            "||" => 1,
+            "&&" => 2,
+            "|" => 3,
+            "^" => 4,
+            "&" => 5,
+            "==" | "!=" => 6,
+            "<" | ">" | "<=" | ">=" => 7,
+            "<<" | ">>" => 8,
+            "+" | "-" => 9,
+            "*" | "/" | "%" => 10,
+            _ => return None,
+        })
+    }
+
+    fn expr(&mut self, min_bp: u8) -> Option<i64> {
+        let mut left = self.unary()?;
+        while let Some(IfTok::Op(op)) = self.t.get(self.i) {
+            let bp = match Self::bp(op) {
+                Some(bp) if bp >= min_bp => bp,
+                _ => break,
+            };
+            let op = *op;
+            self.i += 1;
+            // Left-associative: the right side stops at the same power.
+            let right = self.expr(bp + 1)?;
+            left = match op {
+                "||" => (left != 0 || right != 0) as i64,
+                "&&" => (left != 0 && right != 0) as i64,
+                "|" => left | right,
+                "^" => left ^ right,
+                "&" => left & right,
+                "==" => (left == right) as i64,
+                "!=" => (left != right) as i64,
+                "<" => (left < right) as i64,
+                ">" => (left > right) as i64,
+                "<=" => (left <= right) as i64,
+                ">=" => (left >= right) as i64,
+                "<<" => left.wrapping_shl(right as u32),
+                ">>" => left.wrapping_shr(right as u32),
+                "+" => left.wrapping_add(right),
+                "-" => left.wrapping_sub(right),
+                "*" => left.wrapping_mul(right),
+                // A division by zero in a `#if` is not a branch: it is a
+                // broken expression, and it says so instead of picking one.
+                "/" => { if right == 0 { return None; } left / right }
+                "%" => { if right == 0 { return None; } left % right }
+                _ => return None,
+            };
+        }
+        Some(left)
+    }
+
+    fn unary(&mut self) -> Option<i64> {
+        match self.t.get(self.i)? {
+            IfTok::Num(n) => {
+                let n = *n;
+                self.i += 1;
+                Some(n)
+            }
+            IfTok::Open => {
+                self.i += 1;
+                let v = self.expr(0)?;
+                if self.t.get(self.i) != Some(&IfTok::Close) {
+                    return None;
+                }
+                self.i += 1;
+                Some(v)
+            }
+            IfTok::Op("!") => { self.i += 1; Some((self.unary()? == 0) as i64) }
+            IfTok::Op("~") => { self.i += 1; Some(!self.unary()?) }
+            IfTok::Op("-") => { self.i += 1; Some(self.unary()?.wrapping_neg()) }
+            IfTok::Op("+") => { self.i += 1; self.unary() }
+            _ => None,
+        }
+    }
+}
+
+/// An integer constant the way `#if` writes one: decimal or `0x`, with the
+/// `U`/`L` suffixes C allows.
+///
+/// `str::parse` handles none of those, and the failure is silent in the worst
+/// way: `#if (FLAGS & 0x10)` reports "cannot evaluate" and points at the whole
+/// expression, so the suffix -- the actual cause -- is the one thing the
+/// message does not name.
+fn parse_int_literal(s: &str) -> Option<i64> {
+    let s = s.trim();
+    let cuerpo = s.trim_end_matches(['u', 'U', 'l', 'L']);
+    if cuerpo.is_empty() {
+        return None;
+    }
+    if let Some(hex) = cuerpo.strip_prefix("0x").or_else(|| cuerpo.strip_prefix("0X")) {
+        return i64::from_str_radix(hex, 16).ok();
+    }
+    cuerpo.parse::<i64>().ok()
+}
+
+/// Replace every surviving identifier in a `#if` expression with `0` (C11
+/// 6.10.1p4).
+///
+/// A number that merely starts with a letter is not an identifier: `0x10` is a
+/// hex constant and `1UL` is a suffixed one, so a run is only zeroed when its
+/// FIRST byte cannot start a number.
+fn zero_out_identifiers(expr: &str) -> String {
+    let b = expr.as_bytes();
+    let mut out = String::with_capacity(expr.len());
+    let mut i = 0usize;
+    while i < b.len() {
+        if is_ident_char(b[i]) {
+            let start = i;
+            while i < b.len() && is_ident_char(b[i]) {
+                i += 1;
+            }
+            if b[start].is_ascii_digit() {
+                out.push_str(&expr[start..i]);
+            } else {
+                out.push('0');
+            }
+        } else {
+            out.push(b[i] as char);
+            i += 1;
+        }
+    }
+    out
 }
 
 fn split_first_word(s: &str) -> (&str, &str) {
