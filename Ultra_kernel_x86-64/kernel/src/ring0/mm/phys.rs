@@ -26,7 +26,7 @@ static mut BITMAP: [u64; FRAME_SLOTS] = [0; FRAME_SLOTS];
 static mut TOTAL_FRAMES: u64 = 0;
 static mut FREE_FRAMES: u64 = 0;
 static mut HINT: usize = 0;
-static LOCK: SpinLock = SpinLock::new();
+static LOCK: SpinLock = SpinLock::new("phys");
 
 extern "C" {
     /// End of the kernel image in memory (identity-mapped 1:1 at 0x400000).

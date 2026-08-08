@@ -567,6 +567,26 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     crate::ring0::cabina::info("smp", "ticks con UN nucleo", uno);
                     crate::ring0::cabina::info("smp", "ticks con todos", todos);
                     crate::ring0::cabina::info("smp", "partes que corrieron", partes as u64);
+                    // * Y la otra mitad del resultado, que no es la velocidad.
+                    // Doce nucleos calculando a la vez es justo el momento en
+                    // que un choque de cerrojo aparece si va a aparecer, y una
+                    // aceleracion contada sin mirar esto es media medida.
+                    // Ver `plat/spin.rs` y `docs/SMP_MAESTRO.md`.
+                    let (choques, pico) = crate::ring0::plat::spin::contention();
+                    if choques == 0 {
+                        crate::ring0::cabina::info("smp", "cerrojos: ni un choque", 0);
+                    } else {
+                        crate::ring0::cabina::warn(
+                            "smp",
+                            "CHOQUES de cerrojo: alguien entro en el kernel",
+                            choques as u64,
+                        );
+                        crate::ring0::cabina::warn(
+                            "smp",
+                            crate::ring0::plat::spin::worst(),
+                            pico as u64,
+                        );
+                    }
                     crate::ring0::core::phase::dashboard_log("[smp] prueba de reparto hecha");
                     if todos > 0 && partes > 0 {
                         BmoStatus::ok_value(uno.saturating_mul(100) / todos)

@@ -105,7 +105,7 @@ struct CapTables {
     slots: [[CapSlot; SLOTS_PER_PROC]; MAX_PROCS],
 }
 
-static CAP_LOCK: SpinLock = SpinLock::new();
+static CAP_LOCK: SpinLock = SpinLock::new("cap");
 static mut TABLES: CapTables = CapTables {
     slots: [[CapSlot::FREE; SLOTS_PER_PROC]; MAX_PROCS],
 };

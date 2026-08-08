@@ -80,6 +80,50 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     }
     s.dec(frac);
     s.texto(b" GHz   (medido)\n");
+
+    // -- SMP, y lo que cuesta --------------------------------------------
+    //
+    // Los nucleos en pie y los choques de cerrojo van en el MISMO informe a
+    // proposito. Un panel que solo ensena "12 de 12" cuenta la mitad bonita:
+    // la otra mitad es si esos once obreros estan peleandose con el kernel
+    // por dentro, y ese numero tiene que ser cero.
+    let vivos = bmo::info(bmo::INFO_SMP_VIVOS);
+    etiqueta(s, b"smp");
+    if vivos == 0 {
+        s.texto(b"solo el BSP");
+        s.con_tinta(TINTA_ECO);
+        s.texto(b"   (`smp all` levanta los demas)");
+        s.con_tinta(TINTA_NORMAL);
+        s.byte(b'\n');
+    } else {
+        s.con_tinta(TINTA_BIEN);
+        s.dec(vivos + 1);
+        s.con_tinta(TINTA_NORMAL);
+        s.texto(b" nucleos en pie de ");
+        s.dec(bmo::info(bmo::INFO_CPU_HILOS));
+        s.byte(b'\n');
+    }
+
+    let choques = bmo::info(bmo::INFO_SPIN_CHOQUES);
+    etiqueta(s, b"cerrojos");
+    if choques == 0 {
+        s.con_tinta(TINTA_BIEN);
+        s.texto(b"0 choques");
+        s.con_tinta(TINTA_ECO);
+        s.texto(b"   (lo correcto: nadie pelea)");
+        s.con_tinta(TINTA_NORMAL);
+        s.byte(b'\n');
+    } else {
+        // No es una cifra de rendimiento: es que alguien entro en el kernel
+        // desde otro nucleo. Se pinta como lo que es.
+        s.con_tinta(TINTA_MAL);
+        s.dec(choques);
+        s.texto(b" CHOQUES");
+        s.con_tinta(TINTA_NORMAL);
+        s.texto(b"   espera mayor ");
+        s.dec(bmo::info(bmo::INFO_SPIN_PICO));
+        s.texto(b" vueltas\n");
+    }
 }
 
 pub(crate) fn informe_memoria(s: &mut Salida) {

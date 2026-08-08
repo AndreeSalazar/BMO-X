@@ -178,6 +178,43 @@ foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_
         Fail ('BMO ABI surface operation contract mismatch: ' + $name)
     }
 }
+# Y LA TABLA DE `OP_INFO`, que existe TRES veces: la implementa el kernel
+# (`core\informe.rs`), la declara el ABI (`surface.rs`) y la consume el userland
+# (`userland\src\lib.rs`). Anadir un dato es una fila -- y una fila escrita en
+# dos de los tres sitios es un campo que contesta otra cosa de la que se pidio,
+# sin que nada falle al compilar.
+#
+# No es hipotetico: al escribir esta comprobacion, `INFO_PANTALLA_DUENO` estaba
+# en el kernel y en el userland y NO en el ABI. La lista no se escribe a mano
+# --se saca de los tres ficheros-- porque una lista a mano es lo que ya se
+# quedo congelada una vez, ahi arriba.
+$infoFuentes = [ordered]@{
+    'kernel'   = Get-Content (Join-Path $root 'kernel\src\ring0\core\informe.rs') -Raw
+    'abi'      = $abiSurface
+    'userland' = Get-Content (Join-Path $root '..\Ultra_userspace\userland\src\lib.rs') -Raw
+}
+$infoCampos = @{}
+foreach ($fuente in $infoFuentes.GetEnumerator()) {
+    $hallados = [regex]::Matches($fuente.Value, '(?m)^\s*(?:pub\s+)?const\s+(INFO_[A-Z0-9_]+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)')
+    foreach ($m in $hallados) {
+        $campo = $m.Groups[1].Value
+        if (-not $infoCampos.ContainsKey($campo)) { $infoCampos[$campo] = [ordered]@{} }
+        $infoCampos[$campo][$fuente.Key] = $m.Groups[2].Value.ToUpperInvariant().Replace('_', '')
+    }
+}
+foreach ($campo in ($infoCampos.Keys | Sort-Object)) {
+    $vistos = $infoCampos[$campo]
+    $faltan = @('kernel', 'abi', 'userland') | Where-Object { -not $vistos.Contains($_) }
+    if ($faltan.Count -gt 0) {
+        Fail ('OP_INFO field contract: ' + $campo + ' falta en ' + ($faltan -join ', '))
+    }
+    if ((@($vistos.Values | Sort-Object -Unique)).Count -ne 1) {
+        $detalle = ($vistos.GetEnumerator() | ForEach-Object { $_.Key + '=' + $_.Value }) -join ' '
+        Fail ('OP_INFO field contract: ' + $campo + ' con ids distintos -- ' + $detalle)
+    }
+}
+Write-Host ('    OP_INFO: ' + $infoCampos.Count + ' campos, el mismo id en kernel, ABI y userland') -ForegroundColor DarkGray
+
 # The kernel's capability-engine mirror (cap.rs) must match bmo-abi too:
 # handle-kind codes and rights bits are part of the frozen contract.
 $kernelCap = Get-Content (Join-Path $root 'kernel\src\ring0\obj\cap.rs') -Raw

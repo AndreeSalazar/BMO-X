@@ -247,6 +247,30 @@ pub const ES_TXT_RUTA: u64 = 1;
 /// **no leia nadie**. Un contador que nadie consulta no es telemetria: es una
 /// variable.
 pub const INFO_MEM_ENTREGADA: u64 = 0x19;
+/// * Quien tiene la pantalla: su `pid`, o **`0` si no la tiene nadie**.
+///
+/// Se PREGUNTA en vez de intentar reclamarla, y la diferencia importa: probar a
+/// reclamarla para saber si esta libre **te la deja puesta**, y entonces se la
+/// robas al programa al que se la ibas a prestar.
+///
+/// Estaba en el kernel y en el userland y **faltaba aqui**, que es justo la
+/// deriva que ahora vigila `build.ps1`.
+pub const INFO_PANTALLA_DUENO: u64 = 0x1A;
+
+/// -- SMP ------------------------------------------------------------
+///
+/// Nucleos de aplicacion en pie, **sin contar el BSP**. Es lo que contesto el
+/// bring-up, no lo que declara el CPU: la diferencia entre los dos es
+/// exactamente el fallo que un panel tiene que poder ensenar.
+pub const INFO_SMP_VIVOS: u64 = 0x1B;
+/// * Choques de cerrojo, y la espera mas larga en vueltas de giro.
+///
+/// **Los dos tienen que ser CERO**, y por eso valen. Con un solo nucleo nadie
+/// puede encontrar un cerrojo tomado, y los obreros de SMP solo computan: no
+/// entran en el kernel, asi que no hay quien pelee. Un numero distinto de cero
+/// no mide rendimiento -- dice que una de esas dos frases dejo de ser cierta.
+pub const INFO_SPIN_CHOQUES: u64 = 0x1C;
+pub const INFO_SPIN_PICO: u64 = 0x1D;
 
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;

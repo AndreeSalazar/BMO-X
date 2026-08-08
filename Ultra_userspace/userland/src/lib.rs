@@ -150,6 +150,11 @@ pub const INFO_ES_ESCRIBIBLE: u64 = 0x18;
 /// Bytes que Ring 3 ha PEDIDO con `KIND_MEMORIA` desde el arranque. Es lo
 /// unico del informe que solo se mueve si alguien ejercio la capability.
 pub const INFO_MEM_ENTREGADA: u64 = 0x19;
+/// Nucleos de aplicacion en pie (sin el BSP), choques de cerrojo y la espera
+/// mas larga. Los dos ultimos tienen que dar CERO. Ver `plat/spin.rs`.
+pub const INFO_SMP_VIVOS: u64 = 0x1B;
+pub const INFO_SPIN_CHOQUES: u64 = 0x1C;
+pub const INFO_SPIN_PICO: u64 = 0x1D;
 
 // Campos de `OP_INFO_TEXTO`.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;

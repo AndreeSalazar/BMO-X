@@ -70,6 +70,13 @@ const INFO_ES_IDENTIDAD: u64 = 0x17;
 const INFO_ES_ESCRIBIBLE: u64 = 0x18;
 /// Lo que Ring 3 ha pedido con `KIND_MEMORIA`. Ver `surface.rs`.
 const INFO_MEM_ENTREGADA: u64 = 0x19;
+// -- SMP --
+//
+// Los nucleos en pie y **lo que cuesta tenerlos**. Van juntos a proposito: un
+// numero de nucleos sin un numero de choques es la mitad que suena bien.
+const INFO_SMP_VIVOS: u64 = 0x1B;
+const INFO_SPIN_CHOQUES: u64 = 0x1C;
+const INFO_SPIN_PICO: u64 = 0x1D;
 
 const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
@@ -145,6 +152,15 @@ pub fn campo(n: u64) -> u64 {
         // `KIND_MEMORIA` -- y por eso vale: es la unica fila del informe que
         // solo se mueve si alguien ejercio la capability.
         INFO_MEM_ENTREGADA => crate::ring0::obj::memoria::total_handed_over(),
+        // Sin contar el BSP, que siempre esta. Es el numero que devolvio el
+        // bring-up, no una suposicion sobre lo que declara el CPU.
+        INFO_SMP_VIVOS => crate::ring0::plat::smp::alive().0 as u64,
+        // * Y los dos que tienen que dar CERO. Un choque de cerrojo hoy
+        // significa que alguien rompio la regla de oro --un obrero que solo
+        // computa no entra en el kernel-- y se ve aqui antes de que corrompa
+        // nada. Ver `plat/spin.rs`.
+        INFO_SPIN_CHOQUES => crate::ring0::plat::spin::contention().0 as u64,
+        INFO_SPIN_PICO => crate::ring0::plat::spin::contention().1 as u64,
         _ => 0,
     }
 }

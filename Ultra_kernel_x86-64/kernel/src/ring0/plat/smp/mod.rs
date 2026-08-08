@@ -29,12 +29,12 @@
 //! hace que se vean juntas. Y `lapic` esta aparte porque es justo lo que el AP
 //! **no** puede tocar.
 //!
-//! === [!] SIN PROBAR EN METAL ===
+//! === PROBADO EN METAL: `12 de 12` el 2026-08-07 ===
 //!
-//! Corre antes de que exista nada, en el unico CPU que hay. Por eso **no se
-//! llama en el arranque**: se pide con la orden `smp`. Si el trampolin esta mal
-//! se cuelga un comando, no la maquina al encenderla; la salida es un reinicio a
-//! boton.
+//! Y **sigue sin llamarse en el arranque**, que ya no es cautela sino la
+//! decision: se pide con la orden `smp`. INIT+SIPI es la unica operacion del
+//! sistema que no se deshace sin reiniciar, asi que si algo va mal se cuelga un
+//! comando y no la maquina al encenderla.
 
 pub mod lapic;
 pub mod mapa;

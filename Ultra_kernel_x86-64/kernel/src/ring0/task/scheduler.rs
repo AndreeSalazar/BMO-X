@@ -143,7 +143,7 @@ impl Scheduler {
     }
 }
 
-static SCHED_LOCK: SpinLock = SpinLock::new();
+static SCHED_LOCK: SpinLock = SpinLock::new("sched");
 static mut SCHEDULER: Scheduler = Scheduler::new();
 static mut TSC_FREQ: u64 = 0;
 
