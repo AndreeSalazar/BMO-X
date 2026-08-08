@@ -11,6 +11,8 @@ pub(crate) mod datos;
 pub(crate) mod cursor;
 /// La ENTRADA a Ring 3: lo que se ve cuando el userspace toma la máquina.
 pub(crate) mod entrada;
+/// El LOGO, en dos mascaras de 1 bit. Generado por `docs/arte/gato_a_mascara.py`.
+pub(crate) mod gato;
 /// La consola del KERNEL (F11): lo que dice Ring 0, leído desde Ring 3. No da
 /// privilegio, da vista — ver la cabecera del módulo.
 pub(crate) mod klog;

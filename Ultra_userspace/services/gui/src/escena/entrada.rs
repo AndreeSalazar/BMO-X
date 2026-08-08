@@ -24,6 +24,7 @@
 use bmo_userland as bmo;
 
 use super::*;
+use super::gato;
 use crate::texto::decimal;
 
 const ENT_FONDO: u32 = 0x000A_0E17;
@@ -77,6 +78,41 @@ fn esperar_ms(ms: u64, entrada: Option<&bmo::Entrada>) {
     }
 }
 
+/// ★ Pinta EL GATO desde sus dos máscaras de 1 bit.
+///
+/// El fondo no se dibuja: la máscara no lo lleva, porque el fondo del splash ya
+/// es negro. Sólo se encienden los píxeles del trazo y los de los ojos — 1.622
+/// de los 27.360 del rectángulo, o sea que dibujarlo cuesta menos que un `rect`
+/// de ese tamaño.
+///
+/// `escala` multiplica en enteros y a propósito: interpolar un dibujo de líneas
+/// de un píxel lo convierte en una mancha gris. Aquí un píxel de la máscara es
+/// un cuadrado exacto, que es como se ve un logo hecho de trazos.
+fn pintar_gato(p: &bmo::Pantalla, x0: u32, y0: u32, escala: u32) {
+    let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
+    for fy in 0..gato::ALTO {
+        for fx in 0..gato::ANCHO {
+            let i = (fy * gato::ANCHO + fx) as usize;
+            // Los ojos ganan al trazo: son el único sitio con color y es lo
+            // primero que mira quien mira un gato.
+            let color = if bit(&gato::OJOS, i) {
+                ACENTO
+            } else if bit(&gato::TRAZO, i) {
+                TEXTO
+            } else {
+                continue;
+            };
+            let px = x0 + fx * escala;
+            let py = y0 + fy * escala;
+            if escala == 1 {
+                p.punto(px, py, color);
+            } else {
+                p.rect(px, py, escala, escala, color);
+            }
+        }
+    }
+}
+
 /// Una fila del informe: etiqueta a la izquierda, valor a la derecha.
 fn fila(p: &bmo::Pantalla, x: u32, y: u32, etiqueta: &str, valor: &str, color: u32) {
     p.texto(x, y, etiqueta, ENT_TENUE);
@@ -105,15 +141,42 @@ pub(crate) fn pintar(
     // composición y cuesta un rectángulo.
     p.rect(0, 0, 6, p.alto, ACENTO);
 
-    let x = 120;
+    // ── ★ LA MAQUETA: el gato a la izquierda, el informe a la derecha ──
+    //
+    // Antes era una columna sola pegada al margen. El logo pide dos: un dibujo
+    // alto al lado de un bloque de texto se lee de un vistazo, y una columna
+    // sola de veinte lineas se lee de arriba abajo o no se lee.
+    //
+    // La escala del gato sale de la ALTURA de la pantalla y no de un numero
+    // fijo: en 1080 sale a x2 y en 720 a x1, y en las dos ocupa la misma
+    // fraccion. Un `3` puesto a mano se sale por abajo en el primer monitor
+    // pequeño que se enchufe.
+    let escala = if p.alto >= 900 { 2 } else { 1 };
+    let gato_w = gato::ANCHO * escala;
+
+    let x = 120 + gato_w + 56;
     let mut y = p.alto / 2 - 190;
+
+    // El gato se centra respecto al bloque de texto, no respecto a la pantalla:
+    // lo que tiene que quedar alineado es lo que se mira junto.
+    pintar_gato(p, 120, y + 8, escala);
 
     // ── El nombre, grande ──
     let ancho = bmo::Pantalla::ancho_escala("BMO-X", 6);
     p.texto_escala(x, y, "BMO-X", TEXTO, 6);
     // Subrayado exacto bajo el título: el ancho se pregunta, no se estima.
     p.rect(x, y + 16 * 6 + 8, ancho, 3, ACENTO);
-    y += 16 * 6 + 30;
+    y += 16 * 6 + 22;
+
+    // ★ METAKERNEL, y no es una etiqueta bonita: es lo que hace.
+    //
+    // Un kernel normal falla y te deja un shell. Este guarda las ultimas cuatro
+    // lineas de cada proceso (`uconsole`), y cuando el dueño de la pantalla
+    // MUERE las vuelca el a mano —con la CR3 del kernel puesta, que si no es un
+    // #PF recursivo— para poder decir DONDE se rompio. No presume de no fallar:
+    // presume de contarlo. De ahi el gato: se cae, se rompe algo, y sigue.
+    p.texto(x, y, "BMO METAKERNEL", ENT_TENUE);
+    y += bmo::GLIFO_ALTO + 16;
 
     p.texto(x, y, "RING 3   ·   el userspace toma la maquina", ACENTO);
     y += bmo::GLIFO_ALTO + 34;

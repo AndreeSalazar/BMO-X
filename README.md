@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/arte/bmo-x-gato.jpg" alt="BMO-X — BMO METAKERNEL" width="320">
+</p>
+
 # BMO-X
 
 **A bare-metal orchestrator that boots on real hardware and runs COBOL, C and
@@ -15,6 +19,46 @@ filesystem, and three native compilers. It boots on an AMD Ryzen 5 5600X and
 occupies **5.4 MiB of 14.8 GiB of RAM**.
 
 **950+ commits · 490+ files · 17 April – 2 August 2026 · one developer.**
+
+---
+
+## Why a cat, and why "metakernel"
+
+A cat falls, breaks something, and walks away. That is the property this system
+is built around — **not the absence of failure, but surviving it and being able
+to say what happened.**
+
+**"Metakernel" is not a label. It is work the kernel does about its own
+failures**, and it exists because of a specific two-day dead end: the compositor
+kept dying at boot, and nobody could tell whether it had failed to start, started
+and died, or was alive and not painting. All three look identical — a shell where
+a desktop should be.
+
+Its panic handler *did* report the file and the line. Over the kernel console.
+Which **is not painted while the compositor owns the screen.** The only message
+capable of explaining the death was written exactly when nobody could read it.
+
+So the kernel now does this, in `fb::proceso_muerto`:
+
+- it has kept **the last four lines every process wrote** (`uconsole`),
+- when the screen's owner dies it takes the screen back and **prints them
+  itself**, with the kernel's `CR3` loaded — without that, the fault handler
+  faults recursively and there is no message at all,
+- and the last line names *which phase* it died in, so `reclamó pantalla` and
+  `primer fotograma completo` are different diagnoses.
+
+The same principle is enforced against itself everywhere else, and each rule was
+paid for by a real bug:
+
+| The rule | What it cost to learn |
+|---|---|
+| The loader **refuses to start a program** rather than write an address it could not compute | relocations, `ring0/task/proc.rs` |
+| A global initialised with something the compiler cannot evaluate is **an error, not a silent zero** | the raycaster read its map from **its own machine code** for months, and still drew a plausible maze |
+| A test that produces no output is **not a passing test** | six heap tests never ran; `cargo test` died at link and printed nothing |
+| A benchmark harness that does not model the machine **confirms, it does not prove** | the emulator concatenated sections; the real loader page-aligns them |
+
+That is the "meta": the system's job includes reporting on itself. It does not
+claim not to fail. It claims to tell you where.
 
 ---
 
