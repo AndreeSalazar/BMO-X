@@ -1574,54 +1574,6 @@ pub extern "C" fn _start() -> ! {
                                 pintar_estado(&p, &caja, "no lo conozco: prueba help", TEXTO_MAL);
                                 n = 0;
                             }
-                            // ★ `presta <ruta>` — como `Lanzar`, pero cediéndole
-                            // la pantalla y esperándolo.
-                            //
-                            // ⚠️ NO SE TOCA EL FOCO. El préstamo va de quién
-                            // PINTA, y el foco de quién recibe las teclas: son
-                            // dos cosas y mezclarlas rompería Alt+Tab, que
-                            // costó dos sesiones dejar bien (patrón 24 de los
-                            // bugs: una política escrita que nadie consulta).
-                            // Al volver se repinta la escena tal como estaba y
-                            // el foco sigue donde lo dejó el dueño.
-                            Orden::Prestar(objetivo) => {
-                                let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
-                                // `entrada.take()` y no `&entrada`: `soltar`
-                                // CONSUME la capability, y que el tipo lo exija
-                                // es lo que impide seguir leyendo teclas de un
-                                // handle ya revocado.
-                                match prestar_pantalla(p, entrada.take(), objetivo, cap) {
-                                    Some((nueva, ent)) => {
-                                        p = nueva;
-                                        entrada = ent;
-                                        // Repintado ENTERO, y hace falta: la
-                                        // pantalla la tuvo otro. Es la misma
-                                        // secuencia del arranque, no una
-                                        // versión reducida — lo que se ve tras
-                                        // volver tiene que ser indistinguible
-                                        // de lo que había antes de prestarla.
-                                        p.limpiar(FONDO);
-                                        pintar_caja(&p, &caja);
-                                        pintar_campo(&p, &caja, &ruta[..n], cur, true);
-                                        pintar_salida(&p, &caja, &salida);
-                                        pintar_estado(&p, &caja, "pantalla devuelta", TEXTO_BIEN);
-                                        p.vaciar();
-                                        repintar_campo = true;
-                                    }
-                                    // Sin pantalla no hay escritorio. Se dice y
-                                    // se sale: el kernel la recupera al morir
-                                    // este proceso y vuelve su panel, que es
-                                    // mejor que un compositor vivo y ciego
-                                    // pintando en memoria de nadie.
-                                    None => {
-                                        bmo::consola(
-                                            "no pude recuperar la pantalla tras prestarla\n",
-                                        );
-                                        bmo::salir()
-                                    }
-                                }
-                                n = 0;
-                            }
                             Orden::Lanzar(objetivo) => {
                                 let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
                                 // ★★ `run` DECIDE SOLO.

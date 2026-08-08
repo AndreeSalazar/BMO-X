@@ -167,6 +167,9 @@ int main() {
     unsigned int *fila;
     int i;
     int vivo;
+    /* La barra de ayuda. Declaradas arriba porque BMO C pide las
+     * declaraciones al principio de la funcion, estilo C89. */
+    int bx; int by; int bw; int bh;
 
     /* ★ LA PANTALLA TIENE UN SOLO DUEÑO, y eso no es una limitación de este
      * programa: es el modelo. `gui.bex` la reclama al arrancar y no la suelta,
@@ -190,7 +193,12 @@ int main() {
     alto = (int)(dims & 0xFFFFFFFF);
     stride = (int)(st >> 32);
 
+    /* SIN ENTRADA NO SE ARRANCA. Ver la nota al final del fichero. */
     ent = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ENTRADA_RECLAMAR, 0, 0, 0);
+    if (ent == 0) {
+        printf("sin teclado: no arranco, porque no podria salir\n");
+        return 1;
+    }
 
     posx = 3 * UNO + 32768;
     posy = 3 * UNO + 32768;
@@ -256,6 +264,40 @@ int main() {
             while (y < alto) { fb[y * stride + x] = 0x00202020; y = y + 1; }
 
             x = x + 1;
+        }
+
+        /* COMO SE SALE, DICHO EN LA PANTALLA.
+         *
+         * Cuatro barras juntas para W A S D y una aparte, en cian, para ESC.
+         * No es adorno: es el fallo de usabilidad que costo una sesion. Este
+         * programa toma la pantalla ENTERA, asi que el escritorio desaparece y
+         * con el el sitio donde uno leeria que hacer. El dueno busco la salida
+         * con Alt+Tab y con Ctrl+Alt, que son atajos del escritorio y aqui no
+         * existen.
+         *
+         * No hay fuente de texto en este ejemplo, asi que se dibujan BARRAS.
+         * No es un manual, pero es mejor que una pantalla que no dice nada. */
+        bh = 6;
+        bw = 26;
+        by = alto - 22;
+        bx = 24;
+        i = 0;
+        while (i < 4) {
+            y = by;
+            while (y < by + bh) {
+                x = bx;
+                while (x < bx + bw) { fb[y * stride + x] = 0x00405060; x = x + 1; }
+                y = y + 1;
+            }
+            bx = bx + bw + 8;
+            i = i + 1;
+        }
+        bx = bx + 22;
+        y = by;
+        while (y < by + bh) {
+            x = bx;
+            while (x < bx + bw + 14) { fb[y * stride + x] = 0x0000E5FF; x = x + 1; }
+            y = y + 1;
         }
 
         /* ── ENTRADA ──────────────────────────────────────────────────── */

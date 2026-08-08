@@ -14,22 +14,6 @@ pub(crate) mod informes;
 pub(crate) enum Orden<'a> {
     Nada,
     Lanzar(&'a [u8]),
-    /// ★ `presta <ruta>` — lanza un programa **cediéndole la pantalla**.
-    ///
-    /// Hermana de [`Orden::Lanzar`] y no una bandera suya, porque hace algo
-    /// distinto: el escritorio SUELTA la pantalla, deja que el programa la tome,
-    /// y la recupera cuando muere. Mientras dura, aquí no se pinta nada.
-    ///
-    /// Existe porque `gui.bex` reclama la pantalla al arrancar y no la solíaba
-    /// jamas: cualquier programa gráfico —`ray.bex`, el ensayo de DOOM— se
-    /// llevaba un *"la pantalla ya tiene dueno"*. El compositor tenía razón en
-    /// no cederla a cualquiera que la pida; lo que faltaba era poder cederla
-    /// **queriendo**.
-    ///
-    /// Es un verbo APARTE de `run` a proposito: un `run` que apagara el
-    /// escritorio para lanzar un `ls` seria un paso atras en algo que hoy
-    /// funciona bien.
-    Prestar(&'a [u8]),
     Limpiar,
     Ayuda,
     /// Ensena o esconde la calculadora.
@@ -171,11 +155,6 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         // escritos.
         b"run" | b"corre" | b"lanza" => {
             if resto.is_empty() { Orden::Ayuda } else { Orden::Lanzar(resto) }
-        }
-        // `presta <ruta>`: como `run`, pero cediendo la pantalla. Ver
-        // `Orden::Prestar`.
-        b"presta" | b"prestar" | b"grafico" => {
-            if resto.is_empty() { Orden::Ayuda } else { Orden::Prestar(resto) }
         }
         b"calc" | b"calculadora" => Orden::Calculadora,
         // ★ El número que decide si hace falta una GPU. Ver `Volcado`.
