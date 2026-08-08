@@ -540,9 +540,9 @@ impl Parser {
                 if *self.peek() == Token::OpenParen
                     && self.tokens.get(self.pos + 1) == Some(&Token::Star)
                 {
-                    let fname = self.parse_fnptr_tail()?;
+                    let (fname, ftyp) = self.parse_fnptr_tail()?;
                     self.skip_semicolon();
-                    self.typedefs.insert(fname, TypeSpec::Ptr(Box::new(TypeSpec::Void)));
+                    self.typedefs.insert(fname, ftyp);
                     continue;
                 }
                 let name = match self.advance() {
@@ -939,8 +939,7 @@ impl Parser {
             if *self.peek() == Token::OpenParen
                 && self.tokens.get(self.pos + 1) == Some(&Token::Star)
             {
-                let pname = self.parse_fnptr_tail()?;
-                let ptype = TypeSpec::Ptr(Box::new(TypeSpec::Void));
+                let (pname, ptype) = self.parse_fnptr_tail()?;
                 self.var_types.insert(pname.clone(), ptype.clone());
                 params.push(Param { typ: ptype, name: pname });
                 if *self.peek() == Token::Comma { self.advance(); }
@@ -1057,7 +1056,19 @@ impl Parser {
                             return Err(CError::new(self.line(),
                                 "static: esperaba una declaracion de variable"));
                         };
+                        let base = self.base_del_declarador.clone();
                         self.declarar_static_local(&name, typ, vname)?;
+                        // `static int lastlevel = -1, lastepisode = -1;`
+                        // La coma tambien vale detras de un `static`.
+                        let mut mas = Vec::new();
+                        self.declaradores_tras_coma(&base, &mut mas)?;
+                        for (t2, n2) in mas {
+                            self.declarar_static_local(&name, t2, n2)?;
+                        }
+                        continue;
+                    }
+                    // Un prototipo dentro del cuerpo: se consume y ya.
+                    if self.saltar_prototipo_local() {
                         continue;
                     }
                     if let Some((typ, name)) = self.try_parse_decl()? {
@@ -1243,11 +1254,11 @@ impl Parser {
             && self.tokens.get(self.pos + 1) == Some(&Token::Star)
         {
             match self.parse_fnptr_tail() {
-                Ok(fname) => {
+                Ok((fname, ftyp)) => {
                     if *self.peek() != Token::Semicolon && *self.peek() != Token::Assign {
                         self.pos = save; return Ok(None);
                     }
-                    return Ok(Some((TypeSpec::Ptr(Box::new(TypeSpec::Void)), fname)));
+                    return Ok(Some((ftyp, fname)));
                 }
                 Err(_) => { self.pos = save; return Ok(None); }
             }
@@ -1305,12 +1316,9 @@ impl Parser {
             if *self.peek() == Token::OpenParen
                 && self.tokens.get(self.pos + 1) == Some(&Token::Star)
             {
-                let mname = self.parse_fnptr_tail()?;
+                let (mname, mtyp) = self.parse_fnptr_tail()?;
                 self.skip_semicolon();
-                members.push(StructMember {
-                    typ: TypeSpec::Ptr(Box::new(TypeSpec::Void)),
-                    name: mname,
-                });
+                members.push(StructMember { typ: mtyp, name: mname });
                 continue;
             }
             let mname = match self.advance() {
@@ -1380,6 +1388,54 @@ impl Parser {
         }
         self.expect(&Token::CloseBrace)?;
         Ok(members)
+    }
+
+    /// Un PROTOTIPO dentro de un cuerpo: `void WI_unloadData(void);`
+    ///
+    /// C lo permite y `wi_stuff.c` lo usa para declarar una funcion justo antes
+    /// de llamarla. Aqui no declara nada --el compilador ya admite llamar a lo
+    /// que se defina despues-- pero hay que CONSUMIRLO: sin esto caia en el
+    /// camino de las expresiones y el error acusaba al tipo ("unexpected token:
+    /// Void"), que es lo unico de la linea que estaba bien.
+    ///
+    /// Devuelve si consumio algo. Si no lo era, deja el cursor donde estaba.
+    fn saltar_prototipo_local(&mut self) -> bool {
+        let guardado = self.pos;
+        if !self.peek_is_type_start() {
+            return false;
+        }
+        if self.parse_type_spec().is_err() {
+            self.pos = guardado;
+            return false;
+        }
+        let Token::Ident(_) = self.peek().clone() else {
+            self.pos = guardado;
+            return false;
+        };
+        self.advance();
+        if *self.peek() != Token::OpenParen {
+            self.pos = guardado;
+            return false;
+        }
+        // La lista de parametros, equilibrada.
+        self.advance();
+        let mut hondo = 1;
+        while hondo > 0 {
+            match self.advance() {
+                Token::OpenParen => hondo += 1,
+                Token::CloseParen => hondo -= 1,
+                Token::Eof => { self.pos = guardado; return false; }
+                _ => {}
+            }
+        }
+        // Solo es un prototipo si termina en `;`. Si sigue una llave, es una
+        // definicion anidada, y eso no es C.
+        if *self.peek() != Token::Semicolon {
+            self.pos = guardado;
+            return false;
+        }
+        self.advance();
+        true
     }
 
     /// `lvalue++` / `lvalue--` sobre algo que no es un nombre suelto.
@@ -1488,13 +1544,24 @@ impl Parser {
     /// Consume la cola de un puntero a funcion: `(*name)(param-types)`.
     /// Asume estar en el `(` inicial. Devuelve el nombre. El tipo del
     /// puntero es opaco (se trata como Ptr): las llamadas son indirectas.
-    fn parse_fnptr_tail(&mut self) -> Result<String, CError> {
+    fn parse_fnptr_tail(&mut self) -> Result<(String, TypeSpec), CError> {
         self.expect(&Token::OpenParen)?;
         self.expect(&Token::Star)?;
         let name = match self.advance() {
             Token::Ident(n) => n,
             t => return Err(CError::new(self.line(), format!("expected fnptr name, got {:?}", t))),
         };
+        // `static int (*wipes[])(int, int, int)` -- una TABLA de punteros a
+        // funcion. Los corchetes van dentro del parentesis, entre el nombre y
+        // el cierre, y no se leian. `f_wipe.c` guarda ahi los tres efectos de
+        // transicion del juego.
+        let mut typ = TypeSpec::Ptr(Box::new(TypeSpec::Void));
+        if *self.peek() == Token::OpenBracket {
+            // Los corchetes hacen del declarador una TABLA de punteros, y ese
+            // dato tiene que salir de aqui: si se pierde, el tipo queda escalar
+            // y su lista de inicializacion contesta "sobran valores".
+            typ = self.parse_array_suffix(typ)?;
+        }
         self.expect(&Token::CloseParen)?;
         // saltar la lista de parametros ( ... ) balanceada
         self.expect(&Token::OpenParen)?;
@@ -1507,7 +1574,7 @@ impl Parser {
                 _ => {}
             }
         }
-        Ok(name)
+        Ok((name, typ))
     }
 
     fn parse_type_and_name(&mut self) -> Result<(TypeSpec, String), CError> {
@@ -1516,8 +1583,8 @@ impl Parser {
         if *self.peek() == Token::OpenParen
             && self.tokens.get(self.pos + 1) == Some(&Token::Star)
         {
-            let fname = self.parse_fnptr_tail()?;
-            return Ok((TypeSpec::Ptr(Box::new(TypeSpec::Void)), fname));
+            let (fname, ftyp) = self.parse_fnptr_tail()?;
+            return Ok((ftyp, fname));
         }
         let name = match self.advance() {
             Token::Ident(n) => n,
@@ -1989,7 +2056,16 @@ impl Parser {
                                 "static: esperaba una declaracion de variable"));
                         };
                         let quien = self.funcion_actual.clone();
+                        let base = self.base_del_declarador.clone();
                         self.declarar_static_local(&quien, typ, vname)?;
+                        // `static int lastlevel = -1, lastepisode = -1;` -- la
+                        // coma tambien vale detras de un `static`, y este era
+                        // el ultimo sitio donde no.
+                        let mut mas = Vec::new();
+                        self.declaradores_tras_coma(&base, &mut mas)?;
+                        for (t2, n2) in mas {
+                            self.declarar_static_local(&quien, t2, n2)?;
+                        }
                         continue;
                     }
                     // `extern` DENTRO de una funcion: declara un nombre que
@@ -2001,6 +2077,10 @@ impl Parser {
                             self.var_types.insert(vname, typ);
                             self.skip_semicolon();
                         }
+                        continue;
+                    }
+                    // Un prototipo dentro del cuerpo: se consume y ya.
+                    if self.saltar_prototipo_local() {
                         continue;
                     }
                     if let Some((typ, name)) = self.try_parse_decl()? {

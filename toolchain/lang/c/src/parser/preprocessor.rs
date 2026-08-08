@@ -211,7 +211,39 @@ impl Preprocessor {
                 }
             } else {
                 if self.is_active(&skip_active) {
-                    let expanded = self.expand_line(raw, true);
+                    // * UNA INVOCACION DE MACRO PARTIDA EN VARIAS LINEAS.
+                    //
+                    // Este preprocesador expande LINEA A LINEA, y una
+                    // invocacion cuyo parentesis se cierra tres lineas mas
+                    // abajo no cabe en esa idea:
+                    //
+                    //   V_DrawPatchDirect(0, 0, W_CacheLumpName(DEH_String(
+                    //       "HELP2"), PU_CACHE));
+                    //
+                    // Se juntan las lineas que hagan falta hasta que los
+                    // parentesis cierren. La cuenta ignora lo que va dentro de
+                    // una cadena --un `(` entre comillas es texto, no
+                    // gramatica-- y tiene tope: un parentesis que no cierra
+                    // nunca es un fallo del programa, y colgarse buscandolo
+                    // seria peor que decirlo.
+                    //
+                    // Solo se juntan lineas donde hay una macro de funcion
+                    // esperando: fuera de ahi, un parentesis abierto entre
+                    // lineas es normal en C y no hay nada que expandir.
+                    let mut fuente = raw.to_string();
+                    if self.hay_macro_funcion(&fuente) {
+                        let mut juntadas = 0;
+                        while balance_parentesis(&fuente) > 0
+                            && i + 1 < lines.len()
+                            && juntadas < 32
+                        {
+                            i += 1;
+                            juntadas += 1;
+                            fuente.push(' ');
+                            fuente.push_str(lines[i].trim());
+                        }
+                    }
+                    let expanded = self.expand_line(&fuente, true);
                     output.push_str(&expanded);
                     output.push('\n');
                 }
@@ -441,14 +473,73 @@ impl Preprocessor {
     ///
     /// Ahora se recorre el texto una sola vez por pasada, saltando literales, y
     /// se repite mientras algo cambie (con tope, ver [`MAX_PASADAS`]).
+    /// Hay en esta linea el nombre de una macro DE FUNCION seguido de `(`?
+    ///
+    /// Es la condicion para traerse la linea siguiente. Sin ella se juntarian
+    /// tambien las lineas de cualquier expresion partida --normalisimas en C--
+    /// y el texto de salida dejaria de parecerse al que se escribio.
+    fn hay_macro_funcion(&self, linea: &str) -> bool {
+        let b = linea.as_bytes();
+        let mut i = 0usize;
+        while i < b.len() {
+            if !is_ident_char(b[i]) || (i > 0 && is_ident_char(b[i - 1])) {
+                i += 1;
+                continue;
+            }
+            let inicio = i;
+            while i < b.len() && is_ident_char(b[i]) {
+                i += 1;
+            }
+            if b.get(i) == Some(&b'(') {
+                if let Some(m) = self.defines.get(&linea[inicio..i]) {
+                    if m.funcion {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     fn expand_line(&mut self, line: &str, _report_errors: bool) -> String {
-        let mut texto = line.to_string();
+        // * `__LINE__` y `__FILE__`: las dos macros que NO son una entrada de
+        // la tabla, porque su valor cambia en cada linea.
+        //
+        // Se sustituyen aqui, antes de la expansion normal, con el numero que
+        // el preprocesador lleva puesto. Sin ellas, `Z_Malloc(size, tag, user)`
+        // --que en `z_zone.h` se expande a `Z_MallocDebug(..., __FILE__,
+        // __LINE__)`-- dejaba dos identificadores sueltos, y el error hablaba
+        // de una variable `__LINE__` que nadie escribio.
+        //
+        // `__FILE__` sale como una cadena vacia y no como el nombre del
+        // fichero, y se dice por que: el preprocesador expande linea a linea y
+        // aqui no tiene la ruta a mano. Lo que se usa de verdad es el numero.
+        let mut texto = if line.contains("__LINE__") || line.contains("__FILE__") {
+            line.replace("__LINE__", &self.line.to_string())
+                .replace("__FILE__", "\"\"")
+        } else {
+            line.to_string()
+        };
         for _ in 0..MAX_PASADAS {
             let next = self.expandir_una_pasada(&texto);
             if next == texto {
-                return texto;
+                break;
             }
             texto = next;
+        }
+        // * Y OTRA VEZ AL SALIR, que es la vez que hacia falta.
+        //
+        // La sustitucion de arriba solo ve lo que ya estaba escrito en la
+        // linea. Pero `__LINE__` casi nunca esta escrito ahi: llega DENTRO del
+        // cuerpo de una macro --`Z_ChangeTag(p,t)` se expande a
+        // `Z_ChangeTag2((p),(t),__FILE__,__LINE__)`-- o sea que aparece
+        // despues de expandir, cuando la pasada de antes ya no puede verlo.
+        //
+        // Con las dos, da igual por donde entre.
+        if texto.contains("__LINE__") || texto.contains("__FILE__") {
+            texto = texto
+                .replace("__LINE__", &self.line.to_string())
+                .replace("__FILE__", "\"\"");
         }
         texto
     }
@@ -1005,4 +1096,42 @@ fn split_first_word(s: &str) -> (&str, &str) {
 
 fn is_ident_char(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// Cuenta los parentesis de una linea, sin mirar dentro de las cadenas.
+///
+/// Positivo = quedan abiertos. Es lo que decide si hay que traerse la linea
+/// siguiente para completar una invocacion de macro. Un `(` entre comillas es
+/// texto y no gramatica, y contarlo partiria justo las lineas que llevan un
+/// parentesis en un mensaje.
+fn balance_parentesis(linea: &str) -> i32 {
+    let b = linea.as_bytes();
+    let mut n = 0i32;
+    let mut i = 0usize;
+    let mut comilla: Option<u8> = None;
+    while i < b.len() {
+        let c = b[i];
+        match comilla {
+            Some(q) => {
+                if c == b'\\' && i + 1 < b.len() {
+                    i += 2;
+                    continue;
+                }
+                if c == q {
+                    comilla = None;
+                }
+                i += 1;
+            }
+            None => {
+                match c {
+                    b'"' | b'\'' => comilla = Some(c),
+                    b'(' => n += 1,
+                    b')' => n -= 1,
+                    _ => {}
+                }
+                i += 1;
+            }
+        }
+    }
+    n
 }

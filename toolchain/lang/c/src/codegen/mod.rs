@@ -2026,9 +2026,35 @@ impl Codegen {
                 continue;
             }
 
+            // * BANDERAS, ANCHURA y PRECISION -- se leen y NO se aplican.
+            //
+            // `printf("block:%p size:%7i tag:%3i\n", ...)` de `z_zone.c`. Antes
+            // el `7` se tomaba por la conversion y el mensaje decia
+            // *"'%7' aun no se compila"*, acusando a un digito que es la
+            // anchura.
+            //
+            // [!] Y esto es una APROXIMACION, dicha aqui y no escondida: el
+            // numero sale bien y **sin rellenar**, asi que una tabla alineada
+            // sale desalineada. Alinear pide saber cuantos caracteres va a
+            // ocupar el numero ANTES de escribirlo, y los formateadores
+            // sintetizados no lo devuelven. Se acepta porque la alternativa es
+            // no compilar el fichero, y porque el valor -- que es lo que un
+            // programa hace con el -- es correcto.
+            let mut j = i + 1;
+            while j < chars.len() && matches!(chars[j], '-' | '+' | ' ' | '#' | '0') {
+                j += 1;
+            }
+            while j < chars.len() && chars[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j < chars.len() && chars[j] == '.' {
+                j += 1;
+                while j < chars.len() && chars[j].is_ascii_digit() {
+                    j += 1;
+                }
+            }
             // Saltar los modificadores de longitud: en BMO todo entero viaja
             // en 64 bits, asi que `%ld` y `%d` producen lo mismo.
-            let mut j = i + 1;
             while j < chars.len() && matches!(chars[j], 'l' | 'h' | 'z' | 'j' | 't') {
                 j += 1;
             }
@@ -2070,7 +2096,11 @@ impl Codegen {
             match conversion {
                 'd' | 'i' => self.emit_call_sintetizada("__bmo_fmt_i64"),
                 'u' => self.emit_call_sintetizada("__bmo_fmt_u64_dec"),
-                'x' => self.emit_call_sintetizada("__bmo_fmt_u64_hex"),
+                // `%p` es una direccion, y una direccion se lee en hexadecimal:
+                // es el MISMO conversor que `%x`, no uno nuevo. Se escribe como
+                // una fila propia --y no como `'x' | 'p'`-- porque el dia que
+                // lleve el `0x` delante, ese dia cambia aqui y solo aqui.
+                'x' | 'p' => self.emit_call_sintetizada("__bmo_fmt_u64_hex"),
                 'c' => self.emit_call_sintetizada("__bmo_fmt_char"),
                 's' => self.emit_call_sintetizada("__bmo_fmt_cstr"),
                 other => {
