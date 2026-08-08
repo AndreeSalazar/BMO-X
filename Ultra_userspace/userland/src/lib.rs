@@ -58,6 +58,10 @@ pub const OP_CONSOLE_WRITE: u32 = 0x06;
 pub const OP_ENDPOINT_CREATE: u32 = 0x07;
 pub const OP_ENDPOINT_CONNECT: u32 = 0x08;
 pub const OP_FRAMEBUFFER_CLAIM: u32 = 0x09;
+/// Soltar la pantalla siendo su dueño y **seguir vivo**. Pareja de
+/// [`OP_FRAMEBUFFER_CLAIM`]: hasta el 2026-08-07 la única forma de dejar de ser
+/// dueño era terminar, así que el escritorio no podía prestarla ni queriendo.
+pub const OP_PANTALLA_SOLTAR: u32 = 0x1D;
 pub const OP_INPUT_CLAIM: u32 = 0x0A;
 pub const OP_RUTA: u32 = 0x0B;
 pub const OP_EJECUTAR: u32 = 0x0C;

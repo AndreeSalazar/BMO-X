@@ -107,6 +107,23 @@ impl Pantalla {
         })
     }
 
+    /// ★ **Soltarla y seguir vivo.** Consume la `Pantalla`, que es el punto.
+    ///
+    /// Tras esto el kernel vuelve a tener la pantalla, las páginas del
+    /// framebuffer **se desmapean de este proceso** y el handle se revoca. Que
+    /// tome `self` por valor no es estilo: si devolviera `&self`, quedaría una
+    /// `Pantalla` en manos del programa con un puntero a memoria ya desmapeada,
+    /// y el primer píxel que escribiera sería un fallo de página. Aquí el
+    /// sistema de tipos hace de guardia.
+    ///
+    /// Para recuperarla, [`Pantalla::reclamar`] otra vez — y hay que **repintar
+    /// entero**: mientras no era suya pudo pintar otro.
+    ///
+    /// Devuelve `false` si no era el dueño, en vez de fingir que la soltó.
+    pub fn soltar(self) -> bool {
+        invoke(CURRENT_TASK, OP_PANTALLA_SOLTAR, 0, 0, 0).valor().is_some()
+    }
+
     /// **Pide el búfer de fondo y empieza a dibujar en él.**
     ///
     /// Devuelve `false` si no lo consigue, y entonces **no pasa nada**: se

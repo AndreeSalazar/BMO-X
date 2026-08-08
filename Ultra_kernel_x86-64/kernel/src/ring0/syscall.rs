@@ -52,6 +52,13 @@ const TASK_OP_ENDPOINT_CONNECT: u64 = 0x08;
 /// framebuffer mapeado en el espacio del proceso. Ver `ring0/fb.rs`: a partir
 /// de aquí el kernel deja de dibujar y el proceso escribe píxeles con `mov`.
 const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
+/// Soltar la pantalla siendo su dueño y **seguir vivo**. Pareja de
+/// `FRAMEBUFFER_CLAIM`.
+///
+/// `0x1D` elegido tras listar los opcodes ORDENADOS, que es la regla desde que
+/// `MEMORIA_PEDIR` se puso en `0x12` —ya ocupado por `REINICIAR`— y pedir
+/// memoria habría reiniciado la máquina.
+const TASK_OP_PANTALLA_SOLTAR: u64 = 0x1D;
 /// Reclamar el raton. Devuelve un handle `KIND_INPUT`: el kernel lee el HID,
 /// Ring 3 decide que hace con las coordenadas. Ver `ring0/input.rs`.
 const TASK_OP_INPUT_CLAIM: u64 = 0x0A;
@@ -450,6 +457,25 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 crate::ring0::mm::vmm::read_cr3(),
             ) {
                 Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
+        // ★ SOLTAR la pantalla sin morirse. La pareja que le faltaba a
+        // `FRAMEBUFFER_CLAIM`: hasta hoy la única forma de dejar de ser dueño
+        // era terminar, así que el escritorio no podía prestarla ni queriendo y
+        // `ray.bex` se llevaba un "la pantalla ya tiene dueño".
+        //
+        // El `CR3` es el del llamante, igual que al reclamar — y aquí importa
+        // más, porque es de donde hay que DESMAPEAR: el proceso sigue vivo y
+        // dejarle las páginas sería dejarle escribir en una pantalla que ya no
+        // es suya.
+        TASK_OP_PANTALLA_SOLTAR => {
+            let _ = arg0;
+            match crate::ring0::obj::fb::soltar(
+                scheduler::current_pid(),
+                crate::ring0::mm::vmm::read_cr3(),
+            ) {
+                Ok(()) => BmoStatus::ok_value(0),
                 Err(code) => BmoStatus::err(code),
             }
         }

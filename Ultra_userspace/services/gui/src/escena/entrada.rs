@@ -39,12 +39,33 @@ fn ciclos() -> u64 {
     ((hi as u64) << 32) | lo as u64
 }
 
-/// Espera exacta, cediendo el CPU mientras tanto.
+/// Espera exacta, cediendo el CPU mientras tanto — y **cortable con una tecla**.
 ///
-/// ★ Cede en el bucle a propósito: un `spin` de 900 ms en un sistema
-/// preemptivo es 900 ms robados al resto de las tareas. Aquí la espera es del
-/// que mira, no del que calcula.
-fn esperar_ms(ms: u64) {
+/// ★ Cede en el bucle a propósito: un `spin` de 900 ms en un sistema preemptivo
+/// es 900 ms robados al resto de las tareas. Aquí la espera es del que mira, no
+/// del que calcula.
+///
+/// ★★ Y SE PUEDE SALTAR, que es el cambio del 2026-08-07.
+///
+/// El arranque estaba cronometrado y el propio cronómetro delató la siesta:
+///
+/// ```text
+/// [   52ms] == BMO-X operativo ==
+/// [ 1163ms] gui.bex> entrada a Ring 3 pintada
+/// ```
+///
+/// **1.100 de los 1.205 ms hasta el escritorio eran esta espera.** El sistema
+/// estaba listo en 52 ms y se quedaba mirando al techo el 91% del arranque. Y
+/// el dueño lo leyó como un fallo, que es la señal de que algo va mal aunque
+/// sea intencionado: si tu instrumento de medida hace que la gente sospeche de
+/// la máquina, la espera es demasiado larga.
+///
+/// **No se borra la pantalla y no se acorta el número.** La intro existe para
+/// contestar "¿qué le cedieron al userspace?" cuando algo falla, y eso vale
+/// justo los segundos que haga falta LEERLO. Lo que se arregla es que fuera
+/// obligatoria: ahora cualquier tecla la cierra. Quien necesita leerla, la lee;
+/// quien no, no paga.
+fn esperar_ms(ms: u64, entrada: Option<&bmo::Entrada>) {
     let hz = bmo::info(bmo::INFO_TSC_HZ);
     if hz == 0 {
         // Sin frecuencia medida no se inventa una: se sigue. Una intro que no
@@ -53,6 +74,14 @@ fn esperar_ms(ms: u64) {
     }
     let objetivo = ciclos() + hz / 1000 * ms;
     while ciclos() < objetivo {
+        // La tecla se consume al leerla, así que la que salta la intro **no**
+        // acaba escrita en la caja de Ejecutar. Un atajo que además teclea algo
+        // sería un atajo que hay que deshacer.
+        if let Some(e) = entrada {
+            if e.tecla().is_some() {
+                return;
+            }
+        }
         bmo::ceder();
     }
 }
@@ -65,11 +94,20 @@ fn fila(p: &bmo::Pantalla, x: u32, y: u32, etiqueta: &str, valor: &str, color: u
 
 /// **La entrada.** Se pinta entera, se lee, y se va.
 ///
-/// `hay_entrada` y `hay_consola` no son decoración: son las dos capabilities
-/// que el compositor puede no recibir, y sin las cuales el escritorio arranca
-/// igual pero **quieto y mudo**. Que se digan aquí es lo que distingue "no
-/// funciona" de "no me la dieron".
-pub(crate) fn pintar(p: &bmo::Pantalla, hay_entrada: bool, hay_consola: bool) {
+/// La entrada y la consola son las dos capabilities que el compositor puede no
+/// recibir, y sin las cuales el escritorio arranca igual pero **quieto y mudo**.
+/// Que se digan aquí es lo que distingue "no funciona" de "no me la dieron".
+///
+/// ★ Recibe la `Entrada` y no un `bool`: antes era `hay_entrada: bool`, que es
+/// el mismo dato con menos información. Con la capability delante se puede
+/// además LEER —y por eso la espera del final se puede saltar con una tecla—,
+/// y el `bool` sale de ella sin poder desincronizarse.
+pub(crate) fn pintar(
+    p: &bmo::Pantalla,
+    entrada: Option<&bmo::Entrada>,
+    hay_consola: bool,
+) {
+    let hay_entrada = entrada.is_some();
     p.limpiar(ENT_FONDO);
 
     // Una banda de acento a la izquierda, de arriba abajo. Sujeta la
@@ -187,6 +225,9 @@ pub(crate) fn pintar(p: &bmo::Pantalla, hay_entrada: bool, hay_consola: bool) {
     // pantalla que existe para ser leída sería justo la que no se ve.
     p.vaciar();
 
-    // Se deja leer. Ver la cabecera: es tiempo REAL, no vueltas de bucle.
-    esperar_ms(1100);
+    // Se deja leer, y se puede saltar. Ver `esperar_ms`: es tiempo REAL, no
+    // vueltas de bucle, y cualquier tecla la corta.
+    p.texto(x, y + bmo::GLIFO_ALTO + 26, "una tecla para entrar", ENT_TENUE);
+    p.vaciar();
+    esperar_ms(1100, entrada);
 }

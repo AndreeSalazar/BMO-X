@@ -286,7 +286,11 @@ pub extern "C" fn _start() -> ! {
     //
     // Y lleva las dos capabilities OPCIONALES escritas en la cara, que es lo
     // que distingue "no funciona" de "no me la dieron".
-    escena::entrada::pintar(&p, entrada.is_some(), salida_cap.is_some());
+    // ★ Y la espera del final se puede SALTAR con una tecla, por eso va la
+    // capability y no un `bool`: 1.100 de los 1.205 ms hasta el escritorio eran
+    // esa espera, y el dueño la leyó como un fallo mirando el cronómetro del
+    // klog. Tenía razón en sospechar.
+    escena::entrada::pintar(&p, entrada.as_ref(), salida_cap.is_some());
     bmo::consola("entrada a Ring 3 pintada\n");
 
     // ── El escritorio ──

@@ -36,7 +36,7 @@
 //! se borra. Mientras tanto, el único proceso que la pide es el que tú
 //! arrancas.
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use crate::ring0::obj::cap;
 use crate::ring0::mm::{self, vmm};
@@ -46,6 +46,12 @@ use crate::ring0::mm::{self, vmm};
 const SIN_DUENO: u32 = u32::MAX;
 
 static DUENO: AtomicU32 = AtomicU32::new(SIN_DUENO);
+/// El handle que se le concedió al dueño, para poder revocarlo si lo SUELTA.
+///
+/// Se guarda porque `soltar` tiene que revocarlo y `cap` no ofrece "revoca todo
+/// lo de este tipo" — sólo por handle o todo lo del proceso, y lo segundo se
+/// llevaría por delante su entrada y su consola. Vale `0` cuando no hay dueño.
+static HANDLE: AtomicU64 = AtomicU64::new(0);
 
 /// Ya la tiene otro proceso.
 pub const ERROR_OCUPADO: u32 = 16;
@@ -136,9 +142,66 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
     // A partir de aquí el kernel no dibuja. El orden importa: ceder DESPUÉS de
     // que el mapeo y el handle estén hechos, para que un fallo a medias no
     // deje la máquina ciega y sin dueño.
+    HANDLE.store(handle, Ordering::SeqCst);
     crate::info::ceder_fb(true);
     crate::ring0::cabina::info("fb", "pantalla cedida a Ring 3", pid as u64);
     Ok(handle)
+}
+
+/// ★ SOLTAR LA PANTALLA SIN MORIRSE. El dueño la devuelve y sigue vivo.
+///
+/// # Por qué faltaba, y qué desbloquea
+///
+/// Había `reclamar` y había [`proceso_muerto`], o sea que **la única forma de
+/// soltar la pantalla era morir**. Consecuencia concreta: `gui.bex` la reclama
+/// al arrancar y no la suelta jamás, así que cualquier programa que la pida
+/// desde el escritorio se lleva un
+///
+/// ```text
+/// la pantalla ya tiene dueno: el escritorio la reclamo al arrancar
+/// ```
+///
+/// y eso incluye `ray.bex`, el ensayo general de DOOM. El compositor tenía
+/// razón en no cederla a cualquiera que la pida —uno que lo hiciera no serviría
+/// de compositor— pero sin esta función **no podía cederla ni queriendo**.
+///
+/// # La diferencia con [`proceso_muerto`], que no es cosmética
+///
+/// Allí no se desmapea nada porque el espacio de direcciones entero se destruye
+/// con el proceso. **Aquí el proceso sigue vivo**, así que sus páginas de
+/// framebuffer hay que quitarlas de verdad: dejarlas mapeadas sería un proceso
+/// que ya no es dueño de la pantalla y puede seguir escribiendo en ella —
+/// exactamente el agujero que el modelo de un solo dueño existe para cerrar.
+///
+/// El handle también se revoca. Un handle vivo a una capability que ya no te
+/// pertenece es la clase de cabo suelto que funciona hasta que dos procesos lo
+/// usan a la vez.
+///
+/// # Orden
+///
+/// Se marca `SIN_DUENO` **al final**: mientras se desmapea, la pantalla sigue
+/// siendo de quien la suelta. Al revés habría un intervalo en el que otro puede
+/// reclamarla y mapearla mientras el anterior todavía tiene las páginas.
+pub fn soltar(pid: u32, aspace: u64) -> Result<(), u32> {
+    if DUENO.load(Ordering::SeqCst) != pid {
+        // No es suya. Se dice en vez de contestar OK: un "sí" a quien no era
+        // dueño le haría creer que la cedió.
+        return Err(ERROR_OCUPADO);
+    }
+    let bytes = bytes_mapeados();
+    let mut off = 0u64;
+    while off < bytes {
+        vmm::unmap_page(aspace, vmm::FRAMEBUFFER_VA_BASE + off);
+        off += mm::PAGE;
+    }
+    let h = HANDLE.swap(0, Ordering::SeqCst);
+    if h != 0 {
+        cap::revoke(pid, h);
+    }
+    crate::info::ceder_fb(false);
+    DUENO.store(SIN_DUENO, Ordering::SeqCst);
+    crate::ring0::cabina::info("fb", "pantalla SOLTADA por su dueño", pid as u64);
+    Ok(())
 }
 
 /// El proceso `pid` murió (o salió). Si era el dueño, el kernel recupera la
@@ -153,6 +216,10 @@ pub fn proceso_muerto(pid: u32) {
         .compare_exchange(pid, SIN_DUENO, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
+        // El handle muere con el proceso, pero el static no: dejarlo puesto
+        // haria que un `soltar` posterior intentase revocar el handle de un
+        // muerto. Se limpia aqui, que es donde la propiedad cambia.
+        HANDLE.store(0, Ordering::SeqCst);
         crate::info::ceder_fb(false);
         // WARN y no INFO: el que suelta la pantalla es el que la estaba
         // pintando, o sea el escritorio. Que muera NO es rutina — es la
