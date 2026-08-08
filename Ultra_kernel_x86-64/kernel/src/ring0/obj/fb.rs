@@ -52,6 +52,17 @@ static DUENO: AtomicU32 = AtomicU32::new(SIN_DUENO);
 /// lo de este tipo" — sólo por handle o todo lo del proceso, y lo segundo se
 /// llevaría por delante su entrada y su consola. Vale `0` cuando no hay dueño.
 static HANDLE: AtomicU64 = AtomicU64::new(0);
+/// ★ El PRIMER proceso que reclamó la pantalla. Nunca se borra.
+///
+/// Es el compositor: la reclama al arrancar, antes que nadie. Se guarda para que
+/// el rescate por teclado sepa **a quién NO puede echar** — si echara al
+/// escritorio, la tecla de emergencia sería la tecla de romper la máquina.
+///
+/// Es una heurística y se dice: "el primero que la pidió es el escritorio" es
+/// cierto hoy porque el escritorio ES el arranque. El día que haya varios
+/// compositores, esto tiene que pasar a ser una marca explícita del BEF, como
+/// `WANTS_SCREEN`.
+static DUENO_PRIMERO: AtomicU32 = AtomicU32::new(SIN_DUENO);
 
 /// Ya la tiene otro proceso.
 pub const ERROR_OCUPADO: u32 = 16;
@@ -143,6 +154,9 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
     // que el mapeo y el handle estén hechos, para que un fallo a medias no
     // deje la máquina ciega y sin dueño.
     HANDLE.store(handle, Ordering::SeqCst);
+    // El primero, y sólo el primero. `compare_exchange` para que no lo mueva
+    // una segunda reclamación.
+    let _ = DUENO_PRIMERO.compare_exchange(SIN_DUENO, pid, Ordering::SeqCst, Ordering::SeqCst);
     crate::info::ceder_fb(true);
     crate::ring0::cabina::info("fb", "pantalla cedida a Ring 3", pid as u64);
     Ok(handle)
@@ -202,6 +216,57 @@ pub fn soltar(pid: u32, aspace: u64) -> Result<(), u32> {
     DUENO.store(SIN_DUENO, Ordering::SeqCst);
     crate::ring0::cabina::info("fb", "pantalla SOLTADA por su dueño", pid as u64);
     Ok(())
+}
+
+/// ★★ EL RESCATE. Le quita la pantalla al dueño actual **sin pedirle permiso**.
+///
+/// Devuelve el `pid` al que se la quitó, o `None` si no había nada que rescatar.
+///
+/// # Por qué esto tiene que existir
+///
+/// Todo lo demás de este módulo asume que el dueño colabora: la suelta al morir,
+/// o la suelta porque quiere. Un programa que se queda la pantalla **y la
+/// entrada** y no coopera tiene la máquina de rehén, y eso pasó de verdad: el
+/// raycaster tomó las dos y no podía leer su propio ESC. Sin teclado, sin
+/// escritorio y sin forma de volver que no fuera el botón de reinicio.
+///
+/// Eddi lo llamó por su nombre: *"eso me recuerda a ransomware, eso que le quita
+/// todo el control"*. Es exactamente la misma forma, y da igual que la causa sea
+/// malicia o un `if` que falta.
+///
+/// **Un sistema donde un programa puede quedarse el teclado para siempre no es
+/// un sistema seguro: es un sistema con suerte.** Por eso la tecla de rescate
+/// vive en el KERNEL, que es quien ve las teclas antes que nadie y a quien no se
+/// le puede quitar ese sitio.
+///
+/// # A quién NO echa
+///
+/// Al primer dueño, que es el compositor (reclama al arrancar). Si echara al
+/// escritorio, la tecla de emergencia sería la tecla de romper la máquina. Ver
+/// [`DUENO_PRIMERO`] — es una heurística y está dicha allí.
+///
+/// # Y por qué DESMAPEA
+///
+/// Marcar la pantalla como libre no basta: el programa seguiría teniendo sus
+/// páginas mapeadas y seguiría escribiendo encima del escritorio. Dos dueños
+/// pintando el mismo sitio es peor que uno pintando mal. Se desmapea con el
+/// `cr3` que da el planificador, y entonces su siguiente píxel es un fallo de
+/// página — que es la respuesta correcta a "ya no es tuya".
+pub fn rescatar() -> Option<u32> {
+    let actual = DUENO.load(Ordering::SeqCst);
+    if actual == SIN_DUENO {
+        return None;
+    }
+    if actual == DUENO_PRIMERO.load(Ordering::SeqCst) {
+        // Es el escritorio. No se echa al que sostiene la casa.
+        return None;
+    }
+    let aspace = crate::ring0::task::scheduler::cr3_de_pid(actual)?;
+    if soltar(actual, aspace).is_err() {
+        return None;
+    }
+    crate::ring0::cabina::warn("fb", "pantalla RESCATADA por el teclado", actual as u64);
+    Some(actual)
 }
 
 /// El proceso `pid` murió (o salió). Si era el dueño, el kernel recupera la

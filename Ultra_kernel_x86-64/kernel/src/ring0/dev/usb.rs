@@ -365,7 +365,7 @@ pub fn poll_ascii() -> Option<u8> {
     if cambiado {
         vmm::switch_to(kpml4);
     }
-    let r = poll_ascii_interno();
+    let r = tecla_del_dueno(poll_ascii_interno());
     // Se devuelve SIEMPRE, por un solo camino. `poll_ascii_interno` tiene
     // varios `return` y dejar el CR3 del kernel puesto al volver a Ring 3 sería
     // mucho peor que el fallo original: la tarea seguiría corriendo con el
@@ -374,6 +374,63 @@ pub fn poll_ascii() -> Option<u8> {
         vmm::switch_to(previo);
     }
     r
+}
+
+/// ★★ LA TECLA QUE NO SE PUEDE QUITAR: `Ctrl+Alt+Esc`.
+///
+/// Se mira AQUÍ y no en Ring 3, y esa es toda la idea. `poll_ascii` es el punto
+/// único por el que pasan las teclas —el shell de Ring 0 y el
+/// `INPUT_OP_TECLA` de cualquier proceso que tenga la capability— así que una
+/// comprobación en este sitio **la ve nadie puede saltar**.
+///
+/// # Por qué el kernel y no el compositor
+///
+/// Porque la entrada es EXCLUSIVA. Un programa que tiene `KIND_INPUT` se queda
+/// todas las teclas, incluido el atajo que serviría para quitárselas. Si el
+/// rescate viviera en el escritorio, el primer programa que tomara la entrada lo
+/// desactivaría — y eso ya pasó: el raycaster se quedó pantalla y entrada, y no
+/// había forma de volver que no fuera el botón de reinicio.
+///
+/// Eddi lo dijo con la palabra exacta: **"eso me recuerda a ransomware"**. La
+/// forma es la misma, y da igual si la causa es malicia o un `if` que falta.
+///
+/// > Un sistema donde un programa puede quedarse el teclado para siempre no es
+/// > un sistema seguro: es un sistema con suerte.
+///
+/// # Qué hace
+///
+/// Le quita la pantalla al dueño actual (ver `fb::rescatar`, que no echa al
+/// compositor) y la entrada. El escritorio está esperando en su bucle a que el
+/// dueño vuelva a `0`, así que **se recupera solo** — no hace falta avisarle.
+///
+/// # Y la tecla NO se entrega
+///
+/// Devuelve `None` para que el atajo no acabe además escrito en la caja del
+/// escritorio ni movido al programa. Un atajo que hace dos cosas es un atajo que
+/// hay que deshacer.
+fn tecla_del_dueno(t: Option<u8>) -> Option<u8> {
+    let b = t?;
+    // 27 = ESC. Con Ctrl y Alt a la vez: tres teclas, imposible de pulsar por
+    // accidente y con la misma memoria muscular que el Ctrl+Alt+Del de toda la
+    // vida.
+    if b != 27 {
+        return Some(b);
+    }
+    let m = modificadores();
+    if m & MOD_CTRL == 0 || m & MOD_ALT == 0 {
+        return Some(b);
+    }
+    match crate::ring0::obj::fb::rescatar() {
+        Some(pid) => {
+            // La entrada va DETRÁS de la pantalla: si sólo se pudiera hacer una,
+            // la que importa es la que devuelve la imagen.
+            let _ = crate::ring0::obj::input::soltar(pid);
+            crate::ring0::cabina::warn("input", "entrada RESCATADA por el teclado", pid as u64);
+            None
+        }
+        // No había a quién rescatar: el ESC es de quien lo pulsó.
+        None => Some(b),
+    }
 }
 
 fn poll_ascii_interno() -> Option<u8> {

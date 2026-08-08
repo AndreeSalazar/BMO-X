@@ -642,6 +642,26 @@ pub fn current_pid() -> u32 {
     s.tasks[s.current].pid
 }
 
+/// El espacio de direcciones (`cr3`) del proceso `pid`, si vive.
+///
+/// ★ Existe para poder RESCATAR la máquina. Quitarle la pantalla a un proceso
+/// no es sólo marcarla libre: hay que **desmapear sus páginas de framebuffer**,
+/// y para eso hace falta su `cr3`. Sin esto, un programa al que se le retira la
+/// pantalla seguiría teniéndola mapeada y seguiría escribiendo encima del
+/// escritorio — dos dueños pintando el mismo sitio, que es peor que uno solo
+/// pintando mal.
+///
+/// Se busca por `pid` y no por `tid` porque las capabilities son del PROCESO:
+/// `fb::soltar` y `input::soltar` hablan en pids.
+pub fn cr3_de_pid(pid: u32) -> Option<u64> {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    s.tasks
+        .iter()
+        .find(|t| t.pid == pid && t.state != TaskState::Empty && t.is_user)
+        .map(|t| t.cr3)
+}
+
 /// ¿Sigue viva la tarea `tid`?
 ///
 /// Existe para poder comprobar si el ESCRITORIO sigue en pie. Cuando el
