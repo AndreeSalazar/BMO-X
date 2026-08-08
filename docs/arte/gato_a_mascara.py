@@ -24,7 +24,7 @@ guarda porque el fondo del splash YA es negro. Dibujar es un test de bit.
     pip install pillow
     python docs/arte/gato_a_mascara.py
 
-Escribe `Ultra_userspace/services/gui/src/escena/gato.rs`. **La salida esta
+Escribe la mascara en el compositor Y en el kernel. **La salida esta
 commiteada**, asi que el build NO depende de Python — este script existe para
 poder REHACERLA si el logo cambia. Un asset generado sin su generador es un
 asset que nadie puede volver a hacer.
@@ -40,7 +40,21 @@ except ImportError:
 
 RAIZ = Path(__file__).resolve().parents[2]
 FUENTE = Path(__file__).parent / "bmo-x-gato.jpg"
-DESTINO = RAIZ / "Ultra_userspace" / "services" / "gui" / "src" / "escena" / "gato.rs"
+
+# ★ DOS DESTINOS, y no es duplicación evitable.
+#
+# El kernel y el compositor son **binarios distintos**: cada uno necesita los
+# bytes dentro de su propia imagen, así que compartir un crate no ahorraría nada
+# en tiempo de ejecución. Y el kernel es `no_std` sin `alloc` y no importa nada
+# de `Ultra_userspace`.
+#
+# Lo que sí importa es que no se puedan desincronizar, y de eso se encarga esto:
+# **los dos salen de la misma corrida de este script**. No hay una copia que
+# alguien edite a mano, porque ninguna se edita a mano.
+DESTINOS = [
+    RAIZ / "Ultra_userspace" / "services" / "gui" / "src" / "escena" / "gato.rs",
+    RAIZ / "Ultra_kernel_x86-64" / "kernel" / "src" / "ring0" / "core" / "gato.rs",
+]
 
 # La caja del GATO dentro del logo, medida sobre la imagen y no a ojo: el kanji
 # empieza en x=732 (hay un hueco de columnas vacias en 650..732) y el titulo
@@ -139,8 +153,9 @@ pub(crate) const ALTO: u32 = {ALTO};
 
 '''
     txt = cab + arr("TRAZO", trazo) + "\n\n" + arr("OJOS", ojos) + "\n"
-    DESTINO.write_text(txt, encoding="utf-8")
-    print(f"{DESTINO.relative_to(RAIZ)}")
+    for d in DESTINOS:
+        d.write_text(txt, encoding="utf-8")
+        print(f"{d.relative_to(RAIZ)}")
     print(f"  {ancho}x{ALTO}  trazo={len(trazo)} B ({n_trazo} px)  ojos={len(ojos)} B ({n_ojos} px)")
     print(f"  total embebido: {len(trazo) + len(ojos)} bytes")
 

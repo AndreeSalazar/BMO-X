@@ -90,6 +90,10 @@ pub mod core {
     /// pinta — el relato de cómo arrancó la máquina se estaba perdiendo.
     pub mod klog;
     pub mod phase;
+    /// EL GATO — el logo, en dos mascaras de 1 bit. Generado por
+    /// `docs/arte/gato_a_mascara.py`; hay una copia gemela en el compositor
+    /// porque son binarios distintos y cada uno necesita sus bytes dentro.
+    pub mod gato;
     pub mod splash;
 }
 pub mod cpu;

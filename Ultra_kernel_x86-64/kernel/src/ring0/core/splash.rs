@@ -1,12 +1,26 @@
-//! Boot splash screen ??? premium animated boot experience.
+//! El SPLASH de Ring 0 — lo que se ve cuando UEFI termina.
 //!
-//! Ring 0 splash with smooth transitions:
-//!   - Animated concentric logo (inside-out expansion)
-//!   - Smooth interpolated progress bar
-//!   - Phase label fade transitions
-//!   - Professional typography with centered layout
+//! ═══ Lo que hay ═══
+//!
+//! - [`boot_intro`]: **el gato**, `BMO-X` y `BMO METAKERNEL`. Una pantalla.
+//! - El PANEL persistente: el log del kernel con su marca de tiempo, la banda
+//!   de CABINA y el prompt del shell de Ring 0.
+//! - La barra de progreso interpolada.
+//!
+//! ═══ Y lo que decía haber y no había ═══
+//!
+//! Esta cabecera anunciaba un *"animated concentric logo (inside-out
+//! expansion)"*. Existía —`draw_logo_animated`, `draw_ring`, `fill_circle`,
+//! `isqrt`, cuatro constantes `LOGO_*`— y **no lo llamaba nadie**: unas 120
+//! líneas de anillos concéntricos que ningún arranque dibujó nunca. Se borró el
+//! 2026-08-07 junto con `scene`, la cartelería de texto que sustituyó el logo.
+//!
+//! Un comentario que promete una función que no se ejecuta es peor que no tener
+//! comentario: manda a buscar el bug en el sitio equivocado.
 
 // ?????? Font: 8x16 bitmap, chars 32..126 (space through ~) ??????????????????????????????
+
+use crate::ring0::core::gato;
 
 const FONT_H: usize   = 16;
 const FONT_W: usize   = 8;
@@ -45,14 +59,8 @@ const WHITE: u32       = 0xFFF1F5F9; // Soft crisp white
 const DIM: u32         = 0xFF64748B; // Slate-500 muted text
 const ACCENT: u32      = 0xFF00E5FF; // Neon cyan highlight
 const ACCENT2: u32     = 0xFF818CF8; // Indigo-400 accent for loading state
-const BAR_BG: u32      = 0xFF1E293B; // Slate-800 progress bar background
-const BAR_BORDER: u32  = 0xFF334155; // Slate-700 progress bar border
 
 // Logo layers (inside ??? outside)
-const LOGO_CORE: u32   = 0xFF00E5FF; // Cyan core dot
-const LOGO_RING1: u32  = 0xFF4F46E5; // Indigo inner ring
-const LOGO_RING2: u32  = 0xFF312E81; // Deep indigo mid ring
-const LOGO_RING3: u32  = 0xFF1E293B; // Slate outer ring
 
 // ?????? State for smooth progress interpolation ?????????????????????????????????????????????????????????????????????
 static mut LAST_PCT: u32 = 0;
@@ -118,66 +126,6 @@ fn draw_rect_outline(x: u32, y: u32, w: u32, h: u32, color: u32) {
     wc_flush();
 }
 
-/// Draw a filled circle using integer distance squared.
-fn fill_circle(cx: u32, cy: u32, r: u32, color: u32) {
-    let r_sq = r * r;
-    for dy in 0..=r {
-        // Horizontal span at this row: solve dx^2 + dy^2 <= r^2
-        // dx <= sqrt(r^2 - dy^2)
-        let dy_sq = dy * dy;
-        if dy_sq > r_sq { break; }
-        let dx_max = isqrt(r_sq - dy_sq);
-        // Draw 4 quadrants
-        let x0 = cx.saturating_sub(dx_max);
-        let x1 = cx + dx_max;
-        let y_top = cy.saturating_sub(dy);
-        let y_bot = cy + dy;
-        fill_rect(x0, y_top, x1 - x0 + 1, 1, color);
-        if dy > 0 {
-            fill_rect(x0, y_bot, x1 - x0 + 1, 1, color);
-        }
-    }
-}
-
-/// Draw a ring (filled circle minus inner filled circle).
-fn draw_ring(cx: u32, cy: u32, r_outer: u32, thickness: u32, color: u32) {
-    let r_inner = r_outer.saturating_sub(thickness);
-    let ro_sq = r_outer * r_outer;
-    let ri_sq = r_inner * r_inner;
-    for dy in 0..=r_outer {
-        let dy_sq = dy * dy;
-        if dy_sq > ro_sq { break; }
-        let dx_outer = isqrt(ro_sq - dy_sq);
-        let dx_inner = if dy_sq <= ri_sq { isqrt(ri_sq - dy_sq) } else { 0 };
-        // Right side
-        if dx_outer > dx_inner {
-            let x0 = cx + dx_inner + 1;
-            let w = dx_outer - dx_inner;
-            fill_rect(x0, cy.saturating_sub(dy), w, 1, color);
-            if dy > 0 { fill_rect(x0, cy + dy, w, 1, color); }
-        }
-        // Left side
-        if dx_outer > dx_inner {
-            let x0 = cx.saturating_sub(dx_outer);
-            let w = dx_outer - dx_inner;
-            fill_rect(x0, cy.saturating_sub(dy), w, 1, color);
-            if dy > 0 { fill_rect(x0, cy + dy, w, 1, color); }
-        }
-    }
-}
-
-/// Integer square root (Newton's method).
-fn isqrt(n: u32) -> u32 {
-    if n == 0 { return 0; }
-    let mut x = n;
-    let mut y = (x + 1) / 2;
-    while y < x {
-        x = y;
-        y = (x + n / x) / 2;
-    }
-    x
-}
-
 /// TSC-based busy-wait. Reads TSC directly.
 #[inline]
 fn tsc_read() -> u64 {
@@ -227,49 +175,6 @@ fn bar_gradient(x_off: u32, total_w: u32) -> u32 {
 
 // ?????? Animated Logo (smooth radius sweep) ?????????????????????????????????????????????????????????????????????????????????
 
-/// Draw the logo with smooth inside-out animation.
-/// Each ring expands 1px of radius per frame tick.
-fn draw_logo_animated(cx: u32, cy: u32) {
-    // Phase 1: Core dot expands from r=0 to r=4
-    let mut r: u32 = 0;
-    while r <= 4 {
-        fill_circle(cx, cy, r, LOGO_CORE);
-        tsc_wait(8_000_000);
-        r += 1;
-    }
-    tsc_wait(15_000_000);
-
-    // Phase 2: Inner ring sweeps from r=8 to r=14
-    r = 8;
-    while r <= 14 {
-        draw_ring(cx, cy, r, 2, LOGO_RING1);
-        tsc_wait(5_000_000);
-        r += 1;
-    }
-    tsc_wait(10_000_000);
-
-    // Phase 3: Mid ring sweeps from r=16 to r=22
-    r = 16;
-    while r <= 22 {
-        draw_ring(cx, cy, r, 3, LOGO_RING2);
-        tsc_wait(4_000_000);
-        r += 1;
-    }
-    tsc_wait(8_000_000);
-
-    // Phase 4: Outer ring sweeps from r=24 to r=30
-    r = 24;
-    while r <= 30 {
-        draw_ring(cx, cy, r, 2, LOGO_RING3);
-        tsc_wait(3_000_000);
-        r += 1;
-    }
-
-    // Phase 5: Accent glow ring (instant thin highlight)
-    tsc_wait(6_000_000);
-    draw_ring(cx, cy, 34, 1, LOGO_RING1);
-}
-
 // ?????? Text drawing ??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
 fn draw_char(x: u32, y: u32, c: u8, color: u32) {
@@ -312,20 +217,6 @@ fn draw_str(x: u32, y: u32, s: &str, color: u32) {
 
 fn text_width(s: &str) -> u32 {
     s.len() as u32 * CHAR_W as u32
-}
-
-/// Animate text with a 4-step alpha fade-in.
-fn draw_str_fadein(x: u32, y: u32, s: &str, color: u32) {
-    // 4 alpha steps: 64, 128, 192, 255
-    let steps: [u32; 4] = [64, 128, 192, 255];
-    let tw = text_width(s);
-    for &alpha in steps.iter() {
-        let c = blend(color, alpha);
-        // Clear previous draw
-        fill_rect(x, y, tw, FONT_H as u32, BG);
-        draw_str(x, y, s, c);
-        tsc_wait(8_000_000);
-    }
 }
 
 // ══ Boot cinematic: escenas escaladas con transiciones ═══════════════════
@@ -373,53 +264,128 @@ fn draw_str_scaled(x: u32, y: u32, s: &str, color: u32, scale: u32) {
     }
 }
 
-/// Una escena centrada: título grande con fundido de entrada, subtítulo dim,
-/// y una línea de acento que barre bajo el título. Deja la pantalla en BG.
-fn scene(title: &str, sub: &str, accent: u32, scale: u32) {
-    let w = unsafe { crate::info::FB_WIDTH };
-    let h = unsafe { crate::info::FB_HEIGHT };
-    if w == 0 || h == 0 { return; }
-    fill_rect(0, 0, w, h, BG);
-
-    let tw = text_width_scaled(title, scale);
-    let th = FONT_H as u32 * scale;
-    let tx = w.saturating_sub(tw) / 2;
-    let ty = h / 2 - th / 2 - 8;
-
-    // Fundido de entrada del título (4 pasos de alpha sobre BG).
-    for &a in &[70u32, 140, 210, 255] {
-        draw_str_scaled(tx, ty, title, blend(accent, a), scale);
-        wc_flush();
-        hold_ms(45);
-    }
-
-    // Línea de acento que barre bajo el título.
-    let uy = ty + th + 8;
-    for step in 0..=24u32 {
-        fill_rect(tx, uy, tw * step / 24, 3, accent);
-        wc_flush();
-        hold_ms(9);
-    }
-
-    // Subtítulo dim, centrado bajo la línea.
-    if !sub.is_empty() {
-        let sw = text_width(sub);
-        draw_str(w.saturating_sub(sw) / 2, uy + 16, sub, DIM);
-        wc_flush();
+/// Reproduce la secuencia de arranque completa (4 escenas). Llamar una vez,
+/// con framebuffer disponible, antes de montar el dashboard.
+/// ★ Dibuja EL GATO desde sus dos máscaras de 1 bit. Ver `ring0::core::gato`.
+///
+/// El fondo no se pinta: la máscara no lo lleva, porque el fondo del splash ya
+/// es negro. Son 1.346 píxeles de trazo y 276 de ojos de los 27.360 del
+/// rectángulo — dibujarlo cuesta menos que rellenarlo.
+///
+/// La escala multiplica en enteros a propósito: interpolar un dibujo de líneas
+/// de un píxel de grosor lo convierte en una mancha gris.
+fn draw_gato(x0: u32, y0: u32, escala: u32) {
+    let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
+    for fy in 0..gato::ALTO {
+        for fx in 0..gato::ANCHO {
+            let i = (fy * gato::ANCHO + fx) as usize;
+            // Los ojos ganan al trazo: son el único sitio con color.
+            let color = if bit(&gato::OJOS, i) {
+                ACCENT
+            } else if bit(&gato::TRAZO, i) {
+                WHITE
+            } else {
+                continue;
+            };
+            fill_rect(x0 + fx * escala, y0 + fy * escala, escala, escala, color);
+        }
     }
 }
 
-/// Reproduce la secuencia de arranque completa (4 escenas). Llamar una vez,
-/// con framebuffer disponible, antes de montar el dashboard.
+/// ★★ LA INTRO DEL ARRANQUE — **el logo, y nada más**.
+///
+/// ═══ Qué había aquí, y por qué se fue ═══
+///
+/// Cuatro carteles de texto a pantalla completa:
+///
+/// ```text
+///   scene("BMO-X", …)       hold_ms(700)
+///   scene("Preparando", …)  hold_ms(350)
+///   scene("RING 0", …)      hold_ms(550)
+///   scene("RING 3", …)      hold_ms(550)
+/// ```
+///
+/// **2.150 ms de esperas explícitas**, y `scene` trae dentro otros ~405 ms de
+/// fundidos cada una: en total **casi cuatro segundos de cartelería antes de que
+/// el kernel empiece a hacer nada**. Y encima decía "RING 3 : userspace listo"
+/// cuando el userspace no había arrancado todavía — un cartel que anuncia un
+/// estado que aún no existe.
+///
+/// El dueño lo dijo claro: *"eso ya se ve un poco feo"*. Tenía razón dos veces,
+/// porque además de feo era lento.
+///
+/// ═══ Lo que hay ahora ═══
+///
+/// Una pantalla: el gato, `BMO-X`, y `BMO METAKERNEL` debajo. El fundido es
+/// **el de los ojos**, que son 276 píxeles — no un barrido de pantalla completa.
+///
+/// Coste total: unos 240 ms contra 3.700. Y el logo se queda puesto hasta que
+/// `phase1_ui` aterriza en el panel, así que **es lo que se ve mientras carga**,
+/// que es exactamente lo que se pedía.
+///
+/// ═══ Y no se anuncia lo que no ha pasado ═══
+///
+/// Los estados —RING 0 despierto, RING 3 arrancado— ya los cuenta el log del
+/// panel **cuando ocurren de verdad**, con su marca de tiempo. Un cartel que los
+/// promete antes es una mentira con animación.
 pub fn boot_intro() {
-    scene("BMO-X", "Bare Metal Orchestrator", ACCENT, 5);
-    hold_ms(700);
-    scene("Preparando", "iniciando subsistemas", ACCENT2, 3);
-    hold_ms(350);
-    scene("RING 0", "kernel + hardware al mando", ACCENT, 4);
-    hold_ms(550);
-    scene("RING 3", "userspace listo", DASH_RING3, 4);
-    hold_ms(550);
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if w == 0 || h == 0 {
+        return;
+    }
+    fill_rect(0, 0, w, h, BG);
+
+    // La escala sale de la ALTURA de la pantalla, no de un número fijo: en 1080
+    // sale a x2 y en 720 a x1, y en las dos ocupa la misma fracción. Un `3`
+    // puesto a mano se sale por abajo en el primer monitor pequeño.
+    let escala = if h >= 900 { 2 } else { 1 };
+    let gw = gato::ANCHO * escala;
+    let gh = gato::ALTO * escala;
+
+    // El bloque entero —gato + título + subtítulo— se centra como una unidad.
+    // Centrar el gato y luego colgarle el texto deja el conjunto bajo.
+    const HUECO: u32 = 34;
+    let escala_t = if h >= 900 { 5 } else { 4 };
+    let tw = text_width_scaled("BMO-X", escala_t);
+    let th = FONT_H as u32 * escala_t;
+    let alto_total = gh + HUECO + th + 10 + 3 + 14 + FONT_H as u32;
+
+    let gy = h.saturating_sub(alto_total) / 2;
+    draw_gato(w.saturating_sub(gw) / 2, gy, escala);
+
+    let ty = gy + gh + HUECO;
+    let tx = w.saturating_sub(tw) / 2;
+    draw_str_scaled(tx, ty, "BMO-X", WHITE, escala_t);
+    // Subrayado exacto: el ancho se pregunta a la fuente, no se estima.
+    fill_rect(tx, ty + th + 10, tw, 3, ACCENT);
+
+    let sub = "BMO METAKERNEL";
+    let sw = text_width(sub);
+    draw_str(w.saturating_sub(sw) / 2, ty + th + 10 + 3 + 14, sub, DIM);
+    wc_flush();
+
+    // ★ EL FUNDIDO ES DE LOS OJOS, no de la pantalla.
+    //
+    // 276 píxeles parpadeando cuestan nada y dan lo único que un logo estático
+    // no da: la señal de que la máquina está VIVA. Un fundido de pantalla
+    // completa costaría los millones de píxeles que el arranque no tiene que
+    // gastar.
+    let ex = w.saturating_sub(gw) / 2;
+    for &a in &[90u32, 170, 255] {
+        let ojo = blend(ACCENT, a);
+        let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
+        for fy in 0..gato::ALTO {
+            for fx in 0..gato::ANCHO {
+                let i = (fy * gato::ANCHO + fx) as usize;
+                if bit(&gato::OJOS, i) {
+                    fill_rect(ex + fx * escala, gy + fy * escala, escala, escala, ojo);
+                }
+            }
+        }
+        wc_flush();
+        hold_ms(70);
+    }
 }
 
 // ?????? Smooth progress bar ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
