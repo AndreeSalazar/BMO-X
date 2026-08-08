@@ -178,6 +178,35 @@ foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_
         Fail ('BMO ABI surface operation contract mismatch: ' + $name)
     }
 }
+# ** DOS OPERACIONES NO PUEDEN LLEVAR EL MISMO NUMERO.
+#
+# Y esto casi pasa el 2026-08-08: la autopsia se escribio en `0x1D` y `0x1E`,
+# que ya eran `PANTALLA_SOLTAR` y `ENTRADA_SOLTAR`. O sea que **leer el informe
+# de un fallo habria soltado la pantalla**.
+#
+# El fichero ya avisaba --el comentario de `PANTALLA_SOLTAR` cuenta que
+# `MEMORIA_PEDIR` se puso en `0x12`, ya ocupado por `REINICIAR`, y que pedir
+# memoria habria reiniciado la maquina-- y ese aviso es prosa: no para un build.
+# Esto si lo para.
+#
+# No se comprueba contra una lista escrita a mano: se sacan TODOS los opcodes
+# del kernel y se busca cualquier numero repetido. Una lista a mano es lo que ya
+# se quedo congelada una vez, treinta lineas mas arriba.
+$opsKernel = [regex]::Matches($kernelSyscalls, 'const\s+(TASK_OP_\w+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f]+)')
+$porNumero = @{}
+foreach ($m in $opsKernel) {
+    $nombre = $m.Groups[1].Value
+    $num = $m.Groups[2].Value.ToUpperInvariant()
+    if (-not $porNumero.ContainsKey($num)) { $porNumero[$num] = @() }
+    $porNumero[$num] += $nombre
+}
+foreach ($num in $porNumero.Keys) {
+    if ($porNumero[$num].Count -gt 1) {
+        Fail ('operacion DUPLICADA: ' + $num + ' lo usan ' + ($porNumero[$num] -join ' y '))
+    }
+}
+Write-Host ('    operaciones: ' + $porNumero.Count + ' opcodes, ninguno repetido') -ForegroundColor DarkGray
+
 # Y LA TABLA DE `OP_INFO`, que existe TRES veces: la implementa el kernel
 # (`core\informe.rs`), la declara el ABI (`surface.rs`) y la consume el userland
 # (`userland\src\lib.rs`). Anadir un dato es una fila -- y una fila escrita en

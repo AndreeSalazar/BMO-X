@@ -375,6 +375,40 @@ pub const TASK_OP_KLOG_TEXTO: u64 = 0x17;
 pub const KLOG_DISPONIBLES: u64 = 0x00;
 pub const KLOG_TOTAL: u64 = 0x01;
 
+/// ** LA AUTOPSIA de un fallo de Ring 3.
+///
+/// El klog cuenta el relato de la maquina; esto guarda el INFORME de cada
+/// muerte: vector, codigo de error, la direccion que se toco, el `rip`, la
+/// pila, **que programa era** y lo ultimo que llego a escribir.
+///
+/// Existe porque la linea que dejaba CABINA --`fault en CPL3: tarea eliminada,
+/// BMO sigue vivo` con el `rip` detras-- alcanza para saber QUE paso y no para
+/// saber DONDE. Un fallo que no se puede mandar a nadie se cuenta de memoria, y
+/// contar un fallo de memoria es como se pierden los fallos.
+///
+/// * El kernel captura en RAM y **no toca el disco**: se corre dentro de un
+/// fault, y el fallo puede ser justo del disco. Quien lo persiste es Ring 3,
+/// que esta vivo y tiene la capability. El kernel CONTESTA, no actua.
+///
+/// `arg0` = campo (ver `AUTOPSIA_*`), y para `AUTOPSIA_RENGLONES`, `arg1` = que
+/// informe (**0 es el mas reciente**).
+pub const TASK_OP_AUTOPSIA_INFO: u64 = 0x1F;
+/// **Ocho bytes de un renglon del informe.** `arg0` empaqueta
+/// `(informe << 32) | fila` y `arg1` es el trozo de 8 en 8. Cero = se acabo.
+///
+/// Van los dos indices en un solo argumento porque la puerta tiene tres y dos
+/// ya estan ocupados por la operacion y el trozo. Es la misma aritmetica que
+/// usa `INPUT_OP_*` para el raton.
+pub const TASK_OP_AUTOPSIA_TEXTO: u64 = 0x20;
+
+/// Campos de [`TASK_OP_AUTOPSIA_INFO`].
+///
+/// `AUTOPSIA_TOTAL` es el que se mira en bucle: **si cambio, hay un fallo
+/// nuevo**, y eso se sabe sin leer un solo renglon.
+pub const AUTOPSIA_TOTAL: u64 = 0x00;
+pub const AUTOPSIA_DISPONIBLES: u64 = 0x01;
+pub const AUTOPSIA_RENGLONES: u64 = 0x02;
+
 // =======================================================================
 //  LIENZO -- una app pinta donde se va a ver
 // =======================================================================

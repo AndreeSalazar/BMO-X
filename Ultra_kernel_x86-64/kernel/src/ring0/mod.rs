@@ -89,6 +89,12 @@ pub mod core {
     /// desde que el escritorio es el arranque y el panel del kernel ya no se
     /// pinta -- el relato de como arranco la maquina se estaba perdiendo.
     pub mod klog;
+    /// **La AUTOPSIA de un fallo de Ring 3.** El klog cuenta el relato entero;
+    /// esto guarda el informe COMPLETO de cada muerte -- vector, codigo,
+    /// direccion, `rip`, `rsp`, que programa era y lo ultimo que dijo-- para
+    /// que se pueda leer despues y mandar. El kernel captura en RAM; quien lo
+    /// escribe a disco es Ring 3, que esta vivo. Ver la cabecera del modulo.
+    pub mod autopsia;
     pub mod phase;
     /// EL GATO -- el logo, en dos mascaras de 1 bit. Generado por
     /// `docs/arte/gato_a_mascara.py`; hay una copia gemela en el compositor

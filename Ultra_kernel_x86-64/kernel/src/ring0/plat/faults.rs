@@ -273,6 +273,17 @@ extern "C" fn fault_dispatch(
         // entonces alguien puede leer que mato a la tarea. `record` es seguro
         // aqui (guard de reentrancia, sin locks que puedan colgarse).
         crate::ring0::cabina::fault("ring3", "fault en CPL3: tarea eliminada, BMO sigue vivo", rip);
+        // ** Y LA AUTOPSIA ENTERA, no una linea.
+        //
+        // La linea de arriba lleva el `rip` y nada mas: sirve para saber QUE
+        // paso y no para saber DONDE. El informe completo --vector, codigo de
+        // error, la direccion que se toco, la pila, QUE PROGRAMA era y lo
+        // ultimo que llego a escribir-- se guarda aqui, en RAM, para que Ring 3
+        // lo lea cuando quiera y lo escriba a un fichero.
+        //
+        // Se hace DESPUES de CABINA a proposito: si esto se colgara --no puede,
+        // pero el orden es una decision-- la linea roja ya estaria puesta.
+        crate::ring0::core::autopsia::registrar(vector, error, rip, cr2, fault_rsp, pid, tid);
         let _ = (error, cr2, fault_rsp);
         // schedule() below loads the NEXT task's CR3 itself.
         return crate::ring0::task::scheduler::kill_current_and_pick();

@@ -134,6 +134,9 @@ const TASK_OP_INFO_TEXTO: u64 = 0x14;
 /// el panel del kernel no se pinta y el log no lo podia leer nadie.
 const TASK_OP_KLOG_INFO: u64 = 0x16;
 const TASK_OP_KLOG_TEXTO: u64 = 0x17;
+/// La AUTOPSIA de un fallo de Ring 3. Ver `core::autopsia` y el `surface.rs`.
+const TASK_OP_AUTOPSIA_INFO: u64 = 0x1F;
+const TASK_OP_AUTOPSIA_TEXTO: u64 = 0x20;
 /// **La primera operacion de la superficie que ESCRIBE EN EL DISCO.** Cierra
 /// una transaccion vacia en ESTRATOS y devuelve la generacion nueva, o 0.
 /// Ver `ring0/fsys/estratos.rs::sellar`.
@@ -536,6 +539,25 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         }
         TASK_OP_KLOG_TEXTO => {
             BmoStatus::ok_value(crate::ring0::core::klog::texto(arg0, arg1))
+        }
+        // * LA AUTOPSIA. Contesta texto y nada mas, como el klog y como INFO:
+        // no concede una capability, no deja escribir, no deja mirar el espacio
+        // de nadie. Es la parte "meta" del metakernel puesta en una fila de
+        // tabla -- el sistema informa sobre si mismo.
+        TASK_OP_AUTOPSIA_INFO => {
+            use crate::ring0::core::autopsia;
+            BmoStatus::ok_value(match arg0 {
+                0 => autopsia::total(),
+                1 => autopsia::disponibles(),
+                2 => autopsia::renglones(arg1),
+                _ => 0,
+            })
+        }
+        TASK_OP_AUTOPSIA_TEXTO => {
+            // `arg0` trae los dos indices: informe arriba, fila abajo.
+            let informe = arg0 >> 32;
+            let fila = arg0 & 0xFFFF_FFFF;
+            BmoStatus::ok_value(crate::ring0::core::autopsia::texto(informe, fila, arg1))
         }
         // * Despertar nucleos DESDE Ring 3. Es la unica operacion de esta tabla
         // que cambia el estado del hardware en vez de contestar una pregunta, y
