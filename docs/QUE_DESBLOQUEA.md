@@ -112,8 +112,24 @@ rompe una sola.
 
 La primera pasada dio **0 de 81, y los 81 fallos eran CINCO causas** -- todas
 del front (preprocesador y declaraciones), ninguna del generador de codigo.
-Arregladas (`ee090428`) subio a 7; con la segunda tanda (`11004523`) va por
-**27 de 81 llegan a codegen**.
+
+Siete tandas despues (`ee090428` .. `9d661bdc`), el 2026-08-08:
+
+```
+   ficheros sueltos:  0 -> 7 -> 27 -> 35 -> 41 -> 47 -> 55 -> 61 -> 67 -> 69
+   unity build:       PARSEA LAS 56.465 LINEAS y esta dentro del generador
+```
+
+★ **Y a partir de los 67 lo que falla ya no es el lenguaje**: nueve de los que
+quedan son un simbolo definido en OTRO fichero, y eso una unidad de traduccion
+sola no lo resuelve por definicion. Por eso el numero que importa dejo de ser el
+de ficheros sueltos y paso a ser el **unity build** -- los 81 concatenados, que
+es como se compila DOOM aqui porque BMO C no enlaza.
+
+★★ **Donde se para el unity, y tiene nombre**: `printf` con el formato calculado
+en tiempo de ejecucion. Es la pieza **"libc para DOOM"** de esta misma hoja: un
+formateador que recorra la cadena al vuelo, que es lo que piden `I_Error(fmt,
+...)` y `M_snprintf`. Delante ya no hay nada desconocido.
 
 ★★ Y la segunda tanda destapo un fallo que no era de DOOM: **`grid[1][0]` leia
 `grid[0][2]`**. El paso de un indice contestaba 8 para cualquier array de

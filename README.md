@@ -772,9 +772,14 @@ on top of it.
     translation units were compiled one at a time against BMO C, keeping the
     first error of each. **0 of 81 reached codegen, and the 81 failures were
     five causes** -- all in the preprocessor and in declarations, none in code
-    generation. Two rounds of fixes later it is **27 of 81**, and the remaining
-    list is written down in
-    [`docs/QUE_DESBLOQUEA.md`](docs/QUE_DESBLOQUEA.md).
+    generation. Seven rounds later it is **69 of 81 on their own, and the unity
+    build parses all 56,465 lines** and is inside the code generator. The
+    remaining list is in [`docs/QUE_DESBLOQUEA.md`](docs/QUE_DESBLOQUEA.md).
+
+    Past 67, what fails is no longer the language: nine of them are a symbol
+    defined in *another file*, which a single translation unit cannot resolve by
+    definition. Where the unity build stops has a name -- `printf` with a format
+    computed at run time, which is the roadmap's own "libc for DOOM" item.
 
     The second round is worth the sentence: accepting `int grid[2][3]` revealed
     that **`grid[1][0]` was reading `grid[0][2]`** -- one step of the outer

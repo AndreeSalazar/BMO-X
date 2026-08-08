@@ -92,8 +92,8 @@ primeros-errores en una pasada, que es lo que convierte "no compila" en una
 distribucion.
 
 ```
-   antes:  0 de 81 llegan a codegen
-   ahora: 27 de 81
+   ficheros sueltos:  0 -> 7 -> 27 -> 35 -> 41 -> 47 -> 55 -> 61 -> 67 -> 69
+   unity build:       PARSEA LAS 56.465 LINEAS y esta dentro del generador
 ```
 
 Las cinco causas, todas del front y ninguna del generador de codigo: el
@@ -132,9 +132,29 @@ desde siempre para cualquier paso que no fuera potencia de dos y **ningun test
 lo habia ejecutado nunca**; el emulador dio panic con el opcode en la mano en
 vez de inventarse un valor, y ese panic es el que descubrio lo de arriba.
 
+### ★★ Y de ahi a 69 sueltos + el unity entero (siete tandas, mismo dia)
+
+Lo que fue cayendo, y cada linea es una tabla o una forma de DOOM: parametros
+que son puntero a funcion, `[5][256]`, comas dentro de un agregado, `typedef` de
+array, `sizeof(expresion)`, `case -1:`, `char * const`, `.867`, `__LINE__` que
+llega DENTRO de una macro, una invocacion de macro partida en varias lineas,
+`%p` y la anchura de `printf`, un `enum` dentro de una funcion, y un global de
+coma flotante de punta a punta.
+
+★ **Las tres caras de la MISMA relocation.** El codegen sabia poner la direccion
+de una cadena y dejaba escrito que faltaban las otras dos: la de una FUNCION
+(`.code`) y la de otro GLOBAL (`.data`). Con ellas entra `info.c` --el
+comportamiento de todos los monstruos-- y `doom_defaults[]`, que es la
+configuracion del juego como lista de punteros a globales.
+
+★★ **Y debajo salieron dos que NO fallaban**: `p->x++` se ignoraba en silencio
+(el brazo era `_ => {}`, asi que el contador no se movia), y `*p` sobre un
+`int*` sacado de una tabla leia OCHO bytes -- devolvia el entero pedido y el de
+al lado en la mitad alta. Los dos los caza el banco porque EJECUTA.
+
 ⚠ Antes de flashear: `build.ps1 -BuildOnly` en verde y **los 27 `.bex` salen
 byte a byte identicos** a los de antes de tocar el compilador. Ningun programa
-que hoy corre en el Ryzen cambia.
+que hoy corre en el Ryzen cambia. 311 tests de `bmo-c-front` en verde.
 
 ## ★★★ 2026-08-07 -- SMP ARRANCA (12/12 EN METAL), Y LA CADENA DE FICHEROS EN C
 
