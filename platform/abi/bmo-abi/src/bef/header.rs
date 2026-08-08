@@ -79,7 +79,7 @@ bitflags::bitflags! {
         /// <ruta>`), y era el diseno equivocado: ponia la POLITICA en los dedos
         /// del usuario. Con esta bandera, el compositor **lee la cabecera antes
         /// de lanzar** y decide el -- a quien, cuando, con que prioridad, o que
-        /// no. El kernel sigue dando solo el mecanismo (un dueno, `soltar`).
+        /// no. El kernel sigue dando solo el mecanismo (un dueno, `release`).
         ///
         /// Tres capas: el kernel arbitra, el BEF declara, el compositor manda.
         /// Es la misma separacion que un planificador de GPU.

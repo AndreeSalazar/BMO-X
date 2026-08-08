@@ -207,7 +207,7 @@ pub(crate) fn ficha_en(px: u32, py: u32, cuantas: u32) -> Option<u32> {
 pub(crate) fn pintar_ficha(
     p: &bmo::Pantalla,
     i: u32,
-    nombre: &str,
+    name: &str,
     color: u32,
     activa: bool,
     minimizada: bool,
@@ -228,8 +228,8 @@ pub(crate) fn pintar_ficha(
     p.rect(x + 8, y + (h - 8) / 2, 8, 8, punto);
     let tinta = if minimizada { TEXTO_TENUE } else { TEXTO };
     let cabe = ((w - 26) / bmo::GLIFO_ANCHO) as usize;
-    let n = nombre.len().min(cabe);
-    p.texto(x + 22, y + (h - bmo::GLIFO_ALTO) / 2, &nombre[..n], tinta);
+    let n = name.len().min(cabe);
+    p.texto(x + 22, y + (h - bmo::GLIFO_ALTO) / 2, &name[..n], tinta);
 }
 
 /// Pinta el escritorio entero: degradado y barra.

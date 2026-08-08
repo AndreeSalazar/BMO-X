@@ -602,7 +602,7 @@ impl Codegen {
             self.stack_size += 8;
             self.perform_exit = Some(-(self.stack_size));
             for (i, p) in program.parrafos.iter().enumerate() {
-                self.parrafos.insert(p.nombre.to_ascii_uppercase(), (i + 1) as u32);
+                self.parrafos.insert(p.name.to_ascii_uppercase(), (i + 1) as u32);
             }
         }
 
@@ -675,10 +675,10 @@ impl Codegen {
         // que es lo que dice el estandar: la PROCEDURE DIVISION se recorre de
         // arriba abajo.
         if program.statements.is_empty() && !program.parrafos.is_empty() {
-            let primero = program.parrafos[0].nombre.clone();
+            let primero = program.parrafos[0].name.clone();
             self.emit_statement(&CobolStatement::PerformFuera {
                 desde: primero,
-                hasta: program.parrafos.last().map(|p| p.nombre.clone()),
+                hasta: program.parrafos.last().map(|p| p.name.clone()),
                 veces: None,
                 hasta_que: None,
             });
@@ -747,11 +747,11 @@ impl Codegen {
     // Es la misma forma que usa GnuCOBOL, y por el mismo motivo.
 
     /// El nombre con el que un parrafo entra en `function_offsets`.
-    fn simbolo_parrafo(nombre: &str) -> String {
+    fn simbolo_parrafo(name: &str) -> String {
         // El `:` es ilegal en un nombre de COBOL, asi que un parrafo llamado
         // como un simbolo interno no puede chocar. Mismo truco que el punto de
         // `funcion.variable` en BMO C.
-        format!("parrafo:{}", nombre.to_ascii_uppercase())
+        format!("parrafo:{}", name.to_ascii_uppercase())
     }
 
     /// `push qword [rbp+off]`.
@@ -791,7 +791,7 @@ impl Codegen {
         for (i, p) in program.parrafos.iter().enumerate() {
             let id = (i + 1) as u32;
             let off = self.code.len();
-            self.function_offsets.insert(Self::simbolo_parrafo(&p.nombre), off);
+            self.function_offsets.insert(Self::simbolo_parrafo(&p.name), off);
             for s in &p.statements {
                 self.emit_statement(s);
             }
@@ -1019,12 +1019,12 @@ impl Codegen {
             .into_iter()
             .map(|(n, c)| (n.clone(), c.clone()))
             .collect();
-        for (nombre, campo) in hojas {
-            self.load_var(&nombre);
+        for (name, campo) in hojas {
+            self.load_var(&name);
             if self.emit_direccion_en_area(raiz, campo.offset).is_none() {
                 return;
             }
-            match self.packed_de(&nombre) {
+            match self.packed_de(&name) {
                 Some((bytes, signo)) => {
                     bmo_lower::packed::empaquetar(&mut self.code, bytes, signo)
                 }
@@ -1032,8 +1032,8 @@ impl Codegen {
                 // signo sobrepunzado en el ultimo. Dentro sigue siendo el mismo
                 // entero escalado de siempre.
                 None => {
-                    let (digitos, signo) = self.digitos_de(&nombre);
-                    bmo_lower::zoned::escribir(&mut self.code, digitos, signo);
+                    let (digitos, signo) = self.digitos_de(&name);
+                    bmo_lower::zoned::write(&mut self.code, digitos, signo);
                 }
             }
         }
@@ -1047,18 +1047,18 @@ impl Codegen {
             .into_iter()
             .map(|(n, c)| (n.clone(), c.clone()))
             .collect();
-        for (nombre, campo) in hojas {
+        for (name, campo) in hojas {
             if self.emit_direccion_en_area(raiz, campo.offset).is_none() {
                 return;
             }
-            match self.packed_de(&nombre) {
+            match self.packed_de(&name) {
                 Some((bytes, _)) => bmo_lower::packed::desempaquetar(&mut self.code, bytes),
                 None => {
-                    let (digitos, _) = self.digitos_de(&nombre);
-                    bmo_lower::zoned::leer(&mut self.code, digitos);
+                    let (digitos, _) = self.digitos_de(&name);
+                    bmo_lower::zoned::read(&mut self.code, digitos);
                 }
             }
-            self.store_var(&nombre);
+            self.store_var(&name);
         }
     }
 
@@ -1137,9 +1137,9 @@ impl Codegen {
     }
 
     /// Cuantos digitos declara la PIC de un campo, y si lleva `S`.
-    fn digitos_de(&self, nombre: &str) -> (u32, bool) {
+    fn digitos_de(&self, name: &str) -> (u32, bool) {
         self.pic_fields
-            .get(&Self::nombre_base(nombre))
+            .get(&Self::nombre_base(name))
             .map(|f| (f.total_digits(), f.signed))
             .unwrap_or((1, false))
     }
@@ -1208,9 +1208,9 @@ impl Codegen {
     // mirar los mismos bytes por los dos lados.
 
     /// Cuantos caracteres declara un `PIC X(n)`, si el dato es de texto.
-    fn texto_de(&self, nombre: &str) -> Option<u32> {
+    fn texto_de(&self, name: &str) -> Option<u32> {
         self.pic_fields
-            .get(&Self::nombre_base(nombre))
+            .get(&Self::nombre_base(name))
             .filter(|f| !f.numeric)
             .map(|f| f.char_count.max(1))
     }
@@ -1287,8 +1287,8 @@ impl Codegen {
     }
 
     /// `DISPLAY <campo de texto>` -- los bytes tal cual, y su salto de linea.
-    fn emit_display_texto(&mut self, nombre: &str, chars: u32) {
-        let Some(off) = self.exige_declarado(&Self::nombre_base(nombre)) else { return };
+    fn emit_display_texto(&mut self, name: &str, chars: u32) {
+        let Some(off) = self.exige_declarado(&Self::nombre_base(name)) else { return };
         self.code.extend_from_slice(&[0x4C, 0x8D, 0x85]); // lea r8, [rbp+disp32]
         self.code.extend_from_slice(&off.to_le_bytes());
         x86::mov_r32_imm32(&mut self.code, x86::R9, chars);
@@ -1526,17 +1526,17 @@ impl Codegen {
     /// `PIC 9(5)V99` con 5997 dentro imprime `59.97`. Los centavos nunca han
     /// dejado de ser un entero; lo unico que cambia es donde va la coma al
     /// escribirlo.
-    fn emit_display_var(&mut self, nombre: &str) {
+    fn emit_display_var(&mut self, name: &str) {
         // Un campo de texto se ensena TAL CUAL: sus bytes. Pasarlo por el
         // formateador decimal imprimiria el numero que forman, que no es lo que
         // hay escrito.
-        if let Some(chars) = self.texto_de(nombre) {
-            let nombre = nombre.to_string();
-            self.emit_display_texto(&nombre, chars);
+        if let Some(chars) = self.texto_de(name) {
+            let name = name.to_string();
+            self.emit_display_texto(&name, chars);
             return;
         }
-        let escala = self.var_scale(nombre);
-        self.load_var(nombre);
+        let escala = self.var_scale(name);
+        self.load_var(name);
         // * Si el dato lleva PIC de EDICION, lo que sale no es el numero: es
         // la mascara. `12345.67` deja de ser "12345.67" y pasa a ser
         // "$12,345.67" -- que es la linea de un extracto, no un volcado.
@@ -1544,7 +1544,7 @@ impl Codegen {
         // La plantilla se consume AQUI, al compilar: lo que va al `.bex` es
         // el recorrido convertido en instrucciones, no la plantilla ni un
         // interprete que la lea.
-        if let Some(p) = self.edicion_de(nombre) {
+        if let Some(p) = self.edicion_de(name) {
             if let Err(e) = p.emitir(&mut self.code) {
                 self.errors.push(CobolError::new(0, e));
             }
@@ -1757,8 +1757,8 @@ impl Codegen {
         let Some(off) = self.file_slot(fichero) else { return };
         self.load_slot(off);
         self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
-        bmo_lower::archivo::cerrar(&mut self.code);
-        // `cerrar` deja en `rax` lo que contesto la puerta: 1 si el contenido
+        bmo_lower::archivo::close(&mut self.code);
+        // `close` deja en `rax` lo que contesto la puerta: 1 si el contenido
         // llego al disco, 0 si no. Un fichero de lectura contesta 1 siempre,
         // asi que esto no puede dar un falso `30` al cerrar una entrada.
         let fichero_s = fichero.to_string();
@@ -1843,7 +1843,7 @@ impl Codegen {
         self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
         x86::sub_r64_imm8(&mut self.code, x86::RSP, BUF);
         x86::lea_r64_rsp_disp8(&mut self.code, x86::R8, 0);
-        bmo_lower::archivo::leer_linea(&mut self.code, BUF as u8);
+        bmo_lower::archivo::read_line(&mut self.code, BUF as u8);
         // `rax` = 1 si hubo registro. Se guarda en la RANURA del fichero antes
         // de tocar nada: el parseo de abajo se lleva por delante `r10` y `r11`.
         let estado = self.file_estado[&fichero.to_ascii_uppercase()];
@@ -1950,7 +1950,7 @@ impl Codegen {
         self.load_slot(off);
         self.emit_asm(|a| { a.mov_reg(Reg::R10, Reg::Rax).unwrap(); });
         bmo_lower::archivo::escribir_buffer(&mut self.code);
-        // El salto, aparte: un registro por linea es lo que `leer_linea` sabe
+        // El salto, aparte: un registro por linea es lo que `read_line` sabe
         // deshacer.
         x86::lea_r64_rsp_disp8(&mut self.code, x86::R8, 0);
         x86::mov_byte_at_reg_imm8(&mut self.code, x86::R8, b'\n');
@@ -2277,7 +2277,7 @@ impl Codegen {
                     if cursor >= ancho {
                         break; // lo que no cabe se descarta, como manda el estandar
                     }
-                    let hueco = ancho - cursor;
+                    let free_slot = ancho - cursor;
                     match self.texto_de(f) {
                         // Un campo: copia de largo fijo.
                         Some(n) => {
@@ -2286,7 +2286,7 @@ impl Codegen {
                             else {
                                 continue;
                             };
-                            let cuantos = n.min(hueco);
+                            let cuantos = n.min(free_slot);
                             let d = dst_off + cursor as i32;
                             self.code.extend_from_slice(&[0x48, 0x8D, 0xBD]); // lea rdi
                             self.code.extend_from_slice(&d.to_le_bytes());
@@ -2308,7 +2308,7 @@ impl Codegen {
                                 self.code.extend_from_slice(&d.to_le_bytes());
                                 x86::mov_byte_at_reg_imm8(&mut self.code, x86::RAX, b);
                             }
-                            cursor += (lit.len() as u32).min(hueco);
+                            cursor += (lit.len() as u32).min(free_slot);
                         }
                     }
                 }
@@ -2320,13 +2320,13 @@ impl Codegen {
                 for (cond, cuerpo) in &ramas {
                     match cond {
                         Some(c) => {
-                            let siguiente = self.fresh_label();
-                            self.emit_jump_if_false(c, siguiente);
+                            let next = self.fresh_label();
+                            self.emit_jump_if_false(c, next);
                             for s in cuerpo {
                                 self.emit_statement(s);
                             }
                             self.emit_jmp(fin);
-                            self.bind_label(siguiente);
+                            self.bind_label(next);
                         }
                         // `WHEN OTHER`: no compara, y el parser ya garantiza que
                         // es el ultimo.

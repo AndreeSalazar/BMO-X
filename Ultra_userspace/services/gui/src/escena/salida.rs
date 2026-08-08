@@ -219,8 +219,8 @@ impl Salida {
             b'\r' => {}
             // Tabulador a la siguiente parada de 8.
             b'\t' => {
-                let siguiente = (self.col / 8 + 1) * 8;
-                while self.col < siguiente.min(SAL_COLS) {
+                let next = (self.col / 8 + 1) * 8;
+                while self.col < next.min(SAL_COLS) {
                     self.celdas[self.fila][self.col] = b' ';
                     self.col += 1;
                 }

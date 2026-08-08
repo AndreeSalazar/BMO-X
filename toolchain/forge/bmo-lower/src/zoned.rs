@@ -66,7 +66,7 @@ pub const fn bytes_para(digitos: u32) -> usize {
 ///
 /// Y **trunca** por arriba lo que no cabe, como manda COBOL al mover a una PIC
 /// mas corta.
-pub fn escribir(code: &mut Vec<u8>, digitos: u32, con_signo: bool) {
+pub fn write(code: &mut Vec<u8>, digitos: u32, con_signo: bool) {
     let n = bytes_para(digitos);
     assert!(n <= 127, "campo zonado de {n} bytes fuera de rango");
 
@@ -119,7 +119,7 @@ pub fn escribir(code: &mut Vec<u8>, digitos: u32, con_signo: bool) {
 /// Se toma el **nibble bajo** como digito siempre, y solo la banda `0x70` marca
 /// negativo. Leer un `p` como positivo convertiria un cargo en un abono sin que
 /// saltara nada: no rompe, descuadra.
-pub fn leer(code: &mut Vec<u8>, digitos: u32) {
+pub fn read(code: &mut Vec<u8>, digitos: u32) {
     let n = bytes_para(digitos);
     assert!(n <= 127, "campo zonado de {n} bytes fuera de rango");
 
@@ -175,7 +175,7 @@ mod tests {
     fn escribe(valor: i64, digitos: u32, con_signo: bool) -> Vec<u8> {
         let n = bytes_para(digitos);
         let mut code = Vec::new();
-        escribir(&mut code, digitos, con_signo);
+        write(&mut code, digitos, con_signo);
         let mut m = Machine::new(code);
         let dir = m.load_data(&vec![0xA5u8; n]);
         m.regs[RAX as usize] = valor as u64;
@@ -186,7 +186,7 @@ mod tests {
 
     fn lee(bruto: &[u8]) -> i64 {
         let mut code = Vec::new();
-        leer(&mut code, bruto.len() as u32);
+        read(&mut code, bruto.len() as u32);
         let mut m = Machine::new(code);
         let dir = m.load_data(bruto);
         m.regs[RCX as usize] = dir;
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn no_se_sale_del_campo() {
         let mut code = Vec::new();
-        escribir(&mut code, 3, true);
+        write(&mut code, 3, true);
         let mut m = Machine::new(code);
         let dir = m.load_data(&[0xA5, 0xA5, 0xA5, 0x5A, 0x5A]);
         m.regs[RAX as usize] = 999;

@@ -240,13 +240,13 @@ fn cliente() -> Vec<u8> {
     a.c
 }
 
-fn escribir(nombre: &str, code: Vec<u8>, destino: &PathBuf) {
+fn write(name: &str, code: Vec<u8>, destino: &PathBuf) {
     let n = code.len();
     let mut b = BefBuilder::new();
     b.add_section(BefSection::code(code));
     let bytes = b.build().expect("construyendo el BEF");
     std::fs::write(destino, &bytes).expect("escribiendo el .bex");
-    println!("  {:<10} {:>5} B de codigo  ->  {} ({} B)", nombre, n, destino.display(), bytes.len());
+    println!("  {:<10} {:>5} B de codigo  ->  {} ({} B)", name, n, destino.display(), bytes.len());
 }
 
 fn main() {
@@ -256,6 +256,6 @@ fn main() {
         std::process::exit(2);
     }
     println!("== rpc-demo ==");
-    escribir("servidor", servidor(), &PathBuf::from(&args[0]));
-    escribir("cliente", cliente(), &PathBuf::from(&args[1]));
+    write("servidor", servidor(), &PathBuf::from(&args[0]));
+    write("cliente", cliente(), &PathBuf::from(&args[1]));
 }

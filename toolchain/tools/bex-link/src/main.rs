@@ -51,7 +51,7 @@ struct Elf {
 }
 
 struct SeccionElf {
-    nombre: String,
+    name: String,
     tipo: u32,
     addr: u64,
     offset: u64,
@@ -106,7 +106,7 @@ fn leer_elf(b: &[u8]) -> Result<Elf, String> {
     for i in 0..shnum {
         let base = sh(i);
         secciones.push(SeccionElf {
-            nombre: nombre_en(u32le(b, base) as usize),
+            name: nombre_en(u32le(b, base) as usize),
             tipo: u32le(b, base + 4),
             addr: u64le(b, base + 16),
             offset: u64le(b, base + 24),
@@ -148,8 +148,8 @@ fn main() {
     let mut va_kernel: u64 = 0x0000_0000_4000_0000;
     let mut desajuste = false;
 
-    for nombre in ORDEN {
-        let Some(s) = elf.secciones.iter().find(|s| s.nombre == nombre) else {
+    for name in ORDEN {
+        let Some(s) = elf.secciones.iter().find(|s| s.name == name) else {
             continue;
         };
         if s.size == 0 {
@@ -159,14 +159,14 @@ fn main() {
         va_kernel = (va_kernel + 4095) & !4095;
         if s.addr != va_kernel {
             eprintln!(
-                "  !! {nombre} enlazada en 0x{:X} pero el kernel la mapeara en 0x{:X}",
+                "  !! {name} enlazada en 0x{:X} pero el kernel la mapeara en 0x{:X}",
                 s.addr, va_kernel
             );
             desajuste = true;
         }
         println!(
             "  {:<8} 0x{:08X}  {:>6} B",
-            nombre, s.addr, s.size
+            name, s.addr, s.size
         );
 
         let mut seccion = if s.tipo == SHT_NOBITS {
@@ -174,7 +174,7 @@ fn main() {
             BefSection::bss(s.size)
         } else {
             let datos = bytes[s.offset as usize..(s.offset + s.size) as usize].to_vec();
-            match nombre {
+            match name {
                 ".text" => {
                     base_text = Some(s.addr);
                     BefSection::code(datos)

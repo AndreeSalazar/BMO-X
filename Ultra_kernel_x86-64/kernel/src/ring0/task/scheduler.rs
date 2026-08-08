@@ -652,7 +652,7 @@ pub fn current_pid() -> u32 {
 /// pintando mal.
 ///
 /// Se busca por `pid` y no por `tid` porque las capabilities son del PROCESO:
-/// `fb::soltar` y `input::soltar` hablan en pids.
+/// `fb::release` y `input::release` hablan en pids.
 pub fn cr3_de_pid(pid: u32) -> Option<u64> {
     let _g = SCHED_LOCK.lock();
     let s = sched();

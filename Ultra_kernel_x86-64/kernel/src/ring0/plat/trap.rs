@@ -399,7 +399,7 @@ pub fn sellar(xsave_base: u64, tid: u32) {
     }
 }
 
-/// `(firma, dueno)` tal y como estan AHORA en un contexto. Para el reporter.
+/// `(firma, owner)` tal y como estan AHORA en un contexto. Para el reporter.
 pub fn leer_sello(xsave_base: u64) -> (u64, u64) {
     if xsave_base == 0 {
         return (0, 0);

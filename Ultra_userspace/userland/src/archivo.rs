@@ -15,7 +15,7 @@ use crate::*;
 pub struct EntradaDir {
     /// Nombre 8.3 CRUDO, con sus espacios de relleno: `"COBOL   BEX"`.
     /// Convertirlo a `COBOL.BEX` es presentacion, y eso es cosa de quien pinta.
-    pub nombre: [u8; 11],
+    pub name: [u8; 11],
     pub es_dir: bool,
     pub bytes: u32,
 }
@@ -33,16 +33,16 @@ impl EntradaDir {
         let baja = |c: u8| if c.is_ascii_uppercase() { c + 32 } else { c };
         let mut n = 0;
         for i in 0..8 {
-            if self.nombre[i] == b' ' { break; }
-            dst[n] = baja(self.nombre[i]);
+            if self.name[i] == b' ' { break; }
+            dst[n] = baja(self.name[i]);
             n += 1;
         }
-        if self.nombre[8] != b' ' {
+        if self.name[8] != b' ' {
             dst[n] = b'.';
             n += 1;
             for i in 8..11 {
-                if self.nombre[i] == b' ' { break; }
-                dst[n] = baja(self.nombre[i]);
+                if self.name[i] == b' ' { break; }
+                dst[n] = baja(self.name[i]);
                 n += 1;
             }
         }
@@ -62,7 +62,7 @@ pub struct Directorio {
 
 impl Directorio {
     /// Abre un directorio del volumen de datos. Ruta vacia = la raiz.
-    pub fn abrir(ruta: &[u8]) -> Result<Self, u32> {
+    pub fn open(ruta: &[u8]) -> Result<Self, u32> {
         for trozo in ruta.chunks(8) {
             let mut w = [0u8; 8];
             w[..trozo.len()].copy_from_slice(trozo);
@@ -73,7 +73,7 @@ impl Directorio {
     }
 
     /// La siguiente entrada, o `None` cuando se acaba.
-    pub fn siguiente(&self) -> Option<EntradaDir> {
+    pub fn next(&self) -> Option<EntradaDir> {
         let v = invoke(self.cap, DIR_OP_SIGUIENTE, 0, 0, 0).value;
         if v >> 63 == 0 {
             return None;
@@ -81,7 +81,7 @@ impl Directorio {
         let es_dir = (v >> 62) & 1 != 0;
         let bytes = v as u32;
         // El nombre viene aparte: son 11 bytes y no caben con lo demas.
-        let mut nombre = [b' '; 11];
+        let mut name = [b' '; 11];
         let mut puesto = 0usize;
         for desde in [0u64, 7] {
             let w = invoke(self.cap, DIR_OP_NOMBRE, desde, 0, 0).value;
@@ -89,12 +89,12 @@ impl Directorio {
             let b = w.to_le_bytes();
             for k in 0..n.min(7) {
                 if puesto < 11 {
-                    nombre[puesto] = b[k];
+                    name[puesto] = b[k];
                     puesto += 1;
                 }
             }
         }
-        Some(EntradaDir { nombre, es_dir, bytes })
+        Some(EntradaDir { name, es_dir, bytes })
     }
 }
 
@@ -112,7 +112,7 @@ impl Directorio {
 /// de uso normal** y no se puede reproducir recien arrancado, que es de los
 /// peores de encontrar.
 ///
-/// Y va en `Drop` y no en un metodo `cerrar()` a proposito: un cierre que hay
+/// Y va en `Drop` y no en un metodo `close()` a proposito: un cierre que hay
 /// que acordarse de llamar es un cierre que un dia no se llama. Aqui el
 /// compositor no cambia ni una linea -- el `Directorio` sale de ambito al
 /// terminar el `ls` y la ranura vuelve sola.
@@ -131,7 +131,7 @@ impl Drop for Directorio {
 /// escriba, es un handle que te concedieron.
 ///
 /// El MODO se fija al abrir: [`Archivo::leer_de`] da uno de lectura y
-/// [`Archivo::crear`] uno de escritura. Pedirle bytes a uno de escritura no
+/// [`Archivo::create`] uno de escritura. Pedirle bytes a uno de escritura no
 /// devuelve un error de permisos: devuelve que esa pregunta no existe para ese
 /// objeto.
 ///
@@ -146,7 +146,7 @@ pub struct Archivo {
 
 impl Archivo {
     fn con_ruta(ruta: &[u8], op: u32, escribe: bool) -> Result<Self, u32> {
-        // El mismo renglon que usan `ejecutar` y `Directorio::abrir`. No hay
+        // El mismo renglon que usan `ejecutar` y `Directorio::open`. No hay
         // un segundo mecanismo para lo mismo.
         for trozo in ruta.chunks(8) {
             let mut w = [0u8; 8];
@@ -166,15 +166,15 @@ impl Archivo {
     /// Abre un archivo para ESCRIBIR. Acepta subdirectorios
     /// (`datos/movim.dat`); el nombre tiene que ser un 8.3 valido.
     ///
-    /// **Nada llega al disco hasta [`Archivo::cerrar`]**. Un proceso que muere
+    /// **Nada llega al disco hasta [`Archivo::close`]**. Un proceso que muere
     /// a medias no deja un archivo a medias: no deja nada.
-    pub fn crear(ruta: &[u8]) -> Result<Self, u32> {
+    pub fn create(ruta: &[u8]) -> Result<Self, u32> {
         Self::con_ruta(ruta, OP_ARCHIVO_CREAR, true)
     }
 
     /// Llena `dst` con lo que quede. Devuelve cuantos bytes se leyeron; `0` =
     /// se acabo el archivo.
-    pub fn leer(&self, dst: &mut [u8]) -> usize {
+    pub fn read(&self, dst: &mut [u8]) -> usize {
         if self.escribe {
             return 0;
         }
@@ -197,12 +197,12 @@ impl Archivo {
     }
 
     /// Anade bytes. Devuelve cuantos se aceptaron -- menos de los pedidos
-    /// significa que se lleno, y entonces `cerrar` devolvera `false`.
+    /// significa que se lleno, y entonces `close` devolvera `false`.
     ///
     /// Los bytes viajan de 7 en 7 con su cuenta en el byte alto, no cortando
     /// en el primer cero: un archivo no es texto y un `\0` en medio es un dato
     /// como cualquier otro.
-    pub fn escribir(&self, datos: &[u8]) -> usize {
+    pub fn write(&self, datos: &[u8]) -> usize {
         if !self.escribe {
             return 0;
         }
@@ -227,7 +227,7 @@ impl Archivo {
 
     /// Cierra. En uno de escritura es **donde el contenido llega al disco**:
     /// `false` significa que no se guardo nada, no que se guardara a medias.
-    pub fn cerrar(self) -> bool {
+    pub fn close(self) -> bool {
         let ok = invoke(self.cap, ARCH_OP_CERRAR, 0, 0, 0).value != 0;
         // * Y NO se deja caer el `Drop` encima.
         //
@@ -246,7 +246,7 @@ impl Archivo {
 
 /// **Cerrar es del `Drop` cuando nadie se acordo.**
 ///
-/// `cerrar()` sigue existiendo y sigue siendo la forma correcta de cerrar un
+/// `close()` sigue existiendo y sigue siendo la forma correcta de cerrar un
 /// archivo de ESCRITURA: es donde el contenido llega al disco, y **devuelve si
 /// salio bien**. Un `Drop` no puede devolver nada, asi que soltar la escritura
 /// en el `Drop` seria tirar la unica senal de que se guardo.

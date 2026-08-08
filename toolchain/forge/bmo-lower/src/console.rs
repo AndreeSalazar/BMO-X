@@ -317,24 +317,24 @@ mod tests {
     /// Ejecuta `read_line` sobre una entrada sembrada y devuelve `(bytes
     /// leidos, contenido del buffer entero)`. El buffer se rodea de centinelas
     /// para poder ver si el emisor escribio fuera.
-    fn leer_linea(entrada: &str, tope: u8, hueco: usize) -> (u64, Vec<u8>) {
+    fn run_read_line(entrada: &str, tope: u8, free_slot: usize) -> (u64, Vec<u8>) {
         const CENTINELA: u8 = 0xAA;
         let mut code = Vec::new();
         read_line(&mut code, tope);
 
         let mut m = Machine::new(code);
         // Buffer + 16 bytes de centinela detras.
-        let relleno = vec![0u8; hueco];
+        let relleno = vec![0u8; free_slot];
         let base = m.load_data(&relleno);
         let cent = m.load_data(&[CENTINELA; 16]);
-        assert_eq!(cent, base + hueco as u64, "el centinela va justo detras");
+        assert_eq!(cent, base + free_slot as u64, "el centinela va justo detras");
 
         m.poner_entrada(entrada);
         m.regs[R8 as usize] = base;
         let m = run(m, 500_000);
 
         let mut visto = Vec::new();
-        for i in 0..(hueco + 16) {
+        for i in 0..(free_slot + 16) {
             visto.push(m.read_u8_pub(base + i as u64));
         }
         (m.regs[R9 as usize], visto)
@@ -345,7 +345,7 @@ mod tests {
     /// en `rdx`, asi que esto habria girado para siempre.
     #[test]
     fn read_line_reads_what_the_terminal_typed() {
-        let (n, buf) = leer_linea("19.99\n", 64, 64);
+        let (n, buf) = run_read_line("19.99\n", 64, 64);
         assert_eq!(n, 5);
         assert_eq!(&buf[..5], b"19.99");
     }
@@ -354,7 +354,7 @@ mod tests {
     /// seguidos tienen que ver dos valores distintos.
     #[test]
     fn read_line_stops_at_the_newline() {
-        let (n, buf) = leer_linea("12\n34\n", 64, 64);
+        let (n, buf) = run_read_line("12\n34\n", 64, 64);
         assert_eq!(n, 2);
         assert_eq!(&buf[..2], b"12");
     }
@@ -363,7 +363,7 @@ mod tests {
     /// dan un Enter a secas tiene que volver, no colgarse.
     #[test]
     fn read_line_accepts_an_empty_line() {
-        let (n, _) = leer_linea("\n", 64, 64);
+        let (n, _) = run_read_line("\n", 64, 64);
         assert_eq!(n, 0);
     }
 
@@ -380,7 +380,7 @@ mod tests {
     fn read_line_never_writes_past_the_buffer() {
         const CENTINELA: u8 = 0xAA;
         let larga = "0123456789012345678901234567890123456789\n";
-        let (n, buf) = leer_linea(larga, 8, 8);
+        let (n, buf) = run_read_line(larga, 8, 8);
         assert_eq!(n, 8, "se guardan 8 y el resto se descarta");
         assert_eq!(&buf[..8], b"01234567");
         for (i, &b) in buf[8..].iter().enumerate() {

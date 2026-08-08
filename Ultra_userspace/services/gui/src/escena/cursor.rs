@@ -220,7 +220,7 @@ impl Bajo {
         p.sincronizar_lectura();
         for fila in 0..CUR_ALTO {
             for col in 0..CUR_ANCHO {
-                self.px[fila * CUR_ANCHO + col] = p.leer(x + col as u32, y + fila as u32);
+                self.px[fila * CUR_ANCHO + col] = p.read(x + col as u32, y + fila as u32);
             }
         }
         self.x = x;

@@ -162,8 +162,8 @@ fn escribir_archivo(log: &mut Log, datos: &[u8]) -> std::io::Result<BlockPtr> {
 /// Escribe un directorio con sus entradas ya resueltas.
 fn escribir_directorio(log: &mut Log, entradas: &[(String, BlockPtr)]) -> std::io::Result<BlockPtr> {
     let mut cuerpo = Vec::with_capacity(entradas.len() * ENTRADA_LEN);
-    for (nombre, ptr) in entradas {
-        let e = Entrada::nueva(nombre, *ptr).expect("nombre valido");
+    for (name, ptr) in entradas {
+        let e = Entrada::nueva(name, *ptr).expect("nombre valido");
         cuerpo.extend_from_slice(&e.encode());
     }
     let attr = if cuerpo.len() <= RESIDENTE_MAX {
@@ -184,18 +184,18 @@ fn meter_carpeta(log: &mut Log, dir: &Path, sangria: usize) -> std::io::Result<B
     // eso hace que los hashes se puedan comparar entre ejecuciones.
     hijos.sort_by_key(|e| e.file_name());
     for h in hijos {
-        let nombre = h.file_name().to_string_lossy().to_string();
+        let name = h.file_name().to_string_lossy().to_string();
         let ruta = h.path();
         let ptr = if ruta.is_dir() {
-            println!("{:sangria$}{}/", "", nombre, sangria = sangria);
+            println!("{:sangria$}{}/", "", name, sangria = sangria);
             meter_carpeta(log, &ruta, sangria + 2)?
         } else {
             let mut datos = Vec::new();
             File::open(&ruta)?.read_to_end(&mut datos)?;
-            println!("{:sangria$}{}  ({} B)", "", nombre, datos.len(), sangria = sangria);
+            println!("{:sangria$}{}  ({} B)", "", name, datos.len(), sangria = sangria);
             escribir_archivo(log, &datos)?
         };
-        entradas.push((nombre, ptr));
+        entradas.push((name, ptr));
     }
     escribir_directorio(log, &entradas)
 }
@@ -331,7 +331,7 @@ mod win {
     /// Bloquea y desmonta el volumen. El bloqueo falla si alguien tiene
     /// archivos abiertos ahi, asi que se reintenta: normalmente es el
     /// indexador o el antivirus soltando el volumen.
-    pub fn tomar(f: &File) -> Result<(), String> {
+    pub fn take(f: &File) -> Result<(), String> {
         for intento in 0..10 {
             if ctl(f, FSCTL_LOCK_VOLUME) {
                 if ctl(f, FSCTL_DISMOUNT_VOLUME) { return Ok(()); }
@@ -344,7 +344,7 @@ mod win {
              (cierra exploradores y terminales apuntando a esa unidad)".into())
     }
 
-    pub fn soltar(f: &File) { let _ = ctl(f, FSCTL_UNLOCK_VOLUME); }
+    pub fn release(f: &File) { let _ = ctl(f, FSCTL_UNLOCK_VOLUME); }
 }
 
 // -- CLI ---------------------------------------------------------------------
@@ -485,7 +485,7 @@ fn main() {
             print!("  desmontando...   ");
             use std::io::Write as _;
             let _ = std::io::stdout().flush();
-            match win::tomar(&f) {
+            match win::take(&f) {
                 Ok(()) => println!("volumen tomado"),
                 Err(e) => { println!("FALLO"); eprintln!("estratos-fmt: {}", e); std::process::exit(1); }
             }
@@ -523,7 +523,7 @@ fn main() {
     }
     f.sync_all().expect("vaciando al disco");
     #[cfg(windows)]
-    if o.volumen { win::soltar(&f); }
+    if o.volumen { win::release(&f); }
     drop(f);
 
     println!("  escrito          {} bloques de log, cabeza en {}", log.bloques_escritos, cabeza);

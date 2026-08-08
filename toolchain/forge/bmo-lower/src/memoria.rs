@@ -52,10 +52,10 @@ fn salto_pendiente(code: &mut Vec<u8>, opcode: u8) -> usize {
 }
 
 /// Rellena el hueco para que caiga **aqui**.
-fn aterriza_aqui(code: &mut Vec<u8>, hueco: usize) {
+fn aterriza_aqui(code: &mut Vec<u8>, free_slot: usize) {
     let destino = code.len() as i64;
-    let origen = hueco as i64 + 1; // el salto es relativo al final del salto
-    code[hueco] = (destino - origen) as i8 as u8;
+    let origen = free_slot as i64 + 1; // el salto es relativo al final del salto
+    code[free_slot] = (destino - origen) as i8 as u8;
 }
 
 /// Salto corto HACIA ATRAS, a una posicion ya conocida.
@@ -195,7 +195,7 @@ pub fn comparar_n(code: &mut Vec<u8>, parar_en_cero: bool) {
     aterriza_aqui(code, vacio);
 }
 
-/// `buscar(s, c)` -- **`strchr`**: direccion de la primera `c` en `s`, o `0`.
+/// `find_by(s, c)` -- **`strchr`**: direccion de la primera `c` en `s`, o `0`.
 ///
 /// `RDI`=s, `RSI`=c (byte en `SIL`). Resultado en `RAX`.
 ///
@@ -209,7 +209,7 @@ pub fn comparar_n(code: &mut Vec<u8>, parar_en_cero: bool) {
 /// ese `panic!`: el decodificador solo entiende lo que BMO emite de verdad, asi
 /// que estrenar una forma nueva se nota en el acto en vez de dar un resultado
 /// raro. Aqui se compara con `movzx` + `sub`, igual que [`comparar`].
-pub fn buscar(code: &mut Vec<u8>) {
+pub fn find_by(code: &mut Vec<u8>) {
     // El byte buscado, aislado en `rcx`: llega en `rsi` como entero y hay que
     // quedarse solo con el byte bajo, o `strchr(s, 0x141)` encontraria una 'A'.
     code.extend_from_slice(&[0x48, 0x89, 0xF1]); // mov rcx, rsi

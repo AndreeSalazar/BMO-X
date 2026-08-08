@@ -50,7 +50,7 @@ struct Codegen {
     /// Saltos pendientes de resolver: (posicion del campo, etiqueta).
     saltos: Vec<(usize, u32)>,
     etiquetas: HashMap<u32, usize>,
-    siguiente: u32,
+    next: u32,
 }
 
 impl Codegen {
@@ -63,13 +63,13 @@ impl Codegen {
             errores: Vec::new(),
             saltos: Vec::new(),
             etiquetas: HashMap::new(),
-            siguiente: 0,
+            next: 0,
         }
     }
 
     fn etiqueta(&mut self) -> u32 {
-        self.siguiente += 1;
-        self.siguiente
+        self.next += 1;
+        self.next
     }
 
     fn fijar(&mut self, l: u32) {
@@ -108,8 +108,8 @@ impl Codegen {
 
     // -- Memoria ---------------------------------------------------------
 
-    fn cargar(&mut self, nombre: &str) {
-        match self.huecos.get(nombre).copied() {
+    fn load(&mut self, name: &str) {
+        match self.huecos.get(name).copied() {
             Some(off) => {
                 // mov rax, [rbp+off]
                 self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
@@ -117,13 +117,13 @@ impl Codegen {
             }
             None => self.errores.push(AdaError::nuevo(
                 0,
-                format!("'{}' no esta declarada", nombre.to_ascii_lowercase()),
+                format!("'{}' no esta declarada", name.to_ascii_lowercase()),
             )),
         }
     }
 
-    fn guardar(&mut self, nombre: &str) {
-        match self.huecos.get(nombre).copied() {
+    fn save(&mut self, name: &str) {
+        match self.huecos.get(name).copied() {
             Some(off) => {
                 // mov [rbp+off], rax
                 self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
@@ -131,13 +131,13 @@ impl Codegen {
             }
             None => self.errores.push(AdaError::nuevo(
                 0,
-                format!("'{}' no esta declarada", nombre.to_ascii_lowercase()),
+                format!("'{}' no esta declarada", name.to_ascii_lowercase()),
             )),
         }
     }
 
-    fn escala_de(&self, nombre: &str) -> u32 {
-        self.escalas.get(nombre).copied().unwrap_or(0)
+    fn escala_de(&self, name: &str) -> u32 {
+        self.escalas.get(name).copied().unwrap_or(0)
     }
 
     /// Un literal escrito a su entero escalado. `"19.99"` con escala 2 -> 1999.
@@ -192,7 +192,7 @@ impl Codegen {
             }
             Expr::Nombre(n) => {
                 let de = self.escala_de(n);
-                self.cargar(n);
+                self.load(n);
                 self.reescalar(de, destino);
             }
             Expr::Binaria(a, op, b) => {
@@ -302,7 +302,7 @@ impl Codegen {
                     return;
                 }
                 let escala = self.escala_de(n);
-                self.cargar(n);
+                self.load(n);
                 bmo_lower::fmt::write_decimal_scaled(&mut self.code, escala);
                 bmo_lower::console::write_const(&mut self.code, b"\n");
             }
@@ -316,7 +316,7 @@ impl Codegen {
                 }
                 let escala = self.escala_de(n);
                 self.expresion(e, escala);
-                self.guardar(n);
+                self.save(n);
             }
             Sentencia::Si(cond, entonces, si_no) => {
                 let e_else = self.etiqueta();
@@ -352,15 +352,15 @@ impl Codegen {
         // Un hueco de 8 bytes por variable. Todo valor es un entero de 64 bits
         // con signo: la escala dice donde cae la coma, no cuanto ocupa.
         for d in &p.declaraciones {
-            if self.huecos.contains_key(&d.nombre) {
+            if self.huecos.contains_key(&d.name) {
                 return Err(AdaError::nuevo(
                     0,
-                    format!("'{}' esta declarada dos veces", d.nombre.to_ascii_lowercase()),
+                    format!("'{}' esta declarada dos veces", d.name.to_ascii_lowercase()),
                 ));
             }
             self.pila += 8;
-            self.huecos.insert(d.nombre.clone(), -self.pila);
-            self.escalas.insert(d.nombre.clone(), d.escala);
+            self.huecos.insert(d.name.clone(), -self.pila);
+            self.escalas.insert(d.name.clone(), d.escala);
         }
 
         // Prologo. Se reserva y se alinea a 64 igual que los demas frontends:
@@ -380,7 +380,7 @@ impl Codegen {
                 None => 0,
             };
             x86::mov_r64_imm64(&mut self.code, RAX, v as u64);
-            self.guardar(&d.nombre);
+            self.save(&d.name);
         }
 
         for s in &p.cuerpo {

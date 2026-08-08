@@ -63,8 +63,8 @@ fn syscall(nr: u32, a0: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> Status {
 
 /// `INVOKE` -- la puerta sincrona.
 #[inline(always)]
-pub fn invoke(cap: u64, operacion: u32, a0: u64, a1: u64, a2: u64) -> Status {
-    syscall(NR_INVOKE, cap, operacion as u64, a0, a1, a2)
+pub fn invoke(cap: u64, operation: u32, a0: u64, a1: u64, a2: u64) -> Status {
+    syscall(NR_INVOKE, cap, operation as u64, a0, a1, a2)
 }
 
 /// `CHANNEL_KICK` -- avisar al consumidor de un estuario.
@@ -95,7 +95,7 @@ pub fn tid() -> u64 {
 /// Ceder el turno. Un bucle de espera en Ring 3 que no cede se come el quantum
 /// entero sin avanzar nada.
 #[inline]
-pub fn ceder() {
+pub fn yield_screen() {
     invoke(CURRENT_TASK, OP_YIELD, 0, 0, 0);
 }
 
@@ -129,7 +129,7 @@ pub fn salir() -> ! {
     // Si el kernel nos devolviera el control, seguir ejecutando seria peor
     // que quedarse quieto.
     loop {
-        ceder();
+        yield_screen();
     }
 }
 
@@ -162,7 +162,7 @@ pub fn klog_total() -> u64 {
     invoke(CURRENT_TASK, OP_KLOG_INFO, 1, 0, 0).value
 }
 
-/// **Despierta los otros nucleos.** Devuelve `(vivos, esperados)`, sin contar
+/// **Despierta los otros nucleos.** Devuelve `(alive, esperados)`, sin contar
 /// el que ejecuta esto.
 ///
 /// * Existe porque el comando `smp` vivia solo en el shell de Ring 0, y ese
@@ -197,7 +197,7 @@ pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
 ///
 /// Quien decide cuanto y a quien es **quien presta**, no el kernel. El kernel
 /// solo comprueba que el bloque sea tuyo y que el trozo quepa dentro.
-pub fn ofrecer(bloque: u64, desde: u64, bytes: u64, tid: u32) -> bool {
+pub fn offer(bloque: u64, desde: u64, bytes: u64, tid: u32) -> bool {
     invoke(bloque, MEM_OP_OFRECER, desde, bytes, tid as u64).value != 0
 }
 

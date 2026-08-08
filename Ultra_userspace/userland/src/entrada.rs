@@ -35,13 +35,13 @@ pub struct Entrada {
 }
 
 impl Entrada {
-    pub fn reclamar() -> Option<Self> {
+    pub fn claim() -> Option<Self> {
         let cap = invoke(CURRENT_TASK, OP_INPUT_CLAIM, 0, 0, 0).valor()?;
         Some(Self { cap })
     }
 
     /// * **Soltarla y seguir vivo.** Consume la `Entrada`, igual que
-    /// `Pantalla::soltar`.
+    /// `Pantalla::release`.
     ///
     /// Existe por un fallo concreto: el escritorio aprendio a prestar la PANTALLA
     /// y se quedo la ENTRADA, asi que el programa al que se la prestaba pintaba
@@ -52,7 +52,7 @@ impl Entrada {
     /// pintando en una habitacion cerrada.** Las dos van juntas.
     ///
     /// Devuelve `false` si no era el dueno, en vez de fingir que la solto.
-    pub fn soltar(self) -> bool {
+    pub fn release(self) -> bool {
         invoke(CURRENT_TASK, OP_ENTRADA_SOLTAR, 0, 0, 0).valor().is_some()
     }
 

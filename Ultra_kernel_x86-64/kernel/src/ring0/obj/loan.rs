@@ -57,11 +57,11 @@ const MAX: usize = 8;
 const PRESTAMO_VA_BASE: u64 = 0x0000_0001_0000_0000;
 
 #[derive(Clone, Copy)]
-struct Oferta {
+struct Offer {
     viva: bool,
     /// Quien presta, y su espacio: hace falta para traducir sus paginas.
     /// Se captura al ofrecer, que es cuando ese espacio esta cargado.
-    dueno: u32,
+    owner: u32,
     aspace_dueno: u64,
     /// Donde empieza lo ofrecido, **en el espacio del dueno**.
     origen: u64,
@@ -73,11 +73,11 @@ struct Oferta {
     va_destino: u64,
 }
 
-const NADA: Oferta = Oferta {
-    viva: false, dueno: 0, aspace_dueno: 0, origen: 0, bytes: 0,
+const NOTHING: Offer = Offer {
+    viva: false, owner: 0, aspace_dueno: 0, origen: 0, bytes: 0,
     destino: 0, tomada: false, va_destino: 0,
 };
-static mut OFERTAS: [Oferta; MAX] = [NADA; MAX];
+static mut OFERTAS: [Offer; MAX] = [NOTHING; MAX];
 
 /// **Ofrecer un trozo del bloque propio.** Devuelve `true` si quedo apuntado.
 ///
@@ -85,19 +85,19 @@ static mut OFERTAS: [Oferta; MAX] = [NADA; MAX];
 /// que **es suyo por construccion**-- y `desde`/`bytes` el trozo. La unica
 /// comprobacion que hace falta es que el trozo quepa dentro, y es una resta:
 /// el rango lo concedio el kernel y lo tiene apuntado.
-pub fn ofrecer(dueno: u32, aspace: u64, base: u64, entregado: u64, desde: u64, bytes: u64, destino: u32) -> bool {
+pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, bytes: u64, destino: u32) -> bool {
     if bytes == 0 || desde.checked_add(bytes).map_or(true, |f| f > entregado) {
         crate::ring0::cabina::warn("prestamo", "el trozo no cabe en el bloque", desde);
         return false;
     }
-    if destino == dueno {
+    if destino == owner {
         return false;
     }
     let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
     // Una oferta por pareja (dueno, destino): reofrecer sustituye, no apila.
     // Un programa que reintenta no debe llenar la tabla.
     for o in ofertas.iter_mut() {
-        if o.viva && o.dueno == dueno && o.destino == destino && !o.tomada {
+        if o.viva && o.owner == owner && o.destino == destino && !o.tomada {
             o.origen = base + desde;
             o.bytes = bytes;
             o.aspace_dueno = aspace;
@@ -106,8 +106,8 @@ pub fn ofrecer(dueno: u32, aspace: u64, base: u64, entregado: u64, desde: u64, b
     }
     for o in ofertas.iter_mut() {
         if !o.viva {
-            *o = Oferta {
-                viva: true, dueno, aspace_dueno: aspace, origen: base + desde,
+            *o = Offer {
+                viva: true, owner, aspace_dueno: aspace, origen: base + desde,
                 bytes, destino, tomada: false, va_destino: 0,
             };
             crate::ring0::cabina::info("prestamo", "ofrecido al pid", destino as u64);
@@ -123,7 +123,7 @@ pub fn ofrecer(dueno: u32, aspace: u64, base: u64, entregado: u64, desde: u64, b
 /// El mapeo ocurre aqui, en el espacio del que llama. Se traduce pagina a
 /// pagina en el espacio del dueno y se mapea en el del que toma: **los marcos
 /// son los mismos, las direcciones no.** Eso es todo el prestamo.
-pub fn tomar(pid: u32, aspace: u64) -> Option<u64> {
+pub fn take(pid: u32, aspace: u64) -> Option<u64> {
     let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
     let i = ofertas.iter().position(|o| o.viva && o.destino == pid && !o.tomada)?;
     let (origen, bytes, aspace_dueno) =
@@ -133,14 +133,14 @@ pub fn tomar(pid: u32, aspace: u64) -> Option<u64> {
     let mut off = 0u64;
     while off < paginas {
         let Some(fisica) = vmm::translate(aspace_dueno, origen + off) else {
-            deshacer(aspace, off);
+            undo(aspace, off);
             crate::ring0::cabina::warn("prestamo", "lo ofrecido no esta mapeado en el dueno", off);
             return None;
         };
         if vmm::map_page(aspace, PRESTAMO_VA_BASE + off, fisica, true, true).is_err() {
-            // Igual que en `memoria::pedir`: un mapeo a medias deja paginas
+            // Igual que en `memoria::request`: un mapeo a medias deja paginas
             // sueltas en el espacio del usuario, y eso es peor que nada.
-            deshacer(aspace, off);
+            undo(aspace, off);
             return None;
         }
         off += mm::PAGE;
@@ -160,13 +160,13 @@ pub fn tomar(pid: u32, aspace: u64) -> Option<u64> {
             Some(h)
         }
         None => {
-            deshacer(aspace, paginas);
+            undo(aspace, paginas);
             None
         }
     }
 }
 
-fn deshacer(aspace: u64, hasta: u64) {
+fn undo(aspace: u64, hasta: u64) {
     let mut off = 0u64;
     while off < hasta {
         vmm::unmap_page(aspace, PRESTAMO_VA_BASE + off);
@@ -175,7 +175,7 @@ fn deshacer(aspace: u64, hasta: u64) {
 }
 
 /// Lo que contesta el handle: `1` = donde, `2` = cuanto.
-pub fn operacion(base: u64, op: u64, pid: u32) -> Option<u64> {
+pub fn operation(base: u64, op: u64, pid: u32) -> Option<u64> {
     let ofertas = unsafe { &*core::ptr::addr_of!(OFERTAS) };
     let o = ofertas.iter().find(|o| o.viva && o.tomada && o.destino == pid && o.va_destino == base)?;
     match op {
@@ -194,7 +194,7 @@ pub fn operacion(base: u64, op: u64, pid: u32) -> Option<u64> {
 ///
 /// Se limpian las dos puntas: lo que este proceso tomo (se desmapea) y lo que
 /// ofrecio (se retira, porque su espacio ya no existe para traducir).
-pub fn proceso_muerto(pid: u32, aspace: u64) {
+pub fn process_died(pid: u32, aspace: u64) {
     let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
     for o in ofertas.iter_mut() {
         if !o.viva {
@@ -202,14 +202,14 @@ pub fn proceso_muerto(pid: u32, aspace: u64) {
         }
         if o.destino == pid && o.tomada {
             let paginas = o.bytes.div_ceil(mm::PAGE) * mm::PAGE;
-            deshacer(aspace, paginas);
+            undo(aspace, paginas);
             crate::ring0::cabina::info("prestamo", "devuelto por el pid", pid as u64);
-            *o = NADA;
-        } else if o.dueno == pid {
+            *o = NOTHING;
+        } else if o.owner == pid {
             // Murio el que prestaba. La oferta no vale: su espacio de
             // direcciones se destruye y no habria contra que traducir.
             crate::ring0::cabina::warn("prestamo", "murio el dueno: oferta retirada", pid as u64);
-            *o = NADA;
+            *o = NOTHING;
         }
     }
 }

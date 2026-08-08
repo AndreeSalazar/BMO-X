@@ -24,7 +24,7 @@ pub const ARCHIVO: u64 = 0;
 pub const DIRECTORIO: u64 = 1;
 /// No hay nodo ahi, o no se pudo leer. **Es distinto de "es un archivo"**:
 /// confundirlos pinta una caja para algo que no existe.
-pub const NADA: u64 = 2;
+pub const NOTHING: u64 = 2;
 
 fn pregunta(que: u64, arg: u64) -> u64 {
     invoke(CURRENT_TASK, OP_ES_NODO, que, arg, 0).value
@@ -47,7 +47,7 @@ pub fn truncado() -> bool {
 pub fn hondo() -> u64 {
     pregunta(0x03, 0)
 }
-/// Tipo del nodo actual: [`ARCHIVO`], [`DIRECTORIO`] o [`NADA`].
+/// Tipo del nodo actual: [`ARCHIVO`], [`DIRECTORIO`] o [`NOTHING`].
 pub fn tipo() -> u64 {
     pregunta(0x04, 0)
 }

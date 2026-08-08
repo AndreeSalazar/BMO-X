@@ -51,7 +51,7 @@ use crate::ring0::obj::cap;
 ///
 /// 64 MiB: ocho veces lo que pide DOOM, y aun asi un numero que no se puede
 /// pedir por accidente. Un tope alto y explicito es mejor que ninguno -- sin
-/// el, un `pedir(-1)` mal calculado se lleva la maquina entera.
+/// el, un `request(-1)` mal calculado se lleva la maquina entera.
 pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Cuantas veces puede pedir un proceso.
@@ -67,14 +67,14 @@ pub const MEM_OP_BASE: u64 = 0x01;
 /// Cuantos bytes se le han entregado a este proceso.
 pub const MEM_OP_BYTES: u64 = 0x02;
 
-pub const ERROR_DEMASIADO: u32 = 0xE001;
-pub const ERROR_SIN_RAM: u32 = 0xE002;
-pub const ERROR_DEMASIADAS: u32 = 0xE003;
+pub const ERROR_TOO_BIG: u32 = 0xE001;
+pub const ERROR_NO_RAM: u32 = 0xE002;
+pub const ERROR_TOO_MANY: u32 = 0xE003;
 /// No queda ranura en la tabla de contabilidad: ya hay [`MAX_PROCS`] procesos
-/// con memoria pedida. **Es un motivo distinto de `ERROR_DEMASIADAS`** y por eso
+/// con memoria pedida. **Es un motivo distinto de `ERROR_TOO_MANY`** y por eso
 /// tiene codigo propio -- uno dice "tu has pedido demasiado", el otro "el sistema
 /// esta lleno", y confundirlos manda a buscar el fallo al programa equivocado.
-pub const ERROR_SIN_RANURA: u32 = 0xE004;
+pub const ERROR_NO_SLOT: u32 = 0xE004;
 
 /// Cuantos procesos pueden tener memoria pedida **a la vez**.
 ///
@@ -83,7 +83,7 @@ pub const ERROR_SIN_RANURA: u32 = 0xE004;
 /// es un **contador que solo sube y nunca se reutiliza** (`proc::next_pid`), asi
 /// que a partir del programa numero 16 de un arranque **ningun proceso podia
 /// volver a pedir memoria jamas**, y encima con el motivo equivocado:
-/// `ERROR_DEMASIADAS`, que quiere decir "has pedido demasiadas veces".
+/// `ERROR_TOO_MANY`, que quiere decir "has pedido demasiadas veces".
 ///
 /// No era teorico: en la foto del 2026-07-30, `info` decia **17 lanzados** en
 /// una sola sesion.
@@ -97,7 +97,7 @@ const MAX_PROCS: usize = 16;
 
 /// La contabilidad de un proceso que tiene memoria pedida.
 #[derive(Clone, Copy)]
-struct Cuenta {
+struct Count {
     /// `0` = ranura libre. El pid 0 no existe: `NEXT_PID` empieza en 1.
     pid: u32,
     /// Donde va el proximo bloque. Empieza en [`vmm::MEMORIA_VA_BASE`] y
@@ -109,9 +109,9 @@ struct Cuenta {
     entregados: u64,
 }
 
-const LIBRE: Cuenta = Cuenta { pid: 0, cursor: 0, peticiones: 0, entregados: 0 };
+const FREE_SLOT: Count = Count { pid: 0, cursor: 0, peticiones: 0, entregados: 0 };
 
-static mut CUENTAS: [Cuenta; MAX_PROCS] = [LIBRE; MAX_PROCS];
+static mut CUENTAS: [Count; MAX_PROCS] = [FREE_SLOT; MAX_PROCS];
 
 /// Total entregado desde el arranque, para `info`. **No baja al morir un
 /// proceso**, y es a proposito: es "cuanta memoria ha pedido Ring 3 en esta
@@ -120,7 +120,7 @@ static mut CUENTAS: [Cuenta; MAX_PROCS] = [LIBRE; MAX_PROCS];
 static mut TOTAL: u64 = 0;
 
 /// La ranura de este proceso, si tiene una.
-fn ranura(pid: u32) -> Option<usize> {
+fn slot(pid: u32) -> Option<usize> {
     unsafe {
         let t = &*core::ptr::addr_of!(CUENTAS);
         t.iter().position(|c| c.pid == pid && pid != 0)
@@ -128,23 +128,23 @@ fn ranura(pid: u32) -> Option<usize> {
 }
 
 /// La ranura de este proceso, tomando una libre si aun no tiene.
-fn ranura_o_nueva(pid: u32) -> Option<usize> {
+fn slot_or_new(pid: u32) -> Option<usize> {
     if pid == 0 {
         return None;
     }
-    if let Some(i) = ranura(pid) {
+    if let Some(i) = slot(pid) {
         return Some(i);
     }
     unsafe {
         let t = &mut *core::ptr::addr_of_mut!(CUENTAS);
         let i = t.iter().position(|c| c.pid == 0)?;
-        t[i] = Cuenta { pid, ..LIBRE };
+        t[i] = Count { pid, ..FREE_SLOT };
         Some(i)
     }
 }
 
-pub fn entregado_por(pid: u32) -> u64 {
-    match ranura(pid) {
+pub fn handed_over_by(pid: u32) -> u64 {
+    match slot(pid) {
         Some(i) => unsafe { (*core::ptr::addr_of!(CUENTAS))[i].entregados },
         None => 0,
     }
@@ -152,14 +152,14 @@ pub fn entregado_por(pid: u32) -> u64 {
 
 /// Cuantos procesos tienen memoria pedida ahora mismo. Para el panel y para
 /// que "no queda ranura" se pueda distinguir de "has pedido demasiadas veces".
-pub fn procesos_con_memoria() -> usize {
+pub fn processes_with_memory() -> usize {
     unsafe {
         let t = &*core::ptr::addr_of!(CUENTAS);
         t.iter().filter(|c| c.pid != 0).count()
     }
 }
 
-pub fn total_entregado() -> u64 {
+pub fn total_handed_over() -> u64 {
     unsafe { TOTAL }
 }
 
@@ -170,15 +170,15 @@ pub fn total_entregado() -> u64 {
 /// desde Ring 3, CR3 **sigue siendo el suyo**: el cambio solo ocurre en un
 /// cambio de contexto, y aqui todavia no ha habido ninguno. Es la misma nota
 /// que lleva el framebuffer, y por el mismo motivo.
-pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
+pub fn request(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
     if bytes == 0 || bytes > MAX_BYTES {
-        return Err(ERROR_DEMASIADO);
+        return Err(ERROR_TOO_BIG);
     }
     // La ranura se toma AQUI, despues de validar el tamano: una peticion
     // absurda no debe gastar una ranura de la tabla. Sin ranura libre el motivo
     // es otro y se dice con su nombre -- antes esto contestaba
-    // `ERROR_DEMASIADAS` a un proceso que no habia pedido nunca nada.
-    let slot = match ranura_o_nueva(pid) {
+    // `ERROR_TOO_MANY` a un proceso que no habia pedido nunca nada.
+    let slot = match slot_or_new(pid) {
         Some(s) => s,
         None => {
             crate::ring0::cabina::warn(
@@ -186,12 +186,12 @@ pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
                 "no queda ranura de contabilidad para otro proceso",
                 MAX_PROCS as u64,
             );
-            return Err(ERROR_SIN_RANURA);
+            return Err(ERROR_NO_SLOT);
         }
     };
     unsafe {
         if (*core::ptr::addr_of!(CUENTAS))[slot].peticiones >= MAX_PETICIONES {
-            return Err(ERROR_DEMASIADAS);
+            return Err(ERROR_TOO_MANY);
         }
     }
 
@@ -202,7 +202,7 @@ pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
         Some(f) => f,
         None => {
             crate::ring0::cabina::warn("mem", "sin RAM contigua para la peticion", bytes);
-            return Err(ERROR_SIN_RAM);
+            return Err(ERROR_NO_RAM);
         }
     };
 
@@ -220,12 +220,12 @@ pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
             // Mapeo a medias = paginas sueltas en el espacio del usuario. Se
             // deshace lo hecho: quedarse con la mitad mapeada y sin handle es
             // peor que no tener nada. Mismo criterio que el framebuffer.
-            let mut deshacer = 0u64;
-            while deshacer < off {
-                vmm::unmap_page(aspace, base + deshacer);
-                deshacer += mm::PAGE;
+            let mut undo = 0u64;
+            while undo < off {
+                vmm::unmap_page(aspace, base + undo);
+                undo += mm::PAGE;
             }
-            return Err(ERROR_SIN_RAM);
+            return Err(ERROR_NO_RAM);
         }
         off += mm::PAGE;
     }
@@ -238,10 +238,10 @@ pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
     ) {
         Some(h) => h,
         None => {
-            let mut deshacer = 0u64;
-            while deshacer < paginas * mm::PAGE {
-                vmm::unmap_page(aspace, base + deshacer);
-                deshacer += mm::PAGE;
+            let mut undo = 0u64;
+            while undo < paginas * mm::PAGE {
+                vmm::unmap_page(aspace, base + undo);
+                undo += mm::PAGE;
             }
             return Err(cap::ERROR_PERMISSION_DENIED);
         }
@@ -267,18 +267,18 @@ pub fn pedir(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
 /// contadores a cero y la ranura numero `pid` seguia siendo suya para siempre.
 /// Con `MAX_PROCS` ranuras y pids que solo suben, eso agotaba la tabla en el
 /// programa 16 del arranque.
-pub fn proceso_muerto(pid: u32) {
-    let Some(slot) = ranura(pid) else { return };
+pub fn process_died(pid: u32) {
+    let Some(slot) = slot(pid) else { return };
     unsafe {
-        (*core::ptr::addr_of_mut!(CUENTAS))[slot] = LIBRE;
+        (*core::ptr::addr_of_mut!(CUENTAS))[slot] = FREE_SLOT;
     }
 }
 
 /// Las operaciones sobre el handle. `base` es la VA con la que se concedio.
-pub fn operacion(base: u64, operacion: u64, pid: u32) -> Option<u64> {
-    match operacion {
+pub fn operation(base: u64, operation: u64, pid: u32) -> Option<u64> {
+    match operation {
         MEM_OP_BASE => Some(base),
-        MEM_OP_BYTES => Some(entregado_por(pid)),
+        MEM_OP_BYTES => Some(handed_over_by(pid)),
         _ => None,
     }
 }

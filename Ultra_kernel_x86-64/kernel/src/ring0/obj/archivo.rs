@@ -36,12 +36,12 @@
 //!
 //! - Se piden marcos **contiguos**, porque el buffer se recorre como un `&[u8]`
 //!   lineal. Si la RAM esta fragmentada y no hay hueco seguido, se rechaza con
-//!   `ERROR_DEMASIADO_GRANDE` -- entregar un archivo a trozos sin que el
+//!   `ERROR_TOO_LARGE` -- entregar un archivo a trozos sin que el
 //!   llamante lo sepa seria peor.
 //! - El archivo entero pasa por RAM. Un archivo mas grande que la memoria libre
 //!   no se abre. Para eso haria falta un escritor por sectores en `bmo_fat32`,
 //!   que es otra pieza y va despues.
-//! - Lo escrito no llega al disco hasta `cerrar`, y ahi `bmo_fat32` lo guarda de
+//! - Lo escrito no llega al disco hasta `close`, y ahi `bmo_fat32` lo guarda de
 //!   una vez.
 //!
 //! ## Escribir es un acto de dos pasos
@@ -67,29 +67,29 @@ pub const MAX_ABIERTOS: usize = 16;
 /// No es un techo: cuando se llena, el buffer **crece al doble**. Es solo la
 /// primera reserva, elegida para que un informe corriente no tenga que crecer
 /// ni una vez.
-pub const INICIAL: usize = 16 * 1024;
+pub const INITIAL: usize = 16 * 1024;
 
 /// Tamano de pagina. El buffer se pide en marcos, que es lo que el asignador
 /// entrega.
-const PAGINA: usize = 4096;
+const PAGE: usize = 4096;
 
-pub const SIN_DUENO: u32 = u32::MAX;
+pub const NO_OWNER: u32 = u32::MAX;
 
 /// No quedan ranuras de archivo abierto.
-pub const ERROR_SIN_HUECO: u32 = 27;
+pub const ERROR_NO_FREE_SLOT: u32 = 27;
 /// La ruta no existe, o no es un archivo.
-pub const ERROR_NO_ESTA: u32 = 28;
+pub const ERROR_NOT_THERE: u32 = 28;
 /// El archivo no cabe en el buffer. Se dice en vez de entregar un trozo.
-pub const ERROR_DEMASIADO_GRANDE: u32 = 29;
+pub const ERROR_TOO_LARGE: u32 = 29;
 /// El nombre no cabe en 8.3 (ocho de nombre, tres de extension).
-pub const ERROR_NOMBRE: u32 = 30;
+pub const ERROR_NAME: u32 = 30;
 /// No hay volumen de datos montado con escritor.
-pub const ERROR_SOLO_LECTURA: u32 = 31;
+pub const ERROR_READ_ONLY: u32 = 31;
 /// La CARPETA de la ruta no existe. Distinto de que falte el archivo: manda a
 /// mirar otra cosa, y un mensaje que no los separa manda a buscar donde no es.
-pub const ERROR_CARPETA: u32 = 32;
+pub const ERROR_DIRECTORY: u32 = 32;
 /// La ruta no nombra un archivo -- acaba en barra, o es un directorio.
-pub const ERROR_ES_CARPETA: u32 = 33;
+pub const ERROR_IS_DIRECTORY: u32 = 33;
 
 /// Saca hasta 7 bytes: `(n << 56) | bytes_LE`. `n == 0` = se acabo.
 ///
@@ -120,7 +120,7 @@ pub const ARCH_OP_CERRAR: u64 = 0x04;
 /// bien el primer registro y basura todos los demas.
 ///
 /// El corte lo hace el kernel porque **el cursor es del kernel**. Es la misma
-/// razon por la que `siguiente` vive en `directorio.rs` y no en Ring 3.
+/// razon por la que `next` vive en `directorio.rs` y no en Ring 3.
 pub const ARCH_OP_LEER_LINEA: u64 = 0x05;
 /// Leer un bloque entero en memoria concedida. Espejo de
 /// `bmo_abi::...::ARCH_OP_LEER_EN`; lo despacha `syscall.rs`, que es quien tiene
@@ -154,13 +154,13 @@ static mut CURSOR: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 static mut NOMBRE: [[u8; 11]; MAX_ABIERTOS] = [[b' '; 11]; MAX_ABIERTOS];
 static mut DIRECTORIO: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 static mut ESCRIBE: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
-/// Se pidio escribir mas de lo que cabe. `cerrar` lo confiesa en vez de
+/// Se pidio escribir mas de lo que cabe. `close` lo confiesa en vez de
 /// guardar un archivo corto que parece entero.
 static mut DESBORDO: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
-static mut DUENO: [u32; MAX_ABIERTOS] = [SIN_DUENO; MAX_ABIERTOS];
+static mut OWNER: [u32; MAX_ABIERTOS] = [NO_OWNER; MAX_ABIERTOS];
 
-fn hueco() -> Option<usize> {
-    unsafe { (0..MAX_ABIERTOS).find(|&i| DUENO[i] == SIN_DUENO) }
+fn free_slot() -> Option<usize> {
+    unsafe { (0..MAX_ABIERTOS).find(|&i| OWNER[i] == NO_OWNER) }
 }
 
 /// El buffer de la ranura como rebanada. Vacio si no hay nada reservado.
@@ -172,17 +172,17 @@ unsafe fn buf(i: usize) -> &'static mut [u8] {
         return &mut [];
     }
     let base = crate::ring0::mm::phys_to_virt(BUF_FIS[i]) as *mut u8;
-    core::slice::from_raw_parts_mut(base, (BUF_PAGS[i] as usize) * PAGINA)
+    core::slice::from_raw_parts_mut(base, (BUF_PAGS[i] as usize) * PAGE)
 }
 
 /// Cuantos bytes caben ahora mismo en la ranura.
-unsafe fn capacidad(i: usize) -> usize {
-    (BUF_PAGS[i] as usize) * PAGINA
+unsafe fn capacity(i: usize) -> usize {
+    (BUF_PAGS[i] as usize) * PAGE
 }
 
 /// Reserva un buffer de al menos `bytes` para la ranura. `false` = no hay RAM.
-unsafe fn reservar(i: usize, bytes: usize) -> bool {
-    let pags = ((bytes.max(1) + PAGINA - 1) / PAGINA) as u64;
+unsafe fn reserve(i: usize, bytes: usize) -> bool {
+    let pags = ((bytes.max(1) + PAGE - 1) / PAGE) as u64;
     match crate::ring0::mm::phys::alloc_frames_contig(pags) {
         Some(fis) => {
             BUF_FIS[i] = fis;
@@ -197,10 +197,10 @@ unsafe fn reservar(i: usize, bytes: usize) -> bool {
 ///
 /// Se llama SIEMPRE al soltar la ranura, incluso cuando el guardado fallo: un
 /// archivo que no se pudo escribir no es motivo para quedarse con su memoria.
-unsafe fn soltar_buffer(i: usize) {
+unsafe fn release_buffer(i: usize) {
     if BUF_FIS[i] != 0 {
         for p in 0..BUF_PAGS[i] {
-            crate::ring0::mm::phys::free_frame(BUF_FIS[i] + p * PAGINA as u64);
+            crate::ring0::mm::phys::free_frame(BUF_FIS[i] + p * PAGE as u64);
         }
     }
     BUF_FIS[i] = 0;
@@ -212,12 +212,12 @@ unsafe fn soltar_buffer(i: usize) {
 /// Doblar y no crecer justo lo pedido: escribir un informe son miles de
 /// llamadas de siete bytes, y crecer en cada una seria copiar el archivo entero
 /// miles de veces. Doblando, el numero de copias es logaritmico.
-unsafe fn crecer(i: usize, minimo: usize) -> bool {
-    let mut nueva = capacidad(i).max(PAGINA);
+unsafe fn grow(i: usize, minimo: usize) -> bool {
+    let mut nueva = capacity(i).max(PAGE);
     while nueva < minimo {
         nueva *= 2;
     }
-    let pags = (nueva / PAGINA) as u64;
+    let pags = (nueva / PAGE) as u64;
     let fis = match crate::ring0::mm::phys::alloc_frames_contig(pags) {
         Some(f) => f,
         None => return false,
@@ -227,7 +227,7 @@ unsafe fn crecer(i: usize, minimo: usize) -> bool {
     let viejo = buf(i);
     let n = LARGO[i].min(viejo.len());
     core::ptr::copy_nonoverlapping(viejo.as_ptr(), destino, n);
-    soltar_buffer(i);
+    release_buffer(i);
     BUF_FIS[i] = fis;
     BUF_PAGS[i] = pags;
     true
@@ -237,12 +237,12 @@ unsafe fn crecer(i: usize, minimo: usize) -> bool {
 ///
 /// El archivo entero se trae al buffer aqui, no segun se pide. Asi una lectura
 /// no puede fallar a mitad por un error de disco: o el archivo esta entero en
-/// memoria antes de que Ring 3 vea el primer byte, o `abrir` falla y no hay
+/// memoria antes de que Ring 3 vea el primer byte, o `open` falla y no hay
 /// handle.
-pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
-    let i = match hueco() {
+pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
+    let i = match free_slot() {
         Some(i) => i,
-        None => return Err(ERROR_SIN_HUECO),
+        None => return Err(ERROR_NO_FREE_SLOT),
     };
     // Cada motivo manda a hacer algo distinto, y por eso no se aplanan todos a
     // "no esta": quien escribe `lee apps/` tiene que enterarse de que eso es
@@ -252,29 +252,29 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
     // una fila estatica de 4 KiB y el techo lo ponia esa fila.
     let mide = match crate::ring0::fsys::fs::tamano(ruta) {
         Ok(n) => n as usize,
-        Err(LoadError::BadPath) => return Err(ERROR_ES_CARPETA),
-        Err(LoadError::NameTooLong) => return Err(ERROR_NOMBRE),
-        Err(LoadError::DirNotFound) => return Err(ERROR_CARPETA),
-        Err(_) => return Err(ERROR_NO_ESTA),
+        Err(LoadError::BadPath) => return Err(ERROR_IS_DIRECTORY),
+        Err(LoadError::NameTooLong) => return Err(ERROR_NAME),
+        Err(LoadError::DirNotFound) => return Err(ERROR_DIRECTORY),
+        Err(_) => return Err(ERROR_NOT_THERE),
     };
     let leidos = unsafe {
-        if !reservar(i, mide) {
+        if !reserve(i, mide) {
             // No hay RAM contigua para el archivo. Se dice: entregarlo a
             // trozos sin que el llamante lo sepa seria peor.
             crate::ring0::cabina::warn("arch", "sin RAM contigua para el archivo", mide as u64);
-            return Err(ERROR_DEMASIADO_GRANDE);
+            return Err(ERROR_TOO_LARGE);
         }
         let dst = buf(i);
         match crate::ring0::fsys::fs::load(ruta, dst) {
             Ok(n) => n,
             Err(e) => {
-                soltar_buffer(i);
+                release_buffer(i);
                 return Err(match e {
-                    LoadError::TooBig => ERROR_DEMASIADO_GRANDE,
-                    LoadError::BadPath => ERROR_ES_CARPETA,
-                    LoadError::NameTooLong => ERROR_NOMBRE,
-                    LoadError::DirNotFound => ERROR_CARPETA,
-                    _ => ERROR_NO_ESTA,
+                    LoadError::TooBig => ERROR_TOO_LARGE,
+                    LoadError::BadPath => ERROR_IS_DIRECTORY,
+                    LoadError::NameTooLong => ERROR_NAME,
+                    LoadError::DirNotFound => ERROR_DIRECTORY,
+                    _ => ERROR_NOT_THERE,
                 });
             }
         }
@@ -284,14 +284,14 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
         CURSOR[i] = 0;
         ESCRIBE[i] = false;
         DESBORDO[i] = false;
-        DUENO[i] = pid;
+        OWNER[i] = pid;
         match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ, i as u64) {
             Some(h) => {
                 crate::ring0::cabina::info("arch", "archivo abierto para leer", leidos as u64);
                 Ok(h)
             }
             None => {
-                DUENO[i] = SIN_DUENO;
+                OWNER[i] = NO_OWNER;
                 Err(cap::ERROR_PERMISSION_DENIED)
             }
         }
@@ -303,9 +303,9 @@ pub fn abrir(pid: u32, ruta: &str) -> Result<u64, u32> {
 /// El directorio se resuelve AHORA y el nombre se valida AHORA, aunque no se
 /// escriba nada hasta cerrar. Descubrir al final que la carpeta no existia
 /// significaria haber dejado a un programa acumulando bytes para nada.
-pub fn crear(pid: u32, ruta: &str) -> Result<u64, u32> {
+pub fn create(pid: u32, ruta: &str) -> Result<u64, u32> {
     if !crate::ring0::fsys::fs::data_mounted() {
-        return Err(ERROR_SOLO_LECTURA);
+        return Err(ERROR_READ_ONLY);
     }
     // Partir la ruta en carpeta + nombre por la ULTIMA barra.
     let limpia = {
@@ -320,54 +320,54 @@ pub fn crear(pid: u32, ruta: &str) -> Result<u64, u32> {
         None => ("", limpia),
     };
     if nombre_txt.is_empty() {
-        return Err(ERROR_NOMBRE);
+        return Err(ERROR_NAME);
     }
-    let nombre = match crate::ring0::fsys::fs::nombre_8_3_pub(nombre_txt) {
+    let name = match crate::ring0::fsys::fs::nombre_8_3_pub(nombre_txt) {
         Some(n) => n,
-        None => return Err(ERROR_NOMBRE),
+        None => return Err(ERROR_NAME),
     };
     let dir = match crate::ring0::fsys::fs::dir_datos(carpeta) {
         Some(c) => c,
         // La carpeta, no el archivo. `escribe datos/x.txt` cuando no hay
         // `datos/` tiene que decir que falta la CARPETA: el archivo es
         // justamente lo que se venia a crear.
-        None => return Err(ERROR_CARPETA),
+        None => return Err(ERROR_DIRECTORY),
     };
 
-    let i = match hueco() {
+    let i = match free_slot() {
         Some(i) => i,
-        None => return Err(ERROR_SIN_HUECO),
+        None => return Err(ERROR_NO_FREE_SLOT),
     };
     unsafe {
-        // La primera reserva. No es un techo: `escribir` dobla cuando se llena.
-        if !reservar(i, INICIAL) {
+        // La primera reserva. No es un techo: `write` dobla cuando se llena.
+        if !reserve(i, INITIAL) {
             crate::ring0::cabina::warn("arch", "sin RAM para el buffer de escritura", 0);
-            return Err(ERROR_DEMASIADO_GRANDE);
+            return Err(ERROR_TOO_LARGE);
         }
         LARGO[i] = 0;
         CURSOR[i] = 0;
-        NOMBRE[i] = nombre;
+        NOMBRE[i] = name;
         DIRECTORIO[i] = dir;
         ESCRIBE[i] = true;
         DESBORDO[i] = false;
-        DUENO[i] = pid;
+        OWNER[i] = pid;
         // Se conceden los dos derechos: `invoke` resuelve con RIGHT_READ, asi
         // que sin el ni siquiera llegaria el `ESCRIBIR`. Lo que impide leer un
-        // archivo de escritura no es el derecho, es el modo -- ver `operacion`.
+        // archivo de escritura no es el derecho, es el modo -- ver `operation`.
         match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ | cap::RIGHT_WRITE, i as u64) {
             Some(h) => {
                 crate::ring0::cabina::info("arch", "archivo abierto para escribir", pid as u64);
                 Ok(h)
             }
             None => {
-                DUENO[i] = SIN_DUENO;
+                OWNER[i] = NO_OWNER;
                 Err(cap::ERROR_PERMISSION_DENIED)
             }
         }
     }
 }
 
-fn leer(i: usize) -> u64 {
+fn read(i: usize) -> u64 {
     unsafe {
         let mut w = [0u8; 8];
         let mut n = 0usize;
@@ -380,8 +380,8 @@ fn leer(i: usize) -> u64 {
     }
 }
 
-/// Como `leer`, pero se para en el salto de linea y lo consume.
-fn leer_linea(i: usize) -> u64 {
+/// Como `read`, pero se para en el salto de linea y lo consume.
+fn read_line(i: usize) -> u64 {
     unsafe {
         let mut w = [0u8; 8];
         let mut n = 0usize;
@@ -402,7 +402,7 @@ fn leer_linea(i: usize) -> u64 {
     }
 }
 
-fn escribir(i: usize, palabra: u64) -> u64 {
+fn write(i: usize, palabra: u64) -> u64 {
     let n = ((palabra >> 56) & 0xFF) as usize;
     let n = n.min(7);
     let bytes = palabra.to_le_bytes();
@@ -412,7 +412,7 @@ fn escribir(i: usize, palabra: u64) -> u64 {
             // Sin sitio: se DOBLA el buffer. Antes aqui se levantaba la bandera
             // de desbordado contra un techo de 4 KiB; ahora solo se levanta si
             // de verdad no queda RAM, que es un motivo y no una constante.
-            if LARGO[i] >= capacidad(i) && !crecer(i, LARGO[i] + 1) {
+            if LARGO[i] >= capacity(i) && !grow(i, LARGO[i] + 1) {
                 DESBORDO[i] = true;
                 crate::ring0::cabina::warn(
                     "arch",
@@ -430,7 +430,7 @@ fn escribir(i: usize, palabra: u64) -> u64 {
 }
 
 /// Cierra la ranura y, si era de escritura, guarda. `1` = todo bien.
-fn cerrar(i: usize) -> u64 {
+fn close(i: usize) -> u64 {
     unsafe {
         let ok = if ESCRIBE[i] {
             if DESBORDO[i] {
@@ -466,19 +466,19 @@ fn cerrar(i: usize) -> u64 {
         } else {
             true
         };
-        soltar(i);
+        release(i);
         ok as u64
     }
 }
 
-fn soltar(i: usize) {
+fn release(i: usize) {
     unsafe {
         // La memoria se devuelve AQUI y en un solo sitio, pase lo que pase con
         // el guardado. Un archivo que no se pudo escribir no es motivo para
         // quedarse con sus marcos: eso es una fuga que solo se nota tras
         // muchas horas, que es cuando peor se encuentra.
-        soltar_buffer(i);
-        DUENO[i] = SIN_DUENO;
+        release_buffer(i);
+        OWNER[i] = NO_OWNER;
         LARGO[i] = 0;
         CURSOR[i] = 0;
         ESCRIBE[i] = false;
@@ -487,7 +487,7 @@ fn soltar(i: usize) {
     }
 }
 
-pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
+pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
     let i = idx as usize;
     if i >= MAX_ABIERTOS {
         return None;
@@ -496,9 +496,9 @@ pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
     match op {
         // El modo manda. Pedirle bytes a un archivo de escritura no es un
         // error de permisos: es una pregunta que ese objeto no responde.
-        ARCH_OP_LEER if !escribe => Some(leer(i)),
-        ARCH_OP_LEER_LINEA if !escribe => Some(leer_linea(i)),
-        ARCH_OP_ESCRIBIR if escribe => Some(escribir(i, arg0)),
+        ARCH_OP_LEER if !escribe => Some(read(i)),
+        ARCH_OP_LEER_LINEA if !escribe => Some(read_line(i)),
+        ARCH_OP_ESCRIBIR if escribe => Some(write(i, arg0)),
         ARCH_OP_TAMANO => Some(unsafe {
             if escribe { LARGO[i] as u64 } else { (LARGO[i] - CURSOR[i]) as u64 }
         }),
@@ -511,7 +511,7 @@ pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
             CURSOR[i] = d;
             d as u64
         }),
-        ARCH_OP_CERRAR => Some(cerrar(i)),
+        ARCH_OP_CERRAR => Some(close(i)),
         _ => None,
     }
 }
@@ -527,7 +527,7 @@ pub fn operacion(idx: u64, op: u64, arg0: u64) -> Option<u64> {
 ///
 /// # Safety
 /// `dst` debe apuntar a `n` bytes escribibles y mapeados en el CR3 actual.
-pub unsafe fn leer_en(idx: u64, dst: *mut u8, n: usize) -> usize {
+pub unsafe fn read_into(idx: u64, dst: *mut u8, n: usize) -> usize {
     let i = idx as usize;
     if i >= MAX_ABIERTOS || dst.is_null() || n == 0 {
         return 0;
@@ -550,14 +550,14 @@ pub unsafe fn leer_en(idx: u64, dst: *mut u8, n: usize) -> usize {
 /// Lo llama `cap::revoke_all`. Un proceso que muere con un archivo de
 /// escritura a medias **no deja nada**: lo acumulado se tira. Guardarlo seria
 /// inventar un archivo que su autor nunca dio por terminado.
-pub fn proceso_muerto(pid: u32) {
+pub fn process_died(pid: u32) {
     unsafe {
         for i in 0..MAX_ABIERTOS {
-            if DUENO[i] == pid {
+            if OWNER[i] == pid {
                 if ESCRIBE[i] && LARGO[i] > 0 {
                     crate::ring0::cabina::warn("arch", "murio sin cerrar: se descarta", LARGO[i] as u64);
                 }
-                soltar(i);
+                release(i);
             }
         }
     }

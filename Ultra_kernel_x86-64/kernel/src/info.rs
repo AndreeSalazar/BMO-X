@@ -40,8 +40,8 @@ pub fn init_from(ctx: &BootContext) {
 /// que hay que hacer.
 static CEDIDO: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
-pub fn ceder_fb(cedido: bool) {
-    CEDIDO.store(cedido, core::sync::atomic::Ordering::SeqCst);
+pub fn ceder_fb(yielded: bool) {
+    CEDIDO.store(yielded, core::sync::atomic::Ordering::SeqCst);
 }
 
 pub fn fb_cedido() -> bool {

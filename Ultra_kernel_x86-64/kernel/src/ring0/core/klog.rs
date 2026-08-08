@@ -57,8 +57,8 @@ static mut TOTAL: u64 = 0;
 /// Se guarda **lo mismo que se pinta**, y eso importa: un log que guarda una
 /// version distinta de la que se ve es un log en el que no se puede confiar
 /// para comparar una foto con lo leido.
-pub fn guardar(msg: &str) {
-    escribir(msg.as_bytes());
+pub fn save(msg: &str) {
+    write(msg.as_bytes());
 }
 
 /// Igual, pero con la HORA delante: `[  1234ms] usb: puerto listo`.
@@ -115,10 +115,10 @@ pub fn guardar_con_hora(ticks: u64, msg: &str) {
     let b = msg.as_bytes();
     let k = b.len().min(cabe);
     linea[n..n + k].copy_from_slice(&b[..k]);
-    escribir(&linea[..n + k]);
+    write(&linea[..n + k]);
 }
 
-fn escribir(b: &[u8]) {
+fn write(b: &[u8]) {
     let n = b.len().min(ANCHO);
     unsafe {
         let t = &mut *core::ptr::addr_of_mut!(TEXTO);

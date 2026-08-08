@@ -20,7 +20,7 @@
 //! siguiente**.
 
 use crate::escena::salida::{Salida, TINTA_BIEN, TINTA_MAL, TINTA_NORMAL};
-use crate::ordenes::completar::motivo_archivo;
+use crate::ordenes::complete::motivo_archivo;
 use bmo_userland as bmo;
 
 /// Un programa lanzado del que todavia se espera el final.
@@ -62,7 +62,7 @@ pub(crate) fn vigilar_corrida(
     let Some(c) = corrida.as_mut() else { return };
 
     c.esperas = c.esperas.saturating_add(1);
-    let vivo = salida_cap.as_ref().map(|cc| cc.hay_hijo()).unwrap_or(false);
+    let vivo = salida_cap.as_ref().map(|cc| cc.has_child()).unwrap_or(false);
     // Mientras haya hijo, no ha terminado. Y las dos primeras vueltas
     // no cuentan: son el margen que necesita `ejecutar_en` para que el
     // kernel registre al hijo en la tabla de la consola. Sin ese
@@ -76,7 +76,7 @@ pub(crate) fn vigilar_corrida(
     // El primer `salida.txt` que llego a Windows tenia las cuatro
     // lineas del ECO y **ni una del programa**. El motivo: este
     // vigilante corre al principio del fotograma y el drenado de la
-    // consola del hijo esta mucho mas abajo. Cuando `hay_hijo()`
+    // consola del hijo esta mucho mas abajo. Cuando `has_child()`
     // dice que no, lo ultimo que escribio el programa **sigue en el
     // anillo del kernel** -- se guardaba un archivo de lo que el
     // terminal habia dicho, no de lo que habia contestado.
@@ -86,7 +86,7 @@ pub(crate) fn vigilar_corrida(
         let mut buf = [0u8; 8];
         let mut leidas = 0u32;
         while leidas < DRENADO_MAX {
-            let leidos = cc.leer(&mut buf);
+            let leidos = cc.read(&mut buf);
             if leidos == 0 {
                 break;
             }
@@ -117,7 +117,7 @@ pub(crate) fn vigilar_corrida(
             salida.texto(&ruta[..ruta_n]);
             salida.texto(b": ");
             if e == 0 {
-                // El cero es el `cerrar` que contesta que no. El
+                // El cero es el `close` que contesta que no. El
                 // kernel no dice mas, y eso tambien se dice.
                 salida.texto(b"el cierre fallo (disco lleno? no cabe?)");
             } else {

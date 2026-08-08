@@ -20,7 +20,7 @@
 //!
 //! Todo lo demas --abrir un endpoint, escribir en consola, reclamar la
 //! pantalla-- es una *operacion* sobre una capability. La API crece por dentro,
-//! en la pareja `(tipo de objeto, operacion)`, y el ABI no se toca. Anadir
+//! en la pareja `(tipo de objeto, operation)`, y el ABI no se toca. Anadir
 //! "abrir ventana" no es cambiar la frontera: es un numero mas en una tabla.
 //!
 //! ## Convencion de registros

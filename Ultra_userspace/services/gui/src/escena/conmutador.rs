@@ -30,7 +30,7 @@ const CONM_ANCHO: u32 = 420;
 /// El id es el mismo `u8` que maneja `bmo_input::foco`: ahi es un numero sin
 /// significado --la politica no sabe que es una ventana-- y aqui se le pone
 /// nombre. Cada ventana nueva es una fila mas en esta tabla.
-pub(crate) fn nombre(id: u8) -> &'static str {
+pub(crate) fn name(id: u8) -> &'static str {
     match id {
         0 => "Ejecutar",
         1 => "Datos (ESTRATOS)",
@@ -39,7 +39,7 @@ pub(crate) fn nombre(id: u8) -> &'static str {
 }
 
 /// Pinta el conmutador centrado, con la senalada resaltada.
-pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], senalada: usize, modo: &str) {
+pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], pointed_at: usize, modo: &str) {
     if lista.is_empty() {
         return;
     }
@@ -53,15 +53,15 @@ pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], senalada: usize, modo: &st
 
     let mut fy = y + 10;
     for (i, &v) in lista.iter().enumerate() {
-        if i == senalada {
+        if i == pointed_at {
             // El resaltado va de borde a borde: una barra a media anchura se
             // lee como "hay mas columnas" y no las hay.
             p.rect(x + 6, fy - 2, ancho - 12, FILA_ALTO, CONM_SELECC);
         }
-        let color = if i == senalada { TEXTO } else { TEXTO_TENUE };
-        let marca = if i == senalada { "> " } else { "  " };
+        let color = if i == pointed_at { TEXTO } else { TEXTO_TENUE };
+        let marca = if i == pointed_at { "> " } else { "  " };
         let nx = p.texto(x + 14, fy + 2, marca, color);
-        p.texto(nx, fy + 2, nombre(v), color);
+        p.texto(nx, fy + 2, name(v), color);
         fy += FILA_ALTO;
     }
 

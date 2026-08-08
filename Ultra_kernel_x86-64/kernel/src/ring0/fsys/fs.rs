@@ -153,8 +153,8 @@ pub fn dir_datos(ruta: &str) -> Option<u32> {
             let corte = resto.find(['/', '\\']).unwrap_or(resto.len());
             let (comp, rest) = resto.split_at(corte);
             if !comp.is_empty() {
-                let nombre = nombre_8_3(comp)?;
-                cluster = v.find_subdir_in(&nombre, cluster)?;
+                let name = nombre_8_3(comp)?;
+                cluster = v.find_subdir_in(&name, cluster)?;
             }
             resto = rest;
             while resto.starts_with('/') || resto.starts_with('\\') { resto = &resto[1..]; }
@@ -165,7 +165,7 @@ pub fn dir_datos(ruta: &str) -> Option<u32> {
 
 /// La misma conversion, para quien esta fuera de este modulo.
 ///
-/// La necesita `archivo::crear`, que tiene que validar el nombre ANTES de
+/// La necesita `archivo::create`, que tiene que validar el nombre ANTES de
 /// aceptar un archivo de escritura: descubrir al final que no era un 8.3
 /// valido significaria haber dejado a un programa acumulando bytes para nada.
 pub fn nombre_8_3_pub(s: &str) -> Option<[u8; 11]> {
@@ -416,7 +416,7 @@ pub fn crear_en(dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8]) -> Result<()
 /// `OPEN OUTPUT` de COBOL --y un `>` de cualquier shell-- no quieren decir
 /// "crealo": quieren decir **"que quede esto"**. Mientras la unica puerta fue
 /// `crear_en`, un programa que escribia su salida solo funcionaba **la primera
-/// vez que se corria**: a partir de la segunda, `cerrar` fallaba y no guardaba
+/// vez que se corria**: a partir de la segunda, `close` fallaba y no guardaba
 /// nada.
 ///
 /// Y el fallo no se veia. Si el programa releia lo que creia haber escrito,

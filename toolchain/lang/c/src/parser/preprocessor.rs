@@ -68,9 +68,9 @@ impl Preprocessor {
         pp
     }
 
-    fn definir_objeto(&mut self, nombre: &str, cuerpo: &str) {
+    fn definir_objeto(&mut self, name: &str, cuerpo: &str) {
         self.defines.insert(
-            nombre.into(),
+            name.into(),
             MacroDef {
                 params: vec![],
                 funcion: false,
@@ -299,8 +299,8 @@ impl Preprocessor {
                 // del fichero que incluye manda sobre el de la cabecera, que es
                 // lo que espera quien escribe el `#define` antes del `#include`
                 // para configurarla.
-                for (nombre, cuerpo) in sub.defines {
-                    self.defines.entry(nombre).or_insert(cuerpo);
+                for (name, cuerpo) in sub.defines {
+                    self.defines.entry(name).or_insert(cuerpo);
                 }
                 Ok(texto)
             }
@@ -389,11 +389,11 @@ impl Preprocessor {
     fn expand_line(&mut self, line: &str, _report_errors: bool) -> String {
         let mut texto = line.to_string();
         for _ in 0..MAX_PASADAS {
-            let siguiente = self.expandir_una_pasada(&texto);
-            if siguiente == texto {
+            let next = self.expandir_una_pasada(&texto);
+            if next == texto {
                 return texto;
             }
-            texto = siguiente;
+            texto = next;
         }
         texto
     }
@@ -438,9 +438,9 @@ impl Preprocessor {
             while i < b.len() && is_ident_char(b[i]) {
                 i += 1;
             }
-            let nombre = &texto[ini..i];
-            let Some(m) = self.defines.get(nombre).cloned() else {
-                out.push_str(nombre);
+            let name = &texto[ini..i];
+            let Some(m) = self.defines.get(name).cloned() else {
+                out.push_str(name);
                 continue;
             };
             if !m.funcion {
@@ -455,7 +455,7 @@ impl Preprocessor {
                 j += 1;
             }
             if j >= b.len() || b[j] != b'(' {
-                out.push_str(nombre);
+                out.push_str(name);
                 continue;
             }
             let Some((args, fin)) = recoger_args(texto, j) else {
@@ -465,9 +465,9 @@ impl Preprocessor {
                 let linea = self.line;
                 self.errores.push(CError::new(
                     linea,
-                    format!("la macro '{nombre}(' no cierra su parentesis en esta linea"),
+                    format!("la macro '{name}(' no cierra su parentesis en esta linea"),
                 ));
-                out.push_str(nombre);
+                out.push_str(name);
                 continue;
             };
             let esperados = m.params.len();
@@ -477,12 +477,12 @@ impl Preprocessor {
                 self.errores.push(CError::new(
                     linea,
                     format!(
-                        "la macro '{nombre}' espera {esperados} argumento(s){}, recibio {}",
+                        "la macro '{name}' espera {esperados} argumento(s){}, recibio {}",
                         if m.variadica { " o mas" } else { "" },
                         args.len()
                     ),
                 ));
-                out.push_str(nombre);
+                out.push_str(name);
                 continue;
             }
             out.push_str(&sustituir(&m, &args));
@@ -613,8 +613,8 @@ fn sustituir(m: &MacroDef, args: &[String]) -> String {
             while j < cuerpo.len() && is_ident_char(cuerpo[j]) {
                 j += 1;
             }
-            let nombre = &m.body[ini..j];
-            if let Some(k) = m.params.iter().position(|p| p == nombre) {
+            let name = &m.body[ini..j];
+            if let Some(k) = m.params.iter().position(|p| p == name) {
                 out.push('"');
                 for ch in args[k].chars() {
                     if ch == '"' || ch == '\\' {
@@ -636,14 +636,14 @@ fn sustituir(m: &MacroDef, args: &[String]) -> String {
         while i < cuerpo.len() && is_ident_char(cuerpo[i]) {
             i += 1;
         }
-        let nombre = &m.body[ini..i];
-        if nombre == "__VA_ARGS__" && m.variadica {
+        let name = &m.body[ini..i];
+        if name == "__VA_ARGS__" && m.variadica {
             let sobrantes = &args[m.params.len().min(args.len())..];
             out.push_str(&sobrantes.join(", "));
-        } else if let Some(k) = m.params.iter().position(|p| p == nombre) {
+        } else if let Some(k) = m.params.iter().position(|p| p == name) {
             out.push_str(&args[k]);
         } else {
-            out.push_str(nombre);
+            out.push_str(name);
         }
     }
     out

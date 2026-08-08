@@ -3,7 +3,7 @@
 //! De una linea de texto a una intencion. Aqui no se pinta nada: un modulo de
 //! esta carpeta no sabe de que color es la ventana.
 
-pub(crate) mod completar;
+pub(crate) mod complete;
 pub(crate) mod historial;
 pub(crate) mod informes;
 

@@ -66,7 +66,7 @@ pub enum Codificacion {
 }
 
 impl Codificacion {
-    pub fn nombre(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Codificacion::Grupo => "GRUPO",
             Codificacion::Zonado => "ZONED",
@@ -116,8 +116,8 @@ pub struct Disposicion {
 }
 
 impl Disposicion {
-    pub fn campo(&self, nombre: &str) -> Option<&Campo> {
-        self.campos.get(&nombre.to_ascii_uppercase())
+    pub fn campo(&self, name: &str) -> Option<&Campo> {
+        self.campos.get(&name.to_ascii_uppercase())
     }
 
     /// Los `01` en orden de declaracion.
@@ -126,8 +126,8 @@ impl Disposicion {
     }
 
     /// Es un grupo, o sea algo que se mueve como un bloque de bytes?
-    pub fn es_grupo(&self, nombre: &str) -> bool {
-        self.campo(nombre).map(|c| c.es_grupo).unwrap_or(false)
+    pub fn es_grupo(&self, name: &str) -> bool {
+        self.campo(name).map(|c| c.es_grupo).unwrap_or(false)
     }
 
     /// Los campos ELEMENTALES de un grupo, en orden de byte.
@@ -197,8 +197,8 @@ impl Disposicion {
 
             s.push_str("  desde  hasta  bytes  nivel  campo                 como     PICTURE\n");
             s.push_str("  -----  -----  -----  -----  --------------------  -------  -------------\n");
-            for (nombre, c) in campos {
-                if nombre == raiz && self.raices.contains(nombre) && c.es_grupo {
+            for (name, c) in campos {
+                if name == raiz && self.raices.contains(name) && c.es_grupo {
                     continue; // la cabecera ya lo dijo
                 }
                 let sangria = " ".repeat(((c.nivel.saturating_sub(1) / 4) as usize).min(4));
@@ -209,8 +209,8 @@ impl Disposicion {
                     c.offset + c.bytes,
                     c.bytes,
                     c.nivel,
-                    format!("{sangria}{nombre}"),
-                    c.codificacion.nombre(),
+                    format!("{sangria}{name}"),
+                    c.codificacion.name(),
                     c.pic.as_deref().unwrap_or("-"),
                     veces,
                 ));
@@ -250,9 +250,9 @@ impl Disposicion {
             };
             if !con_escala.is_empty() {
                 s.push_str("\n  La coma es IMPLICITA y no ocupa byte:\n");
-                for (nombre, c) in con_escala {
+                for (name, c) in con_escala {
                     s.push_str(&format!(
-                        "\x20         {nombre}: {} decimales\n",
+                        "\x20         {name}: {} decimales\n",
                         c.escala
                     ));
                 }
@@ -341,7 +341,7 @@ impl Disposicion {
         for i in 0..enteros.min(max) {
             let reg = &datos[i * n..(i + 1) * n];
             s.push_str(&format!("\n#{:<4} byte {}\n", i + 1, i * n));
-            for (nombre, c) in &hojas {
+            for (name, c) in &hojas {
                 let trozo = &reg[c.offset as usize..(c.offset + c.bytes) as usize];
                 let valor = match c.codificacion {
                     Codificacion::Empaquetado => {
@@ -358,7 +358,7 @@ impl Disposicion {
                 let crudo: String =
                     trozo.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
                 s.push_str(&format!(
-                    "  {nombre:<ancho$}  {valor:>16}   {crudo}\n",
+                    "  {name:<ancho$}  {valor:>16}   {crudo}\n",
                     ancho = ancho
                 ));
             }
@@ -399,7 +399,7 @@ pub fn calcular(items: &[DataItem]) -> Result<Disposicion, CobolError> {
         if item.level == 88 {
             continue;
         }
-        let nombre = item.name.to_ascii_uppercase();
+        let name = item.name.to_ascii_uppercase();
 
         // Cerrar los grupos que este nivel deja atras.
         while pila.last().map(|(n, _, _)| *n >= item.level).unwrap_or(false) {
@@ -412,15 +412,15 @@ pub fn calcular(items: &[DataItem]) -> Result<Disposicion, CobolError> {
         // Sin nada abierto, esto empieza un registro nuevo.
         if pila.is_empty() {
             cursor = 0;
-            raiz = nombre.clone();
-            d.raices.push(nombre.clone());
+            raiz = name.clone();
+            d.raices.push(name.clone());
         }
 
-        if d.campos.contains_key(&nombre) {
+        if d.campos.contains_key(&name) {
             return Err(CobolError::new(
                 0,
                 format!(
-                    "'{nombre}' esta declarado dos veces: con dos campos del mismo nombre \
+                    "'{name}' esta declarado dos veces: con dos campos del mismo nombre \
                      no hay forma de saber a cual va un MOVE"
                 ),
             ));
@@ -448,7 +448,7 @@ pub fn calcular(items: &[DataItem]) -> Result<Disposicion, CobolError> {
             .map(|f| (f.total_digits(), f.scale, f.signed))
             .unwrap_or((0, 0, false));
         d.campos.insert(
-            nombre.clone(),
+            name.clone(),
             Campo {
                 raiz: raiz.clone(),
                 offset,
@@ -466,12 +466,12 @@ pub fn calcular(items: &[DataItem]) -> Result<Disposicion, CobolError> {
 
         if es_grupo {
             // Su tamano se sabra al cerrarlo.
-            pila.push((item.level, nombre, offset));
+            pila.push((item.level, name, offset));
         } else {
             // * Sin alineado: los bytes van pegados, porque esto es el formato
             // del fichero y un hueco aqui es un byte de mas en el disco.
             let bytes = item.storage_size() as u32 * item.elementos();
-            d.campos.get_mut(&nombre).unwrap().bytes = bytes;
+            d.campos.get_mut(&name).unwrap().bytes = bytes;
             cursor += bytes;
         }
     }
@@ -491,12 +491,12 @@ mod tests {
     use super::*;
     use crate::pic::Usage;
 
-    fn dato(nivel: u32, nombre: &str, pic: Option<&str>) -> DataItem {
-        DataItem::new(nivel, nombre.into(), pic.map(|p| p.into()), None)
+    fn dato(nivel: u32, name: &str, pic: Option<&str>) -> DataItem {
+        DataItem::new(nivel, name.into(), pic.map(|p| p.into()), None)
     }
 
-    fn comp3(nivel: u32, nombre: &str, pic: &str) -> DataItem {
-        DataItem::new_with_usage(nivel, nombre.into(), Some(pic.into()), None, Usage::Comp3)
+    fn comp3(nivel: u32, name: &str, pic: &str) -> DataItem {
+        DataItem::new_with_usage(nivel, name.into(), Some(pic.into()), None, Usage::Comp3)
     }
 
     /// * El registro de una cuenta, con los tres tipos mezclados. Es el caso

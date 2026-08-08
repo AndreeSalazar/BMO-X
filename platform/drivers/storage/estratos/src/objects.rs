@@ -147,7 +147,7 @@ pub const ATTR_ORIGEN: &str = ":origen";
 /// Un flujo con nombre dentro de un nodo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Attr {
-    nombre: [u8; ATTR_NOMBRE_LEN],
+    name: [u8; ATTR_NOMBRE_LEN],
     nombre_len: usize,
     /// Bytes utiles totales del flujo.
     pub size: u64,
@@ -160,31 +160,31 @@ pub struct Attr {
 
 impl Attr {
     /// Un atributo cuyo contenido cabe dentro. No gasta bloque.
-    pub fn residente(nombre: &str, datos: &[u8]) -> Result<Self, FormatError> {
+    pub fn residente(name: &str, datos: &[u8]) -> Result<Self, FormatError> {
         if datos.len() > RESIDENTE_MAX { return Err(FormatError::BadField); }
-        let (n, nlen) = nombre_a_bytes(nombre)?;
+        let (n, nlen) = nombre_a_bytes(name)?;
         let mut cuerpo = [0u8; RESIDENTE_MAX];
         cuerpo[..datos.len()].copy_from_slice(datos);
         Ok(Self {
-            nombre: n, nombre_len: nlen,
+            name: n, nombre_len: nlen,
             size: datos.len() as u64, levels: 0,
             residente: true, cuerpo, raiz: BlockPtr::NULO,
         })
     }
 
     /// Un atributo cuyo contenido vive en bloques, bajo `levels` niveles.
-    pub fn en_bloques(nombre: &str, size: u64, levels: u8, raiz: BlockPtr) -> Result<Self, FormatError> {
-        let (n, nlen) = nombre_a_bytes(nombre)?;
+    pub fn en_bloques(name: &str, size: u64, levels: u8, raiz: BlockPtr) -> Result<Self, FormatError> {
+        let (n, nlen) = nombre_a_bytes(name)?;
         if levels as usize > NIVELES_MAX { return Err(FormatError::BadField); }
         Ok(Self {
-            nombre: n, nombre_len: nlen,
+            name: n, nombre_len: nlen,
             size, levels, residente: false,
             cuerpo: [0u8; RESIDENTE_MAX], raiz,
         })
     }
 
     pub fn nombre_str(&self) -> &str {
-        core::str::from_utf8(&self.nombre[..self.nombre_len]).unwrap_or("")
+        core::str::from_utf8(&self.name[..self.nombre_len]).unwrap_or("")
     }
     pub fn es_residente(&self) -> bool { self.residente }
     /// Los bytes, si es residente.
@@ -198,7 +198,7 @@ impl Attr {
 
     pub fn encode(&self) -> [u8; ATTR_LEN] {
         let mut b = [0u8; ATTR_LEN];
-        b[0..ATTR_NOMBRE_LEN].copy_from_slice(&self.nombre);
+        b[0..ATTR_NOMBRE_LEN].copy_from_slice(&self.name);
         b[16..24].copy_from_slice(&self.size.to_le_bytes());
         b[24] = self.levels;
         b[25] = if self.residente { ATTR_RESIDENTE } else { 0 };
@@ -212,9 +212,9 @@ impl Attr {
 
     pub fn decode(b: &[u8]) -> Result<Self, FormatError> {
         if b.len() < ATTR_LEN { return Err(FormatError::ShortBuffer); }
-        let mut nombre = [0u8; ATTR_NOMBRE_LEN];
-        nombre.copy_from_slice(&b[0..ATTR_NOMBRE_LEN]);
-        let nombre_len = nombre.iter().position(|&c| c == 0).unwrap_or(ATTR_NOMBRE_LEN);
+        let mut name = [0u8; ATTR_NOMBRE_LEN];
+        name.copy_from_slice(&b[0..ATTR_NOMBRE_LEN]);
+        let nombre_len = name.iter().position(|&c| c == 0).unwrap_or(ATTR_NOMBRE_LEN);
         let size = u64::from_le_bytes([b[16], b[17], b[18], b[19], b[20], b[21], b[22], b[23]]);
         let levels = b[24];
         let residente = b[25] & ATTR_RESIDENTE != 0;
@@ -225,11 +225,11 @@ impl Attr {
             if levels != 0 { return Err(FormatError::BadField); }
             let mut cuerpo = [0u8; RESIDENTE_MAX];
             cuerpo.copy_from_slice(&b[32..32 + RESIDENTE_MAX]);
-            Ok(Self { nombre, nombre_len, size, levels, residente, cuerpo, raiz: BlockPtr::NULO })
+            Ok(Self { name, nombre_len, size, levels, residente, cuerpo, raiz: BlockPtr::NULO })
         } else {
             if levels as usize > NIVELES_MAX { return Err(FormatError::BadField); }
             let raiz = BlockPtr::decode(&b[32..32 + PTR_LEN])?;
-            Ok(Self { nombre, nombre_len, size, levels, residente, cuerpo: [0u8; RESIDENTE_MAX], raiz })
+            Ok(Self { name, nombre_len, size, levels, residente, cuerpo: [0u8; RESIDENTE_MAX], raiz })
         }
     }
 }
@@ -240,7 +240,7 @@ impl Attr {
 pub const NIVELES_MAX: usize = 4;
 
 /// Cuantos bytes puede direccionar un arbol de `levels` niveles.
-pub fn capacidad(levels: u8) -> u64 {
+pub fn capacity(levels: u8) -> u64 {
     let mut n = BLOQUE as u64;
     for _ in 0..levels { n = n.saturating_mul(PTRS_POR_BLOQUE as u64); }
     n
@@ -250,13 +250,13 @@ pub fn capacidad(levels: u8) -> u64 {
 /// tope -- error explicito en vez de un arbol truncado en silencio.
 pub fn niveles_para(size: u64) -> Option<u8> {
     for l in 0..=NIVELES_MAX as u8 {
-        if size <= capacidad(l) { return Some(l); }
+        if size <= capacity(l) { return Some(l); }
     }
     None
 }
 
-fn nombre_a_bytes(nombre: &str) -> Result<([u8; ATTR_NOMBRE_LEN], usize), FormatError> {
-    let b = nombre.as_bytes();
+fn nombre_a_bytes(name: &str) -> Result<([u8; ATTR_NOMBRE_LEN], usize), FormatError> {
+    let b = name.as_bytes();
     if b.is_empty() || b.len() > ATTR_NOMBRE_LEN { return Err(FormatError::BadField); }
     let mut out = [0u8; ATTR_NOMBRE_LEN];
     out[..b.len()].copy_from_slice(b);
@@ -306,8 +306,8 @@ impl Nodo {
     }
 
     /// El atributo con ese nombre.
-    pub fn attr(&self, nombre: &str) -> Option<&Attr> {
-        self.attrs.iter().flatten().find(|a| a.nombre_str() == nombre)
+    pub fn attr(&self, name: &str) -> Option<&Attr> {
+        self.attrs.iter().flatten().find(|a| a.nombre_str() == name)
     }
 
     pub fn attrs(&self) -> impl Iterator<Item = &Attr> {
@@ -364,25 +364,25 @@ pub const NOMBRE_MAX: usize = 63;
 /// Nombre -> nodo. El contenido del atributo `:entradas` de un directorio.
 #[derive(Debug, Clone, Copy)]
 pub struct Entrada {
-    nombre: [u8; NOMBRE_MAX],
+    name: [u8; NOMBRE_MAX],
     nombre_len: usize,
     pub nodo: BlockPtr,
 }
 
 impl Entrada {
-    pub fn nueva(nombre: &str, nodo: BlockPtr) -> Result<Self, FormatError> {
-        let b = nombre.as_bytes();
+    pub fn nueva(name: &str, nodo: BlockPtr) -> Result<Self, FormatError> {
+        let b = name.as_bytes();
         if b.is_empty() || b.len() > NOMBRE_MAX { return Err(FormatError::BadField); }
         let mut n = [0u8; NOMBRE_MAX];
         n[..b.len()].copy_from_slice(b);
-        Ok(Self { nombre: n, nombre_len: b.len(), nodo })
+        Ok(Self { name: n, nombre_len: b.len(), nodo })
     }
 
     /// El nombre TAL COMO SE ESCRIBIO. Se conserva aunque las comparaciones
     /// ignoren mayusculas: es lo que espera cualquiera que venga de Windows y
     /// no cuesta nada.
     pub fn nombre_str(&self) -> &str {
-        core::str::from_utf8(&self.nombre[..self.nombre_len]).unwrap_or("")
+        core::str::from_utf8(&self.name[..self.nombre_len]).unwrap_or("")
     }
 
     /// Se llama asi? Sin distinguir mayusculas, en **Latin-1**.
@@ -393,7 +393,7 @@ impl Entrada {
     /// 0xD1 y 0xF1, y si no se plegaran, `Ano` y `ANO` serian dos archivos
     /// distintos en un sistema que dice ignorar mayusculas.
     pub fn se_llama(&self, otro: &str) -> bool {
-        let a = &self.nombre[..self.nombre_len];
+        let a = &self.name[..self.nombre_len];
         let b = otro.as_bytes();
         if a.len() != b.len() { return false; }
         a.iter().zip(b).all(|(&x, &y)| baja(x) == baja(y))
@@ -402,7 +402,7 @@ impl Entrada {
     pub fn encode(&self) -> [u8; ENTRADA_LEN] {
         let mut b = [0u8; ENTRADA_LEN];
         b[0] = self.nombre_len as u8;
-        b[1..1 + NOMBRE_MAX].copy_from_slice(&self.nombre);
+        b[1..1 + NOMBRE_MAX].copy_from_slice(&self.name);
         b[64..64 + PTR_LEN].copy_from_slice(&self.nodo.encode());
         b
     }
@@ -411,9 +411,9 @@ impl Entrada {
         if b.len() < ENTRADA_LEN { return Err(FormatError::ShortBuffer); }
         let nombre_len = b[0] as usize;
         if nombre_len == 0 || nombre_len > NOMBRE_MAX { return Err(FormatError::BadField); }
-        let mut nombre = [0u8; NOMBRE_MAX];
-        nombre.copy_from_slice(&b[1..1 + NOMBRE_MAX]);
-        Ok(Self { nombre, nombre_len, nodo: BlockPtr::decode(&b[64..64 + PTR_LEN])? })
+        let mut name = [0u8; NOMBRE_MAX];
+        name.copy_from_slice(&b[1..1 + NOMBRE_MAX]);
+        Ok(Self { name, nombre_len, nodo: BlockPtr::decode(&b[64..64 + PTR_LEN])? })
     }
 }
 
@@ -488,11 +488,11 @@ mod tests {
         assert_eq!(niveles_para(4097), Some(1));
         assert_eq!(niveles_para(12376), Some(1));
         // 85 bloques = 340 KiB es el techo de un nivel.
-        assert_eq!(capacidad(1), 4096 * 85);
-        assert_eq!(niveles_para(capacidad(1)), Some(1));
-        assert_eq!(niveles_para(capacidad(1) + 1), Some(2));
+        assert_eq!(capacity(1), 4096 * 85);
+        assert_eq!(niveles_para(capacity(1)), Some(1));
+        assert_eq!(niveles_para(capacity(1) + 1), Some(2));
         // Y el tope alcanza de sobra para cualquier disco de esta maquina.
-        assert!(capacidad(NIVELES_MAX as u8) > 100_000_000_000);
+        assert!(capacity(NIVELES_MAX as u8) > 100_000_000_000);
     }
 
     #[test]
@@ -560,13 +560,13 @@ mod tests {
     fn los_acentos_tambien_ignoran_mayusculas() {
         // Latin-1: si `N~` (0xD1) y `n~` (0xF1) no se plegaran, "Ano" y "ANO"
         // serian dos archivos distintos en un sistema que dice ignorarlas.
-        let nombre = [b'A', 0xD1, b'O']; // A N~ O
+        let name = [b'A', 0xD1, b'O']; // A N~ O
         let e = Entrada::nueva(core::str::from_utf8(&[b'A', b'x', b'O']).unwrap(), BlockPtr::NULO).unwrap();
         assert!(e.se_llama("axo"));
         // Y el plegado del bloque acentuado, comprobado directamente:
         assert_eq!(baja(0xD1), 0xF1);
         assert_eq!(baja(0xC1), 0xE1); // A' -> a'
         assert_eq!(baja(0xD7), 0xD7); // el signo de multiplicar NO es letra
-        let _ = nombre;
+        let _ = name;
     }
 }

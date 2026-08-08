@@ -74,7 +74,7 @@ fn esperar_ms(ms: u64, entrada: Option<&bmo::Entrada>) {
                 return;
             }
         }
-        bmo::ceder();
+        bmo::yield_screen();
     }
 }
 

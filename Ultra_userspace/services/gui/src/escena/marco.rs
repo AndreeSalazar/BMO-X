@@ -188,7 +188,7 @@ impl Marco {
         true
     }
 
-    pub(crate) fn soltar(&mut self) {
+    pub(crate) fn release(&mut self) {
         self.arrastre = None;
         self.estirando = false;
     }

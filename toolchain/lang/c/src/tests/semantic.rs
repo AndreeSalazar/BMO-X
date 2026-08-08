@@ -23,16 +23,16 @@ fn cada_intrinseco_de_la_tabla_compila() {
     let nombres = tabla.names();
     assert!(nombres.len() >= 40, "la tabla se ha quedado corta: {}", nombres.len());
 
-    for nombre in nombres {
-        let def = tabla.get(nombre).unwrap();
+    for name in nombres {
+        let def = tabla.get(name).unwrap();
         let ceros: Vec<&str> = vec!["0"; def.args.len()];
         let fuente = format!(
-            "int main() {{ __{nombre}({}); return 0; }}",
+            "int main() {{ __{name}({}); return 0; }}",
             ceros.join(", ")
         );
         match compile_source_to_bef(&fuente) {
-            Ok(bef) => assert!(!bef.is_empty(), "__{nombre} no produjo nada"),
-            Err(e) => panic!("__{nombre} no compila: {}", e.message),
+            Ok(bef) => assert!(!bef.is_empty(), "__{name} no produjo nada"),
+            Err(e) => panic!("__{name} no compila: {}", e.message),
         }
     }
 }

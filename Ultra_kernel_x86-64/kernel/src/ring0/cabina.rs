@@ -496,10 +496,10 @@ pub fn render_hud() {
     r.txt(" hev="); r.dec(hev as u64);
     r.txt(" dci="); r.dec(kdci as u64);
     r.txt(" lev="); r.dec(es as u64); r.txt(":"); r.dec(ee as u64); r.txt(":"); r.dec(ec as u64);
-    // El APARCADERO de eventos: `total:perdidos:ahora`.
+    // El APARCADERO de eventos: `total:dropped:ahora`.
     //
     // Un evento que llega mientras la enumeracion espera otra cosa ya no se
-    // tira -- se aparca. `perdidos` tiene que ser **0**: si sube, el aparcadero
+    // tira -- se aparca. `dropped` tiene que ser **0**: si sube, el aparcadero
     // se lleno y se perdio un informe, que es como enmudece un endpoint. Es el
     // numero que antes no existia y por el que el teclado se apago sin decir
     // nada.

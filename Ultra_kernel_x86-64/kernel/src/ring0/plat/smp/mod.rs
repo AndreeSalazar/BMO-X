@@ -47,7 +47,7 @@ use mapa::*;
 
 /// Despierta a los demas nucleos y cuenta cuantos contestan.
 ///
-/// Devuelve `(vivos, esperados)`, ambos **sin contar el BSP**.
+/// Devuelve `(alive, esperados)`, ambos **sin contar el BSP**.
 ///
 /// * `aviso` se llama **antes de cada SIPI**, con el APIC ID al que le toca. No
 /// es adorno: despertar a un AP cuesta hasta 10 ms de espera y esto es lo unico
@@ -185,10 +185,10 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
         // APIC ID: con la MADT esos IDs pueden ser cualquier cosa (en un x2APIC
         // son numeros grandes y dispersos), y `PILAS + id * 0x1000` se saldria
         // del primer MiB sin avisar. El orden siempre es 0, 1, 2...
-        let mut ranura = 0u64;
-        let llamar = |id: u32, ranura: &mut u64| {
-            *ranura += 1;
-            core::ptr::write_volatile((DATOS + OFF_PILA) as *mut u64, PILAS + *ranura * 0x1000);
+        let mut slot = 0u64;
+        let call = |id: u32, slot: &mut u64| {
+            *slot += 1;
+            core::ptr::write_volatile((DATOS + OFF_PILA) as *mut u64, PILAS + *slot * 0x1000);
             // Se dice ANTES de mandarlo, no despues: si el que cuelga es este,
             // el numero ya esta en pantalla.
             aviso(id);
@@ -204,16 +204,16 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
             // * La lista del firmware, tal cual. Ni se inventa ni se ordena.
             Some(c) => {
                 for &id in c.ids() {
-                    if id != yo && (ranura as u32) < cuantos {
-                        llamar(id, &mut ranura);
+                    if id != yo && (slot as u32) < cuantos {
+                        call(id, &mut slot);
                     }
                 }
             }
             // El camino de respaldo, ya avisado mas arriba.
             None => {
                 for id in 0..esperados + 1 {
-                    if id != yo && (ranura as u32) < cuantos {
-                        llamar(id, &mut ranura);
+                    if id != yo && (slot as u32) < cuantos {
+                        call(id, &mut slot);
                     }
                 }
             }
@@ -229,7 +229,7 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
         vueltas += 1;
     }
 
-    let vivos = tramp::VIVOS.load(Ordering::SeqCst);
+    let alive = tramp::VIVOS.load(Ordering::SeqCst);
     let mascara = tramp::MASCARA.load(Ordering::SeqCst);
 
     // * TAMBIEN AL KLOG, y esto era un fallo mio de bulto: todo el relato del
@@ -240,27 +240,27 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
     // Son dos sumideros distintos a proposito --CABINA es el narrador con
     // severidad, el klog es la transcripcion-- y quien escribe tiene que elegir
     // los dos cuando quiere que se vea desde fuera.
-    crate::ring0::core::phase::dashboard_log(if vivos == pedidos {
+    crate::ring0::core::phase::dashboard_log(if alive == pedidos {
         "[smp] contestaron todos los que se llamaron"
     } else {
         "[smp] FALTAN nucleos por contestar"
     });
 
-    if vivos == pedidos {
-        crate::ring0::cabina::info("smp", "contestaron todos los llamados", vivos as u64 + 1);
+    if alive == pedidos {
+        crate::ring0::cabina::info("smp", "contestaron todos los llamados", alive as u64 + 1);
     } else {
         crate::ring0::cabina::warn(
             "smp",
             "faltan nucleos por contestar",
-            (pedidos - vivos) as u64,
+            (pedidos - alive) as u64,
         );
         crate::ring0::cabina::warn("smp", "mascara de los que SI contestaron", mascara as u64);
     }
-    (vivos, esperados)
+    (alive, esperados)
 }
 
-/// `(vivos, mascara)` sin volver a despertar nada.
-pub fn vivos() -> (u32, u32) {
+/// `(alive, mascara)` sin volver a despertar nada.
+pub fn alive() -> (u32, u32) {
     (
         tramp::VIVOS.load(Ordering::SeqCst),
         tramp::MASCARA.load(Ordering::SeqCst),

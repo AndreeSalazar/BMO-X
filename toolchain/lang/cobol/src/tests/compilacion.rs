@@ -272,7 +272,7 @@ fn cobol_feature_matrix_runs_correctly() {
             None,
         ),
         // Y la vuelta entera: lo escrito se puede volver a leer. Es el
-        // contrato entre `WRITE` y `leer_linea` -- un registro por linea.
+        // contrato entre `WRITE` y `read_line` -- un registro por linea.
         (
             "lo escrito se relee",
             "FILE SECTION.\nFD ENTRADA.\n01 R PIC 9(5).\nFD SALIDA.\n01 S PIC 9(5).",
@@ -418,8 +418,8 @@ STOP RUN.
     assert_eq!(f.record, "WS-REC");
     // Y el READ se queda con sus DOS ramas, no con una cadena.
     match &program.statements[1] {
-        CobolStatement::Read(nombre, al_final, si_hay) => {
-            assert_eq!(nombre, "INFILE");
+        CobolStatement::Read(name, al_final, si_hay) => {
+            assert_eq!(name, "INFILE");
             assert_eq!(al_final.len(), 1);
             assert_eq!(si_hay.len(), 1);
         }

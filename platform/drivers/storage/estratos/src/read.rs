@@ -132,7 +132,7 @@ mod tests {
 
     fn scratch() -> Vec<[u8; BLOQUE]> { vec![[0u8; BLOQUE]; 6] }
 
-    fn leer(m: &mut Memoria, raiz: BlockPtr, niveles: u8) -> Vec<u8> {
+    fn read(m: &mut Memoria, raiz: BlockPtr, niveles: u8) -> Vec<u8> {
         let mut out = Vec::new();
         let mut s = scratch();
         descender(m, &raiz, niveles, &mut s, &mut |t| { out.extend_from_slice(t); true }).unwrap();
@@ -147,7 +147,7 @@ mod tests {
         let d = datos(4096);
         let (r, l) = m.arbol(&d);
         assert_eq!(l, 0);
-        assert_eq!(leer(&mut m, r, l), d);
+        assert_eq!(read(&mut m, r, l), d);
     }
 
     #[test]
@@ -159,7 +159,7 @@ mod tests {
         let d = datos(4096 * 3 + 17);
         let (r, l) = m.arbol(&d);
         assert_eq!(l, 1);
-        assert_eq!(leer(&mut m, r, l), d);
+        assert_eq!(read(&mut m, r, l), d);
     }
 
     #[test]
@@ -172,7 +172,7 @@ mod tests {
         // Vuelve EXACTO, sin relleno: el puntero del ultimo trozo guarda su
         // longitud real (1984 B), no el bloque entero. Quien lee no tiene que
         // saber el tamano del archivo para no arrastrar basura al final.
-        assert_eq!(leer(&mut m, r, l), d);
+        assert_eq!(read(&mut m, r, l), d);
     }
 
     #[test]

@@ -20,7 +20,7 @@
 //!
 //! ## Por que la IDENTIDAD es parte del contrato
 //!
-//! Podria parecer que un dispositivo de bloques es solo `leer` y `escribir`.
+//! Podria parecer que un dispositivo de bloques es solo `read` y `write`.
 //! No en esta maquina. Aqui hay tres discos y en uno vive el sistema
 //! operativo del dueno; un dispositivo que no puede decir QUIEN ES no se puede
 //! escribir con seguridad, asi que la identidad no es un extra informativo:

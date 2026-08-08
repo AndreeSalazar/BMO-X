@@ -154,7 +154,7 @@ fn maquina_de_bef_con(
     // Ahora si lo puede. El hueco se rellena con `0xCC` y no con ceros por el
     // mismo motivo que lo hace el compilador: si el flujo se sale del codigo,
     // la maquina para en vez de seguir por basura interpretable.
-    const PAGINA: usize = 4096;
+    const PAGE: usize = 4096;
     let mut code = Vec::new();
     // Donde acabo cada seccion en la imagen, indexado por el CODIGO DE SECCION
     // DE LAS RELOCS (`0` = code, `1` = data, `2` = rodata), que **no es** el de
@@ -170,7 +170,7 @@ fn maquina_de_bef_con(
             if bef[e] == kind as u8 {
                 let off = u64::from_le_bytes(bef[e + 8..e + 16].try_into().unwrap()) as usize;
                 let size = u64::from_le_bytes(bef[e + 16..e + 24].try_into().unwrap()) as usize;
-                while !code.is_empty() && code.len() % PAGINA != 0 {
+                while !code.is_empty() && code.len() % PAGE != 0 {
                     code.push(0xCC);
                 }
                 base[cod_reloc] = code.len();

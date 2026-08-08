@@ -50,7 +50,7 @@ pub struct Memoria {
 impl Memoria {
     /// Pide `bytes`. `None` si no hay RAM contigua, si pasa del tope por
     /// peticion (64 MiB) o si este proceso ya gasto sus cuatro peticiones.
-    pub fn pedir(bytes: u64) -> Option<Self> {
+    pub fn request(bytes: u64) -> Option<Self> {
         let cap = invoke(CURRENT_TASK, OP_MEMORIA_PEDIR, bytes, 0, 0).valor()?;
         let base = invoke(cap, MEM_OP_BASE, 0, 0, 0).valor()?;
         Some(Self { cap, base, bytes })
@@ -112,7 +112,7 @@ pub fn info_texto(campo: u64, dst: &mut [u8]) -> usize {
 pub fn reiniciar() -> ! {
     invoke(CURRENT_TASK, OP_REINICIAR, 0, 0, 0);
     loop {
-        ceder();
+        yield_screen();
     }
 }
 

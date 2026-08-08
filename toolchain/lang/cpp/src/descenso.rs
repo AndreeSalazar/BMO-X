@@ -198,28 +198,28 @@ impl<'a> Cuerpo<'a> {
             // los argumentos, que es lo que hace falta para resolver la
             // sobrecarga. Aqui solo se emite -- se reserva el hueco y se llama
             // con `&objeto` de primer parametro.
-            S::DeclObj { clase, nombre, ctor, args } => {
+            S::DeclObj { clase, name, ctor, args } => {
                 let info = self.clases.get(clase).copied().unwrap_or_default();
                 let mut out = vec![c::Stmt::DeclAssign(
-                    c::TypeSpec::StructRef(clase.clone()), nombre.clone(), None)];
+                    c::TypeSpec::StructRef(clase.clone()), name.clone(), None)];
                 // * El `vptr` se apunta ANTES de llamar al constructor: un
                 // constructor puede llamar a un metodo virtual de si mismo, y
                 // si la tabla no estuviera puesta llamaria a la nada.
                 if info.vtabla {
                     out.push(c::Stmt::Expr(c::Expr::AssignField(
-                        Box::new(c::Expr::Var(nombre.clone())),
+                        Box::new(c::Expr::Var(name.clone())),
                         crate::parser::VPTR.into(), 0,
                         c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void)),
                         Box::new(c::Expr::Var(nombre_vtabla(clase))),
                     )));
                 }
                 if let Some(simbolo) = ctor {
-                    let mut a = vec![c::Expr::AddrOf(Box::new(c::Expr::Var(nombre.clone())))];
+                    let mut a = vec![c::Expr::AddrOf(Box::new(c::Expr::Var(name.clone())))];
                     for x in args { a.push(expr(x)?); }
                     out.push(c::Stmt::Expr(c::Expr::Call(simbolo.clone(), a)));
                 }
                 if info.dtor {
-                    self.pila.last_mut().unwrap().objetos.push((nombre.clone(), clase.clone()));
+                    self.pila.last_mut().unwrap().objetos.push((name.clone(), clase.clone()));
                 }
                 out
             }
@@ -396,13 +396,13 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     }
 
     for g in &p.globals {
-        let cpp::GlobalDecl::Var(ts, nombre, init) = g;
+        let cpp::GlobalDecl::Var(ts, name, init) = g;
         let tipo = tipo(ts)?;
         let valor = match init {
             Some(e) => Some(expr(e)?),
             None => None,
         };
-        out.globals.push(c::GlobalDecl::Var(tipo, nombre.clone(), valor));
+        out.globals.push(c::GlobalDecl::Var(tipo, name.clone(), valor));
     }
 
     for f in &p.functions {
@@ -645,13 +645,13 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
         // estatico con tablas distintas ejecutan funciones distintas en la
         // misma linea de codigo: eso es una funcion virtual y no hace falta
         // nada mas.
-        E::VirtualCall(objeto, _, ranura, args) => {
+        E::VirtualCall(objeto, _, slot, args) => {
             let obj = expr(objeto)?;
             let tabla = c::Expr::Arrow(
                 Box::new(obj.clone()), crate::parser::VPTR.into(), 0,
                 c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void)));
             let destino = c::Expr::IndexPtr(
-                Box::new(tabla), Box::new(c::Expr::Int(*ranura as i64)), c::TypeSpec::Long);
+                Box::new(tabla), Box::new(c::Expr::Int(*slot as i64)), c::TypeSpec::Long);
             let mut a = vec![obj];
             for x in args { a.push(expr(x)?); }
             c::Expr::CallPtr(Box::new(destino), a)

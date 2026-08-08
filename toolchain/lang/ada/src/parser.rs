@@ -79,7 +79,7 @@ impl Parser {
         }
     }
 
-    fn nombre(&mut self) -> Result<String, AdaError> {
+    fn name(&mut self) -> Result<String, AdaError> {
         match self.actual().clone() {
             Tok::Ident(s) => {
                 self.avanzar();
@@ -123,7 +123,7 @@ impl Parser {
         }
 
         self.comer_palabra("PROCEDURE")?;
-        let nombre = self.nombre()?;
+        let name = self.name()?;
         if self.es_simbolo("(") {
             return Err(AdaError::nuevo(
                 self.linea(),
@@ -148,17 +148,17 @@ impl Parser {
         // si esta TIENE que coincidir. Es la comprobacion que caza un `end`
         // colocado en el sitio equivocado.
         if let Tok::Ident(n) = self.actual().clone() {
-            if n != nombre {
+            if n != name {
                 return Err(AdaError::nuevo(
                     self.linea(),
-                    format!("el 'end {}' no cuadra con 'procedure {}'", n.to_ascii_lowercase(), nombre.to_ascii_lowercase()),
+                    format!("el 'end {}' no cuadra con 'procedure {}'", n.to_ascii_lowercase(), name.to_ascii_lowercase()),
                 ));
             }
             self.avanzar();
         }
         self.comer_simbolo(";")?;
 
-        Ok(Programa { nombre, tipos, declaraciones, cuerpo })
+        Ok(Programa { name, tipos, declaraciones, cuerpo })
     }
 
     /// `with Ada.Text_IO; use Ada.Text_IO;` -- y nada mas.
@@ -206,7 +206,7 @@ impl Parser {
     ) -> Result<(), AdaError> {
         if self.es_palabra("TYPE") {
             self.avanzar();
-            let nombre = self.nombre()?;
+            let name = self.name()?;
             self.comer_palabra("IS")?;
             // * `delta <d> digits <n>` -- el decimal de Annex F.
             if !self.es_palabra("DELTA") {
@@ -215,7 +215,7 @@ impl Parser {
                     format!(
                         "type {} is ... — este compilador solo declara tipos DECIMALES \
                          (`is delta 0.01 digits 12`), que es lo que hace falta para banca",
-                        nombre.to_ascii_lowercase()
+                        name.to_ascii_lowercase()
                     ),
                 ));
             }
@@ -252,20 +252,20 @@ impl Parser {
                 ));
             }
             self.comer_simbolo(";")?;
-            tipos.push(TipoDecimal { nombre, escala, digitos });
+            tipos.push(TipoDecimal { name, escala, digitos });
             return Ok(());
         }
 
         // `Nombre : Tipo [:= inicial];`
-        let nombre = self.nombre()?;
+        let name = self.name()?;
         self.comer_simbolo(":")?;
         if self.es_palabra("CONSTANT") {
             self.avanzar();
         }
-        let tipo = self.nombre()?;
+        let tipo = self.name()?;
         let escala = match tipo.as_str() {
             "INTEGER" | "NATURAL" | "POSITIVE" => 0,
-            otro => match tipos.iter().find(|t| t.nombre == otro) {
+            otro => match tipos.iter().find(|t| t.name == otro) {
                 Some(t) => t.escala,
                 None => {
                     return Err(AdaError::nuevo(
@@ -309,7 +309,7 @@ impl Parser {
             None
         };
         self.comer_simbolo(";")?;
-        decls.push(Declaracion { nombre, tipo, escala, inicial });
+        decls.push(Declaracion { name, tipo, escala, inicial });
         Ok(())
     }
 
@@ -407,20 +407,20 @@ impl Parser {
         }
 
         // Asignacion: `Nombre := expr;`
-        let nombre = self.nombre()?;
+        let name = self.name()?;
         if self.es_simbolo("=") {
             return Err(AdaError::nuevo(
                 self.linea(),
                 format!(
                     "'{} = ...' compara, no asigna. Para asignar es ':='",
-                    nombre.to_ascii_lowercase()
+                    name.to_ascii_lowercase()
                 ),
             ));
         }
         self.comer_simbolo(":=")?;
         let e = self.expresion()?;
         self.comer_simbolo(";")?;
-        Ok(Sentencia::Asignar(nombre, e))
+        Ok(Sentencia::Asignar(name, e))
     }
 
     fn condicion(&mut self) -> Result<Condicion, AdaError> {

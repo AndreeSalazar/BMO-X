@@ -63,9 +63,9 @@ impl Codegen {
 
     /// `lea rdi, [rip + buffer_de_entrada]`.
     fn emit_lea_rdi_buffer(&mut self) {
-        let nombre = self.reservar_buffer_entrada();
+        let name = self.reservar_buffer_entrada();
         self.code.extend_from_slice(&[0x48, 0x8D, 0x3D, 0, 0, 0, 0]);
-        self.global_fixups.push((self.code.len() - 4, nombre));
+        self.global_fixups.push((self.code.len() - 4, name));
     }
 
     /// `getchar()` -- el siguiente byte, **bloqueando**.
@@ -157,9 +157,9 @@ impl Codegen {
 
     /// Abre `LINEA_MAX+1` bytes en la pila y lee una linea ahi.
     fn emit_leer_linea_a_pila(&mut self) {
-        let hueco = (LINEA_MAX as i32 + 1 + 15) / 16 * 16;
+        let free_slot = (LINEA_MAX as i32 + 1 + 15) / 16 * 16;
         self.code.extend_from_slice(&[0x48, 0x81, 0xEC]);
-        self.code.extend_from_slice(&(hueco as u32).to_le_bytes());
+        self.code.extend_from_slice(&(free_slot as u32).to_le_bytes());
         self.emit_lea_r8_pila();
         bmo_lower::console::read_line(&mut self.code, LINEA_MAX);
     }
@@ -170,9 +170,9 @@ impl Codegen {
     }
 
     fn emit_cerrar_hueco_pila(&mut self) {
-        let hueco = (LINEA_MAX as i32 + 1 + 15) / 16 * 16;
+        let free_slot = (LINEA_MAX as i32 + 1 + 15) / 16 * 16;
         self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
-        self.code.extend_from_slice(&(hueco as u32).to_le_bytes());
+        self.code.extend_from_slice(&(free_slot as u32).to_le_bytes());
     }
 
     /// Guarda `rax` donde apunta `destino`, del tamano de `tipo`.

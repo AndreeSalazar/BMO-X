@@ -432,7 +432,7 @@ fn shell_read_line(buf: &mut [u8]) -> usize {
         // teclas son suyas y este shell no las toca: los dos drenan la MISMA
         // cola, asi que leer aqui no seria "leer tambien", seria robarle letras
         // sueltas a la caja. Cedido es cedido, tambien para el que la cedio.
-        if byte.is_none() && !crate::ring0::obj::input::cedido() {
+        if byte.is_none() && !crate::ring0::obj::input::yielded() {
             byte = crate::ring0::dev::usb::poll_ascii();
             if byte.is_none() {
                 // PS/2 i8042 (mudo post-EBS en esta placa). Se conserva por si
@@ -749,7 +749,7 @@ fn shell_cpu() {
         l.txt("   bit ");
         l.dec(c.bit as u64);
         l.col(12);
-        l.txt(c.nombre());
+        l.txt(c.name());
         l.col(32);
         l.dec(c.tam as u64); l.txt(" B en +"); l.dec(c.offset as u64);
         dashboard_log_color(l.as_str(), SH_VALUE);
@@ -820,7 +820,7 @@ fn shell_estratos() {
         row("libre", |l| {
             l.size(oc.bytes_libres());
             l.txt("   ");
-            l.txt(oc.nivel().nombre());
+            l.txt(oc.nivel().name());
         });
         // Lo que de verdad contesta "cuando hara falta el recolector?": no un
         // porcentaje, sino cuantas VERSIONES mas caben. Con 414 GiB la
@@ -1283,17 +1283,17 @@ fn shell_smp() {
 
     // El shell de Ring 0 despierta a TODOS: aqui no hay linea que escribir un
     // argumento, y quien llega a este shell es porque el escritorio no arranco.
-    let (vivos, esperados) = crate::ring0::plat::smp::despertar(u32::MAX, |id| {
+    let (alive, esperados) = crate::ring0::plat::smp::despertar(u32::MAX, |id| {
         row("  ->", |l| {
             l.txt("APIC ");
             l.dec(id as u64);
         });
     });
-    let (_, mascara) = crate::ring0::plat::smp::vivos();
+    let (_, mascara) = crate::ring0::plat::smp::alive();
 
     // El BSP cuenta: es un nucleo que esta corriendo esto mismo.
     row("en pie", |l| {
-        l.dec(vivos as u64 + 1);
+        l.dec(alive as u64 + 1);
         l.txt(" / ");
         l.dec(esperados as u64 + 1);
         l.txt(" hilos");
@@ -1303,7 +1303,7 @@ fn shell_smp() {
         l.txt("APIC IDs que contestaron: ");
         l.hex(mascara as u64, 8);
     });
-    if vivos < esperados {
+    if alive < esperados {
         row("   ", |l| l.txt("los que faltan no arrancaron o el trampolin no llego"));
     }
 }

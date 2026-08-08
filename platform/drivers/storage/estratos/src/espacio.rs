@@ -55,7 +55,7 @@ pub enum Nivel {
 
 impl Nivel {
     /// Para el panel: que tan grave, en una palabra.
-    pub fn nombre(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Nivel::Holgado => "holgado",
             Nivel::Ambar => "AVISO: por encima del 70%",

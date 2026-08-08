@@ -32,7 +32,7 @@
 //! orden de llegada -- y esta escrito aqui para que se vea, no escondido. La
 //! autoridad correcta es una bandera en el contenedor BEF verificada por el
 //! gate al admitir el programa: "este binario declara que quiere la pantalla".
-//! Cuando esa bandera exista, la comprobacion entra en `reclamar` y esta nota
+//! Cuando esa bandera exista, la comprobacion entra en `claim` y esta nota
 //! se borra. Mientras tanto, el unico proceso que la pide es el que tu
 //! arrancas.
 
@@ -43,12 +43,12 @@ use crate::ring0::mm::{self, vmm};
 
 /// Nadie la tiene. Los pid validos son 0..MAX_PROCS, asi que hace falta un
 /// centinela que no pueda ser un pid.
-const SIN_DUENO: u32 = u32::MAX;
+const NO_OWNER: u32 = u32::MAX;
 
-static DUENO: AtomicU32 = AtomicU32::new(SIN_DUENO);
+static OWNER: AtomicU32 = AtomicU32::new(NO_OWNER);
 /// El handle que se le concedio al dueno, para poder revocarlo si lo SUELTA.
 ///
-/// Se guarda porque `soltar` tiene que revocarlo y `cap` no ofrece "revoca todo
+/// Se guarda porque `release` tiene que revocarlo y `cap` no ofrece "revoca todo
 /// lo de este tipo" -- solo por handle o todo lo del proceso, y lo segundo se
 /// llevaria por delante su entrada y su consola. Vale `0` cuando no hay dueno.
 static HANDLE: AtomicU64 = AtomicU64::new(0);
@@ -62,12 +62,12 @@ static HANDLE: AtomicU64 = AtomicU64::new(0);
 /// cierto hoy porque el escritorio ES el arranque. El dia que haya varios
 /// compositores, esto tiene que pasar a ser una marca explicita del BEF, como
 /// `WANTS_SCREEN`.
-static DUENO_PRIMERO: AtomicU32 = AtomicU32::new(SIN_DUENO);
+static FIRST_OWNER: AtomicU32 = AtomicU32::new(NO_OWNER);
 
 /// Ya la tiene otro proceso.
-pub const ERROR_OCUPADO: u32 = 16;
+pub const ERROR_BUSY: u32 = 16;
 /// Esta maquina arranco sin GOP: no hay pantalla que ceder.
-pub const ERROR_SIN_PANTALLA: u32 = 17;
+pub const ERROR_NO_SCREEN: u32 = 17;
 
 // Operaciones sobre un handle KIND_FRAMEBUFFER.
 //
@@ -87,7 +87,7 @@ pub const FB_OP_STRIDE: u64 = 0x03;
 pub const FB_OP_BYTES: u64 = 0x04;
 
 /// Bytes que ocupa el framebuffer, redondeado a pagina.
-fn bytes_mapeados() -> u64 {
+fn mapped_bytes() -> u64 {
     let alto = unsafe { crate::info::FB_HEIGHT } as u64;
     let stride = unsafe { crate::info::FB_STRIDE } as u64;
     let crudo = alto * stride * 4;
@@ -100,21 +100,21 @@ fn bytes_mapeados() -> u64 {
 /// rango fisico que usa el kernel: no hay copia ni doble bufer aqui -- el
 /// proceso escribe donde el escaner lee. El doble bufer, si lo quiere, lo pone
 /// el en su propia memoria, que es exactamente donde debe vivir esa decision.
-pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
+pub fn claim(pid: u32, aspace: u64) -> Result<u64, u32> {
     if !crate::info::hay_fb_crudo() {
-        return Err(ERROR_SIN_PANTALLA);
+        return Err(ERROR_NO_SCREEN);
     }
     // Un solo dueno. `compare_exchange` y no "leer y luego escribir": dos
     // procesos pidiendola en el mismo tick no pueden ganar los dos.
-    if DUENO
-        .compare_exchange(SIN_DUENO, pid, Ordering::SeqCst, Ordering::SeqCst)
+    if OWNER
+        .compare_exchange(NO_OWNER, pid, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
-        return Err(ERROR_OCUPADO);
+        return Err(ERROR_BUSY);
     }
 
     let fisica = unsafe { crate::info::FB_ADDR };
-    let bytes = bytes_mapeados();
+    let bytes = mapped_bytes();
     let mut off = 0u64;
     while off < bytes {
         // * WC y no normal: aqui se escriben millones de pixeles seguidos, y
@@ -126,13 +126,13 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
             // Mapeo a medias = paginas de pantalla sueltas en un espacio de
             // usuario. Se deshace lo hecho antes de devolver el error: quedarse
             // con la mitad mapeada y sin handle es peor que no tener nada.
-            let mut deshacer = 0u64;
-            while deshacer < off {
-                vmm::unmap_page(aspace, vmm::FRAMEBUFFER_VA_BASE + deshacer);
-                deshacer += mm::PAGE;
+            let mut undo = 0u64;
+            while undo < off {
+                vmm::unmap_page(aspace, vmm::FRAMEBUFFER_VA_BASE + undo);
+                undo += mm::PAGE;
             }
-            DUENO.store(SIN_DUENO, Ordering::SeqCst);
-            return Err(ERROR_SIN_PANTALLA);
+            OWNER.store(NO_OWNER, Ordering::SeqCst);
+            return Err(ERROR_NO_SCREEN);
         }
         off += mm::PAGE;
     }
@@ -145,7 +145,7 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
     ) {
         Some(h) => h,
         None => {
-            DUENO.store(SIN_DUENO, Ordering::SeqCst);
+            OWNER.store(NO_OWNER, Ordering::SeqCst);
             return Err(cap::ERROR_PERMISSION_DENIED);
         }
     };
@@ -156,7 +156,7 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
     HANDLE.store(handle, Ordering::SeqCst);
     // El primero, y solo el primero. `compare_exchange` para que no lo mueva
     // una segunda reclamacion.
-    let _ = DUENO_PRIMERO.compare_exchange(SIN_DUENO, pid, Ordering::SeqCst, Ordering::SeqCst);
+    let _ = FIRST_OWNER.compare_exchange(NO_OWNER, pid, Ordering::SeqCst, Ordering::SeqCst);
     crate::info::ceder_fb(true);
     crate::ring0::cabina::info("fb", "pantalla cedida a Ring 3", pid as u64);
     Ok(handle)
@@ -166,7 +166,7 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
 ///
 /// # Por que faltaba, y que desbloquea
 ///
-/// Habia `reclamar` y habia [`proceso_muerto`], o sea que **la unica forma de
+/// Habia `claim` y habia [`process_died`], o sea que **la unica forma de
 /// soltar la pantalla era morir**. Consecuencia concreta: `gui.bex` la reclama
 /// al arrancar y no la suelta jamas, asi que cualquier programa que la pida
 /// desde el escritorio se lleva un
@@ -179,7 +179,7 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
 /// razon en no cederla a cualquiera que la pida --uno que lo hiciera no serviria
 /// de compositor-- pero sin esta funcion **no podia cederla ni queriendo**.
 ///
-/// # La diferencia con [`proceso_muerto`], que no es cosmetica
+/// # La diferencia con [`process_died`], que no es cosmetica
 ///
 /// Alli no se desmapea nada porque el espacio de direcciones entero se destruye
 /// con el proceso. **Aqui el proceso sigue vivo**, asi que sus paginas de
@@ -193,16 +193,16 @@ pub fn reclamar(pid: u32, aspace: u64) -> Result<u64, u32> {
 ///
 /// # Orden
 ///
-/// Se marca `SIN_DUENO` **al final**: mientras se desmapea, la pantalla sigue
+/// Se marca `NO_OWNER` **al final**: mientras se desmapea, la pantalla sigue
 /// siendo de quien la suelta. Al reves habria un intervalo en el que otro puede
 /// reclamarla y mapearla mientras el anterior todavia tiene las paginas.
-pub fn soltar(pid: u32, aspace: u64) -> Result<(), u32> {
-    if DUENO.load(Ordering::SeqCst) != pid {
+pub fn release(pid: u32, aspace: u64) -> Result<(), u32> {
+    if OWNER.load(Ordering::SeqCst) != pid {
         // No es suya. Se dice en vez de contestar OK: un "si" a quien no era
         // dueno le haria creer que la cedio.
-        return Err(ERROR_OCUPADO);
+        return Err(ERROR_BUSY);
     }
-    let bytes = bytes_mapeados();
+    let bytes = mapped_bytes();
     let mut off = 0u64;
     while off < bytes {
         vmm::unmap_page(aspace, vmm::FRAMEBUFFER_VA_BASE + off);
@@ -213,7 +213,7 @@ pub fn soltar(pid: u32, aspace: u64) -> Result<(), u32> {
         cap::revoke(pid, h);
     }
     crate::info::ceder_fb(false);
-    DUENO.store(SIN_DUENO, Ordering::SeqCst);
+    OWNER.store(NO_OWNER, Ordering::SeqCst);
     crate::ring0::cabina::info("fb", "pantalla SOLTADA por su dueno", pid as u64);
     Ok(())
 }
@@ -243,7 +243,7 @@ pub fn soltar(pid: u32, aspace: u64) -> Result<(), u32> {
 ///
 /// Al primer dueno, que es el compositor (reclama al arrancar). Si echara al
 /// escritorio, la tecla de emergencia seria la tecla de romper la maquina. Ver
-/// [`DUENO_PRIMERO`] -- es una heuristica y esta dicha alli.
+/// [`FIRST_OWNER`] -- es una heuristica y esta dicha alli.
 ///
 /// # Y por que DESMAPEA
 ///
@@ -252,17 +252,17 @@ pub fn soltar(pid: u32, aspace: u64) -> Result<(), u32> {
 /// pintando el mismo sitio es peor que uno pintando mal. Se desmapea con el
 /// `cr3` que da el planificador, y entonces su siguiente pixel es un fallo de
 /// pagina -- que es la respuesta correcta a "ya no es tuya".
-pub fn rescatar() -> Option<u32> {
-    let actual = DUENO.load(Ordering::SeqCst);
-    if actual == SIN_DUENO {
+pub fn rescue() -> Option<u32> {
+    let actual = OWNER.load(Ordering::SeqCst);
+    if actual == NO_OWNER {
         return None;
     }
-    if actual == DUENO_PRIMERO.load(Ordering::SeqCst) {
+    if actual == FIRST_OWNER.load(Ordering::SeqCst) {
         // Es el escritorio. No se echa al que sostiene la casa.
         return None;
     }
     let aspace = crate::ring0::task::scheduler::cr3_de_pid(actual)?;
-    if soltar(actual, aspace).is_err() {
+    if release(actual, aspace).is_err() {
         return None;
     }
     crate::ring0::cabina::warn("fb", "pantalla RESCATADA por el teclado", actual as u64);
@@ -276,13 +276,13 @@ pub fn rescatar() -> Option<u32> {
 /// No se desmapea nada: el espacio de direcciones entero se destruye con el
 /// proceso, y desmapear paginas de un CR3 que esta a punto de morir es
 /// trabajo para nadie.
-pub fn proceso_muerto(pid: u32) {
-    if DUENO
-        .compare_exchange(pid, SIN_DUENO, Ordering::SeqCst, Ordering::SeqCst)
+pub fn process_died(pid: u32) {
+    if OWNER
+        .compare_exchange(pid, NO_OWNER, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
         // El handle muere con el proceso, pero el static no: dejarlo puesto
-        // haria que un `soltar` posterior intentase revocar el handle de un
+        // haria que un `release` posterior intentase revocar el handle de un
         // muerto. Se limpia aqui, que es donde la propiedad cambia.
         HANDLE.store(0, Ordering::SeqCst);
         crate::info::ceder_fb(false);
@@ -355,16 +355,16 @@ pub fn proceso_muerto(pid: u32) {
 }
 
 /// Pid del dueno actual, o `None`.
-pub fn dueno() -> Option<u32> {
-    match DUENO.load(Ordering::SeqCst) {
-        SIN_DUENO => None,
+pub fn owner() -> Option<u32> {
+    match OWNER.load(Ordering::SeqCst) {
+        NO_OWNER => None,
         pid => Some(pid),
     }
 }
 
 /// Despacho de las operaciones sincronas sobre la capability ya resuelta.
 /// `base` es el objeto que guarda la capability: la VA donde se mapeo.
-pub fn operacion(base: u64, operacion: u64) -> Option<u64> {
+pub fn operation(base: u64, operation: u64) -> Option<u64> {
     let (ancho, alto, stride, formato) = unsafe {
         (
             crate::info::FB_WIDTH as u64,
@@ -373,11 +373,11 @@ pub fn operacion(base: u64, operacion: u64) -> Option<u64> {
             crate::info::FB_PIXEL_FORMAT as u64,
         )
     };
-    match operacion {
+    match operation {
         FB_OP_BASE => Some(base),
         FB_OP_DIMS => Some((ancho << 32) | alto),
         FB_OP_STRIDE => Some((stride << 32) | formato),
-        FB_OP_BYTES => Some(bytes_mapeados()),
+        FB_OP_BYTES => Some(mapped_bytes()),
         _ => None,
     }
 }

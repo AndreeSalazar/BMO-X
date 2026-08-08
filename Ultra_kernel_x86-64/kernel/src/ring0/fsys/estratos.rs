@@ -141,10 +141,10 @@ pub enum FalloEscritura {
 }
 
 impl FalloEscritura {
-    pub fn nombre(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             FalloEscritura::SinVolumen => "no hay volumen ESTRATOS montado",
-            FalloEscritura::Rechazada(r) => r.nombre(),
+            FalloEscritura::Rechazada(r) => r.name(),
             FalloEscritura::NoEscribio => "el disco no acepto el superbloque",
             FalloEscritura::SinBarrera => "el FLUSH CACHE fallo: NO se hizo commit",
         }
@@ -191,10 +191,10 @@ pub fn sellar() -> Result<u64, FalloEscritura> {
     // pueda separarse del primero.
     let copia = copia_en_uso();
 
-    let mut t = es::escritura::Transaccion::abrir(&sb, copia, identidad_ok())
+    let mut t = es::escritura::Transaccion::open(&sb, copia, identidad_ok())
         .map_err(FalloEscritura::Rechazada)?;
 
-    // Sin datos: se cierra la fase inmediatamente. `reservar(0)` no haria falta
+    // Sin datos: se cierra la fase inmediatamente. `reserve(0)` no haria falta
     // y se omite a proposito -- una llamada que no hace nada en el camino que
     // estrena el disco es una llamada que confunde al leer el log.
     t.cerrar_datos().map_err(FalloEscritura::Rechazada)?;
@@ -407,8 +407,8 @@ pub fn flujo(a: &Attr, dst: &mut [u8]) -> Option<usize> {
 
     let mut escritos = 0usize;
     let r = es::descender(&mut DelDisco, &raiz, a.levels, scratch, &mut |trozo| {
-        let hueco = dst.len().saturating_sub(escritos);
-        let n = trozo.len().min(hueco);
+        let free_slot = dst.len().saturating_sub(escritos);
+        let n = trozo.len().min(free_slot);
         if n > 0 {
             dst[escritos..escritos + n].copy_from_slice(&trozo[..n]);
             escritos += n;
@@ -456,7 +456,7 @@ pub fn estrato() -> Option<es::Estrato> {
 /// Lee las entradas de un directorio a UN buffer cualquiera.
 ///
 /// Existe separada de [`entradas`] porque hay dos listados en vuelo a la vez y
-/// **no pueden compartir buffer**: el de `abrir()`, que recorre una ruta y lo
+/// **no pueden compartir buffer**: el de `open()`, que recorre una ruta y lo
 /// pisa entero en cada tramo, y el del cursor de Ring 3, que tiene que seguir
 /// siendo valido entre dos preguntas del panel. Con un solo buffer, lanzar un
 /// programa mientras la ventana de Datos esta abierta le cambiaba los nombres
@@ -630,12 +630,12 @@ pub mod cursor {
     /// punteros, asi que un nombre viaja de ocho en ocho.
     pub fn hijo_nombre(i: usize, trozo: usize) -> u64 {
         let Some(e) = entrada_i(i) else { return 0 };
-        let nombre = e.nombre_str().as_bytes();
+        let name = e.nombre_str().as_bytes();
         let ini = trozo * 8;
-        if ini >= nombre.len() { return 0; }
-        let fin = (ini + 8).min(nombre.len());
+        if ini >= name.len() { return 0; }
+        let fin = (ini + 8).min(name.len());
         let mut w = [0u8; 8];
-        w[..fin - ini].copy_from_slice(&nombre[ini..fin]);
+        w[..fin - ini].copy_from_slice(&name[ini..fin]);
         u64::from_le_bytes(w)
     }
 
@@ -788,17 +788,17 @@ pub mod cursor {
 }
 
 /// Busca un hijo por nombre dentro de un directorio, sin distinguir mayusculas.
-fn buscar_en(dir: &Nodo, nombre: &str) -> Option<BlockPtr> {
+fn buscar_en(dir: &Nodo, name: &str) -> Option<BlockPtr> {
     let (n, _) = entradas(dir)?;
     for i in 0..n {
         let e = entrada(i)?;
-        if e.se_llama(nombre) { return Some(e.nodo); }
+        if e.se_llama(name) { return Some(e.nodo); }
     }
     None
 }
 
 /// Busca un nodo por ruta: `c/holac.bex`.
-pub fn abrir(ruta: &str) -> Option<Nodo> {
+pub fn open(ruta: &str) -> Option<Nodo> {
     let (_, mut actual) = raiz()?;
     let mut resto = ruta.trim_start_matches('/');
     loop {
@@ -818,7 +818,7 @@ pub fn abrir(ruta: &str) -> Option<Nodo> {
 }
 
 /// Lee el `:datos` de un nodo. Devuelve los bytes leidos.
-pub fn leer(n: &Nodo, dst: &mut [u8]) -> Option<usize> {
+pub fn read(n: &Nodo, dst: &mut [u8]) -> Option<usize> {
     if n.tipo != Tipo::Archivo { return None; }
     let a = n.attr(bmo_estratos::objects::ATTR_DATOS)?;
     flujo(a, dst)
@@ -835,7 +835,7 @@ pub enum Firma {
     Ausente,
 }
 
-/// El gate del section 7: `abrir(nodo, EJECUTAR)`.
+/// El gate del section 7: `open(nodo, EJECUTAR)`.
 ///
 /// Compara el atributo `:firma` con el BLAKE3 del contenido que se acaba de
 /// leer. **Lo que esto demuestra**: que los bytes son los que se guardaron --

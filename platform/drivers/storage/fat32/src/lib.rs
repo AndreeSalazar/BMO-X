@@ -798,7 +798,7 @@ impl FatVolume {
     /// Get the root directory's first cluster.
     pub fn root_cluster(&self) -> u32 { self.root_cluster }
 
-    /// La entrada numero `n` de un directorio: `(nombre 8.3, es_dir, tamano)`.
+    /// La entrada numero `n` de un directorio: `(name 8.3, es_dir, tamano)`.
     ///
     /// Devuelve `None` cuando se acaban. Existia `find_file_in` --buscar un
     /// nombre que ya conoces-- pero no habia forma de PREGUNTAR QUE HAY, y sin
@@ -1255,7 +1255,7 @@ mod tests {
         }
     }
 
-    fn leer(lba: u64, count: u16, buf: &mut [u8]) -> bool {
+    fn read(lba: u64, count: u16, buf: &mut [u8]) -> bool {
         let off = lba as usize * 512;
         let n = count as usize * 512;
         if off + n > SECTORES * 512 || buf.len() < n { return false; }
@@ -1263,7 +1263,7 @@ mod tests {
         true
     }
 
-    fn escribir(lba: u64, count: u16, data: &[u8]) -> bool {
+    fn write(lba: u64, count: u16, data: &[u8]) -> bool {
         let off = lba as usize * 512;
         let n = count as usize * 512;
         if off + n > SECTORES * 512 || data.len() < n { return false; }
@@ -1295,7 +1295,7 @@ mod tests {
             bpb.root_cluster = 2;
             bpb.boot_sig = 0x29;
         }
-        assert!(escribir(0, 1, &sector0));
+        assert!(write(0, 1, &sector0));
 
         // El cluster 2 es la raiz y esta OCUPADO: la FAT tiene que decirlo, o
         // el primer archivo que se cree se llevara el directorio por delante.
@@ -1303,13 +1303,13 @@ mod tests {
         fat[0..4].copy_from_slice(&0x0FFF_FFF8u32.to_le_bytes()); // media
         fat[4..8].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes()); // reservada
         fat[8..12].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes()); // la raiz: EOC
-        assert!(escribir(RESERVADOS as u64, 1, &fat));
+        assert!(write(RESERVADOS as u64, 1, &fat));
 
-        let v = mount(leer, Some(escribir), 0).expect("el volumen de mentira debe montar");
+        let v = mount(read, Some(write), 0).expect("el volumen de mentira debe montar");
         (turno, v)
     }
 
-    fn nombre(n: &str) -> [u8; 11] {
+    fn name(n: &str) -> [u8; 11] {
         let mut r = [b' '; 11];
         let b = n.as_bytes();
         r[..b.len()].copy_from_slice(b);
@@ -1318,7 +1318,7 @@ mod tests {
 
     /// Lee un archivo entero por su nombre. `None` si no esta.
     fn leer_archivo(v: &mut FatVolume, n: &str, dst: &mut [u8]) -> Option<usize> {
-        let (primero, tam) = v.find_file(&nombre(n))?;
+        let (primero, tam) = v.find_file(&name(n))?;
         let leidos = v.read_file(primero, tam, dst);
         Some(leidos.min(tam as usize))
     }
@@ -1338,7 +1338,7 @@ mod tests {
     fn crear_y_leer_da_lo_mismo() {
         let (_turno, mut v) = volumen();
         let datos = b"BANCO BMO";
-        v.create_file_in_dir(2, &nombre("CTAS    BIN"), datos).expect("debe crear");
+        v.create_file_in_dir(2, &name("CTAS    BIN"), datos).expect("debe crear");
         let mut dst = [0u8; 512];
         let n = leer_archivo(&mut v, "CTAS    BIN", &mut dst).expect("debe estar");
         assert_eq!(&dst[..n], datos);
@@ -1348,8 +1348,8 @@ mod tests {
     #[test]
     fn crear_sobre_uno_que_existe_sigue_dando_exists() {
         let (_turno, mut v) = volumen();
-        v.create_file_in_dir(2, &nombre("CTAS    BIN"), b"viejo").expect("debe crear");
-        let r = v.create_file_in_dir(2, &nombre("CTAS    BIN"), b"nuevo");
+        v.create_file_in_dir(2, &name("CTAS    BIN"), b"viejo").expect("debe crear");
+        let r = v.create_file_in_dir(2, &name("CTAS    BIN"), b"nuevo");
         assert!(matches!(r, Err(WriteError::Exists)), "crear NO puede pisar: {r:?}");
     }
 
@@ -1361,8 +1361,8 @@ mod tests {
     #[test]
     fn guardar_dos_veces_deja_lo_segundo() {
         let (_turno, mut v) = volumen();
-        v.save_file_in_dir(2, &nombre("CTAS    BIN"), b"primera").expect("1a");
-        v.save_file_in_dir(2, &nombre("CTAS    BIN"), b"SEGUNDA").expect("2a");
+        v.save_file_in_dir(2, &name("CTAS    BIN"), b"primera").expect("1a");
+        v.save_file_in_dir(2, &name("CTAS    BIN"), b"SEGUNDA").expect("2a");
         let mut dst = [0u8; 512];
         let n = leer_archivo(&mut v, "CTAS    BIN", &mut dst).expect("debe estar");
         assert_eq!(&dst[..n], b"SEGUNDA");
@@ -1376,17 +1376,17 @@ mod tests {
     #[test]
     fn guardar_dos_veces_no_duplica_la_entrada() {
         let (_turno, mut v) = volumen();
-        v.save_file_in_dir(2, &nombre("CTAS    BIN"), b"primera").expect("1a");
-        v.save_file_in_dir(2, &nombre("CTAS    BIN"), b"SEGUNDA").expect("2a");
+        v.save_file_in_dir(2, &name("CTAS    BIN"), b"primera").expect("1a");
+        v.save_file_in_dir(2, &name("CTAS    BIN"), b"SEGUNDA").expect("2a");
 
         let mut buf = [0u8; 512];
-        assert!(leer(v.cluster_to_lba(2), 1, &mut buf));
+        assert!(read(v.cluster_to_lba(2), 1, &mut buf));
         let mut cuantas = 0;
         for i in 0..(512 / 32) {
             let de = unsafe { &*(buf.as_ptr().add(i * 32) as *const DirEntry) };
             if de.name[0] == 0 { break; }
             if de.name[0] == 0xE5 { continue; }
-            if name_match(&de.name, &nombre("CTAS    BIN")) { cuantas += 1; }
+            if name_match(&de.name, &name("CTAS    BIN")) { cuantas += 1; }
         }
         assert_eq!(cuantas, 1, "reemplazar no puede dejar dos entradas con el mismo nombre");
     }
@@ -1401,11 +1401,11 @@ mod tests {
         let (_turno, mut v) = volumen();
         // 1200 bytes con clusters de 512 son TRES clusters.
         let grande = [b'A'; 1200];
-        v.save_file_in_dir(2, &nombre("GRANDE  BIN"), &grande).expect("1a");
+        v.save_file_in_dir(2, &name("GRANDE  BIN"), &grande).expect("1a");
         assert_eq!(ocupados(&mut v), 1 + 3, "raiz + tres clusters de datos");
 
         // Y ahora uno pequeno en su sitio: tiene que BAJAR a un solo cluster.
-        v.save_file_in_dir(2, &nombre("GRANDE  BIN"), b"corto").expect("2a");
+        v.save_file_in_dir(2, &name("GRANDE  BIN"), b"corto").expect("2a");
         let quedan = ocupados(&mut v);
         assert_eq!(quedan, 1 + 1, "los tres clusters viejos tenian que soltarse: quedan {quedan}");
     }
@@ -1416,10 +1416,10 @@ mod tests {
     #[test]
     fn reemplazar_por_uno_mas_grande_lo_lee_entero() {
         let (_turno, mut v) = volumen();
-        v.save_file_in_dir(2, &nombre("CRECE   BIN"), b"corto").expect("1a");
+        v.save_file_in_dir(2, &name("CRECE   BIN"), b"corto").expect("1a");
         let mut grande = [0u8; 1500];
         for (i, b) in grande.iter_mut().enumerate() { *b = (i % 251) as u8; }
-        v.save_file_in_dir(2, &nombre("CRECE   BIN"), &grande).expect("2a");
+        v.save_file_in_dir(2, &name("CRECE   BIN"), &grande).expect("2a");
 
         let mut dst = [0u8; 2048];
         let n = leer_archivo(&mut v, "CRECE   BIN", &mut dst).expect("debe estar");
@@ -1431,7 +1431,7 @@ mod tests {
     #[test]
     fn guardar_lo_que_no_existe_es_crear() {
         let (_turno, mut v) = volumen();
-        v.save_file_in_dir(2, &nombre("NUEVO   TXT"), b"hola").expect("debe crear");
+        v.save_file_in_dir(2, &name("NUEVO   TXT"), b"hola").expect("debe crear");
         let mut dst = [0u8; 512];
         let n = leer_archivo(&mut v, "NUEVO   TXT", &mut dst).expect("debe estar");
         assert_eq!(&dst[..n], b"hola");
@@ -1454,9 +1454,9 @@ mod tests {
     #[test]
     fn reemplazar_no_toca_al_vecino() {
         let (_turno, mut v) = volumen();
-        v.save_file_in_dir(2, &nombre("UNO     TXT"), b"el primero").expect("uno");
-        v.save_file_in_dir(2, &nombre("DOS     TXT"), b"el segundo").expect("dos");
-        v.save_file_in_dir(2, &nombre("UNO     TXT"), b"PISADO").expect("uno otra vez");
+        v.save_file_in_dir(2, &name("UNO     TXT"), b"el primero").expect("uno");
+        v.save_file_in_dir(2, &name("DOS     TXT"), b"el segundo").expect("dos");
+        v.save_file_in_dir(2, &name("UNO     TXT"), b"PISADO").expect("uno otra vez");
 
         let mut dst = [0u8; 512];
         let n = leer_archivo(&mut v, "DOS     TXT", &mut dst).expect("el vecino debe seguir ahi");
@@ -1470,8 +1470,8 @@ mod tests {
     #[test]
     fn sin_escritor_no_se_guarda() {
         let (_turno, _) = volumen();
-        let mut v = mount(leer, None, 0).expect("debe montar en solo lectura");
-        let r = v.save_file_in_dir(2, &nombre("NOPE    TXT"), b"x");
+        let mut v = mount(read, None, 0).expect("debe montar en solo lectura");
+        let r = v.save_file_in_dir(2, &name("NOPE    TXT"), b"x");
         assert!(matches!(r, Err(WriteError::ReadOnly)), "{r:?}");
     }
 }

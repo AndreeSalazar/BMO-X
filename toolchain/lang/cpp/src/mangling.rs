@@ -116,10 +116,10 @@ pub fn firma(params: &[TypeSpec]) -> String {
 }
 
 /// El simbolo de una funcion libre, quiza dentro de espacios de nombres.
-pub fn funcion(espacios: &[String], nombre: &str, params: &[TypeSpec]) -> String {
+pub fn funcion(espacios: &[String], name: &str, params: &[TypeSpec]) -> String {
     let mut s = String::new();
     for e in espacios { s.push_str(e); s.push('.'); }
-    s.push_str(nombre);
+    s.push_str(name);
     s.push_str(&firma(params));
     s
 }
@@ -127,12 +127,12 @@ pub fn funcion(espacios: &[String], nombre: &str, params: &[TypeSpec]) -> String
 /// El simbolo de un metodo. `this` **no** entra en la firma: va implicito en
 /// la clase, y meterlo haria que todos los metodos de una clase compartieran
 /// un prefijo redundante.
-pub fn metodo(espacios: &[String], clase: &str, nombre: &str, params: &[TypeSpec]) -> String {
+pub fn metodo(espacios: &[String], clase: &str, name: &str, params: &[TypeSpec]) -> String {
     let mut s = String::new();
     for e in espacios { s.push_str(e); s.push('.'); }
     s.push_str(clase);
     s.push('.');
-    s.push_str(nombre);
+    s.push_str(name);
     s.push_str(&firma(params));
     s
 }

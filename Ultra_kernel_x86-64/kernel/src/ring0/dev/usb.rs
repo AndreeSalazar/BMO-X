@@ -399,7 +399,7 @@ pub fn poll_ascii() -> Option<u8> {
 ///
 /// # Que hace
 ///
-/// Le quita la pantalla al dueno actual (ver `fb::rescatar`, que no echa al
+/// Le quita la pantalla al dueno actual (ver `fb::rescue`, que no echa al
 /// compositor) y la entrada. El escritorio esta esperando en su bucle a que el
 /// dueno vuelva a `0`, asi que **se recupera solo** -- no hace falta avisarle.
 ///
@@ -420,11 +420,11 @@ fn tecla_del_dueno(t: Option<u8>) -> Option<u8> {
     if m & MOD_CTRL == 0 || m & MOD_ALT == 0 {
         return Some(b);
     }
-    match crate::ring0::obj::fb::rescatar() {
+    match crate::ring0::obj::fb::rescue() {
         Some(pid) => {
             // La entrada va DETRAS de la pantalla: si solo se pudiera hacer una,
             // la que importa es la que devuelve la imagen.
-            let _ = crate::ring0::obj::input::soltar(pid);
+            let _ = crate::ring0::obj::input::release(pid);
             crate::ring0::cabina::warn("input", "entrada RESCATADA por el teclado", pid as u64);
             None
         }

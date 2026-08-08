@@ -78,7 +78,7 @@ fn devolver_un_struct_por_valor_se_rechaza_con_motivo() {
 // -- Arrays DENTRO de un agregado --------------------------------------
 //
 // La sonda de c-gen los encontro en una `union`, pero fallaban **igual en un
-// struct**: no era el agregado, era el declarador. Un `char nombre[8]` dentro
+// struct**: no era el agregado, era el declarador. Un `char name[8]` dentro
 // de una estructura es lo primero que trae cualquier formato de fichero -- DOOM
 // nombra asi cada lump de su WAD.
 

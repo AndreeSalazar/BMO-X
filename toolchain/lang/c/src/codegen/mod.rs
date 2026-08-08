@@ -557,7 +557,7 @@ impl Codegen {
                 | Expr::BitAnd(a,b) | Expr::BitXor(a,b) | Expr::BitOr(a,b) | Expr::LAnd(a,b) | Expr::LOr(a,b)
                 | Expr::Shl(a,b) | Expr::Shr(a,b) => { self.collect_expr_strings(a); self.collect_expr_strings(b); }
             Expr::Conditional(c,t,f) => { self.collect_expr_strings(c); self.collect_expr_strings(t); self.collect_expr_strings(f); }
-            Expr::Call(nombre, args) => {
+            Expr::Call(name, args) => {
                 // * AQUI SE DEDUCE `WANTS_SCREEN`, y tiene que ser aqui.
                 //
                 // La tentacion es mirarlo en `Expr::Syscall`, donde esta el
@@ -569,7 +569,7 @@ impl Codegen {
                 // `0x09` es `BMO_OP_PANTALLA_RECLAMAR`. Se pide tambien que el
                 // callee sea una de las dos puertas: un `0x09` suelto como
                 // segundo argumento de cualquier funcion no significa nada.
-                if (nombre == "bmo_valor" || nombre == "bmo_codigo") && args.len() >= 2 {
+                if (name == "bmo_valor" || name == "bmo_codigo") && args.len() >= 2 {
                     if let Expr::Int(0x09) = args[1] {
                         self.quiere_pantalla = true;
                     }
@@ -799,11 +799,11 @@ impl Codegen {
     /// diciendo *"no existe la funcion 'X'"* con el nombre delante, que es un
     /// mejor error que un `panic` del compilador -- y ese camino ya esta probado
     /// (`una_funcion_desconocida_sigue_fallando_con_su_nombre`).
-    fn emit_call_sintetizada(&mut self, nombre: &str) {
+    fn emit_call_sintetizada(&mut self, name: &str) {
         self.code.extend_from_slice(&[0xE8]);
         self.call_relocs.push(CallReloc {
             offset: self.code.len(),
-            target: nombre.to_string(),
+            target: name.to_string(),
         });
         self.code.extend_from_slice(&[0, 0, 0, 0]);
     }
@@ -866,9 +866,9 @@ impl Codegen {
                 faltan.push(reloc.target.clone());
             }
         }
-        for nombre in faltan {
+        for name in faltan {
             self.errors.push(format!(
-                "no existe la funcion '{nombre}' que se llama (aqui no hay enlazado: \
+                "no existe la funcion '{name}' que se llama (aqui no hay enlazado: \
                  todo lo que se llama tiene que estar en esta unidad)"
             ));
         }
@@ -1257,13 +1257,13 @@ impl Codegen {
     /// programa que no lee ficheros no debe pagar por la maquinaria de los que
     /// si. Por eso se pregunta por el nombre en vez de reservarlas siempre.
     fn publicar_bloque(&mut self) {
-        for (nombre, reg) in [("__bmo_bloque_base", 0u8), ("__bmo_bloque_cap", 1u8)] {
-            if !self.global_offsets.contains_key(nombre) {
+        for (name, reg) in [("__bmo_bloque_base", 0u8), ("__bmo_bloque_cap", 1u8)] {
+            if !self.global_offsets.contains_key(name) {
                 continue;
             }
             // lea rdi, [rip+0]  (el fixup pone la direccion de la global)
             self.code.extend_from_slice(&[0x48, 0x8D, 0x3D, 0, 0, 0, 0]);
-            self.global_fixups.push((self.code.len() - 4, nombre.to_string()));
+            self.global_fixups.push((self.code.len() - 4, name.to_string()));
             if reg == 0 {
                 self.code.extend_from_slice(&[0x48, 0x89, 0x07]); // mov [rdi], rax
             } else {
@@ -1921,9 +1921,9 @@ impl Codegen {
         }
     }
 
-    /// `mov rax, [rsp + ranura*8]` -- lee un argumento ya calculado.
-    fn emit_cargar_de_pila(&mut self, ranura: usize) {
-        let disp = (ranura * 8) as i64;
+    /// `mov rax, [rsp + slot*8]` -- lee un argumento ya calculado.
+    fn emit_cargar_de_pila(&mut self, slot: usize) {
+        let disp = (slot * 8) as i64;
         if disp <= 127 {
             // 48 8B 44 24 disp8
             self.code.extend_from_slice(&[0x48, 0x8B, 0x44, 0x24, disp as u8]);

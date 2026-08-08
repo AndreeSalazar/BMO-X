@@ -29,7 +29,7 @@ impl core::fmt::Display for AdaError {
 /// de COBOL a proposito.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TipoDecimal {
-    pub nombre: String,
+    pub name: String,
     /// Cuantos decimales. `delta 0.01` -> 2. Es la escala.
     pub escala: u32,
     /// Cuantas cifras significativas admite. `digits 12` -> 12.
@@ -39,7 +39,7 @@ pub struct TipoDecimal {
 /// Una variable declarada.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Declaracion {
-    pub nombre: String,
+    pub name: String,
     /// El tipo escrito: `Integer`, o el nombre de un tipo decimal propio.
     pub tipo: String,
     /// La escala ya resuelta: 0 para `Integer`.
@@ -91,7 +91,7 @@ pub enum Sentencia {
 /// El programa entero: un procedimiento con sus declaraciones y su cuerpo.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Programa {
-    pub nombre: String,
+    pub name: String,
     pub tipos: Vec<TipoDecimal>,
     pub declaraciones: Vec<Declaracion>,
     pub cuerpo: Vec<Sentencia>,

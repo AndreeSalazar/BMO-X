@@ -289,7 +289,7 @@ static mut APARCADOS_N: usize = 0;
 static mut APARCADOS_TOTAL: u32 = 0;
 static mut APARCADOS_PERDIDOS: u32 = 0;
 
-/// `(aparcados en total, perdidos por lleno, aparcados ahora mismo)`.
+/// `(aparcados en total, dropped por lleno, aparcados ahora mismo)`.
 pub fn evt_park_stats() -> (u32, u32, u32) {
     unsafe { (APARCADOS_TOTAL, APARCADOS_PERDIDOS, APARCADOS_N as u32) }
 }

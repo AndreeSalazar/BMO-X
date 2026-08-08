@@ -53,7 +53,7 @@ pub enum Modo {
 }
 
 impl Modo {
-    pub fn nombre(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Modo::Normal => "normal",
             Modo::Fijo => "fijo (nadie roba el teclado)",
@@ -74,7 +74,7 @@ impl Modo {
     }
 
     /// El siguiente, para conmutar con una tecla.
-    pub fn siguiente(self) -> Modo {
+    pub fn next(self) -> Modo {
         match self {
             Modo::Normal => Modo::Fijo,
             Modo::Fijo => Modo::Puntero,
@@ -101,7 +101,7 @@ pub struct Foco {
     /// haria que Alt+Tab+Tab volviera al principio en vez de avanzar, porque
     /// cada paso moveria la de destino al frente y la siguiente seria la que
     /// acabas de dejar.
-    senalando: Option<usize>,
+    pointing_at: Option<usize>,
 }
 
 impl Default for Foco {
@@ -116,7 +116,7 @@ impl Foco {
             orden: [0; MAX_VENTANAS],
             n: 0,
             modo: Modo::Normal,
-            senalando: None,
+            pointing_at: None,
         }
     }
 
@@ -141,7 +141,7 @@ impl Foco {
     /// Quien tiene el foco, o `None` si no hay ninguna abierta.
     ///
     /// * **Esto NO cambia mientras conmutas.** Con Alt pulsado, lo resaltado es
-    /// una *propuesta* --[`Foco::senalada`]-- y el teclado sigue yendo a donde
+    /// una *propuesta* --[`Foco::pointed_at`]-- y el teclado sigue yendo a donde
     /// iba hasta que sueltas. Son dos preguntas distintas y mezclarlas se nota:
     /// una tecla escrita a mitad de un Alt+Tab acabaria en una ventana que
     /// todavia no habias elegido.
@@ -154,18 +154,18 @@ impl Foco {
 
     /// La que esta resaltada en el conmutador: la que RECIBIRA el foco si
     /// sueltas Alt ahora. Sin conmutar es la que ya lo tiene.
-    pub fn senalada(&self) -> Option<u8> {
+    pub fn pointed_at(&self) -> Option<u8> {
         if self.n == 0 {
             return None;
         }
-        Some(self.orden[self.indice_senalado()])
+        Some(self.orden[self.pointed_index()])
     }
 
     /// Su posicion en la lista, que es lo que el conmutador necesita para
     /// resaltar una fila. Se da hecho: calcularlo fuera obliga a buscar el id
     /// en la lista, y dos ventanas con el mismo id resaltarian la que no es.
-    pub fn indice_senalado(&self) -> usize {
-        self.senalando.unwrap_or(0)
+    pub fn pointed_index(&self) -> usize {
+        self.pointing_at.unwrap_or(0)
     }
 
     /// Es de esta ventana la tecla que acaba de llegar?
@@ -184,12 +184,12 @@ impl Foco {
     /// Se acabo la conmutacion sin elegir.
     ///
     /// * Hace falta en TODO lo que mueve la lista --abrir, cerrar, un clic-- y no
-    /// es cosmetico: `senalando` es un **indice**, no un id. Insertar o quitar
+    /// es cosmetico: `pointing_at` es un **indice**, no un id. Insertar o quitar
     /// una ventana desplaza las filas por debajo del resaltado, asi que un
     /// indice que sobrevive a un cambio de lista senala a otra ventana. Es el
     /// clasico de guardar una posicion en vez de una identidad.
     pub fn cancelar_conmutacion(&mut self) {
-        self.senalando = None;
+        self.pointing_at = None;
     }
 
     /// Abre una ventana. Si ya estaba, no se duplica.
@@ -197,7 +197,7 @@ impl Foco {
     /// En `Normal` se lleva el foco; en `Fijo` entra **detras** de la que lo
     /// tiene, que es exactamente *focus stealing prevention*: aparece, se ve,
     /// y no te quita el teclado a mitad de una frase.
-    pub fn abrir(&mut self, ventana: u8) {
+    pub fn open(&mut self, ventana: u8) {
         if let Some(p) = self.posicion(ventana) {
             if self.modo != Modo::Fijo {
                 self.al_frente(p);
@@ -221,7 +221,7 @@ impl Foco {
 
     /// Cierra una ventana. El foco pasa a la siguiente de la MRU, que es la
     /// ultima que se uso antes -- y no a una cualquiera.
-    pub fn cerrar(&mut self, ventana: u8) {
+    pub fn close(&mut self, ventana: u8) {
         let Some(p) = self.posicion(ventana) else { return };
         for i in p..self.n - 1 {
             self.orden[i] = self.orden[i + 1];
@@ -253,8 +253,8 @@ impl Foco {
         if self.n < 2 {
             return;
         }
-        let actual = self.senalando.unwrap_or(0);
-        self.senalando = Some((actual + 1) % self.n);
+        let actual = self.pointing_at.unwrap_or(0);
+        self.pointing_at = Some((actual + 1) % self.n);
     }
 
     /// Igual pero hacia atras, para `Alt+Shift+Tab`.
@@ -262,14 +262,14 @@ impl Foco {
         if self.n < 2 {
             return;
         }
-        let actual = self.senalando.unwrap_or(0);
-        self.senalando = Some((actual + self.n - 1) % self.n);
+        let actual = self.pointing_at.unwrap_or(0);
+        self.pointing_at = Some((actual + self.n - 1) % self.n);
     }
 
     /// Se esta conmutando ahora mismo? El compositor lo usa para saber si
     /// tiene que pintar la ventanita del conmutador.
     pub fn conmutando(&self) -> bool {
-        self.senalando.is_some()
+        self.pointing_at.is_some()
     }
 
     /// Se solto Alt: la senalada pasa al frente **de verdad**.
@@ -278,7 +278,7 @@ impl Foco {
     /// dos veces seguidas te devuelva a donde estabas: la primera vez mueve A
     /// al frente dejando B segunda, y la segunda mueve B al frente otra vez.
     pub fn soltar_conmutador(&mut self) {
-        if let Some(p) = self.senalando.take() {
+        if let Some(p) = self.pointing_at.take() {
             self.al_frente(p);
         }
     }
@@ -322,9 +322,9 @@ mod tests {
     #[test]
     fn abrir_una_ventana_le_da_el_foco() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
+        f.open(EJECUTAR);
         assert_eq!(f.actual(), Some(EJECUTAR));
-        f.abrir(DATOS);
+        f.open(DATOS);
         assert_eq!(f.actual(), Some(DATOS));
         assert!(!f.es_para(EJECUTAR), "una tecla tiene UN destino");
     }
@@ -335,9 +335,9 @@ mod tests {
     #[test]
     fn en_modo_fijo_una_ventana_nueva_no_roba_el_teclado() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
+        f.open(EJECUTAR);
         f.poner_modo(Modo::Fijo);
-        f.abrir(DATOS);
+        f.open(DATOS);
         assert_eq!(f.actual(), Some(EJECUTAR), "no puede robarlo");
         assert_eq!(f.abiertas(), 2, "pero SI esta abierta");
         // Y pedirlo a mano sigue funcionando: lo que se impide es tomarlo sin
@@ -355,8 +355,8 @@ mod tests {
     #[test]
     fn alt_tab_dos_veces_vuelve_a_la_anterior() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.abrir(DATOS); // el foco esta en DATOS
+        f.open(EJECUTAR);
+        f.open(DATOS); // el foco esta en DATOS
 
         f.conmutar();
         f.soltar_conmutador();
@@ -371,16 +371,16 @@ mod tests {
     #[test]
     fn con_alt_pulsado_cada_tab_avanza_uno() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.abrir(DATOS);
-        f.abrir(TERCERA); // MRU: TERCERA, DATOS, EJECUTAR
+        f.open(EJECUTAR);
+        f.open(DATOS);
+        f.open(TERCERA); // MRU: TERCERA, DATOS, EJECUTAR
 
         f.conmutar();
-        assert_eq!(f.senalada(), Some(DATOS));
+        assert_eq!(f.pointed_at(), Some(DATOS));
         f.conmutar();
-        assert_eq!(f.senalada(), Some(EJECUTAR));
+        assert_eq!(f.pointed_at(), Some(EJECUTAR));
         f.conmutar();
-        assert_eq!(f.senalada(), Some(TERCERA), "da la vuelta");
+        assert_eq!(f.pointed_at(), Some(TERCERA), "da la vuelta");
         f.soltar_conmutador();
         assert_eq!(f.lista(), &[TERCERA, DATOS, EJECUTAR], "la MRU no cambio");
     }
@@ -391,11 +391,11 @@ mod tests {
     #[test]
     fn mientras_conmutas_las_teclas_siguen_yendo_a_la_de_antes() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.abrir(DATOS); // el foco esta en DATOS
+        f.open(EJECUTAR);
+        f.open(DATOS); // el foco esta en DATOS
 
         f.conmutar();
-        assert_eq!(f.senalada(), Some(EJECUTAR), "eso es lo que se resalta");
+        assert_eq!(f.pointed_at(), Some(EJECUTAR), "eso es lo que se resalta");
         assert_eq!(f.actual(), Some(DATOS), "y esto es lo que recibe la tecla");
         assert!(f.es_para(DATOS));
 
@@ -406,26 +406,26 @@ mod tests {
     #[test]
     fn se_puede_conmutar_hacia_atras() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.abrir(DATOS);
-        f.abrir(TERCERA);
+        f.open(EJECUTAR);
+        f.open(DATOS);
+        f.open(TERCERA);
         f.conmutar_atras();
-        assert_eq!(f.senalada(), Some(EJECUTAR), "la ultima de la pila");
+        assert_eq!(f.pointed_at(), Some(EJECUTAR), "la ultima de la pila");
     }
 
-    /// * `senalando` es un INDICE, no un id: abrir una ventana desplaza las
+    /// * `pointing_at` es un INDICE, no un id: abrir una ventana desplaza las
     /// filas y el resaltado se quedaria apuntando a otra. Abrir cancela la
     /// conmutacion, y entonces soltar Alt no puede llevarte a una ventana que
     /// no elegiste.
     #[test]
     fn abrir_una_ventana_mientras_conmutas_no_deja_el_indice_colgado() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.abrir(DATOS);
+        f.open(EJECUTAR);
+        f.open(DATOS);
         f.conmutar();
         assert!(f.conmutando());
 
-        f.abrir(TERCERA);
+        f.open(TERCERA);
         assert!(!f.conmutando(), "la conmutacion se cancela");
         assert_eq!(f.actual(), Some(TERCERA));
         f.soltar_conmutador();
@@ -437,9 +437,9 @@ mod tests {
     #[test]
     fn un_clic_cancela_la_conmutacion() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.abrir(DATOS);
-        f.abrir(TERCERA);
+        f.open(EJECUTAR);
+        f.open(DATOS);
+        f.open(TERCERA);
         f.conmutar();
         f.clic_en(EJECUTAR);
         assert!(!f.conmutando());
@@ -451,11 +451,11 @@ mod tests {
     #[test]
     fn cerrar_la_ultima_deja_el_escritorio_sin_foco() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.cerrar(EJECUTAR);
+        f.open(EJECUTAR);
+        f.close(EJECUTAR);
         assert_eq!(f.abiertas(), 0);
         assert_eq!(f.actual(), None);
-        assert_eq!(f.senalada(), None);
+        assert_eq!(f.pointed_at(), None);
         assert!(!f.es_para(EJECUTAR));
     }
 
@@ -464,9 +464,9 @@ mod tests {
     #[test]
     fn esconder_la_del_foco_se_lo_pasa_a_la_que_queda() {
         let mut f = Foco::nuevo();
-        f.abrir(DATOS);
-        f.abrir(EJECUTAR);
-        f.cerrar(EJECUTAR);
+        f.open(DATOS);
+        f.open(EJECUTAR);
+        f.close(EJECUTAR);
         assert_eq!(f.actual(), Some(DATOS));
     }
 
@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn con_una_sola_ventana_conmutar_no_hace_nada() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
+        f.open(EJECUTAR);
         f.conmutar();
         assert_eq!(f.actual(), Some(EJECUTAR));
         assert!(!f.conmutando());
@@ -487,19 +487,19 @@ mod tests {
     #[test]
     fn al_cerrar_el_foco_va_a_la_ultima_usada() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.abrir(TERCERA);
-        f.abrir(DATOS); // MRU: DATOS, TERCERA, EJECUTAR
-        f.cerrar(DATOS);
+        f.open(EJECUTAR);
+        f.open(TERCERA);
+        f.open(DATOS); // MRU: DATOS, TERCERA, EJECUTAR
+        f.close(DATOS);
         assert_eq!(f.actual(), Some(TERCERA));
     }
 
     #[test]
     fn abrir_dos_veces_la_misma_no_la_duplica() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.abrir(DATOS);
-        f.abrir(EJECUTAR);
+        f.open(EJECUTAR);
+        f.open(DATOS);
+        f.open(EJECUTAR);
         assert_eq!(f.abiertas(), 2);
         assert_eq!(f.actual(), Some(EJECUTAR), "y se la trae al frente");
     }
@@ -510,8 +510,8 @@ mod tests {
     #[test]
     fn el_foco_sigue_al_puntero_solo_en_ese_modo() {
         let mut f = Foco::nuevo();
-        f.abrir(DATOS);
-        f.abrir(EJECUTAR);
+        f.open(DATOS);
+        f.open(EJECUTAR);
         f.puntero_en(DATOS);
         assert_eq!(f.actual(), Some(EJECUTAR), "en Normal el raton no manda");
 
@@ -522,17 +522,17 @@ mod tests {
 
     #[test]
     fn los_modos_rotan_y_vuelven() {
-        assert_eq!(Modo::Normal.siguiente(), Modo::Fijo);
-        assert_eq!(Modo::Fijo.siguiente(), Modo::Puntero);
-        assert_eq!(Modo::Puntero.siguiente(), Modo::Normal);
+        assert_eq!(Modo::Normal.next(), Modo::Fijo);
+        assert_eq!(Modo::Fijo.next(), Modo::Puntero);
+        assert_eq!(Modo::Puntero.next(), Modo::Normal);
     }
 
     /// Cerrar una que no esta abierta no rompe nada ni descuadra la cuenta.
     #[test]
     fn cerrar_una_que_no_estaba_no_hace_nada() {
         let mut f = Foco::nuevo();
-        f.abrir(EJECUTAR);
-        f.cerrar(TERCERA);
+        f.open(EJECUTAR);
+        f.close(TERCERA);
         assert_eq!(f.abiertas(), 1);
         assert_eq!(f.actual(), Some(EJECUTAR));
     }

@@ -59,8 +59,8 @@ pub struct Componente {
 }
 
 impl Componente {
-    const VACIO: Componente = Componente { bit: 0, tam: 0, offset: 0 };
-    pub fn nombre(&self) -> &'static str { nombre_componente(self.bit) }
+    const EMPTY: Componente = Componente { bit: 0, tam: 0, offset: 0 };
+    pub fn name(&self) -> &'static str { nombre_componente(self.bit) }
 }
 
 /// Lo que el procesador declara sobre su estado extendido.
@@ -87,11 +87,11 @@ pub struct Informe {
 }
 
 impl Informe {
-    pub const VACIO: Informe = Informe {
+    pub const EMPTY: Informe = Informe {
         xsave: false, osxsave: false, soportado: 0, xcr0: 0,
         area_actual: 0, area_maxima: 0,
         xsaveopt: false, xsavec: false, xsaves: false,
-        componentes: [Componente::VACIO; MAX_COMPONENTES], n_componentes: 0,
+        componentes: [Componente::EMPTY; MAX_COMPONENTES], n_componentes: 0,
     };
 
     pub fn comps(&self) -> &[Componente] { &self.componentes[..self.n_componentes] }
@@ -152,7 +152,7 @@ unsafe fn xgetbv0() -> u64 {
 
 /// Le pregunta al procesador. No cambia nada.
 pub fn medir() -> Informe {
-    let mut inf = Informe::VACIO;
+    let mut inf = Informe::EMPTY;
 
     // CPUID.1:ECX[26] = XSAVE implementado. Sin esto, la hoja 0xD no existe y
     // preguntarla devolveria basura.
@@ -255,7 +255,7 @@ pub fn verificar(inf: &Informe) -> Veredicto {
     Veredicto::Difiere
 }
 
-static mut INFORME: Informe = Informe::VACIO;
+static mut INFORME: Informe = Informe::EMPTY;
 static mut MEDIDO: bool = false;
 
 /// Mide, verifica y **comprueba que el area reservada da de si**.
@@ -346,4 +346,4 @@ fn pararse(motivo: &str, valor: u64) -> ! {
     }
 }
 
-pub fn informe() -> Informe { unsafe { if MEDIDO { INFORME } else { Informe::VACIO } } }
+pub fn informe() -> Informe { unsafe { if MEDIDO { INFORME } else { Informe::EMPTY } } }

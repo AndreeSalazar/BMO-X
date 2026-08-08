@@ -102,7 +102,7 @@ impl Puertos {
     }
 
     /// De aqui salio un aparato que esta instalado: el puerto queda tomado.
-    pub fn tomar(&mut self, port: u8) {
+    pub fn take(&mut self, port: u8) {
         if Self::cabe(port) {
             self.tomados |= 1 << port;
         }
@@ -111,7 +111,7 @@ impl Puertos {
     /// Se desenchufo: el puerto vuelve a estar libre **y con los intentos
     /// devueltos**. Sin esto, enchufar y desenchufar tres veces dejaria un
     /// puerto inservible hasta el siguiente reinicio.
-    pub fn soltar(&mut self, port: u8) {
+    pub fn release(&mut self, port: u8) {
         if Self::cabe(port) {
             self.tomados &= !(1 << port);
             self.intentos[port as usize] = 0;
@@ -129,7 +129,7 @@ mod tests {
     fn a_un_puerto_que_ya_dio_un_aparato_no_se_le_vuelve_a_tocar() {
         let mut p = Puertos::nuevo();
         p.anotar_intento(2);
-        p.tomar(2);
+        p.take(2);
         assert!(!p.se_puede_intentar(2), "resetearlo solo puede romperlo");
         assert!(p.tomado(2));
     }
@@ -165,8 +165,8 @@ mod tests {
         for _ in 0..MAX_INTENTOS {
             p.anotar_intento(4);
         }
-        p.tomar(4);
-        p.soltar(4);
+        p.take(4);
+        p.release(4);
         assert!(p.se_puede_intentar(4));
         assert_eq!(p.intentos(4), 0);
         assert!(!p.tomado(4));
@@ -179,7 +179,7 @@ mod tests {
         for _ in 0..MAX_INTENTOS {
             p.anotar_intento(0);
         }
-        p.tomar(5);
+        p.take(5);
         assert!(!p.se_puede_intentar(0));
         assert!(!p.se_puede_intentar(5));
         assert!(p.se_puede_intentar(6), "este no tiene nada que ver");
@@ -190,8 +190,8 @@ mod tests {
     fn un_puerto_fuera_de_rango_no_se_toca_ni_desborda() {
         let mut p = Puertos::nuevo();
         p.anotar_intento(200);
-        p.tomar(200);
-        p.soltar(200);
+        p.take(200);
+        p.release(200);
         assert!(!p.se_puede_intentar(200));
         assert!(!p.tomado(200));
     }

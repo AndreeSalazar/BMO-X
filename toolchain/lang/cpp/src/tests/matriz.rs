@@ -285,7 +285,7 @@ fn matriz_cpp_ejecuta_correctamente() {
 
     let total = casos.len();
     let mut rotos = Vec::new();
-    for (nombre, fuente, esperado) in casos {
+    for (name, fuente, esperado) in casos {
         let src = match fuente.strip_prefix("@FULL@") {
             Some(f) => f.to_string(),
             None => format!("int main() {{ {fuente} return 0; }}"),
@@ -293,7 +293,7 @@ fn matriz_cpp_ejecuta_correctamente() {
         let got = std::panic::catch_unwind(|| correr(&src))
             .unwrap_or_else(|_| "<no ejecuta>".into());
         if got != *esperado {
-            rotos.push(format!("  {nombre:<26} => {got:?}  (esperado {esperado:?})"));
+            rotos.push(format!("  {name:<26} => {got:?}  (esperado {esperado:?})"));
         }
     }
     assert!(
@@ -335,15 +335,15 @@ fn matriz_cpp_rechaza_con_el_paso_escrito() {
     ];
 
     let mut rotos = Vec::new();
-    for (nombre, fuente, paso) in casos {
+    for (name, fuente, paso) in casos {
         let src = match fuente.strip_prefix("@FULL@") {
             Some(f) => f.to_string(),
             None => format!("int main() {{ {fuente} return 0; }}"),
         };
         match compile_source_to_bef(&src) {
-            Ok(_) => rotos.push(format!("  {nombre:<24} COMPILO, y no deberia")),
+            Ok(_) => rotos.push(format!("  {name:<24} COMPILO, y no deberia")),
             Err(e) if !e.message.contains(&format!("PASO {paso}")) =>
-                rotos.push(format!("  {nombre:<24} no dijo PASO {paso}: {}", e.message)),
+                rotos.push(format!("  {name:<24} no dijo PASO {paso}: {}", e.message)),
             Err(_) => {}
         }
     }
@@ -390,12 +390,12 @@ fn matriz_cpp_explica_lo_que_esta_mal() {
     ];
 
     let mut rotos = Vec::new();
-    for (nombre, fuente, aguja) in casos {
+    for (name, fuente, aguja) in casos {
         let src = fuente.strip_prefix("@FULL@").unwrap_or(fuente).to_string();
         match compile_source_to_bef(&src) {
-            Ok(_) => rotos.push(format!("  {nombre:<24} COMPILO, y no deberia")),
+            Ok(_) => rotos.push(format!("  {name:<24} COMPILO, y no deberia")),
             Err(e) if !e.message.contains(aguja) =>
-                rotos.push(format!("  {nombre:<24} no dijo {aguja:?}: {}", e.message)),
+                rotos.push(format!("  {name:<24} no dijo {aguja:?}: {}", e.message)),
             Err(_) => {}
         }
     }

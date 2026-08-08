@@ -39,12 +39,12 @@ use crate::ring0::obj::cap;
 /// Cuantas consolas pueden existir a la vez. Una por terminal abierto.
 pub const MAX_CONSOLAS: usize = 4;
 /// Bytes de salida que aguanta cada una antes de descartar lo mas viejo.
-const ANILLO: usize = 2048;
+const RING: usize = 2048;
 
-pub const SIN_DUENO: u32 = u32::MAX;
+pub const NO_OWNER: u32 = u32::MAX;
 
 /// No quedan consolas libres.
-pub const ERROR_SIN_HUECO: u32 = 24;
+pub const ERROR_NO_FREE_SLOT: u32 = 24;
 
 /// Leer hasta **7** bytes: `(n << 56) | bytes_LE`, con `n` = cuantos son
 /// validos. `n == 0` = no hay nada.
@@ -81,26 +81,26 @@ static mut IN_BUF: [[u8; ENTRADA]; MAX_CONSOLAS] = [[0; ENTRADA]; MAX_CONSOLAS];
 static mut IN_LEE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 static mut IN_ESCRIBE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 
-static mut BUF: [[u8; ANILLO]; MAX_CONSOLAS] = [[0; ANILLO]; MAX_CONSOLAS];
+static mut BUF: [[u8; RING]; MAX_CONSOLAS] = [[0; RING]; MAX_CONSOLAS];
 static mut LEE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 static mut ESCRIBE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 static mut PERDIDOS: [u32; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
-/// Pid del LECTOR (el terminal). `SIN_DUENO` = ranura libre.
-static mut LECTOR: [u32; MAX_CONSOLAS] = [SIN_DUENO; MAX_CONSOLAS];
+/// Pid del LECTOR (el terminal). `NO_OWNER` = ranura libre.
+static mut LECTOR: [u32; MAX_CONSOLAS] = [NO_OWNER; MAX_CONSOLAS];
 
-/// A que consola escribe cada proceso. `(pid, indice)`; pid `SIN_DUENO` = vacio.
+/// A que consola escribe cada proceso. `(pid, indice)`; pid `NO_OWNER` = vacio.
 ///
 /// Tabla aparte y no un campo del proceso a proposito: el planificador no tiene
 /// por que saber de consolas, y esto se consulta solo en el borde del syscall.
-static mut SALIDA: [(u32, usize); MAX_CONSOLAS * 4] = [(SIN_DUENO, 0); MAX_CONSOLAS * 4];
+static mut SALIDA: [(u32, usize); MAX_CONSOLAS * 4] = [(NO_OWNER, 0); MAX_CONSOLAS * 4];
 
 /// Crea una consola y entrega su handle de lectura a `pid`.
-pub fn crear(pid: u32) -> Result<u64, u32> {
+pub fn create(pid: u32) -> Result<u64, u32> {
     unsafe {
-        let libre = (0..MAX_CONSOLAS).find(|&i| LECTOR[i] == SIN_DUENO);
+        let libre = (0..MAX_CONSOLAS).find(|&i| LECTOR[i] == NO_OWNER);
         let i = match libre {
             Some(i) => i,
-            None => return Err(ERROR_SIN_HUECO),
+            None => return Err(ERROR_NO_FREE_SLOT),
         };
         LEE[i] = 0;
         ESCRIBE[i] = 0;
@@ -112,7 +112,7 @@ pub fn crear(pid: u32) -> Result<u64, u32> {
                 Ok(h)
             }
             None => {
-                LECTOR[i] = SIN_DUENO;
+                LECTOR[i] = NO_OWNER;
                 Err(cap::ERROR_PERMISSION_DENIED)
             }
         }
@@ -121,7 +121,7 @@ pub fn crear(pid: u32) -> Result<u64, u32> {
 
 /// Manda la salida de `pid` a la consola `idx`. La llama el lanzador cuando un
 /// terminal entrega su consola a un hijo.
-pub fn asignar_salida(pid: u32, idx: usize) {
+pub fn assign_output(pid: u32, idx: usize) {
     if idx >= MAX_CONSOLAS {
         return;
     }
@@ -135,7 +135,7 @@ pub fn asignar_salida(pid: u32, idx: usize) {
             }
         }
         for e in tabla.iter_mut() {
-            if e.0 == SIN_DUENO {
+            if e.0 == NO_OWNER {
                 *e = (pid, idx);
                 return;
             }
@@ -148,13 +148,13 @@ pub fn asignar_salida(pid: u32, idx: usize) {
 }
 
 /// A que consola escribe `pid`, si es que escribe a alguna.
-pub fn salida_de(pid: u32) -> Option<usize> {
+pub fn output_of(pid: u32) -> Option<usize> {
     unsafe {
         let tabla = &*core::ptr::addr_of!(SALIDA);
         for e in tabla.iter() {
             if e.0 == pid {
                 // Una consola cuyo lector murio ya no encauza a nadie.
-                if LECTOR[e.1] == SIN_DUENO {
+                if LECTOR[e.1] == NO_OWNER {
                     return None;
                 }
                 return Some(e.1);
@@ -167,17 +167,17 @@ pub fn salida_de(pid: u32) -> Option<usize> {
 /// Mete bytes en el anillo. Si esta lleno, se descarta lo MAS VIEJO y se
 /// cuenta: en una consola, la linea que acabas de imprimir importa mas que la
 /// de hace dos mil bytes.
-pub fn escribir(idx: usize, datos: &[u8]) {
+pub fn write(idx: usize, datos: &[u8]) {
     if idx >= MAX_CONSOLAS {
         return;
     }
     unsafe {
         for &b in datos {
-            let sig = (ESCRIBE[idx] + 1) % ANILLO;
+            let sig = (ESCRIBE[idx] + 1) % RING;
             if sig == LEE[idx] {
                 // Lleno: avanza el lector, o sea que se pierde el byte mas
                 // antiguo. Se anota para que el terminal pueda decirlo.
-                LEE[idx] = (LEE[idx] + 1) % ANILLO;
+                LEE[idx] = (LEE[idx] + 1) % RING;
                 PERDIDOS[idx] = PERDIDOS[idx].saturating_add(1);
             }
             BUF[idx][ESCRIBE[idx]] = b;
@@ -187,7 +187,7 @@ pub fn escribir(idx: usize, datos: &[u8]) {
 }
 
 /// Saca hasta 7 bytes: `(n << 56) | empaquetado_LE`. Ver `CONSOLA_OP_LEER`.
-pub fn leer(idx: usize) -> u64 {
+pub fn read(idx: usize) -> u64 {
     if idx >= MAX_CONSOLAS {
         return 0;
     }
@@ -196,7 +196,7 @@ pub fn leer(idx: usize) -> u64 {
         let mut n = 0usize;
         while n < 7 && LEE[idx] != ESCRIBE[idx] {
             w[n] = BUF[idx][LEE[idx]];
-            LEE[idx] = (LEE[idx] + 1) % ANILLO;
+            LEE[idx] = (LEE[idx] + 1) % RING;
             n += 1;
         }
         // w[7] queda a cero por construccion: el bucle para en 7.
@@ -204,7 +204,7 @@ pub fn leer(idx: usize) -> u64 {
     }
 }
 
-pub fn perdidos(idx: usize) -> u64 {
+pub fn dropped(idx: usize) -> u64 {
     if idx >= MAX_CONSOLAS {
         return 0;
     }
@@ -214,7 +214,7 @@ pub fn perdidos(idx: usize) -> u64 {
 /// Mete bytes en el anillo de ENTRADA. Si esta lleno se descartan los NUEVOS
 /// --al reves que la salida-- porque aqui el orden es el que tecleo una persona:
 /// tirar lo viejo dejaria media linea sin principio.
-pub fn escribir_entrada(idx: usize, datos: &[u8]) {
+pub fn write_entry(idx: usize, datos: &[u8]) {
     if idx >= MAX_CONSOLAS {
         return;
     }
@@ -231,7 +231,7 @@ pub fn escribir_entrada(idx: usize, datos: &[u8]) {
 }
 
 /// Saca hasta 7 bytes de la ENTRADA: `(n << 56) | empaquetado_LE`.
-pub fn leer_entrada(idx: usize) -> u64 {
+pub fn read_entry(idx: usize) -> u64 {
     if idx >= MAX_CONSOLAS {
         return 0;
     }
@@ -248,26 +248,26 @@ pub fn leer_entrada(idx: usize) -> u64 {
 }
 
 /// Hay algun proceso cuya salida vaya a esta consola?
-pub fn hay_hijo(idx: usize) -> bool {
+pub fn has_child(idx: usize) -> bool {
     unsafe {
         let tabla = &*core::ptr::addr_of!(SALIDA);
-        tabla.iter().any(|e| e.0 != SIN_DUENO && e.1 == idx)
+        tabla.iter().any(|e| e.0 != NO_OWNER && e.1 == idx)
     }
 }
 
 /// Despacho de las operaciones sobre un handle de consola.
-pub fn operacion(idx: u64, operacion: u64, arg0: u64) -> Option<u64> {
+pub fn operation(idx: u64, operation: u64, arg0: u64) -> Option<u64> {
     let i = idx as usize;
-    match operacion {
-        CONSOLA_OP_LEER => Some(leer(i)),
-        CONSOLA_OP_PERDIDOS => Some(perdidos(i)),
+    match operation {
+        CONSOLA_OP_LEER => Some(read(i)),
+        CONSOLA_OP_PERDIDOS => Some(dropped(i)),
         CONSOLA_OP_ESCRIBIR => {
             let w = arg0.to_le_bytes();
             let n = w.iter().position(|&b| b == 0).unwrap_or(8);
-            escribir_entrada(i, &w[..n]);
+            write_entry(i, &w[..n]);
             Some(0)
         }
-        CONSOLA_OP_HAY_HIJO => Some(hay_hijo(i) as u64),
+        CONSOLA_OP_HAY_HIJO => Some(has_child(i) as u64),
         _ => None,
     }
 }
@@ -276,11 +276,11 @@ pub fn operacion(idx: u64, operacion: u64, arg0: u64) -> Option<u64> {
 /// hijos que escribian ahi vuelven al panel del kernel -- su salida deja de
 /// encauzarse, pero no desaparece. Si muere un escritor, solo se suelta su
 /// entrada de la tabla.
-pub fn proceso_muerto(pid: u32) {
+pub fn process_died(pid: u32) {
     unsafe {
         for i in 0..MAX_CONSOLAS {
             if LECTOR[i] == pid {
-                LECTOR[i] = SIN_DUENO;
+                LECTOR[i] = NO_OWNER;
                 LEE[i] = 0;
                 ESCRIBE[i] = 0;
                 IN_LEE[i] = 0;
@@ -290,7 +290,7 @@ pub fn proceso_muerto(pid: u32) {
         let tabla = &mut *core::ptr::addr_of_mut!(SALIDA);
         for e in tabla.iter_mut() {
             if e.0 == pid {
-                *e = (SIN_DUENO, 0);
+                *e = (NO_OWNER, 0);
             }
         }
     }

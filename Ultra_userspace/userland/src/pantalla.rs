@@ -82,7 +82,7 @@ pub struct Pantalla {
 impl Pantalla {
     /// Reclamarla. Solo un proceso puede tenerla a la vez; el kernel deja de
     /// dibujar mientras dure, y la recupera solo si este proceso muere.
-    pub fn reclamar() -> Option<Self> {
+    pub fn claim() -> Option<Self> {
         let cap = invoke(CURRENT_TASK, OP_FRAMEBUFFER_CLAIM, 0, 0, 0).valor()?;
         let base = invoke(cap, FB_OP_BASE, 0, 0, 0).valor()?;
         let dims = invoke(cap, FB_OP_DIMS, 0, 0, 0).valor()?;
@@ -97,7 +97,7 @@ impl Pantalla {
             stride: (stride >> 32) as u32,
             formato: stride as u32,
             bytes,
-            sucio: core::cell::Cell::new(VACIO),
+            sucio: core::cell::Cell::new(EMPTY),
             volcado: core::cell::Cell::new(Volcado {
                 fotogramas: 0,
                 bytes: 0,
@@ -116,11 +116,11 @@ impl Pantalla {
     /// y el primer pixel que escribiera seria un fallo de pagina. Aqui el
     /// sistema de tipos hace de guardia.
     ///
-    /// Para recuperarla, [`Pantalla::reclamar`] otra vez -- y hay que **repintar
+    /// Para recuperarla, [`Pantalla::claim`] otra vez -- y hay que **repintar
     /// entero**: mientras no era suya pudo pintar otro.
     ///
     /// Devuelve `false` si no era el dueno, en vez de fingir que la solto.
-    pub fn soltar(self) -> bool {
+    pub fn release(self) -> bool {
         invoke(CURRENT_TASK, OP_PANTALLA_SOLTAR, 0, 0, 0).valor().is_some()
     }
 
@@ -143,7 +143,7 @@ impl Pantalla {
         // que mantener en paralelo. Que sobren unos pixeles por fila es mas
         // barato que una segunda forma de calcular la misma direccion.
         let bytes = (self.stride as u64) * (self.alto as u64) * 4;
-        let Some(m) = Memoria::pedir(bytes) else {
+        let Some(m) = Memoria::request(bytes) else {
             return false;
         };
         self.lienzo = m.base() as *mut u32;
@@ -272,7 +272,7 @@ impl Pantalla {
     /// Igual se limpia la caja, porque llevarla puesta sin volcar seria mentir
     /// sobre lo que queda pendiente.
     pub fn volcar(&self) {
-        let (x0, y0, x1, y1) = self.sucio.replace(VACIO);
+        let (x0, y0, x1, y1) = self.sucio.replace(EMPTY);
         if self.lienzo == self.panel || x0 >= x1 || y0 >= y1 {
             return;
         }
@@ -327,7 +327,7 @@ impl Pantalla {
         v
     }
 
-    /// **Asegura que lo escrito se puede LEER.** Llamar antes de [`Self::leer`].
+    /// **Asegura que lo escrito se puede LEER.** Llamar antes de [`Self::read`].
     ///
     /// * Existe por el Ep. 25, y hace dos cosas distintas segun donde se dibuje:
     ///
@@ -358,7 +358,7 @@ impl Pantalla {
     /// Sin doble bufer esto lee memoria de video, que es cara y ademas exige
     /// [`Self::sincronizar_lectura`] antes. Con doble bufer es RAM normal.
     #[inline]
-    pub fn leer(&self, x: u32, y: u32) -> u32 {
+    pub fn read(&self, x: u32, y: u32) -> u32 {
         if x >= self.ancho || y >= self.alto {
             return 0;
         }
@@ -394,7 +394,7 @@ impl Pantalla {
 }
 
 /// La caja vacia: `x0 >= x1`, asi que no hay nada que volcar.
-const VACIO: (u32, u32, u32, u32) = (u32::MAX, u32::MAX, 0, 0);
+const EMPTY: (u32, u32, u32, u32) = (u32::MAX, u32::MAX, 0, 0);
 
 /// **Como llegan los pixeles del lienzo al panel.**
 ///

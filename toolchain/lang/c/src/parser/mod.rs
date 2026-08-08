@@ -308,7 +308,7 @@ impl Parser {
                             Token::Ident(n) => n,
                             t => return Err(CError::new(self.line(),format!("expected member name, got {:?}", t))),
                         };
-                        // * `char nombre[8];` -- un ARRAY como miembro.
+                        // * `char name[8];` -- un ARRAY como miembro.
                         //
                         // Faltaba, y el error que salia --"expected type, got
                         // OpenBracket"-- mandaba a mirar el tipo, que estaba
@@ -367,7 +367,7 @@ impl Parser {
                         globals.push(GlobalDecl::Struct(name, members));
                     }
                 } else {
-                    // `struct P nombre` -- o una variable global, o una funcion
+                    // `struct P name` -- o una variable global, o una funcion
                     // que DEVUELVE el struct.
                     if let Token::Ident(vname) = self.advance() {
                         // * Devolver un agregado por valor es un mecanismo
@@ -974,9 +974,9 @@ impl Parser {
         &mut self,
         funcion: &str,
         typ: TypeSpec,
-        nombre: String,
+        name: String,
     ) -> Result<(), CError> {
-        let real = format!("{}.{}", funcion, nombre);
+        let real = format!("{}.{}", funcion, name);
         let init = if *self.peek() == Token::Assign {
             self.advance();
             Some(self.parse_assign()?)
@@ -985,7 +985,7 @@ impl Parser {
         };
         self.skip_semicolon();
         self.var_types.insert(real.clone(), typ.clone());
-        self.static_alias.insert(nombre, real.clone());
+        self.static_alias.insert(name, real.clone());
         self.globales_pendientes.push(GlobalDecl::Var(typ, real, init));
         Ok(())
     }
@@ -1009,7 +1009,7 @@ impl Parser {
                 self.advance();
                 typ = TypeSpec::Ptr(Box::new(typ));
             }
-            let Token::Ident(nombre) = self.peek().clone() else {
+            let Token::Ident(name) = self.peek().clone() else {
                 return Err(CError::new(self.line(),
                     "esperaba otro nombre despues de la coma en la declaracion"));
             };
@@ -1021,7 +1021,7 @@ impl Parser {
                 let n = match medida { Expr::Int(n) if n > 0 => n as u32, _ => 1 };
                 typ = TypeSpec::Array(Box::new(typ), n);
             }
-            salida.push((typ, nombre));
+            salida.push((typ, name));
         }
         Ok(())
     }

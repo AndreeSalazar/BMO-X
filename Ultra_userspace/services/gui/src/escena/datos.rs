@@ -312,14 +312,14 @@ fn caja_nodo(
     y: u32,
     ancho: u32,
     tipo: u64,
-    nombre: &[u8],
-    senalada: bool,
+    name: &[u8],
+    pointed_at: bool,
 ) {
     let (titulo, color) = color_clase(tipo);
     // La senalada lleva el borde del acento y un cuerpo un punto mas claro. Un
     // borde blanco a secas se lee como "esto esta roto"; el realce de una
     // seleccion tiene que ser el color del sistema, no una alarma.
-    let (borde, cuerpo) = if senalada {
+    let (borde, cuerpo) = if pointed_at {
         (color, CAJA_NODO_SEL)
     } else {
         (DATOS_BORDE, CAJA_NODO_FONDO)
@@ -345,11 +345,11 @@ fn caja_nodo(
     let cabe = ((ancho.saturating_sub(28)) / bmo::GLIFO_ANCHO) as usize;
     // Recortar por el final y no por el principio: los nombres de un volumen
     // se distinguen por delante (`maestro.bex`, `movim.txt`), no por detras.
-    let n = nombre.len().min(cabe);
-    p.texto_bytes(x + 24, y + 5 + bmo::GLIFO_ALTO + 3, &nombre[..n], TEXTO);
+    let n = name.len().min(cabe);
+    p.texto_bytes(x + 24, y + 5 + bmo::GLIFO_ALTO + 3, &name[..n], TEXTO);
     // Si no cupo entero se dice con un punto, no cortando a lo bruto: una
     // ventana estrecha no puede hacer que dos archivos parezcan el mismo.
-    if n < nombre.len() {
+    if n < name.len() {
         p.texto(
             x + 24 + n as u32 * bmo::GLIFO_ANCHO,
             y + 5 + bmo::GLIFO_ALTO + 3,
@@ -369,7 +369,7 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         p.texto(tx, ty, "ningun volumen ESTRATOS montado.", TEXTO_MAL);
         return;
     }
-    if !bmo::estratos::a_la_raiz() && bmo::estratos::tipo() == bmo::estratos::NADA {
+    if !bmo::estratos::a_la_raiz() && bmo::estratos::tipo() == bmo::estratos::NOTHING {
         p.texto(tx, ty, "el volumen monta pero no tiene raiz legible.", TEXTO_MAL);
         ty += bmo::GLIFO_ALTO + 4;
         p.texto(tx, ty, "el motivo esta en F11.", TEXTO_TENUE);
@@ -465,9 +465,9 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         // chocando contra un borde. Es lo que hace que se lea como un grafo.
         p.rect(hijos_x - 4, centro - 2, 5, 5, DATOS_ARISTA);
         let tipo = bmo::estratos::hijo_tipo(i as u64);
-        let mut nombre = [0u8; 64];
-        let n = bmo::estratos::hijo_nombre(i as u64, &mut nombre);
-        caja_nodo(p, hijos_x, hy, ancho_caja, tipo, &nombre[..n], i == c.sel);
+        let mut name = [0u8; 64];
+        let n = bmo::estratos::hijo_nombre(i as u64, &mut name);
+        caja_nodo(p, hijos_x, hy, ancho_caja, tipo, &name[..n], i == c.sel);
         hy += CAJA_NODO_ALTO + CAJA_NODO_HUECO;
     }
     // La espina vertical, del centro de la primera rama al de la ultima.

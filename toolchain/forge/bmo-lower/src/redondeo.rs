@@ -64,7 +64,7 @@ pub enum Modo {
 
 impl Modo {
     /// El nombre del estandar, para los mensajes de error.
-    pub fn nombre(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Modo::Truncar => "TRUNCATION",
             Modo::MasCercanoLejosDeCero => "NEAREST-AWAY-FROM-ZERO",
@@ -180,7 +180,7 @@ pub fn dividir(code: &mut Vec<u8>, modo: Modo) {
 /// La MISMA regla, resuelta al compilar.
 ///
 /// Hace falta porque un literal se escala en el compilador: `ADD 1.005 TO SALDO
-/// ROUNDED` con `SALDO PIC V99` tiene que guardar `1.01`, y ese `1.005` nunca
+/// ROUNDED` con `SALDO PIC V99` tiene que save `1.01`, y ese `1.005` nunca
 /// llega a ejecutarse -- se convierte en un inmediato antes.
 ///
 /// * Y de paso vale de **oraculo**: hay un test que compara esta funcion con lo
@@ -266,7 +266,7 @@ mod tests {
                     dividir_con(*v, 10, *modo),
                     esperados[i],
                     "{} con {v}/10",
-                    modo.nombre()
+                    modo.name()
                 );
             }
         }
@@ -292,7 +292,7 @@ mod tests {
                     dividir_con(*v, 10, *modo),
                     esperados[i],
                     "{} con {v}/10",
-                    modo.nombre()
+                    modo.name()
                 );
             }
         }
@@ -310,9 +310,9 @@ mod tests {
             Modo::HaciaArriba,
             Modo::HaciaAbajo,
         ] {
-            assert_eq!(dividir_con(500, 100, modo), 5, "{}", modo.nombre());
-            assert_eq!(dividir_con(-500, 100, modo), -5, "{}", modo.nombre());
-            assert_eq!(dividir_con(0, 100, modo), 0, "{}", modo.nombre());
+            assert_eq!(dividir_con(500, 100, modo), 5, "{}", modo.name());
+            assert_eq!(dividir_con(-500, 100, modo), -5, "{}", modo.name());
+            assert_eq!(dividir_con(0, 100, modo), 0, "{}", modo.name());
         }
     }
 
@@ -369,7 +369,7 @@ mod tests {
                         en_rust,
                         "{} con {v}/{divisor}: el codigo emitido dice {emitido} y el \
                          compilador {en_rust}",
-                        modo.nombre()
+                        modo.name()
                     );
                 }
             }
@@ -386,7 +386,7 @@ mod tests {
         // 19.99 x 3 -> 1999 x 300 = 599 700, y /100 da 59.97 EXACTO.
         // Ningun modo puede tocarlo, y esa es la garantia que sostiene COBOL.
         for modo in [Modo::Truncar, Modo::MasCercanoLejosDeCero, Modo::MasCercanoPar] {
-            assert_eq!(dividir_con(1999 * 300, 100, modo), 5997, "{}", modo.nombre());
+            assert_eq!(dividir_con(1999 * 300, 100, modo), 5997, "{}", modo.name());
         }
         // El 7,5 % de 133.33: 13333 x 750 = 9 999 750, /10 000 = 999.975
         // centavos. Truncado son 999 (9.99 EUR) y redondeado 1000 (10.00 EUR).

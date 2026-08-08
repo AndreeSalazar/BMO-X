@@ -248,19 +248,19 @@ fn validate_flag_coherence(
         (BefFlags::SIGNED, SectionKind::Signature, "signature"),
     ];
 
-    for (flag, kind, nombre) in pares {
+    for (flag, kind, name) in pares {
         let dice = flags.contains(flag);
         let trae = hay(kind);
         if dice && !trae {
             r.error(format!(
                 "el header dice {:?} y no hay seccion {}: el binario miente sobre si mismo",
-                flag, nombre
+                flag, name
             ));
         } else if trae && !dice {
             r.warn(format!(
                 "hay seccion {} y el header no lo anuncia ({:?} sin poner): \
                  un consumidor que se fie de la bandera no la mirara",
-                nombre, flag
+                name, flag
             ));
         }
     }
@@ -1177,7 +1177,7 @@ mod tests {
     fn una_seccion_sin_su_bandera_avisa_pero_no_invalida() {
         let mut b = BefBuilder::new();
         b.add_section(BefSection::code(vec![0xC3; 16]));
-        b.add_section(BefSection::manifest_toml(b"nombre = \"x\"\n".to_vec()));
+        b.add_section(BefSection::manifest_toml(b"name = \"x\"\n".to_vec()));
         let bytes = b.build().unwrap();
         let r = validate(&bytes);
         assert!(r.is_valid, "no invalida: {:?}", r.issues);

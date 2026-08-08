@@ -203,7 +203,7 @@ struct Layer {
     table: toml::Table,
 }
 
-/// Un fichero de `standards/<LENGUAJE>/<nombre>.toml`, **con su herencia
+/// Un fichero de `standards/<LENGUAJE>/<name>.toml`, **con su herencia
 /// resuelta**.
 ///
 /// Se llama "estandar" porque hoy los que hay son de comite (C11, COBOL85,

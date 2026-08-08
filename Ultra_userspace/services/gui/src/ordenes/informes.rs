@@ -30,10 +30,10 @@ pub(crate) fn seccion(s: &mut Salida, titulo: &[u8]) {
 }
 
 /// Un renglon `etiqueta ....... valor`, con la etiqueta a ancho fijo.
-pub(crate) fn etiqueta(s: &mut Salida, nombre: &[u8]) {
+pub(crate) fn etiqueta(s: &mut Salida, name: &[u8]) {
     s.texto(b"    ");
-    s.texto(nombre);
-    for _ in nombre.len()..14 {
+    s.texto(name);
+    for _ in name.len()..14 {
         s.byte(b' ');
     }
 }

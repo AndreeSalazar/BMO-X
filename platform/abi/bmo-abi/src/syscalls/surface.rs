@@ -243,7 +243,7 @@ pub const ES_TXT_RUTA: u64 = 1;
 /// lado** de que la capability funciona -- el programa dice que le dieron
 /// memoria; esto lo dice el kernel.
 ///
-/// Contador que ya existia en `ring0::obj::memoria::total_entregado()` y que
+/// Contador que ya existia en `ring0::obj::memoria::total_handed_over()` y que
 /// **no leia nadie**. Un contador que nadie consulta no es telemetria: es una
 /// variable.
 pub const INFO_MEM_ENTREGADA: u64 = 0x19;
@@ -461,7 +461,7 @@ pub const fn lienzo_filas(bytes: u64, stride_px: u32) -> u32 {
     (bytes / fila) as u32
 }
 
-/// **Despertar los otros nucleos.** Devuelve `vivos<<32 | esperados`, ambos sin
+/// **Despertar los otros nucleos.** Devuelve `alive<<32 | esperados`, ambos sin
 /// contar el BSP.
 ///
 /// * Existe porque el comando `smp` vivia **solo en el shell de Ring 0**, y ese

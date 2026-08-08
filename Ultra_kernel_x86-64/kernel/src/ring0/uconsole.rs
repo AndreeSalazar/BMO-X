@@ -101,7 +101,7 @@ pub fn lines_of(pid: u32) -> u32 {
 // se imprimen cuando hace falta -- que es justo cuando ya no se le puede
 // preguntar a el.
 const ULTIMAS: usize = 4;
-static mut COLA: [[[u8; LINE_MAX]; ULTIMAS]; MAX_PROCS] = [[[0u8; LINE_MAX]; ULTIMAS]; MAX_PROCS];
+static mut QUEUE: [[[u8; LINE_MAX]; ULTIMAS]; MAX_PROCS] = [[[0u8; LINE_MAX]; ULTIMAS]; MAX_PROCS];
 static mut COLA_LEN: [[usize; ULTIMAS]; MAX_PROCS] = [[0usize; ULTIMAS]; MAX_PROCS];
 /// Donde va la siguiente. Es un anillo: se queda con las ULTIMAS, que son las
 /// que dicen por que se murio -- las primeras dicen que arranco, y eso ya se vio.
@@ -111,7 +111,7 @@ fn recordar(slot: usize, linea: &[u8]) {
     unsafe {
         let punta = COLA_PUNTA[slot];
         let n = if linea.len() > LINE_MAX { LINE_MAX } else { linea.len() };
-        COLA[slot][punta][..n].copy_from_slice(&linea[..n]);
+        QUEUE[slot][punta][..n].copy_from_slice(&linea[..n]);
         COLA_LEN[slot][punta] = n;
         COLA_PUNTA[slot] = (punta + 1) % ULTIMAS;
     }
@@ -134,7 +134,7 @@ pub fn ultimas_palabras(pid: u32, mut pinta: impl FnMut(&str)) {
             if n == 0 {
                 continue;
             }
-            if let Ok(s) = core::str::from_utf8(&COLA[slot][idx][..n]) {
+            if let Ok(s) = core::str::from_utf8(&QUEUE[slot][idx][..n]) {
                 pinta(s);
             }
         }

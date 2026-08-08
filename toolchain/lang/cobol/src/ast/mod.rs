@@ -44,7 +44,7 @@ pub struct CobolFile {
 /// una lista plana de sentencias y no hay forma de escribir eso.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Parrafo {
-    pub nombre: String,
+    pub name: String,
     pub statements: Vec<CobolStatement>,
 }
 
@@ -77,8 +77,8 @@ impl CobolProgram {
     }
 
     /// El indice del parrafo con ese nombre, si existe.
-    pub fn parrafo(&self, nombre: &str) -> Option<usize> {
-        self.parrafos.iter().position(|p| p.nombre.eq_ignore_ascii_case(nombre))
+    pub fn parrafo(&self, name: &str) -> Option<usize> {
+        self.parrafos.iter().position(|p| p.name.eq_ignore_ascii_case(name))
     }
 
     /// El fichero declarado con ese nombre, si lo hay.
@@ -99,8 +99,8 @@ impl CobolProgram {
         }
     }
 
-    pub fn abrir_parrafo(&mut self, nombre: String) {
-        self.parrafos.push(Parrafo { nombre, statements: Vec::new() });
+    pub fn abrir_parrafo(&mut self, name: String) {
+        self.parrafos.push(Parrafo { name, statements: Vec::new() });
     }
 }
 

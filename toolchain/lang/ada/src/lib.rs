@@ -189,12 +189,12 @@ mod tests {
         ];
 
         let mut rotos = Vec::new();
-        for (nombre, decls, cuerpo, esperado) in casos {
+        for (name, decls, cuerpo, esperado) in casos {
             let src = programa(decls, cuerpo);
             let salio = std::panic::catch_unwind(|| correr(&src))
                 .unwrap_or_else(|_| "<no ejecuta>".into());
             if salio != *esperado {
-                rotos.push(format!("  {nombre:<26} => {salio:?}  (esperado {esperado:?})"));
+                rotos.push(format!("  {name:<26} => {salio:?}  (esperado {esperado:?})"));
             }
         }
         let total = casos.len();
@@ -268,7 +268,7 @@ mod tests {
     }
 
     /// Una variable que nadie declaro. Antes de existir esta comprobacion,
-    /// `cargar` habria emitido nada y el valor seria lo que hubiera en `rax`.
+    /// `load` habria emitido nada y el valor seria lo que hubiera en `rax`.
     #[test]
     fn una_variable_sin_declarar_se_rechaza() {
         let e = error_de(&programa("N : Integer;", "M := 1;"));

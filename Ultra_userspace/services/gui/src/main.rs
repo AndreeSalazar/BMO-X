@@ -64,7 +64,7 @@ use escena::calc::{pintar_calc, Calc, CalcCaja};
 use escena::cursor::Bajo;
 use escena::salida::{pintar_salida, Salida, TINTA_BIEN, TINTA_ECO, TINTA_MAL, TINTA_NORMAL};
 use escena::*;
-use ordenes::completar::{completar, motivo_archivo};
+use ordenes::complete::{complete, motivo_archivo};
 use ordenes::historial::Historial;
 use ordenes::informes::{informe_cpu, informe_memoria, informe_sistema};
 use ordenes::*;
@@ -177,24 +177,24 @@ fn nombre_volcado(objetivo: &[u8], dst: &mut [u8; 32]) -> usize {
 
 /// Escribe las filas `[desde..=hasta]` del historial en un archivo de texto.
 ///
-/// Devuelve `Ok(bytes)` o el motivo. **Nada llega al disco hasta `cerrar`**, y
-/// por eso el resultado de `cerrar` es el que se mira: es el unico que sabe si
+/// Devuelve `Ok(bytes)` o el motivo. **Nada llega al disco hasta `close`**, y
+/// por eso el resultado de `close` es el que se mira: es el unico que sabe si
 /// el archivo existe de verdad. Que se guarde encima de uno anterior es
 /// deliberado -- un volcado que fallara la segunda vez obligaria a inventar
 /// nombres, y un `salida1.txt`, `salida2.txt`... es exactamente el desorden que
 /// este archivo viene a evitar.
 fn volcar_salida(salida: &Salida, ruta: &[u8], desde: usize, hasta: usize) -> Result<usize, u32> {
-    let a = bmo::Archivo::crear(ruta)?;
+    let a = bmo::Archivo::create(ruta)?;
     let mut bytes = 0usize;
     for f in desde..=hasta {
         let linea = salida.linea(f);
-        bytes += a.escribir(linea);
+        bytes += a.write(linea);
         // `\r\n` y no `\n`: esto lo va a abrir el bloc de notas de Windows, y
         // el Notepad viejo ensena un archivo con saltos de Unix como una sola
         // linea kilometrica. Aqui el destinatario manda sobre la elegancia.
-        bytes += a.escribir(b"\r\n");
+        bytes += a.write(b"\r\n");
     }
-    if a.cerrar() {
+    if a.close() {
         Ok(bytes)
     } else {
         // El kernel no dice el motivo -- se queda en la CABINA (F11). Lo que si
@@ -252,7 +252,7 @@ fn destapar(
 /// graficos. Con la bandera, **el compositor decide** -- que es su trabajo, y la
 /// razon de que exista un compositor.
 ///
-/// Tres capas, cada una con lo suyo: el kernel arbitra (un dueno, `soltar`), el
+/// Tres capas, cada una con lo suyo: el kernel arbitra (un dueno, `release`), el
 /// BEF declara, y aqui se manda. La misma separacion que un planificador de GPU:
 /// el hardware no sabe que es importante, el planificador si.
 ///
@@ -274,7 +274,7 @@ fn destapar(
 fn quiere_pantalla(ruta: &[u8]) -> bool {
     let Ok(f) = bmo::Archivo::leer_de(ruta) else { return false };
     let mut cab = [0u8; 12];
-    if f.leer(&mut cab) < 12 {
+    if f.read(&mut cab) < 12 {
         return false;
     }
     // El magic se comprueba antes de creerse los flags: doce bytes de un `.txt`
@@ -302,11 +302,11 @@ const fn bmo_abi_magic() -> u32 {
 ///
 /// Consume la `Pantalla` y devuelve otra: entre medias **este proceso no tiene
 /// pantalla**, y que el tipo lo refleje es lo que impide pintar en un puntero ya
-/// desmapeado. Ver `bmo::Pantalla::soltar`.
+/// desmapeado. Ver `bmo::Pantalla::release`.
 ///
 /// # Por que se PREGUNTA quien la tiene, en vez de intentar tomarla
 ///
-/// La tentacion es un bucle de `Pantalla::reclamar()` hasta que salga. No sirve:
+/// La tentacion es un bucle de `Pantalla::claim()` hasta que salga. No sirve:
 /// justo despues de soltarla **esta libre**, asi que el primer intento acierta y
 /// se la quitamos al programa antes de que llegue a pedirla. Reclamar para
 /// averiguar si esta libre te la deja puesta.
@@ -314,13 +314,13 @@ const fn bmo_abi_magic() -> u32 {
 /// De ahi `INFO_PANTALLA_DUENO`, que contesta el `pid` del dueno (o `0`) sin
 /// tocar nada.
 ///
-/// # Y por que no vale `hay_hijo()`
+/// # Y por que no vale `has_child()`
 ///
 /// Porque contesta *"el hijo ha escrito en la consola"*, no *"el hijo esta
 /// vivo"* -- lo dice el vigilante de la corrida en este mismo archivo. `ray.bex`
 /// dibuja durante minutos sin imprimir una letra, asi que esperarlo por ahi
 /// habria vuelto en el primer fotograma. Lo que si es exacto es la propiedad de
-/// la pantalla: el kernel la libera en `fb::proceso_muerto`, o sea que el dueno
+/// la pantalla: el kernel la libera en `fb::process_died`, o sea que el dueno
 /// volviendo a `0` **es** el programa terminando.
 ///
 /// # Las dos fases, y el tope de la primera
@@ -351,14 +351,14 @@ fn prestar_pantalla(
     let mut tenia_entrada = false;
     if let Some(e) = entrada {
         tenia_entrada = true;
-        e.soltar();
+        e.release();
     }
     let recuperar = move || {
-        let p = bmo::Pantalla::reclamar()?;
-        let e = if tenia_entrada { bmo::Entrada::reclamar() } else { None };
+        let p = bmo::Pantalla::claim()?;
+        let e = if tenia_entrada { bmo::Entrada::claim() } else { None };
         Some((p, e))
     };
-    if !p.soltar() {
+    if !p.release() {
         // No eramos el dueno: raro, pero no se sigue a ciegas. Se intenta
         // recuperar y punto.
         return recuperar();
@@ -377,12 +377,12 @@ fn prestar_pantalla(
                 la_tomo = true;
                 break;
             }
-            bmo::ceder();
+            bmo::yield_screen();
         }
     }
     if la_tomo {
         while bmo::info(bmo::INFO_PANTALLA_DUENO) != 0 {
-            bmo::ceder();
+            bmo::yield_screen();
         }
     }
     recuperar()
@@ -394,7 +394,7 @@ pub extern "C" fn _start() -> ! {
     // deja de dibujar y nada de lo que se imprima despues llega al panel.
     bmo::consola("reclamo pantalla y entrada\n");
 
-    let Some(mut p) = bmo::Pantalla::reclamar() else {
+    let Some(mut p) = bmo::Pantalla::claim() else {
         bmo::consola("sin pantalla que reclamar\n");
         bmo::salir()
     };
@@ -419,12 +419,12 @@ pub extern "C" fn _start() -> ! {
     // periferico es un compositor que no arranca el dia que el periferico falla.
     // `mut` porque `presta` la SUELTA y la vuelve a reclamar: la capability se
     // va y vuelve, asi que el binding tiene que poder cambiar.
-    let mut entrada = bmo::Entrada::reclamar();
+    let mut entrada = bmo::Entrada::claim();
 
     // La consola de este terminal. Desde aqui, todo lo que lance escribe en
     // ESTE anillo y no en el panel del kernel -- que es lo unico que separaba
     // una caja de lanzar de un terminal de verdad.
-    let salida_cap = bmo::Consola::crear();
+    let salida_cap = bmo::Consola::create();
 
     let caja = Caja::nueva(p.ancho, p.alto);
 
@@ -594,7 +594,7 @@ pub extern "C" fn _start() -> ! {
     const V_DATOS: u8 = 1;
     const V_KLOG: u8 = 2;
     let mut foco = bmo_input::Foco::nuevo();
-    foco.abrir(V_EJECUTAR);
+    foco.open(V_EJECUTAR);
     let mut alt_antes = false;
     let mut conmutador_pintado = false;
     // Quien tapaba a quien en la vuelta anterior, para pintar solo cuando
@@ -615,7 +615,7 @@ pub extern "C" fn _start() -> ! {
     //
     // === Por que hace falta el `visto` ===
     //
-    // `ejecutar_en` vuelve en cuanto el hijo arranca, y **`hay_hijo()` puede
+    // `ejecutar_en` vuelve en cuanto el hijo arranca, y **`has_child()` puede
     // contestar `false` en el fotograma siguiente sin que el programa haya
     // terminado**: todavia no se ha puesto a escribir en la consola. Sin la
     // bandera, cada lanzamiento volcaria un archivo vacio en el acto y luego
@@ -762,11 +762,11 @@ pub extern "C" fn _start() -> ! {
                     // para el foco. Sin esto, Alt+Tab llevaria el teclado a una
                     // ventana que no esta en la pantalla: escribirias en algo
                     // invisible, que es la peor forma de perder una linea.
-                    foco.abrir(V_EJECUTAR);
+                    foco.open(V_EJECUTAR);
                     destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                     pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                 } else {
-                    foco.cerrar(V_EJECUTAR);
+                    foco.close(V_EJECUTAR);
                     borrar_caja(&p, &caja);
                 }
             }
@@ -790,8 +790,8 @@ pub extern "C" fn _start() -> ! {
                     escena::conmutador::pintar(
                         &p,
                         foco.lista(),
-                        foco.indice_senalado(),
-                        foco.modo().nombre(),
+                        foco.pointed_index(),
+                        foco.modo().name(),
                     );
                     conmutador_pintado = true;
                     continue;
@@ -804,13 +804,13 @@ pub extern "C" fn _start() -> ! {
                 // ninguna distribucion, `Ctrl+Alt` SI (es AltGr)-- y se anuncia
                 // en la propia ventanita, que es donde se lee el modo.
                 if alt_solo && (c == b'm' || c == b'M') {
-                    foco.poner_modo(foco.modo().siguiente());
+                    foco.poner_modo(foco.modo().next());
                     if conmutador_pintado {
                         escena::conmutador::pintar(
                             &p,
                             foco.lista(),
-                            foco.indice_senalado(),
-                            foco.modo().nombre(),
+                            foco.pointed_index(),
+                            foco.modo().name(),
                         );
                     } else if visible {
                         // Cambiarlo sin el conmutador abierto tambien tiene que
@@ -843,13 +843,13 @@ pub extern "C" fn _start() -> ! {
                 } else {
                     None
                 };
-                if let Some(abrir) = conmutar_datos {
-                    datos_abierta = abrir;
-                    if abrir {
+                if let Some(open) = conmutar_datos {
+                    datos_abierta = open;
+                    if open {
                         // Abrir es decirselo al foco y ya: en modo `Fijo` la
                         // ventana aparece y NO se lleva el teclado, y quien
                         // decide eso es la politica, no esta tecla.
-                        foco.abrir(V_DATOS);
+                        foco.open(V_DATOS);
                         escena::datos::pintar(&p, &caja_datos);
                         arriba_antes = if foco.es_para(V_DATOS) { V_DATOS } else { V_EJECUTAR };
                         // En `Fijo` se ha pintado encima de una caja que sigue
@@ -860,7 +860,7 @@ pub extern "C" fn _start() -> ! {
                     } else {
                         // Al cerrarla hay que devolver el fondo Y repintar
                         // lo que tapaba: la caja de Ejecutar esta debajo.
-                        foco.cerrar(V_DATOS);
+                        foco.close(V_DATOS);
                         borrar_ventana(
                             &p, &caja, caja_datos.x(), caja_datos.y(),
                             caja_datos.ancho(), caja_datos.alto(), visible,
@@ -883,21 +883,21 @@ pub extern "C" fn _start() -> ! {
                 } else {
                     None
                 };
-                if let Some(abrir) = conmutar_klog {
-                    klog_abierta = abrir;
-                    if abrir {
+                if let Some(open) = conmutar_klog {
+                    klog_abierta = open;
+                    if open {
                         // Se abre SIEMPRE por lo ultimo, que es lo que se quiere
                         // ver el 90% de las veces. Para ir al arranque estan
                         // RePag/AvPag.
                         klog_desplazamiento = 0;
-                        foco.abrir(V_KLOG);
+                        foco.open(V_KLOG);
                         escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
                         arriba_antes = if foco.es_para(V_KLOG) { V_KLOG } else { V_EJECUTAR };
                         if arriba_antes == V_EJECUTAR {
                             destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         }
                     } else {
-                        foco.cerrar(V_KLOG);
+                        foco.close(V_KLOG);
                         borrar_ventana(
                             &p, &caja, caja_klog.x, caja_klog.y,
                             caja_klog.ancho, caja_klog.alto, visible,
@@ -1062,16 +1062,16 @@ pub extern "C" fn _start() -> ! {
                         // tres lineas. Colar una mas ahi le cambiaria la
                         // cuenta a alguien que no la pidio.
                         let del_hijo = !calc.esperando
-                            && salida_cap.as_ref().map(|cc| cc.hay_hijo()).unwrap_or(false);
+                            && salida_cap.as_ref().map(|cc| cc.has_child()).unwrap_or(false);
 
                         if del_hijo {
                             if let Some(cc) = salida_cap.as_ref() {
-                                cc.escribir(&ruta[..n]);
+                                cc.write(&ruta[..n]);
                                 // El salto va aparte y SIEMPRE: `read_line`
                                 // espera a verlo para dar la linea por
                                 // cerrada. Sin el, el programa sigue
                                 // esperando algo que ya escribiste.
-                                cc.escribir(b"\n");
+                                cc.write(b"\n");
                             }
                             pintar_estado(&p, &caja, "para el programa", TEXTO_TENUE);
                             n = 0;
@@ -1090,13 +1090,13 @@ pub extern "C" fn _start() -> ! {
                                 pintar_estado(&p, &caja, "escribe algo", TEXTO_TENUE);
                             }
                             Orden::Listar(ruta_dir) => {
-                                match bmo::Directorio::abrir(ruta_dir) {
+                                match bmo::Directorio::open(ruta_dir) {
                                     Ok(d) => {
                                         let mut cuantas = 0u32;
                                         // Tope por si un directorio enorme se
                                         // comiera el fotograma entero.
                                         while cuantas < 256 {
-                                            let e = match d.siguiente() {
+                                            let e = match d.next() {
                                                 Some(e) => e,
                                                 None => break,
                                             };
@@ -1144,12 +1144,12 @@ pub extern "C" fn _start() -> ! {
                                         // `ring0/obj/directorio.rs`.
                                         let (linea, estado): (&[u8], &str) = if cod == 25 {
                                             (
-                                                b"  no queda ranura de directorio en el kernel.\n",
+                                                b"  no queda slot de directorio en el kernel.\n",
                                                 "sin ranura libre",
                                             )
                                         } else {
                                             (
-                                                b"  no puedo abrir esa carpeta.\n",
+                                                b"  no puedo open esa carpeta.\n",
                                                 "carpeta no encontrada",
                                             )
                                         };
@@ -1180,7 +1180,7 @@ pub extern "C" fn _start() -> ! {
                                         // que no sea texto llenaria la rejilla
                                         // de basura y se comeria el fotograma.
                                         loop {
-                                            let n = a.leer(&mut trozo);
+                                            let n = a.read(&mut trozo);
                                             if n == 0 { break; }
                                             salida.texto(&trozo[..n]);
                                             ultimo = trozo[n - 1];
@@ -1198,7 +1198,7 @@ pub extern "C" fn _start() -> ! {
                                             // pega al final del archivo.
                                             salida.byte(b'\n');
                                         }
-                                        a.cerrar();
+                                        a.close();
                                         pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                                     }
                                     Err(e) => {
@@ -1219,16 +1219,16 @@ pub extern "C" fn _start() -> ! {
                             // habia ahi lo puso el anfitrion al flashear o el
                             // kernel con su caja negra.
                             Orden::Escribir(ruta_arch, texto) => {
-                                match bmo::Archivo::crear(ruta_arch) {
+                                match bmo::Archivo::create(ruta_arch) {
                                     Ok(a) => {
-                                        let puestos = a.escribir(texto);
+                                        let puestos = a.write(texto);
                                         // El salto final: un archivo de texto
                                         // sin el ultimo salto es el clasico
                                         // que descuadra al siguiente que lo lee.
-                                        a.escribir(b"\n");
+                                        a.write(b"\n");
                                         // * Aqui es donde llega al disco. Antes
                                         // de esto no hay nada escrito.
-                                        if a.cerrar() {
+                                        if a.close() {
                                             salida.texto(b"  guardado: ");
                                             let mut d10 = [0u8; 10];
                                             let n10 = decimal(puestos as u64 + 1, &mut d10);
@@ -1317,7 +1317,7 @@ pub extern "C" fn _start() -> ! {
                                     salida.byte(b'\n');
                                     salida.con_tinta(TINTA_NORMAL);
                                     // La prueba de verdad no es este mensaje.
-                                    salida.texto(b"  ESTRATOS acaba de escribir en el disco.\n");
+                                    salida.texto(b"  ESTRATOS acaba de write en el disco.\n");
                                     salida.texto(b"  F12 debe decir esa misma generacion.\n");
                                     salida.texto(b"  y tras REINICIAR debe seguir diciendola:\n");
                                     salida.texto(b"  eso es lo que prueba que llego al plato.\n");
@@ -1528,15 +1528,15 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 pintar_salida(&p, &caja, &salida);
                                 p.volcar();
-                                let (vivos, esperados) = bmo::smp_despertar(cuantos);
-                                salida.con_tinta(if vivos == esperados {
+                                let (alive, esperados) = bmo::smp_despertar(cuantos);
+                                salida.con_tinta(if alive == esperados {
                                     TINTA_BIEN
                                 } else {
                                     TINTA_MAL
                                 });
                                 salida.texto(b"  nucleos en pie: ");
                                 let mut b = [0u8; 10];
-                                let k = decimal((vivos + 1) as u64, &mut b);
+                                let k = decimal((alive + 1) as u64, &mut b);
                                 salida.texto(&b[..k]);
                                 salida.texto(b" de ");
                                 let k = decimal((esperados + 1) as u64, &mut b);
@@ -1647,13 +1647,13 @@ pub extern "C" fn _start() -> ! {
                                     // archivo no este, y que este pero no se
                                     // pueda cargar --por ejemplo si pasa de
                                     // `MAX_BEX`, 1 MiB--. Le paso al dueno con
-                                    // `c/leer.bex`, que SALIA EN `ls` y aqui
+                                    // `c/read.bex`, que SALIA EN `ls` y aqui
                                     // decia que no estaba.
                                     //
                                     // Separarlas de verdad es tocar el ABI. Lo
                                     // que se hace ya es mandar a mirar donde el
                                     // kernel SI cuenta el motivo entero.
-                                    Err(bmo::ERROR_NO_ESTA) => pintar_estado(
+                                    Err(bmo::ERROR_NOT_THERE) => pintar_estado(
                                         &p,
                                         &caja,
                                         "no se pudo cargar: F11 dice por que",
@@ -1665,7 +1665,7 @@ pub extern "C" fn _start() -> ! {
                                         "rechazado: la firma no cuadra",
                                         TEXTO_MAL,
                                     ),
-                                    Err(bmo::ERROR_OCUPADO) => {
+                                    Err(bmo::ERROR_BUSY) => {
                                         pintar_estado(&p, &caja, "no hay hueco ahora mismo", TEXTO_MAL)
                                     }
                                     Err(_) => {
@@ -1689,7 +1689,7 @@ pub extern "C" fn _start() -> ! {
                     // TAB: completar.
                     b'\t' => {
                         let antes = n;
-                        n = completar(&mut ruta, n, &mut salida);
+                        n = complete(&mut ruta, n, &mut salida);
                         cur = n;
                         if n == antes {
                             pintar_estado(&p, &caja, "nada que completar", TEXTO_TENUE);
@@ -1922,12 +1922,12 @@ pub extern "C" fn _start() -> ! {
                                 let cap = salida_cap.as_ref().map(|c| c.cap).unwrap_or(0);
                                 if bmo::ejecutar_en(b"cobol/calcgui.bex", cap).is_ok() {
                                     if let Some(cc) = salida_cap.as_ref() {
-                                        cc.escribir(&calc.guardado[..calc.guardado_n]);
-                                        cc.escribir(b"\n");
-                                        cc.escribir(&[b'0' + calc.op]);
-                                        cc.escribir(b"\n");
-                                        cc.escribir(&calc.entrada[..calc.n]);
-                                        cc.escribir(b"\n");
+                                        cc.write(&calc.guardado[..calc.guardado_n]);
+                                        cc.write(b"\n");
+                                        cc.write(&[b'0' + calc.op]);
+                                        cc.write(b"\n");
+                                        cc.write(&calc.entrada[..calc.n]);
+                                        cc.write(b"\n");
                                     }
                                     calc.esperando = true;
                                     resp_n = 0;
@@ -2064,13 +2064,13 @@ pub extern "C" fn _start() -> ! {
 
                 if boton && !boton_antes {
                     // Un boton se dispara al PULSAR y no al soltar. Es lo que
-                    // hace todo el mundo, y con `cerrar` importa: soltar fuera
+                    // hace todo el mundo, y con `close` importa: soltar fuera
                     // para arrepentirse no funciona en ningun escritorio, asi
                     // que fingirlo aqui seria inventarse una costumbre.
                     match caja_datos.marco.boton_en(pos.x, pos.y) {
                         Some(Boton::Cerrar) => {
                             datos_abierta = false;
-                            foco.cerrar(V_DATOS);
+                            foco.close(V_DATOS);
                             borrar_ventana(
                                 &p, &caja, caja_datos.x(), caja_datos.y(),
                                 caja_datos.ancho(), caja_datos.alto(), visible,
@@ -2087,7 +2087,7 @@ pub extern "C" fn _start() -> ! {
                                 caja_datos.ancho(), caja_datos.alto(),
                             );
                             caja_datos.marco.minimizada = true;
-                            foco.cerrar(V_DATOS);
+                            foco.close(V_DATOS);
                             borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
                             arriba_antes = V_EJECUTAR;
                             destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
@@ -2148,7 +2148,7 @@ pub extern "C" fn _start() -> ! {
                         }
                     }
                 } else if !boton && caja_datos.marco.agarrado() {
-                    caja_datos.marco.soltar();
+                    caja_datos.marco.release();
                 } else if boton && caja_datos.marco.agarrado() {
                     // El sitio VIEJO hay que borrarlo antes de mover. Si no, la
                     // ventana deja un rastro de copias de si misma: aqui no hay
@@ -2190,7 +2190,7 @@ pub extern "C" fn _start() -> ! {
                         // encajada, con el foco y delante.
                         caja_datos.marco.minimizada = false;
                         caja_datos.marco.encajar(&p);
-                        foco.abrir(V_DATOS);
+                        foco.open(V_DATOS);
                         foco.clic_en(V_DATOS);
                         caja_datos.recolocar();
                         escena::datos::pintar(&p, &caja_datos);
@@ -2200,7 +2200,7 @@ pub extern "C" fn _start() -> ! {
                         if !visible {
                             visible = true;
                         }
-                        foco.abrir(V_EJECUTAR);
+                        foco.open(V_EJECUTAR);
                         foco.clic_en(V_EJECUTAR);
                         destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         arriba_antes = V_EJECUTAR;
@@ -2261,7 +2261,7 @@ pub extern "C" fn _start() -> ! {
             let mut buf = [0u8; 8];
             let mut vueltas = 0;
             while vueltas < 64 {
-                let leidos = c.leer(&mut buf);
+                let leidos = c.read(&mut buf);
                 if leidos == 0 {
                     break;
                 }
@@ -2447,7 +2447,7 @@ pub extern "C" fn _start() -> ! {
         // `Pantalla::vaciar`.
         p.vaciar();
 
-        bmo::ceder();
+        bmo::yield_screen();
     }
 }
 

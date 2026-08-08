@@ -64,7 +64,7 @@ pub enum Rechazo {
 }
 
 impl Rechazo {
-    pub fn nombre(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Rechazo::SinSitio => "el volumen esta al 95%: solo lectura",
             Rechazo::NoCabe => "no queda sitio para lo que se pide",
@@ -117,7 +117,7 @@ impl Transaccion {
     /// `copia_en_uso` es el bloque del superbloque que gano al montar (el de
     /// generacion mas alta): 0 o 1. `identidad_ok` es el gate del section 5 -- un
     /// volumen clonado a otro disco **no se escribe por accidente**.
-    pub fn abrir(sb: &Superblock, copia_en_uso: u64, identidad_ok: bool) -> Result<Self, Rechazo> {
+    pub fn open(sb: &Superblock, copia_en_uso: u64, identidad_ok: bool) -> Result<Self, Rechazo> {
         if !identidad_ok {
             return Err(Rechazo::OtroDisco);
         }
@@ -155,7 +155,7 @@ impl Transaccion {
     /// transaccion grande puede empezar cabiendo y dejar de caber a mitad, y
     /// pasarse aqui significa escribir fuera de la particion -- encima de lo que
     /// haya detras.
-    pub fn reservar(&mut self, cuantos: u64) -> Result<u64, Rechazo> {
+    pub fn reserve(&mut self, cuantos: u64) -> Result<u64, Rechazo> {
         if self.fase != Fase::Datos {
             return Err(Rechazo::FueraDeOrden);
         }
@@ -258,10 +258,10 @@ mod tests {
 
     #[test]
     fn una_transaccion_normal_recorre_las_cuatro_fases() {
-        let mut t = Transaccion::abrir(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
+        let mut t = Transaccion::open(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
         assert_eq!(t.fase(), Fase::Datos);
-        assert_eq!(t.reservar(3).unwrap(), 2);
-        assert_eq!(t.reservar(1).unwrap(), 5);
+        assert_eq!(t.reserve(3).unwrap(), 2);
+        assert_eq!(t.reserve(1).unwrap(), 5);
         assert_eq!(t.reservados(), 4);
         t.cerrar_datos().unwrap();
         t.barrera_hecha().unwrap();
@@ -279,7 +279,7 @@ mod tests {
     /// Y no depende de que nadie se acuerde: el metodo devuelve error.
     #[test]
     fn el_commit_no_puede_ir_antes_de_la_barrera() {
-        let mut t = Transaccion::abrir(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
+        let mut t = Transaccion::open(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
         assert_eq!(t.commit(puntero()), Err(Rechazo::FueraDeOrden));
         t.cerrar_datos().unwrap();
         assert_eq!(
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn el_superbloque_nuevo_va_siempre_a_la_otra_copia() {
         for (en_uso, esperado) in [(SUPER_A_BLOCK, SUPER_B_BLOCK), (SUPER_B_BLOCK, SUPER_A_BLOCK)] {
-            let mut t = Transaccion::abrir(&volumen(2, 1000), en_uso, true).unwrap();
+            let mut t = Transaccion::open(&volumen(2, 1000), en_uso, true).unwrap();
             t.cerrar_datos().unwrap();
             t.barrera_hecha().unwrap();
             assert_eq!(t.commit(puntero()).unwrap().0, esperado);
@@ -307,9 +307,9 @@ mod tests {
     /// no esta garantizado en el plato cuando el superbloque lo apunte.
     #[test]
     fn no_se_reserva_despues_de_cerrar_los_datos() {
-        let mut t = Transaccion::abrir(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
+        let mut t = Transaccion::open(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
         t.cerrar_datos().unwrap();
-        assert_eq!(t.reservar(1), Err(Rechazo::FueraDeOrden));
+        assert_eq!(t.reserve(1), Err(Rechazo::FueraDeOrden));
     }
 
     /// * El limite se comprueba en CADA reserva, no solo al abrir. Una
@@ -317,12 +317,12 @@ mod tests {
     /// aqui es escribir fuera de la particion -- encima de lo que haya detras.
     #[test]
     fn reservar_mas_de_lo_que_queda_se_rechaza_a_mitad() {
-        let mut t = Transaccion::abrir(&volumen(2, 100), SUPER_A_BLOCK, true).unwrap();
-        assert!(t.reservar(90).is_ok());
-        assert_eq!(t.reservar(20), Err(Rechazo::NoCabe));
+        let mut t = Transaccion::open(&volumen(2, 100), SUPER_A_BLOCK, true).unwrap();
+        assert!(t.reserve(90).is_ok());
+        assert_eq!(t.reserve(20), Err(Rechazo::NoCabe));
         // Y el rechazo NO consume: lo que cabia sigue cabiendo.
-        assert!(t.reservar(8).is_ok());
-        assert_eq!(t.reservar(1), Err(Rechazo::NoCabe));
+        assert!(t.reserve(8).is_ok());
+        assert_eq!(t.reserve(1), Err(Rechazo::NoCabe));
     }
 
     /// Una reserva que desbordaria el `u64` se rechaza en vez de dar la vuelta.
@@ -330,8 +330,8 @@ mod tests {
     /// el bloque 3 creyendo que es el 18 trillones.
     #[test]
     fn una_reserva_absurda_no_da_la_vuelta_al_contador() {
-        let mut t = Transaccion::abrir(&volumen(4, 1000), SUPER_A_BLOCK, true).unwrap();
-        assert_eq!(t.reservar(u64::MAX), Err(Rechazo::NoCabe));
+        let mut t = Transaccion::open(&volumen(4, 1000), SUPER_A_BLOCK, true).unwrap();
+        assert_eq!(t.reserve(u64::MAX), Err(Rechazo::NoCabe));
     }
 
     /// El gate de identidad del section 5: un volumen clonado a otro disco no se
@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn un_volumen_de_otro_disco_no_se_abre_para_escribir() {
         assert_eq!(
-            Transaccion::abrir(&volumen(2, 1000), SUPER_A_BLOCK, false).err(),
+            Transaccion::open(&volumen(2, 1000), SUPER_A_BLOCK, false).err(),
             Some(Rechazo::OtroDisco)
         );
     }
@@ -349,10 +349,10 @@ mod tests {
     #[test]
     fn un_volumen_al_95_no_admite_una_transaccion() {
         assert_eq!(
-            Transaccion::abrir(&volumen(950, 1000), SUPER_A_BLOCK, true).err(),
+            Transaccion::open(&volumen(950, 1000), SUPER_A_BLOCK, true).err(),
             Some(Rechazo::SinSitio)
         );
-        assert!(Transaccion::abrir(&volumen(949, 1000), SUPER_A_BLOCK, true).is_ok());
+        assert!(Transaccion::open(&volumen(949, 1000), SUPER_A_BLOCK, true).is_ok());
     }
 
     /// * Abandonar no deshace nada, y no hace falta: los bloques escritos
@@ -360,8 +360,8 @@ mod tests {
     /// superbloque **no se toco**. Es el regalo de no sobreescribir.
     #[test]
     fn abandonar_deja_el_volumen_como_estaba() {
-        let mut t = Transaccion::abrir(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
-        t.reservar(50).unwrap();
+        let mut t = Transaccion::open(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
+        t.reserve(50).unwrap();
         t.abandonar();
         assert_eq!(t.reservados(), 0);
         assert_eq!(t.fase(), Fase::Cerrada);
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn el_commit_conserva_la_identidad_del_volumen() {
         let sb = volumen(2, 1000);
-        let mut t = Transaccion::abrir(&sb, SUPER_A_BLOCK, true).unwrap();
+        let mut t = Transaccion::open(&sb, SUPER_A_BLOCK, true).unwrap();
         t.cerrar_datos().unwrap();
         t.barrera_hecha().unwrap();
         let (_, nuevo) = t.commit(puntero()).unwrap();
@@ -393,7 +393,7 @@ mod tests {
     /// superbloque dirian el mismo numero y ninguna ganaria.
     #[test]
     fn una_transaccion_cerrada_no_admite_otro_commit() {
-        let mut t = Transaccion::abrir(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
+        let mut t = Transaccion::open(&volumen(2, 1000), SUPER_A_BLOCK, true).unwrap();
         t.cerrar_datos().unwrap();
         t.barrera_hecha().unwrap();
         assert!(t.commit(puntero()).is_ok());

@@ -63,17 +63,17 @@ impl Fallo {
     /// conducta: no existe, no se permite, no cupo.
     pub fn codigo(self) -> u32 {
         match self {
-            Fallo::RutaVacia | Fallo::NoSeEncuentra(_) => ERROR_NO_ESTA,
+            Fallo::RutaVacia | Fallo::NoSeEncuentra(_) => ERROR_NOT_THERE,
             Fallo::FirmaMala | Fallo::SinFirma => ERROR_GATE,
-            Fallo::SinHueco | Fallo::Ocupado => ERROR_OCUPADO,
+            Fallo::SinHueco | Fallo::Ocupado => ERROR_BUSY,
             Fallo::NoSePudoLeer | Fallo::NoAdmitido => ERROR_NO_ADMITIDO,
         }
     }
 }
 
-pub const ERROR_NO_ESTA: u32 = 20;
+pub const ERROR_NOT_THERE: u32 = 20;
 pub const ERROR_GATE: u32 = 21;
-pub const ERROR_OCUPADO: u32 = 22;
+pub const ERROR_BUSY: u32 = 22;
 pub const ERROR_NO_ADMITIDO: u32 = 23;
 
 /// Todo lo que se supo del intento, salga bien o mal.
@@ -195,10 +195,10 @@ fn con_buffer(path: &str) -> Informe {
     // ESTRATOS primero: es el sistema de ficheros propio y el UNICO donde un
     // binario puede traer su firma pegada. Si no esta ahi, se cae a FAT32, que
     // sigue siendo de donde arranca la maquina.
-    let nodo_est = if est::is_mounted() { est::abrir(path) } else { None };
+    let nodo_est = if est::is_mounted() { est::open(path) } else { None };
 
     let (origen, n, veredicto) = if let Some(nd) = nodo_est {
-        let leidos = match est::leer(&nd, buf) {
+        let leidos = match est::read(&nd, buf) {
             Some(v) => v,
             None => {
                 return Informe {
@@ -221,7 +221,7 @@ fn con_buffer(path: &str) -> Informe {
                 // pinta todo como *"no esta: revisa la ruta"* -- un mensaje que
                 // te manda a mirar la ruta cuando la ruta es perfecta.
                 //
-                // Paso de verdad el 2026-08-07: `c/leer.bex` SALIA EN `ls` y
+                // Paso de verdad el 2026-08-07: `c/read.bex` SALIA EN `ls` y
                 // `run` decia que no estaba. El motivo real era otro --la imagen
                 // pesa 1,1 MB y `MAX_BEX` es 1 MiB, asi que no cabia en el
                 // bufer-- y no habia forma de saberlo desde fuera.
@@ -243,7 +243,7 @@ fn con_buffer(path: &str) -> Informe {
 
     // -- El gate: sin firma buena no hay ejecucion --
     //
-    // section 7 del diseno de ESTRATOS: `abrir(nodo, EJECUTAR)` comprueba `:firma` y
+    // section 7 del diseno de ESTRATOS: `open(nodo, EJECUTAR)` comprueba `:firma` y
     // si no cuadra NO entrega un handle ejecutable. Se aplica antes de admitir
     // nada, que es el unico momento en que sirve de algo.
     //
@@ -264,12 +264,12 @@ fn con_buffer(path: &str) -> Informe {
 
     // El nombre del proceso es el ultimo componente de la ruta: es lo que se
     // reconoce en el log, no la ruta entera.
-    let nombre = match path.as_bytes().iter().rposition(|&c| c == b'/' || c == b'\\') {
+    let name = match path.as_bytes().iter().rposition(|&c| c == b'/' || c == b'\\') {
         Some(i) => &path[i + 1..],
         None => path,
     };
 
-    let (res, pid) = match crate::ring0::task::proc::admit_from_disk(nombre, &buf[..n]) {
+    let (res, pid) = match crate::ring0::task::proc::admit_from_disk(name, &buf[..n]) {
         Some((tid, pid)) => (Ok(tid), Some(pid)),
         None => (Err(Fallo::NoAdmitido), None),
     };

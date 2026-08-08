@@ -105,7 +105,7 @@ impl UsbHidHal {
     /// Se desenchufo algo del puerto: queda libre y con los intentos devueltos.
     /// Lo llama el kernel al recibir el aviso de desconexion.
     pub fn soltar_puerto(&mut self, port: u8) {
-        self.puertos.soltar(port);
+        self.puertos.release(port);
     }
 
     /// Para el panel: `(puertos tomados, intentos gastados en el ultimo)`.
@@ -332,7 +332,7 @@ impl UsbHidHal {
         if cosecha.teclado || cosecha.raton {
             // De aqui salio algo que funciona: este puerto no se vuelve a
             // tocar. Resetearlo solo podria matarlo.
-            self.puertos.tomar(port);
+            self.puertos.take(port);
         } else {
             // * Y si no salio nada, **el slot se devuelve**. El aparato quedo
             // direccionado y nadie lo va a leer; dejar el slot pedido es lo que

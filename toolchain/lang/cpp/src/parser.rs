@@ -224,8 +224,8 @@ impl Parser {
     /// paso 6 puebla `plantillas` y esta funcion pasa a partir la gramatica en
     /// dos sin tocar nada mas.
     #[allow(dead_code)]
-    fn es_plantilla(&self, nombre: &str) -> bool {
-        self.plantillas.contains(nombre)
+    fn es_plantilla(&self, name: &str) -> bool {
+        self.plantillas.contains(name)
     }
 
     // -- Resolucion de sobrecarga ------------------------------------
@@ -410,7 +410,7 @@ impl Parser {
         self.come(&Token::Static);
         self.come(&Token::Const);
         let base = self.tipo_base()?;
-        let (tipo, nombre) = self.declarador(base)?;
+        let (tipo, name) = self.declarador(base)?;
 
         if *self.peek() == Token::OpenParen {
             self.avanzar();
@@ -418,7 +418,7 @@ impl Parser {
             self.exige(&Token::CloseParen)?;
             self.come(&Token::Const);
 
-            let simbolo = self.declarar_funcion(&nombre, &params, &tipo)?;
+            let simbolo = self.declarar_funcion(&name, &params, &tipo)?;
 
             if self.come(&Token::Semicolon) {
                 // Prototipo. Se registra la firma y no se emite nada: sirve
@@ -433,7 +433,7 @@ impl Parser {
             self.ambitos.salir();
             // * `main` NO se mangla. Es el punto de entrada que el codegen de C
             // busca por nombre, y manglarlo dejaria un `.bef` sin `main`.
-            let emitido = if nombre == "main" && self.espacios.is_empty() {
+            let emitido = if name == "main" && self.espacios.is_empty() {
                 "main".to_string()
             } else { simbolo };
             p.functions.push(Function { ret_type: tipo, name: emitido, params, body: cuerpo });
@@ -443,8 +443,8 @@ impl Parser {
         // Variable global.
         let init = if self.come(&Token::Assign) { Some(self.asignacion()?) } else { None };
         self.exige(&Token::Semicolon)?;
-        self.ambitos.declarar(&nombre, tipo.clone());
-        p.globals.push(GlobalDecl::Var(tipo, nombre, init));
+        self.ambitos.declarar(&name, tipo.clone());
+        p.globals.push(GlobalDecl::Var(tipo, name, init));
         Ok(())
     }
 
@@ -460,7 +460,7 @@ impl Parser {
     fn clase(&mut self) -> Result<Class, CppError> {
         let es_struct = *self.peek() == Token::Struct;
         self.avanzar();
-        let nombre = match self.avanzar() {
+        let name = match self.avanzar() {
             Token::Ident(n) => n,
             otro => return Err(self.err(format!("se esperaba el nombre de la clase y vino {otro:?}"))),
         };
@@ -518,9 +518,9 @@ impl Parser {
                 Token::Tilde => {
                     self.avanzar();
                     match self.avanzar() {
-                        Token::Ident(n) if n == nombre => {}
+                        Token::Ident(n) if n == name => {}
                         otro => return Err(self.err(format!(
-                            "el destructor de `{nombre}` se llama `~{nombre}`, no {otro:?}"))),
+                            "el destructor de `{name}` se llama `~{name}`, no {otro:?}"))),
                     }
                     self.exige(&Token::OpenParen)?;
                     if *self.peek() != Token::CloseParen {
@@ -528,21 +528,21 @@ impl Parser {
                     }
                     self.avanzar();
                     if dtor.is_some() {
-                        return Err(self.err(format!("`{nombre}` ya tiene destructor")));
+                        return Err(self.err(format!("`{name}` ya tiene destructor")));
                     }
                     let inicio = self.pos;
                     self.saltar_bloque()?;
                     dtor = Some((inicio, Method {
-                        name: format!("~{nombre}"), ret_type: TypeSpec::Void, params: vec![],
+                        name: format!("~{name}"), ret_type: TypeSpec::Void, params: vec![],
                         body: Vec::new(), is_virtual: false, is_override: false,
-                        is_const: false, access: Access::Public, class_name: nombre.clone(),
+                        is_const: false, access: Access::Public, class_name: name.clone(),
                     }));
                     continue;
                 }
 
                 // -- Constructor: `P(...) { ... }` -- el nombre de la clase
                 //    seguido de parentesis, y SIN tipo de retorno delante.
-                Token::Ident(n) if n == nombre && *self.peek_en(1) == Token::OpenParen => {
+                Token::Ident(n) if n == name && *self.peek_en(1) == Token::OpenParen => {
                     self.avanzar();
                     self.avanzar();
                     let params = self.parametros()?;
@@ -559,9 +559,9 @@ impl Parser {
                     let inicio = self.pos;
                     self.saltar_bloque()?;
                     ctores.push((inicio, Method {
-                        name: nombre.clone(), ret_type: TypeSpec::Void, params,
+                        name: name.clone(), ret_type: TypeSpec::Void, params,
                         body: Vec::new(), is_virtual: false, is_override: false,
-                        is_const: false, access: acceso, class_name: nombre.clone(),
+                        is_const: false, access: acceso, class_name: name.clone(),
                     }));
                     continue;
                 }
@@ -597,7 +597,7 @@ impl Parser {
                 cuerpos.push((inicio, Method {
                     name: miembro, ret_type: tipo, params, body: Vec::new(),
                     is_virtual: virtual_ahora, is_override: es_override, is_const: es_const,
-                    access: acceso, class_name: nombre.clone(),
+                    access: acceso, class_name: name.clone(),
                 }));
                 virtual_ahora = false;
             } else {
@@ -659,11 +659,11 @@ impl Parser {
         let mut metodos: HashMap<String, Vec<Firma>> = HashMap::new();
         for (_, m) in &cuerpos {
             let tipos: Vec<TypeSpec> = m.params.iter().map(|p| p.typ.clone()).collect();
-            let simbolo = crate::mangling::metodo(&self.espacios, &nombre, &m.name, &tipos);
+            let simbolo = crate::mangling::metodo(&self.espacios, &name, &m.name, &tipos);
             let lista = metodos.entry(m.name.clone()).or_default();
             if lista.iter().any(|f| f.simbolo == simbolo) {
                 return Err(self.err(format!(
-                    "`{nombre}::{}` esta declarado dos veces con los mismos parametros", m.name)));
+                    "`{name}::{}` esta declarado dos veces con los mismos parametros", m.name)));
             }
             lista.push(Firma { params: tipos, ret: m.ret_type.clone(), simbolo: simbolo.clone() });
             self.retornos.insert(simbolo, m.ret_type.clone());
@@ -671,10 +671,10 @@ impl Parser {
         let mut constructores: Vec<Firma> = Vec::new();
         for (_, m) in &ctores {
             let tipos: Vec<TypeSpec> = m.params.iter().map(|p| p.typ.clone()).collect();
-            let simbolo = crate::mangling::constructor(&self.espacios, &nombre, &tipos);
+            let simbolo = crate::mangling::constructor(&self.espacios, &name, &tipos);
             if constructores.iter().any(|f| f.simbolo == simbolo) {
                 return Err(self.err(format!(
-                    "`{nombre}` tiene dos constructores con los mismos parametros")));
+                    "`{name}` tiene dos constructores con los mismos parametros")));
             }
             constructores.push(Firma {
                 params: tipos, ret: TypeSpec::Void, simbolo: simbolo.clone() });
@@ -694,10 +694,10 @@ impl Parser {
             if m.is_override && heredada.is_none() {
                 return Err(self.err(format!(
                     "`{}::{}` dice `override` pero no hay ningun metodo virtual con ese \
-                     nombre en la base", nombre, m.name)));
+                     nombre en la base", name, m.name)));
             }
             let tipos: Vec<TypeSpec> = m.params.iter().map(|p| p.typ.clone()).collect();
-            let simbolo = crate::mangling::metodo(&self.espacios, &nombre, &m.name, &tipos);
+            let simbolo = crate::mangling::metodo(&self.espacios, &name, &m.name, &tipos);
             match heredada {
                 Some(r) => vtabla[r] = simbolo,
                 None => { ranura_de.insert(m.name.clone(), vtabla.len()); vtabla.push(simbolo); }
@@ -715,15 +715,15 @@ impl Parser {
             campos: layout.clone(), metodos, constructores,
             base: base.clone(), vtabla: vtabla.clone(), ranura_de, tam,
         };
-        self.clases.insert(nombre.clone(), info);
+        self.clases.insert(name.clone(), info);
 
         // -- Vuelta 2: los cuerpos, con la clase ya registrada --
         let vuelta = self.pos;
         let mut cuerpo_de = |p: &mut Self, inicio: usize, m: &mut Method| -> Result<(), CppError> {
             p.pos = inicio;
-            p.clase_actual = Some(nombre.clone());
+            p.clase_actual = Some(name.clone());
             p.ambitos.entrar();
-            p.ambitos.declarar("this", TypeSpec::Ptr(Box::new(TypeSpec::ClassRef(nombre.clone()))));
+            p.ambitos.declarar("this", TypeSpec::Ptr(Box::new(TypeSpec::ClassRef(name.clone()))));
             for pa in &m.params { p.ambitos.declarar(&pa.name, pa.typ.clone()); }
             m.body = p.bloque()?;
             p.ambitos.salir();
@@ -769,7 +769,7 @@ impl Parser {
         }
 
         Ok(Class {
-            name: nombre,
+            name: name,
             bases: base.into_iter().collect(),
             members: miembros,
             methods: metodos,
@@ -834,20 +834,20 @@ impl Parser {
     /// Rechaza redeclarar la MISMA firma con otro retorno, que es lo que C++
     /// prohibe: no se puede sobrecargar por retorno, asi que dos `f(int)` con
     /// retornos distintos son la misma funcion declarada dos veces mal.
-    fn declarar_funcion(&mut self, nombre: &str, params: &[Param], ret: &TypeSpec)
+    fn declarar_funcion(&mut self, name: &str, params: &[Param], ret: &TypeSpec)
         -> Result<String, CppError>
     {
         let tipos: Vec<TypeSpec> = params.iter().map(|p| p.typ.clone()).collect();
-        let simbolo = if nombre == "main" && self.espacios.is_empty() {
+        let simbolo = if name == "main" && self.espacios.is_empty() {
             "main".to_string()
         } else {
-            crate::mangling::funcion(&self.espacios, nombre, &tipos)
+            crate::mangling::funcion(&self.espacios, name, &tipos)
         };
-        let lista = self.funciones.entry(nombre.to_string()).or_default();
+        let lista = self.funciones.entry(name.to_string()).or_default();
         if let Some(ya) = lista.iter().find(|f| f.simbolo == simbolo) {
             if &ya.ret != ret {
                 return Err(self.err(format!(
-                    "`{nombre}` ya esta declarada con los mismos parametros y otro retorno: \
+                    "`{name}` ya esta declarada con los mismos parametros y otro retorno: \
                      C++ no permite sobrecargar por el tipo de retorno")));
             }
         } else {
@@ -872,7 +872,7 @@ impl Parser {
             self.come(&Token::Const);
             let base = self.tipo_base()?;
             // El nombre del parametro es opcional: `int f(int);` es legal.
-            let (tipo, nombre) = if matches!(self.peek(), Token::Ident(_))
+            let (tipo, name) = if matches!(self.peek(), Token::Ident(_))
                 || matches!(self.peek(), Token::Star | Token::And)
             {
                 self.declarador(base)?
@@ -892,9 +892,9 @@ impl Parser {
                     "`{}` es un parametro de coma flotante, y BMO C todavia no los PASA \
                      (evalua floats en xmm, pero la ABI de argumentos xmm esta pendiente). \
                      Se rechaza aqui a proposito: C lo acepta en silencio y no funciona",
-                    if nombre.is_empty() { "<sin nombre>" } else { &nombre })));
+                    if name.is_empty() { "<sin nombre>" } else { &name })));
             }
-            out.push(Param { typ: tipo, name: nombre, default: defecto });
+            out.push(Param { typ: tipo, name: name, default: defecto });
             if !self.come(&Token::Comma) { break; }
         }
         Ok(out)
@@ -963,7 +963,7 @@ impl Parser {
             else if self.come(&Token::And) { t = TypeSpec::Ref(Box::new(t)); }
             else { break; }
         }
-        let nombre = match self.avanzar() {
+        let name = match self.avanzar() {
             Token::Ident(n) => n,
             otro => return Err(self.err(format!("se esperaba un nombre y vino {otro:?}"))),
         };
@@ -977,7 +977,7 @@ impl Parser {
             self.exige(&Token::CloseBracket)?;
             t = TypeSpec::Array(Box::new(t), n);
         }
-        Ok((t, nombre))
+        Ok((t, name))
     }
 
     /// Lo que viene es una declaracion?
@@ -1014,7 +1014,7 @@ impl Parser {
         // falta una plantilla para que C++ muerda.
         let Token::Ident(n) = self.peek() else { return false };
         if !self.clases.contains_key(n) {
-            // Dos identificadores seguidos solo pueden ser `Tipo nombre`. Se
+            // Dos identificadores seguidos solo pueden ser `Tipo name`. Se
             // reconoce aunque el tipo no exista, para que el error sea
             // *"`P` no es un tipo conocido"* y no *"se esperaba `;`"*, que
             // manda a mirar la puntuacion.
@@ -1087,7 +1087,7 @@ impl Parser {
         let base = self.tipo_base()?;
         let mut decls = Vec::new();
         loop {
-            let (tipo, nombre) = self.declarador(base.clone())?;
+            let (tipo, name) = self.declarador(base.clone())?;
             // -- Declarar un objeto de clase --
             if let TypeSpec::ClassRef(cls) = &tipo {
                 let cls = cls.clone();
@@ -1103,9 +1103,9 @@ impl Parser {
                     // objeto sin construir.
                     if *self.peek() == Token::CloseParen {
                         return Err(self.err(format!(
-                            "`{cls} {nombre}();` declara una FUNCION que devuelve `{cls}`, \
+                            "`{cls} {name}();` declara una FUNCION que devuelve `{cls}`, \
                              no un objeto (el *most vexing parse*). Para construir con el \
-                             constructor por defecto se escribe `{cls} {nombre};`")));
+                             constructor por defecto se escribe `{cls} {name};`")));
                     }
                     let mut a = Vec::new();
                     loop {
@@ -1120,8 +1120,8 @@ impl Parser {
                     Vec::new()
                 };
                 let ctor = self.resolver_ctor(&cls, &args)?;
-                self.ambitos.declarar(&nombre, tipo.clone());
-                decls.push(Stmt::DeclObj { clase: cls, nombre, ctor, args });
+                self.ambitos.declarar(&name, tipo.clone());
+                decls.push(Stmt::DeclObj { clase: cls, name, ctor, args });
                 if self.come(&Token::Comma) { continue; }
                 break;
             }
@@ -1131,8 +1131,8 @@ impl Parser {
             // la gramatica existe exactamente para esto -- es un bug que BMO C
             // ya pago.
             let init = if self.come(&Token::Assign) { Some(self.asignacion()?) } else { None };
-            self.ambitos.declarar(&nombre, tipo.clone());
-            decls.push(Stmt::DeclVar(tipo, nombre, init));
+            self.ambitos.declarar(&name, tipo.clone());
+            decls.push(Stmt::DeclVar(tipo, name, init));
             if !self.come(&Token::Comma) { break; }
         }
         self.exige(&Token::Semicolon)?;
@@ -1180,11 +1180,11 @@ impl Parser {
 
         let decl = if self.parece_declaracion() {
             let base = self.tipo_base()?;
-            let (tipo, nombre) = self.declarador(base)?;
+            let (tipo, name) = self.declarador(base)?;
             let init = if self.come(&Token::Assign) { Some(self.asignacion()?) } else { None };
             self.exige(&Token::Semicolon)?;
-            self.ambitos.declarar(&nombre, tipo.clone());
-            Some(Stmt::DeclVar(tipo, nombre, init))
+            self.ambitos.declarar(&name, tipo.clone());
+            Some(Stmt::DeclVar(tipo, name, init))
         } else {
             let e = if *self.peek() == Token::Semicolon { None } else { Some(self.expresion()?) };
             self.exige(&Token::Semicolon)?;
@@ -1462,7 +1462,7 @@ impl Parser {
                         })
                     });
                     e = match propio {
-                        Some((cls, firmas, ranura)) => {
+                        Some((cls, firmas, slot)) => {
                             let tipos = self.tipos_de(&args, &n)?;
                             let s = self.resolver(&format!("{cls}::{n}"), &firmas, &tipos)?
                                 .simbolo.clone();
@@ -1474,7 +1474,7 @@ impl Parser {
                             // `doble`. Un compilador que lo resuelve estatico
                             // devuelve el resultado de la base y nadie sabe por
                             // que.
-                            match ranura {
+                            match slot {
                                 Some(r) => Expr::VirtualCall(
                                     Box::new(Expr::This), n, r as u32, args),
                                 None => Expr::MethodCall(Box::new(Expr::This), cls, s, args),

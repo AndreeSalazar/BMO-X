@@ -364,13 +364,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // por el panel sin cambiar una linea.
         TASK_OP_CONSOLE_WRITE => {
             let pid = scheduler::current_pid();
-            match crate::ring0::obj::consola::salida_de(pid) {
+            match crate::ring0::obj::consola::output_of(pid) {
                 Some(idx) => {
                     // Desempaquetar aqui: el anillo guarda bytes, no palabras.
                     // El cero corta, igual que en la consola del kernel.
                     let w = arg0.to_le_bytes();
                     let n = w.iter().position(|&b| b == 0).unwrap_or(8);
-                    crate::ring0::obj::consola::escribir(idx, &w[..n]);
+                    crate::ring0::obj::consola::write(idx, &w[..n]);
                 }
                 None => crate::ring0::uconsole::write_packed(arg0),
             }
@@ -379,8 +379,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_CONSOLE_READ => {
             let _ = arg0;
             let pid = scheduler::current_pid();
-            match crate::ring0::obj::consola::salida_de(pid) {
-                Some(idx) => BmoStatus::ok_value(crate::ring0::obj::consola::leer_entrada(idx)),
+            match crate::ring0::obj::consola::output_of(pid) {
+                Some(idx) => BmoStatus::ok_value(crate::ring0::obj::consola::read_entry(idx)),
                 // Sin consola asignada no hay de donde leer. Cero = "nada", no
                 // error: un programa que sondea no debe morir por preguntar.
                 None => BmoStatus::ok_value(0),
@@ -390,7 +390,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::directorio::abrir(pid, ruta) {
+            match crate::ring0::obj::directorio::open(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -401,7 +401,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::archivo::abrir(pid, ruta) {
+            match crate::ring0::obj::archivo::open(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -410,14 +410,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::archivo::crear(pid, ruta) {
+            match crate::ring0::obj::archivo::create(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
         }
         TASK_OP_CONSOLA_CREAR => {
             let _ = arg0;
-            match crate::ring0::obj::consola::crear(scheduler::current_pid()) {
+            match crate::ring0::obj::consola::create(scheduler::current_pid()) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -434,13 +434,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             }
         }
         TASK_OP_ENDPOINT_CREATE => {
-            match endpoint::crear(scheduler::current_pid(), arg0 as usize) {
+            match endpoint::create(scheduler::current_pid(), arg0 as usize) {
                 Some(handle) => BmoStatus::ok_value(handle),
                 None => BmoStatus::err(endpoint::ERROR_BUSY),
             }
         }
         TASK_OP_ENDPOINT_CONNECT => {
-            match endpoint::conceder_cliente(arg0 as usize, scheduler::current_pid()) {
+            match endpoint::grant_client(arg0 as usize, scheduler::current_pid()) {
                 Some(handle) => BmoStatus::ok_value(handle),
                 None => BmoStatus::err(endpoint::ERROR_ENDPOINT_DEAD),
             }
@@ -451,14 +451,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // de contexto, y aqui todavia no ha habido ninguno.
         TASK_OP_INPUT_CLAIM => {
             let _ = arg0;
-            match crate::ring0::obj::input::reclamar(scheduler::current_pid()) {
+            match crate::ring0::obj::input::claim(scheduler::current_pid()) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
         }
         TASK_OP_FRAMEBUFFER_CLAIM => {
             let _ = arg0;
-            match crate::ring0::obj::fb::reclamar(
+            match crate::ring0::obj::fb::claim(
                 scheduler::current_pid(),
                 crate::ring0::mm::vmm::read_cr3(),
             ) {
@@ -477,14 +477,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // es suya.
         TASK_OP_ENTRADA_SOLTAR => {
             let _ = arg0;
-            match crate::ring0::obj::input::soltar(scheduler::current_pid()) {
+            match crate::ring0::obj::input::release(scheduler::current_pid()) {
                 Ok(()) => BmoStatus::ok_value(0),
                 Err(code) => BmoStatus::err(code),
             }
         }
         TASK_OP_PANTALLA_SOLTAR => {
             let _ = arg0;
-            match crate::ring0::obj::fb::soltar(
+            match crate::ring0::obj::fb::release(
                 scheduler::current_pid(),
                 crate::ring0::mm::vmm::read_cr3(),
             ) {
@@ -496,7 +496,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // el syscall sigue cargado el espacio del llamante, que es justo donde
         // hay que mapear.
         TASK_OP_MEMORIA_PEDIR => {
-            match crate::ring0::obj::memoria::pedir(
+            match crate::ring0::obj::memoria::request(
                 scheduler::current_pid(),
                 crate::ring0::mm::vmm::read_cr3(),
                 arg0,
@@ -511,7 +511,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // infraestructura no existe. Asi el destino es `read_cr3()` y ya.
         TASK_OP_TOMAR => {
             let pid = scheduler::current_pid();
-            match crate::ring0::obj::prestamo::tomar(pid, crate::ring0::mm::vmm::read_cr3()) {
+            match crate::ring0::obj::loan::take(pid, crate::ring0::mm::vmm::read_cr3()) {
                 Some(h) => BmoStatus::ok_value(h),
                 None => BmoStatus::ok_value(0),
             }
@@ -562,8 +562,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 // porque por la puerta solo cabe un numero y una fraccion no
                 // se puede mandar entera. El detalle en crudo va a CABINA.
                 2 => {
-                    let (vivos, _) = smp::vivos();
-                    let (uno, todos, partes) = obra::prueba(vivos);
+                    let (alive, _) = smp::alive();
+                    let (uno, todos, partes) = obra::prueba(alive);
                     crate::ring0::cabina::info("smp", "ticks con UN nucleo", uno);
                     crate::ring0::cabina::info("smp", "ticks con todos", todos);
                     crate::ring0::cabina::info("smp", "partes que corrieron", partes as u64);
@@ -575,8 +575,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     }
                 }
                 _ => {
-                    let (vivos, esperados) = smp::despertar(cuantos, |_| {});
-                    BmoStatus::ok_value(((vivos as u64) << 32) | esperados as u64)
+                    let (alive, esperados) = smp::despertar(cuantos, |_| {});
+                    BmoStatus::ok_value(((alive as u64) << 32) | esperados as u64)
                 }
             }
         }
@@ -592,7 +592,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             match crate::ring0::fsys::estratos::sellar() {
                 Ok(g) => BmoStatus::ok_value(g),
                 Err(e) => {
-                    crate::ring0::cabina::warn("estratos", e.nombre(), 0);
+                    crate::ring0::cabina::warn("estratos", e.name(), 0);
                     BmoStatus::ok_value(0)
                 }
             }
@@ -668,7 +668,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             match informe.res {
                 Ok(tid) => {
                     if let (Some(idx), Some(hijo)) = (consola_idx, informe.pid) {
-                        crate::ring0::obj::consola::asignar_salida(hijo, idx);
+                        crate::ring0::obj::consola::assign_output(hijo, idx);
                     }
                     BmoStatus::ok_value(tid as u64)
                 }
@@ -761,7 +761,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 // r11 se lleva RFLAGS. Un argumento en rcx no es el dato del
                 // cliente: es la direccion a la que va a volver. Por eso la
                 // convencion salta a r10, igual que en Linux.
-                let res = endpoint::llamar(
+                let res = endpoint::call(
                     r.object as usize,
                     frame.rsi,
                     [frame.rdx, frame.r10, frame.r8],
@@ -769,7 +769,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 return BmoStatus { code: res.code, flags: 0, value: res.value };
             }
             cap::KIND_REPLY => {
-                let res = endpoint::responder(
+                let res = endpoint::reply_to(
                     pid, frame.rdi, r.object, frame.rsi as u32, frame.rdx,
                 );
                 return BmoStatus { code: res.code, flags: 0, value: res.value };
@@ -784,14 +784,14 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // tiene. Los pixeles no pasan por aqui -- para eso esta mapeada.
             // El raton solo contesta donde esta y que botones tiene. Dibujar
             // el cursor es una decision de aspecto, y eso no es del kernel.
-            cap::KIND_INPUT => match crate::ring0::obj::input::operacion(frame.rsi) {
+            cap::KIND_INPUT => match crate::ring0::obj::input::operation(frame.rsi) {
                 Some(v) => BmoStatus::ok_value(v),
                 None => unsupported(),
             },
             // La salida de los hijos de este proceso. Se drena a su ritmo: el
             // kernel no empuja, el terminal tira.
             cap::KIND_CONSOLE => {
-                match crate::ring0::obj::consola::operacion(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::consola::operation(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
@@ -800,13 +800,13 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // operaciones aparte con su propio derecho, no un efecto lateral
             // de tener el directorio abierto.
             cap::KIND_DIRECTORIO => {
-                match crate::ring0::obj::directorio::operacion(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::directorio::operation(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => {
                         // ** CERRAR DEVUELVE DOS RECURSOS, NO UNO.
                         //
                         // La ranura del objeto la suelta el modulo; **el handle
                         // lo tiene que soltar aqui**, que es el unico sitio que
-                        // lo conoce -- `operacion` recibe el indice del objeto,
+                        // lo conoce -- `operation` recibe el indice del objeto,
                         // no el handle con el que se pidio.
                         //
                         // Sin esto el arreglo de la fuga de directorios quedaba
@@ -850,7 +850,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     Err(err) => return cap_err(err),
                 };
                 let base = bloque.object;
-                let tam = crate::ring0::obj::memoria::entregado_por(pid);
+                let tam = crate::ring0::obj::memoria::handed_over_by(pid);
                 let desde = frame.r10;
                 let cuantos = frame.r8;
                 // La unica comprobacion, y cabe en una linea porque el rango lo
@@ -859,7 +859,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     return BmoStatus::err(1);
                 }
                 let n = unsafe {
-                    crate::ring0::obj::archivo::leer_en(
+                    crate::ring0::obj::archivo::read_into(
                         resolved.object,
                         (base + desde) as *mut u8,
                         cuantos as usize,
@@ -868,7 +868,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 BmoStatus::ok_value(n as u64)
             }
             cap::KIND_ARCHIVO => {
-                match crate::ring0::obj::archivo::operacion(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::archivo::operation(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => {
                         // Lo mismo que el directorio, y aqui llevaba desde el
                         // principio: `ARCH_OP_CERRAR` soltaba la ranura de las
@@ -893,7 +893,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // y el kernel no se entera. Ese es el punto entero de que exista --
             // un syscall por byte seria justo lo contrario de prestar memoria.
             cap::KIND_PRESTADO => {
-                match crate::ring0::obj::prestamo::operacion(
+                match crate::ring0::obj::loan::operation(
                     resolved.object, frame.rsi, scheduler::current_pid(),
                 ) {
                     Some(v) => BmoStatus::ok_value(v),
@@ -909,7 +909,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // quepa dentro, y eso es una resta: el rango lo concedio el kernel.
             cap::KIND_MEMORIA if frame.rsi == MEM_OP_OFRECER => {
                 let pid = scheduler::current_pid();
-                let entregado = crate::ring0::obj::memoria::entregado_por(pid);
+                let entregado = crate::ring0::obj::memoria::handed_over_by(pid);
                 // * El destino llega como TID y no como pid: `ejecutar_en`
                 // devuelve un tid, que es lo unico que Ring 3 conoce de un hijo.
                 // Traducirlo aqui evita que el userland aprenda un concepto que
@@ -917,7 +917,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 let Some(destino) = scheduler::pid_de(frame.r8 as u32) else {
                     return BmoStatus::ok_value(0);
                 };
-                let ok = crate::ring0::obj::prestamo::ofrecer(
+                let ok = crate::ring0::obj::loan::offer(
                     pid,
                     crate::ring0::mm::vmm::read_cr3(),
                     resolved.object,
@@ -929,7 +929,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 BmoStatus::ok_value(ok as u64)
             }
             cap::KIND_MEMORIA => {
-                match crate::ring0::obj::memoria::operacion(
+                match crate::ring0::obj::memoria::operation(
                     resolved.object, frame.rsi, scheduler::current_pid(),
                 ) {
                     Some(v) => BmoStatus::ok_value(v),
@@ -937,7 +937,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 }
             }
             cap::KIND_FRAMEBUFFER => {
-                match crate::ring0::obj::fb::operacion(resolved.object, frame.rsi) {
+                match crate::ring0::obj::fb::operation(resolved.object, frame.rsi) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
@@ -983,7 +983,7 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
     // El servidor esperando llamadas en su endpoint.
     if let Ok(r) = cap::resolve(pid, frame.rdi, cap::RIGHT_WAIT) {
         if r.kind == cap::KIND_ENDPOINT {
-            let res = endpoint::esperar(r.object as usize, pid, deadline);
+            let res = endpoint::wait_for(r.object as usize, pid, deadline);
             return BmoStatus { code: res.code, flags: 0, value: res.value };
         }
     }

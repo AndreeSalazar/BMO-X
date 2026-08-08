@@ -128,7 +128,7 @@ fn un_concepto_fuera_de_la_tabla_para_el_cierre() {
 }
 
 /// * LA CARTERA. El mismo batch escrito con nombres en vez de numeros:
-/// `PERFORM UNTIL SE-ACABO` y `IF NO-HUBO-NADA`.
+/// `PERFORM UNTIL SE-ACABO` y `IF NO-HUBO-NOTHING`.
 ///
 /// Es el nivel 88 haciendo lo unico que hace: que la condicion se lea en
 /// voz alta. Quien audite esto no tiene que acordarse de que significaba

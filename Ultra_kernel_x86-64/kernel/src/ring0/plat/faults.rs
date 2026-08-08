@@ -400,7 +400,7 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
 
     // La ultima escritura del RPC en un frame ajeno. Si el contexto que
     // revento es ese, la ruta culpable es esa; si no, queda descartada.
-    let ue = crate::ring0::obj::endpoint::ultima_escritura();
+    let ue = crate::ring0::obj::endpoint::last_write();
     let mut l = Line::new();
     l.s("rpc t="); l.hex(ue[0], 2);
     l.s(" ctx="); l.hex(ue[1], 12);
@@ -638,12 +638,12 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     if kpml4 != 0 {
         crate::ring0::mm::vmm::switch_to(kpml4);
     }
-    let nombre = match motivo {
+    let name = match motivo {
         PODRIDO_SELLO => "ROTTEN CONTEXT: the seal is gone",
         PODRIDO_CABECERA => "ROTTEN CONTEXT: XSAVE header",
         _ => "ROTTEN CONTEXT: impossible cs",
     };
-    crate::ring0::cabina::panic_ev("ring0", nombre, rsp);
+    crate::ring0::cabina::panic_ev("ring0", name, rsp);
 
     let mut inf = Informe::nuevo();
 
@@ -675,10 +675,10 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
         }
         hallada
     };
-    let (firma, dueno) = crate::ring0::plat::trap::leer_sello(base);
+    let (firma, owner) = crate::ring0::plat::trap::leer_sello(base);
     let mut l = Line::new();
     l.s("sello=0x"); l.hex(firma, 8);
-    l.s("  dueno=tid "); l.hex(dueno, 4);
+    l.s("  dueno=tid "); l.hex(owner, 4);
     l.s("  area="); l.hex(base, 12);
     inf.push(l);
 
@@ -780,14 +780,14 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
     l.s(" t"); l.hex(pubs[3].1 as u64, 2);
     inf.push(l);
 
-    let ue = crate::ring0::obj::endpoint::ultima_escritura();
+    let ue = crate::ring0::obj::endpoint::last_write();
     let mut l = Line::new();
     l.s("rpc t="); l.hex(ue[0], 2);
     l.s(" ctx="); l.hex(ue[1], 12);
     l.s(" gpr="); l.hex(ue[2], 12);
     inf.push(l);
 
-    pantalla_de_fallo(nombre, &inf)
+    pantalla_de_fallo(name, &inf)
 }
 
 /// Patch the live IDT so #UD/#DF/#GP/#PF report on screen. Uses IST1 (set up

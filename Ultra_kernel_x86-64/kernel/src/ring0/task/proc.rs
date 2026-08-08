@@ -99,7 +99,7 @@ static RPC_CLI_BEX: &[u8] = include_bytes!("../rpc_cli.bex");
 /// Si uno falla al admitirse, se registra y se sigue con los demas: el
 /// aislamiento de fallos existe justo para que un programa malo no se lleve
 /// por delante al sistema.
-/// `(etiqueta corta para el log, nombre legible, imagen BEX)`
+/// `(etiqueta corta para el log, name legible, imagen BEX)`
 static DEMOS: &[(&str, &str, &[u8])] = &[
     ("asm", "init_hello (asm)", INIT_HELLO_BEX),
     ("C", "hola_C (C)", HOLA_C_BEX),

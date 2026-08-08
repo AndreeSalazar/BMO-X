@@ -50,7 +50,7 @@ pub const KIND_ARCHIVO: u8 = 0x41;
 /// Un bloque de memoria que el proceso PIDIO. Ver `obj::memoria`: es memoria
 /// entregada entera, no un asignador.
 pub const KIND_MEMORIA: u8 = 0x50;
-/// Memoria PRESTADA por otro proceso. Ver `obj::prestamo`.
+/// Memoria PRESTADA por otro proceso. Ver `obj::loan`.
 ///
 /// No es `KIND_MEMORIA` aunque las dos sean memoria, y la diferencia es la que
 /// evita el peor fallo posible: un bloque es **del proceso** y esto es
@@ -233,12 +233,12 @@ pub fn revoke(pid: u32, handle: u64) -> bool {
 /// clientes bloqueados para siempre -- el fallo que hace inservible cualquier
 /// IPC bloqueante.
 pub fn revoke_all(pid: u32) {
-    crate::ring0::obj::endpoint::proceso_muerto(pid);
+    crate::ring0::obj::endpoint::process_died(pid);
     // Si tenia la pantalla, el kernel la recupera aqui. Corre en TODAS las
     // salidas --EXIT voluntario y muerte por fault-- asi que un compositor que
     // revienta no deja la maquina ciega.
-    crate::ring0::obj::fb::proceso_muerto(pid);
-    crate::ring0::obj::input::proceso_muerto(pid);
+    crate::ring0::obj::fb::process_died(pid);
+    crate::ring0::obj::input::process_died(pid);
     // Sus bloques de memoria no hay que desmapearlos --el espacio entero se
     // destruye--, pero SI hay que soltar el contador de peticiones: sin esto un
     // pid reutilizado heredaria las del muerto y no podria pedir nada.
@@ -247,16 +247,16 @@ pub fn revoke_all(pid: u32) {
     // Va primero tambien porque `unmap_page` devuelve el marco sin liberarlo --
     // son del compositor-- y liberarlos aqui seria entregarle el escritorio a
     // otro proceso.
-    crate::ring0::obj::prestamo::proceso_muerto(pid, crate::ring0::mm::vmm::read_cr3());
-    crate::ring0::obj::memoria::proceso_muerto(pid);
+    crate::ring0::obj::loan::process_died(pid, crate::ring0::mm::vmm::read_cr3());
+    crate::ring0::obj::memoria::process_died(pid);
     // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
-    crate::ring0::obj::consola::proceso_muerto(pid);
-    crate::ring0::obj::directorio::proceso_muerto(pid);
+    crate::ring0::obj::consola::process_died(pid);
+    crate::ring0::obj::directorio::process_died(pid);
     // Un archivo de ESCRITURA a medias se descarta: lo acumulado no llega al
     // disco. Guardarlo seria inventar un archivo que su autor nunca dio por
     // terminado, y medio fichero de movimientos es peor que ninguno.
-    crate::ring0::obj::archivo::proceso_muerto(pid);
+    crate::ring0::obj::archivo::process_died(pid);
     revoke_all_slots(pid)
 }
 

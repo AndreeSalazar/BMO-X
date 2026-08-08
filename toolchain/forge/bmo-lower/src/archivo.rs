@@ -16,7 +16,7 @@
 //!
 //! ## Escribir es de dos pasos
 //!
-//! Nada llega al disco hasta [`cerrar`]. Un programa que muere a medias no
+//! Nada llega al disco hasta [`close`]. Un programa que muere a medias no
 //! deja medio archivo: no deja ninguno. Para un fichero de movimientos eso es
 //! lo correcto -- un extracto truncado se parece demasiado a uno completo.
 
@@ -83,7 +83,7 @@ pub fn abrir_const(code: &mut Vec<u8>, ruta: &[u8], escribe: bool) {
 ///
 /// Registros que ensucia: `rax`, `rcx`, `rdx`, `rdi`, `rsi`, `r9`, `r11`.
 /// `r8` avanza hasta el final de lo leido.
-pub fn leer_linea(code: &mut Vec<u8>, tope: u8) {
+pub fn read_line(code: &mut Vec<u8>, tope: u8) {
     let tope = tope.min(127) as i8;
     x86::zero_r32(code, R9);
 
@@ -340,7 +340,7 @@ pub fn escribir_buffer(code: &mut Vec<u8>) {
 /// **En uno de escritura es donde el contenido llega al disco.** Deja en `rax`
 /// el 1/0 que contesta el kernel: `0` significa que no se guardo NADA, no que
 /// se guardara a medias.
-pub fn cerrar(code: &mut Vec<u8>) {
+pub fn close(code: &mut Vec<u8>) {
     x86::mov_r64_r64(code, RDI, R10);
     x86::mov_r32_imm32(code, RSI, ARCH_OP_CERRAR as u32);
     x86::mov_r32_imm32(code, RAX, NR_INVOKE);
@@ -360,7 +360,7 @@ mod tests {
         abrir_const(&mut code, b"datos/mov.txt", false);
         // El handle a r10, que es donde lo quieren las demas puertas.
         x86::mov_r64_r64(&mut code, R10, RAX);
-        leer_linea(&mut code, tope);
+        read_line(&mut code, tope);
 
         let mut m = Machine::new(code);
         m.poner_archivo("datos/mov.txt", contenido.as_bytes());
@@ -520,11 +520,11 @@ mod tests {
         let mut code = Vec::new();
         abrir_const(&mut code, b"datos/mov.txt", false);
         x86::mov_r64_r64(&mut code, R10, RAX);
-        leer_linea(&mut code, 32);
+        read_line(&mut code, 32);
         // La primera lectura se tira; solo interesa la SEGUNDA. `r8` acabo al
         // final de lo leido, asi que se devuelve al principio del buffer.
         x86::sub_r64_r64(&mut code, R8, R9);
-        leer_linea(&mut code, 32);
+        read_line(&mut code, 32);
 
         let mut m = Machine::new(code);
         m.poner_archivo("datos/mov.txt", b"2075");
@@ -559,12 +559,12 @@ mod tests {
         let mut code = Vec::new();
         abrir_const(&mut code, b"datos/mov.txt", false);
         x86::mov_r64_r64(&mut code, R10, RAX);
-        leer_linea(&mut code, 32);
+        read_line(&mut code, 32);
         // `r8` quedo al final de la primera linea. Se retrocede su largo para
         // volver al principio y se avanza 32: la segunda cae en otro sitio.
         x86::sub_r64_r64(&mut code, R8, R9);
         x86::add_r64_imm8(&mut code, R8, 32);
-        leer_linea(&mut code, 32);
+        read_line(&mut code, 32);
 
         let mut m = Machine::new(code);
         m.poner_archivo("datos/mov.txt", b"1050\n2075\n");
@@ -572,15 +572,15 @@ mod tests {
         m.regs[R8 as usize] = base;
         let m = run(m, 500_000);
 
-        let leer = |off: u64, n: u64| -> Vec<u8> {
+        let read = |off: u64, n: u64| -> Vec<u8> {
             (0..n).map(|i| m.read_u8_pub(base + off + i)).collect()
         };
-        assert_eq!(leer(0, 4), b"1050");
-        assert_eq!(leer(32, 4), b"2075");
+        assert_eq!(read(0, 4), b"1050");
+        assert_eq!(read(32, 4), b"2075");
     }
 
     /// * El ciclo entero: crear, escribir, cerrar -- y que en el disco quede
-    /// exactamente eso. Sin el `cerrar`, el kernel no guarda nada, asi que
+    /// exactamente eso. Sin el `close`, el kernel no guarda nada, asi que
     /// esto prueba las tres puertas a la vez.
     #[test]
     fn escribir_y_cerrar_deja_el_archivo_en_el_disco() {
@@ -588,7 +588,7 @@ mod tests {
         abrir_const(&mut code, b"datos/salida.txt", true);
         x86::mov_r64_r64(&mut code, R10, RAX);
         escribir_buffer(&mut code);
-        cerrar(&mut code);
+        close(&mut code);
 
         let mut m = Machine::new(code);
         let texto = b"59.97\n";
@@ -601,7 +601,7 @@ mod tests {
         assert_eq!(m.archivo_texto("datos/salida.txt").as_deref(), Some("59.97\n"));
     }
 
-    /// Sin `cerrar`, el disco no cambia. Es el contrato de dos pasos, y hay
+    /// Sin `close`, el disco no cambia. Es el contrato de dos pasos, y hay
     /// que probarlo: si el emulador guardara sobre la marcha, un programa que
     /// se olvida del `CLOSE` pasaria los tests y perderia el fichero en la
     /// maquina.
@@ -641,7 +641,7 @@ mod tests {
         abrir_const(&mut code, b"datos/bin.dat", true);
         x86::mov_r64_r64(&mut code, R10, RAX);
         escribir_buffer(&mut code);
-        cerrar(&mut code);
+        close(&mut code);
 
         let mut m = Machine::new(code);
         let datos = [0x41u8, 0x00, 0x42, 0x00, 0x00, 0x43];

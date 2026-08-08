@@ -594,7 +594,7 @@ impl Machine {
             match self.archivos.get(&ruta) {
                 Some(d) => d.clone(),
                 // Abrir para leer lo que no existe FALLA. En el kernel es
-                // `ERROR_NO_ESTA`; aqui es un handle nulo. Devolver uno vacio
+                // `ERROR_NOT_THERE`; aqui es un handle nulo. Devolver uno vacio
                 // haria que un `READ` de un fichero que falta pareciera un
                 // fichero sin registros.
                 None => return 0,
@@ -669,7 +669,7 @@ impl Machine {
                     // El disco dice que no: no se escribe NADA y se contesta
                     // `0`. No se guarda un trozo -- un archivo a medias se
                     // parece demasiado a uno entero, que es la misma regla que
-                    // sigue `cerrar` en `ring0/archivo.rs`.
+                    // sigue `close` en `ring0/archivo.rs`.
                     if self.fallo_al_guardar.contains(&ruta) {
                         return 0;
                     }
@@ -692,20 +692,20 @@ impl Machine {
     /// tope (`0xE001`), y pedir una quinta vez (`0xE003`).
     ///
     /// Los otros dos no se modelan, y por el mismo motivo los dos: **aqui solo
-    /// corre un proceso y la memoria es infinita**. `ERROR_SIN_RAM` necesitaria
-    /// RAM que fragmentar y `ERROR_SIN_RANURA` necesitaria 16 procesos vivos a
+    /// corre un proceso y la memoria es infinita**. `ERROR_NO_RAM` necesitaria
+    /// RAM que fragmentar y `ERROR_NO_SLOT` necesitaria 16 procesos vivos a
     /// la vez. Fingirlos seria inventarse fallos que este emulador no puede
     /// reproducir de forma repetible -- y son exactamente el tipo de cosa que el
     /// eje 2 de la seccion FIDELIDAD dice que hay que probar en el Ryzen.
     fn memoria_pedir(&mut self, bytes: u64) -> Result<u64, u64> {
-        const ERROR_DEMASIADO: u64 = 0xE001;
-        const ERROR_DEMASIADAS: u64 = 0xE003;
+        const ERROR_TOO_BIG: u64 = 0xE001;
+        const ERROR_TOO_MANY: u64 = 0xE003;
 
         if bytes == 0 || bytes > MEMORIA_MAX_BYTES {
-            return Err(ERROR_DEMASIADO);
+            return Err(ERROR_TOO_BIG);
         }
         if self.mem_peticiones >= MEMORIA_MAX_PETICIONES {
-            return Err(ERROR_DEMASIADAS);
+            return Err(ERROR_TOO_MANY);
         }
         // Redondeo a paginas ARRIBA: pedir 1024 bytes entrega 4096, y el
         // siguiente bloque empieza detras de los 4096. Si esto redondeara hacia

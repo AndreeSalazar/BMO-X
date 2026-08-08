@@ -6,7 +6,7 @@ use crate::escena::salida::Salida;
 use crate::escena::RUTA_MAX;
 use crate::texto::es_punto;
 
-pub(crate) fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida) -> usize {
+pub(crate) fn complete(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida) -> usize {
     // El ultimo token: lo que hay tras el ultimo espacio. Asi `corre app<TAB>`
     // completa la ruta y no el verbo.
     let inicio = ruta[..n].iter().rposition(|&c| c == b' ').map_or(0, |i| i + 1);
@@ -36,7 +36,7 @@ pub(crate) fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida
     let dir = &dir[..dir_n];
     let prefijo = &prefijo[..pref_n];
 
-    let d = match bmo::Directorio::abrir(dir) {
+    let d = match bmo::Directorio::open(dir) {
         Ok(d) => d,
         Err(_) => return n,
     };
@@ -51,7 +51,7 @@ pub(crate) fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida
     // inventado. Recorrer dos veces cuesta microsegundos y no inventa topes.
     let mut vueltas = 0u32;
     while vueltas < 256 {
-        let e = match d.siguiente() { Some(e) => e, None => break };
+        let e = match d.next() { Some(e) => e, None => break };
         vueltas += 1;
         let mut nom = [0u8; 12];
         let largo = e.legible(&mut nom);
@@ -100,10 +100,10 @@ pub(crate) fn completar(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida
 
     // Con mas de uno, ENSENAR lo que hay. Es la diferencia con ciclar.
     if cuantos > 1 {
-        let d2 = match bmo::Directorio::abrir(dir) { Ok(d) => d, Err(_) => return fin };
+        let d2 = match bmo::Directorio::open(dir) { Ok(d) => d, Err(_) => return fin };
         let mut vueltas = 0u32;
         while vueltas < 256 {
-            let e = match d2.siguiente() { Some(e) => e, None => break };
+            let e = match d2.next() { Some(e) => e, None => break };
             vueltas += 1;
             let mut nom = [0u8; 12];
             let largo = e.legible(&mut nom);
@@ -131,10 +131,10 @@ pub(crate) fn motivo_archivo(e: u32) -> &'static [u8] {
     match e {
         bmo::ERROR_ARCH_CARPETA => b"esa carpeta no existe.",
         bmo::ERROR_ARCH_ES_CARPETA => b"eso es una carpeta, no un archivo: prueba ls.",
-        bmo::ERROR_ARCH_NOMBRE => b"el nombre no cabe en 8.3 (8 letras + 3 de extension).",
+        bmo::ERROR_ARCH_NOMBRE => b"el name no cabe en 8.3 (8 letras + 3 de extension).",
         bmo::ERROR_ARCH_NO_ESTA => b"ese archivo no esta.",
         bmo::ERROR_ARCH_GRANDE => b"el archivo pasa de 4 KiB: hoy no cabe.",
-        bmo::ERROR_ARCH_SOLO_LECTURA => b"el volumen de datos no se puede escribir.",
+        bmo::ERROR_ARCH_SOLO_LECTURA => b"el volumen de datos no se puede write.",
         bmo::ERROR_ARCH_SIN_HUECO => b"hay demasiados archivos abiertos.",
         _ => b"no se pudo.",
     }

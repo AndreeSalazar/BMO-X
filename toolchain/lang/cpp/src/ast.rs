@@ -142,7 +142,7 @@ pub enum Stmt {
     /// **no es asignar**. El parser ya resolvio QUE constructor (`ctor`, el
     /// simbolo manglado, o `None` si la clase no tiene ninguno) y el descenso
     /// solo emite la llamada.
-    DeclObj { clase: String, nombre: String, ctor: Option<String>, args: Vec<Expr> },
+    DeclObj { clase: String, name: String, ctor: Option<String>, args: Vec<Expr> },
     Assign(String, Expr),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),

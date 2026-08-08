@@ -51,7 +51,7 @@ pub struct Consola {
 }
 
 impl Consola {
-    pub fn crear() -> Option<Self> {
+    pub fn create() -> Option<Self> {
         let cap = invoke(CURRENT_TASK, OP_CONSOLA_CREAR, 0, 0, 0).valor()?;
         Some(Self { cap })
     }
@@ -62,7 +62,7 @@ impl Consola {
     ///
     /// Siete y no ocho porque el octavo lleva el contador -- ver
     /// `CONSOLA_OP_LEER` en el kernel.
-    pub fn leer(&self, dst: &mut [u8; 8]) -> usize {
+    pub fn read(&self, dst: &mut [u8; 8]) -> usize {
         let v = invoke(self.cap, CONSOLA_OP_LEER, 0, 0, 0).value;
         *dst = v.to_le_bytes();
         let n = (v >> 56) as usize;
@@ -72,7 +72,7 @@ impl Consola {
 
     /// Mete texto en la ENTRADA de esta consola: lo que el terminal teclea
     /// PARA su hijo. El otro sentido del canal.
-    pub fn escribir(&self, texto: &[u8]) {
+    pub fn write(&self, texto: &[u8]) {
         for trozo in texto.chunks(8) {
             let mut w = [0u8; 8];
             w[..trozo.len()].copy_from_slice(trozo);
@@ -82,13 +82,13 @@ impl Consola {
 
     /// Hay un proceso vivo escribiendo aqui? El terminal lo pregunta para
     /// saber si lo que se teclea es un comando suyo o entrada para el hijo.
-    pub fn hay_hijo(&self) -> bool {
+    pub fn has_child(&self) -> bool {
         invoke(self.cap, CONSOLA_OP_HAY_HIJO, 0, 0, 0).value != 0
     }
 
     /// Bytes descartados por anillo lleno. Un terminal que va lento tiene
     /// derecho a saber que esta perdiendo salida en vez de creerse completo.
-    pub fn perdidos(&self) -> u64 {
+    pub fn dropped(&self) -> u64 {
         invoke(self.cap, CONSOLA_OP_PERDIDOS, 0, 0, 0).value
     }
 }
@@ -109,9 +109,9 @@ pub const ERROR_ARCH_SOLO_LECTURA: u32 = 31;
 pub const ERROR_ARCH_CARPETA: u32 = 32;
 pub const ERROR_ARCH_ES_CARPETA: u32 = 33;
 
-pub const ERROR_NO_ESTA: u32 = 20;
+pub const ERROR_NOT_THERE: u32 = 20;
 pub const ERROR_GATE: u32 = 21;
-pub const ERROR_OCUPADO: u32 = 22;
+pub const ERROR_BUSY: u32 = 22;
 pub const ERROR_NO_ADMITIDO: u32 = 23;
 
 /// Lee de la consola de ESTE proceso -- lo que el terminal le manda.

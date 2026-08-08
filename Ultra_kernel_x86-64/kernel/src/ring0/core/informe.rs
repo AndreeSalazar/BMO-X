@@ -97,7 +97,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_CPU_NUCLEOS => cpu_topo().map(|t| t.nucleos as u64).unwrap_or(0),
         INFO_TAREAS_TOTAL => crate::ring0::task::scheduler::counts().0 as u64,
         INFO_TAREAS_LISTAS => crate::ring0::task::scheduler::counts().1 as u64,
-        INFO_PANTALLA_DUENO => crate::ring0::obj::fb::dueno().unwrap_or(0) as u64,
+        INFO_PANTALLA_DUENO => crate::ring0::obj::fb::owner().unwrap_or(0) as u64,
         INFO_TAREAS_LIBRES => crate::ring0::task::scheduler::huecos_libres() as u64,
         INFO_TICKS => crate::ring0::plat::timer::ticks(),
         // Medido, no declarado: desde donde lo enlaza el guion hasta el final
@@ -144,7 +144,7 @@ pub fn campo(n: u64) -> u64 {
         // Lo que Ring 3 ha PEDIDO. Cero hasta que un programa llame a
         // `KIND_MEMORIA` -- y por eso vale: es la unica fila del informe que
         // solo se mueve si alguien ejercio la capability.
-        INFO_MEM_ENTREGADA => crate::ring0::obj::memoria::total_entregado(),
+        INFO_MEM_ENTREGADA => crate::ring0::obj::memoria::total_handed_over(),
         _ => 0,
     }
 }

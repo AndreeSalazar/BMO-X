@@ -39,7 +39,7 @@ pub mod obj {
     /// `KIND_PRESTADO`: un proceso cede un trozo de SU memoria a otro. El
     /// kernel mueve paginas y **no sabe para que** -- el lienzo, el audio y los
     /// bloques grandes entre procesos salen todos de aqui.
-    pub mod prestamo;
+    pub mod loan;
     /// `KIND_MEMORIA`: bloques que un proceso PIDE. No es un asignador -- ver
     /// la cabecera del modulo.
     pub mod memoria;

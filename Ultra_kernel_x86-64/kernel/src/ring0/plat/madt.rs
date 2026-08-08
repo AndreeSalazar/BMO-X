@@ -125,7 +125,7 @@ unsafe fn xsdt(rsdp: u64) -> Option<u64> {
 }
 
 /// Busca una tabla por su firma dentro del XSDT.
-unsafe fn buscar(xsdt_addr: u64, sig: &[u8; 4]) -> Option<u64> {
+unsafe fn find_by(xsdt_addr: u64, sig: &[u8; 4]) -> Option<u64> {
     unsafe {
         let len = largo(xsdt_addr) as u64;
         if len < 36 {
@@ -162,7 +162,7 @@ pub fn enumerar(rsdp: u64) -> Option<Censo> {
     }
     unsafe {
         let x = xsdt(rsdp)?;
-        let madt = buscar(x, b"APIC")?;
+        let madt = find_by(x, b"APIC")?;
         let len = largo(madt) as u64;
         if len < 44 {
             return None;

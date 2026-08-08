@@ -163,14 +163,14 @@ impl Parser {
             }
 
             // Designador, o seguimos por donde ibamos?
-            let (t_sub, off_sub, siguiente) = if matches!(*self.peek(), Token::Dot | Token::OpenBracket)
+            let (t_sub, off_sub, next) = if matches!(*self.peek(), Token::Dot | Token::OpenBracket)
             {
                 self.designadores(tipo, base)?
             } else {
                 let (t, o) = self.subobjeto_por_indice(tipo, cursor)?;
                 (t, base + o, cursor + 1)
             };
-            cursor = siguiente;
+            cursor = next;
 
             // El valor.
             if *self.peek() == Token::OpenBrace {
@@ -257,11 +257,11 @@ impl Parser {
     fn indice_constante(&mut self) -> Result<usize, CError> {
         match self.advance() {
             Token::IntLit(n) if n >= 0 => Ok(n as usize),
-            Token::Ident(nombre) => match self.enum_constants.get(&nombre) {
+            Token::Ident(name) => match self.enum_constants.get(&name) {
                 Some(&v) if v >= 0 => Ok(v as usize),
                 _ => Err(CError::new(
                     self.line(),
-                    format!("'{nombre}' no es una constante: el indice de un designador se resuelve al compilar"),
+                    format!("'{name}' no es una constante: el indice de un designador se resuelve al compilar"),
                 )),
             },
             t => Err(CError::new(
@@ -292,7 +292,7 @@ impl Parser {
                 let campos = self.struct_fields.get(s).ok_or_else(|| {
                     CError::new(self.line(), format!("no conozco el struct '{s}'"))
                 })?;
-                let (nombre, off, _) = campos.get(i).ok_or_else(|| {
+                let (name, off, _) = campos.get(i).ok_or_else(|| {
                     CError::new(
                         self.line(),
                         format!("'{s}' tiene {} campos y se inicializa el {i}", campos.len()),
@@ -300,7 +300,7 @@ impl Parser {
                 })?;
                 let t = self
                     .field_types
-                    .get(&(s.clone(), nombre.clone()))
+                    .get(&(s.clone(), name.clone()))
                     .cloned()
                     .unwrap_or(TypeSpec::Long);
                 Ok((t, *off))
@@ -377,29 +377,29 @@ impl Parser {
         }
     }
 
-    /// El campo llamado `nombre`. Devuelve `(tipo, offset relativo, indice)`.
+    /// El campo llamado `name`. Devuelve `(tipo, offset relativo, indice)`.
     fn subobjeto_por_nombre(
         &self,
         tipo: &TypeSpec,
-        nombre: &str,
+        name: &str,
     ) -> Result<(TypeSpec, u32, usize), CError> {
         let Some(s) = Self::struct_of(tipo) else {
             return Err(CError::new(
                 self.line(),
-                format!("'.{nombre}' pero esto no es un struct ni una union"),
+                format!("'.{name}' pero esto no es un struct ni una union"),
             ));
         };
         let campos = self
             .struct_fields
             .get(s)
             .ok_or_else(|| CError::new(self.line(), format!("no conozco el struct '{s}'")))?;
-        let idx = campos.iter().position(|(n, _, _)| n == nombre).ok_or_else(|| {
-            CError::new(self.line(), format!("'{s}' no tiene un campo '{nombre}'"))
+        let idx = campos.iter().position(|(n, _, _)| n == name).ok_or_else(|| {
+            CError::new(self.line(), format!("'{s}' no tiene un campo '{name}'"))
         })?;
         let off = campos[idx].1;
         let t = self
             .field_types
-            .get(&(s.to_string(), nombre.to_string()))
+            .get(&(s.to_string(), name.to_string()))
             .cloned()
             .unwrap_or(TypeSpec::Long);
         Ok((t, off, idx))

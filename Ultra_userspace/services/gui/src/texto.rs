@@ -42,7 +42,7 @@ pub(crate) fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
 /// sirven para nada --este terminal no tiene "carpeta actual" a la que volver--
 /// y estorban en los dos sitios donde aparecen: envenenan el prefijo comun del
 /// TAB y ensucian el `ls`.
-pub(crate) fn es_punto(nombre: &[u8]) -> bool {
-    nombre == b"." || nombre == b".."
+pub(crate) fn es_punto(name: &[u8]) -> bool {
+    name == b"." || name == b".."
 }
 

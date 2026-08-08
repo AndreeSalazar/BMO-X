@@ -69,7 +69,7 @@ impl Parser {
                 break;
             }
 
-            // `SELECT <nombre> ASSIGN TO "<ruta>"`. Vive en FILE-CONTROL, que
+            // `SELECT <name> ASSIGN TO "<ruta>"`. Vive en FILE-CONTROL, que
             // esta en la ENVIRONMENT DIVISION -- antes de la DATA, asi que se
             // reconoce fuera del bloque de datos.
             if upper.starts_with("SELECT ") {
@@ -117,9 +117,9 @@ impl Parser {
                         continue;
                     }
                     if !fd_abierto.is_empty() {
-                        let nombre = item.name.clone();
+                        let name = item.name.clone();
                         match program.files.iter_mut().find(|f| f.name == fd_abierto) {
-                            Some(f) => f.record = nombre,
+                            Some(f) => f.record = name,
                             None => {
                                 return Err(CobolError::new(
                                     line_no,
@@ -154,17 +154,17 @@ impl Parser {
 
             // * Un NOMBRE DE PARRAFO abre uno nuevo. Todo lo que venga detras
             // es suyo hasta el siguiente nombre.
-            if let Some(nombre) = Self::nombre_de_parrafo(&line) {
-                if program.parrafo(&nombre).is_some() {
+            if let Some(name) = Self::nombre_de_parrafo(&line) {
+                if program.parrafo(&name).is_some() {
                     return Err(CobolError::new(
                         line_no,
                         format!(
-                            "el parrafo {nombre} ya existe: dos parrafos con el mismo nombre \
+                            "el parrafo {name} ya existe: dos parrafos con el mismo nombre \
                              hacen que un PERFORM no sepa a cual va"
                         ),
                     ));
                 }
-                program.abrir_parrafo(nombre);
+                program.abrir_parrafo(name);
                 continue;
             }
 
@@ -424,7 +424,7 @@ impl Parser {
     /// parrafo llamado EXIT. Sin esa comprobacion, un `EXIT.` suelto abriria un
     /// parrafo fantasma y se tragaria el resto del programa.
     ///
-    /// `<nombre> SECTION.` se acepta como si fuera un parrafo: para lo que hoy
+    /// `<name> SECTION.` se acepta como si fuera un parrafo: para lo que hoy
     /// hace falta --ser el destino de un `PERFORM`-- una seccion es un parrafo
     /// con otro nombre, y fingir lo contrario seria rechazar programas que
     /// funcionarian igual.
@@ -435,21 +435,21 @@ impl Parser {
         }
         let cuerpo = t.trim_end_matches('.').trim();
         let palabras: Vec<&str> = cuerpo.split_whitespace().collect();
-        let nombre = match palabras.as_slice() {
+        let name = match palabras.as_slice() {
             [uno] => *uno,
             [uno, dos] if dos.eq_ignore_ascii_case("SECTION") => *uno,
             _ => return None,
         };
-        if nombre.is_empty() {
+        if name.is_empty() {
             return None;
         }
-        let arriba = nombre.to_ascii_uppercase();
+        let arriba = name.to_ascii_uppercase();
         if crate::generated::words::is_reserved(&arriba) {
             return None;
         }
         // Un nombre de COBOL: letras, digitos y guiones. Sin esto, un `.` de
         // mas en cualquier sitio abriria un parrafo.
-        if !nombre.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return None;
         }
         Some(arriba)
@@ -1025,7 +1025,7 @@ impl Parser {
     /// del COBOL clasico. No es pereza: el alcance por punto es ambiguo de
     /// leer y es una fuente clasica de bugs silenciosos --justo lo que este
     /// compilador acaba de dejar de hacer--. Si falta, el error lo dice.
-    /// `SELECT <nombre> ASSIGN TO "<ruta>"`.
+    /// `SELECT <name> ASSIGN TO "<ruta>"`.
     ///
     /// La ruta va entre comillas y es un literal: se resuelve al COMPILAR y
     /// viaja dentro del `.bex` como inmediatos. Un `ASSIGN TO` a una variable
@@ -1534,12 +1534,12 @@ impl Parser {
                 return Err(CobolError::new(line_no, "STRING sin INTO: falta decir donde va"));
             };
             self.advance();
-            let siguiente = Self::strip_comment(&raw).trim().to_string();
-            if siguiente.is_empty() {
+            let next = Self::strip_comment(&raw).trim().to_string();
+            if next.is_empty() {
                 continue;
             }
             junto.push(' ');
-            junto.push_str(siguiente.trim_end_matches('.').trim());
+            junto.push_str(next.trim_end_matches('.').trim());
         }
         // Un `END-STRING` detras del destino es legal y aqui sobra.
         let junto = junto.trim().to_string();

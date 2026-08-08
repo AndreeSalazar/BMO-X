@@ -256,7 +256,7 @@ fn sintetiza_strchr(code: &mut Vec<u8>) {
     prologo(code);
     carga_arg(code, A_RDI, 0);
     carga_arg(code, A_RSI, 1);
-    bmo_lower::memoria::buscar(code);
+    bmo_lower::memoria::find_by(code);
     epilogo(code);
 }
 
@@ -332,14 +332,14 @@ fn sintetiza_memcpy(code: &mut Vec<u8>) {
 
 // -- LA CONSULTA, que es todo lo que `mod.rs` necesita de aqui ---------
 
-/// Quien emite el cuerpo de `nombre`, si es de los que este modulo sabe hacer.
+/// Quien emite el cuerpo de `name`, si es de los que este modulo sabe hacer.
 ///
 /// Es la UNICA puerta: `mod.rs` no ve la tabla ni los emisores. Anadir una
 /// funcion sintetizable es tocar este fichero y nada mas.
-pub(super) fn buscar(nombre: &str) -> Option<Sintetizador> {
+pub(super) fn find_by(name: &str) -> Option<Sintetizador> {
     SINTETIZABLES
         .iter()
-        .find(|(n, _)| *n == nombre)
+        .find(|(n, _)| *n == name)
         .map(|(_, e)| *e)
 }
 
@@ -366,14 +366,14 @@ pub(super) fn inyectar(
         if offsets.contains_key(&reloc.target) || pendientes.contains(&reloc.target.as_str()) {
             continue;
         }
-        if let Some(&(nombre, _)) = SINTETIZABLES.iter().find(|(n, _)| *n == reloc.target.as_str()) {
-            pendientes.push(nombre);
+        if let Some(&(name, _)) = SINTETIZABLES.iter().find(|(n, _)| *n == reloc.target.as_str()) {
+            pendientes.push(name);
         }
     }
-    for nombre in pendientes {
-        let emisor = buscar(nombre).expect("el nombre sale de la propia tabla");
+    for name in pendientes {
+        let emisor = find_by(name).expect("el nombre sale de la propia tabla");
         let off = code.len();
         emisor(code);
-        offsets.insert(nombre.to_string(), off);
+        offsets.insert(name.to_string(), off);
     }
 }
