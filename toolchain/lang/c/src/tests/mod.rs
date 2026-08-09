@@ -46,6 +46,9 @@ mod estructuras;
 mod flotante;
 mod globales;
 mod inicializadores;
+/// Las de `<string.h>`, `<ctype.h>` y `<stdlib.h>` que faltaban para que el
+/// unity build de DOOM llegue al final. Escritas en C, no en el codegen.
+mod libc;
 mod intrinsecos;
 mod matriz;
 mod memoria;
