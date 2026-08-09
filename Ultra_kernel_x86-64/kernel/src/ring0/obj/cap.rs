@@ -27,6 +27,17 @@ pub const SLOTS_PER_PROC: usize = 64;
 // HandleKind codes (mirror of bmo-abi handle/kind.rs).
 /// La pantalla. Espejo de `bmo_abi::HandleKind::Framebuffer`.
 pub const KIND_FRAMEBUFFER: u8 = 0x0F;
+/// **El sonido.** El derecho a hacer ruido. Espejo de
+/// `bmo_abi::HandleKind::AudioEngine`.
+///
+/// Es exclusivo como la pantalla y por el mismo motivo: dos duenos escribiendo
+/// en el mismo aparato no es mezclar, es ruido -- y mezclar es trabajo de Ring
+/// 3, igual que componer ventanas. Ver `ring0/obj/audio.rs`.
+///
+/// Va antes que el driver **a proposito**: escribir el motor primero y
+/// preguntarse despues quien tiene derecho a usarlo es como se acaba con un
+/// sistema en el que cualquier programa pita encima de cualquier otro.
+pub const KIND_AUDIO: u8 = 0x10;
 /// El raton. Espejo de `bmo_abi::HandleKind::InputDevice`.
 pub const KIND_INPUT: u8 = 0x20;
 /// La SALIDA de un programa. Cierra la ultima asimetria: la pantalla y la
@@ -239,6 +250,11 @@ pub fn revoke_all(pid: u32) {
     // revienta no deja la maquina ciega.
     crate::ring0::obj::fb::process_died(pid);
     crate::ring0::obj::input::process_died(pid);
+    // Y el sonido, que ademas hay que CALLAR: un proceso que muere en mitad de
+    // un tono deja el bit del altavoz puesto y no queda nadie vivo a quien
+    // pedirle que lo quite. Un pitido continuo que solo para reiniciando es la
+    // maquina de rehen, igual que el teclado secuestrado, con otro aparato.
+    crate::ring0::obj::audio::process_died(pid);
     // Sus bloques de memoria no hay que desmapearlos --el espacio entero se
     // destruye--, pero SI hay que soltar el contador de peticiones: sin esto un
     // pid reutilizado heredaria las del muerto y no podria pedir nada.

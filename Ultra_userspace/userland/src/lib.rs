@@ -170,6 +170,25 @@ pub const AUTOPSIA_TOTAL: u64 = 0x00;
 pub const AUTOPSIA_DISPONIBLES: u64 = 0x01;
 pub const AUTOPSIA_RENGLONES: u64 = 0x02;
 
+// ** EL SONIDO como capability. Ver `ring0/obj/audio.rs`.
+//
+// Es el CONTRATO, no un driver: quien puede sonar, quien no, y que pasa con el
+// aparato cuando su dueno se muere. Lo unico que suena hoy es el altavoz del
+// PC, y `AUDIO_OP_APARATO` lo dice en vez de que haya que suponerlo.
+pub const OP_AUDIO_RECLAMAR: u32 = 0x21;
+pub const OP_AUDIO_SOLTAR: u32 = 0x22;
+/// Operaciones sobre el handle `KIND_AUDIO`.
+pub const AUDIO_OP_APARATO: u32 = 0x01;
+pub const AUDIO_OP_PITAR: u32 = 0x02;
+pub const AUDIO_OP_VOLUMEN: u32 = 0x03;
+pub const AUDIO_OP_CALLAR: u32 = 0x04;
+/// Bits que devuelve [`AUDIO_OP_APARATO`].
+pub const APARATO_ALTAVOZ: u64 = 1 << 0;
+pub const APARATO_HDA: u64 = 1 << 1;
+/// Tope de duracion de un pitido, en ms. Espejo de `obj::audio::MAX_MS`: el
+/// kernel lo recorta igual, esto solo evita la sorpresa.
+pub const AUDIO_MAX_MS: u64 = 250;
+
 // Campos de `OP_INFO_TEXTO`.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 pub const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
@@ -240,6 +259,7 @@ mod entrada;
 mod memoria;
 mod pantalla;
 mod proceso;
+mod sonido;
 mod sys;
 
 /// ESTRATOS desde Ring 3. Sigue siendo `bmo::estratos::...`.
@@ -250,4 +270,5 @@ pub use entrada::*;
 pub use memoria::*;
 pub use pantalla::*;
 pub use proceso::*;
+pub use sonido::*;
 pub use sys::*;

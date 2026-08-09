@@ -171,7 +171,7 @@ foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
 # --EJECUTAR, CONSOLA_CREAR, DIR_ABRIR, las de archivo, REINICIAR e INFO-- se
 # escribian en el kernel y nadie comprobaba que coincidieran con el ABI. Un
 # guardian que solo mira la mitad da una tranquilidad que no ha ganado.
-foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'TASK_OP_CONSOLE_WRITE', 'TASK_OP_ENDPOINT_CREATE', 'TASK_OP_RUTA', 'TASK_OP_EJECUTAR', 'TASK_OP_CONSOLA_CREAR', 'TASK_OP_DIR_ABRIR', 'TASK_OP_CONSOLE_READ', 'TASK_OP_ARCHIVO_ABRIR', 'TASK_OP_ARCHIVO_CREAR', 'TASK_OP_REINICIAR', 'TASK_OP_INFO', 'TASK_OP_INFO_TEXTO', 'ARCH_OP_LEER', 'ARCH_OP_ESCRIBIR', 'ARCH_OP_TAMANO', 'ARCH_OP_CERRAR', 'ARCH_OP_LEER_LINEA', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
+foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'TASK_OP_CONSOLE_WRITE', 'TASK_OP_ENDPOINT_CREATE', 'TASK_OP_RUTA', 'TASK_OP_EJECUTAR', 'TASK_OP_CONSOLA_CREAR', 'TASK_OP_DIR_ABRIR', 'TASK_OP_CONSOLE_READ', 'TASK_OP_ARCHIVO_ABRIR', 'TASK_OP_ARCHIVO_CREAR', 'TASK_OP_REINICIAR', 'TASK_OP_INFO', 'TASK_OP_INFO_TEXTO', 'TASK_OP_AUDIO_RECLAMAR', 'TASK_OP_AUDIO_SOLTAR', 'ARCH_OP_LEER', 'ARCH_OP_ESCRIBIR', 'ARCH_OP_TAMANO', 'ARCH_OP_CERRAR', 'ARCH_OP_LEER_LINEA', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
     if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
@@ -253,6 +253,16 @@ if (-not ($kernelCap -match 'KIND_CHANNEL:\s*u8\s*=\s*0x60')) {
 $abiKind = Get-Content (Join-Path $root '..\platform\abi\bmo-abi\src\fundamentals\handle\kind.rs') -Raw
 if (-not ($abiKind -match 'Channel\s*=\s*0x60')) {
     Fail 'capability contract mismatch: bmo-abi HandleKind::Channel must be 0x60'
+}
+# KIND_AUDIO igual: el sonido es `HandleKind::AudioEngine` y los dos lados
+# tienen que decir 0x10. Es la ley 20 de BITACORA.md -- lo que no comprueba el
+# build no es una regla, es una costumbre, y un kind que se desplaza en un solo
+# lado no da error: hace que un handle valido resuelva como otra cosa.
+if (-not ($kernelCap -match 'KIND_AUDIO:\s*u8\s*=\s*0x10')) {
+    Fail 'capability contract mismatch: KIND_AUDIO must be 0x10 (bmo-abi HandleKind::AudioEngine)'
+}
+if (-not ($abiKind -match 'AudioEngine\s*=\s*0x10')) {
+    Fail 'capability contract mismatch: bmo-abi HandleKind::AudioEngine must be 0x10'
 }
 
 # NOTE: uefi_chain is now the UNIFIED shim -- it embeds the flat binaries
@@ -449,7 +459,12 @@ $cEjemplos = @(
     @{ src = 'toolchain\lang\c\examples\raycaster_C.c'; out = 'ray.bex'    ; dir = 'c' },
     # La prueba de fopen/fread/fseek. Lee `datos\salida.txt` DOS veces y
     # compara: si las dos lecturas coinciden, la cadena de ficheros funciona.
-    @{ src = 'toolchain\lang\c\examples\leer_C.c';      out = 'leer.bex'   ; dir = 'c' }
+    @{ src = 'toolchain\lang\c\examples\leer_C.c';      out = 'leer.bex'   ; dir = 'c' },
+    # ESTRENA `KIND_AUDIO`. Comprueba el CONTRATO y no el oido: que hay handle,
+    # que el tope de duracion se cumple, que es exclusivo y --la que importa--
+    # que el handle soltado ya NO pita. Puede que no se oiga nada y este todo
+    # bien: el puerto del altavoz existe en todo x86, el zumbador no.
+    @{ src = 'toolchain\lang\c\examples\sonido_C.c';    out = 'sonido.bex' ; dir = 'c' }
 )
 
 $repo = Split-Path -Parent $root

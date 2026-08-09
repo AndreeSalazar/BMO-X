@@ -24,6 +24,10 @@ bmo-fat32 = { path = "../../platform/drivers/storage/fat32" }
 bmo-estratos = { path = "../../platform/drivers/storage/estratos" }
 # CABINA: telemetria omnisciente entre Ring 0 y Ring 3 (el cockpit del sistema).
 cabina-core = { path = "../../platform/services/cabina-core" }
+# Sonido. Hoy son 109 lineas de altavoz de PC --puerto 0x61 y un retardo por
+# TSC-- y llevaban meses sin que las llamara NADIE: era uno de los crates
+# huerfanos de la auditoria de deuda tecnica. `ring0/obj/audio.rs` las conecta.
+bmo-audio = { path = "../../platform/drivers/audio" }
 
 [[bin]]
 name =     "bmo-kernel"

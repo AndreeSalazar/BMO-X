@@ -29,6 +29,9 @@
 /// adivinable; un handle concedido no.
 pub mod obj {
     pub mod archivo;
+    /// `KIND_AUDIO`: el derecho a hacer ruido. Es el CONTRATO, no el driver --
+    /// ver la cabecera del modulo.
+    pub mod audio;
     pub mod cap;
     pub mod channel;
     pub mod consola;

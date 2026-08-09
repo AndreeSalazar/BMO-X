@@ -155,6 +155,14 @@ const TASK_OP_ES_TEXTO: u64 = 0x1A;
 const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
 /// Tomar lo que otro proceso me haya ofrecido. Espejo de `...::TASK_OP_TOMAR`.
 const TASK_OP_TOMAR: u64 = 0x1C;
+/// **Reclamar el SONIDO.** Devuelve un handle `KIND_AUDIO`: el derecho a hacer
+/// ruido, exclusivo como la pantalla. Ver `ring0/obj/audio.rs` -- es el
+/// CONTRATO, no un driver: lo unico que suena hoy es el altavoz del PC.
+const TASK_OP_AUDIO_RECLAMAR: u64 = 0x21;
+/// Soltar el sonido siendo su dueno y seguir vivo. Va desde el primer dia por
+/// lo que costo que faltara en la pantalla: sin esto, el primero que pite se
+/// queda el aparato hasta que muera.
+const TASK_OP_AUDIO_SOLTAR: u64 = 0x22;
 /// Ofrecer un trozo del bloque propio. Es una operacion sobre `KIND_MEMORIA`.
 const MEM_OP_OFRECER: u64 = 0x03;
 /// Las preguntas del cursor. Espejo de `bmo_abi::...::ES_NODO_*`.
@@ -491,6 +499,23 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 scheduler::current_pid(),
                 crate::ring0::mm::vmm::read_cr3(),
             ) {
+                Ok(()) => BmoStatus::ok_value(0),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
+        // * EL SONIDO. Sin CR3 y sin mapeos: aqui no se entrega memoria, se
+        // entrega el DERECHO -- que es justamente lo que hace que esta pieza se
+        // pueda escribir hoy, con el driver de HDA todavia sin existir.
+        TASK_OP_AUDIO_RECLAMAR => {
+            let _ = arg0;
+            match crate::ring0::obj::audio::claim(scheduler::current_pid()) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
+        TASK_OP_AUDIO_SOLTAR => {
+            let _ = arg0;
+            match crate::ring0::obj::audio::release(scheduler::current_pid()) {
                 Ok(()) => BmoStatus::ok_value(0),
                 Err(code) => BmoStatus::err(code),
             }
@@ -999,6 +1024,14 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             }
             cap::KIND_FRAMEBUFFER => {
                 match crate::ring0::obj::fb::operation(resolved.object, frame.rsi) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
+            // El audio no tiene `object`: la capability no apunta a nada, ES el
+            // derecho. Lo que viaja son los argumentos -- frecuencia y duracion.
+            cap::KIND_AUDIO => {
+                match crate::ring0::obj::audio::operation(frame.rsi, frame.rdx, frame.r10) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }

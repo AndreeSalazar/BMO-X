@@ -140,6 +140,7 @@ name = "bmo-kernel"
 version = "2.0.0"
 dependencies = [
  "bmo-ahci",
+ "bmo-audio",
  "bmo-block",
  "bmo-channel",
  "bmo-estratos",

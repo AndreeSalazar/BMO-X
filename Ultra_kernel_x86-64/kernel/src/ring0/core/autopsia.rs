@@ -296,7 +296,11 @@ pub fn registrar(
     let dirs = crate::ring0::obj::directorio::pendientes_de(pid);
     let archs = crate::ring0::obj::archivo::pendientes_de(pid);
     let pantalla = crate::ring0::obj::fb::owner() == Some(pid);
-    let fugas = caps + dirs + archs + pantalla as u32;
+    // El sonido entra en la cuenta desde el dia que existe la capability, y no
+    // hubo que tocar nada mas: un aparato exclusivo que se recupera al morir es
+    // exactamente la forma que este recuento ya sabia comprobar.
+    let sonido = crate::ring0::obj::audio::owner() == Some(pid);
+    let fugas = caps + dirs + archs + pantalla as u32 + sonido as u32;
 
     renglones[8].s("recursos  ");
     if fugas == 0 {
@@ -317,6 +321,9 @@ pub fn registrar(
         }
         if pantalla {
             renglones[8].s(" LA PANTALLA");
+        }
+        if sonido {
+            renglones[8].s(" EL SONIDO");
         }
         // Tambien a CABINA: una fuga es un fallo del KERNEL, no del programa
         // que murio, y merece su linea roja aunque nadie abra la autopsia.

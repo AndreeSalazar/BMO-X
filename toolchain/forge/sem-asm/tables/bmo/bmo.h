@@ -67,6 +67,9 @@
 #define BMO_OP_ARCHIVO_ABRIR 0x10
 #define BMO_OP_ARCHIVO_CREAR 0x11
 #define BMO_OP_INFO 0x13
+/* El SONIDO. Exclusivo como la pantalla; ver <bmo/sonido.h>. */
+#define BMO_OP_SONIDO_RECLAMAR 0x21
+#define BMO_OP_SONIDO_SOLTAR 0x22
 
 /* Campos de BMO_OP_INFO. Son una TABLA: anadir un dato es una fila, no una
  * operacion nueva. */
