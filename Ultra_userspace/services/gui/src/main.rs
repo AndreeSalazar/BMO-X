@@ -598,25 +598,25 @@ pub extern "C" fn _start() -> ! {
     // es el mismo fallo de antes al reves.
     let mut datos_abierta = false;
 
-    // -- La consola del KERNEL (F11) --
+    // -- CABINA (F11): lo que el kernel ve, CON severidad --
     //
     // Lo que dice Ring 0, leido desde aqui. **No es "ir a Ring 0"**: este
     // proceso sigue en Ring 3 con sus capabilities contadas y lo unico que hace
-    // es preguntar (`TASK_OP_KLOG_*`). Ver `escena::klog`.
+    // es preguntar (`TASK_OP_CABINA_*`). Ver `escena::cabina`.
     //
     // Y F11 en vez de un comando por una razon de hoy: **no hace falta teclear
     // nada para abrirla**. Cuando lo que falla es el campo donde se escribe, un
     // diagnostico que exige escribir un comando no sirve de nada.
-    let caja_klog = escena::klog::CajaKlog::nueva(&p);
-    let mut klog_abierta = false;
+    let mut caja_cabina = escena::cabina::CajaCabina::nueva(&p);
+    let mut cabina_abierta = false;
     // Cuantas lineas hacia atras empieza la ventana. RePag/AvPag la mueven, que
     // es lo que permite llegar al PRINCIPIO del arranque -- donde estan las
     // respuestas de por que algo no arranco.
-    let mut klog_desplazamiento = 0u64;
+    
     // Que familia de modulos deja pasar la ventana del kernel. `0` = todas.
     // Vive aqui y no dentro de `klog.rs` por lo mismo que el desplazamiento:
     // es estado de la SESION, y el modulo que pinta no debe recordar nada.
-    let mut klog_filtro = 0u8;
+    
 
     // -- La ventana del SONIDO (F10) --
     //
@@ -658,7 +658,7 @@ pub extern "C" fn _start() -> ! {
     // ventana, chocan.
     const V_EJECUTAR: u8 = 0;
     const V_DATOS: u8 = 1;
-    const V_KLOG: u8 = 2;
+    const V_CABINA: u8 = 2;
     const V_SONIDO: u8 = 3;
     let mut foco = bmo_input::Foco::nuevo();
     foco.open(V_EJECUTAR);
@@ -814,8 +814,8 @@ pub extern "C" fn _start() -> ! {
                 // tres eso son seis ramas que dicen una sola regla.
                 let arriba_ahora = if sonido_abierta && foco.es_para(V_SONIDO) {
                     V_SONIDO
-                } else if klog_abierta && foco.es_para(V_KLOG) {
-                    V_KLOG
+                } else if cabina_abierta && foco.es_para(V_CABINA) {
+                    V_CABINA
                 } else if datos_abierta && foco.es_para(V_DATOS) {
                     V_DATOS
                 } else {
@@ -823,8 +823,8 @@ pub extern "C" fn _start() -> ! {
                 };
                 let mut pintar_una = |v: u8, repintar: &mut bool, sal: &mut escena::salida::Salida| {
                     match v {
-                        V_KLOG if klog_abierta => {
-                            escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro)
+                        V_CABINA if cabina_abierta => {
+                            escena::cabina::pintar(&p, &caja_cabina)
                         }
                         V_DATOS if datos_abierta => escena::datos::pintar(&p, &caja_datos),
                         V_SONIDO if sonido_abierta => escena::sonido::pintar(
@@ -839,7 +839,7 @@ pub extern "C" fn _start() -> ! {
                         _ => {}
                     }
                 };
-                for v in [V_EJECUTAR, V_DATOS, V_KLOG, V_SONIDO] {
+                for v in [V_EJECUTAR, V_DATOS, V_CABINA, V_SONIDO] {
                     if v != arriba_ahora {
                         pintar_una(v, &mut repintar_campo, &mut salida);
                     }
@@ -973,30 +973,30 @@ pub extern "C" fn _start() -> ! {
                 // preguntar por el foco, porque un atajo que solo funciona si ya
                 // estas dentro de la ventana no sirve para abrirla.
                 let conmutar_klog = if c == 0x93 {
-                    Some(!klog_abierta)
-                } else if c == 0x1B && klog_abierta && foco.es_para(V_KLOG) {
+                    Some(!cabina_abierta)
+                } else if c == 0x1B && cabina_abierta && foco.es_para(V_CABINA) {
                     Some(false)
                 } else {
                     None
                 };
                 if let Some(open) = conmutar_klog {
-                    klog_abierta = open;
+                    cabina_abierta = open;
                     if open {
                         // Se abre SIEMPRE por lo ultimo, que es lo que se quiere
                         // ver el 90% de las veces. Para ir al arranque estan
                         // RePag/AvPag.
-                        klog_desplazamiento = 0;
-                        foco.open(V_KLOG);
-                        escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
-                        arriba_antes = if foco.es_para(V_KLOG) { V_KLOG } else { V_EJECUTAR };
+                        caja_cabina.desde = 0;
+                        foco.open(V_CABINA);
+                        escena::cabina::pintar(&p, &caja_cabina);
+                        arriba_antes = if foco.es_para(V_CABINA) { V_CABINA } else { V_EJECUTAR };
                         if arriba_antes == V_EJECUTAR {
                             destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                         }
                     } else {
-                        foco.close(V_KLOG);
+                        foco.close(V_CABINA);
                         borrar_ventana(
-                            &p, &caja, caja_klog.x, caja_klog.y,
-                            caja_klog.ancho, caja_klog.alto, visible,
+                            &p, &caja, caja_cabina.marco.x, caja_cabina.marco.y,
+                            caja_cabina.marco.ancho, caja_cabina.marco.alto, visible,
                         );
                         arriba_antes = V_EJECUTAR;
                         destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
@@ -1065,8 +1065,8 @@ pub extern "C" fn _start() -> ! {
                         if datos_abierta {
                             escena::datos::pintar(&p, &caja_datos);
                         }
-                        if klog_abierta {
-                            escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
+                        if cabina_abierta {
+                            escena::cabina::pintar(&p, &caja_cabina);
                         }
                     }
                     continue;
@@ -1148,21 +1148,26 @@ pub extern "C" fn _start() -> ! {
                 // Se reinicia el desplazamiento al cambiar: lo que se estaba
                 // mirando en la lista vieja no senala nada en la nueva, y dejar
                 // el numero puesto haria que la ventana pareciera vacia.
-                if klog_abierta && foco.es_para(V_KLOG) && (c == b'f' || c == b'F') {
-                    klog_filtro = (klog_filtro + 1) % escena::klog::FAMILIAS;
-                    klog_desplazamiento = 0;
-                    escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
+                // G: subir el listero de GRAVEDAD. Cinco escalones y vuelta.
+                //
+                // Es `G` y no `F` porque ya no filtra por FAMILIA de modulo
+                // --eso lo hacia el klog, adivinando por el prefijo de la
+                // linea-- sino por la severidad que CABINA lleva de verdad.
+                if cabina_abierta && foco.es_para(V_CABINA) && (c == b'g' || c == b'G') {
+                    caja_cabina.minima = (caja_cabina.minima + 1) % 5;
+                    caja_cabina.desde = 0;
+                    escena::cabina::pintar(&p, &caja_cabina);
                     continue;
                 }
-                if klog_abierta && foco.es_para(V_KLOG) && (c == 0x87 || c == 0x88) {
-                    let hay = bmo::klog_lineas();
+                if cabina_abierta && foco.es_para(V_CABINA) && (c == 0x87 || c == 0x88) {
+                    let hay = bmo::cabina_disponibles();
                     if c == 0x87 {
                         // Hacia atras en el tiempo, sin pasarse del principio.
-                        klog_desplazamiento = (klog_desplazamiento + 8).min(hay.saturating_sub(1));
+                        caja_cabina.desde = (caja_cabina.desde + 6).min(hay.saturating_sub(1));
                     } else {
-                        klog_desplazamiento = klog_desplazamiento.saturating_sub(8);
+                        caja_cabina.desde = caja_cabina.desde.saturating_sub(6);
                     }
-                    escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
+                    escena::cabina::pintar(&p, &caja_cabina);
                     continue;
                 }
 
@@ -2185,14 +2190,14 @@ pub extern "C" fn _start() -> ! {
             // regla, no una lista de casos.
             let en = |v: u8| match v {
                 V_DATOS => datos_abierta && caja_datos.contiene(pos.x, pos.y),
-                V_KLOG => klog_abierta && caja_klog.contiene(pos.x, pos.y),
+                V_CABINA => cabina_abierta && caja_cabina.marco.contiene(pos.x, pos.y),
                 V_SONIDO => sonido_abierta && caja_sonido.contiene(pos.x, pos.y),
                 _ => visible && caja.contiene(pos.x, pos.y),
             };
             let bajo_el_puntero = if en(arriba_antes) {
                 Some(arriba_antes)
             } else {
-                [V_SONIDO, V_KLOG, V_DATOS, V_EJECUTAR]
+                [V_SONIDO, V_CABINA, V_DATOS, V_EJECUTAR]
                     .into_iter()
                     .find(|&v| v != arriba_antes && en(v))
             };
@@ -2210,16 +2215,16 @@ pub extern "C" fn _start() -> ! {
             // mirando.
             if giro != 0 {
                 match bajo_el_puntero {
-                    Some(V_KLOG) => {
+                    Some(V_CABINA) => {
                         // Positivo es hacia arriba, y en un log "arriba" es
                         // hacia ATRAS en el tiempo: el desplazamiento cuenta
                         // lineas hacia el pasado, asi que suma.
-                        let hay = bmo::klog_lineas();
+                        let hay = bmo::cabina_disponibles();
                         let paso = (giro * 3) as i64;
-                        let nuevo = klog_desplazamiento as i64 + paso;
-                        klog_desplazamiento =
+                        let nuevo = caja_cabina.desde as i64 + paso;
+                        caja_cabina.desde =
                             nuevo.clamp(0, hay.saturating_sub(1) as i64) as u64;
-                        escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
+                        escena::cabina::pintar(&p, &caja_cabina);
                     }
                     Some(V_EJECUTAR) => {
                         // Tres filas por muesca: una sola se queda corta y una
@@ -2448,8 +2453,8 @@ pub extern "C" fn _start() -> ! {
             // Sin esto, Alt+Tab a Ejecutar con Datos delante dejaria el teclado
             // en una linea tapada: escribirias sin ver nada. Es exactamente el
             // fallo que se acaba de arreglar, del reves.
-            let arriba = if klog_abierta && foco.es_para(V_KLOG) {
-                V_KLOG
+            let arriba = if cabina_abierta && foco.es_para(V_CABINA) {
+                V_CABINA
             } else if datos_abierta && foco.es_para(V_DATOS) {
                 V_DATOS
             } else {
@@ -2457,7 +2462,7 @@ pub extern "C" fn _start() -> ! {
             };
             if arriba != arriba_antes {
                 match arriba {
-                    V_KLOG => escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro),
+                    V_CABINA => escena::cabina::pintar(&p, &caja_cabina),
                     V_DATOS => escena::datos::pintar(&p, &caja_datos),
                     // Sin guarda de `visible`: `destapar` ya no hace nada si
                     // la caja esta escondida, y una guarda repetida es una que

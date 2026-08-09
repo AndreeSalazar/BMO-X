@@ -5,6 +5,9 @@
 
 use bmo_userland as bmo;
 
+/// **La ventana de CABINA** (F11): lo que el kernel ve, con su gravedad y en
+/// su color. Sustituye a la del klog, que era texto plano sin severidad.
+pub(crate) mod cabina;
 pub(crate) mod calc;
 pub(crate) mod conmutador;
 pub(crate) mod datos;
@@ -13,9 +16,6 @@ pub(crate) mod cursor;
 pub(crate) mod entrada;
 /// El LOGO, en dos mascaras de 1 bit. Generado por `docs/arte/gato_a_mascara.py`.
 pub(crate) mod gato;
-/// La consola del KERNEL (F11): lo que dice Ring 0, leido desde Ring 3. No da
-/// privilegio, da vista -- ver la cabecera del modulo.
-pub(crate) mod klog;
 /// El MARCO compartido: geometria, arrastre, estirar, maximizar y los tres
 /// botones. Lo que toda ventana tiene y ninguna deberia escribir dos veces.
 pub(crate) mod marco;
