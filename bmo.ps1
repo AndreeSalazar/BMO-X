@@ -24,7 +24,20 @@ param(
     [string]$Datos = 'A'
 )
 
-$ErrorActionPreference = 'Stop'
+# [!] NADA DE `$ErrorActionPreference = 'Stop'` AQUI.
+#
+# Estuvo puesto y rompio DOS cosas, la segunda peor que la primera:
+#
+#   1. El bucle de `cargo test`, que moria en el primer warning -- cada linea
+#      de stderr de un nativo es un ErrorRecord, y con `Stop` es terminante.
+#   2. **`build.ps1` entero**, que se ejecuta en esta misma sesion y por tanto
+#      HEREDA la preferencia. Un guion que llevaba meses funcionando empezo a
+#      morirse en `warning: unused variable`, y no por nada suyo: por una linea
+#      escrita en el guion que lo llama.
+#
+# Aqui los fallos se detectan mirando lo que las herramientas DICEN --las filas
+# que pasan, el codigo de salida del build-- y no dejando que el shell decida
+# que un aviso del compilador es motivo para abortar.
 $raiz = $PSScriptRoot
 $t0 = Get-Date
 
