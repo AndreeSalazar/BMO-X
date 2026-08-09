@@ -167,7 +167,7 @@ const RSI: usize = 6;
 const RDI: usize = 7;
 /// El cuarto argumento de la puerta. `syscall` machaca `rcx` con el RIP de
 /// retorno, asi que el ABI usa `r10` donde SysV usaria `rcx` -- y por eso hace
-/// falta nombrarlo: `AUDIO_OP_PITAR` lleva la duracion ahi.
+/// falta nombrarlo: `AUDIO_OP_BEEP` lleva la duracion ahi.
 const R10: usize = 10;
 const R11: usize = 11;
 
@@ -604,23 +604,23 @@ impl Machine {
     /// `ring0/obj/audio.rs` -- sobre todo la que se nota: **el tope recorta**.
     fn audio_op(&mut self, op: u64, a0: u64, a1: u64) -> u64 {
         use bmo_abi::syscalls::surface::{
-            APARATO_ALTAVOZ, AUDIO_OP_APARATO, AUDIO_OP_CALLAR, AUDIO_OP_PITAR, AUDIO_OP_VOLUMEN,
+            DEVICE_SPEAKER, AUDIO_OP_DEVICES, AUDIO_OP_SILENCE, AUDIO_OP_BEEP, AUDIO_OP_VOLUME,
         };
         match op {
             // Solo el altavoz. HDA sigue sin existir, y decir aqui que si lo
             // hay seria darle al programa una respuesta que el Ryzen no da.
-            AUDIO_OP_APARATO => APARATO_ALTAVOZ,
-            AUDIO_OP_PITAR => {
+            AUDIO_OP_DEVICES => DEVICE_SPEAKER,
+            AUDIO_OP_BEEP => {
                 let hz = a0.min(20_000);
                 let ms = a1.min(AUDIO_MAX_MS);
                 self.audio_partitura.push((hz, ms));
                 ms
             }
-            AUDIO_OP_VOLUMEN => {
+            AUDIO_OP_VOLUME => {
                 self.audio_volumen = a0.min(100);
                 self.audio_volumen
             }
-            AUDIO_OP_CALLAR => {
+            AUDIO_OP_SILENCE => {
                 self.audio_partitura.push((0, 0));
                 0
             }
@@ -826,7 +826,7 @@ impl Machine {
     fn do_syscall(&mut self) {
         use bmo_abi::syscalls::surface::{
             CURRENT_TASK, NR_INVOKE, TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR,
-            TASK_OP_AUDIO_RECLAMAR, TASK_OP_AUDIO_SOLTAR, TASK_OP_CONSOLE_READ,
+            TASK_OP_AUDIO_CLAIM, TASK_OP_AUDIO_RELEASE, TASK_OP_CONSOLE_READ,
             TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_INPUT_CLAIM, TASK_OP_MEMORIA_PEDIR,
             TASK_OP_RUTA, TASK_OP_YIELD,
         };
@@ -918,13 +918,13 @@ impl Machine {
                 // El SONIDO. Reclamarlo dos veces sin soltar tiene que fallar:
                 // es la propiedad entera de un aparato exclusivo, y modelarla
                 // aqui es lo que permite probarla sin encender el Ryzen.
-                op if op == TASK_OP_AUDIO_RECLAMAR => {
+                op if op == TASK_OP_AUDIO_CLAIM => {
                     let h = if self.audio_dueno { 0 } else { CAP_AUDIO };
                     self.audio_dueno = true;
                     self.finalizar_syscall(h);
                     return;
                 }
-                op if op == TASK_OP_AUDIO_SOLTAR => {
+                op if op == TASK_OP_AUDIO_RELEASE => {
                     if self.audio_dueno {
                         self.audio_dueno = false;
                         self.finalizar_syscall(0);

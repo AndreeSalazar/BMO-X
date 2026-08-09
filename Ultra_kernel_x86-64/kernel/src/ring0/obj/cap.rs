@@ -282,7 +282,7 @@ pub fn revoke_all(pid: u32) {
 /// comprobaba: la funcion hace su trabajo y el que la llama se fia. Esto es lo
 /// que convierte "confio en que revoco" en "revoco, y aqui esta el numero" --
 /// el escalon 1 de `docs/PLAN_AUTOCURACION.md`.
-pub fn vivas_de(pid: u32) -> u32 {
+pub fn live_count_of(pid: u32) -> u32 {
     let pid = pid as usize;
     if pid >= MAX_PROCS {
         return 0;

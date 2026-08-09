@@ -175,7 +175,7 @@ pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
 /// Una fuga de ranuras no da error: da un sistema que un dia no puede abrir un
 /// directorio mas, sin nada que lo relacione con el proceso que murio hace una
 /// hora.
-pub fn pendientes_de(pid: u32) -> u32 {
+pub fn pending_of(pid: u32) -> u32 {
     let mut n = 0;
     unsafe {
         for i in 0..MAX_ABIERTOS {

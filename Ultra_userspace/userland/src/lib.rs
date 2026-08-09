@@ -174,17 +174,17 @@ pub const AUTOPSIA_RENGLONES: u64 = 0x02;
 //
 // Es el CONTRATO, no un driver: quien puede sonar, quien no, y que pasa con el
 // aparato cuando su dueno se muere. Lo unico que suena hoy es el altavoz del
-// PC, y `AUDIO_OP_APARATO` lo dice en vez de que haya que suponerlo.
-pub const OP_AUDIO_RECLAMAR: u32 = 0x21;
-pub const OP_AUDIO_SOLTAR: u32 = 0x22;
+// PC, y `AUDIO_OP_DEVICES` lo dice en vez de que haya que suponerlo.
+pub const OP_AUDIO_CLAIM: u32 = 0x21;
+pub const OP_AUDIO_RELEASE: u32 = 0x22;
 /// Operaciones sobre el handle `KIND_AUDIO`.
-pub const AUDIO_OP_APARATO: u32 = 0x01;
-pub const AUDIO_OP_PITAR: u32 = 0x02;
-pub const AUDIO_OP_VOLUMEN: u32 = 0x03;
-pub const AUDIO_OP_CALLAR: u32 = 0x04;
-/// Bits que devuelve [`AUDIO_OP_APARATO`].
-pub const APARATO_ALTAVOZ: u64 = 1 << 0;
-pub const APARATO_HDA: u64 = 1 << 1;
+pub const AUDIO_OP_DEVICES: u32 = 0x01;
+pub const AUDIO_OP_BEEP: u32 = 0x02;
+pub const AUDIO_OP_VOLUME: u32 = 0x03;
+pub const AUDIO_OP_SILENCE: u32 = 0x04;
+/// Bits que devuelve [`AUDIO_OP_DEVICES`].
+pub const DEVICE_SPEAKER: u64 = 1 << 0;
+pub const DEVICE_HDA: u64 = 1 << 1;
 /// Tope de duracion de un pitido, en ms. Espejo de `obj::audio::MAX_MS`: el
 /// kernel lo recorta igual, esto solo evita la sorpresa.
 pub const AUDIO_MAX_MS: u64 = 250;

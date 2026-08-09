@@ -551,9 +551,9 @@ pub unsafe fn read_into(idx: u64, dst: *mut u8, n: usize) -> usize {
 /// escritura a medias **no deja nada**: lo acumulado se tira. Guardarlo seria
 /// inventar un archivo que su autor nunca dio por terminado.
 /// Cuantos archivos siguen abiertos a nombre de `pid`. Cero despues de
-/// `process_died`. Ver `directorio::pendientes_de` -- son cuatro ranuras por
+/// `process_died`. Ver `directorio::pending_of` -- son cuatro ranuras por
 /// proceso y una fuga aqui se nota mucho antes.
-pub fn pendientes_de(pid: u32) -> u32 {
+pub fn pending_of(pid: u32) -> u32 {
     let mut n = 0;
     unsafe {
         for i in 0..MAX_ABIERTOS {

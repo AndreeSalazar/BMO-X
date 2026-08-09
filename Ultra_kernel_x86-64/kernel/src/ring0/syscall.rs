@@ -158,11 +158,11 @@ const TASK_OP_TOMAR: u64 = 0x1C;
 /// **Reclamar el SONIDO.** Devuelve un handle `KIND_AUDIO`: el derecho a hacer
 /// ruido, exclusivo como la pantalla. Ver `ring0/obj/audio.rs` -- es el
 /// CONTRATO, no un driver: lo unico que suena hoy es el altavoz del PC.
-const TASK_OP_AUDIO_RECLAMAR: u64 = 0x21;
+const TASK_OP_AUDIO_CLAIM: u64 = 0x21;
 /// Soltar el sonido siendo su dueno y seguir vivo. Va desde el primer dia por
 /// lo que costo que faltara en la pantalla: sin esto, el primero que pite se
 /// queda el aparato hasta que muera.
-const TASK_OP_AUDIO_SOLTAR: u64 = 0x22;
+const TASK_OP_AUDIO_RELEASE: u64 = 0x22;
 /// Ofrecer un trozo del bloque propio. Es una operacion sobre `KIND_MEMORIA`.
 const MEM_OP_OFRECER: u64 = 0x03;
 /// Las preguntas del cursor. Espejo de `bmo_abi::...::ES_NODO_*`.
@@ -506,14 +506,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // * EL SONIDO. Sin CR3 y sin mapeos: aqui no se entrega memoria, se
         // entrega el DERECHO -- que es justamente lo que hace que esta pieza se
         // pueda escribir hoy, con el driver de HDA todavia sin existir.
-        TASK_OP_AUDIO_RECLAMAR => {
+        TASK_OP_AUDIO_CLAIM => {
             let _ = arg0;
             match crate::ring0::obj::audio::claim(scheduler::current_pid()) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
         }
-        TASK_OP_AUDIO_SOLTAR => {
+        TASK_OP_AUDIO_RELEASE => {
             let _ = arg0;
             match crate::ring0::obj::audio::release(scheduler::current_pid()) {
                 Ok(()) => BmoStatus::ok_value(0),

@@ -117,18 +117,36 @@ ring0/dev/framebuffer.rs:182
     static mut BACKBUFFER_MEM: [u32; 1920*1080] = [0; ...];
 ```
 
-Son **8 MiB de `static mut`** reservados en el binario del kernel con una
-resolucion clavada dentro, y `get_backbuffer_fb` recorta con `.min()` si la
-pantalla es mayor: en 2560x1440 se veria **la esquina**, sin un solo error.
+Son **8 MiB de `static mut`** declarados con la resolucion clavada dentro, y
+`get_backbuffer_fb` recorta con `.min()` si la pantalla es mayor: en 2560x1440
+se veria **la esquina**, sin un solo error.
 
 Y lo que lo convierte en un caso claro: **no lo llama NADIE.** El barrido del
 08-09 no encontro un solo uso de `get_backbuffer_fb`, `backbuffer_ptr` ni
-`present` fuera del propio fichero. Es un huerfano de 8 MiB. El compositor hace
-su doble bufer en Ring 3, con `KIND_MEMORIA`, que es donde debe estar.
+`present` fuera del propio fichero.
 
-**Lo que toca**: borrarlo. No adaptarlo -- borrarlo. Un buffer estatico del
-tamano de una pantalla dentro del kernel es exactamente lo que este diseno dice
-que no hace.
+★ **Pero el numero desmiente el motivo, y hay que decirlo.** Se borro y se midio
+el `.bss` antes y despues:
+
+```
+   .bss ANTES:    2.608.160 bytes
+   .bss DESPUES:  2.608.160 bytes
+   AHORRO:        0
+```
+
+**Cero.** El enlazador ya lo descartaba, y por el mismo motivo por el que
+sobraba: nadie lo referenciaba, asi que ni el static ni sus seis funciones
+llegaban a la imagen. Los 8 MiB nunca existieron en la maquina.
+
+Asi que borrarlo no fue una optimizacion: fue **quitar una trampa**. Mientras el
+codigo estuviera ahi, la primera llamada a `present()` habria traido de golpe 8
+MiB de `.bss` y un recorte silencioso a 1080 lineas -- y quien la escribiera no
+tendria por que saberlo. **Codigo muerto que es gratis hoy y caro el dia que
+alguien lo despierta.**
+
+Y deja una leccion medible para el resto de esta lista: *"esto ocupa"* es una
+hipotesis hasta que se mira el `.bss`. La optimizacion de verdad de este kernel
+no esta en lo que sobra --el enlazador ya se lo come-- sino en lo que se usa.
 
 ---
 
@@ -144,10 +162,10 @@ Eso basta para un pitido. No basta para un escritorio.
 
 ## Por que hace falta un lider, con el caso concreto
 
-Hoy, si el escritorio abre F10 y a la vez corre `c/musica.bex`, **uno de los
-dos se queda sin sonido** -- y el que pierda no puede hacer nada al respecto.
-Es el mismo problema que la pantalla tenia antes del compositor: un aparato,
-muchos que lo quieren, y ninguna politica que no sea "el primero que llegue".
+Hoy, si el escritorio abre F10 y a la vez corre `c/musica.bex`, **uno de los dos
+se queda sin sonido** -- y el que pierda no puede hacer nada al respecto. Es el
+mismo problema que la pantalla tenia antes del compositor: un aparato, muchos
+que lo quieren, y ninguna politica que no sea "el primero que llegue".
 
 ## El protocolo, en ingles
 
@@ -177,8 +195,8 @@ que tendran las superficies con la pantalla.
 
 ### ★ 2.4 -- y aqui la eleccion cambio
 
-El plan de DOOM decia *"HD Audio, que en este Ryzen es HDA"*. El diagnostico
-del 08-08 lo corrige: **el aparato del dueno es USB**.
+El plan de DOOM decia *"HD Audio, que en este Ryzen es HDA"*. El diagnostico del
+08-08 lo corrige: **el aparato del dueno es USB**.
 
 ```
 VID_1B3F&PID_2008    USB\Class_01&SubClass_01    = USB Audio Class 1.0
@@ -212,8 +230,8 @@ depende de 2.4.
 | `gui.bex` | 4 | 4 | superficies (1.0); la resolucion espera a la GPU |
 | `audio.bex` | 5 | 5 | **2.4**: un aparato que acepte muestras |
 
-**Lo unico que se puede hacer hoy sin esperar a nada**: borrar el backbuffer
-huerfano del kernel (1.1), y el volumen por control transfer del USB.
+**Lo que se puede hacer sin esperar a nada**: el volumen por control transfer del
+USB. La casilla 1.1 ya no esta en esta lista -- el backbuffer se borro el 08-09.
 
 ---
 

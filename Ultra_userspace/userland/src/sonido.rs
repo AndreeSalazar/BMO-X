@@ -24,7 +24,7 @@ pub struct Sonido {
 impl Sonido {
     /// Reclamarlo. `None` si ya lo tiene otro proceso.
     pub fn claim() -> Option<Self> {
-        let cap = invoke(CURRENT_TASK, OP_AUDIO_RECLAMAR, 0, 0, 0).valor()?;
+        let cap = invoke(CURRENT_TASK, OP_AUDIO_CLAIM, 0, 0, 0).valor()?;
         Some(Self { cap })
     }
 
@@ -35,17 +35,17 @@ impl Sonido {
     ///
     /// Devuelve `false` si no era el dueno, en vez de fingir que lo solto.
     pub fn release(self) -> bool {
-        invoke(CURRENT_TASK, OP_AUDIO_SOLTAR, 0, 0, 0).valor().is_some()
+        invoke(CURRENT_TASK, OP_AUDIO_RELEASE, 0, 0, 0).valor().is_some()
     }
 
-    /// Que aparatos hay: mascara de [`APARATO_ALTAVOZ`] y [`APARATO_HDA`].
+    /// Que aparatos hay: mascara de [`DEVICE_SPEAKER`] y [`DEVICE_HDA`].
     ///
     /// [!] Un bit puesto dice que **hay camino**, no que se vaya a oir algo. El
     /// puerto del altavoz existe en todo x86; el zumbador fisico, no -- muchas
     /// placas modernas traen el cabezal SPKR sin nada conectado, y desde aqui
     /// no hay forma de saberlo.
     pub fn aparatos(&self) -> u64 {
-        invoke(self.cap, AUDIO_OP_APARATO, 0, 0, 0).valor().unwrap_or(0)
+        invoke(self.cap, AUDIO_OP_DEVICES, 0, 0, 0).valor().unwrap_or(0)
     }
 
     /// Pitar. Devuelve los milisegundos que de verdad sono.
@@ -55,7 +55,7 @@ impl Sonido {
     /// recorta a [`AUDIO_MAX_MS`], asi que pedir mas no cuelga la maquina --
     /// pero tampoco suena mas.
     pub fn pitar(&self, freq_hz: u32, ms: u32) -> u64 {
-        invoke(self.cap, AUDIO_OP_PITAR, freq_hz as u64, ms as u64, 0)
+        invoke(self.cap, AUDIO_OP_BEEP, freq_hz as u64, ms as u64, 0)
             .valor()
             .unwrap_or(0)
     }
@@ -66,11 +66,11 @@ impl Sonido {
     /// el volumen se consigue cambiando el modo del PIT --pulsos estrechos
     /// suenan mas flojo que una onda cuadrada al 50%-- y no hay mas modos.
     pub fn volumen(&self, v: u8) -> u64 {
-        invoke(self.cap, AUDIO_OP_VOLUMEN, v as u64, 0, 0).valor().unwrap_or(0)
+        invoke(self.cap, AUDIO_OP_VOLUME, v as u64, 0, 0).valor().unwrap_or(0)
     }
 
     /// Callar ahora mismo.
     pub fn callar(&self) {
-        let _ = invoke(self.cap, AUDIO_OP_CALLAR, 0, 0, 0);
+        let _ = invoke(self.cap, AUDIO_OP_SILENCE, 0, 0, 0);
     }
 }

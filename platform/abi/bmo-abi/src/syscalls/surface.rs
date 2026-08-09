@@ -427,42 +427,42 @@ pub const AUTOPSIA_RENGLONES: u64 = 0x02;
 /// programa pita encima de cualquier otro.
 ///
 /// Las operaciones sobre el handle son `AUDIO_OP_*`.
-pub const TASK_OP_AUDIO_RECLAMAR: u64 = 0x21;
+pub const TASK_OP_AUDIO_CLAIM: u64 = 0x21;
 /// Soltar el sonido siendo su dueno y **seguir vivo**.
 ///
 /// Va desde el primer dia por lo que costo que faltara en la pantalla: alli la
 /// unica forma de dejar de ser dueno era morir, asi que el escritorio no podia
 /// prestarla ni queriendo. El mismo hueco aqui seria que el primer programa que
 /// pite se queda el aparato para siempre.
-pub const TASK_OP_AUDIO_SOLTAR: u64 = 0x22;
+pub const TASK_OP_AUDIO_RELEASE: u64 = 0x22;
 
 /// Operaciones sobre un handle de sonido.
 ///
-/// `AUDIO_OP_APARATO` existe para **preguntar en vez de suponer**: contesta una
-/// mascara (`APARATO_ALTAVOZ`, `APARATO_HDA`) y el dia que exista HDA el mismo
+/// `AUDIO_OP_DEVICES` existe para **preguntar en vez de suponer**: contesta una
+/// mascara (`DEVICE_SPEAKER`, `DEVICE_HDA`) y el dia que exista HDA el mismo
 /// binario se entera sin recompilarse.
 ///
 /// [!] Un bit puesto dice que hay CAMINO, no que se oiga: el puerto del altavoz
 /// existe en todo x86 y el zumbador fisico no.
-pub const AUDIO_OP_APARATO: u64 = 0x01;
+pub const AUDIO_OP_DEVICES: u64 = 0x01;
 /// Pitar. `arg0` = Hz, `arg1` = ms. Devuelve los ms que de verdad sonaron.
 ///
 /// **Bloquea mientras dura**, y por eso hay tope: el altavoz del PC no tiene
 /// interrupcion que avise de que el tono acabo, asi que el nucleo se queda en un
 /// bucle de espera. Sin el tope, un programa de Ring 3 para el planificador el
 /// tiempo que quiera.
-pub const AUDIO_OP_PITAR: u64 = 0x02;
+pub const AUDIO_OP_BEEP: u64 = 0x02;
 /// Volumen global, `arg0` de 0 a 100. En el altavoz del PC son **dos
 /// escalones**, no cien: el volumen es el modo del temporizador.
-pub const AUDIO_OP_VOLUMEN: u64 = 0x03;
+pub const AUDIO_OP_VOLUME: u64 = 0x03;
 /// Callar ahora mismo.
-pub const AUDIO_OP_CALLAR: u64 = 0x04;
+pub const AUDIO_OP_SILENCE: u64 = 0x04;
 
 /// Hay altavoz de PC (el puerto que lo controla; ver la nota de
-/// [`AUDIO_OP_APARATO`]).
-pub const APARATO_ALTAVOZ: u64 = 1 << 0;
+/// [`AUDIO_OP_DEVICES`]).
+pub const DEVICE_SPEAKER: u64 = 1 << 0;
 /// Hay HD Audio con su codec abierto. **Hoy siempre 0.**
-pub const APARATO_HDA: u64 = 1 << 1;
+pub const DEVICE_HDA: u64 = 1 << 1;
 
 // =======================================================================
 //  LIENZO -- una app pinta donde se va a ver

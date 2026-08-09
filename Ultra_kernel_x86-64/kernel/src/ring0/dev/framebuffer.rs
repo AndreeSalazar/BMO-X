@@ -176,61 +176,29 @@ pub fn fill_rect(x: u32, y: u32, w: u32, h: u32, color: Color) {
     }
 }
 
-
-
-// ?????? Static Backbuffer ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
-const BACKBUFFER_WIDTH: usize = 1920;
-const BACKBUFFER_HEIGHT: usize = 1080;
-const BACKBUFFER_SIZE: usize = BACKBUFFER_WIDTH * BACKBUFFER_HEIGHT;
-static mut BACKBUFFER_MEM: [u32; BACKBUFFER_SIZE] = [0; BACKBUFFER_SIZE];
-
-#[allow(static_mut_refs)]
-pub fn get_backbuffer_fb() -> Framebuffer {
-    unsafe {
-        let addr = BACKBUFFER_MEM.as_mut_ptr() as u64;
-        let (width, height) = if let Some(disp) = display() {
-            (
-                (disp.width as usize).min(BACKBUFFER_WIDTH) as u32,
-                (disp.height as usize).min(BACKBUFFER_HEIGHT) as u32,
-            )
-        } else {
-            (BACKBUFFER_WIDTH as u32, BACKBUFFER_HEIGHT as u32)
-        };
-        // Backbuffer is always XRGB8888 (PixelFormat::Rgb == 0)
-        Framebuffer::new(addr, (BACKBUFFER_WIDTH * 4) as u64, width, height, PixelFormat::Rgb)
-    }
-}
-
-pub fn backbuffer_ptr() -> *mut u32 { unsafe { BACKBUFFER_MEM.as_mut_ptr() } }
-
-pub fn present() {
-    if let Some(disp) = display() {
-        let backbuffer = get_backbuffer_fb();
-        let dest = Framebuffer::new(
-            disp.base as u64,
-            (disp.stride as u64) * 4,
-            disp.width,
-            disp.height,
-            disp.pixel_format,
-        );
-        backbuffer.blit_to(&dest);
-        // Store fence: WC framebuffer writes MUST hit VRAM before consumer (display HW) sees them
-        unsafe { core::arch::asm!("mfence", options(nostack)); }
-    }
-}
-
-pub fn clear_backbuffer(color: Color) { unsafe { BACKBUFFER_MEM = [color.0; BACKBUFFER_SIZE]; } }
-
-pub fn get_backbuffer_pixel(x: u32, y: u32) -> Color {
-    if (x as usize) < BACKBUFFER_WIDTH && (y as usize) < BACKBUFFER_HEIGHT {
-        unsafe { Color(BACKBUFFER_MEM[y as usize * BACKBUFFER_WIDTH + x as usize]) }
-    } else {
-        Color::BLACK
-    }
-}
-
-pub fn put_backbuffer_pixel(x: u32, y: u32, color: Color) {
-    if (x as usize) < BACKBUFFER_WIDTH && (y as usize) < BACKBUFFER_HEIGHT {
-        unsafe { BACKBUFFER_MEM[y as usize * BACKBUFFER_WIDTH + x as usize] = color.0; }
-    }
-}
+// -- LO QUE ESTUVO AQUI, y el numero que corrigio el motivo ------------
+//
+// Un BACKBUFFER estatico de 1920x1080: `static mut BACKBUFFER_MEM: [u32;
+// 2_073_600]`, con la resolucion clavada dentro y `.min()` recortando en
+// silencio si la pantalla era mayor -- en 2560x1440 se habria visto la esquina,
+// sin un solo error.
+//
+// Llego con el commit fundacional del kernel (`6eb40e66`, la cadena UEFI y la
+// base de Ring 0) como andamiaje de bring-up, y **nunca se conecto a nada**: el
+// barrido del 2026-08-09 no encontro un solo uso de `get_backbuffer_fb`,
+// `backbuffer_ptr`, `present`, `clear_backbuffer` ni los dos accesores de pixel
+// fuera de este fichero.
+//
+// [!] **Y borrarlo NO ahorro un solo byte.** Se midio el `.bss` del binario
+// antes y despues y da lo mismo: 2.608.160 en los dos. El enlazador ya lo
+// descartaba **por el mismo motivo por el que sobraba** -- nadie lo referenciaba,
+// asi que ni el static ni sus seis funciones llegaban a la imagen.
+//
+// O sea que esto no fue una optimizacion: fue quitar una TRAMPA. Mientras el
+// codigo estuviera aqui, la primera llamada a `present()` habria traido de
+// golpe 8 MiB de `.bss` y un recorte silencioso a 1080 lineas -- y quien la
+// escribiera no tendria por que saberlo. Codigo muerto que es gratis hoy y caro
+// el dia que alguien lo despierta.
+//
+// El doble bufer vive en Ring 3, sobre `KIND_MEMORIA`, y es donde debe estar --
+// ver `Pantalla` en `bmo-userland`. Ver `docs/LIDERES.md`, casilla 1.1.

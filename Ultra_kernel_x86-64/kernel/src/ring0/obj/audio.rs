@@ -33,7 +33,7 @@
 //! [!] **Y puede que no se oiga nada, y no seria un fallo de este codigo.** El
 //! puerto 0x61 existe en todos los PC; el altavoz fisico, no. Muchas placas
 //! modernas --entre ellas las que se prueban aqui-- traen el cabezal SPKR sin
-//! nada conectado. Por eso [`AUDIO_OP_APARATO`] contesta que aparatos hay y
+//! nada conectado. Por eso [`AUDIO_OP_DEVICES`] contesta que aparatos hay y
 //! **no promete que suenen**: el kernel sabe que el puerto esta ahi, no sabe si
 //! hay un zumbador al otro lado. Es la ley 11 de `BITACORA.md` -- un `set` sin
 //! su `get` es una carta sin acuse de recibo, y aqui no hay acuse posible.
@@ -80,28 +80,28 @@ pub const MAX_MS: u64 = 250;
 
 // -- Operaciones sobre un handle KIND_AUDIO -------------------------------
 
-/// Que aparatos de sonido hay. Devuelve un mapa de bits, ver [`APARATO_ALTAVOZ`].
+/// Que aparatos de sonido hay. Devuelve un mapa de bits, ver [`DEVICE_SPEAKER`].
 ///
 /// Existe para que Ring 3 pueda preguntar en vez de suponer: el dia que haya
 /// HDA, el mismo programa se entera sin recompilar nada.
-pub const AUDIO_OP_APARATO: u64 = 0x01;
+pub const AUDIO_OP_DEVICES: u64 = 0x01;
 /// Pitar. `a0` = frecuencia en Hz, `a1` = duracion en ms (topada a [`MAX_MS`]).
 /// Devuelve los ms que de verdad sono.
-pub const AUDIO_OP_PITAR: u64 = 0x02;
+pub const AUDIO_OP_BEEP: u64 = 0x02;
 /// Volumen global, `a0` de 0 a 100. Devuelve el que queda puesto.
 ///
 /// En el altavoz del PC el volumen no es volumen: es el modo del PIT --pulsos
 /// estrechos suenan mas flojo que una onda cuadrada al 50%-- asi que hay dos
 /// escalones, no cien. Se dice aqui para que nadie espere un fundido.
-pub const AUDIO_OP_VOLUMEN: u64 = 0x03;
+pub const AUDIO_OP_VOLUME: u64 = 0x03;
 /// Callar ahora mismo.
-pub const AUDIO_OP_CALLAR: u64 = 0x04;
+pub const AUDIO_OP_SILENCE: u64 = 0x04;
 
 /// Hay altavoz de PC (o al menos el puerto que lo controla: ver la nota del
 /// modulo -- que el puerto exista no prueba que haya un zumbador conectado).
-pub const APARATO_ALTAVOZ: u64 = 1 << 0;
+pub const DEVICE_SPEAKER: u64 = 1 << 0;
 /// Hay HD Audio con su codec abierto. **Hoy siempre 0**: es la casilla 5.1.
-pub const APARATO_HDA: u64 = 1 << 1;
+pub const DEVICE_HDA: u64 = 1 << 1;
 
 /// Le pasa al crate del altavoz la frecuencia real del TSC, una sola vez.
 fn calibrate() {
@@ -115,7 +115,7 @@ fn calibrate() {
 ///
 /// No mapea nada --a diferencia de la pantalla, aqui no hay memoria que
 /// entregar-- asi que lo unico que se concede es el DERECHO. Hoy eso ya vale
-/// para algo: sin este handle, `AUDIO_OP_PITAR` no resuelve.
+/// para algo: sin este handle, `AUDIO_OP_BEEP` no resuelve.
 pub fn claim(pid: u32) -> Result<u64, u32> {
     // Un solo dueno. `compare_exchange` y no "leer y luego escribir": dos
     // procesos pidiendolo en el mismo tick no pueden ganar los dos.
@@ -211,7 +211,7 @@ pub fn devices() -> u64 {
     // El puerto del altavoz existe en todo x86. Que haya algo conectado al
     // otro lado no se puede saber desde aqui, y por eso este bit dice "hay
     // camino", no "vas a oir algo".
-    APARATO_ALTAVOZ
+    DEVICE_SPEAKER
 }
 
 /// El kernel pita **solo si nadie tiene el aparato**.
@@ -235,8 +235,8 @@ pub fn kernel_beep(freq_hz: u32, ms: u32) {
 pub fn operation(operation: u64, a0: u64, a1: u64) -> Option<u64> {
     calibrate();
     match operation {
-        AUDIO_OP_APARATO => Some(devices()),
-        AUDIO_OP_PITAR => {
+        AUDIO_OP_DEVICES => Some(devices()),
+        AUDIO_OP_BEEP => {
             // Frecuencia 0 = silencio, y es legal: es la forma de callar sin
             // gastar otra operacion. Por arriba se corta en 20 kHz porque el
             // divisor del PIT desborda mucho antes de ser util.
@@ -245,12 +245,12 @@ pub fn operation(operation: u64, a0: u64, a1: u64) -> Option<u64> {
             bmo_audio::beep(freq, ms as u32);
             Some(ms)
         }
-        AUDIO_OP_VOLUMEN => {
+        AUDIO_OP_VOLUME => {
             let v = a0.min(100) as u8;
             bmo_audio::set_volume(v);
             Some(v as u64)
         }
-        AUDIO_OP_CALLAR => {
+        AUDIO_OP_SILENCE => {
             bmo_audio::beep_ex(0, 0, 0);
             Some(0)
         }
