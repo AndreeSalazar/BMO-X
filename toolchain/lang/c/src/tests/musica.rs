@@ -34,7 +34,7 @@ fn ejecutar_musica(cuerpo: &str) -> bmo_lower::emu::Machine {
 /// unidad en vez del dieciseisavo, aqui saldria un numero redondeado hacia
 /// abajo y la pieza entera iria corta.
 ///
-/// ★ Y sale en DOS pitidos, no en uno: 425 ms pasan del tope de 250 del kernel.
+/// ** Y sale en DOS pitidos, no en uno: 425 ms pasan del tope de 250 del kernel.
 /// O sea que **el troceo es el caso normal, no el raro** -- a cualquier tempo
 /// razonable una negra ya no cabe en una sola llamada. Esta fila se escribio
 /// esperando `[(440, 425)]` y se equivocaba ella, no la libreria.
@@ -102,7 +102,7 @@ int main() {
     assert_eq!(p[2].0, 330);
 }
 
-/// ★ El TROCEO. Una nota mas larga que el tope del kernel se parte, y los
+/// ** El TROCEO. Una nota mas larga que el tope del kernel se parte, y los
 /// trozos suman lo pedido.
 ///
 /// Es la prueba que justifica modelar `AUDIO_MAX_MS` en el emulador: sin el
@@ -195,7 +195,7 @@ int main() {
     assert_eq!(m.audio_volumen(), 80);
 }
 
-/// ★★ Y LA PROPIEDAD QUE SOSTIENE TODO LO DEMAS: soltar REVOCA.
+/// **** Y LA PROPIEDAD QUE SOSTIENE TODO LO DEMAS: soltar REVOCA.
 ///
 /// Despues de soltar, el mismo handle no puede pitar. Si pudiera, "soltar"
 /// seria una palabra bonita y el aparato seguiria siendo de quien dijo

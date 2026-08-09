@@ -204,7 +204,7 @@ pub fn set_volume(ac: &AudioControl, channel: u8, _value: i16) -> Request {
         bm_request_type: REQ_TYPE_SET,
         b_request: SET_CUR,
         w_value: ((VOLUME_CONTROL as u16) << 8) | channel as u16,
-        // ★ El indice lleva la UNIDAD arriba y la INTERFAZ abajo. Ponerlo al
+        // ** El indice lleva la UNIDAD arriba y la INTERFAZ abajo. Ponerlo al
         // reves es el fallo clasico de esta clase: el aparato contesta STALL y
         // no dice por que, porque desde su punto de vista le han preguntado por
         // una unidad que no existe.
@@ -357,7 +357,7 @@ mod tests {
         assert!(find_audio_control(&malo).is_none());
     }
 
-    /// ★ El `wIndex` lleva la UNIDAD arriba y la INTERFAZ abajo. Al reves el
+    /// ** El `wIndex` lleva la UNIDAD arriba y la INTERFAZ abajo. Al reves el
     /// aparato contesta STALL sin decir por que.
     #[test]
     fn el_windex_no_va_al_reves() {
@@ -389,7 +389,7 @@ mod tests {
         assert_eq!(r.length, 1);
     }
 
-    /// ★★ El 0% CALLA. No es "muy bajito": `0` en esta escala son 0 dB, o sea
+    /// **** El 0% CALLA. No es "muy bajito": `0` en esta escala son 0 dB, o sea
     /// el maximo. Confundirlos pone el aparato a tope creyendo que se apaga.
     #[test]
     fn el_cero_por_ciento_es_silencio_y_no_cero_db() {
@@ -404,7 +404,7 @@ mod tests {
         assert_eq!(percent_to_volume(100, -6400, 0), 0);
     }
 
-    /// ★ La curva NO es lineal, y esa es toda la razon de que exista la tabla.
+    /// ** La curva NO es lineal, y esa es toda la razon de que exista la tabla.
     ///
     /// Con un rango de -25 dB a 0 dB, el 50% lineal caeria en -12.5 dB
     /// (`-3200`). La curva logaritmica lo pone en -10.36 dB, que es lo que el

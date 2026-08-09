@@ -55,7 +55,7 @@ int main() {
     assert_eq!(out, "42 -17 8 0\n");
 }
 
-/// ★ `strncpy` RELLENA de ceros hasta `n`. No es un detalle del estandar: el
+/// ** `strncpy` RELLENA de ceros hasta `n`. No es un detalle del estandar: el
 /// codigo que la usa sobre un buffer reutilizado cuenta con eso, y una version
 /// que solo copie deja la basura de la vuelta anterior detras del texto.
 #[test]
@@ -130,7 +130,7 @@ int main() {
     assert_eq!(out, "0 1\n");
 }
 
-/// ★★ LA QUE IMPORTA: `memmove` con bloques SOLAPADOS.
+/// **** LA QUE IMPORTA: `memmove` con bloques SOLAPADOS.
 ///
 /// `memcpy` puede copiar en cualquier orden porque promete que no se solapan.
 /// `memmove` no lo promete, asi que cuando el destino cae dentro del origen hay
@@ -140,7 +140,7 @@ int main() {
 /// donde los bloques no se tocan** y corrompe datos justo el dia que se usa
 /// para lo que existe.
 ///
-/// ★★ ESTA FILA FALLA HOY, Y POR ESO ESTA ESCRITA. Da `ababab`: el que se
+/// **** ESTA FILA FALLA HOY, Y POR ESO ESTA ESCRITA. Da `ababab`: el que se
 /// ejecuta copia de frente.
 ///
 /// La causa esta localizada: **el codegen intercepta `memmove` por nombre**
@@ -258,7 +258,7 @@ fn un_programa_normal_no_tiene_bytes_muertos() {
     assert!(!a.hay_rotura());
 }
 
-/// ★ Y un programa con una GLOBAL de puntero ejerce las relocations, que es
+/// ** Y un programa con una GLOBAL de puntero ejerce las relocations, que es
 /// donde vive la mitad interesante: si el DCE se llevara la seccion a la que
 /// apunta, `relocs_al_vacio` lo diria **en el build** y no con una pantalla
 /// negra tres dias despues.
@@ -300,7 +300,7 @@ fn corre_con_disco(cuerpo: &str, ruta: &str, contenido: &str) -> String {
     ejecutar_bef_con(&bef, move |m| m.poner_archivo(&r, c.as_bytes()))
 }
 
-/// ★ MARCADA, y la causa NO esta en `ftell`.
+/// ** MARCADA, y la causa NO esta en `ftell`.
 ///
 /// `fread` usa `ARCH_OP_LEER_EN` y **el emulador no lo modela**: cae en su
 /// `_ => {}` y contesta 0, asi que el cursor no se mueve aqui dentro. Es la
@@ -342,7 +342,7 @@ int main() {
 
 /// `feof` dice que no al principio y que si cuando el cursor llega al final.
 ///
-/// ★ Y aqui hay una DIFERENCIA con el C estandar, dicha a proposito: alli
+/// ** Y aqui hay una DIFERENCIA con el C estandar, dicha a proposito: alli
 /// `feof` solo se pone a 1 **despues** de que una lectura se quede corta, no
 /// cuando el cursor llega al final. Un `while (!feof(f))` de manual lee una vez
 /// de mas por eso. Aqui se compara cursor contra tamano, que es lo que ese
@@ -370,7 +370,7 @@ int main() {
     assert_eq!(out, "01\n".trim_end(), "al principio 0, tras leerlo entero 1");
 }
 
-/// ★★ `fwrite` devuelve CERO, y esta fila existe para que eso no se olvide.
+/// **** `fwrite` devuelve CERO, y esta fila existe para que eso no se olvide.
 ///
 /// El camino de escritura --`TASK_OP_ARCHIVO_CREAR` + `ARCH_OP_ESCRIBIR`--
 /// existe en el kernel y **no esta cableado hasta `fopen`**, que ignora el

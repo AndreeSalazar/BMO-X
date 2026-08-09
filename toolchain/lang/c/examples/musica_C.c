@@ -1,4 +1,4 @@
-/* musica_C.bex -- la librería de música, tocando y ENSEÑANDOSE.
+/* musica_C.bex -- la libreria de musica, tocando y ENSENANDOSE.
  *
  * Es el programa que estrena `<bmo/musica.h>`: notas por nombre, figuras y
  * tempo encima de `KIND_AUDIO`. Y es tambien la respuesta a por que hace falta
