@@ -311,3 +311,73 @@ pub fn estratos_sellar() -> u64 {
     invoke(CURRENT_TASK, OP_ESTRATOS_SELLAR, 0, 0, 0).value
 }
 
+
+// -- CABINA: lo que el kernel ve, CON severidad --------------------------
+//
+// El klog ya se leia y es util, pero es la transcripcion en texto plano: no
+// lleva severidad ni capa. Con esto una linea del SMP se puede pintar en su
+// color y separar de las veinte lineas verdes que la rodean, que es justo lo
+// que hace falta para leer un arranque de un vistazo.
+//
+// **No concede nada.** Ni una de estas llamadas escribe: ver y poder son cosas
+// separadas, y esta es la mitad de mirar.
+
+/// Cuantos eventos se pueden leer AHORA (el anillo son 48).
+pub fn cabina_disponibles() -> u64 {
+    invoke(CURRENT_TASK, OP_CABINA_INFO, CABINA_DISPONIBLES, 0, 0).valor().unwrap_or(0)
+}
+
+/// Cuantos ha habido desde el arranque, y cuantos se cayeron del anillo.
+///
+/// Los perdidos valen tanto como los que quedan: un anillo que dio la vuelta y
+/// no lo dice hace creer que el arranque empezo donde empieza el primero que
+/// sobrevive.
+pub fn cabina_total() -> u64 {
+    invoke(CURRENT_TASK, OP_CABINA_INFO, CABINA_TOTAL, 0, 0).valor().unwrap_or(0)
+}
+
+pub fn cabina_perdidos() -> u64 {
+    invoke(CURRENT_TASK, OP_CABINA_INFO, CABINA_PERDIDOS, 0, 0).valor().unwrap_or(0)
+}
+
+/// Un campo del evento `n` (0 = el mas reciente). `None` si ese evento no
+/// existe -- que NO es lo mismo que un campo a cero.
+pub fn cabina_campo(campo: u64, n: u64) -> Option<u64> {
+    invoke(CURRENT_TASK, OP_CABINA_INFO, campo, n, 0).valor()
+}
+
+/// La severidad del evento `n`: `SEV_INFO`..`SEV_PANIC`. Es lo que el klog no
+/// podia dar.
+pub fn cabina_severidad(n: u64) -> u64 {
+    cabina_campo(CABINA_SEVERIDAD, n).unwrap_or(SEV_INFO)
+}
+
+/// El modulo o el mensaje del evento `n`, copiado en `dst`. Devuelve cuantos
+/// bytes se escribieron.
+///
+/// Llega de 8 en 8 porque la superficie congelada no acepta punteros: el texto
+/// viaja por valor, igual que en el klog y en la autopsia.
+pub fn cabina_texto(n: u64, cual: u64, dst: &mut [u8]) -> usize {
+    let mut escritos = 0usize;
+    let mut trozo = 0u64;
+    while escritos < dst.len() {
+        let arg0 = (n << 32) | cual;
+        let w = match invoke(CURRENT_TASK, OP_CABINA_TEXTO, arg0, trozo, 0).valor() {
+            Some(v) => v,
+            None => break,
+        };
+        if w == 0 {
+            break;
+        }
+        let bytes = w.to_le_bytes();
+        for b in bytes {
+            if b == 0 || escritos >= dst.len() {
+                return escritos;
+            }
+            dst[escritos] = b;
+            escritos += 1;
+        }
+        trozo += 1;
+    }
+    escritos
+}

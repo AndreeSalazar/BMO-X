@@ -163,6 +163,10 @@ const TASK_OP_AUDIO_CLAIM: u64 = 0x21;
 /// lo que costo que faltara en la pantalla: sin esto, el primero que pite se
 /// queda el aparato hasta que muera.
 const TASK_OP_AUDIO_RELEASE: u64 = 0x22;
+/// **CABINA a Ring 3.** Lo que el kernel ve, con su SEVERIDAD y su capa -- que
+/// es lo que el klog no lleva. Contesta y no concede: ni una operacion escribe.
+const TASK_OP_CABINA_INFO: u64 = 0x23;
+const TASK_OP_CABINA_TEXTO: u64 = 0x24;
 /// Ofrecer un trozo del bloque propio. Es una operacion sobre `KIND_MEMORIA`.
 const MEM_OP_OFRECER: u64 = 0x03;
 /// Las preguntas del cursor. Espejo de `bmo_abi::...::ES_NODO_*`.
@@ -506,6 +510,23 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // * EL SONIDO. Sin CR3 y sin mapeos: aqui no se entrega memoria, se
         // entrega el DERECHO -- que es justamente lo que hace que esta pieza se
         // pueda escribir hoy, con el driver de HDA todavia sin existir.
+        // * CABINA. `arg0` = campo, `arg1` = que evento (0 = el mas reciente).
+        // Un campo que no existe contesta "no soportado" y no 0: un cero seria
+        // indistinguible de un evento cuyo valor ES cero.
+        TASK_OP_CABINA_INFO => {
+            match crate::ring0::cabina::campo(arg0, arg1) {
+                Some(v) => BmoStatus::ok_value(v),
+                None => unsupported(),
+            }
+        }
+        // `arg0` empaqueta `(evento << 32) | cual`, `arg1` es el trozo de 8 en
+        // 8. Los dos indices en un argumento porque la puerta tiene tres y dos
+        // ya estan ocupados -- la misma aritmetica que usa la autopsia.
+        TASK_OP_CABINA_TEXTO => {
+            let evento = arg0 >> 32;
+            let cual = arg0 & 0xFFFF_FFFF;
+            BmoStatus::ok_value(crate::ring0::cabina::texto(evento, cual, arg1))
+        }
         TASK_OP_AUDIO_CLAIM => {
             let _ = arg0;
             match crate::ring0::obj::audio::claim(scheduler::current_pid()) {

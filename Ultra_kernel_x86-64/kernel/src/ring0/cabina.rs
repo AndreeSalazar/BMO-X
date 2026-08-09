@@ -573,3 +573,97 @@ pub fn render_hud() {
 
     if saved_cr3 != kpml4 { crate::ring0::mm::vmm::switch_to(saved_cr3); }
 }
+
+// =====================================================================
+//  CABINA A RING 3 -- mirar TODO sin poder tocar nada
+// =====================================================================
+//
+// Hasta hoy CABINA se pintaba **solo desde el shell de Ring 0**, y desde que el
+// escritorio es el arranque eso significa que casi nunca se ve. Lo que F11
+// ensena es el KLOG, que es otra cosa: transcripcion en texto plano, 96 bytes
+// por linea y **sin severidad**. La linea que dice si el SMP levanto los doce
+// nucleos existe con su color y su capa, y a Ring 3 le llegaba en gris.
+//
+// Esto lo abre. Y **no es "ir a Ring 0"**: aqui no se ejecuta nada
+// privilegiado, no se concede ningun objeto y no hay una sola operacion que
+// escriba. El compositor sigue siendo un proceso con sus capabilities
+// contadas, y lo unico que hace es PREGUNTAR -- igual que con `info`, el klog y
+// la autopsia.
+//
+// En un sistema de capabilities **ver y poder son cosas separadas**, y que se
+// pueda mirar TODO sin poder tocar nada es la mitad interesante de la
+// transparencia que este proyecto declara. Un "terminal privilegiado" que de
+// verdad ejecutara en Ring 0 tiraria el modelo a la basura para conseguir algo
+// que se puede tener sin romper nada: mirar.
+
+/// Campos de `TASK_OP_CABINA_INFO`. Son una TABLA, igual que `OP_INFO`:
+/// anadir un dato es una fila, no una operacion nueva.
+pub const CABINA_TOTAL: u64 = 0x00;
+pub const CABINA_PERDIDOS: u64 = 0x01;
+pub const CABINA_DISPONIBLES: u64 = 0x02;
+/// Los cinco de un evento concreto. `arg1` = cual (0 = el mas reciente).
+pub const CABINA_SEVERIDAD: u64 = 0x03;
+pub const CABINA_CAPA: u64 = 0x04;
+pub const CABINA_VALOR: u64 = 0x05;
+pub const CABINA_SEQ: u64 = 0x06;
+pub const CABINA_TICK: u64 = 0x07;
+
+/// Que texto se pide en `TASK_OP_CABINA_TEXTO`.
+pub const CABINA_TXT_MODULO: u64 = 0x00;
+pub const CABINA_TXT_MENSAJE: u64 = 0x01;
+
+/// Cuantos eventos se pueden leer AHORA. Nunca mas que el anillo.
+pub fn disponibles() -> u64 {
+    let total = unsafe { EV_TOTAL };
+    if total > EVENT_RING as u64 { EVENT_RING as u64 } else { total }
+}
+
+/// Un dato numerico de CABINA. `n` = que evento (0 = el mas reciente).
+///
+/// Devuelve `None` para un campo que no existe, que el syscall traduce a "no
+/// soportado" -- y no 0, que seria indistinguible de un evento con valor cero.
+pub fn campo(campo: u64, n: u64) -> Option<u64> {
+    match campo {
+        CABINA_TOTAL => Some(event_total()),
+        CABINA_PERDIDOS => Some(event_lost()),
+        CABINA_DISPONIBLES => Some(disponibles()),
+        _ => {
+            let ev = event_back(n as usize)?;
+            match campo {
+                CABINA_SEVERIDAD => Some(ev.severity as u64),
+                CABINA_CAPA => Some(ev.layer as u64),
+                CABINA_VALOR => Some(ev.value),
+                CABINA_SEQ => Some(ev.seq),
+                CABINA_TICK => Some(ev.tick_ns),
+                _ => None,
+            }
+        }
+    }
+}
+
+/// Ocho bytes del modulo o del mensaje del evento `n`, empaquetados
+/// little-endian. `trozo` numera de 8 en 8; el cero corta.
+///
+/// Mismo formato que `TASK_OP_RUTA` y que el klog, y por la misma razon: **la
+/// superficie congelada no acepta punteros**, asi que el texto viaja por valor.
+pub fn texto(n: u64, cual: u64, trozo: u64) -> u64 {
+    let ev = match event_back(n as usize) {
+        Some(e) => e,
+        None => return 0,
+    };
+    let bytes: &[u8] = match cual {
+        CABINA_TXT_MODULO => &ev.module,
+        CABINA_TXT_MENSAJE => &ev.msg,
+        _ => return 0,
+    };
+    let base = (trozo as usize) * 8;
+    let mut w = [0u8; 8];
+    for i in 0..8 {
+        let j = base + i;
+        if j >= bytes.len() || bytes[j] == 0 {
+            break;
+        }
+        w[i] = bytes[j];
+    }
+    u64::from_le_bytes(w)
+}

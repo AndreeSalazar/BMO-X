@@ -175,6 +175,29 @@ pub const AUTOPSIA_RENGLONES: u64 = 0x02;
 // Es el CONTRATO, no un driver: quien puede sonar, quien no, y que pasa con el
 // aparato cuando su dueno se muere. Lo unico que suena hoy es el altavoz del
 // PC, y `AUDIO_OP_DEVICES` lo dice en vez de que haya que suponerlo.
+// ** CABINA: lo que el kernel ve, CON severidad.
+//
+// El klog ya se leia, pero es texto plano sin severidad ni capa. Esto es el
+// anillo de CABINA: cada evento con quien lo dijo y como de grave es.
+pub const OP_CABINA_INFO: u32 = 0x23;
+pub const OP_CABINA_TEXTO: u32 = 0x24;
+pub const CABINA_TOTAL: u64 = 0x00;
+pub const CABINA_PERDIDOS: u64 = 0x01;
+pub const CABINA_DISPONIBLES: u64 = 0x02;
+pub const CABINA_SEVERIDAD: u64 = 0x03;
+pub const CABINA_CAPA: u64 = 0x04;
+pub const CABINA_VALOR: u64 = 0x05;
+pub const CABINA_SEQ: u64 = 0x06;
+pub const CABINA_TICK: u64 = 0x07;
+pub const CABINA_TXT_MODULO: u64 = 0x00;
+pub const CABINA_TXT_MENSAJE: u64 = 0x01;
+/// Severidades, en el orden de `cabina_core::Severity`.
+pub const SEV_INFO: u64 = 0;
+pub const SEV_TRACE: u64 = 1;
+pub const SEV_WARNING: u64 = 2;
+pub const SEV_FAULT: u64 = 3;
+pub const SEV_PANIC: u64 = 4;
+
 pub const OP_AUDIO_CLAIM: u32 = 0x21;
 pub const OP_AUDIO_RELEASE: u32 = 0x22;
 /// Operaciones sobre el handle `KIND_AUDIO`.

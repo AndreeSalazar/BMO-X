@@ -427,6 +427,34 @@ pub const AUTOPSIA_RENGLONES: u64 = 0x02;
 /// programa pita encima de cualquier otro.
 ///
 /// Las operaciones sobre el handle son `AUDIO_OP_*`.
+/// **CABINA leida desde Ring 3.** `arg0` = campo (`CABINA_*`), `arg1` = que
+/// evento (0 = el mas reciente).
+///
+/// El klog ya se podia leer, pero es la transcripcion en texto plano: **no
+/// lleva severidad**. CABINA si -- severidad, capa y modulo por evento-- y sin
+/// eso una linea que dice que el SMP levanto doce nucleos llega igual que
+/// cualquier otra.
+///
+/// Contesta y no concede: **ni una de estas dos operaciones escribe nada**. Ver
+/// y poder son cosas separadas.
+pub const TASK_OP_CABINA_INFO: u64 = 0x23;
+/// Ocho bytes del modulo o del mensaje. `arg0` = `(evento << 32) | cual`,
+/// `arg1` = el trozo. El cero corta.
+pub const TASK_OP_CABINA_TEXTO: u64 = 0x24;
+
+/// Campos de [`TASK_OP_CABINA_INFO`].
+pub const CABINA_TOTAL: u64 = 0x00;
+pub const CABINA_PERDIDOS: u64 = 0x01;
+pub const CABINA_DISPONIBLES: u64 = 0x02;
+pub const CABINA_SEVERIDAD: u64 = 0x03;
+pub const CABINA_CAPA: u64 = 0x04;
+pub const CABINA_VALOR: u64 = 0x05;
+pub const CABINA_SEQ: u64 = 0x06;
+pub const CABINA_TICK: u64 = 0x07;
+/// Que texto pide [`TASK_OP_CABINA_TEXTO`].
+pub const CABINA_TXT_MODULO: u64 = 0x00;
+pub const CABINA_TXT_MENSAJE: u64 = 0x01;
+
 pub const TASK_OP_AUDIO_CLAIM: u64 = 0x21;
 /// Soltar el sonido siendo su dueno y **seguir vivo**.
 ///
