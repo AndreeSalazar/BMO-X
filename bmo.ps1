@@ -63,7 +63,20 @@ if (-not $Rapido) {
             # trate stderr. Un paquete esta bien si paso alguna y no fallo
             # ninguna; cero pasadas tambien es sospechoso --significa que no se
             # llego a ejecutar-- y por eso cuenta como rojo.
+            # [!] Y `Stop` se BAJA para esta linea, o el guion se muere en el
+            # primer warning del compilador.
+            #
+            # Con `$ErrorActionPreference = 'Stop'` arriba, el ErrorRecord que
+            # PowerShell fabrica por cada linea de stderr de un nativo pasa a
+            # ser TERMINANTE: `cargo test 2>&1` aborta el guion entero aunque
+            # los tests vayan bien. Se probo este bucle suelto en una consola
+            # --donde `Stop` no estaba puesto-- y paso; dentro del guion murio
+            # en la primera vuelta. Otra vez lo mismo: probado en un contexto,
+            # roto en otro.
+            $antes = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
             $salida = (cargo test -q -p $p 2>&1 | Out-String)
+            $ErrorActionPreference = $antes
             $n = ([regex]::Matches($salida, '(\d+) passed') | ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Sum).Sum
             $rojas = ([regex]::Matches($salida, '(\d+) failed') | ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Sum).Sum
             if ($n -eq 0 -or $rojas -gt 0) {
