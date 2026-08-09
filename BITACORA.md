@@ -804,6 +804,99 @@ las cuatro tenian al lado. Por eso ahora es un parser con precedencia de verdad:
 no porque fuera mas elegante, sino porque el modo de fallo de la version vieja
 **no tiene sintoma**.
 
+## Ep. 33 -- La tecla que no existia, y las tres cosas que colgaban de ella
+**Sintoma**: `Ctrl+Alt+ESC` --el rescate escrito el mismo dia, el que le quita la
+pantalla a un programa que no la suelta-- **no hizo nada** en el Ryzen.
+
+**Primera hipotesis, y era razonable**: en la distribucion espanola `Ctrl+Alt`
+ES `AltGr`. El propio codigo lo avisa: *"un atajo que dispare al PULSAR Ctrl+Alt
+rompe escribir `@`, `#`, `[`, `]`"*. Asi que parecia que el atajo se comia el
+tercer nivel del teclado.
+
+**Culpable**: nada de eso. **El scancode 0x01 no estaba en NINGUNA tabla.** Ni
+en la comun, ni en `nav_key`, ni en las tres distribuciones. `resolve`
+contestaba `Out::Nothing`, o sea que **el byte 27 no se producia jamas en todo
+el sistema**. La traduccion USB ya entregaba el scancode correcto; lo que
+faltaba era el ultimo salto, una fila de tabla.
+
+Y encima de una tecla que no llegaba habia **tres cosas** escritas:
+
+1. `ESC cierra`, en el pie de todas las ventanas del escritorio.
+2. `if (tecla == 27) vivo = 0;` en el raycaster -- **su unica salida**.
+3. El rescate, que empieza por `let b = t?`: sin byte sale por el `?` y **no
+   llega ni a mirar los modificadores**.
+
+Las tres se leian como fallos distintos y eran uno. Y explica la forma exacta
+del sintoma que conto el dueno: *"al raycaster pude entrar a jugar y no pude
+salir"*.
+
+**De propina, el patron de siempre**: hay DOS tablas de teclado en el arbol, y
+`platform/drivers/usb/input/keyboard.rs` SI tiene `0x01 => 0x1B`. **La que sabia
+no era la que decodifica.**
+
+**Moraleja**: *cuando tres cosas fallan a la vez, no son tres fallos.* Y el
+sitio donde buscar no es donde se nota, es donde nace el dato -- aqui, tres
+capas por debajo del atajo.
+
+## Ep. 34 -- Los dos que NO fallaban, y por eso costaron
+**Sintoma**: ninguno. Los dos compilan, corren y contestan.
+
+Salieron llevando BMO C contra los 81 ficheros de DOOM, y ninguno lo encontro
+una foto: los encontro **ejecutar el programa y comparar la salida**.
+
+1. **`p->x++` se ignoraba en silencio.** El brazo del postfijo era `_ => {}`: si
+   el operando no era un nombre suelto, el `++` **se consumia y no se emitia
+   nada**. `s->count++` compilaba, corria, y el contador no se movia. Ni error,
+   ni aviso. Aparecio yendo a arreglar el PREfijo, que si daba error.
+
+2. **`*p` sobre un `int*` sacado de una tabla leia OCHO bytes.** Salio
+   `85899345930` donde tocaba un `10`. Es `(20 << 32) | 10`: devolvia el entero
+   pedido **y el de al lado en la mitad alta**. La funcion que da el ancho no
+   sabia mirar dentro de `tabla[i]` cuando el elemento es un puntero, y caia en
+   el caso por defecto, que lee ocho.
+
+**Y debajo del segundo habia un tercero**: al escalar un indice por doce, el
+compilador emite `imul rax, rax, imm8`. **El emulador no tenia ese opcode** --
+lo llevaba emitiendo desde siempre para cualquier paso que no fuera potencia de
+dos, y ningun test lo habia ejecutado nunca. El emulador hizo lo correcto: dio
+panic con el opcode en la mano en vez de seguir con un valor inventado, y ese
+panic es el que destapo lo de arriba.
+
+**Moraleja**: *un fallo que se para es un regalo; el que contesta es el caro.*
+Y la regla que los caza no es mirar el binario -- es que cada fila del banco
+EJECUTE. Un `.bex` con los bytes correctos y un indice mal escalado se ven
+identicos en un volcado.
+
+## Ep. 35 -- La operacion que casi suelta la pantalla al leer un informe
+**Sintoma**: ninguno todavia, y ese es el episodio.
+
+Al anadir la AUTOPSIA --el informe que el kernel redacta cuando mata una tarea--
+se le dieron los opcodes `0x1D` y `0x1E`. **Ya eran `PANTALLA_SOLTAR` y
+`ENTRADA_SOLTAR`.**
+
+O sea: **leer el informe de un fallo habria soltado la pantalla.**
+
+**Y el fichero ya avisaba.** El comentario de `PANTALLA_SOLTAR` cuenta, con
+nombre y fecha, que `MEMORIA_PEDIR` se puso en `0x12` --ya ocupado por
+`REINICIAR`-- y que pedir memoria habria reiniciado la maquina. La regla estaba
+escrita: *"elegido tras listar los opcodes ORDENADOS"*.
+
+**Culpable**: que esa regla es **prosa**. Un comentario no para un build. Lo
+unico que separaba al proyecto de repetir el mismo fallo, dos meses despues, era
+que alguien se acordara de leer un parrafo.
+
+**Arreglo**: `build.ps1` saca ahora TODOS los opcodes del kernel y falla si
+alguno se repite. No contra una lista escrita a mano -- una lista a mano es lo
+que ya se quedo congelada una vez en ese mismo guion, treinta lineas mas arriba.
+
+```
+    operaciones: 32 opcodes, ninguno repetido
+```
+
+**Moraleja**: *una regla que solo vive en un comentario no es una regla, es un
+recordatorio.* Y la prueba de que hacia falta automatizarla es que la escribio
+la misma persona que despues la incumplio.
+
 ## Las leyes que dejo esta guerra
 
 1. **QEMU miente por omision**: sin IRQs vivos, sin tiempos fisicos, sin
@@ -894,6 +987,22 @@ no porque fuera mas elegante, sino porque el modo de fallo de la version vieja
    trece. Una limpieza es un parche hasta que hay un portico que la exige --
    por eso el idioma de las fuentes se valida en el mismo sitio que el contrato
    de syscalls, y no en un documento.
+
+21. **Cuando tres cosas fallan a la vez, no son tres fallos** (Ep. 33). El
+   `ESC cierra` del escritorio, la salida del raycaster y el rescate del teclado
+   se leian como tres carencias distintas, y eran una fila de tabla que nadie
+   escribio. El sitio donde buscar no es donde se nota: es donde nace el dato.
+22. **Un fallo que se para es un regalo; el que contesta es el caro** (Ep. 34).
+   `p->x++` no incrementaba y `*p` leia ocho bytes en vez de cuatro. Ninguno da
+   error: los dos dan un numero. Por eso cada fila del banco EJECUTA el
+   programa -- un binario con los bytes correctos y un indice mal escalado se
+   ven identicos en un volcado.
+23. **Una regla que solo vive en un comentario no es una regla, es un
+   recordatorio** (Ep. 35). El fichero avisaba, con nombre y fecha, de que
+   elegir un opcode ya usado habia reiniciado la maquina una vez. Dos meses
+   despues se volvio a elegir uno ocupado, y **la prueba de que hacia falta
+   automatizarlo es que lo incumplio quien lo habia escrito**. Es la ley 20 otra
+   vez, y que se repita es el argumento.
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*

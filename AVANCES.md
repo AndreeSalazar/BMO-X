@@ -43,6 +43,33 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > esta APARCADO con plan escrito** (`PLAN_VULKAN.md`), que no es lo mismo que
 > descartado. Siguen fuera Wine y la libc completa.
 
+## ★★★ 2026-08-08 -- LOS PLANES ESCRITOS: DOOM, AUTO-CURACION, Y EL AUDIO QUE NO EXISTE
+
+Dos documentos nuevos, con el mismo formato que `PLAN_BANCA.md`: casillas,
+tamano, que bloquea a que, y **como se sabe que una esta hecha**.
+
+- [`docs/PLAN_DOOM.md`](docs/PLAN_DOOM.md) -- cinco fases. ⛔ **Lo unico que
+  bloquea a todo lo demas es `1.0`**: `printf` con el formato calculado en
+  tiempo de ejecucion. En cuanto exista, la capa de plataforma son **seis
+  funciones cortas** y el WAD es codigo de DOOM llamando a lo que BMO ya tiene.
+  ⚠ Y el **audio empieza de cero**: `platform/drivers/audio/` son 109 lineas de
+  altavoz de PC --`outb` y un retardo-- que ademas no llama nadie. Por eso es la
+  fase 5 y se para en los efectos: la musica MUS pide un sintetizador MIDI, que
+  es otro proyecto, y se dice.
+- [`docs/PLAN_AUTOCURACION.md`](docs/PLAN_AUTOCURACION.md) -- cuatro escalones,
+  de informar a ACTUAR. El orden importa: **la cuarentena va antes que el
+  reinicio automatico**, porque un supervisor sin freno es una maquina que se
+  cae en bucle mas rapido.
+
+★ Y la mitad de la auto-curacion **ya esta hecha**: el fault se aisla, el
+teclado se rescata solo, una transaccion cortada se deshace sola, un binario sin
+firma no arranca, y el raton **se degrada al formato BOOT y lo dice** -- que es
+la unica fila que hoy repara de verdad en vez de solo contener.
+
+⛔ Y el limite, escrito para que nadie lo suponga: **ningun sistema repara el
+CODIGO automaticamente.** Lo que se puede hacer es que el fallo deje de
+importar. Lo demas es supervision, y tiene nombre desde Erlang.
+
 ## ★★★ 2026-08-08 -- LOS CERROJOS SE CUENTAN, Y DOOM DEJA DE SER UNA SUPOSICION
 
 ### 1 - SMP paso 4: **medir antes de dar trabajo de verdad**
