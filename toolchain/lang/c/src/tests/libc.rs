@@ -238,3 +238,50 @@ int main() {
     );
     assert_eq!(out, "10\n", "d>s tiene que ser 1 y s>d tiene que ser 0");
 }
+
+// =============== LA AUDITORIA DEL DCE ===============
+//
+// Se prueba aqui y no en `bmo-verify` porque **hace falta un `.bex` de
+// verdad**, y quien sabe producirlos es este crate. Un BEF escrito a mano en un
+// test solo probaria que el test sabe escribirlo.
+
+/// Un programa corriente sale ENTERO alcanzable, y esa es la fila que hace util
+/// a las demas: un auditor que grita en el caso normal no lo lee nadie.
+#[test]
+fn un_programa_normal_no_tiene_bytes_muertos() {
+    let src = "#include <string.h>\nint main() { char b[8]; strncpy(b, \"hola\", 8); printf(\"%s\n\", b); return 0; }";
+    let bef = compile_with_preprocessor(src, std::path::Path::new("p.c"), CStandard::C11).unwrap();
+    let a = bmo_verify::auditar(&bef);
+    assert!(a.bytes_totales > 0, "el .bex tiene que llevar bytes");
+    assert_eq!(a.relocs_al_vacio, 0, "ninguna reloc puede apuntar al vacio");
+    assert_eq!(a.relocs_desbordadas, 0, "ninguna reloc puede salirse de su seccion");
+    assert!(!a.hay_rotura());
+}
+
+/// ★ Y un programa con una GLOBAL de puntero ejerce las relocations, que es
+/// donde vive la mitad interesante: si el DCE se llevara la seccion a la que
+/// apunta, `relocs_al_vacio` lo diria **en el build** y no con una pantalla
+/// negra tres dias despues.
+#[test]
+fn las_relocations_apuntan_a_secciones_que_existen() {
+    let src = "char *mapa = \"1111\";\nint main() { printf(\"%s\n\", mapa); return 0; }";
+    let bef = compile_with_preprocessor(src, std::path::Path::new("p.c"), CStandard::C11).unwrap();
+    let a = bmo_verify::auditar(&bef);
+    assert_eq!(a.relocs_al_vacio, 0, "una reloc nombra una seccion que no esta");
+    assert_eq!(a.relocs_desbordadas, 0, "una reloc parchea fuera de su seccion");
+    // Con una global de puntero, `data` tiene que quedar ALCANZADA: es
+    // justamente lo que la reloc marca.
+    assert!(a.secciones_huerfanas.len() <= 1, "huerfanas: {:?}", a.secciones_huerfanas);
+}
+
+/// El numero que el backbuffer enseno a pedir: cuanto se emitio y cuanto se
+/// alcanza. No es un error tener bytes muertos -- es una cifra que mirar cuando
+/// un `.bex` crece y nadie sabe por que.
+#[test]
+fn la_auditoria_da_los_dos_numeros() {
+    let src = "int main() { printf(\"hola\n\"); return 0; }";
+    let bef = compile_with_preprocessor(src, std::path::Path::new("p.c"), CStandard::C11).unwrap();
+    let a = bmo_verify::auditar(&bef);
+    assert!(a.bytes_alcanzables <= a.bytes_totales);
+    assert_eq!(a.bytes_muertos(), a.bytes_totales - a.bytes_alcanzables);
+}

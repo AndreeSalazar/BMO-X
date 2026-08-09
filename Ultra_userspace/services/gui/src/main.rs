@@ -1316,6 +1316,62 @@ pub extern "C" fn _start() -> ! {
                             Orden::Nada => {
                                 pintar_estado(&p, &caja, "escribe algo", TEXTO_TENUE);
                             }
+                            // ** ESTO NO ES UNA DISTRO, y se dice con un gato.
+                            //
+                            // Un amigo del dueno, que viene de Linux, se sento
+                            // delante y dio por hecho que lo era. Es un
+                            // malentendido razonable --hay escritorio, ventanas
+                            // y una caja donde teclear-- y "no lo conozco"
+                            // habria sido correcto sin ensenar nada.
+                            //
+                            // Asi que la respuesta cuenta lo que de verdad
+                            // separa a los dos sistemas: aqui no hay usuarios
+                            // que elevar ni paquetes que instalar. Hay
+                            // capabilities, y lo que no te dieron no existe
+                            // para ti. Se rie del malentendido, nunca de quien
+                            // lo tuvo.
+                            Orden::NoEsLinux(verbo) => {
+                                salida.texto(b"     (=^.^=)   miau. esto no es Linux.
+");
+                                salida.texto(b"      )   (    no hay root que pedir:
+");
+                                salida.texto(b"     (  v  )   o te dieron la capability, o no existe.
+");
+                                salida.texto(b"
+");
+                                let pista: &[u8] = match verbo {
+                                    b"sudo" | b"su" => {
+                                        b"  aqui nadie ELEVA permisos: un proceso nace con lo que le
+  concedieron, y no hay forma de pedir mas.
+"
+                                    }
+                                    b"apt" | b"apt-get" | b"pacman" | b"yay" | b"dnf" | b"yum"
+                                    | b"snap" => {
+                                        b"  no hay repositorios. Los programas se compilan aqui, con el
+  toolchain propio, y salen en .bex.
+"
+                                    }
+                                    b"systemctl" => {
+                                        b"  no hay demonios. Un servicio es un proceso de Ring 3 con su
+  capability, y se lanza con `run`.
+"
+                                    }
+                                    b"chmod" | b"chown" => {
+                                        b"  no hay bits de permiso ni duenos. El permiso ES el handle:
+  sin el, el objeto no se puede ni nombrar.
+"
+                                    }
+                                    b"man" => b"  prueba `ayuda`. Es mas corta y cabe en la pantalla.
+",
+                                    b"grep" => b"  prueba `cat` y la rueda. O F11, que filtra por gravedad.
+",
+                                    _ => b"  prueba `ayuda` para ver lo que SI hay.
+",
+                                };
+                                salida.texto(pista);
+                                pintar_estado(&p, &caja, "esto no es Linux :3", TEXTO_TENUE);
+                                repintar_campo = true;
+                            }
                             Orden::Listar(ruta_dir) => {
                                 match bmo::Directorio::open(ruta_dir) {
                                     Ok(d) => {

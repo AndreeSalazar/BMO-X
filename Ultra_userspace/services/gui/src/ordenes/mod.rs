@@ -13,6 +13,17 @@ pub(crate) mod informes;
 /// comando o es una ruta" merece leerse de un vistazo.
 pub(crate) enum Orden<'a> {
     Nada,
+    /// Alguien escribio `sudo`, `pacman`, `apt`... **Esto NO es una distro.**
+    ///
+    /// Se escribio el dia que un amigo del dueno, que viene de Linux, se sento
+    /// delante y dio por hecho que lo era. Y es un malentendido razonable: hay
+    /// un escritorio, hay ventanas y hay una caja donde se teclea.
+    ///
+    /// Contestar "no lo conozco" habria sido correcto y no habria ensenado
+    /// nada. Esto contesta con lo que de verdad separa a los dos sistemas --
+    /// aqui no hay usuarios, ni permisos que elevar, ni paquetes que instalar:
+    /// hay capabilities, y lo que no te dieron no existe para ti. Con un gato.
+    NoEsLinux(&'a [u8]),
     Lanzar(&'a [u8]),
     Limpiar,
     Ayuda,
@@ -146,6 +157,20 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         while i < resto.len() && resto[i] == b' ' { i += 1; }
         &resto[i..]
     };
+    // ** LOS QUE LLEGAN DE LINUX.
+    //
+    // Va ANTES del despacho normal a proposito: ninguna de estas palabras es
+    // una orden de BMO-X, asi que caerian en "no lo conozco" -- que es correcto
+    // y no ensena nada. Que la respuesta llegue aqui cuesta un `contains` y
+    // convierte un desconcierto en una explicacion.
+    const DE_LINUX: [&[u8]; 14] = [
+        b"sudo", b"su", b"apt", b"apt-get", b"pacman", b"yay", b"dnf", b"yum",
+        b"snap", b"systemctl", b"chmod", b"chown", b"grep", b"man",
+    ];
+    if DE_LINUX.iter().any(|&x| x == verbo) {
+        return Orden::NoEsLinux(verbo);
+    }
+
     match verbo {
         // INGLES de primero, y es una decision del dueno: el castellano limita
         // -- no hay palabra corta para "flush", los verbos se alargan, y medio
