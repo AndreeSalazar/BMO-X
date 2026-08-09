@@ -2440,7 +2440,69 @@ pub extern "C" fn _start() -> ! {
                             }
                         }
                     }
-                } else if !boton && caja_datos.marco.agarrado() {
+                }
+
+                // ** EL ARRASTRE DE LAS OTRAS DOS VENTANAS.
+            //
+            // CABINA y Sonido nacieron con `Marco` --que trae `agarrar`,
+            // `seguir_al_puntero` y `release`-- y **nadie las llamaba**. El
+            // resultado en el Ryzen: dos ventanas con barra de titulo, con sus
+            // tres botones pintados, y clavadas en el sitio.
+            //
+            // Es el patron 24 de `BITACORA.md` calcado: la politica escrita y
+            // sin lector. Alli fue `es_para` del foco, que existia entera con
+            // tests y no se llamaba ni una vez; aqui es el arrastre. Dar el
+            // mecanismo NO es cablearlo, y la unica forma de notar la
+            // diferencia es ejecutandolo -- por eso salio en metal y no antes.
+                if cabina_abierta && !caja_cabina.marco.minimizada {
+                    if boton && !caja_cabina.marco.agarrado() && foco.es_para(V_CABINA)
+                        && caja_cabina.marco.en_el_asa(pos.x, pos.y)
+                    {
+                        caja_cabina.marco.agarrar(pos.x, pos.y);
+                    } else if !boton && caja_cabina.marco.agarrado() {
+                        caja_cabina.marco.release();
+                    } else if boton && caja_cabina.marco.agarrado() {
+                        // El sitio VIEJO se borra antes de mover: aqui no hay
+                        // compositor que repinte lo de debajo, asi que sin esto
+                        // la ventana deja un rastro de copias de si misma.
+                        let (vx, vy, va, vl) = (
+                            caja_cabina.marco.x, caja_cabina.marco.y,
+                            caja_cabina.marco.ancho, caja_cabina.marco.alto,
+                        );
+                        if caja_cabina.marco.seguir_al_puntero(&p, pos.x, pos.y) {
+                            borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                            destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                            escena::cabina::pintar(&p, &caja_cabina);
+                            arriba_antes = V_CABINA;
+                        }
+                    }
+                }
+
+                if sonido_abierta && !caja_sonido.marco.minimizada {
+                    if boton && !caja_sonido.marco.agarrado() && foco.es_para(V_SONIDO)
+                        && caja_sonido.marco.en_el_asa(pos.x, pos.y)
+                    {
+                        caja_sonido.marco.agarrar(pos.x, pos.y);
+                    } else if !boton && caja_sonido.marco.agarrado() {
+                        caja_sonido.marco.release();
+                    } else if boton && caja_sonido.marco.agarrado() {
+                        let (vx, vy, va, vl) = (
+                            caja_sonido.marco.x, caja_sonido.marco.y,
+                            caja_sonido.marco.ancho, caja_sonido.marco.alto,
+                        );
+                        if caja_sonido.marco.seguir_al_puntero(&p, pos.x, pos.y) {
+                            borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                            destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                            escena::sonido::pintar(
+                                &p, &caja_sonido, sonido_cap.is_some(),
+                                sonido_aparatos, sonido_volumen, sonido_pulsada,
+                            );
+                            arriba_antes = V_SONIDO;
+                        }
+                    }
+                }
+
+                if !boton && caja_datos.marco.agarrado() {
                     caja_datos.marco.release();
                 } else if boton && caja_datos.marco.agarrado() {
                     // El sitio VIEJO hay que borrarlo antes de mover. Si no, la
