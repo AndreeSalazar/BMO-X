@@ -20,7 +20,7 @@
 //! --se llama mezclador-- y **le toca a Ring 3**, no al kernel, exactamente
 //! igual que componer ventanas.
 //!
-//! Y cuando alguien lo reclama, **el kernel se calla**: [`pitido_kernel`] no
+//! Y cuando alguien lo reclama, **el kernel se calla**: [`kernel_beep`] no
 //! suena mientras el aparato tenga dueno. Es el espejo de `info::has_fb()`.
 //!
 //! ## Lo que suena HOY, dicho sin adornos
@@ -104,7 +104,7 @@ pub const APARATO_ALTAVOZ: u64 = 1 << 0;
 pub const APARATO_HDA: u64 = 1 << 1;
 
 /// Le pasa al crate del altavoz la frecuencia real del TSC, una sola vez.
-fn calibrar() {
+fn calibrate() {
     if CALIBRADO.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -142,7 +142,7 @@ pub fn claim(pid: u32) -> Result<u64, u32> {
         }
     };
     HANDLE.store(handle, Ordering::SeqCst);
-    calibrar();
+    calibrate();
     crate::ring0::cabina::info("audio", "sonido cedido a Ring 3", pid as u64);
     Ok(handle)
 }
@@ -207,7 +207,7 @@ pub fn owner() -> Option<u32> {
 
 /// Que aparatos hay. Publico porque `informe.rs` lo puede querer sin handle:
 /// preguntar QUE HAY no es lo mismo que tener derecho a usarlo.
-pub fn aparatos() -> u64 {
+pub fn devices() -> u64 {
     // El puerto del altavoz existe en todo x86. Que haya algo conectado al
     // otro lado no se puede saber desde aqui, y por eso este bit dice "hay
     // camino", no "vas a oir algo".
@@ -220,11 +220,11 @@ pub fn aparatos() -> u64 {
 /// kernel deja de dibujar; cuando el sonido es de Ring 3, el kernel deja de
 /// sonar. Un kernel que pita encima del programa que tiene el audio es la
 /// version sonora de dos duenos pintando el mismo framebuffer.
-pub fn pitido_kernel(freq_hz: u32, ms: u32) {
+pub fn kernel_beep(freq_hz: u32, ms: u32) {
     if OWNER.load(Ordering::SeqCst) != NO_OWNER {
         return;
     }
-    calibrar();
+    calibrate();
     bmo_audio::beep(freq_hz, ms.min(MAX_MS as u32));
 }
 
@@ -233,9 +233,9 @@ pub fn pitido_kernel(freq_hz: u32, ms: u32) {
 /// `a0`/`a1` son los argumentos del `INVOKE`. Devuelve `None` para una
 /// operacion que no existe, que es lo que el syscall traduce a "no soportado".
 pub fn operation(operation: u64, a0: u64, a1: u64) -> Option<u64> {
-    calibrar();
+    calibrate();
     match operation {
-        AUDIO_OP_APARATO => Some(aparatos()),
+        AUDIO_OP_APARATO => Some(devices()),
         AUDIO_OP_PITAR => {
             // Frecuencia 0 = silencio, y es legal: es la forma de callar sin
             // gastar otra operacion. Por arriba se corta en 20 kHz porque el
