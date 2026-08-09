@@ -164,15 +164,25 @@ pub(crate) fn pintar(
     if aparatos & 2 != 0 {
         poner(b" + HD Audio", &mut lin, &mut n);
     }
+    if aparatos & 4 != 0 {
+        poner(b" + audifono USB", &mut lin, &mut n);
+    }
     p.texto_bytes(tx, ty, &lin[..n], TEXTO);
     ty += bmo::GLIFO_ALTO + 2;
 
     // La salvedad, en tenue y siempre. Sin ella, un altavoz que no suena parece
     // un sistema roto -- y la mitad de las placas modernas no traen zumbador.
+    //
+    // Con audifono USB delante la frase cambia, porque **ahi el volumen si
+    // manda**: es un `SET_CUR` sobre su Feature Unit y el aparato obedece.
     p.texto(
         tx,
         ty,
-        "(hay camino; que suene depende de la placa)",
+        if aparatos & 4 != 0 {
+            "el volumen manda sobre el audifono USB de verdad"
+        } else {
+            "(hay camino; que suene depende de la placa)"
+        },
         TEXTO_TENUE,
     );
     ty += bmo::GLIFO_ALTO + 2;

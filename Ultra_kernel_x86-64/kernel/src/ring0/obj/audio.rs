@@ -102,6 +102,9 @@ pub const AUDIO_OP_SILENCE: u64 = 0x04;
 pub const DEVICE_SPEAKER: u64 = 1 << 0;
 /// Hay HD Audio con su codec abierto. **Hoy siempre 0**: es la casilla 5.1.
 pub const DEVICE_HDA: u64 = 1 << 1;
+/// **Hay un audifono USB Audio con control de volumen.** Suena de verdad en
+/// esta maquina, al reves que el altavoz del PC.
+pub const DEVICE_USB: u64 = 1 << 2;
 
 /// Le pasa al crate del altavoz la frecuencia real del TSC, una sola vez.
 fn calibrate() {
@@ -208,6 +211,10 @@ pub fn owner() -> Option<u32> {
 /// Que aparatos hay. Publico porque `informe.rs` lo puede querer sin handle:
 /// preguntar QUE HAY no es lo mismo que tener derecho a usarlo.
 pub fn devices() -> u64 {
+    // Se busca aqui porque es la primera pregunta que hace todo programa de
+    // sonido: si el audifono esta, que salga en la respuesta desde el principio
+    // y no en la segunda llamada.
+    crate::ring0::dev::uaudio::buscar();
     // El puerto del altavoz existe en todo x86. Que haya algo conectado al
     // otro lado no se puede saber desde aqui, y por eso este bit dice "hay
     // camino", no "vas a oir algo".
@@ -248,6 +255,17 @@ pub fn operation(operation: u64, a0: u64, a1: u64) -> Option<u64> {
         AUDIO_OP_VOLUME => {
             let v = a0.min(100) as u8;
             bmo_audio::set_volume(v);
+            // ** Y AL AUDIFONO USB, si lo hay.
+            //
+            // Los dos, no uno u otro: son aparatos distintos y el programa no
+            // tiene por que saber cual esta enchufado. En esta maquina el
+            // altavoz del PC no suena --la placa no trae zumbador-- asi que
+            // esta linea es la unica de las dos que se puede OIR.
+            //
+            // Y el volumen del USB no es el mismo numero: alli va en 1/256 dB
+            // con signo y dentro del rango que declaro el aparato. La
+            // conversion vive en `bmo-uaudio`, que se prueba sin hardware.
+            crate::ring0::dev::uaudio::set_volume(v);
             Some(v as u64)
         }
         AUDIO_OP_SILENCE => {

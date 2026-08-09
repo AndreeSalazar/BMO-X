@@ -28,6 +28,9 @@ cabina-core = { path = "../../platform/services/cabina-core" }
 # TSC-- y llevaban meses sin que las llamara NADIE: era uno de los crates
 # huerfanos de la auditoria de deuda tecnica. `ring0/obj/audio.rs` las conecta.
 bmo-audio = { path = "../../platform/drivers/audio" }
+# USB Audio Class: decide QUE peticiones mandar. No toca hardware --por eso se
+# prueba entero en el anfitrion-- y quien las manda es `dev/uaudio.rs`.
+bmo-uaudio = { path = "../../platform/drivers/usb/uaudio" }
 
 [[bin]]
 name =     "bmo-kernel"

@@ -108,6 +108,9 @@ pub mod core {
 pub mod cpu;
 pub mod cpu_vendor;
 pub mod dev {
+    /// El VOLUMEN del audifono USB, por control transfer. Llega antes que
+    /// reproducir nada: ver la cabecera del modulo.
+    pub mod uaudio;
     pub mod console;
     pub mod disk;
     pub mod framebuffer;

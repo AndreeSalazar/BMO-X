@@ -208,6 +208,9 @@ pub const AUDIO_OP_SILENCE: u32 = 0x04;
 /// Bits que devuelve [`AUDIO_OP_DEVICES`].
 pub const DEVICE_SPEAKER: u64 = 1 << 0;
 pub const DEVICE_HDA: u64 = 1 << 1;
+/// **Audifono USB Audio con control de volumen.** En esta maquina es el unico
+/// aparato que suena de verdad: la placa no trae zumbador.
+pub const DEVICE_USB: u64 = 1 << 2;
 /// Tope de duracion de un pitido, en ms. Espejo de `obj::audio::MAX_MS`: el
 /// kernel lo recorta igual, esto solo evita la sorpresa.
 pub const AUDIO_MAX_MS: u64 = 250;
