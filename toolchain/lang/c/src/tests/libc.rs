@@ -403,3 +403,152 @@ int main() {
     );
     assert_eq!(out, "0\n", "si sale 1, alguien cableo la escritura: cambiar esta fila");
 }
+
+// == EL FORMATEADOR DE EJECUCION =======================================
+//
+// Lo que desbloquea el unity build de DOOM. Ver la cabecera de
+// `toolchain/forge/sem-asm/tables/stdio.h` para el por que; aqui va lo que
+// EJECUTA, que es lo unico que decide si funciona.
+
+/// **** LA FILA QUE DESBLOQUEA DOOM: un `printf` cuyo formato es una VARIABLE.
+///
+/// `g_game.c:2184` hace exactamente esto (`printf(message, demoversion, ...)`)
+/// y era donde se paraba el unity build de las 56.465 lineas. Si esta fila
+/// falla con un error de compilacion, es que se volvio a la ruta de solo
+/// literales; si falla con otro texto, es el formateador.
+#[test]
+fn printf_con_el_formato_en_una_variable() {
+    let out = corre(
+        "#include <stdio.h>",
+        r#"
+int main() {
+    char *f;
+    f = "%s tiene %d anos\n";
+    printf(f, "andre", 26);
+    return 0;
+}
+"#,
+    );
+    assert_eq!(out, "andre tiene 26 anos\n");
+}
+
+/// ** LA ANCHURA SE APLICA, y el `printf` en linea no puede aplicarla.
+///
+/// Su propio comentario lo dice: lee el `7` de `%7i` y lo tira, porque sus
+/// conversores escriben directo a la consola y para rellenar hay que saber
+/// cuanto ocupa el numero ANTES. Aqui el numero se arma en un array primero.
+///
+/// Las cuatro columnas son las cuatro combinaciones que existen: derecha,
+/// izquierda, ceros y una cadena recortada por precision.
+#[test]
+fn la_anchura_y_las_banderas_se_aplican_de_verdad() {
+    let out = corre(
+        "#include <stdio.h>",
+        r#"
+int main() {
+    char b[64];
+    snprintf(b, 64, "[%5d][%-5d][%05d][%.3s]", 42, 42, 42, "abcdef");
+    printf("%s\n", b);
+    return 0;
+}
+"#,
+    );
+    assert_eq!(out, "[   42][42   ][00042][abc]\n");
+}
+
+/// **** El `va_list` VIAJA a otra funcion. Es el patron entero de la familia
+/// `v*` y lo que `__va_arg(i)` no podia hacer: un indice describe una posicion
+/// en el marco de quien pregunta, y en la funcion de destino ya no apunta a
+/// nada.
+///
+/// Esta fila es la de `M_snprintf`/`M_vsnprintf` de `m_misc.c`, calcada.
+#[test]
+fn el_va_list_sobrevive_a_pasarlo_a_otra_funcion() {
+    let out = corre(
+        "#include <stdio.h>",
+        r#"
+int mi_snprintf(char *b, unsigned long long n, const char *s, ...) {
+    va_list args;
+    va_start(args, s);
+    return vsnprintf(b, n, s, args);
+}
+int main() {
+    char b[64];
+    mi_snprintf(b, 64, "%s=%d,%s=%d", "alto", 200, "ancho", 320);
+    printf("%s\n", b);
+    return 0;
+}
+"#,
+    );
+    assert_eq!(out, "alto=200,ancho=320\n");
+}
+
+/// ** `snprintf` NO desborda y devuelve lo que HABRIA escrito.
+///
+/// Las dos mitades importan y son distintas: truncar sin decirlo da un buffer
+/// correcto y un programa que cree que cabia. El `+1 < lim` de `bmo_fmt_byte`
+/// es lo que deja sitio al cero final -- si alguien lo pone en `< lim`, esta
+/// fila caza el byte de mas.
+#[test]
+fn snprintf_trunca_sin_desbordar_y_dice_cuanto_falto() {
+    let out = corre(
+        "#include <stdio.h>",
+        r#"
+char b[16];
+int main() {
+    int i;
+    int n;
+    for (i = 0; i < 16; i = i + 1) { b[i] = '#'; }
+    n = snprintf(b, 8, "%s", "0123456789");
+    printf("[%s] %d %d\n", b, n, (int)b[8]);
+    return 0;
+}
+"#,
+    );
+    assert_eq!(
+        out, "[0123456] 10 35\n",
+        "siete bytes y el cero; devuelve 10; y el byte 8 sigue siendo '#' (35)"
+    );
+}
+
+/// ** El hexadecimal va por DESPLAZAMIENTO y mascara, no por division.
+///
+/// La division de BMO C es `idiv` --con signo-- asi que un valor con el bit
+/// alto puesto saldria negativo. El `& 15` tras el `>> 4` convierte el `sar`
+/// que emite el compilador en el desplazamiento logico que hace falta. Si
+/// alguien cambia esa linea por una division, esta fila lo dice.
+#[test]
+fn el_hexadecimal_aguanta_el_bit_alto() {
+    let out = corre(
+        "#include <stdio.h>",
+        r#"
+int main() {
+    char b[32];
+    snprintf(b, 32, "%x %X %x", 255, 255, -1);
+    printf("%s\n", b);
+    return 0;
+}
+"#,
+    );
+    assert_eq!(out, "ff FF ffffffffffffffff\n");
+}
+
+/// Una conversion que no se entiende se escribe TAL CUAL y **no consume
+/// argumento**. Inventar un numero para un `%f` seria peor que no imprimirlo, y
+/// consumir el argumento descolocaria todos los que vienen detras -- que es la
+/// clase de fallo que aparece tres conversiones mas alla del sitio culpable.
+#[test]
+fn una_conversion_desconocida_no_se_come_el_argumento() {
+    let out = corre(
+        "#include <stdio.h>",
+        r#"
+int main() {
+    char b[32];
+    snprintf(b, 32, "%f=%d", 7);
+    printf("%s\n", b);
+    return 0;
+}
+"#,
+    );
+    assert_eq!(out, "%f=7\n");
+}

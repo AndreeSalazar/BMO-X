@@ -43,6 +43,48 @@ struct MacroDef {
 /// pero no cuelga el compilador.
 const MAX_PASADAS: usize = 16;
 
+/// Una rama de un grupo `#if / #elif / #else / #endif`.
+///
+/// ** POR QUE HACEN FALTA DOS BITS Y NO UNO
+///
+/// Con solo "esta rama esta activa", `#elif` no puede saber si **alguna
+/// anterior ya entro**, y lo que hacia era mirar la de justo antes. Resultado:
+///
+/// ```c
+/// #if (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+/// #define SYS_LITTLE_ENDIAN
+/// #elif (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+/// #define SYS_BIG_ENDIAN
+/// #endif
+/// ```
+///
+/// **Las DOS se definian.** Los dos identificadores son desconocidos y valen 0
+/// --que es lo que manda C11 6.10.1p4 y este preprocesador cumple a proposito--
+/// asi que las dos condiciones son ciertas, y sin memoria de grupo la segunda
+/// entra igual. Ese es exactamente `i_swap.h` de DOOM: quedaba definido
+/// `SYS_BIG_ENDIAN` en una maquina little-endian, y mas abajo se llamaba a una
+/// funcion que solo existe en el otro mundo.
+///
+/// No falla ruidosamente: **compila las DOS ramas de todo grupo cuya primera
+/// condicion sea cierta**. Un `#define` repetido se pisa y gana el ultimo, o
+/// sea que la configuracion que queda puesta es la que el programa descarto.
+///
+/// `ya_tomada` es esa memoria: una vez que una rama del grupo entro, ninguna
+/// otra puede.
+#[derive(Clone, Copy)]
+struct Rama {
+    /// Se emite lo que hay dentro de esta rama?
+    activa: bool,
+    /// Alguna rama de este grupo --esta o una anterior-- ya entro?
+    ya_tomada: bool,
+}
+
+impl Rama {
+    fn abierta(activa: bool) -> Self {
+        Rama { activa, ya_tomada: activa }
+    }
+}
+
 pub struct Preprocessor {
     defines: HashMap<String, MacroDef>,
     include_paths: Vec<PathBuf>,
@@ -81,8 +123,8 @@ impl Preprocessor {
     }
 
     /// Helper: get the current skip status (should we emit this line?)
-    fn is_active(&self, skip_active: &[bool]) -> bool {
-        skip_active.last().copied().unwrap_or(true)
+    fn is_active(&self, skip_active: &[Rama]) -> bool {
+        skip_active.last().map(|r| r.activa).unwrap_or(true)
     }
 
     pub fn preprocess(&mut self, source: &str, file_path: &Path) -> Result<String, CError> {
@@ -94,7 +136,7 @@ impl Preprocessor {
 
         let lines: Vec<&str> = source.lines().collect();
         let mut output = String::with_capacity(source.len());
-        let mut skip_active: Vec<bool> = vec![true];
+        let mut skip_active: Vec<Rama> = vec![Rama::abierta(true)];
         let mut i = 0usize;
 
         while i < lines.len() {
@@ -171,30 +213,46 @@ impl Preprocessor {
                         let name = rest.trim();
                         let is_def = self.defines.contains_key(name);
                         let parent = self.is_active(&skip_active);
-                        skip_active.push(parent && is_def);
+                        skip_active.push(Rama::abierta(parent && is_def));
                     }
                     "ifndef" => {
                         let name = rest.trim();
                         let is_def = self.defines.contains_key(name);
                         let parent = self.is_active(&skip_active);
-                        skip_active.push(parent && !is_def);
+                        skip_active.push(Rama::abierta(parent && !is_def));
                     }
                     "if" => {
                         let val = self.eval_if_expr(rest)?;
                         let parent = self.is_active(&skip_active);
-                        skip_active.push(parent && val != 0);
+                        skip_active.push(Rama::abierta(parent && val != 0));
                     }
                     "else" => {
                         if let Some(prev) = skip_active.pop() {
                             let parent = self.is_active(&skip_active);
-                            skip_active.push(parent && !prev);
+                            // El `else` entra si NINGUNA rama anterior del grupo
+                            // entro -- no solo si no entro la de justo antes.
+                            skip_active.push(Rama {
+                                activa: parent && !prev.ya_tomada,
+                                ya_tomada: true,
+                            });
                         }
                     }
                     "elif" => {
-                        skip_active.pop();
-                        let val = self.eval_if_expr(rest)?;
-                        let parent = self.is_active(&skip_active);
-                        skip_active.push(parent && val != 0);
+                        if let Some(prev) = skip_active.pop() {
+                            let parent = self.is_active(&skip_active);
+                            // ** Se evalua IGUAL aunque el grupo ya este
+                            // resuelto, porque un `#elif` puede llevar una
+                            // division por cero o un `defined` de algo que no
+                            // existe y en C eso no se mira si no toca. Aqui se
+                            // mira y da 0, que es inofensivo: lo que decide es
+                            // `ya_tomada`.
+                            let val = self.eval_if_expr(rest)?;
+                            let entra = parent && !prev.ya_tomada && val != 0;
+                            skip_active.push(Rama {
+                                activa: entra,
+                                ya_tomada: prev.ya_tomada || entra,
+                            });
+                        }
                     }
                     "endif" => {
                         skip_active.pop();

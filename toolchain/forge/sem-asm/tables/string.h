@@ -106,6 +106,28 @@ int strcasecmp(const char *a, const char *b) {
     }
 }
 
+/* La de `n` topes de `strcasecmp`. La usa todo parser de configuracion que
+ * compara un prefijo sin distinguir mayusculas -- en DOOM, los parametros de la
+ * linea de ordenes. */
+int strncasecmp(const char *a, const char *b, int n) {
+    int i;
+    int ca;
+    int cb;
+    i = 0;
+    while (i < n) {
+        ca = tolower((int)a[i]);
+        cb = tolower((int)b[i]);
+        if (ca != cb) {
+            return ca - cb;
+        }
+        if (ca == 0) {
+            return 0;
+        }
+        i = i + 1;
+    }
+    return 0;
+}
+
 char *strdup(const char *s) {
     int n;
     char *nuevo;

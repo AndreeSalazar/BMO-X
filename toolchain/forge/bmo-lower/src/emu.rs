@@ -1715,6 +1715,27 @@ impl Machine {
                         let v = self.load(src, wide);
                         self.xmm[reg] = if wide { v } else { v & 0xFFFF_FFFF };
                     }
+                    // movq r64, xmm / movd r32, xmm -- el camino de VUELTA
+                    //
+                    // * La hermana de `0x6E`, y la que faltaba: aquella mete
+                    // bits en un registro SSE, esta los saca. Es como BMO C
+                    // pasa un `double` a una funcion -- los argumentos van por
+                    // la PILA, asi que el valor tiene que bajar de `xmm0` a un
+                    // registro entero para poder empujarlo.
+                    //
+                    // Ojo al reparto de campos: aqui el operando de ModRM que
+                    // manda es el `reg`, y **es el XMM**; el destino entero es
+                    // el `r/m`. Al reves que en casi todo lo demas, y por eso
+                    // se escribe explicito.
+                    0x7E if op16 => {
+                        let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                        let v = self.xmm[reg];
+                        // Sin REX.W son cuatro bytes: un `float`, no un
+                        // `double`. Llevarse los ocho seria arrastrar la mitad
+                        // alta de la mantisa a un registro que declara 32 bits.
+                        let bytes = if wide { 8 } else { 4 };
+                        self.store(dst, if wide { v } else { v & 0xFFFF_FFFF }, bytes);
+                    }
                     // cvtsi2sd xmm, r64 -- entero con signo a double
                     0x2A if f2 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);

@@ -275,3 +275,81 @@ fn los_acentos_de_un_comentario_no_inflan_nada() {
         .expect("debe compilar");
     assert!(bef.len() < 4096, "el .bex mide {} bytes", bef.len());
 }
+
+/// **** UN `#elif` NO ENTRA SI EL `#if` YA ENTRO.
+///
+/// Parece de perogrullo y no lo era: el estado de un grupo era **un solo bit**
+/// --"esta rama esta activa"--, asi que `#elif` miraba la rama de justo antes y
+/// no si alguna ya habia entrado. Con las dos condiciones ciertas, **las dos
+/// ramas se compilaban**.
+///
+/// Y las dos son ciertas mas a menudo de lo que parece, porque C manda que un
+/// identificador desconocido en un `#if` valga 0: `#if (A == B)` con las dos sin
+/// definir es CIERTO. Eso es `i_swap.h` de DOOM, que asi definia
+/// `SYS_LITTLE_ENDIAN` **y** `SYS_BIG_ENDIAN` en la misma maquina.
+///
+/// No falla ruidosamente: un `#define` repetido gana el ultimo, o sea que la
+/// configuracion que queda puesta es la que el programa habia descartado.
+#[test]
+fn un_elif_no_entra_si_el_if_ya_entro() {
+    let fuente = "
+#if (1)
+#define QUIEN 1
+#elif (1)
+#define QUIEN 2
+#else
+#define QUIEN 3
+#endif
+int main() { printf(\"%d;\", QUIEN); return 0; }";
+    let bef = compile_with_preprocessor(fuente, std::path::Path::new("prueba.c"), CStandard::C11)
+        .expect("debe compilar");
+    assert_eq!(ejecutar_bef(&bef), "1;", "si sale 2, el segundo #define entro igual");
+}
+
+/// Y el `#else` mira lo MISMO: que no haya entrado NINGUNA, no solo la de
+/// arriba. `#if(1) / #elif(0) / #else` no lleva a ningun sitio -- pero con un
+/// bit, el `#elif` dejaba "falso" y el `#else` entraba.
+#[test]
+fn un_else_tras_un_elif_falso_tampoco_entra() {
+    let fuente = "
+#if (1)
+#define QUIEN 1
+#elif (0)
+#define QUIEN 2
+#else
+#define QUIEN 3
+#endif
+int main() { printf(\"%d;\", QUIEN); return 0; }";
+    let bef = compile_with_preprocessor(fuente, std::path::Path::new("prueba.c"), CStandard::C11)
+        .expect("debe compilar");
+    assert_eq!(ejecutar_bef(&bef), "1;", "si sale 3, el #else entro con el #if ya tomado");
+}
+
+/// La cadena entera con el caso real: dos identificadores sin definir, que en
+/// C valen 0, asi que **las dos condiciones son ciertas**. Solo puede quedar
+/// definida la primera.
+#[test]
+fn la_endianness_de_doom_elige_una_sola_rama() {
+    let fuente = "
+#if ( __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ )
+#define SYS_LITTLE_ENDIAN
+#elif ( __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
+#define SYS_BIG_ENDIAN
+#endif
+int main() {
+#ifdef SYS_BIG_ENDIAN
+    printf(\"grande;\");
+#endif
+#ifdef SYS_LITTLE_ENDIAN
+    printf(\"pequena;\");
+#endif
+    return 0;
+}";
+    let bef = compile_with_preprocessor(fuente, std::path::Path::new("prueba.c"), CStandard::C11)
+        .expect("debe compilar");
+    assert_eq!(
+        ejecutar_bef(&bef),
+        "pequena;",
+        "x86-64 es little-endian, y solo puede salir UNA de las dos"
+    );
+}

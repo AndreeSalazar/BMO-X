@@ -108,6 +108,16 @@ const SINTETIZABLES: &[(&str, Sintetizador)] = &[
     // `abs` no entra: trece bytes apenas pasan del coste de llamarlo, y con el
     // prologo el cambio saldria a perder en cualquier programa que no lo llame
     // muchas veces. La regla que lo decide no es "todo a la tabla".
+    // * LA SALIDA DE UN BUFFER QUE NO SE CONOCE AL COMPILAR.
+    //
+    // `printf("hola")` mete el texto **dentro de las instrucciones** y no
+    // necesita nada de esto. Un formateador escrito en C si: construye la linea
+    // en un array de la pila y luego hay que sacarla. Sin esta funcion, la
+    // unica forma desde C seria un `syscall` por CARACTER.
+    //
+    // El cuerpo es `bmo_lower::console::write_buffer`, que ya existia y solo lo
+    // alcanzaba el codegen. Esto es la puerta para que lo alcance el LENGUAJE.
+    ("bmo_escribir", sintetiza_escribir),
     ("strlen", sintetiza_strlen),
     ("strcpy", sintetiza_strcpy),
     ("memset", sintetiza_memset),
@@ -328,6 +338,32 @@ fn sintetiza_memcpy(code: &mut Vec<u8>) {
     code.extend_from_slice(&[0x48, 0x8B, 0x45, 0x10]); // mov rax, [rbp+16]  -> dst
     code.extend_from_slice(&[0x5D]);                   // pop rbp
     code.extend_from_slice(&[0xC3]);                   // ret
+}
+
+/// `bmo_escribir(bytes, n)` -- saca a la consola un buffer de EJECUCION.
+///
+/// # Que desbloquea, y por que no estaba antes
+///
+/// Todo lo que C imprimia hasta hoy se conocia al compilar: `write_const` mete
+/// los bytes como inmediatos dentro de las propias instrucciones. Un
+/// formateador que recorre la plantilla **en ejecucion** --el que piden
+/// `vsnprintf` y un `printf` cuyo formato es una variable-- no puede hacer eso:
+/// su linea se arma en un array de la pila y no existe hasta que corre.
+///
+/// El emisor lleva tiempo escrito (`console::write_buffer`, con `r8`/`r9`
+/// elegidos justamente porque el `syscall` no los pisa). Lo que faltaba era
+/// **poder llamarlo desde C**, y eso son cuatro lineas: leer los dos argumentos
+/// del marco a `r8`/`r9` y dejarle el bucle a L1.
+///
+/// [!] `r8`/`r9` no estan entre los registros de [`carga_arg`] --esa tabla
+/// cubre los que usan los emisores de L1-- asi que aqui van los bytes a mano,
+/// que llevan REX.R por ser registros altos.
+fn sintetiza_escribir(code: &mut Vec<u8>) {
+    prologo(code);
+    code.extend_from_slice(&[0x4C, 0x8B, 0x45, 0x10]); // mov r8, [rbp+16]  bytes
+    code.extend_from_slice(&[0x4C, 0x8B, 0x4D, 0x18]); // mov r9, [rbp+24]  n
+    bmo_lower::console::write_buffer(code);
+    epilogo(code);
 }
 
 // -- LA CONSULTA, que es todo lo que `mod.rs` necesita de aqui ---------

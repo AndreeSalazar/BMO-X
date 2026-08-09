@@ -97,29 +97,63 @@ fn float_f32_narrows_on_store() {
     assert!(bef.windows(3).any(|w| w == [0xF3, 0x0F, 0x11]), "falta movss store");
 }
 
-/// * **Un `double` como PARAMETRO se rechaza con motivo.**
+/// ** **UN `double` COMO PARAMETRO, DE PUNTA A PUNTA.**
 ///
-/// Antes compilaba en silencio y devolvia basura: BMO C evalua floats por la
-/// ruta paralela de xmm, pero **los argumentos van por la pila como enteros**,
-/// asi que `g(1.5)` empujaba los bits del double en una ranura y el prologo
-/// los leia como si fueran un `long`.
+/// Este test exigia lo contrario: que se RECHAZARA, y el motivo escrito era
+/// *"la ABI de argumentos xmm esta pendiente"*. Resulto que **no hacia falta
+/// ninguna ABI de xmm**: en BMO los argumentos van por la pila en ranuras de
+/// ocho bytes, y un `double` cabe entero en una. Lo que fallaba era el sitio de
+/// llamada, que evaluaba el argumento con `emit_expr` -- y esa ruta TRUNCA a
+/// entero. La ranura llevaba `-2` donde iba `-2.5`.
 ///
-/// Los floats GLOBALES ya se rechazaban desde el principio; esta puerta se
-/// quedo abierta porque nadie habia escrito una funcion que tomara un
-/// `double`. Lo destapo **C++** al probar una sobrecarga `f(int)`/`f(double)`,
-/// que es lo que pasa cuando un lenguaje nuevo se apoya en el mismo backend.
+/// Se comprueba por el VALOR y no por los bytes emitidos: se multiplica por
+/// diez y se baja a entero, asi que si lo que llegara fuera el truncado, o la
+/// mitad de la mantisa, el numero no saldria.
 #[test]
-fn un_parametro_double_se_rechaza_con_motivo() {
-    let e = compile_source_to_bef("int g(double a) { return 1; } int main() { return 0; }")
-        .expect_err("un parametro de coma flotante no se puede pasar todavia");
-    assert!(
-        e.message.contains("coma flotante"),
-        "el error tiene que decir que es de coma flotante: {}", e.message,
-    );
-    assert!(
-        e.message.contains("xmm"),
-        "y decir QUE falta (la ABI de xmm), no solo que no se puede: {}", e.message,
-    );
+fn un_double_como_parametro_llega_entero() {
+    let src = r#"
+double fabs(double v) { if (v < 0.0) { return -v; } return v; }
+int main() {
+    printf("%d %d\n", (int)(fabs(-2.5) * 10.0), (int)(fabs(2.5) * 10.0));
+    return 0;
+}
+"#;
+    let bef = compile_source_to_bef(src).expect("un double como parametro ya se compila");
+    assert_eq!(ejecutar_bef(&bef), "25 25\n");
+}
+
+/// ** Un argumento ENTERO a un parametro `double` se convierte, que es lo que
+/// C manda. `fabs(3)` tiene que valer 3.0 y no los bits del entero 3 leidos
+/// como coma flotante -- que serian 1.5e-323, o sea cero a efectos practicos.
+#[test]
+fn un_entero_a_un_parametro_double_se_convierte() {
+    let src = r#"
+double doble(double v) { return v + v; }
+int main() {
+    printf("%d\n", (int)doble(3));
+    return 0;
+}
+"#;
+    let bef = compile_source_to_bef(src).expect("debe compilar");
+    assert_eq!(ejecutar_bef(&bef), "6\n");
+}
+
+/// ** Un parametro `float` son CUATRO bytes, no ocho.
+///
+/// El callee lo lee con `movss`, asi que si el sitio de llamada empujara los
+/// ocho bytes de un double, leeria la mitad baja de la mantisa como si fuera el
+/// numero. La conversion la decide el tipo del PARAMETRO, no la expresion.
+#[test]
+fn un_parametro_float_se_estrecha_a_cuatro_bytes() {
+    let src = r#"
+float mitad(float v) { return v * 0.5; }
+int main() {
+    printf("%d\n", (int)(mitad(2.5) * 100.0));
+    return 0;
+}
+"#;
+    let bef = compile_source_to_bef(src).expect("debe compilar");
+    assert_eq!(ejecutar_bef(&bef), "125\n");
 }
 
 /// La asimetria, fijada a proposito: **devolver** un double si se puede.
@@ -136,4 +170,5 @@ int main() { return 0; }
     // el return de half carga d con movsd xmm0,[rbp+off] (F2 0F 10 45 ..)
     assert!(bef.windows(4).any(|w| w == [0xF2, 0x0F, 0x10, 0x45]), "falta movsd load del return");
 }
+
 

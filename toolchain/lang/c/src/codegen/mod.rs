@@ -103,6 +103,14 @@ struct Codegen {
     frame_size: i32,
     /// La funcion que se esta emitiendo declara `...`?
     es_variadica: bool,
+    /// Un aviso de un solo uso para [`Self::emit_expr`]: **no metas el guarda
+    /// SSE en esta expresion**. Lo pone `emit_fexpr` cuando quiere emitir una
+    /// LLAMADA que devuelve un double -- si no, el guarda la mandaria otra vez
+    /// a `emit_fexpr` y las dos se llamarian para siempre.
+    ///
+    /// Se consume en la primera comprobacion (`mem::take`), asi que los
+    /// argumentos que se emitan dentro de esa llamada vuelven a tener su guarda.
+    sin_guarda_float: bool,
     /// Ranuras que ocupan sus parametros CON NOMBRE. Justo detras empiezan los
     /// variadicos, porque los argumentos van seguidos en la pila.
     ranuras_con_nombre: i32,
@@ -184,6 +192,7 @@ impl Codegen {
             continue_target: Vec::new(), var_offsets: HashMap::new(),
             frame_size: 0,
             es_variadica: false,
+            sin_guarda_float: false,
             ranuras_con_nombre: 0,
             struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
             label_positions: HashMap::new(), goto_relocs: Vec::new(),
@@ -1560,20 +1569,28 @@ impl Codegen {
         // Un cero inventado o unos bits mal leidos son la peor respuesta a "no
         // se hacer esto": son valores legitimos y el error viaja hasta donde ya
         // no se puede rastrear. Mientras la ABI de xmm no exista, se DICE.
-        for p in &func.params {
-            if Self::is_float_ty(&p.typ) {
-                self.errors.push(format!(
-                    "el parametro '{}' de '{}' es de coma flotante, y BMO C todavia no PASA \
-                     floats como argumento (los evalua en xmm, pero la ABI de argumentos xmm \
-                     esta pendiente). Pasa el valor por puntero, o usa un entero escalado.",
-                    p.name, func.name,
-                ));
-            }
-        }
-        // El RETORNO de coma flotante si funciona --el valor queda en xmm0, y
-        // hay un test que lo fija (`double_return_value_in_xmm0`)--, asi que no
-        // se toca. La asimetria es real y conviene tenerla escrita: **devolver
-        // un double se puede, pasarlo no.**
+        // * AQUI SE RECHAZABA UN PARAMETRO DE COMA FLOTANTE, y ya no.
+        //
+        // El motivo escrito era *"la ABI de argumentos xmm esta pendiente"*, y
+        // resulto que **BMO no necesita ninguna ABI de xmm**: aqui los
+        // argumentos van por la PILA, en ranuras de ocho bytes, y un `double`
+        // cabe entero en una. Lo que fallaba no era la convencion, era el sitio
+        // de llamada: `emit_expr` de una expresion flotante TRUNCA a entero
+        // (`cvttsd2si`), asi que la ranura llevaba `2` donde iba `2.5`.
+        //
+        // La correccion es empujar el **patron de bits** cuando el parametro es
+        // flotante (ver `emit_empuja_flotante`), y el lado del callee ya
+        // funcionaba: un parametro vive en `var_offsets` igual que un local, y
+        // `emit_load_float_var` lo lee con `movsd [rbp+off]` sin saber si vino
+        // de arriba o se declaro dentro.
+        //
+        // [!] Y la conversion la decide el TIPO DEL PARAMETRO, no la expresion:
+        // `fabs(3)` tiene que llegar como `3.0`, y `f(2.5)` a un `float` tiene
+        // que estrecharse a cuatro bytes -- si se empujaran los ocho de un
+        // double, el callee leeria con `movss` la mitad baja de la mantisa.
+        //
+        // La asimetria que quedaba escrita aqui --"devolver un double se puede,
+        // pasarlo no"-- se acabo: ahora las dos.
         self.build_var_map(&func.params, &func.var_names, func);
         // Lo que `__va_arg` necesita saber, y solo se sabe aqui: si esta
         // funcion admite variadicos y donde acaban los que tienen nombre.
@@ -2056,11 +2073,20 @@ impl Codegen {
 
     fn emit_printf_variadic(&mut self, args: &[Expr]) {
         let Expr::StringLit(format) = &args[0] else {
-            self.errors.push(
-                "printf con formato calculado en tiempo de ejecucion no se compila: \
-                 el formato debe ser un literal para poder emitirlo en linea"
-                    .to_string(),
-            );
+            // * EL FORMATO NO ES UN LITERAL -> al formateador de EJECUCION.
+            //
+            // Esto era un error hasta hoy, y era el sitio exacto donde se
+            // paraba el unity build de DOOM: `printf(message, demoversion,
+            // ...)` en `g_game.c`. El emisor de aqui recorre la plantilla **al
+            // compilar** --por eso los literales caben dentro de las
+            // instrucciones y no hace falta libreria-- y eso no se puede hacer
+            // con una plantilla que llega en un puntero.
+            //
+            // La respuesta no es meterle un interprete al codegen: es llamar al
+            // formateador que ya existe escrito en C, en `<stdio.h>`. Ahi se
+            // lee, se corrige y **tiene anchura de verdad**, que este emisor no
+            // tiene.
+            self.emit_printf_en_ejecucion(&args[0], &args[1..]);
             return;
         };
         let format = format.clone();
@@ -2207,6 +2233,83 @@ impl Codegen {
         }
     }
 
+    /// `printf(fmt, ...)` cuando `fmt` **no se sabe hasta ejecutar**.
+    ///
+    /// # La pieza que lo hace corto: la pila YA es un `va_list`
+    ///
+    /// BMO C pasa los argumentos por la pila y seguidos, asi que empujarlos en
+    /// orden INVERSO deja en memoria, de menor a mayor direccion, exactamente
+    /// `arg0, arg1, arg2...` -- que es la forma que tiene una lista variadica
+    /// aqui (ver `<stdarg.h>`). O sea que el `va_list` que hay que pasarle al
+    /// formateador **es `rsp`**, sin copiar nada a ningun sitio.
+    ///
+    /// [!] Y por eso se empujan al reves que en la ruta de formato literal, que
+    /// los quiere en el otro orden porque los lee por indice con
+    /// [`Self::emit_cargar_de_pila`]. Dos ordenes distintos en la misma
+    /// funcion: cada uno es el que necesita su lector.
+    ///
+    /// # Lo que hace falta que exista
+    ///
+    /// `bmo_formatear`, que **no** es sintetizada: es C de verdad y vive en
+    /// `<stdio.h>`. Si no esta incluido no se compila un `call` a la nada, se
+    /// dice cual es la linea que falta -- que es la diferencia entre un error
+    /// que se arregla en diez segundos y uno que manda a leer el codegen.
+    fn emit_printf_en_ejecucion(&mut self, fmt: &Expr, va_args: &[Expr]) {
+        if !self.known_functions.contains("bmo_formatear") {
+            self.errors.push(
+                "printf con el formato calculado en ejecucion necesita el formateador: \
+                 anade #include <stdio.h> (ahi vive `bmo_formatear`, y de paso trae \
+                 snprintf, sprintf y la familia v*)"
+                    .to_string(),
+            );
+            return;
+        }
+        let n = va_args.len();
+        for a in va_args.iter().rev() {
+            self.emit_expr(a);
+            self.code.push(0x50); // push rax
+        }
+        // rax = rsp -> el va_list. Se captura ANTES de empujar los argumentos
+        // de la llamada, que es lo unico que hay que no equivocar aqui.
+        self.code.extend_from_slice(&[0x48, 0x89, 0xE0]); // mov rax, rsp
+        self.code.push(0x50); // push rax        -> ap    (4o parametro)
+        self.emit_expr(fmt);
+        self.code.push(0x50); // push fmt        -> (3o)
+        self.emit_asm(|a| { a.mov_imm64(bmo_sem_asm::x86_64::Reg::Rax, 0).unwrap(); });
+        self.code.push(0x50); // push 0          -> lim   (2o)
+        self.code.push(0x50); // push 0          -> dst   (1o), y 0 = a la consola
+        self.code.extend_from_slice(&[0xE8]);
+        self.call_relocs.push(CallReloc {
+            offset: self.code.len(),
+            target: "bmo_formatear".to_string(),
+        });
+        self.code.extend_from_slice(&[0, 0, 0, 0]);
+        // Los cuatro de la llamada mas los variadicos que quedan debajo.
+        self.emit_soltar_pila(4 + n);
+    }
+
+    /// Empuja un argumento de coma flotante como el PATRON DE BITS que el
+    /// callee espera encontrar en su ranura.
+    ///
+    /// `estrecho` = el parametro es `float` (cuatro bytes) y no `double`. Esa
+    /// distincion no es cosmetica: el callee lee su ranura con `movss` o con
+    /// `movsd` segun lo que declaro, y meter ocho bytes donde va a leer cuatro
+    /// le da la mitad baja de la mantisa como si fuera el numero entero.
+    ///
+    /// La conversion desde un argumento ENTERO sale gratis: `emit_fexpr` ya
+    /// sabe subir un entero a `xmm0` con `cvtsi2sd`, que es lo que C manda
+    /// hacer con `fabs(3)`.
+    fn emit_empuja_flotante(&mut self, arg: &Expr, estrecho: bool) {
+        self.emit_fexpr(arg); // el valor, en xmm0, como double
+        if estrecho {
+            self.code.extend_from_slice(&[0xF2, 0x0F, 0x5A, 0xC0]); // cvtsd2ss xmm0,xmm0
+            self.code.extend_from_slice(&[0x66, 0x0F, 0x7E, 0xC0]); // movd eax, xmm0
+        } else {
+            self.code.extend_from_slice(&[0x66, 0x48, 0x0F, 0x7E, 0xC0]); // movq rax, xmm0
+        }
+        self.code.push(0x50); // push rax
+    }
+
     /// `mov rax, [rsp + slot*8]` -- lee un argumento ya calculado.
     fn emit_cargar_de_pila(&mut self, slot: usize) {
         let disp = (slot * 8) as i64;
@@ -2255,7 +2358,8 @@ impl Codegen {
         // a rax (cvttsd2si). Las comparaciones dan int 0/1 (no son float) y se
         // manejan abajo. emit_fexpr_operand solo llama aqui para NO-floats, asi
         // que no hay recursion infinita.
-        if self.expr_is_float(expr) {
+        let saltar_guarda = core::mem::take(&mut self.sin_guarda_float);
+        if !saltar_guarda && self.expr_is_float(expr) {
             self.emit_fexpr(expr);
             self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2C, 0xC0]); // cvttsd2si rax, xmm0
             return;
@@ -2339,6 +2443,14 @@ impl Codegen {
                             let bytes = self.type_stack_size(t);
                             ranuras_total += agregados::ranuras(bytes);
                             self.emit_empuja_agregado(arg, bytes);
+                        }
+                        // Un parametro de coma flotante viaja como sus BITS.
+                        // Sin esto, `emit_expr` truncaria a entero y `fabs(-2.5)`
+                        // recibiria `-2`.
+                        Some(t) if Self::is_float_ty(t) => {
+                            ranuras_total += 1;
+                            let estrecho = matches!(t, TypeSpec::Float);
+                            self.emit_empuja_flotante(arg, estrecho);
                         }
                         _ => {
                             ranuras_total += 1;
@@ -2872,6 +2984,44 @@ impl Codegen {
             self.code.extend_from_slice(&[0x48, 0x8B, 0x04, 0xC2]);
             return;
         }
+
+        // * `__va_list()` -- la DIRECCION del primer argumento variadico.
+        //
+        // # Por que `__va_arg(i)` no bastaba
+        //
+        // Un indice solo sirve DENTRO de la funcion que declara el `...`:
+        // describe una posicion en SU marco de pila. En cuanto se le pasa a
+        // otra funcion --que es lo que hace `va_start(ap, s); vsnprintf(buf, n,
+        // s, ap)`, o sea el patron entero de la familia `v*`-- el numero ya no
+        // apunta a nada, porque la funcion de destino tiene su propio marco.
+        //
+        // Un PUNTERO si viaja. Y aqui es un puntero y no una estructura de dos
+        // cursores como en SysV, porque BMO C pasa los argumentos **por la
+        // pila y seguidos**: la lista variadica ya ES un array en memoria, y el
+        // `va_list` de C es su primera casilla. La convencion mas vieja vuelve
+        // a salir ganando, igual que en `__va_arg`.
+        //
+        // No lleva el `last` que pide el estandar (`va_start(ap, last)`) porque
+        // aqui no hace falta: el compilador sabe cuantos parametros con nombre
+        // tiene la funcion. La macro de `<stdarg.h>` se lo come y llama a esto.
+        if name == "va_list" {
+            if !args.is_empty() {
+                self.errors
+                    .push("__va_list() no lleva argumentos: es la direccion del primer variadico".into());
+                return;
+            }
+            if !self.es_variadica {
+                self.errors.push(
+                    "__va_list() en una funcion que no declara '...': no hay argumentos \
+                     variadicos a los que apuntar".into());
+                return;
+            }
+            let base = 16 + self.ranuras_con_nombre * 8;
+            // lea rax, [rbp + base]
+            self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
+            self.code.extend_from_slice(&base.to_le_bytes());
+            return;
+        }
         let Some(def) = self.intrinsics.get(name) else {
             self.errors.push(format!(
                 "intrinsic __{name}() no existe en la tabla sem-asm (tables/arch/x86_64/intrinsics.toml)"));
@@ -2977,6 +3127,17 @@ impl Codegen {
             Expr::Field(_, _, _, t) | Expr::Arrow(_, _, _, t) => Self::is_float_ty(t),
             Expr::IndexPtr(_, _, t) => Self::is_float_ty(t),
             Expr::Conditional(_, a, b) => self.expr_is_float(a) || self.expr_is_float(b),
+            // * Una LLAMADA es flotante si su funcion devuelve un flotante.
+            //
+            // Faltaba, y hacia que `d = id(2.5)` guardara basura aunque las dos
+            // mitades funcionaran por separado: el valor volvia en `xmm0` --el
+            // retorno flotante lleva funcionando desde el principio-- y quien
+            // llamaba lo iba a buscar a `rax`. El sintoma es un numero
+            // cualquiera, no un error.
+            Expr::Call(n, _) => self
+                .firmas
+                .get(n)
+                .map_or(false, |(_, ret)| Self::is_float_ty(ret)),
             _ => false,
         }
     }
@@ -3078,6 +3239,15 @@ impl Codegen {
     /// Evalua una expresion FLOTANTE dejando el resultado (double) en xmm0.
     fn emit_fexpr(&mut self, e: &Expr) {
         match e {
+            // Una llamada que devuelve un double **ya deja el valor en xmm0**:
+            // no hay nada que convertir, solo que emitirla. Se pide por el
+            // camino entero porque ahi vive todo el trabajo de una llamada
+            // --los argumentos, las relocs, los agregados-- y duplicarlo aqui
+            // seria tener dos sitios donde equivocarse.
+            Expr::Call(_, _) => {
+                self.sin_guarda_float = true;
+                self.emit_expr(e);
+            }
             Expr::FloatLit(f) => {
                 let bits = f.to_bits();
                 self.code.extend_from_slice(&[0x48, 0xB8]);            // mov rax, imm64
