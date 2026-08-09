@@ -627,7 +627,7 @@ pub extern "C" fn _start() -> ! {
     // sintoma seria `c/musica.bex` diciendo "lo tiene otro proceso" para
     // siempre. Ya paso con la pantalla y costo escribir `PANTALLA_SOLTAR`
     // despues, con el fallo delante. Ver `escena::sonido`.
-    let caja_sonido = escena::sonido::CajaSonido::nueva(&p);
+    let mut caja_sonido = escena::sonido::CajaSonido::nueva(&p);
     let mut sonido_abierta = false;
     // El handle, mientras la ventana esta abierta. `None` cuando esta cerrada o
     // cuando otro proceso tiene el aparato -- que son dos cosas distintas y la
@@ -1056,8 +1056,8 @@ pub extern "C" fn _start() -> ! {
                         }
                         foco.close(V_SONIDO);
                         borrar_ventana(
-                            &p, &caja, caja_sonido.x, caja_sonido.y,
-                            caja_sonido.ancho, caja_sonido.alto, visible,
+                            &p, &caja, caja_sonido.marco.x, caja_sonido.marco.y,
+                            caja_sonido.marco.ancho, caja_sonido.marco.alto, visible,
                         );
                         arriba_antes = V_EJECUTAR;
                         destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
@@ -2191,7 +2191,7 @@ pub extern "C" fn _start() -> ! {
             let en = |v: u8| match v {
                 V_DATOS => datos_abierta && caja_datos.contiene(pos.x, pos.y),
                 V_CABINA => cabina_abierta && caja_cabina.marco.contiene(pos.x, pos.y),
-                V_SONIDO => sonido_abierta && caja_sonido.contiene(pos.x, pos.y),
+                V_SONIDO => sonido_abierta && caja_sonido.marco.contiene(pos.x, pos.y),
                 _ => visible && caja.contiene(pos.x, pos.y),
             };
             let bajo_el_puntero = if en(arriba_antes) {

@@ -33,11 +33,18 @@
 
 use bmo_userland as bmo;
 
+use super::marco::Marco;
 use super::*;
 use crate::texto::decimal;
 
-pub(crate) const SON_ANCHO: u32 = 620;
-pub(crate) const SON_ALTO: u32 = 300;
+// Proporcion de la pantalla y no un tamano fijo, como las demas: ver
+// `docs/LIDERES.md`. Los minimos existen para que no se pueda dejar
+// inservible con el raton -- el teclado de abajo son siete teclas de 52 px y
+// por debajo de eso no se puede tocar.
+const SON_PCT_ANCHO: u32 = 48;
+const SON_PCT_ALTO: u32 = 40;
+const SON_MIN_ANCHO: u32 = 620;
+const SON_MIN_ALTO: u32 = 300;
 
 // El ambar es de esta ventana igual que el azul es del kernel y el verde de
 // ESTRATOS: el color dice cual es antes de leer el titulo.
@@ -66,28 +73,22 @@ pub(crate) const NOTAS: [(u8, u32, &str); 7] = [
     (b'm', 494, "SI"),
 ];
 
-/// Donde va, centrada sobre el panel.
+/// La ventana del sonido. **Movible**, como todas las de `gui.bex`.
+///
+/// Nacio con una caja fija --cuatro numeros y un `contiene`-- y eso ya era una
+/// excepcion el dia que se escribio: ESTRATOS llevaba `Marco` desde antes. Una
+/// ventana que no se puede apartar tapa justo lo que uno quiere comparar con
+/// ella, y aqui eso duele mas que en otras: el volumen se ajusta MIRANDO otra
+/// cosa -- lo que suena.
 pub(crate) struct CajaSonido {
-    pub(crate) x: u32,
-    pub(crate) y: u32,
-    pub(crate) ancho: u32,
-    pub(crate) alto: u32,
+    pub(crate) marco: Marco,
 }
 
 impl CajaSonido {
     pub(crate) fn nueva(p: &bmo::Pantalla) -> Self {
-        let ancho = SON_ANCHO.min(p.ancho.saturating_sub(40));
-        let alto = SON_ALTO.min(p.alto.saturating_sub(40));
         Self {
-            x: (p.ancho.saturating_sub(ancho)) / 2,
-            y: (p.alto.saturating_sub(alto)) / 2,
-            ancho,
-            alto,
+            marco: Marco::nuevo(p, SON_PCT_ANCHO, SON_PCT_ALTO, SON_MIN_ANCHO, SON_MIN_ALTO),
         }
-    }
-
-    pub(crate) fn contiene(&self, px: u32, py: u32) -> bool {
-        px >= self.x && px < self.x + self.ancho && py >= self.y && py < self.y + self.alto
     }
 }
 
@@ -124,24 +125,21 @@ pub(crate) fn pintar(
     volumen: u8,
     pulsada: Option<usize>,
 ) {
-    sombra(p, c.x, c.y, c.ancho, c.alto);
-    rect_redondeado(p, c.x, c.y, c.ancho, c.alto, SON_BORDE);
-    rect_redondeado(p, c.x + 1, c.y + 1, c.ancho - 2, c.alto - 2, SON_FONDO);
-
-    // La barra de titulo, con la misma curva que la ventana.
-    for i in 0..RADIO {
-        let s = super::curva(i);
-        p.rect(c.x + s, c.y + 1 + i, c.ancho - 2 * s, 1, SON_TITULO_FONDO);
+    if c.marco.minimizada {
+        return;
     }
-    p.rect(c.x + 1, c.y + 1 + RADIO, c.ancho - 2, TITULO_ALTO - 2 - RADIO, SON_TITULO_FONDO);
-    p.rect(c.x + 1, c.y + TITULO_ALTO - 1, c.ancho - 2, 1, SON_TITULO);
+    // El cromo lo pinta el Marco: sombra, esquinas, barra de titulo y los tres
+    // botones. Estaba escrito a mano aqui, que es la forma de que un dia el
+    // redondeo de esta ventana no case con el de las otras.
+    c.marco.pintar_cromo(p, SON_BORDE, SON_FONDO, SON_TITULO_FONDO, SON_TITULO);
+    c.marco.pintar_botones(p, SON_TITULO_FONDO);
 
-    let tx = c.x + 16;
-    p.rect(tx, c.y + 9, 8, 8, SON_TITULO);
-    let px = p.texto(tx + 16, c.y + 8, "Sonido", TEXTO);
-    p.texto(px + 2 * bmo::GLIFO_ANCHO, c.y + 8, "KIND_AUDIO", TEXTO_TENUE);
+    let tx = c.marco.x + 16;
+    p.rect(tx, c.marco.y + 9, 8, 8, SON_TITULO);
+    let px = p.texto(tx + 16, c.marco.y + 8, "Sonido", TEXTO);
+    p.texto(px + 2 * bmo::GLIFO_ANCHO, c.marco.y + 8, "KIND_AUDIO", TEXTO_TENUE);
 
-    let mut ty = c.y + TITULO_ALTO + 10;
+    let mut ty = c.marco.y + TITULO_ALTO + 10;
 
     // -- 1. EL APARATO -------------------------------------------------
     //
@@ -192,7 +190,7 @@ pub(crate) fn pintar(
     p.texto_bytes(tx, ty, &lin[..n], TEXTO);
     ty += bmo::GLIFO_ALTO + 6;
 
-    let barra_ancho = c.ancho - 32 - 16;
+    let barra_ancho = c.marco.ancho - 32 - 16;
     p.rect(tx, ty, barra_ancho, 10, SON_BARRA_HUECO);
     let lleno = (barra_ancho * volumen as u32) / 100;
     if lleno > 0 {
@@ -236,7 +234,7 @@ pub(crate) fn pintar(
     p.texto(
         tx,
         ty,
-        "flechas volumen   Z..M notas   P la frase   ESC cierra y DEVUELVE el aparato",
+        "flechas volumen   Z..M notas   P la frase   arrastra el titulo   ESC devuelve el aparato",
         TEXTO_TENUE,
     );
 }
