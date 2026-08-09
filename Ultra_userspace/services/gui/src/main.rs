@@ -618,6 +618,27 @@ pub extern "C" fn _start() -> ! {
     // es estado de la SESION, y el modulo que pinta no debe recordar nada.
     let mut klog_filtro = 0u8;
 
+    // -- La ventana del SONIDO (F10) --
+    //
+    // * El aparato se toma AL ABRIR y se devuelve AL CERRAR, y esa es la
+    // decision de diseno de toda la ventana. `KIND_AUDIO` es exclusivo: si el
+    // escritorio lo reclamara al arrancar --como hace con la pantalla y la
+    // entrada-- ningun programa lanzado desde aqui podria volver a sonar, y el
+    // sintoma seria `c/musica.bex` diciendo "lo tiene otro proceso" para
+    // siempre. Ya paso con la pantalla y costo escribir `PANTALLA_SOLTAR`
+    // despues, con el fallo delante. Ver `escena::sonido`.
+    let caja_sonido = escena::sonido::CajaSonido::nueva(&p);
+    let mut sonido_abierta = false;
+    // El handle, mientras la ventana esta abierta. `None` cuando esta cerrada o
+    // cuando otro proceso tiene el aparato -- que son dos cosas distintas y la
+    // ventana las dice distinto.
+    let mut sonido_cap: Option<bmo::Sonido> = None;
+    let mut sonido_aparatos = 0u64;
+    // Estado de la SESION, no del modulo que pinta: igual que el desplazamiento
+    // y el filtro del klog. El volumen sobrevive a cerrar y abrir la ventana.
+    let mut sonido_volumen = 80u8;
+    let mut sonido_pulsada: Option<usize> = None;
+
     /// Que tecla de la calculadora tiene el puntero encima, si alguna.
     ///
     /// Se lleva como estado porque el realce solo se repinta **cuando cambia**:
@@ -638,6 +659,7 @@ pub extern "C" fn _start() -> ! {
     const V_EJECUTAR: u8 = 0;
     const V_DATOS: u8 = 1;
     const V_KLOG: u8 = 2;
+    const V_SONIDO: u8 = 3;
     let mut foco = bmo_input::Foco::nuevo();
     foco.open(V_EJECUTAR);
     let mut alt_antes = false;
@@ -790,7 +812,9 @@ pub extern "C" fn _start() -> ! {
                 // TODAS las abiertas, y la que tiene el foco la ULTIMA. La
                 // version de dos ventanas enumeraba los casos a mano, y con
                 // tres eso son seis ramas que dicen una sola regla.
-                let arriba_ahora = if klog_abierta && foco.es_para(V_KLOG) {
+                let arriba_ahora = if sonido_abierta && foco.es_para(V_SONIDO) {
+                    V_SONIDO
+                } else if klog_abierta && foco.es_para(V_KLOG) {
                     V_KLOG
                 } else if datos_abierta && foco.es_para(V_DATOS) {
                     V_DATOS
@@ -803,11 +827,19 @@ pub extern "C" fn _start() -> ! {
                             escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro)
                         }
                         V_DATOS if datos_abierta => escena::datos::pintar(&p, &caja_datos),
+                        V_SONIDO if sonido_abierta => escena::sonido::pintar(
+                            &p,
+                            &caja_sonido,
+                            sonido_cap.is_some(),
+                            sonido_aparatos,
+                            sonido_volumen,
+                            sonido_pulsada,
+                        ),
                         V_EJECUTAR => destapar(&p, &caja, visible, sal, repintar),
                         _ => {}
                     }
                 };
-                for v in [V_EJECUTAR, V_DATOS, V_KLOG] {
+                for v in [V_EJECUTAR, V_DATOS, V_KLOG, V_SONIDO] {
                     if v != arriba_ahora {
                         pintar_una(v, &mut repintar_campo, &mut salida);
                     }
@@ -974,6 +1006,132 @@ pub extern "C" fn _start() -> ! {
                         }
                     }
                     continue;
+                }
+
+                // -- F10: la ventana del SONIDO --
+                //
+                // Calcada de F11, y con una diferencia que no es cosmetica:
+                // aqui abrir y cerrar **toman y devuelven un aparato**, no solo
+                // pintan. Por eso el orden importa en los dos sentidos --
+                // reclamar antes de pintar (para que la ventana ensene lo que
+                // de verdad hay) y CALLAR antes de soltar (un tono que sigue
+                // sonando despues de devolver el aparato es del sistema, y el
+                // sistema no pidio ese tono).
+                let conmutar_son = if c == 0x92 {
+                    Some(!sonido_abierta)
+                } else if c == 0x1B && sonido_abierta && foco.es_para(V_SONIDO) {
+                    Some(false)
+                } else {
+                    None
+                };
+                if let Some(open) = conmutar_son {
+                    sonido_abierta = open;
+                    if open {
+                        // Puede fallar, y entonces la ventana lo DICE en vez de
+                        // pintar un volumen que no manda sobre nada.
+                        sonido_cap = bmo::Sonido::claim();
+                        sonido_aparatos = match &sonido_cap {
+                            Some(s) => {
+                                s.volumen(sonido_volumen);
+                                s.aparatos()
+                            }
+                            None => 0,
+                        };
+                        sonido_pulsada = None;
+                        foco.open(V_SONIDO);
+                        escena::sonido::pintar(
+                            &p, &caja_sonido, sonido_cap.is_some(),
+                            sonido_aparatos, sonido_volumen, sonido_pulsada,
+                        );
+                        arriba_antes = if foco.es_para(V_SONIDO) { V_SONIDO } else { V_EJECUTAR };
+                        if arriba_antes == V_EJECUTAR {
+                            destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                        }
+                    } else {
+                        // * DEVOLVER EL APARATO. Esto es lo que impide que el
+                        // escritorio deje mudos a todos los programas que lanza.
+                        if let Some(s) = sonido_cap.take() {
+                            s.callar();
+                            s.release();
+                        }
+                        foco.close(V_SONIDO);
+                        borrar_ventana(
+                            &p, &caja, caja_sonido.x, caja_sonido.y,
+                            caja_sonido.ancho, caja_sonido.alto, visible,
+                        );
+                        arriba_antes = V_EJECUTAR;
+                        destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                        // Si habia ventanas debajo, vuelven a verse.
+                        if datos_abierta {
+                            escena::datos::pintar(&p, &caja_datos);
+                        }
+                        if klog_abierta {
+                            escena::klog::pintar(&p, &caja_klog, klog_desplazamiento, klog_filtro);
+                        }
+                    }
+                    continue;
+                }
+
+                // Las teclas de la ventana del sonido. **Solo con el foco
+                // AQUI**: con el foco en Ejecutar, una `z` es una letra que el
+                // dueno esta escribiendo, y robarsela para un atajo seria el
+                // peor intercambio posible. Es la misma regla que la `f` del
+                // klog.
+                if sonido_abierta && foco.es_para(V_SONIDO) {
+                    if let Some(s) = &sonido_cap {
+                        // Flechas: el volumen, de diez en diez.
+                        //
+                        // * `KEY_LEFT` es 0x82 y `KEY_RIGHT` 0x83 -- ver
+                        // `ring0/dev/keyboard.rs`. Esto se escribio con 0x83 y
+                        // 0x84, y **0x84 es INICIO**: la flecha izquierda no
+                        // habria bajado el volumen y la tecla Inicio lo habria
+                        // subido. No da error, da un control que obedece a la
+                        // tecla equivocada.
+                        if c == 0x82 || c == 0x83 {
+                            sonido_volumen = if c == 0x83 {
+                                (sonido_volumen + 10).min(100)
+                            } else {
+                                sonido_volumen.saturating_sub(10)
+                            };
+                            s.volumen(sonido_volumen);
+                            escena::sonido::pintar(
+                                &p, &caja_sonido, true, sonido_aparatos,
+                                sonido_volumen, sonido_pulsada,
+                            );
+                            continue;
+                        }
+                        // Z..M: una octava. Se pinta la tecla ANTES de pitar
+                        // porque `pitar` bloquea el nucleo mientras suena: al
+                        // reves, la tecla se veria encendida cuando ya callo.
+                        let min = c.to_ascii_lowercase();
+                        if let Some(i) = escena::sonido::NOTAS.iter().position(|n| n.0 == min) {
+                            sonido_pulsada = Some(i);
+                            escena::sonido::pintar(
+                                &p, &caja_sonido, true, sonido_aparatos,
+                                sonido_volumen, sonido_pulsada,
+                            );
+                            s.pitar(escena::sonido::NOTAS[i].1, 160);
+                            sonido_pulsada = None;
+                            escena::sonido::pintar(
+                                &p, &caja_sonido, true, sonido_aparatos,
+                                sonido_volumen, sonido_pulsada,
+                            );
+                            continue;
+                        }
+                        // P: la frase. La misma que toca `c/musica.bex`, para
+                        // que la ventana y el programa suenen igual -- si no,
+                        // no se sabria cual de los dos esta mal.
+                        if min == b'p' {
+                            for (hz, ms) in [
+                                (440u32, 170u32), (523, 170), (659, 240),
+                                (587, 170), (523, 170), (659, 300),
+                            ] {
+                                s.pitar(hz, ms);
+                                s.pitar(0, 30);
+                            }
+                            continue;
+                        }
+                    }
                 }
 
                 // RePag/AvPag dentro de la consola del kernel: recorrer el log.
@@ -2028,12 +2186,13 @@ pub extern "C" fn _start() -> ! {
             let en = |v: u8| match v {
                 V_DATOS => datos_abierta && caja_datos.contiene(pos.x, pos.y),
                 V_KLOG => klog_abierta && caja_klog.contiene(pos.x, pos.y),
+                V_SONIDO => sonido_abierta && caja_sonido.contiene(pos.x, pos.y),
                 _ => visible && caja.contiene(pos.x, pos.y),
             };
             let bajo_el_puntero = if en(arriba_antes) {
                 Some(arriba_antes)
             } else {
-                [V_KLOG, V_DATOS, V_EJECUTAR]
+                [V_SONIDO, V_KLOG, V_DATOS, V_EJECUTAR]
                     .into_iter()
                     .find(|&v| v != arriba_antes && en(v))
             };

@@ -20,6 +20,10 @@ pub(crate) mod klog;
 /// botones. Lo que toda ventana tiene y ninguna deberia escribir dos veces.
 pub(crate) mod marco;
 pub(crate) mod salida;
+/// **La ventana del SONIDO** (F10). Reclama `KIND_AUDIO` al abrirse y lo
+/// DEVUELVE al cerrarse -- ver la cabecera del modulo: es lo unico que impide
+/// que el escritorio deje mudos a todos los programas que lanza.
+pub(crate) mod sonido;
 
 
 // -- La escena -----------------------------------------------------------
