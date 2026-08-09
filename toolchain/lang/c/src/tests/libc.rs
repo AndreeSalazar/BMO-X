@@ -155,7 +155,7 @@ int main() {
 /// es la que dira si quedo bien. El arreglo es de una sesion de compilador, no
 /// de una cabecera.
 #[test]
-#[ignore = "el codegen intercepta memmove y emite un memcpy: arreglo pendiente en codegen/mod.rs"]
+
 fn memmove_solapado_hacia_adelante() {
     let out = corre(
         "#include <string.h>",

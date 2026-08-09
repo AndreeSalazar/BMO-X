@@ -20,20 +20,15 @@
 
 #include <ctype.h>
 
-/* [!] `memmove` NO ESTA AQUI, Y NO ES UN OLVIDO.
+/* `memmove` NO esta aqui, y ahora por un buen motivo: **lo emite el codegen**
+ * (`memoria::mover`), y desde el 2026-08-09 lo hace bien -- elige la direccion
+ * de copia segun donde caiga el destino.
  *
- * El codegen lo intercepta POR NOMBRE (`codegen/mod.rs`, `("memmove", 3)`) y
- * emite su propia version, asi que una definicion en esta cabecera **no se
- * llega a llamar nunca**. Se escribio una, con su rama hacia atras y todo, y el
- * banco demostro que no se ejecutaba: seguia dando `ababab`.
- *
- * Y la que emite el codegen **copia de frente**, o sea que es un `memcpy` con
- * otro nombre. Eso funciona en todas las pruebas donde los bloques no se
- * solapan y corrompe datos justo el dia que se usa para lo que `memmove`
- * existe -- que es el caso solapado.
- *
- * Queda apuntado con su fila en el banco (`tests/libc.rs`, marcada como
- * pendiente) porque **el arreglo es del compilador, no de una cabecera**.
+ * Hasta ese dia compartia emision con `memcpy`, o sea que era un `memcpy` con
+ * otro nombre. Se escribio una version en C aqui mismo para taparlo y **no se
+ * llegaba a llamar nunca**: el codegen intercepta el nombre antes. Que el
+ * resultado no cambiara ni un byte con tres arreglos distintos fue lo que dijo
+ * donde estaba de verdad.
  */
 
 char *strncpy(char *dst, const char *src, int n) {

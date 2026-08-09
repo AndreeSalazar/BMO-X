@@ -85,6 +85,66 @@ pub fn copiar(code: &mut Vec<u8>) {
     aterriza_aqui(code, fin);
 }
 
+/// `mover(dst, src, n)` -- lo que `copiar` promete y no cumple: **aguanta el
+/// solapamiento**. `RDI`=dst, `RSI`=src, `RCX`=n.
+///
+/// # La unica idea que hay aqui
+///
+/// Si el destino esta POR ENCIMA del origen y los bloques se tocan, copiar de
+/// frente pisa bytes que todavia no se han leido. Entonces se copia **desde el
+/// final**. Si el destino esta por debajo, de frente va bien -- y es el caso
+/// comun, asi que no se paga la vuelta.
+///
+/// La comparacion es SIN SIGNO (`jbe`): son direcciones, no numeros. Con `jle`
+/// una direccion por encima de la mitad del espacio se leeria como negativa y
+/// elegiria la rama contraria, que es la clase de fallo que solo aparece
+/// cuando el programa crece.
+///
+/// # Por que esto no estaba
+///
+/// `memmove` compartia arm con `memcpy` y emitia [`copiar`] -- o sea que era un
+/// `memcpy` con otro nombre. El comentario del codegen lo reconocia por escrito
+/// desde hacia tiempo, y esa es justamente la trampa: **un fallo confesado en
+/// prosa sigue siendo un fallo**. Nada lo ejecutaba, asi que nada lo cazaba.
+///
+/// Lo cazo una fila del banco que copia `b[0..4]` sobre `b[2..6]` y espera
+/// `ababcd`. Salia `ababab`.
+pub fn mover(code: &mut Vec<u8>) {
+    code.extend_from_slice(&[0x48, 0x85, 0xC9]); // test rcx, rcx
+    let fin_vacio = salto_pendiente(code, 0x74); // jz fin
+
+    // dst <= src -> de frente. Sin signo: son direcciones.
+    code.extend_from_slice(&[0x48, 0x39, 0xF7]); // cmp rdi, rsi
+    let adelante = salto_pendiente(code, 0x76);  // jbe adelante
+
+    // -- Hacia atras: los dos punteros al ULTIMO byte del bloque.
+    code.extend_from_slice(&[0x48, 0x01, 0xCF]); // add rdi, rcx
+    code.extend_from_slice(&[0x48, 0x01, 0xCE]); // add rsi, rcx
+    code.extend_from_slice(&[0x48, 0xFF, 0xCF]); // dec rdi
+    code.extend_from_slice(&[0x48, 0xFF, 0xCE]); // dec rsi
+    let bucle_atras = code.len();
+    code.extend_from_slice(&[0x8A, 0x06]);       // mov al, [rsi]
+    code.extend_from_slice(&[0x88, 0x07]);       // mov [rdi], al
+    code.extend_from_slice(&[0x48, 0xFF, 0xCE]); // dec rsi
+    code.extend_from_slice(&[0x48, 0xFF, 0xCF]); // dec rdi
+    code.extend_from_slice(&[0x48, 0xFF, 0xC9]); // dec rcx
+    salto_atras(code, 0x75, bucle_atras);        // jnz bucle_atras
+    let fin_atras = salto_pendiente(code, 0xEB); // jmp fin
+
+    // -- De frente: el mismo bucle que `copiar`.
+    aterriza_aqui(code, adelante);
+    let bucle = code.len();
+    code.extend_from_slice(&[0x8A, 0x06]);       // mov al, [rsi]
+    code.extend_from_slice(&[0x88, 0x07]);       // mov [rdi], al
+    code.extend_from_slice(&[0x48, 0xFF, 0xC6]); // inc rsi
+    code.extend_from_slice(&[0x48, 0xFF, 0xC7]); // inc rdi
+    code.extend_from_slice(&[0x48, 0xFF, 0xC9]); // dec rcx
+    salto_atras(code, 0x75, bucle);              // jnz bucle
+
+    aterriza_aqui(code, fin_atras);
+    aterriza_aqui(code, fin_vacio);
+}
+
 /// `rellenar(dst, valor, n)` -- pone `n` bytes al mismo valor.
 /// `RDI`=dst, `RAX`=valor (se usa `al`), `RCX`=n.
 pub fn rellenar(code: &mut Vec<u8>) {

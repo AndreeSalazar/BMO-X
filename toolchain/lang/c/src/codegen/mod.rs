@@ -1892,7 +1892,11 @@ impl Codegen {
             // cuente como hecho.
             ("memmove", 3) => {
                 self.cargar_tres(args, x86::RDI, x86::RSI, x86::RCX);
-                memoria::copiar(&mut self.code);
+                // ** `mover`, no `copiar`. Antes compartia emision con `memcpy`,
+                // o sea que era un `memcpy` con otro nombre: copiaba siempre de
+                // frente y corrompia el unico caso para el que `memmove`
+                // existe. Ver `memoria::mover`.
+                memoria::mover(&mut self.code);
                 // Devuelve el destino, que sigue en la pila porque el bucle se
                 // llevo rdi por delante.
                 self.soltar_tres();
