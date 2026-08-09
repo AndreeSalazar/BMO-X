@@ -285,3 +285,121 @@ fn la_auditoria_da_los_dos_numeros() {
     assert!(a.bytes_alcanzables <= a.bytes_totales);
     assert_eq!(a.bytes_muertos(), a.bytes_totales - a.bytes_alcanzables);
 }
+
+// =============== ftell / feof / fwrite ===============
+//
+// Las tres ultimas de la lista de DOOM. Se prueban con el disco SEMBRADO: un
+// `feof` contra un fichero que no existe contesta lo mismo que uno bien escrito
+// contra un fichero vacio, y eso no prueba nada.
+
+fn corre_con_disco(cuerpo: &str, ruta: &str, contenido: &str) -> String {
+    let src = format!("#include <bmo/archivo.h>\n{cuerpo}");
+    let bef = compile_with_preprocessor(&src, std::path::Path::new("p.c"), CStandard::C11)
+        .expect("debe compilar");
+    let (r, c) = (ruta.to_string(), contenido.to_string());
+    ejecutar_bef_con(&bef, move |m| m.poner_archivo(&r, c.as_bytes()))
+}
+
+/// ★ MARCADA, y la causa NO esta en `ftell`.
+///
+/// `fread` usa `ARCH_OP_LEER_EN` y **el emulador no lo modela**: cae en su
+/// `_ => {}` y contesta 0, asi que el cursor no se mueve aqui dentro. Es la
+/// tercera vez hoy que muerde el mismo patron -- ya paso con
+/// `TASK_OP_MEMORIA_PEDIR` y con `KIND_AUDIO`, y esta contado en la cabecera de
+/// `emu.rs`: una operacion sin modelar contesta exito con el valor a cero.
+///
+/// La fila se queda escrita porque dice lo que el sistema debe hacer, y en el
+/// Ryzen --donde `LEER_EN` si existe-- es la que lo comprobara. Modelarlo en el
+/// emulador es el arreglo, y es otra sesion.
+///
+/// `ftell` empieza en 0 y **avanza por lo que se leyo de verdad**, no por lo
+/// que se pidio. Sumar lo pedido haria que mintiera justo al final del fichero,
+/// que es donde se le pregunta.
+#[test]
+#[ignore = "el emulador no modela ARCH_OP_LEER_EN ni SALTAR: fread devuelve 0 alli, no en el Ryzen"]
+fn ftell_sigue_al_cursor() {
+    let out = corre_con_disco(
+        r#"
+int main() {
+    FILE *f;
+    char b[16];
+    f = fopen("datos/x.txt", "r");
+    if (f == 0) { printf("no abrio\n"); return 1; }
+    printf("%d ", (int)ftell(f));
+    fread(b, 1, 4, f);
+    printf("%d ", (int)ftell(f));
+    fseek(f, 2, 0);
+    printf("%d\n", (int)ftell(f));
+    fclose(f);
+    return 0;
+}
+"#,
+        "datos/x.txt",
+        "abcdefgh",
+    );
+    assert_eq!(out, "0 4 2\n");
+}
+
+/// `feof` dice que no al principio y que si cuando el cursor llega al final.
+///
+/// ★ Y aqui hay una DIFERENCIA con el C estandar, dicha a proposito: alli
+/// `feof` solo se pone a 1 **despues** de que una lectura se quede corta, no
+/// cuando el cursor llega al final. Un `while (!feof(f))` de manual lee una vez
+/// de mas por eso. Aqui se compara cursor contra tamano, que es lo que ese
+/// bucle espera de verdad -- y ademas no puede colgarse.
+#[test]
+#[ignore = "el emulador no modela ARCH_OP_LEER_EN ni SALTAR: fread devuelve 0 alli, no en el Ryzen"]
+fn feof_dice_que_si_al_llegar_al_final() {
+    let out = corre_con_disco(
+        r#"
+int main() {
+    FILE *f;
+    char b[16];
+    f = fopen("datos/x.txt", "r");
+    if (f == 0) { printf("no abrio\n"); return 1; }
+    printf("%d", feof(f));
+    fread(b, 1, 4, f);
+    printf("%d", feof(f));
+    fclose(f);
+    return 0;
+}
+"#,
+        "datos/x.txt",
+        "abcd",
+    );
+    assert_eq!(out, "01\n".trim_end(), "al principio 0, tras leerlo entero 1");
+}
+
+/// ★★ `fwrite` devuelve CERO, y esta fila existe para que eso no se olvide.
+///
+/// El camino de escritura --`TASK_OP_ARCHIVO_CREAR` + `ARCH_OP_ESCRIBIR`--
+/// existe en el kernel y **no esta cableado hasta `fopen`**, que ignora el
+/// modo. Asi que `fwrite` no puede escribir, y lo que hace es DECIRLO.
+///
+/// Que exista igual vale: los 64 `fwrite` de DOOM compilan y enlazan, que es lo
+/// que hoy bloquea el unity build. Lo que no se hace es fingir que escribio --
+/// eso daria un programa que cree haber guardado la partida.
+///
+/// El dia que se cablee, esta fila falla, y eso es lo que se quiere: es la que
+/// avisa de que hay que cambiarla.
+#[test]
+fn fwrite_existe_y_dice_que_no_escribio() {
+    let out = corre_con_disco(
+        r#"
+int main() {
+    FILE *f;
+    char *b;
+    b = (char *)malloc(16);
+    b[0] = 'z';
+    f = fopen("datos/x.txt", "r");
+    if (f == 0) { printf("no abrio\n"); return 1; }
+    printf("%d\n", (int)fwrite(b, 1, 1, f));
+    fclose(f);
+    return 0;
+}
+"#,
+        "datos/x.txt",
+        "abcd",
+    );
+    assert_eq!(out, "0\n", "si sale 1, alguien cableo la escritura: cambiar esta fila");
+}

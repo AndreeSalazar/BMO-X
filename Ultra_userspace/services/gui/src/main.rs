@@ -1331,11 +1331,15 @@ pub extern "C" fn _start() -> ! {
                             // para ti. Se rie del malentendido, nunca de quien
                             // lo tuvo.
                             Orden::NoEsLinux(verbo) => {
-                                salida.texto(b"     (=^.^=)   miau. esto no es Linux.
+                                salida.texto(b"    n_n_n
 ");
-                                salida.texto(b"      )   (    no hay root que pedir:
+                                salida.texto(b"   ( -.- )   ~nya. eso aqui no se dice.
 ");
-                                salida.texto(b"     (  v  )   o te dieron la capability, o no existe.
+                                salida.texto(b"   ( u u )   esto NO es Linux, es BMO-X.
+");
+                                salida.texto(b"    ^^ ^^    no hay root que pedir:
+");
+                                salida.texto(b"             o te dieron la capability, o no existe.
 ");
                                 salida.texto(b"
 ");

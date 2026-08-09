@@ -91,6 +91,17 @@ struct BMO_FILE {
     unsigned long long cap;
     unsigned long long bloque;
     unsigned long long base;
+    /* * DONDE VA EL CURSOR, contado aqui.
+     *
+     * El kernel tiene `SALTAR` pero **no una operacion que devuelva la
+     * posicion**, asi que `ftell` no puede preguntarsela: hay que llevarla. La
+     * actualizan `fread` y `fseek`, que son los dos unicos que la mueven.
+     *
+     * Llevar un espejo de un estado que vive en otro sitio es una cosa que sale
+     * mal sola en cuanto aparece un tercero que lo mueva. Hoy no lo hay, y por
+     * eso se puede -- el dia que exista, esto se cambia por una operacion del
+     * kernel y no por otro sitio donde apuntar. */
+    unsigned long long pos;
 };
 typedef struct BMO_FILE FILE;
 
@@ -119,11 +130,12 @@ FILE *fopen(char *ruta, char *modo) {
     (void)modo;
     cap = bmo_abrir(ruta);
     if (cap == 0) return 0;
-    f = (FILE *)malloc(24);
+    f = (FILE *)malloc(32);
     if (f == 0) return 0;
     f->cap = cap;
     f->bloque = __bmo_bloque_cap;
     f->base = __bmo_bloque_base;
+    f->pos = 0;
     return f;
 }
 
@@ -138,6 +150,10 @@ unsigned long long fread(void *dst, unsigned long long tam,
      * que es exactamente lo que tiene que pasar. */
     desde = (unsigned long long)dst - f->base;
     leidos = bmo_valor(f->cap, BMO_ARCH_LEER_EN, f->bloque, desde, tam * n);
+    /* El cursor avanza por lo que se leyo DE VERDAD, no por lo que se pidio.
+     * Sumar `tam*n` haria que `ftell` mintiera justo al final del fichero, que
+     * es donde se le pregunta. */
+    f->pos = f->pos + leidos;
     return leidos / tam;
 }
 
@@ -145,6 +161,7 @@ int fseek(FILE *f, unsigned long long pos, int desde) {
     if (f == 0) return -1;
     (void)desde; /* solo SEEK_SET por ahora, y se dice */
     bmo_valor(f->cap, BMO_ARCH_SALTAR, pos, 0, 0);
+    f->pos = pos;
     return 0;
 }
 
@@ -157,6 +174,61 @@ int fclose(FILE *f) {
     if (f == 0) return -1;
     bmo_codigo(f->cap, BMO_ARCH_CERRAR, 0, 0, 0);
     free(f);
+    return 0;
+}
+
+/* -- Las tres ultimas de la lista de DOOM ------------------------------- */
+
+/* Donde esta el cursor. Sale del espejo del `FILE`, no del kernel: ver `pos`. */
+unsigned long long ftell(FILE *f) {
+    if (f == 0) {
+        return 0;
+    }
+    return f->pos;
+}
+
+/* Se acabo el fichero?
+ *
+ * [!] Ojo con la semantica, que es la trampa clasica de C: `feof` **no
+ * adivina**. En C de verdad solo dice que si DESPUES de que una lectura se
+ * quedara corta, no cuando el cursor llega al final. Aqui se contesta con la
+ * comparacion directa --cursor contra tamano-- que es lo que un bucle
+ * `while (!feof(f))` espera de verdad, y ademas no puede quedarse colgado.
+ *
+ * Se dice porque es una DIFERENCIA con el estandar, y una diferencia callada es
+ * la que muerde a quien trae codigo de fuera. */
+int feof(FILE *f) {
+    if (f == 0) {
+        return 1;
+    }
+    if (f->pos >= bmo_quedan(f)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* Escribe `n` elementos de `tam` bytes. Devuelve ELEMENTOS escritos.
+ *
+ * [!] **Hoy escribe SIEMPRE CERO, y no es un fallo de esta funcion.**
+ *
+ * `fopen` ignora el modo porque el camino de creacion --`TASK_OP_ARCHIVO_CREAR`
+ * y `ARCH_OP_ESCRIBIR`-- existe en el kernel pero **no esta cableado hasta
+ * aqui**: un `FILE` abierto por `fopen` es de lectura, y no hay forma de
+ * decirle otra cosa.
+ *
+ * Existir con esta forma vale igual: los 64 `fwrite` de DOOM COMPILAN y
+ * enlazan, que es lo que hoy bloquea el unity build. Y devolver 0 es la
+ * respuesta honesta -- quien mire el valor de retorno se entera de que no se
+ * escribio, que es exactamente lo que un `fwrite` que falla debe contestar.
+ *
+ * Lo que NO se hace es fingir que escribio: eso daria un programa que cree
+ * haber guardado la partida. */
+unsigned long long fwrite(const void *src, unsigned long long tam,
+                          unsigned long long n, FILE *f) {
+    (void)src;
+    (void)tam;
+    (void)n;
+    (void)f;
     return 0;
 }
 
