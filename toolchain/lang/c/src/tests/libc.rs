@@ -300,9 +300,9 @@ fn corre_con_disco(cuerpo: &str, ruta: &str, contenido: &str) -> String {
     ejecutar_bef_con(&bef, move |m| m.poner_archivo(&r, c.as_bytes()))
 }
 
-/// ** MARCADA, y la causa NO esta en `ftell`.
+/// ** DESMARCADA el 2026-08-09: el emulador YA modela `ARCH_OP_LEER_EN`.
 ///
-/// `fread` usa `ARCH_OP_LEER_EN` y **el emulador no lo modela**: cae en su
+/// Estuvo marcada porque `fread` usa `ARCH_OP_LEER_EN` y el emulador caia en su
 /// `_ => {}` y contesta 0, asi que el cursor no se mueve aqui dentro. Es la
 /// tercera vez hoy que muerde el mismo patron -- ya paso con
 /// `TASK_OP_MEMORIA_PEDIR` y con `KIND_AUDIO`, y esta contado en la cabecera de
@@ -312,19 +312,28 @@ fn corre_con_disco(cuerpo: &str, ruta: &str, contenido: &str) -> String {
 /// Ryzen --donde `LEER_EN` si existe-- es la que lo comprobara. Modelarlo en el
 /// emulador es el arreglo, y es otra sesion.
 ///
+/// ** Y AL DESMARCARLA SALTO QUE LA FILA ESTABA MAL ESCRITA: el destino era un
+/// `char b[16]` **de la pila**, y `archivo.h` dice en su cabecera que eso no
+/// vale -- el kernel solo acepta escribir dentro de un bloque que el CONCEDIO,
+/// porque comprobar es una resta contra lo que entrego y no hay validador de
+/// punteros que valga. Con el emulador contestando 0 a todo, la fila parecia
+/// esperar lo correcto; **en el Ryzen habria fallado igual, y por otro motivo**.
+/// Una fila marcada como pendiente puede estar ademas equivocada, y eso solo se
+/// ve al desmarcarla.
+///
 /// `ftell` empieza en 0 y **avanza por lo que se leyo de verdad**, no por lo
 /// que se pidio. Sumar lo pedido haria que mintiera justo al final del fichero,
 /// que es donde se le pregunta.
 #[test]
-#[ignore = "el emulador no modela ARCH_OP_LEER_EN ni SALTAR: fread devuelve 0 alli, no en el Ryzen"]
 fn ftell_sigue_al_cursor() {
     let out = corre_con_disco(
         r#"
 int main() {
     FILE *f;
-    char b[16];
+    char *b;
     f = fopen("datos/x.txt", "r");
     if (f == 0) { printf("no abrio\n"); return 1; }
+    b = (char *)malloc(16);
     printf("%d ", (int)ftell(f));
     fread(b, 1, 4, f);
     printf("%d ", (int)ftell(f));
@@ -348,15 +357,15 @@ int main() {
 /// de mas por eso. Aqui se compara cursor contra tamano, que es lo que ese
 /// bucle espera de verdad -- y ademas no puede colgarse.
 #[test]
-#[ignore = "el emulador no modela ARCH_OP_LEER_EN ni SALTAR: fread devuelve 0 alli, no en el Ryzen"]
 fn feof_dice_que_si_al_llegar_al_final() {
     let out = corre_con_disco(
         r#"
 int main() {
     FILE *f;
-    char b[16];
+    char *b;
     f = fopen("datos/x.txt", "r");
     if (f == 0) { printf("no abrio\n"); return 1; }
+    b = (char *)malloc(16);
     printf("%d", feof(f));
     fread(b, 1, 4, f);
     printf("%d", feof(f));
@@ -551,4 +560,76 @@ int main() {
 "#,
     );
     assert_eq!(out, "%f=7\n");
+}
+
+// == EL PAQUETE, LEIDO POR EL PROGRAMA =================================
+
+/// ***** LA FILA QUE CIERRA EL CIRCULO: **el programa lee los datos que viajan
+/// dentro de su propia imagen**.
+///
+/// Se compila el programa, se EMPAQUETA su `.bex` con dos recursos, y el
+/// paquete resultante se siembra en el disco del emulador con la ruta desde la
+/// que el programa se abre a si mismo. O sea: la caja se lee **en el sitio**,
+/// no se copia a ningun lado.
+///
+/// Los tres saltos que hace por dentro --cabecera BEF, tabla de secciones,
+/// indice "BRES"-- son un `fseek` y un `fread` cada uno. Si el formato que
+/// escribe `bmo-pack` y el que lee `<bmo/paquete.h>` dejaran de coincidir, es
+/// esta fila la que lo dice: son dos implementaciones del MISMO formato, una en
+/// Rust y otra en C, y esa es toda la razon de que esta prueba valga.
+#[test]
+fn un_programa_lee_los_recursos_de_su_propia_imagen() {
+    let fuente = r#"
+#include <bmo/paquete.h>
+int main() {
+    PAQUETE *p;
+    char *b;
+    unsigned long long n;
+    p = paquete_abrir("apps/app.bex");
+    if (p == 0) { printf("no es un paquete\n"); return 1; }
+    printf("recursos=%d\n", (int)paquete_cuantos(p));
+    b = (char *)malloc(64);
+    n = paquete_leer(p, "saludo.txt", b, 64);
+    b[n] = 0;
+    printf("[%s] %d\n", b, (int)n);
+    n = paquete_leer(p, "no-esta", b, 64);
+    printf("falta=%d\n", (int)n);
+    return 0;
+}
+"#;
+    let bef = compile_with_preprocessor(fuente, std::path::Path::new("p.c"), CStandard::C11)
+        .expect("debe compilar");
+    let paquete = bmo_abi::bef::paquete::empaquetar(
+        &bef,
+        &[("saludo.txt", b"hola desde dentro"), ("otro.bin", &[7u8; 40])],
+    )
+    .expect("debe empaquetar");
+
+    // El programa que corre es el MISMO que esta dentro del paquete: se ejecuta
+    // la imagen y se le pone su paquete en el disco, en su ruta.
+    let copia = paquete.clone();
+    let out = ejecutar_bef_con(&bef, move |m| m.poner_archivo("apps/app.bex", &copia));
+    assert_eq!(out, "recursos=2\n[hola desde dentro] 17\nfalta=0\n");
+}
+
+/// Un `.bex` SIN recursos --que es lo que son todos los de hoy-- contesta "no
+/// es un paquete" y no revienta. Que la mayoria de los programas no lleven
+/// datos dentro es el caso normal, no el error.
+#[test]
+fn un_bex_sin_recursos_lo_dice_y_no_revienta() {
+    let fuente = r#"
+#include <bmo/paquete.h>
+int main() {
+    PAQUETE *p;
+    p = paquete_abrir("apps/app.bex");
+    if (p == 0) { printf("no es un paquete\n"); return 0; }
+    printf("recursos=%d\n", (int)paquete_cuantos(p));
+    return 0;
+}
+"#;
+    let bef = compile_with_preprocessor(fuente, std::path::Path::new("p.c"), CStandard::C11)
+        .expect("debe compilar");
+    let copia = bef.clone();
+    let out = ejecutar_bef_con(&bef, move |m| m.poner_archivo("apps/app.bex", &copia));
+    assert_eq!(out, "no es un paquete\n");
 }

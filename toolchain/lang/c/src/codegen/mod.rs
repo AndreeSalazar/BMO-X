@@ -1517,6 +1517,27 @@ impl Codegen {
     /// Si el programa no declara esas globales, esto no emite **nada**: un
     /// programa que no lee ficheros no debe pagar por la maquinaria de los que
     /// si. Por eso se pregunta por el nombre en vez de reservarlas siempre.
+    /// *** SE PUBLICA EL **PRIMER** BLOQUE, NO EL ULTIMO.
+    ///
+    /// Esto publicaba el bloque de cada `malloc`, pisando el anterior, y de ahi
+    /// salia una mina que solo se ve cuando ya mordio:
+    ///
+    /// `fread` calcula `desde = dst - base` y el kernel escribe en
+    /// `base + desde`. Los bloques se entregan **seguidos y ascendentes** desde
+    /// `0xE000_0000`, asi que si `base` es el del ultimo `malloc` y `dst` esta
+    /// en uno ANTERIOR, la resta da negativo -- que sin signo es un numero
+    /// enorme, y el kernel lo rechaza por rango. **Devuelve cero, no falla**:
+    /// un `fread` que no lee y no se queja.
+    ///
+    /// O sea que funcionaba o no **segun el orden en que se hubieran pedido los
+    /// bloques**, y el orden lo decide quien escribe el programa sin saber que
+    /// esta decidiendo nada. `leer_C.c` acertaba por casualidad --abre y luego
+    /// pide-- y `<bmo/paquete.h>` fallo a la primera por hacerlo al reves.
+    ///
+    /// Con el PRIMERO, `desde` es positivo para cualquier direccion que haya
+    /// dado `malloc`, y la comprobacion del kernel --que mide contra lo
+    /// entregado al PROCESO entero, no a un bloque-- lo acepta. La regla deja de
+    /// depender del orden.
     fn publicar_bloque(&mut self) {
         for (name, reg) in [("__bmo_bloque_base", 0u8), ("__bmo_bloque_cap", 1u8)] {
             if !self.global_offsets.contains_key(name) {
@@ -1525,6 +1546,10 @@ impl Codegen {
             // lea rdi, [rip+0]  (el fixup pone la direccion de la global)
             self.code.extend_from_slice(&[0x48, 0x8D, 0x3D, 0, 0, 0, 0]);
             self.global_fixups.push((self.code.len() - 4, name.to_string()));
+            // Ya hay algo publicado? Entonces no se toca.
+            //   cmp qword [rdi], 0 ; jne +3
+            self.code.extend_from_slice(&[0x48, 0x83, 0x3F, 0x00]); // cmp [rdi], 0
+            self.code.extend_from_slice(&[0x75, 0x03]); // jne  (salta el mov de 3 bytes)
             if reg == 0 {
                 self.code.extend_from_slice(&[0x48, 0x89, 0x07]); // mov [rdi], rax
             } else {

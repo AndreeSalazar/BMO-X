@@ -687,9 +687,10 @@ impl Machine {
         self.abiertos.len() as u64
     }
 
-    fn archivo_op(&mut self, handle: u64, op: u64, arg0: u64) -> u64 {
+    fn archivo_op(&mut self, handle: u64, op: u64, arg0: u64, arg1: u64, arg2: u64) -> u64 {
         use bmo_abi::syscalls::surface::{
-            ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_LEER, ARCH_OP_LEER_LINEA, ARCH_OP_TAMANO,
+            ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_LEER, ARCH_OP_LEER_EN, ARCH_OP_LEER_LINEA,
+            ARCH_OP_SALTAR, ARCH_OP_TAMANO,
         };
         let i = match (handle as usize).checked_sub(1) {
             Some(i) if i < self.abiertos.len() => i,
@@ -762,9 +763,73 @@ impl Machine {
                 }
                 1
             }
+            // ** `ARCH_OP_LEER_EN` -- EL BLOQUE DE GOLPE, y no siete bytes.
+            //
+            // Faltaba, y **contestaba exito con cero** por el `_ => 0` de abajo:
+            // el cursor no se movia, `fread` devolvia 0 y `ftell` mentia. Dos
+            // filas del banco estaban marcadas como pendientes por esto.
+            //
+            // El contrato es el del kernel y hay que copiarlo entero, porque es
+            // donde vive lo interesante: **el destino no es un puntero, es una
+            // CAPABILITY**. `arg0` es el handle del bloque de `KIND_MEMORIA`,
+            // `arg1` el desplazamiento DENTRO de ese bloque y `arg2` cuantos
+            // bytes. Comprobar que cabe es una resta contra lo que el kernel
+            // entrego -- no hace falta ningun validador de punteros, que es la
+            // infraestructura que aqui no existe.
+            ARCH_OP_LEER_EN if !self.abiertos[i].escribe => {
+                let bloque = match arg0.checked_sub(CAP_MEMORIA) {
+                    Some(b) => b as usize,
+                    None => return 0,
+                };
+                let base = match self.mem_bloques.get(bloque) {
+                    Some(b) => *b,
+                    None => return 0,
+                };
+                // El rango tiene que caber en lo entregado AL PROCESO, igual
+                // que en `syscall.rs`. Un desbordamiento de la suma cae aqui.
+                if arg1.checked_add(arg2).map_or(true, |fin| fin > self.mem_entregados) {
+                    return 0;
+                }
+                let a = &self.abiertos[i];
+                let quedan = a.datos.len().saturating_sub(a.cursor);
+                let n = (arg2 as usize).min(quedan);
+                let trozo: Vec<u8> = a.datos[a.cursor..a.cursor + n].to_vec();
+                self.abiertos[i].cursor += n;
+                for (k, b) in trozo.into_iter().enumerate() {
+                    self.mem.insert(base + arg1 + k as u64, b);
+                }
+                n as u64
+            }
+            // Mover el cursor. Se RECORTA al tamano, que es lo que hace el
+            // kernel: un seek mas alla del final deja el cursor al final y lo
+            // dice devolviendo donde quedo, no falla.
+            ARCH_OP_SALTAR if !self.abiertos[i].escribe => {
+                let a = &mut self.abiertos[i];
+                let d = (arg0 as usize).min(a.datos.len());
+                a.cursor = d;
+                d as u64
+            }
             // El modo manda: pedirle bytes a uno de escritura no es un error
-            // de permisos, es una pregunta que ese objeto no responde.
-            _ => 0,
+            // de permisos, es una pregunta que ese objeto no responde. Se
+            // enumeran para que caigan AQUI y no en el grito de abajo.
+            ARCH_OP_LEER | ARCH_OP_LEER_LINEA | ARCH_OP_LEER_EN | ARCH_OP_SALTAR
+            | ARCH_OP_ESCRIBIR => 0,
+            // *** Y LO QUE NO CONOZCO SE GRITA.
+            //
+            // Aqui habia un `_ => 0`, y un cero por esta puerta significa
+            // "exito, y el valor es cero": el programa cree que leyo, que
+            // reservo, que sono. **Tres veces en un solo dia** mordio el mismo
+            // patron --`TASK_OP_MEMORIA_PEDIR`, `KIND_AUDIO` y este mismo
+            // `ARCH_OP_LEER_EN`-- y las tres veces el sintoma fue una fila
+            // verde sobre algo que no existia.
+            //
+            // Un emulador que se calla ante lo que no conoce no es un modelo
+            // incompleto: es un modelo que MIENTE, y miente en la direccion de
+            // decir que todo va bien. Parar en seco convierte un dia de
+            // depuracion en una linea.
+            otra => panic!(
+                "operacion 0x{otra:02X} sobre un handle de ARCHIVO no modelada en el emulador.                  Modelala en `emu.rs::archivo_op` con el contrato de                  `ring0/obj/archivo.rs`, o el test de arriba esta probando un                  sistema que no existe."
+            ),
         }
     }
 
@@ -968,7 +1033,8 @@ impl Machine {
             // Cualquier otro handle: aqui solo existen los de archivo. El
             // emulador no modela la pantalla ni el raton porque ningun codigo
             // EMITIDO los toca -- los usa el compositor, que es Rust normal.
-            let v = self.archivo_op(call.capability, call.operation, call.arg0);
+            let v =
+                self.archivo_op(call.capability, call.operation, call.arg0, self.regs[R10], self.regs[crate::x86::R8 as usize]);
             self.finalizar_syscall(v);
             return;
         }
