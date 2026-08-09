@@ -464,7 +464,11 @@ $cEjemplos = @(
     # que el tope de duracion se cumple, que es exclusivo y --la que importa--
     # que el handle soltado ya NO pita. Puede que no se oiga nada y este todo
     # bien: el puerto del altavoz existe en todo x86, el zumbador no.
-    @{ src = 'toolchain\lang\c\examples\sonido_C.c';    out = 'sonido.bex' ; dir = 'c' }
+    @{ src = 'toolchain\lang\c\examples\sonido_C.c';    out = 'sonido.bex' ; dir = 'c' },
+    # `<bmo/musica.h>`: notas por nombre, figuras y tempo. Se DIBUJA mientras
+    # suena, porque puede que no suene -- si la placa no trae zumbador, la
+    # pantalla es la unica prueba de que la cadena entera funciono.
+    @{ src = 'toolchain\lang\c\examples\musica_C.c';    out = 'musica.bex' ; dir = 'c' }
 )
 
 $repo = Split-Path -Parent $root

@@ -49,6 +49,10 @@ mod inicializadores;
 mod intrinsecos;
 mod matriz;
 mod memoria;
+/// `<bmo/musica.h>`: notas, figuras y tempo sobre `KIND_AUDIO`. Aqui no suena
+/// nada -- se comprueba la PARTITURA, que es lo unico que una libreria de
+/// musica puede prometer sin un altavoz delante.
+mod musica;
 mod parseo;
 mod preprocesador;
 mod printf;

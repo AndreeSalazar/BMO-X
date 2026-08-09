@@ -147,12 +147,28 @@ const CAP_ENTRADA: u64 = 0x0001_0001;
 /// handles tiene que fallar aqui, no acertar por casualidad.
 const CAP_MEMORIA: u64 = 0x0002_0001;
 
+/// El handle de `KIND_AUDIO`. Otro rango propio, por el mismo motivo que los
+/// dos de arriba: confundir handles tiene que fallar, no acertar de rebote.
+const CAP_AUDIO: u64 = 0x0003_0001;
+
+/// Tope de un pitido, en ms. Espejo de `ring0::obj::audio::MAX_MS`.
+///
+/// Se modela porque **es lo que obliga a la libreria a trocear**: una blanca a
+/// 100 pulsos son 1200 ms, y sin este tope aqui dentro el troceo de
+/// `bmo_sostener` no se ejercitaria nunca y la prueba pasaria igual con la
+/// funcion vacia.
+pub const AUDIO_MAX_MS: u64 = 250;
+
 const RAX: usize = 0;
 const RCX: usize = 1;
 const RDX: usize = 2;
 const RSP: usize = 4;
 const RSI: usize = 6;
 const RDI: usize = 7;
+/// El cuarto argumento de la puerta. `syscall` machaca `rcx` con el RIP de
+/// retorno, asi que el ABI usa `r10` donde SysV usaria `rcx` -- y por eso hace
+/// falta nombrarlo: `AUDIO_OP_PITAR` lleva la duracion ahi.
+const R10: usize = 10;
 const R11: usize = 11;
 
 /// Una llamada observada cruzando CPL3->CPL0.
@@ -293,6 +309,21 @@ pub struct Machine {
     /// Base de cada handle concedido, en orden de concesion.
     mem_bloques: Vec<u64>,
     mem: HashMap<u64, u8>,
+    /// -- `KIND_AUDIO`, modelada ------------------------------------------
+    ///
+    /// Se modelan las tres cosas que un programa puede NOTAR, que son las
+    /// mismas que comprueba `sonido_C.c` en el Ryzen: que es exclusivo, que el
+    /// tope de duracion se cumple, y que **el handle soltado deja de valer**.
+    ///
+    /// Lo que NO se modela es que suene: aqui no hay altavoz, y en la mitad de
+    /// las placas reales tampoco. Por eso lo que se guarda es la PARTITURA --
+    /// la lista de `(hercios, milisegundos)` que el programa mando-- y eso es
+    /// justo lo que hace comprobable una libreria de musica: que `LA4` en negra
+    /// a 120 pulsos son 440 Hz durante 425 ms, y no algo aproximado.
+    audio_dueno: bool,
+    audio_volumen: u64,
+    /// Todo lo que sono, en orden: `(hz, ms)`.
+    audio_partitura: Vec<(u64, u64)>,
     data_len: u64,
     zf: bool,
     sf: bool,
@@ -329,6 +360,9 @@ impl Machine {
             mem_entregados: 0,
             mem_bloques: Vec::new(),
             mem: HashMap::new(),
+            audio_dueno: false,
+            audio_volumen: 50,
+            audio_partitura: Vec::new(),
             data_len: 0,
             zf: false,
             sf: false,
@@ -545,6 +579,55 @@ impl Machine {
         self.rueda
     }
 
+    /// La PARTITURA: todo lo que el programa mando sonar, `(hz, ms)` en orden.
+    ///
+    /// Es lo unico que un banco de pruebas puede mirar de una libreria de
+    /// musica, y es suficiente: si `LA4` en negra a 120 pulsos no son 440 Hz
+    /// durante 425 ms, la libreria esta mal, suene el altavoz o no.
+    pub fn partitura(&self) -> &[(u64, u64)] {
+        &self.audio_partitura
+    }
+
+    /// Milisegundos totales que el programa dejo el altavoz sonando (sin contar
+    /// los silencios). Sirve para comprobar articulacion y tempo de una frase
+    /// entera sin enumerar nota por nota.
+    pub fn audio_ms_sonando(&self) -> u64 {
+        self.audio_partitura.iter().filter(|p| p.0 != 0).map(|p| p.1).sum()
+    }
+
+    /// Volumen que quedo puesto. 50 si nadie lo toco, igual que el crate.
+    pub fn audio_volumen(&self) -> u64 {
+        self.audio_volumen
+    }
+
+    /// Despacho de la capability de sonido. Copia la semantica de
+    /// `ring0/obj/audio.rs` -- sobre todo la que se nota: **el tope recorta**.
+    fn audio_op(&mut self, op: u64, a0: u64, a1: u64) -> u64 {
+        use bmo_abi::syscalls::surface::{
+            APARATO_ALTAVOZ, AUDIO_OP_APARATO, AUDIO_OP_CALLAR, AUDIO_OP_PITAR, AUDIO_OP_VOLUMEN,
+        };
+        match op {
+            // Solo el altavoz. HDA sigue sin existir, y decir aqui que si lo
+            // hay seria darle al programa una respuesta que el Ryzen no da.
+            AUDIO_OP_APARATO => APARATO_ALTAVOZ,
+            AUDIO_OP_PITAR => {
+                let hz = a0.min(20_000);
+                let ms = a1.min(AUDIO_MAX_MS);
+                self.audio_partitura.push((hz, ms));
+                ms
+            }
+            AUDIO_OP_VOLUMEN => {
+                self.audio_volumen = a0.min(100);
+                self.audio_volumen
+            }
+            AUDIO_OP_CALLAR => {
+                self.audio_partitura.push((0, 0));
+                0
+            }
+            _ => 0,
+        }
+    }
+
     /// Despacho de la capability de entrada. Copia la semantica de
     /// `ring0/obj/input.rs` -- sobre todo la que se nota: la rueda CONSUME.
     fn entrada_op(&mut self, op: u64) -> u64 {
@@ -743,8 +826,9 @@ impl Machine {
     fn do_syscall(&mut self) {
         use bmo_abi::syscalls::surface::{
             CURRENT_TASK, NR_INVOKE, TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR,
-            TASK_OP_CONSOLE_READ, TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_INPUT_CLAIM,
-            TASK_OP_MEMORIA_PEDIR, TASK_OP_RUTA, TASK_OP_YIELD,
+            TASK_OP_AUDIO_RECLAMAR, TASK_OP_AUDIO_SOLTAR, TASK_OP_CONSOLE_READ,
+            TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_INPUT_CLAIM, TASK_OP_MEMORIA_PEDIR,
+            TASK_OP_RUTA, TASK_OP_YIELD,
         };
 
         let call = ObservedSyscall {
@@ -831,6 +915,27 @@ impl Machine {
                 }
                 // Ceder el turno es el borde del fotograma: aqui es donde
                 // "llega" lo que el usuario tecleo mientras tanto.
+                // El SONIDO. Reclamarlo dos veces sin soltar tiene que fallar:
+                // es la propiedad entera de un aparato exclusivo, y modelarla
+                // aqui es lo que permite probarla sin encender el Ryzen.
+                op if op == TASK_OP_AUDIO_RECLAMAR => {
+                    let h = if self.audio_dueno { 0 } else { CAP_AUDIO };
+                    self.audio_dueno = true;
+                    self.finalizar_syscall(h);
+                    return;
+                }
+                op if op == TASK_OP_AUDIO_SOLTAR => {
+                    if self.audio_dueno {
+                        self.audio_dueno = false;
+                        self.finalizar_syscall(0);
+                    } else {
+                        // No era suyo. El kernel contesta ERROR_BUSY, no OK:
+                        // un "si" a quien no era dueno le haria creer que lo
+                        // solto.
+                        self.fallar_syscall(16);
+                    }
+                    return;
+                }
                 op if op == TASK_OP_YIELD => {
                     if let Some(lote) = self.lotes.pop() {
                         self.teclas.extend_from_slice(&lote);
@@ -838,6 +943,19 @@ impl Machine {
                 }
                 _ => {}
             }
+        } else if call.capability == CAP_AUDIO {
+            // [!] Y **solo si sigue siendo suyo**. Un handle que funciona
+            // despues de soltarlo es un uso-despues-de-liberar con otro nombre,
+            // y en el kernel de verdad no resuelve porque la generacion cambio.
+            // Si el emulador no modelara esto, la prueba que lo comprueba
+            // pasaria con el kernel roto.
+            if !self.audio_dueno {
+                self.fallar_syscall(2); // ERROR_INVALID_HANDLE
+                return;
+            }
+            let v = self.audio_op(call.operation, call.arg0, self.regs[R10]);
+            self.finalizar_syscall(v);
+            return;
         } else if call.capability == CAP_ENTRADA {
             let v = self.entrada_op(call.operation);
             self.finalizar_syscall(v);
