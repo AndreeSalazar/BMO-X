@@ -376,10 +376,12 @@ hasn't been validated.
   file; see `toolchain/lang/cobol/BANCA_REAL.md`. What it is *not* is a mainframe
   migration path; see [below](#and-one-boundary-worth-stating-before-anyone-assumes-otherwise)
 - **C: through roughly C11** -- pointers, structs by value, initializer lists,
-  function-parameter macros, `getchar`/`scanf`, and 32 of 32 language probes
-  for what DOOM asks for. **Its SSE path executes** as of 2 August: before
-  that, all nine floating-point tests compared byte windows and none of them
-  ran
+  function-parameter macros, `getchar`/`scanf`, varargs, and 32 of 32 language
+  probes for what DOOM asks for. **Its SSE path executes** as of 2 August:
+  before that, all nine floating-point tests compared byte windows and none of
+  them ran. Since 9 August a `double` also **travels as an argument** -- which
+  needed no xmm ABI, because arguments go on the stack here and one fits in a
+  slot. It is the frontend that compiles all 56,465 lines of DOOM
 - **Ada** -- ZFP profile, `delta`/`digits` decimal types, real operator
   precedence. Annex F copied COBOL's `PICTURE`, so the exact decimal was
   already paid for
@@ -533,10 +535,15 @@ image, and `printf` covers `%d %s %x %c`. What that bought is precise and worth
 saying precisely: **a program can now call the small libc. It still cannot call
 another file.**
 
-So the paragraph above is half true and the half matters. DOOM is 81 translation
-units that call each other; synthesising `strlen` does nothing for that.
-Separate compilation is still the ceiling, and it is the one thing on this page
-that no amount of small work removes.
+So the paragraph above is half true and the half matters -- **but not in the
+way it read until 9 August.** DOOM is 81 translation units that call each other,
+and the assumption here was that separate compilation was the ceiling. It was
+not: they are compiled as **one** unit, which is how SQLite ships itself, and
+that is how all 56,465 lines produce a `.bex`.
+
+The ceiling is real, it is just further out and it is about *scale*, not about
+DOOM: past roughly 100k lines a unity build stops being viable, and the compile
+is one long serial pass. That is a cost, not a wall.
 
 ---
 
@@ -765,10 +772,43 @@ on top of it.
 
 ### Phase D -- Programs worth running
 
-12. **libc for DOOM** -- `fopen`/`fread`/`fseek`/`fclose` landed on 7 August,
-    and the string functions are synthesised. What is left is the `fprintf`
-    family (64 calls in DOOM) and about twenty small ones
-13. **DOOM -- and it is now measured, not estimated.** On 8 August its 81 core
+12. ~~**libc for DOOM**~~ -- **done 2026-08-09.** `fopen`/`fread`/`fseek`/
+    `fclose` landed on 7 August, the string functions are synthesised, and the
+    `printf` family closed on 9 August with a **run-time formatter written in C**
+    (`toolchain/forge/sem-asm/tables/stdio.h`): `vsnprintf`, `snprintf`,
+    `sprintf`, `sscanf`, `fprintf` and a `printf` whose format is a variable.
+    Unlike the inline one, **it applies field width** -- the inline emitter reads
+    the `7` in `%7i` and discards it, because its converters write straight to
+    the console and padding needs to know the width *before* writing
+13. **DOOM COMPILES -- 2026-08-09.** With an empty platform backend, its
+    **56,465 lines produce a 1,299,512-byte `.bex`**: one translation unit,
+    because there is no linker here. What is left to *see it run* is
+    `doomgeneric_bmo.c` -- six functions, and all four capabilities they need
+    already work on the Ryzen.
+
+    Four things closed the gap, and only the first was on the plan:
+
+    - the **run-time formatter** above;
+    - **`__va_list()`** -- a `va_list` becomes a *pointer*, so it survives being
+      passed to another function, which is the entire `v*` family. An index only
+      describes a position in the frame that asked;
+    - **the `#elif` that entered anyway**: with one state bit it checked the
+      previous branch, not whether *any* branch had already been taken. Since C
+      makes an unknown identifier `0`, `#if (A == B)` with neither defined is
+      true -- so `i_swap.h` defined `SYS_LITTLE_ENDIAN` **and**
+      `SYS_BIG_ENDIAN`. It does not fail loudly: it compiles both halves and the
+      configuration left standing is the one the program discarded;
+    - **`double` as a parameter**, which turned out to need no xmm ABI at all --
+      arguments go on the stack here and a `double` fits in one slot. What was
+      broken was the call site, which truncated.
+
+    And **the launcher's 1 MiB image cap was raised to 4 MiB**, because DOOM did
+    not fit by 248,936 bytes. The rule that decided it is worth stating: *a cap
+    that a 1993 program does not fit is a badly chosen cap.* It cost nothing in
+    the image -- that is `.bss`, and the UEFI loader already reserves 16 MiB
+    there.
+
+14. **How DOOM was measured, and why the method matters.** On 8 August its 81 core
     translation units were compiled one at a time against BMO C, keeping the
     first error of each. **0 of 81 reached codegen, and the 81 failures were
     five causes** -- all in the preprocessor and in declarations, none in code
@@ -797,25 +837,26 @@ on top of it.
     serves.
 
     It is a software renderer: no GPU, no shaders, no Vulkan. It is the first
-    heavy program this system can honestly run, and what stands between here and
-    there is separate compilation, not the language
-14. **C++ continues** -- inheritance and virtuals landed; the scope stays frozen
+    heavy program this system can honestly run -- and separate compilation
+    turned out **not** to be what stood in the way: a unity build is how SQLite
+    ships itself, and it is how DOOM compiles here
+15. **C++ continues** -- inheritance and virtuals landed; the scope stays frozen
     at essential C++17
-15. ~~**COMP-3 (packed decimal)**~~ -- ✅ **done 2026-08-03.** What remains is
+16. ~~**COMP-3 (packed decimal)**~~ -- ✅ **done 2026-08-03.** What remains is
     **binary records**: reading a file's packed bytes as they come
-16. **Range checks in Ada** -- without them it is Ada syntax with C safety
+17. **Range checks in Ada** -- without them it is Ada syntax with C safety
 
 ### Phase E -- Architecture
 
-17. **Endpoint RPC -> Ring 3 services** -- the library-OS moment
-18. **Speed levers that are architectural, not micro-optimisation** -- DMA
+18. **Endpoint RPC -> Ring 3 services** -- the library-OS moment
+19. **Speed levers that are architectural, not micro-optimisation** -- DMA
     straight into the caller's buffer instead of a bounce page, NCQ (the HBA
     declares 32 slots and one is used), MSI instead of polling
-19. **GPU, and only the blit.** Skip the display engine entirely: the firmware
+20. **GPU, and only the blit.** Skip the display engine entirely: the firmware
     already programmed it. What is needed is one engine -- the copy engine --
     behind the `Volcador` seam that already exists. Measure with `perf` first:
     the dirty box may well have made a card unnecessary
-20. **SMP -- the trampoline landed on 2026-08-07; the audit is the rest.** Twelve
+21. **SMP -- the trampoline landed on 2026-08-07; the audit is the rest.** Twelve
     cores come up on the Ryzen, and that was the 10%. The other 90% is the
     kernel's **209 `static mut`**: with a second core running, every one of them
     is a race. Which is why what runs on those cores today is a barrier and a

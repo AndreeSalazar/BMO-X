@@ -3,6 +3,11 @@
 > Escrito el **2026-08-08**, el dia que la sonda paso de 0 a 69 ficheros sueltos
 > y el unity build empezo a parsear las 56.465 lineas enteras.
 >
+> ★★ **ACTUALIZADO EL 2026-08-09: LA FASE 1 ESTA HECHA.** El unity build ya no
+> se para: con un backend de plataforma vacio, las 56.465 lineas salen en un
+> `.bex` de **1.299.512 bytes**. Lo que queda para verlo correr es la FASE 2 --
+> seis funciones-- y ya no hay nada desconocido delante.
+>
 > `docs/QUE_DESBLOQUEA.md` dice **que falta y por que**. Este dice **en que
 > orden, que bloquea a que, y como se sabe que una casilla esta hecha.** Es el
 > mismo trato que `toolchain/lang/cobol/PLAN_BANCA.md` tiene con la banca.
@@ -38,7 +43,8 @@ contra algo.
 
 ```
    ficheros sueltos:  0 -> 7 -> 27 -> 35 -> 41 -> 47 -> 55 -> 61 -> 67 -> 69
-   unity build:       PARSEA LAS 56.465 LINEAS y esta dentro del generador
+   unity build:       parsea (08-08) -> ** COMPILA A .bex ** (08-09)
+                      1.299.512 bytes, con backend de plataforma vacio
 ```
 
 | | |
@@ -68,12 +74,36 @@ abajo no se pueden ni empezar a probar.
 
 | # | Casilla | Tam | Estado |
 |---|---|---|---|
-| 1.0 | ★ **`printf` con formato en tiempo de ejecucion** | XL | ⛔ es lo que para el unity HOY |
-| 1.1 | `sprintf` / `snprintf` sobre el mismo formateador | M | ⛔ por 1.0 |
-| 1.2 | `fprintf` -- 64 llamadas en DOOM | S | ⛔ por 1.0 |
-| 1.3 | Las ~20 triviales: `toupper` `isspace` `atoi` `strncpy` `strrchr` `strstr` `strdup` `memmove` `strcasecmp` `ftell` `feof` `fwrite` | M | libre |
-| 1.4 | `system` `mkdir` `getenv` `remove` `rename` -- apuntaladas con su motivo | S | libre |
-| 1.5 | Que el `.bex` quepa en **1 MiB** (`MAX_BEX`) | ? | por medir |
+| 1.0 | ★ **`printf` con formato en tiempo de ejecucion** | XL | **[x] 2026-08-09** -- camino A |
+| 1.1 | `sprintf` / `snprintf` sobre el mismo formateador | M | **[x] 2026-08-09** |
+| 1.2 | `fprintf` -- 64 llamadas en DOOM | S | **[x] 2026-08-09** (van a consola) |
+| 1.3 | Las ~20 triviales | M | **[x] 2026-08-09** |
+| 1.4 | `system` `mkdir` `getenv` `remove` `rename` -- apuntaladas con su motivo | S | **[x] 2026-08-09** |
+| 1.5 | Que el `.bex` quepa en `MAX_BEX` | S | **[x] 2026-08-09** -- ver abajo |
+
+**Y cuatro cosas que no estaban en la lista y hubo que hacer**, porque no se
+sabian hasta intentarlo:
+
+| | Que era | Por que no estaba previsto |
+|---|---|---|
+| 1.6 | ★ **`__va_list()`** -- el `va_list` pasa a ser un PUNTERO | `__va_arg(i)` es un INDICE, y un indice no sobrevive a pasarlo a otra funcion: describe una posicion en el marco de quien pregunta. Sin esto no hay familia `v*`, y `M_vsnprintf` es exactamente eso |
+| 1.7 | ★ **El `#elif` compilaba las dos ramas** | Ep. 36 de la bitacora. `i_swap.h` definia `SYS_LITTLE_ENDIAN` **y** `SYS_BIG_ENDIAN` |
+| 1.8 | ★ **`double` como PARAMETRO** | Lo pedia `fabs`. El motivo escrito era *"falta la ABI de xmm"* y resulto que no hace falta ninguna: aqui los argumentos van por la pila |
+| 1.9 | `sscanf` -- 8 llamadas, con `%i` de base automatica | Estaba contada como trivial y no lo es: `M_StrToInt` distingue `0x`, `0` y decimal con el formato |
+
+## 1.5 -- El tope, y quien manda sobre el
+
+`MAX_BEX` estaba en **1 MiB** y la imagen mide **1.299.512 bytes**: no cabia
+por 248.936. Se subio a **4 MiB**, y la regla que se aplico queda escrita aqui
+porque va a volver a hacer falta:
+
+> **El programa ajeno manda sobre el tope, no al reves.** DOOM es de 1993 y es
+> el codigo mas apretado que se va a portar aqui en mucho tiempo. Si no cabe, el
+> que esta mal medido es el bufer.
+
+Lo que cuesta: `.bss` del kernel, dentro del hueco de **16 MiB** que el cargador
+UEFI ya reserva y pone a cero en `0x400000`. **El `.bin` no crece** --se midio:
+909.696 B antes y despues-- porque `.bss` no viaja en la imagen.
 
 ## ★ 1.0 -- El formateador en ejecucion, que es la pieza de verdad
 
@@ -102,6 +132,30 @@ funciones. Ver la cabecera de `codegen/sintetizadas.rs`.
 
 **Como se sabe que 1.0 esta hecha**: `printf(fmt, 42)` con `fmt` en una variable
 imprime `42`, y la fila lo EJECUTA.
+
+### [x] HECHO el 2026-08-09 -- se tomo el CAMINO A, y con un matiz
+
+El formateador vive en **`toolchain/forge/sem-asm/tables/stdio.h`**, escrito en
+C, y el codegen desvia ahi el `printf` cuyo formato no es literal. De la tabla
+de sintetizadas solo hizo falta **una** entrada nueva, `bmo_escribir`, que saca
+a la consola un bufer que no existia al compilar -- su cuerpo es
+`console::write_buffer`, que ya estaba escrito y solo alcanzaba el codegen.
+
+★ **El detalle que hizo el desvio corto**: en BMO los argumentos se empujan por
+la pila, asi que **empujarlos en orden inverso deja en memoria un `va_list`
+tal cual**, y lo que se le pasa al formateador es `rsp`. No hay area de
+argumentos que construir.
+
+★ **Y una cosa que el camino B no habria dado**: este formateador **aplica la
+anchura**. El de linea lee el `7` de `%7i` y lo tira --lo dice en su propio
+comentario-- porque sus conversores escriben directo a la consola y para
+rellenar hay que saber cuanto ocupa el numero ANTES. Aqui se arma en un array
+primero, asi que una tabla alineada sale alineada.
+
+Filas que lo ejecutan, en `tests/libc.rs`: el formato en una variable, la
+anchura y las banderas, el `va_list` que viaja a otra funcion, el truncado de
+`snprintf` sin desbordar, el hexadecimal con el bit alto puesto, y una
+conversion desconocida que **no se come el argumento**.
 
 ---
 
@@ -135,7 +189,7 @@ foto.
 | # | Casilla | Tam | Nota |
 |---|---|---|---|
 | 3.0 | Leer `doom1.wad` (4.196.020 B) con la cadena de ficheros | S | ya existe `ARCH_OP_LEER_EN` |
-| 3.1 | ⚠ Que quepa: el WAD son 4 MiB y `MAX_BEX` es 1 MiB | M | son cosas distintas -- el WAD NO es la imagen |
+| 3.1 | ⚠ Que quepa: el WAD son 4 MiB | M | son cosas distintas -- el WAD NO es la imagen, va a `KIND_MEMORIA` y no a `MAX_BEX` |
 | 3.2 | `W_CacheLumpName` sobre el zone allocator | S | es codigo de DOOM, no de BMO |
 
 ★ **3.1 es la que hay que mirar antes**: el WAD se lee a la memoria que pidio

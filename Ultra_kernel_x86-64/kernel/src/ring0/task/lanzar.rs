@@ -93,7 +93,7 @@ pub struct Informe {
     pub res: Result<u32, Fallo>,
 }
 
-/// Tope de una imagen `.bex`. **1 MiB.**
+/// Tope de una imagen `.bex`. **4 MiB.**
 ///
 /// Historia, porque explica por que este numero sube a saltos y no poco a poco:
 /// eran 64 KiB cuando el `.bex` mas grande eran cinco de COBOL. El compositor
@@ -102,24 +102,38 @@ pub struct Informe {
 /// inlining y el binario da un salto de veinte KiB. A partir de ahi el
 /// escritorio no cargaba y la maquina se quedaba en el panel del kernel.
 ///
-/// Por eso 256 KiB tampoco valia: el compositor va por **164 KiB (64% del
-/// tope)** con tres ventanas, y lo que viene --superficies, tiling, una barra de
-/// estado-- es mas. Un tope que se roza es un tope que un dia se cruza sin
-/// avisar, y el aviso llega en forma de maquina que no arranca al escritorio.
+/// Por eso 256 KiB tampoco valia, ni 1 MiB: el compositor va por **164 KiB** con
+/// tres ventanas, y lo que viene --superficies, tiling, una barra de estado-- es
+/// mas. Un tope que se roza es un tope que un dia se cruza sin avisar, y el
+/// aviso llega en forma de maquina que no arranca al escritorio.
+///
+/// ** EL NUMERO LO PONE DOOM, Y ESO ES DELIBERADO (2026-08-09).**
+///
+/// El nucleo de DOOM compilado por BMO C mide **1.299.512 bytes** -- las 56.465
+/// lineas en una sola unidad de traduccion, porque aqui no hay enlazado. Con el
+/// tope en 1 MiB **no cabia por 248.936 bytes**.
+///
+/// La regla que se aplica: **el programa ajeno manda sobre el tope, no al
+/// reves.** DOOM es de 1993 y es el codigo mas apretado que se va a portar aqui
+/// en mucho tiempo; si no cabe, el que esta mal medido es el bufer. Cuatro MiB
+/// dejan un margen de 3x sobre esa imagen, que es lo que hace falta para que el
+/// backend de plataforma y los datos que vengan detras no obliguen a volver a
+/// tocar este numero dentro de una semana.
 ///
 /// **El coste es RAM del kernel y nada mas.** Esto es `.bss`: no viaja en la
-/// imagen EFI, lo pone a cero `entry.rs` al arrancar. 768 KiB mas en una
-/// maquina con 14.8 GiB es el 0.005% de la RAM, a cambio de un margen de 6x
-/// sobre el binario de Ring 3 mas grande que existe -- y de que quepa un
-/// programa ajeno de verdad, que es lo que DOOM va a pedir.
+/// imagen EFI --el `.bin` no la lleva-- y el cargador UEFI ya pone a cero el
+/// hueco entero del kernel, que son **16 MiB reservados en `0x400000`**. Con un
+/// kernel de ~2,1 MiB, cuatro mas siguen dejando diez libres. En una maquina de
+/// 14.8 GiB, el 0,027% de la RAM.
 ///
 /// * Lo que este numero **no** arregla, dicho para que nadie lo suponga: el
 /// bufer sigue siendo **uno y estatico**, asi que dos lanzamientos a la vez se
 /// siguen serializando con `EN_USO`. Y sigue siendo una **pagina de rebote**:
 /// el disco escribe aqui y luego se copia al espacio del proceso. Lo que borra
 /// ese coste es DMA directo al bufer del llamante, que esta en la hoja de ruta
-/// y es otra conversacion.
-const MAX_BEX: usize = 1024 * 1024;
+/// y es otra conversacion. A 4 MiB esa copia ya se nota, asi que la
+/// conversacion se acerca.
+const MAX_BEX: usize = 4 * 1024 * 1024;
 static mut IMAGE: [u8; MAX_BEX] = [0u8; MAX_BEX];
 
 /// El buffer de imagen es UNO y estatico: un `.bex` son varios KiB y la pila

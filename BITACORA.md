@@ -1004,5 +1004,66 @@ la misma persona que despues la incumplio.
    automatizarlo es que lo incumplio quien lo habia escrito**. Es la ley 20 otra
    vez, y que se repita es el argumento.
 
+## Ep. 36 -- El `#elif` que entraba tambien, y DOOM compilando
+
+**Sintoma**: `no existe la funcion 'swapeLE16'`. Un nombre que **no esta escrito
+en ningun sitio de DOOM** salvo dentro de un `#ifdef SYS_BIG_ENDIAN` que en una
+maquina x86-64 no se recorre jamas.
+
+**Primera hipotesis, y era razonable**: que el evaluador de `#if` estuviera
+contestando mal otra vez -- es el Ep. 32, y el sitio es el mismo. La sonda
+minima lo desmintio: `#if (0)` / `#elif (1)` daba la rama correcta.
+
+**Culpable**: el estado de un grupo `#if / #elif / #else` era **un solo bit** --
+"esta rama esta activa"--, asi que `#elif` miraba la rama de justo antes y no si
+alguna ya habia entrado. Con las dos condiciones ciertas, **las dos ramas se
+compilaban**.
+
+Y las dos son ciertas mas a menudo de lo que parece, porque C manda (C11
+6.10.1p4) que un identificador desconocido en un `#if` valga 0. Asi que
+`#if (A == B)` con las dos sin definir es **cierto**. Eso es `i_swap.h`:
+
+```c
+#if   ( __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ )
+#define SYS_LITTLE_ENDIAN
+#elif ( __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
+#define SYS_BIG_ENDIAN
+#endif
+```
+
+Quedaban definidos **los dos**. No falla ruidosamente: un `#define` repetido se
+pisa y gana el ultimo, o sea que **la configuracion que queda puesta es la que el
+programa habia descartado**. El sintoma solo aparecio porque la rama muerta
+llamaba a una funcion que no existe; si hubiera llamado a una que si existe, el
+programa habria corrido con el endianness al reves y nadie lo habria sabido.
+
+★ **Es el Ep. 32 con otra ropa, y por eso vale contarlo dos veces**: aquel
+partia la expresion por el operador equivocado, este olvidaba el estado del
+grupo. Los dos modos de fallo son el mismo -- **el preprocesador no se para: te
+entrega otro programa.**
+
+**Y lo que habia detras**: era el ultimo desconocido entre BMO C y DOOM. Con eso,
+mas el formateador de ejecucion, el `va_list` como puntero y `double` como
+parametro, **las 56.465 lineas del nucleo de DOOM compilan a un `.bex` de
+1.299.512 bytes**. Con `MAX_BEX` en 1 MiB no cabia por 248.936 -- y ahi la
+decision fue del dueno y queda escrita: *"DOOM es el MAS optimizado, asi que
+vamos a respetar y ejecutar SEGUN lo que exige"*. El tope subio a 4 MiB.
+
+**Moraleja**: *lo que un programa ajeno mide es una medida del sistema, no un
+capricho del programa.* Un tope que un programa de 1993 no cabe es un tope mal
+elegido -- y el `.bin` del kernel no crecio ni un byte al subirlo, porque eso es
+`.bss` y el cargador ya reservaba diecisiete veces mas.
+
+24. **El preprocesador no se para: te entrega otro programa** (Ep. 36, y el
+   Ep. 32 antes). Dos fallos distintos --partir la expresion por el operador
+   equivocado, y olvidar que una rama del grupo ya entro-- con el mismo modo:
+   ninguno da error, los dos deciden que mitad del fichero existe. Cuando un
+   componente no puede fallar ruidosamente, sus filas de prueba no son un lujo:
+   son el unico sintoma que va a haber.
+25. **Lo que un programa ajeno mide es una medida del sistema** (Ep. 36). Un
+   `MAX_BEX` que DOOM no cabe es un tope mal elegido, no un DOOM demasiado
+   grande. El tope se puso mirando los binarios propios, que es exactamente la
+   forma de elegir un numero que solo vale mientras nadie traiga nada de fuera.
+
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*
