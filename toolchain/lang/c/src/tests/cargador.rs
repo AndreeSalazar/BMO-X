@@ -227,3 +227,99 @@ fn un_global_unsigned_no_se_extiende_con_signo() {
                   int main() { u = 0 - 1; printf(\"%u\", u); return 0; }";
     assert_eq!(run_c(fuente), "4294967295");
 }
+
+// == EL PAQUETE: un .bex con los DATOS de la app dentro ================
+
+/// **** LA FILA QUE DECIDE SI EL PAQUETE SIRVE: **empaquetado, el programa
+/// sigue corriendo IGUAL**.
+///
+/// Un paquete es un `.bex` con una seccion `Resources` (`0x0B`) dentro -- el
+/// codigo y los datos en un solo fichero. Que eso no rompa nada no es evidente:
+/// anadir una seccion hace crecer la tabla, y **todos los offsets en fichero se
+/// mueven**. Si el cargador leyera un offset de otro sitio, o si las secciones
+/// cambiaran de indice, el programa cargaria y haria otra cosa.
+///
+/// Por eso se comprueba EJECUTANDO y no mirando bytes: la salida tiene que ser
+/// la misma con y sin recursos dentro.
+#[test]
+fn un_programa_empaquetado_corre_igual() {
+    let src = r#"
+int main() {
+    int i;
+    for (i = 0; i < 3; i = i + 1) { printf("%d,", i * 7); }
+    printf("\n");
+    return 0;
+}
+"#;
+    let desnudo = compile_source_to_bef(src).unwrap();
+    let esperado = ejecutar_bef(&desnudo);
+    assert_eq!(esperado, "0,7,14,\n");
+
+    let wad = vec![0x5Au8; 4096];
+    let paquete = bmo_abi::bef::paquete::empaquetar(
+        &desnudo,
+        &[("datos.wad", &wad), ("leeme.txt", b"hola")],
+    )
+    .expect("debe empaquetar");
+
+    assert!(paquete.len() > desnudo.len() + 4096, "los datos tienen que estar dentro");
+    assert_eq!(
+        ejecutar_bef(&paquete),
+        esperado,
+        "el programa empaquetado tiene que hacer EXACTAMENTE lo mismo"
+    );
+}
+
+/// Y los datos se encuentran por nombre en el fichero resultante. Sin esto lo
+/// anterior solo probaria que los recursos son inertes, que es la mitad barata.
+#[test]
+fn los_recursos_se_recuperan_del_paquete() {
+    let desnudo = compile_source_to_bef("int main() { printf(\"x\"); return 0; }").unwrap();
+    let wad: Vec<u8> = (0..1000u32).map(|i| (i % 251) as u8).collect();
+    let paquete =
+        bmo_abi::bef::paquete::empaquetar(&desnudo, &[("doom1.wad", &wad)]).unwrap();
+
+    let d = bmo_abi::bef::paquete::directorio(&paquete).expect("trae directorio");
+    let i = d.buscar("doom1.wad").expect("esta");
+    assert_eq!(d.datos(i).unwrap(), &wad[..]);
+}
+
+/// ** El cargador solo mapea Code/RoData/Data/Bss, asi que **un paquete de
+/// cuatro megas no le cuesta al proceso ni una pagina mas** que la imagen
+/// desnuda. Se comprueba sobre las secciones que el kernel llama cargables: su
+/// suma no puede cambiar al empaquetar.
+#[test]
+fn los_recursos_no_ocupan_memoria_del_proceso() {
+    use bmo_abi::bef::sections::SectionKind;
+
+    fn memoria_mapeada(bex: &[u8]) -> u64 {
+        let tabla = u64::from_le_bytes(bex[32..40].try_into().unwrap()) as usize;
+        let count = u32::from_le_bytes(bex[40..44].try_into().unwrap()) as usize;
+        let mut total = 0u64;
+        for i in 0..count {
+            let e = &bex[tabla + i * 48..tabla + (i + 1) * 48];
+            let cargable = matches!(
+                e[0],
+                x if x == SectionKind::Code as u8
+                    || x == SectionKind::RoData as u8
+                    || x == SectionKind::Data as u8
+                    || x == SectionKind::Bss as u8
+            );
+            if cargable {
+                total += u64::from_le_bytes(e[24..32].try_into().unwrap());
+            }
+        }
+        total
+    }
+
+    let desnudo = compile_source_to_bef("int main() { printf(\"x\"); return 0; }").unwrap();
+    let gordo = vec![0u8; 4 * 1024 * 1024];
+    let paquete = bmo_abi::bef::paquete::empaquetar(&desnudo, &[("gordo", &gordo)]).unwrap();
+
+    assert!(paquete.len() > 4 * 1024 * 1024, "el fichero SI crece");
+    assert_eq!(
+        memoria_mapeada(&desnudo),
+        memoria_mapeada(&paquete),
+        "y la memoria del proceso NO"
+    );
+}

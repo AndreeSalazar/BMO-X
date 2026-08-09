@@ -102,6 +102,10 @@ members = [
     # El eslabon Rust -> .bex: sin el, Ultra_userspace/ no puede producir
     # nada que el kernel admita, y por eso llevaba meses lleno de stubs.
     "toolchain/tools/bex-link",
+    # Mete los DATOS de una app dentro de su .bex. El codigo lo emite el
+    # frontend; los datos llegan despues y de quien monta la app, asi que
+    # empaquetar es un paso posterior y no una opcion del codegen.
+    "toolchain/tools/bmo-pack",
     # El par cliente/servidor que prueba Endpoint RPC en Ring 3.
     "toolchain/tools/rpc-demo",
 

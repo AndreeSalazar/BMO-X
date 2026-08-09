@@ -1,0 +1,12 @@
+[package]
+name = "bmo-pack"
+version = "0.1.0"
+edition = "2021"
+description = "Mete los datos de una app DENTRO de su .bex: un solo fichero, como el paquete que es"
+
+[[bin]]
+name = "bmo-pack"
+path = "src/main.rs"
+
+[dependencies]
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }
