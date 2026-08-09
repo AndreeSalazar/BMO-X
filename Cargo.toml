@@ -1,4 +1,4 @@
-[workspace]
+﻿[workspace]
 resolver = "2"
 members = [
     # -- ULTRA KERNEL x86-64 (Ring 0 base + 12-stage faggin chain) ---
@@ -37,6 +37,7 @@ members = [
     "platform/drivers/storage/estratos",
     "platform/drivers/usb/input",
     "platform/drivers/usb/uhid",
+    "platform/drivers/usb/uaudio",
     "platform/drivers/usb/xhci",
     # GPU profiles (Ring 3 servers; reserved until hardware is on the bench)
     "platform/drivers/gpu/rdna4",

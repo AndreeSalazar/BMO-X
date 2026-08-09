@@ -198,6 +198,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-uaudio"
+version = "1.0.0"
+
+[[package]]
 name = "bmo-uhid"
 version = "0.1.0"
 dependencies = [

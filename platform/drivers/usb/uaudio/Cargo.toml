@@ -1,0 +1,12 @@
+[package]
+name = "bmo-uaudio"
+version = "1.0.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "USB Audio Class 1.0 -- control del aparato (volumen y mute) por control transfer"
+license = "Techne"
+
+[dependencies]
+# Independiente a proposito: aqui no se toca hardware. Este crate SOLO lee
+# descriptores y construye peticiones -- lo que las manda es el kernel, con
+# `bmo_xhci::control_transfer`. Asi todo lo de aqui se prueba en el anfitrion.
