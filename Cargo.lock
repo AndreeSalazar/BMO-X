@@ -177,6 +177,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-pack"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+]
+
+[[package]]
 name = "bmo-rpc-demo"
 version = "0.1.0"
 dependencies = [
