@@ -155,6 +155,9 @@ pub const INFO_MEM_ENTREGADA: u64 = 0x19;
 pub const INFO_SMP_VIVOS: u64 = 0x1B;
 pub const INFO_SPIN_CHOQUES: u64 = 0x1C;
 pub const INFO_SPIN_PICO: u64 = 0x1D;
+/// Recursos que un muerto dejo sin devolver. Tiene que ser CERO: acusa al
+/// kernel, no al programa. Ver `core/autopsia.rs`.
+pub const INFO_FUGAS: u64 = 0x1E;
 
 // ** LA AUTOPSIA de un fallo de Ring 3.
 //

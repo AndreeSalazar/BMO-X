@@ -47,7 +47,7 @@ use crate::ring0::plat::timer;
 /// del entorno cambio entre medias.
 const CUANTAS: usize = 4;
 /// Renglones por informe.
-const RENGLONES: usize = 8;
+const RENGLONES: usize = 9;
 /// Ancho de cada renglon. El de la ventana de datos, para que quepa sin cortar.
 const ANCHO: usize = 72;
 
@@ -71,6 +71,10 @@ static mut TOTAL: u32 = 0;
 /// Guarda contra reentrada: un fault dentro del manejador de faults no puede
 /// volver a entrar aqui a medio escribir.
 static mut DENTRO: bool = false;
+/// **Recursos que un muerto dejo sin devolver, acumulados.** Tiene que ser
+/// CERO, y por eso vale: es el kernel comprobandose a si mismo. Sube en `info`
+/// al lado de los choques de cerrojo, que son la misma clase de numero.
+static mut FUGAS_TOTAL: u32 = 0;
 
 /// Un renglon en construccion. Sin `format!` ni asignaciones: esto corre en un
 /// manejador de faults, donde el asignador puede ser justo lo que se rompio.
@@ -196,6 +200,7 @@ pub fn registrar(
     let mut renglones: [Renglon; RENGLONES] = [
         Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(),
         Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(),
+        Renglon::nuevo(),
     ];
 
     renglones[0].s("== FALLO EN RING 3 #");
@@ -273,6 +278,54 @@ pub fn registrar(
         renglones[7].s("(no escribio nada)");
     }
 
+    // ** Y LA COMPROBACION DE QUE EL KERNEL RECUPERO LO SUYO.
+    //
+    // `revoke_all` corre ANTES de esto y hace su trabajo. Pero eso es lo que el
+    // codigo DICE que hace, y hasta hoy **nadie miraba si funciono**.
+    //
+    // Una fuga de ranuras no da error: da un sistema que un dia no puede abrir
+    // un directorio mas, sin nada que lo relacione con el proceso que murio
+    // hace una hora. `AVANCES.md` la lleva abierta desde el 02-08 -- ranuras de
+    // directorio que solo se liberan al morir, con un cliente (el escritorio)
+    // que no muere nunca.
+    //
+    // Esta linea la convierte en un numero. Es el escalon 1 de
+    // `docs/PLAN_AUTOCURACION.md`, y su regla es la de siempre: **tiene que
+    // decir CERO**, y si no lo dice, dice QUE falto.
+    let caps = crate::ring0::obj::cap::vivas_de(pid);
+    let dirs = crate::ring0::obj::directorio::pendientes_de(pid);
+    let archs = crate::ring0::obj::archivo::pendientes_de(pid);
+    let pantalla = crate::ring0::obj::fb::owner() == Some(pid);
+    let fugas = caps + dirs + archs + pantalla as u32;
+
+    renglones[8].s("recursos  ");
+    if fugas == 0 {
+        renglones[8].s("todo devuelto");
+    } else {
+        renglones[8].s("*** SIN DEVOLVER:");
+        if caps > 0 {
+            renglones[8].s(" caps=");
+            renglones[8].dec(caps as u64);
+        }
+        if dirs > 0 {
+            renglones[8].s(" directorios=");
+            renglones[8].dec(dirs as u64);
+        }
+        if archs > 0 {
+            renglones[8].s(" archivos=");
+            renglones[8].dec(archs as u64);
+        }
+        if pantalla {
+            renglones[8].s(" LA PANTALLA");
+        }
+        // Tambien a CABINA: una fuga es un fallo del KERNEL, no del programa
+        // que murio, y merece su linea roja aunque nadie abra la autopsia.
+        crate::ring0::cabina::warn("autopsia", "el muerto dejo recursos sin devolver", fugas as u64);
+    }
+    unsafe {
+        FUGAS_TOTAL = FUGAS_TOTAL.wrapping_add(fugas);
+    }
+
     unsafe {
         let anillo = &mut *core::ptr::addr_of_mut!(ANILLO);
         let a = &mut anillo[ESCRIBE];
@@ -292,6 +345,14 @@ pub fn registrar(
 /// si hay uno nuevo sin leer el informe entero: si cambio, hay autopsia nueva.
 pub fn total() -> u64 {
     unsafe { TOTAL as u64 }
+}
+
+/// Recursos que los muertos dejaron sin devolver desde el arranque.
+///
+/// **Tiene que ser CERO.** Un numero distinto no acusa al programa que murio:
+/// acusa al kernel, que dijo haberlo recuperado todo y no lo hizo.
+pub fn fugas() -> u64 {
+    unsafe { FUGAS_TOTAL as u64 }
 }
 
 /// Cuantos informes se pueden leer ahora.

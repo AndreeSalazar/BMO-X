@@ -124,6 +124,29 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
         s.dec(bmo::info(bmo::INFO_SPIN_PICO));
         s.texto(b" vueltas\n");
     }
+
+    // * Y la otra mitad de lo mismo: cuando una tarea muere, el kernel dice
+    // haber recuperado todo lo suyo. Esta fila es quien lo COMPRUEBA.
+    //
+    // Un numero distinto de cero no acusa al programa que murio: acusa al
+    // KERNEL. Va aqui, al lado de los cerrojos, porque son la misma clase de
+    // dato -- el sistema comprobandose a si mismo.
+    let fugas = bmo::info(bmo::INFO_FUGAS);
+    etiqueta(s, b"fugas");
+    if fugas == 0 {
+        s.con_tinta(TINTA_BIEN);
+        s.texto(b"0");
+        s.con_tinta(TINTA_ECO);
+        s.texto(b"   (los muertos devolvieron todo)");
+        s.con_tinta(TINTA_NORMAL);
+        s.byte(b'\n');
+    } else {
+        s.con_tinta(TINTA_MAL);
+        s.dec(fugas);
+        s.texto(b" RECURSOS SIN DEVOLVER");
+        s.con_tinta(TINTA_NORMAL);
+        s.texto(b"   escribe `fallo`\n");
+    }
 }
 
 pub(crate) fn informe_memoria(s: &mut Salida) {

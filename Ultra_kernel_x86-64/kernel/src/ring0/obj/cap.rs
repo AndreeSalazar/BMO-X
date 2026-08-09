@@ -260,6 +260,27 @@ pub fn revoke_all(pid: u32) {
     revoke_all_slots(pid)
 }
 
+/// Cuantas capabilities siguen VIVAS a nombre de `pid`.
+///
+/// **Despues de `revoke_all` tiene que ser CERO.** Y hasta hoy nadie lo
+/// comprobaba: la funcion hace su trabajo y el que la llama se fia. Esto es lo
+/// que convierte "confio en que revoco" en "revoco, y aqui esta el numero" --
+/// el escalon 1 de `docs/PLAN_AUTOCURACION.md`.
+pub fn vivas_de(pid: u32) -> u32 {
+    let pid = pid as usize;
+    if pid >= MAX_PROCS {
+        return 0;
+    }
+    let _g = CAP_LOCK.lock();
+    let mut n = 0;
+    for slot in &tables().slots[pid] {
+        if slot.live {
+            n += 1;
+        }
+    }
+    n
+}
+
 fn revoke_all_slots(pid: u32) {
     let pid = pid as usize;
     if pid >= MAX_PROCS {

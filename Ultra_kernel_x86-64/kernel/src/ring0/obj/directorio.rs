@@ -167,6 +167,26 @@ pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
 }
 
 /// Lo llama `cap::revoke_all`: los directorios que tuviera abiertos se cierran.
+/// Cuantas ranuras siguen siendo de `pid`. **Despues de `process_died` tiene
+/// que ser CERO**, y quien lo comprueba es la autopsia: el escalon 1 de
+/// `docs/PLAN_AUTOCURACION.md`.
+///
+/// Existe porque `process_died` hace su trabajo y **nadie miraba si funciono**.
+/// Una fuga de ranuras no da error: da un sistema que un dia no puede abrir un
+/// directorio mas, sin nada que lo relacione con el proceso que murio hace una
+/// hora.
+pub fn pendientes_de(pid: u32) -> u32 {
+    let mut n = 0;
+    unsafe {
+        for i in 0..MAX_ABIERTOS {
+            if OWNER[i] == pid {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
 pub fn process_died(pid: u32) {
     unsafe {
         for i in 0..MAX_ABIERTOS {

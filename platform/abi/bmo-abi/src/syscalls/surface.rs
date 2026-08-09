@@ -271,6 +271,14 @@ pub const INFO_SMP_VIVOS: u64 = 0x1B;
 /// no mide rendimiento -- dice que una de esas dos frases dejo de ser cierta.
 pub const INFO_SPIN_CHOQUES: u64 = 0x1C;
 pub const INFO_SPIN_PICO: u64 = 0x1D;
+/// ** Recursos que una tarea muerta dejo SIN DEVOLVER, acumulados.
+///
+/// **Tiene que ser CERO**, y un numero distinto no acusa al programa que murio:
+/// acusa al KERNEL, que dijo haberlo recuperado todo y no lo hizo.
+///
+/// Es la misma clase de numero que `INFO_SPIN_CHOQUES` y va al lado a
+/// proposito: los dos son el sistema comprobandose a si mismo.
+pub const INFO_FUGAS: u64 = 0x1E;
 
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;

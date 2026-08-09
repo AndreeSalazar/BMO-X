@@ -77,6 +77,9 @@ const INFO_MEM_ENTREGADA: u64 = 0x19;
 const INFO_SMP_VIVOS: u64 = 0x1B;
 const INFO_SPIN_CHOQUES: u64 = 0x1C;
 const INFO_SPIN_PICO: u64 = 0x1D;
+// Recursos que un muerto dejo sin devolver. Misma clase que los choques: tiene
+// que ser CERO, y por eso vale. Ver `core/autopsia.rs`.
+const INFO_FUGAS: u64 = 0x1E;
 
 const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
@@ -161,6 +164,7 @@ pub fn campo(n: u64) -> u64 {
         // nada. Ver `plat/spin.rs`.
         INFO_SPIN_CHOQUES => crate::ring0::plat::spin::contention().0 as u64,
         INFO_SPIN_PICO => crate::ring0::plat::spin::contention().1 as u64,
+        INFO_FUGAS => crate::ring0::core::autopsia::fugas(),
         _ => 0,
     }
 }
