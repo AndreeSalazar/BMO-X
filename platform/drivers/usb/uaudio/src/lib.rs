@@ -243,6 +243,65 @@ pub fn set_mute(ac: &AudioControl, channel: u8, _on: bool) -> Request {
     }
 }
 
+/// Valida el rango que contesto el aparato antes de usarlo para nada.
+///
+/// Devuelve `None` cuando no se le puede creer, que es la senal de "usa el
+/// rango supuesto y **avisa**". Dos casos, y los dos se han visto de verdad:
+///
+/// - `max <= min`: el aparato no contesto, o contesto basura.
+/// - `min == `[`VOLUME_SILENCE`]: `0x8000` esta reservado para el silencio, no
+///   es un volumen. Tomarlo como minimo haria que los porcentajes bajos se
+///   convirtieran **en el marcador de silencio**, o sea que el 10% callara del
+///   todo en vez de sonar flojo. Se sube un paso: el volumen mas bajo que se
+///   puede MANDAR sin que sea la senal de callar.
+pub fn rango(min: i16, max: i16) -> Option<(i16, i16)> {
+    if max <= min {
+        return None;
+    }
+    let min = if min == VOLUME_SILENCE { VOLUME_SILENCE + 1 } else { min };
+    Some((min, max))
+}
+
+/// **Lo que hay que MANDARLE al aparato** para dejarlo en `percent`.
+///
+/// Existe porque poner el volumen a 0 no es "mandar un numero muy bajo": ver
+/// [`plan`], que es donde esta escrito el por que.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Plan {
+    /// Callar con el control de MUTE. Un byte, otro selector.
+    Callar,
+    /// Poner este valor de volumen. `quitar_mute` dice si ademas hay que
+    /// mandar un `MUTE = 0` delante, porque el aparato pudo quedarse callado
+    /// de la vez anterior y entonces el volumen no se oye igual.
+    Poner { valor: i16, quitar_mute: bool },
+}
+
+/// Decide que peticiones hacen falta para dejar el aparato en `percent`.
+///
+/// # Por que el 0% no es un valor de volumen
+///
+/// [`VOLUME_SILENCE`] (`0x8000`) es el silencio de la escala, pero **esta
+/// FUERA del rango que el aparato declara** con `GET_MIN`/`GET_MAX`. Un
+/// aparato que valida su rango --y hay muchos-- contesta **STALL** a ese valor.
+/// Y un STALL aqui es lo peor que puede pasar: la barra marca 0, el sistema
+/// cuenta un fallo, y **el audifono sigue sonando igual de fuerte con los
+/// cascos puestos**.
+///
+/// Asi que el 0% se manda por donde el estandar dice que se manda: el control
+/// **MUTE**, que es un si/no y no tiene rango que salirse.
+///
+/// Si el aparato no declara mute --pasa-- se baja al MINIMO que el declaro. No
+/// es silencio y no se finge que lo sea: es lo mas bajo que ese aparato admite.
+pub fn plan(percent: u8, min: i16, max: i16, has_mute: bool) -> Plan {
+    if percent == 0 {
+        if has_mute {
+            return Plan::Callar;
+        }
+        return Plan::Poner { valor: min, quitar_mute: false };
+    }
+    Plan::Poner { valor: percent_to_volume(percent, min, max), quitar_mute: has_mute }
+}
+
 /// Convierte un porcentaje 0..100 al valor en 1/256 dB que espera el aparato,
 /// **dentro del rango que el aparato declaro**.
 ///
@@ -416,6 +475,65 @@ mod tests {
         assert_eq!(v, -2653, "50% = -10.36 dB");
         let lineal = -6400 / 2;
         assert!(v > lineal, "la curva log tiene que quedar POR ENCIMA del lineal");
+    }
+
+    /// **** EL 0% SE MANDA POR EL MUTE, no por el volumen.
+    ///
+    /// El silencio de la escala (`0x8000`) esta FUERA del rango que el aparato
+    /// declara, asi que un aparato que valida contesta STALL: la barra marca 0
+    /// y **el audifono sigue sonando**. Si esta fila cambia a `Poner`, eso es
+    /// lo que vuelve.
+    #[test]
+    fn el_cero_por_ciento_calla_por_el_mute() {
+        assert_eq!(plan(0, -6400, 0, true), Plan::Callar);
+    }
+
+    /// Y si el aparato NO tiene mute, se baja al minimo que el declaro. No es
+    /// silencio, y por eso no se manda el marcador de silencio: se manda lo
+    /// mas bajo que ESE aparato admite.
+    #[test]
+    fn sin_mute_el_cero_baja_al_minimo_declarado() {
+        assert_eq!(
+            plan(0, -6400, 0, false),
+            Plan::Poner { valor: -6400, quitar_mute: false }
+        );
+    }
+
+    /// Subir de 0 tiene que QUITAR el mute. Sin esto, bajar a 0 y volver a
+    /// subir deja un aparato mudo con la barra al 80: el volumen llega, se
+    /// acepta, y no se oye -- que es exactamente el sintoma que hace pensar
+    /// que el camino entero esta roto.
+    #[test]
+    fn subir_de_cero_quita_el_mute() {
+        let p = plan(50, -6400, 0, true);
+        assert_eq!(p, Plan::Poner { valor: -2653, quitar_mute: true });
+    }
+
+    /// ** `0x8000` no es un volumen: es la senal de callar. Si un aparato lo
+    /// declara como minimo, tomarlo al pie de la letra haria que los
+    /// porcentajes bajos CALLARAN en vez de sonar flojo.
+    #[test]
+    fn un_minimo_de_silencio_no_se_toma_al_pie_de_la_letra() {
+        let (min, max) = rango(VOLUME_SILENCE, 0).expect("es un rango usable");
+        assert_eq!(min, VOLUME_SILENCE + 1);
+        assert_eq!(max, 0);
+        for p in 1..=100u8 {
+            assert_ne!(
+                percent_to_volume(p, min, max),
+                VOLUME_SILENCE,
+                "{p}% no puede caer en el marcador de silencio"
+            );
+        }
+    }
+
+    /// Un rango al reves --o el que queda cuando el aparato no contesta-- no se
+    /// usa: se dice que no vale, y quien llama avisa. Un rango inventado da un
+    /// volumen que salta de mudo a ensordecedor.
+    #[test]
+    fn un_rango_imposible_se_rechaza() {
+        assert!(rango(0, 0).is_none(), "max == min no es un rango");
+        assert!(rango(0, -6400).is_none(), "del reves tampoco");
+        assert!(rango(-6400, 0).is_some());
     }
 
     /// Y nunca se sale del rango del aparato, pase lo que pase. Un valor fuera

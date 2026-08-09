@@ -218,7 +218,19 @@ pub fn devices() -> u64 {
     // El puerto del altavoz existe en todo x86. Que haya algo conectado al
     // otro lado no se puede saber desde aqui, y por eso este bit dice "hay
     // camino", no "vas a oir algo".
-    DEVICE_SPEAKER
+    let mut mapa = DEVICE_SPEAKER;
+    // ** Y EL AUDIFONO, que es el unico de los dos que se oye en esta maquina.
+    //
+    // Este bit faltaba: `DEVICE_USB` estaba declarado, la ventana de F10 ya
+    // sabia pintar `+ audifono USB` y cambiar su frase por *"el volumen manda
+    // sobre el audifono USB de verdad"*, y **nadie lo encendia nunca**. O sea
+    // que la rama existia y era inalcanzable -- el aparato podia estar
+    // enchufado, localizado y obedeciendo, y la pantalla seguia diciendo que
+    // ahi solo habia un altavoz de PC.
+    if crate::ring0::dev::uaudio::hay() {
+        mapa |= DEVICE_USB;
+    }
+    mapa
 }
 
 /// El kernel pita **solo si nadie tiene el aparato**.
