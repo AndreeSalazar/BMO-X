@@ -159,28 +159,67 @@ conversion desconocida que **no se come el argumento**.
 
 ---
 
+# FASE 1.5 -- Lo que la lista NO tenia, y bloqueaba de verdad
+
+Escrito el **2026-08-09**, tarde. Ninguna de las tres estaba en el plan y las
+tres impiden que DOOM arranque. Salieron de contar en vez de suponer.
+
+| # | Que era | Como se supo |
+|---|---|---|
+| 1.10 | ★ **El tope de 4 `malloc`** | El plan decia que no bloqueaba porque `I_ZoneBase` pide UN bloque. Contando los sitios: el arranque llama a `malloc` **una docena de veces** -- solo `I_AtExit` son siete. **[x]** `<bmo/monton.h>`, un asignador de Ring 3 |
+| 1.11 | ★★ **El teclado no tenia SOLTAR** | `INPUT_OP_TECLA` entrega un CARACTER, y un caracter no tiene "solto". Quien echa a andar no para nunca; y Shift/Ctrl/Alt no producen caracter, asi que ni salian. **[x]** `INPUT_OP_EVENTO_TECLA` |
+| 1.12 | **`fseek` ignoraba el origen** | `M_FileLength` mide el WAD con `SEEK_END`. Con el origen ignorado, **el WAD medía cero bytes** sin una sola linea de error. **[x]** -- y de paso salio que `feof` daba EOF pasada la mitad de cualquier fichero |
+
+★ La leccion, que vale mas que las tres: **el plan daba por bloqueado lo que
+era visible (el lenguaje) y por resuelto lo que no lo era (la superficie del
+sistema).** Las tres se encontraron mirando el codigo de DOOM y el del kernel a
+la vez, no compilando.
+
+Y una que no bloquea pero se llevaba media imagen: **el 90,3% de la seccion
+`data` de DOOM eran ceros** que viajaban en el fichero. Ver `docs/LA_RAM.md`.
+
+---
+
 # FASE 2 -- La capa de plataforma: seis funciones
 
 DOOM (doomgeneric) habla con el sistema por **seis funciones**, y las seis ya
 tienen con que hacerse. Es `doomgeneric_bmo.c`, y es el fichero que hay que
 escribir de cero.
 
-| # | Casilla | Con que se hace | Tam |
-|---|---|---|---|
-| 2.0 | `DG_Init` | reclamar pantalla + entrada | S |
-| 2.1 | ★ `DG_DrawFrame` | `memcpy` del bufer de DOOM al framebuffer | S |
-| 2.2 | `DG_GetTicksMs` | `INFO_TICKS` | S |
-| 2.3 | `DG_SleepMs` | ceder el turno hasta el tick | S |
-| 2.4 | `DG_GetKey` | `INPUT_OP_TECLA` + tabla a `doomkeys.h` | M |
-| 2.5 | `DG_SetWindowTitle` | una linea en la barra, o nada | S |
+## [x] ESCRITA ENTERA el 2026-08-09 -- `doomgeneric_bmo.c`
 
-⚠ **2.1 tiene la unica decision de la fase**: DOOM pinta en **paleta de 8 bits**
-y el framebuffer es de 32. Hay que expandir cada pixel por su paleta, y eso son
-320x200 = 64.000 lookups por fotograma. `ray.bex` ya escribe pixeles a esa
-velocidad, asi que se espera que sobre -- **pero se mide, no se supone.**
+| # | Casilla | Con que se hizo |
+|---|---|---|
+| 2.0 | `DG_Init` | `PANTALLA_RECLAMAR` + `ENTRADA_RECLAMAR`, `FB_BASE`/`DIMS`/`STRIDE`, centrado |
+| 2.1 | `DG_DrawFrame` | `memcpy` fila a fila -- **por el stride**, ver abajo |
+| 2.2 | `DG_GetTicksMs` | **TSC**, no `INFO_TICKS` |
+| 2.3 | `DG_SleepMs` | girar sobre el TSC **cediendo** |
+| 2.4 | `DG_GetKey` | `INPUT_OP_EVENTO_TECLA` + tabla de scancode a `doomkeys.h` |
+| 2.5 | `DG_SetWindowTitle` | a consola: DOOM tiene la pantalla entera |
+
+**El `.bex`: 812.736 bytes.** Vive en `BMO-externo/doom/doomgeneric/`, fuera del
+repo, porque es GPL.
+
+⚠ **La decision de 2.1 se resolvio sola, y para bien**: DOOM **ya entrega 32
+bits**. `I_FinishUpdate` llama a `cmap_to_fb` y deja `DG_ScreenBuffer` con
+640x400 pixeles listos -- la expansion por paleta la hace DOOM, no nosotros.
+Aqui solo queda el blit. Lo que si hubo que hacer es copiar **fila a fila**: el
+framebuffer tiene stride, y un solo `memcpy` de corrido funciona en el panel
+donde stride == ancho y sale torcido en el primero donde no.
+
+★ **2.2 NO usa `INFO_TICKS`**, y el motivo importa: el tick del LAPIC se calibra
+en el arranque y **su frecuencia no esta declarada en ninguna constante que un
+programa pueda leer**. La del TSC si (`INFO_TSC_HZ`, medida por el kernel), asi
+que el reloj sale de `__rdtsc()` dividido por ciclos-por-milisegundo. Un reloj
+que no se puede convertir a milisegundos no es un reloj.
+
+★ **2.3 tiene una trampa que se paga cara**: girar sobre el reloj sin ceder no
+solo quema el quantum -- deja al resto del sistema sin turno, **incluido el bus
+USB, que se sondea desde dentro de un syscall**. O sea que un bucle de espera
+mal escrito aqui apaga el teclado de este mismo programa.
 
 **Como se sabe que la fase esta hecha**: sale el menu de DOOM en el Ryzen, con
-foto.
+foto. **Todavia no ha corrido.**
 
 ---
 
@@ -188,15 +227,25 @@ foto.
 
 | # | Casilla | Tam | Nota |
 |---|---|---|---|
-| 3.0 | Leer `doom1.wad` (4.196.020 B) con la cadena de ficheros | S | ya existe `ARCH_OP_LEER_EN` |
-| 3.1 | ⚠ Que quepa: el WAD son 4 MiB | M | son cosas distintas -- el WAD NO es la imagen, va a `KIND_MEMORIA` y no a `MAX_BEX` |
+| 3.0 | Leer `doom1.wad` (4.196.020 B) con la cadena de ficheros | S | **[x] escrito** -- `-iwad apps/doom1.wad` por `myargv` |
+| 3.1 | ⚠ Que quepa: el WAD son 4 MiB | M | **no hace falta**: DOOM NO lo carga entero, ver abajo |
 | 3.2 | `W_CacheLumpName` sobre el zone allocator | S | es codigo de DOOM, no de BMO |
 
-★ **3.1 es la que hay que mirar antes**: el WAD se lee a la memoria que pidio
-`I_ZoneBase`, no al bufer de imagenes. Pero el camino de lectura de hoy copia
-por un bufer de rebote del kernel, y 4 MiB por ahi son muchas vueltas. Si duele,
-lo que lo arregla es DMA directo al bufer del llamante, que ya esta en la hoja
-de ruta como palanca de arquitectura.
+★ **3.1 se cayo sola al mirarlo**: `w_file_stdc.c` **no slurpea el WAD**. Lee el
+directorio de lumps al abrir y luego cada lump por `fseek`+`fread` cuando hace
+falta, a memoria de la zona. Nunca hay 4 MiB en vuelo. Lo que si hizo falta fue
+que `fseek` entendiera `SEEK_END`, porque el WAD se MIDE con el (fase 1.12).
+
+★ **El WAD se nombra, no se busca.** `d_iwad.c` sabe rebuscar en directorios
+estandar y en variables de entorno, y aqui no hay ni lo uno ni lo otro --
+`getenv` contesta que no hay y lo dice. Se le pasa la ruta por `myargv`, que es
+un camino que DOOM ya tiene y que no obliga a inventarse un sistema de ficheros
+que BMO-X no promete.
+
+⚠ Lo que sigue en pie de la nota vieja: el camino de lectura copia por un bufer
+de rebote del kernel. Con lumps de decenas de KB no deberia dolerse -- **pero se
+mide, no se supone**. Si duele, lo arregla el DMA al bufer del llamante, que es
+el escalon 3 de `docs/LA_RAM.md`.
 
 ---
 
@@ -235,17 +284,40 @@ musica", y eso pide un sintetizador. **Se paran en 5.3 y se dice.**
 
 # La cuenta, para poder repartir
 
-| Fase | Casillas | Faltan | Bloquea a |
-|---|---|---|---|
-| 1 -- el unity termina | 6 | 6, y una es XL | todo |
-| 2 -- la plataforma | 6 | 6, todas S/M | la foto del menu |
-| 3 -- el WAD | 3 | 3 | jugar |
-| 4 -- jugable | 3 | 3 | -- |
-| 5 -- sonido | 5 | 5, y **empieza de cero** | nada |
+Actualizada el **2026-08-09**, tarde.
 
-**Lo unico que bloquea a todo lo demas es 1.0.** Es una pieza XL y es la unica:
-en cuanto exista, la fase 2 son seis funciones cortas y la 3 es codigo de DOOM
-llamando a lo que BMO ya tiene.
+| Fase | Casillas | Faltan | Estado |
+|---|---|---|---|
+| 1 -- el unity termina | 6 | 0 | **[x]** compila a `.bex` |
+| 1.5 -- lo que no estaba en la lista | 3 | 0 | **[x]** monton, tecla cruda, `fseek` |
+| 2 -- la plataforma | 6 | 0 | **[x]** escrita, `doomgeneric_bmo.c` |
+| 3 -- el WAD | 3 | 0 | **[x]** escrito -- `-iwad apps/doom1.wad` |
+| 4 -- jugable | 3 | 2 | guardar partida pide `fwrite`, que devuelve 0 |
+| 5 -- sonido | 5 | 5, y **empieza de cero** | nada lo bloquea |
+
+★★ **NO QUEDA NINGUNA CASILLA ESCRITA SIN ESCRIBIR PARA VER EL MENU. Lo que
+queda es ARRANCARLO, y eso no lo puede hacer el compilador.**
+
+DOOM entero --56.465 lineas, mas la capa de plataforma-- compila a un `.bex` de
+812.736 bytes y **ningun CPU lo ha ejecutado**. Lo que falta para la foto:
+
+1. Copiar `doom.bex` y `doom1.wad` al Kingston, a `apps/`. **A mano**: los dos
+   son GPL y `build.ps1` no puede nombrarlos sin meter licencia ajena en el
+   repo.
+2. `run apps/doom.bex` desde el shell de Ring 0 -- **no desde el escritorio**,
+   que tiene la pantalla y la entrada tomadas y las dos son EXCLUSIVAS.
+
+**Y lo que puede salir mal, en orden de probabilidad**, para saber donde mirar:
+
+| Sintoma | Sospechoso |
+|---|---|
+| `no cabe en el buffer` | la imagen pasa de `MAX_BEX` (4 MiB). No deberia: mide 0,8 |
+| `DOOM: no hay pantalla` | se lanzo desde el escritorio |
+| `W_AddFile: doom1.wad no encontrado` | la ruta del WAD, o FAT32 no monta |
+| Arranca y muere sin pintar | el monton: 12 MiB CONTIGUOS en fisico. CABINA dice si el kernel los nego |
+| Pinta y no responde | `DOOM: sin teclado` en la consola lo dice antes |
+| Anda solo y no para | la cola cruda no llega: el `soltar` se perdio |
+| Va a tirones | el blit, o `DG_SleepMs` cediendo mal |
 
 ---
 
