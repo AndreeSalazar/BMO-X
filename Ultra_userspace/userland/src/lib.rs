@@ -103,9 +103,16 @@ pub const OP_SMP_DESPERTAR: u32 = 0x1B;
 pub const OP_TOMAR: u32 = 0x1C;
 /// Operacion sobre un bloque PROPIO: ofrecer un trozo a otra tarea.
 pub const MEM_OP_OFRECER: u32 = 0x03;
+/// **Quien me lanzo**, como TID. `0` si nadie -- ver [`crate::sys::mi_padre`].
+pub const OP_MI_PADRE: u32 = 0x26;
 /// Operaciones sobre un handle de memoria PRESTADA (`KIND_PRESTADO`).
 pub const PRESTADO_OP_BASE: u32 = 0x01;
 pub const PRESTADO_OP_BYTES: u32 = 0x02;
+/// El TID de quien lo presto, o `0` si ya no vive. El detector de vida de una
+/// ventana: ver [`crate::sys::prestado_dueno`].
+pub const PRESTADO_OP_DUENO: u32 = 0x03;
+/// Devolverlo. Ver [`crate::sys::soltar_prestado`].
+pub const PRESTADO_OP_SOLTAR: u32 = 0x04;
 
 /// Donde empieza el bloque, y cuanto se ha entregado a este proceso.
 pub const MEM_OP_BASE: u32 = 0x01;

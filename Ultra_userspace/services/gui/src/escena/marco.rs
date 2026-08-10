@@ -117,6 +117,39 @@ impl Marco {
         }
     }
 
+    /// Una ventana **del tamano de su contenido**, mas el cromo.
+    ///
+    /// === Por que esta si va en pixeles, cuando `nuevo` no ===
+    ///
+    /// Porque aqui el tamano no lo elige el escritorio: **lo eligio la app**. Una
+    /// superficie de 640x400 mide eso, y darle un 40 % de la pantalla la
+    /// estiraria o la dejaria con un borde muerto alrededor. El argumento contra
+    /// los pixeles --que `640x330` solo es correcto en la pantalla del que lo
+    /// escribio-- vale para una ventana del sistema y no para una que envuelve
+    /// una imagen de medida conocida.
+    ///
+    /// Se recorta contra el panel: una app puede pedir una superficie mas grande
+    /// que la pantalla, y una ventana que no cabe no se puede ni agarrar.
+    pub(crate) fn para_contenido(p: &bmo::Pantalla, ancho: u32, alto: u32) -> Self {
+        let ancho = (ancho + 2).min(p.ancho.saturating_sub(16)).max(3 * BOTON_LADO + 16);
+        let alto = (alto + TITULO_ALTO + 1).min(p.alto.saturating_sub(BARRA_ALTO + 16));
+        Self {
+            x: p.ancho.saturating_sub(ancho) / 2,
+            y: BARRA_ALTO + (p.alto.saturating_sub(BARRA_ALTO + alto)) / 2,
+            ancho,
+            alto,
+            // El minimo es el cromo: por debajo de eso no quedan ni los botones,
+            // y una ventana sin boton de cerrar es una ventana que no se cierra.
+            min_ancho: 3 * BOTON_LADO + 16,
+            min_alto: TITULO_ALTO + 8,
+            arrastre: None,
+            estirando: false,
+            guardada: None,
+            minimizada: false,
+            encima: None,
+        }
+    }
+
     pub(crate) fn contiene(&self, px: u32, py: u32) -> bool {
         !self.minimizada
             && px >= self.x

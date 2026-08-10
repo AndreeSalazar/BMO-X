@@ -265,6 +265,17 @@ pub fn offer(bloque: u64, desde: u64, bytes: u64, tid: u32) -> bool {
 /// quien la hace. A partir de aqui se escribe con un `mov` normal: el kernel no
 /// vuelve a enterarse, que es el punto entero de prestar memoria.
 pub fn tomar_prestado() -> Option<(u64, u64)> {
+    tomar_prestado_de().map(|(_, base, bytes)| (base, bytes))
+}
+
+/// Igual, pero devuelve tambien **el handle**: `(handle, base, bytes)`.
+///
+/// * El handle hace falta en cuanto uno toma MAS DE UNA cosa, que es lo que hace
+/// el DIRECTOR --un prestamo por ventana--: es lo unico que distingue un
+/// prestamo de otro para preguntarle si su dueno sigue vivo o para devolverlo.
+/// `tomar_prestado` se queda como estaba para quien solo toma una y nunca la
+/// suelta.
+pub fn tomar_prestado_de() -> Option<(u64, u64, u64)> {
     let h = invoke(CURRENT_TASK, OP_TOMAR, 0, 0, 0).value;
     if h == 0 {
         return None;
@@ -274,8 +285,38 @@ pub fn tomar_prestado() -> Option<(u64, u64)> {
     if base == 0 || bytes == 0 {
         None
     } else {
-        Some((base, bytes))
+        Some((h, base, bytes))
     }
+}
+
+/// **El TID de quien presto esto, o `0` si ya no vive.**
+///
+/// ** Es el detector de vida de una ventana. El DIRECTOR compone la memoria de
+/// otro proceso; sin esta pregunta, la unica pista de que ese proceso murio
+/// seria que la secuencia de la superficie deje de subir -- y eso no se
+/// distingue de una app pensando. Se pregunta una vez por ventana y fotograma:
+/// un `invoke` que no toca nada.
+pub fn prestado_dueno(handle: u64) -> u32 {
+    invoke(handle, PRESTADO_OP_DUENO, 0, 0, 0).value as u32
+}
+
+/// **Devuelve lo prestado**: se desmapea de mi espacio y la ranura queda libre.
+///
+/// Hace falta desde que hay mas de un prestamo vivo: sin esto, abrir y cerrar
+/// ventanas agota las ranuras del kernel y a partir de ahi ninguna app vuelve a
+/// tener caja hasta reiniciar. Despues de llamarla, `base` **ya no se puede
+/// tocar** -- esas paginas no estan.
+pub fn soltar_prestado(handle: u64) -> bool {
+    invoke(handle, PRESTADO_OP_SOLTAR, 0, 0, 0).value != 0
+}
+
+/// **Quien me lanzo**, como TID. `0` si nadie -- ver `TASK_OP_MI_PADRE`.
+///
+/// El `0` no es un error: significa que este programa lo arranco el shell de
+/// Ring 0 y **no hay nadie componiendo para el**. Quien pinte en una superficie
+/// comprueba el cero y se cae al camino de la pantalla exclusiva.
+pub fn mi_padre() -> u32 {
+    invoke(CURRENT_TASK, OP_MI_PADRE, 0, 0, 0).value as u32
 }
 
 /// **Desactiva los obreros**: vuelven a `hlt` y ahi se quedan.

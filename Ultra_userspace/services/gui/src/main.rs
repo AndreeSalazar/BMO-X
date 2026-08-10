@@ -716,6 +716,22 @@ pub extern "C" fn _start() -> ! {
     // en cero: los de antes de arrancar el escritorio ya se guardaron.
     let mut fallos_vistos = bmo::autopsia_total();
 
+    // -- ** LAS APPS EN SU CAJA --
+    //
+    // Una app pide memoria, dibuja ahi y **se la ofrece** al que la lanzo. Desde
+    // aqui se toma una vez y se pega dentro de un marco cada vez que su
+    // secuencia sube. La pantalla no cambia de dueno ni una vez -- que es todo
+    // lo que separa esto de `prestar_pantalla`, el camino de al lado, que le
+    // entrega el aparato al hijo y deja el escritorio sin existir mientras dure.
+    //
+    // Ver `escena::superficie`. Nace vacia: no hay ventana hasta que una app
+    // ofrezca, y las que no ofrezcan siguen yendo por el camino de siempre.
+    let mut mesa = escena::superficie::Mesa::nueva();
+    // Los rectangulos que dejan las ventanas cuya app murio, para devolverselos
+    // al escritorio. Se declara fuera del bucle porque es un buzon, no un
+    // estado: se llena y se vacia dentro de la misma vuelta.
+    let mut difuntas = [(0u32, 0u32, 0u32, 0u32); escena::superficie::MAX];
+
     loop {
         // -- Termino el programa que se lanzo? Entonces, a guardarlo --
         //
@@ -741,6 +757,22 @@ pub extern "C" fn _start() -> ! {
         vueltas = vueltas.wrapping_add(1);
         let mut repintar_campo = false;
 
+        // -- * ALGUIEN OFRECE UNA SUPERFICIE? --
+        //
+        // Se pregunta al kernel una vez por vuelta y casi siempre dice que no.
+        // Es el precio de no tener que avisar: una app ofrece cuando le viene
+        // bien --puede ser en su primer fotograma o en el mil-- y el DIRECTOR se
+        // entera **mirando**, no porque nadie le mande un mensaje. Una operacion
+        // que ya existia y ninguna cola nueva.
+        let mut nacio = false;
+        if mesa.recoger(&p) {
+            nacio = true;
+        }
+        // Y las que se quedaron sin dueno. Va ANTES de pintar nada: la ventana
+        // de una app muerta tiene que desaparecer en el mismo fotograma en que
+        // se sabe, no en el siguiente.
+        let muertas = mesa.retirar_difuntas(&mut difuntas);
+
         // -- Va a pintar algo este fotograma? --
         //
         // Hay que saberlo ANTES de pintar, porque el cursor del raton se quita
@@ -750,7 +782,15 @@ pub extern "C" fn _start() -> ! {
         // teclas?" obliga a tenerlas ya en la mano.
         //
         // Lo que se lee aqui no se interpreta aqui: esto solo recoge.
-        let mut va_a_pintar = salida.sucia || desde_tecla + 1 >= PARPADEO;
+        // ** Y las superficies cuentan aqui, no donde se pintan. Si un fotograma
+        // en el que solo cambio una app no se contara como "va a pintar", el
+        // cursor del raton no se quitaria antes de componer -- la app dibujaria
+        // encima y el puntero desapareceria bajo su ventana.
+        let mut va_a_pintar = salida.sucia
+            || desde_tecla + 1 >= PARPADEO
+            || nacio
+            || muertas > 0
+            || mesa.hay_nuevo();
 
         if let Some(e) = entrada.as_ref() {
             // -- El atajo, ANTES de leer teclas --
@@ -2663,6 +2703,96 @@ pub extern "C" fn _start() -> ! {
                 }
             }
 
+            // -- ** EL RATON SOBRE UNA CAJA DE APP --
+            //
+            // Los mismos tres gestos que las ventanas del sistema, y por eso son
+            // ocho lineas: el marco ya sabe hacerlos. **Este es el cobro del
+            // `marco.rs`** -- se escribio para que la cuarta ventana saliera
+            // gratis, y la cuarta ventana resulta ser un programa entero.
+            //
+            // Va DESPUES de las ventanas del sistema y antes de las fichas: una
+            // app en su caja esta por delante de ellas, asi que su clic manda.
+            {
+                use escena::marco::Boton;
+
+                if boton && !boton_antes {
+                    if let Some(i) = mesa.en(pos.x, pos.y) {
+                        // El realce se pone aunque no se pulse: si no, los tres
+                        // botones de una app serian los unicos del escritorio
+                        // que no se encienden al pasar por encima.
+                        let gesto = mesa.get_mut(i).and_then(|s| s.marco.boton_en(pos.x, pos.y));
+                        match gesto {
+                            // ** CERRAR NO MATA A LA APP: le quita la caja.
+                            //
+                            // Matar un proceso ajeno por ser el DIRECTOR seria
+                            // `root` con otro nombre, en el sistema cuya primera
+                            // clausula dice que la autoridad no se hereda. Matar
+                            // se hara con el handle que devolvio LANZARLA --
+                            // paso 3 del plan-- y no desde aqui.
+                            Some(Boton::Cerrar) => {
+                                if let Some((vx, vy, va, vl)) = mesa.cerrar(i) {
+                                    borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                                    destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                                    for s in mesa.iter_mut() {
+                                        s.repintar_todo();
+                                    }
+                                }
+                            }
+                            Some(Boton::Minimizar) => {
+                                if let Some(s) = mesa.get_mut(i) {
+                                    let (vx, vy, va, vl) =
+                                        (s.marco.x, s.marco.y, s.marco.ancho, s.marco.alto);
+                                    s.marco.minimizada = true;
+                                    borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                                    destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                                }
+                            }
+                            // ** PANTALLA COMPLETA = QUE NO SE DIBUJE EL BORDE.
+                            //
+                            // Y aqui todavia no: maximizar da el hueco entero
+                            // bajo la barra, que es lo que hacen las demas. Lo
+                            // que NO pasa --ni pasara-- es entregarle el
+                            // aparato: se sigue componiendo, asi que Alt+Tab
+                            // sigue y `Ctrl+Alt+ESC` sigue. Un juego colgado se
+                            // cierra con el teclado y no con el boton de reset.
+                            Some(Boton::Maximizar) => {
+                                if let Some(s) = mesa.get_mut(i) {
+                                    let (vx, vy, va, vl) = s.marco.alternar_maximizada(&p);
+                                    borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                                    destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                                    s.repintar_todo();
+                                }
+                            }
+                            None => {
+                                if let Some(s) = mesa.get_mut(i) {
+                                    s.marco.agarrar(pos.x, pos.y);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Arrastrar y estirar. El sitio VIEJO se borra antes de mover:
+                // aqui no hay nadie que repinte lo de debajo, asi que sin esto
+                // la ventana deja un rastro de copias de si misma.
+                for i in 0..escena::superficie::MAX {
+                    let Some(s) = mesa.get_mut(i) else { continue };
+                    if !s.marco.agarrado() {
+                        continue;
+                    }
+                    if !boton {
+                        s.marco.release();
+                        continue;
+                    }
+                    let (vx, vy, va, vl) = (s.marco.x, s.marco.y, s.marco.ancho, s.marco.alto);
+                    if s.marco.seguir_al_puntero(&p, pos.x, pos.y) {
+                        s.repintar_todo();
+                        borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                        destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                    }
+                }
+            }
+
             // -- Clic en una FICHA de la barra: traer esa ventana --
             //
             // Es la mitad que hace que minimizar signifique algo. Sin esto, el
@@ -2892,6 +3022,30 @@ pub extern "C" fn _start() -> ! {
         // Tres mensajes que ya existian mas este, y el diagnostico deja de ser
         // una teoria. Cuesta una linea en el log y se dice una vez en la vida
         // del proceso.
+        // -- ** LAS APPS, COMPUESTAS --
+        //
+        // Va **al final** y por el mismo motivo que el cursor va detras: lo que
+        // se pinta al final es lo que queda encima. Una app en su caja esta por
+        // delante de las ventanas del sistema, y el unico que se le pone encima
+        // es el puntero del raton.
+        //
+        // El hueco de las que murieron se devuelve ANTES de componer las vivas:
+        // borrar despues taparia a una ventana que si esta.
+        if va_a_pintar {
+            for &(vx, vy, va, vl) in difuntas[..muertas].iter() {
+                borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+            }
+            if muertas > 0 {
+                destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                // Lo que quedara debajo de la que se fue tiene que volver a
+                // pintarse: `borrar_ventana` devuelve el FONDO, no las ventanas.
+                for s in mesa.iter_mut() {
+                    s.repintar_todo();
+                }
+            }
+            mesa.componer(&p);
+        }
+
         if vueltas == 1 {
             bmo::consola("primer fotograma completo\n");
         }

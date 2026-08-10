@@ -25,6 +25,10 @@ pub(crate) mod salida;
 /// DEVUELVE al cerrarse -- ver la cabecera del modulo: es lo unico que impide
 /// que el escritorio deje mudos a todos los programas que lanza.
 pub(crate) mod sonido;
+/// **La SUPERFICIE de una app**: memoria que otro proceso dibuja y el DIRECTOR
+/// pega dentro de un marco. Es lo que convierte "prestar la pantalla entera" en
+/// "tener una ventana".
+pub(crate) mod superficie;
 
 
 // -- La escena -----------------------------------------------------------

@@ -115,6 +115,23 @@ const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
 /// seria pedir por nombre lo que se tiene por derecho -- y quien puede escribir
 /// una ruta puede escribir otra.
 const TASK_OP_MI_PAQUETE: u64 = 0x25;
+/// **Quien me lanzo**, como TID. Espejo de `bmo_abi::...::TASK_OP_MI_PADRE`.
+///
+/// Una app dibuja en su memoria y se la OFRECE al que la puso en pantalla (ver
+/// `<bmo/superficie.h>`). Ofrecer exige nombrar al destinatario, y el hijo no
+/// tiene forma de nombrarlo: `MEM_OP_OFRECER` habla en tids y el tid del
+/// compositor no aparece en ningun sitio de su espacio.
+///
+/// ** Y por eso NO es un registro de nombres. La pregunta no es *"quien manda"*
+/// --eso seria autoridad ambiental, y el que la leyera podria pedirle cosas a
+/// quien nunca se las ofrecio-- sino **"quien me lanzo a MI"**: una respuesta
+/// local, concreta, y que no concede nada. Ver `ring0/task/familia.rs`.
+///
+/// Devuelve `0` si no hay padre --lanzado desde el shell de Ring 0-- y eso no es
+/// un error: es la respuesta correcta a *"quien compone para mi"* cuando nadie
+/// compone. El programa que la reciba se cae al camino de la pantalla
+/// exclusiva, que es el degradado correcto.
+const TASK_OP_MI_PADRE: u64 = 0x26;
 /// Reinicia la maquina. No vuelve.
 ///
 /// El reinicio de tres pasos (`0xCF9` -> 8042 -> triple fault) ya existia y solo
@@ -441,6 +458,17 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
+        }
+        TASK_OP_MI_PADRE => {
+            let pid = scheduler::current_pid();
+            // Se contesta en TID y no en pid: es lo unico que Ring 3 sabe usar,
+            // porque `ofrecer` recibe un tid. Y si el padre ya murio, `tid_de`
+            // dice `None` y aqui sale un 0 -- la misma respuesta que "no tengo
+            // padre", que es tambien la misma decision para quien pregunta.
+            let tid = crate::ring0::task::familia::padre_de(pid)
+                .and_then(scheduler::tid_de)
+                .unwrap_or(0);
+            BmoStatus::ok_value(tid as u64)
         }
         TASK_OP_ARCHIVO_CREAR => {
             let _ = arg0;
@@ -797,6 +825,17 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 Ok(tid) => {
                     if let (Some(idx), Some(hijo)) = (consola_idx, informe.pid) {
                         crate::ring0::obj::consola::assign_output(hijo, idx);
+                    }
+                    // * QUIEN lo lanzo, para que el hijo pueda ofrecerle su
+                    // superficie. Se apunta AQUI y no dentro de `lanzar.rs`
+                    // --donde vive el hermano `paquete::recordar`-- porque
+                    // `lanzar::ruta` lo comparten este brazo y el shell del
+                    // kernel: mirando `current_pid()` desde dentro, un `run`
+                    // tecleado por el puerto serie le pondria de padre a la
+                    // tarea que estuviera corriendo, tipicamente el compositor.
+                    // Aqui el padre es quien hizo la llamada, sin adivinar.
+                    if let Some(hijo) = informe.pid {
+                        crate::ring0::task::familia::recordar(hijo, pid);
                     }
                     BmoStatus::ok_value(tid as u64)
                 }

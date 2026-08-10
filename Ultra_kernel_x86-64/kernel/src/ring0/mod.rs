@@ -51,6 +51,9 @@ pub mod obj {
 /// Procesos: admitirlos, planificarlos, lanzarlos desde el disco.
 pub mod task {
     pub mod bex;
+    /// **Quien lanzo a quien.** Un pid y nada mas: lo justo para que una app
+    /// pueda ofrecerle su superficie al que la puso en pantalla.
+    pub mod familia;
     pub mod lanzar;
     /// De donde salio cada proceso, para que pueda leer su propia caja.
     pub mod paquete;

@@ -688,6 +688,29 @@ pub fn pid_de(tid: u32) -> Option<u32> {
         .map(|t| t.pid)
 }
 
+/// El inverso: el tid de `pid`, si sigue vivo.
+///
+/// * Existe porque **Ring 3 solo conoce tids**. `EJECUTAR` devuelve un tid, y
+/// `MEM_OP_OFRECER` recibe un tid y lo traduce con [`pid_de`]. El kernel, en
+/// cambio, apunta parentesco y capabilities en pids -- son del PROCESO. Sin esta
+/// traduccion, `TASK_OP_MI_PADRE` tendria que devolver un pid, y un programa que
+/// se lo pasara a `ofrecer` estaria nombrando **a otro proceso cualquiera** que
+/// resultara tener ese numero de tid. Dos espacios de nombres que se parecen es
+/// como se cruzan dos identificadores sin que nada falle al compilar.
+///
+/// ** Devolver `None` cuando el proceso ya murio es parte del contrato, no un
+/// hueco: es lo que convierte esta pregunta en un detector de vida. El DIRECTOR
+/// pregunta por el dueno de una superficie cada fotograma y **el cero es la
+/// senal de que hay que cerrar la ventana**.
+pub fn tid_de(pid: u32) -> Option<u32> {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    s.tasks
+        .iter()
+        .find(|t| t.pid == pid && t.state != TaskState::Empty && t.state != TaskState::Exited)
+        .map(|t| t.tid)
+}
+
 pub fn counts() -> (usize, usize) {
     let _g = SCHED_LOCK.lock();
     let s = sched();

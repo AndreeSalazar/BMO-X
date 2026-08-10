@@ -2,6 +2,29 @@
 
 ---
 
+> ## ⚠ ESTE DOCUMENTO ESTA SUPERADO -- ver [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md)
+>
+> **2026-08-10.** Lo de abajo sigue siendo la mejor explicacion de POR QUE el
+> kernel solo presta bytes, y por eso no se borra. Pero su conclusion --*"camino
+> B se descarta"*-- ya no se sostiene, y conviene decir por que se cayo:
+>
+> El camino B se descarto por dos motivos, y **los dos apuntaban al mismo error
+> de partida**: que el bloque de la app fuera un TROZO DEL LIENZO DEL COMPOSITOR.
+>
+> - *"una app podria pintar encima de la ventana de al lado"* -- con un bloque
+>   PROPIO no hay vecino al que pisar. Lo que se ofrece es memoria suya.
+> - *"trae tearing, doble bufer y sincronizacion entre procesos"* -- el tearing
+>   se resuelve con **un contador**, no con un cerrojo: la app sube `secuencia`
+>   cuando el dibujo esta entero y el DIRECTOR solo repinta cuando cambia. La
+>   sincronizacion entre procesos que asustaba aqui son cuatro bytes.
+>
+> Y la copia sigue existiendo, que es lo que este documento acerto: el DIRECTOR
+> **pega** la superficie dentro del marco, y esa copia ES la composicion.
+>
+> El formato de la superficie es `<bmo/superficie.h>` (`BSUP`), y no hizo falta
+> ninguna operacion nueva del kernel: ni `LIENZO_REGISTRAR`, ni `LIENZO_INFO`, ni
+> `LIENZO_VOLCAR`. Las tres operaciones que este documento pedia salieron **cero**.
+
 # ✅ ESTADO AL 2026-08-07 -- LEASE ESTO PRIMERO
 
 El diseno de abajo se **construyo, y por el camino cambio dos veces por

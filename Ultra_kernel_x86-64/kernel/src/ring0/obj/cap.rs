@@ -277,6 +277,11 @@ pub fn revoke_all(pid: u32) {
     // muerto, y `MI_PAQUETE` le entregaria **la imagen de otro programa** -- que
     // ademas cargaria y leeria perfectamente, porque es un `.bex` valido.
     crate::ring0::task::paquete::process_died(pid);
+    // Y quien lo lanzo. Las dos puntas: sin limpiar las filas donde este pid era
+    // el PADRE, un pid reutilizado heredaria los hijos del muerto y `MI_PADRE`
+    // mandaria una superficie a un proceso que no la pidio -- que ademas la
+    // tomaria sin quejarse, porque el prestamo no sabe que lleva pixeles dentro.
+    crate::ring0::task::familia::process_died(pid);
     revoke_all_slots(pid)
 }
 

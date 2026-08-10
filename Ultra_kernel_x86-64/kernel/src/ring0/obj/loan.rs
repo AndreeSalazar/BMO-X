@@ -45,16 +45,45 @@
 use crate::ring0::mm::{self, vmm};
 use crate::ring0::obj::cap;
 
-/// Ofertas vivas a la vez. Ocho: hoy hay una (el escritorio a una app) y el
-/// tope existe para que una oferta olvidada no crezca sin fin.
-const MAX: usize = 8;
+/// Ofertas vivas a la vez.
+///
+/// * Subio de 8 a 16 el 2026-08-10, y el motivo tiene nombre: **el DIRECTOR
+/// tiene una por ventana**. Con el modelo de superficies, cada app en una caja
+/// es un prestamo vivo mientras esa caja exista; ocho era el numero de cuando
+/// solo se prestaba el escritorio a una app cada vez. Es el mismo 16 de
+/// `paquete::MAX_VIVOS` y de `familia::MAX_VIVOS`, que es el censo de programas
+/// que este sistema se cree a la vez.
+const MAX: usize = 16;
 
-/// Donde se mapea lo prestado en el espacio del que toma.
+/// Donde empieza la zona de lo prestado en el espacio del que toma.
 ///
 /// Lejos de `MEMORIA_VA_BASE` (`0xE000_0000`) a proposito: un proceso puede
 /// tener bloques de `malloc` **y** algo prestado, y que se pisaran seria un
 /// fallo sin mensaje -- escribirias encima de tu propio `malloc`.
 const PRESTAMO_VA_BASE: u64 = 0x0000_0001_0000_0000;
+
+/// Cuanto espacio de direcciones se reserva a CADA prestamo.
+///
+/// [!] Esto es el arreglo de un fallo que no habia salido todavia porque nadie
+/// habia tomado dos cosas. `take` mapeaba **siempre en `PRESTAMO_VA_BASE`**: el
+/// segundo prestamo caia encima del primero, la capability se concedia con el
+/// mismo objeto --la VA-- y `operation` buscaba por `va_destino == base`, o sea
+/// que dos handles distintos apuntaban al mismo sitio y contestaban lo del otro.
+/// Con una app en una caja no se nota; con dos, la segunda ventana ensena los
+/// pixeles de la primera y nada falla en ningun sitio.
+///
+/// La direccion la decide **la ranura**: `BASE + ranura * VENTANA`. Sin cursor,
+/// sin contabilidad y sin poder solaparse, porque dos prestamos vivos nunca
+/// comparten ranura. 64 MiB es el tope de un bloque de `KIND_MEMORIA`
+/// (`memoria::MAX_BYTES`), asi que lo mas grande que se puede ofrecer entra en
+/// su ventana; 16 ventanas son 1 GiB de espacio de direcciones, que en 64 bits
+/// no es un recurso escaso.
+const PRESTAMO_VENTANA: u64 = 64 * 1024 * 1024;
+
+/// Donde le toca a la ranura `i`.
+fn va_de_ranura(i: usize) -> u64 {
+    PRESTAMO_VA_BASE + i as u64 * PRESTAMO_VENTANA
+}
 
 #[derive(Clone, Copy)]
 struct Offer {
@@ -71,13 +100,34 @@ struct Offer {
     /// Ya tomada: donde quedo en el espacio del destino, para desmapear.
     tomada: bool,
     va_destino: u64,
+    /// **El dueno murio y esto sigue mapeado.** Ver [`process_died`]: las
+    /// paginas se quedan, y lo unico que cambia es que [`OP_DUENO`] contesta 0.
+    huerfana: bool,
 }
 
 const NOTHING: Offer = Offer {
     viva: false, owner: 0, aspace_dueno: 0, origen: 0, bytes: 0,
-    destino: 0, tomada: false, va_destino: 0,
+    destino: 0, tomada: false, va_destino: 0, huerfana: false,
 };
 static mut OFERTAS: [Offer; MAX] = [NOTHING; MAX];
+
+/// Donde esta lo prestado, en MI espacio.
+pub const OP_BASE: u64 = 0x01;
+/// Cuantos bytes son.
+pub const OP_BYTES: u64 = 0x02;
+/// **El TID de quien me lo presto, o `0` si ya no vive.**
+///
+/// * Es el detector de vida de la ventana, y por eso existe. El DIRECTOR
+/// compone la memoria de otro proceso; cuando ese proceso muere, la unica forma
+/// de enterarse seria mirar la superficie y ver que la secuencia no sube -- que
+/// no se distingue de una app pensando. Aqui se pregunta y se contesta.
+pub const OP_DUENO: u64 = 0x03;
+/// **Devolver lo prestado**: se desmapea de MI espacio y la ranura queda libre.
+///
+/// La contrapartida de `take`, y hace falta desde que hay mas de un prestamo: si
+/// el DIRECTOR no pudiera soltar, cerrar y abrir ventanas agotaria las 16
+/// ranuras y a partir de ahi ninguna app volveria a tener caja hasta reiniciar.
+pub const OP_SOLTAR: u64 = 0x04;
 
 /// **Ofrecer un trozo del bloque propio.** Devuelve `true` si quedo apuntado.
 ///
@@ -88,6 +138,13 @@ static mut OFERTAS: [Offer; MAX] = [NOTHING; MAX];
 pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, bytes: u64, destino: u32) -> bool {
     if bytes == 0 || desde.checked_add(bytes).map_or(true, |f| f > entregado) {
         crate::ring0::cabina::warn("prestamo", "el trozo no cabe en el bloque", desde);
+        return false;
+    }
+    // Y que quepa en SU VENTANA, que es lo que decide donde se mapea. Se
+    // comprueba al ofrecer y no al tomar porque el que ofrece es quien puede
+    // hacer algo al respecto: pedir una superficie mas pequena.
+    if bytes > PRESTAMO_VENTANA {
+        crate::ring0::cabina::warn("prestamo", "no cabe en una ventana de prestamo", bytes);
         return false;
     }
     if destino == owner {
@@ -108,7 +165,7 @@ pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, byt
         if !o.viva {
             *o = Offer {
                 viva: true, owner, aspace_dueno: aspace, origen: base + desde,
-                bytes, destino, tomada: false, va_destino: 0,
+                bytes, destino, tomada: false, va_destino: 0, huerfana: false,
             };
             crate::ring0::cabina::info("prestamo", "ofrecido al pid", destino as u64);
             return true;
@@ -128,19 +185,21 @@ pub fn take(pid: u32, aspace: u64) -> Option<u64> {
     let i = ofertas.iter().position(|o| o.viva && o.destino == pid && !o.tomada)?;
     let (origen, bytes, aspace_dueno) =
         (ofertas[i].origen, ofertas[i].bytes, ofertas[i].aspace_dueno);
+    // La direccion la decide LA RANURA, no un contador: ver `PRESTAMO_VENTANA`.
+    let va = va_de_ranura(i);
 
     let paginas = bytes.div_ceil(mm::PAGE) * mm::PAGE;
     let mut off = 0u64;
     while off < paginas {
         let Some(fisica) = vmm::translate(aspace_dueno, origen + off) else {
-            undo(aspace, off);
+            undo(aspace, va, off);
             crate::ring0::cabina::warn("prestamo", "lo ofrecido no esta mapeado en el dueno", off);
             return None;
         };
-        if vmm::map_page(aspace, PRESTAMO_VA_BASE + off, fisica, true, true).is_err() {
+        if vmm::map_page(aspace, va + off, fisica, true, true).is_err() {
             // Igual que en `memoria::request`: un mapeo a medias deja paginas
             // sueltas en el espacio del usuario, y eso es peor que nada.
-            undo(aspace, off);
+            undo(aspace, va, off);
             return None;
         }
         off += mm::PAGE;
@@ -150,37 +209,71 @@ pub fn take(pid: u32, aspace: u64) -> Option<u64> {
         pid,
         cap::KIND_PRESTADO,
         cap::RIGHT_READ | cap::RIGHT_WRITE,
-        PRESTAMO_VA_BASE,
+        va,
     );
     match handle {
         Some(h) => {
             ofertas[i].tomada = true;
-            ofertas[i].va_destino = PRESTAMO_VA_BASE;
+            ofertas[i].va_destino = va;
             crate::ring0::cabina::info("prestamo", "tomado, bytes", bytes);
             Some(h)
         }
         None => {
-            undo(aspace, paginas);
+            undo(aspace, va, paginas);
             None
         }
     }
 }
 
-fn undo(aspace: u64, hasta: u64) {
+fn undo(aspace: u64, va: u64, hasta: u64) {
     let mut off = 0u64;
     while off < hasta {
-        vmm::unmap_page(aspace, PRESTAMO_VA_BASE + off);
+        vmm::unmap_page(aspace, va + off);
         off += mm::PAGE;
     }
 }
 
-/// Lo que contesta el handle: `1` = donde, `2` = cuanto.
+/// Lo que contesta el handle. Ver [`OP_BASE`], [`OP_BYTES`], [`OP_DUENO`] y
+/// [`OP_SOLTAR`].
+///
+/// `OP_SOLTAR` escribe --desmapea-- y por eso lee `read_cr3()`: durante un
+/// syscall desde Ring 3, CR3 sigue siendo el del llamante. Es la misma nota que
+/// llevan `memoria::request` y el framebuffer, y por el mismo motivo.
 pub fn operation(base: u64, op: u64, pid: u32) -> Option<u64> {
-    let ofertas = unsafe { &*core::ptr::addr_of!(OFERTAS) };
-    let o = ofertas.iter().find(|o| o.viva && o.tomada && o.destino == pid && o.va_destino == base)?;
+    let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
+    let i = ofertas
+        .iter()
+        .position(|o| o.viva && o.tomada && o.destino == pid && o.va_destino == base)?;
     match op {
-        1 => Some(o.va_destino),
-        2 => Some(o.bytes),
+        OP_BASE => Some(ofertas[i].va_destino),
+        OP_BYTES => Some(ofertas[i].bytes),
+        OP_DUENO => {
+            if ofertas[i].huerfana {
+                // El dueno murio. Se contesta 0 en vez de quitar el mapeo: ver
+                // `process_died`.
+                return Some(0);
+            }
+            Some(crate::ring0::task::scheduler::tid_de(ofertas[i].owner).unwrap_or(0) as u64)
+        }
+        OP_SOLTAR => {
+            let paginas = ofertas[i].bytes.div_ceil(mm::PAGE) * mm::PAGE;
+            undo(vmm::read_cr3(), ofertas[i].va_destino, paginas);
+            crate::ring0::cabina::info("prestamo", "devuelto por el pid", pid as u64);
+            ofertas[i] = NOTHING;
+            // ** Y EL HANDLE SE REVOCA, que no es limpieza cosmetica.
+            //
+            // Sin esto, un handle viejo sigue vivo apuntando a esta VA. La
+            // ranura se reutiliza, el siguiente prestamo del MISMO proceso cae
+            // en la misma direccion --la elige la ranura-- y entonces el handle
+            // del prestamo que ya se solto **resuelve al nuevo**: contestaria
+            // por una superficie que no es la suya, sin que nada falle. Es la
+            // clase de fallo que la generacion de la capability existe para
+            // impedir, y aqui basta con dejarla hacer su trabajo.
+            if let Some(h) = cap::find(pid, cap::KIND_PRESTADO, base) {
+                cap::revoke(pid, h);
+            }
+            Some(1)
+        }
         _ => None,
     }
 }
@@ -194,6 +287,24 @@ pub fn operation(base: u64, op: u64, pid: u32) -> Option<u64> {
 ///
 /// Se limpian las dos puntas: lo que este proceso tomo (se desmapea) y lo que
 /// ofrecio (se retira, porque su espacio ya no existe para traducir).
+///
+/// ## ** Y si murio el dueno de algo que YA ESTABA TOMADO, no se desmapea
+///
+/// Es la decision que sostiene todo el modelo de superficies, asi que va dicha:
+/// **el prestamo sobrevive al que lo presto.**
+///
+/// Lo tentador es quitarselo al que lo tomo --tenemos su `cr3` con
+/// `scheduler::cr3_de_pid`-- y es justo lo que no se puede hacer: el que lo tomo
+/// es el DIRECTOR, y esta componiendo. Desmapearle paginas por debajo mientras
+/// las recorre es un fallo de pagina **en el compositor**, o sea que **una app
+/// que se cierra se lleva el escritorio**. Que es exactamente lo que este diseno
+/// existe para impedir: al lado de eso, una ventana congelada un fotograma de
+/// mas no es nada.
+///
+/// Los marcos siguen siendo validos: `destroy_address_space` libera las tablas
+/// de paginas, no las hojas. Asi que lo prestado se queda quieto y legible hasta
+/// que el que lo tomo lo suelte con [`OP_SOLTAR`] -- y como sabe que soltarlo,
+/// [`OP_DUENO`] le contesta 0 desde el fotograma siguiente.
 pub fn process_died(pid: u32, aspace: u64) {
     let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
     for o in ofertas.iter_mut() {
@@ -202,14 +313,20 @@ pub fn process_died(pid: u32, aspace: u64) {
         }
         if o.destino == pid && o.tomada {
             let paginas = o.bytes.div_ceil(mm::PAGE) * mm::PAGE;
-            undo(aspace, paginas);
+            undo(aspace, o.va_destino, paginas);
             crate::ring0::cabina::info("prestamo", "devuelto por el pid", pid as u64);
             *o = NOTHING;
-        } else if o.owner == pid {
-            // Murio el que prestaba. La oferta no vale: su espacio de
-            // direcciones se destruye y no habria contra que traducir.
+        } else if o.owner == pid && !o.tomada {
+            // Murio el que prestaba y nadie llego a tomarlo. La oferta no vale:
+            // su espacio de direcciones se destruye y no habria contra que
+            // traducir. Aqui si se puede tirar, porque no hay nadie mapeado.
             crate::ring0::cabina::warn("prestamo", "murio el dueno: oferta retirada", pid as u64);
             *o = NOTHING;
+        } else if o.owner == pid {
+            // Ver la cabecera: se queda mapeado a proposito. Lo unico que cambia
+            // es que a partir de aqui `OP_DUENO` contesta 0.
+            o.huerfana = true;
+            crate::ring0::cabina::info("prestamo", "murio el dueno: queda huerfano", pid as u64);
         }
     }
 }

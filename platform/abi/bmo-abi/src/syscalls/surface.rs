@@ -478,6 +478,49 @@ pub const TASK_OP_CABINA_TEXTO: u64 = 0x24;
 /// el propio kernel embebe, que no vienen de ninguna ruta.
 pub const TASK_OP_MI_PAQUETE: u64 = 0x25;
 
+/// **Quien me lanzo**, como TID. `0` si no hay nadie.
+///
+/// Una app dibuja en su memoria y se la OFRECE al que la puso en pantalla (ver
+/// `<bmo/superficie.h>`). Ofrecer exige nombrar al destinatario, y el hijo no
+/// tiene forma de nombrarlo: [`MEM_OP_OFRECER`] habla en tids, y el tid del
+/// compositor no aparece en ningun sitio de su espacio.
+///
+/// ** Y por eso NO es un registro de nombres. La pregunta no es *"quien manda"*
+/// --eso seria autoridad ambiental, y quien la leyera podria pedirle cosas a
+/// alguien que nunca se las ofrecio-- sino **"quien me lanzo a MI"**: local,
+/// concreta, y no concede nada.
+///
+/// El `0` no es un error: es la respuesta correcta cuando nadie compone --
+/// lanzado desde el shell de Ring 0--, y el programa que lo reciba se cae al
+/// camino de la pantalla exclusiva.
+pub const TASK_OP_MI_PADRE: u64 = 0x26;
+
+// -- PRESTAR memoria: se OFRECE y se TOMA --------------------------------
+//
+// El kernel mueve paginas y **no sabe para que**: el lienzo, el audio y los
+// bloques grandes entre procesos salen todos de estas cuatro operaciones. Ver
+// `ring0/obj/loan.rs`.
+
+/// **Ofrecer un trozo del bloque propio.** Operacion sobre `KIND_MEMORIA`:
+/// `arg0` = desde (contra la base del bloque), `arg1` = bytes, `arg2` = el TID
+/// del destinatario. Solo el puede tomarlo.
+pub const MEM_OP_OFRECER: u64 = 0x03;
+/// **Tomar lo que otro me haya ofrecido.** Devuelve un handle `KIND_PRESTADO`, o
+/// `0` si no hay nada. El mapeo ocurre DENTRO de esta llamada, en el espacio de
+/// quien la hace -- por eso se toma en vez de que el otro te lo coloque.
+pub const TASK_OP_TOMAR: u64 = 0x1C;
+/// Donde quedo lo prestado, en MI espacio.
+pub const PRESTADO_OP_BASE: u64 = 0x01;
+/// Cuantos bytes son.
+pub const PRESTADO_OP_BYTES: u64 = 0x02;
+/// **El TID de quien me lo presto, o `0` si ya no vive.** Es el detector de vida
+/// de una ventana: componer la memoria de otro proceso sin poder preguntar si
+/// sigue ahi seria no distinguir una app muerta de una app pensando.
+pub const PRESTADO_OP_DUENO: u64 = 0x03;
+/// **Devolverlo**: se desmapea de mi espacio y la ranura queda libre. Sin esto,
+/// abrir y cerrar ventanas agota las ranuras de prestamo hasta reiniciar.
+pub const PRESTADO_OP_SOLTAR: u64 = 0x04;
+
 /// Campos de [`TASK_OP_CABINA_INFO`].
 pub const CABINA_TOTAL: u64 = 0x00;
 pub const CABINA_PERDIDOS: u64 = 0x01;
