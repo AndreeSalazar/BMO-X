@@ -417,7 +417,7 @@ Cada escalon deja el sistema funcionando, que es la regla de la casa.
 | 0 | ★ **La seccion `Bss`**: que los ceros se declaren en vez de viajar | **[x] 2026-08-09** -- `Codegen::separar_bss`. DOOM: 1.299.768 -> 807.072 B | S |
 | 1 | **El asignador de Ring 3** sobre `KIND_MEMORIA` | -- (desbloquea `realloc`, los >4 `malloc` y el contrato de `fread`) | M |
 | 2 | ★ **Que el cargador NO lea el fichero entero** -- cabecera + tabla + secciones cargables | **[x] 2026-08-10** -- `bex::necesita`. DOOM+WAD: 6.313.632 -> **813.552 B leidos (-87,1%)** | L |
-| 3 | **DMA al bufer del llamante**, fuera la pagina de rebote | -- | M |
+| 3 | ★ **DMA al bufer del llamante**, fuera la pagina de rebote | **[x] 2026-08-10** -- `disk::tramo_dma` + un comando por CLUSTER en FAT32 | M |
 | 4 | **E/S asincrona**: que pedir no bloquee | -- | L |
 | 5 | **Las 32 ranuras**, varias peticiones en vuelo | el 4 | M |
 | 6 | **El manifiesto declara lo que va a pedir** | -- | S |
@@ -484,6 +484,71 @@ Las secciones que no se leen **no se verifican**. El gate garantiza **lo que
 EJECUTA**; lo que el programa lea despues lo lee por su puerta, y su hash sigue
 escrito en el fichero para quien quiera comprobarlo. Fingir que se comprobo algo
 que no se ha llegado a leer seria peor que no comprobarlo.
+
+---
+
+## [x] HECHO el 2026-08-10 -- escalon 3: el disco escribe DONDE VA
+
+Los bytes que si hacen falta pasaban por **dos rebotes** antes de llegar a su
+sitio, y ninguno de los dos estaba ahi por necesidad:
+
+```
+   ANTES   disco -> pagina DMA (4 KiB) -> buffer de FAT32 (512 B) -> destino
+   AHORA   disco ------------------------------------------------> destino
+```
+
+### 1. FAT32: de un sector por comando a un cluster por comando
+
+`read_file` leia **de 512 en 512** y siempre al buffer interno del volumen. Con
+un `.bex` de 813 KB eso son **1.590 comandos al disco y 1.590 copias**, y cada
+comando es armar el FIS, tocar MMIO y esperar al HBA.
+
+El contrato `BlockReader` ya aceptaba varios sectores de una vez y **nadie lo
+usaba**: el mecanismo escrito y sin lector, otra vez. Ahora se lee el tramo
+entero que quepa **directo al destino**, y el rebote queda solo para el rabo de
+menos de 512 bytes -- que es donde de verdad hace falta, porque ahi el disco
+entrega un sector completo y el llamante quiere una parte.
+
+### 2. El HBA escribe en el buffer del llamante
+
+`disk::read` mandaba SIEMPRE a una pagina de rebote y copiaba. Ahora se le
+pregunta al mapa de paginas si el trozo que toca esta seguido en memoria
+**fisica**; si lo esta, esa direccion va al PRDT y no se copia nada.
+
+**No se supone: se comprueba**, y si la respuesta es que no, se cae al rebote de
+siempre. Cuatro lecturas de memoria por pagina frente a copiar 4096 bytes.
+
+Y el buffer del cargador pasa a estar **alineado a pagina**: con alineacion 1
+podia empezar a mitad de pagina, y entonces el primer tramo no llegaba ni a un
+sector -- el camino rapido existiria y no se tomaria nunca, sin que nada fallara.
+
+### ★★ La mina que aparecio por el camino: `translate` no contesta lo mismo
+
+| mapeo | lo que devolvia `vmm::translate` |
+|---|---|
+| pagina de 4 KiB | la **base** de la pagina, sin desplazamiento |
+| pagina de 2 MiB o 1 GiB | la direccion **exacta**, desplazamiento incluido |
+
+Su documentacion dice *"the physical base of the mapped page"*, que es cierto
+para el primer caso y no para los otros dos. Mientras sus usuarios eran mapear
+paginas --donde hace falta la base-- la diferencia no se notaba.
+
+**Con DMA se nota de la peor manera.** El HBA escribe donde se le diga: sumarle
+el desplazamiento a una respuesta que ya lo llevaba dentro apunta unos bytes mas
+alla, y **el physmap del kernel esta montado con paginas de 2 MiB**, o sea que
+ese es justo el caso de cualquier buffer que viva ahi. No habria dado una lectura
+mala: habria dado **el disco escribiendo encima de memoria de otro**.
+
+Por eso la pregunta se hace ahora con su propio nombre, `vmm::fisica_exacta`, y
+`translate` se queda como esta: quien quiere la base pide la base, quien quiere
+la direccion pide la direccion.
+
+### Y la medida, para que no se pierda sola
+
+`disk::cuentas_dma()` lleva los bytes que fueron directos y los que rebotaron, y
+cada lanzamiento apunta su delta en CABINA. **Un camino rapido que nadie mide es
+un camino rapido que un dia deja de tomarse en silencio** -- una pagina que
+cambia de sitio, un buffer que se desalinea, y todo sigue funcionando, despacio.
 
 ★ **Precision sobre `SectionHash`, porque la primera version de este documento lo
 decia mal**: no esta "vacio". Esta **escrito y probado** -- BLAKE3 de 256 bits,

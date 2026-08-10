@@ -531,34 +531,77 @@ impl FatVolume {
     /// [!] Lo que esto NO caza es un sector que se lee "bien" y trae datos
     /// equivocados. Para eso hace falta el HASH por seccion (`SectionHash`, en
     /// `bef/signing.rs`), que existe escrito y todavia no lo cablea nadie.
+    /// == ** DE UN SECTOR POR COMANDO A UN CLUSTER POR COMANDO (2026-08-10) ==
+    ///
+    /// Escalon 3 de `LA_RAM.md`, la mitad que vive aqui. Esto leia **de 512 en
+    /// 512** y siempre a `self.buf`, para copiar de ahi a `dst`. Con un `.bex`
+    /// de 813 KB eso son **1.590 comandos al disco y 1.590 copias**, y cada
+    /// comando es armar el FIS, tocar MMIO y esperar a que el HBA conteste.
+    ///
+    /// El contrato de almacenamiento ya aceptaba varios sectores de una vez
+    /// --`BlockReader` recibe `count`-- y nadie lo usaba. Otra vez el mecanismo
+    /// escrito y sin lector.
+    ///
+    /// Ahora se lee **el tramo entero que quepa, directo a `dst`**: un comando
+    /// por cluster en vez de uno por sector, y **cero copias intermedias**. El
+    /// rebote solo queda para el ultimo sector cuando el fichero no acaba en
+    /// frontera de 512, que es donde de verdad hace falta: ahi el disco entrega
+    /// 512 bytes y el llamante solo quiere una parte.
     pub fn read_file(&mut self, first_cluster: u32, file_size: u32, dst: &mut [u8]) -> usize {
         let mut cluster = first_cluster;
         let mut offset = 0;
-        let spc = self.sectors_per_cluster as u64;
-        while offset < file_size as usize && offset < dst.len() {
+        let spc = self.sectors_per_cluster as usize;
+        let tope = (file_size as usize).min(dst.len());
+        while offset < tope {
             let lba = self.cluster_to_lba(cluster);
-            for s in 0..spc {
-                if offset >= file_size as usize || offset >= dst.len() { break; }
-                let start = offset;
-                let end = (start + 512).min(file_size as usize).min(dst.len());
-                let count = end - start;
-                if count > 0 {
-                    let ok = unsafe {
-                        if self.read_sector(lba + s, Buf::buf) {
-                            dst[start..start + count].copy_from_slice(&self.buf[..count]);
-                            true
-                        } else {
-                            false
-                        }
-                    };
-                    if !ok {
-                        // Se para aqui. Lo leido hasta ahora es bueno; lo que
-                        // sigue no se sabe, y no saberlo se dice devolviendo
-                        // menos, no rellenando el hueco con lo que hubiera.
-                        return offset;
-                    }
+            // Lo que queda de este cluster, y lo que queda por leer.
+            let del_cluster = spc * 512;
+            let queda = tope - offset;
+            // Sectores ENTEROS que caben en los dos: son los que pueden ir
+            // directos. `dst` recibe exactamente lo que el disco entrega.
+            let enteros = (queda.min(del_cluster)) / 512;
+            if enteros > 0 {
+                let n = enteros * 512;
+                let leidos = (self.read)(lba, enteros as u16, &mut dst[offset..offset + n]);
+                if !leidos {
+                    // Se para aqui. Lo leido hasta ahora es bueno; lo que sigue
+                    // no se sabe, y no saberlo se dice devolviendo menos, no
+                    // rellenando el hueco con lo que hubiera.
+                    return offset;
                 }
-                offset += count;
+                offset += n;
+            }
+            // El rabo: menos de un sector. Aqui SI hace falta el rebote, porque
+            // el disco entrega 512 bytes y solo se quieren los primeros.
+            //
+            // El sector es `enteros`: cada vuelta consume UN cluster completo o
+            // termina, asi que al entrar `offset` siempre cae en frontera de
+            // cluster y los sectores ya leidos de este son exactamente `enteros`.
+            //
+            // [!] Y **solo si queda sector en ESTE cluster** (`enteros < spc`).
+            // Sin esa condicion, un `dst` que se acaba justo en frontera de
+            // cluster leeria `lba + spc`, que es el primer sector del SIGUIENTE
+            // cluster en el disco -- y el siguiente cluster de la cadena no
+            // tiene por que estar ahi. Devolveria bytes de otro archivo sin que
+            // nada fallara.
+            let queda = tope - offset;
+            if queda > 0 && queda < 512 && enteros < spc {
+                let sector_en_cluster = enteros as u64;
+                let ok = unsafe {
+                    if self.read_sector(lba + sector_en_cluster, Buf::buf) {
+                        dst[offset..offset + queda].copy_from_slice(&self.buf[..queda]);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if !ok {
+                    return offset;
+                }
+                offset += queda;
+            }
+            if offset >= tope {
+                break;
             }
             cluster = match self.read_fat_entry(cluster) { Some(c) => c, None => break };
         }
@@ -1365,6 +1408,84 @@ mod tests {
             if v.raw_fat_entry(c).unwrap_or(0) != 0 { n += 1; }
         }
         n
+    }
+
+    /// ** UN ARCHIVO DE VARIOS CLUSTERS QUE NO ACABA EN FRONTERA DE SECTOR.
+    ///
+    /// Es el caso que estrena el camino directo de `read_file` (escalon 3): los
+    /// sectores enteros van del disco a `dst` sin rebotar, y el rabo --menos de
+    /// 512 bytes-- es el unico que sigue pasando por el buffer interno.
+    ///
+    /// El patron es POSICIONAL a proposito (cada byte dice donde deberia estar):
+    /// un desplazamiento de un sector, o un cluster leido dos veces, sale como
+    /// un byte que no cuadra y dice exactamente cual.
+    #[test]
+    fn leer_varios_clusters_con_rabo() {
+        let (_turno, mut v) = volumen();
+        // 1300 bytes con spc=1 son tres clusters: 512 + 512 + 276.
+        let datos: Vec<u8> = (0..1300u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("LARGO   BIN"), &datos).expect("debe crear");
+
+        let mut dst = [0u8; 2048];
+        let n = leer_archivo(&mut v, "LARGO   BIN", &mut dst).expect("debe estar");
+        assert_eq!(n, datos.len(), "no llego el archivo entero");
+        assert_eq!(&dst[..n], &datos[..], "los bytes no cuadran: hay un salto de sector");
+    }
+
+    /// ** EL RABO DE UN ARCHIVO **FRAGMENTADO**, que es donde el fallo se ve.
+    ///
+    /// === Por que hace falta fragmentar para probar esto ===
+    ///
+    /// El camino directo lee sectores enteros y deja para el buffer interno el
+    /// rabo de menos de 512 bytes. Ese rabo esta en el sector `enteros` **de
+    /// este cluster** -- y si el cluster ya se agoto (`enteros == spc`), ese
+    /// numero de sector cae FUERA: es el sector fisico siguiente, que solo por
+    /// casualidad es el siguiente cluster de la cadena.
+    ///
+    /// ** Y en un volumen recien formateado siempre es esa casualidad: los
+    /// clusters se reparten seguidos, asi que el fallo devuelve el dato
+    /// correcto y la prueba pasa. Es la clase de bug que se estrena el dia que
+    /// el disco lleva seis meses de uso.
+    ///
+    /// Asi que aqui la cadena se rompe a mano: se muda el segundo cluster lejos
+    /// y **el sitio viejo se llena de `0xEE`**. Si alguien quita la comprobacion
+    /// de `enteros < spc`, esto sale en la cara con bytes que se reconocen.
+    #[test]
+    fn leer_rabo_de_archivo_fragmentado() {
+        let (_turno, mut v) = volumen();
+        // Con spc=1 (un cluster = un sector), 1300 bytes son tres clusters.
+        let datos: Vec<u8> = (0..1300u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("FRAG    BIN"), &datos).expect("debe crear");
+
+        let (c1, tam) = v.find_file(&name("FRAG    BIN")).expect("debe estar");
+        let c2 = v.raw_fat_entry(c1).expect("debe haber segundo cluster");
+        let c3 = v.raw_fat_entry(c2).expect("debe haber tercero");
+        // Un cluster libre LEJOS de la cadena: el ultimo del volumen.
+        let lejos = v.max_cluster;
+        assert!(v.raw_fat_entry(lejos).unwrap_or(1) == 0, "el cluster de destino debe estar libre");
+
+        // Se muda el contenido del segundo cluster.
+        let mut sec = [0u8; 512];
+        assert!(read(v.cluster_to_lba(c2), 1, &mut sec));
+        assert!(write(v.cluster_to_lba(lejos), 1, &sec));
+        // Y el sitio viejo se envenena: quien lo lea por error lo va a saber.
+        assert!(write(v.cluster_to_lba(c2), 1, &[0xEEu8; 512]));
+
+        // La cadena pasa a ser c1 -> lejos -> c3, y c2 queda libre.
+        assert!(v.set_fat_entry(c1, lejos));
+        assert!(v.set_fat_entry(lejos, c3));
+        assert!(v.set_fat_entry(c2, 0));
+
+        // 700 bytes: un cluster entero (512) y un rabo de 188 en el SIGUIENTE
+        // cluster de la cadena, que ya no es el siguiente del disco.
+        let mut dst = [0u8; 700];
+        let n = v.read_file(c1, tam, &mut dst);
+        assert_eq!(n, 700, "no llego el trozo pedido");
+        assert!(
+            !dst[512..].iter().any(|&b| b == 0xEE),
+            "leyo el sector fisico siguiente en vez de seguir la cadena"
+        );
+        assert_eq!(&dst[..], &datos[..700], "el rabo no cuadra");
     }
 
     #[test]

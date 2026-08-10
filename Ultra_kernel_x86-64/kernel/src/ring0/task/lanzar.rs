@@ -147,7 +147,23 @@ pub struct Informe {
 /// > **Un `.bex` puede medir lo que quiera. Lo que tiene que caber aqui es lo
 /// > que se EJECUTA.**
 const MAX_BEX: usize = 4 * 1024 * 1024;
-static mut IMAGE: [u8; MAX_BEX] = [0u8; MAX_BEX];
+
+/// El buffer, **alineado a pagina**.
+///
+/// == Por que la alineacion importa desde el escalon 3 ==
+///
+/// El HBA ya no escribe en una pagina de rebote: escribe **aqui**, si esto esta
+/// seguido en memoria fisica (`disk::tramo_dma` lo comprueba, no lo supone). Un
+/// array de bytes suelto tiene alineacion 1, o sea que podria empezar a mitad de
+/// pagina -- y entonces el primer tramo mide lo que queda de esa pagina, que
+/// puede no llegar ni a un sector. El camino rapido existiria y no se tomaria
+/// nunca, sin que nada fallara.
+///
+/// Alinearlo a 4096 cuesta cero --es `.bss`, no viaja en la imagen-- y convierte
+/// "a veces" en "siempre que la memoria fisica acompane".
+#[repr(C, align(4096))]
+struct Imagen([u8; MAX_BEX]);
+static mut IMAGE: Imagen = Imagen([0u8; MAX_BEX]);
 
 /// Lo que se lee de primeras para poder preguntarle al fichero que necesita.
 ///
@@ -227,7 +243,7 @@ pub fn ruta(path: &str) -> Informe {
 /// El cuerpo, ya con el buffer tomado. Separado para que el `EN_USO` se suelte
 /// por un solo camino pase lo que pase.
 fn con_buffer(path: &str) -> Informe {
-    let buf = unsafe { &mut *core::ptr::addr_of_mut!(IMAGE) };
+    let buf = unsafe { &mut (*core::ptr::addr_of_mut!(IMAGE)).0 };
 
     // ESTRATOS primero: es el sistema de ficheros propio y el UNICO donde un
     // binario puede traer su firma pegada. Si no esta ahi, se cae a FAT32, que
@@ -235,6 +251,9 @@ fn con_buffer(path: &str) -> Informe {
     let nodo_est = if est::is_mounted() { est::open(path) } else { None };
 
     let origen = if nodo_est.is_some() { "ESTRATOS" } else { "FAT32" };
+    // Los contadores de DMA ANTES de leer nada: lo que interesa es el delta de
+    // ESTA carga, no el total del arranque.
+    let (d0, r0) = crate::ring0::dev::disk::cuentas_dma();
 
     // == FASE 1: EL PROLOGO ==
     //
@@ -341,6 +360,14 @@ fn con_buffer(path: &str) -> Informe {
     // arranques.
     if tam > n {
         crate::ring0::cabina::info("lanzar", "bytes que NO hubo que traer", (tam - n) as u64);
+    }
+    // Y el escalon 3: cuantos de los que SI se trajeron fueron del disco a su
+    // sitio sin pasar por la pagina de rebote. Un camino rapido que nadie mide
+    // es un camino rapido que un dia deja de tomarse en silencio.
+    let (d1, r1) = crate::ring0::dev::disk::cuentas_dma();
+    crate::ring0::cabina::info("lanzar", "bytes DIRECTOS del disco al buffer", d1 - d0);
+    if r1 > r0 {
+        crate::ring0::cabina::info("lanzar", "bytes que tuvieron que rebotar", r1 - r0);
     }
 
     // -- El gate: sin firma buena no hay ejecucion --

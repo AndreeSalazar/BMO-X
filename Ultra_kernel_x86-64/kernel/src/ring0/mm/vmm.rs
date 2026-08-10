@@ -294,6 +294,69 @@ pub fn translate(pml4: u64, va: u64) -> Option<u64> {
     Some(e & ADDR_MASK)
 }
 
+/// **La direccion FISICA EXACTA de `va`**, sea cual sea el tamano de pagina.
+///
+/// == [!] Por que existe, y por que no vale [`translate`] ==
+///
+/// `translate` **no contesta lo mismo segun el tamano de pagina**, y eso no se
+/// ve leyendo su firma:
+///
+/// | mapeo | lo que devuelve |
+/// |---|---|
+/// | pagina de 4 KiB | la **base** de la pagina, sin el desplazamiento |
+/// | pagina de 2 MiB o 1 GiB | la direccion **exacta**, desplazamiento incluido |
+///
+/// Su documentacion dice "the physical base of the mapped page", que es cierto
+/// para el primer caso y no para los otros dos. Mientras sus dos usuarios eran
+/// mapear paginas --donde lo que hace falta es la base-- y el autodiagnostico, la
+/// diferencia no se notaba.
+///
+/// ** Con DMA si se nota, y de la peor manera. El HBA escribe donde se le diga:
+/// sumarle el desplazamiento a una respuesta que ya lo llevaba dentro apunta
+/// unos bytes mas alla, y como el physmap del kernel esta montado con paginas de
+/// 2 MiB, ese es justo el caso de cualquier buffer que viva ahi --las pilas de
+/// tarea, por ejemplo--. El resultado no seria una lectura mala: seria el disco
+/// escribiendo encima de memoria de otro.
+///
+/// Asi que la pregunta se hace con su propio nombre. `translate` se queda como
+/// esta porque sus usuarios quieren la base; quien quiera la direccion, pide la
+/// direccion.
+pub fn fisica_exacta(pml4: u64, va: u64) -> Option<u64> {
+    let i4 = ((va >> 39) & 0x1FF) as usize;
+    let i3 = ((va >> 30) & 0x1FF) as usize;
+    let i2 = ((va >> 21) & 0x1FF) as usize;
+    let i1 = ((va >> 12) & 0x1FF) as usize;
+
+    let p = table(pml4);
+    let e = p[i4];
+    if e & PTE_PRESENT == 0 {
+        return None;
+    }
+    let pdpt = table(e & ADDR_MASK);
+    let e = pdpt[i3];
+    if e & PTE_PRESENT == 0 {
+        return None;
+    }
+    if e & PTE_HUGE != 0 {
+        return Some((e & 0x000F_FFFF_C000_0000) + (va & 0x3FFF_FFFF));
+    }
+    let pd = table(e & ADDR_MASK);
+    let e = pd[i2];
+    if e & PTE_PRESENT == 0 {
+        return None;
+    }
+    if e & PTE_HUGE != 0 {
+        return Some((e & 0x000F_FFFF_FFE0_0000) + (va & 0x1F_FFFF));
+    }
+    let pt = table(e & ADDR_MASK);
+    let e = pt[i1];
+    if e & PTE_PRESENT == 0 {
+        return None;
+    }
+    // Y aqui esta la diferencia entera: la base MAS el desplazamiento.
+    Some((e & ADDR_MASK) + (va & (super::PAGE - 1)))
+}
+
 /// Free every page-table frame owned by the user half (PML4[0]'s private
 /// PDPT, skipping the shared identity entry at PDPT[0]) plus the PML4 itself.
 /// Leaf frames are owned by the process layer and must be freed by it first.

@@ -425,23 +425,140 @@ pub fn read(lba: u64, count: u16, buf: &mut [u8]) -> u16 {
     const PER_BATCH: u16 = (4096 / SECTOR) as u16; // 8 sectores por pagina
     let mut done = 0u16;
     while done < count {
-        let batch = (count - done).min(PER_BATCH);
-        let got = match unsafe { bmo_ahci::read_sectors_phys(unsafe { PORT }, lba + done as u64, batch, dma) } {
-            Ok(n) => n,
-            Err(e) => {
-                crate::ring0::cabina::fault("disk", e.name(), lba + done as u64);
-                return done;
+        // == ** EL CAMINO DIRECTO: el HBA escribe EN EL BUFFER DEL LLAMANTE ==
+        //
+        // Escalon 3 de `LA_RAM.md`. Si el trozo que toca ahora esta seguido en
+        // memoria FISICA, se le da esa direccion al HBA y no se copia nada: el
+        // dato va del disco a su sitio y no pasa por ninguna parte.
+        //
+        // No se supone que lo este: **se comprueba**, pagina a pagina, con la
+        // tabla que el propio kernel monto. Cuatro lecturas de memoria por
+        // pagina frente a copiar 4096 bytes -- y si la respuesta es que no, se
+        // cae al rebote de siempre sin que nadie se entere.
+        let va = buf.as_ptr() as u64 + done as u64 * SECTOR as u64;
+        let restante = (count - done) as u64 * SECTOR as u64;
+        // Un tramo que no da ni para un sector entero no sirve: se rebota.
+        let directo = tramo_dma(va, restante).and_then(|(phys, bytes)| {
+            let sectores = ((bytes / SECTOR as u64) as u16).min(count - done).min(MAX_POR_COMANDO);
+            if sectores == 0 { None } else { Some((phys, sectores)) }
+        });
+
+        let (batch, got) = match directo {
+            Some((phys, batch)) => {
+                let got = match unsafe {
+                    bmo_ahci::read_sectors_phys(unsafe { PORT }, lba + done as u64, batch, phys)
+                } {
+                    Ok(n) => n,
+                    Err(e) => {
+                        crate::ring0::cabina::fault("disk", e.name(), lba + done as u64);
+                        return done;
+                    }
+                };
+                unsafe { SIN_REBOTE += got as u64 * SECTOR as u64; }
+                (batch, got)
+            }
+            None => {
+                let batch = (count - done).min(PER_BATCH);
+                match leer_rebotando(lba + done as u64, batch, dma, buf, done) {
+                    Some(got) => (batch, got),
+                    None => return done,
+                }
             }
         };
         if got == 0 { return done; }
-        let src = mm::phys_to_virt(dma) as *const u8;
-        let dst_off = done as usize * SECTOR;
-        let n = got as usize * SECTOR;
-        unsafe { core::ptr::copy_nonoverlapping(src, buf.as_mut_ptr().add(dst_off), n); }
         done += got;
         if got < batch { break; } // lectura corta: el disco dijo basta
     }
     done
+}
+
+/// Lo mas grande que puede pedir UN comando.
+///
+/// El PRDT lleva el contador de bytes en 22 bits (`DBC`, ver
+/// `bmo_ahci::run_command`), o sea 4 MiB por entrada, y aqui se usa **una sola
+/// entrada**. 8192 sectores son exactamente esos 4 MiB.
+const MAX_POR_COMANDO: u16 = 8192;
+
+/// Bytes que llegaron a su sitio SIN pasar por la pagina de rebote.
+///
+/// Existe para poder decir el numero. Un camino rapido que nadie mide es un
+/// camino rapido que un dia deja de tomarse --una pagina que cambia de sitio,
+/// un buffer que se desalinea-- y todo sigue funcionando, solo que despacio y
+/// sin que nada lo diga.
+static mut SIN_REBOTE: u64 = 0;
+/// Bytes que SI tuvieron que rebotar.
+static mut CON_REBOTE: u64 = 0;
+
+/// `(directos, rebotados)` en bytes desde el arranque.
+pub fn cuentas_dma() -> (u64, u64) { unsafe { (SIN_REBOTE, CON_REBOTE) } }
+
+/// El trozo de rebote de siempre, para cuando el destino no sirve para DMA.
+fn leer_rebotando(lba: u64, batch: u16, dma: u64, buf: &mut [u8], done: u16) -> Option<u16> {
+    let got = match unsafe { bmo_ahci::read_sectors_phys(unsafe { PORT }, lba, batch, dma) } {
+        Ok(n) => n,
+        Err(e) => {
+            crate::ring0::cabina::fault("disk", e.name(), lba);
+            return None;
+        }
+    };
+    if got == 0 { return None; }
+    let src = mm::phys_to_virt(dma) as *const u8;
+    let dst_off = done as usize * SECTOR;
+    let n = got as usize * SECTOR;
+    unsafe {
+        core::ptr::copy_nonoverlapping(src, buf.as_mut_ptr().add(dst_off), n);
+        CON_REBOTE += n as u64;
+    }
+    Some(got)
+}
+
+/// **Cuanto, a partir de `va`, se puede entregarle al HBA tal cual.**
+///
+/// Devuelve `(direccion fisica, bytes seguidos)`, o `None` si esa direccion no
+/// sirve para DMA. Dos condiciones, y las dos son del hardware:
+///
+/// 1. **Contiguo en fisico.** El PRDT que arma `bmo-ahci` lleva UNA entrada:
+///    una direccion y una longitud. Dos paginas que en virtual estan pegadas y
+///    en fisico no, escritas como si fueran una, le entregarian al HBA media
+///    pagina de alguien.
+/// 2. **Alineado a 2 bytes.** Lo pide AHCI para la base del PRD. Es gratis
+///    comprobarlo y el sintoma de no hacerlo seria una transferencia que el HBA
+///    rechaza o desplaza.
+///
+/// [!] Se pregunta con [`vmm::fisica_exacta`] y **no con `translate`**, que
+/// contesta la base de la pagina en 4 KiB y la direccion exacta en las grandes.
+/// Sumarle el desplazamiento a la segunda apunta unos bytes mas alla -- y como
+/// el physmap del kernel esta montado con paginas de 2 MiB, ese es justo el caso
+/// de cualquier buffer que viva ahi. No seria una lectura mala: seria el disco
+/// escribiendo encima de memoria de otro. Ver la cabecera de esa funcion.
+///
+/// * Y sobre el PML4 **del kernel**, no sobre el CR3 actual: esto puede correr
+/// dentro de un syscall de Ring 3, donde CR3 es el del proceso. El buffer del
+/// cargador existe igual en ese espacio porque la mitad alta se comparte, pero
+/// preguntarselo al espacio equivocado seria confiar en esa coincidencia.
+fn tramo_dma(va: u64, max: u64) -> Option<(u64, u64)> {
+    if max < SECTOR as u64 || va & 1 != 0 {
+        return None;
+    }
+    use crate::ring0::mm::vmm;
+    let pml4 = vmm::kernel_pml4();
+    if pml4 == 0 {
+        return None;
+    }
+    let pagina = mm::PAGE;
+    let base = vmm::fisica_exacta(pml4, va)?;
+    // Lo que queda de ESTA pagina ya esta seguido por construccion.
+    let mut bytes = (pagina - (va & (pagina - 1))).min(max);
+    while bytes < max {
+        // Se compara la direccion EXACTA esperada contra la real. Dentro de una
+        // pagina grande, dos pasos de 4 KiB dan direcciones seguidas y el tramo
+        // crece; en la frontera de dos paginas que en fisico no se tocan, no.
+        if vmm::fisica_exacta(pml4, va + bytes)? != base + bytes {
+            break; // aqui se rompe la continuidad: hasta aqui llega el tramo
+        }
+        bytes = (bytes + pagina).min(max);
+    }
+    Some((base, bytes))
 }
 
 // -- El gate de identidad ----------------------------------------------------
