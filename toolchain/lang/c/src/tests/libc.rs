@@ -300,6 +300,98 @@ fn corre_con_disco(cuerpo: &str, ruta: &str, contenido: &str) -> String {
     ejecutar_bef_con(&bef, move |m| m.poner_archivo(&r, c.as_bytes()))
 }
 
+/// ** `SEEK_END`, Y ES EL QUE MIDE EL WAD DE DOOM.
+///
+/// `fseek` hacia `(void)desde` con el comentario *"solo SEEK_SET por ahora, y
+/// se dice"*. Decirlo no bastaba: `M_FileLength` de DOOM es
+/// `fseek(h, 0, SEEK_END); ftell(h)`, y con `SEEK_END` ignorado el cursor se iba
+/// a 0, `ftell` devolvia 0 y **el WAD media cero bytes** -- sin un error y sin
+/// una linea. Esta fila es la que lo habria cazado.
+#[test]
+fn fseek_entiende_los_tres_origenes() {
+    let out = corre_con_disco(
+        r#"
+int main() {
+    FILE *f;
+    long long fin;
+    f = fopen("datos/x.txt", "r");
+    if (f == 0) { printf("no abrio\n"); return 1; }
+    /* SEEK_END: la medida del fichero, que es el uso de verdad. */
+    fseek(f, 0, 2);
+    fin = (long long)ftell(f);
+    /* SEEK_SET, y desde ahi SEEK_CUR suma. */
+    fseek(f, 3, 0);
+    fseek(f, 2, 1);
+    printf("fin=%d cur=%d ", (int)fin, (int)ftell(f));
+    /* SEEK_END con desplazamiento negativo: la cola del fichero. */
+    fseek(f, 0 - 4, 2);
+    printf("cola=%d", (int)ftell(f));
+    return 0;
+}
+"#,
+        "datos/x.txt",
+        "0123456789",
+    );
+    assert_eq!(out, "fin=10 cur=5 cola=6");
+}
+
+/// ** `feof` DABA EOF PASADA LA MITAD DE CUALQUIER FICHERO, y estaba desplegado.
+///
+/// Decia `f->pos >= bmo_quedan(f)`, y `bmo_quedan` son los bytes QUE QUEDAN, no
+/// el tamano. En un fichero de diez con el cursor en el seis quedan cuatro, y
+/// `6 >= 4` es cierto. Un `while (!feof(f))` leia poco mas de la mitad y salia
+/// tranquilo: sin error, con datos incompletos.
+///
+/// La fila recorre el fichero entero contando, que es lo unico que distingue
+/// "termino" de "se rindio a media lectura".
+#[test]
+fn feof_solo_es_cierto_al_final_de_verdad() {
+    let out = corre_con_disco(
+        r#"
+int main() {
+    FILE *f;
+    char *b;
+    int n;
+    f = fopen("datos/x.txt", "r");
+    if (f == 0) { printf("no abrio\n"); return 1; }
+    b = (char *)malloc(16);
+    n = 0;
+    while (feof(f) == 0) {
+        if (fread(b, 1, 1, f) == 0) { break; }
+        n = n + 1;
+    }
+    printf("leidos=%d eof=%d", n, feof(f));
+    return 0;
+}
+"#,
+        "datos/x.txt",
+        "0123456789",
+    );
+    assert_eq!(out, "leidos=10 eof=1");
+}
+
+/// Un destino por debajo de cero se recorta a cero en vez de dar la vuelta.
+/// El estandar lo llama indefinido; un `unsigned` gigantesco pasandole al
+/// kernel no es una respuesta.
+#[test]
+fn fseek_no_se_va_por_debajo_de_cero() {
+    let out = corre_con_disco(
+        r#"
+int main() {
+    FILE *f;
+    f = fopen("datos/x.txt", "r");
+    if (f == 0) { printf("no abrio\n"); return 1; }
+    fseek(f, 0 - 999, 2);
+    printf("%d", (int)ftell(f));
+    return 0;
+}
+"#,
+        "datos/x.txt",
+        "0123456789",
+    );
+    assert_eq!(out, "0");
+}
+
 /// ** DESMARCADA el 2026-08-09: el emulador YA modela `ARCH_OP_LEER_EN`.
 ///
 /// Estuvo marcada porque `fread` usa `ARCH_OP_LEER_EN` y el emulador caia en su
