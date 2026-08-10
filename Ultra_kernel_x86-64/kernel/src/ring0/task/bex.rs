@@ -24,6 +24,9 @@ pub const SECTION_BSS: u8 = 0x04;
 /// se LEE: dice que punteros de `.data` hay que rellenar con direcciones que
 /// solo se conocen aqui. Ver `BexLoadPlan::relocs_*`.
 pub const SECTION_RELOCS: u8 = 0x07;
+/// La seccion de HASHES: un BLAKE3 por cada una de las demas. Ver
+/// [`verificar_hashes`].
+pub const SECTION_SIGNATURE: u8 = 0x0F;
 
 /// Esta seccion se MAPEA en el espacio del programa?
 ///
@@ -119,6 +122,18 @@ pub enum BexError {
     ///
     /// Son dos sitios distintos donde mirar, y confundirlos cuesta una tarde.
     ImagenIncompleta,
+    /// ** UNA SECCION NO CUADRA CON SU HASH.
+    ///
+    /// La imagen llego ENTERA --el tamano cuadra-- y **por dentro no es la que
+    /// se escribio**. Es el fallo que ningun contador de bytes puede ver: un
+    /// sector que se lee sin error y trae datos de otro sitio da un fichero del
+    /// tamano correcto y corrupto.
+    ///
+    /// Antes de existir esto, ese caso se manifestaba mucho mas tarde y en otro
+    /// sitio: un `.bex` con un agujero pasa la admision, arranca, y muere
+    /// doscientas instrucciones despues con un `#PF` que no se parece en nada a
+    /// su causa.
+    HashNoCuadra,
 }
 
 impl BexError {
@@ -145,8 +160,96 @@ impl BexError {
             BexError::MissingCode => "no hay seccion de codigo",
             BexError::EntryOutsideCode => "el entry cae fuera del codigo",
             BexError::ImagenIncompleta => "LLEGARON MENOS BYTES DE LOS QUE LA IMAGEN DICE",
+            BexError::HashNoCuadra => "una seccion NO CUADRA con su hash: la imagen esta corrupta",
         }
     }
+}
+
+/// ** COMPROBAR QUE LA IMAGEN ES LA QUE SE ESCRIBIO.
+///
+/// Cada `.bex` trae una seccion `Signature` con el **BLAKE3 de cada una de las
+/// demas**. `BefBuilder::build` los calculaba desde siempre y los escribia al
+/// final del fichero **sin declararlos en la tabla**: la prueba de integridad
+/// viajaba pegada detras de cada programa del sistema y para cualquier lector
+/// eran bytes de relleno. Desde el 2026-08-09 la seccion se declara, y esto es
+/// quien la lee.
+///
+/// == Que caza esto que no cazaba nada ==
+///
+/// El tamano dice si llego TODO. El hash dice si llego LO MISMO. Son preguntas
+/// distintas: un sector que se lee sin error y trae datos de otro sitio da un
+/// fichero **del tamano correcto y corrupto por dentro**, y esa imagen pasa la
+/// admision, arranca, y muere mucho despues en un sitio que no se parece a la
+/// causa.
+///
+/// == Por que se hace a mano y no con `bmo-abi` ==
+///
+/// El mismo motivo que el resto de este fichero: `bmo-abi` es el CONTRATO y
+/// aqui se implementa contra el. Lo que NO se duplica es el algoritmo --
+/// `bmo_estratos::blake3` reexporta `bmo-hash`, que es exactamente el que usa
+/// `bmo-abi`. Una sola implementacion del hash y dos lectores del formato, que
+/// es el reparto correcto: dos hashes distintos serian un fichero que "no
+/// cuadra" sin que nada apunte al porque.
+///
+/// == La seccion NO se comprueba a si misma ==
+///
+/// Su contenido son los hashes de las demas, asi que no puede contener el suyo.
+/// El escritor la excluye al generar y este lector la excluye al comprobar; si
+/// uno de los dos se olvidara, ningun `.bex` verificaria jamas.
+///
+/// Devuelve `Ok(())` tambien cuando **no hay** seccion de firma: las imagenes
+/// que el kernel EMBEBE no pasan por el escritor. Exigirle una prueba a quien
+/// nunca la prometio seria dejar de arrancar.
+fn verificar_hashes(bytes: &[u8], tabla: usize, count: usize) -> Result<(), BexError> {
+    const CAB_FIRMA: usize = 8; // hash_count (u32) + sig_algo (u32)
+    const ENTRADA: usize = 40; // section_index (u16) + pad(6) + digest(32)
+
+    // Donde esta la firma, y en que indice, que hace falta para saltarsela.
+    let mut sig_off = 0usize;
+    let mut sig_len = 0usize;
+    let mut sig_idx = usize::MAX;
+    for i in 0..count {
+        let e = tabla + i * BEX_SECTION_SIZE;
+        if *bytes.get(e).ok_or(BexError::InvalidSection)? == SECTION_SIGNATURE {
+            sig_off = read_u64(bytes, e + 8).ok_or(BexError::InvalidSection)? as usize;
+            sig_len = read_u64(bytes, e + 16).ok_or(BexError::InvalidSection)? as usize;
+            sig_idx = i;
+            break;
+        }
+    }
+    if sig_len < CAB_FIRMA {
+        return Ok(()); // sin firma: no hay nada que comprobar
+    }
+    let cuantos = read_u32(bytes, sig_off).ok_or(BexError::InvalidSection)? as usize;
+    if sig_off + CAB_FIRMA + cuantos * ENTRADA > bytes.len() {
+        return Err(BexError::InvalidSection);
+    }
+
+    for k in 0..cuantos {
+        let h = sig_off + CAB_FIRMA + k * ENTRADA;
+        let idx = read_u16(bytes, h).ok_or(BexError::InvalidSection)? as usize;
+        if idx == sig_idx || idx >= count {
+            continue;
+        }
+        let e = tabla + idx * BEX_SECTION_SIZE;
+        let off = read_u64(bytes, e + 8).ok_or(BexError::InvalidSection)? as usize;
+        let len = read_u64(bytes, e + 16).ok_or(BexError::InvalidSection)? as usize;
+        // Una `Bss` no tiene bytes: su hash es el del vacio, y `blake3(&[])` lo
+        // da igual. No se salta -- saltarla seria un hueco en la comprobacion
+        // justo donde el escritor SI puso una entrada.
+        let datos = if len == 0 {
+            &bytes[0..0]
+        } else {
+            bytes.get(off..off + len).ok_or(BexError::InvalidSection)?
+        };
+        let calculado = bmo_estratos::blake3(datos);
+        let guardado = bytes.get(h + 8..h + 40).ok_or(BexError::InvalidSection)?;
+        if calculado[..] != guardado[..] {
+            crate::ring0::cabina::fault("bex", "seccion que no cuadra con su hash", idx as u64);
+            return Err(BexError::HashNoCuadra);
+        }
+    }
+    Ok(())
 }
 
 /// Validate an untrusted BEX image and produce a fixed-size mapping plan.
@@ -234,6 +337,15 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
     if table_end > bytes.len() {
         return Err(BexError::SectionTableOutOfBounds);
     }
+
+    // ** LA INTEGRIDAD, ANTES DE MIRAR NADA MAS.
+    //
+    // Va aqui --con la tabla ya acotada y antes de recorrer las secciones--
+    // porque comprobar el CONTENIDO de una imagen corrupta seccion por seccion
+    // produce el error de la primera que se salga, que es cierto y es la pista
+    // equivocada. El hash contesta la pregunta de fondo de una vez: *esto es lo
+    // que se escribio, o no lo es*.
+    verificar_hashes(bytes, table_start, count)?;
 
     let mut plan = BexLoadPlan {
         entry_offset,

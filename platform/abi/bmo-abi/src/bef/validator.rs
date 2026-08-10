@@ -187,7 +187,7 @@ pub fn validate(bytes: &[u8]) -> ValidationResult {
         validate_section_flags(entry, kind, i, &mut r);
     }
 
-    validate_flag_coherence(&header, &entries, &mut r);
+    validate_flag_coherence(&header, &entries, bytes, &mut r);
 
     r.is_loaded = r.is_valid;
     r
@@ -235,6 +235,7 @@ pub fn validate(bytes: &[u8]) -> ValidationResult {
 fn validate_flag_coherence(
     header: &BefHeader,
     entries: &[SectionEntry],
+    bytes: &[u8],
     r: &mut ValidationResult,
 ) {
     let flags = BefFlags::from_bits_truncate(header.flags);
@@ -245,7 +246,9 @@ fn validate_flag_coherence(
         (BefFlags::HAS_MANIFEST, SectionKind::Manifest, "manifest"),
         (BefFlags::HAS_SHADERS, SectionKind::Shaders, "shaders"),
         (BefFlags::HAS_TLS, SectionKind::Tls, "tls"),
-        (BefFlags::SIGNED, SectionKind::Signature, "signature"),
+        // ** `SIGNED` NO esta en esta lista, y desde el 2026-08-09 no puede
+        // estarlo. Ver el bloque de abajo: **todos** los `.bex` traen ya seccion
+        // `Signature`, asi que "trae la seccion" dejo de distinguir nada.
     ];
 
     for (flag, kind, name) in pares {
@@ -262,6 +265,37 @@ fn validate_flag_coherence(
                  un consumidor que se fie de la bandera no la mirara",
                 name, flag
             ));
+        }
+    }
+
+    // ** `SIGNED` se comprueba contra el CONTENIDO de la seccion, no contra su
+    // presencia.
+    //
+    // Desde que `BefBuilder::build` la emite siempre, la seccion `Signature`
+    // esta en todos los `.bex` -- y lo que lleva por defecto son **hashes**,
+    // que contestan *"llego lo que se escribio"*. Eso es INTEGRIDAD. `SIGNED`
+    // promete otra cosa: **AUTORIA**, y esa la firma un algoritmo con una clave
+    // detras (`sig_algo != 0`).
+    //
+    // Comprobar la presencia habria dejado la bandera siempre "cumplida", que
+    // es la forma mas silenciosa de que una comprobacion deje de comprobar: no
+    // falla nunca y nadie se entera de que ya no mira nada.
+    if flags.contains(BefFlags::SIGNED) {
+        let algo = entries
+            .iter()
+            .find(|e| e.kind == SectionKind::Signature as u8)
+            .and_then(|e| {
+                let o = e.file_offset as usize + 4; // tras `hash_count`
+                bytes.get(o..o + 4)
+            })
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .unwrap_or(0);
+        if algo == 0 {
+            r.error(
+                "el header dice SIGNED y la seccion Signature solo trae hashes \
+                 (sig_algo = 0): eso es integridad, no autoria -- el binario \
+                 miente sobre si mismo",
+            );
         }
     }
 
@@ -1156,7 +1190,10 @@ mod tests {
     // Doce banderas y hasta ahora se comprobaban dos. Estas pruebas son las
     // que fijan que las otras diez signifiquen algo.
 
-    /// Decir `SIGNED` sin traer firma es el binario mintiendo sobre si mismo.
+    /// Decir `SIGNED` trayendo solo HASHES es el binario mintiendo sobre si
+    /// mismo: los hashes contestan "llego lo que se escribio" (integridad) y
+    /// `SIGNED` promete "lo escribio quien dice" (autoria). Desde que todos los
+    /// `.bex` traen seccion `Signature`, lo que distingue es `sig_algo`.
     #[test]
     fn una_bandera_sin_su_seccion_invalida_el_bef() {
         let mut b = BefBuilder::new();
@@ -1166,7 +1203,7 @@ mod tests {
         let r = validate(&bytes);
         assert!(
             !r.is_valid,
-            "un BEF que dice SIGNED y no trae firma NO puede ser valido: {:?}",
+            "un BEF que dice SIGNED y solo trae hashes NO puede ser valido: {:?}",
             r.issues
         );
     }

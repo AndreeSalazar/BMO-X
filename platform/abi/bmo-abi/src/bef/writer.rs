@@ -154,7 +154,65 @@ impl BefBuilder {
         self.sections.push(section);
     }
 
+    /// Escribe el `.bex` entero, **con su seccion `Signature`**.
+    ///
+    /// == ** LOS HASHES YA SE CALCULABAN. NADIE PODIA ENCONTRARLOS ==
+    ///
+    /// Esta funcion lleva desde siempre computando el BLAKE3 de cada seccion y
+    /// escribiendo el bloque al final del fichero... **sin declararlo en la
+    /// tabla de secciones**. O sea: cada `.bex` del sistema viajaba con la
+    /// prueba de su propia integridad pegada detras, y como no habia entrada que
+    /// la nombrara, para cualquier lector eran bytes de relleno. Escritos, y
+    /// perfectamente invisibles.
+    ///
+    /// Ahora la seccion se declara. El cargador la encuentra por su tipo
+    /// (`SectionKind::Signature`) igual que encuentra el codigo.
+    ///
+    /// == Lo que esto compra, y es lo que se buscaba ==
+    ///
+    /// Un sector que se lee "bien" y trae datos equivocados **no lo caza ningun
+    /// contador de bytes**: el fichero mide lo que debe y esta corrupto por
+    /// dentro. Solo lo ve el contenido. Con la seccion declarada, el cargador
+    /// compara y rechaza con un motivo en vez de admitir una imagen con un
+    /// agujero y morir doscientas instrucciones despues en otro sitio.
+    ///
+    /// ** Y de regalo, el que no era obvio: **un binario en FAT32 puede traer
+    /// firma**. Hasta hoy la firma vivia como atributo `:firma` de ESTRATOS, asi
+    /// que un `.bex` en FAT32 no PODIA traerla -- la asimetria era del formato,
+    /// no del gate. Con el hash dentro del propio fichero, la prueba viaja con
+    /// el a donde vaya.
+    ///
+    /// == La seccion NO se hashea a si misma ==
+    ///
+    /// Obvio dicho asi y facil de olvidar escribiendo: su contenido son los
+    /// hashes de las demas, y no puede contener el suyo propio. Se excluye, y el
+    /// lector tiene que saberlo -- por eso esta escrito aqui y en `bex.rs`.
+    ///
+    /// == Y va la ULTIMA, siempre ==
+    ///
+    /// `SectionHash` guarda el **indice** de la seccion que describe. Insertarla
+    /// en medio correria los indices de todo lo que venga detras y cada hash
+    /// pasaria a describir a su vecina. Anadirla al final no mueve a nadie.
     pub fn build(&mut self) -> Result<Vec<u8>, &'static str> {
+        // La seccion de firma se anade sola si el llamante no puso una. Es la
+        // unica que este escritor fabrica por su cuenta, y lo hace porque el
+        // dato --el hash de lo que acaba de escribir-- solo lo tiene el.
+        if !self
+            .sections
+            .iter()
+            .any(|s| s.kind == SectionKind::Signature)
+        {
+            let cuantas = self.sections.len();
+            // Tamano exacto y conocido de antemano: cabecera + una entrada por
+            // cada seccion QUE NO ES ESTA. Saberlo antes de calcular nada es lo
+            // que rompe la pescadilla -- su offset se puede reservar en la misma
+            // pasada que los demas.
+            let bytes = core::mem::size_of::<SignatureHeader>() + cuantas * SectionHash::SIZE;
+            let mut sec = BefSection::new(SectionKind::Signature, vec![0u8; bytes]);
+            sec.alignment = 8;
+            self.sections.push(sec);
+        }
+
         let count = self.sections.len() as bx_u32;
         if count == 0 {
             return Err("no sections");
@@ -186,13 +244,15 @@ impl BefBuilder {
             entry.alignment = section.alignment;
             entry.hash_index = section.hash_index;
 
+            // * LA FIRMA TAMBIEN RESERVA SU SITIO. Antes se la saltaba aqui y
+            // sus bytes se pegaban al final del fichero sin entrada que los
+            // nombrara -- escritos e invisibles. Reservar su hueco en la misma
+            // pasada se puede porque su tamano es conocido de antemano.
             if section.kind != SectionKind::Bss && !section.data.is_empty() {
-                if sig_idx != Some(i) {
-                    file_off = alinea(file_off, ALINEACION_EN_FICHERO);
-                    entry.file_offset = file_off;
-                    entry.file_size = section.data.len() as u64;
-                    file_off += entry.file_size;
-                }
+                file_off = alinea(file_off, ALINEACION_EN_FICHERO);
+                entry.file_offset = file_off;
+                entry.file_size = section.data.len() as u64;
+                file_off += entry.file_size;
             }
             entries.push(entry);
         }
@@ -231,13 +291,26 @@ impl BefBuilder {
             buf[write_off as usize..end as usize].copy_from_slice(&section.data);
         }
 
+        // ** EL HASH DE CADA SECCION, MENOS EL DE LA PROPIA FIRMA.
+        //
+        // No puede contener el suyo: su contenido son los hashes de las demas.
+        // Es obvio dicho asi y facil de olvidar escribiendo -- y el sintoma
+        // seria un fichero que nunca verifica, con el hash de un bloque de
+        // ceros guardado dentro del bloque que deja de ser ceros al guardarlo.
         let mut section_hashes = Vec::new();
         for (i, entry) in entries.iter().enumerate() {
+            if sig_idx == Some(i) {
+                continue;
+            }
             let start = entry.file_offset as usize;
             let end = start + entry.file_size as usize;
             let section_bytes = if entry.file_size > 0 && end <= buf.len() {
                 &buf[start..end]
             } else {
+                // Una `Bss` no tiene bytes, y su hash es el del vacio. Se apunta
+                // igual en vez de saltarla: asi el indice de cada entrada es el
+                // indice REAL de su seccion y el lector no tiene que reconstruir
+                // ninguna correspondencia.
                 &[]
             };
             let digest = blake3_256(section_bytes);
@@ -250,23 +323,27 @@ impl BefBuilder {
 
         let sig_header = SignatureHeader {
             hash_count: section_hashes.len() as u32,
+            // `0` = solo hashes, sin firma Ed25519 encima. Eso comprueba
+            // INTEGRIDAD --que llego lo que se escribio-- y no AUTORIA. Son dos
+            // preguntas distintas y esta contesta la primera; decir cual con un
+            // numero evita que alguien lea la segunda donde no esta.
             sig_algo: 0,
         };
         let mut sig_data = Vec::from(bytes_from_struct(&sig_header));
         sig_data.extend_from_slice(bytes_from_slice(&section_hashes));
 
-        match sig_idx {
-            Some(_) => {}
-            None => {
-                // La firma va al final, tras la ultima seccion. Antes se
-                // apoyaba en el `write_off` que iba corriendo por el bucle de
-                // arriba; ahora que ese bucle escribe donde dice la tabla y no
-                // lleva cursor, el final de los datos es el tamano del bufer.
-                let sig_off = alinea(buf.len() as u64, ALINEACION_EN_FICHERO);
-                let end = sig_off + sig_data.len() as u64;
-                buf.resize(end as usize, 0);
-                buf[sig_off as usize..end as usize].copy_from_slice(&sig_data);
+        // Se escribe DONDE LA TABLA DICE, igual que todo lo demas. El hueco se
+        // reservo arriba con este tamano exacto.
+        if let Some(i) = sig_idx {
+            let off = entries[i].file_offset as usize;
+            let fin = off + entries[i].file_size as usize;
+            if sig_data.len() != entries[i].file_size as usize {
+                return Err("el hueco de la firma no mide lo que la firma");
             }
+            if fin > buf.len() {
+                buf.resize(fin, 0);
+            }
+            buf[off..fin].copy_from_slice(&sig_data);
         }
 
         let file_len = buf.len() as u32;

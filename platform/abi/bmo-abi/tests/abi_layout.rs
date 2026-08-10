@@ -13,7 +13,11 @@ fn bef_build_validate_load_roundtrip() {
     assert!(result.is_valid, "BEF should be valid: {:?}", result.issues);
     let loaded = bmo_abi::bef::load(&bytes, 0, |_, _| Err("no imports")).unwrap();
     assert!(loaded.entry_point > 0);
-    assert_eq!(loaded.sections.len(), 2);
+    // Tres: code, rodata **y la firma**. Desde el 2026-08-09 `build` emite
+    // siempre la seccion `Signature` con el BLAKE3 de cada una de las otras --
+    // los hashes ya se calculaban y se escribian al final del fichero sin
+    // entrada que los nombrara, o sea invisibles para cualquier lector.
+    assert_eq!(loaded.sections.len(), 3);
 }
 
 #[test]
@@ -207,4 +211,147 @@ fn los_codigos_de_seccion_de_una_reloc_no_son_los_de_sectionkind() {
     assert_eq!(SEC_RODATA, SectionKind::RoData as u8);
     assert_ne!(SEC_DATA, SectionKind::Data as u8);
     assert_ne!(SEC_CODE, SectionKind::Code as u8);
+}
+
+// =============== LA FIRMA: integridad que VIAJA CON EL FICHERO ===============
+//
+// El kernel NO importa `bmo-abi` a proposito: lee los bytes a mano. Asi que hay
+// dos lectores del mismo formato y el compilador no puede comprobar que
+// coincidan. Estas filas lo comprueban aqui, con los MISMOS offsets que usa
+// `ring0/task/bex.rs::verificar_hashes`, copiados a mano igual que se copiaron
+// alli. Si divergen, esto se pone rojo antes de que ningun `.bex` deje de
+// arrancar en el Ryzen.
+
+const CAB_FIRMA: usize = 8; // hash_count (u32) + sig_algo (u32)
+const ENTRADA: usize = 40; // section_index (u16) + pad(6) + digest(32)
+const SECTION_SIGNATURE: u8 = 0x0F;
+const BEX_SECTION_SIZE: usize = 48;
+
+fn tabla_de(b: &[u8]) -> (usize, usize) {
+    let mut t = [0u8; 8];
+    t.copy_from_slice(&b[32..40]);
+    let tabla = u64::from_le_bytes(t) as usize;
+    let count = u32::from_le_bytes([b[40], b[41], b[42], b[43]]) as usize;
+    (tabla, count)
+}
+
+/// La copia exacta de lo que hace el kernel. `true` = todas cuadran.
+fn verificar_como_el_kernel(b: &[u8]) -> bool {
+    let (tabla, count) = tabla_de(b);
+    let mut sig_off = 0usize;
+    let mut sig_len = 0usize;
+    let mut sig_idx = usize::MAX;
+    for i in 0..count {
+        let e = tabla + i * BEX_SECTION_SIZE;
+        if b[e] == SECTION_SIGNATURE {
+            let mut v = [0u8; 8];
+            v.copy_from_slice(&b[e + 8..e + 16]);
+            sig_off = u64::from_le_bytes(v) as usize;
+            v.copy_from_slice(&b[e + 16..e + 24]);
+            sig_len = u64::from_le_bytes(v) as usize;
+            sig_idx = i;
+            break;
+        }
+    }
+    if sig_len < CAB_FIRMA {
+        return true; // sin firma no hay nada que comprobar
+    }
+    let cuantos =
+        u32::from_le_bytes([b[sig_off], b[sig_off + 1], b[sig_off + 2], b[sig_off + 3]]) as usize;
+    for k in 0..cuantos {
+        let h = sig_off + CAB_FIRMA + k * ENTRADA;
+        let idx = u16::from_le_bytes([b[h], b[h + 1]]) as usize;
+        if idx == sig_idx || idx >= count {
+            continue;
+        }
+        let e = tabla + idx * BEX_SECTION_SIZE;
+        let mut v = [0u8; 8];
+        v.copy_from_slice(&b[e + 8..e + 16]);
+        let off = u64::from_le_bytes(v) as usize;
+        v.copy_from_slice(&b[e + 16..e + 24]);
+        let len = u64::from_le_bytes(v) as usize;
+        let datos = if len == 0 { &b[0..0] } else { &b[off..off + len] };
+        if bmo_abi::bef::signing::blake3_256(datos)[..] != b[h + 8..h + 40] {
+            return false;
+        }
+    }
+    true
+}
+
+fn una_imagen() -> alloc::vec::Vec<u8> {
+    let mut b = bmo_abi::bef::BefBuilder::new();
+    b.add_section(bmo_abi::bef::BefSection::code(vec![0xC3; 4096]));
+    b.add_section(bmo_abi::bef::BefSection::rodata(b"hola mundo\0".to_vec()));
+    b.add_section(bmo_abi::bef::BefSection::data(vec![7u8; 512]));
+    b.build().unwrap()
+}
+
+/// Un `.bex` recien escrito verifica. Es la fila que hace utiles a las demas:
+/// un verificador que dijera "no" siempre tambien cazaria la corrupcion.
+#[test]
+fn una_imagen_recien_escrita_cuadra_con_sus_hashes() {
+    assert!(
+        verificar_como_el_kernel(&una_imagen()),
+        "una imagen sin tocar tiene que cuadrar"
+    );
+}
+
+/// ** UN SOLO BYTE CAMBIADO Y NO CUADRA.
+///
+/// Es el caso que ningun contador de bytes ve: el fichero mide exactamente lo
+/// que debe y por dentro no es el mismo. Un sector que se lee sin error y trae
+/// datos de otro sitio produce justo esto.
+#[test]
+fn un_byte_cambiado_en_el_codigo_rompe_su_hash() {
+    let mut img = una_imagen();
+    let antes = img.len();
+    // El primer byte del codigo. La seccion empieza tras cabecera + tabla.
+    let (tabla, count) = tabla_de(&img);
+    let off = tabla + count * BEX_SECTION_SIZE;
+    img[off] ^= 0xFF;
+    assert_eq!(img.len(), antes, "el tamano NO cambia: por eso hace falta el hash");
+    assert!(
+        !verificar_como_el_kernel(&img),
+        "un byte distinto en .code tiene que romper su hash"
+    );
+}
+
+/// Y en los DATOS tambien -- no solo en el codigo. Una tabla de constantes
+/// corrupta da numeros plausibles, que es peor que un fallo.
+#[test]
+fn un_byte_cambiado_en_los_datos_rompe_su_hash() {
+    let mut img = una_imagen();
+    let (tabla, count) = tabla_de(&img);
+    // La seccion `data` es la tercera que se anadio.
+    let mut tocado = false;
+    for i in 0..count {
+        let e = tabla + i * BEX_SECTION_SIZE;
+        if img[e] == bmo_abi::bef::sections::SectionKind::Data as u8 {
+            let mut v = [0u8; 8];
+            v.copy_from_slice(&img[e + 8..e + 16]);
+            let off = u64::from_le_bytes(v) as usize;
+            img[off + 3] ^= 0x01;
+            tocado = true;
+            break;
+        }
+    }
+    assert!(tocado, "la imagen de prueba tiene seccion data");
+    assert!(!verificar_como_el_kernel(&img), "un byte de .data tiene que romper su hash");
+}
+
+/// ** Y EMPAQUETAR REGENERA LA FIRMA.
+///
+/// Meter recursos recoloca las secciones, asi que los hashes viejos describen
+/// una disposicion que ya no existe. Conservarlos daria un fichero que declara
+/// integridad y no la cumple -- peor que uno sin firma, porque el segundo al
+/// menos no promete nada.
+#[test]
+fn empaquetar_regenera_la_firma_y_el_paquete_verifica() {
+    let img = una_imagen();
+    let paquete = bmo_abi::bef::empaquetar(&img, &[("icono", &[1u8, 2, 3][..])]).unwrap();
+    assert!(paquete.len() > img.len(), "el paquete lleva algo mas dentro");
+    assert!(
+        verificar_como_el_kernel(&paquete),
+        "tras empaquetar, los hashes tienen que describir la disposicion NUEVA"
+    );
 }

@@ -146,6 +146,18 @@ pub fn empaquetar(bex: &[u8], lista: &[(&str, &[u8])]) -> Result<Vec<u8>, &'stat
         if kind == SectionKind::Resources {
             continue; // la vieja se tira: esta funcion reemplaza
         }
+        // ** LA FIRMA VIEJA TAMBIEN SE TIRA, y hay que tirarla.
+        //
+        // Sus hashes describen la disposicion ANTERIOR. Al meter recursos, las
+        // secciones se recolocan y sus offsets cambian: conservarla dejaria un
+        // fichero que declara integridad y no la cumple -- que es peor que uno
+        // sin firma, porque el segundo al menos no promete nada.
+        //
+        // `BefBuilder::build` la regenera al final, con la disposicion nueva y
+        // ella la ultima de todas. Ver su cabecera.
+        if kind == SectionKind::Signature {
+            continue;
+        }
         let off = u64_en(e, E_FILE_OFFSET) as usize;
         let size = u64_en(e, E_FILE_SIZE) as usize;
         let datos: Vec<u8> = if kind == SectionKind::Bss || size == 0 {
@@ -228,6 +240,12 @@ mod tests {
     /// INDICE de la seccion destino, asi que insertar la nueva en medio haria
     /// que cada una apuntara a la de al lado: un programa que carga, arranca, y
     /// lee sus cadenas de otro sitio.
+    ///
+    /// ** Y desde el 2026-08-09 hay DOS reglas de orden, no una: los recursos
+    /// van los ultimos **del contenido**, y la firma la ultima **de todas**.
+    /// `BefBuilder::build` la regenera al final porque sus hashes describen la
+    /// disposicion recien escrita -- conservar la vieja daria un fichero que
+    /// declara integridad y no la cumple.
     #[test]
     fn la_seccion_nueva_va_la_ultima() {
         let p = empaquetar(&imagen(), &[("x", b"1")]).unwrap();
@@ -242,6 +260,8 @@ mod tests {
                 SectionKind::RoData as u8,
                 SectionKind::Bss as u8,
                 SectionKind::Resources as u8,
+                // La firma, SIEMPRE la ultima. La pone `build`.
+                SectionKind::Signature as u8,
             ]
         );
     }
