@@ -442,6 +442,22 @@ pub const TASK_OP_CABINA_INFO: u64 = 0x23;
 /// `arg1` = el trozo. El cero corta.
 pub const TASK_OP_CABINA_TEXTO: u64 = 0x24;
 
+/// **Abrir MI PROPIA imagen, para leer los datos que lleva dentro.**
+///
+/// Devuelve un handle de `KIND_ARCHIVO` de LECTURA sobre el `.bex` desde el que
+/// se lanzo este proceso. No lleva argumentos: el programa no dice **cual** --
+/// dice *"el mio"*, y quien sabe cual es el kernel.
+///
+/// ** Por que no vale con `TASK_OP_ARCHIVO_ABRIR` y la ruta: porque abrir por
+/// ruta es **pedir por nombre lo que se tiene por derecho**. Un programa que
+/// escribe su propia ruta podria escribir otra, y en un sistema de capabilities
+/// eso es exactamente lo que no se hace. Ademas, un binario movido de sitio
+/// dejaria de encontrarse a si mismo.
+///
+/// Falla si el kernel no recuerda de donde salio -- pasa con los programas que
+/// el propio kernel embebe, que no vienen de ninguna ruta.
+pub const TASK_OP_MI_PAQUETE: u64 = 0x25;
+
 /// Campos de [`TASK_OP_CABINA_INFO`].
 pub const CABINA_TOTAL: u64 = 0x00;
 pub const CABINA_PERDIDOS: u64 = 0x01;

@@ -273,6 +273,10 @@ pub fn revoke_all(pid: u32) {
     // disco. Guardarlo seria inventar un archivo que su autor nunca dio por
     // terminado, y medio fichero de movimientos es peor que ninguno.
     crate::ring0::obj::archivo::process_died(pid);
+    // Y de donde salio. Sin esto un pid reutilizado heredaria la ruta del
+    // muerto, y `MI_PAQUETE` le entregaria **la imagen de otro programa** -- que
+    // ademas cargaria y leeria perfectamente, porque es un `.bex` valido.
+    crate::ring0::task::paquete::process_died(pid);
     revoke_all_slots(pid)
 }
 

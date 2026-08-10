@@ -468,7 +468,27 @@ $cEjemplos = @(
     # `<bmo/musica.h>`: notas por nombre, figuras y tempo. Se DIBUJA mientras
     # suena, porque puede que no suene -- si la placa no trae zumbador, la
     # pantalla es la unica prueba de que la cadena entera funciono.
-    @{ src = 'toolchain\lang\c\examples\musica_C.c';    out = 'musica.bex' ; dir = 'c' }
+    @{ src = 'toolchain\lang\c\examples\musica_C.c';    out = 'musica.bex' ; dir = 'c' },
+    # ** EL PAQUETE: este `.bex` viaja con datos DENTRO y los lee sin escribir
+    # ninguna ruta -- le pide al kernel su propia imagen. Se empaqueta justo
+    # despues de compilarlo, ver `$cRecursos`.
+    @{ src = 'toolchain\lang\c\examples\caja_C.c';      out = 'caja.bex'   ; dir = 'c' }
+)
+
+# * LOS RECURSOS QUE VAN DENTRO DE UN `.bex`.
+#
+# Se meten DESPUES de compilar, y por eso es un paso aparte y no una opcion del
+# compilador: el codigo lo emite el frontend, los datos llegan de quien monta la
+# app. Ver `toolchain	oolsmo-pack`.
+#
+# ** Los bytes van escritos AQUI y no en un fichero suelto a proposito: el
+# programa comprueba su contenido (`1..8`), asi que si esta lista y el ejemplo
+# se separan, la prueba lo dice en vez de pasar por casualidad.
+$cRecursos = @(
+    @{ bex = 'c\caja.bex'; recursos = @(
+        @{ nombre = 'saludo.txt'; texto = 'hola desde dentro de la caja' },
+        @{ nombre = 'cuenta.bin'; bytes  = @(1,2,3,4,5,6,7,8) }
+    ) }
 )
 
 $repo = Split-Path -Parent $root
@@ -485,6 +505,7 @@ try {
         if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
         if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
     }
+
 
     Step 'Building ADA example programs...'
     foreach ($e in $adaEjemplos) {
@@ -513,6 +534,44 @@ try {
         }
         if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
         if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
+    }
+
+    # -- Meter los datos DENTRO del .bex ---------------------------
+    #
+    # Un `.bex` empaquetado sigue siendo un `.bex` que arranca: el cargador
+    # mapea Code/RoData/Data/Bss y **salta el resto contandolo**. Lo que cambia
+    # es que la app pasa a ser UN fichero.
+    if ($cRecursos.Count -gt 0) {
+        Step 'Packaging C examples (datos DENTRO del .bex)'
+        $tmp = Join-Path $env:TEMP 'bmo-pack-tmp'
+        New-Item -ItemType Directory -Force $tmp | Out-Null
+        foreach ($paq in $cRecursos) {
+            $bex = Join-Path $dataBase $paq.bex
+            if (-not (Test-Path $bex)) { Fail ('no esta ' + $paq.bex + ' para empaquetar') }
+            $args = @($bex)
+            foreach ($r in $paq.recursos) {
+                $f = Join-Path $tmp $r.nombre
+                if ($r.ContainsKey('texto')) {
+                    # Sin salto final y sin BOM: el programa cuenta los bytes.
+                    [System.IO.File]::WriteAllText($f, $r.texto, (New-Object System.Text.UTF8Encoding $false))
+                } else {
+                    [System.IO.File]::WriteAllBytes($f, [byte[]]$r.bytes)
+                }
+                $args += @('-r', ($r.nombre + '=' + $f))
+            }
+            $args += @('-o', $bex)
+            $out = cargo run -p bmo-pack --quiet -- @args 2>&1
+            # Solo las lineas de ESTE paso. Un `-match '->'` a secas se traga
+            # los `-->` de las advertencias de cargo, y entonces el paso que
+            # importa queda enterrado en avisos que no son suyos.
+            $out | ForEach-Object {
+                if ($_ -match 'recurso\(s\)' -or $_ -match '^\s{4}\S+\s+\d+ B$' -or $_ -match '\[X\]') {
+                    Write-Host ('    [pack] ' + $_) -ForegroundColor DarkGray
+                }
+            }
+            if ($LASTEXITCODE -ne 0) { Fail ('no se pudo empaquetar ' + $paq.bex) }
+        }
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
 
     # -- Los DATOS de los ejemplos ---------------------------------

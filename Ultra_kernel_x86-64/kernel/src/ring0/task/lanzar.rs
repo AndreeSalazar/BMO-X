@@ -287,5 +287,12 @@ fn con_buffer(path: &str) -> Informe {
         Some((tid, pid)) => (Ok(tid), Some(pid)),
         None => (Err(Fallo::NoAdmitido), None),
     };
+    // * De donde salio, para que pueda leer su propia caja con
+    // `TASK_OP_MI_PAQUETE`. Se apunta **despues** de que la admision haya ido
+    // bien: recordar la ruta de un proceso que no llego a existir dejaria
+    // basura que solo se limpia cuando ese pid se reutilice.
+    if let Some(pid) = pid {
+        crate::ring0::task::paquete::recordar(pid, path);
+    }
     Informe { origen, bytes: n, firma: veredicto, pid, res }
 }

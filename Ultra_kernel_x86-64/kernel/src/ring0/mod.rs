@@ -52,6 +52,8 @@ pub mod obj {
 pub mod task {
     pub mod bex;
     pub mod lanzar;
+    /// De donde salio cada proceso, para que pueda leer su propia caja.
+    pub mod paquete;
     pub mod percpu;
     pub mod proc;
     pub mod scheduler;

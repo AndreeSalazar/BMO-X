@@ -107,6 +107,14 @@ const TASK_OP_MEMORIA_PEDIR: u64 = 0x15;
 /// tiene --volumen de solo lectura, nombre que no es 8.3-- y mezclarlas
 /// obligaria a devolver errores que no aplican a la mitad de las llamadas.
 const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
+/// Abrir MI PROPIA imagen. Espejo de `bmo_abi::...::TASK_OP_MI_PAQUETE` -- el
+/// drift guard del build comprueba que los dos digan lo mismo.
+///
+/// ** No lleva ruta, y esa es toda la diferencia con `ARCHIVO_ABRIR`: el
+/// programa no dice CUAL, dice "el mio". Pedir el propio fichero por su ruta
+/// seria pedir por nombre lo que se tiene por derecho -- y quien puede escribir
+/// una ruta puede escribir otra.
+const TASK_OP_MI_PAQUETE: u64 = 0x25;
 /// Reinicia la maquina. No vuelve.
 ///
 /// El reinicio de tres pasos (`0xCF9` -> 8042 -> triple fault) ya existia y solo
@@ -416,6 +424,19 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
+            match crate::ring0::obj::archivo::open(pid, ruta) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
+        TASK_OP_MI_PAQUETE => {
+            let pid = scheduler::current_pid();
+            // La ruta la sabe el KERNEL, no el programa. Si no la recuerda --los
+            // binarios que el propio kernel embebe no vienen de ninguna-- se
+            // dice que no, en vez de abrir cualquier cosa.
+            let Some(ruta) = crate::ring0::task::paquete::ruta_de(pid) else {
+                return BmoStatus::err(2);
+            };
             match crate::ring0::obj::archivo::open(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),

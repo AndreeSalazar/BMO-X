@@ -43,6 +43,9 @@
 #define BMO_ARCH_CERRAR   0x04
 #define BMO_ARCH_LEER_EN  0x06
 #define BMO_ARCH_SALTAR   0x07
+/* Abrir MI PROPIA imagen. Es una operacion de TAREA, no de archivo: se la pides
+ * a `BMO_TAREA_ACTUAL` y te devuelve una capability de archivo. */
+#define BMO_OP_MI_PAQUETE 0x25
 
 /* -- La ruta, en paquetes de ocho -------------------------------------
  *
@@ -122,13 +125,14 @@ typedef struct BMO_FILE FILE;
 unsigned long long __bmo_bloque_cap;
 unsigned long long __bmo_bloque_base;
 
-FILE *fopen(char *ruta, char *modo) {
+/* Monta un `FILE` sobre una capability de archivo ya conseguida.
+ *
+ * Existe porque hay DOS formas de conseguirla y solo una es por ruta: la otra
+ * es `BMO_OP_MI_PAQUETE`, que te da la TUYA sin nombrarla. Compartir esta cola
+ * es lo que evita tener dos sitios donde rellenar el mismo struct -- y uno de
+ * los dos olvidandose de un campo. */
+FILE *bmo_archivo_de(unsigned long long cap) {
     FILE *f;
-    unsigned long long cap;
-    /* El modo se ignora a proposito: hoy solo se puede leer, y aceptar "w"
-     * para luego no escribir seria la clase de promesa que aqui no se hace. */
-    (void)modo;
-    cap = bmo_abrir(ruta);
     if (cap == 0) return 0;
     f = (FILE *)malloc(32);
     if (f == 0) return 0;
@@ -137,6 +141,26 @@ FILE *fopen(char *ruta, char *modo) {
     f->base = __bmo_bloque_base;
     f->pos = 0;
     return f;
+}
+
+FILE *fopen(char *ruta, char *modo) {
+    /* El modo se ignora a proposito: hoy solo se puede leer, y aceptar "w"
+     * para luego no escribir seria la clase de promesa que aqui no se hace. */
+    (void)modo;
+    return bmo_archivo_de(bmo_abrir(ruta));
+}
+
+/* **Mi propia imagen**, sin decir donde esta.
+ *
+ * El kernel se acuerda de por donde entro este proceso, asi que no hay ruta que
+ * escribir ni que acertar. Es la diferencia entre pedir por NOMBRE y tener por
+ * DERECHO -- quien puede escribir una ruta puede escribir otra, y aqui no se
+ * escribe ninguna.
+ *
+ * Devuelve 0 si el kernel no recuerda de donde salio, que es lo que le pasa a
+ * los binarios que el propio kernel embebe. */
+FILE *bmo_mi_imagen() {
+    return bmo_archivo_de(bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_MI_PAQUETE, 0, 0, 0));
 }
 
 /* Devuelve ELEMENTOS leidos, como `fread` de verdad -- no bytes. */

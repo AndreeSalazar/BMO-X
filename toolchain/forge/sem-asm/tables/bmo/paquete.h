@@ -22,7 +22,7 @@
  *
  * == Como se usa ==
  *
- *     PAQUETE *p = paquete_abrir("apps/doom.bex");
+ *     PAQUETE *p = paquete_mio();
  *     char *wad = (char *)malloc(4 * 1024 * 1024);
  *     unsigned long long n = paquete_leer(p, "doom1.wad", wad, 4*1024*1024);
  *
@@ -31,11 +31,9 @@
  * un bloque que EL concedio, porque comprobar es una resta contra lo que
  * entrego. Un puntero a la pila no vale y devuelve cero.
  *
- * [!] Y **la ruta se pasa a mano, de momento**. Es lo unico provisional que hay
- * aqui: lo correcto es que el lanzador le entregue al proceso un handle de
- * lectura sobre su propia imagen, como capability -- se tiene porque te la
- * dieron, no porque adivines un nombre. Cuando esa operacion exista, cambia
- * `paquete_abrir` y nada mas.
+ * ** Y la forma correcta de abrir el propio es `paquete_mio()`, **sin ruta**:
+ * el kernel se acuerda de por donde entro el proceso. `paquete_abrir(ruta)`
+ * sigue existiendo para mirar el paquete de OTRO, que es un caso distinto.
  */
 #ifndef BMO_PAQUETE_H
 #define BMO_PAQUETE_H
@@ -97,8 +95,10 @@ int bmo_pq_leer(PAQUETE *p, unsigned long long pos, unsigned long long n) {
  *
  * Que un `.bex` NO lleve recursos no es un fallo: es lo que tienen todos los
  * de hoy. Se contesta 0 y quien llama sigue su camino. */
-PAQUETE *paquete_abrir(char *ruta) {
-    PAQUETE *p;
+/* El cuerpo comun: con `p->f` ya puesto, localiza la seccion 0x0B y su indice.
+ * Lo comparten las dos formas de abrir un paquete, que se diferencian **solo**
+ * en de donde sale el fichero. */
+PAQUETE *bmo_pq_montar(PAQUETE *p) {
     unsigned long long tabla;
     unsigned long long count;
     unsigned long long i;
@@ -106,16 +106,7 @@ PAQUETE *paquete_abrir(char *ruta) {
     unsigned long long largo;
     char *s;
 
-    p = (PAQUETE *)malloc(1024);
-    if (p == 0) return 0;
-    /* La estructura ocupa la cabeza del bloque y el scratch va detras: una
-     * sola peticion para las dos cosas. */
-    p->scratch = (char *)p + 128;
-    p->base = 0;
-    p->cuantos = 0;
-
-    p->f = fopen(ruta, "r");
-    if (p->f == 0) return 0;
+    if (p == 0 || p->f == 0) return 0;
     s = p->scratch;
 
     if (!bmo_pq_leer(p, 0, BMO_BEF_CABECERA)) return 0;
@@ -145,6 +136,45 @@ PAQUETE *paquete_abrir(char *ruta) {
     p->base = off;
     p->cuantos = bmo_u32le(s, 4);
     return p;
+}
+
+/* Reserva la estructura y su scratch de UNA sola peticion. Son cuatro por
+ * proceso y no se pueden gastar en esto. */
+PAQUETE *bmo_pq_nuevo() {
+    PAQUETE *p;
+    p = (PAQUETE *)malloc(1024);
+    if (p == 0) return 0;
+    p->scratch = (char *)p + 128;
+    p->base = 0;
+    p->cuantos = 0;
+    p->f = 0;
+    return p;
+}
+
+/* *** **MI propia caja**, y esta es la forma correcta.
+ *
+ * No lleva ruta. El kernel se acuerda de por donde entro este proceso, asi que
+ * el programa no dice CUAL: dice "el mio". Un binario movido de sitio se sigue
+ * encontrando, y --lo que de verdad importa-- **no hay ninguna ruta que
+ * escribir**: quien puede escribir la suya puede escribir otra, y en un sistema
+ * de capabilities eso es justo lo que no se hace. */
+PAQUETE *paquete_mio() {
+    PAQUETE *p;
+    p = bmo_pq_nuevo();
+    if (p == 0) return 0;
+    p->f = bmo_mi_imagen();
+    return bmo_pq_montar(p);
+}
+
+/* Abrir el paquete de OTRO, por su ruta. Sigue teniendo sentido --un instalador
+ * mirando lo que va a instalar, una herramienta listando-- pero para leer los
+ * datos de UNO MISMO la buena es `paquete_mio`. */
+PAQUETE *paquete_abrir(char *ruta) {
+    PAQUETE *p;
+    p = bmo_pq_nuevo();
+    if (p == 0) return 0;
+    p->f = fopen(ruta, "r");
+    return bmo_pq_montar(p);
 }
 
 /* Cuantos recursos lleva. */

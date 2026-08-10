@@ -308,6 +308,11 @@ pub struct Machine {
     mem_entregados: u64,
     /// Base de cada handle concedido, en orden de concesion.
     mem_bloques: Vec<u64>,
+    /// La imagen desde la que se "lanzo" este programa, si el banco la puso.
+    /// Es lo que contesta `TASK_OP_MI_PAQUETE`. `None` = el kernel no recuerda
+    /// de donde salio, que es lo que le pasa a los binarios que el propio
+    /// kernel embebe.
+    mi_paquete: Option<String>,
     mem: HashMap<u64, u8>,
     /// -- `KIND_AUDIO`, modelada ------------------------------------------
     ///
@@ -359,6 +364,7 @@ impl Machine {
             mem_peticiones: 0,
             mem_entregados: 0,
             mem_bloques: Vec::new(),
+            mi_paquete: None,
             mem: HashMap::new(),
             audio_dueno: false,
             audio_volumen: 50,
@@ -492,6 +498,18 @@ impl Machine {
     /// Siembra un archivo antes de ejecutar. Es el disco de la prueba.
     pub fn poner_archivo(&mut self, ruta: &str, datos: &[u8]) {
         self.archivos.insert(ruta.to_string(), datos.to_vec());
+    }
+
+    /// **La propia imagen del programa**, la que contesta `TASK_OP_MI_PAQUETE`.
+    ///
+    /// El nombre interno no se puede escribir desde el programa --lleva un byte
+    /// nulo-- a proposito: si el `.bex` pudiera nombrarlo, la prueba dejaria de
+    /// distinguir *"me lo dieron"* de *"lo abri yo por la ruta"*, que es justo
+    /// lo que esta operacion existe para separar.
+    pub fn poner_mi_paquete(&mut self, datos: &[u8]) {
+        let clave = "\u{0}mi-paquete".to_string();
+        self.archivos.insert(clave.clone(), datos.to_vec());
+        self.mi_paquete = Some(clave);
     }
 
     /// Hace que guardar ESA ruta falle: el `CLOSE` contestara `0` y en el disco
@@ -668,6 +686,10 @@ impl Machine {
     fn archivo_abrir(&mut self, escribe: bool) -> u64 {
         let ruta = String::from_utf8_lossy(&self.ruta).into_owned();
         self.ruta.clear();
+        self.abrir_ruta(ruta, escribe)
+    }
+
+    fn abrir_ruta(&mut self, ruta: String, escribe: bool) -> u64 {
         if ruta.is_empty() {
             return 0;
         }
@@ -950,6 +972,20 @@ impl Machine {
                 }
                 op if op == TASK_OP_ARCHIVO_ABRIR => {
                     let h = self.archivo_abrir(false);
+                    self.finalizar_syscall(h);
+                    return;
+                }
+                // `TASK_OP_MI_PAQUETE` -- la propia imagen, **sin ruta**.
+                //
+                // El programa no dice cual: el kernel lo sabe porque lo lanzo
+                // el. Si el banco no puso ninguna, se contesta 0 -- que es lo
+                // que le pasa a un binario que el kernel embebe y no viene de
+                // ningun sitio.
+                op if op == 0x25 => {
+                    let h = match self.mi_paquete.clone() {
+                        Some(clave) => self.abrir_ruta(clave, false),
+                        None => 0,
+                    };
                     self.finalizar_syscall(h);
                     return;
                 }

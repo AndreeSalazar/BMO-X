@@ -567,10 +567,15 @@ int main() {
 /// ***** LA FILA QUE CIERRA EL CIRCULO: **el programa lee los datos que viajan
 /// dentro de su propia imagen**.
 ///
-/// Se compila el programa, se EMPAQUETA su `.bex` con dos recursos, y el
-/// paquete resultante se siembra en el disco del emulador con la ruta desde la
-/// que el programa se abre a si mismo. O sea: la caja se lee **en el sitio**,
-/// no se copia a ningun lado.
+/// Se compila el programa, se EMPAQUETA su `.bex` con dos recursos, y ese
+/// paquete se le **entrega** al proceso como su propia imagen. El programa no
+/// escribe ninguna ruta: llama a `paquete_mio()`, que es `TASK_OP_MI_PAQUETE`.
+/// La caja se lee **en el sitio**, no se copia a ningun lado.
+///
+/// ** Y el nombre interno con el que el banco la guarda lleva un byte NULO, asi
+/// que el programa **no podria escribirlo aunque quisiera**. Sin eso, la fila
+/// no distinguiria *"me lo dieron"* de *"lo abri yo por la ruta"* -- que es
+/// exactamente lo que esta operacion existe para separar.
 ///
 /// Los tres saltos que hace por dentro --cabecera BEF, tabla de secciones,
 /// indice "BRES"-- son un `fseek` y un `fread` cada uno. Si el formato que
@@ -585,7 +590,7 @@ int main() {
     PAQUETE *p;
     char *b;
     unsigned long long n;
-    p = paquete_abrir("apps/app.bex");
+    p = paquete_mio();
     if (p == 0) { printf("no es un paquete\n"); return 1; }
     printf("recursos=%d\n", (int)paquete_cuantos(p));
     b = (char *)malloc(64);
@@ -608,20 +613,24 @@ int main() {
     // El programa que corre es el MISMO que esta dentro del paquete: se ejecuta
     // la imagen y se le pone su paquete en el disco, en su ruta.
     let copia = paquete.clone();
-    let out = ejecutar_bef_con(&bef, move |m| m.poner_archivo("apps/app.bex", &copia));
+    let out = ejecutar_bef_con(&bef, move |m| m.poner_mi_paquete(&copia));
     assert_eq!(out, "recursos=2\n[hola desde dentro] 17\nfalta=0\n");
 }
 
 /// Un `.bex` SIN recursos --que es lo que son todos los de hoy-- contesta "no
 /// es un paquete" y no revienta. Que la mayoria de los programas no lleven
 /// datos dentro es el caso normal, no el error.
+///
+/// Cubre tambien el otro camino de fallo, que en metal es el que se va a ver:
+/// un binario del que el kernel **no recuerda de donde salio** --los que embebe
+/// el propio kernel no vienen de ninguna ruta-- recibe 0 y llega aqui igual.
 #[test]
 fn un_bex_sin_recursos_lo_dice_y_no_revienta() {
     let fuente = r#"
 #include <bmo/paquete.h>
 int main() {
     PAQUETE *p;
-    p = paquete_abrir("apps/app.bex");
+    p = paquete_mio();
     if (p == 0) { printf("no es un paquete\n"); return 0; }
     printf("recursos=%d\n", (int)paquete_cuantos(p));
     return 0;
@@ -630,6 +639,6 @@ int main() {
     let bef = compile_with_preprocessor(fuente, std::path::Path::new("p.c"), CStandard::C11)
         .expect("debe compilar");
     let copia = bef.clone();
-    let out = ejecutar_bef_con(&bef, move |m| m.poner_archivo("apps/app.bex", &copia));
+    let out = ejecutar_bef_con(&bef, move |m| m.poner_mi_paquete(&copia));
     assert_eq!(out, "no es un paquete\n");
 }

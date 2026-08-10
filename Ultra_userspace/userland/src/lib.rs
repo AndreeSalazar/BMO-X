@@ -75,6 +75,11 @@ pub const OP_CONSOLA_CREAR: u32 = 0x0D;
 pub const OP_DIR_ABRIR: u32 = 0x0E;
 pub const OP_CONSOLE_READ: u32 = 0x0F;
 pub const OP_ARCHIVO_ABRIR: u32 = 0x10;
+/// Abrir MI PROPIA imagen, para leer los datos que lleva dentro. Sin
+/// argumentos: el programa no dice CUAL, dice "el mio", y quien sabe cual es el
+/// kernel. Pedir el propio fichero por su ruta seria pedir por nombre lo que se
+/// tiene por derecho.
+pub const OP_MI_PAQUETE: u32 = 0x25;
 pub const OP_ARCHIVO_CREAR: u32 = 0x11;
 /// Reiniciar la maquina. No vuelve. Ver [`reiniciar`].
 pub const OP_REINICIAR: u32 = 0x12;
