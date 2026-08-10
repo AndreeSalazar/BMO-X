@@ -129,12 +129,28 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
     // El bloque de acento del titulo: el ojo del gato, en pequeno.
     p.rect(tx, c.marco.y + 9, 8, 8, CIAN);
     let px = p.texto(tx + 16, c.marco.y + 8, "CABINA", TEXTO);
-    p.texto(
+    let px = p.texto(
         px + 2 * bmo::GLIFO_ANCHO,
         c.marco.y + 8,
         "lo que el kernel ve",
         CIAN_TENUE,
     );
+
+    // ** LA FECHA Y LA HORA, en el titulo.
+    //
+    // Cada evento lleva su sello del arranque (`t34A93`), y eso ordena lo que
+    // paso **en esta sesion** y nada mas: dos arranques no se pueden comparar y
+    // un log no se puede cruzar con nada de fuera. La hora de la placa --que
+    // lleva su pila desde antes de que existieramos-- convierte la bitacora en
+    // algo que se puede archivar.
+    //
+    // Si no hay reloj no se pone nada. **No se inventa una fecha**: un log
+    // fechado en 1970 miente con mas convicion que uno sin fechar.
+    let mut sello = [0u8; 24];
+    let sn = fecha_en(&mut sello);
+    if sn > 0 {
+        p.texto_bytes(px + 2 * bmo::GLIFO_ANCHO, c.marco.y + 8, &sello[..sn], CIAN_TENUE);
+    }
 
     let mut ty = c.marco.y + TITULO_ALTO + 8;
 
@@ -257,4 +273,23 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
         "G gravedad   RePag/AvPag historia   arrastra el titulo   ESC cierra",
         CIAN_TENUE,
     );
+}
+
+/// `AAAA-MM-DD HH:MM` de la placa. Devuelve 0 si la maquina no sabe que dia es.
+///
+/// Los segundos se dejan fuera a proposito: en un titulo no se leen, y un
+/// numero que cambia solo hace parpadear una linea que se mira quieta.
+fn fecha_en(out: &mut [u8; 24]) -> usize {
+    let v = bmo::info(bmo::INFO_FECHA);
+    let Some(f) = bmo_rtc::desempaquetar(v) else {
+        return 0;
+    };
+    let mut b = [0u8; 24];
+    let n = bmo_rtc::escribir(&f, &mut b);
+    if n < 16 {
+        return 0;
+    }
+    // Hasta el minuto: `AAAA-MM-DD HH:MM` son 16.
+    out[..16].copy_from_slice(&b[..16]);
+    16
 }

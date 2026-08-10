@@ -80,6 +80,8 @@ const INFO_SPIN_PICO: u64 = 0x1D;
 // Recursos que un muerto dejo sin devolver. Misma clase que los choques: tiene
 // que ser CERO, y por eso vale. Ver `core/autopsia.rs`.
 const INFO_FUGAS: u64 = 0x1E;
+/// La fecha de la placa, empaquetada. Espejo de `bmo_abi::...::INFO_FECHA`.
+const INFO_FECHA: u64 = 0x1F;
 
 const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
@@ -110,6 +112,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_PANTALLA_DUENO => crate::ring0::obj::fb::owner().unwrap_or(0) as u64,
         INFO_TAREAS_LIBRES => crate::ring0::task::scheduler::huecos_libres() as u64,
         INFO_TICKS => crate::ring0::plat::timer::ticks(),
+        INFO_FECHA => crate::ring0::dev::reloj::ahora(),
         // Medido, no declarado: desde donde lo enlaza el guion hasta el final
         // de su `.bss`, que incluye la pila de 64 KiB.
         INFO_KERNEL_BYTES => {

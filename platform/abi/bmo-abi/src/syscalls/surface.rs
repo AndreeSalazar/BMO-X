@@ -280,6 +280,17 @@ pub const INFO_SPIN_PICO: u64 = 0x1D;
 /// proposito: los dos son el sistema comprobandose a si mismo.
 pub const INFO_FUGAS: u64 = 0x1E;
 
+/// **La fecha y hora de la placa**, empaquetada en un solo numero:
+/// `anio<<40 | mes<<32 | dia<<24 | hora<<16 | minuto<<8 | segundo`.
+/// `0` = la maquina no sabe que dia es.
+///
+/// ** UN campo y no seis. La puerta contesta un numero por llamada, y seis
+/// llamadas se pueden leer **a caballo de un cambio de minuto**: daria `10:59`
+/// con los segundos del `11:00`. Empaquetada, la fecha es atomica por
+/// construccion y no hace falta ningun cerrojo. Desempaquetarla es
+/// `bmo_rtc::desempaquetar`.
+pub const INFO_FECHA: u64 = 0x1F;
+
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 pub const INFO_TXT_CPU_NOMBRE: u64 = 0x02;

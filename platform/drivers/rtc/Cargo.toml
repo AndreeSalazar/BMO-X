@@ -1,0 +1,6 @@
+[package]
+name = "bmo-rtc"
+version = "1.0.0"
+edition = "2021"
+description = "El reloj de la placa (CMOS): decodificar sus bytes, sin tocar un puerto"
+license = "Techne"

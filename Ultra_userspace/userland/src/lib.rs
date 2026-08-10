@@ -163,6 +163,9 @@ pub const INFO_SPIN_PICO: u64 = 0x1D;
 /// Recursos que un muerto dejo sin devolver. Tiene que ser CERO: acusa al
 /// kernel, no al programa. Ver `core/autopsia.rs`.
 pub const INFO_FUGAS: u64 = 0x1E;
+/// La fecha y hora de la placa, empaquetada. `0` = no hay reloj.
+/// Ver `INFO_FECHA` en `bmo_abi::syscalls::surface`.
+pub const INFO_FECHA: u64 = 0x1F;
 
 // ** LA AUTOPSIA de un fallo de Ring 3.
 //

@@ -31,6 +31,7 @@ bmo-audio = { path = "../../platform/drivers/audio" }
 # USB Audio Class: decide QUE peticiones mandar. No toca hardware --por eso se
 # prueba entero en el anfitrion-- y quien las manda es `dev/uaudio.rs`.
 bmo-uaudio = { path = "../../platform/drivers/usb/uaudio" }
+bmo-rtc = { path = "../../platform/drivers/rtc" }
 
 [[bin]]
 name =     "bmo-kernel"

@@ -146,6 +146,7 @@ dependencies = [
  "bmo-estratos",
  "bmo-fat32",
  "bmo-input",
+ "bmo-rtc",
  "bmo-uaudio",
  "bmo-uhid",
  "bmo-xhci",
@@ -196,6 +197,10 @@ version = "0.1.0"
 dependencies = [
  "bmo-abi",
 ]
+
+[[package]]
+name = "bmo-rtc"
+version = "1.0.0"
 
 [[package]]
 name = "bmo-sem-asm"

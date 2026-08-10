@@ -118,6 +118,9 @@ pub mod dev {
     pub mod framebuffer;
     pub mod keyboard;
     pub mod pci;
+    /// El reloj de la placa (CMOS). Lo que significan sus bytes lo decide
+    /// `bmo-rtc`; aqui solo se tocan los puertos.
+    pub mod reloj;
     pub mod usb;
 }
 pub mod mm;

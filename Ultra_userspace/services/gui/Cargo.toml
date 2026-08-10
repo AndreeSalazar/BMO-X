@@ -9,6 +9,7 @@ name = "compositor"
 path = "src/main.rs"
 
 [dependencies]
+bmo-rtc = { path = "../../../platform/drivers/rtc" }
 bmo-userland = { path = "../../userland" }
 # La politica de FOCO (quien recibe las teclas) vive en el subsistema de
 # entrada, no aqui: es el oficio de ese crate y ademas alli se puede PROBAR --

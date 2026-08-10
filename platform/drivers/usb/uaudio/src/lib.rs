@@ -161,8 +161,33 @@ pub fn find_audio_control(config: &[u8]) -> Option<AudioControl> {
                     // El primer bloque bmaControls es el del canal MAESTRO.
                     let master = primer_bloque(bma, control_size);
                     // Los bits son 1=mute, 2=volumen (bit 0 y bit 1).
-                    let has_mute = master & 0x01 != 0;
-                    let has_volume = master & 0x02 != 0;
+                    //
+                    // **** PERO NO SOLO EL MAESTRO, y esto salio del Ryzen.
+                    //
+                    // El 2026-08-09 la maquina dijo `aparato de audio SIN
+                    // control de volumen` con el audifono enchufado. El aparato
+                    // esta, tiene Feature Unit, y su bloque MAESTRO declara
+                    // cero -- porque **declara el volumen por CANAL**, en los
+                    // bloques de izquierdo y derecho.
+                    //
+                    // Es una disposicion corrientisima y el estandar la permite:
+                    // el canal 0 es opcional. Mirar solo el primer bloque
+                    // descarta esos aparatos enteros, y el sintoma es el peor
+                    // posible -- un "no se puede" sobre algo que si se puede.
+                    //
+                    // Se mira el maestro Y todos los canales. Cual funciona de
+                    // verdad lo averigua quien manda: `set_volume` prueba el
+                    // maestro y, si da STALL, va canal por canal.
+                    let mut junta = master;
+                    if control_size > 0 {
+                        let mut k = control_size;
+                        while k + control_size <= bma.len() {
+                            junta |= primer_bloque(&bma[k..], control_size);
+                            k += control_size;
+                        }
+                    }
+                    let has_mute = junta & 0x01 != 0;
+                    let has_volume = junta & 0x02 != 0;
                     // Cuantos bloques hay, menos el maestro.
                     let channels = if control_size > 0 {
                         ((bma.len() / control_size).saturating_sub(1)) as u8
@@ -397,6 +422,40 @@ mod tests {
         assert!(ac.has_volume, "declara volumen");
         assert!(ac.has_mute, "declara mute");
         assert_eq!(ac.channels, 2, "izquierdo y derecho, sin contar el maestro");
+    }
+
+    /// ***** EL CASO DEL RYZEN, 2026-08-09: el volumen esta en los CANALES y el
+    /// bloque MAESTRO declara cero.
+    ///
+    /// La maquina dijo `aparato de audio SIN control de volumen` con el
+    /// audifono enchufado. El canal 0 es **opcional** en el estandar, y hay
+    /// aparatos --muchos-- que solo declaran izquierdo y derecho. Mirar solo el
+    /// primer bloque los descarta enteros, y el sintoma es el peor posible: un
+    /// "no se puede" sobre algo que si se puede.
+    #[test]
+    fn el_volumen_puede_estar_solo_en_los_canales() {
+        let mut c = config_tipica();
+        // El Feature Unit empieza en el byte 27: len, type, subtype, unitID,
+        // sourceID, ctrlSize, y luego maestro / L / R.
+        c[33] = 0x00; // maestro: no declara nada
+        c[34] = 0x03; // izquierdo: mute + volumen
+        c[35] = 0x03; // derecho: igual
+        let ac = find_audio_control(&c).expect("sigue siendo un Feature Unit");
+        assert!(ac.has_volume, "el volumen esta en los canales, y cuenta");
+        assert!(ac.has_mute, "y el mute tambien");
+    }
+
+    /// Y si NADIE lo declara --ni maestro ni canales-- sigue siendo que no.
+    /// Ensanchar la busqueda no puede convertir un "no" en un "si".
+    #[test]
+    fn si_nadie_declara_volumen_sigue_siendo_que_no() {
+        let mut c = config_tipica();
+        c[33] = 0x00;
+        c[34] = 0x00;
+        c[35] = 0x00;
+        let ac = find_audio_control(&c).expect("el Feature Unit esta");
+        assert!(!ac.has_volume);
+        assert!(!ac.has_mute);
     }
 
     /// Un aparato sin Feature Unit existe, y la respuesta correcta es `None`:

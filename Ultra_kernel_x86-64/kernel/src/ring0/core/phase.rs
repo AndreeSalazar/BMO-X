@@ -1785,6 +1785,10 @@ pub fn main(ctx: &mut BootContext) {
     // Y el disco: el HBA SATA (no el NVMe -- ahi vive el sistema del dueno) y
     // su tabla de particiones. Ver dev/disk.rs.
     crate::ring0::dev::disk::init();
+    // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
+    // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un
+    // reloj parado. Cuesta ocho lecturas de puerto, una vez en la vida.
+    crate::ring0::dev::reloj::init();
     crate::ring0::dev::disk::scan_partitions();
     // Y el sistema de ficheros: de sectores a ARCHIVOS. Monta la particion de
     // arranque, que es donde vive el BOOTX64.EFI con el que arrancamos.
