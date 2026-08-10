@@ -407,6 +407,109 @@ fn identify() {
     crate::ring0::cabina::info("disk", model(), unsafe { TOTAL_SECTORS });
 }
 
+// -- ** EL DISCO TIENE UN DUENO CADA VEZ ------------------------------------
+//
+// === El fallo que esto tapa, y no era teorico ===
+//
+// El HBA tiene 32 ranuras de comando y este driver usa **la 0**, siempre. Un
+// comando "en vuelo" es un estado global del puerto: la tabla de comando, el
+// PRDT y el `PRDBC` de la cabecera son UNOS.
+//
+// Y el temporizador **expropia**. O sea que la secuencia armar -> campana ->
+// esperar -> leer `PRDBC` se puede partir por la mitad en cualquier punto, y
+// otra tarea puede entrar por otro camino: hoy llegan aqui **FAT32** (los
+// `.bex`, la GPT) y **ESTRATOS** (por `bmo_block`), y encima desde Ring 3
+// cualquiera que abra un archivo. Dos lecturas solapadas escriben la misma
+// ranura, y la primera acaba leyendo el `PRDBC` de la segunda -- **sectores del
+// sitio equivocado, sin que nada falle**.
+//
+// === Por que un DUENO y no un cerrojo ===
+//
+// Un `SpinLock` giraria con el planificador expropiando por debajo, y quien lo
+// tomara y muriera lo dejaria tomado para siempre. Aqui se apunta **quien** lo
+// tiene: si el que espera ve que el dueno ya no existe, lo toma y **lo dice**.
+// Un candado que se puede quedar cerrado sin que nadie sepa por que es peor que
+// la corrupcion que evita.
+//
+// Es la misma idea que la pantalla: exclusiva, con dueno, y recuperable cuando
+// el dueno se muere.
+
+use core::sync::atomic::{AtomicU32, Ordering};
+
+/// Tid de quien tiene el disco ahora mismo. `0` = libre.
+static DUENO: AtomicU32 = AtomicU32::new(0);
+/// Cuantas veces hubo que esperar a que otro soltara. Es la medida de si esto
+/// hacia falta: si nunca sube, es que nadie se solapaba; si sube, cada punto
+/// era una lectura corrupta antes de existir esto.
+static ESPERAS: AtomicU32 = AtomicU32::new(0);
+/// Cuantas veces hubo que QUITARSELO a un dueno que ya no vive.
+static ROBOS: AtomicU32 = AtomicU32::new(0);
+
+/// `(esperas, robos)` desde el arranque.
+pub fn cuentas_dueno() -> (u32, u32) {
+    (ESPERAS.load(Ordering::Relaxed), ROBOS.load(Ordering::Relaxed))
+}
+
+/// El testigo del disco. Al soltarse, libera -- **por todos los caminos**,
+/// incluido un `return` a mitad de la funcion.
+///
+/// Eso es exactamente el motivo de que sea un tipo y no un par de llamadas: la
+/// version con `tomar()` y `soltar()` se olvida en el sexto `return` de
+/// `read`, y el sintoma es un disco que deja de contestar para siempre.
+/// `true` = este testigo es el que libera. Un anidado lleva `false`: soltar
+/// desde dentro dejaria el disco libre **con la operacion de fuera a medias**,
+/// que es justo lo que el dueno existe para impedir.
+pub struct Testigo(bool);
+
+impl Drop for Testigo {
+    fn drop(&mut self) {
+        if self.0 {
+            DUENO.store(0, Ordering::Release);
+        }
+    }
+}
+
+/// Cada cuantas vueltas se pregunta si el dueno sigue vivo.
+///
+/// No en cada una: `pid_de` toma el candado del planificador, y hacerlo en un
+/// bucle apretado es meterse en el camino de lo que estamos esperando. Cuatro
+/// mil vueltas son microsegundos, y lo que se detecta --un dueno muerto-- no se
+/// va a arreglar solo en ese rato.
+const CADA_CUANTO_MIRAR: u64 = 4096;
+
+/// Toma el disco. Espera si lo tiene otro; se lo quita si ese otro ya murio.
+fn tomar_disco() -> Testigo {
+    let yo = crate::ring0::task::scheduler::current_tid().max(1);
+    let mut vueltas = 0u64;
+    loop {
+        if DUENO.compare_exchange(0, yo, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+            return Testigo(true);
+        }
+        let otro = DUENO.load(Ordering::Relaxed);
+        if otro == yo {
+            // ** Anidado: alguien de arriba ya lo tiene. No deberia pasar --las
+            // funciones que lo toman no se llaman entre ellas-- asi que se dice
+            // en vez de callarlo, y se devuelve un testigo que NO libera.
+            crate::ring0::cabina::warn("disk", "peticion de disco anidada (no deberia)", yo as u64);
+            return Testigo(false);
+        }
+        if vueltas == 0 {
+            ESPERAS.fetch_add(1, Ordering::Relaxed);
+        }
+        vueltas += 1;
+        // El dueno ya no existe? Entonces murio con el disco en la mano.
+        if vueltas % CADA_CUANTO_MIRAR == 0
+            && crate::ring0::task::scheduler::pid_de(otro).is_none()
+            && DUENO.compare_exchange(otro, yo, Ordering::Acquire, Ordering::Relaxed).is_ok()
+        {
+            ROBOS.fetch_add(1, Ordering::Relaxed);
+            crate::ring0::cabina::warn("disk", "el dueno del disco murio: se le quita", otro as u64);
+            return Testigo(true);
+        }
+        core::hint::spin_loop();
+    }
+}
+
 /// Lee `count` sectores desde `lba` en `buf`. Devuelve los sectores leidos.
 ///
 /// La lectura no tiene ventana ni gate: mirar un sector no rompe nada, y es
@@ -421,6 +524,10 @@ pub fn read(lba: u64, count: u16, buf: &mut [u8]) -> u16 {
     if buf.len() < want { return 0; }
     let dma = unsafe { DMA_PHYS };
     if dma == 0 { return 0; }
+    // ** El disco es de UNO cada vez. Ver `tomar_disco`: sin esto, dos lecturas
+    // solapadas --y el temporizador expropia en cualquier punto-- se pisan la
+    // ranura 0 y la primera acaba leyendo el `PRDBC` de la segunda.
+    let _testigo = tomar_disco();
 
     const PER_BATCH: u16 = (4096 / SECTOR) as u16; // 8 sectores por pagina
     let mut done = 0u16;
@@ -561,6 +668,48 @@ fn tramo_dma(va: u64, max: u64) -> Option<(u64, u64)> {
     Some((base, bytes))
 }
 
+// -- ** PEDIR SIN ESPERAR ----------------------------------------------------
+//
+// === Que es y que no es ===
+//
+// [`read`] no bloquea la MAQUINA: el temporizador expropia mientras gira, asi
+// que el escritorio sigue pintando. Lo que si bloquea es **al que llamo**, que
+// se queda dentro de una funcion de Ring 0 hasta que el disco conteste.
+//
+// Estas dos operaciones parten eso en dos momentos: se PIDE, se vuelve, y se
+// pregunta despues. Quien pida puede hacer otra cosa entre medias -- que es la
+// definicion de E/S asincrona, y lo que hace falta para que un programa de Ring
+// 3 lea un archivo grande sin quedarse mudo mientras tanto.
+//
+// === El dueno se queda TOMADO entre las dos llamadas ===
+//
+// Y es lo que las hace seguras. Un comando en vuelo es estado global del puerto
+// (una ranura, un PRDT, un `PRDBC`); si el disco quedara libre entre pedir y
+// recoger, cualquiera podria emitir encima y el que pidio recogeria lo del otro.
+// Por eso [`pedir_lectura`] devuelve el testigo: **quien pide se lleva el disco
+// hasta que recoge**, y si muere por el camino el siguiente se lo quita.
+//
+// === Lo que sigue faltando, dicho ===
+//
+// Esto es la mitad del escalon 4. La otra mitad es que el que espera pueda
+// dormirse en vez de preguntar -- y eso pide una INTERRUPCION del HBA y un
+// `wait_key` del planificador, no un driver distinto. El sondeo es lo que se
+// puede tener hoy sin tocar el reparto de turnos, y es lo mismo que hace el
+// compositor con la entrada sesenta veces por segundo.
+
+// ** Y AQUI NO HAY UN `pedir_lectura` / `lectura_lista`, A PROPOSITO.
+//
+// Se escribieron, compilaban, y se quitaron antes de entrar: **no habia quien
+// los llamara**. Este proyecto ya se ha tropezado tres veces con el mismo
+// patron --el foco con sus doce pruebas y sin lector, el arrastre de dos
+// ventanas que nadie invocaba, `BlockReader::count` sin usar-- y en todas la
+// version escrita y muerta dio la impresion de que la funcion existia.
+//
+// La pieza que falta para que tengan sentido NO es un driver: es que el que
+// pide pueda irse a hacer otra cosa. Hoy quien lee un archivo lo lee entero
+// dentro de `archivo::open`, asi que no hay ningun momento en el que "pedir y
+// volver" cambie nada. Lo que hay que mover esta escrito en `LA_RAM.md`.
+
 // -- El gate de identidad ----------------------------------------------------
 
 /// Comprueba QUIEN es el disco y, si convence, abre la puerta de escritura.
@@ -691,6 +840,9 @@ pub fn write(lba: u64, count: u16, data: &[u8]) -> u16 {
     }
     let dma = unsafe { DMA_PHYS };
     if dma == 0 { return 0; }
+    // Igual que en `read`, y aqui todavia mas: dos escrituras que se pisan la
+    // ranura no dan un dato malo, dan un SECTOR malo en el disco.
+    let _testigo = tomar_disco();
 
     const PER_BATCH: u16 = (4096 / SECTOR) as u16; // 8 sectores por pagina
     let mut done = 0u16;
@@ -723,6 +875,7 @@ pub fn write(lba: u64, count: u16, data: &[u8]) -> u16 {
 /// esto, el registro del vuelo se pierde justo en el accidente.
 pub fn flush() -> bool {
     if !is_ready() || !write_armed() { return false; }
+    let _testigo = tomar_disco();
     match unsafe { bmo_ahci::flush_cache(unsafe { PORT }) } {
         Ok(()) => true,
         Err(e) => {

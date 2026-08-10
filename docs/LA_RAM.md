@@ -418,7 +418,7 @@ Cada escalon deja el sistema funcionando, que es la regla de la casa.
 | 1 | **El asignador de Ring 3** sobre `KIND_MEMORIA` | -- (desbloquea `realloc`, los >4 `malloc` y el contrato de `fread`) | M |
 | 2 | ★ **Que el cargador NO lea el fichero entero** -- cabecera + tabla + secciones cargables | **[x] 2026-08-10** -- `bex::necesita`. DOOM+WAD: 6.313.632 -> **813.552 B leidos (-87,1%)** | L |
 | 3 | ★ **DMA al bufer del llamante**, fuera la pagina de rebote | **[x] 2026-08-10** -- `disk::tramo_dma` + un comando por CLUSTER en FAT32 | M |
-| 4 | **E/S asincrona**: que pedir no bloquee | -- | L |
+| 4 | **E/S asincrona**: que pedir no bloquee | **a medias 2026-08-10** -- el disco tiene DUENO y el driver se deja preguntar; falta que el que pide pueda irse | L |
 | 5 | **Las 32 ranuras**, varias peticiones en vuelo | el 4 | M |
 | 6 | **El manifiesto declara lo que va a pedir** | -- | S |
 | 7 | **Demand paging**: el recurso no se lee, se MAPEA | `file_offset` **congruente** con la VA modulo pagina -- la regla `p_offset == p_vaddr (mod pagesize)` de ELF, **ya escrita** en `bef/writer.rs:46` sin cumplir, a proposito | XL |
@@ -549,6 +549,88 @@ la direccion pide la direccion.
 cada lanzamiento apunta su delta en CABINA. **Un camino rapido que nadie mide es
 un camino rapido que un dia deja de tomarse en silencio** -- una pagina que
 cambia de sitio, un buffer que se desalinea, y todo sigue funcionando, despacio.
+
+---
+
+## [~] A MEDIAS el 2026-08-10 -- escalon 4, y lo que se encontro por el camino
+
+Se fue a hacer *"que pedir no bloquee"* y lo primero que aparecio fue que la
+premisa estaba mal:
+
+> ⚠ **`read` NUNCA bloqueo la maquina.** El temporizador expropia, asi que
+> mientras el kernel gira esperando al HBA, el escritorio sigue pintando. Lo que
+> bloquea es **al que llamo**, que se queda dentro de una funcion de Ring 0.
+
+Y eso convierte la expropiacion en el problema, no en la solucion:
+
+### ★★ El fallo de verdad: el disco no tenia dueno
+
+El HBA tiene 32 ranuras y este driver usa **la 0**, siempre. Un comando en vuelo
+es estado global del puerto: una tabla de comando, un PRDT, un `PRDBC`. Y la
+secuencia *armar -> campana -> esperar -> leer `PRDBC`* **se puede partir por la
+mitad en cualquier punto**, porque el temporizador expropia.
+
+Quien podia entrar en medio, hoy, sin inventar nada:
+
+| camino | quien |
+|---|---|
+| `fs::` -> FAT32 | los `.bex`, la GPT, cualquier archivo del volumen de datos |
+| `bmo_block` -> ESTRATOS | el arbol, los nodos, las firmas |
+| Ring 3 | cualquier proceso que abra un archivo |
+
+Dos de esos solapados **escriben la misma ranura**, y el primero acaba leyendo el
+`PRDBC` del segundo: sectores del sitio equivocado, sin que nada falle.
+
+**Ahora el disco tiene DUENO**, con dos decisiones dichas:
+
+- **Un dueno, no un cerrojo.** Un `SpinLock` que tome alguien que despues muere
+  se queda cerrado para siempre. Aqui se apunta *quien* lo tiene: el que espera
+  comprueba si ese tid sigue vivo y, si no, **se lo quita y lo dice**. Es el
+  mismo trato que la pantalla.
+- **Un testigo, no un par `tomar`/`soltar`.** `read` tiene seis salidas; la
+  version con dos llamadas se olvida en la sexta, y el sintoma es un disco que
+  deja de contestar para siempre.
+
+`disk::cuentas_dueno()` cuenta las esperas y los robos, y el lanzamiento los
+apunta. **Cada espera era, antes de esto, una lectura solapada.**
+
+### El driver ya se deja preguntar
+
+`run_command` armaba, tocaba la campana y **se quedaba dentro** girando. Ahora
+son dos: `emitir` (arma y toca) y `sondear` (mira y contesta `EnCurso` /
+`Hecho(n)` / `Fallo`). `run_command` se queda como el bucle de los dos, porque
+casi todos sus usuarios --montar, la GPT, el arranque-- no tienen a donde ir.
+
+Eso no acelera el disco: hace que **el estado del comando se pueda mirar desde
+fuera**, que es lo que "pedir sin esperar" necesita para existir.
+
+### ⚠ Lo que FALTA, y por que no se entrego
+
+Se escribieron `disk::pedir_lectura` y `disk::lectura_lista`, compilaban, y **se
+quitaron antes de entrar: no habia quien los llamara.** Este proyecto ya se
+tropezo tres veces con el mismo patron --el foco con doce pruebas y sin lector,
+el arrastre de dos ventanas que nadie invocaba, `BlockReader::count` sin usar--
+y en las tres la version escrita y muerta dio la impresion de que la funcion
+existia. Un mecanismo sin lector es peor que un hueco: el hueco se ve.
+
+Lo que falta **no es un driver**: es que el que pide pueda irse a otra cosa. Y
+hoy no puede, por dos motivos concretos:
+
+1. **`archivo::open` lee el fichero ENTERO** antes de devolver el handle. No hay
+   ningun momento en el que "pedir y volver" cambie nada: el bloqueo esta en
+   abrir, no en leer. Hasta que abrir sea *"empieza a traerlo"*, la asincronia no
+   tiene donde vivir.
+2. **El planificador solo cambia de tarea en la frontera de un trap**
+   (`schedule_locked`: *"must run from a trap boundary only"*). Asi que una
+   funcion de Ring 0 **no puede dormirse a mitad**: `yield_current()` desde
+   dentro de `disk::read` no cede, marca -- y sigue corriendo con el CR3 de otra
+   tarea. Dormir de verdad pide la INTERRUPCION del HBA y un `wait_key`, que ya
+   existe en `Task` y ahora mismo solo usan los canales.
+
+Ese es el orden del escalon 4 que queda: **interrupcion del HBA -> `wait_key` ->
+`open` que empieza y no termina**. Y el 5 (las 32 ranuras) va detras, porque
+varias peticiones en vuelo solo significan algo cuando hay quien las espere sin
+girar.
 
 ★ **Precision sobre `SectionHash`, porque la primera version de este documento lo
 decia mal**: no esta "vacio". Esta **escrito y probado** -- BLAKE3 de 256 bits,

@@ -76,7 +76,7 @@ const TFD_ERR: u32 = 1 << 0;
 const IS_TFES: u32 = 1 << 30;
 
 const FIS_TYPE_REG_H2D: u8 = 0x27;
-const ATA_CMD_READ_DMA_EX:  u8 = 0x25;
+pub const ATA_CMD_READ_DMA_EX:  u8 = 0x25;
 const ATA_CMD_WRITE_DMA_EX: u8 = 0x35;
 const ATA_CMD_IDENTIFY:     u8 = 0xEC;
 /// FLUSH CACHE EXT: obliga al disco a bajar a la superficie lo que acepto y
@@ -519,6 +519,88 @@ unsafe fn wait_ready(mmio: u64, port: u8) -> bool {
 /// datos y `None` para los que no mueven ninguno (FLUSH CACHE). La direccion
 /// es fisica porque es el HBA quien va a leerla o escribirla, y el HBA no
 /// conoce el mapa de memoria del kernel.
+/// En que va un comando que ya se emitio. Lo contesta [`sondear`].
+///
+/// == Por que existe: **preguntar no es esperar** ==
+///
+/// `run_command` armaba el comando, tocaba la campana y **se quedaba dentro**
+/// girando hasta que el HBA contestara. Mientras tanto, quien llamo no podia
+/// hacer nada -- y lo que es peor, nadie de fuera podia saber si habia algo en
+/// vuelo.
+///
+/// Partirlo en EMITIR y SONDEAR no acelera el disco: lo que hace es que el
+/// estado del comando **se pueda mirar desde fuera**. Sin eso no hay E/S
+/// asincrona posible, porque "pedir sin esperar" es exactamente poder volver y
+/// preguntar despues.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Estado {
+    /// El HBA sigue con ello.
+    EnCurso,
+    /// Termino. Lleva los sectores que movio DE VERDAD (`PRDBC`).
+    Hecho(u16),
+    Fallo(DiskError),
+}
+
+/// **Arma el comando y toca la campana. No espera.**
+///
+/// A partir de aqui la ranura 0 del puerto esta OCUPADA hasta que [`sondear`]
+/// diga otra cosa. Quien emita otro comando encima pisa el que estaba en vuelo
+/// -- este driver no tiene forma de impedirlo, y no debe tenerla: quien reparte
+/// el disco es la capa de arriba (ver `ring0/dev/disk.rs`), igual que quien
+/// reparte la pantalla es el compositor y no el framebuffer.
+pub unsafe fn emitir(
+    port_idx: u8,
+    command: u8,
+    lba: u64,
+    sector_count: u16,
+    data: Option<(u64, u32)>,
+    write: bool,
+) -> Result<(), DiskError> {
+    armar(port_idx, command, lba, sector_count, data, write)
+}
+
+/// **En que va el comando de la ranura 0?** No espera, no gira: mira y contesta.
+///
+/// `con_datos` dice si el comando movia bytes. Un FLUSH no mueve ninguno y no
+/// tiene `PRDBC` que leer; preguntarselo devolveria cero y se leeria como "no
+/// movio nada", que para un FLUSH es cierto y desconcertante.
+pub unsafe fn sondear(port_idx: u8, con_datos: bool, write: bool) -> Estado {
+    #[allow(static_mut_refs)]
+    let ctrl = match CONTROLLER.as_ref() { Some(c) => c, None => return Estado::Fallo(DiskError::NotReady) };
+    if port_idx >= 32 { return Estado::Fallo(DiskError::NotReady); }
+    let port = &ctrl.ports[port_idx as usize];
+    let mmio = ctrl.mmio_base;
+
+    let ci = port_read(mmio, port_idx, PORT_CI);
+    let is = port_read(mmio, port_idx, PORT_IS);
+    if is & IS_TFES != 0 {
+        let tfd = port_read(mmio, port_idx, PORT_TFD);
+        port_write(mmio, port_idx, PORT_IS, is);
+        return Estado::Fallo(DiskError::Device(tfd));
+    }
+    if ci & 1 != 0 {
+        return Estado::EnCurso;
+    }
+    let tfd = port_read(mmio, port_idx, PORT_TFD);
+    if tfd & TFD_ERR != 0 { return Estado::Fallo(DiskError::Device(tfd)); }
+    if !con_datos { return Estado::Hecho(0); }
+
+    let hal = storage_hal::hal();
+    let hdr = hal.phys_to_virt(port.command_list_phys) as *mut u32;
+    let moved = hdr.add(1).read_volatile();
+    let sectors = (moved / SECTOR as u32) as u16;
+    if write && sectors == 0 {
+        // Ver la nota de `run_command`: no todos los HBA actualizan PRDBC en
+        // escritura. Manda TFD.ERR, no un contador opcional.
+        hal.log("[ahci] el HBA no reporta PRDBC en escritura; vale el estado del disco\n");
+        return Estado::Hecho(u16::MAX);
+    }
+    Estado::Hecho(sectors)
+}
+
+/// Emite y **espera girando** hasta que termine. Es [`emitir`] mas [`sondear`]
+/// en un bucle, y se queda porque casi todos sus usuarios --montar, leer la
+/// GPT, el arranque-- no tienen a donde ir mientras tanto.
 unsafe fn run_command(
     port_idx: u8,
     command: u8,
@@ -527,6 +609,34 @@ unsafe fn run_command(
     data: Option<(u64, u32)>,
     write: bool,
 ) -> Result<u16, DiskError> {
+    armar(port_idx, command, lba, sector_count, data, write)?;
+    let mut spun = 0u32;
+    loop {
+        match sondear(port_idx, data.is_some(), write) {
+            Estado::EnCurso => {
+                spun += 1;
+                if spun >= CMD_TIMEOUT { return Err(DiskError::Timeout); }
+                core::hint::spin_loop();
+            }
+            Estado::Hecho(n) => {
+                // `u16::MAX` es la senal de "el HBA no conto, vale el estado del
+                // disco": se traduce a lo que se pidio. Ver `sondear`.
+                return Ok(if n == u16::MAX { sector_count } else { n });
+            }
+            Estado::Fallo(e) => return Err(e),
+        }
+    }
+}
+
+/// Lo que hay que escribir para que el comando exista. Sin esperar a nada.
+unsafe fn armar(
+    port_idx: u8,
+    command: u8,
+    lba: u64,
+    sector_count: u16,
+    data: Option<(u64, u32)>,
+    write: bool,
+) -> Result<(), DiskError> {
     #[allow(static_mut_refs)]
     let ctrl = match CONTROLLER.as_ref() { Some(c) => c, None => return Err(DiskError::NotReady) };
     if port_idx >= 32 { return Err(DiskError::NotReady); }
@@ -600,44 +710,14 @@ unsafe fn run_command(
     port_write(mmio, port_idx, PORT_SERR, port_read(mmio, port_idx, PORT_SERR));
 
     // -- Campana: ejecuta la ranura 0 --
+    //
+    // A partir de esta escritura hay un comando EN VUELO, y el resultado se
+    // recoge con `sondear`. Lo que valga `PRDBC` --cuantos bytes movio DE
+    // VERDAD, que es lo que se contesta en vez de "los que pedi"-- lo lee esa
+    // funcion desde la misma cabecera.
     port_write(mmio, port_idx, PORT_CI, 1);
-
-    let mut spun = 0u32;
-    loop {
-        let ci = port_read(mmio, port_idx, PORT_CI);
-        let is = port_read(mmio, port_idx, PORT_IS);
-        if is & IS_TFES != 0 {
-            let tfd = port_read(mmio, port_idx, PORT_TFD);
-            port_write(mmio, port_idx, PORT_IS, is);
-            return Err(DiskError::Device(tfd));
-        }
-        if ci & 1 == 0 { break; }
-        spun += 1;
-        if spun >= CMD_TIMEOUT { return Err(DiskError::Timeout); }
-        core::hint::spin_loop();
-    }
-    let tfd = port_read(mmio, port_idx, PORT_TFD);
-    if tfd & TFD_ERR != 0 { return Err(DiskError::Device(tfd)); }
-
-    // Un comando sin datos no mueve sectores y no tiene nada que contar.
-    if data.is_none() { return Ok(0); }
-
-    // PRDBC dice cuantos bytes movio DE VERDAD. Devolver "los que pedi" sin
-    // mirarlo es la clase de mentira comoda que este proyecto no admite.
-    let moved = hdr.add(1).read_volatile();
-    let sectors = (moved / SECTOR as u32) as u16;
-
-    // Matiz honesto de la ESCRITURA: no todos los HBA actualizan PRDBC cuando
-    // los datos van de la memoria AL disco (la spec lo pide, el silicio no
-    // siempre obedece; Linux tampoco se fia de el en ese sentido). Si el disco
-    // no reporto ERROR y el comando termino, la orden se cumplio: quien manda
-    // aqui es TFD.ERR, no un contador opcional. Se dice en voz alta en vez de
-    // devolver 0 y dejar creer que la escritura fallo.
-    if write && sectors == 0 {
-        storage_hal::hal().log("[ahci] el HBA no reporta PRDBC en escritura; vale el estado del disco\n");
-        return Ok(sector_count);
-    }
-    Ok(sectors)
+    let _ = hdr;
+    Ok(())
 }
 
 /// Lee `sector_count` sectores desde `lba` al buffer FISICO `buf_phys`.

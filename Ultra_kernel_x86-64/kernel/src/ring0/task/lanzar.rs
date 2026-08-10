@@ -369,6 +369,17 @@ fn con_buffer(path: &str) -> Informe {
     if r1 > r0 {
         crate::ring0::cabina::info("lanzar", "bytes que tuvieron que rebotar", r1 - r0);
     }
+    // ** Y si alguien mas queria el disco mientras. Cada una de estas esperas
+    // era, antes de que el disco tuviera dueno, **una lectura que se solapaba
+    // con otra sobre la misma ranura del HBA**. El numero es la prueba de que
+    // el candado hacia falta; el cero, la de que no estorba.
+    let (esperas, robos) = crate::ring0::dev::disk::cuentas_dueno();
+    if esperas > 0 {
+        crate::ring0::cabina::info("disk", "veces que hubo que esperar al disco", esperas as u64);
+    }
+    if robos > 0 {
+        crate::ring0::cabina::warn("disk", "veces que hubo que quitarle el disco a un muerto", robos as u64);
+    }
 
     // -- El gate: sin firma buena no hay ejecucion --
     //
