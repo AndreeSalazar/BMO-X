@@ -1189,3 +1189,94 @@ saber que existia. Un invariante barato se **impone**, no se recuerda.
    por separado y juntos tiran el escritorio. Revisar el diff de un camino
    nuevo no basta -- hay que leer la frase que forma con el codigo viejo por el
    que pasa.
+
+---
+
+## Ep. 38 -- El volumen llega al audifono y la nota se va al zumbador que no existe
+
+**2026-08-10, 12:10.** Vivaldi corrio en el Ryzen. `VIVALDI: 48 notas, dos
+veces`, salida guardada, el programa termino limpio. Y **no se oyo nada**.
+
+### El diagnostico estaba escrito antes de que pasara
+
+Las lineas del kernel lo cuentan enteras:
+
+```
+   info uaudio  el aparato guardo OTRO volumen =35
+   info uaudio  audifono USB con volumen =1
+   info audio   sonido cedido a Ring 3 =4
+```
+
+`=35` es **el eco piano de Vivaldi**, y el audifono USB lo GUARDO. O sea que la
+mitad del volumen funciona de punta a punta: capability -> kernel -> descriptor
+de audio -> control transfer -> el aparato de verdad.
+
+Lo que no funciona es la otra mitad, y las dos operaciones no hablan con el
+mismo aparato:
+
+| | va a |
+|---|---|
+| `AUDIO_OP_VOLUME` | el altavoz del PC **y** el audifono USB |
+| `AUDIO_OP_BEEP` | el altavoz del PC, **y solo el** |
+
+En esta placa --MSI A320M PRO MAX-- el cabezal SPKR no trae zumbador. Asi que
+la pieza esta **poniendole el volumen al audifono y mandando las notas a un
+altavoz que no existe**.
+
+★ Y lo mejor: `ring0/obj/audio.rs` ya lo decia, en un comentario escrito antes
+de que nadie lo intentara -- *"en esta maquina el altavoz del PC no suena, asi
+que esta linea es la unica de las dos que se puede OIR"*. La foto no descubrio
+el fallo: **confirmo una prediccion que estaba en el codigo**, que es la mejor
+clase de sorpresa que puede dar una tanda de fotos.
+
+### Lo que falta, dicho con su tamano
+
+Eddi lo vio antes de que se lo contaran: *"seria como teclado y mouse pero con
+audio"*. Exacto, y esa comparacion mide bien el trabajo -- porque **lo caro del
+teclado y el raton ya esta pagado**:
+
+```
+   xHCI                        HECHO
+   enumerar el aparato         HECHO
+   leer sus descriptores       HECHO
+   control transfers           HECHO  (el volumen sale por ahi)
+   transferencias ISOCRONAS    FALTA  <- esto es todo lo que queda
+```
+
+`platform/drivers/usb/uaudio` ya lo dice en su primera linea: *"reproducir
+muestras por USB pide transferencias isocronas"*. `bmo-xhci` tiene
+`queue_interrupt_in` y no tiene su equivalente isocrono de salida.
+
+★ **Y por eso el camino corto NO es HD Audio.** El plan de DOOM tiene el audio
+como fase 5 con un driver de HDA entero por delante --enumerar el codec, abrir
+un stream, un anillo de buffers con DMA--. Por USB queda **una** pieza, y el
+aparato ya esta enumerado y respondiendo. La fase 5 estaba mirando al sitio
+equivocado.
+
+**Moraleja**: *dos operaciones de la misma capability pueden hablar con dos
+aparatos distintos, y el programa no tiene forma de saberlo.* `bmo_sonido_volumen`
+y `bmo_sonido_pitar` se piden al mismo handle y una llega al audifono mientras
+la otra se pierde. Cuando una capability agrupa aparatos, **decir a cual fue
+cada operacion es parte de la respuesta** -- si no, el programa no puede
+distinguir "se oyo bajito" de "no habia donde oirlo".
+
+### Y en la misma tanda, dos que SI
+
+- **El compositor no se rompio al lanzar DOOM.** El panico del Ep. 37 --`n`
+  desbordado por abajo tras un lanzamiento fallido-- no volvio. El invariante
+  `cur <= n` restaurado una vez por vuelta aguanto justo el caso que lo tumbo.
+- **FAT32 lee ficheros grandes en metal**: `archivo abierto para leer =814664`
+  --el tamano exacto de `doom.bex`-- y `=4196020`, el WAD entero. La sospecha
+  de la lectura corta queda descartada tambien en el Ryzen, no solo en el
+  anfitrion.
+
+28. **Dos operaciones de la misma capability pueden ir a dos aparatos
+   distintos** (Ep. 38). Y el programa no tiene forma de saberlo: pide las dos
+   al mismo handle. Una capability que agrupa aparatos tiene que decir **a cual
+   fue** cada operacion, o quien la usa no puede distinguir "no se oyo" de "no
+   habia donde".
+29. **Una prediccion escrita en un comentario vale mas que el comentario**
+   (Ep. 38). El de `audio.rs` decia que en esta placa solo el USB se puede oir,
+   meses antes de que nadie lo intentara. Cuando el metal confirma una nota asi,
+   lo que hay que revisar no es el codigo: es el PLAN, que estaba mirando a HD
+   Audio teniendo el camino corto por USB.

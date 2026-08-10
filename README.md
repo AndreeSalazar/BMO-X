@@ -421,6 +421,34 @@ not a shortcut taken: it is the claim that **clicking an icon and typing its
 name are the same act**, so they share the whole path -- console, screen
 lending, echo, and the watchdog that collects whatever the child prints.
 
+**Sound: the volume reaches the headphones, the note does not.** On 10 August a
+transcription of Vivaldi's *Spring* ran on the Ryzen -- 48 notes, twice, clean
+exit -- and nothing was heard. The kernel log explained itself:
+
+```
+   info uaudio  el aparato guardo OTRO volumen =35
+```
+
+`35` is the piano echo Vivaldi wrote into the score, and **the USB headset
+stored it**: capability -> kernel -> audio descriptor -> control transfer -> the
+actual device. That half works end to end.
+
+The other half does not, and the two operations do not talk to the same device:
+`AUDIO_OP_VOLUME` goes to the PC speaker **and** the USB headset;
+`AUDIO_OP_BEEP` goes to the PC speaker **only** -- and this board ships the SPKR
+header with nothing on it. The piece is setting the volume on the headphones and
+sending the notes to a buzzer that does not exist.
+
+The comment in `ring0/obj/audio.rs` had said so months earlier, before anyone
+tried. Hardware did not find the bug; it **confirmed a prediction that was
+already in the code** -- and what that should make you re-read is not the code
+but the plan.
+
+Because the plan had audio behind a whole HD Audio driver, and the short path is
+USB, where the expensive parts are already paid: xHCI, enumeration, descriptors
+and control transfers all work. What is missing is **isochronous OUT transfers**
+-- one piece, on a device that is already enumerated and answering.
+
 **Framebuffer write-combining** (PAT) -- `MSR_PAT` had been declared in the boot
 stage and never written, so every pixel was its own bus transaction.
 
@@ -812,7 +840,8 @@ on top of it.
     functions `doomgeneric` asks a platform for are done, and every capability
     they need was already running on the Ryzen.
 
-    ⏳ **It has not run yet, and the first attempt is instructive.** On the
+    ⏳ **It has not run yet, and two attempts in have taught more than the
+    code did.** On the
     9 August boot the desktop came up with DOOM's icon on it and the launch was
     refused: `el .bex no paso la admision`. It is not the size cap -- 814 KiB
     against 4 MiB -- and its section table passes every check `bex::inspect`

@@ -10,6 +10,35 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
+> ## ⏳ Al 2026-08-10 -- el metal contesto TRES cosas
+>
+> **1. ✅ El panico del escritorio NO volvio.** El invariante `cur <= n`
+> restaurado una vez por vuelta aguanto justo el caso que lo tumbo: lanzar DOOM,
+> que falle, y teclear. Dicho por el dueno: *"mi compositor no se rompio al
+> iniciar DOOM"*.
+>
+> **2. ✅ FAT32 lee ficheros grandes EN METAL.** `archivo abierto para leer
+> =814664` --el tamano exacto de `doom.bex`-- y `=4196020`, el WAD entero. La
+> sospecha de la lectura corta queda descartada tambien en el Ryzen, no solo en
+> el anfitrion. **`doom.bex` sigue sin pasar la admision** y el motivo con
+> nombre todavia no se ha visto: hace falta un arranque con el KERNEL nuevo
+> (`build.ps1 -Todo`, no solo `-Data` -- los `.bex` son datos y el cargador no).
+>
+> **3. ⛔ VIVALDI CORRIO Y NO SE OYO, y el log dijo por que.**
+> `info uaudio  el aparato guardo OTRO volumen =35` -- `35` es el eco piano de
+> la pieza, y **el audifono USB lo guardo**. Esa mitad funciona de punta a
+> punta. La otra no: `AUDIO_OP_VOLUME` va al altavoz del PC **y** al audifono, y
+> `AUDIO_OP_BEEP` va **solo** al altavoz -- que en esta placa no tiene zumbador.
+> La pieza le pone el volumen al audifono y manda las notas a un altavoz que no
+> existe.
+>
+> ★ El comentario de `ring0/obj/audio.rs` ya lo predecia meses antes. Lo que hay
+> que revisar cuando el metal confirma una nota asi **no es el codigo: es el
+> PLAN** -- tenia el audio detras de un driver de HD Audio entero, y el camino
+> corto es USB, donde xHCI, enumeracion, descriptores y control transfers ya
+> estan. Falta **una** pieza: transferencias isocronas de salida. Ver
+> `BITACORA.md` Ep. 38.
+>
 > ## ⏳ Al 2026-08-09 (noche) -- la tanda de DOOM, y lo que el metal contesto
 >
 > **`bmo-c-front` va por 384 filas en verde.** Cinco commits, y ninguno ha

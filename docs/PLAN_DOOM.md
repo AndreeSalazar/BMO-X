@@ -269,9 +269,35 @@ el escalon 3 de `docs/LA_RAM.md`.
 O sea que el audio de verdad **empieza de cero**, y por eso va al final: DOOM se
 juega entero sin sonido, y ninguna de las fases de arriba lo necesita.
 
+## ★★ LA FASE ESTABA MIRANDO AL SITIO EQUIVOCADO (2026-08-10)
+
+El 10 de agosto Vivaldi corrio en el Ryzen y no se oyo. El log dijo por que, y
+de paso reordeno esta fase entera:
+
+```
+   info uaudio  el aparato guardo OTRO volumen =35
+```
+
+`=35` es el eco piano de la pieza, y **el audifono USB lo guardo**. O sea que la
+cadena del volumen funciona de punta a punta hasta el aparato de verdad. Lo que
+no llega es la NOTA: `AUDIO_OP_VOLUME` va al altavoz del PC **y** al audifono,
+y `AUDIO_OP_BEEP` va **solo** al altavoz -- que en esta placa no tiene zumbador.
+
+** Asi que el camino corto no es HD Audio, es USB, y lo caro ya esta pagado:
+
+```
+   xHCI                      HECHO       enumerar el aparato    HECHO
+   leer sus descriptores     HECHO       control transfers      HECHO
+   transferencias ISOCRONAS  <- FALTA, y es lo unico
+```
+
+`platform/drivers/usb/uaudio` lo dice en su primera linea. `bmo-xhci` tiene
+`queue_interrupt_in` y le falta su equivalente isocrono de salida.
+
 | # | Casilla | Tam | Nota |
 |---|---|---|---|
-| 5.0 | Decidir el aparato | M | ⚠ HD Audio (Intel/AMD moderno) o AC'97. En este Ryzen es **HDA**. Es la decision de la fase |
+| 5.0b | ★ **Isocronas de salida en `bmo-xhci`** | L | El camino corto. Un anillo de TRBs isocronos y el alt-setting 1 del aparato |
+| 5.0 | ~~Decidir el aparato~~ | M | ~~HD Audio o AC'97~~ **Contestado por el metal: USB**, porque ya esta enumerado y contestando |
 | 5.1 | Enumerar el codec y abrir un stream de salida | XL | es un driver entero, con DMA y su anillo de buffers |
 | 5.2 | `KIND_AUDIO` como capability | M | un proceso que no la tiene **no hace ruido**, igual que la pantalla |
 | 5.3 | Mezclar los canales de DOOM (`i_sound.c`) | L | DOOM mezcla el mismo, solo pide un buffer |
