@@ -32,6 +32,27 @@ pub(crate) enum Boton {
     Cerrar,
 }
 
+/// Hacia donde va un gesto de teclado.
+///
+/// Es un rumbo y no un `(dx, dy)` porque los cuatro gestos NO son simetricos:
+/// `Arriba` maximiza y `Abajo` restaura, mientras que los lados encajan una
+/// mitad. Con un par de numeros habria que reconstruir cual era cual a base de
+/// comparaciones, que es como se acaba maximizando al pulsar izquierda.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Rumbo {
+    Izquierda,
+    Derecha,
+    Arriba,
+    Abajo,
+}
+
+/// Cuanto se mueve una ventana por pulsacion.
+///
+/// Veinticuatro pixeles: se ve que se movio sin tener que mirar dos veces, y
+/// cruzar una pantalla de 1920 cuesta unas ochenta pulsaciones -- que suena a
+/// mucho hasta que se recuerda que para eso estan `Shift` y las mitades.
+pub(crate) const PASO_TECLADO: u32 = 24;
+
 /// Lado de la zona sensible de cada boton. Veinticuatro pixeles se aciertan sin
 /// mirar; doce obligan a apuntar, y apuntar para CERRAR una ventana es como se
 /// cierra la que no era.
@@ -266,6 +287,106 @@ impl Marco {
             return true;
         }
         false
+    }
+
+    // -- Mover y encajar SIN raton ---------------------------------------
+    //
+    // ** El raton no es la unica mano.** Todo lo de arriba --agarrar, seguir al
+    // puntero, la esquina-- exige un puntero, y hay dos momentos en los que no
+    // lo hay: cuando la ventana se ha quedado con el asa fuera de la pantalla y
+    // cuando el dueno esta escribiendo y no quiere soltar el teclado.
+    //
+    // Va en el marco y no en el compositor por la misma ley que el resto del
+    // modulo: esto son rectangulos y topes. Que tecla lo dispara es politica, y
+    // la politica vive arriba.
+
+    /// Mueve la ventana un paso en un rumbo. `true` si de verdad se movio.
+    ///
+    /// Los topes son los MISMOS que los del arrastre --nunca por encima de la
+    /// barra, nunca fuera del panel--, y eso no es economia de codigo sino la
+    /// unica forma de que las dos manos dejen la ventana en sitios alcanzables
+    /// por la otra. Una ventana que el teclado puede meter donde el raton no
+    /// llega es una ventana perdida.
+    ///
+    /// Una MAXIMIZADA no se mueve, y sale gratis: ocupa el panel entero, asi que
+    /// los topes la dejan donde estaba y esto devuelve `false` solo.
+    pub(crate) fn empujar(&mut self, p: &bmo::Pantalla, rumbo: Rumbo) -> bool {
+        if self.minimizada {
+            return false;
+        }
+        let (nx, ny) = match rumbo {
+            Rumbo::Izquierda => (self.x.saturating_sub(PASO_TECLADO), self.y),
+            Rumbo::Derecha => (
+                (self.x + PASO_TECLADO).min(p.ancho.saturating_sub(self.ancho)),
+                self.y,
+            ),
+            Rumbo::Arriba => (
+                self.x,
+                self.y.saturating_sub(PASO_TECLADO).max(BARRA_ALTO),
+            ),
+            Rumbo::Abajo => (
+                self.x,
+                (self.y + PASO_TECLADO)
+                    .min(p.alto.saturating_sub(self.alto))
+                    .max(BARRA_ALTO),
+            ),
+        };
+        if nx == self.x && ny == self.y {
+            return false;
+        }
+        self.x = nx;
+        self.y = ny;
+        true
+    }
+
+    /// Encaja la ventana contra un borde: media pantalla a un lado, el panel
+    /// entero arriba, y abajo **deshace** el maximizado.
+    ///
+    /// === Por que `Abajo` no minimiza ===
+    ///
+    /// Porque seria una trampa sin salida. Hoy la barra del sistema solo tiene
+    /// ficha para Ejecutar y para Datos --`ficha_en(.., 2)`--, asi que una
+    /// CABINA minimizada no tiene por donde volver: seguiria abierta, sin
+    /// pintarse, y sin ningun control que la traiga. Un atajo que puede dejar
+    /// una ventana inalcanzable no se da hasta que exista el camino de vuelta.
+    ///
+    /// Encajar a un lado **deja de ser estar maximizada**: se olvida la
+    /// geometria guardada, porque el sitio al que hay que poder volver es este y
+    /// no el de hace tres gestos.
+    pub(crate) fn acomodar(&mut self, p: &bmo::Pantalla, rumbo: Rumbo) -> bool {
+        if self.minimizada {
+            return false;
+        }
+        let alto_util = p.alto.saturating_sub(BARRA_ALTO);
+        let media = (p.ancho / 2).max(self.min_ancho).min(p.ancho);
+        let destino = match rumbo {
+            Rumbo::Izquierda => (0, BARRA_ALTO, media, alto_util),
+            Rumbo::Derecha => (p.ancho - media, BARRA_ALTO, media, alto_util),
+            Rumbo::Arriba => (0, BARRA_ALTO, p.ancho, alto_util),
+            // `take` aunque no se vaya a usar: si no estaba maximizada no hay
+            // nada que quitar, y si lo estaba deja de estarlo aqui mismo.
+            Rumbo::Abajo => match self.guardada.take() {
+                Some(g) => g,
+                None => return false,
+            },
+        };
+        let vieja = (self.x, self.y, self.ancho, self.alto);
+        if destino == vieja {
+            return false;
+        }
+        match rumbo {
+            // Maximizar por teclado guarda el sitio igual que el boton: son el
+            // mismo gesto por dos caminos, y tienen que deshacerse igual.
+            Rumbo::Arriba => self.guardada = Some(vieja),
+            Rumbo::Izquierda | Rumbo::Derecha => self.guardada = None,
+            Rumbo::Abajo => {}
+        }
+        let (nx, ny, na, nl) = destino;
+        self.x = nx;
+        self.y = ny;
+        self.ancho = na;
+        self.alto = nl;
+        true
     }
 
     /// Maximizar, o volver al tamano de antes. Devuelve la geometria VIEJA para

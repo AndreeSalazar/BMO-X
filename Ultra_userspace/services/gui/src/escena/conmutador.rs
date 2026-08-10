@@ -30,12 +30,41 @@ const CONM_ANCHO: u32 = 420;
 /// El id es el mismo `u8` que maneja `bmo_input::foco`: ahi es un numero sin
 /// significado --la politica no sabe que es una ventana-- y aqui se le pone
 /// nombre. Cada ventana nueva es una fila mas en esta tabla.
+/// * CABINA y Sonido faltaban aqui, y el atajo las ensenaba como `?`.
+///
+/// Las dos nacieron despues de esta tabla, y la linea de arriba --*"cada ventana
+/// nueva es una fila mas"*-- no se leyo ninguna de las dos veces. El sintoma es
+/// suave y por eso duro: Alt+Tab funcionaba, conmutaba bien, y solo mentia en el
+/// nombre. **Una tabla que hay que acordarse de ampliar se queda corta**; lo que
+/// impide que vuelva a pasar es que ahora se nombra la ventana que se esta
+/// moviendo con las flechas, y un `?` que se mueve se ve enseguida.
 pub(crate) fn name(id: u8) -> &'static str {
     match id {
         0 => "Ejecutar",
         1 => "Datos (ESTRATOS)",
+        2 => "CABINA (kernel)",
+        3 => "Sonido",
         _ => "?",
     }
+}
+
+/// El rectangulo del conmutador. **Una sola cuenta**, porque la usan dos.
+///
+/// `pintar` y `area` la tenian copiada, con un comentario que advertia justo de
+/// esto. Mientras las dos copias fueran identicas daba igual; en cuanto una
+/// crece --la fila de la ayuda de las flechas-- la otra borra un rectangulo mas
+/// corto que el pintado y deja una franja de la ventanita pegada en el
+/// escritorio hasta el siguiente repintado.
+fn caja(p: &bmo::Pantalla, cuantas: usize) -> (u32, u32, u32, u32) {
+    // Dos filas ademas de la lista: el modo y la ayuda de las flechas.
+    let alto = FILA_ALTO * cuantas as u32 + FILA_ALTO * 2 + 16;
+    let ancho = CONM_ANCHO.min(p.ancho.saturating_sub(40));
+    (
+        (p.ancho.saturating_sub(ancho)) / 2,
+        (p.alto.saturating_sub(alto)) / 2,
+        ancho,
+        alto,
+    )
 }
 
 /// Pinta el conmutador centrado, con la senalada resaltada.
@@ -43,10 +72,7 @@ pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], pointed_at: usize, modo: &
     if lista.is_empty() {
         return;
     }
-    let alto = FILA_ALTO * lista.len() as u32 + FILA_ALTO + 16;
-    let ancho = CONM_ANCHO.min(p.ancho.saturating_sub(40));
-    let x = (p.ancho.saturating_sub(ancho)) / 2;
-    let y = (p.alto.saturating_sub(alto)) / 2;
+    let (x, y, ancho, alto) = caja(p, lista.len());
 
     p.rect(x, y, ancho, alto, CONM_BORDE);
     p.rect(x + 2, y + 2, ancho - 4, alto - 4, CONM_FONDO);
@@ -71,21 +97,22 @@ pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], pointed_at: usize, modo: &
     let mx = p.texto(x + 14, fy + 4, "modo: ", TEXTO_TENUE);
     let mx = p.texto(mx, fy + 4, modo, ACENTO);
     p.texto(mx, fy + 4, "   (Alt+M)", TEXTO_TENUE);
+    fy += FILA_ALTO;
+
+    // ** Las flechas se anuncian AQUI y no en el pie de cada ventana.
+    //
+    // Porque este es el unico momento en que la mano ya tiene el Alt pulsado:
+    // se lee la frase con el dedo puesto en la tecla que hace falta. En el pie
+    // de CABINA seria una linea mas que se lee una vez y se olvida, y ademas
+    // habria que repetirla en las tres ventanas -- tres sitios que actualizar
+    // cuando el atajo cambie.
+    let hx = p.texto(x + 14, fy + 4, "flechas: ", TEXTO_TENUE);
+    let hx = p.texto(hx, fy + 4, "mover", TEXTO);
+    let hx = p.texto(hx, fy + 4, "   Shift+flechas: ", TEXTO_TENUE);
+    p.texto(hx, fy + 4, "encajar", TEXTO);
 }
 
 /// Que rectangulo ocupo, para poder borrarlo despues.
-///
-/// Se calcula igual que en `pintar` y no se guarda: dos copias de una cuenta
-/// divergen, pero una cuenta guardada en un sitio y usada en otro se queda
-/// vieja cuando cambia el numero de ventanas -- que aqui pasa en cuanto se abre
-/// una.
 pub(crate) fn area(p: &bmo::Pantalla, cuantas: usize) -> (u32, u32, u32, u32) {
-    let alto = FILA_ALTO * cuantas as u32 + FILA_ALTO + 16;
-    let ancho = CONM_ANCHO.min(p.ancho.saturating_sub(40));
-    (
-        (p.ancho.saturating_sub(ancho)) / 2,
-        (p.alto.saturating_sub(alto)) / 2,
-        ancho,
-        alto,
-    )
+    caja(p, cuantas)
 }

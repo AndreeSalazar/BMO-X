@@ -1007,6 +1007,137 @@ pub extern "C" fn _start() -> ! {
                     }
                     continue;
                 }
+                // -- ** ALT+FLECHAS: MOVER Y ENCAJAR SIN SOLTAR EL TECLADO --
+                //
+                // Alt+Tab ya elegia ventana y no podia hacer nada con ella. Esto
+                // cierra el gesto: se elige con Tab y se coloca con las flechas,
+                // sin que la mano salga del teclado.
+                //
+                // * **A secas mueve; con Shift encaja** -- media pantalla a los
+                // lados, el panel entero arriba, y abajo deshace el maximizado.
+                // Es lo que hace Windows con la tecla de la ventanita, y se
+                // copia el reparto a proposito: un atajo de colocar ventanas que
+                // no es el que ya tienes en los dedos se usa una vez.
+                //
+                // Va con `Alt` por lo mismo que el Tab y la M, y esta escrito
+                // dos lineas mas arriba: `Alt` solo no produce caracter en
+                // ninguna distribucion y `Ctrl+Alt` SI, porque es AltGr.
+                //
+                // [!] Se atiende ANTES que las flechas de las ventanas, y por eso
+                // no les quita nada: sin `Alt` esto no entra, y las flechas de
+                // Datos y el volumen de Sonido siguen llegando enteras.
+                if alt_solo && (0x80..=0x83).contains(&c) {
+                    use escena::marco::Rumbo;
+                    let rumbo = match c {
+                        0x80 => Rumbo::Arriba,
+                        0x81 => Rumbo::Abajo,
+                        0x82 => Rumbo::Izquierda,
+                        _ => Rumbo::Derecha,
+                    };
+                    let encajar = m & bmo::MOD_SHIFT != 0;
+                    let mut movida = false;
+                    // -- ** SE MUEVE LA SENALADA, NO LA QUE TIENE EL FOCO --
+                    //
+                    // `foco.actual()` parece lo obvio y es justo lo que no vale:
+                    // **no cambia mientras conmutas**, a proposito --lo dice su
+                    // propia documentacion-- porque una letra escrita a mitad de
+                    // un Alt+Tab no puede caer en una ventana que todavia no has
+                    // elegido.
+                    //
+                    // Pero estas flechas se pulsan CON EL ALT PULSADO, que es
+                    // exactamente "a mitad de un Alt+Tab". Con `actual()`, elegir
+                    // CABINA con Tab y darle a la flecha moveria la ventana
+                    // ANTERIOR -- se veria moverse la que no es, que es peor que
+                    // no moverse nada.
+                    //
+                    // `pointed_at()` contesta las dos situaciones con una regla:
+                    // conmutando es la resaltada, y sin conmutar es la que ya
+                    // tiene el foco. La que se mueve es **la que estas mirando en
+                    // la ventanita**, y eso se puede explicar en una frase.
+                    match foco.pointed_at() {
+                        Some(V_DATOS) if datos_abierta && !caja_datos.marco.minimizada => {
+                            let (vx, vy, va, vl) = (
+                                caja_datos.x(), caja_datos.y(),
+                                caja_datos.ancho(), caja_datos.alto(),
+                            );
+                            let cambio = if encajar {
+                                caja_datos.marco.acomodar(&p, rumbo)
+                            } else {
+                                caja_datos.marco.empujar(&p, rumbo)
+                            };
+                            if cambio {
+                                borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                                destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                                // Encajar CAMBIA el tamano, asi que las cajas del
+                                // grafo hay que recolocarlas: sin esto la ventana
+                                // mide una cosa y su contenido sigue midiendo otra.
+                                caja_datos.recolocar();
+                                escena::datos::pintar(&p, &caja_datos);
+                                arriba_antes = V_DATOS;
+                                movida = true;
+                            }
+                        }
+                        Some(V_CABINA) if cabina_abierta && !caja_cabina.marco.minimizada => {
+                            let (vx, vy, va, vl) = (
+                                caja_cabina.marco.x, caja_cabina.marco.y,
+                                caja_cabina.marco.ancho, caja_cabina.marco.alto,
+                            );
+                            let cambio = if encajar {
+                                caja_cabina.marco.acomodar(&p, rumbo)
+                            } else {
+                                caja_cabina.marco.empujar(&p, rumbo)
+                            };
+                            if cambio {
+                                borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                                destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                                escena::cabina::pintar(&p, &caja_cabina);
+                                arriba_antes = V_CABINA;
+                                movida = true;
+                            }
+                        }
+                        Some(V_SONIDO) if sonido_abierta && !caja_sonido.marco.minimizada => {
+                            let (vx, vy, va, vl) = (
+                                caja_sonido.marco.x, caja_sonido.marco.y,
+                                caja_sonido.marco.ancho, caja_sonido.marco.alto,
+                            );
+                            let cambio = if encajar {
+                                caja_sonido.marco.acomodar(&p, rumbo)
+                            } else {
+                                caja_sonido.marco.empujar(&p, rumbo)
+                            };
+                            if cambio {
+                                borrar_ventana(&p, &caja, vx, vy, va, vl, visible);
+                                destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                                escena::sonido::pintar(
+                                    &p, &caja_sonido, sonido_cap.is_some(),
+                                    sonido_aparatos, sonido_volumen, sonido_pulsada,
+                                );
+                                arriba_antes = V_SONIDO;
+                                movida = true;
+                            }
+                        }
+                        // Ejecutar no se mueve --es el escritorio, no una
+                        // ventana-- y sin foco no hay a quien mover. En los dos
+                        // casos la tecla se come igual: dejarla pasar mandaria un
+                        // Alt+flecha a la linea de comandos.
+                        _ => {}
+                    }
+                    // La ventana se acaba de pintar ENCIMA del conmutador, que
+                    // esta en el centro. Sin esto, mover tapa la ventanita que
+                    // dice cual estas moviendo -- y a la segunda flecha ya no
+                    // sabes en cual estas. Al soltar Alt se repinta todo de abajo
+                    // arriba, asi que el destrozo se repara solo; lo que hay que
+                    // arreglar es lo que se ve MIENTRAS.
+                    if movida && conmutador_pintado {
+                        escena::conmutador::pintar(
+                            &p,
+                            foco.lista(),
+                            foco.pointed_index(),
+                            foco.modo().name(),
+                        );
+                    }
+                    continue;
+                }
                 // Cualquier tecla durante el combo lo convierte en AltGr y
                 // cancela el toque: el usuario estaba escribiendo, no llamando.
                 if combo {
