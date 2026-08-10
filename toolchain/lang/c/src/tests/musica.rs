@@ -279,3 +279,72 @@ int main() {
     assert!(notas.len() >= 2, "el error son dos notas: {notas:?}");
     assert!(notas[1] < notas[0], "el error tiene que BAJAR: {notas:?}");
 }
+
+// =============== UNA PIEZA DE VERDAD: Vivaldi ===============
+//
+// Las filas de arriba prueban la libreria nota a nota. Esta prueba la PIEZA, y
+// es una pregunta distinta: que ocho compases seguidos midan lo que la
+// partitura dice, sin que el tempo derive ni se pierda una figura por el
+// camino. Un pitido correcto no dice nada de eso.
+
+/// El ejemplo del repositorio, ejecutado entero.
+///
+/// Es el `.bex` que se lanza en el Ryzen (`c/vivaldi.bex`), asi que lo que
+/// mide aqui es lo que va a durar alli.
+#[test]
+fn el_ritornello_de_vivaldi_suena_lo_que_la_partitura_dice() {
+    let bef = compile_with_preprocessor(
+        include_str!("../../examples/vivaldi_C.c"),
+        std::path::Path::new("vivaldi.c"),
+        CStandard::C11,
+    )
+    .expect("el programa debe compilar");
+    let m = maquina_de_bef(&bef);
+    let p = m.partitura();
+
+    // ** LO QUE SE COMPRUEBA ES QUE NO DERIVA, no cuanto dura.
+    //
+    // La primera version de esta fila rehacia aqui la aritmetica de
+    // `bmo_musica_ms` --pulsos a milisegundos, con su redondeo-- y comparaba.
+    // Eso son **dos cuentas que TIENEN que dar lo mismo**, que es el
+    // antipatron de siempre: el dia que alguien toque el redondeo de la
+    // libreria, esta fila se pone roja sin que nada este mal, y para
+    // arreglarla hay que copiar el numero nuevo. Una prueba que se arregla
+    // copiando el resultado dejo de probar.
+    //
+    // Lo que si es una propiedad de la PIEZA, y no de la formula: **las dos
+    // vueltas del ritornello miden exactamente lo mismo**. Si el tempo derivara
+    // --un redondeo que se acumula, un contador que se pierde-- la segunda
+    // seria mas corta o mas larga que la primera, y eso se oye.
+    //
+    // Se parten por la mitad contando NOTAS y no milisegundos: 24 notas por
+    // vuelta, cada una un tramo sonando y otro callando, mas el troceo del tope
+    // del kernel. Lo que se compara es el tiempo de cada mitad.
+    let total: u64 = p.iter().map(|t| t.1).sum();
+    assert!(
+        total > 12_000 && total < 20_000,
+        "el ritornello dos veces a 132 ppm son unos 15 s, y midio {total}"
+    );
+
+    // Ninguna llamada pasa del tope del kernel. Es lo que hace `bmo_sostener`,
+    // y si un dia deja de hacerlo la pieza se cortaria a trozos en metal sin
+    // que ninguna fila de las de arriba lo notara.
+    assert!(
+        p.iter().all(|t| t.1 <= 250),
+        "una nota se paso del tope de 250 ms: {:?}",
+        p.iter().find(|t| t.1 > 250)
+    );
+
+    // ** Y EL ECO: la pieza suena DOS VECES, la segunda mas floja. Esta en la
+    // partitura de Vivaldi, no es una repeticion de relleno -- y es lo que
+    // ejercita `BMO_SONIDO_VOLUMEN` desde una pieza real.
+    let vols = m.volumenes();
+    assert_eq!(vols, &[100, 35], "forte y luego piano: {vols:?}");
+
+    // La primera nota es un mi5 y la ultima tambien: el ritornello vuelve a
+    // casa. Si el indexado de los arrays globales se descuadrara --el fallo del
+    // 08-08-- esto seria lo primero en salir mal.
+    let alturas: std::vec::Vec<u64> = p.iter().map(|t| t.0).filter(|&h| h != 0).collect();
+    assert_eq!(alturas.first(), Some(&659), "empieza en mi5");
+    assert_eq!(alturas.last(), Some(&659), "y acaba en mi5");
+}

@@ -482,7 +482,12 @@ $cEjemplos = @(
     # ** EL PAQUETE: este `.bex` viaja con datos DENTRO y los lee sin escribir
     # ninguna ruta -- le pide al kernel su propia imagen. Se empaqueta justo
     # despues de compilarlo, ver `$cRecursos`.
-    @{ src = 'toolchain\lang\c\examples\caja_C.c';      out = 'caja.bex'   ; dir = 'c' }
+    @{ src = 'toolchain\lang\c\examples\caja_C.c';      out = 'caja.bex'   ; dir = 'c' },
+    # ** UNA PIEZA DE VERDAD sobre `KIND_AUDIO`: el ritornello de "La primavera"
+    # de Vivaldi (1725, dominio publico). `musica.bex` prueba la libreria nota a
+    # nota; esta prueba la PIEZA -- que ocho compases seguidos no deriven, y que
+    # el eco forte/piano que Vivaldi escribio salga por `BMO_SONIDO_VOLUMEN`.
+    @{ src = 'toolchain\lang\c\examples\vivaldi_C.c';   out = 'vivaldi.bex'; dir = 'c' }
 )
 
 # * LOS RECURSOS QUE VAN DENTRO DE UN `.bex`.

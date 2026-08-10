@@ -333,6 +333,10 @@ pub struct Machine {
     /// a 120 pulsos son 440 Hz durante 425 ms, y no algo aproximado.
     audio_dueno: bool,
     audio_volumen: u64,
+    /// **Todos** los volumenes que se pidieron, en orden. `audio_volumen` solo
+    /// guarda el ultimo, y eso no distingue "se puso una vez" de "se puso
+    /// cuatro" -- que es justo lo que una pieza con eco necesita comprobar.
+    audio_volumenes: Vec<u64>,
     /// Todo lo que sono, en orden: `(hz, ms)`.
     audio_partitura: Vec<(u64, u64)>,
     data_len: u64,
@@ -376,6 +380,7 @@ impl Machine {
             mem: HashMap::new(),
             audio_dueno: false,
             audio_volumen: 50,
+            audio_volumenes: Vec::new(),
             audio_partitura: Vec::new(),
             data_len: 0,
             zf: false,
@@ -637,6 +642,14 @@ impl Machine {
         self.audio_volumen
     }
 
+    /// Los volumenes pedidos, en orden. Una pieza con eco --forte y luego
+    /// piano, que es como Vivaldi escribio el ritornello de "La primavera"--
+    /// solo se puede comprobar mirando la SECUENCIA: el ultimo valor por si
+    /// solo no distingue un eco de un volumen puesto una vez.
+    pub fn volumenes(&self) -> &[u64] {
+        &self.audio_volumenes
+    }
+
     /// Despacho de la capability de sonido. Copia la semantica de
     /// `ring0/obj/audio.rs` -- sobre todo la que se nota: **el tope recorta**.
     fn audio_op(&mut self, op: u64, a0: u64, a1: u64) -> u64 {
@@ -655,6 +668,7 @@ impl Machine {
             }
             AUDIO_OP_VOLUME => {
                 self.audio_volumen = a0.min(100);
+                self.audio_volumenes.push(self.audio_volumen);
                 self.audio_volumen
             }
             AUDIO_OP_SILENCE => {
