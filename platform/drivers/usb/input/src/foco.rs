@@ -138,6 +138,32 @@ impl Foco {
         &self.orden[..self.n]
     }
 
+    /// Quien esta DELANTE del todo, tenga o no el foco de escritura.
+    ///
+    /// ** LA REGLA QUE SEPARA LAS DOS COSAS, y salio de una sesion en metal:
+    ///
+    /// > Las teclas de **ESCRITURA** son de la ventana con el FOCO.
+    /// > Las teclas de **NAVEGACION** son de la ventana que se VE DELANTE.
+    ///
+    /// El 2026-08-09 el dueno abrio CABINA con F11 y RePag/AvPag no movieron
+    /// nada, aunque el pie de la ventana los anuncia. El motivo no era un fallo:
+    /// era la politica funcionando -- **abrir no es enfocar**, asi que las
+    /// teclas seguian yendo a Ejecutar, que estaba detras y usa RePag/AvPag para
+    /// su propio historial.
+    ///
+    /// Las dos conductas son correctas por separado y juntas dan una ventana que
+    /// promete algo que no hace. Se separan aqui: una `f` escrita sigue cayendo
+    /// donde el foco diga --robarsela seria mucho peor-- pero un RePag mueve **lo
+    /// que estas mirando**, que es lo que cualquiera espera al verlo.
+    pub fn delante(&self) -> Option<u8> {
+        self.orden[..self.n].first().copied()
+    }
+
+    /// Esta `ventana` delante del todo?
+    pub fn esta_delante(&self, ventana: u8) -> bool {
+        self.delante() == Some(ventana)
+    }
+
     /// Quien tiene el foco, o `None` si no hay ninguna abierta.
     ///
     /// * **Esto NO cambia mientras conmutas.** Con Alt pulsado, lo resaltado es
@@ -535,5 +561,39 @@ mod tests {
         f.close(TERCERA);
         assert_eq!(f.abiertas(), 1);
         assert_eq!(f.actual(), Some(EJECUTAR));
+    }
+
+    /// ** LA FILA DEL 2026-08-09: **delante** y **foco** son dos preguntas, y
+    /// en modo Fijo dan respuestas DISTINTAS.
+    ///
+    /// Abrir una ventana en Fijo la pone delante sin darle el teclado. Si las
+    /// teclas de navegacion se pidieran por foco, la ventana que estas MIRANDO
+    /// no responderia a su propio pie de pagina -- que es lo que le paso a
+    /// CABINA con RePag/AvPag.
+    #[test]
+    fn delante_y_foco_no_son_lo_mismo() {
+        let mut f = Foco::nuevo();
+        f.open(1);
+        assert!(f.esta_delante(1) && f.es_para(1), "con una sola, coinciden");
+
+        f.poner_modo(Modo::Fijo);
+        f.open(2);
+        // En Fijo la nueva NI se pone delante NI recibe el teclado: entra
+        // detras de la que estaba. Se fija aqui porque es justo lo que hace que
+        // "esta delante" y "la estoy viendo" NO sean la misma pregunta -- el
+        // compositor la PINTA encima igualmente al abrirla.
+        assert!(!f.esta_delante(2), "en Fijo entra detras");
+        assert!(f.esta_delante(1), "la de antes sigue delante");
+        assert!(f.es_para(1), "y el teclado se queda donde estaba");
+        assert!(!f.es_para(2), "abrir no es enfocar, y eso no cambia");
+    }
+
+    /// Y sin ventanas no hay nadie delante. Un `unwrap` aqui seria un panico en
+    /// el arranque, antes de que exista una sola ventana.
+    #[test]
+    fn sin_ventanas_no_hay_nadie_delante() {
+        let f = Foco::nuevo();
+        assert_eq!(f.delante(), None);
+        assert!(!f.esta_delante(0));
     }
 }

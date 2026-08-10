@@ -974,7 +974,7 @@ pub extern "C" fn _start() -> ! {
                 // estas dentro de la ventana no sirve para abrirla.
                 let conmutar_klog = if c == 0x93 {
                     Some(!cabina_abierta)
-                } else if c == 0x1B && cabina_abierta && foco.es_para(V_CABINA) {
+                } else if c == 0x1B && cabina_abierta {
                     Some(false)
                 } else {
                     None
@@ -1136,9 +1136,24 @@ pub extern "C" fn _start() -> ! {
 
                 // RePag/AvPag dentro de la consola del kernel: recorrer el log.
                 //
-                // Va aqui y no en el editor de linea porque **es de esta
-                // ventana**: con el foco en el kernel, esas teclas no tienen
-                // nada que ver con el historial de salida de Ejecutar.
+                // ** MIENTRAS CABINA ESTA ABIERTA, ESTAS TRES TECLAS SON SUYAS
+                // -- RePag, AvPag y `G`-- y no se le piden al foco.
+                //
+                // Antes se exigia `foco.es_para(V_CABINA)`, y el 2026-08-09 eso
+                // dio una ventana que **prometia en su pie algo que no hacia**:
+                // el dueno abrio CABINA con F11, la vio ocupando la pantalla, y
+                // RePag no movio nada. No era un fallo del scroll: era la
+                // politica funcionando. **Abrir no es enfocar** --y no debe
+                // serlo, porque robar el teclado a quien esta escribiendo es
+                // mucho peor-- pero el compositor la PINTA encima igualmente,
+                // asi que lo que se ve y lo que manda dejaban de coincidir.
+                //
+                // La regla que queda: **las teclas de ESCRITURA son del foco;
+                // las de NAVEGACION, de la ventana que estas mirando.** Una
+                // letra sigue cayendo en Ejecutar; un RePag mueve lo que se ve.
+                // Se paga que no se pueda recorrer el historial de Ejecutar con
+                // CABINA delante -- y eso no se pierde, porque debajo de CABINA
+                // no se ve.
                 // -- F: cambiar el filtro de la ventana del kernel --
                 //
                 // Solo con el foco AQUI: con el foco en Ejecutar, una `f` es una
@@ -1153,13 +1168,13 @@ pub extern "C" fn _start() -> ! {
                 // Es `G` y no `F` porque ya no filtra por FAMILIA de modulo
                 // --eso lo hacia el klog, adivinando por el prefijo de la
                 // linea-- sino por la severidad que CABINA lleva de verdad.
-                if cabina_abierta && foco.es_para(V_CABINA) && (c == b'g' || c == b'G') {
+                if cabina_abierta && (c == b'g' || c == b'G') {
                     caja_cabina.minima = (caja_cabina.minima + 1) % 5;
                     caja_cabina.desde = 0;
                     escena::cabina::pintar(&p, &caja_cabina);
                     continue;
                 }
-                if cabina_abierta && foco.es_para(V_CABINA) && (c == 0x87 || c == 0x88) {
+                if cabina_abierta && (c == 0x87 || c == 0x88) {
                     let hay = bmo::cabina_disponibles();
                     if c == 0x87 {
                         // Hacia atras en el tiempo, sin pasarse del principio.
@@ -2819,9 +2834,53 @@ pub extern "C" fn _start() -> ! {
 /// pantalla puede estar reclamada por nosotros y a medio pintar, asi que el
 /// unico sitio donde el mensaje sobrevive es el panel del kernel -- que es
 /// justo donde se queda la maquina cuando el escritorio no arranca.
+/// Un buffer de pila que sabe recibir un `write!`. Es lo minimo para poder
+/// pedirle a `PanicInfo` su MENSAJE, que es texto formateado y no una `&str`.
+struct Renglon {
+    buf: [u8; 192],
+    n: usize,
+}
+
+impl core::fmt::Write for Renglon {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        for &b in s.as_bytes() {
+            if self.n >= self.buf.len() {
+                break; // se trunca; media linea dice mas que ninguna
+            }
+            self.buf[self.n] = b;
+            self.n += 1;
+        }
+        Ok(())
+    }
+}
+
 #[panic_handler]
 fn panico(info: &core::panic::PanicInfo) -> ! {
     bmo::consola("panico en el compositor\n");
+    // ** EL MENSAJE, y no solo el sitio.
+    //
+    // Esto decia archivo y linea, y con eso el 2026-08-09 se supo que el
+    // escritorio moria en `main.rs:2744` -- que es un `&ruta[..n]`. Pero
+    // saber la LINEA de un corte de rebanada no dice **cual era el numero**,
+    // y sin el numero hay que deducir por que `n` valdria mas de 128
+    // leyendo los veinte sitios que lo tocan. Se leyeron: ninguno puede.
+    //
+    // El mensaje de Rust lo trae dentro: *"range end index 131 out of range
+    // for slice of length 128"*. Una linea que convierte una tarde de
+    // lectura en un vistazo -- y cuesta un buffer de pila de 192 bytes que
+    // solo existe cuando el proceso ya se esta muriendo.
+    {
+        use core::fmt::Write;
+        let mut r = Renglon { buf: [0u8; 192], n: 0 };
+        let _ = write!(r, "{}", info.message());
+        if r.n > 0 {
+            if let Ok(s) = core::str::from_utf8(&r.buf[..r.n]) {
+                bmo::consola("  ");
+                bmo::consola(s);
+                bmo::consola("\n");
+            }
+        }
+    }
     if let Some(l) = info.location() {
         bmo::consola("  en ");
         bmo::consola(l.file());
