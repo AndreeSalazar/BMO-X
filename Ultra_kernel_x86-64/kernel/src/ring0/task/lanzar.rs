@@ -133,8 +133,31 @@ pub struct Informe {
 /// ese coste es DMA directo al bufer del llamante, que esta en la hoja de ruta
 /// y es otra conversacion. A 4 MiB esa copia ya se nota, asi que la
 /// conversacion se acerca.
+///
+/// == ** 2026-08-10: YA NO ES EL TOPE DEL FICHERO, ES EL DE LO CARGABLE ==
+///
+/// Escalon 2 de `LA_RAM.md`. Antes esto media **el archivo**, asi que un paquete
+/// con un WAD dentro (~5,5 MB) no arrancaba aunque su parte ejecutable fueran
+/// 812 KB: se traia la bodega entera para ejecutar el quirofano.
+///
+/// Ahora el cargador **pregunta al formato que necesita** (`bex::necesita`) y
+/// trae solo eso: codigo, datos, relocations y hashes. Los recursos se quedan en
+/// el disco hasta que el programa los pida por `TASK_OP_MI_PAQUETE`.
+///
+/// > **Un `.bex` puede medir lo que quiera. Lo que tiene que caber aqui es lo
+/// > que se EJECUTA.**
 const MAX_BEX: usize = 4 * 1024 * 1024;
 static mut IMAGE: [u8; MAX_BEX] = [0u8; MAX_BEX];
+
+/// Lo que se lee de primeras para poder preguntarle al fichero que necesita.
+///
+/// La cabecera son 48 bytes y la tabla empieza en el 48 --`BefBuilder::build` la
+/// pone siempre ahi-- con 48 bytes por seccion y dieciseis como tope: **816
+/// bytes** cubren cualquier `.bex` que pueda existir. Dos kilos dejan sitio a
+/// que ese contrato crezca sin que esto se quede corto en silencio, y si aun asi
+/// no cupiera, `bex::necesita` lo dice con su nombre (`PrologoCorto`) en vez de
+/// leer una tabla a medias.
+const PROLOGO: usize = 2048;
 
 /// El buffer de imagen es UNO y estatico: un `.bex` son varios KiB y la pila
 /// del kernel son 64 KiB para todo.
@@ -211,24 +234,81 @@ fn con_buffer(path: &str) -> Informe {
     // sigue siendo de donde arranca la maquina.
     let nodo_est = if est::is_mounted() { est::open(path) } else { None };
 
-    let (origen, n, veredicto) = if let Some(nd) = nodo_est {
-        let leidos = match est::read(&nd, buf) {
+    let origen = if nodo_est.is_some() { "ESTRATOS" } else { "FAT32" };
+
+    // == FASE 1: EL PROLOGO ==
+    //
+    // La cabecera son 48 bytes y la tabla de secciones empieza en el 48 --el
+    // escritor la pone SIEMPRE ahi (`BefBuilder::build`)-- con 48 por seccion y
+    // dieciseis como maximo: 816 bytes cubren cualquier `.bex` que exista. Con
+    // dos kilos sobra sitio para que ese contrato pueda crecer sin que esto se
+    // quede corto en silencio.
+    let prologo_n = if let Some(nd) = &nodo_est {
+        match est::read(nd, &mut buf[..PROLOGO]) {
             Some(v) => v,
             None => {
                 return Informe {
-                    origen: "ESTRATOS",
+                    origen,
                     bytes: 0,
                     firma: None,
                     pid: None,
                     res: Err(Fallo::NoSePudoLeer),
                 }
             }
-        };
-        let v = est::firma(&nd, &buf[..leidos]);
-        ("ESTRATOS", leidos, Some(v))
+        }
     } else {
-        match crate::ring0::fsys::fs::load(path, buf) {
-            Ok(v) => ("FAT32", v, None),
+        match crate::ring0::fsys::fs::load_prefijo(path, &mut buf[..PROLOGO]) {
+            Ok((leidos, _)) => leidos,
+            Err(e) => {
+                crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
+                crate::ring0::cabina::warn("lanzar", e.name(), 0);
+                return Informe {
+                    origen,
+                    bytes: 0,
+                    firma: None,
+                    pid: None,
+                    res: Err(Fallo::NoSeEncuentra(e.name())),
+                };
+            }
+        }
+    };
+
+    // == FASE 2: QUE NECESITA ==
+    //
+    // ** Aqui esta el escalon 2 entero. No se pregunta "cuanto mide" sino **que
+    // necesita**, y quien lo contesta es el propio fichero: `bex::necesita` lee
+    // la tabla y suma hasta donde llega lo ultimo que el cargador va a tocar --
+    // codigo, datos, relocations y hashes--. Los recursos van detras y **no se
+    // traen**: el programa los pedira en ejecucion por `TASK_OP_MI_PAQUETE`, que
+    // es su puerta.
+    //
+    // Si `necesita` no sabe contestar --no es un BEF, o la tabla no cabio en el
+    // prologo-- se lee lo que quepa y se deja que `inspect` rechace **con su
+    // nombre**. Un cargador que se calla el motivo por no saber leer la tabla
+    // seria peor que el que leia de mas.
+    let hace_falta = match crate::ring0::task::bex::necesita(&buf[..prologo_n]) {
+        Ok(h) => h.min(MAX_BEX),
+        Err(_) => MAX_BEX,
+    };
+
+    // == FASE 3: LEER SOLO ESO ==
+    let (n, tam, veredicto) = if let Some(nd) = &nodo_est {
+        // Una pasada: TODOS los bytes le pasan al hasher por delante y solo se
+        // guarda el principio. La firma sigue cubriendo el archivo entero.
+        // Ver `est::leer_y_firmar`.
+        let Some((leidos, tam, v)) = est::leer_y_firmar(nd, &mut buf[..hace_falta]) else {
+            return Informe {
+                origen,
+                bytes: 0,
+                firma: None,
+                pid: None,
+                res: Err(Fallo::NoSePudoLeer),
+            };
+        };
+        (leidos, tam, Some(v))
+    } else {
+        match crate::ring0::fsys::fs::load_prefijo(path, &mut buf[..hace_falta]) {
+            Ok((leidos, tam)) => (leidos, tam, None),
             Err(e) => {
                 // * EL MOTIVO, AL KLOG. `Fallo::NoSeEncuentra` ya lo lleva
                 // dentro, pero por la puerta solo cabe un codigo y Ring 3 lo
@@ -245,7 +325,7 @@ fn con_buffer(path: &str) -> Informe {
                 crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
                 crate::ring0::cabina::warn("lanzar", e.name(), 0);
                 return Informe {
-                    origen: "FAT32",
+                    origen,
                     bytes: 0,
                     firma: None,
                     pid: None,
@@ -254,6 +334,14 @@ fn con_buffer(path: &str) -> Informe {
             }
         }
     };
+
+    // ** LA MEDIDA, DICHA. Es el numero que dice si esto sirve de algo: "de 5,5
+    // MB he traido 812 KB" es el escalon 2 entero en una linea. Sin apuntarlo,
+    // la unica forma de saber si el cargador dejo de tragar seria cronometrar
+    // arranques.
+    if tam > n {
+        crate::ring0::cabina::info("lanzar", "bytes que NO hubo que traer", (tam - n) as u64);
+    }
 
     // -- El gate: sin firma buena no hay ejecucion --
     //
@@ -283,7 +371,7 @@ fn con_buffer(path: &str) -> Informe {
         None => path,
     };
 
-    let (res, pid) = match crate::ring0::task::proc::admit_from_disk(name, &buf[..n]) {
+    let (res, pid) = match crate::ring0::task::proc::admit_from_disk(name, &buf[..n], tam) {
         Some((tid, pid)) => (Ok(tid), Some(pid)),
         None => (Err(Fallo::NoAdmitido), None),
     };

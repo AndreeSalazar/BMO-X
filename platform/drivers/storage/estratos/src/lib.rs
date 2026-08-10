@@ -43,6 +43,12 @@ pub use objects::{Attr, BlockPtr, Entrada, Nodo, Tipo};
 pub use read::{descender, Fuente};
 
 pub use bmo_hash::hash as blake3;
+/// El BLAKE3 **incremental**. Se reexporta porque el cargador necesita
+/// comprobar la firma de un archivo **sin tenerlo entero en RAM**: los bytes le
+/// pasan por delante en trozos, se los come el hasher, y solo se guarda el
+/// principio. Un `blake3(&[u8])` obliga a que el archivo entero exista en
+/// memoria a la vez, que es justo lo que hay que dejar de hacer.
+pub use bmo_hash::Hasher;
 
 /// Suma BLAKE3 de 256 bits. Todo en ESTRATOS se identifica y se comprueba con
 /// esto -- contenido, raices y la identidad del disco.

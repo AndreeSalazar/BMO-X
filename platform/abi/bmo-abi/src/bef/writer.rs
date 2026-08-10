@@ -236,25 +236,80 @@ impl BefBuilder {
         let mut entries = Vec::with_capacity(count as usize);
         let mut file_off = header_size + table_size;
 
-        for (i, section) in self.sections.iter().enumerate() {
+        // Primero la tabla con lo que NO depende de la disposicion; los offsets
+        // se reparten despues, y en otro orden. Ver el bloque de abajo.
+        for section in self.sections.iter() {
             let mut entry = SectionEntry::ZERO;
             entry.kind = section.kind as u8;
             entry.flags = section.flags.bits();
             entry.mem_size = section.mem_size;
             entry.alignment = section.alignment;
             entry.hash_index = section.hash_index;
-
-            // * LA FIRMA TAMBIEN RESERVA SU SITIO. Antes se la saltaba aqui y
-            // sus bytes se pegaban al final del fichero sin entrada que los
-            // nombrara -- escritos e invisibles. Reservar su hueco en la misma
-            // pasada se puede porque su tamano es conocido de antemano.
-            if section.kind != SectionKind::Bss && !section.data.is_empty() {
-                file_off = alinea(file_off, ALINEACION_EN_FICHERO);
-                entry.file_offset = file_off;
-                entry.file_size = section.data.len() as u64;
-                file_off += entry.file_size;
-            }
             entries.push(entry);
+        }
+
+        // ** LO QUE EL CARGADOR USA VA DELANTE. TODO. (2026-08-10)
+        //
+        // === El numero que lo obliga ===
+        //
+        // El cargador del kernel dejo de leer el fichero entero: pregunta a la
+        // tabla que necesita --codigo, datos, relocations y hashes-- y trae solo
+        // hasta donde acaba lo ultimo de eso. Con la disposicion de antes, esa
+        // cuenta daba **el fichero entero y el ahorro era CERO**, porque la
+        // firma se colocaba al final, DETRAS de los recursos:
+        //
+        // ```text
+        //   [cab][tabla][Code][RoData][Data][Relocs][Resources][Signature]
+        //                                              ^ el WAD    ^ y esto detras
+        //   necesita -> hasta aqui ------------------------------------->
+        // ```
+        //
+        // Basta con que UNA seccion que el cargador mira quede detras del bulto
+        // para que el bulto haya que traerlo igual. Ordenando:
+        //
+        // ```text
+        //   [cab][tabla][Code][RoData][Data][Relocs][Signature][Resources]
+        //   necesita -> hasta aqui ------------------------->
+        // ```
+        //
+        // === Por que se puede, y por que no rompe nada ===
+        //
+        // El ORDEN DE LA TABLA no cambia: los indices siguen siendo los mismos,
+        // y son ellos los que usan las relocations (`SeccionAbs64` guarda el
+        // indice de la seccion destino) y los hashes (`section_index`). Lo unico
+        // que se reordena es **donde caen los bytes dentro del fichero**, y eso
+        // ya nadie lo supone: el cargador lee `file_offset` de la tabla, nunca
+        // una constante. Es la misma propiedad que hace posible empaquetar.
+        //
+        // La firma sigue calculandose la ULTIMA --su contenido son los hashes de
+        // las demas-- pero su HUECO se reserva aqui, que es lo que permitio
+        // declararla en la tabla el 2026-08-09. Reservar y rellenar son dos
+        // momentos distintos, y esa separacion es justo la que se cobra ahora.
+        fn el_cargador_la_usa(k: SectionKind) -> bool {
+            matches!(
+                k,
+                SectionKind::Code
+                    | SectionKind::RoData
+                    | SectionKind::Data
+                    | SectionKind::Bss
+                    | SectionKind::Relocs
+                    | SectionKind::Signature
+            )
+        }
+        for delante in [true, false] {
+            for (i, section) in self.sections.iter().enumerate() {
+                if el_cargador_la_usa(section.kind) != delante {
+                    continue;
+                }
+                // La `Bss` no ocupa fichero: los ceros se declaran y no viajan.
+                if section.kind == SectionKind::Bss || section.data.is_empty() {
+                    continue;
+                }
+                file_off = alinea(file_off, ALINEACION_EN_FICHERO);
+                entries[i].file_offset = file_off;
+                entries[i].file_size = section.data.len() as u64;
+                file_off += entries[i].file_size;
+            }
         }
 
         let total_size = file_off as usize;
@@ -393,5 +448,59 @@ mod tests {
         ));
         let bytes = b.build().unwrap();
         assert!(bytes.len() > 48);
+    }
+
+    /// ** LO QUE EL CARGADOR USA VA DELANTE DEL BULTO.
+    ///
+    /// Es la propiedad de la que depende el escalon 2 de `LA_RAM.md`: el kernel
+    /// suma hasta donde acaba lo ultimo que mira --codigo, datos, relocations,
+    /// hashes-- y trae solo eso. Si una sola de esas secciones quedara detras de
+    /// los recursos, habria que traerse los recursos igual y el ahorro seria
+    /// **cero**, que es exactamente lo que pasaba antes de ordenarlas.
+    ///
+    /// Se comprueba con un recurso GRANDE a proposito: con uno pequeno, la
+    /// prueba pasaria por casualidad si los offsets se solaparan mal.
+    #[test]
+    fn lo_del_cargador_va_antes_que_los_recursos() {
+        use super::super::sections::SectionKind;
+
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 4096]));
+        b.add_section(BefSection::data(vec![0x11; 1024]));
+        let mut recursos = BefSection::new(SectionKind::Resources, vec![0x22; 1024 * 1024]);
+        recursos.alignment = 8;
+        b.add_section(recursos);
+        let bytes = b.build().unwrap();
+
+        // Se leen los offsets DE LA TABLA, que es lo que lee el cargador.
+        let count = u32::from_le_bytes(bytes[40..44].try_into().unwrap()) as usize;
+        let tabla = u64::from_le_bytes(bytes[32..40].try_into().unwrap()) as usize;
+        let mut fin_del_cargador = 0u64;
+        let mut inicio_recursos = u64::MAX;
+        for i in 0..count {
+            let e = tabla + i * SectionEntry::SIZE;
+            let kind = bytes[e];
+            let off = u64::from_le_bytes(bytes[e + 8..e + 16].try_into().unwrap());
+            let len = u64::from_le_bytes(bytes[e + 16..e + 24].try_into().unwrap());
+            if len == 0 {
+                continue;
+            }
+            if kind == SectionKind::Resources as u8 {
+                inicio_recursos = off;
+            } else {
+                fin_del_cargador = fin_del_cargador.max(off + len);
+            }
+        }
+        assert!(inicio_recursos != u64::MAX, "no se escribio la seccion de recursos");
+        assert!(
+            fin_del_cargador <= inicio_recursos,
+            "algo que el cargador usa cae DETRAS de los recursos: fin={fin_del_cargador} recursos={inicio_recursos}"
+        );
+        // Y el ahorro es real: lo que hay que traer es una fraccion del fichero.
+        assert!(
+            fin_del_cargador * 4 < bytes.len() as u64,
+            "el prefijo cargable no es mucho menor que el fichero: {fin_del_cargador} de {}",
+            bytes.len()
+        );
     }
 }

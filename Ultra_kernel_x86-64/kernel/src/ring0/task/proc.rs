@@ -147,7 +147,9 @@ pub fn spawn_init(ctx: &BootContext) -> Option<u32> {
                 ctx.ring3_payload_size as usize,
             )
         };
-        return admit_payload(bytes, 1);
+        // Un payload de arranque llega ENTERO en memoria: lo que mide y lo que
+        // hay son el mismo numero. Aqui no hay cargador que pueda ser selectivo.
+        return admit_payload(bytes, 1, bytes.len());
     }
 
     // * SIN PAYLOAD EXTERNO NO SE ARRANCA NADA.
@@ -196,7 +198,9 @@ fn admitir_ejemplos() -> Option<u32> {
         // La entrada del registro se abre ANTES de intentar admitirlo: si el
         // BEX es rechazado, tiene que aparecer igual en la tabla, marcado.
         record_open(tag, name, pid, bytes.len() as u32);
-        match admit_payload(bytes, pid) {
+        // Un `.bex` embebido esta entero en la imagen del kernel: mide lo que
+        // ocupa el slice, no hay disco por medio.
+        match admit_payload(bytes, pid, bytes.len()) {
             Some(tid) => {
                 crate::ring0::cabina::info(name, "programa Ring 3 admitido", tid as u64);
                 if first.is_none() {
@@ -295,15 +299,21 @@ pub fn has_room() -> bool {
 ///
 /// Devuelve `(tid, pid)`. El pid hace falta para encauzar la salida del
 /// hijo a la consola de quien lo lanzo (ver `ring0/consola.rs`).
-pub fn admit_from_disk(name: &str, bytes: &[u8]) -> Option<(u32, u32)> {
+/// `tam_fichero` es lo que mide el archivo EN EL DISCO, que desde el escalon 2
+/// **ya no es `bytes.len()`**: el cargador trae solo lo que se ejecuta. Los dos
+/// numeros se pasan por separado porque contestan preguntas distintas -- ver la
+/// nota de los dos limites en `bex::inspect`.
+pub fn admit_from_disk(name: &str, bytes: &[u8], tam_fichero: usize) -> Option<(u32, u32)> {
     if !has_room() { return None; }
     let pid = next_pid();
     let stored = intern_name(name);
     // La etiqueta del log ANTES de que el proceso escriba su primera linea,
     // igual que con los demos: si no, la primera linea sale sin dueno.
     crate::ring0::uconsole::set_tag(pid, stored);
-    record_open(stored, stored, pid, bytes.len() as u32);
-    match admit_payload(bytes, pid) {
+    // Se apunta lo que MIDE, no lo que se trajo: el panel dice de que tamano es
+    // el programa, y eso no cambia porque el cargador sea mas listo.
+    record_open(stored, stored, pid, tam_fichero as u32);
+    match admit_payload(bytes, pid, tam_fichero) {
         Some(tid) => {
             crate::ring0::cabina::info("proc", "programa admitido DESDE DISCO", tid as u64);
             Some((tid, pid))
@@ -316,9 +326,9 @@ pub fn admit_from_disk(name: &str, bytes: &[u8]) -> Option<(u32, u32)> {
 }
 
 /// Admite UN programa BEX como proceso Ring 3 con el `pid` indicado.
-fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
+fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
     set_status("admitting (alloc/map)");
-    let plan = match bex::inspect(bytes) {
+    let plan = match bex::inspect(bytes, tam_fichero) {
         Ok(p) => p,
         Err(e) => {
             // ** EL MOTIVO, CON SU NOMBRE. Aqui habia un `Err(_)`.

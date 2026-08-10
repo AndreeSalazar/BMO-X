@@ -416,7 +416,7 @@ Cada escalon deja el sistema funcionando, que es la regla de la casa.
 |---|---|---|---|
 | 0 | ★ **La seccion `Bss`**: que los ceros se declaren en vez de viajar | **[x] 2026-08-09** -- `Codegen::separar_bss`. DOOM: 1.299.768 -> 807.072 B | S |
 | 1 | **El asignador de Ring 3** sobre `KIND_MEMORIA` | -- (desbloquea `realloc`, los >4 `malloc` y el contrato de `fread`) | M |
-| 2 | **Que el cargador NO lea el fichero entero** -- cabecera + tabla + secciones cargables | ★ **La firma es un hash del fichero completo.** Hace falta cablear `SectionHash` -- ver abajo | L |
+| 2 | ★ **Que el cargador NO lea el fichero entero** -- cabecera + tabla + secciones cargables | **[x] 2026-08-10** -- `bex::necesita`. DOOM+WAD: 6.313.632 -> **813.552 B leidos (-87,1%)** | L |
 | 3 | **DMA al bufer del llamante**, fuera la pagina de rebote | -- | M |
 | 4 | **E/S asincrona**: que pedir no bloquee | -- | L |
 | 5 | **Las 32 ranuras**, varias peticiones en vuelo | el 4 | M |
@@ -429,10 +429,61 @@ copias, y no toca ni el kernel ni el formato. Optimizar el transporte de unos
 bytes que no deberian existir es el orden equivocado.
 
 El **2** es el que convierte la frase de la cabecera en verdad, y su bloqueante
-es bonito: **la firma por secciones es la misma pieza que hace posible verificar
+era bonito: **la firma por secciones es la misma pieza que hace posible verificar
 sin leerlo todo** *y* la que permitiria un paquete firmado en FAT32, que hoy es
 imposible porque la firma vive como atributo de ESTRATOS. Una pieza, dos
 problemas.
+
+## [x] HECHO el 2026-08-10 -- `bex::necesita`, y la mitad estaba en el ESCRITOR
+
+La pregunta correcta no es *"cuanto mide"* sino **"que necesita"**, y el fichero
+sabe contestarla: la tabla de secciones empieza SIEMPRE en el byte 48, asi que
+con **2 KiB de prologo** se sabe hasta donde llega lo ultimo que el cargador
+toca -- `Code`, `RoData`, `Data`, `Relocs` y `Signature`. Los recursos se quedan
+en el disco hasta que el programa los pida por `TASK_OP_MI_PAQUETE`.
+
+```
+   doom.bex + WAD de 5,5 MB     fichero  6.313.632 B
+                                se lee     813.552 B   (-87,1%)
+```
+
+Y con eso **el paquete arranca**: `MAX_BEX` (4 MiB) dejo de ser el tope del
+fichero y pasa a ser el tope de **lo que se ejecuta**.
+
+### ★★ La trampa: la primera version ahorraba CERO
+
+El cargador estaba bien y el numero salia igual de malo, porque el problema
+estaba en el otro extremo. `BefBuilder::build` colocaba la firma **al final del
+fichero, detras de los recursos**:
+
+```
+   [cab][tabla][Code][RoData][Data][Relocs][Resources][Signature]
+                                               ^ el WAD    ^ y esto detras
+   necesita -> hasta aqui --------------------------------------->
+```
+
+**Basta con que UNA seccion que el cargador mira quede detras del bulto para que
+el bulto haya que traerlo igual.** Ahora los offsets se reparten en dos pasadas
+--lo del cargador delante-- **sin tocar el orden de la TABLA**, que es el que
+usan las relocations (`SeccionAbs64` guarda indices) y los hashes. Lo unico que
+cambia es donde caen los bytes, y eso ya nadie lo suponia: el cargador lee
+`file_offset` de la tabla, nunca una constante.
+
+### Las tres piezas que hicieron falta
+
+1. **`bex::necesita(prologo)`** -- el fichero contesta cuanto hace falta.
+2. **`est::leer_y_firmar`** -- una pasada en la que **todos** los bytes le pasan
+   al `bmo_hash::Hasher` por delante y solo se copia el principio. La firma sigue
+   cubriendo el archivo entero: esto ahorra **RAM, no disco**, y decirlo importa.
+3. **`inspect(bytes, tam_fichero)`** -- dos limites que antes coincidian por
+   casualidad. Confundirlos convierte un fichero cortado en uno valido.
+
+### Lo que esto cuesta, dicho
+
+Las secciones que no se leen **no se verifican**. El gate garantiza **lo que
+EJECUTA**; lo que el programa lea despues lo lee por su puerta, y su hash sigue
+escrito en el fichero para quien quiera comprobarlo. Fingir que se comprobo algo
+que no se ha llegado a leer seria peor que no comprobarlo.
 
 ★ **Precision sobre `SectionHash`, porque la primera version de este documento lo
 decia mal**: no esta "vacio". Esta **escrito y probado** -- BLAKE3 de 256 bits,

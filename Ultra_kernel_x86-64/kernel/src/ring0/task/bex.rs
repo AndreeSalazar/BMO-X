@@ -134,6 +134,20 @@ pub enum BexError {
     /// doscientas instrucciones despues con un `#PF` que no se parece en nada a
     /// su causa.
     HashNoCuadra,
+    /// ** EL PROLOGO NO TRAJO LA TABLA DE SECCIONES ENTERA.
+    ///
+    /// Distinto de `SectionTableOutOfBounds`, que dice "la tabla cae fuera del
+    /// FICHERO" -- eso es una imagen mal formada. Esto dice "la tabla cae fuera
+    /// de lo que se leyo por delante", que es un problema del cargador y se
+    /// arregla leyendo mas, no rechazando el programa.
+    PrologoCorto,
+    /// ** UNA SECCION QUE HAY QUE CARGAR SE QUEDO SIN LEER.
+    ///
+    /// El cargador pregunta al formato cuanto necesita y lee eso. Si despues
+    /// resulta que algo cargable cae mas alla, la cuenta y la lectura no
+    /// cuadran: es un fallo del cargador, no del fichero, y se dice como tal en
+    /// vez de disfrazarse de `InvalidSection`.
+    SeccionNoLeida,
 }
 
 impl BexError {
@@ -161,8 +175,83 @@ impl BexError {
             BexError::EntryOutsideCode => "el entry cae fuera del codigo",
             BexError::ImagenIncompleta => "LLEGARON MENOS BYTES DE LOS QUE LA IMAGEN DICE",
             BexError::HashNoCuadra => "una seccion NO CUADRA con su hash: la imagen esta corrupta",
+            BexError::PrologoCorto => "la tabla de secciones no cabe en el prologo leido",
+            BexError::SeccionNoLeida => "una seccion cargable se quedo sin leer",
         }
     }
+}
+
+/// **QUE NECESITA DE VERDAD ESTE FICHERO.** Devuelve cuantos bytes hay que leer.
+///
+/// === El escalon 2 de `LA_RAM.md`, en una funcion ===
+///
+/// El cargador leia el fichero ENTERO a un estatico de 4 MiB, y despues se
+/// quedaba con el codigo y los datos. Con un paquete que lleva un WAD dentro,
+/// eso es traerse cinco megabytes de bodega para ejecutar ochocientos kilos.
+///
+/// ** La pregunta correcta no es *"cuanto mide"* sino **"que necesita"**, y el
+/// fichero sabe contestarla: la tabla de secciones esta en el byte 48 --el
+/// escritor la pone siempre ahi-- y dice donde acaba cada cosa. De todas ellas,
+/// el cargador solo toca cuatro:
+///
+/// | | Para que |
+/// |---|---|
+/// | `Code`, `RoData`, `Data` | se copian al espacio del proceso |
+/// | `Bss` | no ocupa fichero: son ceros que se declaran |
+/// | `Relocs` | se leen, se aplican y se olvidan |
+/// | `Signature` | los hashes con los que se comprueba lo anterior |
+///
+/// Todo lo demas --recursos, simbolos, depuracion, manifiesto, y **cualquier
+/// tipo que este kernel no conozca**-- es data para otro. Los recursos se leen
+/// en EJECUCION, por `TASK_OP_MI_PAQUETE`, y por su propia puerta: el cargador
+/// no tiene por que adelantarlos a RAM para que el programa los pida despues.
+///
+/// > **La RAM es la zona donde se ejecuta, no la bodega. La bodega es el disco.**
+///
+/// `Err(PrologoCorto)` si la tabla no cabe en lo que se le paso: quien llama
+/// puede leer mas y volver a preguntar, que es distinto de rechazar la imagen.
+pub fn necesita(prologo: &[u8]) -> Result<usize, BexError> {
+    if prologo.len() < BEX_HEADER_SIZE {
+        return Err(BexError::TooSmall);
+    }
+    let magic = read_u32(prologo, 0).ok_or(BexError::TooSmall)?;
+    let count = read_u32(prologo, 40).ok_or(BexError::TooSmall)? as usize;
+    if magic != BEX_MAGIC || count == 0 {
+        return Err(BexError::InvalidHeader);
+    }
+    if count > MAX_BEX_SECTIONS {
+        return Err(BexError::TooManySections);
+    }
+    let tabla = read_u64(prologo, 32).ok_or(BexError::TooSmall)? as usize;
+    let fin_tabla = tabla
+        .checked_add(count * BEX_SECTION_SIZE)
+        .ok_or(BexError::SectionTableOutOfBounds)?;
+    if fin_tabla > prologo.len() {
+        return Err(BexError::PrologoCorto);
+    }
+
+    // Empieza en el fin de la tabla: la cabecera y la tabla siempre hacen falta,
+    // aunque un fichero no tuviera ni una seccion que cargar.
+    let mut hasta = fin_tabla;
+    for i in 0..count {
+        let e = tabla + i * BEX_SECTION_SIZE;
+        let kind = *prologo.get(e).ok_or(BexError::InvalidSection)?;
+        // La `Bss` no ocupa fichero: es el escalon 0, los ceros se declaran y no
+        // viajan. Pedir sus bytes seria deshacerlo desde el otro lado.
+        if kind == SECTION_BSS {
+            continue;
+        }
+        if !is_loadable(kind) && kind != SECTION_RELOCS && kind != SECTION_SIGNATURE {
+            continue;
+        }
+        let off = read_u64(prologo, e + 8).ok_or(BexError::InvalidSection)? as usize;
+        let len = read_u64(prologo, e + 16).ok_or(BexError::InvalidSection)? as usize;
+        let fin = off.checked_add(len).ok_or(BexError::InvalidSection)?;
+        if fin > hasta {
+            hasta = fin;
+        }
+    }
+    Ok(hasta)
 }
 
 /// ** COMPROBAR QUE LA IMAGEN ES LA QUE SE ESCRIBIO.
@@ -200,6 +289,19 @@ impl BexError {
 /// Devuelve `Ok(())` tambien cuando **no hay** seccion de firma: las imagenes
 /// que el kernel EMBEBE no pasan por el escritor. Exigirle una prueba a quien
 /// nunca la prometio seria dejar de arrancar.
+///
+/// ## Y que pasa con las secciones que NO se leyeron (2026-08-10)
+///
+/// Desde el escalon 2 el cargador trae solo lo que va a usar, asi que los
+/// recursos --el WAD de un paquete-- ya no estan en `bytes`. Sus hashes **se
+/// saltan**, y eso es una linea que conviene decir en voz alta:
+///
+/// > **El gate garantiza lo que EJECUTA.**
+///
+/// Lo que el programa lea despues por `TASK_OP_MI_PAQUETE` lo lee por su propia
+/// puerta, y comprobarlo es asunto de quien lo lea -- el hash sigue escrito en
+/// el fichero para cuando alguien quiera hacerlo. Lo que no se puede es fingir
+/// que se comprobo algo que no se ha llegado a leer.
 fn verificar_hashes(bytes: &[u8], tabla: usize, count: usize) -> Result<(), BexError> {
     const CAB_FIRMA: usize = 8; // hash_count (u32) + sig_algo (u32)
     const ENTRADA: usize = 40; // section_index (u16) + pad(6) + digest(32)
@@ -240,7 +342,13 @@ fn verificar_hashes(bytes: &[u8], tabla: usize, count: usize) -> Result<(), BexE
         let datos = if len == 0 {
             &bytes[0..0]
         } else {
-            bytes.get(off..off + len).ok_or(BexError::InvalidSection)?
+            match bytes.get(off..off + len) {
+                Some(d) => d,
+                // No se leyo: es una seccion que el cargador no usa (recursos,
+                // simbolos...). Ver la nota de la cabecera -- no se finge que se
+                // comprobo, se salta.
+                None => continue,
+            }
         };
         let calculado = bmo_estratos::blake3(datos);
         let guardado = bytes.get(h + 8..h + 40).ok_or(BexError::InvalidSection)?;
@@ -257,7 +365,21 @@ fn verificar_hashes(bytes: &[u8], tabla: usize, count: usize) -> Result<(), BexE
 /// No `alloc`, file access, relocation, page-table mutation or control transfer
 /// happens here.  This boundary is therefore safe to call before a process is
 /// admitted to the kernel.
-pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
+///
+/// ## Los DOS limites, que no son el mismo (2026-08-10)
+///
+/// - `bytes` es **lo que se leyo**: el prologo mas las secciones que el cargador
+///   va a usar. Lo que se toque tiene que caber aqui.
+/// - `tam_fichero` es **lo que mide el fichero en el disco**. Es contra este
+///   contra el que se comprueba el `total_size` de la cabecera y contra el que
+///   se validan los limites declarados de TODAS las secciones, incluidas las que
+///   no se leyeron.
+///
+/// ** Confundirlos convierte una imagen cortada en una imagen valida, que es el
+/// fallo que `ImagenIncompleta` existe para cazar. Por eso son dos parametros y
+/// no se deduce uno del otro: antes coincidian porque se leia el fichero entero,
+/// y una igualdad que se cumple por casualidad es una igualdad que un dia no.
+pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError> {
     if bytes.len() < BEX_HEADER_SIZE {
         return Err(BexError::TooSmall);
     }
@@ -290,8 +412,11 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
     // `0` se acepta porque las imagenes que el kernel EMBEBE no pasan por
     // `BefBuilder::build` y lo dejan sin poner. Comprobar solo cuando el dato
     // existe es mejor que rechazar a quien nunca prometio nada.
+    // Contra `tam_fichero` y NO contra `bytes.len()`: desde el escalon 2 lo
+    // segundo es "lo que hizo falta leer", que puede ser una fraccion. Ver la
+    // nota de los dos limites en la cabecera.
     let total_size = read_u32(bytes, 44).ok_or(BexError::TooSmall)? as usize;
-    if total_size != 0 && bytes.len() < total_size {
+    if total_size != 0 && tam_fichero < total_size {
         return Err(BexError::ImagenIncompleta);
     }
     if arch != BEX_ARCH_X86_64 {
@@ -372,8 +497,20 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
         }
         if kind != SECTION_BSS {
             let end = file_offset.checked_add(file_size).ok_or(BexError::InvalidSection)?;
-            if end as usize > bytes.len() {
+            // Contra el FICHERO: una seccion que se sale del archivo es una
+            // imagen mal formada, se vaya a leer o no.
+            if end as usize > tam_fichero {
                 return Err(BexError::InvalidSection);
+            }
+            // Y contra lo LEIDO, solo para lo que se va a tocar. Que los
+            // recursos caigan mas alla del prologo es lo normal desde el
+            // escalon 2 -- que caiga el codigo es que la cuenta de `necesita`
+            // y la lectura no cuadran, y eso es un fallo del cargador con
+            // nombre propio en vez de un `InvalidSection` que manda a mirar el
+            // formato.
+            let lo_usa = is_loadable(kind) || kind == SECTION_RELOCS || kind == SECTION_SIGNATURE;
+            if lo_usa && end as usize > bytes.len() {
+                return Err(BexError::SeccionNoLeida);
             }
         }
         let alignment = if alignment_raw == 0 { 8 } else { alignment_raw };

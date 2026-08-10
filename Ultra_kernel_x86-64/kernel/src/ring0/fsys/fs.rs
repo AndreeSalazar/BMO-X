@@ -317,6 +317,39 @@ pub fn load(path: &str, dst: &mut [u8]) -> Result<usize, LoadError> {
     Ok(v.read_file(cluster, size, dst))
 }
 
+/// **Trae solo el PRINCIPIO del archivo.** Devuelve `(leidos, tamano_real)`.
+///
+/// === Por que existe, y por que no es `load` con otro nombre ===
+///
+/// `load` dice `TooBig` cuando el archivo no cabe entero en el buffer, y hasta
+/// hoy eso era lo correcto: un cargador que se queda con media imagen carga
+/// medio programa.
+///
+/// ** Pero un `.bex` no es una tira de bytes que haya que tragarse entera. Lleva
+/// su cabecera y su tabla de secciones al principio --el escritor pone la tabla
+/// en el byte 48, siempre-- y esa tabla dice **cuanto hace falta de verdad**: el
+/// codigo, los datos, las relocations y los hashes. Lo que va detras --los
+/// recursos, los simbolos, la depuracion-- **el cargador no lo mira**, y en un
+/// paquete con un WAD dentro eso es casi todo el fichero.
+///
+/// Asi que se lee el principio, se le pregunta al formato que necesita, y se lee
+/// eso. El tamano real se devuelve aparte porque **sigue haciendo falta**: es
+/// contra el que la cabecera comprueba que la imagen llego entera, y confundirlo
+/// con "lo que cabia en el buffer" convertiria un fichero cortado en uno valido.
+///
+/// `read_file` ya para en `dst.len()` por su cuenta: no lee de mas para tirarlo.
+pub fn load_prefijo(path: &str, dst: &mut [u8]) -> Result<(usize, usize), LoadError> {
+    let (cluster, size) = resolver(path)?;
+    let v = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v,
+            None => return Err(LoadError::NoVolume),
+        }
+    };
+    let leidos = v.read_file(cluster, size, dst);
+    Ok((leidos, size as usize))
+}
+
 /// Cuantos bytes mide el archivo, SIN leerlo.
 ///
 /// Existe para poder reservar el buffer del tamano justo antes de traerlo:
