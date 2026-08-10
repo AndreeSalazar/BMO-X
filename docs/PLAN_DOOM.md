@@ -168,7 +168,7 @@ tres impiden que DOOM arranque. Salieron de contar en vez de suponer.
 |---|---|---|
 | 1.10 | ★ **El tope de 4 `malloc`** | El plan decia que no bloqueaba porque `I_ZoneBase` pide UN bloque. Contando los sitios: el arranque llama a `malloc` **una docena de veces** -- solo `I_AtExit` son siete. **[x]** `<bmo/monton.h>`, un asignador de Ring 3 |
 | 1.11 | ★★ **El teclado no tenia SOLTAR** | `INPUT_OP_TECLA` entrega un CARACTER, y un caracter no tiene "solto". Quien echa a andar no para nunca; y Shift/Ctrl/Alt no producen caracter, asi que ni salian. **[x]** `INPUT_OP_EVENTO_TECLA` |
-| 1.12 | **`fseek` ignoraba el origen** | `M_FileLength` mide el WAD con `SEEK_END`. Con el origen ignorado, **el WAD medía cero bytes** sin una sola linea de error. **[x]** -- y de paso salio que `feof` daba EOF pasada la mitad de cualquier fichero |
+| 1.12 | **`fseek` ignoraba el origen** | `M_FileLength` mide el WAD con `SEEK_END`. Con el origen ignorado, **el WAD media cero bytes** sin una sola linea de error. **[x]** -- y de paso salio que `feof` daba EOF pasada la mitad de cualquier fichero |
 
 ★ La leccion, que vale mas que las tres: **el plan daba por bloqueado lo que
 era visible (el lenguaje) y por resuelto lo que no lo era (la superficie del
