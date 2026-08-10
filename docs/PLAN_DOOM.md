@@ -295,29 +295,66 @@ Actualizada el **2026-08-09**, tarde.
 | 4 -- jugable | 3 | 2 | guardar partida pide `fwrite`, que devuelve 0 |
 | 5 -- sonido | 5 | 5, y **empieza de cero** | nada lo bloquea |
 
-★★ **NO QUEDA NINGUNA CASILLA ESCRITA SIN ESCRIBIR PARA VER EL MENU. Lo que
-queda es ARRANCARLO, y eso no lo puede hacer el compilador.**
+★★ **NO QUEDA NINGUNA CASILLA POR ESCRIBIR. Lo que queda es un FALLO EN METAL,
+y eso ya es otra clase de trabajo.**
 
 DOOM entero --56.465 lineas, mas la capa de plataforma-- compila a un `.bex` de
-812.736 bytes y **ningun CPU lo ha ejecutado**. Lo que falta para la foto:
+814.616 bytes, `build.ps1` lo despliega con su WAD y su icono, y el escritorio
+lo ensena. **No arranca.**
 
-1. Copiar `doom.bex` y `doom1.wad` al Kingston, a `apps/`. **A mano**: los dos
-   son GPL y `build.ps1` no puede nombrarlos sin meter licencia ajena en el
-   repo.
-2. `run apps/doom.bex` desde el shell de Ring 0 -- **no desde el escritorio**,
-   que tiene la pantalla y la entrada tomadas y las dos son EXCLUSIVAS.
+## ⛔ EL BLOQUEANTE DE HOY -- 2026-08-09, 23:30
 
-**Y lo que puede salir mal, en orden de probabilidad**, para saber donde mirar:
+```
+   83 WARN proc:   el .bex de disco no paso la admision =4
+   84 WARN lanzar: el .bex no paso la admision =3
+```
+
+**Lo que ya esta descartado**, y se dice para que nadie lo vuelva a mirar:
+
+- **No es el tope.** 814.616 B contra 4 MiB.
+- **No es la tabla de secciones.** Se volco fuera y pasa todas las
+  comprobaciones de `bex::inspect`: seis secciones, `file_size <= mem_size` en
+  todas, la `Bss` con `file_size = 0` --que es justo lo que esa comprobacion
+  permite-- y el `entry` (597.982) dentro del codigo (598.925).
+- **No son los codigos de seccion.** El kernel los lee a mano y coinciden con
+  los del ABI: `0x01/0x02/0x03/0x04`.
+- **No es el paquete.** `caja.bex` tambien lleva `Resources` y arranca en metal
+  desde el 08-09.
+
+★ **El sospechoso que queda**: es el `.bex` **mas grande que se ha cargado
+nunca** --2,7 veces `gui.bex`, que era el record-- y en la misma tanda de fotos
+sale `lanzar: el archivo no cabe en el buffer`. Una lectura corta de FAT32
+produce exactamente este sintoma: la tabla apunta mas alla de lo leido y la
+seccion se declara invalida.
+
+★★ **Y EL SIGUIENTE PASO NO ES TOCAR CODIGO, ES MEDIR.** Que `lanzar` diga
+**cuantos bytes trajo del disco frente a cuantos mide el fichero**. Son dos
+numeros y una linea; mientras no esten en la pantalla, cualquier arreglo es una
+apuesta -- y este documento ya tiene una leccion de haber supuesto en vez de
+contar (fase 1.10).
+
+## Lo que puede salir mal DESPUES, para no volver a escribirlo
 
 | Sintoma | Sospechoso |
 |---|---|
-| `no cabe en el buffer` | la imagen pasa de `MAX_BEX` (4 MiB). No deberia: mide 0,8 |
-| `DOOM: no hay pantalla` | se lanzo desde el escritorio |
+| `DOOM: no hay pantalla` | se lanzo desde el escritorio con otra ventana delante |
 | `W_AddFile: doom1.wad no encontrado` | la ruta del WAD, o FAT32 no monta |
 | Arranca y muere sin pintar | el monton: 12 MiB CONTIGUOS en fisico. CABINA dice si el kernel los nego |
 | Pinta y no responde | `DOOM: sin teclado` en la consola lo dice antes |
 | Anda solo y no para | la cola cruda no llega: el `soltar` se perdio |
 | Va a tirones | el blit, o `DG_SleepMs` cediendo mal |
+
+## Lo que SI se vio, y no es poco
+
+El escritorio arranco con **el icono de DOOM y su nombre debajo**: listar
+`apps/`, abrir el `.bex`, encontrar `Resources`, leer el indice `BRES`, sacar el
+recurso `icono`, descifrar `BICO` y pintarlo -- siete pasos y dos formatos
+leidos a mano, ninguno fallo.
+
+[!] El icono salio **blanco** y deberia ser una cara roja. La silueta es la
+correcta --el recorte transparente esta bien-- asi que lo que llego mal es el
+color, no el dibujo. Abierto, y distinguible a ojo del otro caso: si fuera el
+icono por defecto seria un cuadro macizo con una `D`.
 
 ---
 

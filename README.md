@@ -395,6 +395,32 @@ sounds trivial and was not: the framebuffer is write-combined, and without an
 `sfence` per frame the pixels sit in the buffer until something else flushes
 them.
 
+**Icons, and they live *inside* the application** -- on screen since 9 August.
+The desktop shows one per `.bex` in `apps/`; clicking one runs it.
+
+On Windows a desktop icon is a `.lnk`: a **separate file that points at** the
+program. On Linux a `.desktop` with the name, icon and command written in it.
+Both are pointers and both break the same way -- move the program and you are
+left with an icon that says the target cannot be found.
+
+Here there is nothing to point at. **The icon is another resource inside the
+package** (`SectionKind::Resources`), so the application carries its own face:
+no `.lnk` to come loose, no icon cache to rebuild, no orphaned desktop entry.
+Copy the `.bex` and the icon goes with it; delete it and there is nothing left
+to clean up. The nearest thing outside is the macOS *bundle* -- a `.app` is a
+folder the Finder shows as one object -- and this goes one step further: it is
+not a folder, it is one file.
+
+An application with no icon still gets one: a tile with its initial, in a colour
+derived from its own name -- stable across boots, distinct between applications,
+assigned by nobody. A desktop where an icon-less program shows up as an empty
+square forces everyone to draw before they can launch anything.
+
+Clicking fills the command box with `run <path>` and injects an Enter. That is
+not a shortcut taken: it is the claim that **clicking an icon and typing its
+name are the same act**, so they share the whole path -- console, screen
+lending, echo, and the watchdog that collects whatever the child prints.
+
 **Framebuffer write-combining** (PAT) -- `MSR_PAT` had been declared in the boot
 stage and never written, so every pixel was its own bus transaction.
 
@@ -780,11 +806,44 @@ on top of it.
     Unlike the inline one, **it applies field width** -- the inline emitter reads
     the `7` in `%7i` and discards it, because its converters write straight to
     the console and padding needs to know the width *before* writing
-13. **DOOM COMPILES -- 2026-08-09.** With an empty platform backend, its
-    **56,465 lines produce a 1,299,512-byte `.bex`**: one translation unit,
-    because there is no linker here. What is left to *see it run* is
-    `doomgeneric_bmo.c` -- six functions, and all four capabilities they need
-    already work on the Ryzen.
+13. **DOOM COMPILES -- 2026-08-09, and its whole platform layer is written.**
+    Its **56,465 lines plus `doomgeneric_bmo.c` produce an 814,616-byte
+    `.bex`**: one translation unit, because there is no linker here. The six
+    functions `doomgeneric` asks a platform for are done, and every capability
+    they need was already running on the Ryzen.
+
+    ⏳ **It has not run yet, and the first attempt is instructive.** On the
+    9 August boot the desktop came up with DOOM's icon on it and the launch was
+    refused: `el .bex no paso la admision`. It is not the size cap -- 814 KiB
+    against 4 MiB -- and its section table passes every check `bex::inspect`
+    makes. The open suspect is that this is **the largest `.bex` ever loaded**
+    (2.7x the compositor, the previous record) and a short read from FAT32
+    produces exactly this symptom. Next step is a measurement, not a patch:
+    print bytes-read against file size. Full account in `BITACORA.md`, Ep. 37.
+
+    Three things that were *not* on the plan turned out to be what actually
+    blocked it, and none was found by compiling -- all three came from reading
+    DOOM's source and the kernel's side by side:
+
+    - **the four-allocations limit did block it** (see item 14);
+    - **the keyboard had no key-up.** `INPUT_OP_TECLA` hands over a *character*,
+      and a character has no "released": auto-repeat gives "pressed" forever, so
+      whoever starts walking never stops. Shift, Ctrl and Alt produce no
+      character at all, so they never even came through -- and in DOOM those are
+      run, fire and strafe. **The kernel had both halves all along**: the USB
+      driver compares consecutive boot reports and emits press *and* release.
+      They were being thrown away at the Ring 3 boundary. `INPUT_OP_EVENTO_TECLA`
+      stops throwing them away; it adds no new data;
+    - **`fseek` ignored its origin**, and `M_FileLength` measures the WAD with
+      `SEEK_END`. With the origin ignored the cursor went to 0, `ftell` returned
+      0, and **the WAD measured zero bytes** -- no error, no line. Fixing it
+      surfaced that `feof` had been reporting end-of-file **past the halfway
+      point of any file**, and that one was already deployed.
+
+    Two more that fell over on inspection, both in our favour: the palette
+    conversion does not need writing (`I_FinishUpdate` already hands over 640x400
+    in 32-bit), and the WAD is never held whole in memory (lumps are read on
+    demand).
 
     Four things closed the gap, and only the first was on the plan:
 
@@ -829,12 +888,24 @@ on top of it.
     to guess: it had no `imul reg, r/m, imm`, which the compiler had been
     emitting all along with nothing ever running it.
 
-    Two of its findings cancel long-standing assumptions on this page: **the
-    renderer needs no floating point at all** (the only `atan` sits inside an
-    `#if 0`, the tables come from `tables.c`), and **the four-allocations limit
-    does not block it** -- `I_ZoneBase` asks for one 6 MiB block and DOOM's own
-    allocator carves everything out of it, which is what `KIND_MEMORIA` already
-    serves.
+    One of its findings cancels a long-standing assumption on this page: **the
+    renderer needs no floating point at all** -- the only `atan` sits inside an
+    `#if 0`, the tables come from `tables.c`.
+
+    ⚠ **And one of them was simply wrong, which is worth more than the one that
+    was right.** This page claimed the four-allocations limit did not block
+    DOOM, because `I_ZoneBase` asks for one 6 MiB block and DOOM's own allocator
+    carves everything out of it. That sentence was written after reading *one*
+    call site. Counting them on 9 August: DOOM's startup calls `malloc` **about
+    a dozen times** -- `I_AtExit` alone is seven, one per function it registers
+    on the way out, plus the screen buffer, the zone, the WAD's lump directory,
+    the palette and the paths. With one kernel request per `malloc`, DOOM died
+    on the fifth with an `I_Error`.
+
+    The fix is a real allocator in Ring 3 (`<bmo/monton.h>`, item 17), and the
+    lesson is the method: *an assumption checked at one call site is not
+    checked.* Grepping for the name takes ten seconds and would have moved this
+    item eight months earlier in the roadmap.
 
     It is a software renderer: no GPU, no shaders, no Vulkan. It is the first
     heavy program this system can honestly run -- and separate compilation

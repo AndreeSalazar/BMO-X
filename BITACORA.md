@@ -1067,3 +1067,125 @@ elegido -- y el `.bin` del kernel no crecio ni un byte al subirlo, porque eso es
 
 *Debuggeado a fotos de pantalla, entre un humano con hardware y una IA sin
 ojos. 2026.*
+
+---
+
+## Ep. 37 -- El icono salio, DOOM no, y el escritorio se cayo al retroceder
+
+**2026-08-09, 23:30.** Tres cosas en una tanda de fotos, y las tres dicen algo
+distinto. Se cuentan juntas porque la unica forma de entender la tercera es
+haber leido las dos primeras.
+
+### 1. Lo que SI salio, y no es poco
+
+Foto uno: el escritorio con **un icono y la palabra `doom` debajo**. Eso es la
+cadena entera funcionando a la primera en metal:
+
+```
+   Directorio::open("apps")  ->  filtrar .bex  ->  abrir el .bex
+   -> leer su cabecera BEF   ->  encontrar la seccion Resources
+   -> leer el indice BRES    ->  sacar el recurso "icono"
+   -> descifrar BICO         ->  pintarlo
+```
+
+Siete pasos, dos formatos leidos a mano, y ninguno fallo. **El icono vive dentro
+de la app** y el escritorio lo saca de ahi: no hay `.lnk`, no hay cache, no hay
+fichero de escritorio que se quede huerfano.
+
+[!] Con un asterisco honesto: **el icono salio BLANCO** y deberia ser una cara
+roja. La silueta es la correcta --el recorte transparente esta bien-- asi que lo
+que llego mal es el color, no el dibujo. Queda abierto, y las dos ramas son
+distinguibles a ojo: si fuera el icono por defecto seria un cuadro macizo con
+una `D`, y no lo es.
+
+### 2. DOOM no paso la admision
+
+```
+   83 WARN proc:   el .bex de disco no paso la admision =4
+   84 WARN lanzar: el .bex no paso la admision =3
+```
+
+`doom.bex` mide 814.616 B y `MAX_BEX` son 4 MiB, asi que **no es el tope**. Su
+tabla de secciones se volco fuera y pasa entera las comprobaciones de
+`bex::inspect`: seis secciones, `file_size <= mem_size` en todas, la `Bss` con
+`file_size = 0` que es justo lo que esa comprobacion permite, el `entry` dentro
+del codigo, y los codigos de seccion del kernel coinciden con los del ABI.
+
+Lo que queda como sospechoso principal, y se dice como sospecha y no como
+diagnostico: **es el `.bex` mas grande que se ha intentado cargar nunca**. El
+anterior era `gui.bex` con 306 KiB; este es 2,7 veces mayor. En la misma tanda
+de fotos aparece `lanzar: el archivo no cabe en el buffer`, que es el mensaje de
+cuando `fs::load` no puede traerlo -- y una lectura corta produce exactamente
+este sintoma: la tabla apunta mas alla de lo leido y la seccion se declara
+invalida.
+
+★ **El siguiente paso no es tocar codigo, es MEDIR**: que diga cuantos bytes
+trajo del disco frente a cuantos mide el fichero. Mientras esos dos numeros no
+esten en la pantalla, cualquier arreglo es una apuesta.
+
+### 3. El panico, que es el bueno
+
+```
+   89 WARN gui: panico en el compositor
+   90 WARN gui: range end index 18446744073709551615 out of range for slice
+   91 WARN gui: en services\gui\src\main.rs:2834
+```
+
+`18446744073709551615` es `usize::MAX`. La linea 2834 es
+`pintar_campo(..., &ruta[..n], ...)`. O sea: **`n` se desbordo por abajo**.
+
+El retroceso hacia esto:
+
+```rust
+    if cur > 0 {          // <- la condicion de UN contador
+        ...
+        cur -= 1;
+        n -= 1;           // <- la resta del OTRO
+    }
+```
+
+Guardado por `cur`, restando de `n`. Mientras `cur <= n` --el invariante de
+cualquier campo de texto-- los dos son ciertos a la vez y el fallo no existe.
+**Lleva ahi desde que existe la caja, y hoy no falto casi nada para que siguiera
+sin existir.**
+
+Lo que rompio el invariante fue el camino nuevo del lanzador, y la cadena
+completa es esta:
+
+```
+   clic en el icono   ->  n = cur = 17   ("run apps/doom.bex")
+   Enter inyectado    ->  se presta la pantalla y se lanza
+   DOOM no admite     ->  n = 0   ...y cur se queda en 17
+   un retroceso       ->  cur > 0 es cierto, n -= 1 da la vuelta
+   el repintado       ->  &ruta[..usize::MAX]  ->  panico
+```
+
+★★ **Y aqui esta lo que hay que llevarse.** Los tres eslabones son inofensivos
+por separado: el clic pone dos contadores, un lanzamiento fallido limpia uno, y
+el retroceso mira el que no toca. Ninguno de los tres es un fallo mirandolo
+solo. **El fallo es la frase entera**, y solo la escribe un camino nuevo pasando
+por codigo viejo.
+
+Arreglado en los dos sitios, y el segundo importa mas que el primero:
+
+- La guarda pasa a ser `cur > 0 && n > 0`, que es lo que la resta pide.
+- **`cur = cur.min(n)` una vez por vuelta del bucle.** No se fue a perseguir
+  cada `n = 0` del fichero: se restaura el invariante en un solo sitio, antes
+  de que nadie pueda teclear. Cuesta una comparacion por fotograma y quita la
+  clase entera de fallo -- incluido el proximo camino que se olvide de `cur`.
+
+**Moraleja**: *un invariante que nadie restaura es un comentario.* Este vivia en
+la cabeza de quien escribio la caja, se cumplia por costumbre, y aguanto hasta
+el dia en que otra persona --con otro camino, meses despues-- lo rompio sin
+saber que existia. Un invariante barato se **impone**, no se recuerda.
+
+26. **Un invariante que nadie restaura es un comentario** (Ep. 37). `cur <= n`
+   se cumplia por costumbre en todos los caminos que habia, y el primero que
+   llego despues lo rompio. Cuando restaurarlo cuesta una comparacion, se
+   restaura en un sitio y se acaba la clase de fallo; documentarlo solo protege
+   a quien lea el documento.
+27. **Un fallo puede no estar en ningun eslabon, sino en la frase** (Ep. 37).
+   Poner dos contadores, limpiar uno, y mirar el otro: los tres son correctos
+   por separado y juntos tiran el escritorio. Revisar el diff de un camino
+   nuevo no basta -- hay que leer la frase que forma con el codigo viejo por el
+   que pasa.

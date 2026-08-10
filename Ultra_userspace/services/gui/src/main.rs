@@ -767,6 +767,22 @@ pub extern "C" fn _start() -> ! {
             // El tope no descarta: lo que no quepa se queda en el anillo del
             // kernel y llega en el fotograma siguiente. Drenar sin tope y tirar
             // el sobrante seria perder letras justo cuando se escribe rapido.
+            // ** EL INVARIANTE DEL CAMPO: el cursor NUNCA pasa del texto.
+            //
+            // `cur <= n` lo dan por hecho las tres teclas que borran, y las tres
+            // restan de `n`. Romperlo una vez --un camino que pone `n = 0` y se
+            // olvida de `cur`-- deja una mina que no explota hasta que alguien
+            // pulsa retroceso, y entonces `n` se desborda por abajo y el
+            // escritorio entero se cae con un `usize::MAX`. Paso en el Ryzen el
+            // 2026-08-09, y el camino que lo rompio era de ese mismo dia.
+            //
+            // Se restaura AQUI, una vez por vuelta y en un solo sitio, en vez de
+            // ir persiguiendo cada `n = 0` del fichero. Cuesta una comparacion
+            // por fotograma y **quita la clase entera de fallo**: cualquier
+            // camino futuro que se olvide de `cur` queda corregido antes de que
+            // nadie pueda teclear.
+            cur = cur.min(n);
+
             let mut teclas = [0u8; 64];
             let mut nt = 0usize;
             // ** LO QUE INYECTA EL LANZADOR va DELANTE de lo que llega del
@@ -2039,8 +2055,33 @@ pub extern "C" fn _start() -> ! {
                         repintar_campo = true;
                     }
                     // Retroceso.
+                    //
+                    // ** LA GUARDA ES `cur > 0 && n > 0`, Y LE FALTABA LA
+                    // SEGUNDA MITAD. Panico en el Ryzen el 2026-08-09:
+                    //
+                    //     range end index 18446744073709551615
+                    //     out of range for slice of length ...
+                    //     en services\gui\src\main.rs:2834
+                    //
+                    // Esa linea es `pintar_campo(..., &ruta[..n], ...)`, y el
+                    // indice es `usize::MAX`: **`n` se desbordo por abajo**.
+                    // Este `n -= 1` estaba guardado por `cur > 0` -- que es la
+                    // condicion del OTRO contador. Con `cur > 0` y `n == 0`, la
+                    // resta da la vuelta y el siguiente repintado revienta.
+                    //
+                    // ** Y para llegar ahi hacia falta romper `cur <= n`, que es
+                    // el invariante de este campo. Lo rompio el camino nuevo del
+                    // lanzador: pulsar el icono deja `n = cur = 17`, el `run` se
+                    // lanza, **falla la admision**, y en ese camino de fallo `n`
+                    // vuelve a 0 sin que `cur` le acompane. Un retroceso
+                    // despues, la maquina se lleva el escritorio por delante.
+                    //
+                    // Se arregla en los dos sitios: aqui la guarda correcta, y
+                    // arriba el invariante restaurado en cada vuelta -- que es
+                    // lo que impide que el proximo camino nuevo lo vuelva a
+                    // romper sin que nadie se entere.
                     0x08 | 0x7F => {
-                        if cur > 0 {
+                        if cur > 0 && n > 0 {
                             let mut k = cur;
                             while k < n {
                                 ruta[k - 1] = ruta[k];
@@ -2170,12 +2211,18 @@ pub extern "C" fn _start() -> ! {
                     // cualquiera que lo haya usado -- si no, borrar tras un
                     // espacio no haria nada.
                     0x17 => {
-                        let mut k = cur;
+                        // `cur - k` con `cur` pasado de `n` daria un `quitados`
+                        // enorme y el `n -= quitados` de abajo se desbordaria
+                        // igual que el retroceso. El invariante de arriba ya lo
+                        // impide; la guarda se queda porque esta resta no tiene
+                        // por que fiarse de que alguien lo mantenga.
+                        let tope = cur.min(n);
+                        let mut k = tope;
                         while k > 0 && ruta[k - 1] == b' ' { k -= 1; }
                         while k > 0 && ruta[k - 1] != b' ' { k -= 1; }
-                        let quitados = cur - k;
+                        let quitados = tope - k;
                         if quitados > 0 {
-                            let mut i = cur;
+                            let mut i = tope;
                             while i < n {
                                 ruta[i - quitados] = ruta[i];
                                 i += 1;

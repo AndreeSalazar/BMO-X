@@ -10,6 +10,52 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
+> ## ⏳ Al 2026-08-09 (noche) -- la tanda de DOOM, y lo que el metal contesto
+>
+> **`bmo-c-front` va por 384 filas en verde.** Cinco commits, y ninguno ha
+> pasado todavia por una verificacion completa en el Ryzen -- el arranque del
+> 09-08 a las 23:30 dio un resultado a medias que esta contado entero en
+> `BITACORA.md`, Ep. 37.
+>
+> **Lo que SI se vio en pantalla**: el escritorio con **el icono de DOOM** y su
+> nombre debajo. Eso es la cadena entera funcionando a la primera --listar
+> `apps\`, abrir el `.bex`, encontrar su seccion `Resources`, leer el indice
+> `BRES`, sacar el recurso `icono`, descifrar `BICO` y pintarlo--. El icono vive
+> **dentro** de la app; no hay `.lnk` ni cache que mantener.
+>
+> **Lo que NO**: `doom.bex` **no paso la admision** del cargador. No es el tope
+> (814.616 B contra 4 MiB) y su tabla de secciones pasa todas las comprobaciones
+> de `bex::inspect`. Sospechoso principal, dicho como sospecha: es el `.bex` mas
+> grande que se ha cargado nunca --2,7 veces el compositor-- y una lectura corta
+> de FAT32 da exactamente este sintoma. **El siguiente paso es medir, no
+> parchear**: bytes traidos contra bytes del fichero.
+>
+> **Y un panico que ya esta arreglado**: el compositor se cayo con
+> `range end index 18446744073709551615` -- `usize::MAX` en `&ruta[..n]`. El
+> retroceso restaba de `n` guardado por `cur`, y el camino nuevo del lanzador
+> rompio el invariante `cur <= n` al fallar el lanzamiento. Los tres eslabones
+> son inofensivos por separado; el fallo es la frase entera. Arreglado con la
+> guarda correcta **y** restaurando el invariante una vez por vuelta, que es lo
+> que quita la clase de fallo en vez de este caso.
+>
+> Lo que entro en esta tanda, todo pendiente de metal:
+>
+> | | |
+> |---|---|
+> | `84f3af76` | **La seccion `Bss`**: los ceros dejan de viajar. DOOM 1.299.768 -> 807.072 B (**-37,9%**), y la memoria del proceso NO cambia |
+> | `a30ecb7e` | **El monton de Ring 3** (`<bmo/monton.h>`): `malloc`/`free`/`realloc` de verdad sobre UN bloque de `KIND_MEMORIA` |
+> | `4fa9751c` | **`INPUT_OP_EVENTO_TECLA`**: pulsar y SOLTAR llegan a Ring 3 |
+> | `1cb89b72` | `feof` daba EOF pasada la mitad de cualquier fichero, y `fseek` ignoraba el origen |
+> | `710a89eb` | **`fwrite` escribe** (`ARCH_OP_ESCRIBIR_DE`), y DOOM entra en `build.ps1` |
+> | `6c7dba9a` | **El lanzador**: iconos dentro del paquete, clic y arranca |
+>
+> ⚠ **Y una correccion de este documento y del README**: los dos decian que el
+> tope de cuatro `malloc` **no** bloqueaba a DOOM, porque `I_ZoneBase` pide un
+> solo bloque. Esa frase salio de leer UN sitio de llamada. Contandolos: el
+> arranque llama a `malloc` **una docena de veces** --solo `I_AtExit` son
+> siete-- y DOOM moria en el quinto. *Una suposicion comprobada en un sitio de
+> llamada no esta comprobada.*
+>
 > **Al 2026-08-08**: con el comando que documenta este fichero
 > --`cargo test --workspace --exclude bmo-kernel --exclude boot-context
 > --exclude bmo-rt`-- salen **642 en verde y UNO EN ROJO**. `bmo-c-front` sube a
