@@ -136,6 +136,68 @@ fn una_cadena_se_alcanza_aunque_el_codigo_no_llene_la_pagina() {
     assert_eq!(run_c(fuente), "[cadena en rodata]");
 }
 
+// -- LA SECCION `Bss`: los ceros se declaran, no se guardan --------------
+//
+// Estas dos miran la FORMA del `.bex`, que es lo que un test de comportamiento
+// no puede ver: un compilador que metiera los ceros en `.data` daria
+// exactamente los mismos numeros en pantalla y un fichero 37,9% mayor.
+//
+// El numero de DOOM, medido el 2026-08-09 con el mismo compilador y solo este
+// cambio en medio:  1.299.768 -> 807.072 B, con `data` de 645.008 a 152.224 y
+// una `Bss` de 492.784 que no ocupa ni un byte del fichero. La memoria del
+// proceso NO cambia (1.268.584 las dos veces), que es justo lo correcto: lo que
+// se quita es el transporte, no el sitio.
+
+/// El tamano DECLARADO en memoria de la seccion `kind` (`mem_size`), que para
+/// una `Bss` es lo unico que dice algo -- su `file_size` es cero por definicion.
+fn memoria_seccion(bef: &[u8], kind: bmo_abi::bef::sections::SectionKind) -> Option<usize> {
+    use bmo_abi::bef::sections::SectionEntry;
+    let hdr = unsafe { &*(bef.as_ptr() as *const bmo_abi::bef::header::BefHeader) };
+    let sec_off = hdr.section_table_offset as usize;
+    for i in 0..hdr.section_count as usize {
+        let e = sec_off + i * SectionEntry::SIZE;
+        if bef[e] == kind as u8 {
+            return Some(u64::from_le_bytes(bef[e + 24..e + 32].try_into().unwrap()) as usize);
+        }
+    }
+    None
+}
+
+/// ** Una tabla de 32 KiB a cero **no engorda el fichero**.
+///
+/// Es la fila que mide el escalon 0 de `docs/LA_RAM.md`. Sin `Bss`, este `.bex`
+/// pasaria de 32.768 bytes; con ella cabe de sobra y la tabla sigue existiendo
+/// entera en memoria.
+#[test]
+fn una_tabla_grande_a_cero_no_engorda_el_fichero() {
+    use bmo_abi::bef::sections::SectionKind;
+    let bef = compile_source_to_bef("int enorme[8192]; int main() { return enorme[0]; }").unwrap();
+    let bss = memoria_seccion(&bef, SectionKind::Bss).expect("tiene que haber seccion bss");
+    assert!(
+        bss >= 32768,
+        "la tabla son 8192 enteros = 32 KiB, y la bss mide {bss}"
+    );
+    assert!(
+        bef.len() < 8192,
+        "los 32 KiB de ceros no pueden estar en el fichero, y mide {}",
+        bef.len()
+    );
+}
+
+/// Y al reves: un programa cuyos globales TIENEN valor no lleva `Bss` ninguna.
+///
+/// Una seccion vacia declarada igualmente seria una pagina reservada para nada
+/// en cada proceso del sistema.
+#[test]
+fn sin_globales_a_cero_no_se_declara_bss() {
+    use bmo_abi::bef::sections::SectionKind;
+    let bef = compile_source_to_bef("int g = 42; int main() { return g; }").unwrap();
+    assert!(
+        memoria_seccion(&bef, SectionKind::Bss).is_none(),
+        "no hay ningun global a cero: no debe declararse seccion bss"
+    );
+}
+
 /// Lo mismo para los GLOBALES, que van en la tercera seccion -- o sea que su
 /// direccion depende de DOS redondeos, no de uno: la pagina tras el codigo y la
 /// pagina tras rodata. Un error en el segundo sumando solo se ve aqui.

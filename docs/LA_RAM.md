@@ -32,14 +32,19 @@ imposible**. Con el segundo, la RAM deja de decidir que puede correr.
 # PARTE 0 -- Donde esta BMO-X HOY, medido
 
 Antes de la teoria, la verdad, porque este documento no sirve si empieza
-mintiendo. Sobre el DOOM que compilamos el 2026-08-09:
+mintiendo. Sobre el DOOM que compilamos el 2026-08-09, **re-medido con el
+compilador construido desde `HEAD`** (la primera version de estas cifras salio
+de un `bmo-c-front.exe` de las 13:07, anterior a la tanda del PAQUETE: daba
+`code` 592.789 y fichero 1.299.608, o sea 160 bytes menos de los reales. Una
+medida vale lo que valga el binario que la produjo):
 
 ```
-   code      592.691          rodata     30.631
+   code      592.945          rodata     30.631
    data      645.008          relocs     30.768
    ---------------------------------------------------
-   EN MEMORIA (lo que el cargador mapea):  1.268.330 B
-   fichero:                                1.299.512 B
+   EN MEMORIA (lo que el cargador mapea):  1.268.584 B
+   fichero:                                1.299.768 B
+   secciones en el .bex:  CUATRO -- y ninguna es Bss
 ```
 
 Con su WAD dentro del paquete, el fichero pesaria **~5,5 MB** y la memoria
@@ -52,8 +57,82 @@ buf)`: lee **el fichero entero** a un bufer estatico de 4 MiB, y de ahi se copia
 otra vez al espacio del proceso. Con el WAD dentro serian **4,2 MB copiados dos
 veces para nada**.
 
-> ★ **Estado honesto: los DATOS ya son quirofano; el CODIGO sigue siendo
-> bodega.** Todo lo que sigue existe para cerrar esa frase.
+## ★★ Y el numero que nadie habia mirado: el 90,3%
+
+De los **645.008 bytes** de la seccion `data` de DOOM, **582.291 son CERO**.
+
+```
+   data              645.008 B
+   de eso, ceros     582.291 B   ->  90,3%
+   ceros / fichero   582.291 de 1.299.768  ->  44,8% del .bex entero
+```
+
+**Casi la mitad del fichero de DOOM son ceros que viajan.** Se guardan en el
+disco, se leen del disco, se copian al bufer de rebote y se copian otra vez al
+proceso -- cuatro veces pagado un byte cuyo valor ya sabiamos al compilar.
+
+El motivo era de una linea: **el codegen de C no emitia una seccion `Bss`**. Un
+global sin inicializador, o inicializado a cero, salia como bytes de `data`. Y no
+faltaba la maquinaria: `BefBuilder::bss()` existe y funciona
+(`bef/writer.rs:98`), el escritor ya salta las `Bss` al colocar y al volcar
+(`writer.rs:189` y `:220`), y el cargador del kernel ya mapea `Bss` con
+zero-fill (`bex.rs` acepta `file_size == 0` **solo** si la seccion es `Bss`, y
+`proc.rs` hace `zero_frame` antes de copiar). **Estaba todo escrito menos quien
+lo pidiera.**
+
+★ Y es el ejemplo mas limpio de la frase que ordena este documento: un cero no se
+guarda, **se declara**. La cola de ceros al final son solo 679 B, o sea que no se
+arregla recortando el final -- hay que **particionar los globales** por "su
+inicializador es todo ceros", que es lo que hace cualquier compilador desde 1970.
+
+## [x] HECHO el 2026-08-09 -- `Codegen::separar_bss`
+
+Medido con el **mismo compilador** y solo ese cambio en medio:
+
+```
+                    ANTES        DESPUES     diferencia
+   fichero       1.299.768      807.072     -492.696   (-37,9%)
+   code            592.945      592.945      igual
+   rodata           30.631       30.631      igual
+   data            645.008      152.224     -492.784
+   bss                   0      492.784      no viaja en el fichero
+   relocs           30.768       30.768      igual
+   ---------------------------------------------------------------
+   EN MEMORIA    1.268.584    1.268.584      IGUAL
+```
+
+★★ **Que la memoria no cambie es el resultado correcto, no un fallo.** Lo que se
+quita es el TRANSPORTE -- el disco, la lectura, y las dos copias-- no el sitio
+donde el programa trabaja. Esa distincion es el documento entero en una fila.
+
+**Por que 492.784 y no los 582.291 de ceros**: el reparto es **por global, no por
+byte**. Una tabla de 40 KB con tres valores puestos se queda entera en `.data`,
+y sus ceros con ella. Los 89.507 de diferencia son eso. Repartir por byte pediria
+partir un global en dos secciones, y entonces `&tabla[0]` y `&tabla[9999]` no
+estarian en la misma.
+
+**Los tres motivos por los que un global a cero se QUEDA en `.data`** estan en la
+cabecera de `separar_bss`, y el tercero es el que no es obvio: el codigo de
+seccion de una relocation solo sabe decir code/data/rodata -- **no hay valor para
+`bss`**, asi que un global cuya direccion se guarda en otro global tiene que
+quedarse donde la reloc lo sepa nombrar. Ampliarlo toca el formato Y el cargador
+del kernel; es otra tanda.
+
+[!] Y una mina que dejo el gate del BEF a la vista: `type_stack_size` devuelve 0
+para un tipo que no conoce, asi que **dos globales pueden compartir offset**. El
+mapa de traduccion se indexa por offset, y con dos duenos por clave una reloc
+acababa apuntando dentro de `.bss` (`reloc[293]: offset 0x614d0 exceeds target
+section size`). Se descartan las regiones vacias, y ademas el compilador lleva
+ahora su propio guardia: si una reloc quedara en `.bss`, lo dice **con el nombre
+del global delante** en vez de dejarselo al gate.
+
+Nueve filas nuevas que EJECUTAN (`tests/globales.rs` y `tests/cargador.rs`);
+362 verdes.
+
+> ★ **Estado honesto al 2026-08-09, con el escalon 0 ya hecho: los DATOS son
+> quirofano, los CEROS ya no viajan, y el CODIGO sigue siendo bodega** -- el
+> cargador se sigue trayendo el fichero entero, solo que ahora ese fichero mide
+> un 37,9% menos. Todo lo que sigue existe para cerrar la frase que queda.
 
 ---
 
@@ -335,20 +414,32 @@ Cada escalon deja el sistema funcionando, que es la regla de la casa.
 
 | # | Que | Bloqueante | Tam |
 |---|---|---|---|
-| 1 | **Que el cargador NO lea el fichero entero** -- cabecera + tabla + secciones cargables | ★ **La firma es un hash del fichero completo.** Hace falta `SectionHash`, que ya existe en `bef/signing.rs` **vacio** | L |
-| 2 | **E/S asincrona**: que pedir no bloquee | -- | L |
-| 3 | **Las 32 ranuras**, varias peticiones en vuelo | el 2 | M |
-| 4 | **DMA al bufer del llamante**, fuera la pagina de rebote | -- | M |
-| 5 | **El asignador de Ring 3** sobre `KIND_MEMORIA` | -- (desbloquea `realloc`) | M |
+| 0 | ★ **La seccion `Bss`**: que los ceros se declaren en vez de viajar | **[x] 2026-08-09** -- `Codegen::separar_bss`. DOOM: 1.299.768 -> 807.072 B | S |
+| 1 | **El asignador de Ring 3** sobre `KIND_MEMORIA` | -- (desbloquea `realloc`, los >4 `malloc` y el contrato de `fread`) | M |
+| 2 | **Que el cargador NO lea el fichero entero** -- cabecera + tabla + secciones cargables | ★ **La firma es un hash del fichero completo.** Hace falta cablear `SectionHash` -- ver abajo | L |
+| 3 | **DMA al bufer del llamante**, fuera la pagina de rebote | -- | M |
+| 4 | **E/S asincrona**: que pedir no bloquee | -- | L |
+| 5 | **Las 32 ranuras**, varias peticiones en vuelo | el 4 | M |
 | 6 | **El manifiesto declara lo que va a pedir** | -- | S |
-| 7 | **Demand paging**: el recurso no se lee, se MAPEA | `file_offset` **congruente** con la VA modulo pagina -- la regla `p_offset == p_vaddr (mod pagesize)` de ELF, **ya escrita** en `bef/writer.rs` sin cumplir, a proposito | XL |
+| 7 | **Demand paging**: el recurso no se lee, se MAPEA | `file_offset` **congruente** con la VA modulo pagina -- la regla `p_offset == p_vaddr (mod pagesize)` de ELF, **ya escrita** en `bef/writer.rs:46` sin cumplir, a proposito | XL |
 
-El 1 es el que convierte la frase de la cabecera en verdad, y su bloqueante es
-bonito: **la firma por secciones es la misma pieza que hace posible verificar
+El **0** va primero porque es el unico escalon que **encoge todo lo demas antes
+de optimizarlo**: quita 582 KB del fichero, de la lectura de disco y de las dos
+copias, y no toca ni el kernel ni el formato. Optimizar el transporte de unos
+bytes que no deberian existir es el orden equivocado.
+
+El **2** es el que convierte la frase de la cabecera en verdad, y su bloqueante
+es bonito: **la firma por secciones es la misma pieza que hace posible verificar
 sin leerlo todo** *y* la que permitiria un paquete firmado en FAT32, que hoy es
-imposible porque la firma vive como atributo de ESTRATOS.
+imposible porque la firma vive como atributo de ESTRATOS. Una pieza, dos
+problemas.
 
-Una pieza, dos problemas. Por ahi se empieza.
+★ **Precision sobre `SectionHash`, porque la primera version de este documento lo
+decia mal**: no esta "vacio". Esta **escrito y probado** -- BLAKE3 de 256 bits,
+`verify`, y `chain_hash` para encadenar todas las secciones
+(`bef/signing.rs:153-220`). Lo que falta es **quien lo escriba y quien lo lea**:
+`signing::` no se referencia fuera de `bmo-abi`, o sea que ningun `.bex` producido
+hoy lleva seccion `Signature` y el cargador no la busca. Es cableado, no diseno.
 
 ---
 

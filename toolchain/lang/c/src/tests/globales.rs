@@ -174,6 +174,101 @@ fn una_tabla_global_de_structs_admite_designadores_anidados() {
     assert_eq!(run_c(fuente), "0,8,0,5");
 }
 
+// -- LOS CEROS NO VIAJAN: la seccion `Bss` -------------------------------
+//
+// Hasta el 2026-08-09 TODOS los globales iban a `.data`, con o sin
+// inicializador. En DOOM eso eran **582.291 bytes de ceros** viajando en el
+// fichero -- el 90,3% de su seccion `data`-- que se leian del disco y se
+// copiaban dos veces para acabar valiendo lo que ya se sabia al compilar.
+//
+// `Codegen::separar_bss` los aparta. Estas filas EJECUTAN, porque el fallo que
+// hay que cazar aqui no es que el fichero encoja: es que un global se lea desde
+// la direccion equivocada, y eso da un numero, no un error.
+
+/// El caso base: un global sin inicializador vale cero y se puede escribir.
+///
+/// Parece trivial y es la fila que mas cubre -- ahora ese global vive en OTRA
+/// seccion, con otra base de direcciones, y quien la calcula mal lee la pagina
+/// de al lado.
+#[test]
+fn un_global_a_cero_se_lee_cero_y_luego_conserva_lo_escrito() {
+    let fuente = "int z; \
+                  int main() { printf(\"%d,\", z); z = 7; printf(\"%d\", z); return 0; }";
+    assert_eq!(run_c(fuente), "0,7");
+}
+
+/// ** Un global CON valor y otro a cero conviven, y no se pisan.
+///
+/// Es la sonda del reparto: uno se queda en `.data` y el otro se va a `.bss`,
+/// asi que sus direcciones salen de dos bases distintas. Si las dos cuentas no
+/// cuadran, lo normal es que uno lea al otro.
+#[test]
+fn un_global_con_valor_y_otro_a_cero_no_se_pisan() {
+    let fuente = "int lleno = 12345; int vacio; int otro_lleno = 999; int otro_vacio; \
+                  int main() { vacio = 7; otro_vacio = 8; \
+                  printf(\"%d,%d,%d,%d\", lleno, vacio, otro_lleno, otro_vacio); return 0; }";
+    assert_eq!(run_c(fuente), "12345,7,999,8");
+}
+
+/// La direccion de un global de `.bss`, tomada DESDE EL CODIGO.
+///
+/// `&g` en una funcion es un `lea [rip+disp]` que resuelve `patch_all_fixups`,
+/// y es ahi donde vive la cuenta de las dos bases.
+#[test]
+fn la_direccion_de_un_global_a_cero_apunta_a_ese_global() {
+    let fuente = "int g; \
+                  int main() { int *p; p = &g; *p = 99; printf(\"%d\", g); return 0; }";
+    assert_eq!(run_c(fuente), "99");
+}
+
+/// ** **El motivo 3 del anclaje**: un global a cero cuya DIRECCION se guarda en
+/// otro global tiene que quedarse en `.data`.
+///
+/// El codigo de seccion de una relocation solo sabe decir code/data/rodata --
+/// no hay valor para `bss`. Si `contador` se fuera a `.bss`, su reloc no
+/// tendria como nombrarlo. Es `doom_defaults[]` entero, que es una tabla de
+/// punteros a variables de configuracion que empiezan todas a cero.
+#[test]
+fn un_global_a_cero_apuntado_desde_otro_global_sigue_siendo_alcanzable() {
+    let fuente = "int contador; int *puntero = &contador; \
+                  int main() { *puntero = 42; printf(\"%d,%d\", contador, *puntero); return 0; }";
+    assert_eq!(run_c(fuente), "42,42");
+}
+
+/// ** **El motivo 2**: `char *p = "x"` guarda CEROS en el fichero y aun asi no
+/// puede irse a `.bss` -- su valor lo escribe el cargador con una relocation.
+///
+/// Es el que mas facil se cuela: por bytes es indistinguible de un global
+/// vacio. Aqui se mezcla con uno de verdad vacio para que se vea que el
+/// compilador los separa bien.
+#[test]
+fn un_puntero_a_cadena_no_se_confunde_con_un_global_vacio() {
+    let fuente = "char *texto = \"hola\"; int vacio; \
+                  int main() { vacio = 3; printf(\"%s,%d\", texto, vacio); return 0; }";
+    assert_eq!(run_c(fuente), "hola,3");
+}
+
+/// Una TABLA grande a cero: el caso por el que se hizo todo esto. Se escribe en
+/// los dos extremos para que un reparto corto se note.
+#[test]
+fn una_tabla_global_grande_a_cero_funciona_entera() {
+    let fuente = "int enorme[4096]; int centinela = 7; \
+                  int main() { enorme[0] = 1; enorme[4095] = 2; \
+                  printf(\"%d,%d,%d,%d\", enorme[0], enorme[2048], enorme[4095], centinela); \
+                  return 0; }";
+    assert_eq!(run_c(fuente), "1,0,2,7");
+}
+
+/// Y una tabla PARCIALMENTE escrita se queda entera en `.data`: el reparto es
+/// por global, no por byte. Aqui lo que se comprueba es que sus ceros siguen
+/// leyendose a cero -- que es lo unico que el programa nota.
+#[test]
+fn una_tabla_con_un_solo_valor_conserva_sus_ceros() {
+    let fuente = "int t[8] = {[3] = 5}; \
+                  int main() { printf(\"%d,%d,%d\", t[0], t[3], t[7]); return 0; }";
+    assert_eq!(run_c(fuente), "0,5,0");
+}
+
 /// El tamano de la tabla tiene que ser el de N structs, no el de uno: el global
 /// que venga despues no puede caer dentro.
 #[test]

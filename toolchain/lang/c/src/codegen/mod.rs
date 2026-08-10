@@ -120,8 +120,17 @@ struct Codegen {
     goto_relocs: Vec<(usize, String)>,
     entry_offset: usize,
     is_entry_function: bool,
+    /// Nombre -> `(offset en el espacio de globales, tipo)`.
+    ///
+    /// * El offset es de un espacio UNICO que abarca `.data` y `.bss`: por
+    /// debajo de `global_data.len()` el global vive en `.data`, por encima en
+    /// `.bss`. Ver [`Self::separar_bss`].
     global_offsets: HashMap<String, (u32, TypeSpec)>,
     global_data: Vec<u8>,
+    /// Cuantos bytes de globales son TODO CEROS y por tanto no viajan en el
+    /// fichero. Los reserva el cargador y los entrega a cero. Ver
+    /// [`Self::separar_bss`].
+    bss_len: usize,
     global_fixups: Vec<(usize, String)>,
     /// * Punteros DENTRO de `.data` que hay que rellenar con la direccion de una
     /// cadena de `.rodata`: `(offset en .data, indice en `strings`)`.
@@ -198,6 +207,7 @@ impl Codegen {
             label_positions: HashMap::new(), goto_relocs: Vec::new(),
             entry_offset: 0, is_entry_function: false,
             global_offsets: HashMap::new(), global_data: Vec::new(),
+            bss_len: 0,
             global_fixups: Vec::new(),
             relocs_a_cadena: Vec::new(),
             relocs_a_funcion: Vec::new(),
@@ -508,6 +518,11 @@ impl Codegen {
                 self.global_offsets.insert(name.clone(), (off, typ.clone()));
             }
         }
+        // * Los globales ya estan colocados: ahora se separan los que son todo
+        // ceros. Tiene que ir aqui -- despues del bucle, porque hace falta ver
+        // los bytes ya escritos, y antes de emitir funciones, porque a partir de
+        // aqui `global_offsets` es lo que resuelve cada `lea`.
+        self.separar_bss();
         self.collect_strings(program);
         // registrar todos los nombres de funcion ANTES de emitir: una llamada
         // puede referir a una funcion definida mas abajo (forward reference).
@@ -889,6 +904,222 @@ impl Codegen {
         (n + PAGE - 1) & !(PAGE - 1)
     }
 
+    /// Cual de las regiones contiene el offset `off`. Las regiones vienen
+    /// ordenadas por offset y son contiguas, asi que la busqueda binaria cae en
+    /// la que empieza en `off` o en la inmediatamente anterior.
+    fn region_de(regiones: &[(u32, u32, String)], off: u32) -> Option<usize> {
+        match regiones.binary_search_by(|r| r.0.cmp(&off)) {
+            Ok(i) => Some(i),
+            Err(0) => None,
+            Err(i) => Some(i - 1),
+        }
+    }
+
+    /// * LOS CEROS NO SE GUARDAN: SE DECLARAN. La seccion `Bss`.
+    ///
+    /// === El numero que obligo a escribir esto ===
+    ///
+    /// De los **645.008 bytes** de la seccion `data` de DOOM, **582.291 eran
+    /// cero**: el 90,3% de la seccion y el **44,8% del `.bex` entero**. Casi la
+    /// mitad del fichero eran ceros que se guardaban en el disco, se leian del
+    /// disco, se copiaban al bufer de rebote del kernel y se copiaban otra vez
+    /// al espacio del proceso. Cuatro veces pagado un byte cuyo valor ya se
+    /// sabia al compilar.
+    ///
+    /// El motivo era de una linea: este codegen metia TODOS los globales en
+    /// `.data`, con o sin inicializador. La maquinaria para no hacerlo ya
+    /// estaba entera y sin estrenar -- `BefBuilder::bss()` existe, el escritor
+    /// ya salta las `Bss` al colocar y al volcar, y `proc.rs` ya reserva las
+    /// paginas y las pone a cero (`bex.rs` acepta `file_size == 0` **solo** si
+    /// la seccion es `Bss`). Faltaba quien lo pidiera.
+    ///
+    /// Ver `docs/LA_RAM.md`: es el escalon 0 del modelo quirofano, y va primero
+    /// porque encoge todo lo demas ANTES de optimizar como se transporta.
+    ///
+    /// === Como se decide, y son TRES motivos para quedarse ===
+    ///
+    /// Un global se va a `.bss` solo si no le aplica ninguno:
+    ///
+    /// 1. **Sus bytes no son todos cero.** El caso obvio.
+    /// 2. **El cargador ESCRIBE dentro de el** -- una relocation lo tiene como
+    ///    destino de escritura. `char *p = "x"` guarda ceros en el fichero y
+    ///    parece un candidato perfecto, pero su valor de verdad lo pone el
+    ///    cargador: mandarlo a `.bss` seria mandar la reloc a una seccion que su
+    ///    codigo de `donde` no sabe nombrar.
+    /// 3. ** **Alguien apunta a el.** Esta es la que no es obvia. El codigo de
+    ///    seccion de una relocation solo distingue `code`/`data`/`rodata` -- no
+    ///    hay valor para `bss`. Asi que un global a cero cuya DIRECCION se
+    ///    guarda en otro global (`&contador` dentro de una tabla, que en DOOM es
+    ///    `doom_defaults[]` entero) tiene que quedarse donde la reloc lo sepa
+    ///    nombrar. Ampliar el codigo de seccion se puede, pero toca el formato
+    ///    Y el cargador del kernel, y eso es otra tanda.
+    ///
+    /// === Por que el espacio de offsets sigue siendo UNO ===
+    ///
+    /// Los anclados se colocan primero y los demas detras, en el mismo espacio
+    /// de offsets. Asi `global_offsets` no necesita decir en que seccion vive
+    /// cada global: se deduce de si su offset pasa de `global_data.len()`. La
+    /// unica consecuencia es que `patch_all_fixups` calcula la VA con dos
+    /// bases, y todo lo demas del compilador sigue sin enterarse.
+    ///
+    /// Las regiones incluyen el relleno de alineacion del global siguiente
+    /// --que son ceros y no cambia ningun veredicto-- y por eso miden todas un
+    /// multiplo de 8: el reparto nuevo sale alineado sin recalcular nada.
+    fn separar_bss(&mut self) {
+        if self.global_data.is_empty() {
+            return;
+        }
+
+        let mut regiones: Vec<(u32, u32, String)> = self
+            .global_offsets
+            .iter()
+            .map(|(n, &(off, _))| (off, 0u32, n.clone()))
+            .collect();
+        regiones.sort_by_key(|r| r.0);
+        for i in 0..regiones.len() {
+            let fin = regiones
+                .get(i + 1)
+                .map(|r| r.0)
+                .unwrap_or(self.global_data.len() as u32);
+            regiones[i].1 = fin.saturating_sub(regiones[i].0);
+        }
+        // ** FUERA LAS REGIONES DE LONGITUD CERO, y esto no es limpieza: es el
+        // bug que el gate del BEF caza si no se hace.
+        //
+        // `type_stack_size` devuelve 0 para un tipo cuyo tamano no conoce, asi
+        // que dos globales pueden acabar EN EL MISMO OFFSET. Con eso, el mapa
+        // de traduccion --que se indexa por offset-- tiene dos duenos para la
+        // misma clave: si uno esta anclado y el otro no, el ultimo en escribir
+        // gana y **una reloc acaba apuntando dentro de `.bss`**, que es una
+        // seccion que su codigo de `donde` no sabe nombrar.
+        //
+        // Se cayo asi de verdad al compilar DOOM: `reloc[293]: offset 0x614d0
+        // exceeds target section size`. Quitarlas es correcto ademas de
+        // necesario -- una region vacia no tiene bytes, y cualquier offset que
+        // la nombrara cae igual en la region que empieza donde ella acaba.
+        regiones.retain(|r| r.1 > 0);
+        if regiones.is_empty() {
+            return;
+        }
+
+        let mut anclado = vec![false; regiones.len()];
+
+        // Motivo 2: el cargador escribe dentro.
+        let escrituras = self
+            .relocs_a_cadena
+            .iter()
+            .map(|&(off, _)| off)
+            .chain(self.relocs_a_global.iter().map(|&(off, _, _)| off))
+            .chain(self.relocs_a_funcion.iter().map(|&(off, _)| off))
+            .collect::<Vec<u32>>();
+        for off in escrituras {
+            if let Some(i) = Self::region_de(&regiones, off) {
+                anclado[i] = true;
+            }
+        }
+
+        // Motivo 3: alguien apunta a el, y una reloc no sabe nombrar `.bss`.
+        let destinos = self
+            .relocs_a_global
+            .iter()
+            .filter_map(|(_, gname, _)| self.global_offsets.get(gname).map(|&(off, _)| off))
+            .collect::<Vec<u32>>();
+        for off in destinos {
+            if let Some(i) = Self::region_de(&regiones, off) {
+                anclado[i] = true;
+            }
+        }
+
+        // Motivo 1: tiene algo escrito.
+        for (i, &(off, len, _)) in regiones.iter().enumerate() {
+            let ini = off as usize;
+            let fin = (ini + len as usize).min(self.global_data.len());
+            if self.global_data[ini..fin].iter().any(|&b| b != 0) {
+                anclado[i] = true;
+            }
+        }
+
+        // El reparto nuevo: anclados primero, en su orden; el resto detras.
+        let mut datos: Vec<u8> = Vec::with_capacity(self.global_data.len());
+        let mut nuevo_de: HashMap<u32, u32> = HashMap::with_capacity(regiones.len());
+        for (i, &(off, len, _)) in regiones.iter().enumerate() {
+            if !anclado[i] {
+                continue;
+            }
+            nuevo_de.insert(off, datos.len() as u32);
+            let ini = off as usize;
+            let fin = (ini + len as usize).min(self.global_data.len());
+            datos.extend_from_slice(&self.global_data[ini..fin]);
+            while datos.len() % 8 != 0 {
+                datos.push(0);
+            }
+        }
+        let data_len = datos.len() as u32;
+        let mut cursor = data_len;
+        for (i, &(off, len, _)) in regiones.iter().enumerate() {
+            if anclado[i] {
+                continue;
+            }
+            nuevo_de.insert(off, cursor);
+            cursor += (len + 7) & !7;
+        }
+
+        // Y se traduce todo lo que hablaba de offsets viejos. Un offset puede
+        // caer DENTRO de un global (una tabla se parchea por elementos), asi que
+        // se traslada su region y se conserva la distancia al principio.
+        let traducir = |viejo: u32| -> u32 {
+            match Self::region_de(&regiones, viejo) {
+                Some(i) => nuevo_de[&regiones[i].0] + (viejo - regiones[i].0),
+                None => viejo,
+            }
+        };
+        for v in self.global_offsets.values_mut() {
+            v.0 = traducir(v.0);
+        }
+        for r in self.relocs_a_cadena.iter_mut() {
+            r.0 = traducir(r.0);
+        }
+        for r in self.relocs_a_global.iter_mut() {
+            r.0 = traducir(r.0);
+        }
+        for r in self.relocs_a_funcion.iter_mut() {
+            r.0 = traducir(r.0);
+        }
+
+        self.global_data = datos;
+        self.bss_len = (cursor - data_len) as usize;
+
+        // ** EL GUARDIA, y se queda aunque hoy no salte.
+        //
+        // La regla entera de este paso cabe en una frase: **una relocation
+        // nunca escribe en `.bss`**. Si algun dia un motivo de anclaje se
+        // queda corto, el sintoma sin este guardia es un `.bex` que el gate del
+        // BEF rechaza con un offset en hexadecimal, o --peor, si el gate no
+        // estuviera-- un cargador escribiendo ocho bytes en la pagina de otra
+        // cosa. Aqui se dice con el nombre del global delante.
+        let fuera: Vec<u32> = self
+            .relocs_a_cadena
+            .iter()
+            .map(|&(off, _)| off)
+            .chain(self.relocs_a_global.iter().map(|&(off, _, _)| off))
+            .chain(self.relocs_a_funcion.iter().map(|&(off, _)| off))
+            .filter(|&off| off >= data_len)
+            .collect();
+        for off in fuera {
+            let quien = self
+                .global_offsets
+                .iter()
+                .find(|(_, &(g, _))| g <= off && off < g + 8)
+                .map(|(n, _)| n.clone())
+                .unwrap_or_else(|| format!("offset {off}"));
+            self.errors.push(format!(
+                "bug del compilador: una relocation escribe en '{quien}', que quedo en .bss. \
+                 Un global al que el cargador escribe tiene que quedarse en .data -- ver \
+                 los tres motivos de anclaje en `separar_bss`"
+            ));
+        }
+    }
+
     fn patch_all_fixups(&mut self) {
         // * EL BUFER VA APRETADO Y LOS DESPLAZAMIENTOS SE CALCULAN CON LA REGLA
         // DEL CARGADOR. Antes se rellenaba cada tramo hasta la pagina, y ese
@@ -959,11 +1190,24 @@ impl Codegen {
         }
         self.string_data_end = self.code.len();
 
-        // data: los globales.
+        // data y bss: los globales.
+        //
+        // * DOS BASES, UN ESPACIO DE OFFSETS. `separar_bss` dejo los globales a
+        // cero al final, pasado `global_data.len()`, y el cargador pone `.bss`
+        // en la pagina siguiente a `.data` igual que hace con todas. Asi que la
+        // VA de un global es una cosa o la otra segun de que lado caiga su
+        // offset -- y nadie mas en el compilador tiene que saberlo.
+        let data_len = self.global_data.len();
+        let va_bss = va_data + Self::hasta_pagina(data_len);
         for &(lea_offset, ref name) in &self.global_fixups {
-            if let Some(&(data_off, _)) = self.global_offsets.get(name) {
+            if let Some(&(off, _)) = self.global_offsets.get(name) {
+                let va = if (off as usize) < data_len {
+                    va_data + off as usize
+                } else {
+                    va_bss + (off as usize - data_len)
+                };
                 let rip = lea_offset + 4;
-                let disp = (va_data as i64 + data_off as i64) - rip as i64;
+                let disp = va as i64 - rip as i64;
                 self.code[lea_offset..lea_offset + 4]
                     .copy_from_slice(&(disp as i32).to_le_bytes());
             }
@@ -3494,6 +3738,20 @@ impl Codegen {
             let mut data_sec = BefSection::data(data_bytes.to_vec());
             data_sec.alignment = 4096;
             b.add_section(data_sec);
+        }
+
+        // * LA SECCION `Bss`: los globales que son todo ceros. No lleva ni un
+        // byte en el fichero -- solo dice cuantos hacen falta, y el cargador
+        // reserva las paginas y las entrega a cero, que es lo que ya hacia con
+        // cualquier seccion (`phys::zero_frame` antes de copiar).
+        //
+        // Va DESPUES de `data` y antes de las relocs, porque el cargador coloca
+        // en el orden de la tabla y `patch_all_fixups` calculo `va_bss`
+        // contando con que `.data` va justo delante.
+        if self.bss_len > 0 {
+            let mut bss_sec = BefSection::bss(self.bss_len as u64);
+            bss_sec.alignment = 4096;
+            b.add_section(bss_sec);
         }
 
         // * LA SECCION `Relocs`, y va DESPUES de las tres cargables a proposito:

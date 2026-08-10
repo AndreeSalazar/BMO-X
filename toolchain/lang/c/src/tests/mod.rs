@@ -172,17 +172,32 @@ fn maquina_de_bef_con(
         (SectionKind::Code, 0usize),
         (SectionKind::RoData, 2usize),
         (SectionKind::Data, 1usize),
+        // * `Bss` va la ULTIMA y no tiene codigo de reloc, porque no puede ser
+        // ni origen ni destino de una: el codigo de seccion de una relocation
+        // solo sabe decir code/data/rodata. Ver `Codegen::separar_bss`.
+        //
+        // Y no trae bytes: `file_size` es 0 y lo que cuenta es `mem_size`. Se
+        // rellena de CEROS y no de `0xCC` como los huecos entre secciones,
+        // porque aqui el cero no es relleno -- es el valor que el programa va a
+        // leer, y es justamente lo que hay que comprobar que llega.
+        (SectionKind::Bss, usize::MAX),
     ] {
         for i in 0..hdr.section_count as usize {
             let e = sec_off + i * SectionEntry::SIZE;
             if bef[e] == kind as u8 {
                 let off = u64::from_le_bytes(bef[e + 8..e + 16].try_into().unwrap()) as usize;
                 let size = u64::from_le_bytes(bef[e + 16..e + 24].try_into().unwrap()) as usize;
+                let mem = u64::from_le_bytes(bef[e + 24..e + 32].try_into().unwrap()) as usize;
                 while !code.is_empty() && code.len() % PAGE != 0 {
                     code.push(0xCC);
                 }
-                base[cod_reloc] = code.len();
+                if cod_reloc != usize::MAX {
+                    base[cod_reloc] = code.len();
+                }
                 code.extend_from_slice(&bef[off..off + size]);
+                for _ in size..mem {
+                    code.push(0);
+                }
             }
         }
     }
