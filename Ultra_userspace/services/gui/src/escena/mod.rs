@@ -18,6 +18,7 @@ pub(crate) mod entrada;
 pub(crate) mod gato;
 /// El MARCO compartido: geometria, arrastre, estirar, maximizar y los tres
 /// botones. Lo que toda ventana tiene y ninguna deberia escribir dos veces.
+pub(crate) mod lanzador;
 pub(crate) mod marco;
 pub(crate) mod salida;
 /// **La ventana del SONIDO** (F10). Reclama `KIND_AUDIO` al abrirse y lo

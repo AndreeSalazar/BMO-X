@@ -501,6 +501,61 @@ $cRecursos = @(
     ) }
 )
 
+# * EL FORMATO `BICO`, escrito aqui porque aqui es donde nace un icono.
+#
+#     0..4   "BICO"      4..6  ancho (u16)     6..8  alto (u16)
+#     8..    ancho*alto pixeles BGRA, u32 little-endian
+#
+# 16x16 y el escritorio lo pinta al doble. Se guarda pequeno a proposito: la
+# gracia de meter el icono en el paquete es que **no cueste nada llevarlo**, y
+# un icono que engorda la app es un icono que alguien acabara quitando. 16x16
+# son 1032 bytes; a 32x32 serian 4104.
+#
+# Los iconos se escriben como DIBUJO y no como una lista de numeros. Una rejilla
+# de dieciseis lineas se lee, se corrige y se ve mal cuando esta mal; un array
+# de 256 enteros no. Es el mismo criterio que `ring0\core\gato.rs`.
+#
+#   .  transparente (alfa 0: el escritorio se ve a traves)
+#   o  contorno oscuro   R  rojo   d  rojo oscuro   W  blanco
+#
+# [!] Los colores van como **cuatro bytes en el orden del fichero (B, G, R, A)**
+# y no como un `0xAARRGGBB`, por dos razones y la segunda escuece:
+#
+#   1. Asi la tabla dice el orden de bytes que se escribe, en vez de obligar a
+#      recordar que un `u32` little-endian se guarda al reves de como se lee.
+#   2. **PowerShell 5.1 lee `0xFFB4342A` como un `Int32` NEGATIVO** (-4967382) y
+#      el cast a `uint32` revienta con "valor demasiado grande o demasiado
+#      pequeno". Sin suffijo `u` en esta version, cualquier color con el alfa a
+#      `FF` cae en la trampa -- o sea todos los opacos.
+$BICO_PALETA = @{
+    '.' = @(0x00, 0x00, 0x00, 0x00)
+    'o' = @(0x10, 0x10, 0x1B, 0xFF)
+    'R' = @(0x2A, 0x34, 0xB4, 0xFF)
+    'd' = @(0x16, 0x1C, 0x6B, 0xFF)
+    'W' = @(0xE0, 0xE6, 0xF0, 0xFF)
+}
+
+function Nuevo-Bico {
+    param([string[]]$filas)
+    $lado = 16
+    if ($filas.Count -ne $lado) { Fail ('un icono son ' + $lado + ' filas, no ' + $filas.Count) }
+    $bytes = New-Object System.Collections.Generic.List[byte]
+    $bytes.AddRange([byte[]][System.Text.Encoding]::ASCII.GetBytes('BICO'))
+    $bytes.AddRange([byte[]][System.BitConverter]::GetBytes([uint16]$lado))
+    $bytes.AddRange([byte[]][System.BitConverter]::GetBytes([uint16]$lado))
+    foreach ($f in $filas) {
+        if ($f.Length -ne $lado) { Fail ('una fila del icono mide ' + $f.Length + ' y no ' + $lado) }
+        foreach ($ch in $f.ToCharArray()) {
+            $c = [string]$ch
+            if (-not $BICO_PALETA.ContainsKey($c)) { Fail ("el icono usa '" + $c + "', que no esta en la paleta") }
+            $bytes.AddRange([byte[]]$BICO_PALETA[$c])
+        }
+    }
+    $esperado = 8 + $lado * $lado * 4
+    if ($bytes.Count -ne $esperado) { Fail ('el icono salio de ' + $bytes.Count + ' B y son ' + $esperado) }
+    return $bytes.ToArray()
+}
+
 $repo = Split-Path -Parent $root
 Push-Location $repo
 try {
@@ -564,6 +619,8 @@ try {
                 if ($r.ContainsKey('texto')) {
                     # Sin salto final y sin BOM: el programa cuenta los bytes.
                     [System.IO.File]::WriteAllText($f, $r.texto, (New-Object System.Text.UTF8Encoding $false))
+                } elseif ($r.ContainsKey('icono')) {
+                    [System.IO.File]::WriteAllBytes($f, (Nuevo-Bico $r.icono))
                 } else {
                     [System.IO.File]::WriteAllBytes($f, [byte[]]$r.bytes)
                 }
@@ -638,6 +695,44 @@ try {
                 # las de sonda sin que nadie lo pidiera.
                 $env:BMO_MODS = $modsPrevio
             }
+            # ** LA CARA DE DOOM, DENTRO DE DOOM.
+            #
+            # El icono es un recurso mas del paquete, y por eso el escritorio no
+            # necesita ni un `.lnk` que apunte aqui ni una cache de iconos que
+            # reconstruir: copias el `.bex` y va con su cara. Ver
+            # `escena\lanzador.rs`.
+            #
+            # Se dibuja aqui y no se trae de fuera **porque una imagen de DOOM
+            # seria de id Software**. Estos 256 pixeles son originales, y por
+            # eso pueden vivir en este fichero mientras el resto del port no.
+            $doomIco = Join-Path $env:TEMP 'bmo-doom-icono'
+            [System.IO.File]::WriteAllBytes($doomIco, (Nuevo-Bico @(
+                '................',
+                '.....RRRRRR.....',
+                '...RRRRRRRRRR...',
+                '..RRRRRRRRRRRR..',
+                '..RRRRRRRRRRRR..',
+                '..RRoooRRoooRR..',
+                '..RRoWoRRoWoRR..',
+                '..RRoooRRoooRR..',
+                '..RRRRRRRRRRRR..',
+                '..RRRddddddRRR..',
+                '..RRdWdWdWdWdR..',
+                '..RRddddddddRR..',
+                '...RRRRRRRRRR...',
+                '....RRRRRRRR....',
+                '................',
+                '................'
+            )))
+            $out = cargo run -p bmo-pack --quiet -- $doomDst '-r' ('icono=' + $doomIco) '-o' $doomDst 2>&1
+            $out | ForEach-Object {
+                if ($_ -match 'recurso\(s\)' -or $_ -match '\[X\]') {
+                    Write-Host ('    [doom] ' + $_) -ForegroundColor DarkGray
+                }
+            }
+            if ($LASTEXITCODE -ne 0) { Fail 'no se pudo meter el icono en doom.bex' }
+            Remove-Item -Force $doomIco -ErrorAction SilentlyContinue
+
             # El WAD va al lado, tal cual. **No se empaqueta dentro del `.bex`**
             # aunque el formato lo permita: `lanzar.rs::con_buffer` se trae el
             # fichero ENTERO a un bufer de 4 MiB, asi que un paquete de 5,5 MB

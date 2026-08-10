@@ -504,6 +504,17 @@ pub extern "C" fn _start() -> ! {
     // una maquina. Si algun dia hay que volver a medir el formato del
     // framebuffer, el `git log` tiene los valores exactos con su porque.
     pintar_fondo(&p);
+    // ** LOS ICONOS, y se leen UNA VEZ.
+    //
+    // Recorrer `apps\` y sacarle el icono a cada `.bex` son varias lecturas de
+    // disco por app, y ninguna cambia mientras la maquina esta encendida. Un
+    // escritorio que releyera el directorio por fotograma haria E/S sesenta
+    // veces por segundo para ensenar exactamente lo mismo.
+    //
+    // Va JUSTO DESPUES del fondo y antes de todo lo demas: los iconos son lo de
+    // mas atras que se pinta, igual que en cualquier escritorio.
+    let lanzador = escena::lanzador::Lanzador::nuevo();
+    escena::lanzador::pintar(&p, &lanzador);
     p.rect(16, 13, 14, 14, ACENTO);
     p.texto(38, 14, "BMO-X", TEXTO);
     // Las fichas se pintan en el bucle: dependen de que este abierto y de
@@ -539,6 +550,12 @@ pub extern "C" fn _start() -> ! {
     let mut porta_n = 0usize;
     let mut calc = Calc::nueva();
     let calc_caja = CalcCaja::nueva(&caja);
+    // Teclas que se mete el propio escritorio, no el teclado. Hoy solo las pone
+    // el lanzador al pulsar un icono; se drenan al principio del fotograma
+    // siguiente. Ver el bucle de teclas.
+    let mut inyectadas = [0u8; 32];
+    let mut ni = 0usize;
+
     // Flanco del boton del raton: un clic es una BAJADA, no "el boton esta
     // pulsado". Sin esto, mantener pulsado teclearia cien veces por segundo.
     let mut boton_antes = false;
@@ -752,6 +769,24 @@ pub extern "C" fn _start() -> ! {
             // el sobrante seria perder letras justo cuando se escribe rapido.
             let mut teclas = [0u8; 64];
             let mut nt = 0usize;
+            // ** LO QUE INYECTA EL LANZADOR va DELANTE de lo que llega del
+            // teclado, y por eso entra aqui y no en otro sitio.
+            //
+            // Pulsar un icono es exactamente **teclear su ruta y dar Enter**, y
+            // eso es lo que hace: el clic rellena el campo y mete un `\n` por
+            // esta puerta. Asi el camino de lanzar sigue siendo UNO -- con su
+            // consola, con la pantalla prestada, con el eco en la salida y con
+            // el vigilante que recoge lo que el hijo imprima.
+            //
+            // La alternativa era llamar a `prestar_pantalla` desde el clic, y
+            // eso habria sido un segundo camino de lanzar programas con las
+            // mismas cinco cosas que recordar. El dia que uno de los dos se
+            // arregle, el otro se queda roto y nadie se entera.
+            for k in 0..ni.min(teclas.len()) {
+                teclas[nt] = inyectadas[k];
+                nt += 1;
+            }
+            ni = 0;
             while nt < teclas.len() {
                 match e.tecla() {
                     Some(c) => {
@@ -2213,6 +2248,46 @@ pub extern "C" fn _start() -> ! {
             // Ver `bajo_el_puntero`.
             // -- Los botones de la calculadora --
             let boton = pos.botones != 0;
+
+            // -- ** UN CLIC EN UN ICONO: dar clic y ya --------------------
+            //
+            // Se rellena el campo con `run <ruta>` y se inyecta un Enter. No es
+            // un atajo perezoso: es la afirmacion de que **pulsar un icono y
+            // teclear su nombre son la misma cosa**, y por eso comparten camino
+            // entero -- consola, prestamo de pantalla, eco y vigilante.
+            //
+            // Solo con la caja Ejecutar DELANTE, y esa condicion no es
+            // cosmetica: si hay una ventana encima, el clic es de esa ventana.
+            // Un escritorio que lanza programas a traves de lo que hay dibujado
+            // encima es un escritorio en el que no se puede confiar al pulsar.
+            if boton
+                && !boton_antes
+                && !calc.visible
+                && !datos_abierta
+                && !cabina_abierta
+                && !sonido_abierta
+            {
+                if let Some(i) = lanzador.app_en(&p, pos.x, pos.y) {
+                    if let Some(app) = lanzador.app(i) {
+                        let r = app.ruta();
+                        // `run ` + la ruta. Si no cupiera se deja como estaba:
+                        // media ruta lanzaria otra cosa, y eso es peor que no
+                        // lanzar nada.
+                        if 4 + r.len() <= ruta.len() {
+                            ruta[..4].copy_from_slice(b"run ");
+                            ruta[4..4 + r.len()].copy_from_slice(r);
+                            n = 4 + r.len();
+                            cur = n;
+                            repintar_campo = true;
+                            if ni < inyectadas.len() {
+                                inyectadas[ni] = b'\n';
+                                ni += 1;
+                            }
+                        }
+                    }
+                }
+            }
+
             if calc.visible && boton && !boton_antes && !calc.esperando {
                 if let Some(t) = calc_caja.tecla_en(pos.x, pos.y) {
                     match t {

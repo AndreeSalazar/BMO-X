@@ -220,6 +220,22 @@ impl Archivo {
         puestos
     }
 
+    /// Mueve el cursor a una posicion ABSOLUTA. Devuelve donde quedo.
+    ///
+    /// Hacia falta para leer un PAQUETE: la seccion de recursos vive al final
+    /// del `.bex` y su indice dice offsets, asi que sin saltar habria que leer
+    /// --de siete en siete bytes-- todo lo que hay delante. Para el icono de
+    /// una app eso es leerse el programa entero para llegar a su cara.
+    ///
+    /// El kernel recorta al tamano en vez de fallar: saltar mas alla del final
+    /// deja el cursor al final, y lo dice devolviendo donde quedo.
+    pub fn saltar(&self, pos: u64) -> u64 {
+        if self.escribe {
+            return 0;
+        }
+        invoke(self.cap, ARCH_OP_SALTAR, pos, 0, 0).value
+    }
+
     /// Bytes que quedan por leer, o bytes acumulados si es de escritura.
     pub fn tamano(&self) -> u64 {
         invoke(self.cap, ARCH_OP_TAMANO, 0, 0, 0).value

@@ -240,6 +240,8 @@ pub const ARCH_OP_LEER: u32 = 0x01;
 pub const ARCH_OP_ESCRIBIR: u32 = 0x02;
 pub const ARCH_OP_TAMANO: u32 = 0x03;
 pub const ARCH_OP_CERRAR: u32 = 0x04;
+/// Mueve el cursor a una posicion absoluta. Ver [`archivo::Archivo::saltar`].
+pub const ARCH_OP_SALTAR: u32 = 0x07;
 
 // Operaciones sobre un handle de consola (`KIND_CONSOLE`).
 pub const CONSOLA_OP_LEER: u32 = 0x01;
