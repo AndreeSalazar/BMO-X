@@ -320,8 +320,20 @@ fn admit_payload(bytes: &[u8], pid: u32) -> Option<u32> {
     set_status("admitting (alloc/map)");
     let plan = match bex::inspect(bytes) {
         Ok(p) => p,
-        Err(_) => {
+        Err(e) => {
+            // ** EL MOTIVO, CON SU NOMBRE. Aqui habia un `Err(_)`.
+            //
+            // Trece motivos distintos entraban por esta puerta y salian con la
+            // misma frase: *"payload failed BEX admission"*. Un cargador que
+            // sabe por que rechaza y no lo dice obliga a adivinar entre "el
+            // fichero llego a medias", "otra arquitectura" y "el entry cae
+            // fuera" -- tres cosas que se arreglan en tres sitios que no se
+            // parecen en nada. Costo una tanda de fotos el 2026-08-09.
+            //
+            // Se dicen ademas **los bytes que llegaron**, porque el fallo mas
+            // probable de los trece es justo el que se cuenta con un numero.
             log("[proc] FATAL: payload failed BEX admission\n");
+            crate::ring0::cabina::fault("proc", e.name(), bytes.len() as u64);
             set_status("BEX admission failed");
             return None;
         }

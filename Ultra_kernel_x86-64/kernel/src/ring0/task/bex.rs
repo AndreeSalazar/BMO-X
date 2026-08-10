@@ -109,6 +109,44 @@ pub enum BexError {
     InvalidSection,
     MissingCode,
     EntryOutsideCode,
+    /// ** LLEGARON MENOS BYTES DE LOS QUE LA IMAGEN DICE MEDIR.
+    ///
+    /// La cabecera lleva `total_size`, asi que **el fichero declara su propio
+    /// tamano** y el cargador puede comprobarlo sin preguntarle al sistema de
+    /// ficheros. Sin esta comprobacion, una lectura corta se manifiesta como
+    /// `InvalidSection` --la tabla apunta mas alla de lo leido-- y eso manda a
+    /// buscar un fallo de FORMATO donde lo que hay es un fallo de TRANSPORTE.
+    ///
+    /// Son dos sitios distintos donde mirar, y confundirlos cuesta una tarde.
+    ImagenIncompleta,
+}
+
+impl BexError {
+    /// El nombre del fallo, para que CABINA lo diga en vez de callarlo.
+    ///
+    /// ** `admit_payload` hacia `Err(_) => log("payload failed BEX admission")`:
+    /// once motivos distintos entrando por la misma puerta y saliendo con la
+    /// misma frase. Un cargador que sabe POR QUE rechaza y no lo dice obliga a
+    /// adivinar entre "el fichero llego a medias", "la arquitectura no es esta"
+    /// y "el entry cae fuera del codigo" -- que se arreglan en tres sitios que
+    /// no se parecen en nada.
+    pub fn name(&self) -> &'static str {
+        match self {
+            BexError::TooSmall => "la imagen no llega ni a la cabecera",
+            BexError::InvalidHeader => "cabecera invalida (magic, version o 0 secciones)",
+            BexError::UnsupportedArchitecture => "otra arquitectura",
+            BexError::UnsupportedEndianness => "otro orden de bytes",
+            BexError::UnsupportedCpuFeature => "pide una extension de CPU que no se preserva",
+            BexError::AbiMismatch => "otra version del ABI",
+            BexError::NotExecutable => "la seccion de codigo no es ejecutable",
+            BexError::TooManySections => "demasiadas secciones",
+            BexError::SectionTableOutOfBounds => "la tabla de secciones cae fuera",
+            BexError::InvalidSection => "una seccion es invalida o cae fuera",
+            BexError::MissingCode => "no hay seccion de codigo",
+            BexError::EntryOutsideCode => "el entry cae fuera del codigo",
+            BexError::ImagenIncompleta => "LLEGARON MENOS BYTES DE LOS QUE LA IMAGEN DICE",
+        }
+    }
 }
 
 /// Validate an untrusted BEX image and produce a fixed-size mapping plan.
@@ -133,6 +171,25 @@ pub fn inspect(bytes: &[u8]) -> Result<BexLoadPlan, BexError> {
     let section_count = read_u32(bytes, 40).ok_or(BexError::TooSmall)? as usize;
     if magic != BEX_MAGIC || version_major != BEX_VERSION_MAJOR || section_count == 0 {
         return Err(BexError::InvalidHeader);
+    }
+    // ** LA IMAGEN DECLARA SU PROPIO TAMANO: se comprueba antes que nada mas.
+    //
+    // `total_size` esta en la cabecera desde que existe el formato --lo pone
+    // `BefBuilder::build`-- y hasta hoy no lo miraba nadie. Con el, el cargador
+    // sabe si le llego el fichero ENTERO sin tener que preguntarle al sistema de
+    // ficheros cuanto media: el dato viaja dentro.
+    //
+    // Va delante de la tabla de secciones a proposito. Si faltan bytes, la tabla
+    // apunta mas alla de lo leido y la primera seccion que se salga contesta
+    // `InvalidSection` -- que es cierto y es la pista equivocada: manda a mirar
+    // el FORMATO cuando lo que fallo es el TRANSPORTE.
+    //
+    // `0` se acepta porque las imagenes que el kernel EMBEBE no pasan por
+    // `BefBuilder::build` y lo dejan sin poner. Comprobar solo cuando el dato
+    // existe es mejor que rechazar a quien nunca prometio nada.
+    let total_size = read_u32(bytes, 44).ok_or(BexError::TooSmall)? as usize;
+    if total_size != 0 && bytes.len() < total_size {
+        return Err(BexError::ImagenIncompleta);
     }
     if arch != BEX_ARCH_X86_64 {
         return Err(BexError::UnsupportedArchitecture);

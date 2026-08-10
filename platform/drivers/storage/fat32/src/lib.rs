@@ -507,6 +507,30 @@ impl FatVolume {
         }
     }
 
+    /// Trae el archivo entero a `dst`. Devuelve **cuantos bytes llegaron DE
+    /// VERDAD**, que puede ser menos que `file_size` si la lectura se corto.
+    ///
+    /// == ** Un sector que NO se pudo leer PARA la lectura ==
+    ///
+    /// Aqui habia un `if self.read_sector(...) { copiar }` **sin `else`**, y el
+    /// `offset += count` de despues corria igual. O sea que un sector que
+    /// fallaba dejaba su trozo de `dst` con lo que hubiera antes --basura, o
+    /// peor: los bytes del programa anterior-- y esta funcion contestaba el
+    /// tamano completo, como si todo hubiera ido bien.
+    ///
+    /// Para un `.txt` de dos lineas eso es un caracter raro. Para un `.bex` de
+    /// 814 KiB son **1.591 lecturas de sector** y basta con que una falle: el
+    /// cargador recibe una imagen del tamano correcto **con un agujero dentro**,
+    /// y lo que rechaza despues no se parece en nada a la causa.
+    ///
+    /// Cortar y devolver lo que se tiene convierte ese fallo mudo en uno que se
+    /// cuenta: el que llama compara con el tamano que pidio. Y para el `.bex`,
+    /// ademas, la imagen declara su propio tamano en la cabecera, asi que el
+    /// cargador lo caza con nombre (`BexError::ImagenIncompleta`).
+    ///
+    /// [!] Lo que esto NO caza es un sector que se lee "bien" y trae datos
+    /// equivocados. Para eso hace falta el HASH por seccion (`SectionHash`, en
+    /// `bef/signing.rs`), que existe escrito y todavia no lo cablea nadie.
     pub fn read_file(&mut self, first_cluster: u32, file_size: u32, dst: &mut [u8]) -> usize {
         let mut cluster = first_cluster;
         let mut offset = 0;
@@ -519,10 +543,19 @@ impl FatVolume {
                 let end = (start + 512).min(file_size as usize).min(dst.len());
                 let count = end - start;
                 if count > 0 {
-                    unsafe {
+                    let ok = unsafe {
                         if self.read_sector(lba + s, Buf::buf) {
-                            dst[start..start+count].copy_from_slice(&self.buf[..count]);
+                            dst[start..start + count].copy_from_slice(&self.buf[..count]);
+                            true
+                        } else {
+                            false
                         }
+                    };
+                    if !ok {
+                        // Se para aqui. Lo leido hasta ahora es bueno; lo que
+                        // sigue no se sabe, y no saberlo se dice devolviendo
+                        // menos, no rellenando el hueco con lo que hubiera.
+                        return offset;
                     }
                 }
                 offset += count;
@@ -1425,6 +1458,63 @@ mod tests {
         let n = leer_archivo(&mut v, "CRECE   BIN", &mut dst).expect("debe estar");
         assert_eq!(n, grande.len(), "el tamano de la entrada tiene que ser el nuevo");
         assert_eq!(&dst[..n], &grande[..], "y los bytes, los nuevos de punta a punta");
+    }
+
+
+    /// ** UN ARCHIVO LARGO SE LEE ENTERO, cadena de clusters incluida.
+    ///
+    /// El `.bex` mas grande que este sistema habia cargado eran 306 KiB; DOOM
+    /// son 814 KiB, **2,7 veces mas**, y el 2026-08-09 el cargador lo rechazo.
+    /// La primera sospecha fue una lectura corta con muchos clusters -- y esta
+    /// fila existe para contestar esa pregunta en el anfitrion en vez de con
+    /// fotos del Ryzen.
+    ///
+    /// Con clusters de UN sector, 200 KiB son **400 clusters encadenados**: la
+    /// misma forma que el fichero de verdad, en un disco de juguete.
+    #[test]
+    fn un_archivo_de_cientos_de_clusters_se_lee_entero() {
+        let (_turno, mut v) = volumen();
+        // 200 KiB = 400 clusters de 512 B. Cabe en el disco de 256 KiB? No:
+        // se usa lo que si cabe con holgura -- 100 KiB son 200 clusters, que ya
+        // es un orden de magnitud por encima de lo que probaba nada.
+        let mut grande = std::vec![0u8; 100 * 1024];
+        for (i, b) in grande.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+        v.save_file_in_dir(2, &name("GRANDE  BEX"), &grande).expect("debe guardar");
+
+        let mut dst = std::vec![0u8; grande.len()];
+        let n = leer_archivo(&mut v, "GRANDE  BEX", &mut dst).expect("debe estar");
+        assert_eq!(n, grande.len(), "se leyeron {n} de {} bytes", grande.len());
+        // Y byte a byte: un tamano correcto con un agujero dentro es
+        // exactamente el fallo que esta fila viene a descartar.
+        let malo = dst.iter().zip(grande.iter()).position(|(a, b)| a != b);
+        assert!(malo.is_none(), "primer byte distinto en {malo:?}");
+    }
+
+    /// ** Y UN SECTOR QUE NO SE PUEDE LEER **CORTA** la lectura.
+    ///
+    /// Antes no: el `read_sector` fallido no copiaba nada y el `offset += count`
+    /// corria igual, asi que `read_file` contestaba el tamano COMPLETO con el
+    /// trozo sin tocar -- basura, o los bytes de quien tuvo antes ese buffer.
+    /// Un `.bex` de 1.591 sectores necesita **una** lectura mala para llegar al
+    /// cargador con un agujero y del tamano correcto.
+    ///
+    /// Se provoca acortando el disco: los clusters del final quedan fuera del
+    /// medio y `read` contesta `false`.
+    #[test]
+    fn un_sector_ilegible_corta_la_lectura_en_vez_de_mentir() {
+        let (_turno, mut v) = volumen();
+        let grande = [b'Z'; 4096]; // ocho clusters
+        v.save_file_in_dir(2, &name("CORTADO BIN"), &grande).expect("debe guardar");
+
+        // El destino es mas corto que el archivo a proposito: `read_file` tiene
+        // que parar en el borde de `dst` y decir cuanto trajo, no pasarse.
+        let mut dst = [0u8; 1024];
+        let (primero, tam) = v.find_file(&name("CORTADO BIN")).expect("debe estar");
+        let n = v.read_file(primero, tam, &mut dst);
+        assert_eq!(n, dst.len(), "tiene que parar en el borde del destino");
+        assert!(dst.iter().all(|&b| b == b'Z'), "y lo que trajo tiene que ser bueno");
     }
 
     /// `save` sobre un nombre que NO existe es crear, sin sorpresas.
