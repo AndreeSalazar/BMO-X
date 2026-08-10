@@ -695,6 +695,21 @@ pub const INPUT_OP_MODIFICADORES: u64 = 0x04;
 /// solo.
 pub const INPUT_OP_RUEDA: u64 = 0x05;
 
+/// La siguiente tecla CRUDA: scancode Set 1 + pulsada o soltada.
+///
+/// `0` si no hay. Si hay: bit 8 = hay evento, bit 9 = pulsada, bits 0..7 = el
+/// scancode. **Consume.**
+///
+/// Es la otra cara de [`INPUT_OP_TECLA`], no su sustituta: aquella entrega el
+/// CARACTER que la tecla produjo --resuelto por la distribucion, listo para
+/// pintar-- y esta la TECLA que fue. Un caracter no tiene "soltar", y sin
+/// soltar un juego no puede saber que sigue pulsado; ademas Shift, Ctrl y Alt
+/// no producen caracter, asi que por aquella puerta no salen.
+///
+/// El kernel ya tenia las dos caras (`bmo_uhid::teclado` compara informes boot
+/// consecutivos): se perdian al cruzar a Ring 3.
+pub const INPUT_OP_EVENTO_TECLA: u64 = 0x06;
+
 /// Bits de la mascara de [`INPUT_OP_MODIFICADORES`].
 pub const MOD_SHIFT: u8 = 1 << 0;
 pub const MOD_CTRL: u8 = 1 << 1;

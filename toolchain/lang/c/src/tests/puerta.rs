@@ -74,6 +74,15 @@ fn la_cabecera_baja_a_la_puerta_sin_runtime_que_enlazar() {
 
 // =============== <bmo/entrada.h>: el raton y el teclado ===============
 
+/// Los scancodes que usan las filas de la cola cruda. Son Set 1, los mismos que
+/// emite `bmo_uhid::teclado` y los mismos que declara `<bmo/entrada.h>`; se
+/// escriben aqui a mano porque un test que importara la constante del sitio que
+/// esta probando no probaria que las dos coinciden.
+const BMO_SC_W: u8 = 0x11;
+const BMO_SC_A: u8 = 0x1E;
+const BMO_SC_CTRL: u8 = 0x1D;
+const BMO_SC_MAYUS_IZQ: u8 = 0x2A;
+
 /// Sin ceder la entrada, reclamarla da 0. Es el caso NORMAL --el compositor
 /// la tiene-- y un programa que no lo comprueba lee ceros para siempre y
 /// parece un raton roto.
@@ -85,6 +94,89 @@ fn reclamar_la_entrada_puede_fallar_y_se_nota() {
          return 0; }";
     assert_eq!(run_c_sembrado(fuente, |_| {}).trim(), "sin entrada");
     assert_eq!(run_c_sembrado(fuente, |m| m.ceder_entrada()).trim(), "handle");
+}
+
+// -- LA TECLA CRUDA: pulsar y SOLTAR ------------------------------------
+//
+// El kernel siempre tuvo las dos caras --el driver compara informes boot
+// consecutivos-- y se perdian al cruzar a Ring 3, donde solo salia el
+// caracter. Sin el soltar, un juego no puede parar a quien echa a andar.
+
+/// Pulsar y soltar la misma tecla son DOS eventos, y se distinguen.
+#[test]
+fn una_tecla_cruda_trae_pulsar_y_soltar_por_separado() {
+    let fuente = "#include <bmo/entrada.h>\n\
+         int main() { unsigned long long ent; unsigned long long e; \
+         ent = bmo_entrada_reclamar(); \
+         for (;;) { e = bmo_entrada_evento(ent); \
+         if ((e & BMO_EVENTO_HAY) == 0) break; \
+         printf(\"%x:%d,\", (int)(e & 0xFF), (e & BMO_EVENTO_PULSADA) != 0); } \
+         return 0; }";
+    let out = run_c_sembrado(fuente, |m| {
+        m.ceder_entrada();
+        m.poner_eventos_tecla(&[(0x11, true), (0x11, false)]);
+    });
+    assert_eq!(out, "11:1,11:0,");
+}
+
+/// ** Una tecla que se queda ABAJO: llega su `pulsada` y **no** llega ningun
+/// `soltada`. Es lo que un flujo de caracteres no puede expresar, y es
+/// exactamente la diferencia entre andar y andar para siempre.
+#[test]
+fn una_tecla_mantenida_no_trae_soltar() {
+    let fuente = "#include <bmo/entrada.h>\n\
+         int main() { unsigned long long ent; unsigned long long e; \
+         int abajo; int sueltas; \
+         ent = bmo_entrada_reclamar(); abajo = 0; sueltas = 0; \
+         for (;;) { e = bmo_entrada_evento(ent); \
+         if ((e & BMO_EVENTO_HAY) == 0) break; \
+         if (e & BMO_EVENTO_PULSADA) { abajo = abajo + 1; } else { sueltas = sueltas + 1; } } \
+         printf(\"abajo=%d sueltas=%d\", abajo, sueltas); return 0; }";
+    let out = run_c_sembrado(fuente, |m| {
+        m.ceder_entrada();
+        m.poner_eventos_tecla(&[(BMO_SC_W, true), (BMO_SC_A, true), (BMO_SC_A, false)]);
+    });
+    assert_eq!(out, "abajo=2 sueltas=1");
+}
+
+/// ** SHIFT Y CTRL SALEN POR AQUI, y por la puerta de caracteres no salen.
+///
+/// No producen caracter ninguno, asi que `bmo_entrada_tecla` no puede
+/// entregarlos. En DOOM son correr y disparar: sin esta cola, dos de las
+/// teclas mas usadas del juego no existen.
+#[test]
+fn los_modificadores_son_teclas_como_las_demas_en_la_cola_cruda() {
+    let fuente = "#include <bmo/entrada.h>\n\
+         int main() { unsigned long long ent; unsigned long long e; int n; \
+         ent = bmo_entrada_reclamar(); n = 0; \
+         for (;;) { e = bmo_entrada_evento(ent); \
+         if ((e & BMO_EVENTO_HAY) == 0) break; \
+         if ((e & 0xFF) == BMO_SC_MAYUS_IZQ || (e & 0xFF) == BMO_SC_CTRL) { n = n + 1; } } \
+         printf(\"%d\", n); return 0; }";
+    let out = run_c_sembrado(fuente, |m| {
+        m.ceder_entrada();
+        m.poner_eventos_tecla(&[(BMO_SC_MAYUS_IZQ, true), (BMO_SC_CTRL, true), (BMO_SC_CTRL, false)]);
+    });
+    assert_eq!(out, "3");
+}
+
+/// Las dos colas conviven: leer eventos crudos no le roba caracteres a
+/// `bmo_entrada_tecla`. En el kernel se llenan del mismo sondeo, y si una
+/// vaciara a la otra un programa que use las dos perderia la mitad.
+#[test]
+fn la_cola_cruda_y_la_de_caracteres_no_se_roban() {
+    let fuente = "#include <bmo/entrada.h>\n\
+         int main() { unsigned long long ent; unsigned long long e; int c; \
+         ent = bmo_entrada_reclamar(); \
+         e = bmo_entrada_evento(ent); \
+         c = bmo_entrada_tecla(ent); \
+         printf(\"sc=%x c=%c\", (int)(e & 0xFF), c); return 0; }";
+    let out = run_c_sembrado(fuente, |m| {
+        m.ceder_entrada();
+        m.poner_eventos_tecla(&[(BMO_SC_W, true)]);
+        m.poner_teclas(b"w");
+    });
+    assert_eq!(out, "sc=11 c=w");
 }
 
 /// Las teclas salen una por llamada, y `-1` significa "no hay", que es el

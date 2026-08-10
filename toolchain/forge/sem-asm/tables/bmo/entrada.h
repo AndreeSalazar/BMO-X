@@ -138,6 +138,88 @@ int bmo_entrada_tecla(unsigned long long ent) {
     return -1;
 }
 
+/* -- LA TECLA CRUDA: scancode + pulsar/soltar --------------------------
+ *
+ * ** `bmo_entrada_tecla` entrega un CARACTER, y un caracter no tiene "soltar".
+ *
+ * Para escribir eso es lo correcto. Para un JUEGO no sirve, y el motivo es
+ * concreto: quien pregunta "esta la flecha abajo AHORA" no lo puede deducir de
+ * un flujo de caracteres. La auto-repeticion le daria "pulsada" muchas veces y
+ * jamas un "solto", asi que el personaje que echa a andar no para nunca. Y las
+ * tres teclas que mas importan en un juego --Shift, Ctrl, Alt-- **no producen
+ * caracter ninguno**, asi que por esa puerta ni siquiera salen.
+ *
+ * El kernel tenia las dos caras desde el primer dia: el driver compara cada
+ * informe boot con el anterior y produce pulsar Y soltar. Se perdian al cruzar
+ * a Ring 3. Esto no anade un dato nuevo, deja de tirarlo.
+ *
+ * Las dos colas conviven y se llenan del MISMO sondeo: leer una no le roba
+ * nada a la otra.
+ */
+#define BMO_ENTRADA_EVENTO_TECLA 0x06
+
+/* Hay evento? El valor crudo trae la respuesta en el bit 8. */
+#define BMO_EVENTO_HAY 0x100
+/* Pulsada (1) o soltada (0). */
+#define BMO_EVENTO_PULSADA 0x200
+
+/* El evento crudo entero, o **0 si no hay ninguno**. No bloquea.
+ *
+ * Se devuelve empaquetado y no en tres funciones porque los tres datos vienen
+ * de la MISMA llamada: partirlo obligaria a tres viajes por la puerta para leer
+ * un solo evento, y encima a que el segundo y el tercero consumieran otro.
+ *
+ *     unsigned long long e = bmo_entrada_evento(ent);
+ *     if (e & BMO_EVENTO_HAY) {
+ *         int sc      = (int)(e & 0xFF);
+ *         int pulsada = (e & BMO_EVENTO_PULSADA) != 0;
+ *     }
+ */
+unsigned long long bmo_entrada_evento(unsigned long long ent) {
+    return bmo_valor(ent, BMO_ENTRADA_EVENTO_TECLA, 0, 0, 0);
+}
+
+/* -- Los scancodes Set 1 que hacen falta para jugar --------------------
+ *
+ * Son los que emite `bmo_uhid::teclado`, o sea Set 1 de toda la vida salvo las
+ * que ahi tuvieron que recibir codigo propio porque Set 1 las expresa con dos
+ * bytes (`0xE0` delante) y en un `InputEvent` solo cabe uno. Esas van al final
+ * y **no son estandar**: estan copiadas de `teclado.rs`, y si divergen un juego
+ * lee flechas donde hay numeros. */
+#define BMO_SC_ESC 0x01
+#define BMO_SC_1 0x02
+#define BMO_SC_2 0x03
+#define BMO_SC_3 0x04
+#define BMO_SC_4 0x05
+#define BMO_SC_5 0x06
+#define BMO_SC_6 0x07
+#define BMO_SC_7 0x08
+#define BMO_SC_8 0x09
+#define BMO_SC_9 0x0A
+#define BMO_SC_0 0x0B
+#define BMO_SC_RETROCESO 0x0E
+#define BMO_SC_TAB 0x0F
+#define BMO_SC_Q 0x10
+#define BMO_SC_W 0x11
+#define BMO_SC_E 0x12
+#define BMO_SC_R 0x13
+#define BMO_SC_Y 0x15
+#define BMO_SC_ENTRAR 0x1C
+#define BMO_SC_CTRL 0x1D
+#define BMO_SC_A 0x1E
+#define BMO_SC_S 0x1F
+#define BMO_SC_D 0x20
+#define BMO_SC_MAYUS_IZQ 0x2A
+#define BMO_SC_MAYUS_DER 0x36
+#define BMO_SC_ALT 0x38
+#define BMO_SC_ESPACIO 0x39
+/* Codigo propio: Set 1 las escribe con prefijo 0xE0. Ver `teclado.rs`. */
+#define BMO_SC_ARRIBA 0x66
+#define BMO_SC_ABAJO 0x67
+#define BMO_SC_IZQUIERDA 0x68
+#define BMO_SC_DERECHA 0x69
+#define BMO_SC_ALTGR 0x63
+
 /* Que modificadores estan pulsados AHORA. No consume nada: es estado.
  *
  * * En la distribucion espanola `Ctrl+Alt` **es** `AltGr`: lo que produce `@`,

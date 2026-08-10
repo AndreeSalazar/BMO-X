@@ -90,6 +90,38 @@ pub const INPUT_OP_MODIFICADORES: u64 = 0x04;
 /// y el primero que lo olvidara tendria un scroll que se va solo.
 pub const INPUT_OP_RUEDA: u64 = 0x05;
 
+/// ** La siguiente tecla CRUDA: scancode Set 1 + si se pulso o se solto.
+///
+/// `0` cuando no hay nada. Cuando lo hay:
+///
+/// ```text
+///     bit 8  = hay evento (por lo mismo que en INPUT_OP_TECLA: el scancode 0
+///              es un valor y "no hay" tenia que distinguirse de el)
+///     bit 9  = 1 pulsada, 0 soltada
+///     bits 0..7 = scancode Set 1
+/// ```
+///
+/// ## Por que hacia falta otra operacion en vez de arreglar la que habia
+///
+/// `INPUT_OP_TECLA` entrega un CARACTER, y esa es su virtud: la `n~` llega
+/// como `0xF1`, resuelta por la distribucion activa, lista para pintar. Para
+/// escribir es lo correcto y no se toca.
+///
+/// Pero un caracter no tiene soltar. Un programa que quiera saber **que esta
+/// pulsado ahora** --cualquier juego-- no lo puede deducir de un flujo de
+/// caracteres: la auto-repeticion le daria "pulsada" muchas veces y jamas un
+/// "solto", asi que quien empieza a andar no para. Y las tres teclas que mas
+/// importan en un juego --Shift, Ctrl, Alt-- **no producen caracter ninguno**,
+/// asi que por esa puerta no salen siquiera.
+///
+/// ** Lo que se entrega aqui el kernel ya lo tenia. `bmo_uhid::teclado`
+/// compara cada informe boot con el anterior y produce las dos caras desde el
+/// primer dia; se perdian al cruzar a Ring 3. Esto no anade un dato: deja de
+/// tirarlo.
+///
+/// **Consume**, como `INPUT_OP_TECLA`: cada evento se entrega una vez.
+pub const INPUT_OP_EVENTO_TECLA: u64 = 0x06;
+
 /// La tiene un proceso de Ring 3?
 ///
 /// Lo pregunta el shell de Ring 0 antes de leer el teclado. Sin esto los dos
@@ -196,6 +228,17 @@ pub fn operation(operation: u64) -> Option<u64> {
             None => Some(0),
         },
         INPUT_OP_MODIFICADORES => Some(crate::ring0::dev::usb::modificadores() as u64),
+        // Misma cola de eventos HID que `INPUT_OP_TECLA`, otra cara del mismo
+        // informe: alli se entrega el caracter que produjo, aqui la tecla que
+        // fue. Ninguna le roba nada a la otra -- las dos colas se llenan del
+        // mismo sondeo.
+        INPUT_OP_EVENTO_TECLA => match crate::ring0::dev::usb::evento_tecla() {
+            Some((scancode, pulsada)) => {
+                let marca = if pulsada { 0x200 } else { 0 };
+                Some(0x100 | marca | scancode as u64)
+            }
+            None => Some(0),
+        },
         // Se devuelve como i32 en complemento a dos dentro del u64: girar hacia
         // atras es negativo, y el llamante lo recupera con un `as i32`.
         INPUT_OP_RUEDA => Some(crate::ring0::dev::usb::rueda() as i64 as u64),

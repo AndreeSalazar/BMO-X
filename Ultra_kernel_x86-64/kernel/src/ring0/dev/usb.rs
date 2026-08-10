@@ -434,14 +434,27 @@ fn tecla_del_dueno(t: Option<u8>) -> Option<u8> {
 }
 
 fn poll_ascii_interno() -> Option<u8> {
-    // Correr si hay CUALQUIER dispositivo enumerado (no solo teclado): asi el
-    // mouse late en el diagnostico aunque el teclado no haya enumerado.
-    if !unsafe { PRESENT } {
-        return None;
-    }
     // Lo que dejo pendiente la pulsacion anterior sale primero: una tecla
     // muerta que no combina produce DOS caracteres (' + q = 'q).
     if let Some(b) = drain() { return Some(b); }
+    bombear_interno();
+    drain()
+}
+
+/// Drena el bus HID y actualiza todo el estado, **sin sacar nada de ninguna
+/// cola**.
+///
+/// Estaba dentro de `poll_ascii_interno`, que hacia dos trabajos: bombear el
+/// bus y entregar un caracter. Separarlos hace falta desde que hay **dos**
+/// consumidores de lo mismo -- el que quiere caracteres y el que quiere teclas
+/// crudas (ver [`evento_tecla`]). Si el segundo tuviera que llamar al primero
+/// para que el bus avanzara, se comeria un caracter por cada evento que pide.
+fn bombear_interno() {
+    // Correr si hay CUALQUIER dispositivo enumerado (no solo teclado): asi el
+    // mouse late en el diagnostico aunque el teclado no haya enumerado.
+    if !unsafe { PRESENT } {
+        return;
+    }
 
     // -- Enchufaron algo? Adoptarlo -------------------------------------
     //
@@ -510,6 +523,16 @@ fn poll_ascii_interno() -> Option<u8> {
     };
     unsafe { HID_EVENTS = HID_EVENTS.wrapping_add(n as u32); }
     for ev in &evs[..n] {
+        // ** LA TECLA CRUDA, ANTES DE QUE NADIE LA INTERPRETE.
+        //
+        // Va aqui arriba y no dentro de las ramas porque las ramas de
+        // modificador hacen `continue`: Shift, Ctrl y Alt no producen caracter
+        // y por eso salian del bucle antes de tiempo. Para un juego esos tres
+        // son teclas como las demas --en DOOM, correr y disparar-- asi que
+        // tienen que entrar en la cola cruda igual que una letra.
+        if matches!(ev.kind, InputEventKind::KeyDown | InputEventKind::KeyUp) {
+            empujar_evento(ev.code, matches!(ev.kind, InputEventKind::KeyDown));
+        }
         match ev.kind {
             InputEventKind::KeyDown => {
                 // Shift (Set 1 make: 0x2A izq, 0x36 der).
@@ -605,8 +628,100 @@ fn poll_ascii_interno() -> Option<u8> {
     // DECIRSELO al teclado. No se encienden solas.
     sync_leds();
     // Repeticion de la tecla mantenida.
+    //
+    // [!] Alimenta SOLO la cola de caracteres. La cola cruda no lleva repes a
+    // proposito: quien pide teclas crudas quiere saber que esta pulsado, y una
+    // repeticion no es otra pulsacion -- entregarla obligaria al llamante a
+    // filtrar "pulsada otra vez sin haberse soltado", que es exactamente el
+    // trabajo que esta cola le esta quitando.
     repeat_held();
-    drain()
+}
+
+// -- LA COLA CRUDA DE TECLAS: scancode + pulsada/soltada -----------------
+//
+// ** El kernel SIEMPRE tuvo esta informacion y la tiraba en la puerta.
+//
+// `bmo_uhid::teclado` compara cada informe boot con el anterior y produce
+// `InputEvent::key(scancode, pulsada)` -- las dos cosas, desde el primer dia.
+// Lo que llegaba a Ring 3 era un flujo de CARACTERES: `INPUT_OP_TECLA` entrega
+// un byte Latin-1 ya resuelto, que es lo correcto para escribir y **no sirve
+// para jugar**. Un juego no pregunta "que letra se escribio", pregunta "esta
+// la flecha abajo AHORA". Sin el soltar, quien anda no para nunca.
+//
+// Por eso esto no es una cola nueva de datos nuevos: es dejar de tirar lo que
+// ya se tenia. La de caracteres se queda intacta y las dos se llenan del mismo
+// sondeo -- no hay dos lectores del bus.
+//
+// 64 entradas: un informe boot trae hasta 6 teclas y el sondeo va por
+// fotograma. Si se llena, se tira **lo mas VIEJO** y se cuenta. Tirar lo nuevo
+// seria peor de una forma concreta: se perderia el `soltar` de una tecla cuyo
+// `pulsar` ya se entrego, y el juego se quedaria andando solo.
+const EVENTOS_CRUDOS: usize = 64;
+static mut CRUDOS: [u16; EVENTOS_CRUDOS] = [0; EVENTOS_CRUDOS];
+static mut CRUDOS_LEE: usize = 0;
+static mut CRUDOS_ESCRIBE: usize = 0;
+/// Cuantos se han tirado por cola llena. Si esto sube, el consumidor no esta
+/// drenando lo bastante rapido -- y es un numero, no una sospecha.
+static mut CRUDOS_PERDIDOS: u32 = 0;
+
+fn empujar_evento(scancode: u8, pulsada: bool) {
+    unsafe {
+        let siguiente = (CRUDOS_ESCRIBE + 1) % EVENTOS_CRUDOS;
+        if siguiente == CRUDOS_LEE {
+            // Llena: se tira la mas vieja para hacer sitio.
+            CRUDOS_LEE = (CRUDOS_LEE + 1) % EVENTOS_CRUDOS;
+            CRUDOS_PERDIDOS = CRUDOS_PERDIDOS.saturating_add(1);
+        }
+        CRUDOS[CRUDOS_ESCRIBE] = if pulsada {
+            0x100 | scancode as u16
+        } else {
+            scancode as u16
+        };
+        CRUDOS_ESCRIBE = siguiente;
+    }
+}
+
+/// La siguiente tecla cruda: `Some((scancode Set 1, pulsada))`, o `None`.
+///
+/// **No bloquea** y **bombea el bus** si la cola esta vacia, por el mismo
+/// motivo que `poll_ascii`: quien llama tiene un bucle de fotograma y el bus
+/// solo avanza cuando alguien lo mira.
+///
+/// El envoltorio de CR3 es el de `poll_ascii` y por la misma razon -- tocar el
+/// xHCI es escribir MMIO que solo esta mapeado en el PML4 del kernel, y esto se
+/// recorre desde dentro de un syscall. Ver su cabecera.
+pub fn evento_tecla() -> Option<(u8, bool)> {
+    use crate::ring0::mm::vmm;
+    if let Some(v) = sacar_crudo() {
+        return Some(v);
+    }
+    let kpml4 = vmm::kernel_pml4();
+    let previo = vmm::read_cr3();
+    let cambiado = kpml4 != 0 && previo != kpml4;
+    if cambiado {
+        vmm::switch_to(kpml4);
+    }
+    bombear_interno();
+    if cambiado {
+        vmm::switch_to(previo);
+    }
+    sacar_crudo()
+}
+
+fn sacar_crudo() -> Option<(u8, bool)> {
+    unsafe {
+        if CRUDOS_LEE == CRUDOS_ESCRIBE {
+            return None;
+        }
+        let v = CRUDOS[CRUDOS_LEE];
+        CRUDOS_LEE = (CRUDOS_LEE + 1) % EVENTOS_CRUDOS;
+        Some(((v & 0xFF) as u8, v & 0x100 != 0))
+    }
+}
+
+/// Eventos crudos tirados por cola llena. Para el panel.
+pub fn eventos_crudos_perdidos() -> u32 {
+    unsafe { CRUDOS_PERDIDOS }
 }
 
 /// Esta activo el tercer nivel? AltGr, o el Ctrl+Alt al que acostumbra

@@ -271,6 +271,12 @@ pub struct Machine {
     /// las drena `INPUT_OP_TECLA`, una por llamada.
     teclas: Vec<u8>,
     teclas_cursor: usize,
+    /// Teclas CRUDAS pendientes: `(scancode Set 1, pulsada)`. Cola aparte de la
+    /// de caracteres porque son dos preguntas distintas -- "que se escribio" y
+    /// "que esta pulsado" -- y en el kernel tambien son dos colas. Las siembra
+    /// [`Machine::poner_eventos_tecla`].
+    eventos_tecla: Vec<(u8, bool)>,
+    eventos_tecla_cursor: usize,
     /// Teclas que aun no han LLEGADO: un lote por fotograma.
     ///
     /// Sin esto, todo lo sembrado esta disponible en la primera vuelta del
@@ -355,6 +361,8 @@ impl Machine {
             entrada_cedida: false,
             teclas: Vec::new(),
             teclas_cursor: 0,
+            eventos_tecla: Vec::new(),
+            eventos_tecla_cursor: 0,
             lotes: Vec::new(),
             rueda: 0,
             puntero: (0, 0, 0),
@@ -554,6 +562,17 @@ impl Machine {
         self.teclas.extend_from_slice(teclas);
     }
 
+    /// Teclas CRUDAS que el programa recogera con `INPUT_OP_EVENTO_TECLA`, una
+    /// por llamada: `(scancode Set 1, pulsada)`.
+    ///
+    /// Es la cola del que quiere saber **que esta pulsado**, no que se
+    /// escribio. Sembrar un `(sc, true)` sin su `(sc, false)` detras es
+    /// legitimo y es justo el caso interesante: describe una tecla que se
+    /// queda abajo.
+    pub fn poner_eventos_tecla(&mut self, eventos: &[(u8, bool)]) {
+        self.eventos_tecla.extend_from_slice(eventos);
+    }
+
     /// Teclas repartidas EN EL TIEMPO: un lote por fotograma, entendiendo por
     /// fotograma cada `YIELD` que haga el programa.
     ///
@@ -650,8 +669,8 @@ impl Machine {
     /// `ring0/obj/input.rs` -- sobre todo la que se nota: la rueda CONSUME.
     fn entrada_op(&mut self, op: u64) -> u64 {
         use bmo_abi::syscalls::surface::{
-            INPUT_OP_EVENTOS, INPUT_OP_MODIFICADORES, INPUT_OP_PUNTERO, INPUT_OP_RUEDA,
-            INPUT_OP_TECLA,
+            INPUT_OP_EVENTOS, INPUT_OP_EVENTO_TECLA, INPUT_OP_MODIFICADORES, INPUT_OP_PUNTERO,
+            INPUT_OP_RUEDA, INPUT_OP_TECLA,
         };
         match op {
             INPUT_OP_PUNTERO => {
@@ -671,6 +690,20 @@ impl Machine {
                 }
             }
             INPUT_OP_MODIFICADORES => self.modificadores as u64,
+            // La tecla CRUDA: `0x100 | (pulsada << 9) | scancode`, y `0` cuando
+            // no queda ninguna. Cola aparte de la de caracteres, igual que en el
+            // kernel: alli las dos se llenan del mismo informe HID y aqui las
+            // dos las siembra la prueba.
+            INPUT_OP_EVENTO_TECLA => {
+                if self.eventos_tecla_cursor < self.eventos_tecla.len() {
+                    let (sc, pulsada) = self.eventos_tecla[self.eventos_tecla_cursor];
+                    self.eventos_tecla_cursor += 1;
+                    let marca = if pulsada { 0x200 } else { 0 };
+                    0x100 | marca | sc as u64
+                } else {
+                    0
+                }
+            }
             // * Consume. Dos lecturas seguidas sin girar dan cero la segunda.
             INPUT_OP_RUEDA => {
                 let v = self.rueda;
