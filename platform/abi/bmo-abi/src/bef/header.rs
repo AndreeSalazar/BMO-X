@@ -116,6 +116,47 @@ pub enum BefArch {
     Rv64gc = 0x03,
 }
 
+/// ** LA DECISION SOBRE OTRAS ARQUITECTURAS, tomada por Eddi el 2026-08-09.
+///
+/// La pregunta era si BMO deberia tener un formato intermedio y portable --un
+/// `.bsm` al estilo de WASM-- que se convirtiera en `.bex` en cada maquina.
+///
+/// **La respuesta es NO, y hoy ni siquiera se deja un hueco preparado.**
+///
+/// # Por que no
+///
+/// WASM existe para un problema concreto: *"mando un programa a una maquina
+/// cuyo procesador no conozco, y alli no puedo compilar"*. **BMO no tiene ese
+/// problema: BMO ES el compilador.** Y la portabilidad ya esta resuelta por
+/// otro lado -- `sem-asm` guarda las instrucciones en tablas TOML, asi que
+/// *"el puerto a otra arquitectura pasa a ser un directorio de tablas"*.
+///
+/// Lo que se compra a cambio de recompilar por CPU: **cero motor de ejecucion,
+/// cero traduccion al vuelo, y ninguna pagina escribible-y-ejecutable** -- que
+/// es justo lo que un JIT necesita y lo que el modelo de capabilities no da.
+///
+/// De WASM si se toman **dos** ideas, y las dos ya tienen su sitio en este
+/// formato: **declarar lo que el programa necesita** ([`SectionKind::Manifest`],
+/// hoy vacia) y **verificar antes de ejecutar** (`bmo-verify`).
+///
+/// # Y por que NO se deja un stub
+///
+/// Porque en este arbol ya hay demasiadas cosas escritas por adelantado que
+/// nadie llamo: `bmo-verify` sin cablear, doce crates huerfanos, una politica de
+/// foco cuyo `es_para` no se invocaba **ni una vez**, y las secciones
+/// `Resources`, `Manifest` y `Signature` declaradas y vacias durante meses.
+/// **Un stub de algo que no se va a construir es una deuda, no un adelanto.**
+///
+/// # Lo que SI hace falta, y ya esta aqui
+///
+/// Este enum. Una imagen **declara para que CPU es**, y el cargador del kernel
+/// **ya lo comprueba** (`bex::inspect` -> `UnsupportedArchitecture`). O sea que
+/// el dia que exista `Ultra_kernel_aarch64`, un `.bex` de x86 y uno de ARM
+/// pueden convivir en el mismo disco y cada maquina rechaza el que no es suyo,
+/// **con un mensaje y no con un cuelgue**.
+///
+/// Ese es el gancho entero, y lleva puesto desde que se diseno el formato.
+
 /// Orden de bytes de la imagen.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
