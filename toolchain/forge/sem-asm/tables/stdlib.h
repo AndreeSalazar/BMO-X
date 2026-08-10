@@ -1,13 +1,26 @@
 /* stdlib.h -- conversiones y memoria.
  *
- * `malloc` y `free` los reconoce el codegen (`KIND_MEMORIA`, cuatro bloques por
- * proceso). Aqui va lo que falta y es puro.
+ * ** `malloc` y `free` los trae `<bmo/monton.h>`: son un ASIGNADOR DE VERDAD,
+ * escrito en C sobre UN bloque de `KIND_MEMORIA`. Antes eran un caso del
+ * codegen y cada llamada era una peticion al kernel, con tope de cuatro por
+ * proceso -- un programa serio no cabia en eso. La peticion cruda sigue
+ * existiendo, con su nombre puesto: `bmo_bloque_pedir`.
+ *
+ * Incluir esta cabecera es lo que decide cual de los dos usa un programa, y ese
+ * es el corte: quien no la incluye sigue teniendo el `malloc` empotrado, que es
+ * exactamente la peticion al kernel y nada mas.
+ *
+ * Cuanto pide el monton se declara ANTES de incluir:
+ *
+ *     #define BMO_MONTON_BYTES (12 * 1024 * 1024)
+ *     #include <stdlib.h>
  */
 #ifndef BMO_STDLIB_H
 #define BMO_STDLIB_H
 
 #include <ctype.h>
 #include <bmo/bmo.h>
+#include <bmo/monton.h>
 
 /* Terminar el proceso.
  *
@@ -41,6 +54,13 @@ void *calloc(unsigned long long n, unsigned long long tam) {
     unsigned long long i;
 
     total = n * tam;
+    /* [!] El desbordamiento del producto NO es teorico y es el clasico de
+     * `calloc`: `calloc(0x100000001, 16)` da un `total` pequeno, se reparte un
+     * bloque pequeno, y quien lo recorra con el tamano que pidio se lleva por
+     * delante el monton. Si dividir no devuelve lo que entro, no cabe. */
+    if (n != 0 && total / n != tam) {
+        return 0;
+    }
     p = (char *)malloc(total);
     if (p == 0) {
         return 0;
@@ -51,22 +71,50 @@ void *calloc(unsigned long long n, unsigned long long tam) {
     return p;
 }
 
-/* `realloc` DEVUELVE 0, y hay que decir por que.
+/* `realloc`, y ahora se puede.
  *
- * No es que falte escribirla: es que hoy `malloc` no es un asignador. El kernel
- * entrega **bloques grandes, enteros y contiguos** --cuatro por proceso y ni uno
- * mas-- y no hay forma de devolver uno ni de saber cuanto media el anterior. Sin
- * el tamano viejo, copiar es adivinar: copiar el nuevo tamano lee fuera del
- * bloque de origen cuando se esta creciendo, que es el caso normal.
+ * Lo que faltaba no era esta funcion: era saber **cuanto media el bloque
+ * viejo**. Cuando cada `malloc` era una peticion al kernel no habia donde
+ * preguntarlo, asi que copiar era adivinar --copiar el tamano nuevo lee fuera
+ * del origen justo cuando se esta creciendo, que es el caso normal-- y esta
+ * funcion devolvia 0 diciendo por que.
  *
- * Devolver 0 es el "no se pudo" que el estandar define y que quien llama esta
- * obligado a mirar. Fingir que se pudo daria un puntero con basura detras.
- *
- * * Esto se arregla con **el asignador de Ring 3 sobre `KIND_MEMORIA`**, que ya
- * esta en la hoja de ruta: un `malloc` de verdad encima del bloque grande. Ese
- * dia esta funcion se escribe en tres lineas. */
+ * Con el monton, el tamano vive en la cabecera del bloque, a dieciseis bytes
+ * del puntero. `bmo_monton_tam` lo lee y el resto es lo de siempre. */
 void *realloc(void *p, unsigned long long tam) {
-    return 0;
+    unsigned long long viejo;
+    unsigned long long copia;
+    unsigned long long i;
+    char *nuevo;
+    char *origen;
+
+    if (p == 0) {
+        return malloc(tam);
+    }
+    if (tam == 0) {
+        free(p);
+        return 0;
+    }
+    viejo = bmo_monton_tam(p);
+    /* Cabe donde esta: no se mueve. Ademas de barato, es lo que hace que
+     * `realloc` en un bucle no fragmente el monton. */
+    if (viejo >= tam) {
+        return p;
+    }
+    nuevo = (char *)malloc(tam);
+    if (nuevo == 0) {
+        return 0;
+    }
+    copia = viejo;
+    if (tam < copia) {
+        copia = tam;
+    }
+    origen = (char *)p;
+    for (i = 0; i < copia; i = i + 1) {
+        nuevo[i] = origen[i];
+    }
+    free(p);
+    return nuevo;
 }
 
 /* -- Las que aqui NO tienen a quien preguntar -------------------------

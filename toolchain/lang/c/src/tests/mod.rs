@@ -52,6 +52,10 @@ mod libc;
 mod intrinsecos;
 mod matriz;
 mod memoria;
+/// El MONTON de Ring 3 (`<bmo/monton.h>`): `malloc` de verdad sobre UN bloque
+/// de `KIND_MEMORIA`. `memoria` prueba el contrato del kernel; esto, el reparto
+/// que se escribe encima.
+mod monton;
 /// `<bmo/musica.h>`: notas, figuras y tempo sobre `KIND_AUDIO`. Aqui no suena
 /// nada -- se comprueba la PARTITURA, que es lo unico que una libreria de
 /// musica puede prometer sin un altavoz delante.

@@ -2156,6 +2156,23 @@ impl Codegen {
     fn emitir_biblioteca(&mut self, name: &str, args: &[Expr]) -> Option<()> {
         use bmo_lower::memoria;
         use bmo_lower::x86;
+        // ** UNA DEFINICION PROPIA GANA A LA DE BIBLIOTECA, y solo para la
+        // familia de la memoria.
+        //
+        // Es lo que deja existir al monton de Ring 3: `<stdlib.h>` define
+        // `malloc` y `free` en C de verdad --sobre UN bloque de
+        // `KIND_MEMORIA`-- y si esta emision se adelantara, ese cuerpo no se
+        // llamaria nunca. Es el mismo trato que ya tiene `printf` cuando el
+        // formato no es literal: el codegen se aparta y llama al de C.
+        //
+        // Acotado a estos dos a proposito. La regla general --"cualquier
+        // funcion definida en la unidad gana"-- es la correcta en C y
+        // probablemente sea lo siguiente, pero cambiarla de golpe altera
+        // silenciosamente que emite un programa que redefina `abs` o `strlen`,
+        // y eso pide su propia tanda con sus filas.
+        if matches!(name, "malloc" | "free") && self.known_functions.contains(name) {
+            return None;
+        }
         match (name, args.len()) {
             // * `memcpy` YA NO ESTA AQUI, y su ausencia es el cambio.
             //
@@ -2231,7 +2248,28 @@ impl Codegen {
             // Contar bytes a mano es escribir un enlazador en la cabeza cada
             // vez que alguien anade una instruccion en medio. Las etiquetas ya
             // estaban aqui; solo habia que usarlas.
-            ("malloc", 1) => {
+            // ** `bmo_bloque_pedir(bytes)` es LA MISMA EMISION con otro nombre,
+            // y ese nombre es lo que permite escribir un asignador.
+            //
+            // `malloc` de C tiene que poder ser un monton escrito en Ring 3, y
+            // un monton necesita pedirle al kernel el bloque grande **sin pasar
+            // por `malloc`**, que es justo lo que el estaria implementando. Con
+            // los dos nombres, la peticion cruda al kernel deja de estar
+            // escondida detras de la palabra `malloc`:
+            //
+            //     malloc              lo que un programa de C llama
+            //     bmo_bloque_pedir    una peticion a `KIND_MEMORIA`, y nada mas
+            //
+            // Que sean el mismo brazo no es pereza: **es la afirmacion de que
+            // hoy `malloc` sin `<stdlib.h>` ES la peticion cruda**, con su tope
+            // de cuatro. `examples/memoria_C.c` prueba ese contrato y no incluye
+            // nada, asi que lo sigue probando.
+            //
+            // [!] Y va SIN los dos guiones bajos aunque sea del sistema: un
+            // nombre que empieza por `__` lo desvia el codegen a la tabla de
+            // intrinsecos de sem-asm --antes de llegar aqui-- y falla con
+            // "no existe en la tabla". Ese prefijo esta tomado.
+            ("malloc", 1) | ("bmo_bloque_pedir", 1) => {
                 use bmo_sem_asm::x86_64::Reg;
                 let sin_bloque = self.fresh_label();
                 let fin = self.fresh_label();
