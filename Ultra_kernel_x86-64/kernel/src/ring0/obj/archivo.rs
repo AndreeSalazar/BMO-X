@@ -129,6 +129,23 @@ pub const ARCH_OP_LEER_EN: u64 = 0x06;
 /// Mover el cursor. Espejo de `bmo_abi::...::ARCH_OP_SALTAR`.
 pub const ARCH_OP_SALTAR: u64 = 0x07;
 
+/// ** ESCRIBIR UN BLOQUE ENTERO. El espejo exacto de [`ARCH_OP_LEER_EN`], y por
+/// el mismo motivo.
+///
+/// `ARCH_OP_ESCRIBIR` mete **siete bytes por llamada**. Para la salida de un
+/// programa --unas lineas-- eso no se nota. Para guardar una partida de DOOM,
+/// que son cientos de KiB, son **decenas de miles de llamadas al sistema** para
+/// mover algo que cabe en un `copy_nonoverlapping`.
+///
+/// El origen es un bloque que concedio el kernel, asi que aqui tampoco hace
+/// falta validar punteros de Ring 3: comprobar es una resta contra lo que se
+/// entrego. La asimetria de antes --leer de golpe si, escribir no-- no tenia
+/// razon de ser, solo orden de llegada.
+///
+/// Lo despacha `syscall.rs` y no `operation`, igual que su espejo, porque hay
+/// que resolver una SEGUNDA capability y eso vive en el borde.
+pub const ARCH_OP_ESCRIBIR_DE: u64 = 0x08;
+
 // -- El buffer de cada archivo abierto -----------------------------------
 //
 // * Esto era `BUF: [[u8; 4096]; 4]` -- cuatro filas estaticas de 4 KiB. El
@@ -544,6 +561,51 @@ pub unsafe fn read_into(idx: u64, dst: *mut u8, n: usize) -> usize {
         core::ptr::copy_nonoverlapping(buf(i).as_ptr().add(CURSOR[i]), dst, cuantos);
         CURSOR[i] += cuantos;
         cuantos
+    }
+}
+
+/// Mete `n` bytes de golpe en un archivo de escritura. Devuelve cuantos entraron.
+///
+/// El espejo de [`read_into`]. La diferencia esta en el buffer: leer trabaja
+/// contra uno que ya tiene el fichero entero, y escribir tiene que **crecer**.
+/// Se pide el sitio UNA VEZ para todo el bloque en vez de byte a byte -- con
+/// `grow` doblando, escribir 300 KiB de siete en siete pediria memoria unas
+/// setenta veces por el camino.
+///
+/// Si no hay RAM se levanta la bandera de desbordado y **no se guarda nada** al
+/// cerrar. Es la misma regla que ya tenia `write`: un archivo a medias es peor
+/// que ninguno, porque parece bueno.
+///
+/// # Safety
+///
+/// `src` tiene que apuntar a `n` bytes legibles. Quien llama es `syscall.rs`,
+/// que lo saca de un bloque `KIND_MEMORIA` del propio proceso tras comprobar el
+/// rango contra lo que el kernel le entrego.
+pub unsafe fn write_from(idx: u64, src: *const u8, n: usize) -> usize {
+    let i = idx as usize;
+    if i >= MAX_ABIERTOS || src.is_null() || n == 0 {
+        return 0;
+    }
+    unsafe {
+        if !ESCRIBE[i] {
+            return 0;
+        }
+        let necesita = match LARGO[i].checked_add(n) {
+            Some(v) => v,
+            None => return 0,
+        };
+        if necesita > capacity(i) && !grow(i, necesita) {
+            DESBORDO[i] = true;
+            crate::ring0::cabina::warn(
+                "arch",
+                "sin RAM para seguir escribiendo: no se guardara nada",
+                necesita as u64,
+            );
+            return 0;
+        }
+        core::ptr::copy_nonoverlapping(src, buf(i).as_mut_ptr().add(LARGO[i]), n);
+        LARGO[i] = necesita;
+        n
     }
 }
 

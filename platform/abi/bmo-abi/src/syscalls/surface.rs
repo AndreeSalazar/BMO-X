@@ -342,6 +342,15 @@ pub const ARCH_OP_LEER_EN: u64 = 0x06;
 /// esta entero en un bufer del kernel** desde que se abrio. Sin esto, DOOM no
 /// puede leer su WAD ni empezando: el directorio de lumps esta al FINAL.
 pub const ARCH_OP_SALTAR: u64 = 0x07;
+/// **Escribe un bloque entero** desde una capability de memoria. El espejo
+/// exacto de [`ARCH_OP_LEER_EN`]: `arg0` = handle del bloque, `arg1` = offset
+/// dentro de el, `arg2` = cuantos bytes. Devuelve cuantos entraron.
+///
+/// Existe por lo mismo que su espejo. `ARCH_OP_ESCRIBIR` mete siete bytes por
+/// llamada; guardar una partida de DOOM son cientos de KiB, o sea decenas de
+/// miles de llamadas para mover algo que cabe en una copia. Y tampoco pide
+/// validar punteros: el origen es un bloque que concedio el kernel.
+pub const ARCH_OP_ESCRIBIR_DE: u64 = 0x08;
 /// Bytes que quedan por leer, o los acumulados si es de escritura.
 pub const ARCH_OP_TAMANO: u64 = 0x03;
 /// Cierra. En uno de escritura **es donde el contenido llega al disco**.

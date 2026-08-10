@@ -21,6 +21,12 @@
     # discos logicos con dos riesgos distintos-, pero el camino corto es el
     # correcto y por eso tiene nombre.
     [switch]$Todo,
+    # No compilar DOOM aunque `BMO-externo\` este puesto.
+    #
+    # El paso ya se salta solo cuando el port no esta --es GPL y vive fuera del
+    # repo-- asi que esta bandera es para el caso contrario: el port esta y no
+    # apetece pagar las 56.465 lineas en cada vuelta del build.
+    [switch]$SinDoom,
     [switch]$Yes
 )
 
@@ -357,7 +363,11 @@ if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
 # Los nombres de carpeta tambien son 8.3: el driver FAT32 del kernel se NIEGA a
 # recortar, y una carpeta recortada manda a otro sitio igual que un fichero.
 $dataBase = Join-Path $root 'staging\BMO-DATA'
-foreach ($d in @('sys', 'cobol', 'c', 'ada', 'datos')) {
+# `apps\` es para APLICACIONES, no para ejemplos del toolchain, y la distincion
+# no es cosmetica: `c\`, `cobol\` y `ada\` los llena este build desde el repo, y
+# `apps\` lo llena lo que alguien traiga de fuera -- hoy DOOM. Hasta ahora no lo
+# creaba nadie aunque varios mensajes ya nombraban rutas `apps/...`.
+foreach ($d in @('sys', 'cobol', 'c', 'ada', 'datos', 'apps')) {
     New-Item -ItemType Directory -Path (Join-Path $dataBase $d) -Force | Out-Null
 }
 # * Y dentro de cobol\, un nivel por carpeta. Ver el bloque de $cobolEjemplos
@@ -572,6 +582,74 @@ try {
             if ($LASTEXITCODE -ne 0) { Fail ('no se pudo empaquetar ' + $paq.bex) }
         }
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
+
+    # -- DOOM: OPCIONAL, y fuera del arbol ------------------------
+    #
+    # ** POR QUE ESTE PASO SE SALTA SOLO Y NO FALLA.
+    #
+    # DOOM es GPL-2.0 y su WAD es de id Software; el arbol de BMO tiene licencia
+    # Techne. Ni el codigo ni el WAD pueden vivir aqui, asi que el port entero
+    # vive en `BMO-externo\`, al lado del repo y fuera de el.
+    #
+    # Lo que SI puede vivir aqui es una RUTA. Este paso mira si el port esta; si
+    # no esta, dice una linea y sigue. Un `build.ps1` que fallara porque a otro
+    # no le apetece bajarse DOOM seria un build roto para todo el mundo menos
+    # para el dueno.
+    #
+    # Se puede apagar con `-SinDoom` aunque el port este puesto: compilar 56.465
+    # lineas cuesta lo suyo y no hace falta en cada vuelta.
+    #
+    # [!] El compilador se invoca con `cwd` = RAIZ DEL REPO (lo pone el
+    # `Push-Location $repo` de arriba). `Roots::find` sube desde el cwd para
+    # encontrar `tables\`, y desde el arbol de DOOM no la encuentra: un dia
+    # entero de sintomas raros salio de esto.
+    #
+    # `BMO_MODS` apunta a las cabeceras de SONDA, que tapan a las del sistema
+    # para lo que DOOM incluye y BMO no tiene (`<direct.h>`, `<io.h>`...). Las
+    # que el repo si implementa quedaron apartadas como `*.h.sonda-vieja`
+    # justamente para que NO tapen: una cabecera que solo declara esconde a la
+    # que tiene cuerpo.
+    if (-not $SinDoom) {
+        $doomRaiz  = Join-Path (Split-Path -Parent $repo) 'BMO-externo'
+        $doomFte   = Join-Path $doomRaiz 'doom\doomgeneric\doomgeneric\doomgeneric_bmo.c'
+        $doomWad   = Join-Path $doomRaiz 'doom\doom1.wad'
+        $doomInc   = Join-Path $doomRaiz 'doom-port\include'
+        if (-not (Test-Path $doomFte)) {
+            Write-Host '    [doom] BMO-externo no esta: se salta (es GPL, vive fuera del repo)' -ForegroundColor DarkGray
+        } elseif (-not (Test-Path $doomWad)) {
+            Write-Host '    [doom] falta doom1.wad: se compila igual, pero no habra con que jugar' -ForegroundColor Yellow
+        }
+        if (Test-Path $doomFte) {
+            Step 'Building DOOM (opcional, GPL, fuera del arbol)'
+            $doomDst = Join-Path (Join-Path $dataBase 'apps') 'doom.bex'
+            $modsPrevio = $env:BMO_MODS
+            $env:BMO_MODS = $doomInc
+            try {
+                $out = cargo run -p bmo-c-front --quiet -- $doomFte -o $doomDst 2>&1
+                $out | ForEach-Object {
+                    if ($_ -match 'ok:|error') { Write-Host ('    [doom] ' + $_) -ForegroundColor DarkGray }
+                }
+                if ($LASTEXITCODE -ne 0) { Fail 'DOOM no compilo' }
+                if (-not (Test-Path $doomDst)) { Fail 'DOOM compilo y no salio doom.bex' }
+            } finally {
+                # Se devuelve SIEMPRE. `BMO_MODS` tapa cabeceras del sistema, y
+                # dejarlo puesto haria que el paso siguiente compilara contra
+                # las de sonda sin que nadie lo pidiera.
+                $env:BMO_MODS = $modsPrevio
+            }
+            # El WAD va al lado, tal cual. **No se empaqueta dentro del `.bex`**
+            # aunque el formato lo permita: `lanzar.rs::con_buffer` se trae el
+            # fichero ENTERO a un bufer de 4 MiB, asi que un paquete de 5,5 MB
+            # no arrancaria. Ver el escalon 2 de `docs\LA_RAM.md` -- el dia que
+            # el cargador lea solo lo cargable, esto pasa a ser un `bmo-pack`.
+            if (Test-Path $doomWad) {
+                $wadDst = Join-Path (Join-Path $dataBase 'apps') 'doom1.wad'
+                Copy-Item -LiteralPath $doomWad -Destination $wadDst -Force
+                Write-Host ('    [doom] doom1.wad (' + (Get-Item $wadDst).Length + ' B) -> apps\') -ForegroundColor DarkGray
+            }
+            Write-Host '    [doom] lanzalo con:  run apps/doom.bex   (desde el shell de Ring 0)' -ForegroundColor DarkGray
+        }
     }
 
     # -- Los DATOS de los ejemplos ---------------------------------

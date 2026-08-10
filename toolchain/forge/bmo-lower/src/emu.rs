@@ -744,7 +744,8 @@ impl Machine {
 
     fn archivo_op(&mut self, handle: u64, op: u64, arg0: u64, arg1: u64, arg2: u64) -> u64 {
         use bmo_abi::syscalls::surface::{
-            ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_LEER, ARCH_OP_LEER_EN, ARCH_OP_LEER_LINEA,
+            ARCH_OP_CERRAR, ARCH_OP_ESCRIBIR, ARCH_OP_ESCRIBIR_DE, ARCH_OP_LEER, ARCH_OP_LEER_EN,
+            ARCH_OP_LEER_LINEA,
             ARCH_OP_SALTAR, ARCH_OP_TAMANO,
         };
         let i = match (handle as usize).checked_sub(1) {
@@ -855,6 +856,29 @@ impl Machine {
                 }
                 n as u64
             }
+            // ** `ARCH_OP_ESCRIBIR_DE` -- el espejo, con el mismo contrato: el
+            // ORIGEN es una capability de memoria, no un puntero. Aqui el
+            // buffer del archivo crece solo, que es lo que hace el kernel.
+            ARCH_OP_ESCRIBIR_DE if self.abiertos[i].escribe => {
+                let bloque = match arg0.checked_sub(CAP_MEMORIA) {
+                    Some(b) => b as usize,
+                    None => return 0,
+                };
+                let base = match self.mem_bloques.get(bloque) {
+                    Some(b) => *b,
+                    None => return 0,
+                };
+                if arg1.checked_add(arg2).map_or(true, |fin| fin > self.mem_entregados) {
+                    return 0;
+                }
+                let n = arg2 as usize;
+                let mut trozo: Vec<u8> = Vec::with_capacity(n);
+                for k in 0..n {
+                    trozo.push(*self.mem.get(&(base + arg1 + k as u64)).unwrap_or(&0));
+                }
+                self.abiertos[i].datos.extend_from_slice(&trozo);
+                n as u64
+            }
             // Mover el cursor. Se RECORTA al tamano, que es lo que hace el
             // kernel: un seek mas alla del final deja el cursor al final y lo
             // dice devolviendo donde quedo, no falla.
@@ -868,7 +892,7 @@ impl Machine {
             // de permisos, es una pregunta que ese objeto no responde. Se
             // enumeran para que caigan AQUI y no en el grito de abajo.
             ARCH_OP_LEER | ARCH_OP_LEER_LINEA | ARCH_OP_LEER_EN | ARCH_OP_SALTAR
-            | ARCH_OP_ESCRIBIR => 0,
+            | ARCH_OP_ESCRIBIR | ARCH_OP_ESCRIBIR_DE => 0,
             // *** Y LO QUE NO CONOZCO SE GRITA.
             //
             // Aqui habia un `_ => 0`, y un cero por esta puerta significa

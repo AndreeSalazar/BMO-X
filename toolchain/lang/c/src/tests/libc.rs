@@ -300,6 +300,80 @@ fn corre_con_disco(cuerpo: &str, ruta: &str, contenido: &str) -> String {
     ejecutar_bef_con(&bef, move |m| m.poner_archivo(&r, c.as_bytes()))
 }
 
+// =============== fwrite: GUARDAR LA PARTIDA ===============
+//
+// Devolvia 0 a proposito hasta el 2026-08-09 -- el camino de creacion existia
+// en el kernel y no estaba cableado. Es lo que dejaba a DOOM sin poder guardar.
+
+/// ** LA FILA QUE IMPORTA: se escribe, se cierra, y **se relee lo escrito**.
+///
+/// Comprobar solo el valor de retorno de `fwrite` no prueba nada: el kernel
+/// acumula en un buffer y no toca el disco hasta `fclose`. Un `fwrite` que
+/// contara bien y un `close` que no guardara se ven identicos desde dentro del
+/// programa. Lo unico que los distingue es volver a abrir.
+#[test]
+fn fwrite_escribe_y_lo_escrito_se_puede_releer() {
+    let src = "#include <bmo/archivo.h>\n\
+        int main() {\n\
+            FILE *f; char *b; int i;\n\
+            b = (char *)malloc(64);\n\
+            for (i = 0; i < 5; i = i + 1) { b[i] = 'A' + i; }\n\
+            f = fopen(\"datos/s.sav\", \"w\");\n\
+            if (f == 0) { printf(\"no creo\\n\"); return 1; }\n\
+            printf(\"puestos=%d \", (int)fwrite(b, 1, 5, f));\n\
+            fclose(f);\n\
+            f = fopen(\"datos/s.sav\", \"r\");\n\
+            if (f == 0) { printf(\"no releyo\\n\"); return 1; }\n\
+            for (i = 0; i < 8; i = i + 1) { b[i] = 0; }\n\
+            fread(b, 1, 5, f);\n\
+            printf(\"[%s]\", b);\n\
+            fclose(f);\n\
+            return 0; }";
+    let bef = compile_with_preprocessor(&src, std::path::Path::new("p.c"), CStandard::C11)
+        .expect("debe compilar");
+    assert_eq!(ejecutar_bef(&bef), "puestos=5 [ABCDE]");
+}
+
+/// Elementos, no bytes: `fwrite(b, 4, 3, f)` son doce bytes y devuelve **3**.
+/// Es la trampa clasica de la firma, y devolver bytes rompe cualquier bucle que
+/// compare el retorno con `n`.
+#[test]
+fn fwrite_cuenta_elementos_y_no_bytes() {
+    let src = "#include <bmo/archivo.h>\n\
+        int main() {\n\
+            FILE *f; char *b;\n\
+            b = (char *)malloc(64);\n\
+            f = fopen(\"datos/s.sav\", \"w\");\n\
+            printf(\"%d\", (int)fwrite(b, 4, 3, f));\n\
+            fclose(f);\n\
+            return 0; }";
+    let bef = compile_with_preprocessor(&src, std::path::Path::new("p.c"), CStandard::C11)
+        .expect("debe compilar");
+    assert_eq!(ejecutar_bef(&bef), "3");
+}
+
+/// [!] Un origen que NO salio de `malloc` --aqui un array de la pila-- devuelve
+/// 0 en vez de escribir bytes de cualquier sitio.
+///
+/// Es el mismo contrato que `fread` y por lo mismo: el kernel solo sabe hablar
+/// de un bloque que el concedio. Que falle **diciendolo** es la mitad util del
+/// contrato; la otra mitad seria que escribiera basura del marco de pila en el
+/// fichero de la partida.
+#[test]
+fn fwrite_desde_la_pila_no_escribe_y_lo_dice() {
+    let src = "#include <bmo/archivo.h>\n\
+        int main() {\n\
+            FILE *f; char b[8]; int i;\n\
+            for (i = 0; i < 8; i = i + 1) { b[i] = 'z'; }\n\
+            f = fopen(\"datos/s.sav\", \"w\");\n\
+            printf(\"%d\", (int)fwrite(b, 1, 8, f));\n\
+            fclose(f);\n\
+            return 0; }";
+    let bef = compile_with_preprocessor(&src, std::path::Path::new("p.c"), CStandard::C11)
+        .expect("debe compilar");
+    assert_eq!(ejecutar_bef(&bef), "0");
+}
+
 /// ** `SEEK_END`, Y ES EL QUE MIDE EL WAD DE DOOM.
 ///
 /// `fseek` hacia `(void)desde` con el comentario *"solo SEEK_SET por ahora, y
@@ -471,20 +545,20 @@ int main() {
     assert_eq!(out, "01\n".trim_end(), "al principio 0, tras leerlo entero 1");
 }
 
-/// **** `fwrite` devuelve CERO, y esta fila existe para que eso no se olvide.
+/// **** ERA "`fwrite` devuelve CERO", Y SE CABLEO EL 2026-08-09.
 ///
-/// El camino de escritura --`TASK_OP_ARCHIVO_CREAR` + `ARCH_OP_ESCRIBIR`--
-/// existe en el kernel y **no esta cableado hasta `fopen`**, que ignora el
-/// modo. Asi que `fwrite` no puede escribir, y lo que hace es DECIRLO.
+/// La fila decia textualmente *"el dia que se cablee, esta fila falla, y eso es
+/// lo que se quiere: es la que avisa de que hay que cambiarla"*. Fallo, y se
+/// cambia -- se queda escrito porque una prueba que predijo su propia muerte
+/// vale mas contada que borrada.
 ///
-/// Que exista igual vale: los 64 `fwrite` de DOOM compilan y enlazan, que es lo
-/// que hoy bloquea el unity build. Lo que no se hace es fingir que escribio --
-/// eso daria un programa que cree haber guardado la partida.
-///
-/// El dia que se cablee, esta fila falla, y eso es lo que se quiere: es la que
-/// avisa de que hay que cambiarla.
+/// Lo que comprueba ahora es la otra mitad del contrato, la que sigue en pie:
+/// **escribir en un archivo abierto para LEER devuelve 0**. El modo se fija al
+/// abrir; pedirle a un objeto lo que no hace no es un error de permisos, es una
+/// pregunta que no responde. Que conteste 0 y no que reviente es lo que hace
+/// que un programa portado pueda mirarlo.
 #[test]
-fn fwrite_existe_y_dice_que_no_escribio() {
+fn fwrite_sobre_un_archivo_de_lectura_devuelve_cero() {
     let out = corre_con_disco(
         r#"
 int main() {
@@ -502,7 +576,7 @@ int main() {
         "datos/x.txt",
         "abcd",
     );
-    assert_eq!(out, "0\n", "si sale 1, alguien cableo la escritura: cambiar esta fila");
+    assert_eq!(out, "0\n", "un archivo de lectura no acepta escritura");
 }
 
 // == EL FORMATEADOR DE EJECUCION =======================================

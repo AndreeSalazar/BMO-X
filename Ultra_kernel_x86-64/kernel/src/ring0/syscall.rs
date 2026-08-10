@@ -995,6 +995,38 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 };
                 BmoStatus::ok_value(n as u64)
             }
+            // ** ESCRIBIR UN BLOQUE ENTERO -- el espejo del de arriba.
+            //
+            // La unica diferencia real esta en el derecho que se le pide al
+            // bloque: alli `RIGHT_WRITE` porque el kernel escribe DENTRO, aqui
+            // `RIGHT_READ` porque solo lo lee. Pedir escritura para leer seria
+            // exigir mas autoridad de la que la operacion usa, que es
+            // exactamente lo que un sistema de capabilities no debe hacer.
+            cap::KIND_ARCHIVO
+                if frame.rsi == crate::ring0::obj::archivo::ARCH_OP_ESCRIBIR_DE =>
+            {
+                let pid = scheduler::current_pid();
+                let bloque = match cap::resolve(pid, frame.rdx, cap::RIGHT_READ) {
+                    Ok(b) if b.kind == cap::KIND_MEMORIA => b,
+                    Ok(_) => return unsupported(),
+                    Err(err) => return cap_err(err),
+                };
+                let base = bloque.object;
+                let tam = crate::ring0::obj::memoria::handed_over_by(pid);
+                let desde = frame.r10;
+                let cuantos = frame.r8;
+                if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {
+                    return BmoStatus::err(1);
+                }
+                let n = unsafe {
+                    crate::ring0::obj::archivo::write_from(
+                        resolved.object,
+                        (base + desde) as *const u8,
+                        cuantos as usize,
+                    )
+                };
+                BmoStatus::ok_value(n as u64)
+            }
             cap::KIND_ARCHIVO => {
                 match crate::ring0::obj::archivo::operation(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => {

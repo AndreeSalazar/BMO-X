@@ -43,6 +43,7 @@
 #define BMO_ARCH_CERRAR   0x04
 #define BMO_ARCH_LEER_EN  0x06
 #define BMO_ARCH_SALTAR   0x07
+#define BMO_ARCH_ESCRIBIR_DE 0x08
 /* Abrir MI PROPIA imagen. Es una operacion de TAREA, no de archivo: se la pides
  * a `BMO_TAREA_ACTUAL` y te devuelve una capability de archivo. */
 #define BMO_OP_MI_PAQUETE 0x25
@@ -54,7 +55,11 @@
  * uno mas con el cero: el bucle lo hace solo porque `fin` solo se pone cuando
  * se ha VISTO el terminador, no cuando se llenan ocho.
  */
-unsigned long long bmo_abrir(char *ruta) {
+/* Empuja la ruta y nada mas. Separado de `bmo_abrir` porque hay DOS
+ * operaciones que la consumen --abrir y crear-- y el empujado es identico:
+ * tenerlo dos veces seria tener dos sitios donde equivocarse con el
+ * terminador. */
+void bmo_empujar_ruta(char *ruta) {
     int i;
     int k;
     int fin;
@@ -80,6 +85,10 @@ unsigned long long bmo_abrir(char *ruta) {
         }
         bmo_codigo(BMO_TAREA_ACTUAL, BMO_OP_RUTA, p, 0, 0);
     }
+}
+
+unsigned long long bmo_abrir(char *ruta) {
+    bmo_empujar_ruta(ruta);
     return bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ARCHIVO_ABRIR, 0, 0, 0);
 }
 
@@ -143,11 +152,41 @@ FILE *bmo_archivo_de(unsigned long long cap) {
     return f;
 }
 
+/* ** EL MODO MANDA, y hasta hoy se ignoraba.
+ *
+ * Decia *"aceptar `w` para luego no escribir seria la clase de promesa que aqui
+ * no se hace"*, y era coherente mientras no se pudiera escribir. Ya se puede.
+ *
+ * `w` y `a` crean; cualquier otra cosa abre para leer. La `b` de `"wb"` se
+ * ignora y esta bien: aqui no hay traduccion de saltos de linea que evitar, un
+ * fichero son bytes y ya.
+ *
+ * [!] **`a` (anadir) se comporta como `w`**, o sea que TRUNCA. El kernel abre
+ * un archivo de escritura con un buffer vacio y lo vuelca entero al cerrar; no
+ * hay forma de decirle "empieza con lo que ya habia". Se acepta la letra para
+ * que un programa portado compile, y se dice aqui que hace otra cosa -- que es
+ * mejor que rechazarla y que peor que cumplirla.
+ *
+ * El modo de LECTURA de un `FILE` ya abierto no se guarda porque no hace falta:
+ * el kernel lo fijo al abrir y contesta `None` --que aqui es 0-- a la operacion
+ * que no corresponde. Pedirle bytes a un archivo de escritura no es un error de
+ * permisos, es una pregunta que ese objeto no responde. */
 FILE *fopen(char *ruta, char *modo) {
-    /* El modo se ignora a proposito: hoy solo se puede leer, y aceptar "w"
-     * para luego no escribir seria la clase de promesa que aqui no se hace. */
-    (void)modo;
-    return bmo_archivo_de(bmo_abrir(ruta));
+    unsigned long long cap;
+    char m;
+
+    m = 0;
+    if (modo != 0) {
+        m = modo[0];
+    }
+    if (m == 'w' || m == 'W' || m == 'a' || m == 'A') {
+        /* La ruta se empuja igual; lo que cambia es la operacion del final. */
+        bmo_empujar_ruta(ruta);
+        cap = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ARCHIVO_CREAR, 0, 0, 0);
+    } else {
+        cap = bmo_abrir(ruta);
+    }
+    return bmo_archivo_de(cap);
 }
 
 /* **Mi propia imagen**, sin decir donde esta.
@@ -280,27 +319,39 @@ int feof(FILE *f) {
 
 /* Escribe `n` elementos de `tam` bytes. Devuelve ELEMENTOS escritos.
  *
- * [!] **Hoy escribe SIEMPRE CERO, y no es un fallo de esta funcion.**
+ * ** ESCRIBE DE VERDAD desde el 2026-08-09. Antes devolvia 0 a proposito --el
+ * camino de creacion existia en el kernel y no estaba cableado hasta aqui-- y
+ * eso es lo que dejaba a DOOM sin guardar partida.
  *
- * `fopen` ignora el modo porque el camino de creacion --`TASK_OP_ARCHIVO_CREAR`
- * y `ARCH_OP_ESCRIBIR`-- existe en el kernel pero **no esta cableado hasta
- * aqui**: un `FILE` abierto por `fopen` es de lectura, y no hay forma de
- * decirle otra cosa.
+ * Va por `ARCH_OP_ESCRIBIR_DE`, el espejo de `LEER_EN`: un bloque de golpe. Con
+ * `ARCH_OP_ESCRIBIR`, que mete siete bytes por llamada, una partida de DOOM
+ * serian decenas de miles de llamadas al sistema.
  *
- * Existir con esta forma vale igual: los 64 `fwrite` de DOOM COMPILAN y
- * enlazan, que es lo que hoy bloquea el unity build. Y devolver 0 es la
- * respuesta honesta -- quien mire el valor de retorno se entera de que no se
- * escribio, que es exactamente lo que un `fwrite` que falla debe contestar.
+ * [!] **El origen tiene que salir de `malloc`**, exactamente como el destino de
+ * `fread` y por lo mismo: el kernel solo sabe hablar de un bloque que el
+ * concedio, y comprobar el rango es una resta contra lo que entrego. Un
+ * `fwrite` desde un array de la PILA sale un desplazamiento enorme, el kernel
+ * lo rechaza y esto devuelve 0.
  *
- * Lo que NO se hace es fingir que escribio: eso daria un programa que cree
- * haber guardado la partida. */
+ * [!] **Nada llega al disco hasta `fclose`.** El kernel acumula en un buffer que
+ * crece y lo vuelca entero al cerrar. Un proceso que muere con el archivo
+ * abierto no deja nada -- y eso es lo correcto: guardar lo escrito hasta la
+ * mitad seria inventar un fichero que su autor nunca dio por terminado. */
 unsigned long long fwrite(const void *src, unsigned long long tam,
                           unsigned long long n, FILE *f) {
-    (void)src;
-    (void)tam;
-    (void)n;
-    (void)f;
-    return 0;
+    unsigned long long desde;
+    unsigned long long puestos;
+
+    if (f == 0 || tam == 0 || n == 0) {
+        return 0;
+    }
+    desde = (unsigned long long)src - f->base;
+    puestos = bmo_valor(f->cap, BMO_ARCH_ESCRIBIR_DE, f->bloque, desde, tam * n);
+    /* El cursor avanza por lo que entro DE VERDAD. Un archivo de escritura no
+     * tiene mas cursor que su longitud, asi que esto es ademas lo que `ftell`
+     * contesta -- y es lo que un programa espera de un `ftell` tras escribir. */
+    f->pos = f->pos + puestos;
+    return puestos / tam;
 }
 
 #endif /* BMO_ARCHIVO_H */
