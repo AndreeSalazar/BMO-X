@@ -174,8 +174,26 @@ pub fn atender_irq() {
     }
     if unsafe { bmo_ahci::atender(puerto) } {
         unsafe { IRQS += 1 };
+        // ** Y AQUI IRA `wake_by_key(CLAVE_ESPERA)` el dia que haya quien duerma.
+        //
+        // Hoy no lo hay, y no por falta de cable: la cadena esta entera salvo la
+        // pieza de abajo. `archivo::avanzar` trae su trozo **sincronamente**, o
+        // sea que cuando la llamada vuelve el dato ya esta -- nadie se queda
+        // esperando nada que esta interrupcion pueda terminar.
+        //
+        // Se deja dicho y sin llamar en vez de llamarlo "por si acaso": despertar
+        // a nadie cuesta el candado del planificador en contexto de interrupcion,
+        // y da la impresion de que el sistema duerme cuando no duerme.
     }
 }
+
+/// La clave sobre la que dormira quien espere al disco.
+///
+/// Un numero que no choca con las de los canales, que son indices pequenos.
+/// Vive aqui --y no en el planificador-- porque **el planificador no tiene por
+/// que saber que existe un disco**: solo reparte turnos sobre claves que le dan.
+#[allow(dead_code)]
+pub const CLAVE_ESPERA: u64 = 0xD15C_0000_0000_0001;
 
 /// Ha pasado el disco el gate de identidad? Mientras sea `false`, `write()`
 /// no mueve un solo sector.

@@ -495,6 +495,25 @@ pub const TASK_OP_MI_PAQUETE: u64 = 0x25;
 /// camino de la pantalla exclusiva.
 pub const TASK_OP_MI_PADRE: u64 = 0x26;
 
+/// **Abrir un archivo SIN esperar a que llegue entero.**
+///
+/// Misma ruta y mismo handle que [`TASK_OP_ARCHIVO_ABRIR`]; la diferencia es
+/// **cuando vuelve**. `ABRIR` no vuelve hasta que el fichero esta en RAM, y con
+/// un `.bex` de 813 KB eso deja al que lo pidio sin existir durante toda la
+/// lectura -- si el que pide es el escritorio, el escritorio no pinta.
+///
+/// Este vuelve en cuanto sabe que el archivo esta ahi. Los bytes llegan a
+/// trozos, y **preguntar por el archivo es lo que lo trae**: cada
+/// [`ARCH_OP_LISTO`] avanza un trozo y vuelve a Ring 3, asi que entre trozo y
+/// trozo el planificador puede dar el turno a otro.
+pub const TASK_OP_ARCHIVO_ASINC: u64 = 0x27;
+/// `(entero << 63) | bytes que ya llegaron`. Avanza la carga y contesta.
+///
+/// Los dos datos van juntos a proposito: *"cuanto hay"* y *"queda mas"* son la
+/// misma pregunta, y contestarlas por separado abre la puerta a leerlas de
+/// vueltas distintas.
+pub const ARCH_OP_LISTO: u64 = 0x09;
+
 // -- PRESTAR memoria: se OFRECE y se TOMA --------------------------------
 //
 // El kernel mueve paginas y **no sabe para que**: el lienzo, el audio y los

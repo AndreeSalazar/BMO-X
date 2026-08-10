@@ -317,6 +317,36 @@ pub fn load(path: &str, dst: &mut [u8]) -> Result<usize, LoadError> {
     Ok(v.read_file(cluster, size, dst))
 }
 
+/// **Prepara una lectura A TROZOS.** Devuelve `(primer cluster, tamano)`.
+///
+/// Es `load` partido en dos momentos: aqui se resuelve la ruta --lo unico que
+/// hay que hacer una sola vez-- y los bytes se traen despues con
+/// [`leer_trozo`], tantas veces como haga falta.
+pub fn abrir_trozos(path: &str) -> Result<(u32, u32), LoadError> {
+    resolver(path)
+}
+
+/// **Trae un trozo y dice por donde iba.** `(leidos, cluster siguiente)`.
+///
+/// `siguiente == 0` = se acabo. Ver `bmo_fat32::leer_tramo`: el cursor es el
+/// CLUSTER, no un offset, porque seguir la cadena desde el principio en cada
+/// llamada seria recorrer el archivo entero por cada trozo.
+pub fn leer_trozo(
+    cluster: u32,
+    ya: usize,
+    size: u32,
+    dst: &mut [u8],
+    tope: usize,
+) -> (usize, u32) {
+    let v = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v,
+            None => return (0, 0),
+        }
+    };
+    v.leer_tramo(cluster, ya, size, dst, tope)
+}
+
 /// **Trae solo el PRINCIPIO del archivo.** Devuelve `(leidos, tamano_real)`.
 ///
 /// === Por que existe, y por que no es `load` con otro nombre ===

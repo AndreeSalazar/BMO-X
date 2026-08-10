@@ -672,6 +672,49 @@ Si lo primero es cierto y lo segundo no sube, la respuesta esta en esa pareja.
 `wake_by_key`; lo que no hay es nadie bloqueado en esa clave, y para haberlo hace
 falta que `archivo::open` empiece la lectura y no la termine.
 
+### [x] `open` QUE EMPIEZA Y NO TERMINA -- hecho, y con la mitad justa
+
+`TASK_OP_ARCHIVO_ASINC` (`0x27`) devuelve el handle **en cuanto sabe que el
+archivo existe**. Los bytes llegan a trozos de 128 KiB, y **preguntar por el
+archivo es lo que lo trae**: cada `ARCH_OP_LISTO` avanza uno y contesta
+`(entero, bytes que ya llegaron)`.
+
+```text
+   antes   UN syscall dentro del kernel durante 813 KB
+   ahora   SIETE syscalls de 128 KB, y entre ellos se vuelve a Ring 3
+```
+
+Volver a Ring 3 entre trozos es lo que importa: ahi hay **frontera de trap**, o
+sea que el planificador puede dar el turno a otro por decision suya y no por
+expropiacion. Y quien no quiera esperar tiene `leer_de_asinc`: pide un trozo,
+pinta un fotograma, pide otro.
+
+Por debajo, `bmo_fat32::leer_tramo` hace la lectura **reanudable**. El cursor es
+el CLUSTER y no un offset: seguir la cadena desde el principio en cada llamada
+seria recorrer el archivo entero por cada trozo -- cuadratico, y justo en el caso
+que se queria arreglar. La prueba `leer_a_trozos_da_lo_mismo_que_de_una` compara
+byte a byte contra `read_file`, porque si eso no cuadra el archivo cambia segun
+cuantas veces se haya preguntado, y eso no falla: **corrompe**.
+
+`Archivo::leer_de` usa el camino nuevo **sin cambiar por fuera**, y se cae al
+viejo si el kernel no lo conoce. Un camino nuevo que deje sin archivos al que no
+lo tenga no es una mejora, es una ruptura.
+
+### ⚠ Y lo que TODAVIA no duerme, dicho sin adornos
+
+Se escribio el brazo de `wait` para `KIND_ARCHIVO`: bloqueaba la tarea sobre la
+clave del disco y la interrupcion la despertaba. Compilaba, **y no esperaba a
+nada** -- porque traer el trozo (`archivo::avanzar`) sigue siendo sincrono, asi
+que cuando la llamada vuelve el dato YA esta. Dormirse despues es dormirse hasta
+que otro use el disco.
+
+Se quito, junto con el contador de trozos que existia solo para el.
+
+> **Lo que falta es una sola pieza, y ahora esta aislada**: que `leer_trozo`
+> EMITA y vuelva, en vez de emitir y esperar. Con eso, `avanzar` deja un comando
+> en vuelo, `wait` tiene a quien dormir, y la interrupcion a quien despertar --
+> y las tres piezas ya existen por separado.
+
 ★ **Precision sobre `SectionHash`, porque la primera version de este documento lo
 decia mal**: no esta "vacio". Esta **escrito y probado** -- BLAKE3 de 256 bits,
 `verify`, y `chain_hash` para encadenar todas las secciones

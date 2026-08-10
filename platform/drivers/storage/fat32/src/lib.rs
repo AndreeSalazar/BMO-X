@@ -547,6 +547,90 @@ impl FatVolume {
     /// rebote solo queda para el ultimo sector cuando el fichero no acaba en
     /// frontera de 512, que es donde de verdad hace falta: ahi el disco entrega
     /// 512 bytes y el llamante solo quiere una parte.
+    /// **Lee un TROZO y dice por donde iba.** `(bytes leidos, cluster siguiente)`.
+    ///
+    /// === Por que hace falta que la lectura se pueda parar a la mitad ===
+    ///
+    /// `read_file` no vuelve hasta que el archivo entero esta en RAM. Para un
+    /// `.bex` de 813 KB eso es el kernel dentro de una funcion durante toda la
+    /// lectura, y el que la pidio no existe mientras tanto.
+    ///
+    /// ** Esto la parte en pasos. Cada llamada trae como mucho `tope` bytes y
+    /// devuelve **el cluster por el que iba**, asi que la siguiente sigue donde
+    /// esta lo dejo. Entre paso y paso el que pidio puede dormirse, y el resto
+    /// del sistema corre.
+    ///
+    /// El cursor es el CLUSTER y no un offset: seguir la cadena desde el
+    /// principio en cada llamada seria recorrer el archivo entero por cada
+    /// trozo -- cuadratico, y justo en el caso que se queria arreglar.
+    ///
+    /// `siguiente == 0` significa que se acabo: o la cadena o el archivo.
+    pub fn leer_tramo(
+        &mut self,
+        cluster: u32,
+        ya: usize,
+        file_size: u32,
+        dst: &mut [u8],
+        tope: usize,
+    ) -> (usize, u32) {
+        let mut cluster = cluster;
+        let mut offset = ya;
+        let spc = self.sectors_per_cluster as usize;
+        let del_cluster = spc * 512;
+        let fin = (file_size as usize).min(dst.len());
+        // [!] CONTRATO: `ya` cae en frontera de cluster. Cada vuelta consume un
+        // cluster ENTERO --o la cola del archivo, que lo termina-- y por eso el
+        // cursor puede ser un solo numero. Empezar a mitad de cluster pediria
+        // llevar tambien el desplazamiento dentro de el, y dos cursores que
+        // tienen que cuadrar son dos cursores que un dia no cuadran.
+        debug_assert!(ya % del_cluster == 0, "leer_tramo empieza en frontera de cluster");
+        while offset < fin {
+            // El presupuesto se mira ANTES de empezar un cluster, no en medio:
+            // asi nunca se deja uno a medias y el cursor sigue siendo el cluster.
+            if offset >= ya + tope {
+                return (offset - ya, cluster);
+            }
+            let lba = self.cluster_to_lba(cluster);
+            let de_este = (fin - offset).min(del_cluster);
+            let enteros = de_este / 512;
+            if enteros > 0 {
+                let n = enteros * 512;
+                if !(self.read)(lba, enteros as u16, &mut dst[offset..offset + n]) {
+                    return (offset - ya, 0);
+                }
+            }
+            // El rabo, con la MISMA guarda que `read_file`: solo si queda sector
+            // en este cluster. Ver alli por que sin ella se lee el sector fisico
+            // siguiente, que no tiene por que ser el de la cadena.
+            let rabo = de_este - enteros * 512;
+            if rabo > 0 && enteros < spc {
+                let desde = offset + enteros * 512;
+                let ok = unsafe {
+                    if self.read_sector(lba + enteros as u64, Buf::buf) {
+                        dst[desde..desde + rabo].copy_from_slice(&self.buf[..rabo]);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if !ok {
+                    return (offset - ya, 0);
+                }
+            }
+            offset += de_este;
+            if offset >= fin {
+                // Se acabo el archivo. `0` = no hay por donde seguir, que es mas
+                // honesto que devolver un cluster que ya no vale para nada.
+                return (offset - ya, 0);
+            }
+            cluster = match self.read_fat_entry(cluster) {
+                Some(c) => c,
+                None => return (offset - ya, 0),
+            };
+        }
+        (offset - ya, 0)
+    }
+
     pub fn read_file(&mut self, first_cluster: u32, file_size: u32, dst: &mut [u8]) -> usize {
         let mut cluster = first_cluster;
         let mut offset = 0;
@@ -1486,6 +1570,44 @@ mod tests {
             "leyo el sector fisico siguiente en vez de seguir la cadena"
         );
         assert_eq!(&dst[..], &datos[..700], "el rabo no cuadra");
+    }
+
+    /// ** LEER A TROZOS TIENE QUE DAR EXACTAMENTE LO MISMO QUE LEER DE UNA.
+    ///
+    /// Es la propiedad entera de `leer_tramo`: si el resultado no es
+    /// byte-a-byte identico al de `read_file`, el `open` que empieza y no
+    /// termina entregaria un archivo distinto segun cuantas veces se le hubiera
+    /// preguntado -- y eso no falla, corrompe.
+    ///
+    /// Se prueba con un archivo de VARIOS clusters y un presupuesto de UN
+    /// cluster por vuelta, que es el caso que ejercita el cursor de verdad.
+    #[test]
+    fn leer_a_trozos_da_lo_mismo_que_de_una() {
+        let (_turno, mut v) = volumen();
+        let datos: Vec<u8> = (0..3000u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("TROZOS  BIN"), &datos).expect("debe crear");
+        let (primero, tam) = v.find_file(&name("TROZOS  BIN")).expect("debe estar");
+
+        let mut de_una = [0u8; 4096];
+        let n1 = v.read_file(primero, tam, &mut de_una);
+
+        let mut a_trozos = [0u8; 4096];
+        let mut cluster = primero;
+        let mut ya = 0usize;
+        let mut vueltas = 0;
+        while cluster != 0 {
+            let (leidos, siguiente) = v.leer_tramo(cluster, ya, tam, &mut a_trozos, 512);
+            assert!(leidos > 0, "un tramo que no avanza es un bucle infinito");
+            ya += leidos;
+            cluster = siguiente;
+            vueltas += 1;
+            assert!(vueltas < 64, "demasiadas vueltas: el cursor no avanza");
+        }
+
+        assert_eq!(ya, n1, "a trozos llego una cantidad distinta");
+        assert_eq!(&a_trozos[..ya], &de_una[..n1], "a trozos salieron OTROS bytes");
+        assert_eq!(&a_trozos[..ya], &datos[..], "y ni siquiera son los del archivo");
+        assert!(vueltas > 1, "la prueba no llego a partir nada");
     }
 
     #[test]

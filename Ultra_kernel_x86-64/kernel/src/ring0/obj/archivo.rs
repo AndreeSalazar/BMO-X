@@ -126,6 +126,15 @@ pub const ARCH_OP_LEER_LINEA: u64 = 0x05;
 /// `bmo_abi::...::ARCH_OP_LEER_EN`; lo despacha `syscall.rs`, que es quien tiene
 /// las capabilities a mano.
 pub const ARCH_OP_LEER_EN: u64 = 0x06;
+/// **Cuanto ha llegado ya, y si falta.** `(entero << 63) | bytes_disponibles`.
+///
+/// Y **avanza la carga**: preguntar por el archivo es lo que lo trae. Ver
+/// [`avanzar`] -- el trabajo ocurre en el turno de quien lo quiere.
+///
+/// Los dos datos van en la misma respuesta a proposito: "cuanto hay" y "queda
+/// mas" son la misma pregunta hecha dos veces, y contestarlas por separado abre
+/// la puerta a leerlas de vueltas distintas.
+pub const ARCH_OP_LISTO: u64 = 0x09;
 /// Mover el cursor. Espejo de `bmo_abi::...::ARCH_OP_SALTAR`.
 pub const ARCH_OP_SALTAR: u64 = 0x07;
 
@@ -175,6 +184,78 @@ static mut ESCRIBE: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
 /// guardar un archivo corto que parece entero.
 static mut DESBORDO: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
 static mut OWNER: [u32; MAX_ABIERTOS] = [NO_OWNER; MAX_ABIERTOS];
+
+// -- ** EL ARCHIVO QUE SE ESTA TRAYENDO --------------------------------------
+//
+// `open` lee el fichero ENTERO antes de devolver el handle. Para un `.txt` no se
+// nota; para un `.bex` de 813 KB, el que lo pidio no existe durante toda la
+// lectura -- y si el que lo pidio es el escritorio, el escritorio no pinta.
+//
+// [`abrir_asinc`] devuelve el handle **en cuanto sabe que el archivo existe**, y
+// los bytes van llegando en trozos. Cada vez que alguien pregunta se avanza un
+// presupuesto; entre pregunta y pregunta, el que espera **duerme** y el resto
+// del sistema corre.
+//
+// === Por que el avance lo empuja el que PREGUNTA ===
+//
+// La alternativa era seguir la cadena desde el manejador de interrupcion. No:
+// seguir una cadena FAT es leer mas disco --la propia tabla-- asi que seria
+// pedir E/S desde dentro de la interrupcion de E/S. Empujando desde la pregunta,
+// el trabajo ocurre en el turno de quien lo quiere, que es de quien es.
+
+/// Cluster por el que va la carga. `0` = no hay carga en curso.
+static mut CARGA_CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+/// Lo que mide el archivo entero, mientras se trae.
+///
+/// * Aqui NO hay un contador de trozos. Se escribio, para que el `wait` supiera
+/// si habia habido progreso desde la ultima mirada -- y como ese `wait` no
+/// llego a existir (ver `syscall.rs`), el contador se quedaba subiendo para
+/// nadie. Lo que hace falta saber de fuera --cuanto ha llegado-- ya lo dice
+/// `LARGO`, y lo contesta `ARCH_OP_LISTO`.
+static mut CARGA_TOTAL: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+
+/// Cuanto se trae de una vez.
+///
+/// 128 KiB: bastante para que un archivo normal llegue en una o dos vueltas, y
+/// poco para que el kernel no se quede dentro mas de lo que dura un turno. El
+/// numero correcto se sabra midiendo en metal; este es el que no estorba.
+const TROZO: usize = 128 * 1024;
+
+/// Se esta trayendo todavia?
+pub fn cargando(i: usize) -> bool {
+    unsafe { i < MAX_ABIERTOS && CARGA_CLUSTER[i] != 0 }
+}
+
+/// **Trae el siguiente trozo.** `true` si el archivo ya esta entero.
+///
+/// Lo llama cualquier operacion sobre el handle: preguntar por el archivo ES lo
+/// que lo hace avanzar. Si no habia carga en curso, contesta que si -- un
+/// archivo que ya estaba entero lo esta igual despues de preguntar.
+pub fn avanzar(i: usize) -> bool {
+    if !cargando(i) {
+        return true;
+    }
+    unsafe {
+        let cluster = CARGA_CLUSTER[i];
+        let total = CARGA_TOTAL[i];
+        let ya = LARGO[i];
+        let dst = buf(i);
+        let (leidos, siguiente) =
+            crate::ring0::fsys::fs::leer_trozo(cluster, ya, total as u32, dst, TROZO);
+        LARGO[i] = ya + leidos;
+        // `siguiente == 0` es fin -- de la cadena o del archivo. Y `leidos == 0`
+        // tambien corta: un tramo que no avanza dos veces seguidas seria un
+        // bucle infinito en el que pregunta, y prefiero un archivo corto que se
+        // nota a una maquina que no vuelve.
+        if siguiente == 0 || leidos == 0 {
+            CARGA_CLUSTER[i] = 0;
+            crate::ring0::cabina::info("arch", "archivo completo", LARGO[i] as u64);
+            return true;
+        }
+        CARGA_CLUSTER[i] = siguiente;
+        false
+    }
+}
 
 fn free_slot() -> Option<usize> {
     unsafe { (0..MAX_ABIERTOS).find(|&i| OWNER[i] == NO_OWNER) }
@@ -308,6 +389,68 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
                 Ok(h)
             }
             None => {
+                OWNER[i] = NO_OWNER;
+                Err(cap::ERROR_PERMISSION_DENIED)
+            }
+        }
+    }
+}
+
+/// **Abre un archivo y NO lo termina de leer.**
+///
+/// Devuelve el handle en cuanto sabe que el archivo existe y que hay sitio para
+/// el. Los bytes llegan despues, un trozo por cada vez que alguien pregunte
+/// (ver [`avanzar`]).
+///
+/// === Que gana quien lo use ===
+///
+/// Con `open`, el que pide un `.bex` de 813 KB **deja de existir** durante toda
+/// la lectura: esta dentro de una funcion de Ring 0 y nadie puede hacer nada por
+/// el. Si el que pide es el escritorio, el escritorio no pinta.
+///
+/// Con esto vuelve enseguida, y entre trozo y trozo puede **dormirse** sobre su
+/// propio handle -- el `wait` sabe hacerlo-- mientras el resto del sistema corre.
+/// Es la mitad de Ring 3 del escalon 4.
+///
+/// El handle sale con `RIGHT_WAIT` ademas de lectura, y es lo que le da sentido:
+/// sin ese derecho el unico modo de esperar seria preguntar en un bucle, que es
+/// exactamente lo que se estaba quitando.
+pub fn abrir_asinc(pid: u32, ruta: &str) -> Result<u64, u32> {
+    let i = match free_slot() {
+        Some(i) => i,
+        None => return Err(ERROR_NO_FREE_SLOT),
+    };
+    use crate::ring0::fsys::fs::LoadError;
+    let (cluster, mide) = match crate::ring0::fsys::fs::abrir_trozos(ruta) {
+        Ok(v) => v,
+        Err(LoadError::BadPath) => return Err(ERROR_IS_DIRECTORY),
+        Err(LoadError::NameTooLong) => return Err(ERROR_NAME),
+        Err(LoadError::DirNotFound) => return Err(ERROR_DIRECTORY),
+        Err(_) => return Err(ERROR_NOT_THERE),
+    };
+    let mide = mide as usize;
+    unsafe {
+        if !reserve(i, mide) {
+            crate::ring0::cabina::warn("arch", "sin RAM contigua para el archivo", mide as u64);
+            return Err(ERROR_TOO_LARGE);
+        }
+        LARGO[i] = 0;
+        CURSOR[i] = 0;
+        ESCRIBE[i] = false;
+        DESBORDO[i] = false;
+        OWNER[i] = pid;
+        CARGA_TOTAL[i] = mide;
+        // Un archivo vacio ya esta entero: nunca hay carga en curso para el, y
+        // marcarla dejaria a quien pregunte esperando un trozo que no existe.
+        CARGA_CLUSTER[i] = if mide == 0 { 0 } else { cluster };
+        match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ | cap::RIGHT_WAIT, i as u64) {
+            Some(h) => {
+                crate::ring0::cabina::info("arch", "archivo abierto SIN terminar de leer", mide as u64);
+                Ok(h)
+            }
+            None => {
+                CARGA_CLUSTER[i] = 0;
+                release_buffer(i);
                 OWNER[i] = NO_OWNER;
                 Err(cap::ERROR_PERMISSION_DENIED)
             }
@@ -510,7 +653,21 @@ pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
         return None;
     }
     let escribe = unsafe { ESCRIBE[i] };
+    // ** PREGUNTAR POR EL ARCHIVO ES LO QUE LO TRAE.
+    //
+    // Cualquier operacion de lectura empuja un trozo antes de contestar. Asi un
+    // programa que ignore por completo que existe la carga a trozos --que son
+    // todos los de hoy-- funciona igual: pide bytes, y los bytes acaban
+    // llegando. La diferencia es que ahora **entre trozo y trozo puede dormir**,
+    // en vez de estar dentro del kernel hasta el final.
+    if !escribe && cargando(i) && op != ARCH_OP_CERRAR {
+        avanzar(i);
+    }
     match op {
+        ARCH_OP_LISTO => Some(unsafe {
+            let entero = if cargando(i) { 0u64 } else { 1u64 << 63 };
+            entero | LARGO[i] as u64
+        }),
         // El modo manda. Pedirle bytes a un archivo de escritura no es un
         // error de permisos: es una pregunta que ese objeto no responde.
         ARCH_OP_LEER if !escribe => Some(read(i)),

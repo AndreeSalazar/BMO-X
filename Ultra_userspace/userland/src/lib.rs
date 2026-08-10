@@ -105,6 +105,13 @@ pub const OP_TOMAR: u32 = 0x1C;
 pub const MEM_OP_OFRECER: u32 = 0x03;
 /// **Quien me lanzo**, como TID. `0` si nadie -- ver [`crate::sys::mi_padre`].
 pub const OP_MI_PADRE: u32 = 0x26;
+/// **Abrir un archivo SIN esperar a que llegue entero.** Mismo handle que
+/// `OP_ARCHIVO_ABRIR`; lo que cambia es cuando vuelve. Ver
+/// [`crate::Archivo::leer_de_asinc`].
+pub const OP_ARCHIVO_ASINC: u32 = 0x27;
+/// `(entero << 63) | bytes que ya llegaron`. **Y avanza la carga**: preguntar
+/// por el archivo es lo que lo trae.
+pub const ARCH_OP_LISTO: u32 = 0x09;
 /// Operaciones sobre un handle de memoria PRESTADA (`KIND_PRESTADO`).
 pub const PRESTADO_OP_BASE: u32 = 0x01;
 pub const PRESTADO_OP_BYTES: u32 = 0x02;

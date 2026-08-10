@@ -159,8 +159,72 @@ impl Archivo {
 
     /// Abre un archivo para LEER. Se trae entero al abrir, asi que a partir de
     /// aqui una lectura no puede fallar a mitad por un error de disco.
+    ///
+    /// == ** DESDE 2026-08-10 SE TRAE DURMIENDO, NO ESPERANDO ==
+    ///
+    /// Por fuera esto no cambio: sigue devolviendo un archivo entero y quien lo
+    /// llama no se entera de nada. Lo que cambio es **donde esta el que espera**.
+    ///
+    /// Antes, el kernel no volvia hasta tener el fichero en RAM: para un `.bex`
+    /// de 813 KB, el que lo pidio dejaba de existir durante toda la lectura --
+    /// y si el que pide es el escritorio, el escritorio no pinta.
+    ///
+    /// Ahora el handle vuelve enseguida y los bytes llegan a trozos. Entre trozo
+    /// y trozo esta tarea **se bloquea** sobre su propio handle, el disco avisa
+    /// por interrupcion cuando termina, y el planificador la vuelve a poner en
+    /// la cola. **El CPU se va con otro en vez de esperar.**
+    ///
+    /// Si el kernel no conoce la apertura a trozos --o el volumen no la
+    /// soporta-- se cae a la de siempre. Un camino nuevo que deje sin archivos
+    /// al que no lo tenga no es una mejora, es una ruptura.
     pub fn leer_de(ruta: &[u8]) -> Result<Self, u32> {
-        Self::con_ruta(ruta, OP_ARCHIVO_ABRIR, false)
+        match Self::con_ruta(ruta, OP_ARCHIVO_ASINC, false) {
+            Ok(a) => {
+                a.esperar_entero();
+                Ok(a)
+            }
+            Err(_) => Self::con_ruta(ruta, OP_ARCHIVO_ABRIR, false),
+        }
+    }
+
+    /// Abre SIN esperar. Para quien quiera hacer algo entre trozo y trozo --
+    /// pintar un fotograma, por ejemplo-- en vez de dormirse hasta el final.
+    pub fn leer_de_asinc(ruta: &[u8]) -> Result<Self, u32> {
+        Self::con_ruta(ruta, OP_ARCHIVO_ASINC, false)
+    }
+
+    /// `(entero, bytes que ya llegaron)`. **Y avanza la carga**: preguntar por
+    /// el archivo es lo que lo trae.
+    pub fn listo(&self) -> (bool, u64) {
+        let v = invoke(self.cap, ARCH_OP_LISTO, 0, 0, 0).value;
+        (v & (1 << 63) != 0, v & !(1 << 63))
+    }
+
+    /// **Pide trozos hasta tenerlo entero.**
+    ///
+    /// [!] Y aqui NO se duerme, aunque lo pareciera: cada `listo()` trae su trozo
+    /// **sincronamente**. Lo que se gana no es dejar de esperar -- es que la
+    /// espera este partida:
+    ///
+    /// ```text
+    ///   antes   UN syscall dentro del kernel durante 813 KB
+    ///   ahora   SIETE syscalls de 128 KB, y entre ellos se vuelve a Ring 3
+    /// ```
+    ///
+    /// Volver a Ring 3 entre trozos es lo que importa: ahi hay frontera de trap,
+    /// o sea que el planificador puede dar el turno a otro **por decision suya y
+    /// no por expropiacion**. Y quien no quiera esperar tiene
+    /// [`Archivo::leer_de_asinc`]: pide un trozo, pinta un fotograma, pide otro.
+    ///
+    /// Dormir de verdad --bloquearse y que el disco despierte-- pide que traer
+    /// el trozo tampoco espere, y eso es la pieza que falta. Ver `LA_RAM.md`.
+    pub fn esperar_entero(&self) {
+        loop {
+            let (entero, _) = self.listo();
+            if entero {
+                return;
+            }
+        }
     }
 
     /// Abre un archivo para ESCRIBIR. Acepta subdirectorios

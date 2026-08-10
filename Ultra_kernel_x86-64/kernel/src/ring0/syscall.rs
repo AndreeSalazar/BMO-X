@@ -132,6 +132,17 @@ const TASK_OP_MI_PAQUETE: u64 = 0x25;
 /// compone. El programa que la reciba se cae al camino de la pantalla
 /// exclusiva, que es el degradado correcto.
 const TASK_OP_MI_PADRE: u64 = 0x26;
+/// **Abrir un archivo SIN esperar a que llegue entero.** Espejo de
+/// `bmo_abi::...::TASK_OP_ARCHIVO_ASINC`.
+///
+/// Misma ruta y mismo handle que `ARCHIVO_ABRIR`; la diferencia es cuando
+/// vuelve. `ABRIR` no vuelve hasta que el fichero esta en RAM --y con un `.bex`
+/// de 813 KB eso es el que lo pidio sin existir durante toda la lectura--;
+/// este vuelve en cuanto sabe que el archivo esta ahi.
+///
+/// El handle sale ademas con `RIGHT_WAIT`: se puede DORMIR sobre el hasta que
+/// llegue el trozo siguiente. Ver `obj/archivo.rs::abrir_asinc`.
+const TASK_OP_ARCHIVO_ASINC: u64 = 0x27;
 /// Reinicia la maquina. No vuelve.
 ///
 /// El reinicio de tres pasos (`0xCF9` -> 8042 -> triple fault) ya existia y solo
@@ -455,6 +466,15 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 return BmoStatus::err(2);
             };
             match crate::ring0::obj::archivo::open(pid, ruta) {
+                Ok(handle) => BmoStatus::ok_value(handle),
+                Err(code) => BmoStatus::err(code),
+            }
+        }
+        TASK_OP_ARCHIVO_ASINC => {
+            let _ = arg0;
+            let pid = scheduler::current_pid();
+            let ruta = ruta_tomar(pid);
+            match crate::ring0::obj::archivo::abrir_asinc(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -1194,6 +1214,19 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
             return BmoStatus { code: res.code, flags: 0, value: res.value };
         }
     }
+    // ** AQUI NO HAY UN BRAZO PARA `KIND_ARCHIVO`, Y ESO ES UNA DECISION.
+    //
+    // Se escribio: `wait(handle_de_archivo)` bloqueaba la tarea sobre la clave
+    // del disco y la interrupcion la despertaba. Compilaba, y **no esperaba a
+    // nada**: traer un trozo (`archivo::avanzar`) sigue siendo sincrono, asi que
+    // cuando la llamada vuelve el dato YA esta. Dormirse despues seria dormirse
+    // hasta que otro use el disco.
+    //
+    // El sitio esta libre y el resto de la cadena existe --el manejador puede
+    // llamar a `wake_by_key`, y `wait_current_checked` ya sabe no dormirse si el
+    // testigo cambio-- pero le falta la pieza de abajo: que traer el trozo
+    // tampoco espere. Mientras eso no exista, este brazo seria una forma cara de
+    // volver en el acto.
     match cap::resolve(pid, frame.rdi, cap::RIGHT_WAIT) {
         Ok(resolved) if resolved.kind == cap::KIND_CHANNEL => {
             let index = resolved.object as usize;
