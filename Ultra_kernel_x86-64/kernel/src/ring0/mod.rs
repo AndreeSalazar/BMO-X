@@ -80,6 +80,9 @@ pub mod plat {
     /// orden `smp`. Ver la cabecera del modulo para saber por que esto no podia
     /// vivir en `s1_cpu`.
     pub mod smp;
+    /// **La interrupcion del disco.** Que el aparato avise en vez de que se le
+    /// pregunte: MSI directo al LAPIC, sin IOAPIC de por medio.
+    pub mod irq;
     pub mod spin;
     pub mod timer;
     pub mod trap;

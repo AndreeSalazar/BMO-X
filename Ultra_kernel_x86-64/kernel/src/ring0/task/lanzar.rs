@@ -373,6 +373,17 @@ fn con_buffer(path: &str) -> Informe {
     // era, antes de que el disco tuviera dueno, **una lectura que se solapaba
     // con otra sobre la misma ranura del HBA**. El numero es la prueba de que
     // el candado hacia falta; el cero, la de que no estorba.
+    // ** Y si el disco AVISO por su cuenta o hubo que seguir preguntandole.
+    //
+    // Este es el numero que hay que mirar en metal: `armada` dice que la placa
+    // acepto la programacion de MSI, y `avisos` dice si de verdad la esta
+    // enrutando. **Son cosas distintas** -- un chipset puede aceptar lo primero
+    // y no hacer lo segundo, y entonces todo sigue funcionando por la red de
+    // seguridad sin que nada lo diga.
+    let (armada, avisos) = crate::ring0::dev::disk::irq_estado();
+    if armada {
+        crate::ring0::cabina::info("disk", "avisos del disco por interrupcion", avisos);
+    }
     let (esperas, robos) = crate::ring0::dev::disk::cuentas_dueno();
     if esperas > 0 {
         crate::ring0::cabina::info("disk", "veces que hubo que esperar al disco", esperas as u64);

@@ -43,6 +43,105 @@ pub fn cfg_write32(bus: u8, dev: u8, func: u8, off: u8, val: u32) {
     outl(CONFIG_DATA, val);
 }
 
+// -- ** MSI: que el aparato llame al CPU sin cablear nada ---------------------
+//
+// === Por que MSI y no la linea de interrupcion de siempre ===
+//
+// La forma clasica (INTx) es un cable: el aparato lo baja, un IOAPIC lo traduce
+// a un vector, y el kernel tiene que saber **por que patilla entra cada
+// dispositivo** -- routing de la placa, tablas del firmware, `_PRT` del ACPI. Es
+// burocracia de verdad: un intermediario al que hay que preguntarle permiso para
+// que dos partes que ya se conocen se hablen.
+//
+// MSI le da la vuelta: **la interrupcion es una ESCRITURA en memoria**. Al
+// aparato se le dice "cuando termines, escribe este numero en esta direccion", y
+// esa direccion es el LAPIC del CPU. No hay IOAPIC, no hay tabla de routing, no
+// hay que preguntarle a nadie. El aparato habla con el CPU **directamente**.
+//
+// Para este kernel eso ademas quita un subsistema entero: aqui no hay codigo de
+// IOAPIC y con esto no hace falta.
+//
+// === Lo que hay que escribirle, y ya esta ===
+//
+// | campo | que lleva |
+// |---|---|
+// | Message Address | `0xFEE0_0000 | (apic_id << 12)` -- la ventana del LAPIC |
+// | Message Data | el numero de vector |
+// | Message Control, bit 0 | ENABLE |
+//
+// El bit 7 del Control dice si el aparato es de 64 bits: si lo es, el dato vive
+// cuatro bytes mas alla porque la direccion ocupa dos palabras. Equivocarse en
+// eso escribe el vector encima de la mitad alta de la direccion, y entonces la
+// interrupcion se manda **a una direccion inventada**.
+
+/// La ventana de mensajes del LAPIC. Escribir aqui ES interrumpir.
+const MSI_LAPIC_BASE: u32 = 0xFEE0_0000;
+/// Id de la capability MSI en la lista encadenada de PCI.
+const CAP_ID_MSI: u8 = 0x05;
+/// Bit 10 del registro de comando: **deshabilitar INTx**. Con MSI activo, la
+/// linea de siempre tiene que callarse, o el aparato podria avisar por las dos.
+const CMD_INTX_DISABLE: u32 = 1 << 10;
+/// Bit 2: maestro de bus. Sin el no hay DMA -- y sin DMA no hay nada que
+/// interrumpir. Se comprueba en vez de suponerlo.
+const CMD_BUS_MASTER: u32 = 1 << 2;
+
+/// **Programa MSI en un dispositivo**: que sus interrupciones lleguen como
+/// `vector` al CPU `apic_id`. `true` si quedo armado.
+///
+/// Devuelve `false` --sin tocar nada-- si el dispositivo no anuncia MSI. Quien
+/// llame tiene que quedarse entonces como estaba: encender las interrupciones de
+/// un aparato cuya senal no va a llegar a ninguna parte es peor que no
+/// encenderlas, porque el aparato se queda esperando a que alguien le conteste.
+pub fn msi_activar(bus: u8, dev: u8, func: u8, vector: u8, apic_id: u8) -> bool {
+    // Hay lista de capabilities? Bit 4 del registro de estado (offset 0x06).
+    let status = cfg_read32(bus, dev, func, 0x04) >> 16;
+    if status & (1 << 4) == 0 {
+        return false;
+    }
+    let mut off = (cfg_read32(bus, dev, func, 0x34) & 0xFC) as u8;
+    // Tope de vueltas: una lista encadenada corrupta no puede colgar el arranque.
+    let mut saltos = 0;
+    while off >= 0x40 && saltos < 48 {
+        saltos += 1;
+        let cab = cfg_read32(bus, dev, func, off);
+        let id = (cab & 0xFF) as u8;
+        if id == CAP_ID_MSI {
+            let control = (cab >> 16) as u16;
+            let de_64 = control & (1 << 7) != 0;
+            // La direccion primero, el dato despues, y el ENABLE al final: un
+            // aparato al que se le enciende el permiso antes de decirle a donde
+            // escribir puede mandar un mensaje a la direccion que hubiera.
+            cfg_write32(bus, dev, func, off + 4, MSI_LAPIC_BASE | ((apic_id as u32) << 12));
+            if de_64 {
+                cfg_write32(bus, dev, func, off + 8, 0);
+                cfg_write32(bus, dev, func, off + 12, vector as u32);
+            } else {
+                cfg_write32(bus, dev, func, off + 8, vector as u32);
+            }
+            // Multiple Message Enable a 0 (un solo mensaje) y ENABLE a 1.
+            let nuevo = (control & !(0x7 << 4)) | 1;
+            cfg_write32(bus, dev, func, off, (cab & 0xFFFF) | ((nuevo as u32) << 16));
+            // Y ahora que MSI habla, que INTx se calle.
+            //
+            // [!] La mitad ALTA se escribe a cero. Ahi vive el registro de
+            // ESTADO, y sus bits son "escribe 1 para borrar": devolver lo que se
+            // acaba de leer borraria en silencio los avisos de error que el
+            // aparato tuviera puestos. Cero no borra nada.
+            let cmd = cfg_read32(bus, dev, func, 0x04);
+            cfg_write32(bus, dev, func, 0x04, (cmd & 0xFFFF) | CMD_INTX_DISABLE);
+            if cmd & CMD_BUS_MASTER == 0 {
+                // No se rechaza --MSI ya esta armado y es correcto-- pero se
+                // dice: un aparato sin maestro de bus no hace DMA, asi que no
+                // va a tener nada que anunciar.
+                crate::ring0::cabina::warn("pci", "MSI armado en un aparato SIN maestro de bus", off as u64);
+            }
+            return true;
+        }
+        off = ((cab >> 8) & 0xFC) as u8;
+    }
+    false
+}
+
 /// Un controlador xHCI localizado.
 #[derive(Clone, Copy)]
 pub struct XhciLoc {

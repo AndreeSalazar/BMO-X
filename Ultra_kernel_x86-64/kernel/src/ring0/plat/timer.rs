@@ -253,6 +253,39 @@ pub fn ticks() -> u64 {
     TICKS.load(Ordering::Relaxed)
 }
 
+/// **Fin de interrupcion.** Lo comparten todos los vectores que lleguen por el
+/// LAPIC, y por eso vive aqui: el puntero se resuelve UNA vez al instalar el
+/// temporizador, leyendo `IA32_APIC_BASE`. Que cada manejador se lo buscara por
+/// su cuenta serian dos caminos que tienen que dar la misma direccion.
+///
+/// Sin esto, el LAPIC deja el bit en servicio puesto y **no vuelve a entregar
+/// ninguna interrupcion de prioridad igual o menor**: la maquina no se cuelga,
+/// se queda sorda -- que es peor, porque parece que funciona.
+pub fn eoi() {
+    unsafe {
+        if !LAPIC_EOI.is_null() {
+            LAPIC_EOI.write_volatile(0);
+        }
+    }
+}
+
+/// La tabla de interrupciones viva, para que otro vector pueda instalarse.
+pub fn instalar_vector(idt_ptr: u64, vector: usize, handler: u64) -> bool {
+    if idt_ptr == 0 || vector > 255 {
+        return false;
+    }
+    let flags: u64;
+    unsafe {
+        asm!("pushfq", "pop {}", "cli", out(reg) flags);
+        let idt = idt_ptr as *mut IdtEntry;
+        idt.add(vector).write_volatile(IdtEntry::interrupt_gate(handler));
+        if flags & (1 << 9) != 0 {
+            asm!("sti", options(nomem, nostack));
+        }
+    }
+    true
+}
+
 /// Enable maskable interrupts only after every Ring 0 subsystem is ready.
 pub fn enable() {
     unsafe { asm!("sti", options(nomem, nostack)); }

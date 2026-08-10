@@ -17,6 +17,14 @@ pub static mut FB_STRIDE: u32 = 0;
 /// Framebuffer pixel format code (0=Unknown/RGB, 1=BGR, 2=RGB).
 pub static mut FB_PIXEL_FORMAT: u32 = 0;
 
+/// La IDT viva, la que `timer::init` parchea para el vector 48.
+///
+/// Se guarda aqui porque **el `BootContext` no llega a todas partes**: quien
+/// instala un vector nuevo puede ser un driver que arranca mucho despues, y
+/// hacerle llegar el contexto entero por la cadena de llamadas seria arrastrar
+/// una estructura de arranque hasta el fondo del sistema para leer un puntero.
+pub static mut IDT_PTR: u64 = 0;
+
 /// Populate the globals from a `BootContext` populated by the UEFI
 /// chain. Safe to call once at kernel entry.
 pub fn init_from(ctx: &BootContext) {
@@ -26,7 +34,13 @@ pub fn init_from(ctx: &BootContext) {
         FB_HEIGHT = ctx.fb_height;
         FB_STRIDE = ctx.fb_stride;
         FB_PIXEL_FORMAT = ctx.fb_pixel_format;
+        IDT_PTR = ctx.idt_ptr;
     }
+}
+
+/// La IDT viva. `0` si la cadena de arranque no la publico.
+pub fn idt_ptr() -> u64 {
+    unsafe { IDT_PTR }
 }
 
 /// La pantalla esta CEDIDA a un proceso Ring 3.

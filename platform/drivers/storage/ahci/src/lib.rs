@@ -15,3 +15,6 @@ pub use controller::{AhciController, PortState, AhciPort, DiskError, read_sector
 /// Ver [`controller::Estado`] -- es lo que hace posible la E/S asincrona, y lo
 /// que `run_command` esconde detras de un bucle que gira.
 pub use controller::{emitir, sondear, Estado, ATA_CMD_READ_DMA_EX};
+/// **Que el aparato avise.** `habilitar_irq` abre la puerta (despues de armar
+/// MSI, nunca antes) y `atender` limpia el aviso desde el manejador.
+pub use controller::{atender, habilitar_irq, AVISOS};

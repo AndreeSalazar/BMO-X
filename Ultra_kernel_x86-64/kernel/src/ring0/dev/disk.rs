@@ -151,6 +151,32 @@ static mut SERIAL: [u8; 20] = [0; 20];
 static mut SERIAL_LEN: usize = 0;
 static mut TOTAL_SECTORS: u64 = 0;
 
+/// El disco avisa por MSI, o hay que seguir preguntandole?
+static mut IRQ_ARMADA: bool = false;
+/// Avisos atendidos. Es lo que dice si la interrupcion **llega de verdad**: si
+/// `IRQ_ARMADA` es cierto y esto no sube, la placa acepto la programacion de MSI
+/// y no la esta enrutando -- que es un caso real y por eso se cuenta por
+/// separado en vez de fiarse de que "quedo armado" signifique "funciona".
+static mut IRQS: u64 = 0;
+
+/// Avisa el disco por su cuenta, y cuantas veces lo ha hecho.
+pub fn irq_estado() -> (bool, u64) { unsafe { (IRQ_ARMADA, IRQS) } }
+
+/// **Lo llama el manejador del vector del disco.** Ver `plat/irq.rs`.
+///
+/// Corre en contexto de interrupcion: lo minimo y nada mas. Limpiar el aviso del
+/// aparato es obligatorio --si no, lo vuelve a pedir en el acto y no deja correr
+/// a nadie-- y contar es lo que permite saber despues si esto funciono.
+pub fn atender_irq() {
+    let puerto = unsafe { PORT };
+    if puerto == 0xFF {
+        return;
+    }
+    if unsafe { bmo_ahci::atender(puerto) } {
+        unsafe { IRQS += 1 };
+    }
+}
+
 /// Ha pasado el disco el gate de identidad? Mientras sea `false`, `write()`
 /// no mueve un solo sector.
 static mut WRITE_ARMED: bool = false;
@@ -341,6 +367,30 @@ pub fn init() {
     };
     unsafe { DMA_PHYS = dma; PORT = chosen; READY = true; }
     crate::ring0::cabina::info("disk", "puerto SATA listo para leer", chosen as u64);
+
+    // -- ** QUE EL DISCO AVISE, si la placa deja --
+    //
+    // El orden es el unico posible y por eso va comentado: primero se le dice al
+    // aparato **a donde** mandar el aviso (MSI), y solo si eso quedo armado se
+    // le dice **que avise** (`GHC.IE`). Al reves, el disco anunciaria a una
+    // direccion que no escucha nadie y se quedaria esperando respuesta.
+    //
+    // Y si no hay MSI no pasa nada: el driver sigue preguntando por MMIO como
+    // toda la vida. Ver la red de seguridad de `run_command`.
+    if let Some(loc) = loc_ok.as_ref() {
+        let idt = crate::info::idt_ptr();
+        let vector = crate::ring0::plat::irq::VECTOR_DISCO as u8;
+        if idt != 0 && crate::ring0::plat::irq::instalar(idt) {
+            if crate::ring0::dev::pci::msi_activar(loc.bus, loc.dev, loc.func, vector, 0) {
+                if unsafe { bmo_ahci::habilitar_irq(chosen) } {
+                    unsafe { IRQ_ARMADA = true; }
+                    crate::ring0::cabina::info("disk", "el disco avisa por MSI, vector", vector as u64);
+                }
+            } else {
+                crate::ring0::cabina::warn("disk", "el HBA no anuncia MSI: se sigue preguntando", 0);
+            }
+        }
+    }
 
     identify();
 

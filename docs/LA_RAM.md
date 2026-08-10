@@ -632,6 +632,46 @@ Ese es el orden del escalon 4 que queda: **interrupcion del HBA -> `wait_key` ->
 varias peticiones en vuelo solo significan algo cuando hay quien las espere sin
 girar.
 
+### [x] El primer paso, hecho el mismo dia: **el disco AVISA**
+
+`plat/irq.rs`, vector 49. El aparato ya no espera a que le pregunten: cuando
+termina, **escribe el numero de vector en el LAPIC** y el CPU entra ahi.
+
+**Por MSI, y eso quita un subsistema entero.** La forma clasica (INTx) es un
+cable: el aparato lo baja, un IOAPIC lo traduce, y el kernel tiene que saber por
+que patilla entra cada dispositivo -- routing de la placa, tablas del firmware,
+el `_PRT` del ACPI. Burocracia de verdad: un intermediario al que hay que
+pedirle permiso para que dos partes que ya se conocen se hablen. MSI es una
+**escritura en memoria**: "cuando termines, escribe este numero en esta
+direccion". Aqui no hay codigo de IOAPIC y con esto no hace falta.
+
+Lo que se gana hoy, que no es la asincronia todavia:
+
+> `sondear` lee tres registros por MMIO, y **el MMIO no pasa por cache**: cada
+> lectura es un viaje al chipset. Girar sobre eso son millones de viajes para
+> averiguar algo que el aparato sabia desde el primer microsegundo. Ahora se gira
+> sobre un **atomico en memoria normal** --que sale de cache-- y solo se pregunta
+> de verdad cuando el aparato ha dicho algo.
+
+⚠ **Y la red de seguridad es la que permite encenderlo.** Cada 4096 vueltas se
+pregunta por MMIO aunque no haya habido aviso. Si la placa no enruta MSI, si el
+firmware dejo el vector enmascarado o si el aviso se perdio, el disco funciona
+exactamente como antes. Un camino nuevo que solo funciona cuando el hardware
+colabora **no puede ser el unico camino**: la placa que no colabore se quedaria
+sin disco, o sea sin arrancar, y el sintoma no se pareceria a la causa.
+
+El orden de encendido tampoco es negociable: primero MSI (**a donde** avisar) y
+solo si eso quedo armado, `GHC.IE` (**que** avise). Al reves, el disco anuncia a
+una direccion que no escucha nadie y se queda esperando respuesta.
+
+`disk::irq_estado()` devuelve `(armada, avisos)`, y son dos cosas distintas a
+proposito: un chipset puede aceptar la programacion de MSI y **no enrutarla**.
+Si lo primero es cierto y lo segundo no sube, la respuesta esta en esa pareja.
+
+**Lo que sigue faltando es el que duerme.** El manejador ya tiene donde llamar a
+`wake_by_key`; lo que no hay es nadie bloqueado en esa clave, y para haberlo hace
+falta que `archivo::open` empiece la lectura y no la termine.
+
 ★ **Precision sobre `SectionHash`, porque la primera version de este documento lo
 decia mal**: no esta "vacio". Esta **escrito y probado** -- BLAKE3 de 256 bits,
 `verify`, y `chain_hash` para encadenar todas las secciones

@@ -609,22 +609,52 @@ unsafe fn run_command(
     data: Option<(u64, u32)>,
     write: bool,
 ) -> Result<u16, DiskError> {
+    use core::sync::atomic::Ordering;
+    // La marca ANTES de emitir: lo que cuenta es un aviso posterior a esto.
+    // Tomarla despues perderia el aviso de un disco rapido que contesta entre
+    // la campana y la primera vuelta.
+    let marca = AVISOS.load(Ordering::Acquire);
     armar(port_idx, command, lba, sector_count, data, write)?;
     let mut spun = 0u32;
     loop {
-        match sondear(port_idx, data.is_some(), write) {
-            Estado::EnCurso => {
-                spun += 1;
-                if spun >= CMD_TIMEOUT { return Err(DiskError::Timeout); }
-                core::hint::spin_loop();
+        // ** ESCUCHAR ES BARATO; PREGUNTAR, NO.
+        //
+        // `sondear` lee tres registros por MMIO, y **el MMIO no pasa por
+        // cache**: cada lectura es un viaje al chipset. Girar sobre eso son
+        // millones de viajes para averiguar algo que el aparato sabia desde el
+        // primer microsegundo.
+        //
+        // `AVISOS` es memoria normal: leerlo sale de cache y no molesta a nadie.
+        // Asi que se mira eso, y solo se pregunta de verdad cuando el aparato ha
+        // dicho algo.
+        if AVISOS.load(Ordering::Acquire) != marca {
+            match sondear(port_idx, data.is_some(), write) {
+                Estado::Hecho(n) => return Ok(if n == u16::MAX { sector_count } else { n }),
+                Estado::Fallo(e) => return Err(e),
+                // Aviso de otra cosa: se sigue esperando el nuestro.
+                Estado::EnCurso => {}
             }
-            Estado::Hecho(n) => {
-                // `u16::MAX` es la senal de "el HBA no conto, vale el estado del
-                // disco": se traduce a lo que se pidio. Ver `sondear`.
-                return Ok(if n == u16::MAX { sector_count } else { n });
-            }
-            Estado::Fallo(e) => return Err(e),
         }
+        spun += 1;
+        if spun >= CMD_TIMEOUT { return Err(DiskError::Timeout); }
+        // ** Y LA RED DE SEGURIDAD, que es lo que permite encender todo esto.
+        //
+        // Cada tantas vueltas se pregunta por MMIO **aunque no haya habido
+        // aviso**. Si la placa no enruta MSI, si el firmware dejo el vector
+        // enmascarado, o si el aviso se perdio, el disco sigue funcionando
+        // exactamente como antes -- mas lento en esa vuelta y nada mas.
+        //
+        // Un camino nuevo que solo funciona cuando el hardware colabora no puede
+        // ser el UNICO camino: la placa que no colabore se quedaria sin disco, o
+        // sea sin arrancar, y el sintoma no se pareceria a la causa.
+        if spun % 4096 == 0 {
+            match sondear(port_idx, data.is_some(), write) {
+                Estado::Hecho(n) => return Ok(if n == u16::MAX { sector_count } else { n }),
+                Estado::Fallo(e) => return Err(e),
+                Estado::EnCurso => {}
+            }
+        }
+        core::hint::spin_loop();
     }
 }
 
@@ -718,6 +748,74 @@ unsafe fn armar(
     port_write(mmio, port_idx, PORT_CI, 1);
     let _ = hdr;
     Ok(())
+}
+
+// -- ** QUE EL APARATO AVISE ------------------------------------------------
+
+/// Offset del registro de interrupciones habilitadas del puerto.
+const PORT_IE: usize = 0x14;
+/// `DHRS`: llego el FIS de registro Device-to-Host. Es el que marca "termine el
+/// comando" en una lectura o escritura DMA -- el unico que hace falta para lo
+/// que este driver sabe pedir.
+const IE_DHRS: u32 = 1 << 0;
+
+/// Cuantas veces ha avisado el aparato. Lo sube [`atender`] desde el manejador
+/// de interrupcion; lo mira [`run_command`] para dejar de leer MMIO en balde.
+///
+/// Es un `AtomicU32` y no un booleano porque **el contador no se pierde**: un
+/// aviso que llega justo antes de que alguien empiece a mirar sigue contando, y
+/// comparar contra una marca tomada al emitir dice si hubo aviso DESPUES.
+pub static AVISOS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+/// **Enciende las interrupciones del puerto y del HBA.** `false` si no hay
+/// controlador.
+///
+/// Se llama DESPUES de haber armado MSI, nunca antes: un aparato al que se le
+/// dice que avise cuando su aviso no llega a ninguna parte se queda esperando a
+/// que le contesten, y el sintoma --lecturas que no terminan-- no se parece en
+/// nada a la causa.
+pub unsafe fn habilitar_irq(port_idx: u8) -> bool {
+    #[allow(static_mut_refs)]
+    let ctrl = match CONTROLLER.as_ref() { Some(c) => c, None => return false };
+    if port_idx >= 32 { return false; }
+    let mmio = ctrl.mmio_base;
+    // Lo que hubiera pendiente se limpia ANTES de abrir la puerta: un aviso
+    // viejo entrando como si fuera nuevo es un comando que se da por terminado
+    // sin haber empezado.
+    port_write(mmio, port_idx, PORT_IS, port_read(mmio, port_idx, PORT_IS));
+    hba_write(mmio, HBA_IS, hba_read(mmio, HBA_IS));
+    port_write(mmio, port_idx, PORT_IE, IE_DHRS);
+    hba_write(mmio, HBA_GHC, hba_read(mmio, HBA_GHC) | GHC_IE);
+    true
+}
+
+/// **Atiende el aviso.** Limpia el estado del aparato y cuenta. Nada mas.
+///
+/// Devuelve `true` si el aviso era de este puerto. Corre en contexto de
+/// interrupcion: aqui no se lee `PRDBC` ni se decide nada -- eso es contestarle
+/// a quien pregunte, y preguntar es cosa del que pidio.
+pub unsafe fn atender(port_idx: u8) -> bool {
+    #[allow(static_mut_refs)]
+    let ctrl = match CONTROLLER.as_ref() { Some(c) => c, None => return false };
+    if port_idx >= 32 { return false; }
+    let mmio = ctrl.mmio_base;
+    let is_hba = hba_read(mmio, HBA_IS);
+    let mio = is_hba & (1 << port_idx) != 0;
+    if mio {
+        // ** EL ORDEN IMPORTA: primero el puerto, despues el HBA.
+        //
+        // El bit del HBA es el OR de los del puerto. Borrarlo primero y que el
+        // puerto siguiera con el suyo puesto lo volveria a encender en el acto,
+        // y el aparato quedaria pidiendo atencion para siempre -- una tormenta
+        // de interrupciones que no deja correr a nadie.
+        let is_puerto = port_read(mmio, port_idx, PORT_IS);
+        port_write(mmio, port_idx, PORT_IS, is_puerto);
+    }
+    hba_write(mmio, HBA_IS, is_hba);
+    if mio {
+        AVISOS.fetch_add(1, core::sync::atomic::Ordering::Release);
+    }
+    mio
 }
 
 /// Lee `sector_count` sectores desde `lba` al buffer FISICO `buf_phys`.
