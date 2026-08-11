@@ -1485,6 +1485,15 @@ fn shell_smp_prueba() {
             l.txt(" partes");
         });
     }
+    // ** LA MEDIDA SE DENUNCIA A SI MISMA.
+    //
+    // La faena es una cadena de dependencias: ni un CPU perfecto haria una
+    // vuelta por ciclo. Menos ticks que vueltas no es "muy rapido", es
+    // imposible -- y entonces el roto es el cronometro, no el reparto. Paso el
+    // 08-11 con `37` ticks para 400 millones de vueltas.
+    if !obra::medida_creible(uno) {
+        row("[!]", |l| l.txt("esa medida es IMPOSIBLE: el cronometro miente, no el reparto"));
+    }
     let (entraron, vieron, hechos) = obra::testigos();
     row("testigos", |l| {
         l.txt("ENTRARON ");

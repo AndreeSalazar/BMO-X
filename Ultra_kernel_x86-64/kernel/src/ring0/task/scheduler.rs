@@ -158,6 +158,47 @@ pub fn rdtsc() -> u64 {
     ((high as u64) << 32) | low as u64
 }
 
+/// **El reloj para MEDIR, no para mirar la hora.**
+///
+/// === Por que hacia falta un segundo, y que costo no tenerlo ===
+///
+/// `rdtsc()` lleva `options(nomem)`, que le promete al compilador que ese bloque
+/// **no toca memoria**. Para leer la hora es cierto y es lo que hace que sea
+/// barato. Para cronometrar es una mentira con consecuencias:
+///
+/// ```text
+///    t0 = rdtsc();
+///    <el trabajo>          <- nada lo ata a las dos lecturas...
+///    t1 = rdtsc();         <- ...asi que puede salirse de en medio
+/// ```
+///
+/// Sin `nomem`, el `asm!` es una **barrera para el compilador** y el trabajo se
+/// queda donde esta. Y el `lfence` de delante es la otra mitad: `rdtsc` **no es
+/// serializante**, asi que el CPU tambien puede adelantarlo por su cuenta.
+///
+/// ** Esto no es teoria. El 2026-08-11 `smp prueba` contesto `ticks con UN
+/// nucleo =37` para un bucle de **400 millones de vueltas**. Treinta y siete.
+/// El reparto funcionaba --once obreros entraron, vieron y terminaron-- y lo que
+/// estaba roto era **el cronometro**, que es la clase de fallo que hace perder
+/// dias buscando en el sitio equivocado.
+///
+/// Se cobra unos ciclos de mas por lectura, y por eso es una funcion aparte:
+/// quien mira la hora sigue usando la barata.
+pub fn rdtsc_serial() -> u64 {
+    let low: u32;
+    let high: u32;
+    unsafe {
+        core::arch::asm!(
+            "lfence",
+            "rdtsc",
+            out("eax") low,
+            out("edx") high,
+            options(nostack),
+        );
+    }
+    ((high as u64) << 32) | low as u64
+}
+
 pub fn tsc_freq() -> u64 {
     unsafe { TSC_FREQ }
 }
