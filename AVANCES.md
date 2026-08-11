@@ -10,6 +10,54 @@ subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
+> ## ★★★ Al 2026-08-11 -- DOOM CORRE, y con el se cierran DOS bugs de carga
+>
+> **1. ✅ `run apps/doom.bex` FUNCIONA EN EL RYZEN.** Dicho por el dueno: *"el
+> DOOM en mi juego ya anda"*. Y DOOM es mejor prueba que `gui.bex`, porque su
+> tabla de secciones ejercita a la vez los dos arreglos del dia:
+>
+> ```text
+>    Code       file_off=0x0000200
+>    Relocs     file_off=0x00BF338   30.840 B
+>    Signature  file_off=0x00C6C10
+> ```
+>
+> **2. ✅ La suma que faltaba en FAT32** (`ea7ad1e0`). El driver tiene DOS
+> caminos al disco --los helpers de sector y el directo del escalon 3-- y solo
+> el primero sumaba `part_lba`. Los directorios se leian bien y **el contenido
+> no**: con la particion de datos en el LBA 1230848, un `.bex` se leia de dentro
+> de la ESP. De ahi el codigo x86-64 ajeno que no aparecia en ninguno de los
+> 7.610 ficheros del proyecto. **Nunca fue nuestro.**
+>
+> Las 13 pruebas de `bmo-fat32` no lo vieron porque **las dos montaban con
+> `part_lba = 0`**, donde la suma que falta vale cero. Hay una nueva que monta
+> en 64 y envenena con `0xEE` los sectores de delante del volumen.
+>
+> **3. ✅ Los hashes viven al final, y se leian antes que el codigo**
+> (`60dd6ddd`). La seccion `Signature` esta en el `0x4B680` de `0x4B728` y el
+> cargador la lee ANTES de aterrizar el codigo del `0x200`. El cursor de FAT32
+> solo avanza --a proposito-- asi que contestaba `0`, y eso salia como *"una
+> seccion se quedo a medias al aterrizar"*: una frase que manda a mirar el disco
+> cuando el disco esta perfecto. Ningun eslabon estaba roto; el fallo estaba en
+> la frase que formaban. Arreglo: `Fuente::rango_suelto`, que se lleva **una
+> copia** del cursor para las dos tablas out-of-band.
+>
+> **4. ✅ `c/sonda.bex`: 13 defensas, 0 agujeros EN METAL.** El kernel nego todo
+> lo que tenia que negar y siguio en pie. ⚠ Con el matiz que hay que conservar:
+> **la sonda la escribio el mismo lado que escribio las defensas**, asi que
+> prueba lo que se nos ocurrio. La primera prueba que no se escribe uno mismo
+> llega con la RED.
+>
+> **5. ⏳ LA RED EMPIEZA -- reconocida, no manejada** (`d4cdc090`). Se borraron
+> las 287 lineas de driver **Intel e1000** que no llamaba nadie: la NIC de esta
+> maquina es `VEN_10EC&DEV_8168` (Realtek) y el e1000 es la NIC por defecto de
+> **QEMU**. En su sitio, `pci::find_net` + `bmo_net::identificar` + el comando
+> `net`: encuentran la tarjeta, eligen **el primer BAR de memoria** (no un
+> indice fijo) y le leen MAC y enlace **sin escribirle un byte**.
+>
+> ★ **La foto que falta, ya predicha**: Windows dice `2C-F0-5D-D9-3C-E3`, enlace
+> arriba a 100 Mbps. El plan entero esta en `docs/RED_MAESTRO.md`.
+
 > ## ⏳ Al 2026-08-10 -- el metal contesto TRES cosas
 >
 > **1. ✅ El panico del escritorio NO volvio.** El invariante `cur <= n`

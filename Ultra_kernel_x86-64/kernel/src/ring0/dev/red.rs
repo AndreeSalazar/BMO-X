@@ -35,6 +35,15 @@ const VENDOR_REALTEK: u16 = 0x10EC;
 /// Lo que se supo de la NIC en el arranque. `None` = no se busco o no habia.
 static mut ID: Option<bmo_net::Identidad> = None;
 static mut HAY: bool = false;
+/// Donde vive, ya en direccion virtual. `0` = no se sabe leer esta tarjeta.
+///
+/// Se guarda para poder **volver a preguntar** sin repetir el barrido del PCI,
+/// que son unas 65.000 lecturas de config. Y volver a preguntar es lo que
+/// convierte el comando `net` en una prueba de verdad: ver la cabecera de
+/// [`releer`].
+static mut MMIO: *mut u8 = core::ptr::null_mut();
+/// Donde estaba en el bus, para poder decirlo. `(vendor, device, bus, dev, func, bar)`.
+static mut DONDE: (u16, u16, u8, u8, u8, u8) = (0, 0, 0, 0, 0, 0);
 
 /// Busca la NIC, la identifica y lo **cuenta**. Se llama una vez al arrancar.
 pub fn init() {
@@ -47,7 +56,10 @@ pub fn init() {
             return;
         }
     };
-    unsafe { HAY = true };
+    unsafe {
+        HAY = true;
+        DONDE = (loc.vendor, loc.device, loc.bus, loc.dev, loc.func, loc.bar_index);
+    }
 
     // Quien es, segun el PCI. Los dos numeros juntos: `10EC8168` se compara de
     // un vistazo con lo que dice cualquier otro sistema operativo.
@@ -85,7 +97,10 @@ pub fn init() {
 
     let mmio = mm::phys_to_virt(loc.mmio) as *mut u8;
     let id = unsafe { bmo_net::identificar(mmio) };
-    unsafe { ID = Some(id) };
+    unsafe {
+        ID = Some(id);
+        MMIO = mmio;
+    }
 
     crate::ring0::cabina::info("red", "MAC", id.mac_u64());
     if !id.creible() {
@@ -115,7 +130,38 @@ pub fn hay() -> bool {
     unsafe { HAY }
 }
 
-/// Lo que se supo de ella. `None` si no hay, o si no se sabe leer.
+/// Lo que se supo de ella EN EL ARRANQUE. `None` si no hay, o si no se sabe leer.
 pub fn identidad() -> Option<bmo_net::Identidad> {
     unsafe { ID }
+}
+
+/// Donde estaba: `(vendor, device, bus, dev, func, bar)`.
+pub fn donde() -> (u16, u16, u8, u8, u8, u8) {
+    unsafe { DONDE }
+}
+
+/// **Vuelve a preguntarle al chip, AHORA.** `None` si no hay tarjeta legible.
+///
+/// === Por que esto no es `identidad()` con otro nombre ===
+///
+/// `identidad()` devuelve la foto del arranque. Esto va al aparato otra vez, y
+/// esa diferencia es la que convierte el comando `net` en una prueba en vez de
+/// un volcado:
+///
+/// > **Desenchufa el cable, escribe `net`, y el enlace tiene que caerse.**
+///
+/// Si el numero cambia, la lectura llega al silicio de verdad: el BAR es el
+/// bueno, el mapeo esta vivo y `PHYstatus` es ese registro y no otro. Si NO
+/// cambia, lo que se esta leyendo es una copia, una cache o el sitio
+/// equivocado -- y eso hay que saberlo **antes** de montar un anillo de DMA
+/// encima, no despues.
+///
+/// Una prueba que no puede fallar no prueba nada. Esta se puede tirar al suelo
+/// con la mano, que es la mejor clase que hay.
+pub fn releer() -> Option<bmo_net::Identidad> {
+    let mmio = unsafe { MMIO };
+    if mmio.is_null() {
+        return None;
+    }
+    Some(unsafe { bmo_net::identificar(mmio) })
 }

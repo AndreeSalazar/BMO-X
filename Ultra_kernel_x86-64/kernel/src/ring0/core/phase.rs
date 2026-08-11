@@ -518,7 +518,7 @@ fn shell_help() {
     // usan `info` y `disk`: antes cada comando alineaba a ojo con espacios
     // contados a mano, y bastaba una palabra mas larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
-    row("sistema", |l| l.txt("info  cpu  mem  tasks  disk  ls  estratos  cabina  hist"));
+    row("sistema", |l| l.txt("info  cpu  mem  tasks  disk  net  ls  estratos  cabina  hist"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
     row("ring3", |l| l.txt("run <ruta>  bex  ktest"));
@@ -531,6 +531,103 @@ fn shell_help() {
 /// La tabla de particiones es como el kernel RECONOCE su disco: no se fia del
 /// orden en que el PCI enumere ni de que el firmware repita el mismo orden dos
 /// veces. El disco propio es el que lleva estas particiones y no otras.
+/// **`net` -- la tarjeta de red, preguntada AHORA.**
+///
+/// No repite el barrido del PCI (65.000 lecturas de config): usa la direccion
+/// que el arranque ya encontro y **vuelve al aparato** a por el enlace.
+///
+/// ** Y ahi esta la prueba, que se puede hacer con la mano: **desenchufa el
+/// cable y escribe `net` otra vez**. Si el enlace se cae, la lectura llega al
+/// silicio -- el BAR es el bueno, el mapeo esta vivo y `PHYstatus` es ese
+/// registro y no otro. Si no cambia, se esta leyendo una copia o el sitio
+/// equivocado, y eso hay que saberlo ANTES de montar un anillo de DMA encima.
+///
+/// La MAC sale con dos puntos, no como un numero: esta linea existe para
+/// compararla a ojo con la que diga cualquier otro sistema.
+fn shell_red() {
+    use crate::ring0::dev::red;
+    const H: &[u8; 16] = b"0123456789ABCDEF";
+    fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
+        for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
+    }
+    fn hex8(b: &mut [u8; 80], o: &mut usize, v: u8) {
+        if *o < b.len() { b[*o] = H[(v >> 4) as usize]; *o += 1; }
+        if *o < b.len() { b[*o] = H[(v & 0xF) as usize]; *o += 1; }
+    }
+    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u64) {
+        let mut tmp = [0u8; 20];
+        let mut i = 0;
+        if v == 0 { tmp[0] = b'0'; i = 1; }
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
+    }
+
+    if !red::hay() {
+        s_log("[red] no hay ninguna NIC Ethernet en el PCI");
+        return;
+    }
+    let (ven, dev_id, bus, dev, func, bar) = red::donde();
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[red] ");
+        hex8(&mut b, &mut o, (ven >> 8) as u8);
+        hex8(&mut b, &mut o, ven as u8);
+        txt(&mut b, &mut o, ":");
+        hex8(&mut b, &mut o, (dev_id >> 8) as u8);
+        hex8(&mut b, &mut o, dev_id as u8);
+        txt(&mut b, &mut o, "  bus ");
+        hex8(&mut b, &mut o, bus);
+        txt(&mut b, &mut o, ":");
+        hex8(&mut b, &mut o, dev);
+        txt(&mut b, &mut o, ".");
+        dec(&mut b, &mut o, func as u64);
+        txt(&mut b, &mut o, "  BAR");
+        dec(&mut b, &mut o, bar as u64);
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+    // ** Al aparato, ahora. No la foto del arranque.
+    let id = match red::releer() {
+        Some(i) => i,
+        None => {
+            s_log("[red] la tarjeta esta, pero su vendor no se leer todavia");
+            return;
+        }
+    };
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[red] MAC ");
+        for i in 0..6 {
+            if i > 0 { txt(&mut b, &mut o, ":"); }
+            hex8(&mut b, &mut o, id.mac[i]);
+        }
+        if !id.creible() {
+            // Ceros o unos no dicen "tarjeta rota": dicen que la lectura no
+            // llego. Es el BAR, no la NIC.
+            txt(&mut b, &mut o, "  <- NO es creible: el BAR no llega");
+        }
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[red] enlace ");
+        if id.enlace_arriba() {
+            txt(&mut b, &mut o, "ARRIBA  ");
+            dec(&mut b, &mut o, id.megabits() as u64);
+            txt(&mut b, &mut o, " Mbps  ");
+            txt(&mut b, &mut o, if id.duplex_completo() { "full" } else { "half" });
+        } else {
+            txt(&mut b, &mut o, "ABAJO (sin cable, o el otro lado no contesta)");
+        }
+        txt(&mut b, &mut o, "  PHYstatus=0x");
+        hex8(&mut b, &mut o, id.phy);
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+    s_log("[red] leer es todo lo que sabe hacer hoy: ver docs/RED_MAESTRO.md");
+}
+
 fn shell_disk() {
     use crate::ring0::dev::disk;
     if !disk::is_ready() {
@@ -1559,6 +1656,8 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_ls();
         } else if cmd == b"disk" {
             shell_disk();
+        } else if cmd == b"net" || cmd == b"red" {
+            shell_red();
         } else if cmd == b"cabina" {
             shell_cabina();
         } else if cmd == b"estratos" {
