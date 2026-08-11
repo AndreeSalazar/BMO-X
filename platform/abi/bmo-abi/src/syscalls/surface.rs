@@ -570,6 +570,24 @@ pub const CABINA_CAPA: u64 = 0x04;
 pub const CABINA_VALOR: u64 = 0x05;
 pub const CABINA_SEQ: u64 = 0x06;
 pub const CABINA_TICK: u64 = 0x07;
+/// **De que INTENTO salio el evento.** `0` = de ninguno.
+///
+/// === Por que este campo cambia lo que CABINA puede hacer ===
+///
+/// Los otros siete dicen **que paso**. Este dice **a que accion pertenece**, y
+/// esa es otra pregunta: un lanzamiento emite eventos desde cuatro modulos
+/// --`lanzar`, `proc`, `bex`, `disk`-- y hasta ahora, para saber cuales eran de
+/// TU pulsacion, habia que juntarlos de memoria mirando el `#N` impreso.
+///
+/// El kernel ya los agrupa (`cabina::intento`) y ya pinta el numero en su
+/// panel. Lo que faltaba era **entregarselo a Ring 3**, que es donde esta la
+/// ventana con filtros. Sin este campo, el filtro de la caja solo podia ser por
+/// gravedad: "ensename los FALLO" -- que trae los de esta accion y los de las
+/// diez anteriores mezclados.
+///
+/// Con el, la pregunta pasa a ser la util: **"ensename TODO lo que hizo esto que
+/// acabo de pulsar"**.
+pub const CABINA_INTENTO: u64 = 0x08;
 /// Que texto pide [`TASK_OP_CABINA_TEXTO`].
 pub const CABINA_TXT_MODULO: u64 = 0x00;
 pub const CABINA_TXT_MENSAJE: u64 = 0x01;

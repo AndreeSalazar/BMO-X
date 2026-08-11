@@ -232,6 +232,10 @@ pub const CABINA_CAPA: u64 = 0x04;
 pub const CABINA_VALOR: u64 = 0x05;
 pub const CABINA_SEQ: u64 = 0x06;
 pub const CABINA_TICK: u64 = 0x07;
+/// De que INTENTO salio el evento. `0` = de ninguno. Es lo que permite filtrar
+/// por ACCION -- todo lo que produjo una sola pulsacion -- y no solo por
+/// gravedad. Ver `bmo-abi`.
+pub const CABINA_INTENTO: u64 = 0x08;
 pub const CABINA_TXT_MODULO: u64 = 0x00;
 pub const CABINA_TXT_MENSAJE: u64 = 0x01;
 /// Severidades, en el orden de `cabina_core::Severity`.
