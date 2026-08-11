@@ -5,8 +5,8 @@
 > detalle cronologico ver los commits y `BITACORA.md`.
 
 **BMO-X** = sistema operativo bare-metal en Rust: microkernel de **capabilities**
-con **superficie congelada de 3 syscalls** (`INVOKE`/`CHANNEL_KICK`/`WAIT`) +
-subsyscalls; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
+con **superficie congelada de 2 syscalls** (`INVOKE`/`WAIT`) + operaciones sobre
+handles; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
