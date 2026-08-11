@@ -3,6 +3,7 @@ use crate::bmo_abi::bef::{
     header::*,
     imports::ImportEntry,
     relocations::Relocation,
+    requisitos,
     sections::*,
     signing::{blake3_256, SectionHash, SignatureHeader},
     symbols::Symbol,
@@ -48,6 +49,41 @@ use alloc::vec::Vec;
 /// "alineado a pagina": es congruente, y son cosas distintas. Mientras el
 /// cargador copie, esto no hace falta.
 const ALINEACION_EN_FICHERO: u64 = 8;
+
+/// * A cuanto se alinea el offset de una seccion **QUE SE CARGA**. Un SECTOR.
+///
+/// # El caso que esto hace posible (2026-08-10)
+///
+/// La nota de arriba decia que ocho bytes bastan *"mientras el cargador copie"*,
+/// y avisaba de que mapear el fichero directo pediria congruencia. La pieza B de
+/// `docs/EL_CONTRATO_DE_CARGA.md` no es ninguna de las dos cosas y cae justo en
+/// medio: el cargador **sigue copiando**, pero la copia la hace **el disco**,
+/// escribiendo cada seccion en los marcos del proceso sin pasar por un bufer.
+///
+/// El marco `p` de una seccion recibe los bytes `[file_offset + p*4096, +4096)`.
+/// Para que eso sea una lectura de disco --sectores enteros, sin cabeza ni cola
+/// sueltas-- basta con que `file_offset` sea multiplo de 512: como 4096 lo es,
+/// todos los marcos que vengan detras caen alineados solos.
+///
+/// **No hace falta congruencia modulo pagina.** Alinear a 4096 costaria hasta
+/// 4095 bytes por seccion --el 78% de aire que la nota de arriba cuenta que se
+/// quito-- y no compra nada mas que esto.
+///
+/// # Lo que cuesta
+///
+/// Hasta 511 bytes por seccion cargable. En `gui.bex`, con tres, son 1,5 KB de
+/// 308 KB: **el 0,5%**. A cambio, el camino rapido del disco existe siempre en
+/// vez de cuando el fichero salga alineado por suerte.
+const ALINEACION_DE_LO_CARGABLE: u64 = 512;
+
+/// Se carga esta seccion en la memoria del proceso? Es la misma regla que
+/// `bex::is_loadable` en el kernel, y por eso son cuatro tipos y no cinco.
+fn se_carga(k: SectionKind) -> bool {
+    matches!(
+        k,
+        SectionKind::Code | SectionKind::RoData | SectionKind::Data | SectionKind::Bss
+    )
+}
 
 /// Redondea `n` hacia arriba al multiplo de `a`, que ha de ser potencia de dos.
 fn alinea(n: u64, a: u64) -> u64 {
@@ -135,10 +171,25 @@ impl BefSection {
     }
 }
 
+/// Un requisito que declara el PROGRAMA, no el escritor.
+///
+/// Es [`requisitos::Declaracion`] con el motivo en propiedad: el builder se
+/// construye por partes y el motivo tiene que sobrevivir hasta `build()`.
+pub struct RequisitoDeclarado {
+    pub clase: bx_u16,
+    pub unidad: bx_u16,
+    pub obligatorio: bool,
+    pub cantidad: bx_u64,
+    pub motivo: alloc::string::String,
+}
+
 pub struct BefBuilder {
     pub header: BefHeader,
     pub sections: Vec<BefSection>,
     pub entry_offset: bx_u64,
+    /// Lo que el programa pide y el escritor no puede deducir. Ver
+    /// [`BefBuilder::requerir`].
+    pub requisitos: Vec<RequisitoDeclarado>,
 }
 
 impl BefBuilder {
@@ -147,11 +198,28 @@ impl BefBuilder {
             header: BefHeader::new_executable(),
             sections: Vec::new(),
             entry_offset: 0,
+            requisitos: Vec::new(),
         }
     }
 
     pub fn add_section(&mut self, section: BefSection) {
         self.sections.push(section);
+    }
+
+    /// **Declara un requisito que el escritor NO puede deducir.**
+    ///
+    /// La memoria de la imagen se calcula sola en [`build`](Self::build) -- el
+    /// escritor acaba de escribir las secciones y sabe lo que ocupan. Lo que no
+    /// puede saber es que el programa quiera la pantalla en exclusiva, o que
+    /// necesite tener seis megas de recursos residentes mientras corre. Eso solo
+    /// lo sabe quien lo escribio, y esto es por donde lo dice.
+    ///
+    /// El `motivo` no es documentacion: es **lo que sale por el "no"** cuando el
+    /// sistema no puede conceder. Por eso [`requisitos::construir`] rechaza un
+    /// requisito obligatorio sin motivo -- seria volver al rechazo que no se
+    /// puede contestar.
+    pub fn requerir(&mut self, r: RequisitoDeclarado) {
+        self.requisitos.push(r);
     }
 
     /// Escribe el `.bex` entero, **con su seccion `Signature`**.
@@ -194,9 +262,75 @@ impl BefBuilder {
     /// en medio correria los indices de todo lo que venga detras y cada hash
     /// pasaria a describir a su vecina. Anadirla al final no mueve a nadie.
     pub fn build(&mut self) -> Result<Vec<u8>, &'static str> {
+        // ** LOS REQUISITOS, POR EL MISMO MOTIVO QUE LA FIRMA (2026-08-10).
+        //
+        // La firma se fabrica aqui porque *"el dato solo lo tiene el"*. La
+        // memoria que va a ocupar la imagen es exactamente igual de deducible:
+        // el escritor acaba de colocar las secciones y sabe lo que suman.
+        //
+        // Hasta hoy quien lo deducia era **el kernel** --`bex::necesita`
+        // recorriendo la tabla en Ring 0-- y esa deduccion se equivoco dos
+        // veces, con el mismo sintoma las dos: `MAX_BEX` subido de 1 a 4 MiB
+        // porque un programa media mas de lo que alguien habia supuesto de
+        // antemano. Un supuesto que hay que subir es un supuesto que no deberia
+        // existir: el fichero lo sabe y ahora lo dice.
+        //
+        // Lo que el escritor NO puede deducir --pantalla, audio, recursos que
+        // el programa quiera residentes-- entra por `requerir()`. Ver
+        // `docs/EL_CONTRATO_DE_CARGA.md`, pieza C.
+        if !self
+            .sections
+            .iter()
+            .any(|s| s.kind == SectionKind::Requisitos)
+        {
+            // Lo que se mapea EN EL PROCESO: codigo, datos, y los ceros
+            // declarados. No es el tamano del fichero y no se parece: un paquete
+            // con un WAD dentro mide seis megas y ocupa ochocientos kilos.
+            let memoria: u64 = self
+                .sections
+                .iter()
+                .filter(|s| {
+                    matches!(
+                        s.kind,
+                        SectionKind::Code
+                            | SectionKind::RoData
+                            | SectionKind::Data
+                            | SectionKind::Bss
+                    )
+                })
+                .fold(0u64, |a, s| a.saturating_add(s.mem_size));
+
+            let mut decls = vec![requisitos::Declaracion {
+                clase: requisitos::CLASE_MEMORIA,
+                unidad: requisitos::UNIDAD_BYTES,
+                obligatorio: true,
+                cantidad: memoria,
+                motivo: "codigo, datos y ceros declarados de la imagen",
+            }];
+            for r in self.requisitos.iter() {
+                decls.push(requisitos::Declaracion {
+                    clase: r.clase,
+                    unidad: r.unidad,
+                    obligatorio: r.obligatorio,
+                    cantidad: r.cantidad,
+                    motivo: &r.motivo,
+                });
+            }
+            let datos = requisitos::construir(&decls)?;
+            let mut sec = BefSection::new(SectionKind::Requisitos, datos);
+            sec.alignment = 8;
+            self.sections.push(sec);
+        }
+
         // La seccion de firma se anade sola si el llamante no puso una. Es la
         // unica que este escritor fabrica por su cuenta, y lo hace porque el
         // dato --el hash de lo que acaba de escribir-- solo lo tiene el.
+        //
+        // [!] Y va DESPUES de los requisitos a proposito: reserva una entrada
+        // por seccion existente, asi que si los requisitos entraran detras se
+        // quedarian sin hash -- la unica seccion del fichero que dice lo que hay
+        // que concederle a un programa, y sin nada con que comprobar que llego
+        // entera.
         if !self
             .sections
             .iter()
@@ -294,6 +428,10 @@ impl BefBuilder {
                     | SectionKind::Bss
                     | SectionKind::Relocs
                     | SectionKind::Signature
+                    // Los requisitos los lee el cargador ANTES que nada: son lo
+                    // que decide si hay que leer el resto. Detras del bulto
+                    // obligarian a traerse el bulto para poder preguntar.
+                    | SectionKind::Requisitos
             )
         }
         for delante in [true, false] {
@@ -305,7 +443,17 @@ impl BefBuilder {
                 if section.kind == SectionKind::Bss || section.data.is_empty() {
                     continue;
                 }
-                file_off = alinea(file_off, ALINEACION_EN_FICHERO);
+                // Lo que se carga, a sector; lo demas, a ocho. Ver
+                // `ALINEACION_DE_LO_CARGABLE`: es lo que permite que el disco
+                // escriba una seccion directamente en los marcos del proceso.
+                file_off = alinea(
+                    file_off,
+                    if se_carga(section.kind) {
+                        ALINEACION_DE_LO_CARGABLE
+                    } else {
+                        ALINEACION_EN_FICHERO
+                    },
+                );
                 entries[i].file_offset = file_off;
                 entries[i].file_size = section.data.len() as u64;
                 file_off += entries[i].file_size;
@@ -423,6 +571,178 @@ fn bytes_from_slice<T: Sized>(slice: &[T]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Saca los bytes de una seccion por su tipo, leyendo la tabla como la lee
+    /// el cargador. Sin esto las pruebas de abajo mirarian offsets a mano.
+    fn seccion_de(bytes: &[u8], kind: SectionKind) -> Option<&[u8]> {
+        let count = u32::from_le_bytes(bytes[40..44].try_into().ok()?) as usize;
+        let tabla = u64::from_le_bytes(bytes[32..40].try_into().ok()?) as usize;
+        for i in 0..count {
+            let e = tabla + i * SectionEntry::SIZE;
+            if bytes[e] != kind as u8 {
+                continue;
+            }
+            let off = u64::from_le_bytes(bytes[e + 8..e + 16].try_into().ok()?) as usize;
+            let len = u64::from_le_bytes(bytes[e + 16..e + 24].try_into().ok()?) as usize;
+            return bytes.get(off..off + len);
+        }
+        None
+    }
+
+    /// ** LO QUE SE CARGA EMPIEZA EN FRONTERA DE SECTOR.
+    ///
+    /// Es la condicion que hace que el disco pueda escribir una seccion
+    /// **directamente en los marcos del proceso**: el marco `p` recibe
+    /// `[file_offset + p*4096, +4096)`, y eso solo son sectores enteros si
+    /// `file_offset` es multiplo de 512.
+    ///
+    /// Se prueba con secciones de tamano DELIBERADAMENTE feo --17, 4095-- para
+    /// que la de detras solo pueda quedar alineada si alguien la alinea. Con
+    /// tamanos redondos la prueba pasaria sin que el codigo hiciera nada.
+    #[test]
+    fn lo_cargable_empieza_en_frontera_de_sector() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 17]));
+        b.add_section(BefSection::rodata(vec![0x11; 4095]));
+        b.add_section(BefSection::data(vec![0x22; 3]));
+        let bytes = b.build().unwrap();
+
+        let count = u32::from_le_bytes(bytes[40..44].try_into().unwrap()) as usize;
+        let tabla = u64::from_le_bytes(bytes[32..40].try_into().unwrap()) as usize;
+        let mut vistas = 0;
+        for i in 0..count {
+            let e = tabla + i * SectionEntry::SIZE;
+            let kind = SectionKind::from_u8(bytes[e]).unwrap();
+            let off = u64::from_le_bytes(bytes[e + 8..e + 16].try_into().unwrap());
+            let len = u64::from_le_bytes(bytes[e + 16..e + 24].try_into().unwrap());
+            if len == 0 || !se_carga(kind) {
+                continue;
+            }
+            assert_eq!(off % 512, 0, "la seccion {kind:?} empieza a mitad de sector");
+            vistas += 1;
+        }
+        assert_eq!(vistas, 3, "la prueba no llego a mirar las tres");
+    }
+
+    /// Y lo que NO se carga sigue a ocho bytes: alinear a sector una tabla de
+    /// simbolos o unos recursos seria pagar hasta 511 bytes por seccion a cambio
+    /// de nada -- el cargador no los pone en marcos.
+    #[test]
+    fn lo_que_no_se_carga_no_paga_la_alineacion() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 17]));
+        let mut rec = BefSection::new(SectionKind::Resources, vec![0x22; 10]);
+        rec.alignment = 8;
+        b.add_section(rec);
+        let bytes = b.build().unwrap();
+
+        let sec = seccion_de(&bytes, SectionKind::Resources).unwrap();
+        assert_eq!(sec.len(), 10);
+        // Si los recursos se alinearan a sector, el fichero creceria hasta el
+        // siguiente multiplo de 512 sin que nadie lo use.
+        assert!(bytes.len() < 2048, "el fichero engordo por alinear de mas: {}", bytes.len());
+    }
+
+    /// ** TODO `.bex` SALE DECLARADO, sin que nadie lo pida.
+    ///
+    /// Es la pieza C entera en una prueba: el escritor sabe lo que ocupan las
+    /// secciones que acaba de colocar, asi que lo dice. Si esto se rompe, el
+    /// kernel vuelve a tener que deducirlo -- y deducirlo es lo que costo dos
+    /// subidas de `MAX_BEX`.
+    #[test]
+    fn todo_bex_declara_su_memoria_sin_pedirlo() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 4096]));
+        b.add_section(BefSection::rodata(vec![0x11; 1024]));
+        b.add_section(BefSection::bss(8192));
+        let bytes = b.build().unwrap();
+
+        let sec = seccion_de(&bytes, SectionKind::Requisitos).expect("tiene que estar");
+        let t = requisitos::Tabla::abrir(sec).expect("y tiene que abrirse");
+        assert_eq!(
+            t.total_de(requisitos::CLASE_MEMORIA),
+            4096 + 1024 + 8192,
+            "la memoria declarada no es la que se escribio"
+        );
+        let r = t.requisito(0).unwrap();
+        assert!(r.es_obligatorio(), "sin memoria no arranca nadie");
+        assert!(!t.motivo(&r).is_empty(), "un obligatorio sin motivo no se puede contestar");
+    }
+
+    /// La `Bss` cuenta y NO viaja. Es el escalon 0 de `LA_RAM.md` visto desde el
+    /// otro lado: los ceros no ocupan fichero **pero si ocupan RAM**, asi que un
+    /// requisito que los ignorara pediria de menos y el programa se quedaria sin
+    /// sitio justo donde el fichero no daba ninguna pista.
+    #[test]
+    fn los_ceros_declarados_cuentan_como_memoria() {
+        let mut con = BefBuilder::new();
+        con.add_section(BefSection::code(vec![0xC3; 64]));
+        con.add_section(BefSection::bss(1_000_000));
+        let a = con.build().unwrap();
+
+        let mut sin = BefBuilder::new();
+        sin.add_section(BefSection::code(vec![0xC3; 64]));
+        let b2 = sin.build().unwrap();
+
+        let ta = requisitos::Tabla::abrir(seccion_de(&a, SectionKind::Requisitos).unwrap()).unwrap();
+        let tb = requisitos::Tabla::abrir(seccion_de(&b2, SectionKind::Requisitos).unwrap()).unwrap();
+        assert_eq!(
+            ta.total_de(requisitos::CLASE_MEMORIA) - tb.total_de(requisitos::CLASE_MEMORIA),
+            1_000_000
+        );
+        assert!(a.len() < 1_000_000, "y el millon de ceros NO viajo en el fichero");
+    }
+
+    /// Lo que el escritor no puede deducir entra por `requerir`, y sale con su
+    /// motivo dentro del fichero.
+    #[test]
+    fn lo_que_pide_el_programa_viaja_con_su_motivo() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 64]));
+        b.requerir(RequisitoDeclarado {
+            clase: requisitos::CLASE_PANTALLA,
+            unidad: requisitos::UNIDAD_UNIDADES,
+            obligatorio: true,
+            cantidad: 1,
+            motivo: "dibuja el marco entero, no una ventana".into(),
+        });
+        let bytes = b.build().unwrap();
+
+        let sec = seccion_de(&bytes, SectionKind::Requisitos).unwrap();
+        let t = requisitos::Tabla::abrir(sec).unwrap();
+        let pantalla = t
+            .iter()
+            .find(|r| r.clase == requisitos::CLASE_PANTALLA)
+            .expect("lo que se pidio tiene que estar");
+        assert_eq!(t.motivo(&pantalla), "dibuja el marco entero, no una ventana");
+    }
+
+    /// ** Y LA SECCION DE REQUISITOS TIENE SU HASH.
+    ///
+    /// Es la que dice lo que hay que concederle a un programa. Si viajara sin
+    /// hash, seria el unico renglon del fichero que se puede cambiar por el
+    /// camino sin que nada lo note -- y cambiarlo es pedirle al sistema mas
+    /// memoria, o la pantalla, en nombre de un binario que no lo pidio.
+    #[test]
+    fn los_requisitos_tambien_se_firman() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 64]));
+        let bytes = b.build().unwrap();
+
+        let count = u32::from_le_bytes(bytes[40..44].try_into().unwrap()) as usize;
+        let tabla = u64::from_le_bytes(bytes[32..40].try_into().unwrap()) as usize;
+        let idx_req = (0..count)
+            .find(|i| bytes[tabla + i * SectionEntry::SIZE] == SectionKind::Requisitos as u8)
+            .expect("esta en la tabla");
+
+        let firma = seccion_de(&bytes, SectionKind::Signature).unwrap();
+        let cuantos = u32::from_le_bytes(firma[0..4].try_into().unwrap()) as usize;
+        let cubierta = (0..cuantos).any(|k| {
+            let e = 8 + k * SectionHash::SIZE;
+            u16::from_le_bytes(firma[e..e + 2].try_into().unwrap()) as usize == idx_req
+        });
+        assert!(cubierta, "los requisitos viajan sin hash");
+    }
 
     #[test]
     fn build_minimal_bef() {

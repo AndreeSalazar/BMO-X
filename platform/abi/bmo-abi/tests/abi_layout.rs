@@ -13,11 +13,20 @@ fn bef_build_validate_load_roundtrip() {
     assert!(result.is_valid, "BEF should be valid: {:?}", result.issues);
     let loaded = bmo_abi::bef::load(&bytes, 0, |_, _| Err("no imports")).unwrap();
     assert!(loaded.entry_point > 0);
-    // Tres: code, rodata **y la firma**. Desde el 2026-08-09 `build` emite
-    // siempre la seccion `Signature` con el BLAKE3 de cada una de las otras --
-    // los hashes ya se calculaban y se escribian al final del fichero sin
-    // entrada que los nombrara, o sea invisibles para cualquier lector.
-    assert_eq!(loaded.sections.len(), 3);
+    // Cuatro, y las dos ultimas las pone `build` por su cuenta:
+    //
+    // - `code` y `rodata`, que son las que se anadieron aqui.
+    // - `Signature` (2026-08-09): el BLAKE3 de cada una de las otras. Los
+    //   hashes ya se calculaban y se escribian al final del fichero sin entrada
+    //   que los nombrara, o sea invisibles para cualquier lector.
+    // - `Requisitos` (2026-08-10): lo que la imagen necesita para arrancar. Se
+    //   emite sola por el mismo motivo que la firma --el dato solo lo tiene el
+    //   escritor-- y existe para que el kernel deje de DEDUCIRLO. Ver
+    //   `docs/EL_CONTRATO_DE_CARGA.md`.
+    //
+    // ** Que este numero suba es una noticia, no un fallo: significa que el
+    // escritor emite algo nuevo, y entonces hay que decir QUE y por que.
+    assert_eq!(loaded.sections.len(), 4);
 }
 
 #[test]
@@ -305,9 +314,29 @@ fn una_imagen_recien_escrita_cuadra_con_sus_hashes() {
 fn un_byte_cambiado_en_el_codigo_rompe_su_hash() {
     let mut img = una_imagen();
     let antes = img.len();
-    // El primer byte del codigo. La seccion empieza tras cabecera + tabla.
+    // ** EL OFFSET SE LEE DE LA TABLA, que es de donde lo lee el kernel.
+    //
+    // Aqui ponia `tabla + count * BEX_SECTION_SIZE` -- *"la seccion empieza tras
+    // cabecera + tabla"*. Era cierto y **dejo de serlo el 2026-08-10**: lo que
+    // se carga se alinea ahora a sector, asi que delante del codigo hay relleno.
+    //
+    // Y el sintoma fue el peor posible: la prueba **paso a tocar un byte de
+    // relleno**, que no pertenece a ninguna seccion y por tanto no esta bajo
+    // ningun hash. O sea que dejo de comprobar lo que dice comprobar sin dejar
+    // de compilar. Una prueba que calcula por su cuenta un offset que el fichero
+    // ya declara es una prueba que un dia mira a otro sitio.
     let (tabla, count) = tabla_de(&img);
-    let off = tabla + count * BEX_SECTION_SIZE;
+    let mut off = 0usize;
+    for i in 0..count {
+        let e = tabla + i * BEX_SECTION_SIZE;
+        if img[e] == bmo_abi::bef::sections::SectionKind::Code as u8 {
+            let mut v = [0u8; 8];
+            v.copy_from_slice(&img[e + 8..e + 16]);
+            off = u64::from_le_bytes(v) as usize;
+            break;
+        }
+    }
+    assert!(off != 0, "la imagen de prueba tiene seccion code");
     img[off] ^= 0xFF;
     assert_eq!(img.len(), antes, "el tamano NO cambia: por eso hace falta el hash");
     assert!(

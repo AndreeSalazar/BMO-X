@@ -41,6 +41,7 @@ pub mod manifest;
 pub mod paquete;
 pub mod recursos;
 pub mod relocations;
+pub mod requisitos;
 pub mod sections;
 pub mod signing;
 pub mod symbols;
@@ -67,6 +68,9 @@ pub use manifest::Provenance;
 pub use paquete::{directorio, empaquetar, localizar_recursos};
 pub use recursos::{Directorio, Entrada as EntradaRecurso, RECURSOS_MAGIC};
 pub use relocations::Relocation;
+pub use requisitos::{
+    Declaracion as DeclaracionRequisito, Requisito, Tabla as TablaRequisitos, REQUISITOS_MAGIC,
+};
 pub use signing::{SectionHash, SignatureHeader};
 pub use symbols::Symbol;
 pub use tls::TlsTemplate;

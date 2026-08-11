@@ -246,6 +246,20 @@ mod tests {
     /// `BefBuilder::build` la regenera al final porque sus hashes describen la
     /// disposicion recien escrita -- conservar la vieja daria un fichero que
     /// declara integridad y no la cumple.
+    ///
+    /// ** Y desde el 2026-08-10, los REQUISITOS sobreviven al empaquetado, que
+    /// es lo contrario que la firma y por un motivo que conviene dejar escrito:
+    ///
+    /// | | por que |
+    /// |---|---|
+    /// | la firma se REGENERA | describe la disposicion, y la disposicion cambio |
+    /// | los requisitos se CONSERVAN | describen lo que el programa necesita, y meterle un WAD dentro no cambia lo que necesita |
+    ///
+    /// Los recursos **no son residentes**: se leen del disco cuando el programa
+    /// los pide. Si empaquetar recalculara los requisitos y les sumara el bulto,
+    /// un paquete de seis megas pediria seis megas de RAM para ejecutar
+    /// ochocientos kilos -- que es exactamente el modelo bodega que
+    /// `LA_RAM.md` existe para no repetir.
     #[test]
     fn la_seccion_nueva_va_la_ultima() {
         let p = empaquetar(&imagen(), &[("x", b"1")]).unwrap();
@@ -259,6 +273,8 @@ mod tests {
                 SectionKind::Code as u8,
                 SectionKind::RoData as u8,
                 SectionKind::Bss as u8,
+                // Los requisitos vienen de la imagen base y NO se recalculan.
+                SectionKind::Requisitos as u8,
                 SectionKind::Resources as u8,
                 // La firma, SIEMPRE la ultima. La pone `build`.
                 SectionKind::Signature as u8,

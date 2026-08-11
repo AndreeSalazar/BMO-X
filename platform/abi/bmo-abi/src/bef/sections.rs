@@ -53,6 +53,16 @@ pub enum SectionKind {
     Reflect = 0x13,
     /// Tabla de cierres `BmoClosure` con `ClosureSig`.
     Closures = 0x14,
+
+    // --- 2026-08-10: lo que el programa REQUIERE, y el porque ---------
+    /// **Requisitos declarados**: tabla binaria de lo que el programa necesita
+    /// para arrancar, cada renglon con su motivo. Ver `requisitos.rs`.
+    ///
+    /// Existe porque hasta hoy quien deducia eso era el kernel
+    /// (`bex::necesita`), y una deduccion en Ring 0 es un cerebro donde
+    /// tendria que haber un contrato. `Manifest = 0x09` sigue siendo el TOML
+    /// para humanos; esta es su version compilada, que se lee sin parser.
+    Requisitos = 0x15,
 }
 
 impl SectionKind {
@@ -78,6 +88,7 @@ impl SectionKind {
             0x12 => Some(Self::LangBridge),
             0x13 => Some(Self::Reflect),
             0x14 => Some(Self::Closures),
+            0x15 => Some(Self::Requisitos),
             _ => None,
         }
     }
