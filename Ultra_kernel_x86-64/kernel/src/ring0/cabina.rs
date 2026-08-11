@@ -438,14 +438,42 @@ fn watch(s: &TelemetrySnapshot, mib_free: u64) {
     static mut W_KBD_MUDO: bool = false;
     static mut W_MEMLOW: bool = false;
     unsafe {
-        // El teclado enumero pero lleva un buen rato sin entregar una sola
-        // tecla: el endpoint de interrupcion no completa. Es EL fallo vivo.
+        // ** ESTO ERA UN `fault` Y ERA UNA FALSA ALARMA (2026-08-11).
+        //
+        // La condicion es `kev == 0`: **cero teclas pulsadas**. Y eso tambien es
+        // cierto cuando nadie ha tocado el teclado todavia. La maquina arranca,
+        // pasan dos segundos sin que el dueno escriba, y CABINA declaraba un
+        // fallo de hardware que no existia.
+        //
+        // Las fotos del 2026-08-11 lo prueban solas: el FAULT sale en `t02002` y
+        // despues llega `primera tecla recibida: el teclado ESCRIBE`. El teclado
+        // estaba perfecto. El que no habia escrito era el usuario.
+        //
+        // === Por que no se puede arreglar la condicion, solo el mensaje ===
+        //
+        // **Ninguna observacion pasiva distingue "roto" de "nadie ha escrito".**
+        // Se miro si servia el contador de transferencias del xHC (`tev`): no
+        // sirve, porque es global y el raton lo sube el solo. Y "entregaba y
+        // dejo de hacerlo" tampoco vale: dejar de escribir es lo normal.
+        //
+        // Asi que se dice el HECHO y no el veredicto, que es la regla de toda
+        // esta semana. Lo que se sabe es *"enumero y todavia no ha llegado
+        // ninguna"*; lo que NO se sabe es por que.
+        //
+        // === Y por que importa mas de lo que parece ===
+        //
+        // Un FAULT falso no es un fallo de mas: **gasta el credito de todos los
+        // demas**. Quien lee la caja negra y encuentra una linea roja que no era
+        // verdad empieza a dudar de las que si lo son -- y esta salia en TODOS
+        // los arranques, la primera de la lista.
+        //
+        // Una caja negra que grita lobo es peor que una callada.
         if !W_KBD_MUDO {
             let (kbd, _m, _ks, _ms, _mev, _x, _y, _b, kev) = crate::ring0::dev::usb::hid_stats();
             if kbd && kev == 0 && s.cpu.timer_ticks > 0x2000 {
                 W_KBD_MUDO = true;
                 let (kdci, _, _, _) = crate::ring0::dev::usb::kbd_debug();
-                fault("usb", "teclado enumero pero no entrega teclas", kdci as u64);
+                info("usb", "el teclado enumero y aun no ha llegado ninguna tecla", kdci as u64);
             }
         }
         if mib_free < 256 && !W_MEMLOW {
