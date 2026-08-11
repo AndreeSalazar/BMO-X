@@ -884,28 +884,79 @@ pub fn verify_identity() -> bool {
     }
     // 4. Y tiene que haber una particion de datos donde escribir que NO sea la
     //    de arranque.
-    let win = match data_partition() {
-        Some(p) => p,
-        None => return deny("gate: no hay particion de datos fuera de la EFI", 0),
-    };
+    // [!] EXISTENCIA, no identidad -- y la diferencia importa por el ORDEN.
+    //
+    // Este gate corre ANTES de `fs::mount_data`, o sea antes de que nadie haya
+    // demostrado cual es la particion de datos. Preguntar aqui por
+    // `data_partition()` --que desde el 2026-08-11 solo contesta cuando alguien
+    // lo ha probado-- denegaria siempre, el volumen no se montaria, y el sintoma
+    // seria un disco entero desaparecido por una comprobacion que ni siquiera
+    // pretendia saber cual es.
+    //
+    // Lo que este paso comprueba de verdad es mas modesto y es lo correcto:
+    // **que este disco tenga donde escribir que no sea el arranque**. Cual de
+    // ellas sea se decide despues, y lo decide quien pueda demostrarlo.
+    if !parts.iter().any(|p| !p.is_esp()) {
+        return deny("gate: no hay particion de datos fuera de la EFI", 0);
+    }
 
     unsafe {
         WRITE_ARMED = true;
         GATE_REASON = "gate: disco identificado, escritura armada";
     }
-    crate::ring0::cabina::info("disk", model(), win.first_lba);
-    crate::ring0::cabina::info("disk", "escritura ARMADA en la particion de datos", win.sectors());
+    crate::ring0::cabina::info("disk", model(), total_sectors());
+    // ** Se dice CUANTAS hay, no en cual se va a escribir. Esto es el gate, y a
+    // estas alturas todavia no se sabe cual es la de datos -- lo dira `fs` en
+    // cuanto consiga montar una. Antes esta linea decia el tamano de "la
+    // primera que no era la EFI", que era justo la suposicion que hoy se retira.
+    crate::ring0::cabina::info(
+        "disk",
+        "escritura ARMADA; particiones donde podria escribirse",
+        parts.iter().filter(|p| !p.is_esp()).count() as u64,
+    );
     true
 }
 
-/// La particion donde BMO puede escribir: la primera que NO es la de arranque.
+/// La particion de datos ELEGIDA, una vez que alguien la ha identificado.
 ///
-/// La EFI queda fuera por diseno. Ahi vive el `BOOTX64.EFI` con el que arranco
-/// esta misma ejecucion y, en una maquina con Windows, tambien el cargador del
-/// dueno. Un bug de sistema de ficheros que se coma esa particion no da un
-/// fault bonito: deja la maquina sin arrancar.
+/// `None` hasta que `fsys::fs::mount_data` consigue montar una y la fija aqui.
+static mut PART_DATOS: Option<Partition> = None;
+
+/// **Fija cual es la particion de datos.** La llama quien lo ha DEMOSTRADO.
+///
+/// El unico que puede demostrarlo es el sistema de ficheros: montarla es la
+/// prueba. Este modulo sabe de sectores y de GUIDs, no de FAT32.
+///
+/// [!] Y es lo que hace que la ventana de escritura y el volumen montado hablen
+/// de la MISMA particion. Mientras cada uno la elegia por su cuenta con la misma
+/// heuristica, coincidian por casualidad; si un dia dejaran de coincidir, el
+/// sistema estaria leyendo de una y protegiendo la otra.
+pub fn fijar_particion_datos(p: Partition) {
+    unsafe { PART_DATOS = Some(p) };
+}
+
+/// La particion donde BMO puede escribir.
+///
+/// == ** POR LO QUE ES, NUNCA POR DONDE ESTA (2026-08-11) ==
+///
+/// Esto era `partitions().iter().find(|p| !p.is_esp())` -- **la primera que no
+/// es la de arranque**. Y eso rompe la regla que este mismo fichero declara en su
+/// cabecera, cuatro parrafos mas arriba:
+///
+/// > *"Pedir 'el primer disco' y escribir habria sido escribir en el sistema
+/// > ajeno. Por eso se pide el controlador POR TIPO, nunca por orden de
+/// > aparicion."*
+///
+/// La leccion se aprendio para el CONTROLADOR y se siguio incumpliendo una capa
+/// mas abajo, con la PARTICION. Y el disco de esta maquina tiene tres que no son
+/// la de arranque: la FAT32 de BMO y la de ESTRATOS. "La primera" era una
+/// moneda al aire que dependia del orden de la GPT.
+///
+/// Ahora la elige quien puede demostrarlo --el que consigue montarla-- y aqui
+/// solo se recuerda. Mientras nadie lo haya demostrado, esto contesta `None`:
+/// **no saber cual es se dice, no se adivina.**
 pub fn data_partition() -> Option<Partition> {
-    partitions().iter().find(|p| !p.is_esp()).copied()
+    unsafe { PART_DATOS }
 }
 
 /// Puede escribirse el rango `[lba, lba+count)`? Devuelve el motivo si no.

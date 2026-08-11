@@ -210,28 +210,69 @@ pub fn mount_data() {
         crate::ring0::cabina::warn("fs", "sin volumen de datos: el gate no armo la escritura", 0);
         return;
     }
-    let part = match disk::data_partition() {
-        Some(p) => p,
-        None => {
-            crate::ring0::cabina::warn("fs", "el disco no tiene particion de datos", 0);
-            return;
+    // ** SE PRUEBAN TODAS, Y GANA LA QUE CONTESTA (2026-08-11).
+    //
+    // === El bug que esto mata ===
+    //
+    // Aqui se pedia `disk::data_partition()`, que era **la primera que no es la
+    // de arranque**. Una sola candidata, elegida por su posicion en la GPT.
+    //
+    // El disco de esta maquina tiene tres particiones que no son la de arranque:
+    // la FAT32 donde viven los programas y la de ESTRATOS. Cual salia "primera"
+    // dependia del orden en la tabla -- o sea de una moneda al aire. Y cuando
+    // salia la que no era, el sistema montaba algo que no es FAT32, encontraba
+    // entradas de directorio que parecian nombres, y leia sectores que no
+    // contenian nada suyo. Exactamente lo que se vio el 2026-08-11:
+    //
+    // ```text
+    //   FAULT proc: los 8 primeros bytes de lo que llego =C75FF8548102474
+    // ```
+    //
+    // Codigo x86-64 que no esta en NINGUNO de los 7.610 ficheros del proyecto.
+    //
+    // === La regla, que es la de la casa ===
+    //
+    // > **Por lo que ES, nunca por donde esta.**
+    //
+    // Ya estaba escrita en la cabecera de `dev/disk.rs` --se aprendio eligiendo
+    // el CONTROLADOR por tipo y no por orden-- y se seguia incumpliendo una capa
+    // mas abajo.
+    //
+    // Y la prueba de "que es" no es un GUID que haya que mantener al dia:
+    // **montarla**. Un volumen que monta como FAT32 ES FAT32. ESTRATOS no puede
+    // colarse porque no contesta a esa pregunta.
+    //
+    // Se dice cada intento, incluidos los que fallan: saber que la particion 1
+    // se probo y no era es lo que evita buscar un bug donde solo hay un formato
+    // ajeno.
+    let mut probadas = 0u64;
+    for part in disk::partitions().iter() {
+        if part.is_esp() {
+            continue;
         }
-    };
-    match bmo_fat32::mount(disk::block_read, Some(disk::block_write), part.first_lba) {
-        Some(v) => {
-            unsafe {
-                core::ptr::write(core::ptr::addr_of_mut!(DATA_VOLUME), Some(v));
-                DATA_LBA = part.first_lba;
+        probadas += 1;
+        match bmo_fat32::mount(disk::block_read, Some(disk::block_write), part.first_lba) {
+            Some(v) => {
+                unsafe {
+                    core::ptr::write(core::ptr::addr_of_mut!(DATA_VOLUME), Some(v));
+                    DATA_LBA = part.first_lba;
+                }
+                // Que la ventana de escritura hable de la MISMA particion que se
+                // acaba de montar. Mientras cada uno la elegia por su cuenta,
+                // coincidian por casualidad.
+                disk::fijar_particion_datos(*part);
+                crate::ring0::cabina::info("fs", "volumen de datos montado para ESCRITURA", part.first_lba);
+                crate::ring0::cabina::info("fs", "y es la particion", part.index as u64);
+                return;
             }
-            crate::ring0::cabina::info("fs", "volumen de datos montado para ESCRITURA", part.first_lba);
-        }
-        None => {
-            // BMO-DATA sigue en NTFS y este driver no lo entiende: es un "no",
-            // no un fallo. Decirlo evita buscar un bug donde solo hay un
-            // formato ajeno.
-            crate::ring0::cabina::warn("fs", "la particion de datos no es FAT32/exFAT", part.first_lba);
+            None => {
+                // No es un fallo: es un "no". ESTRATOS y NTFS entran por aqui, y
+                // decirlo evita buscar un bug donde solo hay otro formato.
+                crate::ring0::cabina::info("fs", "esa particion no es FAT32, se salta", part.first_lba);
+            }
         }
     }
+    crate::ring0::cabina::warn("fs", "NINGUNA particion contesta como FAT32; probadas", probadas);
 }
 
 // -- Rutas: de "c/holac.bex" a un archivo ----------------------------------
