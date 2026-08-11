@@ -335,6 +335,19 @@ pub struct Cursor {
     base: usize,
 }
 
+impl Cursor {
+    /// Un cursor que no apunta a nada: toda lectura contesta cero.
+    ///
+    /// Existe para que quien no encuentre un archivo pueda devolver **algo** y
+    /// dejar que el motivo lo de la lectura --que sabe decir por que-- en vez de
+    /// obligar a cada llamante a desenvolver un `Option` para acabar en el mismo
+    /// sitio. El cluster `0` no es valido en FAT32, asi que no puede confundirse
+    /// con uno de verdad.
+    pub fn vacio() -> Self {
+        Cursor { cluster: 0, base: 0 }
+    }
+}
+
 impl FatVolume {
     /// Fallos del dispositivo que no cambiaron ningun codigo de retorno.
     ///

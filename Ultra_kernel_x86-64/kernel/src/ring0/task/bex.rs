@@ -458,16 +458,23 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
             if end as usize > tam_fichero {
                 return Err(BexError::InvalidSection);
             }
-            // Y contra lo LEIDO, solo para lo que se va a tocar. Que los
-            // recursos caigan mas alla del prologo es lo normal desde el
-            // escalon 2 -- que caiga el codigo es que la cuenta de `necesita`
-            // y la lectura no cuadran, y eso es un fallo del cargador con
-            // nombre propio en vez de un `InvalidSection` que manda a mirar el
-            // formato.
-            let lo_usa = is_loadable(kind) || kind == SECTION_RELOCS || kind == SECTION_SIGNATURE;
-            if lo_usa && end as usize > bytes.len() {
-                return Err(BexError::SeccionNoLeida);
-            }
+            // ** Y NADA CONTRA `bytes.len()`, DESDE LA PIEZA B (2026-08-10).
+            //
+            // Aqui habia una segunda comprobacion: que una seccion que el
+            // cargador va a tocar cupiera en lo LEIDO. Tenia sentido mientras el
+            // cargador se traia la imagen a una mesa antes de mirarla -- si el
+            // codigo caia fuera de lo traido, la cuenta y la lectura no cuadraban.
+            //
+            // Ya no hay mesa. `inspect` recibe **solo el prologo** y las secciones
+            // se piden al disco una a una, asi que "no esta en `bytes`" es la
+            // situacion NORMAL de todas ellas. La pregunta que esa comprobacion
+            // hacia se sigue haciendo, en el sitio donde ahora se puede contestar
+            // de verdad: si una seccion llega a medias, lo dice el aterrizaje --
+            // con su nombre y con cuantos bytes faltaron-- en vez de un limite
+            // calculado de antemano. Ver `Origen::traer` en `task/proc.rs`.
+            //
+            // Lo que SI se sigue comprobando es lo de arriba: que ninguna seccion
+            // se salga del FICHERO. Eso es formato, y no depende de quien lea.
         }
         let alignment = if alignment_raw == 0 { 8 } else { alignment_raw };
         if !alignment.is_power_of_two() {

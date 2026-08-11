@@ -326,8 +326,114 @@ pub fn admit_from_disk(name: &str, bytes: &[u8], tam_fichero: usize) -> Option<(
     }
 }
 
-/// Admite UN programa BEX como proceso Ring 3 con el `pid` indicado.
+/// La imagen ya esta ENTERA en RAM. Es el camino de las que el kernel embebe con
+/// `include_bytes!` --no hay disco del que pedirlas-- y el de ESTRATOS mientras su
+/// gate siga hasheando el fichero completo.
 fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
+    admit_payload_desde(bytes, &mut Origen::EnMemoria(bytes), pid, tam_fichero)
+}
+
+/// **Admite un programa PIDIENDOLE LOS BYTES AL DISCO, sin mesa.**
+///
+/// `prologo` son los primeros bytes --cabecera y tabla de secciones-- que es
+/// todo lo que hace falta para hacer el plan. Cada seccion se pide despues por su
+/// rango y **cae directamente en los marcos de su proceso**.
+///
+/// Es el gemelo de [`admit_from_disk`] y comparte con el todo menos de donde
+/// salen los bytes. Ver [`Origen`].
+pub fn admitir_por_rangos(
+    name: &str,
+    prologo: &[u8],
+    fuente: &mut crate::ring0::task::lanzar::Fuente,
+    tam_fichero: usize,
+) -> Option<(u32, u32)> {
+    if !has_room() {
+        return None;
+    }
+    let pid = next_pid();
+    let stored = intern_name(name);
+    crate::ring0::uconsole::set_tag(pid, stored);
+    record_open(stored, stored, pid, tam_fichero as u32);
+    let mut origen = Origen::PorRangos(fuente);
+    match admit_payload_desde(prologo, &mut origen, pid, tam_fichero) {
+        Some(tid) => {
+            crate::ring0::cabina::info("proc", "programa admitido SIN MESA", tid as u64);
+            Some((tid, pid))
+        }
+        None => {
+            crate::ring0::cabina::warn("proc", "el .bex de disco no paso la admision", pid as u64);
+            None
+        }
+    }
+}
+
+/// **DE DONDE SALEN LOS BYTES DE UNA SECCION.** Un cargador, dos origenes.
+///
+/// === La pieza B, y por que es un enum y no dos funciones ===
+///
+/// El cargador traia el fichero a una mesa de 4 MiB y copiaba de ahi a las
+/// paginas del proceso. La mesa era **una y de toda la maquina**, con un tope
+/// decidido de antemano que hubo que subir dos veces, y con una copia por cada
+/// byte de cada programa.
+///
+/// `PorRangos` la borra: el HBA escribe **en el marco del proceso**, que es el
+/// destino final. Cero copias, cero mesa, y el tope de un programa pasa a ser la
+/// RAM que hay.
+///
+/// `EnMemoria` se queda porque hay dos casos que de verdad ya estan en RAM: las
+/// imagenes que el kernel **embebe** (`include_bytes!`, no hay disco del que
+/// leerlas) y ESTRATOS, cuyo gate hashea el fichero entero de una pasada. Ver la
+/// nota de `Fuente::rango`.
+///
+/// Que sean dos variantes del MISMO camino --y no dos cargadores-- es lo que
+/// impide que se separen: el bucle que reserva marcos, aplica relocations,
+/// cierra hashes y mapea es **uno**, y lo unico que cambia es de donde viene el
+/// trozo.
+pub enum Origen<'a> {
+    /// La imagen entera, ya en RAM.
+    EnMemoria(&'a [u8]),
+    /// Se pide al disco por rangos. **Sin mesa.**
+    PorRangos(&'a mut crate::ring0::task::lanzar::Fuente),
+}
+
+impl Origen<'_> {
+    /// Trae `dst.len()` bytes de la imagen desde `offset`. Devuelve cuantos.
+    fn traer(&mut self, offset: usize, dst: &mut [u8]) -> usize {
+        match self {
+            Origen::EnMemoria(bytes) => {
+                let fin = offset.saturating_add(dst.len()).min(bytes.len());
+                if offset >= fin {
+                    return 0;
+                }
+                let n = fin - offset;
+                dst[..n].copy_from_slice(&bytes[offset..fin]);
+                n
+            }
+            Origen::PorRangos(f) => f.rango(offset, dst),
+        }
+    }
+}
+
+/// Lo mas grande que puede medir una seccion `Signature`, **segun el formato**.
+///
+/// No es un numero inventado como lo era `MAX_BEX`: la cabecera son 8 bytes y hay
+/// como mucho una entrada de 40 por seccion, con `MAX_BEX_SECTIONS` de tope. Un
+/// limite que sale del contrato no hay que subirlo nunca.
+const MAX_FIRMA: usize = 8 + bex::MAX_BEX_SECTIONS * 40;
+
+/// Admite UN programa BEX como proceso Ring 3 con el `pid` indicado.
+///
+/// `prologo` son los primeros bytes de la imagen: la cabecera y la tabla de
+/// secciones, que es todo lo que hace falta para hacer el plan. **El resto ya no
+/// se trae de antemano** -- se pide por `origen` seccion a seccion, y cada una
+/// cae directamente en los marcos de su proceso.
+fn admit_payload_desde(
+    prologo: &[u8],
+    origen: &mut Origen,
+    pid: u32,
+    tam_fichero: usize,
+) -> Option<u32> {
+    let bytes = prologo;
     set_status("admitting (alloc/map)");
     let plan = match bex::inspect(bytes, tam_fichero) {
         Ok(p) => p,
@@ -405,12 +511,15 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
     // escritor-- esto es `None` y cada cierre contesta `SinFirma`. Se cuenta,
     // pero no se rechaza: exigirle una prueba a quien nunca la prometio seria
     // dejar de arrancar.
-    let firmas = if plan.firma_file_size > 0 {
-        let ini = plan.firma_file_offset as usize;
-        let fin = ini.saturating_add(plan.firma_file_size as usize);
-        bytes
-            .get(ini..fin)
-            .and_then(|f| aterrizaje::Firmas::abrir(f, plan.firma_indice))
+    let mut buf_firma = [0u8; MAX_FIRMA];
+    let firmas = if plan.firma_file_size > 0 && plan.firma_file_size as usize <= MAX_FIRMA {
+        let n = plan.firma_file_size as usize;
+        let leidos = origen.traer(plan.firma_file_offset as usize, &mut buf_firma[..n]);
+        if leidos != n {
+            crate::ring0::cabina::fault("proc", "la tabla de hashes se quedo sin leer", leidos as u64);
+            return None;
+        }
+        aterrizaje::Firmas::abrir(&buf_firma[..n], plan.firma_indice)
     } else {
         None
     };
@@ -428,16 +537,39 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
     // inventado dentro de `.data` y el proceso arranca, corre, y muere mucho
     // despues en un sitio que no se parece a la causa. Comprobarla DESPUES de
     // aplicarla no serviria de nada.
-    if total_relocs > 0 {
-        let ini = plan.relocs_file_offset as usize;
-        let fin = ini.saturating_add(plan.relocs_file_size as usize);
-        let Some(tabla) = bytes.get(ini..fin) else {
-            crate::ring0::cabina::fault("proc", "la tabla de relocs se quedo sin leer", ini as u64);
-            return None;
+    // ** LA TABLA DE RELOCATIONS, EN MARCOS PRESTADOS.
+    //
+    // No se mapea en el proceso --el programa nunca la ve-- pero hay que tenerla
+    // entera en RAM mientras se aplica: cada pagina pregunta por TODAS las
+    // relocs, y pedirlas al disco de 24 en 24 bytes serian mil lecturas por
+    // pagina.
+    //
+    // Se piden marcos por su tamano REAL en vez de reservar un maximo. En DOOM
+    // son 30.840 bytes --ocho marcos-- que se sueltan en cuanto se aplican. Es
+    // el modelo quirofano: entra lo que hace falta para la operacion en curso.
+    //
+    // [!] Se sueltan por el camino BUENO. Los caminos de error de aqui abajo
+    // devuelven `None` sin soltarlos -- igual que ya hacen con el espacio de
+    // direcciones, que tampoco se destruye. Es una fuga que solo ocurre cuando un
+    // programa NO arranca, y esta apuntada para limpiarla junto con la otra: son
+    // el mismo arreglo.
+    let mut relocs_marcos: Option<(u64, u64)> = None;
+    let relocs: &[u8] = if total_relocs > 0 {
+        let n = plan.relocs_file_size as usize;
+        let paginas = ((n as u64) + mm::PAGE - 1) / mm::PAGE;
+        let base = phys::alloc_frames_contig(paginas)?;
+        relocs_marcos = Some((base, paginas));
+        let dst = unsafe {
+            core::slice::from_raw_parts_mut(mm::phys_to_virt(base) as *mut u8, n)
         };
+        let leidos = origen.traer(plan.relocs_file_offset as usize, dst);
+        if leidos != n {
+            crate::ring0::cabina::fault("proc", "la tabla de relocs se quedo sin leer", leidos as u64);
+            return None;
+        }
         let esperado = firmas.as_ref().and_then(|f| f.digest_de(plan.relocs_indice));
         let mut cierre = aterrizaje::Aterrizaje::abrir(bex::SECTION_RELOCS, esperado);
-        cierre.trozo(tabla);
+        cierre.trozo(dst);
         match cierre.cerrar() {
             Ok(aterrizaje::Cierre::Cuadra) => {}
             Ok(aterrizaje::Cierre::SinFirma) => sin_firma += 1,
@@ -446,7 +578,10 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
                 return None;
             }
         }
-    }
+        unsafe { core::slice::from_raw_parts(mm::phys_to_virt(base) as *const u8, n) }
+    } else {
+        &[]
+    };
     let mut aplicadas = 0usize;
     // ** EL ORDEN DE ATERRIZAJE: POR OFFSET DE FICHERO, no por direccion virtual.
     //
@@ -501,11 +636,33 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
             if chunk < s.file_size {
                 let n = (s.file_size - chunk).min(mm::PAGE) as usize;
                 unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        bytes.as_ptr().add((s.file_offset + chunk) as usize),
+                    // ** AQUI MURIO LA COPIA (2026-08-10, pieza B).
+                    //
+                    // Esto era un `copy_nonoverlapping` desde una mesa de 4 MiB
+                    // que antes habia que llenar entera desde el disco. Ahora
+                    // `dst` **es el marco**, y `traer` le pide al origen justo
+                    // este rango: con `PorRangos`, el HBA escribe ahi y el byte
+                    // no pasa por ningun sitio intermedio.
+                    //
+                    // > La RAM no es una bodega. Y ahora tampoco es una cinta
+                    // > transportadora.
+                    let dst = core::slice::from_raw_parts_mut(
                         mm::phys_to_virt(frame) as *mut u8,
                         n,
                     );
+                    let leidos = origen.traer((s.file_offset + chunk) as usize, dst);
+                    if leidos != n {
+                        // Una seccion que llega a medias NO se rellena con lo que
+                        // hubiera: se dice cuanto falto. El marco ya estaba a
+                        // cero, asi que lo que no llego son ceros y no basura de
+                        // otro -- pero eso no lo convierte en valido.
+                        crate::ring0::cabina::fault(
+                            "proc",
+                            "una seccion se quedo a medias al aterrizar",
+                            leidos as u64,
+                        );
+                        return None;
+                    }
                     // ** SE LE DA AL HASHER LO QUE HAY EN EL MARCO, no lo que
                     // habia en el origen.
                     //
@@ -532,12 +689,13 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
             // pagina escribible que luego habria que volver a proteger.
             let pagina_va = va_start + p * mm::PAGE;
             for r in 0..total_relocs {
-                let Some(rel) = bex::leer_reloc(
-                    bytes,
-                    plan.relocs_file_offset,
-                    plan.relocs_file_size,
-                    r,
-                ) else {
+                // De `relocs`, que es la tabla que se acaba de traer a sus
+                // marcos -- y con offset **0**, porque ese slice empieza donde
+                // empieza la tabla. Leerla de `bytes` era leerla de la imagen
+                // entera, y desde la pieza B `bytes` es solo el prologo: la tabla
+                // de DOOM (30.840 B) cae mucho mas alla y no habria ni una reloc
+                // que aplicar.
+                let Some(rel) = bex::leer_reloc(relocs, 0, plan.relocs_file_size, r) else {
                     log("[proc] FATAL: tabla de relocations mal formada\n");
                     return None;
                 };
@@ -608,6 +766,17 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
     // dejo de firmar algo y nadie se habria enterado.
     if sin_firma > 0 {
         crate::ring0::cabina::info("proc", "secciones sin hash con el que comparar", sin_firma as u64);
+    }
+    // ** Y LOS MARCOS DE LAS RELOCATIONS SE SUELTAN. Ya se aplicaron: la tabla
+    // no es memoria del programa y no tiene por que sobrevivirle ni un tick.
+    //
+    // Es el modelo quirofano en pequeno -- entro lo que hacia falta para la
+    // operacion, y sale cuando termina. En DOOM son ocho marcos; en un `.bex`
+    // sin punteros que rellenar, ninguno.
+    if let Some((base, paginas)) = relocs_marcos {
+        for p in 0..paginas {
+            phys::free_frame(base + p * mm::PAGE);
+        }
     }
     // * Y SE COMPRUEBA QUE SE APLICARON TODAS.
     //

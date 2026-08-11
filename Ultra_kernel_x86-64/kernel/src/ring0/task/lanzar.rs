@@ -265,12 +265,14 @@ pub fn ruta(path: &str) -> Informe {
 /// de verdad entre los dos es UNA --solo ESTRATOS puede traer `:firma`, porque
 /// FAT32 no tiene atributos con nombre-- y estaba enterrada entre cuatro
 /// bifurcaciones que la repetian sin decirlo. Aqui es un solo `Option`.
-enum Fuente {
+pub enum Fuente {
     /// El sistema de ficheros propio. Es el primero que se mira: es el unico
     /// donde un binario puede traer su firma pegada.
     Estratos(est::Nodo),
     /// De donde arranca la maquina, y donde vive todo hasta que ESTRATOS crezca.
-    Fat32,
+    /// Lleva su cursor: leer por rangos hacia adelante cuesta UN recorrido de la
+    /// cadena, no uno por rango. Ver `bmo_fat32::Cursor`.
+    Fat32 { cur: bmo_fat32::Cursor, tam: u32 },
 }
 
 impl Fuente {
@@ -282,7 +284,57 @@ impl Fuente {
     fn abrir(path: &str) -> Self {
         match if est::is_mounted() { est::open(path) } else { None } {
             Some(nd) => Fuente::Estratos(nd),
-            None => Fuente::Fat32,
+            None => match crate::ring0::fsys::fs::abrir_rangos(path) {
+                Ok((cur, tam)) => Fuente::Fat32 { cur, tam },
+                // No esta en ninguno de los dos. Se devuelve un FAT32 vacio para
+                // que el motivo lo de la lectura --que sabe decir POR QUE-- en
+                // vez de inventarlo aqui.
+                Err(_) => Fuente::Fat32 { cur: bmo_fat32::Cursor::vacio(), tam: 0 },
+            },
+        }
+    }
+
+    /// **UN RANGO DE LA IMAGEN, DONDE SE DIGA.** Devuelve cuantos bytes entraron.
+    ///
+    /// === Esta es la pieza B, y cabe en una firma ===
+    ///
+    /// El cargador ya no pide "el fichero". Pide **el trozo que le toca a esta
+    /// pagina**, y `dst` es la ventana del marco que acaba de reservar. Los
+    /// sectores enteros van del disco ahi **sin pasar por ningun sitio**: no hay
+    /// mesa, no hay copia, y no hay un bufer compartido donde una escritura
+    /// perdida pueda estropear la imagen de otro.
+    ///
+    /// [!] Solo avanza. El cargador aterriza las secciones en orden de offset de
+    /// fichero justo por esto -- ver la nota del orden en `task/proc.rs`.
+    pub fn rango(&mut self, offset: usize, dst: &mut [u8]) -> usize {
+        match self {
+            Fuente::Fat32 { cur, tam } => {
+                crate::ring0::fsys::fs::leer_rango(cur, offset, *tam, dst)
+            }
+            // ** ESTRATOS todavia lee desde cero, y por eso aqui no hay rango.
+            //
+            // No es que falte escribirlo: es que su gate (`:firma`) cubre el
+            // fichero ENTERO, asi que comprobarlo obliga a leerlo entero -- y eso
+            // es la bodega entrando por la puerta de la seguridad. La salida esta
+            // decidida y escrita (`docs/EL_CONTRATO_DE_CARGA.md`): que `:firma`
+            // pase a cubrir la seccion `Signature` del `.bex`, que es la que
+            // responde por todas las demas. Mientras tanto, ESTRATOS no entrega
+            // rangos y quien lo pida se entera aqui en vez de recibir ceros.
+            Fuente::Estratos(_) => 0,
+        }
+    }
+
+    /// Entrega rangos? Mientras ESTRATOS no lo haga, el cargador tiene que saber
+    /// por cual de los dos caminos va **antes** de reservar un solo marco.
+    pub fn por_rangos(&self) -> bool {
+        matches!(self, Fuente::Fat32 { .. })
+    }
+
+    /// Lo que mide el archivo. `0` si no se encontro.
+    pub fn tamano(&self) -> usize {
+        match self {
+            Fuente::Fat32 { tam, .. } => *tam as usize,
+            Fuente::Estratos(_) => 0,
         }
     }
 
@@ -290,7 +342,7 @@ impl Fuente {
     fn origen(&self) -> &'static str {
         match self {
             Fuente::Estratos(_) => "ESTRATOS",
-            Fuente::Fat32 => "FAT32",
+            Fuente::Fat32 { .. } => "FAT32",
         }
     }
 
@@ -299,7 +351,7 @@ impl Fuente {
     fn prologo(&self, path: &str, dst: &mut [u8]) -> Result<usize, Fallo> {
         match self {
             Fuente::Estratos(nd) => est::read(nd, dst).ok_or(Fallo::NoSePudoLeer),
-            Fuente::Fat32 => match crate::ring0::fsys::fs::load_prefijo(path, dst) {
+            Fuente::Fat32 { .. } => match crate::ring0::fsys::fs::load_prefijo(path, dst) {
                 Ok((leidos, _)) => Ok(leidos),
                 Err(e) => Err(Fallo::NoSeEncuentra(e.name())),
             },
@@ -324,7 +376,7 @@ impl Fuente {
                 Some((leidos, tam, v)) => Ok((leidos, tam, Some(v))),
                 None => Err(Fallo::NoSePudoLeer),
             },
-            Fuente::Fat32 => match crate::ring0::fsys::fs::load_prefijo(path, dst) {
+            Fuente::Fat32 { .. } => match crate::ring0::fsys::fs::load_prefijo(path, dst) {
                 Ok((leidos, tam)) => Ok((leidos, tam, None)),
                 Err(e) => Err(Fallo::NoSeEncuentra(e.name())),
             },
@@ -341,7 +393,7 @@ fn con_buffer(path: &str) -> Informe {
     // binario puede traer su firma pegada. Si no esta ahi, se cae a FAT32, que
     // sigue siendo de donde arranca la maquina. De aqui para abajo **no se
     // vuelve a preguntar cual de los dos es**: ver `Fuente`.
-    let fuente = Fuente::abrir(path);
+    let mut fuente = Fuente::abrir(path);
     let origen = fuente.origen();
     // Los contadores de DMA ANTES de leer nada: lo que interesa es el delta de
     // ESTA carga, no el total del arranque.
@@ -362,6 +414,49 @@ fn con_buffer(path: &str) -> Informe {
             return Informe { origen, bytes: 0, firma: None, pid: None, res: Err(f) };
         }
     };
+
+    // == ** EL CAMINO SIN MESA (pieza B) ==
+    //
+    // Si la fuente entrega rangos, aqui se acaba la lectura. No hay FASE 2 --no
+    // hace falta preguntar "cuanto traigo" si no se trae nada-- ni FASE 3. El
+    // plan sale del prologo, y cada seccion se le pide al disco cuando su marco
+    // ya existe, cayendo dentro sin pasar por ningun sitio.
+    //
+    // Lo que desaparece con este `if`:
+    //
+    // | | antes | ahora |
+    // |---|---|---|
+    // | bufer | 4 MiB de `.bss`, uno para toda la maquina | ninguno |
+    // | tope de programa | `MAX_BEX`, subido dos veces | la RAM que haya |
+    // | copias por byte | una | **cero** |
+    // | lanzamientos a la vez | uno (`EN_USO`) | los que quepan |
+    //
+    // ** El `EN_USO` sigue puesto porque el otro camino --ESTRATOS y las imagenes
+    // embebidas-- todavia usa el bufer. El dia que ESTRATOS entregue rangos, el
+    // candado se va con la mesa: sin recurso compartido no hay nada que
+    // serializar. Ver `Fuente::rango`.
+    if fuente.por_rangos() {
+        let tam = fuente.tamano();
+        let name = match path.as_bytes().iter().rposition(|&c| c == b'/' || c == b'\\') {
+            Some(i) => &path[i + 1..],
+            None => path,
+        };
+        let (res, pid) = match crate::ring0::task::proc::admitir_por_rangos(
+            name,
+            &buf[..prologo_n],
+            &mut fuente,
+            tam,
+        ) {
+            Some((tid, pid)) => (Ok(tid), Some(pid)),
+            None => (Err(Fallo::NoAdmitido), None),
+        };
+        let (d1, _) = crate::ring0::dev::disk::cuentas_dma();
+        crate::ring0::cabina::info("lanzar", "bytes DIRECTOS del disco al marco", d1 - d0);
+        if let Some(pid) = pid {
+            crate::ring0::task::paquete::recordar(pid, path);
+        }
+        return Informe { origen, bytes: tam, firma: None, pid, res };
+    }
 
     // == FASE 2: QUE NECESITA ==
     //

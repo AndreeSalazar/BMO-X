@@ -317,6 +317,44 @@ pub fn load(path: &str, dst: &mut [u8]) -> Result<usize, LoadError> {
     Ok(v.read_file(cluster, size, dst))
 }
 
+/// **Abre un archivo para leerlo por RANGOS.** Devuelve `(cursor, tamano)`.
+///
+/// Es lo que sostiene la pieza B: el cargador ya no trae el fichero a una mesa,
+/// pide **el rango de cada seccion** y lo deja caer en los marcos del proceso.
+/// Para eso hace falta un cursor que sobreviva entre peticiones -- ver
+/// `bmo_fat32::Cursor` para por que uno y no un offset suelto.
+pub fn abrir_rangos(path: &str) -> Result<(bmo_fat32::Cursor, u32), LoadError> {
+    let (cluster, size) = resolver(path)?;
+    let v = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v,
+            None => return Err(LoadError::NoVolume),
+        }
+    };
+    Ok((v.cursor(cluster), size))
+}
+
+/// **Trae el rango `[offset, offset + dst.len())` del archivo.** Devuelve
+/// cuantos bytes entraron.
+///
+/// Los sectores enteros van **del disco a `dst` sin pasar por ningun sitio**: si
+/// `dst` cae sobre un marco del proceso, ahi es donde escribe el HBA. Ver
+/// `bmo_fat32::leer_en`.
+pub fn leer_rango(
+    cur: &mut bmo_fat32::Cursor,
+    offset: usize,
+    size: u32,
+    dst: &mut [u8],
+) -> usize {
+    let v = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v,
+            None => return 0,
+        }
+    };
+    v.leer_en(cur, offset, size, dst)
+}
+
 /// **Prepara una lectura A TROZOS.** Devuelve `(primer cluster, tamano)`.
 ///
 /// Es `load` partido en dos momentos: aqui se resuelve la ruta --lo unico que
