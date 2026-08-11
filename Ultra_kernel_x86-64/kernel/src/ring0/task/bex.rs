@@ -5,60 +5,23 @@
 //! It deliberately does not execute code.  The process subsystem will later
 //! consume this plan to allocate user pages, copy sections and enter Ring 3.
 
-// Keep this parser `no_std` and allocation-free.  `bmo-abi` is the canonical
-// producer/validator, but its complete API intentionally uses `alloc`, which
-// is not available until the kernel has initialized a process allocator.
-// These offsets are the stable BEX v1 (= BEF1) wire contract.
-const BEX_MAGIC: u32 = u32::from_le_bytes(*b"BEF1");
-const BEX_HEADER_SIZE: usize = 48;
-const BEX_SECTION_SIZE: usize = 48;
-const BEX_VERSION_MAJOR: u16 = 1;
-const BEX_ARCH_X86_64: u8 = 0x01;
-const BEX_ENDIAN_LITTLE: u8 = 0x00;
-const BEX_FLAG_EXECUTABLE: u32 = 1 << 0;
-pub const SECTION_CODE: u8 = 0x01;
-pub const SECTION_RODATA: u8 = 0x02;
-pub const SECTION_DATA: u8 = 0x03;
-pub const SECTION_BSS: u8 = 0x04;
-/// Tabla de relocations. **NO se mapea** --no es memoria del programa-- pero si
-/// se LEE: dice que punteros de `.data` hay que rellenar con direcciones que
-/// solo se conocen aqui. Ver `BexLoadPlan::relocs_*`.
-pub const SECTION_RELOCS: u8 = 0x07;
-/// La seccion de HASHES: un BLAKE3 por cada una de las demas. **NO se mapea**
-/// --no es memoria del programa-- pero si se LEE: es con lo que se cierra cada
-/// seccion cuando termina de aterrizar. Ver `task/aterrizaje.rs` y
-/// `BexLoadPlan::firma_*`.
-pub const SECTION_SIGNATURE: u8 = 0x0F;
-/// **LO QUE EL PROGRAMA REQUIERE, Y EL PORQUE.** Tampoco se mapea, y tambien se
-/// LEE: es lo que sustituye a que el kernel deduzca. Ver
-/// `bmo_abi::bef::requisitos` y `docs/EL_CONTRATO_DE_CARGA.md`.
-///
-/// Se declara aqui --y no solo en `bmo-abi`-- por la misma regla que el resto de
-/// este fichero: `bmo-abi` es el CONTRATO y esto lo implementa contra el leyendo
-/// bytes, sin importar su API con `alloc`.
-pub const SECTION_REQUISITOS: u8 = 0x15;
+use bmo_bex_gate as gate;
 
-/// Esta seccion se MAPEA en el espacio del programa?
-///
-/// * LA REGLA: solo cuatro tipos son memoria del programa. Todo lo demas
-/// --imports, exports, manifiesto, firma, simbolos, depuracion, recursos, y
-/// **cualquier tipo que este kernel no conozca**-- es data para OTRO: para el
-/// enlazador, para el verificador, para el runtime de un lenguaje que Ring 0
-/// no tiene por que saber que existe.
-///
-/// Un tipo desconocido se SALTA, no se rechaza. Es lo que ha mantenido vivo a
-/// ELF treinta anos: la seccion que no te incumbe no es un error, es data que
-/// no vas a abrir. Asi un lenguaje nuevo puede meter sus metadatos en el
-/// contenedor sin pedirle permiso al kernel ni anadirle un campo que entender.
-///
-/// (Antes se mapeaban TODAS: un manifiesto o una tabla de depuracion acababan
-/// en el espacio de usuario como memoria escribible. Gasto y superficie de
-/// ataque a cambio de nada.)
-pub fn is_loadable(kind: u8) -> bool {
-    matches!(kind, SECTION_CODE | SECTION_RODATA | SECTION_DATA | SECTION_BSS)
-}
-pub const SECTION_FLAG_EXEC: u32 = 1 << 2;
-pub const SECTION_FLAG_WRITE: u32 = 1 << 1;
+// ** EL CONTRATO YA NO SE ESCRIBE AQUI. Se re-exporta de la puerta.
+//
+// Aqui vivian los mismos numeros que en `bmo-abi` y en `bmo-bex-gate`: magic,
+// tamano de cabecera, tipos de seccion, banderas. Tres copias del mismo contrato,
+// y la unica forma de que no se separaran era que nadie las tocara nunca.
+//
+// Se re-exportan en vez de borrarse porque medio kernel las nombra por su nombre
+// viejo (`bex::SECTION_CODE`), y renombrar cincuenta sitios para no ganar nada
+// seria ruido. Lo que importa es que **ya no hay tres definiciones, hay una**.
+pub use gate::{
+    CODE as SECTION_CODE, DATA as SECTION_DATA, RELOCS as SECTION_RELOCS,
+    REQUISITOS as SECTION_REQUISITOS, RODATA as SECTION_RODATA, BSS as SECTION_BSS,
+    SIGNATURE as SECTION_SIGNATURE, SECCION_FLAG_EXEC as SECTION_FLAG_EXEC,
+    se_carga as is_loadable,
+};
 
 /// The first BEX process supports a compact, auditable section table.
 pub const MAX_BEX_SECTIONS: usize = 16;
@@ -135,69 +98,24 @@ pub struct BexLoadPlan {
     pub firma_indice: usize,
 }
 
+/// **Por que no se admitio.**
+///
+/// == Dos clases de motivo, y por eso son dos variantes ==
+///
+/// - `Formato` es lo que dice **la puerta** (`bmo-bex-gate`): la imagen esta mal
+///   formada. Ese veredicto es el mismo que da el toolchain al compilar, porque
+///   es literalmente el mismo codigo.
+/// - Lo demas es lo que **solo el que carga puede saber**: que una seccion no
+///   cuadro con su hash al aterrizar. Eso no se puede saber mirando el fichero;
+///   se sabe habiendolo traido.
+///
+/// Antes esto tenia veinte variantes que repetian una a una las del validador de
+/// `bmo-abi`. Dos listas de motivos que **tienen** que decir lo mismo son dos
+/// listas que un dia dejan de decirlo.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BexError {
-    TooSmall,
-    InvalidHeader,
-    UnsupportedArchitecture,
-    /// La imagen viene en un orden de bytes que este kernel no lee.
-    UnsupportedEndianness,
-    /// La imagen declara usar una extension de CPU cuyo estado este kernel
-    /// todavia no sabe preservar en un cambio de contexto.
-    UnsupportedCpuFeature,
-    AbiMismatch,
-    NotExecutable,
-    TooManySections,
-    SectionTableOutOfBounds,
-    InvalidSection,
-    MissingCode,
-    EntryOutsideCode,
-    /// ** LLEGARON MENOS BYTES DE LOS QUE LA IMAGEN DICE MEDIR.
-    ///
-    /// La cabecera lleva `total_size`, asi que **el fichero declara su propio
-    /// tamano** y el cargador puede comprobarlo sin preguntarle al sistema de
-    /// ficheros. Sin esta comprobacion, una lectura corta se manifiesta como
-    /// `InvalidSection` --la tabla apunta mas alla de lo leido-- y eso manda a
-    /// buscar un fallo de FORMATO donde lo que hay es un fallo de TRANSPORTE.
-    ///
-    /// Son dos sitios distintos donde mirar, y confundirlos cuesta una tarde.
-    ImagenIncompleta,
-    /// ** DOS SECCIONES SE PELEAN POR LOS MISMOS BYTES DEL FICHERO.
-    ///
-    /// La tabla dice que `.code` vive en `[100, 200)` y que `.data` vive en
-    /// `[150, 250)`. Ninguna de las dos se sale del fichero --las dos pasan la
-    /// comprobacion de limites-- y sin embargo **es imposible que las dos digan
-    /// la verdad**.
-    ///
-    /// El cargador se lo cree y monta un proceso donde cincuenta bytes son a la
-    /// vez codigo ejecutable y datos escribibles. Eso no es un fichero raro: es
-    /// la forma clasica de colar codigo en una pagina que deberia ser de solo
-    /// lectura, y el sintoma --si es que lo hay-- aparece lejisimos de aqui.
-    ///
-    /// [!] Lo comprobaba `bmo-abi::validator` **al compilar**, o sea en la
-    /// maquina que fabrico el binario. Un `.bex` que llega de fuera no pasa por
-    /// ahi. Ver `docs/EL_CONTRATO_DE_CARGA.md`, el extranjero.
-    SeccionesSeSolapan,
-    /// ** LA CABECERA DECLARA ALGO QUE ESTE KERNEL NO SABE HACER.
-    ///
-    /// `COMPRESSED` y `HOT_RELOADABLE` estan en el formato y **no las implementa
-    /// nadie**. Un `.bex` que las trae puestas esta diciendo *"mis secciones no
-    /// son lo que parecen"*, y un cargador que las ignora **carga los bytes en
-    /// crudo y salta a ellos**: ejecutar un bloque comprimido como si fuera
-    /// codigo.
-    ///
-    /// Se rechaza en vez de ignorarse, y esa es la diferencia con una seccion de
-    /// tipo desconocido --que si se salta--. Una SECCION que no me incumbe es
-    /// data para otro; una BANDERA que no entiendo cambia lo que significan las
-    /// secciones que si me incumben.
-    PideAlgoQueNadieImplementa,
-    /// ** LA CABECERA MIENTE SOBRE SI MISMA.
-    ///
-    /// Dice `SIGNED` y no trae seccion de firma, o dice `HAS_TLS` y no trae
-    /// TLS. No es que falte un dato: es que **el fichero se describe a si mismo
-    /// de una forma que sus propias secciones desmienten**, y a partir de ahi
-    /// nada de lo que declare vale nada.
-    CabeceraQueSeDesmiente,
+    /// La imagen esta mal formada. Ver [`bmo_bex_gate::Falta`].
+    Formato(gate::Falta),
     /// ** UNA SECCION NO CUADRA CON SU HASH.
     ///
     /// La imagen llego ENTERA --el tamano cuadra-- y **por dentro no es la que
@@ -205,57 +123,33 @@ pub enum BexError {
     /// sector que se lee sin error y trae datos de otro sitio da un fichero del
     /// tamano correcto y corrupto.
     ///
-    /// Antes de existir esto, ese caso se manifestaba mucho mas tarde y en otro
-    /// sitio: un `.bex` con un agujero pasa la admision, arranca, y muere
-    /// doscientas instrucciones despues con un `#PF` que no se parece en nada a
-    /// su causa.
+    /// No lo puede decir la puerta, y por eso vive aqui: la puerta mira **el
+    /// fichero**, y esto solo se sabe mirando **lo que aterrizo**. Ver
+    /// `task/aterrizaje.rs`.
     HashNoCuadra,
     /// ** EL PROLOGO NO TRAJO LA TABLA DE SECCIONES ENTERA.
     ///
-    /// Distinto de `SectionTableOutOfBounds`, que dice "la tabla cae fuera del
-    /// FICHERO" -- eso es una imagen mal formada. Esto dice "la tabla cae fuera
-    /// de lo que se leyo por delante", que es un problema del cargador y se
-    /// arregla leyendo mas, no rechazando el programa.
+    /// Quien llama puede leer mas bytes y volver a preguntar, que es distinto de
+    /// rechazar la imagen. Es la traduccion de `Falta::TablaFueraDeLoLeido` a la
+    /// unica accion que tiene sentido para un cargador: **volver a intentarlo con
+    /// mas**.
     PrologoCorto,
-    /// ** UNA SECCION QUE HAY QUE CARGAR SE QUEDO SIN LEER.
-    ///
-    /// El cargador pregunta al formato cuanto necesita y lee eso. Si despues
-    /// resulta que algo cargable cae mas alla, la cuenta y la lectura no
-    /// cuadran: es un fallo del cargador, no del fichero, y se dice como tal en
-    /// vez de disfrazarse de `InvalidSection`.
-    SeccionNoLeida,
 }
 
 impl BexError {
-    /// El nombre del fallo, para que CABINA lo diga en vez de callarlo.
+    /// Una linea corta, en el idioma del sistema. La usan CABINA y el shell.
     ///
-    /// ** `admit_payload` hacia `Err(_) => log("payload failed BEX admission")`:
-    /// once motivos distintos entrando por la misma puerta y saliendo con la
-    /// misma frase. Un cargador que sabe POR QUE rechaza y no lo dice obliga a
-    /// adivinar entre "el fichero llego a medias", "la arquitectura no es esta"
-    /// y "el entry cae fuera del codigo" -- que se arreglan en tres sitios que
-    /// no se parecen en nada.
+    /// ** EL MOTIVO, CON SU NOMBRE. Aqui hubo un `Err(_)` durante meses: trece
+    /// motivos distintos entraban por la misma puerta y salian con la frase
+    /// *"payload failed BEX admission"*. Un cargador que sabe por que rechaza y
+    /// no lo dice obliga a adivinar entre "el fichero llego a medias", "otra
+    /// arquitectura" y "el entry cae fuera" -- tres cosas que se arreglan en tres
+    /// sitios que no se parecen en nada. Costo una tanda de fotos el 2026-08-09.
     pub fn name(&self) -> &'static str {
         match self {
-            BexError::TooSmall => "la imagen no llega ni a la cabecera",
-            BexError::InvalidHeader => "cabecera invalida (magic, version o 0 secciones)",
-            BexError::UnsupportedArchitecture => "otra arquitectura",
-            BexError::UnsupportedEndianness => "otro orden de bytes",
-            BexError::UnsupportedCpuFeature => "pide una extension de CPU que no se preserva",
-            BexError::AbiMismatch => "otra version del ABI",
-            BexError::NotExecutable => "la seccion de codigo no es ejecutable",
-            BexError::TooManySections => "demasiadas secciones",
-            BexError::SectionTableOutOfBounds => "la tabla de secciones cae fuera",
-            BexError::InvalidSection => "una seccion es invalida o cae fuera",
-            BexError::MissingCode => "no hay seccion de codigo",
-            BexError::EntryOutsideCode => "el entry cae fuera del codigo",
-            BexError::ImagenIncompleta => "LLEGARON MENOS BYTES DE LOS QUE LA IMAGEN DICE",
-            BexError::SeccionesSeSolapan => "dos secciones se pelean por los mismos bytes",
-            BexError::PideAlgoQueNadieImplementa => "la cabecera pide algo que este sistema no hace",
-            BexError::CabeceraQueSeDesmiente => "la cabecera declara secciones que no estan",
+            BexError::Formato(f) => f.nombre(),
             BexError::HashNoCuadra => "una seccion NO CUADRA con su hash: la imagen esta corrupta",
             BexError::PrologoCorto => "la tabla de secciones no cabe en el prologo leido",
-            BexError::SeccionNoLeida => "una seccion cargable se quedo sin leer",
         }
     }
 }
@@ -290,57 +184,19 @@ impl BexError {
 /// `Err(PrologoCorto)` si la tabla no cabe en lo que se le paso: quien llama
 /// puede leer mas y volver a preguntar, que es distinto de rechazar la imagen.
 pub fn necesita(prologo: &[u8]) -> Result<usize, BexError> {
-    if prologo.len() < BEX_HEADER_SIZE {
-        return Err(BexError::TooSmall);
+    // Se le pregunta a la puerta, no se recorre la tabla otra vez. `usize::MAX`
+    // como tamano de fichero porque aqui **no se esta validando la imagen**: se
+    // esta preguntando cuanto hay que traer, y los limites de verdad se
+    // comprueban en `inspect` con el tamano real. Meter aqui un tamano inventado
+    // rechazaria imagenes buenas por una cuenta que ni siquiera es esta.
+    match gate::revisar(prologo, usize::MAX) {
+        Ok(rev) => Ok(rev.hasta_donde_hace_falta() as usize),
+        // La tabla no cabio en lo leido: quien llama puede traer mas y volver a
+        // preguntar. Es la unica falta que se traduce a una ACCION en vez de a
+        // un rechazo, y por eso es la unica que se distingue aqui.
+        Err(gate::Falta::TablaFueraDeLoLeido) => Err(BexError::PrologoCorto),
+        Err(f) => Err(BexError::Formato(f)),
     }
-    let magic = read_u32(prologo, 0).ok_or(BexError::TooSmall)?;
-    let count = read_u32(prologo, 40).ok_or(BexError::TooSmall)? as usize;
-    if magic != BEX_MAGIC || count == 0 {
-        return Err(BexError::InvalidHeader);
-    }
-    if count > MAX_BEX_SECTIONS {
-        return Err(BexError::TooManySections);
-    }
-    let tabla = read_u64(prologo, 32).ok_or(BexError::TooSmall)? as usize;
-    let fin_tabla = tabla
-        .checked_add(count * BEX_SECTION_SIZE)
-        .ok_or(BexError::SectionTableOutOfBounds)?;
-    if fin_tabla > prologo.len() {
-        return Err(BexError::PrologoCorto);
-    }
-
-    // Empieza en el fin de la tabla: la cabecera y la tabla siempre hacen falta,
-    // aunque un fichero no tuviera ni una seccion que cargar.
-    let mut hasta = fin_tabla;
-    for i in 0..count {
-        let e = tabla + i * BEX_SECTION_SIZE;
-        let kind = *prologo.get(e).ok_or(BexError::InvalidSection)?;
-        // La `Bss` no ocupa fichero: es el escalon 0, los ceros se declaran y no
-        // viajan. Pedir sus bytes seria deshacerlo desde el otro lado.
-        if kind == SECTION_BSS {
-            continue;
-        }
-        // Los REQUISITOS entran en la cuenta aunque hoy nadie los lea todavia,
-        // y es a proposito: la seccion la coloca el escritor en el grupo de
-        // delante, asi que **hoy cae dentro de lo que se trae por casualidad**.
-        // Una correccion que depende de la disposicion es una correccion que se
-        // rompe el dia que alguien reordene el fichero, y el sintoma seria que
-        // el cargador no encuentra lo que un programa pide.
-        if !is_loadable(kind)
-            && kind != SECTION_RELOCS
-            && kind != SECTION_SIGNATURE
-            && kind != SECTION_REQUISITOS
-        {
-            continue;
-        }
-        let off = read_u64(prologo, e + 8).ok_or(BexError::InvalidSection)? as usize;
-        let len = read_u64(prologo, e + 16).ok_or(BexError::InvalidSection)? as usize;
-        let fin = off.checked_add(len).ok_or(BexError::InvalidSection)?;
-        if fin > hasta {
-            hasta = fin;
-        }
-    }
-    Ok(hasta)
 }
 
 
@@ -364,129 +220,26 @@ pub fn necesita(prologo: &[u8]) -> Result<usize, BexError> {
 /// no se deduce uno del otro: antes coincidian porque se leia el fichero entero,
 /// y una igualdad que se cumple por casualidad es una igualdad que un dia no.
 pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError> {
-    if bytes.len() < BEX_HEADER_SIZE {
-        return Err(BexError::TooSmall);
-    }
-    let magic = read_u32(bytes, 0).ok_or(BexError::TooSmall)?;
-    let version_major = read_u16(bytes, 4).ok_or(BexError::TooSmall)?;
-    let flags = read_u32(bytes, 8).ok_or(BexError::TooSmall)?;
-    let arch = *bytes.get(12).ok_or(BexError::TooSmall)?;
-    let endianness = *bytes.get(13).ok_or(BexError::TooSmall)?;
-    let cpu_features = read_u16(bytes, 14).ok_or(BexError::TooSmall)?;
-    let abi_major = *bytes.get(16).ok_or(BexError::TooSmall)?;
-    let abi_minor = *bytes.get(17).ok_or(BexError::TooSmall)?;
-    let entry_offset = read_u64(bytes, 24).ok_or(BexError::TooSmall)?;
-    let section_table_offset = read_u64(bytes, 32).ok_or(BexError::TooSmall)?;
-    let section_count = read_u32(bytes, 40).ok_or(BexError::TooSmall)? as usize;
-    if magic != BEX_MAGIC || version_major != BEX_VERSION_MAJOR || section_count == 0 {
-        return Err(BexError::InvalidHeader);
-    }
-    // ** LA IMAGEN DECLARA SU PROPIO TAMANO: se comprueba antes que nada mas.
+    // ** LA DECISION NO SE TOMA AQUI (2026-08-10).
     //
-    // `total_size` esta en la cabecera desde que existe el formato --lo pone
-    // `BefBuilder::build`-- y hasta hoy no lo miraba nadie. Con el, el cargador
-    // sabe si le llego el fichero ENTERO sin tener que preguntarle al sistema de
-    // ficheros cuanto media: el dato viaja dentro.
+    // Aqui vivian doscientas lineas de comprobaciones --magic, version, ABI,
+    // limites, solapamientos, banderas-- que eran **las mismas** que las de
+    // `bmo-abi::bef::validator`, escritas otra vez porque aquella usa `alloc` y
+    // en Ring 0 no hay a quien pedirle memoria.
     //
-    // Va delante de la tabla de secciones a proposito. Si faltan bytes, la tabla
-    // apunta mas alla de lo leido y la primera seccion que se salga contesta
-    // `InvalidSection` -- que es cierto y es la pista equivocada: manda a mirar
-    // el FORMATO cuando lo que fallo es el TRANSPORTE.
+    // Dos copias de una decision son dos decisiones esperando a separarse. Y no
+    // se podian compartir mientras la decision viviera **incrustada en dos
+    // trabajos distintos**: alli construyendo mensajes, aqui construyendo el
+    // plan de mapeo.
     //
-    // `0` se acepta porque las imagenes que el kernel EMBEBE no pasan por
-    // `BefBuilder::build` y lo dejan sin poner. Comprobar solo cuando el dato
-    // existe es mejor que rechazar a quien nunca prometio nada.
-    // Contra `tam_fichero` y NO contra `bytes.len()`: desde el escalon 2 lo
-    // segundo es "lo que hizo falta leer", que puede ser una fraccion. Ver la
-    // nota de los dos limites en la cabecera.
-    let total_size = read_u32(bytes, 44).ok_or(BexError::TooSmall)? as usize;
-    if total_size != 0 && tam_fichero < total_size {
-        return Err(BexError::ImagenIncompleta);
-    }
-    if arch != BEX_ARCH_X86_64 {
-        return Err(BexError::UnsupportedArchitecture);
-    }
-    // Orden de bytes: hoy este kernel solo lee little-endian. Comprobarlo
-    // cuesta una comparacion y evita que el dia del PowerPC una imagen se
-    // cargue del reves y falle de mil formas raras en vez de una clara.
-    if endianness != BEX_ENDIAN_LITTLE {
-        return Err(BexError::UnsupportedEndianness);
-    }
-    // * Extensiones de CPU DECLARADAS por la imagen.
-    //
-    // Un bit que no conozco = una parte del estado del procesador que no se
-    // que existe y que por tanto NO voy a preservar en el cambio de contexto.
-    // Y hoy `trap.rs` usa FXSAVE, que guarda x87 y SSE pero NO la mitad alta
-    // de los YMM: un programa con AVX se corromperia en silencio a la primera
-    // interrupcion del temporizador.
-    //
-    // Asi que se RECHAZA, y ese rechazo es la mejora de verdad: convierte una
-    // corrupcion silenciosa en un "no" con nombre, HOY, antes de que exista
-    // el XSAVE. Cuando el kernel sepa guardar el estado ancho, esta linea se
-    // relaja -- no antes.
-    if cpu_features != 0 {
-        return Err(BexError::UnsupportedCpuFeature);
-    }
-    let supported_abi = (abi_major == 1 && abi_minor == 0)
-        || (abi_major == 2 && abi_minor == 0);
-    if !supported_abi {
-        return Err(BexError::AbiMismatch);
-    }
-    if flags & BEX_FLAG_EXECUTABLE == 0 {
-        return Err(BexError::NotExecutable);
-    }
-    // ** LAS BANDERAS QUE CAMBIAN LO QUE SIGNIFICAN LAS SECCIONES (2026-08-10).
-    //
-    // `COMPRESSED` dice que los bytes de las secciones no son los bytes que van
-    // a memoria. `HOT_RELOADABLE` dice que el proceso admite que se le cambie el
-    // codigo debajo. **Ninguna de las dos la implementa nadie**, aqui ni en
-    // ningun sitio del sistema.
-    //
-    // Un cargador que las ignora hace lo peor posible: carga el bloque en crudo
-    // y salta a el. Ejecutar datos comprimidos como si fueran instrucciones.
-    //
-    // ** Y ESTO NO CONTRADICE la regla de "un tipo desconocido se salta". Una
-    // SECCION que no me incumbe es data para otro y no afecta a lo que yo hago.
-    // Una BANDERA que no entiendo **cambia el significado de las secciones que
-    // si me incumben**. Saltarla no es tolerancia, es leer mal a proposito.
-    //
-    // Lo comprobaba `bmo-abi::validator` al COMPILAR. Un `.bex` de fuera no pasa
-    // por ahi -- ver `docs/EL_CONTRATO_DE_CARGA.md`, el extranjero.
-    const FLAG_COMPRESSED: u32 = 1 << 4;
-    const FLAG_HOT_RELOADABLE: u32 = 1 << 7;
-    if flags & (FLAG_COMPRESSED | FLAG_HOT_RELOADABLE) != 0 {
-        return Err(BexError::PideAlgoQueNadieImplementa);
-    }
-
-    let count = section_count;
-    if count > MAX_BEX_SECTIONS {
-        return Err(BexError::TooManySections);
-    }
-    let table_size = count.checked_mul(BEX_SECTION_SIZE).ok_or(BexError::SectionTableOutOfBounds)?;
-    let table_start = section_table_offset as usize;
-    let table_end = table_start.checked_add(table_size).ok_or(BexError::SectionTableOutOfBounds)?;
-    if table_end > bytes.len() {
-        return Err(BexError::SectionTableOutOfBounds);
-    }
-
-    // ** LA INTEGRIDAD YA NO SE COMPRUEBA AQUI, Y ES A PROPOSITO (2026-08-10).
-    //
-    // Aqui vivia `verificar_hashes`: una pasada que comprobaba los BLAKE3 de
-    // todas las secciones sobre `bytes`. Funcionaba y estaba en el sitio
-    // equivocado, porque **entre `bytes` y la memoria del proceso hay una
-    // copia**. Lo que certificaba era el origen; lo que hace falta certificar es
-    // lo que el proceso va a EJECUTAR.
-    //
-    // Ahora `inspect` hace lo suyo --decir DONDE estan los digests, ver
-    // `firma_file_offset`-- y quien copia cierra cada seccion con el suyo en
-    // cuanto termina de aterrizar. El fallo pasa de `cabecera invalida` (que
-    // manda a mirar el formato) a `la seccion Code no cuadra con su hash` (que
-    // dice que el formato estaba bien y fallo el transporte).
-    //
-    // Ver `task/aterrizaje.rs` y `docs/EL_CONTRATO_DE_CARGA.md`, pieza A.
+    // Ahora la decision es una cosa por su cuenta (`bmo-bex-gate`: sin `alloc`,
+    // sin dependencias) y este modulo hace lo unico que solo el puede hacer:
+    // **el plan**. Ninguno de los dos consumidores es dueno del veredicto, asi
+    // que ninguno puede desviarse de el.
+    let rev = gate::revisar(bytes, tam_fichero).map_err(BexError::Formato)?;
 
     let mut plan = BexLoadPlan {
-        entry_offset,
+        entry_offset: rev.entry_offset(),
         sections: [EMPTY_MAPPING; MAX_BEX_SECTIONS],
         section_count: 0,
         skipped_sections: 0,
@@ -497,167 +250,50 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
         firma_file_size: 0,
         firma_indice: usize::MAX,
     };
-    let mut code_size = None;
     let mut loadable = 0usize;
     let mut skipped = 0usize;
 
-    for index in 0..count {
-        let offset = table_start + index * BEX_SECTION_SIZE;
-        let kind = *bytes.get(offset).ok_or(BexError::InvalidSection)?;
-        let section_flags = read_u32(bytes, offset + 4).ok_or(BexError::InvalidSection)?;
-        let file_offset = read_u64(bytes, offset + 8).ok_or(BexError::InvalidSection)?;
-        let file_size = read_u64(bytes, offset + 16).ok_or(BexError::InvalidSection)?;
-        let mem_size = read_u64(bytes, offset + 24).ok_or(BexError::InvalidSection)?;
-        let alignment_raw = read_u16(bytes, offset + 40).ok_or(BexError::InvalidSection)?;
-        if kind == 0 || file_size > mem_size || (kind != SECTION_BSS && file_size == 0) {
-            return Err(BexError::InvalidSection);
-        }
-        if kind != SECTION_BSS {
-            let end = file_offset.checked_add(file_size).ok_or(BexError::InvalidSection)?;
-            // Contra el FICHERO: una seccion que se sale del archivo es una
-            // imagen mal formada, se vaya a leer o no.
-            if end as usize > tam_fichero {
-                return Err(BexError::InvalidSection);
-            }
-            // ** Y NADA CONTRA `bytes.len()`, DESDE LA PIEZA B (2026-08-10).
-            //
-            // Aqui habia una segunda comprobacion: que una seccion que el
-            // cargador va a tocar cupiera en lo LEIDO. Tenia sentido mientras el
-            // cargador se traia la imagen a una mesa antes de mirarla -- si el
-            // codigo caia fuera de lo traido, la cuenta y la lectura no cuadraban.
-            //
-            // Ya no hay mesa. `inspect` recibe **solo el prologo** y las secciones
-            // se piden al disco una a una, asi que "no esta en `bytes`" es la
-            // situacion NORMAL de todas ellas. La pregunta que esa comprobacion
-            // hacia se sigue haciendo, en el sitio donde ahora se puede contestar
-            // de verdad: si una seccion llega a medias, lo dice el aterrizaje --
-            // con su nombre y con cuantos bytes faltaron-- en vez de un limite
-            // calculado de antemano. Ver `Origen::traer` en `task/proc.rs`.
-            //
-            // Lo que SI se sigue comprobando es lo de arriba: que ninguna seccion
-            // se salga del FICHERO. Eso es formato, y no depende de quien lea.
-        }
-        let alignment = if alignment_raw == 0 { 8 } else { alignment_raw };
-        if !alignment.is_power_of_two() {
-            return Err(BexError::InvalidSection);
-        }
-        if kind == SECTION_CODE {
-            if section_flags & SECTION_FLAG_EXEC == 0 {
-                return Err(BexError::InvalidSection);
-            }
-            code_size = Some(mem_size);
-        }
-        // * LAS RELOCATIONS se apuntan pero NO se mapean.
-        //
-        // No son memoria del programa --el proceso nunca las ve-- pero el
-        // cargador las necesita para rellenar los punteros de `.data` con
-        // direcciones que solo se conocen al colocar las secciones. Sus limites
-        // ya se validaron arriba contra el tamano del archivo, igual que las
-        // demas.
-        //
-        // Va antes del filtro de `is_loadable` para que NO cuente como
-        // "saltada": saltada significa "no la usa nadie", y esta si.
-        if kind == SECTION_RELOCS {
-            plan.relocs_file_offset = file_offset;
-            plan.relocs_file_size = file_size;
-            plan.relocs_indice = index;
+    for s in rev.secciones() {
+        // * LAS RELOCATIONS se apuntan y NO se mapean: no son memoria del
+        // programa --el proceso nunca las ve-- pero el cargador las necesita
+        // para rellenar punteros con direcciones que solo se conocen al colocar
+        // las secciones.
+        if s.kind == gate::RELOCS {
+            plan.relocs_file_offset = s.file_offset;
+            plan.relocs_file_size = s.file_size;
+            plan.relocs_indice = s.indice;
             continue;
         }
-        // * LA FIRMA se apunta y tampoco se mapea: no es memoria del programa,
-        // es la prueba de que lo demas llego entero. Quien la usa es el bucle
-        // que copia, seccion por seccion. Ver `task/aterrizaje.rs`.
-        if kind == SECTION_SIGNATURE {
-            plan.firma_file_offset = file_offset;
-            plan.firma_file_size = file_size;
-            plan.firma_indice = index;
+        // * LA FIRMA tampoco se mapea, y tambien se lee: es con lo que se cierra
+        // cada seccion al aterrizar. Ver `task/aterrizaje.rs`.
+        if s.kind == gate::SIGNATURE {
+            plan.firma_file_offset = s.file_offset;
+            plan.firma_file_size = s.file_size;
+            plan.firma_indice = s.indice;
             continue;
         }
-        // * Solo lo CARGABLE entra al plan. Lo demas se valido (sus limites
-        // tienen que caber en el archivo: una seccion mal formada sigue siendo
-        // un rechazo) pero no se mapea. Ver `is_loadable`.
-        if !is_loadable(kind) {
+        // * Y lo demas --manifiesto, requisitos, recursos, simbolos, o un tipo
+        // que este kernel no conoce-- se valido y no se mapea. Ver
+        // `gate::se_carga`: un tipo desconocido se SALTA, no se rechaza.
+        if !gate::se_carga(s.kind) {
             skipped += 1;
             continue;
         }
         plan.sections[loadable] = BexMapping {
-            kind,
-            flags: section_flags,
-            file_offset,
-            file_size,
-            mem_size,
-            alignment,
-            indice: index,
+            kind: s.kind,
+            flags: s.flags,
+            file_offset: s.file_offset,
+            file_size: s.file_size,
+            mem_size: s.mem_size,
+            alignment: s.alignment,
+            indice: s.indice,
         };
         loadable += 1;
     }
+
     // El plan solo describe lo que se mapea.
     plan.section_count = loadable;
     plan.skipped_sections = skipped;
-
-    // ** QUE NO HAYA DOS SECCIONES PELEANDOSE POR LOS MISMOS BYTES.
-    //
-    // Cada una ya se comprobo por separado: ninguna se sale del fichero. Y aun
-    // asi la tabla puede decir que `.code` vive en `[100, 200)` y `.data` en
-    // `[150, 250)`, que son dos afirmaciones que **no pueden ser ciertas a la
-    // vez**. El cargador se lo creeria y montaria un proceso donde cincuenta
-    // bytes son a la vez codigo ejecutable y datos escribibles -- la forma
-    // clasica de meter codigo en una pagina que deberia ser de solo lectura.
-    //
-    // Se compara TODAS contra TODAS y no solo las contiguas: la tabla no tiene
-    // por que venir ordenada por offset, y ordenarla aqui para ahorrar
-    // comparaciones seria mover una tabla que viene del disco. Con dieciseis
-    // secciones como tope son 120 comparaciones de dos enteros: nada.
-    //
-    // La `Bss` queda fuera porque **no ocupa fichero**: su `file_offset` no
-    // apunta a ningun byte, asi que no puede solaparse con nadie.
-    for a in 0..count {
-        let ea = table_start + a * BEX_SECTION_SIZE;
-        let ka = *bytes.get(ea).ok_or(BexError::InvalidSection)?;
-        let oa = read_u64(bytes, ea + 8).ok_or(BexError::InvalidSection)?;
-        let la = read_u64(bytes, ea + 16).ok_or(BexError::InvalidSection)?;
-        if ka == SECTION_BSS || la == 0 {
-            continue;
-        }
-        for b in (a + 1)..count {
-            let eb = table_start + b * BEX_SECTION_SIZE;
-            let kb = *bytes.get(eb).ok_or(BexError::InvalidSection)?;
-            let ob = read_u64(bytes, eb + 8).ok_or(BexError::InvalidSection)?;
-            let lb = read_u64(bytes, eb + 16).ok_or(BexError::InvalidSection)?;
-            if kb == SECTION_BSS || lb == 0 {
-                continue;
-            }
-            // Dos rangos se solapan si cada uno empieza antes de que acabe el
-            // otro. Con `checked_add` porque los dos numeros vienen del disco.
-            let fa = oa.checked_add(la).ok_or(BexError::InvalidSection)?;
-            let fb = ob.checked_add(lb).ok_or(BexError::InvalidSection)?;
-            if oa < fb && ob < fa {
-                crate::ring0::cabina::fault("bex", "seccion que pisa a otra", a as u64);
-                return Err(BexError::SeccionesSeSolapan);
-            }
-        }
-    }
-
-    // ** Y QUE LA CABECERA NO SE DESMIENTA A SI MISMA.
-    //
-    // `SIGNED` dice *"vengo firmado"*. Si no hay seccion de firma, ese bit es una
-    // afirmacion que el propio fichero desmiente -- y **es la mentira que mas
-    // barato sale contar**: un bit puesto a mano en un binario cualquiera lo
-    // hace parecer avalado por alguien.
-    //
-    // Va aqui, con la tabla ya recorrida, porque hasta este punto no se sabe si
-    // la seccion existe. Y se rechaza el fichero entero en vez de bajarle el
-    // nivel: un binario que miente sobre su propia identidad no es un extranjero,
-    // es uno que se hace pasar por otra cosa. Ver
-    // `docs/EL_CONTRATO_DE_CARGA.md`, los niveles de firma.
-    const FLAG_SIGNED: u32 = 1 << 5;
-    if flags & FLAG_SIGNED != 0 && plan.firma_file_size == 0 {
-        return Err(BexError::CabeceraQueSeDesmiente);
-    }
-
-    let code_size = code_size.ok_or(BexError::MissingCode)?;
-    if entry_offset >= code_size {
-        return Err(BexError::EntryOutsideCode);
-    }
     Ok(plan)
 }
 

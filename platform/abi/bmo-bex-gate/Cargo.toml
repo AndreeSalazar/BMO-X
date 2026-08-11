@@ -1,0 +1,14 @@
+[package]
+name = "bmo-bex-gate"
+version = "1.0.0"
+edition = "2021"
+description = "La DECISION de si un BEX es admisible. Sin alloc, sin dependencias, sin opinion."
+license = "Techne"
+
+# ** CERO DEPENDENCIAS, Y ES EL PUNTO ENTERO.
+#
+# Este crate lo consumen dos mundos que no se pueden ver entre ellos: el
+# toolchain (con `alloc`, en Windows) y Ring 0 (sin asignador, en el metal). Una
+# sola dependencia que arrastrara `alloc` lo dejaria fuera del kernel, que es
+# justo el consumidor por el que existe.
+[dependencies]

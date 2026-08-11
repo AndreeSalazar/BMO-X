@@ -9,4 +9,7 @@ license = "MIT"
 path = "src/lib.rs"
 
 [dependencies]
+# La PUERTA: la misma decision que corre en Ring 0 al cargar. Ver el comentario
+# de verify(): nada que el kernel vaya a rechazar puede salir de este toolchain.
+bmo-bex-gate = { path = "../../../platform/abi/bmo-bex-gate" }
 bmo-abi = { path = "../../../platform/abi/bmo-abi" }

@@ -47,6 +47,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-bex-gate"
+version = "1.0.0"
+
+[[package]]
 name = "bmo-bex-link"
 version = "0.1.0"
 dependencies = [
@@ -141,6 +145,7 @@ version = "2.0.0"
 dependencies = [
  "bmo-ahci",
  "bmo-audio",
+ "bmo-bex-gate",
  "bmo-block",
  "bmo-channel",
  "bmo-estratos",
@@ -228,6 +233,7 @@ name = "bmo-verify"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-bex-gate",
 ]
 
 [[package]]

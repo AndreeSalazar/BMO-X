@@ -14,6 +14,9 @@ members = [
 
     # -- ABI (Foundation) --------------------------------------------
     "platform/abi/bmo-abi",
+    # La DECISION de si un BEX es admisible: sin alloc y sin dependencias, para
+    # que la compartan el toolchain y Ring 0 en vez de escribirla dos veces.
+    "platform/abi/bmo-bex-gate",
 
     # -- USERSPACE (Ring 3, x86-64) ---------------------------------
     # NO va aqui, y es a proposito. `Ultra_userspace/` es su propio

@@ -27,6 +27,10 @@ bmo-estratos = { path = "../../platform/drivers/storage/estratos" }
 # de ficheros: es del que carga. Sigue siendo UNA sola implementacion del hash,
 # la misma que usa `bmo-abi`; lo que cambia es que quien la necesita la pide.
 bmo-hash = { path = "../../platform/shared/bmo-hash" }
+# La PUERTA: la decision de si un BEX es admisible. Sin alloc y sin
+# dependencias, para que sea la MISMA que corre en el toolchain al compilar.
+# Ver docs/EL_CONTRATO_DE_CARGA.md.
+bmo-bex-gate = { path = "../../platform/abi/bmo-bex-gate" }
 # CABINA: telemetria omnisciente entre Ring 0 y Ring 3 (el cockpit del sistema).
 cabina-core = { path = "../../platform/services/cabina-core" }
 # Sonido. Hoy son 109 lineas de altavoz de PC --puerto 0x61 y un retardo por

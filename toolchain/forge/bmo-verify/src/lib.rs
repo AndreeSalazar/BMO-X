@@ -43,6 +43,25 @@ impl Verdict {
 /// Las advertencias (secciones inusuales, etc.) no rechazan -- solo los
 /// errores (magic malo, secciones fuera de rango, ABI incompatible...).
 pub fn verify(bef: &[u8]) -> Verdict {
+    // ** LA PUERTA PRIMERO, Y ES LA MISMA QUE CORRE EN RING 0 (2026-08-10).
+    //
+    // `bmo-bex-gate` es la decision, sin `alloc` y sin dependencias, y la comparte
+    // este verificador con el cargador del kernel. Preguntarle aqui **antes** que
+    // al validador convierte una promesa en una garantia:
+    //
+    // > Nada que el kernel vaya a rechazar puede salir de este toolchain.
+    //
+    // Sin esto, las dos listas de comprobaciones podian separarse y el sintoma
+    // seria el peor de todos: un binario que **compila limpio y no carga**, con
+    // el compilador diciendo que todo esta bien.
+    //
+    // El validador se sigue ejecutando detras porque hace mas: avisos que no
+    // rechazan, y mensajes con numeros dentro que en Ring 0 no se pueden
+    // construir. La puerta decide; el validador explica.
+    if let Err(falta) = bmo_bex_gate::revisar(bef, bef.len()) {
+        return Verdict::Rejected(vec![String::from(falta.nombre())]);
+    }
+
     let result = validator::validate(bef);
     if result.is_valid {
         Verdict::Ok
