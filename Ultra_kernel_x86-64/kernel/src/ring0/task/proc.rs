@@ -497,7 +497,16 @@ fn admit_payload_desde(
             return None;
         }
     };
-    let aspace = vmm::new_address_space()?;
+    // ** LOS `?` DE AQUI ABAJO ERAN MUDOS, y ese era el ultimo hueco.
+    //
+    // El 2026-08-11 se le dio nombre a diez caminos de fallo que hablaban por el
+    // klog. Quedaban estos seis, que no hablaban **en absoluto**: un `?` sobre
+    // un `Option` devuelve `None` y se acabo. Desde fuera, un `.bex` rechazado
+    // por falta de memoria y uno rechazado por un hash malo se ven igual.
+    let Some(aspace) = vmm::new_address_space() else {
+        crate::ring0::cabina::fault("proc", "sin memoria para el espacio de direcciones", 0);
+        return None;
+    };
 
     // Sections: assigned sequentially from USER_IMAGE_BASE, honoring each
     // section's alignment. entry_offset is relative to the Code section.
@@ -608,7 +617,20 @@ fn admit_payload_desde(
     let relocs: &[u8] = if total_relocs > 0 {
         let n = plan.relocs_file_size as usize;
         let paginas = ((n as u64) + mm::PAGE - 1) / mm::PAGE;
-        let base = phys::alloc_frames_contig(paginas)?;
+        // ** EL SOSPECHOSO DE DOOM, y por eso lleva el numero puesto.
+        //
+        // Son marcos **CONTIGUOS**, y eso puede fallar con RAM de sobra si el
+        // asignador esta fragmentado. `ray.bex` pide UNO --sus relocs son 24
+        // bytes-- y DOOM pide OCHO: 30.840 bytes de tabla. Es la diferencia mas
+        // grande entre el que arranca y el que no.
+        let Some(base) = phys::alloc_frames_contig(paginas) else {
+            crate::ring0::cabina::fault(
+                "proc",
+                "no hay marcos CONTIGUOS para la tabla de relocs (paginas pedidas)",
+                paginas,
+            );
+            return None;
+        };
         relocs_marcos = Some((base, paginas));
         let dst = unsafe {
             core::slice::from_raw_parts_mut(mm::phys_to_virt(base) as *mut u8, n)
@@ -688,7 +710,14 @@ fn admit_payload_desde(
         let mut cierre =
             aterrizaje::Aterrizaje::abrir(s.kind, firmas.as_ref().and_then(|f| f.digest_de(s.indice)));
         for p in 0..pages {
-            let frame = phys::alloc_frame()?;
+            let Some(frame) = phys::alloc_frame() else {
+                crate::ring0::cabina::fault(
+                    "proc",
+                    "sin marcos libres para una pagina de seccion",
+                    va_start + p * mm::PAGE,
+                );
+                return None;
+            };
             phys::zero_frame(frame);
             let chunk = p * mm::PAGE;
             if chunk < s.file_size {
@@ -871,7 +900,10 @@ fn admit_payload_desde(
 
     // User stack (64 KiB) just below USER_STACK_TOP.
     for p in 0..USER_STACK_PAGES {
-        let frame = phys::alloc_frame()?;
+        let Some(frame) = phys::alloc_frame() else {
+            crate::ring0::cabina::fault("proc", "sin marcos libres para la pila de usuario", p);
+            return None;
+        };
         phys::zero_frame(frame);
         let va = vmm::USER_STACK_TOP - (p + 1) * mm::PAGE;
         if vmm::map_page(aspace, va, frame, true, true).is_err() {
@@ -900,7 +932,14 @@ fn admit_payload_desde(
     // context then lives in a foreign/free frame and dies with the next
     // zero_frame -- restored as zeros: backptr=0, pops to rsp=0x78, iretq
     // with cs=0 => the observed #GP(0)).
-    let kstack_base = phys::alloc_frames_contig(KERNEL_STACK_PAGES)?;
+    let Some(kstack_base) = phys::alloc_frames_contig(KERNEL_STACK_PAGES) else {
+        crate::ring0::cabina::fault(
+            "proc",
+            "no hay marcos CONTIGUOS para la pila de kernel de la tarea",
+            KERNEL_STACK_PAGES,
+        );
+        return None;
+    };
     let kstack_top = mm::phys_to_virt(kstack_base) + KERNEL_STACK_PAGES * mm::PAGE;
     let context = unsafe { trap::fabricate(kstack_top, entry_va, 0, true, vmm::USER_STACK_TOP) };
 
