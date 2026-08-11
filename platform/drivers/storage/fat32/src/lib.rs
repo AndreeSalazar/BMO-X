@@ -306,6 +306,35 @@ fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf
         num_fats, fat_start, fat_size_sectors, data_start, root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512] })
 }
 
+/// **UN CURSOR DENTRO DE UN ARCHIVO.** Sabe por que cluster va y en que byte del
+/// archivo empieza ese cluster.
+///
+/// === Por que hace falta uno, y por que solo va hacia adelante ===
+///
+/// `read_file` y `leer_tramo` leen desde el principio o desde una frontera de
+/// cluster. Para que el disco escriba **cada seccion de un `.bex` directamente en
+/// los marcos del proceso** hace falta empezar en un byte cualquiera: la seccion
+/// `Data` empieza donde el fichero diga, no donde caiga un cluster.
+///
+/// Y hace falta que sea un CURSOR y no un parametro, porque en FAT32 llegar al
+/// byte `N` es **seguir la cadena** desde el principio. Con cursor, leer un
+/// fichero por trozos cuesta UN recorrido; sin el, uno por trozo -- cuadratico, y
+/// justo en el fichero mas grande.
+///
+/// ** Solo avanza, y eso no es una limitacion que haya que recordar: el cargador
+/// aterriza las secciones **en orden de offset de fichero**, decidido el
+/// 2026-08-10 exactamente para esto (ver la nota del orden de aterrizaje en
+/// `ring0/task/proc.rs`). Pedir hacia atras devuelve `false` en vez de recorrer la
+/// cadena en silencio -- un cursor que retrocede sin decirlo convierte un bucle
+/// barato en uno cuadratico sin que nada avise.
+#[derive(Clone, Copy)]
+pub struct Cursor {
+    /// El cluster por el que va.
+    cluster: u32,
+    /// En que byte del ARCHIVO empieza ese cluster.
+    base: usize,
+}
+
 impl FatVolume {
     /// Fallos del dispositivo que no cambiaron ningun codigo de retorno.
     ///
@@ -629,6 +658,144 @@ impl FatVolume {
             };
         }
         (offset - ya, 0)
+    }
+
+    /// Abre un cursor al principio de un archivo.
+    pub fn cursor(&self, primer_cluster: u32) -> Cursor {
+        Cursor { cluster: primer_cluster, base: 0 }
+    }
+
+    /// **Coloca el cursor en el cluster que contiene `offset`.**
+    ///
+    /// `false` si se pide hacia atras o si la cadena se acaba antes. Lo segundo
+    /// es un fichero mas corto de lo que su entrada de directorio dice, que es
+    /// una FAT rota -- y se contesta que no en vez de leer un cluster ajeno.
+    pub fn situar(&mut self, cur: &mut Cursor, offset: usize) -> bool {
+        let del_cluster = self.sectors_per_cluster as usize * 512;
+        if del_cluster == 0 || offset < cur.base {
+            return false;
+        }
+        while offset >= cur.base + del_cluster {
+            match self.read_fat_entry(cur.cluster) {
+                Some(c) if c >= 2 => {
+                    cur.cluster = c;
+                    cur.base += del_cluster;
+                }
+                _ => return false,
+            }
+        }
+        true
+    }
+
+    /// **Lee `dst.len()` bytes del archivo empezando en `offset`.** Devuelve
+    /// cuantos entraron.
+    ///
+    /// `size` es lo que mide el archivo: se para ahi aunque `dst` sea mas grande.
+    ///
+    /// == Los tres trozos, y por que se cuentan ==
+    ///
+    /// Un rango cualquiera dentro de un cluster tiene hasta tres partes:
+    ///
+    /// ```text
+    ///    |<-- cabeza -->|<---- sectores enteros ---->|<-- cola -->|
+    ///    ^ empieza a mitad de sector      acaba a mitad de sector ^
+    /// ```
+    ///
+    /// La cabeza y la cola pasan por el sector de rebote y se copian; **los
+    /// enteros van directos a `dst`**, que es el camino que la pieza B usa para
+    /// que el disco escriba en el marco sin intermediario.
+    ///
+    /// ** Y por eso las secciones cargables se alinean a 512 en el fichero desde
+    /// el 2026-08-10: con esa alineacion, una seccion **no tiene cabeza**, y sus
+    /// marcos son todos sectores enteros. Sin ella este camino funciona igual,
+    /// solo que rebotando -- que es el mismo trato de siempre: correcto siempre,
+    /// rapido cuando el formato ayuda.
+    pub fn leer_en(
+        &mut self,
+        cur: &mut Cursor,
+        offset: usize,
+        size: u32,
+        dst: &mut [u8],
+    ) -> usize {
+        let del_cluster = self.sectors_per_cluster as usize * 512;
+        if del_cluster == 0 {
+            return 0;
+        }
+        let fin = (size as usize).min(offset.saturating_add(dst.len()));
+        if offset >= fin || !self.situar(cur, offset) {
+            return 0;
+        }
+
+        let mut pos = offset;
+        while pos < fin {
+            if !self.situar(cur, pos) {
+                return pos - offset;
+            }
+            let dentro = pos - cur.base; // donde caemos DENTRO del cluster
+            let de_este = (fin - pos).min(del_cluster - dentro);
+            let lba = self.cluster_to_lba(cur.cluster);
+
+            // -- La cabeza: lo que va desde mitad de sector hasta su final --
+            let sector = dentro / 512;
+            let en_sector = dentro % 512;
+            let mut hecho = 0usize;
+            if en_sector != 0 {
+                let n = (512 - en_sector).min(de_este);
+                let ok = unsafe {
+                    if self.read_sector(lba + sector as u64, Buf::buf) {
+                        let d = pos - offset;
+                        dst[d..d + n].copy_from_slice(&self.buf[en_sector..en_sector + n]);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if !ok {
+                    return pos - offset;
+                }
+                hecho += n;
+            }
+
+            // -- Los sectores ENTEROS, directos a `dst` --
+            let enteros = (de_este - hecho) / 512;
+            if enteros > 0 {
+                let d = pos - offset + hecho;
+                let n = enteros * 512;
+                let sec = (dentro + hecho) / 512;
+                if !(self.read)(lba + sec as u64, enteros as u16, &mut dst[d..d + n]) {
+                    return pos - offset + hecho;
+                }
+                hecho += n;
+            }
+
+            // -- La cola: lo que sobra sin llegar a un sector --
+            let cola = de_este - hecho;
+            if cola > 0 {
+                let sec = (dentro + hecho) / 512;
+                let ok = unsafe {
+                    if self.read_sector(lba + sec as u64, Buf::buf) {
+                        let d = pos - offset + hecho;
+                        dst[d..d + cola].copy_from_slice(&self.buf[..cola]);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if !ok {
+                    return pos - offset + hecho;
+                }
+                hecho += cola;
+            }
+
+            pos += hecho;
+            if hecho == 0 {
+                // Ni un byte en una vuelta entera es un bucle infinito esperando.
+                // No deberia poder pasar --`de_este` es siempre > 0 aqui-- y por
+                // eso se corta en vez de confiarlo.
+                return pos - offset;
+            }
+        }
+        pos - offset
     }
 
     pub fn read_file(&mut self, first_cluster: u32, file_size: u32, dst: &mut [u8]) -> usize {
@@ -1608,6 +1775,86 @@ mod tests {
         assert_eq!(&a_trozos[..ya], &de_una[..n1], "a trozos salieron OTROS bytes");
         assert_eq!(&a_trozos[..ya], &datos[..], "y ni siquiera son los del archivo");
         assert!(vueltas > 1, "la prueba no llego a partir nada");
+    }
+
+    /// ** LEER DESDE UN BYTE CUALQUIERA TIENE QUE DAR LO MISMO QUE LEER DE UNA.
+    ///
+    /// Es la propiedad entera de `leer_en`, y la que hace posible que el disco
+    /// escriba cada seccion de un `.bex` en los marcos del proceso: si un rango
+    /// leido por su cuenta no coincide byte a byte con el mismo rango del fichero
+    /// entero, el cargador montaria un programa cosido de trozos que no encajan
+    /// -- y eso no falla, **corrompe**.
+    ///
+    /// Se prueban offsets DELIBERADAMENTE feos: mitad de sector, mitad de
+    /// cluster, y cruzando las dos fronteras. Con offsets redondos la prueba
+    /// pasaria sin ejercitar ni la cabeza ni la cola.
+    #[test]
+    fn leer_desde_cualquier_byte_da_lo_mismo() {
+        let (_turno, mut v) = volumen();
+        let datos: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("TROZOS2 BIN"), &datos).expect("debe crear");
+        let (primero, tam) = v.find_file(&name("TROZOS2 BIN")).expect("debe estar");
+
+        // 1 y 511 son mitad de sector; 513 cruza la frontera; 2047 y 2049 andan
+        // por la del cluster; 4999 es el ultimo byte.
+        for (off, len) in [
+            (0usize, 5000usize), (1, 10), (1, 600), (511, 2), (512, 512),
+            (513, 1000), (2047, 3), (2048, 1), (2049, 2000), (4999, 1), (4990, 50),
+        ] {
+            let mut cur = v.cursor(primero);
+            let mut dst = vec![0u8; len];
+            let n = v.leer_en(&mut cur, off, tam, &mut dst);
+            let esperado = &datos[off..(off + len).min(datos.len())];
+            assert_eq!(n, esperado.len(), "off={off} len={len}: cantidad distinta");
+            assert_eq!(&dst[..n], esperado, "off={off} len={len}: OTROS bytes");
+        }
+    }
+
+    /// ** Y UN CURSOR REUSADO TIENE QUE DAR LO MISMO QUE UNO NUEVO.
+    ///
+    /// Es lo que se va a hacer de verdad: un solo cursor recorriendo el fichero
+    /// hacia adelante, seccion tras seccion. Si el estado que arrastra cambiara
+    /// el resultado, el segundo programa que se cargue saldria distinto del
+    /// primero -- y eso no se reproduce nunca.
+    #[test]
+    fn el_cursor_reusado_no_cambia_lo_que_lee() {
+        let (_turno, mut v) = volumen();
+        let datos: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("CURSOR  BIN"), &datos).expect("debe crear");
+        let (primero, tam) = v.find_file(&name("CURSOR  BIN")).expect("debe estar");
+
+        let mut cur = v.cursor(primero);
+        for (off, len) in [(17usize, 100usize), (1000, 1200), (2500, 700), (4000, 999)] {
+            let mut a = vec![0u8; len];
+            let na = v.leer_en(&mut cur, off, tam, &mut a);
+
+            let mut limpio = v.cursor(primero);
+            let mut b = vec![0u8; len];
+            let nb = v.leer_en(&mut limpio, off, tam, &mut b);
+
+            assert_eq!(na, nb, "off={off}: el cursor reusado leyo otra cantidad");
+            assert_eq!(a, b, "off={off}: el cursor reusado leyo OTROS bytes");
+            assert_eq!(&a[..na], &datos[off..off + na], "off={off}: y no son los del archivo");
+        }
+    }
+
+    /// Pedir hacia atras dice que NO. Ver la cabecera de `Cursor`: retroceder en
+    /// silencio convertiria el bucle del cargador en cuadratico sin avisar.
+    #[test]
+    fn el_cursor_no_retrocede_en_silencio() {
+        let (_turno, mut v) = volumen();
+        let datos: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("ATRAS   BIN"), &datos).expect("debe crear");
+        let (primero, tam) = v.find_file(&name("ATRAS   BIN")).expect("debe estar");
+
+        let mut cur = v.cursor(primero);
+        let mut dst = vec![0u8; 100];
+        assert!(v.leer_en(&mut cur, 4000, tam, &mut dst) > 0, "primero se avanza");
+        assert_eq!(
+            v.leer_en(&mut cur, 10, tam, &mut dst),
+            0,
+            "pedir hacia atras tiene que contestar cero, no leer de cualquier sitio"
+        );
     }
 
     #[test]
