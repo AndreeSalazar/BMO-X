@@ -18,15 +18,21 @@
  *
  * == La superficie ==
  *
- * Tres llamadas, y no va a haber una cuarta:
+ * DOS llamadas (2026-08-10; eran tres):
  *
- *     INVOKE(cap, operacion, a0, a1, a2)   la puerta sincrona
- *     CHANNEL_KICK(cap, secuencia)         avisar al consumidor
- *     WAIT(esperable, visto, timeout_ns)   bloquearse
+ *     INVOKE(cap, operacion, a0, a1, a2)   haz esto AHORA
+ *     WAIT(esperable, visto, timeout_ns)   despiertame CUANDO
  *
  * Todo lo demas --abrir un archivo, leer el raton, reclamar la pantalla-- es una
  * OPERACION sobre una capability. La API crece por dentro, en la pareja
  * (tipo de objeto, operacion), y el ABI no se toca.
+ *
+ * El tercero se fue porque no era una puerta: CHANNEL_KICK resolvia un handle y
+ * avisaba a su consumidor, o sea una OPERACION con numero de syscall propio.
+ * WAIT si se queda, y por algo que INVOKE no puede decir: lo unico que hace es
+ * NO DEVOLVER EL TURNO. Una llamada sincrona tendria que contestar "todavia no"
+ * y dejar que el programa vuelva a preguntar -- quemando el turno en preguntar,
+ * que es justo lo que WAIT existe para no hacer.
  *
  * == Lo que un programa NO recibe ==
  *
@@ -38,8 +44,12 @@
 #ifndef BMO_BMO_H
 #define BMO_BMO_H
 
-/* -- Los tres numeros de llamada --------------------------------------- */
+/* -- Los DOS numeros de llamada, y el que quedo reservado --------------- */
 #define BMO_INVOKE 0
+/* ** RETIRADO el 2026-08-10 y RESERVADO: ya no hay una llamada en el 1.
+ * Avisar al consumidor de un canal es ahora una operacion sobre el canal
+ * (`CHANNEL_OP_KICK`, 0x03) y entra por `INVOKE`, como todo lo demas.
+ * El numero no se recicla: un binario viejo que lo llame falla diciendolo. */
 #define BMO_CHANNEL_KICK 1
 #define BMO_WAIT 2
 

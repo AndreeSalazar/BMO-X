@@ -7,11 +7,32 @@ use super::{syscall2, syscall3, syscall6, SyscallResult};
 
 /// Synchronous, capability-scoped control operation.
 pub const NR_INVOKE: u32 = 0x00;
-/// Notify a channel consumer after publishing submissions.
+/// ** RETIRADO el 2026-08-10. Reservado, y NO se reutiliza.
+///
+/// `CHANNEL_KICK(cap, secuencia)` resolvia un handle, comprobaba que era un
+/// canal y llamaba al servicio del estuario: **una operacion sobre un handle**,
+/// que es la definicion de [`NR_INVOKE`]. Tenia numero propio por como nacio, no
+/// por lo que hace. Ahora es `CHANNEL_OP_KICK` sobre el canal.
+///
+/// La superficie queda en dos puertas, con la frontera dicha en una linea:
+///
+/// ```text
+///   INVOKE   haz esto AHORA
+///   WAIT     despiertame CUANDO
+/// ```
+///
+/// Y no baja a una: `WAIT` no se puede expresar con `INVOKE` porque lo unico que
+/// hace es **no devolver el turno**, y una llamada sincrona no puede decir eso
+/// sin mentir.
+///
+/// El numero se reserva en vez de reciclarse: un binario viejo que llame al `1`
+/// tiene que fallar **diciendolo**. Si el `1` pasara a significar otra cosa, ese
+/// binario haria algo que nadie pidio y no fallaria en ningun sitio.
 pub const NR_CHANNEL_KICK: u32 = 0x01;
 /// Block until a sequence changes or an absolute deadline expires.
 pub const NR_WAIT: u32 = 0x02;
-pub const CORE_SYSCALL_COUNT: usize = 3;
+/// **Dos.** Ver [`NR_CHANNEL_KICK`] para el tercero que hubo.
+pub const CORE_SYSCALL_COUNT: usize = 2;
 
 /// Process-local pseudo-handle that always resolves to the calling task.
 /// It grants no authority over another task and must never be transferred.
@@ -838,12 +859,20 @@ pub mod task_op {
 /// `INVOKE` operations accepted by a channel (estuary) capability.
 pub const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 pub const CHANNEL_OP_GET_INDEX: u64 = 0x02;
+/// **Avisar al consumidor.** Era el syscall numero 1 -- ver [`NR_CHANNEL_KICK`].
+///
+/// Pide `RIGHT_WRITE` y no `RIGHT_READ`, al reves que las dos de arriba, y esa
+/// diferencia es la que habria que perder para meterlo con ellas: **avisar es
+/// escribir**. Quien solo puede leer la secuencia no puede empujarla.
+pub const CHANNEL_OP_KICK: u64 = 0x03;
 
 pub mod channel_op {
     /// Completion-side sequence -- the value `WAIT` compares against.
     pub const GET_SEQ: u64 = super::CHANNEL_OP_GET_SEQ;
     /// Estuary index backing this capability.
     pub const GET_INDEX: u64 = super::CHANNEL_OP_GET_INDEX;
+    /// Avisar al consumidor. Pide WRITE.
+    pub const KICK: u64 = super::CHANNEL_OP_KICK;
 }
 
 /// Translate the temporary v1 task surface into its v2 capability operation.
@@ -873,10 +902,13 @@ pub unsafe fn invoke(
     syscall6(NR_INVOKE, capability, operation, a0, a1, a2, a3)
 }
 
-/// `CHANNEL_KICK(channel, published_sequence)`.
+/// **Avisar al consumidor de un canal.** Ya no es un syscall: es una operacion.
+///
+/// Se conserva la funcion --no el numero-- porque lo que hace sigue haciendo
+/// falta; lo que cambio es por donde entra. Ver [`NR_CHANNEL_KICK`].
 #[inline(always)]
-pub unsafe fn channel_kick(channel: u64, published_sequence: u64) -> SyscallResult {
-    syscall2(NR_CHANNEL_KICK, channel, published_sequence)
+pub unsafe fn channel_kick(channel: u64, _published_sequence: u64) -> SyscallResult {
+    invoke(channel, CHANNEL_OP_KICK, 0, 0, 0, 0)
 }
 
 /// `WAIT(waitable, observed_sequence, timeout_ns)`.
@@ -899,8 +931,9 @@ pub unsafe fn wait(
 pub const fn name(number: u32) -> Option<&'static str> {
     match number {
         NR_INVOKE => Some("bmo_invoke"),
-        NR_CHANNEL_KICK => Some("bmo_channel_kick"),
         NR_WAIT => Some("bmo_wait"),
+        // El `1` no tiene nombre porque **ya no existe una llamada ahi**. Darle
+        // uno haria que una traza de un binario viejo pareciera correcta.
         _ => None,
     }
 }
@@ -909,13 +942,32 @@ pub const fn name(number: u32) -> Option<&'static str> {
 mod tests {
     use super::*;
 
+    /// ** LA SUPERFICIE SON DOS PUERTAS, Y EL `1` ESTA RESERVADO.
+    ///
+    /// Esta prueba decia TRES y salto sola al retirar `CHANNEL_KICK`, que es
+    /// exactamente para lo que estaba. Se actualiza a mano y a conciencia --
+    /// nunca "para que pase"--: si un dia vuelve a saltar, alguien esta tocando
+    /// la frontera del sistema y tiene que enterarse antes de que compile.
+    ///
+    /// Lo que se comprueba, y por que cada linea:
+    ///
+    /// - **Dos**, no tres. `CHANNEL_KICK` era una operacion sobre un handle con
+    ///   numero de syscall propio; ahora entra por `INVOKE`, que es su sitio.
+    /// - **Y no una.** `WAIT` no se puede expresar con `INVOKE`: lo unico que
+    ///   hace es no devolver el turno.
+    /// - **El `1` no tiene nombre.** Es la parte que de verdad protege algo: si
+    ///   alguien recicla ese numero, un binario viejo haria una cosa distinta
+    ///   **sin fallar**, que es la peor rotura de ABI que hay.
     #[test]
-    fn core_surface_is_frozen_to_three_calls() {
-        assert_eq!(CORE_SYSCALL_COUNT, 3);
+    fn la_superficie_son_dos_puertas_y_el_uno_esta_reservado() {
+        assert_eq!(CORE_SYSCALL_COUNT, 2);
         assert_eq!(name(0), Some("bmo_invoke"));
-        assert_eq!(name(1), Some("bmo_channel_kick"));
         assert_eq!(name(2), Some("bmo_wait"));
+        assert_eq!(name(1), None, "el 1 esta RETIRADO: darle nombre lo resucita");
         assert_eq!(name(3), None);
+        // El numero sigue apartado: reservar es ocupar el hueco para que nadie
+        // lo use, no borrarlo y dejar que el siguiente se lo encuentre libre.
+        assert_eq!(NR_CHANNEL_KICK, 0x01);
     }
 
     #[test]

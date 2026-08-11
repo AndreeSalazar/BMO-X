@@ -67,10 +67,15 @@ pub fn invoke(cap: u64, operation: u32, a0: u64, a1: u64, a2: u64) -> Status {
     syscall(NR_INVOKE, cap, operation as u64, a0, a1, a2)
 }
 
-/// `CHANNEL_KICK` -- avisar al consumidor de un estuario.
+/// **Avisar al consumidor de un estuario.** Ya no es un syscall: es una
+/// operacion sobre el canal.
+///
+/// La funcion se queda --lo que hace sigue haciendo falta-- y lo que cambio es
+/// por donde entra. La superficie baja a DOS puertas: `INVOKE` para "haz esto
+/// ahora" y `WAIT` para "despiertame cuando". Ver `NR_CHANNEL_KICK`.
 #[inline(always)]
-pub fn channel_kick(cap: u64, secuencia: u64) -> Status {
-    syscall(NR_CHANNEL_KICK, cap, secuencia, 0, 0, 0)
+pub fn channel_kick(cap: u64, _secuencia: u64) -> Status {
+    invoke(cap, CHANNEL_OP_KICK, 0, 0, 0)
 }
 
 /// `WAIT` -- bloquearse hasta que la secuencia del esperable pase de `visto`,

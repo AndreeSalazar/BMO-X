@@ -10,18 +10,33 @@
 //!
 //! ## La superficie, entera
 //!
-//! Tres syscalls. No hay un cuarto y no va a haberlo:
+//! **DOS syscalls** (2026-08-10; eran tres):
 //!
 //! ```text
-//!   INVOKE(cap, operacion, a0, a1, a2)   la puerta sincrona
-//!   CHANNEL_KICK(cap, secuencia)         avisar al consumidor
-//!   WAIT(esperable, visto, timeout_ns)   bloquearse
+//!   INVOKE(cap, operacion, a0, a1, a2)   haz esto AHORA
+//!   WAIT(esperable, visto, timeout_ns)   despiertame CUANDO
 //! ```
 //!
 //! Todo lo demas --abrir un endpoint, escribir en consola, reclamar la
 //! pantalla-- es una *operacion* sobre una capability. La API crece por dentro,
 //! en la pareja `(tipo de objeto, operation)`, y el ABI no se toca. Anadir
 //! "abrir ventana" no es cambiar la frontera: es un numero mas en una tabla.
+//!
+//! ## Por que se fue el tercero, y por que no se van los dos a uno
+//!
+//! `CHANNEL_KICK(cap, secuencia)` resolvia un handle, comprobaba que era un
+//! canal, y avisaba a su consumidor: **una operacion sobre un handle**, que es
+//! la definicion de `INVOKE`. Tenia numero propio por como nacio, no por lo que
+//! hace. Hoy es `CHANNEL_OP_KICK` y no se perdio nada.
+//!
+//! ** `WAIT` si es otra cosa, y por eso quedan dos. Lo unico que hace es **no
+//! devolver el turno**, y eso una llamada sincrona no lo puede decir: `INVOKE`
+//! tendria que contestar *"todavia no"* y dejar que el programa vuelva a
+//! preguntar -- o sea, quemar su turno preguntando, que es exactamente lo que
+//! `WAIT` existe para no hacer.
+//!
+//! El `1` queda **reservado**: un binario viejo que lo llame falla diciendolo.
+//! Reciclarlo le haria hacer algo que nadie pidio, sin fallar en ningun sitio.
 //!
 //! ## Convencion de registros
 //!
@@ -41,8 +56,14 @@ use core::arch::asm;
 // -- La superficie congelada ---------------------------------------------
 
 pub const NR_INVOKE: u32 = 0;
+/// ** RETIRADO el 2026-08-10. Reservado, y no se reutiliza: un binario viejo
+/// que llame al `1` tiene que fallar diciendolo. Ahora es `CHANNEL_OP_KICK`
+/// sobre el canal -- ver `bmo_abi::...::NR_CHANNEL_KICK`.
 pub const NR_CHANNEL_KICK: u32 = 1;
 pub const NR_WAIT: u32 = 2;
+/// **Avisar al consumidor de un canal.** Pide WRITE, al reves que las dos
+/// preguntas de abajo: avisar es escribir.
+pub const CHANNEL_OP_KICK: u32 = 0x03;
 
 /// Pseudo-capability que se refiere al proceso que llama. No es un handle
 /// concedido: es la forma de pedir lo que uno ya tiene por ser quien es.

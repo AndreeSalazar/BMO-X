@@ -27,6 +27,32 @@ use crate::ring0::plat::trap::TrapFrame;
 // these values here avoids linking the full alloc-using ABI implementation
 // into Ring 0; build.ps1 rejects values that drift from bmo-abi.
 const NR_INVOKE: u32 = 0x00;
+/// ** RETIRADO el 2026-08-10. El numero queda RESERVADO y no se reutiliza.
+///
+/// === Por que se fue ===
+///
+/// `CHANNEL_KICK(cap, secuencia)` hacia exactamente esto: resolver un handle,
+/// comprobar que es un canal, y llamar a `channel::service`. O sea **una
+/// operacion sobre un handle** -- que es la definicion de `INVOKE`. Tenia un
+/// numero de syscall propio por como nacio, no por lo que hace.
+///
+/// Ahora es `CHANNEL_OP_KICK` sobre el canal, y la superficie baja de tres
+/// puertas a dos con una frontera que se puede decir en una linea:
+///
+/// ```text
+///   INVOKE   haz esto AHORA
+///   WAIT     despiertame CUANDO
+/// ```
+///
+/// Y esa frontera no es estetica: `WAIT` no se puede expresar con `INVOKE`
+/// porque lo unico que hace es **no devolver el turno**, y una llamada sincrona
+/// no puede decir eso sin mentir. Por eso quedan dos y no una.
+///
+/// === Por que el numero no se reutiliza ===
+///
+/// Un binario viejo que llame al 1 tiene que fallar **diciendolo**. Si el 1
+/// pasara a significar otra cosa, ese mismo binario haria algo que nadie pidio y
+/// no fallaria en ningun sitio -- la peor clase de rotura de ABI.
 const NR_CHANNEL_KICK: u32 = 0x01;
 const NR_WAIT: u32 = 0x02;
 const CURRENT_TASK: u64 = 0xFFFF_FFFF_FFFF_FFFE;
@@ -223,6 +249,9 @@ const ES_NODO_VERIFICAR: u64 = 0x0B;
 const ES_TXT_RUTA: u64 = 1;
 const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 const CHANNEL_OP_GET_INDEX: u64 = 0x02;
+/// **Avisar al consumidor.** Era el syscall numero 1; ahora es una operacion
+/// sobre el handle del canal, como todo lo demas. Ver `NR_CHANNEL_KICK`.
+const CHANNEL_OP_KICK: u64 = 0x03;
 const ERROR_INVALID_ARGUMENT: u32 = 7;
 const ERROR_UNSUPPORTED: u32 = 10;
 
@@ -961,6 +990,17 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 );
                 return BmoStatus { code: res.code, flags: 0, value: res.value };
             }
+            // ** AVISAR AL CONSUMIDOR: lo que era el syscall numero 1.
+            //
+            // Va en el bloque de WRITE y no con las otras operaciones del canal
+            // --que se resuelven con READ-- porque **avisar es escribir**: mueve
+            // el estuario y despierta a quien espera. Quien solo puede leer la
+            // secuencia no puede empujarla, y esa diferencia es la que se habria
+            // perdido moviendolo al monton de abajo.
+            cap::KIND_CHANNEL if frame.rsi == CHANNEL_OP_KICK => {
+                let procesados = channel::service(r.object as usize);
+                return BmoStatus::ok_value(procesados as u64);
+            }
             _ => {}
         }
     }
@@ -1175,20 +1215,6 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
     }
 }
 
-/// `CHANNEL_KICK(capability, published_sequence)` -- notify the consumer.
-/// Services the estuary with the per-kick budget and wakes its waiters.
-fn channel_kick(frame: &TrapFrame) -> BmoStatus {
-    let pid = scheduler::current_pid();
-    match cap::resolve(pid, frame.rdi, cap::RIGHT_WRITE) {
-        Ok(resolved) if resolved.kind == cap::KIND_CHANNEL => {
-            let processed = channel::service(resolved.object as usize);
-            BmoStatus::ok_value(processed as u64)
-        }
-        Ok(_) => unsupported(),
-        Err(err) => cap_err(err),
-    }
-}
-
 /// `WAIT(waitable, observed_sequence, timeout_ns)` -- block until the
 /// waitable's sequence moves past `observed_sequence` or the timeout
 /// expires (0 = no timeout). `waitable = 0` is a pure timed sleep.
@@ -1255,8 +1281,10 @@ extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
     );
     let status = match frame.rax as u32 {
         NR_INVOKE => invoke(frame),
-        NR_CHANNEL_KICK => channel_kick(frame),
         NR_WAIT => wait(frame),
+        // ** DOS PUERTAS. El 1 esta RESERVADO y contesta que no existe -- ver
+        // `NR_CHANNEL_KICK`. Un binario viejo falla diciendolo, que es lo unico
+        // aceptable: reutilizar el numero le haria hacer algo que nadie pidio.
         _ => unsupported(),
     };
     frame.rax = (status.code as u64) | ((status.flags as u64) << 32);
