@@ -89,8 +89,31 @@ son *peor* que seis, porque se pisan la cache.
 | Calculo puro (hash, rasterizar, comprimir) | **NO**. Reparte entre 6 |
 | Trabajo que **espera memoria** | SI, y ahi si suma |
 
-**El techo honesto de esta maquina para calculo es ~6x, no 12x.** Si `smp
-prueba` contesta 6,x, eso **es** el maximo -- no un fallo.
+**El techo honesto de esta maquina para calculo DENSO es ~6x, no 12x.**
+
+## ⚠ Y el metal corrigio esta seccion el 2026-08-11: dio **11,44x**
+
+```text
+   ticks con UN nucleo =2212525371
+   ticks con todos     =193336026     ->  11,44x con 12 partes
+```
+
+La regla de arriba no se rompe: **se precisa**. La faena de `smp test` es una
+**cadena de dependencias** --cada vuelta necesita el resultado de la anterior--
+asi que cada hilo pasa casi todo el tiempo esperando su propia multiplicacion.
+Dos hilos asi **se turnan sin pisarse**, que es exactamente para lo que sirve
+SMT.
+
+> **SMT no da el doble de calculo: da el doble de ESPERAS solapadas.**
+
+O sea que 11,44x es **el techo del caso mas favorable que existe**, no lo que va
+a dar un programa real. Un trabajo que sature las unidades de ejecucion
+--vectorizado, con buen IPC-- se quedara cerca de los seis nucleos fisicos.
+
+Y de ahi sale una regla para el reparto, que es lo que importa aqui: **el numero
+de obreros no puede salir de un `6` ni de un `12` fijos**. Sale del tipo de
+faena, y el unico que lo sabe es quien la escribe. Por eso `repartir` recibe
+cuantos, en vez de decidirlo.
 
 Por eso el hermano SMT no entra en el reparto por defecto: entra **cuando se
 pida explicitamente**, y AXION tiene que saber cual es hermano de cual. Eso sale
