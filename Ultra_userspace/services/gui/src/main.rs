@@ -1992,7 +1992,12 @@ pub extern "C" fn _start() -> ! {
                                 // Los dos mandos que no son un numero: parar y
                                 // medir. Se resuelven aqui y salen, porque no
                                 // comparten NADA con el camino de despertar.
-                                if arg == b"parar" || arg == b"para" {
+                                // `stop` y `test` son los nombres que el dueno
+                                // pidio; `parar` y `prueba` siguen valiendo. Un
+                                // alias cuesta cuatro bytes y evita el unico
+                                // fallo de una orden bien escrita: no acordarse
+                                // de como se llamaba.
+                                if arg == b"parar" || arg == b"para" || arg == b"stop" {
                                     bmo::smp_parar();
                                     salida.texto(b"  obreros parados (vuelven a hlt)\n");
                                     pintar_salida(&p, &caja, &salida);
@@ -2001,7 +2006,7 @@ pub extern "C" fn _start() -> ! {
                                     cur = 0;
                                     continue;
                                 }
-                                if arg == b"prueba" || arg == b"bench" {
+                                if arg == b"prueba" || arg == b"bench" || arg == b"test" {
                                     salida.texto(b"  midiendo reparto (esto tarda)...\n");
                                     pintar_salida(&p, &caja, &salida);
                                     p.volcar();
@@ -2090,8 +2095,9 @@ pub extern "C" fn _start() -> ! {
                                 // rindio.
                                 if cuantos == 0 {
                                     salida.texto(b"  smp all      despierta todos    smp 3   solo tres\n");
-                                    salida.texto(b"  smp prueba   reparte una cuenta y mide la aceleracion\n");
-                                    salida.texto(b"  smp parar    los duerme. [!] sin IPI NO vuelven\n");
+                                    salida.texto(b"  smp test     reparte una cuenta y mide la aceleracion\n");
+                                    salida.texto(b"  smp stop     los duerme. [!] sin IPI NO vuelven\n");
+                                    salida.texto(b"  F11 dice en que esta cada nucleo y cual gira en vacio\n");
                                 }
                                 pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
                                 n = 0;
@@ -2136,7 +2142,32 @@ pub extern "C" fn _start() -> ! {
                                         Some((nueva, ent)) => {
                                             p = nueva;
                                             entrada = ent;
-                                            p.limpiar(FONDO);
+                                            // ** EL ESCRITORIO ENTERO, NO UN RELLENO PLANO.
+                                            //
+                                            // Aqui habia un `p.limpiar(FONDO)` y nada mas. O
+                                            // sea que al volver de prestar la pantalla el
+                                            // escritorio se quedaba **sin degradado, sin barra
+                                            // y sin iconos**: fondo liso, la caja de Ejecutar
+                                            // flotando, y nada mas. Es exactamente lo que salio
+                                            // en la foto del 2026-08-11 cuando DOOM no arranco,
+                                            // y se leyo como *"el escritorio se bugeo"*.
+                                            //
+                                            // No estaba bugeado: **estaba a medio pintar**, y
+                                            // el que faltaba por pintar era todo menos una
+                                            // ventana.
+                                            //
+                                            // [!] Y este camino se recorre tambien --sobre todo--
+                                            // cuando el programa **NO** arranca: `prestar_pantalla`
+                                            // recupera y vuelve por aqui. O sea que el aspecto
+                                            // del escritorio despues de un lanzamiento FALLIDO
+                                            // depende enteramente de estas lineas. Es el
+                                            // camino de error, que es el que nadie prueba a
+                                            // mano (patron 29).
+                                            escena::pintar_fondo(&p);
+                                            escena::lanzador::pintar(&p, &lanzador);
+                                            p.rect(16, 13, 14, 14, ACENTO);
+                                            p.texto(38, 14, "BMO-X", TEXTO);
+                                            barra_sucia = true;
                                             pintar_caja(&p, &caja);
                                             pintar_campo(&p, &caja, &ruta[..n], cur, true);
                                             pintar_salida(&p, &caja, &salida);
