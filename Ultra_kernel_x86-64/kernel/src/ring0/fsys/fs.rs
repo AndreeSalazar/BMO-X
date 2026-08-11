@@ -334,6 +334,31 @@ pub fn abrir_rangos(path: &str) -> Result<(bmo_fat32::Cursor, u32), LoadError> {
     Ok((v.cursor(cluster), size))
 }
 
+/// **De donde va a leer.** `(cluster, LBA absoluto, primer LBA de la particion)`.
+///
+/// Existe para que un fallo de lectura pueda decir **de que sector** salieron los
+/// bytes que llegaron. El 2026-08-11 el sistema supo decir que los ocho primeros
+/// bytes no eran los del fichero, y no supo decir de donde venian -- y esas son
+/// las dos mitades de la misma pregunta:
+///
+/// | | |
+/// |---|---|
+/// | LBA raro | el mapa cluster->sector esta mal |
+/// | LBA razonable | el disco tiene ahi otra cosa, o la particion es otra |
+///
+/// El tercer numero --donde empieza la particion-- es el que distingue "el
+/// fichero esta en otro sitio" de **"estamos leyendo el volumen equivocado"**.
+pub fn donde(cur: &bmo_fat32::Cursor) -> (u32, u64, u64) {
+    let v = unsafe {
+        match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
+            Some(v) => v,
+            None => return (0, 0, 0),
+        }
+    };
+    let c = cur.cluster();
+    (c, v.lba_de_cluster(c), unsafe { DATA_LBA })
+}
+
 /// **Trae el rango `[offset, offset + dst.len())` del archivo.** Devuelve
 /// cuantos bytes entraron.
 ///

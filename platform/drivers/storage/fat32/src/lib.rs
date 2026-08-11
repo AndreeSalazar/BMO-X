@@ -336,6 +336,17 @@ pub struct Cursor {
 }
 
 impl Cursor {
+    /// **Por que cluster va.** Para poder DECIRLO.
+    ///
+    /// Un cargador que falla al leer tiene que poder contar de donde estaba
+    /// leyendo: el 2026-08-11 el sistema supo decir *que* bytes llegaron --y que
+    /// no eran los del fichero-- pero no **de que sector**, y esas son las dos
+    /// mitades de la misma pregunta. Con una sola no se distingue "el mapa esta
+    /// mal" de "el disco tiene otra cosa ahi".
+    pub fn cluster(&self) -> u32 {
+        self.cluster
+    }
+
     /// Un cursor que no apunta a nada: toda lectura contesta cero.
     ///
     /// Existe para que quien no encuentre un archivo pueda devolver **algo** y
@@ -671,6 +682,12 @@ impl FatVolume {
             };
         }
         (offset - ya, 0)
+    }
+
+    /// **En que LBA absoluto empieza un cluster.** La misma cuenta que usa toda
+    /// lectura, expuesta para poder decirla en un diagnostico.
+    pub fn lba_de_cluster(&self, cluster: u32) -> u64 {
+        self.cluster_to_lba(cluster)
     }
 
     /// Abre un cursor al principio de un archivo.

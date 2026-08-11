@@ -342,6 +342,15 @@ impl Fuente {
         matches!(self, Fuente::Fat32 { .. })
     }
 
+    /// El cursor, para poder decir DE DONDE se lee. `None` en ESTRATOS, que no
+    /// tiene clusters que contar.
+    pub fn cursor(&self) -> Option<&bmo_fat32::Cursor> {
+        match self {
+            Fuente::Fat32 { cur, .. } => Some(cur),
+            Fuente::Estratos(_) => None,
+        }
+    }
+
     /// Lo que mide el archivo. `0` si no se encontro.
     pub fn tamano(&self) -> usize {
         match self {
@@ -464,6 +473,28 @@ fn con_buffer(path: &str) -> Informe {
     // serializar. Ver `Fuente::rango`.
     if fuente.por_rangos() {
         let tam = fuente.tamano();
+        // ** DE DONDE SE VA A LEER, dicho ANTES de leer.
+        //
+        // El 2026-08-11 el sistema supo decir que los ocho primeros bytes no eran
+        // los del fichero --eran codigo x86-64 que no esta en NADA de lo que
+        // construimos-- y no supo decir **de que sector**. Con eso solo, quedaban
+        // dos explicaciones que se arreglan en sitios opuestos:
+        //
+        // | | |
+        // |---|---|
+        // | el LBA es raro | el mapa cluster->sector esta mal |
+        // | el LBA es razonable | el disco tiene ahi otra cosa, o el volumen es otro |
+        //
+        // Va delante de la lectura a proposito: si la lectura cuelga la maquina,
+        // esta linea ya esta grabada. Un diagnostico que solo se imprime cuando
+        // todo fue bien no sirve para el caso en que no.
+        if let Some(cur) = fuente.cursor() {
+            let (cluster, lba, base) = crate::ring0::fsys::fs::donde(cur);
+            crate::ring0::cabina::info("lanzar", "el directorio dice: cluster", cluster as u64);
+            crate::ring0::cabina::info("lanzar", "que en el disco es el LBA", lba);
+            crate::ring0::cabina::info("lanzar", "y la particion empieza en", base);
+            crate::ring0::cabina::info("lanzar", "y el fichero mide", tam as u64);
+        }
         let name = match path.as_bytes().iter().rposition(|&c| c == b'/' || c == b'\\') {
             Some(i) => &path[i + 1..],
             None => path,
