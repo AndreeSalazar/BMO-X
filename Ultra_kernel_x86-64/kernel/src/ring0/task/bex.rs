@@ -162,6 +162,42 @@ pub enum BexError {
     ///
     /// Son dos sitios distintos donde mirar, y confundirlos cuesta una tarde.
     ImagenIncompleta,
+    /// ** DOS SECCIONES SE PELEAN POR LOS MISMOS BYTES DEL FICHERO.
+    ///
+    /// La tabla dice que `.code` vive en `[100, 200)` y que `.data` vive en
+    /// `[150, 250)`. Ninguna de las dos se sale del fichero --las dos pasan la
+    /// comprobacion de limites-- y sin embargo **es imposible que las dos digan
+    /// la verdad**.
+    ///
+    /// El cargador se lo cree y monta un proceso donde cincuenta bytes son a la
+    /// vez codigo ejecutable y datos escribibles. Eso no es un fichero raro: es
+    /// la forma clasica de colar codigo en una pagina que deberia ser de solo
+    /// lectura, y el sintoma --si es que lo hay-- aparece lejisimos de aqui.
+    ///
+    /// [!] Lo comprobaba `bmo-abi::validator` **al compilar**, o sea en la
+    /// maquina que fabrico el binario. Un `.bex` que llega de fuera no pasa por
+    /// ahi. Ver `docs/EL_CONTRATO_DE_CARGA.md`, el extranjero.
+    SeccionesSeSolapan,
+    /// ** LA CABECERA DECLARA ALGO QUE ESTE KERNEL NO SABE HACER.
+    ///
+    /// `COMPRESSED` y `HOT_RELOADABLE` estan en el formato y **no las implementa
+    /// nadie**. Un `.bex` que las trae puestas esta diciendo *"mis secciones no
+    /// son lo que parecen"*, y un cargador que las ignora **carga los bytes en
+    /// crudo y salta a ellos**: ejecutar un bloque comprimido como si fuera
+    /// codigo.
+    ///
+    /// Se rechaza en vez de ignorarse, y esa es la diferencia con una seccion de
+    /// tipo desconocido --que si se salta--. Una SECCION que no me incumbe es
+    /// data para otro; una BANDERA que no entiendo cambia lo que significan las
+    /// secciones que si me incumben.
+    PideAlgoQueNadieImplementa,
+    /// ** LA CABECERA MIENTE SOBRE SI MISMA.
+    ///
+    /// Dice `SIGNED` y no trae seccion de firma, o dice `HAS_TLS` y no trae
+    /// TLS. No es que falte un dato: es que **el fichero se describe a si mismo
+    /// de una forma que sus propias secciones desmienten**, y a partir de ahi
+    /// nada de lo que declare vale nada.
+    CabeceraQueSeDesmiente,
     /// ** UNA SECCION NO CUADRA CON SU HASH.
     ///
     /// La imagen llego ENTERA --el tamano cuadra-- y **por dentro no es la que
@@ -214,6 +250,9 @@ impl BexError {
             BexError::MissingCode => "no hay seccion de codigo",
             BexError::EntryOutsideCode => "el entry cae fuera del codigo",
             BexError::ImagenIncompleta => "LLEGARON MENOS BYTES DE LOS QUE LA IMAGEN DICE",
+            BexError::SeccionesSeSolapan => "dos secciones se pelean por los mismos bytes",
+            BexError::PideAlgoQueNadieImplementa => "la cabecera pide algo que este sistema no hace",
+            BexError::CabeceraQueSeDesmiente => "la cabecera declara secciones que no estan",
             BexError::HashNoCuadra => "una seccion NO CUADRA con su hash: la imagen esta corrupta",
             BexError::PrologoCorto => "la tabla de secciones no cabe en el prologo leido",
             BexError::SeccionNoLeida => "una seccion cargable se quedo sin leer",
@@ -396,6 +435,28 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
     if flags & BEX_FLAG_EXECUTABLE == 0 {
         return Err(BexError::NotExecutable);
     }
+    // ** LAS BANDERAS QUE CAMBIAN LO QUE SIGNIFICAN LAS SECCIONES (2026-08-10).
+    //
+    // `COMPRESSED` dice que los bytes de las secciones no son los bytes que van
+    // a memoria. `HOT_RELOADABLE` dice que el proceso admite que se le cambie el
+    // codigo debajo. **Ninguna de las dos la implementa nadie**, aqui ni en
+    // ningun sitio del sistema.
+    //
+    // Un cargador que las ignora hace lo peor posible: carga el bloque en crudo
+    // y salta a el. Ejecutar datos comprimidos como si fueran instrucciones.
+    //
+    // ** Y ESTO NO CONTRADICE la regla de "un tipo desconocido se salta". Una
+    // SECCION que no me incumbe es data para otro y no afecta a lo que yo hago.
+    // Una BANDERA que no entiendo **cambia el significado de las secciones que
+    // si me incumben**. Saltarla no es tolerancia, es leer mal a proposito.
+    //
+    // Lo comprobaba `bmo-abi::validator` al COMPILAR. Un `.bex` de fuera no pasa
+    // por ahi -- ver `docs/EL_CONTRATO_DE_CARGA.md`, el extranjero.
+    const FLAG_COMPRESSED: u32 = 1 << 4;
+    const FLAG_HOT_RELOADABLE: u32 = 1 << 7;
+    if flags & (FLAG_COMPRESSED | FLAG_HOT_RELOADABLE) != 0 {
+        return Err(BexError::PideAlgoQueNadieImplementa);
+    }
 
     let count = section_count;
     if count > MAX_BEX_SECTIONS {
@@ -532,6 +593,66 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
     // El plan solo describe lo que se mapea.
     plan.section_count = loadable;
     plan.skipped_sections = skipped;
+
+    // ** QUE NO HAYA DOS SECCIONES PELEANDOSE POR LOS MISMOS BYTES.
+    //
+    // Cada una ya se comprobo por separado: ninguna se sale del fichero. Y aun
+    // asi la tabla puede decir que `.code` vive en `[100, 200)` y `.data` en
+    // `[150, 250)`, que son dos afirmaciones que **no pueden ser ciertas a la
+    // vez**. El cargador se lo creeria y montaria un proceso donde cincuenta
+    // bytes son a la vez codigo ejecutable y datos escribibles -- la forma
+    // clasica de meter codigo en una pagina que deberia ser de solo lectura.
+    //
+    // Se compara TODAS contra TODAS y no solo las contiguas: la tabla no tiene
+    // por que venir ordenada por offset, y ordenarla aqui para ahorrar
+    // comparaciones seria mover una tabla que viene del disco. Con dieciseis
+    // secciones como tope son 120 comparaciones de dos enteros: nada.
+    //
+    // La `Bss` queda fuera porque **no ocupa fichero**: su `file_offset` no
+    // apunta a ningun byte, asi que no puede solaparse con nadie.
+    for a in 0..count {
+        let ea = table_start + a * BEX_SECTION_SIZE;
+        let ka = *bytes.get(ea).ok_or(BexError::InvalidSection)?;
+        let oa = read_u64(bytes, ea + 8).ok_or(BexError::InvalidSection)?;
+        let la = read_u64(bytes, ea + 16).ok_or(BexError::InvalidSection)?;
+        if ka == SECTION_BSS || la == 0 {
+            continue;
+        }
+        for b in (a + 1)..count {
+            let eb = table_start + b * BEX_SECTION_SIZE;
+            let kb = *bytes.get(eb).ok_or(BexError::InvalidSection)?;
+            let ob = read_u64(bytes, eb + 8).ok_or(BexError::InvalidSection)?;
+            let lb = read_u64(bytes, eb + 16).ok_or(BexError::InvalidSection)?;
+            if kb == SECTION_BSS || lb == 0 {
+                continue;
+            }
+            // Dos rangos se solapan si cada uno empieza antes de que acabe el
+            // otro. Con `checked_add` porque los dos numeros vienen del disco.
+            let fa = oa.checked_add(la).ok_or(BexError::InvalidSection)?;
+            let fb = ob.checked_add(lb).ok_or(BexError::InvalidSection)?;
+            if oa < fb && ob < fa {
+                crate::ring0::cabina::fault("bex", "seccion que pisa a otra", a as u64);
+                return Err(BexError::SeccionesSeSolapan);
+            }
+        }
+    }
+
+    // ** Y QUE LA CABECERA NO SE DESMIENTA A SI MISMA.
+    //
+    // `SIGNED` dice *"vengo firmado"*. Si no hay seccion de firma, ese bit es una
+    // afirmacion que el propio fichero desmiente -- y **es la mentira que mas
+    // barato sale contar**: un bit puesto a mano en un binario cualquiera lo
+    // hace parecer avalado por alguien.
+    //
+    // Va aqui, con la tabla ya recorrida, porque hasta este punto no se sabe si
+    // la seccion existe. Y se rechaza el fichero entero en vez de bajarle el
+    // nivel: un binario que miente sobre su propia identidad no es un extranjero,
+    // es uno que se hace pasar por otra cosa. Ver
+    // `docs/EL_CONTRATO_DE_CARGA.md`, los niveles de firma.
+    const FLAG_SIGNED: u32 = 1 << 5;
+    if flags & FLAG_SIGNED != 0 && plan.firma_file_size == 0 {
+        return Err(BexError::CabeceraQueSeDesmiente);
+    }
 
     let code_size = code_size.ok_or(BexError::MissingCode)?;
     if entry_offset >= code_size {
