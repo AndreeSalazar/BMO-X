@@ -2076,8 +2076,22 @@ pub extern "C" fn _start() -> ! {
                                 // de censar, que es cuando uno se pregunta
                                 // "y ahora como los enciendo?". Un atajo que
                                 // solo vive en la documentacion no existe.
+                                // ** LAS CINCO, NO SOLO DOS (2026-08-11).
+                                //
+                                // Aqui se decian `smp all` y `smp N` y se
+                                // callaban `prueba` y `parar`, que son las dos
+                                // unicas que HACEN algo interesante. El dueno
+                                // lo dijo con todas las letras: *"el smp no me
+                                // salen mensajes de recomendacion"*.
+                                //
+                                // Son cinco lineas y caben. Una orden con
+                                // subordenes que no las dice obliga a buscar en
+                                // `help`, y a `help` se va cuando uno ya se
+                                // rindio.
                                 if cuantos == 0 {
-                                    salida.texto(b"  'smp all' los despierta todos, 'smp 3' solo tres\n");
+                                    salida.texto(b"  smp all      despierta todos    smp 3   solo tres\n");
+                                    salida.texto(b"  smp prueba   reparte una cuenta y mide la aceleracion\n");
+                                    salida.texto(b"  smp parar    los duerme. [!] sin IPI NO vuelven\n");
                                 }
                                 pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
                                 n = 0;

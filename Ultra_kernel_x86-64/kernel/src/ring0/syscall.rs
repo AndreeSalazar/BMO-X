@@ -754,6 +754,20 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     crate::ring0::cabina::info("smp", "obreros que ENTRARON al bucle", entraron as u64);
                     crate::ring0::cabina::info("smp", "obreros que VIERON la ronda", vieron as u64);
                     crate::ring0::cabina::info("smp", "obreros que TERMINARON", hechos as u64);
+                    // ** Y LA MEDIDA, DENUNCIADA POR ELLA MISMA.
+                    //
+                    // El 08-11 esto dio `37` ticks para 400 millones de vueltas
+                    // con los once obreros entrando, viendo y terminando. Los
+                    // testigos decian que el reparto iba bien y el numero decia
+                    // que no, y **nadie sospecho del reloj**. Ahora lo dice el.
+                    crate::ring0::cabina::info("smp", "el hash que dejo la faena", obra::suma_testigo());
+                    if !obra::medida_creible(uno) {
+                        crate::ring0::cabina::fault(
+                            "smp",
+                            "esa medida es IMPOSIBLE para las vueltas que son: el cronometro miente, no el reparto",
+                            uno,
+                        );
+                    }
                     if hechos < alive {
                         crate::ring0::cabina::warn(
                             "smp",

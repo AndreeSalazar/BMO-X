@@ -249,16 +249,51 @@ fn faena_prueba(parte: u32, de: u32) {
 /// segundo: contar en milisegundos daria dos numeros tan cercanos que la
 /// aceleracion saldria de la nada.
 pub fn prueba(obreros: u32) -> (u64, u64, u32) {
-    let t0 = crate::ring0::task::scheduler::rdtsc();
+    // ** CON EL RELOJ SERIALIZADO, y esa palabra costo una tanda de fotos.
+    //
+    // Con `rdtsc()` a secas --que lleva `options(nomem)`-- esto contesto
+    // `ticks con UN nucleo =37` para **cuatrocientos millones de vueltas**. El
+    // reparto estaba bien: once obreros entraron, vieron y terminaron. Lo que
+    // no media nada era el cronometro, porque nada ataba el trabajo a estar
+    // ENTRE las dos lecturas. Ver `scheduler::rdtsc_serial`.
+    use crate::ring0::task::scheduler::rdtsc_serial as reloj;
+    let t0 = reloj();
     repartir(faena_prueba, 0);
-    let uno = crate::ring0::task::scheduler::rdtsc().wrapping_sub(t0);
+    let uno = reloj().wrapping_sub(t0);
 
-    let t1 = crate::ring0::task::scheduler::rdtsc();
+    let t1 = reloj();
     let ok = repartir(faena_prueba, obreros);
-    let todos = crate::ring0::task::scheduler::rdtsc().wrapping_sub(t1);
+    let todos = reloj().wrapping_sub(t1);
 
     // Si alguien no llego, el numero de "todos" mide una carrera incompleta y
     // seria el mas bonito de los dos. Se devuelve 0 partes para que quien pinte
     // no pueda ensenarlo como si valiera.
     (uno, todos, if ok { obreros + 1 } else { 0 })
+}
+
+/// **La medida es fisicamente posible?**
+///
+/// La faena es una cadena de dependencias: cada vuelta necesita el resultado de
+/// la anterior, asi que **ni un CPU perfecto podria hacer una vuelta por ciclo**
+/// -- una multiplicacion entera ya cuesta tres. O sea que menos de `VUELTAS`
+/// ticks para `VUELTAS` vueltas no es "muy rapido": es **imposible**, y lo que
+/// esta roto es el cronometro.
+///
+/// ** Existe porque el 2026-08-11 el sistema enseno `37` ticks para 400 millones
+/// de vueltas y **nadie sospecho del reloj**: se busco el fallo en el reparto,
+/// que estaba bien. Un instrumento que no puede denunciarse a si mismo manda a
+/// depurar el sitio equivocado, y eso cuesta arranques.
+///
+/// > Un numero que no puede ser cierto tiene que decirlo el, no el que mira.
+pub fn medida_creible(ticks: u64) -> bool {
+    ticks >= VUELTAS
+}
+
+/// El hash que dejo la ultima faena de la parte 0. **Cero = no se ejecuto.**
+///
+/// Es la prueba directa de que el trabajo ocurrio, independiente del reloj: si
+/// esto trae un valor y los ticks son ridiculos, el que miente es el cronometro
+/// y no hay que buscar mas lejos.
+pub fn suma_testigo() -> u64 {
+    SUMAS[0].load(Ordering::SeqCst)
 }
