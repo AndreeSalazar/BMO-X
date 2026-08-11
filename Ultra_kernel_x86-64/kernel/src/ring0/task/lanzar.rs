@@ -387,7 +387,22 @@ impl Fuente {
 /// El cuerpo, ya con el buffer tomado. Separado para que el `EN_USO` se suelte
 /// por un solo camino pase lo que pase.
 fn con_buffer(path: &str) -> Informe {
-    let buf = unsafe { &mut (*core::ptr::addr_of_mut!(IMAGE)).0 };
+    // ** EL PROLOGO NO SALE DE LA MESA, SALE DE LA PILA (2026-08-10).
+    //
+    // Estaba leyendose en los primeros 2 KB del bufer de 4 MiB, o sea que **el
+    // camino sin mesa seguia tocando la mesa** -- y por dos kilos arrastraba el
+    // recurso compartido entero, que es lo unico que obliga a `EN_USO` a
+    // serializar la maquina.
+    //
+    // Aqui es un local, y el tamano no es una eleccion: la cabecera son 48 bytes
+    // y la tabla como mucho `16 * 48`, o sea **816 bytes que salen del formato**.
+    // Dos kilos dejan sitio a que ese contrato crezca, y contra los 64 KiB de
+    // pila del kernel es el 3%.
+    //
+    // > Un limite que sale del contrato no hay que subirlo nunca. `MAX_BEX` hubo
+    // > que subirlo dos veces porque era una suposicion.
+    let mut prologo_buf = [0u8; PROLOGO];
+    let buf = &mut prologo_buf[..];
 
     // ESTRATOS primero: es el sistema de ficheros propio y el UNICO donde un
     // binario puede traer su firma pegada. Si no esta ahi, se cae a FAT32, que
@@ -458,6 +473,18 @@ fn con_buffer(path: &str) -> Informe {
         return Informe { origen, bytes: tam, firma: None, pid, res };
     }
 
+    // ** DE AQUI PARA ABAJO, EL CAMINO CON MESA -- y solo el.
+    //
+    // Solo llega ESTRATOS, cuyo gate hashea el fichero entero y por eso necesita
+    // tenerlo entero. El bufer de 4 MiB se toma **aqui** y no arriba: mientras
+    // fue de los dos caminos, el que no lo necesitaba lo arrastraba igual, y con
+    // el se arrastraba `EN_USO` -- o sea la serializacion de toda la maquina por
+    // dos kilos de prologo.
+    //
+    // El dia que ESTRATOS entregue rangos, este bloque entero desaparece y
+    // `MAX_BEX` con el. Ver `Fuente::rango`.
+    let buf = unsafe { &mut (*core::ptr::addr_of_mut!(IMAGE)).0 };
+
     // == FASE 2: QUE NECESITA ==
     //
     // ** Aqui esta el escalon 2 entero. No se pregunta "cuanto mide" sino **que
@@ -479,7 +506,11 @@ fn con_buffer(path: &str) -> Informe {
     // habia un .bex valido**. Tirarlo --que es lo que se hacia-- es lo que deja
     // al sistema sin poder distinguir despues un fichero malo de una lectura
     // mala.
-    let veredicto_prologo = crate::ring0::task::bex::necesita(&buf[..prologo_n]);
+    // [!] Del PROLOGO, que es donde se leyo -- no de `buf`, que es la mesa y
+    // todavia esta a ceros. Preguntarle a la mesa daria `Err` siempre, y el
+    // sintoma seria que este camino se trae `MAX_BEX` de todos los ficheros
+    // mientras aparenta estar preguntando.
+    let veredicto_prologo = crate::ring0::task::bex::necesita(&prologo_buf[..prologo_n]);
     let prologo_valido = veredicto_prologo.is_ok();
     let hace_falta = match veredicto_prologo {
         Ok(h) => h.min(MAX_BEX),
