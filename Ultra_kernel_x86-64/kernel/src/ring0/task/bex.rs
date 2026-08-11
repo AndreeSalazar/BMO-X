@@ -297,10 +297,9 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
     Ok(plan)
 }
 
-fn read_u16(bytes: &[u8], offset: usize) -> Option<u16> {
-    let end = offset.checked_add(2)?;
-    Some(u16::from_le_bytes(bytes.get(offset..end)?.try_into().ok()?))
-}
+// `read_u16` se fue con `inspect`: los campos de 16 bits los lee la puerta. Los
+// dos que quedan leen las RELOCATIONS, que es trabajo del que CARGA y no del que
+// decide -- por eso se quedan aqui y no bajan al crate de la puerta.
 
 fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     let end = offset.checked_add(4)?;

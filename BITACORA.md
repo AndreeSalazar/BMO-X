@@ -1280,3 +1280,84 @@ distinguir "se oyo bajito" de "no habia donde oirlo".
    meses antes de que nadie lo intentara. Cuando el metal confirma una nota asi,
    lo que hay que revisar no es el codigo: es el PLAN, que estaba mirando a HD
    Audio teniendo el camino corto por USB.
+
+---
+
+# Ep. 39 -- 2026-08-10/11: EL DESTINO IMPORTA
+
+## El arranque, y el numero que lo dice todo
+
+```text
+   44 FAULT proc:   cabecera invalida (magic, version o 0 secciones) =800
+   45 WARN  proc:   el .bex de disco no paso la admision =1
+   46 INFO  lanzar: bytes DIRECTOS del disco al marco =2C00
+   47 WARN  gui:    el .bex no paso la admision
+```
+
+`=800` son **2048**. Ese numero es `bytes.len()`, o sea **el prologo** -- no los
+308.184 de `gui.bex`. Falla la lectura de los **primeros 2 KB** del fichero, que
+es la operacion mas pequena que hace el sistema.
+
+Y la linea 46 solo existe en el camino sin mesa: **la pieza B se tomo**, y sus
+11.264 bytes directos (el paseo por directorios, la FAT y los cuatro sectores del
+prologo) demuestran que las lecturas ocurren.
+
+## La observacion que cierra el caso
+
+En el arranque anterior el fallo salia con `=4B3D8` --el fichero entero-- y en
+este con `=800`. Entre las dos fotos cambio **una sola cosa** en ese camino:
+
+```text
+   antes    el prologo caia en IMAGE   -- estatico de .bss, alineado a pagina
+   ahora    el prologo cae en la PILA  -- un local de 2 KB
+```
+
+Mismo fichero, mismo LBA, mismo codigo de lectura.
+
+> **Si una lectura funciona o no segun DONDE pongas el destino, el sospechoso no
+> es el disco ni el sistema de ficheros: es la traduccion de direccion.**
+
+Y de paso descarta al otro sospechoso: la mesa compartida **ya no esta en el
+camino** y el fallo sigue. No era la mesa.
+
+## Lo que estaba mal, dicho en una frase
+
+`tramo_dma` **preguntaba** a las tablas de pagina donde vive un buffer, para
+darle esa respuesta al HBA. Preguntar admite que te contesten mal.
+
+El physmap es un espejo LINEAL --`virt = phys + HIGH_MEM_BASE`-- asi que para una
+direccion de esa ventana la fisica **no hay que preguntarla: se resta**. Y dos
+direcciones seguidas ahi son dos fisicas seguidas por construccion, asi que la
+continuidad tampoco hay que comprobarla.
+
+Ahora el DMA directo **solo** acepta destinos del physmap. Todo lo demas --la
+pila, `.bss`, la imagen del kernel-- rebota: mas lento, correcto, y son lecturas
+pequenas.
+
+** Y el camino rapido no se pierde donde importa: la pieza B aterriza las
+secciones en marcos recien pedidos al asignador, y a esos se llega por
+`phys_to_virt`, que **es** una direccion del physmap. El DMA directo se queda
+exactamente en el sitio para el que se invento.
+
+## La leccion, que es de metodo
+
+1. **Un error que no puede ensenar su evidencia es un error a medias.** Decir
+   *"cabecera invalida"* es una afirmacion; su prueba son ocho bytes. Sin ellos
+   hubo dos tandas de fotos y una tarde entre cuatro hipotesis **que se
+   distinguen a simple vista**. Ahora la falta los imprime.
+2. **Mover una pieza es un experimento.** El prologo se movio a la pila por
+   limpieza --para que el camino sin mesa no tocara la mesa-- y sin querer se
+   monto la prueba controlada que llevaba dos dias haciendo falta: mismo dato,
+   mismo camino, distinto destino.
+3. **Preguntar es peor que saber.** Cada vez que el kernel *deduce* algo que
+   podria tener escrito, se abre un sitio donde la deduccion falla en silencio:
+   `bex::necesita` deduciendo lo que el fichero podia declarar, `tramo_dma`
+   deduciendo una traduccion que el mapeo ya garantiza. Las dos se arreglaron
+   igual -- **quitando la pregunta**, no mejorandola.
+
+## Lo que sigue sin saberse
+
+Que la traduccion era el problema es **la hipotesis mejor sostenida**, no un
+hecho: el arreglo es correcto lo fuera o no --una resta es mejor que un paseo por
+tablas para un espejo lineal-- pero quien lo confirma es el proximo arranque. Si
+la cabecera sigue invalida, los ocho bytes diran cual de las otras tres es.

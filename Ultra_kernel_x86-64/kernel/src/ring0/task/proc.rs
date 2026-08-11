@@ -451,6 +451,32 @@ fn admit_payload_desde(
             // probable de los trece es justo el que se cuenta con un numero.
             log("[proc] FATAL: payload failed BEX admission\n");
             crate::ring0::cabina::fault("proc", e.name(), bytes.len() as u64);
+            // ** Y LA PRUEBA DE LA ACUSACION: los ocho primeros bytes.
+            //
+            // Decir *"cabecera invalida"* es una afirmacion, y su evidencia son
+            // ocho bytes. Sin ellos hay que **reproducir el fallo para
+            // entenderlo**, que el 2026-08-10 fueron dos tandas de fotos y una
+            // tarde entre cuatro hipotesis que se distinguen a simple vista:
+            //
+            // | lo que salga | quiere decir |
+            // |---|---|
+            // | `00 00 00 00...` | el DMA escribio en otro sitio |
+            // | bytes del medio del fichero | llego el sector equivocado |
+            // | algo que no es ni una cosa ni otra | el LBA esta mal |
+            // | `...31464542` (BEF1 corrido) | un desfase, no una corrupcion |
+            //
+            // No es una linea de depuracion que se quita: **un error que no
+            // puede ensenar su evidencia es un error a medias**, y este camino
+            // --el prologo de una imagen que viene del disco-- es justo donde
+            // menos se puede permitir adivinar.
+            let mut ocho = [0u8; 8];
+            let n = bytes.len().min(8);
+            ocho[..n].copy_from_slice(&bytes[..n]);
+            crate::ring0::cabina::fault(
+                "proc",
+                "los 8 primeros bytes de lo que llego",
+                u64::from_le_bytes(ocho),
+            );
             set_status("BEX admission failed");
             return None;
         }

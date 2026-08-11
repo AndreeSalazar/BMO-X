@@ -737,28 +737,55 @@ fn leer_rebotando(lba: u64, batch: u16, dma: u64, buf: &mut [u8], done: u16) -> 
 /// cargador existe igual en ese espacio porque la mitad alta se comparte, pero
 /// preguntarselo al espacio equivocado seria confiar en esa coincidencia.
 fn tramo_dma(va: u64, max: u64) -> Option<(u64, u64)> {
-    if max < SECTOR as u64 || va & 1 != 0 {
+    if max < SECTOR as u64 {
         return None;
     }
-    use crate::ring0::mm::vmm;
-    let pml4 = vmm::kernel_pml4();
-    if pml4 == 0 {
+    // ** SOLO EL PHYSMAP, Y LA TRADUCCION ES UNA RESTA (2026-08-10).
+    //
+    // === Lo que habia aqui, y por que se fue ===
+    //
+    // Esto caminaba las tablas de pagina con `vmm::fisica_exacta` para cualquier
+    // direccion que le dieran, y le entregaba al HBA la respuesta. O sea que le
+    // PREGUNTABA a una estructura de datos donde vive un buffer, y se fiaba.
+    //
+    // El arranque del 2026-08-10 dijo que eso no se sostiene: la MISMA lectura
+    // --mismo fichero, mismo LBA, mismo codigo-- funcionaba con el destino en un
+    // estatico de `.bss` y fallaba con el destino en la pila. Si una lectura sale
+    // bien o mal segun DONDE la pongas, el sospechoso no es el disco: es la
+    // traduccion.
+    //
+    // === Lo que hay ahora ===
+    //
+    // El physmap es un espejo LINEAL: `virt = phys + HIGH_MEM_BASE`. Para una
+    // direccion de esa ventana la fisica no hay que preguntarla, **se resta**. Y
+    // dos direcciones seguidas ahi son dos fisicas seguidas por construccion, asi
+    // que la continuidad tampoco hay que comprobarla pagina a pagina: la garantiza
+    // el mapeo, no una comprobacion que un dia mira mal.
+    //
+    // Todo lo demas --la pila, `.bss`, la imagen del kernel-- **rebota**. Es mas
+    // lento y es correcto, y son lecturas pequenas: el prologo son 2 KB.
+    //
+    // ** Y el camino rapido NO se pierde donde importa. La pieza B aterriza las
+    // secciones en marcos recien pedidos al asignador, y a esos se llega por
+    // `mm::phys_to_virt`, que **es** una direccion del physmap. O sea que el DMA
+    // directo se queda exactamente en el sitio para el que se invento, y
+    // desaparece de los sitios donde nadie podia garantizar nada.
+    //
+    // > No es que ahora se compruebe mejor. Es que **ya no hay nada que
+    // > comprobar**: la respuesta se sabe sin preguntar.
+    let fin_physmap = mm::HIGH_MEM_BASE.wrapping_add(mm::PHYSMAP_SIZE);
+    if va < mm::HIGH_MEM_BASE || va >= fin_physmap {
         return None;
     }
-    let pagina = mm::PAGE;
-    let base = vmm::fisica_exacta(pml4, va)?;
-    // Lo que queda de ESTA pagina ya esta seguido por construccion.
-    let mut bytes = (pagina - (va & (pagina - 1))).min(max);
-    while bytes < max {
-        // Se compara la direccion EXACTA esperada contra la real. Dentro de una
-        // pagina grande, dos pasos de 4 KiB dan direcciones seguidas y el tramo
-        // crece; en la frontera de dos paginas que en fisico no se tocan, no.
-        if vmm::fisica_exacta(pml4, va + bytes)? != base + bytes {
-            break; // aqui se rompe la continuidad: hasta aqui llega el tramo
-        }
-        bytes = (bytes + pagina).min(max);
+    let phys = va - mm::HIGH_MEM_BASE;
+    // Lo que quede de ventana, por si un buffer enorme llegara al tope. No puede
+    // pasar --el asignador nunca entrega marcos por encima de `PHYSMAP_SIZE`, y
+    // esta escrito en su cabecera-- pero acotarlo cuesta una resta.
+    let bytes = max.min(fin_physmap - va);
+    if bytes < SECTOR as u64 {
+        return None;
     }
-    Some((base, bytes))
+    Some((phys, bytes))
 }
 
 // -- ** PEDIR SIN ESPERAR ----------------------------------------------------
