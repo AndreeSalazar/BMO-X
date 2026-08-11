@@ -61,7 +61,34 @@ fn irq_restore(flags: u64) {
 /// Graba un evento. Seguro desde IRQ y desde el manejador de faults. La capa
 /// se infiere del nombre del modulo (`Layer::from_module`): "usb"->ring0,
 /// "lang"->lang, "cap"->sec, etc.
+/// ** DE DONDE SALIO CADA EVENTO, SIN TOCAR NI UNA LLAMADA (2026-08-11).
+///
+/// `#[track_caller]` le pide al compilador el fichero y la linea **del que
+/// llama**, no de esta funcion. Sale gratis --se resuelve al compilar-- y lo
+/// mejor es lo que NO hay que hacer: las doscientas llamadas a `info`, `warn` y
+/// `fault` repartidas por el kernel se quedan exactamente como estan.
+///
+/// == Por que hacia falta, contado con lo que costo ==
+///
+/// El 2026-08-10 una linea decia `cabecera invalida (magic, version o 0
+/// secciones)` y para saber quien la habia escrito hubo que buscar la frase por
+/// todo el arbol. Funciona hasta que dos sitios dicen lo mismo, o hasta que
+/// alguien reescribe la frase y el `grep` deja de encontrarla.
+///
+/// == Y esto NO es darle un cerebro al kernel ==
+///
+/// No hay nada que deducir: el sitio lo sabe el compilador en el momento de
+/// emitir. Guardarlo no es analizar, es **dejar de tirar un dato que ya se
+/// tenia**. El kernel sigue sin interpretar nada -- apunta hechos, y quien los
+/// agrupe, encadene y narre puede vivir en Ring 3 y leerlos.
+///
+/// Es el mismo movimiento de esta semana, por cuarta vez: `bex::necesita`
+/// deducia lo que el fichero podia declarar; `tramo_dma` preguntaba una
+/// traduccion que el mapeo ya garantizaba; una falta de cabecera no ensenaba los
+/// bytes que la provocaron. **Quitar la pregunta, no mejorarla.**
+#[track_caller]
 pub fn record(sev: Severity, module: &str, msg: &str, value: u64) {
+    let sitio = core::panic::Location::caller();
     let flags = irq_save();
     unsafe {
         // Reentrancia (excepcion a media escritura): contar y salir. Nunca
@@ -74,7 +101,8 @@ pub fn record(sev: Severity, module: &str, msg: &str, value: u64) {
         BUSY = true;
 
         let layer = Layer::from_module(module);
-        let mut ev = Event::new(sev, layer, Entity::Module, module, 0, msg, value);
+        let mut ev = Event::new(sev, layer, Entity::Module, module, 0, msg, value)
+            .en(sitio.file(), sitio.line());
         EV_SEQ = EV_SEQ.wrapping_add(1);
         ev.seq = EV_SEQ;
         ev.tick_ns = crate::ring0::plat::timer::ticks();
@@ -89,11 +117,15 @@ pub fn record(sev: Severity, module: &str, msg: &str, value: u64) {
 }
 
 /// Atajos por severidad -- el vocabulario del narrador.
+#[track_caller]
 pub fn info(module: &str, msg: &str, value: u64)  { record(Severity::Info, module, msg, value); }
+#[track_caller]
 pub fn warn(module: &str, msg: &str, value: u64)  { record(Severity::Warning, module, msg, value); }
+#[track_caller]
 pub fn fault(module: &str, msg: &str, value: u64) { record(Severity::Fault, module, msg, value); }
 /// Lo irrecuperable: fault de kernel, doble falta. Ultima linea de la bitacora
 /// antes de que la maquina se detenga.
+#[track_caller]
 pub fn panic_ev(module: &str, msg: &str, value: u64) { record(Severity::Panic, module, msg, value); }
 
 /// Evento `n` posiciones antes del mas reciente (0 = el ultimo). Para mostrar
@@ -155,6 +187,17 @@ pub fn dump_to_disk() -> usize {
         r.txt(" "); r.txt(ev.module_str()); r.txt(": ");
         r.txt(ev.msg_str());
         if ev.value != 0 { r.txt(" ="); r.hex_min(ev.value); }
+        // ** AQUI EL SITIO VA EN TODOS, y no solo en los FAULT.
+        //
+        // En pantalla se reserva para lo que duele porque hay 80 columnas que
+        // repartir. Un fichero no tiene esa limitacion, y **el que lee
+        // `CABINA.LOG` no tiene la maquina delante**: esta reconstruyendo lo que
+        // paso a partir de esto y nada mas. Ahi el `INFO` de la linea de antes
+        // es justo el que dice por donde iba el sistema cuando se torcio.
+        let f = ev.fichero_str();
+        if !f.is_empty() {
+            r.txt("  <"); r.txt(f); r.txt(":"); r.dec(ev.linea as u64); r.txt(">");
+        }
         r.txt("\n");
         n = append(n, r.as_str());
     }
@@ -457,6 +500,23 @@ pub fn render_hud() {
                 // justo el dato duro (direccion MMIO, slot, codigo de estado)
                 // que convierte una frase en una pista.
                 if ev.value != 0 { r.txt(" ="); r.hex_min(ev.value); }
+                // ** Y DE DONDE SALIO, pero SOLO cuando duele.
+                //
+                // Un `INFO` que sale sesenta veces por segundo no necesita
+                // decir su linea: nadie lo va a ir a buscar. Un `FAULT` si, y
+                // es lo primero que se hace -- el 2026-08-10 se busco la frase
+                // `cabecera invalida` por todo el arbol para dar con el sitio.
+                //
+                // Ponerlo en todos gastaria el ancho de pantalla en los
+                // eventos que menos falta hacen, y la pantalla es de 80
+                // columnas: cada caracter que se gasta en ruido es uno que le
+                // falta al mensaje.
+                if matches!(ev.severity, Severity::Fault | Severity::Panic) {
+                    let f = ev.fichero_str();
+                    if !f.is_empty() {
+                        r.txt("  <"); r.txt(f); r.txt(":"); r.dec(ev.linea as u64); r.txt(">");
+                    }
+                }
                 splash_dashboard_log_color(row, r.as_str(), ev_color(&ev));
             }
             None => splash_dashboard_log_color(row, "", C_DIM),

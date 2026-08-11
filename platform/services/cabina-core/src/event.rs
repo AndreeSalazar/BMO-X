@@ -4,6 +4,11 @@ use core::fmt;
 
 pub const MODULE_MAX: usize = 32;
 pub const MSG_MAX: usize = 128;
+/// Lo que mide el nombre de un fichero fuente, sin ruta. El mas largo del arbol
+/// es `aterrizaje.rs`, trece. Veinticuatro dejan sitio de sobra y mantienen el
+/// evento en un tamano fijo -- que es la condicion para que el anillo de CABINA
+/// no reserve memoria nunca.
+pub const FILE_MAX: usize = 24;
 
 // --- Severity -------------------------------------------------------------
 
@@ -308,6 +313,29 @@ pub struct Event {
     pub entity_id: u32,
     pub msg: [u8; MSG_MAX],
     pub value: u64,
+
+    // -- ** DE DONDE SALIO ESTE EVENTO (2026-08-11) ------------------------
+    //
+    // === Por que esto NO es un cerebro ===
+    //
+    // Un evento decia QUE paso y con que numero. No decia **desde donde**, y
+    // eso obligaba a `grep` de la frase por todo el arbol -- que funciona hasta
+    // que dos sitios dicen lo mismo, o hasta que la frase se reescribe.
+    //
+    // No hay nada que deducir aqui: el sitio lo sabe el compilador, gratis, en
+    // el momento de emitir. Guardarlo no es analizar, es **dejar de tirar un
+    // dato que ya se tenia**. Quien analiza --agrupar, encadenar causas,
+    // narrar-- puede vivir en Ring 3 y leerlo; el kernel solo apunta.
+    //
+    // Es el mismo movimiento que ya se hizo tres veces esta semana:
+    // `bex::necesita` deducia lo que el fichero podia declarar; `tramo_dma`
+    // preguntaba una traduccion que el mapeo ya garantiza; la falta de cabecera
+    // no ensenaba los bytes que la provocaron. **Quitar la pregunta, no
+    // mejorarla.**
+    /// Nombre del fichero, sin ruta. `bex.rs` cabe; la ruta entera no aporta.
+    pub fichero: [u8; FILE_MAX],
+    /// Linea dentro de ese fichero.
+    pub linea: u32,
 }
 
 impl Event {
@@ -331,10 +359,33 @@ impl Event {
             entity_id,
             msg: [0; MSG_MAX],
             value,
+            fichero: [0; FILE_MAX],
+            linea: 0,
         };
         str_to_fixed(module, &mut ev.module);
         str_to_fixed(msg, &mut ev.msg);
         ev
+    }
+
+    /// **Apunta de donde salio.** `ruta` puede venir con directorios: se queda
+    /// con el ultimo tramo, que es lo unico que hace falta para encontrarlo.
+    ///
+    /// Separado del constructor a proposito: quien construye el evento no tiene
+    /// por que saber de `#[track_caller]`, y quien lo emite no tiene por que
+    /// repetir los siete argumentos de `new`.
+    pub fn en(mut self, ruta: &str, linea: u32) -> Self {
+        let corto = match ruta.rfind(['/', '\\']) {
+            Some(i) => &ruta[i + 1..],
+            None => ruta,
+        };
+        str_to_fixed(corto, &mut self.fichero);
+        self.linea = linea;
+        self
+    }
+
+    /// El fichero del que salio, o cadena vacia si no se apunto.
+    pub fn fichero_str(&self) -> &str {
+        fixed_to_str(&self.fichero)
     }
 
     pub fn module_str(&self) -> &str {

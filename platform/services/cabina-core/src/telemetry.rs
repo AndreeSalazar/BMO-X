@@ -1,4 +1,4 @@
-use crate::event::Event;
+use crate::event::{Event, FILE_MAX};
 
 // --- Counter group: snapshot of all atomic counters at a point in time ----
 
@@ -105,6 +105,8 @@ impl SystemSnapshot {
 
 impl Event {
     pub const ZERO: Self = Self {
+        fichero: [0; FILE_MAX],
+        linea: 0,
         seq: 0,
         tick_ns: 0,
         severity: crate::event::Severity::Info,
