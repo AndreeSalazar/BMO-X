@@ -266,3 +266,99 @@ pub fn alive() -> (u32, u32) {
         tramp::MASCARA.load(Ordering::SeqCst),
     )
 }
+
+// ============ ** EN QUE ESTA CADA NUCLEO, Y POR QUE ============
+//
+// === El hueco que tapa ===
+//
+// Hasta hoy la unica pregunta que este modulo sabia contestar era **cuantos**
+// estan en pie. Y "once en pie" no dice nada de lo que importa: ni si estan
+// trabajando, ni si estan girando en vacio, ni por que uno no contesto.
+//
+// > **Un nucleo despierto que no hace nada y uno que trabaja se miden igual
+// > desde fuera: los dos estan "en pie".** Desde dentro tambien, hasta que
+// > alguien escribe esta tabla.
+//
+// El motivo viaja con el estado a proposito. `nucleo 3: DORMIDO` sin el porque
+// es exactamente lo que hace indepurable un sistema al mes siguiente -- y aqui
+// los motivos no son adorno: **"parado por orden" y "no contesto al trampolin"
+// se ven igual desde el contador y se arreglan en sitios opuestos**.
+
+/// En que estado esta un nucleo. Ver `docs/AXION_MAESTRO.md`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Estado {
+    /// El BSP. Dueno del kernel entero, y no se negocia.
+    Maestro,
+    /// En pie y aceptando faenas. **Gira** mientras espera: ver el coste.
+    Obrero,
+    /// Se le mando parar. Sin IPI **no vuelve**: ver `obra::parar`.
+    Dormido,
+    /// Se le llamo y no contesto. El fallo esta en el trampolin o en su pila.
+    Ausente,
+    /// Todavia no se ha llamado a nadie. No es un fallo: es que no se ha pedido.
+    SinDespertar,
+}
+
+impl Estado {
+    pub fn nombre(self) -> &'static str {
+        match self {
+            Estado::Maestro => "MAESTRO",
+            Estado::Obrero => "OBRERO",
+            Estado::Dormido => "DORMIDO",
+            Estado::Ausente => "AUSENTE",
+            Estado::SinDespertar => "-",
+        }
+    }
+
+    /// La razon, en el idioma del sistema. **Es la mitad util de la tabla.**
+    pub fn motivo(self) -> &'static str {
+        match self {
+            Estado::Maestro => "el kernel entero: drivers, CABINA, los static mut",
+            Estado::Obrero => "acepta faenas; nunca toca un driver. GIRA al esperar",
+            Estado::Dormido => "parado por orden; sin IPI no vuelve",
+            Estado::Ausente => "se le llamo y no contesto: trampolin o pila",
+            Estado::SinDespertar => "nadie lo ha llamado todavia",
+        }
+    }
+}
+
+/// **El estado del nucleo con APIC id `id`.**
+///
+/// [!] El `id 0` es el BSP y se contesta sin mirar la mascara: es el nucleo que
+/// esta ejecutando esta misma funcion. Preguntarselo a la mascara daria
+/// `AUSENTE` --el BSP nunca pasa por el trampolin, asi que nunca pone su bit--
+/// y el panel diria que el nucleo que lo esta pintando no existe.
+pub fn estado_de(id: u32) -> Estado {
+    if id == 0 {
+        return Estado::Maestro;
+    }
+    let (vivos, mascara) = alive();
+    if vivos == 0 {
+        return Estado::SinDespertar;
+    }
+    if mascara & (1u32 << (id & 31)) == 0 {
+        return Estado::Ausente;
+    }
+    if obra::parados() {
+        Estado::Dormido
+    } else {
+        Estado::Obrero
+    }
+}
+
+/// **Cuantos nucleos estan girando en vacio ahora mismo.**
+///
+/// Es el numero del ahorro, y hoy es incomodo a proposito: un obrero en espera
+/// **gira** (`pause`), no duerme, asi que este contador es literalmente
+/// *"cuantos nucleos estan al 100% sin hacer nada"*. Con los doce en pie son
+/// once.
+///
+/// Existe para que el dia que entre `MWAIT` la mejora se pueda **medir** en vez
+/// de suponerla. Ver el apartado 5 de `docs/AXION_MAESTRO.md`.
+pub fn girando() -> u32 {
+    if obra::parados() {
+        0
+    } else {
+        alive().0
+    }
+}

@@ -519,6 +519,7 @@ fn shell_help() {
     // contados a mano, y bastaba una palabra mas larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
     row("sistema", |l| l.txt("info  cpu  mem  tasks  disk  net  ls  estratos  cabina  hist"));
+    row("nucleos", |l| l.txt("smp  smp tabla  smp prueba  smp parar"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
     row("ring3", |l| l.txt("run <ruta>  bex  ktest"));
@@ -1343,8 +1344,141 @@ fn shell_ktest() {
 /// ningun CPU todavia. Si esta mal, lo que se cuelga es este comando y no la
 /// maquina al encenderla; la salida es un reinicio a boton. Ver
 /// `plat/smp.rs` y `docs/SMP_MAESTRO.md`.
-fn shell_smp() {
+/// **La tabla de nucleos: en que esta cada uno y POR QUE.**
+///
+/// Es la mitad de AXION que se puede tener hoy sin tocar el hardware -- ver
+/// `docs/AXION_MAESTRO.md`, apartado 4. No manda: **mira**, y eso ya cambia
+/// algo, porque hasta ahora la unica pregunta que el sistema sabia contestar
+/// era *cuantos* estan en pie.
+///
+/// ** Y la ultima fila es la que el dueno olio: cuantos nucleos estan al 100%
+/// **sin hacer nada**. Hoy son todos los obreros, porque el que espera gira en
+/// vez de dormir. Ese numero es el que tiene que bajar a cero el dia que entre
+/// `MWAIT`, y por eso se pinta ANTES de que exista: una mejora que no se puede
+/// comparar con el numero de antes no se puede demostrar.
+fn shell_smp_tabla() {
+    use crate::ring0::plat::smp;
+    let hilos = match (crate::ring0::cpu_vendor::profile::active().nucleos)() {
+        Some(t) => t.hilos as u32,
+        // Sin perfil se mira lo que contesto, que es lo unico que se sabe de
+        // verdad. Inventar "seguro que son 8" seria pintar filas de nucleos que
+        // a lo mejor no existen.
+        None => smp::alive().0 + 1,
+    };
+    let tope = if hilos > 32 { 32 } else { hilos };
+    for id in 0..tope {
+        let e = smp::estado_de(id);
+        row("nucleo", |l| {
+            l.dec(id as u64);
+            l.txt("  ");
+            l.txt(e.nombre());
+            l.txt("   ");
+            l.txt(e.motivo());
+        });
+    }
+    let girando = smp::girando();
+    row("coste", |l| {
+        l.dec(girando as u64);
+        l.txt(" nucleos GIRANDO en vacio (al 100%). Con MWAIT esto seria 0");
+    });
+}
+
+/// **`smp prueba`** -- reparte una cuenta pura y mide la aceleracion real.
+///
+/// === Por que hacia falta cablearlo aqui ===
+///
+/// La prueba existe desde el 08-08 y **solo se podia pedir desde Ring 3**, o sea
+/// desde la caja del escritorio. Y al shell de Ring 0 se llega justo cuando el
+/// escritorio NO arranca: la unica orden capaz de decir si los doce nucleos
+/// sirven de algo estaba detras de la cosa que a veces no enciende.
+///
+/// El 08-08 contesto `0.00x` --`repartir` se rindio esperando-- y de ahi
+/// salieron los tres testigos. **Se pintan siempre, salga bien o mal**, porque
+/// son ellos y no la aceleracion los que dicen DONDE se rompio:
+///
+/// | | |
+/// |---|---|
+/// | `ENTRARON` corto | el fallo esta ANTES: trampolin o pila |
+/// | `VIERON` corto | la publicacion de las atomicas |
+/// | `HECHOS` corto | la faena murio a medias |
+///
+/// ** Y el techo, dicho antes de que decepcione: 6 nucleos con 2 hilos cada uno
+/// no dan 12x en calculo puro. Dos hermanos SMT comparten las unidades de
+/// ejecucion, asi que **~6x ES el maximo** de esta maquina, no un fallo.
+fn shell_smp_prueba() {
+    use crate::ring0::plat::smp::{self, obra};
+    let (alive, _) = smp::alive();
+    if alive == 0 {
+        row("   ", |l| l.txt("no hay obreros en pie: usa `smp` primero"));
+        return;
+    }
+    if obra::parados() {
+        row("   ", |l| l.txt("los obreros estan PARADOS y sin IPI no vuelven: reinicia"));
+        return;
+    }
+    row("   ", |l| l.txt("repartiendo... (decimas de segundo)"));
+    let (uno, todos, partes) = obra::prueba(alive);
+    row("un nucleo", |l| { l.dec(uno); l.txt(" ticks"); });
+    row("todos", |l| { l.dec(todos); l.txt(" ticks"); });
+    if partes == 0 {
+        // `prueba` devuelve 0 partes cuando alguien no llego, y entonces el
+        // tiempo de "todos" mide una carrera INCOMPLETA -- seria el mas bonito
+        // de los dos y no vale nada. No se pinta como aceleracion.
+        row("resultado", |l| l.txt("INCOMPLETA: falto un obrero, el tiempo no vale"));
+    } else if todos > 0 {
+        let x100 = uno.saturating_mul(100) / todos;
+        row("aceleracion", |l| {
+            l.dec(x100 / 100);
+            l.txt(",");
+            let d = x100 % 100;
+            if d < 10 { l.txt("0"); }
+            l.dec(d);
+            l.txt("x  con ");
+            l.dec(partes as u64);
+            l.txt(" partes");
+        });
+    }
+    let (entraron, vieron, hechos) = obra::testigos();
+    row("testigos", |l| {
+        l.txt("ENTRARON ");
+        l.dec(entraron as u64);
+        l.txt("   VIERON ");
+        l.dec(vieron as u64);
+        l.txt("   TERMINARON ");
+        l.dec(hechos as u64);
+    });
+    if entraron < alive {
+        row("   ", |l| l.txt("faltan por ENTRAR: mira el trampolin o la pila del AP"));
+    } else if vieron < entraron {
+        row("   ", |l| l.txt("entraron y no VIERON: es la publicacion de las atomicas"));
+    } else if hechos < vieron {
+        row("   ", |l| l.txt("vieron y no TERMINARON: la faena murio a medias"));
+    }
+    row("techo", |l| l.txt("dos hilos SMT comparten unidades: ~6x es el maximo aqui"));
+}
+
+fn shell_smp(arg: &[u8]) {
     dashboard_log_color("== smp ==", SH_TITLE);
+
+    // Las dos ordenes que NO despiertan a nadie van primero: preguntar por el
+    // estado no puede tener como efecto secundario cambiarlo.
+    if arg == b"prueba" {
+        shell_smp_prueba();
+        return;
+    }
+    if arg == b"tabla" || arg == b"estado" {
+        shell_smp_tabla();
+        return;
+    }
+    if arg == b"parar" {
+        crate::ring0::plat::smp::obra::parar();
+        row("parar", |l| l.txt("obreros PARADOS. Sin IPI no vuelven: hace falta reiniciar"));
+        return;
+    }
+    if !arg.is_empty() {
+        row("   ", |l| l.txt("no lo conozco. Usa: smp | smp tabla | smp prueba | smp parar"));
+        return;
+    }
 
     // Por el PERFIL, no por el nombre del fabricante: ver `profile.rs`.
     if let Some(t) = (crate::ring0::cpu_vendor::profile::active().nucleos)() {
@@ -1403,6 +1537,11 @@ fn shell_smp() {
     if alive < esperados {
         row("   ", |l| l.txt("los que faltan no arrancaron o el trampolin no llego"));
     }
+
+    // Y ahora que hay a quien mirar, la tabla. Va DESPUES de despertar por lo
+    // obvio: antes todas las filas dirian "nadie lo ha llamado todavia".
+    shell_smp_tabla();
+    row("   ", |l| l.txt("`smp prueba` reparte una cuenta y mide la aceleracion real"));
 }
 
 fn shell_mem() {
@@ -1679,7 +1818,9 @@ fn run_shell(ctx: &BootContext) -> ! {
         } else if cmd == b"info" {
             shell_info(ctx);
         } else if cmd == b"smp" {
-            shell_smp();
+            shell_smp(b"");
+        } else if cmd.len() > 4 && &cmd[..4] == b"smp " {
+            shell_smp(&cmd[4..]);
         } else if cmd == b"tasks" {
             shell_tasks();
         } else if cmd == b"mem" {
