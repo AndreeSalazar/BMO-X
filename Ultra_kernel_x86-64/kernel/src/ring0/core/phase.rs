@@ -519,7 +519,7 @@ fn shell_help() {
     // contados a mano, y bastaba una palabra mas larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
     row("sistema", |l| l.txt("info  cpu  mem  tasks  disk  net  ls  estratos  cabina  hist"));
-    row("nucleos", |l| l.txt("smp  smp tabla  smp prueba  smp parar"));
+    row("nucleos", |l| l.txt("smp  (escribelo a secas y te dice sus opciones)"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
     row("ring3", |l| l.txt("run <ruta>  bex  ktest"));
@@ -981,6 +981,29 @@ fn shell_estratos() {
 ///
 /// El buffer es estatico y no local: un `.bex` son varios KiB y la pila del
 /// kernel son 64 KiB para todo.
+/// **Las ordenes del shell, en un sitio.** Devuelve el nombre si `texto` es una.
+///
+/// Existe para que `run net` conteste *"eso es una orden, escribe `net`"* en vez
+/// de *"el archivo no esta: revisa la ruta"* -- que es lo que decia, y manda a
+/// mirar el disco cuando lo que sobra es una palabra.
+///
+/// ** La lista esta aqui y no repartida por el `if` gigante a proposito: es la
+/// misma que pinta `help`, y dos listas de ordenes que hay que acordarse de
+/// mantener a la vez son dos listas que un dia no dicen lo mismo.
+fn orden_parecida(texto: &str) -> Option<&'static str> {
+    const ORDENES: &[&str] = &[
+        "help", "ls", "disk", "net", "red", "cabina", "estratos", "cpu", "hist",
+        "history", "layout", "cls", "clear", "info", "smp", "tasks", "mem",
+        "ktest", "fb", "splash", "bex", "panic", "reboot", "halt",
+    ];
+    // Solo el primer trozo: `run smp prueba` tambien tiene que reconocerse.
+    let primera = match texto.find(' ') {
+        Some(i) => &texto[..i],
+        None => texto,
+    };
+    ORDENES.iter().copied().find(|&o| o == primera)
+}
+
 fn shell_run(arg: &[u8]) {
     use crate::ring0::fsys::estratos as est;
     use crate::ring0::task::lanzar;
@@ -1000,6 +1023,30 @@ fn shell_run(arg: &[u8]) {
     if inf.res == Err(lanzar::Fallo::RutaVacia) {
         s_log("[run] uso: run c/holac.bex   (o A:/c/holac.bex)");
         return;
+    }
+    if let Err(lanzar::Fallo::NoSeEncuentra(_)) = inf.res {
+        // ** ANTES DE DECIR "NO ESTA": ES UNA ORDEN?
+        //
+        // `run net` es lo que sale solo cuando uno se acostumbra a que todo se
+        // lanza con `run`. Y hasta hoy contestaba *"el archivo no esta: revisa
+        // la ruta"* -- que manda a mirar el disco cuando lo que hay que hacer es
+        // quitar una palabra.
+        //
+        // No se ejecuta la orden por el: adivinar lo que alguien quiso decir es
+        // como se acaba lanzando otra cosa. Se dice **como se escribe**, que es
+        // lo que hace falta una sola vez.
+        if let Some(orden) = orden_parecida(path) {
+            let mut l = L::new();
+            l.txt("[run] `");
+            l.txt(orden);
+            l.txt("` no es un programa: es una orden. Escribe `");
+            l.txt(orden);
+            l.txt("` a secas");
+            dashboard_log_color(l.as_str(), SH_TITLE);
+            crate::ring0::dev::console::serial_write(l.as_str());
+            crate::ring0::dev::console::serial_write("\n");
+            return;
+        }
     }
     if let Err(lanzar::Fallo::NoSeEncuentra(e)) = inf.res {
         // El motivo exacto: "no esta" y "no cabe en 8.3" mandan a hacer cosas
@@ -1457,11 +1504,30 @@ fn shell_smp_prueba() {
     row("techo", |l| l.txt("dos hilos SMT comparten unidades: ~6x es el maximo aqui"));
 }
 
+/// Las cuatro ordenes, con lo que hace cada una. Cuatro filas se leen; un
+/// parrafo no.
+fn shell_smp_ayuda() {
+    row("smp", |l| l.txt("esto: el estado de cada nucleo, sin tocar nada"));
+    row("smp despertar", |l| l.txt("llama a los demas nucleos y los pone a esperar faena"));
+    row("smp prueba", |l| l.txt("reparte una cuenta entre todos y mide la aceleracion"));
+    row("smp parar", |l| l.txt("los duerme. [!] sin IPI NO vuelven: hay que reiniciar"));
+}
+
 fn shell_smp(arg: &[u8]) {
     dashboard_log_color("== smp ==", SH_TITLE);
 
-    // Las dos ordenes que NO despiertan a nadie van primero: preguntar por el
-    // estado no puede tener como efecto secundario cambiarlo.
+    // ** `smp` A SECAS YA NO DESPIERTA A NADIE (2026-08-11).
+    //
+    // Lo hacia, y era una contradiccion con lo que este mismo fichero dice dos
+    // funciones mas arriba: *preguntar por el estado no puede tener como efecto
+    // secundario cambiarlo*. Y aqui el efecto no es teorico -- despertar deja
+    // **once nucleos girando al 100%**, que es justo el coste que la tabla de
+    // abajo confiesa.
+    //
+    // > Escribir el nombre de algo para ver que es no puede encenderlo.
+    //
+    // Ahora la orden que enciende **se llama** `smp despertar`, que ademas es lo
+    // que hay que teclear para acordarse de que enciende algo.
     if arg == b"prueba" {
         shell_smp_prueba();
         return;
@@ -1475,8 +1541,16 @@ fn shell_smp(arg: &[u8]) {
         row("parar", |l| l.txt("obreros PARADOS. Sin IPI no vuelven: hace falta reiniciar"));
         return;
     }
-    if !arg.is_empty() {
-        row("   ", |l| l.txt("no lo conozco. Usa: smp | smp tabla | smp prueba | smp parar"));
+    if arg.is_empty() {
+        // El estado primero --que es lo que se venia a ver-- y las opciones
+        // debajo, que es lo que hace falta para lo siguiente.
+        shell_smp_tabla();
+        shell_smp_ayuda();
+        return;
+    }
+    if arg != b"despertar" {
+        row("   ", |l| l.txt("no lo conozco:"));
+        shell_smp_ayuda();
         return;
     }
 
@@ -1541,7 +1615,7 @@ fn shell_smp(arg: &[u8]) {
     // Y ahora que hay a quien mirar, la tabla. Va DESPUES de despertar por lo
     // obvio: antes todas las filas dirian "nadie lo ha llamado todavia".
     shell_smp_tabla();
-    row("   ", |l| l.txt("`smp prueba` reparte una cuenta y mide la aceleracion real"));
+    shell_smp_ayuda();
 }
 
 fn shell_mem() {
