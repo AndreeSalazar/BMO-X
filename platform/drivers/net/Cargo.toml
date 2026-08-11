@@ -3,9 +3,12 @@ name = "bmo-net"
 version = "0.1.0"
 edition = "2021"
 authors = ["BMO Project"]
-description = "BMO Network — NIC driver (e1000) + packet I/O"
+description = "BMO Red -- tramas Ethernet como capability. Vacio: ver src/lib.rs"
 
+# Sin dependencias, y eso es parte del borrado.
+#
+# Habia tres --`smoltcp`, `bitflags`, `volatile`-- y la primera es una pila
+# TCP/IP entera que se descargaba y compilaba en cada build de un crate que no
+# llamaba nadie. Cuando vuelva, si vuelve, sera en un programa de **Ring 3**:
+# aqui abajo no pinta nada. Ver la cabecera de `src/lib.rs`.
 [dependencies]
-smoltcp = { version = "0.12", default-features = false, features = ["alloc", "log", "medium-ethernet", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp"] }
-bitflags = "2"
-volatile = "0.4"
