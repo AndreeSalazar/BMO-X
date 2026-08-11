@@ -20,8 +20,20 @@
 //! lo que permite mirar una NTFS sin dar un susto.
 
 use bmo_estratos as es;
-use bmo_estratos::objects::{Attr, BlockPtr, Entrada, Nodo, Tipo, BLOQUE, ENTRADA_LEN, PTR_LEN};
+use bmo_estratos::objects::{Attr, BlockPtr, Entrada, Tipo, BLOQUE, ENTRADA_LEN};
 use crate::ring0::dev::disk;
+
+/// Un nodo abierto de ESTRATOS. **Se re-exporta porque `open` lo devuelve.**
+///
+/// Estaba importado en privado, asi que `est::open()` entregaba un valor cuyo
+/// tipo no se podia nombrar desde fuera del modulo: quien lo recibiera solo
+/// podia guardarlo en un `let` con inferencia, y en el momento en que hiciera
+/// falta meterlo en un campo o en un `enum` --que es justo lo que pide
+/// `task::lanzar::Fuente`-- no compilaba.
+///
+/// Una funcion publica que devuelve un tipo privado es una API a medias: deja
+/// pasar el valor y no la palabra con la que llamarlo.
+pub use bmo_estratos::objects::Nodo;
 
 /// Sectores de 512 B por bloque de ESTRATOS.
 const SECTORES_POR_BLOQUE: u16 = (BLOQUE / 512) as u16;

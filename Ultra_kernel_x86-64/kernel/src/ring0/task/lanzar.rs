@@ -240,6 +240,98 @@ pub fn ruta(path: &str) -> Informe {
     informe
 }
 
+/// **DE DONDE SALEN LOS BYTES DE UNA IMAGEN.** Una pieza, dos implementaciones.
+///
+/// === El problema que resuelve, contado con lo que habia ===
+///
+/// `con_buffer` lee el fichero DOS veces --el prologo, y despues lo que haga
+/// falta-- y cada una llevaba escrita su propia bifurcacion:
+///
+/// ```text
+///   if let Some(nd) = &nodo_est { est::read(...) }        else { fs::load_prefijo(...) }
+///   if let Some(nd) = &nodo_est { est::leer_y_firmar(..) } else { fs::load_prefijo(...) }
+/// ```
+///
+/// Dos ramas por lectura, y **cada lectura nueva las duplica otra vez**. La
+/// pieza B --el disco escribiendo seccion por seccion en los marcos del
+/// proceso-- no hace dos lecturas: hace una por seccion. Con la bifurcacion
+/// escrita a mano en cada punto, eso son diez ramas que tienen que decir lo
+/// mismo, y el dia que una deje de decirlo el sintoma sera que ESTRATOS carga
+/// programas que FAT32 rechaza, o al reves.
+///
+/// === Lo que gana ademas ===
+///
+/// ESTRATOS deja de ser una copia pegada del camino de FAT32. Hoy la asimetria
+/// de verdad entre los dos es UNA --solo ESTRATOS puede traer `:firma`, porque
+/// FAT32 no tiene atributos con nombre-- y estaba enterrada entre cuatro
+/// bifurcaciones que la repetian sin decirlo. Aqui es un solo `Option`.
+enum Fuente {
+    /// El sistema de ficheros propio. Es el primero que se mira: es el unico
+    /// donde un binario puede traer su firma pegada.
+    Estratos(est::Nodo),
+    /// De donde arranca la maquina, y donde vive todo hasta que ESTRATOS crezca.
+    Fat32,
+}
+
+impl Fuente {
+    /// Localiza la imagen. ESTRATOS primero; si no esta ahi, FAT32.
+    ///
+    /// No falla: que no este en ninguno de los dos lo dira la primera lectura,
+    /// **con el motivo del sistema de ficheros en la mano** en vez de un "no
+    /// existe" que se ha perdido por el camino cual de los dos lo dijo.
+    fn abrir(path: &str) -> Self {
+        match if est::is_mounted() { est::open(path) } else { None } {
+            Some(nd) => Fuente::Estratos(nd),
+            None => Fuente::Fat32,
+        }
+    }
+
+    /// Como se llama esto en el log y en el panel.
+    fn origen(&self) -> &'static str {
+        match self {
+            Fuente::Estratos(_) => "ESTRATOS",
+            Fuente::Fat32 => "FAT32",
+        }
+    }
+
+    /// **El principio de la imagen**, lo justo para preguntarle que necesita.
+    /// Devuelve cuantos bytes llegaron.
+    fn prologo(&self, path: &str, dst: &mut [u8]) -> Result<usize, Fallo> {
+        match self {
+            Fuente::Estratos(nd) => est::read(nd, dst).ok_or(Fallo::NoSePudoLeer),
+            Fuente::Fat32 => match crate::ring0::fsys::fs::load_prefijo(path, dst) {
+                Ok((leidos, _)) => Ok(leidos),
+                Err(e) => Err(Fallo::NoSeEncuentra(e.name())),
+            },
+        }
+    }
+
+    /// **Lo que hace falta de verdad.** `(leidos, tamano real, veredicto)`.
+    ///
+    /// El veredicto es la unica asimetria real entre los dos: en ESTRATOS todos
+    /// los bytes le pasan al hasher por delante en la misma pasada, asi que la
+    /// firma cubre el archivo entero sin una segunda lectura. En FAT32 no hay
+    /// donde guardarla, asi que es `None` -- y eso **no es que no se comprobara
+    /// nada**: desde el 2026-08-09 el hash por seccion viaja dentro del propio
+    /// `.bex`, y ese sigue su camino en los dos casos. Ver `task/aterrizaje.rs`.
+    fn cuerpo(
+        &self,
+        path: &str,
+        dst: &mut [u8],
+    ) -> Result<(usize, usize, Option<est::Firma>), Fallo> {
+        match self {
+            Fuente::Estratos(nd) => match est::leer_y_firmar(nd, dst) {
+                Some((leidos, tam, v)) => Ok((leidos, tam, Some(v))),
+                None => Err(Fallo::NoSePudoLeer),
+            },
+            Fuente::Fat32 => match crate::ring0::fsys::fs::load_prefijo(path, dst) {
+                Ok((leidos, tam)) => Ok((leidos, tam, None)),
+                Err(e) => Err(Fallo::NoSeEncuentra(e.name())),
+            },
+        }
+    }
+}
+
 /// El cuerpo, ya con el buffer tomado. Separado para que el `EN_USO` se suelte
 /// por un solo camino pase lo que pase.
 fn con_buffer(path: &str) -> Informe {
@@ -247,10 +339,10 @@ fn con_buffer(path: &str) -> Informe {
 
     // ESTRATOS primero: es el sistema de ficheros propio y el UNICO donde un
     // binario puede traer su firma pegada. Si no esta ahi, se cae a FAT32, que
-    // sigue siendo de donde arranca la maquina.
-    let nodo_est = if est::is_mounted() { est::open(path) } else { None };
-
-    let origen = if nodo_est.is_some() { "ESTRATOS" } else { "FAT32" };
+    // sigue siendo de donde arranca la maquina. De aqui para abajo **no se
+    // vuelve a preguntar cual de los dos es**: ver `Fuente`.
+    let fuente = Fuente::abrir(path);
+    let origen = fuente.origen();
     // Los contadores de DMA ANTES de leer nada: lo que interesa es el delta de
     // ESTA carga, no el total del arranque.
     let (d0, r0) = crate::ring0::dev::disk::cuentas_dma();
@@ -262,33 +354,12 @@ fn con_buffer(path: &str) -> Informe {
     // dieciseis como maximo: 816 bytes cubren cualquier `.bex` que exista. Con
     // dos kilos sobra sitio para que ese contrato pueda crecer sin que esto se
     // quede corto en silencio.
-    let prologo_n = if let Some(nd) = &nodo_est {
-        match est::read(nd, &mut buf[..PROLOGO]) {
-            Some(v) => v,
-            None => {
-                return Informe {
-                    origen,
-                    bytes: 0,
-                    firma: None,
-                    pid: None,
-                    res: Err(Fallo::NoSePudoLeer),
-                }
-            }
-        }
-    } else {
-        match crate::ring0::fsys::fs::load_prefijo(path, &mut buf[..PROLOGO]) {
-            Ok((leidos, _)) => leidos,
-            Err(e) => {
-                crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
-                crate::ring0::cabina::warn("lanzar", e.name(), 0);
-                return Informe {
-                    origen,
-                    bytes: 0,
-                    firma: None,
-                    pid: None,
-                    res: Err(Fallo::NoSeEncuentra(e.name())),
-                };
-            }
+    let prologo_n = match fuente.prologo(path, &mut buf[..PROLOGO]) {
+        Ok(n) => n,
+        Err(f) => {
+            crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
+            crate::ring0::cabina::warn("lanzar", f.motivo(), 0);
+            return Informe { origen, bytes: 0, firma: None, pid: None, res: Err(f) };
         }
     };
 
@@ -305,52 +376,40 @@ fn con_buffer(path: &str) -> Informe {
     // prologo-- se lee lo que quepa y se deja que `inspect` rechace **con su
     // nombre**. Un cargador que se calla el motivo por no saber leer la tabla
     // seria peor que el que leia de mas.
-    let hace_falta = match crate::ring0::task::bex::necesita(&buf[..prologo_n]) {
+    // ** SE GUARDA EL VEREDICTO, no solo el numero. Ver `contradiccion`.
+    //
+    // `necesita` solo contesta `Ok` si vio un `BEF1`, una version buena y una
+    // tabla de secciones que cabe. O sea que ese `Ok` no es un detalle de
+    // implementacion: es **el testimonio de que en esta ruta, hace un momento,
+    // habia un .bex valido**. Tirarlo --que es lo que se hacia-- es lo que deja
+    // al sistema sin poder distinguir despues un fichero malo de una lectura
+    // mala.
+    let veredicto_prologo = crate::ring0::task::bex::necesita(&buf[..prologo_n]);
+    let prologo_valido = veredicto_prologo.is_ok();
+    let hace_falta = match veredicto_prologo {
         Ok(h) => h.min(MAX_BEX),
         Err(_) => MAX_BEX,
     };
 
     // == FASE 3: LEER SOLO ESO ==
-    let (n, tam, veredicto) = if let Some(nd) = &nodo_est {
-        // Una pasada: TODOS los bytes le pasan al hasher por delante y solo se
-        // guarda el principio. La firma sigue cubriendo el archivo entero.
-        // Ver `est::leer_y_firmar`.
-        let Some((leidos, tam, v)) = est::leer_y_firmar(nd, &mut buf[..hace_falta]) else {
-            return Informe {
-                origen,
-                bytes: 0,
-                firma: None,
-                pid: None,
-                res: Err(Fallo::NoSePudoLeer),
-            };
-        };
-        (leidos, tam, Some(v))
-    } else {
-        match crate::ring0::fsys::fs::load_prefijo(path, &mut buf[..hace_falta]) {
-            Ok((leidos, tam)) => (leidos, tam, None),
-            Err(e) => {
-                // * EL MOTIVO, AL KLOG. `Fallo::NoSeEncuentra` ya lo lleva
-                // dentro, pero por la puerta solo cabe un codigo y Ring 3 lo
-                // pinta todo como *"no esta: revisa la ruta"* -- un mensaje que
-                // te manda a mirar la ruta cuando la ruta es perfecta.
-                //
-                // Paso de verdad el 2026-08-07: `c/read.bex` SALIA EN `ls` y
-                // `run` decia que no estaba. El motivo real era otro --la imagen
-                // pesa 1,1 MB y `MAX_BEX` es 1 MiB, asi que no cabia en el
-                // bufer-- y no habia forma de saberlo desde fuera.
-                //
-                // Arreglar el codigo de error es tocar el ABI; escribir el
-                // motivo donde ya se mira, no. F11 lo cuenta.
-                crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
-                crate::ring0::cabina::warn("lanzar", e.name(), 0);
-                return Informe {
-                    origen,
-                    bytes: 0,
-                    firma: None,
-                    pid: None,
-                    res: Err(Fallo::NoSeEncuentra(e.name())),
-                }
-            }
+    let (n, tam, veredicto) = match fuente.cuerpo(path, &mut buf[..hace_falta]) {
+        Ok(v) => v,
+        Err(f) => {
+            // * EL MOTIVO, AL KLOG. `Fallo::NoSeEncuentra` ya lo lleva dentro,
+            // pero por la puerta solo cabe un codigo y Ring 3 lo pinta todo como
+            // *"no esta: revisa la ruta"* -- un mensaje que te manda a mirar la
+            // ruta cuando la ruta es perfecta.
+            //
+            // Paso de verdad el 2026-08-07: `c/read.bex` SALIA EN `ls` y `run`
+            // decia que no estaba. El motivo real era otro --la imagen pesa
+            // 1,1 MB y `MAX_BEX` es 1 MiB, asi que no cabia en el bufer-- y no
+            // habia forma de saberlo desde fuera.
+            //
+            // Arreglar el codigo de error es tocar el ABI; escribir el motivo
+            // donde ya se mira, no. F11 lo cuenta.
+            crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
+            crate::ring0::cabina::warn("lanzar", f.motivo(), 0);
+            return Informe { origen, bytes: 0, firma: None, pid: None, res: Err(f) };
         }
     };
 
@@ -419,6 +478,31 @@ fn con_buffer(path: &str) -> Informe {
         Some(i) => &path[i + 1..],
         None => path,
     };
+
+    // ** LA CONTRADICCION: los mismos bytes, leidos dos veces, distintos.
+    //
+    // === Por que esto no lo puede decir el que valida el formato ===
+    //
+    // `bex::inspect` mira UNA imagen y contesta si es valida. Cuando dice
+    // `cabecera invalida` esta diciendo la verdad, y esa verdad manda a mirar el
+    // fichero -- que es el sitio equivocado si el fichero esta bien.
+    //
+    // El cargador sabe algo que el validador no puede saber: que **hace dos
+    // lecturas de la misma ruta**, la corta y la larga, y que la corta trajo un
+    // `BEF1` legible. Si despues de la larga ya no lo es, ningun fichero ha
+    // cambiado en el disco entre las dos: **lo que fallo fue traerlo**.
+    //
+    // Eso no es una linea de depuracion que se anade para una foto y se quita.
+    // Es la unica conclusion que esta funcion esta en posicion de sacar, y
+    // callarla fue lo que costo la tanda de fotos del 2026-08-10. Ver
+    // `docs/EL_CONTRATO_DE_CARGA.md`, pieza A.
+    if prologo_valido && crate::ring0::task::bex::necesita(&buf[..n]).is_err() {
+        crate::ring0::cabina::fault(
+            "lanzar",
+            "el prologo traia un BEX valido y la lectura larga NO: fallo el TRANSPORTE, no el fichero",
+            n as u64,
+        );
+    }
 
     let (res, pid) = match crate::ring0::task::proc::admit_from_disk(name, &buf[..n], tam) {
         Some((tid, pid)) => (Ok(tid), Some(pid)),

@@ -620,14 +620,9 @@ pub fn read(lba: u64, count: u16, buf: &mut [u8]) -> u16 {
 
         let (batch, got) = match directo {
             Some((phys, batch)) => {
-                let got = match unsafe {
-                    bmo_ahci::read_sectors_phys(unsafe { PORT }, lba + done as u64, batch, phys)
-                } {
-                    Ok(n) => n,
-                    Err(e) => {
-                        crate::ring0::cabina::fault("disk", e.name(), lba + done as u64);
-                        return done;
-                    }
+                let got = match mandar_lectura(lba + done as u64, batch, phys) {
+                    Some(n) => n,
+                    None => return done,
                 };
                 unsafe { SIN_REBOTE += got as u64 * SECTOR as u64; }
                 (batch, got)
@@ -667,15 +662,45 @@ static mut CON_REBOTE: u64 = 0;
 /// `(directos, rebotados)` en bytes desde el arranque.
 pub fn cuentas_dma() -> (u64, u64) { unsafe { (SIN_REBOTE, CON_REBOTE) } }
 
+/// ** LA PRIMITIVA DE LECTURA: un LBA, unos sectores, y una direccion FISICA.
+///
+/// === Por que la de verdad es esta y no `read` ===
+///
+/// El HBA no sabe lo que es una direccion virtual. Lo unico que entiende es
+/// *"escribe estos sectores AQUI"*, con `aqui` en fisico. Todo lo demas --mirar
+/// las tablas de pagina, comprobar continuidad, caer al rebote-- es trabajo que
+/// hace [`read`] **para poder acabar llamando a esto**.
+///
+/// Que estuviera al reves --la funcion publica pidiendo un `&mut [u8]` y la
+/// fisica escondida dentro-- obliga a **preguntar** por una traduccion que en el
+/// caso que viene (la pieza B: el disco escribiendo en los marcos del proceso)
+/// **ya se sabe sin preguntar**: un marco recien pedido al asignador mide una
+/// pagina, es contiguo por definicion, y el asignador acaba de devolver su
+/// direccion fisica. Preguntarle a las tablas donde esta algo que uno mismo
+/// acaba de reservar es trabajo, y es una respuesta de la que fiarse.
+///
+/// Hoy la llaman los dos caminos de `read` --el directo y el de rebote-- que es
+/// lo unico que hay. Cuando la pieza B entre, entrara **por aqui**, sin
+/// envoltorio y sin traducir nada.
+///
+/// [!] Da por hecho que el disco YA esta tomado. Ver `tomar_disco`: tomarlo aqui
+/// dentro convertiria cada vuelta de `read` en una peticion anidada.
+fn mandar_lectura(lba: u64, count: u16, phys: u64) -> Option<u16> {
+    match unsafe { bmo_ahci::read_sectors_phys(unsafe { PORT }, lba, count, phys) } {
+        Ok(n) => Some(n),
+        Err(e) => {
+            // El LBA y no el numero de sectores: cuando un disco se queja, lo
+            // que hace falta saber es DONDE, para poder mirar ese sector con
+            // otra herramienta.
+            crate::ring0::cabina::fault("disk", e.name(), lba);
+            None
+        }
+    }
+}
+
 /// El trozo de rebote de siempre, para cuando el destino no sirve para DMA.
 fn leer_rebotando(lba: u64, batch: u16, dma: u64, buf: &mut [u8], done: u16) -> Option<u16> {
-    let got = match unsafe { bmo_ahci::read_sectors_phys(unsafe { PORT }, lba, batch, dma) } {
-        Ok(n) => n,
-        Err(e) => {
-            crate::ring0::cabina::fault("disk", e.name(), lba);
-            return None;
-        }
-    };
+    let got = mandar_lectura(lba, batch, dma)?;
     if got == 0 { return None; }
     let src = mm::phys_to_virt(dma) as *const u8;
     let dst_off = done as usize * SECTOR;
