@@ -804,6 +804,40 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 }
                 _ => {
                     let (alive, esperados) = smp::despertar(cuantos, |_| {});
+                    // ** EN QUE ESTA CADA NUCLEO, A CABINA.
+                    //
+                    // Lo pidio el dueno con estas palabras: *"que el smp asi
+                    // natural ayude a verificar los cores y hilos: que se estan
+                    // usando, y que la cabina con filtros pueda decir que esta
+                    // ejecutando"*.
+                    //
+                    // La tabla ya existia en el shell de Ring 0, y al shell de
+                    // Ring 0 se llega cuando el escritorio NO arranca. Desde la
+                    // caja del escritorio no habia forma de verla. Ahora va a
+                    // CABINA, que es el sitio que se mira desde los dos lados y
+                    // el unico que tiene filtros.
+                    //
+                    // El valor de cada evento es `nucleo * 16 + estado`, que
+                    // cabe en un numero y se lee de un vistazo: la decena es el
+                    // nucleo y la unidad el estado.
+                    let hilos = match (crate::ring0::cpu_vendor::profile::active().nucleos)() {
+                        Some(t) => (t.hilos as u32).min(32),
+                        None => alive + 1,
+                    };
+                    for id in 0..hilos {
+                        let e = smp::estado_de(id);
+                        crate::ring0::cabina::info("smp", e.nombre(), id as u64);
+                    }
+                    // ** Y el coste, que es el numero del ahorro. Hoy es
+                    // incomodo a proposito: el que espera GIRA, no duerme.
+                    let girando = smp::girando();
+                    if girando > 0 {
+                        crate::ring0::cabina::warn(
+                            "smp",
+                            "nucleos GIRANDO en vacio al 100% (con MWAIT serian 0)",
+                            girando as u64,
+                        );
+                    }
                     BmoStatus::ok_value(((alive as u64) << 32) | esperados as u64)
                 }
             }

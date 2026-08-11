@@ -1518,8 +1518,8 @@ fn shell_smp_prueba() {
 fn shell_smp_ayuda() {
     row("smp", |l| l.txt("esto: el estado de cada nucleo, sin tocar nada"));
     row("smp despertar", |l| l.txt("llama a los demas nucleos y los pone a esperar faena"));
-    row("smp prueba", |l| l.txt("reparte una cuenta entre todos y mide la aceleracion"));
-    row("smp parar", |l| l.txt("los duerme. [!] sin IPI NO vuelven: hay que reiniciar"));
+    row("smp test", |l| l.txt("reparte una cuenta entre todos y mide la aceleracion"));
+    row("smp stop", |l| l.txt("los duerme. [!] sin IPI NO vuelven: hay que reiniciar"));
 }
 
 fn shell_smp(arg: &[u8]) {
@@ -1537,7 +1537,7 @@ fn shell_smp(arg: &[u8]) {
     //
     // Ahora la orden que enciende **se llama** `smp despertar`, que ademas es lo
     // que hay que teclear para acordarse de que enciende algo.
-    if arg == b"prueba" {
+    if arg == b"prueba" || arg == b"test" {
         shell_smp_prueba();
         return;
     }
@@ -1545,7 +1545,7 @@ fn shell_smp(arg: &[u8]) {
         shell_smp_tabla();
         return;
     }
-    if arg == b"parar" {
+    if arg == b"parar" || arg == b"stop" {
         crate::ring0::plat::smp::obra::parar();
         row("parar", |l| l.txt("obreros PARADOS. Sin IPI no vuelven: hace falta reiniciar"));
         return;
