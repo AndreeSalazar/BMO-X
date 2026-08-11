@@ -32,7 +32,7 @@ kernel, y arrancar no va a contestar nada.
 
 ## 0.2 -- Que el fichero no crecio de mas
 
-`gui.bex` medía 308.184 B. Con la alineacion nueva tiene que subir **menos de 1,5
+`gui.bex` media 308.184 B. Con la alineacion nueva tiene que subir **menos de 1,5
 KB**. Si sube mucho mas, algo se esta alineando que no deberia.
 
 ---
