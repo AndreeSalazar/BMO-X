@@ -19,12 +19,22 @@
 //!   el BSP espera    a que esten todas
 //! ```
 //!
-//! Y ser tan poca cosa es lo que lo hace seguro **hoy**, con los 209 `static
-//! mut` que hay en el kernel: un obrero que solo calcula sobre su rango no toca
-//! ni uno. Es el contrato del `docs/SMP_MAESTRO.md` -- *"de Cell se copia el
-//! reparto, no el transporte"*--, y aqui el reparto cabe en cien lineas porque
-//! lo caro de Cell era el transporte, que en un CCX con 32 MB de L3 compartida
-//! **no hay que escribir**.
+//! Y ser tan poca cosa es lo que lo hace seguro **hoy**, con los **236**
+//! `static mut` que hay en el kernel (eran 209 cuando esto se escribio, el
+//! 2026-08-08; el numero se reconto el 11-08 y **sube solo**): un obrero que
+//! solo calcula sobre su rango no toca ni uno.
+//!
+//! ** Ese contador es la medida real de lo que falta para SMP de verdad. El
+//! trampolin --lo que la gente llama "hacer SMP"-- ya esta y arranco 12 de 12
+//! a la primera. Lo que separa esto de un planificador multinucleo son esos 236
+//! sitios, uno a uno: el anillo de CABINA, la cola del teclado, el bitmap de
+//! marcos, el registro de programas, los contadores de USB. **Cada uno es una
+//! carrera el dia que corra un segundo nucleo dentro del kernel.**
+//!
+//! Es el contrato del `docs/SMP_MAESTRO.md` -- *"de Cell se copia el reparto,
+//! no el transporte"*--, y aqui el reparto cabe en cien lineas porque lo caro
+//! de Cell era el transporte, que en un CCX con 32 MB de L3 compartida **no hay
+//! que escribir**.
 //!
 //! === [!] El precio, dicho antes de que se note ===
 //!
