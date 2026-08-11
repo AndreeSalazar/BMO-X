@@ -297,6 +297,9 @@ pub enum Estado {
     Ausente,
     /// Todavia no se ha llamado a nadie. No es un fallo: es que no se ha pedido.
     SinDespertar,
+    /// **Existe y este kernel no puede decir en que esta.** El censo de vivos
+    /// son 32 bits; a partir del nucleo 32 el bit se comparte. Ver `estado_de`.
+    NoSeSabe,
 }
 
 impl Estado {
@@ -307,6 +310,7 @@ impl Estado {
             Estado::Dormido => "DORMIDO",
             Estado::Ausente => "AUSENTE",
             Estado::SinDespertar => "-",
+            Estado::NoSeSabe => "?",
         }
     }
 
@@ -318,6 +322,7 @@ impl Estado {
             Estado::Dormido => "parado por orden; sin IPI no vuelve",
             Estado::Ausente => "se le llamo y no contesto: trampolin o pila",
             Estado::SinDespertar => "nadie lo ha llamado todavia",
+            Estado::NoSeSabe => "existe, pero el censo solo cubre 32: ver tramp::MASCARA",
         }
     }
 }
@@ -336,7 +341,23 @@ pub fn estado_de(id: u32) -> Estado {
     if vivos == 0 {
         return Estado::SinDespertar;
     }
-    if mascara & (1u32 << (id & 31)) == 0 {
+    // ** [!] HASTA 32 NUCLEOS, Y NI UNO MAS -- dicho, no supuesto.
+    //
+    // `MASCARA` son 32 bits y el bit se elige con `id & 31`, o sea que en una
+    // maquina con mas de 32 hilos **el nucleo 33 comparte bit con el 1**. Su
+    // cabecera en `tramp.rs` lo declara y dice *"ese problema todavia no
+    // existe"* -- y era cierto en un 5600X de doce hilos.
+    //
+    // Deja de serlo en cuanto alguien arranque esto en un EPYC. Y lo que haria
+    // esta funcion entonces no es fallar: es **contestar el estado de otro
+    // nucleo** con toda tranquilidad, que es mucho peor.
+    //
+    // > Un limite que no se dice no es un limite: es una mentira esperando la
+    // > maquina que la destape.
+    if id >= 32 {
+        return Estado::NoSeSabe;
+    }
+    if mascara & (1u32 << id) == 0 {
         return Estado::Ausente;
     }
     if obra::parados() {
