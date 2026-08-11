@@ -229,7 +229,19 @@ pub fn ruta(path: &str) -> Informe {
     if cambiado {
         vmm::switch_to(kpml4);
     }
+    // ** TODO LO QUE PASE DE AQUI EN ADELANTE ES EL MISMO INTENTO.
+    //
+    // Cargar un `.bex` emite eventos desde cuatro modulos --`lanzar`, `proc`,
+    // `bex`, `disk`-- y hasta hoy salian sueltos: cuatro renglones que contaban
+    // una sola historia y que habia que juntar de memoria. Con esto llevan todos
+    // el mismo numero, y **juntarlos deja de ser cosa del que mira**.
+    //
+    // [!] Y si esta funcion se fuera por un camino que nadie penso, el testigo
+    // apunta al soltarse que el intento **quedo abierto**. Un lanzamiento que
+    // desaparece sin decir como acabo era, hasta hoy, silencio.
+    let testigo = crate::ring0::cabina::intento("lanzar");
     let informe = con_buffer(path);
+    testigo.cerrar(informe.res.is_ok());
     // Se devuelve SIEMPRE y por un solo camino: volver a Ring 3 con el CR3 del
     // kernel puesto seria mucho peor que el fallo original -- la tarea seguiria
     // corriendo con el espacio de direcciones de otro.

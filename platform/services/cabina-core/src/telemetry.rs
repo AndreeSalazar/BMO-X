@@ -107,6 +107,7 @@ impl Event {
     pub const ZERO: Self = Self {
         fichero: [0; FILE_MAX],
         linea: 0,
+        intento: 0,
         seq: 0,
         tick_ns: 0,
         severity: crate::event::Severity::Info,

@@ -336,6 +336,20 @@ pub struct Event {
     pub fichero: [u8; FILE_MAX],
     /// Linea dentro de ese fichero.
     pub linea: u32,
+
+    // -- ** DE QUE INTENTO FORMA PARTE (2026-08-11) ------------------------
+    //
+    // Un lanzamiento fallido son cuatro renglones que cuentan UNA historia, y
+    // hoy hay que saberse de memoria que el 45 es eco del 44. Con esto, los
+    // cuatro llevan el mismo numero y **la agrupacion deja de ser una deduccion
+    // para ser un dato**.
+    //
+    // Sigue sin haber cerebro: nadie infiere que van juntos. Van juntos porque
+    // quien los emitio estaba dentro del mismo intento, y eso lo sabia en ese
+    // momento. Lo unico que cambia es que ya no se tira.
+    //
+    // `0` = no estaba dentro de ningun intento.
+    pub intento: u32,
 }
 
 impl Event {
@@ -361,6 +375,7 @@ impl Event {
             value,
             fichero: [0; FILE_MAX],
             linea: 0,
+            intento: 0,
         };
         str_to_fixed(module, &mut ev.module);
         str_to_fixed(msg, &mut ev.msg);
