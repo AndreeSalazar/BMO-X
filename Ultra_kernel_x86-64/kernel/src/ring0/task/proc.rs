@@ -628,6 +628,11 @@ fn admit_payload_desde(
             Ok(aterrizaje::Cierre::SinFirma) => sin_firma += 1,
             Err(_) => {
                 set_status("relocs corruptas");
+                crate::ring0::cabina::fault(
+                    "proc",
+                    "el HASH de la tabla de relocs NO cuadra",
+                    plan.relocs_file_size,
+                );
                 return None;
             }
         }
@@ -750,6 +755,7 @@ fn admit_payload_desde(
                 // que aplicar.
                 let Some(rel) = bex::leer_reloc(relocs, 0, plan.relocs_file_size, r) else {
                     log("[proc] FATAL: tabla de relocations mal formada\n");
+                crate::ring0::cabina::fault("proc", "la tabla de relocations esta mal formada", r as u64);
                     return None;
                 };
                 if rel.kind != bex::RELOC_SECCION_ABS64 {
@@ -757,6 +763,7 @@ fn admit_payload_desde(
                     // numero inventado en la memoria de un proceso. Se rechaza
                     // el programa entero.
                     log("[proc] FATAL: tipo de relocation desconocido\n");
+                crate::ring0::cabina::fault("proc", "tipo de relocation DESCONOCIDO", rel.kind as u64);
                     return None;
                 }
                 let (Some(base_donde), Some(base_destino)) = (
@@ -764,6 +771,7 @@ fn admit_payload_desde(
                     va_por_codigo_reloc(rel.destino_sec),
                 ) else {
                     log("[proc] FATAL: relocation a una seccion que no existe\n");
+                crate::ring0::cabina::fault("proc", "relocation a una seccion que NO EXISTE", ((rel.donde_sec as u64) << 8) | rel.destino_sec as u64);
                     return None;
                 };
                 let donde_va = base_donde.wrapping_add(rel.donde_off);
@@ -775,6 +783,7 @@ fn admit_payload_desde(
                 if donde_va < pagina_va || donde_va + 8 > pagina_va + mm::PAGE {
                     if donde_va >= pagina_va && donde_va < pagina_va + mm::PAGE {
                         log("[proc] FATAL: relocation partida entre dos paginas\n");
+                crate::ring0::cabina::fault("proc", "relocation PARTIDA entre dos paginas", donde_va);
                         return None;
                     }
                     continue;
@@ -789,6 +798,7 @@ fn admit_payload_desde(
             }
             if vmm::map_page(aspace, pagina_va, frame, true, writable).is_err() {
                 log("[proc] FATAL: section map failed\n");
+                crate::ring0::cabina::fault("proc", "no se pudo mapear una pagina de seccion", pagina_va);
                 return None;
             }
         }
@@ -802,7 +812,19 @@ fn admit_payload_desde(
             Ok(aterrizaje::Cierre::Cuadra) => {}
             Ok(aterrizaje::Cierre::SinFirma) => sin_firma += 1,
             Err(_) => {
+                // ** ESTO ERA MUDO PARA CABINA, y era el sospechoso principal.
+                //
+                // `set_status` escribe en el panel del kernel, que mientras el
+                // compositor tiene la pantalla **no se pinta**. O sea que el
+                // motivo mas probable de que un `.bex` firmado no arranque se
+                // decia justo donde nadie podia leerlo, y desde fuera se veia
+                // como `el .bex no paso la admision` a secas.
                 set_status("una seccion no cuadra con su hash");
+                crate::ring0::cabina::fault(
+                    "proc",
+                    "el HASH de una seccion NO cuadra: la imagen que llego no es la firmada",
+                    s.kind as u64,
+                );
                 return None;
             }
         }
@@ -843,6 +865,7 @@ fn admit_payload_desde(
     }
     if entry_va == 0 {
         log("[proc] FATAL: no entry point\n");
+                crate::ring0::cabina::fault("proc", "el .bex no declara punto de entrada", 0);
         return None;
     }
 
@@ -853,6 +876,7 @@ fn admit_payload_desde(
         let va = vmm::USER_STACK_TOP - (p + 1) * mm::PAGE;
         if vmm::map_page(aspace, va, frame, true, true).is_err() {
             log("[proc] FATAL: stack map failed\n");
+                crate::ring0::cabina::fault("proc", "no se pudo mapear la pila del proceso", va);
             return None;
         }
     }
@@ -862,6 +886,7 @@ fn admit_payload_desde(
         let va = vmm::CHANNEL_VA_BASE + (i as u64) * mm::PAGE;
         if vmm::map_page(aspace, va, channel::page_phys(i), true, true).is_err() {
             log("[proc] FATAL: channel map failed\n");
+                crate::ring0::cabina::fault("proc", "no se pudo mapear la pagina de canal", va);
             return None;
         }
     }

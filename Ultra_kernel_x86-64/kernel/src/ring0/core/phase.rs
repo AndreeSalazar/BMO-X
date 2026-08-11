@@ -1510,7 +1510,24 @@ fn shell_smp_prueba() {
     } else if hechos < vieron {
         row("   ", |l| l.txt("vieron y no TERMINARON: la faena murio a medias"));
     }
-    row("techo", |l| l.txt("dos hilos SMT comparten unidades: ~6x es el maximo aqui"));
+    // ** EL TECHO DEPENDE DEL TRABAJO, y esta faena es el caso mas favorable.
+    //
+    // Aqui decia *"~6x es el maximo aqui"* por lo de siempre --dos hilos SMT
+    // comparten las unidades de ejecucion-- y **el metal contesto 11,44x el
+    // 2026-08-11**. La razon no rompe la regla, la precisa: esta faena es una
+    // CADENA DE DEPENDENCIAS, o sea que cada hilo pasa la mayor parte del
+    // tiempo esperando su propia multiplicacion. Dos hilos asi se turnan sin
+    // pisarse, que es exactamente para lo que sirve SMT.
+    //
+    // > **SMT no da el doble de calculo: da el doble de ESPERAS solapadas.**
+    //
+    // Por eso el numero de esta prueba es el techo y no la promesa: un trabajo
+    // que sature las unidades --vectorizado, con buen IPC-- se quedara cerca de
+    // los 6 nucleos fisicos. Decirlo aqui evita que un 11x en la pantalla se
+    // lea como "el sistema va 11 veces mas rapido".
+    row("techo", |l| {
+        l.txt("esta faena ESPERA memoria: el mejor caso para SMT. Con calculo denso, ~6x")
+    });
 }
 
 /// Las cuatro ordenes, con lo que hace cada una. Cuatro filas se leen; un
