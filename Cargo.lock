@@ -146,6 +146,7 @@ dependencies = [
  "bmo-fat32",
  "bmo-hash",
  "bmo-input",
+ "bmo-net",
  "bmo-rtc",
  "bmo-uaudio",
  "bmo-uhid",
