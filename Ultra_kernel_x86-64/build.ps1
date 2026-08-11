@@ -465,6 +465,12 @@ $cEjemplos = @(
     @{ src = 'toolchain\lang\c\examples\scroll_C.c'; out = 'scrollc.bex' ; dir = 'c' },
     @{ src = 'toolchain\lang\c\examples\pregunta_C.c'; out = 'pregc.bex'  ; dir = 'c' },
     @{ src = 'toolchain\lang\c\examples\memoria_C.c'; out = 'memc.bex'   ; dir = 'c' },
+    # ** LA SONDA: el unico programa que usa la superficie MAL a proposito.
+    # Handles inventados, operaciones que no existen, el renglon de ruta
+    # inundado, el tope de memoria forzado, tamanos imposibles. Cada empujon
+    # tiene UNA respuesta correcta --el kernel dice que no y sigue vivo-- y que
+    # el programa llegue a imprimir su recuento ya es media prueba.
+    @{ src = 'toolchain\lang\c\examples\sonda_C.c';  out = 'sonda.bex'  ; dir = 'c' },
     # El ensayo general de DOOM: 2.5D en punto fijo sobre la pantalla real.
     @{ src = 'toolchain\lang\c\examples\raycaster_C.c'; out = 'ray.bex'    ; dir = 'c' },
     # La prueba de fopen/fread/fseek. Lee `datos\salida.txt` DOS veces y
