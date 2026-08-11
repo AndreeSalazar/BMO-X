@@ -1785,6 +1785,12 @@ pub fn main(ctx: &mut BootContext) {
     // Y el disco: el HBA SATA (no el NVMe -- ahi vive el sistema del dueno) y
     // su tabla de particiones. Ver dev/disk.rs.
     crate::ring0::dev::disk::init();
+    // * Y la tarjeta de red: **solo mirarla**. Encuentra la NIC, elige su BAR de
+    // memoria y le pregunta su MAC y su enlace, sin escribirle un byte. Va aqui
+    // --con el resto del hardware y antes del disco duro de verdad-- porque su
+    // respuesta decide si el driver que viene se empieza sobre suelo firme o
+    // sobre una suposicion. Ver `dev/red.rs`.
+    crate::ring0::dev::red::init();
     // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
     // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un
     // reloj parado. Cuesta ocho lecturas de puerto, una vez en la vida.

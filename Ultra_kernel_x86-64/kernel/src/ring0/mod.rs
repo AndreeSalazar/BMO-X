@@ -128,6 +128,10 @@ pub mod dev {
     pub mod framebuffer;
     pub mod keyboard;
     pub mod pci;
+    /// **La tarjeta de red, de momento solo RECONOCIDA.** Encuentra la NIC,
+    /// elige su BAR de memoria y le pregunta su MAC y su enlace -- sin
+    /// escribirle un byte. Los anillos DMA vienen despues, y sobre esta prueba.
+    pub mod red;
     /// El reloj de la placa (CMOS). Lo que significan sus bytes lo decide
     /// `bmo-rtc`; aqui solo se tocan los puertos.
     pub mod reloj;
