@@ -412,6 +412,22 @@ impl Origen<'_> {
             Origen::PorRangos(f) => f.rango(offset, dst),
         }
     }
+
+    /// **Trae un rango SUELTO: no forma parte del flujo de secciones.**
+    ///
+    /// Lo usan las dos tablas que el cargador necesita **antes** de aterrizar
+    /// nada --los hashes y las relocations-- y que viven **al final del
+    /// fichero**. Por `traer` las pediria el cursor secuencial, que se iria al
+    /// final y ya no podria volver al codigo: solo avanza, a proposito.
+    ///
+    /// Ver `lanzar::Fuente::rango_suelto`, que es donde esta contado entero.
+    fn traer_suelto(&mut self, offset: usize, dst: &mut [u8]) -> usize {
+        match self {
+            // En memoria no hay cursor que mover: es la misma lectura.
+            Origen::EnMemoria(_) => self.traer(offset, dst),
+            Origen::PorRangos(f) => f.rango_suelto(offset, dst),
+        }
+    }
 }
 
 /// Lo mas grande que puede medir una seccion `Signature`, **segun el formato**.
@@ -540,7 +556,16 @@ fn admit_payload_desde(
     let mut buf_firma = [0u8; MAX_FIRMA];
     let firmas = if plan.firma_file_size > 0 && plan.firma_file_size as usize <= MAX_FIRMA {
         let n = plan.firma_file_size as usize;
-        let leidos = origen.traer(plan.firma_file_offset as usize, &mut buf_firma[..n]);
+        // ** SUELTA, y ese detalle es la diferencia entre arrancar y no.
+        //
+        // La seccion `Signature` esta **al final del fichero** --en `gui.bex`, en
+        // el 0x4B680 de 0x4B728-- y esto corre ANTES de aterrizar la primera
+        // seccion, que empieza en el 0x200. Por el cursor del flujo, este salto
+        // lo dejaria en el final y el codigo quedaria detras: `leer_en`
+        // contestaria `0` --correctamente, solo avanza-- y el cargador lo diria
+        // como `una seccion se quedo a medias al aterrizar =0`, que manda a
+        // mirar el disco cuando el disco esta bien.
+        let leidos = origen.traer_suelto(plan.firma_file_offset as usize, &mut buf_firma[..n]);
         if leidos != n {
             crate::ring0::cabina::fault("proc", "la tabla de hashes se quedo sin leer", leidos as u64);
             return None;
@@ -588,7 +613,9 @@ fn admit_payload_desde(
         let dst = unsafe {
             core::slice::from_raw_parts_mut(mm::phys_to_virt(base) as *mut u8, n)
         };
-        let leidos = origen.traer(plan.relocs_file_offset as usize, dst);
+        // Suelta por lo mismo que la de hashes: la tabla va detras de todo lo
+        // que se ejecuta, y esto corre antes de aterrizar nada.
+        let leidos = origen.traer_suelto(plan.relocs_file_offset as usize, dst);
         if leidos != n {
             crate::ring0::cabina::fault("proc", "la tabla de relocs se quedo sin leer", leidos as u64);
             return None;

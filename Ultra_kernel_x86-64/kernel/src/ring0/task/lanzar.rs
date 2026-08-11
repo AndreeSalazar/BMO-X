@@ -284,7 +284,11 @@ pub enum Fuente {
     /// De donde arranca la maquina, y donde vive todo hasta que ESTRATOS crezca.
     /// Lleva su cursor: leer por rangos hacia adelante cuesta UN recorrido de la
     /// cadena, no uno por rango. Ver `bmo_fat32::Cursor`.
-    Fat32 { cur: bmo_fat32::Cursor, tam: u32 },
+    ///
+    /// `inicio` es ese mismo cursor **sin usar**, y es lo que hace posible
+    /// [`Fuente::rango_suelto`]: una lectura fuera del flujo se lleva una copia
+    /// y no toca la del flujo. Cuesta doce bytes.
+    Fat32 { cur: bmo_fat32::Cursor, inicio: bmo_fat32::Cursor, tam: u32 },
 }
 
 impl Fuente {
@@ -297,11 +301,15 @@ impl Fuente {
         match if est::is_mounted() { est::open(path) } else { None } {
             Some(nd) => Fuente::Estratos(nd),
             None => match crate::ring0::fsys::fs::abrir_rangos(path) {
-                Ok((cur, tam)) => Fuente::Fat32 { cur, tam },
+                Ok((cur, tam)) => Fuente::Fat32 { cur, inicio: cur, tam },
                 // No esta en ninguno de los dos. Se devuelve un FAT32 vacio para
                 // que el motivo lo de la lectura --que sabe decir POR QUE-- en
                 // vez de inventarlo aqui.
-                Err(_) => Fuente::Fat32 { cur: bmo_fat32::Cursor::vacio(), tam: 0 },
+                Err(_) => Fuente::Fat32 {
+                    cur: bmo_fat32::Cursor::vacio(),
+                    inicio: bmo_fat32::Cursor::vacio(),
+                    tam: 0,
+                },
             },
         }
     }
@@ -320,7 +328,7 @@ impl Fuente {
     /// fichero justo por esto -- ver la nota del orden en `task/proc.rs`.
     pub fn rango(&mut self, offset: usize, dst: &mut [u8]) -> usize {
         match self {
-            Fuente::Fat32 { cur, tam } => {
+            Fuente::Fat32 { cur, tam, .. } => {
                 crate::ring0::fsys::fs::leer_rango(cur, offset, *tam, dst)
             }
             // ** ESTRATOS todavia lee desde cero, y por eso aqui no hay rango.
@@ -332,6 +340,47 @@ impl Fuente {
             // pase a cubrir la seccion `Signature` del `.bex`, que es la que
             // responde por todas las demas. Mientras tanto, ESTRATOS no entrega
             // rangos y quien lo pida se entera aqui en vez de recibir ceros.
+            Fuente::Estratos(_) => 0,
+        }
+    }
+
+    /// **UN RANGO FUERA DEL FLUJO. No mueve el cursor de las secciones.**
+    ///
+    /// === Por que hace falta una segunda puerta ===
+    ///
+    /// El cursor **solo avanza**, y eso no es un descuido: llegar al byte `N` en
+    /// FAT32 es seguir la cadena, asi que un cursor que retrocede convierte la
+    /// carga en cuadratica sin que nada avise. El cargador cumple su parte
+    /// aterrizando las secciones **en orden de offset de fichero**.
+    ///
+    /// ** Pero un `.bex` no se lee solo por secciones. Antes de aterrizar
+    /// ninguna, el cargador necesita **dos tablas**: los hashes (`Signature`) y
+    /// las relocations. Y las dos viven **al final del fichero** -- el escritor
+    /// las pone detras de todo, que es donde tienen que ir.
+    ///
+    /// O sea que el flujo real era: saltar al final a por los hashes, y volver
+    /// al byte 512 a por el codigo. **Hacia atras.** El cursor contestaba que no
+    /// --correctamente-- y el cargador lo leia como "la seccion llego a medias":
+    ///
+    /// ```text
+    ///    FAULT proc: una seccion se quedo a medias al aterrizar =0
+    /// ```
+    ///
+    /// El arreglo no es dejar que el cursor retroceda --eso mata la garantia
+    /// para todo el mundo por dos lecturas-- sino **reconocer que son dos
+    /// patrones de acceso distintos**: uno secuencial y grande (las secciones) y
+    /// otro suelto y pequeno (las dos tablas). Cada uno con su cursor.
+    ///
+    /// Cuesta un recorrido de la cadena por llamada, y se llama **dos veces por
+    /// carga**. El flujo de las secciones -- que es el 99,9% de los bytes --
+    /// sigue costando uno solo.
+    pub fn rango_suelto(&mut self, offset: usize, dst: &mut [u8]) -> usize {
+        match self {
+            Fuente::Fat32 { inicio, tam, .. } => {
+                // Una COPIA del cursor sin estrenar. El del flujo no se entera.
+                let mut aparte = *inicio;
+                crate::ring0::fsys::fs::leer_rango(&mut aparte, offset, *tam, dst)
+            }
             Fuente::Estratos(_) => 0,
         }
     }

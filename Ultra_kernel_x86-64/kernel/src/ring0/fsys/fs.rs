@@ -418,6 +418,29 @@ pub fn leer_rango(
             None => return 0,
         }
     };
+    // ** UN CERO POR RETROCEDER NO ES UN CERO POR EL DISCO.
+    //
+    // El cursor solo avanza --a proposito: llegar al byte N en FAT32 es seguir
+    // la cadena, y uno que retrocede en silencio vuelve cuadratica la carga--
+    // asi que pedirle un offset por debajo de donde va contesta `0`. El mismo
+    // `0` que da un sector ilegible.
+    //
+    // Y esos dos ceros mandan a sitios opuestos. El 2026-08-11 el cargador leyo
+    // uno de ellos como `una seccion se quedo a medias al aterrizar =0` y la
+    // frase manda a mirar el disco, que estaba perfecto: lo que habia pasado es
+    // que la tabla de hashes --que vive al FINAL del fichero-- se habia leido
+    // antes que el codigo. Ver `lanzar::Fuente::rango_suelto`.
+    //
+    // > Dos causas que producen el mismo numero necesitan que **una de las dos
+    // > diga su nombre**, o el numero no sirve para elegir donde mirar.
+    if offset < cur.base() {
+        crate::ring0::cabina::fault(
+            "fs",
+            "se pidio un rango HACIA ATRAS: el cursor solo avanza (usa rango_suelto)",
+            cur.base() as u64,
+        );
+        return 0;
+    }
     v.leer_en(cur, offset, size, dst)
 }
 

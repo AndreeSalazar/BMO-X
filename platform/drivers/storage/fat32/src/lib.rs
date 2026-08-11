@@ -347,6 +347,16 @@ impl Cursor {
         self.cluster
     }
 
+    /// **En que byte del archivo empieza el cluster por el que va.**
+    ///
+    /// Es el suelo de lo que este cursor todavia puede leer: pedirle un offset
+    /// por debajo es pedirle que retroceda, y contesta que no. Se expone para
+    /// que quien llama pueda **distinguir** ese "no" de un fallo del disco --
+    /// son el mismo `0` y mandan a sitios opuestos.
+    pub fn base(&self) -> usize {
+        self.base
+    }
+
     /// Un cursor que no apunta a nada: toda lectura contesta cero.
     ///
     /// Existe para que quien no encuentre un archivo pueda devolver **algo** y
@@ -2025,6 +2035,65 @@ mod tests {
             v.leer_en(&mut cur, 10, tam, &mut dst),
             0,
             "pedir hacia atras tiene que contestar cero, no leer de cualquier sitio"
+        );
+    }
+
+    /// ** EL PATRON REAL DEL CARGADOR: dos tablas del FINAL antes que el codigo.
+    ///
+    /// === Lo que esto fija ===
+    ///
+    /// Un `.bex` no se lee de principio a fin. Antes de aterrizar la primera
+    /// seccion, el cargador necesita los **hashes** (`Signature`) y las
+    /// **relocations**, y las dos van al final del fichero -- en `gui.bex`, la
+    /// firma esta en el `0x4B680` de `0x4B728` y el codigo empieza en el `0x200`.
+    ///
+    /// Con un solo cursor eso es un salto al final y una vuelta atras, o sea un
+    /// `0` del que el cargador dijo `una seccion se quedo a medias al aterrizar`.
+    /// La salida no es dejar que el cursor retroceda: es que la lectura suelta
+    /// se lleve **una copia** y no toque la del flujo.
+    ///
+    /// Por eso `Cursor` es `Copy`, y por eso esto es una prueba y no un
+    /// comentario: quitarle el `Copy` o guardar el cursor detras de algo que no
+    /// se pueda duplicar rompe el cargador **sin tocar el cargador**.
+    #[test]
+    fn una_lectura_suelta_no_mueve_el_cursor_del_flujo() {
+        let (_turno, mut v) = volumen();
+        // 5000 bytes = diez clusters con spc=1: hay cadena que recorrer.
+        let datos: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("BEXSIM  BIN"), &datos).expect("debe crear");
+        let (primero, tam) = v.find_file(&name("BEXSIM  BIN")).expect("debe estar");
+
+        let flujo_inicio = v.cursor(primero);
+
+        // -- 1. La "tabla de hashes": al final del fichero, con una COPIA --
+        let mut aparte = flujo_inicio;
+        let mut firma = [0u8; 100];
+        let n = v.leer_en(&mut aparte, 4900, tam, &mut firma);
+        assert_eq!(n, 100, "la tabla del final no se leyo entera");
+        assert_eq!(&firma[..n], &datos[4900..5000], "y no son los bytes del final");
+
+        // -- 2. El flujo de secciones, desde el principio. Su cursor no se ha
+        //       enterado de nada de lo anterior. --
+        let mut flujo = flujo_inicio;
+        let mut codigo = [0u8; 512];
+        let n = v.leer_en(&mut flujo, 512, tam, &mut codigo);
+        assert_eq!(n, 512, "la primera seccion se quedo a medias: el cursor se movio");
+        assert_eq!(&codigo[..n], &datos[512..1024], "la primera seccion trajo otros bytes");
+
+        // -- 3. Y el flujo sigue avanzando normal detras de ella --
+        let mut mas = [0u8; 512];
+        let n = v.leer_en(&mut flujo, 1024, tam, &mut mas);
+        assert_eq!(n, 512, "la seccion siguiente no llego");
+        assert_eq!(&mas[..n], &datos[1024..1536], "la seccion siguiente trajo otros bytes");
+
+        // Y la prueba de que el peligro era real: con EL MISMO cursor, el orden
+        // del cargador contesta cero. Es el fallo del 2026-08-11 en una linea.
+        let mut uno_solo = flujo_inicio;
+        assert!(v.leer_en(&mut uno_solo, 4900, tam, &mut firma) > 0);
+        assert_eq!(
+            v.leer_en(&mut uno_solo, 512, tam, &mut codigo),
+            0,
+            "si esto deja de ser cero, el cursor retrocede en silencio (ver su cabecera)"
         );
     }
 
