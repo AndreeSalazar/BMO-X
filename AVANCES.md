@@ -10,11 +10,21 @@ handles; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
-> ## ★★★ Al 2026-08-11 -- DOOM CORRE, y con el se cierran DOS bugs de carga
+> ## ★★★ Al 2026-08-11 -- DOOM **ARRANCA**, y con el se cierran DOS bugs de carga
 >
-> **1. ✅ `run apps/doom.bex` FUNCIONA EN EL RYZEN.** Dicho por el dueno: *"el
-> DOOM en mi juego ya anda"*. Y DOOM es mejor prueba que `gui.bex`, porque su
-> tabla de secciones ejercita a la vez los dos arreglos del dia:
+> **1. ✅ `run apps/doom.bex` CARGA Y ARRANCA EN EL RYZEN.** ⚠ Y hay que decirlo
+> con precision, porque la primera version de esta linea decia "corre" y **eso
+> era pasarse**: el dueno lo corrigio -- *"no esta corriendo aun, no estoy
+> jugando, funciona al abrir pero falta solucionar"*.
+>
+> Lo que SI esta probado, y no es poco: el `.bex` se encuentra, pasa la
+> admision, sus secciones aterrizan y **el codigo ejecuta**. Lo que NO esta
+> probado es que sea jugable. Un juego que abre y no se juega tiene el
+> cargador bien y otra cosa mal.
+>
+> **Y esa distincion es justo la que sostiene el punto siguiente**: para
+> verificar los dos arreglos de carga hace falta que DOOM *arranque*, no que se
+> juegue. Su tabla de secciones ejercita los dos a la vez:
 >
 > ```text
 >    Code       file_off=0x0000200
