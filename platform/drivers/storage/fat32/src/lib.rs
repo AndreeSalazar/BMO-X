@@ -367,13 +367,49 @@ impl FatVolume {
     /// se nota. Ver el campo.
     pub fn fallos_mudos(&self) -> u32 { self.fallos_mudos }
 
+    /// **DEL VOLUMEN AL DISCO. La unica traduccion, y por eso esta sola.**
+    ///
+    /// Todo este driver piensa en sectores relativos al volumen: `data_start`,
+    /// `fat_start` y `cluster_to_lba` cuentan desde el sector 0 de la particion,
+    /// que no sabe que existe una tabla de particiones. El disco no. Entre las
+    /// dos numeraciones hay una suma, y **hasta el 2026-08-11 esa suma estaba
+    /// escrita cuatro veces**: tres en los helpers de sector y ninguna en el
+    /// camino directo que se estreno en el escalon 3.
+    ///
+    /// El resultado fue el fallo mas caro de esta semana. Los directorios y la
+    /// FAT se leen sector a sector --por los helpers, o sea traducidos-- y los
+    /// DATOS iban directos: el sistema encontraba el archivo, sabia su tamano
+    /// exacto, y traia los bytes de `lba` **sin sumar nada**, o sea de otra
+    /// particion. Con `part_lba = 1230848`, un `.bex` del volumen de datos se
+    /// leia de dentro de la ESP.
+    ///
+    /// > **Una asimetria de "el directorio se lee bien y el contenido no" apunta
+    /// > SIEMPRE aqui**: son los dos unicos caminos que este driver tiene al
+    /// > disco, y lo unico que puede diferenciarlos es la traduccion.
+    ///
+    /// Y no se vio en las pruebas porque las dos montan con `part_lba = 0`,
+    /// donde la suma que falta vale cero. Ver `volumen_con_base`.
+    fn abs(&self, lba: u64) -> u64 {
+        self.part_lba + lba
+    }
+
+    /// **Lee sectores del volumen DIRECTAMENTE al buffer del llamante.**
+    ///
+    /// Es el camino del escalon 3 --el HBA escribe en el marco del proceso sin
+    /// pagina de rebote-- y existe como metodo, y no como una llamada suelta a
+    /// `self.read`, por una sola razon: **para que pase por `abs`**. Un puntero
+    /// a funcion invocado a mano se salta la traduccion sin que nada avise.
+    fn leer_directo(&self, lba: u64, count: u16, dst: &mut [u8]) -> bool {
+        (self.read)(self.abs(lba), count, dst)
+    }
+
     /// Lee un sector del VOLUMEN a uno de los buffers internos.
     ///
     /// El puntero a funcion se copia ANTES de tomar el buffer: si no, seria un
     /// doble prestamo de `self` y no compilaria.
     fn read_sector(&mut self, lba: u64, which: Buf) -> bool {
         let rd = self.read;
-        let abs = self.part_lba + lba;
+        let abs = self.abs(lba);
         match which {
             Buf::buf => rd(abs, 1, &mut self.buf),
             Buf::fat_cache => rd(abs, 1, &mut self.fat_cache),
@@ -384,7 +420,7 @@ impl FatVolume {
     /// solo lectura -- no hay writer que llamar.
     fn write_sector(&mut self, lba: u64, which: Buf) -> bool {
         let wr = match self.write { Some(w) => w, None => return false };
-        let abs = self.part_lba + lba;
+        let abs = self.abs(lba);
         match which {
             Buf::buf => wr(abs, 1, &self.buf),
             Buf::fat_cache => wr(abs, 1, &self.fat_cache),
@@ -394,7 +430,7 @@ impl FatVolume {
     /// Escribe datos externos (un sector ya armado por el llamante).
     fn write_from(&mut self, lba: u64, data: &[u8]) -> bool {
         let wr = match self.write { Some(w) => w, None => return false };
-        wr(self.part_lba + lba, 1, data)
+        wr(self.abs(lba), 1, data)
     }
 
     /// Primer LBA de la particion montada, por si alguien de arriba lo
@@ -648,7 +684,7 @@ impl FatVolume {
             let enteros = de_este / 512;
             if enteros > 0 {
                 let n = enteros * 512;
-                if !(self.read)(lba, enteros as u16, &mut dst[offset..offset + n]) {
+                if !self.leer_directo(lba, enteros as u16, &mut dst[offset..offset + n]) {
                     return (offset - ya, 0);
                 }
             }
@@ -684,10 +720,20 @@ impl FatVolume {
         (offset - ya, 0)
     }
 
-    /// **En que LBA absoluto empieza un cluster.** La misma cuenta que usa toda
-    /// lectura, expuesta para poder decirla en un diagnostico.
+    /// **En que LBA DEL DISCO empieza un cluster.** La misma cuenta que usa toda
+    /// lectura --traduccion incluida-- expuesta para poder decirla.
+    ///
+    /// [!] Decia "absoluto" y devolvia el relativo al volumen. La foto del
+    /// 2026-08-11 lo enseno y nadie lo leyo asi: `LBA =0x11040` con `la particion
+    /// empieza en =0x12C800` es un sector **anterior al principio de su propia
+    /// particion**, o sea imposible -- y aun asi paso por "razonable" porque la
+    /// linea prometia un numero que no daba.
+    ///
+    /// > Un diagnostico que miente cuesta mas que no tenerlo: manda a buscar el
+    /// > fallo al otro lado del mapa. Ahora este numero se puede comparar con el
+    /// > de `disk` y con el de la GPT sin sumar nada de cabeza.
     pub fn lba_de_cluster(&self, cluster: u32) -> u64 {
-        self.cluster_to_lba(cluster)
+        self.abs(self.cluster_to_lba(cluster))
     }
 
     /// Abre un cursor al principio de un archivo.
@@ -792,7 +838,7 @@ impl FatVolume {
                 let d = pos - offset + hecho;
                 let n = enteros * 512;
                 let sec = (dentro + hecho) / 512;
-                if !(self.read)(lba + sec as u64, enteros as u16, &mut dst[d..d + n]) {
+                if !self.leer_directo(lba + sec as u64, enteros as u16, &mut dst[d..d + n]) {
                     return pos - offset + hecho;
                 }
                 hecho += n;
@@ -843,7 +889,7 @@ impl FatVolume {
             let enteros = (queda.min(del_cluster)) / 512;
             if enteros > 0 {
                 let n = enteros * 512;
-                let leidos = (self.read)(lba, enteros as u16, &mut dst[offset..offset + n]);
+                let leidos = self.leer_directo(lba, enteros as u16, &mut dst[offset..offset + n]);
                 if !leidos {
                     // Se para aqui. Lo leido hasta ahora es bueno; lo que sigue
                     // no se sabe, y no saberlo se dice devolviendo menos, no
@@ -1634,6 +1680,25 @@ mod tests {
     /// guardia vivo, ninguna otra toca el disco. Un `let _ = volumen()` lo
     /// soltaria en el acto, y por eso las pruebas lo atan a un nombre.
     fn volumen() -> (std::sync::MutexGuard<'static, ()>, FatVolume) {
+        volumen_con_base(0)
+    }
+
+    /// **El mismo volumen, empezando donde se diga.**
+    ///
+    /// === Por que esto no es un lujo de la prueba ===
+    ///
+    /// `volumen()` montaba en el sector 0, y ahi `part_lba` vale cero: **la suma
+    /// que traduce del volumen al disco no cambia nada**. O sea que trece pruebas
+    /// en verde no decian absolutamente nada sobre la unica cuenta que separa
+    /// "leer mi archivo" de "leer la particion del vecino".
+    ///
+    /// El 2026-08-11 eso salio a cobrar. El camino directo del escalon 3 llamaba
+    /// al lector con el LBA **relativo al volumen**, y con la particion de datos
+    /// en el 1230848 un `.bex` se leia de dentro de la ESP. Las pruebas pasaban.
+    ///
+    /// > **Un parametro que en las pruebas siempre vale cero es un parametro que
+    /// > no se esta probando.**
+    fn volumen_con_base(base: u64) -> (std::sync::MutexGuard<'static, ()>, FatVolume) {
         // `into_inner` y no `unwrap`: si una prueba anterior revento con el
         // candado en la mano, el resto tiene que poder seguir. El disco se
         // formatea entero aqui abajo, asi que lo que dejara no importa --
@@ -1647,12 +1712,15 @@ mod tests {
             bpb.sectors_per_cluster = 1;
             bpb.reserved_sectors = RESERVADOS as u16;
             bpb.num_fats = 1;
-            bpb.total_sectors = SECTORES as u32;
+            // Lo que mide el VOLUMEN, no el disco: lo que queda detras de donde
+            // empieza. Poner el disco entero haria que `max_cluster` contara
+            // clusters que se salen por el final.
+            bpb.total_sectors = (SECTORES as u64 - base) as u32;
             bpb.fat_size = FAT_SECTORES;
             bpb.root_cluster = 2;
             bpb.boot_sig = 0x29;
         }
-        assert!(write(0, 1, &sector0));
+        assert!(write(base, 1, &sector0));
 
         // El cluster 2 es la raiz y esta OCUPADO: la FAT tiene que decirlo, o
         // el primer archivo que se cree se llevara el directorio por delante.
@@ -1660,9 +1728,9 @@ mod tests {
         fat[0..4].copy_from_slice(&0x0FFF_FFF8u32.to_le_bytes()); // media
         fat[4..8].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes()); // reservada
         fat[8..12].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes()); // la raiz: EOC
-        assert!(write(RESERVADOS as u64, 1, &fat));
+        assert!(write(base + RESERVADOS as u64, 1, &fat));
 
-        let v = mount(read, Some(write), 0).expect("el volumen de mentira debe montar");
+        let v = mount(read, Some(write), base).expect("el volumen de mentira debe montar");
         (turno, v)
     }
 
@@ -1711,6 +1779,79 @@ mod tests {
         let n = leer_archivo(&mut v, "LARGO   BIN", &mut dst).expect("debe estar");
         assert_eq!(n, datos.len(), "no llego el archivo entero");
         assert_eq!(&dst[..n], &datos[..], "los bytes no cuadran: hay un salto de sector");
+    }
+
+    /// ** UN VOLUMEN QUE NO EMPIEZA EN EL SECTOR 0 -- o sea, el caso REAL.
+    ///
+    /// === El fallo que esta prueba habria cazado el 10 de agosto ===
+    ///
+    /// Los tres caminos directos --`read_file`, `leer_en` y `leer_tramo`--
+    /// llamaban al lector de bloques con el LBA **relativo al volumen**, sin
+    /// sumar `part_lba`. Los directorios y la FAT no, porque van por
+    /// `read_sector`, que si traduce.
+    ///
+    /// De ahi el sintoma que costo dos tandas de fotos: el sistema **encontraba**
+    /// el archivo y sabia su tamano exacto --eso lo dice el directorio-- y los
+    /// bytes que llegaban eran codigo x86-64 ajeno. En el Ryzen, con la particion
+    /// de datos en el sector 1230848, un `.bex` se leia de dentro de la ESP.
+    ///
+    /// === Y por eso hay veneno delante del volumen ===
+    ///
+    /// Un ida y vuelta a secas no basta: si escribir y leer se equivocaran
+    /// **igual**, cuadrarian entre ellos y la prueba pasaria. El veneno ocupa
+    /// justo los sectores donde cae una lectura sin traducir, asi que olvidarse
+    /// de la suma no da "otro contenido": da `0xEE`, con su nombre.
+    ///
+    /// Se cubren los tres caminos en una sola prueba porque son el mismo error
+    /// repetido tres veces, y arreglar dos de tres deja el sintoma vivo.
+    #[test]
+    fn leer_de_una_particion_que_no_empieza_en_cero() {
+        const BASE: u64 = 64;
+        let (_turno, mut v) = volumen_con_base(BASE);
+
+        // Los sectores de DELANTE del volumen: fuera de el, y exactamente donde
+        // apunta un LBA al que le falta la suma.
+        let veneno = [0xEEu8; 512];
+        for s in 0..BASE {
+            assert!(write(s, 1, &veneno));
+        }
+
+        // 1300 bytes con spc=1 son tres clusters: dos sectores enteros --el
+        // camino directo-- y un rabo de 276.
+        let datos: Vec<u8> = (0..1300u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("LARGO   BIN"), &datos).expect("debe crear");
+
+        let (primero, tam) = v.find_file(&name("LARGO   BIN")).expect("el directorio SI se lee");
+
+        // -- 1. `read_file`: el archivo entero --
+        let mut dst = [0u8; 2048];
+        let n = v.read_file(primero, tam, &mut dst);
+        assert_ne!(dst[0], 0xEE, "read_file leyo de DELANTE del volumen: falta sumar part_lba");
+        assert_eq!(n, datos.len(), "no llego el archivo entero");
+        assert_eq!(&dst[..n], &datos[..], "read_file trajo bytes de otro sitio");
+
+        // -- 2. `leer_en`: por rangos, que es por donde carga un `.bex` --
+        let mut cur = v.cursor(primero);
+        let mut rango = [0u8; 700];
+        let n = v.leer_en(&mut cur, 512, tam, &mut rango);
+        assert_ne!(rango[0], 0xEE, "leer_en leyo de DELANTE del volumen");
+        assert_eq!(n, 700, "el rango no llego entero");
+        assert_eq!(&rango[..n], &datos[512..512 + n], "leer_en trajo bytes de otro sitio");
+
+        // -- 3. `leer_tramo`: la lectura a pasos --
+        let mut trozo = [0u8; 2048];
+        let (n, _siguiente) = v.leer_tramo(primero, 0, tam, &mut trozo, 2048);
+        assert_ne!(trozo[0], 0xEE, "leer_tramo leyo de DELANTE del volumen");
+        assert_eq!(n, datos.len(), "el tramo no llego entero");
+        assert_eq!(&trozo[..n], &datos[..], "leer_tramo trajo bytes de otro sitio");
+
+        // Y el numero que se pinta en CABINA es el del DISCO, no el del volumen:
+        // un cluster nunca puede caer antes del principio de su particion, y esa
+        // linea lo decia sin que chirriara.
+        assert!(
+            v.lba_de_cluster(primero) >= BASE,
+            "lba_de_cluster devuelve un sector anterior a su propia particion"
+        );
     }
 
     /// ** EL RABO DE UN ARCHIVO **FRAGMENTADO**, que es donde el fallo se ve.
