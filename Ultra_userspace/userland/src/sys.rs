@@ -398,6 +398,16 @@ pub fn cabina_severidad(n: u64) -> u64 {
     cabina_campo(CABINA_SEVERIDAD, n).unwrap_or(SEV_INFO)
 }
 
+/// **De que INTENTO salio el evento `n`.** `0` = de ninguno.
+///
+/// Un lanzamiento emite eventos desde cuatro modulos --`lanzar`, `proc`, `bex`,
+/// `disk`-- y este numero es lo que los ata. Es la diferencia entre *"ensename
+/// los FALLO"* --que trae los de esta accion mezclados con los de las diez
+/// anteriores-- y **"ensename todo lo que hizo esto que acabo de pulsar"**.
+pub fn cabina_intento(n: u64) -> u64 {
+    cabina_campo(CABINA_INTENTO, n).unwrap_or(0)
+}
+
 /// El modulo o el mensaje del evento `n`, copiado en `dst`. Devuelve cuantos
 /// bytes se escribieron.
 ///

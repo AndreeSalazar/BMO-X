@@ -1396,6 +1396,23 @@ pub extern "C" fn _start() -> ! {
                     escena::cabina::pintar(&p, &caja_cabina);
                     continue;
                 }
+                // ** A: SOLO LO QUE HIZO LA ULTIMA ACCION.
+                //
+                // Lo pidio el dueno asi: *"que lea en tiempo real que hace el
+                // puntero, y al escribir doom.bex y ejecutar, que lo filtre --
+                // para no quedarse en que falla sino poder verificar todo"*.
+                //
+                // `G` contesta *"que fue grave"* y mezcla lo de esta accion con
+                // lo de las diez anteriores. `A` contesta la pregunta que uno se
+                // hace de verdad delante de la pantalla: **todo lo que produjo
+                // esa pulsacion**, lo bueno y lo malo, en orden y sin nada de
+                // antes. El kernel ya lo agrupaba; faltaba leerlo.
+                if cabina_abierta && (c == b'a' || c == b'A') {
+                    caja_cabina.solo_ultimo = !caja_cabina.solo_ultimo;
+                    caja_cabina.desde = 0;
+                    escena::cabina::pintar(&p, &caja_cabina);
+                    continue;
+                }
                 if cabina_abierta && (c == 0x87 || c == 0x88) {
                     let hay = bmo::cabina_disponibles();
                     if c == 0x87 {

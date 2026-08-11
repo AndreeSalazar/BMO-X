@@ -91,6 +91,22 @@ pub(crate) struct CajaCabina {
     /// lleva**: el klog no, y por eso su filtro tenia que adivinar por el
     /// prefijo de la linea.
     pub(crate) minima: u64,
+    /// **Ensenar SOLO lo que produjo la ultima accion.**
+    ///
+    /// === Por que este filtro es distinto de los otros ===
+    ///
+    /// El de gravedad contesta *"que fue grave"*, y trae lo grave de esta accion
+    /// mezclado con lo grave de las diez anteriores. Un lanzamiento emite
+    /// eventos desde cuatro modulos --`lanzar`, `proc`, `bex`, `disk`-- asi que
+    /// para leer QUE paso al pulsar hay que juntarlos a ojo por el `#N`.
+    ///
+    /// Este contesta la otra pregunta, que es la que se hace de verdad delante
+    /// de la pantalla: **"ensename todo lo que hizo esto que acabo de pulsar"**.
+    /// Lo bueno y lo malo, en orden, sin nada de antes.
+    ///
+    /// ** No hay nada que deducir: el kernel ya agrupa (`cabina::intento`) y
+    /// desde hoy entrega el numero (`CABINA_INTENTO`). Esto solo lo lee.
+    pub(crate) solo_ultimo: bool,
 }
 
 impl CajaCabina {
@@ -99,8 +115,26 @@ impl CajaCabina {
             marco: Marco::nuevo(p, CAB_PCT_ANCHO, CAB_PCT_ALTO, CAB_MIN_ANCHO, CAB_MIN_ALTO),
             desde: 0,
             minima: 0,
+            solo_ultimo: false,
         }
     }
+}
+
+/// **El numero del intento mas reciente que haya en el anillo.** `0` = ninguno.
+///
+/// Se busca hacia atras desde lo ultimo, que es donde esta: mirar los 48 en
+/// orden costaria lo mismo, pero empezar por el final permite parar en cuanto
+/// aparece uno -- y en la practica es el primero o el segundo.
+fn ultimo_intento(hay: u64) -> u64 {
+    let mut i = 0u64;
+    while i < hay {
+        let n = bmo::cabina_intento(i);
+        if n != 0 {
+            return n;
+        }
+        i += 1;
+    }
+    0
 }
 
 fn poner(s: &[u8], dst: &mut [u8], n: &mut usize) {
@@ -205,6 +239,14 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
         }
         gx = fin + bmo::GLIFO_ANCHO;
     }
+    // ** El filtro por ACCION, al lado del de gravedad y con su tecla a la
+    // vista. Un atajo que solo se descubre pulsandolo no existe.
+    gx += bmo::GLIFO_ANCHO * 2;
+    let color_a = if c.solo_ultimo { SEV_COLOR[2] } else { CIAN_TENUE };
+    let fin = p.texto(gx, ty, "A: esta accion", color_a);
+    if c.solo_ultimo {
+        p.rect(gx, ty + bmo::GLIFO_ALTO + 1, fin - gx, 1, color_a);
+    }
     ty += bmo::GLIFO_ALTO + 8;
 
     // -- LOS EVENTOS ----------------------------------------------------
@@ -212,7 +254,20 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
     let mut pintadas = 0usize;
     let mut i = c.desde;
 
+    // ** El intento a seguir, resuelto UNA vez y no por evento: preguntarlo
+    // dentro del bucle serian dos syscalls por linea para contestar siempre lo
+    // mismo.
+    let seguido = if c.solo_ultimo { ultimo_intento(hay) } else { 0 };
+
     while pintadas < cuantas && i < hay {
+        // El filtro por ACCION va ANTES que el de gravedad, y el orden importa:
+        // dentro de una accion se quiere ver TODO --el `info` que dice de que
+        // sector se leyo vale tanto como el `FALLO`-- asi que la gravedad se
+        // aplica dentro de lo que la accion ya dejo pasar.
+        if seguido != 0 && bmo::cabina_intento(i) != seguido {
+            i += 1;
+            continue;
+        }
         let sev = bmo::cabina_severidad(i);
         // El filtro es por GRAVEDAD y no por texto. Solo se puede porque CABINA
         // la lleva: buscar la palabra "error" dentro de la linea pinta de rojo

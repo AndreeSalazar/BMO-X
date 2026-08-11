@@ -807,6 +807,9 @@ pub const CABINA_CAPA: u64 = 0x04;
 pub const CABINA_VALOR: u64 = 0x05;
 pub const CABINA_SEQ: u64 = 0x06;
 pub const CABINA_TICK: u64 = 0x07;
+/// De que INTENTO salio el evento. `0` = de ninguno. Ver `bmo-abi`: es lo que
+/// permite que la ventana de Ring 3 filtre por ACCION y no solo por gravedad.
+pub const CABINA_INTENTO: u64 = 0x08;
 
 /// Que texto se pide en `TASK_OP_CABINA_TEXTO`.
 pub const CABINA_TXT_MODULO: u64 = 0x00;
@@ -835,6 +838,7 @@ pub fn campo(campo: u64, n: u64) -> Option<u64> {
                 CABINA_VALOR => Some(ev.value),
                 CABINA_SEQ => Some(ev.seq),
                 CABINA_TICK => Some(ev.tick_ns),
+                CABINA_INTENTO => Some(ev.intento as u64),
                 _ => None,
             }
         }
