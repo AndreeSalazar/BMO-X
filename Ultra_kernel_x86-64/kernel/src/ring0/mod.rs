@@ -50,6 +50,10 @@ pub mod obj {
 
 /// Procesos: admitirlos, planificarlos, lanzarlos desde el disco.
 pub mod task {
+    /// **El cierre de cada seccion al aterrizar.** Un `.bex` trae un BLAKE3 por
+    /// seccion; esto los comprueba en el momento en que la seccion termina de
+    /// caer en la memoria del proceso, no despues sobre un bufer.
+    pub mod aterrizaje;
     pub mod bex;
     /// **Quien lanzo a quien.** Un pid y nada mas: lo justo para que una app
     /// pueda ofrecerle su superficie al que la puso en pantalla.

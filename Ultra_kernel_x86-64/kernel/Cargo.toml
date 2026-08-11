@@ -22,6 +22,11 @@ bmo-fat32 = { path = "../../platform/drivers/storage/fat32" }
 # ESTRATOS: el formato propio. Solo lectura por ahora -- el modulo del kernel
 # (ring0/estratos.rs) no llama a `write` en ningun sitio.
 bmo-estratos = { path = "../../platform/drivers/storage/estratos" }
+# BLAKE3, directo y no de rebote por ESTRATOS. El cargador lo usa POR TROZOS
+# --`Hasher::update` segun aterriza cada seccion-- y eso no es cosa del sistema
+# de ficheros: es del que carga. Sigue siendo UNA sola implementacion del hash,
+# la misma que usa `bmo-abi`; lo que cambia es que quien la necesita la pide.
+bmo-hash = { path = "../../platform/shared/bmo-hash" }
 # CABINA: telemetria omnisciente entre Ring 0 y Ring 3 (el cockpit del sistema).
 cabina-core = { path = "../../platform/services/cabina-core" }
 # Sonido. Hoy son 109 lineas de altavoz de PC --puerto 0x61 y un retardo por

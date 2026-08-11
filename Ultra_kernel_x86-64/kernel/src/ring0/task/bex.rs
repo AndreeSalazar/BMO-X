@@ -24,9 +24,19 @@ pub const SECTION_BSS: u8 = 0x04;
 /// se LEE: dice que punteros de `.data` hay que rellenar con direcciones que
 /// solo se conocen aqui. Ver `BexLoadPlan::relocs_*`.
 pub const SECTION_RELOCS: u8 = 0x07;
-/// La seccion de HASHES: un BLAKE3 por cada una de las demas. Ver
-/// [`verificar_hashes`].
+/// La seccion de HASHES: un BLAKE3 por cada una de las demas. **NO se mapea**
+/// --no es memoria del programa-- pero si se LEE: es con lo que se cierra cada
+/// seccion cuando termina de aterrizar. Ver `task/aterrizaje.rs` y
+/// `BexLoadPlan::firma_*`.
 pub const SECTION_SIGNATURE: u8 = 0x0F;
+/// **LO QUE EL PROGRAMA REQUIERE, Y EL PORQUE.** Tampoco se mapea, y tambien se
+/// LEE: es lo que sustituye a que el kernel deduzca. Ver
+/// `bmo_abi::bef::requisitos` y `docs/EL_CONTRATO_DE_CARGA.md`.
+///
+/// Se declara aqui --y no solo en `bmo-abi`-- por la misma regla que el resto de
+/// este fichero: `bmo-abi` es el CONTRATO y esto lo implementa contra el leyendo
+/// bytes, sin importar su API con `alloc`.
+pub const SECTION_REQUISITOS: u8 = 0x15;
 
 /// Esta seccion se MAPEA en el espacio del programa?
 ///
@@ -61,6 +71,14 @@ pub struct BexMapping {
     pub file_size: u64,
     pub mem_size: u64,
     pub alignment: u16,
+    /// ** SU INDICE EN LA TABLA DEL FICHERO, no en este plan.
+    ///
+    /// El plan solo lleva lo cargable, asi que sus posiciones **no** son las del
+    /// fichero: una imagen con `Code, Manifest, Data` deja `Data` en el hueco 1
+    /// del plan y en el 2 del fichero. Y la tabla de hashes indexa por el del
+    /// FICHERO. Confundirlos comprueba el `Code` contra el digest del `Data` --
+    /// que no cuadra, y manda a buscar una corrupcion que no existe.
+    pub indice: usize,
 }
 
 const EMPTY_MAPPING: BexMapping = BexMapping {
@@ -70,6 +88,7 @@ const EMPTY_MAPPING: BexMapping = BexMapping {
     file_size: 0,
     mem_size: 0,
     alignment: 0,
+    indice: usize::MAX,
 };
 
 /// Validated inputs required by the future Ring 3 mapper.
@@ -93,6 +112,27 @@ pub struct BexLoadPlan {
     /// rellenar", que es el caso de todos los `.bex` escritos hasta hoy.
     pub relocs_file_offset: u64,
     pub relocs_file_size: u64,
+    /// Indice de la tabla de relocations en el FICHERO, para buscar su hash.
+    /// `usize::MAX` si no hay.
+    pub relocs_indice: usize,
+
+    /// ** DONDE ESTA LA TABLA DE HASHES, para que la comprobacion la haga QUIEN
+    /// COPIA y no este modulo.
+    ///
+    /// Antes esto se resolvia aqui dentro y se comprobaba todo de una pasada
+    /// sobre el bufer de la imagen. El sitio era el equivocado: entre ese bufer
+    /// y la memoria del proceso hay una COPIA, asi que se estaba certificando el
+    /// origen y no el destino. Ahora `inspect` dice donde estan los digests y
+    /// `proc::admit_payload` cierra cada seccion con el suyo **al aterrizar**.
+    /// Ver `task/aterrizaje.rs`.
+    ///
+    /// `firma_file_size == 0` = la imagen no trae firma. Es lo normal en las que
+    /// el kernel embebe, que no pasan por el escritor.
+    pub firma_file_offset: u64,
+    pub firma_file_size: u64,
+    /// Indice de la propia seccion de firma. No puede contener su hash, y hace
+    /// falta saber cual es para excluirla.
+    pub firma_indice: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -241,7 +281,17 @@ pub fn necesita(prologo: &[u8]) -> Result<usize, BexError> {
         if kind == SECTION_BSS {
             continue;
         }
-        if !is_loadable(kind) && kind != SECTION_RELOCS && kind != SECTION_SIGNATURE {
+        // Los REQUISITOS entran en la cuenta aunque hoy nadie los lea todavia,
+        // y es a proposito: la seccion la coloca el escritor en el grupo de
+        // delante, asi que **hoy cae dentro de lo que se trae por casualidad**.
+        // Una correccion que depende de la disposicion es una correccion que se
+        // rompe el dia que alguien reordene el fichero, y el sintoma seria que
+        // el cargador no encuentra lo que un programa pide.
+        if !is_loadable(kind)
+            && kind != SECTION_RELOCS
+            && kind != SECTION_SIGNATURE
+            && kind != SECTION_REQUISITOS
+        {
             continue;
         }
         let off = read_u64(prologo, e + 8).ok_or(BexError::InvalidSection)? as usize;
@@ -254,111 +304,6 @@ pub fn necesita(prologo: &[u8]) -> Result<usize, BexError> {
     Ok(hasta)
 }
 
-/// ** COMPROBAR QUE LA IMAGEN ES LA QUE SE ESCRIBIO.
-///
-/// Cada `.bex` trae una seccion `Signature` con el **BLAKE3 de cada una de las
-/// demas**. `BefBuilder::build` los calculaba desde siempre y los escribia al
-/// final del fichero **sin declararlos en la tabla**: la prueba de integridad
-/// viajaba pegada detras de cada programa del sistema y para cualquier lector
-/// eran bytes de relleno. Desde el 2026-08-09 la seccion se declara, y esto es
-/// quien la lee.
-///
-/// == Que caza esto que no cazaba nada ==
-///
-/// El tamano dice si llego TODO. El hash dice si llego LO MISMO. Son preguntas
-/// distintas: un sector que se lee sin error y trae datos de otro sitio da un
-/// fichero **del tamano correcto y corrupto por dentro**, y esa imagen pasa la
-/// admision, arranca, y muere mucho despues en un sitio que no se parece a la
-/// causa.
-///
-/// == Por que se hace a mano y no con `bmo-abi` ==
-///
-/// El mismo motivo que el resto de este fichero: `bmo-abi` es el CONTRATO y
-/// aqui se implementa contra el. Lo que NO se duplica es el algoritmo --
-/// `bmo_estratos::blake3` reexporta `bmo-hash`, que es exactamente el que usa
-/// `bmo-abi`. Una sola implementacion del hash y dos lectores del formato, que
-/// es el reparto correcto: dos hashes distintos serian un fichero que "no
-/// cuadra" sin que nada apunte al porque.
-///
-/// == La seccion NO se comprueba a si misma ==
-///
-/// Su contenido son los hashes de las demas, asi que no puede contener el suyo.
-/// El escritor la excluye al generar y este lector la excluye al comprobar; si
-/// uno de los dos se olvidara, ningun `.bex` verificaria jamas.
-///
-/// Devuelve `Ok(())` tambien cuando **no hay** seccion de firma: las imagenes
-/// que el kernel EMBEBE no pasan por el escritor. Exigirle una prueba a quien
-/// nunca la prometio seria dejar de arrancar.
-///
-/// ## Y que pasa con las secciones que NO se leyeron (2026-08-10)
-///
-/// Desde el escalon 2 el cargador trae solo lo que va a usar, asi que los
-/// recursos --el WAD de un paquete-- ya no estan en `bytes`. Sus hashes **se
-/// saltan**, y eso es una linea que conviene decir en voz alta:
-///
-/// > **El gate garantiza lo que EJECUTA.**
-///
-/// Lo que el programa lea despues por `TASK_OP_MI_PAQUETE` lo lee por su propia
-/// puerta, y comprobarlo es asunto de quien lo lea -- el hash sigue escrito en
-/// el fichero para cuando alguien quiera hacerlo. Lo que no se puede es fingir
-/// que se comprobo algo que no se ha llegado a leer.
-fn verificar_hashes(bytes: &[u8], tabla: usize, count: usize) -> Result<(), BexError> {
-    const CAB_FIRMA: usize = 8; // hash_count (u32) + sig_algo (u32)
-    const ENTRADA: usize = 40; // section_index (u16) + pad(6) + digest(32)
-
-    // Donde esta la firma, y en que indice, que hace falta para saltarsela.
-    let mut sig_off = 0usize;
-    let mut sig_len = 0usize;
-    let mut sig_idx = usize::MAX;
-    for i in 0..count {
-        let e = tabla + i * BEX_SECTION_SIZE;
-        if *bytes.get(e).ok_or(BexError::InvalidSection)? == SECTION_SIGNATURE {
-            sig_off = read_u64(bytes, e + 8).ok_or(BexError::InvalidSection)? as usize;
-            sig_len = read_u64(bytes, e + 16).ok_or(BexError::InvalidSection)? as usize;
-            sig_idx = i;
-            break;
-        }
-    }
-    if sig_len < CAB_FIRMA {
-        return Ok(()); // sin firma: no hay nada que comprobar
-    }
-    let cuantos = read_u32(bytes, sig_off).ok_or(BexError::InvalidSection)? as usize;
-    if sig_off + CAB_FIRMA + cuantos * ENTRADA > bytes.len() {
-        return Err(BexError::InvalidSection);
-    }
-
-    for k in 0..cuantos {
-        let h = sig_off + CAB_FIRMA + k * ENTRADA;
-        let idx = read_u16(bytes, h).ok_or(BexError::InvalidSection)? as usize;
-        if idx == sig_idx || idx >= count {
-            continue;
-        }
-        let e = tabla + idx * BEX_SECTION_SIZE;
-        let off = read_u64(bytes, e + 8).ok_or(BexError::InvalidSection)? as usize;
-        let len = read_u64(bytes, e + 16).ok_or(BexError::InvalidSection)? as usize;
-        // Una `Bss` no tiene bytes: su hash es el del vacio, y `blake3(&[])` lo
-        // da igual. No se salta -- saltarla seria un hueco en la comprobacion
-        // justo donde el escritor SI puso una entrada.
-        let datos = if len == 0 {
-            &bytes[0..0]
-        } else {
-            match bytes.get(off..off + len) {
-                Some(d) => d,
-                // No se leyo: es una seccion que el cargador no usa (recursos,
-                // simbolos...). Ver la nota de la cabecera -- no se finge que se
-                // comprobo, se salta.
-                None => continue,
-            }
-        };
-        let calculado = bmo_estratos::blake3(datos);
-        let guardado = bytes.get(h + 8..h + 40).ok_or(BexError::InvalidSection)?;
-        if calculado[..] != guardado[..] {
-            crate::ring0::cabina::fault("bex", "seccion que no cuadra con su hash", idx as u64);
-            return Err(BexError::HashNoCuadra);
-        }
-    }
-    Ok(())
-}
 
 /// Validate an untrusted BEX image and produce a fixed-size mapping plan.
 ///
@@ -463,14 +408,21 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
         return Err(BexError::SectionTableOutOfBounds);
     }
 
-    // ** LA INTEGRIDAD, ANTES DE MIRAR NADA MAS.
+    // ** LA INTEGRIDAD YA NO SE COMPRUEBA AQUI, Y ES A PROPOSITO (2026-08-10).
     //
-    // Va aqui --con la tabla ya acotada y antes de recorrer las secciones--
-    // porque comprobar el CONTENIDO de una imagen corrupta seccion por seccion
-    // produce el error de la primera que se salga, que es cierto y es la pista
-    // equivocada. El hash contesta la pregunta de fondo de una vez: *esto es lo
-    // que se escribio, o no lo es*.
-    verificar_hashes(bytes, table_start, count)?;
+    // Aqui vivia `verificar_hashes`: una pasada que comprobaba los BLAKE3 de
+    // todas las secciones sobre `bytes`. Funcionaba y estaba en el sitio
+    // equivocado, porque **entre `bytes` y la memoria del proceso hay una
+    // copia**. Lo que certificaba era el origen; lo que hace falta certificar es
+    // lo que el proceso va a EJECUTAR.
+    //
+    // Ahora `inspect` hace lo suyo --decir DONDE estan los digests, ver
+    // `firma_file_offset`-- y quien copia cierra cada seccion con el suyo en
+    // cuanto termina de aterrizar. El fallo pasa de `cabecera invalida` (que
+    // manda a mirar el formato) a `la seccion Code no cuadra con su hash` (que
+    // dice que el formato estaba bien y fallo el transporte).
+    //
+    // Ver `task/aterrizaje.rs` y `docs/EL_CONTRATO_DE_CARGA.md`, pieza A.
 
     let mut plan = BexLoadPlan {
         entry_offset,
@@ -479,6 +431,10 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
         skipped_sections: 0,
         relocs_file_offset: 0,
         relocs_file_size: 0,
+        relocs_indice: usize::MAX,
+        firma_file_offset: 0,
+        firma_file_size: 0,
+        firma_indice: usize::MAX,
     };
     let mut code_size = None;
     let mut loadable = 0usize;
@@ -536,6 +492,16 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
         if kind == SECTION_RELOCS {
             plan.relocs_file_offset = file_offset;
             plan.relocs_file_size = file_size;
+            plan.relocs_indice = index;
+            continue;
+        }
+        // * LA FIRMA se apunta y tampoco se mapea: no es memoria del programa,
+        // es la prueba de que lo demas llego entero. Quien la usa es el bucle
+        // que copia, seccion por seccion. Ver `task/aterrizaje.rs`.
+        if kind == SECTION_SIGNATURE {
+            plan.firma_file_offset = file_offset;
+            plan.firma_file_size = file_size;
+            plan.firma_indice = index;
             continue;
         }
         // * Solo lo CARGABLE entra al plan. Lo demas se valido (sus limites
@@ -552,6 +518,7 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
             file_size,
             mem_size,
             alignment,
+            indice: index,
         };
         loadable += 1;
     }

@@ -12,6 +12,7 @@
 
 use boot_context::BootContext;
 
+use crate::ring0::task::aterrizaje;
 use crate::ring0::task::bex;
 use crate::ring0::obj::channel;
 use crate::ring0::mm::{self, phys, vmm};
@@ -394,16 +395,105 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
         None
     };
 
-    // * PASE 2: reservar, copiar, PARCHEAR y mapear.
+    // ** LOS DIGESTS DECLARADOS, localizados UNA vez.
+    //
+    // `inspect` ya no comprueba hashes: dice donde estan. La comprobacion la
+    // hace el bucle de abajo, seccion por seccion y en el momento en que cada
+    // una termina de caer en la memoria del proceso. Ver `task/aterrizaje.rs`.
+    //
+    // Si la imagen no trae firma --las que el kernel EMBEBE no pasan por el
+    // escritor-- esto es `None` y cada cierre contesta `SinFirma`. Se cuenta,
+    // pero no se rechaza: exigirle una prueba a quien nunca la prometio seria
+    // dejar de arrancar.
+    let firmas = if plan.firma_file_size > 0 {
+        let ini = plan.firma_file_offset as usize;
+        let fin = ini.saturating_add(plan.firma_file_size as usize);
+        bytes
+            .get(ini..fin)
+            .and_then(|f| aterrizaje::Firmas::abrir(f, plan.firma_indice))
+    } else {
+        None
+    };
+    let mut sin_firma = 0usize;
+
+    // * PASE 2: reservar, copiar, CERRAR, PARCHEAR y mapear.
     let mut entry_va: u64 = 0;
     let mut code_bytes: u32 = 0;
     let total_relocs = bex::cuantas_relocs(plan.relocs_file_size);
+
+    // ** Y LA TABLA DE RELOCATIONS TAMBIEN SE CIERRA, antes de aplicar ni una.
+    //
+    // No se mapea, asi que no cae en el bucle de abajo -- y es la seccion cuya
+    // corrupcion hace mas dano en silencio: una reloc torcida escribe un puntero
+    // inventado dentro de `.data` y el proceso arranca, corre, y muere mucho
+    // despues en un sitio que no se parece a la causa. Comprobarla DESPUES de
+    // aplicarla no serviria de nada.
+    if total_relocs > 0 {
+        let ini = plan.relocs_file_offset as usize;
+        let fin = ini.saturating_add(plan.relocs_file_size as usize);
+        let Some(tabla) = bytes.get(ini..fin) else {
+            crate::ring0::cabina::fault("proc", "la tabla de relocs se quedo sin leer", ini as u64);
+            return None;
+        };
+        let esperado = firmas.as_ref().and_then(|f| f.digest_de(plan.relocs_indice));
+        let mut cierre = aterrizaje::Aterrizaje::abrir(bex::SECTION_RELOCS, esperado);
+        cierre.trozo(tabla);
+        match cierre.cerrar() {
+            Ok(aterrizaje::Cierre::Cuadra) => {}
+            Ok(aterrizaje::Cierre::SinFirma) => sin_firma += 1,
+            Err(_) => {
+                set_status("relocs corruptas");
+                return None;
+            }
+        }
+    }
     let mut aplicadas = 0usize;
+    // ** EL ORDEN DE ATERRIZAJE: POR OFFSET DE FICHERO, no por direccion virtual.
+    //
+    // === Hoy no cambia nada. Manana lo decide todo ===
+    //
+    // Mientras las secciones se copien de un bufer que ya esta entero en RAM, el
+    // orden da igual: `copy_nonoverlapping` va a donde le digan. Por eso esto se
+    // decide **ahora**, con la prueba de que no rompe nada, y no despues.
+    //
+    // Con la pieza B --el disco escribiendo en los marcos del proceso-- deja de
+    // dar igual: un fichero se lee hacia adelante, y el cursor de FAT32 es el
+    // CLUSTER. Aterrizar en orden de VA puede pedir retroceder, y retroceder es
+    // volver a recorrer la cadena desde el principio: cuadratico, y justo en el
+    // caso que B existe para arreglar.
+    //
+    // La colocacion en memoria NO se toca -- `va_de[]` se calculo en el pase 1 y
+    // sigue mandando. Lo unico que se ordena es en que orden se rellenan.
+    let mut orden = [0usize; bex::MAX_BEX_SECTIONS];
     for i in 0..plan.section_count {
+        orden[i] = i;
+    }
+    // Insercion, que para dieciseis como mucho es lo correcto: sin recursion,
+    // sin memoria extra, y estable -- dos secciones con el mismo offset (solo la
+    // `Bss`, que no ocupa fichero) conservan el orden del plan.
+    for a in 1..plan.section_count {
+        let mut b = a;
+        while b > 0
+            && plan.sections[orden[b - 1]].file_offset > plan.sections[orden[b]].file_offset
+        {
+            orden.swap(b - 1, b);
+            b -= 1;
+        }
+    }
+
+    for paso in 0..plan.section_count {
+        let i = orden[paso];
         let s = plan.sections[i];
         let va_start = va_de[i];
         let pages = (s.mem_size + mm::PAGE - 1) / mm::PAGE;
         let writable = s.flags & bex::SECTION_FLAG_EXEC == 0;
+        // ** EL CIERRE DE ESTA SECCION, abierto antes de su primer byte.
+        //
+        // Se busca su digest por `s.indice` --el indice en la tabla del
+        // FICHERO-- y no por `i`, que es el de este plan y solo cuenta lo
+        // cargable. Ver la nota de `BexMapping::indice`.
+        let mut cierre =
+            aterrizaje::Aterrizaje::abrir(s.kind, firmas.as_ref().and_then(|f| f.digest_de(s.indice)));
         for p in 0..pages {
             let frame = phys::alloc_frame()?;
             phys::zero_frame(frame);
@@ -416,6 +506,22 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
                         mm::phys_to_virt(frame) as *mut u8,
                         n,
                     );
+                    // ** SE LE DA AL HASHER LO QUE HAY EN EL MARCO, no lo que
+                    // habia en el origen.
+                    //
+                    // Es toda la diferencia entre esta comprobacion y la que
+                    // habia antes. Leerlo de `bytes` certificaria que el bufer
+                    // era bueno; leerlo de aqui certifica **lo que este proceso
+                    // va a ejecutar**, que es lo unico que importa -- y de paso
+                    // cubre la copia, que es un sitio donde las cosas se rompen.
+                    //
+                    // Y son `n` bytes, no la pagina: el relleno de ceros del
+                    // final no es parte de la seccion, y meterlo cambiaria el
+                    // hash de toda imagen que no acabe en frontera de pagina.
+                    cierre.trozo(core::slice::from_raw_parts(
+                        mm::phys_to_virt(frame) as *const u8,
+                        n,
+                    ));
                 }
             }
             // * LAS RELOCATIONS QUE CAEN EN ESTA PAGINA.
@@ -475,10 +581,33 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
                 return None;
             }
         }
+        // ** Y SE CIERRA, con la seccion entera ya en la memoria del proceso.
+        //
+        // Aqui --y no al final del bucle de todas-- porque el numero que hace
+        // falta es CUAL fallo. Cerrarlas todas juntas al final daria "algo no
+        // cuadra" cuando ya hay tres secciones mapeadas y ninguna pista de por
+        // donde empezar a mirar.
+        match cierre.cerrar() {
+            Ok(aterrizaje::Cierre::Cuadra) => {}
+            Ok(aterrizaje::Cierre::SinFirma) => sin_firma += 1,
+            Err(_) => {
+                set_status("una seccion no cuadra con su hash");
+                return None;
+            }
+        }
         if s.kind == bex::SECTION_CODE {
             entry_va = va_start + plan.entry_offset;
         }
         code_bytes = code_bytes.saturating_add(s.mem_size as u32);
+    }
+    // ** CUANTO DE LA IMAGEN QUEDO SIN CUBRIR, dicho en voz alta.
+    //
+    // No es un fallo --una imagen embebida no promete hashes-- pero callarlo
+    // convertiria "verificado" en una palabra que a veces no significa nada. Si
+    // esto sube en un `.bex` que SI paso por el escritor, es que el escritor
+    // dejo de firmar algo y nadie se habria enterado.
+    if sin_firma > 0 {
+        crate::ring0::cabina::info("proc", "secciones sin hash con el que comparar", sin_firma as u64);
     }
     // * Y SE COMPRUEBA QUE SE APLICARON TODAS.
     //

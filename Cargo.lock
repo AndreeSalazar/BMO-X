@@ -145,6 +145,7 @@ dependencies = [
  "bmo-channel",
  "bmo-estratos",
  "bmo-fat32",
+ "bmo-hash",
  "bmo-input",
  "bmo-rtc",
  "bmo-uaudio",
