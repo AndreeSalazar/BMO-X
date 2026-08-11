@@ -320,6 +320,144 @@ no rechazar, **decirlo con su nombre**.
 
 ---
 
+# PARTE 2c -- LOS NIVELES Y LA EMERGENCIA (apuntado, no hecho)
+
+## El eje: la firma no compra potencia
+
+> **La firma no compra POTENCIA. Compra PERMANENCIA e IDENTIDAD.**
+
+Si comprara potencia, los niveles son una escalera, el de abajo es un lisiado, y
+**nadie escribe para BMO-X**. Un programa sin firma es un EXTRANJERO, no un
+ciudadano de segunda: puede hacer cualquier cosa consigo mismo, y lo que no puede
+es dejar rastro que le sobreviva ni hablar en nombre de nadie.
+
+La pregunta que separa los niveles no es *cuanto te fio*. Es **quien responde si
+esto rompe algo**, que es la unica que se puede poner en un contrato.
+
+| | responde | que le abre |
+|---|---|---|
+| **sin firma** -- extranjero | nadie | RAM, CPU, su superficie en el marco del DIRECTOR, entrada, audio, y LEER el disco |
+| **publica** -- llave conocida | alguien, y se puede averiguar quien | + dejar rastro: escribir en SU sitio del disco, estado que sobrevive al apagon |
+| **privada** -- socio con pacto | una empresa, por contrato | + actuar sobre otros: `EJECUTAR` hijos, servicio de fondo, ventana de escritura |
+| **especial** -- la Base | el dueno del sistema | + cambiar la maquina: cadena de arranque, la puerta de escritura, `REINICIAR` |
+
+El extranjero **no lleva tope de RAM ni de CPU**. No es generosidad: es que
+quemando lo suyo solo se hace dano a si mismo. El techo no lo pone la firma, lo
+pone la maquina.
+
+** Y un quinto estado que sale gratis: **firmado por una llave desconocida**. No
+es lo mismo que sin firma -- es una identidad que todavia no se ha decidido. El
+sistema puede decir *"firmado por A3F2..., no lo conozco"*, y el dia que esa llave
+entre en la tabla, **el mismo binario sube de nivel sin recompilar un byte**. Eso
+es lo que hace que exista un ecosistema en vez de una lista.
+
+## DOOM cabe entero en la primera fila
+
+Memoria, dibujar, teclado, sonido, y leer su WAD. **Todo consigo mismo.** No lanza
+hijos, no escribe en el disco, no reinicia nada. Y el mecanismo que lo permite ya
+estaba hecho antes de que hiciera falta para esto: con DIRECTOR una app dibuja en
+su propia memoria y el compositor la compone -- no necesita la pantalla,
+necesita su caja, que es exactamente el modelo extranjero.
+
+> Un juego de verdad, de un tercero, sin firma, corriendo completo. **Esa es la
+> demo.** Y es la misma frase vista desde el otro lado en una sala de banca: *lo
+> que no esta firmado no puede tocar nada que le sobreviva.*
+
+## EMERGENCIA, NO ROOT
+
+En Unix, matar un proceso desbocado es una pregunta de **autoridad**: *"eres
+root?"*. Alguien con mas poder decide.
+
+Aqui es una pregunta de **contrato**: el programa declaro lo que requeria, el
+sistema se lo concedio, y si rompe los terminos **la concesion se acaba**. No hace
+falta que nadie sea root. No hay a quien ascender ni a quien sobornar.
+
+Y no es idea nueva: **ya esta hecho dos veces**.
+
+```text
+   disk.rs   "el dueno del disco murio: se le quita"
+             "Es la misma idea que la pantalla: exclusiva, con dueno,
+              y recuperable cuando el dueno se muere."
+```
+
+Lo que falta es convertir ese patron en LA REGLA en vez de dos casos sueltos.
+
+### El expediente: por que arranco esto
+
+`record_open` apunta nombre, pid y tamano. Le falta lo que hace util a todo lo
+demas:
+
+```text
+   quien lo lanzo        familia.rs ya lo sabe
+   de donde salio        Fuente ya lo sabe (FAT32 o ESTRATOS)
+   con que firma         nadie / desconocida / cual
+   que DECLARO           Requisitos, hecho
+   que se le CONCEDIO    <-- lo nuevo
+```
+
+Con eso, cuando algo se tuerce el kernel **no adivina: lee**. Y F11 deja de decir
+*"proceso 3 cerrado"* para decir el renglon entero:
+
+```text
+   proc 3 (doom.bex, sin firma, lanzado por gui)
+   pidio la ventana de escritura del disco. No estaba concedida. Se le retira todo.
+```
+
+### [!] Que dispara la emergencia, y que NO
+
+Aqui esta el peligro de siempre. Si el kernel tiene que **juzgar** cuando algo va
+mal, hay un cerebro en el anillo cero decidiendo quien vive.
+
+La version sin cerebro: solo saltan **hechos mecanicos**, comprobables sin opinar.
+
+| dispara | NO dispara |
+|---|---|
+| pide algo que no se le concedio | va lento |
+| falla en sus propias paginas | usa mucha RAM |
+| pasa de lo que declaro | "parece raro" |
+| muere teniendo un recurso exclusivo | lleva mucho rato |
+
+** Y lo que esto NO caza, dicho: un programa que se cuelga **sin romper nada** no
+viola ningun contrato. Eso lo cierra el usuario por DIRECTOR, que es el dueno de
+la ventana. Dos puertas, y ninguna de las dos es un superusuario.
+
+## El gato, que no es decoracion
+
+> *"El gato no te juzga, no te dice nada, solo te protege. Te PRESTA para que
+> funciones, pero si danas te lo quita y lo devuelve para funcionar."*
+> -- Eddi, 2026-08-10
+
+Un gato **no delibera sobre quien es el dueno del raton**. No juzga porque no
+tiene con que, y esa es la virtud: un kernel que piensa es un kernel que un dia
+piensa mal y no hay a quien preguntarle por que.
+
+La precision que salva la regla: **el gato no elige a quien cazar. Caza lo que se
+salio del trato.** Si eligiera seria el cerebro; como el trato esta escrito, la
+caza es mecanica.
+
+### Y sirve de PRUEBA, que es lo mejor que tiene
+
+Si el trato es *"te presto, y si danas te lo quito y lo devuelvo"*, entonces
+**todo lo que el gato no pueda quitar es donde el diseno no esta terminado**:
+
+| prestamo | lo recupera? |
+|---|---|
+| el disco | **si** -- dueno, y se le quita a un muerto |
+| la pantalla | **si** -- exclusiva, con dueno |
+| el audio | hay `CLAIM`/`RELEASE`; falta comprobar si se recupera de un muerto |
+| **la RAM** | **NO.** Hoy no existe devolver |
+
+La RAM es la unica que no vuelve: un programa pide, muere, y esa memoria no
+regresa -- *"sin forma de devolver memoria, cada peticion de mas es una fuga"*,
+dice `sonda.bex`. **Ahi el gato no puede**, y mientras siga asi la primera fila de
+la tabla de niveles (el extranjero sin tope de RAM) no es del todo verdad: un
+extranjero que pide y muere si hace dano a los demas.
+
+O el extranjero lleva tope, o `MEMORIA_PEDIR` aprende a devolver. **Lo segundo**:
+un tope seria una regla puesta para tapar la falta de la otra.
+
+---
+
 # PARTE 3 -- Lo que esto NO arregla
 
 Dicho aqui para que nadie lo suponga leyendo lo de arriba:
