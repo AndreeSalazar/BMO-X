@@ -289,6 +289,113 @@ pub fn find_storage() -> Option<StorageLoc> {
     None
 }
 
+// -- ** LA TARJETA DE RED. Solo encontrarla. ---------------------------------
+
+/// Una NIC localizada. **Nada de esto la maneja**: la reconoce.
+#[derive(Clone, Copy)]
+pub struct NetLoc {
+    pub bus: u8,
+    pub dev: u8,
+    pub func: u8,
+    /// Quien la fabrica y que modelo. `0x10EC` = Realtek.
+    pub vendor: u16,
+    pub device: u16,
+    /// El primer BAR de MEMORIA, ya compuesto si era de 64 bits. `0` = la
+    /// tarjeta solo declara puertos de E/S y aqui no hay nada que mapear.
+    pub mmio: u64,
+    /// **Cual de los seis era.** No es curiosidad: ver `find_net`.
+    pub bar_index: u8,
+    /// Los seis BAR crudos, sin interpretar. Para poder DECIRLOS.
+    pub bars: [u32; 6],
+}
+
+/// Escanea el PCI buscando una **NIC Ethernet** (clase 0x02, subclase 0x00).
+/// Habilita MEM+BME y devuelve donde esta. `skip` salta los primeros N.
+///
+/// == Por que el BAR se BUSCA y no se sabe ==
+///
+/// Cada familia pone su MMIO donde quiere: AHCI en el BAR5, xHCI en el BAR0, y
+/// las Realtek **han cambiado de sitio segun el modelo** -- las 8169 usan la
+/// region 1 y las 8168 la 2. Escribir `0x18` aqui seria acertar en esta placa y
+/// fallar en la siguiente, que es justo el fallo que ya se pago dos veces en
+/// este proyecto:
+///
+/// > **Por lo que ES, nunca por donde esta.**
+///
+/// Asi que se recorren los seis y se coge **el primero que sea de memoria**, que
+/// es lo mismo que hace el driver de Linux desde que dejo de llevar una tabla
+/// por modelo. La regla no necesita mantenimiento: una NIC que mueva su MMIO de
+/// BAR sigue funcionando sin tocar una linea.
+///
+/// [!] Y se guardan **los seis crudos**. Si la MAC sale mal, la primera pregunta
+/// va a ser "de que BAR la leiste", y esa foto tiene que existir ya.
+pub fn find_net(skip: usize) -> Option<NetLoc> {
+    let mut seen = 0usize;
+    for bus in 0u16..=255 {
+        let bus = bus as u8;
+        for dev in 0u8..32 {
+            let vd0 = cfg_read32(bus, dev, 0, 0x00);
+            if vd0 == 0xFFFF_FFFF {
+                continue;
+            }
+            let header0 = (cfg_read32(bus, dev, 0, 0x0C) >> 16) & 0xFF;
+            let max_func = if header0 & 0x80 != 0 { 8 } else { 1 };
+            for func in 0u8..max_func {
+                let vd = cfg_read32(bus, dev, func, 0x00);
+                if vd == 0xFFFF_FFFF {
+                    continue;
+                }
+                let class = cfg_read32(bus, dev, func, 0x08);
+                // 0x02 = red; subclase 0x00 = Ethernet. Un Wi-Fi es 0x80 y no
+                // entra: se parece en la clase y no en nada mas.
+                if (class >> 24) as u8 != 0x02 || (class >> 16) as u8 != 0x00 {
+                    continue;
+                }
+                if seen < skip {
+                    seen += 1;
+                    continue;
+                }
+                enable_mem_bus_master(bus, dev, func);
+
+                let mut bars = [0u32; 6];
+                for k in 0..6 {
+                    bars[k] = cfg_read32(bus, dev, func, 0x10 + (k as u8) * 4);
+                }
+                // El primero de MEMORIA. Un BAR de 64 bits se come el siguiente
+                // --su mitad alta-- y por eso el paso no es fijo: leer esa mitad
+                // como si fuera un BAR suelto daria una direccion inventada.
+                let mut mmio = 0u64;
+                let mut bar_index = 0xFFu8;
+                let mut i = 0usize;
+                while i < 6 {
+                    let b = bars[i];
+                    let es_io = b & 1 != 0;
+                    let de_64 = !es_io && (b >> 1) & 0x3 == 0x2;
+                    if !es_io && mmio == 0 && (b & 0xFFFF_FFF0) != 0 {
+                        mmio = (b & 0xFFFF_FFF0) as u64;
+                        if de_64 && i + 1 < 6 {
+                            mmio |= (bars[i + 1] as u64) << 32;
+                        }
+                        bar_index = i as u8;
+                    }
+                    i += if de_64 { 2 } else { 1 };
+                }
+                return Some(NetLoc {
+                    bus,
+                    dev,
+                    func,
+                    vendor: (vd & 0xFFFF) as u16,
+                    device: (vd >> 16) as u16,
+                    mmio,
+                    bar_index,
+                    bars,
+                });
+            }
+        }
+    }
+    None
+}
+
 /// Escanea todos los buses buscando xHCI (clase 0x0C, subclase 0x03,
 /// prog-if 0x30). Al encontrarlo habilita MEM+BME y devuelve su ubicacion.
 /// `skip` permite saltar los primeros N hallazgos (para probar el segundo

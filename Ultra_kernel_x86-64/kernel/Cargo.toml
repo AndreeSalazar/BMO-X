@@ -41,6 +41,10 @@ bmo-audio = { path = "../../platform/drivers/audio" }
 # prueba entero en el anfitrion-- y quien las manda es `dev/uaudio.rs`.
 bmo-uaudio = { path = "../../platform/drivers/usb/uaudio" }
 bmo-rtc = { path = "../../platform/drivers/rtc" }
+# Red: de momento solo sabe RECONOCER una Realtek 8169/8168 -- leer su MAC y su
+# enlace. Cero escrituras al aparato, cero dependencias propias. Quien la llama
+# es `dev/red.rs`.
+bmo-net = { path = "../../platform/drivers/net" }
 
 [[bin]]
 name =     "bmo-kernel"
