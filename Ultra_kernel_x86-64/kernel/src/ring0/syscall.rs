@@ -1,4 +1,10 @@
-//! x86-64 SYSCALL entry and BMO ABI v2 dispatcher (3 frozen syscalls).
+//! x86-64 SYSCALL entry and BMO ABI v2 dispatcher (**2** frozen syscalls).
+//!
+//! [!] Decia "3" hasta el 2026-08-11, y llevaba diciendolo desde que
+//! `CHANNEL_KICK` se retiro el 10-08 -- en este mismo fichero, cuarenta lineas
+//! mas abajo, donde esta contado por que se fue. La cabecera de un modulo es lo
+//! que se lee para saber que hay dentro, y **el numero de puertas de este
+//! sistema no es un detalle: es lo que se promete que no va a cambiar**.
 //!
 //! The entry builds the unified trap frame (see trap.rs): swapgs, switch to
 //! the per-CPU syscall stack, synthesize the 5-word trap tail (user SS/RSP/
@@ -10,9 +16,12 @@
 //! the dispatcher may answer with a *different* context than the one that
 //! entered (YIELD/WAIT/EXIT switch right at the syscall boundary).
 //!
-//! The surface is frozen at `INVOKE`, `CHANNEL_KICK`, `WAIT`. Everything
-//! else is a capability operation resolved through `cap::resolve` -- new
-//! functionality adds operations and handle kinds, never syscalls.
+//! The surface is frozen at `INVOKE` and `WAIT`. Everything else is a
+//! capability operation resolved through `cap::resolve` -- new functionality
+//! adds operations and handle kinds, never syscalls.
+//!
+//! The proof that this works is a number: **the operations went 22 -> 39 while
+//! the doors went 3 -> 2.** The system grew and the surface shrank.
 
 use core::arch::{asm, naked_asm};
 

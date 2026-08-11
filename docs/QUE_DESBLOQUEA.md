@@ -22,8 +22,15 @@ esta escrito en **C**, y BMO C ya pasa 32 de 32 sondas.
 
 ## Lo que BMO-X tiene HOY
 
-Medido sobre `platform/abi/bmo-abi/src/syscalls/surface.rs` (3 syscalls, **22
-operaciones**) y los drivers del arbol.
+Medido sobre `platform/abi/bmo-abi/src/syscalls/surface.rs` y los drivers del
+arbol.
+
+> **Al 2026-08-11: 2 syscalls y 39 operaciones.** Cuando este documento se
+> escribio eran 3 y 22, y las dos mitades de ese cambio dicen lo mismo:
+> `CHANNEL_KICK` se retiro el 10-08 --era una operacion sobre un handle, o sea
+> la definicion de `INVOKE`-- y las operaciones casi se doblaron. **La puerta se
+> hizo mas estrecha mientras el sistema crecia**, que es exactamente lo que el
+> diseno prometia y ahora tiene numeros.
 
 | Pieza | Estado | Que habilita |
 |---|---|---|
@@ -34,7 +41,7 @@ operaciones**) y los drivers del arbol.
 | Ficheros | ✅ abrir / crear / leer / leer-linea / escribir / tamano / cerrar | E/S de datos, FAT32 lectura + ESTRATOS |
 | Consola | ✅ escribir y leer | stdin/stdout |
 | Lanzar programas, rutas, info | ✅ | un shell de verdad |
-| **Red** | ❌ **cero syscalls de red**. El e1000 son 287 lineas de esqueleto y **no hay pila TCP/IP** | nada conectado |
+| **Red** | ⏳ **la NIC se RECONOCE** (11-08): `find_net` + MAC + enlace, cero escrituras. Sin `KIND_RED`, sin anillos y **sin pila TCP/IP** | nada conectado todavia |
 | **Hilos** | ❌ **cero syscalls de crear hilo** | una tarea = un hilo |
 | **Compilacion separada** | ❌ **una sola unidad de traduccion** | obligatorio *unity build* |
 | Enlazado dinamico | ❌ y no hace falta | todo estatico |
@@ -55,9 +62,13 @@ estados grande).
 **El driver es el 5% del problema. La pila es el 95%.** Y la pila es
 independiente del hardware -- la misma vale para cualquier NIC.
 
-Atajo real y anotado: **smoltcp** (Rust, `no_std`) ya esta mencionado en la
-cabecera del driver. Es una pila TCP/IP pensada exactamente para esto. TLS
-sigue siendo aparte.
+Atajo real y anotado: **smoltcp** (Rust, `no_std`) es una pila TCP/IP pensada
+exactamente para esto. TLS sigue siendo aparte.
+
+> ⚠ **2026-08-11**: `smoltcp` era dependencia del crate `bmo-net` y se quito con
+> el resto. No era una decision contra ella -- es que **la pila no va en Ring
+> 0**, y aquel crate estaba en el kernel. Cuando vuelva sera dentro de un
+> programa de Ring 3, que es su sitio. Ver [`RED_MAESTRO.md`](RED_MAESTRO.md).
 
 ---
 
