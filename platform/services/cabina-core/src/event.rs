@@ -226,6 +226,59 @@ pub enum Entity {
     Device = 7,
 }
 
+/// **How the `value` of an event is to be read.**
+///
+/// Declared by whoever emits it, because that is who knows. See the field
+/// comment in [`Event`] for why this is not the kernel interpreting anything.
+///
+/// The renderer is free to choose the presentation -- `Bytes` may print
+/// `4 MiB (4196020)` on a wide line and `4MiB` on a narrow one -- but it is never
+/// free to choose the MEANING. That arrives with the event.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fmt {
+    /// Bare hexadecimal. The historical behaviour, and the default, so that not
+    /// one of the two hundred existing call sites has to change.
+    Raw = 0,
+    /// A plain count: how many things. Printed in decimal, because nobody counts
+    /// in hex.
+    Count = 1,
+    /// A size in bytes. Printed with its scale AND its exact number -- the scale
+    /// is for reading, the exact number is for comparing against a file size.
+    Bytes = 2,
+    /// A memory address. Hexadecimal, and the renderer may add what an address
+    /// makes obvious once written down, like its offset inside a page.
+    Addr = 3,
+    /// Milliseconds.
+    Millis = 4,
+    /// A six-byte MAC, packed with byte 0 at the top. Printed `2C:F0:5D:D9:3C:E3`
+    /// so it can be compared at a glance with what any other system says.
+    Mac = 5,
+    /// A bitfield. Printed in binary, because the whole point of a bitfield is
+    /// which bits are set, and that is the one thing hex hides.
+    Bits = 6,
+    /// A process or thread id.
+    Id = 7,
+}
+
+impl Fmt {
+    /// From the raw byte, for anyone reading a ring they did not write.
+    /// Anything unknown reads as [`Fmt::Raw`], which is always safe: the worst
+    /// case is the old behaviour.
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Fmt::Count,
+            2 => Fmt::Bytes,
+            3 => Fmt::Addr,
+            4 => Fmt::Millis,
+            5 => Fmt::Mac,
+            6 => Fmt::Bits,
+            7 => Fmt::Id,
+            _ => Fmt::Raw,
+        }
+    }
+}
+
 impl Entity {
     pub const COUNT: usize = 8;
 
@@ -308,7 +361,37 @@ pub struct Event {
     pub severity: Severity,
     pub layer: Layer,
     pub entity: Entity,
-    pub _pad: u8,
+
+    // -- ** HOW THIS NUMBER IS READ (2026-08-12) ---------------------------
+    //
+    // === The gap, with its receipts ===
+    //
+    // Every event carries a `value` and every value was printed the same way:
+    // bare hexadecimal. So a number whose meaning the emitter KNEW arrived at
+    // the reader stripped of it, and the reader converted by hand. Three times
+    // that cost real time:
+    //
+    //   red: enlace ARRIBA, megabits =64      <- 0x64. A megabit count in hex.
+    //   proc: relocation PARTIDA        =1074388988   <- 0x4009DFFC, and the
+    //         bug was the offset 4092 inside its page: invisible in decimal.
+    //   proc: cabecera invalida         =800  <- 2048, the prologue size. The
+    //         whole of Ep. 39 turns on recognising that number.
+    //
+    // === And this is NOT a brain either ===
+    //
+    // Nothing is deduced. Whoever emits the event already knows whether it is
+    // counting bytes, megabits, an address or a MAC -- and today throws that
+    // away at the door. Recording it is not analysis: it is **not discarding
+    // something we already had**, which is the same move as `#[track_caller]`
+    // and `intento` above, and as `bex::necesita` and `tramo_dma` before them.
+    // **Remove the question, do not improve it.**
+    //
+    // It costs zero bytes: it lives in the padding byte that was already there.
+    //
+    // `Raw` is 0 on purpose, so an event that says nothing keeps printing
+    // exactly as it did before. Nothing has to be migrated for the ring to keep
+    // working.
+    pub fmt: Fmt,
     pub module: [u8; MODULE_MAX],
     pub entity_id: u32,
     pub msg: [u8; MSG_MAX],
@@ -368,7 +451,7 @@ impl Event {
             severity,
             layer,
             entity,
-            _pad: 0,
+            fmt: Fmt::Raw,
             module: [0; MODULE_MAX],
             entity_id,
             msg: [0; MSG_MAX],
@@ -395,6 +478,15 @@ impl Event {
         };
         str_to_fixed(corto, &mut self.fichero);
         self.linea = linea;
+        self
+    }
+
+    /// **Says how its number is read.** Chained like [`Event::en`].
+    ///
+    /// Separate from the constructor for the same reason: whoever builds the
+    /// event should not have to repeat seven arguments to add one fact.
+    pub fn como(mut self, fmt: Fmt) -> Self {
+        self.fmt = fmt;
         self
     }
 

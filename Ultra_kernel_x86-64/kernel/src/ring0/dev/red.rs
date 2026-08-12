@@ -82,7 +82,7 @@ pub fn init() {
         return;
     }
     crate::ring0::cabina::info("red", "el MMIO sale del BAR numero", loc.bar_index as u64);
-    crate::ring0::cabina::info("red", "y esta en la direccion fisica", loc.mmio);
+    crate::ring0::cabina::addr("red", "y esta en la direccion fisica", loc.mmio);
 
     // ** Y AQUI SE PARA SI NO ES REALTEK.
     //
@@ -102,7 +102,7 @@ pub fn init() {
         MMIO = mmio;
     }
 
-    crate::ring0::cabina::info("red", "MAC", id.mac_u64());
+    crate::ring0::cabina::mac("red", "MAC", id.mac_u64());
     if !id.creible() {
         // Ceros o unos no dicen "tarjeta rota": dicen que la lectura no llego al
         // aparato. Es el BAR, no la NIC, y confundirlos manda a cambiar de
@@ -110,9 +110,9 @@ pub fn init() {
         crate::ring0::cabina::fault("red", "esa MAC no es creible: el BAR no lleva a los registros", id.mac_u64());
         return;
     }
-    crate::ring0::cabina::info("red", "PHYstatus crudo", id.phy as u64);
+    crate::ring0::cabina::bits("red", "PHYstatus crudo", id.phy as u64);
     if id.enlace_arriba() {
-        crate::ring0::cabina::info("red", "enlace ARRIBA, megabits", id.megabits() as u64);
+        crate::ring0::cabina::count("red", "enlace ARRIBA, megabits", id.megabits() as u64);
     } else {
         // Sin cable no hay nada roto: hay que enchufarlo. Se dice para que no se
         // busque el fallo en el driver el dia que no lleguen tramas.
@@ -238,7 +238,7 @@ pub fn rx_start() -> bool {
         return false;
     }
     if rx_activo() {
-        crate::ring0::cabina::info("red", "el receptor ya estaba armado, tramas", rx_tramas());
+        crate::ring0::cabina::count("red", "el receptor ya estaba armado, tramas", rx_tramas());
         return true;
     }
 
@@ -298,7 +298,7 @@ pub fn rx_start() -> bool {
             }
             core::hint::spin_loop();
         }
-        crate::ring0::cabina::info("red", "reset completado, vueltas", spins as u64);
+        crate::ring0::cabina::count("red", "reset completado, vueltas", spins as u64);
 
         // 2. Unlock the config registers, and lock them again at the end. Leaving
         //    them unlocked is how a stray write later becomes a card that forgot
@@ -326,7 +326,7 @@ pub fn rx_start() -> bool {
         w8(mmio, reg_rx::CR, (c & !cr::TE) | cr::RE);
     }
 
-    crate::ring0::cabina::info("red", "receptor ARMADO, anillo en la fisica", ring);
+    crate::ring0::cabina::addr("red", "receptor ARMADO, anillo en la fisica", ring);
     true
 }
 
@@ -358,7 +358,7 @@ pub fn rx_poll() -> u32 {
             match bmo_net::EthHeader::parse(trama) {
                 Some(h) => {
                     RX_FRAMES = RX_FRAMES.wrapping_add(1);
-                    crate::ring0::cabina::info("red", "trama de", h.src_u64());
+                    crate::ring0::cabina::mac("red", "trama de", h.src_u64());
                     crate::ring0::cabina::info(
                         "red",
                         "  ...tipo y largo",
@@ -368,7 +368,7 @@ pub fn rx_poll() -> u32 {
                 // Under fourteen bytes there is no header. Counted separately: a
                 // runt is a cable or a filter problem, not a missing frame.
                 None => {
-                    crate::ring0::cabina::warn("red", "trama demasiado corta para tener cabecera", largo as u64);
+                    crate::ring0::cabina::count("red", "trama demasiado corta para tener cabecera", largo as u64);
                 }
             }
             // Give the descriptor back to the card, with EOR preserved on the

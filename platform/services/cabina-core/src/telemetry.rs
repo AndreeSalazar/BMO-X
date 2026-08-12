@@ -113,7 +113,7 @@ impl Event {
         severity: crate::event::Severity::Info,
         layer: crate::event::Layer::Ring0,
         entity: crate::event::Entity::Module,
-        _pad: 0,
+        fmt: crate::event::Fmt::Raw,
         module: [0u8; crate::event::MODULE_MAX],
         entity_id: 0,
         msg: [0u8; crate::event::MSG_MAX],
