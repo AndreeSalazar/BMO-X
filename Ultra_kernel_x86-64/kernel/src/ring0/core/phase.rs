@@ -2220,6 +2220,9 @@ pub fn main(ctx: &mut BootContext) {
     // que se repinta y un `cpuid` por fotograma no es un panel, es un impuesto.
     // Ver `docs/AXION_MAESTRO.md`, seccion 9.
     crate::ring0::cpu::frecuencia::init();
+    // Y lo que GASTA. Mismo trato: se pregunta una vez si el chip sabe
+    // contestar, y la unidad se le pregunta a el en vez de suponerla.
+    crate::ring0::cpu::energia::init();
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::dev::usb::init(ctx);
     // * And HERE the kernel keeps them. Until this commit the bus only advanced

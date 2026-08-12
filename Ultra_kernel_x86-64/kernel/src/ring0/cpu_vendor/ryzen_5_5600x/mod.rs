@@ -23,6 +23,10 @@ pub mod bmo_cpu;
 pub use bmo_cpu::init_bmo_cpu;
 
 /// Profile descriptor consumed by `cpu_vendor::profile::active()`.
+/// Los contadores de energia de este Zen 3. Son de AMD: por eso viven aqui y
+/// no en `ring0/cpu/`. Ver su cabecera.
+pub mod energia;
+
 /// The rest of Ring 0 sees only this -- never this module directly.
 pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
     vendor: "AMD",

@@ -46,6 +46,16 @@ const INFO_TSC_HZ: u64 = 0x05;
 /// panel que se repinta obtiene el valor del ultimo refresco, que es justo lo
 /// que quiere. Ver `ring0/cpu/frecuencia.rs`.
 const INFO_CPU_HZ_REAL: u64 = 0x20;
+/// **Milivatios del PAQUETE desde la ultima consulta.** `0` = no se puede medir.
+///
+/// Como [`INFO_CPU_HZ_REAL`], es una MEDIDA por diferencia: preguntarlo dos
+/// veces seguidas da el consumo de ese intervalo. Y como aquel, el cero
+/// significa *"no se sabe"* y no *"no gasta"* -- que es una frase que no puede
+/// ser verdad con la maquina encendida.
+const INFO_CPU_MW_PAQUETE: u64 = 0x21;
+/// Milivatios de los NUCLEOS. La diferencia con el paquete es todo lo demas del
+/// chip: Infinity Fabric, controlador de memoria, cache L3.
+const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
 /// * Quien tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
@@ -117,6 +127,8 @@ pub fn campo(n: u64) -> u64 {
         // La UNICA fila de esta tabla que MIDE en vez de consultar. Cuesta dos
         // `rdmsr`, y por eso puede vivir en un camino que se repinta.
         INFO_CPU_HZ_REAL => crate::ring0::cpu::frecuencia::medir(),
+        INFO_CPU_MW_PAQUETE => crate::ring0::cpu::energia::medir().0,
+        INFO_CPU_MW_NUCLEOS => crate::ring0::cpu::energia::medir().1,
         // La topologia esta cacheada desde `init_bmo_cpu`: aqui no se vuelve a
         // preguntar al CPUID. Un panel que se repinta no debe costar CPUID.
         INFO_CPU_HILOS => cpu_topo().map(|t| t.hilos as u64).unwrap_or(0),

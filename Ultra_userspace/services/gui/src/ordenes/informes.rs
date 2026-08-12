@@ -121,6 +121,45 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
         s.byte(b'\n');
     }
 
+    // ** Y LO QUE CUESTA TENERLO ASI.
+    //
+    // Va pegado a la frecuencia a proposito: los dos numeros juntos son la frase
+    // entera. "4,6 GHz" solo dice que va rapido; "4,6 GHz y 88 W" dice que va
+    // rapido Y lo que cuesta -- y esa segunda mitad es la que AXION necesita
+    // para decidir si apagar nucleos vale la pena.
+    //
+    // Hasta hoy la seccion 5 de AXION_MAESTRO.md decia que once obreros girando
+    // consumen "como si trabajaran": una afirmacion sin numero al lado. Con esta
+    // fila, `smp stop` tiene un antes y un despues.
+    let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
+    let mwn = bmo::info(bmo::INFO_CPU_MW_NUCLEOS);
+    etiqueta(s, b"gasta");
+    if mw == 0 {
+        s.con_tinta(TINTA_ECO);
+        s.texto(b"sin RAPL, o aun sin dos lecturas");
+        s.con_tinta(TINTA_NORMAL);
+        s.byte(b'\n');
+    } else {
+        s.dec(mw / 1000);
+        s.byte(b'.');
+        s.dec((mw % 1000) / 100);
+        s.texto(b" W paquete");
+        if mwn > 0 {
+            s.texto(b" / ");
+            s.dec(mwn / 1000);
+            s.byte(b'.');
+            s.dec((mwn % 1000) / 100);
+            s.texto(b" W nucleos");
+        }
+        s.con_tinta(TINTA_ECO);
+        // La resta se dice porque no es obvia: lo que va del nucleo al paquete
+        // es Infinity Fabric, controlador de memoria y L3 -- y ese consumo NO
+        // baja aunque se apaguen nucleos.
+        s.texto(b"   (el resto: fabric + memoria + L3)");
+        s.con_tinta(TINTA_NORMAL);
+        s.byte(b'\n');
+    }
+
     // -- SMP, y lo que cuesta --------------------------------------------
     //
     // Los nucleos en pie y los choques de cerrojo van en el MISMO informe a

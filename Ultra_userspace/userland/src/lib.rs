@@ -156,6 +156,10 @@ pub const INFO_TSC_HZ: u64 = 0x05;
 /// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
 /// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;
+/// Milivatios del paquete desde la ultima consulta. `0` = no se puede medir.
+pub const INFO_CPU_MW_PAQUETE: u64 = 0x21;
+/// Milivatios de los nucleos solos.
+pub const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;

@@ -164,6 +164,12 @@ pub const INFO_TSC_HZ: u64 = 0x05;
 /// sea que **preguntarlo dos veces seguidas da la velocidad de ese intervalo**.
 /// Un panel que se repinta obtiene la del ultimo refresco, que es lo que quiere.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;
+/// **Milivatios del PAQUETE desde la ultima consulta.** `0` = no se puede medir.
+/// Medida por diferencia, como [`INFO_CPU_HZ_REAL`].
+pub const INFO_CPU_MW_PAQUETE: u64 = 0x21;
+/// Milivatios de los NUCLEOS solos. Lo que falta hasta el paquete es el resto
+/// del chip: Infinity Fabric, controlador de memoria y L3.
+pub const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
 /// Hilos logicos y nucleos fisicos que el CPU declara.
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
