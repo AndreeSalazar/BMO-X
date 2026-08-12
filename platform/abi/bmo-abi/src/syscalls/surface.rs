@@ -170,6 +170,12 @@ pub const INFO_CPU_MW_PAQUETE: u64 = 0x21;
 /// Milivatios de los NUCLEOS solos. Lo que falta hasta el paquete es el resto
 /// del chip: Infinity Fabric, controlador de memoria y L3.
 pub const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
+/// **Que sabe medir el perfil de este silicio**, como banderas.
+/// bit 0 = frecuencia efectiva / bit 1 = consumo.
+///
+/// Es lo que permite a la terminal decir QUE esta aplicando, en vez de pintar
+/// ceros y dejar al que mira sin saber si el sensor no existe o el valor es 0.
+pub const INFO_CPU_SENSORES: u64 = 0x23;
 /// Hilos logicos y nucleos fisicos que el CPU declara.
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;

@@ -56,6 +56,15 @@ const INFO_CPU_MW_PAQUETE: u64 = 0x21;
 /// Milivatios de los NUCLEOS. La diferencia con el paquete es todo lo demas del
 /// chip: Infinity Fabric, controlador de memoria, cache L3.
 const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
+/// **Que sabe medir el PERFIL de este silicio**, como banderas.
+///
+/// bit 0 = frecuencia efectiva (MPERF/APERF) / bit 1 = consumo (RAPL)
+///
+/// Existe para que la terminal pueda decir **que esta aplicando** en vez de
+/// pintar ceros y dejar al que mira adivinando si el sensor no existe o si el
+/// numero es de verdad cero. Un panel que no distingue "no se" de "cero" hace
+/// que sus dos casos se lean igual, y uno de los dos es una mentira.
+const INFO_CPU_SENSORES: u64 = 0x23;
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
 /// * Quien tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
@@ -129,6 +138,12 @@ pub fn campo(n: u64) -> u64 {
         INFO_CPU_HZ_REAL => crate::ring0::cpu::frecuencia::medir(),
         INFO_CPU_MW_PAQUETE => crate::ring0::cpu::energia::medir().0,
         INFO_CPU_MW_NUCLEOS => crate::ring0::cpu::energia::medir().1,
+        INFO_CPU_SENSORES => {
+            let mut b = 0u64;
+            if crate::ring0::cpu::frecuencia::disponible() { b |= 1; }
+            if crate::ring0::cpu::energia::disponible() { b |= 2; }
+            b
+        }
         // La topologia esta cacheada desde `init_bmo_cpu`: aqui no se vuelve a
         // preguntar al CPUID. Un panel que se repinta no debe costar CPUID.
         INFO_CPU_HILOS => cpu_topo().map(|t| t.hilos as u64).unwrap_or(0),
