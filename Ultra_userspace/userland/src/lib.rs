@@ -171,6 +171,23 @@ pub const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
 /// Es lo que permite a la terminal decir QUE esta aplicando, en vez de pintar
 /// ceros y dejar al que mira sin saber si el sensor no existe o el valor es 0.
 pub const INFO_CPU_SENSORES: u64 = 0x23;
+
+// -- ** QUIEN ESTA COMIENDO MEMORIA -------------------------------------
+//
+// El indice de ranura va EMPAQUETADO con el campo: `campo | (ranura << 8)`.
+// Por la puerta de `info` cabe un numero, y la alternativa --un buffer con un
+// array de structs-- seria inventar un formato con su version y su alineacion
+// para contestar tres enteros.
+//
+// [!] El indice cuenta solo las ranuras OCUPADAS: se pide 0, 1, 2... hasta que
+// el pid conteste 0. Los agujeros de la tabla del kernel son suyos.
+/// El pid de la ranura `n`. **`0` = no hay mas.**
+pub const INFO_MEM_QUIEN_PID: u64 = 0x24;
+/// Bytes que ese proceso tiene pedidos ahora mismo.
+pub const INFO_MEM_QUIEN_BYTES: u64 = 0x25;
+/// Cuantas peticiones lleva. Distingue "pidio un bloque grande" de "esta
+/// pidiendo sin parar", que es la diferencia entre un juego y una fuga.
+pub const INFO_MEM_QUIEN_PETICIONES: u64 = 0x26;
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;

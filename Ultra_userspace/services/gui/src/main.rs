@@ -626,6 +626,17 @@ pub extern "C" fn _start() -> ! {
     // diagnostico que exige escribir un comando no sirve de nada.
     let mut caja_cabina = escena::cabina::CajaCabina::nueva(&p);
     let mut cabina_abierta = false;
+
+    // -- F7 y F8: las vitales, cada una en SU ventana --
+    //
+    // No son un comando de la caja de Ejecutar a proposito: `info` es una FOTO
+    // que se queda en el historial, y esto es una VISTA que se repinta. Un
+    // numero que cambia dentro de un historial empuja hacia arriba lo que
+    // estabas leyendo. Ver la cabecera de `escena::vitales`.
+    let mut caja_cpu = escena::vitales::CajaVitales::nueva(&p, escena::vitales::Cual::Cpu);
+    let mut cpu_abierta = false;
+    let mut caja_mem = escena::vitales::CajaVitales::nueva(&p, escena::vitales::Cual::Memoria);
+    let mut mem_abierta = false;
     // Cuantas lineas hacia atras empieza la ventana. RePag/AvPag la mueven, que
     // es lo que permite llegar al PRINCIPIO del arranque -- donde estan las
     // respuestas de por que algo no arranco.
@@ -676,6 +687,10 @@ pub extern "C" fn _start() -> ! {
     const V_EJECUTAR: u8 = 0;
     const V_DATOS: u8 = 1;
     const V_CABINA: u8 = 2;
+    /// F7 -- el CPU. Ver `escena::vitales`.
+    const V_CPU: u8 = 3;
+    /// F8 -- la memoria, con QUIEN se la esta comiendo.
+    const V_MEM: u8 = 4;
     const V_SONIDO: u8 = 3;
     let mut foco = bmo_input::Foco::nuevo();
     foco.open(V_EJECUTAR);
@@ -903,7 +918,11 @@ pub extern "C" fn _start() -> ! {
                 // TODAS las abiertas, y la que tiene el foco la ULTIMA. La
                 // version de dos ventanas enumeraba los casos a mano, y con
                 // tres eso son seis ramas que dicen una sola regla.
-                let arriba_ahora = if sonido_abierta && foco.es_para(V_SONIDO) {
+                let arriba_ahora = if mem_abierta && foco.es_para(V_MEM) {
+                    V_MEM
+                } else if cpu_abierta && foco.es_para(V_CPU) {
+                    V_CPU
+                } else if sonido_abierta && foco.es_para(V_SONIDO) {
                     V_SONIDO
                 } else if cabina_abierta && foco.es_para(V_CABINA) {
                     V_CABINA
@@ -918,6 +937,10 @@ pub extern "C" fn _start() -> ! {
                             escena::cabina::pintar(&p, &caja_cabina)
                         }
                         V_DATOS if datos_abierta => escena::datos::pintar(&p, &caja_datos),
+                        // Las vitales son VISTAS: se repintan cada vez que les
+                        // toca turno, que es lo que las diferencia de `info`.
+                        V_CPU if cpu_abierta => escena::vitales::pintar(&p, &caja_cpu),
+                        V_MEM if mem_abierta => escena::vitales::pintar(&p, &caja_mem),
                         V_SONIDO if sonido_abierta => escena::sonido::pintar(
                             &p,
                             &caja_sonido,
@@ -1184,6 +1207,59 @@ pub extern "C" fn _start() -> ! {
                             caja_datos.ancho(), caja_datos.alto(), visible,
                         );
                         arriba_antes = V_EJECUTAR;
+                        destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                    }
+                    continue;
+                }
+
+                // -- F7 y F8: las vitales --
+                //
+                // Calcadas de F11 y por los mismos motivos: se atienden ANTES
+                // de preguntar por el foco, porque un atajo que solo funciona
+                // si ya estas dentro de la ventana no sirve para abrirla.
+                //
+                // ESC cierra la que este abierta. Si las dos lo estan, cierra
+                // primero la de memoria -- que es la que se abre encima.
+                let conmutar_cpu = if c == 0x8F {
+                    Some(!cpu_abierta)
+                } else if c == 0x1B && cpu_abierta && !mem_abierta {
+                    Some(false)
+                } else {
+                    None
+                };
+                if let Some(open) = conmutar_cpu {
+                    cpu_abierta = open;
+                    if open {
+                        foco.open(V_CPU);
+                        escena::vitales::pintar(&p, &caja_cpu);
+                    } else {
+                        foco.close(V_CPU);
+                        borrar_ventana(
+                            &p, &caja, caja_cpu.marco.x, caja_cpu.marco.y,
+                            caja_cpu.marco.ancho, caja_cpu.marco.alto, visible,
+                        );
+                        destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
+                    }
+                    continue;
+                }
+                let conmutar_mem = if c == 0x90 {
+                    Some(!mem_abierta)
+                } else if c == 0x1B && mem_abierta {
+                    Some(false)
+                } else {
+                    None
+                };
+                if let Some(open) = conmutar_mem {
+                    mem_abierta = open;
+                    if open {
+                        foco.open(V_MEM);
+                        escena::vitales::pintar(&p, &caja_mem);
+                    } else {
+                        foco.close(V_MEM);
+                        borrar_ventana(
+                            &p, &caja, caja_mem.marco.x, caja_mem.marco.y,
+                            caja_mem.marco.ancho, caja_mem.marco.alto, visible,
+                        );
                         destapar(&p, &caja, visible, &mut salida, &mut repintar_campo);
                     }
                     continue;
@@ -3308,6 +3384,32 @@ pub extern "C" fn _start() -> ! {
 
         if vueltas == 1 {
             bmo::consola("primer fotograma completo\n");
+        }
+
+        // -- ** LAS VITALES SE REPINTAN SOLAS, y eso es lo que las hace vistas
+        //
+        // Aqui, al final del fotograma y ANTES del cursor: lo que se pinte
+        // despues del cursor le come el save-under.
+        //
+        // Cada 15 vueltas y no cada una, por dos razones que van juntas:
+        //
+        //   * Un panel de ~500x400 repintado a 60 fps son megabytes por segundo
+        //     de volcado por unos numeros que cambian despacio. Es justo el
+        //     derroche que el troceado por regiones acaba de quitar en otro
+        //     sitio.
+        //   * Y los numeros del CPU son MEDIDAS POR DIFERENCIA: con intervalos
+        //     de 16 ms la ventana es tan corta que el resultado tiembla. A 15
+        //     fotogramas son ~250 ms, que es donde un vatio se lee quieto.
+        //
+        // O sea que refrescar mas no daria mas informacion: daria la misma
+        // temblando.
+        if (cpu_abierta || mem_abierta) && vueltas % 15 == 0 {
+            if cpu_abierta {
+                escena::vitales::pintar(&p, &caja_cpu);
+            }
+            if mem_abierta {
+                escena::vitales::pintar(&p, &caja_mem);
+            }
         }
 
         // -- El cursor del raton, ENCIMA de todo y lo ultimo --
