@@ -35,6 +35,17 @@ const INFO_RAM_LIBRE: u64 = 0x02;
 const INFO_RAM_MARCOS: u64 = 0x03;
 const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
 const INFO_TSC_HZ: u64 = 0x05;
+/// ** LA FRECUENCIA EFECTIVA, en Hz. `0` = no se puede medir.
+///
+/// No es `INFO_TSC_HZ`: ese dice a que va el RELOJ de referencia, que no cambia
+/// nunca. Este dice a que va el NUCLEO ahora mismo, que en un Zen 3 va de 3,7 a
+/// 4,6 GHz segun cuantos esten trabajando.
+///
+/// Es una MEDIDA y no un dato: sale de restar dos lecturas de MPERF/APERF, asi
+/// que **preguntarlo dos veces seguidas da la velocidad de ese intervalo**. Un
+/// panel que se repinta obtiene el valor del ultimo refresco, que es justo lo
+/// que quiere. Ver `ring0/cpu/frecuencia.rs`.
+const INFO_CPU_HZ_REAL: u64 = 0x20;
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
 /// * Quien tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
@@ -103,6 +114,9 @@ pub fn campo(n: u64) -> u64 {
         INFO_RAM_MARCOS => phys::stats().0,
         INFO_RAM_MARCOS_LIBRES => phys::stats().1,
         INFO_TSC_HZ => crate::ring0::task::scheduler::tsc_freq(),
+        // La UNICA fila de esta tabla que MIDE en vez de consultar. Cuesta dos
+        // `rdmsr`, y por eso puede vivir en un camino que se repinta.
+        INFO_CPU_HZ_REAL => crate::ring0::cpu::frecuencia::medir(),
         // La topologia esta cacheada desde `init_bmo_cpu`: aqui no se vuelve a
         // preguntar al CPUID. Un panel que se repinta no debe costar CPUID.
         INFO_CPU_HILOS => cpu_topo().map(|t| t.hilos as u64).unwrap_or(0),

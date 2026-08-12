@@ -81,6 +81,46 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     s.dec(frac);
     s.texto(b" GHz   (medido)\n");
 
+    // ** Y A QUE VA AHORA, que es otra pregunta.
+    //
+    // El TSC de arriba es el reloj de REFERENCIA: se midio al arrancar y no
+    // cambia nunca. Este es el nucleo de verdad, y en un Zen 3 se mueve entre
+    // 3,7 y 4,6 GHz segun cuantos esten trabajando. Los dos juntos son lo que
+    // convierte "esta al 100%" en "esta al 100% Y ADEMAS a 4,6 GHz".
+    //
+    // [!] Es una MEDIDA: sale de restar dos lecturas de MPERF/APERF, asi que el
+    // numero es la velocidad **desde la ultima vez que se pregunto**. Pedir
+    // `info` dos veces seguidas mide el rato entre las dos.
+    let real = bmo::info(bmo::INFO_CPU_HZ_REAL);
+    etiqueta(s, b"ahora");
+    if real == 0 {
+        // Cero no es cero hercios: es "no se puede medir". Decirlo con palabras
+        // evita que alguien lea un 0.00 GHz y crea que el CPU esta parado.
+        s.con_tinta(TINTA_ECO);
+        s.texto(b"sin MPERF/APERF, o aun sin dos lecturas");
+        s.con_tinta(TINTA_NORMAL);
+        s.byte(b'\n');
+    } else {
+        s.dec(real / 1_000_000_000);
+        s.byte(b'.');
+        let f2 = (real % 1_000_000_000) / 10_000_000;
+        if f2 < 10 {
+            s.byte(b'0');
+        }
+        s.dec(f2);
+        s.texto(b" GHz   ");
+        s.con_tinta(TINTA_ECO);
+        if real > hz {
+            s.texto(b"(boost)");
+        } else if real + 200_000_000 < hz {
+            s.texto(b"(bajando)");
+        } else {
+            s.texto(b"(en base)");
+        }
+        s.con_tinta(TINTA_NORMAL);
+        s.byte(b'\n');
+    }
+
     // -- SMP, y lo que cuesta --------------------------------------------
     //
     // Los nucleos en pie y los choques de cerrojo van en el MISMO informe a

@@ -1,3 +1,12 @@
+//! El CPU: lo que se le pregunta y lo que se le mide.
+//!
+//! `cpuid` y compania contestan lo que la maquina ES. [`frecuencia`] mide lo que
+//! esta HACIENDO, que es otra pregunta y por eso es otro fichero -- ver la
+//! seccion 9 de `docs/AXION_MAESTRO.md`.
+
+/// A que velocidad va el nucleo AHORA. Una MEDIDA, no un dato.
+pub mod frecuencia;
+
 use core::arch::asm;
 
 #[inline]

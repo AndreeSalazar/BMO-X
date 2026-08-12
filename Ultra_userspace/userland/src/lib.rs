@@ -153,6 +153,9 @@ pub const INFO_RAM_LIBRE: u64 = 0x02;
 pub const INFO_RAM_MARCOS: u64 = 0x03;
 pub const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
 pub const INFO_TSC_HZ: u64 = 0x05;
+/// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
+/// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
+pub const INFO_CPU_HZ_REAL: u64 = 0x20;
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;
