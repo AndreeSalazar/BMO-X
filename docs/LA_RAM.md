@@ -955,6 +955,149 @@ puntero que el otro no puede seguir. Y ahi el umbral vuelve a mandar: un RPC de
 
 ---
 
+# PARTE IX -- QUE HERRAMIENTA PARA QUE SITIO
+
+> Dicho por el dueno el 2026-08-12, y es la frase que evita que este documento se
+> vuelva una lista de deseos: *"el punto no es abandonar todas, sino que cumpla
+> de acuerdo a lo que necesita... no porque yo quiera poner eso porque es
+> revolucionario, sino porque QUIERO poner las herramientas correctas de acuerdo
+> a lo que complementa"*.
+
+Copiar **no es el enemigo**. Copiar en el sitio equivocado si. Y mapear en el
+sitio equivocado tambien -- ver el umbral de la PARTE VIII.
+
+Aqui estan las seis herramientas con su pro, su contra, y **donde va cada una en
+BMO-X**, con nombre de fichero. Si una fila no tiene sitio concreto, no entra.
+
+## Las seis, y ninguna es "la buena"
+
+### 1. NO TRANSPORTARLO -- el dato no existe
+
+**Pro**: coste cero, y encoge todo lo demas antes de optimizarlo.
+**Contra**: solo vale si el contenido es deducible (ceros, o algo que se calcula).
+
+**Donde**: la seccion `Bss` (escalon 0). DOOM: -492.784 B que no viajan.
+**Y es la primera pregunta siempre**, porque las otras cinco optimizan un
+transporte que quiza no deberia existir.
+
+### 2. COPIAR -- el clasico
+
+**Pro**: simple, sin estado compartido, sin invalidar nada, y **deja el dato
+caliente en la cache del que copio**. Para poco dato es la mas rapida, medida.
+**Contra**: cuesta N. Y N veces por segundo cuesta N veces por segundo.
+
+**Donde, y sin culpa**:
+- **Una trama de audio (192 B)**. Remapear 4 KiB para mover 192 bytes pierde por
+  veinte veces.
+- **Un mensaje de RPC corto.** Copiar 16 bytes cuesta menos que nombrarlos.
+- **El rabo de una lectura de disco** que no llega a sector (`disk::tramo_dma`).
+- **El volcado del compositor**, hoy, porque no hay otra (escalon 8).
+
+> Copiar poco esta bien. El problema nunca fue la copia: fue la copia GRANDE, o
+> la copia REPETIDA de algo que no cambia.
+
+### 3. QUE EL PRODUCTOR ESCRIBA DONDE EL CONSUMIDOR LEE
+
+**Pro**: quita una copia entera **sin tocar ninguna tabla**, o sea sin TLB, sin
+shootdown y sin coste oculto. Es la mejor relacion de todas.
+**Contra**: exige que el productor ACEPTE un destino, y que ese destino cumpla
+sus reglas (contiguo en fisico para un DMA, alineado a 2 para un PRD).
+
+**Donde**: ya HECHO y es el escalon 3. `disk::read` hace DMA al bufer del
+llamante; `ARCH_OP_LEER_EN` escribe por el **espejo fisico** del bloque de Ring 3
+-- un lump del WAD va del plato a la zona de DOOM **sin escala**.
+
+★ Esta es la que hay que intentar SIEMPRE antes de pensar en tablas. Mapear es
+lo que se hace cuando el productor no se deja decir donde escribir.
+
+### 4. PRESTAR -- los dos apuntan al mismo sitio
+
+**Pro**: cero copias por muchas veces que se use. Se paga UNA vez al mapear.
+**Contra**: dos duenos. Hay que decidir quien escribe, y **hay que revocarlo**
+cuando uno muere -- si no, es un puntero colgado con permisos.
+
+**Donde**:
+- El **lienzo del compositor** prestado a una app (`MEM_OP_OFRECER`): la app
+  pinta y el compositor compone, cero copias.
+- La **mitad de kernel de la PML4** (`[256..512)`), prestada a todo proceso desde
+  que nace. Sharing permanente por puntero.
+- El **physmap** entero.
+- ★ **El anillo de audio** (paso 4 de `AUDIO_MAESTRO.md`): se mapea UNA vez y
+  dentro se copian tramas de 192 B mil veces por segundo. **Es la fila 4 por
+  fuera y la fila 2 por dentro**, y esa combinacion es la correcta.
+- Los **anillos de la NIC**, prestados a Ring 3 (`RED_MAESTRO.md`).
+
+### 5. REGALAR -- el que da pierde su entrada
+
+**Pro**: cero copias **y** un solo dueno. No hay que decidir quien manda, no hay
+que revocar, no hay ilusion que estropear. Es `move` en vez de `&`.
+**Contra**: el que da **ya no lo tiene**, asi que solo sirve cuando ha terminado.
+Y hay que ZERAR o entregar la pagina entera: lo que sobre en ella es memoria de
+otro.
+
+**Donde estaria bien, y hoy no existe**: entregar un fichero ya cargado a otro
+proceso, o pasar un bufer grande por RPC sin que el emisor se lo quede.
+**No se hace todavia** y va detras de SMP, por el shootdown.
+
+### 6. APLAZAR -- copy-on-write
+
+**Pro**: la ilusion de tener copia propia sin pagarla. Si nadie escribe, no se
+paga nunca.
+**Contra**: la copia no desaparece, **acecha** -- llega de golpe y en el peor
+momento, en medio de una escritura. Y necesita fallo de pagina, o sea que el
+camino de escritura deja de ser predecible.
+
+**Donde**: ESTRATOS, en disco, donde escribir ES commitear. En RAM **no**, y a
+proposito: un sistema que promete tiempos y esconde una copia dentro de un
+`mov` no puede contestar cuanto tarda algo.
+
+### 7. MAPEAR DEL DISCO -- demand paging
+
+**Pro**: el techo deja de ser la RAM y pasa a ser el disco. Es la frase de la
+portada de este documento.
+**Contra**: exige alineacion congruente (ver PARTE VIII) y **un fallo de pagina
+en medio de la ejecucion**, que es exactamente lo que un sistema de latencia
+predecible no quiere sin avisar.
+
+**Donde**: escalon 7, el recurso de un `.bex`. Y por eso el escalon 6 --que el
+manifiesto DECLARE lo que va a pedir-- va delante: **un fallo de pagina que se
+esperaba no es una sorpresa.**
+
+---
+
+## El orden en que se pregunta, que es lo que de verdad se usa
+
+No es una tabla para consultar: son seis preguntas en orden, y la primera que
+conteste "si" gana.
+
+```text
+   1. El dato existe de verdad?              -> si no: NO TRANSPORTARLO      (1)
+   2. Puede el productor escribir donde
+      el consumidor va a leer?               -> si:   SIN ESCALA             (3)
+   3. Son menos de unos pocos KiB,
+      o no esta alineado a pagina?           -> si:   COPIAR, sin culpa      (2)
+   4. Se va a usar muchas veces y lo
+      grande es el CONTENEDOR, no el dato?   -> si:   PRESTAR una vez        (4)
+   5. El que da ya no lo necesita?           -> si:   REGALAR                (5)
+   6. Muchos lectores y casi nadie escribe?  -> si:   APLAZAR                (6)
+```
+
+★★ **La 3 es la que mas se olvida, y es la que decide el audio**: 192 bytes se
+copian y punto. Lo que se mapea es el anillo, no la trama.
+
+## Y la regla que las cierra todas
+
+> **Ninguna de estas es revolucionaria. Lo revolucionario seria elegir siempre la
+> misma.**
+
+Un sistema que copia todo es una bodega. Un sistema que mapea todo paga TLB y
+shootdowns por mover 16 bytes, y encima se vuelve impredecible. **BMO-X quiere
+poder decir, de cada transporte del sistema, cual de las seis es y por que** --
+y esta parte existe para que esa pregunta tenga respuesta escrita en vez de
+criterio del dia.
+
+---
+
 ## Fuentes
 
 - Atlas y el origen de la memoria virtual: <https://ethw.org/Milestones:Atlas_Computer_and_the_Invention_of_Virtual_Memory,_1957-1962>
