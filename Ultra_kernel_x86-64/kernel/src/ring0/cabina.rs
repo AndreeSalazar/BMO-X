@@ -707,6 +707,16 @@ pub fn render_hud() {
     r.txt(" apk="); r.dec(apk_tot as u64);
     r.txt(":"); r.dec(apk_perd as u64);
     r.txt(":"); r.dec(apk_hoy as u64);
+    // ** `bus=turns:overlaps` -- THE PROOF THAT THE BUS DEPENDS ON NOBODY.
+    //
+    // `turns` is the kernel thread beating. **It must always rise**, including --
+    // and especially -- while a Ring 3 program holds the input: if it stalls, the
+    // thread died or never started, and the keyboard is back to depending on
+    // somebody asking. `overlaps` are the meetings between the thread and a
+    // syscall; not a failure, just the price of having two doors.
+    let (bus_turns, bus_overlaps) = crate::ring0::dev::usb::bus_stats();
+    r.txt(" bus="); r.dec(bus_turns);
+    r.txt(":"); r.dec(bus_overlaps);
     let usb_color = if apk_perd > 0 { C_FAULT }
                     else if kbd && kev > 0 { C_OK }
                     else if kbd && kev == 0 { C_FAULT }

@@ -2149,6 +2149,15 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::cabina::boot_probe();
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::dev::usb::init(ctx);
+    // * And HERE the kernel keeps them. Until this commit the bus only advanced
+    // when somebody asked for a key, so a Ring 3 program that took the input and
+    // then hung left the machine with no keyboard, no mouse and no rescue
+    // shortcut -- which rode on that same pumping. See the `PUMPING` header in
+    // `dev/usb.rs`.
+    //
+    // Goes AFTER `usb::init` (it needs to know whether there are devices) and
+    // after the scheduler is armed, which it already is a few lines above.
+    let _ = crate::ring0::dev::usb::start_bus_thread();
     // Y el disco: el HBA SATA (no el NVMe -- ahi vive el sistema del dueno) y
     // su tabla de particiones. Ver dev/disk.rs.
     crate::ring0::dev::disk::init();
