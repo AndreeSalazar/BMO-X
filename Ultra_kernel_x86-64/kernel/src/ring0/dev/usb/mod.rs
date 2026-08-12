@@ -28,6 +28,48 @@ use crate::ring0::mm::{self, phys};
 use crate::ring0::dev::pci;
 use crate::ring0::dev::keyboard;
 
+// -- ** LOS TRES TRABAJOS QUE VIVIAN AQUI DENTRO (2026-08-12) -----------------
+//
+// Este fichero era **uno de 1179 lineas con 39 `static mut`** -- el que mas
+// tiene de todo el kernel, o sea tambien el peor bloqueante de SMP. Y no era un
+// fichero grande: eran cuatro trabajos distintos compartiendo un cajon.
+//
+// La regla de esta casa es MODULAR, y el dueno la nombro por su nombre:
+// *"si el xHCI esta mezclado con el mouse y el teclado y audifono ME VA A ROMPER
+// EL HUEVO para modificar luego"*.
+//
+// [!] Y al medirlo salio que el miedo apuntaba al sitio equivocado, que es justo
+// para lo que sirve medir: **`bmo-xhci` esta limpio** --cero dependencias, cero
+// identificadores de teclado o raton en su codigo-- y lo mismo `bmo-uaudio`.
+// El monolito no estaba en los drivers: estaba **en el pegamento del kernel**,
+// que es este fichero.
+//
+// | modulo | trabajo | por que se puede sacar solo |
+// |---|---|---|
+// | [`bus`] | el hilo de kernel que mantiene vivo el bus | no toca ni una tecla: bombea y vigila |
+// | [`rescate`] | `Ctrl+Alt+Esc` en las DOS puertas | es POLITICA, no driver |
+// | [`panel`] | lo que CABINA lee | solo LEE: no cambia un byte de estado |
+//
+// Lo que queda aqui es lo que de verdad es "el puente al xHC": el HAL, la
+// enumeracion, el bombeo, y la traduccion de scancode a caracter con su estado
+// (Shift/AltGr/CAPS/typematic). Ese ultimo es el siguiente corte y NO se hace
+// hoy: sus banderas las escribe `bombear_interno` y las lee `drain`, asi que
+// separarlos es mover estado compartido y no mover funciones. Se dice en vez de
+// dejarlo a medias.
+
+/// El hilo de kernel que bombea el bus. Sin el, el teclado depende de que
+/// alguien pregunte -- ver su cabecera.
+pub mod bus;
+/// Lo que CABINA lee de aqui. **Solo lectura**, a proposito.
+pub mod panel;
+/// El atajo que le devuelve la maquina al dueno. Politica, no driver.
+pub mod rescate;
+
+pub use bus::{bus_stats, bus_thread, start_bus_thread};
+use bus::pump_bus;
+use rescate::{raw_key_from_owner, tecla_del_dueno};
+pub use panel::*;
+
 // Line buffer for the driver's diagnostic stream. The driver logs in
 // fragments (`log("[uhid] slot=")` then `log_u64(..)` then `log("\n")`), so
 // we accumulate to '\n' and flush the whole line to the on-screen panel --
@@ -376,123 +418,6 @@ pub fn poll_ascii() -> Option<u8> {
     r
 }
 
-/// ** LA TECLA QUE NO SE PUEDE QUITAR: `Ctrl+Alt+Esc`.
-///
-/// Se mira AQUI y no en Ring 3, y esa es toda la idea. `poll_ascii` es el punto
-/// unico por el que pasan las teclas --el shell de Ring 0 y el
-/// `INPUT_OP_TECLA` de cualquier proceso que tenga la capability-- asi que una
-/// comprobacion en este sitio **la ve nadie puede saltar**.
-///
-/// # Por que el kernel y no el compositor
-///
-/// Porque la entrada es EXCLUSIVA. Un programa que tiene `KIND_INPUT` se queda
-/// todas las teclas, incluido el atajo que serviria para quitarselas. Si el
-/// rescate viviera en el escritorio, el primer programa que tomara la entrada lo
-/// desactivaria -- y eso ya paso: el raycaster se quedo pantalla y entrada, y no
-/// habia forma de volver que no fuera el boton de reinicio.
-///
-/// Eddi lo dijo con la palabra exacta: **"eso me recuerda a ransomware"**. La
-/// forma es la misma, y da igual si la causa es malicia o un `if` que falta.
-///
-/// > Un sistema donde un programa puede quedarse el teclado para siempre no es
-/// > un sistema seguro: es un sistema con suerte.
-///
-/// # Que hace
-///
-/// Le quita la pantalla al dueno actual (ver `fb::rescue`, que no echa al
-/// compositor) y la entrada. El escritorio esta esperando en su bucle a que el
-/// dueno vuelva a `0`, asi que **se recupera solo** -- no hace falta avisarle.
-///
-/// # Y la tecla NO se entrega
-///
-/// Devuelve `None` para que el atajo no acabe ademas escrito en la caja del
-/// escritorio ni movido al programa. Un atajo que hace dos cosas es un atajo que
-/// hay que deshacer.
-fn tecla_del_dueno(t: Option<u8>) -> Option<u8> {
-    let b = t?;
-    // 27 = ESC. Con Ctrl y Alt a la vez: tres teclas, imposible de pulsar por
-    // accidente y con la misma memoria muscular que el Ctrl+Alt+Del de toda la
-    // vida.
-    if b != 27 {
-        return Some(b);
-    }
-    let m = modificadores();
-    if m & MOD_CTRL == 0 || m & MOD_ALT == 0 {
-        return Some(b);
-    }
-    if rescue_owner() { None } else { Some(b) }
-}
-
-/// The rescue itself, **split out so BOTH keyboard doors can call it**.
-///
-/// # Why this function exists, and it is a bug that reached metal
-///
-/// The rescue used to live entirely inside [`tecla_del_dueno`], which only looks
-/// at the CHARACTER queue. And there are two keyboard doors, not one:
-///
-/// * `INPUT_OP_TECLA` -> [`poll_ascii`] -> characters. This one was checked.
-/// * `INPUT_OP_EVENTO_TECLA` -> [`evento_tecla`] -> raw keys. **This one wasn't.**
-///
-/// The second door was added so games could see key *releases*, which means it
-/// is used by exactly the kind of program that takes the screen and the input.
-/// Result: **the anti-hijack shortcut was not watching the hijacker's door.** A
-/// program reading raw keys was immune to Ctrl+Alt+Esc, and the only way out was
-/// the reset button -- the very thing this mechanism exists to avoid.
-///
-/// Returns `true` if there was someone to rescue.
-fn rescue_owner() -> bool {
-    match crate::ring0::obj::fb::rescue() {
-        Some(pid) => {
-            // Input goes BEHIND the screen: if only one could be done, the one
-            // that matters is the one that gives the picture back.
-            let _ = crate::ring0::obj::input::release(pid);
-            crate::ring0::cabina::warn("input", "entrada RESCATADA por el teclado", pid as u64);
-            true
-        }
-        // Nobody to rescue: the ESC belongs to whoever pressed it.
-        None => false,
-    }
-}
-
-/// ESC as a **Set 1** scancode, which is what the raw queue carries (`hid_to_ps2`
-/// maps HID usage 0x29 to this 0x01). It is NOT the 27 of the character queue:
-/// they are two different alphabets, and confusing them leaves the shortcut mute
-/// without a single compile error.
-const SC1_ESC: u8 = 0x01;
-
-/// If the rescue swallowed the ESC PRESS, it also swallows its RELEASE.
-///
-/// Without this the program would get a "ESC released" for a key it never saw
-/// pressed. Not fatal -- almost nobody looks at the ESC release -- but an
-/// unpaired event is the kind of thing that costs an afternoon to find.
-static mut SWALLOW_ESC_RELEASE: bool = false;
-
-/// [`rescue_owner`] seen from the RAW door. Counterpart of [`tecla_del_dueno`].
-fn raw_key_from_owner(t: Option<(u8, bool)>) -> Option<(u8, bool)> {
-    let (sc, pressed) = t?;
-    if sc != SC1_ESC {
-        return Some((sc, pressed));
-    }
-    if !pressed {
-        // The ESC release whose press the rescue already ate.
-        if unsafe { SWALLOW_ESC_RELEASE } {
-            unsafe { SWALLOW_ESC_RELEASE = false };
-            return None;
-        }
-        return Some((sc, pressed));
-    }
-    let m = modificadores();
-    if m & MOD_CTRL == 0 || m & MOD_ALT == 0 {
-        return Some((sc, pressed));
-    }
-    if rescue_owner() {
-        unsafe { SWALLOW_ESC_RELEASE = true };
-        None
-    } else {
-        Some((sc, pressed))
-    }
-}
-
 fn poll_ascii_interno() -> Option<u8> {
     // Lo que dejo pendiente la pulsacion anterior sale primero: una tecla
     // muerta que no combina produce DOS caracteres (' + q = 'q).
@@ -501,181 +426,6 @@ fn poll_ascii_interno() -> Option<u8> {
     drain()
 }
 
-// -- ** THE BUS BELONGS TO THE KERNEL ----------------------------------------
-//
-// # The bug, told in full
-//
-// Until now the USB bus **only advanced when somebody asked for a key**. The
-// only two callers of `bombear_interno` were `poll_ascii` and `evento_tecla`,
-// that is:
-//
-//   * the Ring 0 shell -- but **only while `input::yielded()` is false**, which
-//     is the exact opposite of when it is needed; and
-//   * the `INPUT_OP_*` of whichever program holds the input.
-//
-// Put those together and you get this: **the moment a Ring 3 program takes the
-// input, the only thing keeping the keyboard and mouse alive is that same
-// program.** If it hangs, if it spins, or if it merely takes its time -- loading
-// a 4 MB WAD, compositing a heavy frame -- the bus stops advancing, and from the
-// outside that looks like a frozen machine. It wasn't frozen: it was waiting for
-// the hijacker to ask for the time.
-//
-// And the rescue shortcut was built on top of that same pumping, so it fell with
-// it.
-//
-// # What is done about it
-//
-// A **kernel thread** ([`bus_thread`]) pumps the bus on its own, with its own
-// stack and its own scheduler slice. From here on:
-//
-//   * keyboard and mouse keep beating even when nobody asks;
-//   * the rescue is watched by the thread ([`watch_rescue`]), so it **works even
-//     when the input owner is hung**, which is the only case where it is truly
-//     needed;
-//   * the syscall paths can still pump -- that is not taken away, so a failure of
-//     the thread does not leave the system mute -- but they are no longer the
-//     only ones.
-//
-// # The guard, and why it is not optional
-//
-// `bombear_interno` touches dozens of `static mut` (queues, counters, xHCI
-// state). With the thread there are, for the first time, **two** callers the
-// timer can interleave mid-work. The guard is the same one CABINA uses: a flag,
-// not a `SpinLock` -- a lock here would deadlock against itself if the one
-// already inside is the one that got interrupted.
-//
-// [!] This is NOT SMP-safe and does not pretend to be: it holds because only the
-// BSP runs. The day an AP touches the bus, this flag is a race. Written down on
-// purpose instead of pretending otherwise.
-static mut PUMPING: bool = false;
-
-/// How many turns the bus thread has taken. If this stops rising the thread died
-/// or never started -- and the keyboard depends on somebody asking again.
-static mut BUS_TURNS: u64 = 0;
-/// How many times the pump was found already running. A high number is not a
-/// failure: it is the thread and a syscall asking at the same time.
-static mut PUMP_OVERLAPS: u64 = 0;
-
-/// `(thread turns, overlapped pumps)`. For the panel.
-pub fn bus_stats() -> (u64, u64) {
-    unsafe { (BUS_TURNS, PUMP_OVERLAPS) }
-}
-
-/// Pumps the bus with the kernel CR3 loaded and without letting two in at once.
-/// **This is the only place that calls `bombear_interno`.**
-fn pump_bus() {
-    use crate::ring0::mm::vmm;
-    unsafe {
-        if PUMPING {
-            PUMP_OVERLAPS = PUMP_OVERLAPS.wrapping_add(1);
-            return;
-        }
-        PUMPING = true;
-    }
-    // xHCI MMIO is only mapped in the kernel PML4. See the header of
-    // [`poll_ascii`]: if we are already on the kernel one, this costs nothing.
-    let kpml4 = vmm::kernel_pml4();
-    let previous = vmm::read_cr3();
-    let switched = kpml4 != 0 && previous != kpml4;
-    if switched {
-        vmm::switch_to(kpml4);
-    }
-    bombear_interno();
-    if switched {
-        vmm::switch_to(previous);
-    }
-    unsafe { PUMPING = false };
-}
-
-/// **The rescue, checked without consuming anything.**
-///
-/// The thread must not pop from the queues: those keys belong to the input owner
-/// and stealing them would trade one bug for another. And it does not need to --
-/// `Ctrl`, `Alt` and the held key are **state**, not queue:
-///
-/// * `modificadores()` reads the flags the poll already maintains;
-/// * `HELD_CODE` is the scancode of the key that is down RIGHT NOW, which the
-///   key-repeat path needs anyway and therefore already existed.
-///
-/// So the question *"is the user calling for help at this instant?"* is answered
-/// by looking, and the program loses no key at all when the answer is no.
-fn watch_rescue() {
-    let held = unsafe { HELD_CODE };
-    if held != SC1_ESC {
-        return;
-    }
-    let m = modificadores();
-    if m & MOD_CTRL == 0 || m & MOD_ALT == 0 {
-        return;
-    }
-    // `HELD_CODE` is not cleared here: the KeyUp clears it. What keeps the rescue
-    // from firing sixty times a second while the combo is still held is that
-    // `fb::rescue()` returns `None` as soon as there is no owner left.
-    if rescue_owner() {
-        unsafe { SWALLOW_ESC_RELEASE = true };
-    }
-}
-
-/// How often the bus beats, in milliseconds.
-///
-/// 4 ms = 250 Hz. A USB boot keyboard asks to be polled every 8-10 ms, so this
-/// sits comfortably above that without becoming a busy loop. And the thread
-/// **sleeps** between turns (`park_until`) instead of yielding hot: yielding in a
-/// tight loop would eat everything as soon as there was nothing else to do.
-const BUS_PERIOD_MS: u64 = 4;
-
-/// **The kernel thread that keeps the bus alive.** Started once, at boot, and it
-/// never returns.
-///
-/// See the header of [`PUMPING`] for the why. The proof that it is alive is
-/// `bus_stats().0` rising.
-pub extern "C" fn bus_thread(_arg: u64) -> ! {
-    use crate::ring0::task::scheduler;
-    loop {
-        pump_bus();
-        watch_rescue();
-        unsafe { BUS_TURNS = BUS_TURNS.wrapping_add(1) };
-        let hz = scheduler::tsc_freq();
-        if hz == 0 {
-            // With no measured TSC there is no way to sleep a concrete amount of
-            // time, so yielding is the only honest thing. Should not happen: the
-            // TSC is measured before this starts.
-            scheduler::yield_current();
-            continue;
-        }
-        let wake_at = scheduler::rdtsc() + hz / 1000 * BUS_PERIOD_MS;
-        scheduler::park_until(wake_at);
-    }
-}
-
-/// Starts [`bus_thread`]. Returns its tid, or `None` if there was no slot.
-///
-/// Priority 2: above idle and below anything doing real work. The thread runs 250
-/// times a second and every turn is short, so what matters is not that it runs
-/// soon but that it **always** runs.
-pub fn start_bus_thread() -> Option<u32> {
-    if !unsafe { PRESENT } {
-        crate::ring0::cabina::warn("usb", "sin aparatos: el bus no tiene hilo propio", 0);
-        return None;
-    }
-    let tid = crate::ring0::task::scheduler::spawn_kernel(
-        bus_thread as *const () as usize as u64,
-        0,
-        2,
-    );
-    match tid {
-        Some(t) => {
-            crate::ring0::cabina::id("usb", "el bus tiene hilo propio, tid", t as u64);
-            Some(t)
-        }
-        None => {
-            // Said out loud, not swallowed: with no thread the system behaves
-            // exactly as before -- that is, with the freeze bug.
-            crate::ring0::cabina::warn("usb", "NO hubo ranura para el hilo del bus", 0);
-            None
-        }
-    }
-}
 
 /// Drena el bus HID y actualiza todo el estado, **sin sacar nada de ninguna
 /// cola**.
@@ -1089,22 +839,6 @@ pub fn rueda() -> i32 {
     }
 }
 
-pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
-    unsafe {
-        (KBD_RDY, MOUSE_RDY, KBD_SLOT, MOUSE_SLOT,
-         MOUSE_EVENTS, MOUSE_X, MOUSE_Y, MOUSE_BTN, KEY_EVENTS)
-    }
-}
-
-/// Contadores de bajo nivel del xHC + HID para cazar el corte del teclado:
-/// (transfer_events_del_xHC, raw_events_del_xHC, hid_events_totales).
-/// Si al teclear TEV no sube -> el xHC no completa la interrupcion (endpoint/
-/// ring/doorbell). Si TEV sube pero HEV no -> el evento no matchea al teclado.
-/// Si HEV sube pero kev no -> mapeo (ya no deberia tras el keypad).
-pub fn xfer_stats() -> (u32, u32, u32) {
-    (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), unsafe { HID_EVENTS })
-}
-
 /// Vuelve a leer del driver quien hay y en que slot.
 ///
 /// Se llama tras enumerar Y tras cada adopcion en caliente. Antes esto estaba
@@ -1121,59 +855,4 @@ unsafe fn refrescar_presencia() {
     MOUSE_RDY = hid.has_mouse();
     KBD_SLOT = hid.kbd_slot();
     MOUSE_SLOT = hid.mouse_slot();
-}
-
-/// El reparto de informes: `(bombea el teclado, bombea el raton, huerfanos)`.
-///
-/// Los dos primeros son la pregunta que no se podia hacer: un periferico sin
-/// transferencia encolada esta enumerado, con el endpoint en `Running`, y mudo
-/// para siempre. El tercero cuenta los Transfer Events que no eran de ningun
-/// periferico conocido -- antes se descartaban sin dejar rastro.
-pub fn reparto_stats() -> (bool, bool, u32) {
-    unsafe {
-        let hid = &*core::ptr::addr_of!(HID);
-        let (k, r) = hid.bombeando();
-        (k, r, hid.huerfanos())
-    }
-}
-
-/// El aparcadero de eventos del xHC: `(aparcados en total, PERDIDOS, ahora)`.
-///
-/// El anillo de eventos es uno para todo el controlador, asi que quien espera
-/// una complecion de comando se cruza con los informes de los aparatos que ya
-/// estan bombeando. Antes los descartaba, y descartar el primer informe de un
-/// endpoint lo deja mudo para siempre -- nadie vuelve a encolar la
-/// transferencia. Ahora se aparcan; `PERDIDOS` es lo que hay que vigilar.
-pub fn park_stats() -> (u32, u32, u32) {
-    bmo_xhci::evt_park_stats()
-}
-
-/// Salud del endpoint de interrupcion del teclado leida DEL HARDWARE, no de
-/// nuestras suposiciones: `(ep_state, bInterval_del_descriptor,
-/// Interval_programado, speed, usbsts)`.
-///
-/// `ep_state` sale del Device Context que mantiene el xHC: 1=Running es lo
-/// unico aceptable. 2=Halted, 3=Stopped o 4=Error significan que el endpoint no
-/// esta agendado y ningun doorbell lo va a revivir. `bi`/`iv` delatan el bug
-/// clasico del Interval (ver `bmo_xhci::encode_interval`).
-pub fn kbd_ep_debug() -> (u8, u8, u8, u8, u32) {
-    let (slot, dci) = unsafe {
-        let hid = &*core::ptr::addr_of!(HID);
-        (KBD_SLOT, hid.kbd_dci())
-    };
-    let st = unsafe { bmo_xhci::ep_state(slot, dci) };
-    let (bi, iv, sp) = bmo_xhci::last_ep_timing();
-    (st, bi, iv, sp, unsafe { bmo_xhci::usbsts() })
-}
-
-/// DCI del teclado + ultimo Transfer Event (slot, ep, cc) del xHC. Si el ep del
-/// ultimo evento != dci del teclado, el evento no matchea y no se re-encola ->
-/// tev pegado en 1. Ese es el corte que buscamos.
-pub fn kbd_debug() -> (u8, u8, u8, u8) {
-    let dci = unsafe {
-        let hid = &*core::ptr::addr_of!(HID);
-        hid.kbd_dci()
-    };
-    let (s, e, c) = bmo_xhci::last_event();
-    (dci, s, e, c)
 }
