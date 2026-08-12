@@ -777,6 +777,24 @@ fn tramo_dma(va: u64, max: u64) -> Option<(u64, u64)> {
     if va < mm::HIGH_MEM_BASE || va >= fin_physmap {
         return None;
     }
+    // ** LA ALINEACION VUELVE A COMPROBARSE, Y AHORA HACE FALTA DE VERDAD.
+    //
+    // AHCI pide que la base del PRD este alineada a 2 bytes. Mientras por aqui
+    // solo pasaban marcos recien pedidos al asignador esto no podia fallar --una
+    // pagina esta alineada a 4096-- y por eso la comprobacion se habia quedado
+    // sin escribir en la version del physmap.
+    //
+    // Desde el 2026-08-11 pasa tambien **el espejo de un bloque de Ring 3**: un
+    // `fread` a mitad de un lump puede caer en una direccion impar. Y sin este
+    // `if` eso no seria un rebote, seria una LECTURA CORTA: `bmo_ahci` rechaza
+    // la peticion con `BadRequest`, `read` devuelve lo que llevaba, y el fichero
+    // llega a medias con un fault en el log que habla del disco.
+    //
+    // > Una condicion que "en la practica siempre se cumple" deja de cumplirse
+    // > el dia que un camino nuevo entra por la misma puerta. Cuesta un `and`.
+    if va & 1 != 0 {
+        return None;
+    }
     let phys = va - mm::HIGH_MEM_BASE;
     // Lo que quede de ventana, por si un buffer enorme llegara al tope. No puede
     // pasar --el asignador nunca entrega marcos por encima de `PHYSMAP_SIZE`, y

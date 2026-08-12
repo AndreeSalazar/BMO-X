@@ -552,6 +552,74 @@ cambia de sitio, un buffer que se desalinea, y todo sigue funcionando, despacio.
 
 ---
 
+## [x] HECHO el 2026-08-11 -- **la puerta que se habia quedado fuera: `archivo`**
+
+El escalon 2 quito la bodega del CARGADOR. Y el mismo error seguia vivo, intacto,
+en el sitio por donde un programa abre un fichero:
+
+```rust
+let mide = fs::tamano(ruta)?;   // doom1.wad = 4.196.020
+reserve(i, mide)                // <- 1025 marcos CONTIGUOS
+fs::load(ruta, dst)             // <- y leer los 4 MB de golpe
+```
+
+**Abrir se tragaba el fichero entero.** Para el WAD son 4 MiB contiguos en
+fisico pedidos justo despues de que DOOM se llevara 12 MiB para su zona, mas una
+lectura bloqueante de cuatro megas dentro de un syscall.
+
+★ Y lo que lo condena no es el coste, es que **nadie pedia esos bytes**:
+`w_file_stdc.c` no slurpea el WAD -- lee el directorio de lumps al abrir y luego
+cada lump por `fseek`+`fread`. DOOM hacia lo correcto; era BMO el que le traia la
+bodega entera para servirle una copa.
+
+| | antes | ahora |
+|---|---|---|
+| Abrir el WAD | 4 MiB contiguos + leer 4 MB | un cursor y una ventana de 64 KiB |
+| Un lump de 40 KB | ya estaba en RAM | 40 KB del disco, **al bloque del programa** |
+| Tope de tamano | la RAM contigua que haya | **ninguno** |
+
+Las dos piezas ya existian y estaban probadas en metal --`fs::abrir_rangos` y
+`fs::leer_rango`, las del escalon 2-- y lo unico que faltaba era usarlas al otro
+lado de la puerta. La ventana de 64 KiB existe solo porque `ARCH_OP_LEER` entrega
+**siete bytes por llamada**; `ARCH_OP_LEER_EN`, que es por donde va `fread`, no
+pasa por ella.
+
+### El cursor solo avanza, y aqui retroceder es lo NORMAL
+
+En el cargador, volver atras pasa **dos veces por carga** (los hashes y las
+relocations viven al final), y se resolvio con una copia suelta del cursor. Un
+juego leyendo su WAD salta en los dos sentidos todo el rato. La regla es la
+misma, aplicada de continuo: la ranura guarda el cursor del flujo **y una copia
+sin estrenar**, y una peticion por debajo de donde va el cursor vuelve a empezar
+desde el principio. Cuesta un recorrido de la cadena FAT, **se cuenta**
+(`archivo::cuentas()`), y el dia que ese numero crezca con el de bytes se sabra
+que hace falta un cursor por lump -- mirandolo, no suponiendolo.
+
+## [x] Y el escalon 3, hasta el final: **el disco escribe dentro del programa**
+
+`ARCH_OP_LEER_EN` entrega los bytes en un bloque `KIND_MEMORIA` del proceso. Ese
+destino es una VA de Ring 3, y el HBA no sabe lo que es una VA: rebotaba.
+
+Ahora se escribe **por el espejo fisico del kernel**, que es la misma memoria
+vista por la otra ventana. La direccion no se le pregunta a las tablas de pagina
+--ese camino ya se recorrio y se volvio-- sino que `obj::memoria` **la apunta al
+entregar el bloque**: `alloc_frames_contig` la acaba de devolver y los marcos son
+contiguos por construccion, que es exactamente lo que un PRDT de una entrada
+necesita. Un lump de DOOM va del plato a su zona de memoria sin pasar por ningun
+sitio.
+
+[!] Y con eso volvio a hacer falta una comprobacion que se habia quedado sin
+escribir: **el PRD tiene que estar alineado a 2 bytes**. Mientras por ahi solo
+pasaban marcos del asignador no podia fallar --una pagina esta alineada a 4096--
+pero un `fread` a mitad de un lump cae donde caiga. Sin ese `if`, eso no seria un
+rebote: seria `bmo_ahci` contestando `BadRequest` y un fichero llegando a medias
+con un fault que habla del disco. Cuesta un `and`, y esta en `disk::tramo_dma`.
+
+> Una condicion que *"en la practica siempre se cumple"* deja de cumplirse el dia
+> que un camino nuevo entra por la misma puerta.
+
+---
+
 ## [~] A MEDIAS el 2026-08-10 -- escalon 4, y lo que se encontro por el camino
 
 Se fue a hacer *"que pedir no bloquee"* y lo primero que aparecio fue que la

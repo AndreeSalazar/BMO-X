@@ -95,6 +95,32 @@ pub const ERROR_NO_SLOT: u32 = 0xE004;
 /// dice ser, un limite de recursos concurrentes.
 const MAX_PROCS: usize = 16;
 
+/// **Un bloque entregado: donde lo ve el proceso y donde esta de verdad.**
+///
+/// === Por que se guarda la fisica, si nadie la pedia ===
+///
+/// Porque el kernel **acaba de reservarla** y tirarla es tirar una respuesta
+/// segura. El caso que la pide es leer un fichero dentro de este bloque: el HBA
+/// no sabe lo que es una direccion virtual, asi que sin este dato la unica
+/// forma de escribir aqui es rebotar por una pagina del kernel y copiar.
+///
+/// La alternativa era **preguntarle a las tablas de pagina** donde vive el
+/// bloque. `dev/disk.rs` ya recorrio ese camino y volvio: una lectura que sale
+/// bien o mal segun donde pongas el destino no tiene el fallo en el disco, lo
+/// tiene en la traduccion. Aqui no hay nada que traducir -- `alloc_frames_contig`
+/// devolvio esta direccion hace tres lineas, y los marcos son **contiguos por
+/// construccion**, que es justo lo que un PRDT de una entrada necesita.
+#[derive(Clone, Copy)]
+struct Bloque {
+    /// La VA con la que se le entrego al proceso. `0` = ranura sin usar.
+    base: u64,
+    /// El primer marco fisico. Los `bytes` siguientes van seguidos.
+    fisica: u64,
+    bytes: u64,
+}
+
+const SIN_BLOQUE: Bloque = Bloque { base: 0, fisica: 0, bytes: 0 };
+
 /// La contabilidad de un proceso que tiene memoria pedida.
 #[derive(Clone, Copy)]
 struct Count {
@@ -107,9 +133,19 @@ struct Count {
     /// Bytes entregados. Para el panel: la memoria que un proceso pidio es la
     /// unica que el kernel no puede deducir mirando su imagen.
     entregados: u64,
+    /// Los bloques vivos de este proceso. Son [`MAX_PETICIONES`] como mucho
+    /// porque ese es el tope de peticiones, asi que la tabla no puede
+    /// desbordarse por definicion.
+    bloques: [Bloque; MAX_PETICIONES],
 }
 
-const FREE_SLOT: Count = Count { pid: 0, cursor: 0, peticiones: 0, entregados: 0 };
+const FREE_SLOT: Count = Count {
+    pid: 0,
+    cursor: 0,
+    peticiones: 0,
+    entregados: 0,
+    bloques: [SIN_BLOQUE; MAX_PETICIONES],
+};
 
 static mut CUENTAS: [Count; MAX_PROCS] = [FREE_SLOT; MAX_PROCS];
 
@@ -250,6 +286,11 @@ pub fn request(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
     unsafe {
         let c = &mut (*core::ptr::addr_of_mut!(CUENTAS))[slot];
         c.cursor = base + paginas * mm::PAGE;
+        // El bloque se apunta ANTES de subir el contador de peticiones, que es
+        // lo que hace que el indice sea siempre uno libre.
+        if c.peticiones < MAX_PETICIONES {
+            c.bloques[c.peticiones] = Bloque { base, fisica, bytes: paginas * mm::PAGE };
+        }
         c.peticiones += 1;
         c.entregados += paginas * mm::PAGE;
         TOTAL += paginas * mm::PAGE;
@@ -272,6 +313,30 @@ pub fn process_died(pid: u32) {
     unsafe {
         (*core::ptr::addr_of_mut!(CUENTAS))[slot] = FREE_SLOT;
     }
+}
+
+/// **Donde esta DE VERDAD el rango `[va, va + len)` de un bloque de `pid`.**
+///
+/// `None` si ese rango no cae entero dentro de un solo bloque entregado a ese
+/// proceso -- y entonces quien pregunta hace lo de siempre, que es correcto y
+/// mas lento. Nunca se contesta "casi": media respuesta aqui es el HBA
+/// escribiendo en memoria de otro.
+///
+/// Lo usa `syscall.rs` para que **el disco escriba dentro del bloque del
+/// programa sin escala**: es el escalon 3 de `docs/LA_RAM.md` aplicado a leer
+/// ficheros, y la razon por la que [`Bloque`] guarda la fisica.
+pub fn fisica_de(pid: u32, va: u64, len: u64) -> Option<u64> {
+    let slot = slot(pid)?;
+    let fin = va.checked_add(len)?;
+    unsafe {
+        let c = &(*core::ptr::addr_of!(CUENTAS))[slot];
+        for b in c.bloques.iter() {
+            if b.base != 0 && va >= b.base && fin <= b.base + b.bytes {
+                return Some(b.fisica + (va - b.base));
+            }
+        }
+    }
+    None
 }
 
 /// Las operaciones sobre el handle. `base` es la VA con la que se concedio.

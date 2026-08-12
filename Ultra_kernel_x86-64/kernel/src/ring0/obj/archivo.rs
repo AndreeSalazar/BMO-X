@@ -29,20 +29,66 @@
 //! syscalls -- lo ponia **una constante**, en una maquina con 14.8 GiB libres y
 //! un sistema que ocupa 5.4 MiB.
 //!
-//! Ahora se le pregunta al archivo cuanto mide y se reservan sus marcos al
-//! abrir; al escribir, el buffer **crece al doble** cuando se llena. El techo
-//! es la RAM, que es donde debe estar un techo. Lo que queda de limite se dice
-//! entero, sin adornos:
+//! Al ESCRIBIR, ese buffer se pide al abrir y **crece al doble** cuando se
+//! llena; el techo es la RAM, que es donde debe estar un techo. Lo que queda de
+//! limite se dice entero, sin adornos:
 //!
 //! - Se piden marcos **contiguos**, porque el buffer se recorre como un `&[u8]`
 //!   lineal. Si la RAM esta fragmentada y no hay hueco seguido, se rechaza con
 //!   `ERROR_TOO_LARGE` -- entregar un archivo a trozos sin que el
 //!   llamante lo sepa seria peor.
-//! - El archivo entero pasa por RAM. Un archivo mas grande que la memoria libre
-//!   no se abre. Para eso haria falta un escritor por sectores en `bmo_fat32`,
-//!   que es otra pieza y va despues.
 //! - Lo escrito no llega al disco hasta `close`, y ahi `bmo_fat32` lo guarda de
 //!   una vez.
+//!
+//! ## ** LEER NO ES TRAERSE EL ARCHIVO. Es reflejarlo.
+//!
+//! Hasta el 2026-08-11 `open` hacia esto: preguntar cuanto mide, reservar
+//! **sus marcos contiguos**, y leerlo ENTERO antes de devolver el handle. Para
+//! un `.txt` no se nota. Para `doom1.wad` son **4.196.020 bytes contiguos en
+//! fisico** pedidos justo despues de que DOOM se llevara sus 12 MiB de zona, y
+//! una lectura bloqueante de cuatro megas dentro de un syscall.
+//!
+//! Y lo que lo delata no es el coste: es que **nadie los pedia**. `w_file_stdc.c`
+//! no se traga el WAD -- lee el directorio de lumps al abrir y luego cada lump
+//! por `fseek`+`fread`, decenas de KB cada vez. DOOM estaba haciendo lo
+//! correcto; era BMO el que le traia la bodega entera para servirle una copa.
+//!
+//! Asi que un archivo de LECTURA ya no se trae: **se refleja**. La ranura guarda
+//! un cursor de FAT32 --doce bytes-- y cada peticion trae **solo su rango**:
+//!
+//! | | antes | ahora |
+//! |---|---|---|
+//! | Abrir el WAD | 4 MiB contiguos + leer 4 MB | un cursor y una ventana |
+//! | Un lump de 40 KB | ya estaba en RAM | 40 KB del disco, a donde se pida |
+//! | Tope de tamano | la RAM contigua que haya | **ninguno** |
+//!
+//! Es la misma pieza que `lanzar.rs` estreno para los `.bex` --el cargador dejo
+//! de traerse un paquete de 5,5 MB para ejecutar 812 KB-- y que se habia quedado
+//! sin aplicar aqui. Las dos mitades ya existian y estaban probadas en metal:
+//! `fs::abrir_rangos` y `fs::leer_rango`.
+//!
+//! ### La ventana, y por que sigue habiendo un buffer
+//!
+//! `ARCH_OP_LEER` entrega **siete bytes por llamada**: ir al disco por cada
+//! siete seria un sector por byte y medio. Asi que la ranura mantiene una
+//! **ventana** de [`VENTANA`] --el ultimo trozo leido, con su offset-- y esas
+//! llamadas se sirven de ahi. Un archivo mas pequeno que la ventana entra
+//! entero en la primera lectura y se comporta exactamente como antes.
+//!
+//! `ARCH_OP_LEER_EN` --el camino de `fread`-- **no pasa por la ventana**: el
+//! rango va del disco al bloque del que pregunta, sin escala.
+//!
+//! ### El cursor solo avanza, y `fseek` va hacia atras
+//!
+//! Llegar al byte `N` en FAT32 es seguir la cadena, asi que el cursor de
+//! `bmo_fat32` **no retrocede**: uno que lo hiciera en silencio volveria
+//! cuadratica cualquier carga. Pero DOOM salta entre lumps en los dos sentidos,
+//! y aqui eso no es la excepcion sino el caso normal.
+//!
+//! Se resuelve como en `lanzar::Fuente::rango_suelto`, con **el cursor sin
+//! estrenar guardado aparte**: pedir hacia atras vuelve a empezar desde el
+//! principio del archivo. Cuesta un recorrido de la cadena, se cuenta
+//! ([`cuentas`]) y se puede mirar -- que es distinto de que no cueste nada.
 //!
 //! ## Escribir es un acto de dos pasos
 //!
@@ -172,7 +218,12 @@ pub const ARCH_OP_ESCRIBIR_DE: u64 = 0x08;
 // el llamante lo sepa es peor que un "no".
 static mut BUF_FIS: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 static mut BUF_PAGS: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
-/// Bytes validos: lo leido del disco, o lo acumulado para escribir.
+/// Bytes validos: **lo que mide el archivo** si se refleja, lo leido del disco
+/// si se trajo a trozos, o lo acumulado si se esta escribiendo.
+///
+/// Los tres son "cuantos bytes hay que contar", que es lo que preguntan
+/// `ARCH_OP_TAMANO` y `ARCH_OP_SALTAR`. Lo que cambia entre los tres es **donde
+/// estan esos bytes**, y eso lo dice [`REFLEJO`].
 static mut LARGO: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Por donde va la lectura.
 static mut CURSOR: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
@@ -184,6 +235,61 @@ static mut ESCRIBE: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
 /// guardar un archivo corto que parece entero.
 static mut DESBORDO: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
 static mut OWNER: [u32; MAX_ABIERTOS] = [NO_OWNER; MAX_ABIERTOS];
+
+// -- ** EL ARCHIVO QUE NO ESTA EN RAM: EL REFLEJO ----------------------------
+//
+// Doce bytes de cursor en vez del fichero. Ver la cabecera del modulo.
+
+/// Esta ranura **refleja** el archivo en vez de tenerlo? Lo son todas las de
+/// lectura desde el 2026-08-11; las de escritura y las de `abrir_asinc` no.
+static mut REFLEJO: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
+/// Por donde va el reflejo. **Solo avanza** -- ver la cabecera.
+static mut CUR: [bmo_fat32::Cursor; MAX_ABIERTOS] =
+    [bmo_fat32::Cursor::vacio(); MAX_ABIERTOS];
+/// El mismo cursor **sin estrenar**, que es lo que hace posible retroceder.
+///
+/// Cuesta doce bytes por ranura y es la diferencia entre que `fseek` hacia atras
+/// funcione o devuelva cero. La copia se hace al abrir: reabrir de verdad
+/// obligaria a volver a recorrer el arbol de directorios.
+static mut INICIO: [bmo_fat32::Cursor; MAX_ABIERTOS] =
+    [bmo_fat32::Cursor::vacio(); MAX_ABIERTOS];
+/// En que byte del archivo empieza lo que hay ahora en el buffer.
+static mut VENT_OFF: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+/// Cuantos bytes validos hay en la ventana. `0` = no hay nada leido.
+static mut VENT_LEN: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+
+/// Lo que se trae de una vez para las lecturas de siete bytes.
+///
+/// 64 KiB: cabe la inmensa mayoria de los ficheros del sistema **entera** --y
+/// entonces esto se comporta igual que el `open` de antes, con una sola lectura--
+/// y son dieciseis marcos por archivo abierto, que no es un numero que haya que
+/// pensar. El que lea un WAD de 4 MiB no pasa por aqui: va por `LEER_EN`.
+pub const VENTANA: usize = 64 * 1024;
+
+/// Bytes que se han traido del disco por reflejo, y cuantas veces hubo que
+/// **volver al principio** del archivo.
+///
+/// Se cuenta porque retroceder cuesta un recorrido de la cadena FAT, y un coste
+/// que nadie mide es un coste que un dia se multiplica sin que nada lo diga. Si
+/// este segundo numero crece con el primero, el patron de acceso esta pidiendo
+/// un cursor por lump y no uno por archivo -- y eso se sabra mirandolo, no
+/// suponiendolo.
+static mut BYTES_REFLEJADOS: u64 = 0;
+static mut RETROCESOS: u64 = 0;
+
+/// Las dos cuentas **en el momento de abrir cada archivo**, para poder decir el
+/// delta al cerrarlo.
+///
+/// Es el mismo truco que `lanzar` usa con `cuentas_dma`: el total del arranque
+/// no dice nada, y *"de un fichero de 4.196.020 bytes se trajeron 812.736"* es
+/// el escalon entero en una linea.
+static mut REF_AL_ABRIR: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+static mut RET_AL_ABRIR: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+
+/// `(bytes reflejados, retrocesos)` desde el arranque.
+pub fn cuentas() -> (u64, u64) {
+    unsafe { (BYTES_REFLEJADOS, RETROCESOS) }
+}
 
 // -- ** EL ARCHIVO QUE SE ESTA TRAYENDO --------------------------------------
 //
@@ -331,12 +437,85 @@ unsafe fn grow(i: usize, minimo: usize) -> bool {
     true
 }
 
+/// **Trae el rango `[offset, offset + dst.len())` del archivo reflejado.**
+/// Devuelve cuantos bytes entraron.
+///
+/// Es el unico sitio del modulo que toca el disco al leer, y por eso es el unico
+/// que sabe de retroceder: si se pide por debajo de donde va el cursor, se
+/// vuelve a empezar **desde la copia sin estrenar**. Ver la cabecera.
+unsafe fn reflejar(i: usize, offset: usize, dst: &mut [u8]) -> usize {
+    if dst.is_empty() || offset >= LARGO[i] {
+        return 0;
+    }
+    let cur = &mut *core::ptr::addr_of_mut!(CUR[i]);
+    if offset < cur.base() {
+        // Volver al principio. `fs::leer_rango` contestaria `0` y lo diria a
+        // gritos --y con razon, porque para el cargador eso es un fallo-- asi
+        // que aqui se le da un cursor que si puede llegar, en vez de pedirle
+        // algo que su contrato no promete.
+        *cur = INICIO[i];
+        RETROCESOS += 1;
+    }
+    let n = crate::ring0::fsys::fs::leer_rango(cur, offset, LARGO[i] as u32, dst);
+    BYTES_REFLEJADOS += n as u64;
+    n
+}
+
+/// Deja en la ventana el trozo que contiene `pos`. `false` = ahi no hay nada.
+///
+/// Si ya esta, no toca el disco: es lo que hace que leer de siete en siete
+/// cueste una lectura cada 64 KiB y no una cada siete bytes.
+unsafe fn ventana_en(i: usize, pos: usize) -> bool {
+    if pos >= LARGO[i] {
+        return false;
+    }
+    if VENT_LEN[i] > 0 && pos >= VENT_OFF[i] && pos < VENT_OFF[i] + VENT_LEN[i] {
+        return true;
+    }
+    let dst = buf(i);
+    if dst.is_empty() {
+        return false;
+    }
+    let n = reflejar(i, pos, dst);
+    VENT_OFF[i] = pos;
+    VENT_LEN[i] = n;
+    n > 0
+}
+
+/// El byte `pos` del archivo, venga de donde venga. `None` = se acabo.
+///
+/// Los dos modos de lectura --el reflejo y el que trae el fichero a trozos--
+/// contestan por aqui, y por eso `read` y `read_line` no saben cual de los dos
+/// tienen delante. Un `if` repartido por cada lector es como se acaba teniendo
+/// un modo que funciona y otro que casi.
+unsafe fn byte_en(i: usize, pos: usize) -> Option<u8> {
+    if pos >= LARGO[i] {
+        return None;
+    }
+    if !REFLEJO[i] {
+        let b = buf(i);
+        return if pos < b.len() { Some(b[pos]) } else { None };
+    }
+    if !ventana_en(i, pos) {
+        return None;
+    }
+    let d = pos - VENT_OFF[i];
+    let b = buf(i);
+    if d < VENT_LEN[i].min(b.len()) { Some(b[d]) } else { None }
+}
+
 /// Abre un archivo del volumen de datos para LEER y entrega su handle a `pid`.
 ///
-/// El archivo entero se trae al buffer aqui, no segun se pide. Asi una lectura
-/// no puede fallar a mitad por un error de disco: o el archivo esta entero en
-/// memoria antes de que Ring 3 vea el primer byte, o `open` falla y no hay
-/// handle.
+/// ** No se trae nada. Se guarda un cursor y se reserva la ventana --lo mas
+/// pequeno entre el archivo y [`VENTANA`]--, y los bytes van del disco a quien
+/// los pida, cuando los pida. Un WAD de 4 MiB cuesta lo mismo que un `.txt`.
+///
+/// Lo que se pierde con esto, dicho: antes, si el disco fallaba, fallaba `open`
+/// y no habia handle. Ahora una lectura puede quedarse corta a mitad del
+/// fichero. A cambio, `open` **no puede fallar por falta de RAM contigua**, que
+/// es lo que le pasaba a `doom1.wad` -- y un fallo de disco a mitad se cuenta y
+/// se ve (`ARCH_OP_LEER_EN` devuelve menos de lo pedido), mientras que "no cabe"
+/// dejaba al programa sin manera de seguir.
 pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
     let i = match free_slot() {
         Some(i) => i,
@@ -346,50 +525,46 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
     // "no esta": quien escribe `lee apps/` tiene que enterarse de que eso es
     // una carpeta, no ponerse a buscar un archivo que nunca existio.
     use crate::ring0::fsys::fs::LoadError;
-    // Primero CUANTO mide, y despues se reserva justo eso. Antes se copiaba a
-    // una fila estatica de 4 KiB y el techo lo ponia esa fila.
-    let mide = match crate::ring0::fsys::fs::tamano(ruta) {
-        Ok(n) => n as usize,
+    // Se resuelve la ruta UNA vez y se guarda por donde empieza. Es lo unico
+    // que hay que hacer una sola vez; todo lo demas se hace cuando hace falta.
+    let (cursor, mide) = match crate::ring0::fsys::fs::abrir_rangos(ruta) {
+        Ok(v) => v,
         Err(LoadError::BadPath) => return Err(ERROR_IS_DIRECTORY),
         Err(LoadError::NameTooLong) => return Err(ERROR_NAME),
         Err(LoadError::DirNotFound) => return Err(ERROR_DIRECTORY),
         Err(_) => return Err(ERROR_NOT_THERE),
     };
-    let leidos = unsafe {
-        if !reserve(i, mide) {
-            // No hay RAM contigua para el archivo. Se dice: entregarlo a
-            // trozos sin que el llamante lo sepa seria peor.
-            crate::ring0::cabina::warn("arch", "sin RAM contigua para el archivo", mide as u64);
+    let mide = mide as usize;
+    unsafe {
+        // La ventana, no el archivo. Un fichero mas pequeno que ella entra
+        // entero en la primera lectura y todo esto se comporta como antes.
+        if !reserve(i, mide.min(VENTANA)) {
+            // Ya no puede pasar por el TAMANO del archivo -- son dieciseis
+            // marcos como mucho. Si pasa, es que no queda RAM contigua ni para
+            // eso, y entonces el sistema tiene un problema mas grande.
+            crate::ring0::cabina::warn("arch", "sin RAM para la ventana del archivo", mide as u64);
             return Err(ERROR_TOO_LARGE);
         }
-        let dst = buf(i);
-        match crate::ring0::fsys::fs::load(ruta, dst) {
-            Ok(n) => n,
-            Err(e) => {
-                release_buffer(i);
-                return Err(match e {
-                    LoadError::TooBig => ERROR_TOO_LARGE,
-                    LoadError::BadPath => ERROR_IS_DIRECTORY,
-                    LoadError::NameTooLong => ERROR_NAME,
-                    LoadError::DirNotFound => ERROR_DIRECTORY,
-                    _ => ERROR_NOT_THERE,
-                });
-            }
-        }
-    };
-    unsafe {
-        LARGO[i] = leidos;
+        REFLEJO[i] = true;
+        CUR[i] = cursor;
+        INICIO[i] = cursor;
+        REF_AL_ABRIR[i] = BYTES_REFLEJADOS;
+        RET_AL_ABRIR[i] = RETROCESOS;
+        VENT_OFF[i] = 0;
+        VENT_LEN[i] = 0;
+        CARGA_CLUSTER[i] = 0;
+        LARGO[i] = mide;
         CURSOR[i] = 0;
         ESCRIBE[i] = false;
         DESBORDO[i] = false;
         OWNER[i] = pid;
         match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ, i as u64) {
             Some(h) => {
-                crate::ring0::cabina::info("arch", "archivo abierto para leer", leidos as u64);
+                crate::ring0::cabina::info("arch", "archivo REFLEJADO para leer", mide as u64);
                 Ok(h)
             }
             None => {
-                OWNER[i] = NO_OWNER;
+                release(i);
                 Err(cap::ERROR_PERMISSION_DENIED)
             }
         }
@@ -531,8 +706,12 @@ fn read(i: usize) -> u64 {
     unsafe {
         let mut w = [0u8; 8];
         let mut n = 0usize;
-        while n < 7 && CURSOR[i] < LARGO[i] {
-            w[n] = buf(i)[CURSOR[i]];
+        while n < 7 {
+            let b = match byte_en(i, CURSOR[i]) {
+                Some(b) => b,
+                None => break,
+            };
+            w[n] = b;
             CURSOR[i] += 1;
             n += 1;
         }
@@ -546,8 +725,11 @@ fn read_line(i: usize) -> u64 {
         let mut w = [0u8; 8];
         let mut n = 0usize;
         let mut fin = 0u64;
-        while n < 7 && CURSOR[i] < LARGO[i] {
-            let b = buf(i)[CURSOR[i]];
+        while n < 7 {
+            let b = match byte_en(i, CURSOR[i]) {
+                Some(b) => b,
+                None => break,
+            };
             CURSOR[i] += 1;
             if b == b'\n' {
                 // Se consume y NO se entrega: el salto separa registros, no
@@ -633,6 +815,25 @@ fn close(i: usize) -> u64 {
 
 fn release(i: usize) {
     unsafe {
+        // ** LA MEDIDA, AL SOLTAR: cuanto de este archivo hizo falta de verdad.
+        //
+        // Se dice aqui y no en `close` porque un proceso que muere con el
+        // fichero abierto pasa por el mismo sitio, y ese es justo el caso en el
+        // que interesa saber por donde iba.
+        if REFLEJO[i] && BYTES_REFLEJADOS > REF_AL_ABRIR[i] {
+            crate::ring0::cabina::info(
+                "arch",
+                "bytes traidos de este archivo",
+                BYTES_REFLEJADOS - REF_AL_ABRIR[i],
+            );
+            if RETROCESOS > RET_AL_ABRIR[i] {
+                crate::ring0::cabina::info(
+                    "arch",
+                    "veces que hubo que volver al principio",
+                    RETROCESOS - RET_AL_ABRIR[i],
+                );
+            }
+        }
         // La memoria se devuelve AQUI y en un solo sitio, pase lo que pase con
         // el guardado. Un archivo que no se pudo escribir no es motivo para
         // quedarse con sus marcos: eso es una fuga que solo se nota tras
@@ -644,6 +845,15 @@ fn release(i: usize) {
         ESCRIBE[i] = false;
         DESBORDO[i] = false;
         DIRECTORIO[i] = 0;
+        // El reflejo tambien se apaga aqui, y en el mismo sitio que todo lo
+        // demas: una ranura que se reutiliza con `REFLEJO` puesto y un cursor
+        // del archivo anterior leeria **otro fichero** sin que nada avise.
+        REFLEJO[i] = false;
+        CUR[i] = bmo_fat32::Cursor::vacio();
+        INICIO[i] = bmo_fat32::Cursor::vacio();
+        VENT_OFF[i] = 0;
+        VENT_LEN[i] = 0;
+        CARGA_CLUSTER[i] = 0;
     }
 }
 
@@ -676,10 +886,15 @@ pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
         ARCH_OP_TAMANO => Some(unsafe {
             if escribe { LARGO[i] as u64 } else { (LARGO[i] - CURSOR[i]) as u64 }
         }),
-        // * `fseek`. Cuesta lo que cuesta poner un numero porque el archivo ya
-        // esta entero en el bufer desde que se abrio. Se acota al tamano en vez
-        // de rechazar: un cursor mas alla del final significa "no queda nada",
-        // que es lo que contesta `ARCH_OP_TAMANO` sin inventarse un error.
+        // * `fseek`. **Sigue costando lo que cuesta poner un numero**, y ahora
+        // por otro motivo: el archivo ya no esta en el bufer, pero mover el
+        // cursor tampoco lee nada. El disco solo se toca cuando alguien pide
+        // bytes de verdad -- y si el salto fue hacia atras, quien lo paga es esa
+        // lectura y no este salto (ver `reflejar`).
+        //
+        // Se acota al tamano en vez de rechazar: un cursor mas alla del final
+        // significa "no queda nada", que es lo que contesta `ARCH_OP_TAMANO` sin
+        // inventarse un error.
         ARCH_OP_SALTAR if !escribe => Some(unsafe {
             let d = if arg0 as usize > LARGO[i] { LARGO[i] } else { arg0 as usize };
             CURSOR[i] = d;
@@ -714,6 +929,19 @@ pub unsafe fn read_into(idx: u64, dst: *mut u8, n: usize) -> usize {
         let cuantos = if n > quedan { quedan } else { n };
         if cuantos == 0 {
             return 0;
+        }
+        // ** DEL DISCO AL BLOQUE DEL QUE PREGUNTA, SIN ESCALA.
+        //
+        // No se pasa por la ventana **a proposito**: un lump de 40 KB copiado a
+        // la ventana y de ahi al bloque son 40 KB movidos dos veces para nada, y
+        // uno mas grande que la ventana ni siquiera cabria. `fs::leer_rango`
+        // deja los sectores enteros donde se le diga -- que es justo para lo que
+        // se escribio.
+        if REFLEJO[i] {
+            let salida = core::slice::from_raw_parts_mut(dst, cuantos);
+            let got = reflejar(i, CURSOR[i], salida);
+            CURSOR[i] += got;
+            return got;
         }
         core::ptr::copy_nonoverlapping(buf(i).as_ptr().add(CURSOR[i]), dst, cuantos);
         CURSOR[i] += cuantos;

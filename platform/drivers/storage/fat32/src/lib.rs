@@ -219,7 +219,35 @@ pub struct FatVolume {
     fallos_mudos: u32,
     buf: [u8; 512],
     fat_cache: [u8; 512],
+    /// **Que sector de la FAT hay en [`FatVolume::fat_cache`].** `SIN_CACHE` =
+    /// ninguno.
+    ///
+    /// === Por que esto no es una optimizacion, es la diferencia entre que algo
+    /// funcione o no ===
+    ///
+    /// `fat_cache` se llamaba cache y no lo era: cada `read_fat_entry` leia el
+    /// sector **otra vez**, aunque fuera el mismo de la llamada anterior. Y una
+    /// entrada de FAT32 son cuatro bytes, o sea que en un sector caben **128
+    /// entradas seguidas** -- exactamente lo que recorre quien sigue una cadena.
+    ///
+    /// Mientras lo unico que recorria cadenas era cargar un programa de una vez,
+    /// eso se pagaba una vez y no se notaba. Desde el 2026-08-11 un archivo
+    /// abierto se lee por rangos y **volver atras es normal** (ver
+    /// `ring0::obj::archivo`): cada salto hacia atras en un WAD de 4 MiB son mil
+    /// entradas de FAT, y sin esto serian **mil comandos al disco por lump**.
+    /// Con esto son ocho.
+    ///
+    /// > Un buffer al que se le llama cache y no recuerda lo que trajo es un
+    /// > coste que nadie ve hasta que el patron de acceso cambia.
+    ///
+    /// Lo mantiene [`FatVolume::read_sector`], que es el unico sitio que llena
+    /// este buffer, y lo refresca `write_sector`: despues de escribirlo, lo que
+    /// hay en memoria es lo que hay en el disco.
+    fat_cache_lba: u64,
 }
+
+/// No hay ningun sector cargado en `fat_cache`. No es un LBA posible.
+const SIN_CACHE: u64 = u64::MAX;
 
 /// Por que fallo una escritura. Un `false` pelado no dice si el disco esta
 /// lleno, si el volumen es de solo lectura o si el nombre ya existia.
@@ -283,7 +311,7 @@ pub fn mount(read: BlockReader, write: Option<BlockWriter>, part_lba: u64) -> Op
     if total <= data_start { return None; }
     let max_cluster = (total - data_start) / spc as u32 + 1;
     Some(FatVolume { read, write, part_lba, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: spc,
-        num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512] })
+        num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512], fat_cache_lba: SIN_CACHE })
 }
 
 fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf: &[u8; 512]) -> Option<FatVolume> {
@@ -303,7 +331,7 @@ fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf
     // exFAT lo dice en su propio BPB, sin tener que deducirlo.
     let max_cluster = epb.cluster_count + 1;
     Some(FatVolume { read, write, part_lba, fs_type: FsType::ExFat, bytes_per_sector, sectors_per_cluster,
-        num_fats, fat_start, fat_size_sectors, data_start, root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512] })
+        num_fats, fat_start, fat_size_sectors, data_start, root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512], fat_cache_lba: SIN_CACHE })
 }
 
 /// **UN CURSOR DENTRO DE UN ARCHIVO.** Sabe por que cluster va y en que byte del
@@ -364,7 +392,11 @@ impl Cursor {
     /// obligar a cada llamante a desenvolver un `Option` para acabar en el mismo
     /// sitio. El cluster `0` no es valido en FAT32, asi que no puede confundirse
     /// con uno de verdad.
-    pub fn vacio() -> Self {
+    ///
+    /// Es `const` para que una tabla de cursores --una por archivo abierto--
+    /// pueda nacer en `.bss` sin codigo de arranque que la rellene. Ver
+    /// `ring0::obj::archivo`.
+    pub const fn vacio() -> Self {
         Cursor { cluster: 0, base: 0 }
     }
 }
@@ -422,7 +454,21 @@ impl FatVolume {
         let abs = self.abs(lba);
         match which {
             Buf::buf => rd(abs, 1, &mut self.buf),
-            Buf::fat_cache => rd(abs, 1, &mut self.fat_cache),
+            Buf::fat_cache => {
+                // ** Y AQUI SI SE RECUERDA. Ver el campo `fat_cache_lba`: en un
+                // sector de FAT caben 128 entradas seguidas, que son justo las
+                // que recorre quien sigue una cadena. Sin esta linea, seguir
+                // una cadena de mil clusters son mil comandos al disco.
+                if self.fat_cache_lba == lba {
+                    return true;
+                }
+                let ok = rd(abs, 1, &mut self.fat_cache);
+                // Si la lectura fallo, lo que hay en el buffer es del sector
+                // ANTERIOR. Decir que es de este seria servir las entradas de
+                // otro sitio de la FAT como si fueran de aqui.
+                self.fat_cache_lba = if ok { lba } else { SIN_CACHE };
+                ok
+            }
         }
     }
 
@@ -433,7 +479,15 @@ impl FatVolume {
         let abs = self.abs(lba);
         match which {
             Buf::buf => wr(abs, 1, &self.buf),
-            Buf::fat_cache => wr(abs, 1, &self.fat_cache),
+            Buf::fat_cache => {
+                let ok = wr(abs, 1, &self.fat_cache);
+                // Lo que queda en memoria es lo que acaba de irse al disco, asi
+                // que el buffer sigue valiendo para este sector -- y si la
+                // escritura fallo, lo que hay en el disco ya no se sabe: se
+                // olvida, que es la unica respuesta honesta.
+                self.fat_cache_lba = if ok { lba } else { SIN_CACHE };
+                ok
+            }
         }
     }
 
@@ -1668,10 +1722,24 @@ mod tests {
         }
     }
 
+    /// Cuantas veces se ha ido al "disco". Lo lleva el propio lector de mentira
+    /// porque **es el unico sitio que no se puede saltar nadie**: si una pieza
+    /// del driver deja de recordar lo que ya trajo, este numero lo dice.
+    ///
+    /// Es global y las pruebas corren en paralelo, pero quien lo mira tiene el
+    /// CANDADO en la mano (ver [`volumen`]), asi que dentro de una prueba solo
+    /// cuenta lo que hace esa prueba.
+    static LECTURAS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    fn lecturas() -> usize {
+        LECTURAS.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     fn read(lba: u64, count: u16, buf: &mut [u8]) -> bool {
         let off = lba as usize * 512;
         let n = count as usize * 512;
         if off + n > SECTORES * 512 || buf.len() < n { return false; }
+        LECTURAS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         buf[..n].copy_from_slice(&disco()[off..off + n]);
         true
     }
@@ -2036,6 +2104,94 @@ mod tests {
             0,
             "pedir hacia atras tiene que contestar cero, no leer de cualquier sitio"
         );
+    }
+
+    /// ** SEGUIR UNA CADENA NO PUEDE COSTAR UN COMANDO POR ESLABON.
+    ///
+    /// En un sector de FAT caben **128 entradas seguidas**, que son justo las que
+    /// recorre quien sigue una cadena. `fat_cache` se llamaba cache y releia el
+    /// sector en cada entrada; mientras lo unico que recorria cadenas era cargar
+    /// un programa de una vez, eso se pagaba una vez. Con los archivos leidos por
+    /// rangos, cada salto hacia atras en un fichero grande vuelve a recorrerla.
+    ///
+    /// Aqui se cuentan los viajes al disco de verdad. Las dos mitades importan y
+    /// por eso van juntas: **que no relea** y **que no sirva lo de antes**.
+    #[test]
+    fn seguir_la_cadena_no_relee_el_mismo_sector() {
+        let (_turno, mut v) = volumen();
+        // 100 entradas de FAT consecutivas caben de sobra en un solo sector.
+        let antes = lecturas();
+        for c in 2..102u32 {
+            v.raw_fat_entry(c);
+        }
+        let viajes = lecturas() - antes;
+        assert!(viajes <= 1, "100 entradas del MISMO sector costaron {viajes} lecturas");
+
+        // Y lo que se escribe se lee: un cache que no se entera de una escritura
+        // seria peor que no tenerlo -- entregaria la cadena vieja sin decirlo.
+        assert!(v.set_fat_entry(7, 0x0FFF_FFFF), "debe escribir");
+        assert_eq!(v.raw_fat_entry(7), Some(0x0FFF_FFFF), "el cache sirvio lo de ANTES de escribir");
+        assert!(v.set_fat_entry(7, 0), "debe poder soltarse");
+        assert_eq!(v.raw_fat_entry(7), Some(0), "el cache se quedo con el valor viejo");
+    }
+
+    /// ** EL PATRON DE UN JUEGO LEYENDO SU WAD: saltos en los DOS sentidos.
+    ///
+    /// === Que fija esta prueba ===
+    ///
+    /// El cargador de `.bex` lee hacia adelante y retrocede **dos veces por
+    /// carga**, asi que le vale una copia suelta del cursor. Un archivo abierto
+    /// por un programa no: DOOM abre `doom1.wad`, lee el directorio de lumps del
+    /// final, y a partir de ahi salta a donde le pida el juego -- atras, adelante,
+    /// atras. Ahi retroceder **es el caso normal**, no la excepcion.
+    ///
+    /// La regla que sostiene `ring0::obj::archivo` es esta: se guarda el cursor
+    /// del flujo **y una copia sin estrenar**, y cuando lo que se pide cae por
+    /// debajo de donde va el cursor, se vuelve a empezar desde la copia. Lo que
+    /// esta prueba fija es que **eso da los mismos bytes que un cursor limpio**,
+    /// salto tras salto y en cualquier orden.
+    ///
+    /// Si un dia `Cursor::base` dejara de significar "el primer byte al que este
+    /// cursor todavia puede llegar", esto sale en rojo -- y el sintoma sin la
+    /// prueba seria un juego con las texturas cambiadas, que nadie sabe leer.
+    #[test]
+    fn el_patron_de_lumps_salta_en_los_dos_sentidos() {
+        let (_turno, mut v) = volumen();
+        let datos: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
+        v.create_file_in_dir(2, &name("WADSIM  BIN"), &datos).expect("debe crear");
+        let (primero, tam) = v.find_file(&name("WADSIM  BIN")).expect("debe estar");
+
+        // Las dos mitades de un archivo reflejado: por donde va, y por donde
+        // empieza. La segunda no se estrena jamas.
+        let inicio = v.cursor(primero);
+        let mut cur = inicio;
+        let mut retrocesos = 0;
+
+        // El orden es el de un juego, no el de un fichero: el directorio del
+        // final primero, y despues lumps de aqui y de alla.
+        for (off, len) in [
+            (4900usize, 100usize), // el "directorio de lumps", al final
+            (0, 12),               // la cabecera, o sea hacia atras del todo
+            (3000, 400),           // adelante
+            (1024, 512),           // atras otra vez
+            (1536, 512),           // y adelante desde donde estaba: sin retroceso
+            (17, 1),               // un byte suelto, atras y sin alinear
+            (4999, 1),             // el ultimo byte
+        ] {
+            if off < cur.base() {
+                cur = inicio;
+                retrocesos += 1;
+            }
+            let mut dst = vec![0u8; len];
+            let n = v.leer_en(&mut cur, off, tam, &mut dst);
+            assert_eq!(n, len, "off={off} len={len}: el rango no llego entero");
+            assert_eq!(&dst[..n], &datos[off..off + len], "off={off} len={len}: OTROS bytes");
+        }
+
+        // Y que el mecanismo se haya usado de verdad: sin esto, la prueba
+        // pasaria igual el dia que alguien la reordene sin querer y nunca
+        // vuelva a mirar hacia atras.
+        assert!(retrocesos >= 3, "esta prueba tiene que retroceder: solo lo hizo {retrocesos} veces");
     }
 
     /// ** EL PATRON REAL DEL CARGADOR: dos tablas del FINAL antes que el codigo.
