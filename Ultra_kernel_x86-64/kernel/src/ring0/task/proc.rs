@@ -709,6 +709,14 @@ fn admit_payload_desde(
         // cargable. Ver la nota de `BexMapping::indice`.
         let mut cierre =
             aterrizaje::Aterrizaje::abrir(s.kind, firmas.as_ref().and_then(|f| f.digest_de(s.indice)));
+        // **Lo que le falta a una relocation partida en la frontera de pagina.**
+        // `(valor, cuantos bytes ya se escribieron)`. Ver la nota larga abajo.
+        //
+        // Vive por SECCION y no por proceso a proposito: una seccion empieza en
+        // su propia VA, asi que una cola que sobreviviera al final de una
+        // seccion se escribiria al principio de OTRA -- ocho bytes en el sitio
+        // equivocado, y el programa arrancando con basura donde va un puntero.
+        let mut cola: Option<(u64, usize)> = None;
         for p in 0..pages {
             let Some(frame) = phys::alloc_frame() else {
                 crate::ring0::cabina::fault(
@@ -775,6 +783,24 @@ fn admit_payload_desde(
             // tablas del proceso para escribir en su memoria, ni dejar una
             // pagina escribible que luego habria que volver a proteger.
             let pagina_va = va_start + p * mm::PAGE;
+            // ** LA COLA DE LA PAGINA ANTERIOR, ANTES QUE NADA.
+            //
+            // Si una relocation se partio en la frontera, lo que le falta se
+            // escribe aqui: al principio de este marco, que es literalmente el
+            // byte siguiente al ultimo de la pagina de antes. Va lo PRIMERO
+            // porque los bytes de la seccion ya estan puestos y una relocation
+            // manda sobre ellos.
+            if let Some((valor, ya)) = cola.take() {
+                let quedan = 8 - ya;
+                unsafe {
+                    let dst = mm::phys_to_virt(frame) as *mut u8;
+                    core::ptr::copy_nonoverlapping(
+                        valor.to_le_bytes().as_ptr().add(ya),
+                        dst,
+                        quedan,
+                    );
+                }
+            }
             for r in 0..total_relocs {
                 // De `relocs`, que es la tabla que se acaba de traer a sus
                 // marcos -- y con offset **0**, porque ese slice empieza donde
@@ -804,32 +830,87 @@ fn admit_payload_desde(
                     return None;
                 };
                 let donde_va = base_donde.wrapping_add(rel.donde_off);
-                // Cae en esta pagina? Los ocho bytes, enteros: un puntero
-                // partido entre dos paginas se escribiria a medias y el proceso
-                // arrancaria con una direccion mitad buena mitad cero. No puede
-                // pasar --los punteros van alineados a 8 y la pagina es multiplo
-                // de 8-- pero se comprueba en vez de confiarlo.
-                if donde_va < pagina_va || donde_va + 8 > pagina_va + mm::PAGE {
-                    if donde_va >= pagina_va && donde_va < pagina_va + mm::PAGE {
-                        log("[proc] FATAL: relocation partida entre dos paginas\n");
-                crate::ring0::cabina::fault("proc", "relocation PARTIDA entre dos paginas", donde_va);
-                        return None;
-                    }
+                // No cae en esta pagina: no es cosa de esta vuelta.
+                if donde_va < pagina_va || donde_va >= pagina_va + mm::PAGE {
                     continue;
                 }
                 let valor = (base_destino as i64).wrapping_add(rel.destino_off) as u64;
                 let dentro = (donde_va - pagina_va) as usize;
+                let caben = (mm::PAGE as usize) - dentro;
                 unsafe {
                     let dst = (mm::phys_to_virt(frame) as *mut u8).add(dentro);
-                    core::ptr::copy_nonoverlapping(valor.to_le_bytes().as_ptr(), dst, 8);
+                    core::ptr::copy_nonoverlapping(
+                        valor.to_le_bytes().as_ptr(),
+                        dst,
+                        caben.min(8),
+                    );
+                }
+                // ** UN PUNTERO PARTIDO ENTRE DOS PAGINAS: SE ESCRIBE EN DOS
+                // TROZOS, y esto es un arreglo que trajo el metal.
+                //
+                // === Lo que decia este sitio, y por que era falso ===
+                //
+                // Aqui habia un rechazo, con este motivo escrito:
+                //
+                // > *"No puede pasar --los punteros van alineados a 8 y la
+                // > pagina es multiplo de 8-- pero se comprueba en vez de
+                // > confiarlo."*
+                //
+                // La comprobacion estaba bien puesta. **La suposicion no.** El
+                // 2026-08-11, DOOM en el Ryzen:
+                //
+                // ```text
+                //    FALLO proc: relocation PARTIDA entre dos paginas =1074388988
+                // ```
+                //
+                // `1074388988` es `0x4009DFFC`: offset **4092** dentro de su
+                // pagina. Ocho bytes desde ahi se salen por cuatro. Y no esta
+                // alineado a 8 porque **nadie lo garantizo nunca**: el codegen
+                // coloca los punteros donde caen en su seccion, y con 1.285
+                // relocations repartidas por 800 KB, que ninguna caiga en los
+                // ultimos siete bytes de una pagina es una loteria que DOOM
+                // perdio.
+                //
+                // > **Un "no puede pasar" con una razon al lado es una hipotesis.
+                // > Esta aguanto hasta el primer programa grande.**
+                //
+                // === Por que basta con UNA ranura ===
+                //
+                // Dos relocations no pueden partir la misma frontera: se
+                // solaparian, y eso ya seria un fichero corrupto. Asi que como
+                // mucho hay una pendiente por pagina, y llevarla es un `Option`.
+                //
+                // Las paginas se recorren **en orden** (`for p in 0..pages`), asi
+                // que la siguiente vuelta escribe la cola en el marco nuevo antes
+                // de tocar nada mas.
+                if caben < 8 {
+                    cola = Some((valor, caben));
                 }
                 aplicadas += 1;
             }
             if vmm::map_page(aspace, pagina_va, frame, true, writable).is_err() {
                 log("[proc] FATAL: section map failed\n");
-                crate::ring0::cabina::fault("proc", "no se pudo mapear una pagina de seccion", pagina_va);
+                crate::ring0::cabina::fault(
+                    "proc",
+                    "no se pudo mapear una pagina de seccion",
+                    pagina_va,
+                );
                 return None;
             }
+        }
+        // ** Y SI LA COLA SOBREVIVE A LA SECCION, eso SI es un fichero malo.
+        //
+        // Significa que una relocation empieza dentro de la ultima pagina y
+        // acaba fuera de la seccion. No hay marco siguiente donde escribirla, y
+        // sobre todo: apunta a memoria que no es suya. Se rechaza con su nombre
+        // en vez de escribir los bytes que quepan y dejar medio puntero puesto.
+        if cola.is_some() {
+            crate::ring0::cabina::fault(
+                "proc",
+                "una relocation se sale por el FINAL de su seccion",
+                va_start + pages * mm::PAGE,
+            );
+            return None;
         }
         // ** Y SE CIERRA, con la seccion entera ya en la memoria del proceso.
         //
