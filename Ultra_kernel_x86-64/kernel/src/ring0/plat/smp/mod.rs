@@ -367,6 +367,54 @@ pub fn estado_de(id: u32) -> Estado {
     }
 }
 
+/// **CORE o THREAD: es un nucleo fisico o el hermano SMT de otro?**
+///
+/// En ingles a peticion del dueno, y aqui las dos palabras hacen falta juntas:
+/// `12 hilos` no dice si son doce nucleos o seis con SMT, y **la diferencia
+/// decide el reparto** -- una faena de calculo denso quiere seis obreros, no
+/// doce (ver `docs/AXION_MAESTRO.md`, apartado 3).
+///
+/// == De donde sale, y que se esta suponiendo ==
+///
+/// Del PERFIL, no de una tabla: si `hilos == nucleos * 2`, SMT esta encendido y
+/// **el bit bajo del APIC ID separa a los dos hermanos** -- es como los numera
+/// x86 cuando los IDs son contiguos, que es el caso de este Ryzen y de
+/// cualquier maquina de un solo CCD.
+///
+/// [!] Y por eso `NO_SE` existe. Con IDs dispersos --x2APIC en una placa
+/// grande-- el bit bajo deja de significar eso, y **contestar `CORE` a un
+/// hermano SMT seria peor que no contestar**: el reparto creeria tener el doble
+/// de unidades de ejecucion de las que hay. Lo correcto seria leer
+/// `CPUID.8000001E`, y hasta que exista una maquina donde probarlo, esto se
+/// calla en vez de adivinar.
+pub fn tipo_de(id: u32) -> &'static str {
+    let Some(t) = (crate::ring0::cpu_vendor::profile::active().nucleos)() else {
+        return "?";
+    };
+    let (nucleos, hilos) = (t.nucleos as u32, t.hilos as u32);
+    if nucleos == 0 || hilos == 0 {
+        return "?";
+    }
+    // Sin SMT no hay hermanos: todos son nucleos.
+    if hilos == nucleos {
+        return "CORE";
+    }
+    if hilos != nucleos * 2 {
+        // Ni uno ni dos hilos por nucleo: no se sabe repartirlos por el ID.
+        return "?";
+    }
+    // El censo solo cubre 32; mas alla el propio ID ya no es de fiar aqui
+    // tampoco. Ver `estado_de`.
+    if id >= 32 {
+        return "?";
+    }
+    if id & 1 == 0 {
+        "CORE"
+    } else {
+        "THREAD"
+    }
+}
+
 /// **Cuantos nucleos estan girando en vacio ahora mismo.**
 ///
 /// Es el numero del ahorro, y hoy es incomodo a proposito: un obrero en espera

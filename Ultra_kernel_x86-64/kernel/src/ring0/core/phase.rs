@@ -1413,16 +1413,43 @@ fn shell_smp_tabla() {
         None => smp::alive().0 + 1,
     };
     let tope = if hilos > 32 { 32 } else { hilos };
+    // ** CORE o THREAD, en ingles y pegado al numero.
+    //
+    // `12 hilos` no dice si son doce nucleos o seis con SMT, y esa diferencia
+    // **decide el reparto**: una faena de calculo denso quiere seis obreros, no
+    // doce. Tenerlo en la misma fila que el estado evita cruzar dos pantallas
+    // para contestar "cuantos de estos son de verdad".
+    let mut cores = 0u32;
+    let mut threads = 0u32;
     for id in 0..tope {
         let e = smp::estado_de(id);
-        row("nucleo", |l| {
+        let t = smp::tipo_de(id);
+        match t {
+            "CORE" => cores += 1,
+            "THREAD" => threads += 1,
+            _ => {}
+        }
+        row("cpu", |l| {
             l.dec(id as u64);
             l.txt("  ");
+            l.txt(t);
+            // `THREAD` es dos letras mas largo que `CORE`: se rellena para que
+            // la columna del estado quede recta y se lea en vertical.
+            if t == "CORE" { l.txt("    "); } else if t == "?" { l.txt("       "); } else { l.txt("  "); }
             l.txt(e.nombre());
             l.txt("   ");
             l.txt(e.motivo());
         });
     }
+    row("reparto", |l| {
+        l.dec(cores as u64);
+        l.txt(" CORE + ");
+        l.dec(threads as u64);
+        l.txt(" THREAD. Calculo denso: pide ");
+        l.dec(cores as u64);
+        l.txt(". Si ESPERA memoria: los ");
+        l.dec((cores + threads) as u64);
+    });
     let girando = smp::girando();
     row("coste", |l| {
         l.dec(girando as u64);

@@ -824,9 +824,36 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                         Some(t) => (t.hilos as u32).min(32),
                         None => alive + 1,
                     };
+                    // ** CORE o THREAD en el propio mensaje, y en ingles.
+                    //
+                    // Lo pidio el dueno para la vista y para los FILTROS, y esa
+                    // segunda mitad es la que manda: CABINA filtra por texto de
+                    // modulo y por gravedad, asi que meter la palabra **dentro
+                    // del mensaje** es lo que permite leer de un vistazo cuantos
+                    // de los que estan en pie son nucleos de verdad.
+                    //
+                    // Y hace falta: `12 hilos` no dice si son doce nucleos o
+                    // seis con SMT, y de eso depende cuantos obreros pedir --
+                    // calculo denso quiere seis, no doce.
                     for id in 0..hilos {
                         let e = smp::estado_de(id);
-                        crate::ring0::cabina::info("smp", e.nombre(), id as u64);
+                        let t = smp::tipo_de(id);
+                        // `CORE OBRERO` / `THREAD DORMIDO`: dos palabras, la
+                        // primera dice QUE es y la segunda EN QUE esta.
+                        let msg: &'static str = match (t, e) {
+                            ("CORE", smp::Estado::Maestro) => "CORE   MASTER",
+                            ("CORE", smp::Estado::Obrero) => "CORE   worker",
+                            ("CORE", smp::Estado::Dormido) => "CORE   asleep",
+                            ("CORE", smp::Estado::Ausente) => "CORE   ABSENT",
+                            ("CORE", _) => "CORE   -",
+                            ("THREAD", smp::Estado::Maestro) => "THREAD MASTER",
+                            ("THREAD", smp::Estado::Obrero) => "THREAD worker",
+                            ("THREAD", smp::Estado::Dormido) => "THREAD asleep",
+                            ("THREAD", smp::Estado::Ausente) => "THREAD ABSENT",
+                            ("THREAD", _) => "THREAD -",
+                            _ => "?      -",
+                        };
+                        crate::ring0::cabina::info("smp", msg, id as u64);
                     }
                     // ** Y el coste, que es el numero del ahorro. Hoy es
                     // incomodo a proposito: el que espera GIRA, no duerme.
