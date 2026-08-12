@@ -1,165 +1,259 @@
-# PRUEBA EN METAL -- que mirar en el arranque del 2026-08-10
+# PRUEBA EN METAL -- el arranque del 2026-08-12
 
 Guia para el Ryzen. **No es una lista de deseos: es lo que hay que traer de
 vuelta** para que el siguiente paso se decida con datos y no con teorias.
 
-Han entrado seis commits y **ninguno ha visto un CPU**. Lo que cambia es por donde
-entran los bytes de TODOS los programas del sistema.
+Han entrado **nueve commits y ninguno ha visto un CPU**. Dos de ellos tocan lo
+que se nota en el primer segundo: **el camino de la entrada** y **el del
+pintado**. Por eso el orden de abajo es *si esto falla, para*.
+
+> La guia de la tanda anterior queda en `PRUEBA_EN_METAL_0810.md`.
 
 ---
 
-# PARTE 0 -- Antes de arrancar, desde Windows
+# PARTE 0 -- El comando, y lo que se puede saber sin arrancar
 
-Dos cosas se pueden comprobar **sin reiniciar**, y si fallan no hace falta ir al
-Ryzen.
-
-## 0.1 -- Que el build produjo lo nuevo
-
-Despues de `build.ps1`, cualquier `.bex` de `staging` tiene que cumplir dos cosas
-que antes no cumplia:
-
-```bash
-python -c "import io;b=io.open('Ultra_kernel_x86-64/staging/BMO-DATA/sys/gui.bex','rb').read();n=int.from_bytes(b[40:44],'little');t=int.from_bytes(b[32:40],'little');print('secciones',n);[print(' kind=0x%02X off=%d %s'%(b[t+i*48],int.from_bytes(b[t+i*48+8:t+i*48+16],'little'),'<-- 512 OK' if int.from_bytes(b[t+i*48+8:t+i*48+16],'little')%512==0 else '')) for i in range(n)]"
+```powershell
+Ultra_kernel_x86-64\build.ps1 -Flash -Drive A -Data A
 ```
 
-| que buscar | por que importa |
-|---|---|
-| una seccion `kind=0x15` | los **Requisitos**. Si no esta, el escritor no los emitio |
-| `Code`, `RoData` y `Data` con offset multiplo de **512** | sin eso, el camino rapido del disco no se toma nunca |
+Si el build **para**, mirar en este orden: el guardian de ASCII (hay comentarios
+nuevos en cinco ficheros), el guardian de contrato de syscalls, y el enlazado.
+Ninguno de los tres deberia saltar -- `cargo check` esta limpio en kernel,
+userspace y toolchain.
 
-** Si falta cualquiera de las dos, **para aqui**: el problema es del build, no del
-kernel, y arrancar no va a contestar nada.
+Y **antes de ir al Ryzen**, esto se corre desde Windows:
 
-## 0.2 -- Que el fichero no crecio de mas
+```powershell
+cargo test -p bmo-verify --test ram_del_disco -- --nocapture
+```
 
-`gui.bex` media 308.184 B. Con la alineacion nueva tiene que subir **menos de 1,5
-KB**. Si sube mucho mas, algo se esta alineando que no deberia.
+Imprime la tabla de transporte de todos los `.bex` recien desplegados. Si
+`doom.bex` no sale, el despliegue no lo copio y no hace falta reiniciar nada.
 
 ---
 
-# PARTE 1 -- El arranque, en orden
+# PARTE 1 -- LO QUE SE MIRA PRIMERO, porque para todo lo demas
 
-## 1.1 -- La pregunta grande, y se contesta sola
+## 1.1 -- Arranca?
 
-> **Sale el escritorio?**
+Lo de siempre: escritorio pintado. Si **no** arranca, el sospechoso numero uno es
+el corte de `dev/usb.rs` en cuatro modulos, o el hilo del bus:
 
-Si sale, `gui.bex` cargo por el camino nuevo y el bloqueo del 08-10 ya no esta.
-Si no sale, sigue el resto de la guia: **ahora el sistema dice por que**.
+```
+   git revert 61a8fa2f     el corte en modulos
+   git revert 58888f46     el hilo del bus
+```
 
-## 1.2 -- Las tres lineas nuevas de CABINA
+## 1.2 -- El hilo del bus late
 
-Buscar estas, en este orden:
+En **F11**, fila `usb`, campo NUEVO:
 
 ```text
-   proc:   programa admitido SIN MESA =<tid>
-   lanzar: bytes DIRECTOS del disco al marco =<N>
-   proc:   secciones sin hash con el que comparar =<N>
+   bus=turns:overlaps
 ```
 
-| linea | que significa si sale | que significa si NO sale |
-|---|---|---|
-| `admitido SIN MESA` | se tomo el camino sin bufer: la pieza B esta viva | se fue por `EnMemoria`, o sea que `Fuente` no dio rangos |
-| `bytes DIRECTOS ... al marco` | **el numero que mide todo**: tiene que parecerse a lo que ocupan las secciones cargables | el camino rapido no se tomo |
-| `secciones sin hash` | **tiene que valer 0** en un `.bex` del escritor | perfecto: todo cubierto |
+**`turns` tiene que SUBIR, y sobre todo mientras un programa de Ring 3 tiene la
+entrada.** Es el numero que dice que el teclado ya no depende de que alguien
+pregunte.
 
-** El numero de `bytes DIRECTOS` es el que hay que apuntar. Para `gui.bex`, las
-secciones cargables suman unos **308 KB**; si el numero anda por ahi, los bytes
-fueron del disco al marco sin pasar por ningun sitio. Si es mucho menor, algo
-sigue rebotando.
-
-## 1.3 -- Y el disco, que quedo abierto del arranque anterior
+Y en el arranque, una linea nueva:
 
 ```text
-   disk: avisos del disco por interrupcion =<N>
+   usb: el bus tiene hilo propio, tid =3
 ```
 
-La vez pasada salio **sin numero, o sea CERO**: MSI quedo armado y no entregaba
-nada. Si esta vez sube, la interrupcion llega. Si sigue en cero, **no es un
-fallo** --la red de seguridad cubre-- pero entonces esa funcion esta muerta y hay
-que decidir si se arregla o se quita.
+Si sale `NO hubo ranura para el hilo del bus` o `sin aparatos`, **el hilo no
+esta** y el sistema se comporta como antes -- o sea, con el fallo de
+congelacion.
+
+[!] Si mas tarde aparece `FALLO usb: el hilo del bus DEJO DE LATIR`, eso es el
+vigilante nuevo y significa exactamente lo que dice.
+
+## 1.3 -- El parpadeo
+
+**Mover el raton por el escritorio.** No tiene que parpadear.
+
+Y el numero, con la orden `perf`:
+
+```text
+   fotogramas  ...
+   media       ...
+   peor        ...
+   cajas       <- FILA NUEVA
+```
+
+- `cajas 2` o `3` con un `peor` pequeno -> el troceado trabaja.
+- `cajas 1` con un `peor` de ~8 MB -> degenero, y el sospechoso es
+  `COSTE_DE_UNA_CAJA` en `sin_gpu/sucio.rs`, no el volcado.
+
+Vuelta atras: `git revert 758ab20f`.
 
 ---
 
-# PARTE 2 -- Si falla: que mensaje sale, y a donde manda
+# PARTE 2 -- EL TECLADO, que es el fallo que se sufrio
 
-Esto es lo que se compro con el trabajo de hoy. **Cada mensaje apunta a un sitio
-distinto**, y son sitios que no se parecen en nada.
+## 2.1 -- Desenchufar
 
-| mensaje | que paso de verdad | donde mirar |
+Desenchufa el teclado. En F11 tienen que salir **DOS** lineas, no una:
+
+```text
+   AVISO usb: puerto: algo se DESENCHUFO =N
+   AVISO usb:   ...y ERA UN APARATO MIO: lo suelto =N
+```
+
+★ **Sin la segunda, el olvido no ocurrio** y lo de abajo va a fallar.
+
+## 2.2 -- Volver a enchufar
+
+**Tiene que escribir.** Y en F11:
+
+```text
+   INFO usb: puerto: ENCHUFADO y adoptado =N
+```
+
+Si en vez de eso sale `puerto: ENCHUFADO, nada que adoptar` seguido de
+`...y creo tener teclado:raton =0b1_0000_0001`, el olvido fallo: el adoptador
+cree que todavia tiene el teclado.
+
+Vuelta atras: `git revert 11d97e99`.
+
+## 2.3 -- El rescate desde la puerta cruda
+
+**Lanzar DOOM y volver con `Ctrl+Alt+Esc`.** Antes, desde un programa que lee
+teclas crudas, no volvia.
+
+```text
+   AVISO input: entrada RESCATADA por el teclado =PID
+```
+
+★ Esto es lo que de verdad cierra el commit del hilo del bus: **funciona aunque
+el dueno de la entrada este colgado**.
+
+---
+
+# PARTE 3 -- LO QUE SE COBRA DE UNA VEZ
+
+## 3.1 -- Las unidades de CABINA
+
+Ya no hace falta convertir a mano. En F11:
+
+```text
+   red:  MAC                             =2C:F0:5D:D9:3C:E3
+   red:  PHYstatus crudo                 =0b1011
+   red:  enlace ARRIBA, megabits         =100        <- antes salia 64
+   arch: archivo REFLEJADO para leer     =4.0 MiB (4196020)
+   usb:  el bus tiene hilo propio, tid   =3
+```
+
+Si alguna sale en hexadecimal pelado, esa llamada no se migro -- no es un fallo,
+es una que falta.
+
+## 3.2 -- `smp`
+
+```text
+   smp stop      -> "obreros parados" + "[!] seguiran contando como en pie"
+   smp           -> "12 de 12" + "[!] pero estan PARADOS"
+   smp all       -> despierta
+   smp test      -> TIENE QUE VOLVER A ACELERAR
+```
+
+★ Lo ultimo es lo que importa: antes de `11d97e99`, un `smp all` tras un `stop`
+habria dado 12 en pie y **cero obreros**, sin decir por que.
+
+## 3.3 -- La red RECIBE
+
+```text
+   net rx        -> "receptor ARMADO, anillo en la fisica =0x..."
+   (esperar unos segundos)
+   net rx        -> "red: trama de 2CF0..." con tipo 0806 (ARP) u 0800 (IPv4)
+```
+
+[!] **Cero en la primera vuelta es lo esperado**, no un fallo: el anillo se acaba
+de armar y el broadcast llega cada pocos segundos.
+
+Si NUNCA sube: `la NIC no termina su reset` (el BAR o el aparato) o `sin marco
+para el anillo` (memoria). Si sale `trama demasiado corta`, llegan bytes y el
+sospechoso es el descuento del FCS.
+
+Vuelta atras: `git revert abd9cf1c`.
+
+## 3.4 -- El audio dice como quiere las muestras
+
+Con el audifono **enchufado antes de arrancar**:
+
+```text
+   audio
+```
+
+Y en F11, los numeros del paso 0:
+
+```text
+   audio: interfaz AudioStreaming, alt        =1
+   audio: canales                             =2
+   audio: bits por muestra                    =16
+   audio: bytes por trama (wMaxPacketSize)    =192 B
+   audio: frecuencia que acepta               =48000
+   audio: frecuencia elegida                  =48000
+   audio: y una trama suya ocupa              =192 B
+   audio: el endpoint isocrono es el DCI      =2
+```
+
+★★ **Las dos ultimas deciden si el plan de audio es posible**: la trama tiene que
+CABER en el paquete. Si sale `ninguna frecuencia suya cabe en su propio paquete`,
+no hay codigo correcto que lo arregle.
+
+Si no aparece nada: `puertos libres mirados, y ninguno reproduce =N`. Con el
+audifono enchufado y `N > 0`, el aparato esta y **no es UAC1 como se creia** --
+lo cual tambien es una respuesta, y cambia el plan.
+
+---
+
+# PARTE 4 -- DOOM
+
+`run apps/doom.bex`. Lo ultimo que se supo es que **pasa de `M_LoadDefaults` y
+muere despues**. Lo que hace falta es **donde**:
+
+| Sintoma | Sospechoso |
+|---|---|
+| no sale nada | el reflejo de ficheros -- `git revert cf878698` |
+| se para y no sale `W_Init` | el WAD otra vez; mirar `arch` en CABINA |
+| arranca y muere sin pintar | el monton: 12 MiB CONTIGUOS. CABINA dice si el kernel los nego |
+| pinta y no responde | mirar si `bus=turns` sigue subiendo |
+| anda solo y no para | la cola cruda: se perdio un `soltar` |
+
+---
+
+# QUE TRAER DE VUELTA, en orden de utilidad
+
+1. **`A:\datos\salida.txt`** -- se llena solo con lo que se lanza desde
+   `Ejecutar`, y `guarda` vuelca el historial entero. **Vale mas que cualquier
+   foto**: se puede leer, buscar y comparar.
+2. **Foto de F11 (CABINA)**, con el filtro `A` para la ultima accion o sin
+   filtro para el historial.
+3. **Foto de la fila `usb`** completa: ahi van `bus=`, `apk=` y `kev=`.
+4. **La salida de `perf`**, por la fila `cajas`.
+5. **La salida de `audio`**, que es la unica que no tiene precedente.
+
+Y si algo se cuelga antes de poder escribir: **la foto de lo ultimo que quedo en
+pantalla sirve igual**. CABINA se pinta desde el bucle del shell, asi que lo que
+se ve es lo ultimo que el sistema alcanzo a contar.
+
+---
+
+# LOS NUEVE COMMITS, y su vuelta atras
+
+| commit | que toca | si algo falla |
 |---|---|---|
-| `la seccion Code no cuadra con su hash =N` | llego entera y llego MAL | transporte: el dato se corrompio por el camino. `N` = bytes que pasaron |
-| `una seccion se quedo a medias al aterrizar =N` | llegaron `N` de los que hacian falta | lectura corta: cursor, cadena FAT, o el disco parando |
-| `la tabla de relocs se quedo sin leer =N` | idem, pero en la tabla de punteros | lo mismo, y afecta sobre todo a DOOM (30.840 B) |
-| `la tabla de hashes se quedo sin leer =N` | no se pudo traer la firma | el rango de `Signature` no se leyo |
-| `cabecera invalida (magic, version o 0 secciones)` | el PROLOGO --los primeros 2 KB-- vino mal | la primera lectura del fichero. Es lo mas grave: falla lo mas simple |
-| `el prologo traia un BEX valido y la lectura larga NO` | **no deberia salir ya**: ese camino no lee dos veces | si sale, se fue por `EnMemoria` sin querer |
-| `otra version del ABI` / `otra arquitectura` | el `.bex` no es para este sistema | el toolchain, no el kernel |
+| `58888f46` | **el camino de entrada de todo** | teclado mudo |
+| `abd9cf1c` | la NIC (solo con `net rx`) | nada, es opt-in |
+| `adfbcd20` | como se pintan los numeros de CABINA | lineas raras |
+| `11d97e99` | teclado replug + smp | el teclado no vuelve |
+| `61a8fa2f` | **corte de `usb.rs`** (cero logica) | no arranca |
+| `758ab20f` | **el pintado del compositor** | parpadeo o basura |
+| `34ddeb4a` | solo mover un fichero | nada |
+| `8c1f5ab4` | la orden `audio` | nada, es opt-in |
+| `af285731` | solo toolchain | nada en metal |
 
-## 2.1 -- Y la pregunta que hay que contestar sea cual sea el resultado
-
-> **Se arreglo el fallo del 08-10, o simplemente ya no esta en el camino?**
-
-No es lo mismo y conviene saberlo:
-
-- **La mesa ya no existe** por FAT32. Una corrupcion que solo afectara a ese bufer
-  compartido **no puede volver a pasar** -- eso es arreglado por retirada.
-- **`tramo_dma` sigue en el camino.** `disk::read` sigue preguntandole a las tablas
-  de pagina donde vive un buffer. Si el fallo era ese, **sigue ahi**.
-
-Asi que:
-
-| resultado | lo que dice |
-|---|---|
-| arranca todo | el sospechoso era la mesa o como se llenaba |
-| sigue fallando, con mensaje de seccion | el sospechoso es la traduccion o el propio DMA |
-| falla en el prologo | es lo mas basico del disco, y ninguno de los dos |
-
----
-
-# PARTE 3 -- Los dos experimentos
-
-Por este orden, y **solo si el escritorio salio**.
-
-## 3.1 -- `run c/sonda.bex`
-
-La sonda escrita para usar la superficie MAL a proposito, y que **nunca ha
-llegado a correr**. Siete empujones: operaciones que no existen, handles
-inventados, el renglon de ruta inundado, el tope de memoria forzado, tamanos
-imposibles, un prestamo que nadie ofrecio, y reclamar la pantalla dos veces.
-
-- **Lo que se espera:** `agujeros: 0`.
-- **La prueba de fondo no es esa**: es que el programa **llegue a imprimir el
-  recuento**. Si se cuelga en el empujon 3, el empujon 3 es el agujero, y el
-  sintoma es que las lineas del 4 en adelante no salen.
-- Cualquier `[FALLO]` es un agujero de verdad, no una sonda rota.
-
-## 3.2 -- `run apps/doom.bex`
-
-La meta. Y es el caso mas duro que existe hoy:
-
-| | |
-|---|---|
-| **30.840 B de relocations** | primer programa que las usa en serio. Ahora se traen a marcos prestados y se sueltan |
-| **el `.bex` mas grande** | 814.664 B, y su WAD son 4,2 MB **sueltos al lado**, no dentro |
-| **nunca ha corrido** | no se sabe que mas hay roto detras |
-
-Si arranca y pide el WAD, el siguiente muro probable es la memoria: 4,2 MB de
-golpe contra el tope de `MEMORIA_PEDIR`, que hoy **no sabe devolver**.
-
----
-
-# PARTE 4 -- Que traer de vuelta
-
-Con esto se decide el siguiente paso sin adivinar nada:
-
-1. **Foto de CABINA completa** en el momento del fallo (o del arranque bueno).
-2. **El numero de `bytes DIRECTOS del disco al marco`**. Es el que mide si la
-   pieza B funciona.
-3. **`avisos del disco por interrupcion`**: cero o no cero.
-4. **El mensaje exacto** si algo no paso la admision -- la tabla de la Parte 2
-   traduce cada uno a un sitio distinto donde mirar.
-5. Si corrio la sonda: **hasta que numero de empujon llego**.
-
-** Y si no arranca ni el panel: eso tambien es informacion, y de la buena. Seria
-la primera vez que este trabajo rompe algo mas gordo que el cargador, y acota el
-problema a la parte del kernel que corre antes que nada.
+★ Los dos en negrita son los unicos que pueden dejar la maquina inservible. Los
+demas o son opt-in o solo cambian texto.
