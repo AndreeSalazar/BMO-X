@@ -422,6 +422,45 @@ Cada escalon deja el sistema funcionando, que es la regla de la casa.
 | 5 | **Las 32 ranuras**, varias peticiones en vuelo | el 4 | M |
 | 6 | **El manifiesto declara lo que va a pedir** | -- | S |
 | 7 | **Demand paging**: el recurso no se lee, se MAPEA | `file_offset` **congruente** con la VA modulo pagina -- la regla `p_offset == p_vaddr (mod pagesize)` de ELF, **ya escrita** en `bef/writer.rs:46` sin cumplir, a proposito | XL |
+| 8 | ★ **El volcado del compositor: PAGE FLIP en vez de copia** | **el controlador de pantalla**, que es lo que esta aparcado con Vulkan | XL |
+
+## El escalon 8, y por que faltaba de esta tabla (2026-08-12)
+
+**Esta tabla existe para contar las copias, y llevaba una sin contar.**
+
+Cada fotograma, el compositor copia su lienzo al panel. Es la ULTIMA copia del
+sistema y la unica que ocurre **sesenta veces por segundo** en vez de una vez por
+fichero. Y no estaba escrita aqui, asi que no se podia pagar.
+
+El 2026-08-12 se troceo esa copia por regiones sucias (`userland/src/sucio.rs`):
+de 8,3 MB por fotograma a los pixeles que de verdad cambiaron. **Eso es un
+escalon, no el destino** -- y conviene decirlo con la frase que ya esta escrita
+tres parrafos mas abajo en este mismo documento: *optimizar el transporte de unos
+bytes que no deberian existir es el orden equivocado*.
+
+### Lo que seria REFLEJAR aqui
+
+**Page flip**: dos framebuffers y cambiar la direccion que lee el escaner de
+video. Cero copia, cero desgarro, y el coste es escribir un registro.
+
+### Y por que NO se puede hoy, dicho con su nombre
+
+Porque despues de `ExitBootServices` **el GOP ya no existe**: BMO-X tiene la
+direccion del framebuffer que le dio el firmware y ningun modo de decirle a la
+tarjeta que mire a otro sitio. Cambiar la base del escaner son registros del
+controlador de PANTALLA de la GPU -- lo que esta aparcado en
+`platform/drivers/gpu/rdna4/PLAN_VULKAN.md`.
+
+O sea que el escalon 8 **no es trabajo de compositor**: es la primera cosa util y
+pequena que desbloquearia ese driver, y por eso se apunta aqui. Un dia se pagara,
+y ese dia el troceado por regiones deja de hacer falta.
+
+### El kernel, en esto, ya cumple
+
+`KIND_FRAMEBUFFER` contesta cuatro preguntas --base, dimensiones, stride,
+bytes-- y se aparta. **No mira un pixel, no copia un byte**: verifica el trato y
+refleja. La copia que queda es entera de Ring 3, hecha por el compositor sobre su
+propia memoria.
 
 El **0** va primero porque es el unico escalon que **encoge todo lo demas antes
 de optimizarlo**: quita 582 KB del fichero, de la lectura de disco y de las dos
