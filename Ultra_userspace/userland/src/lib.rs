@@ -334,8 +334,9 @@ mod entrada;
 mod memoria;
 mod pantalla;
 mod proceso;
-/// Que trozos de la pantalla cambiaron. Solo la cuenta -- ver su cabecera.
-mod sucio;
+/// [!!] **Lo que existe solo porque no hay driver de pantalla, y se borra entero
+/// el dia que lo haya.** Ver su cabecera: es el escalon 8 de `docs/LA_RAM.md`.
+mod sin_gpu;
 mod sonido;
 mod sys;
 

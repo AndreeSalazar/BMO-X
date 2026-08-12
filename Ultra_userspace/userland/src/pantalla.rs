@@ -73,7 +73,7 @@ pub struct Pantalla {
     /// cambiarlo a `&mut self` obligaria a reescribir cada llamada para ganar
     /// nada: esto es un programa de un solo hilo y `Cell` es exactamente la
     /// herramienta para eso.
-    sucio: core::cell::Cell<crate::sucio::Sucias>,
+    sucio: core::cell::Cell<crate::sin_gpu::sucio::Sucias>,
     /// Lo que ha costado mover pixeles. Ver [`Volcado`]: es el numero que
     /// decide si una GPU compra algo o solo cuesta un ano.
     volcado: core::cell::Cell<Volcado>,
@@ -97,7 +97,7 @@ impl Pantalla {
             stride: (stride >> 32) as u32,
             formato: stride as u32,
             bytes,
-            sucio: core::cell::Cell::new(crate::sucio::Sucias::nueva()),
+            sucio: core::cell::Cell::new(crate::sin_gpu::sucio::Sucias::nueva()),
             volcado: core::cell::Cell::new(Volcado {
                 fotogramas: 0,
                 bytes: 0,
@@ -182,7 +182,11 @@ impl Pantalla {
         if x >= nx1 || y >= ny1 {
             return;
         }
-        // ** VARIAS CAJAS Y NO UNA. Ver `crate::sucio`.
+        // ** VARIAS CAJAS Y NO UNA. Ver `crate::sin_gpu::sucio`.
+        //
+        // [!] Y esa carpeta se llama asi por algo: todo esto **desaparece con el
+        // page flip**. Trocear la copia es trabajo que la CPU hace porque no hay
+        // quien mueva la direccion del escaner; no es como deberia quedarse.
         //
         // Con una sola, dos cambios en esquinas opuestas --el cursor donde
         // estaba y donde esta-- unian a la pantalla ENTERA: 384 pixeles reales
@@ -272,11 +276,19 @@ impl Pantalla {
 
     /// **Copia al panel lo sucio del lienzo**, y deja la caja vacia.
     ///
+    /// [!!] **ESTA FUNCION ENTERA ES PROVISIONAL.** Con un driver de pantalla no
+    /// se copia nada: se cambia la direccion que lee el escaner de video y ya
+    /// esta (page flip). Es el escalon 8 de `docs/LA_RAM.md`, y su bloqueante
+    /// es que tras `ExitBootServices` el GOP no existe.
+    ///
+    /// Mover pixeles con el CPU **es trabajo de la GPU hecho por quien no
+    /// toca**. Funciona, y eso no lo convierte en la forma correcta.
+    ///
     /// Sin doble bufer no hay nada que copiar: lo pintado ya esta en el panel.
     /// Igual se limpia la caja, porque llevarla puesta sin volcar seria mentir
     /// sobre lo que queda pendiente.
     pub fn volcar(&self) {
-        let sucias = self.sucio.replace(crate::sucio::Sucias::nueva());
+        let sucias = self.sucio.replace(crate::sin_gpu::sucio::Sucias::nueva());
         if self.lienzo == self.panel || sucias.vacia() {
             return;
         }
