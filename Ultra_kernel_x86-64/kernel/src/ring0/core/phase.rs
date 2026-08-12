@@ -545,6 +545,32 @@ fn shell_help() {
 ///
 /// La MAC sale con dos puntos, no como un numero: esta linea existe para
 /// compararla a ojo con la que diga cualquier otro sistema.
+/// **`audio`** -- le pregunta al aparato de audio como quiere las muestras.
+///
+/// Paso 0 de `docs/AUDIO_MAESTRO.md`. Es una ORDEN y no un paso del arranque
+/// por lo mismo que `smp` y `net rx`: enumerar un puerto lo RESETEA, y aunque
+/// aqui solo se tocan puertos que `bmo_uhid` no tomo, esa clase de operacion se
+/// dispara a proposito y no por encender la maquina.
+fn shell_audio() {
+    // El envoltorio de CR3: tocar el xHC es MMIO que solo esta mapeado en el
+    // PML4 del kernel, y esto puede venir desde un syscall. Misma razon que en
+    // `dev::usb::pump_bus`.
+    use crate::ring0::mm::vmm;
+    let kpml4 = vmm::kernel_pml4();
+    let previo = vmm::read_cr3();
+    let cambiado = kpml4 != 0 && previo != kpml4;
+    if cambiado { vmm::switch_to(kpml4); }
+    let hubo = unsafe { crate::ring0::dev::usb::audio::censar() };
+    if cambiado { vmm::switch_to(previo); }
+    if hubo {
+        s_log("[audio] aparato hallado -- los numeros estan en CABINA (F11)");
+        s_log("[audio] compara con lo que dice Windows del mismo audifono");
+    } else {
+        s_log("[audio] ningun aparato de reproduccion en los puertos libres");
+        s_log("[audio] si el audifono esta enchufado, F11 dice cuantos se miraron");
+    }
+}
+
 fn shell_red(arg: &[u8]) {
     use crate::ring0::dev::red;
     const H: &[u8; 16] = b"0123456789ABCDEF";
@@ -1030,7 +1056,7 @@ fn shell_estratos() {
 /// mantener a la vez son dos listas que un dia no dicen lo mismo.
 fn orden_parecida(texto: &str) -> Option<&'static str> {
     const ORDENES: &[&str] = &[
-        "help", "ls", "disk", "net", "red", "cabina", "estratos", "cpu", "hist",
+        "help", "ls", "disk", "net", "red", "audio", "sonido", "cabina", "estratos", "cpu", "hist",
         "history", "layout", "cls", "clear", "info", "smp", "tasks", "mem",
         "ktest", "fb", "splash", "bex", "panic", "reboot", "halt",
     ];
@@ -1960,6 +1986,8 @@ fn run_shell(ctx: &BootContext) -> ! {
             shell_ls();
         } else if cmd == b"disk" {
             shell_disk();
+        } else if cmd == b"audio" || cmd == b"sonido" {
+            shell_audio();
         } else if cmd == b"net" || cmd == b"red" {
             shell_red(b"");
         } else if cmd.len() > 4 && (&cmd[..4] == b"net " || &cmd[..4] == b"red ") {
