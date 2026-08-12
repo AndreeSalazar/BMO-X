@@ -255,6 +255,16 @@ pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
 /// trabajar. Sin el, `smp stop` seguido de `smp` contesta `12 de 12` y se lee
 /// como que el stop no hizo nada -- cuando lo que pasa es que estar encendido y
 /// estar trabajando son dos cosas distintas.
+/// **Le pregunta al aparato de audio como quiere las muestras.** `true` si hay
+/// uno. Paso 0 de `docs/AUDIO_MAESTRO.md`.
+///
+/// Los OCHO numeros --canales, bits, frecuencias, wMaxPacketSize...-- van a
+/// CABINA y no aqui: por la puerta de un syscall cabe uno, y partirlos en ocho
+/// llamadas seria inventar un protocolo para un diagnostico.
+pub fn audio_censo() -> bool {
+    invoke(CURRENT_TASK, OP_AUDIO_CENSO, 0, 0, 0).value != 0
+}
+
 pub fn smp_censo(cuantos: u32) -> (u32, u32, bool) {
     let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, cuantos as u64, 0, 0).value;
     (((v >> 32) as u32) & 0x7FFF_FFFF, v as u32, v & (1 << 63) != 0)

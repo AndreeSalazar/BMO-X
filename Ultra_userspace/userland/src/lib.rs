@@ -120,6 +120,9 @@ pub const OP_ES_NODO: u32 = 0x19;
 pub const OP_ES_TEXTO: u32 = 0x1A;
 /// **Despierta los otros nucleos.** Ver [`crate::sys::smp_despertar`].
 pub const OP_SMP_DESPERTAR: u32 = 0x1B;
+/// **El censo de audio**: que el aparato diga como quiere las muestras.
+/// Devuelve 1 si encontro uno; los ocho numeros van a CABINA.
+pub const OP_AUDIO_CENSO: u32 = 0x28;
 /// **Toma lo que otro proceso me ofrecio.** Ver [`crate::sys::tomar_prestado`].
 pub const OP_TOMAR: u32 = 0x1C;
 /// Operacion sobre un bloque PROPIO: ofrecer un trozo a otra tarea.
@@ -158,8 +161,10 @@ pub const INFO_TSC_HZ: u64 = 0x05;
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;
 /// Milivatios del paquete desde la ultima consulta. `0` = no se puede medir.
 pub const INFO_CPU_MW_PAQUETE: u64 = 0x21;
-/// Milivatios de los nucleos solos.
-pub const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
+/// **Milivatios del NUCLEO EN EL QUE SE LEE.** No de todos, y el metal del
+/// 12-08 enseno por que importa: con once nucleos girando al 100%, este numero
+/// BAJO. `CORE_ENERGY_STAT` es por nucleo y solo se lee el del BSP.
+pub const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
 /// **Que sabe medir el perfil de este silicio**, como banderas.
 /// bit 0 = frecuencia efectiva / bit 1 = consumo.
 ///

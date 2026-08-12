@@ -163,7 +163,7 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     // consumen "como si trabajaran": una afirmacion sin numero al lado. Con esta
     // fila, `smp stop` tiene un antes y un despues.
     let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
-    let mwn = bmo::info(bmo::INFO_CPU_MW_NUCLEOS);
+    let mwn = bmo::info(bmo::INFO_CPU_MW_NUCLEO_ACTUAL);
     etiqueta(s, b"gasta");
     if mw == 0 {
         s.con_tinta(TINTA_ECO);
@@ -180,13 +180,13 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
             s.dec(mwn / 1000);
             s.byte(b'.');
             s.dec((mwn % 1000) / 100);
-            s.texto(b" W nucleos");
+            s.texto(b" W ESTE nucleo");
         }
         s.con_tinta(TINTA_ECO);
         // La resta se dice porque no es obvia: lo que va del nucleo al paquete
         // es Infinity Fabric, controlador de memoria y L3 -- y ese consumo NO
         // baja aunque se apaguen nucleos.
-        s.texto(b"   (el resto: fabric + memoria + L3)");
+        s.texto(b"   (el paquete son los 6 + fabric + memoria + L3)");
         s.con_tinta(TINTA_NORMAL);
         s.byte(b'\n');
     }

@@ -167,8 +167,19 @@ pub const INFO_CPU_HZ_REAL: u64 = 0x20;
 /// **Milivatios del PAQUETE desde la ultima consulta.** `0` = no se puede medir.
 /// Medida por diferencia, como [`INFO_CPU_HZ_REAL`].
 pub const INFO_CPU_MW_PAQUETE: u64 = 0x21;
-/// Milivatios de los NUCLEOS solos. Lo que falta hasta el paquete es el resto
-/// del chip: Infinity Fabric, controlador de memoria y L3.
+/// **Milivatios del NUCLEO EN EL QUE SE LEE.** No de todos.
+///
+/// [!] La primera version de esta linea decia "de los nucleos", en plural, y el
+/// metal del 12-08 enseno por que eso es poner un dato que no existe: con once
+/// nucleos GIRANDO al 100%, este numero **bajo** de 11,9 a 9,2 W. No es que
+/// consumieran menos: es que `CORE_ENERGY_STAT` es un contador **por nucleo** y
+/// solo se lee el del BSP. Los otros once no aparecen aqui en absoluto.
+///
+/// Para verlos hace falta que **cada nucleo lea el suyo**, o sea trabajo
+/// repartido -- la seccion 5 de `AXION_MAESTRO.md` antes que esto.
+pub const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
+/// Nombre viejo, que mentia. Se conserva para no romper a quien lo use.
+#[deprecated(note = "es del nucleo en el que se lee, no de todos: usa INFO_CPU_MW_NUCLEO_ACTUAL")]
 pub const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
 /// **Que sabe medir el perfil de este silicio**, como banderas.
 /// bit 0 = frecuencia efectiva / bit 1 = consumo.
