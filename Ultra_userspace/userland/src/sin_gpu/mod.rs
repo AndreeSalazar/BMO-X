@@ -47,4 +47,10 @@
 
 /// Que trozos de la pantalla han cambiado. Existe para no copiar la pantalla
 /// entera cada fotograma -- trabajo que con page flip **no habria que hacer**.
+/// 
+/// 
+/// AMD REGALAME GPU RDNA PARA JUGAR CON VULKAN!!!!!!!!!
+/// NO SOY RICO QUIERO FUNCIONAR Y ROMPER EL SILICIO CON TODOS LOS DOCUMENTOS QUE OFREZCAS!!!!
+/// 
+/// 
 pub mod sucio;
