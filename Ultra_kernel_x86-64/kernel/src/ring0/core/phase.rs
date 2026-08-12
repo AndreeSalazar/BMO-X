@@ -2215,6 +2215,11 @@ pub fn main(ctx: &mut BootContext) {
     // acto donde el kernel despierta hardware -- antes vivia dentro del render y
     // clavaba ~65k lecturas de config PCI en el primer frame del cockpit.
     crate::ring0::cabina::boot_probe();
+    // * Y se le pregunta al CPU si sabe medirse a si mismo. UNA vez: despues
+    // `INFO_CPU_HZ_REAL` solo mira una bandera, porque lo va a pedir un panel
+    // que se repinta y un `cpuid` por fotograma no es un panel, es un impuesto.
+    // Ver `docs/AXION_MAESTRO.md`, seccion 9.
+    crate::ring0::cpu::frecuencia::init();
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::dev::usb::init(ctx);
     // * And HERE the kernel keeps them. Until this commit the bus only advanced

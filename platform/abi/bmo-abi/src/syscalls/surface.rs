@@ -154,6 +154,16 @@ pub const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
 /// Frecuencia del TSC en Hz. Es la que mide el tiempo de verdad en esta
 /// maquina, no un numero nominal de la etiqueta.
 pub const INFO_TSC_HZ: u64 = 0x05;
+/// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
+///
+/// No es [`INFO_TSC_HZ`]: ese es el reloj de referencia, que no cambia nunca.
+/// Este es a que va el nucleo de verdad, que en un Zen 3 se mueve entre 3,7 y
+/// 4,6 GHz segun cuantos trabajen.
+///
+/// ** Es una MEDIDA, no un dato: sale de restar dos lecturas de MPERF/APERF, o
+/// sea que **preguntarlo dos veces seguidas da la velocidad de ese intervalo**.
+/// Un panel que se repinta obtiene la del ultimo refresco, que es lo que quiere.
+pub const INFO_CPU_HZ_REAL: u64 = 0x20;
 /// Hilos logicos y nucleos fisicos que el CPU declara.
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
