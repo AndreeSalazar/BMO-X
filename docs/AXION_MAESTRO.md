@@ -280,6 +280,102 @@ entonces vive aqui, que es donde se decide.
 
 ---
 
+---
+
+# 9. LA TERMINAL DEL CPU -- F7 y F8
+
+> Pedido por el dueno el 2026-08-12: *"me gustaria que el CPU tenga como su
+> terminal que avise... cuantos consumen y la parte de temperatura y en general,
+> lo mismo pasaria con RAM y otros elementos, eso podria usar en F8 y F7... para
+> verificar por que o cuales se consumen en tiempo real"*.
+
+## 9.1 -- La sorpresa: casi todo esto son TRES `rdmsr`
+
+Suena a driver de sensores y no lo es. **Ni uno de los cuatro numeros que
+importan necesita un driver nuevo**: son registros del propio CPU, leidos con la
+instruccion que este kernel ya usa en `cpu_vendor/ryzen_5_5600x/errata.rs`.
+
+| Que | De donde | Cuesta |
+|---|---|---|
+| **Frecuencia efectiva** | `APERF` (0xE8) / `MPERF` (0xE7) | dos `rdmsr` y una division |
+| **Vatios** | RAPL de AMD: `PWR_UNIT` 0xC0010299, `CORE_ENERGY` 0xC001029A, `PKG_ENERGY` 0xC001029B | tres `rdmsr` y una resta |
+| **Temperatura** | SMN, por config PCI indirecta del root complex (offset `0x00059800` en Zen 2/3) | dos escrituras y una lectura de config PCI -- lo que `dev/pci.rs` ya hace |
+| **RAM** | ya esta | `mem` lo dice desde julio |
+
+★ **Y los dos primeros son CONTADORES, no medidas.** Suben solos y no se pueden
+leer "ahora": se leen dos veces y se resta. Eso no es un detalle de
+implementacion, es lo que decide la forma del panel -- **una terminal de consumo
+es una diferencia entre dos instantes**, y por eso vive en un bucle y no en una
+orden.
+
+## 9.2 -- Lo que cada numero contesta, y por que no sirve otro
+
+- **Frecuencia efectiva** = `(APERF/MPERF) x frecuencia base`. **No es la
+  nominal**: dice a que va DE VERDAD el nucleo ahora mismo, con su boost y su
+  bajada por calor. Es el unico numero que distingue *"esta al 100% de
+  ocupacion"* de *"esta al 100% y ademas a 4,6 GHz"*.
+- **Vatios** = energia consumida entre dos lecturas, dividida por el tiempo. Es
+  **la respuesta a la pregunta de la seccion 5**: un obrero que gira consume, uno
+  que duerme no, y hasta ahora eso era una afirmacion sin numero. Con RAPL,
+  `smp stop` deja de ser un acto de fe y pasa a ser un antes y un despues.
+- **Temperatura** dice si el boost va a durar. Una frecuencia alta con 90 grados
+  es una frecuencia que esta a punto de bajar.
+- **Ocupacion por nucleo** -- y este es el unico que **no** sale de un registro:
+  hay que contarlo en el planificador (ticks con tarea / ticks totales, por
+  nucleo). Es el mas util y el mas caro de los cuatro, y conviene no confundirlo
+  con los otros tres.
+
+## 9.3 -- Como se reparte, para no repetir el error de CABINA
+
+CABINA ya es *"lo que el kernel ve"* y esta llena. La terminal del CPU **no es
+otra CABINA**: es una vista de POCOS numeros que cambian rapido, y esa es una
+forma distinta.
+
+```text
+   F11   CABINA      HECHOS puntuales, historicos, con su sitio y su intento
+   F7    CPU         POCOS numeros, refrescados, del instante
+   F8    MEMORIA     idem, para RAM y para el reparto a Ring 3
+```
+
+★ **La regla que los separa**: en CABINA se apunta lo que PASO; en F7/F8 se mira
+lo que ESTA PASANDO. Un evento no se repinta; una medida sin repintar no vale.
+
+Y por eso el kernel **no debe llevar historial de estas medidas**: da el numero
+crudo cuando se lo piden y Ring 3 decide si lo pinta como barra, como grafica o
+como nada. Es el mismo reparto que `TASK_OP_INFO` ya usa -- **el kernel da
+enteros, las unidades y las barras son de Ring 3** -- y ese contrato ya funciona.
+
+## 9.4 -- El orden, y el primero es de 20 lineas
+
+1. **Frecuencia efectiva del BSP.** Dos `rdmsr`, una fila en `INFO`. Contesta
+   *"a que va esta maquina ahora"*, que hoy no se puede saber. **Es el escalon
+   mas barato de todo este documento.**
+2. **Vatios del paquete.** Tres `rdmsr` mas. Y con eso, la seccion 5 deja de ser
+   teoria: se mide `smp stop` con un numero.
+3. **F7, la vista.** Ring 3, con lo que ya existe: `TASK_OP_INFO` y una fila mas
+   en su tabla de campos. Anadir un dato es una fila.
+4. **Temperatura.** Config PCI indirecta. Va la cuarta porque es la unica que
+   depende del modelo de CPU y hay que leerla por PERFIL (seccion 2), no a mano.
+5. **Ocupacion por nucleo.** Toca el planificador, y **va detras de que los APs
+   tengan trabajo**: hoy la ocupacion de once nucleos girando en vacio seria
+   100% y no significaria nada.
+6. **F8, memoria.** La mitad ya esta medida; lo que falta es refrescarla y partir
+   el reparto por dueno.
+
+## 9.5 -- Lo que esta seccion se niega a prometer
+
+- **Cambiar la frecuencia.** Leer es seguro; escribir `P-states` es meterse con
+  el silicio del dueno, y este documento ya dijo en la seccion 4 que el mando es
+  por PERFIL. Primero medir un mes, despues hablar.
+- **Un numero por nucleo sin SMP de verdad.** `APERF`/`MPERF` **se leen en el
+  nucleo que se quiere medir**: para los otros once hace falta que ellos mismos
+  se lean, o sea trabajo repartido, o sea la seccion 5 antes.
+- **Precision de laboratorio.** RAPL de AMD es un ESTIMADOR del propio chip, no
+  un vatimetro. Sirve para comparar dos instantes de la misma maquina, que es
+  justo para lo que se quiere aqui, y no para publicar cifras.
+
+---
+
 # El resumen en una frase
 
 > **El maestro no compite, el obrero no toca el kernel, el que espera duerme --
