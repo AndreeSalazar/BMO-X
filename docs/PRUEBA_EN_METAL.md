@@ -257,3 +257,121 @@ se ve es lo ultimo que el sistema alcanzo a contar.
 
 ★ Los dos en negrita son los unicos que pueden dejar la maquina inservible. Los
 demas o son opt-in o solo cambian texto.
+
+---
+
+# SEGUNDA VUELTA -- 2026-08-12, tarde
+
+El arranque del mediodia ya contesto varias cosas y **esas no se repiten**. Lo
+que sigue son SOLO las preguntas abiertas, mas las cuatro filas nuevas.
+
+## Ya contestado, y no hay que volver a mirarlo
+
+| | |
+|---|---|
+| Arranca, escritorio pintado | OK |
+| El corte de `usb.rs` en cuatro modulos | OK, arranco |
+| Desenchufar suelta el aparato | OK -- salio `...y ERA UN APARATO MIO: lo suelto` |
+| Volver a enchufar lo re-adopta | OK -- salio `puerto: ENCHUFADO y adoptado` |
+| El raton sobrevive a todo | OK |
+| La escritura a disco | OK -- `archivo guardado` |
+| Cerrojos con once nucleos | **ni un choque** |
+
+## 1. EL TECLADO -- una sola linea la contesta entera
+
+Desenchufar y volver a enchufar. Lo que hace falta es la linea NUEVA que sale
+pegada a `ENCHUFADO y adoptado`:
+
+```text
+   usb:   ...y su bomba encolada k:r     =0b1_0000_0001
+```
+
+- El **primer** bit (el alto) es el teclado. `1` = tiene transferencia encolada.
+- Si sale `0`, ademas saldra en ambar:
+  `...pero el TECLADO quedo MUDO: sin transferencia encolada`
+
+★ **Con eso se sabe si el teclado esta enumerado-y-mudo o si el problema esta mas
+abajo.** Son dos sitios distintos del driver y hasta ahora se veian igual.
+
+## 2. LAS CUATRO FILAS NUEVAS DE `info`
+
+```text
+   info
+```
+
+```text
+   mide    frecuencia real + consumo   (lo declara el perfil)
+   tsc     3.70 GHz   (medido)
+   ahora   4.61 GHz   (boost)
+   gasta   88.4 W paquete / 61.2 W nucleos   (el resto: fabric + memoria + L3)
+```
+
+Y **`info` dos veces seguidas**: `ahora` y `gasta` tienen que salir DISTINTOS.
+Son medidas por diferencia -- si salen identicas, no se estan recalculando.
+
+[!] Si `mide` dice `nada: este perfil no declara sensores`, para ahi: el resto de
+las filas no significa nada y el motivo esta en CABINA del arranque.
+
+## 3. LA SECUENCIA QUE CIERRA AXION -- tres lecturas
+
+```text
+   info        <- apunta los vatios
+   smp all
+   info        <- TIENEN QUE SUBIR (once nucleos girando en vacio)
+   smp stop
+   info        <- y BAJAR
+```
+
+★★ Esto convierte la seccion 5 de este documento --*"un obrero que espera GIRA y
+consume como si trabajara"*-- de afirmacion en medida. **Es el numero que decide
+si MWAIT vale la pena o no.**
+
+## 4. `smp test` SIN `stop` delante
+
+La vez anterior el `stop` estaba puesto, y por eso salio `11 entraron, 0 vieron
+la ronda`. La prueba limpia:
+
+```text
+   smp all
+   smp test     <- tiene que ACELERAR
+```
+
+Si con esto tampoco acelera, entonces si hay un bug y los tres testigos dicen en
+que tramo.
+
+## 5. `audio`, y la linea que falta
+
+```text
+   audio
+```
+
+Lo que hace falta es la ultima linea:
+
+```text
+   audio: puertos libres mirados, y ninguno reproduce =N
+```
+
+- **N = 0** -> el fallo es MIO: solo se miran puertos que `uhid` no tomo, y el
+  audifono quedo marcado.
+- **N > 0** -> se miro y el audifono no es UAC1 como se creia. Tambien es una
+  respuesta, y cambia el plan del paso 0.
+
+## 6. DOOM -- una foto vale mas que cualquier texto
+
+`run apps/doom.bex`, y **la foto de como se ve la pantalla rota**. Con eso se
+distingue a ojo si es la transicion al devolver la pantalla o si es de DOOM: el
+troceado por regiones **no toca a DOOM**, que pinta con su propio blit.
+
+---
+
+## Resumen: seis cosas, y dos son una foto
+
+1. `bomba encolada k:r` tras reenchufar el teclado
+2. `info` dos veces
+3. `info` / `smp all` / `info` / `smp stop` / `info`
+4. `smp all` + `smp test` sin stop
+5. la ultima linea de `audio`
+6. la foto de DOOM
+
+Y como siempre: **`A:\datos\salida.txt` vale mas que las fotos** para todo lo
+que sea texto.
