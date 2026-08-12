@@ -73,7 +73,7 @@ pub struct Pantalla {
     /// cambiarlo a `&mut self` obligaria a reescribir cada llamada para ganar
     /// nada: esto es un programa de un solo hilo y `Cell` es exactamente la
     /// herramienta para eso.
-    sucio: core::cell::Cell<(u32, u32, u32, u32)>,
+    sucio: core::cell::Cell<crate::sucio::Sucias>,
     /// Lo que ha costado mover pixeles. Ver [`Volcado`]: es el numero que
     /// decide si una GPU compra algo o solo cuesta un ano.
     volcado: core::cell::Cell<Volcado>,
@@ -97,11 +97,12 @@ impl Pantalla {
             stride: (stride >> 32) as u32,
             formato: stride as u32,
             bytes,
-            sucio: core::cell::Cell::new(EMPTY),
+            sucio: core::cell::Cell::new(crate::sucio::Sucias::nueva()),
             volcado: core::cell::Cell::new(Volcado {
                 fotogramas: 0,
                 bytes: 0,
                 peor: 0,
+                cajas: 0,
                 modo: Volcador::Ninguno,
             }),
         })
@@ -176,17 +177,20 @@ impl Pantalla {
         if ancho == 0 || alto == 0 {
             return;
         }
-        let (x0, y0, x1, y1) = self.sucio.get();
         let nx1 = (x + ancho).min(self.ancho);
         let ny1 = (y + alto).min(self.alto);
         if x >= nx1 || y >= ny1 {
             return;
         }
-        self.sucio.set(if x0 >= x1 {
-            (x, y, nx1, ny1)
-        } else {
-            (x0.min(x), y0.min(y), x1.max(nx1), y1.max(ny1))
-        });
+        // ** VARIAS CAJAS Y NO UNA. Ver `crate::sucio`.
+        //
+        // Con una sola, dos cambios en esquinas opuestas --el cursor donde
+        // estaba y donde esta-- unian a la pantalla ENTERA: 384 pixeles reales
+        // convertidos en 2.073.600 copiados, cada fotograma, a memoria
+        // write-combining. Eso era a la vez la lentitud y el parpadeo.
+        let mut s = self.sucio.get();
+        s.marcar((x, y, nx1, ny1));
+        self.sucio.set(s);
     }
 
     /// Un pixel, sin comprobar nada. Es el camino caliente de un compositor y
@@ -272,11 +276,12 @@ impl Pantalla {
     /// Igual se limpia la caja, porque llevarla puesta sin volcar seria mentir
     /// sobre lo que queda pendiente.
     pub fn volcar(&self) {
-        let (x0, y0, x1, y1) = self.sucio.replace(EMPTY);
-        if self.lienzo == self.panel || x0 >= x1 || y0 >= y1 {
+        let sucias = self.sucio.replace(crate::sucio::Sucias::nueva());
+        if self.lienzo == self.panel || sucias.vacia() {
             return;
         }
         let stride = self.stride as usize;
+        for &(x0, y0, x1, y1) in sucias.cajas() {
         let ancho = (x1 - x0) as usize;
         let mut fila = y0 as usize;
         while fila < y1 as usize {
@@ -307,15 +312,24 @@ impl Pantalla {
             }
             fila += 1;
         }
+        }
 
         // La cuenta, para poder contestar "hace falta una GPU?" con un numero
         // en vez de con una intuicion.
-        let bytes = (ancho as u64) * ((y1 - y0) as u64) * 4;
+        // La cuenta sale de las cajas y no de un acumulador a mano: es el mismo
+        // numero por construccion, y un acumulador que se pueda olvidar en una
+        // rama es una estadistica que miente despacio.
+        let bytes = sucias.pixeles() * 4;
         let v = self.volcado.get();
+        // Las cajas se apuntan solo cuando este fotograma ES el peor: guardar
+        // el maximo de las dos cosas por separado daria una pareja que nunca
+        // ocurrio, y un numero que no paso no explica nada.
+        let peor_ahora = bytes > v.peor;
         self.volcado.set(Volcado {
             fotogramas: v.fotogramas + 1,
             bytes: v.bytes + bytes,
             peor: v.peor.max(bytes),
+            cajas: if peor_ahora { sucias.cajas().len() as u32 } else { v.cajas },
             modo: v.modo,
         });
     }
@@ -394,7 +408,6 @@ impl Pantalla {
 }
 
 /// La caja vacia: `x0 >= x1`, asi que no hay nada que volcar.
-const EMPTY: (u32, u32, u32, u32) = (u32::MAX, u32::MAX, 0, 0);
 
 /// **Como llegan los pixeles del lienzo al panel.**
 ///
@@ -456,6 +469,15 @@ pub struct Volcado {
     /// El fotograma mas caro visto. **El peor caso importa mas que la media**:
     /// un tiron se nota, y una media buena lo esconde.
     pub peor: u64,
+    /// ** CAJAS SUCIAS DEL PEOR FOTOGRAMA, y es el numero que dice si el
+    /// arreglo del 2026-08-12 sirvio de algo.
+    ///
+    /// Con la caja unica de antes esto valdria SIEMPRE 1, y `peor` seria la
+    /// pantalla entera en cuanto dos cosas cambiaran lejos. Si en metal sale
+    /// `cajas 2` o `3` con un `peor` pequeno, el troceado esta trabajando. Si
+    /// sale `cajas 1` con un `peor` de 8 MB, degenero -- y entonces el
+    /// sospechoso es `COSTE_DE_UNA_CAJA`, no el volcado.
+    pub cajas: u32,
     pub modo: Volcador,
 }
 

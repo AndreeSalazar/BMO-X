@@ -334,6 +334,8 @@ mod entrada;
 mod memoria;
 mod pantalla;
 mod proceso;
+/// Que trozos de la pantalla cambiaron. Solo la cuenta -- ver su cabecera.
+mod sucio;
 mod sonido;
 mod sys;
 
