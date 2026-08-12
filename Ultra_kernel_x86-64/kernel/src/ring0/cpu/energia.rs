@@ -31,7 +31,16 @@
 //! diferencia correcta al dar la vuelta; lo que no arregla es dar DOS vueltas
 //! entre lecturas, y por eso el panel tiene que preguntar seguido.
 
-use crate::ring0::cpu_vendor::ryzen_5_5600x::energia as chip;
+use crate::ring0::cpu_vendor::profile;
+
+/// **El lector que el PERFIL declara**, o `None` si este silicio no expone nada.
+///
+/// Este fichero no nombra a ningun fabricante, y ese es el punto: la aritmetica
+/// de restar dos contadores y dividir por el tiempo es la misma en un AMD, un
+/// Intel y un ARM. El dia que haya un segundo perfil, aqui no se toca una linea.
+fn lector() -> Option<fn() -> Option<profile::EnergiaCruda>> {
+    profile::active().energia
+}
 
 /// Se pudo leer alguna vez? Se resuelve en [`init`].
 static mut HAY: bool = false;
@@ -48,7 +57,11 @@ static mut ULTIMO: (u64, u64) = (0, 0);
 /// Una vez, en el arranque. Ver [`crate::ring0::cpu::frecuencia::init`]: mismo
 /// motivo, un panel que se repinta no puede costar una comprobacion cada vez.
 pub fn init() {
-    match chip::leer() {
+    let Some(leer) = lector() else {
+        crate::ring0::cabina::warn("cpu", "el perfil no declara lector de energia", 0);
+        return;
+    };
+    match leer() {
         Some(e) => unsafe {
             HAY = true;
             EXP = e.exp;
@@ -84,7 +97,8 @@ pub fn medir() -> (u64, u64) {
     if !unsafe { HAY } {
         return (0, 0);
     }
-    let Some(e) = chip::leer() else { return (0, 0) };
+    let Some(leer) = lector() else { return (0, 0) };
+    let Some(e) = leer() else { return (0, 0) };
     let ahora = crate::ring0::task::scheduler::rdtsc();
     let (ppkg, pnuc, ptsc, exp) = unsafe { (PREV_PKG, PREV_NUC, PREV_TSC, EXP) };
     unsafe {

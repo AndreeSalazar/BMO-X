@@ -59,6 +59,10 @@ pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
     // -- y `xsave::init` se planta al arrancar si algun dia no cubriera.
     xsave_area: 2440,
     nucleos: nucleos,
+    // El LECTOR de energia de este silicio. Un perfil sin RAPL pondria `None` y
+    // la terminal lo diria con palabras en vez de pintar 0 W -- ver el campo
+    // `energia` de `CpuProfile`, donde esta el porque de que sea `Option`.
+    energia: Some(energia::leer),
 };
 
 /// Sube la topologia del Ryzen al contrato neutral del perfil.

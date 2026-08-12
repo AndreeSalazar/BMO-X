@@ -96,6 +96,58 @@ pub struct CpuProfile {
     /// al silicio**, no se declaran. Es la misma regla que gobierna el area de
     /// XSAVE -- se hardcodean los contratos, se preguntan los hechos.
     pub nucleos: fn() -> Option<Nucleos>,
+
+    // -- ** LO QUE ESTE PERFIL SABE MEDIR DE SI MISMO (2026-08-12) ----------
+    //
+    // === El fallo de capas que esto corrige ===
+    //
+    // La primera version de la terminal del CPU (`ring0/cpu/energia.rs`) hacia
+    // `use crate::ring0::cpu_vendor::ryzen_5_5600x::energia`. O sea que **el
+    // codigo comun llamaba al fabricante por su nombre**: en una maquina con
+    // otro perfil habria seguido leyendo MSR de AMD, y leer un MSR que no
+    // existe es un `#GP` -- un fault de kernel desde un panel que se repinta.
+    //
+    // El dueno lo pidio por su nombre: *"organiza bien Perfil, luego los que
+    // quiere leer, luego el terminal lee lo que el perfil esta reflejando"*.
+    //
+    // Asi que la cadena es esta y **no se puede saltar ningun eslabon**:
+    //
+    // ```text
+    //    PERFIL          declara QUE se puede medir en este silicio
+    //      v
+    //    LECTOR          el modulo del fabricante, que sabe DONDE
+    //      v
+    //    ARITMETICA      `ring0/cpu/*`, que no sabe de fabricantes
+    //      v
+    //    TERMINAL        `INFO` -> Ring 3, que solo pinta
+    // ```
+    //
+    // === Por que `Option` y no un puntero a secas ===
+    //
+    // Porque *"este CPU no lo expone"* es una respuesta legitima y frecuente, y
+    // tiene que poder decirse **sin inventar una funcion que devuelva ceros**.
+    // Un lector falso que contesta 0 W es indistinguible de una maquina que no
+    // gasta -- y eso, encendida, no puede ser verdad.
+    /// Los contadores de energia (RAPL o equivalente). `None` = este silicio no
+    /// los expone, y entonces la terminal lo DICE en vez de pintar cero.
+    pub energia: Option<fn() -> Option<EnergiaCruda>>,
+}
+
+/// **Una lectura cruda de los contadores de energia.**
+///
+/// Vive aqui --con el contrato-- y no en el modulo del fabricante, porque es lo
+/// que la firma del perfil promete. El tipo de un contrato pertenece al
+/// contrato: si viviera en `ryzen_5_5600x`, todo el que quisiera implementar
+/// otro perfil tendria que importar el de AMD para poder no ser AMD.
+#[derive(Clone, Copy)]
+pub struct EnergiaCruda {
+    /// Contador del paquete. **Da la vuelta**: es un contador, no un total.
+    pub paquete: u32,
+    /// Contador del nucleo en el que se leyo.
+    pub nucleo: u32,
+    /// Un incremento vale `1 / 2^exp` julios. **Se lee del silicio**, no se
+    /// declara: un exponente supuesto no da error, da vatios inventados.
+    pub exp: u8,
 }
 
 /// The compiled-in profile. Today: Ryzen 5 5600X. On another bench this

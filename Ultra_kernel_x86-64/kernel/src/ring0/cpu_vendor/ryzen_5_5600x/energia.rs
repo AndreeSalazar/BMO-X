@@ -27,26 +27,16 @@
 
 use core::arch::asm;
 
+// El TIPO viene del contrato, no de aqui. Este fichero es un LECTOR: sabe DONDE
+// estan los numeros en este silicio, y nada mas. Ver `profile::EnergiaCruda`.
+use super::super::profile::EnergiaCruda;
+
 /// `PWR_UNIT`: dice **cuanto vale una unidad** de los otros dos.
 const MSR_PWR_UNIT: u32 = 0xC001_0299;
 /// `CORE_ENERGY_STAT`: energia del nucleo en el que se lee.
 const MSR_CORE_ENERGY: u32 = 0xC001_029A;
 /// `PKG_ENERGY_STAT`: energia del paquete entero.
 const MSR_PKG_ENERGY: u32 = 0xC001_029B;
-
-/// Una lectura cruda de los contadores, tal como los da el chip.
-#[derive(Clone, Copy)]
-pub struct EnergiaCruda {
-    /// Contador del paquete. **32 bits que dan la vuelta**, no un total.
-    pub paquete: u32,
-    /// Contador del nucleo en el que se leyo.
-    pub nucleo: u32,
-    /// Exponente de la unidad de energia: un incremento vale `1 / 2^exp` julios.
-    ///
-    /// En un Vermeer suele ser 16, o sea ~15,3 microjulios. **Se lee, no se
-    /// supone**: es el unico campo de aqui que es un HECHO del silicio.
-    pub exp: u8,
-}
 
 unsafe fn rdmsr(msr: u32) -> u64 {
     let lo: u32;

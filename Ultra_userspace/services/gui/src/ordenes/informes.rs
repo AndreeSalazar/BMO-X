@@ -68,6 +68,37 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     s.dec(bmo::info(bmo::INFO_CPU_HILOS));
     s.texto(b" hilos\n");
 
+    // ** QUE SABE MEDIR ESTE PERFIL, antes de ensenar ninguna medida.
+    //
+    // Va PRIMERO a proposito. Las filas de abajo pueden salir vacias por dos
+    // motivos que se ven igual --el silicio no lo expone, o aun no hay dos
+    // lecturas-- y sin esta linea el que mira no puede distinguirlos.
+    //
+    // Es la cadena que pidio el dueno, leida de arriba abajo: el PERFIL declara
+    // que se puede medir, el lector lo lee, y **la terminal ensena lo que el
+    // perfil esta reflejando** en vez de suponerlo.
+    let sensores = bmo::info(bmo::INFO_CPU_SENSORES);
+    etiqueta(s, b"mide");
+    if sensores == 0 {
+        s.con_tinta(TINTA_ECO);
+        s.texto(b"nada: este perfil no declara sensores");
+        s.con_tinta(TINTA_NORMAL);
+    } else {
+        if sensores & 1 != 0 {
+            s.texto(b"frecuencia real");
+        }
+        if sensores & 3 == 3 {
+            s.texto(b" + ");
+        }
+        if sensores & 2 != 0 {
+            s.texto(b"consumo");
+        }
+        s.con_tinta(TINTA_ECO);
+        s.texto(b"   (lo declara el perfil)");
+        s.con_tinta(TINTA_NORMAL);
+    }
+    s.byte(b'\n');
+
     // Hz -> GHz con dos decimales, con enteros. El TSC es la frecuencia MEDIDA
     // en el arranque, no el numero de la etiqueta de la caja.
     let hz = bmo::info(bmo::INFO_TSC_HZ);
