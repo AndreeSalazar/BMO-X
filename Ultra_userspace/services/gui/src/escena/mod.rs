@@ -7,6 +7,8 @@ use bmo_userland as bmo;
 
 /// **La ventana de CABINA** (F11): lo que el kernel ve, con su gravedad y en
 /// su color. Sustituye a la del klog, que era texto plano sin severidad.
+/// F7 y F8: lo que la maquina esta haciendo AHORA, cada uno en su ventana.
+pub(crate) mod vitales;
 pub(crate) mod cabina;
 pub(crate) mod calc;
 pub(crate) mod conmutador;

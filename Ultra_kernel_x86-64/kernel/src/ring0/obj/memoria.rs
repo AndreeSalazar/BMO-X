@@ -199,6 +199,35 @@ pub fn total_handed_over() -> u64 {
     unsafe { TOTAL }
 }
 
+/// **La ranura `n` de las ocupadas: `(pid, bytes, peticiones)`.**
+///
+/// `None` cuando ya no hay mas. `n` cuenta **solo las ocupadas**, no los huecos:
+/// quien enumera pide 0, 1, 2... y para cuando le contestan `None`, sin tener
+/// que saber que la tabla tiene agujeros dentro.
+///
+/// # Por que hacia falta, y es lo que pidio el dueno
+///
+/// Los datos ya estaban: `handed_over_by(pid)` contesta desde julio. Lo que no
+/// habia era forma de preguntarlos **sin saber el pid de antemano** -- o sea que
+/// se podia contestar *"cuanto come el proceso 4"* y no *"quien esta comiendo"*.
+///
+/// Y esa segunda es la que hace falta para una vista tipo administrador de
+/// tareas: la gracia no es mirar a un sospechoso, es **descubrir cual lo es**.
+///
+/// * Se enumera aqui y no en Ring 3 con una lista de pids porque la tabla es del
+/// kernel y cambia sola: un proceso puede morir entre la pregunta y la
+/// respuesta. Contestando por indice, lo peor que pasa es que una fila salga
+/// vacia un fotograma.
+pub fn ranura(n: usize) -> Option<(u32, u64, usize)> {
+    unsafe {
+        let t = &*core::ptr::addr_of!(CUENTAS);
+        t.iter()
+            .filter(|c| c.pid != 0)
+            .nth(n)
+            .map(|c| (c.pid, c.entregados, c.peticiones))
+    }
+}
+
 /// **Pide `bytes` de memoria.** Devuelve el handle de la capability; la
 /// direccion se pregunta despues con `MEM_OP_BASE`.
 ///

@@ -69,6 +69,29 @@ const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
 /// numero es de verdad cero. Un panel que no distingue "no se" de "cero" hace
 /// que sus dos casos se lean igual, y uno de los dos es una mentira.
 const INFO_CPU_SENSORES: u64 = 0x23;
+
+// -- ** QUIEN ESTA COMIENDO: la vista de administrador de tareas -------------
+//
+// Tres campos y un indice, en vez de una estructura. `arg0` trae el numero de
+// ranura empaquetado con el campo:
+//
+//    campo = INFO_MEM_QUIEN_* | (ranura << 8)
+//
+// Es feo y es a proposito: por la puerta de `INFO` cabe UN numero, y la
+// alternativa --un buffer con un array de structs-- seria inventar un formato
+// nuevo con su version y su alineacion para contestar tres enteros. Cuando haga
+// falta un cuarto campo se anade otra constante, no un formato.
+//
+// [!] Y el indice cuenta SOLO LAS RANURAS OCUPADAS. Quien enumera pide 0, 1,
+// 2... hasta que el pid conteste 0. No tiene que saber que la tabla del kernel
+// tiene agujeros dentro, porque eso es un detalle del kernel y cambia solo.
+/// El pid de la ranura `n`. **`0` = no hay mas**, y es la condicion de parada.
+const INFO_MEM_QUIEN_PID: u64 = 0x24;
+/// Bytes que ese proceso tiene pedidos ahora mismo.
+const INFO_MEM_QUIEN_BYTES: u64 = 0x25;
+/// Cuantas peticiones lleva hechas. Distingue "pidio un bloque grande" de
+/// "esta pidiendo sin parar", que es la diferencia entre un juego y una fuga.
+const INFO_MEM_QUIEN_PETICIONES: u64 = 0x26;
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
 /// * Quien tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
@@ -142,6 +165,24 @@ pub fn campo(n: u64) -> u64 {
         INFO_CPU_HZ_REAL => crate::ring0::cpu::frecuencia::medir(),
         INFO_CPU_MW_PAQUETE => crate::ring0::cpu::energia::medir().0,
         INFO_CPU_MW_NUCLEO_ACTUAL => crate::ring0::cpu::energia::medir().1,
+        // Los tres se atienden juntos porque comparten el desempaquetado del
+        // indice. Separarlos seria repetir el `>> 8` tres veces.
+        c if c & 0xFF == INFO_MEM_QUIEN_PID
+            || c & 0xFF == INFO_MEM_QUIEN_BYTES
+            || c & 0xFF == INFO_MEM_QUIEN_PETICIONES =>
+        {
+            let ranura = (c >> 8) as usize;
+            match crate::ring0::obj::memoria::ranura(ranura) {
+                Some((pid, bytes, peticiones)) => match c & 0xFF {
+                    INFO_MEM_QUIEN_PID => pid as u64,
+                    INFO_MEM_QUIEN_BYTES => bytes,
+                    _ => peticiones as u64,
+                },
+                // Cero en las tres: el pid a cero es la senal de parada y las
+                // otras dos acompanan sin inventar nada.
+                None => 0,
+            }
+        }
         INFO_CPU_SENSORES => {
             let mut b = 0u64;
             if crate::ring0::cpu::frecuencia::disponible() { b |= 1; }
