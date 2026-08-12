@@ -22,6 +22,21 @@
 
 use bmo_abi::bef::validator;
 
+// -- ** RAM_VERIFY: que puede hacer el cargador con este fichero --------------
+//
+// Fichero aparte porque es otra pregunta. `verify()` contesta *"es admisible?"*;
+// esto contesta *"como va a viajar?"*. Comparten el fichero de entrada y nada
+// mas -- y la regla de esta casa es que dos preguntas distintas no viven en el
+// mismo cajon.
+//
+// Idea del dueno el 2026-08-12: que las tablas de `docs/LA_RAM.md` dejen de ser
+// criterio que alguien recuerda y pasen a ser algo que se comprueba sobre el
+// archivo que se va a aplicar.
+
+/// Como puede viajar cada seccion de un BEF. Ver `docs/LA_RAM.md`, PARTE IX.
+pub mod ram;
+
+
 /// Veredicto de la verificacion de un BEF.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verdict {

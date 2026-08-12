@@ -421,8 +421,41 @@ Cada escalon deja el sistema funcionando, que es la regla de la casa.
 | 4 | **E/S asincrona**: que pedir no bloquee | **a medias 2026-08-10** -- el disco tiene DUENO y el driver se deja preguntar; falta que el que pide pueda irse | L |
 | 5 | **Las 32 ranuras**, varias peticiones en vuelo | el 4 | M |
 | 6 | **El manifiesto declara lo que va a pedir** | -- | S |
-| 7 | **Demand paging**: el recurso no se lee, se MAPEA | `file_offset` **congruente** con la VA modulo pagina -- la regla `p_offset == p_vaddr (mod pagesize)` de ELF, **ya escrita** en `bef/writer.rs:46` sin cumplir, a proposito | XL |
+| 7 | **Demand paging**: el recurso no se lee, se MAPEA | ⚠ **DOS bloqueantes, y el primero no estaba escrito** -- ver abajo | XL |
 | 8 | ★ **El volcado del compositor: PAGE FLIP en vez de copia** | **el controlador de pantalla**, que es lo que esta aparcado con Vulkan | XL |
+
+## El escalon 7, RE-MEDIDO el 2026-08-12: eran DOS bloqueantes, no uno
+
+`bmo-verify::ram` (`RAM_VERIFY`) audita cada `.bex` de staging y dice como puede
+viajar cada seccion. La primera corrida, sobre los ficheros reales:
+
+```text
+   fichero            no viaja      mapeable         copia
+   doom.bex             492.880             0       782.070
+   gui.bex                    0             0       307.117
+   TOTAL                494.552             0     1.208.333
+```
+
+**1,2 MB que se leen del disco en cada despliegue, y CERO mapeables.** Hasta aqui
+lo esperado. Lo que no se esperaba es el motivo:
+
+```text
+   virt_addr = 0: la elige el cargador, asi que la congruencia no se sabe todavia
+```
+
+★ **Esta tabla decia que el bloqueante era la congruencia del `file_offset`. Es
+el SEGUNDO.** El primero es que las secciones **no declaran direccion virtual**:
+`virt_addr` vale 0 y el cargador coloca donde puede. Y no se puede ser congruente
+con una direccion que todavia no existe.
+
+O sea que el escalon 7 no es *"alinear el escritor"*: es **decidir primero que
+las secciones tengan direccion propia**, que toca el formato, el escritor Y el
+cargador -- y por eso segui marcado XL. Lo que cambia es que ahora se sabe **por
+donde empieza**, y antes se habria empezado por el sitio equivocado.
+
+[!] Y el otro numero del informe es una buena noticia que tampoco estaba medida:
+**494.552 bytes no viajan ya**, y 492.880 son de DOOM. El escalon 0 no es una
+mejora que se hizo una vez -- es una que se cobra en cada despliegue.
 
 ## El escalon 8, y por que faltaba de esta tabla (2026-08-12)
 
