@@ -130,8 +130,41 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
     // camino lo dice sin volver a despertarlos.
     if cuantos == 0 {
         crate::ring0::core::phase::dashboard_log("[smp] censo pedido, no se desperto a nadie");
+        // ** AND THE CENSUS SAYS IF THEY ARE PARKED, because the count alone
+        // was telling a true fact that answers a different question.
+        //
+        // Reported from metal on 2026-08-12: `smp stop` printed *"obreros
+        // parados"* and the very next `smp` answered *"nucleos en pie: 12 de
+        // 12"*. Both were correct -- `parar()` really does send them into a
+        // permanent `cli; hlt`, and they really are still out of reset -- but
+        // read together they say "stop did nothing", which is false.
+        //
+        // "En pie" counts CPUs that answered the SIPI. That number does not go
+        // down when they stop working, and it should not: coming out of reset
+        // is not the same as doing something. The fix is not a different count,
+        // it is **saying the other half**.
+        if obra::parados() {
+            crate::ring0::cabina::warn(
+                "smp",
+                "los obreros estan PARADOS: en pie no es trabajando",
+                tramp::VIVOS.load(Ordering::SeqCst) as u64,
+            );
+        }
         return (tramp::VIVOS.load(Ordering::SeqCst), esperados);
     }
+
+    // ** WAKING SOMEBODY MEANS WANTING THEM TO WORK.
+    //
+    // `obra::reanudar()` existed and **nobody called it** -- pattern 24, again.
+    // Consequence, and it was not theoretical: after a `smp stop`, `smp all`
+    // would re-send INIT+SIPI, the APs would come back out of reset, report
+    // themselves alive, enter `obrero()` -- and hit `if PARAR` on their first
+    // line, parking forever. The census would have said `12 de 12` with not one
+    // of them able to take work, and nothing would have said why.
+    //
+    // It goes HERE and not in the shell so that any caller gets it: whoever asks
+    // for cores wants cores, and a wake that leaves them parked is not a wake.
+    obra::reanudar();
 
     let pedidos = cuantos.min(esperados);
     tramp::VIVOS.store(0, Ordering::SeqCst);

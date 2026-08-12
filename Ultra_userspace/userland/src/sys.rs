@@ -244,8 +244,20 @@ pub fn autopsia_linea(n: u64, fila: u64, dst: &mut [u8]) -> usize {
 /// cambia el hardware de forma que no se deshace sin reiniciar: se dispara **a
 /// proposito**, no por escribir su nombre.
 pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
+    let (a, e, _) = smp_censo(cuantos);
+    (a, e)
+}
+
+/// Como [`smp_despertar`], **y ademas si los obreros estan PARADOS**.
+///
+/// `(en pie, esperados, parados)`. El tercero es el que faltaba: "en pie" cuenta
+/// nucleos que contestaron al SIPI, y ese numero NO baja cuando dejan de
+/// trabajar. Sin el, `smp stop` seguido de `smp` contesta `12 de 12` y se lee
+/// como que el stop no hizo nada -- cuando lo que pasa es que estar encendido y
+/// estar trabajando son dos cosas distintas.
+pub fn smp_censo(cuantos: u32) -> (u32, u32, bool) {
     let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, cuantos as u64, 0, 0).value;
-    ((v >> 32) as u32, v as u32)
+    (((v >> 32) as u32) & 0x7FFF_FFFF, v as u32, v & (1 << 63) != 0)
 }
 
 /// **Ofrece un trozo de un bloque MIO a otra tarea.** `true` si quedo apuntado.

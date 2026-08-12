@@ -733,22 +733,47 @@ fn bombear_interno() {
                 crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y adoptado", puerto as u64);
                 unsafe { refrescar_presencia() };
             } else {
-                // No es un fallo: puede que ya no faltara nada, que lo
-                // enchufado no sea un HID, o que a ese puerto ya no se le
-                // toque (ver `bmo_uhid::puertos`). Decirlo distingue "no hacia
-                // falta" de "se intento y no salio".
+                // * AND SAYING "nothing to adopt" WAS HIDING THE BUG OF 08-12.
+                //
+                // This line was technically true and told the wrong story. The
+                // owner replugged his keyboard, this printed `nada que adoptar`,
+                // and the truth was *"I still think I have it"* -- because
+                // unplugging freed the port and forgot to forget the device, so
+                // `completo()` kept saying everything was present.
+                //
+                // Now the state is printed next to the verdict, and the two
+                // cases stop looking alike: `k1 m1` here means the adopter
+                // believes it has both, which after a disconnect is a lie that
+                // can be seen. See `bmo_uhid::soltar_puerto`.
+                let (k, m) = unsafe {
+                    let hid = &*core::ptr::addr_of!(HID);
+                    (hid.has_kbd(), hid.has_mouse())
+                };
+                let estado = ((k as u64) << 8) | m as u64;
                 crate::ring0::cabina::info("usb", "puerto: ENCHUFADO, nada que adoptar", puerto as u64);
+                crate::ring0::cabina::bits("usb", "  ...y creo tener teclado:raton", estado);
             }
         } else {
             // * Desenchufar LIBERA el puerto y le devuelve los intentos. Sin
             // esto, enchufar y desenchufar tres veces dejaria un puerto
             // inservible hasta el siguiente reinicio: los intentos son para
             // "este aparato tarda", no para "este puerto esta prohibido".
-            unsafe {
+            //
+            // ** Y DESDE EL 08-12, SUELTA TAMBIEN EL APARATO. La mitad que
+            // faltaba: sin ella el teclado desenchufado seguia contando como
+            // presente y no volvia jamas. Ver `bmo_uhid::soltar_puerto`.
+            let solto = unsafe {
                 let hid = &mut *core::ptr::addr_of_mut!(HID);
-                hid.soltar_puerto(puerto.saturating_sub(1));
-            }
+                hid.soltar_puerto(puerto.saturating_sub(1))
+            };
             crate::ring0::cabina::warn("usb", "puerto: algo se DESENCHUFO", puerto as u64);
+            if solto {
+                // Two different pieces of news, and they used to be one. A
+                // device leaving is what has to be REPAIRED; an empty port
+                // changing state is noise.
+                crate::ring0::cabina::warn("usb", "  ...y ERA UN APARATO MIO: lo suelto", puerto as u64);
+                unsafe { refrescar_presencia() };
+            }
         }
     }
 
