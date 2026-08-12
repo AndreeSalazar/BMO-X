@@ -485,6 +485,32 @@ fn bombear_interno() {
             if adoptado {
                 crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y adoptado", puerto as u64);
                 unsafe { refrescar_presencia() };
+
+                // ** ADOPTADO NO ES LO MISMO QUE VIVO, y el metal del 12-08 lo
+                // enseno: la adopcion salio bien --esta linea de arriba-- y el
+                // teclado seguia sin escribir.
+                //
+                // Entre las dos cosas hay UN paso mas: encolar la transferencia
+                // de interrupcion. `bmo_uhid::arrancar_bombas` ya detecta que no
+                // pudo y lo dice... por `hal().log()`, que va al panel del
+                // arranque -- **tapado por el compositor**. O sea que el unico
+                // testigo de "enumero y quedo mudo" se pintaba donde nadie lo ve.
+                //
+                // Aqui se pregunta el hecho y se apunta en CABINA. Un `k-` es un
+                // teclado enumerado con el endpoint en Running y **sin nadie que
+                // le pida nada**, que es exactamente el sintoma que se sufrio.
+                let (bomba_k, bomba_r, _) = panel::reparto_stats();
+                let bombas = ((bomba_k as u64) << 8) | bomba_r as u64;
+                crate::ring0::cabina::bits("usb", "  ...y su bomba encolada k:r", bombas);
+                if !bomba_k {
+                    // Se dice aparte y como AVISO porque es LA causa de que un
+                    // teclado adoptado no escriba, y merece color propio.
+                    crate::ring0::cabina::warn(
+                        "usb",
+                        "  ...pero el TECLADO quedo MUDO: sin transferencia encolada",
+                        puerto as u64,
+                    );
+                }
             } else {
                 // * AND SAYING "nothing to adopt" WAS HIDING THE BUG OF 08-12.
                 //
