@@ -1897,6 +1897,16 @@ pub extern "C" fn _start() -> ! {
                                     salida.texto(&d[..k]);
                                     salida.texto(b" KiB en un fotograma\n");
                                     salida.texto(b"    total      ");
+                                    // ** Y CUANTAS CAJAS tenia ese peor
+                                    // fotograma. Con la caja unica de antes
+                                    // esto seria SIEMPRE 1 y el `peor` la
+                                    // pantalla entera; si aqui sale 2 o 3 con
+                                    // un peor pequeno, el troceado trabaja.
+                                    salida.texto(b"    cajas      ");
+                                    let k = decimal(v.cajas as u64, &mut d);
+                                    salida.texto(&d[..k]);
+                                    salida.texto(b"
+");
                                     let k = decimal(v.bytes / 1024 / 1024, &mut d);
                                     salida.texto(&d[..k]);
                                     salida.texto(b" MiB movidos desde el arranque\n");
