@@ -111,6 +111,10 @@ pub mod core {
     /// escribe a disco es Ring 3, que esta vivo. Ver la cabecera del modulo.
     pub mod autopsia;
     pub mod phase;
+    /// **Las ordenes del shell de Ring 0**, repartidas por lo que preguntan.
+    /// `phase.rs` llevaba 27 dentro y ocupaban dos tercios del fichero del
+    /// arranque. Ver la cabecera del modulo.
+    pub mod shell;
     /// EL GATO -- el logo, en dos mascaras de 1 bit. Generado por
     /// `docs/arte/gato_a_mascara.py`; hay una copia gemela en el compositor
     /// porque son binarios distintos y cada uno necesita sus bytes dentro.
