@@ -16,9 +16,29 @@
 //! los frontends llaman `verify()` sin acoplarse a la estructura interna de
 //! bmo-abi.
 //!
-//! **Conexion Singularity**: si el BEF pasa, esta probado seguro -> puede
-//! correr como Software Isolated Process (mismo espacio, sin transicion de
-//! anillo). La verificacion --no un IR-- habilita el aislamiento barato.
+//! # [!] LO QUE ESTE GATE PRUEBA, Y LO QUE NO (corregido 2026-08-12)
+//!
+//! La cabecera decia: *"si el BEF pasa, esta probado seguro -> puede correr como
+//! Software Isolated Process"*. **Eso era falso y hay que decirlo**, porque es
+//! justo la clase de frase por la que un dia alguien quita el Ring 3.
+//!
+//! Lo que este gate comprueba es el **ENVASE**: magic, version, tabla de
+//! secciones dentro de rango, relocations que apuntan a sitios que existen, ABI
+//! compatible, y --con la firma-- que los bytes son los que se compilaron.
+//!
+//! Lo que NO comprueba, y no puede: **lo que hacen las instrucciones**. Un
+//! `.bex` lleva codigo x86-64 nativo. Ninguna inspeccion del contenedor
+//! demuestra que ese codigo no vaya a escribir donde no debe -- para eso haria
+//! falta o un lenguaje verificable (el IL tipado de Singularity, el bytecode de
+//! WASM) o aislamiento por software al estilo NaCl. BEF no es ninguno de los
+//! dos, **a proposito**: es codigo nativo desde la primera instruccion.
+//!
+//! > **Quien contiene el comportamiento en BMO-X no es este gate: es el Ring 3 y
+//! > las capabilities.** El hardware. Este gate contiene la FORMA.
+//!
+//! Y las dos cosas juntas siguen valiendo mucho -- que un binario no pueda
+//! salir del toolchain si el kernel lo va a rechazar es una garantia real. Pero
+//! es una garantia de integridad y de contrato, no de seguridad de memoria.
 
 use bmo_abi::bef::validator;
 
