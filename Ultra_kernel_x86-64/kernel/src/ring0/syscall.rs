@@ -865,7 +865,15 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                             girando as u64,
                         );
                     }
-                    BmoStatus::ok_value(((alive as u64) << 32) | esperados as u64)
+                    // ** BIT 63 = LOS OBREROS ESTAN PARADOS.
+                    //
+                    // Cabe de sobra --`alive` no pasa de 32-- y hace falta
+                    // porque el numero solo mentia por omision: `smp stop`
+                    // seguido de `smp` contestaba `12 de 12`, que es cierto y se
+                    // lee como "el stop no hizo nada". Ring 3 pinta la mitad que
+                    // faltaba; el kernel no opina, solo dice el hecho.
+                    let parados = if obra::parados() { 1u64 << 63 } else { 0 };
+                    BmoStatus::ok_value(parados | ((alive as u64) << 32) | esperados as u64)
                 }
             }
         }

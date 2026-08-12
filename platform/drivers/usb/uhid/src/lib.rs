@@ -83,6 +83,41 @@ pub struct UsbHidHal {
     /// uno. Ver [`puertos`]: sin esto, la re-enumeracion reactiva se comia a si
     /// misma reseteando el puerto del teclado que ya estaba funcionando.
     puertos: Puertos,
+
+    // -- ** WHICH PORT EACH DEVICE CAME FROM (2026-08-12) ------------------
+    //
+    // === The bug this fixes, reported from metal ===
+    //
+    // The owner unplugged the keyboard by accident, plugged it back in, and it
+    // never came back. The mouse kept working. Reported as *"reconecte y se
+    // desconecta y no me responde excepto el mouse"*.
+    //
+    // The cause was here, and it failed in complete silence:
+    //
+    //   * `soltar_puerto` released the PORT bookkeeping and nothing else. The
+    //     `teclado` field stayed `Some(...)`, pointing at a device that was
+    //     physically gone.
+    //   * So `completo()` still answered `true` -- keyboard and mouse both
+    //     "present".
+    //   * And `adoptar_puerto` opens with `if self.completo() { return false }`,
+    //     whose comment reads *"if nothing is missing, do not touch the bus"*.
+    //
+    // The replug event arrived, was consumed correctly, and the adopter decided
+    // there was nothing to do -- because as far as it knew, nothing had been
+    // lost. **Unplugging freed the port and forgot to forget the device.**
+    //
+    // === Why the port had to be recorded, and it was not ===
+    //
+    // `Direccion` carries slot and dci -- the identity of the device ON the bus.
+    // It does not carry the port, because after enumeration nothing needed it.
+    // And a disconnect notice arrives as a PORT, so there was no way to answer
+    // *"which of my devices just left?"*. The question could not be asked, so it
+    // was not.
+    //
+    // `None` = that device did not come from a port we tracked (or there is no
+    // such device).
+    puerto_teclado: Option<u8>,
+    puerto_raton: Option<u8>,
 }
 
 impl Default for UsbHidHal {
@@ -99,13 +134,45 @@ impl UsbHidHal {
             inicializado: false,
             huerfanos: 0,
             puertos: Puertos::nuevo(),
+            puerto_teclado: None,
+            puerto_raton: None,
         }
     }
 
-    /// Se desenchufo algo del puerto: queda libre y con los intentos devueltos.
+    /// **Se desenchufo algo del puerto: se suelta el puerto Y SE OLVIDA EL
+    /// APARATO que estaba en el.**
+    ///
     /// Lo llama el kernel al recibir el aviso de desconexion.
-    pub fn soltar_puerto(&mut self, port: u8) {
+    ///
+    /// Olvidar es la mitad que faltaba. Ver los campos `puerto_teclado` /
+    /// `puerto_raton`: sin ella `completo()` seguia diciendo que estaba todo, y
+    /// el que adopta se iba por su primera linea sin tocar el bus. El teclado no
+    /// volvia nunca y **nadie decia por que**.
+    ///
+    /// Devuelve `true` si ademas del puerto se solto un aparato, para que quien
+    /// llama pueda contarlo -- un desenchufe de un puerto vacio y la perdida del
+    /// teclado no son la misma noticia.
+    pub fn soltar_puerto(&mut self, port: u8) -> bool {
         self.puertos.release(port);
+        let mut solto_aparato = false;
+        if self.puerto_teclado == Some(port) {
+            self.teclado = None;
+            self.puerto_teclado = None;
+            solto_aparato = true;
+        }
+        if self.puerto_raton == Some(port) {
+            self.raton = None;
+            self.puerto_raton = None;
+            solto_aparato = true;
+        }
+        solto_aparato
+    }
+
+    /// De que puerto salio cada aparato. `None` = no hay, o no se sabe.
+    /// Para el panel: un teclado presente cuyo puerto es `None` es un teclado
+    /// que **no se podra soltar al desenchufarlo**, y eso hay que poder verlo.
+    pub fn puertos_de_los_aparatos(&self) -> (Option<u8>, Option<u8>) {
+        (self.puerto_teclado, self.puerto_raton)
     }
 
     /// Para el panel: `(puertos tomados, intentos gastados en el ultimo)`.
@@ -293,6 +360,12 @@ impl UsbHidHal {
             let direccion = Direccion::nueva(slot, dci);
             if es_teclado {
                 self.teclado = Some(Teclado::nuevo(direccion, *iface, buf_phys, buf_virt, mps));
+                // Which port it came from, recorded HERE and not deduced later:
+                // a disconnect notice arrives as a PORT, and without this there
+                // is no way to answer "which of my devices just left?". That
+                // missing answer is what kept the keyboard from ever coming back
+                // after a replug.
+                self.puerto_teclado = Some(port);
                 cosecha.teclado = true;
                 h.log("[uhid] teclado listo\n");
             } else {
@@ -323,6 +396,7 @@ impl UsbHidHal {
                     mps,
                     formato,
                 )) {
+                    self.puerto_raton = Some(port);
                     cosecha.raton = true;
                     h.log("[uhid] raton listo\n");
                 }
@@ -523,4 +597,73 @@ impl InputHal for UsbHidHal {
 
     fn pointer_mode(&self) -> PointerMode { PointerMode::Relative }
     fn is_ready(&self) -> bool { self.inicializado }
+}
+
+#[cfg(test)]
+mod tests_replug {
+    use super::*;
+
+    /// A keyboard that exists only as bookkeeping. Nothing dereferences the
+    /// buffer pointer in the paths under test -- these tests are about WHO the
+    /// adopter thinks it has, which is state and not hardware.
+    fn teclado_falso(slot: u8) -> Teclado {
+        Teclado::nuevo(Direccion::nueva(slot, 3), 0, 0x1000, core::ptr::null_mut(), 8)
+    }
+
+    /// ** UNPLUGGING HAS TO FORGET THE DEVICE, NOT JUST FREE THE PORT.
+    ///
+    /// This is the bug the owner hit in metal on 2026-08-12: he unplugged the
+    /// keyboard by accident, plugged it back in, and it never came back while
+    /// the mouse kept working.
+    ///
+    /// The chain was: `soltar_puerto` released the port and left `teclado` as
+    /// `Some(...)` -> `completo()` still answered true -> `adoptar_puerto` opens
+    /// with `if self.completo() { return false }` and never touched the bus.
+    ///
+    /// The replug event arrived and was consumed CORRECTLY. The adopter simply
+    /// decided there was nothing missing, because nobody had told it anything
+    /// was.
+    #[test]
+    fn desenchufar_olvida_el_aparato_y_no_solo_el_puerto() {
+        let mut hal = UsbHidHal::new();
+        hal.teclado = Some(teclado_falso(3));
+        hal.puerto_teclado = Some(2);
+
+        assert!(hal.has_kbd(), "de partida, hay teclado");
+
+        let solto = hal.soltar_puerto(2);
+
+        assert!(solto, "se solto un aparato, no solo un puerto vacio");
+        assert!(!hal.has_kbd(), "y el teclado ya no cuenta como presente");
+        assert_eq!(hal.puertos_de_los_aparatos().0, None, "ni su puerto");
+    }
+
+    /// ** AND IT MUST FORGET ONLY WHAT WAS ON THAT PORT.
+    ///
+    /// The inverse mistake is just as bad and quieter: unplugging the mouse
+    /// would drop the keyboard, and the keyboard would then be re-enumerated on
+    /// a bus that was working. Half of this project's USB history is one device
+    /// being reset because of something that happened to another.
+    #[test]
+    fn desenchufar_un_puerto_no_toca_al_aparato_del_otro() {
+        let mut hal = UsbHidHal::new();
+        hal.teclado = Some(teclado_falso(3));
+        hal.puerto_teclado = Some(2);
+
+        let solto = hal.soltar_puerto(5);
+
+        assert!(!solto, "en el puerto 5 no habia nada mio");
+        assert!(hal.has_kbd(), "y el teclado del puerto 2 sigue estando");
+        assert_eq!(hal.puertos_de_los_aparatos().0, Some(2));
+    }
+
+    /// A port that never gave a device reports nothing when it changes. Said
+    /// explicitly because the return value drives a CABINA line, and a line that
+    /// fires on every empty-port event is a line that stops being read.
+    #[test]
+    fn un_puerto_vacio_que_cambia_no_es_noticia() {
+        let mut hal = UsbHidHal::new();
+        assert!(!hal.soltar_puerto(1));
+        assert!(!hal.soltar_puerto(0));
+    }
 }

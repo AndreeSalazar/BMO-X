@@ -2017,6 +2017,16 @@ pub extern "C" fn _start() -> ! {
                                 if arg == b"parar" || arg == b"para" || arg == b"stop" {
                                     bmo::smp_parar();
                                     salida.texto(b"  obreros parados (vuelven a hlt)\n");
+                                    // ** Y LO QUE VA A PASAR DESPUES, DICHO AQUI.
+                                    //
+                                    // El dueno escribio `smp stop`, luego `smp`,
+                                    // y leyo `12 de 12`. Las dos lineas eran
+                                    // ciertas y juntas decian una mentira. Lo
+                                    // que faltaba no era un numero distinto:
+                                    // era avisar de que ese numero cuenta otra
+                                    // cosa.
+                                    salida.texto(b"  [!] seguiran contando como \"en pie\": encendidos, no trabajando\n");
+                                    salida.texto(b"      `smp all` los vuelve a poner a trabajar\n");
                                     pintar_salida(&p, &caja, &salida);
                                     pintar_estado(&p, &caja, "smp", TEXTO_TENUE);
                                     n = 0;
@@ -2079,7 +2089,7 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 pintar_salida(&p, &caja, &salida);
                                 p.volcar();
-                                let (alive, esperados) = bmo::smp_despertar(cuantos);
+                                let (alive, esperados, parados) = bmo::smp_censo(cuantos);
                                 salida.con_tinta(if alive == esperados {
                                     TINTA_BIEN
                                 } else {
@@ -2094,6 +2104,19 @@ pub extern "C" fn _start() -> ! {
                                 salida.texto(&b[..k]);
                                 salida.texto(b"   (F11 lo cuenta entero)\n");
                                 salida.con_tinta(TINTA_NORMAL);
+                                // ** LA MITAD QUE FALTABA DEL CENSO.
+                                //
+                                // "En pie" cuenta nucleos que contestaron al
+                                // SIPI, y ese numero no baja al pararlos --
+                                // correctamente: salir del reset no es trabajar.
+                                // Pero leido solo, dice que `smp stop` no hizo
+                                // nada. Ahora se dicen las dos cosas.
+                                if parados {
+                                    salida.con_tinta(TINTA_MAL);
+                                    salida.texto(b"  [!] pero estan PARADOS: en pie no es trabajando\n");
+                                    salida.con_tinta(TINTA_NORMAL);
+                                    salida.texto(b"      `smp all` los vuelve a poner a trabajar\n");
+                                }
                                 // La guia va donde se necesita: justo despues
                                 // de censar, que es cuando uno se pregunta
                                 // "y ahora como los enciendo?". Un atajo que
