@@ -92,6 +92,13 @@ pub(crate) enum Orden<'a> {
     /// despierta. Es la unica orden de esta caja que puede tardar casi un
     /// segundo, y por eso el mensaje va ANTES de llamar.
     Smp(&'a [u8]),
+    /// **`audio`** -- le pregunta al aparato de audio como quiere las muestras.
+    ///
+    /// [!] Existia solo en el shell de Ring 0 y el dueno la escribio AQUI, que
+    /// es donde se trabaja todos los dias. Contesto *"no es un comando ni una
+    /// ruta"* y la prueba del paso 0 se quedo sin hacer. **Dos shells con dos
+    /// vocabularios distintos son dos productos.**
+    Audio,
     /// `reboot` -- reinicia la maquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aqui contestaba "no lo
@@ -232,6 +239,7 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         // `smp N` despierta exactamente N. El caso sin argumento es el
         // inofensivo a proposito: ver `sys::smp_despertar`.
         b"smp" | b"nucleos" => Orden::Smp(resto),
+        b"audio" | b"sonido" => Orden::Audio,
         b"help" | b"?" | b"ayuda" => Orden::Ayuda,
         _ if parece_programa(linea) => Orden::Lanzar(linea),
         // Parece un archivo pero no es un programa. Antes esto caia en

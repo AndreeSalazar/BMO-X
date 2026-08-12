@@ -224,6 +224,15 @@ const TASK_OP_ES_NODO: u64 = 0x19;
 const TASK_OP_ES_TEXTO: u64 = 0x1A;
 /// Despertar los otros nucleos. Espejo de `bmo_abi::...::TASK_OP_SMP_DESPERTAR`.
 const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
+/// **El censo de audio, pedido desde Ring 3.**
+///
+/// El 2026-08-12 la orden `audio` se anadio SOLO al shell de Ring 0, y el dueno
+/// la escribio en el compositor -- que tiene su propia lista. Contesto
+/// *"no es un comando ni una ruta"* y la prueba del paso 0 se quedo sin hacer.
+///
+/// Dos shells con dos vocabularios distintos son dos productos, y el que se usa
+/// todos los dias es el de Ring 3.
+const TASK_OP_AUDIO_CENSO: u64 = 0x28;
 /// Tomar lo que otro proceso me haya ofrecido. Espejo de `...::TASK_OP_TOMAR`.
 const TASK_OP_TOMAR: u64 = 0x1C;
 /// **Reclamar el SONIDO.** Devuelve un handle `KIND_AUDIO`: el derecho a hacer
@@ -723,6 +732,12 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // que si queda es CABINA, que ya recibe el relato entero desde dentro.
         // `arg0` = cuantos despertar (0 = solo censar, `u32::MAX` = todos).
         // `arg1` = el modo: 0 despertar - 1 PARAR - 2 la prueba de reparto.
+        // Devuelve 1 si encontro un aparato de reproduccion. Los NUMEROS van a
+        // CABINA: son ocho y por la puerta cabe uno.
+        TASK_OP_AUDIO_CENSO => {
+            let hubo = unsafe { crate::ring0::dev::usb::audio::censar() };
+            BmoStatus::ok_value(hubo as u64)
+        }
         TASK_OP_SMP_DESPERTAR => {
             use crate::ring0::plat::smp::{self, obra};
             let cuantos = if arg0 > u32::MAX as u64 { u32::MAX } else { arg0 as u32 };

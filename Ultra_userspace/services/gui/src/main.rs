@@ -1942,6 +1942,33 @@ pub extern "C" fn _start() -> ! {
                                 pintar_estado(&p, &caja, "listo", TEXTO_TENUE);
                                 n = 0;
                             }
+                            // ** `audio` -- paso 0 de docs/AUDIO_MAESTRO.md.
+                            //
+                            // La orden existia SOLO en el shell de Ring 0 y el
+                            // dueno la escribio aqui, que es donde se trabaja.
+                            // Contesto "no es un comando ni una ruta" y la
+                            // prueba se quedo sin hacer. Dos shells con dos
+                            // vocabularios distintos son dos productos.
+                            Orden::Audio => {
+                                let hubo = bmo::audio_censo();
+                                if hubo {
+                                    salida.con_tinta(TINTA_BIEN);
+                                    salida.texto(b"  aparato de reproduccion HALLADO\n");
+                                    salida.con_tinta(TINTA_NORMAL);
+                                    salida.texto(b"  los ocho numeros estan en F11 (canales, bits, frecuencias)\n");
+                                    salida.texto(b"  comparalos con lo que dice Windows del mismo audifono\n");
+                                } else {
+                                    salida.con_tinta(TINTA_MAL);
+                                    salida.texto(b"  ningun aparato de reproduccion en los puertos libres\n");
+                                    salida.con_tinta(TINTA_NORMAL);
+                                    // La distincion que decide el siguiente paso, y por eso
+                                    // se dice aqui y no solo en CABINA.
+                                    salida.texto(b"  F11 dice CUANTOS puertos se miraron: si es 0, el fallo\n");
+                                    salida.texto(b"  es del censo; si es >0, el aparato no es UAC1\n");
+                                }
+                                pintar_estado(&p, &caja, "audio", TEXTO_TENUE);
+                                n = 0;
+                            }
                             Orden::Ayuda => {
                                 salida.texto(b"  <ruta>       lanza un .bex   (cobol/banco.bex)\n");
                                 salida.texto(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");

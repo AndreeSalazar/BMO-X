@@ -53,9 +53,13 @@ const INFO_CPU_HZ_REAL: u64 = 0x20;
 /// significa *"no se sabe"* y no *"no gasta"* -- que es una frase que no puede
 /// ser verdad con la maquina encendida.
 const INFO_CPU_MW_PAQUETE: u64 = 0x21;
-/// Milivatios de los NUCLEOS. La diferencia con el paquete es todo lo demas del
-/// chip: Infinity Fabric, controlador de memoria, cache L3.
-const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
+/// **Milivatios del NUCLEO EN EL QUE SE LEE.** No de todos.
+///
+/// [!] Decia "de los NUCLEOS" y era poner un dato que no existe. El metal del
+/// 12-08: con once nucleos GIRANDO al 100%, este numero **bajo** de 11,9 a
+/// 9,2 W. No consumian menos -- es que `CORE_ENERGY_STAT` es un contador por
+/// nucleo y solo se lee el del BSP. Los otros once no aparecen.
+const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
 /// **Que sabe medir el PERFIL de este silicio**, como banderas.
 ///
 /// bit 0 = frecuencia efectiva (MPERF/APERF) / bit 1 = consumo (RAPL)
@@ -137,7 +141,7 @@ pub fn campo(n: u64) -> u64 {
         // `rdmsr`, y por eso puede vivir en un camino que se repinta.
         INFO_CPU_HZ_REAL => crate::ring0::cpu::frecuencia::medir(),
         INFO_CPU_MW_PAQUETE => crate::ring0::cpu::energia::medir().0,
-        INFO_CPU_MW_NUCLEOS => crate::ring0::cpu::energia::medir().1,
+        INFO_CPU_MW_NUCLEO_ACTUAL => crate::ring0::cpu::energia::medir().1,
         INFO_CPU_SENSORES => {
             let mut b = 0u64;
             if crate::ring0::cpu::frecuencia::disponible() { b |= 1; }
