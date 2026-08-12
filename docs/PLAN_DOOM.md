@@ -242,10 +242,29 @@ estandar y en variables de entorno, y aqui no hay ni lo uno ni lo otro --
 un camino que DOOM ya tiene y que no obliga a inventarse un sistema de ficheros
 que BMO-X no promete.
 
-⚠ Lo que sigue en pie de la nota vieja: el camino de lectura copia por un bufer
-de rebote del kernel. Con lumps de decenas de KB no deberia dolerse -- **pero se
-mide, no se supone**. Si duele, lo arregla el DMA al bufer del llamante, que es
-el escalon 3 de `docs/LA_RAM.md`.
+### ★★ 3.1 SI hacia falta, y no por el motivo escrito -- 2026-08-11
+
+DOOM no cargaba el WAD entero. **BMO se lo cargaba por el.** `archivo::open`
+pedia los 4.196.020 bytes en marcos CONTIGUOS y los leia de golpe, justo despues
+de que DOOM se llevara sus 12 MiB de zona:
+
+```text
+   M_LoadDefaults: Load system defaults.
+   Unknown configuration variable: 'use_joystick'
+   <- y aqui se acaba. Lo siguiente de `D_DoomMain` es `W_Init: Init WADfiles`
+```
+
+O sea que la casilla 3.1 estaba bien contada por el lado de DOOM --que no lo
+slurpea-- y no se miro el lado de BMO, que si. **[x] Arreglado**: un archivo
+abierto para leer ya no se trae, se **refleja** -- un cursor de FAT32, una
+ventana de 64 KiB para las lecturas de siete bytes, y cada `fread` trayendo su
+rango del disco al bloque del programa. Ver `docs/LA_RAM.md`, seccion del 08-11.
+
+Y la nota vieja de esta fila --*"el camino de lectura copia por un bufer de
+rebote del kernel... si duele, lo arregla el DMA al bufer del llamante"*-- queda
+cerrada de paso: `ARCH_OP_LEER_EN` escribe por el espejo fisico del bloque, asi
+que el HBA deja los sectores enteros **dentro de la zona de DOOM**. Lo que se
+mide sigue siendo `disk::cuentas_dma()`, y ahora ademas `archivo::cuentas()`.
 
 ---
 
@@ -365,6 +384,7 @@ contar (fase 1.10).
 |---|---|
 | `DOOM: no hay pantalla` | se lanzo desde el escritorio con otra ventana delante |
 | `W_AddFile: doom1.wad no encontrado` | la ruta del WAD, o FAT32 no monta |
+| Se para tras `M_LoadDefaults` y **no sale `W_Init`** | el WAD. Era `archivo::open` tragandoselo entero (arreglado el 08-11); si vuelve, mirar `arch` en CABINA |
 | Arranca y muere sin pintar | el monton: 12 MiB CONTIGUOS en fisico. CABINA dice si el kernel los nego |
 | Pinta y no responde | `DOOM: sin teclado` en la consola lo dice antes |
 | Anda solo y no para | la cola cruda no llega: el `soltar` se perdio |

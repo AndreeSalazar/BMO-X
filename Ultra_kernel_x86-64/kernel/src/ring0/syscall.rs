@@ -1169,10 +1169,36 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {
                     return BmoStatus::err(1);
                 }
+                // ** Y AQUI SE ESCRIBE POR EL ESPEJO DEL KERNEL, NO POR LA VA
+                // DEL PROCESO.
+                //
+                // Son **la misma memoria**: el bloque se entrego con marcos que
+                // el kernel ve tambien por el physmap, y escribir en cualquiera
+                // de las dos direcciones escribe en los mismos bytes. La
+                // diferencia esta en lo que puede hacer el disco con cada una:
+                //
+                // | destino | lo que puede hacer el HBA |
+                // |---|---|
+                // | la VA de Ring 3 | nada: no sabe traducir. Rebota y se copia |
+                // | el espejo fisico | **escribir dentro del bloque, directo** |
+                //
+                // `dev/disk.rs` reconoce el physmap por una RESTA --no preguntando
+                // a las tablas de pagina-- asi que un destino de esa ventana se
+                // convierte solo en el camino sin rebote. Un lump de DOOM va del
+                // plato a su zona de memoria sin pasar por ningun sitio.
+                //
+                // Si el rango no cae dentro de un bloque conocido, `fisica_de`
+                // dice que no y se usa la VA de siempre: correcto y mas lento,
+                // que es el orden correcto de las dos cosas.
+                let destino = match crate::ring0::obj::memoria::fisica_de(pid, base + desde, cuantos)
+                {
+                    Some(f) => crate::ring0::mm::phys_to_virt(f),
+                    None => base + desde,
+                };
                 let n = unsafe {
                     crate::ring0::obj::archivo::read_into(
                         resolved.object,
-                        (base + desde) as *mut u8,
+                        destino as *mut u8,
                         cuantos as usize,
                     )
                 };
