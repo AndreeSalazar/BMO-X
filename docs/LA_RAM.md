@@ -831,6 +831,130 @@ hoy lleva seccion `Signature` y el cargador no la busca. Es cableado, no diseno.
 
 ---
 
+# PARTE VIII -- PASAR DATOS MOVIENDO TABLAS, NO BYTES
+
+> Pregunta del dueno, 2026-08-12: *"el truco es mejor que la RAM escriba tablas
+> para eso, no? las TABLAS temporales para poder pasar los datos, y si hay algo
+> que se necesita copiar crea uno para otro y ya, pero si es lo mismo... eso
+> puede hacer con MAS ESTEROIDES?"*
+
+Si. Y tiene nombre, y **la primera version ya esta construida en esta casa**: el
+prestamo (`MEM_OP_OFRECER`) es exactamente eso -- una entrada de tabla temporal
+que deja a dos procesos mirando los mismos bytes.
+
+## 1. La idea, dicha entera
+
+El CPU no toca la RAM: toca **direcciones**, y una tabla las traduce a sitios
+fisicos. Asi que hay dos formas de que otro reciba un dato:
+
+```text
+   COPIAR    mover N bytes de un sitio fisico a otro     coste = N
+   MAPEAR    escribir una entrada de tabla que apunte    coste = una entrada
+             al sitio fisico que ya existe                      + lo de abajo
+```
+
+La segunda no mueve el dato **porque el dato no tiene por que moverse**: lo que
+cambia es quien puede nombrarlo.
+
+## 2. Los tres grados, de menos a mas esteroides
+
+| | Que hace | Quien lo tiene |
+|---|---|---|
+| **Prestar** | los dos apuntan al mismo sitio | ya HECHO -- `MEM_OP_OFRECER` |
+| **Regalar** | el que da PIERDE su entrada, el que recibe la gana | -- |
+| **Aplazar** (copy-on-write) | los dos comparten hasta que alguien escribe | ESTRATOS lo hace en disco |
+
+★ **El grado 2 es el que de verdad "pasa" un dato**, y es mas limpio que
+prestar: si el que da pierde el mapeo, no hay dos duenos, no hay que decidir
+quien manda y no hay ilusion que estropear. Es `move` en vez de `&`, pero de
+paginas.
+
+★★ Y el grado 3 es la respuesta exacta a *"si hay algo que se necesita copiar,
+crea uno para otro"*: **la copia no se evita, se APLAZA** hasta que alguien
+estropea la ilusion escribiendo. Como casi nadie escribe, casi nunca se paga.
+
+## 3. EL NUMERO INCOMODO, y hay que decirlo antes de construir nada
+
+**Mapear no es gratis, y para poco dato es MAS CARO que copiar.**
+
+Escribir la entrada de tabla es barato. Lo que cuesta es lo que viene detras:
+
+1. **Invalidar el TLB.** La traduccion vieja esta cacheada dentro del CPU y hay
+   que tirarla (`invlpg`), o el proceso sigue viendo lo de antes.
+2. **Y con SMP, tirarsela a TODOS.** Cada nucleo tiene su TLB. Cambiar un mapeo
+   compartido obliga a mandar una interrupcion a los demas y **esperar a que
+   contesten** -- el *TLB shootdown*. Con doce nucleos, doce.
+3. **La cache se enfria.** Una copia deja el dato en la cache del que copio; un
+   mapeo entrega bytes que estan en RAM y nadie ha tocado. El que recibe paga
+   fallos de cache que el que copia ya habia pagado.
+
+De ahi la consecuencia que ordena todo lo demas:
+
+> **Hay un UMBRAL. Por debajo, copiar gana. Por encima, mapear gana. Y el umbral
+> es mas grande de lo que la intuicion dice.**
+
+Ordenes de magnitud, para tener con que empezar -- **y hay que MEDIRLOS en el
+Ryzen, no creerselos**:
+
+```text
+   copiar 4 KiB          cientos de nanosegundos
+   remapear 1 pagina     microsegundos, y sube con cada nucleo del shootdown
+```
+
+O sea que **remapear UNA pagina suelta pierde contra copiarla**. Mapear gana
+cuando el bulto es grande, no cuando es pequeno.
+
+### Lo que eso decide, ya, en dos casos concretos de BMO-X
+
+- **El audio: se COPIA, y esta bien.** Una trama son **192 bytes**. Remapear 4
+  KiB de tabla para mover 192 bytes es absurdo por veinte veces. Lo que evita
+  las mil copias por segundo **no es mapear cada trama: es mapear UNA VEZ un
+  anillo grande** y que las dos partes escriban y lean dentro. Que es justo lo
+  que dice el paso 4 de `AUDIO_MAESTRO.md`.
+- **El framebuffer: no se puede, y no por el coste.** Ahi el que lee es el
+  escaner de video, y **la direccion que lee no la manda la MMU**: la manda un
+  registro de la GPU. Ninguna tabla lo alcanza. Ver el escalon 8.
+
+## 4. El limite fisico que no se negocia: 4096
+
+Una tabla mapea **paginas enteras**. No hay forma de mapear 192 bytes, ni de
+mapear "desde el byte 1500". Asi que:
+
+- **Un dato que empieza a mitad de pagina no se puede pasar mapeando.** Se copia,
+  o se coloca alineado desde el principio.
+- Y por eso el escalon 7 de este documento --demand paging del BEF-- exige que
+  `file_offset` sea **congruente con la VA modulo pagina**. No es un capricho de
+  ELF: es la unica forma de que el fichero se pueda MAPEAR en vez de leer.
+
+> **La alineacion no es limpieza: es lo que decide si un dato se puede pasar sin
+> copiarlo.**
+
+## 5. Y con esteroides de verdad: el mensaje ES una lista de paginas
+
+El final del camino, que es donde llegaron los microkernels que BMO-X mira
+(seL4, L4): **un mensaje no lleva bytes, lleva mapeos**. Mandar 8 MiB es mandar
+una lista de paginas y un permiso; el receptor las tiene sin que nadie las haya
+movido.
+
+Aqui eso son **dos cosas que ya existen a medias**:
+
+- `MEM_OP_OFRECER` ya pasa un trozo de un bloque a otra tarea.
+- El Endpoint RPC ya lleva mensajes.
+
+Lo que falta es que un mensaje pueda **llevar un mapeo dentro** en vez de un
+puntero que el otro no puede seguir. Y ahi el umbral vuelve a mandar: un RPC de
+16 bytes seguira copiando siempre, porque copiarlos cuesta menos que nombrarlos.
+
+## 6. Lo que este documento NO promete de esto
+
+- **Nada de esto antes de SMP resuelto.** El shootdown es la mitad del coste y
+  hoy no se puede ni medir: solo corre el BSP. Construir sobre un coste que no
+  se puede medir es como los `pause` que duraban distinto en cada maquina.
+- **Ni un remapeo sin haber medido el umbral EN ESTA MAQUINA.** Es la regla de
+  siempre: predecir, medir, comparar.
+
+---
+
 ## Fuentes
 
 - Atlas y el origen de la memoria virtual: <https://ethw.org/Milestones:Atlas_Computer_and_the_Invention_of_Virtual_Memory,_1957-1962>
