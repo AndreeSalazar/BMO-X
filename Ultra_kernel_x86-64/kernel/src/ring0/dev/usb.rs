@@ -665,7 +665,7 @@ pub fn start_bus_thread() -> Option<u32> {
     );
     match tid {
         Some(t) => {
-            crate::ring0::cabina::info("usb", "el bus tiene hilo propio, tid", t as u64);
+            crate::ring0::cabina::id("usb", "el bus tiene hilo propio, tid", t as u64);
             Some(t)
         }
         None => {

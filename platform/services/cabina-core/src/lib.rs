@@ -2,6 +2,9 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod event;
+/// Turning an event value back into the fact it already was. Lives here and not
+/// in the renderer because here it can be RUN -- see the module header.
+pub mod legible;
 pub mod telemetry;
 pub mod traits;
 

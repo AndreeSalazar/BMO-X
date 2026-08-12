@@ -560,7 +560,7 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
         OWNER[i] = pid;
         match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ, i as u64) {
             Some(h) => {
-                crate::ring0::cabina::info("arch", "archivo REFLEJADO para leer", mide as u64);
+                crate::ring0::cabina::bytes("arch", "archivo REFLEJADO para leer", mide as u64);
                 Ok(h)
             }
             None => {
@@ -821,13 +821,13 @@ fn release(i: usize) {
         // fichero abierto pasa por el mismo sitio, y ese es justo el caso en el
         // que interesa saber por donde iba.
         if REFLEJO[i] && BYTES_REFLEJADOS > REF_AL_ABRIR[i] {
-            crate::ring0::cabina::info(
+            crate::ring0::cabina::bytes(
                 "arch",
                 "bytes traidos de este archivo",
                 BYTES_REFLEJADOS - REF_AL_ABRIR[i],
             );
             if RETROCESOS > RET_AL_ABRIR[i] {
-                crate::ring0::cabina::info(
+                crate::ring0::cabina::count(
                     "arch",
                     "veces que hubo que volver al principio",
                     RETROCESOS - RET_AL_ABRIR[i],

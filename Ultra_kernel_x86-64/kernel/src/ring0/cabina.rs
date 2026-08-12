@@ -30,6 +30,7 @@
 //! y el buffer de shared-memory para que Ring 3 aporte su parte.
 
 use cabina_core::{TelemetrySnapshot, Event, Severity, Layer, Entity};
+use cabina_core::event::Fmt;
 use crate::ring0::core::splash::splash_dashboard_log_color;
 
 // -- Buffer de EVENTOS: la grabadora -----------------------------------------
@@ -88,6 +89,16 @@ fn irq_restore(flags: u64) {
 /// bytes que la provocaron. **Quitar la pregunta, no mejorarla.**
 #[track_caller]
 pub fn record(sev: Severity, module: &str, msg: &str, value: u64) {
+    record_fmt(sev, module, msg, value, Fmt::Raw);
+}
+
+/// [`record`] saying **how its number is read**. See [`Fmt`].
+///
+/// The old entry point stays exactly as it was and forwards with `Fmt::Raw`, so
+/// none of the two hundred existing call sites has to change to keep working.
+/// What changes is that from here on a call site CAN say what it always knew.
+#[track_caller]
+pub fn record_fmt(sev: Severity, module: &str, msg: &str, value: u64, fmt: Fmt) {
     let sitio = core::panic::Location::caller();
     let flags = irq_save();
     unsafe {
@@ -102,7 +113,8 @@ pub fn record(sev: Severity, module: &str, msg: &str, value: u64) {
 
         let layer = Layer::from_module(module);
         let mut ev = Event::new(sev, layer, Entity::Module, module, 0, msg, value)
-            .en(sitio.file(), sitio.line());
+            .en(sitio.file(), sitio.line())
+            .como(fmt);
         ev.intento = INTENTO_ACTUAL;
         EV_SEQ = EV_SEQ.wrapping_add(1);
         ev.seq = EV_SEQ;
@@ -234,6 +246,63 @@ pub fn fault(module: &str, msg: &str, value: u64) { record(Severity::Fault, modu
 #[track_caller]
 pub fn panic_ev(module: &str, msg: &str, value: u64) { record(Severity::Panic, module, msg, value); }
 
+// -- ** THE SAME VOCABULARY, SAYING WHAT THE NUMBER IS -----------------------
+//
+// One per unit rather than one function taking a `Fmt`, and it is deliberate:
+// `bytes("arch", "el WAD", n)` reads as a sentence at the call site, while
+// `info_fmt("arch", "el WAD", n, Fmt::Bytes)` reads as a call with a flag. The
+// call site is where somebody has to remember to say it, so that is where it has
+// to be cheap.
+//
+// Severity stays Info for all of them: a size is not a warning. When something
+// IS wrong, `warn`/`fault` still take the raw value -- and the day one of those
+// needs a unit too, it gets its own line here and not an extra argument
+// everywhere.
+
+/// A count of things. Decimal.
+#[track_caller]
+pub fn count(module: &str, msg: &str, n: u64) {
+    record_fmt(Severity::Info, module, msg, n, Fmt::Count);
+}
+
+/// A size in bytes. Prints the scale AND the exact number.
+#[track_caller]
+pub fn bytes(module: &str, msg: &str, n: u64) {
+    record_fmt(Severity::Info, module, msg, n, Fmt::Bytes);
+}
+
+/// A memory address. Hex, plus its offset inside the page -- which is the fact
+/// that took a day to see in the split-relocation bug.
+#[track_caller]
+pub fn addr(module: &str, msg: &str, a: u64) {
+    record_fmt(Severity::Info, module, msg, a, Fmt::Addr);
+}
+
+/// Milliseconds.
+#[track_caller]
+pub fn millis(module: &str, msg: &str, ms: u64) {
+    record_fmt(Severity::Info, module, msg, ms, Fmt::Millis);
+}
+
+/// A MAC, packed with byte 0 at the top.
+#[track_caller]
+pub fn mac(module: &str, msg: &str, m: u64) {
+    record_fmt(Severity::Info, module, msg, m, Fmt::Mac);
+}
+
+/// A bitfield. Binary, because which bits are set is the whole point and hex
+/// hides exactly that.
+#[track_caller]
+pub fn bits(module: &str, msg: &str, b: u64) {
+    record_fmt(Severity::Info, module, msg, b, Fmt::Bits);
+}
+
+/// A process or thread id.
+#[track_caller]
+pub fn id(module: &str, msg: &str, n: u64) {
+    record_fmt(Severity::Info, module, msg, n, Fmt::Id);
+}
+
 /// Evento `n` posiciones antes del mas reciente (0 = el ultimo). Para mostrar
 /// el HISTORIAL, no solo la ultima linea.
 fn event_back(n: usize) -> Option<Event> {
@@ -292,7 +361,7 @@ pub fn dump_to_disk() -> usize {
         r.txt(" "); r.pad(ev.severity.name(), 5);
         r.txt(" "); r.txt(ev.module_str()); r.txt(": ");
         r.txt(ev.msg_str());
-        if ev.value != 0 { r.txt(" ="); r.hex_min(ev.value); }
+        if ev.value != 0 { r.txt(" ="); r.value_of(&ev); }
         // ** AQUI EL SITIO VA EN TODOS, y no solo en los FAULT.
         //
         // En pantalla se reserva para lo que duele porque hay 80 columnas que
@@ -480,6 +549,46 @@ fn watch(s: &TelemetrySnapshot, mib_free: u64) {
             W_MEMLOW = true;
             warn("mem", "RAM libre por debajo de 256MiB", mib_free);
         }
+
+        // ** THE BUS THREAD, WATCHED -- and this one CAN be told apart.
+        //
+        // The keyboard watch above cannot distinguish "broken" from "nobody has
+        // typed". This one can, and that difference is what makes it worth
+        // having: the bus thread beats 250 times a second **whether or not
+        // anybody touches anything**. So if its counter is the same as it was
+        // last time this ran, there is no innocent explanation. It died, it never
+        // started, or something is holding the CPU without ever yielding.
+        //
+        // And it matters more than it looks: the day that counter stops, the
+        // keyboard goes back to depending on whoever holds the input asking for
+        // keys -- which is the freeze this whole change exists to remove. Without
+        // this line the system would fall back into the old bug **silently**, and
+        // the symptom would be blamed on the keyboard again.
+        //
+        // De-duplicated by flag: said once, not sixty times a second.
+        static mut W_BUS_PARADO: bool = false;
+        static mut ULTIMA_VUELTA: u64 = 0;
+        static mut VISTO_EN_TICK: u64 = 0;
+        if !W_BUS_PARADO {
+            let (turns, _) = crate::ring0::dev::usb::bus_stats();
+            let ahora = s.cpu.timer_ticks;
+            // Only judged after a real span of ticks, and only once the thread
+            // has been seen alive at least once: a zero at boot is "not started
+            // yet", which is a different sentence and would be a false alarm --
+            // the exact mistake the keyboard watch above already paid for.
+            if turns > 0 && ULTIMA_VUELTA == 0 {
+                ULTIMA_VUELTA = turns;
+                VISTO_EN_TICK = ahora;
+            } else if ULTIMA_VUELTA > 0 && ahora.wrapping_sub(VISTO_EN_TICK) > 0x400 {
+                if turns == ULTIMA_VUELTA {
+                    W_BUS_PARADO = true;
+                    fault("usb", "el hilo del bus DEJO DE LATIR: vuelta", turns);
+                } else {
+                    ULTIMA_VUELTA = turns;
+                    VISTO_EN_TICK = ahora;
+                }
+            }
+        }
     }
 }
 
@@ -523,6 +632,44 @@ impl Buf {
         while t > 0 { t >>= 4; digits += 1; }
         self.hex(v, digits);
     }
+    // -- ** THE TRANSLATION, AND IT LIVES SOMEWHERE IT CAN BE RUN -----------
+    //
+    // The decisions -- how a size reads, where a page boundary matters, the byte
+    // order of a MAC -- are in `cabina_core::legible`, with tests. They are NOT
+    // here, and that is on purpose: this crate cannot be tested (`cargo test`
+    // links `std`, the kernel is `no_std`), so anything living here is verified
+    // by reading it. Formatting is exactly the code that is wrong QUIETLY: it
+    // prints something plausible, and a plausible wrong number gets believed.
+    //
+    // This project has that scar already -- nine floating-point tests in the C
+    // frontend are green and none of them executes.
+    //
+    // What stays here is only what no test can cover: putting bytes on a screen.
+
+    /// The event value, **read the way its emitter said it should be**.
+    ///
+    /// `Fmt::Raw` is the historical behaviour, so every one of the two hundred
+    /// call sites that has not been migrated prints exactly as it did before any
+    /// of this existed.
+    fn value_of(&mut self, ev: &Event) {
+        use cabina_core::legible as leg;
+        // The remaining room of this line, handed to the tested writer. Sharing
+        // the cursor instead of a scratch buffer is what keeps the truncation
+        // rule in ONE place: `Escritor` already drops what does not fit.
+        let mut w = leg::Escritor::new(&mut self.b[self.o..]);
+        match ev.fmt {
+            Fmt::Raw => w.hex_min(ev.value),
+            Fmt::Count | Fmt::Id => w.dec(ev.value),
+            Fmt::Bytes => leg::size(&mut w, ev.value),
+            Fmt::Addr => leg::address(&mut w, ev.value),
+            Fmt::Millis => { w.dec(ev.value); w.txt(" ms"); }
+            Fmt::Mac => leg::mac(&mut w, ev.value),
+            Fmt::Bits => leg::bits(&mut w, ev.value),
+        }
+        let escrito = w.len();
+        self.o += escrito;
+    }
+
     /// Texto a ancho fijo (recorta o rellena) -- columnas estables.
     fn pad(&mut self, s: &str, width: usize) {
         let n = s.len().min(width);
@@ -639,7 +786,13 @@ pub fn render_hud() {
                 // El `value` del evento se guardaba y se TIRABA al pintar. Es
                 // justo el dato duro (direccion MMIO, slot, codigo de estado)
                 // que convierte una frase en una pista.
-                if ev.value != 0 { r.txt(" ="); r.hex_min(ev.value); }
+                //
+                // ** Y desde el 2026-08-12 se pinta CON SU UNIDAD, que el emisor
+                // ya sabia y tiraba en la puerta. `4.0 MiB (4196020)` en vez de
+                // `400DF4`, `100` en vez de `64`, y una direccion con su offset
+                // dentro de la pagina -- que es literalmente el bug de la
+                // relocation partida, dicho por la propia linea.
+                if ev.value != 0 { r.txt(" ="); r.value_of(&ev); }
                 // ** Y DE DONDE SALIO, pero SOLO cuando duele.
                 //
                 // Un `INFO` que sale sesenta veces por segundo no necesita
