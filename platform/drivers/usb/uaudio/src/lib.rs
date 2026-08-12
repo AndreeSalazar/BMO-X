@@ -43,6 +43,21 @@
 
 #![no_std]
 
+// -- ** LOS DOS TRABAJOS, EN DOS FICHEROS (2026-08-12) ------------------------
+//
+// Esto era un solo fichero y hacia dos cosas distintas:
+//
+//   lib.rs   AudioCONTROL   -- volumen y mute. Ordenes SOBRE el aparato
+//   stream   AudioSTREAMING -- el tubo por el que van las muestras
+//
+// Comparten las constantes de la clase y nada mas. La linea 51 de este fichero
+// ya decia *"la interfaz que transporta muestras es AUDIOSTREAMING (0x02) y no
+// se toca aqui"*, y esa frase deja de ser una promesa y pasa a ser una frontera
+// en cuanto hay dos ficheros.
+
+/// El lado que transporta las muestras. Paso 0 de `docs/AUDIO_MAESTRO.md`.
+pub mod stream;
+
 // -- Constantes de la clase (USB Audio 1.0, seccion A) --------------------
 
 /// Clase de interfaz AUDIO.
@@ -52,11 +67,11 @@ pub const CLASS_AUDIO: u8 = 0x01;
 pub const SUBCLASS_AUDIOCONTROL: u8 = 0x01;
 
 /// Tipo de descriptor especifico de clase para una interfaz.
-const DESC_CS_INTERFACE: u8 = 0x24;
+pub(crate) const DESC_CS_INTERFACE: u8 = 0x24;
 /// Subtipo: FEATURE_UNIT, el que lleva volumen y mute.
 const AC_FEATURE_UNIT: u8 = 0x06;
 /// Tipos de descriptor estandar.
-const DESC_INTERFACE: u8 = 0x04;
+pub(crate) const DESC_INTERFACE: u8 = 0x04;
 
 /// `SET_CUR` / `GET_CUR` / `GET_MIN` / `GET_MAX` / `GET_RES`.
 pub const SET_CUR: u8 = 0x01;
