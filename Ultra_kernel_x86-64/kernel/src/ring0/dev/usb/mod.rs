@@ -57,6 +57,9 @@ use crate::ring0::dev::keyboard;
 // separarlos es mover estado compartido y no mover funciones. Se dice en vez de
 // dejarlo a medias.
 
+/// Preguntarle al aparato de audio como quiere las muestras. Paso 0 de
+/// `docs/AUDIO_MAESTRO.md`: no le escribe un byte.
+pub mod audio;
 /// El hilo de kernel que bombea el bus. Sin el, el teclado depende de que
 /// alguien pregunte -- ver su cabecera.
 pub mod bus;
