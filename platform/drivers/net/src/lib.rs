@@ -174,6 +174,255 @@ impl Identidad {
     }
 }
 
+// == STEP 1: RECEIVE. NOTHING IS TRANSMITTED. =================================
+//
+// # Why receiving comes before transmitting, and it is not caution for its own
+// # sake
+//
+// A plugged cable **already carries traffic**: ARP, mDNS, DHCP, router
+// broadcasts. So an RX-only ring turns "is there a network?" into a question the
+// machine answers by printing bytes **that another computer sent**. No IP, no
+// ARP, no stack -- six destination bytes, six source bytes and an ethertype.
+//
+// And since nothing is transmitted, a mistake here cannot disturb anyone else on
+// the network. The worst case stays inside this machine.
+//
+// # What is dangerous here, said plainly
+//
+// A badly built descriptor ring does not produce a fault: it produces **the card
+// writing into somebody else's memory**, with the symptom three boots later. The
+// same mine was already stepped on with the AHCI PRDT. That is why everything in
+// this module that can be decided without hardware -- bit layout, sizes,
+// ownership, frame length -- lives here as pure functions with tests on the host,
+// and the kernel side is left as thin as it can be.
+
+/// One RX descriptor of the RTL8169/8168 family. **16 bytes, and the layout is a
+/// hardware contract**: the card reads these fields by offset.
+///
+/// `repr(C)` is not decoration here. Rust is free to reorder the fields of a
+/// plain struct, and a reordered descriptor is not a compile error -- it is a DMA
+/// engine reading a buffer address out of the status word.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct RxDesc {
+    /// Ownership, flags and length. See [`rx`].
+    pub opts1: u32,
+    /// VLAN. Not used, kept because the descriptor is 16 bytes whether we use it
+    /// or not.
+    pub opts2: u32,
+    /// Physical address of the buffer, low 32 bits.
+    pub addr_lo: u32,
+    /// ...and high 32 bits. The card is a 64-bit DMA master.
+    pub addr_hi: u32,
+}
+
+/// Bits of `opts1` in an RX descriptor.
+pub mod rx {
+    /// Set by the host = the CARD owns the descriptor. Cleared by the card when
+    /// it has written a frame into it.
+    ///
+    /// * The direction is the opposite of what the name suggests the first time
+    /// you read it, and getting it backwards means polling forever on a ring that
+    /// is working perfectly.
+    pub const OWN: u32 = 1 << 31;
+    /// End Of Ring. Goes on the LAST descriptor and it is what tells the card to
+    /// wrap around. Without it the card walks off the end of the ring and keeps
+    /// writing -- which is the memory-corruption case, not a hang.
+    pub const EOR: u32 = 1 << 30;
+    /// First segment of a frame.
+    pub const FS: u32 = 1 << 29;
+    /// Last segment of a frame.
+    pub const LS: u32 = 1 << 28;
+    /// The card marks a receive error here.
+    pub const RES: u32 = 1 << 21;
+    /// Buffer size on the way in, frame length on the way out. 14 bits.
+    pub const LEN_MASK: u32 = 0x3FFF;
+}
+
+/// How many bytes of Ethernet FCS the card leaves at the end of the frame.
+///
+/// The reported length **includes the CRC**, so a minimum-size Ethernet frame
+/// comes back as 64 and not 60. Forgetting this does not break anything visibly:
+/// it just makes every length four too big, which reads as plausible.
+pub const FCS_LEN: u16 = 4;
+
+impl RxDesc {
+    /// The descriptor as it must be handed to the card: buffer address, size, and
+    /// ownership given away.
+    ///
+    /// `last` marks the end of the ring. **Exactly one descriptor of a ring must
+    /// have it.**
+    pub fn to_card(buf_phys: u64, buf_len: u16, last: bool) -> Self {
+        let mut opts1 = rx::OWN | (buf_len as u32 & rx::LEN_MASK);
+        if last {
+            opts1 |= rx::EOR;
+        }
+        RxDesc {
+            opts1,
+            opts2: 0,
+            addr_lo: (buf_phys & 0xFFFF_FFFF) as u32,
+            addr_hi: (buf_phys >> 32) as u32,
+        }
+    }
+
+    /// Does the card still own it? `true` = nothing has arrived here yet.
+    pub fn owned_by_card(&self) -> bool {
+        self.opts1 & rx::OWN != 0
+    }
+
+    /// Length of the received frame **without the FCS**, or `None` if the
+    /// descriptor is not a complete, error-free frame.
+    ///
+    /// Three things are checked and not one: ownership returned, first AND last
+    /// segment present (a frame split across descriptors is not a frame we can
+    /// read yet), and no error bit.
+    pub fn frame_len(&self) -> Option<u16> {
+        if self.owned_by_card() {
+            return None;
+        }
+        if self.opts1 & rx::RES != 0 {
+            return None;
+        }
+        if self.opts1 & (rx::FS | rx::LS) != (rx::FS | rx::LS) {
+            return None;
+        }
+        let with_fcs = (self.opts1 & rx::LEN_MASK) as u16;
+        with_fcs.checked_sub(FCS_LEN)
+    }
+}
+
+/// **The head of an Ethernet frame.** Fourteen bytes, and it is the whole of what
+/// Ring 0 needs to understand: everything above this is Ring 3's business.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct EthHeader {
+    pub dst: Mac,
+    pub src: Mac,
+    /// `0x0806` = ARP, `0x0800` = IPv4, `0x86DD` = IPv6. Below `0x0600` it is a
+    /// length and not a type, which is 802.3 and does not appear on a modern LAN.
+    pub ethertype: u16,
+}
+
+/// Bytes of an Ethernet header.
+pub const ETH_HEADER_LEN: usize = 14;
+
+impl EthHeader {
+    /// Reads the header off the front of a frame. `None` if there are not even
+    /// fourteen bytes -- which is a runt, not a frame.
+    pub fn parse(frame: &[u8]) -> Option<Self> {
+        if frame.len() < ETH_HEADER_LEN {
+            return None;
+        }
+        let mut dst: Mac = [0; 6];
+        let mut src: Mac = [0; 6];
+        dst.copy_from_slice(&frame[0..6]);
+        src.copy_from_slice(&frame[6..12]);
+        // Ethertype travels BIG-endian on the wire and this machine is
+        // little-endian. Reading it the native way turns 0x0806 (ARP) into
+        // 0x0608, which matches nothing and looks like an unknown protocol
+        // instead of a byte-order bug.
+        let ethertype = u16::from_be_bytes([frame[12], frame[13]]);
+        Some(EthHeader { dst, src, ethertype })
+    }
+
+    /// Was it sent to everybody? An ARP query is, and it is the traffic most
+    /// likely to be the first thing this machine ever receives.
+    pub fn is_broadcast(&self) -> bool {
+        self.dst.iter().all(|&b| b == 0xFF)
+    }
+
+    /// The source address as one number, same convention as [`Identidad::mac_u64`]:
+    /// printable and comparable at a glance against any other system.
+    pub fn src_u64(&self) -> u64 {
+        let m = &self.src;
+        ((m[0] as u64) << 40)
+            | ((m[1] as u64) << 32)
+            | ((m[2] as u64) << 24)
+            | ((m[3] as u64) << 16)
+            | ((m[4] as u64) << 8)
+            | (m[5] as u64)
+    }
+}
+
+/// Registers that step 1 writes. Separate from [`reg`] on purpose: that module is
+/// the read-only set, and the difference between "this module only looks" and
+/// "this module configures the card" should be visible in the imports.
+pub mod reg_rx {
+    /// `ChipCmd`, 8-bit. Reset and the receive enable live here.
+    pub const CR: usize = 0x37;
+    /// `RxConfig`, 32-bit. Which frames are accepted, and the DMA burst.
+    pub const RCR: usize = 0x44;
+    /// `Cfg9346`, 8-bit. The lock that guards the config registers.
+    pub const CFG9346: usize = 0x50;
+    /// `IntrMask`, 16-bit. Left at zero: this driver POLLS.
+    pub const IMR: usize = 0x3C;
+    /// `IntrStatus`, 16-bit. Write-1-to-clear.
+    pub const ISR: usize = 0x3E;
+    /// `RxMaxSize`, 16-bit. The largest frame the card will accept.
+    pub const RMS: usize = 0xDA;
+    /// `RxDescStartAddr`, 64-bit, written as two dwords. **The ring must be
+    /// 256-byte aligned**; a page-aligned frame satisfies that with room to
+    /// spare.
+    pub const RDSAR_LO: usize = 0xE4;
+    pub const RDSAR_HI: usize = 0xE8;
+    /// `CPlusCmd`, 16-bit. The C+ mode of the 8169/8168 family.
+    pub const CPCR: usize = 0xE0;
+}
+
+/// Bits of `CR` (`ChipCmd`).
+pub mod cr {
+    /// Soft reset. The card clears it by itself when it is done -- **it is not a
+    /// delay, it is a handshake**, and waiting a fixed time instead of watching
+    /// the bit is how a driver works on one machine and not on the next.
+    pub const RST: u8 = 0x10;
+    /// Receiver enable.
+    pub const RE: u8 = 0x08;
+    /// Transmitter enable. **Deliberately not set in step 1.**
+    pub const TE: u8 = 0x04;
+}
+
+/// Bits of `RCR` (`RxConfig`).
+pub mod rcr {
+    /// Accept All Physical: promiscuous. **Off**, see [`rx_config`].
+    pub const AAP: u32 = 1 << 0;
+    /// Accept Physical Match: frames addressed to our own MAC.
+    pub const APM: u32 = 1 << 1;
+    /// Accept Multicast.
+    pub const AM: u32 = 1 << 2;
+    /// Accept Broadcast. **This is the one that makes step 1 work**: ARP queries
+    /// and mDNS are broadcast, so a plugged cable produces traffic without
+    /// anybody doing anything.
+    pub const AB: u32 = 1 << 3;
+    /// Unlimited DMA burst (bits 8..10 all set).
+    pub const MXDMA_UNLIMITED: u32 = 0x7 << 8;
+    /// No FIFO threshold: hand over the whole frame (bits 13..15 all set).
+    pub const RXFTH_NONE: u32 = 0x7 << 13;
+}
+
+/// The value written to `RxConfig` for step 1.
+///
+/// **Promiscuous (`AAP`) is deliberately left out.** It would show more traffic
+/// and it is tempting for a first test, but it also means this machine listens to
+/// everything that crosses its port -- and turning that on by default is a
+/// decision about the product, not about the driver. Broadcast alone already
+/// guarantees ARP, mDNS and DHCP, which is more than enough for the question this
+/// step is asking.
+pub const fn rx_config() -> u32 {
+    rcr::AB | rcr::AM | rcr::APM | rcr::MXDMA_UNLIMITED | rcr::RXFTH_NONE
+}
+
+/// Size of each receive buffer.
+///
+/// 2048 and not 1536: a jumbo-less Ethernet frame tops out at 1518 with FCS, but
+/// the ring is walked by index and a power of two keeps every buffer inside its
+/// own page half. The wasted memory is 8 KiB total for the whole ring.
+pub const RX_BUF_LEN: u16 = 2048;
+
+/// How many descriptors the ring has.
+///
+/// 16 buffers = 32 KiB. Enough that a burst of broadcast traffic does not lap the
+/// poller between two turns, small enough to fit in one contiguous allocation.
+pub const RX_RING_LEN: usize = 16;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +508,123 @@ mod tests {
         // Y aunque el chip deje puesto el bit de 1000 con el enlace caido --que
         // pasa al desenchufar-- sigue siendo 0: manda el enlace.
         assert_eq!(con(MAC_DEL_RYZEN, 0x10).megabits(), 0, "el bit de velocidad sin enlace no vale");
+    }
+
+    // == STEP 1: the RX ring, in the only place it can be checked without a card
+
+    /// ** THE DESCRIPTOR IS SIXTEEN BYTES, AND THAT IS A HARDWARE CONTRACT.
+    ///
+    /// The card walks the ring by adding a fixed stride. If Rust ever laid this
+    /// struct out differently, the ring would still compile, still be allocated,
+    /// still be handed to the card -- and the card would read buffer addresses out
+    /// of status words and write frames wherever those happened to point. That is
+    /// the memory-corruption case, and it has no error path.
+    #[test]
+    fn the_descriptor_is_exactly_sixteen_bytes() {
+        assert_eq!(core::mem::size_of::<RxDesc>(), 16);
+        assert_eq!(core::mem::align_of::<RxDesc>(), 4);
+        assert_eq!(core::mem::size_of::<[RxDesc; RX_RING_LEN]>(), 256);
+    }
+
+    /// ** OWN MEANS THE CARD HAS IT, NOT THAT WE DO.
+    ///
+    /// The name reads backwards the first time. Getting it inverted gives a
+    /// driver that polls forever over a ring the card is filling perfectly, and
+    /// the conclusion would be "the NIC receives nothing" -- which is false, and
+    /// sends the search to the cable and the switch.
+    #[test]
+    fn own_set_means_the_card_owns_it() {
+        let d = RxDesc::to_card(0x1234_5000, RX_BUF_LEN, false);
+        assert!(d.owned_by_card(), "handed over: the card owns it");
+        assert_eq!(d.frame_len(), None, "and there is nothing to read yet");
+
+        let mut back = d;
+        back.opts1 = rx::FS | rx::LS | 64; // returned by the card, 64 with FCS
+        assert!(!back.owned_by_card());
+        assert_eq!(back.frame_len(), Some(60), "64 on the wire is 60 of payload");
+    }
+
+    /// ** EOR ON THE LAST ONE, AND ONLY ON THE LAST ONE.
+    ///
+    /// Without End Of Ring the card does not wrap: it keeps walking past the end
+    /// of the ring, writing descriptors over whatever memory follows. It is the
+    /// single bit in this file whose absence corrupts instead of failing.
+    #[test]
+    fn end_of_ring_marks_the_last_descriptor_only() {
+        let middle = RxDesc::to_card(0x1000, RX_BUF_LEN, false);
+        let last = RxDesc::to_card(0x2000, RX_BUF_LEN, true);
+        assert_eq!(middle.opts1 & rx::EOR, 0);
+        assert_ne!(last.opts1 & rx::EOR, 0);
+        // And the length survives next to the flags: a mask that ate into the
+        // size would give the card a buffer smaller than the one that exists.
+        assert_eq!(last.opts1 & rx::LEN_MASK, RX_BUF_LEN as u32);
+    }
+
+    /// A 64-bit address goes in as two halves, and the high half is not optional
+    /// just because today's allocations happen to be low.
+    #[test]
+    fn the_buffer_address_is_split_in_two_halves() {
+        let d = RxDesc::to_card(0x0000_0007_DEAD_B000, RX_BUF_LEN, false);
+        assert_eq!(d.addr_lo, 0xDEAD_B000);
+        assert_eq!(d.addr_hi, 0x0000_0007);
+    }
+
+    /// ** A HALF-WRITTEN OR BROKEN FRAME IS NOT A FRAME.
+    ///
+    /// Three separate things have to be true, and checking only ownership is the
+    /// easy mistake: it would report error frames and half frames as good data,
+    /// and the length would still look reasonable.
+    #[test]
+    fn only_a_whole_clean_frame_reports_a_length() {
+        let mut d = RxDesc::default();
+        d.opts1 = rx::FS | rx::LS | rx::RES | 64;
+        assert_eq!(d.frame_len(), None, "the error bit disqualifies it");
+
+        d.opts1 = rx::FS | 64; // first segment but not last
+        assert_eq!(d.frame_len(), None, "a frame split across descriptors is not readable yet");
+
+        d.opts1 = rx::FS | rx::LS | 2; // shorter than its own FCS
+        assert_eq!(d.frame_len(), None, "under four bytes there is not even a CRC");
+    }
+
+    /// ** THE ETHERTYPE IS BIG-ENDIAN AND THIS MACHINE IS NOT.
+    ///
+    /// Read the native way, ARP (`0x0806`) comes out as `0x0608`: a number that
+    /// matches no protocol, so the frame is filed as "unknown" instead of as a
+    /// byte-order bug. It is the same class of mistake as the MAC order above,
+    /// and just as invisible.
+    #[test]
+    fn the_ethertype_is_read_big_endian() {
+        // A real ARP query: broadcast destination, ethertype 0x0806.
+        let mut frame = [0u8; 60];
+        frame[0..6].copy_from_slice(&[0xFF; 6]);
+        frame[6..12].copy_from_slice(&MAC_DEL_RYZEN);
+        frame[12] = 0x08;
+        frame[13] = 0x06;
+
+        let h = EthHeader::parse(&frame).expect("fourteen bytes are enough");
+        assert_eq!(h.ethertype, 0x0806, "ARP, not 0x0608");
+        assert!(h.is_broadcast(), "an ARP query goes to everybody");
+        assert_eq!(h.src_u64(), 0x2CF0_5DD9_3CE3, "and the source reads like it is written");
+    }
+
+    /// Under fourteen bytes there is no header to read, and inventing one would
+    /// mean printing six bytes of somebody else's buffer as a MAC address.
+    #[test]
+    fn a_runt_has_no_header() {
+        assert!(EthHeader::parse(&[0u8; 13]).is_none());
+        assert!(EthHeader::parse(&[]).is_none());
+    }
+
+    /// ** PROMISCUOUS STAYS OFF, AND IT IS A DECISION AND NOT AN OVERSIGHT.
+    ///
+    /// This test exists so that turning it on has to be deliberate: whoever adds
+    /// `AAP` has to come here and delete an assertion that says why it was off.
+    #[test]
+    fn the_receiver_is_not_promiscuous() {
+        let c = rx_config();
+        assert_eq!(c & rcr::AAP, 0, "listening to everything is a product decision");
+        assert_ne!(c & rcr::AB, 0, "broadcast is what makes a plugged cable produce traffic");
+        assert_ne!(c & rcr::APM, 0, "and our own address, obviously");
     }
 }

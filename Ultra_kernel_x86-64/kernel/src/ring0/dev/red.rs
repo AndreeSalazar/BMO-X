@@ -165,3 +165,224 @@ pub fn releer() -> Option<bmo_net::Identidad> {
     }
     Some(unsafe { bmo_net::identificar(mmio) })
 }
+
+// == STEP 1: RECEIVE. NOTHING IS TRANSMITTED. =================================
+//
+// # Why this is behind a typed command and not in the boot path
+//
+// Same reason as `smp`: this is the first code that makes a device write into
+// this machine's memory by itself. If the ring is wrong, what hangs is the
+// command and not the machine at power-on, and the way out is the reset button
+// instead of a disk that no longer boots.
+//
+// The bit layout, the sizes, the ownership rule and the frame length are all
+// decided in `bmo-net` and tested on the host. What is left here is the part no
+// test can cover: allocating the memory, telling the card where it is, and
+// waiting.
+//
+// # The physical address is SUBTRACTED, not asked for
+//
+// `alloc_frames_contig` hands back a PHYSICAL base, and the physmap is a linear
+// mirror. So the address the card needs is the one the allocator already
+// returned, and the address the CPU uses is that plus the mirror base. Nothing is
+// looked up in a page table. That is the lesson of Ep. 39 applied before the fact
+// rather than after: asking allows being answered wrong.
+
+/// Ring and buffers, once claimed. `0` = not started.
+static mut RX_RING_PHYS: u64 = 0;
+static mut RX_BUFS_PHYS: u64 = 0;
+/// Which descriptor is next to be looked at. The card walks the ring in order and
+/// so do we.
+static mut RX_NEXT: usize = 0;
+/// Frames seen since the ring started. The number that answers the question.
+static mut RX_FRAMES: u64 = 0;
+
+/// Is the receiver armed?
+pub fn rx_activo() -> bool {
+    unsafe { RX_RING_PHYS != 0 }
+}
+
+/// Frames received since [`rx_start`].
+pub fn rx_tramas() -> u64 {
+    unsafe { RX_FRAMES }
+}
+
+unsafe fn w8(mmio: *mut u8, off: usize, v: u8) {
+    core::ptr::write_volatile(mmio.add(off), v);
+}
+unsafe fn r8(mmio: *mut u8, off: usize) -> u8 {
+    core::ptr::read_volatile(mmio.add(off))
+}
+unsafe fn w16(mmio: *mut u8, off: usize, v: u16) {
+    core::ptr::write_volatile(mmio.add(off) as *mut u16, v);
+}
+unsafe fn w32(mmio: *mut u8, off: usize, v: u32) {
+    core::ptr::write_volatile(mmio.add(off) as *mut u32, v);
+}
+
+/// A pointer to descriptor `i` of the ring, in virtual space.
+unsafe fn desc(i: usize) -> *mut bmo_net::RxDesc {
+    let virt = mm::phys_to_virt(RX_RING_PHYS) as *mut bmo_net::RxDesc;
+    virt.add(i)
+}
+
+/// **Arms the receiver.** Returns `false` and says why if it cannot.
+///
+/// Nothing is transmitted, here or anywhere else in step 1: `CR.TE` is left
+/// alone on purpose, so a mistake in this code cannot put a single byte on the
+/// wire and cannot disturb anyone else on the network.
+pub fn rx_start() -> bool {
+    let mmio = unsafe { MMIO };
+    if mmio.is_null() {
+        crate::ring0::cabina::warn("red", "no hay NIC legible: el receptor no arranca", 0);
+        return false;
+    }
+    if rx_activo() {
+        crate::ring0::cabina::info("red", "el receptor ya estaba armado, tramas", rx_tramas());
+        return true;
+    }
+
+    // One page for the ring (16 x 16 = 256 bytes, and a page is 256-aligned with
+    // room to spare -- the card REQUIRES 256-byte alignment for RDSAR).
+    let ring = match crate::ring0::mm::phys::alloc_frames_contig(1) {
+        Some(p) => p,
+        None => {
+            crate::ring0::cabina::fault("red", "sin marco para el anillo de recepcion", 0);
+            return false;
+        }
+    };
+    // And the buffers: 16 x 2048 = 32 KiB = 8 pages, contiguous so that buffer
+    // `i` is simply base + i * 2048.
+    let bytes = (bmo_net::RX_RING_LEN * bmo_net::RX_BUF_LEN as usize) as u64;
+    let pages = (bytes + mm::PAGE - 1) / mm::PAGE;
+    let bufs = match crate::ring0::mm::phys::alloc_frames_contig(pages) {
+        Some(p) => p,
+        None => {
+            crate::ring0::cabina::fault("red", "sin marcos para los bufers de recepcion", pages as u64);
+            return false;
+        }
+    };
+
+    unsafe {
+        RX_RING_PHYS = ring;
+        RX_BUFS_PHYS = bufs;
+        RX_NEXT = 0;
+        RX_FRAMES = 0;
+
+        // The ring, handed over descriptor by descriptor. The LAST one carries
+        // End Of Ring -- without it the card walks off the end and writes over
+        // whatever follows. That bit is the difference between a bug and
+        // corruption, so it is built by `to_card` and not by hand here.
+        for i in 0..bmo_net::RX_RING_LEN {
+            let buf = bufs + (i * bmo_net::RX_BUF_LEN as usize) as u64;
+            let last = i == bmo_net::RX_RING_LEN - 1;
+            let d = bmo_net::RxDesc::to_card(buf, bmo_net::RX_BUF_LEN, last);
+            core::ptr::write_volatile(desc(i), d);
+        }
+
+        // -- The card, in the order the family wants it --------------------
+        use bmo_net::{cr, reg_rx};
+
+        // 1. Soft reset. The chip clears the bit ITSELF when it is done: this is
+        //    a handshake and not a delay, and a fixed wait is how a driver works
+        //    on one machine and not on the next. Bounded so a dead card cannot
+        //    hang the command forever.
+        w8(mmio, reg_rx::CR, cr::RST);
+        let mut spins = 0u32;
+        while r8(mmio, reg_rx::CR) & cr::RST != 0 {
+            spins += 1;
+            if spins > 1_000_000 {
+                crate::ring0::cabina::fault("red", "la NIC no termina su reset", spins as u64);
+                RX_RING_PHYS = 0;
+                return false;
+            }
+            core::hint::spin_loop();
+        }
+        crate::ring0::cabina::info("red", "reset completado, vueltas", spins as u64);
+
+        // 2. Unlock the config registers, and lock them again at the end. Leaving
+        //    them unlocked is how a stray write later becomes a card that forgot
+        //    its own MAC.
+        w8(mmio, reg_rx::CFG9346, 0xC0);
+
+        // 3. No interrupts: this driver POLLS. Said out loud because an unmasked
+        //    interrupt with no handler installed is a triple fault, not a bug.
+        w16(mmio, reg_rx::IMR, 0);
+        w16(mmio, reg_rx::ISR, 0xFFFF);
+
+        // 4. Where the ring is, and how big a frame we accept.
+        w16(mmio, reg_rx::RMS, bmo_net::RX_BUF_LEN);
+        w32(mmio, reg_rx::RDSAR_LO, (ring & 0xFFFF_FFFF) as u32);
+        w32(mmio, reg_rx::RDSAR_HI, (ring >> 32) as u32);
+
+        // 5. What gets accepted. Broadcast is the one that matters: it is what
+        //    makes a plugged cable produce traffic with nobody doing anything.
+        w32(mmio, reg_rx::RCR, bmo_net::rx_config());
+
+        w8(mmio, reg_rx::CFG9346, 0x00);
+
+        // 6. And only now, the receiver. TE stays OFF.
+        let c = r8(mmio, reg_rx::CR);
+        w8(mmio, reg_rx::CR, (c & !cr::TE) | cr::RE);
+    }
+
+    crate::ring0::cabina::info("red", "receptor ARMADO, anillo en la fisica", ring);
+    true
+}
+
+/// **Looks at the ring and reports whatever arrived.** Returns how many frames
+/// were read this time.
+///
+/// Every frame is announced with its source and its ethertype, because those two
+/// are the whole proof: a MAC that is not ours and a protocol number that means
+/// something are bytes **that another computer put on the wire**. That is the
+/// question step 1 exists to answer, and no amount of register dumping answers
+/// it.
+pub fn rx_poll() -> u32 {
+    if !rx_activo() {
+        return 0;
+    }
+    let mut leidas = 0u32;
+    unsafe {
+        // Bounded by the ring length: one turn never walks more than once around,
+        // so a card that returns everything at once cannot keep this loop.
+        for _ in 0..bmo_net::RX_RING_LEN {
+            let d = core::ptr::read_volatile(desc(RX_NEXT));
+            let largo = match d.frame_len() {
+                Some(l) => l,
+                None => break,
+            };
+            let buf = mm::phys_to_virt(RX_BUFS_PHYS + (RX_NEXT * bmo_net::RX_BUF_LEN as usize) as u64)
+                as *const u8;
+            let trama = core::slice::from_raw_parts(buf, largo as usize);
+            match bmo_net::EthHeader::parse(trama) {
+                Some(h) => {
+                    RX_FRAMES = RX_FRAMES.wrapping_add(1);
+                    crate::ring0::cabina::info("red", "trama de", h.src_u64());
+                    crate::ring0::cabina::info(
+                        "red",
+                        "  ...tipo y largo",
+                        ((h.ethertype as u64) << 16) | largo as u64,
+                    );
+                }
+                // Under fourteen bytes there is no header. Counted separately: a
+                // runt is a cable or a filter problem, not a missing frame.
+                None => {
+                    crate::ring0::cabina::warn("red", "trama demasiado corta para tener cabecera", largo as u64);
+                }
+            }
+            // Give the descriptor back to the card, with EOR preserved on the
+            // last one -- rebuilding it from scratch is what keeps that bit from
+            // being lost on the first wrap.
+            let buf_phys = RX_BUFS_PHYS + (RX_NEXT * bmo_net::RX_BUF_LEN as usize) as u64;
+            let last = RX_NEXT == bmo_net::RX_RING_LEN - 1;
+            core::ptr::write_volatile(
+                desc(RX_NEXT),
+                bmo_net::RxDesc::to_card(buf_phys, bmo_net::RX_BUF_LEN, last),
+            );
+            RX_NEXT = (RX_NEXT + 1) % bmo_net::RX_RING_LEN;
+            leidas += 1;
+        }
+    }
+    leidas
+}

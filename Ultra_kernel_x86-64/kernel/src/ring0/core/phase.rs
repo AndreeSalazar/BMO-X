@@ -545,7 +545,7 @@ fn shell_help() {
 ///
 /// La MAC sale con dos puntos, no como un numero: esta linea existe para
 /// compararla a ojo con la que diga cualquier otro sistema.
-fn shell_red() {
+fn shell_red(arg: &[u8]) {
     use crate::ring0::dev::red;
     const H: &[u8; 16] = b"0123456789ABCDEF";
     fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
@@ -626,7 +626,45 @@ fn shell_red() {
         hex8(&mut b, &mut o, id.phy);
         if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
     }
-    s_log("[red] leer es todo lo que sabe hacer hoy: ver docs/RED_MAESTRO.md");
+
+    // ** `net rx` -- ARM THE RECEIVER. And `net` alone still touches nothing.
+    //
+    // Same shape as `smp`: the bare word CENSUSES and the argument ACTS. It is
+    // deliberate. This is the first code that lets a device write into this
+    // machine's memory on its own, so it must not be something you get by typing
+    // the diagnostic command.
+    if arg != b"rx" {
+        s_log("[red] `net rx` arma el receptor y enseNa las tramas que lleguen");
+        s_log("[red] no se transmite nada: ver docs/RED_MAESTRO.md, paso 1");
+        return;
+    }
+    if !id.enlace_arriba() {
+        // Not a failure of the ring, and worth separating: with no cable there
+        // will be no frames no matter how correct everything below is.
+        s_log("[red] el enlace esta ABAJO: enchufa el cable antes de armar nada");
+        return;
+    }
+    if !red::rx_start() {
+        s_log("[red] el receptor no se pudo armar -- CABINA dice por que");
+        return;
+    }
+    let n = red::rx_poll();
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[red] receptor armado. tramas ahora ");
+        dec(&mut b, &mut o, n as u64);
+        txt(&mut b, &mut o, ", total ");
+        dec(&mut b, &mut o, red::rx_tramas());
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+    if n == 0 {
+        // Zero on the first turn is the EXPECTED answer, not a failure: the ring
+        // was armed a microsecond ago and broadcast traffic arrives every few
+        // seconds. Saying so is what stops the next minute being spent looking
+        // for a bug in a driver that is working.
+        s_log("[red] cero de momento es normal: vuelve a escribir `net rx` en unos segundos");
+    }
 }
 
 fn shell_disk() {
@@ -1923,7 +1961,9 @@ fn run_shell(ctx: &BootContext) -> ! {
         } else if cmd == b"disk" {
             shell_disk();
         } else if cmd == b"net" || cmd == b"red" {
-            shell_red();
+            shell_red(b"");
+        } else if cmd.len() > 4 && (&cmd[..4] == b"net " || &cmd[..4] == b"red ") {
+            shell_red(&cmd[4..]);
         } else if cmd == b"cabina" {
             shell_cabina();
         } else if cmd == b"estratos" {
