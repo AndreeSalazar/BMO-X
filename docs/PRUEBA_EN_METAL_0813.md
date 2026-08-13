@@ -1,5 +1,29 @@
 # PRUEBA EN METAL -- el arranque del 2026-08-13
 
+> ## ✅ EL ARRANQUE DE LAS 09:38 YA CONTESTO -- SEGUNDA VUELTA ABAJO
+>
+> **1. DOOM pasa `W_Init: Init WADfiles.` y abre su WAD** (`arch: archivo
+> REFLEJADO para leer =4.0 MiB` dos veces). El arreglo de `&c->defaults[i]`
+> funciono en metal.
+>
+> **2. El grafo con curvas Bezier salio**, con sus puntas de flecha. Escalones
+> 0-2 verificados.
+>
+> **3. `caja.bex` y `cobol/1/hola.bex` corren igual** -- la regresion del codegen
+> queda descartada.
+>
+> [!] **Y aparecieron dos cosas nuevas, las dos ya arregladas:**
+>
+> - `saving config in apps/doom1.wad` -- DOOM iba a escribir su configuracion
+>   **encima del WAD** al salir. Causa: **`!(-6)` valia -256** en BMO C, asi que
+>   `if (!strcasecmp(...))` acertaba con cualquier resultado negativo. El WAD se
+>   comprobo y esta intacto (4.196.020 B).
+> - **`ray.bex` da `#PF` escribiendo**: a la franja de pared le faltaban dos de
+>   los cuatro topes.
+>
+> **Lo que sigue abajo es la primera vuelta, y se conserva.** Lo que hay que
+> hacer AHORA esta en la seccion final.
+
 Tres commits, y **ninguno ha visto un CPU**. La guia anterior queda en
 `PRUEBA_EN_METAL.md`; de ahi siguen abiertas las seis preguntas de su segunda
 vuelta, que **no se repiten aqui** -- se pueden contestar en el mismo arranque.
@@ -160,3 +184,58 @@ Si sale `el sellado NO se hizo`, el motivo esta en F11 con nombre:
 | `1a48cbd2` | **el codegen de C**: todos los `.bex` | un programa de C deja de andar |
 | `073d10f8` | solo documentos | nada |
 | `82bb94ea` | **el pintado del grafo** + `userland` | el escritorio no arranca |
+
+---
+
+# SEGUNDA VUELTA -- lo que hay que mirar AHORA
+
+Un commit mas (`6ae09699`), y **toca el codegen otra vez**: hay que reflashear.
+
+## 1 -- DOOM, y las tres lineas que tienen que DESAPARECER
+
+`run apps/doom.bex` desde el escritorio. Lo que ya NO puede salir:
+
+```text
+   Development mode ON.                 <- nadie paso -devparm
+   turbo scale: 200%                    <- nadie paso -turbo
+   saving config in apps/doom1.wad      <- la peligrosa
+```
+
+Las tres eran el mismo bug: `!(-6)` valia -256, o sea que
+`if (!strcasecmp("-config", "-iwad"))` acertaba. Si alguna vuelve a salir, el
+arreglo no llego.
+
+★★ **Y lo que tiene que salir en su lugar**:
+
+```text
+   saving config in ./default.cfg       (o similar, pero NO el .wad)
+```
+
+Y detras de `W_Init`, territorio nuevo: `R_Init`, `P_Init`, `S_Init`,
+`D_CheckNetGame`... **cada linea que salga es un paso que nunca se habia dado.**
+
+[!] Si DOOM llega a pintar, la pantalla es suya entera y se vuelve con
+`Ctrl+Alt+Esc`.
+
+## 2 -- `ray.bex`, que ahora tiene sus cuatro topes
+
+```text
+   run c/ray.bex
+```
+
+Tiene que **dibujar el laberinto y no morir**: pasillo con paredes claras a los
+lados, `W A S D` mueven, `Q E` andan de lado, `ESC` sale.
+
+Si vuelve a dar `#PF`, `datos/fallos.txt` dice el `rip` y la direccion -- y con
+los topes puestos, un fallo ahi ya no puede ser la franja de pared.
+
+## 3 -- Lo de la primera vuelta que sigue pendiente
+
+`estratos sellar` -> `generacion 2`, **y que siga en 2 despues de reiniciar**.
+Es lo unico que separa una barrera que funciona de una que se cree.
+
+## Que traer
+
+1. `A:\datos\salida.txt` -- vale mas que las fotos.
+2. `A:\datos\fallos.txt` si algo revienta.
+3. La linea mas lejana que alcance DOOM.
