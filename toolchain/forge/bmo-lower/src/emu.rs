@@ -344,6 +344,14 @@ pub struct Machine {
     sf: bool,
     of: bool,
     cf: bool,
+    /// **La bandera de direccion.** Con `df` en falso las instrucciones de
+    /// cadena avanzan y con `df` puesta retroceden.
+    ///
+    /// Se modela --en vez de darla por cero-- porque es exactamente la clase de
+    /// estado invisible que hace que un `memcpy` funcione en el emulador y
+    /// escriba hacia atras en el Ryzen. Si algun dia un emisor pone `std` y se
+    /// olvida el `cld`, aqui se ve.
+    df: bool,
 }
 
 impl Machine {
@@ -387,6 +395,7 @@ impl Machine {
             sf: false,
             of: false,
             cf: false,
+            df: false,
         };
         m.regs[RSP] = STACK_TOP;
         m
@@ -1595,6 +1604,66 @@ impl Machine {
                 let v = self.load_u8(src) & 0xFF;
                 self.regs[reg] = (self.regs[reg] & !0xFF) | v;
             }
+            // == LAS INSTRUCCIONES DE CADENA ==========================
+            //
+            // ## Por que no estaban, y por que estan ahora
+            //
+            // La cabecera de `memoria.rs` decia *"no hay version vectorizada
+            // [...] cuando se note se cambia"*, y `agregados.rs` daba la razon
+            // concreta de no usar `rep movsb`: **"el emulador no lo tiene"**.
+            // O sea que una carencia del banco de pruebas estaba decidiendo
+            // como es el codigo que corre en el Ryzen. Eso es la cola moviendo
+            // al perro: el emulador existe para verificar lo que se emite, no
+            // para elegirlo.
+            //
+            // Cuestan veinte lineas. Y ademas ARREGLAN algo: un `rep movsb` es
+            // **un paso** del emulador en vez de seis por byte, asi que un
+            // programa que copia un buffer grande ya no se come el presupuesto
+            // de `run(..., max_steps)`.
+            //
+            // ## El prefijo `REP` y el contador
+            //
+            // `F3` delante de una instruccion de cadena es `REP`: repetir
+            // mientras `rcx != 0`, decrementando. Con `rcx` a cero **no se
+            // ejecuta ni una vez**, que es lo que permite quitar el
+            // `test rcx,rcx / jz` que llevaban los bucles a mano.
+            //
+            // [!] `f3` ya lo consumia el bucle de prefijos de arriba para las
+            // formas SSE (`movss`/`cvtss2sd`), asi que aqui solo hay que
+            // mirarlo -- y por eso este brazo tiene que ir DESPUES de que el
+            // prefijo se haya leido, no dentro del bucle.
+            //
+            // `movsb`: `[rdi] <- [rsi]`, y los dos punteros avanzan (o
+            // retroceden, si `df`).
+            0xA4 => {
+                let paso: u64 = if self.df { u64::MAX } else { 1 }; // -1 en complemento a dos
+                let veces = if f3 { self.regs[RCX] } else { 1 };
+                for _ in 0..veces {
+                    let b = self.read_u8_mem(self.regs[RSI]);
+                    self.mem.insert(self.regs[RDI], b);
+                    self.regs[RSI] = self.regs[RSI].wrapping_add(paso);
+                    self.regs[RDI] = self.regs[RDI].wrapping_add(paso);
+                }
+                if f3 {
+                    self.regs[RCX] = 0;
+                }
+            }
+            // `stosb`: `[rdi] <- al`, y `rdi` avanza. Es `memset`.
+            0xAA => {
+                let paso: u64 = if self.df { u64::MAX } else { 1 };
+                let veces = if f3 { self.regs[RCX] } else { 1 };
+                let v = (self.regs[RAX] & 0xFF) as u8;
+                for _ in 0..veces {
+                    self.mem.insert(self.regs[RDI], v);
+                    self.regs[RDI] = self.regs[RDI].wrapping_add(paso);
+                }
+                if f3 {
+                    self.regs[RCX] = 0;
+                }
+            }
+            // `cld` / `std` -- la bandera de direccion.
+            0xFC => self.df = false,
+            0xFD => self.df = true,
             // test r/m8, r8 -- la version de un byte de `0x85`.
             0x84 => {
                 let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);

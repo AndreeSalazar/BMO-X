@@ -22,15 +22,21 @@ fn cuantas_veces(pajar: &[u8], aguja: &[u8]) -> usize {
     pajar.windows(aguja.len()).filter(|v| *v == aguja).count()
 }
 
-/// El corazon de `bmo_lower::memoria::copiar`, que es el cuerpo de `memcpy`:
-/// `mov al,[rsi]` - `mov [rdi],al` - `inc rsi` - `inc rdi` - `dec rcx`.
+/// El corazon del cuerpo de `memcpy`: **cargar el contador y mover la
+/// cadena**. `mov rcx,[rbp+32]` - `cld` - `rep movsb`.
 ///
-/// Se eligen estas cinco instrucciones y no el prologo porque son las que
-/// **solo** puede haber puesto el bucle de copia: trece bytes seguidos que no
-/// salen por casualidad en un programa de cien.
-const BUCLE_COPIAR: &[u8] = &[
-    0x8A, 0x06, 0x88, 0x07, 0x48, 0xFF, 0xC6, 0x48, 0xFF, 0xC7, 0x48, 0xFF, 0xC9,
-];
+/// [!] Antes esto eran los trece bytes del bucle byte a byte
+/// (`mov al,[rsi]` / `mov [rdi],al` / `inc` / `inc` / `dec`). Ese bucle **ya no
+/// existe**: `memoria::copiar` es una instruccion desde que el emulador
+/// aprendio las de cadena.
+///
+/// Y la aguja lleva el `mov rcx` delante a proposito. `FC F3 A4` son tres
+/// bytes, y el argumento que justificaba la aguja anterior --*"trece bytes
+/// seguidos que no salen por casualidad"*-- no aguanta con tres: cualquier
+/// desplazamiento o inmediato del programa podria contenerlos y el contador
+/// diria 2 sin que nadie hubiera duplicado nada. Con la carga del tercer
+/// argumento delante son siete bytes y vuelve a ser una firma.
+const BUCLE_COPIAR: &[u8] = &[0x48, 0x8B, 0x4D, 0x20, 0xFC, 0xF3, 0xA4];
 
 /// * LA PRUEBA DE LA PIEZA: veinte llamadas, UN cuerpo.
 #[test]

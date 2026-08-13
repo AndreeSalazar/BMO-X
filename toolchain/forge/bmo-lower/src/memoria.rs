@@ -21,14 +21,39 @@
 //! enlazador, un formato de libreria y un cargador dinamico -- las tres cosas
 //! que en otros sistemas hay que pelear antes de imprimir "hola".
 //!
-//! # Lo que NO hay, y se dice
+//! # Lo que hay, y lo que NO
 //!
-//! No hay version vectorizada. Un `memcpy` de glibc elige entre una docena de
-//! rutas segun el tamano y el modelo de CPU; este copia de byte en byte. Para
-//! mover el framebuffer de DOOM (64 000 bytes por fotograma) eso se va a
-//! notar, y cuando se note se cambia por copias de 8 bytes con cola --
-//! **medido primero**. Optimizar un bucle que nadie ha cronometrado es
-//! adivinar.
+//! `copiar` y `rellenar` son **`rep movsb` y `rep stosb`**: una instruccion.
+//! No hay version vectorizada ni seleccion de ruta por tamano como la de
+//! glibc, y no hace falta -- desde Ivy Bridge y en todos los Zen, `rep movsb`
+//! tiene ruta rapida en microcodigo (ERMSB) y mueve una linea de cache por
+//! ciclo. Un bucle de 8 en 8 escrito a mano seria mas largo Y mas lento.
+//!
+//! ## Por que no eran esto desde el principio
+//!
+//! Porque **el emulador no las tenia**, y eso estaba escrito como la razon en
+//! `lang/c/codegen/agregados.rs`. Una carencia del banco de pruebas decidiendo
+//! la forma del codigo que corre en el Ryzen es la cola moviendo al perro; se
+//! le ensenaron los cuatro opcodes al emulador (`emu.rs`, `0xA4`/`0xAA`/`0xFC`
+//! /`0xFD`) y el argumento desaparecio.
+//!
+//! ## La medida que lo justifica
+//!
+//! `DG_DrawFrame` de DOOM mueve **1.024.000 bytes por fotograma** --640x400 en
+//! 32 bits-- a memoria write-combining. Con el bucle de antes eran seis
+//! instrucciones por byte: ~6,1 millones por fotograma, y 214 MB/s a base de
+//! `mov al`. [!] El comentario que habia aqui decia *"64 000 bytes por
+//! fotograma"*, que es el tamano del framebuffer de DOOM **sin escalar y en 8
+//! bits** -- se quedo corto por dieciseis.
+//!
+//! ## Y el detalle que no se puede suponer: la bandera de direccion
+//!
+//! `rep movsb` copia hacia adelante **solo si `DF` esta a cero**, asi que va
+//! precedido de `cld`. Nadie en BMO emite `std`, o sea que en la practica
+//! sobra siempre -- y ese es justo el argumento que convierte un fallo
+//! imposible en un fallo raro. Cuesta UN byte y una micro-operacion; el modo
+//! de fallo que quita es un `memcpy` que escribe hacia atras y solo en algunos
+//! arranques.
 
 use crate::x86::*;
 
@@ -71,18 +96,16 @@ fn salto_atras(code: &mut Vec<u8>, opcode: u8, destino: usize) {
 /// Copia **hacia adelante**, asi que solapamientos con `dst < src` salen bien
 /// y con `dst > src` no. Es exactamente el contrato de `memcpy` -- el que
 /// aguanta los dos es `memmove`, y se dice aqui para que nadie lo suponga.
+///
+/// [!] No hace falta comprobar `rcx == 0`: `rep` con el contador a cero **no
+/// ejecuta ni una vez**, que es lo que el bucle a mano tenia que conseguir con
+/// un `test` y un salto. Copiar cero bytes es valido y frecuente.
+///
+/// [!] Clobbers: `rsi`, `rdi`, `rcx`. **Ya no toca `al`**, que el bucle de antes
+/// si usaba -- estrictamente menos, asi que ningun llamante se rompe.
 pub fn copiar(code: &mut Vec<u8>) {
-    // copiar cero bytes es valido y frecuente (un bucle recien vaciado)
-    code.extend_from_slice(&[0x48, 0x85, 0xC9]); // test rcx, rcx
-    let fin = salto_pendiente(code, 0x74);       // jz fin
-    let bucle = code.len();
-    code.extend_from_slice(&[0x8A, 0x06]);       // mov al, [rsi]
-    code.extend_from_slice(&[0x88, 0x07]);       // mov [rdi], al
-    code.extend_from_slice(&[0x48, 0xFF, 0xC6]); // inc rsi
-    code.extend_from_slice(&[0x48, 0xFF, 0xC7]); // inc rdi
-    code.extend_from_slice(&[0x48, 0xFF, 0xC9]); // dec rcx
-    salto_atras(code, 0x75, bucle);              // jnz bucle
-    aterriza_aqui(code, fin);
+    code.extend_from_slice(&[0xFC]);       // cld
+    code.extend_from_slice(&[0xF3, 0xA4]); // rep movsb
 }
 
 /// `mover(dst, src, n)` -- lo que `copiar` promete y no cumple: **aguanta el
@@ -131,15 +154,14 @@ pub fn mover(code: &mut Vec<u8>) {
     salto_atras(code, 0x75, bucle_atras);        // jnz bucle_atras
     let fin_atras = salto_pendiente(code, 0xEB); // jmp fin
 
-    // -- De frente: el mismo bucle que `copiar`.
+    // -- De frente: exactamente [`copiar`], y por eso se LLAMA a `copiar`.
+    //
+    // Tenerlo copiado aqui era barato mientras eran seis instrucciones; en
+    // cuanto una de las dos versiones cambie --y acaba de cambiar-- la copia
+    // se queda vieja sin que nada avise. El camino rapido de `memmove` y
+    // `memcpy` son la misma frase.
     aterriza_aqui(code, adelante);
-    let bucle = code.len();
-    code.extend_from_slice(&[0x8A, 0x06]);       // mov al, [rsi]
-    code.extend_from_slice(&[0x88, 0x07]);       // mov [rdi], al
-    code.extend_from_slice(&[0x48, 0xFF, 0xC6]); // inc rsi
-    code.extend_from_slice(&[0x48, 0xFF, 0xC7]); // inc rdi
-    code.extend_from_slice(&[0x48, 0xFF, 0xC9]); // dec rcx
-    salto_atras(code, 0x75, bucle);              // jnz bucle
+    copiar(code);
 
     aterriza_aqui(code, fin_atras);
     aterriza_aqui(code, fin_vacio);
@@ -147,15 +169,13 @@ pub fn mover(code: &mut Vec<u8>) {
 
 /// `rellenar(dst, valor, n)` -- pone `n` bytes al mismo valor.
 /// `RDI`=dst, `RAX`=valor (se usa `al`), `RCX`=n.
+///
+/// Es `memset`, y en DOOM se llama tanto como `memcpy`: `Z_Malloc` limpia
+/// bloques, `V_DrawPatch` borra franjas y `R_InitTextures` pone a cero cada
+/// textura compuesta antes de pegarle los parches.
 pub fn rellenar(code: &mut Vec<u8>) {
-    code.extend_from_slice(&[0x48, 0x85, 0xC9]); // test rcx, rcx
-    let fin = salto_pendiente(code, 0x74);       // jz fin
-    let bucle = code.len();
-    code.extend_from_slice(&[0x88, 0x07]);       // mov [rdi], al
-    code.extend_from_slice(&[0x48, 0xFF, 0xC7]); // inc rdi
-    code.extend_from_slice(&[0x48, 0xFF, 0xC9]); // dec rcx
-    salto_atras(code, 0x75, bucle);              // jnz bucle
-    aterriza_aqui(code, fin);
+    code.extend_from_slice(&[0xFC]);       // cld
+    code.extend_from_slice(&[0xF3, 0xAA]); // rep stosb
 }
 
 /// `largo(s)` -- cuantos bytes hay antes del cero. `RDI`=s, resultado en `RAX`.
