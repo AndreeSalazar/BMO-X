@@ -935,6 +935,10 @@ pub fn main(ctx: &mut BootContext) {
     // graba desde el minuto cero y lo muestra cuando haya pantalla. Si el
     // kernel muere entre aqui y el shell, el anillo ya tiene lo que paso.
     crate::ring0::cabina::info("ring0", "BootContext valido, kernel arrancando", ctx.version as u64);
+    // ** THE RULER STARTS HERE, and not earlier: before this point there is no
+    // validated context and the TSC frequency it carries is what every stamp
+    // below converts with. See `core::boot_timeline`.
+    crate::ring0::core::boot_timeline::start();
 
     // Kernel-init checkpoints live in the empty band starting at row 140
     // (well below the boot bars that end near row 120), so any new bar is
@@ -965,6 +969,7 @@ pub fn main(ctx: &mut BootContext) {
     // Arm the on-screen fault reporter before anything can enter Ring 3, so a
     // CPL3 crash paints its vector/RIP/CR2 instead of the silent serial-halt
     // the boot stage installs.
+    crate::ring0::core::boot_timeline::mark("mm + scheduler + syscalls");
     crate::ring0::plat::faults::init(ctx);
     let timer_ready = crate::ring0::plat::timer::init(ctx);
     if timer_ready {
@@ -1087,6 +1092,7 @@ pub fn main(ctx: &mut BootContext) {
     // contestar, y la unidad se le pregunta a el en vez de suponerla.
     crate::ring0::cpu::energia::init();
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
+    crate::ring0::core::boot_timeline::mark("pci + cpu census");
     crate::ring0::dev::usb::init(ctx);
     // * And HERE the kernel keeps them. Until this commit the bus only advanced
     // when somebody asked for a key, so a Ring 3 program that took the input and
@@ -1096,6 +1102,9 @@ pub fn main(ctx: &mut BootContext) {
     //
     // Goes AFTER `usb::init` (it needs to know whether there are devices) and
     // after the scheduler is armed, which it already is a few lines above.
+    // ** THE SUSPECT. USB enumeration has mandatory waits per spec (port
+    // reset, recovery, control transfers), and there are two controllers.
+    crate::ring0::core::boot_timeline::mark("usb enumeration");
     let _ = crate::ring0::dev::usb::start_bus_thread();
     // Y el disco: el HBA SATA (no el NVMe -- ahi vive el sistema del dueno) y
     // su tabla de particiones. Ver dev/disk.rs.
@@ -1105,6 +1114,7 @@ pub fn main(ctx: &mut BootContext) {
     // --con el resto del hardware y antes del disco duro de verdad-- porque su
     // respuesta decide si el driver que viene se empieza sobre suelo firme o
     // sobre una suposicion. Ver `dev/red.rs`.
+    crate::ring0::core::boot_timeline::mark("disk + ahci");
     crate::ring0::dev::red::init();
     // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
     // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un
@@ -1124,6 +1134,7 @@ pub fn main(ctx: &mut BootContext) {
     // Y ESTRATOS, si alguna particion lleva uno. Solo lectura: el modulo no
     // sabe escribir, asi que montarlo no puede estropear nada.
     crate::ring0::fsys::estratos::mount();
+    crate::ring0::core::boot_timeline::mark("filesystems + identity gate");
     dash_log("== RING 0 : hardware al mando ==");
 
     // -- Acto II: RING 3 -- el userspace nace -----------------------------
@@ -1175,6 +1186,10 @@ pub fn main(ctx: &mut BootContext) {
         esperar_a_los_demos();
     }
 
+    crate::ring0::core::boot_timeline::mark("ring 3 handover");
+    // The breakdown, printed where the boot is already being told. It is the
+    // column of COSTS that answers "what do I attack first?".
+    crate::ring0::core::boot_timeline::report(dash_log);
     dash_log("== RING 3 : LA ENTREGA ==");
     row("se cede", |l| {
         l.txt("la PANTALLA, la ENTRADA y una CONSOLA -- y Ring 0 deja de pintar");

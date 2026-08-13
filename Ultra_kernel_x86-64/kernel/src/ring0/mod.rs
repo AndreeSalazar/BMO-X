@@ -103,6 +103,13 @@ pub mod core {
     /// criterio que `informe`: no concede nada, contesta texto. Hace falta
     /// desde que el escritorio es el arranque y el panel del kernel ya no se
     /// pinta -- el relato de como arranco la maquina se estaba perdiendo.
+    /// **BOOT TIMELINE** -- where the boot time actually goes.
+    ///
+    /// A ruler, not an optimisation: the kernel is up in 47 ms and Ring 3 is
+    /// painted at 1164, and nobody had ever measured the 1.1 s in between.
+    /// Reports the COST of each stage, which is the column that answers "what
+    /// do I attack first?".
+    pub mod boot_timeline;
     pub mod klog;
     /// **La AUTOPSIA de un fallo de Ring 3.** El klog cuenta el relato entero;
     /// esto guarda el informe COMPLETO de cada muerte -- vector, codigo,
