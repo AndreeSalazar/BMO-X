@@ -35,8 +35,9 @@ pub(crate) struct Parser {
     var_types: HashMap<String, TypeSpec>,
     struct_fields: HashMap<String, Vec<(String, u32, u32)>>,
     struct_sizes: HashMap<String, u32>,
-    /// El alineado de cada agregado. Ver `alineado_de_tipo`: no se deduce del
-    /// tamano, asi que hay que acordarse de el al colocarlo.
+    /// The alignment of each aggregate. See `type_align`: it does not follow
+    /// from the size, so it has to be remembered when the aggregate is laid
+    /// out.
     struct_aligns: HashMap<String, u32>,
     // (struct_name, field_name) -> tipo del campo. Necesario para resolver
     // offsets de accesos anidados (a->b->c, a.b.c) sin adivinar.
@@ -296,8 +297,8 @@ impl Parser {
         let mut layout = Vec::new();
         let mut d = bmo_abi::types::Disposicion::nueva();
         for m in members {
-            let sz = self.tamano_de_tipo(&m.typ);
-            layout.push((m.name.clone(), d.coloca(sz, self.alineado_de_tipo(&m.typ)), sz));
+            let sz = self.type_size(&m.typ);
+            layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
             self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
         }
         self.struct_fields.insert(name.to_string(), layout);
@@ -309,8 +310,8 @@ impl Parser {
         let mut layout = Vec::new();
         let mut d = bmo_abi::types::DisposicionUnion::nueva();
         for m in members {
-            let sz = self.tamano_de_tipo(&m.typ);
-            layout.push((m.name.clone(), d.coloca(sz, self.alineado_de_tipo(&m.typ)), sz));
+            let sz = self.type_size(&m.typ);
+            layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
             self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
         }
         self.struct_fields.insert(name.to_string(), layout);
@@ -318,40 +319,40 @@ impl Parser {
         self.struct_aligns.insert(name.to_string(), d.alineado());
     }
 
-    /// El tamano de un tipo **con la tabla de structs delante**.
+    /// The size of a type **with the struct table in front of it**.
     ///
-    /// [!] No es `TypeSpec::stack_size()`, y la diferencia no es cosmetica:
-    /// aquel contesta **0** para un `StructRef` porque desde el AST pelado no
-    /// hay tabla de tamanos que consultar. Usarlo aqui colocaba un miembro que
-    /// fuera otro struct con tamano cero, o sea **encima del siguiente** -- y
-    /// ademas en desacuerdo con el codegen, que si consulta su tabla. Dos
-    /// calculos de offsets que divergen es exactamente lo que esta clase se
-    /// escribio para impedir.
+    /// [!] This is not `TypeSpec::stack_size()`, and the difference is not
+    /// cosmetic: that one answers **0** for a `StructRef`, because from the
+    /// bare AST there is no size table to consult. Using it here placed a
+    /// member that was itself a struct with size zero, i.e. **on top of the
+    /// next one** -- and in disagreement with the codegen, which does consult
+    /// its table. Two offset calculations diverging is exactly what this class
+    /// was written to prevent.
     ///
-    /// Es el mismo defecto que ya se pago una vez en `pointer_scale`: `p + 1`
-    /// sobre un `struct T *` avanzaba UN byte por preguntarle el tamano al AST.
-    fn tamano_de_tipo(&self, typ: &TypeSpec) -> u32 {
+    /// It is the same defect already paid for once in `pointer_scale`: `p + 1`
+    /// on a `struct T *` advanced ONE byte because the size was asked of the
+    /// AST.
+    fn type_size(&self, typ: &TypeSpec) -> u32 {
         match typ {
             TypeSpec::StructRef(n) | TypeSpec::UnionRef(n) => {
                 self.struct_sizes.get(n.as_str()).copied().unwrap_or(8)
             }
-            TypeSpec::Array(t, n) => self.tamano_de_tipo(t).saturating_mul(*n),
+            TypeSpec::Array(t, n) => self.type_size(t).saturating_mul(*n),
             otro => otro.stack_size(),
         }
     }
 
-    /// El alineado de un tipo. Un array se alinea como su ELEMENTO y un
-    /// agregado como el mas exigente de sus miembros; ninguno de los dos sale
-    /// del tamano total. Gemela de `codegen::type_align`, y las dos tienen que
-    /// contestar lo mismo.
-    fn alineado_de_tipo(&self, typ: &TypeSpec) -> u32 {
+    /// The alignment of a type. An array aligns like its ELEMENT and an
+    /// aggregate like its most demanding member; neither follows from the total
+    /// size. Twin of `codegen::type_align`, and the two have to agree.
+    fn type_align(&self, typ: &TypeSpec) -> u32 {
         match typ {
-            TypeSpec::Array(t, _) => self.alineado_de_tipo(t),
+            TypeSpec::Array(t, _) => self.type_align(t),
             TypeSpec::StructRef(n) | TypeSpec::UnionRef(n) => {
                 self.struct_aligns.get(n.as_str()).copied().unwrap_or(8)
             }
             TypeSpec::Ptr(_) => 8,
-            otro => bmo_abi::types::alineado_de(self.tamano_de_tipo(otro)),
+            otro => bmo_abi::types::alineado_de(self.type_size(otro)),
         }
     }
 

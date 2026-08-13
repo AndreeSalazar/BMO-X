@@ -1,26 +1,32 @@
-//! **LAS PREGUNTAS SOBRE UN TIPO**: es flotante? es sin signo?
+//! **THE QUESTIONS YOU ASK A TYPE**: is it floating point? is it unsigned?
 //!
-//! === Por que esto es un fichero aparte, y es una regla ===
+//! === Why this is a file of its own, and it is a rule ===
 //!
-//! Porque el codegen calcula TODO en `rax`, o sea que **el tipo no esta en el
-//! valor: hay que preguntarlo**. Cada vez que una operacion se comporta
-//! distinto segun el tipo, la eleccion pasa por aqui.
+//! Because the codegen computes EVERYTHING in `rax`, which means **the type is
+//! not in the value: it has to be asked for**. Every time an operation behaves
+//! differently depending on the type, the choice comes through here.
 //!
-//! Hoy son dos ejes --flotante y signo-- y las dos funciones estan escritas
-//! calcadas a proposito: misma forma, mismos brazos, en el mismo fichero. **El
-//! tercer eje que aparezca se escribe igual y al lado.**
+//! Today there are two axes --floating point and signedness-- and the two
+//! functions are written as carbon copies on purpose: same shape, same arms, in
+//! the same file. **The third axis that shows up gets written the same way and
+//! right next to them.**
 //!
-//! === ** Por que estan juntas, con nombre y fecha ===
+//! === ** Why they are together, with a name and a date ===
 //!
-//! `expr_is_float` llevaba escrita desde siempre. Cuando el 2026-08-13 se
-//! descubrio que las cuatro operaciones sin signo emitian la version con signo,
-//! el arm de `Shr` decia por escrito: *"un tipo sin signo querria `shr`; hoy el
-//! codegen no arrastra esa distincion hasta aqui"*.
+//! `expr_is_float` had been written forever. When it turned out on 2026-08-13
+//! that all four unsigned operations were emitting the signed instruction, the
+//! `Shr` arm said so in writing: *"an unsigned type would want `shr`; today the
+//! codegen does not carry that distinction this far"*.
 //!
-//! Y era falso -- la distincion llegaba, y `expr_is_unsigned` se escribio
-//! copiando la de al lado. **Estaban a 900 lineas de distancia**, y esa
-//! distancia es la que hizo que pareciera un trabajo grande en vez de una
-//! funcion gemela.
+//! And that was false -- the distinction did reach here, and `expr_is_unsigned`
+//! was written by copying its neighbour. **They were 900 lines apart**, and
+//! that distance is what made it look like a big job instead of a twin
+//! function.
+//!
+//! ** The general lesson, and it is Eddi's: in a monolith some defects are
+//! SMALL NEEDLES. Split the file and the same defect becomes a BIG needle -- in
+//! a 134-line file holding exactly two sibling functions, a missing third one
+//! is impossible not to see.
 
 use super::*;
 

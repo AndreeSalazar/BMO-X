@@ -7,24 +7,24 @@ use crate::CError;
 /// Structs y uniones POR VALOR, en su propio fichero. Ver su cabecera para
 /// la ABI de agregados de BMO y para que hacen SysV y Win64 con esto mismo.
 mod agregados;
-/// EL ENLAZADO INTERNO: saltos, llamadas y direcciones de funcion. Todo lo que
-/// se emite como un hueco y se rellena cuando ya se sabe la distancia.
-mod enlazado;
-/// EL MARCO DE PILA: donde cae cada local y como se lee segun su ancho.
-mod marco;
-/// `printf`, el unico trozo que emite un INTERPRETE -- y por eso lleva el
-/// formateador escrito dos veces, en Rust y en codigo maquina.
-mod formato;
-/// INDICES Y PUNTEROS: las cinco formas de llegar a un elemento son la misma
-/// cuenta, y el PASO es el numero que mas ha fallado del compilador.
-mod indices;
-/// LOS INTRINSECOS Y LA PUERTA: la superficie del sistema vista desde C.
-mod intrinsecos;
-/// LAS PREGUNTAS SOBRE UN TIPO: flotante y signo, escritas calcadas a
-/// proposito. El tercer eje que aparezca va aqui.
-mod tipos;
-/// COMA FLOTANTE: el unico valor que no viaja en `rax`.
-mod flotante;
+/// INTERNAL LINKING: jumps, calls and function addresses. Everything emitted
+/// as a hole and filled in once the distance is known.
+mod linking;
+/// THE STACK FRAME: where each local falls and how it is read back by width.
+mod frame;
+/// `printf`, the only part that emits an INTERPRETER -- which is why it carries
+/// the formatter written twice, in Rust and in machine code.
+mod format;
+/// INDEXING AND POINTERS: the five ways of reaching an element are one sum, and
+/// the STRIDE is the number that has failed more often than any other here.
+mod indexing;
+/// INTRINSICS AND THE DOOR: the system surface as seen from C.
+mod intrinsics;
+/// THE QUESTIONS YOU ASK A TYPE: floating point and signedness, written as
+/// carbon copies on purpose. The third axis that shows up goes here.
+mod types;
+/// FLOATING POINT: the only value that does not travel in `rax`.
+mod floats;
 /// La ENTRADA de C (`getchar`, `scanf`), tambien aparte. Escribir es empujar
 /// bytes; leer es ESPERAR, guardar lo que sobra y decidir que significa lo que
 /// alguien tecleo. Tres problemas que la salida no tiene.

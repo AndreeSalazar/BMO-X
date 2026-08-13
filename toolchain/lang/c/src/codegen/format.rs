@@ -1,24 +1,24 @@
-//! **`printf`**: el unico trozo del compilador que emite un INTERPRETE.
+//! **`printf`**: the only part of the compiler that emits an INTERPRETER.
 //!
-//! === Por que esto es un fichero aparte, y es la razon mas clara de todas ===
+//! === Why this is a file of its own, and it is the clearest case here ===
 //!
-//! Todo lo demas que emite BMO C es una traduccion: una expresion del fuente se
-//! convierte en instrucciones que la calculan. `printf` no. `printf` tiene
-//! **dos modos, y son dos programas distintos**:
+//! Everything else BMO C emits is a translation: an expression in the source
+//! becomes instructions that compute it. `printf` is not. `printf` has **two
+//! modes, and they are two different programs**:
 //!
-//! - Si el formato se conoce al compilar --el caso normal-- se recorre AQUI y
-//!   se emiten los bytes ya resueltos: `write_const` mete el texto como
-//!   inmediatos dentro de las propias instrucciones. No hay interprete.
-//! - Si el formato es una VARIABLE, la plantilla no existe hasta que el
-//!   programa corre, asi que hay que emitir el bucle que la recorre.
+//! - If the format is known at compile time --the normal case-- it is walked
+//!   HERE and the resolved bytes are emitted: `write_const` puts the text in as
+//!   immediates inside the instructions themselves. There is no interpreter.
+//! - If the format is a VARIABLE, the template does not exist until the program
+//!   runs, so the loop that walks it has to be emitted.
 //!
-//! O sea que este fichero contiene un formateador escrito dos veces, una en
-//! Rust y otra en codigo maquina, **y las dos tienen que decir lo mismo**. Esa
-//! es la propiedad que le da derecho a un fichero: es el unico subsistema del
-//! codegen con una obligacion de coherencia consigo mismo.
+//! So this file holds a formatter written twice, once in Rust and once in
+//! machine code, **and the two have to agree**. That is the property that earns
+//! it a file: it is the only subsystem in the codegen with an obligation to be
+//! consistent with itself.
 //!
-//! [!] Y por eso las pruebas de `printf` EJECUTAN. Un formateador que produce
-//! digitos erroneos se ve perfectamente sano en un volcado de bytes.
+//! [!] And that is why the `printf` tests EXECUTE. A formatter that produces
+//! wrong digits looks perfectly healthy in a byte dump.
 
 use super::*;
 

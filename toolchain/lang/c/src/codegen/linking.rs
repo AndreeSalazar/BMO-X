@@ -1,22 +1,22 @@
-//! **EL ENLAZADO INTERNO**: los saltos, las llamadas y las direcciones que no
-//! se conocen cuando se emiten.
+//! **INTERNAL LINKING**: the jumps, the calls and the addresses that are not
+//! known at the moment they are emitted.
 //!
-//! === Por que esto es un fichero aparte ===
+//! === Why this is a file of its own ===
 //!
-//! Todo lo que hay aqui comparte una sola forma: **emitir un hueco, apuntar
-//! donde esta, y rellenarlo cuando ya se sabe la distancia**. Un `if` no sabe
-//! a que byte tiene que saltar hasta que se ha emitido su cuerpo; una llamada
-//! no sabe donde esta la funcion hasta que se han emitido todas.
+//! Everything in here shares one shape: **emit a hole, remember where it is,
+//! and fill it in once the distance is known**. An `if` does not know which
+//! byte to jump to until its body has been emitted; a call does not know where
+//! the function lives until every function has been emitted.
 //!
-//! Repartidos entre `emit_stmt` y `emit_program`, los doce metodos parecian
-//! detalles de sus llamantes. Juntos son **un mecanismo con un nombre**, y la
-//! propiedad que hay que conservar se lee de una vez: *ningun desplazamiento
-//! se cuenta a mano*.
+//! Spread between `emit_stmt` and `emit_program`, the twelve methods looked
+//! like details of their callers. Together they are **one mechanism with a
+//! name**, and the property worth preserving reads in one go: *no displacement
+//! is ever counted by hand*.
 //!
-//! [!] Y no es teorico -- la version a mano de estos huecos, en
-//! `bmo-lower/memoria.rs`, tenia **tres de cuatro saltos mal por uno**. Contar
-//! bytes de instruccion es justo el trabajo que una maquina hace sin
-//! equivocarse.
+//! [!] And that is not theoretical -- the hand-written version of these holes,
+//! over in `bmo-lower/memoria.rs`, had **three of its four jumps off by one**.
+//! Counting instruction bytes is precisely the job a machine does without
+//! making mistakes.
 
 use super::*;
 

@@ -1,20 +1,20 @@
-//! **EL MARCO DE PILA**: donde vive cada variable local y como se lee.
+//! **THE STACK FRAME**: where each local lives and how it is read back.
 //!
-//! === Por que esto es un fichero aparte ===
+//! === Why this is a file of its own ===
 //!
-//! BMO C no tiene asignacion de registros: **toda variable vive en la pila**,
-//! en un hueco fijo de `[rbp+disp]` que se calcula ANTES de emitir una sola
-//! instruccion del cuerpo. Eso convierte "las variables" en un subsistema con
-//! dos mitades bien separadas --recorrer las declaraciones para repartir el
-//! sitio (`build_var_map`), y luego leer y escribir esos sitios-- que no se
-//! parecen a nada mas del emisor.
+//! BMO C has no register allocation: **every variable lives on the stack**, in
+//! a fixed `[rbp+disp]` slot worked out BEFORE a single instruction of the body
+//! is emitted. That turns "the variables" into a subsystem with two cleanly
+//! separated halves --walking the declarations to hand out the slots
+//! (`build_var_map`), then reading and writing those slots-- and neither half
+//! looks like anything else in the emitter.
 //!
-//! === Lo que hay que conservar ===
+//! === What to preserve ===
 //!
-//! `emit_load_var` es el metodo mas largo del subsistema y no por capricho: es
-//! el unico sitio donde el ANCHO del tipo decide la instruccion. Un `int` se
-//! carga con `movsxd` y un `unsigned int` con `mov eax`; confundirlos no da un
-//! error, da un numero. Ver `sonda_de_anchos` en el banco de pruebas.
+//! `emit_load_var` is the longest method here and not by accident: it is the
+//! one place where the WIDTH of a type picks the instruction. An `int` loads
+//! with `movsxd` and an `unsigned int` with `mov eax`; mixing them up does not
+//! produce an error, it produces a number. See `probe_widths` in the bench.
 
 use super::*;
 

@@ -1,29 +1,30 @@
-//! **INDICES Y PUNTEROS**: convertir `a[i]`, `*p` y `p + n` en una direccion.
+//! **INDEXING AND POINTERS**: turning `a[i]`, `*p` and `p + n` into an address.
 //!
-//! === Por que esto es un fichero aparte ===
+//! === Why this is a file of its own ===
 //!
-//! Porque las cinco formas que C ofrece para llegar a un elemento --`a[i]`,
-//! `*(a+i)`, `p[i]`, `*(p+i)`, `&a[i]`-- **son la misma cuenta**: una base, un
-//! indice y un PASO. Lo unico que cambia es de donde sale cada uno.
+//! Because the five spellings C offers for reaching an element --`a[i]`,
+//! `*(a+i)`, `p[i]`, `*(p+i)`, `&a[i]`-- **are the same sum**: a base, an index
+//! and a STRIDE. All that changes is where each of the three comes from.
 //!
-//! Repartidas por `emit_expr`, cada una era una rama que calculaba el paso por
-//! su cuenta. Juntas, el paso sale de un solo sitio (`pointer_scale`) y la
-//! regla se puede leer.
+//! Scattered through `emit_expr`, each spelling was an arm working out the
+//! stride for itself. Together, the stride comes from one place
+//! (`pointer_scale`) and the rule can be read.
 //!
-//! === ** Lo que costo tenerlo repartido, y van tres veces ===
+//! === ** What keeping them apart cost, three times over ===
 //!
-//! El PASO es el numero que mas ha fallado de todo el compilador:
+//! The STRIDE is the number that has failed more often than anything else in
+//! this compiler:
 //!
 //! | | |
 //! |---|---|
-//! | `p + 1` sobre `struct T *` | avanzaba UN byte |
-//! | `p++` sobre cualquier puntero | avanzaba UN byte |
-//! | `&c->defaults[i]` | valia CERO |
+//! | `p + 1` on a `struct T *` | advanced ONE byte |
+//! | `p++` on any pointer | advanced ONE byte |
+//! | `&c->defaults[i]` | evaluated to ZERO |
 //!
-//! Los tres son la misma cuenta preguntada desde tres sitios distintos, y los
-//! tres se arreglaron por separado el mismo dia. Ese es el argumento para que
-//! vivan juntos: **la tercera vez que se paga el mismo bug, el arreglo no es el
-//! caso que falta, es el reparto**.
+//! The three are one sum asked from three different places, and the three were
+//! fixed separately on the same day. That is the argument for keeping them
+//! together: **the third time you pay for the same bug, the fix is not the
+//! missing case -- it is the layout.**
 
 use super::*;
 

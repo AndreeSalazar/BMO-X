@@ -79,31 +79,40 @@ mod tabla_de_config;
 /// configuracion encima del WAD.
 mod argv_de_doom;
 mod varargs_de_doom;
-/// El ARNES de los censos: barrer una matriz de casillas y comparar el informe
-/// entero. Lo comparten las dos sondas de abajo.
-mod censo;
-/// LA SONDA DEL LENGUAJE: la matriz contenedor x operacion, y el censo de lo
-/// que BMO C sabe hacer -- escrito para que no pueda quedarse viejo.
-mod sonda_del_lenguaje;
-/// LA SONDA DE LA DISPOSICION: donde cae cada campo y cuanto mide el agregado,
-/// medido contra el formato del WAD -- la unica autoridad de fuera que tiene
-/// este compilador. Es el eje que `R_Init` y `P_Init` van a pisar.
-mod sonda_de_disposicion;
-/// LA SONDA DEL ANCHO: estrechar, ensanchar y promocionar. El eje de `SHORT(x)`
-/// de DOOM, que es `(signed short)` y por el que pasa cada campo del WAD.
-mod sonda_de_anchos;
-/// LA SONDA DE LAS TABLAS: si los bytes que el compilador mete en el `.bex` son
-/// los que decia el fuente. El eje de `tables.c` y `info.c`.
-mod sonda_de_tablas;
-/// LA SONDA DEL SIGNO: las cuatro operaciones que preguntan por el bit alto. El
-/// eje de `angle_t`, y donde el ancho de `rax` tapaba el defecto en 32 bits.
-mod sonda_sin_signo;
-/// LA SONDA DEL FLUJO: switch, goto y recursion. El eje de los 85 `switch` del
-/// playsim y de `R_RenderBSPNode`, que es recursiva con dos ramas.
-mod sonda_de_flujo;
-/// LA SONDA DE LA ASIGNACION: las formas abreviadas. [!] Lleva UNA fila en ROTO
-/// a proposito -- la doble evaluacion del lvalue en `a[i++] += 1`.
-mod sonda_de_asignacion;
+// == THE CENSUS FAMILY ==============================================
+//
+// Seven axes, 115 cells, half a second: `cargo test -p bmo-c-front probe_`.
+// This is the answer to "what does BMO C support", and it CANNOT go stale --
+// each probe compares its whole report against a written constant, so fixing a
+// BROKEN or breaking a GOOD fails the test until the census is updated.
+//
+// The axes are ENUMERATED (the product of two lists), not invented, and the
+// rows come from DOOM's source rather than from reading the standard.
+
+/// The census HARNESS: sweep a matrix of cells and compare the whole report.
+/// Shared by all seven probes below.
+mod census;
+/// CONTAINER x OPERATION -- the census of what BMO C can do. 28 cells, green.
+mod probe_language;
+/// LAYOUT -- where each field falls and how big the aggregate is, measured
+/// against the WAD format, the only outside authority this compiler has. The
+/// axis `R_Init` and `P_Init` are about to step on. Found 9 broken of 12.
+mod probe_layout;
+/// WIDTH -- narrowing, widening, promoting. The axis of DOOM's `SHORT(x)`,
+/// which is `(signed short)` and which every WAD field goes through. Clean.
+mod probe_widths;
+/// TABLES -- whether the bytes the compiler puts in the `.bex` are the ones the
+/// source said. The axis of `tables.c` and `info.c`. Clean.
+mod probe_tables;
+/// SIGNEDNESS -- the four operations that ask about the top bit. The axis of
+/// `angle_t`, and where the width of `rax` hid the defect at 32 bits. Found 4.
+mod probe_signedness;
+/// CONTROL FLOW -- switch, goto and recursion. The axis of the playsim's 85
+/// `switch` and of `R_RenderBSPNode`, which recurses down two branches. Clean.
+mod probe_control_flow;
+/// ASSIGNMENT -- the shorthand forms. [!] Carries ONE row BROKEN on purpose:
+/// the double evaluation of the lvalue in `a[i++] += 1`.
+mod probe_assignment;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
