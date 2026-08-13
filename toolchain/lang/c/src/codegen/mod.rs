@@ -1806,17 +1806,70 @@ impl Codegen {
         self.code.extend_from_slice(&[0x48, 0x31, 0xC0]);
     }
 
+    /// **Cuanto avanza un `++` sobre esta variable.**
+    ///
+    /// Uno para todo lo que no sea un puntero; el tamano del APUNTADO para los
+    /// que si lo son. Es la regla de C de siempre --`p + 1` avanza un
+    /// ELEMENTO-- y hasta el 2026-08-13 este camino no la cumplia: `emit_inc_var`
+    /// hacia `add rax, 1` pasara lo que pasara.
+    ///
+    /// ## Lo que costo, y es lo mas comun que hay en C
+    ///
+    /// `<stdarg.h>` define `va_arg` asi:
+    ///
+    /// ```c
+    /// #define va_arg(ap, type)   ((type)(*(ap)++))
+    /// ```
+    ///
+    /// O sea que **`va_arg` ES un `*p++`**. Con el paso de un byte, la primera
+    /// lectura acierta --el puntero sigue donde se puso-- y de la segunda en
+    /// adelante se lee a caballo entre dos casillas. En DOOM eso fue
+    /// `M_StringJoin` recorriendo 19 punteros basura en vez de 3 y haciendoles
+    /// `strlen`: `#PF` y tarea eliminada.
+    ///
+    /// Y fuera de DOOM es peor, porque `while (*p) p++;` es el idioma mas comun
+    /// del lenguaje.
+    ///
+    /// [!] ** ES EL TERCER BRAZO DE LA MISMA CUENTA EN UN DIA.** `Expr::Add` lo
+    /// escalaba por `pointer_scale` --que a su vez media con la funcion
+    /// equivocada-- y `Expr::PostInc` no lo escalaba en absoluto. Tres sitios
+    /// distintos calculando "cuanto avanza un puntero", y solo uno bien. Cuando
+    /// esto vuelva a aparecer, el arreglo no es el caso que falta: es juntar la
+    /// cuenta en un sitio.
+    fn paso_de_puntero(&self, name: &str) -> u32 {
+        match self.var_type_of(name) {
+            // `Array` no entra a proposito: `arr++` no es C valido, y aceptarlo
+            // aqui seria inventarse una semantica que el parser no promete.
+            Some(TypeSpec::Ptr(inner)) => self.type_stack_size(&inner).max(1),
+            _ => 1,
+        }
+    }
+
+    /// `add rax, paso` con la codificacion corta cuando cabe.
+    fn emit_suma_paso(&mut self, paso: u32, restar: bool) {
+        let op8 = if restar { 0xE8 } else { 0xC0 };
+        if paso <= 127 {
+            self.code.extend_from_slice(&[0x48, 0x83, op8, paso as u8]);
+        } else {
+            // REX.W + 05/2D id -- `add/sub rax, imm32`.
+            self.code.extend_from_slice(&[0x48, if restar { 0x2D } else { 0x05 }]);
+            self.code.extend_from_slice(&paso.to_le_bytes());
+        }
+    }
+
     fn emit_inc_var(&mut self, name: &str) {
         if !self.var_offsets.contains_key(name) && !self.global_offsets.contains_key(name) { self.emit_xor_eax(); return; }
+        let paso = self.paso_de_puntero(name);
         self.emit_load_var(name);
-        self.code.extend_from_slice(&[0x48, 0x83, 0xC0, 0x01]);
+        self.emit_suma_paso(paso, false);
         self.emit_store_var(name);
     }
 
     fn emit_dec_var(&mut self, name: &str) {
         if !self.var_offsets.contains_key(name) && !self.global_offsets.contains_key(name) { self.emit_xor_eax(); return; }
+        let paso = self.paso_de_puntero(name);
         self.emit_load_var(name);
-        self.code.extend_from_slice(&[0x48, 0x83, 0xE8, 0x01]);
+        self.emit_suma_paso(paso, true);
         self.emit_store_var(name);
     }
 
