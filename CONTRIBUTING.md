@@ -33,7 +33,9 @@ This project has a floor and a building. They have different rules.
 
 ### 🔒 The Base does not move
 
-- the three syscalls -- `INVOKE`, `CHANNEL_KICK`, `WAIT`
+- the two syscalls -- `INVOKE` and `WAIT`. (Number `1` is a reserved
+  tombstone: `CHANNEL_KICK` was withdrawn on 2026-08-10 and the number is
+  not recycled, so an old binary that calls it fails saying so.)
 - the BEF/BEX container format
 - the capability model itself
 

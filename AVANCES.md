@@ -1031,7 +1031,7 @@ un importe tecleado, y los tres lenguajes.
 Funciona en HW real: boot chain unificado (BOOTX64.EFI embebe s1/s2/kernel),
 GDT/IDT propias, paginacion (physmap 16 GiB, kernel-half pre-poblado),
 scheduler preemptivo por LAPIC timer, Capability Engine, BMO Channel (IPC),
-3 syscalls, fault isolation. **Bugs raiz historicos resueltos** (ver BITACORA):
+2 syscalls, fault isolation. **Bugs raiz historicos resueltos** (ver BITACORA):
 CS fantasma UEFI, split-brain de gs, framebuffer bajo CR3 usuario, stacks no
 contiguos.
 
@@ -1244,7 +1244,7 @@ de vendor. **COBOL devorado -> BMO COBOL.**
 
 ## Filosofia / arquitectura (los principios)
 
-1. **3 syscalls congelados + subsyscalls**: `INVOKE`/`KICK`/`WAIT` nunca
+1. **2 syscalls congelados + subsyscalls**: `INVOKE`/`WAIT` nunca
    cambian; todo lo demas son operaciones sobre capabilities (modelo seL4/Zircon,
    no Windows). Ver README raiz "Subsyscalls".
 2. **Contratos y librerias, NUNCA cerebros**: se comparten formatos (BEF, ABI)
@@ -1420,7 +1420,7 @@ pirateria; es "esta maquina me obedece solo a mi". Consola-con-esteroides + PC.
    - FUERA (la "basura" que hunde el barco, cf. Stroustrup "Remember the
      Vasa!"): concepts, coroutines, modules, ranges, STL gigante,
      metaprogramacion pesada, C++20/23, el treadmill moderno.
-   - Los 3 syscalls + runtime minimo (bmo-rt) lo hacen FINITO/terminable:
+   - Los 2 syscalls + runtime minimo (bmo-rt) lo hacen FINITO/terminable:
      no necesita std::thread/filesystem/etc. **C++ congelado en su esencia.**
 
 **Desktop (F5)**: compositor sobre Endpoint RPC, estetica Win11+Mac cyberpunk.

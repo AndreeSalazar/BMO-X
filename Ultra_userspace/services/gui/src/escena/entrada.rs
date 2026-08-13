@@ -14,7 +14,7 @@
 //!
 //! === Esta CRONOMETRADA, no contada en vueltas ===
 //!
-//! Ring 3 no tiene reloj en los tres syscalls... pero `RDTSC` no es privilegiada
+//! Ring 3 no tiene reloj en los dos syscalls... pero `RDTSC` no es privilegiada
 //! y el kernel publica la frecuencia medida (`INFO_TSC_HZ`). Con eso, una
 //! espera de 900 ms es de 900 ms **en esta maquina y en la siguiente**. Contar
 //! vueltas del bucle habria dado una intro de dos segundos en un Ryzen y de

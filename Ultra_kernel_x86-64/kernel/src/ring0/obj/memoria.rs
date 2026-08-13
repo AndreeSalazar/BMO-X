@@ -41,7 +41,7 @@
 //!   programa recorre como un array tiene que serlo. Si la RAM esta
 //!   fragmentada y no hay hueco, se rechaza y **se dice** -- entregar memoria a
 //!   trozos sin avisar seria peor.
-//! - **Sin tocar los tres syscalls.** Esto es una capability mas y una
+//! - **Sin tocar los dos syscalls.** Esto es una capability mas y una
 //!   operacion mas sobre `CURRENT_TASK`, como el framebuffer o la consola.
 
 use crate::ring0::mm::{self, vmm};

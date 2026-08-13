@@ -15,7 +15,7 @@
 //! * Y no es una API prestada de nadie: `Win+R` tampoco lo es alli. Es UI del
 //! shell, y por debajo acaba llamando a lo mismo que llamaria cualquiera. Aqui
 //! por debajo hay `OP_EJECUTAR` sobre `CURRENT_TASK`, que es una operacion mas
-//! en una tabla -- **el ABI de tres syscalls no se toca para esto**.
+//! en una tabla -- **el ABI de dos syscalls no se toca para esto**.
 //!
 //! ## Quien manda sobre el teclado
 //!

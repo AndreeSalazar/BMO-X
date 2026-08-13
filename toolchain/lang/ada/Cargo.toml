@@ -14,7 +14,7 @@ description = "BMO Ada frontend — compila Ada a ejecutables BEX nativos, sin r
 #
 # Lo unico compartido son CONTRATOS y librerias OPCIONALES que el frontend
 # elige enlazar:
-#   bmo-abi     el contenedor BEF y la superficie congelada de 3 syscalls
+#   bmo-abi     el contenedor BEF y la superficie congelada de 2 syscalls
 #   bmo-lower   L1, la puerta al ABI (consola, formateo, archivos)
 #
 # El dia que Ada necesite el `PICTURE` de Annex F --que el estandar copio de

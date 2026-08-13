@@ -172,7 +172,7 @@ escalon de auto-curacion es tambien un escalon de seguridad.
 | **No hay `root`** | no es que este restringido: **no existe el concepto** |
 | **No hay autoridad ambiental** | ni SUID, ni tokens, ni `/proc`, ni `ptrace`, ni variables de entorno con poder |
 | **Un proceso solo tiene handles** | lo que no le concedieron **no existe para el** |
-| **La superficie cabe en la cabeza** | 3 syscalls y 32 operaciones. Se audita en una tarde |
+| **La superficie cabe en la cabeza** | 2 syscalls y 40 operaciones. Se audita en una tarde |
 | **Las capabilities mueren con la tarea** | no hay estado que sobreviva para reusarlo |
 
 ★ La mayoria de las tecnicas de escalada de privilegios de un Unix atacan la
@@ -204,7 +204,7 @@ donde vive la clase de fallo que un pentest de verdad busca primero.
 
 No porque sea inexpugnable -- no lo es, y acaba de listar por que. Sino porque:
 
-- **cabe entero en la cabeza**: 3 syscalls, 32 operaciones, un modelo de objetos
+- **cabe entero en la cabeza**: 2 syscalls, 40 operaciones, un modelo de objetos
   con generaciones. Un alumno puede leerlo todo;
 - **cada fallo deja una autopsia**: se le puede dar un bug a alguien y de verdad
   lo encuentra, en vez de rebotar contra un kernel de 30 millones de lineas;

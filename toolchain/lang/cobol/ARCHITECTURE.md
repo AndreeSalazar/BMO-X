@@ -31,7 +31,7 @@ tambien `cobol.md` (la esencia/teoria) y `../../tools/cobol-gen/README.md`.
      |  Vec<u8> (codigo maquina)
  +---▼---------------+
  | 5. BEF            |  bmo-abi::bef::writer ✅  empaqueta -> .bef/.bex
- |    contenedor     |  -> verificacion -> BMO ABI (3 syscalls) -> corre
+ |    contenedor     |  -> verificacion -> BMO ABI (2 syscalls) -> corre
  +-------------------+
 ```
 

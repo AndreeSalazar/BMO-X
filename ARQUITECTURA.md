@@ -3,7 +3,7 @@
 The full technical document. For the short version, see [README.md](README.md).
 
 A bare-metal system written in Rust, with a capability-based kernel and a
-**frozen surface of three syscalls**. Graphics through UEFI GOP (framebuffer).
+**frozen surface of two syscalls**. Graphics through UEFI GOP (framebuffer).
 No proprietary driver dependencies.
 
 **Status:** boots on real hardware and reaches the top -- full Ring 0, a desktop
@@ -207,7 +207,7 @@ The first Ring 3 program lived and died through **9 calls on 1 single door**
   (`KIND_FRAMEBUFFER` / `INPUT` / `CONSOLE` / `DIRECTORIO` / `ARCHIVO`): Ring 3
   paints with `mov` and the kernel steps aside
 - **RPC endpoint** (`KIND_ENDPOINT` + `KIND_REPLY`): two Ring 3 processes
-  talking through the kernel, without touching the three syscalls
+  talking through the kernel, without touching the two syscalls
 - **Compositor in Ring 3**, loaded from `sys/gui.bex` -- changing the desktop
   does not recompile the kernel
 

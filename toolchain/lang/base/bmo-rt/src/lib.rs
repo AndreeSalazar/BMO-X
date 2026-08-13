@@ -50,7 +50,7 @@
 //! - **No es `bmo-userland`.** Aquel (`Ultra_userspace/userland`) es la API en
 //!   **Rust** que usa el compositor: `Pantalla`, `Archivo`, `Directorio`,
 //!   `Memoria`. Este exporta **simbolos C** para que los enlace un `.bex`
-//!   compilado. Los dos envuelven los mismos 3 syscalls y **ninguno sustituye
+//!   compilado. Los dos envuelven los mismos 2 syscalls y **ninguno sustituye
 //!   al otro**: distinto consumidor, distinto idioma, distinta forma.
 //! - **No es `bmo-abi`.** Aquel es el CONTRATO --numeros de operacion,
 //!   estructuras, disposicion--; este es una IMPLEMENTACION que lo usa. Por eso

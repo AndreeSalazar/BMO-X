@@ -82,7 +82,7 @@ members = [
     # -- TOOLCHAIN (Build-time: language frontends -> BEF -> BEX) -----
     # Ada: crate PROPIO y sin dependencia de los demas frontends. Cada
     # lenguaje es un pipeline individual y completo -- lo unico compartido son
-    # contratos (BEF, los 3 syscalls) y librerias opcionales (bmo-lower).
+    # contratos (BEF, los 2 syscalls) y librerias opcionales (bmo-lower).
     "toolchain/lang/ada",
     "toolchain/lang/cobol",
     "toolchain/lang/cpp",
@@ -132,7 +132,7 @@ members = [
     # -- Nota sobre el intermediario "CPU-aware" -------------------
     # Aqui vivia `bmo-arch`: 1147 lineas de capa de abstraccion de CPU
     # con CERO usuarios, que ademas abstraia un `syscall(nr, [u64;6])`
-    # que la superficie congelada de 3 syscalls no tiene. Se borro
+    # que la superficie congelada de 2 syscalls no tiene. Se borro
     # (regla: o funciona, o se elimina y el diseno queda en un README).
     # El plan de portado vive en `platform/README.md`, y quien de
     # verdad separa CPU de contrato es la pareja

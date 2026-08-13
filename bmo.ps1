@@ -108,7 +108,7 @@ if (-not $Rapido) {
 # -- 2. CONSTRUIR ---------------------------------------------------------
 #
 # `build.ps1` hace el resto y lleva sus propios guardianes de contrato dentro:
-# los tres syscalls contra `bmo-abi`, la tabla `OP_INFO` en sus tres sitios,
+# los dos syscalls contra `bmo-abi`, la tabla `OP_INFO` en sus tres sitios,
 # `KIND_AUDIO` en kernel y ABI, ningun opcode repetido, y el portico de ASCII.
 Titulo 'Construir (toolchain + kernel + Ring 3 + los .bex)'
 $build = Join-Path $raiz 'Ultra_kernel_x86-64\build.ps1'

@@ -41,5 +41,5 @@ toolchain/
 fuente (C/COBOL/C++) -> [frontend en lang/] -> BEF
                               |  (usa forge/ a voluntad)
                               ▼
-                        [bmo-verify] -> BMO ABI (3 syscalls) -> corre en Ring 3
+                        [bmo-verify] -> BMO ABI (2 syscalls) -> corre en Ring 3
 ```

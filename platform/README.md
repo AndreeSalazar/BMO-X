@@ -15,7 +15,7 @@ CPU sea trabajo acotado en vez de una reescritura:
 La pregunta que hay que contestar antes de escribir una linea de aarch64 es:
 **que cambia y que no?**
 
-**No cambia**: la superficie de 3 syscalls (`INVOKE`/`CHANNEL_KICK`/`WAIT`), el
+**No cambia**: la superficie de 2 syscalls (`INVOKE`/`WAIT`), el
 contenedor BEF, `bmo-channel`, `bmo-hash`, los frontends de lenguaje (COBOL, C,
 Ada) hasta su ultima fase, y `USER_IMAGE_BASE`. Son **contratos**, y un contrato
 no tiene arquitectura.

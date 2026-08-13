@@ -15,7 +15,7 @@ channel-call, adaptado a la superficie congelada de BMO.
 
 ## Regla de oro
 
-**La superficie de 3 syscalls NO cambia.** `INVOKE` / `CHANNEL_KICK` /
+**La superficie de 2 syscalls NO cambia.** `INVOKE` /
 `WAIT` quedan como estan. Todo lo nuevo es:
 
 - 1 kind nuevo de capability: `KIND_ENDPOINT` (servidor) y su par

@@ -15,7 +15,7 @@ sabe cuanta RAM hay, ni donde esta el framebuffer, ni que discos existen.
 Recibe *capabilities*: cada una es un permiso concreto sobre un objeto
 concreto, y lo que no le hayan dado no existe para el.
 
-Y la superficie son **tres syscalls**, congelados:
+Y la superficie son **dos syscalls**, congelados:
 
 ```
 INVOKE(cap, operacion, a0, a1, a2)   la puerta sincrona
@@ -63,7 +63,7 @@ salta al vacio y muere con un `#UD` en Ring 3.
 
 | Crate | Estado | Que es |
 |---|---|---|
-| `userland` (`bmo-userland`) | **vivo** | El runtime: los tres syscalls, `Status`, `Pantalla`, consola. Sin dependencias, a proposito. |
+| `userland` (`bmo-userland`) | **vivo** | El runtime: los dos syscalls, `Status`, `Pantalla`, consola. Sin dependencias, a proposito. |
 | `services/gui` (`compositor`) | **vivo** | Reclama `KIND_FRAMEBUFFER`, pinta y no termina. Es el binario que arranca el kernel. |
 | `services/input` | stub | Multiplexor de teclado y raton. Espera a que el compositor sepa atender clientes. |
 | `apps/launcher` | stub | Shell del escritorio. |
