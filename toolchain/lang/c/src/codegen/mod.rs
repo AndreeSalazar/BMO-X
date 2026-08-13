@@ -2907,7 +2907,48 @@ impl Codegen {
                     Expr::Deref(ptr) => {
                         self.emit_expr(ptr); // rax = address of the pointed-to data
                     }
-                    _ => self.emit_xor_eax(),
+                    // ** LAS TRES QUE FALTABAN, y las tres MATARON A DOOM.
+                    //
+                    // `&c->defaults[i]` es `AddrOf(IndexPtr(..))`, y hasta el
+                    // 2026-08-13 caia en el `_` de abajo: la direccion salia
+                    // CERO, en silencio, y `SearchCollection` de `m_config.c`
+                    // devolvia `NULL` habiendo ENCONTRADO su entrada. DOOM se
+                    // mataba con `I_Error` a 56.465 lineas de aqui.
+                    //
+                    // Las tres son la version SIN CARGA de los brazos que ya
+                    // existen mas abajo: `Field`, `Arrow` e `IndexPtr` calculan
+                    // la direccion y luego llaman a `emit_load_elem`. Tomar la
+                    // direccion es exactamente eso menos el ultimo paso.
+                    Expr::IndexPtr(base, index, elem) => {
+                        self.emit_index_ptr_addr(base, index, &elem.clone());
+                    }
+                    Expr::Field(base, _campo, offset, _t) => {
+                        self.emit_expr_as_ptr(base);
+                        self.emit_add_offset(*offset);
+                    }
+                    Expr::Arrow(ptr, _campo, offset, _t) => {
+                        self.emit_expr(ptr);
+                        self.emit_add_offset(*offset);
+                    }
+                    // ** Y ESTE BRAZO YA NO RELLENA DE CEROS: GRITA.
+                    //
+                    // Era la tercera vez que el mismo `_ =>` mudo costaba un
+                    // dia de fotos --el `char *mapa` del raycaster
+                    // (`2bc13367`), las relocations que no existian
+                    // (`46506e51`), y esta--. El patron es siempre el mismo:
+                    // un brazo por defecto que produce un valor LEGITIMO (cero
+                    // es una direccion valida de escribir en cualquier
+                    // expresion) para el caso "no supe traducirlo".
+                    //
+                    // Un compilador que no sabe tomar una direccion tiene que
+                    // decirlo AQUI, donde la frase esta entera, y no dejar que
+                    // el programa lo descubra en metal.
+                    otro => {
+                        self.errors.push(format!(
+                            "no se de que forma tomar la direccion de esta expresion: {otro:?}"
+                        ));
+                        self.emit_xor_eax();
+                    }
                 }
             }
             Expr::Subscript(name, index, scale) => {
@@ -3673,7 +3714,24 @@ impl Codegen {
     /// `None` cuando no lo es o cuando el elemento mide 1 byte (no hace
     /// falta escalar).
     fn pointer_scale(&self, expr: &Expr) -> Option<u32> {
-        let size = self.pointee_type(expr)?.stack_size();
+        // ** LA MEDIDA LA TIENE QUE DAR EL CODEGEN, NO EL TIPO.
+        //
+        // Antes: `self.pointee_type(expr)?.stack_size()`. Y
+        // `TypeSpec::stack_size` --que es una funcion del AST, sin acceso a
+        // ninguna tabla-- contesta **0** para `StructRef` y `UnionRef`, porque
+        // desde ahi no hay forma de saber cuanto mide un struct.
+        //
+        // Con `0`, el `if size > 1` de abajo daba `None` = "esto no es un
+        // puntero", y `p + 1` sobre un `struct T *` avanzaba **UN BYTE** en vez
+        // de un elemento. No es un caso raro de DOOM: es cualquier recorrido de
+        // una tabla de structs con aritmetica en vez de subindice, y el
+        // resultado no es un cuelgue -- es leer un registro a caballo entre dos.
+        //
+        // `type_stack_size` es la misma cuenta CON la tabla `struct_sizes`
+        // delante, que es la que ya usan `emit_index_ptr_addr` y
+        // `emit_load_elem`. O sea que el subindice acertaba y la suma no,
+        // siendo la misma direccion escrita de dos formas.
+        let size = self.type_stack_size(&self.pointee_type(expr)?);
         if size > 1 { Some(size) } else { None }
     }
 
