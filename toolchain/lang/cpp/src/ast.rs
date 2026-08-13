@@ -122,6 +122,19 @@ impl TypeSpec {
             TypeSpec::Auto => 0,
         }
     }
+
+    /// **El alineado**, que sale del tamano en todo menos en un array.
+    ///
+    /// Un `char v[8]` mide 8 y se alinea a **1**: un array se alinea como su
+    /// elemento. Deducirlo del tamano --que es lo que hacia la disposicion
+    /// antes de que esto existiera-- lo colocaba en el byte 8 y corria todos
+    /// los campos de detras.
+    pub fn alineado(&self) -> u32 {
+        match self {
+            TypeSpec::Array(t, _) => t.alineado(),
+            otro => bmo_abi::types::alineado_de(otro.size()),
+        }
+    }
 }
 
 /// Una rama de un `switch`. `value: None` es el `default`.

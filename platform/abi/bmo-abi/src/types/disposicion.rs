@@ -45,18 +45,29 @@
 //! ```ignore
 //! let mut d = Disposicion::nueva();
 //! for m in miembros {
-//!     let offset = d.coloca(tamano_de(m));
+//!     let offset = d.coloca(tamano_de(m), alineado_de_tipo(m));
 //!     // ...guardar (m, offset) donde le convenga al llamante
 //! }
 //! let total = d.total();
 //! ```
+//!
+//! [!] **Son DOS numeros y no uno.** El alineado de un miembro no se puede
+//! deducir de su tamano en cuanto el miembro es un array o un agregado, y
+//! deducirlo era la version anterior de esto. Ver [`Disposicion::coloca`].
 
-/// El alineado de un miembro, dado su tamano.
+/// El alineado de un miembro **ESCALAR**, dado su tamano.
 ///
-/// **Es el tamano, tapado a 8 y con minimo 1.** El tope de 8 es lo que hace
-/// que un `char[16]` no exija alinear la estructura a 16 --un array se alinea
-/// como su elemento, no como el conjunto-- y el minimo de 1 evita dividir por
-/// cero con un miembro de tamano 0.
+/// Es el tamano, tapado a 8 y con minimo 1. Para un `char`, un `short`, un
+/// `int`, un `long` o un puntero el tamano Y el alineado son el mismo numero,
+/// asi que aqui basta con uno.
+///
+/// # [!] Esto NO vale para un array ni para un agregado
+///
+/// Y esa confusion costo la disposicion entera de DOOM. Ver
+/// [`Disposicion::coloca`]: el alineado de un array es el de su ELEMENTO y el
+/// de un struct es el suyo propio, y ninguno de los dos se puede deducir del
+/// tamano total. Quien coloque un miembro que no sea escalar tiene que
+/// calcular su alineado y pasarlo.
 pub const fn alineado_de(tam: u32) -> u32 {
     let a = if tam > 8 { 8 } else { tam };
     if a < 1 { 1 } else { a }
@@ -107,9 +118,41 @@ impl Disposicion {
         Self { off: 0, max_align: 1 }
     }
 
-    /// Coloca un miembro de `tam` bytes y devuelve **su offset**.
-    pub fn coloca(&mut self, tam: u32) -> u32 {
-        let a = alineado_de(tam);
+    /// Coloca un miembro de `tam` bytes con alineado `alineado`, y devuelve
+    /// **su offset**.
+    ///
+    /// # ** Por que el alineado es un ARGUMENTO y no se deduce del tamano
+    ///
+    /// Porque deducirlo del tamano es lo que estaba escrito antes --`coloca`
+    /// llamaba a [`alineado_de`] con el tamano del miembro-- y **es falso para
+    /// todo lo que no sea un escalar**:
+    ///
+    /// | miembro | tamano | alineado deducido | el de verdad |
+    /// |---|---|---|---|
+    /// | `char name[8]` | 8 | 8 | **1** |
+    /// | `short sidenum[2]` | 4 | 4 | **2** |
+    /// | `mappatch_t patches[1]` | 10 | 8 | **2** |
+    ///
+    /// Un array se alinea como su ELEMENTO y un agregado como el mas exigente
+    /// de sus miembros. El tamano total no lo dice: `char[8]` y `long` miden
+    /// los dos ocho bytes y no se alinean igual.
+    ///
+    /// ## Lo que costo, con nombre y fichero
+    ///
+    /// DOOM lee sus structs **directamente de los bytes del WAD**: en
+    /// `r_data.c` hace `(maptexture_t *)(maptex + offset)` y lee los campos.
+    /// Con el alineado deducido del tamano, esa estructura ponia `patches` en
+    /// el byte **24** y el disco lo tiene en el **22**. Y no era un caso
+    /// aislado: `maplinedef_t` media 16 en vez de 14 --o sea que a partir del
+    /// SEGUNDO linedef del nivel todo se leia corrido--, `mapsidedef_t` ponia
+    /// las texturas en el 8 en vez del 4, y `mapsector_t` igual.
+    ///
+    /// * Que las estructuras de DOOM salgan exactas con el alineado natural no
+    /// es suerte: estan disenadas asi, y por eso su `PACKEDATTR` puede quedarse
+    /// vacio sin que nada cambie. Un compilador que las coloca bien no necesita
+    /// entender `__attribute__((packed))`.
+    pub fn coloca(&mut self, tam: u32, alineado: u32) -> u32 {
+        let a = if alineado < 1 { 1 } else { alineado };
         if a > self.max_align { self.max_align = a; }
         let off = alinear(self.off, a);
         self.off = off + tam;
@@ -143,12 +186,12 @@ pub struct DisposicionUnion {
 impl DisposicionUnion {
     pub const fn nueva() -> Self { Self { max: 0, max_align: 1 } }
 
-    /// Coloca un miembro de `tam` bytes. Devuelve su offset, que en una union
-    /// **siempre es 0** -- se devuelve igual para que el llamante escriba el
-    /// mismo bucle que con un struct.
-    pub fn coloca(&mut self, tam: u32) -> u32 {
+    /// Coloca un miembro de `tam` bytes con alineado `alineado`. Devuelve su
+    /// offset, que en una union **siempre es 0** -- se devuelve igual para que
+    /// el llamante escriba el mismo bucle que con un struct.
+    pub fn coloca(&mut self, tam: u32, alineado: u32) -> u32 {
         if tam > self.max { self.max = tam; }
-        let a = alineado_de(tam);
+        let a = if alineado < 1 { 1 } else { alineado };
         if a > self.max_align { self.max_align = a; }
         0
     }
@@ -161,14 +204,19 @@ impl DisposicionUnion {
 mod tests {
     use super::*;
 
+    /// Un escalar se coloca con su tamano como alineado, que es el caso comun.
+    fn escalar(d: &mut Disposicion, tam: u32) -> u32 {
+        d.coloca(tam, alineado_de(tam))
+    }
+
     /// El caso que decide todo: un `char` seguido de un `int` deja **tres
     /// bytes de hueco**. Si el relleno no estuviera, el `int` empezaria en el
     /// byte 1 y una escritura de cuatro bytes cruzaria la palabra.
     #[test]
     fn char_luego_int_deja_hueco() {
         let mut d = Disposicion::nueva();
-        assert_eq!(d.coloca(1), 0); // char c
-        assert_eq!(d.coloca(4), 4); // int n
+        assert_eq!(escalar(&mut d, 1), 0); // char c
+        assert_eq!(escalar(&mut d, 4), 4); // int n
         assert_eq!(d.total(), 8);
         assert_eq!(d.alineado(), 4);
     }
@@ -176,9 +224,9 @@ mod tests {
     #[test]
     fn todo_del_mismo_tamano_va_pegado() {
         let mut d = Disposicion::nueva();
-        assert_eq!(d.coloca(4), 0);
-        assert_eq!(d.coloca(4), 4);
-        assert_eq!(d.coloca(4), 8);
+        assert_eq!(escalar(&mut d, 4), 0);
+        assert_eq!(escalar(&mut d, 4), 4);
+        assert_eq!(escalar(&mut d, 4), 8);
         assert_eq!(d.total(), 12);
     }
 
@@ -187,25 +235,23 @@ mod tests {
     #[test]
     fn el_final_tambien_se_rellena() {
         let mut d = Disposicion::nueva();
-        assert_eq!(d.coloca(4), 0); // int
-        assert_eq!(d.coloca(1), 4); // char
+        assert_eq!(escalar(&mut d, 4), 0); // int
+        assert_eq!(escalar(&mut d, 1), 4); // char
         assert_eq!(d.ocupado(), 5);
         assert_eq!(d.total(), 8);
     }
 
-    /// * El tope de 8. Un `char[16]` mide 16 pero **se alinea como un byte**:
-    /// un array se alinea como su elemento. Sin el tope, esta estructura
-    /// exigiria alineado 16 y mediria 32.
+    /// ** Un array se alinea como su ELEMENTO, y eso no se deduce del
+    /// tamano.** `char[16]` mide 16 y se alinea a 1; un `long` mide 8 y se
+    /// alinea a 8. La version anterior de `coloca` deducia el alineado del
+    /// tamano y por eso ponia el `char[16]` en el byte 8.
     #[test]
-    fn el_alineado_se_tapa_en_ocho() {
-        assert_eq!(alineado_de(16), 8);
-        assert_eq!(alineado_de(1), 1);
-        assert_eq!(alineado_de(0), 1);
+    fn un_array_se_alinea_como_su_elemento() {
         let mut d = Disposicion::nueva();
-        assert_eq!(d.coloca(8), 0);
-        assert_eq!(d.coloca(16), 8);
-        assert_eq!(d.total(), 24);
-        assert_eq!(d.alineado(), 8);
+        assert_eq!(escalar(&mut d, 1), 0); // char c
+        assert_eq!(d.coloca(16, 1), 1); // char t[16] -- PEGADO, alineado 1
+        assert_eq!(d.total(), 17);
+        assert_eq!(d.alineado(), 1);
     }
 
     #[test]
@@ -215,12 +261,93 @@ mod tests {
         assert_eq!(d.alineado(), 1);
     }
 
+    // == LAS ESTRUCTURAS DE DISCO DE DOOM =============================
+    //
+    // No son ejemplos inventados: son los structs que `r_data.c` y `p_setup.c`
+    // castean **encima de los bytes crudos del WAD**. El numero de la derecha
+    // es el del formato de fichero, que lleva fijo desde 1993 y no negocia.
+    //
+    // Por eso valen como test de un ABI: es la unica disposicion que existe
+    // ademas de la que calcula el compilador, y estan obligadas a coincidir.
+
+    /// `mappatch_t` -- cinco shorts, 10 bytes en disco.
+    fn mappatch() -> Disposicion {
+        let mut d = Disposicion::nueva();
+        for _ in 0..5 {
+            escalar(&mut d, 2);
+        }
+        d
+    }
+
+    #[test]
+    fn maptexture_t_pone_los_parches_en_el_22() {
+        let mp = mappatch();
+        assert_eq!(mp.total(), 10, "mappatch_t mide 10 en disco");
+        assert_eq!(mp.alineado(), 2, "y se alinea a 2: son todo shorts");
+
+        let mut d = Disposicion::nueva();
+        assert_eq!(d.coloca(8, 1), 0, "char name[8]");
+        assert_eq!(escalar(&mut d, 4), 8, "int masked");
+        assert_eq!(escalar(&mut d, 2), 12, "short width");
+        assert_eq!(escalar(&mut d, 2), 14, "short height");
+        assert_eq!(escalar(&mut d, 4), 16, "int obsolete");
+        assert_eq!(escalar(&mut d, 2), 20, "short patchcount");
+        // ** LA CASILLA QUE MATABA A `R_InitTextures`: con el alineado deducido
+        // del tamano (10 -> 8) esto caia en el 24.
+        assert_eq!(
+            d.coloca(mp.total(), mp.alineado()),
+            22,
+            "mappatch_t patches[1] va en el 22, no en el 24"
+        );
+    }
+
+    /// `maplinedef_t` -- **14 bytes**, y el tamano importa tanto como los
+    /// offsets: `p_setup.c` recorre el lump como un array, asi que un byte de
+    /// mas en el total corre TODOS los linedefs a partir del segundo.
+    #[test]
+    fn maplinedef_t_mide_catorce_y_no_dieciseis() {
+        let mut d = Disposicion::nueva();
+        for _ in 0..5 {
+            escalar(&mut d, 2); // v1, v2, flags, special, tag
+        }
+        assert_eq!(d.coloca(4, 2), 10, "short sidenum[2] va en el 10");
+        assert_eq!(d.total(), 14, "y el registro entero mide 14");
+    }
+
+    /// `mapsidedef_t` -- las tres texturas son `char[8]` y van PEGADAS al
+    /// segundo short, en el 4.
+    #[test]
+    fn mapsidedef_t_pega_las_texturas_en_el_cuatro() {
+        let mut d = Disposicion::nueva();
+        assert_eq!(escalar(&mut d, 2), 0, "short textureoffset");
+        assert_eq!(escalar(&mut d, 2), 2, "short rowoffset");
+        assert_eq!(d.coloca(8, 1), 4, "char toptexture[8]");
+        assert_eq!(d.coloca(8, 1), 12, "char bottomtexture[8]");
+        assert_eq!(d.coloca(8, 1), 20, "char midtexture[8]");
+        assert_eq!(escalar(&mut d, 2), 28, "short sector");
+        assert_eq!(d.total(), 30);
+    }
+
+    /// `mapnode_t` -- el nodo del BSP. Aqui los offsets salian bien por
+    /// casualidad y **el total no**: 32 en vez de 28, o sea el arbol entero
+    /// leido corrido a partir del segundo nodo.
+    #[test]
+    fn mapnode_t_mide_veintiocho() {
+        let mut d = Disposicion::nueva();
+        for _ in 0..4 {
+            escalar(&mut d, 2); // x, y, dx, dy
+        }
+        assert_eq!(d.coloca(16, 2), 8, "short bbox[2][4]");
+        assert_eq!(d.coloca(4, 2), 24, "unsigned short children[2]");
+        assert_eq!(d.total(), 28);
+    }
+
     #[test]
     fn la_union_solapa_todo_en_cero() {
         let mut u = DisposicionUnion::nueva();
-        assert_eq!(u.coloca(4), 0);
-        assert_eq!(u.coloca(1), 0);
-        assert_eq!(u.coloca(8), 0);
+        assert_eq!(u.coloca(4, 4), 0);
+        assert_eq!(u.coloca(1, 1), 0);
+        assert_eq!(u.coloca(8, 8), 0);
         assert_eq!(u.total(), 8);
     }
 

@@ -116,6 +116,11 @@ struct Codegen {
     ranuras_con_nombre: i32,
     struct_layouts: HashMap<String, Vec<(String, u32, u32)>>,
     struct_sizes: HashMap<String, u32>,
+    /// El alineado de cada agregado, que **no** se puede recalcular desde su
+    /// tamano: `char[8]` y `long` miden lo mismo y no se alinean igual. Se
+    /// guarda al colocarlo y se consulta cuando ese agregado es a su vez el
+    /// miembro de otro.
+    struct_aligns: HashMap<String, u32>,
     label_positions: HashMap<String, usize>,
     goto_relocs: Vec<(usize, String)>,
     entry_offset: usize,
@@ -204,6 +209,7 @@ impl Codegen {
             sin_guarda_float: false,
             ranuras_con_nombre: 0,
             struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
+            struct_aligns: HashMap::new(),
             label_positions: HashMap::new(), goto_relocs: Vec::new(),
             entry_offset: 0, is_entry_function: false,
             global_offsets: HashMap::new(), global_data: Vec::new(),
@@ -603,10 +609,11 @@ impl Codegen {
         let mut d = bmo_abi::types::Disposicion::nueva();
         for m in members {
             let sz = self.type_stack_size(&m.typ);
-            layout.push((m.name.clone(), d.coloca(sz), sz));
+            layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
         }
         self.struct_layouts.insert(name.to_string(), layout);
         self.struct_sizes.insert(name.to_string(), d.total());
+        self.struct_aligns.insert(name.to_string(), d.alineado());
     }
 
     fn build_union_layout(&mut self, name: &str, members: &[StructMember]) {
@@ -614,10 +621,38 @@ impl Codegen {
         let mut d = bmo_abi::types::DisposicionUnion::nueva();
         for m in members {
             let sz = self.type_stack_size(&m.typ);
-            layout.push((m.name.clone(), d.coloca(sz), sz));
+            layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
         }
         self.struct_layouts.insert(name.to_string(), layout);
         self.struct_sizes.insert(name.to_string(), d.total());
+        self.struct_aligns.insert(name.to_string(), d.alineado());
+    }
+
+    /// **El alineado de un tipo**, que no es su tamano en cuanto deja de ser
+    /// un escalar.
+    ///
+    /// Las tres filas que no son la trivial son las que importan, y las tres
+    /// aparecen en las estructuras que DOOM lee del WAD:
+    ///
+    /// - un **array** se alinea como su elemento, no como el conjunto. `char
+    ///   name[8]` se alinea a 1, aunque mida 8 igual que un puntero.
+    /// - un **agregado** se alinea como el mas exigente de sus miembros, que
+    ///   es lo que `Disposicion::alineado()` fue acumulando al colocarlos.
+    /// - un **puntero** siempre a 8, mida lo que mida lo apuntado.
+    ///
+    /// [!] El `unwrap_or(8)` de la rama del agregado es el mismo suelo que usa
+    /// [`Self::type_stack_size`]: un struct que todavia no se ha colocado.
+    /// Conservar los dos suelos iguales es lo que evita que tamano y alineado
+    /// se contradigan a mitad de una disposicion.
+    fn type_align(&self, typ: &TypeSpec) -> u32 {
+        match typ {
+            TypeSpec::Array(t, _) => self.type_align(t),
+            TypeSpec::StructRef(name) | TypeSpec::UnionRef(name) => {
+                self.struct_aligns.get(name).copied().unwrap_or(8)
+            }
+            TypeSpec::Ptr(_) => 8,
+            otro => bmo_abi::types::alineado_de(self.type_stack_size(otro)),
+        }
     }
 
     fn type_stack_size(&self, typ: &TypeSpec) -> u32 {

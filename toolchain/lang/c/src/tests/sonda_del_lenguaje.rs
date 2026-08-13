@@ -53,22 +53,13 @@
 //! O sea que esto es a la vez la prueba y **la respuesta a "que soporta BMO
 //! C"**, que hasta hoy era una impresion.
 
-use super::*;
+//! ## El arnes ya no vive aqui
+//!
+//! Las cuarenta lineas que barren y comparan estan en `censo.rs` desde que
+//! aparecio el segundo eje (`sonda_de_disposicion`). Este fichero se queda con
+//! lo unico que es suyo: **las casillas y el censo**.
 
-/// Una casilla del censo: como se llama, que programa la ejerce, que tiene que
-/// imprimir.
-struct Casilla {
-    nombre: &'static str,
-    fuente: &'static str,
-    espera: &'static str,
-}
-
-/// Lo que se pone delante de casi todas: un struct con un campo de cada clase
-/// que hace falta, y una tabla de ellos.
-const TIPOS: &str = "typedef struct { int n; char *txt; int (*fn)(int); } caja_t;\n\
-                     typedef struct { caja_t *dentro; int k; } sobre_t;\n\
-                     int doble(int x) { return x * 2; }\n\
-                     int triple(int x) { return x * 3; }\n";
+use super::censo::{barrer, Casilla};
 
 fn censo() -> [Casilla; 28] {
     [
@@ -301,41 +292,16 @@ fn censo() -> [Casilla; 28] {
     ]
 }
 
-/// El barrido entero, en una ejecucion.
-///
-/// [!] Cada casilla va dentro de un `catch_unwind` a proposito: una que **no
-/// compile** --como `struct D l[] = {{..}}`, que hoy no parsea-- haria panic en
-/// el `expect` del ayudante y se llevaria por delante el resto del censo. Aqui
-/// se anota como `NO COMPILA` y el barrido sigue. Un censo que se para en el
-/// primer hueco no es un censo.
+/// El barrido entero, en una ejecucion. El arnes esta en `censo.rs`.
 #[test]
 fn el_censo_del_lenguaje_no_ha_cambiado() {
-    // El hook de panico se calla mientras dura el barrido: si no, la salida se
-    // llena de trazas de las casillas rotas y el informe --que es lo que hay que
-    // leer-- se pierde entre ellas.
-    let anterior = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-
-    let mut informe = String::new();
-    for c in censo().iter() {
-        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_c_con_pp(c.fuente)));
-        let veredicto = match r {
-            Ok(salida) if salida.trim() == c.espera => "BIEN".to_string(),
-            Ok(salida) => format!("ROTO da {:?} y toca {:?}", salida.trim(), c.espera),
-            Err(_) => "NO COMPILA o revienta".to_string(),
-        };
-        informe.push_str(&format!("{:<30} {}\n", c.nombre, veredicto));
-    }
-
-    std::panic::set_hook(anterior);
-
-    assert_eq!(
-        informe.trim_end(),
-        CENSO.trim_end(),
-        "\n\nEL CENSO DEL LENGUAJE CAMBIO.\n\
+    barrer(
+        &censo(),
+        CENSO,
+        "EL CENSO DEL LENGUAJE CAMBIO.\n\
          Si se arreglo una casilla o se rompio otra, **actualiza la constante\n\
          `CENSO` de este fichero**: es el sitio donde esta escrito que soporta\n\
-         BMO C, y un censo que no se actualiza es justo el documento que miente.\n"
+         BMO C, y un censo que no se actualiza es justo el documento que miente.",
     );
 }
 
