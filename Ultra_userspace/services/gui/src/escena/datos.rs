@@ -120,6 +120,37 @@ pub(crate) struct CajaDatos {
     /// ensenar `sin firma` sin haber mirado seria contestar por el disco.
     /// Se borra al cambiar de nodo -- el resultado es de UN archivo.
     pub(crate) verificado: Option<u64>,
+    /// Por donde va el sellado. Ver [`Sello`].
+    pub(crate) sello: Sello,
+}
+
+/// **El estado del sellado, que es lo unico de esta ventana que ESCRIBE.**
+///
+/// ## Por que hay un estado y no una tecla a secas
+///
+/// La orden vivia en el terminal principal como `estratos sellar` -- dos
+/// palabras, para que hiciera falta escribirlo queriendo. El dueno la pidio el
+/// 2026-08-13 y no la encontro, teniendola delante.
+///
+/// Se mudo aqui, que es su sitio: **el verbo vive donde vive el objeto**. Pero
+/// una tecla suelta en una ventana donde se pulsan flechas seria peor que las
+/// dos palabras que se quitaron. De ahi los dos tiempos:
+///
+///   `S` -> la barra del pie pregunta -> `S` otra vez -> se sella
+///
+/// Cualquier otra tecla lo cancela, y cambiar de pestana tambien. Es la misma
+/// idea que las dos palabras --que haga falta quererlo-- pero **dicha en
+/// pantalla en vez de escondida en un parser**.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Sello {
+    /// Nadie ha pedido nada.
+    Quieto,
+    /// Se pulso `S` una vez: falta confirmar.
+    Preguntando,
+    /// Se sello, y esta es la generacion que contesto el kernel.
+    Hecho(u64),
+    /// Se intento y el kernel dijo que no. El motivo esta en F11.
+    Fallo,
 }
 
 /// Lo que se puede encoger sin que deje de servir. Por debajo de esto el grafo
@@ -141,6 +172,23 @@ const DATOS_PCT_ALTO: u32 = 44;
 pub(crate) enum Vista {
     Numeros,
     Nodos,
+    /// ** LA TERCERA CARA: el mismo volumen como CARPETAS.
+    ///
+    /// Peticion del dueno el 2026-08-13: *"el TAB ese mismo es EXPLORADOR como
+    /// Windows 11 para ver carpetas"*.
+    ///
+    /// Y sale casi gratis, que es lo que la hace buena idea: **no lee otra
+    /// cosa**. Es el MISMO cursor de ESTRATOS que alimenta el grafo --
+    /// `hijo_nombre`, `hijo_tipo`, `hijo_bytes`, `entrar`, `subir`-- pintado
+    /// como una lista en vez de como cajas con aristas. Las teclas tampoco
+    /// cambian: el despacho de `main.rs` da la navegacion a todo lo que no sea
+    /// `Numeros`, asi que esta vista la hereda entera.
+    ///
+    /// Y esa es exactamente la idea que el dueno lleva describiendo desde el
+    /// principio: **un explorador con dos modos sobre el mismo dato**. El
+    /// familiar para trabajar y el de grafo para ver como se conecta. No son dos
+    /// programas: son dos `pintar`.
+    Carpetas,
 }
 
 // El alto de la barra de titulo --que es el asa-- sale de `super::TITULO_ALTO`:
@@ -161,6 +209,7 @@ impl CajaDatos {
             sel: 0,
             desde: 0,
             verificado: None,
+            sello: Sello::Quieto,
         }
     }
 
@@ -361,6 +410,109 @@ fn caja_nodo(
 
 /// La vista de NODOS: el nodo actual a la izquierda y sus hijos a la derecha,
 /// unidos por una espina y sus ramas.
+/// El alto de una fila del explorador. Una linea de texto y aire a los lados:
+/// lo justo para que el realce de la seleccion no toque las letras.
+const FILA_ALTO: u32 = 22;
+
+/// **La vista de CARPETAS: el mismo volumen, como lo ensena un explorador.**
+///
+/// Comparte cursor con el grafo --literalmente el mismo, no una copia-- asi que
+/// entrar aqui y salir al grafo deja el sitio donde estaba. Es lo que hace que
+/// las dos pestanas se sientan una sola cosa vista de dos maneras, que era la
+/// peticion.
+///
+/// Tres columnas y ni una mas: **nombre, que es, cuanto ocupa**. Un explorador
+/// que ensena diez columnas por defecto obliga a leerlas todas para encontrar la
+/// unica que importaba.
+fn pintar_carpetas(p: &bmo::Pantalla, c: &CajaDatos) {
+    let tx = c.marco.x + 16;
+    let mut ty = c.marco.y + TITULO_ALTO + 6;
+
+    if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
+        p.texto(tx, ty, "ningun volumen ESTRATOS montado.", TEXTO_MAL);
+        return;
+    }
+    let hondo = bmo::estratos::hondo();
+    let cuantos = bmo::estratos::hijos() as usize;
+
+    // La miga de pan, igual que en el grafo: sin ella dos carpetas con los
+    // mismos nombres dentro se ven identicas.
+    {
+        let mut x = p.texto(tx, ty, "/", DATOS_TITULO);
+        let mut nivel = 1u64;
+        while nivel <= hondo {
+            let mut nom = [0u8; 40];
+            let n = bmo::estratos::nombre_nivel(nivel, &mut nom);
+            x = p.texto(x + 2, ty, " > ", TEXTO_TENUE);
+            let tinta = if nivel == hondo { TEXTO } else { TEXTO_TENUE };
+            x = p.texto_bytes(x, ty, &nom[..n], tinta);
+            nivel += 1;
+        }
+    }
+    ty += bmo::GLIFO_ALTO + 8;
+
+    // La cabecera de columnas, y su linea. Las `x` salen del ancho del marco
+    // para que estirar la ventana de sitio a los nombres largos, que es para lo
+    // que se estira.
+    let ancho = c.marco.ancho.saturating_sub(32);
+    let col_tipo = tx + (ancho * 55) / 100;
+    let col_tam = tx + (ancho * 78) / 100;
+    p.texto(tx + 22, ty, "nombre", TEXTO_TENUE);
+    p.texto(col_tipo, ty, "que es", TEXTO_TENUE);
+    p.texto(col_tam, ty, "bytes", TEXTO_TENUE);
+    ty += bmo::GLIFO_ALTO + 3;
+    p.rect(tx, ty, ancho, 1, DATOS_BORDE);
+    ty += 4;
+
+    if cuantos == 0 {
+        p.texto(tx + 22, ty + 4, "esta vacio.", TEXTO_TENUE);
+        return;
+    }
+
+    // Cuantas filas caben. Se descuenta la barra de teclas del pie: una lista
+    // que se pinta por debajo de su propia leyenda es una lista que miente
+    // sobre cuanto hay.
+    let hasta = c.marco.y + c.marco.alto - bmo::GLIFO_ALTO - 14;
+    let caben = ((hasta.saturating_sub(ty)) / FILA_ALTO).max(1) as usize;
+    let ultimo = (c.desde + caben).min(cuantos);
+
+    let mut i = c.desde;
+    while i < ultimo {
+        let (nombre_tipo, color) = color_clase(bmo::estratos::hijo_tipo(i as u64));
+        // El realce de la fila senalada. Va DEBAJO del texto y ocupa el ancho
+        // entero: es como se lee "esta es la seleccionada" sin un cursor.
+        if i == c.sel {
+            p.rect(tx, ty, ancho, FILA_ALTO, CAJA_NODO_SEL);
+        }
+        // El cuadrito de color: dice la clase antes de leer la columna. Es el
+        // mismo color que su caja en el grafo, a proposito -- cambiar de
+        // pestana no puede cambiarle el color a un nodo.
+        p.rect(tx + 4, ty + (FILA_ALTO - 8) / 2, 8, 8, color);
+
+        let mut nom = [0u8; 64];
+        let n = bmo::estratos::hijo_nombre(i as u64, &mut nom);
+        let ty_texto = ty + (FILA_ALTO - bmo::GLIFO_ALTO) / 2;
+        p.texto_bytes(tx + 22, ty_texto, &nom[..n], TEXTO);
+        p.texto(col_tipo, ty_texto, nombre_tipo, TEXTO_TENUE);
+        let mut b = [0u8; 10];
+        let nb = decimal(bmo::estratos::hijo_bytes(i as u64), &mut b);
+        p.texto_bytes(col_tam, ty_texto, &b[..nb], TEXTO_TENUE);
+
+        ty += FILA_ALTO;
+        i += 1;
+    }
+
+    // Y si hay mas de los que caben, se DICE. Una lista recortada en silencio
+    // se ve igual que una carpeta con pocos archivos.
+    if ultimo < cuantos {
+        let mut b = [0u8; 10];
+        let nb = decimal((cuantos - ultimo) as u64, &mut b);
+        let x = p.texto(tx + 22, ty + 2, "y ", TEXTO_TENUE);
+        let x = p.texto_bytes(x, ty + 2, &b[..nb], TEXTO);
+        p.texto(x, ty + 2, " mas abajo", TEXTO_TENUE);
+    }
+}
+
 fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     let tx = c.marco.x + 16;
     let mut ty = c.marco.y + TITULO_ALTO + 6;
@@ -606,23 +758,59 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
     let px = px + 2 * bmo::GLIFO_ANCHO;
     // Las pestanas: la activa lleva su subrayado. Un corchete pintado de otro
     // color se pierde en una foto; una linea debajo no.
-    let (c1, c2) = match c.vista {
-        Vista::Numeros => (TEXTO, TEXTO_TENUE),
-        Vista::Nodos => (TEXTO_TENUE, TEXTO),
+    let (c1, c2, c3) = match c.vista {
+        Vista::Numeros => (TEXTO, TEXTO_TENUE, TEXTO_TENUE),
+        Vista::Nodos => (TEXTO_TENUE, TEXTO, TEXTO_TENUE),
+        Vista::Carpetas => (TEXTO_TENUE, TEXTO_TENUE, TEXTO),
     };
     let fin1 = p.texto(px, c.marco.y + 8, "numeros", c1);
     let px2 = fin1 + 2 * bmo::GLIFO_ANCHO;
     let fin2 = p.texto(px2, c.marco.y + 8, "nodos", c2);
+    let px3 = fin2 + 2 * bmo::GLIFO_ANCHO;
+    let fin3 = p.texto(px3, c.marco.y + 8, "carpetas", c3);
     let (sx, sw) = match c.vista {
         Vista::Numeros => (px, fin1 - px),
         Vista::Nodos => (px2, fin2 - px2),
+        Vista::Carpetas => (px3, fin3 - px3),
     };
     p.rect(sx, c.marco.y + 8 + bmo::GLIFO_ALTO + 2, sw, 2, DATOS_TITULO);
 
-    if c.vista == Vista::Nodos {
-        pintar_nodos(p, c);
+    if c.vista == Vista::Nodos || c.vista == Vista::Carpetas {
+        if c.vista == Vista::Nodos {
+            pintar_nodos(p, c);
+        } else {
+            pintar_carpetas(p, c);
+        }
         let y = c.marco.y + c.marco.alto - bmo::GLIFO_ALTO - 8;
-        p.texto(tx, y, "flechas mueven   ENTRAR baja   RETROCESO sube   F12 cierra", TEXTO_TENUE);
+        // ** `S sella` DICHO EN LA BARRA, y esa es la mitad del arreglo.
+        //
+        // La orden de sellar existia desde hacia dias y **no estaba escrita en
+        // ningun sitio que se vea**: el dueno la busco teniendola delante. Una
+        // funcion que no se anuncia no es discreta, es una funcion que no esta.
+        match c.sello {
+            Sello::Preguntando => p.texto(
+                tx, y,
+                "S OTRA VEZ para SELLAR (escribe en el disco)   otra tecla cancela",
+                0x00F0_D070,
+            ),
+            Sello::Hecho(g) => {
+                let x = p.texto(tx, y, "SELLADO. generacion ", TEXTO_BIEN);
+                let mut b = [0u8; 10];
+                let n = decimal(g, &mut b);
+                let x = p.texto_bytes(x, y, &b[..n], TEXTO_BIEN);
+                p.texto(x, y, "   reinicia y mirala otra vez: eso prueba la barrera", TEXTO_TENUE)
+            }
+            Sello::Fallo => p.texto(
+                tx, y,
+                "NO se sello. el volumen sigue igual; el motivo esta en F11.",
+                TEXTO_MAL,
+            ),
+            Sello::Quieto => p.texto(
+                tx, y,
+                "flechas mueven  ENTRAR baja  RETROCESO sube  V firma  S sella  F12 cierra",
+                TEXTO_TENUE,
+            ),
+        };
         return;
     }
 
