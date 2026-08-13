@@ -452,3 +452,87 @@ fn u64_en(b: &[u8], o: usize) -> Option<u64> {
 
 #[cfg(test)]
 mod tests;
+
+// == ** LA DISPOSICION DEL FORMATO, EN UN SOLO SITIO =========================
+//
+// # El agujero que esto cierra
+//
+// El BEF tiene **DOS lectores y ningun compilador entre ellos**:
+//
+// ```text
+//    bmo-abi/bef/*.rs        structs con `repr(C)`, para el toolchain
+//    kernel/task/bex.rs      bytes a mano, porque el kernel NO importa bmo-abi
+// ```
+//
+// Y no importarlo es una decision correcta --`bmo-abi` trae `alloc` y el kernel
+// no puede-- pero tiene un precio que hasta hoy nadie pagaba: **los offsets
+// estaban escritos dos veces**, una como campos de un struct y otra como
+// literales dentro de `leer_reloc`. El propio comentario del kernel lo decia:
+//
+// > *"Tamano y disposicion fijados por `bmo_abi::bef::relocations::Relocation`,
+// >  que este kernel no importa a proposito... si el struct cambiara de forma,
+// >  estos offsets son el unico sitio a tocar."*
+//
+// "El unico sitio a tocar" **es la definicion de una duplicacion que se olvida**.
+// Mover un campo del struct compila igual, pasa todos los tests del toolchain, y
+// el cargador escribe la direccion equivocada dentro de un proceso.
+//
+// # La salida: no vigilar la copia, QUITARLA
+//
+// Este crate ya lo comparten los dos --el kernel lo importa para la puerta, y
+// `bmo-verify` para no separarse de el-- y no tiene dependencias. Asi que los
+// offsets viven aqui, los usa el kernel, y `bmo-abi` los CLAVA a su struct con
+// `offset_of!` en una prueba.
+//
+// De dos verdades que hay que mantener a mano se pasa a una verdad y una prueba
+// que la ata. Es el mismo movimiento que el guardian de `bmo.h`, salvo que alli
+// los nombres no se podian unificar y aqui si.
+
+/// Bytes que ocupa una relocation. Espejo de `size_of::<Relocation>()`.
+pub const RELOC_SIZE: usize = 24;
+
+/// Offsets dentro de una relocation, en el orden en que estan.
+///
+/// [!] `SYMBOL_IDX` es de 32 bits en el formato y el cargador solo usa su byte
+/// bajo: el indice de seccion cabe de sobra. Leer los cuatro y truncar es lo
+/// correcto -- leer solo el byte funcionaria hoy y se rompeia el dia que el
+/// formato use el resto del campo.
+pub mod reloc {
+    /// `offset`: donde se escribe, dentro de su seccion. `u64`.
+    pub const OFFSET: usize = 0;
+    /// `symbol_idx`: en el `SeccionAbs64` es la SECCION del destino. `u32`.
+    pub const SYMBOL_IDX: usize = 8;
+    /// `kind`: que clase de relocation es. `u8`.
+    pub const KIND: usize = 12;
+    /// `target_section`: en que seccion se escribe. `u8`.
+    ///
+    /// [!] Su numeracion **NO es la de `SectionKind`**: aqui code/data/rodata
+    /// son 0/1/2 y alli 1/3/2. Cruzar las dos tablas acierta en rodata y falla
+    /// en las otras dos, o sea que parece funcionar a medias.
+    pub const TARGET_SECTION: usize = 13;
+    /// `addend`: offset del destino dentro de su seccion. `i64` con signo.
+    pub const ADDEND: usize = 16;
+}
+
+/// Bytes que ocupa una entrada de la tabla de secciones.
+pub const SECTION_ENTRY_SIZE: usize = 48;
+
+/// Offsets dentro de una entrada de la tabla de secciones.
+pub mod seccion {
+    /// `kind`: `SectionKind as u8`.
+    pub const KIND: usize = 0;
+    /// `flags`. `u32`.
+    pub const FLAGS: usize = 4;
+    /// `file_offset`: donde estan sus bytes en el fichero. `u64`.
+    pub const FILE_OFFSET: usize = 8;
+    /// `file_size`: cuantos hay. **`0` es legal si la seccion es `Bss`.**
+    pub const FILE_SIZE: usize = 16;
+    /// `mem_size`: cuanto ocupa ya cargada. Nunca menor que `file_size`.
+    pub const MEM_SIZE: usize = 24;
+    /// `virt_addr`: donde la quiere el fichero. `0` = decide el cargador.
+    pub const VIRT_ADDR: usize = 32;
+    /// `alignment`: potencia de dos. `u16`.
+    pub const ALIGNMENT: usize = 40;
+    /// `hash_index`: que seccion `Signature` lleva su digest, o `0xFFFF`.
+    pub const HASH_INDEX: usize = 42;
+}
