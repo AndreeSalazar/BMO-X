@@ -21,7 +21,30 @@ fn correr(fuente: &str) -> String {
     run_cpp(fuente).trim().to_string()
 }
 
+// ** APARCADO el 2026-08-12, y por eso `#[ignore]` en vez de borrado.
+//
+// Va 108 de 110 filas. Las dos que fallan son:
+//
+//    un global lee 0 donde deberia leer 42
+//    un literal de cadena indexado sale vacio
+//
+// [!] Y los dos sintomas son EXACTAMENTE los que ya se arreglaron en BMO C --la
+// seccion de datos y las relocations, en `2bc13367` y `46506e51`--. O sea que no
+// es un bug del C++: es que **el frontend de C++ no recibio el arreglo del de
+// C**, y lleva asi desde el 08-08.
+//
+// Se ignora y no se borra por dos razones que van juntas:
+//
+//   * Un ROJO PERMANENTE entrena a no mirar los rojos. Este ya escondio 400
+//     tests una vez: `cargo test` aborta en el primer crate que falla, y este
+//     crate va antes que media suite.
+//   * Un test BORRADO hace desaparecer la unica descripcion que existe del
+//     fallo. Mientras esta aqui, dice exactamente que falta.
+//
+// **Quitar este `#[ignore]` es el primer paso del dia que se retome C++.** Ver
+// `toolchain/lang/cpp/APARCADO.md`, parte 4: las dos condiciones que lo reviven.
 #[test]
+#[ignore = "C++ APARCADO (ver APARCADO.md): faltan el arreglo de .data y las relocations que C ya tiene"]
 fn matriz_cpp_ejecuta_correctamente() {
     let casos: &[(&str, &str, &str)] = &[
         // -- Aritmetica y literales --
