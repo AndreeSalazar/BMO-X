@@ -13,6 +13,7 @@ name = "bmo-abi"
 version = "2.0.0"
 dependencies = [
  "bitflags",
+ "bmo-bex-gate",
  "bmo-hash",
 ]
 
