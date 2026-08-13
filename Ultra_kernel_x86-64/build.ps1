@@ -172,18 +172,36 @@ foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
         Fail ('BMO ABI surface syscall contract mismatch: ' + $name)
     }
 }
-# La lista lleva TODAS las operaciones, no solo las seis primeras. Se habia
-# quedado congelada en las del principio, asi que las que se anadieron despues
-# --EJECUTAR, CONSOLA_CREAR, DIR_ABRIR, las de archivo, REINICIAR e INFO-- se
-# escribian en el kernel y nadie comprobaba que coincidieran con el ABI. Un
-# guardian que solo mira la mitad da una tranquilidad que no ha ganado.
-foreach ($name in @('CURRENT_TASK', 'TASK_OP_GET_PID', 'TASK_OP_GET_TID', 'TASK_OP_YIELD', 'TASK_OP_EXIT', 'TASK_OP_CHANNEL_OPEN', 'TASK_OP_CONSOLE_WRITE', 'TASK_OP_ENDPOINT_CREATE', 'TASK_OP_RUTA', 'TASK_OP_EJECUTAR', 'TASK_OP_CONSOLA_CREAR', 'TASK_OP_DIR_ABRIR', 'TASK_OP_CONSOLE_READ', 'TASK_OP_ARCHIVO_ABRIR', 'TASK_OP_ARCHIVO_CREAR', 'TASK_OP_MI_PAQUETE', 'TASK_OP_MI_PADRE', 'TASK_OP_ARCHIVO_ASINC', 'TASK_OP_MEMORIA_PEDIR', 'TASK_OP_TOMAR', 'TASK_OP_REINICIAR', 'TASK_OP_INFO', 'TASK_OP_INFO_TEXTO', 'TASK_OP_AUDIO_CLAIM', 'TASK_OP_AUDIO_RELEASE', 'TASK_OP_CABINA_INFO', 'TASK_OP_CABINA_TEXTO', 'ARCH_OP_LEER', 'ARCH_OP_ESCRIBIR', 'ARCH_OP_TAMANO', 'ARCH_OP_CERRAR', 'ARCH_OP_LEER_LINEA', 'CHANNEL_OP_GET_SEQ', 'CHANNEL_OP_GET_INDEX')) {
-    $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
+# ** LA LISTA A MANO SE FUE, Y ESTA ES SU LECCION (2026-08-12).
+#
+# Aqui habia una lista de 34 nombres escrita a mano, con este aviso encima:
+# *"se habia quedado congelada en las del principio... un guardian que solo mira
+# la mitad da una tranquilidad que no ha ganado"*.
+#
+# Le habia vuelto a pasar. Al barrer el kernel entero aparecieron **CUATRO
+# operaciones que el ABI no tenia**: ENDPOINT_CONNECT, PANTALLA_SOLTAR,
+# ENTRADA_SOLTAR y AUDIO_CENSO. Y las dos de SOLTAR son justo las que el
+# comentario de mas abajo cita como las que casi chocan con la autopsia: estaban
+# en la HISTORIA del fichero y no en el CONTRATO.
+#
+# Un guardian con lista tiene el mismo fallo que vigila: alguien tiene que
+# acordarse de anadir la fila. Ahora se barren TODOS los `TASK_OP_*` y
+# `ARCH_OP_*` del kernel y se exige que cada uno exista en el ABI con el MISMO
+# numero. Anadir una operacion pasa a ser imposible de olvidar.
+$opsTodas = [regex]::Matches($kernelSyscalls, 'const\s+((?:TASK|ARCH)_OP_\w+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)')
+foreach ($m in $opsTodas) {
+    $name = $m.Groups[1].Value
+    $numK = $m.Groups[2].Value.ToUpperInvariant().Replace('_', '')
     $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
-    if (-not $kernelMatch.Success -or -not $abiMatch.Success -or $kernelMatch.Groups[1].Value -ne $abiMatch.Groups[1].Value) {
+    if (-not $abiMatch.Success) {
+        Fail ('BMO ABI surface operation contract: ' + $name + ' esta en el kernel y NO en el ABI')
+    }
+    if ($abiMatch.Groups[1].Value.ToUpperInvariant().Replace('_', '') -ne $numK) {
         Fail ('BMO ABI surface operation contract mismatch: ' + $name)
     }
 }
+Write-Host ('    operaciones kernel<->ABI: ' + $opsTodas.Count + ' comprobadas, ninguna a mano') -ForegroundColor DarkGray
+
 # ** DOS OPERACIONES NO PUEDEN LLEVAR EL MISMO NUMERO.
 #
 # Y esto casi pasa el 2026-08-08: la autopsia se escribio en `0x1D` y `0x1E`,
