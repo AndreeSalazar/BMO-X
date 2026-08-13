@@ -745,7 +745,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 // Desactivar: los obreros vuelven a `hlt` y ahi se quedan.
                 1 => {
                     obra::parar();
-                    crate::ring0::core::phase::dashboard_log("[smp] obreros PARADOS");
+                    crate::ring0::core::dashboard::dashboard_log("[smp] obreros PARADOS");
                     BmoStatus::ok_value(0)
                 }
                 // La prueba. Devuelve la aceleracion x100 --`842` son 8,42x--
@@ -810,7 +810,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                             pico as u64,
                         );
                     }
-                    crate::ring0::core::phase::dashboard_log("[smp] prueba de reparto hecha");
+                    crate::ring0::core::dashboard::dashboard_log("[smp] prueba de reparto hecha");
                     if todos > 0 && partes > 0 {
                         BmoStatus::ok_value(uno.saturating_mul(100) / todos)
                     } else {

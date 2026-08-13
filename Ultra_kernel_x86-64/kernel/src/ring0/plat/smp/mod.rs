@@ -129,7 +129,7 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
     // Y se contesta lo que hay ahora mismo: si ya se despertaron antes, este
     // camino lo dice sin volver a despertarlos.
     if cuantos == 0 {
-        crate::ring0::core::phase::dashboard_log("[smp] censo pedido, no se desperto a nadie");
+        crate::ring0::core::dashboard::dashboard_log("[smp] censo pedido, no se desperto a nadie");
         // ** AND THE CENSUS SAYS IF THEY ARE PARKED, because the count alone
         // was telling a true fact that answers a different question.
         //
@@ -273,7 +273,7 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
     // Son dos sumideros distintos a proposito --CABINA es el narrador con
     // severidad, el klog es la transcripcion-- y quien escribe tiene que elegir
     // los dos cuando quiere que se vea desde fuera.
-    crate::ring0::core::phase::dashboard_log(if alive == pedidos {
+    crate::ring0::core::dashboard::dashboard_log(if alive == pedidos {
         "[smp] contestaron todos los que se llamaron"
     } else {
         "[smp] FALTAN nucleos por contestar"

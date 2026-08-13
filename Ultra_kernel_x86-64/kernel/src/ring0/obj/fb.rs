@@ -324,7 +324,7 @@ pub fn process_died(pid: u32) {
         if cur != kpml4 {
             crate::ring0::mm::vmm::switch_to(kpml4);
         }
-        crate::ring0::core::phase::dashboard_log("  -- lo ULTIMO que dijo el dueno de la pantalla --");
+        crate::ring0::core::dashboard::dashboard_log("  -- lo ULTIMO que dijo el dueno de la pantalla --");
         if crate::ring0::uconsole::hubo_palabras(pid) {
             crate::ring0::uconsole::ultimas_palabras(pid, |linea| {
                 let mut buf = [0u8; 128];
@@ -333,7 +333,7 @@ pub fn process_died(pid: u32) {
                 buf[..cabeza.len()].copy_from_slice(cabeza);
                 buf[cabeza.len()..cabeza.len() + n].copy_from_slice(&linea.as_bytes()[..n]);
                 if let Ok(s) = core::str::from_utf8(&buf[..cabeza.len() + n]) {
-                    crate::ring0::core::phase::dashboard_log(s);
+                    crate::ring0::core::dashboard::dashboard_log(s);
                 }
                 // * Y a CABINA, que es lo que de verdad sobrevive.
                 //
@@ -345,7 +345,7 @@ pub fn process_died(pid: u32) {
                 crate::ring0::cabina::warn("gui", linea, pid as u64);
             });
         } else {
-            crate::ring0::core::phase::dashboard_log("  | (nada: murio sin decir una sola linea)");
+            crate::ring0::core::dashboard::dashboard_log("  | (nada: murio sin decir una sola linea)");
             crate::ring0::cabina::warn("gui", "murio sin decir una sola linea", pid as u64);
         }
         if cur != kpml4 {

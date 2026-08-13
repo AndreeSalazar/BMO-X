@@ -238,7 +238,7 @@ fn flush() {
         if cur != kpml4 {
             crate::ring0::mm::vmm::switch_to(kpml4);
         }
-        crate::ring0::core::phase::dashboard_log(s);
+        crate::ring0::core::dashboard::dashboard_log(s);
         if cur != kpml4 {
             crate::ring0::mm::vmm::switch_to(cur);
         }
