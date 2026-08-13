@@ -193,15 +193,29 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         b"calc" | b"calculadora" => Orden::Calculadora,
         // * El numero que decide si hace falta una GPU. Ver `Volcado`.
         b"perf" | b"pinta" => Orden::Pintado,
-        // * `estratos sellar` -- DOS PALABRAS, y es la unica defensa que hay.
+        // * `sella` -- Y ANTES ERAN DOS PALABRAS, POR UN MIEDO MAL PUESTO.
         //
-        // Es lo primero del sistema que escribe en el disco, asi que no puede
-        // ser un verbo suelto: `sellar` a secas se teclea sin querer, lo
-        // completa el TAB, y sale del historial con una flecha. Exigir el
-        // sustantivo delante hace falta escribirlo **queriendo**.
+        // Era `estratos sellar`, y el comentario que lo defendia decia que al
+        // ser *"lo primero del sistema que escribe en el disco"* no podia ser un
+        // verbo suelto. Sonaba prudente y protegia lo que no hacia falta
+        // proteger: `sellar()` cierra una transaccion **SIN DATOS**. No reserva
+        // un bloque, no toca un objeto, y commitea apuntando al mismo estrato
+        // que ya habia. Lo peor que puede hacer un sellado accidental es
+        // **subir la generacion en uno**.
         //
-        // Cualquier otra cosa detras de `estratos` es la ayuda, no el sellado:
-        // un verbo mal escrito no puede caer por defecto en el que escribe.
+        // O sea que la defensa costaba descubribilidad --el dueno la busco el
+        // 2026-08-13 teniendola delante y no la encontro-- a cambio de evitar un
+        // dano que no existe. El dia que `sella` escriba datos DE VERDAD, la
+        // proteccion que hara falta es una confirmacion que diga QUE se va a
+        // escribir, no una palabra mas larga.
+        //
+        // El nombre sigue la gramatica de la casa, que es imperativo corto:
+        // `lee`, `guarda`, `lista`, `pinta`... y ahora `sella`. Y dice lo que
+        // hace: en ESTRATOS un commit **sella un estrato**.
+        //
+        // `estratos sellar` se queda como sinonimo: ya estaba escrito en la
+        // ayuda, en dos documentos y en la cabeza del dueno.
+        b"sella" | b"sellar" => Orden::EstratosSellar,
         b"estratos" => {
             if resto == b"sellar" { Orden::EstratosSellar } else { Orden::Ayuda }
         }
