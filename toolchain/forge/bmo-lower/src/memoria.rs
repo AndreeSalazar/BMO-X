@@ -55,8 +55,6 @@
 //! de fallo que quita es un `memcpy` que escribe hacia atras y solo en algunos
 //! arranques.
 
-use crate::x86::*;
-
 // -- Saltos que NO se cuentan a mano -----------------------------------
 //
 // * La primera version de este modulo llevaba los desplazamientos escritos a
