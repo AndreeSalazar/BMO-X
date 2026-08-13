@@ -35,6 +35,9 @@ pub(crate) struct Parser {
     var_types: HashMap<String, TypeSpec>,
     struct_fields: HashMap<String, Vec<(String, u32, u32)>>,
     struct_sizes: HashMap<String, u32>,
+    /// El alineado de cada agregado. Ver `alineado_de_tipo`: no se deduce del
+    /// tamano, asi que hay que acordarse de el al colocarlo.
+    struct_aligns: HashMap<String, u32>,
     // (struct_name, field_name) -> tipo del campo. Necesario para resolver
     // offsets de accesos anidados (a->b->c, a.b.c) sin adivinar.
     field_types: HashMap<(String, String), TypeSpec>,
@@ -88,6 +91,7 @@ impl Parser {
             var_types: HashMap::new(),
             struct_fields: HashMap::new(),
             struct_sizes: HashMap::new(),
+            struct_aligns: HashMap::new(),
             field_types: HashMap::new(),
             usings: Vec::new(),
             typedefs: HashMap::new(),
@@ -292,24 +296,63 @@ impl Parser {
         let mut layout = Vec::new();
         let mut d = bmo_abi::types::Disposicion::nueva();
         for m in members {
-            let sz = m.typ.stack_size();
-            layout.push((m.name.clone(), d.coloca(sz), sz));
+            let sz = self.tamano_de_tipo(&m.typ);
+            layout.push((m.name.clone(), d.coloca(sz, self.alineado_de_tipo(&m.typ)), sz));
             self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
         }
         self.struct_fields.insert(name.to_string(), layout);
         self.struct_sizes.insert(name.to_string(), d.total());
+        self.struct_aligns.insert(name.to_string(), d.alineado());
     }
 
     fn compute_union_layout(&mut self, name: &str, members: &[StructMember]) {
         let mut layout = Vec::new();
         let mut d = bmo_abi::types::DisposicionUnion::nueva();
         for m in members {
-            let sz = m.typ.stack_size();
-            layout.push((m.name.clone(), d.coloca(sz), sz));
+            let sz = self.tamano_de_tipo(&m.typ);
+            layout.push((m.name.clone(), d.coloca(sz, self.alineado_de_tipo(&m.typ)), sz));
             self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
         }
         self.struct_fields.insert(name.to_string(), layout);
         self.struct_sizes.insert(name.to_string(), d.total());
+        self.struct_aligns.insert(name.to_string(), d.alineado());
+    }
+
+    /// El tamano de un tipo **con la tabla de structs delante**.
+    ///
+    /// [!] No es `TypeSpec::stack_size()`, y la diferencia no es cosmetica:
+    /// aquel contesta **0** para un `StructRef` porque desde el AST pelado no
+    /// hay tabla de tamanos que consultar. Usarlo aqui colocaba un miembro que
+    /// fuera otro struct con tamano cero, o sea **encima del siguiente** -- y
+    /// ademas en desacuerdo con el codegen, que si consulta su tabla. Dos
+    /// calculos de offsets que divergen es exactamente lo que esta clase se
+    /// escribio para impedir.
+    ///
+    /// Es el mismo defecto que ya se pago una vez en `pointer_scale`: `p + 1`
+    /// sobre un `struct T *` avanzaba UN byte por preguntarle el tamano al AST.
+    fn tamano_de_tipo(&self, typ: &TypeSpec) -> u32 {
+        match typ {
+            TypeSpec::StructRef(n) | TypeSpec::UnionRef(n) => {
+                self.struct_sizes.get(n.as_str()).copied().unwrap_or(8)
+            }
+            TypeSpec::Array(t, n) => self.tamano_de_tipo(t).saturating_mul(*n),
+            otro => otro.stack_size(),
+        }
+    }
+
+    /// El alineado de un tipo. Un array se alinea como su ELEMENTO y un
+    /// agregado como el mas exigente de sus miembros; ninguno de los dos sale
+    /// del tamano total. Gemela de `codegen::type_align`, y las dos tienen que
+    /// contestar lo mismo.
+    fn alineado_de_tipo(&self, typ: &TypeSpec) -> u32 {
+        match typ {
+            TypeSpec::Array(t, _) => self.alineado_de_tipo(t),
+            TypeSpec::StructRef(n) | TypeSpec::UnionRef(n) => {
+                self.struct_aligns.get(n.as_str()).copied().unwrap_or(8)
+            }
+            TypeSpec::Ptr(_) => 8,
+            otro => bmo_abi::types::alineado_de(self.tamano_de_tipo(otro)),
+        }
     }
 
     fn expect(&mut self, expected: &Token) -> Result<Token, CError> {

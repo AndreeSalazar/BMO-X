@@ -637,7 +637,7 @@ impl Parser {
             for (n, off, t) in &p.campos {
                 layout.push((n.clone(), *off, t.clone()));
             }
-            for _ in 0..p.tam { d.coloca(1); }
+            for _ in 0..p.tam { d.coloca(1, 1); }
         } else if hay_virtuales {
             // * **El `vptr` va en el offset 0**, no en medio de la tabla como
             // en Itanium: el *offset-to-top* y la ranura de RTTI solo hacen
@@ -645,11 +645,12 @@ impl Parser {
             // Al principio es lo que se escribiria a mano en C -- y es lo que
             // hace que el despacho sea una indireccion y no una resta.
             let vptr = TypeSpec::Ptr(Box::new(TypeSpec::Void));
-            layout.push((VPTR.to_string(), d.coloca(vptr.size()), vptr));
+            let (tam, ali) = (vptr.size(), vptr.alineado());
+            layout.push((VPTR.to_string(), d.coloca(tam, ali), vptr));
         }
 
         for m in &campos {
-            layout.push((m.name.clone(), d.coloca(m.typ.size()), m.typ.clone()));
+            layout.push((m.name.clone(), d.coloca(m.typ.size(), m.typ.alineado()), m.typ.clone()));
         }
         let tam = d.total();
 

@@ -79,9 +79,16 @@ mod tabla_de_config;
 /// configuracion encima del WAD.
 mod argv_de_doom;
 mod varargs_de_doom;
+/// El ARNES de los censos: barrer una matriz de casillas y comparar el informe
+/// entero. Lo comparten las dos sondas de abajo.
+mod censo;
 /// LA SONDA DEL LENGUAJE: la matriz contenedor x operacion, y el censo de lo
 /// que BMO C sabe hacer -- escrito para que no pueda quedarse viejo.
 mod sonda_del_lenguaje;
+/// LA SONDA DE LA DISPOSICION: donde cae cada campo y cuanto mide el agregado,
+/// medido contra el formato del WAD -- la unica autoridad de fuera que tiene
+/// este compilador. Es el eje que `R_Init` y `P_Init` van a pisar.
+mod sonda_de_disposicion;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //

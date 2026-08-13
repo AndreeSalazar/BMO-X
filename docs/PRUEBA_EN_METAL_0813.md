@@ -296,3 +296,86 @@ informacion.
 Hay una prueba que lo fija, pero en metal se ve en que `ray.bex` ande normal.
 
 Vuelta atras: `git revert 74657604`.
+
+---
+
+# CUARTA VUELTA -- la disposicion de los agregados, y el `memcpy`
+
+> Esta tanda no sale de ver morir a DOOM: sale de **enumerar** un eje que nadie
+> habia barrido. Por eso llega antes de que la maquina lo pida.
+
+## 1 -- DOOM: donde tiene que morir ahora, si muere
+
+El defecto: **el alineado de un miembro se deducia de su TAMANO**, y eso es
+falso para todo lo que no sea un escalar -- un array se alinea como su
+ELEMENTO. `char name[8]` mide ocho bytes igual que un `long` y se alinea a uno.
+
+DOOM no parsea sus datos: **castea un struct encima de los bytes crudos del
+WAD**. Asi que la disposicion no era una convencion interna, era una respuesta
+que el formato del fichero ya tenia escrita desde 1993 -- y no coincidia:
+
+| struct | lo que hacia BMO C | lo que dice el disco |
+|---|---|---|
+| `maptexture_t.patches` | offset 24 | **22** |
+| `maplinedef_t` entero | 16 bytes | **14** |
+| `mapsidedef_t` entero | 40 bytes | **30** |
+| `mapnode_t` entero | 32 bytes | **28** |
+
+Los dos que son el TAMANO son los peores: `p_setup.c` recorre el lump como un
+array, o sea que **el primer registro del nivel sale bien y todos los demas
+corridos**. Ese sintoma no se parece a un fallo de disposicion; se parece a un
+nivel roto.
+
+**Lo que hay que mirar, en orden:**
+
+```text
+   R_Init: Init DOOM refresh daemon -     <- pasa de aqui?
+   P_Init: Init Playloop state.
+   S_Init: Setting up sound.
+   D_CheckNetGame: Checking network game status.
+   HU_Init / ST_Init
+```
+
+| Sintoma | Que significa |
+|---|---|
+| llega a `D_DoomLoop` y **arranca solo el DEMO1** | esto ya es jugar |
+| muere en `R_Init` | quedan mas casillas de disposicion, o texturas |
+| muere en `P_Init` | idem, pero en las estructuras de nivel |
+| `R_InitTextures: Missing patch in texture` | `patches` sigue mal colocado |
+
+[!] **S_Init no puede fallar y conviene saberlo**: `FEATURE_SOUND` no esta
+definido en este arbol, asi que `sound_modules[]` es `{NULL}` e `I_InitSound`
+vuelve sin hacer nada. **DOOM va a jugarse en silencio.** Si muere ahi, el
+sospechoso no es el sonido.
+
+## 2 -- `memcpy` y `memset` son ahora UNA instruccion
+
+`rep movsb` y `rep stosb`, con su `cld` delante. Antes eran bucles de seis
+instrucciones **por byte**.
+
+⚠ **Esto toca a TODOS los programas de C y de C++**, porque `memcpy` lo emite
+el compilador. Si algo que copiaba deja de copiar, es esto.
+Vuelta atras: el commit de esta tanda.
+
+**LA PRUEBA, y son las de siempre**: `run c/caja.bex`, `run c/ray.bex`,
+`run cobol/1/hola.bex`. Si el laberinto sale igual, la copia funciona -- el
+raycaster copia filas enteras cada fotograma.
+
+** Y la que de verdad importa, porque es la que no se puede probar aqui:
+**DOOM tiene que ir mas fluido**. `DG_DrawFrame` mueve 1.024.000 bytes por
+fotograma; con el bucle viejo eran ~6,1 millones de instrucciones de puro blit.
+
+[!] **No es donde estaba el limite** y conviene no esperar un milagro: ~1-2 ms
+de los 28,5 que tiene un fotograma a 35 Hz. DOOM daba 35 fps en un 486 a 66 MHz,
+asi que en este Ryzen la velocidad no deberia ser el problema. Si DOOM va lento
+**despues** de esto, el sospechoso es el renderizador compilado por BMO C, y
+entonces hace falta el numero: `DG_GetTicksMs` ya existe.
+
+## 3 -- Lo que ya NO hace falta traer de vuelta
+
+Nada de esta tanda pide una foto. Las 12 casillas de la disposicion y las 28 del
+lenguaje se contestan solas con `cargo test -p bmo-c-front sonda_`, y el "antes"
+esta medido: con la regla vieja daban **nueve rotas de doce**.
+
+Lo unico que el Ryzen puede contestar y el anfitrion no es **hasta donde llega
+DOOM**. Una linea.
