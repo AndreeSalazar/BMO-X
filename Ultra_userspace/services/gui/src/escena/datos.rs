@@ -884,17 +884,35 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaDatos) {
     if bmo::info(bmo::INFO_ES_ESCRIBIBLE) != 0 {
         p.texto(tx, ty, "escritura: ABIERTA", TEXTO_BIEN);
     } else {
-        p.texto(tx, ty, "escritura: CERRADA", TEXTO_MAL);
+        // ** ESTE PANEL MINTIO, Y SE VIO EN UNA FOTO.
+        //
+        // Decia *"la transaccion existe y esta probada (12 tests), pero nadie la
+        // ha cableado al dispositivo todavia: falta el write y el FLUSH CACHE de
+        // verdad"* -- y el 2026-08-13 el dueno sello desde esta misma ventana y
+        // la generacion subio a 3. O sea que el write y el FLUSH CACHE **si
+        // estaban cableados**, y el panel seguia contando el estado de hace dos
+        // semanas.
+        //
+        // Un panel de diagnostico que se queda viejo es peor que no tenerlo:
+        // este decia que no se podia escribir mientras el disco se escribia.
+        //
+        // Lo que la bandera dice de verdad es que la ventana de escritura de
+        // SECTORES SUELTOS esta cerrada -- el gate de identidad y el rango
+        // permitido--, no que la transaccion no exista. Son dos cosas y ahora se
+        // dicen por separado.
+        p.texto(tx, ty, "escritura: por TRANSACCION", 0x00F0_D070);
         ty += bmo::GLIFO_ALTO + 3;
-        p.texto(tx, ty, "  la transaccion existe y esta probada (12 tests),", TEXTO_TENUE);
+        p.texto(tx, ty, "  sellar SI escribe: cierra un estrato y sube la", TEXTO_TENUE);
         ty += bmo::GLIFO_ALTO + 2;
-        p.texto(tx, ty, "  pero nadie la ha cableado al dispositivo todavia:", TEXTO_TENUE);
+        p.texto(tx, ty, "  generacion, con FLUSH CACHE de verdad.  TAB -> S.", TEXTO_TENUE);
         ty += bmo::GLIFO_ALTO + 2;
-        p.texto(tx, ty, "  falta el write y el FLUSH CACHE de verdad.", TEXTO_TENUE);
+        p.texto(tx, ty, "  lo que NO hay es escritura de sectores sueltos:", TEXTO_TENUE);
+        ty += bmo::GLIFO_ALTO + 2;
+        p.texto(tx, ty, "  aqui no se toca un bloque sin una transaccion.", TEXTO_TENUE);
     }
 
     ty += bmo::GLIFO_ALTO + 10;
-    p.texto(tx, ty, "F12 o ESC cierran.   TAB ensena el ARBOL de nodos.", TEXTO_TENUE);
+    p.texto(tx, ty, "F12 o ESC cierran.   TAB: nodos y carpetas.", TEXTO_TENUE);
     ty += bmo::GLIFO_ALTO + 2;
     // * Decirlo aqui evita el susto: con esta ventana delante el teclado es
     // SUYO, asi que teclear no escribe en la caja de abajo. Antes si escribia
