@@ -379,3 +379,61 @@ esta medido: con la regla vieja daban **nueve rotas de doce**.
 
 Lo unico que el Ryzen puede contestar y el anfitrion no es **hasta donde llega
 DOOM**. Una linea.
+
+---
+
+# QUINTA VUELTA -- tres ejes mas, y uno estaba roto
+
+Se siguio enumerando en vez de esperar al arranque. Tres sondas nuevas, **39
+casillas**, y el reparto es el dato:
+
+| eje | casillas | resultado |
+|---|---|---|
+| **el ANCHO** -- estrechar/ensanchar (`SHORT(x)` de DOOM) | 16 | limpio a la primera |
+| **las TABLAS** -- los datos que el `.bex` trae puestos | 11 | limpio a la primera |
+| **el SIGNO** -- las operaciones que miran el bit alto | 16 | ** CUATRO ROTAS ** |
+
+Que dos salgan limpios tambien vale: cuando `R_Init` falle, **no hay que
+empezar por ahi**.
+
+## Lo que estaba roto: las cuatro operaciones sin signo de 64 bits
+
+```text
+   (unsigned long)0x8000000000000000 >> 60   daba 18446744073709551608
+   ...                               / 2     daba un negativo enorme
+   ...                               % 10    idem
+   ...                               > 1     daba 0
+```
+
+`>>` emitia `sar` donde tocaba `shr`, `/` y `%` emitian `cqo`+`idiv` donde
+tocaba `xor rdx,rdx`+`div`, y `<`/`>` emitian `setl`/`setg` donde tocaba
+`setb`/`seta`.
+
+[!] **En 32 bits acertaba por casualidad**, y por eso llevaba ahi desde el
+primer dia: el codegen calcula en `rax`, y un `unsigned int` llega extendido
+con ceros -- el bit 63 vale 0 y `sar` da lo mismo que `shr`. Solo un
+`unsigned long` lo destapa.
+
+** Y el arm de `Shr` lo confesaba por escrito: *"un tipo sin signo querria
+`shr`; hoy el codegen no arrastra esa distincion hasta aqui"*. Era falso -- la
+distincion llegaba, faltaba preguntar. `expr_is_unsigned` esta calcada de
+`expr_is_float`, que llevaba al lado todo el tiempo.
+
+## Que mirar en metal
+
+⚠ **Toca la aritmetica de TODOS los programas de C**: cambia que instruccion se
+emite para `>>`, `/`, `%` y las cuatro comparaciones de orden. Si una cuenta
+que salia bien empieza a salir mal, es esto.
+
+```text
+   run c/ray.bex         el laberinto (usa 16.16 con signo por todas partes)
+   run c/caja.bex        sus cuatro lineas
+   run cobol/1/hola.bex  que COBOL no se entero
+```
+
+★ Y **DOOM es la prueba de verdad**: `angle_t` es `unsigned int` y el
+renderizador entero vive en aritmetica sin signo. Si antes hubiera llegado a
+pintar, los angulos por encima de 180 grados habrian salido mal.
+
+413 verdes en la suite de C, 1.126 en el workspace, y `build.ps1 -BuildOnly`
+pasa entero.

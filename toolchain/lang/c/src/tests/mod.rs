@@ -89,6 +89,15 @@ mod sonda_del_lenguaje;
 /// medido contra el formato del WAD -- la unica autoridad de fuera que tiene
 /// este compilador. Es el eje que `R_Init` y `P_Init` van a pisar.
 mod sonda_de_disposicion;
+/// LA SONDA DEL ANCHO: estrechar, ensanchar y promocionar. El eje de `SHORT(x)`
+/// de DOOM, que es `(signed short)` y por el que pasa cada campo del WAD.
+mod sonda_de_anchos;
+/// LA SONDA DE LAS TABLAS: si los bytes que el compilador mete en el `.bex` son
+/// los que decia el fuente. El eje de `tables.c` y `info.c`.
+mod sonda_de_tablas;
+/// LA SONDA DEL SIGNO: las cuatro operaciones que preguntan por el bit alto. El
+/// eje de `angle_t`, y donde el ancho de `rax` tapaba el defecto en 32 bits.
+mod sonda_sin_signo;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
