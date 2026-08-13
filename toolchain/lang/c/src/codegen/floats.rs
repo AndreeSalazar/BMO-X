@@ -1,20 +1,21 @@
-//! **COMA FLOTANTE**: el unico valor que no viaja en `rax`.
+//! **FLOATING POINT**: the only value that does not travel in `rax`.
 //!
-//! === Por que esto es un fichero aparte ===
+//! === Why this is a file of its own ===
 //!
-//! Porque un `double` rompe la suposicion sobre la que esta construido todo lo
-//! demas. El resto del codegen tiene una regla de una linea --*el valor de una
-//! expresion queda en `rax`*-- y aqui queda en `xmm0`, se carga con otras
-//! instrucciones, se compara con `comisd` en vez de `cmp`, y sus `setcc` son
-//! los NO ORDENADOS y no los con signo.
+//! Because a `double` breaks the assumption everything else is built on. The
+//! rest of the codegen has a one-line rule --*the value of an expression ends
+//! up in `rax`*-- and here it ends up in `xmm0`, loads with different
+//! instructions, compares with `comisd` instead of `cmp`, and its `setcc` codes
+//! are the UNORDERED ones rather than the signed ones.
 //!
-//! Mezclado con lo entero, cada una de esas diferencias parecia un caso de
-//! esquina. Junto, es **un segundo banco de registros con sus propias reglas**.
+//! Mixed in with the integer path, each of those differences looked like a
+//! corner case. Together they are **a second register bank with its own
+//! rules**.
 //!
-//! ** Y lo de los `setcc` no ordenados no es una curiosidad: son los mismos
-//! codigos que necesita una comparacion entera SIN SIGNO. El brazo de flotante
-//! los usaba desde el principio y el entero no -- que es exactamente como el
-//! defecto del signo consiguio esconderse tanto tiempo.
+//! ** And the unordered `setcc` detail is not trivia: they are the same codes
+//! an UNSIGNED integer comparison needs. The float arm had been using them from
+//! the start and the integer arm had not -- which is exactly how the signedness
+//! defect managed to hide for so long.
 
 use super::*;
 

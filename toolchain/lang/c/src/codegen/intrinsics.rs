@@ -1,21 +1,21 @@
-//! **LOS INTRINSECOS Y LA PUERTA DEL KERNEL**: lo que no se traduce, se invoca.
+//! **INTRINSICS AND THE KERNEL DOOR**: what is not translated is invoked.
 //!
-//! === Por que esto es un fichero aparte ===
+//! === Why this is a file of its own ===
 //!
-//! Un intrinseco no es una funcion de C: es un NOMBRE que el compilador
-//! reconoce y sustituye por instrucciones concretas, sin cuerpo que compilar y
-//! sin llamada que enlazar. `__rdtsc()` son dos instrucciones; `bmo_valor(..)`
-//! es cargar cinco registros y cruzar la puerta.
+//! An intrinsic is not a C function: it is a NAME the compiler recognises and
+//! substitutes with specific instructions, with no body to compile and no call
+//! to link. `__rdtsc()` is two instructions; `bmo_valor(..)` is loading five
+//! registers and crossing the door.
 //!
-//! Eso los pone en la frontera del lenguaje: **son la superficie del sistema
-//! vista desde C**, y quien los toca esta cambiando el contrato con el kernel,
-//! no la semantica del lenguaje. Tenerlos en su fichero hace que esa diferencia
-//! se note al abrirlo.
+//! That puts them on the boundary of the language: **they are the system
+//! surface as seen from C**, and whoever touches them is changing the contract
+//! with the kernel, not the semantics of the language. Having them in their own
+//! file makes that difference obvious the moment you open it.
 //!
-//! [!] Y aqui vive una trampa que ya se pago: el stub de la puerta es un
-//! LLAMABLE (`syscall; ret`). Ponerlo en linea quita el `call` y **deja el
-//! `ret`**: la funcion entera retorna en cuanto vuelve el syscall, y todo lo
-//! que hubiera detras no se ejecuta.
+//! [!] And a trap already paid for lives here: the door stub is a CALLABLE
+//! (`syscall; ret`). Inlining it removes the `call` and **keeps the `ret`**: the
+//! whole function returns as soon as the syscall comes back, and everything
+//! behind it never runs.
 
 use super::*;
 
