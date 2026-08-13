@@ -266,7 +266,7 @@ extern "C" fn fault_dispatch(
         serial_write(l.as_str());
         serial_write("\n");
         if crate::info::has_fb() {
-            crate::ring0::core::phase::dashboard_log(l.as_str());
+            crate::ring0::core::dashboard::dashboard_log(l.as_str());
         }
         // Queda GRABADO en el anillo de CABINA, no solo pintado: el aislamiento
         // de faults sirve precisamente porque la maquina sigue viva despues, y

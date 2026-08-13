@@ -17,7 +17,9 @@
 //! el gate: uno lo pasa para EJECUTAR y el otro solo para MIRAR, y tenerlas al
 //! lado hace visible que son la misma comprobacion con dos finales.
 
-use super::super::phase::{dashboard_log_color, orden_parecida, row, s_log, L, SH_TITLE, SH_VALUE};
+use super::super::dashboard::dashboard_log_color;
+use super::super::phase::s_log;
+use super::ui::{similar_command, row, L, SH_TITLE, SH_VALUE};
 
 /// `ls` -- recorre `EFI\BOOT\BOOTX64.EFI` de la particion de arranque y lo lee.
 ///
@@ -193,7 +195,7 @@ pub(crate) fn shell_run(arg: &[u8]) {
         // No se ejecuta la orden por el: adivinar lo que alguien quiso decir es
         // como se acaba lanzando otra cosa. Se dice **como se escribe**, que es
         // lo que hace falta una sola vez.
-        if let Some(orden) = orden_parecida(path) {
+        if let Some(orden) = similar_command(path) {
             let mut l = L::new();
             l.txt("[run] `");
             l.txt(orden);

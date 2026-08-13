@@ -44,3 +44,13 @@ pub mod ficheros;
 pub mod pantalla;
 /// 4 -- lo que NO SE DESHACE. Despues de estas no se sigue.
 pub mod peligro;
+
+/// The shell's own UI: the colour hierarchy, the `L` row builder, the line
+/// editor and the history ring. It stayed behind in `phase.rs` when the
+/// commands moved here -- so the thing that READS a command line lived four
+/// hundred lines from every command it feeds.
+pub mod ui;
+/// The loop that never returns. Separate from the editor and from the commands
+/// because it is the only part with a lifetime: `run_shell` is `-> !` and owns
+/// the keyboard for the rest of the machine's life.
+pub mod session;

@@ -25,7 +25,9 @@ use boot_context::BootContext;
 // duplicarse: son la misma rejilla --etiqueta a la izquierda, valor a la
 // derecha-- y dos copias darian dos shells que se ven distintos sin que nadie
 // lo hubiera decidido.
-use super::super::phase::{dashboard_log_color, row, s_log, L, SH_TITLE, SH_VALUE};
+use super::super::dashboard::dashboard_log_color;
+use super::super::phase::s_log;
+use super::ui::{row, L, SH_TITLE, SH_VALUE};
 
 /// `disk` -- que disco tiene BMO delante y que hay en el.
 ///

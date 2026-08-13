@@ -117,6 +117,14 @@ pub mod core {
     /// que se pueda leer despues y mandar. El kernel captura en RAM; quien lo
     /// escribe a disco es Ring 3, que esta vivo. Ver la cabecera del modulo.
     pub mod autopsia;
+    /// **THE ROLLING LOG** -- the band of screen rows anything in Ring 0 can
+    /// write to. It owns the panel MINUS the band at the bottom, which is
+    /// CABINA's; without that split the two erased each other.
+    pub mod dashboard;
+    /// **THE DESKTOP SUPERVISOR** -- launch it, notice it died, decide about
+    /// retrying. The launching happens at boot; the DECIDING does not, which
+    /// is why it is no longer inside the file named after the boot phases.
+    pub mod desktop;
     pub mod phase;
     /// **Las ordenes del shell de Ring 0**, repartidas por lo que preguntan.
     /// `phase.rs` llevaba 27 dentro y ocupaban dos tercios del fichero del

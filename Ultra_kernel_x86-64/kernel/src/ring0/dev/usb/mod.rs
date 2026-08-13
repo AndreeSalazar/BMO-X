@@ -94,7 +94,7 @@ fn dlog_push(s: &str) {
                 let n = DLOG_N;
                 if n > 0 {
                     if let Ok(line) = core::str::from_utf8(&buf[..n]) {
-                        crate::ring0::core::phase::dashboard_log(line);
+                        crate::ring0::core::dashboard::dashboard_log(line);
                     }
                 }
                 DLOG_N = 0;
@@ -206,7 +206,7 @@ static mut HID_EVENTS: u32 = 0;     // no TOTAL de InputEvents de hid.poll (kbd+
 fn log(msg: &str) {
     serial_write(msg);
     if crate::info::has_fb() {
-        crate::ring0::core::phase::dashboard_log(msg);
+        crate::ring0::core::dashboard::dashboard_log(msg);
     }
 }
 

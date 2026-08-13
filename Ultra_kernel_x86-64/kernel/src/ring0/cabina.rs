@@ -738,7 +738,7 @@ pub fn render_hud() {
         // El estado del endpoint puede pasar a Halted en caliente: si cambia,
         // hay que repintar aunque no se mueva ningun contador.
         ^ ((kst as u64) << 20) ^ ((rev as u64) << 36);
-    let gen = crate::ring0::core::phase::screen_gen();
+    let gen = crate::ring0::core::shell::ui::screen_gen();
     unsafe {
         if LAST == sig && LAST_GEN == gen { return; }
         LAST = sig; LAST_GEN = gen;

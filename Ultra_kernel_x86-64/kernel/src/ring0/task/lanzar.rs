@@ -494,7 +494,7 @@ fn con_buffer(path: &str) -> Informe {
     let prologo_n = match fuente.prologo(path, &mut buf[..PROLOGO]) {
         Ok(n) => n,
         Err(f) => {
-            crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
+            crate::ring0::core::dashboard::dashboard_log("[lanzar] NO se pudo cargar la imagen");
             crate::ring0::cabina::warn("lanzar", f.motivo(), 0);
             return Informe { origen, bytes: 0, firma: None, pid: None, res: Err(f) };
         }
@@ -625,7 +625,7 @@ fn con_buffer(path: &str) -> Informe {
             //
             // Arreglar el codigo de error es tocar el ABI; escribir el motivo
             // donde ya se mira, no. F11 lo cuenta.
-            crate::ring0::core::phase::dashboard_log("[lanzar] NO se pudo cargar la imagen");
+            crate::ring0::core::dashboard::dashboard_log("[lanzar] NO se pudo cargar la imagen");
             crate::ring0::cabina::warn("lanzar", f.motivo(), 0);
             return Informe { origen, bytes: 0, firma: None, pid: None, res: Err(f) };
         }
