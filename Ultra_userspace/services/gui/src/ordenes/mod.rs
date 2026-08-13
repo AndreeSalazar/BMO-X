@@ -29,11 +29,9 @@ pub(crate) enum Orden<'a> {
     Ayuda,
     /// Ensena o esconde la calculadora.
     Calculadora,
-    /// `estratos sellar` -- **cierra una transaccion vacia. ESCRIBE EN EL DISCO.**
-    ///
-    /// La primera orden del escritorio que cambia el almacen. Pide dos palabras
-    /// a proposito: ver el analizador.
-    EstratosSellar,
+    /// `sella` escrito AQUI, donde ya no vive: la orden se mudo a la ventana de
+    /// ESTRATOS (F12, tecla `S`) y esto lleva la nota con la direccion nueva.
+    SelloMudado,
     /// `perf` -- **lo que cuesta pintar**, medido.
     ///
     /// Existe para poder contestar con un numero la pregunta "hace falta una
@@ -215,9 +213,22 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         //
         // `estratos sellar` se queda como sinonimo: ya estaba escrito en la
         // ayuda, en dos documentos y en la cabeza del dueno.
-        b"sella" | b"sellar" => Orden::EstratosSellar,
+        // ** EL SELLO SE MUDO A LA VENTANA DE ESTRATOS (F12, tecla `S`).
+        //
+        // Decision del dueno el 2026-08-13: *"el terminal Ctrl+Alt que se lleve
+        // el sello"*. Y es la correcta -- **el verbo vive donde vive el
+        // objeto**. Este terminal lanza programas y mira el sistema; sellar es
+        // de ESTRATOS, y ESTRATOS tiene su propia ventana con su propio cursor
+        // dentro del volumen.
+        //
+        // Lo que NO se hace es borrarlo y ya: quien escriba `sella` aqui --que
+        // es lo que estaba escrito ayer en la linea de ayuda, en dos documentos
+        // y en la cabeza del dueno-- se lleva **la direccion nueva**, no un
+        // "no lo conozco". Una funcion que se muda sin dejar nota se convierte
+        // en una funcion que desaparecio.
+        b"sella" | b"sellar" => Orden::SelloMudado,
         b"estratos" => {
-            if resto == b"sellar" { Orden::EstratosSellar } else { Orden::Ayuda }
+            if resto == b"sellar" { Orden::SelloMudado } else { Orden::Ayuda }
         }
         b"clear" | b"cls" | b"limpia" => Orden::Limpiar,
         b"ls" | b"dir" | b"lista" => Orden::Listar(resto),

@@ -1508,7 +1508,7 @@ pub extern "C" fn _start() -> ! {
                 // tienen nada que ver con el historial de comandos de Ejecutar,
                 // y hasta hoy iban alli -- se navegaba una ventana tapada.
                 if datos_abierta && foco.es_para(V_DATOS) {
-                    use escena::datos::Vista;
+                    use escena::datos::{Sello, Vista};
                     let mut atendida = true;
                     match c {
                         // TAB: numeros <-> nodos. Es la misma tecla que cambia de
@@ -1524,8 +1524,18 @@ pub extern "C" fn _start() -> ! {
                                     caja_datos.al_principio();
                                     Vista::Nodos
                                 }
-                                Vista::Nodos => Vista::Numeros,
+                                // ** DE NODOS A CARPETAS **SIN TOCAR EL CURSOR**.
+                                //
+                                // Y eso es lo que hace que se sientan una sola
+                                // cosa: estas en `/cobol/10` mirando el grafo,
+                                // pulsas TAB y estas en `/cobol/10` mirando la
+                                // lista. Volver a la raiz aqui --como se hace al
+                                // ENTRAR desde numeros-- convertiria las dos
+                                // pestanas en dos programas.
+                                Vista::Nodos => Vista::Carpetas,
+                                Vista::Carpetas => Vista::Numeros,
                             };
+                            caja_datos.sello = Sello::Quieto;
                         }
                         _ if caja_datos.vista == Vista::Numeros => atendida = false,
                         // ARRIBA / ABAJO por la lista de hijos.
@@ -1561,8 +1571,32 @@ pub extern "C" fn _start() -> ! {
                         b'v' | b'V' => {
                             caja_datos.verificado =
                                 Some(bmo::estratos::verificar(caja_datos.sel as u64));
+                            caja_datos.sello = Sello::Quieto;
                         }
-                        _ => atendida = false,
+                        // * S: SELLAR, en dos tiempos. Ver `datos::Sello`.
+                        //
+                        // Se mudo aqui desde el terminal principal porque el
+                        // verbo vive donde vive el objeto: sellar es de
+                        // ESTRATOS, y esta es la ventana de ESTRATOS. Y va en
+                        // dos tiempos porque una tecla suelta que escribe en el
+                        // disco, en una ventana donde se pulsan flechas, seria
+                        // peor que las dos palabras que se quitaron.
+                        b's' | b'S' => {
+                            caja_datos.sello = match caja_datos.sello {
+                                Sello::Preguntando => match bmo::estratos_sellar() {
+                                    0 => Sello::Fallo,
+                                    g => Sello::Hecho(g),
+                                },
+                                _ => Sello::Preguntando,
+                            };
+                        }
+                        _ => {
+                            // Cualquier otra tecla CANCELA la pregunta. Es la
+                            // salida que hace que preguntar sea barato: si te
+                            // arrepientes, sigue navegando y ya esta.
+                            caja_datos.sello = Sello::Quieto;
+                            atendida = false;
+                        }
                     }
                     if atendida {
                         escena::datos::pintar(&p, &caja_datos);
@@ -1915,31 +1949,27 @@ pub extern "C" fn _start() -> ! {
                                 }
                                 n = 0;
                             }
-                            // * La primera orden del escritorio que ESCRIBE EN
-                            // EL DISCO. Ver `bmo::estratos_sellar`.
-                            Orden::EstratosSellar => {
-                                let g = bmo::estratos_sellar();
-                                if g == 0 {
-                                    salida.con_tinta(TINTA_MAL);
-                                    salida.texto(b"  el sellado NO se hizo. el volumen sigue igual.\n");
-                                    salida.con_tinta(TINTA_NORMAL);
-                                    salida.texto(b"  el motivo esta en F11 (consola del kernel).\n");
-                                    pintar_estado(&p, &caja, "no se sello", TEXTO_MAL);
-                                } else {
-                                    salida.con_tinta(TINTA_BIEN);
-                                    salida.texto(b"  COMMIT. generacion ");
-                                    let mut d = [0u8; 10];
-                                    let k = decimal(g, &mut d);
-                                    salida.texto(&d[..k]);
-                                    salida.byte(b'\n');
-                                    salida.con_tinta(TINTA_NORMAL);
-                                    // La prueba de verdad no es este mensaje.
-                                    salida.texto(b"  ESTRATOS acaba de write en el disco.\n");
-                                    salida.texto(b"  F12 debe decir esa misma generacion.\n");
-                                    salida.texto(b"  y tras REINICIAR debe seguir diciendola:\n");
-                                    salida.texto(b"  eso es lo que prueba que llego al plato.\n");
-                                    pintar_estado(&p, &caja, "sellado", TEXTO_BIEN);
-                                }
+                            // * `sella` YA NO VIVE AQUI, y esto lo dice.
+                            //
+                            // La orden se mudo a la ventana de ESTRATOS porque
+                            // el verbo vive donde vive el objeto. Borrarla y
+                            // contestar "no lo conozco" habria sido correcto y
+                            // cruel: estaba escrita en la linea de ayuda de
+                            // ayer, en dos documentos y en la costumbre del
+                            // dueno. **Una funcion que se muda sin dejar nota se
+                            // convierte en una funcion que desaparecio.**
+                            Orden::SelloMudado => {
+                                salida.texto(b"  sellar se mudo a la ventana de ESTRATOS.
+");
+                                salida.con_tinta(TINTA_BIEN);
+                                salida.texto(b"  F12  ->  TAB  ->  tecla S
+");
+                                salida.con_tinta(TINTA_NORMAL);
+                                salida.texto(b"  ahi se ve el volumen mientras se sella, que es
+");
+                                salida.texto(b"  donde tiene sentido: la generacion sube delante.
+");
+                                pintar_estado(&p, &caja, "esta en F12", TEXTO);
                                 n = 0;
                             }
                             // * `perf` -- el numero antes que la tarjeta.
