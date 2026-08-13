@@ -72,6 +72,9 @@ mod silencios;
 /// comportamiento no puede ver.
 mod sintetizadas;
 mod syscalls;
+/// La tabla de configuracion de DOOM en ocho lineas: la forma exacta con la
+/// que murio en el Ryzen el 2026-08-13.
+mod tabla_de_config;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
