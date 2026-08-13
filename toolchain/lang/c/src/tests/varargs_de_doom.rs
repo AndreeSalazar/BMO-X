@@ -79,7 +79,6 @@ fn va_arg_de_punteros_hasta_null() {
 /// hace `M_StringJoin`: una pasada para medir y otra para copiar. Un `va_start`
 /// que no reinicie el cursor da la primera bien y la segunda vacia.
 #[test]
-#[ignore = "defecto abierto: PostInc de un puntero no escala -- es la macro va_arg"]
 fn dos_pasadas_sobre_los_mismos_varargs() {
     let out = run_c_con_pp(
         "#include <stdarg.h>\n\
@@ -106,7 +105,6 @@ fn dos_pasadas_sobre_los_mismos_varargs() {
 /// El sospechoso de la macro: `*(ap)++` sobre un `unsigned long long *`.
 /// Tiene que avanzar OCHO bytes, no uno.
 #[test]
-#[ignore = "defecto abierto: `*p++` da 11 0 0 en vez de 11 22 33"]
 fn el_postincremento_de_un_puntero_avanza_un_elemento() {
     let out = run_c_con_pp(
         "int main() {\n\
@@ -119,4 +117,70 @@ fn el_postincremento_de_un_puntero_avanza_un_elemento() {
          }\n",
     );
     assert_eq!(out.trim(), "11 22 33");
+}
+
+/// Los CUATRO brazos, no solo el que fallaba. `emit_inc_var` y `emit_dec_var`
+/// los comparten pre y post, asi que arreglar uno toca los cuatro -- y un
+/// arreglo que se prueba en uno solo es un arreglo a medias.
+#[test]
+fn los_cuatro_brazos_avanzan_un_elemento() {
+    let out = run_c_con_pp(
+        "int main() {\n\
+           int v[5];\n\
+           int *p;\n\
+           v[0] = 10; v[1] = 20; v[2] = 30; v[3] = 40; v[4] = 50;\n\
+           p = v;\n\
+           p++;      /* post  */\n\
+           ++p;      /* pre   */\n\
+           printf(\"%d \", *p);\n\
+           p--;      /* post  */\n\
+           --p;      /* pre   */\n\
+           printf(\"%d\n\", *p);\n\
+           return 0;\n\
+         }\n",
+    );
+    assert_eq!(out.trim(), "30 10");
+}
+
+/// ** Y LA NO-REGRESION, que es la mitad que se olvida.
+///
+/// Un `int` tiene que seguir avanzando de UNO. Si el paso saliera del tipo sin
+/// distinguir puntero de entero, `i++` avanzaria cuatro y todos los bucles del
+/// sistema contarian de cuatro en cuatro -- un fallo mucho peor que el que se
+/// arreglaba.
+#[test]
+fn un_entero_sigue_avanzando_de_uno() {
+    let out = run_c_con_pp(
+        "int main() {\n\
+           int i;\n\
+           int n;\n\
+           char c;\n\
+           n = 0;\n\
+           for (i = 0; i < 5; i++) { n = n + 1; }\n\
+           c = 'a';\n\
+           c++;\n\
+           printf(\"%d %d %c\n\", i, n, c);\n\
+           return 0;\n\
+         }\n",
+    );
+    assert_eq!(out.trim(), "5 5 b");
+}
+
+/// Un puntero a struct: el paso son los 16 bytes del elemento, no 8 ni 1.
+/// Es el mismo tamano que ya usa el subindice, y el que fallaba esta manana por
+/// el otro camino (`Expr::Add`).
+#[test]
+fn un_puntero_a_struct_avanza_su_tamano() {
+    let out = run_c_con_pp(
+        "typedef struct { char *nombre; int v; } item_t;\n\
+         item_t lista[3] = { {\"a\", 10}, {\"b\", 20}, {\"c\", 30} };\n\
+         int main() {\n\
+           item_t *p;\n\
+           p = lista;\n\
+           p++;\n\
+           printf(\"%s %d %d\n\", p->nombre, p->v, (int)(p == &lista[1]));\n\
+           return 0;\n\
+         }\n",
+    );
+    assert_eq!(out.trim(), "b 20 1");
 }
