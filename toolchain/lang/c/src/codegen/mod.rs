@@ -3169,20 +3169,48 @@ impl Codegen {
             // `a / b` CON SIGNO. Antes hacia dos `pop` habiendo empujado una
             // sola vez --se llevaba un valor de la pila que no era suyo-- y
             // ademas dividia sin signo. `10 / 3` daba 0.
-            Expr::Div(a, b) => self.emit_binop(a, b, &[
-                0x48, 0x89, 0xC1, // mov rcx, rax   -> divisor = b
-                0x48, 0x89, 0xD0, // mov rax, rdx   -> dividendo = a
-                0x48, 0x99,       // cqo            -> extiende el signo
-                0x48, 0xF7, 0xF9, // idiv rcx
-            ]),
+            //
+            // ** Y SIN SIGNO es `div` con `rdx` a CERO, no `cqo`+`idiv`.
+            // `cqo` extiende el signo de `rax` a `rdx`, o sea que con el bit 63
+            // puesto deja `rdx = -1` y la division de 128 bits se hace sobre un
+            // dividendo negativo. Ver `expr_is_unsigned`.
+            Expr::Div(a, b) => {
+                if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) {
+                    self.emit_binop(a, b, &[
+                        0x48, 0x89, 0xC1, // mov rcx, rax   -> divisor = b
+                        0x48, 0x89, 0xD0, // mov rax, rdx   -> dividendo = a
+                        0x48, 0x31, 0xD2, // xor rdx, rdx   -> la mitad alta, a cero
+                        0x48, 0xF7, 0xF1, // div rcx
+                    ])
+                } else {
+                    self.emit_binop(a, b, &[
+                        0x48, 0x89, 0xC1, // mov rcx, rax
+                        0x48, 0x89, 0xD0, // mov rax, rdx
+                        0x48, 0x99,       // cqo            -> extiende el signo
+                        0x48, 0xF7, 0xF9, // idiv rcx
+                    ])
+                }
+            }
             // `a % b`: el resto queda en rdx.
-            Expr::Mod(a, b) => self.emit_binop(a, b, &[
-                0x48, 0x89, 0xC1, // mov rcx, rax
-                0x48, 0x89, 0xD0, // mov rax, rdx
-                0x48, 0x99,       // cqo
-                0x48, 0xF7, 0xF9, // idiv rcx
-                0x48, 0x89, 0xD0, // mov rax, rdx  -> el resto
-            ]),
+            Expr::Mod(a, b) => {
+                if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) {
+                    self.emit_binop(a, b, &[
+                        0x48, 0x89, 0xC1, // mov rcx, rax
+                        0x48, 0x89, 0xD0, // mov rax, rdx
+                        0x48, 0x31, 0xD2, // xor rdx, rdx
+                        0x48, 0xF7, 0xF1, // div rcx
+                        0x48, 0x89, 0xD0, // mov rax, rdx  -> el resto
+                    ])
+                } else {
+                    self.emit_binop(a, b, &[
+                        0x48, 0x89, 0xC1, // mov rcx, rax
+                        0x48, 0x89, 0xD0, // mov rax, rdx
+                        0x48, 0x99,       // cqo
+                        0x48, 0xF7, 0xF9, // idiv rcx
+                        0x48, 0x89, 0xD0, // mov rax, rdx  -> el resto
+                    ])
+                }
+            }
             // Comparaciones: si algun operando es float -> comisd (setcc unsigned);
             // si no, la comparacion entera de siempre.
             // Comparaciones enteras: todas comparan `a` contra `b` en ese
@@ -3191,29 +3219,54 @@ impl Codegen {
             // hacia sobre `b - a` con el setcc de la forma directa.
             Expr::Eq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x94) } else { self.emit_cmp(a, b, 0x94) },
             Expr::Neq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x95) } else { self.emit_cmp(a, b, 0x95) },
-            Expr::Lt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x92) } else { self.emit_cmp(a, b, 0x9C) },
-            Expr::Gt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x97) } else { self.emit_cmp(a, b, 0x9F) },
-            Expr::Le(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x96) } else { self.emit_cmp(a, b, 0x9E) },
-            Expr::Ge(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x93) } else { self.emit_cmp(a, b, 0x9D) },
+            // ** Las cuatro de ORDEN llevan DOS `setcc`: con signo y sin el.
+            //
+            // `setl`/`setb` no son la misma instruccion porque `<` no es la
+            // misma pregunta: `0x8000000000000000 > 1` es cierto para un
+            // `unsigned long` y falso para un `long`. Las de igualdad (`==`,
+            // `!=`) no cambian -- dos patrones de bits son iguales o no lo son,
+            // y eso no depende de como se lean.
+            //
+            // El `setcc` sin signo es el de flotante: `comisd` deja las
+            // banderas en la forma no ordenada, y esos son justo los codigos
+            // `setb`/`seta`/`setbe`/`setae`. Por eso el brazo de float ya los
+            // usaba y el entero no.
+            Expr::Lt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x92) }
+                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x92) }
+                else { self.emit_cmp(a, b, 0x9C) },
+            Expr::Gt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x97) }
+                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x97) }
+                else { self.emit_cmp(a, b, 0x9F) },
+            Expr::Le(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x96) }
+                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x96) }
+                else { self.emit_cmp(a, b, 0x9E) },
+            Expr::Ge(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x93) }
+                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x93) }
+                else { self.emit_cmp(a, b, 0x9D) },
             Expr::BitAnd(a, b) => self.emit_binop(a, b, &[0x48, 0x21, 0xD0]),
             Expr::BitXor(a, b) => self.emit_binop(a, b, &[0x48, 0x31, 0xD0]),
             Expr::BitOr(a, b) => self.emit_binop(a, b, &[0x48, 0x09, 0xD0]),
             // `a << b` / `a >> b`. Antes desplazaban el operando DERECHO por
             // el izquierdo: `1 << 3` intentaba `3 << 1`.
             //
-            // El desplazamiento a la derecha es ARITMETICO (`sar`), que es
-            // lo correcto para `int`. Un tipo sin signo querria `shr`; hoy
-            // el codegen no arrastra esa distincion hasta aqui.
+            // A la izquierda no hay dos versiones: `shl` y `sal` son la misma
+            // instruccion. A la derecha si -- `sar` copia el bit de signo y
+            // `shr` mete ceros -- y **manda el operando IZQUIERDO**, no la
+            // conversion usual: `1u >> x` es sin signo aunque `x` sea `int`.
             Expr::Shl(a, b) => self.emit_binop(a, b, &[
                 0x48, 0x89, 0xC1, // mov rcx, rax   -> cuenta = b
                 0x48, 0x89, 0xD0, // mov rax, rdx   -> valor  = a
                 0x48, 0xD3, 0xE0, // shl rax, cl
             ]),
-            Expr::Shr(a, b) => self.emit_binop(a, b, &[
-                0x48, 0x89, 0xC1, // mov rcx, rax
-                0x48, 0x89, 0xD0, // mov rax, rdx
-                0x48, 0xD3, 0xF8, // sar rax, cl
-            ]),
+            Expr::Shr(a, b) => {
+                let logico = self.expr_is_unsigned(a);
+                self.emit_binop(a, b, &[
+                    0x48, 0x89, 0xC1, // mov rcx, rax
+                    0x48, 0x89, 0xD0, // mov rax, rdx
+                    // shr rax,cl (/5) sin signo, sar rax,cl (/7) con el
+                    0x48, 0xD3, if logico { 0xE8 } else { 0xF8 },
+                ])
+            }
             // `&&` y `||` valen 0 o 1, no "el operando que quedo". Antes
             // `0 || 3` daba 3: cortocircuitaba bien pero devolvia el valor
             // crudo, y el estandar dice que el resultado es `int` 0/1.
@@ -3600,6 +3653,79 @@ impl Codegen {
     }
 
     fn is_float_ty(t: &TypeSpec) -> bool { matches!(t, TypeSpec::Float | TypeSpec::Double) }
+
+    /// Un tipo que sobrevive SIN SIGNO a las promociones enteras de C.
+    ///
+    /// [!] `unsigned char` y `unsigned short` **no estan**, y no es un olvido:
+    /// C11 6.3.1.1 dice que promocionan a `int` con signo, porque un `int` puede
+    /// con todos sus valores. Meterlos aqui haria que `(unsigned short)0xFFFF /
+    /// -1` diera un numero enorme en vez de lo que dice el estandar.
+    ///
+    /// Y en la practica da igual para el resultado --un valor de 16 bits nunca
+    /// tiene el bit 63 puesto en `rax`-- pero la regla se escribe como es, no
+    /// como se nota.
+    fn is_unsigned_ty(t: &TypeSpec) -> bool {
+        matches!(
+            t,
+            TypeSpec::UnsignedInt | TypeSpec::UnsignedLong | TypeSpec::UnsignedLongLong
+        )
+    }
+
+    /// **Esta expresion produce un valor sin signo?**
+    ///
+    /// # Por que hacia falta, y por que solo se notaba en 64 bits
+    ///
+    /// El codegen calcula TODO en `rax`, o sea en 64 bits. Un `unsigned int`
+    /// con el bit 31 puesto se carga con `mov eax` y llega a `rax`
+    /// **extendido con ceros**: el bit 63 vale 0, asi que `sar` y `shr` dan lo
+    /// mismo y `idiv` y `div` tambien. Por eso `unsigned int` acertaba por
+    /// casualidad y nadie lo vio.
+    ///
+    /// Con un `unsigned long` de 64 bits el bit 63 SI es del valor, y ahi las
+    /// cuatro operaciones que miran el signo se equivocaban a la vez:
+    ///
+    /// ```text
+    ///   (unsigned long)0x8000000000000000 >> 60   daba 18446744073709551608
+    ///   ...                               / 2     daba un negativo enorme
+    ///   ...                               % 10    idem
+    ///   ...                               > 1     daba 0
+    /// ```
+    ///
+    /// ** El arm de `Shr` lo CONFESABA en prosa: *"un tipo sin signo querria
+    /// `shr`; hoy el codegen no arrastra esa distincion hasta aqui"*. Y era
+    /// falso: la distincion llegaba --`var_type_of` existe, y `Field`, `Arrow`
+    /// e `IndexPtr` traen su `TypeSpec` dentro-- lo que faltaba era preguntar.
+    /// Un fallo confesado en prosa sigue siendo un fallo.
+    ///
+    /// Gemela de [`Self::expr_is_float`] a proposito: misma forma, mismos
+    /// brazos. Cuando aparezca un tercer eje de tipo, que se escriba igual.
+    fn expr_is_unsigned(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Var(n) => self.var_type_of(n).map_or(false, |t| Self::is_unsigned_ty(&t)),
+            Expr::Cast(t, _) => Self::is_unsigned_ty(t),
+            Expr::Field(_, _, _, t) | Expr::Arrow(_, _, _, t) => Self::is_unsigned_ty(t),
+            Expr::IndexPtr(_, _, t) => Self::is_unsigned_ty(t),
+            // En una operacion binaria basta con que UNO sea sin signo: es la
+            // conversion aritmetica usual de C, que arrastra el resultado al
+            // tipo sin signo.
+            Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b)
+            | Expr::Mod(a, b) | Expr::BitAnd(a, b) | Expr::BitOr(a, b) | Expr::BitXor(a, b) => {
+                self.expr_is_unsigned(a) || self.expr_is_unsigned(b)
+            }
+            // [!] En un desplazamiento manda SOLO el izquierdo. El derecho es
+            // una cuenta, no un operando de la conversion usual: `1u << x` es
+            // sin signo aunque `x` sea `int`, y `1 << u` es CON signo aunque
+            // `u` no lo sea.
+            Expr::Shl(a, _) | Expr::Shr(a, _) => self.expr_is_unsigned(a),
+            Expr::BitNot(a) => self.expr_is_unsigned(a),
+            Expr::Conditional(_, a, b) => self.expr_is_unsigned(a) || self.expr_is_unsigned(b),
+            Expr::Call(n, _) => self
+                .firmas
+                .get(n)
+                .map_or(false, |(_, ret)| Self::is_unsigned_ty(ret)),
+            _ => false,
+        }
+    }
 
     /// Esta expresion produce un valor de punto flotante?
     fn expr_is_float(&self, e: &Expr) -> bool {
