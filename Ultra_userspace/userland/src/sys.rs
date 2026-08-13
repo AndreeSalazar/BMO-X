@@ -112,7 +112,7 @@ pub fn yield_screen() {
 ///
 /// # Para que sirve de verdad
 ///
-/// Los tres syscalls congelados no traen reloj, asi que sin esto la unica forma
+/// Los dos syscalls congelados no traen reloj, asi que sin esto la unica forma
 /// de esperar es **contar vueltas de bucle** -- y eso da una espera de dos
 /// segundos en un Ryzen y de veinte en algo mas lento, que es como se hacian las
 /// cosas cuando no habia forma de saber la hora. Con `rdtsc` y la frecuencia que

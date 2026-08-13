@@ -70,7 +70,7 @@ const TIPOS: &str = "typedef struct { int n; char *txt; int (*fn)(int); } caja_t
                      int doble(int x) { return x * 2; }\n\
                      int triple(int x) { return x * 3; }\n";
 
-fn censo() -> [Casilla; 26] {
+fn censo() -> [Casilla; 28] {
     [
         // -- El contenedor mas simple: una variable ----------------------
         Casilla {
@@ -263,6 +263,34 @@ fn censo() -> [Casilla; 26] {
                        printf(\"%d\\n\", p->clase->fn(8)); return 0; }",
             espera: "16",
         },
+        Casilla {
+            // ** LA FORMA DE `w_file.c`: un struct GLOBAL cuyos campos son
+            // punteros a funcion, inicializados estaticamente.
+            //
+            // No es lo mismo que un ARRAY global de punteros a funcion --la
+            // casilla de arriba-- y por eso son dos: un array tiene un solo
+            // tipo de elemento y una sola relocation por hueco; un struct
+            // mezcla campos de clases distintas y sus punteros van a la seccion
+            // de CODIGO, no a la de datos.
+            nombre: "struct global de fn ptrs",
+            fuente: "typedef struct { int (*abre)(int); int (*lee)(int); } clase_t;
+                     int doble(int x) { return x * 2; }
+                     int triple(int x) { return x * 3; }
+                     clase_t global = { doble, triple };
+                     int main() { clase_t *p; p = &global;                        printf(\"%d %d\n\", global.abre(4), p->lee(4)); return 0; }",
+            espera: "8 12",
+        },
+        Casilla {
+            // Y la de DOOM entera: el objeto lleva un puntero a su CLASE, que
+            // es un struct global de punteros a funcion. `wad->clase->lee(..)`.
+            nombre: "obj->clase->fn() con clase global",
+            fuente: "typedef struct { int (*lee)(int); } clase_t;
+                     int doble(int x) { return x * 2; }
+                     clase_t la_clase = { doble };
+                     typedef struct { clase_t *clase; int n; } obj_t;
+                     int main() { obj_t o; obj_t *p; o.clase = &la_clase; o.n = 1; p = &o;                        printf(\"%d\n\", p->clase->lee(21)); return 0; }",
+            espera: "42",
+        },
         // -- Doble puntero ----------------------------------------------
         Casilla {
             nombre: "doble puntero: **pp",
@@ -342,5 +370,7 @@ llamar por tabla global        BIEN
 llamar por s.campo             BIEN
 llamar por p->campo            BIEN
 llamar por p->otro->campo      BIEN
+struct global de fn ptrs       BIEN
+obj->clase->fn() con clase global BIEN
 doble puntero: **pp            BIEN
 ";
