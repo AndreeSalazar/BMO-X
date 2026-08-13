@@ -164,7 +164,25 @@ Step 'Validating Ring 0 syscall contract'
 # estar. Se leen los dos y se comparan contra el MISMO surface.
 $kernelSyscalls = (Get-Content (Join-Path $root 'kernel\src\ring0\syscall.rs') -Raw) + "`n" +
                   (Get-Content (Join-Path $root 'kernel\src\ring0\obj\archivo.rs') -Raw)
-$abiSurface = Get-Content (Join-Path $root '..\platform\abi\bmo-abi\src\syscalls\surface.rs') -Raw
+# ** EL CONTRATO YA NO ES UN FICHERO: ES UNA CARPETA (2026-08-12).
+#
+# `surface.rs` llego a 1.166 lineas con 186 constantes en una lista plana y se
+# partio en cinco --puertas, tarea, objetos, entrada, informe--. Los TRES
+# guardianes de abajo lo leen con `-Raw`, asi que seguir leyendo solo el fichero
+# viejo habria hecho que **pasaran creyendo que comprueban**, que es peor que no
+# tenerlos: un guardian que lee menos no avisa de menos -- avisa de nada, y con
+# tono tranquilizador.
+#
+# Se concatena la carpeta entera. Y se comprueba que haya algo dentro: si alguien
+# la renombra, esto tiene que PARAR en vez de seguir con una cadena vacia, porque
+# una cadena vacia hace pasar todas las comprobaciones de golpe.
+$abiSurfaceDir = Join-Path $root '..\platform\abi\bmo-abi\src\syscalls\surface'
+$abiSurfaceFiles = @(Get-ChildItem -Path $abiSurfaceDir -Filter '*.rs' -File -ErrorAction SilentlyContinue)
+if ($abiSurfaceFiles.Count -eq 0) {
+    Fail ('no hay ni un .rs en ' + $abiSurfaceDir + ' -- el contrato no se puede comprobar, y seguir seria fingir que si')
+}
+$abiSurface = ($abiSurfaceFiles | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n"
+Write-Host ('    contrato: ' + $abiSurfaceFiles.Count + ' ficheros de surface/ leidos') -ForegroundColor DarkGray
 foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
     $kernelMatch = [regex]::Match($kernelSyscalls, ('const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
     $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u32\s*=\s*(0x[0-9A-Fa-f]+)'))
