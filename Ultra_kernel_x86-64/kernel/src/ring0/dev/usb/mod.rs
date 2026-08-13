@@ -228,6 +228,56 @@ fn delay_ms(ms: u64) {
     }
 }
 
+/// **Waits for a port to declare a device, and LEAVES AS SOON AS ONE DOES.**
+///
+/// Returns how many ports have `PORTSC.CCS` set, and how many milliseconds it
+/// actually waited.
+///
+/// # Why polling instead of a flat `delay_ms(200)`
+///
+/// The 200 ms were a **blind** wait: the USB spec asks for 100 ms of connection
+/// debounce, the code doubled it for safety, and then it looked. So the
+/// controller that HAS the keyboard -- the one that matters -- paid the full
+/// wait even though its ports had settled long before.
+///
+/// Polling flips who pays. A populated controller answers in the first sweeps
+/// and leaves; an empty one still pays the whole budget, **and that is
+/// correct**: to declare a port empty you have to give it its time. Rushing
+/// that is how a keyboard that was there gets missed.
+///
+/// [!] So this does NOT make an empty controller cheaper. In a machine with the
+/// devices on the second xHC, the first one still costs its full budget. That
+/// is the part a remembered hint could remove one day -- see the boot timeline
+/// notes -- and it is deliberately not solved here, because reordering the init
+/// of two controllers blind, on the path that every key travels, is not worth
+/// what it buys.
+///
+/// # Why the sweep is 10 ms and not 1
+///
+/// Each sweep is `nports` MMIO reads. At 1 ms the loop would hammer the
+/// controller's registers for nothing: the debounce is a physical time of the
+/// port and reading it more often does not make it happen sooner.
+fn wait_for_connection(nports: u8, budget_ms: u64) -> (u64, u64) {
+    const SWEEP_MS: u64 = 10;
+    let mut waited = 0u64;
+    loop {
+        let mut connected = 0u64;
+        for p in 0..nports {
+            if unsafe { bmo_xhci::port_peek(p) } & 1 != 0 {
+                connected += 1;
+            }
+        }
+        if connected > 0 {
+            return (connected, waited);
+        }
+        if waited >= budget_ms {
+            return (0, waited);
+        }
+        delay_ms(SWEEP_MS);
+        waited += SWEEP_MS;
+    }
+}
+
 /// Descubre e inicializa xHCI + HID. Reporta al panel.
 ///
 /// Estrategia hardware-real:
@@ -288,13 +338,23 @@ pub fn init(_ctx: &BootContext) {
         for p in 0..nports {
             unsafe { bmo_xhci::port_power_solo(p) };
         }
-        delay_ms(200);
-        // Censo: que puertos tienen un dispositivo fisico (PORTSC.CCS).
-        let mut connected = 0u64;
+        // ** THE WAIT NOW ENDS WHEN THE PORTS ANSWER, not when a constant does.
+        //
+        // It was a flat `delay_ms(200)`: power the ports, wait blind, then
+        // look. The controller that HAS the keyboard paid the full 200 ms even
+        // though its ports had settled long before -- and that controller is
+        // the one on the critical path of the boot.
+        //
+        // `wait_for_connection` sweeps every 10 ms and leaves on the first
+        // device. An empty controller still pays the whole budget, which is the
+        // right answer: declaring a port empty in a hurry is how a keyboard
+        // that WAS there gets missed.
+        let (connected, waited_ms) = wait_for_connection(nports, 200);
+        crate::ring0::cabina::info("usb", "ms esperados a que el puerto conteste", waited_ms);
+        // Censo, ya sin esperar: solo para DECIR cuales son.
         for p in 0..nports {
             let sc = unsafe { bmo_xhci::port_peek(p) };
             if sc & 1 != 0 {
-                connected += 1;
                 dlog_push(" p");
                 dlog_u64(p as u64);
                 dlog_push("=");
