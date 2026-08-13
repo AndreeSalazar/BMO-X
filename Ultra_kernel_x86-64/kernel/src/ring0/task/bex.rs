@@ -313,12 +313,23 @@ fn read_u64(bytes: &[u8], offset: usize) -> Option<u64> {
 
 /// * UNA RELOCATION, leida del fichero. Ver `SECTION_RELOCS`.
 ///
-/// Tamano y disposicion fijados por `bmo_abi::bef::relocations::Relocation`, que
-/// este kernel **no importa a proposito**: `bmo-abi` es el CONTRATO y aqui se
-/// implementa contra el leyendo bytes, igual que con la tabla de secciones. Si
-/// el struct cambiara de forma, `RELOC_SIZE` y estos offsets son el unico sitio
-/// a tocar.
-pub const RELOC_SIZE: usize = 24;
+/// Tamano de una relocation. **Ya no se escribe aqui**: viene de
+/// `bmo-bex-gate`, que es el crate que los dos lados comparten.
+///
+/// === Por que se movio (2026-08-12) ===
+///
+/// Aqui decia: *"si el struct cambiara de forma, `RELOC_SIZE` y estos offsets
+/// son el unico sitio a tocar"*. Y **"el unico sitio a tocar" es la definicion
+/// de una duplicacion que se olvida**: mover un campo del struct de `bmo-abi`
+/// compila igual, pasa todos los tests del toolchain, y este cargador escribe
+/// una direccion equivocada dentro de un proceso. Corrupcion silenciosa, no un
+/// fallo.
+///
+/// El kernel sigue sin importar `bmo-abi` --trae `alloc`-- pero SI importa
+/// `bmo-bex-gate`, que no tiene dependencias. Asi que los offsets viven ahi, y
+/// `bmo-abi` los clava a su struct con `offset_of!` en
+/// `tests/bef_dos_lectores.rs`. De dos verdades a una verdad y una prueba.
+pub use gate::RELOC_SIZE;
 /// `SeccionAbs64`: escribe la direccion de `(seccion, offset)`. El unico tipo
 /// que este cargador aplica; cualquier otro se rechaza diciendolo, porque
 /// aplicar una reloc que no se entiende es escribir un numero inventado en la
@@ -350,12 +361,13 @@ pub fn leer_reloc(bytes: &[u8], tabla_off: u64, tabla_size: u64, n: usize) -> Op
         return None;
     }
     let base = (tabla_off as usize).checked_add(dentro)?;
+    // Los offsets vienen del crate compartido, no de aqui. Ver `RELOC_SIZE`.
     Some(BexReloc {
-        donde_off: read_u64(bytes, base)?,
-        destino_sec: read_u32(bytes, base + 8)? as u8,
-        kind: *bytes.get(base + 12)?,
-        donde_sec: *bytes.get(base + 13)?,
-        destino_off: read_u64(bytes, base + 16)? as i64,
+        donde_off: read_u64(bytes, base + gate::reloc::OFFSET)?,
+        destino_sec: read_u32(bytes, base + gate::reloc::SYMBOL_IDX)? as u8,
+        kind: *bytes.get(base + gate::reloc::KIND)?,
+        donde_sec: *bytes.get(base + gate::reloc::TARGET_SECTION)?,
+        destino_off: read_u64(bytes, base + gate::reloc::ADDEND)? as i64,
     })
 }
 

@@ -19,3 +19,8 @@ bitflags = "2.13.0"
 # El unico BLAKE3 del sistema. Vivia dentro de esta crate; salio para que el
 # kernel pueda usarlo sin arrastrar `alloc`. Ver src/bef/blake3.rs.
 bmo-hash = { path = "../../shared/bmo-hash" }
+
+[dev-dependencies]
+# Solo para las PRUEBAS: los offsets compartidos con el cargador del kernel.
+# No es dependencia de la libreria -- el contrato no depende de la puerta.
+bmo-bex-gate = { path = "../bmo-bex-gate" }
