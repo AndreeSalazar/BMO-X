@@ -270,7 +270,24 @@ pub(crate) fn pintar(
     // -- La frase, que es la tesis del proyecto --
     p.rect(x, y, 560, 1, 0x0022_3040);
     y += 14;
-    p.texto(x, y, "tres syscalls congelados.  todo lo demas son capabilities.", ENT_TENUE);
+    // ** DECIA "TRES", Y SON DOS.
+    //
+    // `INVOKE` y `WAIT`. El `1` fue `CHANNEL_KICK`, se retiro, y su numero
+    // **queda reservado con lapida** para que ningun binario viejo caiga en una
+    // puerta nueva -- lo dice `puertas.rs:46`: *"Dos. Ver NR_CHANNEL_KICK para
+    // el tercero que hubo."*
+    //
+    // O sea que la PRIMERA pantalla que ve cualquiera decia mal **el numero que
+    // define el proyecto entero**. Y no es una errata cosmetica: "dos syscalls"
+    // es la frase con la que este sistema se presenta, y un tres la debilita
+    // justo donde mas fuerte es.
+    //
+    // [!] Es la tercera vez hoy que un texto de pantalla cuenta el estado de
+    // hace meses -- como `PLAN_DOOM.md` mandando a una puerta ya cerrada y el
+    // panel de ESTRATOS diciendo que no se podia escribir mientras se escribia.
+    // Un numero que sale en pantalla y no sale de una constante se queda viejo
+    // solo.
+    p.texto(x, y, "DOS syscalls congelados.  todo lo demas son capabilities.", ENT_TENUE);
     y += bmo::GLIFO_ALTO + 4;
     p.texto(x, y, "esto no es una API prestada: es la maquina obedeciendo.", ENT_TENUE);
 
