@@ -10,6 +10,108 @@ handles; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
+> ## ★★★ Al 2026-08-13 -- POR QUE DOOM NO SE JUEGA: `&c->defaults[i]` vale CERO
+>
+> **La respuesta ya no es una sospecha, y no esta en el kernel.** DOOM arranca,
+> reclama pantalla y raton, imprime nueve lineas suyas y **se mata solo**:
+>
+> ```text
+>    M_LoadDefaults: Load system defaults.
+>    Unknown configuration variable: 'use_joystick'     <- la ultima
+>    105 INFO ring3: proceso termino por su cuenta (EXIT)
+> ```
+>
+> [!] **Esa linea no es un aviso: es la causa de muerte.** `m_config.c:1954` la
+> emite con `I_Error`, que imprime y llama a `exit`. Leerla como ruido --que es
+> lo que se hizo el 12-08-- costo un dia.
+>
+> El camino es: `M_BindVariable("use_joystick")` -> `GetDefaultForName` ->
+> `SearchCollection`, que **encuentra la entrada** y devuelve su direccion con
+> `return &collection->defaults[i]`. Y ahi:
+>
+> ```rust
+> // codegen/mod.rs:2886, Expr::AddrOf
+> Expr::Var(..) | Expr::Subscript(..) | Expr::Deref(..)  => ...
+> _ => self.emit_xor_eax(),        // <-- AddrOf(IndexPtr) cae aqui
+> ```
+>
+> **La direccion pedida sale CERO, sin un aviso.** `GetDefaultForName` devuelve
+> `NULL` y DOOM muere a 56.465 lineas del sitio del fallo.
+>
+> ** Tercera vez del mismo patron: un `_ =>` que rellena de ceros lo que no sabe
+> traducir. Las otras dos fueron el `char *mapa` del raycaster (`2bc13367`) y
+> las relocations inexistentes (`46506e51`).
+>
+> **Reproducido en el emulador, sin encender la maquina**:
+> `toolchain/lang/c/src/tests/tabla_de_config.rs` -- seis verdes que descartan
+> la tabla, la cuenta `arrlen`, el operador `#`, la escala de 200 punteros y
+> `strcmp`; cuatro `#[ignore]` que reproducen el defecto
+> (`cargo test -p bmo-c-front tabla_de_config -- --ignored`). Y el reparto entre
+> ellos ES el diagnostico: `&c->campo[i]` rojo, `p = c->campo; &p[i]` verde.
+>
+> **Lo que queda descartado con numeros**, para no volver a mirarlo:
+> `bytes DIRECTOS del disco al marco =813568` contra `el fichero mide =815496`
+> **no es una lectura corta** --los 1.928 son la seccion `Resources`, que el
+> cargador no se trae a proposito--; el WAD esta en su sitio con su tamano
+> (`A:\apps\doom1.wad`, 4.196.020 B) y **DOOM muere antes de abrirlo**.
+>
+> ## ✅ ARREGLADO EL MISMO DIA, y eran TRES defectos, no uno
+>
+> **1.** Tres brazos nuevos en `Expr::AddrOf` --`IndexPtr`, `Field`, `Arrow`--,
+> que son la version sin carga de los que ya existian. Ahi salio el segundo:
+> **`&s.campo` y `&p->campo` tambien valian CERO**, y eso es C de todos los
+> dias.
+>
+> **2.** El `_ =>` **ya no rellena de ceros: grita** con la expresion dentro.
+>
+> **3.** Y el mas general: `pointer_scale` media con `TypeSpec::stack_size()`,
+> que contesta `0` para un `StructRef` --desde el AST no hay tabla de tamanos--
+> y con `0` decidia que no habia que escalar. O sea que **`p + 1` sobre un
+> `struct T *` avanzaba UN BYTE**. Ahora mide con `type_stack_size`. El
+> subindice acertaba y la suma no, siendo la misma direccion escrita de dos
+> formas.
+>
+> **Comprobado**: suite de C en **397 verdes / 0 rojos / 0 ignorados**, los
+> cuatro tests que reproducian el fallo ahora verdes y de guarda, **DOOM
+> recompila** (816.904 B, +2 KB de direcciones que antes eran `xor eax,eax`) y
+> los 12 ejemplos de C recompilan sin disparar el error nuevo.
+>
+> ⚠ **Falta el metal**: `build.ps1 -Flash` y volver a lanzar DOOM. Toca el
+> codegen, o sea todos los `.bex` de C.
+>
+> ★ **Y la "pantalla bugeada" tampoco es de DOOM**: cuando muere ahi no ha
+> pintado un pixel. Lo que queda en el monitor son restos de tres pintores sobre
+> el mismo framebuffer -- su ventana de consola, el panel del kernel al morir el
+> dueno, y el repintado del compositor al recuperarla. Detalle y el defecto
+> pequeno de al lado (las ventanas abiertas no se repintan) en `docs/PLAN_DOOM.md`.
+>
+> ## ⏳ Al 2026-08-12 -- treinta commits, y el metal contesto la mitad
+>
+> **Lo que quedo VERIFICADO en el Ryzen**: arranca y pinta escritorio; el corte
+> de `dev/usb.rs` en cuatro modulos aguanto; desenchufar el teclado suelta el
+> aparato y volver a enchufarlo lo re-adopta; el raton sobrevive; el disco
+> escribe; y **once nucleos sin un solo choque de cerrojo**. Numeros:
+> `KIND_MEMORIA` sirviendo a dos clientes a la vez (20,4 MiB = doble bufer del
+> compositor + zona de DOOM), `apk=6:0:0` --cero eventos xHCI perdidos-- y
+> **30,5 MiB usados de 14,8 GiB**.
+>
+> **Lo que entro ese dia**: el bus USB como **hilo del kernel** (`58888f46`,
+> primer usuario de verdad de `spawn_kernel`) y el rescate `Ctrl+Alt+Esc`
+> vigilando tambien la puerta CRUDA, que es la que usa un juego; hasta **8 cajas
+> sucias** en el compositor (`758ab20f` -- una sola caja convertia 384 pixeles
+> reales en 2.073.600 copiados, 8,3 MB por fotograma); la NIC **recibiendo
+> tramas** con `net rx` (`abd9cf1c`, `CR.TE` apagado a proposito: no se pone un
+> byte en el cable); AXION leyendo frecuencia efectiva y **vatios**; el paso 0
+> del audio preguntandole al aparato como quiere las muestras; y el contrato de
+> syscalls **partido en cinco** (`1c597731`) despues de que `INFO_CPU_HZ_REAL` y
+> `INFO_FUGAS` acabaran los dos en `0x1E` -- dos campos con el mismo numero no
+> dan error de compilacion: dan un panel que ensena el dato de otro.
+>
+> **Lo que sigue sin ver un CPU**: las seis preguntas de la segunda vuelta de
+> `docs/PRUEBA_EN_METAL.md` --entre ellas la secuencia de vatios que decide si
+> MWAIT vale la pena-- y el corte del ABI, que cambia el binario del kernel otra
+> vez.
+>
 > ## ★★★ Al 2026-08-11 -- DOOM **ARRANCA**, y con el se cierran DOS bugs de carga
 >
 > **1. ✅ `run apps/doom.bex` CARGA Y ARRANCA EN EL RYZEN.** ⚠ Y hay que decirlo
