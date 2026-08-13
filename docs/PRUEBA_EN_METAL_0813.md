@@ -239,3 +239,60 @@ Es lo unico que separa una barrera que funciona de una que se cree.
 1. `A:\datos\salida.txt` -- vale mas que las fotos.
 2. `A:\datos\fallos.txt` si algo revienta.
 3. La linea mas lejana que alcance DOOM.
+
+---
+
+# TERCERA VUELTA -- lo del arranque de las 10:55
+
+## Ya contestado, y no se repite
+
+| | |
+|---|---|
+| Las tres lineas de mas de DOOM | **DESAPARECIERON**. El `!` estaba arreglado |
+| El WAD | intacto, y ya no lo nombra la configuracion |
+| `carpetas`, la pestana nueva | OK -- columnas, seleccion y `S sella` en el pie |
+| Las curvas del grafo | OK, con sus puntas de flecha |
+| **ESTRATOS ESCRIBIO** | `SELLADO. generacion 3` |
+
+## 1 -- La que queda de ayer y no cuesta codigo: REINICIAR
+
+`F12` -> `numeros`. Si sigue diciendo **generacion 3**, la escritura llego al
+plato y no se quedo en la cache del SSD. **Es lo unico que separa una barrera que
+funciona de una que se cree**, y es un arranque, no una sesion de trabajo.
+
+## 2 -- DOOM, otra vez, con `p++` arreglado
+
+Murio entre `M_LoadDefaults` y `saving config in %s`, y entre esos dos prints hay
+UNA llamada: `M_StringJoin(configdir, "default.cfg", NULL)` -- variadica, con un
+bucle de `va_arg`. Y `va_arg` **es** un `*p++`, que avanzaba un byte.
+
+Lo que tiene que salir ahora:
+
+```text
+   saving config in ./default.cfg        <- y NO el .wad
+   W_Init: Init WADfiles.
+   adding apps/doom1.wad
+```
+
+Y detras, territorio nunca pisado: `R_Init`, `P_Init`, `S_Init`,
+`D_CheckNetGame`. **Cada linea que salga es un paso que nunca se habia dado.**
+
+[!] Si vuelve a morir, `datos/fallos.txt` trae `rip` y direccion. El `rip` de la
+vuelta anterior fue `0x4009D5F5`; si el nuevo es OTRO, es otro sitio y eso ya es
+informacion.
+
+## 3 -- La regresion, que ahora es mas ancha
+
+`p++` lo usan **todos** los programas de C, no solo DOOM:
+
+```text
+   run c/caja.bex        sus cuatro lineas y sus dos recursos
+   run c/ray.bex         el laberinto, y ahora sale con ESC o con la pantalla quitada
+   run cobol/1/hola.bex  que COBOL no se entero
+```
+
+★ Y la que de verdad vigila: **un `int` tiene que seguir contando de uno**. Si
+`i++` avanzara cuatro, todos los bucles del sistema irian de cuatro en cuatro.
+Hay una prueba que lo fija, pero en metal se ve en que `ray.bex` ande normal.
+
+Vuelta atras: `git revert 74657604`.
