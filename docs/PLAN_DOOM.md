@@ -3,6 +3,11 @@
 > Escrito el **2026-08-08**, el dia que la sonda paso de 0 a 69 ficheros sueltos
 > y el unity build empezo a parsear las 56.465 lineas enteras.
 >
+> ★★★ **AL DIA EL 2026-08-13. Si vienes a saber por que DOOM no se juega, salta
+> directo a [DONDE MUERE DOOM HOY](#-donde-muere-doom-hoy----2026-08-13-y-ya-no-es-una-teoria)**,
+> al final. Lo de aqui arriba es el plan y su historia; la respuesta esta abajo
+> y son tres lineas de `codegen/mod.rs`.
+>
 > ★★ **ACTUALIZADO EL 2026-08-09: LA FASE 1 ESTA HECHA.** El unity build ya no
 > se para: con un backend de plataforma vacio, las 56.465 lineas salen en un
 > `.bex` de **1.299.512 bytes**. Lo que queda para verlo correr es la FASE 2 --
@@ -329,7 +334,7 @@ musica", y eso pide un sintetizador. **Se paran en 5.3 y se dice.**
 
 # La cuenta, para poder repartir
 
-Actualizada el **2026-08-09**, tarde.
+Actualizada el **2026-08-13**.
 
 | Fase | Casillas | Faltan | Estado |
 |---|---|---|---|
@@ -340,55 +345,184 @@ Actualizada el **2026-08-09**, tarde.
 | 4 -- jugable | 3 | 2 | guardar partida pide `fwrite`, que devuelve 0 |
 | 5 -- sonido | 5 | 5, y **empieza de cero** | nada lo bloquea |
 
-★★ **NO QUEDA NINGUNA CASILLA POR ESCRIBIR. Lo que queda es un FALLO EN METAL,
-y eso ya es otra clase de trabajo.**
+★★ **NO QUEDA NINGUNA CASILLA POR ESCRIBIR.** Lo que queda es **un defecto del
+compilador**, localizado el 2026-08-13 y con reproduccion en el emulador.
 
-DOOM entero --56.465 lineas, mas la capa de plataforma-- compila a un `.bex` de
-814.616 bytes, `build.ps1` lo despliega con su WAD y su icono, y el escritorio
-lo ensena. **No arranca.**
+---
 
-## ⛔ EL BLOQUEANTE DE HOY -- 2026-08-09, 23:30
+# ★★★ DONDE MUERE DOOM HOY -- 2026-08-13, y ya no es una teoria
+
+**`&c->defaults[i]` vale CERO.** Tres lineas de `codegen/mod.rs`.
+
+## Lo que se vio en el Ryzen
+
+DOOM arranca, toma pantalla y raton, imprime nueve lineas suyas y **se muere
+solo**, sin fallo del kernel:
+
+```text
+   Doom Generic 0.1
+   Z_Init: Init zone memory allocation daemon.
+   zone memory: e00fa050, 600000 allocated for zone
+   V_Init: allocate screens.
+   M_LoadDefaults: Load system defaults.
+   Unknown configuration variable: 'use_joystick'      <- LA ULTIMA
+```
+
+```text
+   103 WARN fb:    el dueno de la pantalla MURIO
+   104 WARN gui:   murio sin decir una sola linea
+   105 INFO ring3: proceso termino por su cuenta (EXIT)
+```
+
+[!] **Esa ultima linea de DOOM no es un aviso: es la causa de muerte.**
+`m_config.c:1954` la emite con `I_Error`, que imprime y llama a `exit`. Leerla
+como ruido es lo que hizo perder un dia.
+
+## El camino, entero
+
+```
+   I_BindJoystickVariables            i_joystick.c:343
+     -> M_BindVariable("use_joystick")
+        -> GetDefaultForName          m_config.c:1937
+           -> SearchCollection        m_config.c:1567
+              -> return &collection->defaults[i];    <-- AQUI
+```
+
+`SearchCollection` **encuentra** la entrada --el `strcmp` acierta-- y devuelve
+su direccion con `&collection->defaults[i]`. Esa expresion es
+`AddrOf(IndexPtr(..))`, y el brazo `Expr::AddrOf` de `codegen/mod.rs:2886` sabe
+emitir tres formas:
+
+```rust
+Expr::Var(..)        => lea de la variable
+Expr::Subscript(..)  => emit_subscript_addr
+Expr::Deref(..)      => la direccion apuntada
+_                    => self.emit_xor_eax(),      // <-- y aqui cae la de DOOM
+```
+
+O sea que el compilador emite `xor eax,eax`, **la direccion pedida sale CERO sin
+un solo aviso**, `GetDefaultForName` devuelve `NULL` y DOOM se mata a si mismo a
+56.465 lineas del sitio donde esta el fallo.
+
+** Es la tercera vez que el mismo patron cobra: un `_ =>` que rellena de ceros
+lo que no sabe traducir. Las otras dos fueron el `char *mapa` del raycaster
+(`2bc13367`) y las relocations que no existian (`46506e51`).
+
+## La reproduccion, en el emulador y sin encender la maquina
+
+`toolchain/lang/c/src/tests/tabla_de_config.rs`. Seis tests verdes que
+**descartan** la tabla, la cuenta, el operador `#`, la escala de 200 punteros y
+`strcmp`; y cuatro `#[ignore]` que reproducen el defecto:
+
+```powershell
+cargo test -p bmo-c-front tabla_de_config -- --ignored
+```
+
+El reparto entre ellos ES el diagnostico:
+
+| forma | |
+|---|---|
+| `&c->campo[i]` | **ROJO** -- la de DOOM |
+| `c->campo + i` | **ROJO** -- misma familia, aritmetica en vez de `&` |
+| `p = c->campo; &p[i]` | VERDE -- copiar a un local lo arregla |
+| `&global[i]` | VERDE -- sin campo en medio no pasa |
+
+## ✅ EL ARREGLO -- HECHO el 2026-08-13, y salieron TRES defectos
+
+**1. Tres brazos nuevos en `Expr::AddrOf`**: `IndexPtr`, `Field` y `Arrow`. Son
+la version SIN CARGA de los que ya existian mas abajo -- calcular la direccion
+es lo mismo que leer el valor menos el ultimo paso.
+
+★ Y ahi aparecio el segundo: **`&s.campo` y `&p->campo` tambien valian CERO**.
+Eso es C de todos los dias --pasar un campo por referencia-- y estaba roto
+desde siempre; no se habia notado porque ningun ejemplo de BMO lo hacia.
+
+**2. El `_ =>` ya no rellena de ceros: acumula un error con la expresion
+dentro.** Es lo que de verdad cierra esto -- mientras devolviera cero en
+silencio, el siguiente hueco costaba otro dia de fotos.
+
+**3. Y el tercero, que es el peor por lo general**: `pointer_scale` media con
+`TypeSpec::stack_size()`, que contesta **0** para un `StructRef` porque desde el
+AST no hay tabla de tamanos. Con `0`, la funcion decidia *"esto no es un
+puntero"* y no escalaba: **`p + 1` sobre un `struct T *` avanzaba UN BYTE**. No
+es un caso raro de DOOM -- es cualquier recorrido de una tabla de structs con
+aritmetica en vez de subindice. Ahora mide con `type_stack_size`, que es la
+misma cuenta con la tabla delante, la que ya usaba el subindice. **El subindice
+acertaba y la suma no, siendo la misma direccion escrita de dos formas.**
+
+**Lo que se comprobo antes de dar esto por bueno:**
+
+| | |
+|---|---|
+| Suite de C | **397 verdes, 0 rojos, 0 ignorados** |
+| Los cuatro tests que reproducian el fallo | verdes, y se quedan de guarda |
+| DOOM recompila | si -- 816.904 B (crecio 2 KB: son las direcciones que antes eran `xor`) |
+| Los 12 ejemplos de C recompilan | si, ninguno dispara el error nuevo |
+
+⚠ **PENDIENTE, y es de metal**: `build.ps1 -Flash` para desplegar los `.bex`
+nuevos y volver a lanzar DOOM. Toca el codegen, o sea **todos** los `.bex` de C:
+si algo que arrancaba deja de arrancar, es esto.
+
+⚠ Y lo que este arreglo **no** promete: que DOOM sea jugable. Era el primer
+rechazo despues de las tres puertas del sistema; puede haber mas detras. Lo que
+ya no habra es una muerte muda.
+
+## Lo que este fallo NO es, y esta descartado con pruebas
+
+- **No es el cargador ni FAT32.** `bytes DIRECTOS del disco al marco = 813.568`
+  frente a `el fichero mide = 815.496` **no es una lectura corta**: los 1.928 de
+  diferencia son la seccion `Resources` (el icono), que `admitir_por_rangos` no
+  se trae a proposito.
+- **No es el WAD.** Esta en el disco y con su tamano exacto --`A:\apps\doom1.wad`,
+  4.196.020 B-- y en las fotos **no aparece ni una linea `arch` con ese numero**:
+  DOOM muere antes de `W_Init`, o sea antes de abrirlo.
+- **No es la pantalla.** DOOM la reclama (`fb: pantalla cedida a Ring 3`) y muere
+  sin escribir un pixel.
+
+## ⛔ EL BLOQUEANTE DEL 2026-08-09 -- CERRADO, historico
 
 ```
    83 WARN proc:   el .bex de disco no paso la admision =4
-   84 WARN lanzar: el .bex no paso la admision =3
 ```
 
-**Lo que ya esta descartado**, y se dice para que nadie lo vuelva a mirar:
+Era la **relocation partida entre dos paginas** (`c4396a86`, 08-11), y detras
+habia dos mas: el `+ part_lba` que faltaba en FAT32 (`ea7ad1e0`) y las tablas
+out-of-band leidas antes que el codigo (`60dd6ddd`). Las tres puertas del
+sistema estan cerradas desde el 08-11.
 
-- **No es el tope.** 814.616 B contra 4 MiB.
-- **No es la tabla de secciones.** Se volco fuera y pasa todas las
-  comprobaciones de `bex::inspect`: seis secciones, `file_size <= mem_size` en
-  todas, la `Bss` con `file_size = 0` --que es justo lo que esa comprobacion
-  permite-- y el `entry` (597.982) dentro del codigo (598.925).
-- **No son los codigos de seccion.** El kernel los lee a mano y coinciden con
-  los del ABI: `0x01/0x02/0x03/0x04`.
-- **No es el paquete.** `caja.bex` tambien lleva `Resources` y arranca en metal
-  desde el 08-09.
-
-★ **El sospechoso que queda**: es el `.bex` **mas grande que se ha cargado
-nunca** --2,7 veces `gui.bex`, que era el record-- y en la misma tanda de fotos
-sale `lanzar: el archivo no cabe en el buffer`. Una lectura corta de FAT32
-produce exactamente este sintoma: la tabla apunta mas alla de lo leido y la
-seccion se declara invalida.
-
-★★ **Y EL SIGUIENTE PASO NO ES TOCAR CODIGO, ES MEDIR.** Que `lanzar` diga
-**cuantos bytes trajo del disco frente a cuantos mide el fichero**. Son dos
-numeros y una linea; mientras no esten en la pantalla, cualquier arreglo es una
-apuesta -- y este documento ya tiene una leccion de haber supuesto en vez de
-contar (fase 1.10).
+Se conserva la leccion, que sigue valiendo: **el siguiente paso no era tocar
+codigo, era MEDIR** -- que `lanzar` dijera bytes traidos frente a bytes del
+fichero. Esos dos numeros son los que hoy descartan la lectura corta de un
+vistazo.
 
 ## Lo que puede salir mal DESPUES, para no volver a escribirlo
 
 | Sintoma | Sospechoso |
 |---|---|
+| **Muere tras `M_LoadDefaults` sin decir mas** | **`&c->defaults[i]` = 0. Arriba** |
 | `DOOM: no hay pantalla` | se lanzo desde el escritorio con otra ventana delante |
 | `W_AddFile: doom1.wad no encontrado` | la ruta del WAD, o FAT32 no monta |
-| Se para tras `M_LoadDefaults` y **no sale `W_Init`** | el WAD. Era `archivo::open` tragandoselo entero (arreglado el 08-11); si vuelve, mirar `arch` en CABINA |
+| Se para y **no sale `W_Init`** | el WAD. Era `archivo::open` tragandoselo entero (arreglado el 08-11); si vuelve, mirar `arch` en CABINA |
 | Arranca y muere sin pintar | el monton: 12 MiB CONTIGUOS en fisico. CABINA dice si el kernel los nego |
 | Pinta y no responde | `DOOM: sin teclado` en la consola lo dice antes |
 | Anda solo y no para | la cola cruda no llega: el `soltar` se perdio |
 | Va a tirones | el blit, o `DG_SleepMs` cediendo mal |
+
+## ** LA PANTALLA "BUGEADA" NO ES DE DOOM
+
+Cuando DOOM muere ahi, **no ha pintado un solo pixel**. Lo que queda en el
+monitor son los restos de tres pintores encima del mismo framebuffer: la ventana
+de consola con las nueve lineas, el panel del kernel --que vuelve al morir el
+dueno-- y el repintado del compositor al recuperarla.
+
+O sea que la pantalla rota **es el sintoma de que DOOM no llego a dibujar**, no
+un fallo del blit ni del troceado por cajas sucias (`758ab20f`), que no toca a
+DOOM: DOOM pinta con su propio blit.
+
+[!] El camino de recuperacion (`main.rs:2294`) repinta fondo, lanzador, barra,
+caja y salida -- **pero no las ventanas que estuvieran abiertas**. Con F11 o F12
+abiertas al lanzar, esos rectangulos se quedan con lo que hubiera debajo. Es un
+defecto propio y pequeno, y se ve exactamente igual que el otro.
 
 ## Lo que SI se vio, y no es poco
 
