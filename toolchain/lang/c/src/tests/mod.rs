@@ -113,6 +113,12 @@ mod probe_control_flow;
 /// ASSIGNMENT -- the shorthand forms. [!] Carries ONE row BROKEN on purpose:
 /// the double evaluation of the lvalue in `a[i++] += 1`.
 mod probe_assignment;
+/// STRINGS -- the eight bytes of a lump name. `strncasecmp` and `strncpy(8)`
+/// are every lookup in the WAD, so this axis gates `R_Init` onwards.
+mod probe_strings;
+/// THE HEAP -- the one block everything else is carved out of. DOOM calls
+/// `malloc` ONCE, for six megabytes, and its 94 `Z_Malloc` calls live inside.
+mod probe_heap;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
