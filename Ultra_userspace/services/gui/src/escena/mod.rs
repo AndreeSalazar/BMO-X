@@ -492,7 +492,17 @@ pub(crate) fn pintar_caja(p: &bmo::Pantalla, c: &Caja) {
     p.texto(
         c.x + 18,
         c.y + 36,
-        "ruta de un .bex y Enter.  info / cpu / mem / perf / ls / lee / guarda / smp / reboot.",
+        // * `estratos` FALTABA AQUI, y por eso nadie sabia sellar.
+        //
+        // La orden existe, se parsea, escribe en el disco y **no estaba escrita
+        // en ninguna parte que se vea**: solo salia en el volcado de `ayuda`, al
+        // que se llega tecleando algo mal. El dueno la pidio por su nombre el
+        // 2026-08-13 -- *"no se como lo sello"*-- teniendola delante.
+        //
+        // Es el patron 33 otra vez, girado: un mensaje que existe y sale por un
+        // canal que nadie mira. Una funcion que no se anuncia no es una funcion
+        // discreta: es una funcion que no esta.
+        "ruta de un .bex y Enter.  info / cpu / mem / perf / ls / lee / guarda / smp / estratos / reboot.",
         TEXTO_TENUE,
     );
     // * Las dos ventanas del sistema, DICHAS. Un atajo que no esta escrito en
