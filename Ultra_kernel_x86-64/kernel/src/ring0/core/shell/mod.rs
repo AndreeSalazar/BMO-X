@@ -1,39 +1,46 @@
-//! **Las ordenes del shell de Ring 0**, repartidas por lo que preguntan.
+//! **Las ordenes del shell de Ring 0**, repartidas por lo que hacen.
 //!
 //! # Por que existe esta carpeta
 //!
 //! `phase.rs` tenia **27 funciones `shell_*` dentro**, y ocupaban 1.480 de sus
-//! 2.328 lineas. O sea que el fichero del ARRANQUE era, en dos tercios, un
-//! interprete de ordenes -- dos trabajos que no comparten nada salvo el bucle
-//! que los junta.
+//! 2.328 lineas. El fichero del ARRANQUE era, en dos tercios, un interprete de
+//! ordenes -- dos trabajos que no comparten nada salvo el bucle que los junta.
 //!
 //! El dueno lo puso por su nombre el 2026-08-12: *"si unes tendre deudas.
 //! Siempre modular"*.
 //!
-//! # El reparto, y la regla que lo decide
+//! # ** EL ORDEN NO ES ALFABETICO NI POR TAMANO: ES POR LO QUE PUEDE PASAR
 //!
-//! No por tamano: **por a QUIEN le preguntan**.
+//! De lo que solo MIRA a lo que NO SE DESHACE:
 //!
-//! | modulo | pregunta |
-//! |---|---|
-//! | [`hardware`] | al SILICIO: cpu, memoria, red, audio, disco, nucleos |
-//! | `phase.rs` (aun) | al DISCO y al sistema: `ls`, `run`, ESTRATOS, la bitacora |
+//! | # | modulo | que hace | si se equivoca |
+//! |---|---|---|---|
+//! | 1 | [`hardware`] | pregunta al SILICIO | da un numero raro |
+//! | 2 | [`ficheros`] | toca el DISCO | **pierde un archivo** |
+//! | 3 | [`pantalla`] | PINTA y reclama la pantalla | se ve mal, se repinta |
+//! | 4 | [`peligro`] | reinicia, para, provoca un fault | **no se sigue** |
 //!
-//! Esa frontera no es estetica: las de [`hardware`] son las que crecen cada vez
-//! que aparece un sensor nuevo --y en esta sesion crecieron tres veces-- mientras
-//! que las de disco llevan semanas quietas. Separar lo que se mueve de lo que no
-//! es la mitad del valor de partir un fichero.
+//! Esa columna de la derecha es el criterio entero. Ordenar un shell por lo que
+//! cuesta equivocarse hace que anadir una orden nueva sea una pregunta con
+//! respuesta --*"que pasa si esto falla?"*-- en vez de una eleccion de gusto.
 //!
-//! # Lo que NO se ha partido todavia, y lo que costaria
+//! [!] Y `pantalla` va DESPUES de `ficheros` aunque parezca menos grave: pintar
+//! se puede repetir, y en el orden manda lo irreversible, no lo aparatoso.
 //!
-//! Quedan en `phase.rs` las ordenes de fichero (`ls`, `run`, `bex`, `estratos`),
-//! las de la propia linea (`prompt`, `read_line`, `hist`, `layout`, `help`) y las
-//! peligrosas (`panic`, `reboot`, `halt`, `ktest`). **Son otros ~750 lineas y
-//! tres cortes mas**, y se dicen en vez de dejarlos implicitos: un corte a medias
-//! anunciado como completo es peor que no cortar.
+//! # Lo que se quedo en `phase.rs`, y no es un resto
 //!
-//! El siguiente natural es el de FICHERO, porque es el unico grupo que toca el
-//! disco y por tanto el unico donde un fallo se lleva datos.
+//! El ARRANQUE y **la LINEA**: el prompt, `read_line`, el historial, `layout` y
+//! `help`. Eso no son ordenes: es la herramienta con la que se escriben las
+//! ordenes, y vive con el bucle que la usa.
+//!
+//! O sea que `phase.rs` paso de *"el arranque y 27 comandos"* a **"el arranque y
+//! la linea"**, que si es una frase.
 
-/// Las ordenes que le preguntan al SILICIO y cuentan lo que contesta.
+/// 1 -- pregunta al SILICIO y cuenta lo que contesta.
 pub mod hardware;
+/// 2 -- toca el DISCO. El unico grupo donde un fallo se lleva datos.
+pub mod ficheros;
+/// 3 -- PINTA. Se puede repetir, por eso va antes que lo irreversible.
+pub mod pantalla;
+/// 4 -- lo que NO SE DESHACE. Despues de estas no se sigue.
+pub mod peligro;
