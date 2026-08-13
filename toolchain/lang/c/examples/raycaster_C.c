@@ -260,8 +260,28 @@ int main() {
             mitad = alto / 2;
             y0 = mitad - altura / 2;
             y1 = mitad + altura / 2;
+            /* ** LOS CUATRO TOPES, Y ANTES SOLO HABIA DOS.
+             *
+             * Estaban `y0 < 0` e `y1 > alto`, que son los que se le ocurren a
+             * uno pensando en una pared muy alta. Faltaban los otros dos, y son
+             * los que se recorren cuando `altura` sale NEGATIVA: entonces
+             * `y0 = mitad - altura/2` se va hacia ARRIBA sin tope --el `y0 < 0`
+             * no lo ve, porque es positivo y grande-- y el bucle del cielo
+             * escribe pasado el final del framebuffer.
+             *
+             * [!] En el Ryzen eso no es un garabato: el kernel mapea
+             * EXACTAMENTE `alto * stride * 4` redondeado a pagina
+             * (`fb.rs::mapped_bytes`), asi que el primer pixel de mas es un
+             * `#PF` y la tarea muere. Es lo que dejo dos entradas en
+             * `datos/fallos.txt` el 2026-08-13, las dos `escribiendo`.
+             *
+             * Y es de la familia de los que se destapan al arreglar el de
+             * delante: mientras `altura` valia siempre 0 --el `>>16` de mas del
+             * 08-08-- este tope no podia hacer falta. */
             if (y0 < 0) y0 = 0;
+            if (y0 > alto) y0 = alto;
             if (y1 > alto) y1 = alto;
+            if (y1 < y0) y1 = y0;
 
             /* El color por distancia: lo unico que da sensacion de profundidad
              * cuando no hay texturas. Cerca claro, lejos oscuro. */

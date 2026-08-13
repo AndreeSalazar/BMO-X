@@ -2846,7 +2846,36 @@ impl Codegen {
                 }
             }
             Expr::Neg(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); }
-            Expr::Not(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x85, 0xC0, 0x0F, 0x94, 0xC0]); }
+            // ** `!x` -- Y AQUI FALTABA EL `movzx`, QUE NO ES DECORATIVO.
+            //
+            // Era `test eax,eax` + `sete al`, y nada mas. `setcc` **solo escribe
+            // `al`**: los 56 bits altos de `rax` se quedan como estaban. Con un
+            // operando negativo --`rax = 0xFFFF_FFFF_FFFF_FFFA` para un -6-- el
+            // `sete` pone `al = 0` y deja `0xFFFF_FFFF_FFFF_FF00`, o sea
+            // **`!(-6)` valia -256**. Que en un `if` es VERDADERO.
+            //
+            // Lo que eso significa en C de verdad: `if (!strcmp(a, b))` --el
+            // idioma mas comun del lenguaje para comparar cadenas-- **acertaba
+            // cuando `a` era MENOR que `b`**, porque `strcmp` contesta negativo.
+            // En DOOM, `M_CheckParmWithArgs("-config", ...)` casaba con
+            // `-iwad` ('c' < 'i'), y por eso el juego anunciaba
+            // `saving config in apps/doom1.wad`: iba a escribir su
+            // configuracion ENCIMA DEL WAD.
+            //
+            // [!] La leccion ya estaba aprendida **en este mismo fichero**:
+            // `emit_cmp` lleva su `movzx` con un comentario que dice justo esto,
+            // *"el movzx del final NO es decorativo"*. Se aprendio en un sitio y
+            // no se aplico en el de al lado.
+            //
+            // Y el `test` pasa a 64 bits (`48 85 C0`) a proposito: `!p` sobre un
+            // puntero tiene que mirar el puntero ENTERO. Con `test eax,eax`, una
+            // direccion cuyos 32 bits bajos fueran cero se declaraba nula.
+            Expr::Not(a) => {
+                self.emit_expr(a);
+                self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
+                self.code.extend_from_slice(&[0x0F, 0x94, 0xC0]); // sete al
+                self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+            }
             Expr::BitNot(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x48, 0xF7, 0xD0]); }
             Expr::PreInc(name) => {
                 self.emit_inc_var(name);
