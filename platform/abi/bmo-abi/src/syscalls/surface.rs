@@ -135,6 +135,35 @@ pub const TASK_OP_REINICIAR: u64 = 0x12;
 // syscall nuevo. Es la misma forma que tienen las tablas de `sem-asm`.
 
 /// Un dato numerico del sistema. `arg0` = campo (`INFO_*`). Devuelve el valor.
+// -- ** CUATRO OPERACIONES QUE EL KERNEL TENIA Y EL ABI NO (2026-08-12) ------
+//
+// Las tapaba el guardian: comparaba kernel contra ABI **con una lista escrita a
+// mano**, y lo que no estuviera en la lista no se comparaba. Su propio
+// comentario avisaba --*"una lista a mano es lo que ya se quedo congelada una
+// vez"*-- y le habia vuelto a pasar.
+//
+// Tres son viejas y una es de hoy. Las dos de SOLTAR son ademas las que el mismo
+// comentario del guardian cita como las que casi chocan con la autopsia: estaban
+// en la historia del fichero y no en el contrato.
+//
+// El guardian ya no lleva lista: barre TODOS los `TASK_OP_*` del kernel.
+
+/// Conectar con un endpoint de RPC ya creado.
+pub const TASK_OP_ENDPOINT_CONNECT: u64 = 0x08;
+/// **Soltar la pantalla sin morirse.** Pareja de reclamarla.
+///
+/// Existe porque prestar la pantalla y quedarse la ENTRADA no es prestar: es
+/// dejar a un programa pintando en una habitacion cerrada. Las dos capabilities
+/// van juntas o no van.
+pub const TASK_OP_PANTALLA_SOLTAR: u64 = 0x1D;
+/// Soltar la entrada. La otra mitad de [`TASK_OP_PANTALLA_SOLTAR`].
+pub const TASK_OP_ENTRADA_SOLTAR: u64 = 0x1E;
+/// **El censo de audio**: que el aparato diga como quiere las muestras.
+///
+/// Devuelve 1 si encontro uno de reproduccion; los ocho numeros van a CABINA,
+/// porque por la puerta cabe uno. Paso 0 de `docs/AUDIO_MAESTRO.md`.
+pub const TASK_OP_AUDIO_CENSO: u64 = 0x28;
+
 pub const TASK_OP_INFO: u64 = 0x13;
 /// Un dato de TEXTO. `arg0` = campo (`INFO_TXT_*`), `arg1` = que trozo.
 ///
@@ -178,15 +207,49 @@ pub const INFO_CPU_MW_PAQUETE: u64 = 0x21;
 /// Para verlos hace falta que **cada nucleo lea el suyo**, o sea trabajo
 /// repartido -- la seccion 5 de `AXION_MAESTRO.md` antes que esto.
 pub const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
-/// Nombre viejo, que mentia. Se conserva para no romper a quien lo use.
-#[deprecated(note = "es del nucleo en el que se lee, no de todos: usa INFO_CPU_MW_NUCLEO_ACTUAL")]
-pub const INFO_CPU_MW_NUCLEOS: u64 = 0x22;
+// [!] AQUI VIVIA `INFO_CPU_MW_NUCLEOS`, y su borrado es la leccion.
+//
+// Se renombro a `INFO_CPU_MW_NUCLEO_ACTUAL` porque el plural mentia, y se dejo
+// el nombre viejo como `#[deprecated]` "para no romper a quien lo use". **El
+// guardian de contrato paro el build**, y tenia razon:
+//
+//   [X] OP_INFO field contract: INFO_CPU_MW_NUCLEOS falta en kernel, userland
+//
+// Una constante que vive en el ABI y no existe en los otros dos lados ES la
+// deriva que ese guardian existe para cazar -- da igual que este marcada como
+// obsoleta. Un alias amable en un CONTRATO no es amable: es un tercer nombre
+// para un numero, y el contrato pasa a tener dos verdades.
+//
+// Y aqui no habia nada que no romper: el nombre nacio y murio el mismo dia.
 /// **Que sabe medir el perfil de este silicio**, como banderas.
 /// bit 0 = frecuencia efectiva / bit 1 = consumo.
 ///
 /// Es lo que permite a la terminal decir QUE esta aplicando, en vez de pintar
 /// ceros y dejar al que mira sin saber si el sensor no existe o el valor es 0.
 pub const INFO_CPU_SENSORES: u64 = 0x23;
+
+// -- ** QUIEN ESTA COMIENDO MEMORIA -------------------------------------
+//
+// La vista de administrador de tareas: no *"cuanto come el proceso 4"* --que ya
+// se sabia-- sino **"quien esta comiendo"**, que es la que hace falta cuando la
+// RAM baja y no se sabe por culpa de quien.
+//
+// El indice de ranura va EMPAQUETADO con el campo: `campo | (ranura << 8)`. Por
+// la puerta de `OP_INFO` cabe UN numero, y la alternativa --un buffer con un
+// array de structs-- seria inventar un formato con su version y su alineacion
+// para contestar tres enteros.
+//
+// [!] El indice cuenta solo las ranuras OCUPADAS: se pide 0, 1, 2... hasta que
+// el pid conteste 0. Los agujeros de la tabla del kernel son suyos y no salen
+// por aqui.
+
+/// El pid de la ranura `n`. **`0` = no hay mas**, y es la condicion de parada.
+pub const INFO_MEM_QUIEN_PID: u64 = 0x24;
+/// Bytes que ese proceso tiene pedidos ahora mismo.
+pub const INFO_MEM_QUIEN_BYTES: u64 = 0x25;
+/// Cuantas peticiones lleva hechas. Distingue *"pidio un bloque grande"* de
+/// *"esta pidiendo sin parar"*, que es la diferencia entre un juego y una fuga.
+pub const INFO_MEM_QUIEN_PETICIONES: u64 = 0x26;
 /// Hilos logicos y nucleos fisicos que el CPU declara.
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
