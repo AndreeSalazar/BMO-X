@@ -3099,12 +3099,33 @@ impl Codegen {
                     0x48, 0x29, 0xC2, // sub rdx, rax   -> rdx = a - b
                     0x48, 0x89, 0xD0, // mov rax, rdx
                 ];
-                // `p - n` retrocede n ELEMENTOS (la resta puntero-puntero,
-                // que daria un indice, no se deduce aqui).
-                match self.pointer_scale(a) {
-                    Some(scale) if self.pointer_scale(b).is_none() => {
+                // `p - n` retrocede n ELEMENTOS.
+                match (self.pointer_scale(a), self.pointer_scale(b)) {
+                    (Some(scale), None) => {
                         let scaled = Expr::Mul(b.clone(), Box::new(Expr::Int(scale as i64)));
                         self.emit_binop(a, &scaled, SUB);
+                    }
+                    // ** PUNTERO MENOS PUNTERO DA UN INDICE, NO UNOS BYTES.
+                    //
+                    // El comentario que habia aqui decia que este caso *"no se
+                    // deduce aqui"* -- o sea, hueco reconocido y sin cerrar. Y
+                    // el resultado era plausible y equivocado: con `int *`,
+                    // `b - a` sobre cinco elementos contestaba **20**.
+                    //
+                    // Es la cuenta inversa de `p + n`: aquella multiplica por el
+                    // tamano del elemento, esta divide. Y la division va CON
+                    // SIGNO, porque `a - b` con `a` antes que `b` es negativo y
+                    // eso es legal en C -- una division sin signo lo convertiria
+                    // en un numero gigante.
+                    //
+                    // Lo destapo la sonda del lenguaje, no un arranque.
+                    (Some(scale), Some(_)) if scale > 1 => {
+                        self.emit_binop(a, b, SUB);
+                        // mov rcx, scale ; cqo ; idiv rcx
+                        self.code.extend_from_slice(&[0x48, 0xC7, 0xC1]);
+                        self.code.extend_from_slice(&scale.to_le_bytes());
+                        self.code.extend_from_slice(&[0x48, 0x99]);
+                        self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]);
                     }
                     _ => self.emit_binop(a, b, SUB),
                 }
@@ -3788,6 +3809,27 @@ impl Codegen {
                 TypeSpec::Ptr(dentro) => Some((**dentro).clone()),
                 _ => None,
             },
+            // ** `p++` SIGUE SIENDO UN PUNTERO, Y ESTO FALTABA.
+            //
+            // Sin este brazo, `*p++` caia en el `_ => None` de abajo: el `Deref`
+            // no sabia a que apuntaba y leia **ocho bytes** por defecto. Con un
+            // `int *` eso da `(v[1] << 32) | v[0]` -- dos enteros pegados en uno,
+            // que es un numero enorme y perfectamente legitimo.
+            //
+            // [!] Y es EXACTAMENTE la macro `va_arg`. El arreglo de la manana
+            // --que `p++` avanzara un elemento-- se probo con
+            // `unsigned long long *`, donde el tamano por defecto y el real
+            // coinciden en 8: **la prueba pasaba por casualidad**. Lo destapo la
+            // sonda del lenguaje al ejercer la misma casilla con `int *`.
+            //
+            // La leccion, para la proxima: al probar un tamano, **no usar el
+            // tipo cuyo tamano es el valor por defecto**.
+            Expr::PostInc(n) | Expr::PreInc(n) | Expr::PostDec(n) | Expr::PreDec(n) => {
+                match self.var_type_of(n) {
+                    Some(TypeSpec::Ptr(inner)) | Some(TypeSpec::Array(inner, _)) => Some(*inner),
+                    _ => None,
+                }
+            }
             _ => None,
         }
     }

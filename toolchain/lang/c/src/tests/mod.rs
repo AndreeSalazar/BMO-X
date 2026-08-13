@@ -79,6 +79,9 @@ mod tabla_de_config;
 /// configuracion encima del WAD.
 mod argv_de_doom;
 mod varargs_de_doom;
+/// LA SONDA DEL LENGUAJE: la matriz contenedor x operacion, y el censo de lo
+/// que BMO C sabe hacer -- escrito para que no pueda quedarse viejo.
+mod sonda_del_lenguaje;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
