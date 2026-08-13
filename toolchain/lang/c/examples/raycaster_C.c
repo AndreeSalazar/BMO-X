@@ -427,6 +427,32 @@ int main() {
             }
         }
 
+        /* ** SEGUIMOS SIENDO LOS DUENOS DE LA PANTALLA?
+         *
+         * Esta pregunta es la que faltaba, y su ausencia es lo que dejo dos
+         * `#PF` en `datos/fallos.txt` el 2026-08-13, los dos **escribiendo** y
+         * los dos en direcciones del framebuffer.
+         *
+         * Cuando alguien pulsa `Ctrl+Alt+ESC`, el kernel no "avisa": ejecuta
+         * `fb::release`, que **desmapea las paginas del framebuffer y revoca el
+         * handle**. Desde ese instante `fb` apunta a memoria que ya no existe,
+         * y el siguiente pixel que este programa escriba es un fallo de pagina.
+         * Desde fuera se ve como *"la pantalla se limpio pero sigo dentro de la
+         * app"*: el escritorio vuelve, y este proceso muere un momento despues.
+         *
+         * El kernel hace lo correcto -- un rescate que pidiera permiso no seria
+         * un rescate--. Lo que faltaba era el otro lado del contrato: **un
+         * programa que toma la pantalla tiene que comprobar que la sigue
+         * teniendo**, y salir por su pie cuando no.
+         *
+         * Cuesta un INVOKE por fotograma, que es lo mismo que ya cuesta leer una
+         * tecla. Y con el handle revocado la operacion contesta 0, que es un
+         * valor que `FB_BASE` no puede devolver siendo valido. */
+        if (bmo_valor(pant, FB_BASE, 0, 0, 0) == 0) {
+            printf("raycaster: me quitaron la pantalla, salgo\n");
+            return 0;
+        }
+
         /* Ceder el turno. Sin esto el bucle se come el quantum entero y el
          * sistema va a tirones -- esta dicho en `bmo.h` y aqui se cumple. */
         bmo_ceder();
