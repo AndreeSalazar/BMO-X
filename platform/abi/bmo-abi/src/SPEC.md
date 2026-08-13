@@ -163,7 +163,7 @@ tamano en tiempo de compilacion. 34 aserciones activas:
 
 ---
 
-## 3. BMO ABI v2: tres syscalls
+## 3. BMO ABI v2: dos syscalls
 
 | Numero | Nombre | Responsabilidad |
 |--------|--------|-----------------|

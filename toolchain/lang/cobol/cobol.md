@@ -11,7 +11,7 @@
 Un IR central por donde todos los lenguajes pasan seria un cerebro compartido
 = monolito disfrazado. Prohibido. Lo unico comun son cosas que cada lenguaje
 produce/consume **por su cuenta**: el formato **BEF**, el gate de
-**verificacion**, y el **BMO ABI** congelado (3 syscalls).
+**verificacion**, y el **BMO ABI** congelado (2 syscalls).
 
 - Compartir un **IR + optimizador obligatorio** = embudo central ❌ (monolitico).
 - Compartir un **contrato/formato** = cada uno lo cumple solo ✅ (modular).
@@ -26,7 +26,7 @@ el pipeline empuja al lenguaje (central). Siempre lo primero.
 ```
 COBOL  -> parser -> AST -> semantica -> codegen -> BEF -+
 C      -> (su pipeline propio, completo)      -> BEF -+-► VERIFICACION -► BMO ABI -► corre
-C++    -> (su pipeline propio, completo)      -> BEF -+     (el gate)    (3 syscalls)
+C++    -> (su pipeline propio, completo)      -> BEF -+     (el gate)    (2 syscalls)
 ```
 
 Cada lenguaje nace, vive y muere en su **propio** pipeline. COBOL conserva
@@ -82,9 +82,9 @@ IR-- la que habilita el aislamiento barato.
 
 - COBOL es **library OS por naturaleza**: los programas COBOL nunca hablaron
   al hardware, hablaron a su *runtime*. En BMO ese runtime es `bmo-rt` sobre
-  los 3 syscalls. `DISPLAY` -> `bmo-lower` -> `INVOKE(console, WRITE)`.
+  los 2 syscalls. `DISPLAY` -> `bmo-lower` -> `INVOKE(console, WRITE)`.
 - COBOL es la **prueba de fuego del ABI**: si un lenguaje de 1959, verboso,
-  de records y batch, baja limpio a 3 syscalls, **cualquier cosa puede**.
+  de records y batch, baja limpio a 2 syscalls, **cualquier cosa puede**.
 - Todos los dialectos (85/2002/2014/2023) comparten el **contrato** (BEF+ABI),
   cada uno con su propia tabla de reglas en `sem-asm/standards/COBOL/`.
 

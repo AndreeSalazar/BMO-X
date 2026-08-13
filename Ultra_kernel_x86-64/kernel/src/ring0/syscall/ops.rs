@@ -1,0 +1,291 @@
+//! **THE OPERATION TABLE** -- the numbers, and nothing that runs.
+//!
+//! === Why the numbers live apart from the code that serves them ===
+//!
+//! Because they are not an implementation detail: they are **the contract**.
+//! Every one of these constants has a twin in `bmo-abi`, another in
+//! `sem-asm/tables/bmo/bmo.h`, and a third in the userland runtime. The build
+//! guard reads all of them and refuses to link if they disagree -- 49
+//! operations checked, none by hand.
+//!
+//! Mixed in with the dispatcher, a reader could not tell the frozen part from
+//! the part that is free to change. Here the rule is visible: **a number in
+//! this file is a promise; the code in `mod.rs` is how the promise is kept
+//! today.**
+//!
+//! === And the two doors, since this is where somebody comes to count them ===
+//!
+//! There are TWO: `INVOKE` (0) and `WAIT` (2). The `1` is a reserved tombstone
+//! -- `CHANNEL_KICK` was withdrawn on 2026-08-10 because it was not a door but
+//! an OPERATION with a syscall number of its own. Waking a channel's consumer
+//! is `CHANNEL_OP_KICK` and goes in through `INVOKE`, like everything else.
+//!
+//! The number is not recycled. An old binary that calls it fails saying so,
+//! which is the only acceptable outcome: reusing it would make that binary do
+//! something nobody asked for.
+
+
+pub(crate) const NR_INVOKE: u32 = 0x00;
+/// ** RETIRADO el 2026-08-10. El numero queda RESERVADO y no se reutiliza.
+///
+/// === Por que se fue ===
+///
+/// `CHANNEL_KICK(cap, secuencia)` hacia exactamente esto: resolver un handle,
+/// comprobar que es un canal, y llamar a `channel::service`. O sea **una
+/// operacion sobre un handle** -- que es la definicion de `INVOKE`. Tenia un
+/// numero de syscall propio por como nacio, no por lo que hace.
+///
+/// Ahora es `CHANNEL_OP_KICK` sobre el canal, y la superficie baja de tres
+/// puertas a dos con una frontera que se puede decir en una linea:
+///
+/// ```text
+///   INVOKE   haz esto AHORA
+///   WAIT     despiertame CUANDO
+/// ```
+///
+/// Y esa frontera no es estetica: `WAIT` no se puede expresar con `INVOKE`
+/// porque lo unico que hace es **no devolver el turno**, y una llamada sincrona
+/// no puede decir eso sin mentir. Por eso quedan dos y no una.
+///
+/// === Por que el numero no se reutiliza ===
+///
+/// Un binario viejo que llame al 1 tiene que fallar **diciendolo**. Si el 1
+/// pasara a significar otra cosa, ese mismo binario haria algo que nadie pidio y
+/// no fallaria en ningun sitio -- la peor clase de rotura de ABI.
+pub(crate) const NR_CHANNEL_KICK: u32 = 0x01;
+pub(crate) const NR_WAIT: u32 = 0x02;
+pub(crate) const CURRENT_TASK: u64 = 0xFFFF_FFFF_FFFF_FFFE;
+pub(crate) const TASK_OP_GET_PID: u64 = 0x01;
+pub(crate) const TASK_OP_GET_TID: u64 = 0x02;
+pub(crate) const TASK_OP_YIELD: u64 = 0x03;
+pub(crate) const TASK_OP_EXIT: u64 = 0x04;
+pub(crate) const TASK_OP_CHANNEL_OPEN: u64 = 0x05;
+pub(crate) const TASK_OP_CONSOLE_WRITE: u64 = 0x06;
+/// Crea un endpoint atendido por este proceso. arg0 = estuario por el que se
+/// le entregaran las llamadas. Devuelve el handle del endpoint.
+pub(crate) const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
+/// Pide el derecho a LLAMAR al endpoint `arg0`. Devuelve el handle de cliente.
+///
+/// Puerta de descubrimiento provisional, con el mismo aviso que lleva
+/// `TASK_OP_CONSOLE_WRITE`: hoy cualquier proceso puede pedir cualquier
+/// endpoint por su indice, y eso NO es disciplina de capabilities. Existe para
+/// arrancar, y muere cuando haya un servicio de nombres que entregue el handle
+/// a quien deba tenerlo. Se dice aqui para que nadie lo confunda con el
+/// diseno final.
+pub(crate) const TASK_OP_ENDPOINT_CONNECT: u64 = 0x08;
+/// Reclamar la pantalla. Devuelve un handle `KIND_FRAMEBUFFER` y, con el, el
+/// framebuffer mapeado en el espacio del proceso. Ver `ring0/fb.rs`: a partir
+/// de aqui el kernel deja de dibujar y el proceso escribe pixeles con `mov`.
+pub(crate) const TASK_OP_FRAMEBUFFER_CLAIM: u64 = 0x09;
+/// Soltar la pantalla siendo su dueno y **seguir vivo**. Pareja de
+/// `FRAMEBUFFER_CLAIM`.
+///
+/// `0x1D` elegido tras listar los opcodes ORDENADOS, que es la regla desde que
+/// `MEMORIA_PEDIR` se puso en `0x12` --ya ocupado por `REINICIAR`-- y pedir
+/// memoria habria reiniciado la maquina.
+pub(crate) const TASK_OP_PANTALLA_SOLTAR: u64 = 0x1D;
+/// Soltar la ENTRADA siendo su dueno y seguir vivo. Pareja de `INPUT_CLAIM`.
+///
+/// Va con `PANTALLA_SOLTAR` porque el caso de uso es el mismo y **separarlas fue
+/// el bug**: prestar la pantalla sin la entrada dejo a `ray.bex` pintando sin
+/// poder leer su propio ESC, y a la maquina sin teclado.
+pub(crate) const TASK_OP_ENTRADA_SOLTAR: u64 = 0x1E;
+/// Reclamar el raton. Devuelve un handle `KIND_INPUT`: el kernel lee el HID,
+/// Ring 3 decide que hace con las coordenadas. Ver `ring0/input.rs`.
+pub(crate) const TASK_OP_INPUT_CLAIM: u64 = 0x0A;
+/// Acumula 8 bytes de ruta (LE, el cero corta) en el renglon del proceso.
+///
+/// Mismo formato que `TASK_OP_CONSOLE_WRITE`, y por la misma razon: los
+/// argumentos van en registros y aqui no hay `copy_from_user`. Pasar un puntero
+/// de Ring 3 obligaria al kernel a traducirlo contra el espacio del llamante y
+/// a validar que el rango entero es suyo -- infraestructura que no existe todavia
+/// y que no se va a improvisar en el camino de lanzar un programa. Ocho bytes
+/// por llamada es feo y es seguro; lo segundo importa mas.
+pub(crate) const TASK_OP_RUTA: u64 = 0x0B;
+/// Lanza lo que se haya acumulado con `TASK_OP_RUTA` y vacia el renglon.
+/// Devuelve el tid admitido. Ver `ring0/lanzar.rs` -- el gate de firma es el
+/// mismo que el del shell, no una copia.
+pub(crate) const TASK_OP_EJECUTAR: u64 = 0x0C;
+/// Crea una consola y devuelve su handle de LECTURA. Quien la crea es el
+/// terminal: la consola es suya y la drena a su ritmo. Ver `ring0/consola.rs`.
+pub(crate) const TASK_OP_CONSOLA_CREAR: u64 = 0x0D;
+/// Abre un directorio del volumen de datos y devuelve su handle. La ruta se
+/// acumula antes con `TASK_OP_RUTA` -- el MISMO renglon que usa `EJECUTAR`, que
+/// es lo que hace que no haga falta un segundo mecanismo para lo mismo.
+pub(crate) const TASK_OP_DIR_ABRIR: u64 = 0x0E;
+/// LEE de la consola asignada a este proceso. Devuelve `(n << 56) | bytes`.
+///
+/// La pareja de `TASK_OP_CONSOLE_WRITE`: el hijo escribe por una y escucha por
+/// la otra, sobre el MISMO objeto. Es lo que permite un `ACCEPT` en un proceso
+/// que no tiene --ni debe tener-- la capability del teclado: el terminal que lo
+/// lanzo le pasa lo que se teclea.
+pub(crate) const TASK_OP_CONSOLE_READ: u64 = 0x0F;
+/// Abre un archivo del volumen de datos para LEER. La ruta se acumula antes
+/// con `TASK_OP_RUTA` -- el MISMO renglon que `EJECUTAR` y que `DIR_ABRIR`.
+/// Ver `ring0/archivo.rs`.
+pub(crate) const TASK_OP_ARCHIVO_ABRIR: u64 = 0x10;
+/// Pedir un bloque de memoria. Espejo de `bmo_abi::...::TASK_OP_MEMORIA_PEDIR`
+/// -- el drift guard del build comprueba que los dos digan lo mismo.
+pub(crate) const TASK_OP_MEMORIA_PEDIR: u64 = 0x15;
+/// Igual, pero para ESCRIBIR. Son dos operaciones y no un argumento de modo
+/// porque abrir para escribir puede fallar por motivos que abrir para leer no
+/// tiene --volumen de solo lectura, nombre que no es 8.3-- y mezclarlas
+/// obligaria a devolver errores que no aplican a la mitad de las llamadas.
+pub(crate) const TASK_OP_ARCHIVO_CREAR: u64 = 0x11;
+/// Abrir MI PROPIA imagen. Espejo de `bmo_abi::...::TASK_OP_MI_PAQUETE` -- el
+/// drift guard del build comprueba que los dos digan lo mismo.
+///
+/// ** No lleva ruta, y esa es toda la diferencia con `ARCHIVO_ABRIR`: el
+/// programa no dice CUAL, dice "el mio". Pedir el propio fichero por su ruta
+/// seria pedir por nombre lo que se tiene por derecho -- y quien puede escribir
+/// una ruta puede escribir otra.
+pub(crate) const TASK_OP_MI_PAQUETE: u64 = 0x25;
+/// **Quien me lanzo**, como TID. Espejo de `bmo_abi::...::TASK_OP_MI_PADRE`.
+///
+/// Una app dibuja en su memoria y se la OFRECE al que la puso en pantalla (ver
+/// `<bmo/superficie.h>`). Ofrecer exige nombrar al destinatario, y el hijo no
+/// tiene forma de nombrarlo: `MEM_OP_OFRECER` habla en tids y el tid del
+/// compositor no aparece en ningun sitio de su espacio.
+///
+/// ** Y por eso NO es un registro de nombres. La pregunta no es *"quien manda"*
+/// --eso seria autoridad ambiental, y el que la leyera podria pedirle cosas a
+/// quien nunca se las ofrecio-- sino **"quien me lanzo a MI"**: una respuesta
+/// local, concreta, y que no concede nada. Ver `ring0/task/familia.rs`.
+///
+/// Devuelve `0` si no hay padre --lanzado desde el shell de Ring 0-- y eso no es
+/// un error: es la respuesta correcta a *"quien compone para mi"* cuando nadie
+/// compone. El programa que la reciba se cae al camino de la pantalla
+/// exclusiva, que es el degradado correcto.
+pub(crate) const TASK_OP_MI_PADRE: u64 = 0x26;
+/// **Abrir un archivo SIN esperar a que llegue entero.** Espejo de
+/// `bmo_abi::...::TASK_OP_ARCHIVO_ASINC`.
+///
+/// Misma ruta y mismo handle que `ARCHIVO_ABRIR`; la diferencia es cuando
+/// vuelve. `ABRIR` no vuelve hasta que el fichero esta en RAM --y con un `.bex`
+/// de 813 KB eso es el que lo pidio sin existir durante toda la lectura--;
+/// este vuelve en cuanto sabe que el archivo esta ahi.
+///
+/// El handle sale ademas con `RIGHT_WAIT`: se puede DORMIR sobre el hasta que
+/// llegue el trozo siguiente. Ver `obj/archivo.rs::abrir_asinc`.
+pub(crate) const TASK_OP_ARCHIVO_ASINC: u64 = 0x27;
+/// Reinicia la maquina. No vuelve.
+///
+/// El reinicio de tres pasos (`0xCF9` -> 8042 -> triple fault) ya existia y solo
+/// lo tenia el shell del kernel: la caja de Ring 3 contestaba "no lo conozco" a
+/// `reboot`, y la unica salida era el boton. Reiniciar es tocar puertos de E/S,
+/// que Ring 3 no puede --ni debe-- hacer; por eso es una operacion y no un
+/// permiso ambiental.
+///
+/// **Limitacion declarada**: hoy no esta atada a una capability, igual que
+/// `EJECUTAR`. Cualquier tarea de Ring 3 puede llamarla. Se apunta en CABINA
+/// antes de reiniciar para que nunca sea silenciosa, y las dos operaciones
+/// quieren la misma capability el dia que exista.
+pub(crate) const TASK_OP_REINICIAR: u64 = 0x12;
+/// Un dato numerico del sistema (`arg0` = campo) y uno de texto (`arg0` =
+/// campo, `arg1` = trozo de 8 bytes). Ver `ring0/core/informe.rs`: leer cuanta
+/// RAM hay no es un privilegio, es una pregunta.
+pub(crate) const TASK_OP_INFO: u64 = 0x13;
+pub(crate) const TASK_OP_INFO_TEXTO: u64 = 0x14;
+/// El log del kernel, LEIDO desde Ring 3. `KLOG_INFO` cuantas hay
+/// (`arg0` = 0 disponibles, 1 total), `KLOG_TEXTO` ocho bytes de una linea
+/// (`arg0` = linea, **0 es la mas reciente**; `arg1` = trozo).
+///
+/// Mismo criterio que `INFO`: contesta texto y no concede nada. Ver
+/// `ring0/core/klog.rs` -- existe porque desde que el escritorio es el arranque,
+/// el panel del kernel no se pinta y el log no lo podia leer nadie.
+pub(crate) const TASK_OP_KLOG_INFO: u64 = 0x16;
+pub(crate) const TASK_OP_KLOG_TEXTO: u64 = 0x17;
+/// La AUTOPSIA de un fallo de Ring 3. Ver `core::autopsia` y el `surface.rs`.
+pub(crate) const TASK_OP_AUTOPSIA_INFO: u64 = 0x1F;
+pub(crate) const TASK_OP_AUTOPSIA_TEXTO: u64 = 0x20;
+/// **La primera operacion de la superficie que ESCRIBE EN EL DISCO.** Cierra
+/// una transaccion vacia en ESTRATOS y devuelve la generacion nueva, o 0.
+/// Ver `ring0/fsys/estratos.rs::sellar`.
+pub(crate) const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
+/// El CURSOR de ESTRATOS: `arg0` la pregunta, `arg1` su argumento. Y los
+/// nombres, de ocho en ocho.
+///
+/// Dos operaciones y no diez. `INFO_ES_*` ya contestaba *como esta* el almacen;
+/// esto contesta **que hay dentro**, que es lo que la ventana de Datos no podia
+/// ensenar porque `raiz`, `nodo`, `entradas` y `entrada` eran funciones de
+/// Ring 0 sin puerta. Mismo criterio que `INFO` y que el klog: contesta y no
+/// concede -- aqui no hay una sola operacion que escriba.
+pub(crate) const TASK_OP_ES_NODO: u64 = 0x19;
+pub(crate) const TASK_OP_ES_TEXTO: u64 = 0x1A;
+/// Despertar los otros nucleos. Espejo de `bmo_abi::...::TASK_OP_SMP_DESPERTAR`.
+pub(crate) const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
+/// **El censo de audio, pedido desde Ring 3.**
+///
+/// El 2026-08-12 la orden `audio` se anadio SOLO al shell de Ring 0, y el dueno
+/// la escribio en el compositor -- que tiene su propia lista. Contesto
+/// *"no es un comando ni una ruta"* y la prueba del paso 0 se quedo sin hacer.
+///
+/// Dos shells con dos vocabularios distintos son dos productos, y el que se usa
+/// todos los dias es el de Ring 3.
+pub(crate) const TASK_OP_AUDIO_CENSO: u64 = 0x28;
+/// Tomar lo que otro proceso me haya ofrecido. Espejo de `...::TASK_OP_TOMAR`.
+pub(crate) const TASK_OP_TOMAR: u64 = 0x1C;
+/// **Reclamar el SONIDO.** Devuelve un handle `KIND_AUDIO`: el derecho a hacer
+/// ruido, exclusivo como la pantalla. Ver `ring0/obj/audio.rs` -- es el
+/// CONTRATO, no un driver: lo unico que suena hoy es el altavoz del PC.
+pub(crate) const TASK_OP_AUDIO_CLAIM: u64 = 0x21;
+/// Soltar el sonido siendo su dueno y seguir vivo. Va desde el primer dia por
+/// lo que costo que faltara en la pantalla: sin esto, el primero que pite se
+/// queda el aparato hasta que muera.
+pub(crate) const TASK_OP_AUDIO_RELEASE: u64 = 0x22;
+/// **CABINA a Ring 3.** Lo que el kernel ve, con su SEVERIDAD y su capa -- que
+/// es lo que el klog no lleva. Contesta y no concede: ni una operacion escribe.
+pub(crate) const TASK_OP_CABINA_INFO: u64 = 0x23;
+pub(crate) const TASK_OP_CABINA_TEXTO: u64 = 0x24;
+/// Ofrecer un trozo del bloque propio. Es una operacion sobre `KIND_MEMORIA`.
+const MEM_OP_OFRECER: u64 = 0x03;
+/// Las preguntas del cursor. Espejo de `bmo_abi::...::ES_NODO_*`.
+const ES_NODO_RAIZ: u64 = 0x00;
+const ES_NODO_HIJOS: u64 = 0x01;
+const ES_NODO_TRUNCADO: u64 = 0x02;
+const ES_NODO_HONDO: u64 = 0x03;
+const ES_NODO_TIPO: u64 = 0x04;
+const ES_NODO_HIJO_TIPO: u64 = 0x05;
+const ES_NODO_ENTRAR: u64 = 0x06;
+const ES_NODO_SUBIR: u64 = 0x07;
+const ES_NODO_HIJO_BYTES: u64 = 0x08;
+const ES_NODO_HIJO_ATRIBUTOS: u64 = 0x09;
+const ES_NODO_HIJO_FIRMADO: u64 = 0x0A;
+const ES_NODO_VERIFICAR: u64 = 0x0B;
+/// Que texto pide `ES_TEXTO`, en los bits altos de `arg0`. Espejo de
+/// `bmo_abi::...::ES_TXT_*`.
+const ES_TXT_RUTA: u64 = 1;
+pub(crate) const CHANNEL_OP_GET_SEQ: u64 = 0x01;
+pub(crate) const CHANNEL_OP_GET_INDEX: u64 = 0x02;
+/// **Avisar al consumidor.** Era el syscall numero 1; ahora es una operacion
+/// sobre el handle del canal, como todo lo demas. Ver `NR_CHANNEL_KICK`.
+pub(crate) const CHANNEL_OP_KICK: u64 = 0x03;
+pub(crate) const ERROR_INVALID_ARGUMENT: u32 = 7;
+pub(crate) const ERROR_UNSUPPORTED: u32 = 10;
+
+#[repr(C)]
+pub(crate) struct BmoStatus {
+    pub code: u32,
+    pub flags: u32,
+    pub value: u64,
+}
+
+impl BmoStatus {
+    pub(crate) const fn ok_value(value: u64) -> Self { Self { code: 0, flags: 0, value } }
+    pub(crate) const fn err(code: u32) -> Self { Self { code, flags: 0, value: 0 } }
+    pub(crate) const fn err_with_flags(code: u32, flags: u32) -> Self { Self { code, flags, value: 0 } }
+}
+
+const _: () = assert!(core::mem::size_of::<BmoStatus>() == 16);
+
+pub(crate) const MSR_STAR: u32 = 0xC000_0081;
+pub(crate) const MSR_LSTAR: u32 = 0xC000_0082;
+pub(crate) const MSR_SFMASK: u32 = 0xC000_0084;
+pub(crate) const RFLAGS_TF: u64 = 1 << 8;
+pub(crate) const RFLAGS_IF: u64 = 1 << 9;
+pub(crate) const RFLAGS_DF: u64 = 1 << 10;
+pub(crate) const RFLAGS_NT: u64 = 1 << 14;
+pub(crate) const RFLAGS_AC: u64 = 1 << 18;
+pub(crate) const KERNEL_CS: u64 = 0x08;
+// Legacy STAR layout; kept armed although the exit path is iretq-only.
+pub(crate) const SYSRET_SELECTOR_BASE: u64 = 0x10;

@@ -147,7 +147,7 @@ virtual. Dos caminos, los dos validos, y en los dos **el kernel nunca aprende
 que es Java**:
 
 1. **Compilar AOT a nativo** (lo que ya hacen NativeAOT y native-image). Sale
-   un binario que solo necesita su runtime encima de los tres syscalls. Otro
+   un binario que solo necesita su runtime encima de los dos syscalls. Otro
    `.bex` mas.
 2. **Portar la VM como programa de Ring 3.** Entonces la JVM es una *app*, y
    los `.class` son **datos que esa app lee**. Sus metadatos viajan en
@@ -234,7 +234,7 @@ Rosetta con la traduccion anticipada que a una capa de compatibilidad.
 **Devorar te da el CODIGO, no el CONTRATO.**
 
 Un binario de Linux hace `syscall` con el numero 1 esperando `write(2)` y la
-semantica de un descriptor de fichero. BMO tiene **tres syscalls** con otros
+semantica de un descriptor de fichero. BMO tiene **dos syscalls** con otros
 numeros y otra semantica. El codigo traducido corre; **la primera llamada al
 sistema se estrella.**
 

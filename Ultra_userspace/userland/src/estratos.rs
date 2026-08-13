@@ -112,7 +112,7 @@ pub fn verificar(i: u64) -> u64 {
 ///
 /// Va por la misma puerta que [`hijo_nombre`] con un `1` en los bits altos:
 /// es el mismo mecanismo pidiendo otra cosa, y una puerta por cada texto
-/// que devuelva el sistema es como una superficie de tres syscalls acaba
+/// que devuelva el sistema es como una superficie de dos syscalls acaba
 /// teniendo treinta.
 pub fn nombre_nivel(nivel: u64, dst: &mut [u8]) -> usize {
     texto_de(nivel | (1u64 << 32), dst)

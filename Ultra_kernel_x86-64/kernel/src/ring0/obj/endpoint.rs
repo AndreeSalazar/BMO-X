@@ -7,7 +7,7 @@
 //!
 //! ## La superficie no cambia
 //!
-//! Siguen siendo tres syscalls. Lo nuevo son dos *kinds* de capability y que
+//! Siguen siendo dos syscalls. Lo nuevo son dos *kinds* de capability y que
 //! significan `INVOKE` y `WAIT` cuando el handle resuelve a uno de ellos.
 //!
 //! ## Por que el mensaje viaja por el estuario

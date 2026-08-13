@@ -12,7 +12,7 @@
 //! L1  GENERICA  <- ESTA CRATE: "escribe estos bytes", nada mas
 //!                                     v
 //! L0  SUPERFICIE CONGELADA (bmo_abi::syscalls::surface)
-//!     INVOKE - CHANNEL_KICK - WAIT
+//!     INVOKE - WAIT       (the 1 is a reserved tombstone)
 //! ```
 //!
 //! # La regla que mantiene esto modular

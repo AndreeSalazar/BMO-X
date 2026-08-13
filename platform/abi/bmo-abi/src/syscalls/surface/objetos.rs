@@ -86,7 +86,7 @@ pub const ES_NODO_VERIFICAR: u64 = 0x0B;
 /// Los bajos siguen siendo el indice. Se reparte el argumento en vez de anadir
 /// una operacion porque **son el mismo mecanismo** --sacar un nombre de ocho en
 /// ocho-- pidiendo dos cosas distintas, y una puerta por cada texto que devuelva
-/// el sistema es como una superficie de tres syscalls acaba teniendo treinta.
+/// el sistema es como una superficie de dos syscalls acaba teniendo cuarenta.
 pub const ES_TXT_HIJO: u64 = 0;
 
 /// El nombre del nivel `indice` de la ruta. `0` es la raiz y contesta vacio.

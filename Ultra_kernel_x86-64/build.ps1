@@ -162,7 +162,12 @@ Step 'Validating Ring 0 syscall contract'
 # Las operaciones del kernel no viven todas en `syscall.rs`: las de un objeto
 # estan con su objeto (`ARCH_OP_*` en `obj\archivo.rs`), que es donde deben
 # estar. Se leen los dos y se comparan contra el MISMO surface.
-$kernelSyscalls = (Get-Content (Join-Path $root 'kernel\src\ring0\syscall.rs') -Raw) + "`n" +
+# ** La tabla se mudo a `syscall\ops.rs` el 2026-08-13: los NUMEROS son el
+# contrato y estaban mezclados con el despacho que los sirve. Este guardian lo
+# cazo en el acto --`NR_INVOKE` desaparecido-- que es exactamente para lo que
+# esta, y por eso el reparto no pudo colarse.
+$kernelSyscalls = (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\ops.rs') -Raw) + "`n" +
+                  (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\mod.rs') -Raw) + "`n" +
                   (Get-Content (Join-Path $root 'kernel\src\ring0\obj\archivo.rs') -Raw)
 # ** EL CONTRATO YA NO ES UN FICHERO: ES UNA CARPETA (2026-08-12).
 #
@@ -582,6 +587,33 @@ $BICO_PALETA = @{
     'W' = @(0xE0, 0xE6, 0xF0, 0xFF)
 }
 
+function Compilar-Ejemplos {
+    # ** UN bucle, tres lenguajes. Estaba escrito TRES VECES -- COBOL, Ada y C--
+    # con la misma comprobacion de 8.3, el mismo `Join-Path`, el mismo filtro de
+    # salida y los mismos dos `Fail`. Lo unico distinto era el crate, la
+    # etiqueta y que el de Ada aceptaba ademas la palabra `linea` en su filtro.
+    #
+    # Tres copias de una regla es tres sitios donde arreglarla, y el dia que
+    # alguien arregle dos se notara en el tercero -- que es exactamente el
+    # patron que esta casa lleva pagando todo el dia.
+    #
+    # [!] El tope de 8 caracteres NO es una convencion nuestra: el driver FAT32
+    # del kernel se NIEGA a recortar un nombre, asi que un tallo de nueve letras
+    # no es feo, es un fichero que no se puede abrir.
+    param($ejemplos, $crate, $etiqueta, $patron, $dataBase, $repo)
+    foreach ($e in $ejemplos) {
+        $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
+        if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
+        $dst = Join-Path (Join-Path $dataBase $e.dir) $e.out
+        $out = cargo run -p $crate --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
+        $out | ForEach-Object {
+            if ($_ -match $patron) { Write-Host ('    [' + $etiqueta + '] ' + $_) -ForegroundColor DarkGray }
+        }
+        if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
+        if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
+    }
+}
+
 function Nuevo-Bico {
     param([string[]]$filas)
     $lado = 16
@@ -606,47 +638,17 @@ function Nuevo-Bico {
 $repo = Split-Path -Parent $root
 Push-Location $repo
 try {
-    foreach ($e in $cobolEjemplos) {
-        $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
-        if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
-        $dst = Join-Path (Join-Path $dataBase $e.dir) $e.out
-        $out = cargo run -p bmo-cobol-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
-        $out | ForEach-Object {
-            if ($_ -match 'ok:|error') { Write-Host ('    [cobol] ' + $_) -ForegroundColor DarkGray }
-        }
-        if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
-        if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
-    }
+    Compilar-Ejemplos $cobolEjemplos 'bmo-cobol-front' 'cobol' 'ok:|error' $dataBase $repo
 
 
     Step 'Building ADA example programs...'
-    foreach ($e in $adaEjemplos) {
-        $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
-        if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
-        $dst = Join-Path (Join-Path $dataBase $e.dir) $e.out
-        $out = cargo run -p bmo-ada-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
-        $out | ForEach-Object {
-            if ($_ -match 'ok:|error|linea') { Write-Host ('    [ada] ' + $_) -ForegroundColor DarkGray }
-        }
-        if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
-        if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
-    }
+    Compilar-Ejemplos $adaEjemplos 'bmo-ada-front' 'ada' 'ok:|error|linea' $dataBase $repo
 
     Step 'Building C example programs...'
-    foreach ($e in $cEjemplos) {
-        $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
-        if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
-        $dst = Join-Path (Join-Path $dataBase $e.dir) $e.out
-        # Sin --base ni --asm-path: ese camino usa el PREPROCESADOR, que es lo
-        # que resuelve `#include <bmo/...>`. Con ellos se toma el camino de
-        # modulos, que no lo llama.
-        $out = cargo run -p bmo-c-front --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
-        $out | ForEach-Object {
-            if ($_ -match 'ok:|error') { Write-Host ('    [c] ' + $_) -ForegroundColor DarkGray }
-        }
-        if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
-        if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
-    }
+    # Sin --base ni --asm-path: ese camino usa el PREPROCESADOR, que es lo que
+    # resuelve `#include <bmo/...>`. Con ellos se toma el de modulos, que no lo
+    # llama.
+    Compilar-Ejemplos $cEjemplos 'bmo-c-front' 'c' 'ok:|error' $dataBase $repo
 
     # -- Meter los datos DENTRO del .bex ---------------------------
     #

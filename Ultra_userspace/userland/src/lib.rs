@@ -1,4 +1,4 @@
-//! **El runtime de Ring 3 de BMO.** La cara de userspace de los tres syscalls.
+//! **El runtime de Ring 3 de BMO.** La cara de userspace de los dos syscalls.
 //!
 //! Antes esta crate re-exportaba `BootContext` "para que userland tuviera la
 //! misma struct que el kernel para el handoff". Eso era de otro sistema y era

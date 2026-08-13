@@ -102,7 +102,7 @@ sustituto con la misma adopcion.
 
 #### Por que C++ es mas dificil de lo que parece
 
-★ **Y no tiene NADA que ver con los tres syscalls.** La superficie del sistema
+★ **Y no tiene NADA que ver con los dos syscalls.** La superficie del sistema
 no cambia: un `.bex` de C++ llama a lo mismo que uno de C. La dificultad esta
 **dentro del lenguaje**, y son cuatro cosas concretas:
 
