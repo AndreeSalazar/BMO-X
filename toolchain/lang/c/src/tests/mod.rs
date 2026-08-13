@@ -98,6 +98,12 @@ mod sonda_de_tablas;
 /// LA SONDA DEL SIGNO: las cuatro operaciones que preguntan por el bit alto. El
 /// eje de `angle_t`, y donde el ancho de `rax` tapaba el defecto en 32 bits.
 mod sonda_sin_signo;
+/// LA SONDA DEL FLUJO: switch, goto y recursion. El eje de los 85 `switch` del
+/// playsim y de `R_RenderBSPNode`, que es recursiva con dos ramas.
+mod sonda_de_flujo;
+/// LA SONDA DE LA ASIGNACION: las formas abreviadas. [!] Lleva UNA fila en ROTO
+/// a proposito -- la doble evaluacion del lvalue en `a[i++] += 1`.
+mod sonda_de_asignacion;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
