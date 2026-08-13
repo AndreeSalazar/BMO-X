@@ -423,7 +423,6 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
     // raton**. Tenerlo dos veces era garantizar que un dia se pulsara una caja
     // y se seleccionara otra: dos copias de una geometria se separan solas.
     let (_, ancho_caja, hijos_x, primera_y) = c.geometria_grafo();
-    let espina_x = hijos_x - 22;
 
     // -- El nodo actual, a la izquierda --
     let padre_y = primera_y;
@@ -447,41 +446,75 @@ fn pintar_nodos(p: &bmo::Pantalla, c: &CajaDatos) {
         return;
     }
 
-    // -- La espina y las ramas --
+    // -- Las aristas: UNA CURVA POR HIJO, del padre a cada caja --
     //
-    // Sin primitiva de linea: un rectangulo de un pixel de ancho ES una linea,
-    // y para un grafo de codos --que es como pinta n8n-- no hace falta mas.
+    // ** ESTO ERA UNA ESPINA CON CODOS, Y EL COMENTARIO QUE LO JUSTIFICABA
+    // DECIA UNA COSA FALSA.
+    //
+    // Decia: *"sin primitiva de linea: un rectangulo de un pixel de ancho ES
+    // una linea, y para un grafo de codos --que es como pinta n8n-- no hace
+    // falta mas"*. Lo primero es cierto y lo segundo no: **n8n une sus nodos
+    // con curvas Bezier**, con las tangentes horizontales en los dos extremos.
+    //
+    // Y la diferencia no es estetica. En una espina con codos, todas las ramas
+    // salen del MISMO tramo vertical: mirando una caja no se sabe por donde
+    // llego, porque su rama es identica a las otras. Con una curva por hijo,
+    // cada arista tiene su propio recorrido de la salida del padre a la entrada
+    // del hijo, **y se puede seguir con el dedo**. Eso es lo que convierte un
+    // cuadro de tuberias en un grafo.
+    //
+    // Los tirantes van horizontales y a media distancia (`CANAL/2`), que es lo
+    // que hace que la curva salga y entre en horizontal aunque el hijo este
+    // muy abajo: la clasica S. Ver `bmo::curva`.
     let caben = c.caben();
     let ultimo = (c.desde + caben).min(cuantos);
+    // El recorte, que hasta ahora no existia: las aristas no pueden salirse del
+    // marco de la ventana. Con codos calculados a mano no hacia falta --nunca
+    // se salian por construccion--; una curva se sale en cuanto el marco se
+    // encoge, y sin esto pintaria por encima de lo que haya al lado.
+    let rec = bmo::Recorte::nuevo(
+        c.marco.x as i32 + 1,
+        (c.marco.y + TITULO_ALTO) as i32,
+        c.marco.ancho as i32 - 2,
+        c.marco.alto as i32 - TITULO_ALTO as i32 - 1,
+    );
+    let salida_y = padre_y + CAJA_NODO_ALTO / 2;
+    let salida_x = tx + ancho_caja;
+    // El tirante: la mitad del canal. Sale de la geometria y no de un numero a
+    // ojo, asi que estirar la ventana no descuadra las curvas.
+    let tirante = ((hijos_x - salida_x) / 2) as i32;
 
     let mut hy = primera_y;
     for i in c.desde..ultimo {
         let centro = hy + CAJA_NODO_ALTO / 2;
-        // La rama, de la espina a la caja. **Dos pixeles de grueso**: a uno
-        // solo, una linea horizontal sobre un fondo oscuro casi no se ve, y
-        // entonces las cajas parecen sueltas en vez de colgadas de un padre.
-        p.rect(espina_x, centro, hijos_x - espina_x, 2, DATOS_ARISTA);
-        // El punto de enganche en la caja: cierra la arista en vez de dejarla
-        // chocando contra un borde. Es lo que hace que se lea como un grafo.
-        p.rect(hijos_x - 4, centro - 2, 5, 5, DATOS_ARISTA);
+        p.curva(
+            &rec,
+            (salida_x as i32, salida_y as i32),
+            (salida_x as i32 + tirante, salida_y as i32),
+            (hijos_x as i32 - tirante, centro as i32),
+            (hijos_x as i32, centro as i32),
+            DATOS_ARISTA,
+        );
+        // La punta de flecha, que es el escalon 2 ganandose el sitio: dice
+        // hacia DONDE va la arista, que con una curva ya no es obvio si se mira
+        // solo un tramo. Tres vertices y entra en la caja por su borde.
+        p.triangulo(
+            &rec,
+            (hijos_x as i32, centro as i32),
+            (hijos_x as i32 - 7, centro as i32 - 4),
+            (hijos_x as i32 - 7, centro as i32 + 4),
+            DATOS_ARISTA,
+        );
         let tipo = bmo::estratos::hijo_tipo(i as u64);
         let mut name = [0u8; 64];
         let n = bmo::estratos::hijo_nombre(i as u64, &mut name);
         caja_nodo(p, hijos_x, hy, ancho_caja, tipo, &name[..n], i == c.sel);
         hy += CAJA_NODO_ALTO + CAJA_NODO_HUECO;
     }
-    // La espina vertical, del centro de la primera rama al de la ultima.
-    let arriba = primera_y + CAJA_NODO_ALTO / 2;
-    let abajo = hy - CAJA_NODO_ALTO - CAJA_NODO_HUECO + CAJA_NODO_ALTO / 2;
-    p.rect(espina_x, arriba, 2, abajo.saturating_sub(arriba) + 2, DATOS_ARISTA);
-    // Y el tramo que sale del padre hasta la espina, a su altura.
-    let salida_y = padre_y + CAJA_NODO_ALTO / 2;
-    p.rect(tx + ancho_caja, salida_y, espina_x - (tx + ancho_caja), 2, DATOS_ARISTA);
-    p.rect(tx + ancho_caja - 1, salida_y - 2, 5, 5, DATOS_ARISTA);
-    if salida_y != arriba {
-        let (a, b) = if salida_y < arriba { (salida_y, arriba) } else { (arriba, salida_y) };
-        p.rect(espina_x, a, 2, b - a + 2, DATOS_ARISTA);
-    }
+    // El punto de salida en el padre: cierra las aristas en su origen en vez de
+    // dejarlas naciendo de un borde. Con una sola espina hacia falta uno; con
+    // una curva por hijo, todas salen de aqui y por eso se nota mas.
+    p.rect(salida_x - 1, salida_y - 2, 5, 5, DATOS_ARISTA);
 
     // -- * EL PANEL DE DETALLE del nodo senalado --
     //

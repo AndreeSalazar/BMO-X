@@ -365,6 +365,9 @@ pub const MOD_CAPS: u8 = 1 << 4;
 // la usa**: si costara seria una version nueva, no una reordenacion.
 
 mod archivo;
+/// DIBUJO: recorte, linea y triangulo. Lo que el sistema no sabia hacer, y
+/// el oraculo con el que se juzgara la GPU. Ver la cabecera del modulo.
+mod dibujo;
 mod entrada;
 mod memoria;
 mod pantalla;
@@ -379,6 +382,7 @@ mod sys;
 pub mod estratos;
 
 pub use archivo::*;
+pub use dibujo::*;
 pub use entrada::*;
 pub use memoria::*;
 pub use pantalla::*;
