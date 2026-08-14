@@ -33,6 +33,8 @@ pub(crate) mod mouse;
 pub(crate) mod paint;
 pub(crate) use boot::boot;
 
+use core::mem::MaybeUninit;
+
 use bmo_userland as bmo;
 
 use crate::commands::history::History;
@@ -235,7 +237,69 @@ pub(crate) struct Desktop {
     pub resp_n: usize,
 }
 
+/// ** EL ESCRITORIO NO VIVE EN LA PILA, y eso no es una preferencia de estilo.
+///
+/// El 2026-08-14 el compositor murio en el Ryzen antes de escribir una sola
+/// linea, con `#PF` en `rip=0x4000001B`. Ese `rip` es la SONDA DE PILA que LLVM
+/// emite cuando un marco es tan grande que hay que ir tocando pagina a pagina:
+///
+/// ```text
+///   4000000d:  subq $0x17000, %r11    <- el marco: 94.208 bytes
+///   40000014:  subq $0x1000, %rsp        una pagina menos
+///   4000001B:  movq $0x0, (%rsp)      <- aqui. La pagina 17 ya no esta mapeada
+/// ```
+///
+/// Ring 3 tiene **16 paginas de pila = 65.536 bytes** (`USER_STACK_PAGES` en
+/// `proc.rs`). El marco pedia 94.208. En la vuelta 17 la sonda pisa por debajo
+/// de lo mapeado y el CPU dice `#PF`. No es azar ni es hardware: es resta.
+///
+/// ** Y el culpable, MEDIDO commit a commit con `llvm-objdump`:
+///
+/// ```text
+///   bb671fb9  pre-struct   35.560   cabe
+///   70df8f73  el struct    95.544   NO CABE   <- aqui murio, 5 commits atras
+///   c6febd8e  hoy          95.528   NO CABE
+/// ```
+///
+/// ** El motivo de que juntar 52 locales en un struct TRIPLIQUE el marco: como
+/// variables sueltas, LLVM solapaba las ranuras de las que no viven a la vez y
+/// se llevaba muchas a registros. Como struct contiguo **todo esta vivo desde
+/// que se construye** y no hay nada que solapar. El reparto no rompio nada --el
+/// `.text` bajo, los `#[inline(never)]` ganaron 29.616 bytes de verdad-- pero
+/// el commit que ORDENO las variables mato la maquina en un eje que nadie
+/// miraba.
+///
+/// [!] La regla que queda, y vale para cualquier programa de Ring 3, no solo
+/// para este: **el estado que vive todo el programa va a `.bss`, no a la pila.**
+/// Con 64 KiB de pila o con 1 MiB sigue siendo cierto; subir la pila solo mueve
+/// el dia en que el siguiente struct la desborde. Y por el escalon 0 de
+/// `docs/LA_RAM.md`, `.bss` **se declara y no viaja**: cero bytes de fichero.
+static mut DESKTOP: MaybeUninit<Desktop> = MaybeUninit::uninit();
+
+/// Construye el escritorio DENTRO de `.bss` y entrega la unica referencia.
+///
+/// Se llama **una vez**, desde `boot`. No hay forma de pedir la segunda: la
+/// referencia es `&'static mut` y quien la tiene la tiene entera, que es
+/// exactamente la propiedad que un `static mut` suelto no da.
+///
+/// [!] `#[inline(never)]` en las DOS --aqui y en `Desktop::new`-- y no es un
+/// ajuste de tamano: es lo que obliga a LLVM a pasar la direccion de `.bss`
+/// como puntero de retorno (`sret`) en vez de construir el struct en una ranura
+/// de la pila y copiarlo despues. Inlineadas, los temporales de `Out` (17.936)
+/// y `Launcher` (12.968) se acumulan en el marco de `_start`. Medido.
+#[inline(never)]
+pub(crate) fn install(
+    p: &bmo::Pantalla,
+    console: Option<bmo::Consola>,
+    launcher: Launcher,
+) -> &'static mut Desktop {
+    // `addr_of_mut!` y no `&mut DESKTOP`: tomar una referencia a un `static mut`
+    // es UB aunque compile, y aqui hay un solo llamante que puede demostrarlo.
+    unsafe { (*core::ptr::addr_of_mut!(DESKTOP)).write(Desktop::new(p, console, launcher)) }
+}
+
 impl Desktop {
+    #[inline(never)]
     pub fn new(p: &bmo::Pantalla, console: Option<bmo::Consola>, launcher: Launcher) -> Self {
         let run_box = RunBox::new(p.ancho, p.alto);
         let calc_pad = CalcPad::new(&run_box);
