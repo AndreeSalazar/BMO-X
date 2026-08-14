@@ -792,7 +792,16 @@ try {
                 Copy-Item -LiteralPath $doomWad -Destination $wadDst -Force
                 Write-Host ('    [doom] doom1.wad (' + (Get-Item $wadDst).Length + ' B) -> apps\') -ForegroundColor DarkGray
             }
-            Write-Host '    [doom] lanzalo con:  run apps/doom.bex   (desde el shell de Ring 0)' -ForegroundColor DarkGray
+            # El consejo de aqui decia "desde el shell de Ring 0", y eso era
+            # cierto mientras `lend_screen` tenia un plazo de 500 ms: DOOM tarda
+            # ~10 s en reclamar la pantalla, el escritorio se cansaba y se la
+            # quedaba. Arreglado -- ahora la espera es por VIDA y no por reloj,
+            # asi que el camino bueno es el ICONO: es el unico que devuelve la
+            # pantalla al escritorio cuando el programa muere. Por el shell de
+            # Ring 0 no hay quien la recupere y se acaba en el panel del kernel.
+            Write-Host '    [doom] lanzalo con:  CLIC en su icono del escritorio' -ForegroundColor DarkGray
+            Write-Host '    [doom]   (`run apps/doom.bex` desde Ring 0 tambien va, pero al morir' -ForegroundColor DarkGray
+            Write-Host '    [doom]    la pantalla NO vuelve al escritorio: se queda el kernel)' -ForegroundColor DarkGray
         }
     }
 

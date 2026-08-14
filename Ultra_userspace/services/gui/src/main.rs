@@ -425,6 +425,30 @@ const fn bmo_abi_magic() -> u32 {
 ///    un `presta ls` no puede colgar el escritorio para siempre.
 /// 2. Esperar a que la SUELTE, sin tope: aqui si se sabe que hay alguien
 ///    dentro, y un juego puede durar lo que quiera.
+/// * Apartarse DORMIDO, que no es lo mismo que apartarse cediendo.
+///
+/// `yield_screen()` devuelve el turno pero deja la tarea **LISTA**: el
+/// planificador se la encuentra otra vez en la ronda siguiente, y una tarea que
+/// no tiene nada que hacer sigue costando dos cambios de contexto por vuelta.
+/// `wait(0, _, plazo)` la deja **BLOQUEADA** -- fuera de la lista de listos-- y
+/// el temporizador la despierta al vencer el plazo.
+///
+/// # Por que 20 ms, y no mas ni menos
+///
+/// Es el unico numero de esta funcion que se elige por comodidad y no por una
+/// medida, asi que conviene decir a que se renuncia: **el escritorio tarda como
+/// mucho 20 ms de mas** en darse cuenta de que el programa tomo la pantalla o
+/// de que se murio. Un ojo no ve 20 ms. A cambio, mientras el otro juega, este
+/// se despierta 50 veces por segundo en vez de en cada ronda del planificador.
+///
+/// [!] El plazo **no puede ser cero**: `wait` con `timeout_ns = 0` y esperable
+/// `0` calcula `deadline = 0`, y un bloqueo sin plazo y sin clave no lo
+/// despierta nadie. Seria colgar el escritorio para siempre.
+fn dormir_un_rato() {
+    const VEINTE_MS_EN_NS: u64 = 20_000_000;
+    bmo::wait(0, 0, VEINTE_MS_EN_NS);
+}
+
 fn lend_screen(
     p: bmo::Pantalla,
     input: Option<bmo::Entrada>,
@@ -464,21 +488,78 @@ fn lend_screen(
         // recupera YA en vez de esperar los 500 ms de la fase 1.
         return recover();
     }
+    // ** FASE 1: SE ESPERA A QUE ESTE VIVO, NO A QUE SEA RAPIDO.
+    //
+    // Aqui habia un cronometro de **500 ms**, y ese numero es la razon de que
+    // DOOM no se pudiera lanzar desde el escritorio en todo el 14-08.
+    //
+    // Un programa grafico no reclama la pantalla al arrancar: la reclama cuando
+    // llega a su `I_InitGraphics`, y antes de eso hace su trabajo. DOOM lee un
+    // WAD de 4 MiB por AHCI (que sondea con el CPU parado), arma texturas y
+    // sprites en `R_Init` y calcula el SHA-1 del WAD entero en `D_CheckNetGame`.
+    // **Medido en metal: tarda unos DIEZ SEGUNDOS**, veinte veces el plazo.
+    //
+    // Y lo que pasaba al vencer el plazo no era esperar de mas: era lo
+    // contrario. El escritorio decidia *"no la queria"*, **volvia a reclamar la
+    // pantalla**, y cuando DOOM por fin la pedia se encontraba con que ya tenia
+    // dueno -> `DOOM: no hay pantalla (la tiene otro proceso)`. O sea que el
+    // unico camino que sabe devolver la pantalla al escritorio era justo el que
+    // no se podia usar, y habia que lanzar desde el shell de Ring 0 -- donde no
+    // hay nadie que la recupere y se acaba en el panel del kernel.
+    //
+    // ** El arreglo no es un plazo mas largo: es **dejar de medir el tiempo y
+    // medir lo que de verdad importa**. Aqui se llega solo si el `.bex` DECLARO
+    // `WANTS_SCREEN`, o sea que la pregunta *"la queria?"* ya esta contestada
+    // por el binario. Lo unico que puede acabar la espera es que la tome o que
+    // se muera, y las dos se saben preguntando:
+    //
+    //     INFO_PANTALLA_DUENO != 0        la tomo
+    //     INFO_TAREAS_TOTAL   < antes     se murio sin llegar a pedirla
+    //
+    // [!] El tope se queda, pero cambia de oficio: ya no decide nada, es el
+    // cinturon para el programa que ni la toma ni se muere (un cuelgue antes de
+    // `claim`). Treinta segundos es holgado para el arranque mas lento que
+    // existe hoy y sigue siendo finito, que es lo que impide que un programa
+    // colgado se lleve el escritorio por delante.
     let hz = bmo::info(bmo::INFO_TSC_HZ);
     let mut took_it = false;
+    let vivas_antes = bmo::info(bmo::INFO_TAREAS_TOTAL);
     if hz > 0 {
-        let limit = bmo::ciclos() + hz / 2; // 500 ms, cronometrados
+        let limit = bmo::ciclos() + hz * 30;
         while bmo::ciclos() < limit {
             if bmo::info(bmo::INFO_PANTALLA_DUENO) != 0 {
                 took_it = true;
                 break;
             }
-            bmo::yield_screen();
+            // Se murio antes de pedirla: no hay nada que esperar, y esperarlo
+            // seria dejar el escritorio negro treinta segundos por un programa
+            // que ya no existe.
+            if bmo::info(bmo::INFO_TAREAS_TOTAL) < vivas_antes {
+                break;
+            }
+            dormir_un_rato();
         }
     }
     if took_it {
+        // ** FASE 2: MIENTRAS EL OTRO JUEGA, ESTE SE APARTA DE VERDAD.
+        //
+        // Este bucle dura **lo que dure el programa** -- una partida entera de
+        // DOOM. Y hasta hoy era `yield_screen()` a pelo, o sea que el
+        // escritorio se quedaba en la lista de LISTOS dando vueltas: pide el
+        // dueno de la pantalla, cede, y el planificador se lo vuelve a
+        // encontrar en la siguiente ronda. No quema el quantum --ceder es lo
+        // correcto-- pero **sigue siendo una tarea despierta que no tiene nada
+        // que hacer**, y cada vuelta son dos syscalls y dos cambios de
+        // contexto que le salen del turno al que si esta trabajando.
+        //
+        // Con `wait` la tarea queda **BLOQUEADA**: sale de la lista de listos,
+        // el planificador ni la mira, y el temporizador la devuelve al vencer
+        // el plazo (`scheduler::on_timer` barre los `wait_deadline`). Eso es
+        // lo que hace que la frase de la casa --"un juego de un solo hilo
+        // tiene el nucleo entero por construccion"-- sea cierta tambien
+        // cuando lo lanza el escritorio y no el shell.
         while bmo::info(bmo::INFO_PANTALLA_DUENO) != 0 {
-            bmo::yield_screen();
+            dormir_un_rato();
         }
     }
     recover()
