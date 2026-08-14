@@ -66,11 +66,24 @@ salta al vacio y muere con un `#UD` en Ring 3.
 | `userland` (`bmo-userland`) | **vivo** | El runtime: los dos syscalls, `Status`, `Pantalla`, consola. Sin dependencias, a proposito. |
 | `services/gui` (`compositor`) | **vivo** | Reclama `KIND_FRAMEBUFFER`, pinta y no termina. Es el binario que arranca el kernel. |
 | `services/input` | stub | Multiplexor de teclado y raton. Espera a que el compositor sepa atender clientes. |
-| `apps/launcher` | stub | Shell del escritorio. |
-| `apps/terminal` | stub | Emulador de terminal. |
 
-Los tres stubs siguen siendo stubs, pero ya **pueden** dejar de serlo: el
-camino existe. Antes no.
+[!] **Aqui habia dos filas mas, y las dos mentian** (borradas el 2026-08-13):
+
+- `apps/launcher`, *"shell del escritorio"*. Eran **nueve lineas** que hacen
+  `hlt` para siempre, y su trabajo ya estaba hecho: el lanzador de verdad son
+  440 lineas en `services/gui/src/escena/lanzador.rs`, lee `apps\` del disco,
+  saca el icono de dentro de cada `.bex` y lanza al pulsar. Un crate vacio con
+  el nombre del que si funciona es peor que no tener nada: manda a leer el
+  fichero equivocado.
+- `apps/terminal`, *"emulador de terminal"*. **Esa carpeta no existia.**
+
+★ Y el que se queda, `services/input`, si es un stub honesto: 50 lineas
+esperando a que el compositor sepa atender clientes.
+
+** La leccion es la de siempre en esta casa: una carpeta es una PROMESA. Si se
+llama `apps/` dice que ahi viven las aplicaciones de Ring 3, y lo que habia era
+un `hlt`. Las aplicaciones reales viven **en el disco** (`A:pps\`), llegan
+como `.bex` con su icono dentro, y el escritorio las encuentra sola.
 
 ## Construir
 
