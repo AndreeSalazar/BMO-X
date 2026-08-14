@@ -478,23 +478,60 @@ pub fn registrar(
     // dejo un `call`. Con el `+0x...` delante, `--map` le pone nombre a cada
     // una y el informe pasa de decir donde se rompio a decir **quien llamo**.
     // Las que no apuntan a la imagen se dejan crudas: son datos, no matriculas.
+    // ** SE BUSCA HASTA ENCONTRAR RETORNOS, no las cuatro primeras a ciegas.
+    //
+    // Cuatro palabras crudas no bastaron el 2026-08-14: DOOM murio con `#GP` en
+    // `SHA1_Update+0x18` y las cuatro salieron sin un solo `+0x...`, o sea sin
+    // una sola direccion de retorno. Con eso no se sabe quien llamo, que es la
+    // unica pregunta que quedaba abierta.
+    //
+    // Ahora se recorren hasta 24 palabras y **solo se imprimen las que dicen
+    // algo**: las que caen en la imagen (matriculas, con su `+desplazamiento`
+    // para `--map`) y, si no hay ninguna, un resumen de que se vio. Una pila con
+    // locales por delante del marco deja de tapar el rastro.
+    //
+    // [!] Y las NO CANONICAS se cuentan aparte, porque son un diagnostico en si
+    // mismas: desreferenciar una direccion cuyos bits 63:48 no son copia del 47
+    // da **`#GP`, no `#PF`**. Un `#GP` con codigo 0 y basura no canonica en la
+    // pila es un puntero sin inicializar, y eso se busca en otro sitio que un
+    // salto perdido.
     renglones[10].s("pila      ");
-    let mut k = 0usize;
-    while k < 4 {
-        let dir = rsp.wrapping_add((k as u64) * 8);
-        match leer_palabra_de_ring3(dir) {
-            Some(v) => {
-                if !en_la_imagen(v, &mut renglones[10]) {
-                    renglones[10].hex(v);
-                }
+    let mut hallados = 0usize;
+    let mut nocanon = 0usize;
+    let mut leidas = 0usize;
+    let mut k = 0u64;
+    while k < 24 {
+        let dir = rsp.wrapping_add(k * 8);
+        let Some(v) = leer_palabra_de_ring3(dir) else {
+            break;
+        };
+        leidas += 1;
+        // Canonica: los bits 63:48 tienen que ser copia del bit 47.
+        if ((v >> 47) & 0x1_FFFF) != 0 && ((v >> 47) & 0x1_FFFF) != 0x1_FFFF {
+            nocanon += 1;
+        }
+        // Solo las tres primeras matriculas: la cuarta ya no cabe en 72 y las
+        // dos primeras son las que nombran al llamante y a su llamante.
+        if hallados < 3 {
+            let antes = renglones[10].n;
+            if en_la_imagen(v, &mut renglones[10]) {
                 renglones[10].s(" ");
-            }
-            None => {
-                renglones[10].s("(ilegible) ");
-                k = 4;
+                hallados += 1;
+            } else {
+                renglones[10].n = antes;
             }
         }
         k += 1;
+    }
+    if hallados == 0 {
+        renglones[10].s("SIN retornos en ");
+        renglones[10].dec(leidas as u64);
+        renglones[10].s(" palabras");
+    }
+    if nocanon > 0 {
+        renglones[10].s("  [");
+        renglones[10].dec(nocanon as u64);
+        renglones[10].s(" NO CANONICAS]");
     }
 
     // * Y LO QUE EL PROCESO DIJO ANTES DE MORIR.
