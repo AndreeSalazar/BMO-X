@@ -6,7 +6,7 @@
 //! whether Ctrl is down. Measured before cutting, not guessed -- the keyboard
 //! block next door needs ninety, which is why it is still in there.
 //!
-//! ⚠️ The two `continue` in here used to belong to the `for &c in keys` loop.
+//! [!] The two `continue` in here used to belong to the `for &c in keys` loop.
 //! Outside of it there is no loop to continue, so they are `return`. Rust does
 //! not let that be wrong: a `continue` with nothing to continue is an error,
 //! which is exactly what makes this cut mechanical instead of risky.
