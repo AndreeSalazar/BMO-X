@@ -31,7 +31,22 @@ const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
 
 pub const USER_IMAGE_BASE: u64 = 0x0000_0000_4000_0000;
 pub const USER_STACK_TOP: u64 = 0x0000_0000_8000_0000;
-pub const USER_STACK_SIZE: u64 = 0x10_0000;
+/// **Lo que de verdad se mapea de pila a un proceso de Ring 3.**
+///
+/// [!] Esta constante decia `0x10_0000` (1 MiB) y **no la usaba nadie**:
+/// `proc.rs` mapeaba 16 paginas por su cuenta. O sea que el kernel declaraba un
+/// megabyte y entregaba sesenta y cuatro kilobytes, y nada en el arbol podia
+/// contradecirlo porque los dos numeros no se cruzaban en ningun sitio.
+///
+/// Se cobro el 2026-08-14: el compositor paso a tener un marco de 94.208 bytes
+/// y murio en la sonda de pila con `#PF` en `rip=0x4000001B`, sin escribir una
+/// linea. Ahora hay **un solo numero**: `proc.rs` deriva sus paginas de aqui y
+/// la autopsia compara contra el mismo limite. El valor no cambia -- lo que
+/// cambia es que ya no puede mentir.
+pub const USER_STACK_SIZE: u64 = 0x1_0000;
+/// El byte mas bajo de la pila que EXISTE. Por debajo de esto no hay pagina, y
+/// un `#PF` aqui abajo es un desbordamiento de pila y no otra cosa.
+pub const USER_STACK_BOTTOM: u64 = USER_STACK_TOP - USER_STACK_SIZE;
 pub const CHANNEL_VA_BASE: u64 = 0x0000_0000_C000_0000;
 /// Donde se mapea el framebuffer en el espacio de quien reclame la pantalla.
 /// Por encima de los estuarios y con sitio de sobra: 4K x 4K x 4 B son 64 MiB

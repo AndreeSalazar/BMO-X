@@ -19,7 +19,9 @@ use crate::ring0::mm::{self, phys, vmm};
 use crate::ring0::task::scheduler;
 use crate::ring0::plat::trap;
 
-const USER_STACK_PAGES: u64 = 16; // 64 KiB
+/// Paginas de pila de Ring 3. **Se DERIVA de `vmm::USER_STACK_SIZE`**, que es
+/// la unica fuente: antes eran dos numeros sin relacion y uno mentia.
+const USER_STACK_PAGES: u64 = vmm::USER_STACK_SIZE / mm::PAGE;
 /// 16 KiB de pila de kernel por tarea.
 ///
 /// Eran 8 KiB cuando el contexto guardado ocupaba 720 bytes. Con XSAVE ocupa
