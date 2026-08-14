@@ -828,7 +828,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow) {
     let tam = bmo::info(bmo::INFO_ES_BLOQUE_TAM).max(1);
     let level = bmo::info(bmo::INFO_ES_NIVEL);
 
-    let mut row = |label: &str, y: &mut u32, pinta: &dyn Fn(u32, u32)| {
+    let row = |label: &str, y: &mut u32, pinta: &dyn Fn(u32, u32)| {
         p.texto(tx, *y, label, INK_DIM);
         pinta(tx + 13 * bmo::GLIFO_ANCHO, *y);
         *y += bmo::GLIFO_ALTO + 3;
