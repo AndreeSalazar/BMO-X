@@ -62,6 +62,7 @@ mod monton;
 mod musica;
 mod parseo;
 mod simbolos;
+mod sonda_sha1;
 mod preprocesador;
 mod printf;
 mod puerta;
