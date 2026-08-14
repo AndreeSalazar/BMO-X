@@ -72,6 +72,7 @@ use bmo_userland as bmo;
 // una cosa, y nada caza la deriva hasta que alguien lee el campo equivocado.
 mod desktop;
 mod scene;
+mod simbolos;
 mod commands;
 mod text;
 mod watch;
@@ -217,14 +218,60 @@ fn save_autopsies(vistos: &mut u64) -> bool {
     };
     let how_many = bmo::autopsia_disponibles();
     let mut buf = [0u8; 96];
+    let mut anotacion = [0u8; 128];
     for i in 0..how_many {
         let rows = bmo::autopsia_renglones(i);
+        // ** LA RUTA DEL BINARIO DEL MUERTO, sacada del propio informe.
+        //
+        // El renglon `programa` trae el nombre; con el se abre el `.bex` y se
+        // le lee la tabla de simbolos. Se busca UNA vez por informe y no por
+        // renglon: la tabla es la misma para todos.
+        //
+        // Si el programa no aparece, o su binario no esta donde se busca, o no
+        // trae tabla, esto queda en `None` y el informe sale **exactamente como
+        // antes**. Resolver nombres es una mejora, no un requisito.
+        let mut rutas = [0u8; 64];
+        let mut ruta: Option<(usize, usize)> = None;
+        for f in 0..rows {
+            let n = bmo::autopsia_linea(i, f, &mut buf);
+            if let Some((ini, fin)) = simbolos::programa_de(&buf[..n]) {
+                let nombre = &buf[ini..fin];
+                let mut copia = [0u8; 64];
+                let ln = nombre.len().min(copia.len());
+                copia[..ln].copy_from_slice(&nombre[..ln]);
+                let tramos = simbolos::rutas_probables(&copia[..ln], &mut rutas);
+                // La primera que exista gana. `apps/` antes que `sys/` porque es
+                // de donde se lanza casi todo.
+                for (a0, a1) in tramos {
+                    if bmo::Archivo::leer_de(&rutas[a0..a1]).is_ok() {
+                        ruta = Some((a0, a1));
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
         for f in 0..rows {
             let n = bmo::autopsia_linea(i, f, &mut buf);
             a.write(&buf[..n]);
             // `\r\n` por lo mismo que `dump_output`: esto se abre en Windows
             // para mandarlo, y el Notepad viejo junta los saltos de Unix.
             a.write(b"\r\n");
+            // ** Y DEBAJO, LOS NOMBRES -- en su propia linea.
+            //
+            // No sustituye a la del kernel a proposito: aquella es la PRUEBA y
+            // esta es una INTERPRETACION que sale de un fichero del disco. Si
+            // el `.bex` guardado no fuera el que se ejecuto, las dos lineas no
+            // cuadrarian -- y eso es informacion. Machacando la original no
+            // quedaria nada con que discrepar.
+            if let Some((r0, r1)) = ruta {
+                let m = simbolos::anotar(&buf[..n], &rutas[r0..r1], &mut anotacion);
+                if m > 0 {
+                    a.write(&anotacion[..m]);
+                    a.write(b"\r\n");
+                }
+            }
         }
         a.write(b"\r\n");
     }
