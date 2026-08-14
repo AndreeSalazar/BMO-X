@@ -51,6 +51,56 @@ pub(crate) fn shell_cabina() {
     if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
 }
 
+/// **`fallo` -- las autopsias, leidas desde Ring 0.**
+///
+/// Hermano de `cabina` y por eso vive a su lado: los dos leen la caja negra.
+/// La diferencia es a quien sirven -- `cabina` VUELCA a disco (hace falta el
+/// volumen montado), y esto **PINTA**, que es lo unico que funciona cuando lo
+/// que se ha caido es justamente el que sabia escribir ficheros.
+///
+/// ** Sin argumento ensena la mas reciente; `fallo 1` la anterior. Se guardan
+/// cuatro, porque un fallo que se repite lo hace en rafaga y lo que interesa es
+/// tener la primera Y la ultima: iguales = determinista.
+pub(crate) fn shell_fallo(arg: &[u8]) {
+    use crate::ring0::core::autopsy;
+
+    let hay = autopsy::disponibles();
+    if hay == 0 {
+        s_log("[fallo] ninguna autopsia: no ha muerto ninguna tarea de Ring 3");
+        s_log("[fallo] (un cuelgue NO deja autopsia -- eso solo lo dice 'tasks')");
+        return;
+    }
+    // El indice, si lo hay. Un numero que no existe se dice, no se recorta a
+    // otro informe: leer la autopsia equivocada es peor que no leer ninguna.
+    let mut cual = 0u64;
+    if !arg.is_empty() {
+        let mut v = 0u64;
+        let mut visto = false;
+        for &c in arg {
+            if c.is_ascii_digit() {
+                v = v * 10 + (c - b'0') as u64;
+                visto = true;
+            }
+        }
+        if !visto || v >= hay {
+            s_log("[fallo] ese informe no existe. Uso: fallo [0..3], 0 = el ultimo");
+            return;
+        }
+        cual = v;
+    }
+    let filas = autopsy::renglones(cual);
+    let mut buf = [0u8; 72];
+    for f in 0..filas {
+        let n = autopsy::linea(cual, f, &mut buf);
+        if n == 0 {
+            continue;
+        }
+        if let Ok(s) = core::str::from_utf8(&buf[..n]) {
+            s_log(s);
+        }
+    }
+}
+
 pub(crate) fn shell_fb() {
     if !crate::info::has_fb() {
         s_log("[fb] no framebuffer (headless boot)");

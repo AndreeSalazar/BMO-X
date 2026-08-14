@@ -620,6 +620,35 @@ pub fn renglones(n: u64) -> u64 {
     }
 }
 
+/// **Un renglon entero, copiado tal cual.** Para quien lee desde DENTRO del
+/// kernel, que no necesita empaquetar nada.
+///
+/// # Por que existe, y es un agujero que se cobro el 2026-08-14
+///
+/// Hasta hoy el UNICO lector de la autopsia era el escritorio: `save_autopsies`
+/// corre dentro de su bucle de fotograma y la escribe a `datos/fallos.txt`.
+///
+/// ** Eso es circular, y se ve en cuanto el que muere es el escritorio: el
+/// informe de por que no arranco el escritorio solo lo sabe leer el escritorio.
+/// Queda escrito en RAM, correcto y completo, y no hay forma de sacarlo -- que
+/// es exactamente el sitio donde mas falta hace.
+///
+/// La regla: **todo lo que el kernel guarda para diagnosticar tiene que ser
+/// legible sin Ring 3.** Ring 3 puede estar muerto; el kernel, por diseno, no.
+pub fn linea(n: u64, fila: u64, dst: &mut [u8]) -> usize {
+    if n >= disponibles() || fila as usize >= RENGLONES {
+        return 0;
+    }
+    unsafe {
+        let idx = (WRITES + CUANTAS - 1 - (n as usize % CUANTAS)) % CUANTAS;
+        let anillo = &*core::ptr::addr_of!(ANILLO);
+        let a = &anillo[idx];
+        let largo = (a.largo[fila as usize] as usize).min(dst.len());
+        dst[..largo].copy_from_slice(&a.texto[fila as usize][..largo]);
+        largo
+    }
+}
+
 /// **Ocho bytes del renglon `fila` del informe `n`**, empaquetados.
 ///
 /// Mismo contrato que `klog::texto` y por el mismo motivo: pasar un puntero de
