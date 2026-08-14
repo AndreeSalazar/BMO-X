@@ -560,7 +560,7 @@ fn con_buffer(path: &str) -> Informe {
         let (d1, _) = crate::ring0::dev::disk::cuentas_dma();
         crate::ring0::cabina::info("lanzar", "bytes DIRECTOS del disco al marco", d1 - d0);
         if let Some(pid) = pid {
-            crate::ring0::task::paquete::recordar(pid, path);
+            crate::ring0::task::package::recordar(pid, path);
         }
         return Informe { origen, bytes: tam, firma: None, pid, res };
     }
@@ -731,7 +731,7 @@ fn con_buffer(path: &str) -> Informe {
     // bien: recordar la ruta de un proceso que no llego a existir dejaria
     // basura que solo se limpia cuando ese pid se reutilice.
     if let Some(pid) = pid {
-        crate::ring0::task::paquete::recordar(pid, path);
+        crate::ring0::task::package::recordar(pid, path);
     }
     Informe { origen, bytes: n, firma: veredicto, pid, res }
 }

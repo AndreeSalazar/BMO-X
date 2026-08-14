@@ -28,14 +28,14 @@
 /// Los objetos que Ring 3 puede tener, uno por `KIND_`. Un nombre es
 /// adivinable; un handle concedido no.
 pub mod obj {
-    pub mod archivo;
+    pub mod file;
     /// `KIND_AUDIO`: el derecho a hacer ruido. Es el CONTRATO, no el driver --
     /// ver la cabecera del modulo.
     pub mod audio;
     pub mod cap;
     pub mod channel;
-    pub mod consola;
-    pub mod directorio;
+    pub mod console;
+    pub mod directory;
     pub mod endpoint;
     pub mod fb;
     pub mod input;
@@ -45,7 +45,7 @@ pub mod obj {
     pub mod loan;
     /// `KIND_MEMORIA`: bloques que un proceso PIDE. No es un asignador -- ver
     /// la cabecera del modulo.
-    pub mod memoria;
+    pub mod memory;
 }
 
 /// Procesos: admitirlos, planificarlos, lanzarlos desde el disco.
@@ -53,14 +53,14 @@ pub mod task {
     /// **El cierre de cada seccion al aterrizar.** Un `.bex` trae un BLAKE3 por
     /// seccion; esto los comprueba en el momento en que la seccion termina de
     /// caer en la memoria del proceso, no despues sobre un bufer.
-    pub mod aterrizaje;
+    pub mod landing;
     pub mod bex;
     /// **Quien lanzo a quien.** Un pid y nada mas: lo justo para que una app
     /// pueda ofrecerle su superficie al que la puso en pantalla.
-    pub mod familia;
-    pub mod lanzar;
+    pub mod family;
+    pub mod launch;
     /// De donde salio cada proceso, para que pueda leer su propia caja.
-    pub mod paquete;
+    pub mod package;
     pub mod percpu;
     pub mod proc;
     pub mod scheduler;
@@ -98,7 +98,7 @@ pub mod core {
     /// no en `obj/` porque no es un objeto con handle: son datos que el kernel
     /// ya tiene y contesta sin conceder nada. Leer cuanta RAM hay no es un
     /// privilegio, es una pregunta.
-    pub mod informe;
+    pub mod report;
     /// El log del kernel GUARDADO, para que Ring 3 pueda leerlo. Mismo
     /// criterio que `informe`: no concede nada, contesta texto. Hace falta
     /// desde que el escritorio es el arranque y el panel del kernel ya no se
@@ -116,7 +116,7 @@ pub mod core {
     /// direccion, `rip`, `rsp`, que programa era y lo ultimo que dijo-- para
     /// que se pueda leer despues y mandar. El kernel captura en RAM; quien lo
     /// escribe a disco es Ring 3, que esta vivo. Ver la cabecera del modulo.
-    pub mod autopsia;
+    pub mod autopsy;
     /// **THE ROLLING LOG** -- the band of screen rows anything in Ring 0 can
     /// write to. It owns the panel MINUS the band at the bottom, which is
     /// CABINA's; without that split the two erased each other.
@@ -150,10 +150,10 @@ pub mod dev {
     /// **La tarjeta de red, de momento solo RECONOCIDA.** Encuentra la NIC,
     /// elige su BAR de memoria y le pregunta su MAC y su enlace -- sin
     /// escribirle un byte. Los anillos DMA vienen despues, y sobre esta prueba.
-    pub mod red;
+    pub mod net;
     /// El reloj de la placa (CMOS). Lo que significan sus bytes lo decide
     /// `bmo-rtc`; aqui solo se tocan los puertos.
-    pub mod reloj;
+    pub mod clock;
     pub mod usb;
 }
 pub mod mm;

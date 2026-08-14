@@ -283,7 +283,7 @@ extern "C" fn fault_dispatch(
         //
         // Se hace DESPUES de CABINA a proposito: si esto se colgara --no puede,
         // pero el orden es una decision-- la linea roja ya estaria puesta.
-        crate::ring0::core::autopsia::registrar(vector, error, rip, cr2, fault_rsp, pid, tid);
+        crate::ring0::core::autopsy::registrar(vector, error, rip, cr2, fault_rsp, pid, tid);
         let _ = (error, cr2, fault_rsp);
         // schedule() below loads the NEXT task's CR3 itself.
         return crate::ring0::task::scheduler::kill_current_and_pick();

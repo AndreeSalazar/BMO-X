@@ -291,7 +291,7 @@ fn tramo_dma(va: u64, max: u64) -> Option<(u64, u64)> {
 //
 // La pieza que falta para que tengan sentido NO es un driver: es que el que
 // pide pueda irse a hacer otra cosa. Hoy quien lee un archivo lo lee entero
-// dentro de `archivo::open`, asi que no hay ningun momento en el que "pedir y
+// dentro de `file::open`, asi que no hay ningun momento en el que "pedir y
 // volver" cambie nada. Lo que hay que mover esta escrito en `LA_RAM.md`.
 
 // -- El gate de identidad ----------------------------------------------------

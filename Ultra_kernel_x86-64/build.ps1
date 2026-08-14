@@ -160,7 +160,7 @@ if (-not $python) {
 # Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
 Step 'Validating Ring 0 syscall contract'
 # Las operaciones del kernel no viven todas en `syscall.rs`: las de un objeto
-# estan con su objeto (`ARCH_OP_*` en `obj\archivo.rs`), que es donde deben
+# estan con su objeto (`ARCH_OP_*` en `obj\file.rs`), que es donde deben
 # estar. Se leen los dos y se comparan contra el MISMO surface.
 # ** La tabla se mudo a `syscall\ops.rs` el 2026-08-13: los NUMEROS son el
 # contrato y estaban mezclados con el despacho que los sirve. Este guardian lo
@@ -168,7 +168,7 @@ Step 'Validating Ring 0 syscall contract'
 # esta, y por eso el reparto no pudo colarse.
 $kernelSyscalls = (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\ops.rs') -Raw) + "`n" +
                   (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\mod.rs') -Raw) + "`n" +
-                  (Get-Content (Join-Path $root 'kernel\src\ring0\obj\archivo.rs') -Raw)
+                  (Get-Content (Join-Path $root 'kernel\src\ring0\obj\file.rs') -Raw)
 # ** EL CONTRATO YA NO ES UN FICHERO: ES UNA CARPETA (2026-08-12).
 #
 # `surface.rs` llego a 1.166 lineas con 186 constantes en una lista plana y se
@@ -255,7 +255,7 @@ foreach ($num in $porNumero.Keys) {
 Write-Host ('    operaciones: ' + $porNumero.Count + ' opcodes, ninguno repetido') -ForegroundColor DarkGray
 
 # Y LA TABLA DE `OP_INFO`, que existe TRES veces: la implementa el kernel
-# (`core\informe.rs`), la declara el ABI (`surface.rs`) y la consume el userland
+# (`core\report.rs`), la declara el ABI (`surface.rs`) y la consume el userland
 # (`userland\src\lib.rs`). Anadir un dato es una fila -- y una fila escrita en
 # dos de los tres sitios es un campo que contesta otra cosa de la que se pidio,
 # sin que nada falle al compilar.
@@ -265,7 +265,7 @@ Write-Host ('    operaciones: ' + $porNumero.Count + ' opcodes, ninguno repetido
 # --se saca de los tres ficheros-- porque una lista a mano es lo que ya se
 # quedo congelada una vez, ahi arriba.
 $infoFuentes = [ordered]@{
-    'kernel'   = Get-Content (Join-Path $root 'kernel\src\ring0\core\informe.rs') -Raw
+    'kernel'   = Get-Content (Join-Path $root 'kernel\src\ring0\core\report.rs') -Raw
     'abi'      = $abiSurface
     'userland' = Get-Content (Join-Path $root '..\Ultra_userspace\userland\src\lib.rs') -Raw
 }
@@ -354,7 +354,7 @@ foreach ($s in $stages) {
 # cada build y ensuciaba el repositorio en cada commit.
 #
 # Ahora sale a staging\BMO-DATA\apps\ y se COPIA al volumen de datos, igual que
-# cualquier otro programa. El kernel lo arranca con `lanzar::ruta` despues de
+# cualquier otro programa. El kernel lo arranca con `launch::ruta` despues de
 # montar el disco (ver `phase::arrancar_escritorio`). Cambiar el escritorio ya
 # no obliga a recompilar Ring 0.
 #

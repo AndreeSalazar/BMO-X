@@ -13,7 +13,7 @@
 use boot_context::BootContext;
 use super::super::dashboard::{dash_log, dashboard_log};
 use super::super::phase::s_log;
-use super::{ficheros, hardware, pantalla, peligro};
+use super::{danger, files, hardware, screen};
 use super::ui::{clear_screen, similar_command, row, shell_help, shell_hist,
                 shell_layout, shell_prompt, shell_read_line, L, SH_TITLE, SH_VALUE};
 use super::super::dashboard::dashboard_log_color;
@@ -70,7 +70,7 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
         if cmd == b"help" {
             shell_help();
         } else if cmd == b"ls" {
-            super::ficheros::shell_ls();
+            super::files::shell_ls();
         } else if cmd == b"disk" {
             super::hardware::shell_disk();
         } else if cmd == b"audio" || cmd == b"sonido" {
@@ -80,9 +80,9 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
         } else if cmd.len() > 4 && (&cmd[..4] == b"net " || &cmd[..4] == b"red ") {
             super::hardware::shell_red(&cmd[4..]);
         } else if cmd == b"cabina" {
-            super::pantalla::shell_cabina();
+            super::screen::shell_cabina();
         } else if cmd == b"estratos" {
-            super::ficheros::shell_estratos();
+            super::files::shell_estratos();
         } else if cmd == b"cpu" {
             super::hardware::shell_cpu();
         } else if cmd == b"hist" || cmd == b"history" {
@@ -92,9 +92,9 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
         } else if cmd.len() > 7 && &cmd[..7] == b"layout " {
             shell_layout(&cmd[7..]);
         } else if cmd.len() > 4 && &cmd[..4] == b"run " {
-            super::ficheros::shell_run(&cmd[4..]);
+            super::files::shell_run(&cmd[4..]);
         } else if cmd == b"run" {
-            super::ficheros::shell_run(b"");
+            super::files::shell_run(b"");
         } else if cmd == b"cls" || cmd == b"clear" {
             clear_screen();
         } else if cmd == b"info" {
@@ -108,19 +108,19 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
         } else if cmd == b"mem" {
             super::hardware::shell_mem();
         } else if cmd == b"ktest" {
-            super::peligro::shell_ktest();
+            super::danger::shell_ktest();
         } else if cmd == b"fb" {
-            super::pantalla::shell_fb();
+            super::screen::shell_fb();
         } else if cmd == b"splash" {
-            super::pantalla::shell_splash();
+            super::screen::shell_splash();
         } else if cmd == b"bex" {
-            super::ficheros::shell_bex();
+            super::files::shell_bex();
         } else if cmd == b"panic" {
-            super::peligro::shell_panic();
+            super::danger::shell_panic();
         } else if cmd == b"reboot" {
-            super::peligro::shell_reboot();
+            super::danger::shell_reboot();
         } else if cmd == b"halt" {
-            super::peligro::shell_halt();
+            super::danger::shell_halt();
         } else {
             s_log("unknown command (try 'help')");
         }

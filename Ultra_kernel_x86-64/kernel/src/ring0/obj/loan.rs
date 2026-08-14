@@ -51,7 +51,7 @@ use crate::ring0::obj::cap;
 /// tiene una por ventana**. Con el modelo de superficies, cada app en una caja
 /// es un prestamo vivo mientras esa caja exista; ocho era el numero de cuando
 /// solo se prestaba el escritorio a una app cada vez. Es el mismo 16 de
-/// `paquete::MAX_VIVOS` y de `familia::MAX_VIVOS`, que es el censo de programas
+/// `package::MAX_VIVOS` y de `family::MAX_VIVOS`, que es el censo de programas
 /// que este sistema se cree a la vez.
 const MAX: usize = 16;
 
@@ -75,7 +75,7 @@ const PRESTAMO_VA_BASE: u64 = 0x0000_0001_0000_0000;
 /// La direccion la decide **la ranura**: `BASE + ranura * VENTANA`. Sin cursor,
 /// sin contabilidad y sin poder solaparse, porque dos prestamos vivos nunca
 /// comparten ranura. 64 MiB es el tope de un bloque de `KIND_MEMORIA`
-/// (`memoria::MAX_BYTES`), asi que lo mas grande que se puede ofrecer entra en
+/// (`memory::MAX_BYTES`), asi que lo mas grande que se puede ofrecer entra en
 /// su ventana; 16 ventanas son 1 GiB de espacio de direcciones, que en 64 bits
 /// no es un recurso escaso.
 const PRESTAMO_VENTANA: u64 = 64 * 1024 * 1024;
@@ -197,7 +197,7 @@ pub fn take(pid: u32, aspace: u64) -> Option<u64> {
             return None;
         };
         if vmm::map_page(aspace, va + off, fisica, true, true).is_err() {
-            // Igual que en `memoria::request`: un mapeo a medias deja paginas
+            // Igual que en `memory::request`: un mapeo a medias deja paginas
             // sueltas en el espacio del usuario, y eso es peor que nada.
             undo(aspace, va, off);
             return None;
@@ -238,7 +238,7 @@ fn undo(aspace: u64, va: u64, hasta: u64) {
 ///
 /// `OP_SOLTAR` escribe --desmapea-- y por eso lee `read_cr3()`: durante un
 /// syscall desde Ring 3, CR3 sigue siendo el del llamante. Es la misma nota que
-/// llevan `memoria::request` y el framebuffer, y por el mismo motivo.
+/// llevan `memory::request` y el framebuffer, y por el mismo motivo.
 pub fn operation(base: u64, op: u64, pid: u32) -> Option<u64> {
     let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
     let i = ofertas

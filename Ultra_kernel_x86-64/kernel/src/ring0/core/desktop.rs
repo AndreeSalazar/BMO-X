@@ -87,10 +87,10 @@ pub(crate) static mut DESKTOP_ATTEMPTS: u32 = 0;
 pub(crate) const DESKTOP_MAX_ATTEMPTS: u32 = 2;
 
 pub(crate) fn start_desktop() {
-    use crate::ring0::task::lanzar;
+    use crate::ring0::task::launch;
 
     unsafe { DESKTOP_ATTEMPTS += 1 };
-    let inf = lanzar::ruta(COMPOSITOR_PATH);
+    let inf = launch::ruta(COMPOSITOR_PATH);
     match inf.res {
         Ok(tid) => {
             // * Arrancar y no decir su pid es un caso RARO, y por eso mismo

@@ -23,7 +23,7 @@
 //!
 //! ## Por que un modulo propio y no dos columnas en `paquete.rs`
 //!
-//! Porque `paquete::recordar` **se rinde cuando la ruta no cabe** en `RUTA_MAX`,
+//! Porque `package::recordar` **se rinde cuando la ruta no cabe** en `RUTA_MAX`,
 //! y con razon: media ruta abre otro fichero. Si el padre viviera en esa misma
 //! tabla, un programa con la ruta larga se quedaria ademas sin poder pintar en
 //! una ventana, y el sintoma --*"esta app no compone y las demas si"*-- no
@@ -33,7 +33,7 @@
 use crate::ring0::cabina;
 
 /// Cuantos procesos pueden recordar a su padre a la vez. El mismo numero que
-/// `paquete::MAX_VIVOS`, y por el mismo motivo: ocho ranuras de tarea y margen.
+/// `package::MAX_VIVOS`, y por el mismo motivo: ocho ranuras de tarea y margen.
 const MAX_VIVOS: usize = 16;
 
 static mut HIJOS: [u32; MAX_VIVOS] = [0; MAX_VIVOS];
@@ -42,7 +42,7 @@ static mut PADRES: [u32; MAX_VIVOS] = [0; MAX_VIVOS];
 /// Apunta que a `hijo` lo lanzo `padre`.
 ///
 /// Lo llama el brazo de `EJECUTAR` --y **no** `lanzar.rs**, aunque ahi este el
-/// hermano `paquete::recordar`. El motivo es que `lanzar::ruta` lo comparten el
+/// hermano `package::recordar`. El motivo es que `launch::ruta` lo comparten el
 /// syscall y el shell del kernel: llamando a `scheduler::current_pid()` desde
 /// dentro, un `run` tecleado en el puerto serie le pondria de padre **a la
 /// tarea que estuviera corriendo en ese instante** -- tipicamente el compositor,

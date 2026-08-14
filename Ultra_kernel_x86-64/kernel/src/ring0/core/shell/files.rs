@@ -166,7 +166,7 @@ pub(crate) fn shell_estratos() {
 
 pub(crate) fn shell_run(arg: &[u8]) {
     use crate::ring0::fsys::estratos as est;
-    use crate::ring0::task::lanzar;
+    use crate::ring0::task::launch;
 
     let path = match core::str::from_utf8(arg) {
         Ok(s) => s.trim(),
@@ -174,17 +174,17 @@ pub(crate) fn shell_run(arg: &[u8]) {
     };
 
     // Buscar el archivo, comprobar la firma y admitirlo ya NO se hace aqui: lo
-    // hace `lanzar::ruta`, que es EL MISMO camino que usa la caja de Ring 3.
+    // hace `launch::ruta`, que es EL MISMO camino que usa la caja de Ring 3.
     // Tener dos versiones del gate de firma era tener dos versiones que se
     // separan en cuanto alguien toque una. Al shell le queda lo suyo, que es
     // contarlo en filas.
-    let inf = lanzar::ruta(path);
+    let inf = launch::ruta(path);
 
-    if inf.res == Err(lanzar::Fallo::RutaVacia) {
+    if inf.res == Err(launch::Fallo::RutaVacia) {
         s_log("[run] uso: run c/holac.bex   (o A:/c/holac.bex)");
         return;
     }
-    if let Err(lanzar::Fallo::NoSeEncuentra(_)) = inf.res {
+    if let Err(launch::Fallo::NoSeEncuentra(_)) = inf.res {
         // ** ANTES DE DECIR "NO ESTA": ES UNA ORDEN?
         //
         // `run net` es lo que sale solo cuando uno se acostumbra a que todo se
@@ -208,7 +208,7 @@ pub(crate) fn shell_run(arg: &[u8]) {
             return;
         }
     }
-    if let Err(lanzar::Fallo::NoSeEncuentra(e)) = inf.res {
+    if let Err(launch::Fallo::NoSeEncuentra(e)) = inf.res {
         // El motivo exacto: "no esta" y "no cabe en 8.3" mandan a hacer cosas
         // distintas, y un "no se pudo" no manda a ninguna.
         let mut l = L::new();
@@ -248,7 +248,7 @@ pub(crate) fn shell_run(arg: &[u8]) {
         Ok(tid) => {
             row("admitido", |l| { l.txt("tid "); l.dec(tid as u64); l.txt("   corre en el siguiente tick"); });
         }
-        Err(f @ (lanzar::Fallo::FirmaMala | lanzar::Fallo::SinFirma)) => {
+        Err(f @ (launch::Fallo::FirmaMala | launch::Fallo::SinFirma)) => {
             row("gate", |l| { l.txt("RECHAZADO -- "); l.txt(f.motivo()); });
         }
         Err(f) => {

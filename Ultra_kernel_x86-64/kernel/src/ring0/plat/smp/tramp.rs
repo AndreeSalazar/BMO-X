@@ -201,5 +201,5 @@ pub extern "C" fn smp_ap_entrada() -> ! {
     // Y de aqui al bucle de trabajo. Antes esto era `cli; hlt` para siempre: un
     // nucleo despierto al que no se le puede dar una tarea sirve exactamente lo
     // mismo que uno dormido.
-    super::obra::obrero(indice)
+    super::crew::obrero(indice)
 }

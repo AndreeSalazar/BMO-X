@@ -102,7 +102,7 @@ pub struct CpuProfile {
     // === El fallo de capas que esto corrige ===
     //
     // La primera version de la terminal del CPU (`ring0/cpu/energia.rs`) hacia
-    // `use crate::ring0::cpu_vendor::ryzen_5_5600x::energia`. O sea que **el
+    // `use crate::ring0::cpu_vendor::ryzen_5_5600x::power`. O sea que **el
     // codigo comun llamaba al fabricante por su nombre**: en una maquina con
     // otro perfil habria seguido leyendo MSR de AMD, y leer un MSR que no
     // existe es un `#GP` -- un fault de kernel desde un panel que se repinta.

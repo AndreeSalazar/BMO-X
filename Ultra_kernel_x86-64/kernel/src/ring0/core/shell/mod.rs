@@ -39,11 +39,11 @@
 /// 1 -- pregunta al SILICIO y cuenta lo que contesta.
 pub mod hardware;
 /// 2 -- toca el DISCO. El unico grupo donde un fallo se lleva datos.
-pub mod ficheros;
+pub mod files;
 /// 3 -- PINTA. Se puede repetir, por eso va antes que lo irreversible.
-pub mod pantalla;
+pub mod screen;
 /// 4 -- lo que NO SE DESHACE. Despues de estas no se sigue.
-pub mod peligro;
+pub mod danger;
 
 /// The shell's own UI: the colour hierarchy, the `L` row builder, the line
 /// editor and the history ring. It stayed behind in `phase.rs` when the
