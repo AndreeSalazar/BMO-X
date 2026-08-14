@@ -382,6 +382,65 @@ fn validate_header(header: &BefHeader, bytes: &[u8], r: &mut ValidationResult) {
     if header.entry_offset == 0 && header.section_count > 0 {
         r.info("entry_offset is 0 -- loader will use start of Code section");
     }
+    // == LOS TRES CAMPOS QUE PROMETIAN Y NO LOS MIRABA NADIE (2026-08-14) ==
+    //
+    // `header.rs` lleva escrita una regla para cada uno de estos tres campos.
+    // Ninguna se comprobaba en ningun sitio del arbol, asi que las tres eran
+    // prosa. Es el patron 40: una regla documentada que nada hace cumplir no es
+    // documentacion, es un fallo con un aviso encima.
+    //
+    // ** Y son justo los campos de los que depende que la superficie pueda
+    // seguir congelada: son el mecanismo por el que BEF crece sin que el kernel
+    // crezca con el. Un mecanismo de compatibilidad futura que no se valida HOY
+    // no sirve manana, porque para entonces ya hay binarios con basura dentro.
+
+    // `_reserved` DEBE ser cero. Es la unica forma de que anadir un campo ahi
+    // en el futuro no cambie el significado de binarios ya escritos.
+    if header._reserved.iter().any(|&b| b != 0) {
+        r.error(format!(
+            "header._reserved no es cero ({:02x?}) -- esos 6 bytes estan reservados y \
+             un campo futuro leeria esa basura como un valor",
+            header._reserved
+        ));
+    }
+
+    // Orden de bytes. Hoy no hay ni un parser en el arbol que sepa leer
+    // big-endian, asi que aceptarlo seria admitir un binario que se va a leer
+    // del reves en silencio.
+    match header.endianness {
+        0 => {}
+        1 => r.error("endianness = 1 (big-endian): ningun parser de BMO lo lee todavia"),
+        n => r.error(format!("endianness desconocido: {} (0 = little, 1 = big)", n)),
+    }
+
+    // ** CPU FEATURES: un bit desconocido se RECHAZA, y esta es la unica regla
+    // de la cabecera que se invierte respecto a las secciones.
+    //
+    // Una seccion que no entiendo es data inerte y se salta. Una extension de
+    // CPU que no entiendo es **estado que no voy a saber preservar** en el
+    // cambio de contexto: hoy `FXSAVE` guarda x87 y SSE pero no la mitad alta
+    // de los YMM, asi que un programa que use AVX sin declararlo no falla --
+    // se corrompe callado, que es peor.
+    let desconocidos = header.cpu_features & !BefCpuFeature::KNOWN;
+    if desconocidos != 0 {
+        r.error(format!(
+            "cpu_features declara bits desconocidos ({:#06x}) -- el kernel no sabe \
+             que estado preservar para ellos",
+            desconocidos
+        ));
+    }
+    // Y los CONOCIDOS tampoco se pueden servir todavia: declararlos es honesto,
+    // pero el kernel no dimensiona el area de XSAVE por este campo (nadie lo
+    // lee aun). Se avisa en vez de rechazar porque el binario no esta mal: lo
+    // que falta es del kernel.
+    if header.cpu_features & BefCpuFeature::KNOWN != 0 {
+        r.warn(format!(
+            "cpu_features = {:#06x}: declarado y CORRECTO, pero el kernel todavia no \
+             dimensiona el area de contexto con este campo",
+            header.cpu_features
+        ));
+    }
+
     let flags = BefFlags::from_bits_truncate(header.flags);
     if !flags.contains(BefFlags::EXECUTABLE) && !flags.contains(BefFlags::SHARED_LIBRARY) {
         r.warn("neither EXECUTABLE nor SHARED_LIBRARY flag set");
@@ -1031,6 +1090,66 @@ mod tests {
         let bytes = b.build().unwrap();
         let r = validate(&bytes);
         assert!(r.is_valid, "expected valid: {:?}", r.issues);
+    }
+
+    /// Un BEF valido al que se le corrompe UN campo de la cabecera, a mano.
+    ///
+    /// ** Es la unica forma de que estas tres comprobaciones se hayan visto
+    /// fallar alguna vez. Ninguna herramienta del arbol escribe estos campos
+    /// distintos de cero --todas pasan por `BefHeader::new_executable()`--, asi
+    /// que una prueba que solo construyera binarios normales daria verde con
+    /// las comprobaciones borradas. Ver el patron 40 y la leccion de
+    /// `probe_file_io`: el censo se escribe midiendo el ANTES.
+    fn con_campo_corrupto(escribe: impl Fn(&mut [u8])) -> ValidationResult {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 16]));
+        let mut bytes = b.build().unwrap();
+        assert!(validate(&bytes).is_valid, "el binario base tiene que ser valido");
+        escribe(&mut bytes);
+        validate(&bytes)
+    }
+
+    #[test]
+    fn reservado_distinto_de_cero_se_rechaza() {
+        // [!] `offset_of!` y NO un numero a mano. El primer intento puso 16
+        // olvidando `abi_version_{major,minor}`, y el campo esta en 18. Un
+        // desplazamiento escrito a mano es un test que deja de probar lo que
+        // dice el dia que alguien reordene la cabecera -- sin fallar.
+        let off = core::mem::offset_of!(BefHeader, _reserved);
+        let r = con_campo_corrupto(|b| b[off] = 0xFF);
+        assert!(!r.is_valid, "un _reserved con basura tiene que rechazarse");
+        assert!(
+            r.issues.iter().any(|i| i.message.contains("_reserved")),
+            "el motivo tiene que NOMBRAR el campo: {:?}",
+            r.issues
+        );
+    }
+
+    #[test]
+    fn endianness_desconocido_se_rechaza() {
+        let off = core::mem::offset_of!(BefHeader, endianness);
+        let r = con_campo_corrupto(|b| b[off] = 7);
+        assert!(!r.is_valid);
+        assert!(r.issues.iter().any(|i| i.message.contains("endianness")));
+    }
+
+    #[test]
+    fn un_bit_de_cpu_desconocido_se_rechaza_y_uno_conocido_solo_avisa() {
+        // `cpu_features` es un u16 little-endian: el byte alto lleva el bit 15.
+        let off = core::mem::offset_of!(BefHeader, cpu_features);
+        let malo = con_campo_corrupto(|b| b[off + 1] = 0x80); // bit 15: nadie lo define
+        assert!(!malo.is_valid, "un bit de CPU desconocido NO se salta: se rechaza");
+        assert!(malo.issues.iter().any(|i| i.message.contains("cpu_features")));
+
+        // Y la otra mitad de la regla, que es la que dice que no es un rechazo
+        // a ciegas: un bit CONOCIDO es correcto y solo avisa de que el kernel
+        // aun no lo sirve.
+        let bueno = con_campo_corrupto(|b| b[off] = BefCpuFeature::WIDE_VECTORS as u8);
+        assert!(
+            bueno.is_valid,
+            "WIDE_VECTORS esta definido: tiene que pasar, no rechazarse: {:?}",
+            bueno.issues
+        );
     }
 
     #[test]
