@@ -123,6 +123,10 @@ mod probe_strings;
 /// THE HEAP -- the one block everything else is carved out of. DOOM calls
 /// `malloc` ONCE, for six megabytes, and its 94 `Z_Malloc` calls live inside.
 mod probe_heap;
+/// THE KEYMAP -- the sparse table DOOM's input rides on: 128 slots, twenty
+/// written by designator, out of order, with values above 127, read with an
+/// index that only exists at run time. A slot that answers zero drops the key.
+mod probe_keymap;
 /// FILE I/O -- **where the bytes land**. The axis that killed DOOM on
 /// 2026-08-13: `fread` into a stack buffer returned zero without writing, so
 /// the WAD header was garbage and DOOM said its own WAD was not a WAD.
