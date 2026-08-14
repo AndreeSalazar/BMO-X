@@ -70,31 +70,25 @@ use bmo_userland as bmo;
 //
 // Renombrar un contrato solo en este lado no da un error: da DOS nombres para
 // una cosa, y nada caza la deriva hasta que alguien lee el campo equivocado.
+mod desktop;
 mod scene;
 mod commands;
 mod text;
 mod watch;
 
-use scene::calc::{paint_calc, Calc, CalcPad};
-use scene::cursor::SaveUnder;
+use scene::calc::paint_calc;
 use scene::output::{paint_output, Output, INK_GOOD, INK_ECHO, INK_ERR, INK_PLAIN};
 use scene::*;
 use commands::complete::{complete, file_error_reason};
-use commands::history::History;
 use commands::reports::{report_autopsy, report_cpu, report_memory, report_system};
 use commands::*;
 use text::{decimal, is_dot_entry};
+use desktop::{W_CABINA, W_CPU, W_DATA, W_MEM, W_RUN, W_SOUND, BLINK};
 use watch::{watch_run, Run};
 
 
 // -- El programa ---------------------------------------------------------
 
-/// Cada cuantas vueltas del bucle parpadea el cursor de escritura.
-///
-/// Se cuenta en fotogramas y no en tiempo porque aqui no hay reloj: los tres
-/// syscalls no incluyen "que hora es". Es un parpadeo que depende de la
-/// velocidad de la maquina, y para decir "aqui se escribe" eso basta.
-const BLINK: u32 = 12_000;
 
 /// Donde va el volcado cuando nadie dice otra cosa.
 ///
@@ -450,324 +444,20 @@ fn lend_screen(
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // El aviso va ANTES de reclamar: en cuanto la cesion se consuma, el kernel
-    // deja de dibujar y nada de lo que se imprima despues llega al panel.
-    bmo::consola("reclamo pantalla y entrada\n");
-
-    let Some(mut p) = bmo::Pantalla::claim() else {
-        bmo::consola("sin pantalla que reclamar\n");
-        bmo::salir()
-    };
-
-    // -- * EL DOBLE BUFER --
+    // Reclamar la maquina, decir lo que paso y pintar el primer cuadro son 310
+    // lineas que ocurren UNA vez, y vivian en el mismo ambito que las 52
+    // variables de un bucle que no termina. Ahora son `desktop::boot`.
     //
-    // Se pide ANTES de pintar nada, que es cuando la RAM esta menos
-    // fragmentada: el bloque tiene que ser contiguo en fisico y son ~8 MB.
-    //
-    // Y se dice en los dos casos. Que no haya doble bufer **no impide arrancar**
-    // --se dibuja en el panel, como siempre--, pero cambia dos cosas que se notan:
-    // vuelve el riesgo de tearing y el cursor tiene que poner una barrera antes
-    // de leer. Un escritorio que se degrada en silencio es un escritorio del que
-    // no se puede diagnosticar nada.
-    if p.activar_doble_bufer() {
-        bmo::consola("doble bufer: pintando fuera de la pantalla\n");
-    } else {
-        bmo::consola("SIN doble bufer: no hubo bloque, pinto directo al panel\n");
-    }
-    // La entrada es opcional a proposito: sin ella hay escritorio, solo que
-    // quieto y mudo. Un compositor que se niega a arrancar porque falta un
-    // periferico es un compositor que no arranca el dia que el periferico falla.
-    // `mut` porque `presta` la SUELTA y la vuelve a reclamar: la capability se
-    // va y vuelve, asi que el binding tiene que poder cambiar.
-    let mut input = bmo::Entrada::claim();
-
-    // La consola de este terminal. Desde aqui, todo lo que lance escribe en
-    // ESTE anillo y no en el panel del kernel -- que es lo unico que separaba
-    // una caja de lanzar de un terminal de verdad.
-    let child_console = bmo::Consola::create();
-
-    let run_box = RunBox::new(p.ancho, p.alto);
-
-    // -- LA ENTRADA A RING 3 --
-    //
-    // Antes de dibujar nada del escritorio, decir lo que acaba de pasar: el
-    // userspace tiene la maquina. Hasta hoy este paso era invisible y por eso
-    // un compositor muerto y un compositor que no pinta se veian igual -- un
-    // shell donde debia haber un escritorio.
-    //
-    // Y lleva las dos capabilities OPCIONALES escritas en la cara, que es lo
-    // que distingue "no funciona" de "no me la dieron".
-    // * Y la espera del final se puede SALTAR con una tecla, por eso va la
-    // capability y no un `bool`: 1.100 de los 1.205 ms hasta el escritorio eran
-    // esa espera, y el dueno la leyo como un fallo mirando el cronometro del
-    // klog. Tenia razon en sospechar.
-    scene::splash::paint(&p, input.as_ref(), child_console.is_some());
-    bmo::consola("entrada a Ring 3 pintada\n");
-
-    // -- El escritorio --
-    //
-    // * Aqui vivian los SEIS PARCHES DE MEDIDA y el PULSOMETRO del raton, y se
-    // han quitado el 2026-08-04. No eran decoracion: los parches contestaban
-    // "el orden de canales es el que creo?" y la barra contestaba "llegan
-    // informes del raton?". **Las dos preguntas estan contestadas** -- los
-    // colores salen bien desde hace semanas y el puntero se mueve donde se
-    // mueve la mano, o sea que el propio cursor ES el pulsometro.
-    //
-    // Un instrumento que ya no mide nada deja de ser un instrumento y pasa a
-    // ser ruido: seis cuadrados de colores puros y una barra en mitad del
-    // escritorio son lo que hacia que esto pareciera un panel de pruebas y no
-    // una maquina. Si algun dia hay que volver a medir el formato del
-    // framebuffer, el `git log` tiene los valores exactos con su porque.
-    paint_background(&p);
-    // ** LOS ICONOS, y se leen UNA VEZ.
-    //
-    // Recorrer `apps\` y sacarle el icono a cada `.bex` son varias lecturas de
-    // disco por app, y ninguna cambia mientras la maquina esta encendida. Un
-    // escritorio que releyera el directorio por fotograma haria E/S sesenta
-    // veces por segundo para ensenar exactamente lo mismo.
-    //
-    // Va JUSTO DESPUES del fondo y antes de todo lo demas: los iconos son lo de
-    // mas atras que se pinta, igual que en cualquier escritorio.
-    let launcher = scene::launcher::Launcher::new();
-    scene::launcher::paint(&p, &launcher);
-    p.rect(16, 13, 14, 14, ACCENT);
-    p.texto(38, 14, "BMO-X", INK);
-    // Las fichas se pintan en el bucle: dependen de que este abierto y de
-    // quien tenga el foco, y las dos cosas cambian.
-    let mut taskbar_dirty = true;
-    let mut taskbar_state_before = (false, 0u8, false, false);
-
-    // Lo que SI era informacion y no instrumento: si la entrada no se pudo
-    // reclamar hay que decirlo, y ahora se dice con palabras en la barra en vez
-    // de con el color de un marco. Un rojo sin texto obliga a saberse el
-    // codigo de colores.
-    if input.is_none() {
-        // El aviso se coloca por su LARGO REAL y no por un numero a ojo: son
-        // cuarenta letras, y con un hueco puesto a mano de treinta y cuatro se
-        // saldria por la derecha justo el dia que haga falta leerlo.
-        const WARN: &str = "SIN ENTRADA: teclado y raton son de otro";
-        let width = bmo::Pantalla::ancho_escala(WARN, 1);
-        p.texto(p.ancho.saturating_sub(width + 16), 14, WARN, INK_BAD);
-    }
-
-    paint_run_box(&p, &run_box);
-    let mut path = [0u8; PATH_MAX];
-    let mut n = 0usize;
-    let mut output = Output::new();
-    let mut history = History::new();
-    // Posicion del cursor DENTRO de la linea. Sin esto solo se puede escribir
-    // al final y borrar desde el final: equivocarte en la tercera letra de una
-    // ruta larga obliga a borrarlo todo hasta ahi.
-    let mut cur = 0usize;
-    // Portapapeles. Ctrl+C copia la linea entera, Ctrl+V la pega donde este el
-    // cursor. Ctrl+ARRIBA / Ctrl+ABAJO hacen lo mismo con las flechas.
-    let mut clipboard = [0u8; PATH_MAX];
-    let mut clipboard_n = 0usize;
-    let mut calc = Calc::new();
-    let calc_pad = CalcPad::new(&run_box);
-    // Teclas que se mete el propio escritorio, no el teclado. Hoy solo las pone
-    // el lanzador al pulsar un icono; se drenan al principio del fotograma
-    // siguiente. Ver el bucle de teclas.
-    let mut injected = [0u8; 32];
-    let mut ni = 0usize;
-
-    // Flanco del boton del raton: un clic es una BAJADA, no "el boton esta
-    // pulsado". Sin esto, mantener pulsado teclearia cien veces por segundo.
-    let mut button_before = false;
-    // Mientras el motor no conteste, su salida NO va a la rejilla: es el
-    // resultado, no un mensaje. Se acumula aparte.
-    let mut resp = [0u8; 24];
-    let mut resp_n = 0usize;
-    if child_console.is_none() {
-        output.text(b"sin consola: la salida de los programas ira al panel del kernel\n");
-    }
-    paint_field(&p, &run_box, &path[..n], cur, true);
-    paint_output(&p, &run_box, &output);
-    if input.is_some() {
-        paint_status(&p, &run_box, "listo", INK_DIM);
-    } else {
-        // Decirlo, y decir por que. Una caja que no responde y no explica nada
-        // es peor que no tener caja.
-        paint_status(&p, &run_box, "sin teclado: la entrada no se pudo reclamar", INK_BAD);
-    }
-
-    bmo::consola("escritorio pintado\n");
-
-    // -- El bucle de vida --
-    //
-    // No termina: si saliera, `revoke_all` devolveria la pantalla y el kernel
-    // repintaria su panel encima. Un escritorio es un proceso que VIVE -- y de
-    // paso esto ejerce el cambio de contexto miles de veces por segundo, que es
-    // justo el camino que costo una foto de madrugada.
-    let (mut ax, mut ay) = (u32::MAX, u32::MAX);
-    let mut frames = 0u32;
-    let mut caret = true;
-    // Vueltas desde la ultima tecla. Se reinicia al escribir para que el
-    // cursor este SIEMPRE encendido mientras se teclea.
-    let mut since_key: u32 = 0;
-    // -- El atajo: un TOQUE de Ctrl+Alt --
-    //
-    // Se dispara al SOLTAR, y solo si no llego ningun caracter mientras
-    // estaban pulsados. No es una floritura: en la distribucion espanola
-    // `Ctrl+Alt` **es** `AltGr` --lo que produce `@`, `#`, `[`, `]`, `\`, `|`
-    // y `EUR`-- asi que disparar al pulsarlos romperia escribir todos esos
-    // caracteres. Con el toque, `Ctrl+Alt` a secas invoca la ventana y
-    // `Ctrl+Alt+2` sigue dando `@`.
-    let mut combo_before = false;
-    let mut key_during_combo = false;
-    let mut visible = true;
-    // -- La consola de DATOS (F12) --
-    //
-    // Una tecla de funcion no produce caracter en NINGUNA distribucion, asi que
-    // no puede chocar con escribir. Es lo unico que importa en un atajo del
-    // sistema, y es lo que `Ctrl+Alt` no puede ofrecer: en espanol ES AltGr.
-    let mut data_win = scene::data::DataWindow::new(&p);
-    // * ABIERTA no es lo mismo que ARRIBA. Abierta es "existe y esta dibujada";
-    // arriba es "es la que tapa a la otra". Se separan porque aqui no hay
-    // recorte: las ventanas se pintan enteras una encima de otra, y la ultima
-    // que se pinta gana. Sin la distincion, Alt+Tab podria dejar el teclado en
-    // Ejecutar con Datos delante -- escribiendo en una linea que no se ve, que
-    // es el mismo fallo de antes al reves.
-    let mut data_open = false;
-
-    // -- CABINA (F11): lo que el kernel ve, CON severidad --
-    //
-    // Lo que dice Ring 0, leido desde aqui. **No es "ir a Ring 0"**: este
-    // proceso sigue en Ring 3 con sus capabilities contadas y lo unico que hace
-    // es preguntar (`TASK_OP_CABINA_*`). Ver `scene::cabina`.
-    //
-    // Y F11 en vez de un comando por una razon de hoy: **no hace falta teclear
-    // nada para abrirla**. Cuando lo que falla es el campo donde se escribe, un
-    // diagnostico que exige escribir un comando no sirve de nada.
-    let mut cabina_win = scene::cabina::CabinaWindow::new(&p);
-    let mut cabina_open = false;
-
-    // -- F7 y F8: las vitales, cada una en SU ventana --
-    //
-    // No son un comando de la caja de Ejecutar a proposito: `info` es una FOTO
-    // que se queda en el historial, y esto es una VISTA que se repinta. Un
-    // numero que cambia dentro de un historial empuja hacia arriba lo que
-    // estabas leyendo. Ver la cabecera de `scene::vitals`.
-    let mut cpu_win = scene::vitals::VitalsWindow::new(&p, scene::vitals::Which::Cpu);
-    let mut cpu_open = false;
-    let mut mem_win = scene::vitals::VitalsWindow::new(&p, scene::vitals::Which::Memoria);
-    let mut mem_open = false;
-    // Cuantas lineas hacia atras empieza la ventana. RePag/AvPag la mueven, que
-    // es lo que permite llegar al PRINCIPIO del arranque -- donde estan las
-    // respuestas de por que algo no arranco.
-    
-    // Que familia de modulos deja pasar la ventana del kernel. `0` = todas.
-    // Vive aqui y no dentro de `klog.rs` por lo mismo que el desplazamiento:
-    // es estado de la SESION, y el modulo que pinta no debe recordar nada.
-    
-
-    // -- La ventana del SONIDO (F10) --
-    //
-    // * El aparato se toma AL ABRIR y se devuelve AL CERRAR, y esa es la
-    // decision de diseno de toda la ventana. `KIND_AUDIO` es exclusivo: si el
-    // escritorio lo reclamara al arrancar --como hace con la pantalla y la
-    // entrada-- ningun programa lanzado desde aqui podria volver a sonar, y el
-    // sintoma seria `c/musica.bex` diciendo "lo tiene otro proceso" para
-    // siempre. Ya paso con la pantalla y costo escribir `PANTALLA_SOLTAR`
-    // despues, con el fallo delante. Ver `scene::sound`.
-    let mut sound_win = scene::sound::SoundWindow::new(&p);
-    let mut sound_open = false;
-    // El handle, mientras la ventana esta abierta. `None` cuando esta cerrada o
-    // cuando otro proceso tiene el aparato -- que son dos cosas distintas y la
-    // ventana las dice distinto.
-    let mut sound_cap: Option<bmo::Sonido> = None;
-    let mut sound_devices = 0u64;
-    // Estado de la SESION, no del modulo que pinta: igual que el desplazamiento
-    // y el filtro del klog. El volumen sobrevive a cerrar y abrir la ventana.
-    let mut sound_volume = 80u8;
-    let mut sound_pressed: Option<usize> = None;
-
-    /// Que tecla de la calculadora tiene el puntero encima, si alguna.
-    ///
-    /// Se lleva como estado porque el realce solo se repinta **cuando cambia**:
-    /// repintar la calculadora entera en cada fotograma que el raton se mueva
-    /// un pixel serian veinte rectangulos y veinte glifos por vuelta para
-    /// ensenar exactamente lo mismo.
-    let mut calc_hover: Option<u8> = None;
-
-    // -- El FOCO --
-    //
-    // Quien recibe las teclas cuando hay mas de una ventana. La politica vive
-    // en `bmo_input::focus` y se prueba ALLI (12 tests); aqui solo se le
-    // pregunta y se pinta lo que decidio.
-    //
-    // Hacia falta ya: hasta ahora F12 se atendia arriba del todo y **todo lo
-    // demas caia en Ejecutar** aunque Datos estuviera abierta. Con una tercera
-    // ventana, chocan.
-    const W_RUN: u8 = 0;
-    const W_DATA: u8 = 1;
-    const W_CABINA: u8 = 2;
-    /// F7 -- el CPU. Ver `scene::vitals`.
-    const W_CPU: u8 = 3;
-    /// F8 -- la memoria, con QUIEN se la esta comiendo.
-    const W_MEM: u8 = 4;
-    const W_SOUND: u8 = 3;
-    let mut focus = bmo_input::Foco::nuevo();
-    focus.open(W_RUN);
-    let mut alt_before = false;
-    let mut switcher_painted = false;
-    // Quien tapaba a quien en la vuelta anterior, para pintar solo cuando
-    // cambia. `data_open && focus.es_para(W_DATA)` es la cuenta entera:
-    // **la que tiene el teclado es la que se ve**.
-    let mut top_before = W_RUN;
-
-    // Lo que hay DEBAJO del cursor del raton. Ver `scene::cursor::SaveUnder`: se
-    // quita al principio del fotograma y se pone al final, y en medio se pinta.
-    let mut save_under = SaveUnder::new();
-    // Estado anterior de los botones EN PANTALLA, para no repintar el testigo
-    // del pulsometro sesenta veces por segundo con el mismo color.
-
-    // -- * EL VIGILANTE DE LA CORRIDA --
-    //
-    // Cuando se lanza un programa se apunta aqui donde empieza su salida; en
-    // cuanto muere, lo que escribio se vuelca solo a `data/output.txt`.
-    //
-    // === Por que hace falta el `visto` ===
-    //
-    // `ejecutar_en` vuelve en cuanto el hijo arranca, y **`has_child()` puede
-    // contestar `false` en el fotograma siguiente sin que el programa haya
-    // terminado**: todavia no se ha puesto a escribir en la consola. Sin la
-    // bandera, cada lanzamiento volcaria un archivo vacio en el acto y luego
-    // no volcaria el de verdad.
-    //
-    // Con ella, el volcado solo ocurre en el flanco `alive_one -> muerto`, que es lo
-    // unico que significa "termino".
-    // `Run` y su vigilante viven en `watch.rs`: es el unico bloque de
-    // esta funcion que toca solo TRES variables del estado, asi que es el unico
-    // que se puede sacar sin arrastrar media firma. Ver la cabecera del modulo.
-    let mut run: Option<Run> = None;
-
-    // Cuantos fallos de Ring 3 se habian visto. Empieza en el total actual y no
-    // en cero: los de antes de arrancar el escritorio ya se guardaron.
-    let mut faults_seen = bmo::autopsia_total();
-
-    // -- ** LAS APPS EN SU CAJA --
-    //
-    // Una app pide memoria, dibuja ahi y **se la ofrece** al que la lanzo. Desde
-    // aqui se toma una vez y se pega dentro de un marco cada vez que su
-    // secuencia sube. La pantalla no cambia de dueno ni una vez -- que es todo
-    // lo que separa esto de `lend_screen`, el camino de al lado, que le
-    // entrega el aparato al hijo y deja el escritorio sin existir mientras dure.
-    //
-    // Ver `scene::surface`. Nace vacia: no hay ventana hasta que una app
-    // ofrezca, y las que no ofrezcan siguen yendo por el camino de siempre.
-    let mut table = scene::surface::Table::new();
-    // Los rectangulos que dejan las ventanas cuya app murio, para devolverselos
-    // al escritorio. Se declara fuera del bucle porque es un buzon, no un
-    // estado: se llena y se vacia dentro de la misma vuelta.
-    let mut dead_boxes = [(0u32, 0u32, 0u32, 0u32); scene::surface::MAX];
-
+    // `p` e `input` vuelven como bindings sueltos y NO como campos: `lend_screen`
+    // se los lleva POR VALOR y los devuelve, asi que tienen que poder moverse.
+    // Ver la cabecera de `desktop/mod.rs`.
+    let (mut p, mut input, mut dsk) = desktop::boot();
     loop {
         // -- Termino el programa que se lanzo? Entonces, a guardarlo --
         //
         // 71 lineas que estaban aqui dentro. Se fueron ENTERAS a
         // `watch.rs`, sin tocar una coma de su logica.
-        watch_run(&mut run, &child_console, &mut output);
+        watch_run(&mut dsk.out.run, &dsk.out.console, &mut dsk.out.grid);
 
         // ** MURIO ALGO? Entonces la autopsia ya esta escrita, y se guarda.
         //
@@ -775,17 +465,17 @@ pub extern "C" fn _start() -> ! {
         // cuando de verdad hubo un fallo. Y avisar en la barra importa tanto
         // como guardarlo: un fichero que nadie sabe que existe es un fichero
         // que no se manda.
-        if save_autopsies(&mut faults_seen) {
+        if save_autopsies(&mut dsk.out.faults_seen) {
             paint_status(
                 &p,
-                &run_box,
+                &dsk.run_box,
                 "fallo de Ring 3 guardado en datos/fallos.txt -- escribe `fallo`",
                 INK_BAD,
             );
         }
 
-        frames = frames.wrapping_add(1);
-        let mut repaint_field = false;
+        dsk.tick.frames = dsk.tick.frames.wrapping_add(1);
+        dsk.tick.repaint_field = false;
 
         // -- * ALGUIEN OFRECE UNA SUPERFICIE? --
         //
@@ -795,13 +485,13 @@ pub extern "C" fn _start() -> ! {
         // entera **mirando**, no porque nadie le mande un mensaje. Una operacion
         // que ya existia y ninguna cola nueva.
         let mut born = false;
-        if table.collect(&p) {
+        if dsk.table.collect(&p) {
             born = true;
         }
         // Y las que se quedaron sin dueno. Va ANTES de pintar nada: la ventana
         // de una app muerta tiene que desaparecer en el mismo fotograma en que
         // se sabe, no en el siguiente.
-        let dead = table.reap_dead(&mut dead_boxes);
+        let dead = dsk.table.reap_dead(&mut dsk.tick.dead_boxes);
 
         // -- Va a pintar algo este fotograma? --
         //
@@ -816,11 +506,11 @@ pub extern "C" fn _start() -> ! {
         // en el que solo cambio una app no se contara como "va a pintar", el
         // cursor del raton no se quitaria antes de componer -- la app dibujaria
         // encima y el puntero desapareceria bajo su ventana.
-        let mut will_paint = output.dirty
-            || since_key + 1 >= BLINK
+        dsk.tick.will_paint = dsk.out.grid.dirty
+            || dsk.field.since_key + 1 >= BLINK
             || born
             || dead > 0
-            || table.has_new();
+            || dsk.table.has_new();
 
         if let Some(e) = input.as_ref() {
             // -- El atajo, ANTES de leer teclas --
@@ -851,7 +541,7 @@ pub extern "C" fn _start() -> ! {
             // por fotograma y **quita la clase entera de fallo**: cualquier
             // camino futuro que se olvide de `cur` queda corregido antes de que
             // nadie pueda teclear.
-            cur = cur.min(n);
+            dsk.field.cur = dsk.field.cur.min(dsk.field.n);
 
             let mut keys = [0u8; 64];
             let mut nt = 0usize;
@@ -868,11 +558,11 @@ pub extern "C" fn _start() -> ! {
             // eso habria sido un segundo camino de lanzar programas con las
             // mismas cinco cosas que recordar. El dia que uno de los dos se
             // arregle, el otro se queda roto y nadie se entera.
-            for k in 0..ni.min(keys.len()) {
-                keys[nt] = injected[k];
+            for k in 0..dsk.field.ni.min(keys.len()) {
+                keys[nt] = dsk.field.injected[k];
                 nt += 1;
             }
-            ni = 0;
+            dsk.field.ni = 0;
             while nt < keys.len() {
                 match e.tecla() {
                     Some(c) => {
@@ -885,17 +575,17 @@ pub extern "C" fn _start() -> ! {
             let pos = e.puntero();
             let wheel = e.rueda();
 
-            will_paint |= nt > 0
+            dsk.tick.will_paint |= nt > 0
                 || wheel != 0
-                || pos.x != ax
-                || pos.y != ay
-                || (pos.botones != 0) != button_before
-                || alt_alone != alt_before
-                || combo != combo_before;
+                || pos.x != dsk.tick.ax
+                || pos.y != dsk.tick.ay
+                || (pos.botones != 0) != dsk.tick.button_before
+                || alt_alone != dsk.win.alt_before
+                || combo != dsk.tick.combo_before;
 
             // A partir de aqui se PINTA, asi que el cursor se aparta.
-            if will_paint {
-                save_under.lift(&p);
+            if dsk.tick.will_paint {
+                dsk.save_under.lift(&p);
             }
 
             // -- Alt+Tab: el conmutador --
@@ -915,16 +605,16 @@ pub extern "C" fn _start() -> ! {
             // Lo que hay que borrar lo decide quien lo pinto. `soltar_conmutador`
             // se llama igual: pedirle a la politica que se suelte no puede
             // depender de que ella misma diga que estaba conmutando.
-            if !alt_alone && alt_before && switcher_painted {
-                focus.soltar_conmutador();
-                let (bx, by, ba, bh) = scene::switcher::area(&p, focus.abiertas());
+            if !alt_alone && dsk.win.alt_before && dsk.win.switcher_painted {
+                dsk.win.focus.soltar_conmutador();
+                let (bx, by, ba, bh) = scene::switcher::area(&p, dsk.win.focus.abiertas());
                 for fy in 0..bh {
                     for fx in 0..ba {
                         let (x, y) = (bx + fx, by + fy);
-                        p.punto(x, y, scene_color(&run_box, visible, x, y, p.alto));
+                        p.punto(x, y, scene_color(&dsk.run_box, dsk.win.visible, x, y, p.alto));
                     }
                 }
-                switcher_painted = false;
+                dsk.win.switcher_painted = false;
                 // Lo que tapaba vuelve a pintarse entero, **de abajo arriba**:
                 // es el unico orden que deja la pantalla como estaba. Y quien
                 // va arriba lo acaba de decidir el Alt que se solto.
@@ -933,69 +623,69 @@ pub extern "C" fn _start() -> ! {
                 // TODAS las abiertas, y la que tiene el foco la ULTIMA. La
                 // version de dos ventanas enumeraba los casos a mano, y con
                 // tres eso son seis ramas que dicen una sola regla.
-                let top_now = if mem_open && focus.es_para(W_MEM) {
+                let top_now = if dsk.win.mem_open && dsk.win.focus.es_para(W_MEM) {
                     W_MEM
-                } else if cpu_open && focus.es_para(W_CPU) {
+                } else if dsk.win.cpu_open && dsk.win.focus.es_para(W_CPU) {
                     W_CPU
-                } else if sound_open && focus.es_para(W_SOUND) {
+                } else if dsk.win.sound_open && dsk.win.focus.es_para(W_SOUND) {
                     W_SOUND
-                } else if cabina_open && focus.es_para(W_CABINA) {
+                } else if dsk.win.cabina_open && dsk.win.focus.es_para(W_CABINA) {
                     W_CABINA
-                } else if data_open && focus.es_para(W_DATA) {
+                } else if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
                     W_DATA
                 } else {
                     W_RUN
                 };
                 let mut paint_one = |v: u8, repintar: &mut bool, sal: &mut scene::output::Output| {
                     match v {
-                        W_CABINA if cabina_open => {
-                            scene::cabina::paint(&p, &cabina_win)
+                        W_CABINA if dsk.win.cabina_open => {
+                            scene::cabina::paint(&p, &dsk.win.cabina)
                         }
-                        W_DATA if data_open => scene::data::paint(&p, &data_win),
+                        W_DATA if dsk.win.data_open => scene::data::paint(&p, &dsk.win.data),
                         // Las vitales son VISTAS: se repintan cada vez que les
                         // toca turno, que es lo que las diferencia de `info`.
-                        W_CPU if cpu_open => scene::vitals::paint(&p, &cpu_win),
-                        W_MEM if mem_open => scene::vitals::paint(&p, &mem_win),
-                        W_SOUND if sound_open => scene::sound::paint(
+                        W_CPU if dsk.win.cpu_open => scene::vitals::paint(&p, &dsk.win.cpu),
+                        W_MEM if dsk.win.mem_open => scene::vitals::paint(&p, &dsk.win.mem),
+                        W_SOUND if dsk.win.sound_open => scene::sound::paint(
                             &p,
-                            &sound_win,
-                            sound_cap.is_some(),
-                            sound_devices,
-                            sound_volume,
-                            sound_pressed,
+                            &dsk.win.sound,
+                            dsk.snd.cap.is_some(),
+                            dsk.snd.devices,
+                            dsk.snd.volume,
+                            dsk.snd.pressed,
                         ),
-                        W_RUN => uncover(&p, &run_box, visible, sal, repintar),
+                        W_RUN => uncover(&p, &dsk.run_box, dsk.win.visible, sal, repintar),
                         _ => {}
                     }
                 };
                 for v in [W_RUN, W_DATA, W_CABINA, W_SOUND] {
                     if v != top_now {
-                        paint_one(v, &mut repaint_field, &mut output);
+                        paint_one(v, &mut dsk.tick.repaint_field, &mut dsk.out.grid);
                     }
                 }
-                paint_one(top_now, &mut repaint_field, &mut output);
-                top_before = top_now;
+                paint_one(top_now, &mut dsk.tick.repaint_field, &mut dsk.out.grid);
+                dsk.win.top_before = top_now;
             }
-            alt_before = alt_alone;
-            if combo && !combo_before {
-                key_during_combo = false;
+            dsk.win.alt_before = alt_alone;
+            if combo && !dsk.tick.combo_before {
+                dsk.tick.key_during_combo = false;
             }
-            if !combo && combo_before && !key_during_combo {
-                visible = !visible;
-                if visible {
+            if !combo && dsk.tick.combo_before && !dsk.tick.key_during_combo {
+                dsk.win.visible = !dsk.win.visible;
+                if dsk.win.visible {
                     // Esconderla y volver a invocarla es cerrarla y abrirla
                     // para el foco. Sin esto, Alt+Tab llevaria el teclado a una
                     // ventana que no esta en la pantalla: escribirias en algo
                     // invisible, que es la peor forma de perder una linea.
-                    focus.open(W_RUN);
-                    uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
-                    paint_status(&p, &run_box, "listo", INK_DIM);
+                    dsk.win.focus.open(W_RUN);
+                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    paint_status(&p, &dsk.run_box, "listo", INK_DIM);
                 } else {
-                    focus.close(W_RUN);
-                    erase_box(&p, &run_box);
+                    dsk.win.focus.close(W_RUN);
+                    erase_box(&p, &dsk.run_box);
                 }
             }
-            combo_before = combo;
+            dsk.tick.combo_before = combo;
 
             // -- Teclado --
             //
@@ -1008,17 +698,17 @@ pub extern "C" fn _start() -> ! {
                 // conmutador. Shift lo recorre al reves.
                 if alt_alone && c == 0x09 {
                     if m & bmo::MOD_SHIFT != 0 {
-                        focus.conmutar_atras();
+                        dsk.win.focus.conmutar_atras();
                     } else {
-                        focus.conmutar();
+                        dsk.win.focus.conmutar();
                     }
                     scene::switcher::paint(
                         &p,
-                        focus.lista(),
-                        focus.pointed_index(),
-                        focus.modo().name(),
+                        dsk.win.focus.lista(),
+                        dsk.win.focus.pointed_index(),
+                        dsk.win.focus.modo().name(),
                     );
-                    switcher_painted = true;
+                    dsk.win.switcher_painted = true;
                     continue;
                 }
                 // -- Alt+M: cambiar el MODO del foco --
@@ -1029,19 +719,19 @@ pub extern "C" fn _start() -> ! {
                 // ninguna distribucion, `Ctrl+Alt` SI (es AltGr)-- y se anuncia
                 // en la propia ventanita, que es donde se lee el modo.
                 if alt_alone && (c == b'm' || c == b'M') {
-                    focus.poner_modo(focus.modo().next());
-                    if switcher_painted {
+                    dsk.win.focus.poner_modo(dsk.win.focus.modo().next());
+                    if dsk.win.switcher_painted {
                         scene::switcher::paint(
                             &p,
-                            focus.lista(),
-                            focus.pointed_index(),
-                            focus.modo().name(),
+                            dsk.win.focus.lista(),
+                            dsk.win.focus.pointed_index(),
+                            dsk.win.focus.modo().name(),
                         );
-                    } else if visible {
+                    } else if dsk.win.visible {
                         // Cambiarlo sin el conmutador abierto tambien tiene que
                         // verse: un modo que cambia en silencio se descubre
                         // cuando el teclado ya se fue a otra ventana.
-                        paint_status(&p, &run_box, focus.modo().nombre_largo(), ACCENT);
+                        paint_status(&p, &dsk.run_box, dsk.win.focus.modo().nombre_largo(), ACCENT);
                     }
                     continue;
                 }
@@ -1092,65 +782,65 @@ pub extern "C" fn _start() -> ! {
                     // conmutando es la resaltada, y sin conmutar es la que ya
                     // tiene el foco. La que se mueve es **la que estas mirando en
                     // la ventanita**, y eso se puede explicar en una frase.
-                    match focus.pointed_at() {
-                        Some(W_DATA) if data_open && !data_win.chrome.minimized => {
+                    match dsk.win.focus.pointed_at() {
+                        Some(W_DATA) if dsk.win.data_open && !dsk.win.data.chrome.minimized => {
                             let (vx, vy, va, vl) = (
-                                data_win.x(), data_win.y(),
-                                data_win.width(), data_win.height(),
+                                dsk.win.data.x(), dsk.win.data.y(),
+                                dsk.win.data.width(), dsk.win.data.height(),
                             );
                             let cambio = if fit {
-                                data_win.chrome.snap(&p, heading)
+                                dsk.win.data.chrome.snap(&p, heading)
                             } else {
-                                data_win.chrome.push(&p, heading)
+                                dsk.win.data.chrome.push(&p, heading)
                             };
                             if cambio {
-                                erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                                uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                                 // Encajar CAMBIA el tamano, asi que las cajas del
                                 // grafo hay que recolocarlas: sin esto la ventana
                                 // mide una cosa y su contenido sigue midiendo otra.
-                                data_win.relayout();
-                                scene::data::paint(&p, &data_win);
-                                top_before = W_DATA;
+                                dsk.win.data.relayout();
+                                scene::data::paint(&p, &dsk.win.data);
+                                dsk.win.top_before = W_DATA;
                                 moved = true;
                             }
                         }
-                        Some(W_CABINA) if cabina_open && !cabina_win.chrome.minimized => {
+                        Some(W_CABINA) if dsk.win.cabina_open && !dsk.win.cabina.chrome.minimized => {
                             let (vx, vy, va, vl) = (
-                                cabina_win.chrome.x, cabina_win.chrome.y,
-                                cabina_win.chrome.width, cabina_win.chrome.height,
+                                dsk.win.cabina.chrome.x, dsk.win.cabina.chrome.y,
+                                dsk.win.cabina.chrome.width, dsk.win.cabina.chrome.height,
                             );
                             let cambio = if fit {
-                                cabina_win.chrome.snap(&p, heading)
+                                dsk.win.cabina.chrome.snap(&p, heading)
                             } else {
-                                cabina_win.chrome.push(&p, heading)
+                                dsk.win.cabina.chrome.push(&p, heading)
                             };
                             if cambio {
-                                erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                                uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
-                                scene::cabina::paint(&p, &cabina_win);
-                                top_before = W_CABINA;
+                                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                                scene::cabina::paint(&p, &dsk.win.cabina);
+                                dsk.win.top_before = W_CABINA;
                                 moved = true;
                             }
                         }
-                        Some(W_SOUND) if sound_open && !sound_win.chrome.minimized => {
+                        Some(W_SOUND) if dsk.win.sound_open && !dsk.win.sound.chrome.minimized => {
                             let (vx, vy, va, vl) = (
-                                sound_win.chrome.x, sound_win.chrome.y,
-                                sound_win.chrome.width, sound_win.chrome.height,
+                                dsk.win.sound.chrome.x, dsk.win.sound.chrome.y,
+                                dsk.win.sound.chrome.width, dsk.win.sound.chrome.height,
                             );
                             let cambio = if fit {
-                                sound_win.chrome.snap(&p, heading)
+                                dsk.win.sound.chrome.snap(&p, heading)
                             } else {
-                                sound_win.chrome.push(&p, heading)
+                                dsk.win.sound.chrome.push(&p, heading)
                             };
                             if cambio {
-                                erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                                uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                                 scene::sound::paint(
-                                    &p, &sound_win, sound_cap.is_some(),
-                                    sound_devices, sound_volume, sound_pressed,
+                                    &p, &dsk.win.sound, dsk.snd.cap.is_some(),
+                                    dsk.snd.devices, dsk.snd.volume, dsk.snd.pressed,
                                 );
-                                top_before = W_SOUND;
+                                dsk.win.top_before = W_SOUND;
                                 moved = true;
                             }
                         }
@@ -1166,12 +856,12 @@ pub extern "C" fn _start() -> ! {
                     // sabes en cual estas. Al soltar Alt se repinta todo de abajo
                     // arriba, asi que el destrozo se repara solo; lo que hay que
                     // arreglar es lo que se ve MIENTRAS.
-                    if moved && switcher_painted {
+                    if moved && dsk.win.switcher_painted {
                         scene::switcher::paint(
                             &p,
-                            focus.lista(),
-                            focus.pointed_index(),
-                            focus.modo().name(),
+                            dsk.win.focus.lista(),
+                            dsk.win.focus.pointed_index(),
+                            dsk.win.focus.modo().name(),
                         );
                     }
                     continue;
@@ -1179,7 +869,7 @@ pub extern "C" fn _start() -> ! {
                 // Cualquier tecla durante el combo lo convierte en AltGr y
                 // cancela el toque: el usuario estaba escribiendo, no llamando.
                 if combo {
-                    key_during_combo = true;
+                    dsk.tick.key_during_combo = true;
                 }
 
                 // -- F12 es del SISTEMA, no de una ventana --
@@ -1193,36 +883,36 @@ pub extern "C" fn _start() -> ! {
                 // partes. En Ejecutar ESC sigue borrando la linea: son dos
                 // ventanas distintas y cada una contesta lo suyo.
                 let toggle_data = if c == 0x94 {
-                    Some(!data_open)
-                } else if c == 0x1B && data_open && focus.es_para(W_DATA) {
+                    Some(!dsk.win.data_open)
+                } else if c == 0x1B && dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
                     Some(false)
                 } else {
                     None
                 };
                 if let Some(open) = toggle_data {
-                    data_open = open;
+                    dsk.win.data_open = open;
                     if open {
                         // Abrir es decirselo al foco y ya: en modo `Fijo` la
                         // ventana aparece y NO se lleva el teclado, y quien
                         // decide eso es la politica, no esta tecla.
-                        focus.open(W_DATA);
-                        scene::data::paint(&p, &data_win);
-                        top_before = if focus.es_para(W_DATA) { W_DATA } else { W_RUN };
+                        dsk.win.focus.open(W_DATA);
+                        scene::data::paint(&p, &dsk.win.data);
+                        dsk.win.top_before = if dsk.win.focus.es_para(W_DATA) { W_DATA } else { W_RUN };
                         // En `Fijo` se ha pintado encima de una caja que sigue
                         // teniendo el teclado: hay que devolverla arriba.
-                        if top_before == W_RUN {
-                            uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        if dsk.win.top_before == W_RUN {
+                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                         }
                     } else {
                         // Al cerrarla hay que devolver el fondo Y repintar
                         // lo que tapaba: la caja de Ejecutar esta debajo.
-                        focus.close(W_DATA);
+                        dsk.win.focus.close(W_DATA);
                         erase_window(
-                            &p, &run_box, data_win.x(), data_win.y(),
-                            data_win.width(), data_win.height(), visible,
+                            &p, &dsk.run_box, dsk.win.data.x(), dsk.win.data.y(),
+                            dsk.win.data.width(), dsk.win.data.height(), dsk.win.visible,
                         );
-                        top_before = W_RUN;
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        dsk.win.top_before = W_RUN;
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     }
                     continue;
                 }
@@ -1236,46 +926,46 @@ pub extern "C" fn _start() -> ! {
                 // ESC cierra la que este abierta. Si las dos lo estan, cierra
                 // primero la de memoria -- que es la que se abre encima.
                 let toggle_cpu = if c == 0x8F {
-                    Some(!cpu_open)
-                } else if c == 0x1B && cpu_open && !mem_open {
+                    Some(!dsk.win.cpu_open)
+                } else if c == 0x1B && dsk.win.cpu_open && !dsk.win.mem_open {
                     Some(false)
                 } else {
                     None
                 };
                 if let Some(open) = toggle_cpu {
-                    cpu_open = open;
+                    dsk.win.cpu_open = open;
                     if open {
-                        focus.open(W_CPU);
-                        scene::vitals::paint(&p, &cpu_win);
+                        dsk.win.focus.open(W_CPU);
+                        scene::vitals::paint(&p, &dsk.win.cpu);
                     } else {
-                        focus.close(W_CPU);
+                        dsk.win.focus.close(W_CPU);
                         erase_window(
-                            &p, &run_box, cpu_win.chrome.x, cpu_win.chrome.y,
-                            cpu_win.chrome.width, cpu_win.chrome.height, visible,
+                            &p, &dsk.run_box, dsk.win.cpu.chrome.x, dsk.win.cpu.chrome.y,
+                            dsk.win.cpu.chrome.width, dsk.win.cpu.chrome.height, dsk.win.visible,
                         );
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     }
                     continue;
                 }
                 let toggle_mem = if c == 0x90 {
-                    Some(!mem_open)
-                } else if c == 0x1B && mem_open {
+                    Some(!dsk.win.mem_open)
+                } else if c == 0x1B && dsk.win.mem_open {
                     Some(false)
                 } else {
                     None
                 };
                 if let Some(open) = toggle_mem {
-                    mem_open = open;
+                    dsk.win.mem_open = open;
                     if open {
-                        focus.open(W_MEM);
-                        scene::vitals::paint(&p, &mem_win);
+                        dsk.win.focus.open(W_MEM);
+                        scene::vitals::paint(&p, &dsk.win.mem);
                     } else {
-                        focus.close(W_MEM);
+                        dsk.win.focus.close(W_MEM);
                         erase_window(
-                            &p, &run_box, mem_win.chrome.x, mem_win.chrome.y,
-                            mem_win.chrome.width, mem_win.chrome.height, visible,
+                            &p, &dsk.run_box, dsk.win.mem.chrome.x, dsk.win.mem.chrome.y,
+                            dsk.win.mem.chrome.width, dsk.win.mem.chrome.height, dsk.win.visible,
                         );
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     }
                     continue;
                 }
@@ -1286,36 +976,36 @@ pub extern "C" fn _start() -> ! {
                 // preguntar por el foco, porque un atajo que solo funciona si ya
                 // estas dentro de la ventana no sirve para abrirla.
                 let toggle_klog = if c == 0x93 {
-                    Some(!cabina_open)
-                } else if c == 0x1B && cabina_open {
+                    Some(!dsk.win.cabina_open)
+                } else if c == 0x1B && dsk.win.cabina_open {
                     Some(false)
                 } else {
                     None
                 };
                 if let Some(open) = toggle_klog {
-                    cabina_open = open;
+                    dsk.win.cabina_open = open;
                     if open {
                         // Se abre SIEMPRE por lo ultimo, que es lo que se quiere
                         // ver el 90% de las veces. Para ir al arranque estan
                         // RePag/AvPag.
-                        cabina_win.from = 0;
-                        focus.open(W_CABINA);
-                        scene::cabina::paint(&p, &cabina_win);
-                        top_before = if focus.es_para(W_CABINA) { W_CABINA } else { W_RUN };
-                        if top_before == W_RUN {
-                            uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        dsk.win.cabina.from = 0;
+                        dsk.win.focus.open(W_CABINA);
+                        scene::cabina::paint(&p, &dsk.win.cabina);
+                        dsk.win.top_before = if dsk.win.focus.es_para(W_CABINA) { W_CABINA } else { W_RUN };
+                        if dsk.win.top_before == W_RUN {
+                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                         }
                     } else {
-                        focus.close(W_CABINA);
+                        dsk.win.focus.close(W_CABINA);
                         erase_window(
-                            &p, &run_box, cabina_win.chrome.x, cabina_win.chrome.y,
-                            cabina_win.chrome.width, cabina_win.chrome.height, visible,
+                            &p, &dsk.run_box, dsk.win.cabina.chrome.x, dsk.win.cabina.chrome.y,
+                            dsk.win.cabina.chrome.width, dsk.win.cabina.chrome.height, dsk.win.visible,
                         );
-                        top_before = W_RUN;
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        dsk.win.top_before = W_RUN;
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                         // Si Datos estaba abierta debajo, vuelve a verse.
-                        if data_open {
-                            scene::data::paint(&p, &data_win);
+                        if dsk.win.data_open {
+                            scene::data::paint(&p, &dsk.win.data);
                         }
                     }
                     continue;
@@ -1331,55 +1021,55 @@ pub extern "C" fn _start() -> ! {
                 // sonando despues de devolver el aparato es del sistema, y el
                 // sistema no pidio ese tono).
                 let toggle_sound = if c == 0x92 {
-                    Some(!sound_open)
-                } else if c == 0x1B && sound_open && focus.es_para(W_SOUND) {
+                    Some(!dsk.win.sound_open)
+                } else if c == 0x1B && dsk.win.sound_open && dsk.win.focus.es_para(W_SOUND) {
                     Some(false)
                 } else {
                     None
                 };
                 if let Some(open) = toggle_sound {
-                    sound_open = open;
+                    dsk.win.sound_open = open;
                     if open {
                         // Puede fallar, y entonces la ventana lo DICE en vez de
                         // pintar un volumen que no manda sobre nada.
-                        sound_cap = bmo::Sonido::claim();
-                        sound_devices = match &sound_cap {
+                        dsk.snd.cap = bmo::Sonido::claim();
+                        dsk.snd.devices = match &dsk.snd.cap {
                             Some(s) => {
-                                s.volumen(sound_volume);
+                                s.volumen(dsk.snd.volume);
                                 s.aparatos()
                             }
                             None => 0,
                         };
-                        sound_pressed = None;
-                        focus.open(W_SOUND);
+                        dsk.snd.pressed = None;
+                        dsk.win.focus.open(W_SOUND);
                         scene::sound::paint(
-                            &p, &sound_win, sound_cap.is_some(),
-                            sound_devices, sound_volume, sound_pressed,
+                            &p, &dsk.win.sound, dsk.snd.cap.is_some(),
+                            dsk.snd.devices, dsk.snd.volume, dsk.snd.pressed,
                         );
-                        top_before = if focus.es_para(W_SOUND) { W_SOUND } else { W_RUN };
-                        if top_before == W_RUN {
-                            uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        dsk.win.top_before = if dsk.win.focus.es_para(W_SOUND) { W_SOUND } else { W_RUN };
+                        if dsk.win.top_before == W_RUN {
+                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                         }
                     } else {
                         // * DEVOLVER EL APARATO. Esto es lo que impide que el
                         // escritorio deje mudos a todos los programas que lanza.
-                        if let Some(s) = sound_cap.take() {
+                        if let Some(s) = dsk.snd.cap.take() {
                             s.callar();
                             s.release();
                         }
-                        focus.close(W_SOUND);
+                        dsk.win.focus.close(W_SOUND);
                         erase_window(
-                            &p, &run_box, sound_win.chrome.x, sound_win.chrome.y,
-                            sound_win.chrome.width, sound_win.chrome.height, visible,
+                            &p, &dsk.run_box, dsk.win.sound.chrome.x, dsk.win.sound.chrome.y,
+                            dsk.win.sound.chrome.width, dsk.win.sound.chrome.height, dsk.win.visible,
                         );
-                        top_before = W_RUN;
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        dsk.win.top_before = W_RUN;
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                         // Si habia ventanas debajo, vuelven a verse.
-                        if data_open {
-                            scene::data::paint(&p, &data_win);
+                        if dsk.win.data_open {
+                            scene::data::paint(&p, &dsk.win.data);
                         }
-                        if cabina_open {
-                            scene::cabina::paint(&p, &cabina_win);
+                        if dsk.win.cabina_open {
+                            scene::cabina::paint(&p, &dsk.win.cabina);
                         }
                     }
                     continue;
@@ -1390,8 +1080,8 @@ pub extern "C" fn _start() -> ! {
                 // dueno esta escribiendo, y robarsela para un atajo seria el
                 // peor intercambio posible. Es la misma regla que la `f` del
                 // klog.
-                if sound_open && focus.es_para(W_SOUND) {
-                    if let Some(s) = &sound_cap {
+                if dsk.win.sound_open && dsk.win.focus.es_para(W_SOUND) {
+                    if let Some(s) = &dsk.snd.cap {
                         // Flechas: el volumen, de diez en diez.
                         //
                         // * `KEY_LEFT` es 0x82 y `KEY_RIGHT` 0x83 -- ver
@@ -1401,15 +1091,15 @@ pub extern "C" fn _start() -> ! {
                         // subido. No da error, da un control que obedece a la
                         // tecla equivocada.
                         if c == 0x82 || c == 0x83 {
-                            sound_volume = if c == 0x83 {
-                                (sound_volume + 10).min(100)
+                            dsk.snd.volume = if c == 0x83 {
+                                (dsk.snd.volume + 10).min(100)
                             } else {
-                                sound_volume.saturating_sub(10)
+                                dsk.snd.volume.saturating_sub(10)
                             };
-                            s.volumen(sound_volume);
+                            s.volumen(dsk.snd.volume);
                             scene::sound::paint(
-                                &p, &sound_win, true, sound_devices,
-                                sound_volume, sound_pressed,
+                                &p, &dsk.win.sound, true, dsk.snd.devices,
+                                dsk.snd.volume, dsk.snd.pressed,
                             );
                             continue;
                         }
@@ -1417,17 +1107,17 @@ pub extern "C" fn _start() -> ! {
                         // porque `pitar` bloquea el nucleo mientras suena: al
                         // reves, la tecla se veria encendida cuando ya callo.
                         let min = c.to_ascii_lowercase();
-                        if let Some(i) = scene::sound::NOTES.iter().position(|n| n.0 == min) {
-                            sound_pressed = Some(i);
+                        if let Some(i) = scene::sound::NOTES.iter().position(|note| note.0 == min) {
+                            dsk.snd.pressed = Some(i);
                             scene::sound::paint(
-                                &p, &sound_win, true, sound_devices,
-                                sound_volume, sound_pressed,
+                                &p, &dsk.win.sound, true, dsk.snd.devices,
+                                dsk.snd.volume, dsk.snd.pressed,
                             );
                             s.pitar(scene::sound::NOTES[i].1, 160);
-                            sound_pressed = None;
+                            dsk.snd.pressed = None;
                             scene::sound::paint(
-                                &p, &sound_win, true, sound_devices,
-                                sound_volume, sound_pressed,
+                                &p, &dsk.win.sound, true, dsk.snd.devices,
+                                dsk.snd.volume, dsk.snd.pressed,
                             );
                             continue;
                         }
@@ -1481,10 +1171,10 @@ pub extern "C" fn _start() -> ! {
                 // Es `G` y no `F` porque ya no filtra por FAMILIA de modulo
                 // --eso lo hacia el klog, adivinando por el prefijo de la
                 // linea-- sino por la severidad que CABINA lleva de verdad.
-                if cabina_open && (c == b'g' || c == b'G') {
-                    cabina_win.minima = (cabina_win.minima + 1) % 5;
-                    cabina_win.from = 0;
-                    scene::cabina::paint(&p, &cabina_win);
+                if dsk.win.cabina_open && (c == b'g' || c == b'G') {
+                    dsk.win.cabina.minima = (dsk.win.cabina.minima + 1) % 5;
+                    dsk.win.cabina.from = 0;
+                    scene::cabina::paint(&p, &dsk.win.cabina);
                     continue;
                 }
                 // ** A: SOLO LO QUE HIZO LA ULTIMA ACCION.
@@ -1498,21 +1188,21 @@ pub extern "C" fn _start() -> ! {
                 // hace de verdad delante de la pantalla: **todo lo que produjo
                 // esa pulsacion**, lo bueno y lo malo, en orden y sin nada de
                 // antes. El kernel ya lo agrupaba; faltaba leerlo.
-                if cabina_open && (c == b'a' || c == b'A') {
-                    cabina_win.last_only = !cabina_win.last_only;
-                    cabina_win.from = 0;
-                    scene::cabina::paint(&p, &cabina_win);
+                if dsk.win.cabina_open && (c == b'a' || c == b'A') {
+                    dsk.win.cabina.last_only = !dsk.win.cabina.last_only;
+                    dsk.win.cabina.from = 0;
+                    scene::cabina::paint(&p, &dsk.win.cabina);
                     continue;
                 }
-                if cabina_open && (c == 0x87 || c == 0x88) {
+                if dsk.win.cabina_open && (c == 0x87 || c == 0x88) {
                     let any = bmo::cabina_disponibles();
                     if c == 0x87 {
                         // Hacia atras en el tiempo, sin pasarse del principio.
-                        cabina_win.from = (cabina_win.from + 6).min(any.saturating_sub(1));
+                        dsk.win.cabina.from = (dsk.win.cabina.from + 6).min(any.saturating_sub(1));
                     } else {
-                        cabina_win.from = cabina_win.from.saturating_sub(6);
+                        dsk.win.cabina.from = dsk.win.cabina.from.saturating_sub(6);
                     }
-                    scene::cabina::paint(&p, &cabina_win);
+                    scene::cabina::paint(&p, &dsk.win.cabina);
                     continue;
                 }
 
@@ -1522,21 +1212,21 @@ pub extern "C" fn _start() -> ! {
                 // teclas DE ESTA VENTANA. Con Datos delante, las flechas no
                 // tienen nada que ver con el historial de comandos de Ejecutar,
                 // y hasta hoy iban alli -- se navegaba una ventana tapada.
-                if data_open && focus.es_para(W_DATA) {
+                if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
                     use scene::data::{Seal, View};
                     let mut served = true;
                     match c {
                         // TAB: numeros <-> nodos. Es la misma tecla que cambia de
                         // pestana en todas partes.
                         b'\t' => {
-                            data_win.view = match data_win.view {
+                            dsk.win.data.view = match dsk.win.data.view {
                                 View::Numbers => {
                                     // Al entrar en el arbol se empieza por la
                                     // raiz. Conservar el sitio de la ultima vez
                                     // ensenaria un directorio que ya no se sabe
                                     // cual es.
                                     bmo::estratos::a_la_raiz();
-                                    data_win.to_top();
+                                    dsk.win.data.to_top();
                                     View::Nodes
                                 }
                                 // ** DE NODOS A CARPETAS **SIN TOCAR EL CURSOR**.
@@ -1550,31 +1240,31 @@ pub extern "C" fn _start() -> ! {
                                 View::Nodes => View::Folders,
                                 View::Folders => View::Numbers,
                             };
-                            data_win.seal = Seal::Idle;
+                            dsk.win.data.seal = Seal::Idle;
                         }
-                        _ if data_win.view == View::Numbers => served = false,
+                        _ if dsk.win.data.view == View::Numbers => served = false,
                         // ARRIBA / ABAJO por la lista de hijos.
                         // Al cambiar de caja se borra la verificacion: es de
                         // UN archivo, y un `CUADRA` viejo bajo el nombre de
                         // otro es peor que no decir nada.
-                        0x80 => { data_win.move_sel(-1, bmo::estratos::hijos() as usize); data_win.verified = None; }
-                        0x81 => { data_win.move_sel(1, bmo::estratos::hijos() as usize); data_win.verified = None; }
-                        0x87 => data_win.move_sel(-5, bmo::estratos::hijos() as usize),
-                        0x88 => data_win.move_sel(5, bmo::estratos::hijos() as usize),
+                        0x80 => { dsk.win.data.move_sel(-1, bmo::estratos::hijos() as usize); dsk.win.data.verified = None; }
+                        0x81 => { dsk.win.data.move_sel(1, bmo::estratos::hijos() as usize); dsk.win.data.verified = None; }
+                        0x87 => dsk.win.data.move_sel(-5, bmo::estratos::hijos() as usize),
+                        0x88 => dsk.win.data.move_sel(5, bmo::estratos::hijos() as usize),
                         // ENTRAR / DERECHA: bajar al hijo senalado. `entrar`
                         // dice que no si es un archivo, y entonces no pasa nada
                         // -- que es lo correcto: un archivo no tiene dentro.
                         b'\r' | b'\n' | 0x83 => {
-                            if bmo::estratos::entrar(data_win.sel as u64) {
-                                data_win.to_top();
-                                data_win.verified = None;
+                            if bmo::estratos::entrar(dsk.win.data.sel as u64) {
+                                dsk.win.data.to_top();
+                                dsk.win.data.verified = None;
                             }
                         }
                         // RETROCESO / IZQUIERDA: subir al padre.
                         0x08 | 0x82 => {
                             if bmo::estratos::subir() {
-                                data_win.to_top();
-                                data_win.verified = None;
+                                dsk.win.data.to_top();
+                                dsk.win.data.verified = None;
                             }
                         }
                         // * V: COMPROBAR LA FIRMA del nodo senalado.
@@ -1584,9 +1274,9 @@ pub extern "C" fn _start() -> ! {
                         // sesenta veces por segundo convertiria este panel en
                         // un martillo sobre el disco.
                         b'v' | b'V' => {
-                            data_win.verified =
-                                Some(bmo::estratos::verificar(data_win.sel as u64));
-                            data_win.seal = Seal::Idle;
+                            dsk.win.data.verified =
+                                Some(bmo::estratos::verificar(dsk.win.data.sel as u64));
+                            dsk.win.data.seal = Seal::Idle;
                         }
                         // * S: SELLAR, en dos tiempos. Ver `data::Seal`.
                         //
@@ -1597,7 +1287,7 @@ pub extern "C" fn _start() -> ! {
                         // disco, en una ventana donde se pulsan flechas, seria
                         // peor que las dos palabras que se quitaron.
                         b's' | b'S' => {
-                            data_win.seal = match data_win.seal {
+                            dsk.win.data.seal = match dsk.win.data.seal {
                                 Seal::Asking => match bmo::estratos_sellar() {
                                     0 => Seal::Failed,
                                     g => Seal::Done(g),
@@ -1609,12 +1299,12 @@ pub extern "C" fn _start() -> ! {
                             // Cualquier otra tecla CANCELA la pregunta. Es la
                             // salida que hace que preguntar sea barato: si te
                             // arrepientes, sigue navegando y ya esta.
-                            data_win.seal = Seal::Idle;
+                            dsk.win.data.seal = Seal::Idle;
                             served = false;
                         }
                     }
                     if served {
-                        scene::data::paint(&p, &data_win);
+                        scene::data::paint(&p, &dsk.win.data);
                         continue;
                     }
                 }
@@ -1629,14 +1319,14 @@ pub extern "C" fn _start() -> ! {
                 //
                 // Ninguna abierta --todas escondidas-- tampoco es "Ejecutar por
                 // defecto": las teclas se descartan y vuelven al invocarla.
-                if !focus.es_para(W_RUN) {
+                if !dsk.win.focus.es_para(W_RUN) {
                     continue;
                 }
-                debug_assert!(visible, "el foco de una ventana escondida es un bug");
+                debug_assert!(dsk.win.visible, "el foco de una ventana escondida es un bug");
                 // Cualquier tecla enciende el cursor y reinicia el parpadeo.
-                caret = true;
-                since_key = 0;
-                repaint_field = true;
+                dsk.field.caret = true;
+                dsk.field.since_key = 0;
+                dsk.tick.repaint_field = true;
                 match c {
                     b'\r' | b'\n' => {
                         // Eco SIEMPRE, tambien de lo que no se entiende: un
@@ -1650,12 +1340,12 @@ pub extern "C" fn _start() -> ! {
                         // El eco en su tinta y la respuesta en la normal: al
                         // mirar la rejilla, los comandos son las anclas y todo
                         // lo de debajo es lo que contestaron.
-                        output.with_ink(INK_ECHO);
-                        output.byte(0xB7);
-                        output.byte(b' ');
-                        output.text(&path[..n]);
-                        output.byte(b'\n');
-                        output.with_ink(INK_PLAIN);
+                        dsk.out.grid.with_ink(INK_ECHO);
+                        dsk.out.grid.byte(0xB7);
+                        dsk.out.grid.byte(b' ');
+                        dsk.out.grid.text(dsk.field.line());
+                        dsk.out.grid.byte(b'\n');
+                        dsk.out.grid.with_ink(INK_PLAIN);
 
                         // Hay un programa vivo escuchando en esta consola?
                         // Entonces la linea NO es un comando: es SUYA. Es lo
@@ -1667,22 +1357,22 @@ pub extern "C" fn _start() -> ! {
                         // espera al motor, ese hijo es SUYO y ya recibio sus
                         // tres lineas. Colar una mas ahi le cambiaria la
                         // cuenta a alguien que no la pidio.
-                        let from_child = !calc.waiting
-                            && child_console.as_ref().map(|cc| cc.has_child()).unwrap_or(false);
+                        let from_child = !dsk.calc.waiting
+                            && dsk.out.console.as_ref().map(|cc| cc.has_child()).unwrap_or(false);
 
                         if from_child {
-                            if let Some(cc) = child_console.as_ref() {
-                                cc.write(&path[..n]);
+                            if let Some(cc) = dsk.out.console.as_ref() {
+                                cc.write(dsk.field.line());
                                 // El salto va aparte y SIEMPRE: `read_line`
                                 // espera a verlo para dar la linea por
                                 // cerrada. Sin el, el programa sigue
                                 // esperando algo que ya escribiste.
                                 cc.write(b"\n");
                             }
-                            paint_status(&p, &run_box, "para el programa", INK_DIM);
-                            n = 0;
-                            cur = 0;
-                            repaint_field = true;
+                            paint_status(&p, &dsk.run_box, "para el programa", INK_DIM);
+                            dsk.field.n = 0;
+                            dsk.field.cur = 0;
+                            dsk.tick.repaint_field = true;
                             continue;
                         }
 
@@ -1690,10 +1380,10 @@ pub extern "C" fn _start() -> ! {
                         // tecleado para un `ACCEPT` es un dato, y mezclarlo
                         // con las rutas ensucia la flecha arriba justo cuando
                         // hace falta repetir el comando de verdad.
-                        history.push(&path[..n]);
-                        match parse(&path[..n]) {
+                        dsk.field.history.push(&dsk.field.path[..dsk.field.n]);
+                        match parse(dsk.field.line()) {
                             Command::Nothing => {
-                                paint_status(&p, &run_box, "escribe algo", INK_DIM);
+                                paint_status(&p, &dsk.run_box, "escribe algo", INK_DIM);
                             }
                             // ** ESTO NO ES UNA DISTRO, y se dice con un gato.
                             //
@@ -1710,17 +1400,17 @@ pub extern "C" fn _start() -> ! {
                             // para ti. Se rie del malentendido, nunca de quien
                             // lo tuvo.
                             Command::NotLinux(verb) => {
-                                output.text(b"    n_n_n
+                                dsk.out.grid.text(b"    n_n_n
 ");
-                                output.text(b"   ( -.- )   ~nya. eso aqui no se dice.
+                                dsk.out.grid.text(b"   ( -.- )   ~nya. eso aqui no se dice.
 ");
-                                output.text(b"   ( u u )   esto NO es Linux, es BMO-X.
+                                dsk.out.grid.text(b"   ( u u )   esto NO es Linux, es BMO-X.
 ");
-                                output.text(b"    ^^ ^^    no hay root que pedir:
+                                dsk.out.grid.text(b"    ^^ ^^    no hay root que pedir:
 ");
-                                output.text(b"             o te dieron la capability, o no existe.
+                                dsk.out.grid.text(b"             o te dieron la capability, o no existe.
 ");
-                                output.text(b"
+                                dsk.out.grid.text(b"
 ");
                                 let hint: &[u8] = match verb {
                                     b"sudo" | b"su" => {
@@ -1751,9 +1441,9 @@ pub extern "C" fn _start() -> ! {
                                     _ => b"  prueba `ayuda` para ver lo que SI hay.
 ",
                                 };
-                                output.text(hint);
-                                paint_status(&p, &run_box, "esto no es Linux :3", INK_DIM);
-                                repaint_field = true;
+                                dsk.out.grid.text(hint);
+                                paint_status(&p, &dsk.run_box, "esto no es Linux :3", INK_DIM);
+                                dsk.tick.repaint_field = true;
                             }
                             Command::List(dir_path) => {
                                 match bmo::Directorio::open(dir_path) {
@@ -1772,26 +1462,26 @@ pub extern "C" fn _start() -> ! {
                                             // no hay carpeta actual a la que
                                             // volver, asi que son ruido.
                                             if is_dot_entry(&nom[..length]) { continue; }
-                                            output.text(b"  ");
-                                            output.text(&nom[..length]);
+                                            dsk.out.grid.text(b"  ");
+                                            dsk.out.grid.text(&nom[..length]);
                                             // Alinear la columna del tamano.
                                             let mut k = length;
-                                            while k < 14 { output.byte(b' '); k += 1; }
+                                            while k < 14 { dsk.out.grid.byte(b' '); k += 1; }
                                             if e.es_dir {
-                                                output.text(b"<DIR>");
+                                                dsk.out.grid.text(b"<DIR>");
                                             } else {
                                                 let mut d10 = [0u8; 10];
                                                 let n10 = decimal(e.bytes as u64, &mut d10);
-                                                output.text(&d10[..n10]);
+                                                dsk.out.grid.text(&d10[..n10]);
                                             }
-                                            output.byte(b'\n');
+                                            dsk.out.grid.byte(b'\n');
                                             count += 1;
                                         }
                                         if count == 0 {
-                                            output.text(b"  (vacio)
+                                            dsk.out.grid.text(b"  (vacio)
 ");
                                         }
-                                        paint_status(&p, &run_box, "listo", INK_DIM);
+                                        paint_status(&p, &dsk.run_box, "listo", INK_DIM);
                                     }
                                     // * El MOTIVO, no un "no pude" para todo.
                                     //
@@ -1819,13 +1509,13 @@ pub extern "C" fn _start() -> ! {
                                                 "carpeta no encontrada",
                                             )
                                         };
-                                        output.with_ink(INK_ERR);
-                                        output.text(line);
-                                        output.with_ink(INK_PLAIN);
-                                        paint_status(&p, &run_box, estado, INK_BAD);
+                                        dsk.out.grid.with_ink(INK_ERR);
+                                        dsk.out.grid.text(line);
+                                        dsk.out.grid.with_ink(INK_PLAIN);
+                                        paint_status(&p, &dsk.run_box, estado, INK_BAD);
                                     }
                                 }
-                                n = 0;
+                                dsk.field.n = 0;
                             }
                             // -- Leer un archivo --
                             //
@@ -1846,37 +1536,37 @@ pub extern "C" fn _start() -> ! {
                                         // que no sea texto llenaria la rejilla
                                         // de basura y se comeria el fotograma.
                                         loop {
-                                            let n = a.read(&mut chunk);
-                                            if n == 0 { break; }
-                                            output.text(&chunk[..n]);
-                                            last = chunk[n - 1];
-                                            total += n;
+                                            let got = a.read(&mut chunk);
+                                            if got == 0 { break; }
+                                            dsk.out.grid.text(&chunk[..got]);
+                                            last = chunk[dsk.field.n - 1];
+                                            total += dsk.field.n;
                                             if total >= 2048 {
-                                                output.text(b"\n  ...(cortado)\n");
+                                                dsk.out.grid.text(b"\n  ...(cortado)\n");
                                                 last = b'\n';
                                                 break;
                                             }
                                         }
                                         if total == 0 {
-                                            output.text(b"  (vacio)\n");
+                                            dsk.out.grid.text(b"  (vacio)\n");
                                         } else if last != b'\n' {
                                             // Sin esto, el proximo mensaje se
                                             // pega al final del archivo.
-                                            output.byte(b'\n');
+                                            dsk.out.grid.byte(b'\n');
                                         }
                                         a.close();
-                                        paint_status(&p, &run_box, "listo", INK_DIM);
+                                        paint_status(&p, &dsk.run_box, "listo", INK_DIM);
                                     }
                                     Err(e) => {
-                                        output.with_ink(INK_ERR);
-                                        output.text(b"  ");
-                                        output.text(file_error_reason(e));
-                                        output.byte(b'\n');
-                                        output.with_ink(INK_PLAIN);
-                                        paint_status(&p, &run_box, "no se pudo leer", INK_BAD);
+                                        dsk.out.grid.with_ink(INK_ERR);
+                                        dsk.out.grid.text(b"  ");
+                                        dsk.out.grid.text(file_error_reason(e));
+                                        dsk.out.grid.byte(b'\n');
+                                        dsk.out.grid.with_ink(INK_PLAIN);
+                                        paint_status(&p, &dsk.run_box, "no se pudo leer", INK_BAD);
                                     }
                                 }
-                                n = 0;
+                                dsk.field.n = 0;
                             }
                             // -- Escribir un archivo --
                             //
@@ -1895,27 +1585,27 @@ pub extern "C" fn _start() -> ! {
                                         // * Aqui es donde llega al disco. Antes
                                         // de esto no hay nada escrito.
                                         if a.close() {
-                                            output.text(b"  guardado: ");
+                                            dsk.out.grid.text(b"  guardado: ");
                                             let mut d10 = [0u8; 10];
                                             let n10 = decimal(placed as u64 + 1, &mut d10);
-                                            output.text(&d10[..n10]);
-                                            output.text(b" bytes\n");
-                                            paint_status(&p, &run_box, "guardado", INK_OK);
+                                            dsk.out.grid.text(&d10[..n10]);
+                                            dsk.out.grid.text(b" bytes\n");
+                                            paint_status(&p, &dsk.run_box, "guardado", INK_OK);
                                         } else {
-                                            output.text(b"  no se guardo nada.\n");
-                                            paint_status(&p, &run_box, "no se pudo guardar", INK_BAD);
+                                            dsk.out.grid.text(b"  no se guardo nada.\n");
+                                            paint_status(&p, &dsk.run_box, "no se pudo guardar", INK_BAD);
                                         }
                                     }
                                     Err(e) => {
-                                        output.with_ink(INK_ERR);
-                                        output.text(b"  ");
-                                        output.text(file_error_reason(e));
-                                        output.byte(b'\n');
-                                        output.with_ink(INK_PLAIN);
-                                        paint_status(&p, &run_box, "no se pudo crear", INK_BAD);
+                                        dsk.out.grid.with_ink(INK_ERR);
+                                        dsk.out.grid.text(b"  ");
+                                        dsk.out.grid.text(file_error_reason(e));
+                                        dsk.out.grid.byte(b'\n');
+                                        dsk.out.grid.with_ink(INK_PLAIN);
+                                        paint_status(&p, &dsk.run_box, "no se pudo crear", INK_BAD);
                                     }
                                 }
-                                n = 0;
+                                dsk.field.n = 0;
                             }
                             // -- Volcar el historial a un .txt --
                             //
@@ -1930,39 +1620,39 @@ pub extern "C" fn _start() -> ! {
                                 // de lo que se estaba guardando, y colarlos
                                 // dentro haria que el archivo hablara de si
                                 // mismo.
-                                let (from, to) = output.all_rows();
-                                match dump_output(&output, dest, from, to) {
+                                let (from, to) = dsk.out.grid.all_rows();
+                                match dump_output(&dsk.out.grid, dest, from, to) {
                                     Ok(bytes) => {
-                                        output.with_ink(INK_GOOD);
-                                        output.text(b"  guardado en ");
-                                        output.text(dest);
-                                        output.text(b": ");
+                                        dsk.out.grid.with_ink(INK_GOOD);
+                                        dsk.out.grid.text(b"  guardado en ");
+                                        dsk.out.grid.text(dest);
+                                        dsk.out.grid.text(b": ");
                                         let mut d = [0u8; 10];
                                         let k = decimal(bytes as u64, &mut d);
-                                        output.text(&d[..k]);
-                                        output.text(b" bytes, ");
+                                        dsk.out.grid.text(&d[..k]);
+                                        dsk.out.grid.text(b" bytes, ");
                                         let k = decimal((to - from + 1) as u64, &mut d);
-                                        output.text(&d[..k]);
-                                        output.text(b" lineas\n");
-                                        output.with_ink(INK_PLAIN);
-                                        paint_status(&p, &run_box, "volcado", INK_OK);
+                                        dsk.out.grid.text(&d[..k]);
+                                        dsk.out.grid.text(b" lineas\n");
+                                        dsk.out.grid.with_ink(INK_PLAIN);
+                                        paint_status(&p, &dsk.run_box, "volcado", INK_OK);
                                     }
                                     Err(0) => {
-                                        output.with_ink(INK_ERR);
-                                        output.text(b"  no se guardo nada. el motivo esta en F11.\n");
-                                        output.with_ink(INK_PLAIN);
-                                        paint_status(&p, &run_box, "no se pudo guardar", INK_BAD);
+                                        dsk.out.grid.with_ink(INK_ERR);
+                                        dsk.out.grid.text(b"  no se guardo nada. el motivo esta en F11.\n");
+                                        dsk.out.grid.with_ink(INK_PLAIN);
+                                        paint_status(&p, &dsk.run_box, "no se pudo guardar", INK_BAD);
                                     }
                                     Err(e) => {
-                                        output.with_ink(INK_ERR);
-                                        output.text(b"  ");
-                                        output.text(file_error_reason(e));
-                                        output.byte(b'\n');
-                                        output.with_ink(INK_PLAIN);
-                                        paint_status(&p, &run_box, "no se pudo crear", INK_BAD);
+                                        dsk.out.grid.with_ink(INK_ERR);
+                                        dsk.out.grid.text(b"  ");
+                                        dsk.out.grid.text(file_error_reason(e));
+                                        dsk.out.grid.byte(b'\n');
+                                        dsk.out.grid.with_ink(INK_PLAIN);
+                                        paint_status(&p, &dsk.run_box, "no se pudo crear", INK_BAD);
                                     }
                                 }
-                                n = 0;
+                                dsk.field.n = 0;
                             }
                             // * `sella` YA NO VIVE AQUI, y esto lo dice.
                             //
@@ -1974,18 +1664,18 @@ pub extern "C" fn _start() -> ! {
                             // dueno. **Una funcion que se muda sin dejar nota se
                             // convierte en una funcion que desaparecio.**
                             Command::SealMoved => {
-                                output.text(b"  sellar se mudo a la ventana de ESTRATOS.
+                                dsk.out.grid.text(b"  sellar se mudo a la ventana de ESTRATOS.
 ");
-                                output.with_ink(INK_GOOD);
-                                output.text(b"  F12  ->  TAB  ->  tecla S
+                                dsk.out.grid.with_ink(INK_GOOD);
+                                dsk.out.grid.text(b"  F12  ->  TAB  ->  tecla S
 ");
-                                output.with_ink(INK_PLAIN);
-                                output.text(b"  ahi se ve el volumen mientras se sella, que es
+                                dsk.out.grid.with_ink(INK_PLAIN);
+                                dsk.out.grid.text(b"  ahi se ve el volumen mientras se sella, que es
 ");
-                                output.text(b"  donde tiene sentido: la generacion sube delante.
+                                dsk.out.grid.text(b"  donde tiene sentido: la generacion sube delante.
 ");
-                                paint_status(&p, &run_box, "esta en F12", INK);
-                                n = 0;
+                                paint_status(&p, &dsk.run_box, "esta en F12", INK);
+                                dsk.field.n = 0;
                             }
                             // * `perf` -- el numero antes que la tarjeta.
                             //
@@ -1995,73 +1685,73 @@ pub extern "C" fn _start() -> ! {
                             // orden de magnitud y el peor caso, no un digito.
                             Command::PaintCost => {
                                 let v = p.volcado();
-                                output.text(b"  pintado\n");
-                                output.text(b"    modo        ");
-                                output.text(match v.modo {
+                                dsk.out.grid.text(b"  pintado\n");
+                                dsk.out.grid.text(b"    modo        ");
+                                dsk.out.grid.text(match v.modo {
                                     bmo::Volcador::Ninguno => b"directo al panel (SIN doble bufer)\n" as &[u8],
                                     bmo::Volcador::Directo => b"doble bufer, volcado por CPU\n",
                                 });
-                                output.text(b"    fotogramas  ");
+                                dsk.out.grid.text(b"    fotogramas  ");
                                 let mut d = [0u8; 10];
                                 let k = decimal(v.fotogramas, &mut d);
-                                output.text(&d[..k]);
-                                output.text(b"   con algo que mover\n");
+                                dsk.out.grid.text(&d[..k]);
+                                dsk.out.grid.text(b"   con algo que mover\n");
                                 if v.fotogramas > 0 {
-                                    output.text(b"    medio      ");
+                                    dsk.out.grid.text(b"    medio      ");
                                     let k = decimal(v.bytes / v.fotogramas / 1024, &mut d);
-                                    output.text(&d[..k]);
-                                    output.text(b" KiB por fotograma\n");
+                                    dsk.out.grid.text(&d[..k]);
+                                    dsk.out.grid.text(b" KiB por fotograma\n");
                                     // El PEOR caso va aparte y a proposito: un
                                     // tiron se nota y una media buena lo tapa.
-                                    output.text(b"    peor       ");
+                                    dsk.out.grid.text(b"    peor       ");
                                     let k = decimal(v.peor / 1024, &mut d);
-                                    output.text(&d[..k]);
-                                    output.text(b" KiB en un fotograma\n");
-                                    output.text(b"    total      ");
+                                    dsk.out.grid.text(&d[..k]);
+                                    dsk.out.grid.text(b" KiB en un fotograma\n");
+                                    dsk.out.grid.text(b"    total      ");
                                     // ** Y CUANTAS CAJAS tenia ese peor
                                     // fotograma. Con la caja unica de antes
                                     // esto seria SIEMPRE 1 y el `worst` la
                                     // pantalla entera; si aqui sale 2 o 3 con
                                     // un peor pequeno, el troceado trabaja.
-                                    output.text(b"    cajas      ");
+                                    dsk.out.grid.text(b"    cajas      ");
                                     let k = decimal(v.cajas as u64, &mut d);
-                                    output.text(&d[..k]);
-                                    output.text(b"
+                                    dsk.out.grid.text(&d[..k]);
+                                    dsk.out.grid.text(b"
 ");
                                     let k = decimal(v.bytes / 1024 / 1024, &mut d);
-                                    output.text(&d[..k]);
-                                    output.text(b" MiB movidos desde el arranque\n");
+                                    dsk.out.grid.text(&d[..k]);
+                                    dsk.out.grid.text(b" MiB movidos desde el arranque\n");
                                 }
-                                output.with_ink(INK_ECHO);
-                                output.text(b"    la caja de sucio ya recorta esto: una GPU solo\n");
-                                output.text(b"    compra algo si estos numeros son grandes.\n");
-                                output.with_ink(INK_PLAIN);
-                                paint_status(&p, &run_box, "listo", INK_DIM);
-                                n = 0;
+                                dsk.out.grid.with_ink(INK_ECHO);
+                                dsk.out.grid.text(b"    la caja de sucio ya recorta esto: una GPU solo\n");
+                                dsk.out.grid.text(b"    compra algo si estos numeros son grandes.\n");
+                                dsk.out.grid.with_ink(INK_PLAIN);
+                                paint_status(&p, &dsk.run_box, "listo", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             Command::Calculator => {
-                                calc.visible = !calc.visible;
-                                if calc.visible {
-                                    paint_calc(&p, &calc_pad, &calc, calc_hover);
-                                    output.text(b"  calculadora: la cara en Rust, el calculo en COBOL
+                                dsk.calc.visible = !dsk.calc.visible;
+                                if dsk.calc.visible {
+                                    paint_calc(&p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
+                                    dsk.out.grid.text(b"  calculadora: la cara en Rust, el calculo en COBOL
 ");
                                 } else {
                                     // Devolver esa zona a la escena.
-                                    for f in 0..calc_pad.height {
-                                        for co in 0..calc_pad.width {
-                                            let (px, py) = (calc_pad.x + co, calc_pad.y + f);
-                                            p.punto(px, py, scene_color(&run_box, visible, px, py, p.alto));
+                                    for f in 0..dsk.calc_pad.height {
+                                        for co in 0..dsk.calc_pad.width {
+                                            let (px, py) = (dsk.calc_pad.x + co, dsk.calc_pad.y + f);
+                                            p.punto(px, py, scene_color(&dsk.run_box, dsk.win.visible, px, py, p.alto));
                                         }
                                     }
                                 }
-                                paint_status(&p, &run_box, "listo", INK_DIM);
-                                n = 0;
-                                cur = 0;
+                                paint_status(&p, &dsk.run_box, "listo", INK_DIM);
+                                dsk.field.n = 0;
+                                dsk.field.cur = 0;
                             }
                             Command::Clear => {
-                                output.clear();
-                                paint_status(&p, &run_box, "listo", INK_DIM);
-                                n = 0;
+                                dsk.out.grid.clear();
+                                paint_status(&p, &dsk.run_box, "listo", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             // ** `audio` -- paso 0 de docs/AUDIO_MAESTRO.md.
                             //
@@ -2075,88 +1765,88 @@ pub extern "C" fn _start() -> ! {
                             // orden existia SOLO en el shell de Ring 0, y dos
                             // shells con dos vocabularios son dos productos.
                             Command::Net(what) => {
-                                commands::reports::report_net(&mut output, what);
+                                commands::reports::report_net(&mut dsk.out.grid, what);
                             }
                             Command::Audio => {
                                 let had_any = bmo::audio_censo();
                                 if had_any {
-                                    output.with_ink(INK_GOOD);
-                                    output.text(b"  aparato de reproduccion HALLADO\n");
-                                    output.with_ink(INK_PLAIN);
-                                    output.text(b"  los ocho numeros estan en F11 (canales, bits, frecuencias)\n");
-                                    output.text(b"  comparalos con lo que dice Windows del mismo audifono\n");
+                                    dsk.out.grid.with_ink(INK_GOOD);
+                                    dsk.out.grid.text(b"  aparato de reproduccion HALLADO\n");
+                                    dsk.out.grid.with_ink(INK_PLAIN);
+                                    dsk.out.grid.text(b"  los ocho numeros estan en F11 (canales, bits, frecuencias)\n");
+                                    dsk.out.grid.text(b"  comparalos con lo que dice Windows del mismo audifono\n");
                                 } else {
-                                    output.with_ink(INK_ERR);
-                                    output.text(b"  ningun aparato de reproduccion en los puertos libres\n");
-                                    output.with_ink(INK_PLAIN);
+                                    dsk.out.grid.with_ink(INK_ERR);
+                                    dsk.out.grid.text(b"  ningun aparato de reproduccion en los puertos libres\n");
+                                    dsk.out.grid.with_ink(INK_PLAIN);
                                     // La distincion que decide el siguiente paso, y por eso
                                     // se dice aqui y no solo en CABINA.
-                                    output.text(b"  F11 dice CUANTOS puertos se miraron: si es 0, el fallo\n");
-                                    output.text(b"  es del censo; si es >0, el aparato no es UAC1\n");
+                                    dsk.out.grid.text(b"  F11 dice CUANTOS puertos se miraron: si es 0, el fallo\n");
+                                    dsk.out.grid.text(b"  es del censo; si es >0, el aparato no es UAC1\n");
                                 }
-                                paint_status(&p, &run_box, "audio", INK_DIM);
-                                n = 0;
+                                paint_status(&p, &dsk.run_box, "audio", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             Command::Help => {
-                                output.text(b"  <ruta>       lanza un .bex   (cobol/banco.bex)\n");
-                                output.text(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
+                                dsk.out.grid.text(b"  <ruta>       lanza un .bex   (cobol/banco.bex)\n");
+                                dsk.out.grid.text(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
                                 // Va JUSTO detras de `run` porque es su hermana,
                                 // y con la consecuencia delante: lo que sorprende
                                 // no es que lance, es que el escritorio se vaya.
-                                output.text(b"  presta <ruta>  se lo lanza CON LA PANTALLA: el\n");
-                                output.text(b"               escritorio se aparta y vuelve cuando\n");
-                                output.text(b"               el programa termina  (c/ray.bex)\n");
-                                output.text(b"  cat <ruta>   ensena lo que hay dentro\n");
-                                output.text(b"  write <ruta> <texto>     lo guarda\n");
-                                output.text(b"  guarda [ruta]  vuelca esta salida a un .txt\n");
-                                output.text(b"               (por defecto datos/salida.txt, y cada\n");
-                                output.text(b"                programa que corre lo deja solo ahi)\n");
-                                output.text(b"  clear / cls  limpia esta salida\n");
-                                output.text(b"  TAB          completa   Ctrl+A/E inicio/fin\n");
-                                output.text(b"  Ctrl+K corta al final    Ctrl+W borra palabra\n");
-                                output.text(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
-                                output.text(b"  info         RAM, CPU, tareas y disco\n");
-                                output.text(b"  cpu / mem    solo esa parte del informe\n");
-                                output.text(b"  perf         lo que cuesta pintar, medido\n");
-                                output.text(b"  estratos sellar   ESCRIBE EN EL DISCO (commit vacio)\n");
-                                output.text(b"  help         esto\n");
-                                output.text(b"  reboot       reinicia la maquina\n");
-                                output.text(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
-                                paint_status(&p, &run_box, "listo", INK_DIM);
-                                n = 0;
+                                dsk.out.grid.text(b"  presta <ruta>  se lo lanza CON LA PANTALLA: el\n");
+                                dsk.out.grid.text(b"               escritorio se aparta y vuelve cuando\n");
+                                dsk.out.grid.text(b"               el programa termina  (c/ray.bex)\n");
+                                dsk.out.grid.text(b"  cat <ruta>   ensena lo que hay dentro\n");
+                                dsk.out.grid.text(b"  write <ruta> <texto>     lo guarda\n");
+                                dsk.out.grid.text(b"  guarda [ruta]  vuelca esta salida a un .txt\n");
+                                dsk.out.grid.text(b"               (por defecto datos/salida.txt, y cada\n");
+                                dsk.out.grid.text(b"                programa que corre lo deja solo ahi)\n");
+                                dsk.out.grid.text(b"  clear / cls  limpia esta salida\n");
+                                dsk.out.grid.text(b"  TAB          completa   Ctrl+A/E inicio/fin\n");
+                                dsk.out.grid.text(b"  Ctrl+K corta al final    Ctrl+W borra palabra\n");
+                                dsk.out.grid.text(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
+                                dsk.out.grid.text(b"  info         RAM, CPU, tareas y disco\n");
+                                dsk.out.grid.text(b"  cpu / mem    solo esa parte del informe\n");
+                                dsk.out.grid.text(b"  perf         lo que cuesta pintar, medido\n");
+                                dsk.out.grid.text(b"  estratos sellar   ESCRIBE EN EL DISCO (commit vacio)\n");
+                                dsk.out.grid.text(b"  help         esto\n");
+                                dsk.out.grid.text(b"  reboot       reinicia la maquina\n");
+                                dsk.out.grid.text(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
+                                paint_status(&p, &dsk.run_box, "listo", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             // Ni se intenta lanzar. Se dice lo que es y con
                             // que se abre -- un mensaje sobre la FIRMA aqui
                             // manda a buscar un permiso que no hace falta.
                             Command::NotAProgram(r) => {
-                                output.with_ink(INK_ERR);
-                                output.text(b"  eso no es un programa (solo .bex se lanza).\n");
-                                output.text(b"  para verlo:  cat ");
-                                output.text(r);
-                                output.byte(b'\n');
-                                output.with_ink(INK_PLAIN);
-                                paint_status(&p, &run_box, "no es un programa: prueba lee", INK_DIM);
-                                n = 0;
+                                dsk.out.grid.with_ink(INK_ERR);
+                                dsk.out.grid.text(b"  eso no es un programa (solo .bex se lanza).\n");
+                                dsk.out.grid.text(b"  para verlo:  cat ");
+                                dsk.out.grid.text(r);
+                                dsk.out.grid.byte(b'\n');
+                                dsk.out.grid.with_ink(INK_PLAIN);
+                                paint_status(&p, &dsk.run_box, "no es un programa: prueba lee", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             Command::Autopsy => {
-                                report_autopsy(&mut output);
-                                paint_status(&p, &run_box, "ultimo fallo de Ring 3", INK_DIM);
-                                n = 0;
+                                report_autopsy(&mut dsk.out.grid);
+                                paint_status(&p, &dsk.run_box, "ultimo fallo de Ring 3", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             Command::Report => {
-                                report_system(&mut output);
-                                paint_status(&p, &run_box, "informe del sistema", INK_DIM);
-                                n = 0;
+                                report_system(&mut dsk.out.grid);
+                                paint_status(&p, &dsk.run_box, "informe del sistema", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             Command::Cpu => {
-                                report_cpu(&mut output);
-                                paint_status(&p, &run_box, "procesador", INK_DIM);
-                                n = 0;
+                                report_cpu(&mut dsk.out.grid);
+                                paint_status(&p, &dsk.run_box, "procesador", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             Command::Memoria => {
-                                report_memory(&mut output);
-                                paint_status(&p, &run_box, "memoria", INK_DIM);
-                                n = 0;
+                                report_memory(&mut dsk.out.grid);
+                                paint_status(&p, &dsk.run_box, "memoria", INK_DIM);
+                                dsk.field.n = 0;
                             }
                             // * El aviso va ANTES y se VUELCA antes, porque la
                             // llamada bloquea hasta un segundo entero mientras
@@ -2181,7 +1871,7 @@ pub extern "C" fn _start() -> ! {
                                 // de como se llamaba.
                                 if arg == b"parar" || arg == b"para" || arg == b"stop" {
                                     bmo::smp_parar();
-                                    output.text(b"  obreros parados (vuelven a hlt)\n");
+                                    dsk.out.grid.text(b"  obreros parados (vuelven a hlt)\n");
                                     // ** Y LO QUE VA A PASAR DESPUES, DICHO AQUI.
                                     //
                                     // El dueno escribio `smp stop`, luego `smp`,
@@ -2190,40 +1880,40 @@ pub extern "C" fn _start() -> ! {
                                     // que faltaba no era un numero distinto:
                                     // era avisar de que ese numero cuenta otra
                                     // cosa.
-                                    output.text(b"  [!] seguiran contando como \"en pie\": encendidos, no trabajando\n");
-                                    output.text(b"      `smp all` los vuelve a poner a trabajar\n");
-                                    paint_output(&p, &run_box, &output);
-                                    paint_status(&p, &run_box, "smp", INK_DIM);
-                                    n = 0;
-                                    cur = 0;
+                                    dsk.out.grid.text(b"  [!] seguiran contando como \"en pie\": encendidos, no trabajando\n");
+                                    dsk.out.grid.text(b"      `smp all` los vuelve a poner a trabajar\n");
+                                    paint_output(&p, &dsk.run_box, &dsk.out.grid);
+                                    paint_status(&p, &dsk.run_box, "smp", INK_DIM);
+                                    dsk.field.n = 0;
+                                    dsk.field.cur = 0;
                                     continue;
                                 }
                                 if arg == b"prueba" || arg == b"bench" || arg == b"test" {
-                                    output.text(b"  midiendo reparto (esto tarda)...\n");
-                                    paint_output(&p, &run_box, &output);
+                                    dsk.out.grid.text(b"  midiendo reparto (esto tarda)...\n");
+                                    paint_output(&p, &dsk.run_box, &dsk.out.grid);
                                     p.volcar();
                                     let x100 = bmo::smp_prueba();
                                     let mut b = [0u8; 10];
-                                    output.with_ink(if x100 >= 150 { INK_GOOD } else { INK_ERR });
-                                    output.text(b"  aceleracion: ");
+                                    dsk.out.grid.with_ink(if x100 >= 150 { INK_GOOD } else { INK_ERR });
+                                    dsk.out.grid.text(b"  aceleracion: ");
                                     let k = decimal(x100 / 100, &mut b);
-                                    output.text(&b[..k]);
-                                    output.text(b".");
+                                    dsk.out.grid.text(&b[..k]);
+                                    dsk.out.grid.text(b".");
                                     // Los dos decimales, con su cero delante:
                                     // "8.4" y "8.04" no son el mismo numero.
                                     if x100 % 100 < 10 {
-                                        output.text(b"0");
+                                        dsk.out.grid.text(b"0");
                                     }
                                     let k = decimal(x100 % 100, &mut b);
-                                    output.text(&b[..k]);
-                                    output.text(b"x   (F11 trae los ticks)\n");
-                                    output.with_ink(INK_PLAIN);
+                                    dsk.out.grid.text(&b[..k]);
+                                    dsk.out.grid.text(b"x   (F11 trae los ticks)\n");
+                                    dsk.out.grid.with_ink(INK_PLAIN);
                                     if x100 == 0 {
-                                        output.text(b"  0 = falto una parte: el numero no vale\n");
+                                        dsk.out.grid.text(b"  0 = falto una parte: el numero no vale\n");
                                     }
-                                    paint_status(&p, &run_box, "smp", INK_DIM);
-                                    n = 0;
-                                    cur = 0;
+                                    paint_status(&p, &dsk.run_box, "smp", INK_DIM);
+                                    dsk.field.n = 0;
+                                    dsk.field.cur = 0;
                                     continue;
                                 }
                                 let how_many = if arg.is_empty() {
@@ -2248,27 +1938,27 @@ pub extern "C" fn _start() -> ! {
                                     if ok { v } else { 0 }
                                 };
                                 if how_many == 0 {
-                                    output.text(b"  censando (no se despierta a nadie)\n");
+                                    dsk.out.grid.text(b"  censando (no se despierta a nadie)\n");
                                 } else {
-                                    output.text(b"  despertando nucleos (esto tarda)...\n");
+                                    dsk.out.grid.text(b"  despertando nucleos (esto tarda)...\n");
                                 }
-                                paint_output(&p, &run_box, &output);
+                                paint_output(&p, &dsk.run_box, &dsk.out.grid);
                                 p.volcar();
                                 let (alive, expected, stopped) = bmo::smp_censo(how_many);
-                                output.with_ink(if alive == expected {
+                                dsk.out.grid.with_ink(if alive == expected {
                                     INK_GOOD
                                 } else {
                                     INK_ERR
                                 });
-                                output.text(b"  nucleos en pie: ");
+                                dsk.out.grid.text(b"  nucleos en pie: ");
                                 let mut b = [0u8; 10];
                                 let k = decimal((alive + 1) as u64, &mut b);
-                                output.text(&b[..k]);
-                                output.text(b" de ");
+                                dsk.out.grid.text(&b[..k]);
+                                dsk.out.grid.text(b" de ");
                                 let k = decimal((expected + 1) as u64, &mut b);
-                                output.text(&b[..k]);
-                                output.text(b"   (F11 lo cuenta entero)\n");
-                                output.with_ink(INK_PLAIN);
+                                dsk.out.grid.text(&b[..k]);
+                                dsk.out.grid.text(b"   (F11 lo cuenta entero)\n");
+                                dsk.out.grid.with_ink(INK_PLAIN);
                                 // ** LA MITAD QUE FALTABA DEL CENSO.
                                 //
                                 // "En pie" cuenta nucleos que contestaron al
@@ -2277,10 +1967,10 @@ pub extern "C" fn _start() -> ! {
                                 // Pero leido solo, dice que `smp stop` no hizo
                                 // nada. Ahora se dicen las dos cosas.
                                 if stopped {
-                                    output.with_ink(INK_ERR);
-                                    output.text(b"  [!] pero estan PARADOS: en pie no es trabajando\n");
-                                    output.with_ink(INK_PLAIN);
-                                    output.text(b"      `smp all` los vuelve a poner a trabajar\n");
+                                    dsk.out.grid.with_ink(INK_ERR);
+                                    dsk.out.grid.text(b"  [!] pero estan PARADOS: en pie no es trabajando\n");
+                                    dsk.out.grid.with_ink(INK_PLAIN);
+                                    dsk.out.grid.text(b"      `smp all` los vuelve a poner a trabajar\n");
                                 }
                                 // La guia va donde se necesita: justo despues
                                 // de censar, que es cuando uno se pregunta
@@ -2299,14 +1989,14 @@ pub extern "C" fn _start() -> ! {
                                 // `help`, y a `help` se va cuando uno ya se
                                 // rindio.
                                 if how_many == 0 {
-                                    output.text(b"  smp all      despierta todos    smp 3   solo tres\n");
-                                    output.text(b"  smp test     reparte una cuenta y mide la aceleracion\n");
-                                    output.text(b"  smp stop     los duerme. [!] sin IPI NO vuelven\n");
-                                    output.text(b"  F11 dice en que esta cada nucleo y cual gira en vacio\n");
+                                    dsk.out.grid.text(b"  smp all      despierta todos    smp 3   solo tres\n");
+                                    dsk.out.grid.text(b"  smp test     reparte una cuenta y mide la aceleracion\n");
+                                    dsk.out.grid.text(b"  smp stop     los duerme. [!] sin IPI NO vuelven\n");
+                                    dsk.out.grid.text(b"  F11 dice en que esta cada nucleo y cual gira en vacio\n");
                                 }
-                                paint_status(&p, &run_box, "smp", INK_DIM);
-                                n = 0;
-                                cur = 0;
+                                paint_status(&p, &dsk.run_box, "smp", INK_DIM);
+                                dsk.field.n = 0;
+                                dsk.field.cur = 0;
                             }
                             // Se pinta ANTES de pedirlo: la llamada no vuelve,
                             // asi que un mensaje despues no lo veria nadie. Y
@@ -2315,8 +2005,8 @@ pub extern "C" fn _start() -> ! {
                             // al framebuffer, asi que al volver de `text` ya
                             // esta en el cristal: no hay nada que vaciar.
                             Command::Reboot => {
-                                output.text(b"  reiniciando...\n");
-                                paint_status(&p, &run_box, "reiniciando", INK_DIM);
+                                dsk.out.grid.text(b"  reiniciando...\n");
+                                paint_status(&p, &dsk.run_box, "reiniciando", INK_DIM);
                                 bmo::reiniciar();
                             }
                             Command::Unknown => {
@@ -2324,12 +2014,12 @@ pub extern "C" fn _start() -> ! {
                                 // esta: revisa la ruta" a quien escribia
                                 // `reboot`, y eso manda a buscar un archivo que
                                 // nunca existio en vez de decir la verdad.
-                                output.text(b"  no es un comando ni una ruta. escribe 'help'.\n");
-                                paint_status(&p, &run_box, "no lo conozco: prueba help", INK_BAD);
-                                n = 0;
+                                dsk.out.grid.text(b"  no es un comando ni una ruta. escribe 'help'.\n");
+                                paint_status(&p, &dsk.run_box, "no lo conozco: prueba help", INK_BAD);
+                                dsk.field.n = 0;
                             }
                             Command::Launch(target) => {
-                                let cap = child_console.as_ref().map(|c| c.cap).unwrap_or(0);
+                                let cap = dsk.out.console.as_ref().map(|c| c.cap).unwrap_or(0);
                                 // ** `run` DECIDE SOLO.
                                 //
                                 // Si el `.bex` declara `WANTS_SCREEN` --bandera
@@ -2369,16 +2059,16 @@ pub extern "C" fn _start() -> ! {
                                             // camino de error, que es el que nadie prueba a
                                             // mano (patron 29).
                                             scene::paint_background(&p);
-                                            scene::launcher::paint(&p, &launcher);
+                                            scene::launcher::paint(&p, &dsk.launcher);
                                             p.rect(16, 13, 14, 14, ACCENT);
                                             p.texto(38, 14, "BMO-X", INK);
-                                            taskbar_dirty = true;
-                                            paint_run_box(&p, &run_box);
-                                            paint_field(&p, &run_box, &path[..n], cur, true);
-                                            paint_output(&p, &run_box, &output);
-                                            paint_status(&p, &run_box, "pantalla devuelta", INK_OK);
+                                            dsk.win.taskbar_dirty = true;
+                                            paint_run_box(&p, &dsk.run_box);
+                                            paint_field(&p, &dsk.run_box, dsk.field.line(), dsk.field.cur, true);
+                                            paint_output(&p, &dsk.run_box, &dsk.out.grid);
+                                            paint_status(&p, &dsk.run_box, "pantalla devuelta", INK_OK);
                                             p.vaciar();
-                                            repaint_field = true;
+                                            dsk.tick.repaint_field = true;
                                         }
                                         None => {
                                             bmo::consola(
@@ -2388,12 +2078,12 @@ pub extern "C" fn _start() -> ! {
                                             bmo::salir()
                                         }
                                     }
-                                    n = 0;
+                                    dsk.field.n = 0;
                                     continue;
                                 }
                                 match bmo::ejecutar_en(target, cap) {
                                     Ok(_) => {
-                                        paint_status(&p, &run_box, "lanzado", INK_OK);
+                                        paint_status(&p, &dsk.run_box, "lanzado", INK_OK);
                                         // * Se apunta DONDE empieza esta
                                         // corrida. El volcado no puede hacerse
                                         // aqui: `ejecutar_en` vuelve en cuanto
@@ -2411,8 +2101,8 @@ pub extern "C" fn _start() -> ! {
                                         // volcado.
                                         let mut dest = [0u8; 32];
                                         let dest_n = dump_name(target, &mut dest);
-                                        run = Some(Run {
-                                            mark: output.mark().saturating_sub(1),
+                                        dsk.out.run = Some(Run {
+                                            mark: dsk.out.grid.mark().saturating_sub(1),
                                             waits: 0,
                                             dest,
                                             dest_n,
@@ -2420,7 +2110,7 @@ pub extern "C" fn _start() -> ! {
                                         // El campo se vacia al lanzar, como el
                                         // Win+R: la caja esta para el SIGUIENTE
                                         // programa, no para admirar el anterior.
-                                        n = 0;
+                                        dsk.field.n = 0;
                                     }
                                     // [!] Este codigo tapa DOS causas: que el
                                     // archivo no este, y que este pero no se
@@ -2434,21 +2124,21 @@ pub extern "C" fn _start() -> ! {
                                     // kernel SI cuenta el motivo entero.
                                     Err(bmo::ERROR_NOT_THERE) => paint_status(
                                         &p,
-                                        &run_box,
+                                        &dsk.run_box,
                                         "no se pudo cargar: F11 dice por que",
                                         INK_BAD,
                                     ),
                                     Err(bmo::ERROR_GATE) => paint_status(
                                         &p,
-                                        &run_box,
+                                        &dsk.run_box,
                                         "rechazado: la firma no cuadra",
                                         INK_BAD,
                                     ),
                                     Err(bmo::ERROR_BUSY) => {
-                                        paint_status(&p, &run_box, "no hay hueco ahora mismo", INK_BAD)
+                                        paint_status(&p, &dsk.run_box, "no hay hueco ahora mismo", INK_BAD)
                                     }
                                     Err(_) => {
-                                        paint_status(&p, &run_box, "no paso la admision", INK_BAD)
+                                        paint_status(&p, &dsk.run_box, "no paso la admision", INK_BAD)
                                     }
                                 }
                             }
@@ -2462,18 +2152,18 @@ pub extern "C" fn _start() -> ! {
                         // error conservan la ruta a proposito para poder
                         // corregirla, y ahi `cur` no se mueve: por eso es un
                         // `min` y no un cero.
-                        cur = cur.min(n);
-                        repaint_field = true;
+                        dsk.field.cur = dsk.field.cur.min(dsk.field.n);
+                        dsk.tick.repaint_field = true;
                     }
                     // TAB: completar.
                     b'\t' => {
-                        let antes = n;
-                        n = complete(&mut path, n, &mut output);
-                        cur = n;
-                        if n == antes {
-                            paint_status(&p, &run_box, "nada que completar", INK_DIM);
+                        let antes = dsk.field.n;
+                        dsk.field.n = complete(&mut dsk.field.path, dsk.field.n, &mut dsk.out.grid);
+                        dsk.field.cur = dsk.field.n;
+                        if dsk.field.n == antes {
+                            paint_status(&p, &dsk.run_box, "nada que completar", INK_DIM);
                         }
-                        repaint_field = true;
+                        dsk.tick.repaint_field = true;
                     }
                     // Retroceso.
                     //
@@ -2484,7 +2174,7 @@ pub extern "C" fn _start() -> ! {
                     //     out of range for slice of length ...
                     //     en services\gui\src\main.rs:2834
                     //
-                    // Esa linea es `paint_field(..., &path[..n], ...)`, y el
+                    // Esa linea es `paint_field(..., &path[..dsk.field.n], ...)`, y el
                     // indice es `usize::MAX`: **`n` se desbordo por abajo**.
                     // Este `n -= 1` estaba guardado por `cur > 0` -- que es la
                     // condicion del OTRO contador. Con `cur > 0` y `n == 0`, la
@@ -2502,23 +2192,23 @@ pub extern "C" fn _start() -> ! {
                     // lo que impide que el proximo camino nuevo lo vuelva a
                     // romper sin que nadie se entere.
                     0x08 | 0x7F => {
-                        if cur > 0 && n > 0 {
-                            let mut k = cur;
-                            while k < n {
-                                path[k - 1] = path[k];
+                        if dsk.field.cur > 0 && dsk.field.n > 0 {
+                            let mut k = dsk.field.cur;
+                            while k < dsk.field.n {
+                                dsk.field.path[k - 1] = dsk.field.path[k];
                                 k += 1;
                             }
-                            cur -= 1;
-                            n -= 1;
-                            repaint_field = true;
+                            dsk.field.cur -= 1;
+                            dsk.field.n -= 1;
+                            dsk.tick.repaint_field = true;
                         }
                     }
                     // Escape: borrar la linea entera, igual que en el Win+R.
                     0x1B => {
-                        n = 0;
-                        cur = 0;
-                        paint_status(&p, &run_box, "listo", INK_DIM);
-                        repaint_field = true;
+                        dsk.field.n = 0;
+                        dsk.field.cur = 0;
+                        paint_status(&p, &dsk.run_box, "listo", INK_DIM);
+                        dsk.tick.repaint_field = true;
                     }
                     // -- El portapapeles --
                     //
@@ -2531,22 +2221,24 @@ pub extern "C" fn _start() -> ! {
                     // significa en Unix. Aqui no hay senales que mandar, y el
                     // dedo que ya sabe Ctrl+C sabe copiar -- no interrumpir.
                     0x03 => {
-                        clipboard_n = n;
-                        clipboard[..n].copy_from_slice(&path[..n]);
-                        paint_status(&p, &run_box, "copiado", INK_DIM);
+                        dsk.field.clipboard_n = dsk.field.n;
+                        let upto = dsk.field.n;
+                        let (src, dst) = (&dsk.field.path[..upto], &mut dsk.field.clipboard[..upto]);
+                        dst.copy_from_slice(src);
+                        paint_status(&p, &dsk.run_box, "copiado", INK_DIM);
                     }
                     0x16 => {
-                        if clipboard_n > 0 && n + clipboard_n <= PATH_MAX {
+                        if dsk.field.clipboard_n > 0 && dsk.field.n + dsk.field.clipboard_n <= PATH_MAX {
                             // Hueco del tamano del pegado, y meterlo.
-                            let mut k = n;
-                            while k > cur {
-                                path[k + clipboard_n - 1] = path[k - 1];
+                            let mut k = dsk.field.n;
+                            while k > dsk.field.cur {
+                                dsk.field.path[k + dsk.field.clipboard_n - 1] = dsk.field.path[k - 1];
                                 k -= 1;
                             }
-                            path[cur..cur + clipboard_n].copy_from_slice(&clipboard[..clipboard_n]);
-                            cur += clipboard_n;
-                            n += clipboard_n;
-                            repaint_field = true;
+                            dsk.field.path[dsk.field.cur..dsk.field.cur + dsk.field.clipboard_n].copy_from_slice(&dsk.field.clipboard[..dsk.field.clipboard_n]);
+                            dsk.field.cur += dsk.field.clipboard_n;
+                            dsk.field.n += dsk.field.clipboard_n;
+                            dsk.tick.repaint_field = true;
                         }
                     }
                     // Ctrl+U -- borra la linea. Ctrl+L -- borra la salida.
@@ -2554,13 +2246,13 @@ pub extern "C" fn _start() -> ! {
                     // los tienen y un atajo que cambia entre dos ventanas del
                     // mismo sistema es peor que no tenerlo.
                     0x15 => {
-                        n = 0;
-                        cur = 0;
-                        repaint_field = true;
+                        dsk.field.n = 0;
+                        dsk.field.cur = 0;
+                        dsk.tick.repaint_field = true;
                     }
                     0x0C => {
-                        output.clear();
-                        repaint_field = true;
+                        dsk.out.grid.clear();
+                        dsk.tick.repaint_field = true;
                     }
                     // FLECHA ARRIBA / ABAJO -- el historial. Llegan por la misma
                     // cola que las letras, con bytes del rango C1 (0x80..0x9F)
@@ -2571,47 +2263,49 @@ pub extern "C" fn _start() -> ! {
                     // ya andan por el historial no tienen que irse a buscar
                     // otra tecla para copiar lo que acaban de recuperar.
                     0x80 if ctrl => {
-                        clipboard_n = n;
-                        clipboard[..n].copy_from_slice(&path[..n]);
-                        paint_status(&p, &run_box, "copiado", INK_DIM);
+                        dsk.field.clipboard_n = dsk.field.n;
+                        let upto = dsk.field.n;
+                        let (src, dst) = (&dsk.field.path[..upto], &mut dsk.field.clipboard[..upto]);
+                        dst.copy_from_slice(src);
+                        paint_status(&p, &dsk.run_box, "copiado", INK_DIM);
                     }
                     0x81 if ctrl => {
-                        if clipboard_n > 0 && n + clipboard_n <= PATH_MAX {
-                            let mut k = n;
-                            while k > cur {
-                                path[k + clipboard_n - 1] = path[k - 1];
+                        if dsk.field.clipboard_n > 0 && dsk.field.n + dsk.field.clipboard_n <= PATH_MAX {
+                            let mut k = dsk.field.n;
+                            while k > dsk.field.cur {
+                                dsk.field.path[k + dsk.field.clipboard_n - 1] = dsk.field.path[k - 1];
                                 k -= 1;
                             }
-                            path[cur..cur + clipboard_n].copy_from_slice(&clipboard[..clipboard_n]);
-                            cur += clipboard_n;
-                            n += clipboard_n;
-                            repaint_field = true;
+                            dsk.field.path[dsk.field.cur..dsk.field.cur + dsk.field.clipboard_n].copy_from_slice(&dsk.field.clipboard[..dsk.field.clipboard_n]);
+                            dsk.field.cur += dsk.field.clipboard_n;
+                            dsk.field.n += dsk.field.clipboard_n;
+                            dsk.tick.repaint_field = true;
                         }
                     }
                     0x80 => {
-                        if let Some(k) = history.back(&mut path) {
-                            n = k;
-                            cur = k;
-                            repaint_field = true;
+                        if let Some(k) = dsk.field.history.back(&mut dsk.field.path) {
+                            dsk.field.n = k;
+                            dsk.field.cur = k;
+                            dsk.tick.repaint_field = true;
                         }
                     }
                     0x81 => {
-                        if let Some(k) = history.forward(&mut path) {
-                            n = k;
-                            cur = k;
-                            repaint_field = true;
+                        if let Some(k) = dsk.field.history.forward(&mut dsk.field.path) {
+                            dsk.field.n = k;
+                            dsk.field.cur = k;
+                            dsk.tick.repaint_field = true;
                         }
                     }
                     // IZQUIERDA / DERECHA -- mover el cursor.
                     0x82 => {
-                        if cur > 0 { cur -= 1; repaint_field = true; }
+                        if dsk.field.cur > 0 { dsk.field.cur -= 1; dsk.tick.repaint_field = true; }
                     }
                     0x83 => {
-                        if cur < n { cur += 1; repaint_field = true; }
+                        if dsk.field.cur < dsk.field.n { dsk.field.cur += 1; dsk.tick.repaint_field = true; }
                     }
                     // INICIO / FIN.
-                    0x84 => { cur = 0; repaint_field = true; }
-                    0x85 => { cur = n; repaint_field = true; }
+                    0x84 => { dsk.field.cur = 0; dsk.tick.repaint_field = true; }
+                    0x85 => { dsk.field.cur = dsk.field.n; dsk.tick.repaint_field = true; }
                     // -- Los atajos de edicion de linea --
                     //
                     // Los de toda la vida en una consola: Ctrl+A al principio,
@@ -2620,12 +2314,12 @@ pub extern "C" fn _start() -> ! {
                     // ya estaban: los dedos que vienen de un terminal buscan
                     // estos, y los que vienen de Windows buscan aquellos.
                     // Atender a los dos cuesta cuatro lineas.
-                    0x01 => { cur = 0; repaint_field = true; }
-                    0x05 => { cur = n; repaint_field = true; }
+                    0x01 => { dsk.field.cur = 0; dsk.tick.repaint_field = true; }
+                    0x05 => { dsk.field.cur = dsk.field.n; dsk.tick.repaint_field = true; }
                     // Ctrl+K: tirar lo que hay del cursor al final.
                     0x0B => {
-                        n = cur;
-                        repaint_field = true;
+                        dsk.field.n = dsk.field.cur;
+                        dsk.tick.repaint_field = true;
                     }
                     // Ctrl+W: borrar la palabra de atras. Primero se comen los
                     // espacios y luego las letras, que es lo que espera
@@ -2637,30 +2331,30 @@ pub extern "C" fn _start() -> ! {
                         // igual que el retroceso. El invariante de arriba ya lo
                         // impide; la guarda se queda porque esta resta no tiene
                         // por que fiarse de que alguien lo mantenga.
-                        let limit = cur.min(n);
+                        let limit = dsk.field.cur.min(dsk.field.n);
                         let mut k = limit;
-                        while k > 0 && path[k - 1] == b' ' { k -= 1; }
-                        while k > 0 && path[k - 1] != b' ' { k -= 1; }
+                        while k > 0 && dsk.field.path[k - 1] == b' ' { k -= 1; }
+                        while k > 0 && dsk.field.path[k - 1] != b' ' { k -= 1; }
                         let removed = limit - k;
                         if removed > 0 {
                             let mut i = limit;
-                            while i < n {
-                                path[i - removed] = path[i];
+                            while i < dsk.field.n {
+                                dsk.field.path[i - removed] = dsk.field.path[i];
                                 i += 1;
                             }
-                            n -= removed;
-                            cur = k;
-                            repaint_field = true;
+                            dsk.field.n -= removed;
+                            dsk.field.cur = k;
+                            dsk.tick.repaint_field = true;
                         }
                     }
                     // SUPRIMIR -- borra HACIA ADELANTE, al reves que el
                     // retroceso. Son dos teclas porque son dos intenciones.
                     0x86 => {
-                        if cur < n {
-                            let mut k = cur + 1;
-                            while k < n { path[k - 1] = path[k]; k += 1; }
-                            n -= 1;
-                            repaint_field = true;
+                        if dsk.field.cur < dsk.field.n {
+                            let mut k = dsk.field.cur + 1;
+                            while k < dsk.field.n { dsk.field.path[k - 1] = dsk.field.path[k]; k += 1; }
+                            dsk.field.n -= 1;
+                            dsk.tick.repaint_field = true;
                         }
                     }
                     // * PgUp / PgDn -- el historial de la salida.
@@ -2671,10 +2365,10 @@ pub extern "C" fn _start() -> ! {
                     // perder la salida de un batch cuesta un arranque entero.
                     // Ahora suben y bajan la ventana sobre 200 filas guardadas.
                     0x87 => {
-                        output.scroll_view(OUT_ROWS as i32 - 1);
+                        dsk.out.grid.scroll_view(OUT_ROWS as i32 - 1);
                     }
                     0x88 => {
-                        output.scroll_view(-(OUT_ROWS as i32 - 1));
+                        dsk.out.grid.scroll_view(-(OUT_ROWS as i32 - 1));
                     }
                     // * F12 (0x94) NO esta aqui: se atiende arriba, antes de
                     // preguntar por el foco, porque es del sistema y no de esta
@@ -2686,18 +2380,18 @@ pub extern "C" fn _start() -> ! {
                     // Todo lo demas imprimible, incluido el Latin-1 alto: la
                     // `n` llega como 0xF1 y la fuente la tiene.
                     c if c >= 0x20 => {
-                        if n < PATH_MAX {
+                        if dsk.field.n < PATH_MAX {
                             // Hueco en el cursor y meter ahi: escribir en
                             // medio de una linea es lo normal, no un caso raro.
-                            let mut k = n;
-                            while k > cur {
-                                path[k] = path[k - 1];
+                            let mut k = dsk.field.n;
+                            while k > dsk.field.cur {
+                                dsk.field.path[k] = dsk.field.path[k - 1];
                                 k -= 1;
                             }
-                            path[cur] = c;
-                            cur += 1;
-                            n += 1;
-                            repaint_field = true;
+                            dsk.field.path[dsk.field.cur] = c;
+                            dsk.field.cur += 1;
+                            dsk.field.n += 1;
+                            dsk.tick.repaint_field = true;
                         }
                     }
                     _ => {}
@@ -2729,66 +2423,66 @@ pub extern "C" fn _start() -> ! {
             // Un escritorio que lanza programas a traves de lo que hay dibujado
             // encima es un escritorio en el que no se puede confiar al pulsar.
             if button
-                && !button_before
-                && !calc.visible
-                && !data_open
-                && !cabina_open
-                && !sound_open
+                && !dsk.tick.button_before
+                && !dsk.calc.visible
+                && !dsk.win.data_open
+                && !dsk.win.cabina_open
+                && !dsk.win.sound_open
             {
-                if let Some(i) = launcher.app_at(&p, pos.x, pos.y) {
-                    if let Some(app) = launcher.app(i) {
+                if let Some(i) = dsk.launcher.app_at(&p, pos.x, pos.y) {
+                    if let Some(app) = dsk.launcher.app(i) {
                         let r = app.path();
                         // `run ` + la ruta. Si no cupiera se deja como estaba:
                         // media ruta lanzaria otra cosa, y eso es peor que no
                         // lanzar nada.
-                        if 4 + r.len() <= path.len() {
-                            path[..4].copy_from_slice(b"run ");
-                            path[4..4 + r.len()].copy_from_slice(r);
-                            n = 4 + r.len();
-                            cur = n;
-                            repaint_field = true;
-                            if ni < injected.len() {
-                                injected[ni] = b'\n';
-                                ni += 1;
+                        if 4 + r.len() <= dsk.field.path.len() {
+                            dsk.field.path[..4].copy_from_slice(b"run ");
+                            dsk.field.path[4..4 + r.len()].copy_from_slice(r);
+                            dsk.field.n = 4 + r.len();
+                            dsk.field.cur = dsk.field.n;
+                            dsk.tick.repaint_field = true;
+                            if dsk.field.ni < dsk.field.injected.len() {
+                                dsk.field.injected[dsk.field.ni] = b'\n';
+                                dsk.field.ni += 1;
                             }
                         }
                     }
                 }
             }
 
-            if calc.visible && button && !button_before && !calc.waiting {
-                if let Some(t) = calc_pad.key_at(pos.x, pos.y) {
+            if dsk.calc.visible && button && !dsk.tick.button_before && !dsk.calc.waiting {
+                if let Some(t) = dsk.calc_pad.key_at(pos.x, pos.y) {
                     match t {
-                        b'C' => calc.clear(),
-                        b'+' => calc.operator(1),
-                        b'-' => calc.operator(2),
-                        b'*' => calc.operator(3),
-                        b'/' => calc.operator(4),
+                        b'C' => dsk.calc.clear(),
+                        b'+' => dsk.calc.operator(1),
+                        b'-' => dsk.calc.operator(2),
+                        b'*' => dsk.calc.operator(3),
+                        b'/' => dsk.calc.operator(4),
                         b'=' => {
-                            if calc.op != 0 && calc.saved_n > 0 && calc.n > 0 {
+                            if dsk.calc.op != 0 && dsk.calc.saved_n > 0 && dsk.calc.n > 0 {
                                 // Lanzar el MOTOR y darle los tres datos por su
                                 // consola. Aqui es donde la cara deja de saber
                                 // de aritmetica y empieza a saber COBOL.
-                                let cap = child_console.as_ref().map(|c| c.cap).unwrap_or(0);
+                                let cap = dsk.out.console.as_ref().map(|c| c.cap).unwrap_or(0);
                                 if bmo::ejecutar_en(b"cobol/calcgui.bex", cap).is_ok() {
-                                    if let Some(cc) = child_console.as_ref() {
-                                        cc.write(&calc.saved_path[..calc.saved_n]);
+                                    if let Some(cc) = dsk.out.console.as_ref() {
+                                        cc.write(&dsk.calc.saved_path[..dsk.calc.saved_n]);
                                         cc.write(b"\n");
-                                        cc.write(&[b'0' + calc.op]);
+                                        cc.write(&[b'0' + dsk.calc.op]);
                                         cc.write(b"\n");
-                                        cc.write(&calc.input[..calc.n]);
+                                        cc.write(&dsk.calc.input[..dsk.calc.n]);
                                         cc.write(b"\n");
                                     }
-                                    calc.waiting = true;
-                                    resp_n = 0;
+                                    dsk.calc.waiting = true;
+                                    dsk.resp_n = 0;
                                 } else {
-                                    paint_status(&p, &run_box, "falta cobol/calcgui.bex", INK_BAD);
+                                    paint_status(&p, &dsk.run_box, "falta cobol/calcgui.bex", INK_BAD);
                                 }
                             }
                         }
-                        d => calc.feed(d),
+                        d => dsk.calc.feed(d),
                     }
-                    paint_calc(&p, &calc_pad, &calc, calc_hover);
+                    paint_calc(&p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
                 }
             }
             // -- El raton tambien manda en el foco --
@@ -2807,17 +2501,17 @@ pub extern "C" fn _start() -> ! {
             // en la zona compartida es siempre de la de encima, y eso es una
             // regla, no una lista de casos.
             let at = |v: u8| match v {
-                W_DATA => data_open && data_win.contains(pos.x, pos.y),
-                W_CABINA => cabina_open && cabina_win.chrome.contains(pos.x, pos.y),
-                W_SOUND => sound_open && sound_win.chrome.contains(pos.x, pos.y),
-                _ => visible && run_box.contains(pos.x, pos.y),
+                W_DATA => dsk.win.data_open && dsk.win.data.contains(pos.x, pos.y),
+                W_CABINA => dsk.win.cabina_open && dsk.win.cabina.chrome.contains(pos.x, pos.y),
+                W_SOUND => dsk.win.sound_open && dsk.win.sound.chrome.contains(pos.x, pos.y),
+                _ => dsk.win.visible && dsk.run_box.contains(pos.x, pos.y),
             };
-            let under_pointer = if at(top_before) {
-                Some(top_before)
+            let under_pointer = if at(dsk.win.top_before) {
+                Some(dsk.win.top_before)
             } else {
                 [W_SOUND, W_CABINA, W_DATA, W_RUN]
                     .into_iter()
-                    .find(|&v| v != top_before && at(v))
+                    .find(|&v| v != dsk.win.top_before && at(v))
             };
             // -- * LA RUEDA VA A LA VENTANA QUE HAY DEBAJO --
             //
@@ -2839,24 +2533,24 @@ pub extern "C" fn _start() -> ! {
                         // lineas hacia el pasado, asi que suma.
                         let any = bmo::cabina_disponibles();
                         let step = (wheel * 3) as i64;
-                        let new = cabina_win.from as i64 + step;
-                        cabina_win.from =
+                        let new = dsk.win.cabina.from as i64 + step;
+                        dsk.win.cabina.from =
                             new.clamp(0, any.saturating_sub(1) as i64) as u64;
-                        scene::cabina::paint(&p, &cabina_win);
+                        scene::cabina::paint(&p, &dsk.win.cabina);
                     }
                     Some(W_RUN) => {
                         // Tres filas por muesca: una sola se queda corta y una
                         // pagina entera se pasa. Es el paso de un terminal.
-                        output.scroll_view(wheel * 3);
+                        dsk.out.grid.scroll_view(wheel * 3);
                     }
                     // La rueda sobre el arbol de nodos mueve la seleccion. En la
                     // pestana de numeros no hay nada que desplazar: cabe entera.
-                    Some(W_DATA) if data_win.view == scene::data::View::Nodes => {
+                    Some(W_DATA) if dsk.win.data.view == scene::data::View::Nodes => {
                         // Girar hacia arriba sube por la lista: `wheel` positivo
                         // es hacia arriba y la seleccion de arriba es la menor.
                         let how_many = bmo::estratos::hijos() as usize;
-                        data_win.move_sel(-wheel, how_many);
-                        scene::data::paint(&p, &data_win);
+                        dsk.win.data.move_sel(-wheel, how_many);
+                        scene::data::paint(&p, &dsk.win.data);
                     }
                     _ => {}
                 }
@@ -2868,15 +2562,15 @@ pub extern "C" fn _start() -> ! {
             // ve y no esta tapada. Al salir de ella el realce se apaga, que es
             // la mitad que se olvida siempre: un boton que se queda encendido
             // cuando ya no lo senalas miente sobre donde esta el raton.
-            let hover_now = if calc.visible && top_before == W_RUN {
-                calc_pad.key_at(pos.x, pos.y)
+            let hover_now = if dsk.calc.visible && dsk.win.top_before == W_RUN {
+                dsk.calc_pad.key_at(pos.x, pos.y)
             } else {
                 None
             };
-            if hover_now != calc_hover {
-                calc_hover = hover_now;
-                if calc.visible {
-                    paint_calc(&p, &calc_pad, &calc, calc_hover);
+            if hover_now != dsk.tick.calc_hover {
+                dsk.tick.calc_hover = hover_now;
+                if dsk.calc.visible {
+                    paint_calc(&p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
                 }
             }
 
@@ -2884,14 +2578,14 @@ pub extern "C" fn _start() -> ! {
                 // Pasar por encima: solo hace algo en modo `Puntero`, y la
                 // guarda esta DENTRO de la politica -- aqui solo se cuenta lo
                 // que pasa, no se decide lo que significa.
-                if pos.x != ax || pos.y != ay {
-                    focus.puntero_en(v);
+                if pos.x != dsk.tick.ax || pos.y != dsk.tick.ay {
+                    dsk.win.focus.puntero_en(v);
                 }
                 // Un clic lo pide en CUALQUIER modo, incluido `Fijo`: lo que
                 // ese modo impide es que una ventana se lo tome sin que nadie
                 // se lo pida, no que tu se lo des.
-                if button && !button_before {
-                    focus.clic_en(v);
+                if button && !dsk.tick.button_before {
+                    dsk.win.focus.clic_en(v);
                 }
             }
 
@@ -2900,61 +2594,61 @@ pub extern "C" fn _start() -> ! {
             // Tres gestos que comparten estructura: los BOTONES de la barra,
             // ARRASTRAR por el asa y ESTIRAR por la esquina. Quien decide cual
             // es el marco, no esto: aqui solo se le cuenta lo que paso.
-            if data_open && !data_win.chrome.minimized {
+            if dsk.win.data_open && !dsk.win.data.chrome.minimized {
                 use scene::chrome::Button;
 
                 // El realce de los botones. Solo cuando CAMBIA -- repintarlo
                 // cada fotograma serian 1.700 pixeles de memoria de video sin
                 // cache para dejarlo igual, y ademas pisaria el cursor.
-                let hover_now = data_win.chrome.button_at(pos.x, pos.y);
-                if hover_now != data_win.chrome.hover {
-                    data_win.chrome.hover = hover_now;
-                    scene::data::paint(&p, &data_win);
-                    top_before = W_DATA;
+                let hover_now = dsk.win.data.chrome.button_at(pos.x, pos.y);
+                if hover_now != dsk.win.data.chrome.hover {
+                    dsk.win.data.chrome.hover = hover_now;
+                    scene::data::paint(&p, &dsk.win.data);
+                    dsk.win.top_before = W_DATA;
                 }
 
-                if button && !button_before {
+                if button && !dsk.tick.button_before {
                     // Un boton se dispara al PULSAR y no al soltar. Es lo que
                     // hace todo el mundo, y con `close` importa: soltar fuera
                     // para arrepentirse no funciona en ningun escritorio, asi
                     // que fingirlo aqui seria inventarse una costumbre.
-                    match data_win.chrome.button_at(pos.x, pos.y) {
+                    match dsk.win.data.chrome.button_at(pos.x, pos.y) {
                         Some(Button::Close) => {
-                            data_open = false;
-                            focus.close(W_DATA);
+                            dsk.win.data_open = false;
+                            dsk.win.focus.close(W_DATA);
                             erase_window(
-                                &p, &run_box, data_win.x(), data_win.y(),
-                                data_win.width(), data_win.height(), visible,
+                                &p, &dsk.run_box, dsk.win.data.x(), dsk.win.data.y(),
+                                dsk.win.data.width(), dsk.win.data.height(), dsk.win.visible,
                             );
-                            top_before = W_RUN;
-                            uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                            dsk.win.top_before = W_RUN;
+                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                         }
                         Some(Button::Minimize) => {
                             // Minimizar NO es cerrar: la ventana sigue abierta
                             // y conserva su sitio, su tamano y lo que estuviera
                             // mirando. Se va a su ficha de la barra.
                             let (vx, vy, va, vl) = (
-                                data_win.x(), data_win.y(),
-                                data_win.width(), data_win.height(),
+                                dsk.win.data.x(), dsk.win.data.y(),
+                                dsk.win.data.width(), dsk.win.data.height(),
                             );
-                            data_win.chrome.minimized = true;
-                            focus.close(W_DATA);
-                            erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                            top_before = W_RUN;
-                            uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
-                            taskbar_dirty = true;
+                            dsk.win.data.chrome.minimized = true;
+                            dsk.win.focus.close(W_DATA);
+                            erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                            dsk.win.top_before = W_RUN;
+                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                            dsk.win.taskbar_dirty = true;
                         }
                         Some(Button::Maximize) => {
-                            let (vx, vy, va, vl) = data_win.chrome.toggle_maximized(&p);
+                            let (vx, vy, va, vl) = dsk.win.data.chrome.toggle_maximized(&p);
                             // Al restaurar, el hueco que deja hay que
                             // devolverselo al escritorio; al maximizar no sobra
                             // nada, pero borrar el rectangulo viejo entero
                             // cubre los dos casos con una sola regla.
-                            erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                            uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
-                            data_win.relayout();
-                            scene::data::paint(&p, &data_win);
-                            top_before = W_DATA;
+                            erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                            dsk.win.data.relayout();
+                            scene::data::paint(&p, &dsk.win.data);
+                            dsk.win.top_before = W_DATA;
                         }
                         None => {
                             // -- * CLIC DENTRO DEL GRAFO --
@@ -2964,45 +2658,45 @@ pub extern "C" fn _start() -> ! {
                             // de cajas en la que no se puede pulsar ninguna es
                             // una ventana que parece interactiva y no lo es.
                             let how_many = bmo::estratos::hijos() as usize;
-                            match data_win.box_at(pos.x, pos.y, how_many) {
+                            match dsk.win.data.box_at(pos.x, pos.y, how_many) {
                                 // La caja del PADRE: sube un nivel. Es el gesto
                                 // que la mano busca sola cuando ya has bajado.
                                 Some(i) if i == usize::MAX => {
                                     if bmo::estratos::subir() {
-                                        data_win.to_top();
-                                        data_win.verified = None;
-                                        scene::data::paint(&p, &data_win);
-                                        top_before = W_DATA;
+                                        dsk.win.data.to_top();
+                                        dsk.win.data.verified = None;
+                                        scene::data::paint(&p, &dsk.win.data);
+                                        dsk.win.top_before = W_DATA;
                                     }
                                 }
                                 Some(i) => {
-                                    data_win.sel = i;
+                                    dsk.win.data.sel = i;
                                     // El resultado de una verificacion es de UN
                                     // archivo: al cambiar de caja se borra. Si
                                     // no, un `CUADRA` viejo se quedaria debajo
                                     // del nombre de otro.
-                                    data_win.verified = None;
+                                    dsk.win.data.verified = None;
                                     // * Ctrl+clic BAJA de una vez, sin tener que
                                     // senalar y pulsar ENTRAR. El clic a secas
                                     // solo senala, porque senalar tiene que
                                     // poder hacerse sin miedo a moverte de sitio.
                                     if ctrl && bmo::estratos::entrar(i as u64) {
-                                        data_win.to_top();
+                                        dsk.win.data.to_top();
                                     }
-                                    scene::data::paint(&p, &data_win);
-                                    top_before = W_DATA;
+                                    scene::data::paint(&p, &dsk.win.data);
+                                    dsk.win.top_before = W_DATA;
                                 }
                                 None => {
-                                    data_win.chrome.grab(pos.x, pos.y);
+                                    dsk.win.data.chrome.grab(pos.x, pos.y);
                                 }
                             }
                         }
                     }
                 }
 
-                if !button && data_win.chrome.grabbed() {
-                    data_win.chrome.release();
-                } else if button && data_win.chrome.grabbed() {
+                if !button && dsk.win.data.chrome.grabbed() {
+                    dsk.win.data.chrome.release();
+                } else if button && dsk.win.data.chrome.grabbed() {
                     // El sitio VIEJO hay que borrarlo antes de mover. Si no, la
                     // ventana deja un rastro de copias de si misma: aqui no hay
                     // recorte ni compositor que repinte lo de debajo solo.
@@ -3011,15 +2705,15 @@ pub extern "C" fn _start() -> ! {
                     // rectangulo viejo entero cubre los dos casos con una regla
                     // en vez de con dos.
                     let (vx, vy, va, vl) = (
-                        data_win.x(), data_win.y(),
-                        data_win.width(), data_win.height(),
+                        dsk.win.data.x(), dsk.win.data.y(),
+                        dsk.win.data.width(), dsk.win.data.height(),
                     );
-                    if data_win.chrome.follow_pointer(&p, pos.x, pos.y) {
-                        erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
-                        data_win.relayout();
-                        scene::data::paint(&p, &data_win);
-                        top_before = W_DATA;
+                    if dsk.win.data.chrome.follow_pointer(&p, pos.x, pos.y) {
+                        erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                        dsk.win.data.relayout();
+                        scene::data::paint(&p, &dsk.win.data);
+                        dsk.win.top_before = W_DATA;
                     }
                 }
             }
@@ -3043,50 +2737,50 @@ pub extern "C" fn _start() -> ! {
             // Con Datos cerrada, las dos ventanas volvian a estar clavadas. El
             // arrastre de una ventana no depende de otra ventana, asi que va
             // aqui, al nivel de las demas.
-            if cabina_open && !cabina_win.chrome.minimized {
-                if button && !cabina_win.chrome.grabbed() && focus.es_para(W_CABINA)
-                    && cabina_win.chrome.on_the_grip(pos.x, pos.y)
+            if dsk.win.cabina_open && !dsk.win.cabina.chrome.minimized {
+                if button && !dsk.win.cabina.chrome.grabbed() && dsk.win.focus.es_para(W_CABINA)
+                    && dsk.win.cabina.chrome.on_the_grip(pos.x, pos.y)
                 {
-                    cabina_win.chrome.grab(pos.x, pos.y);
-                } else if !button && cabina_win.chrome.grabbed() {
-                    cabina_win.chrome.release();
-                } else if button && cabina_win.chrome.grabbed() {
+                    dsk.win.cabina.chrome.grab(pos.x, pos.y);
+                } else if !button && dsk.win.cabina.chrome.grabbed() {
+                    dsk.win.cabina.chrome.release();
+                } else if button && dsk.win.cabina.chrome.grabbed() {
                     // El sitio VIEJO se borra antes de mover: aqui no hay
                     // compositor que repinte lo de debajo, asi que sin esto
                     // la ventana deja un rastro de copias de si misma.
                     let (vx, vy, va, vl) = (
-                        cabina_win.chrome.x, cabina_win.chrome.y,
-                        cabina_win.chrome.width, cabina_win.chrome.height,
+                        dsk.win.cabina.chrome.x, dsk.win.cabina.chrome.y,
+                        dsk.win.cabina.chrome.width, dsk.win.cabina.chrome.height,
                     );
-                    if cabina_win.chrome.follow_pointer(&p, pos.x, pos.y) {
-                        erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
-                        scene::cabina::paint(&p, &cabina_win);
-                        top_before = W_CABINA;
+                    if dsk.win.cabina.chrome.follow_pointer(&p, pos.x, pos.y) {
+                        erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                        scene::cabina::paint(&p, &dsk.win.cabina);
+                        dsk.win.top_before = W_CABINA;
                     }
                 }
             }
 
-            if sound_open && !sound_win.chrome.minimized {
-                if button && !sound_win.chrome.grabbed() && focus.es_para(W_SOUND)
-                    && sound_win.chrome.on_the_grip(pos.x, pos.y)
+            if dsk.win.sound_open && !dsk.win.sound.chrome.minimized {
+                if button && !dsk.win.sound.chrome.grabbed() && dsk.win.focus.es_para(W_SOUND)
+                    && dsk.win.sound.chrome.on_the_grip(pos.x, pos.y)
                 {
-                    sound_win.chrome.grab(pos.x, pos.y);
-                } else if !button && sound_win.chrome.grabbed() {
-                    sound_win.chrome.release();
-                } else if button && sound_win.chrome.grabbed() {
+                    dsk.win.sound.chrome.grab(pos.x, pos.y);
+                } else if !button && dsk.win.sound.chrome.grabbed() {
+                    dsk.win.sound.chrome.release();
+                } else if button && dsk.win.sound.chrome.grabbed() {
                     let (vx, vy, va, vl) = (
-                        sound_win.chrome.x, sound_win.chrome.y,
-                        sound_win.chrome.width, sound_win.chrome.height,
+                        dsk.win.sound.chrome.x, dsk.win.sound.chrome.y,
+                        dsk.win.sound.chrome.width, dsk.win.sound.chrome.height,
                     );
-                    if sound_win.chrome.follow_pointer(&p, pos.x, pos.y) {
-                        erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                    if dsk.win.sound.chrome.follow_pointer(&p, pos.x, pos.y) {
+                        erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                         scene::sound::paint(
-                            &p, &sound_win, sound_cap.is_some(),
-                            sound_devices, sound_volume, sound_pressed,
+                            &p, &dsk.win.sound, dsk.snd.cap.is_some(),
+                            dsk.snd.devices, dsk.snd.volume, dsk.snd.pressed,
                         );
-                        top_before = W_SOUND;
+                        dsk.win.top_before = W_SOUND;
                     }
                 }
             }
@@ -3103,12 +2797,12 @@ pub extern "C" fn _start() -> ! {
             {
                 use scene::chrome::Button;
 
-                if button && !button_before {
-                    if let Some(i) = table.at(pos.x, pos.y) {
+                if button && !dsk.tick.button_before {
+                    if let Some(i) = dsk.table.at(pos.x, pos.y) {
                         // El realce se pone aunque no se pulse: si no, los tres
                         // botones de una app serian los unicos del escritorio
                         // que no se encienden al pasar por encima.
-                        let gesture = table.get_mut(i).and_then(|s| s.chrome.button_at(pos.x, pos.y));
+                        let gesture = dsk.table.get_mut(i).and_then(|s| s.chrome.button_at(pos.x, pos.y));
                         match gesture {
                             // ** CERRAR NO MATA A LA APP: le quita la caja.
                             //
@@ -3118,21 +2812,21 @@ pub extern "C" fn _start() -> ! {
                             // se hara con el handle que devolvio LANZARLA --
                             // paso 3 del plan-- y no desde aqui.
                             Some(Button::Close) => {
-                                if let Some((vx, vy, va, vl)) = table.close(i) {
-                                    erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                                    uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
-                                    for s in table.iter_mut() {
+                                if let Some((vx, vy, va, vl)) = dsk.table.close(i) {
+                                    erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                                    for s in dsk.table.iter_mut() {
                                         s.repaint_all();
                                     }
                                 }
                             }
                             Some(Button::Minimize) => {
-                                if let Some(s) = table.get_mut(i) {
+                                if let Some(s) = dsk.table.get_mut(i) {
                                     let (vx, vy, va, vl) =
                                         (s.chrome.x, s.chrome.y, s.chrome.width, s.chrome.height);
                                     s.chrome.minimized = true;
-                                    erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                                    uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                                    erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                                 }
                             }
                             // ** PANTALLA COMPLETA = QUE NO SE DIBUJE EL BORDE.
@@ -3144,15 +2838,15 @@ pub extern "C" fn _start() -> ! {
                             // sigue y `Ctrl+Alt+ESC` sigue. Un juego colgado se
                             // cierra con el teclado y no con el boton de reset.
                             Some(Button::Maximize) => {
-                                if let Some(s) = table.get_mut(i) {
+                                if let Some(s) = dsk.table.get_mut(i) {
                                     let (vx, vy, va, vl) = s.chrome.toggle_maximized(&p);
-                                    erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                                    uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                                    erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                                     s.repaint_all();
                                 }
                             }
                             None => {
-                                if let Some(s) = table.get_mut(i) {
+                                if let Some(s) = dsk.table.get_mut(i) {
                                     s.chrome.grab(pos.x, pos.y);
                                 }
                             }
@@ -3164,7 +2858,7 @@ pub extern "C" fn _start() -> ! {
                 // aqui no hay nadie que repinte lo de debajo, asi que sin esto
                 // la ventana deja un rastro de copias de si misma.
                 for i in 0..scene::surface::MAX {
-                    let Some(s) = table.get_mut(i) else { continue };
+                    let Some(s) = dsk.table.get_mut(i) else { continue };
                     if !s.chrome.grabbed() {
                         continue;
                     }
@@ -3175,8 +2869,8 @@ pub extern "C" fn _start() -> ! {
                     let (vx, vy, va, vl) = (s.chrome.x, s.chrome.y, s.chrome.width, s.chrome.height);
                     if s.chrome.follow_pointer(&p, pos.x, pos.y) {
                         s.repaint_all();
-                        erase_window(&p, &run_box, vx, vy, va, vl, visible);
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                        erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     }
                 }
             }
@@ -3193,32 +2887,32 @@ pub extern "C" fn _start() -> ! {
             // ya se veia no hacia nada. En el Ryzen eso se lee como *"la barra
             // se olvida de mis clics"*, y con razon: un control que a veces
             // responde y a veces no es peor que uno que no esta.
-            if button && !button_before && pos.y < TASKBAR_H {
+            if button && !dsk.tick.button_before && pos.y < TASKBAR_H {
                 if let Some(i) = scene::chip_at(pos.x, pos.y, 2) {
-                    if i == 1 && data_open {
+                    if i == 1 && dsk.win.data_open {
                         // Estaba minimizada o no, da igual: acaba visible,
                         // encajada, con el foco y delante.
-                        data_win.chrome.minimized = false;
-                        data_win.chrome.fit(&p);
-                        focus.open(W_DATA);
-                        focus.clic_en(W_DATA);
-                        data_win.relayout();
-                        scene::data::paint(&p, &data_win);
-                        top_before = W_DATA;
-                        taskbar_dirty = true;
+                        dsk.win.data.chrome.minimized = false;
+                        dsk.win.data.chrome.fit(&p);
+                        dsk.win.focus.open(W_DATA);
+                        dsk.win.focus.clic_en(W_DATA);
+                        dsk.win.data.relayout();
+                        scene::data::paint(&p, &dsk.win.data);
+                        dsk.win.top_before = W_DATA;
+                        dsk.win.taskbar_dirty = true;
                     } else if i == 0 {
-                        if !visible {
-                            visible = true;
+                        if !dsk.win.visible {
+                            dsk.win.visible = true;
                         }
-                        focus.open(W_RUN);
-                        focus.clic_en(W_RUN);
-                        uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
-                        top_before = W_RUN;
-                        taskbar_dirty = true;
+                        dsk.win.focus.open(W_RUN);
+                        dsk.win.focus.clic_en(W_RUN);
+                        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                        dsk.win.top_before = W_RUN;
+                        dsk.win.taskbar_dirty = true;
                     }
                 }
             }
-            button_before = button;
+            dsk.tick.button_before = button;
 
             // -- * El foco arrastra el Z-order --
             //
@@ -3230,30 +2924,30 @@ pub extern "C" fn _start() -> ! {
             // Sin esto, Alt+Tab a Ejecutar con Datos delante dejaria el teclado
             // en una linea tapada: escribirias sin ver nada. Es exactamente el
             // fallo que se acaba de arreglar, del reves.
-            let top = if cabina_open && focus.es_para(W_CABINA) {
+            let top = if dsk.win.cabina_open && dsk.win.focus.es_para(W_CABINA) {
                 W_CABINA
-            } else if data_open && focus.es_para(W_DATA) {
+            } else if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
                 W_DATA
             } else {
                 W_RUN
             };
-            if top != top_before {
+            if top != dsk.win.top_before {
                 match top {
-                    W_CABINA => scene::cabina::paint(&p, &cabina_win),
-                    W_DATA => scene::data::paint(&p, &data_win),
+                    W_CABINA => scene::cabina::paint(&p, &dsk.win.cabina),
+                    W_DATA => scene::data::paint(&p, &dsk.win.data),
                     // Sin guarda de `visible`: `uncover` ya no hace nada si
                     // la caja esta escondida, y una guarda repetida es una que
                     // puede quedarse desincronizada de la funcion.
-                    _ => uncover(&p, &run_box, visible, &mut output, &mut repaint_field),
+                    _ => uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field),
                 }
-                top_before = top;
+                dsk.win.top_before = top;
             }
 
             // El cursor ya no se borra aqui: se pone al final del fotograma y
             // se quita al principio del siguiente, con lo que habia debajo
             // guardado. Aqui solo se apunta donde esta.
-            ax = pos.x;
-            ay = pos.y;
+            dsk.tick.ax = pos.x;
+            dsk.tick.ay = pos.y;
 
             // * Aqui se pintaban el PULSOMETRO y el testigo de botones. Fuera
             // el 2026-08-04, con los seis parches de medida: contestaban
@@ -3267,27 +2961,27 @@ pub extern "C" fn _start() -> ! {
         // quedarse con el bucle entero y congelar el cursor: es preferible que
         // la salida vaya un poco por detras a que el escritorio deje de
         // responder. Lo que no se lea ahora sigue en el anillo del kernel.
-        if let Some(c) = child_console.as_ref() {
+        if let Some(c) = dsk.out.console.as_ref() {
             let mut buf = [0u8; 8];
-            let mut frames = 0;
-            while frames < 64 {
+            let mut drained = 0;
+            while drained < 64 {
                 let read_bytes = c.read(&mut buf);
                 if read_bytes == 0 {
                     break;
                 }
-                if calc.waiting {
+                if dsk.calc.waiting {
                     // Todo lo que escriba el motor es la respuesta: el
                     // programa no imprime prompts a proposito.
                     for &b in &buf[..read_bytes] {
                         if b == b'\n' {
-                            if resp_n > 0 {
-                                calc.input = [0; 20];
-                                let k = resp_n.min(calc.input.len());
-                                calc.input[..k].copy_from_slice(&resp[..k]);
-                                calc.n = k;
-                                calc.saved_n = 0;
-                                calc.op = 0;
-                                calc.waiting = false;
+                            if dsk.resp_n > 0 {
+                                dsk.calc.input = [0; 20];
+                                let k = dsk.resp_n.min(dsk.calc.input.len());
+                                dsk.calc.input[..k].copy_from_slice(&dsk.resp[..k]);
+                                dsk.calc.n = k;
+                                dsk.calc.saved_n = 0;
+                                dsk.calc.op = 0;
+                                dsk.calc.waiting = false;
                                 // * El cursor SE APARTA antes de pintar aqui.
                                 //
                                 // Este es el unico pintado del bucle que no
@@ -3304,18 +2998,18 @@ pub extern "C" fn _start() -> ! {
                                 // `lift` es idempotente --si no esta puesto no
                                 // hace nada--, asi que llamarlo aqui no cuesta
                                 // nada en los fotogramas que ya lo apartaron.
-                                save_under.lift(&p);
-                                paint_calc(&p, &calc_pad, &calc, calc_hover);
+                                dsk.save_under.lift(&p);
+                                paint_calc(&p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
                             }
-                        } else if resp_n < resp.len() && b >= 0x20 {
-                            resp[resp_n] = b;
-                            resp_n += 1;
+                        } else if dsk.resp_n < dsk.resp.len() && b >= 0x20 {
+                            dsk.resp[dsk.resp_n] = b;
+                            dsk.resp_n += 1;
                         }
                     }
                 } else {
-                    output.text(&buf[..read_bytes]);
+                    dsk.out.grid.text(&buf[..read_bytes]);
                 }
-                frames += 1;
+                drained += 1;
             }
         }
         // * Y solo en un fotograma que haya apartado el cursor. Un hijo que
@@ -3323,7 +3017,7 @@ pub extern "C" fn _start() -> ! {
         // enterrado bajo la rejilla y, al quitarlo, devolveria pixeles viejos
         // encima de lo recien escrito. `dirty` se queda puesto y la vuelta
         // siguiente ya empieza sabiendo que hay que pintar.
-        if output.dirty && will_paint {
+        if dsk.out.grid.dirty && dsk.tick.will_paint {
             // Se pinta solo si se ve; el contenido sigue acumulandose oculto,
             // asi que al invocar la ventana esta todo lo que paso mientras.
             //
@@ -3335,11 +3029,11 @@ pub extern "C" fn _start() -> ! {
             //
             // Y es ARRIBA, no ABIERTA: con Datos abierta pero detras, la
             // rejilla se ve y tiene que seguir escribiendose.
-            if visible && top_before != W_DATA && !switcher_painted {
-                paint_output(&p, &run_box, &output);
-                output.dirty = false;
-            } else if !visible {
-                output.dirty = false;
+            if dsk.win.visible && dsk.win.top_before != W_DATA && !dsk.win.switcher_painted {
+                paint_output(&p, &dsk.run_box, &dsk.out.grid);
+                dsk.out.grid.dirty = false;
+            } else if !dsk.win.visible {
+                dsk.out.grid.dirty = false;
             }
         }
 
@@ -3353,17 +3047,17 @@ pub extern "C" fn _start() -> ! {
         // sitios que cambian algo. Un `sucio` que hay que acordarse de poner es
         // un `sucio` que un dia no se pone, y entonces la barra ensena un
         // estado viejo sin que nada falle -- el peor tipo de fallo de interfaz.
-        let taskbar_state = (visible, top_before, data_open, data_win.chrome.minimized);
-        if taskbar_state != taskbar_state_before {
-            taskbar_state_before = taskbar_state;
-            taskbar_dirty = true;
+        let taskbar_state = (dsk.win.visible, dsk.win.top_before, dsk.win.data_open, dsk.win.data.chrome.minimized);
+        if taskbar_state != dsk.win.taskbar_state_before {
+            dsk.win.taskbar_state_before = taskbar_state;
+            dsk.win.taskbar_dirty = true;
         }
-        if taskbar_dirty && will_paint {
-            scene::paint_chip(&p, 0, "Ejecutar", ACCENT, visible && top_before == W_RUN, !visible);
-            if data_open {
+        if dsk.win.taskbar_dirty && dsk.tick.will_paint {
+            scene::paint_chip(&p, 0, "Ejecutar", ACCENT, dsk.win.visible && dsk.win.top_before == W_RUN, !dsk.win.visible);
+            if dsk.win.data_open {
                 scene::paint_chip(
                     &p, 1, "ESTRATOS", 0x0034_D399,
-                    top_before == W_DATA, data_win.chrome.minimized,
+                    dsk.win.top_before == W_DATA, dsk.win.data.chrome.minimized,
                 );
             } else {
                 // Cerrada: su hueco vuelve al color de la barra. Una ficha que
@@ -3371,7 +3065,7 @@ pub extern "C" fn _start() -> ! {
                 let (fx, fy, fw, fh) = scene::chip_box(1);
                 p.rect(fx, fy, fw, fh, TASKBAR);
             }
-            taskbar_dirty = false;
+            dsk.win.taskbar_dirty = false;
         }
 
         // El parpadeo del cursor de escritura. Solo repinta cuando cambia de
@@ -3384,19 +3078,19 @@ pub extern "C" fn _start() -> ! {
         // de la palabra y no volvia hasta la siguiente vuelta entera. Un
         // cursor que se esconde mientras escribes es lo contrario de lo que
         // un cursor existe para decir.
-        since_key = since_key.wrapping_add(1);
-        if since_key >= BLINK {
-            since_key = 0;
-            caret = !caret;
-            repaint_field = true;
+        dsk.field.since_key = dsk.field.since_key.wrapping_add(1);
+        if dsk.field.since_key >= BLINK {
+            dsk.field.since_key = 0;
+            dsk.field.caret = !dsk.field.caret;
+            dsk.tick.repaint_field = true;
         }
-        if repaint_field
-            && will_paint
-            && visible
-            && top_before != W_DATA
-            && !switcher_painted
+        if dsk.tick.repaint_field
+            && dsk.tick.will_paint
+            && dsk.win.visible
+            && dsk.win.top_before != W_DATA
+            && !dsk.win.switcher_painted
         {
-            paint_field(&p, &run_box, &path[..n], cur, caret);
+            paint_field(&p, &dsk.run_box, dsk.field.line(), dsk.field.cur, dsk.field.caret);
         }
 
         // * UNA sola vez, al cerrar el primer fotograma entero. Con esto, las
@@ -3419,22 +3113,22 @@ pub extern "C" fn _start() -> ! {
         //
         // El hueco de las que murieron se devuelve ANTES de componer las vivas:
         // borrar despues taparia a una ventana que si esta.
-        if will_paint {
-            for &(vx, vy, va, vl) in dead_boxes[..dead].iter() {
-                erase_window(&p, &run_box, vx, vy, va, vl, visible);
+        if dsk.tick.will_paint {
+            for &(vx, vy, va, vl) in dsk.tick.dead_boxes[..dead].iter() {
+                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
             }
             if dead > 0 {
-                uncover(&p, &run_box, visible, &mut output, &mut repaint_field);
+                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 // Lo que quedara debajo de la que se fue tiene que volver a
                 // pintarse: `erase_window` devuelve el FONDO, no las ventanas.
-                for s in table.iter_mut() {
+                for s in dsk.table.iter_mut() {
                     s.repaint_all();
                 }
             }
-            table.compose(&p);
+            dsk.table.compose(&p);
         }
 
-        if frames == 1 {
+        if dsk.tick.frames == 1 {
             bmo::consola("primer fotograma completo\n");
         }
 
@@ -3455,12 +3149,12 @@ pub extern "C" fn _start() -> ! {
         //
         // O sea que refrescar mas no daria mas informacion: daria la misma
         // temblando.
-        if (cpu_open || mem_open) && frames % 15 == 0 {
-            if cpu_open {
-                scene::vitals::paint(&p, &cpu_win);
+        if (dsk.win.cpu_open || dsk.win.mem_open) && dsk.tick.frames % 15 == 0 {
+            if dsk.win.cpu_open {
+                scene::vitals::paint(&p, &dsk.win.cpu);
             }
-            if mem_open {
-                scene::vitals::paint(&p, &mem_win);
+            if dsk.win.mem_open {
+                scene::vitals::paint(&p, &dsk.win.mem);
             }
         }
 
@@ -3470,7 +3164,7 @@ pub extern "C" fn _start() -> ! {
         // guarda debajo es lo definitivo. Ponerlo antes obligaria a que cada
         // ventana supiera esquivarlo -- que es justo lo que no se puede pedir a
         // una ventana que todavia no existe.
-        if ax != u32::MAX {
+        if dsk.tick.ax != u32::MAX {
             // * QUE ESTA DICIENDO EL PUNTERO.
             //
             // Se decide aqui, al final del fotograma, porque es aqui donde ya
@@ -3481,17 +3175,17 @@ pub extern "C" fn _start() -> ! {
             // encima manda. Un boton de la calculadora tapado por la consola
             // del kernel no puede pedir la mano -- senalaria algo que no se
             // puede pulsar, que es peor que no senalar nada.
-            let shape = if calc.visible
-                && top_before == W_RUN
-                && calc_pad.key_at(ax, ay).is_some()
+            let shape = if dsk.calc.visible
+                && dsk.win.top_before == W_RUN
+                && dsk.calc_pad.key_at(dsk.tick.ax, dsk.tick.ay).is_some()
             {
                 scene::cursor::Shape::Hand
-            } else if visible && top_before == W_RUN && run_box.on_field(ax, ay) {
+            } else if dsk.win.visible && dsk.win.top_before == W_RUN && dsk.run_box.on_field(dsk.tick.ax, dsk.tick.ay) {
                 scene::cursor::Shape::Beam
             } else {
                 scene::cursor::Shape::Arrow
             };
-            save_under.place(&p, ax, ay, shape);
+            dsk.save_under.place(&p, dsk.tick.ax, dsk.tick.ay, shape);
         }
 
         // * Y ahora EMPUJARLO a la pantalla.
@@ -3550,7 +3244,7 @@ fn panic_report(info: &core::panic::PanicInfo) -> ! {
     // ** EL MENSAJE, y no solo el sitio.
     //
     // Esto decia archivo y linea, y con eso el 2026-08-09 se supo que el
-    // escritorio moria en `main.rs:2744` -- que es un `&path[..n]`. Pero
+    // escritorio moria en `main.rs:2744` -- que es un `&path[..dsk.field.n]`. Pero
     // saber la LINEA de un corte de rebanada no dice **cual era el numero**,
     // y sin el numero hay que deducir por que `n` valdria mas de 128
     // leyendo los veinte sitios que lo tocan. Se leyeron: ninguno puede.
