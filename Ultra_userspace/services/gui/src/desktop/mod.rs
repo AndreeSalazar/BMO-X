@@ -135,7 +135,7 @@ pub(crate) struct Windows {
     pub top_before: u8,
     pub visible: bool,
     pub taskbar_dirty: bool,
-    pub taskbar_state_before: (bool, u8, bool, bool),
+    pub taskbar_state_before: (bool, u8, bool, bool, bool),
     pub switcher_painted: bool,
     pub alt_before: bool,
 }
@@ -159,7 +159,7 @@ impl Windows {
             top_before: W_RUN,
             visible: true,
             taskbar_dirty: true,
-            taskbar_state_before: (false, 0u8, false, false),
+            taskbar_state_before: (false, 0u8, false, false, false),
             switcher_painted: false,
             alt_before: false,
         }
