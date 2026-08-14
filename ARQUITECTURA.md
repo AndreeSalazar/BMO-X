@@ -17,8 +17,8 @@ Boot chain: unified UEFI (`BOOTX64.EFI` with the stages embedded) -> `s1_cpu` ->
 **The number that sums it up:** BMO-X occupies **5.4 MiB of 14.8 GiB** of RAM
 on the test machine.
 
-**ABI surface:** `INVOKE` - `CHANNEL_KICK` - `WAIT` (frozen) + Capability
-Engine in Ring 0.
+**ABI surface:** `INVOKE` + `WAIT` (frozen, two doors) + Capability Engine in
+Ring 0.
 
 ---
 
@@ -108,14 +108,35 @@ kernel's `_start`.
 ## The frozen surface and subsyscalls
 
 **Subsyscall** (a BMO term): an operation that travels *inside* a frozen
-syscall, directed at a capability. The kernel exposes **three doors and only
-three -- permanently**:
+syscall, directed at a capability. The kernel exposes **two doors** --
+`CORE_SYSCALL_COUNT = 2` in `syscalls/surface/puertas.rs`:
 
 | # | Door | Role |
 |---|---|---|
-| 0x00 | `INVOKE(cap, operation, a0..a3)` | Synchronous call -- the only service door |
-| 0x01 | `CHANNEL_KICK(cap, seq)` | Notify (async) |
-| 0x02 | `WAIT(waitable, seq, timeout)` | Block (async) |
+| 0x00 | `INVOKE(cap, operation, a0..a3)` | Do this NOW -- the only service door |
+| 0x01 | *(reserved -- see below)* | |
+| 0x02 | `WAIT(waitable, seq, timeout)` | Wake me WHEN |
+
+### Why it went from three to two (2026-08-10)
+
+`CHANNEL_KICK(cap, seq)` held the `1`. It resolved a handle, checked it was a
+channel, and notified its consumer: **an operation on a handle**, which is the
+definition of `INVOKE`. It had its own number because of how it was born, not
+because of what it did. Today it is `CHANNEL_OP_KICK` (0x03) and it sits under
+`RIGHT_WRITE`, not READ, because **notifying is writing**. Nothing was lost:
+nobody was calling it.
+
+[!] **The `1` is RESERVED, not recycled.** An old binary that calls it has to
+fail *saying so*; recycling the number would make it do something nobody asked
+for, without failing anywhere. `name(1)` returns `None` on purpose, and the
+test `la_superficie_son_dos_puertas_y_el_uno_esta_reservado` guards it.
+
+### And it does not go down to one
+
+`WAIT` cannot be expressed with `INVOKE`, because the only thing it does is
+**not give the turn back**. A synchronous call would have to answer *"not
+yet"* and let the program ask again -- that is, burn its turn asking, which is
+exactly what `WAIT` exists to avoid.
 
 Everything else is a **subsyscall**: the pair `(handle kind x operation)`,
 resolved by the Capability Engine. The system grows by adding *kinds* and
@@ -215,8 +236,10 @@ The first Ring 3 program lived and died through **9 calls on 1 single door**
   does not recompile the kernel
 
 **Languages**
-- **Three in-house languages on silicon**: BMO C, BMO COBOL (exact decimal,
-  file I/O, `OCCURS`, level 88) and **Ada** (ZFP + Annex F)
+- **Two in-house languages on silicon**: BMO C and BMO COBOL (exact decimal,
+  file I/O, `OCCURS`, level 88). Both appear by name in the metal-test
+  documents; **Ada does not, and that is why it is not here** -- see the yellow
+  section
 - **Runtime `PICTURE` editing**, photographed: `$12,345.67`, `*****0.45` and
   `  120.00CR` aligned. The whole chain -- COBOL source -> parser -> codegen -> BEF
   -> real CPU -- produces a bank's statement line
@@ -251,6 +274,14 @@ The first Ring 3 program lived and died through **9 calls on 1 single door**
   relocations and TLS still evolving
 - **ByteDefender** -- BEF headers only, no heuristics
 - **TimeBack** -- the API exists; capture and rollback do nothing yet
+- **Ada** -- frontend of 1.608 lines with one example (`examples/1-basico`).
+  It rejects an invented statement with a line and a reason, which is more than
+  some of its siblings could do. But **it has never run on a CPU**: it does not
+  appear in a single metal-test document, and `subtype D is Integer range
+  1 .. 31;` does not parse yet. Its gap is one of *scope*, not debt. The plan
+  is ZFP (not Ravenscar) with ACATS as the conformance matrix, and the expensive
+  part is already paid: Annex F copied COBOL's PICTURE, so the exact decimal
+  exists
 - **C++** -- minimal frontend (~900 lines), cheap on top of honest C when the
   time comes
 
