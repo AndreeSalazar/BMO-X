@@ -4,6 +4,12 @@
 //! esta carpeta no sabe de que color es la ventana.
 
 pub(crate) mod complete;
+pub(crate) mod dispatch;
+pub(crate) mod files;
+pub(crate) mod shell;
+pub(crate) mod system;
+pub(crate) use dispatch::{dispatch, After};
+
 pub(crate) mod history;
 pub(crate) mod reports;
 
