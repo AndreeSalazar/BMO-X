@@ -47,7 +47,38 @@ use crate::ring0::plat::timer;
 /// del entorno cambio entre medias.
 const CUANTAS: usize = 4;
 /// Renglones por informe.
-const RENGLONES: usize = 9;
+// Diez desde el 2026-08-13: el decimo es la PILA, y llego por un fallo que el
+// informe de nueve no podia explicar. Ver la nota sobre `pila` mas abajo.
+const RENGLONES: usize = 10;
+
+/// **Una palabra de la pila de un proceso muerto, o `None`.**
+///
+/// === Por que esto NO es un `read_volatile` a pelo ===
+///
+/// Porque corre DENTRO del manejador de fallos, y la memoria que va a leer es
+/// la del proceso que acaba de romperse. Si su `rsp` era basura --que es
+/// exactamente el caso interesante-- leerlo sin comprobar produce un segundo
+/// fallo con el primero a medio informar, y entonces no hay informe.
+///
+/// Se comprueba lo unico que se puede comprobar sin caminar las tablas: que la
+/// direccion sea CANONICA y que caiga en el rango de una pila de Ring 3. Un
+/// hueco en el informe es una respuesta; un triple fault no.
+fn leer_palabra_de_ring3(dir: u64) -> Option<u64> {
+    // Canonica: los 17 bits altos iguales. Una direccion de Ring 3 ademas vive
+    // por debajo de la mitad del espacio.
+    if dir >> 47 != 0 {
+        return None;
+    }
+    if dir & 7 != 0 {
+        return None;
+    }
+    // La pila de un proceso de Ring 3 se reserva por debajo de `0x8000_0000`;
+    // fuera de ahi no se lee, aunque fuera canonica.
+    if dir < 0x1000 || dir >= 0x8000_0000 {
+        return None;
+    }
+    Some(unsafe { core::ptr::read_volatile(dir as *const u64) })
+}
 /// Ancho de cada renglon. El de la ventana de datos, para que quepa sin cortar.
 const ANCHO: usize = 72;
 
@@ -200,7 +231,7 @@ pub fn registrar(
     let mut renglones: [Renglon; RENGLONES] = [
         Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(),
         Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(),
-        Renglon::nuevo(),
+        Renglon::nuevo(), Renglon::nuevo(),
     ];
 
     renglones[0].s("== FALLO EN RING 3 #");
@@ -255,6 +286,39 @@ pub fn registrar(
 
     renglones[6].s("rsp       ");
     renglones[6].hex(rsp);
+
+    // ** LA CIMA DE LA PILA, y esta linea nacio de un fallo concreto.
+    //
+    // El 2026-08-13 DOOM murio con `#GP` en `rip 0x400815f2`. Con `--map` del
+    // compilador ese numero dijo la funcion --`SHA1_Update`+0x18-- y ahi se
+    // acabo la pista: **nada llama a SHA1 en `I_Init`**, asi que lo que hubo no
+    // fue SHA1 ejecutandose, sino un salto que aterrizo a mitad de su cuerpo.
+    //
+    // Y para saber QUIEN salto hace falta la pila, porque BMO pasa los
+    // argumentos por ella y un `call` deja su direccion de retorno arriba. El
+    // informe tenia el `rsp` y no lo que hay EN el `rsp`, que es como tener las
+    // coordenadas del accidente y no la matricula.
+    //
+    // [!] Se leen cuatro palabras y con guarda: la pila de un proceso muerto es
+    // memoria en la que ya no se confia, asi que una direccion no canonica o
+    // sin mapear tiene que dar un hueco en el informe y no un segundo fallo
+    // DENTRO del manejador de fallos.
+    renglones[9].s("pila      ");
+    let mut k = 0usize;
+    while k < 4 {
+        let dir = rsp.wrapping_add((k as u64) * 8);
+        match leer_palabra_de_ring3(dir) {
+            Some(v) => {
+                renglones[9].hex(v);
+                renglones[9].s(" ");
+            }
+            None => {
+                renglones[9].s("(ilegible) ");
+                k = 4;
+            }
+        }
+        k += 1;
+    }
 
     // * Y LO QUE EL PROCESO DIJO ANTES DE MORIR.
     //

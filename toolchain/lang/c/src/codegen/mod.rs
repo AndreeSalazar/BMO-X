@@ -73,6 +73,41 @@ pub fn compile_with_target(program: &Program, target: TargetProfile) -> Result<V
     Ok(cg.build_bef())
 }
 
+/// **EL MAPA: que funcion vive en cada offset del codigo.**
+///
+/// === Por que esto existe, y con la fecha ===
+///
+/// El 2026-08-13 DOOM murio en el Ryzen con
+///
+/// ```text
+///   causa     #GP proteccion general  (vector 13)
+///   rip       0x400815f2   la instruccion que fallo
+/// ```
+///
+/// Un `rip` es un dato exacto y no servia para nada: el `.bex` no lleva
+/// simbolos, asi que la unica forma de saber que funcion es esa era **adivinar
+/// leyendo el fuente** -- que es justo lo que esta casa lleva todo el dia
+/// evitando. La informacion existia (`function_offsets`), sencillamente no
+/// salia del compilador.
+///
+/// Ahora sale. Con la base de carga (`0x40000000` para un `.bex` de Ring 3) y el
+/// `rip` de la autopsia, la pregunta *"que revento"* se contesta restando.
+///
+/// [!] Devuelve los offsets DENTRO de la seccion de codigo, no direcciones
+/// virtuales: el compilador no decide donde se carga -- eso lo hace el cargador,
+/// y ponerlo aqui seria repetir una decision que no es suya.
+pub fn function_map(program: &Program) -> Result<Vec<(usize, String)>> {
+    let mut cg = Codegen::new(TargetProfile::default());
+    cg.emit_program(program)?;
+    let mut v: Vec<(usize, String)> = cg
+        .function_offsets
+        .iter()
+        .map(|(n, off)| (*off, n.clone()))
+        .collect();
+    v.sort();
+    Ok(v)
+}
+
 struct Fixup {
     lea_offset: usize,
     string_idx: usize,

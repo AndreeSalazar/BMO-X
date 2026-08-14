@@ -76,6 +76,25 @@ pub fn compile_with_preprocessor(
     codegen::compile_to_bef_bytes(&program)
 }
 
+/// **Preprocesar y parsear, sin emitir.** Lo que necesita `--map`.
+///
+/// Existe porque `compile_with_preprocessor` hace las dos cosas y devuelve
+/// bytes: para volcar el mapa de funciones hace falta el `Program`, y no hay
+/// razon para escribir un `.bex` que nadie va a leer. Comparte cuerpo con la
+/// otra --el preprocesador se instancia igual-- para que no haya dos formas de
+/// resolver un `#include`.
+pub fn parse_with_preprocessor(
+    source: &str,
+    file_path: &Path,
+    std: CStandard,
+) -> Result<Program, CError> {
+    let features = StandardFeatures::load_standard(std);
+    let include_paths = module::discover_include_paths();
+    let mut pp = parser::preprocessor::Preprocessor::new(&features, include_paths);
+    let expanded = pp.preprocess(source, file_path)?;
+    parse_with_features(&expanded, &features)
+}
+
 /// Parse with standard feature gating.
 pub fn parse_with_features(source: &str, features: &StandardFeatures) -> Result<Program, CError> {
     let mut p = Parser::new(source);
