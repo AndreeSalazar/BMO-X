@@ -116,6 +116,12 @@ impl Launcher {
     /// por app y ninguna cambia mientras la maquina esta encendida. Un
     /// escritorio que releyera el directorio en cada fotograma seria un
     /// escritorio que hace E/S sesenta veces por segundo para ensenar lo mismo.
+    // [!] `#[inline(never)]` NO es por tamano de codigo: es por PILA. Inlineado,
+    // el struct se construye en una ranura del marco del llamante y se copia
+    // despues; como llamada aparte, LLVM le pasa la direccion de destino como
+    // puntero de retorno (`sret`) y escribe directamente en `.bss`. Medido en
+    // el Ryzen el 2026-08-14 -- ver la cabecera de `desktop::install`.
+    #[inline(never)]
     pub fn new() -> Self {
         let mut me = Self {
             apps: [const { App::EMPTY }; MAX_APPS],
