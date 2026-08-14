@@ -615,8 +615,13 @@ fn validate_import_section(
         return;
     }
     let raw = data.as_ptr() as *const ImportEntry;
-    let count = data.len() / entry_sz;
-    let string_start = count * entry_sz;
+    // ** LA CABECERA MANDA. Antes esto era `data.len() / entry_sz`, que da por
+    // hecho que TODO el dato son entradas -- y entonces las cadenas empiezan
+    // donde acaba la seccion y miden cero. Ver `TablaCadenas`.
+    let Some((count, string_start)) = TablaCadenas::leer(data, entry_sz) else {
+        r.error_at(idx, "la cabecera de la seccion declara mas entradas de las que caben");
+        return;
+    };
     let strings = &data[string_start..];
 
     for (i, imp) in (0..count).map(|i| unsafe { &*raw.add(i) }).enumerate() {
@@ -692,8 +697,13 @@ fn validate_export_section(
         return;
     }
     let raw = data.as_ptr() as *const ExportEntry;
-    let count = data.len() / entry_sz;
-    let string_start = count * entry_sz;
+    // ** LA CABECERA MANDA. Antes esto era `data.len() / entry_sz`, que da por
+    // hecho que TODO el dato son entradas -- y entonces las cadenas empiezan
+    // donde acaba la seccion y miden cero. Ver `TablaCadenas`.
+    let Some((count, string_start)) = TablaCadenas::leer(data, entry_sz) else {
+        r.error_at(idx, "la cabecera de la seccion declara mas entradas de las que caben");
+        return;
+    };
 
     for i in 0..count {
         let e = unsafe { &*raw.add(i) };
@@ -743,8 +753,13 @@ fn validate_symbol_section(
         return;
     }
     let raw = data.as_ptr() as *const Symbol;
-    let count = data.len() / entry_sz;
-    let string_start = count * entry_sz;
+    // ** LA CABECERA MANDA. Antes esto era `data.len() / entry_sz`, que da por
+    // hecho que TODO el dato son entradas -- y entonces las cadenas empiezan
+    // donde acaba la seccion y miden cero. Ver `TablaCadenas`.
+    let Some((count, string_start)) = TablaCadenas::leer(data, entry_sz) else {
+        r.error_at(idx, "la cabecera de la seccion declara mas entradas de las que caben");
+        return;
+    };
 
     for i in 0..count {
         let sym = unsafe { &*raw.add(i) };

@@ -61,6 +61,7 @@ mod monton;
 /// musica puede prometer sin un altavoz delante.
 mod musica;
 mod parseo;
+mod simbolos;
 mod preprocesador;
 mod printf;
 mod puerta;

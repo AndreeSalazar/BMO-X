@@ -191,3 +191,83 @@ impl<'a> SectionTable<'a> {
         self.entries.iter().find(|e| e.kind == kind as u8)
     }
 }
+
+// ============================================================================
+// LAS SECCIONES DE TABLA + CADENAS
+// ============================================================================
+
+/// **Cabecera de las secciones que llevan entradas de tamano fijo seguidas de
+/// un blob de cadenas**: `Imports`, `Exports` y `Symbols`.
+///
+/// # El fallo que obliga a que esto exista (2026-08-14)
+///
+/// Las tres secciones se escribian asi:
+///
+/// ```text
+///   [entradas][cadenas]        y nada que diga CUANTAS entradas hay
+/// ```
+///
+/// Y las tres se leian asi, en `validator.rs`:
+///
+/// ```text
+///   count        = data.len() / tamano_de_entrada     <- TODO son entradas
+///   string_start = count * tamano_de_entrada          <- ...luego no caben
+/// ```
+///
+/// ** Ese modelo es IMPOSIBLE: si todo el dato son entradas, el blob de cadenas
+/// empieza donde acaba la seccion y mide cero. Solo cuadra cuando no hay
+/// cadenas -- o sea, cuando la seccion no sirve para nada.
+///
+/// Escritor y lector se escribieron por separado, ninguno de los dos se uso
+/// nunca, y por eso llevaban desde el diseno de BEF sin coincidir. Se descubrio
+/// al escribir el PRIMER productor de verdad (la tabla de simbolos de BMO C):
+/// `bmo-verify` rechazo el binario diciendo `name_off 0x616d7573 out of range`
+/// -- y `0x616d7573` es la palabra `"suma"`, o sea el validador leyendo las
+/// cadenas como si fueran entradas.
+///
+/// La leccion, que es la del dia: **un formato con escritor y sin lector (o al
+/// reves) no esta definido, esta escrito.** Lo que lo define es que alguien lo
+/// recorra de punta a punta.
+///
+/// # La disposicion, ahora dicha
+///
+/// ```text
+///   [TablaCadenas][entrada; count][cadenas]
+///                  ^^^^^^^^^^^^^^  `name_off` es relativo a AQUI
+/// ```
+#[repr(C, align(8))]
+#[derive(Debug, Clone, Copy)]
+pub struct TablaCadenas {
+    /// Cuantas entradas de tamano fijo vienen detras.
+    pub count: bx_u32,
+    /// Reservado. **Debe ser cero** -- misma regla que el resto del formato:
+    /// un campo futuro no puede heredar basura de un productor de hoy.
+    pub _reserved: bx_u32,
+}
+const _: () = assert!(core::mem::size_of::<TablaCadenas>() == 8);
+
+impl TablaCadenas {
+    pub const SIZE: usize = 8;
+
+    pub const fn de(count: u32) -> Self {
+        Self { count, _reserved: 0 }
+    }
+
+    /// Lee la cabecera y devuelve `(count, donde_empiezan_las_cadenas)`.
+    ///
+    /// `None` si la seccion no da ni para la cabecera, o si el numero de
+    /// entradas que declara no cabe en lo que mide. Un `count` inventado haria
+    /// que el lector recorriera cadenas creyendo que son entradas -- que es
+    /// exactamente el fallo que esta cabecera viene a cerrar.
+    pub fn leer(data: &[u8], tamano_de_entrada: usize) -> Option<(usize, usize)> {
+        if data.len() < Self::SIZE {
+            return None;
+        }
+        let count = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+        let fin = Self::SIZE.checked_add(count.checked_mul(tamano_de_entrada)?)?;
+        if fin > data.len() {
+            return None;
+        }
+        Some((count, fin))
+    }
+}

@@ -54,7 +54,12 @@ pub enum SymbolVisibility {
 pub struct Symbol {
     /// Offset al string del nombre (en seccion Symbols).
     pub name_off: bx_u32,
-    /// Hash BLAKE3-32 del nombre.
+    /// Hash **FNV-1a de 32 bits** del nombre. Ver [`name_hash`].
+    ///
+    /// [!] Este campo decia "Hash BLAKE3-32" y **nadie lo calculaba**: no habia
+    /// ni una funcion de hash en toda la crate. Corregido el 2026-08-14 al
+    /// escribir el primer productor de esta seccion -- se puso el hash que de
+    /// verdad se calcula en vez de dejar el nombre del que no.
     pub name_hash: bx_u32,
     /// Direccion virtual relativa al base.
     pub virt_addr: bx_u64,
@@ -72,6 +77,30 @@ pub struct Symbol {
     pub _reserved: bx_u32,
 }
 const _: () = assert!(core::mem::size_of::<Symbol>() == 32);
+
+/// **El hash de un nombre de simbolo: FNV-1a de 32 bits.**
+///
+/// # Por que FNV-1a y no algo criptografico
+///
+/// Este hash no protege nada: sirve para **descartar rapido** antes de comparar
+/// la cadena. Quien busca `SHA1_Update` en una tabla de mil simbolos compara mil
+/// enteros y hace un `strcmp` sobre el que casa. Un hash criptografico costaria
+/// mas que el `strcmp` que ahorra.
+///
+/// Y tiene que poder calcularse **dentro del kernel**: seis lineas, sin
+/// reservas, sin tablas. Un BLAKE3 en `no_std` y sin `alloc` seria meter una
+/// dependencia en el anillo cero para elegir entre dos cadenas.
+///
+/// [!] Una colision NO es un fallo: el que busca compara el nombre igualmente.
+/// El hash decide a quien NO mirar, nunca a quien aceptar.
+pub fn name_hash(name: &str) -> bx_u32 {
+    let mut h: u32 = 0x811C_9DC5; // offset basis
+    for b in name.as_bytes() {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193); // prime
+    }
+    h
+}
 
 impl Symbol {
     pub const SIZE: usize = 32;
