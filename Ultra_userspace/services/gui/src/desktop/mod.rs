@@ -287,57 +287,78 @@ static mut DESKTOP: MaybeUninit<Desktop> = MaybeUninit::uninit();
 /// como puntero de retorno (`sret`) en vez de construir el struct en una ranura
 /// de la pila y copiarlo despues. Inlineadas, los temporales de `Out` (17.936)
 /// y `Launcher` (12.968) se acumulan en el marco de `_start`. Medido.
+/// ** SE ESCRIBE CAMPO A CAMPO, y eso es el punto entero de esta funcion.
+///
+/// La primera version era `slot.write(Desktop::new(...))`, o sea construir el
+/// struct y moverlo. **No basto, y el Ryzen lo dijo con numeros** el 2026-08-14:
+///
+/// ```text
+///   veredicto *** PILA DESBORDADA: 3536 B bajo el fondo, pila 65536
+///   rip       0x40011ffb  +0x11ffb     <- Desktop::new + 27, su sonda de pila
+/// ```
+///
+/// `sret` llevaba el `Desktop` a `.bss`, si -- pero los TEMPORALES INTERMEDIOS
+/// seguian en la pila: el `Out` del literal (17.936 B) y el `Launcher` que
+/// entraba **por valor** como parametro (12.968 B). Medido:
+///
+/// ```text
+///   _start         26.616
+///   Desktop::new   35.656
+///                  ------
+///                  62.272  + install + los push  ->  69.072 de 65.536
+/// ```
+///
+/// Escribiendo campo por campo con `addr_of_mut!`, **cada constructor recibe la
+/// direccion final de SU campo** y escribe alli directamente: no hay un momento
+/// en que exista un `Desktop` ni un `Out` completos fuera de `.bss`.
+///
+/// [!] Y el `Launcher` **se construye aqui dentro**, no se recibe. Un parametro
+/// por valor de 12.968 bytes lo copia el LLAMANTE en su propio marco, asi que
+/// mientras entrara por la firma no habia forma de quitarlo desde aqui.
 #[inline(never)]
-pub(crate) fn install(
-    p: &bmo::Pantalla,
-    console: Option<bmo::Consola>,
-    launcher: Launcher,
-) -> &'static mut Desktop {
+pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'static mut Desktop {
     // `addr_of_mut!` y no `&mut DESKTOP`: tomar una referencia a un `static mut`
     // es UB aunque compile, y aqui hay un solo llamante que puede demostrarlo.
-    unsafe { (*core::ptr::addr_of_mut!(DESKTOP)).write(Desktop::new(p, console, launcher)) }
-}
-
-impl Desktop {
-    #[inline(never)]
-    pub fn new(p: &bmo::Pantalla, console: Option<bmo::Consola>, launcher: Launcher) -> Self {
-        let run_box = RunBox::new(p.ancho, p.alto);
-        let calc_pad = CalcPad::new(&run_box);
-        Self {
-            field: Field::new(),
-            win: Windows::new(p),
-            out: Out {
-                grid: Output::new(),
-                console,
-                run: None,
-                faults_seen: bmo::autopsia_total(),
-            },
-            snd: SoundState {
-                cap: None,
-                devices: 0,
-                volume: 80,
-                pressed: None,
-            },
-            tick: Tick {
-                frames: 0,
-                will_paint: false,
-                repaint_field: false,
-                ax: u32::MAX,
-                ay: u32::MAX,
-                button_before: false,
-                combo_before: false,
-                key_during_combo: false,
-                calc_hover: None,
-                dead_boxes: [(0, 0, 0, 0); crate::scene::surface::MAX],
-            },
-            table: Table::new(),
-            launcher,
-            run_box,
-            calc: Calc::new(),
-            calc_pad,
-            save_under: SaveUnder::new(),
-            resp: [0; 24],
-            resp_n: 0,
-        }
+    let slot = core::ptr::addr_of_mut!(DESKTOP) as *mut Desktop;
+    unsafe {
+        // El orden importa en uno solo: `calc_pad` se coloca a partir de la caja
+        // de ejecucion, asi que `run_box` va antes y se lee desde su sitio ya
+        // definitivo. Los demas son independientes.
+        core::ptr::addr_of_mut!((*slot).run_box).write(RunBox::new(p.ancho, p.alto));
+        core::ptr::addr_of_mut!((*slot).calc_pad).write(CalcPad::new(&(*slot).run_box));
+        core::ptr::addr_of_mut!((*slot).field).write(Field::new());
+        core::ptr::addr_of_mut!((*slot).win).write(Windows::new(p));
+        core::ptr::addr_of_mut!((*slot).launcher).write(Launcher::new());
+        core::ptr::addr_of_mut!((*slot).table).write(Table::new());
+        core::ptr::addr_of_mut!((*slot).calc).write(Calc::new());
+        core::ptr::addr_of_mut!((*slot).save_under).write(SaveUnder::new());
+        // `Out` tambien por campos: su literal entero media 17.936 B de
+        // temporal, que era la mitad del marco de la version anterior.
+        core::ptr::addr_of_mut!((*slot).out.grid).write(Output::new());
+        core::ptr::addr_of_mut!((*slot).out.console).write(console);
+        core::ptr::addr_of_mut!((*slot).out.run).write(None);
+        core::ptr::addr_of_mut!((*slot).out.faults_seen).write(bmo::autopsia_total());
+        core::ptr::addr_of_mut!((*slot).snd).write(SoundState {
+            cap: None,
+            devices: 0,
+            volume: 80,
+            pressed: None,
+        });
+        core::ptr::addr_of_mut!((*slot).tick).write(Tick {
+            frames: 0,
+            will_paint: false,
+            repaint_field: false,
+            ax: u32::MAX,
+            ay: u32::MAX,
+            button_before: false,
+            combo_before: false,
+            key_during_combo: false,
+            calc_hover: None,
+            dead_boxes: [(0, 0, 0, 0); crate::scene::surface::MAX],
+        });
+        core::ptr::addr_of_mut!((*slot).resp).write([0; 24]);
+        core::ptr::addr_of_mut!((*slot).resp_n).write(0);
+        &mut *slot
     }
 }
+

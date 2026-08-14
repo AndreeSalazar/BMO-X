@@ -86,6 +86,12 @@ pub(crate) struct Output {
 }
 
 impl Output {
+    // [!] `#[inline(never)]` NO es por tamano de codigo: es por PILA. Inlineado,
+    // el struct se construye en una ranura del marco del llamante y se copia
+    // despues; como llamada aparte, LLVM le pasa la direccion de destino como
+    // puntero de retorno (`sret`) y escribe directamente en `.bss`. Medido en
+    // el Ryzen el 2026-08-14 -- ver la cabecera de `desktop::install`.
+    #[inline(never)]
     pub(crate) fn new() -> Self {
         Self {
             cells: [[b' '; OUT_COLS]; OUT_HIST],

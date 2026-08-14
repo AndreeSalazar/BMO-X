@@ -19,7 +19,6 @@
 use bmo_userland as bmo;
 
 use super::Desktop;
-use crate::scene::launcher::Launcher;
 use crate::scene::{
     paint_background, paint_field, paint_run_box, paint_status, ACCENT, INK, INK_BAD, INK_DIM,
 };
@@ -114,8 +113,14 @@ pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, &'static mut Deskt
     //
     // Va JUSTO DESPUES del fondo y antes de todo lo demas: los iconos son lo de
     // mas atras que se pinta, igual que en cualquier escritorio.
-    let launcher = Launcher::new();
-    scene::launcher::paint(&p, &launcher);
+    // [!] El escritorio SE INSTALA ANTES de pintar los iconos, y el orden en la
+    // pantalla no cambia porque `install` no pinta nada. El motivo es de PILA:
+    // el `Launcher` mide 12.968 B y un parametro por valor lo copia el
+    // LLAMANTE en su marco. Construyendolo dentro de `install`, directamente
+    // sobre su campo de `.bss`, esa copia no llega a existir. Ver la cabecera
+    // de `install`, que lleva el desbordamiento del Ryzen con sus numeros.
+    let d = super::install(&p, child_console);
+    scene::launcher::paint(&p, &d.launcher);
     p.rect(16, 13, 14, 14, ACCENT);
     p.texto(38, 14, "BMO-X", INK);
 
@@ -125,9 +130,6 @@ pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, &'static mut Deskt
     // struct: lo que antes se declaraba a mitad del arranque ya existe entero
     // antes de que se pinte el primer campo, y el orden de las declaraciones
     // deja de ser algo que haya que respetar de memoria.
-    // `install` lo construye DENTRO de `.bss` y devuelve la unica referencia:
-    // aqui no se materializa ningun `Desktop` en la pila.
-    let d = super::install(&p, child_console, launcher);
 
     // Lo que SI era informacion y no instrumento: si la entrada no se pudo
     // reclamar hay que decirlo, y ahora se dice con palabras en la barra en vez
