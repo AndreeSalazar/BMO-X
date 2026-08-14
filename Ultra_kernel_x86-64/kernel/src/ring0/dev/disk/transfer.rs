@@ -286,7 +286,7 @@ fn tramo_dma(va: u64, max: u64) -> Option<(u64, u64)> {
 // Se escribieron, compilaban, y se quitaron antes de entrar: **no habia quien
 // los llamara**. Este proyecto ya se ha tropezado tres veces con el mismo
 // patron --el foco con sus doce pruebas y sin lector, el arrastre de dos
-// ventanas que nadie invocaba, `BlockReader::count` sin usar-- y en todas la
+// ventanas que nadie invocaba, el `count` del contrato sin usar-- y en todas la
 // version escrita y muerta dio la impresion de que la funcion existia.
 //
 // La pieza que falta para que tengan sentido NO es un driver: es que el que

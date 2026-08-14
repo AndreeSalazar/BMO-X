@@ -3,7 +3,7 @@
 //! Supports both FAT32 (S: FASTOS-EFI) and exFAT (T: FastOS-Data, X: Commit-Real).
 //! Reads BPB, locates root directory, finds files by 8.3 name,
 //! and reads clusters via the FAT chain. El almacenamiento entra por el
-//! contrato `BlockReader`/`BlockWriter`: no sabe si debajo hay SATA o NVMe.
+//! contrato `bmo_block::BlockDevice`: no sabe si debajo hay SATA o NVMe.
 
 // `no_std` en la maquina, `std` en las pruebas. Es el mismo patron que
 // `bmo-estratos`, y existe porque un driver que escribe en el disco de alguien
@@ -160,17 +160,35 @@ pub struct ExFatNameEntry {
     pub name_string: [u16; 15],  // UTF-16LE filename (up to 15 chars)
 }
 
-/// Lee `count` sectores de 512 B desde `lba` ABSOLUTO del dispositivo.
+/// **El dispositivo de bloques, por el CONTRATO.**
 ///
-/// Es TODO lo que este sistema de ficheros necesita saber del almacenamiento.
-/// No sabe si debajo hay SATA, NVMe o un disco en RAM, y no debe saberlo:
-/// antes estaba soldado a `bmo_ahci` y por tanto no habria podido leer jamas
-/// un NVMe. Un puntero a funcion en vez de un trait porque en Ring 0 no hay
-/// alloc y no hace falta mas.
-pub type BlockReader = fn(lba: u64, count: u16, buf: &mut [u8]) -> bool;
-/// Escribe sectores. `None` al montar = volumen de SOLO LECTURA, y entonces
-/// la imposibilidad de escribir es ESTRUCTURAL, no una promesa.
-pub type BlockWriter = fn(lba: u64, count: u16, data: &[u8]) -> bool;
+/// # Por que ya no son dos punteros a funcion (paso 0, 2026-08-14)
+///
+/// Aqui vivian `BlockReader` y `BlockWriter`, dos `fn(...)  -> bool`, con un
+/// motivo escrito que era correcto: en Ring 0 no hay `alloc` y un trait
+/// parecia pedir un `Box`. **No lo pide**: `bmo_block::BlockDevice` se pasa
+/// como `&'static dyn`, que es un puntero gordo y ninguna reserva.
+///
+/// Lo que costaba tenerlos era mas caro que lo que ahorraban: `bmo-block`
+/// declara el contrato de bloques de BMO --leer, escribir, capacidad,
+/// identidad, `flush`-- y FAT32 lo esquivaba con una puerta propia. Un
+/// contrato con puertas traseras no es un contrato; medido en
+/// `docs/PLAN_ALMACENAMIENTO.md`, seccion 0.1.
+///
+/// Lo que se gana al entrar por la puerta:
+///
+/// * **Identidad y capacidad**: antes el sistema de ficheros no podia saber
+///   sobre que disco vivia ni cuantos bloques tenia.
+/// * **Errores con nombre** en vez de `bool`: `OutOfRange` es un bug del que
+///   llama y `Device` es hardware roto, y con un booleano son la misma cosa.
+/// * **`flush` de verdad**: la barrera que un diseno transaccional necesita.
+/// * **`writable()`**: se puede preguntar ANTES de empezar, no a mitad.
+///
+/// [!] Y no se pierde nada de lo que el motivo viejo protegia: el sistema de
+/// ficheros sigue sin saber si debajo hay SATA, NVMe o un disco en RAM. Las
+/// pruebas siguen inyectando un disco de mentira, ahora como un `static` que
+/// implementa el trait.
+pub use bmo_block::{BlockDevice, BlockError};
 
 /// Cual de los dos buffers internos usa una operacion. Existe para que el
 /// prestamo del buffer y el del dispositivo no se pisen: se copia el puntero
@@ -180,8 +198,13 @@ pub type BlockWriter = fn(lba: u64, count: u16, data: &[u8]) -> bool;
 enum Buf { buf, fat_cache }
 
 pub struct FatVolume {
-    read: BlockReader,
-    write: Option<BlockWriter>,
+    /// El dispositivo. Uno solo, y de el salen lectura Y escritura.
+    dev: &'static dyn BlockDevice,
+    /// Se monto para escribir? Es una decision del que MONTA y no del
+    /// dispositivo: un disco escribible se puede montar en solo lectura a
+    /// proposito, y entonces la imposibilidad de escribir queda ESTRUCTURAL --
+    /// no hay writer al que llamar, igual que antes con el `Option`.
+    escribible: bool,
     /// Primer LBA de la PARTICION dentro del disco. El sistema de ficheros
     /// piensa en sectores relativos a su volumen y no sabe que existe una
     /// tabla de particiones; aqui se suma. Sin esto, `mount` leia el sector 0
@@ -253,7 +276,7 @@ const SIN_CACHE: u64 = u64::MAX;
 /// lleno, si el volumen es de solo lectura o si el nombre ya existia.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteError {
-    /// El volumen se monto sin `BlockWriter`.
+    /// El volumen se monto en solo lectura (`escribible = false`).
     ReadOnly,
     /// Ya hay un archivo con ese nombre en ese directorio.
     Exists,
@@ -284,14 +307,14 @@ impl WriteError {
 ///
 /// `write = None` monta en SOLO LECTURA: no es una politica que alguien deba
 /// recordar respetar, es que no hay con que escribir.
-pub fn mount(read: BlockReader, write: Option<BlockWriter>, part_lba: u64) -> Option<FatVolume> {
+pub fn mount(dev: &'static dyn BlockDevice, escribible: bool, part_lba: u64) -> Option<FatVolume> {
     let mut buf = [0u8; 512];
-    if !read(part_lba, 1, &mut buf) { return None; }
+    if dev.read(part_lba, 1, &mut buf).is_err() { return None; }
 
     // Check for exFAT signature ("EXFAT   ") at offset 3
     let fs_name = &buf[3..11];
     if fs_name == b"EXFAT   " {
-        return mount_exfat(read, write, part_lba, &buf);
+        return mount_exfat(dev, escribible, part_lba, &buf);
     }
 
     // Otherwise try FAT32
@@ -310,11 +333,11 @@ pub fn mount(read: BlockReader, write: Option<BlockWriter>, part_lba: u64) -> Op
     let total = bpb.total_sectors;
     if total <= data_start { return None; }
     let max_cluster = (total - data_start) / spc as u32 + 1;
-    Some(FatVolume { read, write, part_lba, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: spc,
+    Some(FatVolume { dev, escribible, part_lba, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: spc,
         num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512], fat_cache_lba: SIN_CACHE })
 }
 
-fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf: &[u8; 512]) -> Option<FatVolume> {
+fn mount_exfat(dev: &'static dyn BlockDevice, escribible: bool, part_lba: u64, buf: &[u8; 512]) -> Option<FatVolume> {
     let epb = unsafe { &*(buf.as_ptr() as *const ExFatBpb) };
     if epb.boot_signature != 0xAA55 { return None; }
     let bps_shift = epb.bytes_per_sector_shift;
@@ -330,7 +353,7 @@ fn mount_exfat(read: BlockReader, write: Option<BlockWriter>, part_lba: u64, buf
 
     // exFAT lo dice en su propio BPB, sin tener que deducirlo.
     let max_cluster = epb.cluster_count + 1;
-    Some(FatVolume { read, write, part_lba, fs_type: FsType::ExFat, bytes_per_sector, sectors_per_cluster,
+    Some(FatVolume { dev, escribible, part_lba, fs_type: FsType::ExFat, bytes_per_sector, sectors_per_cluster,
         num_fats, fat_start, fat_size_sectors, data_start, root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512], fat_cache_lba: SIN_CACHE })
 }
 
@@ -442,7 +465,7 @@ impl FatVolume {
     /// `self.read`, por una sola razon: **para que pase por `abs`**. Un puntero
     /// a funcion invocado a mano se salta la traduccion sin que nada avise.
     fn leer_directo(&self, lba: u64, count: u16, dst: &mut [u8]) -> bool {
-        (self.read)(self.abs(lba), count, dst)
+        self.dev.read(self.abs(lba), count, dst).is_ok()
     }
 
     /// Lee un sector del VOLUMEN a uno de los buffers internos.
@@ -450,10 +473,10 @@ impl FatVolume {
     /// El puntero a funcion se copia ANTES de tomar el buffer: si no, seria un
     /// doble prestamo de `self` y no compilaria.
     fn read_sector(&mut self, lba: u64, which: Buf) -> bool {
-        let rd = self.read;
+        let rd = self.dev;
         let abs = self.abs(lba);
         match which {
-            Buf::buf => rd(abs, 1, &mut self.buf),
+            Buf::buf => rd.read(abs, 1, &mut self.buf).is_ok(),
             Buf::fat_cache => {
                 // ** Y AQUI SI SE RECUERDA. Ver el campo `fat_cache_lba`: en un
                 // sector de FAT caben 128 entradas seguidas, que son justo las
@@ -462,7 +485,7 @@ impl FatVolume {
                 if self.fat_cache_lba == lba {
                     return true;
                 }
-                let ok = rd(abs, 1, &mut self.fat_cache);
+                let ok = rd.read(abs, 1, &mut self.fat_cache).is_ok();
                 // Si la lectura fallo, lo que hay en el buffer es del sector
                 // ANTERIOR. Decir que es de este seria servir las entradas de
                 // otro sitio de la FAT como si fueran de aqui.
@@ -475,12 +498,15 @@ impl FatVolume {
     /// Escribe uno de los buffers internos. `false` si el volumen se monto en
     /// solo lectura -- no hay writer que llamar.
     fn write_sector(&mut self, lba: u64, which: Buf) -> bool {
-        let wr = match self.write { Some(w) => w, None => return false };
+        if !self.escribible {
+            return false;
+        }
+        let wr = self.dev;
         let abs = self.abs(lba);
         match which {
-            Buf::buf => wr(abs, 1, &self.buf),
+            Buf::buf => wr.write(abs, 1, &self.buf).is_ok(),
             Buf::fat_cache => {
-                let ok = wr(abs, 1, &self.fat_cache);
+                let ok = wr.write(abs, 1, &self.fat_cache).is_ok();
                 // Lo que queda en memoria es lo que acaba de irse al disco, asi
                 // que el buffer sigue valiendo para este sector -- y si la
                 // escritura fallo, lo que hay en el disco ya no se sabe: se
@@ -493,8 +519,10 @@ impl FatVolume {
 
     /// Escribe datos externos (un sector ya armado por el llamante).
     fn write_from(&mut self, lba: u64, data: &[u8]) -> bool {
-        let wr = match self.write { Some(w) => w, None => return false };
-        wr(self.abs(lba), 1, data)
+        if !self.escribible {
+            return false;
+        }
+        self.dev.write(self.abs(lba), 1, data).is_ok()
     }
 
     /// Primer LBA de la particion montada, por si alguien de arriba lo
@@ -692,8 +720,8 @@ impl FatVolume {
     /// comando es armar el FIS, tocar MMIO y esperar a que el HBA conteste.
     ///
     /// El contrato de almacenamiento ya aceptaba varios sectores de una vez
-    /// --`BlockReader` recibe `count`-- y nadie lo usaba. Otra vez el mecanismo
-    /// escrito y sin lector.
+    /// --`BlockDevice::read` recibe `count`-- y nadie lo usaba. Otra vez el
+    /// mecanismo escrito y sin lector.
     ///
     /// Ahora se lee **el tramo entero que quepa, directo a `dst`**: un comando
     /// por cluster en vez de uno por sector, y **cero copias intermedias**. El
@@ -1328,7 +1356,7 @@ impl FatVolume {
     pub fn create_file_in_dir(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8])
         -> Result<(), WriteError>
     {
-        if self.write.is_none() { return Err(WriteError::ReadOnly); }
+        if !self.escribible { return Err(WriteError::ReadOnly); }
         match self.fs_type {
             FsType::Fat32 => self.create_file_fat32(dir_cluster, name_8_3, data),
             // El creador de exFAT arrastra las mismas costuras que tenia el de
@@ -1354,7 +1382,7 @@ impl FatVolume {
     pub fn save_file_in_dir(&mut self, dir_cluster: u32, name_8_3: &[u8; 11], data: &[u8])
         -> Result<(), WriteError>
     {
-        if self.write.is_none() { return Err(WriteError::ReadOnly); }
+        if !self.escribible { return Err(WriteError::ReadOnly); }
         match self.fs_type {
             FsType::Fat32 => match self.find_entry_fat32_from(name_8_3, dir_cluster) {
                 Some(vieja) => self.replace_file_fat32(vieja, data),
@@ -1681,9 +1709,9 @@ fn name_match(entry: &[u8; 11], query: &[u8]) -> bool {
 // sola prueba. Se verificaba flasheando y mirando la pantalla -- o sea,
 // arriesgando el volumen para averiguar si el driver lo respetaba.
 //
-// El contrato de bloques (`BlockReader`/`BlockWriter`) son punteros a funcion
-// sin estado, asi que el disco de mentira vive en un `static mut` y cada
-// prueba lo formatea entera antes de empezar.
+// El contrato de bloques (`bmo_block::BlockDevice`) se toma como
+// `&'static dyn`, asi que el disco de mentira vive en un `static` y sus bytes
+// en un `static mut` aparte; cada prueba lo formatea entero antes de empezar.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1735,6 +1763,26 @@ mod tests {
         LECTURAS.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// **El disco de mentira, ahora detras del contrato.**
+    ///
+    /// Antes eran dos funciones sueltas que se pasaban a `mount`. Ahora es un
+    /// `static` que implementa `BlockDevice`, que es como se inyecta un
+    /// dispositivo desde que FAT32 entra por la puerta de `bmo-block`.
+    ///
+    /// [!] Y las pruebas ganan algo que antes no podian probar: el disco de
+    /// mentira **dice quien es**. `OutOfRange` deja de ser un `false`
+    /// indistinguible de un fallo de hardware.
+    struct DiscoDeMentira;
+
+    /// El dispositivo que se le pasa a `mount`. Se llama distinto de `DISCO`
+    /// --que son los BYTES-- porque son dos cosas: el disco es el medio, esto
+    /// es quien sabe hablarle.
+    static DISPOSITIVO: DiscoDeMentira = DiscoDeMentira;
+
+    /// Las dos funciones sueltas SIGUEN existiendo, y no por pereza: las
+    /// pruebas SIEMBRAN el disco con ellas antes de montar nada, cuando
+    /// todavia no hay volumen ni dispositivo de por medio. El trait delega
+    /// aqui, asi que hay UN solo sitio que mueve bytes.
     fn read(lba: u64, count: u16, buf: &mut [u8]) -> bool {
         let off = lba as usize * 512;
         let n = count as usize * 512;
@@ -1750,6 +1798,41 @@ mod tests {
         if off + n > SECTORES * 512 || data.len() < n { return false; }
         disco()[off..off + n].copy_from_slice(&data[..n]);
         true
+    }
+
+    impl bmo_block::BlockDevice for DiscoDeMentira {
+        fn identity(&self) -> bmo_block::DeviceId {
+            let mut id = bmo_block::DeviceId::EMPTY;
+            let m = b"DISCO DE MENTIRA";
+            id.model[..m.len()].copy_from_slice(m);
+            id.model_len = m.len();
+            let sn = b"PRUEBAS-0001";
+            id.serial[..sn.len()].copy_from_slice(sn);
+            id.serial_len = sn.len();
+            id.blocks = SECTORES as u64;
+            id
+        }
+
+        fn read(&self, lba: u64, count: u16, buf: &mut [u8]) -> Result<u16, bmo_block::BlockError> {
+            let n = count as usize * 512;
+            if (lba as usize * 512) + n > SECTORES * 512 {
+                return Err(bmo_block::BlockError::OutOfRange);
+            }
+            if buf.len() < n { return Err(bmo_block::BlockError::ShortBuffer); }
+            if read(lba, count, buf) { Ok(count) } else { Err(bmo_block::BlockError::Device) }
+        }
+
+        fn write(&self, lba: u64, count: u16, data: &[u8]) -> Result<u16, bmo_block::BlockError> {
+            let n = count as usize * 512;
+            if (lba as usize * 512) + n > SECTORES * 512 {
+                return Err(bmo_block::BlockError::OutOfRange);
+            }
+            if data.len() < n { return Err(bmo_block::BlockError::ShortBuffer); }
+            if write(lba, count, data) { Ok(count) } else { Err(bmo_block::BlockError::Device) }
+        }
+
+        fn flush(&self) -> Result<(), bmo_block::BlockError> { Ok(()) }
+        fn writable(&self) -> bool { true }
     }
 
     /// Formatea el disco de mentira y lo monta. Cada prueba empieza de cero.
@@ -1808,7 +1891,7 @@ mod tests {
         fat[8..12].copy_from_slice(&0x0FFF_FFFFu32.to_le_bytes()); // la raiz: EOC
         assert!(write(base + RESERVADOS as u64, 1, &fat));
 
-        let v = mount(read, Some(write), base).expect("el volumen de mentira debe montar");
+        let v = mount(&DISPOSITIVO, true, base).expect("el volumen de mentira debe montar");
         (turno, v)
     }
 
@@ -2446,7 +2529,7 @@ mod tests {
     #[test]
     fn sin_escritor_no_se_guarda() {
         let (_turno, _) = volumen();
-        let mut v = mount(read, None, 0).expect("debe montar en solo lectura");
+        let mut v = mount(&DISPOSITIVO, false, 0).expect("debe montar en solo lectura");
         let r = v.save_file_in_dir(2, &name("NOPE    TXT"), b"x");
         assert!(matches!(r, Err(WriteError::ReadOnly)), "{r:?}");
     }

@@ -13,9 +13,9 @@
 //!
 //! ## Dos volumenes, y solo uno se puede escribir
 //!
-//! - **ARRANQUE** (la ESP): se monta SIN `BlockWriter`. Su inmutabilidad no es
-//!   una politica que alguien deba acordarse de respetar: es que no existe la
-//!   funcion con la que escribir. Ahi vive el `BOOTX64.EFI` con el que arranco
+//! - **ARRANQUE** (la ESP): se monta con `escribible = false`. Su
+//!   inmutabilidad no es una politica que alguien deba acordarse de respetar:
+//!   `write_sector` y `write_from` se plantan antes de tocar el dispositivo. Ahi vive el `BOOTX64.EFI` con el que arranco
 //!   esta misma ejecucion.
 //! - **DATOS** (la primera particion que no es la de arranque): se monta con
 //!   escritor, y solo si el gate de identidad del disco la ha armado. Es donde
@@ -66,7 +66,11 @@ pub fn mount() {
     };
 
     // Sin writer: solo lectura por construccion (ver la nota de cabecera).
-    match bmo_fat32::mount(disk::block_read, None, part.first_lba) {
+    // El dispositivo entra por el CONTRATO (`bmo-block`) y ya no por dos
+    // punteros a funcion del kernel. `false` = montar en SOLO LECTURA, que
+    // sigue siendo decision de QUIEN MONTA y no del disco.
+    let Some(dev) = bmo_block::device() else { return };
+    match bmo_fat32::mount(dev, false, part.first_lba) {
         Some(v) => {
             unsafe {
                 core::ptr::write(core::ptr::addr_of_mut!(VOLUME), Some(v));
@@ -251,7 +255,8 @@ pub fn mount_data() {
             continue;
         }
         probadas += 1;
-        match bmo_fat32::mount(disk::block_read, Some(disk::block_write), part.first_lba) {
+        let Some(dev) = bmo_block::device() else { return };
+        match bmo_fat32::mount(dev, true, part.first_lba) {
             Some(v) => {
                 unsafe {
                     core::ptr::write(core::ptr::addr_of_mut!(DATA_VOLUME), Some(v));
