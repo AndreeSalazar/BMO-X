@@ -107,7 +107,7 @@ Tres cosas que Linux, por estructura, no puede hacer:
 
 ## 3. LAS CASILLAS
 
-### [ ] Paso 0 -- UNA SOLA PUERTA
+### [x] Paso 0 -- UNA SOLA PUERTA
 
 FAT32 deja los punteros a funcion y toma `&'static dyn BlockDevice`.
 
@@ -121,7 +121,7 @@ FAT32 deja los punteros a funcion y toma `&'static dyn BlockDevice`.
 * **Hecho cuando**: `grep BlockReader` no encuentra nada y las pruebas de fat32
   siguen verdes.
 
-### [ ] Paso 1 -- LAS PARTICIONES FUERA (MBR + GPT)
+### [x] Paso 1 -- LAS PARTICIONES FUERA (MBR + GPT)
 
 A `platform/drivers/storage/particiones/`. Cero hardware: entra un buffer de
 sectores, sale una lista.
@@ -131,7 +131,7 @@ sectores, sale una lista.
 * **Hecho cuando**: la crate compila sin dependencias de kernel Y tiene un censo
   con tablas escritas a mano (una MBR, una GPT, una GPT con CRC malo).
 
-### [ ] Paso 2 -- LA VENTANA DE ESCRITURA, SOLA
+### [x] Paso 2 -- LA VENTANA DE ESCRITURA, SOLA
 
 A `ring0/dev/disk/ventana.rs`. Politica pura, funcion pura, con test.
 
@@ -140,7 +140,7 @@ A `ring0/dev/disk/ventana.rs`. Politica pura, funcion pura, con test.
 * **Hecho cuando**: existe un test que pide escribir FUERA de la ventana y falla
   con motivo, sin tocar un disco.
 
-### [ ] Paso 3 -- EL IRQ FUERA
+### [x] Paso 3 -- EL IRQ FUERA
 
 A `ring0/dev/disk/irq.rs`: `atender_irq`, `irq_estado`, `IRQ_ARMADA`, `IRQS`.
 
@@ -154,7 +154,28 @@ lineas (patron del reparto de `_start`).
 
 ---
 
-## 4. LA META
+## 4. HECHO EL 2026-08-14
+
+
+
+** Lo que se gano NO son las 111 lineas de : son **14 casillas nuevas
+que corren en 0 segundos y sin disco**, sobre codigo que antes solo se podia
+probar arrancando la maquina.
+
+[!] **La leccion del paso 2, y hay que conservarla**: la decision de la ventana
+se escribio primero en  con sus pruebas, y **las
+pruebas no corrian** --  es un binario  para
+ y  ni compila. Un 
+en el kernel es codigo que parece una prueba y no se ejecuta jamas. La funcion
+pura tuvo que irse al CONTRATO para que sus casillas existieran de verdad.
+
+**Regla que queda: si una funcion del kernel merece pruebas, es que no
+pertenece al kernel.**
+
+⏳ Pendiente de metal: nada de esto se ha arrancado.  sigue siendo el
+unico camino por el que el kernel encuentra el disco del que arranca.
+
+## 5. LA META
 
 `dev/disk/mod.rs` se queda con **el registro del dispositivo y poco mas**. Todo
 lo que responda una pregunta que no sea *"que disco es este y como se le habla"*

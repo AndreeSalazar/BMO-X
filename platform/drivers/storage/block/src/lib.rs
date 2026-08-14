@@ -198,3 +198,146 @@ pub fn is_identified() -> bool {
         None => false,
     }
 }
+
+// ============================================================================
+// LAS VENTANAS DE ESCRITURA
+// ============================================================================
+
+/// **Donde SE PUEDE escribir, y por que.** Paso 2 de
+/// `docs/PLAN_ALMACENAMIENTO.md`.
+///
+/// # Por que vive en el CONTRATO y no en el kernel
+///
+/// Dos razones, y la segunda es la que decidio.
+///
+/// 1. Es lo que el plan ya argumentaba: *"un dispositivo que solo acepta
+///    escrituras dentro de un rango de LBA declarado es una idea mejor, y
+///    merece vivir en el contrato, no como caso especial del pegamento"*.
+///    **Linux no tiene equivalente**: alli un dispositivo es un nombre global
+///    y el acceso son bits de permiso, asi que `dd if=/dev/nvme0n1` existe y
+///    root lo puede todo.
+///
+/// 2. ** Y la que lo cerro: EN EL KERNEL ESTAS PRUEBAS NO PUEDEN CORRER.
+///    `bmo-kernel` es un binario `no_std` para `x86_64-unknown-none` con asm
+///    desnudo; `cargo test -p bmo-kernel` ni compila. Un `#[cfg(test)]` alli
+///    seria decoracion -- codigo que parece una prueba y no se ejecuta jamas.
+///    Aqui son siete casillas que corren en 0 segundos.
+///
+/// Cada una de ellas es una forma de perder un disco.
+pub mod ventana {
+    /// **La decision, y no toca nada de fuera.**
+    ///
+    /// Todo entra por parametro: si hay disco, si el gate de identidad armo la
+    /// escritura, y las dos ventanas como rangos `(primero, ultimo)` con el
+    /// ultimo INCLUSIVE. Ni un `static`, ni un registro, ni un dispositivo.
+    ///
+    /// ** Esa firma es el punto entero. Mientras la decision leia sus cuatro
+    /// datos de variables globales del kernel, la unica forma de comprobar
+    /// *"que pasa si alguien pide escribir sobre la ESP"* era arrancar la
+    /// maquina y pedirlo -- o sea arriesgar el arranque para probar el
+    /// guardian que protege el arranque.
+    pub fn decidir(
+        listo: bool,
+        armada: bool,
+        datos: Option<(u64, u64)>,
+        estratos: Option<(u64, u64)>,
+        lba: u64,
+        count: u16,
+    ) -> Result<(), &'static str> {
+        if !listo {
+            return Err("sin disco");
+        }
+        if !armada {
+            return Err("la escritura no esta armada (gate de identidad)");
+        }
+        if count == 0 {
+            return Err("cero sectores");
+        }
+        // Sin `checked_add`, un LBA cerca del maximo daria la vuelta y el
+        // rango pareceria diminuto y valido.
+        let Some(end) = lba.checked_add(count as u64) else {
+            return Err("el rango de LBA desborda");
+        };
+        for w in [datos, estratos].into_iter().flatten() {
+            if lba >= w.0 && end <= w.1 + 1 {
+                return Ok(());
+            }
+        }
+        Err("fuera de las ventanas de escritura (datos / ESTRATOS)")
+    }
+
+    #[cfg(test)]
+    mod casillas {
+        use super::*;
+
+        /// BMO-DATA en una maquina de verdad.
+        const DATOS: Option<(u64, u64)> = Some((206_848, 1_000_000));
+
+        #[test]
+        fn dentro_de_los_datos_se_escribe() {
+            assert!(decidir(true, true, DATOS, None, 300_000, 8).is_ok());
+        }
+
+        /// ** LA CASILLA QUE JUSTIFICA TODO ESTO.
+        ///
+        /// La ESP vive en los LBA bajos (2048..206_847 en esta maquina). Ahi
+        /// esta el `BOOTX64.EFI` con el que arranca BMO -- y en una maquina con
+        /// Windows, el cargador del boss. **No hay ventana que la cubra**, y
+        /// escribir ahi tiene que fallar aunque todo lo demas este en orden.
+        #[test]
+        fn sobre_la_esp_no_se_escribe_ni_con_el_disco_armado() {
+            let r = decidir(true, true, DATOS, None, 2048, 1);
+            assert_eq!(
+                r.unwrap_err(),
+                "fuera de las ventanas de escritura (datos / ESTRATOS)"
+            );
+        }
+
+        #[test]
+        fn un_rango_que_empieza_dentro_y_acaba_fuera_se_rechaza() {
+            // El ultimo sector exacto SI cabe: `last_lba` es inclusivo.
+            assert!(decidir(true, true, DATOS, None, 1_000_000, 1).is_ok());
+            // Pidiendo dos, el segundo ya cae fuera.
+            assert!(decidir(true, true, DATOS, None, 1_000_000, 2).is_err());
+        }
+
+        /// ** El desbordamiento, que es como un rango enorme parece diminuto:
+        /// sin `checked_add`, `u64::MAX + 2` da la vuelta y `end` sale MENOR
+        /// que `lba`, asi que la comprobacion de rango pasaria.
+        #[test]
+        fn un_lba_que_desborda_no_se_cuela_por_dar_la_vuelta() {
+            let r = decidir(true, true, DATOS, None, u64::MAX, 2);
+            assert_eq!(r.unwrap_err(), "el rango de LBA desborda");
+        }
+
+        /// ** Las dos ventanas son DOS, y el hueco entre ellas importa.
+        ///
+        /// Si alguien "simplificara" ensanchando una sola ventana que las
+        /// cubriera a ambas, este hueco quedaria abierto. Ensanchar un guardian
+        /// es quitarlo.
+        #[test]
+        fn las_dos_ventanas_no_se_funden_en_una() {
+            let es = Some((2_000_000, 3_000_000));
+            assert!(decidir(true, true, DATOS, es, 2_500_000, 4).is_ok());
+            assert!(decidir(true, true, DATOS, es, 1_500_000, 4).is_err());
+        }
+
+        #[test]
+        fn sin_el_gate_de_identidad_no_se_escribe_en_ninguna_ventana() {
+            let r = decidir(true, false, DATOS, None, 300_000, 8);
+            assert_eq!(
+                r.unwrap_err(),
+                "la escritura no esta armada (gate de identidad)"
+            );
+        }
+
+        /// El estado inicial de la maquina es "no se puede", y hay que
+        /// ganarselo.
+        #[test]
+        fn sin_ninguna_ventana_no_hay_donde_escribir() {
+            assert!(decidir(true, true, None, None, 300_000, 8).is_err());
+            assert_eq!(decidir(false, true, DATOS, None, 300_000, 8).unwrap_err(), "sin disco");
+            assert_eq!(decidir(true, true, DATOS, None, 300_000, 0).unwrap_err(), "cero sectores");
+        }
+    }
+}

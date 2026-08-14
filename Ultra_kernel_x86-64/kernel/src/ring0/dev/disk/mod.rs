@@ -40,6 +40,8 @@ use bmo_ahci::{storage_hal, StorageHal};
 /// **THE IDENTITY GATE**: the eighty lines that decide whether this machine may
 /// write to this disk at all. On the owner's machine the other drive holds
 /// Windows, so this is the highest-consequence code in the driver.
+mod irq;
+mod ventana;
 mod gate;
 pub use gate::verify_identity;
 /// WHO HOLDS THE DISK: one owner at a time, with a count of waits and thefts.
@@ -165,49 +167,21 @@ static mut SERIAL: [u8; 20] = [0; 20];
 static mut SERIAL_LEN: usize = 0;
 static mut TOTAL_SECTORS: u64 = 0;
 
-/// El disco avisa por MSI, o hay que seguir preguntandole?
-static mut IRQ_ARMADA: bool = false;
-/// Avisos atendidos. Es lo que dice si la interrupcion **llega de verdad**: si
-/// `IRQ_ARMADA` es cierto y esto no sube, la placa acepto la programacion de MSI
-/// y no la esta enrutando -- que es un caso real y por eso se cuenta por
-/// separado en vez de fiarse de que "quedo armado" signifique "funciona".
-static mut IRQS: u64 = 0;
+// ** EL AVISO DEL DISCO VIVE EN `irq.rs` (paso 3 del plan).
+//
+// No salio por tamano: salio porque es **lo unico de este fichero que corre en
+// contexto de interrupcion**, y mezclar eso con codigo que puede tomar candados
+// es como se cuelga una maquina sin dejar rastro.
+//
+// Se re-exporta con los nombres de antes: el reparto no toca a los llamantes.
+pub use irq::CLAVE_ESPERA;
 
 /// Avisa el disco por su cuenta, y cuantas veces lo ha hecho.
-pub fn irq_estado() -> (bool, u64) { unsafe { (IRQ_ARMADA, IRQS) } }
+pub fn irq_estado() -> (bool, u64) { irq::estado() }
 
 /// **Lo llama el manejador del vector del disco.** Ver `plat/irq.rs`.
-///
-/// Corre en contexto de interrupcion: lo minimo y nada mas. Limpiar el aviso del
-/// aparato es obligatorio --si no, lo vuelve a pedir en el acto y no deja correr
-/// a nadie-- y contar es lo que permite saber despues si esto funciono.
-pub fn atender_irq() {
-    let puerto = unsafe { PORT };
-    if puerto == 0xFF {
-        return;
-    }
-    if unsafe { bmo_ahci::atender(puerto) } {
-        unsafe { IRQS += 1 };
-        // ** Y AQUI IRA `wake_by_key(CLAVE_ESPERA)` el dia que haya quien duerma.
-        //
-        // Hoy no lo hay, y no por falta de cable: la cadena esta entera salvo la
-        // pieza de abajo. `file::avanzar` trae su trozo **sincronamente**, o
-        // sea que cuando la llamada vuelve el dato ya esta -- nadie se queda
-        // esperando nada que esta interrupcion pueda terminar.
-        //
-        // Se deja dicho y sin llamar en vez de llamarlo "por si acaso": despertar
-        // a nadie cuesta el candado del planificador en contexto de interrupcion,
-        // y da la impresion de que el sistema duerme cuando no duerme.
-    }
-}
+pub fn atender_irq() { irq::atender(unsafe { PORT }) }
 
-/// La clave sobre la que dormira quien espere al disco.
-///
-/// Un numero que no choca con las de los canales, que son indices pequenos.
-/// Vive aqui --y no en el planificador-- porque **el planificador no tiene por
-/// que saber que existe un disco**: solo reparte turnos sobre claves que le dan.
-#[allow(dead_code)]
-pub const CLAVE_ESPERA: u64 = 0xD15C_0000_0000_0001;
 
 /// Ha pasado el disco el gate de identidad? Mientras sea `false`, `write()`
 /// no mueve un solo sector.
@@ -240,43 +214,11 @@ pub fn total_sectors() -> u64 { unsafe { TOTAL_SECTORS } }
 /// Esta abierta la puerta de escritura?
 pub fn write_armed() -> bool { unsafe { WRITE_ARMED } }
 
-/// * **La segunda ventana de escritura: la de ESTRATOS.**
-///
-/// `write_window` solo admitia la particion de datos (la FAT32 donde viven los
-/// `.bex`), y eso era correcto mientras ESTRATOS no escribiera. Pero ESTRATOS
-/// **vive en otra particion**, asi que su primera escritura habria sido
-/// rechazada con `fuera de la particion de datos` -- un mensaje correcto y
-/// desconcertante.
-///
-/// La tentacion es ensanchar la ventana existente. **No.** Ensanchar un
-/// guardian es quitarlo: la ventana de datos protege de que un bug del sistema
-/// de ficheros se coma la ESP --donde vive el `BOOTX64.EFI` con el que arranco
-/// la maquina, y en una maquina con Windows tambien el cargador del dueno-- y
-/// eso tiene que seguir protegido aunque ESTRATOS escriba.
-///
-/// Asi que hay DOS ventanas con nombre propio, y esta se registra solo cuando
-/// se cumplen las dos condiciones: el volumen esta montado **y el gate de
-/// identidad del section 5 dijo que nacio en este disco**. Un volumen clonado no
-/// registra ventana y por tanto **no puede escribir**, aunque el disco este
-/// armado.
-static mut VENTANA_ES: Option<(u64, u64)> = None;
-
-/// Registra la ventana de ESTRATOS. La llama `fsys::estratos::mount`.
-///
-/// # Safety
-/// Se llama una vez al montar, con las interrupciones donde ya estan.
-pub fn armar_ventana_estratos(primer_lba: u64, ultimo_lba: u64) {
-    unsafe { VENTANA_ES = Some((primer_lba, ultimo_lba)) };
-    crate::ring0::cabina::info("estratos", "ventana de escritura armada en", primer_lba);
-}
-
-/// Quita la ventana. Se llama al empezar a montar: si el montaje falla o la
-/// identidad no cuadra, **no queda ventana de la vez anterior**.
-pub fn desarmar_ventana_estratos() {
-    unsafe { VENTANA_ES = None };
-}
-
-pub fn ventana_estratos() -> Option<(u64, u64)> { unsafe { VENTANA_ES } }
+// ** LAS VENTANAS DE ESCRITURA VIVEN EN `ventana.rs` (paso 2 del plan).
+//
+// Eran politica pura --una decision sobre rangos de LBA-- mezclada con los
+// registros del HBA. Se re-exportan para no tocar a ningun llamante.
+pub use ventana::{armar_ventana_estratos, desarmar_ventana_estratos, ventana_estratos};
 /// Que dictamino el gate de identidad, en palabras.
 pub fn gate_reason() -> &'static str { unsafe { GATE_REASON } }
 
@@ -415,7 +357,7 @@ pub fn init() {
         if idt != 0 && crate::ring0::plat::irq::instalar(idt) {
             if crate::ring0::dev::pci::msi_activar(loc.bus, loc.dev, loc.func, vector, 0) {
                 if unsafe { bmo_ahci::habilitar_irq(chosen) } {
-                    unsafe { IRQ_ARMADA = true; }
+                    irq::marcar_armada();
                     crate::ring0::cabina::info("disk", "el disco avisa por MSI, vector", vector as u64);
                 }
             } else {
@@ -566,35 +508,23 @@ pub fn data_partition() -> Option<Partition> {
 /// este armada, un sector fuera de la particion de datos sigue siendo
 /// intocable. Los dos fallos que esto ataja son el desbordamiento aritmetico
 /// de un calculo de LBA y un sistema de ficheros que se cree en otro sitio.
+/// Recoge el estado y deja que `ventana::decidir` juzgue.
+///
+/// La division no es cosmetica: aqui se leen cuatro globales --y por eso esta
+/// funcion no se puede probar-- y alli se decide con lo que llegue por
+/// parametro, que es lo que hace que sus siete casillas existan.
 fn write_window(lba: u64, count: u16) -> Result<(), &'static str> {
-    if !is_ready() { return Err("sin disco"); }
-    if !write_armed() { return Err("la escritura no esta armada (gate de identidad)"); }
-    if count == 0 { return Err("cero sectores"); }
-    // Sin `checked_add` un LBA cerca del maximo daria la vuelta y el rango
-    // pareceria diminuto y valido.
-    let end = match lba.checked_add(count as u64) {
-        Some(e) => e,
-        None => return Err("el rango de LBA desborda"),
-    };
-
-    // -- Ventana 1: la particion de datos (FAT32, los `.bex`) --
-    if let Some(w) = data_partition() {
-        if lba >= w.first_lba && end <= w.last_lba + 1 {
-            return Ok(());
-        }
-    }
-    // -- Ventana 2: el volumen ESTRATOS --
-    //
-    // Solo existe si el volumen esta montado Y nacio en este disco. Son dos
-    // ventanas y no una ensanchada: la ESP --donde vive el `BOOTX64.EFI` con el
-    // que arranco la maquina-- no esta en ninguna de las dos, y esa es la
-    // propiedad que hay que conservar mientras el resto crece.
-    if let Some((primero, ultimo)) = ventana_estratos() {
-        if lba >= primero && end <= ultimo + 1 {
-            return Ok(());
-        }
-    }
-    Err("fuera de las ventanas de escritura (datos / ESTRATOS)")
+    // La particion se pasa como RANGO y no como `Partition`: el contrato no
+    // tiene por que saber que existe una tabla de particiones, y asi
+    // `bmo-block` no depende de `bmo-particiones`.
+    bmo_block::ventana::decidir(
+        is_ready(),
+        write_armed(),
+        data_partition().map(|w| (w.first_lba, w.last_lba)),
+        ventana_estratos(),
+        lba,
+        count,
+    )
 }
 
 /// Escribe `count` sectores en `lba`. Devuelve los sectores escritos.
