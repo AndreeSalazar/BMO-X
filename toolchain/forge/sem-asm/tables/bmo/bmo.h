@@ -109,6 +109,38 @@
 #define BMO_INFO_CPU_NUCLEOS 0x07
 #define BMO_INFO_TICKS 0x0B
 
+/* -- A QUE VELOCIDAD VA ESTO DE VERDAD ------------------------------
+ *
+ * ** `BMO_INFO_TSC_HZ` dice a que va el RELOJ DE REFERENCIA, y ese no cambia
+ * nunca: 3,7 GHz en esta maquina, encendida o a medio gas. No es la velocidad
+ * del nucleo. En un Zen 3 la diferencia es de gigahercios enteros -- un nucleo
+ * solo bajo carga sube a 4,6 y doce a la vez se quedan cerca de la base.
+ *
+ * El kernel sabia medirlo desde hace tiempo (MPERF/APERF, y el consumo por
+ * RAPL) y **ningun programa de C podia preguntarlo**, porque estas filas no
+ * estaban aqui. El panel del compositor, que es Rust, si las leia. O sea que la
+ * respuesta existia y no cruzaba la frontera del lenguaje.
+ *
+ * ** Son MEDIDAS POR DIFERENCIA, no datos: salen de restar dos lecturas, asi que
+ * **preguntarlas dos veces seguidas da lo de ESE intervalo**. Quien las quiere
+ * de verdad las pregunta una vez por vuelta de su bucle, no dos.
+ *
+ * Y `0` significa **"no se puede medir aqui"**, que no es lo mismo que cero: un
+ * CPU sin los MSR contesta 0 y sigue funcionando. `BMO_INFO_CPU_SENSORES` dice
+ * cuales hay antes de creerse un numero -- bit 0 la frecuencia, bit 1 el
+ * consumo. */
+#define BMO_INFO_CPU_HZ_REAL 0x20
+#define BMO_INFO_CPU_MW_PAQUETE 0x21
+/* [!] Del nucleo EN EL QUE SE LEE, no de todos: `CORE_ENERGY_STAT` es un
+ * contador por nucleo. El metal del 12-08 lo enseno a base de mentira -- con
+ * once nucleos GIRANDO al 100% este numero BAJO de 11,9 a 9,2 W, porque los
+ * otros once no aparecen aqui en absoluto. */
+#define BMO_INFO_CPU_MW_NUCLEO_ACTUAL 0x22
+#define BMO_INFO_CPU_SENSORES 0x23
+/* Cuantos nucleos estan EN PIE. Uno significa que los otros once duermen -- y
+ * eso, en un Zen 3, es la condicion para que este suba a 4,6 GHz. */
+#define BMO_INFO_SMP_VIVOS 0x1B
+
 /* -- La puerta --------------------------------------------------------- */
 
 /* El VALOR que devuelve una operacion.
