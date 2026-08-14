@@ -71,7 +71,7 @@
 //!
 //! `ARCH_OP_LEER` entrega **siete bytes por llamada**: ir al disco por cada
 //! siete seria un sector por byte y medio. Asi que la ranura mantiene una
-//! **ventana** de [`VENTANA`] --el ultimo trozo leido, con su offset-- y esas
+//! **ventana** de [`WINDOW`] --el ultimo trozo leido, con su offset-- y esas
 //! llamadas se sirven de ahi. Un archivo mas pequeno que la ventana entra
 //! entero en la primera lectura y se comporta exactamente como antes.
 //!
@@ -228,9 +228,9 @@ static mut LARGO: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Por donde va la lectura.
 static mut CURSOR: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Nombre 8.3 y directorio destino, para el momento de guardar.
-static mut NOMBRE: [[u8; 11]; MAX_ABIERTOS] = [[b' '; 11]; MAX_ABIERTOS];
+static mut NAME: [[u8; 11]; MAX_ABIERTOS] = [[b' '; 11]; MAX_ABIERTOS];
 static mut DIRECTORIO: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
-static mut ESCRIBE: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
+static mut WRITES: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
 /// Se pidio escribir mas de lo que cabe. `close` lo confiesa en vez de
 /// guardar un archivo corto que parece entero.
 static mut DESBORDO: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
@@ -251,12 +251,12 @@ static mut CUR: [bmo_fat32::Cursor; MAX_ABIERTOS] =
 /// Cuesta doce bytes por ranura y es la diferencia entre que `fseek` hacia atras
 /// funcione o devuelva cero. La copia se hace al abrir: reabrir de verdad
 /// obligaria a volver a recorrer el arbol de directorios.
-static mut INICIO: [bmo_fat32::Cursor; MAX_ABIERTOS] =
+static mut START: [bmo_fat32::Cursor; MAX_ABIERTOS] =
     [bmo_fat32::Cursor::vacio(); MAX_ABIERTOS];
 /// En que byte del archivo empieza lo que hay ahora en el buffer.
-static mut VENT_OFF: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+static mut WINDOW_OFF: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Cuantos bytes validos hay en la ventana. `0` = no hay nada leido.
-static mut VENT_LEN: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+static mut WINDOW_LEN: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 
 /// Lo que se trae de una vez para las lecturas de siete bytes.
 ///
@@ -264,7 +264,7 @@ static mut VENT_LEN: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// entonces esto se comporta igual que el `open` de antes, con una sola lectura--
 /// y son dieciseis marcos por archivo abierto, que no es un numero que haya que
 /// pensar. El que lea un WAD de 4 MiB no pasa por aqui: va por `LEER_EN`.
-pub const VENTANA: usize = 64 * 1024;
+pub const WINDOW: usize = 64 * 1024;
 
 /// Bytes que se han traido del disco por reflejo, y cuantas veces hubo que
 /// **volver al principio** del archivo.
@@ -310,7 +310,7 @@ pub fn cuentas() -> (u64, u64) {
 // el trabajo ocurre en el turno de quien lo quiere, que es de quien es.
 
 /// Cluster por el que va la carga. `0` = no hay carga en curso.
-static mut CARGA_CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+static mut LOAD_CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Lo que mide el archivo entero, mientras se trae.
 ///
 /// * Aqui NO hay un contador de trozos. Se escribio, para que el `wait` supiera
@@ -318,7 +318,7 @@ static mut CARGA_CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// llego a existir (ver `syscall.rs`), el contador se quedaba subiendo para
 /// nadie. Lo que hace falta saber de fuera --cuanto ha llegado-- ya lo dice
 /// `LARGO`, y lo contesta `ARCH_OP_LISTO`.
-static mut CARGA_TOTAL: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+static mut LOAD_TOTAL: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 
 /// Cuanto se trae de una vez.
 ///
@@ -328,8 +328,8 @@ static mut CARGA_TOTAL: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 const TROZO: usize = 128 * 1024;
 
 /// Se esta trayendo todavia?
-pub fn cargando(i: usize) -> bool {
-    unsafe { i < MAX_ABIERTOS && CARGA_CLUSTER[i] != 0 }
+pub fn loading(i: usize) -> bool {
+    unsafe { i < MAX_ABIERTOS && LOAD_CLUSTER[i] != 0 }
 }
 
 /// **Trae el siguiente trozo.** `true` si el archivo ya esta entero.
@@ -338,12 +338,12 @@ pub fn cargando(i: usize) -> bool {
 /// que lo hace avanzar. Si no habia carga en curso, contesta que si -- un
 /// archivo que ya estaba entero lo esta igual despues de preguntar.
 pub fn avanzar(i: usize) -> bool {
-    if !cargando(i) {
+    if !loading(i) {
         return true;
     }
     unsafe {
-        let cluster = CARGA_CLUSTER[i];
-        let total = CARGA_TOTAL[i];
+        let cluster = LOAD_CLUSTER[i];
+        let total = LOAD_TOTAL[i];
         let ya = LARGO[i];
         let dst = buf(i);
         let (leidos, siguiente) =
@@ -354,11 +354,11 @@ pub fn avanzar(i: usize) -> bool {
         // bucle infinito en el que pregunta, y prefiero un archivo corto que se
         // nota a una maquina que no vuelve.
         if siguiente == 0 || leidos == 0 {
-            CARGA_CLUSTER[i] = 0;
+            LOAD_CLUSTER[i] = 0;
             crate::ring0::cabina::info("arch", "archivo completo", LARGO[i] as u64);
             return true;
         }
-        CARGA_CLUSTER[i] = siguiente;
+        LOAD_CLUSTER[i] = siguiente;
         false
     }
 }
@@ -453,7 +453,7 @@ unsafe fn reflejar(i: usize, offset: usize, dst: &mut [u8]) -> usize {
         // gritos --y con razon, porque para el cargador eso es un fallo-- asi
         // que aqui se le da un cursor que si puede llegar, en vez de pedirle
         // algo que su contrato no promete.
-        *cur = INICIO[i];
+        *cur = START[i];
         RETROCESOS += 1;
     }
     let n = crate::ring0::fsys::fs::leer_rango(cur, offset, LARGO[i] as u32, dst);
@@ -465,11 +465,11 @@ unsafe fn reflejar(i: usize, offset: usize, dst: &mut [u8]) -> usize {
 ///
 /// Si ya esta, no toca el disco: es lo que hace que leer de siete en siete
 /// cueste una lectura cada 64 KiB y no una cada siete bytes.
-unsafe fn ventana_en(i: usize, pos: usize) -> bool {
+unsafe fn window_at(i: usize, pos: usize) -> bool {
     if pos >= LARGO[i] {
         return false;
     }
-    if VENT_LEN[i] > 0 && pos >= VENT_OFF[i] && pos < VENT_OFF[i] + VENT_LEN[i] {
+    if WINDOW_LEN[i] > 0 && pos >= WINDOW_OFF[i] && pos < WINDOW_OFF[i] + WINDOW_LEN[i] {
         return true;
     }
     let dst = buf(i);
@@ -477,8 +477,8 @@ unsafe fn ventana_en(i: usize, pos: usize) -> bool {
         return false;
     }
     let n = reflejar(i, pos, dst);
-    VENT_OFF[i] = pos;
-    VENT_LEN[i] = n;
+    WINDOW_OFF[i] = pos;
+    WINDOW_LEN[i] = n;
     n > 0
 }
 
@@ -496,18 +496,18 @@ unsafe fn byte_en(i: usize, pos: usize) -> Option<u8> {
         let b = buf(i);
         return if pos < b.len() { Some(b[pos]) } else { None };
     }
-    if !ventana_en(i, pos) {
+    if !window_at(i, pos) {
         return None;
     }
-    let d = pos - VENT_OFF[i];
+    let d = pos - WINDOW_OFF[i];
     let b = buf(i);
-    if d < VENT_LEN[i].min(b.len()) { Some(b[d]) } else { None }
+    if d < WINDOW_LEN[i].min(b.len()) { Some(b[d]) } else { None }
 }
 
 /// Abre un archivo del volumen de datos para LEER y entrega su handle a `pid`.
 ///
 /// ** No se trae nada. Se guarda un cursor y se reserva la ventana --lo mas
-/// pequeno entre el archivo y [`VENTANA`]--, y los bytes van del disco a quien
+/// pequeno entre el archivo y [`WINDOW`]--, y los bytes van del disco a quien
 /// los pida, cuando los pida. Un WAD de 4 MiB cuesta lo mismo que un `.txt`.
 ///
 /// Lo que se pierde con esto, dicho: antes, si el disco fallaba, fallaba `open`
@@ -538,7 +538,7 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
     unsafe {
         // La ventana, no el archivo. Un fichero mas pequeno que ella entra
         // entero en la primera lectura y todo esto se comporta como antes.
-        if !reserve(i, mide.min(VENTANA)) {
+        if !reserve(i, mide.min(WINDOW)) {
             // Ya no puede pasar por el TAMANO del archivo -- son dieciseis
             // marcos como mucho. Si pasa, es que no queda RAM contigua ni para
             // eso, y entonces el sistema tiene un problema mas grande.
@@ -547,15 +547,15 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
         }
         REFLEJO[i] = true;
         CUR[i] = cursor;
-        INICIO[i] = cursor;
+        START[i] = cursor;
         REF_AL_ABRIR[i] = BYTES_REFLEJADOS;
         RET_AL_ABRIR[i] = RETROCESOS;
-        VENT_OFF[i] = 0;
-        VENT_LEN[i] = 0;
-        CARGA_CLUSTER[i] = 0;
+        WINDOW_OFF[i] = 0;
+        WINDOW_LEN[i] = 0;
+        LOAD_CLUSTER[i] = 0;
         LARGO[i] = mide;
         CURSOR[i] = 0;
-        ESCRIBE[i] = false;
+        WRITES[i] = false;
         DESBORDO[i] = false;
         OWNER[i] = pid;
         match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ, i as u64) {
@@ -611,20 +611,20 @@ pub fn abrir_asinc(pid: u32, ruta: &str) -> Result<u64, u32> {
         }
         LARGO[i] = 0;
         CURSOR[i] = 0;
-        ESCRIBE[i] = false;
+        WRITES[i] = false;
         DESBORDO[i] = false;
         OWNER[i] = pid;
-        CARGA_TOTAL[i] = mide;
+        LOAD_TOTAL[i] = mide;
         // Un archivo vacio ya esta entero: nunca hay carga en curso para el, y
         // marcarla dejaria a quien pregunte esperando un trozo que no existe.
-        CARGA_CLUSTER[i] = if mide == 0 { 0 } else { cluster };
+        LOAD_CLUSTER[i] = if mide == 0 { 0 } else { cluster };
         match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ | cap::RIGHT_WAIT, i as u64) {
             Some(h) => {
                 crate::ring0::cabina::info("arch", "archivo abierto SIN terminar de leer", mide as u64);
                 Ok(h)
             }
             None => {
-                CARGA_CLUSTER[i] = 0;
+                LOAD_CLUSTER[i] = 0;
                 release_buffer(i);
                 OWNER[i] = NO_OWNER;
                 Err(cap::ERROR_PERMISSION_DENIED)
@@ -681,9 +681,9 @@ pub fn create(pid: u32, ruta: &str) -> Result<u64, u32> {
         }
         LARGO[i] = 0;
         CURSOR[i] = 0;
-        NOMBRE[i] = name;
+        NAME[i] = name;
         DIRECTORIO[i] = dir;
-        ESCRIBE[i] = true;
+        WRITES[i] = true;
         DESBORDO[i] = false;
         OWNER[i] = pid;
         // Se conceden los dos derechos: `invoke` resuelve con RIGHT_READ, asi
@@ -774,7 +774,7 @@ fn write(i: usize, palabra: u64) -> u64 {
 /// Cierra la ranura y, si era de escritura, guarda. `1` = todo bien.
 fn close(i: usize) -> u64 {
     unsafe {
-        let ok = if ESCRIBE[i] {
+        let ok = if WRITES[i] {
             if DESBORDO[i] {
                 // No se guarda NADA. Un archivo recortado en silencio se
                 // parece demasiado a uno entero, y el que lo lea manana no
@@ -794,7 +794,7 @@ fn close(i: usize) -> u64 {
                 // convertia en un `warn` a la CABINA y un `0` que casi nadie
                 // miraba -- o sea que un programa que escribia su salida solo
                 // era honesto la primera vez que se corria.
-                match crate::ring0::fsys::fs::guardar_en(DIRECTORIO[i], &NOMBRE[i], datos) {
+                match crate::ring0::fsys::fs::guardar_en(DIRECTORIO[i], &NAME[i], datos) {
                     Ok(()) => {
                         crate::ring0::cabina::info("arch", "archivo guardado", LARGO[i] as u64);
                         true
@@ -842,7 +842,7 @@ fn release(i: usize) {
         OWNER[i] = NO_OWNER;
         LARGO[i] = 0;
         CURSOR[i] = 0;
-        ESCRIBE[i] = false;
+        WRITES[i] = false;
         DESBORDO[i] = false;
         DIRECTORIO[i] = 0;
         // El reflejo tambien se apaga aqui, y en el mismo sitio que todo lo
@@ -850,10 +850,10 @@ fn release(i: usize) {
         // del archivo anterior leeria **otro fichero** sin que nada avise.
         REFLEJO[i] = false;
         CUR[i] = bmo_fat32::Cursor::vacio();
-        INICIO[i] = bmo_fat32::Cursor::vacio();
-        VENT_OFF[i] = 0;
-        VENT_LEN[i] = 0;
-        CARGA_CLUSTER[i] = 0;
+        START[i] = bmo_fat32::Cursor::vacio();
+        WINDOW_OFF[i] = 0;
+        WINDOW_LEN[i] = 0;
+        LOAD_CLUSTER[i] = 0;
     }
 }
 
@@ -862,7 +862,7 @@ pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
     if i >= MAX_ABIERTOS {
         return None;
     }
-    let escribe = unsafe { ESCRIBE[i] };
+    let escribe = unsafe { WRITES[i] };
     // ** PREGUNTAR POR EL ARCHIVO ES LO QUE LO TRAE.
     //
     // Cualquier operacion de lectura empuja un trozo antes de contestar. Asi un
@@ -870,12 +870,12 @@ pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
     // todos los de hoy-- funciona igual: pide bytes, y los bytes acaban
     // llegando. La diferencia es que ahora **entre trozo y trozo puede dormir**,
     // en vez de estar dentro del kernel hasta el final.
-    if !escribe && cargando(i) && op != ARCH_OP_CERRAR {
+    if !escribe && loading(i) && op != ARCH_OP_CERRAR {
         avanzar(i);
     }
     match op {
         ARCH_OP_LISTO => Some(unsafe {
-            let entero = if cargando(i) { 0u64 } else { 1u64 << 63 };
+            let entero = if loading(i) { 0u64 } else { 1u64 << 63 };
             entero | LARGO[i] as u64
         }),
         // El modo manda. Pedirle bytes a un archivo de escritura no es un
@@ -922,7 +922,7 @@ pub unsafe fn read_into(idx: u64, dst: *mut u8, n: usize) -> usize {
         return 0;
     }
     unsafe {
-        if ESCRIBE[i] {
+        if WRITES[i] {
             return 0;
         }
         let quedan = LARGO[i].saturating_sub(CURSOR[i]);
@@ -972,7 +972,7 @@ pub unsafe fn write_from(idx: u64, src: *const u8, n: usize) -> usize {
         return 0;
     }
     unsafe {
-        if !ESCRIBE[i] {
+        if !WRITES[i] {
             return 0;
         }
         let necesita = match LARGO[i].checked_add(n) {
@@ -1016,7 +1016,7 @@ pub fn process_died(pid: u32) {
     unsafe {
         for i in 0..MAX_ABIERTOS {
             if OWNER[i] == pid {
-                if ESCRIBE[i] && LARGO[i] > 0 {
+                if WRITES[i] && LARGO[i] > 0 {
                     crate::ring0::cabina::warn("arch", "murio sin cerrar: se descarta", LARGO[i] as u64);
                 }
                 release(i);

@@ -361,7 +361,7 @@ pub unsafe fn fabricate(
     (xsave_base as *mut u16).write_volatile(0x037F); // FCW
     ((xsave_base + 24) as *mut u32).write_volatile(0x1F80); // MXCSR
     ((xsave_base + XSAVE_AREA as u64) as *mut u64).write_volatile(gpr_base); // back-ptr
-    sellar(xsave_base, 0);
+    seal(xsave_base, 0);
 
     let frame = &mut *(gpr_base as *mut TrapFrame);
     core::ptr::write_bytes(frame as *mut TrapFrame as *mut u8, 0, core::mem::size_of::<TrapFrame>());
@@ -389,7 +389,7 @@ pub const MIN_TASK_STACK: usize = CONTEXT_BYTES + 4096;
 /// Lo llama `fabricate` al crear el contexto y el planificador cada vez que
 /// guarda uno saliente. Los stubs ponen la firma en ensamblador nada mas
 /// publicar el contexto; el dueno lo pone Rust, que es quien sabe de tids.
-pub fn sellar(xsave_base: u64, tid: u32) {
+pub fn seal(xsave_base: u64, tid: u32) {
     if xsave_base == 0 {
         return;
     }

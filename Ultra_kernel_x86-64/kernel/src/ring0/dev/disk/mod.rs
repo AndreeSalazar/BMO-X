@@ -28,7 +28,7 @@
 //! dueno. NO demuestra todavia que sea *este* disco y no otro igual: para eso
 //! hace falta grabar la identidad DENTRO del volumen (el `disco_id` de
 //! ESTRATOS) y compararla al montar. Mientras tanto la segunda linea de
-//! defensa es la VENTANA: ningun sector fuera de una particion de datos
+//! defensa es la WINDOW: ningun sector fuera de una particion de datos
 //! reconocida es escribible, y la particion de arranque EFI no lo es nunca.
 
 use crate::ring0::mm::{self, phys};
@@ -332,13 +332,13 @@ pub fn init() {
         // El estado crudo de cada puerto lo pinta el driver (`probe`). Aqui
         // solo se cuenta y se elige.
         //
-        // * Se itera por INDICE, no por `p.port_number`. Las entradas vacias
+        // * Se itera por INDICE, no por `p.port_number`. Las entries vacias
         // del array llevan port_number = 0, asi que filtrar por su campo hacia
         // que CADA hueco se colara haciendose pasar por el puerto 0: catorce
         // lineas identicas del mismo puerto inexistente, y una espera de
         // enlace completa concedida a cada fantasma (los 3-4 segundos de
         // arranque). El indice del array ES el numero de puerto; el campo solo
-        // significa algo en las entradas que `probe` lleno.
+        // significa algo en las entries que `probe` lleno.
         crate::ring0::cabina::info("ahci", "puertos implementados (PI) segun el firmware", ctrl.ports_implemented as u64);
         let mut active = 0u64;
         // TODOS los puertos que CAP declara, no solo los que PI reconoce: el
@@ -769,7 +769,7 @@ impl bmo_block::BlockDevice for AhciDisk {
         let end = lba.checked_add(count as u64).ok_or(E::OutOfRange)?;
         let total = unsafe { TOTAL_SECTORS };
         if total != 0 && end > total { return Err(E::OutOfRange); }
-        // La VENTANA sigue mandando por debajo: el contrato de bloques no la
+        // La WINDOW sigue mandando por debajo: el contrato de bloques no la
         // sustituye. Un rango fuera de la particion de datos se rechaza aqui
         // como ReadOnly, que es exactamente lo que es para ese sector.
         if write_window(lba, count).is_err() { return Err(E::ReadOnly); }

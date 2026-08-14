@@ -23,8 +23,8 @@
 
 use bmo_rtc::{Crudo, Fecha};
 
-const PUERTO_INDICE: u16 = 0x70;
-const PUERTO_DATO: u16 = 0x71;
+const PORT_INDEX: u16 = 0x70;
+const PORT_DATA: u16 = 0x71;
 
 const REG_SEGUNDO: u8 = 0x00;
 const REG_MINUTO: u8 = 0x02;
@@ -35,8 +35,8 @@ const REG_ANIO: u8 = 0x09;
 /// No esta garantizado por ninguna norma: lo dice el FADT de ACPI, y casi
 /// siempre es este. Si trae basura, `bmo-rtc` lo descarta y supone 20xx.
 const REG_SIGLO: u8 = 0x32;
-const REG_ESTADO_A: u8 = 0x0A;
-const REG_ESTADO_B: u8 = 0x0B;
+const REG_STATUS_A: u8 = 0x0A;
+const REG_STATUS_B: u8 = 0x0B;
 
 const UIP: u8 = 1 << 7;
 
@@ -50,30 +50,30 @@ const UIP: u8 = 1 << 7;
 static mut ARRANQUE: u64 = 0;
 static mut TSC_BASE: u64 = 0;
 
-unsafe fn leer_reg(reg: u8) -> u8 {
+unsafe fn read_reg(reg: u8) -> u8 {
     // El bit 7 del indice enmascara la NMI. Se deja como estaba --se escribe
     // solo el registro-- porque tocarlo aqui seria cambiar una politica del
     // sistema para leer la hora.
-    core::arch::asm!("out dx, al", in("dx") PUERTO_INDICE, in("al") reg, options(nomem, nostack));
+    core::arch::asm!("out dx, al", in("dx") PORT_INDEX, in("al") reg, options(nomem, nostack));
     let v: u8;
-    core::arch::asm!("in al, dx", out("al") v, in("dx") PUERTO_DATO, options(nomem, nostack));
+    core::arch::asm!("in al, dx", out("al") v, in("dx") PORT_DATA, options(nomem, nostack));
     v
 }
 
 unsafe fn actualizandose() -> bool {
-    leer_reg(REG_ESTADO_A) & UIP != 0
+    read_reg(REG_STATUS_A) & UIP != 0
 }
 
-unsafe fn una_lectura() -> Crudo {
+unsafe fn one_reading() -> Crudo {
     Crudo {
-        segundo: leer_reg(REG_SEGUNDO),
-        minuto: leer_reg(REG_MINUTO),
-        hora: leer_reg(REG_HORA),
-        dia: leer_reg(REG_DIA),
-        mes: leer_reg(REG_MES),
-        anio: leer_reg(REG_ANIO),
-        siglo: leer_reg(REG_SIGLO),
-        estado_b: leer_reg(REG_ESTADO_B),
+        segundo: read_reg(REG_SEGUNDO),
+        minuto: read_reg(REG_MINUTO),
+        hora: read_reg(REG_HORA),
+        dia: read_reg(REG_DIA),
+        mes: read_reg(REG_MES),
+        anio: read_reg(REG_ANIO),
+        siglo: read_reg(REG_SIGLO),
+        estado_b: read_reg(REG_STATUS_B),
     }
 }
 
@@ -83,15 +83,15 @@ unsafe fn una_lectura() -> Crudo {
 /// de intentos tampoco -- un CMOS averiado que deje `UIP` puesto colgaria el
 /// arranque, y una maquina que no arranca por no saber la hora es un intercambio
 /// ridiculo.
-fn leer_ahora() -> Option<Fecha> {
+fn read_now() -> Option<Fecha> {
     unsafe {
         for _ in 0..100 {
             let mut espera = 0u32;
             while actualizandose() && espera < 1_000_000 {
                 espera += 1;
             }
-            let a = una_lectura();
-            let b = una_lectura();
+            let a = one_reading();
+            let b = one_reading();
             if a == b {
                 return bmo_rtc::decodificar(a);
             }
@@ -106,7 +106,7 @@ fn leer_ahora() -> Option<Fecha> {
 /// inventa una fecha**. Un log fechado en 1970 miente con mas convicion que uno
 /// sin fechar.
 pub fn init() {
-    let Some(f) = leer_ahora() else {
+    let Some(f) = read_now() else {
         crate::ring0::cabina::warn("reloj", "el CMOS no dio una fecha creible", 0);
         return;
     };

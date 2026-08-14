@@ -515,7 +515,7 @@ fn watch(s: &TelemetrySnapshot, mib_free: u64) {
         // fallo de hardware que no existia.
         //
         // Las fotos del 2026-08-11 lo prueban solas: el FAULT sale en `t02002` y
-        // despues llega `primera tecla recibida: el teclado ESCRIBE`. El teclado
+        // despues llega `primera tecla recibida: el teclado WRITES`. El teclado
         // estaba perfecto. El que no habia escrito era el usuario.
         //
         // === Por que no se puede arreglar la condicion, solo el mensaje ===
@@ -962,21 +962,21 @@ pub fn render_hud() {
 /// Campos de `TASK_OP_CABINA_INFO`. Son una TABLA, igual que `OP_INFO`:
 /// anadir un dato es una fila, no una operacion nueva.
 pub const CABINA_TOTAL: u64 = 0x00;
-pub const CABINA_PERDIDOS: u64 = 0x01;
-pub const CABINA_DISPONIBLES: u64 = 0x02;
+pub const CABINA_LOST: u64 = 0x01;
+pub const CABINA_AVAILABLE: u64 = 0x02;
 /// Los cinco de un evento concreto. `arg1` = cual (0 = el mas reciente).
-pub const CABINA_SEVERIDAD: u64 = 0x03;
-pub const CABINA_CAPA: u64 = 0x04;
-pub const CABINA_VALOR: u64 = 0x05;
+pub const CABINA_SEVERITY: u64 = 0x03;
+pub const CABINA_LAYER: u64 = 0x04;
+pub const CABINA_VALUE: u64 = 0x05;
 pub const CABINA_SEQ: u64 = 0x06;
 pub const CABINA_TICK: u64 = 0x07;
 /// De que INTENTO salio el evento. `0` = de ninguno. Ver `bmo-abi`: es lo que
 /// permite que la ventana de Ring 3 filtre por ACCION y no solo por gravedad.
-pub const CABINA_INTENTO: u64 = 0x08;
+pub const CABINA_ATTEMPT: u64 = 0x08;
 
 /// Que texto se pide en `TASK_OP_CABINA_TEXTO`.
-pub const CABINA_TXT_MODULO: u64 = 0x00;
-pub const CABINA_TXT_MENSAJE: u64 = 0x01;
+pub const CABINA_TXT_MODULE: u64 = 0x00;
+pub const CABINA_TXT_MESSAGE: u64 = 0x01;
 
 /// Cuantos eventos se pueden leer AHORA. Nunca mas que el anillo.
 pub fn disponibles() -> u64 {
@@ -991,17 +991,17 @@ pub fn disponibles() -> u64 {
 pub fn campo(campo: u64, n: u64) -> Option<u64> {
     match campo {
         CABINA_TOTAL => Some(event_total()),
-        CABINA_PERDIDOS => Some(event_lost()),
-        CABINA_DISPONIBLES => Some(disponibles()),
+        CABINA_LOST => Some(event_lost()),
+        CABINA_AVAILABLE => Some(disponibles()),
         _ => {
             let ev = event_back(n as usize)?;
             match campo {
-                CABINA_SEVERIDAD => Some(ev.severity as u64),
-                CABINA_CAPA => Some(ev.layer as u64),
-                CABINA_VALOR => Some(ev.value),
+                CABINA_SEVERITY => Some(ev.severity as u64),
+                CABINA_LAYER => Some(ev.layer as u64),
+                CABINA_VALUE => Some(ev.value),
                 CABINA_SEQ => Some(ev.seq),
                 CABINA_TICK => Some(ev.tick_ns),
-                CABINA_INTENTO => Some(ev.intento as u64),
+                CABINA_ATTEMPT => Some(ev.intento as u64),
                 _ => None,
             }
         }
@@ -1019,8 +1019,8 @@ pub fn texto(n: u64, cual: u64, trozo: u64) -> u64 {
         None => return 0,
     };
     let bytes: &[u8] = match cual {
-        CABINA_TXT_MODULO => &ev.module,
-        CABINA_TXT_MENSAJE => &ev.msg,
+        CABINA_TXT_MODULE => &ev.module,
+        CABINA_TXT_MESSAGE => &ev.msg,
         _ => return 0,
     };
     let base = (trozo as usize) * 8;

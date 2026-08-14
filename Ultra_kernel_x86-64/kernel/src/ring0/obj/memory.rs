@@ -90,7 +90,7 @@ pub const ERROR_NO_SLOT: u32 = 0xE004;
 ///
 /// Es el **patron 17** otra vez --indexar algo VIVO con un contador HISTORICO--,
 /// el mismo que dejo la maquina sin poder lanzar nada cuando `has_room()`
-/// miraba una bitacora de ocho entradas. Ahora la tabla es de ranuras, se busca
+/// miraba una bitacora de ocho entries. Ahora la tabla es de ranuras, se busca
 /// por pid y **se libera al morir el proceso**: el tope vuelve a ser lo que
 /// dice ser, un limite de recursos concurrentes.
 const MAX_PROCS: usize = 16;

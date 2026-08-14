@@ -442,7 +442,7 @@ pub(crate) fn shell_info(ctx: &BootContext) {
     let (tasks, runnable) = crate::ring0::task::scheduler::counts();
     row("tareas", |l| { l.dec(tasks as u64); l.txt(" totales   "); l.dec(runnable as u64); l.txt(" ejecutables"); });
     row("ticks", |l| { l.txt("0x"); l.hex(crate::ring0::plat::timer::ticks(), 8); });
-    row("boot", |l| { l.txt("BootContext v"); l.dec(ctx.version as u64); l.txt("   "); l.dec(ctx.memory_map_count as u64); l.txt(" entradas de mapa"); });
+    row("boot", |l| { l.txt("BootContext v"); l.dec(ctx.version as u64); l.txt("   "); l.dec(ctx.memory_map_count as u64); l.txt(" entries de mapa"); });
     row("pml4", |l| { l.txt("0x"); l.hex(ctx.pml4, 8); l.txt("   rsdp 0x"); l.hex(ctx.rsdp, 8); });
 }
 

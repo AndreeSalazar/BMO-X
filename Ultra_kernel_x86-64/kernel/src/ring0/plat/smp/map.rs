@@ -33,7 +33,7 @@ pub const OFF_GDT: u64 = 0x40; // la tabla en si
 
 /// La GDT que usa el AP para subir de 16 a 64 bits.
 ///
-/// Cinco entradas y **cada una hace falta**. La de datos de 32 bits (`0x18`) es
+/// Cinco entries y **cada una hace falta**. La de datos de 32 bits (`0x18`) es
 /// la que no estaba en la version vieja: aquel codigo cargaba `0x18` creyendo
 /// que era datos y en su tabla era el codigo de 64 bits.
 pub const GDT: [u64; 5] = [

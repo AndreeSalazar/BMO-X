@@ -452,7 +452,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     // ** EN QUE ESTA CADA NUCLEO, A CABINA.
                     //
                     // Lo pidio el dueno con estas palabras: *"que el smp asi
-                    // natural ayude a verificar los cores y hilos: que se estan
+                    // natural ayude a verify los cores y hilos: que se estan
                     // usando, y que la cabina con filtros pueda decir que esta
                     // ejecutando"*.
                     //
@@ -531,7 +531,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 "sellado pedido por un proceso de Ring 3",
                 scheduler::current_pid() as u64,
             );
-            match crate::ring0::fsys::estratos::sellar() {
+            match crate::ring0::fsys::estratos::seal() {
                 Ok(g) => BmoStatus::ok_value(g),
                 Err(e) => {
                     crate::ring0::cabina::warn("estratos", e.name(), 0);
@@ -561,7 +561,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 // * La UNICA de la tabla que hace trabajo de verdad: lee el
                 // archivo entero y le hace el BLAKE3. Por eso se pide a mano y
                 // no se calcula al pintar.
-                ES_NODO_VERIFICAR => cursor::verificar(arg1 as usize),
+                ES_NODO_VERIFICAR => cursor::verify(arg1 as usize),
                 // Una pregunta que no existe se contesta con cero y no con un
                 // fallo: quien pregunte de mas se entera igual, y un `unsupported`
                 // aqui obligaria al panel a distinguir dos formas de "nada".
@@ -576,8 +576,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             use crate::ring0::fsys::estratos::cursor;
             let i = (arg0 & 0xFFFF_FFFF) as usize;
             BmoStatus::ok_value(match arg0 >> 32 {
-                ES_TXT_RUTA => cursor::nombre_nivel(i, arg1 as usize),
-                _ => cursor::hijo_nombre(i, arg1 as usize),
+                ES_TXT_RUTA => cursor::level_name(i, arg1 as usize),
+                _ => cursor::child_name(i, arg1 as usize),
             })
         }
         TASK_OP_REINICIAR => {
@@ -822,7 +822,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {
                     return BmoStatus::err(1);
                 }
-                // ** Y AQUI SE ESCRIBE POR EL ESPEJO DEL KERNEL, NO POR LA VA
+                // ** Y AQUI SE WRITES POR EL ESPEJO DEL KERNEL, NO POR LA VA
                 // DEL PROCESO.
                 //
                 // Son **la misma memoria**: el bloque se entrego con marcos que

@@ -752,7 +752,7 @@ fn bombear_interno() {
 // ya se tenia. La de caracteres se queda intacta y las dos se llenan del mismo
 // sondeo -- no hay dos lectores del bus.
 //
-// 64 entradas: un informe boot trae hasta 6 teclas y el sondeo va por
+// 64 entries: un informe boot trae hasta 6 teclas y el sondeo va por
 // fotograma. Si se llena, se tira **lo mas VIEJO** y se cuenta. Tirar lo nuevo
 // seria peor de una forma concreta: se perderia el `soltar` de una tecla cuyo
 // `pulsar` ya se entrego, y el juego se quedaria andando solo.
@@ -897,7 +897,7 @@ fn drain() -> Option<u8> {
         KEY_EVENTS = KEY_EVENTS.wrapping_add(1);
         if !FIRST_KEY {
             FIRST_KEY = true;
-            crate::ring0::cabina::info("usb", "primera tecla recibida: el teclado ESCRIBE", b as u64);
+            crate::ring0::cabina::info("usb", "primera tecla recibida: el teclado WRITES", b as u64);
         }
     }
     Some(b)

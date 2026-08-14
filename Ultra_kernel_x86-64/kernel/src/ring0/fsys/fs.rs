@@ -221,7 +221,7 @@ pub fn mount_data() {
     // la FAT32 donde viven los programas y la de ESTRATOS. Cual salia "primera"
     // dependia del orden en la tabla -- o sea de una moneda al aire. Y cuando
     // salia la que no era, el sistema montaba algo que no es FAT32, encontraba
-    // entradas de directorio que parecian nombres, y leia sectores que no
+    // entries de directorio que parecian nombres, y leia sectores que no
     // contenian nada suyo. Exactamente lo que se vio el 2026-08-11:
     //
     // ```text
