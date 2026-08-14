@@ -197,27 +197,116 @@ unsigned long long bmo_entrada_evento(unsigned long long ent) {
 #define BMO_SC_8 0x09
 #define BMO_SC_9 0x0A
 #define BMO_SC_0 0x0B
+#define BMO_SC_MENOS 0x0C
+#define BMO_SC_IGUAL 0x0D
 #define BMO_SC_RETROCESO 0x0E
 #define BMO_SC_TAB 0x0F
 #define BMO_SC_Q 0x10
 #define BMO_SC_W 0x11
 #define BMO_SC_E 0x12
 #define BMO_SC_R 0x13
+#define BMO_SC_T 0x14
 #define BMO_SC_Y 0x15
+#define BMO_SC_U 0x16
+#define BMO_SC_I 0x17
+#define BMO_SC_O 0x18
+#define BMO_SC_P 0x19
+#define BMO_SC_CORCHETE_IZQ 0x1A
+#define BMO_SC_CORCHETE_DER 0x1B
 #define BMO_SC_ENTRAR 0x1C
 #define BMO_SC_CTRL 0x1D
 #define BMO_SC_A 0x1E
 #define BMO_SC_S 0x1F
 #define BMO_SC_D 0x20
+#define BMO_SC_F 0x21
+#define BMO_SC_G 0x22
+#define BMO_SC_H 0x23
+#define BMO_SC_J 0x24
+#define BMO_SC_K 0x25
+#define BMO_SC_L 0x26
+#define BMO_SC_PUNTO_Y_COMA 0x27
+#define BMO_SC_APOSTROFE 0x28
+#define BMO_SC_ACENTO_GRAVE 0x29
 #define BMO_SC_MAYUS_IZQ 0x2A
+#define BMO_SC_BARRA_INV 0x2B
+#define BMO_SC_Z 0x2C
+#define BMO_SC_X 0x2D
+#define BMO_SC_C 0x2E
+#define BMO_SC_V 0x2F
+#define BMO_SC_B 0x30
+#define BMO_SC_N 0x31
+#define BMO_SC_M 0x32
+#define BMO_SC_COMA 0x33
+#define BMO_SC_PUNTO 0x34
+#define BMO_SC_BARRA 0x35
 #define BMO_SC_MAYUS_DER 0x36
 #define BMO_SC_ALT 0x38
 #define BMO_SC_ESPACIO 0x39
+#define BMO_SC_BLOQ_MAYUS 0x3A
+#define BMO_SC_F1 0x3B
+#define BMO_SC_F2 0x3C
+#define BMO_SC_F3 0x3D
+#define BMO_SC_F4 0x3E
+#define BMO_SC_F5 0x3F
+#define BMO_SC_F6 0x40
+#define BMO_SC_F7 0x41
+#define BMO_SC_F8 0x42
+#define BMO_SC_F9 0x43
+#define BMO_SC_F10 0x44
+#define BMO_SC_F11 0x57
+#define BMO_SC_F12 0x58
+#define BMO_SC_BLOQ_DESPL 0x46
+/* La tecla EXTRA de los teclados ISO: la de `< >` junto al Shift izquierdo,
+ * que los US no tienen. */
+#define BMO_SC_ISO_EXTRA 0x56
+#define BMO_SC_META_IZQ 0x5B
+#define BMO_SC_META_DER 0x5C
+
+/* -- El teclado NUMERICO ------------------------------------------------
+ *
+ * Su Entrar es el MISMO 0x1C que el de la fila principal: Set 1 real lo
+ * distingue con el prefijo 0xE0, que no cabe en un byte. */
+#define BMO_SC_KP_7 0x47
+#define BMO_SC_KP_8 0x48
+#define BMO_SC_KP_9 0x49
+#define BMO_SC_KP_MENOS 0x4A
+#define BMO_SC_KP_4 0x4B
+#define BMO_SC_KP_5 0x4C
+#define BMO_SC_KP_6 0x4D
+#define BMO_SC_KP_MAS 0x4E
+#define BMO_SC_KP_1 0x4F
+#define BMO_SC_KP_2 0x50
+#define BMO_SC_KP_3 0x51
+#define BMO_SC_KP_0 0x52
+#define BMO_SC_KP_PUNTO 0x53
+/* Codigo propio: en Set 1 real es `0xE0 0x35`, y sin el la division del
+ * numerico escribia un guion en teclado espanol. Ver `teclado.rs`. */
+#define BMO_SC_KP_ENTRE 0x62
+
+/* [!] DOS PARES QUE COMPARTEN CODIGO, y hay que saberlo antes de asignarles
+ * cosas distintas: el driver los saca del mismo byte y no se pueden separar.
+ *
+ *     0x45   Bloq Num  ==  Pausa
+ *     0x37   Impr Pant ==  el `*` del numerico
+ *
+ * No es un descuido del driver: Set 1 los distingue con secuencias de varios
+ * bytes (`0xE1 0x1D 0x45` para Pausa), y un `InputEvent` lleva UN byte. */
+#define BMO_SC_BLOQ_NUM 0x45
+#define BMO_SC_PAUSA 0x45
+#define BMO_SC_IMPR_PANT 0x37
+#define BMO_SC_KP_POR 0x37
+
 /* Codigo propio: Set 1 las escribe con prefijo 0xE0. Ver `teclado.rs`. */
 #define BMO_SC_ARRIBA 0x66
 #define BMO_SC_ABAJO 0x67
 #define BMO_SC_IZQUIERDA 0x68
 #define BMO_SC_DERECHA 0x69
+#define BMO_SC_INSERT 0x6A
+#define BMO_SC_INICIO 0x6B
+#define BMO_SC_REPAG 0x6C
+#define BMO_SC_SUPR 0x6D
+#define BMO_SC_FIN 0x6E
+#define BMO_SC_AVPAG 0x6F
 #define BMO_SC_ALTGR 0x63
 
 /* Que modificadores estan pulsados AHORA. No consume nada: es estado.
