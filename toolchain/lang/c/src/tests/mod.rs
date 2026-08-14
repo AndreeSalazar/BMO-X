@@ -119,6 +119,10 @@ mod probe_strings;
 /// THE HEAP -- the one block everything else is carved out of. DOOM calls
 /// `malloc` ONCE, for six megabytes, and its 94 `Z_Malloc` calls live inside.
 mod probe_heap;
+/// FILE I/O -- **where the bytes land**. The axis that killed DOOM on
+/// 2026-08-13: `fread` into a stack buffer returned zero without writing, so
+/// the WAD header was garbage and DOOM said its own WAD was not a WAD.
+mod probe_file_io;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //
