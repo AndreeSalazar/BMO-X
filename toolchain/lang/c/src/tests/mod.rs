@@ -82,6 +82,7 @@ mod tabla_de_config;
 /// El operador de negacion que valia -256, y por que DOOM iba a escribir su
 /// configuracion encima del WAD.
 mod argv_de_doom;
+mod escalado_de_doom;
 mod varargs_de_doom;
 // == THE CENSUS FAMILY ==============================================
 //
