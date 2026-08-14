@@ -184,15 +184,18 @@ The first Ring 3 program lived and died through **9 calls on 1 single door**
   header, it does not *store* it (see [BITACORA.md](BITACORA.md), ep. 14)
 
 **Kernel**
-- **Three frozen syscalls** -- everything else is a subsyscall
+- **Two frozen syscalls** (`INVOKE` + `WAIT`) -- everything else is a
+  subsyscall. `CHANNEL_KICK` was the third until 2026-08-10; it is now
+  `CHANNEL_OP_KICK`, and the number `1` stays **reserved**, never recycled
 - **Capability Engine**: 16 processes x 64 slots, handles with generation
   counters against use-after-free; `revoke_all` on death
 - **Preemptive scheduler** by LAPIC timer, with real Ring 0 <-> Ring 3 switching
   (`iretq` -> CPL3 -> `INVOKE` -> CPL0 -> `EXIT` -> reap)
 - **Fault isolation**: a fault in CPL3 kills the task and BMO carries on
-- **Page allocator**: buddy (orders 0..11) + per-CPU pagesets; **LLFree**
-  (USENIX ATC '23) optional with `--features alloc-llfree`
-- **Slab heap** (16 sizes) + **4-level VMM** with demand paging and CoW
+- **Page allocator**: a bitmap. 512 KiB in `.bss`, 4 KiB frames, one spinlock
+  and a hint. Covers exactly the physmap (16 GiB)
+- **4-level VMM** (PML4/PDPT/PD/PT). No demand paging and no CoW: a mapping
+  exists or it does not
 
 **Drivers, all written from scratch**
 - **USB keyboard** (xHCI + HID): es-latam / es-espana / us layouts switchable
@@ -294,33 +297,63 @@ windows.
 
 ## Memory allocator
 
+**It is a bitmap.** One, flat, with a lock.
+
 ```
-alloc_pages_contiguous() / free_pages()      public API
+alloc_frame() / alloc_frames_contig(n) / free_frame()      ring0/mm/phys.rs
         |
-        ▼
-  Per-CPU pagesets (orders 0..4, 16 slots each)
-  Hot path cache -> lock-free on the local CPU
+        v
+  BITMAP: [u64; 65536]        512 KiB in `.bss`, one bit per 4 KiB frame
+  SpinLock + HINT             the hint is where the last search stopped
         |
-        ▼
-  BackingAllocator trait (pluggable)
-      +-- BuddyAllocator  [default, --features alloc-buddy]
-      |   O(log n) free lists, automatic coalescing
-      |   1 byte of metadata per physical page
-      |
-      +-- LLFree          [opt-in, --features alloc-llfree]
-          Lock-free, bitfield lower + tree-based upper
-          Per-CPU tree reservations -> zero contention on N cores
-          Crash-consistent (persistent memory ready)
-          Reference: Wrenger et al., USENIX ATC '23
+        v
+  Coverage = PHYSMAP_SIZE (16 GiB), and that bound is not decoration:
+  `zero_frame` and every page-table write go through `phys_to_virt`, so a
+  frame the physmap cannot reach must never be handed out
 ```
 
-- **Buddy** (default): 384 lines, proven, ideal for <=6 cores
-- **LLFree** (opt-in): 204-line adapter + 2199-line `llfree` crate (safe Rust).
-  Boots clean on the Ryzen 5600X with identical behaviour -- no crashes, no
-  regressions. Same binary footprint +25 KB
-- **Per-CPU pagesets** sit above both: each core caches 16 pages x 5 orders
-  before touching the backing allocator. Zero lock contention on the hot path
-  regardless of backing
+Its source of truth is the `BootContext` memory map **after** `s2_mem` carved
+out its page-table pool, plus the kernel's own reservations: low memory, the
+kernel image, the faggin/UEFI stages, the BootContext page, the GOP
+framebuffer, the LAPIC/IOAPIC/HPET window and the reserved Ring 3 ranges.
+
+### The weakness it has, said out loud
+
+`alloc_frames_contig(n)` is a **linear scan** of the whole bitmap looking for a
+free run. Its callers are the ones that ask for the big blocks: the
+compositor's double buffer (~8 MB = 2048 frames) and DOOM's `Z_Zone` (12 MiB =
+3072). With fragmented RAM every large request walks 16 GiB of bitmap.
+
+That is the real, measured shape of the problem -- not lock contention.
+
+### LLFree -- an IDEA, not a feature
+
+[!] Until 2026-08-14 this section claimed a buddy allocator with per-CPU
+pagesets and an opt-in `--features alloc-llfree`, complete with a "204-line
+adapter + 2199-line crate" that "boots clean on the Ryzen 5600X with identical
+behaviour -- no crashes, no regressions, +25 KB".
+
+**None of it existed.** No feature, no adapter, no buddy, no pagesets --
+`grep -rn "llfree\|buddy\|pageset" --include=*.rs` returns nothing. The worst
+part was not the missing code: it was a **fabricated hardware measurement** in
+the document people read first.
+
+What LLFree (Wrenger et al., USENIX ATC '23) actually offers, and what of it is
+worth anything here today:
+
+* **Not** its headline. LLFree solves *contention between cores*, and AXION
+  does not hand heavy work to other cores yet. Integrating it now would be
+  optimising a bottleneck that does not exist.
+* **Yes** its shape: hierarchical counters instead of a flat bitmap answer
+  *"is there a free run of 2^k under this subtree?"* in O(log n) instead of
+  O(n). That is the fix for `alloc_frames_contig` above, and it has nothing to
+  do with SMP.
+* **Yes** its philosophy: the allocator state **is** the data structure, so it
+  can be rebuilt by scanning instead of journalled. That is already the shape
+  of ESTRATOS (writing *is* committing) and of the DIRECTOR (it finds out by
+  *looking*, nobody sends it a message).
+
+So: no crate, no feature flag. A design note, and it says so.
 
 ---
 
