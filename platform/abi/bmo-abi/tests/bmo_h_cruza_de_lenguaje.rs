@@ -90,6 +90,14 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     ("BMO_INFO_CPU_HILOS", "INFO_CPU_HILOS", 0x06),
     ("BMO_INFO_CPU_NUCLEOS", "INFO_CPU_NUCLEOS", 0x07),
     ("BMO_INFO_TICKS", "INFO_TICKS", 0x0B),
+    // A que velocidad va el nucleo DE VERDAD, y lo que gasta. El kernel sabia
+    // medirlo y ningun programa de C podia preguntarlo: las filas existian en
+    // Rust y no cruzaban al `.h`.
+    ("BMO_INFO_CPU_HZ_REAL", "INFO_CPU_HZ_REAL", 0x20),
+    ("BMO_INFO_CPU_MW_PAQUETE", "INFO_CPU_MW_PAQUETE", 0x21),
+    ("BMO_INFO_CPU_MW_NUCLEO_ACTUAL", "INFO_CPU_MW_NUCLEO_ACTUAL", 0x22),
+    ("BMO_INFO_CPU_SENSORES", "INFO_CPU_SENSORES", 0x23),
+    ("BMO_INFO_SMP_VIVOS", "INFO_SMP_VIVOS", 0x1B),
 ];
 
 /// `#define`s del `.h` que NO son parte del contrato y por eso no tienen pareja.
