@@ -10,6 +10,57 @@ handles; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
+> ## ★★★ Al 2026-08-13 (tarde) -- NUEVE SONDAS, 143 CASILLAS, MEDIO SEGUNDO
+>
+> **La pregunta "que soporta BMO C" ya no es una impresion**: es
+> `cargo test -p bmo-c-front probe_`. Nueve ejes enumerados, y **no puede
+> quedarse viejo** -- cada sonda compara su informe entero contra una constante,
+> asi que arreglar un ROTO o romper un BIEN hace fallar el test.
+>
+> ```text
+>    language     28 casillas   verde al escribirla
+>    layout       12            9 ROJAS  -> el alineado
+>    width        16            limpio
+>    tables       11            limpio
+>    signedness   16            4 ROJAS  -> shr/div/setb
+>    control flow 16            limpio
+>    assignment   16            1 ROJA, abierta a proposito
+>    strings      16            limpio (tras anadir `<strings.h>`)
+>    heap         12            limpio
+> ```
+>
+> **Tres defectos arreglados sin encender la maquina**, y los tres tocan a DOOM:
+>
+> 1. **El alineado se deducia del TAMANO** -- un array se alinea como su
+>    ELEMENTO. Todos los structs que DOOM castea sobre los bytes del WAD salian
+>    corridos (`maplinedef_t` media 16 y son 14, o sea el nivel entero a partir
+>    del segundo registro).
+> 2. **Las cuatro operaciones sin signo** (`>>`, `/`, `%`, comparar) emitian la
+>    version con signo. En 32 bits acertaban por casualidad -- el valor llega a
+>    `rax` extendido con ceros. `angle_t` de DOOM es `unsigned int`.
+> 3. **`<strings.h>` no existia**: `strcasecmp` estaba en `<string.h>`, y POSIX
+>    lo pone en el plural. No era un fallo, era un NOMBRE que faltaba.
+>
+> ⏳ **Todo esto es toolchain: el Kingston sigue con los `.bex` viejos.** Guia
+> en `docs/PRUEBA_EN_METAL_0813.md`.
+>
+> ### Y el reparto de los monolitos (mismo dia)
+>
+> | | antes | despues |
+> |---|---|---|
+> | `c/codegen/mod.rs` | 4.161 | 2.196 + 7 hermanos |
+> | `c/parser/mod.rs` | 2.733 | 608 + 5 |
+> | `ring0/core/phase.rs` | 1.206 | 362 + 4 |
+> | `ring0/syscall.rs` | 1.426 | 1.055 + `ops` + `entry` |
+>
+> ★ **La prueba de que un reparto no cambia nada no es que los tests pasen**
+> --pasaban antes-- **sino que el compilador emita los mismos bytes**: los 33
+> `.bex` se hashean antes y despues. Para el kernel esa prueba NO existe (las
+> rutas de modulo son parte del nombre mangled), y ahi el numero es el tamano.
+>
+> ★ **Y son DOS syscalls, no tres.** 36 documentos decian tres; el codigo decia
+> dos desde el 2026-08-10. El `1` es una lapida reservada.
+
 > ## ★★★ Al 2026-08-13 -- POR QUE DOOM NO SE JUEGA: `&c->defaults[i]` vale CERO
 >
 > **La respuesta ya no es una sospecha, y no esta en el kernel.** DOOM arranca,

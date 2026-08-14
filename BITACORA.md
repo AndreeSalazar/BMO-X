@@ -1361,3 +1361,92 @@ Que la traduccion era el problema es **la hipotesis mejor sostenida**, no un
 hecho: el arreglo es correcto lo fuera o no --una resta es mejor que un paseo por
 tablas para un espejo lineal-- pero quien lo confirma es el proximo arranque. Si
 la cabecera sigue invalida, los ocho bytes diran cual de las otras tres es.
+
+---
+
+# Ep. 40 -- 2026-08-13: EL DIA QUE NO SE FLASHEO Y CAYERON DOS BUGS IGUAL
+
+## Por que este episodio esta en esta bitacora
+
+Los treinta y nueve anteriores empiezan igual: **una foto de la pantalla**. Este
+no tiene ninguna. No se flasheo la maquina, no se arranco el Ryzen, y aun asi
+cayeron dos defectos del compilador que llevaban meses ahi -- uno de ellos desde
+el primer dia.
+
+Eso lo convierte en un episodio de metodo y no de metal, y por eso se escribe:
+**el cambio de metodo es el hallazgo.**
+
+## El metodo, en una frase
+
+Perseguir bugs de uno en uno con arranques no escala: cuatro vueltas de
+flasheo-ver-morir-cazar por tres defectos, el 13 por la manana. Los tres eran la
+misma FORMA --un contenedor, una operacion, y un brazo del codegen que no cubria
+esa casilla-- y una forma **se puede enumerar**.
+
+Nueve sondas, **143 casillas, medio segundo**:
+
+```text
+   language     28 casillas   verde al escribirla
+   layout       12            9 ROJAS  -> el alineado
+   width        16            limpio
+   tables       11            limpio
+   signedness   16            4 ROJAS  -> shr/div/setb
+   control flow 16            limpio
+   assignment   16            1 ROJA, abierta a proposito
+   strings      16            limpio (tras anadir `<strings.h>`)
+   heap         12            limpio
+```
+
+## Lo que cayo, y ninguno se habria visto arrancando
+
+**1. El alineado se deducia del TAMANO del miembro.** Falso para todo lo que no
+sea un escalar: un array se alinea como su ELEMENTO. `char name[8]` mide ocho
+bytes igual que un `long` y se alinea a UNO. Consecuencia, con los numeros del
+formato WAD al lado:
+
+```text
+   maptexture_t.patches    offset 24    el disco dice 22
+   maplinedef_t entero     16 bytes     el disco dice 14
+   mapsidedef_t entero     40 bytes     el disco dice 30
+   mapnode_t entero        32 bytes     el disco dice 28
+```
+
+Los dos que son el TAMANO son los peores: `p_setup.c` recorre el lump como un
+array, asi que **el primer registro del nivel sale bien y todos los demas
+corridos**. Ese sintoma no se parece a un fallo de disposicion; se parece a un
+nivel roto.
+
+**2. Las cuatro operaciones sin signo emitian la version con signo.** `>>` daba
+`sar` donde toca `shr`; `/` y `%` daban `cqo`+`idiv` donde toca `xor rdx,rdx`+
+`div`; `<`/`>` daban `setl`/`setg` donde toca `setb`/`seta`.
+
+[!] **En 32 bits acertaban por casualidad**, y ahi esta lo que hay que aprender:
+el codegen calcula en `rax`, o sea en 64 bits, y un `unsigned int` llega
+**extendido con ceros** -- el bit 63 vale 0 y `sar` da lo mismo que `shr`. Solo
+un `unsigned long` lo destapa. El defecto no lo escondia un test que faltara: lo
+escondia que **el caso que lo rompe no se puede escribir en el tipo pequeno**.
+
+## La moraleja, y son tres
+
+**Los dos ejes que dieron rojo tenian AUTORIDAD EXTERNA.** El formato del WAD
+lleva fijo desde 1993 y la aritmetica de `angle_t` la define C. Los siete que
+salieron limpios se comparaban contra lo que nosotros creiamos. Es el patron 15
+otra vez: una prueba que escribe el mismo lado que el codigo comprueba lo que se
+le ocurrio. **Buscar una autoridad de fuera contra la que medir vale mas que
+escribir mas casos.**
+
+**Un fallo confesado en prosa sigue siendo un fallo, y van tres.** El brazo de
+`Shr` decia por escrito *"un tipo sin signo querria `shr`; hoy el codegen no
+arrastra esa distincion hasta aqui"*. Era falso: la distincion llegaba, y
+`expr_is_unsigned` se escribio copiando la funcion de al lado. Cuando un
+comentario diga "hoy X no sabe Y", comprobar si de verdad no sabe.
+
+**Y un censo que no encuentra nada tambien es un resultado.** Cuatro ejes
+limpios son la respuesta a *"por donde empiezo"* la proxima vez que algo falle en
+metal, que es media busqueda ahorrada.
+
+## Lo que sigue sin saberse
+
+Hasta donde llega DOOM. Sigue siendo la unica pregunta que el anfitrion no puede
+contestar, y ahora hay bastante mas razon que ayer para que llegue lejos.
+
