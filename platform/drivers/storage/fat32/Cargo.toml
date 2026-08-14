@@ -7,6 +7,13 @@ description = "BMO FAT32/exFAT reader — cadenas de clusteres, nombres 8.3, sob
 [lib]
 
 [dependencies]
-# NINGUNA, a proposito. Tenia `bmo-ahci` (soldado a SATA: no habria podido
-# leer un NVMe jamas) y `log` (que en Ring 0 no existe). El almacenamiento
-# entra ahora por punteros a funcion: BlockReader / BlockWriter.
+# UNA, y es EL CONTRATO. Tenia `bmo-ahci` (soldado a SATA: no habria podido
+# leer un NVMe jamas) y `log` (que en Ring 0 no existe); despues no tuvo
+# ninguna, y el almacenamiento entraba por dos punteros a funcion propios.
+#
+# Eso ultimo era una puerta trasera: `bmo-block` YA declara el contrato de
+# bloques de BMO y FAT32 lo esquivaba. `bmo-block` no depende de nadie ni sabe
+# de ningun controlador, asi que depender de el NO vuelve a soldar el sistema
+# de ficheros a un hardware -- es lo contrario: lo ata a la frontera.
+# Ver `docs/PLAN_ALMACENAMIENTO.md`, paso 0.
+bmo-block = { path = "../block" }
