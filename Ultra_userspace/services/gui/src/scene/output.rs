@@ -386,6 +386,7 @@ impl Output {
 }
 
 
+#[inline(never)]
 pub(crate) fn paint_output(p: &bmo::Pantalla, c: &RunBox, s: &Output) {
     // Fondo entero de la rejilla y encima las filas. Es un rectangulo de
     // 704x256 px: nada comparado con la pantalla, y evita tener que llevar la
