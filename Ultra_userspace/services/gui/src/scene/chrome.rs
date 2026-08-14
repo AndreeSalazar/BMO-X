@@ -26,24 +26,24 @@ use super::*;
 
 /// Los tres botones de la esquina, en el orden de todos los escritorios.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Boton {
-    Minimizar,
-    Maximizar,
-    Cerrar,
+pub(crate) enum Button {
+    Minimize,
+    Maximize,
+    Close,
 }
 
 /// Hacia donde va un gesto de teclado.
 ///
 /// Es un rumbo y no un `(dx, dy)` porque los cuatro gestos NO son simetricos:
-/// `Arriba` maximiza y `Abajo` restaura, mientras que los lados encajan una
+/// `Up` maximiza y `Down` restaura, mientras que los lados encajan una
 /// mitad. Con un par de numeros habria que reconstruir cual era cual a base de
 /// comparaciones, que es como se acaba maximizando al pulsar izquierda.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Rumbo {
-    Izquierda,
-    Derecha,
-    Arriba,
-    Abajo,
+pub(crate) enum Heading {
+    Left,
+    Right,
+    Up,
+    Down,
 }
 
 /// Cuanto se mueve una ventana por pulsacion.
@@ -51,53 +51,53 @@ pub(crate) enum Rumbo {
 /// Veinticuatro pixeles: se ve que se movio sin tener que mirar dos veces, y
 /// cruzar una pantalla de 1920 cuesta unas ochenta pulsaciones -- que suena a
 /// mucho hasta que se recuerda que para eso estan `Shift` y las mitades.
-pub(crate) const PASO_TECLADO: u32 = 24;
+pub(crate) const KEY_STEP: u32 = 24;
 
 /// Lado de la zona sensible de cada boton. Veinticuatro pixeles se aciertan sin
 /// mirar; doce obligan a apuntar, y apuntar para CERRAR una ventana es como se
 /// cierra la que no era.
-pub(crate) const BOTON_LADO: u32 = 24;
+pub(crate) const BTN_SIDE: u32 = 24;
 /// Lo que se puede agarrar en la esquina para estirar.
-const ASA_ESQUINA: u32 = 16;
+const GRIP_CORNER: u32 = 16;
 
 /// El rojo de cerrar cuando el puntero esta encima. Es el unico sitio del
 /// sistema donde el rojo no significa "algo va mal" sino "esto destruye", y por
 /// eso solo aparece al senalarlo: un aspa roja permanente es una alarma de
 /// fondo.
-const CERRAR_ENCIMA: u32 = 0x00C4_2B1F;
+const CLOSE_HOVER: u32 = 0x00C4_2B1F;
 /// El realce de los otros dos: un peldano mas claro, sin color propio.
-const BOTON_ENCIMA: u32 = 0x0039_4457;
+const BTN_HOVER: u32 = 0x0039_4457;
 
 /// Geometria y estado de una ventana. **Lo unico que hay que llevar.**
-pub(crate) struct Marco {
+pub(crate) struct Chrome {
     pub(crate) x: u32,
     pub(crate) y: u32,
-    pub(crate) ancho: u32,
-    pub(crate) alto: u32,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
     /// Por debajo de esto no se puede encoger. Una ventana que se puede dejar
     /// inservible con el raton es una trampa, no una libertad.
-    min_ancho: u32,
-    min_alto: u32,
+    min_w: u32,
+    min_h: u32,
     /// Donde se agarro DENTRO de la ventana, si se esta arrastrando.
     ///
     /// Se guarda el agarre y no la posicion del puntero: si no, la ventana pega
     /// un salto al empezar y se coloca con su esquina bajo el raton en vez de
     /// quedarse donde la cogiste.
-    arrastre: Option<(u32, u32)>,
-    estirando: bool,
+    drag: Option<(u32, u32)>,
+    resizing: bool,
     /// La geometria de antes de maximizar, para poder volver.
-    guardada: Option<(u32, u32, u32, u32)>,
+    saved: Option<(u32, u32, u32, u32)>,
     /// Abierta pero escondida. **No es lo mismo que cerrada**: una minimizada
     /// conserva su sitio, su tamano y lo que estuviera mirando.
-    pub(crate) minimizada: bool,
+    pub(crate) minimized: bool,
     /// Que boton tiene el puntero encima, para realzarlo. Se lleva como estado
     /// porque el realce solo se repinta cuando CAMBIA -- repintarlo cada
     /// fotograma son 1.700 pixeles de memoria de video sin cache para dejarlo
     /// igual.
-    pub(crate) encima: Option<Boton>,
+    pub(crate) hover: Option<Button>,
 }
 
-impl Marco {
+impl Chrome {
     /// Una ventana nueva, **en fracciones de la pantalla**.
     ///
     /// === Por que no en pixeles ===
@@ -107,40 +107,40 @@ impl Marco {
     /// 1024x768 no cabe. Un tamano en tantos por ciento se adapta solo, y los
     /// minimos --que si son absolutos, porque el texto mide lo que mide--
     /// impiden que en una pantalla pequena quede ilegible.
-    pub(crate) fn nuevo(
+    pub(crate) fn new(
         p: &bmo::Pantalla,
-        pct_ancho: u32,
-        pct_alto: u32,
-        min_ancho: u32,
-        min_alto: u32,
+        pct_w: u32,
+        pct_h: u32,
+        min_w: u32,
+        min_h: u32,
     ) -> Self {
-        let ancho = (p.ancho * pct_ancho / 100)
-            .max(min_ancho)
+        let width = (p.ancho * pct_w / 100)
+            .max(min_w)
             .min(p.ancho.saturating_sub(16));
-        let alto = (p.alto * pct_alto / 100)
-            .max(min_alto)
-            .min(p.alto.saturating_sub(BARRA_ALTO + 16));
+        let height = (p.alto * pct_h / 100)
+            .max(min_h)
+            .min(p.alto.saturating_sub(TASKBAR_H + 16));
         Self {
-            x: p.ancho.saturating_sub(ancho) / 2,
+            x: p.ancho.saturating_sub(width) / 2,
             // Centrada en el hueco que queda BAJO la barra del sistema, no en
             // la pantalla: centrarla en la pantalla la deja siempre un poco
             // alta, y con la barra encima parece descolocada.
-            y: BARRA_ALTO + (p.alto.saturating_sub(BARRA_ALTO + alto)) / 2,
-            ancho,
-            alto,
-            min_ancho,
-            min_alto,
-            arrastre: None,
-            estirando: false,
-            guardada: None,
-            minimizada: false,
-            encima: None,
+            y: TASKBAR_H + (p.alto.saturating_sub(TASKBAR_H + height)) / 2,
+            width,
+            height,
+            min_w,
+            min_h,
+            drag: None,
+            resizing: false,
+            saved: None,
+            minimized: false,
+            hover: None,
         }
     }
 
     /// Una ventana **del tamano de su contenido**, mas el cromo.
     ///
-    /// === Por que esta si va en pixeles, cuando `nuevo` no ===
+    /// === Por que esta si va en pixeles, cuando `new` no ===
     ///
     /// Porque aqui el tamano no lo elige el escritorio: **lo eligio la app**. Una
     /// superficie de 640x400 mide eso, y darle un 40 % de la pantalla la
@@ -151,53 +151,53 @@ impl Marco {
     ///
     /// Se recorta contra el panel: una app puede pedir una superficie mas grande
     /// que la pantalla, y una ventana que no cabe no se puede ni agarrar.
-    pub(crate) fn para_contenido(p: &bmo::Pantalla, ancho: u32, alto: u32) -> Self {
-        let ancho = (ancho + 2).min(p.ancho.saturating_sub(16)).max(3 * BOTON_LADO + 16);
-        let alto = (alto + TITULO_ALTO + 1).min(p.alto.saturating_sub(BARRA_ALTO + 16));
+    pub(crate) fn for_content(p: &bmo::Pantalla, width: u32, height: u32) -> Self {
+        let width = (width + 2).min(p.ancho.saturating_sub(16)).max(3 * BTN_SIDE + 16);
+        let height = (height + TITLE_H + 1).min(p.alto.saturating_sub(TASKBAR_H + 16));
         Self {
-            x: p.ancho.saturating_sub(ancho) / 2,
-            y: BARRA_ALTO + (p.alto.saturating_sub(BARRA_ALTO + alto)) / 2,
-            ancho,
-            alto,
+            x: p.ancho.saturating_sub(width) / 2,
+            y: TASKBAR_H + (p.alto.saturating_sub(TASKBAR_H + height)) / 2,
+            width,
+            height,
             // El minimo es el cromo: por debajo de eso no quedan ni los botones,
             // y una ventana sin boton de cerrar es una ventana que no se cierra.
-            min_ancho: 3 * BOTON_LADO + 16,
-            min_alto: TITULO_ALTO + 8,
-            arrastre: None,
-            estirando: false,
-            guardada: None,
-            minimizada: false,
-            encima: None,
+            min_w: 3 * BTN_SIDE + 16,
+            min_h: TITLE_H + 8,
+            drag: None,
+            resizing: false,
+            saved: None,
+            minimized: false,
+            hover: None,
         }
     }
 
-    pub(crate) fn contiene(&self, px: u32, py: u32) -> bool {
-        !self.minimizada
+    pub(crate) fn contains(&self, px: u32, py: u32) -> bool {
+        !self.minimized
             && px >= self.x
-            && px < self.x + self.ancho
+            && px < self.x + self.width
             && py >= self.y
-            && py < self.y + self.alto
+            && py < self.y + self.height
     }
 
-    pub(crate) fn maximizada(&self) -> bool {
-        self.guardada.is_some()
+    pub(crate) fn is_maximized(&self) -> bool {
+        self.saved.is_some()
     }
 
     // -- Los botones -----------------------------------------------------
 
     /// La `x` donde empieza el boton `i` contando desde la derecha.
     fn boton_x(&self, i: u32) -> u32 {
-        self.x + self.ancho - (3 - i) * BOTON_LADO - 6
+        self.x + self.width - (3 - i) * BTN_SIDE - 6
     }
 
     /// Que boton hay bajo el puntero, si hay alguno.
-    pub(crate) fn boton_en(&self, px: u32, py: u32) -> Option<Boton> {
-        if self.minimizada || py < self.y + 2 || py >= self.y + TITULO_ALTO {
+    pub(crate) fn button_at(&self, px: u32, py: u32) -> Option<Button> {
+        if self.minimized || py < self.y + 2 || py >= self.y + TITLE_H {
             return None;
         }
-        for (i, b) in [Boton::Minimizar, Boton::Maximizar, Boton::Cerrar].into_iter().enumerate() {
+        for (i, b) in [Button::Minimize, Button::Maximize, Button::Close].into_iter().enumerate() {
             let bx = self.boton_x(i as u32);
-            if px >= bx && px < bx + BOTON_LADO {
+            if px >= bx && px < bx + BTN_SIDE {
                 return Some(b);
             }
         }
@@ -209,18 +209,18 @@ impl Marco {
     /// **Los botones NO cuentan como asa**: si contaran, cada clic en cerrar
     /// empezaria ademas un arrastre, y soltar en otro sitio moveria la ventana
     /// justo cuando querias cerrarla.
-    pub(crate) fn en_el_asa(&self, px: u32, py: u32) -> bool {
-        self.contiene(px, py) && py < self.y + TITULO_ALTO && self.boton_en(px, py).is_none()
+    pub(crate) fn on_the_grip(&self, px: u32, py: u32) -> bool {
+        self.contains(px, py) && py < self.y + TITLE_H && self.button_at(px, py).is_none()
     }
 
     /// Cae en la esquina de estirar, la de abajo a la derecha?
-    pub(crate) fn en_la_esquina(&self, px: u32, py: u32) -> bool {
-        !self.minimizada
-            && !self.maximizada()
-            && px + ASA_ESQUINA >= self.x + self.ancho
-            && px < self.x + self.ancho
-            && py + ASA_ESQUINA >= self.y + self.alto
-            && py < self.y + self.alto
+    pub(crate) fn on_the_corner(&self, px: u32, py: u32) -> bool {
+        !self.minimized
+            && !self.is_maximized()
+            && px + GRIP_CORNER >= self.x + self.width
+            && px < self.x + self.width
+            && py + GRIP_CORNER >= self.y + self.height
+            && py < self.y + self.height
     }
 
     // -- Mover y estirar -------------------------------------------------
@@ -230,25 +230,25 @@ impl Marco {
     /// La esquina se mira ANTES que el asa: si se solaparan --una ventana en su
     /// tamano minimo--, gana estirar, porque es la zona mas pequena y la que no
     /// se puede acertar de otra forma.
-    pub(crate) fn agarrar(&mut self, px: u32, py: u32) -> bool {
-        if self.en_la_esquina(px, py) {
-            self.estirando = true;
+    pub(crate) fn grab(&mut self, px: u32, py: u32) -> bool {
+        if self.on_the_corner(px, py) {
+            self.resizing = true;
             return true;
         }
-        if !self.en_el_asa(px, py) || self.maximizada() {
+        if !self.on_the_grip(px, py) || self.is_maximized() {
             return false;
         }
-        self.arrastre = Some((px - self.x, py - self.y));
+        self.drag = Some((px - self.x, py - self.y));
         true
     }
 
     pub(crate) fn release(&mut self) {
-        self.arrastre = None;
-        self.estirando = false;
+        self.drag = None;
+        self.resizing = false;
     }
 
-    pub(crate) fn agarrado(&self) -> bool {
-        self.arrastre.is_some() || self.estirando
+    pub(crate) fn grabbed(&self) -> bool {
+        self.drag.is_some() || self.resizing
     }
 
     /// Lleva o estira la ventana hasta el puntero. `true` si cambio algo.
@@ -256,15 +256,15 @@ impl Marco {
     /// Las dos cosas van juntas porque **quien llama no tiene por que saber
     /// cual de las dos esta pasando**: agarro, mueve el raton, y el marco sabe
     /// lo que habia agarrado.
-    pub(crate) fn seguir_al_puntero(&mut self, p: &bmo::Pantalla, px: u32, py: u32) -> bool {
-        if let Some((ax, ay)) = self.arrastre {
-            let nx = px.saturating_sub(ax).min(p.ancho.saturating_sub(self.ancho));
+    pub(crate) fn follow_pointer(&mut self, p: &bmo::Pantalla, px: u32, py: u32) -> bool {
+        if let Some((ax, ay)) = self.drag {
+            let nx = px.saturating_sub(ax).min(p.ancho.saturating_sub(self.width));
             // Nunca por encima de la barra del sistema: una ventana con el asa
             // debajo de la barra no se puede volver a coger.
             let ny = py
                 .saturating_sub(ay)
-                .max(BARRA_ALTO)
-                .min(p.alto.saturating_sub(self.alto));
+                .max(TASKBAR_H)
+                .min(p.alto.saturating_sub(self.height));
             if nx == self.x && ny == self.y {
                 return false;
             }
@@ -272,18 +272,18 @@ impl Marco {
             self.y = ny;
             return true;
         }
-        if self.estirando {
+        if self.resizing {
             let na = (px.saturating_sub(self.x) + 1)
-                .max(self.min_ancho)
+                .max(self.min_w)
                 .min(p.ancho.saturating_sub(self.x));
             let nl = (py.saturating_sub(self.y) + 1)
-                .max(self.min_alto)
+                .max(self.min_h)
                 .min(p.alto.saturating_sub(self.y));
-            if na == self.ancho && nl == self.alto {
+            if na == self.width && nl == self.height {
                 return false;
             }
-            self.ancho = na;
-            self.alto = nl;
+            self.width = na;
+            self.height = nl;
             return true;
         }
         false
@@ -310,25 +310,25 @@ impl Marco {
     ///
     /// Una MAXIMIZADA no se mueve, y sale gratis: ocupa el panel entero, asi que
     /// los topes la dejan donde estaba y esto devuelve `false` solo.
-    pub(crate) fn empujar(&mut self, p: &bmo::Pantalla, rumbo: Rumbo) -> bool {
-        if self.minimizada {
+    pub(crate) fn push(&mut self, p: &bmo::Pantalla, heading: Heading) -> bool {
+        if self.minimized {
             return false;
         }
-        let (nx, ny) = match rumbo {
-            Rumbo::Izquierda => (self.x.saturating_sub(PASO_TECLADO), self.y),
-            Rumbo::Derecha => (
-                (self.x + PASO_TECLADO).min(p.ancho.saturating_sub(self.ancho)),
+        let (nx, ny) = match heading {
+            Heading::Left => (self.x.saturating_sub(KEY_STEP), self.y),
+            Heading::Right => (
+                (self.x + KEY_STEP).min(p.ancho.saturating_sub(self.width)),
                 self.y,
             ),
-            Rumbo::Arriba => (
+            Heading::Up => (
                 self.x,
-                self.y.saturating_sub(PASO_TECLADO).max(BARRA_ALTO),
+                self.y.saturating_sub(KEY_STEP).max(TASKBAR_H),
             ),
-            Rumbo::Abajo => (
+            Heading::Down => (
                 self.x,
-                (self.y + PASO_TECLADO)
-                    .min(p.alto.saturating_sub(self.alto))
-                    .max(BARRA_ALTO),
+                (self.y + KEY_STEP)
+                    .min(p.alto.saturating_sub(self.height))
+                    .max(TASKBAR_H),
             ),
         };
         if nx == self.x && ny == self.y {
@@ -342,10 +342,10 @@ impl Marco {
     /// Encaja la ventana contra un borde: media pantalla a un lado, el panel
     /// entero arriba, y abajo **deshace** el maximizado.
     ///
-    /// === Por que `Abajo` no minimiza ===
+    /// === Por que `Down` no minimiza ===
     ///
     /// Porque seria una trampa sin salida. Hoy la barra del sistema solo tiene
-    /// ficha para Ejecutar y para Datos --`ficha_en(.., 2)`--, asi que una
+    /// ficha para Ejecutar y para Datos --`chip_at(.., 2)`--, asi que una
     /// CABINA minimizada no tiene por donde volver: seguiria abierta, sin
     /// pintarse, y sin ningun control que la traiga. Un atajo que puede dejar
     /// una ventana inalcanzable no se da hasta que exista el camino de vuelta.
@@ -353,39 +353,39 @@ impl Marco {
     /// Encajar a un lado **deja de ser estar maximizada**: se olvida la
     /// geometria guardada, porque el sitio al que hay que poder volver es este y
     /// no el de hace tres gestos.
-    pub(crate) fn acomodar(&mut self, p: &bmo::Pantalla, rumbo: Rumbo) -> bool {
-        if self.minimizada {
+    pub(crate) fn snap(&mut self, p: &bmo::Pantalla, heading: Heading) -> bool {
+        if self.minimized {
             return false;
         }
-        let alto_util = p.alto.saturating_sub(BARRA_ALTO);
-        let media = (p.ancho / 2).max(self.min_ancho).min(p.ancho);
-        let destino = match rumbo {
-            Rumbo::Izquierda => (0, BARRA_ALTO, media, alto_util),
-            Rumbo::Derecha => (p.ancho - media, BARRA_ALTO, media, alto_util),
-            Rumbo::Arriba => (0, BARRA_ALTO, p.ancho, alto_util),
+        let usable_h = p.alto.saturating_sub(TASKBAR_H);
+        let avg = (p.ancho / 2).max(self.min_w).min(p.ancho);
+        let dest = match heading {
+            Heading::Left => (0, TASKBAR_H, avg, usable_h),
+            Heading::Right => (p.ancho - avg, TASKBAR_H, avg, usable_h),
+            Heading::Up => (0, TASKBAR_H, p.ancho, usable_h),
             // `take` aunque no se vaya a usar: si no estaba maximizada no hay
             // nada que quitar, y si lo estaba deja de estarlo aqui mismo.
-            Rumbo::Abajo => match self.guardada.take() {
+            Heading::Down => match self.saved.take() {
                 Some(g) => g,
                 None => return false,
             },
         };
-        let vieja = (self.x, self.y, self.ancho, self.alto);
-        if destino == vieja {
+        let old = (self.x, self.y, self.width, self.height);
+        if dest == old {
             return false;
         }
-        match rumbo {
+        match heading {
             // Maximizar por teclado guarda el sitio igual que el boton: son el
             // mismo gesto por dos caminos, y tienen que deshacerse igual.
-            Rumbo::Arriba => self.guardada = Some(vieja),
-            Rumbo::Izquierda | Rumbo::Derecha => self.guardada = None,
-            Rumbo::Abajo => {}
+            Heading::Up => self.saved = Some(old),
+            Heading::Left | Heading::Right => self.saved = None,
+            Heading::Down => {}
         }
-        let (nx, ny, na, nl) = destino;
+        let (nx, ny, na, nl) = dest;
         self.x = nx;
         self.y = ny;
-        self.ancho = na;
-        self.alto = nl;
+        self.width = na;
+        self.height = nl;
         true
     }
 
@@ -395,41 +395,41 @@ impl Marco {
     /// Maximizada NO es "pantalla completa": deja la barra del sistema a la
     /// vista. Una ventana que tapa la barra esconde las fichas de las demas, y
     /// entonces no hay forma de volver a ellas sin adivinar un atajo.
-    pub(crate) fn alternar_maximizada(&mut self, p: &bmo::Pantalla) -> (u32, u32, u32, u32) {
-        let vieja = (self.x, self.y, self.ancho, self.alto);
-        match self.guardada.take() {
+    pub(crate) fn toggle_maximized(&mut self, p: &bmo::Pantalla) -> (u32, u32, u32, u32) {
+        let old = (self.x, self.y, self.width, self.height);
+        match self.saved.take() {
             Some((x, y, a, l)) => {
                 self.x = x;
                 self.y = y;
-                self.ancho = a;
-                self.alto = l;
+                self.width = a;
+                self.height = l;
             }
             None => {
-                self.guardada = Some(vieja);
+                self.saved = Some(old);
                 self.x = 0;
-                self.y = BARRA_ALTO;
-                self.ancho = p.ancho;
-                self.alto = p.alto.saturating_sub(BARRA_ALTO);
+                self.y = TASKBAR_H;
+                self.width = p.ancho;
+                self.height = p.alto.saturating_sub(TASKBAR_H);
             }
         }
-        vieja
+        old
     }
 
     /// Recoloca la ventana si se ha quedado fuera del panel.
     ///
     /// Hace falta al restaurar una minimizada y al cambiar de resolucion: una
     /// geometria guardada puede haber dejado de ser valida mientras no se veia.
-    pub(crate) fn encajar(&mut self, p: &bmo::Pantalla) {
-        self.ancho = self.ancho.min(p.ancho).max(self.min_ancho.min(p.ancho));
-        self.alto = self
-            .alto
-            .min(p.alto.saturating_sub(BARRA_ALTO))
-            .max(self.min_alto.min(p.alto));
-        self.x = self.x.min(p.ancho.saturating_sub(self.ancho));
+    pub(crate) fn fit(&mut self, p: &bmo::Pantalla) {
+        self.width = self.width.min(p.ancho).max(self.min_w.min(p.ancho));
+        self.height = self
+            .height
+            .min(p.alto.saturating_sub(TASKBAR_H))
+            .max(self.min_h.min(p.alto));
+        self.x = self.x.min(p.ancho.saturating_sub(self.width));
         self.y = self
             .y
-            .max(BARRA_ALTO)
-            .min(p.alto.saturating_sub(self.alto));
+            .max(TASKBAR_H)
+            .min(p.alto.saturating_sub(self.height));
     }
 
     // -- Pintar ----------------------------------------------------------
@@ -440,74 +440,74 @@ impl Marco {
     /// Los colores los trae quien llama porque **cada ventana tiene el suyo** y
     /// eso es informacion, no decoracion: el verde dice ESTRATOS y el azul dice
     /// el kernel antes de que nadie lea un titulo.
-    pub(crate) fn pintar_cromo(
+    pub(crate) fn paint_chrome(
         &self,
         p: &bmo::Pantalla,
-        borde: u32,
+        edge: u32,
         cuerpo: u32,
-        titulo_fondo: u32,
+        title_bg: u32,
         acento: u32,
     ) {
-        sombra(p, self.x, self.y, self.ancho, self.alto);
-        rect_redondeado(p, self.x, self.y, self.ancho, self.alto, borde);
-        rect_redondeado(p, self.x + 1, self.y + 1, self.ancho - 2, self.alto - 2, cuerpo);
+        shadow(p, self.x, self.y, self.width, self.height);
+        rounded_rect(p, self.x, self.y, self.width, self.height, edge);
+        rounded_rect(p, self.x + 1, self.y + 1, self.width - 2, self.height - 2, cuerpo);
 
         // La barra, con la MISMA curva que la ventana o asomaria por fuera de
         // sus esquinas.
-        for i in 0..RADIO {
-            let s = curva(i);
-            p.rect(self.x + s, self.y + 1 + i, self.ancho - 2 * s, 1, titulo_fondo);
+        for i in 0..RADIUS {
+            let s = curve(i);
+            p.rect(self.x + s, self.y + 1 + i, self.width - 2 * s, 1, title_bg);
         }
         p.rect(
             self.x + 1,
-            self.y + 1 + RADIO,
-            self.ancho - 2,
-            TITULO_ALTO - 2 - RADIO,
-            titulo_fondo,
+            self.y + 1 + RADIUS,
+            self.width - 2,
+            TITLE_H - 2 - RADIUS,
+            title_bg,
         );
-        p.rect(self.x + 1, self.y + TITULO_ALTO - 1, self.ancho - 2, 1, acento);
+        p.rect(self.x + 1, self.y + TITLE_H - 1, self.width - 2, 1, acento);
 
-        self.pintar_botones(p, titulo_fondo);
-        self.pintar_asa_esquina(p, borde);
+        self.paint_buttons(p, title_bg);
+        self.paint_corner_grip(p, edge);
     }
 
     /// Los tres, dibujados con rectangulos porque la fuente no trae sus glifos
     /// y meterlos en la fuente por tres iconos seria tocar el generador para
     /// algo que se dibuja con cuatro `rect`.
-    pub(crate) fn pintar_botones(&self, p: &bmo::Pantalla, fondo: u32) {
-        for (i, b) in [Boton::Minimizar, Boton::Maximizar, Boton::Cerrar].into_iter().enumerate() {
+    pub(crate) fn paint_buttons(&self, p: &bmo::Pantalla, fondo: u32) {
+        for (i, b) in [Button::Minimize, Button::Maximize, Button::Close].into_iter().enumerate() {
             let bx = self.boton_x(i as u32);
             let by = self.y + 2;
-            let alto = TITULO_ALTO - 3;
-            let realce = if self.encima == Some(b) {
-                if b == Boton::Cerrar { CERRAR_ENCIMA } else { BOTON_ENCIMA }
+            let height = TITLE_H - 3;
+            let realce = if self.hover == Some(b) {
+                if b == Button::Close { CLOSE_HOVER } else { BTN_HOVER }
             } else {
                 fondo
             };
-            p.rect(bx, by, BOTON_LADO, alto, realce);
+            p.rect(bx, by, BTN_SIDE, height, realce);
 
-            let cx = bx + BOTON_LADO / 2;
-            let cy = by + alto / 2;
-            let tinta = if self.encima == Some(b) && b == Boton::Cerrar { 0x00FF_FFFF } else { TEXTO };
+            let cx = bx + BTN_SIDE / 2;
+            let cy = by + height / 2;
+            let ink = if self.hover == Some(b) && b == Button::Close { 0x00FF_FFFF } else { INK };
             match b {
                 // Una raya. Es el icono universal y no necesita mas.
-                Boton::Minimizar => p.rect(cx - 5, cy, 10, 1, tinta),
+                Button::Minimize => p.rect(cx - 5, cy, 10, 1, ink),
                 // Un cuadrado hueco; DOS solapados cuando ya esta maximizada,
                 // que es como se dice "restaurar" en todas partes.
-                Boton::Maximizar => {
-                    if self.maximizada() {
-                        marco_hueco(p, cx - 5, cy - 3, 8, 8, tinta);
-                        marco_hueco(p, cx - 2, cy - 6, 8, 8, tinta);
+                Button::Maximize => {
+                    if self.is_maximized() {
+                        chrome_gap(p, cx - 5, cy - 3, 8, 8, ink);
+                        chrome_gap(p, cx - 2, cy - 6, 8, 8, ink);
                     } else {
-                        marco_hueco(p, cx - 4, cy - 4, 9, 9, tinta);
+                        chrome_gap(p, cx - 4, cy - 4, 9, 9, ink);
                     }
                 }
                 // El aspa, pixel a pixel: no hay primitiva de linea diagonal y
                 // dieciseis puntos no piden una.
-                Boton::Cerrar => {
+                Button::Close => {
                     for k in 0..9u32 {
-                        p.punto(cx - 4 + k, cy - 4 + k, tinta);
-                        p.punto(cx - 4 + k, cy + 4 - k, tinta);
+                        p.punto(cx - 4 + k, cy - 4 + k, ink);
+                        p.punto(cx - 4 + k, cy + 4 - k, ink);
                     }
                 }
             }
@@ -516,19 +516,19 @@ impl Marco {
 
     /// Las tres rayitas en diagonal de la esquina. Un agarre invisible no
     /// existe: nadie prueba a estirar una ventana que no parece estirable.
-    fn pintar_asa_esquina(&self, p: &bmo::Pantalla, color: u32) {
-        if self.maximizada() {
+    fn paint_corner_grip(&self, p: &bmo::Pantalla, color: u32) {
+        if self.is_maximized() {
             return;
         }
         for k in 0..3u32 {
             let d = 4 + k * 4;
-            p.rect(self.x + self.ancho - 4 - d, self.y + self.alto - 6 - k * 4, d, 2, color);
+            p.rect(self.x + self.width - 4 - d, self.y + self.height - 6 - k * 4, d, 2, color);
         }
     }
 }
 
 /// Un rectangulo de un pixel de grosor. Cuatro `rect` y ya.
-fn marco_hueco(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32, color: u32) {
+fn chrome_gap(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32, color: u32) {
     p.rect(x, y, w, 1, color);
     p.rect(x, y + h - 1, w, 1, color);
     p.rect(x, y, 1, h, color);

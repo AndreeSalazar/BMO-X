@@ -25,10 +25,10 @@ use bmo_userland as bmo;
 
 use super::*;
 use super::gato;
-use crate::texto::decimal;
+use crate::text::decimal;
 
-const ENT_FONDO: u32 = 0x000A_0E17;
-const ENT_TENUE: u32 = 0x0059_6B8A;
+const SPLASH_BG: u32 = 0x000A_0E17;
+const SPLASH_DIM: u32 = 0x0059_6B8A;
 
 
 /// Espera exacta, cediendo el CPU mientras tanto -- y **cortable con una tecla**.
@@ -57,19 +57,19 @@ const ENT_TENUE: u32 = 0x0059_6B8A;
 /// justo los segundos que haga falta LEERLO. Lo que se arregla es que fuera
 /// obligatoria: ahora cualquier tecla la cierra. Quien necesita leerla, la lee;
 /// quien no, no paga.
-fn esperar_ms(ms: u64, entrada: Option<&bmo::Entrada>) {
+fn wait_ms(ms: u64, input: Option<&bmo::Entrada>) {
     let hz = bmo::info(bmo::INFO_TSC_HZ);
     if hz == 0 {
         // Sin frecuencia medida no se inventa una: se sigue. Una intro que no
         // se ve es infinitamente mejor que una espera de duracion desconocida.
         return;
     }
-    let objetivo = bmo::ciclos() + hz / 1000 * ms;
-    while bmo::ciclos() < objetivo {
+    let target = bmo::ciclos() + hz / 1000 * ms;
+    while bmo::ciclos() < target {
         // La tecla se consume al leerla, asi que la que salta la intro **no**
         // acaba escrita en la caja de Ejecutar. Un atajo que ademas teclea algo
         // seria un atajo que hay que deshacer.
-        if let Some(e) = entrada {
+        if let Some(e) = input {
             if e.tecla().is_some() {
                 return;
             }
@@ -88,17 +88,17 @@ fn esperar_ms(ms: u64, entrada: Option<&bmo::Entrada>) {
 /// `escala` multiplica en enteros y a proposito: interpolar un dibujo de lineas
 /// de un pixel lo convierte en una mancha gris. Aqui un pixel de la mascara es
 /// un cuadrado exacto, que es como se ve un logo hecho de trazos.
-fn pintar_gato(p: &bmo::Pantalla, x0: u32, y0: u32, escala: u32) {
+fn paint_cat(p: &bmo::Pantalla, x0: u32, y0: u32, escala: u32) {
     let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
-    for fy in 0..gato::ALTO {
-        for fx in 0..gato::ANCHO {
-            let i = (fy * gato::ANCHO + fx) as usize;
+    for fy in 0..gato::HEIGHT {
+        for fx in 0..gato::WIDTH {
+            let i = (fy * gato::WIDTH + fx) as usize;
             // Los ojos ganan al trazo: son el unico sitio con color y es lo
             // primero que mira quien mira un gato.
-            let color = if bit(&gato::OJOS, i) {
-                ACENTO
-            } else if bit(&gato::TRAZO, i) {
-                TEXTO
+            let color = if bit(&gato::EYES, i) {
+                ACCENT
+            } else if bit(&gato::STROKE, i) {
+                INK
             } else {
                 continue;
             };
@@ -114,9 +114,9 @@ fn pintar_gato(p: &bmo::Pantalla, x0: u32, y0: u32, escala: u32) {
 }
 
 /// Una fila del informe: etiqueta a la izquierda, valor a la derecha.
-fn fila(p: &bmo::Pantalla, x: u32, y: u32, etiqueta: &str, valor: &str, color: u32) {
-    p.texto(x, y, etiqueta, ENT_TENUE);
-    p.texto(x + 13 * bmo::GLIFO_ANCHO, y, valor, color);
+fn row(p: &bmo::Pantalla, x: u32, y: u32, label: &str, value: &str, color: u32) {
+    p.texto(x, y, label, SPLASH_DIM);
+    p.texto(x + 13 * bmo::GLIFO_ANCHO, y, value, color);
 }
 
 /// **La entrada.** Se pinta entera, se lee, y se va.
@@ -125,21 +125,21 @@ fn fila(p: &bmo::Pantalla, x: u32, y: u32, etiqueta: &str, valor: &str, color: u
 /// recibir, y sin las cuales el escritorio arranca igual pero **quieto y mudo**.
 /// Que se digan aqui es lo que distingue "no funciona" de "no me la dieron".
 ///
-/// * Recibe la `Entrada` y no un `bool`: antes era `hay_entrada: bool`, que es
+/// * Recibe la `Entrada` y no un `bool`: antes era `has_input: bool`, que es
 /// el mismo dato con menos informacion. Con la capability delante se puede
 /// ademas LEER --y por eso la espera del final se puede saltar con una tecla--,
 /// y el `bool` sale de ella sin poder desincronizarse.
-pub(crate) fn pintar(
+pub(crate) fn paint(
     p: &bmo::Pantalla,
-    entrada: Option<&bmo::Entrada>,
-    hay_consola: bool,
+    input: Option<&bmo::Entrada>,
+    has_console: bool,
 ) {
-    let hay_entrada = entrada.is_some();
-    p.limpiar(ENT_FONDO);
+    let has_input = input.is_some();
+    p.limpiar(SPLASH_BG);
 
     // Una banda de acento a la izquierda, de arriba abajo. Sujeta la
     // composicion y cuesta un rectangulo.
-    p.rect(0, 0, 6, p.alto, ACENTO);
+    p.rect(0, 0, 6, p.alto, ACCENT);
 
     // -- * LA MAQUETA: el gato a la izquierda, el informe a la derecha --
     //
@@ -152,20 +152,20 @@ pub(crate) fn pintar(
     // fraccion. Un `3` puesto a mano se sale por abajo en el primer monitor
     // pequeno que se enchufe.
     let escala = if p.alto >= 900 { 2 } else { 1 };
-    let gato_w = gato::ANCHO * escala;
+    let gato_w = gato::WIDTH * escala;
 
     let x = 120 + gato_w + 56;
     let mut y = p.alto / 2 - 190;
 
     // El gato se centra respecto al bloque de texto, no respecto a la pantalla:
     // lo que tiene que quedar alineado es lo que se mira junto.
-    pintar_gato(p, 120, y + 8, escala);
+    paint_cat(p, 120, y + 8, escala);
 
     // -- El nombre, grande --
-    let ancho = bmo::Pantalla::ancho_escala("BMO-X", 6);
-    p.texto_escala(x, y, "BMO-X", TEXTO, 6);
+    let width = bmo::Pantalla::ancho_escala("BMO-X", 6);
+    p.texto_escala(x, y, "BMO-X", INK, 6);
     // Subrayado exacto bajo el titulo: el ancho se pregunta, no se estima.
-    p.rect(x, y + 16 * 6 + 8, ancho, 3, ACENTO);
+    p.rect(x, y + 16 * 6 + 8, width, 3, ACCENT);
     y += 16 * 6 + 22;
 
     // * METAKERNEL, y no es una etiqueta bonita: es lo que hace.
@@ -175,71 +175,71 @@ pub(crate) fn pintar(
     // MUERE las vuelca el a mano --con la CR3 del kernel puesta, que si no es un
     // #PF recursivo-- para poder decir DONDE se rompio. No presume de no fallar:
     // presume de contarlo. De ahi el gato: se cae, se rompe algo, y sigue.
-    p.texto(x, y, "BMO METAKERNEL", ENT_TENUE);
+    p.texto(x, y, "BMO METAKERNEL", SPLASH_DIM);
     y += bmo::GLIFO_ALTO + 16;
 
-    p.texto(x, y, "RING 3   -   el userspace toma la maquina", ACENTO);
+    p.texto(x, y, "RING 3   -   el userspace toma la maquina", ACCENT);
     y += bmo::GLIFO_ALTO + 34;
 
     // -- Lo que se acaba de ceder --
-    p.texto(x, y, "SE ME HA CEDIDO", ENT_TENUE);
+    p.texto(x, y, "SE ME HA CEDIDO", SPLASH_DIM);
     y += bmo::GLIFO_ALTO + 10;
 
     // La pantalla: siempre esta, porque sin ella no habria nada que leer.
     let mut b = [0u8; 10];
     let mut n = decimal(p.ancho as u64, &mut b);
-    p.texto(x, y, "la pantalla", ENT_TENUE);
-    let mut px = p.texto_bytes(x + 13 * bmo::GLIFO_ANCHO, y, &b[..n], TEXTO);
-    px = p.texto(px, y, " x ", ENT_TENUE);
+    p.texto(x, y, "la pantalla", SPLASH_DIM);
+    let mut px = p.texto_bytes(x + 13 * bmo::GLIFO_ANCHO, y, &b[..n], INK);
+    px = p.texto(px, y, " x ", SPLASH_DIM);
     n = decimal(p.alto as u64, &mut b);
-    px = p.texto_bytes(px, y, &b[..n], TEXTO);
-    p.texto(px, y, "   y el kernel deja de pintar", ENT_TENUE);
+    px = p.texto_bytes(px, y, &b[..n], INK);
+    p.texto(px, y, "   y el kernel deja de pintar", SPLASH_DIM);
     y += bmo::GLIFO_ALTO + 6;
 
-    if hay_entrada {
-        fila(p, x, y, "la entrada", "teclado y raton son mios", TEXTO_BIEN);
+    if has_input {
+        row(p, x, y, "la entrada", "teclado y raton son mios", INK_OK);
     } else {
-        fila(p, x, y, "la entrada", "NO: el escritorio sera mudo", TEXTO_MAL);
+        row(p, x, y, "la entrada", "NO: el escritorio sera mudo", INK_BAD);
     }
     y += bmo::GLIFO_ALTO + 6;
 
-    if hay_consola {
-        fila(p, x, y, "una consola", "lo que yo lance escribe AQUI", TEXTO_BIEN);
+    if has_console {
+        row(p, x, y, "una consola", "lo que yo lance escribe AQUI", INK_OK);
     } else {
-        fila(p, x, y, "una consola", "NO: los hijos escribiran en el kernel", TEXTO_MAL);
+        row(p, x, y, "una consola", "NO: los hijos escribiran en el kernel", INK_BAD);
     }
     y += bmo::GLIFO_ALTO + 28;
 
     // -- Sobre que corre --
-    p.texto(x, y, "SOBRE", ENT_TENUE);
+    p.texto(x, y, "SOBRE", SPLASH_DIM);
     y += bmo::GLIFO_ALTO + 10;
 
     let mut cpu = [0u8; 48];
     let ncpu = bmo::info_texto(bmo::INFO_TXT_CPU_NOMBRE, &mut cpu);
     if ncpu > 0 {
-        p.texto(x, y, "cpu", ENT_TENUE);
-        let mut cx = p.texto_bytes(x + 13 * bmo::GLIFO_ANCHO, y, &cpu[..ncpu], TEXTO);
-        let hilos = bmo::info(bmo::INFO_CPU_HILOS);
-        if hilos > 0 {
-            cx = p.texto(cx, y, "   ", ENT_TENUE);
-            n = decimal(hilos, &mut b);
-            cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
-            cx = p.texto(cx, y, " hilos", ENT_TENUE);
+        p.texto(x, y, "cpu", SPLASH_DIM);
+        let mut cx = p.texto_bytes(x + 13 * bmo::GLIFO_ANCHO, y, &cpu[..ncpu], INK);
+        let threads = bmo::info(bmo::INFO_CPU_HILOS);
+        if threads > 0 {
+            cx = p.texto(cx, y, "   ", SPLASH_DIM);
+            n = decimal(threads, &mut b);
+            cx = p.texto_bytes(cx, y, &b[..n], INK);
+            cx = p.texto(cx, y, " hilos", SPLASH_DIM);
         }
         let hz = bmo::info(bmo::INFO_TSC_HZ);
         if hz > 0 {
-            cx = p.texto(cx, y, " a ", ENT_TENUE);
+            cx = p.texto(cx, y, " a ", SPLASH_DIM);
             // Dos decimales de GHz sin coma flotante, igual que el resto.
             n = decimal(hz / 1_000_000_000, &mut b);
-            cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
-            cx = p.texto(cx, y, ".", TEXTO);
+            cx = p.texto_bytes(cx, y, &b[..n], INK);
+            cx = p.texto(cx, y, ".", INK);
             let cent = (hz % 1_000_000_000) / 10_000_000;
             if cent < 10 {
-                cx = p.texto(cx, y, "0", TEXTO);
+                cx = p.texto(cx, y, "0", INK);
             }
             n = decimal(cent, &mut b);
-            cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
-            p.texto(cx, y, " GHz medidos", ENT_TENUE);
+            cx = p.texto_bytes(cx, y, &b[..n], INK);
+            p.texto(cx, y, " GHz medidos", SPLASH_DIM);
         }
         y += bmo::GLIFO_ALTO + 6;
     }
@@ -255,7 +255,7 @@ pub(crate) fn pintar(
     // identidad para que repintar no toque el BAR de la NIC. Si desenchufas el
     // cable, esta linea no cambia -- `red` en la terminal lo dice tambien.
     if bmo::info(bmo::INFO_NET_PRESENTE) != 0 {
-        p.texto(x, y, "red", ENT_TENUE);
+        p.texto(x, y, "red", SPLASH_DIM);
         let mut cx = x + 13 * bmo::GLIFO_ANCHO;
         let mac = bmo::info(bmo::INFO_NET_MAC);
         let mut i = 6;
@@ -263,20 +263,20 @@ pub(crate) fn pintar(
             i -= 1;
             let byte = (mac >> (i * 8)) & 0xFF;
             n = hex2(byte, &mut b);
-            cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
+            cx = p.texto_bytes(cx, y, &b[..n], INK);
             if i > 0 {
-                cx = p.texto(cx, y, "-", ENT_TENUE);
+                cx = p.texto(cx, y, "-", SPLASH_DIM);
             }
         }
         let mbit = bmo::info(bmo::INFO_NET_MEGABITS);
         if mbit > 0 {
-            cx = p.texto(cx, y, "   enlace ", ENT_TENUE);
+            cx = p.texto(cx, y, "   enlace ", SPLASH_DIM);
             n = decimal(mbit, &mut b);
-            cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
-            p.texto(cx, y, " Mbit", ENT_TENUE);
+            cx = p.texto_bytes(cx, y, &b[..n], INK);
+            p.texto(cx, y, " Mbit", SPLASH_DIM);
         } else {
             // El cero NO es un error: es "no hay cable", y es una respuesta.
-            p.texto(cx, y, "   sin enlace", ENT_TENUE);
+            p.texto(cx, y, "   sin enlace", SPLASH_DIM);
         }
         y += bmo::GLIFO_ALTO + 6;
     }
@@ -284,23 +284,23 @@ pub(crate) fn pintar(
     // La memoria, con el numero que a esta maquina le gusta ensenar: cuanto
     // ocupa el sistema entero.
     let total = bmo::info(bmo::INFO_RAM_TOTAL);
-    let libre = bmo::info(bmo::INFO_RAM_LIBRE);
+    let free_one = bmo::info(bmo::INFO_RAM_LIBRE);
     if total > 0 {
-        p.texto(x, y, "memoria", ENT_TENUE);
+        p.texto(x, y, "memoria", SPLASH_DIM);
         let mut cx = x + 13 * bmo::GLIFO_ANCHO;
-        n = decimal(total.saturating_sub(libre) / (1024 * 1024), &mut b);
-        cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
-        cx = p.texto(cx, y, " MiB en uso de ", ENT_TENUE);
+        n = decimal(total.saturating_sub(free_one) / (1024 * 1024), &mut b);
+        cx = p.texto_bytes(cx, y, &b[..n], INK);
+        cx = p.texto(cx, y, " MiB en uso de ", SPLASH_DIM);
         n = decimal(total / (1024 * 1024 * 1024), &mut b);
-        cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
-        p.texto(cx, y, " GiB", ENT_TENUE);
+        cx = p.texto_bytes(cx, y, &b[..n], INK);
+        p.texto(cx, y, " GiB", SPLASH_DIM);
         y += bmo::GLIFO_ALTO + 6;
     }
 
     if bmo::info(bmo::INFO_DATOS_MONTADO) != 0 {
-        fila(p, x, y, "disco", "volumen de datos montado", TEXTO_BIEN);
+        row(p, x, y, "disco", "volumen de datos montado", INK_OK);
     } else {
-        fila(p, x, y, "disco", "SIN volumen de datos", TEXTO_MAL);
+        row(p, x, y, "disco", "SIN volumen de datos", INK_BAD);
     }
     y += bmo::GLIFO_ALTO + 34;
 
@@ -324,20 +324,20 @@ pub(crate) fn pintar(
     // panel de ESTRATOS diciendo que no se podia escribir mientras se escribia.
     // Un numero que sale en pantalla y no sale de una constante se queda viejo
     // solo.
-    p.texto(x, y, "DOS syscalls congelados.  todo lo demas son capabilities.", ENT_TENUE);
+    p.texto(x, y, "DOS syscalls congelados.  todo lo demas son capabilities.", SPLASH_DIM);
     y += bmo::GLIFO_ALTO + 4;
-    p.texto(x, y, "esto no es una API prestada: es la maquina obedeciendo.", ENT_TENUE);
+    p.texto(x, y, "esto no es una API prestada: es la maquina obedeciendo.", SPLASH_DIM);
 
     // * Empujar ANTES de esperar. Sin esto la intro se pintaria en el bufer de
     // write-combining y se quedaria ahi los 1100 ms enteros -- o sea que la
     // pantalla que existe para ser leida seria justo la que no se ve.
     p.vaciar();
 
-    // Se deja leer, y se puede saltar. Ver `esperar_ms`: es tiempo REAL, no
+    // Se deja leer, y se puede saltar. Ver `wait_ms`: es tiempo REAL, no
     // vueltas de bucle, y cualquier tecla la corta.
-    p.texto(x, y + bmo::GLIFO_ALTO + 26, "una tecla para entrar", ENT_TENUE);
+    p.texto(x, y + bmo::GLIFO_ALTO + 26, "una tecla para entrar", SPLASH_DIM);
     p.vaciar();
-    esperar_ms(1100, entrada);
+    wait_ms(1100, input);
 }
 
 /// Dos digitos hexadecimales, en mayusculas. Para la MAC.

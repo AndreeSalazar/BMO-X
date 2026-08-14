@@ -393,7 +393,7 @@ se pidio, **y no falla al compilar**. Al escribir el guardian salio el caso
 real: `INFO_PANTALLA_DUENO` estaba en el kernel y en el userland y **no en el
 ABI**. `build.ps1` lo comprueba ahora, y la lista no se escribe a mano.
 
-⚠ Y otra que no compilaba en `main`: `ordenes/mod.rs` decia `mod complete;` con
+⚠ Y otra que no compilaba en `main`: `commands/mod.rs` decia `mod complete;` con
 el fichero todavia llamado `completar.rs` -- **el compositor no construia** desde
 el renombrado al ingles del 08-08.
 

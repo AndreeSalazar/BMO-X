@@ -4,15 +4,15 @@
 //! esta carpeta no sabe de que color es la ventana.
 
 pub(crate) mod complete;
-pub(crate) mod historial;
-pub(crate) mod informes;
+pub(crate) mod history;
+pub(crate) mod reports;
 
 // -- La linea de comandos ------------------------------------------------
 
 /// Que pidio el usuario. Se separa del bucle porque la decision "esto es un
 /// comando o es una ruta" merece leerse de un vistazo.
-pub(crate) enum Orden<'a> {
-    Nada,
+pub(crate) enum Command<'a> {
+    Nothing,
     /// Alguien escribio `sudo`, `pacman`, `apt`... **Esto NO es una distro.**
     ///
     /// Se escribio el dia que un amigo del dueno, que viene de Linux, se sento
@@ -23,35 +23,35 @@ pub(crate) enum Orden<'a> {
     /// nada. Esto contesta con lo que de verdad separa a los dos sistemas --
     /// aqui no hay usuarios, ni permisos que elevar, ni paquetes que instalar:
     /// hay capabilities, y lo que no te dieron no existe para ti. Con un gato.
-    NoEsLinux(&'a [u8]),
-    Lanzar(&'a [u8]),
-    Limpiar,
-    Ayuda,
+    NotLinux(&'a [u8]),
+    Launch(&'a [u8]),
+    Clear,
+    Help,
     /// Ensena o esconde la calculadora.
-    Calculadora,
+    Calculator,
     /// `sella` escrito AQUI, donde ya no vive: la orden se mudo a la ventana de
     /// ESTRATOS (F12, tecla `S`) y esto lleva la nota con la direccion nueva.
-    SelloMudado,
+    SealMoved,
     /// `perf` -- **lo que cuesta pintar**, medido.
     ///
     /// Existe para poder contestar con un numero la pregunta "hace falta una
     /// GPU?". La caja de sucio ya evita casi todo el trabajo, asi que la
     /// respuesta puede perfectamente ser que no -- y eso solo se sabe mirando.
-    Pintado,
-    /// `ls [ruta]` -- que hay en el disco. Antes esto no podia existir: no
+    PaintCost,
+    /// `ls [path]` -- que hay en el disco. Antes esto no podia existir: no
     /// habia capability de directorio, asi que habia que saberse los nombres
     /// de memoria y teclearlos enteros.
-    Listar(&'a [u8]),
-    /// `lee <ruta>` -- ensena lo que hay DENTRO de un archivo. Es el hermano
+    List(&'a [u8]),
+    /// `lee <path>` -- ensena lo que hay DENTRO de un archivo. Es el hermano
     /// de `ls`: aquel dice que archivos hay, este los abre.
-    Leer(&'a [u8]),
-    /// `escribe <ruta> <texto>` -- crea un archivo con ese texto.
+    Read(&'a [u8]),
+    /// `escribe <path> <text>` -- crea un archivo con ese texto.
     ///
     /// Es la primera vez que Ring 3 GUARDA algo. Hasta ahora todo lo que
     /// aparecia en el disco lo habia puesto el anfitrion al flashear, o el
     /// kernel con su caja negra; un programa no tenia con que.
-    Escribir(&'a [u8], &'a [u8]),
-    /// `guarda [ruta]` -- **vuelca el historial de la salida a un `.txt`**.
+    Write(&'a [u8], &'a [u8]),
+    /// `guarda [path]` -- **vuelca el historial de la salida a un `.txt`**.
     ///
     /// === Para que existe ===
     ///
@@ -61,7 +61,7 @@ pub(crate) enum Orden<'a> {
     /// maquina sepa que paso. Y una foto no se puede diferenciar contra la de
     /// ayer.
     ///
-    /// Con esto la corrida deja un archivo en `datos/`, que esta en la
+    /// Con esto la corrida deja un archivo en `data/`, que esta en la
     /// **particion FAT32**: se enchufa el disco a un Windows y se abre con el
     /// bloc de notas. Eso convierte "cuentame que salio" en "mira el fichero".
     ///
@@ -70,20 +70,20 @@ pub(crate) enum Orden<'a> {
     /// Un volcado que solo BMO puede abrir no resuelve el problema que este
     /// comando existe para resolver.
     ///
-    /// Sin ruta, va a [`crate::VOLCADO_POR_DEFECTO`].
-    Guardar(&'a [u8]),
+    /// Sin ruta, va a [`crate::DEFAULT_DUMP`].
+    Save(&'a [u8]),
     /// Parece un archivo, pero no es un `.bex`. No se intenta lanzar: se dice
     /// que es y con que se abre.
-    NoEsPrograma(&'a [u8]),
+    NotAProgram(&'a [u8]),
     /// `info` -- el informe del sistema. `cpu` y `mem` son las dos mitades.
     ///
     /// * Esto vivia SOLO en el shell de Ring 0, y no porque hiciera falta el
     /// privilegio: porque los datos estaban a su alcance. Contar RAM no ejerce
     /// ningun poder. Ahora bajan por `OP_INFO` y se pintan aqui, que es donde
     /// esta la pantalla.
-    Informe,
+    Report,
     /// El informe del ULTIMO fallo de Ring 3, tal como lo redacto el kernel.
-    Autopsia,
+    Autopsy,
     Cpu,
     Memoria,
     /// **Los nucleos.** Sin argumento solo censa; con `all` o con un numero,
@@ -97,7 +97,7 @@ pub(crate) enum Orden<'a> {
     /// ruta"* y la prueba del paso 0 se quedo sin hacer. **Dos shells con dos
     /// vocabularios distintos son dos productos.**
     Audio,
-    /// **LA RED** -- `red`, `net`, `mac`, `enlace`, `link`, `tramas`, `phy`.
+    /// **LA RED** -- `red`, `net`, `mac`, `link`, `link`, `frames_rx`, `phy`.
     ///
     /// ** Siete palabras y no una, porque son siete PREGUNTAS distintas y una
     /// sola respuesta gorda no sirve para depurar: cuando el cable no va, lo que
@@ -106,20 +106,20 @@ pub(crate) enum Orden<'a> {
     /// escuchando"*. Cada palabra corta el problema por un sitio.
     ///
     /// El argumento decide cual: `red` a secas da el informe entero.
-    Red(&'a [u8]),
+    Net(&'a [u8]),
     /// `reboot` -- reinicia la maquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aqui contestaba "no lo
     /// conozco", asi que la unica forma de reiniciar era el boton de la caja.
     /// Reiniciar es tocar puertos de E/S, que Ring 3 no puede hacer: va por
     /// `OP_REINICIAR`, una operacion mas dentro de `INVOKE`.
-    Reiniciar,
+    Reboot,
     /// Una palabra suelta que no parece una ruta.
-    Desconocida,
+    Unknown,
 }
 
 
-pub(crate) fn parece_ruta(t: &[u8]) -> bool {
+pub(crate) fn looks_like_path(t: &[u8]) -> bool {
     t.iter().any(|&c| c == b'/' || c == b'\\' || c == b'.')
 }
 
@@ -135,42 +135,42 @@ pub(crate) fn parece_ruta(t: &[u8]) -> bool {
 /// Aqui no se afloja ninguna guardia: se deja de adivinar. Solo un `.bex` es
 /// un programa; lo demas son datos, y a los datos se los lee.
 ///
-/// `run <ruta>` sigue intentandolo con lo que sea: si alguien lo escribe
+/// `run <path>` sigue intentandolo con lo que sea: si alguien lo escribe
 /// explicitamente, la respuesta la da el gate y no esta heuristica.
-pub(crate) fn parece_programa(t: &[u8]) -> bool {
+pub(crate) fn looks_like_program(t: &[u8]) -> bool {
     let n = t.len();
     if n < 4 {
         return false;
     }
-    let cola = &t[n - 4..];
-    cola[0] == b'.'
-        && (cola[1] | 32) == b'b'
-        && (cola[2] | 32) == b'e'
-        && (cola[3] | 32) == b'x'
+    let queue = &t[n - 4..];
+    queue[0] == b'.'
+        && (queue[1] | 32) == b'b'
+        && (queue[2] | 32) == b'e'
+        && (queue[3] | 32) == b'x'
 }
 
 /// Parte la linea en verbo y resto.
 ///
-/// * Acepta `run <ruta>` ADEMAS de la ruta pelada, y no por capricho: quien usa
+/// * Acepta `run <path>` ADEMAS de la ruta pelada, y no por capricho: quien usa
 /// esto viene del shell de Ring 0, donde se escribe `run`. Pelearse con la
 /// costumbre del usuario es perder -- el que se adapta es el programa. Lo que si
 /// se hace es DECIRLO cuando la palabra no es ni comando ni ruta, en vez de
 /// contestar "no esta: revisa la ruta" a alguien que escribio `reboot`.
-pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
-    let linea = {
+pub(crate) fn parse(line: &[u8]) -> Command<'_> {
+    let line = {
         let mut i = 0;
-        while i < linea.len() && linea[i] == b' ' { i += 1; }
-        &linea[i..]
+        while i < line.len() && line[i] == b' ' { i += 1; }
+        &line[i..]
     };
-    if linea.is_empty() {
-        return Orden::Nada;
+    if line.is_empty() {
+        return Command::Nothing;
     }
-    let corte = linea.iter().position(|&c| c == b' ').unwrap_or(linea.len());
-    let (verbo, resto) = linea.split_at(corte);
-    let resto = {
+    let cut = line.iter().position(|&c| c == b' ').unwrap_or(line.len());
+    let (verb, rest) = line.split_at(cut);
+    let rest = {
         let mut i = 0;
-        while i < resto.len() && resto[i] == b' ' { i += 1; }
-        &resto[i..]
+        while i < rest.len() && rest[i] == b' ' { i += 1; }
+        &rest[i..]
     };
     // ** LOS QUE LLEGAN DE LINUX.
     //
@@ -178,15 +178,15 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
     // una orden de BMO-X, asi que caerian en "no lo conozco" -- que es correcto
     // y no ensena nada. Que la respuesta llegue aqui cuesta un `contains` y
     // convierte un desconcierto en una explicacion.
-    const DE_LINUX: [&[u8]; 14] = [
+    const FROM_LINUX: [&[u8]; 14] = [
         b"sudo", b"su", b"apt", b"apt-get", b"pacman", b"yay", b"dnf", b"yum",
         b"snap", b"systemctl", b"chmod", b"chown", b"grep", b"man",
     ];
-    if DE_LINUX.iter().any(|&x| x == verbo) {
-        return Orden::NoEsLinux(verbo);
+    if FROM_LINUX.iter().any(|&x| x == verb) {
+        return Command::NotLinux(verb);
     }
 
-    match verbo {
+    match verb {
         // INGLES de primero, y es una decision del dueno: el castellano limita
         // -- no hay palabra corta para "flush", los verbos se alargan, y medio
         // mundo del sistema (los campos del hardware, los mensajes de fallo)
@@ -196,11 +196,11 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         // Los castellanos se quedan como SINONIMOS: no estorban y ya estaban
         // escritos.
         b"run" | b"corre" | b"lanza" => {
-            if resto.is_empty() { Orden::Ayuda } else { Orden::Lanzar(resto) }
+            if rest.is_empty() { Command::Help } else { Command::Launch(rest) }
         }
-        b"calc" | b"calculadora" => Orden::Calculadora,
+        b"calc" | b"calculadora" => Command::Calculator,
         // * El numero que decide si hace falta una GPU. Ver `Volcado`.
-        b"perf" | b"pinta" => Orden::Pintado,
+        b"perf" | b"pinta" => Command::PaintCost,
         // * `sella` -- Y ANTES ERAN DOS PALABRAS, POR UN MIEDO MAL PUESTO.
         //
         // Era `estratos sellar`, y el comentario que lo defendia decia que al
@@ -236,61 +236,61 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         // y en la cabeza del dueno-- se lleva **la direccion nueva**, no un
         // "no lo conozco". Una funcion que se muda sin dejar nota se convierte
         // en una funcion que desaparecio.
-        b"sella" | b"sellar" => Orden::SelloMudado,
+        b"sella" | b"sellar" => Command::SealMoved,
         b"estratos" => {
-            if resto == b"sellar" { Orden::SelloMudado } else { Orden::Ayuda }
+            if rest == b"sellar" { Command::SealMoved } else { Command::Help }
         }
-        b"clear" | b"cls" | b"limpia" => Orden::Limpiar,
-        b"ls" | b"dir" | b"lista" => Orden::Listar(resto),
+        b"clear" | b"cls" | b"limpia" => Command::Clear,
+        b"ls" | b"dir" | b"lista" => Command::List(rest),
         b"cat" | b"lee" => {
-            if resto.is_empty() { Orden::Ayuda } else { Orden::Leer(resto) }
+            if rest.is_empty() { Command::Help } else { Command::Read(rest) }
         }
-        // `escribe <ruta> <texto>`: la ruta es la PRIMERA palabra y el texto
+        // `escribe <path> <text>`: la ruta es la PRIMERA palabra y el texto
         // es todo lo demas, espacios incluidos. Partir por la ultima palabra
         // obligaria a escribir el texto sin espacios, que no es escribir.
         b"escribe" | b"write" => {
-            let k = resto.iter().position(|&c| c == b' ');
+            let k = rest.iter().position(|&c| c == b' ');
             match k {
                 Some(k) => {
-                    let (ruta, texto) = resto.split_at(k);
+                    let (path, text) = rest.split_at(k);
                     let mut j = 0;
-                    while j < texto.len() && texto[j] == b' ' { j += 1; }
-                    Orden::Escribir(ruta, &texto[j..])
+                    while j < text.len() && text[j] == b' ' { j += 1; }
+                    Command::Write(path, &text[j..])
                 }
-                None => Orden::Ayuda,
+                None => Command::Help,
             }
         }
         // `guarda` sin nada vuelca al fichero de siempre; con una ruta, ahi.
         // No pide texto como `escribe`: lo que guarda ya esta en la pantalla.
-        b"guarda" | b"volcar" | b"dump" => Orden::Guardar(resto),
-        b"info" | b"sistema" => Orden::Informe,
-        // `fallo` ensena la ultima autopsia. Se guarda sola en `datos/fallos.txt`
+        b"guarda" | b"volcar" | b"dump" => Command::Save(rest),
+        b"info" | b"sistema" => Command::Report,
+        // `fallo` ensena la ultima autopsia. Se guarda sola en `data/fallos.txt`
         // en cuanto ocurre -- esto es para mirarla sin salir del escritorio.
-        b"fallo" | b"fallos" | b"autopsia" => Orden::Autopsia,
+        b"fallo" | b"fallos" | b"autopsia" => Command::Autopsy,
         // ** LA RED. `red`/`net` dan el informe entero; las demas cortan por
         // una sola pregunta, que es lo que se quiere teniendo el cable en la
         // mano. Ninguna transmite ni un byte -- son campos de INFORME.
-        b"red" | b"net" => Orden::Red(b""),
-        b"mac" => Orden::Red(b"mac"),
-        b"enlace" | b"link" => Orden::Red(b"link"),
-        b"tramas" | b"frames" => Orden::Red(b"frames"),
-        b"phy" => Orden::Red(b"phy"),
-        b"cpu" | b"procesador" => Orden::Cpu,
-        b"mem" | b"ram" | b"memoria" => Orden::Memoria,
-        b"reboot" | b"reinicia" | b"reiniciar" => Orden::Reiniciar,
+        b"red" | b"net" => Command::Net(b""),
+        b"mac" => Command::Net(b"mac"),
+        b"enlace" | b"link" => Command::Net(b"link"),
+        b"tramas" | b"frames" => Command::Net(b"frames"),
+        b"phy" => Command::Net(b"phy"),
+        b"cpu" | b"procesador" => Command::Cpu,
+        b"mem" | b"ram" | b"memoria" => Command::Memoria,
+        b"reboot" | b"reinicia" | b"reiniciar" => Command::Reboot,
         // `smp` a secas CENSA y no toca nada; `smp all` despierta a todos;
         // `smp N` despierta exactamente N. El caso sin argumento es el
         // inofensivo a proposito: ver `sys::smp_despertar`.
-        b"smp" | b"nucleos" => Orden::Smp(resto),
-        b"audio" | b"sonido" => Orden::Audio,
-        b"help" | b"?" | b"ayuda" => Orden::Ayuda,
-        _ if parece_programa(linea) => Orden::Lanzar(linea),
+        b"smp" | b"nucleos" => Command::Smp(rest),
+        b"audio" | b"sonido" => Command::Audio,
+        b"help" | b"?" | b"ayuda" => Command::Help,
+        _ if looks_like_program(line) => Command::Launch(line),
         // Parece un archivo pero no es un programa. Antes esto caia en
-        // `Lanzar` y el kernel contestaba "sin firma no hay ejecucion" -- un
+        // `Launch` y el kernel contestaba "sin firma no hay ejecucion" -- un
         // mensaje CORRECTO que en este sitio se lee como si el sistema pidiera
         // permisos para abrir un .txt.
-        _ if parece_ruta(linea) => Orden::NoEsPrograma(linea),
-        _ => Orden::Desconocida,
+        _ if looks_like_path(line) => Command::NotAProgram(line),
+        _ => Command::Unknown,
     }
 }
 

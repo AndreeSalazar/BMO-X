@@ -13,7 +13,7 @@
 //!
 //! Aqui no hay nada que apuntar. **El icono vive DENTRO del `.bex`**, como un
 //! recurso mas de su paquete (`SectionKind::Resources`, ver
-//! `bmo_abi::bef::recursos`). La app trae su propia cara: no hay `.lnk` que se
+//! `bmo_abi::bef::resources`). La app trae su propia cara: no hay `.lnk` que se
 //! despegue, ni cache de iconos que reconstruir, ni un fichero de escritorio
 //! que quede huerfano. Copias el `.bex` y va con su icono; lo borras y no queda
 //! rastro que limpiar.
@@ -51,110 +51,110 @@
 
 use bmo_userland as bmo;
 
-use super::{FONDO_ARRIBA, TEXTO};
+use super::{BG_TOP, INK};
 
 /// Cuantas apps caben en el escritorio. Doce es lo que entra en una fila y
 /// media a 1080p; pasado eso hace falta una rejilla con scroll, y eso es otra
 /// conversacion.
 pub const MAX_APPS: usize = 12;
 /// Lado del icono TAL COMO SE GUARDA.
-pub const ICONO_LADO: u32 = 16;
+pub const ICON_SIDE: u32 = 16;
 /// A cuanto se pinta. Ver la cabecera: se guarda pequeno y se agranda.
-pub const ESCALA: u32 = 2;
-const ICONO_PX: u32 = ICONO_LADO * ESCALA;
+pub const SCALE: u32 = 2;
+const ICON_PX: u32 = ICON_SIDE * SCALE;
 
 /// La celda de cada app: el icono arriba, el nombre debajo.
-const CELDA_ANCHO: u32 = 104;
-const CELDA_ALTO: u32 = 72;
+const CELL_W: u32 = 104;
+const CELL_H: u32 = 72;
 /// Donde empieza la rejilla. Debajo de la barra de titulo, con aire.
-const REJILLA_X: u32 = 24;
-const REJILLA_Y: u32 = 56;
+const GRID_X: u32 = 24;
+const GRID_Y: u32 = 56;
 
-const PIXELES: usize = (ICONO_LADO * ICONO_LADO) as usize;
+const PIXELS: usize = (ICON_SIDE * ICON_SIDE) as usize;
 
 /// Una app encontrada en `apps\`.
 pub struct App {
     /// `apps/doom.bex`, que es lo que se le pasa a `ejecutar`.
-    ruta: [u8; 24],
-    ruta_len: usize,
+    path: [u8; 24],
+    path_len: usize,
     /// `doom.bex`, para pintar debajo.
-    nombre: [u8; 12],
-    nombre_len: usize,
+    name: [u8; 12],
+    name_len: usize,
     /// Los pixeles del icono, si el paquete traia uno.
-    pixeles: [u32; PIXELES],
+    pixeles: [u32; PIXELS],
     tiene_icono: bool,
 }
 
 impl App {
-    const VACIA: Self = Self {
-        ruta: [0; 24],
-        ruta_len: 0,
-        nombre: [0; 12],
-        nombre_len: 0,
-        pixeles: [0; PIXELES],
+    const EMPTY: Self = Self {
+        path: [0; 24],
+        path_len: 0,
+        name: [0; 12],
+        name_len: 0,
+        pixeles: [0; PIXELS],
         tiene_icono: false,
     };
 
-    pub fn nombre(&self) -> &[u8] {
-        &self.nombre[..self.nombre_len]
+    pub fn name(&self) -> &[u8] {
+        &self.name[..self.name_len]
     }
 
-    pub fn ruta(&self) -> &[u8] {
-        &self.ruta[..self.ruta_len]
+    pub fn path(&self) -> &[u8] {
+        &self.path[..self.path_len]
     }
 }
 
-pub struct Lanzador {
+pub struct Launcher {
     apps: [App; MAX_APPS],
-    cuantas: usize,
+    count: usize,
 }
 
-impl Lanzador {
+impl Launcher {
     /// Recorre `apps\`, se queda con los `.bex` y le saca el icono a cada uno.
     ///
     /// Se hace UNA VEZ, al arrancar el escritorio: son varias lecturas de disco
     /// por app y ninguna cambia mientras la maquina esta encendida. Un
     /// escritorio que releyera el directorio en cada fotograma seria un
     /// escritorio que hace E/S sesenta veces por segundo para ensenar lo mismo.
-    pub fn nuevo() -> Self {
-        let mut yo = Self {
-            apps: [const { App::VACIA }; MAX_APPS],
-            cuantas: 0,
+    pub fn new() -> Self {
+        let mut me = Self {
+            apps: [const { App::EMPTY }; MAX_APPS],
+            count: 0,
         };
         let Ok(dir) = bmo::Directorio::open(b"apps") else {
             // No hay `apps\`: no es un fallo, es un disco sin aplicaciones.
-            return yo;
+            return me;
         };
-        while yo.cuantas < MAX_APPS {
+        while me.count < MAX_APPS {
             let Some(e) = dir.next() else { break };
             if e.es_dir {
                 continue;
             }
-            let mut nombre = [0u8; 12];
-            let n = e.legible(&mut nombre);
-            if n < 5 || !termina_en_bex(&nombre[..n]) {
+            let mut name = [0u8; 12];
+            let n = e.legible(&mut name);
+            if n < 5 || !ends_in_bex(&name[..n]) {
                 continue;
             }
-            let i = yo.cuantas;
-            let app = &mut yo.apps[i];
-            app.nombre[..n].copy_from_slice(&nombre[..n]);
-            app.nombre_len = n;
+            let i = me.count;
+            let app = &mut me.apps[i];
+            app.name[..n].copy_from_slice(&name[..n]);
+            app.name_len = n;
             // `apps/` + el nombre. Cabe siempre: 5 + 12 = 17 de 24.
-            app.ruta[..5].copy_from_slice(b"apps/");
-            app.ruta[5..5 + n].copy_from_slice(&nombre[..n]);
-            app.ruta_len = 5 + n;
-            app.tiene_icono = leer_icono(&app.ruta[..app.ruta_len], &mut app.pixeles);
-            yo.cuantas += 1;
+            app.path[..5].copy_from_slice(b"apps/");
+            app.path[5..5 + n].copy_from_slice(&name[..n]);
+            app.path_len = 5 + n;
+            app.tiene_icono = read_icon(&app.path[..app.path_len], &mut app.pixeles);
+            me.count += 1;
         }
-        yo
+        me
     }
 
-    pub fn cuantas(&self) -> usize {
-        self.cuantas
+    pub fn count(&self) -> usize {
+        self.count
     }
 
     pub fn app(&self, i: usize) -> Option<&App> {
-        if i < self.cuantas {
+        if i < self.count {
             Some(&self.apps[i])
         } else {
             None
@@ -167,85 +167,85 @@ impl Lanzador {
     /// apuntar a un cuadro de 32x32 con un raton es mas dificil de lo que
     /// parece, y el nombre de debajo forma parte de lo que uno cree estar
     /// pulsando.
-    pub fn app_en(&self, p: &bmo::Pantalla, x: u32, y: u32) -> Option<usize> {
-        let por_fila = self.por_fila(p);
-        if por_fila == 0 || y < REJILLA_Y || x < REJILLA_X {
+    pub fn app_at(&self, p: &bmo::Pantalla, x: u32, y: u32) -> Option<usize> {
+        let per_row = self.per_row(p);
+        if per_row == 0 || y < GRID_Y || x < GRID_X {
             return None;
         }
-        let col = (x - REJILLA_X) / CELDA_ANCHO;
-        let fila = (y - REJILLA_Y) / CELDA_ALTO;
-        if col >= por_fila {
+        let col = (x - GRID_X) / CELL_W;
+        let row = (y - GRID_Y) / CELL_H;
+        if col >= per_row {
             return None;
         }
-        let i = (fila * por_fila + col) as usize;
-        if i < self.cuantas {
+        let i = (row * per_row + col) as usize;
+        if i < self.count {
             Some(i)
         } else {
             None
         }
     }
 
-    fn por_fila(&self, p: &bmo::Pantalla) -> u32 {
-        if p.ancho <= REJILLA_X * 2 {
+    fn per_row(&self, p: &bmo::Pantalla) -> u32 {
+        if p.ancho <= GRID_X * 2 {
             return 0;
         }
-        ((p.ancho - REJILLA_X * 2) / CELDA_ANCHO).max(1)
+        ((p.ancho - GRID_X * 2) / CELL_W).max(1)
     }
 
-    fn celda(&self, p: &bmo::Pantalla, i: usize) -> (u32, u32) {
-        let por_fila = self.por_fila(p).max(1);
-        let col = (i as u32) % por_fila;
-        let fila = (i as u32) / por_fila;
-        (REJILLA_X + col * CELDA_ANCHO, REJILLA_Y + fila * CELDA_ALTO)
+    fn cell(&self, p: &bmo::Pantalla, i: usize) -> (u32, u32) {
+        let per_row = self.per_row(p).max(1);
+        let col = (i as u32) % per_row;
+        let row = (i as u32) / per_row;
+        (GRID_X + col * CELL_W, GRID_Y + row * CELL_H)
     }
 }
 
 /// Pinta la rejilla entera. Va DESPUES del fondo y antes de las ventanas.
-pub fn pintar(p: &bmo::Pantalla, l: &Lanzador) {
-    for i in 0..l.cuantas {
-        let (cx, cy) = l.celda(p, i);
+pub fn paint(p: &bmo::Pantalla, l: &Launcher) {
+    for i in 0..l.count {
+        let (cx, cy) = l.cell(p, i);
         let app = &l.apps[i];
         // El icono, centrado en la celda.
-        let ix = cx + (CELDA_ANCHO - ICONO_PX) / 2;
+        let ix = cx + (CELL_W - ICON_PX) / 2;
         if app.tiene_icono {
-            pintar_pixeles(p, ix, cy, &app.pixeles);
+            paint_pixels(p, ix, cy, &app.pixeles);
         } else {
-            pintar_por_defecto(p, ix, cy, app.nombre());
+            paint_default(p, ix, cy, app.name());
         }
         // El nombre debajo, centrado y SIN el `.bex`: la extension es la misma
         // en todos, asi que ocupa sitio y no distingue nada.
-        let visible = sin_extension(app.nombre());
-        let ancho = visible.len() as u32 * 8;
-        let tx = if ancho < CELDA_ANCHO {
-            cx + (CELDA_ANCHO - ancho) / 2
+        let visible = without_extension(app.name());
+        let width = visible.len() as u32 * 8;
+        let tx = if width < CELL_W {
+            cx + (CELL_W - width) / 2
         } else {
             cx
         };
-        p.texto_bytes(tx, cy + ICONO_PX + 6, visible, TEXTO);
+        p.texto_bytes(tx, cy + ICON_PX + 6, visible, INK);
     }
 }
 
 /// El area que ocupa la rejilla, para que quien repinte el fondo sepa que
 /// tiene que volver a pintar esto encima.
-pub fn area(p: &bmo::Pantalla, l: &Lanzador) -> (u32, u32, u32, u32) {
-    if l.cuantas == 0 {
+pub fn area(p: &bmo::Pantalla, l: &Launcher) -> (u32, u32, u32, u32) {
+    if l.count == 0 {
         return (0, 0, 0, 0);
     }
-    let por_fila = l.por_fila(p).max(1);
-    let filas = ((l.cuantas as u32) + por_fila - 1) / por_fila;
-    let cols = (l.cuantas as u32).min(por_fila);
+    let per_row = l.per_row(p).max(1);
+    let rows = ((l.count as u32) + per_row - 1) / per_row;
+    let cols = (l.count as u32).min(per_row);
     (
-        REJILLA_X,
-        REJILLA_Y,
-        cols * CELDA_ANCHO,
-        filas * CELDA_ALTO,
+        GRID_X,
+        GRID_Y,
+        cols * CELL_W,
+        rows * CELL_H,
     )
 }
 
-fn pintar_pixeles(p: &bmo::Pantalla, x: u32, y: u32, px: &[u32; PIXELES]) {
-    for fy in 0..ICONO_LADO {
-        for fx in 0..ICONO_LADO {
-            let c = px[(fy * ICONO_LADO + fx) as usize];
+fn paint_pixels(p: &bmo::Pantalla, x: u32, y: u32, px: &[u32; PIXELS]) {
+    for fy in 0..ICON_SIDE {
+        for fx in 0..ICON_SIDE {
+            let c = px[(fy * ICON_SIDE + fx) as usize];
             // ** El canal alto a cero = TRANSPARENTE, y se salta.
             //
             // Sin esto un icono redondo se pinta dentro de su cuadro negro y el
@@ -254,22 +254,22 @@ fn pintar_pixeles(p: &bmo::Pantalla, x: u32, y: u32, px: &[u32; PIXELES]) {
             if c >> 24 == 0 {
                 continue;
             }
-            p.rect(x + fx * ESCALA, y + fy * ESCALA, ESCALA, ESCALA, c & 0x00FF_FFFF);
+            p.rect(x + fx * SCALE, y + fy * SCALE, SCALE, SCALE, c & 0x00FF_FFFF);
         }
     }
 }
 
 /// El icono de quien no trae icono: un cuadro de color con su inicial.
-fn pintar_por_defecto(p: &bmo::Pantalla, x: u32, y: u32, nombre: &[u8]) {
-    let color = color_de(nombre);
-    p.rect(x, y, ICONO_PX, ICONO_PX, color);
+fn paint_default(p: &bmo::Pantalla, x: u32, y: u32, name: &[u8]) {
+    let color = color_from(name);
+    p.rect(x, y, ICON_PX, ICON_PX, color);
     // Un borde mas claro arriba y mas oscuro abajo: dos rectangulos y el cuadro
     // deja de parecer un agujero.
-    p.rect(x, y, ICONO_PX, 1, aclarar(color));
-    p.rect(x, y + ICONO_PX - 1, ICONO_PX, 1, FONDO_ARRIBA);
-    let inicial = mayuscula(nombre.first().copied().unwrap_or(b'?'));
+    p.rect(x, y, ICON_PX, 1, lighten(color));
+    p.rect(x, y + ICON_PX - 1, ICON_PX, 1, BG_TOP);
+    let initial = upper(name.first().copied().unwrap_or(b'?'));
     // `glifo_escala` a 2 mide 16x16; centrarlo es restar la mitad.
-    p.glifo_escala(x + ICONO_PX / 2 - 8, y + ICONO_PX / 2 - 8, inicial, 0x00FF_FFFF, 2);
+    p.glifo_escala(x + ICON_PX / 2 - 8, y + ICON_PX / 2 - 8, initial, 0x00FF_FFFF, 2);
 }
 
 /// Un color estable a partir del nombre.
@@ -278,9 +278,9 @@ fn pintar_por_defecto(p: &bmo::Pantalla, x: u32, y: u32, nombre: &[u8]) {
 /// mismo -- que es todo lo que se le pide. Se fija el brillo para que la
 /// inicial blanca se lea encima: un hash suelto produce amarillos donde no se
 /// ve nada.
-fn color_de(nombre: &[u8]) -> u32 {
+fn color_from(name: &[u8]) -> u32 {
     let mut h: u32 = 2166136261;
-    for &b in nombre {
+    for &b in name {
         h ^= b as u32;
         h = h.wrapping_mul(16777619);
     }
@@ -292,14 +292,14 @@ fn color_de(nombre: &[u8]) -> u32 {
     (r << 16) | (g << 8) | b
 }
 
-fn aclarar(c: u32) -> u32 {
+fn lighten(c: u32) -> u32 {
     let r = (((c >> 16) & 0xFF) + 0x30).min(0xFF);
     let g = (((c >> 8) & 0xFF) + 0x30).min(0xFF);
     let b = ((c & 0xFF) + 0x30).min(0xFF);
     (r << 16) | (g << 8) | b
 }
 
-fn mayuscula(b: u8) -> u8 {
+fn upper(b: u8) -> u8 {
     if b.is_ascii_lowercase() {
         b - 32
     } else {
@@ -307,12 +307,12 @@ fn mayuscula(b: u8) -> u8 {
     }
 }
 
-fn termina_en_bex(n: &[u8]) -> bool {
+fn ends_in_bex(n: &[u8]) -> bool {
     let l = n.len();
     l >= 4 && n[l - 4..].eq_ignore_ascii_case(b".bex")
 }
 
-fn sin_extension(n: &[u8]) -> &[u8] {
+fn without_extension(n: &[u8]) -> &[u8] {
     match n.iter().rposition(|&b| b == b'.') {
         Some(i) => &n[..i],
         None => n,
@@ -326,19 +326,19 @@ fn sin_extension(n: &[u8]) -> &[u8] {
 // Dos lectores del mismo formato es lo que obliga a que el formato este escrito
 // y no solo implementado.
 //
-// Los offsets salen de `bef/header.rs`, `bef/sections.rs` y `bef/recursos.rs`.
+// Los offsets salen de `bef/header.rs`, `bef/sections.rs` y `bef/resources.rs`.
 // Si alguno cambia, esto deja de encontrar iconos -- y eso es visible al
 // primer arranque, que es lo mejor que le puede pasar a una divergencia.
 
-const SECCION_RESOURCES: u8 = 0x0B;
-const ENTRADA_SECCION: usize = 48;
-const CABECERA_BRES: usize = 16;
-const ENTRADA_BRES: usize = 64;
+const SECTION_RESOURCES: u8 = 0x0B;
+const SPLASH_SECTION: usize = 48;
+const HEADER_BRES: usize = 16;
+const SPLASH_BRES: usize = 64;
 
 /// Saca el recurso `icono` de un `.bex` y lo descifra como BICO.
 /// `true` = habia icono y esta en `px`.
-fn leer_icono(ruta: &[u8], px: &mut [u32; PIXELES]) -> bool {
-    let Ok(f) = bmo::Archivo::leer_de(ruta) else {
+fn read_icon(path: &[u8], px: &mut [u32; PIXELS]) -> bool {
+    let Ok(f) = bmo::Archivo::leer_de(path) else {
         return false;
     };
     // -- La cabecera del BEF: cuantas secciones y donde esta su tabla --
@@ -349,23 +349,23 @@ fn leer_icono(ruta: &[u8], px: &mut [u32; PIXELES]) -> bool {
     if &cab[0..4] != b"BEF1" {
         return false;
     }
-    let tabla = leer_u64(&cab, 32) as u64;
-    let cuantas = leer_u32(&cab, 40) as usize;
-    if cuantas == 0 || cuantas > 255 {
+    let lookup = read_u64(&cab, 32) as u64;
+    let count = read_u32(&cab, 40) as usize;
+    if count == 0 || count > 255 {
         return false;
     }
     // -- Buscar la seccion de recursos --
     let mut sec_off = 0u64;
     let mut sec_len = 0u64;
-    for i in 0..cuantas {
-        f.saltar(tabla + (i * ENTRADA_SECCION) as u64);
-        let mut e = [0u8; ENTRADA_SECCION];
-        if f.read(&mut e) < ENTRADA_SECCION {
+    for i in 0..count {
+        f.saltar(lookup + (i * SPLASH_SECTION) as u64);
+        let mut e = [0u8; SPLASH_SECTION];
+        if f.read(&mut e) < SPLASH_SECTION {
             return false;
         }
-        if e[0] == SECCION_RESOURCES {
-            sec_off = leer_u64(&e, 8);
-            sec_len = leer_u64(&e, 16);
+        if e[0] == SECTION_RESOURCES {
+            sec_off = read_u64(&e, 8);
+            sec_len = read_u64(&e, 16);
             break;
         }
     }
@@ -374,34 +374,34 @@ fn leer_icono(ruta: &[u8], px: &mut [u32; PIXELES]) -> bool {
     }
     // -- El indice BRES --
     f.saltar(sec_off);
-    let mut bres = [0u8; CABECERA_BRES];
-    if f.read(&mut bres) < CABECERA_BRES || &bres[0..4] != b"BRES" {
+    let mut bres = [0u8; HEADER_BRES];
+    if f.read(&mut bres) < HEADER_BRES || &bres[0..4] != b"BRES" {
         return false;
     }
-    let recursos = leer_u32(&bres, 4) as usize;
-    for i in 0..recursos.min(64) {
-        f.saltar(sec_off + (CABECERA_BRES + i * ENTRADA_BRES) as u64);
-        let mut e = [0u8; ENTRADA_BRES];
-        if f.read(&mut e) < ENTRADA_BRES {
+    let resources = read_u32(&bres, 4) as usize;
+    for i in 0..resources.min(64) {
+        f.saltar(sec_off + (HEADER_BRES + i * SPLASH_BRES) as u64);
+        let mut e = [0u8; SPLASH_BRES];
+        if f.read(&mut e) < SPLASH_BRES {
             return false;
         }
-        let largo = e[16] as usize;
-        if largo > 47 || &e[17..17 + largo] != b"icono" {
+        let length = e[16] as usize;
+        if length > 47 || &e[17..17 + length] != b"icono" {
             continue;
         }
         // El offset del recurso es RELATIVO A LA SECCION, no al fichero: por eso
         // se suma `sec_off`. Un offset absoluto habria que reescribirlo cada vez
         // que el `.bex` se vuelve a emitir con otra disposicion.
-        let dato = sec_off + leer_u64(&e, 0);
-        let tam = leer_u64(&e, 8) as usize;
-        return leer_bico(&f, dato, tam, px);
+        let datum = sec_off + read_u64(&e, 0);
+        let tam = read_u64(&e, 8) as usize;
+        return read_bico(&f, datum, tam, px);
     }
     false
 }
 
-fn leer_bico(f: &bmo::Archivo, off: u64, tam: usize, px: &mut [u32; PIXELES]) -> bool {
+fn read_bico(f: &bmo::Archivo, off: u64, tam: usize, px: &mut [u32; PIXELS]) -> bool {
     const CAB: usize = 8;
-    if tam < CAB + PIXELES * 4 {
+    if tam < CAB + PIXELS * 4 {
         return false;
     }
     f.saltar(off);
@@ -412,28 +412,28 @@ fn leer_bico(f: &bmo::Archivo, off: u64, tam: usize, px: &mut [u32; PIXELES]) ->
     // Solo se acepta el tamano que este escritorio sabe pintar. Escalar un
     // icono de otro tamano es una decision de aspecto que no toca aqui, y
     // aceptarlo a medias daria iconos deformes sin decir por que.
-    if leer_u16(&cab, 4) as u32 != ICONO_LADO || leer_u16(&cab, 6) as u32 != ICONO_LADO {
+    if read_u16(&cab, 4) as u32 != ICON_SIDE || read_u16(&cab, 6) as u32 != ICON_SIDE {
         return false;
     }
-    let mut bytes = [0u8; PIXELES * 4];
+    let mut bytes = [0u8; PIXELS * 4];
     if f.read(&mut bytes) < bytes.len() {
         return false;
     }
-    for i in 0..PIXELES {
-        px[i] = leer_u32(&bytes, i * 4);
+    for i in 0..PIXELS {
+        px[i] = read_u32(&bytes, i * 4);
     }
     true
 }
 
-fn leer_u16(b: &[u8], o: usize) -> u16 {
+fn read_u16(b: &[u8], o: usize) -> u16 {
     u16::from_le_bytes([b[o], b[o + 1]])
 }
 
-fn leer_u32(b: &[u8], o: usize) -> u32 {
+fn read_u32(b: &[u8], o: usize) -> u32 {
     u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
 }
 
-fn leer_u64(b: &[u8], o: usize) -> u64 {
+fn read_u64(b: &[u8], o: usize) -> u64 {
     let mut v = [0u8; 8];
     v.copy_from_slice(&b[o..o + 8]);
     u64::from_le_bytes(v)

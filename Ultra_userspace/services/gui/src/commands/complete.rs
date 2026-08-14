@@ -2,39 +2,39 @@
 
 use bmo_userland as bmo;
 
-use crate::escena::salida::Salida;
-use crate::escena::RUTA_MAX;
-use crate::texto::es_punto;
+use crate::scene::output::Output;
+use crate::scene::PATH_MAX;
+use crate::text::is_dot_entry;
 
-pub(crate) fn complete(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida) -> usize {
+pub(crate) fn complete(path: &mut [u8; PATH_MAX], n: usize, output: &mut Output) -> usize {
     // El ultimo token: lo que hay tras el ultimo espacio. Asi `corre app<TAB>`
     // completa la ruta y no el verbo.
-    let inicio = ruta[..n].iter().rposition(|&c| c == b' ').map_or(0, |i| i + 1);
+    let start = path[..n].iter().rposition(|&c| c == b' ').map_or(0, |i| i + 1);
     // * La carpeta y el prefijo se COPIAN a locales antes de tocar nada.
-    // Tomarlos prestados de `ruta` y luego escribir en `ruta` es exactamente
+    // Tomarlos prestados de `path` y luego escribir en `path` es exactamente
     // lo que el prestamista de Rust no deja -- y hace bien: escribir sobre lo
     // que estas leyendo es como se corrompe un buffer sin enterarse.
-    let mut dir = [0u8; RUTA_MAX];
+    let mut dir = [0u8; PATH_MAX];
     let mut dir_n = 0usize;
-    let mut prefijo = [0u8; 12];
-    let mut pref_n = 0usize;
-    let pref_ini;
+    let mut prefix = [0u8; 12];
+    let mut prefix_n = 0usize;
+    let prefix_start;
     {
-        let token = &ruta[inicio..n];
-        let corte = token.iter().rposition(|&c| c == b'/' || c == b'\\');
-        let (d0, pi) = match corte {
+        let token = &path[start..n];
+        let cut = token.iter().rposition(|&c| c == b'/' || c == b'\\');
+        let (d0, pi) = match cut {
             Some(i) => (&token[..i], i + 1),
             None => (&token[0..0], 0),
         };
-        pref_ini = pi;
-        dir_n = d0.len().min(RUTA_MAX);
+        prefix_start = pi;
+        dir_n = d0.len().min(PATH_MAX);
         dir[..dir_n].copy_from_slice(&d0[..dir_n]);
-        let p0 = &token[pref_ini..];
-        pref_n = p0.len().min(prefijo.len());
-        prefijo[..pref_n].copy_from_slice(&p0[..pref_n]);
+        let p0 = &token[prefix_start..];
+        prefix_n = p0.len().min(prefix.len());
+        prefix[..prefix_n].copy_from_slice(&p0[..prefix_n]);
     }
     let dir = &dir[..dir_n];
-    let prefijo = &prefijo[..pref_n];
+    let prefix = &prefix[..prefix_n];
 
     let d = match bmo::Directorio::open(dir) {
         Ok(d) => d,
@@ -42,84 +42,84 @@ pub(crate) fn complete(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida)
     };
 
     let baja = |c: u8| if c.is_ascii_uppercase() { c + 32 } else { c };
-    let mut cuantos = 0usize;
-    let mut comun = [0u8; 12];
-    let mut comun_n = 0usize;
-    let mut unico_es_dir = false;
+    let mut how_many = 0usize;
+    let mut common = [0u8; 12];
+    let mut common_n = 0usize;
+    let mut only_is_dir = false;
     // Los candidatos se listan DESPUES, en una segunda pasada: guardarlos
     // todos aqui pediria un vector, y sin `alloc` eso es un array con un tope
     // inventado. Recorrer dos veces cuesta microsegundos y no inventa topes.
-    let mut vueltas = 0u32;
-    while vueltas < 256 {
+    let mut frames = 0u32;
+    while frames < 256 {
         let e = match d.next() { Some(e) => e, None => break };
-        vueltas += 1;
+        frames += 1;
         let mut nom = [0u8; 12];
-        let largo = e.legible(&mut nom);
+        let length = e.legible(&mut nom);
         // * `.` y `..` FUERA. Eran el motivo de que el TAB no completara
         // NUNCA dentro de una carpeta: entran como candidatos, y el prefijo
         // comun de `.`, `..` y `gui.bex` es la cadena vacia. El TAB listaba
         // todo y no avanzaba ni una letra, que parecia "no busca referencias"
         // cuando lo que hacia era buscarlas y anularse solo.
-        if es_punto(&nom[..largo]) { continue; }
-        if largo < prefijo.len() { continue; }
-        let mut cuadra = true;
-        for k in 0..prefijo.len() {
-            if baja(nom[k]) != baja(prefijo[k]) { cuadra = false; break; }
+        if is_dot_entry(&nom[..length]) { continue; }
+        if length < prefix.len() { continue; }
+        let mut matches = true;
+        for k in 0..prefix.len() {
+            if baja(nom[k]) != baja(prefix[k]) { matches = false; break; }
         }
-        if !cuadra { continue; }
-        if cuantos == 0 {
-            comun[..largo].copy_from_slice(&nom[..largo]);
-            comun_n = largo;
-            unico_es_dir = e.es_dir;
+        if !matches { continue; }
+        if how_many == 0 {
+            common[..length].copy_from_slice(&nom[..length]);
+            common_n = length;
+            only_is_dir = e.es_dir;
         } else {
             // Recortar al prefijo comun con lo que llevabamos.
             let mut k = 0usize;
-            while k < comun_n && k < largo && baja(comun[k]) == baja(nom[k]) { k += 1; }
-            comun_n = k;
-            unico_es_dir = false;
+            while k < common_n && k < length && baja(common[k]) == baja(nom[k]) { k += 1; }
+            common_n = k;
+            only_is_dir = false;
         }
-        cuantos += 1;
+        how_many += 1;
     }
 
-    if cuantos == 0 {
+    if how_many == 0 {
         return n;
     }
 
     // Escribir el prefijo comun en el sitio del que habia.
-    let mut fin = inicio + pref_ini;
+    let mut end = start + prefix_start;
     let mut k = 0usize;
-    while k < comun_n && fin < RUTA_MAX {
-        ruta[fin] = comun[k];
-        fin += 1;
+    while k < common_n && end < PATH_MAX {
+        path[end] = common[k];
+        end += 1;
         k += 1;
     }
-    if cuantos == 1 && unico_es_dir && fin < RUTA_MAX {
-        ruta[fin] = b'/';
-        fin += 1;
+    if how_many == 1 && only_is_dir && end < PATH_MAX {
+        path[end] = b'/';
+        end += 1;
     }
 
     // Con mas de uno, ENSENAR lo que hay. Es la diferencia con ciclar.
-    if cuantos > 1 {
-        let d2 = match bmo::Directorio::open(dir) { Ok(d) => d, Err(_) => return fin };
-        let mut vueltas = 0u32;
-        while vueltas < 256 {
+    if how_many > 1 {
+        let d2 = match bmo::Directorio::open(dir) { Ok(d) => d, Err(_) => return end };
+        let mut frames = 0u32;
+        while frames < 256 {
             let e = match d2.next() { Some(e) => e, None => break };
-            vueltas += 1;
+            frames += 1;
             let mut nom = [0u8; 12];
-            let largo = e.legible(&mut nom);
-            if largo < prefijo.len() { continue; }
-            let mut cuadra = true;
-            for k in 0..prefijo.len() {
-                if baja(nom[k]) != baja(prefijo[k]) { cuadra = false; break; }
+            let length = e.legible(&mut nom);
+            if length < prefix.len() { continue; }
+            let mut matches = true;
+            for k in 0..prefix.len() {
+                if baja(nom[k]) != baja(prefix[k]) { matches = false; break; }
             }
-            if !cuadra { continue; }
-            salida.texto(b"  ");
-            salida.texto(&nom[..largo]);
-            if e.es_dir { salida.byte(b'/'); }
-            salida.byte(b'\n');
+            if !matches { continue; }
+            output.text(b"  ");
+            output.text(&nom[..length]);
+            if e.es_dir { output.byte(b'/'); }
+            output.byte(b'\n');
         }
     }
-    fin
+    end
 }
 
 /// El motivo, en una linea que dice que hacer.
@@ -127,7 +127,7 @@ pub(crate) fn complete(ruta: &mut [u8; RUTA_MAX], n: usize, salida: &mut Salida)
 /// Antes los siete casos se aplanaban en "no puedo crear ahi (nombre 8.3?
 /// carpeta?)" -- un mensaje que le pasa la pregunta al usuario en vez de
 /// contestarla. El kernel SI sabe cual de los dos fue.
-pub(crate) fn motivo_archivo(e: u32) -> &'static [u8] {
+pub(crate) fn file_error_reason(e: u32) -> &'static [u8] {
     match e {
         bmo::ERROR_ARCH_CARPETA => b"esa carpeta no existe.",
         bmo::ERROR_ARCH_ES_CARPETA => b"eso es una carpeta, no un archivo: prueba ls.",
