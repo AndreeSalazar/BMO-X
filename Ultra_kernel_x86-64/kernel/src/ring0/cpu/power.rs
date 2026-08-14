@@ -54,7 +54,7 @@ static mut ULTIMO: (u64, u64) = (0, 0);
 
 /// **Pregunta si este CPU sabe decir lo que gasta, y se apunta la respuesta.**
 ///
-/// Una vez, en el arranque. Ver [`crate::ring0::cpu::frecuencia::init`]: mismo
+/// Una vez, en el arranque. Ver [`crate::ring0::cpu::frequency::init`]: mismo
 /// motivo, un panel que se repinta no puede costar una comprobacion cada vez.
 pub fn init() {
     let Some(leer) = lector() else {
@@ -135,7 +135,7 @@ pub fn medir() -> (u64, u64) {
 ///    milivatios   = microjulios / milisegundos
 /// ```
 ///
-/// El orden importa, y es el mismo cuidado que en `frecuencia::medir`:
+/// El orden importa, y es el mismo cuidado que en `frequency::medir`:
 /// multiplicar por un millon ANTES de desplazar. Al reves, `incrementos >> 16`
 /// vale 0 para cualquier consumo normal y el resultado seria siempre cero --
 /// pareciendo un CPU apagado en vez de una division mal puesta.

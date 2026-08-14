@@ -37,13 +37,13 @@
 //! comando y no la maquina al encenderla.
 
 pub mod lapic;
-pub mod mapa;
+pub mod map;
 /// El reparto de trabajo. Sin esto, los nucleos despiertos no sirven de nada.
-pub mod obra;
+pub mod crew;
 pub mod tramp;
 
 use core::sync::atomic::Ordering;
-use mapa::*;
+use map::*;
 
 /// Despierta a los demas nucleos y cuenta cuantos contestan.
 ///
@@ -143,7 +143,7 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
         // down when they stop working, and it should not: coming out of reset
         // is not the same as doing something. The fix is not a different count,
         // it is **saying the other half**.
-        if obra::parados() {
+        if crew::parados() {
             crate::ring0::cabina::warn(
                 "smp",
                 "los obreros estan PARADOS: en pie no es trabajando",
@@ -155,7 +155,7 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
 
     // ** WAKING SOMEBODY MEANS WANTING THEM TO WORK.
     //
-    // `obra::reanudar()` existed and **nobody called it** -- pattern 24, again.
+    // `crew::reanudar()` existed and **nobody called it** -- pattern 24, again.
     // Consequence, and it was not theoretical: after a `smp stop`, `smp all`
     // would re-send INIT+SIPI, the APs would come back out of reset, report
     // themselves alive, enter `obrero()` -- and hit `if PARAR` on their first
@@ -164,7 +164,7 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
     //
     // It goes HERE and not in the shell so that any caller gets it: whoever asks
     // for cores wants cores, and a wake that leaves them parked is not a wake.
-    obra::reanudar();
+    crew::reanudar();
 
     let pedidos = cuantos.min(esperados);
     tramp::VIVOS.store(0, Ordering::SeqCst);
@@ -324,7 +324,7 @@ pub enum Estado {
     Maestro,
     /// En pie y aceptando faenas. **Gira** mientras espera: ver el coste.
     Obrero,
-    /// Se le mando parar. Sin IPI **no vuelve**: ver `obra::parar`.
+    /// Se le mando parar. Sin IPI **no vuelve**: ver `crew::parar`.
     Dormido,
     /// Se le llamo y no contesto. El fallo esta en el trampolin o en su pila.
     Ausente,
@@ -393,7 +393,7 @@ pub fn estado_de(id: u32) -> Estado {
     if mascara & (1u32 << id) == 0 {
         return Estado::Ausente;
     }
-    if obra::parados() {
+    if crew::parados() {
         Estado::Dormido
     } else {
         Estado::Obrero
@@ -458,7 +458,7 @@ pub fn tipo_de(id: u32) -> &'static str {
 /// Existe para que el dia que entre `MWAIT` la mejora se pueda **medir** en vez
 /// de suponerla. Ver el apartado 5 de `docs/AXION_MAESTRO.md`.
 pub fn girando() -> u32 {
-    if obra::parados() {
+    if crew::parados() {
         0
     } else {
         alive().0

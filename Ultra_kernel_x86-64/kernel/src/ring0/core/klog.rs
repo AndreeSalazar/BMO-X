@@ -148,7 +148,7 @@ pub fn total() -> u64 {
 /// obligaria a saber cuantas hay antes de poder pedir ninguna.
 ///
 /// `trozo` cuenta de 8 en 8. Fuera del texto devuelve 0, y **el cero es el
-/// final** -- igual que en `informe::texto` y por el mismo motivo: pasar un
+/// final** -- igual que en `report::texto` y por el mismo motivo: pasar un
 /// puntero de Ring 3 obligaria al kernel a validar el rango entero contra el
 /// espacio del llamante, y esa infraestructura no existe.
 ///

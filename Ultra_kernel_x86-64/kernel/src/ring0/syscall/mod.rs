@@ -92,13 +92,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // por el panel sin cambiar una linea.
         TASK_OP_CONSOLE_WRITE => {
             let pid = scheduler::current_pid();
-            match crate::ring0::obj::consola::output_of(pid) {
+            match crate::ring0::obj::console::output_of(pid) {
                 Some(idx) => {
                     // Desempaquetar aqui: el anillo guarda bytes, no palabras.
                     // El cero corta, igual que en la consola del kernel.
                     let w = arg0.to_le_bytes();
                     let n = w.iter().position(|&b| b == 0).unwrap_or(8);
-                    crate::ring0::obj::consola::write(idx, &w[..n]);
+                    crate::ring0::obj::console::write(idx, &w[..n]);
                 }
                 None => crate::ring0::uconsole::write_packed(arg0),
             }
@@ -107,8 +107,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_CONSOLE_READ => {
             let _ = arg0;
             let pid = scheduler::current_pid();
-            match crate::ring0::obj::consola::output_of(pid) {
-                Some(idx) => BmoStatus::ok_value(crate::ring0::obj::consola::read_entry(idx)),
+            match crate::ring0::obj::console::output_of(pid) {
+                Some(idx) => BmoStatus::ok_value(crate::ring0::obj::console::read_entry(idx)),
                 // Sin consola asignada no hay de donde leer. Cero = "nada", no
                 // error: un programa que sondea no debe morir por preguntar.
                 None => BmoStatus::ok_value(0),
@@ -118,7 +118,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::directorio::open(pid, ruta) {
+            match crate::ring0::obj::directory::open(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -129,7 +129,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::archivo::open(pid, ruta) {
+            match crate::ring0::obj::file::open(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -139,10 +139,10 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             // La ruta la sabe el KERNEL, no el programa. Si no la recuerda --los
             // binarios que el propio kernel embebe no vienen de ninguna-- se
             // dice que no, en vez de abrir cualquier cosa.
-            let Some(ruta) = crate::ring0::task::paquete::ruta_de(pid) else {
+            let Some(ruta) = crate::ring0::task::package::ruta_de(pid) else {
                 return BmoStatus::err(2);
             };
-            match crate::ring0::obj::archivo::open(pid, ruta) {
+            match crate::ring0::obj::file::open(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -151,7 +151,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::archivo::abrir_asinc(pid, ruta) {
+            match crate::ring0::obj::file::abrir_asinc(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -162,7 +162,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             // porque `ofrecer` recibe un tid. Y si el padre ya murio, `tid_de`
             // dice `None` y aqui sale un 0 -- la misma respuesta que "no tengo
             // padre", que es tambien la misma decision para quien pregunta.
-            let tid = crate::ring0::task::familia::padre_de(pid)
+            let tid = crate::ring0::task::family::padre_de(pid)
                 .and_then(scheduler::tid_de)
                 .unwrap_or(0);
             BmoStatus::ok_value(tid as u64)
@@ -171,14 +171,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let _ = arg0;
             let pid = scheduler::current_pid();
             let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::archivo::create(pid, ruta) {
+            match crate::ring0::obj::file::create(pid, ruta) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
         }
         TASK_OP_CONSOLA_CREAR => {
             let _ = arg0;
-            match crate::ring0::obj::consola::create(scheduler::current_pid()) {
+            match crate::ring0::obj::console::create(scheduler::current_pid()) {
                 Ok(handle) => BmoStatus::ok_value(handle),
                 Err(code) => BmoStatus::err(code),
             }
@@ -291,7 +291,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // el syscall sigue cargado el espacio del llamante, que es justo donde
         // hay que mapear.
         TASK_OP_MEMORIA_PEDIR => {
-            match crate::ring0::obj::memoria::request(
+            match crate::ring0::obj::memory::request(
                 scheduler::current_pid(),
                 crate::ring0::mm::vmm::read_cr3(),
                 arg0,
@@ -316,10 +316,10 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             BmoStatus::ok_value(0)
         }
         TASK_OP_INFO => {
-            BmoStatus::ok_value(crate::ring0::core::informe::campo(arg0))
+            BmoStatus::ok_value(crate::ring0::core::report::campo(arg0))
         }
         TASK_OP_INFO_TEXTO => {
-            BmoStatus::ok_value(crate::ring0::core::informe::texto(arg0, arg1))
+            BmoStatus::ok_value(crate::ring0::core::report::texto(arg0, arg1))
         }
         TASK_OP_KLOG_INFO => {
             use crate::ring0::core::klog;
@@ -337,11 +337,11 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // de nadie. Es la parte "meta" del metakernel puesta en una fila de
         // tabla -- el sistema informa sobre si mismo.
         TASK_OP_AUTOPSIA_INFO => {
-            use crate::ring0::core::autopsia;
+            use crate::ring0::core::autopsy;
             BmoStatus::ok_value(match arg0 {
-                0 => autopsia::total(),
-                1 => autopsia::disponibles(),
-                2 => autopsia::renglones(arg1),
+                0 => autopsy::total(),
+                1 => autopsy::disponibles(),
+                2 => autopsy::renglones(arg1),
                 _ => 0,
             })
         }
@@ -349,7 +349,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             // `arg0` trae los dos indices: informe arriba, fila abajo.
             let informe = arg0 >> 32;
             let fila = arg0 & 0xFFFF_FFFF;
-            BmoStatus::ok_value(crate::ring0::core::autopsia::texto(informe, fila, arg1))
+            BmoStatus::ok_value(crate::ring0::core::autopsy::texto(informe, fila, arg1))
         }
         // * Despertar nucleos DESDE Ring 3. Es la unica operacion de esta tabla
         // que cambia el estado del hardware en vez de contestar una pregunta, y
@@ -369,12 +369,12 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             BmoStatus::ok_value(hubo as u64)
         }
         TASK_OP_SMP_DESPERTAR => {
-            use crate::ring0::plat::smp::{self, obra};
+            use crate::ring0::plat::smp::{self, crew};
             let cuantos = if arg0 > u32::MAX as u64 { u32::MAX } else { arg0 as u32 };
             match arg1 {
                 // Desactivar: los obreros vuelven a `hlt` y ahi se quedan.
                 1 => {
-                    obra::parar();
+                    crew::parar();
                     crate::ring0::core::dashboard::dashboard_log("[smp] obreros PARADOS");
                     BmoStatus::ok_value(0)
                 }
@@ -383,7 +383,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 // se puede mandar entera. El detalle en crudo va a CABINA.
                 2 => {
                     let (alive, _) = smp::alive();
-                    let (uno, todos, partes) = obra::prueba(alive);
+                    let (uno, todos, partes) = crew::prueba(alive);
                     crate::ring0::cabina::info("smp", "ticks con UN nucleo", uno);
                     crate::ring0::cabina::info("smp", "ticks con todos", todos);
                     crate::ring0::cabina::info("smp", "partes que corrieron", partes as u64);
@@ -395,7 +395,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     // sitios donde se puede romper -- entrar al bucle, ver la
                     // ronda, terminar la faena-- y la diferencia entre dos
                     // consecutivos senala el tramo culpable.
-                    let (entraron, vieron, hechos) = obra::testigos();
+                    let (entraron, vieron, hechos) = crew::testigos();
                     crate::ring0::cabina::info("smp", "obreros que ENTRARON al bucle", entraron as u64);
                     crate::ring0::cabina::info("smp", "obreros que VIERON la ronda", vieron as u64);
                     crate::ring0::cabina::info("smp", "obreros que TERMINARON", hechos as u64);
@@ -405,8 +405,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     // con los once obreros entrando, viendo y terminando. Los
                     // testigos decian que el reparto iba bien y el numero decia
                     // que no, y **nadie sospecho del reloj**. Ahora lo dice el.
-                    crate::ring0::cabina::info("smp", "el hash que dejo la faena", obra::suma_testigo());
-                    if !obra::medida_creible(uno) {
+                    crate::ring0::cabina::info("smp", "el hash que dejo la faena", crew::suma_testigo());
+                    if !crew::medida_creible(uno) {
                         crate::ring0::cabina::fault(
                             "smp",
                             "esa medida es IMPOSIBLE para las vueltas que son: el cronometro miente, no el reparto",
@@ -517,7 +517,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     // seguido de `smp` contestaba `12 de 12`, que es cierto y se
                     // lee como "el stop no hizo nada". Ring 3 pinta la mitad que
                     // faltaba; el kernel no opina, solo dice el hecho.
-                    let parados = if obra::parados() { 1u64 << 63 } else { 0 };
+                    let parados = if crew::parados() { 1u64 << 63 } else { 0 };
                     BmoStatus::ok_value(parados | ((alive as u64) << 32) | esperados as u64)
                 }
             }
@@ -606,22 +606,22 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     Err((code, flags)) => return cap_err((code, flags)),
                 }
             };
-            let informe = crate::ring0::task::lanzar::ruta(ruta_tomar(pid));
+            let informe = crate::ring0::task::launch::ruta(ruta_tomar(pid));
             match informe.res {
                 Ok(tid) => {
                     if let (Some(idx), Some(hijo)) = (consola_idx, informe.pid) {
-                        crate::ring0::obj::consola::assign_output(hijo, idx);
+                        crate::ring0::obj::console::assign_output(hijo, idx);
                     }
                     // * QUIEN lo lanzo, para que el hijo pueda ofrecerle su
                     // superficie. Se apunta AQUI y no dentro de `lanzar.rs`
-                    // --donde vive el hermano `paquete::recordar`-- porque
-                    // `lanzar::ruta` lo comparten este brazo y el shell del
+                    // --donde vive el hermano `package::recordar`-- porque
+                    // `launch::ruta` lo comparten este brazo y el shell del
                     // kernel: mirando `current_pid()` desde dentro, un `run`
                     // tecleado por el puerto serie le pondria de padre a la
                     // tarea que estuviera corriendo, tipicamente el compositor.
                     // Aqui el padre es quien hizo la llamada, sin adivinar.
                     if let Some(hijo) = informe.pid {
-                        crate::ring0::task::familia::recordar(hijo, pid);
+                        crate::ring0::task::family::recordar(hijo, pid);
                     }
                     BmoStatus::ok_value(tid as u64)
                 }
@@ -755,7 +755,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // La salida de los hijos de este proceso. Se drena a su ritmo: el
             // kernel no empuja, el terminal tira.
             cap::KIND_CONSOLE => {
-                match crate::ring0::obj::consola::operation(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::console::operation(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }
@@ -764,7 +764,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // operaciones aparte con su propio derecho, no un efecto lateral
             // de tener el directorio abierto.
             cap::KIND_DIRECTORIO => {
-                match crate::ring0::obj::directorio::operation(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::directory::operation(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => {
                         // ** CERRAR DEVUELVE DOS RECURSOS, NO UNO.
                         //
@@ -779,7 +779,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                         // no. O sea, el mismo fallo con el contador ocho veces
                         // mas largo -- el tipo de bug que parece arreglado
                         // porque tarda ocho veces mas en aparecer.
-                        if frame.rsi == crate::ring0::obj::directorio::DIR_OP_CERRAR {
+                        if frame.rsi == crate::ring0::obj::directory::DIR_OP_CERRAR {
                             cap::revoke(pid, frame.rdi);
                         }
                         BmoStatus::ok_value(v)
@@ -802,7 +802,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // **no necesitandola**: el destino es un bloque que concedio el
             // kernel, asi que comprobar es una resta contra lo que se entrego.
             cap::KIND_ARCHIVO
-                if frame.rsi == crate::ring0::obj::archivo::ARCH_OP_LEER_EN =>
+                if frame.rsi == crate::ring0::obj::file::ARCH_OP_LEER_EN =>
             {
                 let pid = scheduler::current_pid();
                 // El bloque tiene que ser SUYO y con permiso de escritura: se va
@@ -814,7 +814,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     Err(err) => return cap_err(err),
                 };
                 let base = bloque.object;
-                let tam = crate::ring0::obj::memoria::handed_over_by(pid);
+                let tam = crate::ring0::obj::memory::handed_over_by(pid);
                 let desde = frame.r10;
                 let cuantos = frame.r8;
                 // La unica comprobacion, y cabe en una linea porque el rango lo
@@ -843,13 +843,13 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 // Si el rango no cae dentro de un bloque conocido, `fisica_de`
                 // dice que no y se usa la VA de siempre: correcto y mas lento,
                 // que es el orden correcto de las dos cosas.
-                let destino = match crate::ring0::obj::memoria::fisica_de(pid, base + desde, cuantos)
+                let destino = match crate::ring0::obj::memory::fisica_de(pid, base + desde, cuantos)
                 {
                     Some(f) => crate::ring0::mm::phys_to_virt(f),
                     None => base + desde,
                 };
                 let n = unsafe {
-                    crate::ring0::obj::archivo::read_into(
+                    crate::ring0::obj::file::read_into(
                         resolved.object,
                         destino as *mut u8,
                         cuantos as usize,
@@ -865,7 +865,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // exigir mas autoridad de la que la operacion usa, que es
             // exactamente lo que un sistema de capabilities no debe hacer.
             cap::KIND_ARCHIVO
-                if frame.rsi == crate::ring0::obj::archivo::ARCH_OP_ESCRIBIR_DE =>
+                if frame.rsi == crate::ring0::obj::file::ARCH_OP_ESCRIBIR_DE =>
             {
                 let pid = scheduler::current_pid();
                 let bloque = match cap::resolve(pid, frame.rdx, cap::RIGHT_READ) {
@@ -874,14 +874,14 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     Err(err) => return cap_err(err),
                 };
                 let base = bloque.object;
-                let tam = crate::ring0::obj::memoria::handed_over_by(pid);
+                let tam = crate::ring0::obj::memory::handed_over_by(pid);
                 let desde = frame.r10;
                 let cuantos = frame.r8;
                 if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {
                     return BmoStatus::err(1);
                 }
                 let n = unsafe {
-                    crate::ring0::obj::archivo::write_from(
+                    crate::ring0::obj::file::write_from(
                         resolved.object,
                         (base + desde) as *const u8,
                         cuantos as usize,
@@ -890,14 +890,14 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 BmoStatus::ok_value(n as u64)
             }
             cap::KIND_ARCHIVO => {
-                match crate::ring0::obj::archivo::operation(resolved.object, frame.rsi, frame.rdx) {
+                match crate::ring0::obj::file::operation(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => {
                         // Lo mismo que el directorio, y aqui llevaba desde el
                         // principio: `ARCH_OP_CERRAR` soltaba la ranura de las
                         // 16 y dejaba el handle vivo. El compositor cierra
                         // bien, asi que no se notaba -- se notaria a los 64
                         // archivos de una sesion.
-                        if frame.rsi == crate::ring0::obj::archivo::ARCH_OP_CERRAR {
+                        if frame.rsi == crate::ring0::obj::file::ARCH_OP_CERRAR {
                             cap::revoke(pid, frame.rdi);
                         }
                         BmoStatus::ok_value(v)
@@ -931,7 +931,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // quepa dentro, y eso es una resta: el rango lo concedio el kernel.
             cap::KIND_MEMORIA if frame.rsi == MEM_OP_OFRECER => {
                 let pid = scheduler::current_pid();
-                let entregado = crate::ring0::obj::memoria::handed_over_by(pid);
+                let entregado = crate::ring0::obj::memory::handed_over_by(pid);
                 // * El destino llega como TID y no como pid: `ejecutar_en`
                 // devuelve un tid, que es lo unico que Ring 3 conoce de un hijo.
                 // Traducirlo aqui evita que el userland aprenda un concepto que
@@ -951,7 +951,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 BmoStatus::ok_value(ok as u64)
             }
             cap::KIND_MEMORIA => {
-                match crate::ring0::obj::memoria::operation(
+                match crate::ring0::obj::memory::operation(
                     resolved.object, frame.rsi, scheduler::current_pid(),
                 ) {
                     Some(v) => BmoStatus::ok_value(v),
@@ -1007,7 +1007,7 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
     //
     // Se escribio: `wait(handle_de_archivo)` bloqueaba la tarea sobre la clave
     // del disco y la interrupcion la despertaba. Compilaba, y **no esperaba a
-    // nada**: traer un trozo (`archivo::avanzar`) sigue siendo sincrono, asi que
+    // nada**: traer un trozo (`file::avanzar`) sigue siendo sincrono, asi que
     // cuando la llamada vuelve el dato YA esta. Dormirse despues seria dormirse
     // hasta que otro use el disco.
     //

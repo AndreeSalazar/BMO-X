@@ -191,7 +191,7 @@ pub fn atender_irq() {
         // ** Y AQUI IRA `wake_by_key(CLAVE_ESPERA)` el dia que haya quien duerma.
         //
         // Hoy no lo hay, y no por falta de cable: la cadena esta entera salvo la
-        // pieza de abajo. `archivo::avanzar` trae su trozo **sincronamente**, o
+        // pieza de abajo. `file::avanzar` trae su trozo **sincronamente**, o
         // sea que cuando la llamada vuelve el dato ya esta -- nadie se queda
         // esperando nada que esta interrupcion pueda terminar.
         //

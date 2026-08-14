@@ -74,7 +74,7 @@ pub(crate) fn shell_audio() {
 }
 
 pub(crate) fn shell_red(arg: &[u8]) {
-    use crate::ring0::dev::red;
+    use crate::ring0::dev::net;
     const H: &[u8; 16] = b"0123456789ABCDEF";
     fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
         for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
@@ -91,11 +91,11 @@ pub(crate) fn shell_red(arg: &[u8]) {
         while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
     }
 
-    if !red::hay() {
+    if !net::hay() {
         s_log("[red] no hay ninguna NIC Ethernet en el PCI");
         return;
     }
-    let (ven, dev_id, bus, dev, func, bar) = red::donde();
+    let (ven, dev_id, bus, dev, func, bar) = net::donde();
     {
         let mut b = [0u8; 80];
         let mut o = 0usize;
@@ -116,7 +116,7 @@ pub(crate) fn shell_red(arg: &[u8]) {
         if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
     }
     // ** Al aparato, ahora. No la foto del arranque.
-    let id = match red::releer() {
+    let id = match net::releer() {
         Some(i) => i,
         None => {
             s_log("[red] la tarjeta esta, pero su vendor no se leer todavia");
@@ -172,18 +172,18 @@ pub(crate) fn shell_red(arg: &[u8]) {
         s_log("[red] el enlace esta ABAJO: enchufa el cable antes de armar nada");
         return;
     }
-    if !red::rx_start() {
+    if !net::rx_start() {
         s_log("[red] el receptor no se pudo armar -- CABINA dice por que");
         return;
     }
-    let n = red::rx_poll();
+    let n = net::rx_poll();
     {
         let mut b = [0u8; 80];
         let mut o = 0usize;
         txt(&mut b, &mut o, "[red] receptor armado. tramas ahora ");
         dec(&mut b, &mut o, n as u64);
         txt(&mut b, &mut o, ", total ");
-        dec(&mut b, &mut o, red::rx_tramas());
+        dec(&mut b, &mut o, net::rx_tramas());
         if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
     }
     if n == 0 {
@@ -558,18 +558,18 @@ pub(crate) fn shell_smp_tabla() {
 /// no dan 12x en calculo puro. Dos hermanos SMT comparten las unidades de
 /// ejecucion, asi que **~6x ES el maximo** de esta maquina, no un fallo.
 pub(crate) fn shell_smp_prueba() {
-    use crate::ring0::plat::smp::{self, obra};
+    use crate::ring0::plat::smp::{self, crew};
     let (alive, _) = smp::alive();
     if alive == 0 {
         row("   ", |l| l.txt("no hay obreros en pie: usa `smp` primero"));
         return;
     }
-    if obra::parados() {
+    if crew::parados() {
         row("   ", |l| l.txt("los obreros estan PARADOS y sin IPI no vuelven: reinicia"));
         return;
     }
     row("   ", |l| l.txt("repartiendo... (decimas de segundo)"));
-    let (uno, todos, partes) = obra::prueba(alive);
+    let (uno, todos, partes) = crew::prueba(alive);
     row("un nucleo", |l| { l.dec(uno); l.txt(" ticks"); });
     row("todos", |l| { l.dec(todos); l.txt(" ticks"); });
     if partes == 0 {
@@ -596,10 +596,10 @@ pub(crate) fn shell_smp_prueba() {
     // vuelta por ciclo. Menos ticks que vueltas no es "muy rapido", es
     // imposible -- y entonces el roto es el cronometro, no el reparto. Paso el
     // 08-11 con `37` ticks para 400 millones de vueltas.
-    if !obra::medida_creible(uno) {
+    if !crew::medida_creible(uno) {
         row("[!]", |l| l.txt("esa medida es IMPOSIBLE: el cronometro miente, no el reparto"));
     }
-    let (entraron, vieron, hechos) = obra::testigos();
+    let (entraron, vieron, hechos) = crew::testigos();
     row("testigos", |l| {
         l.txt("ENTRARON ");
         l.dec(entraron as u64);
@@ -668,7 +668,7 @@ pub(crate) fn shell_smp(arg: &[u8]) {
         return;
     }
     if arg == b"parar" || arg == b"stop" {
-        crate::ring0::plat::smp::obra::parar();
+        crate::ring0::plat::smp::crew::parar();
         row("parar", |l| l.txt("obreros PARADOS. Sin IPI no vuelven: hace falta reiniciar"));
         return;
     }

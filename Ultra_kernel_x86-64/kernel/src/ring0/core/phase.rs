@@ -243,10 +243,10 @@ pub fn main(ctx: &mut BootContext) {
     // `INFO_CPU_HZ_REAL` solo mira una bandera, porque lo va a pedir un panel
     // que se repinta y un `cpuid` por fotograma no es un panel, es un impuesto.
     // Ver `docs/AXION_MAESTRO.md`, seccion 9.
-    crate::ring0::cpu::frecuencia::init();
+    crate::ring0::cpu::frequency::init();
     // Y lo que GASTA. Mismo trato: se pregunta una vez si el chip sabe
     // contestar, y la unidad se le pregunta a el en vez de suponerla.
-    crate::ring0::cpu::energia::init();
+    crate::ring0::cpu::power::init();
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::core::boot_timeline::mark("pci + cpu census");
     crate::ring0::dev::usb::init(ctx);
@@ -271,11 +271,11 @@ pub fn main(ctx: &mut BootContext) {
     // respuesta decide si el driver que viene se empieza sobre suelo firme o
     // sobre una suposicion. Ver `dev/red.rs`.
     crate::ring0::core::boot_timeline::mark("disk + ahci");
-    crate::ring0::dev::red::init();
+    crate::ring0::dev::net::init();
     // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
     // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un
     // reloj parado. Cuesta ocho lecturas de puerto, una vez en la vida.
-    crate::ring0::dev::reloj::init();
+    crate::ring0::dev::clock::init();
     crate::ring0::dev::disk::scan_partitions();
     // Y el sistema de ficheros: de sectores a ARCHIVOS. Monta la particion de
     // arranque, que es donde vive el BOOTX64.EFI con el que arrancamos.

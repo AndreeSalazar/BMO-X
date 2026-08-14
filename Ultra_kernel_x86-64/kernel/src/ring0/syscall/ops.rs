@@ -195,7 +195,7 @@ pub(crate) const TASK_OP_INFO_TEXTO: u64 = 0x14;
 /// el panel del kernel no se pinta y el log no lo podia leer nadie.
 pub(crate) const TASK_OP_KLOG_INFO: u64 = 0x16;
 pub(crate) const TASK_OP_KLOG_TEXTO: u64 = 0x17;
-/// La AUTOPSIA de un fallo de Ring 3. Ver `core::autopsia` y el `surface.rs`.
+/// La AUTOPSIA de un fallo de Ring 3. Ver `core::autopsy` y el `surface.rs`.
 pub(crate) const TASK_OP_AUTOPSIA_INFO: u64 = 0x1F;
 pub(crate) const TASK_OP_AUTOPSIA_TEXTO: u64 = 0x20;
 /// **La primera operacion de la superficie que ESCRIBE EN EL DISCO.** Cierra

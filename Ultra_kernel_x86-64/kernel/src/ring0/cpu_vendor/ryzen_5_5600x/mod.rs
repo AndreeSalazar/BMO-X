@@ -25,7 +25,7 @@ pub use bmo_cpu::init_bmo_cpu;
 /// Profile descriptor consumed by `cpu_vendor::profile::active()`.
 /// Los contadores de energia de este Zen 3. Son de AMD: por eso viven aqui y
 /// no en `ring0/cpu/`. Ver su cabecera.
-pub mod energia;
+pub mod power;
 
 /// The rest of Ring 0 sees only this -- never this module directly.
 pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
@@ -62,7 +62,7 @@ pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
     // El LECTOR de energia de este silicio. Un perfil sin RAPL pondria `None` y
     // la terminal lo diria con palabras en vez de pintar 0 W -- ver el campo
     // `energia` de `CpuProfile`, donde esta el porque de que sea `Option`.
-    energia: Some(energia::leer),
+    energia: Some(power::leer),
 };
 
 /// Sube la topologia del Ryzen al contrato neutral del perfil.

@@ -1,6 +1,6 @@
 //! `KIND_ARCHIVO` -- **leer y escribir lo que hay dentro**, como capability.
 //!
-//! Hermano de [`crate::ring0::obj::directorio`]. Aquel deja PREGUNTAR que hay en el
+//! Hermano de [`crate::ring0::obj::directory`]. Aquel deja PREGUNTAR que hay en el
 //! disco; este deja abrir uno de esos nombres y mover sus bytes.
 //!
 //! Hasta ahora el kernel sabia leer archivos (`fs::load`, con el que se carga
@@ -85,7 +85,7 @@
 //! cuadratica cualquier carga. Pero DOOM salta entre lumps en los dos sentidos,
 //! y aqui eso no es la excepcion sino el caso normal.
 //!
-//! Se resuelve como en `lanzar::Fuente::rango_suelto`, con **el cursor sin
+//! Se resuelve como en `launch::Fuente::rango_suelto`, con **el cursor sin
 //! estrenar guardado aparte**: pedir hacia atras vuelve a empezar desde el
 //! principio del archivo. Cuesta un recorrido de la cadena, se cuenta
 //! ([`cuentas`]) y se puede mirar -- que es distinto de que no cueste nada.
@@ -998,7 +998,7 @@ pub unsafe fn write_from(idx: u64, src: *const u8, n: usize) -> usize {
 /// escritura a medias **no deja nada**: lo acumulado se tira. Guardarlo seria
 /// inventar un archivo que su autor nunca dio por terminado.
 /// Cuantos archivos siguen abiertos a nombre de `pid`. Cero despues de
-/// `process_died`. Ver `directorio::pending_of` -- son cuatro ranuras por
+/// `process_died`. Ver `directory::pending_of` -- son cuatro ranuras por
 /// proceso y una fuga aqui se nota mucho antes.
 pub fn pending_of(pid: u32) -> u32 {
     let mut n = 0;

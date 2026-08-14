@@ -12,7 +12,7 @@
 
 use boot_context::BootContext;
 
-use crate::ring0::task::aterrizaje;
+use crate::ring0::task::landing;
 use crate::ring0::task::bex;
 use crate::ring0::obj::channel;
 use crate::ring0::mm::{self, phys, vmm};
@@ -358,7 +358,7 @@ fn admit_payload(bytes: &[u8], pid: u32, tam_fichero: usize) -> Option<u32> {
 pub fn admitir_por_rangos(
     name: &str,
     prologo: &[u8],
-    fuente: &mut crate::ring0::task::lanzar::Fuente,
+    fuente: &mut crate::ring0::task::launch::Fuente,
     tam_fichero: usize,
 ) -> Option<(u32, u32)> {
     if !has_room() {
@@ -407,7 +407,7 @@ pub enum Origen<'a> {
     /// La imagen entera, ya en RAM.
     EnMemoria(&'a [u8]),
     /// Se pide al disco por rangos. **Sin mesa.**
-    PorRangos(&'a mut crate::ring0::task::lanzar::Fuente),
+    PorRangos(&'a mut crate::ring0::task::launch::Fuente),
 }
 
 impl Origen<'_> {
@@ -434,7 +434,7 @@ impl Origen<'_> {
     /// fichero**. Por `traer` las pediria el cursor secuencial, que se iria al
     /// final y ya no podria volver al codigo: solo avanza, a proposito.
     ///
-    /// Ver `lanzar::Fuente::rango_suelto`, que es donde esta contado entero.
+    /// Ver `launch::Fuente::rango_suelto`, que es donde esta contado entero.
     fn traer_suelto(&mut self, offset: usize, dst: &mut [u8]) -> usize {
         match self {
             // En memoria no hay cursor que mover: es la misma lectura.
@@ -593,7 +593,7 @@ fn admit_payload_desde(
             crate::ring0::cabina::fault("proc", "la tabla de hashes se quedo sin leer", leidos as u64);
             return None;
         }
-        aterrizaje::Firmas::abrir(&buf_firma[..n], plan.firma_indice)
+        landing::Firmas::abrir(&buf_firma[..n], plan.firma_indice)
     } else {
         None
     };
@@ -657,11 +657,11 @@ fn admit_payload_desde(
             return None;
         }
         let esperado = firmas.as_ref().and_then(|f| f.digest_de(plan.relocs_indice));
-        let mut cierre = aterrizaje::Aterrizaje::abrir(bex::SECTION_RELOCS, esperado);
+        let mut cierre = landing::Aterrizaje::abrir(bex::SECTION_RELOCS, esperado);
         cierre.trozo(dst);
         match cierre.cerrar() {
-            Ok(aterrizaje::Cierre::Cuadra) => {}
-            Ok(aterrizaje::Cierre::SinFirma) => sin_firma += 1,
+            Ok(landing::Cierre::Cuadra) => {}
+            Ok(landing::Cierre::SinFirma) => sin_firma += 1,
             Err(_) => {
                 set_status("relocs corruptas");
                 crate::ring0::cabina::fault(
@@ -722,7 +722,7 @@ fn admit_payload_desde(
         // FICHERO-- y no por `i`, que es el de este plan y solo cuenta lo
         // cargable. Ver la nota de `BexMapping::indice`.
         let mut cierre =
-            aterrizaje::Aterrizaje::abrir(s.kind, firmas.as_ref().and_then(|f| f.digest_de(s.indice)));
+            landing::Aterrizaje::abrir(s.kind, firmas.as_ref().and_then(|f| f.digest_de(s.indice)));
         // **Lo que le falta a una relocation partida en la frontera de pagina.**
         // `(valor, cuantos bytes ya se escribieron)`. Ver la nota larga abajo.
         //
@@ -933,8 +933,8 @@ fn admit_payload_desde(
         // cuadra" cuando ya hay tres secciones mapeadas y ninguna pista de por
         // donde empezar a mirar.
         match cierre.cerrar() {
-            Ok(aterrizaje::Cierre::Cuadra) => {}
-            Ok(aterrizaje::Cierre::SinFirma) => sin_firma += 1,
+            Ok(landing::Cierre::Cuadra) => {}
+            Ok(landing::Cierre::SinFirma) => sin_firma += 1,
             Err(_) => {
                 // ** ESTO ERA MUDO PARA CABINA, y era el sospechoso principal.
                 //

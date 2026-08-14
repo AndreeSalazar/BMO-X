@@ -165,7 +165,7 @@ pub fn dir_datos(ruta: &str) -> Option<u32> {
 
 /// La misma conversion, para quien esta fuera de este modulo.
 ///
-/// La necesita `archivo::create`, que tiene que validar el nombre ANTES de
+/// La necesita `file::create`, que tiene que validar el nombre ANTES de
 /// aceptar un archivo de escritura: descubrir al final que no era un 8.3
 /// valido significaria haber dejado a un programa acumulando bytes para nada.
 pub fn nombre_8_3_pub(s: &str) -> Option<[u8; 11]> {
@@ -429,7 +429,7 @@ pub fn leer_rango(
     // uno de ellos como `una seccion se quedo a medias al aterrizar =0` y la
     // frase manda a mirar el disco, que estaba perfecto: lo que habia pasado es
     // que la tabla de hashes --que vive al FINAL del fichero-- se habia leido
-    // antes que el codigo. Ver `lanzar::Fuente::rango_suelto`.
+    // antes que el codigo. Ver `launch::Fuente::rango_suelto`.
     //
     // > Dos causas que producen el mismo numero necesitan que **una de las dos
     // > diga su nombre**, o el numero no sirve para elegir donde mirar.

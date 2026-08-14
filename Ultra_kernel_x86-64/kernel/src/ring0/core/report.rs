@@ -162,9 +162,9 @@ pub fn campo(n: u64) -> u64 {
         INFO_TSC_HZ => crate::ring0::task::scheduler::tsc_freq(),
         // La UNICA fila de esta tabla que MIDE en vez de consultar. Cuesta dos
         // `rdmsr`, y por eso puede vivir en un camino que se repinta.
-        INFO_CPU_HZ_REAL => crate::ring0::cpu::frecuencia::medir(),
-        INFO_CPU_MW_PAQUETE => crate::ring0::cpu::energia::medir().0,
-        INFO_CPU_MW_NUCLEO_ACTUAL => crate::ring0::cpu::energia::medir().1,
+        INFO_CPU_HZ_REAL => crate::ring0::cpu::frequency::medir(),
+        INFO_CPU_MW_PAQUETE => crate::ring0::cpu::power::medir().0,
+        INFO_CPU_MW_NUCLEO_ACTUAL => crate::ring0::cpu::power::medir().1,
         // Los tres se atienden juntos porque comparten el desempaquetado del
         // indice. Separarlos seria repetir el `>> 8` tres veces.
         c if c & 0xFF == INFO_MEM_QUIEN_PID
@@ -172,7 +172,7 @@ pub fn campo(n: u64) -> u64 {
             || c & 0xFF == INFO_MEM_QUIEN_PETICIONES =>
         {
             let ranura = (c >> 8) as usize;
-            match crate::ring0::obj::memoria::ranura(ranura) {
+            match crate::ring0::obj::memory::ranura(ranura) {
                 Some((pid, bytes, peticiones)) => match c & 0xFF {
                     INFO_MEM_QUIEN_PID => pid as u64,
                     INFO_MEM_QUIEN_BYTES => bytes,
@@ -185,8 +185,8 @@ pub fn campo(n: u64) -> u64 {
         }
         INFO_CPU_SENSORES => {
             let mut b = 0u64;
-            if crate::ring0::cpu::frecuencia::disponible() { b |= 1; }
-            if crate::ring0::cpu::energia::disponible() { b |= 2; }
+            if crate::ring0::cpu::frequency::disponible() { b |= 1; }
+            if crate::ring0::cpu::power::disponible() { b |= 2; }
             b
         }
         // La topologia esta cacheada desde `init_bmo_cpu`: aqui no se vuelve a
@@ -198,7 +198,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_PANTALLA_DUENO => crate::ring0::obj::fb::owner().unwrap_or(0) as u64,
         INFO_TAREAS_LIBRES => crate::ring0::task::scheduler::huecos_libres() as u64,
         INFO_TICKS => crate::ring0::plat::timer::ticks(),
-        INFO_FECHA => crate::ring0::dev::reloj::ahora(),
+        INFO_FECHA => crate::ring0::dev::clock::ahora(),
         // Medido, no declarado: desde donde lo enlaza el guion hasta el final
         // de su `.bss`, que incluye la pila de 64 KiB.
         INFO_KERNEL_BYTES => {
@@ -243,7 +243,7 @@ pub fn campo(n: u64) -> u64 {
         // Lo que Ring 3 ha PEDIDO. Cero hasta que un programa llame a
         // `KIND_MEMORIA` -- y por eso vale: es la unica fila del informe que
         // solo se mueve si alguien ejercio la capability.
-        INFO_MEM_ENTREGADA => crate::ring0::obj::memoria::total_handed_over(),
+        INFO_MEM_ENTREGADA => crate::ring0::obj::memory::total_handed_over(),
         // Sin contar el BSP, que siempre esta. Es el numero que devolvio el
         // bring-up, no una suposicion sobre lo que declara el CPU.
         INFO_SMP_VIVOS => crate::ring0::plat::smp::alive().0 as u64,
@@ -253,7 +253,7 @@ pub fn campo(n: u64) -> u64 {
         // nada. Ver `plat/spin.rs`.
         INFO_SPIN_CHOQUES => crate::ring0::plat::spin::contention().0 as u64,
         INFO_SPIN_PICO => crate::ring0::plat::spin::contention().1 as u64,
-        INFO_FUGAS => crate::ring0::core::autopsia::fugas(),
+        INFO_FUGAS => crate::ring0::core::autopsy::fugas(),
         _ => 0,
     }
 }

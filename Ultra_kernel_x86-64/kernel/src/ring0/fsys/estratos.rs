@@ -29,7 +29,7 @@ use crate::ring0::dev::disk;
 /// tipo no se podia nombrar desde fuera del modulo: quien lo recibiera solo
 /// podia guardarlo en un `let` con inferencia, y en el momento en que hiciera
 /// falta meterlo en un campo o en un `enum` --que es justo lo que pide
-/// `task::lanzar::Fuente`-- no compilaba.
+/// `task::launch::Fuente`-- no compilaba.
 ///
 /// Una funcion publica que devuelve un tipo privado es una API a medias: deja
 /// pasar el valor y no la palabra con la que llamarlo.

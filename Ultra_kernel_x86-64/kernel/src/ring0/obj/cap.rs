@@ -58,7 +58,7 @@ pub const KIND_DIRECTORIO: u8 = 0x40;
 /// pida -- no por una comprobacion de permisos, sino porque en ese modo el
 /// objeto no tiene donde escribir.
 pub const KIND_ARCHIVO: u8 = 0x41;
-/// Un bloque de memoria que el proceso PIDIO. Ver `obj::memoria`: es memoria
+/// Un bloque de memoria que el proceso PIDIO. Ver `obj::memory`: es memoria
 /// entregada entera, no un asignador.
 pub const KIND_MEMORIA: u8 = 0x50;
 /// Memoria PRESTADA por otro proceso. Ver `obj::loan`.
@@ -264,24 +264,24 @@ pub fn revoke_all(pid: u32) {
     // son del compositor-- y liberarlos aqui seria entregarle el escritorio a
     // otro proceso.
     crate::ring0::obj::loan::process_died(pid, crate::ring0::mm::vmm::read_cr3());
-    crate::ring0::obj::memoria::process_died(pid);
+    crate::ring0::obj::memory::process_died(pid);
     // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
-    crate::ring0::obj::consola::process_died(pid);
-    crate::ring0::obj::directorio::process_died(pid);
+    crate::ring0::obj::console::process_died(pid);
+    crate::ring0::obj::directory::process_died(pid);
     // Un archivo de ESCRITURA a medias se descarta: lo acumulado no llega al
     // disco. Guardarlo seria inventar un archivo que su autor nunca dio por
     // terminado, y medio fichero de movimientos es peor que ninguno.
-    crate::ring0::obj::archivo::process_died(pid);
+    crate::ring0::obj::file::process_died(pid);
     // Y de donde salio. Sin esto un pid reutilizado heredaria la ruta del
     // muerto, y `MI_PAQUETE` le entregaria **la imagen de otro programa** -- que
     // ademas cargaria y leeria perfectamente, porque es un `.bex` valido.
-    crate::ring0::task::paquete::process_died(pid);
+    crate::ring0::task::package::process_died(pid);
     // Y quien lo lanzo. Las dos puntas: sin limpiar las filas donde este pid era
     // el PADRE, un pid reutilizado heredaria los hijos del muerto y `MI_PADRE`
     // mandaria una superficie a un proceso que no la pidio -- que ademas la
     // tomaria sin quejarse, porque el prestamo no sabe que lleva pixeles dentro.
-    crate::ring0::task::familia::process_died(pid);
+    crate::ring0::task::family::process_died(pid);
     revoke_all_slots(pid)
 }
 

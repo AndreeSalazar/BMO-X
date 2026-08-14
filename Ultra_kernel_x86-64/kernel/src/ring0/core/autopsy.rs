@@ -293,8 +293,8 @@ pub fn registrar(
     // `docs/PLAN_AUTOCURACION.md`, y su regla es la de siempre: **tiene que
     // decir CERO**, y si no lo dice, dice QUE falto.
     let caps = crate::ring0::obj::cap::live_count_of(pid);
-    let dirs = crate::ring0::obj::directorio::pending_of(pid);
-    let archs = crate::ring0::obj::archivo::pending_of(pid);
+    let dirs = crate::ring0::obj::directory::pending_of(pid);
+    let archs = crate::ring0::obj::file::pending_of(pid);
     let pantalla = crate::ring0::obj::fb::owner() == Some(pid);
     // El sonido entra en la cuenta desde el dia que existe la capability, y no
     // hubo que tocar nada mas: un aparato exclusivo que se recupera al morir es

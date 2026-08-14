@@ -5,9 +5,9 @@
 //! seccion 9 de `docs/AXION_MAESTRO.md`.
 
 /// Cuanto GASTA la maquina ahora. Otra MEDIDA, y la que pone numero a AXION.
-pub mod energia;
+pub mod power;
 /// A que velocidad va el nucleo AHORA. Una MEDIDA, no un dato.
-pub mod frecuencia;
+pub mod frequency;
 
 use core::arch::asm;
 
