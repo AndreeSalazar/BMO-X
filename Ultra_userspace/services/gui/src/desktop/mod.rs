@@ -28,6 +28,8 @@
 //! not an oversight.
 
 pub(crate) mod boot;
+pub(crate) mod mouse;
+pub(crate) mod paint;
 pub(crate) use boot::boot;
 
 use bmo_userland as bmo;
