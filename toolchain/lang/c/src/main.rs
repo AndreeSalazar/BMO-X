@@ -11,6 +11,7 @@ fn main() {
     let mut standard = bmo_c_front::CStandard::DefaultC;
     let mut file_path = None;
     let mut out_override: Option<PathBuf> = None;
+    let mut quiere_mapa = false;
     let mut solo_preprocesar = false;
 
     let mut i = 1;
@@ -33,6 +34,15 @@ fn main() {
                     eprintln!("error: --asm-path requires a path");
                     process::exit(2);
                 }
+            }
+            // ** `--map`: que funcion vive en cada offset del codigo.
+            //
+            // Nacio el 2026-08-13, cuando DOOM murio con `#GP` en
+            // `rip 0x400815f2` y ese numero exacto no servia para nada porque
+            // el `.bex` no lleva simbolos. La informacion existia dentro del
+            // compilador; solo no salia.
+            "--map" | "-m" => {
+                quiere_mapa = true;
             }
             "--output" | "-o" => {
                 i += 1;
@@ -92,6 +102,35 @@ fn main() {
             }
             Err(err) => {
                 eprintln!("error:{}: {}", err.line, err.message);
+                process::exit(1);
+            }
+        }
+    }
+
+    // ** EL MAPA se pide y se sale: no escribe `.bex` ni pisa nada.
+    //
+    // Va aqui y no despues del `write` porque quien lo pide esta depurando una
+    // autopsia, no construyendo: obligarle a generar el binario otra vez seria
+    // pedirle que ensucie el disco para leer una tabla.
+    if quiere_mapa {
+        let programa = match bmo_c_front::parse_with_preprocessor(&source, Path::new(path), standard) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("error: {}: {}", path, e.message);
+                process::exit(1);
+            }
+        };
+        match bmo_c_front::codegen::function_map(&programa) {
+            Ok(mapa) => {
+                println!("# mapa de {}  --  offset dentro de la seccion de codigo", path);
+                println!("# un `.bex` de Ring 3 se carga en 0x40000000: rip - base = offset");
+                for (off, nombre) in mapa {
+                    println!("0x{:08X}  {}", off, nombre);
+                }
+                process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("error: {}", e.message);
                 process::exit(1);
             }
         }
