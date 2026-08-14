@@ -30,7 +30,13 @@ use crate::{scene, paint_output};
 /// The screen and the input capability come back as plain bindings and NOT as
 /// fields of `Desktop`: `lend_screen` takes both by value and hands them back,
 /// so they have to be movable. See the header of `desktop/mod.rs`.
-pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, Desktop) {
+///
+/// El `Desktop` vuelve como **referencia a `.bss`** y no por valor: son ~92 KiB
+/// y la pila de Ring 3 mide 64. Devolverlo por valor pondria el struct entero
+/// --posiblemente dos veces, contando la ranura de retorno-- en el marco de una
+/// funcion. Ver la cabecera de `DESKTOP` en `desktop/mod.rs`, que lleva el
+/// desbordamiento del 2026-08-14 con sus numeros.
+pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, &'static mut Desktop) {
     // El aviso va ANTES de reclamar: en cuanto la cesion se consuma, el kernel
     // deja de dibujar y nada de lo que se imprima despues llega al panel.
     bmo::consola("reclamo pantalla y entrada\n");
@@ -119,7 +125,9 @@ pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, Desktop) {
     // struct: lo que antes se declaraba a mitad del arranque ya existe entero
     // antes de que se pinte el primer campo, y el orden de las declaraciones
     // deja de ser algo que haya que respetar de memoria.
-    let mut d = Desktop::new(&p, child_console, launcher);
+    // `install` lo construye DENTRO de `.bss` y devuelve la unica referencia:
+    // aqui no se materializa ningun `Desktop` en la pila.
+    let d = super::install(&p, child_console, launcher);
 
     // Lo que SI era informacion y no instrumento: si la entrada no se pudo
     // reclamar hay que decirlo, y ahora se dice con palabras en la barra en vez
