@@ -49,7 +49,9 @@ const CUANTAS: usize = 4;
 /// Renglones por informe.
 // Diez desde el 2026-08-13: el decimo es la PILA, y llego por un fallo que el
 // informe de nueve no podia explicar. Ver la nota sobre `pila` mas abajo.
-const RENGLONES: usize = 10;
+// ONCE desde el 2026-08-14: el undecimo es el VEREDICTO, y llego por lo
+// contrario -- un fallo que el informe de diez SI podia explicar y no explico.
+const RENGLONES: usize = 11;
 
 /// **Una palabra de la pila de un proceso muerto, o `None`.**
 ///
@@ -194,6 +196,156 @@ fn nombre_vector(v: u64) -> &'static str {
     }
 }
 
+/// **Una direccion como `+desplazamiento` dentro de la imagen del programa.**
+///
+/// Devuelve `false` --y no escribe nada-- si la direccion no cae en la imagen.
+///
+/// ** Este numero es el que `--map` del compilador convierte en un nombre de
+/// funcion (`071c891e`). El kernel siempre tuvo el `rip` absoluto y la base de
+/// la imagen es una constante suya, asi que la resta se podia hacer desde el
+/// principio; se hacia a mano, en cada informe, con una calculadora. Hacerla
+/// aqui es lo que cierra el circuito entre la autopsia y el mapa.
+fn en_la_imagen(dir: u64, r: &mut Renglon) -> bool {
+    use crate::ring0::mm::vmm::{USER_IMAGE_BASE, USER_STACK_BOTTOM};
+    if dir >= USER_IMAGE_BASE && dir < USER_STACK_BOTTOM {
+        r.s("+");
+        r.hex(dir - USER_IMAGE_BASE);
+        return true;
+    }
+    false
+}
+
+/// **EL VEREDICTO: por que paso, en una frase.**
+///
+/// # Por que hacia falta, y no era mas informacion
+///
+/// El informe de diez renglones ya llevaba TODAS las pruebas --vector, codigo
+/// de error, `cr2`, `rsp`-- y aun asi el 2026-08-14 costo una tarde. El
+/// compositor murio con `#PF` en `rip=0x4000001B` y el informe decia
+/// exactamente eso: un vector, una direccion y un numero. Todo cierto y nada
+/// concluido.
+///
+/// Y la conclusion estaba **enteramente dentro de los datos que ya tenia**:
+/// `cr2` caia por debajo de `USER_STACK_BOTTOM`, el codigo de error decia
+/// "escribiendo" y "pagina no presente". Eso es un desbordamiento de pila y no
+/// puede ser otra cosa. El kernel tenia las tres piezas y no hacia la resta.
+///
+/// ** **Esa resta es la diferencia entre un jeroglifico y una frase**, y es lo
+/// unico que separa "hay que bisecar seis commits" de "la pila se salio por
+/// abajo". La regla que deja escrita: **cuando el informe tenga los datos para
+/// deducir la causa, que la deduzca el kernel** -- quien lee un informe a las
+/// tres de la manana no esta en condiciones de cruzar rangos de memoria.
+///
+/// # Lo que NO hace
+///
+/// No adivina. Cada rama de aqui abajo es una implicacion que se sostiene sola,
+/// y cuando ninguna encaja **dice que no lo sabe** en vez de inventar la mas
+/// probable. Un veredicto equivocado es peor que ninguno: manda a mirar al
+/// sitio que no es, y con autoridad.
+/// # Una sola clasificacion, dos salidas
+///
+/// El veredicto sale por dos sitios --la linea roja de la pantalla y el
+/// renglon del informe-- y **la regla se escribe una vez**. Dos listas de
+/// `if` que dijeran lo mismo se separarian el dia que se anada un caso, y
+/// entonces la pantalla y el fichero acusarian a cosas distintas del mismo
+/// fallo. Aqui `clasificar` decide, `nombre` pone las palabras, y solo el
+/// informe largo anade los numeros.
+#[derive(Clone, Copy, PartialEq)]
+enum Causa {
+    PilaDesbordada,
+    PunteroNulo,
+    EscrituraEnImagen,
+    SaltoSinCodigo,
+    SinMapear,
+    NoEsInstruccion,
+    Proteccion,
+    Desconocida,
+}
+
+/// Cuanto por debajo de la pila cuenta todavia como "se salio de la pila".
+/// 2 MiB: de sobra para el peor `sub rsp` de un marco grande, y muy lejos de la
+/// imagen (`0x4000_0000`) y de los bloques pedidos, asi que un puntero basura
+/// que caiga por ahi no puede confundirse con esto.
+const VENTANA_PILA: u64 = 2 * 1024 * 1024;
+
+fn clasificar(vector: u64, error: u64, cr2: u64) -> Causa {
+    use crate::ring0::mm::vmm::{USER_IMAGE_BASE, USER_STACK_BOTTOM};
+    if vector == 14 {
+        if cr2 < USER_STACK_BOTTOM && USER_STACK_BOTTOM - cr2 <= VENTANA_PILA {
+            return Causa::PilaDesbordada;
+        }
+        if cr2 < 0x1000 {
+            return Causa::PunteroNulo;
+        }
+        // Escribir donde viven el codigo y las constantes: la imagen se mapea
+        // de solo lectura, asi que una violacion de permisos escribiendo ahi
+        // dentro es un puntero apuntando a la propia imagen.
+        if error & 1 != 0 && error & 2 != 0 && cr2 >= USER_IMAGE_BASE && cr2 < USER_STACK_BOTTOM {
+            return Causa::EscrituraEnImagen;
+        }
+        // El bit 4 dice que el CPU iba a BUSCAR una instruccion. Si ahi no hay
+        // pagina, alguien salto a algo que no es codigo: puntero a funcion sin
+        // inicializar, vtabla mal, o una direccion de retorno pisada.
+        if error & 16 != 0 {
+            return Causa::SaltoSinCodigo;
+        }
+        return Causa::SinMapear;
+    }
+    match vector {
+        6 => Causa::NoEsInstruccion,
+        13 => Causa::Proteccion,
+        _ => Causa::Desconocida,
+    }
+}
+
+fn nombre(c: Causa) -> &'static str {
+    match c {
+        Causa::PilaDesbordada => "*** PILA DESBORDADA",
+        Causa::PunteroNulo => "*** PUNTERO NULO",
+        Causa::EscrituraEnImagen => "*** ESCRITURA SOBRE CODIGO O CONSTANTES (solo lectura)",
+        Causa::SaltoSinCodigo => "*** SALTO A MEMORIA QUE NO ES CODIGO: puntero de funcion",
+        Causa::SinMapear => "*** SIN MAPEAR: puntero basura o indice fuera de rango",
+        Causa::NoEsInstruccion => "*** SE EJECUTARON BYTES QUE NO SON UNA INSTRUCCION",
+        Causa::Proteccion => "*** #GP: direccion no canonica o instruccion no permitida",
+        // Y cuando no encaja ninguna, se dice. Ver la cabecera.
+        Causa::Desconocida => "(sin veredicto: los datos de arriba no bastan para concluir)",
+    }
+}
+
+/// **El veredicto para la linea roja de la pantalla**, sin numeros.
+///
+/// Se ve sin pedir nada y sin abrir un fichero; los numeros los tiene el
+/// informe, que esta a un `fallo` de distancia.
+pub fn veredicto_corto(vector: u64, error: u64, cr2: u64) -> &'static str {
+    nombre(clasificar(vector, error, cr2))
+}
+
+fn veredicto(vector: u64, error: u64, cr2: u64, r: &mut Renglon) {
+    use crate::ring0::mm::vmm::{USER_STACK_BOTTOM, USER_STACK_SIZE};
+    let c = clasificar(vector, error, cr2);
+    r.s(nombre(c));
+    // Los numeros solo donde dicen algo que la frase no dice. En el
+    // desbordamiento son LA respuesta: cuanto se paso y sobre cuanto.
+    match c {
+        Causa::PilaDesbordada => {
+            // [!] Se dice DONDE cayo el toque, no cuanto pedia el marco. El
+            // kernel no puede saber el tamano del marco: solo ve la primera
+            // direccion que no estaba mapeada, que con la sonda de pila de LLVM
+            // es la primera pagina que falta y no el fondo del marco. Decir
+            // "pidio N" seria inventar un numero que nadie midio.
+            r.s(": ");
+            r.dec(USER_STACK_BOTTOM - cr2);
+            r.s(" B bajo el fondo, pila ");
+            r.dec(USER_STACK_SIZE);
+        }
+        Causa::PunteroNulo => {
+            r.s(" en 0+");
+            r.hex(cr2);
+        }
+        _ => {}
+    }
+}
+
 /// Lo que el codigo de error de un `#PF` significa, en palabras. Son cuatro
 /// bits y cada uno cambia el sitio donde hay que mirar.
 fn causa_pf(err: u64, r: &mut Renglon) {
@@ -231,7 +383,7 @@ pub fn registrar(
     let mut renglones: [Renglon; RENGLONES] = [
         Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(),
         Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(),
-        Renglon::nuevo(), Renglon::nuevo(),
+        Renglon::nuevo(), Renglon::nuevo(), Renglon::nuevo(),
     ];
 
     renglones[0].s("== FALLO EN RING 3 #");
@@ -265,27 +417,42 @@ pub fn registrar(
     renglones[2].dec(vector);
     renglones[2].s(")");
 
-    renglones[3].s("codigo    ");
-    renglones[3].hex(error);
+    // ** EL VEREDICTO va JUNTO A LA CAUSA y antes que las pruebas.
+    //
+    // El orden de los renglones es el orden en que se leen, y quien abre una
+    // autopsia quiere primero QUE fue y luego COMO se demuestra. Poner la
+    // conclusion al final la deja debajo de siete lineas de hexadecimal, que es
+    // justo donde no se lee.
+    renglones[3].s("veredicto ");
+    veredicto(vector, error, cr2, &mut renglones[3]);
+
+    renglones[4].s("codigo    ");
+    renglones[4].hex(error);
     if vector == 14 {
-        renglones[3].s("  ");
-        let (a, b) = renglones.split_at_mut(4);
+        renglones[4].s("  ");
+        let (a, b) = renglones.split_at_mut(5);
         let _ = b;
-        causa_pf(error, &mut a[3]);
+        causa_pf(error, &mut a[4]);
     }
 
-    renglones[4].s("rip       ");
-    renglones[4].hex(rip);
-    renglones[4].s("   la instruccion que fallo");
+    // El `rip` Y SU DESPLAZAMIENTO EN LA IMAGEN, que es el numero que `--map`
+    // del compilador convierte en un nombre de funcion. Estaba a una resta de
+    // distancia y esa resta se hacia a mano en cada informe.
+    renglones[5].s("rip       ");
+    renglones[5].hex(rip);
+    renglones[5].s("  ");
+    if !en_la_imagen(rip, &mut renglones[5]) {
+        renglones[5].s("(FUERA de la imagen)");
+    }
 
-    renglones[5].s("direccion ");
-    renglones[5].hex(cr2);
+    renglones[6].s("direccion ");
+    renglones[6].hex(cr2);
     if vector == 14 {
-        renglones[5].s("   lo que se intento tocar");
+        renglones[6].s("   lo que se intento tocar");
     }
 
-    renglones[6].s("rsp       ");
-    renglones[6].hex(rsp);
+    renglones[7].s("rsp       ");
+    renglones[7].hex(rsp);
 
     // ** LA CIMA DE LA PILA, y esta linea nacio de un fallo concreto.
     //
@@ -303,17 +470,27 @@ pub fn registrar(
     // memoria en la que ya no se confia, asi que una direccion no canonica o
     // sin mapear tiene que dar un hueco en el informe y no un segundo fallo
     // DENTRO del manejador de fallos.
-    renglones[9].s("pila      ");
+    //
+    // ** Y CADA PALABRA QUE APUNTA A LA IMAGEN SALE COMO `+desplazamiento`.
+    //
+    // Eso convierte esta linea en un RASTRO DE LLAMADAS: una palabra de la pila
+    // que cae dentro de la imagen es, casi siempre, la direccion de retorno que
+    // dejo un `call`. Con el `+0x...` delante, `--map` le pone nombre a cada
+    // una y el informe pasa de decir donde se rompio a decir **quien llamo**.
+    // Las que no apuntan a la imagen se dejan crudas: son datos, no matriculas.
+    renglones[10].s("pila      ");
     let mut k = 0usize;
     while k < 4 {
         let dir = rsp.wrapping_add((k as u64) * 8);
         match leer_palabra_de_ring3(dir) {
             Some(v) => {
-                renglones[9].hex(v);
-                renglones[9].s(" ");
+                if !en_la_imagen(v, &mut renglones[10]) {
+                    renglones[10].hex(v);
+                }
+                renglones[10].s(" ");
             }
             None => {
-                renglones[9].s("(ilegible) ");
+                renglones[10].s("(ilegible) ");
                 k = 4;
             }
         }
@@ -325,7 +502,7 @@ pub fn registrar(
     // `uconsole` guarda las ultimas lineas que escribio cada proceso, y esa es
     // la unica pista sobre QUE ESTABA HACIENDO. El resto del informe dice donde
     // se rompio la maquina; esta linea dice por donde iba el programa.
-    renglones[7].s("ultimo    ");
+    renglones[8].s("ultimo    ");
     if crate::ring0::uconsole::hubo_palabras(pid) {
         // `ultimas_palabras` entrega las que haya, de la mas vieja a la mas
         // nueva. Se queda la ULTIMA: es la que dice hasta donde llego.
@@ -337,9 +514,9 @@ pub fn registrar(
             ultima[..n].copy_from_slice(&b[..n]);
             largo = n;
         });
-        renglones[7].bytes(&ultima[..largo]);
+        renglones[8].bytes(&ultima[..largo]);
     } else {
-        renglones[7].s("(no escribio nada)");
+        renglones[8].s("(no escribio nada)");
     }
 
     // ** Y LA COMPROBACION DE QUE EL KERNEL RECUPERO LO SUYO.
@@ -366,28 +543,28 @@ pub fn registrar(
     let sonido = crate::ring0::obj::audio::owner() == Some(pid);
     let fugas = caps + dirs + archs + pantalla as u32 + sonido as u32;
 
-    renglones[8].s("recursos  ");
+    renglones[9].s("recursos  ");
     if fugas == 0 {
-        renglones[8].s("todo devuelto");
+        renglones[9].s("todo devuelto");
     } else {
-        renglones[8].s("*** SIN DEVOLVER:");
+        renglones[9].s("*** SIN DEVOLVER:");
         if caps > 0 {
-            renglones[8].s(" caps=");
-            renglones[8].dec(caps as u64);
+            renglones[9].s(" caps=");
+            renglones[9].dec(caps as u64);
         }
         if dirs > 0 {
-            renglones[8].s(" directorios=");
-            renglones[8].dec(dirs as u64);
+            renglones[9].s(" directorios=");
+            renglones[9].dec(dirs as u64);
         }
         if archs > 0 {
-            renglones[8].s(" archivos=");
-            renglones[8].dec(archs as u64);
+            renglones[9].s(" archivos=");
+            renglones[9].dec(archs as u64);
         }
         if pantalla {
-            renglones[8].s(" LA PANTALLA");
+            renglones[9].s(" LA PANTALLA");
         }
         if sonido {
-            renglones[8].s(" EL SONIDO");
+            renglones[9].s(" EL SONIDO");
         }
         // Tambien a CABINA: una fuga es un fallo del KERNEL, no del programa
         // que murio, y merece su linea roja aunque nadie abra la autopsia.

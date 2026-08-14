@@ -273,6 +273,28 @@ extern "C" fn fault_dispatch(
         // entonces alguien puede leer que mato a la tarea. `record` es seguro
         // aqui (guard de reentrancia, sin locks que puedan colgarse).
         crate::ring0::cabina::fault("ring3", "fault en CPL3: tarea eliminada, BMO sigue vivo", rip);
+        // ** Y EL VEREDICTO EN LA PANTALLA, no solo dentro de la autopsia.
+        //
+        // La linea de arriba es la que se ve sin pedir nada, y hasta hoy era un
+        // vector y un `rip`. El 2026-08-14 eso costo una tarde: el compositor
+        // murio con `#PF` en `rip=0x4000001B` --que es la sonda de pila-- y la
+        // pantalla no dijo que se hubiera desbordado la pila, aunque el kernel
+        // tenia `cr2` y sabia donde acaba la pila.
+        //
+        // Va en su PROPIA linea y no pegada a la anterior: `Line` son 80 bytes
+        // y la primera ya gasta 73. Anadirlo al final la habria cortado justo
+        // por donde esta lo nuevo, que es la peor forma de no decir nada.
+        {
+            let mut v = Line::new();
+            v.s("    ");
+            v.s(crate::ring0::core::autopsy::veredicto_corto(vector, error, cr2));
+            serial_write("[fault] ");
+            serial_write(v.as_str());
+            serial_write("\n");
+            if crate::info::has_fb() {
+                crate::ring0::core::dashboard::dashboard_log(v.as_str());
+            }
+        }
         // ** Y LA AUTOPSIA ENTERA, no una linea.
         //
         // La linea de arriba lleva el `rip` y nada mas: sirve para saber QUE
