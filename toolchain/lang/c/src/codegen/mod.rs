@@ -1810,6 +1810,8 @@ impl Codegen {
                 let elem = self.elem_type_of(name);
                 self.emit_load_elem(&elem);
             }
+            // ** `E1 op= E2` con la direccion de `E1` calculada UNA vez.
+            Expr::AssignOp(lvalue, kind, rhs) => self.emit_assign_op(lvalue, *kind, rhs),
             Expr::AssignSubscript(name, index, scale, val) => {
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor

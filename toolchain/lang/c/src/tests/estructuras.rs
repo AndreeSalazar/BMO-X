@@ -146,9 +146,15 @@ return s->arr[0];
 }
 "#;
     let p = parse(src).unwrap();
-    let n = p.functions[0].body.iter().filter(|st| matches!(st,
+    // Misma leccion que en `subscript_compound_assign`: la llana sigue siendo
+    // `AssignIndexPtr` y la compuesta paso a `AssignOp` para no clonar el
+    // lvalue. Se cuentan las dos formas, no se relaja el numero.
+    let llana = p.functions[0].body.iter().filter(|st| matches!(st,
         Stmt::Expr(Expr::AssignIndexPtr(_, _, _, _)))).count();
-    assert_eq!(n, 2, "las 2 asignaciones a s->arr[0] deben sobrevivir");
+    let compuesta = p.functions[0].body.iter().filter(|st| matches!(st,
+        Stmt::Expr(Expr::AssignOp(lv, _, _)) if matches!(**lv, Expr::IndexPtr(_, _, _)))).count();
+    assert_eq!(llana, 1, "`s->arr[0] = 5` sigue siendo AssignIndexPtr");
+    assert_eq!(compuesta, 1, "`s->arr[0] += 3` es AssignOp sobre un IndexPtr");
     compile_source_to_bef(src).unwrap();
 }
 
@@ -231,15 +237,43 @@ fn subscript_assign_not_discarded() {
     assert!(bef.len() > 48);
 }
 
+/// Las tres asignaciones a `arr[1]` sobreviven -- y **dos de ellas cambiaron de
+/// FORMA el 2026-08-13**, que es lo que este test tuvo que aprender.
+///
+/// `arr[1] = 1` sigue siendo `AssignSubscript`. `arr[1] += 5` y `arr[1] <<= 2`
+/// son ahora `AssignOp`, porque desazucararlas a `arr[1] = arr[1] + 5` clonaba
+/// el lvalue y con un indice con efectos eso es incorrecto (C11 6.5.16.2p3).
+///
+/// [!] La INTENCION del test no cambia --que ninguna se descarte en silencio--
+/// y por eso se cuentan las dos formas en vez de relajar el numero a 1: un test
+/// que cuenta menos porque el codigo cambio de forma deja de comprobar lo que
+/// dice su nombre.
 #[test]
 fn subscript_compound_assign() {
     let src = "int main() { int arr[4]; arr[1] = 1; arr[1] += 5; arr[1] <<= 2; return arr[1]; }";
     let p = parse(src).unwrap();
-    let n_assigns = p.functions[0].body.iter().filter(|s| {
+    let llanas = p.functions[0].body.iter().filter(|s| {
         matches!(s, Stmt::Expr(Expr::AssignSubscript(_, _, _, _)))
     }).count();
-    assert_eq!(n_assigns, 3, "las 3 asignaciones a arr[1] deben sobrevivir");
+    let compuestas = p.functions[0].body.iter().filter(|s| {
+        matches!(s, Stmt::Expr(Expr::AssignOp(lv, _, _)) if matches!(**lv, Expr::Subscript(_, _, _)))
+    }).count();
+    assert_eq!(llanas, 1, "`arr[1] = 1` sigue siendo AssignSubscript");
+    assert_eq!(compuestas, 2, "`+=` y `<<=` son AssignOp sobre un Subscript");
     compile_source_to_bef(src).unwrap();
+}
+
+/// ** Y la que de verdad importa: el lvalue se evalua UNA vez.
+///
+/// El test de arriba mira la forma; este mira el COMPORTAMIENTO, que es lo que
+/// se rompio durante meses sin que nadie lo viera. `probe_assignment` lo lleva
+/// como fila del censo; aqui queda al lado de sus hermanos de forma para que
+/// quien toque el desazucarado tropiece con los dos.
+#[test]
+fn el_lvalue_de_un_op_igual_se_evalua_una_vez() {
+    let src = "int main() { int g[4]; int i;                  g[0]=0; g[1]=0; g[2]=0; g[3]=0; i = 1;                  g[i++] += 7;                  printf(\"%d %d %d\", i, g[1], g[2]); return 0; }";
+    // `i` acaba en 2 (no en 3) y el 7 cae en `g[1]` (no en `g[2]`).
+    assert_eq!(run_c(src).trim(), "2 7 0");
 }
 
 #[test]
