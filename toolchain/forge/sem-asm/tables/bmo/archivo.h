@@ -37,6 +37,19 @@
 #define BMO_ARCHIVO_H
 
 #include <bmo/bmo.h>
+/* ** EL MONTON, y desde el 2026-08-13 es una dependencia de verdad.
+ *
+ * Antes esta cabecera solo LEIA `__bmo_bloque_cap` y `__bmo_bloque_base`, que
+ * las publica la emision de `malloc` -- o sea que si el programa no llamaba a
+ * `malloc` valian cero y `fread` no podia funcionar, lo cual era coherente.
+ *
+ * Ahora `fread` **pide su propio rebote**, asi que necesita `malloc` de verdad
+ * y los limites del monton para saber si el destino cae dentro. Incluirlo aqui
+ * es lo correcto: quien lee ficheros ya dependia del monton, y hasta hoy esa
+ * dependencia era implicita y se rompia con un error a nueve capas de
+ * distancia (`'__bmo_monton_ini' no esta declarado`). */
+#include <stdlib.h>
+#include <string.h>
 
 #define BMO_ARCH_LEER     0x01
 #define BMO_ARCH_TAMANO   0x03
@@ -202,22 +215,96 @@ FILE *bmo_mi_imagen() {
     return bmo_archivo_de(bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_MI_PAQUETE, 0, 0, 0));
 }
 
-/* Devuelve ELEMENTOS leidos, como `fread` de verdad -- no bytes. */
+/* El rebote de `fread`. Vive en el monton porque tiene que estar donde el
+ * kernel puede escribir; se pide una sola vez y no se suelta. 4 KiB porque el
+ * caso que existe --una cabecera, un descriptor, un registro-- es de decenas
+ * de bytes, y lo grande ya va directo. */
+#define BMO_FREAD_REBOTE 4096
+unsigned long long __bmo_rebote = 0;
+
+/* Devuelve ELEMENTOS leidos, como `fread` de verdad -- no bytes.
+ *
+ * ** EL DESTINO PUEDE SER LA PILA, y hasta el 2026-08-13 no podia.
+ *
+ * El kernel solo escribe dentro de un bloque que el mismo concedio: la
+ * comprobacion es una resta contra lo que entrego, no un recorrido de tablas de
+ * paginas. Eso es una decision buena y se conserva -- contrato en vez de
+ * comprobacion, ver la cabecera de este fichero.
+ *
+ * Lo que estaba mal era la consecuencia. Esta funcion traducia `dst` a un
+ * desplazamiento y, si `dst` no caia dentro, **devolvia CERO sin escribir
+ * nada**. La limitacion estaba escrita ahi arriba, con su `[!]` y todo. Y no
+ * basto:
+ *
+ *     wadinfo_t header;                              // w_wad.c:141, la PILA
+ *     W_Read(wad_file, 0, &header, sizeof(header));  // -> fread(&header,1,12,f)
+ *     if (strncmp(header.identification, "IWAD", 4))
+ *         I_Error("Wad file %s doesn't have IWAD or PWAD id");
+ *
+ * `fread` contestaba 0, `header` se quedaba con la basura que hubiera en la
+ * pila, y DOOM moria diciendo que su propio WAD no era un WAD. Un fallo que no
+ * se parece en nada a su causa: el fichero estaba perfecto y abierto.
+ *
+ * [!] Y es la SEGUNDA vez que este mismo fichero lo paga. Cuatro parrafos mas
+ * abajo esta la historia de `fseek` ignorando `SEEK_END` *"con el comentario
+ * 'solo SEEK_SET por ahora, y se dice'"*, y la frase que quedo escrita fue
+ * **decirlo no bastaba**. Volvio a no bastar. Un limite documentado sigue
+ * siendo un limite: si el estandar dice que `fread` escribe donde le apuntes,
+ * `fread` escribe donde le apuntes.
+ *
+ * == Como, sin tocar el kernel ni el ABI ==
+ *
+ * Si el destino esta fuera del monton, se lee a un rebote que SI esta dentro y
+ * se copia. Cuesta un `memcpy` de decenas de bytes en el unico caso donde antes
+ * costaba el programa entero, y el camino rapido --leer a un `malloc`, que es
+ * como se cargan los lumps-- no paga nada: sigue siendo la misma llamada. */
 unsigned long long fread(void *dst, unsigned long long tam,
                         unsigned long long n, FILE *f) {
     unsigned long long desde;
     unsigned long long leidos;
+    unsigned long long total;
+    unsigned long long hechos;
+    unsigned long long trozo;
+    unsigned char *salida;
     if (f == 0 || tam == 0) return 0;
-    /* El desplazamiento dentro del bloque. Si `dst` no esta dentro, esto sale
-     * un numero enorme y el kernel lo rechaza por la comprobacion de rango --
-     * que es exactamente lo que tiene que pasar. */
-    desde = (unsigned long long)dst - f->base;
-    leidos = bmo_valor(f->cap, BMO_ARCH_LEER_EN, f->bloque, desde, tam * n);
-    /* El cursor avanza por lo que se leyo DE VERDAD, no por lo que se pidio.
-     * Sumar `tam*n` haria que `ftell` mintiera justo al final del fichero, que
-     * es donde se le pregunta. */
-    f->pos = f->pos + leidos;
-    return leidos / tam;
+    total = tam * n;
+    if (total == 0) return 0;
+
+    /* Camino rapido: el destino ya esta en el monton, o sea que el kernel lo
+     * conoce y puede escribirlo directamente. */
+    if ((unsigned long long)dst >= __bmo_monton_ini &&
+        (unsigned long long)dst + total <= __bmo_monton_fin) {
+        desde = (unsigned long long)dst - f->base;
+        leidos = bmo_valor(f->cap, BMO_ARCH_LEER_EN, f->bloque, desde, total);
+        /* El cursor avanza por lo que se leyo DE VERDAD, no por lo que se
+         * pidio. Sumar `tam*n` haria que `ftell` mintiera justo al final del
+         * fichero, que es donde se le pregunta. */
+        f->pos = f->pos + leidos;
+        return leidos / tam;
+    }
+
+    /* Camino con rebote: el destino es la pila, un global, o cualquier sitio
+     * que el kernel no concedio. */
+    if (__bmo_rebote == 0) {
+        __bmo_rebote = (unsigned long long)malloc(BMO_FREAD_REBOTE);
+        if (__bmo_rebote == 0) return 0;
+    }
+    salida = (unsigned char *)dst;
+    hechos = 0;
+    while (hechos < total) {
+        trozo = total - hechos;
+        if (trozo > BMO_FREAD_REBOTE) { trozo = BMO_FREAD_REBOTE; }
+        desde = __bmo_rebote - f->base;
+        leidos = bmo_valor(f->cap, BMO_ARCH_LEER_EN, f->bloque, desde, trozo);
+        if (leidos == 0) { break; }
+        memcpy(salida + hechos, (void *)__bmo_rebote, leidos);
+        f->pos = f->pos + leidos;
+        hechos = hechos + leidos;
+        /* Lectura corta: el fichero se acabo, y parar aqui es lo correcto --
+         * seguir pidiendo daria vueltas sin avanzar. */
+        if (leidos < trozo) { break; }
+    }
+    return hechos / tam;
 }
 
 /* Mover el cursor. `desde` es `SEEK_SET` (0), `SEEK_CUR` (1) o `SEEK_END` (2).

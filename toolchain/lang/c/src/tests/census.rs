@@ -34,6 +34,43 @@ pub(super) struct Cell {
     pub expects: &'static str,
 }
 
+/// Same sweep, but with a file planted in the machine first.
+///
+/// [!] Needed the moment an axis is about file I/O: a program that reads
+/// `prueba.bin` needs a `prueba.bin` to read, and without one every cell would
+/// be measured against "file not found" -- which is indistinguishable from a
+/// broken reader and would have made the whole axis look green-ish and mean
+/// nothing.
+pub(super) fn sweep_seeded(
+    cells: &[Cell],
+    file: &'static str,
+    bytes: Vec<u8>,
+    expected: &str,
+    warning: &str,
+) {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
+    let mut report = String::new();
+    for c in cells {
+        let planted = bytes.clone();
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_c_sembrado(c.source, |m| {
+                m.archivos.insert(file.to_string(), planted);
+            })
+        }));
+        let verdict = match r {
+            Ok(out) if out.trim() == c.expects => "GOOD".to_string(),
+            Ok(out) => format!("BROKEN gives {:?}, wants {:?}", out.trim(), c.expects),
+            Err(_) => "DOES NOT COMPILE or blows up".to_string(),
+        };
+        report.push_str(&format!("{:<30} {}\n", c.name, verdict));
+    }
+
+    std::panic::set_hook(previous);
+    assert_eq!(report.trim_end(), expected.trim_end(), "\n\n{warning}\n");
+}
+
 /// Run every cell and compare the report against `expected`.
 ///
 /// [!] The panic hook is silenced for the duration of the sweep: without that,
