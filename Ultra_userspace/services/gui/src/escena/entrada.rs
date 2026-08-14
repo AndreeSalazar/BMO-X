@@ -244,6 +244,43 @@ pub(crate) fn pintar(
         y += bmo::GLIFO_ALTO + 6;
     }
 
+    // ** LA RED, en la pantalla de entrada.
+    //
+    // Va aqui y no solo en una ventana porque es la unica linea del arranque que
+    // contesta *"tengo cable?"* sin escribir nada. Y contesta las DOS mitades:
+    // que tarjeta hay, y si el enlace esta arriba -- que son fallos distintos y
+    // se confunden todo el tiempo.
+    //
+    // [!] Es la foto del arranque, no del instante: el kernel cachea la
+    // identidad para que repintar no toque el BAR de la NIC. Si desenchufas el
+    // cable, esta linea no cambia -- `red` en la terminal lo dice tambien.
+    if bmo::info(bmo::INFO_NET_PRESENTE) != 0 {
+        p.texto(x, y, "red", ENT_TENUE);
+        let mut cx = x + 13 * bmo::GLIFO_ANCHO;
+        let mac = bmo::info(bmo::INFO_NET_MAC);
+        let mut i = 6;
+        while i > 0 {
+            i -= 1;
+            let byte = (mac >> (i * 8)) & 0xFF;
+            n = hex2(byte, &mut b);
+            cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
+            if i > 0 {
+                cx = p.texto(cx, y, "-", ENT_TENUE);
+            }
+        }
+        let mbit = bmo::info(bmo::INFO_NET_MEGABITS);
+        if mbit > 0 {
+            cx = p.texto(cx, y, "   enlace ", ENT_TENUE);
+            n = decimal(mbit, &mut b);
+            cx = p.texto_bytes(cx, y, &b[..n], TEXTO);
+            p.texto(cx, y, " Mbit", ENT_TENUE);
+        } else {
+            // El cero NO es un error: es "no hay cable", y es una respuesta.
+            p.texto(cx, y, "   sin enlace", ENT_TENUE);
+        }
+        y += bmo::GLIFO_ALTO + 6;
+    }
+
     // La memoria, con el numero que a esta maquina le gusta ensenar: cuanto
     // ocupa el sistema entero.
     let total = bmo::info(bmo::INFO_RAM_TOTAL);
@@ -301,4 +338,17 @@ pub(crate) fn pintar(
     p.texto(x, y + bmo::GLIFO_ALTO + 26, "una tecla para entrar", ENT_TENUE);
     p.vaciar();
     esperar_ms(1100, entrada);
+}
+
+/// Dos digitos hexadecimales, en mayusculas. Para la MAC.
+///
+/// Existe porque `decimal` no sirve: una MAC se lee en hexadecimal en todas
+/// partes --Windows, un switch, una etiqueta pegada a la tarjeta-- y darla en
+/// decimal obligaria a convertirla a mano para compararla con cualquiera de las
+/// tres.
+fn hex2(v: u64, b: &mut [u8; 10]) -> usize {
+    const D: &[u8; 16] = b"0123456789ABCDEF";
+    b[0] = D[((v >> 4) & 0xF) as usize];
+    b[1] = D[(v & 0xF) as usize];
+    2
 }

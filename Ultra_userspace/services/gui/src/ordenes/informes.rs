@@ -411,3 +411,151 @@ pub(crate) fn informe_autopsia(s: &mut Salida) {
         s.con_tinta(TINTA_NORMAL);
     }
 }
+
+/// **EL INFORME DE LA RED.** `red` entero, o una sola pregunta con argumento.
+///
+/// === Por que este informe se lee de abajo arriba ===
+///
+/// Porque asi se depura un cable. Las cuatro preguntas van en el orden en que
+/// se caen, y cada una **solo tiene sentido si la anterior dijo si**:
+///
+/// ```text
+///   hay TARJETA?      no -> el problema es el PCI o el BAR, y nada mas importa
+///   hay ENLACE?       no -> es el cable, el switch o el otro extremo
+///   estamos ESCUCHANDO?  no -> el receptor no esta armado. `net rx` en Ring 0
+///   llegan TRAMAS?    no -> hay enlace, escuchamos, y nadie habla
+/// ```
+///
+/// ** Un panel que contestara *"red: 0"* obligaria a adivinar cual de las cuatro
+/// fallo. Ese es todo el motivo de que sean siete campos y no uno con banderas.
+///
+/// === Y el `PHYstatus` va CRUDO ===
+///
+/// El driver ya tomo esa decision y aqui se respeta: *"se guarda sin interpretar
+/// ademas de interpretado -- el dia que un bit no cuadre, el byte entero es la
+/// prueba y las funciones son la opinion"*. Un diagnostico que solo ensena la
+/// opinion no ayuda el dia que la opinion falle.
+///
+/// [!] **Nada de esto transmite.** Son campos de informe: mirar la red no es un
+/// privilegio. `CR.TE` sigue apagado en el kernel y no se pone un byte en el
+/// cable desde aqui.
+///
+/// [!] Y los valores son la foto del ARRANQUE, no del instante: el kernel cachea
+/// la identidad a proposito para que repintar un panel no toque el BAR de la NIC
+/// sesenta veces por segundo. Quien relee es la orden `net` del shell de Ring 0.
+pub(crate) fn informe_red(s: &mut Salida, que: &[u8]) {
+    let presente = bmo::info(bmo::INFO_NET_PRESENTE) != 0;
+    let mac = bmo::info(bmo::INFO_NET_MAC);
+    let mbit = bmo::info(bmo::INFO_NET_MEGABITS);
+    let phy = bmo::info(bmo::INFO_NET_PHY_CRUDO);
+    let armado = bmo::info(bmo::INFO_NET_RX_ARMADO) != 0;
+    let tramas = bmo::info(bmo::INFO_NET_RX_TRAMAS);
+
+    // Una sola pregunta, para cuando ya sabes cual quieres.
+    if que == b"mac" {
+        etiqueta(s, b"MAC");
+        if presente { mac_hex(s, mac); } else { s.texto(b"no hay tarjeta"); }
+        s.byte(b'\n');
+        return;
+    }
+    if que == b"link" {
+        etiqueta(s, b"enlace");
+        enlace(s, presente, mbit);
+        s.byte(b'\n');
+        return;
+    }
+    if que == b"frames" {
+        etiqueta(s, b"tramas");
+        s.dec(tramas);
+        if !armado { s.texto(b"   (el receptor NO esta armado)"); }
+        s.byte(b'\n');
+        return;
+    }
+    if que == b"phy" {
+        etiqueta(s, b"PHYstatus");
+        s.texto(b"0x");
+        s.hex(phy, 2);
+        s.texto(b"   (crudo, sin interpretar)");
+        s.byte(b'\n');
+        return;
+    }
+
+    seccion(s, b"RED");
+
+    // 1. Hay tarjeta? Si no, lo demas no significa nada y se dice.
+    etiqueta(s, b"tarjeta");
+    if !presente {
+        s.texto(b"NINGUNA reconocida en el PCI");
+        s.byte(b'\n');
+        s.texto(b"    (sin tarjeta, el resto del informe no significa nada)\n");
+        return;
+    }
+    let vd = bmo::info(bmo::INFO_NET_VENDOR_DEVICE);
+    s.texto(b"vendor:device 0x");
+    s.hex(vd, 8);
+    // El unico nombre que se traduce, porque es el que hay en esta placa y
+    // reconocerlo de un vistazo ahorra buscarlo.
+    if vd == 0x10EC_8168 { s.texto(b"   (Realtek RTL8168)"); }
+    s.byte(b'\n');
+
+    let pci = bmo::info(bmo::INFO_NET_PCI);
+    etiqueta(s, b"en el bus");
+    s.dec((pci >> 16) & 0xFF);
+    s.byte(b':');
+    s.dec((pci >> 8) & 0xFF);
+    s.byte(b'.');
+    s.dec(pci & 0xFF);
+    s.byte(b'\n');
+
+    etiqueta(s, b"MAC");
+    mac_hex(s, mac);
+    s.byte(b'\n');
+
+    // 2. Hay enlace?
+    etiqueta(s, b"enlace");
+    enlace(s, presente, mbit);
+    s.byte(b'\n');
+
+    etiqueta(s, b"PHYstatus");
+    s.texto(b"0x");
+    s.hex(phy, 2);
+    s.texto(b"   (crudo: la prueba, no la opinion)\n");
+
+    // 3. Estamos escuchando? 4. Llega algo?
+    etiqueta(s, b"receptor");
+    if armado { s.texto(b"ARMADO"); } else { s.texto(b"apagado   (net rx en Ring 0)"); }
+    s.byte(b'\n');
+
+    etiqueta(s, b"tramas");
+    s.dec(tramas);
+    if armado && tramas == 0 {
+        s.texto(b"   (escuchando y nadie habla todavia)");
+    }
+    s.byte(b'\n');
+
+    // ** Y lo que NO hace, dicho aqui y no en un README.
+    s.texto(b"    transmitir: CERRADO a proposito (CR.TE apagado)\n");
+}
+
+/// Los seis bytes con dos puntos, del mas significativo al menos.
+fn mac_hex(s: &mut Salida, mac: u64) {
+    let mut i = 6;
+    while i > 0 {
+        i -= 1;
+        s.hex((mac >> (i * 8)) & 0xFF, 2);
+        if i > 0 { s.byte(b'-'); }
+    }
+}
+
+/// `ARRIBA, 100 Mbit` o `ABAJO`. El cero de megabits **es** la respuesta.
+fn enlace(s: &mut Salida, presente: bool, mbit: u64) {
+    if !presente {
+        s.texto(b"no hay tarjeta");
+    } else if mbit == 0 {
+        s.texto(b"ABAJO   (sin cable, o el otro extremo apagado)");
+    } else {
+        s.texto(b"ARRIBA, ");
+        s.dec(mbit);
+        s.texto(b" Mbit");
+    }
+}

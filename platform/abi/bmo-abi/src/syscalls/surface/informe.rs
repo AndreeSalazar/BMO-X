@@ -88,6 +88,66 @@ pub const INFO_MEM_QUIEN_BYTES: u64 = 0x25;
 /// *"esta pidiendo sin parar"*, que es la diferencia entre un juego y una fuga.
 pub const INFO_MEM_QUIEN_PETICIONES: u64 = 0x26;
 
+
+/* == LA RED, VISTA DESDE RING 3 ====================================
+ *
+ * ** Siete campos, y hasta hoy eran CERO: el kernel encontraba la NIC, le leia
+ * la MAC y el estado del enlace, y **nada de eso cruzaba a Ring 3**. Un panel de
+ * red en el compositor no era una cuestion de dibujar: era imposible, porque no
+ * habia forma de preguntar.
+ *
+ * Son campos de INFORME y no operaciones sobre un handle a proposito: leer si
+ * hay cable no es un privilegio, es una pregunta -- el mismo criterio que
+ * `core::report` aplica a la RAM y a los nucleos. Transmitir SI necesitara una
+ * capability; mirar, no.
+ *
+ * [!] Y son SIETE y no uno con banderas dentro. Un campo por hecho es lo que
+ * permite que el panel diga *"hay NIC, no hay enlace"* en vez de *"red: 0"*, que
+ * es la diferencia entre un diagnostico y un adorno.
+ */
+
+/// Hay una NIC reconocida: `1` o `0`. Lo primero que hay que saber, y lo unico
+/// que distingue *"no hay tarjeta"* de *"hay tarjeta y no hay cable"*.
+pub const INFO_NET_PRESENTE: u64 = 0x27;
+
+/// `vendor << 16 | device` del PCI. En esta placa, `0x10EC8168` -- una Realtek
+/// RTL8168. Se entrega crudo: el numero ES la identificacion, y traducirlo a un
+/// nombre bonito en el kernel seria meter una tabla de fabricantes en Ring 0.
+pub const INFO_NET_VENDOR_DEVICE: u64 = 0x28;
+
+/// La MAC, los seis bytes en los 48 bits bajos, byte 0 el mas significativo.
+///
+/// ** Cabe en UN campo y por eso va en uno. Una MAC son 48 bits y un campo de
+/// informe son 64: partirla en dos habria sido inventarse un problema de
+/// ensamblado en el lado del cliente.
+pub const INFO_NET_MAC: u64 = 0x29;
+
+/// El byte `PHYstatus` **CRUDO**, sin interpretar.
+///
+/// ** Y va crudo a proposito, que es la misma decision que ya tomo el driver:
+/// *"se guarda sin interpretar ademas de interpretado: el dia que un bit no
+/// cuadre, el byte entero es la prueba y las funciones son la opinion"*. Un
+/// panel que solo ensena la opinion no puede ayudar el dia que la opinion falle.
+pub const INFO_NET_PHY_CRUDO: u64 = 0x2A;
+
+/// Megabits que declara el enlace: 10, 100, 1000 -- o `0` si esta abajo.
+///
+/// [!] El cero no es un error: es *"no hay cable"*, y es una respuesta.
+pub const INFO_NET_MEGABITS: u64 = 0x2B;
+
+/// El receptor esta armado: `1` o `0`. Distingue *"no llega nada"* de *"no
+/// estamos escuchando"*, que es la confusion mas cara de depurar en una red.
+pub const INFO_NET_RX_ARMADO: u64 = 0x2C;
+
+/// Tramas recibidas desde que se armo. **La cifra que dice si el cable vive.**
+pub const INFO_NET_RX_TRAMAS: u64 = 0x2D;
+
+/// Donde esta en el bus: `bus << 16 | dispositivo << 8 | funcion`.
+///
+/// Hace falta para el caso raro y real de dos NIC: sin esto, dos tarjetas dan
+/// dos informes identicos y no hay forma de decir de cual habla cada uno.
+pub const INFO_NET_PCI: u64 = 0x2E;
+
 /// Hilos logicos y nucleos fisicos que el CPU declara.
 pub const INFO_CPU_HILOS: u64 = 0x06;
 

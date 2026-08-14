@@ -86,6 +86,25 @@
 #define BMO_INFO_RAM_TOTAL 0x01
 #define BMO_INFO_RAM_LIBRE 0x02
 #define BMO_INFO_TSC_HZ 0x05
+/* -- LA RED, para un programa de C ---------------------------------
+ *
+ * ** Mirar la red no necesita capability: son campos de INFORME, igual que la
+ * RAM o los nucleos. Preguntar si hay cable no es un privilegio.
+ * TRANSMITIR si la necesitara, y ese dia sera una operacion sobre un handle. */
+#define BMO_INFO_NET_PRESENTE       0x27
+#define BMO_INFO_NET_VENDOR_DEVICE  0x28
+/* Los seis bytes en los 48 bits bajos, byte 0 el mas significativo. */
+#define BMO_INFO_NET_MAC            0x29
+/* El `PHYstatus` CRUDO. El byte entero es la prueba; los otros campos son la
+ * opinion. */
+#define BMO_INFO_NET_PHY_CRUDO      0x2A
+/* 10, 100, 1000 -- o 0, que significa "no hay cable" y es una respuesta. */
+#define BMO_INFO_NET_MEGABITS       0x2B
+/* Distingue "no llega nada" de "no estamos escuchando". */
+#define BMO_INFO_NET_RX_ARMADO      0x2C
+#define BMO_INFO_NET_RX_TRAMAS      0x2D
+#define BMO_INFO_NET_PCI            0x2E
+
 #define BMO_INFO_CPU_HILOS 0x06
 #define BMO_INFO_CPU_NUCLEOS 0x07
 #define BMO_INFO_TICKS 0x0B

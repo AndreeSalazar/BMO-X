@@ -188,6 +188,23 @@ pub const INFO_MEM_QUIEN_BYTES: u64 = 0x25;
 /// Cuantas peticiones lleva. Distingue "pidio un bloque grande" de "esta
 /// pidiendo sin parar", que es la diferencia entre un juego y una fuga.
 pub const INFO_MEM_QUIEN_PETICIONES: u64 = 0x26;
+// == LA RED ======================================================
+//
+// Siete campos que hasta hoy no existian: el kernel conocia la NIC y Ring 3 no
+// tenia forma de preguntar. Un panel de red no era cuestion de dibujar.
+pub const INFO_NET_PRESENTE: u64 = 0x27;
+pub const INFO_NET_VENDOR_DEVICE: u64 = 0x28;
+/// Los seis bytes en los 48 bits bajos, byte 0 el mas significativo.
+pub const INFO_NET_MAC: u64 = 0x29;
+/// El `PHYstatus` crudo, sin interpretar. El byte es la prueba.
+pub const INFO_NET_PHY_CRUDO: u64 = 0x2A;
+/// 10, 100, 1000 -- o `0`, que es *"no hay cable"* y es una respuesta.
+pub const INFO_NET_MEGABITS: u64 = 0x2B;
+/// Distingue *"no llega nada"* de *"no estamos escuchando"*.
+pub const INFO_NET_RX_ARMADO: u64 = 0x2C;
+pub const INFO_NET_RX_TRAMAS: u64 = 0x2D;
+pub const INFO_NET_PCI: u64 = 0x2E;
+
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;

@@ -2055,6 +2055,13 @@ pub extern "C" fn _start() -> ! {
                             // Contesto "no es un comando ni una ruta" y la
                             // prueba se quedo sin hacer. Dos shells con dos
                             // vocabularios distintos son dos productos.
+                            // ** LA RED -- siete campos que hasta hoy no
+                            // cruzaban a Ring 3. Mismo criterio que `audio`: la
+                            // orden existia SOLO en el shell de Ring 0, y dos
+                            // shells con dos vocabularios son dos productos.
+                            Orden::Red(que) => {
+                                ordenes::informes::informe_red(&mut salida, que);
+                            }
                             Orden::Audio => {
                                 let hubo = bmo::audio_censo();
                                 if hubo {

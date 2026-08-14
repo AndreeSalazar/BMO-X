@@ -297,6 +297,24 @@ impl Salida {
 
     /// Un entero alineado a la DERECHA en `ancho` columnas. Es lo que hace que
     /// una columna de numeros se lea de un vistazo en vez de bailar.
+    /// **Hexadecimal, con `digitos` fijos y en mayusculas.**
+    ///
+    /// Se anadio con la red: una MAC y un `PHYstatus` se leen en hexadecimal en
+    /// Windows, en un switch y en la etiqueta pegada a la tarjeta. Darlos en
+    /// decimal obligaria a convertirlos a mano para compararlos con cualquiera
+    /// de los tres, que es justo lo que un diagnostico no debe pedir.
+    ///
+    /// El ancho es fijo a proposito: `0x0A` y `0x A` alineados en columna se
+    /// comparan de un vistazo, y `0xA` suelto no.
+    pub(crate) fn hex(&mut self, v: u64, digitos: usize) {
+        const D: &[u8; 16] = b"0123456789ABCDEF";
+        let mut i = digitos;
+        while i > 0 {
+            i -= 1;
+            self.byte(D[((v >> (i * 4)) & 0xF) as usize]);
+        }
+    }
+
     pub(crate) fn dec_der(&mut self, v: u64, ancho: usize) {
         let mut cifras = 1;
         let mut t = v;
