@@ -38,6 +38,7 @@ pub(crate) fn label(s: &mut Output, name: &[u8]) {
     }
 }
 
+#[inline(never)]
 pub(crate) fn report_cpu(s: &mut Output) {
     let mut buf = [0u8; 64];
 
@@ -259,6 +260,7 @@ pub(crate) fn report_cpu(s: &mut Output) {
     }
 }
 
+#[inline(never)]
 pub(crate) fn report_memory(s: &mut Output) {
     let total = bmo::info(bmo::INFO_RAM_TOTAL);
     let free_one = bmo::info(bmo::INFO_RAM_LIBRE);
@@ -307,6 +309,7 @@ pub(crate) fn report_memory(s: &mut Output) {
     }
 }
 
+#[inline(never)]
 pub(crate) fn report_system(s: &mut Output) {
     s.with_ink(INK_ECHO);
     s.text(b"  BMO-X - informe del sistema\n");
@@ -378,6 +381,7 @@ pub(crate) fn report_system(s: &mut Output) {
 /// donde equivocarse sobre el mismo fallo.
 ///
 /// Aqui solo se pinta, y se pinta en ROJO, que es lo que es.
+#[inline(never)]
 pub(crate) fn report_autopsy(s: &mut Output) {
     section(s, b"ultimo fallo");
     let total = bmo::autopsia_total();
@@ -443,6 +447,7 @@ pub(crate) fn report_autopsy(s: &mut Output) {
 /// [!] Y los valores son la foto del ARRANQUE, no del instante: el kernel cachea
 /// la identidad a proposito para que repintar un panel no toque el BAR de la NIC
 /// sesenta veces por segundo. Quien relee es la orden `net` del shell de Ring 0.
+#[inline(never)]
 pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
     let present = bmo::info(bmo::INFO_NET_PRESENTE) != 0;
     let mac = bmo::info(bmo::INFO_NET_MAC);

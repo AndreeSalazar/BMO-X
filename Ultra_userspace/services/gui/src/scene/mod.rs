@@ -464,6 +464,7 @@ pub(crate) fn scene_color(c: &RunBox, visible: bool, x: u32, y: u32, height: u32
 ///    de hace treinta anos.
 /// 5. El campo de entrada con **marco propio** y un `>` de aviso, para que se
 ///    vea que ahi se escribe.
+#[inline(never)]
 pub(crate) fn paint_run_box(p: &bmo::Pantalla, c: &RunBox) {
     // 1. La sombra, primero y en dos capas.
     shadow(p, c.x, c.y, BOX_W, BOX_H);
@@ -537,6 +538,7 @@ pub(crate) fn paint_run_box(p: &bmo::Pantalla, c: &RunBox) {
 /// Repinta el fondo del campo entero antes de escribir. Es un rectangulo de
 /// unos 500x28 px --nada-- y evita el clasico de borrar un caracter y que quede
 /// medio glifo del anterior porque el nuevo es mas estrecho.
+#[inline(never)]
 pub(crate) fn paint_field(p: &bmo::Pantalla, c: &RunBox, path: &[u8], cur: usize, caret: bool) {
     p.rect(c.field_x, c.field_y, c.field_w, c.field_h, FIELD_BG);
 
@@ -631,6 +633,7 @@ pub(crate) fn erase_window(
     }
 }
 
+#[inline(never)]
 pub(crate) fn paint_status(p: &bmo::Pantalla, c: &RunBox, msg: &str, color: u32) {
     // Ancho fijo de limpieza: el mensaje anterior puede ser mas largo que el
     // nuevo, y media frase vieja detras de una nueva es peor que ninguna.

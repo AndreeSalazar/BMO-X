@@ -3,6 +3,7 @@
 
 /// Un `u64` a decimal en `dst`. Sin `alloc` no hay `format!`, y un terminal
 /// que no sabe escribir un numero no sirve para mirar un disco.
+#[inline(never)]
 pub(crate) fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
     if v == 0 {
         dst[0] = b'0';
