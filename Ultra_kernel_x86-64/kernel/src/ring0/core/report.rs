@@ -92,6 +92,21 @@ const INFO_MEM_QUIEN_BYTES: u64 = 0x25;
 /// Cuantas peticiones lleva hechas. Distingue "pidio un bloque grande" de
 /// "esta pidiendo sin parar", que es la diferencia entre un juego y una fuga.
 const INFO_MEM_QUIEN_PETICIONES: u64 = 0x26;
+
+// == LA RED ==========================================================
+//
+// Los mismos siete numeros que declara `bmo-abi`, copiados a mano como todos
+// los demas de este fichero -- y el guardian de `build.ps1` compara los tres
+// lados en cada build, asi que una copia que derive no compila.
+const INFO_NET_PRESENTE: u64 = 0x27;
+const INFO_NET_VENDOR_DEVICE: u64 = 0x28;
+const INFO_NET_MAC: u64 = 0x29;
+const INFO_NET_PHY_CRUDO: u64 = 0x2A;
+const INFO_NET_MEGABITS: u64 = 0x2B;
+const INFO_NET_RX_ARMADO: u64 = 0x2C;
+const INFO_NET_RX_TRAMAS: u64 = 0x2D;
+const INFO_NET_PCI: u64 = 0x2E;
+
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
 /// * Quien tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
@@ -191,6 +206,46 @@ pub fn campo(n: u64) -> u64 {
         }
         // La topologia esta cacheada desde `init_bmo_cpu`: aqui no se vuelve a
         // preguntar al CPUID. Un panel que se repinta no debe costar CPUID.
+        // == LA RED ==================================================
+        //
+        // ** `identidad()` devuelve la foto CACHEADA del arranque; `releer()`
+        // vuelve a preguntarle al aparato. Aqui se usa la cacheada a proposito:
+        // un panel que se repinta sesenta veces por segundo no debe tocar el
+        // BAR de una NIC sesenta veces por segundo.
+        //
+        // [!] La consecuencia hay que saberla: si desenchufas el cable, ESTOS
+        // campos no cambian. El que relee es la orden `net` del shell de Ring 0,
+        // y el panel de F9 tiene su propia tecla para pedirlo.
+        INFO_NET_PRESENTE => crate::ring0::dev::net::hay() as u64,
+        INFO_NET_VENDOR_DEVICE => {
+            let (v, d, _, _, _, _) = crate::ring0::dev::net::donde();
+            ((v as u64) << 16) | (d as u64)
+        }
+        INFO_NET_MAC => crate::ring0::dev::net::identidad()
+            .map(|i| {
+                let m = i.mac;
+                let mut v = 0u64;
+                let mut k = 0;
+                while k < 6 {
+                    v = (v << 8) | (m[k] as u64);
+                    k += 1;
+                }
+                v
+            })
+            .unwrap_or(0),
+        INFO_NET_PHY_CRUDO => crate::ring0::dev::net::identidad()
+            .map(|i| i.phy as u64)
+            .unwrap_or(0),
+        // Cero es *"no hay enlace"*, y es una respuesta -- no un fallo.
+        INFO_NET_MEGABITS => crate::ring0::dev::net::identidad()
+            .map(|i| if i.enlace_arriba() { i.megabits() as u64 } else { 0 })
+            .unwrap_or(0),
+        INFO_NET_RX_ARMADO => crate::ring0::dev::net::rx_activo() as u64,
+        INFO_NET_RX_TRAMAS => crate::ring0::dev::net::rx_tramas(),
+        INFO_NET_PCI => {
+            let (_, _, bus, dev, fun, _) = crate::ring0::dev::net::donde();
+            ((bus as u64) << 16) | ((dev as u64) << 8) | (fun as u64)
+        }
         INFO_CPU_HILOS => cpu_topo().map(|t| t.hilos as u64).unwrap_or(0),
         INFO_CPU_NUCLEOS => cpu_topo().map(|t| t.nucleos as u64).unwrap_or(0),
         INFO_TAREAS_TOTAL => crate::ring0::task::scheduler::counts().0 as u64,

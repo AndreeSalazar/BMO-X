@@ -97,6 +97,16 @@ pub(crate) enum Orden<'a> {
     /// ruta"* y la prueba del paso 0 se quedo sin hacer. **Dos shells con dos
     /// vocabularios distintos son dos productos.**
     Audio,
+    /// **LA RED** -- `red`, `net`, `mac`, `enlace`, `link`, `tramas`, `phy`.
+    ///
+    /// ** Siete palabras y no una, porque son siete PREGUNTAS distintas y una
+    /// sola respuesta gorda no sirve para depurar: cuando el cable no va, lo que
+    /// hace falta es aislar *"no hay tarjeta"* de *"hay tarjeta y no hay
+    /// enlace"* de *"hay enlace y no llega nada"* de *"llega y no lo estamos
+    /// escuchando"*. Cada palabra corta el problema por un sitio.
+    ///
+    /// El argumento decide cual: `red` a secas da el informe entero.
+    Red(&'a [u8]),
     /// `reboot` -- reinicia la maquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aqui contestaba "no lo
@@ -257,6 +267,14 @@ pub(crate) fn interpretar(linea: &[u8]) -> Orden<'_> {
         // `fallo` ensena la ultima autopsia. Se guarda sola en `datos/fallos.txt`
         // en cuanto ocurre -- esto es para mirarla sin salir del escritorio.
         b"fallo" | b"fallos" | b"autopsia" => Orden::Autopsia,
+        // ** LA RED. `red`/`net` dan el informe entero; las demas cortan por
+        // una sola pregunta, que es lo que se quiere teniendo el cable en la
+        // mano. Ninguna transmite ni un byte -- son campos de INFORME.
+        b"red" | b"net" => Orden::Red(b""),
+        b"mac" => Orden::Red(b"mac"),
+        b"enlace" | b"link" => Orden::Red(b"link"),
+        b"tramas" | b"frames" => Orden::Red(b"frames"),
+        b"phy" => Orden::Red(b"phy"),
         b"cpu" | b"procesador" => Orden::Cpu,
         b"mem" | b"ram" | b"memoria" => Orden::Memoria,
         b"reboot" | b"reinicia" | b"reiniciar" => Orden::Reiniciar,
