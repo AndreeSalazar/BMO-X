@@ -156,24 +156,43 @@ lineas (patron del reparto de `_start`).
 
 ## 4. HECHO EL 2026-08-14
 
+```
+                       antes    despues
+dev/disk/mod.rs          893        782
+  ventana.rs               -         64   (+ 7 casillas, en bmo-block)
+  irq.rs                   -         67
+particiones/               -        213   (+ 7 casillas)
+```
 
-
-** Lo que se gano NO son las 111 lineas de : son **14 casillas nuevas
+** Lo que se gano NO son las 111 lineas de `mod.rs`: son **14 casillas nuevas
 que corren en 0 segundos y sin disco**, sobre codigo que antes solo se podia
-probar arrancando la maquina.
+comprobar arrancando la maquina.
 
-[!] **La leccion del paso 2, y hay que conservarla**: la decision de la ventana
-se escribio primero en  con sus pruebas, y **las
-pruebas no corrian** --  es un binario  para
- y  ni compila. Un 
-en el kernel es codigo que parece una prueba y no se ejecuta jamas. La funcion
-pura tuvo que irse al CONTRATO para que sus casillas existieran de verdad.
+Y `mod.rs` ya no lleva dentro ni un formato, ni una politica, ni un manejador
+de interrupcion.
 
-**Regla que queda: si una funcion del kernel merece pruebas, es que no
-pertenece al kernel.**
+### [!] La leccion del paso 2, y hay que conservarla
 
-⏳ Pendiente de metal: nada de esto se ha arrancado.  sigue siendo el
-unico camino por el que el kernel encuentra el disco del que arranca.
+La decision de la ventana se escribio PRIMERO en `ring0/dev/disk/ventana.rs`,
+con sus siete casillas. **Y las casillas no corrian.** `bmo-kernel` es un
+binario `no_std` para `x86_64-unknown-none` con asm desnudo: `cargo test -p
+bmo-kernel` ni compila (`E0152`, `panic_impl` duplicado con el de `std`).
+
+Un `#[cfg(test)]` dentro del kernel es codigo que **parece** una prueba y no se
+ejecuta jamas -- la peor clase de decoracion, porque da la confianza sin dar la
+comprobacion. La funcion pura tuvo que irse al CONTRATO para que sus casillas
+existieran de verdad.
+
+> **Regla que queda: si una funcion del kernel merece pruebas, es que no
+> pertenece al kernel.**
+
+Y resulta que el contrato es donde la seccion 2 de este mismo documento ya decia
+que debia estar, escrito antes de descubrir el problema de las pruebas.
+
+### Pendiente
+
+Nada de esto se ha arrancado en el Ryzen. `census` sigue siendo el unico camino
+por el que el kernel encuentra el disco del que arranca.
 
 ## 5. LA META
 

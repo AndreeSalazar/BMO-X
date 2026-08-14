@@ -110,6 +110,9 @@ dependencies = [
 [[package]]
 name = "bmo-fat32"
 version = "0.1.0"
+dependencies = [
+ "bmo-block",
+]
 
 [[package]]
 name = "bmo-fontgen"
@@ -148,6 +151,7 @@ dependencies = [
  "bmo-hash",
  "bmo-input",
  "bmo-net",
+ "bmo-particiones",
  "bmo-rtc",
  "bmo-uaudio",
  "bmo-uhid",
@@ -180,6 +184,10 @@ version = "0.1.0"
 dependencies = [
  "bmo-abi",
 ]
+
+[[package]]
+name = "bmo-particiones"
+version = "0.1.0"
 
 [[package]]
 name = "bmo-rpc-demo"
