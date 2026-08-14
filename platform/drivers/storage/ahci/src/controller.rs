@@ -310,9 +310,41 @@ unsafe fn census(ctrl: &mut AhciController, pi: u32, sss: bool) -> u32 {
     let np = ctrl.port_count.min(32);
     let mut active = 0u32;
     let mut vacios = 0u32;
+
+    // ** LOS COMRESET PRIMERO, TODOS, Y LUEGO UNA SOLA ESPERA.
+    //
+    // Antes esto era `port_link_up(i)` dentro del bucle de abajo, y esa
+    // funcion hacia las dos cosas: pedir la renegociacion (escribir dos
+    // registros) y **esperar hasta 1,5 s** a que el enlace subiera. Con un
+    // puerto da igual. Con cuatro, tres de ellos vacios, son 4,5 segundos en
+    // fila -- y de esos, CERO son transferencia: son `delay_ms`.
+    //
+    // Medido en el Ryzen el 2026-08-14: `disk + ahci` costaba **10.640 ms de
+    // un arranque de 13.708**, con un solo disco en el puerto 2.
+    //
+    // Los enlaces negocian SOLOS y EN PARALELO: el COMRESET es una escritura y
+    // el PHY hace su trabajo aunque nadie mire. Esperarlos de uno en uno es
+    // hacer cola delante de cuatro cosas que ya estaban pasando a la vez.
+    //
+    // [!] El COMRESET se sigue mandando puerto a puerto y en el mismo orden --
+    // es la secuencia de la especificacion y no se toca. Lo unico que cambia
+    // es QUIEN espera: antes cada puerto, ahora todos juntos.
+    let mut esperando = 0u32;
+    for i in 0..np {
+        if port_kick(mmio_base, i, sss) {
+            esperando |= 1 << i;
+        }
+    }
+    if esperando != 0 {
+        esperar_enlaces(mmio_base, esperando, np);
+    }
+
     for i in 0..np {
         let declared = pi & (1 << i) != 0;
-        let ssts = port_link_up(mmio_base, i, sss);
+        // La negociacion deja errores de estreno en PxSERR: se limpian, o el
+        // primer comando nacera con un error que no es suyo.
+        port_write(mmio_base, i, PORT_SERR, port_read(mmio_base, i, PORT_SERR));
+        let ssts = port_read(mmio_base, i, PORT_SSTS);
         // Cada puerto dice su estado CRUDO aqui, en el driver, que es quien lo
         // tiene delante. El `!` marca los que `PI` NO declaraba: si uno de
         // esos trae disco, el firmware estaba mintiendo.
@@ -371,7 +403,12 @@ unsafe fn census(ctrl: &mut AhciController, pi: u32, sss: bool) -> u32 {
 /// La secuencia es la de la especificacion, y cada espera es de TIEMPO REAL:
 /// contar vueltas de bucle mide la velocidad del CPU, no los milisegundos que
 /// el SATA necesita.
-unsafe fn port_link_up(mmio: u64, port: u8, sss: bool) -> u32 {
+/// ** SOLO PIDE. No espera. Devuelve `true` si hay que esperarle.
+///
+/// La espera vive fuera, en [`esperar_enlaces`], y compartida por todos los
+/// puertos. Ver el comentario de `census`: los PHY negocian en paralelo, y
+/// esperarlos de uno en uno costaba 1,5 s por puerto vacio.
+unsafe fn port_kick(mmio: u64, port: u8, sss: bool) -> bool {
     let hal = storage_hal::hal();
 
     // 1. Con el motor de comandos andando no se toca el PHY.
@@ -386,11 +423,11 @@ unsafe fn port_link_up(mmio: u64, port: u8, sss: bool) -> u32 {
         hal.delay_ms(10);
     }
 
-    // 3. Ya esta? Si el enlace vino vivo del firmware, aqui se acaba.
-    let ssts = port_read(mmio, port, PORT_SSTS);
-    if ssts & SSTS_DET == 0x03 {
+    // 3. Ya esta? Si el enlace vino vivo del firmware, aqui se acaba y no hay
+    //    nada que esperar.
+    if port_read(mmio, port, PORT_SSTS) & SSTS_DET == 0x03 {
         port_write(mmio, port, PORT_SERR, port_read(mmio, port, PORT_SERR));
-        return ssts;
+        return false;
     }
 
     // 4. COMRESET: DET=1 fuerza la renegociacion, y hay que sostenerlo al
@@ -399,19 +436,34 @@ unsafe fn port_link_up(mmio: u64, port: u8, sss: bool) -> u32 {
     port_write(mmio, port, PORT_SCTL, (sctl & !0xF) | 0x1);
     hal.delay_ms(2);
     port_write(mmio, port, PORT_SCTL, sctl & !0xF);
+    true
+}
 
-    // 5. Esperar el enlace. Un SSD contesta en milisegundos; a un disco
-    //    mecanico dormido se le conceden hasta 1,5 s antes de darlo por vacio.
-    let mut ssts = 0u32;
+/// **Una sola espera para todos los enlaces pedidos.**
+///
+/// Mismo tope que antes --1,5 s, que es lo que puede tardar un disco mecanico
+/// dormido-- pero UNA vez y no una por puerto. Y sale en cuanto todos han
+/// subido, que en una maquina con SSD son unas pocas vueltas.
+///
+/// El tope no se puede bajar "porque un SSD contesta rapido": el numero existe
+/// para el caso lento, y ese caso es real. Lo que estaba mal no era la
+/// duracion, era **pagarla en serie**.
+unsafe fn esperar_enlaces(mmio: u64, mut pendientes: u32, np: u8) {
+    let hal = storage_hal::hal();
     for _ in 0..150 {
-        ssts = port_read(mmio, port, PORT_SSTS);
-        if ssts & SSTS_DET == 0x03 { break; }
+        for i in 0..np {
+            if pendientes & (1 << i) == 0 {
+                continue;
+            }
+            if port_read(mmio, i, PORT_SSTS) & SSTS_DET == 0x03 {
+                pendientes &= !(1 << i);
+            }
+        }
+        if pendientes == 0 {
+            return;
+        }
         hal.delay_ms(10);
     }
-    // 6. La negociacion deja errores de estreno en PxSERR: se limpian, o el
-    //    primer comando nacera con un error que no es suyo.
-    port_write(mmio, port, PORT_SERR, port_read(mmio, port, PORT_SERR));
-    ssts
 }
 
 /// Detiene el motor de comandos del puerto y espera a que pare de verdad.
