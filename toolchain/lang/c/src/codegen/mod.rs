@@ -2169,6 +2169,64 @@ impl Codegen {
         self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
     }
 
+    /// **La tabla de simbolos del `.bex`.** Ver la llamada en `build_bef`.
+    ///
+    /// ## El TAMANO se deduce, y por eso vale mas que `--map`
+    ///
+    /// `--map` da la direccion de inicio de cada funcion. Con eso, un `rip`
+    /// entre dos funciones se atribuye a la de arriba **aunque caiga fuera de
+    /// ella** -- en un hueco de relleno, o en una funcion que el mapa no vio.
+    ///
+    /// Aqui el tamano sale de la distancia a la siguiente funcion, y la ultima
+    /// llega hasta el final del codigo. Con eso, quien lee puede decir *"esta
+    /// direccion NO esta en ninguna funcion"*, que es una respuesta distinta y
+    /// mucho mas util que un nombre equivocado.
+    ///
+    /// [!] `virt_addr` guarda el offset DENTRO de la seccion de codigo, no una
+    /// direccion virtual, y `section_idx` dice cual es esa seccion. El
+    /// compilador no decide donde se carga el programa -- eso es del cargador, y
+    /// escribir aqui una direccion absoluta seria repetir una decision ajena.
+    fn seccion_de_simbolos(&self) -> BefSection {
+        use bmo_abi::bef::symbols::{name_hash, Symbol, SymbolBinding, SymbolKind, SymbolVisibility};
+
+        let mut orden: Vec<(usize, &String)> =
+            self.function_offsets.iter().map(|(n, off)| (*off, n)).collect();
+        orden.sort();
+
+        let mut entradas: Vec<Symbol> = Vec::with_capacity(orden.len());
+        let mut cadenas: Vec<u8> = Vec::new();
+
+        for (i, (offset, nombre)) in orden.iter().enumerate() {
+            // Hasta donde llega: el principio de la siguiente, o el final del
+            // codigo si es la ultima.
+            let fin = orden
+                .get(i + 1)
+                .map(|(sig, _)| *sig)
+                .unwrap_or(self.instruction_end);
+
+            let name_off = cadenas.len() as u32;
+            cadenas.extend_from_slice(nombre.as_bytes());
+            cadenas.push(0); // las cadenas acaban en cero: quien lee no trae longitudes
+
+            entradas.push(Symbol {
+                name_off,
+                name_hash: name_hash(nombre),
+                virt_addr: *offset as u64,
+                size: fin.saturating_sub(*offset) as u64,
+                kind: SymbolKind::Function as u8,
+                // Todos LOCAL por ahora, y es la verdad de hoy: sin enlazador no
+                // hay nadie a quien exportar. Cuando exista, esto lo decide
+                // `static` en el fuente y no una constante aqui.
+                binding: SymbolBinding::Local as u8,
+                visibility: SymbolVisibility::Default as u8,
+                section_idx: 0, // la seccion de codigo se anade siempre la primera
+                _reserved: 0,
+            });
+        }
+
+        BefSection::symbols(entradas, cadenas)
+    }
+
     fn build_bef(&mut self) -> Vec<u8> {
         let all = core::mem::take(&mut self.code);
         let mut b = BefBuilder::new();
@@ -2218,6 +2276,35 @@ impl Codegen {
         if !self.relocs.is_empty() {
             let relocs = core::mem::take(&mut self.relocs);
             b.add_section(BefSection::relocs(relocs));
+        }
+
+        // ** LA SECCION `Symbols`: que funcion vive en cada offset.
+        //
+        // === Por que existe, y por que hasta hoy no ===
+        //
+        // El compilador SIEMPRE ha sabido esto: `function_offsets` lo lleva
+        // dentro para resolver las llamadas. El 2026-08-13 salio por la consola
+        // con `--map`, porque DOOM murio con `rip 0x400815f2` y ese numero no
+        // servia para nada. Pero salir por la consola obliga a que alguien
+        // recompile el programa y reste a mano cada vez.
+        //
+        // Escribirlo en el `.bex` cierra el circuito: el que tiene el binario
+        // tiene los nombres. La autopsia del kernel puede decir
+        // `SHA1_Update+0x18` sin que nadie pase nada por `--map`.
+        //
+        // ** Y es la primera fila de la COMPILACION SEPARADA. Un enlazador
+        // necesita saber que ofrece cada objeto; esto es exactamente eso, aunque
+        // hoy lo lea un depurador y no un enlazador.
+        //
+        // [!] `SectionKind::Symbols` y `BefSection::symbols()` llevaban escritos
+        // desde que se diseno BEF y **no los usaba nadie** -- igual que
+        // `Resources` antes del paquete. El sitio ya estaba; faltaba llenarlo.
+        //
+        // No es cargable (`is_loadable` solo mapea Code/RoData/Data/Bss), asi
+        // que **no cuesta ni una pagina al proceso**: viaja en el fichero y el
+        // cargador la salta.
+        if !self.function_offsets.is_empty() {
+            b.add_section(self.seccion_de_simbolos());
         }
 
         // * La bandera de la pantalla, deducida al recorrer el programa. Ver
