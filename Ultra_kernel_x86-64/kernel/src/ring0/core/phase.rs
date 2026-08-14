@@ -211,6 +211,20 @@ pub fn main(ctx: &mut BootContext) {
     } else {
         s_log("[splash] no framebuffer, skipping splash");
     }
+    // ** THE LOGO GETS ITS OWN ROW, and it is the reason the table is worth
+    // having at all.
+    //
+    // `boot_intro()` sits between the first mark and the second, so without
+    // this line its `GATO_MS` --1.600 ms of holding the cat on screen, pure
+    // boot time by its own admission-- would be reported as part of
+    // `pci + cpu census`. The very first table printed would have said that
+    // enumerating the PCI bus takes a second and a half, and somebody would
+    // have gone looking for it in the PCI code.
+    //
+    // ** An instrument that mis-attributes is worse than no instrument: it does
+    // not leave you ignorant, it sends you somewhere. And this one was about to
+    // do it on its first run.
+    crate::ring0::core::boot_timeline::mark("splash: logo hold (GATO_MS)");
 
     // Aterrizar en el dashboard persistente.
     phase1_ui(ctx);
