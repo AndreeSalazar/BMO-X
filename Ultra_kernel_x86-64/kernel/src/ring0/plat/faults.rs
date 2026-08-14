@@ -244,6 +244,22 @@ extern "C" fn fault_dispatch(
     if cs & 3 == 3 {
         let pid = crate::ring0::task::scheduler::current_pid();
         let tid = crate::ring0::task::scheduler::current_tid();
+        // ** LO PRIMERO DE TODO: sacarle los datos al proceso MIENTRAS SU
+        // ESPACIO DE DIRECCIONES SIGUE PUESTO.
+        //
+        // Debajo se cambia a la tabla del kernel para poder pintar, y hace
+        // falta. Pero la imagen del proceso (1 GiB) y su pila (2 GiB) viven en
+        // el PDPT[1], que `new_address_space` reserva POR PROCESO: de las
+        // tablas solo se comparte el PDPT[0]. Bajo el CR3 del kernel esas
+        // direcciones son de otro o de nadie.
+        //
+        // Hasta hoy la autopsia leia la pila DESPUES del cambio, asi que sus
+        // cuatro palabras no se sabe de donde salieron -- y se razono sobre
+        // ellas. Un dato de origen desconocido es peor que un hueco.
+        //
+        // Aqui se leen los bytes crudos y ya esta: el formateo, el veredicto y
+        // todo lo demas pasan luego y no vuelven a tocar memoria de nadie.
+        let cap = crate::ring0::core::autopsy::Captura::tomar(rip, fault_rsp);
         // Capabilities die with the process (same order as EXIT: revoke
         // completes before the final switch -- no lock nesting).
         crate::ring0::obj::cap::revoke_all(pid);
@@ -287,7 +303,7 @@ extern "C" fn fault_dispatch(
         {
             let mut v = Line::new();
             v.s("    ");
-            v.s(crate::ring0::core::autopsy::veredicto_corto(vector, error, cr2));
+            v.s(crate::ring0::core::autopsy::veredicto_corto(vector, error, cr2, &cap));
             serial_write("[fault] ");
             serial_write(v.as_str());
             serial_write("\n");
@@ -305,7 +321,7 @@ extern "C" fn fault_dispatch(
         //
         // Se hace DESPUES de CABINA a proposito: si esto se colgara --no puede,
         // pero el orden es una decision-- la linea roja ya estaria puesta.
-        crate::ring0::core::autopsy::registrar(vector, error, rip, cr2, fault_rsp, pid, tid);
+        crate::ring0::core::autopsy::registrar(vector, error, rip, cr2, fault_rsp, pid, tid, &cap);
         let _ = (error, cr2, fault_rsp);
         // schedule() below loads the NEXT task's CR3 itself.
         return crate::ring0::task::scheduler::kill_current_and_pick();

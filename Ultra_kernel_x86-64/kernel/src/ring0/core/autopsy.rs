@@ -53,6 +53,92 @@ const CUANTAS: usize = 4;
 // contrario -- un fallo que el informe de diez SI podia explicar y no explico.
 const RENGLONES: usize = 11;
 
+/// **Lo que se saca del proceso ANTES de tocar nada.**
+///
+/// # El fallo que obliga a que esto exista (2026-08-14)
+///
+/// `fault_dispatch` cambia a la tabla de paginas del KERNEL antes de escribir
+/// el informe --hace falta: el CR3 del proceso puede no mapear el framebuffer--
+/// y la autopsia leia la pila **despues** de ese cambio.
+///
+/// ** Y las dos cosas que quiere leer no estan en el espacio del kernel.
+/// `new_address_space` comparte **solo el PDPT[0]** (0..1 GiB, el mapa de
+/// identidad); la imagen vive en 1 GiB y la pila en 2 GiB, o sea en el PDPT[1],
+/// que se reserva por proceso. Bajo el CR3 del kernel esas direcciones son de
+/// otro o de nadie.
+///
+/// El informe de DOOM del 2026-08-14 salio con cuatro palabras de pila de alta
+/// entropia y ni un retorno. Se leyeron como punteros basura del programa. **No
+/// se puede afirmar que lo fueran**: pueden ser memoria ajena leida bajo la
+/// tabla equivocada. Un dato del que no se sabe de donde salio es peor que un
+/// hueco, porque se razona sobre el.
+///
+/// La regla que queda: **la autopsia captura del cadaver antes de mover el
+/// cuerpo.** Aqui se leen los bytes crudos con el CR3 del proceso todavia
+/// puesto; el formateo, la clasificacion y todo lo demas pasan despues y ya no
+/// tocan memoria de nadie.
+#[derive(Clone, Copy)]
+pub struct Captura {
+    /// Palabras desde `rsp`. `None` = no se pudo leer (y ahi se corta).
+    pila: [Option<u64>; PILA_PALABRAS],
+    /// Los bytes de la instruccion que fallo. Con `--map` dando el nombre de
+    /// la funcion, esto da la INSTRUCCION: juntos son el sitio exacto.
+    codigo: [u8; CODIGO_BYTES],
+    codigo_n: usize,
+}
+
+/// Cuantas palabras de pila se miran. Veinticuatro y no cuatro porque las
+/// primeras suelen ser locales del marco que fallo, y el retorno --lo unico que
+/// nombra al llamante-- queda detras de ellas.
+const PILA_PALABRAS: usize = 24;
+/// Bytes de instruccion. La mas larga de x86-64 son 15.
+const CODIGO_BYTES: usize = 16;
+
+impl Captura {
+    /// La vacia, para cuando no hay de donde sacar nada.
+    pub const VACIA: Self = Self {
+        pila: [None; PILA_PALABRAS],
+        codigo: [0; CODIGO_BYTES],
+        codigo_n: 0,
+    };
+
+    /// **Se llama con el CR3 del proceso TODAVIA puesto.** Ver la cabecera.
+    pub fn tomar(rip: u64, rsp: u64) -> Self {
+        let mut c = Self::VACIA;
+        for k in 0..PILA_PALABRAS {
+            c.pila[k] = leer_palabra_de_ring3(rsp.wrapping_add((k as u64) * 8));
+            if c.pila[k].is_none() {
+                break;
+            }
+        }
+        // El `rip` cae en la imagen, no en la pila: guarda propia.
+        if rip >= crate::ring0::mm::vmm::USER_IMAGE_BASE && rip >> 47 == 0 {
+            for k in 0..CODIGO_BYTES {
+                match leer_byte_de_ring3(rip.wrapping_add(k as u64)) {
+                    Some(b) => {
+                        c.codigo[k] = b;
+                        c.codigo_n = k + 1;
+                    }
+                    None => break,
+                }
+            }
+        }
+        c
+    }
+}
+
+/// Un byte de la imagen de un proceso, con la misma guarda que la pila: dentro
+/// del rango de usuario y canonica, o nada.
+fn leer_byte_de_ring3(dir: u64) -> Option<u8> {
+    if dir >> 47 != 0 || dir < crate::ring0::mm::vmm::USER_IMAGE_BASE {
+        return None;
+    }
+    if dir >= crate::ring0::mm::vmm::USER_STACK_BOTTOM {
+        return None;
+    }
+    Some(unsafe { core::ptr::read_volatile(dir as *const u8) })
+}
+
 /// **Una palabra de la pila de un proceso muerto, o `None`.**
 ///
 /// === Por que esto NO es un `read_volatile` a pelo ===
@@ -157,6 +243,19 @@ impl Renglon {
             }
         }
     }
+    /// Un byte en dos digitos, SIEMPRE dos. `hex` quita los ceros de delante
+    /// --que es lo correcto para un `rip`-- y en una tira de opcodes eso los
+    /// hace ilegibles: `f 28` no se parece a `0f 28`, que es lo que hay que
+    /// reconocer.
+    fn hex_byte(&mut self, v: u8) {
+        for i in (0..2).rev() {
+            let d = (v >> (i * 4)) & 0xF;
+            if self.n < ANCHO {
+                self.b[self.n] = if d < 10 { b'0' + d } else { b'a' + d - 10 };
+                self.n += 1;
+            }
+        }
+    }
     fn dec(&mut self, mut v: u64) {
         let mut cifras = [0u8; 20];
         let mut c = 0;
@@ -258,6 +357,13 @@ enum Causa {
     SaltoSinCodigo,
     SinMapear,
     NoEsInstruccion,
+    /// Instruccion que Ring 3 no puede ejecutar (`hlt`, `cli`, `in`, `wrmsr`...).
+    Privilegiada,
+    /// Movimiento SSE que exige 16 bytes de alineacion, sobre algo desalineado.
+    SseDesalineado,
+    /// Operando con una direccion cuyos bits 63:48 no son copia del bit 47.
+    NoCanonica,
+    /// `#GP` del que no se pudieron leer los bytes: no se inventa la causa.
     Proteccion,
     Desconocida,
 }
@@ -268,7 +374,7 @@ enum Causa {
 /// que caiga por ahi no puede confundirse con esto.
 const VENTANA_PILA: u64 = 2 * 1024 * 1024;
 
-fn clasificar(vector: u64, error: u64, cr2: u64) -> Causa {
+fn clasificar(vector: u64, error: u64, cr2: u64, cap: &Captura) -> Causa {
     use crate::ring0::mm::vmm::{USER_IMAGE_BASE, USER_STACK_BOTTOM};
     if vector == 14 {
         if cr2 < USER_STACK_BOTTOM && USER_STACK_BOTTOM - cr2 <= VENTANA_PILA {
@@ -293,9 +399,78 @@ fn clasificar(vector: u64, error: u64, cr2: u64) -> Causa {
     }
     match vector {
         6 => Causa::NoEsInstruccion,
-        13 => Causa::Proteccion,
+        13 => clasificar_gp(cap),
         _ => Causa::Desconocida,
     }
+}
+
+/// **Por que salto el `#GP`, mirando la INSTRUCCION.**
+///
+/// # Por que hacia falta
+///
+/// La primera version contestaba *"direccion no canonica o instruccion no
+/// permitida"*. Eso es una **"o"**: dos hipotesis, no un veredicto. Y era la
+/// unica rama del clasificador que no concluia, cuando el kernel tiene con que
+/// hacerlo -- los bytes de la instruccion estan en el `rip` que ya recibe.
+///
+/// A diferencia del `#PF`, un `#GP` **no deja direccion**: `cr2` no significa
+/// nada aqui y el codigo de error es 0 salvo que haya un selector de segmento
+/// de por medio. El opcode es lo unico que queda.
+///
+/// # [!] Esto NO es un desensamblador, y no debe llegar a serlo
+///
+/// Solo distingue las tres familias que un programa de Ring 3 puede tocar. Todo
+/// lo que no reconozca cae en *"no canonica"*, que es lo que queda cuando la
+/// instruccion es corriente: la causa entonces esta en un OPERANDO, no en la
+/// instruccion. Anadir mas opcodes es anadir filas; anadir modos de
+/// direccionamiento seria escribir un desensamblador en un manejador de fallos.
+fn clasificar_gp(cap: &Captura) -> Causa {
+    let c = &cap.codigo[..cap.codigo_n];
+    if c.is_empty() {
+        return Causa::Proteccion;
+    }
+    // Saltar prefijos: segmento, tamano de operando/direccion, repeticion y
+    // REX. Sin esto, un `66 0F 6F` (movdqa) se leeria como el prefijo `66`.
+    let mut i = 0usize;
+    let mut prefijo_66 = false;
+    while i < c.len() {
+        match c[i] {
+            0x66 => prefijo_66 = true,
+            0x67 | 0xF2 | 0xF3 | 0x2E | 0x36 | 0x3E | 0x26 | 0x64 | 0x65 => {}
+            0x40..=0x4F => {}
+            _ => break,
+        }
+        i += 1;
+    }
+    let Some(&op) = c.get(i) else {
+        return Causa::Proteccion;
+    };
+    // Instrucciones que Ring 3 no puede ejecutar, punto.
+    match op {
+        0xF4 | 0xFA | 0xFB => return Causa::Privilegiada, // hlt, cli, sti
+        0xE4..=0xE7 | 0xEC..=0xEF => return Causa::Privilegiada, // in / out
+        _ => {}
+    }
+    if op == 0x0F {
+        if let Some(&op2) = c.get(i + 1) {
+            match op2 {
+                // wrmsr/rdmsr, mov cr, lgdt y familia, invd/wbinvd, sysret.
+                0x30 | 0x32 | 0x20 | 0x22 | 0x21 | 0x23 | 0x01 | 0x08 | 0x09 | 0x07 | 0x35 => {
+                    return Causa::Privilegiada
+                }
+                // ** Movimientos SSE que EXIGEN 16 bytes de alineacion: sobre
+                // una direccion desalineada dan `#GP`, no `#PF`. Es la causa
+                // que mas se confunde, porque el codigo no tiene nada de raro.
+                0x28 | 0x29 | 0x2B => return Causa::SseDesalineado, // movaps/movntps
+                0x6F | 0x7F if prefijo_66 => return Causa::SseDesalineado, // movdqa
+                0xE7 if prefijo_66 => return Causa::SseDesalineado,        // movntdq
+                _ => {}
+            }
+        }
+    }
+    // Instruccion corriente: entonces el problema esta en lo que apunta, y en
+    // un `#GP` eso significa una direccion cuyos bits altos no son copia del 47.
+    Causa::NoCanonica
 }
 
 fn nombre(c: Causa) -> &'static str {
@@ -306,7 +481,10 @@ fn nombre(c: Causa) -> &'static str {
         Causa::SaltoSinCodigo => "*** SALTO A MEMORIA QUE NO ES CODIGO: puntero de funcion",
         Causa::SinMapear => "*** SIN MAPEAR: puntero basura o indice fuera de rango",
         Causa::NoEsInstruccion => "*** SE EJECUTARON BYTES QUE NO SON UNA INSTRUCCION",
-        Causa::Proteccion => "*** #GP: direccion no canonica o instruccion no permitida",
+        Causa::Privilegiada => "*** INSTRUCCION QUE RING 3 NO PUEDE EJECUTAR",
+        Causa::SseDesalineado => "*** MOVIMIENTO SSE ALINEADO SOBRE UNA DIRECCION QUE NO LO ESTA",
+        Causa::NoCanonica => "*** PUNTERO NO CANONICO: bits 63:48 no copian el bit 47",
+        Causa::Proteccion => "*** #GP sin los bytes de la instruccion: causa no deducible",
         // Y cuando no encaja ninguna, se dice. Ver la cabecera.
         Causa::Desconocida => "(sin veredicto: los datos de arriba no bastan para concluir)",
     }
@@ -316,13 +494,13 @@ fn nombre(c: Causa) -> &'static str {
 ///
 /// Se ve sin pedir nada y sin abrir un fichero; los numeros los tiene el
 /// informe, que esta a un `fallo` de distancia.
-pub fn veredicto_corto(vector: u64, error: u64, cr2: u64) -> &'static str {
-    nombre(clasificar(vector, error, cr2))
+pub fn veredicto_corto(vector: u64, error: u64, cr2: u64, cap: &Captura) -> &'static str {
+    nombre(clasificar(vector, error, cr2, cap))
 }
 
-fn veredicto(vector: u64, error: u64, cr2: u64, r: &mut Renglon) {
+fn veredicto(vector: u64, error: u64, cr2: u64, cap: &Captura, r: &mut Renglon) {
     use crate::ring0::mm::vmm::{USER_STACK_BOTTOM, USER_STACK_SIZE};
-    let c = clasificar(vector, error, cr2);
+    let c = clasificar(vector, error, cr2, cap);
     r.s(nombre(c));
     // Los numeros solo donde dicen algo que la frase no dice. En el
     // desbordamiento son LA respuesta: cuanto se paso y sobre cuanto.
@@ -372,6 +550,7 @@ pub fn registrar(
     rsp: u64,
     pid: u32,
     tid: u32,
+    cap: &Captura,
 ) {
     unsafe {
         if DENTRO {
@@ -424,7 +603,7 @@ pub fn registrar(
     // conclusion al final la deja debajo de siete lineas de hexadecimal, que es
     // justo donde no se lee.
     renglones[3].s("veredicto ");
-    veredicto(vector, error, cr2, &mut renglones[3]);
+    veredicto(vector, error, cr2, &cap, &mut renglones[3]);
 
     renglones[4].s("codigo    ");
     renglones[4].hex(error);
@@ -443,6 +622,22 @@ pub fn registrar(
     renglones[5].s("  ");
     if !en_la_imagen(rip, &mut renglones[5]) {
         renglones[5].s("(FUERA de la imagen)");
+    }
+    // ** Y LOS BYTES DE LA INSTRUCCION, en la misma linea que su direccion.
+    //
+    // `--map` convierte el `+desplazamiento` en un nombre de FUNCION; estos
+    // bytes dicen la INSTRUCCION. Juntos son el sitio exacto, y van juntos
+    // porque por separado cada uno obliga a ir a buscar el otro.
+    //
+    // Son la unica pista que deja un `#GP`: a diferencia del `#PF`, no hay
+    // direccion de fallo --`cr2` no significa nada aqui-- asi que el opcode es
+    // literalmente lo que queda. De aqui sale el veredicto de arriba.
+    if cap.codigo_n > 0 {
+        renglones[5].s("  ");
+        for &b in cap.codigo.iter().take(cap.codigo_n.min(10)) {
+            renglones[5].hex_byte(b);
+            renglones[5].s(" ");
+        }
     }
 
     renglones[6].s("direccion ");
@@ -499,12 +694,8 @@ pub fn registrar(
     let mut hallados = 0usize;
     let mut nocanon = 0usize;
     let mut leidas = 0usize;
-    let mut k = 0u64;
-    while k < 24 {
-        let dir = rsp.wrapping_add(k * 8);
-        let Some(v) = leer_palabra_de_ring3(dir) else {
-            break;
-        };
+    for entrada in cap.pila.iter() {
+        let Some(v) = *entrada else { break };
         leidas += 1;
         // Canonica: los bits 63:48 tienen que ser copia del bit 47.
         if ((v >> 47) & 0x1_FFFF) != 0 && ((v >> 47) & 0x1_FFFF) != 0x1_FFFF {
@@ -521,7 +712,6 @@ pub fn registrar(
                 renglones[10].n = antes;
             }
         }
-        k += 1;
     }
     if hallados == 0 {
         renglones[10].s("SIN retornos en ");
