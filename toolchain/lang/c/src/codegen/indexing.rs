@@ -147,6 +147,152 @@ impl Codegen {
         }
     }
 
+
+    /// **`E1 op= E2` con la DIRECCION de `E1` calculada una sola vez.**
+    ///
+    /// === La secuencia, y por que ese orden ===
+    ///
+    /// ```text
+    ///   direccion de E1  -> rax     UNA vez. Aqui corren los efectos de E1.
+    ///   push rax                    la direccion se guarda; nada la vuelve a calcular
+    ///   load [rax]       -> rax     el valor viejo, con el tamano exacto del elemento
+    ///   push rax
+    ///   E2               -> rax     el operando derecho
+    ///   pop rdx                     rdx = viejo, rax = derecho
+    ///   <op>                        la MISMA secuencia que usa el operador binario
+    ///   mov rdx, rax                el resultado, donde el store lo espera
+    ///   pop rax                     la direccion guardada
+    ///   store rdx -> [rax]
+    ///   mov rax, rdx                el valor del assign ES el valor guardado
+    /// ```
+    ///
+    /// ** Los dos `push` no son pereza: son lo que hace correcta la operacion.
+    /// Recalcular la direccion para el store es exactamente el bug -- volveria a
+    /// ejecutar el `i++` del indice.
+    ///
+    /// [!] Y `<op>` se pide a la misma funcion que sirve al operador binario, no
+    /// a una copia: si manana `>>=` tiene que distinguir el signo, lo hereda. Una
+    /// segunda tabla de operaciones seria una segunda tabla donde equivocarse.
+    pub(super) fn emit_assign_op(&mut self, lvalue: &Expr, kind: AssignOpKind, rhs: &Expr) {
+        // El tipo del elemento decide el ancho del load y del store. Sacarlo del
+        // lvalue y no suponer 8 bytes es lo que evita pisar el campo de al lado.
+        let elem = self.tipo_del_lvalue(lvalue);
+
+        // 1. La direccion, UNA vez. Los efectos secundarios del lvalue --el
+        //    `i++` de `a[i++]`-- ocurren aqui y solo aqui.
+        self.emit_lvalue_addr(lvalue);
+        self.code.push(0x50); // push direccion
+
+        // 2. El valor viejo.
+        self.emit_load_elem(&elem);
+        self.code.push(0x50); // push viejo
+
+        // 3. El operando derecho.
+        self.emit_expr(rhs);
+
+        // 4. rdx = viejo, rax = derecho -- que es lo que espera `emit_binop`.
+        self.code.push(0x5A); // pop rdx
+        let unsigned = self.expr_is_unsigned(lvalue) || self.expr_is_unsigned(rhs);
+        let op = Self::bytes_de_op(kind, unsigned);
+        self.code.extend_from_slice(&op);
+
+        // 5. Guardar en la direccion guardada.
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax  (resultado)
+        self.code.push(0x58);                             // pop rax       (direccion)
+        self.emit_store_elem(&elem);
+        self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx  (el valor)
+    }
+
+    /// La direccion de un lvalue, sea de la forma que sea. Reusa los mismos
+    /// emisores que el resto del fichero: aqui no hay un segundo camino.
+    fn emit_lvalue_addr(&mut self, lvalue: &Expr) {
+        match lvalue {
+            Expr::Subscript(name, index, scale) => {
+                self.emit_subscript_addr(name, index, *scale)
+            }
+            Expr::IndexPtr(base, index, elem) => {
+                self.emit_index_ptr_addr(base, index, elem)
+            }
+            Expr::Field(base, _, off, _) => {
+                self.emit_expr_as_ptr(base);
+                self.emit_add_offset(*off);
+            }
+            Expr::Arrow(base, _, off, _) => {
+                self.emit_expr(base);
+                self.emit_add_offset(*off);
+            }
+            Expr::Deref(inner) => self.emit_expr(inner),
+            // Una variable suelta no llega aqui: no tiene efectos que duplicar,
+            // asi que el parser la sigue desazucarando a `v = v op x`.
+            otro => self.emit_expr_as_ptr(otro),
+        }
+    }
+
+    /// El tipo del elemento al que apunta un lvalue.
+    fn tipo_del_lvalue(&self, lvalue: &Expr) -> TypeSpec {
+        match lvalue {
+            Expr::Subscript(name, _, _) => self.elem_type_of(name),
+            Expr::IndexPtr(_, _, elem) => elem.clone(),
+            Expr::Field(_, _, _, ty) | Expr::Arrow(_, _, _, ty) => ty.clone(),
+            Expr::Deref(inner) => self
+                .pointee_type(inner)
+                .unwrap_or(TypeSpec::Long),
+            _ => TypeSpec::Long,
+        }
+    }
+
+    /// Los bytes de cada operacion, con `rdx` = izquierdo y `rax` = derecho,
+    /// resultado en `rax`.
+    ///
+    /// ** Es la MISMA eleccion que hacen los operadores binarios, y por eso
+    /// `/=`, `%=` y `>>=` heredan la correccion de signo de hoy: sin signo va
+    /// `xor rdx,rdx` + `div`, con signo `cqo` + `idiv`. Una copia de esta tabla
+    /// habria dejado `a[i] /= b` con el bug que `a[i] = a[i] / b` ya no tiene --
+    /// que es la definicion de por que una regla vive en un sitio.
+    ///
+    /// [!] `%` es el unico que necesita cola: `div` deja el cociente en `rax` y
+    /// **el resto en `rdx`**, asi que hay que traerlo.
+    fn bytes_de_op(kind: AssignOpKind, unsigned: bool) -> Vec<u8> {
+        // `mov rcx,rax` + `mov rax,rdx`: los desplazamientos y las divisiones
+        // necesitan el derecho en `rcx`/divisor y el izquierdo en `rax`.
+        const A_RCX: [u8; 6] = [0x48, 0x89, 0xC1, 0x48, 0x89, 0xD0];
+        let mut v = Vec::new();
+        match kind {
+            AssignOpKind::Add => v.extend_from_slice(&[0x48, 0x01, 0xD0]), // add rax, rdx
+            AssignOpKind::Sub => {
+                // rax = rdx - rax, y `sub` va al reves: se opera y se trae.
+                v.extend_from_slice(&[0x48, 0x29, 0xC2, 0x48, 0x89, 0xD0]);
+            }
+            AssignOpKind::Mul => v.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]),
+            AssignOpKind::BitAnd => v.extend_from_slice(&[0x48, 0x21, 0xD0]),
+            AssignOpKind::BitOr => v.extend_from_slice(&[0x48, 0x09, 0xD0]),
+            AssignOpKind::BitXor => v.extend_from_slice(&[0x48, 0x31, 0xD0]),
+            AssignOpKind::Shl => {
+                v.extend_from_slice(&A_RCX);
+                v.extend_from_slice(&[0x48, 0xD3, 0xE0]); // shl rax, cl
+            }
+            AssignOpKind::Shr => {
+                v.extend_from_slice(&A_RCX);
+                // shr (/5) sin signo, sar (/7) con el.
+                v.extend_from_slice(&[0x48, 0xD3, if unsigned { 0xE8 } else { 0xF8 }]);
+            }
+            AssignOpKind::Div | AssignOpKind::Mod => {
+                v.extend_from_slice(&A_RCX);
+                if unsigned {
+                    v.extend_from_slice(&[0x48, 0x31, 0xD2]); // xor rdx, rdx
+                    v.extend_from_slice(&[0x48, 0xF7, 0xF1]); // div rcx
+                } else {
+                    v.extend_from_slice(&[0x48, 0x99]);       // cqo
+                    v.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+                }
+                if kind == AssignOpKind::Mod {
+                    v.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = rdx (el resto)
+                }
+            }
+        }
+        v
+    }
+
     /// Emit expression as an address (pointer), not as a value
     pub(super) fn emit_expr_as_ptr(&mut self, expr: &Expr) {
         match expr {

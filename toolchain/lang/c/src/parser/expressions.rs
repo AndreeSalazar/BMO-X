@@ -41,20 +41,28 @@ impl Parser {
         let assign_op = |n: String, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
             let n2 = n.clone(); Expr::Assign(n, Box::new(op(Box::new(Expr::Var(n2)), Box::new(val))))
         };
-        let field_assign_op = |e: Expr, f: String, off: u32, ft: TypeSpec, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
-            let lhs = Expr::Field(Box::new(e.clone()), f.clone(), off, ft.clone());
-            Expr::AssignField(Box::new(e), f, off, ft, Box::new(op(Box::new(lhs), Box::new(val))))
+        // ** LOS CUATRO LVALUES CON EFECTOS YA NO SE CLONAN (2026-08-13).
+        //
+        // Construian `a[i] = a[i] + v` duplicando el lvalue, y con un indice con
+        // efectos eso es INCORRECTO: `g[i++] += 7` avanzaba `i` DOS veces y
+        // escribia en la casilla equivocada. C11 6.5.16.2p3 es taxativo --
+        // *"the lvalue expression E1 is evaluated only once"*.
+        //
+        // Y no se arregla desazucarando mejor: una expresion no tiene donde
+        // poner un temporal. Se emite `AssignOp`, que lleva el lvalue ENTERO y
+        // deja que el codegen calcule su direccion UNA vez. Ver
+        // `codegen/indexing.rs::emit_assign_op`.
+        let field_assign_op = |e: Expr, f: String, off: u32, ft: TypeSpec, val: Expr, k: AssignOpKind| {
+            Expr::AssignOp(Box::new(Expr::Field(Box::new(e), f, off, ft)), k, Box::new(val))
         };
-        let arrow_assign_op = |e: Box<Expr>, f: String, off: u32, ft: TypeSpec, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
-            Expr::AssignArrow(e.clone(), f.clone(), off, ft.clone(), Box::new(op(Box::new(Expr::Arrow(e, f, off, ft)), Box::new(val))))
+        let arrow_assign_op = |e: Box<Expr>, f: String, off: u32, ft: TypeSpec, val: Expr, k: AssignOpKind| {
+            Expr::AssignOp(Box::new(Expr::Arrow(e, f, off, ft)), k, Box::new(val))
         };
-        let sub_assign_op = |n: String, idx: Box<Expr>, sc: u32, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
-            let lhs = Expr::Subscript(n.clone(), idx.clone(), sc);
-            Expr::AssignSubscript(n, idx, sc, Box::new(op(Box::new(lhs), Box::new(val))))
+        let sub_assign_op = |n: String, idx: Box<Expr>, sc: u32, val: Expr, k: AssignOpKind| {
+            Expr::AssignOp(Box::new(Expr::Subscript(n, idx, sc)), k, Box::new(val))
         };
-        let idxptr_assign_op = |b: Box<Expr>, idx: Box<Expr>, ty: TypeSpec, val: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr| {
-            let lhs = Expr::IndexPtr(b.clone(), idx.clone(), ty.clone());
-            Expr::AssignIndexPtr(b, idx, ty, Box::new(op(Box::new(lhs), Box::new(val))))
+        let idxptr_assign_op = |b: Box<Expr>, idx: Box<Expr>, ty: TypeSpec, val: Expr, k: AssignOpKind| {
+            Expr::AssignOp(Box::new(Expr::IndexPtr(b, idx, ty)), k, Box::new(val))
         };
         match self.peek() {
             Token::Assign => { self.advance(); let val = self.parse_assign()?; match expr {
@@ -68,82 +76,82 @@ impl Parser {
             }}
             Token::AddAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Add)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Add)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Add)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Add)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Add)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::Add)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::Add)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::Add)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::Add)),
                 _ => Ok(val),
             }}
             Token::SubAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Sub)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Sub)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Sub)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Sub)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Sub)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::Sub)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::Sub)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::Sub)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::Sub)),
                 _ => Ok(val),
             }}
             Token::MulAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Mul)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Mul)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Mul)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Mul)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Mul)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::Mul)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::Mul)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::Mul)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::Mul)),
                 _ => Ok(val),
             }}
             Token::DivAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Div)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Div)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Div)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Div)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Div)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::Div)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::Div)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::Div)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::Div)),
                 _ => Ok(val),
             }}
             Token::ModAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Mod)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Mod)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Mod)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Mod)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Mod)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::Mod)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::Mod)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::Mod)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::Mod)),
                 _ => Ok(val),
             }}
             Token::ShlAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Shl)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Shl)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Shl)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Shl)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Shl)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::Shl)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::Shl)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::Shl)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::Shl)),
                 _ => Ok(val),
             }}
             Token::ShrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::Shr)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::Shr)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::Shr)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::Shr)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::Shr)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::Shr)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::Shr)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::Shr)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::Shr)),
                 _ => Ok(val),
             }}
             Token::AndAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitAnd)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitAnd)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitAnd)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitAnd)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::BitAnd)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::BitAnd)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::BitAnd)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::BitAnd)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::BitAnd)),
                 _ => Ok(val),
             }}
             Token::XorAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitXor)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitXor)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitXor)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitXor)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::BitXor)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::BitXor)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::BitXor)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::BitXor)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::BitXor)),
                 _ => Ok(val),
             }}
             Token::OrAssign => { self.advance(); let val = self.parse_assign()?; match expr {
                 Expr::Var(n) => Ok(assign_op(n, val, Expr::BitOr)),
-                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, Expr::BitOr)),
-                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, Expr::BitOr)),
-                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, Expr::BitOr)),
-                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, Expr::BitOr)),
+                Expr::Field(e, f, off, ft) => Ok(field_assign_op(*e, f, off, ft, val, AssignOpKind::BitOr)),
+                Expr::Arrow(e, f, off, ft) => Ok(arrow_assign_op(e, f, off, ft, val, AssignOpKind::BitOr)),
+                Expr::Subscript(n, idx, sc) => Ok(sub_assign_op(n, idx, sc, val, AssignOpKind::BitOr)),
+                Expr::IndexPtr(b, idx, ty) => Ok(idxptr_assign_op(b, idx, ty, val, AssignOpKind::BitOr)),
                 _ => Ok(val),
             }}
             _ => Ok(expr),

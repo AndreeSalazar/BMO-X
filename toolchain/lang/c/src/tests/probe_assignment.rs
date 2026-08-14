@@ -12,7 +12,7 @@
 //! the comma operator. All of this shows up on every line of DOOM's playsim
 //! (`sector->floorheight += speed`, `players[i].health -= damage`).
 //!
-//! ## ** ONE BROKEN, and it is left open on purpose
+//! ## ** IT WAS BROKEN, and it was closed on 2026-08-13
 //!
 //! ```text
 //!   int g[4]; int i = 1;
@@ -25,21 +25,38 @@
 //! so `g[i++] += 7` ends up being `g[i++] = g[i++] + 7`. The same goes for
 //! `field_assign_op`, `arrow_assign_op` and `idxptr_assign_op`.
 //!
-//! ## Why it is left BROKEN instead of being fixed now
+//! ## How it was fixed, and why not by desugaring better
 //!
-//! **Because it is MEASURED not to block DOOM**: the tree has 10 indices with
-//! `++` inside and **none** combined with a compound assignment
-//! (`grep -E "\[[a-z_]+\+\+\]\s*[-+*/|&^]="` returns not one line).
+//! It cannot be fixed by desugaring: **an expression has nowhere to put a
+//! temporary**. `x = (a[i++] += 7)` is legal C, so there is no statement slot to
+//! spill the index into.
 //!
-//! And fixing it is not one line: the lvalue's ADDRESS has to be evaluated once
-//! and operated on, which means a new AST node, six parser arms and their
-//! codegen. That is the size of the whole codegen split, with regression risk,
-//! for a defect that cannot fire today.
+//! So the ADDRESS is computed once, and only the codegen can do that. A new AST
+//! node --`AssignOp(lvalue, kind, rhs)`-- carries the whole lvalue instead of a
+//! cloned copy, and `codegen/indexing.rs::emit_assign_op` emits:
 //!
-//! [!] A `BROKEN` with its exact symptom beside it is more useful than a line
-//! in a `TODO`, and **the suite stays green because the census tells the
-//! truth**. The day somebody writes `a[i++] += x` in BMO C, this row explains
-//! what happens without debugging anything.
+//! ```text
+//!   address of E1 -> rax     ONCE. E1's side effects happen here and only here
+//!   push rax                 saved; nothing recomputes it
+//!   load [rax]               the old value, at the element's exact width
+//!   push rax
+//!   E2            -> rax
+//!   pop rdx                  rdx = old, rax = right -- what the binary ops want
+//!   <op>
+//!   mov rdx, rax  / pop rax  the result, and the SAVED address
+//!   store
+//! ```
+//!
+//! ** The two pushes are the fix. Recomputing the address for the store is
+//! exactly the bug: it would run the index's `i++` a second time.
+//!
+//! [!] And `<op>` asks the same table the binary operators use, not a copy --
+//! so `/=`, `%=` and `>>=` inherited today's signedness correction for free. A
+//! second table would have left `a[i] /= b` with a bug that `a[i] = a[i] / b`
+//! no longer has.
+//!
+//! ** A bare variable is still desugared to `v = v op x`, and that is correct
+//! rather than an oversight: **a name has no side effects to duplicate**.
 
 use super::census::{sweep, Cell};
 
@@ -188,10 +205,7 @@ fn the_assignment_census_has_not_changed() {
 
 /// **EL CENSUS DE LA ASIGNACION, al 2026-08-13.**
 ///
-/// Quince de dieciseis. La que falta es la doble evaluacion del lvalue en una
-/// asignacion compuesta, explicada en la cabecera: esta abierta a proposito
-/// porque **esta medido que DOOM no la usa** y arreglarla es un nodo de AST
-/// nuevo mas seis brazos del parser.
+
 const CENSUS: &str = "\
 += -= *= on a local            GOOD
 /= and %=                      GOOD
@@ -200,7 +214,7 @@ const CENSUS: &str = "\
 += on p->field                 GOOD
 += on a[i].field               GOOD
 += on a global array           GOOD
-a[i++] += 1 steps i ONCE       BROKEN gives \"3 0 0 7\", wants \"2 0 7 0\"
+a[i++] += 1 steps i ONCE       GOOD
 ++ and -- on p->field          GOOD
 ++ on a[i]                     GOOD
 post and pre differ            GOOD

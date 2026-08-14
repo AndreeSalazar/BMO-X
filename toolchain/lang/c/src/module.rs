@@ -184,6 +184,7 @@ fn collect_expr_callees(expr: &Expr, callees: &mut Vec<String>) {
         Expr::CallPtr(c, args) => { collect_expr_callees(c, callees); for a in args { collect_expr_callees(a, callees); } }
         Expr::Subscript(_, idx, _) => collect_expr_callees(idx, callees),
         Expr::AssignSubscript(_, idx, _, v) => { collect_expr_callees(idx, callees); collect_expr_callees(v, callees); }
+        Expr::AssignOp(lv, _, v) => { collect_expr_callees(lv, callees); collect_expr_callees(v, callees); }
         Expr::Comma(v) => { for e in v { collect_expr_callees(e, callees); } }
         _ => {}
     }

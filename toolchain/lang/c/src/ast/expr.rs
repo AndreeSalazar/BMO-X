@@ -71,6 +71,30 @@ pub enum Expr {
     AssignField(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
     AssignArrow(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
     AssignDeref(Box<Expr>, Box<Expr>),
+    /// **`E1 op= E2` con `E1` evaluado UNA SOLA VEZ.**
+    ///
+    /// === Por que existe esta variante, y no se desazucara ===
+    ///
+    /// Hasta el 2026-08-13 `a[i] += 7` se desazucaraba en el parser a
+    /// `a[i] = a[i] + 7`, clonando el lvalue. Para un indice sin efectos eso es
+    /// exacto y mas barato. Para uno con efectos es **incorrecto**:
+    ///
+    /// ```text
+    ///   int g[4]; int i = 1;
+    ///   g[i++] += 7;   ->  g[i++] = g[i++] + 7
+    ///                      i avanza DOS veces y el 7 cae en g[2]
+    /// ```
+    ///
+    /// C11 6.5.16.2p3 no deja lugar: *"the lvalue expression E1 is evaluated
+    /// only once"*. Y no se puede arreglar desazucarando mejor -- una expresion
+    /// no tiene donde poner un temporal-- asi que la DIRECCION tiene que
+    /// calcularse una vez, y eso solo lo puede hacer el codegen.
+    ///
+    /// El operando izquierdo es el lvalue COMPLETO (`Subscript`, `Field`,
+    /// `Arrow`, `IndexPtr`, `Deref`), no su direccion: el codegen ya sabe sacar
+    /// la direccion de cada forma, y meter eso en el AST seria bajar el AST.
+    AssignOp(Box<Expr>, AssignOpKind, Box<Expr>),
+
     /// (tipo)expr -- cast REAL: trunca/extiende; antes era no-op silencioso.
     Cast(TypeSpec, Box<Expr>),
     /// __nombre(args...) -- la FUSION sem-asm<->C: instruccion de la tabla
@@ -78,4 +102,24 @@ pub enum Expr {
     /// Los argumentos van a los registros que dicta la tabla (dx, al, ecx...).
     Intrinsic(String, Vec<Expr>),
     Syscall(SyscallDef, Vec<Expr>),
+}
+
+/// **Que operacion lleva un `op=`.**
+///
+/// Va como enum y no como los bytes de la instruccion porque el AST no debe
+/// saber de codigo maquina -- y porque `/=` y `%=` necesitan mirar el SIGNO del
+/// tipo antes de elegir instruccion, decision que se toma en el codegen con la
+/// tabla de tipos delante (ver `expr_is_unsigned`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AssignOpKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Shl,
+    Shr,
+    BitAnd,
+    BitOr,
+    BitXor,
 }

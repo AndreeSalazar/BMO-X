@@ -81,7 +81,7 @@ mod argv_de_doom;
 mod varargs_de_doom;
 // == THE CENSUS FAMILY ==============================================
 //
-// Seven axes, 115 cells, half a second: `cargo test -p bmo-c-front probe_`.
+// Ten axes, 143 cells, half a second: `cargo test -p bmo-c-front probe_`.
 // This is the answer to "what does BMO C support", and it CANNOT go stale --
 // each probe compares its whole report against a written constant, so fixing a
 // BROKEN or breaking a GOOD fails the test until the census is updated.
@@ -110,8 +110,8 @@ mod probe_signedness;
 /// CONTROL FLOW -- switch, goto and recursion. The axis of the playsim's 85
 /// `switch` and of `R_RenderBSPNode`, which recurses down two branches. Clean.
 mod probe_control_flow;
-/// ASSIGNMENT -- the shorthand forms. [!] Carries ONE row BROKEN on purpose:
-/// the double evaluation of the lvalue in `a[i++] += 1`.
+/// ASSIGNMENT -- the shorthand forms. Found the double evaluation of the lvalue
+/// in `a[i++] += 1`; closed 2026-08-13 with a new AST node. 16/16.
 mod probe_assignment;
 /// STRINGS -- the eight bytes of a lump name. `strncasecmp` and `strncpy(8)`
 /// are every lookup in the WAD, so this axis gates `R_Init` onwards.
