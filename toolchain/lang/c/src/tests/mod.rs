@@ -62,6 +62,7 @@ mod monton;
 mod musica;
 mod parseo;
 mod simbolos;
+mod sonda_param_array;
 mod sonda_layout_sha1;
 mod sonda_sha1;
 mod preprocesador;
