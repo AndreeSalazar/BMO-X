@@ -99,6 +99,25 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     let w = arg0.to_le_bytes();
                     let n = w.iter().position(|&b| b == 0).unwrap_or(8);
                     crate::ring0::obj::console::write(idx, &w[..n]);
+                    // ** Y TAMBIEN AL ANILLO DEL KERNEL, que es la caja negra.
+                    //
+                    // Esto es una bifurcacion de ENTREGA, no de registro: la
+                    // consola asignada decide **quien lo lee en vivo**; el
+                    // anillo de `uconsole` es lo que el kernel se acuerda de que
+                    // dijo cada proceso, y eso no puede depender de a quien se
+                    // lo estuviera diciendo.
+                    //
+                    // Se cobro el 2026-08-14: DOOM murio con `#GP` tras imprimir
+                    // VEINTE lineas --hasta `I_Init: Setting up machine state.`--
+                    // y su autopsia decia:
+                    //
+                    //     ultimo    (no escribio nada)
+                    //
+                    // Falso, y de la peor clase: no callaba, **afirmaba**. Su
+                    // salida iba a la consola hija que le creo el escritorio, y
+                    // el anillo del kernel no la veia pasar. Un informe que dice
+                    // "no dijo nada" manda a mirar donde no es.
+                    crate::ring0::uconsole::write_packed(arg0);
                 }
                 None => crate::ring0::uconsole::write_packed(arg0),
             }
