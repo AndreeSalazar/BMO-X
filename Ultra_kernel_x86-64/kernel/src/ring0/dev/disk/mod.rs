@@ -663,37 +663,25 @@ pub fn flush() -> bool {
 // confiar en el orden del PCI ni en que el firmware enumere igual dos veces:
 // el disco propio es el que lleva estas particiones y no otras.
 
-/// Una particion encontrada en la GPT.
-#[derive(Clone, Copy)]
-pub struct Partition {
-    pub index: u32,
-    pub first_lba: u64,
-    pub last_lba: u64,
-    /// Primeros 4 bytes del GUID de tipo -- basta para distinguir las que nos
-    /// importan sin arrastrar 16 bytes por todos lados.
-    pub type_lo: u32,
-    /// Nombre de la particion (UTF-16 en disco, aqui solo su parte ASCII).
-    pub name: [u8; 36],
-    pub name_len: usize,
-}
-
-impl Partition {
-    pub fn sectors(&self) -> u64 { self.last_lba.saturating_sub(self.first_lba) + 1 }
-    pub fn name_str(&self) -> &str {
-        core::str::from_utf8(&self.name[..self.name_len]).unwrap_or("")
-    }
-    /// Es la particion de sistema EFI? (GUID C12A7328-...) Ahi vive el
-    /// arranque de BMO.
-    pub fn is_esp(&self) -> bool { self.type_lo == 0xC12A_7328 }
-    /// Datos basicos de Microsoft? (GUID EBD0A0A2-...) BMO-DATA es de este
-    /// tipo mientras siga en NTFS.
-    pub fn is_basic_data(&self) -> bool { self.type_lo == 0xEBD0_A0A2 }
-}
+/// **La particion vive en `bmo-particiones`**, no aqui.
+///
+/// Se fue en el paso 1 de `docs/PLAN_ALMACENAMIENTO.md`. El criterio: de las
+/// siete preguntas que respondia este fichero, dos **no tocan hardware**, y
+/// "donde estan las cosas" es una de ellas -- leer una GPT es leer un formato
+/// ajeno, igual que una cabecera BEF.
+///
+/// Lo que se gano al sacarlo: **un censo de siete casillas que corre en 0
+/// segundos y sin disco** (tablas escritas a mano, incluida una con el
+/// `entry_size` corrupto que haria leer las entradas en diagonal). Con el
+/// bucle de lectura dentro, ninguna de esas casillas se podia escribir sin
+/// arrancar la maquina.
+///
+/// Se re-exporta para que quien ya decia `disk::Partition` siga diciendolo:
+/// el reparto no es excusa para tocar a los llamantes.
+pub use bmo_particiones::Partition;
 
 const MAX_PARTS: usize = 8;
-static mut PARTS: [Partition; MAX_PARTS] = [Partition {
-    index: 0, first_lba: 0, last_lba: 0, type_lo: 0, name: [0; 36], name_len: 0,
-}; MAX_PARTS];
+static mut PARTS: [Partition; MAX_PARTS] = [Partition::VACIA; MAX_PARTS];
 static mut PART_COUNT: usize = 0;
 
 /// Particiones leidas de la GPT.
@@ -811,14 +799,6 @@ pub fn block_write(lba: u64, count: u16, data: &[u8]) -> bool {
     write(lba, count, data) == count
 }
 
-fn le32(b: &[u8], o: usize) -> u32 {
-    (b[o] as u32) | ((b[o+1] as u32) << 8) | ((b[o+2] as u32) << 16) | ((b[o+3] as u32) << 24)
-}
-fn le64(b: &[u8], o: usize) -> u64 {
-    let mut v = 0u64;
-    for i in (0..8).rev() { v = (v << 8) | b[o + i] as u64; }
-    v
-}
 
 /// Lee la GPT del disco y guarda sus particiones. `true` si la cabecera es
 /// valida (firma "EFI PART" en el LBA 1).
@@ -826,60 +806,39 @@ pub fn scan_partitions() -> bool {
     if !is_ready() { return false; }
     let mut sec = [0u8; SECTOR];
 
-    // LBA 1: cabecera GPT.
+    // ** EL BUCLE SE QUEDA AQUI Y EL PARSEO SE VA, y esa es la frontera.
+    //
+    // Lo que solo puede hacerse aqui es pedir sectores (hay un dispositivo) y
+    // escribir en CABINA (hay un kernel). Interpretar los bytes no necesita ni
+    // una cosa ni la otra, asi que vive en `bmo-particiones` con su censo.
     if read(1, 1, &mut sec) == 0 {
         crate::ring0::cabina::fault("disk", "no se pudo leer el LBA 1 (cabecera GPT)", 0);
         return false;
     }
-    if &sec[0..8] != b"EFI PART" {
-        crate::ring0::cabina::warn("disk", "el disco no tiene tabla GPT", 0);
-        return false;
-    }
-    unsafe { LAST_LBA = le64(&sec, 48); }
-    let entries_lba = le64(&sec, 72);
-    let entry_count = le32(&sec, 80);
-    let entry_size = le32(&sec, 84) as usize;
-    if entry_size < 128 || entry_size > SECTOR {
-        crate::ring0::cabina::warn("disk", "tamano de entrada GPT inesperado", entry_size as u64);
-        return false;
-    }
+    let gpt = match bmo_particiones::cabecera(&sec) {
+        Ok(g) => g,
+        Err(e) => {
+            // El motivo con nombre: "no hay GPT" es normal en un disco ajeno,
+            // y "el tamano de entrada es absurdo" es un disco roto. Antes los
+            // dos salian como el mismo `false`.
+            crate::ring0::cabina::warn("disk", e.name(), 0);
+            return false;
+        }
+    };
+    unsafe { LAST_LBA = gpt.last_lba; }
 
-    let per_sector = SECTOR / entry_size;
+    let per_sector = gpt.por_sector();
     let mut found = 0usize;
     let mut i = 0u32;
-    while i < entry_count && found < MAX_PARTS {
+    while i < gpt.entry_count && found < MAX_PARTS {
         let sector_index = (i as usize) / per_sector;
-        if read(entries_lba + sector_index as u64, 1, &mut sec) == 0 { break; }
+        if read(gpt.entries_lba + sector_index as u64, 1, &mut sec) == 0 { break; }
         let mut slot = (i as usize) % per_sector;
-        while slot < per_sector && i < entry_count && found < MAX_PARTS {
-            let o = slot * entry_size;
-            let type_lo = le32(&sec, o);
-            // Una entrada con GUID de tipo todo ceros es un hueco.
-            let empty = type_lo == 0 && le32(&sec, o + 4) == 0
-                && le32(&sec, o + 8) == 0 && le32(&sec, o + 12) == 0;
-            if !empty {
-                let mut p = Partition {
-                    index: i + 1,
-                    first_lba: le64(&sec, o + 32),
-                    last_lba: le64(&sec, o + 40),
-                    type_lo,
-                    name: [0; 36],
-                    name_len: 0,
-                };
-                // El nombre son 36 unidades UTF-16LE. Aqui solo se conserva
-                // lo representable en ASCII: el font es de un byte y el
-                // objetivo es reconocer "BMO", no renderizar cualquier idioma.
-                let mut n = 0usize;
-                for k in 0..36 {
-                    let lo = sec[o + 56 + k * 2];
-                    let hi = sec[o + 56 + k * 2 + 1];
-                    if lo == 0 && hi == 0 { break; }
-                    if hi == 0 && lo >= 0x20 && lo < 0x7F { p.name[n] = lo; n += 1; }
-                }
-                p.name_len = n;
+        while slot < per_sector && i < gpt.entry_count && found < MAX_PARTS {
+            if let Some(part) = bmo_particiones::entrada(&sec, slot * gpt.entry_size as usize, i + 1) {
                 unsafe {
                     let arr = core::ptr::addr_of_mut!(PARTS) as *mut Partition;
-                    core::ptr::write(arr.add(found), p);
+                    core::ptr::write(arr.add(found), part);
                 }
                 found += 1;
             }

@@ -36,6 +36,7 @@ members = [
     # El contrato de bloques (leer/escribir/capacidad/identidad). Paso 3 del
     # orden de construccion de ESTRATOS: lo de arriba habla con esto, no con SATA.
     "platform/drivers/storage/block",
+    "platform/drivers/storage/particiones",
     "platform/drivers/storage/ahci",
     "platform/drivers/storage/fat32",
     # ESTRATOS: el formato en disco del FS propio. Solo el FORMATO -- sin E/S,
