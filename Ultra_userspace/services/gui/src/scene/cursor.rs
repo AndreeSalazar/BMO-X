@@ -7,14 +7,14 @@ use bmo_userland as bmo;
 
 // -- El cursor -----------------------------------------------------------
 
-pub(crate) const CUR_ANCHO: usize = 10;
-pub(crate) const CUR_ALTO: usize = 16;
+pub(crate) const CUR_W: usize = 10;
+pub(crate) const CUR_H: usize = 16;
 /// 0 = transparente, 1 = relleno, 2 = borde.
 ///
 /// Borde oscuro alrededor del relleno claro: es lo que hace que una flecha se
 /// vea igual de bien sobre un fondo claro que sobre uno oscuro. No es adorno,
 /// es la razon de que todos los cursores del mundo tengan contorno.
-pub(crate) const FLECHA: [[u8; CUR_ANCHO]; CUR_ALTO] = [
+pub(crate) const ARROW: [[u8; CUR_W]; CUR_H] = [
     [2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [2, 2, 0, 0, 0, 0, 0, 0, 0, 0],
     [2, 1, 2, 0, 0, 0, 0, 0, 0, 0],
@@ -37,7 +37,7 @@ pub(crate) const FLECHA: [[u8; CUR_ANCHO]; CUR_ALTO] = [
 /// No es adorno: es la unica forma que tiene el escritorio de decir "aqui
 /// dentro el clic coloca el cursor de escritura" **antes** de que lo intentes.
 /// Un campo de texto que se ve igual que el fondo obliga a probar.
-pub(crate) const BARRA: [[u8; CUR_ANCHO]; CUR_ALTO] = [
+pub(crate) const IBEAM: [[u8; CUR_W]; CUR_H] = [
     [0, 0, 2, 2, 2, 2, 2, 2, 0, 0],
     [0, 0, 2, 1, 1, 1, 1, 2, 0, 0],
     [0, 0, 2, 2, 1, 1, 2, 2, 0, 0],
@@ -61,7 +61,7 @@ pub(crate) const BARRA: [[u8; CUR_ANCHO]; CUR_ALTO] = [
 /// La usa lo que reacciona a un clic y no lo parece: los botones de la
 /// calculadora. Un boton dibujado es una promesa; la mano es la que la
 /// confirma sin gastar un clic en comprobarlo.
-pub(crate) const MANO: [[u8; CUR_ANCHO]; CUR_ALTO] = [
+pub(crate) const HAND: [[u8; CUR_W]; CUR_H] = [
     [0, 0, 0, 2, 2, 0, 0, 0, 0, 0],
     [0, 0, 2, 1, 1, 2, 0, 0, 0, 0],
     [0, 0, 2, 1, 1, 2, 0, 0, 0, 0],
@@ -91,36 +91,36 @@ pub(crate) const MANO: [[u8; CUR_ANCHO]; CUR_ALTO] = [
 /// de espera a proposito: nada de este escritorio bloquea, asi que un cursor
 /// de "espera" seria una forma que nunca es verdad.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Forma {
+pub(crate) enum Shape {
     /// Lo normal: senalar y elegir.
-    Flecha,
+    Arrow,
     /// Sobre un campo donde se escribe.
-    Texto,
+    Beam,
     /// Sobre algo que reacciona al clic.
-    Mano,
+    Hand,
 }
 
-impl Forma {
-    fn mapa(self) -> &'static [[u8; CUR_ANCHO]; CUR_ALTO] {
+impl Shape {
+    fn mapa(self) -> &'static [[u8; CUR_W]; CUR_H] {
         match self {
-            Forma::Flecha => &FLECHA,
-            Forma::Texto => &BARRA,
-            Forma::Mano => &MANO,
+            Shape::Arrow => &ARROW,
+            Shape::Beam => &IBEAM,
+            Shape::Hand => &HAND,
         }
     }
 }
 
-pub(crate) const CUR_RELLENO: u32 = 0x00FF_FFFF;
-pub(crate) const CUR_BORDE: u32 = 0x0000_0000;
+pub(crate) const CUR_FILL: u32 = 0x00FF_FFFF;
+pub(crate) const CUR_EDGE: u32 = 0x0000_0000;
 
-fn dibujar_cursor(p: &bmo::Pantalla, x: u32, y: u32, forma: Forma) {
-    for (fila, linea) in forma.mapa().iter().enumerate() {
-        for (col, &v) in linea.iter().enumerate() {
+fn draw_cursor(p: &bmo::Pantalla, x: u32, y: u32, shape: Shape) {
+    for (row, line) in shape.mapa().iter().enumerate() {
+        for (col, &v) in line.iter().enumerate() {
             if v == 0 {
                 continue;
             }
-            let color = if v == 1 { CUR_RELLENO } else { CUR_BORDE };
-            p.punto(x + col as u32, y + fila as u32, color);
+            let color = if v == 1 { CUR_FILL } else { CUR_EDGE };
+            p.punto(x + col as u32, y + row as u32, color);
         }
     }
 }
@@ -129,7 +129,7 @@ fn dibujar_cursor(p: &bmo::Pantalla, x: u32, y: u32, forma: Forma) {
 ///
 /// === Por que esto y no preguntarle a la escena ===
 ///
-/// Antes el cursor se borraba repintando `color_escena`: "que deberia haber
+/// Antes el cursor se borraba repintando `scene_color`: "que deberia haber
 /// aqui?". Eso vale mientras la escena conozca **todo** lo que hay en pantalla,
 /// y dejo de valer en cuanto aparecieron ventanas que no estan en ese modelo --
 /// la consola de datos y el conmutador. Pasar el raton por encima de ellas
@@ -147,24 +147,24 @@ fn dibujar_cursor(p: &bmo::Pantalla, x: u32, y: u32, forma: Forma) {
 /// devolverlo taparia lo nuevo con lo viejo. Por eso el compositor lo quita al
 /// PRINCIPIO del fotograma y lo pone al FINAL, con todo el dibujo en medio --
 /// que es la disciplina de cualquier cursor por software.
-pub(crate) struct Bajo {
-    px: [u32; CUR_ANCHO * CUR_ALTO],
+pub(crate) struct SaveUnder {
+    px: [u32; CUR_W * CUR_H],
     x: u32,
     y: u32,
-    puesto: bool,
+    placed_one: bool,
     /// Con que forma esta dibujado ahora mismo. Hace falta guardarla para poder
     /// notar que cambio sin que el puntero se mueva.
-    forma: Forma,
+    shape: Shape,
 }
 
-impl Bajo {
-    pub(crate) const fn nuevo() -> Self {
+impl SaveUnder {
+    pub(crate) const fn new() -> Self {
         Self {
-            px: [0; CUR_ANCHO * CUR_ALTO],
+            px: [0; CUR_W * CUR_H],
             x: 0,
             y: 0,
-            puesto: false,
-            forma: Forma::Flecha,
+            placed_one: false,
+            shape: Shape::Arrow,
         }
     }
 
@@ -193,7 +193,7 @@ impl Bajo {
     ///   4. vaciar        -> sfence, ahora si llega todo
     /// ```
     ///
-    /// El paso 3 guardaba pixeles caducados, y el `quitar` del fotograma
+    /// El paso 3 guardaba pixeles caducados, y el `lift` del fotograma
     /// siguiente los devolvia **encima de lo nuevo**: un rectangulo de 10x16
     /// con contenido viejo persiguiendo al puntero. Eso es el ghosting.
     ///
@@ -202,8 +202,8 @@ impl Bajo {
     /// que **nosotros** tampoco las vemos. La barrera hace falta en los dos
     /// sentidos, y va aqui dentro y no en quien llama: la invariante es de la
     /// lectura, no del sitio desde donde se pide.
-    pub(crate) fn poner(&mut self, p: &bmo::Pantalla, x: u32, y: u32, forma: Forma) {
-        if self.puesto {
+    pub(crate) fn place(&mut self, p: &bmo::Pantalla, x: u32, y: u32, shape: Shape) {
+        if self.placed_one {
             // * Y si la FORMA cambio, hay que redibujar aunque no se haya
             // movido: pasar del raton quieto sobre el escritorio al campo de
             // texto no mueve un pixel el puntero, y aun asi tiene que cambiar.
@@ -211,40 +211,40 @@ impl Bajo {
             // Se quita y se vuelve a poner en vez de dibujar encima: las tres
             // formas ocupan pixeles distintos, asi que pintar la nueva sobre la
             // vieja dejaria los trozos que la nueva no cubre.
-            if self.forma == forma {
+            if self.shape == shape {
                 return;
             }
-            self.quitar(p);
+            self.lift(p);
         }
-        self.forma = forma;
+        self.shape = shape;
         p.sincronizar_lectura();
-        for fila in 0..CUR_ALTO {
-            for col in 0..CUR_ANCHO {
-                self.px[fila * CUR_ANCHO + col] = p.read(x + col as u32, y + fila as u32);
+        for row in 0..CUR_H {
+            for col in 0..CUR_W {
+                self.px[row * CUR_W + col] = p.read(x + col as u32, y + row as u32);
             }
         }
         self.x = x;
         self.y = y;
-        self.puesto = true;
-        dibujar_cursor(p, x, y, forma);
+        self.placed_one = true;
+        draw_cursor(p, x, y, shape);
     }
 
     /// Devuelve lo guardado. Al PRINCIPIO del fotograma, antes de pintar nada.
     /// Si no estaba puesto no hace nada, asi que se puede llamar siempre.
-    pub(crate) fn quitar(&mut self, p: &bmo::Pantalla) {
-        if !self.puesto {
+    pub(crate) fn lift(&mut self, p: &bmo::Pantalla) {
+        if !self.placed_one {
             return;
         }
-        for fila in 0..CUR_ALTO {
-            for col in 0..CUR_ANCHO {
+        for row in 0..CUR_H {
+            for col in 0..CUR_W {
                 p.punto(
                     self.x + col as u32,
-                    self.y + fila as u32,
-                    self.px[fila * CUR_ANCHO + col],
+                    self.y + row as u32,
+                    self.px[row * CUR_W + col],
                 );
             }
         }
-        self.puesto = false;
+        self.placed_one = false;
     }
 }
 

@@ -1,6 +1,6 @@
 //! **El conmutador de ventanas** -- la ventanita de Alt+Tab.
 //!
-//! La politica vive en `bmo_input::foco` y **se prueba alli**; aqui solo se
+//! La politica vive en `bmo_input::focus` y **se prueba alli**; aqui solo se
 //! pinta lo que esa politica ya decidio. Es el mismo reparto de siempre: quien
 //! decide no dibuja, y quien dibuja no decide.
 //!
@@ -18,16 +18,16 @@ use bmo_userland as bmo;
 
 use super::*;
 
-const CONM_FONDO: u32 = 0x0016_2032;
-const CONM_BORDE: u32 = 0x0060_80A8;
-const CONM_SELECC: u32 = 0x002E_4C74;
+const SW_BG: u32 = 0x0016_2032;
+const SW_EDGE: u32 = 0x0060_80A8;
+const SW_SEL: u32 = 0x002E_4C74;
 
-const FILA_ALTO: u32 = bmo::GLIFO_ALTO + 8;
-const CONM_ANCHO: u32 = 420;
+const ROW_H: u32 = bmo::GLIFO_ALTO + 8;
+const SW_W: u32 = 420;
 
 /// El nombre de cada ventana, indexado por su id.
 ///
-/// El id es el mismo `u8` que maneja `bmo_input::foco`: ahi es un numero sin
+/// El id es el mismo `u8` que maneja `bmo_input::focus`: ahi es un numero sin
 /// significado --la politica no sabe que es una ventana-- y aqui se le pone
 /// nombre. Cada ventana nueva es una fila mas en esta tabla.
 /// * CABINA y Sonido faltaban aqui, y el atajo las ensenaba como `?`.
@@ -50,54 +50,54 @@ pub(crate) fn name(id: u8) -> &'static str {
 
 /// El rectangulo del conmutador. **Una sola cuenta**, porque la usan dos.
 ///
-/// `pintar` y `area` la tenian copiada, con un comentario que advertia justo de
+/// `paint` y `area` la tenian copiada, con un comentario que advertia justo de
 /// esto. Mientras las dos copias fueran identicas daba igual; en cuanto una
 /// crece --la fila de la ayuda de las flechas-- la otra borra un rectangulo mas
 /// corto que el pintado y deja una franja de la ventanita pegada en el
 /// escritorio hasta el siguiente repintado.
-fn caja(p: &bmo::Pantalla, cuantas: usize) -> (u32, u32, u32, u32) {
+fn run_box(p: &bmo::Pantalla, count: usize) -> (u32, u32, u32, u32) {
     // Dos filas ademas de la lista: el modo y la ayuda de las flechas.
-    let alto = FILA_ALTO * cuantas as u32 + FILA_ALTO * 2 + 16;
-    let ancho = CONM_ANCHO.min(p.ancho.saturating_sub(40));
+    let height = ROW_H * count as u32 + ROW_H * 2 + 16;
+    let width = SW_W.min(p.ancho.saturating_sub(40));
     (
-        (p.ancho.saturating_sub(ancho)) / 2,
-        (p.alto.saturating_sub(alto)) / 2,
-        ancho,
-        alto,
+        (p.ancho.saturating_sub(width)) / 2,
+        (p.alto.saturating_sub(height)) / 2,
+        width,
+        height,
     )
 }
 
 /// Pinta el conmutador centrado, con la senalada resaltada.
-pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], pointed_at: usize, modo: &str) {
+pub(crate) fn paint(p: &bmo::Pantalla, lista: &[u8], pointed_at: usize, modo: &str) {
     if lista.is_empty() {
         return;
     }
-    let (x, y, ancho, alto) = caja(p, lista.len());
+    let (x, y, width, height) = run_box(p, lista.len());
 
-    p.rect(x, y, ancho, alto, CONM_BORDE);
-    p.rect(x + 2, y + 2, ancho - 4, alto - 4, CONM_FONDO);
+    p.rect(x, y, width, height, SW_EDGE);
+    p.rect(x + 2, y + 2, width - 4, height - 4, SW_BG);
 
     let mut fy = y + 10;
     for (i, &v) in lista.iter().enumerate() {
         if i == pointed_at {
             // El resaltado va de borde a borde: una barra a media anchura se
             // lee como "hay mas columnas" y no las hay.
-            p.rect(x + 6, fy - 2, ancho - 12, FILA_ALTO, CONM_SELECC);
+            p.rect(x + 6, fy - 2, width - 12, ROW_H, SW_SEL);
         }
-        let color = if i == pointed_at { TEXTO } else { TEXTO_TENUE };
-        let marca = if i == pointed_at { "> " } else { "  " };
-        let nx = p.texto(x + 14, fy + 2, marca, color);
+        let color = if i == pointed_at { INK } else { INK_DIM };
+        let mark = if i == pointed_at { "> " } else { "  " };
+        let nx = p.texto(x + 14, fy + 2, mark, color);
         p.texto(nx, fy + 2, name(v), color);
-        fy += FILA_ALTO;
+        fy += ROW_H;
     }
 
     // El modo, abajo: sin esto no hay forma de saber por que el foco se
     // comporta distinto de lo que esperabas. Y con el la tecla que lo cambia:
     // un modo que se lee pero no se toca invita a pensar que esta averiado.
-    let mx = p.texto(x + 14, fy + 4, "modo: ", TEXTO_TENUE);
-    let mx = p.texto(mx, fy + 4, modo, ACENTO);
-    p.texto(mx, fy + 4, "   (Alt+M)", TEXTO_TENUE);
-    fy += FILA_ALTO;
+    let mx = p.texto(x + 14, fy + 4, "modo: ", INK_DIM);
+    let mx = p.texto(mx, fy + 4, modo, ACCENT);
+    p.texto(mx, fy + 4, "   (Alt+M)", INK_DIM);
+    fy += ROW_H;
 
     // ** Las flechas se anuncian AQUI y no en el pie de cada ventana.
     //
@@ -106,13 +106,13 @@ pub(crate) fn pintar(p: &bmo::Pantalla, lista: &[u8], pointed_at: usize, modo: &
     // de CABINA seria una linea mas que se lee una vez y se olvida, y ademas
     // habria que repetirla en las tres ventanas -- tres sitios que actualizar
     // cuando el atajo cambie.
-    let hx = p.texto(x + 14, fy + 4, "flechas: ", TEXTO_TENUE);
-    let hx = p.texto(hx, fy + 4, "mover", TEXTO);
-    let hx = p.texto(hx, fy + 4, "   Shift+flechas: ", TEXTO_TENUE);
-    p.texto(hx, fy + 4, "encajar", TEXTO);
+    let hx = p.texto(x + 14, fy + 4, "flechas: ", INK_DIM);
+    let hx = p.texto(hx, fy + 4, "mover", INK);
+    let hx = p.texto(hx, fy + 4, "   Shift+flechas: ", INK_DIM);
+    p.texto(hx, fy + 4, "encajar", INK);
 }
 
 /// Que rectangulo ocupo, para poder borrarlo despues.
-pub(crate) fn area(p: &bmo::Pantalla, cuantas: usize) -> (u32, u32, u32, u32) {
-    caja(p, cuantas)
+pub(crate) fn area(p: &bmo::Pantalla, count: usize) -> (u32, u32, u32, u32) {
+    run_box(p, count)
 }

@@ -26,21 +26,21 @@
 //!
 //! === Se mueve, como todas ===
 //!
-//! Lleva [`Marco`], igual que la ventana de ESTRATOS: se arrastra por la barra
+//! Lleva [`Chrome`], igual que la ventana de ESTRATOS: se arrastra por la barra
 //! de titulo, se redimensiona por la esquina, y tiene sus tres botones. Una
 //! ventana clavada en el centro tapa justo lo que uno quiere comparar con ella.
 
 use bmo_userland as bmo;
 
-use super::marco::Marco;
+use super::chrome::Chrome;
 use super::*;
-use crate::texto::decimal;
+use crate::text::decimal;
 
 // Proporcion de la pantalla, no un tamano fijo: ver `docs/LIDERES.md`.
-const CAB_PCT_ANCHO: u32 = 70;
-const CAB_PCT_ALTO: u32 = 55;
-const CAB_MIN_ANCHO: u32 = 520;
-const CAB_MIN_ALTO: u32 = 260;
+const CAB_PCT_W: u32 = 70;
+const CAB_PCT_H: u32 = 55;
+const CAB_MIN_W: u32 = 520;
+const CAB_MIN_H: u32 = 260;
 
 // -- El CIAN del gato -----------------------------------------------------
 //
@@ -51,11 +51,11 @@ const CAB_MIN_ALTO: u32 = 260;
 // El neon se usa **solo en el acento**. Novecientos pixeles de borde de neon
 // era lo que mas cansaba de mirar en la version anterior de esta ventana, y ya
 // se rebajo una vez: la leccion esta pagada.
-const CAB_FONDO: u32 = 0x0007_0B0E;
-const CAB_TITULO_FONDO: u32 = 0x000D_1519;
-const CAB_BORDE: u32 = 0x0019_3038;
-const CIAN: u32 = 0x0034_E2E4;
-const CIAN_TENUE: u32 = 0x0017_6E70;
+const CAB_BG: u32 = 0x0007_0B0E;
+const CAB_TITLE_BG: u32 = 0x000D_1519;
+const CAB_EDGE: u32 = 0x0019_3038;
+const CYAN: u32 = 0x0034_E2E4;
+const CYAN_DIM: u32 = 0x0017_6E70;
 
 // -- Los colores de la GRAVEDAD -------------------------------------------
 //
@@ -70,20 +70,20 @@ const SEV_COLOR: [u32; 5] = [
     0x00FF_3355, // Panic   -- rojo
 ];
 
-const SEV_NOMBRE: [&str; 5] = ["info", "trace", " AVISO", " FALLO", " PANICO"];
+const SEV_NAME: [&str; 5] = ["info", "trace", " AVISO", " FALLO", " PANICO"];
 
 /// Cuantos eventos caben, sabiendo el alto. Se calcula y no se fija: la ventana
 /// se puede redimensionar, y una cuenta fija dejaria filas pintadas fuera o
 /// hueco vacio dentro.
-fn filas_visibles(marco: &Marco) -> usize {
-    let util = marco.alto.saturating_sub(TITULO_ALTO + 44);
-    (util / (bmo::GLIFO_ALTO + 3)) as usize
+fn visible_rows(chrome: &Chrome) -> usize {
+    let usable = chrome.height.saturating_sub(TITLE_H + 44);
+    (usable / (bmo::GLIFO_ALTO + 3)) as usize
 }
 
-pub(crate) struct CajaCabina {
-    pub(crate) marco: Marco,
+pub(crate) struct CabinaWindow {
+    pub(crate) chrome: Chrome,
     /// Cuantos eventos hacia atras empieza la ventana. `0` = lo ultimo.
-    pub(crate) desde: u64,
+    pub(crate) from: u64,
     /// Gravedad minima que deja pasar. `0` = todas.
     ///
     /// Vive aqui y no en el modulo que pinta porque es estado de la SESION.
@@ -106,16 +106,16 @@ pub(crate) struct CajaCabina {
     ///
     /// ** No hay nada que deducir: el kernel ya agrupa (`cabina::intento`) y
     /// desde hoy entrega el numero (`CABINA_INTENTO`). Esto solo lo lee.
-    pub(crate) solo_ultimo: bool,
+    pub(crate) last_only: bool,
 }
 
-impl CajaCabina {
-    pub(crate) fn nueva(p: &bmo::Pantalla) -> Self {
+impl CabinaWindow {
+    pub(crate) fn new(p: &bmo::Pantalla) -> Self {
         Self {
-            marco: Marco::nuevo(p, CAB_PCT_ANCHO, CAB_PCT_ALTO, CAB_MIN_ANCHO, CAB_MIN_ALTO),
-            desde: 0,
+            chrome: Chrome::new(p, CAB_PCT_W, CAB_PCT_H, CAB_MIN_W, CAB_MIN_H),
+            from: 0,
             minima: 0,
-            solo_ultimo: false,
+            last_only: false,
         }
     }
 }
@@ -125,9 +125,9 @@ impl CajaCabina {
 /// Se busca hacia atras desde lo ultimo, que es donde esta: mirar los 48 en
 /// orden costaria lo mismo, pero empezar por el final permite parar en cuanto
 /// aparece uno -- y en la practica es el primero o el segundo.
-fn ultimo_intento(hay: u64) -> u64 {
+fn last_try(any: u64) -> u64 {
     let mut i = 0u64;
-    while i < hay {
+    while i < any {
         let n = bmo::cabina_intento(i);
         if n != 0 {
             return n;
@@ -137,7 +137,7 @@ fn ultimo_intento(hay: u64) -> u64 {
     0
 }
 
-fn poner(s: &[u8], dst: &mut [u8], n: &mut usize) {
+fn place(s: &[u8], dst: &mut [u8], n: &mut usize) {
     for &b in s {
         if *n < dst.len() {
             dst[*n] = b;
@@ -149,25 +149,25 @@ fn poner(s: &[u8], dst: &mut [u8], n: &mut usize) {
 fn num(v: u64, dst: &mut [u8], n: &mut usize) {
     let mut d = [0u8; 10];
     let k = decimal(v, &mut d);
-    poner(&d[..k], dst, n);
+    place(&d[..k], dst, n);
 }
 
-pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
-    if c.marco.minimizada {
+pub(crate) fn paint(p: &bmo::Pantalla, c: &CabinaWindow) {
+    if c.chrome.minimized {
         return;
     }
-    c.marco.pintar_cromo(p, CAB_BORDE, CAB_FONDO, CAB_TITULO_FONDO, CIAN);
-    c.marco.pintar_botones(p, CAB_TITULO_FONDO);
+    c.chrome.paint_chrome(p, CAB_EDGE, CAB_BG, CAB_TITLE_BG, CYAN);
+    c.chrome.paint_buttons(p, CAB_TITLE_BG);
 
-    let tx = c.marco.x + 16;
+    let tx = c.chrome.x + 16;
     // El bloque de acento del titulo: el ojo del gato, en pequeno.
-    p.rect(tx, c.marco.y + 9, 8, 8, CIAN);
-    let px = p.texto(tx + 16, c.marco.y + 8, "CABINA", TEXTO);
+    p.rect(tx, c.chrome.y + 9, 8, 8, CYAN);
+    let px = p.texto(tx + 16, c.chrome.y + 8, "CABINA", INK);
     let px = p.texto(
         px + 2 * bmo::GLIFO_ANCHO,
-        c.marco.y + 8,
+        c.chrome.y + 8,
         "lo que el kernel ve",
-        CIAN_TENUE,
+        CYAN_DIM,
     );
 
     // ** LA FECHA Y LA HORA, en el titulo.
@@ -180,20 +180,20 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
     //
     // Si no hay reloj no se pone nada. **No se inventa una fecha**: un log
     // fechado en 1970 miente con mas convicion que uno sin fechar.
-    let mut sello = [0u8; 24];
-    let sn = fecha_en(&mut sello);
+    let mut seal = [0u8; 24];
+    let sn = date_at(&mut seal);
     if sn > 0 {
-        p.texto_bytes(px + 2 * bmo::GLIFO_ANCHO, c.marco.y + 8, &sello[..sn], CIAN_TENUE);
+        p.texto_bytes(px + 2 * bmo::GLIFO_ANCHO, c.chrome.y + 8, &seal[..sn], CYAN_DIM);
     }
 
-    let mut ty = c.marco.y + TITULO_ALTO + 8;
+    let mut ty = c.chrome.y + TITLE_H + 8;
 
-    let hay = bmo::cabina_disponibles();
+    let any = bmo::cabina_disponibles();
     let total = bmo::cabina_total();
-    let perdidos = bmo::cabina_perdidos();
+    let lost = bmo::cabina_perdidos();
 
-    if hay == 0 {
-        p.texto(tx, ty, "el kernel no ha dicho nada todavia.", TEXTO_TENUE);
+    if any == 0 {
+        p.texto(tx, ty, "el kernel no ha dicho nada todavia.", INK_DIM);
         return;
     }
 
@@ -202,24 +202,24 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
     // el arranque empezo donde empieza el primero que sobrevive.
     let mut cab = [0u8; 96];
     let mut n = 0usize;
-    poner(b"vivos ", &mut cab, &mut n);
-    num(hay, &mut cab, &mut n);
-    poner(b" de ", &mut cab, &mut n);
+    place(b"vivos ", &mut cab, &mut n);
+    num(any, &mut cab, &mut n);
+    place(b" de ", &mut cab, &mut n);
     num(total, &mut cab, &mut n);
-    if perdidos > 0 {
-        poner(b"   (se cayeron ", &mut cab, &mut n);
-        num(perdidos, &mut cab, &mut n);
-        poner(b")", &mut cab, &mut n);
+    if lost > 0 {
+        place(b"   (se cayeron ", &mut cab, &mut n);
+        num(lost, &mut cab, &mut n);
+        place(b")", &mut cab, &mut n);
     }
     if c.minima > 0 {
-        poner(b"   filtro: >= ", &mut cab, &mut n);
-        poner(
-            SEV_NOMBRE[(c.minima as usize).min(4)].trim_start().as_bytes(),
+        place(b"   filtro: >= ", &mut cab, &mut n);
+        place(
+            SEV_NAME[(c.minima as usize).min(4)].trim_start().as_bytes(),
             &mut cab,
             &mut n,
         );
     }
-    p.texto_bytes(tx, ty, &cab[..n], TEXTO_TENUE);
+    p.texto_bytes(tx, ty, &cab[..n], INK_DIM);
     ty += bmo::GLIFO_ALTO + 6;
 
     // -- LA GUIA DEL FILTRO, cada opcion de su propio color -------------
@@ -228,43 +228,43 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
     // pulsandolo no existe. Y cada nombre va del color de sus lineas, asi que
     // la guia se explica sola y no hay que memorizar nada.
     let mut gx = tx;
-    gx = p.texto(gx, ty, "G:", TEXTO_TENUE) + bmo::GLIFO_ANCHO;
+    gx = p.texto(gx, ty, "G:", INK_DIM) + bmo::GLIFO_ANCHO;
     for s in 0..5usize {
         let sel = c.minima as usize == s;
-        let color = if sel { SEV_COLOR[s] } else { CIAN_TENUE };
-        let nom = SEV_NOMBRE[s].trim_start();
-        let fin = p.texto(gx, ty, nom, color);
+        let color = if sel { SEV_COLOR[s] } else { CYAN_DIM };
+        let nom = SEV_NAME[s].trim_start();
+        let end = p.texto(gx, ty, nom, color);
         if sel {
-            p.rect(gx, ty + bmo::GLIFO_ALTO + 1, fin - gx, 1, color);
+            p.rect(gx, ty + bmo::GLIFO_ALTO + 1, end - gx, 1, color);
         }
-        gx = fin + bmo::GLIFO_ANCHO;
+        gx = end + bmo::GLIFO_ANCHO;
     }
     // ** El filtro por ACCION, al lado del de gravedad y con su tecla a la
     // vista. Un atajo que solo se descubre pulsandolo no existe.
     gx += bmo::GLIFO_ANCHO * 2;
-    let color_a = if c.solo_ultimo { SEV_COLOR[2] } else { CIAN_TENUE };
-    let fin = p.texto(gx, ty, "A: esta accion", color_a);
-    if c.solo_ultimo {
-        p.rect(gx, ty + bmo::GLIFO_ALTO + 1, fin - gx, 1, color_a);
+    let color_to = if c.last_only { SEV_COLOR[2] } else { CYAN_DIM };
+    let end = p.texto(gx, ty, "A: esta accion", color_to);
+    if c.last_only {
+        p.rect(gx, ty + bmo::GLIFO_ALTO + 1, end - gx, 1, color_to);
     }
     ty += bmo::GLIFO_ALTO + 8;
 
     // -- LOS EVENTOS ----------------------------------------------------
-    let cuantas = filas_visibles(&c.marco);
-    let mut pintadas = 0usize;
-    let mut i = c.desde;
+    let count = visible_rows(&c.chrome);
+    let mut painted_count = 0usize;
+    let mut i = c.from;
 
     // ** El intento a seguir, resuelto UNA vez y no por evento: preguntarlo
     // dentro del bucle serian dos syscalls por linea para contestar siempre lo
     // mismo.
-    let seguido = if c.solo_ultimo { ultimo_intento(hay) } else { 0 };
+    let run_of = if c.last_only { last_try(any) } else { 0 };
 
-    while pintadas < cuantas && i < hay {
+    while painted_count < count && i < any {
         // El filtro por ACCION va ANTES que el de gravedad, y el orden importa:
         // dentro de una accion se quiere ver TODO --el `info` que dice de que
         // sector se leyo vale tanto como el `FALLO`-- asi que la gravedad se
         // aplica dentro de lo que la accion ya dejo pasar.
-        if seguido != 0 && bmo::cabina_intento(i) != seguido {
+        if run_of != 0 && bmo::cabina_intento(i) != run_of {
             i += 1;
             continue;
         }
@@ -285,48 +285,48 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
         // una palabra.
         p.rect(tx, ty + 2, 3, bmo::GLIFO_ALTO - 2, color);
 
-        let mut linea = [0u8; 120];
+        let mut line = [0u8; 120];
         let mut n = 0usize;
-        poner(SEV_NOMBRE[s].as_bytes(), &mut linea, &mut n);
-        poner(b"  ", &mut linea, &mut n);
+        place(SEV_NAME[s].as_bytes(), &mut line, &mut n);
+        place(b"  ", &mut line, &mut n);
 
-        let mut modulo = [0u8; 16];
-        let m = bmo::cabina_texto(i, bmo::CABINA_TXT_MODULO, &mut modulo);
-        poner(&modulo[..m], &mut linea, &mut n);
+        let mut module_name = [0u8; 16];
+        let m = bmo::cabina_texto(i, bmo::CABINA_TXT_MODULO, &mut module_name);
+        place(&module_name[..m], &mut line, &mut n);
         // El modulo se alinea a ocho para que los mensajes empiecen todos en la
         // misma columna. Con anchos distintos, la vista no encuentra el texto.
         for _ in m..8 {
-            poner(b" ", &mut linea, &mut n);
+            place(b" ", &mut line, &mut n);
         }
-        poner(b" ", &mut linea, &mut n);
+        place(b" ", &mut line, &mut n);
 
-        let mut mensaje = [0u8; 72];
-        let k = bmo::cabina_texto(i, bmo::CABINA_TXT_MENSAJE, &mut mensaje);
-        poner(&mensaje[..k], &mut linea, &mut n);
+        let mut message_text = [0u8; 72];
+        let k = bmo::cabina_texto(i, bmo::CABINA_TXT_MENSAJE, &mut message_text);
+        place(&message_text[..k], &mut line, &mut n);
 
         // El VALOR solo si dice algo. Un `=0` detras de cada linea es ruido en
         // la mayoria, y justo en las que importa --fugas, choques de cerrojo--
         // el cero ES la respuesta correcta y ya se ve en `info`.
         if let Some(v) = bmo::cabina_campo(bmo::CABINA_VALOR, i) {
             if v != 0 {
-                poner(b" =", &mut linea, &mut n);
-                num(v, &mut linea, &mut n);
+                place(b" =", &mut line, &mut n);
+                num(v, &mut line, &mut n);
             }
         }
 
-        p.texto_bytes(tx + 10, ty, &linea[..n.min(linea.len())], color);
+        p.texto_bytes(tx + 10, ty, &line[..n.min(line.len())], color);
         ty += bmo::GLIFO_ALTO + 3;
-        pintadas += 1;
+        painted_count += 1;
         i += 1;
     }
 
     // -- La barra de atajos, del mismo estilo que las demas -------------
-    let by = c.marco.y + c.marco.alto - bmo::GLIFO_ALTO - 8;
+    let by = c.chrome.y + c.chrome.height - bmo::GLIFO_ALTO - 8;
     p.texto(
         tx,
         by,
         "G gravedad   RePag/AvPag historia   arrastra el titulo   ESC cierra",
-        CIAN_TENUE,
+        CYAN_DIM,
     );
 }
 
@@ -334,7 +334,7 @@ pub(crate) fn pintar(p: &bmo::Pantalla, c: &CajaCabina) {
 ///
 /// Los segundos se dejan fuera a proposito: en un titulo no se leen, y un
 /// numero que cambia solo hace parpadear una linea que se mira quieta.
-fn fecha_en(out: &mut [u8; 24]) -> usize {
+fn date_at(out: &mut [u8; 24]) -> usize {
     let v = bmo::info(bmo::INFO_FECHA);
     let Some(f) = bmo_rtc::desempaquetar(v) else {
         return 0;

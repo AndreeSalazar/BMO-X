@@ -71,7 +71,7 @@ salta al vacio y muere con un `#UD` en Ring 3.
 
 - `apps/launcher`, *"shell del escritorio"*. Eran **nueve lineas** que hacen
   `hlt` para siempre, y su trabajo ya estaba hecho: el lanzador de verdad son
-  440 lineas en `services/gui/src/escena/lanzador.rs`, lee `apps\` del disco,
+  440 lineas en `services/gui/src/scene/launcher.rs`, lee `apps\` del disco,
   saca el icono de dentro de cada `.bex` y lanza al pulsar. Un crate vacio con
   el nombre del que si funciona es peor que no tener nada: manda a leer el
   fichero equivocado.

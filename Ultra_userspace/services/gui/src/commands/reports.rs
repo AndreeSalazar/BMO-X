@@ -5,8 +5,8 @@
 
 use bmo_userland as bmo;
 
-use crate::escena::salida::{Salida, TINTA_BIEN, TINTA_ECO, TINTA_MAL, TINTA_NORMAL};
-use crate::escena::SAL_COLS;
+use crate::scene::output::{Output, INK_GOOD, INK_ECHO, INK_ERR, INK_PLAIN};
+use crate::scene::OUT_COLS;
 
 // -- Los informes del sistema --------------------------------------------
 //
@@ -15,58 +15,58 @@ use crate::escena::SAL_COLS;
 // son de este lado.
 
 /// Un rotulo de seccion, para que el informe no sea un muro de renglones.
-pub(crate) fn seccion(s: &mut Salida, titulo: &[u8]) {
-    s.con_tinta(TINTA_ECO);
-    s.texto(b"  ");
-    s.texto(titulo);
+pub(crate) fn section(s: &mut Output, title: &[u8]) {
+    s.with_ink(INK_ECHO);
+    s.text(b"  ");
+    s.text(title);
     s.byte(b' ');
     // Una regla hasta el margen: cuesta nada y separa de verdad.
-    let usado = 3 + titulo.len();
-    for _ in usado..SAL_COLS.saturating_sub(2) {
+    let used_one = 3 + title.len();
+    for _ in used_one..OUT_COLS.saturating_sub(2) {
         s.byte(b'-');
     }
     s.byte(b'\n');
-    s.con_tinta(TINTA_NORMAL);
+    s.with_ink(INK_PLAIN);
 }
 
-/// Un renglon `etiqueta ....... valor`, con la etiqueta a ancho fijo.
-pub(crate) fn etiqueta(s: &mut Salida, name: &[u8]) {
-    s.texto(b"    ");
-    s.texto(name);
+/// Un renglon `label ....... value`, con la etiqueta a ancho fijo.
+pub(crate) fn label(s: &mut Output, name: &[u8]) {
+    s.text(b"    ");
+    s.text(name);
     for _ in name.len()..14 {
         s.byte(b' ');
     }
 }
 
-pub(crate) fn informe_cpu(s: &mut Salida) {
+pub(crate) fn report_cpu(s: &mut Output) {
     let mut buf = [0u8; 64];
 
-    seccion(s, b"procesador");
+    section(s, b"procesador");
     let n = bmo::info_texto(bmo::INFO_TXT_CPU_VENDOR, &mut buf);
-    etiqueta(s, b"fabricante");
-    s.texto(&buf[..n]);
+    label(s, b"fabricante");
+    s.text(&buf[..n]);
     s.byte(b'\n');
 
     let n = bmo::info_texto(bmo::INFO_TXT_CPU_NOMBRE, &mut buf);
-    etiqueta(s, b"modelo");
-    s.texto(&buf[..n]);
+    label(s, b"modelo");
+    s.text(&buf[..n]);
     s.byte(b'\n');
 
     let n = bmo::info_texto(bmo::INFO_TXT_UARCH, &mut buf);
-    etiqueta(s, b"uarch");
-    s.texto(&buf[..n]);
+    label(s, b"uarch");
+    s.text(&buf[..n]);
     let n2 = bmo::info_texto(bmo::INFO_TXT_FAMILIA, &mut buf);
     if n2 > 0 {
-        s.texto(b"   familia ");
-        s.texto(&buf[..n2]);
+        s.text(b"   familia ");
+        s.text(&buf[..n2]);
     }
     s.byte(b'\n');
 
-    etiqueta(s, b"nucleos");
+    label(s, b"nucleos");
     s.dec(bmo::info(bmo::INFO_CPU_NUCLEOS));
-    s.texto(b" fisicos / ");
+    s.text(b" fisicos / ");
     s.dec(bmo::info(bmo::INFO_CPU_HILOS));
-    s.texto(b" hilos\n");
+    s.text(b" hilos\n");
 
     // ** QUE SABE MEDIR ESTE PERFIL, antes de ensenar ninguna medida.
     //
@@ -77,32 +77,32 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     // Es la cadena que pidio el dueno, leida de arriba abajo: el PERFIL declara
     // que se puede medir, el lector lo lee, y **la terminal ensena lo que el
     // perfil esta reflejando** en vez de suponerlo.
-    let sensores = bmo::info(bmo::INFO_CPU_SENSORES);
-    etiqueta(s, b"mide");
-    if sensores == 0 {
-        s.con_tinta(TINTA_ECO);
-        s.texto(b"nada: este perfil no declara sensores");
-        s.con_tinta(TINTA_NORMAL);
+    let sensors = bmo::info(bmo::INFO_CPU_SENSORES);
+    label(s, b"mide");
+    if sensors == 0 {
+        s.with_ink(INK_ECHO);
+        s.text(b"nada: este perfil no declara sensores");
+        s.with_ink(INK_PLAIN);
     } else {
-        if sensores & 1 != 0 {
-            s.texto(b"frecuencia real");
+        if sensors & 1 != 0 {
+            s.text(b"frecuencia real");
         }
-        if sensores & 3 == 3 {
-            s.texto(b" + ");
+        if sensors & 3 == 3 {
+            s.text(b" + ");
         }
-        if sensores & 2 != 0 {
-            s.texto(b"consumo");
+        if sensors & 2 != 0 {
+            s.text(b"consumo");
         }
-        s.con_tinta(TINTA_ECO);
-        s.texto(b"   (lo declara el perfil)");
-        s.con_tinta(TINTA_NORMAL);
+        s.with_ink(INK_ECHO);
+        s.text(b"   (lo declara el perfil)");
+        s.with_ink(INK_PLAIN);
     }
     s.byte(b'\n');
 
     // Hz -> GHz con dos decimales, con enteros. El TSC es la frecuencia MEDIDA
     // en el arranque, no el numero de la etiqueta de la caja.
     let hz = bmo::info(bmo::INFO_TSC_HZ);
-    etiqueta(s, b"tsc");
+    label(s, b"tsc");
     s.dec(hz / 1_000_000_000);
     s.byte(b'.');
     let frac = (hz % 1_000_000_000) / 10_000_000;
@@ -110,7 +110,7 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
         s.byte(b'0');
     }
     s.dec(frac);
-    s.texto(b" GHz   (medido)\n");
+    s.text(b" GHz   (medido)\n");
 
     // ** Y A QUE VA AHORA, que es otra pregunta.
     //
@@ -122,33 +122,33 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     // [!] Es una MEDIDA: sale de restar dos lecturas de MPERF/APERF, asi que el
     // numero es la velocidad **desde la ultima vez que se pregunto**. Pedir
     // `info` dos veces seguidas mide el rato entre las dos.
-    let real = bmo::info(bmo::INFO_CPU_HZ_REAL);
-    etiqueta(s, b"ahora");
-    if real == 0 {
+    let actual = bmo::info(bmo::INFO_CPU_HZ_REAL);
+    label(s, b"ahora");
+    if actual == 0 {
         // Cero no es cero hercios: es "no se puede medir". Decirlo con palabras
         // evita que alguien lea un 0.00 GHz y crea que el CPU esta parado.
-        s.con_tinta(TINTA_ECO);
-        s.texto(b"sin MPERF/APERF, o aun sin dos lecturas");
-        s.con_tinta(TINTA_NORMAL);
+        s.with_ink(INK_ECHO);
+        s.text(b"sin MPERF/APERF, o aun sin dos lecturas");
+        s.with_ink(INK_PLAIN);
         s.byte(b'\n');
     } else {
-        s.dec(real / 1_000_000_000);
+        s.dec(actual / 1_000_000_000);
         s.byte(b'.');
-        let f2 = (real % 1_000_000_000) / 10_000_000;
+        let f2 = (actual % 1_000_000_000) / 10_000_000;
         if f2 < 10 {
             s.byte(b'0');
         }
         s.dec(f2);
-        s.texto(b" GHz   ");
-        s.con_tinta(TINTA_ECO);
-        if real > hz {
-            s.texto(b"(boost)");
-        } else if real + 200_000_000 < hz {
-            s.texto(b"(bajando)");
+        s.text(b" GHz   ");
+        s.with_ink(INK_ECHO);
+        if actual > hz {
+            s.text(b"(boost)");
+        } else if actual + 200_000_000 < hz {
+            s.text(b"(bajando)");
         } else {
-            s.texto(b"(en base)");
+            s.text(b"(en base)");
         }
-        s.con_tinta(TINTA_NORMAL);
+        s.with_ink(INK_PLAIN);
         s.byte(b'\n');
     }
 
@@ -164,30 +164,30 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     // fila, `smp stop` tiene un antes y un despues.
     let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
     let mwn = bmo::info(bmo::INFO_CPU_MW_NUCLEO_ACTUAL);
-    etiqueta(s, b"gasta");
+    label(s, b"gasta");
     if mw == 0 {
-        s.con_tinta(TINTA_ECO);
-        s.texto(b"sin RAPL, o aun sin dos lecturas");
-        s.con_tinta(TINTA_NORMAL);
+        s.with_ink(INK_ECHO);
+        s.text(b"sin RAPL, o aun sin dos lecturas");
+        s.with_ink(INK_PLAIN);
         s.byte(b'\n');
     } else {
         s.dec(mw / 1000);
         s.byte(b'.');
         s.dec((mw % 1000) / 100);
-        s.texto(b" W paquete");
+        s.text(b" W paquete");
         if mwn > 0 {
-            s.texto(b" / ");
+            s.text(b" / ");
             s.dec(mwn / 1000);
             s.byte(b'.');
             s.dec((mwn % 1000) / 100);
-            s.texto(b" W ESTE nucleo");
+            s.text(b" W ESTE nucleo");
         }
-        s.con_tinta(TINTA_ECO);
+        s.with_ink(INK_ECHO);
         // La resta se dice porque no es obvia: lo que va del nucleo al paquete
         // es Infinity Fabric, controlador de memoria y L3 -- y ese consumo NO
         // baja aunque se apaguen nucleos.
-        s.texto(b"   (el paquete son los 6 + fabric + memoria + L3)");
-        s.con_tinta(TINTA_NORMAL);
+        s.text(b"   (el paquete son los 6 + fabric + memoria + L3)");
+        s.with_ink(INK_PLAIN);
         s.byte(b'\n');
     }
 
@@ -197,42 +197,42 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     // proposito. Un panel que solo ensena "12 de 12" cuenta la mitad bonita:
     // la otra mitad es si esos once obreros estan peleandose con el kernel
     // por dentro, y ese numero tiene que ser cero.
-    let vivos = bmo::info(bmo::INFO_SMP_VIVOS);
-    etiqueta(s, b"smp");
-    if vivos == 0 {
-        s.texto(b"solo el BSP");
-        s.con_tinta(TINTA_ECO);
-        s.texto(b"   (`smp all` levanta los demas)");
-        s.con_tinta(TINTA_NORMAL);
+    let alive_count = bmo::info(bmo::INFO_SMP_VIVOS);
+    label(s, b"smp");
+    if alive_count == 0 {
+        s.text(b"solo el BSP");
+        s.with_ink(INK_ECHO);
+        s.text(b"   (`smp all` levanta los demas)");
+        s.with_ink(INK_PLAIN);
         s.byte(b'\n');
     } else {
-        s.con_tinta(TINTA_BIEN);
-        s.dec(vivos + 1);
-        s.con_tinta(TINTA_NORMAL);
-        s.texto(b" nucleos en pie de ");
+        s.with_ink(INK_GOOD);
+        s.dec(alive_count + 1);
+        s.with_ink(INK_PLAIN);
+        s.text(b" nucleos en pie de ");
         s.dec(bmo::info(bmo::INFO_CPU_HILOS));
         s.byte(b'\n');
     }
 
-    let choques = bmo::info(bmo::INFO_SPIN_CHOQUES);
-    etiqueta(s, b"cerrojos");
-    if choques == 0 {
-        s.con_tinta(TINTA_BIEN);
-        s.texto(b"0 choques");
-        s.con_tinta(TINTA_ECO);
-        s.texto(b"   (lo correcto: nadie pelea)");
-        s.con_tinta(TINTA_NORMAL);
+    let collisions = bmo::info(bmo::INFO_SPIN_CHOQUES);
+    label(s, b"cerrojos");
+    if collisions == 0 {
+        s.with_ink(INK_GOOD);
+        s.text(b"0 choques");
+        s.with_ink(INK_ECHO);
+        s.text(b"   (lo correcto: nadie pelea)");
+        s.with_ink(INK_PLAIN);
         s.byte(b'\n');
     } else {
         // No es una cifra de rendimiento: es que alguien entro en el kernel
         // desde otro nucleo. Se pinta como lo que es.
-        s.con_tinta(TINTA_MAL);
-        s.dec(choques);
-        s.texto(b" CHOQUES");
-        s.con_tinta(TINTA_NORMAL);
-        s.texto(b"   espera mayor ");
+        s.with_ink(INK_ERR);
+        s.dec(collisions);
+        s.text(b" CHOQUES");
+        s.with_ink(INK_PLAIN);
+        s.text(b"   espera mayor ");
         s.dec(bmo::info(bmo::INFO_SPIN_PICO));
-        s.texto(b" vueltas\n");
+        s.text(b" vueltas\n");
     }
 
     // * Y la otra mitad de lo mismo: cuando una tarea muere, el kernel dice
@@ -241,54 +241,54 @@ pub(crate) fn informe_cpu(s: &mut Salida) {
     // Un numero distinto de cero no acusa al programa que murio: acusa al
     // KERNEL. Va aqui, al lado de los cerrojos, porque son la misma clase de
     // dato -- el sistema comprobandose a si mismo.
-    let fugas = bmo::info(bmo::INFO_FUGAS);
-    etiqueta(s, b"fugas");
-    if fugas == 0 {
-        s.con_tinta(TINTA_BIEN);
-        s.texto(b"0");
-        s.con_tinta(TINTA_ECO);
-        s.texto(b"   (los muertos devolvieron todo)");
-        s.con_tinta(TINTA_NORMAL);
+    let leaks = bmo::info(bmo::INFO_FUGAS);
+    label(s, b"fugas");
+    if leaks == 0 {
+        s.with_ink(INK_GOOD);
+        s.text(b"0");
+        s.with_ink(INK_ECHO);
+        s.text(b"   (los muertos devolvieron todo)");
+        s.with_ink(INK_PLAIN);
         s.byte(b'\n');
     } else {
-        s.con_tinta(TINTA_MAL);
-        s.dec(fugas);
-        s.texto(b" RECURSOS SIN DEVOLVER");
-        s.con_tinta(TINTA_NORMAL);
-        s.texto(b"   escribe `fallo`\n");
+        s.with_ink(INK_ERR);
+        s.dec(leaks);
+        s.text(b" RECURSOS SIN DEVOLVER");
+        s.with_ink(INK_PLAIN);
+        s.text(b"   escribe `fallo`\n");
     }
 }
 
-pub(crate) fn informe_memoria(s: &mut Salida) {
+pub(crate) fn report_memory(s: &mut Output) {
     let total = bmo::info(bmo::INFO_RAM_TOTAL);
-    let libre = bmo::info(bmo::INFO_RAM_LIBRE);
-    let usada = total.saturating_sub(libre);
+    let free_one = bmo::info(bmo::INFO_RAM_LIBRE);
+    let used = total.saturating_sub(free_one);
 
-    seccion(s, b"memoria");
-    etiqueta(s, b"total");
-    s.tamano(total);
-    s.texto(b"   ");
-    s.dec_der(bmo::info(bmo::INFO_RAM_MARCOS), 8);
-    s.texto(b" marcos de 4 KiB\n");
+    section(s, b"memoria");
+    label(s, b"total");
+    s.size(total);
+    s.text(b"   ");
+    s.dec_right(bmo::info(bmo::INFO_RAM_MARCOS), 8);
+    s.text(b" marcos de 4 KiB\n");
 
-    etiqueta(s, b"usada");
-    s.tamano(usada);
-    s.texto(b"   ");
-    s.barra(usada, total, 24);
+    label(s, b"usada");
+    s.size(used);
+    s.text(b"   ");
+    s.bar(used, total, 24);
     s.byte(b' ');
-    s.pct(usada, total);
+    s.pct(used, total);
     s.byte(b'\n');
 
-    etiqueta(s, b"libre");
-    s.tamano(libre);
-    s.texto(b"   ");
-    s.dec_der(bmo::info(bmo::INFO_RAM_MARCOS_LIBRES), 8);
-    s.texto(b" marcos\n");
+    label(s, b"libre");
+    s.size(free_one);
+    s.text(b"   ");
+    s.dec_right(bmo::info(bmo::INFO_RAM_MARCOS_LIBRES), 8);
+    s.text(b" marcos\n");
 
     // El tamano REAL del kernel en RAM, medido hasta el final de su .bss.
-    etiqueta(s, b"kernel");
-    s.tamano(bmo::info(bmo::INFO_KERNEL_BYTES));
-    s.texto(b"   en 0x400000\n");
+    label(s, b"kernel");
+    s.size(bmo::info(bmo::INFO_KERNEL_BYTES));
+    s.text(b"   en 0x400000\n");
 
     // * Lo que Ring 3 ha PEDIDO. Las cuatro filas de arriba las sabe el kernel
     // porque la memoria la reparte el; esta solo se mueve si un programa
@@ -297,74 +297,74 @@ pub(crate) fn informe_memoria(s: &mut Salida) {
     //
     // En cero se dice EXPRESAMENTE que nadie ha pedido, en vez de pintar un
     // `0 B` que se lee igual que "no lo se".
-    let pedida = bmo::info(bmo::INFO_MEM_ENTREGADA);
-    etiqueta(s, b"a Ring 3");
-    if pedida == 0 {
-        s.texto(b"ningun programa ha pedido memoria\n");
+    let asked = bmo::info(bmo::INFO_MEM_ENTREGADA);
+    label(s, b"a Ring 3");
+    if asked == 0 {
+        s.text(b"ningun programa ha pedido memoria\n");
     } else {
-        s.tamano(pedida);
-        s.texto(b"   pedida con KIND_MEMORIA\n");
+        s.size(asked);
+        s.text(b"   pedida con KIND_MEMORIA\n");
     }
 }
 
-pub(crate) fn informe_sistema(s: &mut Salida) {
-    s.con_tinta(TINTA_ECO);
-    s.texto(b"  BMO-X - informe del sistema\n");
-    s.con_tinta(TINTA_NORMAL);
+pub(crate) fn report_system(s: &mut Output) {
+    s.with_ink(INK_ECHO);
+    s.text(b"  BMO-X - informe del sistema\n");
+    s.with_ink(INK_PLAIN);
 
-    informe_cpu(s);
-    informe_memoria(s);
+    report_cpu(s);
+    report_memory(s);
 
-    seccion(s, b"tareas");
+    section(s, b"tareas");
     let total = bmo::info(bmo::INFO_TAREAS_TOTAL);
-    let libres = bmo::info(bmo::INFO_TAREAS_LIBRES);
-    let ranuras = total + libres;
-    etiqueta(s, b"ranuras");
+    let free = bmo::info(bmo::INFO_TAREAS_LIBRES);
+    let slots = total + free;
+    label(s, b"ranuras");
     s.dec(total);
-    s.texto(b" en uso de ");
-    s.dec(ranuras);
-    s.texto(b"   ");
-    s.barra(total, ranuras, 24);
+    s.text(b" en uso de ");
+    s.dec(slots);
+    s.text(b"   ");
+    s.bar(total, slots, 24);
     s.byte(b'\n');
-    etiqueta(s, b"listas");
+    label(s, b"listas");
     s.dec(bmo::info(bmo::INFO_TAREAS_LISTAS));
-    s.texto(b"   ticks ");
+    s.text(b"   ticks ");
     s.dec(bmo::info(bmo::INFO_TICKS));
     s.byte(b'\n');
-    etiqueta(s, b"programas");
+    label(s, b"programas");
     let vistos = bmo::info(bmo::INFO_PROGRAMAS);
-    let olvidados = bmo::info(bmo::INFO_PROGRAMAS_OLVIDADOS);
-    s.dec(vistos + olvidados);
-    s.texto(b" lanzados");
-    if olvidados > 0 {
-        s.texto(b"   (");
-        s.dec(olvidados);
-        s.texto(b" ya no caben en la bitacora)");
+    let forgotten = bmo::info(bmo::INFO_PROGRAMAS_OLVIDADOS);
+    s.dec(vistos + forgotten);
+    s.text(b" lanzados");
+    if forgotten > 0 {
+        s.text(b"   (");
+        s.dec(forgotten);
+        s.text(b" ya no caben en la bitacora)");
     }
     s.byte(b'\n');
 
-    seccion(s, b"disco");
-    etiqueta(s, b"disco");
+    section(s, b"disco");
+    label(s, b"disco");
     if bmo::info(bmo::INFO_DISCO_LISTO) != 0 {
-        s.con_tinta(TINTA_BIEN);
-        s.texto(b"listo");
+        s.with_ink(INK_GOOD);
+        s.text(b"listo");
     } else {
-        s.con_tinta(TINTA_MAL);
-        s.texto(b"sin disco");
+        s.with_ink(INK_ERR);
+        s.text(b"sin disco");
     }
-    s.con_tinta(TINTA_NORMAL);
+    s.with_ink(INK_PLAIN);
     s.byte(b'\n');
-    etiqueta(s, b"datos");
+    label(s, b"datos");
     if bmo::info(bmo::INFO_DATOS_MONTADO) != 0 {
-        s.con_tinta(TINTA_BIEN);
-        s.texto(b"montado para escritura");
+        s.with_ink(INK_GOOD);
+        s.text(b"montado para escritura");
     } else {
         // La linea que decide si el File I/O de COBOL puede funcionar. Decirlo
         // aqui ahorra buscar el fallo en el programa.
-        s.con_tinta(TINTA_MAL);
-        s.texto(b"NO montado: sin esto no hay OPEN ni WRITE");
+        s.with_ink(INK_ERR);
+        s.text(b"NO montado: sin esto no hay OPEN ni WRITE");
     }
-    s.con_tinta(TINTA_NORMAL);
+    s.with_ink(INK_PLAIN);
     s.byte(b'\n');
 }
 
@@ -378,37 +378,37 @@ pub(crate) fn informe_sistema(s: &mut Salida) {
 /// donde equivocarse sobre el mismo fallo.
 ///
 /// Aqui solo se pinta, y se pinta en ROJO, que es lo que es.
-pub(crate) fn informe_autopsia(s: &mut Salida) {
-    seccion(s, b"ultimo fallo");
+pub(crate) fn report_autopsy(s: &mut Output) {
+    section(s, b"ultimo fallo");
     let total = bmo::autopsia_total();
     if total == 0 {
-        s.con_tinta(TINTA_BIEN);
-        s.texto(b"    ningun fallo de Ring 3 desde el arranque\n");
-        s.con_tinta(TINTA_NORMAL);
+        s.with_ink(INK_GOOD);
+        s.text(b"    ningun fallo de Ring 3 desde el arranque\n");
+        s.with_ink(INK_PLAIN);
         return;
     }
-    let filas = bmo::autopsia_renglones(0);
+    let rows = bmo::autopsia_renglones(0);
     let mut buf = [0u8; 96];
-    for f in 0..filas {
+    for f in 0..rows {
         let n = bmo::autopsia_linea(0, f, &mut buf);
-        s.texto(b"    ");
+        s.text(b"    ");
         // El titulo en rojo y el cuerpo normal: lo que se busca de un vistazo
         // es CUAL fue y cuando, no el `rsp`.
         if f == 0 {
-            s.con_tinta(TINTA_MAL);
+            s.with_ink(INK_ERR);
         }
-        s.texto(&buf[..n]);
+        s.text(&buf[..n]);
         if f == 0 {
-            s.con_tinta(TINTA_NORMAL);
+            s.with_ink(INK_PLAIN);
         }
         s.byte(b'\n');
     }
     if total > 1 {
-        s.con_tinta(TINTA_ECO);
-        s.texto(b"    (van ");
+        s.with_ink(INK_ECHO);
+        s.text(b"    (van ");
         s.dec(total);
-        s.texto(b" desde el arranque; se guardan las 4 ultimas)\n");
-        s.con_tinta(TINTA_NORMAL);
+        s.text(b" desde el arranque; se guardan las 4 ultimas)\n");
+        s.with_ink(INK_PLAIN);
     }
 }
 
@@ -443,63 +443,63 @@ pub(crate) fn informe_autopsia(s: &mut Salida) {
 /// [!] Y los valores son la foto del ARRANQUE, no del instante: el kernel cachea
 /// la identidad a proposito para que repintar un panel no toque el BAR de la NIC
 /// sesenta veces por segundo. Quien relee es la orden `net` del shell de Ring 0.
-pub(crate) fn informe_red(s: &mut Salida, que: &[u8]) {
-    let presente = bmo::info(bmo::INFO_NET_PRESENTE) != 0;
+pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
+    let present = bmo::info(bmo::INFO_NET_PRESENTE) != 0;
     let mac = bmo::info(bmo::INFO_NET_MAC);
     let mbit = bmo::info(bmo::INFO_NET_MEGABITS);
     let phy = bmo::info(bmo::INFO_NET_PHY_CRUDO);
-    let armado = bmo::info(bmo::INFO_NET_RX_ARMADO) != 0;
-    let tramas = bmo::info(bmo::INFO_NET_RX_TRAMAS);
+    let armed = bmo::info(bmo::INFO_NET_RX_ARMADO) != 0;
+    let frames_rx = bmo::info(bmo::INFO_NET_RX_TRAMAS);
 
     // Una sola pregunta, para cuando ya sabes cual quieres.
-    if que == b"mac" {
-        etiqueta(s, b"MAC");
-        if presente { mac_hex(s, mac); } else { s.texto(b"no hay tarjeta"); }
+    if what == b"mac" {
+        label(s, b"MAC");
+        if present { mac_hex(s, mac); } else { s.text(b"no hay tarjeta"); }
         s.byte(b'\n');
         return;
     }
-    if que == b"link" {
-        etiqueta(s, b"enlace");
-        enlace(s, presente, mbit);
+    if what == b"link" {
+        label(s, b"enlace");
+        link(s, present, mbit);
         s.byte(b'\n');
         return;
     }
-    if que == b"frames" {
-        etiqueta(s, b"tramas");
-        s.dec(tramas);
-        if !armado { s.texto(b"   (el receptor NO esta armado)"); }
+    if what == b"frames" {
+        label(s, b"tramas");
+        s.dec(frames_rx);
+        if !armed { s.text(b"   (el receptor NO esta armado)"); }
         s.byte(b'\n');
         return;
     }
-    if que == b"phy" {
-        etiqueta(s, b"PHYstatus");
-        s.texto(b"0x");
+    if what == b"phy" {
+        label(s, b"PHYstatus");
+        s.text(b"0x");
         s.hex(phy, 2);
-        s.texto(b"   (crudo, sin interpretar)");
+        s.text(b"   (crudo, sin interpretar)");
         s.byte(b'\n');
         return;
     }
 
-    seccion(s, b"RED");
+    section(s, b"RED");
 
     // 1. Hay tarjeta? Si no, lo demas no significa nada y se dice.
-    etiqueta(s, b"tarjeta");
-    if !presente {
-        s.texto(b"NINGUNA reconocida en el PCI");
+    label(s, b"tarjeta");
+    if !present {
+        s.text(b"NINGUNA reconocida en el PCI");
         s.byte(b'\n');
-        s.texto(b"    (sin tarjeta, el resto del informe no significa nada)\n");
+        s.text(b"    (sin tarjeta, el resto del informe no significa nada)\n");
         return;
     }
     let vd = bmo::info(bmo::INFO_NET_VENDOR_DEVICE);
-    s.texto(b"vendor:device 0x");
+    s.text(b"vendor:device 0x");
     s.hex(vd, 8);
     // El unico nombre que se traduce, porque es el que hay en esta placa y
     // reconocerlo de un vistazo ahorra buscarlo.
-    if vd == 0x10EC_8168 { s.texto(b"   (Realtek RTL8168)"); }
+    if vd == 0x10EC_8168 { s.text(b"   (Realtek RTL8168)"); }
     s.byte(b'\n');
 
     let pci = bmo::info(bmo::INFO_NET_PCI);
-    etiqueta(s, b"en el bus");
+    label(s, b"en el bus");
     s.dec((pci >> 16) & 0xFF);
     s.byte(b':');
     s.dec((pci >> 8) & 0xFF);
@@ -507,38 +507,38 @@ pub(crate) fn informe_red(s: &mut Salida, que: &[u8]) {
     s.dec(pci & 0xFF);
     s.byte(b'\n');
 
-    etiqueta(s, b"MAC");
+    label(s, b"MAC");
     mac_hex(s, mac);
     s.byte(b'\n');
 
     // 2. Hay enlace?
-    etiqueta(s, b"enlace");
-    enlace(s, presente, mbit);
+    label(s, b"enlace");
+    link(s, present, mbit);
     s.byte(b'\n');
 
-    etiqueta(s, b"PHYstatus");
-    s.texto(b"0x");
+    label(s, b"PHYstatus");
+    s.text(b"0x");
     s.hex(phy, 2);
-    s.texto(b"   (crudo: la prueba, no la opinion)\n");
+    s.text(b"   (crudo: la prueba, no la opinion)\n");
 
     // 3. Estamos escuchando? 4. Llega algo?
-    etiqueta(s, b"receptor");
-    if armado { s.texto(b"ARMADO"); } else { s.texto(b"apagado   (net rx en Ring 0)"); }
+    label(s, b"receptor");
+    if armed { s.text(b"ARMADO"); } else { s.text(b"apagado   (net rx en Ring 0)"); }
     s.byte(b'\n');
 
-    etiqueta(s, b"tramas");
-    s.dec(tramas);
-    if armado && tramas == 0 {
-        s.texto(b"   (escuchando y nadie habla todavia)");
+    label(s, b"tramas");
+    s.dec(frames_rx);
+    if armed && frames_rx == 0 {
+        s.text(b"   (escuchando y nadie habla todavia)");
     }
     s.byte(b'\n');
 
     // ** Y lo que NO hace, dicho aqui y no en un README.
-    s.texto(b"    transmitir: CERRADO a proposito (CR.TE apagado)\n");
+    s.text(b"    transmitir: CERRADO a proposito (CR.TE apagado)\n");
 }
 
 /// Los seis bytes con dos puntos, del mas significativo al menos.
-fn mac_hex(s: &mut Salida, mac: u64) {
+fn mac_hex(s: &mut Output, mac: u64) {
     let mut i = 6;
     while i > 0 {
         i -= 1;
@@ -548,14 +548,14 @@ fn mac_hex(s: &mut Salida, mac: u64) {
 }
 
 /// `ARRIBA, 100 Mbit` o `ABAJO`. El cero de megabits **es** la respuesta.
-fn enlace(s: &mut Salida, presente: bool, mbit: u64) {
-    if !presente {
-        s.texto(b"no hay tarjeta");
+fn link(s: &mut Output, present: bool, mbit: u64) {
+    if !present {
+        s.text(b"no hay tarjeta");
     } else if mbit == 0 {
-        s.texto(b"ABAJO   (sin cable, o el otro extremo apagado)");
+        s.text(b"ABAJO   (sin cable, o el otro extremo apagado)");
     } else {
-        s.texto(b"ARRIBA, ");
+        s.text(b"ARRIBA, ");
         s.dec(mbit);
-        s.texto(b" Mbit");
+        s.text(b" Mbit");
     }
 }

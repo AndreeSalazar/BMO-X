@@ -16,11 +16,11 @@
 | Memoria sin mezclar | Espacio de direcciones por proceso, `KIND_MEMORIA` propio, `revoke_all` al morir |
 | Cadena de custodia | `fb::proceso_muerto` recupera la pantalla **y pinta las ultimas cuatro lineas del muerto** |
 | El ultimo recurso | `Ctrl+Alt+ESC` en Ring 0, en el punto unico por donde pasan todas las teclas |
-| El marco | `escena/marco.rs`: minimizar, maximizar, cerrar, fichas y arrastre. En metal desde el 06-08 |
+| El marco | `scene/chrome.rs`: minimizar, maximizar, cerrar, fichas y arrastre. En metal desde el 06-08 |
 | Prestamo de memoria | `loan::offer` + `loan::take` + `loan::process_died` + **soltar**. Completo |
 | El contrato de superficie | `<bmo/superficie.h>`, formato `BSUP`. **Hecho** (`de3a74b9`) |
 | `TASK_OP_MI_PADRE = 0x26` | **Hecho** -- `ring0/task/familia.rs` + `scheduler::tid_de` |
-| El lado del DIRECTOR | **Hecho** -- `escena/superficie.rs`. Compila; **falta metal** |
+| El lado del DIRECTOR | **Hecho** -- `scene/surface.rs`. Compila; **falta metal** |
 
 ---
 
@@ -56,7 +56,7 @@ es un error: es la respuesta correcta a "quien compone para mi".
 
 # ~~PASO 2~~ -- El lado del DIRECTOR ✅ HECHO (falta metal)
 
-`Ultra_userspace/services/gui/src/escena/superficie.rs`. Una `Mesa` de cuatro
+`Ultra_userspace/services/gui/src/scene/surface.rs`. Una `Table` de cuatro
 cajas, y en el bucle principal tres puntos: **recoger** al principio,
 **componer** al final --justo antes del cursor del raton, que es lo unico que va
 por encima-- y el raton en medio.
@@ -67,7 +67,7 @@ por encima-- y el raton en medio.
 3. **Pegar solo si la secuencia cambio**, que es la regla entera. Un fotograma a
    medias no cambia el numero, asi que no se pinta, y el peor caso es ensenar el
    anterior un fotograma mas. ** NO es un cerrojo y no debe serlo.
-4. **Dentro del marco** que `escena/marco.rs` ya dibuja: `Marco::para_contenido`
+4. **Dentro del marco** que `scene/chrome.rs` ya dibuja: `Chrome::for_content`
    --el unico constructor en pixeles, porque el tamano lo eligio la app-- y los
    tres botones salen gratis. **Ese fue el cobro de haber escrito `marco.rs`.**
 5. **Pantalla completa = no dibujar el borde.** Sigue pendiente: hoy maximizar da

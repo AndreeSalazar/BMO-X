@@ -15,11 +15,11 @@ pub(crate) fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
         v /= 10;
         n += 1;
     }
-    let cuantos = n.min(dst.len());
-    for i in 0..cuantos {
+    let how_many = n.min(dst.len());
+    for i in 0..how_many {
         dst[i] = tmp[n - 1 - i];
     }
-    cuantos
+    how_many
 }
 
 /// **Completar con TAB.** Devuelve el nuevo largo de la linea.
@@ -42,7 +42,7 @@ pub(crate) fn decimal(mut v: u64, dst: &mut [u8; 10]) -> usize {
 /// sirven para nada --este terminal no tiene "carpeta actual" a la que volver--
 /// y estorban en los dos sitios donde aparecen: envenenan el prefijo comun del
 /// TAB y ensucian el `ls`.
-pub(crate) fn es_punto(name: &[u8]) -> bool {
+pub(crate) fn is_dot_entry(name: &[u8]) -> bool {
     name == b"." || name == b".."
 }
 
