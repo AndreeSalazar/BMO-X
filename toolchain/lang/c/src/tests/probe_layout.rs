@@ -65,7 +65,7 @@ use super::census::{sweep, Cell};
 const SEEDER: &str = "void sembrar(unsigned char *b, int n) { int i; \
                          for (i = 0; i < n; i++) { b[i] = (unsigned char)i; } }\n";
 
-fn census() -> [Cell; 12] {
+fn census() -> [Cell; 17] {
     [
         // == The minimum: that the alignment hole exists =================
         Cell {
@@ -156,6 +156,69 @@ fn census() -> [Cell; 12] {
                          (int)((char *)((mapnode_t *)z)->children - z), \
                          (int)sizeof(mapnode_t)); return 0; }",
             expects: "24 28",
+        },
+        // == LOS CINCO QUE FALTABAN, y no faltaban por poco ==============
+        //
+        // `p_setup.c` divide la longitud del lump entre `sizeof(map*_t)` OCHO
+        // veces, una por cada clase de dato de un nivel. Este eje solo media
+        // TRES de las ocho. Los cinco de abajo entraron el 2026-08-14, el dia
+        // que DOOM murio con `Z_CheckHeap` justo despues de `P_SetupLevel` --
+        // o sea que las cinco filas que faltaban eran las del sitio donde
+        // estaba muriendo.
+        //
+        // [!] Y el tamano importa el doble aqui: no solo desplaza los
+        // registros a partir del segundo, es que **`numX` sale mal**, y ese
+        // numero es el que se le pasa a `Z_Malloc` y el que gobierna el bucle
+        // que lo llena.
+        Cell {
+            // El mas peligroso de los cinco: DOS `char[8]`, que es exactamente
+            // la forma que se alineaba mal (un array se alinea como su
+            // ELEMENTO). Con la regla vieja serian 32 en vez de 26.
+            name: "mapsector_t is 26 bytes",
+            source: "typedef struct { short fh; short ch; char fp[8]; char cp[8]; \
+                       short light; short special; short tag; } mapsector_t;\n\
+                     int main() { char *z; z = (char *)0; \
+                       printf(\"%d %d %d %d\\n\", \
+                         (int)((char *)((mapsector_t *)z)->fp - z), \
+                         (int)((char *)((mapsector_t *)z)->cp - z), \
+                         (int)((char *)&((mapsector_t *)z)->tag - z), \
+                         (int)sizeof(mapsector_t)); return 0; }",
+            expects: "4 12 24 26",
+        },
+        Cell {
+            name: "mapseg_t is 12 bytes",
+            source: "typedef struct { short v1; short v2; short angle; short linedef; \
+                       short side; short offset; } mapseg_t;\n\
+                     int main() { char *z; z = (char *)0; \
+                       printf(\"%d %d\\n\", \
+                         (int)((char *)&((mapseg_t *)z)->offset - z), \
+                         (int)sizeof(mapseg_t)); return 0; }",
+            expects: "10 12",
+        },
+        Cell {
+            name: "mapthing_t is 10 bytes",
+            source: "typedef struct { short x; short y; short angle; short type; \
+                       short options; } mapthing_t;\n\
+                     int main() { char *z; z = (char *)0; \
+                       printf(\"%d %d\\n\", \
+                         (int)((char *)&((mapthing_t *)z)->options - z), \
+                         (int)sizeof(mapthing_t)); return 0; }",
+            expects: "8 10",
+        },
+        Cell {
+            // Cuatro bytes, dos shorts. Parece imposible de fallar, y por eso
+            // esta: si ESTE sale mal, lo que esta roto no es el alineado de
+            // agregados sino algo mucho mas basico.
+            name: "mapsubsector_t is 4 bytes",
+            source: "typedef struct { short numsegs; short firstseg; } mapsubsector_t;\n\
+                     int main() { printf(\"%d\\n\", (int)sizeof(mapsubsector_t)); return 0; }",
+            expects: "4",
+        },
+        Cell {
+            name: "mapvertex_t is 4 bytes",
+            source: "typedef struct { short x; short y; } mapvertex_t;\n\
+                     int main() { printf(\"%d\\n\", (int)sizeof(mapvertex_t)); return 0; }",
+            expects: "4",
         },
         // == And that the disk bytes are actually read ===================
         Cell {
@@ -270,6 +333,11 @@ maptexture_t: patches at 22    GOOD
 maplinedef_t is 14 bytes       GOOD
 mapsidedef_t is 30 bytes       GOOD
 mapnode_t is 28 bytes          GOOD
+mapsector_t is 26 bytes        GOOD
+mapseg_t is 12 bytes           GOOD
+mapthing_t is 10 bytes         GOOD
+mapsubsector_t is 4 bytes      GOOD
+mapvertex_t is 4 bytes         GOOD
 read a short from byte 10      GOOD
 the 2nd record of the array    GOOD
 char name[8] from raw bytes    GOOD
