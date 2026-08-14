@@ -362,6 +362,10 @@ pub(crate) fn shell_help() {
     // contados a mano, y bastaba una palabra mas larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
     row("sistema", |l| l.txt("info  cpu  mem  tasks  disk  net  ls  estratos  cabina  hist"));
+    // `fallo` en su propio renglon y con lo que hace escrito: es la orden que
+    // hace falta el dia peor, y ese dia nadie se acuerda de una palabra suelta
+    // en una fila de diez. Ver `shell_fallo`.
+    row("fallos", |l| l.txt("fallo [0..3]   la autopsia de la ultima tarea de Ring 3 que murio"));
     row("nucleos", |l| l.txt("smp  (escribelo a secas y te dice sus opciones)"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
@@ -398,8 +402,8 @@ pub(crate) fn shell_help() {
 /// mantener a la vez son dos listas que un dia no dicen lo mismo.
 pub(crate) fn similar_command(texto: &str) -> Option<&'static str> {
     const ORDENES: &[&str] = &[
-        "help", "ls", "disk", "net", "red", "audio", "sonido", "cabina", "estratos", "cpu", "hist",
-        "history", "layout", "cls", "clear", "info", "smp", "tasks", "mem",
+        "help", "ls", "disk", "net", "red", "audio", "sonido", "cabina", "fallo", "estratos", "cpu",
+        "hist", "history", "layout", "cls", "clear", "info", "smp", "tasks", "mem",
         "ktest", "fb", "splash", "bex", "panic", "reboot", "halt",
     ];
     // Solo el primer trozo: `run smp prueba` tambien tiene que reconocerse.

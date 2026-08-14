@@ -81,6 +81,10 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
             super::hardware::shell_red(&cmd[4..]);
         } else if cmd == b"cabina" {
             super::screen::shell_cabina();
+        } else if cmd == b"fallo" {
+            super::screen::shell_fallo(b"");
+        } else if cmd.len() > 6 && &cmd[..6] == b"fallo " {
+            super::screen::shell_fallo(&cmd[6..]);
         } else if cmd == b"estratos" {
             super::files::shell_estratos();
         } else if cmd == b"cpu" {
