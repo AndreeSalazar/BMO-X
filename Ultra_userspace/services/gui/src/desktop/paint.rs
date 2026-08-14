@@ -21,7 +21,7 @@
 
 use bmo_userland as bmo;
 
-use super::{Desktop, BLINK, W_DATA, W_RUN};
+use super::{Desktop, BLINK, W_CABINA, W_DATA, W_RUN};
 use crate::scene::calc::paint_calc;
 use crate::scene::output::paint_output;
 use crate::scene::{self, paint_field, ACCENT, TASKBAR};
@@ -121,7 +121,13 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // sitios que cambian algo. Un `sucio` que hay que acordarse de poner es
     // un `sucio` que un dia no se pone, y entonces la barra ensena un
     // estado viejo sin que nada falle -- el peor tipo de fallo de interfaz.
-    let taskbar_state = (dsk.win.visible, dsk.win.top_before, dsk.win.data_open, dsk.win.data.chrome.minimized);
+    let taskbar_state = (
+        dsk.win.visible,
+        dsk.win.top_before,
+        dsk.win.data_open,
+        dsk.win.data.chrome.minimized,
+        dsk.win.cabina_open,
+    );
     if taskbar_state != dsk.win.taskbar_state_before {
         dsk.win.taskbar_state_before = taskbar_state;
         dsk.win.taskbar_dirty = true;
@@ -139,6 +145,23 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
             let (fx, fy, fw, fh) = scene::chip_box(1);
             p.rect(fx, fy, fw, fh, TASKBAR);
         }
+        // -- ** CABINA: LA UNICA FICHA QUE ESTA SIEMPRE --
+        //
+        // Las otras dos aparecen cuando su ventana existe. Esta no, y el
+        // motivo es el dia que la puso: **el teclado dejo de escribir y con
+        // el se fue la unica forma de diagnosticarlo**. CABINA vivia detras
+        // de F11, `guarda` detras de escribir, y el raton --que seguia
+        // funcionando perfectamente-- no podia abrir nada.
+        //
+        // Un panel de diagnostico al que solo se llega con el aparato que
+        // puede estar roto no es un panel de diagnostico. Asi que esta ficha
+        // se pinta aunque la ventana este cerrada: es la puerta, no el
+        // recordatorio.
+        scene::paint_chip(
+            &p, 2, "CABINA", 0x00F5_9E0B,
+            dsk.win.cabina_open && dsk.win.top_before == W_CABINA,
+            !dsk.win.cabina_open,
+        );
         dsk.win.taskbar_dirty = false;
     }
 

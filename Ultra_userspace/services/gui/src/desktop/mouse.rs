@@ -522,7 +522,7 @@ pub(crate) fn on_pointer(
     // se olvida de mis clics"*, y con razon: un control que a veces
     // responde y a veces no es peor que uno que no esta.
     if button && !dsk.tick.button_before && pos.y < TASKBAR_H {
-        if let Some(i) = scene::chip_at(pos.x, pos.y, 2) {
+        if let Some(i) = scene::chip_at(pos.x, pos.y, 3) {
             if i == 1 && dsk.win.data_open {
                 // Estaba minimizada o no, da igual: acaba visible,
                 // encajada, con el foco y delante.
@@ -542,6 +542,38 @@ pub(crate) fn on_pointer(
                 dsk.win.focus.clic_en(W_RUN);
                 uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 dsk.win.top_before = W_RUN;
+                dsk.win.taskbar_dirty = true;
+            } else if i == 2 {
+                // ** CABINA CON EL RATON, que es lo que la hace util.
+                //
+                // Misma secuencia que F11 (`keys/windows.rs`) y no una
+                // parecida: abrir por lo ultimo, dar el foco, pintar. Si
+                // las dos puertas dejaran la ventana en estados distintos,
+                // el que la abre con el raton veria otra cosa que el que la
+                // abre con la tecla -- y una de las dos estaria mal sin que
+                // nadie pudiera decir cual.
+                dsk.win.cabina_open = !dsk.win.cabina_open;
+                if dsk.win.cabina_open {
+                    dsk.win.cabina.from = 0;
+                    dsk.win.cabina.chrome.minimized = false;
+                    dsk.win.focus.open(W_CABINA);
+                    dsk.win.focus.clic_en(W_CABINA);
+                    scene::cabina::paint(&p, &dsk.win.cabina);
+                    dsk.win.top_before = W_CABINA;
+                } else {
+                    dsk.win.focus.close(W_CABINA);
+                    erase_window(
+                        &p, &dsk.run_box,
+                        dsk.win.cabina.chrome.x, dsk.win.cabina.chrome.y,
+                        dsk.win.cabina.chrome.width, dsk.win.cabina.chrome.height,
+                        dsk.win.visible,
+                    );
+                    dsk.win.top_before = W_RUN;
+                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    if dsk.win.data_open {
+                        scene::data::paint(&p, &dsk.win.data);
+                    }
+                }
                 dsk.win.taskbar_dirty = true;
             }
         }
