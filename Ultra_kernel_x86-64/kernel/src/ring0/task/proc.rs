@@ -293,7 +293,7 @@ fn next_pid() -> u32 {
 ///
 /// * Aqui vivia el bug que dejaba la maquina sin poder lanzar nada. Esto era
 /// `PROGRAM_COUNT < MAX_PROGRAMS`, o sea la longitud del REGISTRO HISTORICO de
-/// abajo -- una bitacora de ocho entradas que a proposito no baja nunca, porque
+/// abajo -- una bitacora de ocho entries que a proposito no baja nunca, porque
 /// apunta tambien los programas que se rechazaron. El arranque gasta seis
 /// (cinco demos mas el compositor), asi que al tercer `run` la maquina decia
 /// "sin hueco" y no volvia a admitir un programa hasta reiniciar. Y no era
@@ -468,7 +468,7 @@ fn admit_payload_desde(
     let plan = match bex::inspect(bytes, tam_fichero) {
         Ok(p) => p,
         Err(e) => {
-            // ** EL MOTIVO, CON SU NOMBRE. Aqui habia un `Err(_)`.
+            // ** EL MOTIVO, CON SU NAME. Aqui habia un `Err(_)`.
             //
             // Trece motivos distintos entraban por esta puerta y salian con la
             // misma frase: *"payload failed BEX admission"*. Un cargador que
@@ -859,7 +859,7 @@ fn admit_payload_desde(
                         caben.min(8),
                     );
                 }
-                // ** UN PUNTERO PARTIDO ENTRE DOS PAGINAS: SE ESCRIBE EN DOS
+                // ** UN PUNTERO PARTIDO ENTRE DOS PAGINAS: SE WRITES EN DOS
                 // TROZOS, y esto es un arreglo que trajo el metal.
                 //
                 // === Lo que decia este sitio, y por que era falso ===
@@ -1092,7 +1092,7 @@ const EMPTY_RECORD: ProgramRecord = ProgramRecord {
 };
 static mut PROGRAMS: [ProgramRecord; MAX_PROGRAMS] = [EMPTY_RECORD; MAX_PROGRAMS];
 static mut PROGRAM_COUNT: usize = 0;
-/// Cuantas entradas se cayeron del registro por el principio. Se cuenta para
+/// Cuantas entries se cayeron del registro por el principio. Se cuenta para
 /// que la tabla de CABINA no diga "ocho programas" cuando van veinte.
 static mut PROGRAMS_OLVIDADOS: usize = 0;
 /// El siguiente pid. Monotono y SUYO.

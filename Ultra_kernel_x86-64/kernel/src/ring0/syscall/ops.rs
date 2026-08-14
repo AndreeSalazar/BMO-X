@@ -198,16 +198,16 @@ pub(crate) const TASK_OP_KLOG_TEXTO: u64 = 0x17;
 /// La AUTOPSIA de un fallo de Ring 3. Ver `core::autopsy` y el `surface.rs`.
 pub(crate) const TASK_OP_AUTOPSIA_INFO: u64 = 0x1F;
 pub(crate) const TASK_OP_AUTOPSIA_TEXTO: u64 = 0x20;
-/// **La primera operacion de la superficie que ESCRIBE EN EL DISCO.** Cierra
+/// **La primera operacion de la superficie que WRITES EN EL DISCO.** Cierra
 /// una transaccion vacia en ESTRATOS y devuelve la generacion nueva, o 0.
-/// Ver `ring0/fsys/estratos.rs::sellar`.
+/// Ver `ring0/fsys/estratos.rs::seal`.
 pub(crate) const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 /// El CURSOR de ESTRATOS: `arg0` la pregunta, `arg1` su argumento. Y los
 /// nombres, de ocho en ocho.
 ///
 /// Dos operaciones y no diez. `INFO_ES_*` ya contestaba *como esta* el almacen;
 /// esto contesta **que hay dentro**, que es lo que la ventana de Datos no podia
-/// ensenar porque `raiz`, `nodo`, `entradas` y `entrada` eran funciones de
+/// ensenar porque `raiz`, `nodo`, `entries` y `entrada` eran funciones de
 /// Ring 0 sin puerta. Mismo criterio que `INFO` y que el klog: contesta y no
 /// concede -- aqui no hay una sola operacion que escriba.
 pub(crate) const TASK_OP_ES_NODO: u64 = 0x19;

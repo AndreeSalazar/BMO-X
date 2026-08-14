@@ -7,7 +7,7 @@
 
 use bmo_bex_gate as gate;
 
-// ** EL CONTRATO YA NO SE ESCRIBE AQUI. Se re-exporta de la puerta.
+// ** EL CONTRATO YA NO SE WRITES AQUI. Se re-exporta de la puerta.
 //
 // Aqui vivian los mismos numeros que en `bmo-abi` y en `bmo-bex-gate`: magic,
 // tamano de cabecera, tipos de seccion, banderas. Tres copias del mismo contrato,
@@ -139,7 +139,7 @@ pub enum BexError {
 impl BexError {
     /// Una linea corta, en el idioma del sistema. La usan CABINA y el shell.
     ///
-    /// ** EL MOTIVO, CON SU NOMBRE. Aqui hubo un `Err(_)` durante meses: trece
+    /// ** EL MOTIVO, CON SU NAME. Aqui hubo un `Err(_)` durante meses: trece
     /// motivos distintos entraban por la misma puerta y salian con la frase
     /// *"payload failed BEX admission"*. Un cargador que sabe por que rechaza y
     /// no lo dice obliga a adivinar entre "el fichero llego a medias", "otra

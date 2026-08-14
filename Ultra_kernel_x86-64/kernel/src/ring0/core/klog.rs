@@ -46,7 +46,7 @@ pub const ANCHO: usize = 96;
 static mut TEXTO: [[u8; ANCHO]; LINEAS] = [[0; ANCHO]; LINEAS];
 static mut LARGO: [u8; LINEAS] = [0; LINEAS];
 /// Donde va la proxima.
-static mut ESCRIBE: usize = 0;
+static mut WRITES: usize = 0;
 /// Cuantas se han guardado desde el arranque. **No baja.** Restarle [`LINEAS`]
 /// da cuantas se cayeron por el borde del anillo.
 static mut TOTAL: u64 = 0;
@@ -123,9 +123,9 @@ fn write(b: &[u8]) {
     unsafe {
         let t = &mut *core::ptr::addr_of_mut!(TEXTO);
         let l = &mut *core::ptr::addr_of_mut!(LARGO);
-        t[ESCRIBE][..n].copy_from_slice(&b[..n]);
-        l[ESCRIBE] = n as u8;
-        ESCRIBE = (ESCRIBE + 1) % LINEAS;
+        t[WRITES][..n].copy_from_slice(&b[..n]);
+        l[WRITES] = n as u8;
+        WRITES = (WRITES + 1) % LINEAS;
         TOTAL = TOTAL.wrapping_add(1);
     }
 }
@@ -161,7 +161,7 @@ pub fn texto(n: u64, trozo: u64) -> u64 {
     }
     unsafe {
         // De "la n-esima hacia atras" al indice del anillo.
-        let idx = (ESCRIBE + LINEAS - 1 - (n as usize % LINEAS)) % LINEAS;
+        let idx = (WRITES + LINEAS - 1 - (n as usize % LINEAS)) % LINEAS;
         let t = &*core::ptr::addr_of!(TEXTO);
         let l = &*core::ptr::addr_of!(LARGO);
         let largo = l[idx] as usize;

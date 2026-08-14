@@ -72,7 +72,7 @@ const PRESTAMO_VA_BASE: u64 = 0x0000_0001_0000_0000;
 /// Con una app en una caja no se nota; con dos, la segunda ventana ensena los
 /// pixeles de la primera y nada falla en ningun sitio.
 ///
-/// La direccion la decide **la ranura**: `BASE + ranura * VENTANA`. Sin cursor,
+/// La direccion la decide **la ranura**: `BASE + ranura * WINDOW`. Sin cursor,
 /// sin contabilidad y sin poder solaparse, porque dos prestamos vivos nunca
 /// comparten ranura. 64 MiB es el tope de un bloque de `KIND_MEMORIA`
 /// (`memory::MAX_BYTES`), asi que lo mas grande que se puede ofrecer entra en
@@ -140,7 +140,7 @@ pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, byt
         crate::ring0::cabina::warn("prestamo", "el trozo no cabe en el bloque", desde);
         return false;
     }
-    // Y que quepa en SU VENTANA, que es lo que decide donde se mapea. Se
+    // Y que quepa en SU WINDOW, que es lo que decide donde se mapea. Se
     // comprueba al ofrecer y no al tomar porque el que ofrece es quien puede
     // hacer algo al respecto: pedir una superficie mas pequena.
     if bytes > PRESTAMO_VENTANA {

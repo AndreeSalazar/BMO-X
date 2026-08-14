@@ -167,7 +167,7 @@ impl Aterrizaje {
 pub struct Firmas<'a> {
     /// Los bytes de la seccion `Signature`, desde su primer byte.
     firma: &'a [u8],
-    /// Cuantas entradas declara su cabecera.
+    /// Cuantas entries declara su cabecera.
     cuantos: usize,
     /// El indice de la propia seccion de firma: no puede contener su hash, y el
     /// escritor la excluye. Se guarda para excluirla tambien al leer.
@@ -184,7 +184,7 @@ impl<'a> Firmas<'a> {
     ///
     /// `None` cuando no hay firma o cuando su cabecera no cuadra con lo que
     /// mide -- y las dos cosas se tratan igual a proposito: una tabla que
-    /// promete mas entradas de las que caben no es una imagen sin firma, pero
+    /// promete mas entries de las que caben no es una imagen sin firma, pero
     /// **tampoco es una con la que se pueda comprobar nada**, y arrancar la
     /// comprobacion sobre ella seria leer bytes de la seccion siguiente.
     pub fn abrir(firma: &'a [u8], indice_propio: usize) -> Option<Self> {

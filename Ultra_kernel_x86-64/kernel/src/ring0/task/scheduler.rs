@@ -316,7 +316,7 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
         // ensamblador; el tid lo sabe Rust. Con los dos, un epilogo que se
         // encuentre algo raro puede decir DE QUIEN era, no solo que estaba
         // roto.
-        crate::ring0::plat::trap::sellar(outgoing, s.tasks[s.current].tid);
+        crate::ring0::plat::trap::seal(outgoing, s.tasks[s.current].tid);
     }
     s.tasks[next].state = TaskState::Running;
     s.tasks[next].remaining_ticks = DEFAULT_QUANTUM_TICKS;
@@ -479,7 +479,7 @@ pub fn wake_by_key(key: u64) {
 /// es la de AHORA y no la de todo lo que se ha lanzado desde el arranque.
 ///
 /// Nacio de un bug de esa forma exacta: `proc::has_room` miraba la longitud de
-/// un registro historico de ocho entradas, y como ese registro no baja nunca,
+/// un registro historico de ocho entries, y como ese registro no baja nunca,
 /// tras ocho lanzamientos --cinco de ellos los demos del arranque-- la maquina no
 /// admitia un programa mas hasta reiniciar.
 pub fn hay_hueco() -> bool {

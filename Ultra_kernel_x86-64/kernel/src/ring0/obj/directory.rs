@@ -10,7 +10,7 @@
 //! Y ahi esta la diferencia con un sistema de ficheros clasico, que merece
 //! estar escrita porque es el modelo entero:
 //!
-//! - En Unix, **una ruta es un NOMBRE**. Cualquiera puede escribir `/etc/passwd`
+//! - En Unix, **una ruta es un NAME**. Cualquiera puede escribir `/etc/passwd`
 //!   y el kernel decide despues si le deja. El nombre siempre es nombrable.
 //! - Aqui una ruta abierta es un **HANDLE que a alguien le concedieron**. Lo
 //!   que no te han dado no existe para tu proceso: no es que te lo nieguen, es
@@ -25,7 +25,7 @@
 //!
 //! El handle guarda `(cluster, indice)` y el driver contesta "dame la entrada
 //! n". Es O(n) por llamada, o sea O(n^2) por listado -- irrelevante con
-//! directorios de decenas de entradas, y a cambio **dos listados a la vez no se
+//! directorios de decenas de entries, y a cambio **dos listados a la vez no se
 //! pisan** y una entrada que desaparece no deja un cursor apuntando al vacio.
 //!
 //! ## Los nombres salen en 8.3 crudo
@@ -50,7 +50,7 @@ pub const ERROR_NOT_THERE: u32 = 26;
 /// `(hay << 63) | (es_dir << 62) | tamano`. `hay == 0` = se acabo el
 /// directorio.
 ///
-/// El NOMBRE no viaja aqui: son 11 bytes y no caben con los demas campos.
+/// El NAME no viaja aqui: son 11 bytes y no caben con los demas campos.
 /// Se pide aparte con `DIR_OP_NOMBRE`, que es la misma decision que ya se tomo
 /// en la consola -- un contador honesto vale mas que un byte apretado.
 pub const DIR_OP_SIGUIENTE: u64 = 0x01;
@@ -82,7 +82,7 @@ pub const DIR_OP_CERRAR: u64 = 0x03;
 
 static mut CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 static mut INDICE: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
-static mut NOMBRE: [[u8; 11]; MAX_ABIERTOS] = [[b' '; 11]; MAX_ABIERTOS];
+static mut NAME: [[u8; 11]; MAX_ABIERTOS] = [[b' '; 11]; MAX_ABIERTOS];
 static mut OWNER: [u32; MAX_ABIERTOS] = [NO_OWNER; MAX_ABIERTOS];
 
 /// Abre un directorio del volumen de datos y entrega su handle a `pid`.
@@ -104,7 +104,7 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
         // segunda entrada y la primera no la veria nadie -- el clasico error
         // de un cursor que ya apunta a algo antes de que le pidan avanzar.
         INDICE[i] = usize::MAX;
-        NOMBRE[i] = [b' '; 11];
+        NAME[i] = [b' '; 11];
         OWNER[i] = pid;
         match cap::grant(pid, cap::KIND_DIRECTORIO, cap::RIGHT_READ, i as u64) {
             Some(h) => {
@@ -125,7 +125,7 @@ fn next(i: usize) -> u64 {
         match crate::ring0::fsys::fs::entrada_datos(CLUSTER[i], n) {
             Some((name, es_dir, tam)) => {
                 INDICE[i] = n;
-                NOMBRE[i] = name;
+                NAME[i] = name;
                 (1u64 << 63) | ((es_dir as u64) << 62) | tam as u64
             }
             None => 0,
@@ -135,7 +135,7 @@ fn next(i: usize) -> u64 {
 
 fn name(i: usize, desde: usize) -> u64 {
     unsafe {
-        let n = &NOMBRE[i];
+        let n = &NAME[i];
         let mut w = [0u8; 8];
         let mut k = 0usize;
         while k < 7 && desde + k < n.len() {

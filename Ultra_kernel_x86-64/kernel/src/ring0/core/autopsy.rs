@@ -64,7 +64,7 @@ static mut ANILLO: [Autopsia; CUANTAS] = [const {
         usados: 0,
     }
 }; CUANTAS];
-static mut ESCRIBE: usize = 0;
+static mut WRITES: usize = 0;
 /// Cuantas van desde el arranque. **No se reinicia**: es el numero que Ring 3
 /// compara para saber si hay una nueva sin tener que leerla entera.
 static mut TOTAL: u32 = 0;
@@ -335,14 +335,14 @@ pub fn registrar(
 
     unsafe {
         let anillo = &mut *core::ptr::addr_of_mut!(ANILLO);
-        let a = &mut anillo[ESCRIBE];
+        let a = &mut anillo[WRITES];
         for i in 0..RENGLONES {
             let n = renglones[i].n.min(ANCHO);
             a.texto[i][..n].copy_from_slice(&renglones[i].b[..n]);
             a.largo[i] = n as u8;
         }
         a.usados = RENGLONES as u8;
-        ESCRIBE = (ESCRIBE + 1) % CUANTAS;
+        WRITES = (WRITES + 1) % CUANTAS;
         TOTAL = TOTAL.wrapping_add(1);
         DENTRO = false;
     }
@@ -373,7 +373,7 @@ pub fn renglones(n: u64) -> u64 {
         return 0;
     }
     unsafe {
-        let idx = (ESCRIBE + CUANTAS - 1 - (n as usize % CUANTAS)) % CUANTAS;
+        let idx = (WRITES + CUANTAS - 1 - (n as usize % CUANTAS)) % CUANTAS;
         let anillo = &*core::ptr::addr_of!(ANILLO);
         anillo[idx].usados as u64
     }
@@ -389,7 +389,7 @@ pub fn texto(n: u64, fila: u64, trozo: u64) -> u64 {
         return 0;
     }
     unsafe {
-        let idx = (ESCRIBE + CUANTAS - 1 - (n as usize % CUANTAS)) % CUANTAS;
+        let idx = (WRITES + CUANTAS - 1 - (n as usize % CUANTAS)) % CUANTAS;
         let anillo = &*core::ptr::addr_of!(ANILLO);
         let a = &anillo[idx];
         let largo = a.largo[fila as usize] as usize;

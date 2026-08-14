@@ -142,7 +142,7 @@ pub(crate) fn shell_estratos() {
         Some(v) => v,
         None => { s_log("[estratos] el volumen no tiene raiz (recien formateado?)"); return; }
     };
-    let (n, truncado) = match est::entradas(&raiz) {
+    let (n, truncado) = match est::entries(&raiz) {
         Some(v) => v,
         None => { s_log("[estratos] no se pudo leer la raiz"); return; }
     };
@@ -160,7 +160,7 @@ pub(crate) fn shell_estratos() {
         }
     }
     if truncado {
-        s_log("[estratos] ...la raiz tiene mas entradas de las que caben en el listado");
+        s_log("[estratos] ...la raiz tiene mas entries de las que caben en el listado");
     }
 }
 

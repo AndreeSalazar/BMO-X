@@ -200,7 +200,7 @@ pub enum Veredicto {
 
 /// El silicio es el que el perfil describia? Sin narrar nada.
 ///
-/// Existe separada porque hay DOS sitios que hacen esta pregunta: `verificar()`
+/// Existe separada porque hay DOS sitios que hacen esta pregunta: `verify()`
 /// al arrancar (que ademas la cuenta en CABINA) y el comando `cpu` del shell
 /// (que la pinta cada vez que se escribe). Cuando cada uno tenia su propia
 /// comparacion, anadir `XCR0` a una habria dejado a la otra contestando distinto
@@ -221,7 +221,7 @@ pub fn coincide(inf: &Informe) -> bool {
 /// lo que declara el silicio y **dice en alto** que el perfil ya no describe
 /// la maquina. Un perfil desfasado tiene que ser una linea ambar en CABINA, no
 /// un monton de registros corrompidos tres semanas despues.
-pub fn verificar(inf: &Informe) -> Veredicto {
+pub fn verify(inf: &Informe) -> Veredicto {
     use crate::ring0::cabina;
     if !inf.xsave {
         cabina::info("cpu", "el procesador no implementa XSAVE", 0);
@@ -269,7 +269,7 @@ static mut MEDIDO: bool = false;
 pub fn init() {
     let inf = medir();
     unsafe { INFORME = inf; MEDIDO = true; }
-    let _ = verificar(&inf);
+    let _ = verify(&inf);
 
     if !inf.xsave {
         // Sin XSAVE los stubs no pueden funcionar: `xsave64` daria #UD en el

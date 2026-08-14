@@ -12,14 +12,14 @@
 //! rellena con `[bsp; 64]` --doce copias del mismo nucleo-- y quedo marcado
 //! `#[deprecated]` por eso mismo.
 //!
-//! El censo de verdad lo da el firmware en la **MADT** (`APIC`), en sus entradas
+//! El censo de verdad lo da el firmware en la **MADT** (`APIC`), en sus entries
 //! de tipo 0 (*Processor Local APIC*) y tipo 9 (*Local x2APIC*). No se deduce de
 //! CPUID: **es lo que la placa dice que hay**, que es justo lo que hace falta
 //! para saber a quien llamar.
 //!
 //! === Donde encaja, y por que no toca el arranque ===
 //!
-//! `s2_mem` ya localiza la MADT y **ya recorre sus entradas** -- pero solo mira
+//! `s2_mem` ya localiza la MADT y **ya recorre sus entries** -- pero solo mira
 //! el tipo 1 (I/O APIC) y se salta el resto. Aqui no se cambia s2: el kernel
 //! tiene el `rsdp` en el `BootContext` y puede llegar solo. Asi el camino de
 //! arranque **no se toca en absoluto** y esto solo corre cuando alguien escribe
@@ -33,7 +33,7 @@
 //! documentado del kernel es `0..32 MiB` y fiarse de que hoy alcance mas lejos
 //! es construir sobre algo que nadie prometio.
 //!
-//! Y **todas las lecturas son `read_unaligned`**: las entradas del XSDT son de 8
+//! Y **todas las lecturas son `read_unaligned`**: las entries del XSDT son de 8
 //! bytes empezando en el offset 36, que no esta alineado a 8. Leerlas alineadas
 //! es correcto en x86 por casualidad y es UB en Rust -- la clase de cosa que
 //! funciona hasta que el optimizador decide otra cosa.
@@ -133,7 +133,7 @@ unsafe fn find_by(xsdt_addr: u64, sig: &[u8; 4]) -> Option<u64> {
         }
         let n = (len - 36) / 8;
         for i in 0..n {
-            // * `read_unaligned`: estas entradas de 8 bytes empiezan en el
+            // * `read_unaligned`: estas entries de 8 bytes empiezan en el
             // offset 36, que no esta alineado a 8.
             let t: u64 = fis(xsdt_addr + 36 + i * 8);
             if t != 0 && firma(t) == *sig {
@@ -170,7 +170,7 @@ pub fn enumerar(rsdp: u64) -> Option<Censo> {
 
         let mut c = Censo { ids: [0; MAX], n: 0, apagados: 0 };
         // La cabecera son 36 bytes de SDT + 4 de la direccion del LAPIC + 4 de
-        // banderas. Las entradas empiezan en 44.
+        // banderas. Las entries empiezan en 44.
         let mut off = 44u64;
         while off + 2 <= len {
             let tipo: u8 = fis(madt + off);

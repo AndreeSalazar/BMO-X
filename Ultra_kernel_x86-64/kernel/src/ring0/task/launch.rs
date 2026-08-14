@@ -220,7 +220,7 @@ pub fn ruta(path: &str) -> Informe {
     // varios KiB y cambiar el CR3 por sector serian cientos de vaciados de TLB
     // para leer un archivo. La mitad alta --physmap, pilas, imagen del kernel--
     // esta mapeada igual en los dos espacios, asi que todo lo que hace
-    // `con_buffer` (leer, verificar la firma, mapear el proceso nuevo) es
+    // `con_buffer` (leer, verify la firma, mapear el proceso nuevo) es
     // seguro bajo el CR3 del kernel.
     use crate::ring0::mm::vmm;
     let kpml4 = vmm::kernel_pml4();
@@ -261,7 +261,7 @@ pub fn ruta(path: &str) -> Informe {
 ///
 /// ```text
 ///   if let Some(nd) = &nodo_est { est::read(...) }        else { fs::load_prefijo(...) }
-///   if let Some(nd) = &nodo_est { est::leer_y_firmar(..) } else { fs::load_prefijo(...) }
+///   if let Some(nd) = &nodo_est { est::read_and_sign(..) } else { fs::load_prefijo(...) }
 /// ```
 ///
 /// Dos ramas por lectura, y **cada lectura nueva las duplica otra vez**. La
@@ -442,7 +442,7 @@ impl Fuente {
         dst: &mut [u8],
     ) -> Result<(usize, usize, Option<est::Firma>), Fallo> {
         match self {
-            Fuente::Estratos(nd) => match est::leer_y_firmar(nd, dst) {
+            Fuente::Estratos(nd) => match est::read_and_sign(nd, dst) {
                 Some((leidos, tam, v)) => Ok((leidos, tam, Some(v))),
                 None => Err(Fallo::NoSePudoLeer),
             },

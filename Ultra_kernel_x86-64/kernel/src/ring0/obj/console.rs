@@ -83,7 +83,7 @@ static mut IN_ESCRIBE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 
 static mut BUF: [[u8; RING]; MAX_CONSOLAS] = [[0; RING]; MAX_CONSOLAS];
 static mut LEE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
-static mut ESCRIBE: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
+static mut WRITES: [usize; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 static mut PERDIDOS: [u32; MAX_CONSOLAS] = [0; MAX_CONSOLAS];
 /// Pid del LECTOR (el terminal). `NO_OWNER` = ranura libre.
 static mut LECTOR: [u32; MAX_CONSOLAS] = [NO_OWNER; MAX_CONSOLAS];
@@ -103,7 +103,7 @@ pub fn create(pid: u32) -> Result<u64, u32> {
             None => return Err(ERROR_NO_FREE_SLOT),
         };
         LEE[i] = 0;
-        ESCRIBE[i] = 0;
+        WRITES[i] = 0;
         PERDIDOS[i] = 0;
         LECTOR[i] = pid;
         match cap::grant(pid, cap::KIND_CONSOLE, cap::RIGHT_READ, i as u64) {
@@ -173,15 +173,15 @@ pub fn write(idx: usize, datos: &[u8]) {
     }
     unsafe {
         for &b in datos {
-            let sig = (ESCRIBE[idx] + 1) % RING;
+            let sig = (WRITES[idx] + 1) % RING;
             if sig == LEE[idx] {
                 // Lleno: avanza el lector, o sea que se pierde el byte mas
                 // antiguo. Se anota para que el terminal pueda decirlo.
                 LEE[idx] = (LEE[idx] + 1) % RING;
                 PERDIDOS[idx] = PERDIDOS[idx].saturating_add(1);
             }
-            BUF[idx][ESCRIBE[idx]] = b;
-            ESCRIBE[idx] = sig;
+            BUF[idx][WRITES[idx]] = b;
+            WRITES[idx] = sig;
         }
     }
 }
@@ -194,7 +194,7 @@ pub fn read(idx: usize) -> u64 {
     unsafe {
         let mut w = [0u8; 8];
         let mut n = 0usize;
-        while n < 7 && LEE[idx] != ESCRIBE[idx] {
+        while n < 7 && LEE[idx] != WRITES[idx] {
             w[n] = BUF[idx][LEE[idx]];
             LEE[idx] = (LEE[idx] + 1) % RING;
             n += 1;
@@ -282,7 +282,7 @@ pub fn process_died(pid: u32) {
             if LECTOR[i] == pid {
                 LECTOR[i] = NO_OWNER;
                 LEE[i] = 0;
-                ESCRIBE[i] = 0;
+                WRITES[i] = 0;
                 IN_LEE[i] = 0;
                 IN_ESCRIBE[i] = 0;
             }

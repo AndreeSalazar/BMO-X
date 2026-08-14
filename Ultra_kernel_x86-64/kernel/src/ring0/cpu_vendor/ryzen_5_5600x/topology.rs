@@ -43,10 +43,10 @@ impl Topology {
     /// lee, porque *parece* un dato y es un relleno.
     ///
     /// **Donde esta el censo de verdad**: en la tabla **MADT** de ACPI, en sus
-    /// entradas de tipo 0 (*Processor Local APIC*), que traen el APIC ID de cada
+    /// entries de tipo 0 (*Processor Local APIC*), que traen el APIC ID de cada
     /// hilo. `s2_mem` ya localiza la MADT --`find_table(xsdt, b"APIC")`-- pero
     /// **solo le lee el campo de la direccion base del LAPIC** (offset 36) y no
-    /// recorre sus entradas. Enumerarlas es el trabajo pendiente.
+    /// recorre sus entries. Enumerarlas es el trabajo pendiente.
     ///
     /// Mientras tanto, `plat::smp` despierta suponiendo APIC IDs `0..hilos-1`,
     /// que es lo correcto en un Zen 3 de un solo CCD y **una suposicion** en
