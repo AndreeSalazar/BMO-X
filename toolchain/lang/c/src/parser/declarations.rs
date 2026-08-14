@@ -117,13 +117,36 @@ impl Parser {
             // error acusaba al tipo. `wi_stuff.c` pasa asi sus tablas de
             // graficos.
             let ptype = if *self.peek() == Token::OpenBracket {
-                let t = self.parse_array_suffix(ptype)?;
-                match t {
-                    TypeSpec::Array(base, _) => TypeSpec::Ptr(base),
-                    otro => otro,
-                }
+                self.parse_array_suffix(ptype)?
             } else {
                 ptype
+            };
+            // ** Y EL DECAIMIENTO SE APLICA VENGA DE DONDE VENGA EL ARRAY.
+            //
+            // Esto estaba DENTRO del `if` de arriba, o sea que solo decaia el
+            // array escrito con corchetes en el propio parametro. Un tipo que
+            // YA es un array --porque lo trae un `typedef`-- se colaba entero:
+            //
+            //     typedef byte sha1_digest_t[20];
+            //     void SHA1_Final(sha1_digest_t digest, sha1_context_t *hd);
+            //
+            // ** Y eso no da un error: da que `digest` ocupe `techo(20/8) = 3`
+            // ranuras en vez de una, y que **todo argumento de detras quede
+            // corrido 16 bytes**. `hd` se lee de la ranura equivocada, llega
+            // basura, y el primer `hd->count` revienta con `#GP`.
+            //
+            // Es lo que mato a DOOM el 2026-08-14 (`W_Checksum -> SHA1_Final ->
+            // SHA1_Update`), y costo cuatro sondas verdes encontrarlo: la
+            // disposicion del struct, los typedefs encadenados, el reenvio de
+            // punteros a locales y el typedef adelantado estaban TODOS bien.
+            // El fallo no estaba en el struct sino en el argumento de al lado.
+            //
+            // C99 6.7.5.3/7 lo dice sin matices: un parametro declarado como
+            // array se ajusta a puntero al elemento. No hay excepcion para los
+            // que llegan por un alias.
+            let ptype = match ptype {
+                TypeSpec::Array(base, _) => TypeSpec::Ptr(base),
+                otro => otro,
             };
             self.var_types.insert(pname.clone(), ptype.clone());
             params.push(Param { typ: ptype, name: pname });
