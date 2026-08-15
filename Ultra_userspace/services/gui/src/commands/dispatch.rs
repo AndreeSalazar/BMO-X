@@ -58,6 +58,7 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::Autopsy => system::autopsy(dsk, p),
         Command::Report => system::report(dsk, p),
         Command::Cpu => system::cpu(dsk, p),
+        Command::Consumo => system::consumo(dsk, p),
         Command::Memoria => system::memory(dsk, p),
         Command::Smp(arg) => system::smp(dsk, p, arg),
         Command::Reboot => system::reboot(dsk, p),

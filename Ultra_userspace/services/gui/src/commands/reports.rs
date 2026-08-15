@@ -38,6 +38,138 @@ pub(crate) fn label(s: &mut Output, name: &[u8]) {
     }
 }
 
+/// Una fila de la tabla de consumo: `que`, el valor a la DERECHA, y la unidad.
+///
+/// Las tres columnas van a ancho fijo porque una tabla en la que los numeros no
+/// estan alineados no es una tabla: es una lista con guiones. El valor va a la
+/// derecha (`dec_right`) para que las unidades y las decenas caigan una debajo
+/// de otra y se puedan comparar dos volcados de un vistazo.
+fn fila(s: &mut Output, que: &[u8], valor: u64, unidad: &[u8], nota: &[u8]) {
+    s.text(b"    ");
+    s.text(que);
+    for _ in que.len()..16 {
+        s.byte(b' ');
+    }
+    s.dec_right(valor, 9);
+    s.byte(b' ');
+    s.text(unidad);
+    if !nota.is_empty() {
+        for _ in unidad.len()..8 {
+            s.byte(b' ');
+        }
+        s.with_ink(INK_ECHO);
+        s.text(nota);
+        s.with_ink(INK_PLAIN);
+    }
+    s.byte(b'\n');
+}
+
+/// Igual, pero para un numero con UN decimal guardado en milesimas: los vatios
+/// llegan en milivatios y `57432` se lee como `57.4`.
+fn fila_mili(s: &mut Output, que: &[u8], milis: u64, unidad: &[u8], nota: &[u8]) {
+    s.text(b"    ");
+    s.text(que);
+    for _ in que.len()..16 {
+        s.byte(b' ');
+    }
+    s.dec_right(milis / 1000, 7);
+    s.byte(b'.');
+    s.dec((milis % 1000) / 100);
+    s.byte(b' ');
+    s.text(unidad);
+    if !nota.is_empty() {
+        for _ in unidad.len()..8 {
+            s.byte(b' ');
+        }
+        s.with_ink(INK_ECHO);
+        s.text(nota);
+        s.with_ink(INK_PLAIN);
+    }
+    s.byte(b'\n');
+}
+
+/// Un renglon de separacion DENTRO de una seccion. Ver `report_consumo`.
+fn subregla(s: &mut Output, titulo: &[u8]) {
+    s.with_ink(INK_ECHO);
+    s.text(b"    ");
+    s.text(titulo);
+    s.byte(b' ');
+    let usado = 5 + titulo.len();
+    for _ in usado..OUT_COLS.saturating_sub(4) {
+        s.byte(b'.');
+    }
+    s.byte(b'\n');
+    s.with_ink(INK_PLAIN);
+}
+
+/// **EL CONSUMO, EN UNA TABLA Y DE UNA VEZ.**
+///
+/// # Por que existe si `cpu` y `mem` ya dicen casi todo
+///
+/// Porque lo dicen **repartido y en prosa**. `cpu` explica la maquina, `mem`
+/// explica la RAM, y para saber "que esta gastando esto ahora mismo" hay que
+/// leer dos informes y juntarlos a ojo. Lo pidio el dueno con esas palabras:
+/// *"detallar el consumo... cuantos nucleos y hilos, y W tambien, y otros mas,
+/// en orden como tablas para facilitar, con separacion"*.
+///
+/// Las filas van a ancho fijo y con el numero a la derecha **para que dos
+/// volcados se puedan comparar poniendolos uno debajo del otro**. Ese es el uso
+/// real: lanzar DOOM, matarlo, y mirar si la RAM volvio a su sitio.
+///
+/// [!] Los tres bloques van separados por su propia regla y no por una linea en
+/// blanco: una tabla de veinte filas seguidas no se lee, y las lineas en blanco
+/// se pierden al volcar a texto.
+#[inline(never)]
+pub(crate) fn report_consumo(s: &mut Output) {
+    section(s, b"consumo");
+
+    subregla(s, b"cpu");
+    let hilos = bmo::info(bmo::INFO_CPU_HILOS);
+    let vivos = bmo::info(bmo::INFO_SMP_VIVOS);
+    fila(s, b"nucleos", bmo::info(bmo::INFO_CPU_NUCLEOS), b"fisicos", b"");
+    fila(s, b"hilos", hilos, b"logicos", b"");
+    // `SMP_VIVOS` cuenta los APs, o sea SIN el BSP; el que mira quiere el total.
+    fila(s, b"en pie", vivos + 1, b"de", b"");
+    let hz = bmo::info(bmo::INFO_CPU_HZ_REAL);
+    if hz > 0 {
+        fila(s, b"reloj ahora", hz / 1_000_000, b"MHz", b"medido por MPERF/APERF");
+    }
+    fila(s, b"reloj base", bmo::info(bmo::INFO_TSC_HZ) / 1_000_000, b"MHz", b"el TSC");
+    let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
+    if mw > 0 {
+        fila_mili(s, b"gasta paquete", mw, b"W", b"los nucleos + fabric + memoria + L3");
+        let mwn = bmo::info(bmo::INFO_CPU_MW_NUCLEO_ACTUAL);
+        if mwn > 0 {
+            fila_mili(s, b"gasta nucleo", mwn, b"W", b"solo ESTE");
+        }
+    }
+
+    subregla(s, b"memoria");
+    let total = bmo::info(bmo::INFO_RAM_TOTAL);
+    let libre = bmo::info(bmo::INFO_RAM_LIBRE);
+    fila(s, b"total", total / (1024 * 1024), b"MiB", b"");
+    fila(s, b"usada", total.saturating_sub(libre) / (1024 * 1024), b"MiB", b"");
+    fila(s, b"libre", libre / (1024 * 1024), b"MiB", b"la fila que tiene que VOLVER");
+    fila(s, b"marcos libres", bmo::info(bmo::INFO_RAM_MARCOS_LIBRES), b"de", b"");
+    fila(s, b"marcos", bmo::info(bmo::INFO_RAM_MARCOS), b"de 4 KiB", b"");
+    fila(
+        s,
+        b"a Ring 3",
+        bmo::info(bmo::INFO_MEM_ENTREGADA) / (1024 * 1024),
+        b"MiB",
+        b"HISTORICO de la sesion, no lo de ahora",
+    );
+    fila(s, b"kernel", bmo::info(bmo::INFO_KERNEL_BYTES) / 1024, b"KiB", b"");
+
+    subregla(s, b"tareas");
+    let ranuras = bmo::info(bmo::INFO_TAREAS_TOTAL);
+    fila(s, b"en uso", ranuras, b"", b"");
+    fila(s, b"libres", bmo::info(bmo::INFO_TAREAS_LIBRES), b"", b"");
+    fila(s, b"listas", bmo::info(bmo::INFO_TAREAS_LISTAS), b"", b"");
+    fila(s, b"lanzados", bmo::info(bmo::INFO_PROGRAMAS), b"", b"desde el arranque");
+    fila(s, b"ticks", bmo::info(bmo::INFO_TICKS), b"", b"");
+}
+
 #[inline(never)]
 pub(crate) fn report_cpu(s: &mut Output) {
     let mut buf = [0u8; 64];
