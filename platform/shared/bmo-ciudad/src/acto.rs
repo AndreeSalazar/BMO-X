@@ -43,9 +43,9 @@ pub const DURACION_MS: u32 = 2400;
 // Los cuatro actos, por su instante de FINAL. Se escriben acumulados y no por
 // duracion porque lo que hay que poder leer de un vistazo es **cuando pasa
 // cada cosa**, no cuanto duran los trozos.
-const FIN_CIUDAD: u32 = 700;
-const FIN_GATO: u32 = 1500;
-const FIN_OJOS: u32 = 2000;
+pub const FIN_CIUDAD: u32 = 700;
+pub const FIN_GATO: u32 = 1500;
+pub const FIN_OJOS: u32 = 2000;
 // El cuarto acaba en DURACION_MS.
 
 /// En que parte del guion estamos. Sirve para que quien pinta sepa **que ni
