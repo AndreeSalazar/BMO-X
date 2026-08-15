@@ -124,21 +124,56 @@ impl Scheduler {
         unsafe {
             core::arch::asm!("mov {}, rsp", out(reg) rsp_ahora, options(nomem, nostack));
         }
-        for task in &mut self.tasks {
-            if task.state != TaskState::Exited || task.tid == current_tid {
+        // Por INDICE y no con `&mut self.tasks`: hay que poder mirar al RESTO de
+        // la tabla --para saber si alguien mas comparte este espacio de
+        // direcciones-- mientras se recoge una, y las dos cosas a la vez no
+        // caben en un solo prestamo.
+        for i in 0..self.tasks.len() {
+            if self.tasks[i].state != TaskState::Exited || self.tasks[i].tid == current_tid {
                 continue;
             }
-            if task.stack_phys != 0 {
-                let base = mm::phys_to_virt(task.stack_phys);
-                let top = base + task.stack_pages * mm::PAGE;
+            let (stack_phys, stack_pages) = (self.tasks[i].stack_phys, self.tasks[i].stack_pages);
+            if stack_phys != 0 {
+                let base = mm::phys_to_virt(stack_phys);
+                let top = base + stack_pages * mm::PAGE;
                 if rsp_ahora >= base && rsp_ahora < top {
                     continue; // es el suelo que estamos pisando
                 }
-                for p in 0..task.stack_pages {
-                    phys::free_frame(task.stack_phys + p * mm::PAGE);
+                for p in 0..stack_pages {
+                    phys::free_frame(stack_phys + p * mm::PAGE);
                 }
             }
-            *task = Task::EMPTY;
+            // ** Y AQUI SE DEVUELVE EL ESPACIO DE DIRECCIONES ENTERO.
+            //
+            // Este es el sitio, y no `cap::revoke_all`: aquel corre todavia
+            // dentro del syscall del moribundo y **con su CR3 puesto**, o sea
+            // que destruir ahi el espacio seria tirar el suelo que se esta
+            // pisando. `reap` corre despues del cambio de contexto y ya se salta
+            // la tarea en curso, que es la misma garantia que necesita esto.
+            //
+            // Las hojas que vuelven son las marcadas con `PTE_NUESTRA` --imagen
+            // y pila de usuario--; el framebuffer y lo prestado no llevan el bit
+            // y no se tocan. Los bloques de `KIND_MEMORIA` tampoco: los devuelve
+            // `obj::memory::process_died`, que ademas pregunta si estan
+            // prestados antes.
+            let (es_user, cr3, tid_muerto) =
+                (self.tasks[i].is_user, self.tasks[i].cr3, self.tasks[i].tid);
+            if es_user && cr3 != 0 && cr3 != mm::vmm::kernel_pml4() {
+                // [!] Un espacio COMPARTIDO no se destruye. Hoy no hay hilos de
+                // Ring 3 y esta condicion no se cumple nunca, pero el dia que
+                // los haya el fallo seria que el primer hilo en morir se lleva
+                // por delante a sus hermanos -- y ese no es un fallo que se
+                // encuentre mirando: se encuentra con la maquina ya rota.
+                let compartido = self.tasks.iter().enumerate().any(|(j, o)| {
+                    j != i && o.state != TaskState::Empty && o.tid != tid_muerto && o.cr3 == cr3
+                });
+                if !compartido {
+                    let (hojas, tablas) = mm::vmm::destroy_address_space(cr3);
+                    crate::ring0::cabina::info("mm", "hojas devueltas al reciclar", hojas);
+                    crate::ring0::cabina::info("mm", "tablas devueltas al reciclar", tablas);
+                }
+            }
+            self.tasks[i] = Task::EMPTY;
         }
     }
 }
