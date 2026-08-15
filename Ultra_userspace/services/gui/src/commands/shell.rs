@@ -185,6 +185,9 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"  info         RAM, CPU, tareas y disco\n");
     dsk.out.grid.text(b"  cpu / mem    solo esa parte del informe\n");
     dsk.out.grid.text(b"  consumo / w  nucleos, hilos, MHz, W y RAM en TABLA\n");
+    dsk.out.grid.text(b"  apps         que programa tiene RAM pedida\n");
+    dsk.out.grid.text(b"  save cpu|mem|consumo|apps   cada tabla en SU\n");
+    dsk.out.grid.text(b"               fichero: datos/cpu.txt, mem.txt...\n");
     dsk.out.grid.text(b"  perf         lo que cuesta pintar, medido\n");
     dsk.out.grid.text(b"  estratos sellar   ESCRIBE EN EL DISCO (commit vacio)\n");
     dsk.out.grid.text(b"  help         esto\n");

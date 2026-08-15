@@ -100,6 +100,13 @@ pub(crate) fn cpu(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     After::Settle
 }
 
+pub(crate) fn apps(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
+    super::reports::report_apps(&mut dsk.out.grid);
+    paint_status(&p, &dsk.run_box, "apps", INK_DIM);
+    dsk.field.n = 0;
+    After::Settle
+}
+
 pub(crate) fn consumo(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     super::reports::report_consumo(&mut dsk.out.grid);
     paint_status(&p, &dsk.run_box, "consumo", INK_DIM);

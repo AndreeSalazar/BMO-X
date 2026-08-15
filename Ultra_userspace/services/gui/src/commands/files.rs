@@ -189,7 +189,74 @@ pub(crate) fn write(dsk: &mut Desktop, p: &bmo::Pantalla, file_path: &[u8], text
 /// guarda lo de UNA corrida, este guarda todo lo que
 /// quede en el historial, que es lo que hace falta
 /// cuando lo interesante son tres comandos juntos.
+/// **`save <tema>`: un informe, su fichero, y nada mas dentro.**
+///
+/// Devuelve `(ruta, cual)` si `arg` es uno de los temas, o `None` si es una ruta
+/// normal.
+///
+/// # Por que en ficheros separados y no todo en uno
+///
+/// Lo pidio el dueno: *"que pueda dividir en carpetas, como mem.txt, cpu.txt"*.
+/// Y tiene el motivo a favor: `salida.txt` crece con todo lo que se ha tecleado
+/// en la sesion, asi que para comparar la memoria de antes y despues de matar un
+/// programa hay que buscar dos trozos dentro de un fichero largo. Cuatro
+/// ficheros cortos con **una sola tabla cada uno** se comparan poniendolos uno
+/// al lado del otro.
+///
+/// [!] La ruta se distingue del tema por **igualdad exacta**: `mem` es el tema y
+/// `mem.txt` es una ruta. Adivinar cual queria seria escribir en el sitio
+/// equivocado, que en un disco es peor que no escribir.
+fn tema(arg: &[u8]) -> Option<(&'static [u8], u8)> {
+    match arg {
+        b"cpu" => Some((b"datos/cpu.txt", 0)),
+        b"mem" | b"ram" => Some((b"datos/mem.txt", 1)),
+        b"consumo" | b"gasto" | b"w" => Some((b"datos/consumo.txt", 2)),
+        b"apps" | b"programas" => Some((b"datos/apps.txt", 3)),
+        _ => None,
+    }
+}
+
 pub(crate) fn save(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
+    // ** `save <tema>`: solo esa tabla, en su propio fichero.
+    if let Some((dest, cual)) = tema(arg) {
+        // La marca se toma ANTES de pintar: lo que va al fichero es exactamente
+        // lo que esta funcion escriba a partir de aqui y ni una linea de lo que
+        // hubiera antes en la pantalla. `rows_since` ya recorta si el anillo se
+        // dio la vuelta, asi que no hay forma de pedir filas que ya no estan.
+        let marca = dsk.out.grid.mark();
+        match cual {
+            0 => super::reports::report_cpu(&mut dsk.out.grid),
+            1 => super::reports::report_memory(&mut dsk.out.grid),
+            2 => super::reports::report_consumo(&mut dsk.out.grid),
+            _ => super::reports::report_apps(&mut dsk.out.grid),
+        }
+        let (from, to) = dsk.out.grid.rows_since(marca);
+        match dump_output(&dsk.out.grid, dest, from, to) {
+            Ok(bytes) => {
+                dsk.out.grid.with_ink(INK_GOOD);
+                dsk.out.grid.text(b"  guardado en ");
+                dsk.out.grid.text(dest);
+                dsk.out.grid.text(b": ");
+                let mut d = [0u8; 10];
+                let k = decimal(bytes as u64, &mut d);
+                dsk.out.grid.text(&d[..k]);
+                dsk.out.grid.text(b" bytes\n");
+                dsk.out.grid.with_ink(INK_PLAIN);
+                paint_status(&p, &dsk.run_box, "volcado", INK_OK);
+            }
+            Err(e) => {
+                dsk.out.grid.with_ink(INK_ERR);
+                dsk.out.grid.text(b"  ");
+                dsk.out.grid.text(file_error_reason(e));
+                dsk.out.grid.byte(b'\n');
+                dsk.out.grid.with_ink(INK_PLAIN);
+                paint_status(&p, &dsk.run_box, "no se pudo guardar", INK_BAD);
+            }
+        }
+        dsk.field.n = 0;
+        return After::Settle;
+    }
+
     let dest = if arg.is_empty() { DEFAULT_DUMP } else { arg };
     // ** LA TABLA DE CONSUMO VA DENTRO DEL VOLCADO, y va ANTES de tomar el
     // rango para que entre en el fichero.

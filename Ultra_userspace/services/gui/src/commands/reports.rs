@@ -102,6 +102,76 @@ fn subregla(s: &mut Output, titulo: &[u8]) {
     s.with_ink(INK_PLAIN);
 }
 
+/// **QUE PROGRAMA SE ESTA COMIENDO LA RAM, uno por fila.**
+///
+/// # De donde salen estos numeros, que ya existian y no los leia nadie
+///
+/// `INFO_MEM_QUIEN_PID/BYTES/PETICIONES` estan en el ABI desde que el kernel
+/// aprendio a repartir memoria, y **ningun programa los habia pedido nunca**.
+/// El indice viaja empaquetado con el campo --`campo | (ranura << 8)`-- porque
+/// por la puerta de `INFO` cabe un numero y no una estructura; se enumera
+/// pidiendo 0, 1, 2... hasta que el pid conteste `0`.
+///
+/// ** Y las ranuras que se enumeran son las OCUPADAS: los agujeros de la tabla
+/// del kernel son suyos y no se ven desde aqui.
+///
+/// # Para que sirve de verdad
+///
+/// Es el instrumento de la fuga que se cerro el 14-08. Un programa que muere
+/// tiene que **desaparecer de esta tabla**; si su fila sigue ahi, su memoria no
+/// volvio. Y la columna `peticiones` distingue *"pidio un bloque grande"* de
+/// *"esta pidiendo sin parar"*, que es la diferencia entre un juego y una fuga.
+///
+/// [!] **Aqui no hay nombres, y hay que decirlo**: el kernel guarda el pid, no
+/// como se llamaba el `.bex`. Poner el nombre es una tabla mas en el kernel y un
+/// campo `INFO_TXT` nuevo, o sea tocar los TRES lados del contrato. Queda
+/// escrito como lo que es -- lo siguiente, no un olvido.
+#[inline(never)]
+pub(crate) fn report_apps(s: &mut Output) {
+    section(s, b"apps con memoria pedida");
+
+    s.with_ink(INK_ECHO);
+    s.text(b"    ranura   pid        MiB   peticiones\n");
+    s.text(b"    ------   ---   --------   ----------\n");
+    s.with_ink(INK_PLAIN);
+
+    let mut n = 0u64;
+    let mut vistos = 0u64;
+    let mut suma = 0u64;
+    while n < 32 {
+        let pid = bmo::info(bmo::INFO_MEM_QUIEN_PID | (n << 8));
+        if pid == 0 {
+            break;
+        }
+        let bytes = bmo::info(bmo::INFO_MEM_QUIEN_BYTES | (n << 8));
+        let pet = bmo::info(bmo::INFO_MEM_QUIEN_PETICIONES | (n << 8));
+        s.text(b"    ");
+        s.dec_right(n, 6);
+        s.dec_right(pid, 6);
+        s.dec_right(bytes / (1024 * 1024), 11);
+        s.dec_right(pet, 13);
+        s.byte(b'\n');
+        suma += bytes;
+        vistos += 1;
+        n += 1;
+    }
+
+    if vistos == 0 {
+        s.with_ink(INK_ECHO);
+        s.text(b"    ningun programa tiene memoria pedida ahora mismo\n");
+        s.with_ink(INK_PLAIN);
+    } else {
+        s.with_ink(INK_ECHO);
+        s.text(b"    ------   ---   --------   ----------\n");
+        s.with_ink(INK_PLAIN);
+        s.text(b"    total ");
+        s.dec_right(vistos, 4);
+        s.text(b" apps");
+        s.dec_right(suma / (1024 * 1024), 7);
+        s.text(b" MiB\n");
+    }
+}
+
 /// **EL CONSUMO, EN UNA TABLA Y DE UNA VEZ.**
 ///
 /// # Por que existe si `cpu` y `mem` ya dicen casi todo
