@@ -174,6 +174,16 @@ struct Autopsia {
     texto: [[u8; ANCHO]; RENGLONES],
     largo: [u8; RENGLONES],
     usados: u8,
+    /// **De quien es este informe.**
+    ///
+    /// El anillo guardaba solo el texto ya compuesto, asi que se podia leer *un*
+    /// informe pero no *el de fulano*. Y quien quiere leerlo casi siempre sabe a
+    /// quien busca: `death_report` quiere el del escritorio, no "el ultimo".
+    /// Sin este campo habria que suponer que el ultimo es el suyo -- y una
+    /// suposicion asi falla el dia que un programa de ejemplo se muere despues,
+    /// enseniando la autopsia de otro bajo el titulo "por que murio el
+    /// escritorio". Leer la autopsia equivocada es peor que no leer ninguna.
+    pid: u32,
 }
 
 static mut ANILLO: [Autopsia; CUANTAS] = [const {
@@ -181,6 +191,7 @@ static mut ANILLO: [Autopsia; CUANTAS] = [const {
         texto: [[0; ANCHO]; RENGLONES],
         largo: [0; RENGLONES],
         usados: 0,
+        pid: 0,
     }
 }; CUANTAS];
 static mut WRITES: usize = 0;
@@ -810,6 +821,7 @@ pub fn registrar(
             a.largo[i] = n as u8;
         }
         a.usados = RENGLONES as u8;
+        a.pid = pid;
         WRITES = (WRITES + 1) % CUANTAS;
         TOTAL = TOTAL.wrapping_add(1);
         DENTRO = false;
@@ -833,6 +845,37 @@ pub fn fugas() -> u64 {
 /// Cuantos informes se pueden leer ahora.
 pub fn disponibles() -> u64 {
     unsafe { (TOTAL as usize).min(CUANTAS) as u64 }
+}
+
+/// **El informe de ESE pid**, o `None` si ese proceso no dejo autopsia.
+///
+/// Se busca del mas reciente hacia atras: si un mismo pid llegara a repetirse
+/// --hoy no puede, `next_pid` solo sube-- el que interesa siempre es el ultimo.
+///
+/// # Para que existe
+///
+/// Para no tener que suponer. Quien pregunta casi siempre sabe a quien busca
+/// (`death_report` quiere el del escritorio), y coger "el mas reciente" acierta
+/// **casi** siempre -- hasta el dia en que un programa de ejemplo se muere
+/// despues del escritorio y el informe que sale bajo el titulo *"por que murio
+/// el escritorio"* es el de otro.
+pub fn indice_de_pid(pid: u32) -> Option<u64> {
+    if pid == 0 {
+        return None;
+    }
+    let hay = disponibles();
+    let mut n = 0u64;
+    while n < hay {
+        unsafe {
+            let idx = (WRITES + CUANTAS - 1 - (n as usize % CUANTAS)) % CUANTAS;
+            let anillo = &*core::ptr::addr_of!(ANILLO);
+            if anillo[idx].pid == pid {
+                return Some(n);
+            }
+        }
+        n += 1;
+    }
+    None
 }
 
 /// Cuantos renglones tiene el informe `n` (`0` = el mas reciente).
