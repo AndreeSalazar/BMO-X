@@ -51,10 +51,52 @@ FUENTE = Path(__file__).parent / "bmo-x-gato.jpg"
 # Lo que sí importa es que no se puedan desincronizar, y de eso se encarga esto:
 # **los dos salen de la misma corrida de este script**. No hay una copia que
 # alguien edite a mano, porque ninguna se edita a mano.
+# ⚠️ ESTE GENERADOR ESTABA MUERTO, y hay que decir por que para que no se repita.
+#
+# Apuntaba a `escena/gato.rs` (la carpeta se llama `scene/` desde hace meses) y a
+# `core/gato.rs` (que hoy es un modulo, `core/gato/masks.rs`). Y ademas escribia
+# **el mismo texto** en los dos destinos, cuando los dos ficheros ya habian
+# divergido a mano: el del compositor usa `WIDTH/HEIGHT/STROKE/EYES` y lleva las
+# dimensiones dentro; el del kernel usa `TRAZO/OJOS`, hace `use super::*` y tiene
+# las dimensiones en su `mod.rs`.
+#
+# O sea que correrlo habria roto los dos. Que es exactamente contra lo que avisa
+# la cabecera de este mismo fichero: *"un asset generado sin su generador es un
+# asset que nadie puede volver a hacer"*. Lo era.
+#
+# Ahora cada destino trae su PLANTILLA, porque la divergencia no es un descuido:
+# el kernel parte datos y prosa en dos ficheros a proposito ("un fichero que dice
+# NO EDITAR en la linea uno es un fichero que nadie parchea a mano a las 3am").
 DESTINOS = [
-    RAIZ / "Ultra_userspace" / "services" / "gui" / "src" / "escena" / "gato.rs",
-    RAIZ / "Ultra_kernel_x86-64" / "kernel" / "src" / "ring0" / "core" / "gato.rs",
+    {
+        "ruta": RAIZ / "Ultra_userspace" / "services" / "gui" / "src" / "scene" / "gato.rs",
+        "prelude": "",
+        "dims": True,
+        "nombres": ("WIDTH", "HEIGHT", "STROKE", "EYES", "KANJI"),
+        "sufijos": ("WIDTH", "HEIGHT"),
+    },
+    {
+        "ruta": RAIZ / "Ultra_kernel_x86-64" / "kernel" / "src" / "ring0" / "core" / "gato" / "masks.rs",
+        "prelude": "use super::*;\n\n",
+        "dims": False,
+        "nombres": ("ANCHO", "ALTO", "TRAZO", "OJOS", "KANJI"),
+        "sufijos": ("ANCHO", "ALTO"),
+    },
 ]
+
+# ★ LA CAJA DEL KANJI, MEDIDA Y NO ESTIMADA.
+#
+# El comentario de abajo ya decia que el kanji empieza en x=732. El resto de la
+# caja se saca barriendo la imagen: es lo mismo que se hizo para el gato, y con
+# el mismo criterio -- un recorte a ojo deja margenes distintos arriba y abajo, y
+# eso en un caracter cuadrado se ve.
+#
+# Barrido con `clase()`: x >= 725 y por encima del titulo (y < 760).
+KANJI_MIN_X = 725
+KANJI_MAX_Y = 760
+# Alto final del kanji. Es ~0,4 del alto del gato, la misma proporcion que
+# guardan en el logo.
+KANJI_ALTO = 72
 
 # La caja del GATO dentro del logo, medida sobre la imagen y no a ojo: el kanji
 # empieza en x=732 (hay un hueco de columnas vacias en 650..732) y el titulo
@@ -119,45 +161,85 @@ def main():
         out.append("];")
         return "\n".join(out)
 
-    cab = f'''//! **EL GATO** — el logo de BMO-X, en dos mascaras de 1 bit.
+    cab = f'''//! **EL GATO** -- el logo de BMO-X, en dos mascaras de 1 bit.
 //!
-//! ★ GENERADO. No se edita a mano: sale de `docs/arte/gato_a_mascara.py`, que
+//! ** GENERADO. No se edita a mano: sale de `docs/arte/gato_a_mascara.py`, que
 //! lee `docs/arte/bmo-x-gato.jpg`. Si el logo cambia, se vuelve a correr.
 //!
-//! ═══ Por que un bitmap y no una imagen ═══
+//! === Por que un bitmap y no una imagen ===
 //!
 //! El logo es **97% negro plano, 1,6% blanco y 0,9% cian**, medido. Guardarlo
 //! como imagen seria pagar 24 bits por pixel para almacenar "negro" cuarenta
-//! mil veces — y una pantalla completa en BGRA son 8 MB contra el 1 MiB de
+//! mil veces -- y una pantalla completa en BGRA son 8 MB contra el 1 MiB de
 //! `MAX_BEX`. Un decodificador JPEG en `no_std` serian miles de lineas para
 //! dibujar tres colores.
 //!
 //! Asi que el trazo va en un bit y los ojos en otro, y **el fondo no se
 //! guarda** porque el fondo del splash ya es negro. Dibujar es un test de bit.
 //!
-//! {ancho}x{ALTO} px · {len(trazo)} B de trazo + {len(ojos)} B de ojos =
+//! {ancho}x{ALTO} px - {len(trazo)} B de trazo + {len(ojos)} B de ojos =
 //! **{len(trazo) + len(ojos)} bytes**. Pixeles encendidos: {n_trazo} de trazo,
 //! {n_ojos} de ojos.
 //!
-//! ═══ Y por que un GATO ═══
+//! === Y por que un GATO ===
 //!
 //! Porque un gato se cae, se rompe algo y sigue andando. Este sistema se niega
 //! a arrancar un programa antes que escribir en su memoria una direccion que no
 //! ha podido calcular, y cuando el escritorio muere guarda sus ultimas cuatro
 //! lineas para poder decir DONDE. No presume de no fallar: presume de contarlo.
 
-/// Ancho de las dos mascaras, en pixeles.
-pub(crate) const ANCHO: u32 = {ancho};
-/// Alto de las dos mascaras, en pixeles.
-pub(crate) const ALTO: u32 = {ALTO};
-
 '''
-    txt = cab + arr("TRAZO", trazo) + "\n\n" + arr("OJOS", ojos) + "\n"
+    # ── EL KANJI ──────────────────────────────────────────────────────────
+    #
+    # 猫 = "gato". Va en el logo a la derecha del dibujo, y es **100% cian**
+    # (medido: 10.131 pixeles cian, 0 blancos), asi que una sola mascara.
+    #
+    # Se dibuja y no se escribe por el mismo motivo que el triangulo de aviso:
+    # la fuente del kernel es ASCII de 16 px. Meter un glifo CJK en ella seria
+    # una tabla de simbolos entera para un caracter.
+    im0 = Image.open(FUENTE).convert("RGB")
+    kx0, ky0, kx1, ky1 = im0.width, im0.height, 0, 0
+    for y in range(KANJI_MAX_Y):
+        for x in range(KANJI_MIN_X, im0.width):
+            if clase(im0.getpixel((x, y))):
+                kx0, ky0 = min(kx0, x), min(ky0, y)
+                kx1, ky1 = max(kx1, x), max(ky1, y)
+    kim = im0.crop((kx0, ky0, kx1 + 1, ky1 + 1))
+    kancho = max(1, round(kim.width * KANJI_ALTO / kim.height))
+    kim = kim.resize((kancho, KANJI_ALTO), Image.LANCZOS)
+    kanji = bytearray((kancho * KANJI_ALTO + 7) // 8)
+    n_kanji = 0
+    for y in range(KANJI_ALTO):
+        for x in range(kancho):
+            if clase(kim.getpixel((x, y))):
+                i = y * kancho + x
+                kanji[i // 8] |= 1 << (i % 8)
+                n_kanji += 1
+
     for d in DESTINOS:
-        d.write_text(txt, encoding="utf-8")
-        print(f"{d.relative_to(RAIZ)}")
-    print(f"  {ancho}x{ALTO}  trazo={len(trazo)} B ({n_trazo} px)  ojos={len(ojos)} B ({n_ojos} px)")
-    print(f"  total embebido: {len(trazo) + len(ojos)} bytes")
+        nw, nh, ns, ne, nk = d["nombres"]
+        cuerpo = ""
+        if d["dims"]:
+            cuerpo += f"/// Ancho de las dos mascaras del gato, en pixeles.\npub(crate) const {nw}: u32 = {ancho};\n"
+            cuerpo += f"/// Alto de las dos mascaras del gato, en pixeles.\npub(crate) const {nh}: u32 = {ALTO};\n\n"
+        cuerpo += f"/// Ancho de la mascara del kanji.\npub(crate) const {nk}_ANCHO: u32 = {kancho};\n"
+        cuerpo += f"/// Alto de la mascara del kanji.\npub(crate) const {nk}_ALTO: u32 = {KANJI_ALTO};\n\n"
+        txt = (
+            cab
+            + d["prelude"]
+            + cuerpo
+            + arr(ns, trazo)
+            + "\n\n"
+            + arr(ne, ojos)
+            + "\n\n"
+            + arr(nk, kanji)
+            + "\n"
+        )
+        d["ruta"].write_text(txt, encoding="utf-8")
+        print(f"{d['ruta'].relative_to(RAIZ)}")
+    print(f"  gato  {ancho}x{ALTO}  trazo={len(trazo)} B ({n_trazo} px)  ojos={len(ojos)} B ({n_ojos} px)")
+    print(f"  kanji {kancho}x{KANJI_ALTO}  {len(kanji)} B ({n_kanji} px)  caja fuente {(kx0, ky0, kx1 + 1, ky1 + 1)}")
+    print(f"  total embebido: {len(trazo) + len(ojos) + len(kanji)} bytes")
 
 
 if __name__ == "__main__":
