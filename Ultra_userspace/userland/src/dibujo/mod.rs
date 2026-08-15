@@ -93,9 +93,30 @@ mod triangulo;
 pub use curva::{curva, direccion};
 pub use linea::linea;
 pub use recorte::{recortar_segmento, Recorte};
-pub use triangulo::{triangulo, Vertice};
+pub use triangulo::{triangulo, triangulo_suave, Vertice, COBERTURA_LLENA, MUESTRAS};
 
 use crate::Pantalla;
+
+/// Mezcla `frente` sobre `fondo` con `parte` de `total` de cobertura.
+///
+/// Entera y por canal. No hay coma flotante en Ring 3 ni falta que hace: la
+/// cobertura llega como "cuantas muestras de dieciseis", que ya es una fraccion
+/// exacta.
+///
+/// [!] Los canales se mezclan **en el espacio del framebuffer** (sRGB sin
+/// linealizar), que es lo que hace todo el mundo y lo que hace la GPU por
+/// defecto. Es ligeramente incorrecto --mezclar luz de verdad pide linealizar-- y
+/// se deja dicho porque sera la segunda diferencia que aparezca al comparar con
+/// la tarjeta, despues del patron de muestras.
+fn mezclar(frente: u32, fondo: u32, parte: u32, total: u32) -> u32 {
+    let inv = total - parte;
+    let canal = |desp: u32| {
+        let f = (frente >> desp) & 0xFF;
+        let b = (fondo >> desp) & 0xFF;
+        ((f * parte + b * inv) / total) & 0xFF
+    };
+    0xFF00_0000 | (canal(16) << 16) | (canal(8) << 8) | canal(0)
+}
 
 impl Recorte {
     /// El recorte que cubre la pantalla entera. El caso de siempre, y asi no
@@ -187,6 +208,43 @@ impl Pantalla {
     pub fn triangulo(&self, r: &Recorte, a: Vertice, b: Vertice, c: Vertice, color: u32) {
         triangulo::triangulo(r, a, b, c, |y, x0, x1| {
             self.rect(x0 as u32, y as u32, (x1 - x0) as u32, 1, color);
+        });
+    }
+
+    /// **El triangulo con los bordes suaves**, mezclado contra `fondo`.
+    ///
+    /// # Por que hay que DECIRLE el fondo en vez de leerlo
+    ///
+    /// Mezclar es `color * cobertura + fondo * (1 - cobertura)`, asi que hace
+    /// falta saber que habia debajo. Lo natural seria leer el pixel del
+    /// framebuffer... y es justo lo que no se puede hacer aqui: **el
+    /// framebuffer es memoria write-combining, y leer de ahi va lentisimo**.
+    /// Es la misma trampa que ya se esquivo en el blit de DOOM, donde copiar la
+    /// fila desde la pantalla parecia lo obvio y era el peor camino de todos.
+    ///
+    /// Asi que el fondo se pasa. Quien dibuja sabe sobre que dibuja; la
+    /// pantalla no tiene por que contarlo.
+    ///
+    /// [!] Va **pixel a pixel** y no por tramos, y no es un descuido: cada
+    /// pixel del borde lleva su propia mezcla. El interior podria ir por filas
+    /// --es todo cobertura llena-- y esa es la optimizacion obvia el dia que
+    /// esto pinte algo grande. Hoy pinta logos.
+    pub fn triangulo_suave(
+        &self,
+        r: &Recorte,
+        a: Vertice,
+        b: Vertice,
+        c: Vertice,
+        color: u32,
+        fondo: u32,
+    ) {
+        triangulo::triangulo_suave(r, a, b, c, |x, y, cob| {
+            let c = if cob >= triangulo::COBERTURA_LLENA {
+                color
+            } else {
+                mezclar(color, fondo, cob as u32, triangulo::COBERTURA_LLENA as u32)
+            };
+            self.punto(x as u32, y as u32, c);
         });
     }
 

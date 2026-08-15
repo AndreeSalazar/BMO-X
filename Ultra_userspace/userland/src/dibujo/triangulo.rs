@@ -74,13 +74,23 @@ use super::recorte::Recorte;
 /// ademas `Vertice` es la palabra que usa Vulkan.
 pub type Vertice = (i32, i32);
 
+/// La funcion de arista con la rejilla a escala `n`: los vertices se multiplican
+/// por `n` y el punto llega ya multiplicado.
+///
+/// Existe porque el muestreo multiple necesita preguntar en **posiciones dentro
+/// del pixel**, y con la escala 2 de siempre solo se puede nombrar el centro.
+/// Es la misma cuenta; lo unico que cambia es la finura de la rejilla.
+fn arista_n(a: Vertice, b: Vertice, pxn: i64, pyn: i64, n: i64) -> i64 {
+    let ax = n * a.0 as i64;
+    let ay = n * a.1 as i64;
+    let bx = n * b.0 as i64;
+    let by = n * b.1 as i64;
+    (bx - ax) * (pyn - ay) - (by - ay) * (pxn - ax)
+}
+
 /// La funcion de arista, evaluada en un punto ya DOBLADO (`2x+1`, `2y+1`).
 fn arista(a: Vertice, b: Vertice, px2: i64, py2: i64) -> i64 {
-    let ax = 2 * a.0 as i64;
-    let ay = 2 * a.1 as i64;
-    let bx = 2 * b.0 as i64;
-    let by = 2 * b.1 as i64;
-    (bx - ax) * (py2 - ay) - (by - ay) * (px2 - ax)
+    arista_n(a, b, px2, py2, 2)
 }
 
 /// Es la arista `a->b` "superior" o "izquierda"?
@@ -181,10 +191,158 @@ pub fn triangulo(
     }
 }
 
+/// Muestras por eje. `4` son **16 por pixel**, que es la rejilla de un MSAA 16x.
+pub const MUESTRAS: i32 = 4;
+/// Cobertura de un pixel entero. Es `MUESTRAS * MUESTRAS`.
+pub const COBERTURA_LLENA: u8 = (MUESTRAS * MUESTRAS) as u8;
+
+/// **Escalon 2.5 -- EL MISMO TRIANGULO, PERO CON COBERTURA.**
+///
+/// Entrega `pixel(x, y, cobertura)` con `cobertura` de 1 a [`COBERTURA_LLENA`].
+/// Los pixeles que no toca no se entregan.
+///
+/// # Por que esto y no "suavizar la linea"
+///
+/// Porque un borde con dientes no es un problema de la LINEA: es que cada pixel
+/// se decide entero, dentro o fuera. La solucion de verdad es preguntar **cuanto**
+/// del pixel cubre la figura, y pintar ese pixel a medias.
+///
+/// Y hay una forma de preguntarlo que ya usa el silicio, que es la que se hace
+/// aqui: **muestreo multiple**. En vez de una pregunta en el centro del pixel se
+/// hacen `MUESTRAS x MUESTRAS` repartidas dentro de el, y la cobertura es
+/// cuantas cayeron dentro. Eso es MSAA, literalmente -- una GPU con MSAA 4x
+/// evalua las mismas funciones de arista en cuatro puntos por pixel.
+///
+/// Se mantiene asi la promesa del modulo: **el mismo algoritmo que el
+/// hardware**, para que el dia del driver de RDNA4 esto siga sirviendo de
+/// oraculo tambien con el suavizado puesto.
+///
+/// # Por que es una funcion APARTE y no una opcion de [`triangulo`]
+///
+/// Porque en el silicio tambien lo son. `triangulo` contesta la pregunta
+/// canonica --una muestra en el centro-- y su respuesta es la que hay que
+/// comparar con la de una GPU sin MSAA; mezclarlas en una sola funcion con un
+/// booleano convertiria el oraculo en dos oraculos que se parecen. Ademas
+/// entregan cosas distintas: aquella da TRAMOS (una fila de golpe, que es lo
+/// que sabe rellenar el framebuffer) y esta tiene que dar pixeles, porque cada
+/// uno lleva su cobertura.
+///
+/// [!] La rejilla es REGULAR. Una GPU de verdad usa patrones rotados, que dan
+/// mejor resultado en bordes casi horizontales o casi verticales por el mismo
+/// numero de muestras. Queda dicho porque es la primera diferencia que
+/// aparecera al comparar con la tarjeta, y mas vale que este escrita antes.
+///
+/// [!] Y quien recibe **no puede leer el framebuffer para mezclar**: es memoria
+/// write-combining y leer de ahi va lentisimo. Se mezcla contra un color de
+/// fondo conocido. Ver `Pantalla::triangulo_suave`.
+pub fn triangulo_suave(
+    r: &Recorte,
+    a: Vertice,
+    b: Vertice,
+    c: Vertice,
+    mut pixel: impl FnMut(i32, i32, u8),
+) {
+    let (a, mut b, mut c) = (a, b, c);
+    let area = (b.0 - a.0) as i64 * (c.1 - a.1) as i64 - (b.1 - a.1) as i64 * (c.0 - a.0) as i64;
+    if area == 0 {
+        return;
+    }
+    if area < 0 {
+        core::mem::swap(&mut b, &mut c);
+    }
+
+    let minx = a.0.min(b.0).min(c.0);
+    let miny = a.1.min(b.1).min(c.1);
+    let maxx = a.0.max(b.0).max(c.0);
+    let maxy = a.1.max(b.1).max(c.1);
+    let caja = Recorte { x0: minx, y0: miny, x1: maxx + 1, y1: maxy + 1 }.interseccion(r);
+    if caja.vacio() {
+        return;
+    }
+
+    let tl_ab = superior_o_izquierda(a, b);
+    let tl_bc = superior_o_izquierda(b, c);
+    let tl_ca = superior_o_izquierda(c, a);
+
+    // La rejilla va a escala `2 * MUESTRAS`: con 4 muestras, las posiciones
+    // dentro del pixel son 1, 3, 5 y 7 de 8 -- los centros de los cuatro
+    // cuartos. Es la misma cuenta que el `2x+1` del centro, un nivel mas fina.
+    let n = 2 * MUESTRAS as i64;
+    for y in caja.y0..caja.y1 {
+        for x in caja.x0..caja.x1 {
+            let mut dentro_n: u8 = 0;
+            for sy in 0..MUESTRAS as i64 {
+                let pyn = y as i64 * n + 2 * sy + 1;
+                for sx in 0..MUESTRAS as i64 {
+                    let pxn = x as i64 * n + 2 * sx + 1;
+                    if dentro(arista_n(a, b, pxn, pyn, n), tl_ab)
+                        && dentro(arista_n(b, c, pxn, pyn, n), tl_bc)
+                        && dentro(arista_n(c, a, pxn, pyn, n), tl_ca)
+                    {
+                        dentro_n += 1;
+                    }
+                }
+            }
+            if dentro_n > 0 {
+                pixel(x, y, dentro_n);
+            }
+        }
+    }
+}
+
 // -- Las pruebas ------------------------------------------------------------
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    /// Un triangulo que cubre el recorte entero da **todos** los pixeles a
+    /// cobertura llena. Si alguno sale a medias, las muestras no estan donde
+    /// dicen estar.
+    #[test]
+    fn el_interior_sale_a_cobertura_llena() {
+        let r = Recorte::nuevo(0, 0, 16, 16);
+        let mut medios = 0;
+        let mut llenos = 0;
+        triangulo_suave(&r, (-40, -40), (80, -40), (-40, 80), |_, _, cob| {
+            if cob == COBERTURA_LLENA { llenos += 1 } else { medios += 1 }
+        });
+        assert_eq!(llenos, 256, "los 16x16 pixeles tienen que salir llenos");
+        assert_eq!(medios, 0, "ninguno a medias: el borde cae fuera del recorte");
+    }
+
+    /// ** LA CASILLA QUE JUSTIFICA EL ESCALON: una diagonal tiene que producir
+    /// pixeles a MEDIAS. Con el triangulo de siempre no existe ese estado -- y
+    /// esa es exactamente la diferencia que se ve como dientes.
+    #[test]
+    fn una_diagonal_produce_pixeles_a_medias() {
+        let r = Recorte::nuevo(0, 0, 32, 32);
+        let mut medios = 0;
+        triangulo_suave(&r, (0, 0), (32, 0), (0, 32), |_, _, cob| {
+            if cob > 0 && cob < COBERTURA_LLENA {
+                medios += 1;
+            }
+        });
+        assert!(medios > 20, "la hipotenusa tiene que dar pixeles parciales, dio {}", medios);
+    }
+
+    /// Y la cobertura nunca se pasa de llena: si se pasara, quien mezcle
+    /// desbordaria el color.
+    #[test]
+    fn la_cobertura_nunca_se_pasa() {
+        let r = Recorte::nuevo(0, 0, 40, 40);
+        triangulo_suave(&r, (3, 2), (35, 9), (14, 33), |_, _, cob| {
+            assert!(cob >= 1 && cob <= COBERTURA_LLENA, "cobertura fuera de rango: {}", cob);
+        });
+    }
+
+    /// Fuera del recorte no se entrega ni un pixel, igual que el hermano.
+    #[test]
+    fn fuera_del_recorte_no_entrega_nada() {
+        let r = Recorte::nuevo(0, 0, 32, 32);
+        let mut n = 0;
+        triangulo_suave(&r, (100, 100), (120, 100), (100, 120), |_, _, _| n += 1);
+        assert_eq!(n, 0);
+    }
 
     struct Lienzo {
         ancho: i32,
