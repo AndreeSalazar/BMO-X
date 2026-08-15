@@ -66,7 +66,17 @@ fn glyph_index(c: u8) -> Option<usize> {
 }
 
 // ?????? Color palette ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
-const BG: u32          = 0xFF0A0F1D; // Deep space slate-blue
+// ** NEGRO, y no el azul pizarra que habia.
+//
+// El logo de BMO-X es negro puro --se midio al generar las mascaras del gato:
+// 97% negro plano-- y la pantalla de arranque decia ser ese logo mientras lo
+// pintaba sobre `0xFF0A0F1D`. A ojo la diferencia es poca; al lado del PNG del
+// README es una pantalla que no es la marca.
+//
+// Y hay un motivo tecnico ademas del de identidad: el gato se guarda **sin
+// fondo** (ver `gato/mod.rs`) porque el fondo del splash ya es el fondo del
+// logo. Esa frase solo es cierta si son el mismo color.
+const BG: u32          = 0xFF000000; // Negro, como el logo
 const WHITE: u32       = 0xFFF1F5F9; // Soft crisp white
 const DIM: u32         = 0xFF64748B; // Slate-500 muted text
 const ACCENT: u32      = 0xFF00E5FF; // Neon cyan highlight
@@ -340,6 +350,70 @@ fn draw_gato(x0: u32, y0: u32, escala: u32) {
 /// Los estados --RING 0 despierto, RING 3 arrancado-- ya los cuenta el log del
 /// panel **cuando ocurren de verdad**, con su marca de tiempo. Un cartel que los
 /// promete antes es una mentira con animacion.
+/// **Las cuatro esquinas del marco.** Cuatro angulos, nada mas.
+///
+/// Es el vocabulario visual que el dueno pidio --el de una interfaz de sala de
+/// operaciones-- y es el mas barato que existe: **ocho rectangulos**. Un marco
+/// entero seria una linea de 1920 px por lado que compite con el contenido; una
+/// esquina insinua el marco y deja el centro limpio.
+///
+/// Y hace un trabajo real ademas del de adorno: dice **donde acaba la pantalla**.
+/// En un monitor sin bordes visibles, con el fondo negro del logo y la sala a
+/// oscuras, el panel y la pared son el mismo color.
+fn marco_esquinas(w: u32, h: u32, color: u32) {
+    // Proporcionales a la pantalla, no fijos: en 4K un angulo de 24 px no se ve.
+    let largo = (w / 26).clamp(24, 90);
+    let grosor = if h >= 900 { 2 } else { 1 };
+    let m = (w / 60).clamp(12, 48); // margen desde el borde
+    for &(x, y, hx, hy) in &[
+        (m, m, 1i32, 1i32),                                   // arriba izquierda
+        (w.saturating_sub(m), m, -1, 1),                      // arriba derecha
+        (m, h.saturating_sub(m), 1, -1),                      // abajo izquierda
+        (w.saturating_sub(m), h.saturating_sub(m), -1, -1),   // abajo derecha
+    ] {
+        // El brazo horizontal y el vertical de cada angulo. `hx`/`hy` dicen
+        // hacia donde crece cada uno, asi que las cuatro esquinas salen del
+        // mismo par de lineas en vez de cuatro casos escritos a mano.
+        let x0 = if hx > 0 { x } else { x.saturating_sub(largo) };
+        let y0 = if hy > 0 { y } else { y.saturating_sub(grosor) };
+        fill_rect(x0, y0, largo, grosor, color);
+        let x1 = if hx > 0 { x } else { x.saturating_sub(grosor) };
+        let y1 = if hy > 0 { y } else { y.saturating_sub(largo) };
+        fill_rect(x1, y1, grosor, largo, color);
+    }
+}
+
+/// **El triangulo de aviso**, el que va detras de la X en el logo.
+///
+/// Se dibuja y no se escribe porque **la fuente es ASCII de 16 px y no tiene ese
+/// glifo** -- y meter uno seria abrir la puerta a que la pantalla de arranque
+/// dependa de una tabla de simbolos que hoy no existe. Son tres lados y una
+/// barra: geometria exacta, sin inventar nada del logo.
+///
+/// [!] El contorno se calcula por fila (`media = i * lado / (2 * alto)`), que es
+/// lo unico que se puede hacer sin un trazador de lineas -- y `splash.rs` no
+/// tiene uno porque hasta hoy no lo habia necesitado nadie.
+fn triangulo_aviso(x: u32, y: u32, lado: u32, color: u32) {
+    let alto = lado * 7 / 8;
+    if alto == 0 {
+        return;
+    }
+    let cx = x + lado / 2;
+    let grosor = (lado / 12).max(1);
+    let mut i = 0;
+    while i < alto {
+        let media = i * lado / (2 * alto);
+        fill_rect(cx.saturating_sub(media), y + i, grosor, 1, color);
+        fill_rect(cx + media, y + i, grosor, 1, color);
+        i += 1;
+    }
+    fill_rect(x, y + alto, lado + grosor, grosor, color);
+    // La admiracion: barra y punto, con el hueco que la separa.
+    let bh = alto / 2;
+    fill_rect(cx, y + alto / 4, grosor, bh, color);
+    fill_rect(cx, y + alto / 4 + bh + grosor, grosor, grosor, color);
+}
+
 pub fn boot_intro() {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
@@ -369,12 +443,31 @@ pub fn boot_intro() {
     let ty = gy + gh + HUECO;
     let tx = w.saturating_sub(tw) / 2;
     draw_str_scaled(tx, ty, "BMO-X", WHITE, escala_t);
+    // ** EL TRIANGULO, pegado a la X como en el logo. Va DESPUES del texto y a
+    // su derecha, a la altura de la mitad superior de las letras.
+    let lado = th / 2;
+    triangulo_aviso(tx + tw + escala_t as u32 * 2, ty + th / 3, lado, ACCENT);
     // Subrayado exacto: el ancho se pregunta a la fuente, no se estima.
     fill_rect(tx, ty + th + 10, tw, 3, ACCENT);
 
+    // ** EL SUBTITULO CON SUS DOS REGLAS, que en el logo lo flanquean.
+    //
+    // No es adorno: son lo que convierte una linea de texto suelta en un pie de
+    // firma. Y se calculan del ancho del texto --no de un numero a mano-- para
+    // que sigan cuadrando el dia que el subtitulo cambie de palabra.
     let sub = "BMO METAKERNEL";
     let sw = text_width(sub);
-    draw_str(w.saturating_sub(sw) / 2, ty + th + 10 + 3 + 14, sub, DIM);
+    let sy = ty + th + 10 + 3 + 14;
+    let sx = w.saturating_sub(sw) / 2;
+    draw_str(sx, sy, sub, ACCENT);
+    let regla = (tw / 3).max(20);
+    let hueco_regla = 14;
+    let ry = sy + FONT_H as u32 / 2;
+    fill_rect(sx.saturating_sub(hueco_regla + regla), ry, regla, 1, DIM);
+    fill_rect(sx + sw + hueco_regla, ry, regla, 1, DIM);
+
+    // ** Y EL MARCO, lo ultimo: encuadra todo lo demas.
+    marco_esquinas(w, h, ACCENT);
     wc_flush();
 
     // * EL FUNDIDO ES DE LOS OJOS, no de la pantalla.
