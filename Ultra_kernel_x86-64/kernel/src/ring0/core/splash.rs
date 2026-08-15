@@ -250,6 +250,24 @@ fn text_width(s: &str) -> u32 {
 
 /// Espera de `ms` milisegundos reales (usa la frecuencia TSC ya calibrada;
 /// si aun no existe, aproxima a ~3 GHz).
+/// Milisegundos desde `origen`, contados con el TSC.
+///
+/// El bucle de la animacion se guia por ESTO y no por contar fotogramas, y es la
+/// diferencia entre una animacion y una secuencia de dibujos.
+///
+/// Un bucle que avanza un paso fijo por vuelta dura lo que tarde en pintar: en
+/// un panel de 1080p la ciudad son ~8 MB por fotograma a memoria
+/// write-combining, o sea decenas de milisegundos que **no son los mismos** en
+/// 720p que en 4K. Preguntandole al reloj, la animacion dura lo que dice durar y
+/// lo unico que cambia con el panel es cuantos fotogramas caben dentro.
+fn ms_desde(origen: u64) -> u32 {
+    let f = crate::ring0::task::scheduler::tsc_freq();
+    if f == 0 {
+        return 0;
+    }
+    (tsc_read().wrapping_sub(origen) / (f / 1000)) as u32
+}
+
 fn hold_ms(ms: u64) {
     let f = crate::ring0::task::scheduler::tsc_freq();
     let cycles = if f == 0 { ms * 3_000_000 } else { ms * (f / 1000) };
@@ -297,15 +315,46 @@ fn draw_str_scaled(x: u32, y: u32, s: &str, color: u32, scale: u32) {
 /// La escala multiplica en enteros a proposito: interpolar un dibujo de lineas
 /// de un pixel de grosor lo convierte en una mancha gris.
 fn draw_gato(x0: u32, y0: u32, escala: u32) {
+    draw_gato_encendido(x0, y0, escala, 255, 255, 0);
+}
+
+/// **El gato ENCENDIENDOSE**, que es lo que pidio el dueno: *"el gato en neon
+/// que se prende al arrancar"*.
+///
+/// `trazo` y `ojos` van de 0 a 255; `apagado` mezcla el resultado hacia negro
+/// para el fundido final.
+///
+/// # Por que se enciende con COLOR y no con transparencia
+///
+/// Lo natural seria pintar el gato con alfa creciente sobre la ciudad. Y no se
+/// puede: mezclar con lo de debajo obliga a **leer el framebuffer**, que es
+/// memoria write-combining y va lentisimo -- la misma trampa que ya costo cara
+/// en el blit de DOOM.
+///
+/// Asi que no se mezcla con el fondo: se mezcla el **color del trazo**, de un
+/// gris muy oscuro a blanco. El pixel siempre es opaco y siempre esta ahi; lo
+/// que cambia es su brillo. Y ademas queda mejor de lo que quedaria un fundido:
+/// el gato empieza como una silueta apagada en la ciudad y **se enciende**, en
+/// vez de materializarse de la nada.
+///
+/// [!] Los ojos van por su cuenta y **suben despues**. Un gato que abre los ojos
+/// a la vez que aparece no se prende: ya estaba encendido.
+fn draw_gato_encendido(x0: u32, y0: u32, escala: u32, trazo: u32, ojos: u32, apagado: u32) {
+    use bmo_ciudad::paleta::{mezcla, NEGRO};
+    // El trazo apagado no es negro: es el gris al que quedaria una silueta con
+    // la ciudad detras. Negro del todo lo haria desaparecer sobre el cielo.
+    const TRAZO_APAGADO: u32 = 0xFF1A1730;
+    let c_trazo = mezcla(mezcla(TRAZO_APAGADO, WHITE, trazo, 255), NEGRO, apagado, 255);
+    let c_ojos = mezcla(mezcla(TRAZO_APAGADO, ACCENT, ojos, 255), NEGRO, apagado, 255);
     let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
     for fy in 0..gato::ALTO {
         for fx in 0..gato::ANCHO {
             let i = (fy * gato::ANCHO + fx) as usize;
             // Los ojos ganan al trazo: son el unico sitio con color.
             let color = if bit(&gato::OJOS, i) {
-                ACCENT
+                c_ojos
             } else if bit(&gato::TRAZO, i) {
-                WHITE
+                c_trazo
             } else {
                 continue;
             };
@@ -458,16 +507,11 @@ pub fn boot_intro() {
     // para notar que algo cambio-- y que no sea la misma en todas. El panel da
     // las dos: es estable aqui, distinto alli, y no hay que guardar nada ni
     // leer el disco antes de poder pintar.
+    // ** Y ARRANCA A OSCURAS: el primer fotograma del guion la enciende al 0%.
+    // Encenderla entera de salida seria decir que el sistema esta listo antes de
+    // estarlo, y esta pantalla no miente. La pinta el bucle de mas abajo -- aqui
+    // solo se compone.
     let mut ciudad = bmo_ciudad::Ciudad::nueva(w as i32, h as i32, ((w as u64) << 20) | h as u64);
-    // ** Y ARRANCA A OSCURAS, a proposito. La ciudad se enciende cuando haya de
-    // que informar; encenderla entera aqui seria decir que el sistema esta listo
-    // antes de estarlo, y esta pantalla no miente.
-    ciudad.encender(0);
-    ciudad.dibujar(|x, y, cw, ch, color| {
-        if cw > 0 && ch > 0 && x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
-            fill_rect(x as u32, y as u32, cw as u32, ch as u32, color);
-        }
-    });
 
     // La escala sale de la ALTURA de la pantalla, no de un numero fijo: en 1080
     // sale a x2 y en 720 a x1, y en las dos ocupa la misma fraccion. Un `3`
@@ -545,34 +589,86 @@ pub fn boot_intro() {
     // [!] `gx`, no `(w - gw)/2`. El gato ya no se centra solo --comparte fila
     // con el kanji-- y esta linea calculaba su propia X: los ojos habrian
     // parpadeado a la izquierda de donde esta la cara.
-    let ex = gx;
-    for &a in &[90u32, 170, 255] {
-        let ojo = blend(ACCENT, a);
-        let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
-        for fy in 0..gato::ALTO {
-            for fx in 0..gato::ANCHO {
-                let i = (fy * gato::ANCHO + fx) as usize;
-                if bit(&gato::OJOS, i) {
-                    fill_rect(ex + fx * escala, gy + fy * escala, escala, escala, ojo);
-                }
+    let _ = gx;
+
+    // == LA ANIMACION =====================================================
+    //
+    // Cuatro actos, y el guion entero vive en `bmo_ciudad::acto` como una
+    // funcion del tiempo: se le pregunta por un milisegundo y contesta que hay
+    // en pantalla. Aqui **no se decide nada** -- se mira el reloj, se pregunta,
+    // y se pinta. Por eso los tiempos se ajustan con `cargo test` en vez de con
+    // un reinicio por cada medio segundo.
+    //
+    // ** Y el bucle se guia por el RELOJ, no por contar vueltas. La ciudad son
+    // ~8 MB por fotograma en 1080p, o sea decenas de milisegundos que no son los
+    // mismos en 720p que en 4K. Con `ms_desde`, la animacion dura lo que dice
+    // durar y lo unico que cambia con el panel es cuantos fotogramas caben.
+    let t0 = tsc_read();
+    loop {
+        let ms = ms_desde(t0);
+        if ms >= bmo_ciudad::DURACION_MS {
+            break;
+        }
+        let f = bmo_ciudad::fotograma(ms);
+
+        // La ciudad, con su camara y encendiendose.
+        ciudad.encender(f.ciudad_pct);
+        let cam = bmo_ciudad::Camara::nueva(f.avance);
+        ciudad.dibujar(cam, |x, y, cw, ch, color| {
+            if cw > 0 && ch > 0 && x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
+                let c = bmo_ciudad::paleta::mezcla(color, bmo_ciudad::paleta::NEGRO, f.negro, 255);
+                fill_rect(x as u32, y as u32, cw as u32, ch as u32, c);
+            }
+        });
+
+        // El gato, encendiendose por encima.
+        if f.gato_alfa > 0 {
+            draw_gato_encendido(gx, gy, escala, f.gato_alfa, f.ojos_alfa, f.negro);
+            draw_kanji(
+                gx + gw + hueco_k,
+                ky,
+                escala,
+                bmo_ciudad::paleta::mezcla(
+                    bmo_ciudad::paleta::mezcla(0xFF1A1730, ACCENT, f.ojos_alfa, 255),
+                    bmo_ciudad::paleta::NEGRO,
+                    f.negro,
+                    255,
+                ),
+            );
+        }
+
+        // ** EL DESTELLO: los ojos tomando el control.
+        //
+        // Es una caja de cian que crece desde la cara del gato hasta comerse la
+        // pantalla. Se pinta ENCIMA de todo y se apaga hacia negro con el mismo
+        // `f.negro` que la ciudad, asi que no se "quita": **se lo traga el
+        // negro**, que es lo que se pidio.
+        if f.destello > 0 {
+            let cara_x = (gx + gw / 2) as i32;
+            let cara_y = (gy + gh / 3) as i32;
+            let radio = (f.destello * (w.max(h)) / 255) as i32;
+            let c = bmo_ciudad::paleta::mezcla(
+                bmo_ciudad::paleta::mezcla(bmo_ciudad::paleta::NEGRO, ACCENT, f.destello, 255),
+                bmo_ciudad::paleta::NEGRO,
+                f.negro,
+                255,
+            );
+            let x0 = (cara_x - radio).max(0) as u32;
+            let y0 = (cara_y - radio).max(0) as u32;
+            let x1 = ((cara_x + radio).max(0) as u32).min(w);
+            let y1 = ((cara_y + radio).max(0) as u32).min(h);
+            if x1 > x0 && y1 > y0 {
+                fill_rect(x0, y0, x1 - x0, y1 - y0, c);
             }
         }
+
         wc_flush();
-        hold_ms(70);
     }
 
-    // * Y SE QUEDA A LA VISTA `GATO_MS`.
-    //
-    // Aqui no hay trabajo con el que solapar: el kernel esta operativo a los
-    // 52 ms, asi que para que el logo se VEA hay que esperar. Y **no se puede
-    // saltar con una tecla**, a diferencia de la intro del compositor: en este
-    // punto del arranque el USB no se ha enumerado todavia y no hay teclado que
-    // preguntar.
-    //
-    // O sea que este numero es tiempo de arranque, todo el. Esta en una
-    // constante y con el coste escrito para que subirlo sea una decision y no un
-    // descuido.
-    hold_ms(GATO_MS);
+    // Y se cierra en negro del todo: el guion acaba ahi, y el panel del kernel
+    // entra sobre una pantalla limpia en vez de sobre media ciudad.
+    fill_rect(0, 0, w, h, BG);
+    wc_flush();
 }
 
 // ?????? Smooth progress bar ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
