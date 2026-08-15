@@ -56,7 +56,7 @@ if (-not $Rapido) {
     Titulo 'Banco de pruebas (anfitrion)'
     Push-Location $raiz
     try {
-        $paquetes = @('bmo-c-front', 'bmo-uaudio', 'bmo-abi', 'bmo-fat32', 'bmo-uhid', 'bmo-net')
+        $paquetes = @('bmo-c-front', 'bmo-uaudio', 'bmo-abi', 'bmo-fat32', 'bmo-uhid', 'bmo-net', 'bmo-ciudad')
         $total = 0
         foreach ($p in $paquetes) {
             # [!] AQUI SE DECIDE POR CONTEO, NO POR FRASE NI POR CODIGO DE SALIDA.
