@@ -191,6 +191,23 @@ pub(crate) fn write(dsk: &mut Desktop, p: &bmo::Pantalla, file_path: &[u8], text
 /// cuando lo interesante son tres comandos juntos.
 pub(crate) fn save(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
     let dest = if arg.is_empty() { DEFAULT_DUMP } else { arg };
+    // ** LA TABLA DE CONSUMO VA DENTRO DEL VOLCADO, y va ANTES de tomar el
+    // rango para que entre en el fichero.
+    //
+    // El motivo es el bucle de trabajo real: este `.txt` es lo unico que cruza
+    // del Ryzen al otro lado, y hasta hoy llegaba contando lo que hizo el
+    // programa **sin decir en que estado estaba la maquina**. Cada vez que hacia
+    // falta esa mitad --cuanta RAM quedaba, a que reloj iba, cuantos nucleos en
+    // pie-- habia que pedir otro arranque con un `info` puesto a mano.
+    //
+    // Ahora todo volcado la lleva. Cuesta veinte lineas de texto y ahorra un
+    // viaje entero, que en esta maquina se mide en reinicios.
+    //
+    // [!] Y por eso se pinta aqui y no en `dump_output`: lo que se guarda es el
+    // historial de la PANTALLA, asi que para que algo salga en el fichero tiene
+    // que estar antes en la pantalla. Escribirlo solo al fichero seria tener dos
+    // caminos de salida que pueden decir cosas distintas.
+    super::reports::report_consumo(&mut dsk.out.grid);
     // El rango se toma ANTES de escribir nada:
     // los mensajes de abajo son de esta orden, no
     // de lo que se estaba guardando, y colarlos

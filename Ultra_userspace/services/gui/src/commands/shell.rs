@@ -174,7 +174,8 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"               el programa termina  (c/ray.bex)\n");
     dsk.out.grid.text(b"  cat <ruta>   ensena lo que hay dentro\n");
     dsk.out.grid.text(b"  write <ruta> <texto>     lo guarda\n");
-    dsk.out.grid.text(b"  guarda [ruta]  vuelca esta salida a un .txt\n");
+    dsk.out.grid.text(b"  save [ruta]  vuelca esta salida a un .txt, con la\n");
+    dsk.out.grid.text(b"               tabla de consumo dentro  (= guarda)\n");
     dsk.out.grid.text(b"               (por defecto datos/salida.txt, y cada\n");
     dsk.out.grid.text(b"                programa que corre lo deja solo ahi)\n");
     dsk.out.grid.text(b"  clear / cls  limpia esta salida\n");
@@ -183,6 +184,7 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
     dsk.out.grid.text(b"  info         RAM, CPU, tareas y disco\n");
     dsk.out.grid.text(b"  cpu / mem    solo esa parte del informe\n");
+    dsk.out.grid.text(b"  consumo / w  nucleos, hilos, MHz, W y RAM en TABLA\n");
     dsk.out.grid.text(b"  perf         lo que cuesta pintar, medido\n");
     dsk.out.grid.text(b"  estratos sellar   ESCRIBE EN EL DISCO (commit vacio)\n");
     dsk.out.grid.text(b"  help         esto\n");

@@ -92,6 +92,11 @@ pub(crate) enum Command<'a> {
     Autopsy,
     Cpu,
     Memoria,
+    /// **El consumo, en tabla.** `cpu` y `mem` explican la maquina cada uno por
+    /// su lado; esto contesta "que esta gastando ahora mismo" en una sola
+    /// pantalla y con los numeros alineados, para poder comparar dos volcados.
+    /// Va tambien dentro de cada `save`.
+    Consumo,
     /// **Los nucleos.** Sin argumento solo censa; con `all` o con un numero,
     /// despierta. Es la unica orden de esta caja que puede tardar casi un
     /// segundo, y por eso el mensaje va ANTES de llamar.
@@ -268,7 +273,13 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         }
         // `guarda` sin nada vuelca al fichero de siempre; con una ruta, ahi.
         // No pide texto como `escribe`: lo que guarda ya esta en la pantalla.
-        b"guarda" | b"volcar" | b"dump" => Command::Save(rest),
+        //
+        // ** `save` entra por peticion del dueno, y el motivo es el uso real:
+        // esta es la orden que MAS se teclea --cada sesion acaba con ella-- y
+        // `guarda` son seis letras en un teclado que ademas ha estado fallando.
+        // Cuatro letras y sin acentos. Los nombres viejos se quedan: quitarlos
+        // no ahorraria nada y rompe lo que ya esta en las notas.
+        b"guarda" | b"save" | b"volcar" | b"dump" => Command::Save(rest),
         b"info" | b"sistema" => Command::Report,
         // `fallo` ensena la ultima autopsia. Se guarda sola en `data/fallos.txt`
         // en cuanto ocurre -- esto es para mirarla sin salir del escritorio.
@@ -282,6 +293,7 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         b"tramas" | b"frames" => Command::Net(b"frames"),
         b"phy" => Command::Net(b"phy"),
         b"cpu" | b"procesador" => Command::Cpu,
+        b"consumo" | b"gasto" | b"w" => Command::Consumo,
         b"mem" | b"ram" | b"memoria" => Command::Memoria,
         b"reboot" | b"reinicia" | b"reiniciar" => Command::Reboot,
         // `smp` a secas CENSA y no toca nada; `smp all` despierta a todos;
