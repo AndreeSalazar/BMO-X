@@ -206,8 +206,30 @@ pub fn main(ctx: &mut BootContext) {
     // moderno. Al terminar aterrizamos en el dashboard, donde el trabajo
     // REAL de cada etapa fluye como log (igual que Windows: la animacion
     // juega, luego apareces en el escritorio).
+    // ** EL TRUCO DE SANTA MONICA, y lo pidio el dueno con ese nombre.
+    //
+    // God of War 2018 no tiene pantallas de carga: el trabajo se hace DEBAJO de
+    // una camara que no corta. La carga no se elimina -- se tapa con algo que el
+    // jugador queria ver igualmente.
+    //
+    // Aqui era al reves. El comentario de arriba lo decia con todas las letras:
+    // *"la animacion juega, luego apareces en el escritorio"*, o sea el modelo de
+    // Windows: **2.400 ms de animacion MAS lo que tarde el hardware**. Y el
+    // precio ya estaba confesado en otro sitio -- `boot_timeline` tiene una fila
+    // propia para el `GATO_MS` porque sin ella ese segundo y medio se achacaba a
+    // la enumeracion del bus PCI.
+    //
+    // Ahora `intro_empieza` no espera a nada: arranca el reloj y pinta un
+    // fotograma. Los `intro_paso(pct)` de mas abajo van repartidos por el
+    // arranque de verdad, y `intro_cierra` toca el final cuando ya no hay
+    // trabajo que tapar.
+    //
+    // ** Y el `pct` no es una barra: enciende la CIUDAD. Con lo cual la pantalla
+    // de arranque deja de acompanar al arranque y **pasa a serlo**: un
+    // subsistema que tarda deja su tramo a oscuras mas tiempo, y eso es
+    // informacion, no decorado.
     if crate::info::has_fb() {
-        splash::boot_intro();
+        splash::intro_empieza();
     } else {
         s_log("[splash] no framebuffer, skipping splash");
     }
@@ -253,11 +275,13 @@ pub fn main(ctx: &mut BootContext) {
     // acto donde el kernel despierta hardware -- antes vivia dentro del render y
     // clavaba ~65k lecturas de config PCI en el primer frame del cockpit.
     crate::ring0::cabina::boot_probe();
+    splash::intro_paso(25);
     // * Y se le pregunta al CPU si sabe medirse a si mismo. UNA vez: despues
     // `INFO_CPU_HZ_REAL` solo mira una bandera, porque lo va a pedir un panel
     // que se repinta y un `cpuid` por fotograma no es un panel, es un impuesto.
     // Ver `docs/AXION_MAESTRO.md`, seccion 9.
     crate::ring0::cpu::frequency::init();
+    splash::intro_paso(40);
     // Y lo que GASTA. Mismo trato: se pregunta una vez si el chip sabe
     // contestar, y la unidad se le pregunta a el en vez de suponerla.
     crate::ring0::cpu::power::init();
@@ -300,11 +324,20 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::dev::disk::verify_identity();
     // Y si convencio, el volumen de datos se monta con escritor. La particion
     // de arranque sigue montada sin el, y asi se queda.
+    splash::intro_paso(70);
     crate::ring0::fsys::fs::mount_data();
     // Y ESTRATOS, si alguna particion lleva uno. Solo lectura: el modulo no
     // sabe escribir, asi que montarlo no puede estropear nada.
     crate::ring0::fsys::estratos::mount();
+    splash::intro_paso(90);
     crate::ring0::core::boot_timeline::mark("filesystems + identity gate");
+    // ** Y AQUI SE CIERRA: el hardware ya esta, no queda trabajo que tapar.
+    // Los ojos toman el control, todo se va a negro, y el panel del kernel
+    // entra sobre una pantalla limpia. Es el unico tramo de la intro que
+    // ESPERA, y se puede porque ya no esconde nada.
+    splash::intro_paso(100);
+    splash::intro_cierra();
+    splash::splash_dashboard_init();
     dash_log("== RING 0 : hardware al mando ==");
 
     // -- Acto II: RING 3 -- el userspace nace -----------------------------

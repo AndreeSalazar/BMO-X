@@ -485,189 +485,213 @@ fn triangulo_aviso(x: u32, y: u32, lado: u32, color: u32) {
     fill_rect(cx, y + alto / 4 + bh + grosor, grosor, grosor, color);
 }
 
-pub fn boot_intro() {
+/// Cuando empezo la intro, en ciclos de TSC. `0` = no ha empezado.
+static mut INTRO_T0: u64 = 0;
+/// La ciudad, compuesta una vez. Vive aqui y no en la pila porque ahora se
+/// dibuja **desde muchos sitios** del arranque, no de una sentada.
+static mut INTRO_CIUDAD: Option<bmo_ciudad::Ciudad> = None;
+
+/// **Empieza la intro y NO se queda esperando.**
+///
+/// Ver [`intro_paso`], que es donde esta explicado el cambio entero.
+pub fn intro_empieza() {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 {
         return;
     }
-    fill_rect(0, 0, w, h, BG);
+    unsafe {
+        INTRO_T0 = tsc_read();
+        INTRO_CIUDAD = Some(bmo_ciudad::Ciudad::nueva(
+            w as i32,
+            h as i32,
+            ((w as u64) << 20) | h as u64,
+        ));
+    }
+    intro_paso(0);
+}
 
-    // ** LA CIUDAD, DETRAS DE TODO.
-    //
-    // La dibuja `bmo-ciudad` emitiendo rectangulos; aqui solo se le dice donde
-    // caen. El crate no sabe que existe un framebuffer, y por eso sus pruebas
-    // corren en el anfitrion -- algo que un fondo de arranque no habia podido
-    // hacer nunca en esta casa.
-    //
-    // ** LA SEMILLA ES EL TAMANO DEL PANEL, y es una decision.
-    //
-    // Tenia que cumplir dos cosas a la vez: que la ciudad sea **siempre la
-    // misma** en esta maquina --un fondo que cambia en cada arranque no sirve
-    // para notar que algo cambio-- y que no sea la misma en todas. El panel da
-    // las dos: es estable aqui, distinto alli, y no hay que guardar nada ni
-    // leer el disco antes de poder pintar.
-    // ** Y ARRANCA A OSCURAS: el primer fotograma del guion la enciende al 0%.
-    // Encenderla entera de salida seria decir que el sistema esta listo antes de
-    // estarlo, y esta pantalla no miente. La pinta el bucle de mas abajo -- aqui
-    // solo se compone.
-    let mut ciudad = bmo_ciudad::Ciudad::nueva(w as i32, h as i32, ((w as u64) << 20) | h as u64);
+/// **Un fotograma de la intro, con el progreso REAL del arranque.**
+///
+/// # El truco de Santa Monica, y por que el modelo de antes estaba mal
+///
+/// Lo dijo el dueno viendo el log de arranque pasar: *"BMO-X esta preparando
+/// todo eso, los datos se ejecutan en tiempo real... tiene que esconder con
+/// truco inspirado como hicieron Santa Monica en God of War"*.
+///
+/// God of War 2018 no tiene pantallas de carga: el trabajo se hace **debajo** de
+/// una camara que no corta. La carga no se elimina -- se tapa con algo que el
+/// jugador queria ver de todas formas.
+///
+/// Aqui era al reves, y el comentario de `phase.rs` lo decia con todas las
+/// letras: *"la animacion juega, luego apareces en el escritorio"*, el modelo de
+/// Windows. O sea **2.400 ms de animacion MAS el tiempo real de arrancar**. Y el
+/// coste ya estaba medido y confesado en otro sitio: `boot_timeline` tiene una
+/// fila propia para el `GATO_MS` porque, sin ella, ese segundo y medio se
+/// achacaba a la enumeracion del bus PCI.
+///
+/// ** Ahora la intro no espera a nada: se llama a esto entre paso y paso del
+/// arranque de verdad --USB, xHCI, AHCI, el censo de PCI-- y cada llamada pinta
+/// UN fotograma con el reloj que haya. La animacion dura **lo que dure el
+/// trabajo**, y no cuesta ni un milisegundo de mas.
+///
+/// # Y `pct` no es una barra: es la ciudad
+///
+/// El progreso enciende las torres. Con lo cual se cierra la idea que el dueno
+/// tuvo dos dias antes --*"en el fondo se ve el sistema de ciudad con TODO"*--:
+/// **la ciudad encendiendose ES el arranque ocurriendo**, no una animacion que
+/// finge acompanarlo. Un subsistema que tarda deja su tramo de ciudad a oscuras
+/// mas tiempo, y eso es informacion de verdad.
+pub fn intro_paso(pct: u32) {
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if w == 0 || h == 0 {
+        return;
+    }
+    let t0 = unsafe { INTRO_T0 };
+    if t0 == 0 {
+        return;
+    }
+    // El tiempo manda en la camara y en el gato; el PROGRESO manda en la ciudad.
+    // Son dos relojes distintos a proposito: uno cuenta lo que se ve, el otro
+    // cuenta lo que pasa.
+    let ms = ms_desde(t0).min(bmo_ciudad::DURACION_MS);
+    let mut f = bmo_ciudad::fotograma(ms);
+    f.ciudad_pct = pct.min(100);
+    // Los dos ultimos actos los dispara `intro_cierra`, no el reloj: mientras
+    // haya trabajo, el gato se queda mirando.
+    f.destello = 0;
+    f.negro = 0;
+    pintar_escena(w, h, &f);
+}
+
+/// **Cierra la intro: los ojos toman el control y todo se va a negro.**
+///
+/// Esto SI espera, y es el unico sitio donde se puede: el trabajo ya termino, no
+/// hay nada debajo que tapar. Son los ultimos 500 ms del guion.
+pub fn intro_cierra() {
+    let w = unsafe { crate::info::FB_WIDTH };
+    let h = unsafe { crate::info::FB_HEIGHT };
+    if w == 0 || h == 0 || unsafe { INTRO_T0 } == 0 {
+        return;
+    }
+    let t0 = tsc_read();
+    let dur = bmo_ciudad::DURACION_MS - bmo_ciudad::acto::FIN_GATO;
+    loop {
+        let d = ms_desde(t0);
+        if d >= dur {
+            break;
+        }
+        let f = bmo_ciudad::fotograma(bmo_ciudad::acto::FIN_GATO + d);
+        pintar_escena(w, h, &f);
+    }
+    fill_rect(0, 0, w, h, BG);
+    wc_flush();
+    unsafe {
+        INTRO_T0 = 0;
+        INTRO_CIUDAD = None;
+    }
+}
+
+/// **Pinta UN fotograma de la escena entera**: ciudad, gato, kanji y destello.
+///
+/// Todo el encuadre --escala, centrado, donde cae el kanji-- se recalcula aqui
+/// en cada llamada. Son una docena de divisiones enteras, y a cambio esta
+/// funcion **no tiene estado**: se puede llamar desde cualquier punto del
+/// arranque sin que nadie tenga que haber guardado nada antes. Con el encuadre
+/// en variables globales habria que mantenerlo sincronizado con el panel, y esa
+/// es la clase de sincronizacion que se rompe el dia que alguien cambia de
+/// monitor.
+fn pintar_escena(w: u32, h: u32, f: &bmo_ciudad::Fotograma) {
+    use bmo_ciudad::paleta::{mezcla, NEGRO};
 
     // La escala sale de la ALTURA de la pantalla, no de un numero fijo: en 1080
-    // sale a x2 y en 720 a x1, y en las dos ocupa la misma fraccion. Un `3`
-    // puesto a mano se sale por abajo en el primer monitor pequeno.
+    // sale a x2 y en 720 a x1, y en las dos ocupa la misma fraccion.
     let escala = if h >= 900 { 2 } else { 1 };
     let gw = gato::ANCHO * escala;
     let gh = gato::ALTO * escala;
-
-    // El bloque entero --gato + titulo + subtitulo-- se centra como una unidad.
-    // Centrar el gato y luego colgarle el texto deja el conjunto bajo.
     const HUECO: u32 = 34;
     let escala_t = if h >= 900 { 5 } else { 4 };
     let tw = text_width_scaled("BMO-X", escala_t);
     let th = FONT_H as u32 * escala_t;
     let alto_total = gh + HUECO + th + 10 + 3 + 14 + FONT_H as u32;
 
-    // ** LA FILA DE ARRIBA SON DOS PIEZAS: el gato y el kanji a su derecha.
-    //
-    // En el logo la composicion **no es simetrica**: el gato va a la izquierda y
-    // el kanji a su derecha, y el par se centra como una unidad. Centrar solo el
-    // gato y colgarle el kanji al lado dejaria el conjunto corrido a la
-    // izquierda -- que es el mismo error que ya evitaba el bloque entero cuando
-    // se escribio ("centrar el gato y luego colgarle el texto deja el conjunto
-    // bajo"), aplicado ahora al otro eje.
+    // La fila de arriba son DOS piezas --gato y kanji-- y el par se centra como
+    // una unidad, porque en el logo la composicion no es simetrica.
     let kw = gato::KANJI_ANCHO * escala;
     let kh = gato::KANJI_ALTO * escala;
     let hueco_k = 22 * escala;
     let fila_w = gw + hueco_k + kw;
-
     let gy = h.saturating_sub(alto_total) / 2;
     let gx = w.saturating_sub(fila_w) / 2;
-    draw_gato(gx, gy, escala);
-    // ** La altura del kanji sale del logo, no de "centrado a ojo": alli su
-    // centro cae al 75% del alto del gato --medido sobre la imagen-- y no a la
-    // mitad. Centrarlo verticalmente lo subiria y se notaria.
+    // La altura del kanji sale del logo: su centro cae al 75% del alto del gato.
     let ky = gy + (gh * 3) / 4 - kh / 2;
-    draw_kanji(gx + gw + hueco_k, ky, escala, ACCENT);
 
-    let ty = gy + gh + HUECO;
-    let tx = w.saturating_sub(tw) / 2;
-    draw_str_scaled(tx, ty, "BMO-X", WHITE, escala_t);
-    // ** EL TRIANGULO, pegado a la X como en el logo. Va DESPUES del texto y a
-    // su derecha, a la altura de la mitad superior de las letras.
-    let lado = th / 2;
-    triangulo_aviso(tx + tw + escala_t as u32 * 2, ty + th / 3, lado, ACCENT);
-    // Subrayado exacto: el ancho se pregunta a la fuente, no se estima.
-    fill_rect(tx, ty + th + 10, tw, 3, ACCENT);
-
-    // ** EL SUBTITULO CON SUS DOS REGLAS, que en el logo lo flanquean.
-    //
-    // No es adorno: son lo que convierte una linea de texto suelta en un pie de
-    // firma. Y se calculan del ancho del texto --no de un numero a mano-- para
-    // que sigan cuadrando el dia que el subtitulo cambie de palabra.
-    let sub = "BMO METAKERNEL";
-    let sw = text_width(sub);
-    let sy = ty + th + 10 + 3 + 14;
-    let sx = w.saturating_sub(sw) / 2;
-    draw_str(sx, sy, sub, ACCENT);
-    let regla = (tw / 3).max(20);
-    let hueco_regla = 14;
-    let ry = sy + FONT_H as u32 / 2;
-    fill_rect(sx.saturating_sub(hueco_regla + regla), ry, regla, 1, DIM);
-    fill_rect(sx + sw + hueco_regla, ry, regla, 1, DIM);
-
-    // ** Y EL MARCO, lo ultimo: encuadra todo lo demas.
-    marco_esquinas(w, h, ACCENT);
-    wc_flush();
-
-    // * EL FUNDIDO ES DE LOS OJOS, no de la pantalla.
-    //
-    // 276 pixeles parpadeando cuestan nada y dan lo unico que un logo estatico
-    // no da: la senal de que la maquina esta VIVA. Un fundido de pantalla
-    // completa costaria los millones de pixeles que el arranque no tiene que
-    // gastar.
-    // [!] `gx`, no `(w - gw)/2`. El gato ya no se centra solo --comparte fila
-    // con el kanji-- y esta linea calculaba su propia X: los ojos habrian
-    // parpadeado a la izquierda de donde esta la cara.
-    let _ = gx;
-
-    // == LA ANIMACION =====================================================
-    //
-    // Cuatro actos, y el guion entero vive en `bmo_ciudad::acto` como una
-    // funcion del tiempo: se le pregunta por un milisegundo y contesta que hay
-    // en pantalla. Aqui **no se decide nada** -- se mira el reloj, se pregunta,
-    // y se pinta. Por eso los tiempos se ajustan con `cargo test` en vez de con
-    // un reinicio por cada medio segundo.
-    //
-    // ** Y el bucle se guia por el RELOJ, no por contar vueltas. La ciudad son
-    // ~8 MB por fotograma en 1080p, o sea decenas de milisegundos que no son los
-    // mismos en 720p que en 4K. Con `ms_desde`, la animacion dura lo que dice
-    // durar y lo unico que cambia con el panel es cuantos fotogramas caben.
-    let t0 = tsc_read();
-    loop {
-        let ms = ms_desde(t0);
-        if ms >= bmo_ciudad::DURACION_MS {
-            break;
+    // -- LA CIUDAD, detras de todo.
+    unsafe {
+        let ciudad = &mut *core::ptr::addr_of_mut!(INTRO_CIUDAD);
+        if let Some(c) = ciudad.as_mut() {
+            c.encender(f.ciudad_pct);
+            let cam = bmo_ciudad::Camara::nueva(f.avance);
+            c.dibujar(cam, |x, y, cw, ch, color| {
+                if cw > 0 && ch > 0 && x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
+                    let c = mezcla(color, NEGRO, f.negro, 255);
+                    fill_rect(x as u32, y as u32, cw as u32, ch as u32, c);
+                }
+            });
         }
-        let f = bmo_ciudad::fotograma(ms);
-
-        // La ciudad, con su camara y encendiendose.
-        ciudad.encender(f.ciudad_pct);
-        let cam = bmo_ciudad::Camara::nueva(f.avance);
-        ciudad.dibujar(cam, |x, y, cw, ch, color| {
-            if cw > 0 && ch > 0 && x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
-                let c = bmo_ciudad::paleta::mezcla(color, bmo_ciudad::paleta::NEGRO, f.negro, 255);
-                fill_rect(x as u32, y as u32, cw as u32, ch as u32, c);
-            }
-        });
-
-        // El gato, encendiendose por encima.
-        if f.gato_alfa > 0 {
-            draw_gato_encendido(gx, gy, escala, f.gato_alfa, f.ojos_alfa, f.negro);
-            draw_kanji(
-                gx + gw + hueco_k,
-                ky,
-                escala,
-                bmo_ciudad::paleta::mezcla(
-                    bmo_ciudad::paleta::mezcla(0xFF1A1730, ACCENT, f.ojos_alfa, 255),
-                    bmo_ciudad::paleta::NEGRO,
-                    f.negro,
-                    255,
-                ),
-            );
-        }
-
-        // ** EL DESTELLO: los ojos tomando el control.
-        //
-        // Es una caja de cian que crece desde la cara del gato hasta comerse la
-        // pantalla. Se pinta ENCIMA de todo y se apaga hacia negro con el mismo
-        // `f.negro` que la ciudad, asi que no se "quita": **se lo traga el
-        // negro**, que es lo que se pidio.
-        if f.destello > 0 {
-            let cara_x = (gx + gw / 2) as i32;
-            let cara_y = (gy + gh / 3) as i32;
-            let radio = (f.destello * (w.max(h)) / 255) as i32;
-            let c = bmo_ciudad::paleta::mezcla(
-                bmo_ciudad::paleta::mezcla(bmo_ciudad::paleta::NEGRO, ACCENT, f.destello, 255),
-                bmo_ciudad::paleta::NEGRO,
-                f.negro,
-                255,
-            );
-            let x0 = (cara_x - radio).max(0) as u32;
-            let y0 = (cara_y - radio).max(0) as u32;
-            let x1 = ((cara_x + radio).max(0) as u32).min(w);
-            let y1 = ((cara_y + radio).max(0) as u32).min(h);
-            if x1 > x0 && y1 > y0 {
-                fill_rect(x0, y0, x1 - x0, y1 - y0, c);
-            }
-        }
-
-        wc_flush();
     }
 
-    // Y se cierra en negro del todo: el guion acaba ahi, y el panel del kernel
-    // entra sobre una pantalla limpia en vez de sobre media ciudad.
-    fill_rect(0, 0, w, h, BG);
+    // -- EL GATO, encendiendose por encima.
+    if f.gato_alfa > 0 {
+        draw_gato_encendido(gx, gy, escala, f.gato_alfa, f.ojos_alfa, f.negro);
+        draw_kanji(
+            gx + gw + hueco_k,
+            ky,
+            escala,
+            mezcla(mezcla(0xFF1A1730, ACCENT, f.ojos_alfa, 255), NEGRO, f.negro, 255),
+        );
+        // El titulo entra con el trazo: es parte del gato, no de la ciudad.
+        let ty = gy + gh + HUECO;
+        let tx = w.saturating_sub(tw) / 2;
+        let c_txt = mezcla(mezcla(NEGRO, WHITE, f.gato_alfa, 255), NEGRO, f.negro, 255);
+        let c_ac = mezcla(mezcla(NEGRO, ACCENT, f.gato_alfa, 255), NEGRO, f.negro, 255);
+        draw_str_scaled(tx, ty, "BMO-X", c_txt, escala_t);
+        triangulo_aviso(tx + tw + escala_t * 2, ty + th / 3, th / 2, c_ac);
+        fill_rect(tx, ty + th + 10, tw, 3, c_ac);
+        let sub = "BMO METAKERNEL";
+        let sw = text_width(sub);
+        let sy = ty + th + 10 + 3 + 14;
+        let sx = w.saturating_sub(sw) / 2;
+        draw_str(sx, sy, sub, c_ac);
+        let regla = (tw / 3).max(20);
+        let ry = sy + FONT_H as u32 / 2;
+        let c_dim = mezcla(mezcla(NEGRO, DIM, f.gato_alfa, 255), NEGRO, f.negro, 255);
+        fill_rect(sx.saturating_sub(14 + regla), ry, regla, 1, c_dim);
+        fill_rect(sx + sw + 14, ry, regla, 1, c_dim);
+    }
+
+    // -- EL DESTELLO: los ojos tomando el control.
+    //
+    // Una caja de cian que crece desde la cara del gato hasta comerse la
+    // pantalla. Se pinta ENCIMA de todo y se apaga hacia negro con el mismo
+    // `f.negro` que la ciudad, asi que no se "quita": se lo traga el negro.
+    if f.destello > 0 {
+        let cara_x = (gx + gw / 2) as i32;
+        let cara_y = (gy + gh / 3) as i32;
+        let radio = (f.destello * (w.max(h)) / 255) as i32;
+        let c = mezcla(mezcla(NEGRO, ACCENT, f.destello, 255), NEGRO, f.negro, 255);
+        let x0 = (cara_x - radio).max(0) as u32;
+        let y0 = (cara_y - radio).max(0) as u32;
+        let x1 = ((cara_x + radio).max(0) as u32).min(w);
+        let y1 = ((cara_y + radio).max(0) as u32).min(h);
+        if x1 > x0 && y1 > y0 {
+            fill_rect(x0, y0, x1 - x0, y1 - y0, c);
+        }
+    }
+
+    // El marco, lo ultimo: encuadra todo lo demas.
+    marco_esquinas(w, h, mezcla(ACCENT, NEGRO, f.negro, 255));
     wc_flush();
 }
 
