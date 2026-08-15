@@ -314,6 +314,28 @@ fn draw_gato(x0: u32, y0: u32, escala: u32) {
     }
 }
 
+/// **El kanji del logo** -- el que significa "gato", y por eso esta en la marca.
+///
+/// Una sola mascara porque en el logo es de un solo color -- medido al
+/// generarla: 1.440 pixeles, todos cian, ni uno blanco. 666 bytes.
+///
+/// Se DIBUJA y no se escribe, igual que el triangulo de aviso: la fuente del
+/// kernel es ASCII de 16 px, y meter un glifo CJK seria arrastrar una tabla de
+/// simbolos entera para un caracter. Y dibujarlo a mano tampoco valia: son once
+/// trazos, y un kanji torcido en la pantalla de arranque es peor que no ponerlo.
+/// Sale del PNG con el mismo guion que saco al gato.
+fn draw_kanji(x0: u32, y0: u32, escala: u32, color: u32) {
+    let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
+    for fy in 0..gato::KANJI_ALTO {
+        for fx in 0..gato::KANJI_ANCHO {
+            let i = (fy * gato::KANJI_ANCHO + fx) as usize;
+            if bit(&gato::KANJI, i) {
+                fill_rect(x0 + fx * escala, y0 + fy * escala, escala, escala, color);
+            }
+        }
+    }
+}
+
 /// ** LA INTRO DEL ARRANQUE -- **el logo, y nada mas**.
 ///
 /// === Que habia aqui, y por que se fue ===
@@ -437,8 +459,27 @@ pub fn boot_intro() {
     let th = FONT_H as u32 * escala_t;
     let alto_total = gh + HUECO + th + 10 + 3 + 14 + FONT_H as u32;
 
+    // ** LA FILA DE ARRIBA SON DOS PIEZAS: el gato y el kanji a su derecha.
+    //
+    // En el logo la composicion **no es simetrica**: el gato va a la izquierda y
+    // el kanji a su derecha, y el par se centra como una unidad. Centrar solo el
+    // gato y colgarle el kanji al lado dejaria el conjunto corrido a la
+    // izquierda -- que es el mismo error que ya evitaba el bloque entero cuando
+    // se escribio ("centrar el gato y luego colgarle el texto deja el conjunto
+    // bajo"), aplicado ahora al otro eje.
+    let kw = gato::KANJI_ANCHO * escala;
+    let kh = gato::KANJI_ALTO * escala;
+    let hueco_k = 22 * escala;
+    let fila_w = gw + hueco_k + kw;
+
     let gy = h.saturating_sub(alto_total) / 2;
-    draw_gato(w.saturating_sub(gw) / 2, gy, escala);
+    let gx = w.saturating_sub(fila_w) / 2;
+    draw_gato(gx, gy, escala);
+    // ** La altura del kanji sale del logo, no de "centrado a ojo": alli su
+    // centro cae al 75% del alto del gato --medido sobre la imagen-- y no a la
+    // mitad. Centrarlo verticalmente lo subiria y se notaria.
+    let ky = gy + (gh * 3) / 4 - kh / 2;
+    draw_kanji(gx + gw + hueco_k, ky, escala, ACCENT);
 
     let ty = gy + gh + HUECO;
     let tx = w.saturating_sub(tw) / 2;
@@ -476,7 +517,10 @@ pub fn boot_intro() {
     // no da: la senal de que la maquina esta VIVA. Un fundido de pantalla
     // completa costaria los millones de pixeles que el arranque no tiene que
     // gastar.
-    let ex = w.saturating_sub(gw) / 2;
+    // [!] `gx`, no `(w - gw)/2`. El gato ya no se centra solo --comparte fila
+    // con el kanji-- y esta linea calculaba su propia X: los ojos habrian
+    // parpadeado a la izquierda de donde esta la cara.
+    let ex = gx;
     for &a in &[90u32, 170, 255] {
         let ojo = blend(ACCENT, a);
         let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
