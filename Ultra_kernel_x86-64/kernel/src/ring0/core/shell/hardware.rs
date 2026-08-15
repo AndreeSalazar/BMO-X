@@ -764,8 +764,34 @@ pub(crate) fn shell_mem() {
     row("usada", |l| { l.size(used_b); l.txt("   "); l.pct(used_b, total_b); });
     row("libre", |l| { l.size(free_b); l.txt("   "); l.pct(free_b, total_b); });
 
-    if crate::ring0::mm::vmm::self_test() {
-        s_log("[mem] vmm selftest OK (alloc/map/translate/unmap/destroy)");
+    // ** LO QUE RING 3 TIENE PEDIDO **AHORA**, que no es lo que decia `info`.
+    //
+    // `total_handed_over()` es un contador HISTORICO de la sesion y esta
+    // documentado como tal -- sirve para "cuanto ha pedido Ring 3 desde que
+    // arranco" y no sirve para "cuanto hay fuera ahora mismo". La fuga de los 12
+    // MiB por programa vivio detras de esa confusion: el numero subia y era
+    // correcto que subiera, asi que nadie lo leyo como un sintoma.
+    //
+    // Esta fila si baja cuando un programa muere. Si NO baja, hay algo que no
+    // se devolvio, y esa es toda la prueba.
+    row("Ring 3", |l| {
+        l.dec(crate::ring0::obj::memory::processes_with_memory() as u64);
+        l.txt(" con memoria pedida   historico ");
+        l.size(crate::ring0::obj::memory::total_handed_over());
+    });
+
+    let (ok, sobrantes) = crate::ring0::mm::vmm::self_test();
+    if ok && sobrantes == 0 {
+        s_log("[mem] vmm selftest OK (alloc/map/translate/unmap/destroy), 0 marcos sobrantes");
+    } else if ok {
+        // ** El caso que antes no existia: los pasos salen bien Y se pierde
+        // memoria. Es exactamente la forma que tenia la fuga que se arreglo el
+        // 14-08, y por eso ahora tiene una linea propia en vez de un `OK`.
+        row("FUGA", |l| {
+            l.txt("el ciclo de memoria funciona pero NO devuelve ");
+            l.dec(sobrantes);
+            l.txt(" marcos");
+        });
     } else {
         s_log("[mem] vmm selftest FAILED");
     }

@@ -904,7 +904,11 @@ fn admit_payload_desde(
                 }
                 aplicadas += 1;
             }
-            if vmm::map_page(aspace, pagina_va, frame, true, writable).is_err() {
+            // ** `_propia`: este marco salio de `alloc_frame` hace veinte lineas
+            // y no lo conoce nadie mas, asi que su vida acaba con este espacio
+            // de direcciones. Sin el bit, la imagen entera --unas 210 paginas en
+            // DOOM-- se quedaba puesta para siempre al morir el programa.
+            if vmm::map_page_propia(aspace, pagina_va, frame, true, writable).is_err() {
                 log("[proc] FATAL: section map failed\n");
                 crate::ring0::cabina::fault(
                     "proc",
@@ -1003,7 +1007,8 @@ fn admit_payload_desde(
         };
         phys::zero_frame(frame);
         let va = vmm::USER_STACK_TOP - (p + 1) * mm::PAGE;
-        if vmm::map_page(aspace, va, frame, true, true).is_err() {
+        // `_propia` igual que la imagen: 16 paginas que no conoce nadie mas.
+        if vmm::map_page_propia(aspace, va, frame, true, true).is_err() {
             log("[proc] FATAL: stack map failed\n");
                 crate::ring0::cabina::fault("proc", "no se pudo mapear la pila del proceso", va);
             return None;
