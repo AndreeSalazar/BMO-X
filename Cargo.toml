@@ -11,6 +11,8 @@ members = [
     # calculan la MISMA suma porque ejecutan el MISMO codigo.
     "platform/shared/bmo-hash",
     "platform/shared/bmo-channel",
+    # La ciudad de neon del arranque: la dibuja la CPU, no se guarda.
+    "platform/shared/bmo-ciudad",
 
     # -- ABI (Foundation) --------------------------------------------
     "platform/abi/bmo-abi",

@@ -46,6 +46,10 @@ bmo-rtc = { path = "../../platform/drivers/rtc" }
 # enlace. Cero escrituras al aparato, cero dependencias propias. Quien la llama
 # es `dev/red.rs`.
 bmo-net = { path = "../../platform/drivers/net" }
+# La ciudad del arranque. La DIBUJA la CPU --cero bytes de datos-- y vive
+# fuera de las dos orillas porque es aritmetica pura: asi se puede probar en
+# el anfitrion, que es lo que un fondo de arranque nunca podia.
+bmo-ciudad = { path = "../../platform/shared/bmo-ciudad" }
 
 [[bin]]
 name =     "bmo-kernel"

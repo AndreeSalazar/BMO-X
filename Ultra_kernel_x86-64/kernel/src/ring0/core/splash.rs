@@ -444,6 +444,31 @@ pub fn boot_intro() {
     }
     fill_rect(0, 0, w, h, BG);
 
+    // ** LA CIUDAD, DETRAS DE TODO.
+    //
+    // La dibuja `bmo-ciudad` emitiendo rectangulos; aqui solo se le dice donde
+    // caen. El crate no sabe que existe un framebuffer, y por eso sus pruebas
+    // corren en el anfitrion -- algo que un fondo de arranque no habia podido
+    // hacer nunca en esta casa.
+    //
+    // ** LA SEMILLA ES EL TAMANO DEL PANEL, y es una decision.
+    //
+    // Tenia que cumplir dos cosas a la vez: que la ciudad sea **siempre la
+    // misma** en esta maquina --un fondo que cambia en cada arranque no sirve
+    // para notar que algo cambio-- y que no sea la misma en todas. El panel da
+    // las dos: es estable aqui, distinto alli, y no hay que guardar nada ni
+    // leer el disco antes de poder pintar.
+    let mut ciudad = bmo_ciudad::Ciudad::nueva(w as i32, h as i32, ((w as u64) << 20) | h as u64);
+    // ** Y ARRANCA A OSCURAS, a proposito. La ciudad se enciende cuando haya de
+    // que informar; encenderla entera aqui seria decir que el sistema esta listo
+    // antes de estarlo, y esta pantalla no miente.
+    ciudad.encender(0);
+    ciudad.dibujar(|x, y, cw, ch, color| {
+        if cw > 0 && ch > 0 && x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
+            fill_rect(x as u32, y as u32, cw as u32, ch as u32, color);
+        }
+    });
+
     // La escala sale de la ALTURA de la pantalla, no de un numero fijo: en 1080
     // sale a x2 y en 720 a x1, y en las dos ocupa la misma fraccion. Un `3`
     // puesto a mano se sale por abajo en el primer monitor pequeno.

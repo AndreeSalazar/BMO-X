@@ -1,0 +1,9 @@
+[package]
+name = "bmo-ciudad"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "La ciudad de neon del arranque: la dibuja la CPU, no se guarda"
+license = "Techne"
+
+[dependencies]
