@@ -87,11 +87,33 @@ pub fn render_hud() {
     // == Cabecera de la banda: identidad + salud del propio registrador.
     // Va como REGLA, no como una linea mas de texto: es la frontera entre el
     // log rodante y el cockpit, y tiene que verse sin leerla.
+    // ** LA BARRA DE TECLAS VA AQUI, y desplaza a la telemetria del propio
+    // registrador.
+    //
+    // Este es el unico renglon que esta SIEMPRE en pantalla, asi que es el
+    // sitio mas caro del sistema y hay que gastarlo en lo que mas falta hace.
+    // Hasta hoy decia `eventos=N perdidos=N tk=0x...`: la salud de CABINA, que
+    // es un dato de segundo orden y que ademas casi siempre es el mismo.
+    //
+    // Lo que de verdad hace falta es **que teclas hay**. Este terminal es el
+    // suelo al que caes cuando el escritorio se murio, y un atajo que solo se
+    // descubre leyendo el codigo no existe. Con la fila puesta, el que llega no
+    // tiene que saber nada: pulsa y ve. `perdidos` se queda --pero solo cuando
+    // NO es cero, que es cuando significa algo--, y el resto se mira con `cabina`.
     let mut r = Buf::new();
-    r.txt("CABINA  eventos="); r.dec(event_total());
-    r.txt("  perdidos="); r.dec(event_lost());
-    r.txt("  tk=0x"); r.hex(s.cpu.timer_ticks, 6);
-    let hdr_color = if event_lost() > 0 { C_WARN } else { C_INFO };
+    r.txt("F1 ayuda  F2 consumo  F3 apps  F4 fallo  F5 info  F6 tareas  F7 mem  F8 cabina");
+    if event_lost() > 0 {
+        r.txt("   PERDIDOS="); r.dec(event_lost());
+    }
+    // ** Y AQUI MUERE EL CIAN, que era lo que el dueno miraba y no le cuadraba.
+    //
+    // El cian era "titulo" y no significaba nada mas: un color gastado en
+    // decir que un renglon es un renglon. En una banda donde el resto de los
+    // colores SI dicen algo --verde bien, ambar atencion, rojo problema-- uno
+    // que no dice nada compite con los que si. Ahora la cabecera es **verde
+    // cuando CABINA esta grabando entero y ambar cuando ha perdido eventos**,
+    // o sea que el renglon que siempre miras vale por si solo como semaforo.
+    let hdr_color = if event_lost() > 0 { C_WARN } else { C_OK };
     crate::ring0::core::splash::splash_dash_rule(top, r.as_str(), hdr_color);
 
     // == BITACORA EN TIEMPO REAL: el historial, el mas nuevo abajo, cada linea

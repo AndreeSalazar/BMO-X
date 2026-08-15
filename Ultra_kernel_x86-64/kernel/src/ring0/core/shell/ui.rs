@@ -331,6 +331,48 @@ pub(crate) fn shell_read_line(buf: &mut [u8]) -> usize {
                     cur = 0;
                 }
             }
+            // == LAS TECLAS DE FUNCION: EL PUESTO DE MANDO ================
+            //
+            // ** Este terminal es el SUELO. Es donde caes cuando el escritorio
+            // se muere, o sea el sitio donde menos ganas tienes de escribir y
+            // mas prisa tienes por ver que paso. Y hasta hoy todo --sin
+            // excepcion-- habia que teclearlo entero, con un teclado que
+            // ademas es el aparato que mas ha fallado en esta maquina.
+            //
+            // Las ocho ordenes que se piden el dia malo pasan a UNA tecla. No
+            // hay menu ni modo: la tecla **escribe la orden en la linea y la
+            // entrega**, exactamente como si la hubieras tecleado tu. Por eso
+            // el despachador de `run_shell` no cambia ni una linea, y por eso
+            // la orden queda en el HISTORIAL -- si pulsas F2 y luego flecha
+            // arriba, ahi esta `consumo`, y aprendes el nombre sin que nadie
+            // te lo ensene.
+            //
+            // [!] Y esto tapa un agujero que llevaba ahi desde siempre: el
+            // brazo de "imprimible" de abajo excluye `is_nav` (0x80..0x88) pero
+            // NO las de funcion (0x89..0x94), asi que pulsar F5 **insertaba un
+            // byte de basura en la linea**. Ahora se consumen aqui, y las que
+            // no tienen orden se ignoran en el `_ =>` en vez de escribirse.
+            f if kb::is_funcion(f) => {
+                let orden: &[u8] = match f {
+                    kb::KEY_F1 => b"help",
+                    kb::KEY_F2 => b"consumo",
+                    kb::KEY_F3 => b"apps",
+                    // La del dia malo, y por eso esta en el centro de la fila.
+                    kb::KEY_F4 => b"fallo",
+                    kb::KEY_F5 => b"info",
+                    kb::KEY_F6 => b"tasks",
+                    kb::KEY_F7 => b"mem",
+                    kb::KEY_F8 => b"cabina",
+                    _ => b"",
+                };
+                if !orden.is_empty() {
+                    let k = orden.len().min(buf.len());
+                    buf[..k].copy_from_slice(&orden[..k]);
+                    crate::ring0::dev::console::serial_write("\n");
+                    hist_push(&buf[..k]);
+                    return k;
+                }
+            }
             0x01 => { cur = 0; }              // Ctrl+A: al principio
             0x05 => { cur = n; }              // Ctrl+E: al final
             0x03 => {                          // Ctrl+C: cancelar la linea
@@ -361,12 +403,13 @@ pub(crate) fn shell_help() {
     // usan `info` y `disk`: antes cada comando alineaba a ojo con espacios
     // contados a mano, y bastaba una palabra mas larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
-    row("sistema", |l| l.txt("info  cpu  mem  tasks  disk  net  ls  estratos  cabina  hist"));
+    row("sistema", |l| l.txt("info  cpu  mem  consumo  apps  tasks  disk  net  ls  estratos  cabina  hist"));
     // `fallo` en su propio renglon y con lo que hace escrito: es la orden que
     // hace falta el dia peor, y ese dia nadie se acuerda de una palabra suelta
     // en una fila de diez. Ver `shell_fallo`.
     row("fallos", |l| l.txt("fallo [0..3]   la autopsia de la ultima tarea de Ring 3 que murio"));
     row("nucleos", |l| l.txt("smp  (escribelo a secas y te dice sus opciones)"));
+    row("teclas", |l| l.txt("F1 ayuda  F2 consumo  F3 apps  F4 fallo  F5 info  F6 tareas  F7 mem  F8 cabina"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
     row("ring3", |l| l.txt("run <ruta>  bex  ktest"));

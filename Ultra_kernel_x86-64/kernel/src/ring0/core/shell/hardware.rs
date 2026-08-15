@@ -749,6 +749,108 @@ pub(crate) fn shell_smp(arg: &[u8]) {
     shell_smp_ayuda();
 }
 
+/// **`apps` -- que programa tiene RAM pedida, uno por fila.**
+///
+/// # Por que tenia que estar TAMBIEN aqui
+///
+/// Esta tabla nacio en el escritorio, y ahi esta bien... mientras el escritorio
+/// exista. Este shell es el **suelo**: es donde caes justo cuando el escritorio
+/// se murio, o sea el momento exacto en que quieres saber si el muerto devolvio
+/// su memoria. Un instrumento que solo funciona cuando todo va bien no es un
+/// instrumento -- es la misma leccion que se cobro la autopsia, que solo sabia
+/// leer el escritorio.
+///
+/// Y aqui se lee de `obj::memory` directamente, sin pasar por `OP_INFO`: el
+/// kernel no tiene que pedirse permiso a si mismo.
+pub(crate) fn shell_apps() {
+    dashboard_log_color("== apps con memoria pedida ==", SH_TITLE);
+    // Las columnas con `col`, que es el mismo alineador que usan `info` y
+    // `disk`. Contar espacios a mano tuerce la tabla en cuanto un numero crece
+    // una cifra, y una tabla torcida deja de serlo.
+    row("ranura", |l| {
+        l.txt("pid"); l.col(12); l.txt("MiB"); l.col(22); l.txt("peticiones");
+    });
+    let mut n = 0usize;
+    let mut suma = 0u64;
+    while let Some((pid, bytes, pet)) = crate::ring0::obj::memory::ranura(n) {
+        row("", |l| {
+            l.dec(n as u64);
+            l.col(6);
+            l.dec(pid as u64);
+            l.col(12);
+            l.dec(bytes / (1024 * 1024));
+            l.col(22);
+            l.dec(pet as u64);
+        });
+        suma += bytes;
+        n += 1;
+    }
+    if n == 0 {
+        row("", |l| { l.txt("ningun programa tiene memoria pedida ahora mismo"); });
+    } else {
+        row("   total", |l| {
+            l.dec(n as u64);
+            l.txt(" apps   ");
+            l.size(suma);
+        });
+    }
+}
+
+/// **`consumo` -- nucleos, hilos, reloj, vatios y RAM, en una tabla.**
+///
+/// El hermano del `consumo` del escritorio, y existe por el mismo motivo que
+/// `apps`: el dia que hace falta es el dia que no hay escritorio.
+pub(crate) fn shell_consumo() {
+    use crate::ring0::mm::phys;
+    dashboard_log_color("== consumo ==", SH_TITLE);
+
+    // Por el PERFIL, no por el nombre del fabricante: ver `cpu_vendor/profile.rs`.
+    // Y si no hay perfil no se inventa una topologia -- se dice lo que contesto
+    // el bring-up, que es lo unico que se sabe de verdad.
+    let vivos = crate::ring0::plat::smp::alive().0 as u64;
+    let hilos = match (crate::ring0::cpu_vendor::profile::active().nucleos)() {
+        Some(t) => {
+            row("nucleos", |l| {
+                l.dec(t.nucleos as u64);
+                l.txt(" fisicos / ");
+                l.dec(t.hilos as u64);
+                l.txt(" hilos   ");
+                l.dec(t.ccx as u64);
+                l.txt(" CCX");
+            });
+            t.hilos as u64
+        }
+        None => vivos + 1,
+    };
+    row("en pie", |l| { l.dec(vivos + 1); l.txt(" de "); l.dec(hilos); });
+
+    let hz = crate::ring0::cpu::frequency::medir();
+    if hz > 0 {
+        row("reloj ahora", |l| { l.dec(hz / 1_000_000); l.txt(" MHz"); });
+    }
+    let (mw, mwn) = crate::ring0::cpu::power::medir();
+    if mw > 0 {
+        row("gasta", |l| {
+            l.dec(mw / 1000); l.txt("."); l.dec((mw % 1000) / 100); l.txt(" W paquete");
+            if mwn > 0 {
+                l.txt(" / "); l.dec(mwn / 1000); l.txt("."); l.dec((mwn % 1000) / 100);
+                l.txt(" W este nucleo");
+            }
+        });
+    }
+
+    let (total, free) = phys::stats();
+    const PAGE: u64 = 4096;
+    row("RAM libre", |l| {
+        l.size(free * PAGE);
+        l.txt("   de ");
+        l.size(total * PAGE);
+        l.txt("   <- la que tiene que VOLVER");
+    });
+    let (tareas, listas) = crate::ring0::task::scheduler::counts();
+    row("tareas", |l| { l.dec(tareas as u64); l.txt(" en uso, "); l.dec(listas as u64); l.txt(" listas"); });
+}
+
 pub(crate) fn shell_mem() {
     let (total, free) = crate::ring0::mm::phys::stats();
     const PAGE: u64 = 4096;
