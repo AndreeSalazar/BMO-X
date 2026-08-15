@@ -156,6 +156,49 @@ pub(crate) fn death_report() {
         // de llegar a su primer mensaje, o que ni siquiera entro a CPL3.
         row("   |", |l| { l.txt("(nada: murio antes de decir una sola linea)"); });
     }
+    // ** Y LA AUTOPSIA, AQUI Y AHORA.
+    //
+    // Las "ultimas palabras" son lo que el escritorio alcanzo a IMPRIMIR, y eso
+    // casi nunca es la causa: un `#PF` no imprime nada, se lleva el proceso a
+    // mitad de instruccion. La causa --vector, direccion, y el nombre de la
+    // funcion resuelto con la tabla del `.bex`-- vive en la autopsia.
+    //
+    // Y hasta hoy no se leia aqui, con lo que el caso peor era el que peor
+    // contestaba: **el unico lector de la autopsia era el escritorio**
+    // (`save_autopsies` corre dentro de su bucle de fotograma), asi que el
+    // informe de por que no arranco el escritorio solo lo sabia leer el
+    // escritorio. Circular, y con el kernel teniendolo entero en RAM. Es la
+    // razon por la que `autopsy::linea` existe; faltaba llamarla.
+    //
+    // [!] Por PID y no "la mas reciente": si un programa de ejemplo se muere
+    // DESPUES, la mas reciente es la suya, y saldria bajo este titulo. Ver
+    // `autopsy::indice_de_pid`.
+    match crate::ring0::core::autopsy::indice_de_pid(pid) {
+        Some(n) => {
+            row("   causa", |l| { l.txt("y esto es lo que el kernel vio al matarlo:"); });
+            let filas = crate::ring0::core::autopsy::renglones(n);
+            let mut f = 0u64;
+            while f < filas {
+                let mut buf = [0u8; 80];
+                let largo = crate::ring0::core::autopsy::linea(n, f, &mut buf);
+                if largo > 0 {
+                    if let Ok(s) = core::str::from_utf8(&buf[..largo]) {
+                        row("   >", |l| { l.txt(s); });
+                    }
+                }
+                f += 1;
+            }
+        }
+        None => {
+            // Que NO haya autopsia tambien dice algo, y algo distinto: el
+            // escritorio no murio de un fault. Salio por su propio pie, o se
+            // quedo colgado y lo mato otra cosa -- y un cuelgue no deja
+            // autopsia, solo lo ve `tasks`.
+            row("   causa", |l| {
+                l.txt("sin autopsia: NO murio de un fallo (salio solo, o se colgo)");
+            });
+        }
+    }
     row("   relanzar", |l| { l.txt("run "); l.txt(COMPOSITOR_PATH); });
     crate::ring0::cabina::warn("gui", "el escritorio murio tras arrancar", tid as u64);
 }
