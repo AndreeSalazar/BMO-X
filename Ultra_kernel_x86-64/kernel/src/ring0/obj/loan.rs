@@ -305,6 +305,41 @@ pub fn operation(base: u64, op: u64, pid: u32) -> Option<u64> {
 /// de paginas, no las hojas. Asi que lo prestado se queda quieto y legible hasta
 /// que el que lo tomo lo suelte con [`OP_SOLTAR`] -- y como sabe que soltarlo,
 /// [`OP_DUENO`] le contesta 0 desde el fotograma siguiente.
+/// **Queda algo de `pid` PRESTADO Y TOMADO dentro de `[base, base+bytes)`?**
+///
+/// La pregunta la hace [`super::memory::process_died`] antes de devolver los
+/// marcos de un bloque muerto, y de la respuesta depende que el escritorio siga
+/// vivo o no.
+///
+/// El motivo esta cuatro parrafos mas arriba, en la cabecera de
+/// [`process_died`]: **el prestamo sobrevive al que lo presto**. Si una app
+/// ofrecio su superficie al DIRECTOR y se muere, el DIRECTOR sigue componiendo
+/// con esos marcos. Devolverlos al asignador seria entregarselos al siguiente
+/// programa **mientras el compositor los esta leyendo** -- una ventana congelada
+/// se convertiria en un escritorio pintando la memoria de otro.
+///
+/// Se pregunta por rango y no por bloque entero porque se ofrece un TROZO
+/// (`base + desde`): basta con que se solape un byte para que ese bloque no se
+/// pueda tocar. Aqui no vale "casi".
+///
+/// [!] Solo cuentan las ofertas **tomadas**. Las que nadie llego a tomar ya las
+/// retiro [`process_died`], que corre antes que el de `memory` en
+/// `cap::revoke_all` -- y ese orden es parte del contrato, no una casualidad.
+pub fn hay_prestado_en(pid: u32, base: u64, bytes: u64) -> bool {
+    let ofertas = unsafe { &*core::ptr::addr_of!(OFERTAS) };
+    let fin = base.saturating_add(bytes);
+    for o in ofertas.iter() {
+        if !o.viva || o.owner != pid || !o.tomada {
+            continue;
+        }
+        let o_fin = o.origen.saturating_add(o.bytes);
+        if o.origen < fin && base < o_fin {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn process_died(pid: u32, aspace: u64) {
     let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
     for o in ofertas.iter_mut() {

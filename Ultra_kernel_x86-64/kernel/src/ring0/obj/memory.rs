@@ -328,19 +328,91 @@ pub fn request(pid: u32, aspace: u64, bytes: u64) -> Result<u64, u32> {
     Ok(handle)
 }
 
-/// El proceso murio: **su ranura vuelve a estar libre.**
+/// El proceso murio: **se devuelven sus marcos y su ranura queda libre.**
 ///
-/// No se desmapea nada -- el espacio de direcciones entero se destruye con el
-/// proceso, y desmapear paginas de un CR3 que esta a punto de morir es trabajo
-/// para nadie. Lo que si hay que soltar es la RANURA, y ahora esa palabra
-/// significa algo: mientras la tabla se indexaba por pid, esto solo ponia tres
-/// contadores a cero y la ranura numero `pid` seguia siendo suya para siempre.
-/// Con `MAX_PROCS` ranuras y pids que solo suben, eso agotaba la tabla en el
-/// programa 16 del arranque.
+/// === La fuga, y como se encontro ===
+///
+/// Esta funcion soltaba la RANURA y nada mas, con un comentario que decia *"no
+/// se desmapea nada -- el espacio de direcciones entero se destruye con el
+/// proceso"*. **Esa frase describia una intencion que no implementaba ningun
+/// codigo**: `vmm::destroy_address_space` solo se llama desde `vmm::self_test`,
+/// y `scheduler::reap` libera unicamente la pila de kernel. O sea que los
+/// marcos entregados a Ring 3 **no volvian jamas**.
+///
+/// Para DOOM eso son 12 MiB por cada vez que se lanza. Lo vio el dueno mirando
+/// `mem` en el Ryzen el 2026-08-14 --*"vi que DOOM.bex esta comiendo RAM"*-- y
+/// no lo vio ningun contador nuestro, porque **el que dice `fugas 0` cuenta
+/// CAPABILITIES, no marcos**. La autopsia decia `recursos todo devuelto` y era
+/// verdad: de los handles. La RAM no la miraba nadie.
+///
+/// === Por que se liberan SOLO estos bloques ===
+///
+/// La tentacion es recorrer las tablas de paginas y soltar todas las hojas.
+/// Seria peor que la fuga: ahi dentro estan **el framebuffer** (que es MMIO, y
+/// devolverlo al asignador de RAM es corrupcion) y **los marcos prestados**, que
+/// por diseno sobreviven al que los presto. Lo que si es inequivocamente
+/// nuestro es esto: bloques que salieron de `alloc_frames_contig` tres lineas
+/// mas arriba, con su fisica apuntada, y de un solo dueno. El resto --imagen,
+/// pila de usuario, tablas de paginas-- sigue sin devolverse y **eso es deuda
+/// declarada**, no un descuido.
+///
+/// === Y SE PONEN A CERO, que no es opcional ===
+///
+/// `alloc_frames_contig` **no limpia**. Mientras los marcos no se reutilizaban
+/// eso no tenia consecuencias; en cuanto se reutilizan, el siguiente programa
+/// que pida memoria recibe **lo que habia dentro del anterior**. La fuga tapaba
+/// un agujero de confidencialidad, asi que arreglar una sin la otra habria
+/// cambiado un desperdicio por una filtracion. Se limpia aqui --al soltar, que
+/// es cuando se sabe de quien era-- y no al pedir.
+///
+/// [!] Se libera sin desmapear, y se puede: esto corre dentro de
+/// `cap::revoke_all`, o sea en el borde del syscall de un proceso que **no
+/// vuelve a ejecutar ni una instruccion**. No hay reprogramacion entre el
+/// `free_frame` y el cambio de contexto, asi que nadie puede tomar el marco
+/// mientras su mapeo muerto sigue en pie.
+///
+/// [!] Y aqui **NO hace falta la danza de CR3** que si necesita
+/// `fb::process_died`, aunque las dos corran en el mismo sitio. Aquella pinta
+/// en el framebuffer, que vive a ~3,5 GiB en la mitad BAJA y no esta mapeado
+/// bajo el CR3 del moribundo. `zero_frame` escribe por `phys_to_virt`, que es
+/// `phys + HIGH_MEM_BASE`: el physmap vive en la mitad ALTA (indices 256..512
+/// del PML4) y `vmm::new_address_space` la copia entera en **todo** espacio de
+/// direcciones -- por eso los syscalls funcionan bajo el CR3 del usuario.
+/// Comprobado antes de escribir esto, no supuesto: es la mina que ya costo dos
+/// sesiones y no se pisa dos veces.
 pub fn process_died(pid: u32) {
     let Some(slot) = slot(pid) else { return };
+    let mut devueltos = 0u64;
+    let mut retenidos = 0u64;
     unsafe {
+        let bloques = (*core::ptr::addr_of!(CUENTAS))[slot].bloques;
+        for b in bloques.iter() {
+            if b.base == 0 || b.bytes == 0 {
+                continue;
+            }
+            // ** LA PREGUNTA QUE EVITA LLEVARSE EL ESCRITORIO POR DELANTE.
+            if crate::ring0::obj::loan::hay_prestado_en(pid, b.base, b.bytes) {
+                retenidos += b.bytes;
+                continue;
+            }
+            let paginas = b.bytes / mm::PAGE;
+            for p in 0..paginas {
+                let marco = b.fisica + p * mm::PAGE;
+                mm::phys::zero_frame(marco);
+                mm::phys::free_frame(marco);
+            }
+            devueltos += b.bytes;
+        }
         (*core::ptr::addr_of_mut!(CUENTAS))[slot] = FREE_SLOT;
+    }
+    if devueltos > 0 {
+        crate::ring0::cabina::info("mem", "marcos devueltos al morir el pid", devueltos);
+    }
+    // ** Y si algo NO se pudo devolver, se dice. Un bloque retenido es correcto
+    // --lo sostiene el que lo tomo prestado-- pero es RAM que sigue fuera, y una
+    // retencion que nadie suelta se ve como una fuga tres arranques despues.
+    if retenidos > 0 {
+        crate::ring0::cabina::warn("mem", "no devuelto: sigue PRESTADO a otro", retenidos);
     }
 }
 
