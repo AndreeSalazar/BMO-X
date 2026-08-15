@@ -15,16 +15,37 @@
 /// Un color BGRA de 32 bits, como los quiere el framebuffer.
 pub type Color = u32;
 
-/// El cielo, arriba del todo. Casi negro con violeta.
-pub const CIELO_ALTO: Color = 0xFF0B0714;
+// ** LA ESCALERA DE VALORES, que es lo que fallaba en el primer metal.
+//
+// En la foto del Ryzen las torres salian **mas claras que el cielo** y las dos
+// capas al mismo brillo: la ciudad se leia como una sola pared con textura, y el
+// gato quedaba enredado dentro en vez de delante.
+//
+// El arreglo no es de color, es de VALOR. Una escena con profundidad tiene los
+// planos separados en brillo y **sin solaparse**, y el orden lo dicta la fisica
+// de una ciudad de noche: el cielo esta iluminado por el resplandor de abajo, y
+// los edificios son masas oscuras recortadas contra el. Cuanto mas lejos, mas se
+// acerca un edificio al color del cielo -- eso es la niebla, y es la pista que
+// el ojo usa para leer distancia.
+//
+//     cielo         lo mas claro. Es la fuente de luz.
+//     torre fondo   un poco mas oscura que el cielo. Casi se funde: esta lejos.
+//     torre frente  MUCHO mas oscura. Es la silueta que recorta.
+//     ventanas      lo unico brillante, y solo en el frente.
+//
+// La escalera tiene prueba (`las_capas_no_se_solapan_en_brillo`): si alguien
+// toca un tono y rompe el orden, sale rojo antes de llegar a la maquina.
+
+/// El cielo, arriba del todo.
+pub const CIELO_ALTO: Color = 0xFF1A1030;
 /// El cielo cerca del horizonte: el resplandor de la ciudad tinendo la niebla.
-pub const CIELO_BAJO: Color = 0xFF2A1140;
-/// Torres del fondo: apenas siluetas.
-pub const TORRE_FONDO: Color = 0xFF191033;
-/// Torres delanteras.
-pub const TORRE_FRENTE: Color = 0xFF241847;
+pub const CIELO_BAJO: Color = 0xFF4A2168;
+/// Torres del fondo: casi el cielo, un punto mas oscuras. **Estan lejos.**
+pub const TORRE_FONDO: Color = 0xFF241443;
+/// Torres delanteras: la silueta que recorta contra todo lo demas.
+pub const TORRE_FRENTE: Color = 0xFF0E0820;
 /// El borde iluminado de una torre delantera, del lado del neon.
-pub const TORRE_BORDE: Color = 0xFF3B2A6B;
+pub const TORRE_BORDE: Color = 0xFF2E1D57;
 
 /// Ventana encendida, la mas comun.
 pub const VENTANA_CALIDA: Color = 0xFFFFC96B;
@@ -32,9 +53,24 @@ pub const VENTANA_CALIDA: Color = 0xFFFFC96B;
 pub const VENTANA_FRIA: Color = 0xFF7DE3FF;
 /// Ventana encendida en magenta.
 pub const VENTANA_MAGENTA: Color = 0xFFFF6BD6;
-/// Ventana apagada: no es negra, es la torre un poco mas oscura. Una ventana
-/// negra del todo desaparece y la fachada se queda lisa.
-pub const VENTANA_APAGADA: Color = 0xFF120B26;
+/// Ventana apagada: no es negra, es la fachada un punto mas clara. Una ventana
+/// negra del todo desaparece y la torre se queda lisa.
+pub const VENTANA_APAGADA: Color = 0xFF150D2C;
+
+/// **El brillo percibido de un color, 0..255.**
+///
+/// Los tres canales NO pesan igual: el ojo humano es mucho mas sensible al verde
+/// que al azul. Los coeficientes son los de siempre (2126/7152/722), que es lo
+/// que usa cualquier conversion a gris que no quiera mentir.
+///
+/// Existe para poder **probar la escalera de valores**. Sin esto, "el fondo es
+/// mas oscuro que el frente" es una opinion sobre dos hexadecimales.
+pub fn luminancia(c: Color) -> u32 {
+    let r = (c >> 16) & 0xFF;
+    let g = (c >> 8) & 0xFF;
+    let b = c & 0xFF;
+    (r * 2126 + g * 7152 + b * 722) / 10000
+}
 
 /// El cian de la marca. Es el mismo que el de los ojos del gato.
 pub const NEON_CIAN: Color = 0xFF00E5FF;
@@ -84,5 +120,44 @@ mod pruebas {
     #[test]
     fn el_alfa_siempre_sale_opaco() {
         assert_eq!(mezcla(NEGRO, NEON_CIAN, 3, 10) & 0xFF00_0000, 0xFF00_0000);
+    }
+
+    /// ** LA ESCALERA DE VALORES, y esta prueba nace de una foto del Ryzen.
+    ///
+    /// En el primer metal las torres salieron **mas claras que el cielo** y las
+    /// dos capas al mismo brillo: la ciudad se leia como una pared con textura y
+    /// el gato quedaba enredado dentro. El fallo no era de color sino de VALOR,
+    /// y un fallo de valor no se ve leyendo hexadecimales -- por eso hay una
+    /// funcion de luminancia y por eso hay esta casilla.
+    ///
+    /// El orden lo dicta una ciudad de noche: el cielo esta iluminado por el
+    /// resplandor de abajo, lo lejano se le acerca por la niebla, y lo cercano
+    /// es la masa oscura que recorta.
+    #[test]
+    fn las_capas_no_se_solapan_en_brillo() {
+        let cielo = luminancia(CIELO_BAJO);
+        let fondo = luminancia(TORRE_FONDO);
+        let frente = luminancia(TORRE_FRENTE);
+        assert!(cielo > fondo, "el cielo tiene que ser lo mas claro");
+        assert!(fondo > frente, "el fondo esta LEJOS: mas claro que el frente");
+        // Y separadas de verdad, no por un punto: dos planos a cinco unidades de
+        // distancia se leen como uno solo, que es exactamente lo que pasaba.
+        assert!(cielo - fondo >= 12, "cielo y fondo se confunden");
+        assert!(fondo - frente >= 12, "las dos capas de torres se confunden");
+    }
+
+    /// Las ventanas encendidas son **lo unico brillante** de la escena. Si una
+    /// fachada llegara al brillo de una ventana, la torre se leeria encendida
+    /// entera -- que es la otra mitad de lo que salio en la foto.
+    #[test]
+    fn las_ventanas_son_lo_mas_brillante() {
+        let tope = luminancia(CIELO_BAJO).max(luminancia(TORRE_FONDO));
+        for v in [VENTANA_CALIDA, VENTANA_FRIA, VENTANA_MAGENTA] {
+            assert!(luminancia(v) > tope + 40, "una ventana no destaca del fondo");
+        }
+        assert!(
+            luminancia(VENTANA_APAGADA) < luminancia(TORRE_FONDO),
+            "una ventana apagada no puede ser mas clara que una torre lejana"
+        );
     }
 }

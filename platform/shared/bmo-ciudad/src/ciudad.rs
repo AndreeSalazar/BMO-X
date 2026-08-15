@@ -60,7 +60,17 @@ impl Ciudad {
     /// entra en pantalla dentro de un segundo.
     pub fn nueva(ancho: i32, alto: i32, semilla: u64) -> Self {
         let mut az = Azar::nuevo(semilla);
-        let horizonte = alto * 82 / 100;
+        // ** EL HORIZONTE BAJA, y es la tercera cosa que dijo la foto del Ryzen.
+        //
+        // Estaba en el 82% del alto, y con las torres llegando al 45% la ciudad
+        // subia hasta media pantalla: el gato --que se centra en el bloque
+        // entero-- caia DENTRO de las torres en vez de delante de ellas. Un
+        // primer plano sin aire alrededor no es un primer plano.
+        //
+        // Al 92% la ciudad se queda en la franja de abajo y le deja al logo el
+        // tercio central despejado, que es como esta compuesta la referencia que
+        // enseno el dueno.
+        let horizonte = alto * 92 / 100;
         let mut torres = [Torre::APAGADA; MAX_TORRES];
         let mut n = 0;
 
@@ -84,7 +94,9 @@ impl Ciudad {
         let mut x = -12;
         while x < ancho + margen && n < MAX_TORRES {
             let w = az.entre(ancho / 40, ancho / 18).max(5);
-            let h = az.entre(alto / 6, alto * 45 / 100).max(12);
+            // Y mas bajas: con el horizonte al 92% y torres de hasta el 45% del
+            // alto, la ciudad seguiria comiendose el centro. Hasta el 32%.
+            let h = az.entre(alto / 8, alto * 32 / 100).max(12);
             let tinte = match az.entre(0, 5) {
                 0 => NEON_MAGENTA,
                 1 => NEON_CIAN,

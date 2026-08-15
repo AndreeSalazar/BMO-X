@@ -10,11 +10,26 @@ use crate::paleta::*;
 
 /// Separacion entre ventanas, y lado de cada una.
 ///
-/// Cinco y dos: la ventana ocupa menos de la mitad del hueco. Con 3 de lado la
-/// fachada se emborrona y deja de leerse como ventanas; con paso 8 la torre
-/// parece deshabitada.
-const PASO: i32 = 5;
-const LADO: i32 = 2;
+/// [!] **Estaba en 5 y 2, y la foto del Ryzen lo tumbo.** Con paso 5 en un panel
+/// de 1080p una torre lleva cientos de ventanas de 2x2, y a esa densidad la
+/// fachada deja de leerse como ventanas: se lee como **textura**, o sea como una
+/// pared blanca rayada. Es la mitad de por que la ciudad salio plana.
+///
+/// A 8 y 3 la ventana sigue ocupando menos de la mitad del hueco --que es lo que
+/// la hace parecer una ventana-- pero hay la tercera parte, y cada una se ve.
+const PASO: i32 = 8;
+const LADO: i32 = 3;
+
+/// De cada cuantas ventanas hay UNA encendida.
+///
+/// ** La otra mitad del problema de la foto. La version anterior apagaba solo
+/// una de cada cinco, o sea que el **80% de la ciudad estaba encendida** -- y una
+/// ciudad con el 80% de las luces dadas no parece una ciudad de noche: parece un
+/// bloque iluminado por dentro.
+///
+/// Una de cada cuatro. Es la proporcion que hace que las luces se lean como
+/// puntos sueltos sobre una masa oscura, que es de lo que va toda la escena.
+const UNA_DE_CADA: u64 = 4;
 
 /// Una torre: donde empieza, cuanto mide, y de que capa es.
 #[derive(Clone, Copy)]
@@ -76,9 +91,11 @@ impl Torre {
             let mut mundo_x = self.x + PASO;
             while fx + LADO < x + self.ancho - 1 {
                 let h = mezclador(mundo_x as u64, mundo_y as u64);
-                let color = if !self.encendido || h % 5 == 0 {
+                // Encendida solo una de cada `UNA_DE_CADA`. El resto son huecos
+                // oscuros, que es lo que hace que las luces se lean como luces.
+                let color = if !self.encendido || h % UNA_DE_CADA != 0 {
                     VENTANA_APAGADA
-                } else if h % 7 == 0 {
+                } else if h % 23 == 0 {
                     self.tinte
                 } else if h % 3 == 0 {
                     VENTANA_FRIA
