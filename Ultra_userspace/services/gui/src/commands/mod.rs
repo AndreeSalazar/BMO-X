@@ -97,6 +97,10 @@ pub(crate) enum Command<'a> {
     /// pantalla y con los numeros alineados, para poder comparar dos volcados.
     /// Va tambien dentro de cada `save`.
     Consumo,
+    /// **Que programa tiene RAM pedida, uno por fila.** Es el instrumento de la
+    /// fuga que se cerro el 14-08: un programa que muere tiene que desaparecer
+    /// de esta tabla.
+    Apps,
     /// **Los nucleos.** Sin argumento solo censa; con `all` o con un numero,
     /// despierta. Es la unica orden de esta caja que puede tardar casi un
     /// segundo, y por eso el mensaje va ANTES de llamar.
@@ -294,6 +298,7 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         b"phy" => Command::Net(b"phy"),
         b"cpu" | b"procesador" => Command::Cpu,
         b"consumo" | b"gasto" | b"w" => Command::Consumo,
+        b"apps" | b"programas" => Command::Apps,
         b"mem" | b"ram" | b"memoria" => Command::Memoria,
         b"reboot" | b"reinicia" | b"reiniciar" => Command::Reboot,
         // `smp` a secas CENSA y no toca nada; `smp all` despierta a todos;
