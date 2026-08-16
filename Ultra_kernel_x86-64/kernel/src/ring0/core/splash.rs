@@ -315,7 +315,9 @@ fn draw_str_scaled(x: u32, y: u32, s: &str, color: u32, scale: u32) {
 /// La escala multiplica en enteros a proposito: interpolar un dibujo de lineas
 /// de un pixel de grosor lo convierte en una mancha gris.
 fn draw_gato(x0: u32, y0: u32, escala: u32) {
-    draw_gato_encendido(x0, y0, escala, 255, 255, 0);
+    // Sobre el splash el fondo es negro liso, asi que el halo se mezcla contra
+    // negro y sale como un neon en una habitacion a oscuras.
+    draw_gato_encendido(x0, y0, escala, 255, 255, 0, |_| BG);
 }
 
 /// **El gato ENCENDIENDOSE**, que es lo que pidio el dueno: *"el gato en neon
@@ -339,26 +341,67 @@ fn draw_gato(x0: u32, y0: u32, escala: u32) {
 ///
 /// [!] Los ojos van por su cuenta y **suben despues**. Un gato que abre los ojos
 /// a la vez que aparece no se prende: ya estaba encendido.
-fn draw_gato_encendido(x0: u32, y0: u32, escala: u32, trazo: u32, ojos: u32, apagado: u32) {
+///
+/// # ** Y AHORA DERRAMA LUZ, que es lo que faltaba para que fuera un neon
+///
+/// El video del 2026-08-15 lo enseno: un trazo blanco de un pixel sobre un cielo
+/// violeta claro **no se despega de la escena**. Lo que hace que algo se lea como
+/// tubo de gas no es que brille, es que **enciende lo que tiene alrededor**.
+///
+/// El halo sale de `gato::neon`, que mide la distancia de cada pixel al trazo.
+/// Los tres conjuntos --nucleo, halo cercano, halo lejano-- son disjuntos, asi
+/// que esto sigue siendo **un caso por pixel** y no se pinta nada dos veces.
+///
+/// `fondo(y)` dice de que color esta la pantalla en esa fila. El halo se mezcla
+/// CONTRA ese color en vez de ser un tono plano, y por eso se funde con el cielo
+/// en lugar de recortarse encima como una calcomania. Es la unica forma de
+/// mezclar aqui: **leer el framebuffer esta prohibido**, asi que el fondo se
+/// pregunta a quien lo pinto.
+fn draw_gato_encendido(
+    x0: u32,
+    y0: u32,
+    escala: u32,
+    trazo: u32,
+    ojos: u32,
+    apagado: u32,
+    fondo: impl Fn(u32) -> u32,
+) {
     use bmo_ciudad::paleta::{mezcla, NEGRO};
     // El trazo apagado no es negro: es el gris al que quedaria una silueta con
     // la ciudad detras. Negro del todo lo haria desaparecer sobre el cielo.
     const TRAZO_APAGADO: u32 = 0xFF1A1730;
+    const R: u32 = gato::neon::RADIO as u32;
     let c_trazo = mezcla(mezcla(TRAZO_APAGADO, WHITE, trazo, 255), NEGRO, apagado, 255);
     let c_ojos = mezcla(mezcla(TRAZO_APAGADO, ACCENT, ojos, 255), NEGRO, apagado, 255);
-    let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
     for fy in 0..gato::ALTO {
+        let y = y0 + fy * escala;
+        // El fondo se pregunta una vez por FILA, no por pixel: es el mismo para
+        // los 152 de la fila y preguntarlo 152 veces seria pagar 27.000
+        // divisiones por fotograma para obtener el mismo numero.
+        //
+        // Y los colores del derrame tambien se calculan una vez por fila: son
+        // cuatro mezclas contra las 152x4 que saldrian de hacerlo por pixel.
+        let bg = fondo(y);
+        let mut halo = [0u32; R as usize];
+        for (n, c) in halo.iter_mut().enumerate() {
+            // El derrame entra con el TRAZO, no con los ojos: es el tubo el que
+            // derrama. Caida cuadratica con la distancia.
+            let queda = R - n as u32;
+            let f = HALO_MAX * queda * queda / (R * R) * trazo / 255;
+            *c = mezcla(mezcla(bg, ACCENT, f, 255), NEGRO, apagado, 255);
+        }
         for fx in 0..gato::ANCHO {
             let i = (fy * gato::ANCHO + fx) as usize;
-            // Los ojos ganan al trazo: son el unico sitio con color.
-            let color = if bit(&gato::OJOS, i) {
-                c_ojos
-            } else if bit(&gato::TRAZO, i) {
-                c_trazo
+            // Los ojos ganan al trazo: son el unico sitio con color propio.
+            let d = gato::neon::distancia(i);
+            let color = if d == 0 {
+                if gato::bit_ojos(i) { c_ojos } else { c_trazo }
+            } else if d <= gato::neon::RADIO {
+                halo[d as usize - 1]
             } else {
                 continue;
             };
-            fill_rect(x0 + fx * escala, y0 + fy * escala, escala, escala, color);
+            fill_rect(x0 + fx * escala, y, escala, escala, color);
         }
     }
 }
@@ -373,14 +416,46 @@ fn draw_gato_encendido(x0: u32, y0: u32, escala: u32, trazo: u32, ojos: u32, apa
 /// simbolos entera para un caracter. Y dibujarlo a mano tampoco valia: son once
 /// trazos, y un kanji torcido en la pantalla de arranque es peor que no ponerlo.
 /// Sale del PNG con el mismo guion que saco al gato.
-fn draw_kanji(x0: u32, y0: u32, escala: u32, color: u32) {
-    let bit = |m: &[u8], i: usize| m[i / 8] >> (i % 8) & 1 == 1;
+/// ** Y DERRAMA IGUAL QUE EL GATO. El kanji y el gato son **dos piezas del mismo
+/// letrero**: uno con halo y el otro plano se leen como dos dibujos pegados en
+/// vez de como una marca. Se vio en la primera imagen de `bmo-vista-ciudad`, que
+/// es justo el fallo que antes habria hecho falta reiniciar para encontrar.
+fn draw_kanji(
+    x0: u32,
+    y0: u32,
+    escala: u32,
+    color: u32,
+    alfa: u32,
+    apagado: u32,
+    fondo: impl Fn(u32) -> u32,
+) {
+    use bmo_ciudad::paleta::{mezcla, NEGRO};
+    const R: u32 = gato::neon::RADIO as u32;
     for fy in 0..gato::KANJI_ALTO {
+        let y = y0 + fy * escala;
+        let bg = fondo(y);
+        let mut halo = [0u32; R as usize];
+        for (n, c) in halo.iter_mut().enumerate() {
+            // El derrame sube CON el trazo. Sin este `alfa` el kanji llegaba
+            // con el halo a plena potencia mientras su propio trazo aun estaba
+            // a medias: un contorno tenue dentro de un resplandor entero, que se
+            // ve como si el halo fuera otra cosa. Lo destapo el previsualizador
+            // en el fotograma del ms 900.
+            let queda = R - n as u32;
+            let f = HALO_MAX * queda * queda / (R * R) * alfa / 255;
+            *c = mezcla(mezcla(bg, ACCENT, f, 255), NEGRO, apagado, 255);
+        }
         for fx in 0..gato::KANJI_ANCHO {
             let i = (fy * gato::KANJI_ANCHO + fx) as usize;
-            if bit(&gato::KANJI, i) {
-                fill_rect(x0 + fx * escala, y0 + fy * escala, escala, escala, color);
-            }
+            let d = gato::neon::distancia_kanji(i);
+            let c = if d == 0 {
+                color
+            } else if d <= gato::neon::RADIO {
+                halo[d as usize - 1]
+            } else {
+                continue;
+            };
+            fill_rect(x0 + fx * escala, y, escala, escala, c);
         }
     }
 }
@@ -485,8 +560,37 @@ fn triangulo_aviso(x: u32, y: u32, lado: u32, color: u32) {
     fill_rect(cx, y + alto / 4 + bh + grosor, grosor, grosor, color);
 }
 
+/// Cuanto tine el aura el cielo en su centro, de 0 a 255.
+///
+/// [!] **Estaba en 150 y el previsualizador lo tumbo.** A esa fuerza el aura
+/// salia como un globo turquesa detras del gato: una forma que competia con el
+/// gato en vez de sostenerlo.
+///
+/// El reparto correcto es otro y se ve en cuanto se puede mirar la imagen: **el
+/// resplandor que se nota es el que sigue la silueta** (`gato::neon`, que es lo
+/// que hace un tubo de neon de verdad), y el aura es solo un lavado que levanta
+/// el cielo un punto para que el conjunto no este pegado sobre el degradado.
+/// Cincuenta se ve; ciento cincuenta se mira.
+const FUERZA_AURA: u32 = 50;
+
+/// Cuanto tine el derrame el color del fondo en su primer nivel, de 0 a 255. De
+/// ahi cae con el cuadrado de la distancia: un derrame que no cae se ve como un
+/// borde grueso, que es lo contrario de un resplandor.
+///
+/// Lo comparten el gato y el kanji a proposito: son el mismo letrero y tienen
+/// que brillar igual.
+const HALO_MAX: u32 = 150;
+
 /// Cuando empezo la intro, en ciclos de TSC. `0` = no ha empezado.
 static mut INTRO_T0: u64 = 0;
+
+/// **Esta la intro en pantalla?**
+///
+/// Existe para una sola cosa: que el log del arranque **no pinte encima**. Ver
+/// [`splash_dashboard_log_color`].
+pub fn intro_en_curso() -> bool {
+    unsafe { INTRO_T0 != 0 }
+}
 /// La ciudad, compuesta una vez. Vive aqui y no en la pila porque ahora se
 /// dibuja **desde muchos sitios** del arranque, no de una sentada.
 static mut INTRO_CIUDAD: Option<bmo_ciudad::Ciudad> = None;
@@ -500,6 +604,10 @@ pub fn intro_empieza() {
     if w == 0 || h == 0 {
         return;
     }
+    // El halo del gato se calcula UNA vez: es una dilatacion de la mascara, y la
+    // mascara no cambia nunca. Aqui y no en el primer fotograma para que ese
+    // coste no caiga dentro de la animacion. Ver `gato::neon`.
+    gato::neon::preparar();
     unsafe {
         INTRO_T0 = tsc_read();
         INTRO_CIUDAD = Some(bmo_ciudad::Ciudad::nueva(
@@ -595,37 +703,49 @@ pub fn intro_cierra() {
 
 /// **Pinta UN fotograma de la escena entera**: ciudad, gato, kanji y destello.
 ///
-/// Todo el encuadre --escala, centrado, donde cae el kanji-- se recalcula aqui
-/// en cada llamada. Son una docena de divisiones enteras, y a cambio esta
-/// funcion **no tiene estado**: se puede llamar desde cualquier punto del
-/// arranque sin que nadie tenga que haber guardado nada antes. Con el encuadre
-/// en variables globales habria que mantenerlo sincronizado con el panel, y esa
-/// es la clase de sincronizacion que se rompe el dia que alguien cambia de
-/// monitor.
+/// El encuadre no se calcula aqui: se le pide a `bmo_ciudad::encuadre`, que es
+/// aritmetica pura y **se prueba sin encender la maquina**. Mientras estuvo
+/// dentro de esta funcion solo se podia juzgar reiniciando el Ryzen, y asi se
+/// colo el fallo del video del 08-15: el titulo escrito sobre los tejados.
+///
+/// Lo que queda aqui es pintar. Esta funcion sigue **sin estado**: se puede
+/// llamar desde cualquier punto del arranque sin que nadie haya guardado nada
+/// antes.
 fn pintar_escena(w: u32, h: u32, f: &bmo_ciudad::Fotograma) {
     use bmo_ciudad::paleta::{mezcla, NEGRO};
 
     // La escala sale de la ALTURA de la pantalla, no de un numero fijo: en 1080
     // sale a x2 y en 720 a x1, y en las dos ocupa la misma fraccion.
     let escala = if h >= 900 { 2 } else { 1 };
+    let escala_t = if h >= 900 { 5 } else { 4 };
     let gw = gato::ANCHO * escala;
     let gh = gato::ALTO * escala;
-    const HUECO: u32 = 34;
-    let escala_t = if h >= 900 { 5 } else { 4 };
-    let tw = text_width_scaled("BMO-X", escala_t);
-    let th = FONT_H as u32 * escala_t;
-    let alto_total = gh + HUECO + th + 10 + 3 + 14 + FONT_H as u32;
-
-    // La fila de arriba son DOS piezas --gato y kanji-- y el par se centra como
-    // una unidad, porque en el logo la composicion no es simetrica.
     let kw = gato::KANJI_ANCHO * escala;
     let kh = gato::KANJI_ALTO * escala;
-    let hueco_k = 22 * escala;
-    let fila_w = gw + hueco_k + kw;
-    let gy = h.saturating_sub(alto_total) / 2;
-    let gx = w.saturating_sub(fila_w) / 2;
-    // La altura del kanji sale del logo: su centro cae al 75% del alto del gato.
-    let ky = gy + (gh * 3) / 4 - kh / 2;
+    let tw = text_width_scaled("BMO-X", escala_t);
+
+    // El techo se le pregunta a la ciudad en vez de copiar aqui un porcentaje.
+    // Si manana alguien sube las torres, el logo se aparta solo.
+    let techo = unsafe {
+        let ciudad = &*core::ptr::addr_of!(INTRO_CIUDAD);
+        ciudad.as_ref().map_or(h, |c| c.techo().max(0) as u32)
+    };
+    let medidas = bmo_ciudad::Medidas {
+        pantalla_w: w,
+        pantalla_h: h,
+        techo,
+        gato_w: gw,
+        gato_h: gh,
+        kanji_w: kw,
+        kanji_h: kh,
+        hueco_kanji: 22 * escala,
+        titulo_w: tw,
+        titulo_h: FONT_H as u32 * escala_t,
+        linea_h: FONT_H as u32,
+    };
+    let enc = bmo_ciudad::componer(&medidas);
+    let (gx, gy, ky) = (enc.gato_x, enc.gato_y, enc.kanji_y);
+    let th = medidas.titulo_h;
 
     // -- LA CIUDAD, detras de todo.
     unsafe {
@@ -639,6 +759,43 @@ fn pintar_escena(w: u32, h: u32, f: &bmo_ciudad::Fotograma) {
                     fill_rect(x as u32, y as u32, cw as u32, ch as u32, c);
                 }
             });
+        }
+    }
+
+    // -- ** EL AURA: el cielo ENCENDIDO detras del logo.
+    //
+    // La otra mitad de "las capas estan mezcladas". La escalera de valores de la
+    // paleta separo el cielo de las torres, pero el logo no tenia separacion de
+    // NADA: estaba estampado sobre el degradado, y cuando el cielo llegaba a su
+    // parte clara el gato casi desaparecia.
+    //
+    // Un neon de verdad enciende el aire que tiene detras. Eso es esto, y va
+    // ENTRE la ciudad y el gato porque es cielo respondiendo a una luz -- no es
+    // parte del gato. Ver `bmo_ciudad::halo`.
+    //
+    // [!] Es OPACA (no se puede leer el framebuffer para mezclar), asi que tiene
+    // que caber en el cielo despejado o borraria las torres. De ahi el recorte
+    // contra `techo`: la caja del aura nunca baja de ahi.
+    let fuerza_aura = FUERZA_AURA * f.gato_alfa / 255;
+    if f.gato_alfa > 0 {
+        unsafe {
+            let ciudad = &*core::ptr::addr_of!(INTRO_CIUDAD);
+            if let Some(c) = ciudad.as_ref() {
+                bmo_ciudad::aura(
+                    |y| mezcla(c.color_cielo(y), NEGRO, f.negro, 255),
+                    enc.aura_cx,
+                    enc.aura_cy,
+                    enc.aura_rx,
+                    enc.aura_ry,
+                    ACCENT,
+                    fuerza_aura,
+                    |x, y, aw, ah, color| {
+                        if aw > 0 && ah > 0 && x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h {
+                            fill_rect(x as u32, y as u32, aw as u32, ah as u32, color);
+                        }
+                    },
+                );
+            }
         }
     }
 
@@ -659,16 +816,40 @@ fn pintar_escena(w: u32, h: u32, f: &bmo_ciudad::Fotograma) {
         // El latido del neon va SOBRE el brillo de los ojos, con tope: un neon
         // perfectamente estable no parece neon, parece un LED.
         let ojos = (f.ojos_alfa + f.ojos_pulso).min(255);
-        draw_gato_encendido(gx, gy, escala, f.gato_alfa, ojos, f.negro);
+        // El fondo contra el que se mezcla el halo es el AURA, no el cielo
+        // pelado: el gato se dibuja encima de ella. Se reconstruye con la misma
+        // aritmetica en vez de leerla de la pantalla -- leer el framebuffer
+        // esta prohibido aqui, y el numero se sabe.
+        let bajo_el_logo = |y: u32| {
+            let cielo = unsafe {
+                let ciudad = &*core::ptr::addr_of!(INTRO_CIUDAD);
+                ciudad.as_ref().map_or(NEGRO, |c| c.color_cielo(y as i32))
+            };
+            // Cuanto tine el aura a esta altura: cae con el cuadrado de la
+            // distancia al centro, igual que en `bmo_ciudad::halo`.
+            let ry = enc.aura_ry as u32;
+            let dy = (y as i32 - enc.aura_cy).unsigned_abs().min(ry);
+            let cerca = ry - dy;
+            let f_aura = fuerza_aura * cerca * cerca / (ry * ry).max(1);
+            mezcla(mezcla(cielo, ACCENT, f_aura, 255), NEGRO, f.negro, 255)
+        };
+        draw_gato_encendido(gx, gy, escala, f.gato_alfa, ojos, f.negro, bajo_el_logo);
+        // El kanji flota con el gato, asi que su `x` sale del encuadre y su `y`
+        // lleva el mismo desplazamiento que el trazo. Y derrama igual que el
+        // gato: son el mismo letrero.
         draw_kanji(
-            gx + gw + hueco_k,
+            enc.kanji_x,
             ky,
             escala,
             mezcla(mezcla(0xFF1A1730, ACCENT, ojos, 255), NEGRO, f.negro, 255),
+            ojos,
+            f.negro,
+            bajo_el_logo,
         );
-        // El titulo entra con el trazo: es parte del gato, no de la ciudad.
-        let ty = gy + gh + HUECO;
-        let tx = w.saturating_sub(tw) / 2;
+        // El titulo entra con el trazo: es parte del gato, no de la ciudad. Y NO
+        // flota: una tipografia que se mueve se lee como un fallo de sincronia.
+        let ty = enc.titulo_y;
+        let tx = enc.titulo_x;
         let c_txt = mezcla(mezcla(NEGRO, WHITE, f.gato_alfa, 255), NEGRO, f.negro, 255);
         let c_ac = mezcla(mezcla(NEGRO, ACCENT, f.gato_alfa, 255), NEGRO, f.negro, 255);
         draw_str_scaled(tx, ty, "BMO-X", c_txt, escala_t);
@@ -1105,6 +1286,28 @@ pub fn splash_dash_rule(row: usize, label: &str, accent: u32) {
 /// pinte cada fila segun su estado (verde=bien, ambar=atencion, rojo=problema)
 /// en vez de un solo color plano.
 pub fn splash_dashboard_log_color(row: usize, msg: &str, color: u32) {
+    // ** MIENTRAS LA INTRO ESTA EN PANTALLA, ESTO NO PINTA (2026-08-15).
+    //
+    // Es la mitad que faltaba del truco de Santa Monica. La intro dejo de
+    // SUMARSE al arranque y paso a TAPARLO... y el log siguio pintando **encima
+    // de ella**. En el video del Ryzen se ve el resultado: un panel oscuro
+    // comiendose los dos tercios de arriba de la pantalla con la ciudad
+    // asomando por debajo. Dos capas peleandose por el mismo sitio, que es
+    // literalmente lo que el dueno describio: *"la capa estan mezcladas"*.
+    //
+    // El dueno tambien dijo que hacer con eso, y sin ambiguedad: *"en codigos de
+    // kernel en tiempo real esta en 0% a la vista, claro, porque eso no importa
+    // sino la presentacion"*.
+    //
+    // [!] No se pierde NADA. Esta funcion solo PINTA: la linea ya viaja por
+    // serie y ya esta guardada en el anillo de CABINA, que es de donde sale F11.
+    // Lo unico que se apaga son los pixeles, y solo durante los dos segundos de
+    // la intro. Si la intro no llegara a cerrarse, el arranque se veria mudo en
+    // pantalla y seguiria hablando por el cable -- que es el canal del que
+    // depura, y el que importa cuando algo va mal.
+    if intro_en_curso() {
+        return;
+    }
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }

@@ -1,0 +1,13 @@
+[package]
+name = "bmo-vista-ciudad"
+version = "0.1.0"
+edition = "2021"
+description = "Previsualiza la intro de arranque en el anfitrion: un PPM por fotograma, sin reiniciar la maquina."
+license = "Techne"
+
+[[bin]]
+name = "bmo-vista-ciudad"
+path = "src/main.rs"
+
+[dependencies]
+bmo-ciudad = { path = "../../../platform/shared/bmo-ciudad" }
