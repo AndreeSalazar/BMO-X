@@ -104,6 +104,13 @@ pub fn main(ctx: &mut BootContext) {
     // necesita solo lo sabe el. Si no cabe, hay que enterarse AHORA y no
     // cuando el primer tick del timer desborde una pila de tarea.
     crate::ring0::cpu_vendor::xsave::init();
+    // Y justo detras, la MISMA pregunta sobre las INSTRUCCIONES: si BMO usa
+    // algo que este silicio no declara, es un `#UD` esperando a la primera vez
+    // que se ejecute esa linea, y eso hay que saberlo aqui y no entonces.
+    //
+    // Calla si todo cuadra --el censo entero se pide a mano con `ext`--, y por
+    // eso no cuesta ni una linea del panel en un arranque sano.
+    crate::ring0::core::shell::extensions::aviso_de_arranque();
     crate::ring0::task::percpu::init_bsp();
     kbar!(140, 0xFF00_FF00u32); // green: percpu OK
     crate::ring0::task::scheduler::init(ctx.tsc_freq);

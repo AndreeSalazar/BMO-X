@@ -89,6 +89,8 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
             super::files::shell_estratos();
         } else if cmd == b"cpu" {
             super::hardware::shell_cpu();
+        } else if cmd == b"ext" || cmd == b"extensiones" {
+            super::extensions::shell_ext();
         } else if cmd == b"consumo" || cmd == b"gasto" || cmd == b"w" {
             super::hardware::shell_consumo();
         } else if cmd == b"apps" || cmd == b"programas" {

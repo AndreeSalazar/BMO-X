@@ -29,5 +29,11 @@ pub mod ryzen_5_5600x;
 /// Estado extendido (XSAVE): se lo pregunta al silicio y contrasta con el
 /// perfil. NO habilita nada -- ver la nota de cabecera del modulo.
 pub mod xsave;
+/// El CENSO del conjunto de instrucciones: que ofrece este silicio y que coge
+/// BMO. Es el hermano de `xsave` --misma forma, preguntar y contrastar-- pero
+/// sobre las INSTRUCCIONES en vez de sobre el estado. Carpeta y no fichero
+/// porque son dos trabajos: `silicon.rs` pregunta al hardware y `usage.rs`
+/// declara el contrato, que es la regla 5 hecha visible en el arbol.
+pub mod features;
 
 pub use profile::{active, CpuProfile};
