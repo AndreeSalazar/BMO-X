@@ -10,6 +10,49 @@ handles; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
 sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
+> ## ★★★ Al 2026-08-16 -- SE MIDIO LA PUERTA, Y EL CENSO PAGO SOLO
+>
+> **Cuatro numeros nuevos que antes no existian en el arbol**, los cuatro
+> medidos en el Ryzen y no estimados:
+>
+> ```text
+>    puerta desnuda        2.620 ciclos   (= 708 ns)   una llamada: 20   -> 131x
+>    reparto de la puerta  dispatch 318 (12%)  +  stub 2345 (88%)
+>    resolver un handle       83 ciclos   (76 en dispatch, 7 en el stub)
+>    un bucle de BMO C        43 ciclos/vuelta, sin optimizador
+> ```
+>
+> ★ **La frase del dia**: *el modelo de capabilities --lo que hace especial a
+> BMO-X-- cuesta 76 ciclos; la puerta por la que entra cuesta 2.345.* Lo
+> distintivo es el 3%; el 97% es fontaneria generica de x86, y es arreglable.
+>
+> **Lo que salio de ahi, en el mismo dia:**
+>
+> - `syscall/meter.rs` -- el metro de la puerta (`INFO_SYSCALL_CUENTA/CICLOS`).
+>   Dos `rdtsc` en `dispatch`, leidos como delta.
+> - `xsaveopt64` en vez de `xsave64` en el stub. **Un token contra el 88%**, y
+>   no es la cirugia del contexto que sigue aplazada: mismo sitio, mismo
+>   formato, otra instruccion. ⏳ Falta medir si pago.
+> - **El censo de extensiones** (`ext`) sale del shell de Ring 0 y entra en el
+>   ESCRITORIO, por seis filas de `OP_INFO` -- cero syscalls nuevos. 7 usadas de
+>   36 presentes, **0 conflictos**. Y el censo es ahora el SEGURO de xsaveopt:
+>   declarado como usado, un CPU que no lo tenga lo grita al arrancar.
+> - **La terminal dejo de estar clavada**: `Chrome` como las otras cinco
+>   ventanas -- arrastre, estirar, maximizar, Alt+flechas. Sin aspa a proposito.
+> - **-26% de imagen de arranque** por dos `pcs: true` que mandaban 263 KiB de
+>   ceros a `.data`. `BOOTX64.EFI` 1.048.576 -> 779.264 B.
+> - **xHCI: el traspaso del firmware nunca ocurria** (xECP leido del campo
+>   equivocado) y las tres esperas del reset no miraban si acertaban. Es la
+>   causa del *"en frio va, en caliente no"*. ⏳ Sin confirmar en metal.
+>
+> ⚠ **Y una correccion que vale mas que un avance**: `IMAGE`, el buffer de
+> 4 MiB, **ya no es el techo que este documento decia**. `con_buffer` retorna
+> antes de tocarlo cuando la fuente entrega rangos, y FAT32 los entrega: todo lo
+> que se lanza desde A: carga sin buffer, sin copias y **sin tope de tamano**.
+> Los 4 MiB quedan para ESTRATOS, que hoy no guarda programas.
+>
+> Detalle por episodios en `BITACORA.md` (Ep. 39 a 42).
+
 > ## ★★★ Al 2026-08-13 (tarde) -- NUEVE SONDAS, 143 CASILLAS, MEDIO SEGUNDO
 >
 > **La pregunta "que soporta BMO C" ya no es una impresion**: es
