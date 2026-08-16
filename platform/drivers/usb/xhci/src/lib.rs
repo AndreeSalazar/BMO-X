@@ -462,6 +462,116 @@ pub fn reset_ctrl() {
     MMIO_BASE.store(0, core::sync::atomic::Ordering::SeqCst);
 }
 
+/// Una espera acotada que **dice si acerto**. Reemplaza al `for` que se agotaba
+/// en silencio y seguia como si nada.
+fn esperar(mut listo: impl FnMut() -> bool) -> bool {
+    for _ in 0..1_000_000 {
+        if listo() {
+            return true;
+        }
+        core::hint::spin_loop();
+    }
+    false
+}
+
+/// ID de la capacidad extendida "USB Legacy Support" (xHCI spec, tabla 7-1).
+const XECP_ID_LEGACY: u32 = 1;
+/// USBLEGSUP: el firmware dice que es suyo.
+const LEGSUP_BIOS: u32 = 1 << 16;
+/// USBLEGSUP: nosotros decimos que es nuestro.
+const LEGSUP_OS: u32 = 1 << 24;
+/// USBLEGCTLSTS: todos los "manda un SMI cuando pase X" juntos.
+const LEGCTL_SMI_ENABLES: u32 = (0x7 << 0) | (0xFF << 5) | (0x7 << 17);
+/// USBLEGCTLSTS: los tres avisos que se limpian escribiendo un 1.
+const LEGCTL_SMI_STATUS: u32 = 0x7 << 29;
+
+/// **Busca una capacidad extendida recorriendo la lista.**
+///
+/// === El fallo que esto corrige, y es de campo ===
+///
+/// Estaba escrito asi:
+///
+/// ```text
+///    let eecp = ((hcc1 >> 8) & 0xFF) as u32;   // <- bits 15:8
+/// ```
+///
+/// El puntero a capacidades extendidas (**xECP**) vive en `HCCPARAMS1[31:16]`
+/// y **cuenta en palabras de 32 bits**, no en bytes. Los bits 15:8 son
+/// `MaxPSASize`, `CFC`, `SEC`, `SPC` y `PAE`: no un offset de nada.
+///
+/// Consecuencias, las tres:
+///
+///   1. El traspaso del firmware **nunca ocurria**, aunque el codigo pareciera
+///      hacerlo.
+///   2. Si esos bits daban >= 0x40, se escribia un 1 en `mmio + basura + 4`:
+///      una escritura MMIO **en un sitio cualquiera** de la region de
+///      capacidades.
+///   3. La espera miraba el campo ID esperando que llegara a 0, cosa que no
+///      pasa nunca: cincuenta mil lecturas para nada.
+unsafe fn xecp_buscar(mmio: u64, hcc1: u32, id: u32) -> Option<u64> {
+    let mut off = (((hcc1 >> 16) & 0xFFFF) as u64) * 4;
+    if off == 0 {
+        return None;
+    }
+    // Tope de vueltas: una lista enlazada leida de un aparato puede venir
+    // circular o con basura, y colgar el arranque leyendo MMIO es peor que no
+    // encontrar la capacidad.
+    for _ in 0..64 {
+        let cap = r32(mmio + off);
+        if cap == 0 || cap == 0xFFFF_FFFF {
+            return None;
+        }
+        if cap & 0xFF == id {
+            return Some(mmio + off);
+        }
+        let next = ((cap >> 8) & 0xFF) as u64 * 4;
+        if next == 0 {
+            return None;
+        }
+        off += next;
+    }
+    None
+}
+
+/// **QUE EL FIRMWARE SUELTE EL CONTROLADOR, y que se calle.**
+///
+/// === Por que esto importa justo al REINICIAR desde Windows ===
+///
+/// En frio el xHC llega virgen. En un arranque en caliente no: el firmware --y
+/// antes Windows-- lo han tocado, y el BIOS puede seguir declarandose dueno con
+/// `USBLEGSUP.BIOS`. Mientras eso siga puesto, el SMM del firmware atiende
+/// eventos del bus por debajo del sistema operativo, o sea que hay **dos
+/// drivers** hablandole al mismo aparato.
+///
+/// Se pide la propiedad (bit 24), se espera a que el firmware suelte (bit 16), y
+/// **se apagan sus SMI** -- si no, el firmware sigue entrando por interrupcion
+/// de gestion aunque ya no sea el dueno. Los tres bits de estado se limpian
+/// escribiendo un 1, que es como se limpian.
+unsafe fn traspaso_del_firmware(mmio: u64, hcc1: u32) {
+    let h = hal();
+    let legsup = match xecp_buscar(mmio, hcc1, XECP_ID_LEGACY) {
+        Some(a) => a,
+        // No todos los controladores traen la capacidad. No tenerla es
+        // correcto y no se avisa como si fuera un fallo.
+        None => return,
+    };
+    let v = r32(legsup);
+    w32(legsup, v | LEGSUP_OS);
+    if v & LEGSUP_BIOS != 0 {
+        if esperar(|| r32(legsup) & LEGSUP_BIOS == 0) {
+            h.log("[xhci] el firmware SOLTO el controlador\n");
+        } else {
+            // No se aborta: hay firmwares que no bajan el bit nunca y aun asi
+            // dejan trabajar. Pero se DICE, porque si el bus se comporta raro
+            // esta linea es la primera sospechosa.
+            h.log("[xhci] AVISO el firmware NO suelta (USBLEGSUP.BIOS sigue)\n");
+        }
+    }
+    // Y que se calle: enables a cero, estados limpiados con un 1.
+    let ctl = r32(legsup + 4);
+    w32(legsup + 4, (ctl & !LEGCTL_SMI_ENABLES) | LEGCTL_SMI_STATUS);
+}
+
 pub unsafe fn init(mmio: u64) -> bool {
     if CTRL.is_some() { return true; }
     let h = hal();
@@ -478,17 +588,33 @@ pub unsafe fn init(mmio: u64) -> bool {
     h.log_u64(" max_slots=", max_slots as u64);
     h.log_u64(" max_ports=", max_ports as u64);
 
-    let eecp = ((hcc1 >> 8) & 0xFF) as u32;
-    if eecp >= 0x40 && (r32(mmio + eecp as u64) & 1) != 0 {
-        w32(mmio + eecp as u64 + 4, 1);
-        for _ in 0..50000 { if r32(mmio + eecp as u64) & 1 == 0 { break; } }
-    }
+    traspaso_del_firmware(mmio, hcc1);
+
+    // == EL RESET, Y AHORA CON TESTIGOS ==
+    //
+    // ** Las tres esperas eran `for _ in 0..N { if listo { break } }` **sin
+    // mirar por que salieron**. Un bucle que se agota y uno que acierta
+    // terminan en la misma linea, asi que un controlador que no llega a estar
+    // listo se programaba igual -- y el xHCI spec dice que mientras `CNR` este
+    // puesto **no se puede escribir ningun registro operacional** que no sea
+    // USBSTS. O sea que el siguiente `op_w(CONFIG)` era comportamiento
+    // indefinido, y el sintoma seria justo el que se ve: arranca bien en frio y
+    // en caliente el teclado no aparece.
     let cmd = op_r(mmio, op_base, USBCMD);
     op_w(mmio, op_base, USBCMD, cmd & !USBCMD_RS);
-    for _ in 0..50000 { if op_r(mmio, op_base, USBSTS) & USBSTS_HCH != 0 { break; } }
+    if !esperar(|| op_r(mmio, op_base, USBSTS) & USBSTS_HCH != 0) {
+        h.log("[xhci] FAIL el controlador no PARA (USBSTS.HCH sigue a 0)\n");
+        return false;
+    }
     op_w(mmio, op_base, USBCMD, USBCMD_HCRST);
-    for _ in 0..100000 { if op_r(mmio, op_base, USBCMD) & USBCMD_HCRST == 0 { break; } }
-    for _ in 0..50000 { if op_r(mmio, op_base, USBSTS) & USBSTS_CNR == 0 { break; } }
+    if !esperar(|| op_r(mmio, op_base, USBCMD) & USBCMD_HCRST == 0) {
+        h.log("[xhci] FAIL el reset no termina (USBCMD.HCRST sigue puesto)\n");
+        return false;
+    }
+    if !esperar(|| op_r(mmio, op_base, USBSTS) & USBSTS_CNR == 0) {
+        h.log("[xhci] FAIL sigue NO LISTO tras el reset (USBSTS.CNR)\n");
+        return false;
+    }
     op_w(mmio, op_base, CONFIG, (op_r(mmio, op_base, CONFIG) & !0xFF) | max_slots as u32);
 
     // DCBAA
