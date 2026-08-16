@@ -288,6 +288,15 @@ pub(crate) const RFLAGS_NT: u64 = 1 << 14;
 pub(crate) const RFLAGS_AC: u64 = 1 << 18;
 pub(crate) const KERNEL_CS: u64 = 0x08;
 
+// El ultimo selector que estaba escrito dos veces. Este alimenta `MSR_STAR`
+// --lo que `syscall` carga al ENTRAR-- y el de `plat::trap` alimenta la GDT y
+// las comprobaciones del epilogo. Eran el mismo numero en dos ficheros que no
+// se hablaban, que es exactamente la forma del `#GP(0x18)` del 16-08.
+const _: () = assert!(
+    KERNEL_CS == crate::ring0::plat::trap::KERNEL_CS,
+    "el CS que carga `syscall` no es el CS de la GDT"
+);
+
 /// La base de selectores que `sysretq` usa al volver a Ring 3.
 ///
 /// # ** POR QUE 0x13 Y NO 0x10, QUE ES LO QUE PARECE

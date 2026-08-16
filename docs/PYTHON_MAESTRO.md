@@ -660,16 +660,47 @@ descriptor de cada selector. `sysretq` es el companero de `syscall`.
 puso el `syscall` al entrar, y donde los `pop` del epilogo acaban de
 devolverlos. No hay que preparar nada.
 
-★ **Y los selectores tambien cuadraban de antes.** `MSR_STAR` llevaba armado
-`SYSRET_SELECTOR_BASE = 0x10` con un comentario que decia *"legacy, el camino de
-salida es iretq"*:
+#### 💥 Y LA PRIMERA TANDA CON LA PIEZA 2 NO ARRANCO
 
 ```text
-   CS = 0x10 + 16 | 3 = 0x23     <- el mismo que empuja el prologo
-   SS = 0x10 +  8 | 3 = 0x1B     <- el mismo
+   #GP  err=0x18   rip=0x00000000004001BA
+   marco interrumpido:  cs=0x0023 (RPL 3)   ss=0x0018 (RPL 0)
 ```
 
-El MSR estaba puesto y sin usar, **igual que el XSAVEOPT**. Van dos.
+`MSR_STAR` llevaba armado `SYSRET_SELECTOR_BASE = 0x10` con un comentario que
+decia *"legacy, el camino de salida es iretq"*, y al leerlo se dio por bueno
+razonando con el pseudocodigo **estilo Intel**, que fuerza `RPL = 3` en las dos
+mitades. **En AMD no:**
+
+```text
+   CS = base + 16, y el CPU le fuerza RPL 3   -> 0x20|3 = 0x23   bien
+   SS = base +  8, y AMD NO le fuerza nada    -> 0x18          MAL
+        (APM: "SS.sel <- SYSRET_CS+8", sin OR 3)
+```
+
+⚠ **Y la forma del fallo es la leccion, mas que la causa.** La tarea volvia a
+Ring 3 con `SS.RPL = 0` y **seguia funcionando** -- mientras el CPL manda, nadie
+revalida SS. Hasta que el timer la interrumpia, el CPU empujaba ese `0x18` al
+marco del trap, y el `iretq` del **stub del timer** --un fichero que esta tanda
+no habia tocado-- se plantaba. Un registro mal cargado en un sitio, que mata en
+otro, disparado por una interrupcion asincrona, milisegundos despues.
+
+Se leyo del `err=0x18`: en un `#GP` el codigo de error **es un selector**
+(bit0 EXT, bit1 IDT, bit2 TI, resto indice), y ese `0x18` era literalmente el
+`ss` que la misma pantalla imprimia. Sin el marco interrumpido en la pantalla de
+parada habria sido una biseccion a ciegas.
+
+**El arreglo**: base `0x13` --el mismo indice con el RPL 3 ya metido, que
+sobrevive a las sumas porque `+8` y `+16` no tocan los bits 0-1-- y, sobre todo,
+**dos `assert!` en `const`** que atan `base+8 == USER_SS` y `base+16 == USER_CS`.
+Antes era una coincidencia que funcionaba, que es la unica clase de error que
+nadie revisa; hoy **no compila** si alguien mueve la GDT.
+
+★ **Y el patron, que ya va dos veces el mismo dia**: el MSR llevaba anos armado
+y **ninguna CPU lo habia ejecutado nunca** -- exactamente igual que el XSAVEOPT.
+Codigo configurado y sin ejecutar no es codigo que funciona: es codigo sin
+probar. Cuando en este arbol aparezca algo "ya preparado por si acaso", eso es
+una bandera, no un regalo.
 
 ⚠ **La comprobacion de canonicidad no es opcional y va desde la primera
 version.** `sysret` con un RIP no canonico da `#GP(0)` **en Ring 0 y con la pila
