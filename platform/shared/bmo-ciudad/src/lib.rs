@@ -12,6 +12,7 @@
 //!    azar.rs     xorshift + el revoltijo de las ventanas.
 //!    torre.rs    que ES una torre y como se pinta su fachada.
 //!    ciudad.rs   cuantas hay, donde, y el cielo.
+//!    marco.rs    las masas de los bordes: el plano que te pone DENTRO.
 //!    halo.rs     el cielo ENCENDIDO detras del logo. Un neon ilumina el aire.
 //!    niebla.rs   la bruma que despega los planos, y los jirones que cruzan.
 //!    camara.rs   el paralaje: cuanto se ha movido cada capa.
@@ -73,6 +74,9 @@ pub mod encuadre;
 /// El aura del logo: el cielo ENCENDIDO detras del gato. Vive aqui y no con el
 /// gato porque es cielo respondiendo a una luz -- ver su cabecera.
 pub mod halo;
+/// Las dos masas oscuras de los bordes: el plano que te mete DENTRO de la
+/// escena. Es lo que separa una foto de una ciudad de estar en la calle.
+pub mod marco;
 pub mod niebla;
 pub mod paleta;
 pub mod torre;

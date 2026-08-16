@@ -28,6 +28,11 @@
 /// parece un telon pintado. Tres es donde se separan sin romperse.
 pub const LENTITUD_DEL_FONDO: i32 = 3;
 
+/// Cuanto deriva el marco respecto al avance, en centesimas. Ver
+/// [`Camara::desplazamiento`]: la capa mas cercana se mueve la que menos, y hay
+/// una razon de reloj detras.
+pub const DERIVA_DEL_MARCO: i32 = 12;
+
 /// La camara: un solo numero, los pixeles que lleva avanzados.
 #[derive(Clone, Copy, Default)]
 pub struct Camara {
@@ -41,13 +46,20 @@ impl Camara {
 
     /// Cuanto se ha desplazado la capa `capa`, en pixeles hacia la izquierda.
     ///
-    /// `0` es el fondo y `1` el frente. Lo de delante se mueve entero; lo de
-    /// detras, la fraccion.
+    /// `0` es el fondo, `1` el frente y `2` el marco. Lo de delante se mueve
+    /// entero; lo de detras, la fraccion.
+    ///
+    /// ** Y LA CAPA 2 ROMPE LA REGLA A PROPOSITO. El marco esta mas cerca que
+    /// nada y sin embargo se mueve MENOS que el frente. No es un descuido: el
+    /// marco esta anclado a los bordes de la pantalla, y con paralaje de primer
+    /// plano de verdad --dos o tres veces el frente-- se saldria entero en los
+    /// 2,4 segundos que dura la intro. El plano que existe para cerrar la escena
+    /// la abriria por los lados. Ver la cabecera de [`crate::marco`].
     pub fn desplazamiento(&self, capa: u8) -> i32 {
-        if capa == 0 {
-            self.avance / LENTITUD_DEL_FONDO
-        } else {
-            self.avance
+        match capa {
+            0 => self.avance / LENTITUD_DEL_FONDO,
+            1 => self.avance,
+            _ => self.avance * DERIVA_DEL_MARCO / 100,
         }
     }
 }
