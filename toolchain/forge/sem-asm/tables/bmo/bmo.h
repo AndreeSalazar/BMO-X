@@ -117,6 +117,19 @@
 #define BMO_INFO_SYSCALL_CUENTA     0x2F
 #define BMO_INFO_SYSCALL_CICLOS     0x30
 
+/* Y el reparto DENTRO del stub, la mitad que el metro no sabia partir.
+ *
+ *    GUARDA     la cabecera a cero + el `xsaveopt64`
+ *    CICLOS     dentro de `dispatch`
+ *    RESTAURA   las comprobaciones del sello + el `xrstor64`
+ *    resto      total menos los tres = `syscall` + pushes + pops + `iretq`
+ *
+ * Se dividen entre la MISMA cuenta de puertas (`BMO_INFO_SYSCALL_CUENTA`): las
+ * tres etapas ocurren una vez por puerta. ** Y las tres tienen que sumar MENOS
+ * que el total medido desde aqui; si suman mas, el instrumento miente. */
+#define BMO_INFO_SYSCALL_CICLOS_GUARDA   0x35
+#define BMO_INFO_SYSCALL_CICLOS_RESTAURA 0x36
+
 /* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
  *
  * Cuantas filas cubre el censo, y dos mascaras sobre ESA lista en ESE orden:

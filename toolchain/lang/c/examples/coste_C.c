@@ -4,15 +4,56 @@
  * estimate, following the rule already written in `PLAN_BANCA.md`: a hard NO is
  * earned by MEASURING, not by reasoning.
  *
- * == THE RESULT, on the Ryzen, 2026-08-16 (v2, with the split) ==
+ * == ** EL RESULTADO DE LA v4, en el Ryzen, 2026-08-16 (PIEZA 1 PUESTA) ==
+ *
+ *     1. bucle vacio   min   44 ciclos/op, media   45
+ *     2. llamada       min   64 ciclos/op, media   65
+ *     3. puerta pelada min 1625 ciclos/op, media 4169
+ *        reparto: dentro de dispatch 311, en el stub 1314
+ *        el stub por dentro: guardar 30, devolver 30, resto 1254
+ *     4. puerta+handle min 1967 ciclos/op, media 5435
+ *        reparto: dentro de dispatch 396, en el stub 1571
+ *        el stub por dentro: guardar 30, devolver 30, resto 1511
+ *     5. rdtsc suelto  min  113 ciclos/op, media 1358
+ *
+ * **LA PUERTA PASO DE 2618 A 1625** -- y descontando los cuatro sellos (fila 5
+ * menos fila 1 = 69 ciclos cada uno, ~276 en total) a **~1350: la mitad**. Las
+ * dos casillas que la pieza 1 atacaba se desplomaron a 30 cada una y `dispatch`
+ * se quedo en 311 contra 318/319: el control aguanta.
+ *
+ * ** DOS COSAS QUE ESTA TANDA ENSENO Y QUE NO ESTABAN EN EL PLAN:
+ *
+ *   1. **El instrumento cuesta el DOBLE de lo estimado.** Un `rdtsc` suelto son
+ *      69 ciclos, no ~25. La fila 5 existia para que esto fuera una resta y no
+ *      una suposicion, y menos mal.
+ *   2. [!] **UNA ANOMALIA NUEVA Y SIN EXPLICAR.** Resolver un handle costaba
+ *      +14 en el stub (ruido, como debe ser: el stub no sabe que operacion se
+ *      pidio). Ahora cuesta **+257**. `dispatch` sube +85, que es correcto y es
+ *      la capability. Los otros 257 no deberian existir. `guardar` y `devolver`
+ *      salen identicos en las dos filas, asi que no son cambios de contexto.
+ *      **No hay explicacion y no se inventa una**: queda anotado.
+ *
+ * == El resultado de la v3 (`xsaveopt64`, antes de la pieza 1) ==
  *
  *     TSC 3700000000 Hz, lote 4096, vueltas 16
  *     1. bucle vacio   min   43 ciclos/op, media   44
  *     2. llamada       min   63 ciclos/op, media   64
- *     3. puerta pelada min 2663 ciclos/op, media 6107
- *        reparto: dentro de dispatch  318, en el stub 2345
- *     4. puerta+handle min 2746 ciclos/op, media 6430
- *        reparto: dentro de dispatch  394, en el stub 2352
+ *     3. puerta pelada min 2618 ciclos/op, media 6291
+ *        reparto: dentro de dispatch  319, en el stub 2299
+ *     4. puerta+handle min 2707 ciclos/op, media 6855
+ *        reparto: dentro de dispatch  394, en el stub 2313
+ *
+ * ** LA v2 (con `xsave64`) dio 2663/318/2345 y 2746/394/2352. Cambiar a
+ * `xsaveopt64` movio la puerta 45 ciclos -- **el 2%** -- y dejo `dispatch`
+ * clavado en 318 -> 319. La mitad que no se toco no se movio: eso es lo que
+ * hace creible que la otra si. **El sospechoso principal era inocente.**
+ *
+ * ** Y LA MEDIA, que tambien contesta algo. Las filas 1 y 2 tienen media 1,02x
+ * su minimo; la fila 3 tiene **2,4x**. Un lote son 4096 x 2618 = 10,7 M ciclos
+ * = 2,9 ms, y la media son 7 ms. Con `tareas listas 2` en el informe, el lote
+ * minimo es el que cogio un quantum entero y la media es el que lo compartio.
+ * **Esa diferencia es el planificador, no ruido por puerta** -- que es
+ * exactamente el motivo por el que la respuesta es el minimo.
  *
  * A bare door costs 2663 - 43 = 2620 cycles net, about 708 ns. A call costs
  * 63 - 43 = 20. The ratio is 131x. That is the number the whole "can this be a
@@ -29,6 +70,29 @@
  *     answer -- is 318 cycles. [!] `dispatch` is read as a MEAN and the total
  *     as a MINIMUM, so 2345 is a FLOOR: the real stub is >= that. The
  *     conclusion comes out reinforced, not weakened.
+ *
+ * == ** Y LA PREGUNTA QUE ABRE LA v3: EL STUB POR DENTRO ==
+ *
+ * Sumando a mano lo que hay en ese camino --`syscall` ~100, `swapgs` ~20, 20
+ * pushes ~25, la cabecera ~10, el `xsaveopt64` ~150, el `xrstor64` ~200, 15
+ * pops ~15, el `iretq` ~300-- salen **unos 700 de 2299**. Faltan 1.600 ciclos
+ * que **no estan en la lista de sospechosos**: el modelo del camino esta
+ * incompleto, no solo mal ordenado. Van dos veces que razonar sobre este stub
+ * pierde contra el metro, asi que la v3 no trae una tercera hipotesis: trae
+ * cuatro `rdtsc` mas DENTRO del stub y parte esos 2.299 en cuatro:
+ *
+ *     guardar    la cabecera a cero + el `xsaveopt64`
+ *     dispatch   (ya se sabia: 319)
+ *     devolver   las comprobaciones del sello + el `xrstor64`
+ *     resto      el `syscall`, los pushes, los pops y el `iretq`
+ *
+ * ** `resto` ES LA CASILLA QUE DECIDE. Si es pequena, el coste esta en codigo
+ * que se puede reescribir. Si se lleva los 1.600 que no cuadran, esta en las
+ * DOS TRANSICIONES DE PRIVILEGIO -- y entonces afinar el stub no lo va a mover.
+ * Lo que se mueve es `sysretq` en vez de `iretq` para el camino normal, o
+ * agrupar llamadas, que es justo la pregunta de `docs/PYTHON_MAESTRO.md`.
+ *
+ * La fila 5 existe para poder restar lo que cobra ese instrumento.
  *
  * ** The v1 of this file, the same afternoon, gave 43 / 65 / 2615 and never
  * measured row 4. The two runs agree inside the noise, and the 48-cycle gap on
@@ -151,22 +215,43 @@ void report(char *label, unsigned long long best, unsigned long long total) {
  * Over a block of tens of thousands that is under a tenth of a percent.
  */
 void report_split(unsigned long long doors0, unsigned long long cycles0,
+                  unsigned long long guarda0, unsigned long long restaura0,
                   unsigned long long total_per_op) {
     unsigned long long doors;
-    unsigned long long cycles;
     unsigned long long inside;
+    unsigned long long guarda;
+    unsigned long long restaura;
+    unsigned long long contado;
 
     doors = bmo_info(BMO_INFO_SYSCALL_CUENTA) - doors0;
-    cycles = bmo_info(BMO_INFO_SYSCALL_CICLOS) - cycles0;
 
     if (doors == 0) {
         printf("   REPARTO: el kernel no conto ni una puerta\n");
         return;
     }
-    inside = cycles / doors;
+    inside = (bmo_info(BMO_INFO_SYSCALL_CICLOS) - cycles0) / doors;
+    guarda = (bmo_info(BMO_INFO_SYSCALL_CICLOS_GUARDA) - guarda0) / doors;
+    restaura = (bmo_info(BMO_INFO_SYSCALL_CICLOS_RESTAURA) - restaura0) / doors;
+    contado = inside + guarda + restaura;
+
     printf("   reparto: dentro de dispatch %llu, en el stub %llu\n",
            inside,
            total_per_op - inside);
+
+    /* ** Y el stub por dentro, que es lo que faltaba. Las tres casillas son
+     * codigo que se puede leer y reescribir; la cuarta no lo es -- el `resto`
+     * son el `syscall` y el `iretq`, los pushes y los pops. */
+    if (contado > total_per_op) {
+        /* El instrumento se contradice: las etapas no pueden sumar mas que el
+         * total. Se dice en vez de imprimir una resta que daria la vuelta. */
+        printf("   AVISO: las etapas suman %llu > total %llu -- NO LEER\n",
+               contado, total_per_op);
+        printf("   etapas: guarda %llu, dispatch %llu, restaura %llu\n",
+               guarda, inside, restaura);
+        return;
+    }
+    printf("   el stub por dentro: guardar %llu, devolver %llu, resto %llu\n",
+           guarda, restaura, total_per_op - contado);
 }
 
 int main() {
@@ -179,6 +264,8 @@ int main() {
     unsigned long long sink;
     unsigned long long doors0;
     unsigned long long cycles0;
+    unsigned long long guarda0;
+    unsigned long long restaura0;
     int round;
     int i;
 
@@ -216,6 +303,8 @@ int main() {
     /* -- 3. the bare door: no handle to resolve ----------------------- */
     doors0 = bmo_info(BMO_INFO_SYSCALL_CUENTA);
     cycles0 = bmo_info(BMO_INFO_SYSCALL_CICLOS);
+    guarda0 = bmo_info(BMO_INFO_SYSCALL_CICLOS_GUARDA);
+    restaura0 = bmo_info(BMO_INFO_SYSCALL_CICLOS_RESTAURA);
     best = 0; total = 0;
     for (round = 0; round < ROUNDS; round++) {
         start = __rdtsc();
@@ -227,7 +316,7 @@ int main() {
         total = total + elapsed;
     }
     report("3. puerta pelada", best, total);
-    report_split(doors0, cycles0, best / BATCH);
+    report_split(doors0, cycles0, guarda0, restaura0, best / BATCH);
 
     /* -- 4. a real capability ----------------------------------------- *
      *
@@ -242,6 +331,8 @@ int main() {
     } else {
         doors0 = bmo_info(BMO_INFO_SYSCALL_CUENTA);
         cycles0 = bmo_info(BMO_INFO_SYSCALL_CICLOS);
+        guarda0 = bmo_info(BMO_INFO_SYSCALL_CICLOS_GUARDA);
+        restaura0 = bmo_info(BMO_INFO_SYSCALL_CICLOS_RESTAURA);
         best = 0; total = 0;
         for (round = 0; round < ROUNDS; round++) {
             start = __rdtsc();
@@ -253,9 +344,36 @@ int main() {
             total = total + elapsed;
         }
         report("4. puerta+handle", best, total);
-        report_split(doors0, cycles0, best / BATCH);
+        report_split(doors0, cycles0, guarda0, restaura0, best / BATCH);
         bmo_codigo(handle, BMO_ARCH_CERRAR, 0, 0, 0);
     }
+
+    /* -- 5. lo que cobra el propio metro ------------------------------ *
+     *
+     * ** ESTA FILA ES LA FACTURA DEL INSTRUMENTO, y va la ultima para no mover
+     * de sitio las cuatro que ya tienen historia.
+     *
+     * El reparto de la fila 3 lo escriben cuatro `rdtsc` metidos DENTRO del
+     * stub. Cada uno cuesta, y ese coste no se reparte a partes iguales: tres
+     * de los cuatro caen enteros en la casilla `resto`, que es justo la que se
+     * espera grande. O sea que el instrumento empuja hacia su propia
+     * conclusion.
+     *
+     * Midiendo aqui lo que vale un `rdtsc` suelto, esos ~90 ciclos dejan de ser
+     * una estimacion y pasan a ser una resta. Si el `resto` sale en miles no
+     * cambia nada; si sale en cientos, esta fila es la que manda. */
+    best = 0; total = 0;
+    for (round = 0; round < ROUNDS; round++) {
+        start = __rdtsc();
+        for (i = 0; i < BATCH; i++) {
+            sink = sink + __rdtsc();
+        }
+        elapsed = __rdtsc() - start;
+        if (best == 0 || elapsed < best) { best = elapsed; }
+        total = total + elapsed;
+    }
+    report("5. rdtsc suelto ", best, total);
+    printf("   (menos la fila 1 = lo que cuesta UN sello del reparto)\n");
 
     /* Printed so nothing here can ever be considered dead, and so a wrong
      * value is visible instead of silent. */

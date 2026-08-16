@@ -176,6 +176,33 @@ pub const INFO_SYSCALL_CUENTA: u64 = 0x2F;
 /// Ciclos de TSC acumulados dentro de `dispatch`. Ver [`INFO_SYSCALL_CUENTA`].
 pub const INFO_SYSCALL_CICLOS: u64 = 0x30;
 
+/// -- ** EL REPARTO DENTRO DEL STUB ---------------------------------------
+///
+/// El primer reparto dejo el 88% de una puerta en el ensamblador y no supo
+/// decir en QUE parte. Cambiar `xsave64` por `xsaveopt64` --el sospechoso
+/// nombrado-- compro 45 ciclos de 2345: **el 2%**. Estos dos campos parten esa
+/// mitad ciega en tres trozos que se leen igual, como delta:
+///
+/// ```text
+///    GUARDA     la cabecera a cero + el `xsaveopt64`
+///    CICLOS     dentro de `dispatch`  (ya existia)
+///    RESTAURA   las comprobaciones del sello + el `xrstor64`
+///    resto      total - los tres = `syscall` + pushes + pops + `iretq`
+/// ```
+///
+/// **`resto` es la casilla que decide.** Grande significa que el coste esta en
+/// las dos transiciones de privilegio y que afinar el stub no lo va a mover --
+/// lo que se mueve entonces es `sysretq` en vez de `iretq`, o agrupar llamadas.
+///
+/// [!] Se dividen entre [`INFO_SYSCALL_CUENTA`], la MISMA cuenta de puertas que
+/// los ciclos de `dispatch`: las tres etapas ocurren una vez por puerta, asi
+/// que las cuatro cifras se reparten el mismo denominador y **tienen que sumar
+/// menos que el total**. Si suman mas, el instrumento miente y se dice.
+pub const INFO_SYSCALL_CICLOS_GUARDA: u64 = 0x35;
+
+/// Ciclos devolviendo el contexto. Ver [`INFO_SYSCALL_CICLOS_GUARDA`].
+pub const INFO_SYSCALL_CICLOS_RESTAURA: u64 = 0x36;
+
 /// -- ** EL CENSO DE EXTENSIONES, legible desde Ring 3 ---------------------
 ///
 /// Cuantas extensiones cubre el censo, y dos mascaras de bits sobre ESA lista

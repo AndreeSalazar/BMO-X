@@ -21,6 +21,7 @@ use core::arch::{asm, naked_asm};
 use crate::ring0::task::percpu;
 use super::ops::*;
 use super::dispatch;
+use super::meter;
 
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_entry() -> ! {
@@ -39,16 +40,147 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "push rsi", "push rdi", "push r8", "push r9", "push r10",
         "push r11", "push r12", "push r13", "push r14", "push r15",
         "mov rbp, rsp",
+        // ** SELLO A -- el primer instante en que hay registros libres.
+        //
+        // No antes: hasta que `rax` y `rdx` estan en la pila, `rdtsc` --que
+        // escribe los dos-- destruiria valores del usuario. Todo lo que queda
+        // por debajo (`syscall`, `swapgs`, el cambio de pila y los 20 pushes)
+        // es por eso IMPOSIBLE de sellar desde aqui y sale en el `resto`.
+        // Ver el reparto entero en `meter.rs`.
+        "rdtsc", "shl rdx, 32", "or rax, rdx",
+        "mov qword ptr [rip+{ultimo}], rax",
         "sub rsp, {reserva}",
         "and rsp, -64",                // XSAVE exige 64 bytes de alineacion
-        // La cabecera a cero ANTES del xsave64: ver el prologo del timer. En
-        // corto: `XSAVE` no escribe los 48 bytes reservados de la cabecera y
-        // `XRSTOR` da #GP(0) si no son cero. El area se talla sobre la pila,
-        // asi que sin esto hereda la basura de lo que hubiera debajo.
+        "mov [rsp+{area}], rbp",       // back-pointer to the GPR block
+        "mov qword ptr [rsp+{firma}], {magia}", // sello del contexto
         //
-        // Incluye el XSTATE_BV de +512: `XSAVE` CONSERVA los bits que caen
-        // fuera de `RFBM = EDX:EAX AND XCR0`, asi que la basura de ahi
-        // sobrevive al guardado. Ver el prologo del timer.
+        // ===== ** AQUI YA NO SE GUARDA EL ESTADO EXTENDIDO. ================
+        //
+        // Estaban aqui la cabecera a cero (8 stores) y el `xsaveopt64`, y se
+        // hacian EN TODAS LAS PUERTAS. Se han bajado a la via lenta --la
+        // etiqueta `5:`-- porque en la puerta normal **no guardan nada que
+        // haga falta**, y esto no es una apuesta: es una propiedad del target.
+        //
+        // El kernel se compila `x86_64-unknown-none`, cuya ficha dice
+        // literalmente `-mmx,-sse,-sse2,-avx,+soft-float` y `rustc-abi:
+        // softfloat`. O sea que entre el `syscall` que entra y el `iretq` que
+        // sale **nadie puede tocar un registro xmm, mm ni x87**. Guardar un
+        // estado del que se sabe que no va a cambiar, para restaurarlo
+        // identico cuatrocientos ciclos despues, es trabajo que no hace nada.
+        //
+        // ** Y NO SE DA POR BUENO DESDE LA FICHA: se comprobo en el BINARIO.
+        // Un barrido del `bmo-kernel` entero --755 KB-- por `%xmm`, `%mm` y
+        // `%st()`, y por los mnemonicos de SSE y x87, da **cero**. La premisa
+        // esta medida, no supuesta. Si algun dia alguien mete una sola
+        // instruccion SSE en Ring 0, esta optimizacion se vuelve un fallo de
+        // corrupcion silenciosa -- por eso el barrido se queda escrito aqui
+        // como lo que hay que repetir antes de dudar de esta linea.
+        //
+        // Lo que SI se queda arriba, y por que:
+        //   - la reserva y el `and rsp,-64`: el area tiene que existir por si
+        //     `dispatch` cambia de tarea, y entonces se talla justo ahi.
+        //   - el back-pointer y el sello: los lee el planificador cuando
+        //     consuma un cambio (`trap::seal`), y para entonces ya es tarde
+        //     para escribirlos.
+        // Son cuatro instrucciones contra las once que se han ido.
+        //
+        // ** SELLO B -- cierra GUARDA, que ahora mide el prologo pelado.
+        "rdtsc", "shl rdx, 32", "or rax, rdx",
+        "sub rax, qword ptr [rip+{ultimo}]",
+        "add qword ptr [rip+{guarda}], rax",
+        "mov gs:[0x10], rsp",          // publish this context
+        "cld",
+        "mov rdi, rbp",
+        "call {dispatch}",
+        // ** SELLO D' -- abre RESTAURA, y por eso `rax` hay que salvarlo: trae
+        // la base del contexto que toca ejecutar y `rdtsc` lo pisaria. `rcx`
+        // sirve de hueco porque el `rcx` del usuario esta en la pila desde el
+        // push de arriba y lo recupera su `pop`.
+        //
+        // Va aqui y no dentro de `meter::stop` para no cambiar `stop`: asi
+        // `dispatch` sigue midiendose exactamente igual que esta manana y ese
+        // 319 vale de control. Lo que queda entre el `stop` y este sello --dos
+        // sumas volatiles y el epilogo de `dispatch`-- cae en el `resto`.
+        "mov rcx, rax",
+        "rdtsc", "shl rdx, 32", "or rax, rdx",
+        "mov qword ptr [rip+{ultimo}], rax",
+        "mov rax, rcx",
+        //
+        // ======== ** LA BIFURCACION ==========================================
+        //
+        // `dispatch` devuelve la base del contexto que toca ejecutar, que es
+        // `percpu::trap_rsp()`. Nosotros publicamos AHI nuestra propia base
+        // cuatro lineas antes, y el `call` deja `rsp` justo donde estaba. O sea
+        // que **`rax == rsp` significa exactamente "nadie cambio de tarea"** --
+        // una comparacion de registros, sin una sola lectura de memoria.
+        //
+        // Y esa pregunta es la que decide LAS DOS COSAS que cuesta una puerta:
+        //
+        //   igual    -> el contexto que entro es el que sale. Nada toco el
+        //               estado extendido (el kernel es softfloat), asi que no
+        //               hay nada que guardar ni nada que restaurar. VIA RAPIDA.
+        //   distinto -> el nuestro se va y hay que guardarlo de verdad, y el
+        //               que entra hay que devolverlo entero. VIA LENTA.
+        //
+        // ** El planificador no ha cambiado ni una linea para esto, y eso fue
+        // una decision: `yield_current` lo llaman DOS clases de sitio --la
+        // puerta (`syscall/mod.rs`) y una tarea de kernel (`dev/usb/bus.rs`)--
+        // asi que meter la condicion alli obligaba a marcar cada sitio de
+        // llamada con quien habia publicado el contexto. Aqui la condicion no
+        // hay que declararla: **se lee**.
+        "cmp rax, rsp",
+        "jne 5f",
+        //
+        // -------- VIA RAPIDA: misma tarea ------------------------------------
+        //
+        // No hay `xrstor64`, y por eso tampoco hay comprobacion de sello ni de
+        // cabecera: esas nacieron para que un area corrupta no reventara EN el
+        // `xrstor64`, y aqui no hay `xrstor64` que proteger. El marco al que se
+        // vuelve lo construimos nosotros hace un instante, con las
+        // interrupciones enmascaradas, y no ha salido de esta pila.
+        //
+        // Tampoco se comprueba el CS: la via rapida vuelve a quien entro por
+        // `syscall`, y su CS es el `0x23` que **empujamos como constante** en
+        // el prologo. Comprobarlo seria preguntarle a un literal.
+        //
+        // ** LO QUE SI SE HACE, Y ES EL UNICO STORE DE ESTA VIA: borrar el
+        // sello. La via lenta lo borra al consumir un contexto para que una
+        // direccion caducada no vuelva a pasar por buena, y en cuanto se
+        // ejecuta el `iretq` de abajo esta area es pila libre. Sin este store,
+        // un `trap_rsp` rancio --el caso que `scheduler::Saliente` documenta--
+        // apuntaria a un area consumida CON el sello puesto, y en vez de
+        // plantarse con nombre restauraria basura. Costo tres dias y tres
+        // fotos descubrir eso; no se tira por un store.
+        "mov qword ptr [rsp+{firma}], 0",
+        "mov rsp, rbp",                // rbp es callee-saved: `dispatch` lo devuelve intacto
+        // ** SELLO E de la via rapida. Mismo motivo que el de la lenta: rax,
+        // rcx y rdx los sobrescriben los pops de la linea siguiente.
+        "rdtsc", "shl rdx, 32", "or rax, rdx",
+        "sub rax, qword ptr [rip+{ultimo}]",
+        "add qword ptr [rip+{restaura}], rax",
+        "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
+        "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
+        "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
+        "swapgs",
+        "iretq",
+        //
+        // -------- VIA LENTA: cambio de contexto ------------------------------
+        //
+        // ** AQUI ES DONDE SE GUARDA EL ESTADO EXTENDIDO, y sigue estando a
+        // tiempo: como el kernel no toca xmm, el estado del usuario que se va
+        // **todavia esta vivo en los registros** en este instante. El
+        // planificador ya anoto nuestra area como su `context_rsp` y le puso el
+        // sello (`trap::seal`); lo unico que faltaba era el contenido, y es lo
+        // que se escribe ahora.
+        //
+        // Las interrupciones siguen enmascaradas desde el `syscall`, asi que
+        // entre la anotacion del planificador y este guardado no cabe nadie.
+        "5: mov rcx, rax",             // el destino, a salvo de rax/rdx
+        // La cabecera a cero ANTES del xsave: `XSAVE` no escribe los 48 bytes
+        // reservados y `XRSTOR` da #GP(0) si no son cero. El area se talla
+        // sobre la pila, asi que sin esto hereda lo que hubiera debajo.
+        // Incluye el XSTATE_BV de +512: `XSAVE` CONSERVA los bits fuera de
+        // `RFBM = EDX:EAX AND XCR0`, y esa basura sobrevive al guardado.
         "mov qword ptr [rsp+{bv}], 0",
         "mov qword ptr [rsp+{cero}], 0",
         "mov qword ptr [rsp+{cero}+8], 0",
@@ -57,62 +189,23 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "mov qword ptr [rsp+{cero}+32], 0",
         "mov qword ptr [rsp+{cero}+40], 0",
         "mov qword ptr [rsp+{cero}+48], 0",
-        "mov [rsp+{area}], rbp",       // back-pointer to the GPR block
-        "mov qword ptr [rsp+{firma}], {magia}", // sello del contexto
         // RFBM = -1: guarda lo que XCR0 tenga habilitado, sea lo que sea.
-        // rax y rdx ya estan salvados en el bloque de GPR de arriba.
+        //
+        // ** Sigue siendo `xsaveopt64` y no `xsave64`: formato ESTANDAR (el
+        // `xrstor64` de abajo no cambia una letra), la cabecera se pone a cero
+        // igual, y si la *modified optimization* no le sirve escribe entero --
+        // el caso de duda se resuelve escribiendo de mas, nunca de menos. Lo
+        // que si ha cambiado es lo que vale: los 45 ciclos que compro el
+        // 16-08 se cobraban en TODAS las puertas, y ahora solo en las que
+        // cambian de tarea. **Esta pieza se traga aquella**, y esta bien: la
+        // de antes abarataba el trabajo, esta lo quita.
+        //
+        // [!] En un CPU sin XSAVEOPT esto es `#UD`. Lo vigila el censo:
+        // `usage.rs` declara la fila como USADA, asi que seria un CONFLICTO y
+        // el arranque lo grita en CABINA. Ver `features/mod.rs`.
         "mov eax, -1", "mov edx, -1",
-        // ** `xsaveopt64` Y NO `xsave64`, desde el 2026-08-16.
-        //
-        // === De donde sale este cambio ===
-        //
-        // El metro (`syscall/meter.rs`) midio en el Ryzen que una puerta cuesta
-        // 2663 ciclos y que **2345 de ellos --el 88%-- estan en este stub**, no
-        // en el Rust. Y el censo de extensiones (`ext`) enseno que XSAVEOPT
-        // esta EN ESTE SILICIO Y SIN USAR. Las dos cosas se midieron el mismo
-        // dia y esta linea es donde se juntan.
-        //
-        // === Que hace distinto ===
-        //
-        // XSAVEOPT trae la *modified optimization*: puede NO escribir los
-        // componentes que no se han tocado desde el ultimo `xrstor64` hecho
-        // **desde esta misma direccion**. Y esa condicion se cumple justo en el
-        // caso que domina: una puerta que vuelve a LA MISMA tarea.
-        //
-        // ** Lo que lo hace valido aqui no es una suposicion, es el target: el
-        // kernel se compila `-sse,-avx,+soft-float` (`rustc-abi: softfloat`),
-        // o sea que **no toca un solo registro xmm**. Entre el `xrstor64` de la
-        // puerta anterior y este `xsaveopt64` nadie modifico el estado
-        // extendido, que es exactamente la condicion que la instruccion mira.
-        //
-        // === Por que es SEGURO, y no es la cirugia que se aplazo ===
-        //
-        //   1. **Formato ESTANDAR**, igual que `xsave64`. El `xrstor64` del
-        //      epilogo no cambia ni una letra. (`XSAVEC`/`XSAVES` usan formato
-        //      COMPACTADO y obligarian a tocar tambien la restauracion -- que
-        //      es el codigo que produjo el `#GP en xrstor`. Por eso NO se
-        //      tocan hoy.)
-        //   2. La cabecera se sigue poniendo a cero arriba y `RFBM` sigue
-        //      siendo -1: el `XSTATE_BV` se escribe con las mismas reglas.
-        //   3. Si el ultimo `xrstor64` vino de OTRA direccion --un cambio de
-        //      tarea, o el camino del timer-- la optimizacion simplemente no se
-        //      aplica y escribe entero. El caso de duda se resuelve escribiendo
-        //      de mas, nunca de menos.
-        //
-        // [!] La optimizacion esta PERMITIDA, no garantizada: el CPU puede
-        // escribir igual. Por eso esto no se declara una mejora hasta que
-        // `run c/coste.bex` ensene el reparto nuevo -- el mismo instrumento que
-        // encontro el problema es el que dice si se arreglo.
-        //
-        // [!] Y si algun dia se arranca en un CPU sin XSAVEOPT, esto es `#UD`
-        // en la primera puerta. Lo vigila el censo: `usage.rs` declara esta
-        // fila como USADA, asi que alli seria un CONFLICTO y el arranque lo
-        // grita en CABINA. Ver `features/mod.rs`.
         "xsaveopt64 [rsp]",
-        "mov gs:[0x10], rsp",          // publish this context
-        "cld",
-        "mov rdi, rbp",
-        "call {dispatch}",
+        "mov rax, rcx",
         // Shared trap epilogue: rax = xsave-base of the context to run.
         "mov rsp, rax",
         "cmp qword ptr [rsp+{firma}], {magia}",
@@ -137,6 +230,14 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "mov qword ptr [rsp+{firma}], 0",
         "mov eax, -1", "mov edx, -1",
         "xrstor64 [rsp]",
+        // ** SELLO E -- cierra RESTAURA. Ultimo punto con registros libres:
+        // `rax`, `rcx` y `rdx` los sobrescriben los `pop` de tres lineas mas
+        // abajo, asi que pisarlos aqui no cuesta nada. Despues de esos pops ya
+        // no hay donde escribir, y por eso los 15 pops, las dos comprobaciones
+        // de CS, el `swapgs` y el `iretq` caen tambien en el `resto`.
+        "rdtsc", "shl rdx, 32", "or rax, rdx",
+        "sub rax, qword ptr [rip+{ultimo}]",
+        "add qword ptr [rip+{restaura}], rax",
         "mov rsp, [rsp+{area}]",
         "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
         "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
@@ -151,6 +252,12 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym dispatch,
+        // El reparto DENTRO del stub. Son tres casillas de `meter.rs` escritas
+        // desde aqui porque este es el unico sitio donde el codigo esta -- y
+        // porque el metro es de la puerta, no de este fichero. Ver `meter.rs`.
+        ultimo = sym meter::ETAPA_ULTIMO,
+        guarda = sym meter::CICLOS_GUARDA,
+        restaura = sym meter::CICLOS_RESTAURA,
         podrido = sym crate::ring0::plat::faults::contexto_podrido,
         no_xcr0 = sym crate::ring0::plat::trap::XSAVE_NO_XCR0,
         area = const crate::ring0::plat::trap::XSAVE_AREA,

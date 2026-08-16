@@ -91,6 +91,10 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     // (`c/coste.bex`) y el que lo sirve es el kernel: dos lados, un numero.
     ("BMO_INFO_SYSCALL_CUENTA", "INFO_SYSCALL_CUENTA", 0x2F),
     ("BMO_INFO_SYSCALL_CICLOS", "INFO_SYSCALL_CICLOS", 0x30),
+    // Y el reparto dentro del stub, por el mismo motivo y con mas razon: estas
+    // dos las escribe el ENSAMBLADOR de `entry.rs` y las lee un `.bex` de C.
+    ("BMO_INFO_SYSCALL_CICLOS_GUARDA", "INFO_SYSCALL_CICLOS_GUARDA", 0x35),
+    ("BMO_INFO_SYSCALL_CICLOS_RESTAURA", "INFO_SYSCALL_CICLOS_RESTAURA", 0x36),
     // El censo de extensiones. Cruza por el mismo motivo que el metro: lo
     // sirve el kernel y lo leen dos lados distintos -- el escritorio en Rust y
     // cualquier `.bex` de C que quiera saber si tiene RDRAND antes de usarlo.
@@ -217,6 +221,8 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_NET_PCI", s::INFO_NET_PCI),
         ("BMO_INFO_SYSCALL_CUENTA", s::INFO_SYSCALL_CUENTA),
         ("BMO_INFO_SYSCALL_CICLOS", s::INFO_SYSCALL_CICLOS),
+        ("BMO_INFO_SYSCALL_CICLOS_GUARDA", s::INFO_SYSCALL_CICLOS_GUARDA),
+        ("BMO_INFO_SYSCALL_CICLOS_RESTAURA", s::INFO_SYSCALL_CICLOS_RESTAURA),
         ("BMO_INFO_CPU_EXT_N", s::INFO_CPU_EXT_N),
         ("BMO_INFO_CPU_EXT_HAY", s::INFO_CPU_EXT_HAY),
         ("BMO_INFO_CPU_EXT_USA", s::INFO_CPU_EXT_USA),

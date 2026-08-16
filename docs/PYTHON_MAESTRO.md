@@ -488,9 +488,158 @@ expropiacion inflo) mientras el total es un **minimo**. O sea que 318 es un
 techo para el Rust y **2.345 es un SUELO para el stub: el stub real es >=2345**.
 La conclusion sale reforzada, no debilitada.
 
-⚠ Lo que sigue SIN medir es **cual de las cinco piezas del stub** se lleva los
-2.345 -- el XSAVE es el sospechoso por tamano, pero eso lo separa otra sonda (o
-medir con el XSAVE fuera del camino que no conmuta), no esta.
+#### ⛔ Y EL SOSPECHOSO PRINCIPAL RESULTO INOCENTE (medido el 16-08)
+
+Se cambio `xsave64` por **`xsaveopt64`** en el stub --misma linea, mismo
+formato, otra instruccion-- porque el censo enseno que XSAVEOPT esta en este
+silicio y sin usar, y porque el kernel compila con `+soft-float` y por tanto
+**no toca un solo registro xmm**: la condicion exacta que la *modified
+optimization* necesita.
+
+```text
+   xsave64     stub 2345   (puerta 2663)
+   xsaveopt64  stub 2299   (puerta 2618)   ->  45 ciclos, el 2%
+```
+
+**El guardado del estado extendido no es donde se van los 2.300.** La
+instruccion se queda --45 ciclos gratis son 45 ciclos y el riesgo ya esta
+pagado-- pero la hipotesis de este documento queda **descartada con cifra**.
+
+★ **El control que hace creible el numero**: `dispatch` midio 318 antes y 319
+despues. La mitad que no se toco no se movio ni un ciclo.
+
+⚠ **Van DOS veces que el razonamiento sobre este stub pierde contra el metro**:
+primero la suma "a ojo" que daba cientos en vez de dos mil, y ahora la
+identificacion del culpable. La leccion no es sobre el XSAVE, es sobre el
+metodo: **en este stub no se acierta razonando.**
+
+#### 🔍 Y LA SUMA NO CIERRA, que es el hallazgo de verdad
+
+Sumando a mano lo que hay en ese camino:
+
+```text
+   `syscall`          ~100      transicion de privilegio
+   `swapgs` + pila     ~30
+   20 pushes           ~25
+   cabecera a cero     ~10      ocho stores
+   `xsaveopt64`       ~150      (y ya sabemos que solo 45 son suyos)
+   `xrstor64`         ~200
+   15 pops             ~15
+   `iretq`            ~300      transicion de privilegio
+   -------------------------
+   total             ~700   de 2.299
+```
+
+**Faltan 1.600 ciclos que no estan en la lista de sospechosos.** Eso no es que
+la prioridad estuviera mal: es que **el modelo del camino esta incompleto**. Y
+van dos veces que razonar sobre este stub pierde contra el metro, asi que aqui
+no hay una tercera hipotesis. Hay cuatro `rdtsc` mas **dentro del propio stub**,
+que parten los 2.299 en cuatro casillas:
+
+| casilla | que mide | como se lee |
+|---|---|---|
+| `guardar` | cabecera a cero + `xsaveopt64` | `BMO_INFO_SYSCALL_CICLOS_GUARDA` |
+| `dispatch` | el Rust (ya se sabia: 319) | `BMO_INFO_SYSCALL_CICLOS` |
+| `devolver` | comprobaciones del sello + `xrstor64` | `BMO_INFO_SYSCALL_CICLOS_RESTAURA` |
+| **`resto`** | **`syscall` + pushes + pops + `iretq`** | total menos las tres |
+
+★ **`resto` ES LA CASILLA QUE DECIDE, y decide cosas distintas:**
+
+- **Si sale pequeno**, los 1.600 estan en codigo que se puede leer y reescribir,
+  y la cirugia en `entry.rs` tiene por fin una direccion.
+- **Si se lleva los 1.600**, estan en las **dos transiciones de privilegio**, y
+  entonces afinar el stub no va a mover nada. Lo que mueve es `sysretq` en vez
+  de `iretq` para el camino normal --el epilogo es compartido con los traps, asi
+  que eso es una bifurcacion, no un cambio de linea-- o **agrupar llamadas**,
+  que es exactamente la pregunta abierta de este documento.
+
+⚠ **Lo que cobra el instrumento, y hacia donde empuja**: ~115 ciclos sobre 2.618
+(4,4%), de los que ~90 caen enteros en `resto` -- **la casilla que espero ver
+grande**. El sesgo corre a favor de mi hipotesis, que es la direccion mala, y
+por eso `c/coste.bex` mide un `rdtsc` suelto en su fila 5: para que restar esos
+90 sea una resta y no una estimacion.
+
+⚠ **El control**: `meter::start`/`stop` no cambian ni un byte, asi que si
+`dispatch` no vuelve a salir ~319 el reparto nuevo no se lee hasta saber por
+que. Es una tanda de flasheo y contesta la pregunta entera.
+
+#### 🔧 PIEZA 1: el XSAVE que no tenia por que existir (16-08)
+
+En la misma tanda va el primer **cambio de pieza**, y no es una corazonada --
+sale del target:
+
+- `x86_64-unknown-none` declara `-mmx,-sse,-sse2,-avx,+soft-float` y
+  `rustc-abi: softfloat`.
+- Un barrido del `bmo-kernel` entero (755 KB) por `%xmm`, `%mm`, `%st()` y los
+  mnemonicos de SSE/x87 da **CERO**.
+
+O sea que entre el `syscall` y el `iretq` **nadie puede tocar el estado
+extendido**. Guardarlo para restaurarlo identico era trabajo que no hacia nada.
+
+La bifurcacion es una comparacion de registros, sin una sola lectura de memoria:
+`dispatch` devuelve `percpu::trap_rsp()`, nosotros publicamos ahi nuestra propia
+base, y el `call` deja `rsp` donde estaba -- asi que **`cmp rax, rsp` significa
+"nadie cambio de tarea"**.
+
+| | via rapida (misma tarea) | via lenta (hubo cambio) |
+|---|---|---|
+| cabecera a cero | -- | 8 stores |
+| `xsaveopt64` | -- | si |
+| comprobar sello + cabecera | -- | 9 lecturas |
+| `xrstor64` | -- | si |
+| comprobar CS | -- | 2 (en la rapida el CS es el `0x23` que empujamos como CONSTANTE) |
+| borrar el sello | 1 store | 1 store |
+
+★ **El planificador no cambia ni una linea**, y fue una decision: `yield_current`
+lo llaman dos clases de sitio --la puerta y una tarea de kernel
+(`dev/usb/bus.rs`)-- asi que la condicion alli habria que declararla en cada
+sitio de llamada. En el stub **se lee**. Y el guardado sigue llegando a tiempo
+porque, precisamente por ser softfloat, el estado del que se va **sigue vivo en
+los registros** cuando la via lenta lo escribe.
+
+★ **Y esta tanda es la pieza Y su propia falsacion**: si quitar el `xsave` y el
+`xrstor` ENTEROS no mueve el total, entonces el estado extendido nunca fue el
+coste --una respuesta mucho mas fuerte que la del `xsaveopt64`-- y `resto` queda
+confirmado como la historia completa. Eso apunta directo a la **pieza 2**
+(`sysretq` en vez de `iretq`).
+
+#### ✅ Y MOVIO. LA PUERTA SE PARTIO POR LA MITAD (medido el 16-08)
+
+```text
+   antes                 2618 ciclos     708 ns
+   con la pieza 1        1625 ciclos     439 ns    -38%
+   ...sin el metro      ~1350 ciclos     365 ns    -48%
+```
+
+| casilla | predicho | medido |
+|---|---|---|
+| `guardar` | "decenas, no cientos" | **30** ✅ |
+| `devolver` | ~5 si casi todo va por la via rapida | **30** ✅ |
+| `dispatch` | ~319, el CONTROL | **311** ✅ |
+| `resto` | la casilla que decide | **1254** |
+
+⚠ **Y CORRIGE UNA CONCLUSION DE ESTE MISMO DOCUMENTO.** Arriba quedo escrito que
+*"el guardado del estado extendido no es donde se van los 2.300"*. Era cierto
+**del guardado** y falso **del estado extendido**: el `xsaveopt64` solo tocaba
+la mitad de guardar y compro 45, pero quitar la maquinaria entera compro
+**~1.000**. El caro era el `xrstor64` y sus nueve lecturas de cabecera, y aquel
+experimento **no podia verlo por construccion**. El fallo no fue la medida: fue
+generalizar de una mitad al todo.
+
+⚠ **El instrumento cuesta el DOBLE de lo estimado**: la fila 5 midio 69 ciclos
+por sello, no ~25. Los cuatro son ~276. Sacarlos con un `cfg` vale hoy **mas que
+todo lo que compro el `xsaveopt64`** -- por eso la fila 5 existia.
+
+⚠ **Anomalia nueva, sin explicar**: resolver un handle costaba +14 en el stub
+(ruido, y era uno de los resultados bonitos: *el stub no sabe que operacion se
+pidio*). Ahora cuesta **+257**. `dispatch` sube +85, que es la capability y es
+correcto; los otros 257 no deberian existir. No hay explicacion y no se inventa
+una: queda anotado para su propia sonda.
+
+**Lo que queda**: `resto` = 1254, menos ~276 de instrumento = **~980 reales**
+para `syscall` + `swapgs` + 20 pushes + 15 pops + `iretq`. Sumado a mano, ~540.
+**El agujero paso de 1.600 a ~440**, y la casilla ya solo tiene dos inquilinos
+gordos: las dos transiciones de privilegio. Eso es la **pieza 2**.
 
 **Y esto no mejora Python: mejora TODO lo que cruza la puerta** -- la entrada de
 DOOM, el metronomo del audio, el camino asincrono del disco, el compositor.
