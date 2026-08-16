@@ -326,6 +326,8 @@ int main() {
     unsigned long long guarda0;
     unsigned long long restaura0;
     unsigned long long pelada;
+    unsigned long long doors;
+    unsigned long long cycles;
     int round;
     int i;
 
@@ -378,10 +380,25 @@ int main() {
     report("3. puerta pelada", best, total);
     report_split(doors0, cycles0, guarda0, restaura0, best / BATCH);
     veredicto("puerta ", best / BATCH, BMO_INFO_PRESUPUESTO_PUERTA);
-    veredicto("dispatch",
-              (bmo_info(BMO_INFO_SYSCALL_CICLOS) - cycles0)
-                  / (bmo_info(BMO_INFO_SYSCALL_CUENTA) - doors0),
-              BMO_INFO_PRESUPUESTO_DISPATCH);
+    /* ** UNA LLAMADA POR SENTENCIA, Y A UN LOCAL. No es estilo: es que la v4
+     * de este fichero calculaba esto en linea, con DOS `bmo_info()` metidos
+     * dentro de un argumento de `veredicto()`, y dio **1116** donde
+     * `report_split` daba 309.
+     *
+     * Lo que lo delato no fue sospechar del compilador, fue la aritmetica:
+     * 1116 > 895, y `dispatch` es una PARTE de la puerta. Una parte no puede
+     * ser mayor que el todo, asi que el numero no era alto: era imposible.
+     *
+     * La causa esta documentada en el propio codegen (`agregados.rs`): un
+     * argumento que contiene un `__syscall` usa `rdi`, que es tambien el
+     * registro con el que se pasan argumentos. Anidar puertas dentro de la
+     * lista de argumentos de otra llamada es pisarse. `report_split` nunca se
+     * rompio porque siempre lo hizo asi -- una llamada, un local. */
+    doors = bmo_info(BMO_INFO_SYSCALL_CUENTA) - doors0;
+    cycles = bmo_info(BMO_INFO_SYSCALL_CICLOS) - cycles0;
+    if (doors > 0) {
+        veredicto("dispatch", cycles / doors, BMO_INFO_PRESUPUESTO_DISPATCH);
+    }
     /* Se guarda para juzgar el handle contra la fila 4. */
     pelada = best / BATCH;
 
