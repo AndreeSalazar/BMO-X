@@ -214,6 +214,23 @@ fn log(msg: &str) {
 /// (100 ms de debounce de conexion, 20+ ms de estabilizacion de power) -- los
 /// spin-counts heredados de QEMU duran microsegundos y en hardware real los
 /// puertos aun no reportan CCS cuando el driver pregunta.
+///
+/// # ** Y ESA ESPERA ES DONDE CORRE LA INTRO
+///
+/// Estos milisegundos son tiempo muerto de verdad: el CPU no hace nada mientras
+/// un puerto se estabiliza. Y son muchos -- dos controladoras, varios puertos,
+/// y cada uno con su debounce y su reset.
+///
+/// El video del arranque del 2026-08-15 lo enseno por el otro lado: entre
+/// `intro_paso(40)` y `intro_paso(70)` --que es este bloque-- la pantalla se
+/// quedaba **mas de tres segundos con un solo fotograma**. La ciudad congelada
+/// y el gato sin salir. No porque la animacion estuviera mal, sino porque nadie
+/// pintaba: el kernel estaba aqui, girando en vacio.
+///
+/// Asi que aqui se gira pintando. La regla la pone `intro_latido`: pinta **solo
+/// si el fotograma cabe en lo que queda de espera**, asi que el USB sigue
+/// esperando exactamente lo que el spec pide. La animacion sale de tiempo que
+/// ya se estaba tirando.
 fn delay_ms(ms: u64) {
     let f = crate::ring0::task::scheduler::tsc_freq();
     if f == 0 {
@@ -222,9 +239,19 @@ fn delay_ms(ms: u64) {
         }
         return;
     }
-    let end = crate::ring0::task::scheduler::rdtsc() + ms * (f / 1000);
-    while crate::ring0::task::scheduler::rdtsc() < end {
-        core::hint::spin_loop();
+    let por_ms = (f / 1000).max(1);
+    let end = crate::ring0::task::scheduler::rdtsc() + ms * por_ms;
+    loop {
+        let ahora = crate::ring0::task::scheduler::rdtsc();
+        if ahora >= end {
+            break;
+        }
+        // Lo que queda de espera, en milisegundos. Es lo unico que el latido
+        // necesita saber para decidir si le da tiempo.
+        let quedan = ((end - ahora) / por_ms) as u32;
+        if !crate::ring0::core::splash::intro_latido(quedan) {
+            core::hint::spin_loop();
+        }
     }
 }
 
