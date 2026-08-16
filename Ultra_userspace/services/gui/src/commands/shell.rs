@@ -184,6 +184,7 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
     dsk.out.grid.text(b"  info         RAM, CPU, tareas y disco\n");
     dsk.out.grid.text(b"  cpu / mem    solo esa parte del informe\n");
+    dsk.out.grid.text(b"  ext          que ofrece el silicio y que coge BMO\n");
     dsk.out.grid.text(b"  consumo / w  nucleos, hilos, MHz, W y RAM en TABLA\n");
     dsk.out.grid.text(b"  apps         que programa tiene RAM pedida\n");
     dsk.out.grid.text(b"  save cpu|mem|consumo|apps   cada tabla en SU\n");

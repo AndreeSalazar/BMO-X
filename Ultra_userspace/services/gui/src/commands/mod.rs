@@ -91,6 +91,14 @@ pub(crate) enum Command<'a> {
     /// El informe del ULTIMO fallo de Ring 3, tal como lo redacto el kernel.
     Autopsy,
     Cpu,
+    /// **El censo de extensiones**: que declara este silicio y que coge BMO.
+    ///
+    /// Vivia SOLO en el shell de Ring 0, y a ese shell no se vuelve una vez
+    /// arranca el escritorio -- el rescate se niega a echar al compositor. O
+    /// sea que era una tabla correcta que nadie podia mirar desde donde de
+    /// verdad se trabaja. Baja por `OP_INFO` como todo lo demas: dos mascaras
+    /// y los nombres, sin una segunda lista en este lado.
+    Ext,
     Memoria,
     /// **El consumo, en tabla.** `cpu` y `mem` explican la maquina cada uno por
     /// su lado; esto contesta "que esta gastando ahora mismo" en una sola
@@ -297,6 +305,9 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         b"tramas" | b"frames" => Command::Net(b"frames"),
         b"phy" => Command::Net(b"phy"),
         b"cpu" | b"procesador" => Command::Cpu,
+        // Los mismos dos nombres que el shell de Ring 0, para que lo que se
+        // aprende en un sitio valga en el otro.
+        b"ext" | b"extensiones" => Command::Ext,
         b"consumo" | b"gasto" | b"w" => Command::Consumo,
         b"apps" | b"programas" => Command::Apps,
         b"mem" | b"ram" | b"memoria" => Command::Memoria,
