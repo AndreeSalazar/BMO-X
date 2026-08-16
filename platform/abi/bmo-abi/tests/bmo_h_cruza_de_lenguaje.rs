@@ -91,6 +91,15 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     // (`c/coste.bex`) y el que lo sirve es el kernel: dos lados, un numero.
     ("BMO_INFO_SYSCALL_CUENTA", "INFO_SYSCALL_CUENTA", 0x2F),
     ("BMO_INFO_SYSCALL_CICLOS", "INFO_SYSCALL_CICLOS", 0x30),
+    // El censo de extensiones. Cruza por el mismo motivo que el metro: lo
+    // sirve el kernel y lo leen dos lados distintos -- el escritorio en Rust y
+    // cualquier `.bex` de C que quiera saber si tiene RDRAND antes de usarlo.
+    ("BMO_INFO_CPU_EXT_N", "INFO_CPU_EXT_N", 0x31),
+    ("BMO_INFO_CPU_EXT_HAY", "INFO_CPU_EXT_HAY", 0x32),
+    ("BMO_INFO_CPU_EXT_USA", "INFO_CPU_EXT_USA", 0x33),
+    ("BMO_INFO_CPU_EXT_AVERIAS", "INFO_CPU_EXT_AVERIAS", 0x34),
+    ("BMO_INFO_TXT_EXT_NOMBRE", "INFO_TXT_EXT_NOMBRE", 0x05),
+    ("BMO_INFO_TXT_EXT_NOTA", "INFO_TXT_EXT_NOTA", 0x06),
     ("BMO_INFO_CPU_HILOS", "INFO_CPU_HILOS", 0x06),
     ("BMO_INFO_CPU_NUCLEOS", "INFO_CPU_NUCLEOS", 0x07),
     ("BMO_INFO_TICKS", "INFO_TICKS", 0x0B),
@@ -208,6 +217,12 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_NET_PCI", s::INFO_NET_PCI),
         ("BMO_INFO_SYSCALL_CUENTA", s::INFO_SYSCALL_CUENTA),
         ("BMO_INFO_SYSCALL_CICLOS", s::INFO_SYSCALL_CICLOS),
+        ("BMO_INFO_CPU_EXT_N", s::INFO_CPU_EXT_N),
+        ("BMO_INFO_CPU_EXT_HAY", s::INFO_CPU_EXT_HAY),
+        ("BMO_INFO_CPU_EXT_USA", s::INFO_CPU_EXT_USA),
+        ("BMO_INFO_CPU_EXT_AVERIAS", s::INFO_CPU_EXT_AVERIAS),
+        ("BMO_INFO_TXT_EXT_NOMBRE", s::INFO_TXT_EXT_NOMBRE),
+        ("BMO_INFO_TXT_EXT_NOTA", s::INFO_TXT_EXT_NOTA),
         ("BMO_INFO_CPU_HILOS", s::INFO_CPU_HILOS),
         ("BMO_INFO_CPU_NUCLEOS", s::INFO_CPU_NUCLEOS),
         ("BMO_INFO_TICKS", s::INFO_TICKS),

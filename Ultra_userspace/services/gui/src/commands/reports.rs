@@ -766,3 +766,154 @@ fn link(s: &mut Output, present: bool, mbit: u64) {
         s.text(b" Mbit");
     }
 }
+
+// -- EL CENSO DE EXTENSIONES ---------------------------------------------
+//
+// ** Por que este informe existe aqui y no solo en el shell de Ring 0:
+// porque a ese shell no se vuelve. `ext` se escribio como orden del kernel, y
+// una vez arranca el escritorio el rescate se niega --con razon-- a echar al
+// que sostiene la casa. O sea que era una tabla correcta que su dueno no podia
+// mirar. Lo dijo el con estas palabras: *"escribi el ext y no conoce"*.
+//
+// ** Y por que se agrupa por ESTADO y no por familia, al reves que el panel del
+// kernel: porque la tinta de esta rejilla va POR LINEA (ver `output.rs`). Con
+// una linea por familia, "lo usa", "no lo usa" y "CONFLICTO" caerian en el
+// mismo renglon y tendrian que compartir color -- o sea que el color no diria
+// nada. Agrupando por estado, cada renglon tiene UN significado y puede tener
+// SU color. La restriccion de la rejilla eligio el diseno, y eligio bien.
+
+/// Los nombres de una mascara, envueltos a la anchura de la rejilla.
+///
+/// El nombre lo da el KERNEL (`INFO_TXT_EXT_NOMBRE | i << 8`): aqui no hay una
+/// copia de treinta y seis cadenas que se desincronice el dia que alguien
+/// anada una fila al censo.
+fn ext_grupo(s: &mut Output, titulo: &[u8], tinta: u8, n: u64, mascara: u64, notas: bool) -> u32 {
+    let mut cuantos = 0u32;
+    let mut col = 0usize;
+    let mut buf = [0u8; 32];
+    let mut nota = [0u8; 96];
+
+    for i in 0..n {
+        if mascara & (1u64 << i) == 0 {
+            continue;
+        }
+        let ln = bmo::info_texto(bmo::INFO_TXT_EXT_NOMBRE | (i << 8), &mut buf);
+        if ln == 0 {
+            continue;
+        }
+        if cuantos == 0 {
+            s.with_ink(tinta);
+            label(s, titulo);
+            col = 18;
+        }
+        cuantos += 1;
+
+        // Una fila por extension cuando se piden los motivos: el motivo es una
+        // frase, y dos frases en un renglon no se leen. Sin motivos van
+        // seguidas, que es como se mira una lista de banderas.
+        if notas {
+            if cuantos > 1 {
+                label(s, b"");
+            }
+            s.text(&buf[..ln]);
+            for _ in ln..16 {
+                s.byte(b' ');
+            }
+            let nn = bmo::info_texto(bmo::INFO_TXT_EXT_NOTA | (i << 8), &mut nota);
+            s.text(&nota[..nn.min(OUT_COLS - 36)]);
+            s.byte(b'\n');
+            continue;
+        }
+
+        // +2 por el espacio de separacion. Si no cabe, se sigue debajo
+        // alineado con la primera: una lista que desborda el margen se pierde
+        // por la derecha sin decirlo.
+        if col + ln + 2 >= OUT_COLS - 2 {
+            s.byte(b'\n');
+            label(s, b"");
+            col = 18;
+        }
+        s.text(&buf[..ln]);
+        s.byte(b' ');
+        s.byte(b' ');
+        col += ln + 2;
+    }
+    if cuantos > 0 && !notas {
+        s.byte(b'\n');
+    }
+    s.with_ink(INK_PLAIN);
+    cuantos
+}
+
+/// `ext` -- que ofrece este silicio y que coge BMO.
+#[inline(never)]
+pub(crate) fn report_ext(s: &mut Output) {
+    let n = bmo::info(bmo::INFO_CPU_EXT_N);
+    if n == 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"    este kernel no sabe censar extensiones (campo 0x31 vacio)\n");
+        s.with_ink(INK_PLAIN);
+        return;
+    }
+    let hay = bmo::info(bmo::INFO_CPU_EXT_HAY);
+    let usa = bmo::info(bmo::INFO_CPU_EXT_USA);
+
+    section(s, b"extensiones: que ofrece el silicio");
+
+    // El orden es el de la decision, no el del manual: primero lo que se
+    // aprovecha, luego lo que esta ahi sin usar --que es la lista para la que
+    // el censo existe-- y al final lo que no hay.
+    let usadas = ext_grupo(s, b"BMO usa", INK_GOOD, n, hay & usa, false);
+    let sobra = ext_grupo(s, b"hay, sin usar", INK_PLAIN, n, hay & !usa, false);
+    let no_hay = ext_grupo(s, b"no hay", INK_PLAIN, n, !hay & !usa, false);
+
+    // ** El conflicto: USADA Y NO DECLARADA. No es una curiosidad, es una
+    // instruccion que dara #UD la primera vez que se ejecute. Va en rojo y va
+    // sola, y si no hay ninguna esta linea NO sale: un renglon que dice "0
+    // conflictos" en cada volcado deja de leerse a la tercera vez.
+    let conflictos = ext_grupo(s, b"CONFLICTO", INK_ERR, n, usa & !hay, false);
+
+    label(s, b"total");
+    s.dec(usadas as u64);
+    s.text(b" usadas de ");
+    s.dec((usadas + sobra) as u64);
+    s.text(b" presentes, ");
+    s.dec(no_hay as u64);
+    s.text(b" ausentes, de ");
+    s.dec(n);
+    s.text(b" censadas\n");
+
+    // -- Los cuatro que tienen que ser cero -------------------------------
+    //
+    // Tres de ellos NO se pueden deducir de las mascaras: son sobre la TABLA y
+    // no sobre el silicio. Un panel que solo supiera de conflictos diria que
+    // todo va bien mientras una fila esta sin motivo escrito.
+    let av = bmo::info(bmo::INFO_CPU_EXT_AVERIAS);
+    let (conf, mudas) = (av & 0xFFFF, (av >> 16) & 0xFFFF);
+    let (rep, sin_sitio) = ((av >> 32) & 0xFFFF, (av >> 48) & 0xFFFF);
+    let averias = conf + mudas + rep + sin_sitio;
+    s.with_ink(if averias == 0 { INK_GOOD } else { INK_ERR });
+    label(s, b"tiene que ser 0");
+    s.text(b"conflictos ");
+    s.dec(conf);
+    s.text(b"   mudas ");
+    s.dec(mudas);
+    s.text(b"   repetidas ");
+    s.dec(rep);
+    s.text(b"   sin sitio ");
+    s.dec(sin_sitio);
+    s.byte(b'\n');
+    s.with_ink(INK_PLAIN);
+
+    // ** La columna que convierte el censo en una decision. Sin ella esto es
+    // trivia: la pregunta no es "que tiene el CPU", es "que me daria".
+    if sobra > 0 {
+        section(s, b"lo que hay y no se coge, y lo que daria");
+        ext_grupo(s, b"", INK_PLAIN, n, hay & !usa, true);
+    }
+    if conflictos > 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"    un CONFLICTO es una instruccion que dara #UD en esta maquina\n");
+        s.with_ink(INK_PLAIN);
+    }
+}

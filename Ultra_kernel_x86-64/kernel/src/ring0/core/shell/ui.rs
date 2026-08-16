@@ -403,7 +403,13 @@ pub(crate) fn shell_help() {
     // usan `info` y `disk`: antes cada comando alineaba a ojo con espacios
     // contados a mano, y bastaba una palabra mas larga para torcer la columna.
     dashboard_log_color("== BMO-X shell ==", SH_TITLE);
-    row("sistema", |l| l.txt("info  cpu  mem  consumo  apps  tasks  disk  net  ls  estratos  cabina  hist"));
+    // ** `ext` se cablo en el despachador y NO se anadio aqui ni a `ORDENES`,
+    // asi que existia sin poder descubrirse: `ext` contestaba, pero quien no
+    // supiera de memoria que existe no tenia como enterarse, y el aviso de
+    // arranque manda literalmente a "escribe ext". Una orden invisible es una
+    // orden que no esta. Arreglado el 2026-08-16, y el propio fallo es el
+    // argumento de por que las dos listas viven en este fichero.
+    row("sistema", |l| l.txt("info  cpu  ext  mem  consumo  apps  tasks  disk  net  ls  estratos  cabina  hist"));
     // `fallo` en su propio renglon y con lo que hace escrito: es la orden que
     // hace falta el dia peor, y ese dia nadie se acuerda de una palabra suelta
     // en una fila de diez. Ver `shell_fallo`.
@@ -446,6 +452,7 @@ pub(crate) fn shell_help() {
 pub(crate) fn similar_command(texto: &str) -> Option<&'static str> {
     const ORDENES: &[&str] = &[
         "help", "ls", "disk", "net", "red", "audio", "sonido", "cabina", "fallo", "estratos", "cpu",
+        "ext", "extensiones", "consumo", "gasto", "w", "apps", "programas",
         "hist", "history", "layout", "cls", "clear", "info", "smp", "tasks", "mem",
         "ktest", "fb", "splash", "bex", "panic", "reboot", "halt",
     ];

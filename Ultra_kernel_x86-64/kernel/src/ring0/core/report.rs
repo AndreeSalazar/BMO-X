@@ -160,10 +160,43 @@ const INFO_FUGAS: u64 = 0x1E;
 /// La fecha de la placa, empaquetada. Espejo de `bmo_abi::...::INFO_FECHA`.
 const INFO_FECHA: u64 = 0x1F;
 
+// -- EL CENSO DE EXTENSIONES, para quien no vive en el shell de Ring 0 --
+//
+// ** Por que estas filas existen: `ext` se escribio SOLO como orden del shell
+// de Ring 0, y al escritorio no se vuelve una vez arranca --`fb::rescue` se
+// niega a echar al que sostiene la casa, y con razon--. O sea que el censo era
+// codigo correcto que su dueno no podia mirar. Ver `shell/extensions.rs`.
+//
+// ** Y por que MASCARAS y no texto ya formateado: el kernel contesta HECHOS y
+// Ring 3 decide la presentacion. Una linea pre-pintada aqui obligaria a todo
+// cliente a la anchura, al orden y al color que eligiera el kernel -- que es
+// exactamente el "cerebro" que esta casa no mete en el kernel. Con dos mascaras
+// el escritorio puede pintar el conflicto en rojo y el shell en su columna, y
+// ninguno de los dos tiene una segunda lista de nombres que se le desincronice.
+const INFO_CPU_EXT_N: u64 = 0x31;
+const INFO_CPU_EXT_HAY: u64 = 0x32;
+const INFO_CPU_EXT_USA: u64 = 0x33;
+/// Los cuatro contadores que tienen que ser CERO, empaquetados como la fecha:
+/// conflictos, mudas, repetidas y sin_sitio, de 16 en 16 bits.
+///
+/// No se derivan de las mascaras --`conflictos` si, los otros tres no-- y por
+/// eso viajan. Un panel que solo pudiera ensenar los conflictos diria que todo
+/// esta bien cuando lo que falla es que una fila no tiene motivo escrito.
+const INFO_CPU_EXT_AVERIAS: u64 = 0x34;
+
 const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
 const INFO_TXT_UARCH: u64 = 0x03;
 const INFO_TXT_FAMILIA: u64 = 0x04;
+/// El nombre de la extension numero `n >> 8`, y su motivo escrito a mano.
+///
+/// El indice viaja en los bits altos del CAMPO, que es el idioma que esta tabla
+/// ya habla con `INFO_MEM_QUIEN_*` y `AUTOPSIA_TEXTO`. Asi los nombres viven en
+/// UN sitio --`Feat::name()`, que el compilador obliga a completar-- y el
+/// escritorio no lleva copia de treinta y seis cadenas que un dia dirian otra
+/// cosa que el kernel.
+const INFO_TXT_EXT_NOMBRE: u64 = 0x05;
+const INFO_TXT_EXT_NOTA: u64 = 0x06;
 
 const PAGE: u64 = 4096;
 
@@ -260,6 +293,34 @@ pub fn campo(n: u64) -> u64 {
         INFO_TICKS => crate::ring0::plat::timer::ticks(),
         INFO_SYSCALL_CUENTA => crate::ring0::syscall::meter::doors(),
         INFO_SYSCALL_CICLOS => crate::ring0::syscall::meter::cycles(),
+        // ** El censo entero cabe en tres numeros porque son treinta y seis
+        // filas: una mascara de 64 bits sobra. Si algun dia [`ALL`] pasa de 64,
+        // `INFO_CPU_EXT_N` es lo que lo dice en voz alta -- por eso viaja el
+        // tamano y no se da por sabido en el otro lado.
+        INFO_CPU_EXT_N => {
+            crate::ring0::cpu_vendor::features::ALL.len() as u64
+        }
+        INFO_CPU_EXT_HAY | INFO_CPU_EXT_USA => {
+            let c = crate::ring0::cpu_vendor::features::censar();
+            let mut m = 0u64;
+            let mut i = 0;
+            while i < c.filas.len() && i < 64 {
+                let f = &c.filas[i];
+                let bit = if n == INFO_CPU_EXT_HAY { f.hay } else { f.uso.is_yes() };
+                if bit {
+                    m |= 1u64 << i;
+                }
+                i += 1;
+            }
+            m
+        }
+        INFO_CPU_EXT_AVERIAS => {
+            let c = crate::ring0::cpu_vendor::features::censar();
+            (c.conflictos as u64)
+                | ((c.mudas as u64) << 16)
+                | ((c.repetidas as u64) << 32)
+                | ((c.sin_sitio as u64) << 48)
+        }
         INFO_FECHA => crate::ring0::dev::clock::ahora(),
         // Medido, no declarado: desde donde lo enlaza el guion hasta el final
         // de su `.bss`, que incluye la pila de 64 KiB.
@@ -344,6 +405,22 @@ pub fn texto(n: u64, trozo: u64) -> u64 {
         INFO_TXT_CPU_NOMBRE => p.name,
         INFO_TXT_UARCH => p.microarch,
         INFO_TXT_FAMILIA => p.family_model,
+        // El indice en los bits altos, igual que `INFO_MEM_QUIEN_*`. Fuera de
+        // rango contesta la cadena vacia, que el llamante ya sabe leer como
+        // final -- pedir la fila 200 no es un error, es el final de la tabla.
+        c if c & 0xFF == INFO_TXT_EXT_NOMBRE || c & 0xFF == INFO_TXT_EXT_NOTA => {
+            let i = (c >> 8) as usize;
+            match crate::ring0::cpu_vendor::features::ALL.get(i) {
+                Some(&f) => {
+                    if c & 0xFF == INFO_TXT_EXT_NOMBRE {
+                        f.name()
+                    } else {
+                        crate::ring0::cpu_vendor::features::usage::of(f).nota()
+                    }
+                }
+                None => "",
+            }
+        }
         _ => "",
     };
     let b = s.as_bytes();

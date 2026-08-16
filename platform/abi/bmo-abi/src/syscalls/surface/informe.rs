@@ -176,6 +176,45 @@ pub const INFO_SYSCALL_CUENTA: u64 = 0x2F;
 /// Ciclos de TSC acumulados dentro de `dispatch`. Ver [`INFO_SYSCALL_CUENTA`].
 pub const INFO_SYSCALL_CICLOS: u64 = 0x30;
 
+/// -- ** EL CENSO DE EXTENSIONES, legible desde Ring 3 ---------------------
+///
+/// Cuantas extensiones cubre el censo, y dos mascaras de bits sobre ESA lista
+/// en ESE orden: bit `i` = la fila `i`. El nombre de cada fila se pide por
+/// texto con [`INFO_TXT_EXT_NOMBRE`].
+///
+/// # Por que existen
+///
+/// El censo se escribio como orden `ext` del shell de Ring 0, y a ese shell no
+/// se vuelve una vez arranca el escritorio -- el rescate `Ctrl+Alt+Esc` se
+/// niega a echar al compositor a proposito. O sea que era una tabla correcta
+/// que su dueno no podia mirar. Estas filas son la respuesta, y son filas de
+/// tabla y no un syscall nuevo, que es para lo que `OP_INFO` existe.
+///
+/// # Por que mascaras y no una linea de texto ya pintada
+///
+/// Porque el kernel contesta HECHOS y quien pinta decide como. Un renglon
+/// pre-formateado ataria a todo cliente al ancho, al orden y al color del
+/// kernel. Con las mascaras, el escritorio pinta el conflicto en rojo y el
+/// shell en su columna, **sin que ninguno de los dos lleve una segunda lista
+/// de nombres** que un dia diga otra cosa.
+pub const INFO_CPU_EXT_N: u64 = 0x31;
+
+/// Bit `i` = el silicio DECLARA la extension `i`.
+pub const INFO_CPU_EXT_HAY: u64 = 0x32;
+
+/// Bit `i` = BMO la USA. `USA & !HAY` es un conflicto: una instruccion que
+/// dara `#UD` en esta maquina.
+pub const INFO_CPU_EXT_USA: u64 = 0x33;
+
+/// Los cuatro contadores que tienen que ser cero, de 16 en 16 bits:
+/// conflictos, mudas, repetidas, sin_sitio.
+///
+/// [!] Solo el primero se puede deducir de las mascaras. Los otros tres son
+/// sobre la TABLA y no sobre el silicio -- una fila sin motivo escrito, una
+/// repetida, una que no cupo -- y sin ellos un panel diria que todo va bien
+/// mirando la mitad.
+pub const INFO_CPU_EXT_AVERIAS: u64 = 0x34;
+
 /// Hilos logicos y nucleos fisicos que el CPU declara.
 pub const INFO_CPU_HILOS: u64 = 0x06;
 
@@ -299,6 +338,22 @@ pub const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
 pub const INFO_TXT_UARCH: u64 = 0x03;
 
 pub const INFO_TXT_FAMILIA: u64 = 0x04;
+
+/// El nombre de la extension `i` del censo: se pide como
+/// `INFO_TXT_EXT_NOMBRE | (i << 8)`.
+///
+/// ** El indice viaja en los bits altos del campo, que es el idioma que esta
+/// superficie ya habla (`INFO_MEM_QUIEN_*`, `AUTOPSIA_TEXTO`). Con esto los
+/// treinta y seis nombres viven **en un solo sitio del arbol** --el `match`
+/// exhaustivo del kernel, que el compilador obliga a completar al anadir una
+/// fila-- en vez de en una copia de Ring 3 que envejece en silencio.
+pub const INFO_TXT_EXT_NOMBRE: u64 = 0x05;
+
+/// El motivo escrito a mano de esa misma fila: por que se usa, o por que no.
+/// Misma forma de indexar. Es la columna que convierte el censo en una
+/// decision en vez de trivia -- y la que el kernel cuenta como `muda` si esta
+/// vacia.
+pub const INFO_TXT_EXT_NOTA: u64 = 0x06;
 
 /// Campos de [`TASK_OP_KLOG_INFO`].
 pub const KLOG_DISPONIBLES: u64 = 0x00;

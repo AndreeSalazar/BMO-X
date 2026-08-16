@@ -210,6 +210,16 @@ pub const INFO_NET_PCI: u64 = 0x2E;
 pub const INFO_SYSCALL_CUENTA: u64 = 0x2F;
 pub const INFO_SYSCALL_CICLOS: u64 = 0x30;
 
+/// El censo de extensiones del CPU, en tres numeros: cuantas filas, que
+/// declara el silicio y que coge BMO. Bit `i` = fila `i`, y el nombre de esa
+/// fila se pide con [`INFO_TXT_EXT_NOMBRE`].
+pub const INFO_CPU_EXT_N: u64 = 0x31;
+pub const INFO_CPU_EXT_HAY: u64 = 0x32;
+pub const INFO_CPU_EXT_USA: u64 = 0x33;
+/// conflictos | mudas<<16 | repetidas<<32 | sin_sitio<<48. Todos cero o hay
+/// algo que arreglar.
+pub const INFO_CPU_EXT_AVERIAS: u64 = 0x34;
+
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;
@@ -324,6 +334,9 @@ pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 pub const INFO_TXT_CPU_NOMBRE: u64 = 0x02;
 pub const INFO_TXT_UARCH: u64 = 0x03;
 pub const INFO_TXT_FAMILIA: u64 = 0x04;
+/// El nombre y el motivo de la fila `i` del censo: `INFO_TXT_EXT_NOMBRE | (i << 8)`.
+pub const INFO_TXT_EXT_NOMBRE: u64 = 0x05;
+pub const INFO_TXT_EXT_NOTA: u64 = 0x06;
 
 // Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
 pub const DIR_OP_SIGUIENTE: u32 = 0x01;

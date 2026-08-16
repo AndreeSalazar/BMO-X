@@ -117,6 +117,26 @@
 #define BMO_INFO_SYSCALL_CUENTA     0x2F
 #define BMO_INFO_SYSCALL_CICLOS     0x30
 
+/* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
+ *
+ * Cuantas filas cubre el censo, y dos mascaras sobre ESA lista en ESE orden:
+ * bit i = fila i. `USA & ~HAY` es un conflicto -- una instruccion que dara
+ * #UD en esta maquina.
+ *
+ * El nombre de la fila i se pide por TEXTO con
+ * `BMO_INFO_TXT_EXT_NOMBRE | (i << 8)`, y su motivo con `..._NOTA`. El indice
+ * en los bits altos del campo es el mismo idioma que ya hablan las filas de
+ * memoria por ranura.
+ *
+ * ** AVERIAS empaqueta los cuatro contadores que tienen que ser cero, de 16 en
+ * 16 bits: conflictos | mudas<<16 | repetidas<<32 | sin_sitio<<48. */
+#define BMO_INFO_CPU_EXT_N          0x31
+#define BMO_INFO_CPU_EXT_HAY        0x32
+#define BMO_INFO_CPU_EXT_USA        0x33
+#define BMO_INFO_CPU_EXT_AVERIAS    0x34
+#define BMO_INFO_TXT_EXT_NOMBRE     0x05
+#define BMO_INFO_TXT_EXT_NOTA       0x06
+
 #define BMO_INFO_CPU_HILOS 0x06
 #define BMO_INFO_CPU_NUCLEOS 0x07
 #define BMO_INFO_TICKS 0x0B
