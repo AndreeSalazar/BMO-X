@@ -81,6 +81,13 @@ pub mod niebla;
 pub mod paleta;
 pub mod torre;
 
+/// El lienzo y el recorte, re-exportados desde `bmo-dibujo`.
+///
+/// Quien pinta la ciudad necesita los dos, y asi no tiene que declarar dos
+/// dependencias para dibujar una cosa. Es re-exportacion y no declaracion: el
+/// tipo es el mismo que usan Ring 3 y el rasterizador.
+pub use bmo_dibujo::{Lienzo, Recorte};
+
 pub use acto::{fotograma, Acto, Fotograma, DURACION_MS};
 pub use encuadre::{componer, Encuadre, Medidas};
 pub use halo::aura;

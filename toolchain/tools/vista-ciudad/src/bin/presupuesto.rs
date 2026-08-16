@@ -28,10 +28,40 @@
 //!   cargo run -p bmo-vista-ciudad --bin presupuesto
 //! ```
 
-use bmo_ciudad::{Camara, Ciudad};
+use bmo_ciudad::{Camara, Ciudad, Color, Lienzo, Recorte};
 
 /// Lo medido en el Ryzen escribiendo al framebuffer. Ver la cabecera.
 const MB_POR_SEGUNDO: f64 = 300.0;
+
+/// **Un lienzo que no pinta: cuenta.**
+///
+/// ** Y ES LO QUE HACE QUE ESTA CUENTA SEA LA DE VERDAD.
+///
+/// Antes esto recortaba a mano dentro del callback --`x.max(0)`, `(x+rw).min(w)`
+/// y una suma-- o sea que media **su propia idea** de lo que el kernel escribe.
+/// Si las dos ideas se separaban, el presupuesto salia bonito y falso; y las dos
+/// ideas SE SEPARARON, que es el fallo del video del 2026-08-15.
+///
+/// Contando desde dentro de un `Lienzo` de verdad, los pixeles que se suman aqui
+/// son exactamente los que Ring 0 escribe, porque el recorte que decide cuales
+/// son es el mismo objeto.
+struct Contador {
+    w: i32,
+    h: i32,
+    px: u64,
+    rects: u64,
+}
+
+impl Lienzo for Contador {
+    fn recorte(&self) -> Recorte {
+        Recorte::nuevo(0, 0, self.w, self.h)
+    }
+
+    fn rect_dentro(&mut self, r: Recorte, _c: Color) {
+        self.rects += 1;
+        self.px += (r.ancho() as u64) * (r.alto() as u64);
+    }
+}
 
 fn main() {
     println!("presupuesto de la ciudad -- {} MB/s al framebuffer\n", MB_POR_SEGUNDO);
@@ -42,21 +72,13 @@ fn main() {
     for (w, h) in [(1920u32, 1080u32), (1600, 900), (1366, 768), (1280, 720)] {
         let mut c = Ciudad::nueva(w as i32, h as i32, 42);
         c.encender(100);
-        let mut px: u64 = 0;
-        let mut rects: u64 = 0;
         // Se cuenta solo lo que cae DENTRO de la pantalla: la ciudad se genera
         // mas ancha que el lienzo a proposito --para que la camara tenga por
-        // donde avanzar-- y lo que queda fuera no se escribe.
-        c.dibujar(Camara::nueva(120), |x, y, rw, rh, _| {
-            let x0 = x.max(0);
-            let y0 = y.max(0);
-            let x1 = (x + rw).min(w as i32);
-            let y1 = (y + rh).min(h as i32);
-            if x1 > x0 && y1 > y0 {
-                px += ((x1 - x0) as u64) * ((y1 - y0) as u64);
-                rects += 1;
-            }
-        });
+        // donde avanzar-- y lo que queda fuera no se escribe. Quien decide donde
+        // esta esa frontera es el lienzo, no esta herramienta.
+        let mut cuenta = Contador { w: w as i32, h: h as i32, px: 0, rects: 0 };
+        c.dibujar(Camara::nueva(120), &mut cuenta);
+        let (px, rects) = (cuenta.px, cuenta.rects);
         let pantalla = (w as u64) * (h as u64);
         let mb = (px * 4) as f64 / 1_000_000.0;
         println!(

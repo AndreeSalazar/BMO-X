@@ -1,80 +1,28 @@
-//! # DIBUJO -- lo que BMO-X no sabia hacer
+//! # DIBUJO -- los adaptadores de Ring 3 al rasterizador compartido
 //!
-//! ## Lo que habia antes de esta carpeta, medido y no supuesto
+//! ## ** ESTA CARPETA SE VACIO EL 2026-08-15, Y ESE ES EL ARREGLO
 //!
-//! `Pantalla` sabia hacer cinco cosas: `punto`, `rect`, `limpiar`, `glifo` y
-//! volcar. **Nada mas.** Todas las "lineas" del escritorio son
-//! `rect(x, y, ancho, 1, color)` --rectangulos de un pixel de alto--, el
-//! degradado son franjas de rects, y las esquinas redondeadas son una prueba
-//! por pixel dentro de un rect. En todo BMO-X **no habia una sola diagonal**.
+//! Aqui vivian `recorte.rs`, `linea.rs`, `curva.rs` y `triangulo.rs`. Ya no:
+//! estan en **`platform/shared/bmo-dibujo`**, que es un crate que alcanzan las
+//! tres orillas.
 //!
-//! Dicho con precision, que es como hay que decirlo: el sistema no dibujaba
-//! mal. **Sabia rellenar rectangulos alineados a los ejes y estampar letras.**
-//! DOOM no cuenta -- trae su propio renderizador y solo hace `memcpy`.
+//! El motivo, con el numero delante. Mientras el rasterizador vivio aqui, el
+//! kernel no podia usarlo --Ring 0 no alcanza Ring 3-- asi que tenia el suyo:
+//! un `fill_rect` con las comprobaciones de limites a mano. Y no comprobaba
+//! igual. Este recortaba; aquel **descartaba el rectangulo entero** en cuanto
+//! una esquina se salia. A 1920x1080 eso eran 2.625 rectangulos tirados por
+//! fotograma y el 7,2% de la pantalla sin escribir nunca, con una franja muerta
+//! de 191 px pegada al borde izquierdo que se ve en el video del arranque.
 //!
-//! ## Por que esto NO vive en `sin_gpu/`
+//! El previsualizador no podia cazarlo porque **ejecutaba la otra regla**. Dos
+//! implementaciones de la misma decision es una que esta mal y nadie sabe cual.
 //!
-//! Fue el primer sitio en el que se penso, y esta mal. La cabecera de esa
-//! carpeta lo dice ella misma: *"todo lo de esta carpeta se borra cuando
-//! llegue la GPU"*, porque lo de alli son apanos de CPU para una tarjeta que
-//! no responde -- el troceado en cajas sucias existe para no copiar 8,3 MB por
-//! fotograma, y el dia que haya `page flip` sobra.
+//! ## Lo que queda aqui, y por que solo esto
 //!
-//! **Un rasterizador de referencia es lo contrario: tiene que SOBREVIVIR a la
-//! GPU**, porque su trabajo entonces empieza. Ver la seccion siguiente.
-//!
-//! ## ** PARA QUE SIRVE ESTO EL DIA QUE HAYA VULKAN
-//!
-//! La pregunta del dueno, y es la correcta: *"si un dia llega a Vulkan, si no
-//! sabe dibujar menos para Vulkan"*.
-//!
-//! Vulkan no da "dibujar". Vulkan **pide** que sepas describir un pipeline de
-//! rasterizacion: triangulo, recorte, interpolacion de atributos, profundidad,
-//! mezcla. Y cuando el driver conteste algo, hace falta poder decir si esta
-//! bien -- que con una GPU es justo lo dificil, porque no se puede parar a
-//! mirar por dentro.
-//!
-//! Por eso cada escalon de aqui lleva **el nombre de su pieza en Vulkan** y se
-//! escribe con **el mismo algoritmo que usa el silicio**, aunque no sea el mas
-//! rapido en una CPU:
-//!
-//! | aqui | alli |
-//! |---|---|
-//! | `Recorte` | `VkRect2D` / `scissor` |
-//! | la funcion de arista | el rasterizador de triangulos |
-//! | la regla top-left | la regla de relleno de D3D y Vulkan, palabra por palabra |
-//! | (escalon 3) baricentricas | lo que interpola un fragment shader |
-//!
-//! O sea que esto **es el oraculo**: misma entrada, dos salidas, comparar. Un
-//! driver de GPU sin implementacion de referencia se depura a ojo, que es
-//! exactamente como se depuro DOOM hasta el 2026-08-13.
-//!
-//! ## La escalera
-//!
-//! ```text
-//!   [x] 0  recorte           el scissor -- lo necesitan todos los demas
-//!   [x] 1  linea             la primera diagonal del sistema
-//!   [x] 1.5 curva            Bezier = polilinea; es lo que pide un grafo
-//!   [x] 2  triangulo         la unidad de la GPU
-//!   [ ] 3  baricentricas     interpolar color/UV = un fragment shader
-//!   [ ] 4  mezcla alfa       ventanas translucidas
-//!   [ ] 5  textura           el sampler
-//!   [ ] 6  transformada 2D   y ahi ya es el vertex stage
-//! ```
-//!
-//! ## El contrato: la geometria NO conoce el destino
-//!
-//! Ninguna de las tres primitivas recibe una `Pantalla`. Emiten por callback
-//! --puntos la linea, tramos el triangulo-- y quien llama decide donde caen.
-//!
-//! Eso compra tres cosas de golpe: se prueba en el anfitrion contra un array
-//! (que es como estan verdes las 24 pruebas de esta carpeta **ejecutadas de
-//! verdad**), sirve igual para pintar en el buffer de una ventana que en el
-//! framebuffer, y el dia de la GPU el mismo codigo alimenta la comparacion sin
-//! tocar una linea.
-//!
-//! Los adaptadores a `Pantalla` viven **aqui abajo y solo aqui**: es el unico
-//! sitio de la carpeta que sabe que existe una pantalla.
+//! Los **adaptadores a `Pantalla`**: el unico sitio del sistema que sabe a la
+//! vez de geometria y de cajas sucias. La geometria no puede saber de cajas
+//! sucias --no existen fuera de Ring 3-- y `Pantalla` no tiene por que saber de
+//! Bezier. Esta carpeta es la costura entre las dos, y por eso no se mudo.
 //!
 //! ## Quien lo usa hoy
 //!
@@ -83,50 +31,22 @@
 //! de rectangulos. Ver el comentario de las aristas alli -- explica por que un
 //! codo no necesitaba esto y una curva si.
 //!
-//! [!] Las pruebas se ejecutan con el arnes: ver `pruebas_sueltas.rs`.
+//! [!] Las pruebas ya no necesitan arnes: `cargo test -p bmo-dibujo`.
 
-mod curva;
-mod linea;
-mod recorte;
-mod triangulo;
-
-pub use curva::{curva, direccion};
-pub use linea::linea;
-pub use recorte::{recortar_segmento, Recorte};
-pub use triangulo::{triangulo, triangulo_suave, Vertice, COBERTURA_LLENA, MUESTRAS};
+pub use bmo_dibujo::{
+    curva, direccion, linea, mezclar, recortar_segmento, triangulo, triangulo_suave, Color, Lienzo,
+    Recorte, Vertice, COBERTURA_LLENA, MUESTRAS,
+};
 
 use crate::Pantalla;
 
-/// Mezcla `frente` sobre `fondo` con `parte` de `total` de cobertura.
-///
-/// Entera y por canal. No hay coma flotante en Ring 3 ni falta que hace: la
-/// cobertura llega como "cuantas muestras de dieciseis", que ya es una fraccion
-/// exacta.
-///
-/// [!] Los canales se mezclan **en el espacio del framebuffer** (sRGB sin
-/// linealizar), que es lo que hace todo el mundo y lo que hace la GPU por
-/// defecto. Es ligeramente incorrecto --mezclar luz de verdad pide linealizar-- y
-/// se deja dicho porque sera la segunda diferencia que aparezca al comparar con
-/// la tarjeta, despues del patron de muestras.
-fn mezclar(frente: u32, fondo: u32, parte: u32, total: u32) -> u32 {
-    let inv = total - parte;
-    let canal = |desp: u32| {
-        let f = (frente >> desp) & 0xFF;
-        let b = (fondo >> desp) & 0xFF;
-        ((f * parte + b * inv) / total) & 0xFF
-    };
-    0xFF00_0000 | (canal(16) << 16) | (canal(8) << 8) | canal(0)
-}
-
-impl Recorte {
+impl Pantalla {
     /// El recorte que cubre la pantalla entera. El caso de siempre, y asi no
     /// hay que escribirlo a mano en cada llamada.
-    pub fn de_pantalla(p: &Pantalla) -> Recorte {
-        Recorte::nuevo(0, 0, p.ancho as i32, p.alto as i32)
+    pub fn recorte(&self) -> Recorte {
+        Recorte::nuevo(0, 0, self.ancho as i32, self.alto as i32)
     }
-}
 
-impl Pantalla {
     /// ** EL RECORTE SIEMPRE SE CRUZA CON LA PANTALLA, y de eso depende lo de
     /// abajo.
     ///
@@ -135,7 +55,7 @@ impl Pantalla {
     /// esa despreocupacion en la garantia que necesitan los adaptadores para
     /// usar el camino caliente.
     fn recorte_seguro(&self, r: &Recorte) -> Recorte {
-        r.interseccion(&Recorte::de_pantalla(self))
+        r.interseccion(&self.recorte())
     }
 
     /// Un segmento de `(xa,ya)` a `(xb,yb)`, recortado a `r`.
@@ -158,13 +78,13 @@ impl Pantalla {
     /// escalon 0 no era solo higiene: **es lo que paga esto**.
     pub fn linea(&self, r: &Recorte, xa: i32, ya: i32, xb: i32, yb: i32, color: u32) {
         let r = self.recorte_seguro(r);
-        let (x0, y0, x1, y1) = match recorte::recortar_segmento(&r, xa, ya, xb, yb) {
+        let (x0, y0, x1, y1) = match recortar_segmento(&r, xa, ya, xb, yb) {
             Some(t) => t,
             None => return,
         };
         let (mx, my) = (x0.min(x1), y0.min(y1));
         self.marcar(mx as u32, my as u32, ((x0 - x1).abs() + 1) as u32, ((y0 - y1).abs() + 1) as u32);
-        linea::linea(&r, x0, y0, x1, y1, |x, y| unsafe {
+        linea(&r, x0, y0, x1, y1, |x, y| unsafe {
             self.punto_sin_comprobar(x as u32, y as u32, color)
         });
     }
@@ -195,7 +115,7 @@ impl Pantalla {
             return;
         }
         self.marcar(caja.x0 as u32, caja.y0 as u32, caja.ancho() as u32, caja.alto() as u32);
-        curva::curva(&r, a, b, c, d, |x, y| unsafe {
+        curva(&r, a, b, c, d, |x, y| unsafe {
             self.punto_sin_comprobar(x as u32, y as u32, color)
         });
     }
@@ -206,7 +126,7 @@ impl Pantalla {
     /// `rect` de un pixel de alto, o sea un relleno de fila seguido. Pintarlo
     /// punto a punto costaria una llamada por pixel para el mismo dibujo.
     pub fn triangulo(&self, r: &Recorte, a: Vertice, b: Vertice, c: Vertice, color: u32) {
-        triangulo::triangulo(r, a, b, c, |y, x0, x1| {
+        triangulo(r, a, b, c, |y, x0, x1| {
             self.rect(x0 as u32, y as u32, (x1 - x0) as u32, 1, color);
         });
     }
@@ -238,11 +158,11 @@ impl Pantalla {
         color: u32,
         fondo: u32,
     ) {
-        triangulo::triangulo_suave(r, a, b, c, |x, y, cob| {
-            let c = if cob >= triangulo::COBERTURA_LLENA {
+        triangulo_suave(r, a, b, c, |x, y, cob| {
+            let c = if cob >= COBERTURA_LLENA {
                 color
             } else {
-                mezclar(color, fondo, cob as u32, triangulo::COBERTURA_LLENA as u32)
+                mezclar(color, fondo, cob as u32, COBERTURA_LLENA as u32)
             };
             self.punto(x as u32, y as u32, c);
         });
@@ -254,5 +174,31 @@ impl Pantalla {
         self.linea(r, a.0, a.1, b.0, b.1, color);
         self.linea(r, b.0, b.1, c.0, c.1, color);
         self.linea(r, c.0, c.1, a.0, a.1, color);
+    }
+}
+
+/// **La pantalla de Ring 3 ES un lienzo**, y por eso el codigo de dibujo que se
+/// escriba contra [`Lienzo`] sirve igual aqui que en el kernel.
+///
+/// [!] **Los dos `rect` se llaman igual, y hay que escribir cual se quiere.**
+/// `Pantalla` tiene un `rect` inherente de toda la vida con coordenadas `u32`,
+/// y el trait trae el suyo con `i32`. Dentro de este `impl` el del trait gana
+/// la resolucion --el compilador lo dijo a la primera-- asi que las llamadas de
+/// aqui abajo van con el nombre del tipo por delante. Fuera de este bloque el
+/// escritorio sigue llamando al inherente sin enterarse de nada.
+///
+/// La puerta del lienzo --la que acepta negativos y recorta-- es la que ve el
+/// codigo generico sobre `impl Lienzo`, que es exactamente el que se quiere
+/// poder compartir con Ring 0.
+impl Lienzo for Pantalla {
+    fn recorte(&self) -> Recorte {
+        Pantalla::recorte(self)
+    }
+
+    fn rect_dentro(&mut self, r: Recorte, color: Color) {
+        // Llega garantizado dentro de la pantalla y no vacio: el trait ya
+        // cruzo el rectangulo con `recorte()`. De ahi que los `as u32` sean
+        // seguros y no una esperanza.
+        Pantalla::rect(self, r.x0 as u32, r.y0 as u32, r.ancho() as u32, r.alto() as u32, color);
     }
 }

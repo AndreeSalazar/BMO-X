@@ -28,6 +28,12 @@ bmo-estratos = { path = "../../platform/drivers/storage/estratos" }
 # de ficheros: es del que carga. Sigue siendo UNA sola implementacion del hash,
 # la misma que usa `bmo-abi`; lo que cambia es que quien la necesita la pide.
 bmo-hash = { path = "../../platform/shared/bmo-hash" }
+# EL RECORTE, y es el mismo que el de Ring 3 y el del previsualizador. Antes el
+# kernel tenia el suyo escrito a mano dentro de `splash.rs` y no coincidia: el
+# de aqui DESCARTABA el rectangulo si una esquina se salia, en vez de
+# recortarlo. Coste medido en el video del 2026-08-15: 2.625 rectangulos
+# tirados por fotograma y el 7,2% de la pantalla sin escribir nunca.
+bmo-dibujo = { path = "../../platform/shared/bmo-dibujo" }
 # La PUERTA: la decision de si un BEX es admisible. Sin alloc y sin
 # dependencias, para que sea la MISMA que corre en el toolchain al compilar.
 # Ver docs/EL_CONTRATO_DE_CARGA.md.
