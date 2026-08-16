@@ -248,8 +248,28 @@ pub fn main(ctx: &mut BootContext) {
     // do it on its first run.
     crate::ring0::core::boot_timeline::mark("splash: logo hold (GATO_MS)");
 
-    // Aterrizar en el dashboard persistente.
-    phase1_ui(ctx);
+    // ** AQUI YA NO SE ATERRIZA EN NADA, y esa era la causa del panel encima de
+    // la ciudad (2026-08-15).
+    //
+    // Esta llamada decia "aterrizar en el dashboard persistente" y era cierta
+    // **cuando la intro bloqueaba**: la animacion terminaba y despues se
+    // aterrizaba. Desde el truco de Santa Monica la intro no espera -- corre
+    // repartida entre los `intro_paso` de mas abajo -- asi que este punto dejo de
+    // ser "despues de la intro" y paso a ser "en mitad de la intro".
+    //
+    // El resultado en el Ryzen: un rectangulo del panel comiendose la esquina
+    // superior con el rotulo `KERNEL LOG` dentro y el gato cortado por la mitad.
+    // Un cambio que nadie toco rompio una llamada que nadie toco.
+    //
+    // Se aterriza donde toca: `intro_cierra()` y acto seguido
+    // `splash_dashboard_init()`, al final de esta funcion. Y por si vuelve a
+    // colarse una llamada asi, el panel ahora se niega a pintarse mientras la
+    // intro tenga la pantalla -- ver `splash_dashboard_init`.
+    if !crate::info::has_fb() {
+        // Sin framebuffer no hay intro que tapar y el panel nunca se pinta; se
+        // dice una vez para que el arranque a ciegas no sea silencioso.
+        phase1_ui(ctx);
+    }
 
     // -- Acto I: RING 0 despierta el hardware (log real) -----------------
     // Los encabezados "==" se pintan en cyan (dash_line_color).

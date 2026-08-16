@@ -1210,6 +1210,32 @@ fn section_label(x: u32, y: u32, text: &str, accent: u32) {
 /// splash finishes -- replaces the cleared screen with a UI that
 /// stays visible for the rest of the kernel's lifetime.
 pub fn splash_dashboard_init() {
+    // ** MIENTRAS LA INTRO ESTA EN PANTALLA, EL PANEL NO SE PINTA (2026-08-15).
+    //
+    // === El bug, y por que el arreglo anterior solo tapo la mitad ===
+    //
+    // Se taparon las FILAS del log y se dio el problema por resuelto. El video
+    // del Ryzen enseno la otra mitad: un rectangulo verdeazulado enorme comiendose
+    // la esquina superior, con el rotulo `KERNEL LOG` dentro y el gato cortado por
+    // la mitad. No eran las filas. Era **el panel entero** -- esta funcion, que
+    // empieza rellenando la pantalla de `VOID` y sigue con cabecera, pie, marco y
+    // corchetes.
+    //
+    // === Y quien la llamaba en mitad de la intro ===
+    //
+    // `phase1_ui`, desde `phase::main`, con el comentario *"aterrizar en el
+    // dashboard persistente"* -- que era verdad **cuando la intro bloqueaba**. En
+    // aquel modelo la animacion terminaba y despues se aterrizaba. Desde el truco
+    // de Santa Monica la intro ya no espera: corre repartida entre los pasos del
+    // arranque, asi que esa llamada dejo de ser "despues" y paso a ser "encima".
+    //
+    // Un cambio que nadie toco rompio una llamada que nadie toco. Por eso el
+    // arreglo va AQUI y no solo en el sitio que llamaba: quien pinta el panel es
+    // el que sabe si tiene derecho a la pantalla, y asi ninguna llamada futura
+    // puede volver a colarse en medio.
+    if intro_en_curso() {
+        return;
+    }
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
@@ -1274,6 +1300,11 @@ pub fn splash_dashboard_log(row: usize, msg: &str) {
 /// y un literal Rust con acentos viajaria en UTF-8, o sea dos glifos raros
 /// donde deberia haber uno.
 pub fn splash_dash_rule(row: usize, label: &str, accent: u32) {
+    // La misma puerta que el resto del panel: esto rellena una franja de `PANEL`
+    // y pintarla sobre la ciudad es el mismo bug con otra forma.
+    if intro_en_curso() {
+        return;
+    }
     let w = unsafe { crate::info::FB_WIDTH };
     if w == 0 || row >= dash_rows() { return; }
     let y = DASH_LOG_TOP + (row as u32) * CHAR_H as u32;
@@ -1346,6 +1377,13 @@ pub fn splash_dashboard_log_color(row: usize, msg: &str, color: u32) {
 /// typed. The caller passes the in-progress line (up to a
 /// reasonable limit). The prompt always starts with "serial > ".
 pub fn splash_dashboard_prompt(line: &str, cursor: usize, blink: bool) {
+    // La tercera puerta del panel. Hoy nadie escribe en el prompt durante la
+    // intro, pero las tres pintan `CHROME` sobre la pantalla y la regla tiene
+    // que ser una sola: **mientras la intro esta, el panel no existe**. Dejar una
+    // sin puerta es dejar el mismo bug esperando a que alguien la llame.
+    if intro_en_curso() {
+        return;
+    }
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 { return; }
