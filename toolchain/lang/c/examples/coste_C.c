@@ -262,24 +262,25 @@ void report(char *label, unsigned long long best, unsigned long long total) {
  * [!] The two readings are themselves two doors, and the kernel counts them.
  * Over a block of tens of thousands that is under a tenth of a percent.
  */
-void report_split(unsigned long long doors0, unsigned long long cycles0,
-                  unsigned long long guarda0, unsigned long long restaura0,
+/* [!] RECIBE DELTAS YA MUESTREADOS, no lineas base. La ventana se cierra en
+ * `main`, antes de que nada imprima. Si esta funcion volviera a leer los
+ * contadores por su cuenta contaria las puertas de consola de sus PROPIOS
+ * `printf` -- que es exactamente el fallo de la v5. */
+void report_split(unsigned long long doors, unsigned long long cycles,
+                  unsigned long long d_guarda, unsigned long long d_restaura,
                   unsigned long long total_per_op) {
-    unsigned long long doors;
     unsigned long long inside;
     unsigned long long guarda;
     unsigned long long restaura;
     unsigned long long contado;
 
-    doors = bmo_info(BMO_INFO_SYSCALL_CUENTA) - doors0;
-
     if (doors == 0) {
         printf("   REPARTO: el kernel no conto ni una puerta\n");
         return;
     }
-    inside = (bmo_info(BMO_INFO_SYSCALL_CICLOS) - cycles0) / doors;
-    guarda = (bmo_info(BMO_INFO_SYSCALL_CICLOS_GUARDA) - guarda0) / doors;
-    restaura = (bmo_info(BMO_INFO_SYSCALL_CICLOS_RESTAURA) - restaura0) / doors;
+    inside = cycles / doors;
+    guarda = d_guarda / doors;
+    restaura = d_restaura / doors;
     contado = inside + guarda + restaura;
 
     printf("   reparto: dentro de dispatch %llu, en el stub %llu\n",
@@ -328,6 +329,8 @@ int main() {
     unsigned long long pelada;
     unsigned long long doors;
     unsigned long long cycles;
+    unsigned long long dguarda;
+    unsigned long long drestaura;
     int round;
     int i;
 
@@ -377,28 +380,44 @@ int main() {
         if (best == 0 || elapsed < best) { best = elapsed; }
         total = total + elapsed;
     }
-    report("3. puerta pelada", best, total);
-    report_split(doors0, cycles0, guarda0, restaura0, best / BATCH);
-    veredicto("puerta ", best / BATCH, BMO_INFO_PRESUPUESTO_PUERTA);
-    /* ** UNA LLAMADA POR SENTENCIA, Y A UN LOCAL. No es estilo: es que la v4
-     * de este fichero calculaba esto en linea, con DOS `bmo_info()` metidos
-     * dentro de un argumento de `veredicto()`, y dio **1116** donde
-     * `report_split` daba 309.
+    /* ** LOS CONTADORES SE MUESTREAN AQUI, ANTES DE QUE NADA IMPRIMA.
      *
-     * Lo que lo delato no fue sospechar del compilador, fue la aritmetica:
-     * 1116 > 895, y `dispatch` es una PARTE de la puerta. Una parte no puede
-     * ser mayor que el todo, asi que el numero no era alto: era imposible.
+     * ESTO ES LO QUE FALLABA, y no era ni el compilador ni la aritmetica.
+     * El metro es acumulativo desde el arranque y se lee como DELTA, asi que
+     * **cuenta todas las puertas que pasen entre las dos lecturas**. Y `printf`
+     * cruza la puerta: una escritura de consola dibuja glifos en el framebuffer
+     * y puede hacer scroll, o sea mover megabytes. Medido: ~2,2 M ciclos por
+     * puerta de consola, ~0,6 ms.
      *
-     * La causa esta documentada en el propio codegen (`agregados.rs`): un
-     * argumento que contiene un `__syscall` usa `rdi`, que es tambien el
-     * registro con el que se pasan argumentos. Anidar puertas dentro de la
-     * lista de argumentos de otra llamada es pisarse. `report_split` nunca se
-     * rompio porque siempre lo hizo asi -- una llamada, un local. */
+     * La v5 leia los contadores DESPUES de imprimir tres lineas, y por eso
+     * `dispatch` salio en **1116** cuando `report_split` --que calcula antes de
+     * imprimir-- daba 309. Los ~53 M de ciclos de diferencia eran las puertas
+     * de la propia consola cayendo dentro de la ventana.
+     *
+     * [!] Y las dos explicaciones que se dieron antes de esta eran FALSAS, y
+     * quedan escritas porque el error es mas util que el acierto:
+     *
+     *   1. "Es un fallo de codegen al anidar llamadas en un argumento." NO.
+     *      Tres sondas en `lang/c/src/tests/puerta.rs` lo reproducen exacto y
+     *      las tres pasan. Se acuso al compilador razonando desde un comentario.
+     *   2. "1116 > 895 es imposible, una parte no excede al todo." TAMPOCO:
+     *      `dispatch` es una MEDIA y el total un MINIMO. Una media inflada por
+     *      expropiaciones puede superar un minimo perfectamente. Lo dice
+     *      `meter.rs`, y se aplico mal.
+     *
+     * La regla que queda: **una ventana de medida se abre y se cierra sin
+     * imprimir nada en medio.** */
     doors = bmo_info(BMO_INFO_SYSCALL_CUENTA) - doors0;
     cycles = bmo_info(BMO_INFO_SYSCALL_CICLOS) - cycles0;
+    dguarda = bmo_info(BMO_INFO_SYSCALL_CICLOS_GUARDA) - guarda0;
+    drestaura = bmo_info(BMO_INFO_SYSCALL_CICLOS_RESTAURA) - restaura0;
+
+    report("3. puerta pelada", best, total);
+    report_split(doors, cycles, dguarda, drestaura, best / BATCH);
     if (doors > 0) {
         veredicto("dispatch", cycles / doors, BMO_INFO_PRESUPUESTO_DISPATCH);
     }
+    veredicto("puerta ", best / BATCH, BMO_INFO_PRESUPUESTO_PUERTA);
     /* Se guarda para juzgar el handle contra la fila 4. */
     pelada = best / BATCH;
 
@@ -427,8 +446,14 @@ int main() {
             if (best == 0 || elapsed < best) { best = elapsed; }
             total = total + elapsed;
         }
+        /* Misma regla que la fila 3: la ventana se cierra ANTES de imprimir. */
+        doors = bmo_info(BMO_INFO_SYSCALL_CUENTA) - doors0;
+        cycles = bmo_info(BMO_INFO_SYSCALL_CICLOS) - cycles0;
+        dguarda = bmo_info(BMO_INFO_SYSCALL_CICLOS_GUARDA) - guarda0;
+        drestaura = bmo_info(BMO_INFO_SYSCALL_CICLOS_RESTAURA) - restaura0;
+
         report("4. puerta+handle", best, total);
-        report_split(doors0, cycles0, guarda0, restaura0, best / BATCH);
+        report_split(doors, cycles, dguarda, drestaura, best / BATCH);
         /* La fila 4 menos la 3 ES la capability, y es la unica cifra de este
          * programa que se juzga como diferencia y no como total. */
         veredicto("handle  ", (best / BATCH) - pelada, BMO_INFO_PRESUPUESTO_HANDLE);

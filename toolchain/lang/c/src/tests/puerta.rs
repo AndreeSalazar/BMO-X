@@ -411,3 +411,79 @@ fn returning_from_main_exits_through_the_door() {
     );
 }
 
+
+// =============== SONDA: llamadas ANIDADAS en lista de argumentos ==========
+//
+// El 2026-08-16 `c/coste.bex` imprimio que `dispatch` costaba 1116 ciclos
+// cuando la puerta ENTERA costaba 895. Una parte mayor que el todo: el numero
+// no era alto, era imposible.
+//
+// La linea que lo produjo tenia esta forma -- dos llamadas metidas DENTRO de
+// un argumento de otra llamada:
+//
+//     veredicto("dispatch", (bmo_info(A) - c0) / (bmo_info(B) - d0), CONST);
+//
+// Mientras que la version que daba el numero BUENO hacia una llamada por
+// sentencia, a un local. La sospecha es un fallo de codegen al anidar, y
+// `codegen/agregados.rs` la alimenta: dice que un argumento con `__syscall`
+// dentro usa `rdi`, que es tambien registro de paso de argumentos.
+//
+// ** ESTO NO SE DA POR BUENO RAZONANDO. Si reproduce, es un fallo de BMO C que
+// afecta a TODOS los `.bex` del arbol, no solo al de coste. Si no reproduce, la
+// sospecha era mia y hay que volver a mirar.
+
+/// Primero el caso general: llamadas normales anidadas en un argumento.
+#[test]
+fn sonda_dos_llamadas_dentro_de_un_argumento() {
+    let out = run_c(
+        "unsigned long long dos() { return 2; } \
+         unsigned long long tres() { return 3; } \
+         void muestra(char *l, unsigned long long v, unsigned long long w) { \
+             printf(\"%s %llu %llu\n\", l, v, w); } \
+         int main() { muestra(\"x\", (dos() - 0) / (tres() - 2), 9); return 0; }",
+    );
+    assert_eq!(out.trim(), "x 2 9", "dos llamadas anidadas en un argumento");
+}
+
+/// Y ahora con la PUERTA dentro, que es la forma exacta del fallo.
+///
+/// `BMO_OP_PID` sobre la tarea actual: el valor da igual, lo que importa es que
+/// las DOS llamadas y los DOS locales sobrevivan a la lista de argumentos.
+#[test]
+fn sonda_dos_puertas_dentro_de_un_argumento() {
+    let out = run_c(
+        "void muestra(char *l, unsigned long long v, unsigned long long w) { \
+             printf(\"%s %llu %llu\n\", l, v, w); } \
+         int main() { \
+             unsigned long long a; unsigned long long b; \
+             a = 0; b = 0; \
+             muestra(\"y\", (__syscall_valor(0, 0xFFFFFFFFFFFFFFFE, 0x0F, 0, 0, 0) - a) \
+                          - (__syscall_valor(0, 0xFFFFFFFFFFFFFFFE, 0x0F, 0, 0, 0) - b), 7); \
+             return 0; }",
+    );
+    // Las dos puertas piden LO MISMO, asi que la resta tiene que dar 0.
+    assert_eq!(out.trim(), "y 0 7", "dos puertas anidadas en un argumento");
+}
+
+/// La forma EXACTA que fallo: el argumento trae dos puertas anidadas **y la
+/// funcion llamada abre otra puerta por dentro**. Eso ultimo es lo que las dos
+/// sondas de arriba NO cubrian.
+#[test]
+fn sonda_argumento_con_puertas_y_callee_que_tambien_llama() {
+    let out = run_c(
+        "void juez(char *l, unsigned long long medido, unsigned long long campo) { \
+             unsigned long long v; \
+             v = __syscall_valor(0, 0xFFFFFFFFFFFFFFFE, 0x0F, campo, 0, 0); \
+             printf(\"%s %llu %llu\n\", l, medido, v - v); } \
+         int main() { \
+             unsigned long long a; unsigned long long b; \
+             a = 1; b = 2; \
+             juez(\"z\", (__syscall_valor(0, 0xFFFFFFFFFFFFFFFE, 0x0F, 0, 0, 0) + 10 - a) \
+                      / (__syscall_valor(0, 0xFFFFFFFFFFFFFFFE, 0x0F, 0, 0, 0) + 5 - b), 3); \
+             return 0; }",
+    );
+    // Las dos puertas dan lo mismo (llamemoslo P): (P+10-1)/(P+5-2) = (P+9)/(P+3).
+    // Con P=0 en el emulador eso es 9/3 = 3. Lo que importa no es el 3: es que
+    // `medido` valga LO MISMO que si se hubiera calculado en un local aparte.
+    assert_eq!(out.trim(), "z 3 0", "la forma exacta de coste_C.c");
+}
