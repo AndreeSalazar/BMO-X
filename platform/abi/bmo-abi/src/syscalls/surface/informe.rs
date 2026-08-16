@@ -203,6 +203,38 @@ pub const INFO_SYSCALL_CICLOS_GUARDA: u64 = 0x35;
 /// Ciclos devolviendo el contexto. Ver [`INFO_SYSCALL_CICLOS_GUARDA`].
 pub const INFO_SYSCALL_CICLOS_RESTAURA: u64 = 0x36;
 
+/// -- ** EL PRESUPUESTO DE CICLOS ------------------------------------------
+///
+/// Lo que una puerta **tiene permitido** costar. El metro dice lo que cuesta
+/// hoy; sin esto, nada en el arbol impide que la proxima pieza lo devuelva a
+/// 2000. Un numero sin contrato es una anecdota.
+///
+/// Cada campo trae DOS numeros empaquetados, `meta << 32 | techo`:
+///
+/// ```text
+///    techo   la ultima medida CONFIRMADA en metal. Cruzarlo es una regresion.
+///    meta    a donde tiene que llegar. No alcanzarla es DEUDA, no fallo.
+/// ```
+///
+/// Van juntos en un campo --como [`INFO_CPU_EXT_AVERIAS`] empaqueta cuatro--
+/// porque separarlos permitiria leer uno y no el otro, que es justo el error
+/// que hace decir *"cumple"* a algo que no llego a la meta.
+///
+/// [!] **No se comprueba en el arranque, y no es un olvido**: al arrancar no se
+/// ha servido ni una puerta y el metro esta vacio. Un presupuesto solo se juzga
+/// contra trafico real, asi que quien lo lee es `c/coste.bex` desde Ring 3 --
+/// que ademas es el unico sitio alcanzable desde el escritorio.
+///
+/// La tabla y el porque de cada cifra viven en
+/// `ring0/syscall/presupuesto.rs`; aqui solo esta la ventana.
+pub const INFO_PRESUPUESTO_PUERTA: u64 = 0x37;
+
+/// Presupuesto de la mitad Rust. Ver [`INFO_PRESUPUESTO_PUERTA`].
+pub const INFO_PRESUPUESTO_DISPATCH: u64 = 0x38;
+
+/// Presupuesto de resolver una capability. Ver [`INFO_PRESUPUESTO_PUERTA`].
+pub const INFO_PRESUPUESTO_HANDLE: u64 = 0x39;
+
 /// -- ** EL CENSO DE EXTENSIONES, legible desde Ring 3 ---------------------
 ///
 /// Cuantas extensiones cubre el censo, y dos mascaras de bits sobre ESA lista

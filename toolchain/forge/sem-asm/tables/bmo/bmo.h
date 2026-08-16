@@ -130,6 +130,23 @@
 #define BMO_INFO_SYSCALL_CICLOS_GUARDA   0x35
 #define BMO_INFO_SYSCALL_CICLOS_RESTAURA 0x36
 
+/* El PRESUPUESTO de ciclos: lo que una puerta TIENE PERMITIDO costar.
+ *
+ * El metro dice lo que cuesta hoy; sin esto nada impide que la proxima pieza
+ * lo devuelva a 2000. Cada campo trae DOS numeros empaquetados:
+ *
+ *     techo = valor & 0xFFFFFFFF     lo que NO puede empeorar (trinquete)
+ *     meta  = valor >> 32            a donde tiene que llegar (la deuda)
+ *
+ * ** Cumplir el techo y no la meta no es estar bien: es estar EN PLAZO.
+ *
+ * Van juntos en un campo a proposito -- separarlos permitiria leer uno y no el
+ * otro, que es justo el error que hace decir "cumple" a lo que no llego. La
+ * tabla y el porque de cada cifra viven en `ring0/syscall/presupuesto.rs`. */
+#define BMO_INFO_PRESUPUESTO_PUERTA      0x37
+#define BMO_INFO_PRESUPUESTO_DISPATCH    0x38
+#define BMO_INFO_PRESUPUESTO_HANDLE      0x39
+
 /* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
  *
  * Cuantas filas cubre el censo, y dos mascaras sobre ESA lista en ESE orden:

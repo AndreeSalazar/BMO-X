@@ -49,6 +49,9 @@ pub use entry::init;
 // despachar, y porque quien busque "cuanto cuesta un syscall" no tiene por que
 // leerse el despachador para encontrarlo.
 pub mod meter;
+// Lo que una puerta TIENE PERMITIDO costar. Va al lado del metro porque uno
+// mide y el otro juzga, y separarlos dejaria el numero sin contrato.
+pub mod presupuesto;
 pub(crate) use ops::*;
 
 /// `MEM_OP_OFRECER` -- lend a memory block to another task. Lives with the

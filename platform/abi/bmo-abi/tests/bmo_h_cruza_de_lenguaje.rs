@@ -95,6 +95,12 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     // dos las escribe el ENSAMBLADOR de `entry.rs` y las lee un `.bex` de C.
     ("BMO_INFO_SYSCALL_CICLOS_GUARDA", "INFO_SYSCALL_CICLOS_GUARDA", 0x35),
     ("BMO_INFO_SYSCALL_CICLOS_RESTAURA", "INFO_SYSCALL_CICLOS_RESTAURA", 0x36),
+    // El presupuesto. Cruza porque lo DECLARA el kernel y lo JUZGA un `.bex`
+    // de C: si los dos lados no leen el mismo campo, el veredicto es de otra
+    // fila y nadie se entera.
+    ("BMO_INFO_PRESUPUESTO_PUERTA", "INFO_PRESUPUESTO_PUERTA", 0x37),
+    ("BMO_INFO_PRESUPUESTO_DISPATCH", "INFO_PRESUPUESTO_DISPATCH", 0x38),
+    ("BMO_INFO_PRESUPUESTO_HANDLE", "INFO_PRESUPUESTO_HANDLE", 0x39),
     // El censo de extensiones. Cruza por el mismo motivo que el metro: lo
     // sirve el kernel y lo leen dos lados distintos -- el escritorio en Rust y
     // cualquier `.bex` de C que quiera saber si tiene RDRAND antes de usarlo.
@@ -223,6 +229,9 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_SYSCALL_CICLOS", s::INFO_SYSCALL_CICLOS),
         ("BMO_INFO_SYSCALL_CICLOS_GUARDA", s::INFO_SYSCALL_CICLOS_GUARDA),
         ("BMO_INFO_SYSCALL_CICLOS_RESTAURA", s::INFO_SYSCALL_CICLOS_RESTAURA),
+        ("BMO_INFO_PRESUPUESTO_PUERTA", s::INFO_PRESUPUESTO_PUERTA),
+        ("BMO_INFO_PRESUPUESTO_DISPATCH", s::INFO_PRESUPUESTO_DISPATCH),
+        ("BMO_INFO_PRESUPUESTO_HANDLE", s::INFO_PRESUPUESTO_HANDLE),
         ("BMO_INFO_CPU_EXT_N", s::INFO_CPU_EXT_N),
         ("BMO_INFO_CPU_EXT_HAY", s::INFO_CPU_EXT_HAY),
         ("BMO_INFO_CPU_EXT_USA", s::INFO_CPU_EXT_USA),
