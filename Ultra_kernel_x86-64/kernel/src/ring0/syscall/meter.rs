@@ -26,6 +26,33 @@
 //! Rust. If it is nearly all of it, the surgery is justified and there is a
 //! number behind it instead of a hypothesis.
 //!
+//! # THE ANSWER, measured on the Ryzen the same day (2026-08-16)
+//!
+//! ```text
+//!    puerta pelada  2663  =  dispatch 318  (12%)  +  stub 2345  (88%)
+//!    puerta+handle  2746  =  dispatch 394         +  stub 2352
+//! ```
+//!
+//! **88% of a door is this file's neighbours, not this file's callers.** The
+//! Rust half -- resolve, dispatch, answer -- is 318 cycles; everything else is
+//! the pushes, the `xsave64`, the `xrstor64` and the `iretq`. The suspects were
+//! correctly named, and the surgery on `entry.rs` now has a number behind it.
+//!
+//! And the number nobody had: **resolving a capability costs 83 cycles, 76 of
+//! them inside `dispatch` and 7 in the stub** (0.3%, noise). The stub does not
+//! know which operation was asked for, which is what the design says. That
+//! split is also what validates the meter: the two quantities moved exactly
+//! where the code that does the work lives.
+//!
+//! [!] `dispatch` is read as a MEAN and the total as a MINIMUM, so 318 is a
+//! ceiling for the Rust half and **2345 is a FLOOR for the stub**. Which way
+//! the bias runs is stated because it happens to run in favour of the
+//! conclusion, and that is exactly when it must be said out loud.
+//!
+//! [!] What is still NOT measured is which of the five pieces of the stub takes
+//! the 2345. That needs another probe, not this one. See
+//! `docs/PYTHON_MAESTRO.md` section 4b.
+//!
 //! # It is read as a DELTA, not as an absolute
 //!
 //! There is no reset operation on purpose. A caller reads the pair before and
