@@ -167,10 +167,46 @@ if alt_alone && (0x80..=0x83).contains(&c) {
                 moved = true;
             }
         }
-        // Ejecutar no se mueve --es el escritorio, no una
-        // ventana-- y sin foco no hay a quien mover. En los dos
-        // casos la tecla se come igual: dejarla pasar mandaria un
-        // Alt+flecha a la linea de comandos.
+        // ** LA TERMINAL, que hasta el 2026-08-16 no se movia.
+        //
+        // Aqui decia *"Ejecutar no se mueve: es el escritorio, no
+        // una ventana"*. Era la descripcion de una limitacion
+        // escrita como si fuera un principio -- y ni siquiera era
+        // cierta: tenia barra de titulo, sombra y esquinas
+        // redondeadas como las demas, solo que no se podia agarrar.
+        // El dueno lo dijo mirandola: *"me gustaria que sea
+        // movible"*.
+        Some(W_RUN) if dsk.win.visible => {
+            let (vx, vy, va, vl) = (
+                dsk.run_box.x, dsk.run_box.y,
+                dsk.run_box.w(), dsk.run_box.h(),
+            );
+            let cambio = if fit {
+                dsk.run_box.chrome.snap(&p, heading)
+            } else {
+                dsk.run_box.chrome.push(&p, heading)
+            };
+            if cambio {
+                // El orden importa y es distinto del de las otras
+                // tres: ahi `uncover` repinta la terminal, que no
+                // se habia movido. Aqui la que se movio ES la
+                // terminal, asi que primero se recolocan sus
+                // medidas y solo despues se borra y se repinta --
+                // al reves, `erase_window` preguntaria por el
+                // color de fondo con la geometria vieja y dejaria
+                // el rastro que este mismo fichero ya cazo tres
+                // veces.
+                dsk.run_relayout();
+                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                dsk.win.top_before = W_RUN;
+                moved = true;
+            }
+        }
+        // Sin foco no hay a quien mover, y la terminal escondida
+        // tampoco. En los dos casos la tecla se come igual:
+        // dejarla pasar mandaria un Alt+flecha a la linea de
+        // comandos.
         _ => {}
     }
     // La ventana se acaba de pintar ENCIMA del conmutador, que

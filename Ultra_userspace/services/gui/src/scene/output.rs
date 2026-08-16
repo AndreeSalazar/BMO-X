@@ -404,9 +404,16 @@ pub(crate) fn paint_output(p: &bmo::Pantalla, c: &RunBox, s: &Output) {
         c.out_h(),
         BOX_BG,
     );
-    // La ventana: las ultimas SAL_ROWS filas, corridas hacia atras por `view`.
-    let base = OUT_HIST - OUT_ROWS - s.view;
-    for f in 0..OUT_ROWS {
+    // La ventana: las ultimas filas QUE CABEN, corridas hacia atras por `view`.
+    //
+    // ** `c.out_rows()` y no `OUT_ROWS`: desde que la terminal se estira, el
+    // numero de filas visibles lo decide el ALTO de la ventana. Con la
+    // constante, agrandar habria pintado texto por debajo del marco --encima
+    // del escritorio y sin nada que lo borre-- y encoger habria dejado un hueco
+    // muerto. Es la misma cuenta que `cabina::visible_rows`.
+    let filas = c.out_rows();
+    let base = OUT_HIST - filas - s.view;
+    for f in 0..filas {
         let color = ink_color(s.ink[base + f]);
         p.texto_bytes(
             c.out_x,

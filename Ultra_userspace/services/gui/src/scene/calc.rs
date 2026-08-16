@@ -112,7 +112,10 @@ impl CalcPad {
         let width = CALC_COLS as u32 * (CALC_BTN + CALC_GAP) + CALC_GAP;
         let height = CALC_ROWS as u32 * (CALC_BTN + CALC_GAP) + CALC_GAP + 56;
         Self {
-            x: c.x + BOX_W + 24,
+            // Al lado de la terminal, sabiendo lo que MIDE ahora y no lo que
+            // media cuando estaba clavada: desde que la ventana se estira,
+            // `BOX_W` es su minimo y no su ancho.
+            x: c.x + c.w() + 24,
             y: c.y,
             width,
             height,

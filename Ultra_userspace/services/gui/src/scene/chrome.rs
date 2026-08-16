@@ -95,6 +95,18 @@ pub(crate) struct Chrome {
     /// fotograma son 1.700 pixeles de memoria de video sin cache para dejarlo
     /// igual.
     pub(crate) hover: Option<Button>,
+    /// ** Se puede CERRAR esta ventana?
+    ///
+    /// Casi siempre si, y por eso es `true` en los dos constructores. La
+    /// excepcion es la TERMINAL: es el unico sitio del escritorio donde se
+    /// escriben ordenes, y al shell de Ring 0 **no se vuelve** una vez el
+    /// compositor arranca. Una aspa que deja la maquina sin linea de ordenes no
+    /// es una libertad, es el mismo error que `fb::rescue` ya se niega a
+    /// cometer: *no se echa al que sostiene la casa*.
+    ///
+    /// Minimizar SI puede, que es lo que de verdad se quiere cuando estorba --
+    /// y de ahi vuelve con Alt+Tab o con su atajo.
+    closable: bool,
 }
 
 impl Chrome {
@@ -135,6 +147,7 @@ impl Chrome {
             saved: None,
             minimized: false,
             hover: None,
+            closable: true,
         }
     }
 
@@ -168,7 +181,14 @@ impl Chrome {
             saved: None,
             minimized: false,
             hover: None,
+            closable: true,
         }
+    }
+
+    /// Esta ventana no lleva aspa. Ver [`Chrome::closable`].
+    pub(crate) fn sin_cerrar(mut self) -> Self {
+        self.closable = false;
+        self
     }
 
     pub(crate) fn contains(&self, px: u32, py: u32) -> bool {
@@ -196,6 +216,12 @@ impl Chrome {
             return None;
         }
         for (i, b) in [Button::Minimize, Button::Maximize, Button::Close].into_iter().enumerate() {
+            // Un boton que no se pinta tampoco se pulsa. Las dos mitades tienen
+            // que mirar la misma bandera o quedaria un aspa invisible que
+            // funciona -- que es peor que un aspa visible.
+            if b == Button::Close && !self.closable {
+                continue;
+            }
             let bx = self.boton_x(i as u32);
             if px >= bx && px < bx + BTN_SIDE {
                 return Some(b);
@@ -476,6 +502,9 @@ impl Chrome {
     /// algo que se dibuja con cuatro `rect`.
     pub(crate) fn paint_buttons(&self, p: &bmo::Pantalla, fondo: u32) {
         for (i, b) in [Button::Minimize, Button::Maximize, Button::Close].into_iter().enumerate() {
+            if b == Button::Close && !self.closable {
+                continue;
+            }
             let bx = self.boton_x(i as u32);
             let by = self.y + 2;
             let height = TITLE_H - 3;
