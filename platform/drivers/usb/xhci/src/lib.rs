@@ -674,8 +674,19 @@ const MAX_SLOTS: usize = 255;
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 struct Ep0Info { valid: bool, ring_phys: u64, ring_virt: *mut u32, pcs: bool, enqueue: usize }
+// ** `pcs: false` Y NO `true`, y no cambia el comportamiento.
+//
+// El PCS de un anillo nuevo vale 1 por el xHCI spec, y por eso estaba escrito
+// asi. Pero esta ranura NO es un anillo: es una ranura vacia (`valid: false`),
+// y nadie la lee sin pasar antes por esa bandera. Al registrarla de verdad,
+// `ep0_reg` escribe la estructura ENTERA con `pcs: true`.
+//
+// Lo que si hacia era caro: un unico campo distinto de cero manda el array
+// entero a `.data` en vez de a `.bss`, o sea que **8 KiB de ceros viajaban
+// dentro de la imagen del kernel** para llevar un bit puesto que nadie mira.
+// Ver `EP_RINGS`, que es este mismo caso multiplicado por treinta y dos.
 static mut EP0_RINGS: [Ep0Info; MAX_SLOTS] = [Ep0Info {
-    valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: true, enqueue: 0
+    valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: false, enqueue: 0
 }; MAX_SLOTS];
 unsafe fn ep0_reg(slot: u8, phys: u64, virt: *mut u32) {
     EP0_RINGS[slot as usize] = Ep0Info { valid: true, ring_phys: phys, ring_virt: virt, pcs: true, enqueue: 0 };
@@ -906,8 +917,19 @@ const MAX_DCI: usize = 32;
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 struct EpRing { valid: bool, ring_phys: u64, ring_virt: *mut u32, pcs: bool, enqueue: usize }
+// ** EL MISMO CASO QUE `EP0_RINGS`, y aqui cuesta 255 KiB.
+//
+// 255 ranuras x 32 endpoints x 32 bytes = 261.120 bytes que vivian en `.data`
+// **por un solo `true`**. Todo lo demas ya era cero, asi que la tabla entera
+// viajaba dentro de la imagen del kernel para llevar un bit por entrada -- un
+// bit que ademas no lee nadie: `ep_ring_mut` filtra por `valid` y
+// `ep_ring_set` reescribe la estructura completa al registrar.
+//
+// [!] Y que quede claro que gana cada cosa: **la RAM reservada es la misma**
+// --`.bss` tambien ocupa-- lo que baja 255 KiB es la IMAGEN del kernel, que va
+// embebida en BOOTX64.EFI y se lee entera en cada arranque.
 static mut EP_RINGS: [[EpRing; MAX_DCI]; MAX_SLOTS] = [[EpRing {
-    valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: true, enqueue: 0
+    valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: false, enqueue: 0
 }; MAX_DCI]; MAX_SLOTS];
 fn ep_ring_mut(slot: u8, dci: u8) -> Option<&'static mut EpRing> {
     if (slot as usize) < MAX_SLOTS && (dci as usize) < MAX_DCI {
