@@ -38,6 +38,11 @@
 
 /// 1 -- pregunta al SILICIO y cuenta lo que contesta.
 pub mod hardware;
+/// 1b -- el CENSO de extensiones. Mismo grupo que [`hardware`] --solo mira--
+/// pero fichero propio: aquel pregunta por un APARATO (disco, red, audio) y
+/// este por el CONJUNTO DE INSTRUCCIONES. Y `hardware.rs` es el que mas crece
+/// del shell; treinta y seis filas mas lo dejarian en mil lineas.
+pub mod extensions;
 /// 2 -- toca el DISCO. El unico grupo donde un fallo se lleva datos.
 pub mod files;
 /// 3 -- PINTA. Se puede repetir, por eso va antes que lo irreversible.
