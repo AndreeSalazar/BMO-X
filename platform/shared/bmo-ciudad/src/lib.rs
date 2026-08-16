@@ -12,6 +12,7 @@
 //!    azar.rs     xorshift + el revoltijo de las ventanas.
 //!    torre.rs    que ES una torre y como se pinta su fachada.
 //!    ciudad.rs   cuantas hay, donde, y el cielo.
+//!    niebla.rs   la bruma que despega los planos, y los jirones que cruzan.
 //!    camara.rs   el paralaje: cuanto se ha movido cada capa.
 //!    acto.rs     el GUION: que hay en pantalla en el milisegundo N.
 //! ```
@@ -65,6 +66,7 @@ pub mod acto;
 pub mod azar;
 pub mod camara;
 pub mod ciudad;
+pub mod niebla;
 pub mod paleta;
 pub mod torre;
 

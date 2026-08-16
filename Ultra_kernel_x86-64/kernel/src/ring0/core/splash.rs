@@ -642,14 +642,29 @@ fn pintar_escena(w: u32, h: u32, f: &bmo_ciudad::Fotograma) {
         }
     }
 
-    // -- EL GATO, encendiendose por encima.
+    // -- EL GATO, encendiendose por encima Y CON SU PROPIO RITMO.
+    //
+    // ** El flote es lo que lo separa del fondo de verdad. Dos planos quietos
+    // uno sobre otro se leen como un collage por mucho que tengan brillos
+    // distintos; en cuanto uno se mueve **a su ritmo**, el ojo los separa solo.
+    // Es la misma pista que el paralaje, aplicada al primer plano -- y por eso
+    // el periodo (2,6 s) no es multiplo de nada de la camara: si coincidieran,
+    // el gato y la ciudad se moverian a compas y volverian a parecer lo mismo.
+    //
+    // El kanji flota con el, y el titulo NO: el titulo es tipografia, y una
+    // tipografia que se mueve se lee como un fallo de sincronia, no como vida.
     if f.gato_alfa > 0 {
-        draw_gato_encendido(gx, gy, escala, f.gato_alfa, f.ojos_alfa, f.negro);
+        let gy = (gy as i32 + f.gato_flote).max(0) as u32;
+        let ky = (ky as i32 + f.gato_flote).max(0) as u32;
+        // El latido del neon va SOBRE el brillo de los ojos, con tope: un neon
+        // perfectamente estable no parece neon, parece un LED.
+        let ojos = (f.ojos_alfa + f.ojos_pulso).min(255);
+        draw_gato_encendido(gx, gy, escala, f.gato_alfa, ojos, f.negro);
         draw_kanji(
             gx + gw + hueco_k,
             ky,
             escala,
-            mezcla(mezcla(0xFF1A1730, ACCENT, f.ojos_alfa, 255), NEGRO, f.negro, 255),
+            mezcla(mezcla(0xFF1A1730, ACCENT, ojos, 255), NEGRO, f.negro, 255),
         );
         // El titulo entra con el trazo: es parte del gato, no de la ciudad.
         let ty = gy + gh + HUECO;
