@@ -114,6 +114,12 @@ pub enum Acto {
     /// Se repite indefinidamente. Es el unico acto sin final propio: lo termina
     /// el arranque cuando ya no le queda nada que tapar.
     Espera,
+    /// **La camara vuelve al encuadre de la entrada.** El bucle se corta donde
+    /// pille, asi que lo primero del final es volver a casa.
+    Regreso,
+    /// **La firma**: el logo quieto un instante, con el neon arriba. Es lo que
+    /// separa una animacion pasando de una marca presentandose.
+    Presenta,
     /// Los ojos toman el control: su cian crece hasta comerse la pantalla.
     Ojos,
     /// Todo negro, y el terminal entrando.
@@ -296,42 +302,137 @@ fn espera(ms: u32) -> Fotograma {
     }
 }
 
-/// Cuanto dura el cierre, en ms. Son los dos ultimos actos.
-pub const CIERRE_MS: u32 = DURACION_MS - FIN_GATO;
+// ?????? LA PRESENTACION ?????????????????????????????????????????????????????
+//
+// ** LO QUE FALTABA: EL BUCLE NO SE DESPEDIA, SE CORTABA.
+//
+// Hasta aqui el final era: los ojos crecen, todo a negro, escritorio. Y eso
+// empalmaba directamente con lo que hubiera en pantalla en ese instante -- que
+// en un bucle es **cualquier sitio**: la camara podia estar a medio viaje, con
+// el encuadre corrido y la ciudad a un lado.
+//
+// El dueno lo pidio con las palabras exactas: *"el splash avance el loop
+// infinito como siempre, y luego cuando llega la luz SE REGRESA DE NUEVO para
+// presentarse como BMO-X con su gato, y luego la pantalla desaparece con el
+// escritorio listo"*.
+//
+// O sea que el final tiene tres tiempos y no dos:
+//
+//   1. SE REGRESA. La camara vuelve al encuadre de la entrada. Es lo que
+//      convierte un bucle cortado en una toma que cierra donde abrio.
+//   2. SE PRESENTA. El neon sube y el logo se queda: BMO-X, el gato, el kanji.
+//      Un instante quieto, que es lo que hace que se lea como una firma y no
+//      como un fotograma mas del bucle.
+//   3. DESAPARECE. Los ojos toman el control, todo a negro, y el escritorio.
+//
+// ** Y ESTO CUESTA TIEMPO DE ARRANQUE, que es lo unico que cuesta.
+//
+// El cierre es el unico tramo de la intro que ESPERA de verdad -- puede,
+// porque a esas alturas ya no esconde trabajo. Estaba en 900 ms y sube a
+// `CIERRE_MS`. Lo que se anade es el regreso mas la pausa de la firma, y va en
+// constantes con el precio escrito para que bajarlo sea una decision de una
+// linea y no una arqueologia.
 
-/// **El final: los ojos toman el control y todo se va a negro.**
+/// Cuanto tarda la camara en volver al encuadre de la entrada.
 ///
-/// `d` cuenta desde CERO, en el instante en que el arranque decide que ya no
-/// tiene nada que tapar. Antes esto vivia dentro de [`fotograma`] y habia que
-/// llamarlo con `FIN_GATO + d`, o sea sabiendose de memoria por donde iba el
-/// guion; y como el arranque de verdad nunca llegaba a ese milisegundo, el
-/// cierre **saltaba por encima del acto del gato** y el logo solo se veia
-/// durante los ultimos 900 ms.
+/// Medio segundo: lo justo para que se lea como un movimiento y no como un
+/// corte. Mas y se nota que la maquina esta esperando; menos y es un salto.
+pub const REGRESO_MS: u32 = 500;
+
+/// Cuanto se queda la firma quieta antes de apagarse.
 ///
-/// Ahora son dos funciones porque son dos preguntas: `fotograma` contesta *que
-/// se ensena mientras trabajo* y esta contesta *como me despido*.
-pub fn cierre(d: u32) -> Fotograma {
+/// ** Y ESTE ES EL UNICO NUMERO PURAMENTE DE GUSTO DEL GUION.
+///
+/// No hace ningun trabajo: es la pausa que separa "una animacion pasando" de
+/// "una marca presentandose". Sin ella el logo se apaga en el mismo instante en
+/// que termina de componerse y no da tiempo a leerlo.
+pub const FIRMA_MS: u32 = 400;
+
+/// Cuanto dura el cierre entero, en ms.
+///
+/// [!] **Es tiempo de arranque puro.** Son los milisegundos que la maquina
+/// tarda de mas en darte el escritorio, y se pagan enteros: aqui ya no hay
+/// trabajo debajo que tapar. Eran 900 con el final a secas; con el regreso y la
+/// firma son 1.800.
+pub const CIERRE_MS: u32 = REGRESO_MS + FIRMA_MS + (FIN_OJOS - FIN_GATO) + (DURACION_MS - FIN_OJOS);
+
+/// **El final: la camara vuelve, BMO-X se presenta, y la pantalla desaparece.**
+///
+/// * `d` cuenta desde CERO, en el instante en que el arranque decide que ya no
+///   tiene nada que tapar.
+/// * `avance_desde` es donde estaba la camara al entrar. **Hay que decirselo**
+///   porque el bucle no acaba en ningun sitio fijo: se corta donde pille, y
+///   volver a casa sin saber de donde se sale es un salto.
+///
+/// Antes esto vivia dentro de [`fotograma`] y habia que llamarlo con
+/// `FIN_GATO + d`, o sea sabiendose de memoria por donde iba el guion; y como el
+/// arranque de verdad nunca llegaba a ese milisegundo, el cierre **saltaba por
+/// encima del acto del gato** y el logo solo se veia durante los ultimos 900 ms.
+///
+/// Son dos funciones porque son dos preguntas: `fotograma` contesta *que se
+/// ensena mientras trabajo* y esta contesta *como me despido*.
+pub fn cierre(d: u32, avance_desde: i32) -> Fotograma {
+    // El encuadre de la entrada: donde estaba la camara cuando el gato acabo de
+    // encenderse. Es el sitio para el que esta compuesta la escena, y por eso es
+    // el sitio al que se vuelve.
+    let casa = (FIN_GATO as i32) * 120 / 1000;
     let base = espera(FIN_GATO + d);
-    let dur_ojos = FIN_OJOS - FIN_GATO;
-    if d < dur_ojos {
-        // El destello crece y el negro empieza a entrar por detras. Se solapan a
-        // proposito: el cian no se apaga, **se lo traga el negro**, que es lo
-        // que se pidio -- el gato toma el control y todo se vuelve negro.
+
+    // -- 1. SE REGRESA.
+    if d < REGRESO_MS {
+        // Interpolacion entera de donde estaba a donde va. `rampa` no sirve
+        // aqui: trabaja en `u32` y el avance puede ir hacia abajo o hacia
+        // arriba segun donde pillara el bucle.
+        let t = d as i32;
+        let m = REGRESO_MS as i32;
         return Fotograma {
-            acto: Acto::Ojos,
-            destello: rampa(0, 255, d, dur_ojos),
-            negro: rampa(0, 200, d, dur_ojos),
+            acto: Acto::Regreso,
+            avance: avance_desde + (casa - avance_desde) * t / m,
             ..base
         };
     }
-    let d2 = d.saturating_sub(dur_ojos);
-    let dur = CIERRE_MS - dur_ojos;
+
+    // -- 2. SE PRESENTA. La camara ya esta en casa y se queda.
+    let d = d - REGRESO_MS;
+    if d < FIRMA_MS {
+        return Fotograma {
+            acto: Acto::Presenta,
+            avance: casa,
+            // El neon sube al maximo y se queda: es el gesto de "aqui estoy".
+            // Sin esto la firma es el mismo fotograma del bucle pero parado, y
+            // un fotograma parado se lee como que la maquina se colgo.
+            ojos_pulso: rampa(base.ojos_pulso, 60, d, FIRMA_MS),
+            ..base
+        };
+    }
+
+    let d = d - FIRMA_MS;
+    let dur_ojos = FIN_OJOS - FIN_GATO;
+    if d < dur_ojos {
+        // -- 3. DESAPARECE. El destello crece y el negro empieza a entrar por
+        // detras. Se solapan a proposito: el cian no se apaga, **se lo traga el
+        // negro**, que es lo que se pidio -- el gato toma el control y todo se
+        // vuelve negro.
+        return Fotograma {
+            acto: Acto::Ojos,
+            avance: casa,
+            destello: rampa(0, 255, d, dur_ojos),
+            negro: rampa(0, 200, d, dur_ojos),
+            ojos_pulso: 60,
+            ..base
+        };
+    }
+
+    let d = d.saturating_sub(dur_ojos);
+    let dur = DURACION_MS - FIN_OJOS;
     Fotograma {
         acto: Acto::Terminal,
+        avance: casa,
         // El destello se retira mientras el negro acaba de cerrar.
-        destello: rampa(255, 0, d2, dur / 2),
-        negro: rampa(200, 255, d2, dur / 2),
-        terminal_pct: rampa(0, 100, d2, dur),
+        destello: rampa(255, 0, d, dur / 2),
+        negro: rampa(200, 255, d, dur / 2),
+        terminal_pct: rampa(0, 100, d, dur),
+        ojos_pulso: 60,
         ..base
     }
 }
@@ -375,9 +476,9 @@ mod pruebas {
     #[test]
     fn el_cierre_no_da_saltos() {
         const TOPE: i64 = 40;
-        let mut ant = cierre(0);
+        let mut ant = cierre(0, 400);
         for d in 1..=CIERRE_MS {
-            let f = cierre(d);
+            let f = cierre(d, 400);
             let salto = |a: u32, b: u32| (a as i64 - b as i64).abs();
             assert!(salto(f.destello, ant.destello) <= TOPE, "el destello salta en {}", d);
             assert!(salto(f.negro, ant.negro) <= TOPE, "el negro salta en {}", d);
@@ -393,9 +494,18 @@ mod pruebas {
     /// termina, que es el peor momento para que parezca que algo fallo.
     #[test]
     fn el_cierre_empalma_con_la_espera() {
+        // Se cierra desde tres sitios distintos del bucle, porque el bucle se
+        // corta donde pille: al principio, a media ida y a media vuelta.
+        for corte in [0u32, 6_000, 18_000, 45_000] {
+            let ultimo = fotograma(FIN_GATO + corte);
+            let primero = cierre(0, ultimo.avance);
+            assert_eq!(
+                primero.avance, ultimo.avance,
+                "la camara da un tiron al cerrar desde el ms {}", corte
+            );
+        }
         let ultimo = fotograma(FIN_GATO);
-        let primero = cierre(0);
-        assert_eq!(primero.avance, ultimo.avance, "la camara da un tiron al cerrar");
+        let primero = cierre(0, ultimo.avance);
         assert_eq!(primero.gato_alfa, ultimo.gato_alfa);
         assert_eq!(primero.destello, 0, "el cierre empieza con el destello ya encendido");
         assert_eq!(primero.negro, 0, "el cierre empieza con la pantalla ya apagada");
@@ -409,10 +519,12 @@ mod pruebas {
             Acto::Ciudad => 0,
             Acto::Gato => 1,
             Acto::Espera => 2,
-            Acto::Ojos => 3,
-            Acto::Terminal => 4,
+            Acto::Regreso => 3,
+            Acto::Presenta => 4,
+            Acto::Ojos => 5,
+            Acto::Terminal => 6,
         };
-        let mut vistos = [false; 5];
+        let mut vistos = [false; 7];
         let mut ultimo = 0;
         for ms in 0..=LARGO_MS {
             let i = idx(fotograma(ms).acto);
@@ -421,7 +533,7 @@ mod pruebas {
             vistos[i] = true;
         }
         for d in 0..=CIERRE_MS {
-            vistos[idx(cierre(d).acto)] = true;
+            vistos[idx(cierre(d, 400).acto)] = true;
         }
         assert!(vistos.iter().all(|&v| v), "hay un acto que no llega a verse");
     }
@@ -499,7 +611,7 @@ mod pruebas {
     /// la ciudad.
     #[test]
     fn acaba_en_negro_y_con_el_terminal_dentro() {
-        let f = cierre(CIERRE_MS);
+        let f = cierre(CIERRE_MS, 400);
         assert_eq!(f.negro, 255);
         assert_eq!(f.terminal_pct, 100);
         assert_eq!(f.destello, 0);
@@ -509,8 +621,8 @@ mod pruebas {
     /// fotograma. Quien llama no tiene que comprobar el reloj.
     #[test]
     fn pasarse_del_final_devuelve_el_ultimo() {
-        let a = cierre(CIERRE_MS);
-        let b = cierre(CIERRE_MS * 10);
+        let a = cierre(CIERRE_MS, 400);
+        let b = cierre(CIERRE_MS * 10, 400);
         assert_eq!((a.negro, a.terminal_pct), (b.negro, b.terminal_pct));
     }
 
@@ -530,6 +642,87 @@ mod pruebas {
             }
         }
         assert!(hallado, "el trazo nunca paso por la mitad");
+    }
+
+    /// ** EL REGRESO VUELVE A CASA VENGA DE DONDE VENGA.
+    ///
+    /// Es la prueba que justifica que `cierre` reciba el avance en vez de
+    /// suponerlo: el bucle se corta **donde pille**, y la camara puede estar en
+    /// cualquier punto del vaiven. Si el regreso no acabara siempre en el mismo
+    /// encuadre, la firma saldria descentrada segun lo que hubiera tardado el
+    /// arranque -- o sea, distinta en cada maquina y en cada arranque.
+    #[test]
+    fn el_regreso_vuelve_a_casa_venga_de_donde_venga() {
+        let casa = (FIN_GATO as i32) * 120 / 1000;
+        for desde in [0i32, 180, 300, 500, 579] {
+            let f = cierre(REGRESO_MS, desde);
+            assert_eq!(
+                f.avance, casa,
+                "saliendo de {} la camara no llego a casa: acabo en {}",
+                desde, f.avance
+            );
+        }
+    }
+
+    /// Y no da un tiron al empezar: el primer fotograma del regreso esta donde
+    /// estaba el bucle.
+    #[test]
+    fn el_regreso_arranca_donde_estaba_la_camara() {
+        for desde in [0i32, 180, 300, 579] {
+            assert_eq!(cierre(0, desde).avance, desde);
+        }
+    }
+
+    /// ** LA FIRMA ESTA QUIETA. Es lo que la hace firma.
+    ///
+    /// Desde que la camara llega a casa hasta que la pantalla se apaga, el
+    /// encuadre no se mueve un pixel. Si se moviera, el logo se leeria como un
+    /// fotograma mas del bucle en vez de como la marca presentandose.
+    #[test]
+    fn la_firma_y_el_apagado_no_mueven_la_camara() {
+        let casa = (FIN_GATO as i32) * 120 / 1000;
+        for d in REGRESO_MS..=CIERRE_MS {
+            assert_eq!(
+                cierre(d, 500).avance,
+                casa,
+                "la camara se movio en el ms {} del cierre",
+                d
+            );
+        }
+    }
+
+    /// El neon SUBE en la firma. Es el gesto de "aqui estoy", y sin el la firma
+    /// es un fotograma parado -- que a ojo se lee como que la maquina se colgo.
+    #[test]
+    fn el_neon_sube_en_la_firma() {
+        let entrando = cierre(REGRESO_MS, 400).ojos_pulso;
+        let firmado = cierre(REGRESO_MS + FIRMA_MS, 400).ojos_pulso;
+        assert!(
+            firmado > entrando,
+            "el neon no subio en la firma: {} -> {}",
+            entrando,
+            firmado
+        );
+    }
+
+    /// ** Y LA CAMARA NO DA SALTOS EN NINGUN PUNTO DEL CIERRE, salga de donde
+    /// salga el bucle. Un tiron aqui es lo ultimo que se ve del arranque.
+    #[test]
+    fn el_cierre_no_mueve_la_camara_a_saltos() {
+        for desde in [0i32, 180, 400, 579] {
+            let mut ant = cierre(0, desde).avance;
+            for d in 1..=CIERRE_MS {
+                let a = cierre(d, desde).avance;
+                assert!(
+                    (a - ant).abs() <= 2,
+                    "saliendo de {}, la camara salto {} px en el ms {}",
+                    desde,
+                    (a - ant).abs(),
+                    d
+                );
+                ant = a;
+            }
+        }
     }
 
     /// ** EL GATO LLEGA A ENCENDERSE ENTERO, y esta prueba nace del video del

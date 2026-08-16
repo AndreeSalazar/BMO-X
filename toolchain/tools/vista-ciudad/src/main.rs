@@ -38,7 +38,9 @@
 //! ## Uso
 //!
 //! ```text
-//!   cargo run -p bmo-vista-ciudad -- [ancho] [alto] [ms] [salida.ppm]
+//!   cargo run -p bmo-vista-ciudad -- [ancho] [alto] [ms|cMS] [salida.ppm]
+//!
+//! `1500` es un instante del bucle de trabajo; `c500`, uno del CIERRE.
 //! ```
 //!
 //! Sin argumentos: 1920x1080, el instante en que el gato esta entero, a
@@ -172,10 +174,30 @@ fn main() {
     let h = leer(2, 1080);
     // Por defecto, el instante en que el gato ya esta entero y los ojos
     // encendidos: es el fotograma que hay que juzgar.
-    let ms = leer(3, bmo_ciudad::acto::FIN_GATO);
+    // ** EL INSTANTE, y puede ser de los DOS guiones.
+    //
+    // `1500` es el milisegundo 1.500 del bucle de trabajo. `c500` es el
+    // milisegundo 500 del CIERRE -- el regreso de la camara, la firma y el
+    // apagado. Sin esta letra el final no se podia ver sin arrancar la maquina,
+    // que es justo lo que esta herramienta existe para evitar: la presentacion
+    // es la parte mas "de ojo" del arranque entero.
+    let crudo = arg.get(3).cloned().unwrap_or_default();
+    let es_cierre = crudo.starts_with('c');
+    let ms = crudo
+        .trim_start_matches('c')
+        .parse()
+        .unwrap_or(bmo_ciudad::acto::FIN_GATO);
     let salida = arg.get(4).cloned().unwrap_or_else(|| "vista.ppm".into());
 
-    let f = bmo_ciudad::fotograma(ms);
+    let f = if es_cierre {
+        // De donde viene la camara: se simula un bucle que se corto a media ida,
+        // que es el caso interesante -- si el regreso funciona desde ahi,
+        // funciona desde cualquier sitio.
+        let desde = bmo_ciudad::fotograma(bmo_ciudad::acto::FIN_GATO + 6_000).avance;
+        bmo_ciudad::acto::cierre(ms, desde)
+    } else {
+        bmo_ciudad::fotograma(ms)
+    };
     let mut l = Papel::nuevo(w, h);
     let mut c = Ciudad::nueva(w as i32, h as i32, ((w as u64) << 20) | h as u64);
     c.encender(100);

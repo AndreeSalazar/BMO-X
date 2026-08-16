@@ -436,7 +436,40 @@ pub fn intro_empieza() {
 /// **la ciudad encendiendose ES el arranque ocurriendo**, no una animacion que
 /// finge acompanarlo. Un subsistema que tarda deja su tramo de ciudad a oscuras
 /// mas tiempo, y eso es informacion de verdad.
+/// **Anota lo que el kernel lleva hecho. No pinta.**
+///
+/// ** ESTA FUNCION EXISTE PARA SEPARAR DOS RELOJES QUE NO SON EL MISMO.
+///
+/// `intro_paso` hacia las dos cosas a la vez: apuntaba el progreso Y pintaba un
+/// fotograma. Con eso **la animacion avanzaba solo donde el arranque decidia
+/// llamar**, y el arranque llama donde le viene bien a el: doce veces en toda
+/// la fase, muy juntas al principio y con segundos de silencio en medio. La
+/// pantalla se quedaba congelada en los huecos.
+///
+/// Son dos preguntas distintas y ahora son dos funciones:
+///
+/// ```text
+///   intro_progreso(pct)   <- lo que el KERNEL lleva hecho. Enciende torres.
+///   intro_latido(libres)  <- que la ANIMACION avance. Mira el reloj y pinta.
+/// ```
+///
+/// El progreso es un dato: se apunta y no cuesta nada, asi que se puede llamar
+/// tantas veces como haga falta y desde donde sea. Pintar cuesta milisegundos,
+/// y por eso tiene su propia puerta con su propia regla.
+pub fn intro_progreso(pct: u32) {
+    unsafe { INTRO_PCT = pct.min(100) };
+}
+
+/// **Anota el progreso y pinta un fotograma.** Es `intro_progreso` mas un
+/// fotograma, y se queda por comodidad: en los bordes de fase el arranque
+/// quiere las dos cosas.
 pub fn intro_paso(pct: u32) {
+    intro_progreso(pct);
+    pintar_ahora();
+}
+
+/// Un fotograma con el reloj de ahora y el progreso que haya apuntado.
+fn pintar_ahora() {
     let w = unsafe { crate::info::FB_WIDTH };
     let h = unsafe { crate::info::FB_HEIGHT };
     if w == 0 || h == 0 {
@@ -449,7 +482,6 @@ pub fn intro_paso(pct: u32) {
     // El tiempo manda en la camara y en el gato; el PROGRESO manda en la ciudad.
     // Son dos relojes distintos a proposito: uno cuenta lo que se ve, el otro
     // cuenta lo que pasa.
-    unsafe { INTRO_PCT = pct.min(100) };
     // [!] **Y AQUI YA NO SE RECORTA EL RELOJ.** Estaba `ms_desde(t0).min(
     // DURACION_MS)`, o sea que pasados 2,4 segundos el guion recibia siempre el
     // mismo milisegundo y contestaba siempre el mismo fotograma: una foto. El
@@ -457,7 +489,7 @@ pub fn intro_paso(pct: u32) {
     // que hay que darle es la hora de verdad.
     let ms = ms_desde(t0);
     let mut f = bmo_ciudad::fotograma(ms);
-    f.ciudad_pct = pct.min(100);
+    f.ciudad_pct = unsafe { INTRO_PCT };
     fotograma_a_pantalla(w, h, &f);
 }
 
@@ -504,7 +536,7 @@ pub fn intro_latido(ms_libres: u32) -> bool {
         return false;
     }
     let t = tsc_read();
-    intro_paso(unsafe { INTRO_PCT });
+    pintar_ahora();
     let gastado = ms_desde(t);
     unsafe {
         if gastado > INTRO_COSTE_MS {
@@ -536,13 +568,21 @@ pub fn intro_cierra() {
     //
     // Ahora son dos guiones: `fotograma` mientras hay trabajo --con su espera
     // que se repite-- y `cierre` para despedirse, contando desde cero.
+    // ** DE DONDE VIENE LA CAMARA. El bucle no acaba en ningun sitio fijo: se
+    // corta cuando el kernel termina, y eso puede pillar el vaiven en
+    // cualquier punto. El cierre necesita ese numero para volver a casa sin dar
+    // un tiron -- ver `acto::cierre`.
+    let avance_desde = {
+        let ms = ms_desde(unsafe { INTRO_T0 });
+        bmo_ciudad::fotograma(ms).avance
+    };
     let dur = bmo_ciudad::acto::CIERRE_MS;
     loop {
         let d = ms_desde(t0);
         if d >= dur {
             break;
         }
-        let f = bmo_ciudad::acto::cierre(d);
+        let f = bmo_ciudad::acto::cierre(d, avance_desde);
         fotograma_a_pantalla(w, h, &f);
     }
     // El borron final va directo a la pantalla: es una sola cosa y no hay
