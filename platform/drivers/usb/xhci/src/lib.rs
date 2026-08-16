@@ -5,6 +5,12 @@
 #![no_std]
 #![allow(static_mut_refs)]
 
+/// La cola de avisos de cambio de puerto. Vive aparte porque es la unica parte
+/// de este driver que se puede probar sin un xHC delante -- y era la que estaba
+/// mal: un buzon de una plaza donde el enchufe pisaba al desenchufe.
+pub mod avisos;
+
+use avisos::Avisos;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // ===================================================================
@@ -1350,7 +1356,14 @@ pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
                     PORT_EVENTS = PORT_EVENTS.wrapping_add(1);
                     LAST_PORT = port_id;
                     LAST_PORT_CCS = sc & PORTSC_CCS != 0;
-                    PORT_PENDIENTE = true;
+                    // * SE ENCOLA, no se sobrescribe. Este bucle drena el anillo
+                    // entero hasta dar con un Transfer Event, asi que aqui se
+                    // cruzan VARIOS cambios de puerto en la misma vuelta -- y
+                    // con el buzon de una plaza solo sobrevivia el ultimo. El
+                    // par desenchufe/enchufe se fundia en "conectado" y el
+                    // teclado que se habia ido seguia contando como presente.
+                    // Ver la cabecera de `avisos`.
+                    PORT_COLA.anotar(port_id, LAST_PORT_CCS);
                 }
             }
             continue;
@@ -1369,7 +1382,11 @@ pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
 static mut PORT_EVENTS: u32 = 0;
 static mut LAST_PORT: u8 = 0;
 static mut LAST_PORT_CCS: bool = false;
-static mut PORT_PENDIENTE: bool = false;
+/// **La cola de avisos.** Antes esto eran los dos estaticos de arriba mas un
+/// `PORT_PENDIENTE: bool`, es decir un buzon de UNA plaza -- ver la cabecera de
+/// [`avisos`] para el bug que eso costo. `LAST_PORT`/`LAST_PORT_CCS` siguen
+/// existiendo, pero ya solo para [`port_stats`]: son diagnostico, no el canal.
+static mut PORT_COLA: Avisos = Avisos::nueva();
 
 /// `(cuantos cambios de puerto, ultimo puerto, hay dispositivo ahora)`.
 /// Para diagnostico: si esto no sube al desenchufar, el xHC no esta avisando.
@@ -1377,16 +1394,42 @@ pub fn port_stats() -> (u32, u8, bool) {
     unsafe { (PORT_EVENTS, LAST_PORT, LAST_PORT_CCS) }
 }
 
-/// Consume el aviso: `Some((puerto, conectado))` una sola vez por cambio.
+/// `(avisos esperando, avisos que no cupieron)`. Para el panel.
+///
+/// Un desborde no es fatal --el barrido de `bmo_uhid` compara con los puertos de
+/// verdad-- pero es la senal de que los avisos por si solos ya no bastan.
+pub fn avisos_stats() -> (usize, u32) {
+    unsafe { (PORT_COLA.largo(), PORT_COLA.desbordes()) }
+}
+
+/// Consume UN aviso, el mas antiguo: `Some((puerto, conectado))`.
 ///
 /// Devuelve `None` si no hay nada nuevo, para que el llamante pueda sondear en
 /// su bucle sin re-enumerar cien veces el mismo enchufe.
+///
+/// * Quien llama tiene que **insistir hasta el `None`**, no atender uno por
+/// vuelta. Un `if let` aqui deja los demas avisos esperando, y eso reintroduce
+/// por arriba justo el retraso que la cola quita por abajo.
 pub fn tomar_cambio_puerto() -> Option<(u8, bool)> {
-    unsafe {
-        if !PORT_PENDIENTE {
-            return None;
-        }
-        PORT_PENDIENTE = false;
-        Some((LAST_PORT, LAST_PORT_CCS))
-    }
+    unsafe { PORT_COLA.tomar() }
+}
+
+/// **Hay algo enchufado en este puerto AHORA MISMO?** (PORTSC.CCS, 0-based).
+///
+/// La pregunta que no se podia hacer, y por eso todo colgaba de los avisos: un
+/// aviso perdido dejaba al driver creyendo algo que el hardware desmiente desde
+/// hace rato, sin forma de comprobarlo. Es la base del barrido de `bmo_uhid`.
+///
+/// # Safety
+/// Lee MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
+pub unsafe fn hay_dispositivo(port: u8) -> bool {
+    let c = match CTRL.as_ref() { Some(c) => c, None => return false };
+    if port >= c.max_ports { return false; }
+    let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
+    r32(c.mmio + pb + PORTSC as u64) & PORTSC_CCS != 0
+}
+
+/// Cuantos puertos raiz declara el controlador. 0 si aun no hay controlador.
+pub fn puertos_totales() -> u8 {
+    unsafe { CTRL.as_ref().map_or(0, |c| c.max_ports) }
 }

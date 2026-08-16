@@ -112,9 +112,15 @@ Desenchufa el teclado. En F11 tienen que salir **DOS** lineas, no una:
    INFO usb: puerto: ENCHUFADO y adoptado =N
 ```
 
-Si en vez de eso sale `puerto: ENCHUFADO, nada que adoptar` seguido de
-`...y creo tener teclado:raton =0b1_0000_0001`, el olvido fallo: el adoptador
+Si en vez de eso sale `puerto: ENCHUFADO, ya creo tenerlo todo` seguido de
+`...creo tener teclado:raton =0b1_0000_0001`, el olvido fallo: el adoptador
 cree que todavia tiene el teclado.
+
+> Esa linea se llamaba `nada que adoptar` hasta el 2026-08-15, y juntaba TRES
+> causas distintas bajo la misma frase. Desde entonces son tres mensajes: `ya
+> creo tenerlo todo` (el fantasma), `ENCHUFADO pero CERRADO por intentos` (la
+> puerta agotada) y `enumere y no era mio` (el unico normal). Ver la SEXTA
+> VUELTA al final del documento.
 
 Vuelta atras: `git revert 11d97e99`.
 
@@ -375,3 +381,85 @@ troceado por regiones **no toca a DOOM**, que pinta con su propio blit.
 
 Y como siempre: **`A:\datos\salida.txt` vale mas que las fotos** para todo lo
 que sea texto.
+
+---
+
+# SEXTA VUELTA -- 2026-08-15: LAS PUERTAS SIEMPRE ABIERTAS
+
+El dueno lo reporto asi: *"el teclado y mouse cuando entre la BIOS o algo causo
+un pequeño bug... es como que al teclado se le olvido, o otras veces mouse y
+teclado se olvido"*. Con la foto de CABINA delante:
+
+```text
+   info usb  puerto: ENCHUFADO, nada que adoptar     =4
+   info usb    ...y creo tener teclado:raton         =257
+```
+
+`257` es `0x101`: **"tengo los dos"**, con el dueno mirando un teclado que no
+escribe. No era un bug: eran tres puertas que se cierran solas.
+
+| | lo que pasaba | reparado por |
+|---|---|---|
+| 1 | El aviso de puerto era un buzon de UNA plaza. Un desenchufe y un enchufe seguidos se fundian en "conectado" y la desconexion no ocurria jamas | `bmo_xhci::avisos`, una cola FIFO |
+| 2 | El kernel recogia UN aviso por bombeo (`if let`) | `while let`, hasta 4 por vuelta |
+| 3 | Nada comparaba lo que el driver cree con lo que dicen los puertos: un aviso perdido = puerta cerrada hasta reiniciar | `bmo_uhid::barrido`, cada 500 ms |
+| 4 | `MAX_PUERTOS = 16` cerraba el hot-plug de los puertos altos en silencio | 32 |
+
+## 1. Lo primero: la fila `puertas` de CABINA (F11)
+
+```text
+   usb ... bus=T:O puertas=esperando:PERDIDOS:barridos:reparados
+```
+
+- `PERDIDOS` tiene que ser **0**. Si sube, la cola de avisos se lleno.
+- `barridos` tiene que **subir siempre** (dos por segundo). Si esta pegado, el
+  TSC no esta medido y la red no existe.
+- `reparados` deberia ser **0** en una sesion sana. Si sube, el sistema se esta
+  arreglando solo -- y cada uno de esos es medio segundo en que el teclado no
+  respondia. **Es el numero que contesta si el fallo del dueno sigue vivo.**
+
+## 2. La prueba que reproduce el fallo reportado
+
+Desenchufar el teclado **y volver a enchufarlo rapido, sin esperar**. Antes eso
+era justo lo que fundia los dos avisos en uno. Ahora tienen que salir los dos:
+
+```text
+   AVISO usb: puerto: algo se DESENCHUFO =N
+   AVISO usb:   ...y ERA UN APARATO MIO: lo suelto =N
+   info  usb: puerto: ENCHUFADO y adoptado =N
+```
+
+★ **Si sale el par completo, la cola funciono.** Si falta el DESENCHUFO pero el
+teclado vuelve a escribir medio segundo despues, funciono la RED en vez de la
+cola -- y entonces `puertas` marcara `reparados=1`, que es la senal de que
+todavia se pierde algun aviso.
+
+## 3. Y la que prueba la red de verdad
+
+Entrar en la BIOS, salir, y arrancar BMO. Si algun aparato no enumera en el
+arranque, el barrido tiene que recogerlo **solo, sin tocar nada**, dentro del
+primer segundo:
+
+```text
+   info usb: BARRIDO: adopte lo que un aviso perdido dejo fuera =1
+```
+
+O, si lo que quedo fue un fantasma:
+
+```text
+   AVISO usb: BARRIDO: habia un FANTASMA, lo solte =1
+```
+
+★ **Esto es lo que se pidio**: que no haga falta reiniciar para recuperar un
+teclado. Si sigue haciendo falta, el numero que lo delata es `reparados`.
+
+## 4. Lo que NO puede pasar, y hay que mirarlo aposta
+
+El barrido corre solo, dos veces por segundo, y lo que toca es el bus. Las dos
+reglas que lo sujetan estan en pruebas (`barrido::tests`), pero el metal manda:
+
+- **El teclado no puede morirse mientras escribes.** Un barrido que resetee el
+  puerto de un aparato vivo es el bug del 2026-07-31 repetido 250 veces por
+  segundo. Escribir un rato largo con el escritorio abierto.
+- **No puede tironear.** Adopta como mucho UNA vez por barrido. Si el arranque
+  da tirones de un segundo, es esto y hay que subir `BARRIDO_PERIODO_MS`.
