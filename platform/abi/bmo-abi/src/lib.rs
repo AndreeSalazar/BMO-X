@@ -51,6 +51,7 @@ extern crate alloc;
 pub mod fundamentals;
 pub mod values;
 pub mod runtime;
+pub mod dynobj;
 pub mod types;
 pub mod ir;
 pub mod windowing;
