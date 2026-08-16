@@ -4,26 +4,54 @@
  * estimate, following the rule already written in `PLAN_BANCA.md`: a hard NO is
  * earned by MEASURING, not by reasoning.
  *
- * == FIRST RESULT, on the Ryzen, 2026-08-16 ==
+ * == THE RESULT, on the Ryzen, 2026-08-16 (v2, with the split) ==
  *
  *     TSC 3700000000 Hz, lote 4096, vueltas 16
- *     1. bucle vacio   min 43 ciclos/op, media 45
- *     2. llamada       min 65 ciclos/op, media 67
- *     3. puerta minima min 2615 ciclos/op, media 6287
- *     4. puerta con handle: NO SE MIDIO
+ *     1. bucle vacio   min   43 ciclos/op, media   44
+ *     2. llamada       min   63 ciclos/op, media   64
+ *     3. puerta pelada min 2663 ciclos/op, media 6107
+ *        reparto: dentro de dispatch  318, en el stub 2345
+ *     4. puerta+handle min 2746 ciclos/op, media 6430
+ *        reparto: dentro de dispatch  394, en el stub 2352
  *
- * A door costs ~2570 cycles net, about 707 ns. A call costs ~20. The ratio is
- * ~120x. That is the number the whole "can this be a capability operation?"
- * argument needed, and it did not exist anywhere in the tree before.
+ * A bare door costs 2663 - 43 = 2620 cycles net, about 708 ns. A call costs
+ * 63 - 43 = 20. The ratio is 131x. That is the number the whole "can this be a
+ * capability operation?" argument needed, and it did not exist in the tree.
+ *
+ * ** And the two numbers nobody had ever seen:
+ *
+ *   - RESOLVING A HANDLE COSTS 83 CYCLES (row 4 - row 3), and 76 of those
+ *     appear INSIDE `dispatch` while 7 land in the stub -- noise, 0.3%. The
+ *     capability model costs 76 cycles; the door it arrives through costs 2345.
+ *     The stub does not know which operation was asked for, which is exactly
+ *     what the design says should happen.
+ *   - 88% OF A DOOR IS THE ASSEMBLY STUB. The Rust half -- resolve, dispatch,
+ *     answer -- is 318 cycles. [!] `dispatch` is read as a MEAN and the total
+ *     as a MINIMUM, so 2345 is a FLOOR: the real stub is >= that. The
+ *     conclusion comes out reinforced, not weakened.
+ *
+ * ** The v1 of this file, the same afternoon, gave 43 / 65 / 2615 and never
+ * measured row 4. The two runs agree inside the noise, and the 48-cycle gap on
+ * row 3 is exactly what `meter.rs` declares it costs (two `rdtsc`). The
+ * thermometer charged what it said it would charge.
+ *
+ * ** AND A HYPOTHESIS OF MINE THAT THE v2 KILLED: I blamed the 43-cycle empty
+ * loop on the `if` chain being inside it (defect 1 below). The chain is gone
+ * and the loop still costs 43. So it was never the chain: with no optimizer
+ * every `i++`, every compare and every `sink + 1` is a trip to memory -- about
+ * six per iteration. 43 cycles is what a BMO C loop costs, and now it is
+ * measured instead of assumed.
  *
  * ** TWO DEFECTS OF THAT FIRST VERSION, FIXED HERE. Both were mine:
  *
  *   1. The `if (which == ...)` chain was INSIDE the timed loop, so every case
- *      paid a different number of comparisons and the "empty loop" baseline of
- *      43 cycles was really the chain. It cost the door number nothing (43 is
- *      noise against 2615) but it made the CALL number soft, and the call is
- *      the thing the door is compared against. Now each case has its own tight
- *      loop and there is nothing to subtract but the loop.
+ *      paid a different number of comparisons and the baseline was not the same
+ *      for the four rows. It cost the door number nothing (43 is noise against
+ *      2615) but it made the CALL number soft, and the call is the thing the
+ *      door is compared against -- and indeed the call moved, 65 -> 63. Now
+ *      each case has its own tight loop and there is nothing to subtract but
+ *      the loop. [!] What did NOT move is the empty loop itself: see above,
+ *      the 43 was never the chain.
  *   2. Row 4 opened `datos/salida.txt`, which **a program does not create** --
  *      the `guarda` command does, afterwards. On a fresh boot it is not there
  *      yet, so the honest number never got measured. Now it asks the kernel for

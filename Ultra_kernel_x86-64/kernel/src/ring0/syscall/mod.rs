@@ -1062,8 +1062,9 @@ extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
     // ** EL METRO. Lo primero y lo ultimo de la funcion a proposito: lo que
     // queda FUERA de estas dos marcas es exactamente el stub de `entry.rs`
     // --pushes, xsave, xrstor, iretq-- y esa resta contra el total que mide
-    // `c/coste.bex` desde Ring 3 es lo unico que dice si los 2615 ciclos estan
-    // en el ensamblador o en el Rust. Ver `meter.rs`.
+    // `c/coste.bex` desde Ring 3 es lo unico que dice si los ~2600 ciclos estan
+    // en el ensamblador o en el Rust. Contestado el 16-08 en el Ryzen: **318
+    // aqui dentro, 2345 en el stub**, o sea el 88% fuera. Ver `meter.rs`.
     let __metro = meter::start();
     // Igual que el timer: donde tallo su area este trap y para quien. Un
     // SYSCALL de Ring 3 aterriza en la pila que le haya puesto el planificador,

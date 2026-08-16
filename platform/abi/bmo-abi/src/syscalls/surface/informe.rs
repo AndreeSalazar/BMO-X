@@ -165,6 +165,12 @@ pub const INFO_NET_PCI: u64 = 0x2E;
 /// se quiera medir. No hay operacion de puesta a cero a proposito -- un delta
 /// mide justo la poblacion que interesa y no arrastra lo que hizo la maquina
 /// arrancando. Y las dos lecturas son dos puertas, que tambien se cuentan.
+///
+/// ** LA RESPUESTA, medida en el Ryzen el mismo dia: `2663 = dispatch 318 +
+/// stub 2345`, o sea el **88% en el ensamblador**. Y resolver una capability
+/// son **83 ciclos**, 76 de ellos dentro de `dispatch`. Estos dos campos ya
+/// hicieron su trabajo; siguen aqui porque el reparto vuelve a hacer falta
+/// cada vez que se toque `entry.rs`.
 pub const INFO_SYSCALL_CUENTA: u64 = 0x2F;
 
 /// Ciclos de TSC acumulados dentro de `dispatch`. Ver [`INFO_SYSCALL_CUENTA`].

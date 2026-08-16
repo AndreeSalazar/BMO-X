@@ -301,9 +301,11 @@ de `c-gen`: programas minimos que compilan o no, y que se ejecutan.
 - [x] ★ **Cuanto vale una puerta, en ciclos** -- `c/coste.bex`
       (`toolchain/lang/c/examples/coste_C.c`, escrito el 16-08). Compara bucle
       vacio / llamada normal / `INVOKE` pelado / `INVOKE` con handle, y se queda
-      con el **minimo** porque el temporizador expropia. ✅ **CORRIDO EN EL
-      RYZEN el 16-08: la puerta vale ~2.570 ciclos, la llamada ~20** -- ver la
-      seccion 4b. ⏳ Falta la fila 4 (el handle), corregida el mismo dia.
+      con el **minimo** porque el temporizador expropia. ✅ **CERRADO EN EL
+      RYZEN el 16-08, las dos corridas**: la puerta vale **2.620 ciclos**, la
+      llamada **20**, **resolver un handle 83** y el **88% de la puerta esta en
+      el stub de ensamblador** -- ver la seccion 4b. Ya no queda nada que correr
+      de esta casilla.
 - [ ] `wc -l` real sobre el tarball de CPython y sobre MicroPython. Sustituir
       los ordenes de magnitud de este documento por numeros.
 - [ ] **Entropia: una fila de `intrinsics.toml`** (`RDRAND` / `RDSEED`). Es la
@@ -372,19 +374,32 @@ Regla que resume: **una capability existe para arbitrar AUTORIDAD. `2+2` no
 tiene ninguna autoridad que arbitrar** -- no toca hardware, ni memoria de otro,
 ni puede robar nada.
 
-### ✅ MEDIDO EN EL RYZEN el 2026-08-16 -- `c/coste.bex`
+### ✅ MEDIDO EN EL RYZEN el 2026-08-16 -- `c/coste.bex` v2, CON REPARTO
 
 ```text
    TSC 3700000000 Hz, lote 4096, vueltas 16
-   1. bucle vacio   min   43 ciclos/op, media   45
-   2. llamada       min   65 ciclos/op, media   67
-   3. puerta minima min 2615 ciclos/op, media 6287
-   4. puerta con handle: NO SE MIDIO  (defecto de la sonda, corregido)
+   1. bucle vacio   min   43 ciclos/op, media   44
+   2. llamada       min   63 ciclos/op, media   64
+   3. puerta pelada min 2663 ciclos/op, media 6107
+      reparto: dentro de dispatch  318, en el stub 2345
+   4. puerta+handle min 2746 ciclos/op, media 6430
+      reparto: dentro de dispatch  394, en el stub 2352
 ```
 
-**Una puerta cuesta ~2.570 ciclos netos = ~707 ns. Una llamada, ~20. Factor
-~120x.** La estimacion previa de este documento decia ~500 ciclos: **era baja
-por CINCO veces**, y en la direccion que refuerza la conclusion.
+*(La v1, misma tarde, dio `43 / 65 / 2615` y no llego a medir la fila 4. Las dos
+corridas coinciden dentro del ruido, y la diferencia de la fila 3 --2663 contra
+2615-- son **48 ciclos**, que es exactamente el coste que `meter.rs` declara de
+si mismo: los dos `rdtsc`. El termometro se cobra lo que dijo que se iba a
+cobrar.)*
+
+**Una puerta desnuda cuesta 2663 - 43 = 2.620 ciclos = ~708 ns. Una llamada,
+63 - 43 = 20. Factor 131x.** La estimacion previa de este documento decia ~500
+ciclos: **era baja por CINCO veces**, y en la direccion que refuerza la
+conclusion.
+
+★ **Y la corrida es limpia**: `guarda` de la misma sesion dice `en pie 1 de 12`
+hilos, o sea **un solo nucleo despierto**, que es justo la condicion bajo la
+cual los contadores de `meter.rs` no subcuentan (lo dice su propia cabecera).
 
 La aritmetica de Python, ya con el numero del dueno -- `for i in
 range(1000000): x += i`, unos 5 millones de operaciones de runtime:
@@ -402,7 +417,35 @@ turno**. Se ve en los propios datos -- las filas 1 y 2 quedan a un 5% de su
 minimo y la fila 3 se va al **240%**. Para el interior de `a + b` eso no es
 lento, es impredecible.
 
-### ★★ Y el hallazgo que NO es de Python: 2.570 ciclos es CARO para un syscall
+### ★★★ LA FILA 4, que nadie habia visto: una capability cuesta 76 ciclos
+
+Es el hallazgo bueno de la v2, y no es de Python.
+
+```text
+   resolver un handle  =  2746 - 2663  =  83 ciclos
+     de esos, en dispatch:   394 - 318  =  76
+     y en el stub:          2352 - 2345 =   7   <- ruido, 0,3%
+```
+
+Handle -> generacion -> tabla de capabilities -> derechos: **76 ciclos.** Y el
+stub **no se entera de que operacion le pediste**, que es exactamente lo que la
+teoria dice que tiene que pasar -- el prologo de ensamblador es el mismo cruce
+el anillo pase lo que pase detras.
+
+★ **La medida se valida sola**: de los 83 ciclos que separan las dos filas, 76
+aparecieron **donde vive el codigo que resuelve** y 7 donde no vive. Las dos
+cantidades se movieron justo donde debian; si el reparto estuviera midiendo otra
+cosa, no habria ninguna razon para que cayera asi.
+
+★★★ **Y la frase que resume el dia:**
+
+> **El modelo de capabilities --lo que hace especial a BMO-X-- cuesta 76
+> ciclos. La puerta por la que entra cuesta 2.345.**
+
+Lo distintivo es el **3%**. El otro 97% es fontaneria generica de x86-64, y la
+fontaneria es arreglable. **La idea no es cara; el pasillo si.**
+
+### ★★ Y el hallazgo que NO es de Python: 2.620 ciclos es CARO para un syscall
 
 El par `syscall`/`sysret` son ~100-150 ciclos de silicio, y BMO **no lleva
 mitigaciones de Spectre** (kernel propio, sin KPTI). O sea que **~95% del coste
@@ -426,9 +469,28 @@ tarea es lo que hace Linux en su camino rapido, y aqui se ahorraria el XSAVE, el
 XRSTOR y las 15 escrituras/lecturas de cabecera **en el 100% de las puertas que
 no cambian de tarea**, que son casi todas.
 
-⚠ **No esta medido cuanto es cada trozo**: esta confirmado el MECANISMO (leido
-en el codigo), no el reparto. Lo que lo separa es medir otra vez con el XSAVE
-fuera del camino que no conmuta.
+#### ✅ Y AHORA ESTA MEDIDO: el 88% esta en el ensamblador
+
+Esto era una **sospecha sin confirmar** hasta la v2. Ya no:
+
+```text
+   puerta pelada  2663  =  dispatch 318  (12%)  +  stub 2345  (88%)
+```
+
+**El Rust del kernel --resolver, despachar, contestar-- son 318 ciclos.** Todo
+lo demas son los pushes, el `xsave64`, el `xrstor64` y el `iretq` de
+`entry.rs`. Los sospechosos que este documento nombro leyendo el codigo estaban
+**bien nombrados**, y ahora tienen cifra en vez de corazonada.
+
+⚠ **Un matiz honesto, y va A FAVOR de la conclusion**: `dispatch` se lee como
+**media** (ciclos totales / puertas, sobre las 16 vueltas, incluyendo las que la
+expropiacion inflo) mientras el total es un **minimo**. O sea que 318 es un
+techo para el Rust y **2.345 es un SUELO para el stub: el stub real es >=2345**.
+La conclusion sale reforzada, no debilitada.
+
+⚠ Lo que sigue SIN medir es **cual de las cinco piezas del stub** se lleva los
+2.345 -- el XSAVE es el sospechoso por tamano, pero eso lo separa otra sonda (o
+medir con el XSAVE fuera del camino que no conmuta), no esta.
 
 **Y esto no mejora Python: mejora TODO lo que cruza la puerta** -- la entrada de
 DOOM, el metronomo del audio, el camino asincrono del disco, el compositor.
@@ -743,9 +805,11 @@ falta de esa fila.
 
 ### ⛔ Lo que NO va ahora, y es una decision, no un olvido
 
-- **El XSAVE.** Ver la nota de la seccion 4b: seguro por construccion, **pero es
-  reestructurar el contexto**, y hay repartos de kernel sin verificar en metal.
-  Va DESPUES de esa foto.
+- **El XSAVE.** Ver la nota de la seccion 4b. Desde el 16-08 **la cirugia esta
+  justificada con cifra** (el 88% de la puerta vive en el stub, no en el Rust),
+  pero sigue siendo **reestructurar el contexto** y sigue habiendo repartos de
+  kernel sin verificar en metal. Va DESPUES de esa foto -- lo que cambio es que
+  ya no seria operar sobre una corazonada.
 - **El interprete.** Va detras del paso 1, porque el paso 1 es su cimiento.
 - **El AOT.** Va detras del interprete, porque estrena el mismo runtime.
 
