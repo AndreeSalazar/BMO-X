@@ -1450,3 +1450,137 @@ metal, que es media busqueda ahorrada.
 Hasta donde llega DOOM. Sigue siendo la unica pregunta que el anfitrion no puede
 contestar, y ahora hay bastante mas razon que ayer para que llegue lejos.
 
+
+---
+
+## Ep. 39 -- La orden que existia donde su dueno no puede entrar
+**Sintoma**: *"escribi el ext y no conoce LOL"*. La orden `ext` --el censo de
+extensiones del CPU-- estaba compilada, flasheada y contestando. Y no aparecia.
+
+**Culpable**, y son dos capas. La primera: `ext` se cablo SOLO en el shell de
+Ring 0, y **a ese shell no se vuelve**. `obj/fb.rs::rescue()` se niega a
+proposito a quitarle la pantalla al escritorio --*"no se echa al que sostiene
+la casa"*--, asi que `Ctrl+Alt+Esc` rescata de DOOM o del raycaster pero nunca
+del compositor. El dueno vive en el escritorio; la orden vivia en el otro lado
+de una puerta que no se abre.
+
+La segunda, debajo: `ext` estaba en el despachador **y en ninguna de las dos
+listas** -- ni en `help` ni en `ORDENES`. O sea que existia sin poder
+descubrirse. El comentario de `ORDENES` avisa literalmente del riesgo de
+mantener dos listas a la vez, y ya habian derivado: faltaban tambien `consumo`,
+`gasto`, `w`, `apps` y `programas`.
+
+**Moraleja**: **una funcion que no se anuncia no es discreta: no esta.** Es el
+patron 33 girado -- alli era un mensaje que salia por un canal que nadie mira;
+aqui es codigo correcto en un sitio al que no se llega. Antes de dar algo por
+hecho, preguntar *donde va a estar la persona que lo necesita*.
+
+Y el remate que lo prueba: el aviso de arranque del propio censo dice
+*"escribe ext"*. Mandaba a teclear una orden en un sitio donde esa orden no
+existia.
+
+## Ep. 40 -- Mi aritmetica de ciclos, baja por ocho veces
+**Sintoma**: ninguno. Este episodio es sobre una conclusion equivocada, no
+sobre una maquina rota.
+
+**Que paso**: `c/coste.bex` midio una puerta en 2.620 ciclos contra 20 de una
+llamada. La pregunta siguiente era DONDE se van, y los sospechosos estaban
+nombrados leyendo `entry.rs`: el `xsave64` con RFBM=-1, el `xrstor64` y el
+`iretq`. Los sume "con honestidad" y me dieron **unos cientos de ciclos, no dos
+mil**, asi que escribi que la sospecha no explicaba el numero.
+
+Entonces se escribio el metro (`syscall/meter.rs`, dos `rdtsc` en `dispatch`) en
+vez de operar. Resultado en el Ryzen:
+
+```text
+   puerta pelada  2663  =  dispatch 318 (12%)  +  stub 2345 (88%)
+```
+
+**Culpable**: yo. La sospecha era correcta; lo que fallaba era mi estimacion del
+coste de las instrucciones, **baja por ~8x**.
+
+**Moraleja**: **estimar ciclos a ojo no vale ni para descartar.** Lo unico que
+salvo la decision fue no actuar sobre ninguna de las dos creencias --ni la
+sospecha ni mi refutacion de la sospecha-- y construir el instrumento. Un metro
+de dos `rdtsc` costo una tarde y contesto lo que dos razonamientos no pudieron.
+
+**El regalo de propina**: la fila 4 dio el numero que nadie habia visto nunca --
+resolver una capability cuesta **83 ciclos**, 76 dentro de `dispatch` y 7 en el
+stub. O sea que **el modelo de capabilities, lo que hace especial a BMO-X, es el
+3% del coste de una puerta. El otro 97% es fontaneria generica de x86.**
+
+## Ep. 41 -- Un `true` costaba un cuarto del arranque
+**Sintoma**: ninguno otra vez. Salio de preguntar *"se puede optimizar mas la
+RAM?"* y medir en vez de opinar: `llvm-nm --size-sort -S` sobre el kernel.
+
+**Culpable**:
+
+```rust
+static mut EP_RINGS: [[EpRing; 32]; 255] = [[EpRing {
+    valid: false, ring_phys: 0, ring_virt: null_mut(), pcs: true, enqueue: 0
+}; 32]; 255];
+```
+
+255 ranuras x 32 endpoints x 32 bytes = **261.120 bytes**, y todos los campos
+eran cero **menos uno**. Un solo byte distinto de cero manda el array entero a
+`.data` en vez de a `.bss`, y `.data` viaja DENTRO del binario. O sea que el
+kernel guardaba 255 KiB de ceros en disco y los leia en cada arranque para
+llevar un bit puesto en cada entrada.
+
+Un bit que ademas **no lee nadie**: esa entrada es una ranura vacia,
+`ep_ring_mut` filtra por `valid` antes de devolverla, y al registrar el endpoint
+de verdad se reescribe la estructura entera.
+
+```text
+   bmo-kernel     1.024.680 -> 755.392 B   (-26,3%)
+   BOOTX64.EFI    1.048.576 -> 779.264 B   (-25,7%)
+```
+
+**Moraleja**: **un inicializador no-cero en un array grande es un fichero mas
+grande, y no se ve en el codigo.** La pregunta no es "cuanta memoria pide esto"
+sino "cuanto de esto viaja". Y la herramienta que lo enseno --`llvm-nm
+--size-sort`-- deberia usarse antes de discutir tamanos, no despues.
+
+[!] Y hay que decir QUE mejora, porque es facil venderlo de mas: la RAM
+reservada es la misma (`.bss` tambien ocupa). Lo que baja un cuarto es la imagen
+que el firmware lee en cada arranque.
+
+## Ep. 42 -- El traspaso del firmware que nunca ocurrio
+**Sintoma**: *"al reiniciar mi BMO-X arranco normal MENOS el xHCI"*. **En frio
+va; en caliente, tras un reinicio desde Windows, el teclado y el raton no
+aparecen.**
+
+**Culpable**: cuatro lineas que aparentaban pedirle el controlador al firmware.
+
+```rust
+let eecp = ((hcc1 >> 8) & 0xFF) as u32;
+if eecp >= 0x40 && (r32(mmio + eecp) & 1) != 0 {
+    w32(mmio + eecp + 4, 1);
+    for _ in 0..50000 { if r32(mmio + eecp) & 1 == 0 { break; } }
+}
+```
+
+El puntero a capacidades extendidas (xECP) vive en `HCCPARAMS1[31:16]` y cuenta
+en **palabras de 32 bits**. Los bits 15:8 son `MaxPSASize`, `CFC`, `SEC`, `SPC`
+y `PAE`. Asi que: el traspaso **nunca ocurrio**; si esos bits daban >= 0x40 se
+escribia un 1 en un MMIO cualquiera de la region de capacidades (y si caia en
+`USBLEGCTLSTS`, lo que ese 1 enciende es el **SMI de USB**, justo lo contrario
+de lo que hace falta); y la espera miraba el campo ID esperando que llegara a
+cero, cosa que no pasa nunca.
+
+**Y debajo, el que convierte "raro" en "basura"**: las tres esperas del reset
+eran `for _ in 0..N { if listo { break } }` **sin mirar por que salieron**. Un
+bucle que acierta y uno que se agota acaban en la misma linea. El xHCI spec dice
+que mientras `USBSTS.CNR` este puesto no se puede escribir ningun registro
+operacional que no sea USBSTS -- y lo siguiente que hacia el codigo era escribir
+`CONFIG`. En frio el reset acaba antes de agotar el bucle y no se nota; en
+caliente el controlador tarda mas y se le escribe encima sin estar listo.
+
+**Moraleja**: **una espera que no dice si acerto es un `if` que siempre da que
+si.** Las tres ahora fallan con su nombre (`el controlador no PARA`, `el reset
+no termina`, `sigue NO LISTO`). Y la otra: **en frio no es una prueba.** Un
+driver de bus solo esta probado cuando se ha reiniciado en caliente desde otro
+sistema operativo, que es el estado en que el aparato llega sucio.
+
+[!] Diagnosticado leyendo el spec, **sin confirmar en metal todavia**. La prueba
+es exactamente la que lo destapo: reiniciar desde Windows.
