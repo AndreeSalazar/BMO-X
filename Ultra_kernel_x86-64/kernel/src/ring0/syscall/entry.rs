@@ -29,10 +29,18 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "mov gs:[0x08], rsp",          // stash user RSP
         "mov rsp, gs:[0x00]",          // per-CPU syscall stack
         // Trap tail: ss, rsp, rflags, cs, rip (SYSCALL contract values).
-        "push 0x1B",                   // user SS
+        //
+        // ** LOS SELECTORES SALEN DE `plat::trap` Y NO SON LITERALES, desde el
+        // `#GP(0x18)` del 16-08. Estaban escritos a mano como `0x1B` y `0x23`,
+        // que es correcto y **no estaba atado a nada**: `ops.rs` comprueba que
+        // `sysret` calcule estos mismos selectores, pero esa comprobacion no
+        // valdria de nada si el literal de aqui pudiera irse por su cuenta.
+        // Un solo sitio donde decirlo, o los dos se separan el dia que alguien
+        // mueva la GDT.
+        "push {user_ss}",              // user SS
         "push qword ptr gs:[0x08]",    // user RSP
         "push r11",                    // user RFLAGS
-        "push 0x23",                   // user CS
+        "push {user_cs}",              // user CS
         "push rcx",                    // user RIP
         // 15 GPRs (push order; pops restore the reverse).
         "push rax", "push rcx", "push rdx", "push rbx", "push rbp",
@@ -160,14 +168,32 @@ unsafe extern "C" fn syscall_entry() -> ! {
         // bloque de GPR, y los `pop` de arriba acaban de devolverlos a su
         // sitio. **No hay que preparar nada: ya esta puesto.**
         //
-        // Los selectores tambien cuadraban de antes. `MSR_STAR` lleva armado
-        // `SYSRET_SELECTOR_BASE = 0x10` desde siempre, con un comentario que
-        // decia *"legacy, el camino de salida es iretq"*:
+        // ** LOS SELECTORES, EN CAMBIO, NO CUADRABAN -- Y AQUI ESTUVO EL FALLO.
         //
-        //     CS = 0x10 + 16 | 3 = 0x23     <- el mismo que empuja el prologo
-        //     SS = 0x10 +  8 | 3 = 0x1B     <- el mismo
+        // `MSR_STAR` llevaba armado `SYSRET_SELECTOR_BASE = 0x10` desde
+        // siempre, con un comentario que decia *"legacy, el camino de salida es
+        // iretq"*. Al leerlo se dio por bueno razonando con el pseudocodigo
+        // estilo Intel, que fuerza `RPL = 3` en las DOS mitades. **En AMD no**:
         //
-        // O sea que el MSR estaba puesto y sin usar, igual que el XSAVEOPT.
+        //     CS = base + 16, y el CPU le fuerza RPL 3   -> 0x20|3 = 0x23  ok
+        //     SS = base +  8, y AMD NO le fuerza nada    -> 0x18         MAL
+        //
+        // La tarea volvia a Ring 3 con `SS.RPL = 0` y seguia funcionando --
+        // mientras el CPL manda nadie revalida SS-- hasta que el timer la
+        // interrumpia, el CPU empujaba ese `0x18` al marco, y **el `iretq` del
+        // stub del TIMER** se plantaba con `#GP(0x18)`. Un registro mal cargado
+        // aqui, que mata en otro fichero, milisegundos despues.
+        //
+        // Se arreglo en `ops.rs` poniendo la base en `0x13` --el RPL 3 metido
+        // en la base, que sobrevive a las sumas-- y, sobre todo, atando la
+        // relacion con dos `assert!` en `const`: hoy esto **no compila** si los
+        // selectores que calcula `sysret` dejan de ser los que empuja el
+        // prologo de aqui arriba. Ver el porque entero en `ops.rs`.
+        //
+        // La leccion, que es mas util que el numero: **el MSR llevaba anos
+        // armado y ninguna CPU lo habia ejecutado nunca.** Codigo configurado y
+        // sin ejecutar no es codigo que funciona, es codigo sin probar -- igual
+        // que el XSAVEOPT. Van dos el mismo dia.
         //
         // == [!] LA COMPROBACION DE CANONICIDAD, QUE NO ES OPCIONAL ==
         //
@@ -273,16 +299,22 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
         "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
         "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
-        "cmp qword ptr [rsp+8], 0x08", // returning to kernel CS?
+        "cmp qword ptr [rsp+8], {kernel_cs}", // returning to kernel CS?
         "je 1f",
-        "cmp qword ptr [rsp+8], 0x23", // ...o a usuario. Cualquier otra cosa
-        "jne 4f",                      // no es un contexto, es basura.
+        "cmp qword ptr [rsp+8], {user_cs}",   // ...o a usuario. Cualquier otra
+        "jne 4f",                      // cosa no es un contexto, es basura.
         "swapgs",
         "1: iretq",
         "3: mov rdi, {m_sello}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym dispatch,
+        // Los tres selectores, de `plat::trap` y de ningun otro sitio. Ver el
+        // prologo y `ops.rs`: el `#GP(0x18)` salio justo de tener el mismo
+        // numero escrito en dos sitios que no se hablaban.
+        user_cs = const crate::ring0::plat::trap::USER_CS,
+        user_ss = const crate::ring0::plat::trap::USER_SS,
+        kernel_cs = const crate::ring0::plat::trap::KERNEL_CS,
         podrido = sym crate::ring0::plat::faults::contexto_podrido,
         no_xcr0 = sym crate::ring0::plat::trap::XSAVE_NO_XCR0,
         area = const crate::ring0::plat::trap::XSAVE_AREA,
