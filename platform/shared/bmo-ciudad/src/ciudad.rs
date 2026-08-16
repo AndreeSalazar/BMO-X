@@ -162,10 +162,22 @@ impl Ciudad {
         rect(0, self.horizonte, self.ancho, self.alto - self.horizonte, CIELO_ALTO);
 
         // -- LAS TORRES, capa a capa y cada una a su velocidad.
+        //
+        // ** Y LA NIEBLA VA EN MEDIO, no encima. Una niebla pintada al final
+        // tine la escena entera y no separa nada; metida ENTRE las dos capas es
+        // aire de verdad -- lo de detras queda al otro lado de ella.
         for capa in 0..2u8 {
+            if capa == 1 {
+                crate::niebla::bandas(self.ancho, self.horizonte, cam.avance, &mut rect);
+            }
             let dx = cam.desplazamiento(capa);
             for t in self.torres[..self.n].iter().filter(|t| t.capa == capa) {
-                t.dibujar(self.horizonte, dx, &mut rect);
+                // La bruma se aplica por FILA, dentro de la torre: su base esta
+                // mas lejos que su punta, y velar la torre entera por igual la
+                // dejaria plana otra vez.
+                t.dibujar(self.horizonte, dx, &mut |x, y, w, h, c| {
+                    rect(x, y, w, h, crate::niebla::velo(c, y, self.horizonte, capa));
+                });
             }
         }
     }
@@ -214,21 +226,29 @@ mod pruebas {
         assert!(filas.iter().all(|&f| f), "quedaron filas sin pintar");
     }
 
+    /// [!] Esta prueba comparaba colores EXACTOS (`== VENTANA_CALIDA`) y la
+    /// niebla la tumbo: ahora cada color sale velado segun su altura, asi que
+    /// ninguno es exactamente el de la paleta. Comparar por igualdad era pedirle
+    /// a la escena que no tuviera atmosfera.
+    ///
+    /// Lo que la prueba queria decir de verdad es **"hay puntos brillantes"**, y
+    /// eso se pregunta por luminancia -- que ademas es lo que el ojo hace.
     #[test]
     fn encender_cambia_las_ventanas() {
+        let umbral = luminancia(CIELO_BAJO) + 40;
         let contar = |pct: u32| {
             let mut c = Ciudad::nueva(800, 600, 3);
             c.encender(pct);
             let mut n = 0;
             c.dibujar(Camara::default(), |_, _, _, _, color| {
-                if color == VENTANA_CALIDA || color == VENTANA_FRIA {
+                if luminancia(color) > umbral {
                     n += 1;
                 }
             });
             n
         };
-        assert_eq!(contar(0), 0, "al 0% no puede haber ni una encendida");
-        assert!(contar(100) > 50, "al 100% tiene que haber muchas");
+        assert_eq!(contar(0), 0, "al 0% no puede haber ni un punto brillante");
+        assert!(contar(100) > 50, "al 100% tiene que haber muchos");
     }
 
     #[test]
@@ -252,9 +272,13 @@ mod pruebas {
     fn avanzar_no_deja_el_borde_pelado() {
         let mut c = Ciudad::nueva(640, 480, 11);
         c.encender(100);
+        // Un CUERPO de torre, y se reconoce por la forma y no por el color: con
+        // la niebla puesta ningun color es ya exactamente el de la paleta. Ancho
+        // menor que la pantalla descarta el cielo y el suelo (que van de borde a
+        // borde), y alto grande descarta ventanas y jirones de niebla.
         let mut mas_a_la_derecha = 0;
-        c.dibujar(Camara::nueva(200), |x, _, w, _, color| {
-            if color == TORRE_FRENTE {
+        c.dibujar(Camara::nueva(200), |x, _, w, h, _| {
+            if w < 640 && h > 30 {
                 mas_a_la_derecha = mas_a_la_derecha.max(x + w);
             }
         });

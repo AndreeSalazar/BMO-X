@@ -83,6 +83,35 @@ pub struct Fotograma {
     pub negro: u32,
     /// Cuanto ha entrado el terminal, 0..100.
     pub terminal_pct: u32,
+    /// **Cuantos pixeles flota el gato**, arriba o abajo del centro.
+    ///
+    /// Es lo que lo separa del fondo de verdad. Dos planos quietos uno sobre
+    /// otro se leen como un collage por mucho que tengan brillos distintos; en
+    /// cuanto uno se mueve a su ritmo, **el ojo los separa solo**. Es la misma
+    /// pista que el paralaje, aplicada al primer plano.
+    pub gato_flote: i32,
+    /// El latido del neon de los ojos, 0..255, encima de `ojos_alfa`.
+    ///
+    /// Un neon perfectamente estable no parece neon: parece un LED. Lo que hace
+    /// que se lea como tubo de gas es que respire.
+    pub ojos_pulso: u32,
+}
+
+/// Una onda triangular de `-amp` a `+amp` con periodo `periodo_ms`.
+///
+/// Triangular y no senoidal porque aqui no hay coma flotante ni tabla de senos,
+/// y a esta amplitud --unos pocos pixeles-- **no se distingue una de otra**. Una
+/// tabla de senos por tres pixeles de flote seria pagar por una precision que
+/// nadie puede ver.
+fn onda(ms: u32, periodo_ms: u32, amp: i32) -> i32 {
+    if periodo_ms == 0 {
+        return 0;
+    }
+    let t = (ms % periodo_ms) as i32;
+    let medio = (periodo_ms / 2) as i32;
+    let subida = if t < medio { t } else { 2 * medio - t };
+    // De 0..medio a -amp..+amp.
+    (subida * 2 * amp) / medio.max(1) - amp
 }
 
 /// Interpolacion lineal entera de `a` a `b` segun `t` va de 0 a `t_max`.
@@ -128,6 +157,8 @@ pub fn fotograma(ms: u32) -> Fotograma {
             destello: 0,
             negro: 0,
             terminal_pct: 0,
+            gato_flote: 0,
+            ojos_pulso: 0,
         };
     }
 
@@ -147,6 +178,10 @@ pub fn fotograma(ms: u32) -> Fotograma {
             destello: 0,
             negro: 0,
             terminal_pct: 0,
+            // El flote empieza EN CUANTO hay gato, no despues: si entrara
+            // quieto y luego arrancara, se veria el momento de arrancar.
+            gato_flote: onda(ms, 2600, 4),
+            ojos_pulso: 0,
         };
     }
 
@@ -165,6 +200,8 @@ pub fn fotograma(ms: u32) -> Fotograma {
             destello: rampa(0, 255, d, dur),
             negro: rampa(0, 200, d, dur),
             terminal_pct: 0,
+            gato_flote: onda(ms, 2600, 4),
+            ojos_pulso: onda(ms, 900, 40).unsigned_abs(),
         };
     }
 
@@ -180,6 +217,8 @@ pub fn fotograma(ms: u32) -> Fotograma {
         destello: rampa(255, 0, d, dur / 2),
         negro: rampa(200, 255, d, dur / 2),
         terminal_pct: rampa(0, 100, d, dur),
+        gato_flote: onda(ms, 2600, 4),
+        ojos_pulso: onda(ms, 900, 40).unsigned_abs(),
     }
 }
 
