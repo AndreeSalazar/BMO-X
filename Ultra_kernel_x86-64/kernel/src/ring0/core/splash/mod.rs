@@ -80,7 +80,9 @@ const ACCENT2: u32     = 0xFF818CF8; // Indigo-400 accent for loading state
 // `faults.rs`: los modulos son `pub(crate)` y lo que sale de aqui es esta lista.
 
 pub use arranque::{splash_clear, splash_init, splash_progress};
-pub use escena::{intro_cierra, intro_empieza, intro_en_curso, intro_latido, intro_paso};
+pub use escena::{
+    intro_cierra, intro_empieza, intro_en_curso, intro_latido, intro_paso, intro_progreso,
+};
 pub use tablero::{
     dash_rows, splash_dash_rule, splash_dashboard_init, splash_dashboard_log,
     splash_dashboard_log_color, splash_dashboard_prompt, splash_status_right,
