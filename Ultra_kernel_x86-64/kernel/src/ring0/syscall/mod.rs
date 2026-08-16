@@ -44,6 +44,11 @@ pub(crate) mod ops;
 /// with no frame, no stack of its own and no compiler help.
 mod entry;
 pub use entry::init;
+
+// El METRO de la puerta. Vive aparte porque medir es un trabajo distinto de
+// despachar, y porque quien busque "cuanto cuesta un syscall" no tiene por que
+// leerse el despachador para encontrarlo.
+pub mod meter;
 pub(crate) use ops::*;
 
 /// `MEM_OP_OFRECER` -- lend a memory block to another task. Lives with the
@@ -1054,6 +1059,12 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
 
 #[unsafe(no_mangle)]
 extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
+    // ** EL METRO. Lo primero y lo ultimo de la funcion a proposito: lo que
+    // queda FUERA de estas dos marcas es exactamente el stub de `entry.rs`
+    // --pushes, xsave, xrstor, iretq-- y esa resta contra el total que mide
+    // `c/coste.bex` desde Ring 3 es lo unico que dice si los 2615 ciclos estan
+    // en el ensamblador o en el Rust. Ver `meter.rs`.
+    let __metro = meter::start();
     // Igual que el timer: donde tallo su area este trap y para quien. Un
     // SYSCALL de Ring 3 aterriza en la pila que le haya puesto el planificador,
     // asi que si esa rampa apuntara donde no debe, esto lo ensena.
@@ -1071,5 +1082,7 @@ extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
     };
     frame.rax = (status.code as u64) | ((status.flags as u64) << 32);
     frame.rdx = status.value;
-    percpu::trap_rsp()
+    let salida = percpu::trap_rsp();
+    meter::stop(__metro);
+    salida
 }

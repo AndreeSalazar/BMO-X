@@ -34,6 +34,61 @@ La intuicion de Eddi tiene **tres partes, y dos son correctas**:
    el mismo backend**: es un frontend **mas un runtime**, y el runtime es el
    trabajo.
 
+### ★★★ "Hay que abrir un syscall para Python?" -- NO. Cero.
+
+La pregunta salio el 16-08 y va aqui arriba porque va a volver.
+
+Se confunden dos cosas que el diseno separa a proposito:
+
+| | crece? |
+|---|---|
+| **Las 2 puertas** (`INVOKE`, `WAIT`) | **congeladas.** Python no las toca |
+| **Las operaciones** dentro de `INVOKE` (~49 hoy) | crecen por **filas de tabla** -- para eso existen |
+
+`OP_INFO` esta disenado literalmente para esto, y lo dice su propio comentario:
+*"Dos operaciones y una TABLA de campos, en vez de una operacion por dato: asi
+anadir 'cuantos programas se han lanzado' es **una fila**, no un numero de
+syscall nuevo."*
+
+**El presupuesto entero de Python contra la superficie:**
+
+- **Syscalls nuevos: 0.**
+- **Operaciones nuevas: 1** -- `stat` de un fichero FAT32 desde Ring 3.
+  (La fecha real se creia que faltaba y **ya estaba**: ver la tabla de la
+  seccion 2.)
+- **Intrinsecos nuevos: 1** -- y ★ **`RDRAND` no es privilegiado**: lo ejecuta
+  Ring 3 directamente. Es **una fila de `intrinsics.toml` y CERO kernel**. Ni
+  siquiera pasa por la puerta.
+- **El tope de 4 bloques: posiblemente 0 cambios** -- una arena grande y el
+  monton que ya existe.
+
+**Total: dos filas de tabla.**
+
+### Y la prueba de fuego que evita lo "exclusivo de Python"
+
+> **Si algo es EXCLUSIVO de Python, no entra en el sistema. Si lo piden otros
+> tres, es que ya faltaba.**
+
+- **La fecha real**: ✅ **ya existe** -- `INFO_FECHA`. Se creia que faltaba, y
+  esa es justo la clase de error que un censo evita: la piden `os.stat`,
+  ESTRATOS, CABINA y cualquier cierre de COBOL, y **ya estaban servidos**.
+- **La entropia**: la piden la firma de verdad (hoy es integridad y no
+  autenticidad, porque no hay clave), ESTRATOS y la red.
+- **`stat` / listar desde Ring 3**: lo pide el lanzador del escritorio, que hoy
+  lee el paquete a mano.
+
+Ni una es de Python. **Python es el que las encontro**, igual que una sonda
+encontro `<strings.h>`.
+
+★★ **Y la medida PROTEGIO la superficie**: si la puerta hubiera costado 50
+ciclos, la tentacion habria sido meter el runtime por `INVOKE` -- y eso si
+habrian sido decenas de operaciones nuevas, exclusivas de Python, dentro del
+kernel. **Los 2.570 ciclos son lo que hace que eso no se pueda ni plantear.**
+
+★★★ **BMO-X no tiene que saber que Python existe.** Igual que no sabe que existe
+COBOL: carga un `.bex` y ese `.bex` llama a las dos puertas. Es el principio de
+Devour_System -- *"el kernel nunca sabe que existio lo ajeno"*.
+
 ---
 
 ## 1. Que es CPython de verdad -- el censo
@@ -129,7 +184,7 @@ hueco de esta tabla desbloquea mas cosas que Python**.
 | `mmap` / `mprotect` | arenas, y el JIT de 3.13 | no existe | 🟢 **se esquiva**: PEP 445 + sin JIT |
 | entropia | `_Py_HashSecret`, `os.urandom` | **nada** | 🟡 se esquiva con `PYTHONHASHSEED=0`; se arregla con **UNA fila** de `intrinsics.toml` (`RDRAND`) |
 | reloj monotono | `time.monotonic` | TSC via `OP_INFO` | 🟢 ya esta |
-| **fecha y hora reales** | `time.time`, `datetime`, `os.stat` | **no se lee el RTC** | 🟡 `time.time()` mentiria, y mentir es peor que fallar |
+| **fecha y hora reales** | `time.time`, `datetime`, `os.stat` | ✅ **`INFO_FECHA`** -- `dev/clock.rs` lee el CMOS al arrancar y extrapola con el TSC, con calendario de verdad (meses de distinto largo y bisiestos) | 🟢 **ya esta.** Este documento decia que faltaba: era falso, comprobado el 16-08 |
 | hilos | `PyThread_*` (obligatorio desde 3.7) | no hay hilos de Ring 3 | 🟡 stub de un hilo; hay que escribirlo |
 | senales | `signalmodule`, `KeyboardInterrupt` | un fallo mata la tarea | 🟡 stub; el Ctrl+C real vendria de `INPUT_OP_*` |
 | **libm completa** | `math`, `float`, `dtoa` | `math.h` tiene **`fabs` y `fabsf`** | ⛔ **segundo bloqueante real** |
@@ -246,15 +301,17 @@ de `c-gen`: programas minimos que compilan o no, y que se ejecutan.
 - [x] ★ **Cuanto vale una puerta, en ciclos** -- `c/coste.bex`
       (`toolchain/lang/c/examples/coste_C.c`, escrito el 16-08). Compara bucle
       vacio / llamada normal / `INVOKE` pelado / `INVOKE` con handle, y se queda
-      con el **minimo** porque el temporizador expropia. **Escrito y compilado;
-      falta correrlo en el Ryzen.** Es el numero que decide la seccion 4b, y
-      tambien lo piden el audio, el disco asincrono y la red.
+      con el **minimo** porque el temporizador expropia. ✅ **CORRIDO EN EL
+      RYZEN el 16-08: la puerta vale ~2.570 ciclos, la llamada ~20** -- ver la
+      seccion 4b. ⏳ Falta la fila 4 (el handle), corregida el mismo dia.
 - [ ] `wc -l` real sobre el tarball de CPython y sobre MicroPython. Sustituir
       los ordenes de magnitud de este documento por numeros.
 - [ ] **Entropia: una fila de `intrinsics.toml`** (`RDRAND` / `RDSEED`). Es la
       pieza mas barata de la tabla y la usan tambien firma, `net` y ESTRATOS.
-- [ ] **La fecha real.** Hoy no se lee el RTC. `time.time()` mintiendo es peor
-      que `time.time()` fallando -- regla 1.
+- [x] ~~**La fecha real.**~~ ✅ **YA ESTABA** (comprobado el 16-08):
+      `INFO_FECHA` + `ring0/dev/clock.rs`, que lee el CMOS al arrancar y suma
+      los segundos por TSC con un calendario de verdad. Se dio por ausente sin
+      mirar, que es el error que este documento existe para no cometer.
 - [ ] **`stat` y listar directorio desde Ring 3 sobre FAT32**, por UN camino y no
       por dos.
 - [ ] Medir si el monton de `<bmo/monton.h>` aguanta un patron de asignacion de
@@ -315,8 +372,111 @@ Regla que resume: **una capability existe para arbitrar AUTORIDAD. `2+2` no
 tiene ninguna autoridad que arbitrar** -- no toca hardware, ni memoria de otro,
 ni puede robar nada.
 
-⚠ La cifra de arriba es una estimacion. **La cierra `c/coste.bex`**, y hasta
-entonces se dice que es una estimacion.
+### ✅ MEDIDO EN EL RYZEN el 2026-08-16 -- `c/coste.bex`
+
+```text
+   TSC 3700000000 Hz, lote 4096, vueltas 16
+   1. bucle vacio   min   43 ciclos/op, media   45
+   2. llamada       min   65 ciclos/op, media   67
+   3. puerta minima min 2615 ciclos/op, media 6287
+   4. puerta con handle: NO SE MIDIO  (defecto de la sonda, corregido)
+```
+
+**Una puerta cuesta ~2.570 ciclos netos = ~707 ns. Una llamada, ~20. Factor
+~120x.** La estimacion previa de este documento decia ~500 ciclos: **era baja
+por CINCO veces**, y en la direccion que refuerza la conclusion.
+
+La aritmetica de Python, ya con el numero del dueno -- `for i in
+range(1000000): x += i`, unos 5 millones de operaciones de runtime:
+
+| | por operacion | el bucle entero |
+|---|---|---|
+| como llamadas | ~20 ciclos | **~30 ms** |
+| como `INVOKE` | ~2.570 ciclos | **~3,5 s** (con la media, ~8,5 s) |
+
+★★★ **Y hay un argumento que no es de velocidad y que cierra el asunto del
+todo**: `schedule_locked` solo cambia de tarea **en la frontera de un trap**, o
+sea que **cada syscall ES una oportunidad de planificacion**. Una puerta no
+cuesta 2.570 ciclos: cuesta 2.570 ciclos **y una probabilidad de perder el
+turno**. Se ve en los propios datos -- las filas 1 y 2 quedan a un 5% de su
+minimo y la fila 3 se va al **240%**. Para el interior de `a + b` eso no es
+lento, es impredecible.
+
+### ★★ Y el hallazgo que NO es de Python: 2.570 ciclos es CARO para un syscall
+
+El par `syscall`/`sysret` son ~100-150 ciclos de silicio, y BMO **no lleva
+mitigaciones de Spectre** (kernel propio, sin KPTI). O sea que **~95% del coste
+es trabajo del propio BMO**, no la transicion de anillo. Leido en
+`ring0/syscall/entry.rs`, esto es lo que paga TODA puerta:
+
+- **8 escrituras** para poner a cero la cabecera del area XSAVE (lineas 52-59).
+- **`xsave64` con `RFBM = -1`** (linea 64-65): guarda **todo** lo que XCR0
+  habilite, sin mirar si cambio.
+- **7 lecturas + OR** para validar esa cabecera al volver (lineas 80-87).
+- **`xrstor64` con `RFBM = -1`** (linea 92-93).
+- **`iretq`** (linea 103) y no `sysretq`: `iretq` **serializa**, y es de las
+  instrucciones caras de x86-64. Se usa porque el epilogo se comparte con las
+  interrupciones.
+
+★★★ **La observacion que lo hace accionable: una puerta que vuelve a LA MISMA
+tarea no necesita `xsave64`/`xrstor64` para nada.** El estado extendido ya es el
+correcto -- nadie lo toco. Ese guardado existe para el **cambio de contexto**,
+no para el syscall. Guardarlo solo cuando `dispatch` decide de verdad cambiar de
+tarea es lo que hace Linux en su camino rapido, y aqui se ahorraria el XSAVE, el
+XRSTOR y las 15 escrituras/lecturas de cabecera **en el 100% de las puertas que
+no cambian de tarea**, que son casi todas.
+
+⚠ **No esta medido cuanto es cada trozo**: esta confirmado el MECANISMO (leido
+en el codigo), no el reparto. Lo que lo separa es medir otra vez con el XSAVE
+fuera del camino que no conmuta.
+
+**Y esto no mejora Python: mejora TODO lo que cruza la puerta** -- la entrada de
+DOOM, el metronomo del audio, el camino asincrono del disco, el compositor.
+
+#### ★ Por que es DEMOSTRABLEMENTE seguro, y aun asi NO es un cambio rapido
+
+Comprobado el 16-08 preguntandoselo a rustc:
+
+```text
+   x86_64-unknown-none
+   features: -mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2,+soft-float
+   rustc-abi: softfloat
+```
+
+★★ **El kernel se compila SIN SSE y con soft-float: no toca un solo registro
+xmm.** Asi que el estado extendido de una tarea esta **garantizado intacto**
+durante un syscall que no conmuta. No es "probablemente seguro": es seguro por
+construccion del target.
+
+⚠ **Y aun asi no se toca hoy, por tres razones que hay que decir juntas:**
+
+1. **No se puede saber al ENTRAR si `dispatch` va a conmutar.** El arreglo
+   correcto no es "saltarse el xsave": es **moverlo al camino del cambio de
+   contexto**, o sea reestructurar donde vive el area y el **sello** de contexto
+   (`{firma}`, `gs:[0x10]`, el back-pointer). Es diseno, no una linea.
+2. **El camino de la INTERRUPCION se queda como esta.** Un timer puede caer a
+   mitad de un calculo de usuario y ese si conmuta. Solo el syscall que vuelve a
+   la misma tarea puede ahorrarselo.
+3. ⛔ **Es el codigo que produjo el `#GP en xrstor`** que costo el metodo de las
+   cinco sondas. Y ahora mismo hay repartos del kernel **sin verificar en
+   metal**: meter una quinta cosa antes de esa foto convierte *"arranco?"* en
+   *"cual de las cinco?"*. La misma parada deliberada que ya se decidio una vez.
+
+**`iretq` -> `sysretq`** es un segundo cambio, independiente y tambien con
+trampas propias (`sysret` no restaura RFLAGS arbitrarias y da `#GP` con un RIP
+no canonico). No se mezclan.
+
+★ **Y lo que hay que tener claro: NADA de esto desbloquea Python.** Aunque la
+puerta bajara a 800 ciclos seguiria siendo **40x** una llamada, y la decision de
+la seccion 4b no se moveria ni un milimetro. Son **dos pistas independientes**
+que salieron de la misma sonda.
+
+### ★ El premio retroactivo: `ARCH_OP_LEER_EN` tenia razon, y ahora con numero
+
+`ARCH_OP_LEER` da **siete bytes por llamada**. El WAD de DOOM son 4.196.020
+bytes = **599.431 puertas**, y a 707 ns cada una eso son **0,42 segundos solo en
+coste de puerta** (con la media, ~1 s). La decision de crear `ARCH_OP_LEER_EN`
+se tomo razonando; ahora tiene su cifra detras.
 
 ### ★★ Lo que SI es contrato: el FORMATO, no la operacion
 
@@ -510,6 +670,84 @@ que hoy tambien le faltan a DOOM, al audio, a la red y a Ada.
 > es un desvio barato** y se justifica sola. **Las fases 2 en adelante son un
 > proyecto aparte**, del tamano del kernel, y no se empiezan sin decidir
 > primero que se aparca a cambio.
+
+---
+
+## 8. ★★ POR DONDE SE EMPIEZA -- el primer paso, uno solo
+
+Escrito el 16-08 porque *"no se por donde comenzamos"* es una pregunta legitima
+cuando hay tres pistas abiertas a la vez. Van en este orden y por este motivo.
+
+### ✅ Paso 1 -- LA CABECERA DE OBJETO. HECHO el 2026-08-16.
+
+`bmo_abi::dynobj` -- `header.rs` (16 bytes) + `slots.rs` (las operaciones
+numeradas). **14 tests en verde, cero kernel, cero metal.**
+
+```text
+   +0   refs        u64   bit 63 = INMORTAL
+   +8   type_index  u32   INDICE, nunca un puntero
+   +12  flags       u32   PRESTADO, RASTREADO
+```
+
+★ **No se llama `python` a proposito**: es una REPRESENTACION, no semantica de
+lenguaje -- la misma llamada que puso el BCD en `bmo_lower::packed`. Y **no va
+dentro de `runtime/`**, que ya existe con `TypeRegistry`/`VTableStore` pero es
+un registro de interfaces entre lenguajes (otro trabajo, y sin usuarios fuera de
+sus tests).
+
+★★ **Y escribirlo destapo una restriccion que no estaba en ningun sitio**:
+`loan::take` mapea en la direccion que decide la RANURA, asi que **la misma
+pagina prestada cae en una direccion distinta en cada proceso**. Por tanto un
+objeto compartido **no puede llevar un puntero a otro objeto compartido**: lleva
+un indice. La regla de *"offsets y no punteros"* que se escribio para el
+bytecode resulta ser obligatoria tambien en la cabecera. Y es justo lo que
+descalifica a `runtime/vtable.rs`, cuyas entradas son `extern "C" fn()`.
+
+Los tests que se ganan el sitio: **un contador inmortal no se mueve nunca**
+(sin eso el pozo de constantes no se puede prestar y se cae la seccion 4b),
+**soltar por debajo de cero no falsifica un inmortal** (`0 - 1` pondria el bit
+63: un doble free se volveria una fuga que no se denuncia), y **dos ranuras no
+comparten numero** -- que no es higiene, es el bug de `INFO_CPU_HZ_REAL` escrito
+encima de `INFO_FUGAS`.
+
+**Lo siguiente de este paso**: la entrada de la tabla de tipos (el formato de la
+seccion BEF `Tipos`), que necesitaba que los numeros de ranura estuvieran
+decididos.
+
+#### Por que fue este y no otro (historico)
+
+**Por que este y no otro:**
+
+- Es lo unico de toda la lista que **no se puede meter despues**. CPython lo
+  intento (PEP 683) y le costo una version entera. Sin el, el pozo de constantes
+  no se puede prestar y la mejor idea de este documento se cae.
+- Es **Rust puro en `bmo-abi`, probado en el anfitrion**: cero kernel, cero
+  metal, cero riesgo de que algo deje de arrancar.
+- Es literalmente lo que se acordo: *el CONTRATO antes que el codigo*.
+- Cabe en ~150 lineas y sus tests.
+
+**Como se sabe que esta hecho:** tests de anfitrion que fijan tamano, alineado,
+que un objeto inmortal **nunca cambia su contador**, y que la disposicion es la
+que veria C. Ni una linea del kernel tocada.
+
+### Paso 2 -- La entropia. Una fila de TOML, quince minutos.
+
+`RDRAND` en `intrinsics.toml`. **No es privilegiado**, asi que no toca el kernel
+ni la superficie. Cierra un hueco que piden la firma, ESTRATOS, la red y Python.
+
+### ~~Paso 3 -- La fecha real.~~ ✅ YA ESTABA
+
+`INFO_FECHA` existe y `ring0/dev/clock.rs` lee el CMOS. Se dio por ausente sin
+comprobarlo. **Queda `stat` de FAT32 desde Ring 3**, que es lo que de verdad
+falta de esa fila.
+
+### ⛔ Lo que NO va ahora, y es una decision, no un olvido
+
+- **El XSAVE.** Ver la nota de la seccion 4b: seguro por construccion, **pero es
+  reestructurar el contexto**, y hay repartos de kernel sin verificar en metal.
+  Va DESPUES de esa foto.
+- **El interprete.** Va detras del paso 1, porque el paso 1 es su cimiento.
+- **El AOT.** Va detras del interprete, porque estrena el mismo runtime.
 
 ---
 

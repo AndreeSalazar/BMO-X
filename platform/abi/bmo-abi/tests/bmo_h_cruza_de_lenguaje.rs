@@ -87,6 +87,10 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     ("BMO_INFO_NET_RX_ARMADO", "INFO_NET_RX_ARMADO", 0x2C),
     ("BMO_INFO_NET_RX_TRAMAS", "INFO_NET_RX_TRAMAS", 0x2D),
     ("BMO_INFO_NET_PCI", "INFO_NET_PCI", 0x2E),
+    // El metro de la puerta. Cruza porque quien lo lee es un programa de C
+    // (`c/coste.bex`) y el que lo sirve es el kernel: dos lados, un numero.
+    ("BMO_INFO_SYSCALL_CUENTA", "INFO_SYSCALL_CUENTA", 0x2F),
+    ("BMO_INFO_SYSCALL_CICLOS", "INFO_SYSCALL_CICLOS", 0x30),
     ("BMO_INFO_CPU_HILOS", "INFO_CPU_HILOS", 0x06),
     ("BMO_INFO_CPU_NUCLEOS", "INFO_CPU_NUCLEOS", 0x07),
     ("BMO_INFO_TICKS", "INFO_TICKS", 0x0B),
@@ -202,6 +206,8 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_NET_RX_ARMADO", s::INFO_NET_RX_ARMADO),
         ("BMO_INFO_NET_RX_TRAMAS", s::INFO_NET_RX_TRAMAS),
         ("BMO_INFO_NET_PCI", s::INFO_NET_PCI),
+        ("BMO_INFO_SYSCALL_CUENTA", s::INFO_SYSCALL_CUENTA),
+        ("BMO_INFO_SYSCALL_CICLOS", s::INFO_SYSCALL_CICLOS),
         ("BMO_INFO_CPU_HILOS", s::INFO_CPU_HILOS),
         ("BMO_INFO_CPU_NUCLEOS", s::INFO_CPU_NUCLEOS),
         ("BMO_INFO_TICKS", s::INFO_TICKS),
