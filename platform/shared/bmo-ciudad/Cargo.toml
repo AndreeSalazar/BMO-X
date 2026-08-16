@@ -6,4 +6,8 @@ authors = ["BMO Project"]
 description = "La ciudad de neon del arranque: la dibuja la CPU, no se guarda"
 license = "Techne"
 
+# El recorte y el LIENZO. La ciudad emite geometria que empieza fuera de la
+# pantalla a proposito --el sello del marco-- asi que quien la pinta tiene que
+# saber recortar. Antes cada consumidor traia su propia regla y no coincidian.
 [dependencies]
+bmo-dibujo = { path = "../bmo-dibujo" }

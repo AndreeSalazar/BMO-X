@@ -46,7 +46,7 @@
 //! lo abre, y `ffmpeg -i vista.ppm vista.png` lo convierte si hace falta.
 
 use bmo_ciudad::paleta::{mezcla, Color, NEGRO, NEON_CIAN};
-use bmo_ciudad::{Camara, Ciudad, Medidas};
+use bmo_ciudad::{Camara, Ciudad, Lienzo, Medidas, Recorte};
 use std::io::Write;
 
 // -- LAS MASCARAS DEL GATO ---------------------------------------------------
@@ -63,26 +63,15 @@ mod gato;
 
 /// El lienzo. Un `Vec` de pixeles y un `fill_rect` que se parece al del kernel
 /// lo justo para que el codigo de dibujo se lea igual en los dos sitios.
-struct Lienzo {
+struct Papel {
     w: u32,
     h: u32,
     px: Vec<Color>,
 }
 
-impl Lienzo {
+impl Papel {
     fn nuevo(w: u32, h: u32) -> Self {
-        Lienzo { w, h, px: vec![NEGRO; (w * h) as usize] }
-    }
-
-    fn rect(&mut self, x: i32, y: i32, rw: i32, rh: i32, c: Color) {
-        if rw <= 0 || rh <= 0 {
-            return;
-        }
-        for fy in y.max(0)..(y + rh).min(self.h as i32) {
-            for fx in x.max(0)..(x + rw).min(self.w as i32) {
-                self.px[(fy as u32 * self.w + fx as u32) as usize] = c;
-            }
-        }
+        Papel { w, h, px: vec![NEGRO; (w * h) as usize] }
     }
 
     /// PPM binario (P6). Diez lineas y ninguna dependencia.
@@ -93,6 +82,33 @@ impl Lienzo {
             f.write_all(&[(p >> 16) as u8, (p >> 8) as u8, *p as u8])?;
         }
         f.flush()
+    }
+}
+
+/// ** EL PREVISUALIZADOR YA NO TIENE SU PROPIA REGLA DE RECORTE, y esa es la
+/// mitad del arreglo del 2026-08-15.
+///
+/// Este fichero tenia un `rect` con `x.max(0)..(x + rw).min(ancho)`: recortaba,
+/// correctamente. El kernel tenia el suyo con `if x >= 0 { ... }`: descartaba.
+/// Los dos decian "comprobar los limites" y hacian cosas distintas, asi que
+/// **la imagen de aqui no era la del Ryzen** -- y la unica forma de enterarse
+/// era grabar el arranque con el movil, que es exactamente lo que esta
+/// herramienta existe para evitar.
+///
+/// Ahora el recorte es `bmo_dibujo::Lienzo`, el mismo objeto que usa Ring 0.
+/// Lo que se ve aqui es lo que se va a ver alli porque **es el mismo codigo**,
+/// que es el argumento de `bmo-hash` aplicado a los pixeles.
+impl Lienzo for Papel {
+    fn recorte(&self) -> Recorte {
+        Recorte::nuevo(0, 0, self.w as i32, self.h as i32)
+    }
+
+    fn rect_dentro(&mut self, r: Recorte, c: Color) {
+        for fy in r.y0..r.y1 {
+            for fx in r.x0..r.x1 {
+                self.px[(fy as u32 * self.w + fx as u32) as usize] = c;
+            }
+        }
     }
 }
 
@@ -160,17 +176,17 @@ fn main() {
     let salida = arg.get(4).cloned().unwrap_or_else(|| "vista.ppm".into());
 
     let f = bmo_ciudad::fotograma(ms);
-    let mut l = Lienzo::nuevo(w, h);
+    let mut l = Papel::nuevo(w, h);
     let mut c = Ciudad::nueva(w as i32, h as i32, ((w as u64) << 20) | h as u64);
     c.encender(100);
 
     // -- LA CIUDAD, detras de todo. Igual que en `pintar_escena`.
+    // Se le pasa el lienzo directamente. Antes habia que juntar los rectangulos
+    // en un `Vec` primero, porque `c` estaba prestada mientras `l` se mutaba;
+    // con el lienzo por delante ese rodeo desaparece -- y con el, la copia de
+    // ocho mil tuplas por imagen.
     let cam = Camara::nueva(f.avance);
-    let mut rects = Vec::new();
-    c.dibujar(cam, |x, y, cw, ch, color| rects.push((x, y, cw, ch, color)));
-    for (x, y, cw, ch, color) in rects {
-        l.rect(x, y, cw, ch, color);
-    }
+    c.dibujar(cam, &mut l);
 
     // -- EL ENCUADRE, pedido al mismo sitio que lo pide el kernel.
     let escala = if h >= 900 { 2 } else { 1 };
@@ -193,7 +209,6 @@ fn main() {
     let enc = bmo_ciudad::componer(&medidas);
 
     // -- EL AURA.
-    let mut auras = Vec::new();
     bmo_ciudad::aura(
         |y| c.color_cielo(y),
         enc.aura_cx,
@@ -202,11 +217,8 @@ fn main() {
         enc.aura_ry,
         NEON_CIAN,
         50 * f.gato_alfa / 255,
-        |x, y, aw, ah, color| auras.push((x, y, aw, ah, color)),
+        &mut l,
     );
-    for (x, y, aw, ah, color) in auras {
-        l.rect(x, y, aw, ah, color);
-    }
 
     // -- EL GATO, con nucleo y derrame.
     const TRAZO_APAGADO: Color = 0xFF1A1730;

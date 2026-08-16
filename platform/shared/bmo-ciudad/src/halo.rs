@@ -37,6 +37,7 @@
 //! opaca. Quien la usa la coloca por encima de `Ciudad::techo`.
 
 use crate::paleta::{mezcla, Color};
+use bmo_dibujo::Lienzo;
 
 /// En cuantas franjas horizontales se parte el aura.
 ///
@@ -98,7 +99,31 @@ fn raiz(n: i32) -> i32 {
 ///
 /// Se emiten los anillos de FUERA hacia DENTRO, asi que los de dentro tapan a
 /// los de fuera y no hace falta recortar nada.
+#[allow(clippy::too_many_arguments)]
 pub fn aura(
+    cielo: impl Fn(i32) -> Color,
+    cx: i32,
+    cy: i32,
+    rx: i32,
+    ry: i32,
+    tinte: Color,
+    fuerza: u32,
+    lienzo: &mut impl Lienzo,
+) {
+    aura_emitir(cielo, cx, cy, rx, ry, tinte, fuerza, |x, y, w, h, c| {
+        lienzo.rect(x, y, w, h, c)
+    });
+}
+
+/// La geometria del aura, sin recortar y sin destino.
+///
+/// Existe aparte de [`aura`] por las pruebas: lo que hay que poder comprobar es
+/// que **los anillos no se salen de sus radios** --el aura es opaca, y si se
+/// saliera borraria las torres que tiene al lado-- y eso solo se ve en la
+/// geometria cruda. Recortada contra un lienzo, un anillo desbordado se veria
+/// igual que uno correcto.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn aura_emitir(
     cielo: impl Fn(i32) -> Color,
     cx: i32,
     cy: i32,
@@ -166,7 +191,7 @@ mod pruebas {
     /// esto entra en el kernel: `aura` emite por callback y no reserva un byte.
     fn recoger(rx: i32, ry: i32, fuerza: u32) -> Vec<(i32, i32, i32, i32, Color)> {
         let mut v = Vec::new();
-        aura(cielo_plano, 100, 100, rx, ry, NEON_CIAN, fuerza, |x, y, w, h, c| {
+        aura_emitir(cielo_plano, 100, 100, rx, ry, NEON_CIAN, fuerza, |x, y, w, h, c| {
             v.push((x, y, w, h, c))
         });
         v
@@ -217,7 +242,7 @@ mod pruebas {
     #[test]
     fn el_aura_no_se_sale_de_sus_radios() {
         let (cx, cy, rx, ry) = (100, 100, 60, 40);
-        aura(cielo_plano, cx, cy, rx, ry, NEON_CIAN, 150, |x, y, w, h, _| {
+        aura_emitir(cielo_plano, cx, cy, rx, ry, NEON_CIAN, 150, |x, y, w, h, _| {
             assert!(x >= cx - rx, "se salio por la izquierda: {}", x);
             assert!(x + w <= cx + rx, "se salio por la derecha: {}", x + w);
             assert!(y >= cy - ry, "se salio por arriba: {}", y);
@@ -240,8 +265,8 @@ mod pruebas {
     #[test]
     fn unos_radios_de_cero_no_dibujan_nada() {
         let mut n = 0;
-        aura(cielo_plano, 10, 10, 0, 10, NEON_CIAN, 200, |_, _, _, _, _| n += 1);
-        aura(cielo_plano, 10, 10, 10, 0, NEON_CIAN, 200, |_, _, _, _, _| n += 1);
+        aura_emitir(cielo_plano, 10, 10, 0, 10, NEON_CIAN, 200, |_, _, _, _, _| n += 1);
+        aura_emitir(cielo_plano, 10, 10, 10, 0, NEON_CIAN, 200, |_, _, _, _, _| n += 1);
         assert_eq!(n, 0);
     }
 

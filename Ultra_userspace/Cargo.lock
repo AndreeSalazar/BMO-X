@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "bmo-dibujo"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-input"
 version = "0.1.0"
 
@@ -29,3 +33,6 @@ dependencies = [
 [[package]]
 name = "bmo-userland"
 version = "2.0.0"
+dependencies = [
+ "bmo-dibujo",
+]

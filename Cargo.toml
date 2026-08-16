@@ -13,6 +13,11 @@ members = [
     "platform/shared/bmo-channel",
     # La ciudad de neon del arranque: la dibuja la CPU, no se guarda.
     "platform/shared/bmo-ciudad",
+    # El rasterizador de referencia y el LIENZO. Vivia en Ring 3, y por eso el
+    # kernel tenia su propio dibujante con otra regla de recorte: 2.625
+    # rectangulos por fotograma tirados y el 7,2% de la pantalla sin escribir.
+    # Un solo recorte para las tres orillas.
+    "platform/shared/bmo-dibujo",
 
     # -- ABI (Foundation) --------------------------------------------
     "platform/abi/bmo-abi",

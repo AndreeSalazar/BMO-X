@@ -74,6 +74,9 @@ version = "1.0.0"
 [[package]]
 name = "bmo-ciudad"
 version = "0.1.0"
+dependencies = [
+ "bmo-dibujo",
+]
 
 [[package]]
 name = "bmo-cobol-front"
@@ -94,6 +97,10 @@ dependencies = [
  "bmo-lower",
  "bmo-verify",
 ]
+
+[[package]]
+name = "bmo-dibujo"
+version = "0.1.0"
 
 [[package]]
 name = "bmo-estratos"
@@ -151,6 +158,7 @@ dependencies = [
  "bmo-block",
  "bmo-channel",
  "bmo-ciudad",
+ "bmo-dibujo",
  "bmo-estratos",
  "bmo-fat32",
  "bmo-hash",

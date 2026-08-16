@@ -12,8 +12,13 @@
 //! mezclarlo con la aritmetica obligaria a releer trescientas lineas para
 //! cambiar un azul.
 
-/// Un color BGRA de 32 bits, como los quiere el framebuffer.
-pub type Color = u32;
+/// Un color de 32 bits, como los quiere el framebuffer.
+///
+/// No se declara aqui: **es el de `bmo-dibujo`**. Un `type Color = u32` propio
+/// no seria una copia peligrosa hoy --los dos son `u32`-- pero seria dos sitios
+/// donde cambiar el formato de pixel el dia que una GPU diga otra cosa, y esa
+/// es exactamente la clase de acuerdo que se rompe sin que nadie se entere.
+pub use bmo_dibujo::Color;
 
 // ** LA ESCALERA DE VALORES, que es lo que fallaba en el primer metal.
 //
@@ -111,18 +116,19 @@ pub const NEGRO: Color = 0xFF000000;
 ///
 /// `parte` de `total` es cuanto de `b` se pone encima de `a`. Con `parte = 0`
 /// sale `a`; con `parte = total`, `b`.
+///
+/// [!] **Es `bmo_dibujo::mezclar` con los argumentos al derecho.** Habia dos
+/// mezcladores en el repo haciendo la misma aritmetica --este y el del
+/// rasterizador-- y solo se diferenciaban en cual de los dos colores iba
+/// primero. Ahora hay uno; esta funcion se queda porque toda la escena esta
+/// escrita en el orden *"sobre `a`, pon `parte` de `b`"*, que es como se piensa
+/// un degradado, y darle la vuelta a ochenta llamadas para ahorrar una linea
+/// seria cambiar codigo bueno por nada.
 pub fn mezcla(a: Color, b: Color, parte: u32, total: u32) -> Color {
     if total == 0 {
         return a;
     }
-    let parte = parte.min(total);
-    let inv = total - parte;
-    let canal = |desp: u32| {
-        let ca = (a >> desp) & 0xFF;
-        let cb = (b >> desp) & 0xFF;
-        ((ca * inv + cb * parte) / total) & 0xFF
-    };
-    0xFF00_0000 | (canal(16) << 16) | (canal(8) << 8) | canal(0)
+    bmo_dibujo::mezclar(b, a, parte, total)
 }
 
 #[cfg(test)]

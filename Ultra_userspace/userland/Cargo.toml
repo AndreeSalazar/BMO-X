@@ -4,6 +4,16 @@ version = "2.0.0"
 edition = "2021"
 description = "Runtime de Ring 3: los dos syscalls, capabilities y la pantalla"
 
-# Sin dependencias, y eso es el punto: un proceso Ring 3 no comparte structs
-# con el kernel. Habla con el por handles y numeros de operacion, nada mas.
+# ** LA UNICA DEPENDENCIA, y la regla que NO rompe.
+#
+# La regla es "un proceso Ring 3 no comparte structs con el kernel: habla con el
+# por handles y numeros de operacion". `bmo-dibujo` no es un struct del kernel:
+# es ARITMETICA --recorte, Bresenham, la funcion de arista-- sin `unsafe`, sin
+# punteros y sin dependencias. Compartirla no acopla los dos anillos; es el
+# mismo argumento que `bmo-hash`, donde las dos orillas dan la misma suma
+# porque ejecutan el mismo codigo.
+#
+# Y no compartirla ya costo: el kernel tenia su propia regla de recorte y no
+# coincidia con esta. Ver la cabecera de `src/dibujo/mod.rs`.
 [dependencies]
+bmo-dibujo = { path = "../../platform/shared/bmo-dibujo" }

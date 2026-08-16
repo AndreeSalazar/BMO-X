@@ -52,6 +52,7 @@
 //! Hay una prueba que lo recorre entero.
 
 use crate::camara::Camara;
+use bmo_dibujo::Lienzo;
 use crate::paleta::*;
 
 /// Cuantos bloques tiene cada lado.
@@ -187,7 +188,28 @@ impl Marco {
     /// queda continua, el orden deja de importar y **no se escribe un pixel dos
     /// veces**. El solape sigue estando en la generacion, que es donde hacia
     /// falta: garantiza que no quede una rendija entre bloque y bloque.
-    pub fn dibujar(&self, cam: Camara, mut rect: impl FnMut(i32, i32, i32, i32, Color)) {
+    pub fn dibujar(&self, cam: Camara, lienzo: &mut impl Lienzo) {
+        self.emitir(cam, |x, y, w, h, c| lienzo.rect(x, y, w, h, c));
+    }
+
+    /// La geometria del marco, sin recortar.
+    ///
+    /// [!] **Aqui salen coordenadas negativas, y es el punto.** El sello --el
+    /// bloque exterior de cada lado-- se estira hasta pasado el borde de la
+    /// pantalla para que la deriva de la camara no abra una rendija de cielo
+    /// pegada al canto. En cuanto la camara se mueve, `x` de ese bloque es
+    /// negativa por diseno.
+    ///
+    /// Lo emite crudo porque tiene dos consumidores que quieren cosas
+    /// distintas: el lienzo, que lo recorta y lo pinta, y
+    /// `Ciudad::horizonte_de_oclusion`, que necesita saber que columnas quedan
+    /// tapadas y para eso le hace falta la geometria entera.
+    ///
+    /// Es `pub(crate)` y no `pub` por lo que costo que fuera publico: un
+    /// consumidor de fuera decidio por su cuenta que un rectangulo con `x`
+    /// negativa se descarta, y ese consumidor era el kernel. Ver
+    /// [`crate::ciudad::Ciudad::dibujar`].
+    pub(crate) fn emitir(&self, cam: Camara, mut rect: impl FnMut(i32, i32, i32, i32, Color)) {
         // Capa 2 = el marco. Deriva poco a proposito: ver la cabecera.
         let dx = cam.desplazamiento(2);
         for lado in 0..2usize {
@@ -259,7 +281,7 @@ mod pruebas {
         for avance in (0..2000).step_by(7) {
             let mut cubre_izq = false;
             let mut cubre_der = false;
-            m.dibujar(Camara::nueva(avance), |x, y, w, h, _| {
+            m.emitir(Camara::nueva(avance), |x, y, w, h, _| {
                 if y == 0 && h >= alto && w > 4 {
                     if x <= 0 {
                         cubre_izq = true;

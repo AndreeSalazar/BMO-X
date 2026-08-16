@@ -8,6 +8,7 @@ use crate::camara::Camara;
 use crate::marco::Marco;
 use crate::paleta::*;
 use crate::torre::Torre;
+use bmo_dibujo::Lienzo;
 
 // ** EL SOBREDIBUJO, Y POR QUE SE PAGA UNA VEZ Y SE COBRA SIEMPRE
 //
@@ -266,10 +267,42 @@ impl Ciudad {
         }
         // El marco tapa desde su techo hasta abajo del todo, asi que en sus
         // columnas no queda cielo ninguno.
-        self.marco.dibujar(cam, |x, y, w, _, _| tapar(x, w, y));
+        self.marco.emitir(cam, |x, y, w, _, _| tapar(x, w, y));
     }
 
-    pub fn dibujar(&self, cam: Camara, mut rect: impl FnMut(i32, i32, i32, i32, Color)) {
+    /// **Pinta la ciudad en un lienzo.** Es la unica forma de sacarla a
+    /// pixeles, y eso es a proposito.
+    ///
+    /// ** POR QUE NO ENTREGA LA GEOMETRIA Y YA, que es lo que hacia antes.
+    ///
+    /// Hasta el 2026-08-15 esto era `dibujar(cam, rect: impl FnMut(...))`: se
+    /// entregaban coordenadas crudas y cada quien las pintaba como supiera. La
+    /// escena **emite rectangulos que empiezan fuera de la pantalla a
+    /// proposito** --el bloque exterior del marco se estira pasado el borde
+    /// para que la deriva de la camara no abra una rendija-- asi que "como
+    /// supiera" incluia la pregunta de que hacer con una `x` negativa.
+    ///
+    /// Hubo dos respuestas. El previsualizador recortaba; el kernel descartaba
+    /// el rectangulo entero. A 1920x1080 eso eran 2.625 rectangulos tirados por
+    /// fotograma, el 7,2% de la pantalla sin escribir jamas, y una franja muerta
+    /// de 191 px pegada al borde izquierdo -- justo el sitio que el marco
+    /// existe para tapar. Y ninguna prueba podia verlo, porque el
+    /// previsualizador ejecutaba la otra regla.
+    ///
+    /// Con un [`Lienzo`] la pregunta no llega a hacerse: el recorte esta escrito
+    /// una vez, en `bmo-dibujo`, y quien pinta solo ve coordenadas que ya estan
+    /// dentro. La emision cruda sigue existiendo --[`Ciudad::emitir`]-- pero es
+    /// privada, porque su otro usuario es el horizonte de oclusion, que necesita
+    /// la geometria SIN recortar para saber que columnas quedan tapadas.
+    pub fn dibujar(&self, cam: Camara, lienzo: &mut impl Lienzo) {
+        self.emitir(cam, |x, y, w, h, c| lienzo.rect(x, y, w, h, c));
+    }
+
+    /// La geometria de la escena, sin recortar y sin destino.
+    ///
+    /// Privada: ver [`Ciudad::dibujar`]. Quien quiera pixeles pasa por el
+    /// lienzo; quien quiera geometria esta dentro de este crate.
+    fn emitir(&self, cam: Camara, mut rect: impl FnMut(i32, i32, i32, i32, Color)) {
         // -- ** EL CIELO, SOLO DONDE SE VA A VER.
         //
         // No se mueve con la camara: esta infinitamente lejos, que es justo lo
@@ -350,7 +383,7 @@ impl Ciudad {
         // -- ** EL MARCO, LO ULTIMO. Es lo que esta mas cerca, asi que tapa todo
         // lo demas -- y con ello te pone DENTRO de la escena en vez de delante
         // de una foto de ella. Ver `crate::marco`.
-        self.marco.dibujar(cam, &mut rect);
+        self.marco.emitir(cam, &mut rect);
     }
 }
 
@@ -387,7 +420,7 @@ mod pruebas {
     fn el_cielo_y_el_suelo_cubren_todo_el_alto() {
         let c = Ciudad::nueva(640, 480, 7);
         let mut filas = [false; 480];
-        c.dibujar(Camara::default(), |_, y, _, h, _| {
+        c.emitir(Camara::default(), |_, y, _, h, _| {
             for f in y..(y + h) {
                 if (0..480).contains(&f) {
                     filas[f as usize] = true;
@@ -411,7 +444,7 @@ mod pruebas {
             let mut c = Ciudad::nueva(800, 600, 3);
             c.encender(pct);
             let mut n = 0;
-            c.dibujar(Camara::default(), |_, _, _, _, color| {
+            c.emitir(Camara::default(), |_, _, _, _, color| {
                 if luminancia(color) > umbral {
                     n += 1;
                 }
@@ -448,7 +481,7 @@ mod pruebas {
         // menor que la pantalla descarta el cielo y el suelo (que van de borde a
         // borde), y alto grande descarta ventanas y jirones de niebla.
         let mut mas_a_la_derecha = 0;
-        c.dibujar(Camara::nueva(200), |x, _, w, h, _| {
+        c.emitir(Camara::nueva(200), |x, _, w, h, _| {
             if w < 640 && h > 30 {
                 mas_a_la_derecha = mas_a_la_derecha.max(x + w);
             }
@@ -494,7 +527,7 @@ mod pruebas {
     fn rasterizar(c: &Ciudad, cam: Camara) -> Vec<Option<Color>> {
         let (w, h) = (c.ancho as usize, c.alto as usize);
         let mut px = vec![None; w * h];
-        c.dibujar(cam, |x, y, rw, rh, color| {
+        c.emitir(cam, |x, y, rw, rh, color| {
             for fy in y.max(0)..(y + rh).min(c.alto) {
                 for fx in x.max(0)..(x + rw).min(c.ancho) {
                     px[fy as usize * w + fx as usize] = Some(color);
@@ -580,7 +613,7 @@ mod pruebas {
     fn un_lienzo_diminuto_no_rompe_nada() {
         let c = Ciudad::nueva(32, 24, 5);
         let mut n = 0;
-        c.dibujar(Camara::default(), |_, _, _, _, _| n += 1);
+        c.emitir(Camara::default(), |_, _, _, _, _| n += 1);
         assert!(n > 0);
     }
 }
