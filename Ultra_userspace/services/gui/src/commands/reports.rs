@@ -812,16 +812,24 @@ fn ext_grupo(s: &mut Output, titulo: &[u8], tinta: u8, n: u64, mascara: u64, not
         // frase, y dos frases en un renglon no se leen. Sin motivos van
         // seguidas, que es como se mira una lista de banderas.
         if notas {
-            if cuantos > 1 {
-                label(s, b"");
-            }
+            // ** El motivo se ENVUELVE, no se corta.
+            //
+            // La primera version lo truncaba a lo que quedara de renglon, y la
+            // foto del Ryzen del 16-08 lo enseno entero: "sem-asm no sabe V",
+            // "en vez de un buc", "TODA pagina que BMO mapea es ej". Media
+            // frase no es una version corta de la frase: es otra frase, y
+            // encima una que parece que el sistema se quedo a medias.
+            //
+            // La sangria es 20 --cuatro de margen y el nombre a 16-- y no 34:
+            // el motivo mas largo del censo mide 68 caracteres, asi que asi
+            // cabe entero en un renglon de 88. Medido, no estimado.
+            s.text(b"    ");
             s.text(&buf[..ln]);
             for _ in ln..16 {
                 s.byte(b' ');
             }
             let nn = bmo::info_texto(bmo::INFO_TXT_EXT_NOTA | (i << 8), &mut nota);
-            s.text(&nota[..nn.min(OUT_COLS - 36)]);
-            s.byte(b'\n');
+            envolver(s, &nota[..nn], 20, OUT_COLS - 22);
             continue;
         }
 
@@ -843,6 +851,45 @@ fn ext_grupo(s: &mut Output, titulo: &[u8], tinta: u8, n: u64, mascara: u64, not
     }
     s.with_ink(INK_PLAIN);
     cuantos
+}
+
+/// Escribe `texto` cortando por ESPACIOS, con las continuaciones sangradas.
+///
+/// Cortar por palabras y no por caracteres es la diferencia entre una frase que
+/// sigue debajo y una frase partida a mitad de palabra. `ancho` es lo que cabe
+/// contando desde `sangria`.
+fn envolver(s: &mut Output, texto: &[u8], sangria: usize, ancho: usize) {
+    let mut i = 0usize;
+    let mut primera = true;
+    while i < texto.len() {
+        if !primera {
+            for _ in 0..sangria {
+                s.byte(b' ');
+            }
+        }
+        if texto.len() - i <= ancho {
+            s.text(&texto[i..]);
+            s.byte(b'\n');
+            return;
+        }
+        // El ultimo espacio que cabe. Si no hay ninguno --una palabra mas larga
+        // que el renglon-- se corta en seco: es lo unico que se puede hacer, y
+        // es mejor que un bucle que no avanza.
+        let mut corte = ancho;
+        while corte > 0 && texto[i + corte] != b' ' {
+            corte -= 1;
+        }
+        if corte == 0 {
+            corte = ancho;
+        }
+        s.text(&texto[i..i + corte]);
+        s.byte(b'\n');
+        i += corte;
+        while i < texto.len() && texto[i] == b' ' {
+            i += 1;
+        }
+        primera = false;
+    }
 }
 
 /// `ext` -- que ofrece este silicio y que coge BMO.
@@ -893,7 +940,11 @@ pub(crate) fn report_ext(s: &mut Output) {
     let (rep, sin_sitio) = ((av >> 32) & 0xFFFF, (av >> 48) & 0xFFFF);
     let averias = conf + mudas + rep + sin_sitio;
     s.with_ink(if averias == 0 { INK_GOOD } else { INK_ERR });
-    label(s, b"tiene que ser 0");
+    // ** `label` rellena hasta 14 y esta etiqueta mide 15, asi que no quedaba
+    // ni un espacio: en el Ryzen salio `tiene que ser 0conflictos 0`. Pegado,
+    // el 0 del rotulo se lee como parte del primer numero -- justo el dato que
+    // esta fila existe para vigilar.
+    s.text(b"    tiene que ser 0   ");
     s.text(b"conflictos ");
     s.dec(conf);
     s.text(b"   mudas ");
