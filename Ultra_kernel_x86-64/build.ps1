@@ -534,7 +534,14 @@ $cEjemplos = @(
     # de Vivaldi (1725, dominio publico). `musica.bex` prueba la libreria nota a
     # nota; esta prueba la PIEZA -- que ocho compases seguidos no deriven, y que
     # el eco forte/piano que Vivaldi escribio salga por `BMO_SONIDO_VOLUMEN`.
-    @{ src = 'toolchain\lang\c\examples\vivaldi_C.c';   out = 'vivaldi.bex'; dir = 'c' }
+    @{ src = 'toolchain\lang\c\examples\vivaldi_C.c';   out = 'vivaldi.bex'; dir = 'c' },
+    # ** EL NUMERO QUE NO EXISTIA: cuantos ciclos vale una puerta.
+    # Compara bucle vacio, llamada normal, `INVOKE` pelado sobre la tarea
+    # actual, e `INVOKE` sobre un handle de verdad. Se queda con el MINIMO,
+    # porque el temporizador expropia y una media se puede inflar. Decide si
+    # algo puede pasar por la superficie o tiene que ser codigo enlazado --
+    # empezando por el runtime de Python. Ver `docs/PYTHON_MAESTRO.md`.
+    @{ src = 'toolchain\lang\c\examples\coste_C.c';     out = 'coste.bex'  ; dir = 'c' }
 )
 
 # * LOS RECURSOS QUE VAN DENTRO DE UN `.bex`.
