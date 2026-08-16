@@ -238,9 +238,20 @@ void report_split(unsigned long long doors0, unsigned long long cycles0,
            inside,
            total_per_op - inside);
 
-    /* ** Y el stub por dentro, que es lo que faltaba. Las tres casillas son
-     * codigo que se puede leer y reescribir; la cuarta no lo es -- el `resto`
-     * son el `syscall` y el `iretq`, los pushes y los pops. */
+    /* ** Y el stub por dentro -- CUANDO SE ESTA MIDIENDO.
+     *
+     * Los cuatro sellos `rdtsc` que llenaban estas dos casillas se retiraron
+     * del stub el 16-08, en cuanto dieron su numero: costaban 69 ciclos cada
+     * uno --~276 sobre 1625, un 17%-- y un instrumento que ya contesto y sigue
+     * cobrando es un peaje. Con los sellos fuera, los dos contadores no se
+     * escriben y el delta sale CERO.
+     *
+     * Cero no se imprime como un reparto de ceros, porque eso seria una
+     * medida falsa en vez de una medida ausente. Se dice que no se midio. */
+    if (guarda == 0 && restaura == 0) {
+        printf("   el stub por dentro: NO MEDIDO (sellos fuera del stub)\n");
+        return;
+    }
     if (contado > total_per_op) {
         /* El instrumento se contradice: las etapas no pueden sumar mas que el
          * total. Se dice en vez de imprimir una resta que daria la vuelta. */

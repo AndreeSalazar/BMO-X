@@ -211,12 +211,19 @@ pub static mut ETAPA_ULTIMO: u64 = 0;
 
 /// Ciclos de A a B: `sub`/`and rsp`, el back-pointer y el sello.
 ///
-/// ** DESDE LA PIEZA 1 (16-08) ESTA CASILLA MIDE OTRA COSA, y por eso se dice
-/// aqui: antes incluia la cabecera a cero y el `xsaveopt64`, que se hacian en
-/// TODAS las puertas. Ahora esas once instrucciones viven en la via lenta --
-/// solo se pagan cuando `dispatch` cambia de tarea-- asi que lo que queda aqui
-/// es el prologo pelado y **tiene que salir en decenas, no en cientos**. Si
-/// sale en cientos, la pieza no hizo lo que dice.
+/// ** HOY VALE CERO, Y ESO NO ES UN FALLO: es un instrumento retirado.
+///
+/// Los cuatro sellos que llenaban esta casilla y [`CICLOS_RESTAURA`] vivieron
+/// dentro de `entry.rs` lo justo para contestar --**guardar 30, dispatch 311,
+/// devolver 30, resto 1254**-- y se sacaron el mismo dia. Costaban 69 ciclos
+/// cada uno, medidos por la fila 5 de `coste.bex` y no estimados: ~276 sobre
+/// 1625, **un 17%**. Un instrumento que ya dio su numero y sigue cobrando es un
+/// peaje.
+///
+/// El campo se queda --y `c/coste.bex` dice *"NO MEDIDO"* en vez de imprimir un
+/// reparto de ceros-- porque el hueco vale mas que el borrado: el dia que haya
+/// que volver a partir el stub, el cableado hasta Ring 3 ya esta hecho y solo
+/// hay que devolver los cuatro sellos, que estan en el git de este dia.
 pub static mut CICLOS_GUARDA: u64 = 0;
 
 /// Ciclos de D' a E: **lo que cuesta DEVOLVER el contexto**, y depende de por
