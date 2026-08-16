@@ -86,7 +86,7 @@ pub fn of(f: Feat) -> Use {
         Feat::Sha => Use::No("el gate hashea con BLAKE3, no con SHA-256"),
 
         // ================= estado extendido =================
-        Feat::Xsave => Use::Yes("ring0/syscall/entry.rs: xsave64 en TODA puerta"),
+        Feat::Xsave => Use::Yes("entry.rs: el xrstor64 de TODA puerta, y el timer"),
 
         // ** ESTA FILA ES LA QUE HAY QUE MIRAR EN LA FOTO.
         //
@@ -101,7 +101,15 @@ pub fn of(f: Feat) -> Use {
         // dar por hecho un HECHO del hardware en vez de preguntarlo.
         Feat::Osxsave => Use::Yes("lo exige xsave64... pero lo pone el FIRMWARE, no BMO"),
 
-        Feat::Xsaveopt => Use::No("guardaria solo lo que cambio; hoy se guarda todo"),
+        // ** PASO DE No A Yes EL 2026-08-16, y esta fila es ahora un SEGURO.
+        //
+        // El stub ejecuta `xsaveopt64` incondicionalmente, asi que en un CPU
+        // sin esta extension seria `#UD` en la primera puerta. Declararla usada
+        // hace que el censo la cuente como CONFLICTO en esa maquina y que el
+        // arranque lo grite -- que es todo lo que se puede hacer sin meter una
+        // rama en el camino mas caliente del sistema, y bastante mejor que un
+        // `#UD` sin nombre.
+        Feat::Xsaveopt => Use::Yes("ring0/syscall/entry.rs: el guardado de TODA puerta"),
         Feat::Xsavec => Use::No("formato compacto: se salta los componentes en init"),
         Feat::Xsaves => Use::No("variante supervisora; no hay estado de kernel que guardar"),
 

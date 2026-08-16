@@ -62,7 +62,53 @@ unsafe extern "C" fn syscall_entry() -> ! {
         // RFBM = -1: guarda lo que XCR0 tenga habilitado, sea lo que sea.
         // rax y rdx ya estan salvados en el bloque de GPR de arriba.
         "mov eax, -1", "mov edx, -1",
-        "xsave64 [rsp]",
+        // ** `xsaveopt64` Y NO `xsave64`, desde el 2026-08-16.
+        //
+        // === De donde sale este cambio ===
+        //
+        // El metro (`syscall/meter.rs`) midio en el Ryzen que una puerta cuesta
+        // 2663 ciclos y que **2345 de ellos --el 88%-- estan en este stub**, no
+        // en el Rust. Y el censo de extensiones (`ext`) enseno que XSAVEOPT
+        // esta EN ESTE SILICIO Y SIN USAR. Las dos cosas se midieron el mismo
+        // dia y esta linea es donde se juntan.
+        //
+        // === Que hace distinto ===
+        //
+        // XSAVEOPT trae la *modified optimization*: puede NO escribir los
+        // componentes que no se han tocado desde el ultimo `xrstor64` hecho
+        // **desde esta misma direccion**. Y esa condicion se cumple justo en el
+        // caso que domina: una puerta que vuelve a LA MISMA tarea.
+        //
+        // ** Lo que lo hace valido aqui no es una suposicion, es el target: el
+        // kernel se compila `-sse,-avx,+soft-float` (`rustc-abi: softfloat`),
+        // o sea que **no toca un solo registro xmm**. Entre el `xrstor64` de la
+        // puerta anterior y este `xsaveopt64` nadie modifico el estado
+        // extendido, que es exactamente la condicion que la instruccion mira.
+        //
+        // === Por que es SEGURO, y no es la cirugia que se aplazo ===
+        //
+        //   1. **Formato ESTANDAR**, igual que `xsave64`. El `xrstor64` del
+        //      epilogo no cambia ni una letra. (`XSAVEC`/`XSAVES` usan formato
+        //      COMPACTADO y obligarian a tocar tambien la restauracion -- que
+        //      es el codigo que produjo el `#GP en xrstor`. Por eso NO se
+        //      tocan hoy.)
+        //   2. La cabecera se sigue poniendo a cero arriba y `RFBM` sigue
+        //      siendo -1: el `XSTATE_BV` se escribe con las mismas reglas.
+        //   3. Si el ultimo `xrstor64` vino de OTRA direccion --un cambio de
+        //      tarea, o el camino del timer-- la optimizacion simplemente no se
+        //      aplica y escribe entero. El caso de duda se resuelve escribiendo
+        //      de mas, nunca de menos.
+        //
+        // [!] La optimizacion esta PERMITIDA, no garantizada: el CPU puede
+        // escribir igual. Por eso esto no se declara una mejora hasta que
+        // `run c/coste.bex` ensene el reparto nuevo -- el mismo instrumento que
+        // encontro el problema es el que dice si se arreglo.
+        //
+        // [!] Y si algun dia se arranca en un CPU sin XSAVEOPT, esto es `#UD`
+        // en la primera puerta. Lo vigila el censo: `usage.rs` declara esta
+        // fila como USADA, asi que alli seria un CONFLICTO y el arranque lo
+        // grita en CABINA. Ver `features/mod.rs`.
+        "xsaveopt64 [rsp]",
         "mov gs:[0x10], rsp",          // publish this context
         "cld",
         "mov rdi, rbp",
