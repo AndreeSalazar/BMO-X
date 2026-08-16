@@ -21,7 +21,6 @@ use core::arch::{asm, naked_asm};
 use crate::ring0::task::percpu;
 use super::ops::*;
 use super::dispatch;
-use super::meter;
 
 #[unsafe(naked)]
 unsafe extern "C" fn syscall_entry() -> ! {
@@ -40,15 +39,21 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "push rsi", "push rdi", "push r8", "push r9", "push r10",
         "push r11", "push r12", "push r13", "push r14", "push r15",
         "mov rbp, rsp",
-        // ** SELLO A -- el primer instante en que hay registros libres.
+        // ** AQUI VIVIERON CUATRO SELLOS `rdtsc` (A, B, D', E), Y YA NO.
         //
-        // No antes: hasta que `rax` y `rdx` estan en la pila, `rdtsc` --que
-        // escribe los dos-- destruiria valores del usuario. Todo lo que queda
-        // por debajo (`syscall`, `swapgs`, el cambio de pila y los 20 pushes)
-        // es por eso IMPOSIBLE de sellar desde aqui y sale en el `resto`.
-        // Ver el reparto entero en `meter.rs`.
-        "rdtsc", "shl rdx, 32", "or rax, rdx",
-        "mov qword ptr [rip+{ultimo}], rax",
+        // Partieron el stub en guardar / dispatch / devolver / resto y con eso
+        // contestaron su pregunta: **30 / 311 / 30 / 1254**. Un instrumento que
+        // ya dio su numero y sigue cobrando es un peaje, no una medida -- y
+        // este cobraba caro: `coste.bex` midio **69 ciclos por sello**, no los
+        // ~25 que estimo `meter.rs`. Los cuatro eran ~276 sobre 1625, un 17%.
+        //
+        // Sacarlos vale hoy mas que todo lo que compro el `xsaveopt64`, y esa
+        // frase es la leccion: **el instrumento se retira cuando contesta.**
+        // Si el reparto vuelve a hacer falta, esta en el git de este mismo dia.
+        //
+        // Lo que SI se queda es `meter::start`/`stop` --el reparto en dos
+        // mitades, `dispatch` contra el resto--, que cuesta dos `rdtsc` dentro
+        // del Rust y es el control de toda tanda que toque este fichero.
         "sub rsp, {reserva}",
         "and rsp, -64",                // XSAVE exige 64 bytes de alineacion
         "mov [rsp+{area}], rbp",       // back-pointer to the GPR block
@@ -84,27 +89,10 @@ unsafe extern "C" fn syscall_entry() -> ! {
         //     para escribirlos.
         // Son cuatro instrucciones contra las once que se han ido.
         //
-        // ** SELLO B -- cierra GUARDA, que ahora mide el prologo pelado.
-        "rdtsc", "shl rdx, 32", "or rax, rdx",
-        "sub rax, qword ptr [rip+{ultimo}]",
-        "add qword ptr [rip+{guarda}], rax",
         "mov gs:[0x10], rsp",          // publish this context
         "cld",
         "mov rdi, rbp",
         "call {dispatch}",
-        // ** SELLO D' -- abre RESTAURA, y por eso `rax` hay que salvarlo: trae
-        // la base del contexto que toca ejecutar y `rdtsc` lo pisaria. `rcx`
-        // sirve de hueco porque el `rcx` del usuario esta en la pila desde el
-        // push de arriba y lo recupera su `pop`.
-        //
-        // Va aqui y no dentro de `meter::stop` para no cambiar `stop`: asi
-        // `dispatch` sigue midiendose exactamente igual que esta manana y ese
-        // 319 vale de control. Lo que queda entre el `stop` y este sello --dos
-        // sumas volatiles y el epilogo de `dispatch`-- cae en el `resto`.
-        "mov rcx, rax",
-        "rdtsc", "shl rdx, 32", "or rax, rdx",
-        "mov qword ptr [rip+{ultimo}], rax",
-        "mov rax, rcx",
         //
         // ======== ** LA BIFURCACION ==========================================
         //
@@ -153,15 +141,66 @@ unsafe extern "C" fn syscall_entry() -> ! {
         // fotos descubrir eso; no se tira por un store.
         "mov qword ptr [rsp+{firma}], 0",
         "mov rsp, rbp",                // rbp es callee-saved: `dispatch` lo devuelve intacto
-        // ** SELLO E de la via rapida. Mismo motivo que el de la lenta: rax,
-        // rcx y rdx los sobrescriben los pops de la linea siguiente.
-        "rdtsc", "shl rdx, 32", "or rax, rdx",
-        "sub rax, qword ptr [rip+{ultimo}]",
-        "add qword ptr [rip+{restaura}], rax",
         "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
         "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
         "pop rbp", "pop rbx", "pop rdx", "pop rcx", "pop rax",
+        //
+        // ===== ** PIEZA 2: SE SALE POR `sysretq`, NO POR `iretq` ============
+        //
+        // `iretq` es el companero de una INTERRUPCION: reconstruye el nivel de
+        // privilegio leyendo cinco palabras de la pila y comprobando el
+        // descriptor de cada selector. `sysretq` es el companero de `syscall`,
+        // y no comprueba nada porque no hace falta: los selectores salen de
+        // `IA32_STAR` --que solo escribe el kernel-- y el destino lo trae el
+        // propio CPU.
+        //
+        // ** Y EL MARCO YA ESTABA EN FORMA DE SYSRET SIN QUE NADIE LO BUSCARA.
+        // `sysretq` quiere RIP en `rcx` y RFLAGS en `r11`, que es exactamente
+        // lo que el `syscall` metio ahi al entrar; el prologo los empujo en el
+        // bloque de GPR, y los `pop` de arriba acaban de devolverlos a su
+        // sitio. **No hay que preparar nada: ya esta puesto.**
+        //
+        // Los selectores tambien cuadraban de antes. `MSR_STAR` lleva armado
+        // `SYSRET_SELECTOR_BASE = 0x10` desde siempre, con un comentario que
+        // decia *"legacy, el camino de salida es iretq"*:
+        //
+        //     CS = 0x10 + 16 | 3 = 0x23     <- el mismo que empuja el prologo
+        //     SS = 0x10 +  8 | 3 = 0x1B     <- el mismo
+        //
+        // O sea que el MSR estaba puesto y sin usar, igual que el XSAVEOPT.
+        //
+        // == [!] LA COMPROBACION DE CANONICIDAD, QUE NO ES OPCIONAL ==
+        //
+        // `sysret` con un RIP no canonico en `rcx` da **#GP(0) EN RING 0 Y CON
+        // LA PILA DEL USUARIO YA PUESTA**. Es un agujero de escalada clasico y
+        // conocido (CVE-2006-0744 y toda su familia), y por eso va aqui desde
+        // la primera version y no "cuando haya tiempo".
+        //
+        // Se comprueba sin gastar un registro: sacar los 16 bits de arriba y
+        // volver a meterlos con signo deja el MISMO valor si y solo si el
+        // numero era canonico. Se compara contra el RIP que sigue en la cola
+        // del marco, y si no coincide **se sale por `iretq`**, que valida por
+        // su cuenta y en el peor caso mata la tarea con nombre.
+        //
+        // En este camino el RIP viene del `syscall` del usuario --o sea, de una
+        // instruccion que se ejecuto, luego canonica-- asi que la rama corta no
+        // deberia tomarse nunca. Se pone igual: lo que hace segura una salida
+        // rapida no es que el caso malo sea improbable, es que exista.
+        "shl rcx, 16",
+        "sar rcx, 16",
+        "cmp rcx, qword ptr [rsp]",
+        "jne 6f",
+        // [!] A partir de la linea siguiente se corre en CPL0 con la pila del
+        // usuario. Son dos instrucciones con `IF` en cero --lo apago el
+        // `MSR_SFMASK` en la entrada y no vuelve hasta que `sysretq` restaure
+        // los RFLAGS de `r11`-- asi que la unica cosa que puede caer ahi es una
+        // NMI. Es la misma ventana que acepta cualquier SO que use `sysret`, y
+        // se cierra el dia que la NMI tenga su propio IST.
+        "mov rsp, qword ptr [rsp+24]", // la RSP del usuario, de la cola del marco
         "swapgs",
+        "sysretq",
+        // RIP no canonico: por el camino largo, que comprueba.
+        "6: swapgs",
         "iretq",
         //
         // -------- VIA LENTA: cambio de contexto ------------------------------
@@ -230,14 +269,6 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "mov qword ptr [rsp+{firma}], 0",
         "mov eax, -1", "mov edx, -1",
         "xrstor64 [rsp]",
-        // ** SELLO E -- cierra RESTAURA. Ultimo punto con registros libres:
-        // `rax`, `rcx` y `rdx` los sobrescriben los `pop` de tres lineas mas
-        // abajo, asi que pisarlos aqui no cuesta nada. Despues de esos pops ya
-        // no hay donde escribir, y por eso los 15 pops, las dos comprobaciones
-        // de CS, el `swapgs` y el `iretq` caen tambien en el `resto`.
-        "rdtsc", "shl rdx, 32", "or rax, rdx",
-        "sub rax, qword ptr [rip+{ultimo}]",
-        "add qword ptr [rip+{restaura}], rax",
         "mov rsp, [rsp+{area}]",
         "pop r15", "pop r14", "pop r13", "pop r12", "pop r11",
         "pop r10", "pop r9", "pop r8", "pop rdi", "pop rsi",
@@ -252,12 +283,6 @@ unsafe extern "C" fn syscall_entry() -> ! {
         "4: mov rdi, {m_cs}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         "8: mov rdi, {m_cab}", "mov rsi, rsp", "and rsp, -16", "call {podrido}",
         dispatch = sym dispatch,
-        // El reparto DENTRO del stub. Son tres casillas de `meter.rs` escritas
-        // desde aqui porque este es el unico sitio donde el codigo esta -- y
-        // porque el metro es de la puerta, no de este fichero. Ver `meter.rs`.
-        ultimo = sym meter::ETAPA_ULTIMO,
-        guarda = sym meter::CICLOS_GUARDA,
-        restaura = sym meter::CICLOS_RESTAURA,
         podrido = sym crate::ring0::plat::faults::contexto_podrido,
         no_xcr0 = sym crate::ring0::plat::trap::XSAVE_NO_XCR0,
         area = const crate::ring0::plat::trap::XSAVE_AREA,

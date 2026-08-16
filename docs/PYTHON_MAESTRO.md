@@ -641,6 +641,51 @@ para `syscall` + `swapgs` + 20 pushes + 15 pops + `iretq`. Sumado a mano, ~540.
 **El agujero paso de 1.600 a ~440**, y la casilla ya solo tiene dos inquilinos
 gordos: las dos transiciones de privilegio. Eso es la **pieza 2**.
 
+#### 🔧 PIEZA 2: `sysretq` en vez de `iretq` -- y el metro se retira
+
+Dos cambios en la misma tanda porque los dos viven en el epilogo:
+
+**a) Los cuatro sellos salen del stub.** Contestaron su pregunta y cobraban 69
+ciclos cada uno (~276, el 17%). Un instrumento que ya dio su numero y sigue
+cobrando es un peaje. `meter::start`/`stop` --el reparto en dos mitades-- se
+queda: cuesta dos `rdtsc` dentro del Rust y es el control de toda tanda futura.
+`c/coste.bex` dice **"NO MEDIDO"** en vez de imprimir un reparto de ceros.
+
+**b) La via rapida sale por `sysretq`.** `iretq` es el companero de una
+INTERRUPCION: reconstruye el privilegio leyendo cinco palabras y validando el
+descriptor de cada selector. `sysretq` es el companero de `syscall`.
+
+★ **Y el marco ya estaba en forma de sysret sin que nadie lo buscara.**
+`sysretq` quiere RIP en `rcx` y RFLAGS en `r11` -- que es exactamente donde los
+puso el `syscall` al entrar, y donde los `pop` del epilogo acaban de
+devolverlos. No hay que preparar nada.
+
+★ **Y los selectores tambien cuadraban de antes.** `MSR_STAR` llevaba armado
+`SYSRET_SELECTOR_BASE = 0x10` con un comentario que decia *"legacy, el camino de
+salida es iretq"*:
+
+```text
+   CS = 0x10 + 16 | 3 = 0x23     <- el mismo que empuja el prologo
+   SS = 0x10 +  8 | 3 = 0x1B     <- el mismo
+```
+
+El MSR estaba puesto y sin usar, **igual que el XSAVEOPT**. Van dos.
+
+⚠ **La comprobacion de canonicidad no es opcional y va desde la primera
+version.** `sysret` con un RIP no canonico da `#GP(0)` **en Ring 0 y con la pila
+del usuario ya puesta**: es una escalada clasica (CVE-2006-0744 y familia). Se
+comprueba sin gastar registro --`shl rcx,16; sar rcx,16; cmp rcx,[rsp]`-- y si
+no coincide **se sale por `iretq`**, que valida por su cuenta. En este camino el
+RIP viene de una instruccion que se ejecuto, luego es canonico y la rama no
+deberia tomarse nunca: se pone igual, porque **lo que hace segura una salida
+rapida no es que el caso malo sea improbable, es que exista**.
+
+⚠ **La ventana que esto abre, dicha entera**: entre `mov rsp, <rsp del usuario>`
+y el `sysretq` se corre en CPL0 con la pila del usuario. Son dos instrucciones
+con `IF` en cero, asi que lo unico que puede caer ahi es una **NMI**. Es la
+misma ventana que acepta cualquier SO que use `sysret`, y se cierra el dia que
+la NMI tenga su propio IST.
+
 **Y esto no mejora Python: mejora TODO lo que cruza la puerta** -- la entrada de
 DOOM, el metronomo del audio, el camino asincrono del disco, el compositor.
 
