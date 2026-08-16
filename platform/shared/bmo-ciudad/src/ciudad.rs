@@ -5,8 +5,44 @@
 
 use crate::azar::Azar;
 use crate::camara::Camara;
+use crate::marco::Marco;
 use crate::paleta::*;
 use crate::torre::Torre;
+
+// ** EL SOBREDIBUJO, Y POR QUE SE PAGA UNA VEZ Y SE COBRA SIEMPRE
+//
+// El algoritmo del pintor --cielo, fondo, frente-- es correcto y es lo mas
+// simple que funciona. Tambien pinta cielo debajo de cada torre **y lo tira**.
+//
+// Eso no era una sospecha: se midio. `bmo-vista-ciudad --bin presupuesto` dijo
+// 1,48x de sobredibujo a 1080p, o sea 12,3 MB por fotograma contra los 8,3 que
+// mide la pantalla. Con los 300 MB/s al framebuffer que ya se midieron en DOOM,
+// son 41 ms por fotograma: **casi medio fotograma de trabajo que nadie ve**.
+//
+// Y ese medio fotograma es exactamente lo que cuesta el marco. O sea que el
+// plano nuevo se paga solo, si antes se deja de tirar el cielo.
+//
+// === El horizonte de oclusion ===
+//
+// No hace falta un buffer de profundidad. Todo lo que tapa --torres y marco--
+// baja hasta el suelo, asi que por cada columna de pantalla basta UN numero:
+// **a partir de que `y` ya esta todo cubierto**. Eso es un `u16` por columna.
+//
+// Se calcula ANTES de pintar, recorriendo geometria y sin tocar un pixel, y
+// sirve para recortar el cielo. El resto de la escena se sigue pintando en orden
+// de pintor, que es lo que mantiene correctas las ventanas sobre su torre y la
+// niebla entre las dos capas.
+//
+// [!] Solo se recorta el CIELO, y eso ya es casi todo el ahorro: el cielo es una
+// pantalla entera y las torres tapan casi la mitad. El sobredibujo que queda
+// --torres solapandose entre si-- es de centesimas y no vale lo que costaria.
+
+/// Cuantas columnas cabe recortar. Mas ancho que esto y se pinta como siempre:
+/// mejor perder el ahorro que arriesgar un desbordamiento en Ring 0.
+///
+/// 2048 `u16` son 4 KiB de pila, contra los 64 KiB del kernel. Cubre 1080p y
+/// 1440p de sobra.
+const MAX_COLUMNAS: usize = 2048;
 
 /// Cuantas torres como mucho.
 ///
@@ -41,6 +77,9 @@ pub struct Ciudad {
     pub horizonte: i32,
     torres: [Torre; MAX_TORRES],
     n: usize,
+    /// Las dos masas oscuras de los bordes. Es el plano que te mete dentro de
+    /// la escena -- ver [`crate::marco`].
+    marco: Marco,
 }
 
 impl Ciudad {
@@ -107,7 +146,13 @@ impl Ciudad {
             x += w + az.entre(1, 6);
         }
 
-        Ciudad { ancho, alto, horizonte, torres, n }
+        Ciudad { ancho, alto, horizonte, torres, n, marco: Marco::nuevo(ancho, alto) }
+    }
+
+    /// El marco, para quien necesite saber por donde pasa su canto interior. Lo
+    /// pregunta el encuadre del logo: el aura es opaca y no puede meterse debajo.
+    pub fn marco(&self) -> &Marco {
+        &self.marco
     }
 
     pub fn cuantas(&self) -> usize {
@@ -185,21 +230,97 @@ impl Ciudad {
     /// antes y lo tapa lo de delante -- que es lo unico que se puede hacer sin
     /// buffer de profundidad, y aqui no hace falta uno porque solo hay dos capas
     /// y se sabe cual va delante.
+    /// **El horizonte de oclusion**: por cada columna, a partir de que `y` ya
+    /// esta todo cubierto.
+    ///
+    /// Recorre GEOMETRIA, no pixeles: mira donde caen las torres y los bloques
+    /// del marco y anota su techo. Es lo que permite pintar el cielo solo donde
+    /// se va a ver. Ver la nota de cabecera del modulo.
+    fn horizonte_de_oclusion(&self, cam: Camara, techo: &mut [u16]) {
+        let ancho = (self.ancho as usize).min(techo.len());
+        // De partida, nada tapa: el cielo llega hasta el suelo.
+        for t in techo[..ancho].iter_mut() {
+            *t = self.horizonte.max(0) as u16;
+        }
+        let mut tapar = |x: i32, w: i32, arriba: i32| {
+            let arriba = arriba.clamp(0, self.horizonte.max(0)) as u16;
+            // [!] Los DOS extremos se acotan, no solo el de la derecha. La
+            // ciudad se genera mas ancha que el lienzo a proposito --la camara
+            // tiene que tener por donde avanzar-- asi que hay torres cuya `x`
+            // cae fuera de la pantalla por la derecha. Acotar solo el final
+            // dejaba `desde > techo.len()` y eso es un panic; en Ring 0, un
+            // panic en el arranque es una maquina que no arranca.
+            let desde = (x.max(0) as usize).min(ancho);
+            let hasta = ((x + w).max(0) as usize).min(ancho).max(desde);
+            for t in techo[desde..hasta].iter_mut() {
+                if arriba < *t {
+                    *t = arriba;
+                }
+            }
+        };
+        for capa in 0..2u8 {
+            let dx = cam.desplazamiento(capa);
+            for t in self.torres[..self.n].iter().filter(|t| t.capa == capa) {
+                tapar(t.x - dx, t.ancho, self.horizonte - t.alto);
+            }
+        }
+        // El marco tapa desde su techo hasta abajo del todo, asi que en sus
+        // columnas no queda cielo ninguno.
+        self.marco.dibujar(cam, |x, y, w, _, _| tapar(x, w, y));
+    }
+
     pub fn dibujar(&self, cam: Camara, mut rect: impl FnMut(i32, i32, i32, i32, Color)) {
-        // -- EL CIELO. No se mueve con la camara: esta infinitamente lejos, que
-        // es justo lo que significa un cielo.
+        // -- ** EL CIELO, SOLO DONDE SE VA A VER.
+        //
+        // No se mueve con la camara: esta infinitamente lejos, que es justo lo
+        // que significa un cielo. Lo que SI cambia es que ya no se pinta entero
+        // para que las torres lo tapen: se recorta contra el horizonte de
+        // oclusion, que se calcula sin tocar un pixel. Ver la nota de cabecera.
+        let mut techo = [0u16; MAX_COLUMNAS];
+        let recortable = self.ancho > 0 && (self.ancho as usize) <= MAX_COLUMNAS;
+        if recortable {
+            self.horizonte_de_oclusion(cam, &mut techo);
+        }
+        let ancho = self.ancho;
+        // Emite una banda de cielo partida en los tramos donde de verdad asoma.
+        let banda = |y: i32, h: i32, c: Color, rect: &mut dyn FnMut(i32, i32, i32, i32, Color)| {
+            if !recortable {
+                rect(0, y, ancho, h, c);
+                return;
+            }
+            // Tramos de columnas con el mismo techo: el cielo se pinta de una
+            // pieza mientras el techo no cambie, asi que esto emite pocos
+            // rectangulos y no uno por columna.
+            let mut x = 0usize;
+            let n = ancho as usize;
+            while x < n {
+                let t = techo[x] as i32;
+                let mut fin = x + 1;
+                while fin < n && techo[fin] as i32 == t {
+                    fin += 1;
+                }
+                let visible = (t - y).min(h);
+                if visible > 0 {
+                    rect(x as i32, y, (fin - x) as i32, visible, c);
+                }
+                x = fin;
+            }
+        };
+
         let alto_franja = (self.horizonte / FRANJAS).max(1);
         for i in 0..FRANJAS {
             // El color sale de `color_cielo` y no de la formula suelta: el aura
             // del logo pregunta por ahi, y dos formulas para el mismo cielo se
             // separan el dia que alguien toque una.
-            let c = self.color_cielo(i * alto_franja);
-            rect(0, i * alto_franja, self.ancho, alto_franja, c);
+            let y = i * alto_franja;
+            banda(y, alto_franja, self.color_cielo(y), &mut rect);
         }
         let resto = self.horizonte - FRANJAS * alto_franja;
         if resto > 0 {
-            rect(0, FRANJAS * alto_franja, self.ancho, resto, CIELO_BAJO);
+            banda(FRANJAS * alto_franja, resto, CIELO_BAJO, &mut rect);
         }
+        // El suelo va entero: nada de la escena baja del horizonte, asi que no
+        // hay nada que recortar ahi.
         rect(0, self.horizonte, self.ancho, self.alto - self.horizonte, CIELO_ALTO);
 
         // -- LAS TORRES, capa a capa y cada una a su velocidad.
@@ -207,6 +328,10 @@ impl Ciudad {
         // ** Y LA NIEBLA VA EN MEDIO, no encima. Una niebla pintada al final
         // tine la escena entera y no separa nada; metida ENTRE las dos capas es
         // aire de verdad -- lo de detras queda al otro lado de ella.
+        //
+        // Aqui se sigue pintando de atras hacia delante, y a proposito: es lo
+        // que mantiene correctas las ventanas sobre su torre y la niebla entre
+        // las dos capas. El ahorro estaba en el cielo, y ya se cobro arriba.
         for capa in 0..2u8 {
             if capa == 1 {
                 crate::niebla::bandas(self.ancho, self.horizonte, cam.avance, &mut rect);
@@ -221,6 +346,11 @@ impl Ciudad {
                 });
             }
         }
+
+        // -- ** EL MARCO, LO ULTIMO. Es lo que esta mas cerca, asi que tapa todo
+        // lo demas -- y con ello te pone DENTRO de la escena en vez de delante
+        // de una foto de ella. Ver `crate::marco`.
+        self.marco.dibujar(cam, &mut rect);
     }
 }
 
@@ -359,22 +489,80 @@ mod pruebas {
         assert_eq!(c.techo(), c.horizonte - mas_alta);
     }
 
-    /// El cielo que dibuja `dibujar` y el que contesta `color_cielo` son EL
-    /// MISMO. Si divergieran, el aura del logo saldria como un ovalo de otro
-    /// tono pegado sobre el degradado.
+    /// Pinta la escena en un lienzo y devuelve los pixeles. `None` = ni una
+    /// brocha paso por ahi.
+    fn rasterizar(c: &Ciudad, cam: Camara) -> Vec<Option<Color>> {
+        let (w, h) = (c.ancho as usize, c.alto as usize);
+        let mut px = vec![None; w * h];
+        c.dibujar(cam, |x, y, rw, rh, color| {
+            for fy in y.max(0)..(y + rh).min(c.alto) {
+                for fx in x.max(0)..(x + rw).min(c.ancho) {
+                    px[fy as usize * w + fx as usize] = Some(color);
+                }
+            }
+        });
+        px
+    }
+
+    /// ** EL RECORTE DEL CIELO NO PUEDE DEJAR UN AGUJERO, y este es EL riesgo
+    /// del cambio.
+    ///
+    /// Pintar el cielo solo donde asoma ahorra casi medio fotograma. Y si el
+    /// horizonte de oclusion se pasa de recortar por un pixel, queda una franja
+    /// **sin pintar** cruzando la pantalla -- que en el metal es negro sobre una
+    /// escena de neon, o sea lo primero que se ve.
+    ///
+    /// Se recorre con la camara quieta y avanzada, porque el horizonte depende
+    /// del desplazamiento de cada capa.
+    #[test]
+    fn el_recorte_del_cielo_no_deja_agujeros() {
+        for (w, h) in [(640, 480), (800, 600), (1366, 768)] {
+            for avance in [0, 60, 200, 400] {
+                let mut c = Ciudad::nueva(w, h, 13);
+                c.encender(100);
+                let px = rasterizar(&c, Camara::nueva(avance));
+                let sin_pintar = px.iter().filter(|p| p.is_none()).count();
+                assert_eq!(
+                    sin_pintar, 0,
+                    "a {}x{} con avance {} quedaron {} pixeles sin pintar",
+                    w, h, avance, sin_pintar
+                );
+            }
+        }
+    }
+
+    /// El cielo que se PINTA es el que contesta `color_cielo`. Se mira arriba
+    /// del todo en el centro, que es cielo puro: ni marco --que vive en los
+    /// bordes-- ni torres, que no llegan tan alto.
+    ///
+    /// Si divergieran, el aura del logo saldria como un ovalo de otro tono
+    /// pegado sobre el degradado.
     #[test]
     fn el_cielo_que_se_pinta_es_el_que_se_contesta() {
         let c = Ciudad::nueva(800, 600, 13);
-        let mut visto = 0;
-        c.dibujar(Camara::default(), |x, y, w, _, color| {
-            // Solo las franjas del cielo: de borde a borde y por encima del
-            // horizonte. Lo demas son torres, niebla y suelo.
-            if x == 0 && w == c.ancho && y < c.horizonte {
-                assert_eq!(color, c.color_cielo(y), "la franja de y={} no cuadra", y);
-                visto += 1;
-            }
-        });
-        assert!(visto > 0, "no se miro ni una franja de cielo");
+        let px = rasterizar(&c, Camara::default());
+        let centro = c.ancho as usize / 2;
+        assert_eq!(px[centro], Some(c.color_cielo(0)), "el cielo de arriba no cuadra");
+    }
+
+    /// ** Y EL MARCO TAPA DE VERDAD. Es lo que le da sentido: si no llegara al
+    /// borde, la escena seguiria siendo una vista en vez de un sitio.
+    #[test]
+    fn el_marco_ocupa_los_bordes_con_lo_mas_oscuro() {
+        let c = Ciudad::nueva(800, 600, 13);
+        let px = rasterizar(&c, Camara::default());
+        let w = c.ancho as usize;
+        // Media altura, pegado a cada borde.
+        let fila = (c.alto as usize / 2) * w;
+        for x in [0usize, w - 1] {
+            let color = px[fila + x].expect("borde sin pintar");
+            assert!(
+                luminancia(color) <= luminancia(MARCO_LEJOS),
+                "el borde x={} no es marco: salio con luminancia {}",
+                x,
+                luminancia(color)
+            );
+        }
     }
 
     /// Debajo del horizonte contesta el suelo, y no se sale del array de

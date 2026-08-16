@@ -179,6 +179,7 @@ fn main() {
         pantalla_w: w,
         pantalla_h: h,
         techo: c.techo().max(0) as u32,
+        marco_interior: c.marco().interior().max(0) as u32,
         gato_w: ANCHO * escala,
         gato_h: ALTO * escala,
         kanji_w: gato::KANJI_ANCHO * escala,

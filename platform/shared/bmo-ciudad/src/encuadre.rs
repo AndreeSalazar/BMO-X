@@ -34,6 +34,14 @@ pub struct Medidas {
     pub pantalla_h: u32,
     /// La `y` de la punta de torre mas alta. Ver `Ciudad::techo`.
     pub techo: u32,
+    /// La `x` del canto interior del marco izquierdo (el derecho es simetrico).
+    /// Ver `Marco::interior`.
+    ///
+    /// ** El aura es OPACA. Si se metiera debajo del marco, o el marco la borra
+    /// --se pinta despues-- o ella borra el marco. Las dos se ven, y las dos son
+    /// el mismo fallo: dos planos peleandose por el mismo sitio, que es de lo
+    /// que iba todo esto.
+    pub marco_interior: u32,
     pub gato_w: u32,
     pub gato_h: u32,
     pub kanji_w: u32,
@@ -111,6 +119,15 @@ pub fn componer(m: &Medidas) -> Encuadre {
         .min(m.techo.saturating_sub(aura_cy))
         .max(1);
 
+    // Y el radio horizontal se recorta al hueco que deja el marco, por lo mismo:
+    // el aura es opaca y el marco se pinta antes, asi que meterse debajo seria
+    // que uno borrase al otro.
+    let aura_cx = gato_x + fila_w / 2;
+    let hasta_el_marco = aura_cx
+        .saturating_sub(m.marco_interior)
+        .min((m.pantalla_w.saturating_sub(m.marco_interior)).saturating_sub(aura_cx));
+    let aura_rx = (fila_w * 3 / 4).min(hasta_el_marco).max(1);
+
     Encuadre {
         gato_x,
         gato_y,
@@ -119,9 +136,9 @@ pub fn componer(m: &Medidas) -> Encuadre {
         titulo_x,
         titulo_y,
         alto_total,
-        aura_cx: (gato_x + fila_w / 2) as i32,
+        aura_cx: aura_cx as i32,
         aura_cy: aura_cy as i32,
-        aura_rx: (fila_w * 3 / 4).max(1) as i32,
+        aura_rx: aura_rx as i32,
         aura_ry: aura_ry as i32,
     }
 }
@@ -141,6 +158,7 @@ mod pruebas {
             pantalla_w: w,
             pantalla_h: h,
             techo: c.techo().max(0) as u32,
+            marco_interior: c.marco().interior().max(0) as u32,
             gato_w: 152 * escala,
             gato_h: 180 * escala,
             kanji_w: 74 * escala,
@@ -217,6 +235,26 @@ mod pruebas {
         assert_eq!(e.kanji_x, e.gato_x + m.gato_w + m.hueco_kanji);
         let centro_kanji = e.kanji_y + m.kanji_h / 2;
         assert_eq!(centro_kanji, e.gato_y + (m.gato_h * 3) / 4);
+    }
+
+    /// ** EL AURA NO SE METE DEBAJO DEL MARCO. Es opaca y el marco se pinta
+    /// antes que ella, asi que solaparse significa que uno de los dos borra al
+    /// otro -- dos planos peleandose por el mismo sitio, otra vez.
+    #[test]
+    fn el_aura_no_se_mete_debajo_del_marco() {
+        for (w, h) in [(1920, 1080), (1600, 900), (1366, 768), (1280, 720)] {
+            let m = medidas(w, h);
+            let e = componer(&m);
+            assert!(
+                e.aura_cx - e.aura_rx >= m.marco_interior as i32,
+                "a {}x{} el aura entra {} px debajo del marco izquierdo",
+                w, h, m.marco_interior as i32 - (e.aura_cx - e.aura_rx)
+            );
+            assert!(
+                e.aura_cx + e.aura_rx <= (w - m.marco_interior) as i32,
+                "a {}x{} el aura entra debajo del marco derecho", w, h
+            );
+        }
     }
 
     /// Una pantalla absurdamente baja no rompe ni desborda: el bloque se pega

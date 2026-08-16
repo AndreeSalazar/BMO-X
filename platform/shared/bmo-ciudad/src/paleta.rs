@@ -47,6 +47,33 @@ pub const TORRE_FRENTE: Color = 0xFF0E0820;
 /// El borde iluminado de una torre delantera, del lado del neon.
 pub const TORRE_BORDE: Color = 0xFF2E1D57;
 
+// ** EL MARCO: el escalon que faltaba en la escalera, y el que mas cambia.
+//
+// La escalera iba cielo -> torre lejana -> torre cercana, y ahi se acababa. Con
+// eso la escena tiene profundidad pero sigue siendo **una vista**: no hay nada
+// entre el ojo y la ciudad.
+//
+// En la referencia que enseno el dueno --y en cualquier plano de callejon-- los
+// bordes izquierdo y derecho son masas de edificio casi negras. Eso es lo unico
+// que separa "una foto de una ciudad" de "estas de pie en un callejon
+// mirandola", y no se consigue con detalle: se consigue con **un valor mas
+// oscuro que todo lo demas y sin nada dentro**.
+//
+// Son dos tonos y no uno porque el marco tambien tiene profundidad: los bloques
+// mas cercanos son mas oscuros que los que retroceden hacia el centro. Es la
+// misma perspectiva aerea de la niebla, aplicada al primer plano.
+
+/// El bloque del marco mas cercano al ojo. **Lo mas oscuro de la escena.**
+pub const MARCO_CERCA: Color = 0xFF050310;
+/// El bloque del marco que ya retrocede hacia el centro.
+pub const MARCO_LEJOS: Color = 0xFF0A0619;
+/// La luz de la calle enganchandose en el canto interior del marco.
+///
+/// Sin esto el marco es un agujero negro con borde recto y se lee como una
+/// barra tapando la pantalla. Con una linea de luz en el canto, se lee como una
+/// esquina de edificio -- y cuesta un rectangulo de dos pixeles de ancho.
+pub const MARCO_CANTO: Color = 0xFF3A2A6E;
+
 /// Ventana encendida, la mas comun.
 pub const VENTANA_CALIDA: Color = 0xFFFFC96B;
 /// Ventana encendida en frio.
@@ -144,6 +171,32 @@ mod pruebas {
         // distancia se leen como uno solo, que es exactamente lo que pasaba.
         assert!(cielo - fondo >= 12, "cielo y fondo se confunden");
         assert!(fondo - frente >= 12, "las dos capas de torres se confunden");
+    }
+
+    /// ** Y EL MARCO CIERRA LA ESCALERA POR ABAJO.
+    ///
+    /// El plano mas cercano tiene que ser **lo mas oscuro que hay**, incluida la
+    /// torre mas cercana. Si el marco quedara al mismo valor que las torres, se
+    /// leeria como una torre mas pegada al borde en vez de como la pared que
+    /// tienes al lado -- y toda la razon de que exista se pierde sin que nada
+    /// falle.
+    #[test]
+    fn el_marco_es_lo_mas_oscuro_de_la_escena() {
+        let frente = luminancia(TORRE_FRENTE);
+        let lejos = luminancia(MARCO_LEJOS);
+        let cerca = luminancia(MARCO_CERCA);
+        assert!(frente > lejos, "el marco tiene que ser mas oscuro que la torre cercana");
+        assert!(lejos > cerca, "el bloque de delante es el mas oscuro del marco");
+    }
+
+    /// El canto del marco es lo UNICO claro que lleva: es la luz de la calle
+    /// enganchandose en la esquina. Sin el, el marco es una barra negra.
+    #[test]
+    fn el_canto_del_marco_se_ve_contra_el_marco() {
+        assert!(
+            luminancia(MARCO_CANTO) > luminancia(MARCO_CERCA) + 15,
+            "el canto no se distingue de la masa"
+        );
     }
 
     /// Las ventanas encendidas son **lo unico brillante** de la escena. Si una

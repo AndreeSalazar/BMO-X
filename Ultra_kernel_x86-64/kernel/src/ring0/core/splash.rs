@@ -724,16 +724,21 @@ fn pintar_escena(w: u32, h: u32, f: &bmo_ciudad::Fotograma) {
     let kh = gato::KANJI_ALTO * escala;
     let tw = text_width_scaled("BMO-X", escala_t);
 
-    // El techo se le pregunta a la ciudad en vez de copiar aqui un porcentaje.
-    // Si manana alguien sube las torres, el logo se aparta solo.
-    let techo = unsafe {
+    // El techo y el canto del marco se le preguntan a la ciudad en vez de copiar
+    // aqui unos porcentajes. Si manana alguien sube las torres o ensancha el
+    // marco, el logo se aparta solo.
+    let (techo, marco_interior) = unsafe {
         let ciudad = &*core::ptr::addr_of!(INTRO_CIUDAD);
-        ciudad.as_ref().map_or(h, |c| c.techo().max(0) as u32)
+        match ciudad.as_ref() {
+            Some(c) => (c.techo().max(0) as u32, c.marco().interior().max(0) as u32),
+            None => (h, 0),
+        }
     };
     let medidas = bmo_ciudad::Medidas {
         pantalla_w: w,
         pantalla_h: h,
         techo,
+        marco_interior,
         gato_w: gw,
         gato_h: gh,
         kanji_w: kw,
