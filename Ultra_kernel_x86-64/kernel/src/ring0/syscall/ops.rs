@@ -287,5 +287,60 @@ pub(crate) const RFLAGS_DF: u64 = 1 << 10;
 pub(crate) const RFLAGS_NT: u64 = 1 << 14;
 pub(crate) const RFLAGS_AC: u64 = 1 << 18;
 pub(crate) const KERNEL_CS: u64 = 0x08;
-// Legacy STAR layout; kept armed although the exit path is iretq-only.
-pub(crate) const SYSRET_SELECTOR_BASE: u64 = 0x10;
+
+/// La base de selectores que `sysretq` usa al volver a Ring 3.
+///
+/// # ** POR QUE 0x13 Y NO 0x10, QUE ES LO QUE PARECE
+///
+/// `sysret` no lee estos selectores de la pila: los CALCULA sumando a esta
+/// base, y **cada mitad se comporta distinto en AMD**:
+///
+/// ```text
+///    CS = base + 16, y el CPU le fuerza RPL 3    (CPL pasa a ser 3)
+///    SS = base +  8, y AMD NO le fuerza NADA     (APM: "SS.sel <- SYSRET_CS+8")
+/// ```
+///
+/// Con `base = 0x10` --que es lo que llevaba armado desde siempre, con un
+/// comentario que decia *"legacy, el camino de salida es iretq"*-- salia
+/// `CS = 0x23` (bien, el CPU le puso el RPL) y **`SS = 0x18`: el indice
+/// correcto con RPL 0**. Y eso no revienta donde se hace.
+///
+/// == LO QUE COSTO, porque la forma del fallo es la leccion ==
+///
+/// La tarea volvia a Ring 3 con `SS.RPL = 0` y seguia funcionando: mientras el
+/// CPL manda, nadie revalida SS. Hasta que **el timer la interrumpia** y el CPU
+/// empujaba ese `0x18` al marco del trap. El epilogo del timer hacia `iretq`, y
+/// `iretq` a un privilegio menor EXIGE `RPL(SS) == RPL(CS)`:
+///
+/// ```text
+///    #GP  err=0x18  rip=0x4001BA (el `iretq` de `irq::disco_entry`)
+///    marco:  cs=0x0023 (RPL 3)   ss=0x0018 (RPL 0)
+/// ```
+///
+/// O sea: **el fallo aparecia en un stub que nadie habia tocado, disparado por
+/// una interrupcion, por culpa de un registro que se cargo mal en otro sitio y
+/// varios milisegundos antes.** Se encontro por el `err=0x18` de la pantalla de
+/// parada -- un `#GP` trae el SELECTOR en el codigo de error, y ese 0x18 era el
+/// dedo apuntando.
+///
+/// `0x13` es el mismo indice con el RPL 3 **ya metido en la base**: como `+8` y
+/// `+16` no tocan los bits 0-1, el RPL sobrevive a la suma. Y en un CPU que si
+/// haga `OR 3` sigue saliendo bien, porque ya lo trae puesto.
+pub(crate) const SYSRET_SELECTOR_BASE: u64 = 0x13;
+
+// ** Y LA RELACION SE COMPRUEBA, que es el arreglo de verdad.
+//
+// El numero de arriba solo es correcto porque `base+8` y `base+16` caen
+// exactamente en los selectores que el prologo empuja como constantes. Eso era
+// una coincidencia que funcionaba, y una coincidencia que funciona es la unica
+// clase de error que nadie revisa. Aqui deja de serlo: si alguien mueve la GDT
+// o toca `USER_CS`/`USER_SS`, **esto no compila** en vez de arrancar y morir en
+// el `iretq` de un stub que no tiene nada que ver.
+const _: () = assert!(
+    SYSRET_SELECTOR_BASE + 8 == crate::ring0::plat::trap::USER_SS,
+    "sysret dejaria un SS distinto del que empuja el prologo"
+);
+const _: () = assert!(
+    SYSRET_SELECTOR_BASE + 16 == crate::ring0::plat::trap::USER_CS,
+    "sysret dejaria un CS distinto del que empuja el prologo"
+);
