@@ -387,7 +387,7 @@ que sea texto.
 # SEXTA VUELTA -- 2026-08-15: LAS PUERTAS SIEMPRE ABIERTAS
 
 El dueno lo reporto asi: *"el teclado y mouse cuando entre la BIOS o algo causo
-un pequeño bug... es como que al teclado se le olvido, o otras veces mouse y
+un pequeno bug... es como que al teclado se le olvido, o otras veces mouse y
 teclado se olvido"*. Con la foto de CABINA delante:
 
 ```text
