@@ -12,6 +12,7 @@
 //!    azar.rs     xorshift + el revoltijo de las ventanas.
 //!    torre.rs    que ES una torre y como se pinta su fachada.
 //!    ciudad.rs   cuantas hay, donde, y el cielo.
+//!    halo.rs     el cielo ENCENDIDO detras del logo. Un neon ilumina el aire.
 //!    niebla.rs   la bruma que despega los planos, y los jirones que cruzan.
 //!    camara.rs   el paralaje: cuanto se ha movido cada capa.
 //!    acto.rs     el GUION: que hay en pantalla en el milisegundo N.
@@ -66,11 +67,19 @@ pub mod acto;
 pub mod azar;
 pub mod camara;
 pub mod ciudad;
+/// Donde cae cada pieza del logo. Salio del kernel el 2026-08-15 porque ahi
+/// **solo se podia juzgar reiniciando la maquina** -- ver su cabecera.
+pub mod encuadre;
+/// El aura del logo: el cielo ENCENDIDO detras del gato. Vive aqui y no con el
+/// gato porque es cielo respondiendo a una luz -- ver su cabecera.
+pub mod halo;
 pub mod niebla;
 pub mod paleta;
 pub mod torre;
 
 pub use acto::{fotograma, Acto, Fotograma, DURACION_MS};
+pub use encuadre::{componer, Encuadre, Medidas};
+pub use halo::aura;
 pub use camara::Camara;
 pub use ciudad::{Ciudad, MAX_TORRES};
 pub use paleta::*;

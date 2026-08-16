@@ -118,6 +118,44 @@ impl Ciudad {
         &self.torres[..self.n]
     }
 
+    /// **El techo de la ciudad**: la `y` de la punta de torre mas alta.
+    ///
+    /// Todo lo que quede por encima de esto es cielo despejado. Existe para que
+    /// **quien pone el logo no tenga que adivinarlo**, que es lo que estaba
+    /// pasando: el bloque del gato se centraba en la pantalla entera y su mitad
+    /// de abajo --el titulo, sobre todo-- caia dentro de las torres. En el video
+    /// del 08-15 se ve el `BMO-X` escrito justo encima de los tejados y el kanji
+    /// pisando una torre.
+    ///
+    /// Se mide, no se calcula de la formula: si manana alguien sube las torres,
+    /// el logo se aparta solo. Un numero copiado a mano en el otro lado es
+    /// exactamente la clase de acuerdo que se rompe sin que nadie se entere.
+    pub fn techo(&self) -> i32 {
+        self.torres[..self.n]
+            .iter()
+            .map(|t| self.horizonte - t.alto)
+            .min()
+            .unwrap_or(self.horizonte)
+    }
+
+    /// **De que color esta el cielo en la fila `y`.**
+    ///
+    /// La usa `dibujar` para pintarlo, y la usa el aura del logo
+    /// ([`crate::halo`]) para saber sobre que esta encendiendose. Es una sola
+    /// funcion y no dos copias a proposito: un aura calculada con otra formula
+    /// se nota como un rectangulo de otro tono en cuanto alguien toque el
+    /// degradado.
+    ///
+    /// Debajo del horizonte contesta el suelo.
+    pub fn color_cielo(&self, y: i32) -> Color {
+        if y >= self.horizonte {
+            return CIELO_ALTO;
+        }
+        let alto_franja = (self.horizonte / FRANJAS).max(1);
+        let i = (y.max(0) / alto_franja).min(FRANJAS - 1);
+        mezcla(CIELO_ALTO, CIELO_BAJO, i as u32, FRANJAS as u32 - 1)
+    }
+
     /// **Enciende la ciudad al `pct` por ciento.**
     ///
     /// El enganche con el sistema: quien llama pasa lo que quiera que
@@ -152,7 +190,10 @@ impl Ciudad {
         // es justo lo que significa un cielo.
         let alto_franja = (self.horizonte / FRANJAS).max(1);
         for i in 0..FRANJAS {
-            let c = mezcla(CIELO_ALTO, CIELO_BAJO, i as u32, FRANJAS as u32 - 1);
+            // El color sale de `color_cielo` y no de la formula suelta: el aura
+            // del logo pregunta por ahi, y dos formulas para el mismo cielo se
+            // separan el dia que alguien toque una.
+            let c = self.color_cielo(i * alto_franja);
             rect(0, i * alto_franja, self.ancho, alto_franja, c);
         }
         let resto = self.horizonte - FRANJAS * alto_franja;
@@ -287,6 +328,64 @@ mod pruebas {
             "tras avanzar 200 px la ciudad acaba en {} y la pantalla mide 640",
             mas_a_la_derecha
         );
+    }
+
+    /// ** EL TECHO DEJA SITIO AL LOGO, que es el fallo que se ve en el video del
+    /// 2026-08-15: el `BMO-X` escrito sobre los tejados y el kanji pisando una
+    /// torre.
+    ///
+    /// El numero que importa no es el techo en si: es **cuanto cielo despejado
+    /// queda**. Si esto se quedara corto, el logo no cabria por encima de la
+    /// ciudad y volveria a meterse dentro.
+    #[test]
+    fn por_encima_del_techo_queda_medio_lienzo_despejado() {
+        let c = Ciudad::nueva(1920, 1080, 42);
+        let techo = c.techo();
+        assert!(techo > 0, "las torres se salen por arriba de la pantalla");
+        assert!(techo < c.horizonte, "el techo tiene que estar sobre el suelo");
+        assert!(
+            techo >= c.alto / 2,
+            "solo quedan {} px de cielo despejado y el logo no cabe",
+            techo
+        );
+    }
+
+    /// El techo se MIDE de las torres que hay. Si alguien las sube, el logo se
+    /// aparta solo -- que es la razon de que esto no sea un porcentaje copiado.
+    #[test]
+    fn el_techo_es_la_punta_mas_alta_de_verdad() {
+        let c = Ciudad::nueva(1280, 720, 5);
+        let mas_alta = c.torres().iter().map(|t| t.alto).max().unwrap();
+        assert_eq!(c.techo(), c.horizonte - mas_alta);
+    }
+
+    /// El cielo que dibuja `dibujar` y el que contesta `color_cielo` son EL
+    /// MISMO. Si divergieran, el aura del logo saldria como un ovalo de otro
+    /// tono pegado sobre el degradado.
+    #[test]
+    fn el_cielo_que_se_pinta_es_el_que_se_contesta() {
+        let c = Ciudad::nueva(800, 600, 13);
+        let mut visto = 0;
+        c.dibujar(Camara::default(), |x, y, w, _, color| {
+            // Solo las franjas del cielo: de borde a borde y por encima del
+            // horizonte. Lo demas son torres, niebla y suelo.
+            if x == 0 && w == c.ancho && y < c.horizonte {
+                assert_eq!(color, c.color_cielo(y), "la franja de y={} no cuadra", y);
+                visto += 1;
+            }
+        });
+        assert!(visto > 0, "no se miro ni una franja de cielo");
+    }
+
+    /// Debajo del horizonte contesta el suelo, y no se sale del array de
+    /// franjas. Lo pregunta el aura cuando el logo queda bajo en una pantalla
+    /// pequena.
+    #[test]
+    fn preguntar_fuera_del_cielo_no_desborda() {
+        let c = Ciudad::nueva(640, 480, 3);
+        let _ = c.color_cielo(-100);
+        let _ = c.color_cielo(c.alto * 10);
+        assert_eq!(c.color_cielo(c.horizonte + 1), CIELO_ALTO);
     }
 
     #[test]

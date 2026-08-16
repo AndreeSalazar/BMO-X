@@ -117,6 +117,11 @@ members = [
     "toolchain/tools/bmo-pack",
     # El par cliente/servidor que prueba Endpoint RPC en Ring 3.
     "toolchain/tools/rpc-demo",
+    # Previsualiza la intro de arranque SIN reiniciar la maquina. Dibuja con el
+    # mismo `bmo-ciudad` que corre en Ring 0, asi que lo que sale aqui es lo que
+    # va a salir en el Ryzen. Ver su cabecera: la regla estaba escrita desde el
+    # primer dia y esta parte no la cumplia.
+    "toolchain/tools/vista-ciudad",
 
     # -- FORGE (pipeline de compilacion) -----------------------------
     # Librerias OPCIONALES que cada frontend elige enlazar (nunca embudos).

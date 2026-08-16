@@ -241,6 +241,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-vista-ciudad"
+version = "0.1.0"
+dependencies = [
+ "bmo-ciudad",
+]
+
+[[package]]
 name = "bmo-xhci"
 version = "0.1.0"
 
