@@ -105,6 +105,18 @@
 #define BMO_INFO_NET_RX_TRAMAS      0x2D
 #define BMO_INFO_NET_PCI            0x2E
 
+/* El METRO de la puerta: cuantas puertas ha servido el kernel y cuantos ciclos
+ * ha pasado DENTRO de `dispatch`. Se leen los DOS y se dividen.
+ *
+ * ** Se leen como DELTA, antes y despues del bucle que se quiera medir: no hay
+ * puesta a cero, y un absoluto arrastraria lo que hizo la maquina arrancando.
+ * Las dos lecturas son dos puertas y tambien se cuentan.
+ *
+ * Restando lo de dentro de `dispatch` al total que mide `c/coste.bex` queda lo
+ * que tarda el stub de ensamblador: pushes, xsave64, xrstor64 e iretq. */
+#define BMO_INFO_SYSCALL_CUENTA     0x2F
+#define BMO_INFO_SYSCALL_CICLOS     0x30
+
 #define BMO_INFO_CPU_HILOS 0x06
 #define BMO_INFO_CPU_NUCLEOS 0x07
 #define BMO_INFO_TICKS 0x0B

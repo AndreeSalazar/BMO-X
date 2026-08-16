@@ -205,6 +205,11 @@ pub const INFO_NET_RX_ARMADO: u64 = 0x2C;
 pub const INFO_NET_RX_TRAMAS: u64 = 0x2D;
 pub const INFO_NET_PCI: u64 = 0x2E;
 
+/// El metro de la puerta: puertas servidas y ciclos dentro de `dispatch`.
+/// **Se leen como DELTA** -- antes y despues del bucle que se quiera medir.
+pub const INFO_SYSCALL_CUENTA: u64 = 0x2F;
+pub const INFO_SYSCALL_CICLOS: u64 = 0x30;
+
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;

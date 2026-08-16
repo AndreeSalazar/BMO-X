@@ -107,6 +107,11 @@ const INFO_NET_RX_ARMADO: u64 = 0x2C;
 const INFO_NET_RX_TRAMAS: u64 = 0x2D;
 const INFO_NET_PCI: u64 = 0x2E;
 
+// El metro de la puerta: cuantas y cuantos ciclos dentro de `dispatch`. Se
+// leen como delta. Ver `ring0/syscall/meter.rs`.
+const INFO_SYSCALL_CUENTA: u64 = 0x2F;
+const INFO_SYSCALL_CICLOS: u64 = 0x30;
+
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
 /// * Quien tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
@@ -253,6 +258,8 @@ pub fn campo(n: u64) -> u64 {
         INFO_PANTALLA_DUENO => crate::ring0::obj::fb::owner().unwrap_or(0) as u64,
         INFO_TAREAS_LIBRES => crate::ring0::task::scheduler::huecos_libres() as u64,
         INFO_TICKS => crate::ring0::plat::timer::ticks(),
+        INFO_SYSCALL_CUENTA => crate::ring0::syscall::meter::doors(),
+        INFO_SYSCALL_CICLOS => crate::ring0::syscall::meter::cycles(),
         INFO_FECHA => crate::ring0::dev::clock::ahora(),
         // Medido, no declarado: desde donde lo enlaza el guion hasta el final
         // de su `.bss`, que incluye la pila de 64 KiB.

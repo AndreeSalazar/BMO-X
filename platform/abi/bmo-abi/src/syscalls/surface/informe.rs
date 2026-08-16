@@ -148,6 +148,28 @@ pub const INFO_NET_RX_TRAMAS: u64 = 0x2D;
 /// dos informes identicos y no hay forma de decir de cual habla cada uno.
 pub const INFO_NET_PCI: u64 = 0x2E;
 
+/// -- ** EL METRO DE LA PUERTA -------------------------------------------
+///
+/// Cuantas puertas ha servido el kernel, y cuantos ciclos ha pasado DENTRO de
+/// `dispatch` sirviendolas. Se leen los dos y se dividen.
+///
+/// Existen porque el 2026-08-16 `c/coste.bex` midio una puerta desde Ring 3 en
+/// **2615 ciclos** contra 20 de una llamada normal, y ese numero no podia
+/// contestar la pregunta siguiente: **donde se van.** Restando lo de dentro de
+/// `dispatch` al total queda **lo que tarda el stub de ensamblador** -- los
+/// pushes, el `xsave64`, el `xrstor64` y el `iretq`. Sin esa resta, tocar el
+/// stub seria operar sobre una sospecha, y es el codigo que produjo el `#GP` en
+/// `xrstor`.
+///
+/// [!] **Se leen como DELTA, no como absoluto**: antes y despues del bucle que
+/// se quiera medir. No hay operacion de puesta a cero a proposito -- un delta
+/// mide justo la poblacion que interesa y no arrastra lo que hizo la maquina
+/// arrancando. Y las dos lecturas son dos puertas, que tambien se cuentan.
+pub const INFO_SYSCALL_CUENTA: u64 = 0x2F;
+
+/// Ciclos de TSC acumulados dentro de `dispatch`. Ver [`INFO_SYSCALL_CUENTA`].
+pub const INFO_SYSCALL_CICLOS: u64 = 0x30;
+
 /// Hilos logicos y nucleos fisicos que el CPU declara.
 pub const INFO_CPU_HILOS: u64 = 0x06;
 
