@@ -214,6 +214,12 @@ pub const INFO_SYSCALL_CICLOS: u64 = 0x30;
 /// las dos transiciones de privilegio -- el `syscall` y el `iretq`.
 pub const INFO_SYSCALL_CICLOS_GUARDA: u64 = 0x35;
 pub const INFO_SYSCALL_CICLOS_RESTAURA: u64 = 0x36;
+/// El presupuesto de ciclos de la puerta: `meta << 32 | techo`. El `techo` es
+/// lo que no puede empeorar y la `meta` a donde tiene que llegar -- cumplir el
+/// primero y no la segunda es estar **en plazo**, no estar bien.
+pub const INFO_PRESUPUESTO_PUERTA: u64 = 0x37;
+pub const INFO_PRESUPUESTO_DISPATCH: u64 = 0x38;
+pub const INFO_PRESUPUESTO_HANDLE: u64 = 0x39;
 
 /// El censo de extensiones del CPU, en tres numeros: cuantas filas, que
 /// declara el silicio y que coge BMO. Bit `i` = fila `i`, y el nombre de esa

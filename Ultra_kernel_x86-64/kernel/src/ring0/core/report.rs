@@ -115,6 +115,11 @@ const INFO_SYSCALL_CICLOS: u64 = 0x30;
 // cae en ninguna de las tres casillas son las dos transiciones de privilegio.
 const INFO_SYSCALL_CICLOS_GUARDA: u64 = 0x35;
 const INFO_SYSCALL_CICLOS_RESTAURA: u64 = 0x36;
+// Y lo que una puerta TIENE PERMITIDO costar: `meta << 32 | techo` en cada uno.
+// La tabla vive en `ring0/syscall/presupuesto.rs`.
+const INFO_PRESUPUESTO_PUERTA: u64 = 0x37;
+const INFO_PRESUPUESTO_DISPATCH: u64 = 0x38;
+const INFO_PRESUPUESTO_HANDLE: u64 = 0x39;
 
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
@@ -299,6 +304,11 @@ pub fn campo(n: u64) -> u64 {
         INFO_SYSCALL_CICLOS => crate::ring0::syscall::meter::cycles(),
         INFO_SYSCALL_CICLOS_GUARDA => crate::ring0::syscall::meter::ciclos_guarda(),
         INFO_SYSCALL_CICLOS_RESTAURA => crate::ring0::syscall::meter::ciclos_restaura(),
+        INFO_PRESUPUESTO_PUERTA => {
+            crate::ring0::syscall::presupuesto::PUERTA_PELADA.empaquetado()
+        }
+        INFO_PRESUPUESTO_DISPATCH => crate::ring0::syscall::presupuesto::DISPATCH.empaquetado(),
+        INFO_PRESUPUESTO_HANDLE => crate::ring0::syscall::presupuesto::HANDLE.empaquetado(),
         // ** El censo entero cabe en tres numeros porque son treinta y seis
         // filas: una mascara de 64 bits sobra. Si algun dia [`ALL`] pasa de 64,
         // `INFO_CPU_EXT_N` es lo que lo dice en voz alta -- por eso viaja el

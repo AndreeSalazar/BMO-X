@@ -190,6 +190,54 @@ unsigned long long plain_call(unsigned long long x) {
     return x + 1;
 }
 
+/* ** EL VEREDICTO: lo medido contra lo DECLARADO.
+ *
+ * Hasta hoy este programa decia lo que cuesta una puerta y nada mas. Eso deja
+ * el numero sin contrato: nadie impide que el proximo cambio lo devuelva a
+ * 2000, porque para saberlo hay que acordarse de lo de ayer y compararlo a
+ * mano. Asi se descubrio la anomalia de los +257 -- por casualidad.
+ *
+ * El kernel declara dos numeros por fila en `ring0/syscall/presupuesto.rs`, y
+ * viajan empaquetados en un solo campo:
+ *
+ *     techo = valor & 0xFFFFFFFF    la ultima medida CONFIRMADA en metal.
+ *                                   Cruzarlo es una REGRESION, no una opinion.
+ *     meta  = valor >> 32           a donde tiene que llegar. No alcanzarla es
+ *                                   DEUDA, y la deuda se dice en voz alta.
+ *
+ * ** CUMPLIR EL TECHO Y NO LA META NO ES ESTAR BIEN: ES ESTAR EN PLAZO. Por eso
+ * hay tres veredictos y no dos.
+ *
+ * `techo == 0` significa que este kernel no declara presupuesto para esa fila
+ * -- un binario viejo, o una fila nueva. Se calla en vez de inventarse un
+ * juicio, que es lo unico honesto que puede hacer.
+ */
+void veredicto(char *label, unsigned long long medido, unsigned long long campo) {
+    unsigned long long valor;
+    unsigned long long techo;
+    unsigned long long meta;
+
+    valor = bmo_info(campo);
+    techo = valor & 0xFFFFFFFF;
+    meta = valor >> 32;
+
+    if (techo == 0) {
+        printf("   %s: este kernel no declara presupuesto\n", label);
+        return;
+    }
+    if (medido > techo) {
+        printf("   %s [SE PASA] %llu > techo %llu -- REGRESION\n",
+               label, medido, techo);
+        return;
+    }
+    if (medido > meta) {
+        printf("   %s [EN PLAZO] %llu, techo %llu, meta %llu -- faltan %llu\n",
+               label, medido, techo, meta, medido - meta);
+        return;
+    }
+    printf("   %s [META] %llu, por debajo de %llu\n", label, medido, meta);
+}
+
 /* Shared reporting, so the four measurements cannot disagree on the
  * arithmetic. Takes totals, not loops -- the loops stay tight. */
 void report(char *label, unsigned long long best, unsigned long long total) {
@@ -277,6 +325,7 @@ int main() {
     unsigned long long cycles0;
     unsigned long long guarda0;
     unsigned long long restaura0;
+    unsigned long long pelada;
     int round;
     int i;
 
@@ -328,6 +377,13 @@ int main() {
     }
     report("3. puerta pelada", best, total);
     report_split(doors0, cycles0, guarda0, restaura0, best / BATCH);
+    veredicto("puerta ", best / BATCH, BMO_INFO_PRESUPUESTO_PUERTA);
+    veredicto("dispatch",
+              (bmo_info(BMO_INFO_SYSCALL_CICLOS) - cycles0)
+                  / (bmo_info(BMO_INFO_SYSCALL_CUENTA) - doors0),
+              BMO_INFO_PRESUPUESTO_DISPATCH);
+    /* Se guarda para juzgar el handle contra la fila 4. */
+    pelada = best / BATCH;
 
     /* -- 4. a real capability ----------------------------------------- *
      *
@@ -356,6 +412,9 @@ int main() {
         }
         report("4. puerta+handle", best, total);
         report_split(doors0, cycles0, guarda0, restaura0, best / BATCH);
+        /* La fila 4 menos la 3 ES la capability, y es la unica cifra de este
+         * programa que se juzga como diferencia y no como total. */
+        veredicto("handle  ", (best / BATCH) - pelada, BMO_INFO_PRESUPUESTO_HANDLE);
         bmo_codigo(handle, BMO_ARCH_CERRAR, 0, 0, 0);
     }
 
