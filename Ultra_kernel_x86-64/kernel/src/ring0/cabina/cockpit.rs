@@ -225,6 +225,21 @@ pub fn render_hud() {
     let (bus_turns, bus_overlaps) = crate::ring0::dev::usb::bus_stats();
     r.txt(" bus="); r.dec(bus_turns);
     r.txt(":"); r.dec(bus_overlaps);
+    // ** `puertas=esperando:PERDIDOS:barridos:reparados` -- QUE LAS PUERTAS SIGAN
+    // ABIERTAS.
+    //
+    // El dueno lo pidio con esas palabras --*"mi Kernel tiene que tener siempre
+    // abierto las puertas"*-- y hasta ahora no habia forma de saber si lo
+    // estaban. `PERDIDOS` es la cola de avisos desbordada; `reparados` son los
+    // barridos que encontraron una diferencia entre lo que el driver creia y lo
+    // que dicen los puertos. Los dos deberian quedarse en **0**: si `reparados`
+    // sube, el sistema se esta arreglando solo, y cada uno de esos es medio
+    // segundo en que el teclado no respondia.
+    let (av_esp, av_perd, barridos, reparados) = crate::ring0::dev::usb::puertas_stats();
+    r.txt(" puertas="); r.dec(av_esp as u64);
+    r.txt(":"); r.dec(av_perd as u64);
+    r.txt(":"); r.dec(barridos);
+    r.txt(":"); r.dec(reparados);
     let usb_color = if apk_perd > 0 { C_FAULT }
                     else if kbd && kev > 0 { C_OK }
                     else if kbd && kev == 0 { C_FAULT }

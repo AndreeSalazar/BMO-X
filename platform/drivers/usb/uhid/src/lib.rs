@@ -41,6 +41,10 @@
 
 #![no_std]
 
+/// Comparar lo que se CREE con lo que dicen los puertos, y reparar la
+/// diferencia. Es lo que hace que un aviso perdido deje de ser una puerta
+/// cerrada hasta el reinicio -- ver su cabecera.
+pub mod barrido;
 pub mod dir;
 pub mod enumera;
 /// El Report Descriptor, leido. Es lo que convierte "8 o 16 bits?" de una
@@ -53,6 +57,7 @@ pub mod puertos;
 pub mod raton;
 pub mod teclado;
 
+use barrido::{Accion, Resumen, Vista};
 use bmo_input::event::InputEvent;
 use bmo_input::hal::{InputHal, PointerMode};
 use dir::Direccion;
@@ -495,6 +500,82 @@ impl UsbHidHal {
             return true;
         }
         false
+    }
+
+    /// **El barrido: mirar los puertos de verdad y reparar la diferencia.**
+    ///
+    /// Se llama cada pocos cientos de milisegundos desde el hilo del bus. Todo lo
+    /// demas en este driver depende de haberse enterado de un aviso; esto no
+    /// depende de nada, y por eso es lo unico que puede cumplir lo que se pidio:
+    ///
+    /// > *"mi Kernel tiene que tener siempre abierto las puertas para facilitar"*
+    ///
+    /// La decision de que hacer con cada puerto vive en [`barrido::decidir`], que
+    /// se prueba sin un xHC delante. Aqui solo se lee `PORTSC` y se obedece --
+    /// separados a proposito: un barrido automatico que se equivoque en la
+    /// decision resetea el puerto del teclado que esta escribiendo, y eso no se
+    /// puede dejar a que salga bien en el metal.
+    ///
+    /// # Safety
+    /// Lee y toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
+    pub unsafe fn barrer(&mut self) -> Resumen {
+        let mut r = Resumen::default();
+        // * UNA SOLA ENUMERACION POR BARRIDO, y esto no es cosmetico.
+        //
+        // Soltar un fantasma y reabrir un puerto vacio son contabilidad: no
+        // escriben un byte al xHC y pueden hacerse todos de golpe. Adoptar NO:
+        // lleva un reset de puerto y esperas de verdad, hasta un tercio de
+        // segundo. Y el recorrido del arranque no gasta intentos, asi que tras un
+        // arranque en el que falte un aparato, el primer barrido encontraria
+        // CADA puerto ocupado con sus tres oportunidades intactas -- y las
+        // gastaria todas seguidas, congelando la maquina justo cuando esta
+        // levantando el escritorio.
+        //
+        // Con una por barrido, recuperar un aparato tarda medio segundo mas y no
+        // se nota; sin ella, el arreglo del teclado seria un tiron de un segundo
+        // y medio en el arranque. La red no puede costar mas que el agujero.
+        let mut ya_enumere = false;
+        // Solo los puertos que el controlador declara. Cero puertos = todavia no
+        // hay controlador, y entonces no hay nada que barrer.
+        let n = bmo_xhci::puertos_totales().min(puertos::MAX_PUERTOS as u8);
+        for port in 0..n {
+            let v = Vista {
+                hay_dispositivo: bmo_xhci::hay_dispositivo(port),
+                es_mio: self.puerto_teclado == Some(port) || self.puerto_raton == Some(port),
+                tomado: self.puertos.tomado(port),
+                intentos: self.puertos.intentos(port),
+                // Se pregunta DENTRO del bucle: soltar un fantasma en el puerto 2
+                // cambia la respuesta para el puerto 4, y esa es justamente la
+                // secuencia que repara un teclado perdido en el mismo barrido.
+                falta_algo: !self.completo(),
+            };
+            match barrido::decidir(&v) {
+                Accion::Nada => {}
+                Accion::Soltar => {
+                    if self.soltar_puerto(port) {
+                        r.soltados = r.soltados.saturating_add(1);
+                    }
+                }
+                Accion::Reabrir => {
+                    self.puertos.release(port);
+                    r.reabiertos = r.reabiertos.saturating_add(1);
+                }
+                Accion::Adoptar => {
+                    if ya_enumere {
+                        // Le toca al barrido siguiente, medio segundo despues.
+                        // El intento NO se gasta: no se ha tocado el bus.
+                        continue;
+                    }
+                    ya_enumere = true;
+                    if self.adoptar_puerto(port) {
+                        r.adoptados = r.adoptados.saturating_add(1);
+                    } else {
+                        r.fallidos = r.fallidos.saturating_add(1);
+                    }
+                }
+            }
+        }
+        r
     }
 }
 

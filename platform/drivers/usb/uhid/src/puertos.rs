@@ -40,9 +40,20 @@
 //! Vive aparte del driver porque es la unica parte de todo esto que **se puede
 //! probar sin un xHC delante** -- y era justo la parte que estaba mal.
 
-/// Cuantos puertos se contabilizan. El xHC de esta placa declara menos, y
-/// pasarse por arriba no cuesta nada: es un bitmask y un array de bytes.
-pub const MAX_PUERTOS: usize = 16;
+/// Cuantos puertos se contabilizan.
+///
+/// * TREINTA Y DOS, y no dieciseis. El numero viejo era una suposicion --"el xHC
+/// de esta placa declara menos"-- y un xHC declara los puertos USB2 y los USB3
+/// por separado, asi que veinte o mas es corriente. Lo que hacia esa suposicion
+/// no era desperdiciar memoria: era **cerrar el hot-plug de los puertos altos en
+/// silencio**. Un puerto fuera de rango contesta `intentos = MAX_INTENTOS`, o
+/// sea `se_puede_intentar = false`, o sea `adoptar_puerto` se va sin tocar el bus
+/// y CABINA dice `nada que adoptar`. Y como el recorrido del arranque llama a
+/// `cosechar_puerto` directamente --sin pasar por esta contabilidad--, el sintoma
+/// era el peor posible: **enumera al arrancar y no vuelve nunca si se pierde**.
+///
+/// Cuesta un `u32` en vez de un `u16` y dieciseis bytes mas de array.
+pub const MAX_PUERTOS: usize = 32;
 
 /// Cuantas veces se intenta adoptar un puerto que no da nada.
 ///
@@ -54,7 +65,7 @@ pub const MAX_INTENTOS: u8 = 3;
 /// Que puertos estan tomados y cuantas veces se ha intentado cada uno.
 #[derive(Debug, Clone, Copy)]
 pub struct Puertos {
-    tomados: u16,
+    tomados: u32,
     intentos: [u8; MAX_PUERTOS],
 }
 

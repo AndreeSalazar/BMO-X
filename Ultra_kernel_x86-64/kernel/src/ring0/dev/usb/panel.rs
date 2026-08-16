@@ -38,6 +38,25 @@ pub fn reparto_stats() -> (bool, bool, u32) {
     }
 }
 
+/// **Las puertas del bus**: `(avisos esperando, avisos PERDIDOS, barridos,
+/// barridos que repararon algo)`.
+///
+/// Es lo que hay que mirar cuando el teclado "se olvida":
+///
+/// * `perdidos > 0` -- la cola de avisos se lleno. No es fatal (para eso esta el
+///   barrido), pero significa que los enchufes llegaron mas rapido de lo que se
+///   atendieron.
+/// * `barridos` subiendo y `utiles` en cero -- el bus esta sano y el barrido no
+///   ha tenido que reparar nada. Es lo normal.
+/// * `utiles` subiendo -- **se estan perdiendo avisos de verdad**. El sistema se
+///   repara solo, pero ahi hay algo que investigar: cada uno de esos es medio
+///   segundo en que el teclado no respondia.
+pub fn puertas_stats() -> (usize, u32, u64, u64) {
+    let (esperando, perdidos) = bmo_xhci::avisos_stats();
+    let (hechos, utiles) = super::barrido_stats();
+    (esperando, perdidos, hechos, utiles)
+}
+
 /// El aparcadero de eventos del xHC: `(aparcados en total, PERDIDOS, ahora)`.
 ///
 /// El anillo de eventos es uno para todo el controlador, asi que quien espera
