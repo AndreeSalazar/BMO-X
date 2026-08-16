@@ -16,7 +16,7 @@ use crate::commands::complete::complete;
 use crate::commands::{dispatch, parse, After, Command};
 use crate::desktop::Desktop;
 use crate::scene::output::{INK_ECHO, INK_PLAIN};
-use crate::scene::{paint_status, INK_DIM, OUT_ROWS};
+use crate::scene::{paint_status, INK_DIM};
 use crate::PATH_MAX;
 
 pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, ctrl: bool) -> Edit {
@@ -337,10 +337,13 @@ match c {
     // perder la salida de un batch cuesta un arranque entero.
     // Ahora suben y bajan la ventana sobre 200 filas guardadas.
     0x87 => {
-        dsk.out.grid.scroll_view(OUT_ROWS as i32 - 1);
+        // Una pagina es lo que SE VE, no el tope: con la constante, en una
+        // ventana pequena RePag saltaria por encima de filas que nunca se
+        // llegaron a leer.
+        dsk.out.grid.scroll_view(dsk.run_box.out_rows() as i32 - 1);
     }
     0x88 => {
-        dsk.out.grid.scroll_view(-(OUT_ROWS as i32 - 1));
+        dsk.out.grid.scroll_view(-(dsk.run_box.out_rows() as i32 - 1));
     }
     // * F12 (0x94) NO esta aqui: se atiende arriba, antes de
     // preguntar por el foco, porque es del sistema y no de esta

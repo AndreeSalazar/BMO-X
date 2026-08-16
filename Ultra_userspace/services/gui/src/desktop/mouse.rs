@@ -395,6 +395,83 @@ pub(crate) fn on_pointer(
         }
     }
 
+    // -- ** EL RATON SOBRE LA TERMINAL --
+    //
+    // Va ANTES que las demas ventanas a proposito: la terminal esta
+    // DEBAJO de todas, asi que si CABINA o Datos estan encima y el
+    // puntero cae en la zona compartida, la de arriba tiene que ganar
+    // -- y gana porque su bloque se evalua despues y el `grab` de esta
+    // no se dispara si ya hay otro agarrado por el suyo.
+    //
+    // ** Y este bloque existe porque el marco NO se cablea solo. Este
+    // mismo fichero ya cazo el fallo una vez, con estas palabras:
+    // *"CABINA y Sonido nacieron con `Chrome` y nadie las llamaba. El
+    // resultado en el Ryzen: dos ventanas con barra de titulo, con sus
+    // tres botones pintados, y clavadas en el sitio."* Pintar los
+    // botones no es tenerlos.
+    if dsk.win.visible {
+        use scene::chrome::Button;
+
+        let hover_now = dsk.run_box.chrome.button_at(pos.x, pos.y);
+        if hover_now != dsk.run_box.chrome.hover {
+            dsk.run_box.chrome.hover = hover_now;
+            dsk.run_box.chrome.paint_buttons(&p, scene::BOX_TITLE);
+        }
+
+        if button && !dsk.tick.button_before {
+            match dsk.run_box.chrome.button_at(pos.x, pos.y) {
+                // No hay aspa: `sin_cerrar()`. Ver la cabecera de
+                // `Chrome::closable` -- cerrar la unica ventana donde se
+                // escriben ordenes dejaria la maquina sin linea de
+                // ordenes, y al shell de Ring 0 no se vuelve.
+                Some(Button::Close) => {}
+                // Minimizar es **lo que ya hacia Ctrl+Alt**: esconderla
+                // entera. No se inventa un segundo estado escondido
+                // --`chrome.minimized` ademas de `win.visible`-- porque
+                // dos banderas para una sola pregunta acaban diciendo
+                // cosas distintas. Vuelve por donde ya volvia.
+                Some(Button::Minimize) => {
+                    scene::erase_box(&p, &dsk.run_box);
+                    dsk.win.visible = false;
+                    dsk.win.taskbar_dirty = true;
+                }
+                Some(Button::Maximize) => {
+                    let (vx, vy, va, vl) = dsk.run_box.chrome.toggle_maximized(&p);
+                    dsk.run_relayout();
+                    scene::erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    dsk.win.top_before = W_RUN;
+                }
+                None => {}
+            }
+        }
+
+        if button && !dsk.run_box.chrome.grabbed()
+            && (dsk.run_box.chrome.on_the_grip(pos.x, pos.y)
+                || dsk.run_box.chrome.on_the_corner(pos.x, pos.y))
+        {
+            dsk.run_box.chrome.grab(pos.x, pos.y);
+        } else if !button && dsk.run_box.chrome.grabbed() {
+            dsk.run_box.chrome.release();
+        } else if button && dsk.run_box.chrome.grabbed() {
+            let (vx, vy, va, vl) = (
+                dsk.run_box.x, dsk.run_box.y,
+                dsk.run_box.w(), dsk.run_box.h(),
+            );
+            if dsk.run_box.chrome.follow_pointer(&p, pos.x, pos.y) {
+                // Primero recolocar, luego borrar el sitio viejo y
+                // repintar: la que se movio es ESTA, asi que
+                // `erase_window` tiene que preguntar por el color de
+                // fondo con la geometria NUEVA o deja un rastro de
+                // copias de si misma.
+                dsk.run_relayout();
+                scene::erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                dsk.win.top_before = W_RUN;
+            }
+        }
+    }
+
     if dsk.win.sound_open && !dsk.win.sound.chrome.minimized {
         if button && !dsk.win.sound.chrome.grabbed() && dsk.win.focus.es_para(W_SOUND)
             && dsk.win.sound.chrome.on_the_grip(pos.x, pos.y)

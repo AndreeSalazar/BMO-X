@@ -278,8 +278,23 @@ pub(crate) fn paint_background(p: &bmo::Pantalla) {
 
 // -- La caja -------------------------------------------------------------
 
+/// El tamano de la terminal: **por defecto Y minimo a la vez**.
+///
+/// === Por que el minimo es el tamano de siempre ===
+///
+/// Debajo de esto la rejilla de 88x16 no cabe, y una ventana que se puede
+/// encoger hasta dejar su propio contenido fuera es una trampa, no una
+/// libertad -- la misma frase que ya justifica `min_w`/`min_h` en el marco
+/// compartido. Con el minimo puesto aqui, estirar solo puede AGRANDAR, y una
+/// rejilla que sobra sitio es un caso que no rompe nada.
 pub(crate) const BOX_W: u32 = 760;
 pub(crate) const BOX_H: u32 = 428;
+
+/// La fraccion de pantalla que pide al abrirse. En 1920x1080 da 768x432, o sea
+/// practicamente el tamano de siempre; en una pantalla mayor se aprovecha, que
+/// es justo lo que un tamano en pixeles no sabe hacer.
+const RUN_PCT_W: u32 = 40;
+const RUN_PCT_H: u32 = 40;
 
 /// Alto de la barra de titulo de la caja. Antes era un `26` suelto repetido en
 /// cuatro sitios; ahora se llama por su nombre, que es lo que impide que el
@@ -293,7 +308,15 @@ pub(crate) const TITLE_H: u32 = 28;
 /// Ring 3 no podia ver lo que escribia su propio hijo. Con `KIND_CONSOLE` la
 /// salida tiene dueno, y el dueno es este proceso.
 pub(crate) const OUT_COLS: usize = 88;
-pub(crate) const OUT_ROWS: usize = 16;
+/// **El TOPE de filas visibles**, no las que se ven siempre.
+///
+/// Desde que la terminal se estira, las que se ven de verdad las cuenta
+/// [`RunBox::out_rows`] a partir del alto. Este numero es el techo, y subio de
+/// 16 a 32 el 2026-08-16 para que MAXIMIZAR sirva de algo: con el tope en 16,
+/// una ventana del alto de la pantalla ensenaba exactamente el mismo texto que
+/// una pequena y dejaba el resto en negro -- o sea que el boton estaba pero no
+/// pagaba. El historial guardado sigue siendo [`OUT_HIST`].
+pub(crate) const OUT_ROWS: usize = 32;
 /// Cuantas filas se GUARDAN, aunque solo se vean [`OUT_ROWS`].
 ///
 /// * Antes lo que salia por arriba se perdia para siempre: `scroll` movia
@@ -329,7 +352,27 @@ pub(crate) const INK_OK: u32 = 0x007E_E787;
 pub(crate) const PATH_MAX: usize = 128;
 
 /// Geometria de la caja, ya resuelta contra el tamano real del panel.
+///
+/// === ** LA TERMINAL ES UNA VENTANA DE VERDAD (2026-08-16) ===
+///
+/// Hasta hoy era **lo unico del escritorio clavado a la pantalla**: CABINA,
+/// datos, sonido, las constantes y las superficies de las apps llevaban
+/// `Chrome` --arrastre, estirar, maximizar, botones-- y la caja donde de verdad
+/// se trabaja no. Su barra de titulo era decorativa: se pintaba y no se podia
+/// agarrar.
+///
+/// Eddi: *"me gustaria que sea movible... para mejorar MAS la HUD"*. Tenia
+/// razon, y la cabecera de `chrome.rs` ya habia escrito el criterio: **existe
+/// para que la cuarta ventana salga gratis**. Esta es la quinta y sale por el
+/// mismo sitio; no hay un gestor de ventanas nuevo aqui, hay un `Chrome` mas.
+///
+/// Los campos de posicion siguen existiendo como ESPEJO del marco --se
+/// recalculan en [`RunBox::relayout`]-- y no como la verdad. Asi los ciento y
+/// pico sitios que ya leian `c.field_x` siguen leyendo lo mismo, y solo hay un
+/// lugar donde la geometria se decide.
 pub(crate) struct RunBox {
+    /// El marco compartido: donde esta, cuanto mide, y quien la arrastra.
+    pub(crate) chrome: chrome::Chrome,
     pub(crate) x: u32,
     pub(crate) y: u32,
     pub(crate) field_x: u32,
@@ -344,37 +387,79 @@ pub(crate) struct RunBox {
 }
 
 impl RunBox {
-    pub(crate) fn new(width: u32, height: u32) -> Self {
-        // Centrada horizontalmente; algo por encima del centro vertical, que es
-        // donde el ojo la busca. (Antes habia ademas una tira de parches de
-        // medida que esquivar; se quito el 2026-08-04 -- ver el escritorio.)
-        let x = width.saturating_sub(BOX_W) / 2;
-        let y = height / 2;
-        let field_x = x + 18;
-        let field_y = y + 54;
-        let field_w = BOX_W - 36;
-        let field_h = 28;
-        Self {
-            x,
-            y,
-            field_x,
-            field_y,
-            field_w,
-            field_h,
-            texto_x: field_x + 6,
-            texto_y: field_y + 6,
-            // El estado va JUSTO debajo del campo, no al fondo de la caja: el
-            // fondo es ahora la salida, y un mensaje de error a veinte lineas
-            // de distancia de la linea que lo causo no lo lee nadie.
-            status_y: field_y + field_h + 10,
-            out_x: x + 18,
-            out_y: field_y + field_h + 40,
-        }
+    pub(crate) fn new(p: &bmo::Pantalla) -> Self {
+        let mut c = Self {
+            chrome: chrome::Chrome::new(p, RUN_PCT_W, RUN_PCT_H, BOX_W, BOX_H).sin_cerrar(),
+            x: 0,
+            y: 0,
+            field_x: 0,
+            field_y: 0,
+            field_w: 0,
+            field_h: 0,
+            texto_x: 0,
+            texto_y: 0,
+            status_y: 0,
+            out_x: 0,
+            out_y: 0,
+        };
+        c.relayout();
+        c
+    }
+
+    /// **Todo lo que se deduce de donde esta el marco.** Se llama despues de
+    /// CADA cambio de geometria -- mover, estirar, maximizar, restaurar.
+    ///
+    /// Existe para que la respuesta a *"donde esta el campo de texto"* tenga un
+    /// solo autor. La leccion esta escrita dos veces en este mismo fichero: la
+    /// primera version del `TITLE_H` era un `26` suelto repetido en cuatro
+    /// sitios, y `on_field` nacio porque el puntero y el pintor hacian la misma
+    /// cuenta por su cuenta. Con la ventana quieta eso solo costaba rayas; con
+    /// la ventana en movimiento, dos copias de la geometria son dos ventanas.
+    pub(crate) fn relayout(&mut self) {
+        self.x = self.chrome.x;
+        self.y = self.chrome.y;
+        self.field_x = self.x + 18;
+        self.field_y = self.y + 54;
+        self.field_w = self.chrome.width.saturating_sub(36);
+        self.field_h = 28;
+        self.texto_x = self.field_x + 6;
+        self.texto_y = self.field_y + 6;
+        // El estado va JUSTO debajo del campo, no al fondo de la caja: el
+        // fondo es ahora la salida, y un mensaje de error a veinte lineas
+        // de distancia de la linea que lo causo no lo lee nadie.
+        self.status_y = self.field_y + self.field_h + 10;
+        self.out_x = self.x + 18;
+        self.out_y = self.field_y + self.field_h + 40;
+    }
+
+    /// Lo que mide la ventana AHORA. No es `BOX_W`: eso es el minimo.
+    pub(crate) fn w(&self) -> u32 {
+        self.chrome.width
+    }
+
+    pub(crate) fn h(&self) -> u32 {
+        self.chrome.height
+    }
+
+    /// **Cuantas filas de salida caben de verdad**, sabiendo el alto.
+    ///
+    /// Se calcula y no se fija, por el mismo motivo que `cabina::visible_rows`:
+    /// una cuenta fija en una ventana que se estira deja filas pintadas FUERA
+    /// del marco --encima del escritorio, sin nada que las borre-- o un hueco
+    /// muerto dentro. El tope sigue siendo [`OUT_ROWS`] porque por encima de eso
+    /// no hay mas historial que ensenar de golpe.
+    ///
+    /// El `24` del final es el pie donde viven los atajos: sin reservarlo, la
+    /// ultima fila de texto se comeria esa linea al agrandar.
+    pub(crate) fn out_rows(&self) -> usize {
+        let fondo = self.y + self.h().saturating_sub(24);
+        let alto = fondo.saturating_sub(self.out_y);
+        ((alto / bmo::GLIFO_ALTO) as usize).min(OUT_ROWS)
     }
 
     /// Alto de la rejilla de salida, en pixeles.
     pub(crate) fn out_h(&self) -> u32 {
-        OUT_ROWS as u32 * bmo::GLIFO_ALTO
+        self.out_rows() as u32 * bmo::GLIFO_ALTO
     }
 
     /// Cuantos caracteres caben en el campo. El resto se recorta al pintar --
@@ -384,7 +469,7 @@ impl RunBox {
     }
 
     pub(crate) fn contains(&self, x: u32, y: u32) -> bool {
-        x >= self.x && x < self.x + BOX_W && y >= self.y && y < self.y + BOX_H
+        x >= self.x && x < self.x + self.w() && y >= self.y && y < self.y + self.h()
     }
 
     /// Este pixel cae DENTRO del campo donde se escribe?
@@ -422,16 +507,20 @@ pub(crate) fn scene_color(c: &RunBox, visible: bool, x: u32, y: u32, height: u32
     // modelo creyera que la caja es cuadrada, al taparla y destaparla quedarian
     // cuatro pellizcos de su color en las esquinas -- un redondeo que solo sabe
     // pintar deja basura al desaparecer.
-    if visible && inside_rounded(x, y, c.x, c.y, BOX_W, BOX_H) {
-        let on_edge = !inside_rounded(x, y, c.x + 1, c.y + 1, BOX_W - 2, BOX_H - 2);
+    if visible && inside_rounded(x, y, c.x, c.y, c.w(), c.h()) {
+        let on_edge = !inside_rounded(x, y, c.x + 1, c.y + 1, c.w() - 2, c.h() - 2);
         if on_edge {
             return BOX_EDGE;
         }
+        // El acento va en `TITLE_H - 1`, que es donde lo pone `paint_chrome`.
+        // Si este modelo dijera otra fila, destapar la caja dejaria la raya
+        // corrida un pixel -- y esa clase de diferencia es justo por lo que la
+        // barra de titulo dejo de pintarse aqui a mano.
+        if y == c.y + TITLE_H - 1 {
+            return ACCENT;
+        }
         if y < c.y + TITLE_H {
             return BOX_TITLE;
-        }
-        if y == c.y + TITLE_H {
-            return ACCENT;
         }
         if x >= c.field_x
             && x < c.field_x + c.field_w
@@ -466,23 +555,15 @@ pub(crate) fn scene_color(c: &RunBox, visible: bool, x: u32, y: u32, height: u32
 ///    vea que ahi se escribe.
 #[inline(never)]
 pub(crate) fn paint_run_box(p: &bmo::Pantalla, c: &RunBox) {
-    // 1. La sombra, primero y en dos capas.
-    shadow(p, c.x, c.y, BOX_W, BOX_H);
-
-    // El marco y el relleno, ya redondos. Las esquinas no hay que biselarlas a
-    // mano: `rounded_rect` no pinta lo que sobra, asi que por ahi se sigue
-    // viendo el escritorio.
-    rounded_rect(p, c.x, c.y, BOX_W, BOX_H, BOX_EDGE);
-    rounded_rect(p, c.x + 1, c.y + 1, BOX_W - 2, BOX_H - 2, BOX_BG);
-
-    // 2 y 3. La barra de titulo y su acento. La barra tambien va redondeada
-    // por arriba, o asomaria por fuera de las esquinas de la ventana.
-    for i in 0..RADIUS {
-        let s = CURVE_TABLE[i as usize];
-        p.rect(c.x + s, c.y + 1 + i, BOX_W - 2 * s, 1, BOX_TITLE);
-    }
-    p.rect(c.x + 1, c.y + 1 + RADIUS, BOX_W - 2, TITLE_H - 1 - RADIUS, BOX_TITLE);
-    p.rect(c.x + 1, c.y + TITLE_H, BOX_W - 2, 1, ACCENT);
+    // 1, 2 y 3. Sombra, marco redondeado, barra de titulo, acento, **los
+    // botones y el asa de la esquina** -- todo del MARCO COMPARTIDO.
+    //
+    // ** Esto eran diecisiete lineas calcadas de `chrome.rs` con una diferencia
+    // de un pixel en el acento, que es exactamente la forma en que dos ventanas
+    // del mismo escritorio acaban comportandose distinto sin que nadie lo
+    // decida. Ahora la terminal se pinta como CABINA, como datos y como sonido,
+    // y lo que se arregle en el marco le llega sola.
+    c.chrome.paint_chrome(p, BOX_EDGE, BOX_BG, BOX_TITLE, ACCENT);
 
     // El punto de la izquierda: el mismo lenguaje que la marca de la barra de
     // arriba. Dos sitios, un solo idioma.
@@ -516,8 +597,8 @@ pub(crate) fn paint_run_box(p: &bmo::Pantalla, c: &RunBox) {
     // desaparecia en la instruccion siguiente.
     p.texto(
         c.x + 18,
-        c.y + BOX_H - 22,
-        "F11 kernel (Ring 0)   F12 datos (ESTRATOS)   ESC cierra",
+        c.y + c.h() - 22,
+        "F11 kernel  F12 datos  ESC cierra   |   arrastra la barra  Alt+flechas mueve  Ctrl+Alt esconde",
         INK_DIM,
     );
 
@@ -585,8 +666,8 @@ pub(crate) fn paint_field(p: &bmo::Pantalla, c: &RunBox, path: &[u8], cur: usize
 pub(crate) fn erase_box(p: &bmo::Pantalla, c: &RunBox) {
     // Su sombra tambien, por el mismo motivo que en `erase_window`:
     // esconder con Ctrl+Alt dejaba la misma huella en L.
-    for row in 0..BOX_H + SHADOW_BOTTOM {
-        for col in 0..BOX_W + SHADOW_RIGHT {
+    for row in 0..c.h() + SHADOW_BOTTOM {
+        for col in 0..c.w() + SHADOW_RIGHT {
             let (x, y) = (c.x + col, c.y + row);
             p.punto(x, y, scene_color(c, false, x, y, p.alto));
         }
@@ -637,7 +718,7 @@ pub(crate) fn erase_window(
 pub(crate) fn paint_status(p: &bmo::Pantalla, c: &RunBox, msg: &str, color: u32) {
     // Ancho fijo de limpieza: el mensaje anterior puede ser mas largo que el
     // nuevo, y media frase vieja detras de una nueva es peor que ninguna.
-    p.rect(c.x + 18, c.status_y, BOX_W - 36, bmo::GLIFO_ALTO, BOX_BG);
+    p.rect(c.x + 18, c.status_y, c.w() - 36, bmo::GLIFO_ALTO, BOX_BG);
     p.texto(c.x + 18, c.status_y, msg, color);
 }
 

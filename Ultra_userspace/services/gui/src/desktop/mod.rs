@@ -237,6 +237,23 @@ pub(crate) struct Desktop {
     pub resp_n: usize,
 }
 
+impl Desktop {
+    /// **La terminal cambio de sitio o de tamano.** Todo lo que se coloca a
+    /// partir de ella tiene que enterarse, y por eso hay UNA funcion.
+    ///
+    /// Hoy son dos cosas: su propia geometria interior --el campo, el estado,
+    /// la rejilla-- y la CALCULADORA, que se pinta pegada a su derecha y cuyo
+    /// sitio se calculaba una sola vez al arrancar, cuando la ventana no se
+    /// movia. Sin esto, arrastrar la terminal dejaria la calculadora plantada
+    /// donde estaba: pintandose en el vacio y, peor, **respondiendo a clics en
+    /// un sitio donde ya no hay nada** -- que es un fallo mudo, de los que este
+    /// arbol persigue.
+    pub(crate) fn run_relayout(&mut self) {
+        self.run_box.relayout();
+        self.calc_pad = CalcPad::new(&self.run_box);
+    }
+}
+
 /// ** EL ESCRITORIO NO VIVE EN LA PILA, y eso no es una preferencia de estilo.
 ///
 /// El 2026-08-14 el compositor murio en el Ryzen antes de escribir una sola
@@ -324,7 +341,7 @@ pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'sta
         // El orden importa en uno solo: `calc_pad` se coloca a partir de la caja
         // de ejecucion, asi que `run_box` va antes y se lee desde su sitio ya
         // definitivo. Los demas son independientes.
-        core::ptr::addr_of_mut!((*slot).run_box).write(RunBox::new(p.ancho, p.alto));
+        core::ptr::addr_of_mut!((*slot).run_box).write(RunBox::new(p));
         core::ptr::addr_of_mut!((*slot).calc_pad).write(CalcPad::new(&(*slot).run_box));
         core::ptr::addr_of_mut!((*slot).field).write(Field::new());
         core::ptr::addr_of_mut!((*slot).win).write(Windows::new(p));
