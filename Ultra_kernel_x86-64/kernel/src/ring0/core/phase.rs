@@ -305,9 +305,16 @@ pub fn main(ctx: &mut BootContext) {
     // Y lo que GASTA. Mismo trato: se pregunta una vez si el chip sabe
     // contestar, y la unidad se le pregunta a el en vez de suponerla.
     crate::ring0::cpu::power::init();
+    splash::intro_paso(45);
     // USB en su lugar narrativo: el kernel despierta teclado y mouse AQUI.
     crate::ring0::core::boot_timeline::mark("pci + cpu census");
+    // ** Y AQUI DENTRO LA INTRO SIGUE CORRIENDO SOLA, sin que esta funcion se
+    // entere: las esperas del USB son de reloj y pintan mientras giran. Ver
+    // `intro_latido` y el `delay_ms` de `dev/usb`. Los `intro_paso` de abajo
+    // reparten fotogramas por los tramos que NO esperan, que son los que se
+    // quedaban mudos.
     crate::ring0::dev::usb::init(ctx);
+    splash::intro_paso(50);
     // * And HERE the kernel keeps them. Until this commit the bus only advanced
     // when somebody asked for a key, so a Ring 3 program that took the input and
     // then hung left the machine with no keyboard, no mouse and no rescue
@@ -323,6 +330,7 @@ pub fn main(ctx: &mut BootContext) {
     // Y el disco: el HBA SATA (no el NVMe -- ahi vive el sistema del dueno) y
     // su tabla de particiones. Ver dev/disk.rs.
     crate::ring0::dev::disk::init();
+    splash::intro_paso(55);
     // * Y la tarjeta de red: **solo mirarla**. Encuentra la NIC, elige su BAR de
     // memoria y le pregunta su MAC y su enlace, sin escribirle un byte. Va aqui
     // --con el resto del hardware y antes del disco duro de verdad-- porque su
@@ -330,18 +338,23 @@ pub fn main(ctx: &mut BootContext) {
     // sobre una suposicion. Ver `dev/red.rs`.
     crate::ring0::core::boot_timeline::mark("disk + ahci");
     crate::ring0::dev::net::init();
+    splash::intro_paso(58);
     // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
     // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un
     // reloj parado. Cuesta ocho lecturas de puerto, una vez en la vida.
     crate::ring0::dev::clock::init();
+    splash::intro_paso(60);
     crate::ring0::dev::disk::scan_partitions();
+    splash::intro_paso(63);
     // Y el sistema de ficheros: de sectores a ARCHIVOS. Monta la particion de
     // arranque, que es donde vive el BOOTX64.EFI con el que arrancamos.
     crate::ring0::fsys::fs::mount();
+    splash::intro_paso(66);
     // El gate: el disco tiene que decir QUIEN ES antes de que se le pueda
     // escribir. Va DESPUES de leer la GPT porque una de las pruebas es que la
     // tabla cuadre con los sectores que el propio disco declara.
     crate::ring0::dev::disk::verify_identity();
+    splash::intro_paso(68);
     // Y si convencio, el volumen de datos se monta con escritor. La particion
     // de arranque sigue montada sin el, y asi se queda.
     splash::intro_paso(70);

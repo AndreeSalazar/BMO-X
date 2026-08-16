@@ -342,6 +342,18 @@ static mut INTRO_CIUDAD: Option<bmo_ciudad::Ciudad> = None;
 /// [`lienzo::Superficie`].
 static mut INTRO_SUPERFICIE: Option<Superficie> = None;
 
+/// El progreso del ultimo [`intro_paso`]. Lo necesita [`intro_latido`]: repinta
+/// con el reloj de AHORA pero con el progreso de arranque que hubiera, porque
+/// el latido no sabe nada del arranque -- solo sabe que hay tiempo muerto.
+static mut INTRO_PCT: u32 = 0;
+
+/// **Lo que cuesta un fotograma, en ms.** `0` = todavia no se ha medido uno.
+///
+/// No es una estimacion ni una constante: se mide el primero y se guarda el peor
+/// visto. De eso depende que el latido no alargue las esperas del hardware --
+/// ver [`intro_latido`].
+static mut INTRO_COSTE_MS: u32 = 0;
+
 /// **Pinta un fotograma donde toque y lo ensena.**
 ///
 /// Es el unico sitio que decide si la escena va a una superficie en RAM o
@@ -437,14 +449,69 @@ pub fn intro_paso(pct: u32) {
     // El tiempo manda en la camara y en el gato; el PROGRESO manda en la ciudad.
     // Son dos relojes distintos a proposito: uno cuenta lo que se ve, el otro
     // cuenta lo que pasa.
-    let ms = ms_desde(t0).min(bmo_ciudad::DURACION_MS);
+    unsafe { INTRO_PCT = pct.min(100) };
+    // [!] **Y AQUI YA NO SE RECORTA EL RELOJ.** Estaba `ms_desde(t0).min(
+    // DURACION_MS)`, o sea que pasados 2,4 segundos el guion recibia siempre el
+    // mismo milisegundo y contestaba siempre el mismo fotograma: una foto. El
+    // guion ya no se acaba --tiene un acto de espera que se repite-- asi que lo
+    // que hay que darle es la hora de verdad.
+    let ms = ms_desde(t0);
     let mut f = bmo_ciudad::fotograma(ms);
     f.ciudad_pct = pct.min(100);
-    // Los dos ultimos actos los dispara `intro_cierra`, no el reloj: mientras
-    // haya trabajo, el gato se queda mirando.
-    f.destello = 0;
-    f.negro = 0;
     fotograma_a_pantalla(w, h, &f);
+}
+
+/// **UN FOTOGRAMA DENTRO DEL TIEMPO MUERTO DE OTRO.**
+///
+/// # El problema, tal y como se vio en el video del arranque
+///
+/// La intro pinta entre paso y paso del arranque, y eso deja huecos enormes:
+/// entre `intro_paso(40)` y `intro_paso(70)` esta el bloque completo de USB,
+/// xHCI, AHCI, red y sistemas de ficheros. En el video son **mas de tres
+/// segundos con un solo fotograma en pantalla** -- la ciudad congelada, el gato
+/// sin salir ni una vez, y de golpe el destello del final.
+///
+/// Y esos segundos no son trabajo: en su mayor parte son **esperas**. El USB
+/// tiene tiempos fisicos obligatorios por spec --100 ms de debounce de conexion,
+/// 20+ ms de estabilizacion de alimentacion, resets de puerto-- y durante ellos
+/// el CPU no hace absolutamente nada. Es la definicion de tiempo muerto.
+///
+/// # La regla: pintar SOLO si cabe
+///
+/// `ms_libres` es cuanto queda de la espera. Si no cabe un fotograma entero, se
+/// contesta `false` y quien llama sigue girando. Asi el fotograma es **gratis
+/// de verdad**: la espera dura lo que el hardware pide, ni un milisegundo mas,
+/// y lo que antes era CPU parado ahora es la animacion corriendo.
+///
+/// Es el mismo truco de Santa Monica que ya sostiene [`intro_paso`], pero un
+/// nivel mas abajo: alli se tapa el trabajo, aqui se tapa la espera.
+///
+/// [!] El coste de un fotograma **se mide, no se supone**, y se guarda el peor
+/// visto. Suponerlo seria elegir entre alargar las esperas del USB --que es
+/// arriesgar la enumeracion del teclado por una animacion-- o no pintar nunca
+/// por prudencia.
+///
+/// Devuelve `true` si pinto.
+pub fn intro_latido(ms_libres: u32) -> bool {
+    if unsafe { INTRO_T0 } == 0 {
+        return false;
+    }
+    let coste = unsafe { INTRO_COSTE_MS };
+    // El primero se pinta siempre: hay que medir uno para saber lo que cuestan.
+    // Y se pinta en la primera espera larga del arranque, que es justo donde
+    // sobra tiempo.
+    if coste != 0 && ms_libres < coste {
+        return false;
+    }
+    let t = tsc_read();
+    intro_paso(unsafe { INTRO_PCT });
+    let gastado = ms_desde(t);
+    unsafe {
+        if gastado > INTRO_COSTE_MS {
+            INTRO_COSTE_MS = gastado;
+        }
+    }
+    true
 }
 
 /// **Cierra la intro: los ojos toman el control y todo se va a negro.**
@@ -458,13 +525,24 @@ pub fn intro_cierra() {
         return;
     }
     let t0 = tsc_read();
-    let dur = bmo_ciudad::DURACION_MS - bmo_ciudad::acto::FIN_GATO;
+    // ** EL CIERRE EMPIEZA EN CERO, y antes no.
+    //
+    // Estaba `fotograma(FIN_GATO + d)`: se le pedia al guion el instante 1.500 y
+    // hacia delante. Eso funcionaba solo si la intro ya habia llegado ahi por su
+    // cuenta -- y en el arranque real **nunca llegaba**, porque el kernel acaba
+    // antes del milisegundo 700. O sea que el cierre saltaba por encima del acto
+    // del gato y el logo solo aparecia durante estos ultimos 900 ms. Por eso en
+    // el video el gato solo se ve al final, un instante, y ya apagandose.
+    //
+    // Ahora son dos guiones: `fotograma` mientras hay trabajo --con su espera
+    // que se repite-- y `cierre` para despedirse, contando desde cero.
+    let dur = bmo_ciudad::acto::CIERRE_MS;
     loop {
         let d = ms_desde(t0);
         if d >= dur {
             break;
         }
-        let f = bmo_ciudad::fotograma(bmo_ciudad::acto::FIN_GATO + d);
+        let f = bmo_ciudad::acto::cierre(d);
         fotograma_a_pantalla(w, h, &f);
     }
     // El borron final va directo a la pantalla: es una sola cosa y no hay
