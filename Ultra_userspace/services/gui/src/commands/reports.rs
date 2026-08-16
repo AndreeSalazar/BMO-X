@@ -803,8 +803,17 @@ fn ext_grupo(s: &mut Output, titulo: &[u8], tinta: u8, n: u64, mascara: u64, not
         }
         if cuantos == 0 {
             s.with_ink(tinta);
-            label(s, titulo);
-            col = 18;
+            // ** La etiqueta es de la LISTA, no de la tabla de motivos.
+            //
+            // Pintarla siempre metia 18 espacios delante de la PRIMERA fila de
+            // motivos, que ademas se pone su propia sangria de 4: la primera
+            // salia a 22 y las otras treinta a 4. Se vio en el Ryzen el 16-08
+            // --`SSE4.1` desplazado y el resto alineado-- y no antes, porque un
+            // renglon torcido no lo caza ningun test de este arbol.
+            if !notas {
+                label(s, titulo);
+                col = 18;
+            }
         }
         cuantos += 1;
 
