@@ -83,12 +83,21 @@ impl Fila {
 /// desde Ring 3. Es el suelo del sistema: no resuelve ningun handle, asi que
 /// nada puede costar menos que esto.
 ///
-/// El techo es 1625 --lo que midio el Ryzen con la pieza 1 puesta-- y NO lo
-/// que se espera de la pieza 2. Un trinquete se aprieta con lo que ya se
-/// consiguio, nunca con lo que se cree que se va a conseguir: si la pieza 2
-/// sale peor de lo previsto, el trinquete tiene que seguir siendo cierto.
+/// Un trinquete se aprieta con lo que YA se consiguio, nunca con lo que se
+/// cree que se va a conseguir. Historia de este techo:
+///
+/// ```text
+///    2618   antes de todo
+///    1625   pieza 1 (el XSAVE que no tenia por que existir)
+///     895   pieza 2 (`sysretq`) + los cuatro sellos fuera   <- HOY, 242 ns
+/// ```
+///
+/// Se aprieta DESPUES de cada tanda que el metal confirma, no antes: cuando
+/// aqui ponia 1625, la pieza 2 todavia era una estimacion mia de ~1050 y salio
+/// en 895. Si hubiera puesto 1050 y la pieza saliera en 1100, el trinquete
+/// habria gritado por una mejora.
 pub const PUERTA_PELADA: Fila = Fila {
-    techo: 1625,
+    techo: 895,
     meta: 400,
     porque: "150 de cruce irreducible + 60 de prologo/epilogo + 190 de dispatch",
 };
@@ -117,8 +126,28 @@ pub const DISPATCH: Fila = Fila {
 /// Nadie lo habria visto si no se hubieran comparado las dos tandas a mano. Un
 /// trinquete lo habria gritado solo, y por eso esta fila se declara aunque su
 /// techo sea, hoy, un numero que no me gusta.
+///
+/// ** Y LA ANOMALIA SOBREVIVIO A LAS DOS PIEZAS, o sea que es REAL y no era el
+/// instrumento:
+///
+/// ```text
+///              total    dispatch   stub
+///    antes      +83       +76       +7     correcto
+///    pieza 1   +342       +85     +257     <- aparece
+///    pieza 2   +327       +84     +243     <- sigue
+/// ```
+///
+/// La mitad de `dispatch` se comporta perfecto en las tres tandas: ~85, que es
+/// la capability y esta donde tiene que estar. Lo que no puede existir son los
+/// **243 en el stub**, porque el stub no sabe que operacion se pidio.
+///
+/// [!] No hay explicacion, y despues de fallar dos veces razonando sobre este
+/// camino no se va a poner una tercera hipotesis por escrito. Lo que la
+/// resuelve es UNA sonda concreta: una fila mas en `c/coste.bex` que use un
+/// handle REAL con la operacion mas barata que exista. Si esa fila tambien
+/// carga los 243, es el camino del handle; si no, es `BMO_ARCH_TAMANO`.
 pub const HANDLE: Fila = Fila {
-    techo: 342,
+    techo: 327,
     meta: 80,
-    porque: "76 en dispatch y el resto ruido; los 257 del stub son la anomalia",
+    porque: "84 en dispatch es correcto; los 243 del stub son la anomalia viva",
 };
