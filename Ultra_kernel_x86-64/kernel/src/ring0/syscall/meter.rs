@@ -49,9 +49,106 @@
 //! the bias runs is stated because it happens to run in favour of the
 //! conclusion, and that is exactly when it must be said out loud.
 //!
-//! [!] What is still NOT measured is which of the five pieces of the stub takes
-//! the 2345. That needs another probe, not this one. See
-//! `docs/PYTHON_MAESTRO.md` section 4b.
+//! # LA SEGUNDA MITAD: el reparto DENTRO del stub (2026-08-16, tarde)
+//!
+//! El primer reparto dijo *"el 88% esta en el ensamblador"* y ahi se quedo. Se
+//! cambio `xsave64` por `xsaveopt64` --el sospechoso nombrado-- y **compro 45
+//! ciclos de 2345, el 2%**. O sea que el sospechoso principal era inocente y la
+//! pregunta *"cual de las cinco piezas"* seguia sin contestar.
+//!
+//! Y sumando a mano lo que hay en ese camino --`syscall`, `swapgs`, 20 pushes,
+//! la cabecera, el `xsaveopt64`, el `xrstor64`, 15 pops, el `iretq`-- salen
+//! **unos 700 de 2299**. Faltan 1.600 ciclos que **no estan en la lista de
+//! sospechosos**: el modelo del camino esta incompleto, no solo mal ordenado.
+//! Eso no se arregla con una tercera corazonada, se arregla con dos `rdtsc` mas.
+//!
+//! ```text
+//!    A   tras los 15 pushes          -> [ULTIMO] = A
+//!    B   tras el `xsaveopt64`        -> GUARDA   += B - A
+//!    C   meter::start()              \  CYCLES += D - C
+//!    D   meter::stop()               /  (ya existia, SIN TOCAR)
+//!    D'  al volver de `call dispatch`-> [ULTIMO] = D'
+//!    E   tras el `xrstor64`          -> RESTAURA += E - D'
+//!
+//!    resto = total - GUARDA - CYCLES - RESTAURA
+//!          = `syscall` + `swapgs` + pushes + los dos puentes + pops + `iretq`
+//! ```
+//!
+//! ** `D'` esta en el ENSAMBLADOR y no dentro de `stop`, aunque dentro de `stop`
+//! saldria mas barato: metido ahi, los dos contadores volatiles y el epilogo de
+//! `dispatch` caerian dentro de `RESTAURA`, que es donde ese codigo no esta.
+//! Puesto aqui **`start`/`stop` no cambian ni un byte**, y ese es justo el
+//! control que hace comparable el 319 de esta manana.
+//!
+//! **`resto` es la cifra que decide.** Si es pequeno, el coste esta en codigo
+//! que se puede reescribir. Si se lleva los 1.600 que no cuadran, esta en las
+//! DOS TRANSICIONES DE PRIVILEGIO y entonces la accion no es afinar el stub: es
+//! `sysretq` en vez de `iretq` para el camino normal, o agrupar las llamadas --
+//! que es justo la pregunta que `docs/PYTHON_MAESTRO.md` tiene abierta.
+//!
+//! [!] **Lo que este instrumento se cobra, dicho antes de leerlo**: cuatro
+//! `rdtsc` mas (~25 ciclos cada uno) y veinte instrucciones, ~115 ciclos sobre
+//! 2618 -- un **4,4%**. Y no se reparte a partes iguales:
+//!
+//! ```text
+//!    GUARDA    +3     las tres instrucciones que siguen al sello A
+//!    CYCLES     0     no se toca
+//!    RESTAURA   0     el sello D' cierra justo antes de empezar
+//!    resto    ~+90    los sellos B, D' y E enteros caen aqui
+//! ```
+//!
+//! O sea que **el sesgo engorda `resto`**, que es justo la casilla que espero
+//! ver grande: el instrumento empuja hacia mi propia hipotesis. Por eso
+//! `c/coste.bex` mide un `rdtsc` suelto en su ultima fila -- para que restar
+//! esos 90 sea una resta y no una estimacion. Si `resto` sale en 1.600, 90
+//! arriba o abajo no cambian la lectura; si sale en 200, la cambian entera, y
+//! entonces es la correccion la que manda.
+//!
+//! # LO QUE MIDIO, EN EL RYZEN, EL MISMO DIA
+//!
+//! ```text
+//!    1. bucle vacio    min   44
+//!    2. llamada        min   64
+//!    3. puerta pelada  min 1625   (era 2618 esta manana)
+//!       dispatch 311, stub 1314
+//!       guardar 30, devolver 30, resto 1254
+//!    5. rdtsc suelto   min  113   -> 113 - 44 = 69 ciclos POR SELLO
+//! ```
+//!
+//! **La puerta paso de 2618 a 1625, y descontando los cuatro sellos (~276) a
+//! ~1350: la mitad.** `guardar` y `devolver` en 30 cada uno --las dos casillas
+//! que la pieza 1 atacaba-- y `dispatch` en 311 contra 318/319 de antes: el
+//! control aguanta, asi que las que se movieron se movieron de verdad.
+//!
+//! ** Y UNA CONCLUSION MIA QUE ESTO CORRIGE. Por la manana quedo escrito que
+//! *"el guardado del estado extendido NO es donde se van los 2.300"*. Era
+//! cierto **del guardado** y falso **del estado extendido**: el experimento del
+//! `xsaveopt64` solo tocaba la mitad de guardar y compro 45, pero quitar la
+//! maquinaria ENTERA --guardar, devolver y validar-- compro ~1.000. El caro era
+//! el `xrstor64` con sus nueve lecturas de cabecera, y aquel experimento era
+//! **estructuralmente incapaz de verlo**. El fallo no fue la medida: fue
+//! generalizar de una mitad al todo.
+//!
+//! [!] Y lo que NO se puede decir: la pieza quito siete cosas a la vez. Se sabe
+//! que el conjunto vale ~1.000 y que la mitad de guardar era <=150, o sea que
+//! devolver+validar era ~850-950. **Repartir esos 950 entre el `xrstor64` y las
+//! comprobaciones pediria otra sonda**, y hoy no hace falta.
+//!
+//! [!] **Y el instrumento cuesta el DOBLE de lo que este fichero estimo**: 69
+//! ciclos por sello medidos contra los ~25 que decia la estimacion, o sea ~276
+//! y no ~115. Sacarlo con un `cfg` vale hoy mas que todo lo que compro el
+//! `xsaveopt64`.
+//!
+//! [!] **El control que valida la tanda**: `CYCLES` no se toca. Si `dispatch`
+//! vuelve a salir ~319 el instrumento nuevo no rompio el viejo; si se mueve,
+//! el reparto nuevo no se lee hasta saber por que.
+//!
+//! [!] Y por eso `start`/`stop` siguen usando `rdtsc()` --el NO serializante--
+//! aunque `rdtsc_serial()` existe una puerta mas alla y seria mas correcto:
+//! cambiarlo en la misma tanda que anade las etapas dejaria el 319 sin poder
+//! compararse con el 318 y el 319 de esta manana. **Un instrumento se cambia de
+//! una cosa cada vez.** El sesgo que introduce son decenas de ciclos, no miles,
+//! asi que no toca ninguna de las conclusiones de arriba.
 //!
 //! # It is read as a DELTA, not as an absolute
 //!
@@ -89,6 +186,55 @@ static mut DOORS: u64 = 0;
 /// Accumulated TSC ticks spent inside `dispatch`, for those doors.
 static mut CYCLES: u64 = 0;
 
+/// **El sello anterior, rodando.** Lo escribe la etapa A (en el stub) y lo
+/// vuelve a escribir [`stop`]; lo leen la etapa B y la etapa E para restar.
+///
+/// Un solo hueco y no cuatro porque las etapas van EN ORDEN y ninguna se salta:
+/// entre A y E el camino es recto y las interrupciones estan enmascaradas
+/// (`MSR_SFMASK` apaga `IF` en la entrada y solo el `iretq` la devuelve). Ese
+/// es el hecho que hace que una sola casilla baste **y** que las restas no
+/// puedan salir negativas -- en el stub no hay nada que se cuele en medio.
+///
+/// [!] `pub` porque **lo escribe el ensamblador de `entry.rs`** por `sym`, no
+/// el Rust de este fichero. Es la unica razon; nadie mas debe tocarlo.
+///
+/// [!] ** Y CON DOS NUCLEOS SIRVIENDO PUERTAS ESTO NO ES QUE CUENTE DE MENOS:
+/// ES QUE MIENTE. Los contadores de arriba pierden sumas cuando dos nucleos
+/// escriben la misma palabra, y una suma perdida se nota. Esta casilla es
+/// distinta -- si el nucleo B escribe su sello A entre el sello A y el sello B
+/// del nucleo A, la resta que sale no es pequena: **es una diferencia entre
+/// sellos de dos puertas distintas**, y puede salir negativa y envolver a un
+/// numero cercano a `u64::MAX` que envenena la suma entera. Hoy no puede pasar
+/// --el informe dice `en pie 1 de 12` y las APs no ejecutan codigo de usuario--
+/// pero el dia que lo hagan, esto se vuelve por-CPU ANTES que los otros dos.
+pub static mut ETAPA_ULTIMO: u64 = 0;
+
+/// Ciclos de A a B: `sub`/`and rsp`, el back-pointer y el sello.
+///
+/// ** DESDE LA PIEZA 1 (16-08) ESTA CASILLA MIDE OTRA COSA, y por eso se dice
+/// aqui: antes incluia la cabecera a cero y el `xsaveopt64`, que se hacian en
+/// TODAS las puertas. Ahora esas once instrucciones viven en la via lenta --
+/// solo se pagan cuando `dispatch` cambia de tarea-- asi que lo que queda aqui
+/// es el prologo pelado y **tiene que salir en decenas, no en cientos**. Si
+/// sale en cientos, la pieza no hizo lo que dice.
+pub static mut CICLOS_GUARDA: u64 = 0;
+
+/// Ciclos de D' a E: **lo que cuesta DEVOLVER el contexto**, y depende de por
+/// que via se salga.
+///
+/// ```text
+///    via rapida (misma tarea)  borrar el sello y `mov rsp, rbp`.  ~5
+///    via lenta  (hubo cambio)  sello + cabecera + `xrstor64`.     ~cientos
+/// ```
+///
+/// Las dos suman en el mismo sitio a proposito: la cifra que sale es la MEDIA
+/// PONDERADA de las dos vias, o sea **lo que cuesta devolver un contexto en la
+/// mezcla real de esta maquina**. Un bucle de puertas que no cede sale casi
+/// todo por la rapida y esta casilla se va a ~5; una carga que cambia de tarea
+/// constantemente la sube. Esa diferencia, leida contra `dispatch`, dice cuanto
+/// esta cediendo el sistema sin tener que instrumentar el planificador.
+pub static mut CICLOS_RESTAURA: u64 = 0;
+
 /// Take the reading at the start of a door. Pairs with [`stop`].
 #[inline(always)]
 pub fn start() -> u64 {
@@ -120,4 +266,14 @@ pub fn doors() -> u64 {
 /// Ticks spent inside `dispatch` for those doors.
 pub fn cycles() -> u64 {
     unsafe { core::ptr::addr_of!(CYCLES).read_volatile() }
+}
+
+/// Ticks guardando el contexto -- la etapa A a B. Ver [`CICLOS_GUARDA`].
+pub fn ciclos_guarda() -> u64 {
+    unsafe { core::ptr::addr_of!(CICLOS_GUARDA).read_volatile() }
+}
+
+/// Ticks devolviendo el contexto -- la etapa D' a E. Ver [`CICLOS_RESTAURA`].
+pub fn ciclos_restaura() -> u64 {
+    unsafe { core::ptr::addr_of!(CICLOS_RESTAURA).read_volatile() }
 }

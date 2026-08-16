@@ -111,6 +111,10 @@ const INFO_NET_PCI: u64 = 0x2E;
 // leen como delta. Ver `ring0/syscall/meter.rs`.
 const INFO_SYSCALL_CUENTA: u64 = 0x2F;
 const INFO_SYSCALL_CICLOS: u64 = 0x30;
+// Y el reparto DENTRO del stub: guardar el contexto y devolverlo. Lo que no
+// cae en ninguna de las tres casillas son las dos transiciones de privilegio.
+const INFO_SYSCALL_CICLOS_GUARDA: u64 = 0x35;
+const INFO_SYSCALL_CICLOS_RESTAURA: u64 = 0x36;
 
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
@@ -293,6 +297,8 @@ pub fn campo(n: u64) -> u64 {
         INFO_TICKS => crate::ring0::plat::timer::ticks(),
         INFO_SYSCALL_CUENTA => crate::ring0::syscall::meter::doors(),
         INFO_SYSCALL_CICLOS => crate::ring0::syscall::meter::cycles(),
+        INFO_SYSCALL_CICLOS_GUARDA => crate::ring0::syscall::meter::ciclos_guarda(),
+        INFO_SYSCALL_CICLOS_RESTAURA => crate::ring0::syscall::meter::ciclos_restaura(),
         // ** El censo entero cabe en tres numeros porque son treinta y seis
         // filas: una mascara de 64 bits sobra. Si algun dia [`ALL`] pasa de 64,
         // `INFO_CPU_EXT_N` es lo que lo dice en voz alta -- por eso viaja el

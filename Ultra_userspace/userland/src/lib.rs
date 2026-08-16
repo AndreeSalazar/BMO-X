@@ -209,6 +209,11 @@ pub const INFO_NET_PCI: u64 = 0x2E;
 /// **Se leen como DELTA** -- antes y despues del bucle que se quiera medir.
 pub const INFO_SYSCALL_CUENTA: u64 = 0x2F;
 pub const INFO_SYSCALL_CICLOS: u64 = 0x30;
+/// Y el reparto DENTRO del stub: guardar el contexto (`xsaveopt64`) y
+/// devolverlo (`xrstor64`). Lo que no cae en ninguna de las tres casillas son
+/// las dos transiciones de privilegio -- el `syscall` y el `iretq`.
+pub const INFO_SYSCALL_CICLOS_GUARDA: u64 = 0x35;
+pub const INFO_SYSCALL_CICLOS_RESTAURA: u64 = 0x36;
 
 /// El censo de extensiones del CPU, en tres numeros: cuantas filas, que
 /// declara el silicio y que coge BMO. Bit `i` = fila `i`, y el nombre de esa
