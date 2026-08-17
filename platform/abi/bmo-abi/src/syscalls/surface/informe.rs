@@ -331,6 +331,38 @@ pub const MAQ_COINCIDE: u64 = 1 << 0;
 pub const MAQ_CPU_OK: u64 = 1 << 1;
 pub const MAQ_TSC_OK: u64 = 1 << 2;
 
+/// **EL SUELO DEL HARDWARE**: `medido << 32 | ticks`.
+///
+/// Lo que cuesta cruzar el anillo en este silicio -- `syscall` + `sysretq` y
+/// nada mas. **No es merito ni culpa de BMO**, y hoy va sumado dentro de los 792
+/// ticks de una puerta sin que nada los separe.
+///
+/// # Para que sirve separarlo
+///
+/// Porque `suelo + sobrecoste` no dice si el kernel esta bien: mezcla el
+/// silicio con el codigo. Restado, sale **la unica cifra de rendimiento que
+/// sobrevive a un cambio de CPU**:
+///
+/// ```text
+///    cuantas veces el suelo del hardware cuesta una puerta de BMO
+///    hoy 5,3x  ->  la meta declarada seria 2,0x
+/// ```
+///
+/// Si BMO adelgaza, ese numero baja **en todas las maquinas a la vez**.
+///
+/// # ** La regla que impide que esto sea una trampa
+///
+/// > **El suelo se MIDE. El multiplicador se ESCRIBE.**
+///
+/// Un presupuesto que se recalibrara solo entero se ceniria a lo que hubiera,
+/// **incluida una regresion**: se convertiria en la talla nueva y el juez
+/// aprobaria siempre. Se ajusta lo que es del CPU; jamas el veredicto.
+///
+/// [!] **Bit 32 = medido.** En `0` el numero es una estimacion del analisis y
+/// **no puede derivar ningun techo**: solo vale para mirar el ratio, y quien lo
+/// imprima tiene que decir que lo es.
+pub const INFO_SUELO_CRUCE: u64 = 0x3E;
+
 /// -- ** EL CENSO DE EXTENSIONES, legible desde Ring 3 ---------------------
 ///
 /// Cuantas extensiones cubre el censo, y dos mascaras de bits sobre ESA lista

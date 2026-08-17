@@ -34,13 +34,13 @@
 //!
 //! Ni una linea del kernel. Eso es lo que este fichero compra.
 
-use crate::ring0::syscall::presupuesto::{Fila, Presupuestos};
+use crate::ring0::syscall::presupuesto::{Fila, Presupuestos, Suelo};
 
 /// Las tres filas, con la maquina en la que se midieron pegada a ellas.
 ///
-/// [!] `familia`/`modelo` son los de CPUID (19h/01h = Vermeer), y el TSC entra
-/// en la identidad **porque el presupuesto esta en ticks**: el mismo modelo con
-/// otro TSC no puede usar estos numeros. Ver `es_esta_maquina`.
+/// [!] `familia`/`modelo` son los de CPUID, y el TSC entra en la identidad
+/// **porque el presupuesto esta en ticks**: el mismo modelo con otro TSC no
+/// puede usar estos numeros. Ver `es_esta_maquina`.
 pub static PRESUPUESTO: Presupuestos = Presupuestos {
     familia: 0x19,
     // ** ESTE BYTE ES UNA AFIRMACION QUE NADIE HA COMPROBADO, y se dice.
@@ -64,7 +64,24 @@ pub static PRESUPUESTO: Presupuestos = Presupuestos {
     // Medido por la calibracion del arranque en esta placa, y confirmado por los
     // dos testigos el 2026-08-17: `TSC 3700000000 Hz`.
     tsc_hz: 3_700_000_000,
-    maquina: "Ryzen 5 5600X (19h/01h), TSC 3700 MHz",
+    maquina: "Ryzen 5 5600X (19h/21h), TSC 3700 MHz",
+
+    // ** EL SUELO DE ESTE SILICIO, y hoy es una ESTIMACION que lo dice.
+    //
+    // ~150 ticks de `syscall` + `sysretq`. No sale de una medida: sale del
+    // analisis de la fila `puerta` --y coincide con lo que Liedtke consiguio en
+    // L4 en los 90, ~250 ciclos en un 486, que es el unico numero de esta cuenta
+    // que no ha bajado en treinta anos--.
+    //
+    // Medirlo de verdad pide una puerta que el stub conteste SIN bajar a Rust, y
+    // eso no puede vivir aqui: rompe las dos puertas congeladas y la ignorancia
+    // del stub (`entry.rs` lo prohibe por escrito). Va en un build de medida,
+    // igual que el metro -- el instrumento se instala, contesta y se retira.
+    //
+    // Mientras `medido` sea `false`, este numero **no deriva ningun techo**:
+    // solo sirve para mirar el ratio, y todo el que lo imprime dice que es una
+    // estimacion.
+    suelo: Suelo { ticks: 150, medido: false },
 
     // **La puerta pelada**: `INVOKE` de `BMO_OP_PID` sobre la tarea actual, medida
     // desde Ring 3. Es el suelo del sistema: no resuelve ningun handle, asi que

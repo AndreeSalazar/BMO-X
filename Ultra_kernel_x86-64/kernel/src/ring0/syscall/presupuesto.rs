@@ -152,9 +152,79 @@ pub struct Presupuestos {
     pub tsc_hz: u64,
     /// Como se llama esa maquina, para poder decirlo cuando no coincida.
     pub maquina: &'static str,
+    /// Lo que cuesta cruzar el anillo en ESTE silicio. Ver [`Suelo`].
+    pub suelo: Suelo,
     pub puerta: Fila,
     pub dispatch: Fila,
     pub handle: Fila,
+}
+
+/// -- ** EL SUELO DEL HARDWARE: lo que no es merito ni culpa de BMO --------
+///
+/// # Las dos cosas que hoy van pegadas en el mismo numero
+///
+/// ```text
+///    SUELO       cruzar el anillo en ESE silicio. Cambia con el CPU y
+///                BMO no puede hacer nada al respecto.
+///    SOBRECOSTE  lo que BMO ANADE encima. Eso SI es este kernel, y NO
+///                depende del CPU.
+/// ```
+///
+/// Una puerta de 792 ticks no dice si el kernel esta bien o mal: dice
+/// `suelo + sobrecoste` sin separarlos. Con el suelo aparte, sale **la cifra
+/// que sobrevive a un cambio de CPU**: *cuantas veces el suelo del hardware
+/// cuesta una puerta de BMO*. Hoy 5,3x; la meta declarada seria 2,0x.
+///
+/// # ** Y AQUI ESTA LA REGLA QUE HACE QUE ESTO NO SEA UNA TRAMPA
+///
+/// > **El suelo se MIDE. El multiplicador se ESCRIBE.**
+///
+/// Un presupuesto que se recalibrara solo entero se ceniria a lo que hubiera --
+/// **incluida la grasa**: una regresion se convertiria en la talla nueva y el
+/// juez aprobaria siempre. Un trinquete que se ajusta solo no es un trinquete.
+///
+/// Asi que se ajusta la parte que es del CPU (el suelo, medible) y **jamas la
+/// que es el veredicto** (el multiplicador, que vive en este fichero porque es
+/// una afirmacion sobre BMO, no sobre el silicio).
+///
+/// # [!] Hoy el suelo de este perfil es una ESTIMACION, y viaja diciendolo
+///
+/// Sale del analisis de `PUERTA_PELADA` --~150 ticks de cruce-- y **nadie lo ha
+/// medido**: para medirlo hace falta una puerta que el stub conteste sin bajar a
+/// Rust, y eso no puede vivir en el kernel que se despliega (rompe las DOS
+/// puertas congeladas y la ignorancia del stub). Va en un build de medida, como
+/// el metro. Hasta entonces `medido` es `false` y todo el que lo lee lo dice.
+#[derive(Clone, Copy)]
+pub struct Suelo {
+    /// Ticks que cuesta el cruce de anillo en este silicio.
+    pub ticks: u32,
+    /// `false` = es una estimacion del analisis, no una medida. **Un suelo
+    /// estimado no puede derivar un techo**: solo sirve para mirar el ratio.
+    pub medido: bool,
+}
+
+/// **Cuantas veces el suelo del hardware puede costar una puerta de BMO**, en
+/// centesimas. `640` = 6,40x.
+///
+/// ** VIVE AQUI Y NO EN EL PERFIL, y esa es la frontera entera: es una
+/// afirmacion sobre **este kernel**, no sobre ningun CPU. Si BMO adelgaza, este
+/// numero baja **para todas las maquinas a la vez** -- que es lo que significa
+/// optimizar "a base de perfil" en vez de "a base de CPU".
+///
+/// Sale de lo medido el 17-08: techo 960 sobre un suelo de ~150.
+pub const PUERTA_VECES_EL_SUELO: u64 = 640;
+
+/// La meta, en la misma unidad: `200` = 2,00x el suelo. Sale de la meta de 300
+/// ticks sobre el mismo suelo.
+pub const PUERTA_META_VECES_EL_SUELO: u64 = 200;
+
+/// El suelo de esta maquina, empaquetado para Ring 3: `medido << 32 | ticks`.
+///
+/// Cero = este perfil no declara suelo, y entonces el que lo lee **no puede
+/// calcular el ratio** -- que es distinto de calcularlo mal.
+pub fn suelo() -> u64 {
+    let s = crate::ring0::cpu_vendor::profile::active().presupuesto.suelo;
+    ((s.medido as u64) << 32) | s.ticks as u64
 }
 
 /// Cuanto se le permite variar al TSC antes de decir que es otra maquina.
