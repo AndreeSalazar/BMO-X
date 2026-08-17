@@ -2,7 +2,7 @@
 //! en la barra y sin abrir nada.
 //!
 //! Es la mitad de Ring 3 de la sexta exigencia (E6) de
-//! `docs/EL_TECLADO_EXIGE.md`. La otra mitad la contesta el kernel en
+//! `docs/componente/EL_TECLADO_EXIGE.md`. La otra mitad la contesta el kernel en
 //! `dev/usb/salud.rs`.
 //!
 //! === El dia que lo pidio ===

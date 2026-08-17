@@ -769,7 +769,7 @@ pub fn registrar(
     // que no muere nunca.
     //
     // Esta linea la convierte en un numero. Es el escalon 1 de
-    // `docs/PLAN_AUTOCURACION.md`, y su regla es la de siempre: **tiene que
+    // `docs/plan/PLAN_AUTOCURACION.md`, y su regla es la de siempre: **tiene que
     // decir CERO**, y si no lo dice, dice QUE falto.
     let caps = crate::ring0::obj::cap::live_count_of(pid);
     let dirs = crate::ring0::obj::directory::pending_of(pid);

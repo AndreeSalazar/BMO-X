@@ -1,6 +1,6 @@
 //! **Asking the USB audio device how it wants its samples.** Nothing else.
 //!
-//! Step 0 of `docs/AUDIO_MAESTRO.md`, kernel side. The decision --reading the
+//! Step 0 of `docs/maestro/AUDIO_MAESTRO.md`, kernel side. The decision --reading the
 //! descriptor-- lives in `bmo_uaudio::stream`, where it is tested; here there is
 //! only what no test can cover: touching the bus and printing.
 //!

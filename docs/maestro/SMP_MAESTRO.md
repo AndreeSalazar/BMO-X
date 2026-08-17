@@ -228,5 +228,5 @@ nucleos son de BMO.
 > Cell es un maestro que orquesta y obreros que reciben trabajos cerrados, y eso
 > en BMO-X no hay que inventarlo: **es una capability**.
 
-Ver [`ARQUITECTURA.md`](../ARQUITECTURA.md), `PLAN_VULKAN.md` para el mismo
+Ver [`ARQUITECTURA.md`](../../ARQUITECTURA.md), `PLAN_VULKAN.md` para el mismo
 metodo aplicado a la GPU, y `AVANCES.md` para el estado.

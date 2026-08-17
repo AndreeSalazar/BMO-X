@@ -17,7 +17,7 @@
 //!
 //! On 2026-08-16 `c/coste.bex` measured a door from Ring 3: **2615 cycles
 //! minimum**, against 20 for a plain function call. That number decided a real
-//! design question (see `docs/PYTHON_MAESTRO.md` section 4b) but it could not
+//! design question (see `docs/maestro/PYTHON_MAESTRO.md` section 4b) but it could not
 //! answer the next one: **where do those cycles go?**
 //!
 //! The named suspects were the unconditional `xsave64`/`xrstor64` with
@@ -97,7 +97,7 @@
 //! que se puede reescribir. Si se lleva los 1.600 que no cuadran, esta en las
 //! DOS TRANSICIONES DE PRIVILEGIO y entonces la accion no es afinar el stub: es
 //! `sysretq` en vez de `iretq` para el camino normal, o agrupar las llamadas --
-//! que es justo la pregunta que `docs/PYTHON_MAESTRO.md` tiene abierta.
+//! que es justo la pregunta que `docs/maestro/PYTHON_MAESTRO.md` tiene abierta.
 //!
 //! [!] **Lo que este instrumento se cobra, dicho antes de leerlo**: cuatro
 //! `rdtsc` mas (~25 ciclos cada uno) y veinte instrucciones, ~115 ciclos sobre

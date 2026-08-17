@@ -23,7 +23,7 @@
 /// definicion de lo que el perfil existe para evitar.
 ///
 /// La estructura del fabricante puede tener veinte campos mas; aqui solo suben
-/// los cuatro que Ring 0 necesita para repartir trabajo. Ver `docs/SMP_MAESTRO.md`.
+/// los cuatro que Ring 0 necesita para repartir trabajo. Ver `docs/maestro/SMP_MAESTRO.md`.
 #[derive(Clone, Copy, Debug)]
 pub struct Nucleos {
     /// Nucleos FISICOS. Es el numero que manda para repartir computo.

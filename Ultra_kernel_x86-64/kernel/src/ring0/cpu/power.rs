@@ -1,6 +1,6 @@
 //! **Cuanto consume esta maquina, en milivatios.**
 //!
-//! Escalon 2 de la seccion 9 de `docs/AXION_MAESTRO.md`, y el que convierte una
+//! Escalon 2 de la seccion 9 de `docs/maestro/AXION_MAESTRO.md`, y el que convierte una
 //! frase de AXION en una medida:
 //!
 //! > *"un obrero que espera no duerme, GIRA. Con los doce en pie, once nucleos

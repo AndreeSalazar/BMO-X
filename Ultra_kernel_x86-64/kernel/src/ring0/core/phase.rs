@@ -306,7 +306,7 @@ pub fn main(ctx: &mut BootContext) {
     // * Y se le pregunta al CPU si sabe medirse a si mismo. UNA vez: despues
     // `INFO_CPU_HZ_REAL` solo mira una bandera, porque lo va a pedir un panel
     // que se repinta y un `cpuid` por fotograma no es un panel, es un impuesto.
-    // Ver `docs/AXION_MAESTRO.md`, seccion 9.
+    // Ver `docs/maestro/AXION_MAESTRO.md`, seccion 9.
     crate::ring0::cpu::frequency::init();
     splash::intro_paso(40);
     // Y lo que GASTA. Mismo trato: se pregunta una vez si el chip sabe

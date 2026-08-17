@@ -20,7 +20,7 @@
 //! puede cumplir.
 //!
 //! Lo que hace es **poner el numero en la pantalla**. El escalon 7 de
-//! `docs/LA_RAM.md` esta marcado `XL` y sin cifra al lado; con esto pasa a tener
+//! `docs/identidad/LA_RAM.md` esta marcado `XL` y sin cifra al lado; con esto pasa a tener
 //! una: *"tantos bytes por arranque"*. Un escalon caro con un ahorro medido se
 //! puede priorizar; uno caro sin cifra se aplaza para siempre.
 //!
@@ -103,7 +103,7 @@ fn cuanto_de_cada_bex_podria_no_leerse() {
     assert_eq!(
         t_map, 0,
         "hay {t_map} bytes mapeables: el escritor de BEF empezo a alinear a pagina. \
-         Borra esta asercion, actualiza el escalon 7 de docs/LA_RAM.md, y celebra"
+         Borra esta asercion, actualiza el escalon 7 de docs/identidad/LA_RAM.md, y celebra"
     );
 
     // Y esto si es una verdad estructural: si NADA se puede saltar, el escalon 0

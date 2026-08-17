@@ -48,7 +48,7 @@
 //! Porque el que viene detras es el escalon en el que el disco escribe **en las
 //! paginas del proceso** y desaparece el bufer de 4 MiB. Cuando eso pase, lo
 //! unico que cambia es de donde salen los trozos: el codigo que los cuenta y los
-//! cierra es este, sin tocar. Ver `docs/EL_CONTRATO_DE_CARGA.md`, pieza B.
+//! cierra es este, sin tocar. Ver `docs/identidad/EL_CONTRATO_DE_CARGA.md`, pieza B.
 
 use super::bex::{self, BexError};
 

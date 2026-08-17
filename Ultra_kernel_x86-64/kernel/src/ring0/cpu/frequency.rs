@@ -1,6 +1,6 @@
 //! **A que velocidad va este nucleo AHORA MISMO.**
 //!
-//! Escalon 1 de la seccion 9 de `docs/AXION_MAESTRO.md` -- la terminal del CPU.
+//! Escalon 1 de la seccion 9 de `docs/maestro/AXION_MAESTRO.md` -- la terminal del CPU.
 //!
 //! # Por que esto no lo contesta la topologia
 //!

@@ -38,7 +38,7 @@ use super::*;
 use crate::text::decimal;
 
 // Proporcion de la pantalla y no un tamano fijo, como las demas: ver
-// `docs/LIDERES.md`. Los minimos existen para que no se pueda dejar
+// `docs/identidad/LIDERES.md`. Los minimos existen para que no se pueda dejar
 // inservible con el raton -- el teclado de abajo son siete teclas de 52 px y
 // por debajo de eso no se puede tocar.
 const SND_PCT_W: u32 = 48;

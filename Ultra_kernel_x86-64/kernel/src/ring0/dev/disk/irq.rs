@@ -1,6 +1,6 @@
 //! **El aviso del disco.** Que llegue, que se limpie, y que se cuente.
 //!
-//! Paso 3 de `docs/PLAN_ALMACENAMIENTO.md`. La septima pregunta de las que
+//! Paso 3 de `docs/plan/PLAN_ALMACENAMIENTO.md`. La septima pregunta de las que
 //! respondia `dev/disk/mod.rs`:
 //!
 //! ```text

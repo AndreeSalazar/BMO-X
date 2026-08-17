@@ -201,4 +201,4 @@ pub fn fill_rect(x: u32, y: u32, w: u32, h: u32, color: Color) {
 // el dia que alguien lo despierta.
 //
 // El doble bufer vive en Ring 3, sobre `KIND_MEMORIA`, y es donde debe estar --
-// ver `Pantalla` en `bmo-userland`. Ver `docs/LIDERES.md`, casilla 1.1.
+// ver `Pantalla` en `bmo-userland`. Ver `docs/identidad/LIDERES.md`, casilla 1.1.

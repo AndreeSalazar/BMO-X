@@ -1,7 +1,27 @@
 //! ESTRATOS -- el formato en disco.
 //!
-//! Diseno completo en `platform/services/timeback/ESTRATOS.md`. Esta crate es
-//! el **paso 4** de su section 10, y solo la primera mitad: el FORMATO. Aqui no se
+//! ## [!] EL DISENO NO ESTA EN ESTE REPOSITORIO (2026-08-17)
+//!
+//! Esta crate, `objects.rs` y `estratos-fmt` citan ESTRATOS.md con numeros de
+//! section --y este mismo fichero, mas abajo, con una frase suya entre
+//! comillas--, asi que el documento EXISTIO y alguien lo leyo. **No esta en el
+//! arbol**: ni con ese nombre ni con otro, y la carpeta que se citaba,
+//! platform/services/timeback/, tampoco existe (en `platform/services/` solo
+//! hay `cabina-core`).
+//!
+//! Lo destapo el guardian de citas (`toolchain/tools/enlaces/enlaces.py`), que
+//! antes no existia. Se deja **pendiente y nombrado, que no es lo mismo que
+//! descartado** --seccion 6 de `META-KERNEL_HARD.md`--, y la ruta falsa se
+//! quita en vez de conservarse: una cita que promete un sitio donde no hay nada
+//! manda al lector a concluir que el diseno nunca se escribio.
+//!
+//! ** Y pesa mas de lo que parece: C6 de la ley abre diciendo que el
+//! almacenamiento es *"lo unico que sobrevive al apagon"*. El diseno del unico
+//! componente cuyo trabajo es la durabilidad vive hoy fuera del control de
+//! versiones.
+//!
+//! Esta crate es el **paso 4** de su section 10, y solo la primera mitad: el
+//! FORMATO. Aqui no se
 //! lee ni se escribe un sector -- se declara como son las estructuras y como se
 //! comprueban. La E/S vive en quien tenga el dispositivo.
 //!

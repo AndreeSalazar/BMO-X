@@ -85,7 +85,7 @@ tres primeros **ya han ejecutado en el Ryzen**.
 >    lo pone en el plural. No era un fallo, era un NOMBRE que faltaba.
 >
 > ⏳ **Todo esto es toolchain: el Kingston sigue con los `.bex` viejos.** Guia
-> en `docs/PRUEBA_EN_METAL_0813.md`.
+> en `docs/metal/PRUEBA_EN_METAL_0813.md`.
 >
 > ### Y el reparto de los monolitos (mismo dia)
 >
@@ -177,7 +177,7 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > pintado un pixel. Lo que queda en el monitor son restos de tres pintores sobre
 > el mismo framebuffer -- su ventana de consola, el panel del kernel al morir el
 > dueno, y el repintado del compositor al recuperarla. Detalle y el defecto
-> pequeno de al lado (las ventanas abiertas no se repintan) en `docs/PLAN_DOOM.md`.
+> pequeno de al lado (las ventanas abiertas no se repintan) en `docs/plan/PLAN_DOOM.md`.
 >
 > ## ⏳ Al 2026-08-12 -- treinta commits, y el metal contesto la mitad
 >
@@ -202,7 +202,7 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > dan error de compilacion: dan un panel que ensena el dato de otro.
 >
 > **Lo que sigue sin ver un CPU**: las seis preguntas de la segunda vuelta de
-> `docs/PRUEBA_EN_METAL.md` --entre ellas la secuencia de vatios que decide si
+> `docs/metal/PRUEBA_EN_METAL.md` --entre ellas la secuencia de vatios que decide si
 > MWAIT vale la pena-- y el corte del ABI, que cambia el binario del kernel otra
 > vez.
 >
@@ -262,7 +262,7 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > indice fijo) y le leen MAC y enlace **sin escribirle un byte**.
 >
 > ★ **La foto que falta, ya predicha**: Windows dice `2C-F0-5D-D9-3C-E3`, enlace
-> arriba a 100 Mbps. El plan entero esta en `docs/RED_MAESTRO.md`.
+> arriba a 100 Mbps. El plan entero esta en `docs/maestro/RED_MAESTRO.md`.
 
 > ## ⏳ Al 2026-08-10 -- el metal contesto TRES cosas
 >
@@ -377,7 +377,7 @@ tres primeros **ya han ejecutado en el Ryzen**.
 Dos documentos nuevos, con el mismo formato que `PLAN_BANCA.md`: casillas,
 tamano, que bloquea a que, y **como se sabe que una esta hecha**.
 
-- [`docs/PLAN_DOOM.md`](docs/PLAN_DOOM.md) -- cinco fases. ⛔ **Lo unico que
+- [`docs/plan/PLAN_DOOM.md`](docs/plan/PLAN_DOOM.md) -- cinco fases. ⛔ **Lo unico que
   bloquea a todo lo demas es `1.0`**: `printf` con el formato calculado en
   tiempo de ejecucion. En cuanto exista, la capa de plataforma son **seis
   funciones cortas** y el WAD es codigo de DOOM llamando a lo que BMO ya tiene.
@@ -385,7 +385,7 @@ tamano, que bloquea a que, y **como se sabe que una esta hecha**.
   altavoz de PC --`outb` y un retardo-- que ademas no llama nadie. Por eso es la
   fase 5 y se para en los efectos: la musica MUS pide un sintetizador MIDI, que
   es otro proyecto, y se dice.
-- [`docs/PLAN_AUTOCURACION.md`](docs/PLAN_AUTOCURACION.md) -- cuatro escalones,
+- [`docs/plan/PLAN_AUTOCURACION.md`](docs/plan/PLAN_AUTOCURACION.md) -- cuatro escalones,
   de informar a ACTUAR. El orden importa: **la cuarentena va antes que el
   reinicio automatico**, porque un supervisor sin freno es una maquina que se
   cae en bucle mas rapido.
@@ -403,7 +403,7 @@ importar. Lo demas es supervision, y tiene nombre desde Erlang.
 
 ### 1 - SMP paso 4: **medir antes de dar trabajo de verdad**
 
-`docs/SMP_MAESTRO.md` tiene los pasos numerados y el 4 es este. Los doce nucleos
+`docs/maestro/SMP_MAESTRO.md` tiene los pasos numerados y el 4 es este. Los doce nucleos
 llevan en pie desde el 07-08 y **lo unico que llama a `repartir()` es
 `smp prueba`**: antes de darles trabajo que valga hay que poder ver lo que ese
 trabajo cuesta por dentro.
@@ -465,7 +465,7 @@ literal.
 flotante** (el unico `atan()` esta dentro de un `#if 0`), y **el tope de 4
 `malloc` por proceso no lo bloquea** -- `I_ZoneBase` pide un solo bloque de 6
 MiB y `Z_Malloc` reparte desde dentro. Detalle y lo que falta, en
-[`docs/QUE_DESBLOQUEA.md`](docs/QUE_DESBLOQUEA.md).
+[`docs/identidad/QUE_DESBLOQUEA.md`](docs/identidad/QUE_DESBLOQUEA.md).
 
 ### ★★ Y lo que salio de debajo: el paso de un array de arrays era 8
 
@@ -1033,7 +1033,7 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | BMO COBOL | ✅ **banca cerrada en su alcance**: PICTURE de edicion en ejecucion, File I/O secuencial, OCCURS con guarda de rango, nivel 88. `batch.bex` y `concep.bex` verificados en el Ryzen |
 | **BMO C ("CONTROL ABSOLUTE")** | ✅ **32 de 32 sondas del lenguaje** -- completo para lo que DOOM pide. 216 tests que EJECUTAN. `static`, prototipos, varargs, arrays en agregados, `int a,b;`. libc 11/15 |
 | **BMO Ada** | ✅ **verificado en el Ryzen el 2026-07-30**, el mismo dia que nacio el compilador. Perfil ZFP + Annex F: Annex F copio el `PICTURE` de COBOL, asi que el decimal ya estaba pagado |
-| C++ frontend | ◐ ~900 lineas y **desborda la pila con una clase de dos metodos**. Alcance escrito en `lang/cpp/BRECHA.md` |
+| C++ frontend | ◐ ~900 lineas y **desborda la pila con una clase de dos metodos**. Alcance escrito en `toolchain/lang/cpp/BRECHA.md` |
 | **El FOCO del escritorio** (`bmo_input::foco`) | ✅ **EN METAL** (2026-08-02): Alt+Tab con su conmutador, pila MRU, `modo: normal (Alt+M)`, el foco arrastra el Z-order. 17 tests y la foto |
 | **`KIND_MEMORIA`** (un proceso pide memoria) | ✅ **EN METAL, por los dos lados**: `info` dice `a Ring 3  8.4 MiB  pedida con KIND_MEMORIA` -- lo dice el KERNEL. Su primer cliente es el doble bufer del compositor. Mas `c/memc.bex` y 7 tests que EJECUTAN |
 | **Write-combining del framebuffer** | ✅ PAT programado + `sfence` por fotograma. Sin la barrera, lo pintado se quedaba en el bufer |

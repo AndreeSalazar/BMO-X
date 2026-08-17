@@ -612,7 +612,7 @@ pub(crate) fn report_system(s: &mut Output) {
     report_usb(s);
 }
 
-/// **EL CUADRO DE MANDOS DEL TECLADO**, el de `docs/EL_TECLADO_EXIGE.md`,
+/// **EL CUADRO DE MANDOS DEL TECLADO**, el de `docs/componente/EL_TECLADO_EXIGE.md`,
 /// leido desde donde vive el dueno.
 ///
 /// # Por que esto no sobra teniendo ya la luz de la barra

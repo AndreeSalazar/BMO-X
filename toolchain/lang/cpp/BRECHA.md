@@ -184,7 +184,7 @@ grandes sin que se hagan ingobernables**. Que es otra cosa, y tambien vale.
 
 ★ El censo completo de **que aplicacion desbloquea que pieza del sistema** --con
 la superficie de BMO-X medida, y por que las palancas que mas desbloquean no
-piden C++-- esta en [`docs/QUE_DESBLOQUEA.md`](../../../docs/QUE_DESBLOQUEA.md).
+piden C++-- esta en [`docs/identidad/QUE_DESBLOQUEA.md`](../../../docs/identidad/QUE_DESBLOQUEA.md).
 
 ## El orden
 

@@ -4,7 +4,7 @@
 //!
 //! Reproducir muestras por USB pide transferencias **isocronas**, que
 //! `bmo-xhci` no tiene: hoy sabe control e interrupt. Eso es la casilla 2.4 de
-//! `docs/LIDERES.md` y es una pieza XL.
+//! `docs/identidad/LIDERES.md` y es una pieza XL.
 //!
 //! El volumen no. Es un `SET_CUR` sobre el *Feature Unit* de la interfaz de
 //! control del aparato, o sea **un control transfer** -- los mismos que enumeran

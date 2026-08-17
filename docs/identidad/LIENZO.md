@@ -2,7 +2,7 @@
 
 ---
 
-> ## ⚠ ESTE DOCUMENTO ESTA SUPERADO -- ver [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md)
+> ## ⚠ ESTE DOCUMENTO ESTA SUPERADO -- ver [`PLAN_DIRECTOR.md`](../plan/PLAN_DIRECTOR.md)
 >
 > **2026-08-10.** Lo de abajo sigue siendo la mejor explicacion de POR QUE el
 > kernel solo presta bytes, y por eso no se borra. Pero su conclusion --*"camino
@@ -359,6 +359,6 @@ eso van aqui y no en el codigo.
 > una tabla de dieciseis filas -- y lo que compra es que el escritorio deje de
 > ser lo unico que puede pintar.
 
-Ver [`SMP_MAESTRO.md`](SMP_MAESTRO.md) para el mismo metodo aplicado a los
+Ver [`SMP_MAESTRO.md`](../maestro/SMP_MAESTRO.md) para el mismo metodo aplicado a los
 nucleos, y `PLAN_VULKAN.md` para el motor de copia que este documento acaba de
 justificar.

@@ -181,7 +181,7 @@ const INFO_SPIN_PICO: u64 = 0x1D;
 const INFO_FUGAS: u64 = 0x1E;
 // -- ** LA SALUD DEL BUS USB, PARA QUIEN VIVE EN EL ESCRITORIO --
 //
-// E6 de `docs/EL_TECLADO_EXIGE.md`. Las cinco exigencias anteriores estan
+// E6 de `docs/componente/EL_TECLADO_EXIGE.md`. Las cinco exigencias anteriores estan
 // cumplidas y cada una tiene su contador -- pero todos se leian desde el shell
 // de Ring 0, y al escritorio no se vuelve. O sea: cinco instrumentos correctos
 // que su dueno no podia mirar cuando el teclado se moria, que es el unico

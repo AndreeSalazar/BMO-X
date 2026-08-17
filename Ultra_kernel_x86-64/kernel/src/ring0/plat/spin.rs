@@ -8,7 +8,7 @@
 //!
 //! === Why these locks count their own collisions ===
 //!
-//! `docs/SMP_MAESTRO.md` puts one line in the SMP dashboard above the rest:
+//! `docs/maestro/SMP_MAESTRO.md` puts one line in the SMP dashboard above the rest:
 //! *"spinlock contention -- if it goes up, two cores are fighting over the same
 //! thing; it is the early warning of the race"*. Step 4 of that plan is
 //! **measure before handing out real work**, and this is that instrument.

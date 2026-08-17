@@ -154,7 +154,7 @@ use super::{syscall2, syscall3, syscall6, SyscallResult};
 //  LIENZO -- una app pinta donde se va a ver
 // =======================================================================
 //
-// El contrato completo esta en `docs/LIENZO.md`. Aqui va lo que el ABI necesita
+// El contrato completo esta en `docs/identidad/LIENZO.md`. Aqui va lo que el ABI necesita
 // saber, y **la aritmetica de paginas**, que es la parte que puede dar acceso a
 // los pixeles del vecino si se hace mal.
 //

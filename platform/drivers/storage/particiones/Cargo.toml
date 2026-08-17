@@ -10,4 +10,4 @@ description = "Tabla de particiones GPT: bytes de un sector -> particiones. Sin 
 # NINGUNA, y aqui no es una aspiracion: esta crate no LEE nada. Recibe sectores
 # ya leidos y devuelve structs. Si algun dia necesitara `bmo-block` seria la
 # senal de que alguien le metio dentro el bucle de lectura, que es justo lo que
-# se saco. Ver `docs/PLAN_ALMACENAMIENTO.md`, paso 1.
+# se saco. Ver `docs/plan/PLAN_ALMACENAMIENTO.md`, paso 1.

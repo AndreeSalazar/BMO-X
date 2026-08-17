@@ -43,7 +43,7 @@
  *
  * Las tres son del ALTAVOZ, no del diseno: `KIND_AUDIO` entrega un aparato y
  * el dia que haya un driver de HD Audio con su DMA, esta misma pieza sale por
- * ahi sin tocar una linea. Ver la fase 5 de `docs/PLAN_DOOM.md`.
+ * ahi sin tocar una linea. Ver la fase 5 de `docs/plan/PLAN_DOOM.md`.
  *
  * == Como se lanza ==
  *

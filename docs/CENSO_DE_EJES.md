@@ -388,7 +388,7 @@ correrlo -- hasta entonces, la columna *"veces por segundo"* sigue vacia.
 
 ★ El recorrido entero de una puerta --los once elementos, con su fichero y su
 coste en ciclos, y que experimento decide cada uno-- vive en
-`docs/LA_PUERTA_POR_DENTRO.md`.
+`docs/componente/LA_PUERTA_POR_DENTRO.md`.
 
 ---
 

@@ -87,7 +87,7 @@ pub const fn alinear(v: u32, a: u32) -> u32 {
 /// `techo(tamano/8)` ranuras.
 ///
 /// Estaba escondida en `lang/c/codegen/agregados.rs` como `pub(super)`, y a la
-/// vez **documentada como ABI** en `lang/cpp/CPP_ABI.md`. Una regla que un
+/// vez **documentada como ABI** en `toolchain/lang/cpp/CPP_ABI.md`. Una regla que un
 /// documento llama ABI y el arbol guarda dentro de un lenguaje es una regla
 /// que el segundo lenguaje copia -- y ahi empieza la divergencia.
 ///

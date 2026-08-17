@@ -41,7 +41,7 @@ pub(crate) fn seal_moved(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     After::Settle
 }
 
-/// ** `audio` -- paso 0 de docs/AUDIO_MAESTRO.md.
+/// ** `audio` -- paso 0 de docs/maestro/AUDIO_MAESTRO.md.
 ///
 /// La orden existia SOLO en el shell de Ring 0 y el
 /// dueno la escribio aqui, que es donde se trabaja.

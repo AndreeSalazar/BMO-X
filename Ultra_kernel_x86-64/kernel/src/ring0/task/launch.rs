@@ -336,7 +336,7 @@ impl Fuente {
             // No es que falte escribirlo: es que su gate (`:firma`) cubre el
             // fichero ENTERO, asi que comprobarlo obliga a leerlo entero -- y eso
             // es la bodega entrando por la puerta de la seguridad. La salida esta
-            // decidida y escrita (`docs/EL_CONTRATO_DE_CARGA.md`): que `:firma`
+            // decidida y escrita (`docs/identidad/EL_CONTRATO_DE_CARGA.md`): que `:firma`
             // pase a cubrir la seccion `Signature` del `.bex`, que es la que
             // responde por todas las demas. Mientras tanto, ESTRATOS no entrega
             // rangos y quien lo pida se entera aqui en vez de recibir ceros.
@@ -713,7 +713,7 @@ fn con_buffer(path: &str) -> Informe {
     // Eso no es una linea de depuracion que se anade para una foto y se quita.
     // Es la unica conclusion que esta funcion esta en posicion de sacar, y
     // callarla fue lo que costo la tanda de fotos del 2026-08-10. Ver
-    // `docs/EL_CONTRATO_DE_CARGA.md`, pieza A.
+    // `docs/identidad/EL_CONTRATO_DE_CARGA.md`, pieza A.
     if prologo_valido && crate::ring0::task::bex::necesita(&buf[..n]).is_err() {
         crate::ring0::cabina::fault(
             "lanzar",

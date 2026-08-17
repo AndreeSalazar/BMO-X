@@ -4,7 +4,7 @@
 > de cada tarea que mata.
 >
 > Es el documento conceptual, no la lista de tareas: eso esta en
-> [`PLAN_AUTOCURACION.md`](PLAN_AUTOCURACION.md). Este dice **que se copia de lo
+> [`PLAN_AUTOCURACION.md`](../plan/PLAN_AUTOCURACION.md). Este dice **que se copia de lo
 > que ya existe en el mundo, que seria un ERROR copiar, y por que la
 > arquitectura de BMO-X cambia la respuesta.**
 >
@@ -217,6 +217,6 @@ No porque sea inexpugnable -- no lo es, y acaba de listar por que. Sino porque:
 
 ---
 
-Ver [`PLAN_AUTOCURACION.md`](PLAN_AUTOCURACION.md) para las casillas,
+Ver [`PLAN_AUTOCURACION.md`](../plan/PLAN_AUTOCURACION.md) para las casillas,
 `ring0/core/autopsia.rs` para lo que ya se captura, y `BITACORA.md` para los
 fallos que ensenaron cada regla de aqui.

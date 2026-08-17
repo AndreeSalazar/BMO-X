@@ -22,7 +22,7 @@ fn bef_build_validate_load_roundtrip() {
     // - `Requisitos` (2026-08-10): lo que la imagen necesita para arrancar. Se
     //   emite sola por el mismo motivo que la firma --el dato solo lo tiene el
     //   escritor-- y existe para que el kernel deje de DEDUCIRLO. Ver
-    //   `docs/EL_CONTRATO_DE_CARGA.md`.
+    //   `docs/identidad/EL_CONTRATO_DE_CARGA.md`.
     //
     // ** Que este numero suba es una noticia, no un fallo: significa que el
     // escritor emite algo nuevo, y entonces hay que decir QUE y por que.

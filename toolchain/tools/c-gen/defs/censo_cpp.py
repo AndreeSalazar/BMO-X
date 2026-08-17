@@ -1,6 +1,6 @@
 """**El censo de C++** — qué entra, qué no, y por qué.
 
-La pregunta que decide cada fila es la de `lang/PROPOSITO.md`:
+La pregunta que decide cada fila es la de `toolchain/lang/PROPOSITO.md`:
 
 > **¿Esto me deja abstraer SIN PAGAR?**
 

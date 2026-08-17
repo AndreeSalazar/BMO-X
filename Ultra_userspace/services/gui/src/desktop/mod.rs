@@ -290,7 +290,7 @@ impl Desktop {
 /// para este: **el estado que vive todo el programa va a `.bss`, no a la pila.**
 /// Con 64 KiB de pila o con 1 MiB sigue siendo cierto; subir la pila solo mueve
 /// el dia en que el siguiente struct la desborde. Y por el escalon 0 de
-/// `docs/LA_RAM.md`, `.bss` **se declara y no viaja**: cero bytes de fichero.
+/// `docs/identidad/LA_RAM.md`, `.bss` **se declara y no viaja**: cero bytes de fichero.
 static mut DESKTOP: MaybeUninit<Desktop> = MaybeUninit::uninit();
 
 /// Construye el escritorio DENTRO de `.bss` y entrega la unica referencia.

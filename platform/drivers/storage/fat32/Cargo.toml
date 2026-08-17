@@ -15,5 +15,5 @@ description = "BMO FAT32/exFAT reader — cadenas de clusteres, nombres 8.3, sob
 # bloques de BMO y FAT32 lo esquivaba. `bmo-block` no depende de nadie ni sabe
 # de ningun controlador, asi que depender de el NO vuelve a soldar el sistema
 # de ficheros a un hardware -- es lo contrario: lo ata a la frontera.
-# Ver `docs/PLAN_ALMACENAMIENTO.md`, paso 0.
+# Ver `docs/plan/PLAN_ALMACENAMIENTO.md`, paso 0.
 bmo-block = { path = "../block" }

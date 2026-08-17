@@ -169,7 +169,7 @@ pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
 /// Lo llama `cap::revoke_all`: los directorios que tuviera abiertos se cierran.
 /// Cuantas ranuras siguen siendo de `pid`. **Despues de `process_died` tiene
 /// que ser CERO**, y quien lo comprueba es la autopsia: el escalon 1 de
-/// `docs/PLAN_AUTOCURACION.md`.
+/// `docs/plan/PLAN_AUTOCURACION.md`.
 ///
 /// Existe porque `process_died` hace su trabajo y **nadie miraba si funciono**.
 /// Una fuga de ranuras no da error: da un sistema que un dia no puede abrir un

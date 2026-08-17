@@ -256,7 +256,7 @@ pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
 /// como que el stop no hizo nada -- cuando lo que pasa es que estar encendido y
 /// estar trabajando son dos cosas distintas.
 /// **Le pregunta al aparato de audio como quiere las muestras.** `true` si hay
-/// uno. Paso 0 de `docs/AUDIO_MAESTRO.md`.
+/// uno. Paso 0 de `docs/maestro/AUDIO_MAESTRO.md`.
 ///
 /// Los OCHO numeros --canales, bits, frecuencias, wMaxPacketSize...-- van a
 /// CABINA y no aqui: por la puerta de un syscall cabe uno, y partirlos en ocho

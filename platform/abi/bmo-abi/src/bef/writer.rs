@@ -56,7 +56,7 @@ const ALINEACION_EN_FICHERO: u64 = 8;
 ///
 /// La nota de arriba decia que ocho bytes bastan *"mientras el cargador copie"*,
 /// y avisaba de que mapear el fichero directo pediria congruencia. La pieza B de
-/// `docs/EL_CONTRATO_DE_CARGA.md` no es ninguna de las dos cosas y cae justo en
+/// `docs/identidad/EL_CONTRATO_DE_CARGA.md` no es ninguna de las dos cosas y cae justo en
 /// medio: el cargador **sigue copiando**, pero la copia la hace **el disco**,
 /// escribiendo cada seccion en los marcos del proceso sin pasar por un bufer.
 ///
@@ -292,7 +292,7 @@ impl BefBuilder {
         //
         // Lo que el escritor NO puede deducir --pantalla, audio, recursos que
         // el programa quiera residentes-- entra por `requerir()`. Ver
-        // `docs/EL_CONTRATO_DE_CARGA.md`, pieza C.
+        // `docs/identidad/EL_CONTRATO_DE_CARGA.md`, pieza C.
         if !self
             .sections
             .iter()

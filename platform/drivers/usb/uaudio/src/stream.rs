@@ -1,6 +1,6 @@
 //! **The AudioStreaming side: where the samples travel.**
 //!
-//! Step 0 of `docs/AUDIO_MAESTRO.md`, and it is deliberately the one step that
+//! Step 0 of `docs/maestro/AUDIO_MAESTRO.md`, and it is deliberately the one step that
 //! **cannot break anything**: not a single byte is written to the device here.
 //! This module reads a configuration descriptor and answers questions.
 //!

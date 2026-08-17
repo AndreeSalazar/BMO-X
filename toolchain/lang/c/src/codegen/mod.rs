@@ -1021,7 +1021,7 @@ impl Codegen {
     /// paginas y las pone a cero (`bex.rs` acepta `file_size == 0` **solo** si
     /// la seccion es `Bss`). Faltaba quien lo pidiera.
     ///
-    /// Ver `docs/LA_RAM.md`: es el escalon 0 del modelo quirofano, y va primero
+    /// Ver `docs/identidad/LA_RAM.md`: es el escalon 0 del modelo quirofano, y va primero
     /// porque encoge todo lo demas ANTES de optimizar como se transporta.
     ///
     /// === Como se decide, y son TRES motivos para quedarse ===

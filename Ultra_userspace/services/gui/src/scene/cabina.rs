@@ -36,7 +36,7 @@ use super::chrome::Chrome;
 use super::*;
 use crate::text::decimal;
 
-// Proporcion de la pantalla, no un tamano fijo: ver `docs/LIDERES.md`.
+// Proporcion de la pantalla, no un tamano fijo: ver `docs/identidad/LIDERES.md`.
 const CAB_PCT_W: u32 = 70;
 const CAB_PCT_H: u32 = 55;
 const CAB_MIN_W: u32 = 520;

@@ -165,7 +165,7 @@ fn memoria_seccion(bef: &[u8], kind: bmo_abi::bef::sections::SectionKind) -> Opt
 
 /// ** Una tabla de 32 KiB a cero **no engorda el fichero**.
 ///
-/// Es la fila que mide el escalon 0 de `docs/LA_RAM.md`. Sin `Bss`, este `.bex`
+/// Es la fila que mide el escalon 0 de `docs/identidad/LA_RAM.md`. Sin `Bss`, este `.bex`
 /// pasaria de 32.768 bytes; con ella cabe de sobra y la tabla sigue existiendo
 /// entera en memoria.
 #[test]

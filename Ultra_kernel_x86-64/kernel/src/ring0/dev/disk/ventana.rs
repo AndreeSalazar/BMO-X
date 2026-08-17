@@ -1,7 +1,7 @@
 //! **Las ventanas de escritura: donde SE PUEDE escribir.** El estado; la
 //! decision vive en `bmo_block::ventana`.
 //!
-//! Paso 2 de `docs/PLAN_ALMACENAMIENTO.md`. De las siete preguntas que
+//! Paso 2 de `docs/plan/PLAN_ALMACENAMIENTO.md`. De las siete preguntas que
 //! respondia `dev/disk/mod.rs`, esta es la segunda que **no toca hardware**:
 //!
 //! ```text

@@ -1,6 +1,6 @@
 //! `dynobj` -- the shape of a DYNAMICALLY TYPED value, as a contract.
 //!
-//! This is the first piece of `docs/PYTHON_MAESTRO.md`, and it is deliberately
+//! This is the first piece of `docs/maestro/PYTHON_MAESTRO.md`, and it is deliberately
 //! not called `python`.
 //!
 //! # Why this is not "the Python module"

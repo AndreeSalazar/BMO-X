@@ -402,7 +402,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // que cambia el estado del hardware en vez de contestar una pregunta, y
         // por eso conviene decir por que se acepta: no concede nada al llamante
         // --los APs quedan parados y sin tocar el kernel-- y el resultado es un
-        // numero. Ver `plat/smp` y `docs/SMP_MAESTRO.md`.
+        // numero. Ver `plat/smp` y `docs/maestro/SMP_MAESTRO.md`.
         //
         // El aviso por nucleo se traga aqui: cruzar el borde de Ring 3 once
         // veces para pintar una linea costaria mas que el propio bring-up. Lo
@@ -471,7 +471,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     // Doce nucleos calculando a la vez es justo el momento en
                     // que un choque de cerrojo aparece si va a aparecer, y una
                     // aceleracion contada sin mirar esto es media medida.
-                    // Ver `plat/spin.rs` y `docs/SMP_MAESTRO.md`.
+                    // Ver `plat/spin.rs` y `docs/maestro/SMP_MAESTRO.md`.
                     let (choques, pico) = crate::ring0::plat::spin::contention();
                     if choques == 0 {
                         crate::ring0::cabina::info("smp", "cerrojos: ni un choque", 0);

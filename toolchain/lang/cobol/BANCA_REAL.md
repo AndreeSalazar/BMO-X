@@ -184,7 +184,7 @@ pero el camino empieza por esos dos, no por el arbol.
 | Extension | Que es | Veredicto |
 |---|---|---|
 | **`COMP-3`** (packed decimal) | 2 digitos por byte + signo. **El formato en el que estan los datos reales de un banco** | ✅ **HECHO** (2026-08-03) -- ver abajo |
-| **`CALL`** | llamar a otro programa, estatico o dinamico | 🔴 imprescindible -- **depende de la decision del enlazador** (ver `forge/README.md`) |
+| **`CALL`** | llamar a otro programa, estatico o dinamico | 🔴 imprescindible -- **depende de la decision del enlazador** (ver `toolchain/forge/README.md`) |
 | **`EVALUATE`** | el `switch` de COBOL, con `WHEN ... ALSO` | 🟠 muy usado |
 | **`STRING` / `UNSTRING` / `INSPECT`** | manejo de cadenas | 🟠 muy usado |
 | **`COPY ... REPLACING`** | inclusion con sustitucion de texto | 🟠 muy usado: asi se comparten los layouts de registro |

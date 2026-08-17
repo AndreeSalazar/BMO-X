@@ -4,7 +4,7 @@
 //!
 //! Reproducir muestras por USB pide transferencias **isocronas**, que
 //! `bmo-xhci` no tiene: hoy sabe hacer control e interrupt. Eso es la casilla
-//! 2.4 de `docs/LIDERES.md` y es una pieza XL.
+//! 2.4 de `docs/identidad/LIDERES.md` y es una pieza XL.
 //!
 //! Pero el **volumen** de un aparato USB Audio no es una transferencia de
 //! datos: es un `SET_CUR` sobre el *Feature Unit* de su interfaz de control, o
@@ -55,7 +55,7 @@
 // se toca aqui"*, y esa frase deja de ser una promesa y pasa a ser una frontera
 // en cuanto hay dos ficheros.
 
-/// El lado que transporta las muestras. Paso 0 de `docs/AUDIO_MAESTRO.md`.
+/// El lado que transporta las muestras. Paso 0 de `docs/maestro/AUDIO_MAESTRO.md`.
 pub mod stream;
 
 // -- Constantes de la clase (USB Audio 1.0, seccion A) --------------------
