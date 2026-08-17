@@ -3,8 +3,10 @@
 //! ```text
 //!    [eje]     LATENCIA -- pays SIZE (the match arms) to buy cycles
 //!    [camino]  P1 la puerta -- 100% of every door
-//!    [coste]   ~90 cycles, of which ~69 are the meter's own two `rdtsc`
-//!    [fila]    DISPATCH (techo 105, meta 60)
+//!    [coste]   87 (C) / 104 (Rust) ticks WITH the meter in; of those, 69-107
+//!              were the meter's own two `rdtsc` -- so the real Rust work is
+//!              ~20 ticks and was never visible
+//!    [fila]    DISPATCH (techo 105, meta 60) -- only in the measuring build
 //!    [gen]     PADRE -- knows WHICH door and whether the handle is
 //!              `CURRENT_TASK`. It does not know what an object means; that
 //!              is the grandchild's job, in `obj/*.rs`
@@ -12,9 +14,11 @@
 //!              foreign CR3), R-TIME1
 //! ```
 //!
-//! ** The `meta` of 60 is not reached by tuning the two-arm `match`: ~69 of the
-//! ~90 measured are the thermometer. It is reached by taking the meter out with
-//! a `cfg`. Said here because this is the file somebody would come to optimise.
+//! ** The `meta` of 60 was never going to be reached by tuning the two-arm
+//! `match`: most of what it measured was the thermometer. **The meter is now
+//! behind `--features metro_puerta` and the default build has no `rdtsc` here**
+//! -- verified in the bytes: `dispatch` went from 3 to 1, and the survivor
+//! belongs to `WAIT`, which reads the clock for its timeout.
 //!
 //! [!] Decia "3" hasta el 2026-08-11, y llevaba diciendolo desde que
 //! `CHANNEL_KICK` se retiro el 10-08 -- en este mismo fichero, cuarenta lineas

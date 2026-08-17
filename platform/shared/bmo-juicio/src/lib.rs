@@ -191,6 +191,19 @@ pub fn juzgar(medida: &Medida, valor: u64, presupuesto: Presupuesto) -> Veredict
     if let Some(roto) = medida.revisar() {
         return Veredicto::Roto(roto);
     }
+    // ** UN CERO NO ES UNA MEDIDA BARATA: ES UNA MEDIDA QUE NO OCURRIO.
+    //
+    // [`Medida::revisar`] ya lo dice del `min` de la tanda. Faltaba decirlo del
+    // valor CONCRETO que se juzga, y el 2026-08-16 eso paso de ser teorico a ser
+    // urgente: al sacar el metro de `dispatch` con un `cfg`, sus ciclos valen 0
+    // -- y sin esta guarda el juez contestaba **`[META] 0`**, o sea *"llego al
+    // objetivo"* para una fila que nadie ha medido.
+    //
+    // Es el cero silencioso de siempre, en el sitio donde mas dano hace: no
+    // falla, FELICITA.
+    if valor == 0 {
+        return Veredicto::Roto(Roto::MedidaEnCero);
+    }
     if presupuesto.sin_declarar() {
         return Veredicto::SinDeclarar;
     }
@@ -360,6 +373,36 @@ mod pruebas {
         assert_eq!(
             juzgar(&m, 400, Presupuesto { techo: 895, meta: 400 }),
             Veredicto::Meta { medido: 400, meta: 400 }
+        );
+    }
+
+    /// ** EL CERO QUE FELICITABA. Con el metro fuera del build (`cfg`
+    /// `metro_puerta`), `dispatch` vale 0 -- y 0 esta por debajo de cualquier
+    /// meta, asi que el juez contestaba `[META]`. Un fallo que no falla:
+    /// **felicita**.
+    #[test]
+    fn un_cero_no_llega_a_la_meta_sino_que_rompe_el_juicio() {
+        let m = ryzen();
+        let p = Presupuesto { techo: 105, meta: 60 };
+        assert_eq!(
+            juzgar(&m, 0, p),
+            Veredicto::Roto(Roto::MedidaEnCero),
+            "un cero es una medida que no ocurrio, no una que salio barata"
+        );
+        // Y uno solo por encima si se juzga: la guarda es del cero, no de los
+        // numeros pequenos -- que son justamente los que se persiguen.
+        assert_eq!(juzgar(&m, 1, p), Veredicto::Meta { medido: 1, meta: 60 });
+    }
+
+    /// El cero manda tambien sobre "no hay presupuesto": primero se comprueba
+    /// que haya medida, y solo despues si hay contra que juzgarla. Al reves, una
+    /// fila sin declarar taparia que el metro no estaba puesto.
+    #[test]
+    fn el_cero_gana_a_la_fila_sin_declarar() {
+        let m = ryzen();
+        assert_eq!(
+            juzgar(&m, 0, Presupuesto::desempaquetar(0)),
+            Veredicto::Roto(Roto::MedidaEnCero)
         );
     }
 

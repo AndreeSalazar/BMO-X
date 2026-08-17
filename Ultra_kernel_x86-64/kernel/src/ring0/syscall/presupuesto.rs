@@ -152,15 +152,43 @@ pub const PUERTA_PELADA: Fila = Fila {
 /// O sea que **la mitad Rust de una puerta nunca fue el 12%: es el 10%, y son
 /// ~90 ciclos.** El 309 era un `printf` disfrazado de dispatcher.
 ///
-/// [!] Y de esos ~90 una parte grande es el PROPIO METRO: `meter::start`/`stop`
-/// son dos `rdtsc`, y uno cuesta 69 ciclos medidos. La meta de 60 esta puesta
-/// contra eso -- alcanzarla pasa por sacar el metro de `dispatch`, no por
-/// afinar el `match` de dos brazos.
+/// ** Y LA TANDA DEL 16-08 EN METAL CERRO LA DISCUSION: 87 (C) y 104 (Rust),
+/// contra un `rdtsc` suelto que cuesta **69 en un bucle de 43 y 107 en uno de
+/// 4** -- no un numero, porque el CPU es fuera de orden y un bucle largo lo
+/// solapa.
+///
+/// O sea que el termometro es del tamano del enfermo: **el trabajo real de Rust
+/// son ~20 ticks debajo de ~70-107 de instrumento**, y esta fila, tal como
+/// estaba, NO SE PODIA LEER -- 104 contra techo 105 es un tick de gritar
+/// REGRESION por algo que no es el codigo.
+///
+/// ** POR ESO EL METRO SE RETIRO A `--features metro_puerta` (paso 1 de la
+/// biseccion). Consecuencias, dichas las dos:
+///
+/// ```text
+///    build normal    sin `rdtsc` aqui. La puerta cuesta 69-107 ticks menos.
+///                    `dispatch` vale 0 y el juez contesta ROTO, que es lo
+///                    correcto: no hay medida, no hay veredicto.
+///    --features ...  como hasta hoy, y es donde esta fila se juzga.
+/// ```
+///
+/// [!] La meta de 60 se queda **sin tocar** hasta que el build de medida diga
+/// cuanto cuesta `dispatch` con el metro fuera... que es imposible por
+/// definicion. Lo que la contestara es la resta entre los dos builds, medida
+/// desde Ring 3, donde no hay instrumento en medio.
 pub const DISPATCH: Fila = Fila {
-    // 99 fue la peor de las dos implementaciones, +5% redondeado hacia arriba.
-    techo: 105,
+    // ** ESTE TECHO SE AFLOJA, DE 105 A 110, Y SE DICE EN VOZ ALTA.
+    //
+    // Aflojar un trinquete es lo contrario de para lo que existe, asi que el
+    // motivo va aqui y no en el mensaje de un commit: el 105 salia de 99 +5%, y
+    // el metal dio **104** -- dentro del techo, pero al 99% de el. Un trinquete
+    // sin margen sobre el ruido no es estricto, **es una alarma aleatoria**, y
+    // una alarma que salta sola se acaba ignorando (ver
+    // `MARGEN_DE_RUIDO_POR_CIENTO`). 104 es la ultima medida CONFIRMADA en
+    // metal; +5% da 110, que es la regla de la casa aplicada tal cual.
+    techo: 110,
     meta: 60,
-    porque: "de los ~90 medidos, buena parte son los dos rdtsc del propio metro",
+    porque: "de los 87-104 medidos, 69-107 son los dos rdtsc del propio metro",
 };
 
 /// **Lo que cuesta resolver una capability**: la fila 4 menos la fila 3.
