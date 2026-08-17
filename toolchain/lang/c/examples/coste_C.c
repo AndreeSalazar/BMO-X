@@ -392,6 +392,7 @@ void report_split(unsigned long long doors, unsigned long long cycles,
     unsigned long long guarda;
     unsigned long long restaura;
     unsigned long long contado;
+    unsigned long long stub;
 
     if (doors == 0) {
         printf("   REPARTO: el kernel no conto ni una puerta\n");
@@ -417,6 +418,30 @@ void report_split(unsigned long long doors, unsigned long long cycles,
     printf("   reparto: dentro de dispatch %llu, en el stub %llu\n",
            inside,
            total_per_op - inside);
+
+    /* ** ACOTAR EL SUELO SIN TOCAR EL STUB.
+     *
+     * `puerta - dispatch` es todo el ensamblador MAS las dos transiciones de
+     * privilegio, medido. Y el ensamblador se acota por arriba CONTANDO
+     * instrucciones: la via rapida de `entry.rs` son 58, y a un IPC de 1 --lo
+     * mas pesimista posible-- eso son 58 ticks.
+     *
+     *    cruce >= (puerta - dispatch) - 58     <- MEDIDO, no estimado
+     *    cruce <=  puerta - dispatch
+     *
+     * Si la cota inferior sale muy por encima del ~150 que declara el perfil, la
+     * meta de la fila `puerta` esta POR DEBAJO del suelo fisico y hay que
+     * reescribirla. [!] El 58 esta contado a mano sobre `entry.rs`: acota, no
+     * juzga.
+     */
+    if (total_per_op > inside) {
+        stub = total_per_op - inside;
+        /* "lo que NO es Rust" y no "el suelo": ahi dentro van las dos
+         * transiciones (irreducibles) Y el marco que BMO eligio construir (la
+         * reserva, el sello, los 20 push). Lo segundo se puede cambiar. */
+        printf("   lo que NO es Rust: %llu ticks (suelo entre %llu y %llu)\n",
+               stub, stub > 58 ? stub - 58 : 0, stub);
+    }
 
     /* ** Y el stub por dentro -- CUANDO SE ESTA MIDIENDO.
      *
