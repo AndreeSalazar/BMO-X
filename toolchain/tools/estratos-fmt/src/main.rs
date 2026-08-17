@@ -1,8 +1,7 @@
 //! `estratos-fmt` -- formatea un volumen ESTRATOS desde el anfitrion.
 //!
-//! Paso 4c del orden de construccion, section 10 del diseno -- ESTRATOS.md, que
-//! **no esta en el repositorio**: ver el aviso al principio de la crate
-//! `bmo-estratos`. El diseno lo pide
+//! Paso 4c del orden de construccion (section 10 de `ESTRATOS.md`, que vive en
+//! la raiz de la crate `bmo-estratos`). El diseno lo pide
 //! asi a proposito: *"formatear desde el anfitrion con una herramienta del
 //! toolchain, y que el kernel lo monte y lea. Sin riesgo: si el formato esta
 //! mal, se reformatea"*.

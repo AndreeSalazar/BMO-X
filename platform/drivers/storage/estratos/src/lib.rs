@@ -1,24 +1,25 @@
 //! ESTRATOS -- el formato en disco.
 //!
-//! ## [!] EL DISENO NO ESTA EN ESTE REPOSITORIO (2026-08-17)
+//! Diseno completo en `ESTRATOS.md`, **en la raiz de esta crate**.
 //!
-//! Esta crate, `objects.rs` y `estratos-fmt` citan ESTRATOS.md con numeros de
-//! section --y este mismo fichero, mas abajo, con una frase suya entre
-//! comillas--, asi que el documento EXISTIO y alguien lo leyo. **No esta en el
-//! arbol**: ni con ese nombre ni con otro, y la carpeta que se citaba,
-//! platform/services/timeback/, tampoco existe (en `platform/services/` solo
-//! hay `cabina-core`).
+//! ## [!] Y ese documento estuvo BORRADO doce dias
+//!
+//! Vivia en `platform/services/timeback/` y se lo llevo por delante
+//! `b33f3966` (2026-08-03), la limpieza de librerias huerfanas: al quitar la
+//! carpeta de codigo que nadie cableaba **se fue el diseno del sistema de
+//! ficheros con ella**. Este fichero, `objects.rs` y `estratos-fmt` lo siguieron
+//! citando --con numeros de section y con frases suyas entre comillas-- contra
+//! una ruta que ya no existia, y nadie lo noto: **un puntero roto no falla,
+//! manda al lector a la nada**.
 //!
 //! Lo destapo el guardian de citas (`toolchain/tools/enlaces/enlaces.py`), que
-//! antes no existia. Se deja **pendiente y nombrado, que no es lo mismo que
-//! descartado** --seccion 6 de `META-KERNEL_HARD.md`--, y la ruta falsa se
-//! quita en vez de conservarse: una cita que promete un sitio donde no hay nada
-//! manda al lector a concluir que el diseno nunca se escribio.
+//! antes no existia, y se recupero de la historia el 2026-08-17. Ahora vive
+//! junto a su codigo, que es la regla de colocacion de `docs/README.md`.
 //!
-//! ** Y pesa mas de lo que parece: C6 de la ley abre diciendo que el
-//! almacenamiento es *"lo unico que sobrevive al apagon"*. El diseno del unico
-//! componente cuyo trabajo es la durabilidad vive hoy fuera del control de
-//! versiones.
+//! ** Su section 0 es lo que hay que leer primero: el cuerpo del documento es
+//! de ALFA y **esta crate le lleva la contraria en tres sitios a proposito**
+//! --`disk_id`, `Superblock.estrato` y los campos de contabilidad--, listados
+//! alli con el motivo de cada uno.
 //!
 //! Esta crate es el **paso 4** de su section 10, y solo la primera mitad: el
 //! FORMATO. Aqui no se
