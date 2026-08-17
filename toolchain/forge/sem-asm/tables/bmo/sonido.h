@@ -4,7 +4,7 @@
  *
  * Entrega el DERECHO a hacer ruido. No entrega un motor de audio: no hay
  * mezclador, no hay canales, no hay formato de muestras. El driver de HD Audio
- * --codec, DMA, anillo de buffers-- es la casilla 5.1 de `docs/PLAN_DOOM.md` y
+ * --codec, DMA, anillo de buffers-- es la casilla 5.1 de `docs/plan/PLAN_DOOM.md` y
  * todavia no existe.
  *
  * El contrato va ANTES que el driver a proposito. Escribir el motor primero y

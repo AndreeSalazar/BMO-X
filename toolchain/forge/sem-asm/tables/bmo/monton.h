@@ -183,7 +183,7 @@ void *malloc(unsigned long long bytes) {
         p = p + t->tam;
     }
     /* No cabe. Se dice devolviendo 0, que es lo que el estandar define y lo que
-     * quien llama esta obligado a mirar. Ver la regla 2 de `docs/LA_RAM.md`:
+     * quien llama esta obligado a mirar. Ver la regla 2 de `docs/identidad/LA_RAM.md`:
      * `malloc` no miente nunca. */
     return 0;
 }
@@ -229,7 +229,7 @@ unsigned long long bmo_monton_tam(void *p) {
 
 /* -- Lo que el monton deja mirar, para que no haya que creerselo ------
  *
- * Regla 7 de `docs/LA_RAM.md`: lo que se declara, se cumple o se grita. Un
+ * Regla 7 de `docs/identidad/LA_RAM.md`: lo que se declara, se cumple o se grita. Un
  * asignador que no sabe contarse a si mismo no puede prometer nada.
  */
 

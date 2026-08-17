@@ -90,7 +90,7 @@
  * que se puede reescribir. Si se lleva los 1.600 que no cuadran, esta en las
  * DOS TRANSICIONES DE PRIVILEGIO -- y entonces afinar el stub no lo va a mover.
  * Lo que se mueve es `sysretq` en vez de `iretq` para el camino normal, o
- * agrupar llamadas, que es justo la pregunta de `docs/PYTHON_MAESTRO.md`.
+ * agrupar llamadas, que es justo la pregunta de `docs/maestro/PYTHON_MAESTRO.md`.
  *
  * La fila 5 existe para poder restar lo que cobra ese instrumento.
  *
@@ -131,7 +131,7 @@
  * It decides at least four open questions:
  *
  *   - Python: can the object model be capability operations, or must the
- *     runtime be linked code? (`docs/PYTHON_MAESTRO.md`)
+ *     runtime be linked code? (`docs/maestro/PYTHON_MAESTRO.md`)
  *   - Audio: how often the bus can be polled before the door is the cost.
  *   - Disk: what the asynchronous path actually saves per chunk.
  *   - Net: whether the data path can go through the kernel at all.

@@ -1,6 +1,6 @@
 # LA PUERTA POR DENTRO -- todos los elementos, en CICLOS
 
-> Capitulo de componente, como `docs/EL_TECLADO_EXIGE.md`. Alli la pregunta era
+> Capitulo de componente, como `docs/componente/EL_TECLADO_EXIGE.md`. Alli la pregunta era
 > *"que exige el teclado"*; aqui es **"por donde se van los ciclos de una
 > llamada al sistema, y cual de ellos se puede tocar"**.
 >

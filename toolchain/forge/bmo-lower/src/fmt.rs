@@ -6,7 +6,7 @@
 //! en la superficie congelada por valor. Convertir un numero a digitos no es
 //! eso: es un calculo. Entonces, por que vive aqui y no en cada frontend?
 //!
-//! Porque el `forge` distingue dos cosas (ver `forge/README.md`): se
+//! Porque el `forge` distingue dos cosas (ver `toolchain/forge/README.md`): se
 //! comparten **contratos y librerias**, nunca **cerebros**. Un conversor de
 //! entero a decimal no tiene semantica de ningun lenguaje --el `%d` de C y el
 //! `DISPLAY` de un numerico COBOL necesitan exactamente los mismos digitos--,

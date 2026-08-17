@@ -4,7 +4,7 @@
 //! archivos que se van a aplicar... porque asi las tablas que pusimos son el
 //! motivo para cumplir lo que necesita, NO por condicion"*.
 //!
-//! La PARTE IX de `docs/LA_RAM.md` dice que herramienta de transporte va en cada
+//! La PARTE IX de `docs/identidad/LA_RAM.md` dice que herramienta de transporte va en cada
 //! sitio. Este modulo la convierte en algo que **se comprueba sobre el fichero**
 //! en vez de en un criterio que alguien recuerda.
 //!
@@ -40,7 +40,7 @@ use bmo_abi::bef::sections::{SectionEntry, SectionKind};
 /// en el anfitrion y no puede depender de `Ultra_kernel`. 4096 no se va a mover.
 pub const PAGE: u64 = 4096;
 
-/// Como puede viajar una seccion, segun la PARTE IX de `docs/LA_RAM.md`.
+/// Como puede viajar una seccion, segun la PARTE IX de `docs/identidad/LA_RAM.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Transporte {
     /// **Herramienta 1 -- no viaja.** El contenido es deducible (ceros), asi que

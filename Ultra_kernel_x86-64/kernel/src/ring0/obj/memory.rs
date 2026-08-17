@@ -424,7 +424,7 @@ pub fn process_died(pid: u32) {
 /// escribiendo en memoria de otro.
 ///
 /// Lo usa `syscall.rs` para que **el disco escriba dentro del bloque del
-/// programa sin escala**: es el escalon 3 de `docs/LA_RAM.md` aplicado a leer
+/// programa sin escala**: es el escalon 3 de `docs/identidad/LA_RAM.md` aplicado a leer
 /// ficheros, y la razon por la que [`Bloque`] guarda la fisica.
 pub fn fisica_de(pid: u32, va: u64, len: u64) -> Option<u64> {
     let slot = slot(pid)?;

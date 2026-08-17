@@ -35,11 +35,11 @@ que hay que pegar entera dentro del mismo fichero fuente no es una libreria: es
 un copiar-pegar con otro nombre.
 
 O sea que el bloqueante de "C++ para librerias" **no es C++**: es la compilacion
-separada, que esta en `docs/QUE_DESBLOQUEA.md` como la palanca 2.
+separada, que esta en `docs/identidad/QUE_DESBLOQUEA.md` como la palanca 2.
 
 ## 2.2 -- Heredaria una ruta que nadie ha visto funcionar
 
-`docs/AVANCES.md` ya lo dice, y lo dice antes que esto:
+`AVANCES.md` ya lo dice, y lo dice antes que esto:
 
 > *"SSE en el emulador va delante de C++ a proposito, porque es barato y tapa un
 > agujero que YA existe: hoy la ruta de coma flotante de BMO C tiene 9 tests y
@@ -49,7 +49,7 @@ Construir un lenguaje encima de un camino que nadie ha ejecutado es apilar.
 
 ## 2.3 -- Y no es lo que desbloquea aplicaciones
 
-De `docs/QUE_DESBLOQUEA.md`, y es del dueno:
+De `docs/identidad/QUE_DESBLOQUEA.md`, y es del dueno:
 
 > *"C++ no desbloquea aplicaciones. Lo que desbloquea aplicaciones es la
 > **superficie del sistema**."*
@@ -131,6 +131,6 @@ exactamente que falta.
 
 ---
 
-Ver `AVANCES.md` (el alcance acotado), `docs/QUE_DESBLOQUEA.md` (por que no es
+Ver `AVANCES.md` (el alcance acotado), `docs/identidad/QUE_DESBLOQUEA.md` (por que no es
 la palanca) y `platform/drivers/gpu/rdna4/PLAN_VULKAN.md`, que es el precedente
 de aparcar bien.

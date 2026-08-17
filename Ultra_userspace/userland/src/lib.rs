@@ -336,7 +336,7 @@ pub const INFO_FECHA: u64 = 0x1F;
 
 /// ** LA SALUD DEL BUS USB: bits de estado + la EDAD DEL LATIDO en 16..31.
 ///
-/// La sexta exigencia de `docs/EL_TECLADO_EXIGE.md`. Con esto un programa de
+/// La sexta exigencia de `docs/componente/EL_TECLADO_EXIGE.md`. Con esto un programa de
 /// Ring 3 --el escritorio-- puede encender una luz mientras el teclado este
 /// caido, en vez de que la averia se cuente una vez en un panel que hay que
 /// abrir **con el aparato que esta roto**.
@@ -506,7 +506,7 @@ mod memoria;
 mod pantalla;
 mod proceso;
 /// [!!] **Lo que existe solo porque no hay driver de pantalla, y se borra entero
-/// el dia que lo haya.** Ver su cabecera: es el escalon 8 de `docs/LA_RAM.md`.
+/// el dia que lo haya.** Ver su cabecera: es el escalon 8 de `docs/identidad/LA_RAM.md`.
 mod sin_gpu;
 mod sonido;
 mod sys;

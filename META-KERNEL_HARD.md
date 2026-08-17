@@ -376,7 +376,7 @@ Y exige tres cosas mas que no son de rendimiento sino de verdad:
   estimacion acaba citandose como un hecho, que es como nacieron los `~150`
   ciclos de cruce que este arbol arrastro cuatro tandas.
 
-★ Ver `docs/LA_PUERTA_POR_DENTRO.md`: los once elementos de una puerta con su
+★ Ver `docs/componente/LA_PUERTA_POR_DENTRO.md`: los once elementos de una puerta con su
 fichero, su coste **en ciclos**, y el experimento que decide cada uno.
 
 **EL PRECIO.** El `#GP(0)` en `xrstor64` costo cinco fotos y dos explicaciones
@@ -559,6 +559,12 @@ asi que lo que no se pinta, no ocurrio.
 - **R-FB4.** Ningun camino que pinta corre bajo CR3 ajeno (es R-BUS2, y aqui se
   repite porque es donde mas veces ha reincidido).
 
+★ Ver `docs/componente/EL_COMPOSITOR_Y_EL_ESCANER.md`: los dos relojes que nadie
+sincroniza, y la aritmetica que dice que **volcar la pantalla entera (27,6 ms)
+dura mas que un frame de video (16,7 ms)** -- o sea que el escaner alcanzaria al
+volcado siempre, por construccion. Lo unico que hoy lo sostiene es que no se
+vuelca la pantalla: se vuelcan hasta ocho cajas de lo tocado.
+
 **EL PRECIO.** El primer `.bex` de hola-mundo **si ejecuto**: murio pintando. El
 framebuffer no estaba mapeado bajo CR3 de usuario, el flush daba `#PF`, **y el
 reporte de faults tambien pintaba** -> `#PF` recursivo -> congelacion total. Y
@@ -667,7 +673,7 @@ el endpoint en `Running` y sin un solo error.
   endpoint parado**, asi que reintentar sin resucitar es tocar un timbre roto; y
   resetear sin recolocar el puntero deja el endpoint leyendo TRBs viejos.
 
-★ Ver `docs/EL_TECLADO_EXIGE.md`: las **seis exigencias** del teclado con su
+★ Ver `docs/componente/EL_TECLADO_EXIGE.md`: las **seis exigencias** del teclado con su
 estado y, sobre todo, **el numero que dice cual fallo**. Las seis estan puestas
 desde el 2026-08-17: R-USB6 son `INFO_USB_SALUD` + `INFO_USB_AVERIAS`
 (`dev/usb/salud.rs`) y la luz fija de la barra (`scene/testigo.rs`). Sin
@@ -1024,5 +1030,5 @@ casa.)
 
 *Ver `docs/CENSO_DE_EJES.md` para la **aplicacion** de esta ley: que camino del
 arbol gasta que recurso, con la aritmetica que TACHA lo que no hay que mirar.
-Y `presupuesto.rs` para el eje de ciclos ya cableado, `docs/LA_RAM.md` para la
+Y `presupuesto.rs` para el eje de ciclos ya cableado, `docs/identidad/LA_RAM.md` para la
 identidad de C3.*

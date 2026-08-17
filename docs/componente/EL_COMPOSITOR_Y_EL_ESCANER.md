@@ -119,7 +119,7 @@ tearing corta la imagen en horizontal, el tiron la congela.
 ```
 
 ★★ **Y el diseno que absorbe esto ya esta elegido**, sin que se eligiera para
-esto: `docs/PLAN_DIRECTOR.md` -- *una app dibuja en SU memoria y se compone en un
+esto: `docs/plan/PLAN_DIRECTOR.md` -- *una app dibuja en SU memoria y se compone en un
 marco*. Ese es exactamente el reparto productor/consumidor que hace que la
 desincronizacion no rompa: cada app va a su ritmo en su superficie, y **el
 compositor decide cuando componer**. El dia que llegue una GPU, eso es una cola
@@ -201,5 +201,5 @@ de sitio.
 
 ---
 
-*Ver `docs/PLAN_DIRECTOR.md` para las superficies, `LIENZO.md` para el modelo de
+*Ver `docs/plan/PLAN_DIRECTOR.md` para las superficies, `LIENZO.md` para el modelo de
 dibujo, y `bmo-doom-rendimiento` para de donde sale el numero del blit.*

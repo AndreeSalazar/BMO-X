@@ -22,7 +22,7 @@
 //! PANTALLA de la GPU -- `platform/drivers/gpu/rdna4/PLAN_VULKAN.md`, lo
 //! aparcado.
 //!
-//! Es el **escalon 8** de `docs/LA_RAM.md`. Ver ahi el porque completo.
+//! Es el **escalon 8** de `docs/identidad/LA_RAM.md`. Ver ahi el porque completo.
 //!
 //! ## Por que entonces esto existe
 //!

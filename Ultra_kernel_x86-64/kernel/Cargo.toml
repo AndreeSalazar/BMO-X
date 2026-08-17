@@ -36,7 +36,7 @@ bmo-hash = { path = "../../platform/shared/bmo-hash" }
 bmo-dibujo = { path = "../../platform/shared/bmo-dibujo" }
 # La PUERTA: la decision de si un BEX es admisible. Sin alloc y sin
 # dependencias, para que sea la MISMA que corre en el toolchain al compilar.
-# Ver docs/EL_CONTRATO_DE_CARGA.md.
+# Ver docs/identidad/EL_CONTRATO_DE_CARGA.md.
 bmo-bex-gate = { path = "../../platform/abi/bmo-bex-gate" }
 # CABINA: telemetria omnisciente entre Ring 0 y Ring 3 (el cockpit del sistema).
 cabina-core = { path = "../../platform/services/cabina-core" }

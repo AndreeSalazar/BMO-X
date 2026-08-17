@@ -204,7 +204,7 @@ pub fn is_identified() -> bool {
 // ============================================================================
 
 /// **Donde SE PUEDE escribir, y por que.** Paso 2 de
-/// `docs/PLAN_ALMACENAMIENTO.md`.
+/// `docs/plan/PLAN_ALMACENAMIENTO.md`.
 ///
 /// # Por que vive en el CONTRATO y no en el kernel
 ///

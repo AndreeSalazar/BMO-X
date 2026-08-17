@@ -69,7 +69,7 @@ use super::Codegen;
 /// romper esa regla desalinearia todo lo de detras.
 /// La regla vive en `bmo_abi::types::disposicion::ranuras`: **es la convencion
 /// de llamada de BMO**, no una decision de C. Estaba aqui como `pub(super)` y a
-/// la vez documentada como ABI en `lang/cpp/CPP_ABI.md` -- y una regla que un
+/// la vez documentada como ABI en `toolchain/lang/cpp/CPP_ABI.md` -- y una regla que un
 /// documento llama ABI y el arbol guarda dentro de un lenguaje es una regla que
 /// el segundo lenguaje copia.
 pub(super) use bmo_abi::types::ranuras;

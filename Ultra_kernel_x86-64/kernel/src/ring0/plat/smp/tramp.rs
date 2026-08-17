@@ -187,7 +187,7 @@ pub fn apic_id() -> u32 {
 /// Donde aterriza el AP, ya en 64 bits. **Se apunta y se para.**
 ///
 /// No toca nada del kernel: ni CABINA, ni el planificador, ni un driver. Solo
-/// dos atomicas. Es el contrato de `docs/SMP_MAESTRO.md` -- un obrero que no
+/// dos atomicas. Es el contrato de `docs/maestro/SMP_MAESTRO.md` -- un obrero que no
 /// comparte estado no puede correr una carrera, y por eso esto es seguro con los
 /// 209 `static mut` que hay ahi fuera.
 #[unsafe(no_mangle)]

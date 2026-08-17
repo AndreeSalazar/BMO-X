@@ -289,7 +289,7 @@ juego .exe  ->  Wine (TODO el sistema)  ->  DXVK (solo graficos)  ->  Vulkan
 ```
 
 **DXVK sin Wine no arranca ni un juego.** Y Wine es exactamente la frontera que
-este proyecto decidio no cruzar -- ver `docs/ENTRAR_EN_SU_ECOSISTEMA.md`.
+este proyecto decidio no cruzar -- ver `docs/identidad/ENTRAR_EN_SU_ECOSISTEMA.md`.
 
 ## ★ Y el camino que SI lleva a los juegos antiguos
 
@@ -308,7 +308,7 @@ reescrito**, en C o C++ portable, y casi todos sobre **SDL**:
 
 Todos son **codigo fuente que se compila**, no binarios de Windows que
 traducir. Y todos hablan por SDL -- la palanca no 1 de
-`docs/QUE_DESBLOQUEA.md`, cuya capa de plataforma son **cuatro funciones** y de
+`docs/identidad/QUE_DESBLOQUEA.md`, cuya capa de plataforma son **cuatro funciones** y de
 las que BMO ya tiene tres.
 
 > **Para juegos antiguos el camino no es DXVK: es SDL + motores abiertos.**

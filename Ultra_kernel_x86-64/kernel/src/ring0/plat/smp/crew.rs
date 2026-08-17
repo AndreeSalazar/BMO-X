@@ -31,7 +31,7 @@
 //! marcos, el registro de programas, los contadores de USB. **Cada uno es una
 //! carrera el dia que corra un segundo nucleo dentro del kernel.**
 //!
-//! Es el contrato del `docs/SMP_MAESTRO.md` -- *"de Cell se copia el reparto,
+//! Es el contrato del `docs/maestro/SMP_MAESTRO.md` -- *"de Cell se copia el reparto,
 //! no el transporte"*--, y aqui el reparto cabe en cien lineas porque lo caro
 //! de Cell era el transporte, que en un CCX con 32 MB de L3 compartida **no hay
 //! que escribir**.

@@ -1,7 +1,7 @@
 # CPP_ABI -- el ABI de BMO C++, escrito el mismo dia que se implementa
 
 > **Escrito a mano. Se actualiza A LA VEZ que el codigo**, igual que
-> `lang/c/VERDAD.md`. Si este documento y `src/mangling.rs` no coinciden, el
+> `toolchain/lang/c/VERDAD.md`. Si este documento y `src/mangling.rs` no coinciden, el
 > que manda es el codigo y este fichero esta roto.
 >
 > Estado: **paso 4** (mangling y sobrecarga). Ver el orden en

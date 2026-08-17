@@ -1,6 +1,7 @@
 //! El modelo de objetos: bloques, atributos, nodos y entradas de directorio.
 //!
-//! Es la section 4 del diseno (`platform/services/timeback/ESTRATOS.md`). Aqui se
+//! Es la section 4 del diseno -- ESTRATOS.md, que **no esta en el repositorio**:
+//! ver el aviso al principio de `lib.rs`, en esta misma crate. Aqui se
 //! deciden las tres cosas que el documento dejaba abiertas: **como se
 //! direcciona un bloque, como crece un archivo, y como se guarda un
 //! directorio**.

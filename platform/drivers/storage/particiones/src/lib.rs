@@ -3,7 +3,7 @@
 //! # Por que vive fuera del kernel
 //!
 //! Salio de `ring0/dev/disk/mod.rs`, que tenia 893 lineas haciendo siete
-//! trabajos. El criterio del reparto --`docs/PLAN_ALMACENAMIENTO.md`, seccion
+//! trabajos. El criterio del reparto --`docs/plan/PLAN_ALMACENAMIENTO.md`, seccion
 //! 1-- es agrupar por **la pregunta que responde el fichero**, y de las siete
 //! preguntas hay dos que **no tocan hardware**. Esta es una de ellas:
 //!

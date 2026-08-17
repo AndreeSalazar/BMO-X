@@ -5,7 +5,7 @@
 //! Esto **no es un driver de audio**. Es el contrato: quien puede sonar, quien
 //! no, y que pasa con el aparato cuando el que lo tenia se muere. El driver de
 //! verdad --HD Audio, con su codec y su DMA-- es la casilla 5.1 de
-//! `docs/PLAN_DOOM.md` y es una pieza XL que todavia no existe.
+//! `docs/plan/PLAN_DOOM.md` y es una pieza XL que todavia no existe.
 //!
 //! Se escribe primero el contrato **a proposito**. La alternativa era escribir
 //! el driver y despues preguntarse quien tiene derecho a usarlo, y esa pregunta

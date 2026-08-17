@@ -13,7 +13,7 @@
 > `.bex` de **1.299.512 bytes**. Lo que queda para verlo correr es la FASE 2 --
 > seis funciones-- y ya no hay nada desconocido delante.
 >
-> `docs/QUE_DESBLOQUEA.md` dice **que falta y por que**. Este dice **en que
+> `docs/identidad/QUE_DESBLOQUEA.md` dice **que falta y por que**. Este dice **en que
 > orden, que bloquea a que, y como se sabe que una casilla esta hecha.** Es el
 > mismo trato que `toolchain/lang/cobol/PLAN_BANCA.md` tiene con la banca.
 >
@@ -181,7 +181,7 @@ sistema).** Las tres se encontraron mirando el codigo de DOOM y el del kernel a
 la vez, no compilando.
 
 Y una que no bloquea pero se llevaba media imagen: **el 90,3% de la seccion
-`data` de DOOM eran ceros** que viajaban en el fichero. Ver `docs/LA_RAM.md`.
+`data` de DOOM eran ceros** que viajaban en el fichero. Ver `docs/identidad/LA_RAM.md`.
 
 ---
 
@@ -263,7 +263,7 @@ O sea que la casilla 3.1 estaba bien contada por el lado de DOOM --que no lo
 slurpea-- y no se miro el lado de BMO, que si. **[x] Arreglado**: un archivo
 abierto para leer ya no se trae, se **refleja** -- un cursor de FAT32, una
 ventana de 64 KiB para las lecturas de siete bytes, y cada `fread` trayendo su
-rango del disco al bloque del programa. Ver `docs/LA_RAM.md`, seccion del 08-11.
+rango del disco al bloque del programa. Ver `docs/identidad/LA_RAM.md`, seccion del 08-11.
 
 Y la nota vieja de esta fila --*"el camino de lectura copia por un bufer de
 rebote del kernel... si duele, lo arregla el DMA al bufer del llamante"*-- queda
@@ -538,5 +538,5 @@ icono por defecto seria un cuadro macizo con una `D`.
 
 ---
 
-Ver [`QUE_DESBLOQUEA.md`](QUE_DESBLOQUEA.md) para el censo, `AVANCES.md` para el
+Ver [`QUE_DESBLOQUEA.md`](../identidad/QUE_DESBLOQUEA.md) para el censo, `AVANCES.md` para el
 estado y `BMO-externo/doom-port/` (fuera del repo) para la sonda y el unity.

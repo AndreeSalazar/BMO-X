@@ -311,7 +311,7 @@ pub fn revoke_all(pid: u32) {
 /// **Despues de `revoke_all` tiene que ser CERO.** Y hasta hoy nadie lo
 /// comprobaba: la funcion hace su trabajo y el que la llama se fia. Esto es lo
 /// que convierte "confio en que revoco" en "revoco, y aqui esta el numero" --
-/// el escalon 1 de `docs/PLAN_AUTOCURACION.md`.
+/// el escalon 1 de `docs/plan/PLAN_AUTOCURACION.md`.
 pub fn live_count_of(pid: u32) -> u32 {
     let pid = pid as usize;
     if pid >= MAX_PROCS {

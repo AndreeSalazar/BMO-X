@@ -2,7 +2,7 @@
 //!
 //! `cpuid` y compania contestan lo que la maquina ES. [`frecuencia`] mide lo que
 //! esta HACIENDO, que es otra pregunta y por eso es otro fichero -- ver la
-//! seccion 9 de `docs/AXION_MAESTRO.md`.
+//! seccion 9 de `docs/maestro/AXION_MAESTRO.md`.
 
 /// Cuanto GASTA la maquina ahora. Otra MEDIDA, y la que pone numero a AXION.
 pub mod power;

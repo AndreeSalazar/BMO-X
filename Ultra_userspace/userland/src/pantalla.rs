@@ -278,7 +278,7 @@ impl Pantalla {
     ///
     /// [!!] **ESTA FUNCION ENTERA ES PROVISIONAL.** Con un driver de pantalla no
     /// se copia nada: se cambia la direccion que lee el escaner de video y ya
-    /// esta (page flip). Es el escalon 8 de `docs/LA_RAM.md`, y su bloqueante
+    /// esta (page flip). Es el escalon 8 de `docs/identidad/LA_RAM.md`, y su bloqueante
     /// es que tras `ExitBootServices` el GOP no existe.
     ///
     /// Mover pixeles con el CPU **es trabajo de la GPU hecho por quien no

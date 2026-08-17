@@ -1,5 +1,5 @@
 //! **LA SALUD DEL BUS, COMO ESTADO.** La sexta exigencia (E6) de
-//! `docs/EL_TECLADO_EXIGE.md`.
+//! `docs/componente/EL_TECLADO_EXIGE.md`.
 //!
 //! === Por que este fichero existe, dicho de una vez ===
 //!

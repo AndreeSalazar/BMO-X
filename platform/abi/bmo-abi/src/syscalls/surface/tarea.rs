@@ -112,7 +112,7 @@ pub const TASK_OP_ENTRADA_SOLTAR: u64 = 0x1E;
 /// **El censo de audio**: que el aparato diga como quiere las muestras.
 ///
 /// Devuelve 1 si encontro uno de reproduccion; los ocho numeros van a CABINA,
-/// porque por la puerta cabe uno. Paso 0 de `docs/AUDIO_MAESTRO.md`.
+/// porque por la puerta cabe uno. Paso 0 de `docs/maestro/AUDIO_MAESTRO.md`.
 pub const TASK_OP_AUDIO_CENSO: u64 = 0x28;
 
 pub const TASK_OP_INFO: u64 = 0x13;

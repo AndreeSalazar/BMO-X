@@ -317,7 +317,7 @@ pub fn alive() -> (u32, u32) {
 // los motivos no son adorno: **"parado por orden" y "no contesto al trampolin"
 // se ven igual desde el contador y se arreglan en sitios opuestos**.
 
-/// En que estado esta un nucleo. Ver `docs/AXION_MAESTRO.md`.
+/// En que estado esta un nucleo. Ver `docs/maestro/AXION_MAESTRO.md`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Estado {
     /// El BSP. Dueno del kernel entero, y no se negocia.
@@ -405,7 +405,7 @@ pub fn estado_de(id: u32) -> Estado {
 /// En ingles a peticion del dueno, y aqui las dos palabras hacen falta juntas:
 /// `12 hilos` no dice si son doce nucleos o seis con SMT, y **la diferencia
 /// decide el reparto** -- una faena de calculo denso quiere seis obreros, no
-/// doce (ver `docs/AXION_MAESTRO.md`, apartado 3).
+/// doce (ver `docs/maestro/AXION_MAESTRO.md`, apartado 3).
 ///
 /// == De donde sale, y que se esta suponiendo ==
 ///
@@ -456,7 +456,7 @@ pub fn tipo_de(id: u32) -> &'static str {
 /// once.
 ///
 /// Existe para que el dia que entre `MWAIT` la mejora se pueda **medir** en vez
-/// de suponerla. Ver el apartado 5 de `docs/AXION_MAESTRO.md`.
+/// de suponerla. Ver el apartado 5 de `docs/maestro/AXION_MAESTRO.md`.
 pub fn girando() -> u32 {
     if crew::parados() {
         0

@@ -68,7 +68,7 @@ exactamente para esto. TLS sigue siendo aparte.
 > ⚠ **2026-08-11**: `smoltcp` era dependencia del crate `bmo-net` y se quito con
 > el resto. No era una decision contra ella -- es que **la pila no va en Ring
 > 0**, y aquel crate estaba en el kernel. Cuando vuelva sera dentro de un
-> programa de Ring 3, que es su sitio. Ver [`RED_MAESTRO.md`](RED_MAESTRO.md).
+> programa de Ring 3, que es su sitio. Ver [`RED_MAESTRO.md`](../maestro/RED_MAESTRO.md).
 
 ---
 
@@ -281,7 +281,7 @@ ya estan escritas**.
 
 ## 1 - EL ENLAZADOR -- ★★ 5/5, CERRADO EL 2026-08-07
 
-**Camino B** (funciones sintetizadas), el decidido en `forge/README.md`.
+**Camino B** (funciones sintetizadas), el decidido en `toolchain/forge/README.md`.
 
 | # | Pieza | Estado |
 |---|---|---|

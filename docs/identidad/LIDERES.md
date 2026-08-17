@@ -4,7 +4,7 @@
 > ventana F10 tuvo que tomar y devolver el aparato para no dejar mudo a todo lo
 > demas.
 >
-> `docs/PLAN_DOOM.md` dice **que falta para jugar**. Este dice **quien manda
+> `docs/plan/PLAN_DOOM.md` dice **que falta para jugar**. Este dice **quien manda
 > sobre cada aparato, y como reparte lo que le dieron.**
 
 ## La idea, en una frase
@@ -235,5 +235,5 @@ USB. La casilla 1.1 ya no esta en esta lista -- el backbuffer se borro el 08-09.
 
 ---
 
-Ver [`PLAN_DOOM.md`](PLAN_DOOM.md) para el orden de DOOM, y
+Ver [`PLAN_DOOM.md`](../plan/PLAN_DOOM.md) para el orden de DOOM, y
 [`QUE_DESBLOQUEA.md`](QUE_DESBLOQUEA.md) para el censo de lo que falta.

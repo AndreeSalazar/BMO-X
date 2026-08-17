@@ -3,7 +3,7 @@
 //! Lo que hay al otro lado es un CONTRATO, no un motor de audio: el derecho a
 //! hacer ruido, exclusivo, que se recupera solo cuando su dueno muere. El
 //! driver de HD Audio es otra cosa y todavia no existe -- ver
-//! `docs/PLAN_DOOM.md`, fase 5.
+//! `docs/plan/PLAN_DOOM.md`, fase 5.
 //!
 //! Por eso lo unico que suena hoy es el altavoz del PC, y [`Sonido::aparatos`]
 //! lo dice en vez de que haya que suponerlo. **Preguntar y no suponer** es todo

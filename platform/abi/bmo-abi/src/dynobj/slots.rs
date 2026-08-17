@@ -7,7 +7,7 @@
 //! nothing. The number indexes a vtable in user memory, so the dispatch is a
 //! `call [rax+N*8]`, not a `syscall`. The measurement on 2026-08-16 is why:
 //! a door costs ~2570 cycles and a call ~20, and `a + b` is the innermost
-//! operation of the language. See `docs/PYTHON_MAESTRO.md` section 4b.
+//! operation of the language. See `docs/maestro/PYTHON_MAESTRO.md` section 4b.
 //!
 //! It is the same table-shaped growth as `TASK_OP_*` and `sem-asm`: adding an
 //! operation is a row, not a redesign.

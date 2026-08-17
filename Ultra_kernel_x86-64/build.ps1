@@ -169,6 +169,50 @@ if (-not $python) {
     }
 }
 
+# ---------------------------------------------------------------------------
+# ** EL QUINTO GUARDIAN: LAS CITAS A DOCUMENTOS (2026-08-17).
+#
+# El arbol cita documentos desde el kernel, desde los `Cargo.toml`, desde este
+# mismo fichero y desde los ejemplos de C: casi cuatrocientas veces. Nada lo
+# comprobaba, y un puntero roto no falla -- manda al lector a la nada, y el
+# lector concluye que el documento nunca se escribio.
+#
+# El dia que se escribio el guardian encontro catorce. Una de ellas apuntaba a
+# AVANCES.md dentro de docs/, cuando ese fichero vive en la raiz, y **no habia
+# resuelto nunca**: estaba en un documento cuyo trabajo entero es mandar al
+# lector a otro sitio.
+#
+# ** Y el ejemplo de arriba va SIN backticks a proposito: este guardian no sabe
+# distinguir una cita de la CITA DE UNA CITA ROTA, y tiene razon -- si el
+# ejemplo tiene forma de ruta, es una ruta. Se cazo a si mismo en este
+# comentario el dia que se escribio.
+#
+# ** Por que va aqui y no en un banco de pruebas: los documentos se mueven con
+# `git mv` y las citas no se mueven con ellos. Eso pasa mientras se trabaja, no
+# en el despliegue -- y `-BuildOnly` es lo que se corre veinte veces al dia.
+# Es la leccion que ya dejo escrita el guardian del `.h`: el que se corre a mano
+# no protege igual que el que se corre solo.
+#
+# Mismo trato que la codificacion: sin Python se avisa y se sigue; si corre y
+# falla, el build para.
+Step 'Validating document citations resolve'
+$enlaces = Join-Path (Split-Path -Parent $root) 'toolchain\tools\enlaces\enlaces.py'
+if (-not $python) {
+    Write-Host '  [!] python no encontrado: no se comprueban las citas' -ForegroundColor Yellow
+} elseif (-not (Test-Path $enlaces)) {
+    Write-Host '  [!] falta enlaces.py: no se comprueban las citas' -ForegroundColor Yellow
+} else {
+    $env:PYTHONIOENCODING = 'utf-8'
+    $lnkOut = & $python.Source $enlaces --check
+    if ($LASTEXITCODE -ne 0) {
+        $lnkOut | ForEach-Object { Write-Host ('    ' + $_) -ForegroundColor Red }
+        Fail 'citas: hay documentos citados que no existen (ver arriba)'
+    }
+    $lnkOut | Where-Object { $_ -match 'clean:' } | ForEach-Object {
+        Write-Host ('    ' + $_.Trim()) -ForegroundColor DarkGray
+    }
+}
+
 # Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
 Step 'Validating Ring 0 syscall contract'
 # Las operaciones del kernel no viven todas en `syscall.rs`: las de un objeto
@@ -691,7 +735,7 @@ $cEjemplos = @(
     # actual, e `INVOKE` sobre un handle de verdad. Se queda con el MINIMO,
     # porque el temporizador expropia y una media se puede inflar. Decide si
     # algo puede pasar por la superficie o tiene que ser codigo enlazado --
-    # empezando por el runtime de Python. Ver `docs/PYTHON_MAESTRO.md`.
+    # empezando por el runtime de Python. Ver `docs/maestro/PYTHON_MAESTRO.md`.
     @{ src = 'toolchain\lang\c\examples\coste_C.c';     out = 'coste.bex'  ; dir = 'c' }
 )
 
@@ -943,7 +987,7 @@ try {
             # El WAD va al lado, tal cual. **No se empaqueta dentro del `.bex`**
             # aunque el formato lo permita: `lanzar.rs::con_buffer` se trae el
             # fichero ENTERO a un bufer de 4 MiB, asi que un paquete de 5,5 MB
-            # no arrancaria. Ver el escalon 2 de `docs\LA_RAM.md` -- el dia que
+            # no arrancaria. Ver el escalon 2 de `docs\identidad\LA_RAM.md` -- el dia que
             # el cargador lea solo lo cargable, esto pasa a ser un `bmo-pack`.
             if (Test-Path $doomWad) {
                 $wadDst = Join-Path (Join-Path $dataBase 'apps') 'doom1.wad'

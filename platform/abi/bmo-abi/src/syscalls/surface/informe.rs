@@ -519,7 +519,7 @@ pub const INFO_FECHA: u64 = 0x1F;
 
 /// -- ** LA SALUD DEL BUS USB, COMO ESTADO ---------------------------------
 ///
-/// La sexta exigencia de `docs/EL_TECLADO_EXIGE.md`, y la regla que la ordena:
+/// La sexta exigencia de `docs/componente/EL_TECLADO_EXIGE.md`, y la regla que la ordena:
 ///
 /// > **Una averia viva es un ESTADO, no un evento.** Un aviso se dice una vez e
 /// > informa a quien ya estaba mirando; una averia que sigue ocurriendo

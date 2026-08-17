@@ -234,7 +234,7 @@ int main() {
     assert_eq!(out, "1\n");
 }
 
-/// ** CUANDO NO CABE, SE DICE. Regla 2 de `docs/LA_RAM.md`: `malloc` no miente.
+/// ** CUANDO NO CABE, SE DICE. Regla 2 de `docs/identidad/LA_RAM.md`: `malloc` no miente.
 ///
 /// El monton por defecto es 1 MiB; pedir 4 MiB no puede colar. Y despues de
 /// decir que no, el monton **sigue sirviendo**: un "no" no puede dejarlo roto.

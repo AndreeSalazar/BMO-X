@@ -49,7 +49,7 @@ use super::ui::{row, L, SH_TITLE, SH_VALUE};
 /// compararla a ojo con la que diga cualquier otro sistema.
 /// **`audio`** -- le pregunta al aparato de audio como quiere las muestras.
 ///
-/// Paso 0 de `docs/AUDIO_MAESTRO.md`. Es una ORDEN y no un paso del arranque
+/// Paso 0 de `docs/maestro/AUDIO_MAESTRO.md`. Es una ORDEN y no un paso del arranque
 /// por lo mismo que `smp` y `net rx`: enumerar un puerto lo RESETEA, y aunque
 /// aqui solo se tocan puertos que `bmo_uhid` no tomo, esa clase de operacion se
 /// dispara a proposito y no por encender la maquina.
@@ -163,7 +163,7 @@ pub(crate) fn shell_red(arg: &[u8]) {
     // the diagnostic command.
     if arg != b"rx" {
         s_log("[red] `net rx` arma el receptor y enseNa las tramas que lleguen");
-        s_log("[red] no se transmite nada: ver docs/RED_MAESTRO.md, paso 1");
+        s_log("[red] no se transmite nada: ver docs/maestro/RED_MAESTRO.md, paso 1");
         return;
     }
     if !id.enlace_arriba() {
@@ -468,11 +468,11 @@ pub(crate) fn shell_tasks() {
 /// trampolin corre en modo real, antes de que exista nada, y no lo ha ejecutado
 /// ningun CPU todavia. Si esta mal, lo que se cuelga es este comando y no la
 /// maquina al encenderla; la salida es un reinicio a boton. Ver
-/// `plat/smp.rs` y `docs/SMP_MAESTRO.md`.
+/// `plat/smp.rs` y `docs/maestro/SMP_MAESTRO.md`.
 /// **La tabla de nucleos: en que esta cada uno y POR QUE.**
 ///
 /// Es la mitad de AXION que se puede tener hoy sin tocar el hardware -- ver
-/// `docs/AXION_MAESTRO.md`, apartado 4. No manda: **mira**, y eso ya cambia
+/// `docs/maestro/AXION_MAESTRO.md`, apartado 4. No manda: **mira**, y eso ya cambia
 /// algo, porque hasta ahora la unica pregunta que el sistema sabia contestar
 /// era *cuantos* estan en pie.
 ///

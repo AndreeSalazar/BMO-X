@@ -173,7 +173,7 @@ pub struct ExFatNameEntry {
 /// declara el contrato de bloques de BMO --leer, escribir, capacidad,
 /// identidad, `flush`-- y FAT32 lo esquivaba con una puerta propia. Un
 /// contrato con puertas traseras no es un contrato; medido en
-/// `docs/PLAN_ALMACENAMIENTO.md`, seccion 0.1.
+/// `docs/plan/PLAN_ALMACENAMIENTO.md`, seccion 0.1.
 ///
 /// Lo que se gana al entrar por la puerta:
 ///
