@@ -1,5 +1,23 @@
 //! **THE DOOR ITSELF** -- the naked entry stub and its installation.
 //!
+//! ```text
+//!    [eje]     LATENCIA -- the only axis. Nothing here is allowed to trade
+//!              cycles for anything, because everything else waits on it
+//!    [camino]  P1 la puerta -- 100% of every door, no exceptions
+//!    [coste]   ~780 of the 872 cycles a bare door costs: 89%
+//!    [fila]    ** NINGUNA. This is the most expensive piece in the tree
+//!              without a budget row, and that is the open debt of P1
+//!    [gen]     ABUELO -- it does not know which operation was asked for.
+//!              That ignorance is load-bearing: it is what makes "the 246
+//!              cycles cannot be here" a falsifiable claim and not a hunch
+//!    [exige]   R-CPU1, R-CPU3 (save/restore is not symmetric), R-CPU4
+//! ```
+//!
+//! [!] **What the tag forbids**: reading `frame.rsi` here to do anything per
+//! operation. The moment this stub branches on the operation, the residual that
+//! separates "assembler" from "Rust" stops meaning anything -- and that
+//! residual is the only number that says where the ~570 unaccounted cycles are.
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because it is the only code in the kernel that runs with **no frame, no

@@ -1,5 +1,21 @@
 //! x86-64 SYSCALL entry and BMO ABI v2 dispatcher (**2** frozen syscalls).
 //!
+//! ```text
+//!    [eje]     LATENCIA -- pays SIZE (the match arms) to buy cycles
+//!    [camino]  P1 la puerta -- 100% of every door
+//!    [coste]   ~90 cycles, of which ~69 are the meter's own two `rdtsc`
+//!    [fila]    DISPATCH (techo 105, meta 60)
+//!    [gen]     PADRE -- knows WHICH door and whether the handle is
+//!              `CURRENT_TASK`. It does not know what an object means; that
+//!              is the grandchild's job, in `obj/*.rs`
+//!    [exige]   R-CPU1, R-CPU2, R-BUS2 (nothing here touches MMIO under a
+//!              foreign CR3), R-TIME1
+//! ```
+//!
+//! ** The `meta` of 60 is not reached by tuning the two-arm `match`: ~69 of the
+//! ~90 measured are the thermometer. It is reached by taking the meter out with
+//! a `cfg`. Said here because this is the file somebody would come to optimise.
+//!
 //! [!] Decia "3" hasta el 2026-08-11, y llevaba diciendolo desde que
 //! `CHANNEL_KICK` se retiro el 10-08 -- en este mismo fichero, cuarenta lineas
 //! mas abajo, donde esta contado por que se fue. La cabecera de un modulo es lo
@@ -1076,6 +1092,34 @@ extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
         crate::ring0::task::percpu::trap_rsp(),
         scheduler::current_tid(),
     );
+    // ** DE QUE CLASE ES ESTA PUERTA -- lo que faltaba para saber DONDE se usa.
+    //
+    // Tres hechos que ya estan en registros --que puerta es, si el handle es
+    // `CURRENT_TASK`, y si la operacion es la de consola-- y **ninguna lista**.
+    // El coste de cada clase ya estaba medido (~875 / ~1125 / ~2,2 M); lo que no
+    // se sabia es cuantas veces se pide cada una, y un coste por vez sin veces
+    // por segundo no es un porcentaje.
+    //
+    // [!] Va DENTRO de la ventana del metro a proposito. Son ~3 ciclos y caen en
+    // la fila `DISPATCH`, que es donde vive este codigo. Ponerlo antes de
+    // `meter::start` los esconderia en el residuo del stub -- y el residuo es
+    // justo el numero que no se puede ensuciar, porque es el unico que dice
+    // donde estan los ~570 ciclos todavia sin localizar.
+    let clase = match frame.rax as u32 {
+        NR_INVOKE if frame.rdi == CURRENT_TASK && frame.rsi == TASK_OP_CONSOLE_WRITE => {
+            SYSCALL_CLASS_CONSOLE
+        }
+        NR_INVOKE if frame.rdi == CURRENT_TASK => SYSCALL_CLASS_TASK,
+        NR_INVOKE => SYSCALL_CLASS_HANDLE,
+        NR_WAIT => SYSCALL_CLASS_WAIT,
+        // La puerta RETIRADA no es ninguna de las cuatro, y no se le inventa una
+        // casilla: se deja fuera del histograma a proposito. Lo que falte al
+        // sumar las cuatro contra `meter::doors()` es exactamente eso, y esa
+        // resta es la comprobacion del instrumento -- si algun dia sale grande,
+        // hay trafico que este reparto no esta viendo.
+        _ => SYSCALL_CLASS_COUNT,
+    };
+    meter::count_class(clase as usize);
     let status = match frame.rax as u32 {
         NR_INVOKE => invoke(frame),
         NR_WAIT => wait(frame),
