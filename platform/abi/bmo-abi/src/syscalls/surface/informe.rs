@@ -757,6 +757,35 @@ pub const INFO_DISCO_TRIM_SECTORES: u64 = 0x43;
 /// "cuanto" no tiene con que compararse.
 pub const INFO_DISCO_TRIM_ORDENES: u64 = 0x44;
 
+/// # `INFO_DISCO_COLA_LBA` / `..._SECTORES`: **el rango que se va a recortar**
+///
+/// El primer LBA de la cola libre del volumen ESTRATOS y cuantos sectores mide.
+/// `0` = no hay volumen montado, o la cola esta vacia.
+///
+/// ** Existen para que **la propuesta y la orden lean el mismo numero**. Ring 3
+/// podia sacarlos de `INFO_ES_BLOQUES`, `INFO_ES_USADOS` y `INFO_ES_BLOQUE_TAM`,
+/// y esa cuenta paralela es exactamente la clase de cosa que esta casa persigue:
+/// dos fuentes de una sola verdad se separan, y separarse aqui significa
+/// **ensenar un rango y recortar otro**. Los dos lados llaman ahora a
+/// `estratos::cola_libre()`.
+///
+/// [!] Y siguen siendo una FOTO: entre preguntar y mandar la orden, el volumen
+/// puede haber crecido. No importa, y por eso se dice -- el kernel recalcula al
+/// recortar y la ventana de escritura juzga lo que se manda, no lo que se
+/// pinto.
+pub const INFO_DISCO_COLA_LBA: u64 = 0x45;
+pub const INFO_DISCO_COLA_SECTORES: u64 = 0x46;
+
+/// # `INFO_DISCO_TRIM_BLOQUES`: cuanto cabe en UNA orden (palabra 105)
+///
+/// Bloques de payload de 512 B. Uno son 64 descriptores, o sea hasta ~2 GiB de
+/// disco por orden.
+///
+/// ** Nunca contesta 0: ACS-3 garantiza que un bloque siempre se admite, y el
+/// cero de la palabra 105 es **el disco callandose**, no un "no puedo". La
+/// traduccion la hace `bmo-identify`, no quien pregunta.
+pub const INFO_DISCO_TRIM_BLOQUES: u64 = 0x47;
+
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 

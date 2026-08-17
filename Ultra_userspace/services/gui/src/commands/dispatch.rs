@@ -66,13 +66,20 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         // ** El unico brazo del router que puede ACTUAR sobre el almacen, y por
         // eso las subordenes se separan aqui y no dentro de una funcion: en esta
         // lista se ve de un vistazo que `trim ya` es la unica que hace algo.
-        Command::Disco(arg) => match arg {
-            b"" => disco::cuadro(dsk, p),
-            b"espacio" | b"libre" => disco::solo_espacio(dsk, p),
-            b"trim" | b"recorta" | b"recortar" => disco::trim_propuesta(dsk, p),
-            b"trim ya" | b"recorta ya" | b"recortar ya" => disco::trim_ya(dsk, p),
-            b"barrera" | b"flush" | b"vacia" => disco::barrera(dsk, p),
-            otro => disco::no_existe(dsk, p, otro),
+        // ** La suborden y su argumento llegan YA partidos (ver `Command::Disco`).
+        // El unico brazo que hace algo es `(trim, ya)`, y se lee de un vistazo
+        // que hacen falta las DOS palabras para que el disco se mueva.
+        Command::Disco(sub, arg) => match (sub, arg) {
+            (b"", _) => disco::cuadro(dsk, p),
+            (b"espacio" | b"libre", _) => disco::solo_espacio(dsk, p),
+            (b"barrera" | b"flush" | b"vacia", _) => disco::barrera(dsk, p),
+            (b"trim" | b"recorta" | b"recortar", b"ya") => disco::trim_ya(dsk, p),
+            (b"trim" | b"recorta" | b"recortar", b"") => disco::trim_propuesta(dsk, p),
+            // `disco trim manana` no es "no lo conozco": es un `trim` con una
+            // palabra que sobra. Se ensena la propuesta --que es inofensiva-- y
+            // se dice cual era la palabra buena, en vez de mandar a leer `help`.
+            (b"trim" | b"recorta" | b"recortar", otro) => disco::trim_argumento(dsk, p, otro),
+            (otro, _) => disco::no_existe(dsk, p, otro),
         },
         Command::Reboot => system::reboot(dsk, p),
         // `run` se queda en `_start`: se lleva la pantalla POR VALOR.

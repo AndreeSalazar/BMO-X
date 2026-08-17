@@ -117,6 +117,11 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     // de administracion va a querer saber es si el recorte de ayer llego.
     ("BMO_INFO_DISCO_TRIM_SECTORES", "INFO_DISCO_TRIM_SECTORES", 0x43),
     ("BMO_INFO_DISCO_TRIM_ORDENES", "INFO_DISCO_TRIM_ORDENES", 0x44),
+    // Y el rango que se va a recortar, que es el que la propuesta ENSENA y la
+    // orden EJECUTA -- una sola cuenta, servida por el kernel.
+    ("BMO_INFO_DISCO_COLA_LBA", "INFO_DISCO_COLA_LBA", 0x45),
+    ("BMO_INFO_DISCO_COLA_SECTORES", "INFO_DISCO_COLA_SECTORES", 0x46),
+    ("BMO_INFO_DISCO_TRIM_BLOQUES", "INFO_DISCO_TRIM_BLOQUES", 0x47),
     // El censo de extensiones. Cruza por el mismo motivo que el metro: lo
     // sirve el kernel y lo leen dos lados distintos -- el escritorio en Rust y
     // cualquier `.bex` de C que quiera saber si tiene RDRAND antes de usarlo.
@@ -256,6 +261,9 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_DISCO_JUICIO", s::INFO_DISCO_JUICIO),
         ("BMO_INFO_DISCO_TRIM_SECTORES", s::INFO_DISCO_TRIM_SECTORES),
         ("BMO_INFO_DISCO_TRIM_ORDENES", s::INFO_DISCO_TRIM_ORDENES),
+        ("BMO_INFO_DISCO_COLA_LBA", s::INFO_DISCO_COLA_LBA),
+        ("BMO_INFO_DISCO_COLA_SECTORES", s::INFO_DISCO_COLA_SECTORES),
+        ("BMO_INFO_DISCO_TRIM_BLOQUES", s::INFO_DISCO_TRIM_BLOQUES),
         ("BMO_INFO_CPU_EXT_N", s::INFO_CPU_EXT_N),
         ("BMO_INFO_CPU_EXT_HAY", s::INFO_CPU_EXT_HAY),
         ("BMO_INFO_CPU_EXT_USA", s::INFO_CPU_EXT_USA),

@@ -149,7 +149,14 @@ pub(crate) enum Command<'a> {
     /// cortesia: es la unica orden del escritorio que no se puede deshacer.
     ///
     /// [!] Y **ninguna acepta un LBA**. Ver `commands/disco.rs`.
-    Disco(&'a [u8]),
+    ///
+    /// ** Lleva DOS trozos --la suborden y su argumento-- y no la cola en crudo.
+    /// La primera version comparaba la cadena entera contra `b"trim ya"`, o sea
+    /// que `disco trim  ya` con dos espacios **no era la misma orden**: caia en
+    /// "no la conozco" sin decir por que. Partir por el primer espacio es lo que
+    /// [`parse`] ya hace con el verbo de arriba; hacerlo una vez mas cuesta dos
+    /// lineas y quita una clase entera de sorpresa.
+    Disco(&'a [u8], &'a [u8]),
     /// `reboot` -- reinicia la maquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aqui contestaba "no lo
@@ -328,7 +335,17 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // ordenes del escritorio que puede cambiar el almacen, y `trim` suelto
         // seria un verbo de cuatro letras con consecuencias que no se deshacen.
         // `almacen` entra como sinonimo porque es la palabra del diseno.
-        b"disco" | b"almacen" => Command::Disco(rest),
+        b"disco" | b"almacen" => {
+            // La suborden y su argumento, con la MISMA regla que el verbo de
+            // arriba: hasta el primer espacio, y lo que sigue sin los espacios
+            // de delante. Asi `disco trim ya` y `disco trim   ya` son la misma
+            // orden, que es lo que cualquiera espera al teclear.
+            let k = rest.iter().position(|&c| c == b' ').unwrap_or(rest.len());
+            let (sub, arg) = rest.split_at(k);
+            let mut j = 0;
+            while j < arg.len() && arg[j] == b' ' { j += 1; }
+            Command::Disco(sub, &arg[j..])
+        }
         b"cpu" | b"procesador" => Command::Cpu,
         // Los mismos dos nombres que el shell de Ring 0, para que lo que se
         // aprende en un sitio valga en el otro.

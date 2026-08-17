@@ -200,6 +200,21 @@
 #define BMO_INFO_DISCO_TRIM_SECTORES     0x43
 #define BMO_INFO_DISCO_TRIM_ORDENES      0x44
 
+/* -- ** EL RANGO QUE SE VA A RECORTAR, y lo que cabe en una orden ----
+ *
+ * COLA_LBA / COLA_SECTORES son la cola libre del volumen ESTRATOS **tal como
+ * la va a usar el recorte**: los sirve la misma funcion del kernel que manda
+ * la orden. Se podian deducir de las filas `INFO_ES_*`, y deducirlos era tener
+ * dos cuentas de la misma verdad -- la que se ensena y la que se ejecuta.
+ * 0 = no hay volumen montado, o la cola esta vacia.
+ *
+ * TRIM_BLOQUES es la palabra 105: bloques de payload de 512 B por orden, y uno
+ * son 64 descriptores (~2 GiB de disco). [!] NUNCA contesta 0 -- ACS-3
+ * garantiza uno, y el cero de esa palabra es el disco callandose. */
+#define BMO_INFO_DISCO_COLA_LBA          0x45
+#define BMO_INFO_DISCO_COLA_SECTORES     0x46
+#define BMO_INFO_DISCO_TRIM_BLOQUES      0x47
+
 /* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
  *
  * Cuantas filas cubre el censo, y dos mascaras sobre ESA lista en ESE orden:

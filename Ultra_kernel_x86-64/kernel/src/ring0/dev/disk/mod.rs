@@ -47,7 +47,7 @@ mod gate;
 // de verdad vive FUERA del kernel, en cuatro generaciones (L7): `bmo-identify`
 // para los hechos y `bmo-disco-juicio` para el veredicto. Aqui solo se pega.
 mod perfil;
-pub use perfil::{enlace, geometria, juicio, medio};
+pub use perfil::{enlace, geometria, juicio, medio, trim_bloques_max};
 /// ** DEVOLVER SECTORES AL DISCO. Destructivo, asi que pasa por los MISMOS
 /// guardianes que escribir y por uno propio: lo que el aparato declaro.
 mod trim;
