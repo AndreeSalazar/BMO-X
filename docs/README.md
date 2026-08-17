@@ -65,10 +65,11 @@ citan entre si por nombre y declaran que son la misma clase de documento.
 | [`LA_PUERTA_POR_DENTRO.md`](componente/LA_PUERTA_POR_DENTRO.md) | C1 CPU | una puerta = **945 ciclos**, y el handle son 236 de ellos |
 | [`EL_COMPOSITOR_Y_EL_ESCANER.md`](componente/EL_COMPOSITOR_Y_EL_ESCANER.md) | C5 FRAMEBUFFER | volcar la pantalla = **27,6 ms** contra 16,7 de un frame |
 | [`EL_TECLADO_EXIGE.md`](componente/EL_TECLADO_EXIGE.md) | C7 USB | **seis exigencias**, y el numero que dice cual fallo |
+| [`EL_DISCO_EXIGE.md`](componente/EL_DISCO_EXIGE.md) | C6 DISCO | una busqueda de HDD = **59 millones de ciclos**; y la ranura 0 de 32 |
 
-### ★★ La simetria, y sus nueve huecos
+### ★★ La simetria, y sus ocho huecos
 
-**La ley declara DOCE componentes y aqui hay TRES capitulos.** Eso no es una
+**La ley declara DOCE componentes y aqui hay CUATRO capitulos.** Eso no es una
 carencia escondida: es la simetria que hace visible el hueco (L6c), y por eso se
 escribe la lista entera en vez de solo lo que existe.
 
@@ -79,7 +80,7 @@ escribe la lista entera en vez de solo lo que existe.
    C3  RAM/MMU        lo cubre identidad/LA_RAM.md, que es OTRA pregunta
    C4  BUS/MMIO       falta
    C5  FRAMEBUFFER    HAY capitulo
-   C6  DISCO          falta
+   C6  DISCO          HAY capitulo
    C7  USB            HAY capitulo
    C8  RELOJES        falta -- y es del que depende todo lo medido
    C9  IRQ            falta
