@@ -606,6 +606,23 @@ el endpoint en `Running` y sin un solo error.
 - **R-USB4.** No se enciende una bomba mientras todavia se enumera.
 - **R-USB5.** Un recurso pedido en un camino que puede fallar **se devuelve en la
   MISMA funcion** que lo pidio.
+- **R-USB6.** ★★ **UNA AVERIA VIVA ES UN ESTADO, NO UN EVENTO.** Un `fault()` se
+  dice una vez e informa a quien ya estaba mirando; una averia que **sigue
+  ocurriendo** necesita un indicador encendido mientras dure, y **en el sitio
+  donde vive el dueno** -- el escritorio, no un log que hay que abrir.
+  *"El bus no late"* no es una noticia: es una condicion, y una condicion se
+  pinta como una luz. Es el patron 33 con una vuelta mas: alli el motivo salia
+  por un canal cerrado; aqui sale por uno abierto **pero una sola vez**. Aplica
+  igual a `sin RAPL`, `disco no listo` y `fugas > 0`.
+- **R-USB7.** Un endpoint **parado** (`Halted`) no se reintenta: **se resucita**,
+  y en el orden de la spec -- `Reset Endpoint`, luego `Set TR Dequeue Pointer`,
+  y solo entonces encolar y tocar el timbre. El xHC **ignora el timbre de un
+  endpoint parado**, asi que reintentar sin resucitar es tocar un timbre roto; y
+  resetear sin recolocar el puntero deja el endpoint leyendo TRBs viejos.
+
+★ Ver `docs/EL_TECLADO_EXIGE.md`: las **seis exigencias** del teclado con su
+estado y, sobre todo, **el numero que dice cual fallo**. Cinco estan puestas; la
+que falta es R-USB6.
 
 **EL PRECIO.** Un teclado programado a **35 minutos** entre sondeos porque el
 `bInterval` crudo se escribio donde iba un exponente -- y Configure Endpoint
