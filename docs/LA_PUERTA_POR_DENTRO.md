@@ -306,6 +306,27 @@ optimizar. Por encima de eso el que esta mal es el DISENO de la app, no el
 kernel -- y ninguna cantidad de afinado del stub lo va a salvar. Es R-CPU1 con
 su cifra al lado.
 
+### ★★ Y el reparto de trabajo con el silicio, dicho en una linea
+
+Lo formulo el dueno el 17-08 --*"BMO-X solo prepara la base; las CPU que lleguen
+son los multiplicadores"*-- y es exacto, con una precision que conviene escribir:
+
+```
+   BMO-X es dueno de     los CICLOS por operacion       945
+   el CPU es dueno de    los CICLOS POR SEGUNDO      4.513.000.000
+```
+
+**Un CPU mas rapido no hace la puerta mas barata: hace el mismo trabajo antes.**
+Los 945 ciclos son casi los mismos en cualquier x86-64 de esta generacion --las
+transiciones de privilegio son microcodigo y los fallos de cache son memoria--,
+y lo que cambia es cuanto dura un ciclo. De ahi que la cifra honesta para
+comparar maquinas sea la RAZON sobre el suelo (5,6x) y no los nanosegundos.
+
+O sea: **la unica palanca que tiene esta casa es bajar el numero de ciclos, y la
+unica palanca que tiene el silicio es acortarlos.** Son dos trabajos distintos y
+ninguno sustituye al otro -- por eso el presupuesto va en ticks y el perfil los
+traduce.
+
 **Lo que eso decide, hoy, en cosas que ya existen:**
 
 ```
