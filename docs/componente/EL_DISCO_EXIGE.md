@@ -65,8 +65,9 @@ proposito**: asi se puede estar en desacuerdo con la conclusion sin perder la
 evidencia. Un veredicto que aparece sin lo que lo sostiene no se puede discutir,
 solo creer.
 
-[!] **Nada de esto ha tocado un CPU todavia.** Compila, pasa sus pruebas y esta
-razonado. Lo que la primera tanda contesta esta en la section 10.
+✅ **Y ya corrio en el Ryzen el mismo dia**: las siete palabras se leen bien y
+las tres restas cuadran. La foto y lo que convierte en `[MEDIDO]` estan en la
+section 10.
 
 ---
 
@@ -278,6 +279,16 @@ capitulo anade:
   al lado **la ventana en que dejaria de serlo**: cuantos GB seguidos y a que
   profundidad de cola.
 
+- **R-DISCO11.** ★★ **UNA CAPACIDAD DECLARADA QUE NADIE EJERCITA NO ES UNA
+  CAPACIDAD: ES UNA AFIRMACION SIN PROBAR.** Un campo del hardware es tan fiable
+  como el camino que lo recorre, y para todo disco del mundo ese camino es el
+  arranque del sistema mayoritario. De ahi que **cuanto mas NUEVO es un campo,
+  menos se puede creer** -- la palabra 217 no fallaba por dificil, fallaba por
+  recien nacida. Y de ahi la segunda mitad: **la unidad de confianza no es el
+  aparato, es la terna aparato + ranura + driver**, porque el mismo disco con el
+  mismo firmware corrompio datos en AMD y no en Intel. Desarrollo en la
+  section 11.
+
 - **R-DISCO10.** ★ **SIN TRIM, EL RECOLECTOR DEL FS TRABAJA PARA NADA.** Soltar
   un bloque en ESTRATOS lo libera *para el FS*; el disco sigue creyendolo vivo y
   lo sigue copiando en cada recoleccion interna. El recolector de la section 9 de
@@ -386,7 +397,59 @@ obligatoriamente es tambien el unico que se puede **cazar por su sombra**.
 
 ---
 
-## 10. ★ LA PRIMERA TANDA: que contesta, y que descarta cada respuesta
+## 10. ✅ LA PRIMERA TANDA YA CONTESTO (2026-08-17, `SALIDA.TXT`)
+
+```text
+   medio      ESTADO SOLIDO -- no paga busqueda de cabezal
+   cable      SATA Gen3 soportado / Gen3 negociado
+   cola       el disco admite 32, BMO usa 1   31 RANURAS PARADAS
+   sector     1 logicos por fisico = 512 B
+   perfil     reconocido   (sus cifras son de CATALOGO, no medidas)
+   trim       si
+   barrera    el FLUSH CACHE es LO UNICO: este disco no termina lo que empezo
+   alinear a  2048 KiB   (declarado por el perfil, no leido)
+```
+
+**Las siete palabras se leen bien y las tres restas cuadran.** Lo que esta tanda
+convierte de razonado a `[MEDIDO]`:
+
+- **La palabra 217 dice `0001h`.** Por primera vez, BMO-X SABE que su disco no
+  gira. La frase que abria este capitulo queda cerrada.
+- **El sesgo de la 75 funciona**: el disco escribe `31` y el informe dice `32`.
+  Leerlo crudo habria dado 31 para siempre sin que nada fallara.
+- **El cable va al maximo**: la 76 y la 77 se leen las dos y **coinciden**, asi
+  que el aviso `POR DEBAJO` no salta -- que es el caso en que la separacion
+  soportado/negociado no se nota. La proxima vez que se note, sera verdad.
+- **La identidad cuadra**: modelo y sectores dentro del 1%, sin `SIN PERFIL`.
+
+### ★★★ Y la linea que demuestra R-DISCO8 sola, sin argumentar
+
+```text
+   sector      1 logicos por fisico = 512 B      <- lo que el disco DECLARA
+   alinear a   2048 KiB  (declarado por el perfil, no leido)
+```
+
+**Dos lineas seguidas, y se contradicen en apariencia.** No hay contradiccion:
+la palabra 106 es de la epoca del *Advanced Format* y describe el sector logico
+contra el fisico de un PLATO. En un SSD ese numero es verdad --el disco
+direcciona de 512 en 512-- y **no dice absolutamente nada de la NAND**: ni la
+pagina, ni el bloque de borrado, que es la unica frontera que importa al
+escribir.
+
+O sea que la geometria que el aparato SI declara es la que no sirve, y la que
+decide el diseno **no tiene campo donde vivir**. Eso era R-DISCO8 escrito como
+prediccion; ahora esta impreso en pantalla, en dos renglones consecutivos.
+
+### [!] Y un defecto que la tanda destapo, y era mio
+
+`info` saco **dos secciones tituladas `disco`**, con el teclado en medio: la de
+estado (listo / montado) y la de identidad. Un nombre repetido no identifica
+nada -- el mismo fallo que esta casa persigue en los ficheros, cometido en un
+informe. Juntadas: una seccion, el estado arriba y el aparato debajo.
+
+---
+
+### Lo que descartaba cada rama (se conserva: la proxima tanda vuelve a usarlo)
 
 Arrancar y escribir `info`, seccion `disco`. Cinco lineas, y **cada una descarta
 algo distinto** -- ninguna es decorativa.
@@ -436,7 +499,127 @@ y `info` lo dice al lado del perfil en vez de callarlo.
 
 ---
 
-## 11. EL PRECIO
+## 11. ★★★ POR QUE PASAN ESAS TRAMPAS -- la capa que hay debajo
+
+Windows no se fio de la palabra 217. Linux tuvo que prohibir el TRIM encolado en
+una familia entera de discos. **Las dos historias parecen "hay firmware malo", y
+esa lectura no sirve para nada**: no dice cual creer manana.
+
+Debajo hay algo que si predice, y son tres escalones.
+
+### 1. ATA es un contrato que nadie verifica
+
+No existe una certificacion que un disco tenga que pasar campo por campo antes
+de venderse. **Un disco sale a la calle cuando arranca Windows y da buena cifra
+en un banco de pruebas.** Eso es todo lo que su firmware tiene que sobrevivir.
+
+### 2. ** Por tanto: un campo es tan fiable como el camino que lo ejercita
+
+Y ese camino, para todo disco del mundo, es el arranque del sistema mayoritario.
+
+```
+   capacidad, modelo, LBA48   los lee Windows en CADA arranque   -> de fiar
+   palabra 217 en 2008        no la leia NADIE todavia           -> una PROMESA
+   TRIM dentro de NCQ         solo Linux lo apretaba de verdad   -> ahi vivio
+                                                                    el bug
+```
+
+★★ **De ahi sale la regla, y es contraintuitiva: cuanto mas NUEVO es un campo,
+menos se ha ejercitado, y menos se puede creer.** La 217 no fallaba por ser
+dificil: fallaba **por ser nueva**. Windows 7 no desconfiaba de los fabricantes,
+desconfiaba de un campo recien nacido -- y por eso lo cruzo con una medida propia
+en vez de discutirlo.
+
+Va como **R-DISCO11**: *una capacidad declarada que nadie ejercita no es una
+capacidad, es una afirmacion sin probar.* Es L4 --*"un guardian que nunca ha
+rechazado nada no esta probado"*-- dicha desde el otro lado del cable.
+
+### 3. ★★ Y el escalon que cambia el DISENO: la unidad de confianza no es el
+### aparato
+
+El caso Samsung lo demuestra y es la parte que mas cuesta ver: **el mismo disco,
+con el mismo firmware, iba bien en controladores Intel y corrompia datos en
+AMD.** El fallo no estaba en el disco. Tampoco en el controlador. Estaba en la
+COMBINACION.
+
+```
+   lo que o funciona o no funciona NO es el aparato:
+   es la TERNA   aparato + ranura + camino del driver
+```
+
+Es R-DISCO7 --medio, ranura y aparato son tres ejes-- con una vuelta mas: **la
+terna tiene propiedades que ninguno de los tres tiene por separado**, y por eso
+no se pueden heredar de una ficha tecnica.
+
+[!] **Consecuencia directa sobre el perfil que este arbol acaba de escribir**:
+`Identidad` hoy son modelo y capacidad, o sea el APARATO. Mientras todos los
+caminos rapidos esten apagados no muerde. **El dia que un perfil autorice algo
+--encender la cola, mandar TRIM encolado-- esa autorizacion solo vale para la
+terna en la que se probo**, y la identidad tiene que nombrar tambien al
+controlador. Escrito antes de que haga falta, que es cuando sale barato.
+
+---
+
+## 12. ★★ QUE PUEDE APROVECHAR BMO-X QUE LOS OTROS NO
+
+La pregunta del dueno --*"que BMO-X USE TODO lo que ofrece TODO"*-- tiene una
+respuesta concreta, y sale justo de la section anterior.
+
+### La asimetria, en una linea
+
+```
+   Windows y Linux tienen que acertar en TODOS los discos que existen.
+   BMO-X tiene que acertar en UNO.
+```
+
+**Un sistema general paga la generalidad con pesimismo.** Linux prohibe el TRIM
+encolado en toda la serie Samsung 800 no porque el tuyo falle, sino **porque no
+puede probar el tuyo**. Windows 7 corria un banco de pruebas porque no podia
+fiarse de la flota.
+
+BMO-X puede pagar la especificidad con **una medida, una vez**, anotada en el
+perfil con su origen. Eso es exactamente lo que ya hace `cpu_vendor/` con el
+presupuesto de ciclos; el perfil de disco es la misma idea en otro componente.
+
+> ★★★ **El general ASUME. El perfilado MIDE, y desbloquea solo lo medido.**
+>
+> Y por eso el perfil lleva `Origen` pegado a cada cifra: lo que esta en
+> `Catalogo` es una asuncion heredada y no desbloquea nada; lo que esta en
+> `Medido` es lo unico que puede autorizar un camino rapido.
+
+### Lo que hay sobre la mesa HOY, medido, y en su orden
+
+**1. ✅ TRIM, y va PRIMERO -- por una razon que sale de la historia.**
+
+La lista negra de Linux era de **`NO_NCQ_TRIM`**: el TRIM *encolado*. El TRIM
+normal --`DATA SET MANAGEMENT` a secas, sin NCQ-- **no tiene historial de
+corrupcion**.
+
+★★ Y BMO-X esta hoy en profundidad de cola 1. O sea que **esta exactamente en la
+unica configuracion donde el TRIM es la variante segura**, y lo esta por accidente
+--porque todavia no encola--. Ir a por el TRIM ANTES que a por la cola no es
+conservador: es aprovechar la posicion en la que ya se esta.
+
+Sin el, el recolector de la section 9 de ESTRATOS libera bloques para el sistema
+de ficheros y **el disco los sigue creyendo vivos y copiandolos** (R-DISCO10).
+
+**2. ⏳ Las 31 ranuras paradas.** Es lo mas grande que hay sin usar, y lo que mas
+cambiaria una tanda de escritura. Pero encenderla mueve la terna entera a un
+sitio donde hay muertos documentados **en placas AMD**. Va con interruptor
+propio, prueba propia y en su commit -- nunca de refilon con otra cosa.
+
+**3. ⏳ Medir lo que hoy es `[CATALOGO]`.** Cuatro cifras y una tarde
+(section 8). Mientras sigan siendo de catalogo, **el perfil no puede autorizar
+nada**, y el propio `info` lo dice al lado del perfil en vez de callarlo.
+
+**4. ✅ Ya aprovechado, y conviene decirlo**: el cable va a Gen3 y el medio es
+solido. Ninguno de los dos es un cuello hoy, y saberlo **tacha dos sospechosos**
+antes de la primera medida de escritura. Eso tambien es usar lo que el aparato
+ofrece: usar su respuesta para no buscar donde no hay nada.
+
+---
+
+## 13. EL PRECIO
 
 De C6 en la ley, y sigue siendo el mejor resumen de por que este componente no
 se razona: `PI` declaraba los puertos 0,1,4,5 y el disco estaba en el 2. Y la
