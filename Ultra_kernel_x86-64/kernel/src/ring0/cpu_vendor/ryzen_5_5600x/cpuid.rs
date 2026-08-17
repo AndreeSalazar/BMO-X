@@ -60,7 +60,12 @@ pub struct CpuFamilyModel {
 }
 
 impl CpuFamilyModel {
-    pub fn is_ryzen_5_5600x(&self) -> bool { self.family == 0x19 && self.model == 0x01 }
+    /// ** `0x21` y no `0x01`: el byte se leyo por fin el 2026-08-17 y esta copia
+    /// tambien lo tenia mal. Lo desempato el trinquete del presupuesto, que
+    /// compara familia/modelo contra el perfil y se niega a juzgar si no cuadra:
+    /// la tanda dijo `[EN PLAZO]`, o sea que cuadro `19h/21h`. Ver el gemelo de
+    /// esta funcion en `ring0/cpu/mod.rs`.
+    pub fn is_ryzen_5_5600x(&self) -> bool { self.family == 0x19 && self.model == 0x21 }
     pub fn is_zen3(&self) -> bool { self.family == 0x19 }
     pub fn is_zen2(&self) -> bool { self.family == 0x17 }
     pub fn name(&self) -> &'static str {
