@@ -741,6 +741,22 @@ pub const DISCO_JUICIO_OCIOSAS_MASK: u64 = 0xFF;
 pub const DISCO_JUICIO_FRONTERA_SHIFT: u64 = 16;
 pub const DISCO_JUICIO_FRONTERA_MASK: u64 = 0xFFFF_FFFF;
 
+/// # `INFO_DISCO_TRIM_SECTORES`: cuanto se le ha devuelto al disco
+///
+/// Sectores de 512 B recortados desde el arranque. Cero significa **que nadie lo
+/// ha pedido**, no que no se pueda: recortar en BMO-X lo pide una persona (la
+/// seccion 9 de ESTRATOS: *politica, no automatismo*), asi que este numero es la
+/// prueba de que la orden se dio y de cuanto cubrio.
+pub const INFO_DISCO_TRIM_SECTORES: u64 = 0x43;
+
+/// # `INFO_DISCO_TRIM_ORDENES`: en cuantos `DATA SET MANAGEMENT` cupo
+///
+/// ** Va al lado del anterior y no sobra: los mismos sectores en una orden o en
+/// trescientas dicen cosas distintas del techo que declara el disco (palabra
+/// 105). Es la unica pista si un dia recortar se vuelve lento, y sin ella
+/// "cuanto" no tiene con que compararse.
+pub const INFO_DISCO_TRIM_ORDENES: u64 = 0x44;
+
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 

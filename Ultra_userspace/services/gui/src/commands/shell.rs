@@ -190,6 +190,13 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"  save cpu|mem|consumo|apps   cada tabla en SU\n");
     dsk.out.grid.text(b"               fichero: datos/cpu.txt, mem.txt...\n");
     dsk.out.grid.text(b"  perf         lo que cuesta pintar, medido\n");
+    // ** La unica caja de ordenes que puede cambiar el almacen. Se lista con su
+    // suborden destructiva SEPARADA y con el `ya` a la vista: una ayuda que
+    // dijera solo `disco` esconderia justo lo que hay que leer antes.
+    dsk.out.grid.text(b"  disco        que aparato es, cuanto queda y que se le\n");
+    dsk.out.grid.text(b"               ha devuelto  (disco espacio | barrera)\n");
+    dsk.out.grid.text(b"  disco trim   PROPONE devolverle al disco la cola libre\n");
+    dsk.out.grid.text(b"               del volumen; `disco trim ya` la manda\n");
     dsk.out.grid.text(b"  estratos sellar   ESCRIBE EN EL DISCO (commit vacio)\n");
     dsk.out.grid.text(b"  help         esto\n");
     dsk.out.grid.text(b"  reboot       reinicia la maquina\n");

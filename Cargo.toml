@@ -65,6 +65,10 @@ members = [
     # BMO-X razonaba sobre TRIM y sobre colas sin haber leido nunca la palabra
     # que dice si el disco gira.
     "platform/drivers/storage/identify",
+    # El FORMATO de TRIM: rangos de LBA -> descriptores de DATA SET MANAGEMENT.
+    # Sin registros y sin disco, porque un descriptor mal empaquetado no da un
+    # fallo: le dice al aparato que olvide sectores que si importaban.
+    "platform/drivers/storage/trim",
     "platform/drivers/usb/input",
     "platform/drivers/usb/uhid",
     "platform/drivers/usb/uaudio",

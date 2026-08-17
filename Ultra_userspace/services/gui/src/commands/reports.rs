@@ -729,8 +729,12 @@ fn aparato(s: &mut Output, nombre: &[u8], bits: u64, hay: u64, bomba: u64, corre
 /// preguntaba al disco modelo, serie y capacidad, y **no sabia si giraba** --
 /// mientras el diseno de ESTRATOS razonaba sobre TRIM y la ley sobre colas.
 /// Ver `docs/componente/EL_DISCO_EXIGE.md`.
+///
+/// ** Es `pub(crate)` porque lo pinta tambien la orden `disco` de
+/// `commands/disco.rs`. Copiarlo alli habria dado dos tablas del mismo aparato
+/// que se separan a la tercera vez que alguien toca una.
 #[inline(never)]
-fn report_disco(s: &mut Output) {
+pub(crate) fn report_disco(s: &mut Output) {
     // Sin `section`: esto va DENTRO de la seccion `disco`, detras de su estado.
     let medio = bmo::info(bmo::INFO_DISCO_MEDIO);
     let enlace = bmo::info(bmo::INFO_DISCO_ENLACE);

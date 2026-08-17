@@ -20,6 +20,7 @@
 //    objetos    ARCH/CHANNEL/MEM/AUDIO/LIENZO/PRESTADO/ES  -- otros handles
 //    entrada    INPUT_OP_*, TECLA_*, MOD_*  -- hechos fisicos, no ordenes
 //    informe    INFO_*, CABINA_*, AUTOPSIA_*, KLOG_*  -- lo que NO ejerce poder
+//    disco      DISCO_OP_*     ** lo que SI actua sobre el almacen
 //
 // [!] Y `objetos` es la unica agrupada por COMO se llaman --`INVOKE(handle, op)`--
 // y no por que hacen. Se dice para que se note: el dia que una de esas familias
@@ -35,6 +36,7 @@
 // Los otros dos guardianes --el de `bmo.h` y el de los dos lectores del BEF--
 // usan `use`, asi que el compilador los sigue solo.
 
+mod disco;
 mod entrada;
 mod informe;
 mod objetos;
@@ -44,6 +46,7 @@ mod tarea;
 // Se reexporta TODO: quien usa este contrato lo escribe exactamente igual que
 // ayer. El corte es de organizacion, no de superficie -- y si cambiara la
 // superficie, seria otra clase de commit.
+pub use disco::*;
 pub use entrada::*;
 pub use informe::*;
 pub use objetos::*;

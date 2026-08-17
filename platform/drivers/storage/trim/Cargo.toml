@@ -1,0 +1,12 @@
+[package]
+name = "bmo-trim"
+version = "0.1.0"
+edition = "2021"
+description = "El FORMATO de DATA SET MANAGEMENT (TRIM): rangos de LBA empaquetados en descriptores, sin tocar un registro"
+
+[lib]
+
+# Sin dependencias, y por el mismo motivo que `bmo-identify`: aqui entran un LBA
+# y unos sectores y salen bytes. No manda el comando, no habla con el HBA y no
+# decide si se puede recortar -- por eso se prueba entero en el anfitrion.
+[dependencies]

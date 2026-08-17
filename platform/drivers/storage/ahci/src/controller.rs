@@ -83,6 +83,18 @@ const ATA_CMD_IDENTIFY:     u8 = 0xEC;
 /// tiene todavia en su cache. Un `WRITE DMA` que devuelve OK solo promete que
 /// el disco se quedo con los datos, no que sobrevivan a un corte.
 const ATA_CMD_FLUSH_EXT:    u8 = 0xEA;
+/// **DATA SET MANAGEMENT**: la orden que lleva TRIM dentro.
+///
+/// El comando no es "TRIM": TRIM es **una funcion suya**, y cual se pide lo
+/// dice el registro de features ([`DSM_TRIM`]). Por eso este es el unico
+/// comando del driver que necesita ese registro -- ver `armar`.
+const ATA_CMD_DSM:          u8 = 0x06;
+/// Bit 0 de features: la funcion TRIM de `DATA SET MANAGEMENT`.
+///
+/// ** Con este bit a cero el disco recibe un DSM **sin funcion pedida**. No es
+/// un TRIM que no hace nada: es una orden distinta, y lo que haga con el payload
+/// depende del aparato. El bit no es un detalle del empaquetado.
+const DSM_TRIM: u16 = 1 << 0;
 
 /// Firma que deja un disco duro SATA en `PxSIG`. Un 0xEB140101 seria una
 /// unidad optica (ATAPI) y un 0xFFFF0000, un puerto sin nada.
@@ -608,7 +620,11 @@ pub unsafe fn emitir(
     data: Option<(u64, u32)>,
     write: bool,
 ) -> Result<(), DiskError> {
-    armar(port_idx, command, lba, sector_count, data, write)
+    // Features a cero: de los comandos que este driver sabe emitir, el unico que
+    // lo usa es `DATA SET MANAGEMENT`, y ese no se pide sin esperar -- recortar
+    // es una tanda detras de otra, no una lectura que se pueda solapar con otra
+    // cosa. Ver `trim_phys`.
+    armar(port_idx, command, 0, lba, sector_count, data, write)
 }
 
 /// **En que va el comando de la ranura 0?** No espera, no gira: mira y contesta.
@@ -656,6 +672,7 @@ pub unsafe fn sondear(port_idx: u8, con_datos: bool, write: bool) -> Estado {
 unsafe fn run_command(
     port_idx: u8,
     command: u8,
+    features: u16,
     lba: u64,
     sector_count: u16,
     data: Option<(u64, u32)>,
@@ -666,7 +683,7 @@ unsafe fn run_command(
     // Tomarla despues perderia el aviso de un disco rapido que contesta entre
     // la campana y la primera vuelta.
     let marca = AVISOS.load(Ordering::Acquire);
-    armar(port_idx, command, lba, sector_count, data, write)?;
+    armar(port_idx, command, features, lba, sector_count, data, write)?;
     let mut spun = 0u32;
     loop {
         // ** ESCUCHAR ES BARATO; PREGUNTAR, NO.
@@ -711,9 +728,15 @@ unsafe fn run_command(
 }
 
 /// Lo que hay que escribir para que el comando exista. Sin esperar a nada.
+///
+/// ** `features` estuvo escrito a cero durante toda la vida de este driver, y
+/// era cierto para los cuatro comandos que sabia mandar (leer, escribir, FLUSH,
+/// IDENTIFY: ninguno lo usa). `DATA SET MANAGEMENT` es el primero que **elige
+/// que hace** por ese registro -- sin el bit 0, la orden no es un TRIM.
 unsafe fn armar(
     port_idx: u8,
     command: u8,
+    features: u16,
     lba: u64,
     sector_count: u16,
     data: Option<(u64, u32)>,
@@ -747,7 +770,7 @@ unsafe fn armar(
     ct.add(0).write_volatile(FIS_TYPE_REG_H2D);
     ct.add(1).write_volatile(0x80); // C=1: esto es un comando, no una actualizacion
     ct.add(2).write_volatile(command);
-    ct.add(3).write_volatile(0);    // features (bajo)
+    ct.add(3).write_volatile((features & 0xFF) as u8); // features (bajo)
     let l = lba.to_le_bytes();
     ct.add(4).write_volatile(l[0]);
     ct.add(5).write_volatile(l[1]);
@@ -757,7 +780,7 @@ unsafe fn armar(
     ct.add(8).write_volatile(l[3]);
     ct.add(9).write_volatile(l[4]);
     ct.add(10).write_volatile(l[5]);
-    ct.add(11).write_volatile(0);   // features (alto)
+    ct.add(11).write_volatile((features >> 8) as u8); // features (alto)
     ct.add(12).write_volatile((sector_count & 0xFF) as u8);
     ct.add(13).write_volatile((sector_count >> 8) as u8);
     ct.add(14).write_volatile(0);   // ICC
@@ -876,7 +899,7 @@ pub unsafe fn read_sectors_phys(port_idx: u8, lba: u64, sector_count: u16, buf_p
 {
     if sector_count == 0 { return Err(DiskError::BadRequest); }
     let bytes = sector_count as u32 * SECTOR as u32;
-    run_command(port_idx, ATA_CMD_READ_DMA_EX, lba, sector_count, Some((buf_phys, bytes)), false)
+    run_command(port_idx, ATA_CMD_READ_DMA_EX, 0, lba, sector_count, Some((buf_phys, bytes)), false)
 }
 
 /// Escribe `sector_count` sectores en `lba` desde el buffer FISICO `buf_phys`.
@@ -888,7 +911,35 @@ pub unsafe fn write_sectors_phys(port_idx: u8, lba: u64, sector_count: u16, buf_
 {
     if sector_count == 0 { return Err(DiskError::BadRequest); }
     let bytes = sector_count as u32 * SECTOR as u32;
-    run_command(port_idx, ATA_CMD_WRITE_DMA_EX, lba, sector_count, Some((buf_phys, bytes)), true)
+    run_command(port_idx, ATA_CMD_WRITE_DMA_EX, 0, lba, sector_count, Some((buf_phys, bytes)), true)
+}
+
+/// **TRIM: decirle al disco que estos sectores ya no le importan a nadie.**
+///
+/// `buf_phys` apunta al payload que arma `bmo_trim` --descriptores de rango-- y
+/// `bloques` es su tamano **en bloques de 512 B**, que es la unidad en la que
+/// cuenta este comando. No mueve datos del disco: los mueve HACIA el.
+///
+/// === Las tres cosas que no se parecen a una escritura ===
+///
+/// 1. **El contador no son sectores del disco**, son bloques de payload. Un
+///    solo bloque puede cubrir 2 GiB de disco.
+/// 2. **`features` elige la funcion.** Sin [`DSM_TRIM`] esto es otro comando.
+/// 3. **No hay `PRDBC` que creer.** Se manda como escritura --el host entrega
+///    bytes-- y ya se sabe que no todos los HBA rellenan ese contador al
+///    escribir (ver `sondear`); lo que dice si salio bien es `TFD.ERR`. Por eso
+///    esta funcion devuelve `()` y no un numero: **inventarse "cuantos recorto"
+///    a partir de un contador opcional seria mentir con un numero**, y lo que
+///    cubre cada orden ya lo sabe quien armo el payload.
+///
+/// [!] Sin NCQ y sin encolar, que es donde esta BMO-X hoy. El historial de
+/// corrupcion de TRIM es del TRIM **encolado** (`NO_NCQ_TRIM` de Linux), no de
+/// este -- ver `docs/componente/EL_DISCO_EXIGE.md`.
+pub unsafe fn trim_phys(port_idx: u8, buf_phys: u64, bloques: u16) -> Result<(), DiskError> {
+    if bloques == 0 { return Err(DiskError::BadRequest); }
+    let bytes = bloques as u32 * SECTOR as u32;
+    run_command(port_idx, ATA_CMD_DSM, DSM_TRIM, 0, bloques, Some((buf_phys, bytes)), true)
+        .map(|_| ())
 }
 
 /// Ordena al disco bajar a la superficie todo lo que acepto y aun tiene en su
@@ -899,7 +950,7 @@ pub unsafe fn write_sectors_phys(port_idx: u8, lba: u64, sector_count: u16, buf_
 /// que se esta investigando-- esa promesa no basta: el punto de no retorno es
 /// este comando.
 pub unsafe fn flush_cache(port_idx: u8) -> Result<(), DiskError> {
-    run_command(port_idx, ATA_CMD_FLUSH_EXT, 0, 0, None, false).map(|_| ())
+    run_command(port_idx, ATA_CMD_FLUSH_EXT, 0, 0, 0, None, false).map(|_| ())
 }
 
 /// IDENTIFY DEVICE: 512 bytes con el modelo, el numero de serie y los sectores
@@ -910,7 +961,7 @@ pub unsafe fn flush_cache(port_idx: u8) -> Result<(), DiskError> {
 /// dueno en uno de ellos, eso no es un lujo.
 pub unsafe fn identify_phys(port_idx: u8, buf_phys: u64) -> Result<u16, DiskError> {
     // IDENTIFY entrega exactamente un sector y no usa LBA ni contador.
-    run_command(port_idx, ATA_CMD_IDENTIFY, 0, 1, Some((buf_phys, SECTOR as u32)), false)
+    run_command(port_idx, ATA_CMD_IDENTIFY, 0, 0, 1, Some((buf_phys, SECTOR as u32)), false)
 }
 
 pub fn controller() -> Option<&'static AhciController> {

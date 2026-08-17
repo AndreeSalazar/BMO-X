@@ -113,6 +113,10 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     ("BMO_INFO_DISCO_ENLACE", "INFO_DISCO_ENLACE", 0x40),
     ("BMO_INFO_DISCO_GEOMETRIA", "INFO_DISCO_GEOMETRIA", 0x41),
     ("BMO_INFO_DISCO_JUICIO", "INFO_DISCO_JUICIO", 0x42),
+    // Y lo que se le ha DEVUELTO. Cruza porque la primera cosa que un `.bex`
+    // de administracion va a querer saber es si el recorte de ayer llego.
+    ("BMO_INFO_DISCO_TRIM_SECTORES", "INFO_DISCO_TRIM_SECTORES", 0x43),
+    ("BMO_INFO_DISCO_TRIM_ORDENES", "INFO_DISCO_TRIM_ORDENES", 0x44),
     // El censo de extensiones. Cruza por el mismo motivo que el metro: lo
     // sirve el kernel y lo leen dos lados distintos -- el escritorio en Rust y
     // cualquier `.bex` de C que quiera saber si tiene RDRAND antes de usarlo.
@@ -250,6 +254,8 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_DISCO_ENLACE", s::INFO_DISCO_ENLACE),
         ("BMO_INFO_DISCO_GEOMETRIA", s::INFO_DISCO_GEOMETRIA),
         ("BMO_INFO_DISCO_JUICIO", s::INFO_DISCO_JUICIO),
+        ("BMO_INFO_DISCO_TRIM_SECTORES", s::INFO_DISCO_TRIM_SECTORES),
+        ("BMO_INFO_DISCO_TRIM_ORDENES", s::INFO_DISCO_TRIM_ORDENES),
         ("BMO_INFO_CPU_EXT_N", s::INFO_CPU_EXT_N),
         ("BMO_INFO_CPU_EXT_HAY", s::INFO_CPU_EXT_HAY),
         ("BMO_INFO_CPU_EXT_USA", s::INFO_CPU_EXT_USA),

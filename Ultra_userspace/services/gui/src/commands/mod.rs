@@ -4,6 +4,9 @@
 //! esta carpeta no sabe de que color es la ventana.
 
 pub(crate) mod complete;
+/// ** LA TERMINAL DEL DISCO: la unica caja de ordenes que ACTUA sobre el
+/// almacen. Fichero propio por eso y no por tamano. Ver su cabecera.
+pub(crate) mod disco;
 pub(crate) mod dispatch;
 pub(crate) mod files;
 pub(crate) mod shell;
@@ -130,6 +133,23 @@ pub(crate) enum Command<'a> {
     ///
     /// El argumento decide cual: `red` a secas da el informe entero.
     Net(&'a [u8]),
+    /// **`disco`** -- la terminal de administracion del almacen.
+    ///
+    /// === Por que es una PALABRA CON ORDENES DENTRO y no seis verbos sueltos ===
+    ///
+    /// Porque todas hablan del mismo aparato y **una de ellas es destructiva**.
+    /// `trim` suelto, entre `tramas` y `smp`, seria un verbo de cuatro letras que
+    /// se puede teclear sin querer y que le dice a un SSD que olvide sectores.
+    /// Con el sustantivo delante hay que nombrar al aparato antes de darle una
+    /// orden, y eso ya es la mitad de una confirmacion.
+    ///
+    /// La otra mitad es que el verbo solo **propone**: `disco trim` ensena lo que
+    /// haria y `disco trim ya` lo hace. Es lo que pide la seccion 9 de ESTRATOS
+    /// --*"con lo que va a soltar listado antes de hacerlo"*-- y aqui no es
+    /// cortesia: es la unica orden del escritorio que no se puede deshacer.
+    ///
+    /// [!] Y **ninguna acepta un LBA**. Ver `commands/disco.rs`.
+    Disco(&'a [u8]),
     /// `reboot` -- reinicia la maquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aqui contestaba "no lo
@@ -304,6 +324,11 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         b"enlace" | b"link" => Command::Net(b"link"),
         b"tramas" | b"frames" => Command::Net(b"frames"),
         b"phy" => Command::Net(b"phy"),
+        // ** EL DISCO. El sustantivo va delante a proposito: es la unica caja de
+        // ordenes del escritorio que puede cambiar el almacen, y `trim` suelto
+        // seria un verbo de cuatro letras con consecuencias que no se deshacen.
+        // `almacen` entra como sinonimo porque es la palabra del diseno.
+        b"disco" | b"almacen" => Command::Disco(rest),
         b"cpu" | b"procesador" => Command::Cpu,
         // Los mismos dos nombres que el shell de Ring 0, para que lo que se
         // aprende en un sitio valga en el otro.

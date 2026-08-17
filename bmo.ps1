@@ -65,7 +65,20 @@ if (-not $Rapido) {
     Titulo 'Banco de pruebas (anfitrion)'
     Push-Location $raiz
     try {
-        $paquetes = @('bmo-c-front', 'bmo-uaudio', 'bmo-abi', 'bmo-fat32', 'bmo-uhid', 'bmo-net', 'bmo-ciudad')
+        # ** LOS SEIS DEL ALMACENAMIENTO ENTRARON EL 2026-08-17, y faltaban.
+        #
+        # `bmo-trim`, `bmo-block`, `bmo-identify`, `bmo-disco-juicio`,
+        # `bmo-estratos` y `bmo-particiones` tenian 118 casillas escritas que
+        # **este banco no corria**, porque esta lista es a mano -- el mismo fallo
+        # que el guardian de opcodes de `build.ps1` documenta de si mismo: *"un
+        # guardian con lista tiene el mismo fallo que vigila"*.
+        #
+        # Y son justo las que no se pueden comprobar de otra forma: aqui vive la
+        # ventana de escritura --la que deja fuera la particion de arranque-- y
+        # el empaquetado de TRIM, donde equivocarse no da un fallo sino un disco
+        # que olvida sectores que si importaban.
+        $paquetes = @('bmo-c-front', 'bmo-uaudio', 'bmo-abi', 'bmo-fat32', 'bmo-uhid', 'bmo-net', 'bmo-ciudad',
+                      'bmo-trim', 'bmo-block', 'bmo-identify', 'bmo-disco-juicio', 'bmo-estratos', 'bmo-particiones')
         $total = 0
         foreach ($p in $paquetes) {
             # [!] AQUI SE DECIDE POR CONTEO, NO POR FRASE NI POR CODIGO DE SALIDA.

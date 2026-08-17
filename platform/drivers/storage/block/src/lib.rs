@@ -244,18 +244,46 @@ pub mod ventana {
         lba: u64,
         count: u16,
     ) -> Result<(), &'static str> {
+        decidir_rango(listo, armada, datos, estratos, lba, count as u64)
+    }
+
+    /// **La misma decision, para un rango que no cabe en un `u16`.**
+    ///
+    /// # Por que hizo falta, y por que es la MISMA funcion y no otra
+    ///
+    /// Un `WRITE DMA` mueve como mucho 65.535 sectores, asi que el contador de
+    /// una escritura cabe en 16 bits y [`decidir`] nacio con esa firma. **TRIM
+    /// no mueve datos**: una sola orden puede cubrir 2 GiB, y la cola libre de un
+    /// volumen de 414 GiB son 800 millones de sectores.
+    ///
+    /// ** La tentacion era comprobar la ventana tanda a tanda, con el contador
+    /// que cabe. Eso es un guardian mas debil disfrazado del mismo: cada trozo
+    /// caeria dentro y **nadie miraria el rango entero**, que es justo lo que
+    /// aqui se protege. Se ensancha el tipo del contador, no la ventana.
+    ///
+    /// La regla de arriba sigue mandando: un rango que empieza dentro y acaba
+    /// fuera se rechaza ENTERO. Recortar la peticion hasta lo que cabe seria
+    /// obedecer a medias una orden que estaba mal.
+    pub fn decidir_rango(
+        listo: bool,
+        armada: bool,
+        datos: Option<(u64, u64)>,
+        estratos: Option<(u64, u64)>,
+        lba: u64,
+        sectores: u64,
+    ) -> Result<(), &'static str> {
         if !listo {
             return Err("sin disco");
         }
         if !armada {
             return Err("la escritura no esta armada (gate de identidad)");
         }
-        if count == 0 {
+        if sectores == 0 {
             return Err("cero sectores");
         }
         // Sin `checked_add`, un LBA cerca del maximo daria la vuelta y el
         // rango pareceria diminuto y valido.
-        let Some(end) = lba.checked_add(count as u64) else {
+        let Some(end) = lba.checked_add(sectores) else {
             return Err("el rango de LBA desborda");
         };
         for w in [datos, estratos].into_iter().flatten() {
@@ -333,6 +361,36 @@ pub mod ventana {
 
         /// El estado inicial de la maquina es "no se puede", y hay que
         /// ganarselo.
+        /// ** UN RANGO DE TRIM SE JUZGA ENTERO, no tanda a tanda.
+        ///
+        /// La cola libre de un volumen son cientos de millones de sectores: no
+        /// caben en el `u16` de una escritura. Si el que recorta preguntara por
+        /// trozos, cada trozo caeria dentro de la ventana y **el rango completo
+        /// que se sale por el final no lo miraria nadie**.
+        #[test]
+        fn un_rango_gigante_se_juzga_entero_y_no_por_trozos() {
+            let es = Some((2_000_000, 900_000_000));
+            // Entero y dentro: 800 millones de sectores de una vez.
+            assert!(decidir_rango(true, true, None, es, 2_000_000, 800_000_000).is_ok());
+            // Se pasa por el final: se rechaza aunque el principio sea legal.
+            assert!(decidir_rango(true, true, None, es, 2_000_000, 900_000_000).is_err());
+            // Y el trozo suelto SI cabria: por eso no se pregunta por trozos.
+            assert!(decidir_rango(true, true, None, es, 2_000_000, 8).is_ok());
+        }
+
+        /// Las dos puertas contestan lo mismo para lo que las dos entienden.
+        #[test]
+        fn el_contador_ancho_no_cambia_ninguna_respuesta() {
+            for lba in [2048u64, 206_848, 300_000, 1_000_000] {
+                for n in [1u16, 8, 4096] {
+                    assert_eq!(
+                        decidir(true, true, DATOS, None, lba, n),
+                        decidir_rango(true, true, DATOS, None, lba, n as u64),
+                    );
+                }
+            }
+        }
+
         #[test]
         fn sin_ninguna_ventana_no_hay_donde_escribir() {
             assert!(decidir(true, true, None, None, 300_000, 8).is_err());

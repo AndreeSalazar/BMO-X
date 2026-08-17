@@ -337,6 +337,27 @@ pub const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 /// `arg1` su argumento cuando lo lleva.
 pub const TASK_OP_ES_NODO: u64 = 0x19;
 
+/// **ADMINISTRAR EL DISCO.** `arg0` es la orden (los `DISCO_OP_*`).
+///
+/// === Por que UNA operacion con ordenes dentro, y no una por cada cosa ===
+///
+/// Porque son **el mismo acto sobre el mismo aparato**, y la superficie ya tiene
+/// esa forma para el cursor de ESTRATOS ([`TASK_OP_ES_NODO`]) y para la entrada.
+/// Una fila por orden llenaria la tabla de opcodes de cosas que solo se
+/// diferencian en el verbo, y esta tabla ya casi se choco consigo misma una vez.
+///
+/// === Que NO lleva, y es lo importante ===
+///
+/// **Ni un LBA.** Ninguna orden de esta familia acepta que el llamante diga
+/// donde tocar: el rango lo calcula el kernel y lo comprueba contra la ventana
+/// de escritura. Un recorte apuntable desde Ring 3 no seria una operacion del
+/// sistema -- seria un borrado a distancia con formulario.
+///
+/// Lo mismo que `TASK_OP_ESTRATOS_SELLAR`: **lo que cambia el estado del almacen
+/// se pide por su nombre**, y aqui ademas se contesta con el motivo cuando no se
+/// puede (ver `DISCO_TRIM_*`).
+pub const TASK_OP_DISCO: u64 = 0x29;
+
 /// Ocho bytes del nombre del hijo `arg0`; `arg1` numera el trozo.
 ///
 /// De ocho en ocho porque la superficie congelada no acepta punteros, y es el

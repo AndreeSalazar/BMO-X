@@ -144,6 +144,24 @@ pub fn medio_en_palabras() -> (&'static str, u64) {
     }
 }
 
+/// **Declara este disco que sabe recortar?** La palabra 169, leida.
+///
+/// ** Sin foto contesta `false`, y esa es la respuesta conservadora correcta:
+/// mandar un `DATA SET MANAGEMENT` "a ver si suena" a un aparato que no lo
+/// anuncio devuelve un error de task file que se lee como un driver roto.
+pub fn trim_soportado() -> bool {
+    unsafe { FOTO }.map(|d| d.trim.soportado).unwrap_or(false)
+}
+
+/// Cuantos bloques de payload admite el disco en UNA orden (palabra 105).
+///
+/// El minimo es 1 y lo garantiza ACS-3; quien lo traduce es `bmo-identify`, no
+/// este fichero. Sin foto se contesta ese mismo 1: recortar despacio es
+/// correcto, recortar de mas no.
+pub fn trim_bloques_max() -> u16 {
+    unsafe { FOTO }.map(|d| d.trim.bloques_max).unwrap_or(1)
+}
+
 /// `INFO_DISCO_MEDIO`: la palabra 217 cruda, su clase y las RPM.
 pub fn medio() -> u64 {
     let Some(dice) = (unsafe { FOTO }) else { return 0 };
