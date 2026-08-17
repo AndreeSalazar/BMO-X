@@ -323,6 +323,11 @@ pub fn init(_ctx: &BootContext) {
     bmo_xhci::init_hal(&HAL);
 
     let mut chosen = false;
+    // El censo: cual vio mas aparatos, y cuantos hay en total repartidos entre
+    // todos los controladores. La resta de los dos es lo que se queda fuera.
+    let mut mejor: Option<pci::XhciLoc> = None;
+    let mut mejor_vistos: u32 = 0;
+    let mut vistos_total: u32 = 0;
     for skip in 0..4usize {
         let loc = match pci::find_xhci(skip) {
             Some(l) => l,
@@ -400,17 +405,95 @@ pub fn init(_ctx: &BootContext) {
         dlog_push("\n");
         if connected > 0 {
             crate::ring0::cabina::info("usb", "puertos con dispositivo fisico (CCS=1)", connected);
-            chosen = true;
-            break;
         }
-        // Nada conectado aqui: probar el siguiente controlador.
+        // ** SE CENSAN TODOS ANTES DE ELEGIR, Y AQUI ESTA EL PORQUE.
+        //
+        // === El sintoma del dueno, 2026-08-17 ===
+        //
+        // *"reinicie desde Windows para bootear BMO-X: el raton se movio pero el
+        // teclado NO aparece dentro, y al desconectarlo y conectarlo **no
+        // prende su RGB**"*.
+        //
+        // El RGB es un dato, no un adorno: casi ningun teclado lo enciende hasta
+        // que **completa `SET_CONFIGURATION`**. Un RGB apagado dice que el
+        // aparato no llego a `Configured`, o sea que **nadie le hablo**.
+        //
+        // === Y este bucle era el que no le hablaba ===
+        //
+        // Decia `if connected > 0 { chosen = true; break; }`: **el primer
+        // controlador con CUALQUIER cosa enchufada ganaba**, y `CTRL` es UNO.
+        // Todo lo que estuviera en el otro xHC quedaba invisible para siempre --
+        // y ni siquiera con corriente, porque el `port_power_solo` de arriba
+        // solo se ejecuta en los controladores que se llegan a probar.
+        //
+        // ** Y ESTA PLACA TIENE DOS. Lo dice el comentario de tres lineas mas
+        // arriba --*"los Ryzen traen VARIOS xHC (CPU + chipset)"*-- sin sacar la
+        // consecuencia: si el raton cae en uno y el teclado en el otro, **el
+        // raton funciona y el teclado no existe**. Que es exactamente el
+        // sintoma, incluido el RGB apagado y el "una sola vez y ya".
+        //
+        // Tambien explica la INTERMITENCIA entre arranques: cual gana depende de
+        // cual tenga algo enchufado primero, y eso cambia entre frio y caliente
+        // porque el firmware deja los puertos en estados distintos.
+        //
+        // === Lo que se hace hoy, y lo que NO ===
+        //
+        // Manejar los dos controladores a la vez es otra cosa: `CTRL` es un solo
+        // `static`, y repartirlo es una reforma del driver. Lo que se arregla
+        // aqui es que **el kernel deje de callarselo**:
+        //
+        //   1. se censan TODOS los controladores antes de elegir;
+        //   2. gana el que MAS dispositivos vea, no el primero;
+        //   3. si quedan aparatos en otro, se GRITA con su numero.
+        //
+        // Un fallo que se ve es medio arreglo; este llevaba meses siendo mudo.
+        if connected > (mejor_vistos as u64) {
+            mejor_vistos = connected as u32;
+            mejor = Some(loc);
+        }
+        vistos_total += connected as u32;
+        chosen = true;
     }
 
-    if !chosen {
+    if !chosen || mejor.is_none() {
         log("[usb] ningun xHC ve el teclado (probar otro puerto fisico)\n");
         crate::ring0::cabina::fault("usb", "ningun xHC ve dispositivos (probar otro puerto)", 0);
         return;
     }
+
+    // ** LOS QUE SE QUEDAN FUERA, DICHOS EN VOZ ALTA.
+    //
+    // `vistos_total - mejor_vistos` son aparatos que existen, que estan
+    // enchufados y encendidos, y que este kernel **no va a mirar jamas**. Si el
+    // teclado es uno de ellos, esta linea es la unica explicacion que va a haber
+    // -- y sin ella el dueno solo ve "el teclado no aparece".
+    let huerfanos = vistos_total.saturating_sub(mejor_vistos);
+    if huerfanos > 0 {
+        crate::ring0::cabina::fault(
+            "usb",
+            "aparatos en OTRO xHC que este kernel no maneja (cambialos de puerto)",
+            huerfanos as u64,
+        );
+    }
+
+    // El elegido se vuelve a inicializar: el censo dejo puesto el ULTIMO que se
+    // probo, no el que gano.
+    let loc = mejor.unwrap();
+    let mmio_va = mm::phys_to_virt(loc.mmio);
+    bmo_xhci::reset_ctrl();
+    bmo_xhci::set_mmio(mmio_va);
+    if !unsafe { bmo_xhci::init(mmio_va) } {
+        crate::ring0::cabina::fault("usb", "el xHC elegido no reinicializo", loc.mmio);
+        return;
+    }
+    if let Some(c) = bmo_xhci::controller() {
+        let n = c.max_ports;
+        for p in 0..n {
+            unsafe { bmo_xhci::port_power_solo(p) };
+        }
+        wait_for_connection(n, 200);
+    }
+    crate::ring0::cabina::info("usb", "xHC elegido (el que mas aparatos ve)", loc.mmio);
 
     let ok = unsafe {
         let hid = &mut *core::ptr::addr_of_mut!(HID);

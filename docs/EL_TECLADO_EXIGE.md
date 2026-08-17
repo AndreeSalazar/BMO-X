@@ -359,3 +359,91 @@ sitio para una causa muda.
 *Ver `META-KERNEL_HARD.md` C7 (USB) para las reglas R-USB1..5 que este documento
 desarrolla, y `docs/CENSO_DE_EJES.md` P7 para por que este camino esta tachado
 del eje de ciclos.*
+
+---
+
+## 7. ★★ E7 -- QUE ESTE EN EL CONTROLADOR QUE MIRAMOS
+
+> Escrita el **2026-08-17 por la noche**, con el sintoma nuevo delante. La
+> seccion 6 decia que si los cinco numeros salian limpios *"falta una septima
+> exigencia y hay que escribirla aqui"*. Esta es.
+
+**El sintoma, dicho por el dueno:**
+
+> *"reinicie desde Windows para bootear mi BMO-X y no paso nada malo, el mouse
+> se movio, pero mi kernel le cierra la puerta: NO aparece mi teclado dentro
+> aunque prenda. Y encima cuando desconecte y conecte mi teclado **no prende su
+> RGB**. Es como una sola vez y ya, excepto el mouse."*
+
+### ★ El RGB apagado es un DATO, no un adorno
+
+Casi ningun teclado enciende su iluminacion hasta que **completa
+`SET_CONFIGURATION`**. Un RGB que no prende al enchufarlo no dice *"el teclado
+esta roto"*: dice **nadie le ha hablado**. Ni un reset de puerto, ni un
+`Address Device`, ni una configuracion. Es un testigo del estado del USB que
+esta en la mesa, gratis, sin instrumentos -- y vale mas que las seis exigencias
+anteriores juntas para este caso, porque las seis miran un aparato **ya
+adoptado**.
+
+### Lo que exige E7
+
+**Exige:** que el aparato este en el controlador que el kernel decidio mirar.
+
+**Si no:** no falla nada. No hay error, no hay `fault`, no hay contador que suba.
+El aparato simplemente **no existe** para el sistema -- y ninguna de las seis
+exigencias anteriores puede verlo, porque las seis empiezan a contar despues de
+la enumeracion.
+
+**Hoy: ERA EL AGUJERO.** `dev/usb/mod.rs::init` decia:
+
+```rust
+   if connected > 0 { chosen = true; break; }   // el PRIMERO que vea algo gana
+```
+
+Y `CTRL` es **uno**. O sea: el primer xHC con cualquier cosa enchufada se lleva
+el driver entero, y lo que este en el otro queda invisible **para siempre** --
+sin corriente en el puerto siquiera, porque el `port_power` solo se ejecuta en
+los controladores que se llegan a probar.
+
+★★ **Y esta placa tiene DOS.** Lo dice el comentario tres lineas mas arriba en
+ese mismo fichero --*"los Ryzen traen VARIOS xHC (CPU + chipset)"*-- sin sacar la
+consecuencia. Si el raton cae en uno y el teclado en el otro:
+
+```
+   el raton         funciona perfecto
+   el teclado       no existe. Sin RGB, porque nadie le dio corriente
+   desenchufar      no cambia nada: nadie mira ese controlador
+   entre arranques  cambia, porque cual gana depende de que tenga algo
+                    conectado primero -- y el firmware deja los puertos en
+                    estados distintos en frio y en caliente
+```
+
+**Eso explica los tres sintomas de golpe, incluida la intermitencia** que llevaba
+semanas pareciendo un fallo del bus.
+
+### Lo que se ha hecho, y lo que NO
+
+Manejar los dos controladores a la vez es una reforma del driver: `CTRL` es un
+solo `static` y repartirlo toca todo. Lo que se arregla hoy es que **el kernel
+deje de callarselo**:
+
+```
+   1. se censan TODOS los controladores antes de elegir
+   2. gana el que MAS aparatos vea, no el primero
+   3. los que se quedan fuera se GRITAN, con su numero:
+      "aparatos en OTRO xHC que este kernel no maneja (cambialos de puerto)"
+```
+
+[!] **El punto 2 no es la solucion, es una mejora de la apuesta**: si hay dos y
+dos, sigue eligiendo mal. La solucion es soportar N controladores, y queda
+escrita como deuda.
+
+### ★ Y la prueba que cuesta CINCO SEGUNDOS
+
+**Mover el teclado al puerto de al lado del raton.** Si aparece, era esto y no
+hay nada mas que discutir. Los puertos del mismo grupo fisico suelen colgar del
+mismo controlador; los frontales y los traseros casi nunca.
+
+Si con el teclado y el raton en puertos contiguos **sigue sin aparecer**, esta
+hipotesis esta muerta y hay que volver a las seis de arriba -- ahora con la luz
+del testigo puesta, que dira cual.
