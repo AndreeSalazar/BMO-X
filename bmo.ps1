@@ -21,7 +21,16 @@ param(
     # A que unidades va, si se despliega. Se piden EXPLICITAS y sin valor por
     # defecto util: ver la nota de abajo.
     [string]$Arranque = 'D',
-    [string]$Datos = 'A'
+    [string]$Datos = 'A',
+    # ** EL KERNEL DE MEDIDA. Devuelve los dos `rdtsc` a `dispatch`, o sea el
+    # REPARTO de una puerta entre su mitad Rust y el resto -- lo unico que puede
+    # decir donde se van los ~945 ciclos.
+    #
+    # [!] NO SE DEJA PUESTO: cuesta ~112 ciclos en CADA puerta de CADA programa,
+    # un 11%. Se despliega, se corre `sys/precio.bex`, se apunta el reparto y se
+    # vuelve a desplegar sin esta bandera. Un instrumento que se queda puesto
+    # deja de ser una medida y pasa a ser un peaje.
+    [switch]$Metro
 )
 
 # [!] NADA DE `$ErrorActionPreference = 'Stop'` AQUI.
@@ -123,9 +132,12 @@ if ($Desplegar) {
     # identidad de ESTRATOS protege el volumen de datos, pero la letra la pone
     # una persona.
     Write-Host "   se va a ESCRIBIR en $Arranque y en $Datos" -ForegroundColor Yellow
-    & $build -Todo -Drive $Arranque -Data $Datos
+    if ($Metro) {
+        Write-Host "   y va el KERNEL DE MEDIDA: acuerdate de volver sin -Metro" -ForegroundColor Yellow
+    }
+    & $build -Todo -Drive $Arranque -Data $Datos -Metro:$Metro
 } else {
-    & $build -BuildOnly
+    & $build -BuildOnly -Metro:$Metro
 }
 if ($LASTEXITCODE -ne 0) { Muere 'fallo el build' }
 
