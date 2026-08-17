@@ -27,6 +27,18 @@
     # repo-- asi que esta bandera es para el caso contrario: el port esta y no
     # apetece pagar las 56.465 lineas en cada vuelta del build.
     [switch]$SinDoom,
+    # ** EL KERNEL DE MEDIDA: `--features metro_puerta`.
+    #
+    # Devuelve los dos `rdtsc` a `dispatch`, o sea el REPARTO de una puerta
+    # entre su mitad Rust y el resto. Es lo unico que puede contestar donde se
+    # van los ~945 ciclos, y lo que cuesta esta medido: **112 ciclos en CADA
+    # puerta de CADA programa**, un 11%.
+    #
+    # [!] NO ES EL KERNEL QUE SE DEJA PUESTO. Se flashea, se corre
+    # `sys/precio.bex`, se apunta el reparto y se vuelve al build normal. Un
+    # instrumento que se queda puesto deja de ser una medida y pasa a ser un
+    # peaje -- que es exactamente por lo que se retiro el 16-08.
+    [switch]$Metro,
     [switch]$Yes
 )
 
@@ -978,7 +990,23 @@ try {
     $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
     $kd = Join-Path $target 'kernel'
     $linkerHash = (Get-FileHash (Join-Path $stageDir 'linker.ld') -Algorithm SHA256).Hash.Substring(0, 16)
-    $out = cargo +nightly rustc --release --target x86_64-unknown-none --target-dir $kd -- `
+    # ** EL KERNEL DE MEDIDA VA A OTRO `--target-dir`, y no es un detalle.
+    #
+    # Con el mismo directorio, cargo reusa los objetos: se compila con el metro,
+    # se vuelve a compilar sin el, y **el que queda es el ultimo que se pidio**
+    # sin que nada en pantalla lo diga. Dos directorios significan que los dos
+    # binarios existen a la vez y ninguno pisa al otro.
+    $rasgos = @()
+    if ($Metro) {
+        $rasgos = @('--features', 'metro_puerta')
+        $kd = Join-Path $target 'kernel-metro'
+        Write-Host ''
+        Write-Host '  ** KERNEL DE MEDIDA (--features metro_puerta) **' -ForegroundColor Yellow
+        Write-Host '     Devuelve los dos rdtsc a `dispatch`: cada puerta cuesta ~112 ciclos MAS.' -ForegroundColor Yellow
+        Write-Host '     Correr `sys/precio.bex`, apuntar el reparto, y VOLVER al build normal.' -ForegroundColor Yellow
+        Write-Host ''
+    }
+    $out = cargo +nightly rustc --release @rasgos --target x86_64-unknown-none --target-dir $kd -- `
         -C ("link-arg=--defsym=BMO_LINKER_REV_" + $linkerHash + '=0') 2>&1
     $out | ForEach-Object {
         if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [kernel] ' + $_) -ForegroundColor DarkGray }
@@ -1003,8 +1031,13 @@ foreach ($s in $stages) {
     if ($LASTEXITCODE -ne 0) { Fail ('objcopy (embed) failed for ' + $s) }
     $embedMap[$s] = $outBin
 }
-$kernelElf = Join-Path $target (Join-Path 'kernel' (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel.exe')))
-if (-not (Test-Path $kernelElf)) { $kernelElf = Join-Path $target (Join-Path 'kernel' (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel'))) }
+# ** SE LEE DE `$kd` Y NO DE 'kernel' A PELO, y eso es lo que hace utilizable el
+# `-Metro`: con la ruta escrita a mano, un build de medida habria compilado el
+# kernel instrumentado en `kernel-metro\` y **empaquetado el normal de al lado**,
+# sin que una sola linea lo dijera. Se habria medido el build equivocado y el
+# reparto habria salido en ceros -- con el disco ya flasheado.
+$kernelElf = Join-Path $kd (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel.exe'))
+if (-not (Test-Path $kernelElf)) { $kernelElf = Join-Path $kd (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel')) }
 $kernelEmbed = Join-Path $embedDir 'kernel.bin'
 & $llvmObjcopyEmbed -O binary $kernelElf $kernelEmbed
 if ($LASTEXITCODE -ne 0) { Fail 'objcopy (embed) failed for kernel' }
@@ -1040,8 +1073,10 @@ foreach ($s in $stages) {
     if (-not (Test-Path $bin)) { $bin = Join-Path $td (Join-Path 'x86_64-unknown-none' (Join-Path 'release' $binName)) }
     $all_binaries += $bin
 }
-$kernel = Join-Path $target (Join-Path 'kernel' (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel.exe')))
-if (-not (Test-Path $kernel)) { $kernel = Join-Path $target (Join-Path 'kernel' (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel'))) }
+# El mismo `$kd` que se empaqueto: la tabla de tamanos tiene que describir el
+# binario que se acaba de meter en el `.efi`, no el que hubiera al lado.
+$kernel = Join-Path $kd (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel.exe'))
+if (-not (Test-Path $kernel)) { $kernel = Join-Path $kd (Join-Path 'x86_64-unknown-none' (Join-Path 'release' 'bmo-kernel')) }
 $all_binaries += $kernel
 
 Write-Host ''

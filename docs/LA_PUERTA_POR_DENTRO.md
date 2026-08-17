@@ -251,6 +251,74 @@ los porcentajes de arriba describen al instrumento.
 
 ---
 
+## 4b. ★★ Y AHORA LA TRADUCCION: cuanto gasta esto DE VERDAD
+
+Todo lo anterior son ciclos por vez. La pregunta del dueno es otra y es mejor:
+**cuanto de mi CPU se esta comiendo BMO-X.** Sale de la misma tanda del 17-08:
+
+```
+   uptime          41.698 ticks x 1 ms          =  41,7 s
+   puertas         433.928 en total
+   de esas         ~393.000 son LOS DOS METROS midiendose
+   -----------------------------------------------------------
+   el sistema      ~40.700 puertas en 41,7 s    =  ~976 por segundo
+```
+
+```
+   976 puertas/s  x  945 ciclos  =    922.000 ciclos/s
+   un nucleo a 4.513 MHz         =  4.513.000.000 ciclos/s
+   -------------------------------------------------------
+   BMO-X gasta el 0,02% DE UN NUCLEO en todo su sistema de puertas
+```
+
+En tiempo: **204 microsegundos por cada segundo**. Y eso con once hilos
+durmiendo.
+
+> ★★ **O sea que el coste de las puertas, hoy, no existe.** Optimizar la puerta
+> para que el escritorio vaya mejor seria trabajo perdido: no hay nada que
+> recuperar. El unico gasto de sistema que se ve es **la consola** -- 401 puertas
+> en esa sesion, ~0,6% de un nucleo-- porque cada una dibuja glifos.
+
+### Entonces, para que sirve el numero de 945 ciclos
+
+**No para el % de CPU: para DISENAR APPS.** La cifra que manda no es el
+porcentaje, es la razon contra una llamada normal:
+
+```
+   [MEDIDO]  una llamada a funcion       24 ciclos
+   [MEDIDO]  una puerta                 945 ciclos
+   ---------------------------------------------------
+             una puerta = ~40 llamadas
+```
+
+Y de ahi sale la unica regla que una app tiene que respetar:
+
+```
+   por LOTE, jamas por elemento
+
+   un INVOKE por pixel   1920x1080x60  = 124 M puertas/s  -> 26 nucleos. IMPOSIBLE
+   un INVOKE por frame              60 puertas/s          -> 0,000001%. GRATIS
+```
+
+★ **El umbral, con numeros**: mientras una app cruce la puerta **menos de
+~50.000 veces por segundo**, se lleva menos del 1% de un nucleo y no hay nada que
+optimizar. Por encima de eso el que esta mal es el DISENO de la app, no el
+kernel -- y ninguna cantidad de afinado del stub lo va a salvar. Es R-CPU1 con
+su cifra al lado.
+
+**Lo que eso decide, hoy, en cosas que ya existen:**
+
+```
+   Python        1 M operaciones por la puerta  = 209 ms
+                 las mismas por llamada         =  24 ms
+                 -> el modelo de objetos NO puede ser capabilities
+   DOOM          unas pocas puertas por frame   -> irrelevante. Su cuello era
+                 el blit (~300 MB/s), y eso ya estaba medido
+   un juego SDL  ~10 puertas por frame a 60 fps -> 0,01% de un nucleo
+```
+
+---
+
 ## 5b. ★★ Y todo esto es de UNA maquina: el presupuesto tiene dueno
 
 Las cifras de arriba son ticks del TSC de **esta** placa. El mismo kernel arranca
