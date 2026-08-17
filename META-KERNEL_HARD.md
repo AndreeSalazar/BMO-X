@@ -104,6 +104,89 @@ El ABI, `USER_IMAGE_BASE`, los layouts congelados: constantes.
 La RAM, los nucleos, las MMIO, el tamano del framebuffer, el area de XSAVE: se
 le preguntan al silicio. **Nunca al reves.**
 
+### L6. ★ MODULAR -- y no es higiene: es INSTRUMENTACION
+
+La regla favorita de la casa, y la que mas veces se ha pagado sola. Enunciada
+por el dueno el 2026-08-13:
+
+> *"es curioso que en el monolito hay partes que se convierten en agujas
+> pequenas, pero al dividir se hacen agujas GRANDES, faciles de detectar"*
+
+**Por que funciona, y no es estetica:** el tamano del fichero es el
+**denominador de la busqueda**. Una omision no cambia de tamano al partir el
+fichero; lo que cambia es **contra que se compara**. En 4.000 lineas, una
+funcion que falta es ruido; en 134 con un patron declarado, es un hueco en una
+simetria.
+
+El caso con los numeros: `expr_is_float` y `expr_is_unsigned` son gemelas y la
+segunda faltaba. Dentro de un `impl` de **4.161 lineas con 92 metodos**, la que
+existia estaba a **900 lineas** de donde hacia falta la otra -- y el comentario
+del sitio afectado llego a afirmar por escrito *"el codegen no arrastra esa
+distincion hasta aqui"*, que era falso. Despues del reparto, `types.rs` son
+**134 lineas con exactamente dos funciones hermanas**: que falte una tercera es
+imposible de no ver.
+
+**Las cuatro obligaciones:**
+
+- **L6a.** Un modulo que pase de ~1.000 lineas se parte. No es una sugerencia.
+- **L6b.** El corte se elige por **la pregunta que responde el fichero**, no por
+  tamano ni por capas. Un fichero tiene que poder contestar *"por que soy un
+  fichero y no un trozo del de al lado"*.
+- **L6c.** Un fichero que declara una **simetria** (dos hermanas, tres ejes, N
+  casos) hace visible el hueco. La cabecera lo dice en voz alta: *"el tercer eje
+  que aparezca se escribe igual y al lado"*.
+- **L6d.** ★ **La prueba de que un reparto no cambio nada NO es que los tests
+  pasen** --pasaban antes--: es que **el compilador emita los mismos bytes**. 33
+  `.bex` hasheados antes y despues, identicos.
+
+### L7. ★ LA HERENCIA: abuelo, padre, hijo y nieto
+
+L6 dice **cuando** partir. Esta dice **como se ordenan los trozos**, y es la que
+convierte una medida en algo que se puede refutar.
+
+```
+   abuelo   el HECHO en crudo        no sabe para que se usa
+   padre    lo NOMBRA y lo compone   no sabe que tiene hermanos
+   hijo     RELACIONA dos del padre  no sabe que significa la relacion
+   nieto    el SIGNIFICADO / veredicto   vive fuera y se puede probar
+```
+
+El reparto que le dio nombre, del metro de ciclos:
+
+```
+   abuelo   `puertas`      N cruces y nada mas. No sabe que mide
+   padre    `Fila`         nombre + capability + operacion. No sabe que hay otras filas
+   hijo     `contra`       la diferencia entre dos filas. No sabe que significa
+   nieto    `bmo-juicio`   el veredicto. Fuera del binario, probado en el anfitrion
+```
+
+**La ley, en una frase: EL CONOCIMIENTO SOLO BAJA.** Ninguna generacion sabe
+quien la consume. El abuelo no puede nombrar al padre, el padre no puede
+preguntar por sus hermanos, y el nieto es el unico que tiene opinion.
+
+**Y ahora la parte que la hace obligatoria y no bonita -- las tres cosas que
+compra:**
+
+1. **Permite disenar el experimento.** Es lo que dejo elegir las filas de la
+   sonda para que **entre dos consecutivas cambie UNA SOLA COSA**. Sin esa
+   separacion, la resta mezcla dos variables y cuatro tandas seguidas dan el
+   mismo numero y la misma duda -- que es exactamente lo que paso.
+2. ★★ **Hace FALSABLE una medida.** La frase *"los 246 ciclos no pueden estar en
+   el stub porque **el stub no sabe que operacion se pidio**"* no es una
+   intuicion: **es L7**. El abuelo ignora al padre por construccion, asi que un
+   coste que dependa de la operacion no puede aparecer ahi. Sin la jerarquia esa
+   anomalia no seria una anomalia, seria un numero raro.
+3. **Permite probar el significado sin la maquina.** El nieto no toca hardware,
+   asi que vive en `platform/shared/` y corre en `cargo test`. Una regla sobre
+   numeros se prueba en tres segundos, no en una tanda de flasheo.
+
+**L7a.** Si una generacion necesita saber algo de la de abajo, **el corte esta
+mal**: o el dato sube como parametro, o las dos son la misma generacion.
+
+**L7b.** El nieto **siempre** fuera del binario que mide, aunque salga mas caro.
+*"Alli se puede PROBAR; este binario es `no_main` para un target sin sistema
+operativo y no corre un test."*
+
 ---
 
 ## 2. Los cinco ejes, y cual manda en BMO-X
@@ -133,6 +216,40 @@ lineas de 64 B toco y en que orden, y no tiene nada que ver con el tamano total.
 Y hay un dato que lo cambia todo: **un fallo a DRAM cuesta del orden de una
 puerta entera** (ver R-CACHE1). O sea que el eje CACHE no es paralelo al de
 ciclos: **es el sumando que no estas viendo**.
+
+### ★ "Ordenar por DONDE SE USA MAS" no es un eje: es el MULTIPLICADOR
+
+Es la pregunta que hay que contestar antes de usar la tabla, porque parece un
+eje y no lo es. *"Veces por segundo"* es el **segundo factor** de la aritmetica
+del censo, y multiplica a unos ejes y a otros no:
+
+| eje | la unidad | la multiplica el uso? |
+|---|---|---|
+| CICLOS | ciclos por vez | **SI** -> ciclos/s |
+| CACHE | fallos por vez | **SI** -> fallos/s |
+| ENERGIA | julios por vez | **SI** -> vatios |
+| THROUGHPUT | ya es por segundo | **ya viene multiplicado** |
+| **TAMANO** | bytes, una vez | ★ **NO. Y es el unico** |
+
+**Un binario ocupa lo mismo si se ejecuta una vez o un millon.** El tamano no se
+paga por uso: se paga por **tener que caber**. Por eso `MAX_BEX` y el marco de
+pila no se ordenan por frecuencia, se ordenan por **distancia a su techo** -- y
+por eso un camino que se recorre una sola vez (la carga de un `.bex`, el
+arranque) puede estar tachado en ciclos y **vivo en tamano al mismo tiempo**.
+
+[!] **Y el puente, que es donde se cruzan:** el tamano **dentro de un camino
+caliente deja de ser tamano y se convierte en CACHE**. Un bucle que no cabe en
+los 32 KB de L1i paga fallos de instruccion en cada vuelta. O sea que la unica
+excepcion a *"el tamano no se multiplica por el uso"* la cobra otro eje, no el
+suyo.
+
+**Como se ordena entonces, en la practica:**
+
+```
+   para CICLOS / CACHE / ENERGIA   ordenar por VECES POR SEGUNDO
+   para TAMANO                     ordenar por % DE SU TECHO   (>90% = roto)
+   para THROUGHPUT                 no se ordena: se compara contra el ancho de banda
+```
 
 ### El orden de precedencia en esta casa
 
@@ -239,7 +356,7 @@ existe traer 64. Tocar un `u8` cuesta lo mismo que tocar los 64 vecinos, y
 tocar dos `u8` separados por 64 bytes cuesta el doble que tocarlos juntos.
 
 ```
-   [LITERATURA]  L1 ~4-5 ciclos · L2 ~12-14 · L3 ~46 · DRAM ~70 ns
+   [LITERATURA]  L1 ~4-5 ciclos | L2 ~12-14 | L3 ~46 | DRAM ~70 ns
    [LITERATURA]  a ~4,6 GHz, esos 70 ns son del orden de 300 ciclos
 ```
 
@@ -797,6 +914,7 @@ casa.)
 
 ---
 
-*Ver [`bmo-reglas-de-trabajo`] para las reglas de proyecto (honestidad del
-codigo, modularidad, alcance), `presupuesto.rs` para el eje de ciclos ya
-cableado, y `docs/LA_RAM.md` para la identidad de C3.*
+*Ver `docs/CENSO_DE_EJES.md` para la **aplicacion** de esta ley: que camino del
+arbol gasta que recurso, con la aritmetica que TACHA lo que no hay que mirar.
+Y `presupuesto.rs` para el eje de ciclos ya cableado, `docs/LA_RAM.md` para la
+identidad de C3.*
