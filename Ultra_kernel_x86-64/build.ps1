@@ -222,9 +222,27 @@ Step 'Validating Ring 0 syscall contract'
 # contrato y estaban mezclados con el despacho que los sirve. Este guardian lo
 # cazo en el acto --`NR_INVOKE` desaparecido-- que es exactamente para lo que
 # esta, y por eso el reparto no pudo colarse.
+# ** Y DESDE EL 2026-08-17 SE LEEN LOS CINCO FICHEROS DE `obj\`, NO UNO.
+#
+# La lista decia `file.rs` y ya explicaba por que --"las de un objeto estan con
+# su objeto"-- pero solo nombraba uno. Los otros cuatro objetos tienen las
+# suyas: `memory.rs`, `directory.rs`, `input.rs` y `audio.rs`. Al ensancharlo
+# aparecieron **las tres operaciones del directorio, que el ABI no tenia**:
+# `DIR_OP_SIGUIENTE`, `DIR_OP_NOMBRE` y `DIR_OP_CERRAR` llevaban desde que
+# existe `ls` sirviendose en el kernel y mandandose desde el userland, sin una
+# sola linea en el contrato.
+#
+# Es exactamente lo que ya paso el 2026-08-12 con cuatro `TASK_OP_*`, y la
+# leccion es la misma escrita mas abajo: **un guardian que lee menos no avisa de
+# menos, avisa de nada**. Se leen por PATRON y no por lista, para que un objeto
+# nuevo entre solo.
+$kernelObj = @(Get-ChildItem -Path (Join-Path $root 'kernel\src\ring0\obj') -Filter '*.rs' -File -ErrorAction SilentlyContinue)
+if ($kernelObj.Count -eq 0) {
+    Fail 'no hay ni un .rs en kernel\src\ring0\obj -- las operaciones de los handles no se pueden comprobar'
+}
 $kernelSyscalls = (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\ops.rs') -Raw) + "`n" +
                   (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\mod.rs') -Raw) + "`n" +
-                  (Get-Content (Join-Path $root 'kernel\src\ring0\obj\file.rs') -Raw)
+                  (($kernelObj | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n")
 # ** EL CONTRATO YA NO ES UN FICHERO: ES UNA CARPETA (2026-08-12).
 #
 # `surface.rs` llego a 1.166 lineas con 186 constantes en una lista plana y se
@@ -274,19 +292,81 @@ foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
 # Ring 3 lee la 1, sale un reparto **coherente y falso**. Entran aqui en vez de
 # en un guardian nuevo porque la comprobacion es identica -- mismo nombre, mismo
 # numero, en los dos lados.
-$opsTodas = [regex]::Matches($kernelSyscalls, 'const\s+((?:TASK|ARCH)_OP_\w+|SYSCALL_CLASS_\w+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)')
+# ** Y DESDE EL 2026-08-17, TODAS LAS FAMILIAS -- no dos y media.
+#
+# Barria `TASK_OP_*`, `ARCH_OP_*` y `SYSCALL_CLASS_*`. Las demas familias de
+# operacion --las de los otros handles, y las preguntas del cursor de ESTRATOS--
+# **no las miraba nadie**, y ahi vivia esto:
+#
+#   `MEM_OP_OFRECER` valia 0x03 en el ABI y en el userland, y el despacho del
+#   kernel comparaba contra una copia local suya que decia **0x02**. Dos fallos
+#   mudos: prestar memoria no entraba en su brazo, y `MEM_OP_BYTES` --que ES el
+#   0x02-- entraba en el de prestar. Ninguno de los dos falla en voz alta.
+#
+# Es el mismo modo de fallo que ya documenta el parrafo de arriba y la misma
+# cura: no una fila mas en una lista, sino **una familia menos que se escape**.
+# El patron cubre `X_OP_*` sea cual sea la X, mas las tres que no se llaman asi
+# (`SYSCALL_CLASS_*`, `ES_NODO_*`, `ES_TXT_*`, `DISCO_TRIM_*`).
+$opsTodas = [regex]::Matches($kernelSyscalls, 'const\s+(\w+_OP_\w+|SYSCALL_CLASS_\w+|ES_NODO_\w+|ES_TXT_\w+|DISCO_TRIM_\w+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|\d+)')
+
+# ** Y SE COMPARAN NUMEROS, NO CADENAS.
+#
+# Mientras solo entraban constantes en hexadecimal, comparar el texto valia.
+# Ahora entran tambien las decimales --`ES_TXT_RUTA = 1`, `DISCO_TRIM_HECHO = 0`--
+# y `0x01` contra `1` son la misma cifra escrita de dos formas: comparadas como
+# texto darian un fallo FALSO, que es la peor clase de guardian. Con este
+# convertidor, el lado que este escrito en hexadecimal y el que este en decimal
+# dicen lo mismo cuando valen lo mismo.
+function ComoNumero($t) {
+    $t = $t.Replace('_', '')
+    if ($t -match '^0[xX]') { return [Convert]::ToInt64($t.Substring(2), 16) }
+    return [Convert]::ToInt64($t, 10)
+}
 foreach ($m in $opsTodas) {
     $name = $m.Groups[1].Value
-    $numK = $m.Groups[2].Value.ToUpperInvariant().Replace('_', '')
-    $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)'))
+    $numK = ComoNumero $m.Groups[2].Value
+    $abiMatch = [regex]::Match($abiSurface, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|\d+)'))
     if (-not $abiMatch.Success) {
         Fail ('BMO ABI surface operation contract: ' + $name + ' esta en el kernel y NO en el ABI')
     }
-    if ($abiMatch.Groups[1].Value.ToUpperInvariant().Replace('_', '') -ne $numK) {
+    if ((ComoNumero $abiMatch.Groups[1].Value) -ne $numK) {
         Fail ('BMO ABI surface operation contract mismatch: ' + $name)
     }
 }
 Write-Host ('    operaciones kernel<->ABI: ' + $opsTodas.Count + ' comprobadas, ninguna a mano') -ForegroundColor DarkGray
+
+# ** Y EL TERCER LADO: EL USERLAND (2026-08-17).
+#
+# Las operaciones existen TRES veces, igual que la tabla de `OP_INFO` de mas
+# abajo: las sirve el kernel, las declara el ABI y **las manda el userland**. El
+# guardian de arriba cruza dos, asi que un numero mal escrito en `bmo::` no lo
+# miraba nadie -- y ese es el lado que de verdad viaja por la puerta.
+#
+# El nombre se traduce con UNA regla mecanica y no con un diccionario: en el
+# userland, lo que se pide sobre `CURRENT_TASK` pierde el prefijo (`OP_INFO` es
+# `TASK_OP_INFO`) y lo que se pide sobre un handle se llama igual
+# (`MEM_OP_OFRECER`, `FB_OP_BASE`). Si algun dia hiciera falta un diccionario,
+# el problema seria el nombre y no el guardian.
+$userland = Get-Content (Join-Path $root '..\Ultra_userspace\userland\src\lib.rs') -Raw
+$opsUser = [regex]::Matches($userland, '(?m)^\s*pub const\s+(\w*OP_\w+|ES_NODO_\w+|ES_TXT_\w+|DISCO_TRIM_\w+)\s*:\s*u\d+\s*=\s*(0x[0-9A-Fa-f_]+|\d+)\s*;')
+foreach ($m in $opsUser) {
+    $name = $m.Groups[1].Value
+    $numU = ComoNumero $m.Groups[2].Value
+    $candidatos = @($name)
+    if ($name.StartsWith('OP_')) { $candidatos += ('TASK_' + $name) }
+    $enAbi = $null
+    foreach ($c in $candidatos) {
+        $hit = [regex]::Match($abiSurface, ('pub const\s+' + $c + '\s*:\s*u\d+\s*=\s*(0x[0-9A-Fa-f_]+|\d+)\s*;'))
+        if ($hit.Success) { $enAbi = $hit.Groups[1].Value; break }
+    }
+    if ($null -eq $enAbi) {
+        Fail ('contrato: ' + $name + ' esta en el userland y NO en el ABI (ni como TASK_' + $name + ')')
+    }
+    if ((ComoNumero $enAbi) -ne $numU) {
+        Fail ('contrato: ' + $name + ' vale distinto en el userland y en el ABI')
+    }
+}
+Write-Host ('    operaciones userland<->ABI: ' + $opsUser.Count + ' comprobadas') -ForegroundColor DarkGray
 
 # ** EL CUARTO GUARDIAN: EL FORMATO DEL HANDLE (2026-08-16).
 #

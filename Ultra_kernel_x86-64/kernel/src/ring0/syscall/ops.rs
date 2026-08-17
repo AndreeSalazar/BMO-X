@@ -19,8 +19,14 @@
 //! Because they are not an implementation detail: they are **the contract**.
 //! Every one of these constants has a twin in `bmo-abi`, another in
 //! `sem-asm/tables/bmo/bmo.h`, and a third in the userland runtime. The build
-//! guard reads all of them and refuses to link if they disagree -- 49
-//! operations checked, none by hand.
+//! guard reads all of them and refuses to link if they disagree -- **105
+//! operations kernel<->ABI and 75 userland<->ABI**, none by hand.
+//!
+//! ** Eran 49 hasta el 2026-08-17, y el salto no es porque hayan aparecido
+//! cincuenta operaciones: es que el guardian solo miraba TRES familias
+//! (`TASK_OP_*`, `ARCH_OP_*`, `SYSCALL_CLASS_*`) y un solo fichero de `obj\`.
+//! Las demas --las de cada handle-- no las cruzaba nadie, y ahi vivia
+//! `MEM_OP_OFRECER` con **dos valores distintos dentro del mismo kernel**.
 //!
 //! Mixed in with the dispatcher, a reader could not tell the frozen part from
 //! the part that is free to change. Here the rule is visible: **a number in
@@ -279,7 +285,12 @@ pub(crate) const TASK_OP_AUDIO_RELEASE: u64 = 0x22;
 pub(crate) const TASK_OP_CABINA_INFO: u64 = 0x23;
 pub(crate) const TASK_OP_CABINA_TEXTO: u64 = 0x24;
 /// Ofrecer un trozo del bloque propio. Es una operacion sobre `KIND_MEMORIA`.
-const MEM_OP_OFRECER: u64 = 0x03;
+///
+/// ** Y ES LA UNICA COPIA, desde el 2026-08-17. Habia otra dentro de `mod.rs`
+/// que decia `0x02` --o sea `MEM_OP_BYTES`-- y era la que usaba el despacho:
+/// prestar memoria no llegaba a su brazo y preguntar el tamano de un bloque
+/// entraba en el de prestar. Ninguna de las dos fallaba en voz alta.
+pub(crate) const MEM_OP_OFRECER: u64 = 0x03;
 // ** ESTAS CONSTANTES SON `pub(crate)` POR CORRECCION, NO POR ESTILO.
 //
 // === La trampa, que no da error de compilacion ===
