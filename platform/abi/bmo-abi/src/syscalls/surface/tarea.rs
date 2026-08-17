@@ -1,6 +1,6 @@
 //! **Lo que se le pide a `CURRENT_TASK`.** Los `TASK_OP_*`.
 //!
-//! Cuarenta y una operaciones sobre la propia tarea: quien soy, ceder, salir,
+//! Cuarenta y dos operaciones sobre la propia tarea: quien soy, ceder, salir,
 //! abrir un canal, reclamar la pantalla, lanzar un programa, preguntar por el
 //! sistema. Es la familia mas grande del contrato **y la que mas crece**, y por
 //! eso tiene fichero propio.

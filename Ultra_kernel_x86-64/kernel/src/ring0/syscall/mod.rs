@@ -74,10 +74,26 @@ pub mod meter;
 pub mod presupuesto;
 pub(crate) use ops::*;
 
-/// `MEM_OP_OFRECER` -- lend a memory block to another task. Lives with the
-/// dispatch and not in the table because it is an operation on a MEMORY
-/// handle, not on the current task.
-const MEM_OP_OFRECER: u64 = 0x02;
+// ** AQUI HABIA UNA SEGUNDA COPIA DE `MEM_OP_OFRECER`, Y VALIA OTRA COSA.
+//
+// Decia `0x02`. El ABI, el userland y la tabla de `ops.rs` dicen **`0x03`**, y
+// esta era la que usaba el despacho -- o sea que el numero que comparaba el
+// kernel no era el que mandaba Ring 3. Dos fallos mudos por el precio de uno:
+//
+//   ofrecer (0x03)   no entraba en su brazo: caia al generico, y `operation`
+//                    no lo conoce -> `unsupported`. **Prestar no funcionaba.**
+//   bytes   (0x02)   es `MEM_OP_BYTES`, y entraba en el brazo de OFRECER, que
+//                    lee `r8` como el tid del destinatario. `entregado()`
+//                    contestaba 0 SIEMPRE, y no por estar vacio.
+//
+// El comentario que la defendia decia que vivia aqui *"y no en la tabla porque
+// es una operacion sobre un handle de MEMORIA, no sobre la tarea"*. La frase es
+// cierta y la conclusion no: `ops.rs` ya guarda `MEM_OP_*`, `ES_NODO_*` y
+// `CHANNEL_OP_*`, que tampoco son de la tarea. Lo que hacia falta no era un
+// sitio distinto, era **un solo sitio**.
+//
+// La constante vive ahora en `ops.rs` como todas, y el guardian de `build.ps1`
+// la barre contra el ABI: esto no puede volver a pasar en silencio.
 
 
 #[inline]

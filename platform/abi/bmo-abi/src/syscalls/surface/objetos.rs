@@ -92,6 +92,97 @@ pub const ES_TXT_HIJO: u64 = 0;
 /// El nombre del nivel `indice` de la ruta. `0` es la raiz y contesta vacio.
 pub const ES_TXT_RUTA: u64 = 1;
 
+// == ** LAS ONCE QUE FALTABAN EN EL CONTRATO (2026-08-17) ===================
+//
+// Tres del DIRECTORIO, cuatro de la CONSOLA y cuatro del FRAMEBUFFER. Las once
+// llevaban desde que existen sirviendose en el kernel (`ring0/obj/*.rs`) y
+// mandandose desde el userland con los mismos numeros -- pero **aqui no
+// estaban**. O sea que el contrato no las conocia y ningun guardian podia
+// compararlas: el mismo hueco que el 2026-08-12 dejo fuera a
+// `ENDPOINT_CONNECT`, `PANTALLA_SOLTAR`, `ENTRADA_SOLTAR` y `AUDIO_CENSO`.
+//
+// Aparecieron al ensanchar el guardian de `build.ps1` para que barra TODAS las
+// familias de operacion --y los cinco ficheros de `obj\`, no uno-- despues de
+// que ese mismo ensanchamiento cazara el fallo de verdad: `MEM_OP_OFRECER`
+// tenia dos copias en el kernel con numeros distintos.
+//
+// ** Los numeros son los que ya se usan en los dos lados: esto no cambia nada
+// que corra. Cierra el hueco por el que no se miraban.
+//
+// > La superficie sigue siendo de DOS puertas. Estas no son syscalls: son
+// > operaciones sobre handles que alguien concedio, y por eso viven aqui.
+
+/// Avanza a la siguiente entrada del directorio:
+/// `(hay << 63) | (es_dir << 62) | tamano`. `hay == 0` = se acabo.
+///
+/// El nombre NO viaja aqui --son 11 bytes y no caben con los demas campos-- y
+/// se pide aparte con [`DIR_OP_NOMBRE`]. Es la misma decision que la consola:
+/// un contador honesto vale mas que un byte apretado.
+pub const DIR_OP_SIGUIENTE: u64 = 0x01;
+
+/// Los 11 bytes del nombre 8.3 de la entrada ACTUAL, de 7 en 7. `arg0` es el
+/// desplazamiento (0 o 7) y devuelve `(n << 56) | bytes_LE`.
+///
+/// Salen en 8.3 CRUDO --`COBOL   BEX`, con sus espacios-- porque convertirlo a
+/// `COBOL.BEX` es presentacion, y la presentacion es de Ring 3.
+pub const DIR_OP_NOMBRE: u64 = 0x02;
+
+/// **Cerrar, y devolver la ranura.** Solo caben ocho directorios abiertos a la
+/// vez, asi que quien no cierra se los come. Lo llama el `Drop` del userland.
+pub const DIR_OP_CERRAR: u64 = 0x03;
+
+// -- Las cuatro de la CONSOLA (`KIND_CONSOLA`) ------------------------------
+
+/// Leer hasta **7** bytes de la salida del hijo: `(n << 56) | bytes_LE`.
+/// `n == 0` = no hay nada.
+///
+/// ** Siete y no ocho, y el contador ARRIBA. Ocho bytes ocupan el `u64` entero
+/// y no dejan sitio para decir cuantos valen: la primera version pisaba el
+/// byte 4 y sacaba uno de cada ocho corrupto, en una ruta que solo se nota
+/// leyendo texto raro. Se paga un byte de ancho de banda por un contador
+/// honesto.
+pub const CONSOLA_OP_LEER: u64 = 0x01;
+
+/// Cuantos bytes se descartaron por anillo lleno. Un terminal que va lento
+/// tiene derecho a saber que esta perdiendo salida en vez de creerse completo.
+pub const CONSOLA_OP_PERDIDOS: u64 = 0x02;
+
+/// El TERMINAL mete 8 bytes (LE, el cero corta) en el anillo de ENTRADA.
+///
+/// Es el segundo sentido del canal, y sin el no hay `ACCEPT`: un programa
+/// lanzado desde la caja no puede reclamar `KIND_INPUT` --la tiene el
+/// compositor-- asi que su unica via para recibir teclas es el mismo objeto por
+/// el que ya habla. Un canal de un solo sentido deja al hijo mudo de oido.
+pub const CONSOLA_OP_ESCRIBIR: u64 = 0x03;
+
+/// Hay algun proceso escribiendo a esta consola ahora mismo?
+///
+/// Lo pregunta el terminal para saber a donde va lo que se teclea: si hay hijo
+/// vivo, la linea es PARA EL; si no, es un comando. Sin esto habria que
+/// inventar un prefijo o un modo, y las dos cosas se olvidan.
+pub const CONSOLA_OP_HAY_HIJO: u64 = 0x04;
+
+// -- Las cuatro del FRAMEBUFFER (`KIND_FRAMEBUFFER`) ------------------------
+//
+// Cada una devuelve UN `u64`, que es lo que cabe en `BmoStatus.value`. Los
+// campos que van juntos viajan empaquetados en vez de gastar una llamada por
+// numero: se leen una vez, al arrancar el compositor.
+
+/// Direccion virtual, **en el espacio del proceso**, donde quedo mapeada.
+pub const FB_OP_BASE: u64 = 0x01;
+
+/// `(ancho << 32) | alto`, en pixeles.
+pub const FB_OP_DIMS: u64 = 0x02;
+
+/// `(stride << 32) | formato`. ** El stride va en PIXELES, no en bytes: es el
+/// mismo numero que usa el kernel, y convertirlo en la frontera seria inventar
+/// una unidad distinta a cada lado.
+pub const FB_OP_STRIDE: u64 = 0x03;
+
+/// Bytes mapeados en total. Es lo que hace falta para llenar la pantalla entera
+/// con un `rep stosd` sin multiplicar nada.
+pub const FB_OP_BYTES: u64 = 0x04;
+
 pub const ARCH_OP_LEER: u64 = 0x01;
 
 /// Saca hasta 7 bytes **sin pasar del salto de linea**:
