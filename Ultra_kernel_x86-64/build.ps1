@@ -359,6 +359,50 @@ foreach ($campo in ($infoCampos.Keys | Sort-Object)) {
 }
 Write-Host ('    OP_INFO: ' + $infoCampos.Count + ' campos, el mismo id en kernel, ABI y userland') -ForegroundColor DarkGray
 
+# -- ** Y LA CUARTA COPIA: `bmo.h`, LA CARA EN C DE LA MISMA TABLA --------
+#
+# El 2026-08-17 se anadieron `INFO_PRESUPUESTO_MAQUINA` y `INFO_SUELO_CRUCE` a
+# los tres sitios de arriba **y al `.h`**, y este guion dijo verde: no miraba el
+# `.h`. Lo caz  el banco del anfitrion (`bmo_h_cruza_de_lenguaje`) minutos
+# despues, en el despliegue.
+#
+# ** El guardian que se corre a mano no protege igual que el que se corre solo.
+# `build.ps1 -BuildOnly` es lo que se ejecuta veinte veces al dia; el banco, en
+# el despliegue. Un fallo que solo aparece en el segundo se descubre con el disco
+# en la mano.
+#
+# Aqui solo se comprueba la familia `INFO_`, y por una razon concreta: es la
+# unica cuyo nombre en C es **mecanicamente** el de Rust con `BMO_` delante. Las
+# operaciones no (`BMO_OP_CEDER` es `TASK_OP_YIELD`), y traducirlas pide el
+# diccionario a mano que ya vive --con su porque-- en la prueba del ABI. Este
+# guardian no la sustituye: le quita el trabajo que puede hacer solo.
+$hRuta = Join-Path $root '..\toolchain\forge\sem-asm\tables\bmo\bmo.h'
+if (Test-Path $hRuta) {
+    $hTexto = Get-Content $hRuta -Raw
+    $hCampos = [regex]::Matches($hTexto, '(?m)^\s*#define\s+BMO_(INFO_[A-Z0-9_]+)\s+(0x[0-9A-Fa-f]+|\d+)')
+    $hMal = 0
+    foreach ($m in $hCampos) {
+        $campo = $m.Groups[1].Value
+        $crudo = $m.Groups[2].Value
+        if ($crudo -match '^0[xX]') {
+            $valor = ([System.Convert]::ToUInt64($crudo.Substring(2), 16)).ToString()
+        } else {
+            $valor = ([uint64]$crudo).ToString()
+        }
+        if (-not $infoCampos.ContainsKey($campo)) {
+            Fail ('bmo.h: BMO_' + $campo + ' no existe en el ABI -- una constante de C sin pareja en Rust')
+        }
+        $enAbi = $infoCampos[$campo]['abi']
+        if ($enAbi -ne $valor) {
+            Fail ('bmo.h: BMO_' + $campo + ' vale ' + $valor + ' y el ABI dice ' + $enAbi)
+        }
+        $hMal++
+    }
+    Write-Host ('    bmo.h: ' + $hMal + ' constantes INFO_, el mismo valor que el ABI') -ForegroundColor DarkGray
+} else {
+    Fail ('no se encuentra bmo.h en ' + $hRuta + ' -- el contrato de C no se puede comprobar')
+}
+
 # The kernel's capability-engine mirror (cap.rs) must match bmo-abi too:
 # handle-kind codes and rights bits are part of the frozen contract.
 $kernelCap = Get-Content (Join-Path $root 'kernel\src\ring0\obj\cap.rs') -Raw

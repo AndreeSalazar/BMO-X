@@ -101,6 +101,12 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     ("BMO_INFO_PRESUPUESTO_PUERTA", "INFO_PRESUPUESTO_PUERTA", 0x37),
     ("BMO_INFO_PRESUPUESTO_DISPATCH", "INFO_PRESUPUESTO_DISPATCH", 0x38),
     ("BMO_INFO_PRESUPUESTO_HANDLE", "INFO_PRESUPUESTO_HANDLE", 0x39),
+    // Un presupuesto tiene DUENO: la maquina en que se midio. Si el silicio no
+    // cuadra, las tres filas de arriba contestan cero y el juez se calla. Y el
+    // suelo del cruce es lo que permite separar el merito de BMO del coste del
+    // CPU. Ver R-CPU8 y R-CPU10.
+    ("BMO_INFO_PRESUPUESTO_MAQUINA", "INFO_PRESUPUESTO_MAQUINA", 0x3D),
+    ("BMO_INFO_SUELO_CRUCE", "INFO_SUELO_CRUCE", 0x3E),
     // El censo de extensiones. Cruza por el mismo motivo que el metro: lo
     // sirve el kernel y lo leen dos lados distintos -- el escritorio en Rust y
     // cualquier `.bex` de C que quiera saber si tiene RDRAND antes de usarlo.
@@ -232,6 +238,8 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_PRESUPUESTO_PUERTA", s::INFO_PRESUPUESTO_PUERTA),
         ("BMO_INFO_PRESUPUESTO_DISPATCH", s::INFO_PRESUPUESTO_DISPATCH),
         ("BMO_INFO_PRESUPUESTO_HANDLE", s::INFO_PRESUPUESTO_HANDLE),
+        ("BMO_INFO_PRESUPUESTO_MAQUINA", s::INFO_PRESUPUESTO_MAQUINA),
+        ("BMO_INFO_SUELO_CRUCE", s::INFO_SUELO_CRUCE),
         ("BMO_INFO_CPU_EXT_N", s::INFO_CPU_EXT_N),
         ("BMO_INFO_CPU_EXT_HAY", s::INFO_CPU_EXT_HAY),
         ("BMO_INFO_CPU_EXT_USA", s::INFO_CPU_EXT_USA),
