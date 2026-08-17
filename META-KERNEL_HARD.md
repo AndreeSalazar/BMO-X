@@ -345,6 +345,21 @@ Y exige tres cosas mas que no son de rendimiento sino de verdad:
   y deja la lista corta -- las transiciones de privilegio, los `swapgs` y la
   mitad Rust. Contar es gratis; suponer cuesta tandas.
 
+- **R-CPU8.** ★★ **UN PRESUPUESTO TIENE DUENO: LA MAQUINA EN QUE SE MIDIO.** Un
+  techo en ticks pertenece a un CPU y a un TSC concretos; el mismo kernel
+  arranca en cualquier x86-64, y alli esos numeros no son estrictos ni laxos,
+  son **de otra maquina** -- falsa regresion en un CPU mas lento, falso aprobado
+  en uno mas rapido. Asi que la tabla vive **en el perfil** (`cpu_vendor/`), no
+  en el kernel, y declara familia, modelo y TSC. Si el silicio no cuadra, las
+  filas contestan `sin declarar` y **el juez se calla**. Estrenar un CPU es
+  copiar el perfil y pegar tres cifras medidas: cero lineas de kernel.
+- **R-CPU9.** ★ **UN "NO COINCIDE" LLEVA LOS DOS LADOS.** Lo esperado y lo leido,
+  en el mismo campo. Un `bool` frena el trinquete y no lo arregla: obliga a leer
+  codigo para saber si fallo el modelo o el reloj. Con los dos numeros delante,
+  el arreglo es cambiar una cifra. *(Lo pago el mismo dia: el arbol declaraba el
+  modelo de este chip en dos sitios con valores distintos --`19h/01h` y
+  `19h/21h`-- y nadie habia leido nunca el byte.)*
+
 ★ Ver `docs/LA_PUERTA_POR_DENTRO.md`: los once elementos de una puerta con su
 fichero, su coste **en ciclos**, y el experimento que decide cada uno.
 

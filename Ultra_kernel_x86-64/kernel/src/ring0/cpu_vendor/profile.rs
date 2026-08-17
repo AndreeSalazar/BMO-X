@@ -131,6 +131,32 @@ pub struct CpuProfile {
     /// Los contadores de energia (RAPL o equivalente). `None` = este silicio no
     /// los expone, y entonces la terminal lo DICE en vez de pintar cero.
     pub energia: Option<fn() -> Option<EnergiaCruda>>,
+
+    // -- ** LO QUE ESTE PERFIL DICE QUE UNA PUERTA PUEDE COSTAR (2026-08-17) --
+    //
+    // El presupuesto de ciclos vivia en `syscall/presupuesto.rs` como `const`
+    // del kernel, y **el kernel arranca en cualquier x86-64**. `techo: 960` son
+    // ticks del TSC de UNA placa: en otro CPU ese numero no es estricto ni
+    // laxo, es de otra maquina -- y juzgar con el da una falsa regresion o un
+    // falso aprobado. El mismo fallo de siempre: opinar donde no hay derecho.
+    //
+    // Encaja aqui sin torcer la doctrina de este fichero, y por la misma razon
+    // que el area de XSAVE: **es una EXPECTATIVA declarada, y el hecho se le
+    // pregunta al silicio** -- corriendo `sys/precio.bex` en la maquina.
+    /// Los techos y las metas medidos en ESTE silicio, con la identidad de la
+    /// maquina donde se midieron pegada a ellos.
+    pub presupuesto: &'static crate::ring0::syscall::presupuesto::Presupuestos,
+
+    /// **Lo que el silicio dice ser**: `(familia, modelo)` de CPUID, ya
+    /// detectados por `init`. `None` si todavia no se ha preguntado.
+    ///
+    /// * Es un puntero a funcion por el mismo motivo que `nucleos`: la
+    /// identidad **se le pregunta al CPU**, no se declara. Y existe porque sin
+    /// el, comprobar que el presupuesto es de esta maquina obligaria a nombrar
+    /// el modulo del fabricante desde `syscall/` -- que es exactamente lo que
+    /// la cabecera de este fichero prohibe, y lo que ya se rompio una vez en
+    /// tres sitios.
+    pub identidad: fn() -> Option<(u8, u8)>,
 }
 
 /// **Una lectura cruda de los contadores de energia.**

@@ -321,7 +321,8 @@ Write-Host ('    operaciones: ' + $porNumero.Count + ' opcodes, ninguno repetido
 # ficheros: `report.rs` implementa las filas y `dev\usb\salud.rs` los bits.
 $infoFuentes = [ordered]@{
     'kernel'   = (Get-Content (Join-Path $root 'kernel\src\ring0\core\report.rs') -Raw) + "`n" +
-                 (Get-Content (Join-Path $root 'kernel\src\ring0\dev\usb\salud.rs') -Raw)
+                 (Get-Content (Join-Path $root 'kernel\src\ring0\dev\usb\salud.rs') -Raw) + "`n" +
+                 (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\presupuesto.rs') -Raw)
     'abi'      = $abiSurface
     'userland' = Get-Content (Join-Path $root '..\Ultra_userspace\userland\src\lib.rs') -Raw
 }
@@ -330,7 +331,7 @@ foreach ($fuente in $infoFuentes.GetEnumerator()) {
     # Los ids van en hexadecimal y los bits se escriben como `1 << n`, que es
     # como se leen. Se normaliza a decimal para poder compararlos entre si: la
     # comprobacion es sobre el VALOR, no sobre como esta escrito.
-    $hallados = [regex]::Matches($fuente.Value, '(?m)^\s*(?:pub\s+)?const\s+((?:INFO|USB_SALUD)_[A-Z0-9_]+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|1\s*<<\s*\d+|\d+)')
+    $hallados = [regex]::Matches($fuente.Value, '(?m)^\s*(?:pub\s+)?const\s+((?:INFO|USB_SALUD|MAQ)_[A-Z0-9_]+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|1\s*<<\s*\d+|\d+)')
     foreach ($m in $hallados) {
         $campo = $m.Groups[1].Value
         $crudo = $m.Groups[2].Value.Replace('_', '')

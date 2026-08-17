@@ -212,6 +212,50 @@ prioridad es una intuicion -- que en este camino ya se equivoco dos veces.
 
 ---
 
+## 5b. ★★ Y todo esto es de UNA maquina: el presupuesto tiene dueno
+
+Las cifras de arriba son ticks del TSC de **esta** placa. El mismo kernel arranca
+en cualquier x86-64, asi que la tabla de techos, tal como estaba --`const` del
+kernel-- habria juzgado con ellos en cualquier otro CPU:
+
+```
+   un CPU mas lento    -> [SE PASA] REGRESION     por no ser el mismo silicio
+   un CPU mas rapido   -> [META]                  aunque hubiera una regresion
+```
+
+Es el mismo fallo que este documento lleva persiguiendo entero: **opinar donde
+no hay derecho**. Cerrado el 17-08 (R-CPU8), y la mitad ya estaba construida --
+`cpu_vendor/profile.rs` dice desde su primera linea que *cambiar de CPU es
+cambiar de perfil, nunca editar el kernel*; lo unico que faltaba era que el
+presupuesto viviera alli.
+
+```
+   cpu_vendor/ryzen_5_5600x/presupuesto.rs   las tres filas + familia, modelo
+                                             y TSC en que se midieron
+   syscall/presupuesto.rs                    la FORMA y la doctrina: eso si es
+                                             del kernel
+   INFO_PRESUPUESTO_MAQUINA                  coincide? y, si no, los DOS lados
+```
+
+**Estrenar otro CPU es**: copiar el directorio del perfil con su
+`presupuesto.rs`, arrancar --dira `SIN TRINQUETE`, que es lo correcto: todavia no
+hay medida de esa maquina--, correr `sys/precio.bex` y pegar las tres cifras con
+su +5%. **Ni una linea del kernel.**
+
+★ Y el "estandar" que se busca aqui **no es el numero**: es la doctrina --techo y
+meta, un cero no es una medida, la unidad con su denominador, doble testigo--,
+que vive en `bmo-juicio`, se prueba en un `cargo test` de tres segundos y viaja a
+cualquier CPU. El valor absoluto es calibracion, y la calibracion no se hereda.
+
+[!] **Lo que NO resuelve, y hay que decirlo**: un ratio (*"la puerta no puede
+costar mas de N veces un `rdtsc`"*) parece la solucion portable y no lo es --
+R-TIME7 ya midio que el mismo `rdtsc` vale 107 ticks en un bucle apretado y 69 en
+uno flojo. Un trinquete montado sobre una referencia que varia un 55% no es un
+trinquete. El ratio sirve para orientarse al estrenar una maquina, no para
+condenar.
+
+---
+
 ## 6. Lo que este documento NO afirma
 
 - **Que los 969 ciclos sean caros o baratos.** Sin el reparto de P1 no se puede
@@ -223,6 +267,11 @@ prioridad es una intuicion -- que en este camino ya se equivoco dos veces.
 - **Que el reparto de trafico de la seccion 4 este visto.** El instrumento se
   escribio el 17-08 y **ningun CPU lo ha ejecutado**: hasta la proxima tanda, la
   columna "veces por segundo" sigue vacia.
+- **Que el modelo de CPU declarado en el presupuesto sea el correcto.** El arbol
+  se contradice a si mismo (`19h/01h` en `cpu/mod.rs`, `19h/21h` en el perfil) y
+  **nadie ha leido nunca ese byte en este chip**. Se toma el del perfil; lo
+  desempata la proxima tanda, y si sale `SIN TRINQUETE` la propia linea trae el
+  esperado y el leido.
 
 ---
 

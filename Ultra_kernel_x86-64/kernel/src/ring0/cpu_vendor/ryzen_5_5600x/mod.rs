@@ -19,6 +19,10 @@ pub mod cache;
 pub mod tsc;
 pub mod errata;
 pub mod bmo_cpu;
+/// **Lo que una puerta tiene permitido costar EN ESTE SILICIO.** Vive aqui y no
+/// en `syscall/` porque un techo en ticks es un dato de este CPU: ver su
+/// cabecera.
+pub mod presupuesto;
 
 pub use bmo_cpu::init_bmo_cpu;
 
@@ -63,7 +67,23 @@ pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
     // la terminal lo diria con palabras en vez de pintar 0 W -- ver el campo
     // `energia` de `CpuProfile`, donde esta el porque de que sea `Option`.
     energia: Some(power::leer),
+    // Las tres filas de ciclos medidas en ESTA placa. Ver `presupuesto.rs`: si
+    // el CPU de delante no es este, cruzan a Ring 3 como "sin declarar" y el
+    // juez se calla en vez de inventarse un veredicto.
+    presupuesto: &presupuesto::PRESUPUESTO,
+    identidad: identidad,
 };
+
+/// Lo que el silicio contesta a CPUID, subido al contrato del perfil.
+///
+/// `None` mientras `init` no haya corrido -- y eso NO es un fallo: significa
+/// *"todavia no se ha preguntado"*, que es distinto de *"es otro CPU"*. Quien
+/// lo lee tiene que tratarlo como "no se sabe", que es lo que hace
+/// `presupuesto::es_esta_maquina` al negarse a juzgar.
+fn identidad() -> Option<(u8, u8)> {
+    let id = bmo_cpu::identity()?;
+    Some((id.family_model.family, id.family_model.model))
+}
 
 /// Sube la topologia del Ryzen al contrato neutral del perfil.
 ///
