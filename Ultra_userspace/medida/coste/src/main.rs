@@ -396,19 +396,53 @@ pub extern "C" fn _start() -> ! {
     ];
 
     let mut minimos = [0u64; 3];
+    let mut medias = [0u64; 3];
+    let mut dispatches = [0u64; 3];
     for (i, f) in filas.iter().enumerate() {
         // La fila 3 solo existe si el kernel recuerda nuestra imagen. Un `.bex`
         // lanzado con `run` siempre la tiene; embebido, no.
         if f.cap == 0 {
             continue;
         }
-        // ** OP_INFO y ARCH_TAMANO llevan su argumento en `rdx`, y el bucle lo
-        // pone a cero. Para `OP_INFO` eso es el campo 0, que es un campo tan
-        // valido como otro: lo que se mide es la operacion, no el dato.
-        // (el campo viaja en `f.a0`, ver `Fila`)
+        // ** `dispatch` POR FILA, que es lo que faltaba.
+        //
+        // La sonda anterior contesto que el handle cuesta 217 y la operacion
+        // solo 33 -- o sea, que es el handle. Pero no podia decir **donde**
+        // estan esos 217, porque media `dispatch` una sola vez, para la puerta
+        // pelada. Y esa diferencia lo decide todo:
+        //
+        //   dentro de `dispatch`  -> resolver una capability es caro, pero es
+        //                            codigo Rust normal. NO hay anomalia.
+        //   fuera de `dispatch`   -> hay un fallo, porque el stub no sabe que
+        //                            operacion se pidio.
+        let p0 = bmo::info(bmo::INFO_SYSCALL_CUENTA);
+        let c0 = bmo::info(bmo::INFO_SYSCALL_CICLOS);
         let (min, media) = medir(|n| unsafe { puertas(f.cap, f.op, f.a0, n) });
+        let pd = bmo::info(bmo::INFO_SYSCALL_CUENTA) - p0;
+        let cd = bmo::info(bmo::INFO_SYSCALL_CICLOS) - c0;
         minimos[i] = min;
-        di!(l, "{}  min {min} ciclos/op, media {media}\n", f.nombre);
+        medias[i] = media;
+        dispatches[i] = if pd > 0 { cd / pd } else { 0 };
+    }
+    // ** SE IMPRIME DESPUES DE MEDIR LAS TRES, y no dentro del bucle.
+    //
+    // Si se imprimiera dentro, la ventana de la fila 2 llevaria dentro las
+    // puertas de consola de la fila 1 -- que es EXACTAMENTE el fallo que hizo
+    // que `dispatch` pareciera 309 durante cuatro tandas. La regla ya se pago
+    // una vez; aqui se aplica antes de que cueste la segunda.
+    for (i, f) in filas.iter().enumerate() {
+        if minimos[i] == 0 {
+            continue;
+        }
+        di!(
+            l,
+            "{}  min {} media {}, dispatch {}, fuera {}\n",
+            f.nombre,
+            minimos[i],
+            medias[i],
+            dispatches[i],
+            contra(minimos[i], dispatches[i]).unwrap_or(0)
+        );
     }
 
     // -- las dos restas, que es la sonda de verdad ---------------------
@@ -421,6 +455,17 @@ pub extern "C" fn _start() -> ! {
             Some(d) => di!(l, "   fila3-fila2 = {d}  <- lo que cuesta un HANDLE de verdad\n"),
             None => di!(l, "   fila3-fila2: al reves; el handle salio mas barato\n"),
         }
+        // ** Y LA RESTA QUE CIERRA LA PREGUNTA: de lo que cuesta el handle,
+        // cuanto cae dentro de `dispatch` y cuanto fuera. Dentro es codigo
+        // caro; fuera es un fallo.
+        let dentro = contra(dispatches[2], dispatches[1]).unwrap_or(0);
+        let total = contra(minimos[2], minimos[1]).unwrap_or(0);
+        di!(
+            l,
+            "   ...de esos, {} dentro de dispatch y {} FUERA\n",
+            dentro,
+            contra(total, dentro).unwrap_or(0)
+        );
         bmo::invoke(paquete, ARCH_CERRAR as u32, 0, 0, 0);
     } else {
         di!(l, "   fila 3 NO SE MIDIO: el kernel no recuerda mi imagen\n");
