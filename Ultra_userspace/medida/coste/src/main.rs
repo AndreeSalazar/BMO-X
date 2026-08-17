@@ -316,6 +316,40 @@ fn decir_ciclos(l: &mut Linea, etiqueta: &str, ticks: u64, r: &juez::Reloj) {
     }
 }
 
+/// ** LA CIFRA QUE SOBREVIVE A UN CAMBIO DE CPU: cuantas veces el suelo del
+/// hardware cuesta una puerta de BMO.
+///
+/// Una puerta es `suelo + sobrecoste`, y solo el segundo sumando es este kernel.
+/// Mezclados, 792 ticks no dicen si el codigo esta bien: dicen que este CPU es
+/// asi. Separados, sale un numero que se puede comparar entre maquinas -- y que
+/// baja para TODAS a la vez el dia que BMO adelgace.
+///
+/// [!] Se dice **con la etiqueta del suelo pegada**: mientras sea una
+/// estimacion, el ratio es orientativo y no se puede trinquetear con el. Ver
+/// `INFO_SUELO_CRUCE`.
+fn sobre_el_suelo(l: &mut Linea, puerta_ticks: u64) {
+    let s = bmo::info(bmo::INFO_SUELO_CRUCE);
+    let suelo = s & 0xFFFF_FFFF;
+    if suelo == 0 {
+        di!(l, "   sobre el suelo: este perfil no declara suelo del cruce\n");
+        return;
+    }
+    let medido = (s >> 32) & 1 == 1;
+    // En centesimas: entre 5,3x y 5,9x hay trabajo de una tarde, y con enteros
+    // los dos se leerian igual.
+    let veces = puerta_ticks.saturating_mul(100) / suelo;
+    let sobrecoste = puerta_ticks.saturating_sub(suelo);
+    di!(
+        l,
+        "   sobre el suelo: {},{:02}x  (suelo {} ticks {}, BMO anade {})\n",
+        veces / 100,
+        veces % 100,
+        suelo,
+        if medido { "MEDIDO" } else { "estimado" },
+        sobrecoste
+    );
+}
+
 /// Imprime el veredicto que el juez ya decidio. **Aqui no se juzga nada**: si
 /// la decision estuviera repartida entre el juez y su impresora, la mitad de
 /// las reglas no se podria probar en el anfitrion.
@@ -422,6 +456,7 @@ pub extern "C" fn _start() -> ! {
 
     di!(l, "2. puerta pelada min {pelada_min} ticks/op, media {pelada_media}\n");
     decir_ciclos(&mut l, "   una puerta", pelada_min, &reloj);
+    sobre_el_suelo(&mut l, pelada_min);
     match medida.dispatch_medio() {
         Some(d) => match juez::reparto(pelada_min, d) {
             juez::Reparto::Stub(stub) => {

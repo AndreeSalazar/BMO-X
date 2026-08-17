@@ -151,6 +151,14 @@
  * laxos, son de otra maquina. Con esto en 0 las tres contestan CERO --o sea
  * "sin declarar"-- y el juez se calla en vez de inventarse un veredicto. */
 #define BMO_INFO_PRESUPUESTO_MAQUINA     0x3D
+/* EL SUELO DEL HARDWARE: `medido << 32 | ticks`. Lo que cuesta cruzar el anillo
+ * en este silicio, que no es merito ni culpa de BMO. Restado de una puerta sale
+ * la unica cifra de rendimiento que sobrevive a un cambio de CPU: cuantas veces
+ * el suelo cuesta una puerta (hoy 5,3x, meta 2,0x).
+ *
+ * [!] Bit 32 = medido. En 0 es una ESTIMACION y no puede derivar ningun techo:
+ * el suelo se mide, el multiplicador se escribe. */
+#define BMO_INFO_SUELO_CRUCE             0x3E
 
 /* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
  *

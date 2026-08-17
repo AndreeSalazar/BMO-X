@@ -256,6 +256,61 @@ condenar.
 
 ---
 
+## 5c. ★★ El traje que se cine solo: SUELO y SOBRECOSTE
+
+Lo pidio el dueno el 17-08 con una imagen que es exactamente la buena: *"como el
+traje de Spider-Man, que es grande y al pulsar el boton se ajusta"*. Y la
+pregunta de debajo: **cuan optimizado esta el kernel**, que no deberia depender
+de que CPU haya delante.
+
+**Los 792 ticks no contestan eso**, porque son dos cosas pegadas:
+
+```
+   SUELO       cruzar el anillo en ESE silicio. Ni merito ni culpa de BMO.
+   SOBRECOSTE  lo que BMO anade encima. Eso SI es este kernel.
+```
+
+Separados sale la cifra que viaja:
+
+```
+   [MEDIDO]    una puerta            792 ticks
+   [ESTIMADO]  el suelo del cruce   ~150 ticks
+   ---------------------------------------------
+               BMO cuesta 5,3x el suelo del hardware      <- el norte
+               la meta declarada (300)                       2,0x
+```
+
+Si BMO adelgaza, ese numero baja **en todas las maquinas a la vez** -- que es
+optimizar *"a base de perfil"* en vez de *"a base de CPU"*.
+
+### La trampa del boton, y la regla que la cierra
+
+> ★★ **El suelo se MIDE. El multiplicador se ESCRIBE.** (R-CPU10)
+
+Un presupuesto que se recalibrara solo entero **se ceniria tambien a la grasa**:
+una regresion pasaria a ser la talla nueva y el juez aprobaria siempre. Un
+trinquete que se ajusta solo no es un trinquete. Asi que se ajusta la parte que
+es del CPU, y jamas el veredicto.
+
+### Los tres estados del juez
+
+| lo que hay | que hace |
+|---|---|
+| medida de ESTA maquina | usa el techo medido |
+| solo el suelo, **medido** | deriva `suelo x multiplicador` -- **primera talla**, y lo dice (R-CPU11) |
+| nada | sin trinquete |
+
+### [!] Y hoy el suelo es una ESTIMACION, no una medida
+
+`~150` sale del analisis de la fila `puerta`, no de un cronometro. Por eso
+`INFO_SUELO_CRUCE` lleva un bit `medido` que hoy vale **0**: el ratio se puede
+mirar, y **no puede derivar ningun techo**. Medirlo pide una puerta que el stub
+conteste sin bajar a Rust, y eso no cabe en el kernel que se despliega -- rompe
+las dos puertas congeladas y la ignorancia del stub. Va en un build de medida,
+igual que el metro: **el instrumento se instala, contesta y se retira.**
+
+---
+
 ## 6. Lo que este documento NO afirma
 
 - **Que los 969 ciclos sean caros o baratos.** Sin el reparto de P1 no se puede

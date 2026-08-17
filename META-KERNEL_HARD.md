@@ -360,6 +360,22 @@ Y exige tres cosas mas que no son de rendimiento sino de verdad:
   modelo de este chip en dos sitios con valores distintos --`19h/01h` y
   `19h/21h`-- y nadie habia leido nunca el byte.)*
 
+- **R-CPU10.** ★★ **EL SUELO SE MIDE, EL MULTIPLICADOR SE ESCRIBE.** Una medida
+  de rendimiento son dos cosas pegadas: el **suelo** del silicio (cruzar el
+  anillo, que BMO no puede cambiar) y el **sobrecoste** que BMO anade encima.
+  Solo el segundo es merito o culpa de este kernel, y **es el unico que sobrevive
+  a un cambio de CPU**. Asi que el suelo puede autocalibrarse --es un dato del
+  CPU-- y el multiplicador que lo convierte en techo lo escribe una persona.
+  *Un presupuesto que se recalibrara solo entero se ceniria a lo que hubiera,
+  **incluida una regresion**: la convertiria en la talla nueva y aprobaria
+  siempre.* **Un trinquete que se ajusta solo no es un trinquete.**
+- **R-CPU11.** ★ **UNA CIFRA DERIVADA NO SE PRESENTA COMO MEDIDA.** Un techo
+  sacado de `suelo x multiplicador` es una PRIMERA TALLA: sirve para tener
+  trinquete el dia uno en una maquina nueva, y lo sustituye la medida en cuanto
+  haya una tanda. Quien lo imprime dice cual de las dos es -- si no, una
+  estimacion acaba citandose como un hecho, que es como nacieron los `~150`
+  ciclos de cruce que este arbol arrastro cuatro tandas.
+
 ★ Ver `docs/LA_PUERTA_POR_DENTRO.md`: los once elementos de una puerta con su
 fichero, su coste **en ciclos**, y el experimento que decide cada uno.
 

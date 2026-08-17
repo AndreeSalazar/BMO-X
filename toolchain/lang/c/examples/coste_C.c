@@ -318,6 +318,42 @@ void en_ciclos(char *label, unsigned long long ticks) {
     printf("   %s = %llu ciclos de nucleo = %llu ns\n", label, c, a_nanos(ticks));
 }
 
+/* ** LA CIFRA QUE SOBREVIVE A UN CAMBIO DE CPU: cuantas veces el suelo del
+ * hardware cuesta una puerta de BMO.
+ *
+ * Una puerta es `suelo + sobrecoste`, y solo el segundo sumando es este kernel.
+ * Mezclados, 792 ticks no dicen si el codigo esta bien: dicen que este CPU es
+ * asi. Separados, sale un numero comparable entre maquinas, que baja para TODAS
+ * a la vez el dia que BMO adelgace.
+ *
+ * [!] Con la etiqueta del suelo pegada: mientras sea una estimacion el ratio es
+ * orientativo y no se puede trinquetear con el. */
+void sobre_el_suelo(unsigned long long puerta_ticks) {
+    unsigned long long s;
+    unsigned long long suelo;
+    unsigned long long veces;
+
+    s = bmo_info(BMO_INFO_SUELO_CRUCE);
+    suelo = s & 0xFFFFFFFF;
+    if (suelo == 0) {
+        printf("   sobre el suelo: este perfil no declara suelo del cruce\n");
+        return;
+    }
+    /* En centesimas: entre 5,3x y 5,9x hay trabajo de una tarde, y con enteros
+     * los dos se leerian igual. El cero de las decimas se pone a mano porque
+     * este `printf` acepta la anchura y no rellena. */
+    veces = (puerta_ticks * 100) / suelo;
+    if (veces % 100 < 10) {
+        printf("   sobre el suelo: %llu,0%llu x  (suelo %llu ticks %s, BMO anade %llu)\n",
+               veces / 100, veces % 100, suelo,
+               ((s >> 32) & 1) ? "MEDIDO" : "estimado", puerta_ticks - suelo);
+    } else {
+        printf("   sobre el suelo: %llu,%llu x  (suelo %llu ticks %s, BMO anade %llu)\n",
+               veces / 100, veces % 100, suelo,
+               ((s >> 32) & 1) ? "MEDIDO" : "estimado", puerta_ticks - suelo);
+    }
+}
+
 /* Shared reporting, so the four measurements cannot disagree on the
  * arithmetic. Takes totals, not loops -- the loops stay tight. */
 void report(char *label, unsigned long long best, unsigned long long total) {
@@ -536,6 +572,7 @@ int main() {
         veredicto("dispatch", cycles / doors, BMO_INFO_PRESUPUESTO_DISPATCH);
     }
     veredicto("puerta ", best / BATCH, BMO_INFO_PRESUPUESTO_PUERTA);
+    sobre_el_suelo(best / BATCH);
     /* Se guarda para juzgar el handle contra la fila 4. */
     pelada = best / BATCH;
 

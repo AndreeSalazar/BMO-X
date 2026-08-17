@@ -245,6 +245,16 @@ pub const MAQ_COINCIDE: u64 = 1 << 0;
 pub const MAQ_CPU_OK: u64 = 1 << 1;
 pub const MAQ_TSC_OK: u64 = 1 << 2;
 
+/// **El suelo del hardware**: `medido << 32 | ticks`. Lo que cuesta cruzar el
+/// anillo en este silicio, que no es merito ni culpa de BMO.
+///
+/// Restandolo de una puerta sale **la unica cifra que sobrevive a un cambio de
+/// CPU**: cuantas veces el suelo cuesta una puerta de BMO (hoy 5,3x, meta 2,0x).
+///
+/// [!] Bit 32 = medido. En 0 es una ESTIMACION y no puede derivar ningun techo:
+/// el suelo se mide, el multiplicador se escribe.
+pub const INFO_SUELO_CRUCE: u64 = 0x3E;
+
 /// **De que CLASE fue cada puerta**, con el indice empaquetado:
 /// `INFO_SYSCALL_CLASS | (clase << 8)`. Se lee como delta, igual que el resto
 /// del metro.

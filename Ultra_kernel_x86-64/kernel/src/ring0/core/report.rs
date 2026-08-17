@@ -128,6 +128,11 @@ const INFO_PRESUPUESTO_HANDLE: u64 = 0x39;
 // fallo: es un kernel corriendo en un CPU que todavia no tiene presupuesto, y
 // entonces las tres contestan cero para que nadie juzgue con numeros ajenos.
 const INFO_PRESUPUESTO_MAQUINA: u64 = 0x3D;
+// El suelo del hardware: `medido << 32 | ticks`. Lo que cuesta cruzar el anillo
+// en este silicio, que no es merito ni culpa de BMO. Con el aparte sale la
+// cifra que SI sobrevive a un cambio de CPU: cuantas veces el suelo cuesta una
+// puerta. Ver `syscall/presupuesto.rs`.
+const INFO_SUELO_CRUCE: u64 = 0x3E;
 
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
@@ -341,6 +346,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_PRESUPUESTO_DISPATCH => crate::ring0::syscall::presupuesto::dispatch(),
         INFO_PRESUPUESTO_HANDLE => crate::ring0::syscall::presupuesto::handle(),
         INFO_PRESUPUESTO_MAQUINA => crate::ring0::syscall::presupuesto::veredicto_maquina(),
+        INFO_SUELO_CRUCE => crate::ring0::syscall::presupuesto::suelo(),
         // ** El censo entero cabe en tres numeros porque son treinta y seis
         // filas: una mascara de 64 bits sobra. Si algun dia [`ALL`] pasa de 64,
         // `INFO_CPU_EXT_N` es lo que lo dice en voz alta -- por eso viaja el
