@@ -1,0 +1,15 @@
+[package]
+name = "bmo-medida-coste"
+version = "0.1.0"
+edition = "2021"
+description = "Cuanto vale una puerta, medido en ensamblador y juzgado por bmo-juicio"
+
+[[bin]]
+name = "coste"
+path = "src/main.rs"
+
+[dependencies]
+bmo-userland = { path = "../../userland" }
+# El juez vive FUERA de este binario a proposito: aqui es `no_main` para un
+# target sin sistema operativo y no corre un test. Alli lo prueban 16.
+bmo-juicio = { path = "../../../platform/shared/bmo-juicio" }

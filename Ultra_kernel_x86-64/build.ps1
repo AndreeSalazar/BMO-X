@@ -431,6 +431,30 @@ try {
     # Se borro antes a proposito: si `bex-link` no lo ha vuelto a escribir, se
     # copiaria al disco el compositor de la vez anterior y el build mentiria.
     if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo gui.bex' }
+
+    # -- La MEDIDA, que no es un servicio -------------------------------
+    #
+    # `medida/coste` mide la puerta con el bucle escrito en ensamblador y la
+    # juzga con `bmo-juicio`, cuyos invariantes se prueban en el anfitrion.
+    #
+    # ** NO REEMPLAZA a `c/coste.bex`: los dos se quedan a proposito. El fallo
+    # del 16-08 lo cazo una DISCREPANCIA entre dos calculos de la misma cosa, y
+    # dos implementaciones en dos lenguajes que tienen que coincidir es mas
+    # fuerte que una implementacion buena. Si difieren, uno miente y ya se sabe
+    # donde mirar.
+    $costeElf = Join-Path $usDir 'target\x86_64-unknown-none\release\coste'
+    if (-not (Test-Path $costeElf)) { Fail 'no salio el ELF de medida/coste' }
+    $costeBex = Join-Path $dataBase 'sys\coster.bex'
+    if (Test-Path $costeBex) { Remove-Item $costeBex -Force }
+    $out = cargo run -p bmo-bex-link --quiet -- $costeElf $costeBex 2>&1
+    $out | ForEach-Object {
+        $linea = $_.ToString()
+        if ($linea -match '^\s+(\.text|->)|error|!!') {
+            Write-Host ('    [bex-link] ' + $linea.Trim()) -ForegroundColor DarkGray
+        }
+    }
+    if ($LASTEXITCODE -ne 0) { Fail 'bex-link fallo con medida/coste' }
+    if (-not (Test-Path $costeBex)) { Fail 'bex-link no produjo coster.bex' }
 } finally { Pop-Location }
 
 # -- Programas COBOL de ejemplo -----------------------------------

@@ -11,6 +11,18 @@ name = "bmo-input"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-juicio"
+version = "0.1.0"
+
+[[package]]
+name = "bmo-medida-coste"
+version = "0.1.0"
+dependencies = [
+ "bmo-juicio",
+ "bmo-userland",
+]
+
+[[package]]
 name = "bmo-rtc"
 version = "1.0.0"
 
