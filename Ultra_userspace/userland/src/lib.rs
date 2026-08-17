@@ -300,6 +300,39 @@ pub const INFO_FUGAS: u64 = 0x1E;
 /// Ver `INFO_FECHA` en `bmo_abi::syscalls::surface`.
 pub const INFO_FECHA: u64 = 0x1F;
 
+/// ** LA SALUD DEL BUS USB: bits de estado + la EDAD DEL LATIDO en 16..31.
+///
+/// La sexta exigencia de `docs/EL_TECLADO_EXIGE.md`. Con esto un programa de
+/// Ring 3 --el escritorio-- puede encender una luz mientras el teclado este
+/// caido, en vez de que la averia se cuente una vez en un panel que hay que
+/// abrir **con el aparato que esta roto**.
+///
+/// La edad viaja pegada a los bits porque es lo que permite no fiarse de ellos:
+/// los bits son una foto del ultimo bombeo y se congelarian si el hilo del bus
+/// muriera. `USB_SALUD_EDAD_VIEJA` = hace mucho, o no hay reloj.
+pub const INFO_USB_SALUD: u64 = 0x3B;
+
+pub const USB_SALUD_XHCI: u64 = 1 << 0;
+pub const USB_SALUD_KBD: u64 = 1 << 1;
+/// El teclado tiene transferencia ENCOLADA. Sin esto esta enumerado, en
+/// `Running`, y mudo para siempre.
+pub const USB_SALUD_KBD_BOMBA: u64 = 1 << 2;
+/// Su endpoint corre **segun el hardware**, no segun lo que creemos.
+pub const USB_SALUD_KBD_CORRE: u64 = 1 << 3;
+pub const USB_SALUD_RATON: u64 = 1 << 4;
+pub const USB_SALUD_RATON_BOMBA: u64 = 1 << 5;
+pub const USB_SALUD_RATON_CORRE: u64 = 1 << 6;
+/// HSE o HCE en `USBSTS`: el controlador esta muerto y lo demas es ruido.
+pub const USB_SALUD_XHC_AVERIADO: u64 = 1 << 7;
+pub const USB_SALUD_EDAD_SHIFT: u64 = 16;
+pub const USB_SALUD_EDAD_MASK: u64 = 0xFFFF;
+pub const USB_SALUD_EDAD_VIEJA: u64 = 0xFFFF;
+
+/// Los cuatro contadores que tienen que ser CERO, de 16 en 16 bits: perdidos
+/// del aparcadero (E2), recuperaciones fallidas y recuperaciones (E3), y
+/// barridos que repararon algo (E5). Saturan; no dan la vuelta.
+pub const INFO_USB_AVERIAS: u64 = 0x3C;
+
 // ** LA AUTOPSIA de un fallo de Ring 3.
 //
 // El kernel guarda el informe COMPLETO de cada tarea que mata --vector, codigo

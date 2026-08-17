@@ -62,9 +62,30 @@ static mut BUS_TURNS: u64 = 0;
 /// failure: it is the thread and a syscall asking at the same time.
 static mut PUMP_OVERLAPS: u64 = 0;
 
+/// **TSC del final de la ultima vuelta del hilo**, y cero mientras no haya dado
+/// ninguna.
+///
+/// `BUS_TURNS` dice *cuantas*; esto dice *cuando*, y esa es la diferencia entre
+/// un contador y un latido. Un numero de vueltas hay que recordarlo entre dos
+/// miradas para saber si sube --lo que obliga a quien mira a tener memoria, y
+/// por eso `cabina/watch.rs` guarda dos `static`s para conseguirlo--. Una marca
+/// de tiempo **se juzga de un vistazo y sin recordar nada**, que es lo que
+/// necesita un estado leido desde Ring 3 por alguien que acaba de arrancar.
+///
+/// Lo pone el hilo y solo el hilo: bombear desde un syscall NO es un latido. Si
+/// esto se queda quieto, E1 esta caida aunque el bus siga avanzando a ratos.
+static mut ULTIMO_LATIDO: u64 = 0;
+
 /// `(thread turns, overlapped pumps)`. For the panel.
 pub fn bus_stats() -> (u64, u64) {
     unsafe { (BUS_TURNS, PUMP_OVERLAPS) }
+}
+
+/// TSC de la ultima vuelta del hilo, o `0` si no ha dado ninguna. Ver
+/// [`ULTIMO_LATIDO`]; lo lee `salud.rs` para poner la edad del latido en
+/// `INFO_USB_SALUD`.
+pub fn ultimo_latido() -> u64 {
+    unsafe { ULTIMO_LATIDO }
 }
 
 /// Pumps the bus with the kernel CR3 loaded and without letting two in at once.
@@ -87,6 +108,11 @@ pub(super) fn pump_bus() {
         vmm::switch_to(kpml4);
     }
     bombear_interno();
+    // ** LA FOTO DE SALUD SE SACA AQUI DENTRO, y ese es su sitio exacto: leer
+    // el estado de un endpoint recorre el Device Context y `USBSTS` es MMIO, y
+    // las dos cosas solo estan mapeadas en el PML4 que acabamos de cargar.
+    // Sacarla desde `OP_INFO` --con el CR3 del que pregunta-- seria un `#PF`.
+    super::salud::refrescar();
     if switched {
         vmm::switch_to(previous);
     }
@@ -111,7 +137,14 @@ pub extern "C" fn bus_thread(_arg: u64) -> ! {
     loop {
         pump_bus();
         watch_rescue();
-        unsafe { BUS_TURNS = BUS_TURNS.wrapping_add(1) };
+        unsafe {
+            BUS_TURNS = BUS_TURNS.wrapping_add(1);
+            // El latido se sella DESPUES de la vuelta, no antes: lo que
+            // interesa saber es que la vuelta TERMINO. Un hilo que entra en
+            // `pump_bus` y se queda dentro esta tan caido como uno que no
+            // entro, y sellando al principio se veria vivo.
+            ULTIMO_LATIDO = scheduler::rdtsc();
+        }
         let hz = scheduler::tsc_freq();
         if hz == 0 {
             // With no measured TSC there is no way to sleep a concrete amount of

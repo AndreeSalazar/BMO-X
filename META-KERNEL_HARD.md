@@ -621,8 +621,24 @@ el endpoint en `Running` y sin un solo error.
   resetear sin recolocar el puntero deja el endpoint leyendo TRBs viejos.
 
 ★ Ver `docs/EL_TECLADO_EXIGE.md`: las **seis exigencias** del teclado con su
-estado y, sobre todo, **el numero que dice cual fallo**. Cinco estan puestas; la
-que falta es R-USB6.
+estado y, sobre todo, **el numero que dice cual fallo**. Las seis estan puestas
+desde el 2026-08-17: R-USB6 son `INFO_USB_SALUD` + `INFO_USB_AVERIAS`
+(`dev/usb/salud.rs`) y la luz fija de la barra (`scene/testigo.rs`). Sin
+verificar en metal.
+
+- **R-USB8.** ★ **UN ESTADO QUE SE FOTOGRAFIA NECESITA UNA EDAD AL LADO.** La
+  salud del bus se saca en el bombeo --el unico sitio con el PML4 del kernel
+  cargado, que es donde se puede leer el Device Context y `USBSTS`-- y por tanto
+  **se congela si el bombeo muere**, contestando *"todo bien"* justo el dia malo.
+  La edad del ultimo latido viaja pegada a los bits y se calcula **al
+  preguntar**: es lo unico que envejece solo, o sea lo unico que puede delatar al
+  que escribe la foto. Vale para cualquier telemetria cacheada, no solo para el
+  USB.
+- **R-USB9.** ★ **UNA LUZ QUE SOLO APARECE CUANDO HAY AVERIA NO SE DISTINGUE DE
+  UNA LUZ QUE NO FUNCIONA.** Si la primera vez que se ve es el dia del fallo,
+  nadie sabe que aspecto tenia sana y lo que diga no se puede creer. El testigo
+  se pinta **siempre**, tambien en verde -- la misma razon por la que la ficha de
+  CABINA esta siempre aunque su ventana este cerrada.
 
 **EL PRECIO.** Un teclado programado a **35 minutos** entre sondeos porque el
 `bInterval` crudo se escribio donde iba un exponente -- y Configure Endpoint

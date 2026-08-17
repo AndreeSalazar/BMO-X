@@ -312,18 +312,37 @@ Write-Host ('    operaciones: ' + $porNumero.Count + ' opcodes, ninguno repetido
 # en el kernel y en el userland y NO en el ABI. La lista no se escribe a mano
 # --se saca de los tres ficheros-- porque una lista a mano es lo que ya se
 # quedo congelada una vez, ahi arriba.
+#
+# ** Y LO MISMO PARA LOS BITS DE `USB_SALUD_*`, que no son un campo sino el
+# CONTENIDO de uno. Un id que no cuadra se ve enseguida --se pide un dato y sale
+# otro--; un BIT que no cuadra pinta la luz del teclado del color equivocado y
+# no falla nada. La segunda mitad de la tabla necesita el mismo guardian que la
+# primera, asi que se barre con el, y por eso el lado del kernel son DOS
+# ficheros: `report.rs` implementa las filas y `dev\usb\salud.rs` los bits.
 $infoFuentes = [ordered]@{
-    'kernel'   = Get-Content (Join-Path $root 'kernel\src\ring0\core\report.rs') -Raw
+    'kernel'   = (Get-Content (Join-Path $root 'kernel\src\ring0\core\report.rs') -Raw) + "`n" +
+                 (Get-Content (Join-Path $root 'kernel\src\ring0\dev\usb\salud.rs') -Raw)
     'abi'      = $abiSurface
     'userland' = Get-Content (Join-Path $root '..\Ultra_userspace\userland\src\lib.rs') -Raw
 }
 $infoCampos = @{}
 foreach ($fuente in $infoFuentes.GetEnumerator()) {
-    $hallados = [regex]::Matches($fuente.Value, '(?m)^\s*(?:pub\s+)?const\s+(INFO_[A-Z0-9_]+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)')
+    # Los ids van en hexadecimal y los bits se escriben como `1 << n`, que es
+    # como se leen. Se normaliza a decimal para poder compararlos entre si: la
+    # comprobacion es sobre el VALOR, no sobre como esta escrito.
+    $hallados = [regex]::Matches($fuente.Value, '(?m)^\s*(?:pub\s+)?const\s+((?:INFO|USB_SALUD)_[A-Z0-9_]+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|1\s*<<\s*\d+|\d+)')
     foreach ($m in $hallados) {
         $campo = $m.Groups[1].Value
+        $crudo = $m.Groups[2].Value.Replace('_', '')
+        if ($crudo -match '^1\s*<<\s*(\d+)$') {
+            $valor = ([uint64]1 -shl [int]$Matches[1]).ToString()
+        } elseif ($crudo -match '^0[xX]') {
+            $valor = ([System.Convert]::ToUInt64($crudo.Substring(2), 16)).ToString()
+        } else {
+            $valor = ([uint64]$crudo).ToString()
+        }
         if (-not $infoCampos.ContainsKey($campo)) { $infoCampos[$campo] = [ordered]@{} }
-        $infoCampos[$campo][$fuente.Key] = $m.Groups[2].Value.ToUpperInvariant().Replace('_', '')
+        $infoCampos[$campo][$fuente.Key] = $valor
     }
 }
 foreach ($campo in ($infoCampos.Keys | Sort-Object)) {

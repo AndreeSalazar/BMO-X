@@ -23,6 +23,9 @@ pub(crate) mod gato;
 pub(crate) mod launcher;
 pub(crate) mod chrome;
 pub(crate) mod output;
+/// **La luz del bus USB en la barra**: si el teclado se muere, se ve sin abrir
+/// nada. E6 de `docs/EL_TECLADO_EXIGE.md`.
+pub(crate) mod testigo;
 /// **La ventana del SONIDO** (F10). Reclama `KIND_AUDIO` al abrirse y lo
 /// DEVUELVE al cerrarse -- ver la cabecera del modulo: es lo unico que impide
 /// que el escritorio deje mudos a todos los programas que lanza.

@@ -65,6 +65,10 @@ pub mod audio;
 pub mod bus;
 /// Lo que CABINA lee de aqui. **Solo lectura**, a proposito.
 pub mod panel;
+/// **La salud del bus como ESTADO**, legible desde Ring 3 con `OP_INFO`. Es la
+/// sexta exigencia de `docs/EL_TECLADO_EXIGE.md`: un contador que solo se lee
+/// en el shell de Ring 0 no existe para quien vive en el escritorio.
+pub mod salud;
 /// El atajo que le devuelve la maquina al dueno. Politica, no driver.
 pub mod rescate;
 
