@@ -350,6 +350,35 @@ de dos o tres ciclos, y contesta la pregunta entera: **si la clase D domina, la
 puerta es irrelevante y el trabajo esta en la consola**; si domina la C, la
 capability es lo siguiente.
 
+### ** AL DIA: la tanda del 2026-08-17, y en CICLOS
+
+Lo de arriba es la tanda del 16-08, con el metro puesto y en TICKS. El 17-08 el
+Ryzen contesto con el metro ya retirado, y **la prediccion se cumplio**:
+
+```
+   [MEDIDO]  puerta pelada   884 -> 792 ticks (C) / 779 (Rust)
+             en ciclos       ...      969 ciclos  /  953        <- 1 tick = 1,22
+             el metro valia  92 ticks = 112 ciclos por puerta, un 11%
+   [MEDIDO]  el handle       +181 ticks = 221 ciclos (la sonda de tres filas,
+                             coherente con los +166 de la tanda anterior)
+```
+
+Dos cosas cambian en esta tabla y las dos son del INSTRUMENTO, no del codigo:
+
+- la fila 3 (`meter.rs`) ya no se paga: el metro vive detras de
+  `--features metro_puerta` y una tanda lo devuelve cuando haga falta;
+- la fila `DISPATCH` **no se puede leer** y ahora lo dice: `[ROTO] medida en
+  cero` en vez de `[META] 0`, que era el juez felicitando a una fila que nadie
+  habia medido.
+
+★ **Y el histograma por clase de aqui abajo YA ESTA CABLEADO** hasta Ring 3:
+`sys/precio.bex` imprime las cuatro casillas y lo que queda sin casilla. Falta
+correrlo -- hasta entonces, la columna *"veces por segundo"* sigue vacia.
+
+★ El recorrido entero de una puerta --los once elementos, con su fichero y su
+coste en ciclos, y que experimento decide cada uno-- vive en
+`docs/LA_PUERTA_POR_DENTRO.md`.
+
 ---
 
 ## 3. Lo que el censo REORDENA

@@ -225,6 +225,20 @@ void veredicto(char *label, unsigned long long medido, unsigned long long campo)
         printf("   %s: este kernel no declara presupuesto\n", label);
         return;
     }
+    /* ** UN CERO NO ES UNA MEDIDA BARATA: ES UNA MEDIDA QUE NO OCURRIO.
+     *
+     * Y sin esta guarda el juez contestaba `[META] 0, por debajo de 60`, o sea
+     * *"llego al objetivo"* para una fila que nadie ha medido -- exactamente lo
+     * que salio en el Ryzen el 17-08 al retirar el metro de `dispatch`.
+     *
+     * Un fallo que no falla: FELICITA. La doctrina vive en `bmo-juicio` con sus
+     * pruebas de anfitrion (`Roto::MedidaEnCero`); este programa es C y no
+     * puede enlazar el crate, asi que la copia. Que este dos veces no es una
+     * excusa para que este cero. */
+    if (medido == 0) {
+        printf("   %s [ROTO] medida en cero -- NO HAY VEREDICTO\n", label);
+        return;
+    }
     if (medido > techo) {
         printf("   %s [SE PASA] %llu > techo %llu -- REGRESION\n",
                label, medido, techo);
@@ -238,13 +252,71 @@ void veredicto(char *label, unsigned long long medido, unsigned long long campo)
     printf("   %s [META] %llu, por debajo de %llu\n", label, medido, meta);
 }
 
+/* ** LOS DOS RELOJES DE LA MAQUINA, en MHz, puestos por `main`.
+ *
+ * `rdtsc` cuenta TICKS del TSC, y el TSC es INVARIANTE: va a la frecuencia BASE
+ * pase lo que pase con el boost. El nucleo va a otra. En el Ryzen del 17-08:
+ *
+ *     reloj base    3700 MHz   el TSC        <- lo que cuenta rdtsc
+ *     reloj ahora   4529 MHz   MPERF/APERF   <- a lo que va el nucleo
+ *
+ * O sea que un tick son 1,22 ciclos, y llamar "ciclos" a lo que mide `rdtsc`
+ * era un error del 22% -- el patron 2 de la casa, el campo en otra unidad.
+ * Ver R-CENSO0 en `docs/CENSO_DE_EJES.md` y `bmo-juicio::Reloj`, que es donde
+ * esta la misma cuenta con pruebas de anfitrion.
+ *
+ * [!] En MHz y no en Hz A PROPOSITO: en Hz, `ticks * 4529000000` desborda un
+ * `unsigned long long` en cuanto los ticks pasan de 4 mil millones, y una
+ * multiplicacion que envuelve da un numero pequeno y creible. En MHz el peor
+ * caso de este programa --2,2 M ticks de una puerta de consola-- da 10^10, que
+ * cabe de sobra. */
+unsigned long long g_mhz_tsc;
+unsigned long long g_mhz_nucleo;
+
+/* Ticks -> ciclos de nucleo, o 0 si esta maquina no sabe a que va el suyo.
+ * El llamante decide que hacer con el cero; aqui NO se rellena con la
+ * frecuencia base, porque eso afirmaria que el nucleo no hace boost. */
+unsigned long long a_ciclos(unsigned long long ticks) {
+    if (g_mhz_tsc == 0 || g_mhz_nucleo == 0) {
+        return 0;
+    }
+    return (ticks * g_mhz_nucleo) / g_mhz_tsc;
+}
+
+/* Ticks -> nanosegundos. Esto NO necesita el reloj del nucleo: el tiempo lo da
+ * el TSC, que es para lo que sirve ser invariante. */
+unsigned long long a_nanos(unsigned long long ticks) {
+    if (g_mhz_tsc == 0) {
+        return 0;
+    }
+    return (ticks * 1000) / g_mhz_tsc;
+}
+
+/* La misma medida en las tres unidades que hacen falta: ticks es lo que se
+ * mide, ciclos es lo que le cuesta al CPU, y nanosegundos es lo que espera el
+ * que llamo. */
+void en_ciclos(char *label, unsigned long long ticks) {
+    unsigned long long c;
+
+    c = a_ciclos(ticks);
+    if (c == 0) {
+        printf("   %s = %llu ns (sin MPERF: los ciclos no se saben)\n",
+               label, a_nanos(ticks));
+        return;
+    }
+    printf("   %s = %llu ciclos de nucleo = %llu ns\n", label, c, a_nanos(ticks));
+}
+
 /* Shared reporting, so the four measurements cannot disagree on the
  * arithmetic. Takes totals, not loops -- the loops stay tight. */
 void report(char *label, unsigned long long best, unsigned long long total) {
-    printf("%s min %llu ciclos/op, media %llu\n",
+    /* `ticks/op` y no `ciclos/op`: la etiqueta llevaba desde el primer dia
+     * diciendo una unidad que no era. Ver `g_mhz_tsc`. */
+    printf("%s min %llu ticks/op, media %llu\n",
            label,
            best / BATCH,
            (total / ROUNDS) / BATCH);
+    en_ciclos("o sea", best / BATCH);
 }
 
 /* ** THE SPLIT: how much of a door is the kernel's Rust, and how much is the
@@ -282,6 +354,18 @@ void report_split(unsigned long long doors, unsigned long long cycles,
     guarda = d_guarda / doors;
     restaura = d_restaura / doors;
     contado = inside + guarda + restaura;
+
+    /* ** SIN METRO NO HAY REPARTO, Y ESO SE DICE.
+     *
+     * Con `dispatch` retirado el delta vale 0, y `total - 0` imprimia el total
+     * ENTERO como si fuera el stub: *"dentro de dispatch 0, en el stub 792"*.
+     * Eso no es un reparto, es una resta contra una medida que no ocurrio -- y
+     * tiene la forma exacta del hallazgo que se estaba buscando, que es lo que
+     * lo hace peligroso. Salio en el Ryzen el 17-08. */
+    if (inside == 0) {
+        printf("   reparto: NO MEDIDO -- el metro esta retirado del kernel\n");
+        return;
+    }
 
     printf("   reparto: dentro de dispatch %llu, en el stub %llu\n",
            inside,
@@ -336,8 +420,31 @@ int main() {
 
     printf("COSTE: cuanto vale una puerta\n");
 
+    /* ** LOS DOS RELOJES SE LEEN LO PRIMERO, y fuera de toda ventana: son dos
+     * puertas mas, y una puerta dentro de una ventana de medida es el fallo que
+     * costo un flasheo entero el 16-08. */
     hz = bmo_info(BMO_INFO_TSC_HZ);
-    printf("TSC %llu Hz, lote %d, vueltas %d\n", hz, BATCH, ROUNDS);
+    g_mhz_tsc = hz / 1000000;
+    g_mhz_nucleo = bmo_info(BMO_INFO_CPU_HZ_REAL) / 1000000;
+    printf("TSC %llu MHz (lo que cuenta rdtsc), nucleo %llu MHz (a lo que va)\n",
+           g_mhz_tsc, g_mhz_nucleo);
+    if (g_mhz_nucleo == 0) {
+        printf("sin MPERF/APERF: se dan TICKS y nada mas\n");
+    } else {
+        /* [!] El cero de las centesimas SE PONE A MANO, y no con `%02llu`: el
+         * `printf` de BMO **acepta la anchura y no rellena** -- lo dice su
+         * propio codigo en `codegen/format.rs`, y es una aproximacion asumida
+         * alli. Con un ratio de 1,05 un `%02llu` imprimiria `1,5`, que no es
+         * un formato feo: es otro numero. */
+        if (a_ciclos(100) % 100 < 10) {
+            printf("un tick = %llu,0%llu ciclos. LOS PRESUPUESTOS VAN EN TICKS\n",
+                   a_ciclos(100) / 100, a_ciclos(100) % 100);
+        } else {
+            printf("un tick = %llu,%llu ciclos. LOS PRESUPUESTOS VAN EN TICKS\n",
+                   a_ciclos(100) / 100, a_ciclos(100) % 100);
+        }
+    }
+    printf("lote %d, vueltas %d\n", BATCH, ROUNDS);
 
     /* -- 1. the loop itself ------------------------------------------- */
     best = 0; total = 0; sink = 0;
@@ -457,6 +564,7 @@ int main() {
         /* La fila 4 menos la 3 ES la capability, y es la unica cifra de este
          * programa que se juzga como diferencia y no como total. */
         veredicto("handle  ", (best / BATCH) - pelada, BMO_INFO_PRESUPUESTO_HANDLE);
+        en_ciclos("ese handle", (best / BATCH) - pelada);
         bmo_codigo(handle, BMO_ARCH_CERRAR, 0, 0, 0);
     }
 

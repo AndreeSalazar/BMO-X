@@ -331,6 +331,22 @@ Y exige tres cosas mas que no son de rendimiento sino de verdad:
   mundo.
 - **R-CPU5.** Un resultado de rendimiento sin **doble testigo** no es un numero,
   es una opinion de un programa.
+- **R-CPU6.** ★ **UN NUMERO SIN SU UNIDAD NO ES UNA MEDIDA.** `rdtsc` cuenta
+  TICKS de un reloj invariante, no ciclos de nucleo: en esta maquina son 1,22
+  ciclos por tick, o sea un 22% de diferencia entre lo que se imprime y lo que
+  paga el CPU. **Se dan las dos**, y el presupuesto se juzga en la unidad en que
+  se midio -- convertir antes de comparar contra un techo lo moveria cada vez
+  que el CPU cambia de frecuencia, que es lo unico que un trinquete no puede
+  hacer. Ver R-CENSO0 y `bmo-juicio::Reloj`.
+- **R-CPU7.** ★★ **ANTES DE OPTIMIZAR UN CAMINO, CONTAR SUS INSTRUCCIONES.** La
+  via rapida del stub son **58 instrucciones** y una puerta cuesta **969
+  ciclos**: aun a un IPC de 1, el 94% del coste **no puede estar** en el numero
+  de instrucciones. Esa resta tacha de golpe el trabajo de limar el ensamblador
+  y deja la lista corta -- las transiciones de privilegio, los `swapgs` y la
+  mitad Rust. Contar es gratis; suponer cuesta tandas.
+
+★ Ver `docs/LA_PUERTA_POR_DENTRO.md`: los once elementos de una puerta con su
+fichero, su coste **en ciclos**, y el experimento que decide cada uno.
 
 **EL PRECIO.** El `#GP(0)` en `xrstor64` costo cinco fotos y dos explicaciones
 falsas. `r11` se pago **tres veces**. `!(-6)` valia `-256`, y por eso

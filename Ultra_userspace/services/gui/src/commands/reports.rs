@@ -64,6 +64,38 @@ fn fila(s: &mut Output, que: &[u8], valor: u64, unidad: &[u8], nota: &[u8]) {
     s.byte(b'\n');
 }
 
+/// **Una fila de `X de Y`**, que es otra cosa que una fila con unidad.
+///
+/// ** Existe por un renglon roto que trajo el Ryzen el 2026-08-17:
+///
+/// ```text
+///    en pie                  1 de              <- de QUE?
+///    marcos libres     3878260 de
+/// ```
+///
+/// Las dos llamaban a [`fila`] poniendo `"de"` en la columna de la UNIDAD, y el
+/// segundo numero no existia en ninguna parte. No es un fallo de formato: es
+/// una frase a medias, y una frase a medias en un informe **se lee como un dato
+/// que falta**. El total va por su propio parametro para que no se pueda
+/// escribir la primera mitad sin la segunda.
+fn fila_de(s: &mut Output, que: &[u8], valor: u64, total: u64, nota: &[u8]) {
+    s.text(b"    ");
+    s.text(que);
+    for _ in que.len()..16 {
+        s.byte(b' ');
+    }
+    s.dec_right(valor, 9);
+    s.text(b" de ");
+    s.dec(total);
+    if !nota.is_empty() {
+        s.text(b"   ");
+        s.with_ink(INK_ECHO);
+        s.text(nota);
+        s.with_ink(INK_PLAIN);
+    }
+    s.byte(b'\n');
+}
+
 /// Igual, pero para un numero con UN decimal guardado en milesimas: los vatios
 /// llegan en milivatios y `57432` se lee como `57.4`.
 fn fila_mili(s: &mut Output, que: &[u8], milis: u64, unidad: &[u8], nota: &[u8]) {
@@ -199,7 +231,7 @@ pub(crate) fn report_consumo(s: &mut Output) {
     fila(s, b"nucleos", bmo::info(bmo::INFO_CPU_NUCLEOS), b"fisicos", b"");
     fila(s, b"hilos", hilos, b"logicos", b"");
     // `SMP_VIVOS` cuenta los APs, o sea SIN el BSP; el que mira quiere el total.
-    fila(s, b"en pie", vivos + 1, b"de", b"");
+    fila_de(s, b"en pie", vivos + 1, hilos, b"`smp all` levanta los demas");
     let hz = bmo::info(bmo::INFO_CPU_HZ_REAL);
     if hz > 0 {
         fila(s, b"reloj ahora", hz / 1_000_000, b"MHz", b"medido por MPERF/APERF");
@@ -220,8 +252,13 @@ pub(crate) fn report_consumo(s: &mut Output) {
     fila(s, b"total", total / (1024 * 1024), b"MiB", b"");
     fila(s, b"usada", total.saturating_sub(libre) / (1024 * 1024), b"MiB", b"");
     fila(s, b"libre", libre / (1024 * 1024), b"MiB", b"la fila que tiene que VOLVER");
-    fila(s, b"marcos libres", bmo::info(bmo::INFO_RAM_MARCOS_LIBRES), b"de", b"");
-    fila(s, b"marcos", bmo::info(bmo::INFO_RAM_MARCOS), b"de 4 KiB", b"");
+    fila_de(
+        s,
+        b"marcos libres",
+        bmo::info(bmo::INFO_RAM_MARCOS_LIBRES),
+        bmo::info(bmo::INFO_RAM_MARCOS),
+        b"de 4 KiB cada uno",
+    );
     fila(
         s,
         b"a Ring 3",
