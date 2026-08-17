@@ -30,12 +30,42 @@ Esta es la herramienta entera del documento, y cabe en tres lineas:
 
 ```
    coste real por segundo  =  coste por vez  x  veces por segundo
-
-   [CATALOGO]  un nucleo de este 5600X   ~4.600 M ciclos/s
-               1% de un nucleo               46 M ciclos/s
-               los 6 nucleos              27.600 M ciclos/s
 ```
 
+★★ **Y ANTES DE DIVIDIR NADA, LA UNIDAD -- que la primera version de este
+fichero tenia MAL.** Todo lo que mide `rdtsc` son **ticks de TSC**, y el TSC de
+este chip es invariante: cuenta a la frecuencia BASE pase lo que pase. Lo dijo
+la propia maquina el 2026-08-16, con sus dos instrumentos a la vez:
+
+```
+   [MEDIDO]  reloj base    3700 MHz    el TSC
+   [MEDIDO]  reloj ahora   4519 MHz    medido por MPERF/APERF
+```
+
+```
+   un tick de TSC        = 1 / 3,7 GHz = 0,27 ns
+   un tick de TSC        = 1,22 ciclos de nucleo a 4519 MHz
+   una puerta = 884 ticks = 240 ns    = ~1.086 ciclos de nucleo
+```
+
+**Los dos denominadores, y hay que usar el que corresponde a la medida:**
+
+```
+   [MEDIDO]    un nucleo, en TICKS DE TSC     3.700 M ticks/s   <- este
+               1% de un nucleo                   37 M ticks/s
+   [CATALOGO]  el mismo nucleo, en CICLOS     ~4.500 M ciclos/s
+```
+
+[!] Los ratios de este documento no cambian --todo lo medido esta en la misma
+unidad-- pero **la etiqueta estaba mal, y una unidad mal puesta es el patron 2
+de la casa**: el campo que es un exponente, o que viene en otra unidad. Se
+corrige aqui y se deja escrito de donde salio, porque el que lo destapo fue el
+panel de la propia maquina.
+
+- **R-CENSO0.** ★ **El numero y su denominador van en la MISMA unidad**, y la
+  unidad se escribe. Ticks de TSC contra 3.700 M/s; ciclos de nucleo contra
+  ~4.500 M/s. Mezclarlos da un porcentaje que parece razonable y es falso por un
+  22%.
 - **R-CENSO1.** Un camino que consume **menos del 1% de un nucleo** no se
   optimiza. Se **tacha**, y se anota **el numero por el que se tacho**.
 - **R-CENSO2.** El numero que tacha vale **mientras no cambie la frecuencia de
@@ -49,7 +79,7 @@ Esta es la herramienta entera del documento, y cabe en tres lineas:
 
 | # | camino | disparo | veces/s | coste/vez | por segundo | eje | veredicto |
 |---|---|---|---|---|---|---|---|
-| P1 | **la puerta** | cada `INVOKE` | **sin contar** | 872 [MEDIDO] | ? | LATENCIA | **contrato** |
+| P1 | **la puerta** | cada `INVOKE` | **sin contar** | 884 [MEDIDO] | ? | LATENCIA | **contrato** |
 | P2 | **el pintado** | cada frame | 60 (deseado) | ~98 M [ARITM] | > 1 nucleo | THROUGHPUT | **VIVO, el que manda** |
 | P3 | **la consola** | cada `printf` | segun el programa | **2,2 M** [MEDIDO] | 21 printf/s = 1% | THROUGHPUT | **VIVO** |
 | P4 | cambio de contexto | tick + ceder | ~1.000 + N | ~2.000 [ESTIM] | ~2 M = 0,04% | LATENCIA | **TACHADO** |
@@ -81,8 +111,8 @@ el arbol y es la que le pone porcentaje a cinco tandas de trabajo.**
 Mientras tanto, la aritmetica condicional:
 
 ```
-   [ARITMETICA]   10.000 puertas/s x 872  =  8,7 M ciclos/s  =  0,19% de un nucleo
-                 100.000 puertas/s x 872  =   87 M ciclos/s  =   1,9% de un nucleo
+   [ARITMETICA]   10.000 puertas/s x 884  =  8,8 M ticks/s  =  0,24% de un nucleo
+                 100.000 puertas/s x 884  =   88 M ticks/s  =   2,4% de un nucleo
 ```
 
 ★ **Por eso este camino queda como CONTRATO y no como cuello de botella.** Se
@@ -119,7 +149,7 @@ la puerta entera aunque el escritorio hiciera 100.000 llamadas por segundo.**
 
 ```
    [MEDIDO]  una escritura de consola  ~2,2 M ciclos   (dibuja glifos + scroll)
-   [RATIO]   2.200.000 / 872           = 2.500 puertas peladas
+   [RATIO]   2.200.000 / 884           = 2.489 puertas peladas
 ```
 
 ★★ **Un `printf` cuesta lo que 2.500 puertas.** Veintiun `printf` por segundo se
@@ -187,7 +217,7 @@ instrucciones es trabajar en la columna equivocada.
    [DATO]  un humano rapido    < 20 pulsaciones/s
 ```
 
-★ **El presupuesto de este camino lo pone el bus, no el CPU: 872 ciclos son el
+★ **El presupuesto de este camino lo pone el bus, no el CPU: 884 ticks son el
 0,15% de un microframe.** Aqui no se optimizan ciclos **jamas**; se cumplen las
 cinco reglas R-USB1..5, que son de CORRECCION, y ahi es donde este camino ha
 sangrado siempre.
@@ -242,12 +272,12 @@ no puede saber cada trozo:
 
 | # | pieza | veces | coste | generacion | fila |
 |---|---|---|---|---|---|
-| 1 | `syscall/entry.rs` -- el stub | **100%** | **~780 de 872 (89%)** | **abuelo** -- no sabe que operacion se pidio | ★ **NINGUNA** |
-| 2 | `syscall/mod.rs::dispatch` | 100% | ~90 | **padre** -- sabe que puerta, no que objeto | `DISPATCH` 105/60 |
-| 3 | `syscall/meter.rs` start+stop | 100% | **~69 de esos 90** | el instrumento | -- |
+| 1 | `syscall/entry.rs` -- el stub | **100%** | **785-839 de 884 (89-91%)** | **abuelo** -- no sabe que operacion se pidio | ★ **NINGUNA** |
+| 2 | `syscall/mod.rs::dispatch` | 100% | 87 (C) / 104 (Rust) | **padre** -- sabe que puerta, no que objeto | `DISPATCH` 105/60 |
+| 3 | `syscall/meter.rs` start+stop | 100% | **69-107 de esos 87-104** | el instrumento | -- |
 | 4 | `trap::registrar_publicacion` | 100% | **sin medir** | diagnostico | -- |
 | 5 | `invoke()` -- match de 2 brazos | 100% | trivial | padre | -- |
-| 6 | `obj/cap.rs::resolve` | **44%** (32 de 72 ops) | **+217** | **hijo** -- sabe que handle | `HANDLE` 355/80 |
+| 6 | `obj/cap.rs::resolve` | **44%** (32 de 72 ops) | **+166** | **hijo** -- sabe que handle | `HANDLE` 355/80 |
 | 7 | `obj/*.rs` -- el objeto contesta | segun la op | clase A/B/C/D | **nieto** -- el unico que sabe que significa | -- |
 
 ### Las tres cosas que dice esta tabla
@@ -260,11 +290,29 @@ por descuido -- los cuatro sellos que lo partian existieron, contestaron
 el 17%**. El cableado hasta Ring 3 sigue puesto y `coste.bex` dice `NO MEDIDO`
 en vez de imprimir ceros.
 
-★ **2. El termometro cuesta el 77% de lo que mide.** De los ~90 de `dispatch`,
-**~69 son un `rdtsc`**. Consecuencia que hay que decir en voz alta: **la mitad
-Rust de una puerta no son 90 ciclos de trabajo, son ~20 debajo de 69 de
-instrumento**, y la meta de 60 no se alcanza afinando el `match` de dos brazos
--- se alcanza **sacando el metro con un `cfg`**.
+★★ **2. EL TERMOMETRO ES DEL TAMANO DEL ENFERMO, y la tanda del 16-08 lo dejo
+sin discusion.** Los dos testigos midieron el coste de un `rdtsc` suelto y **no
+coinciden**:
+
+```
+   [MEDIDO]  Rust   111 - 4  (su bucle de 4)  = 107
+   [MEDIDO]  C      112 - 43 (su bucle de 43) =  69
+```
+
+No es que uno mida mal: **el CPU es fuera de orden**. En un bucle de 43 ticks el
+`rdtsc` se solapa con el trabajo de al lado y sale barato; en uno de 4 no tiene
+donde esconderse y sale entero. *"Lo que cuesta una instruccion"* no es una
+constante -- **depende de lo que tenga alrededor**, y por eso se dan los dos
+numeros y no una media que no describe ninguno de los dos casos.
+
+Consecuencia, y hay que decirla en voz alta: `dispatch` mide **87-104** y su
+propio instrumento cuesta **69-107**. O sea que **el trabajo real de Rust dentro
+de la puerta esta enterrado debajo de su propio termometro**, y la fila
+`DISPATCH` --104 contra techo 105-- esta a UN tick de gritar REGRESION por algo
+que no es el codigo.
+
+★ **La fila DISPATCH, hoy, no se puede leer.** La meta de 60 no se alcanza
+afinando un `match` de dos brazos: se alcanza **sacando el metro con un `cfg`**.
 
 ★ **3. La jerarquia es lo que hace FALSABLE la anomalia viva.** *"Los ~246
 ciclos no pueden estar en el stub"* no es una intuicion: el stub es el **abuelo**
@@ -278,11 +326,22 @@ Hoy se sabe lo que cuesta cada clase y **no se sabe cuantas veces se pide cada
 una**. Sin eso, "donde se usa mas" es una suposicion (R-CENSO3).
 
 ```
-   clase A   pseudo-cap, respuesta inmediata     ~875    PID, TID, YIELD, MI_PADRE
-   clase B   pseudo-cap, camina una tabla        ~908    INFO, KLOG, CABINA, AUTOPSIA
-   clase C   resuelve capability real           ~1125    las 32 de handle
-   clase D   hace trabajo de verdad          ~2,2 M      CONSOLE_WRITE, EJECUTAR, ABRIR
+   [MEDIDO 16-08, sonda de una variable a la vez]
+   clase A   pseudo-cap, respuesta inmediata      890    PID, TID, YIELD, MI_PADRE
+   clase B   pseudo-cap, camina una tabla         958    INFO, KLOG, CABINA, AUTOPSIA
+   clase C   resuelve capability real            1124    las 32 de handle
+   clase D   hace trabajo de verdad           ~2,2 M     CONSOLE_WRITE, EJECUTAR, ABRIR
+
+   fila B - fila A =  +68   lo que cuesta una operacion mas gorda
+   fila C - fila B = +166   lo que cuesta un HANDLE de verdad
 ```
+
+[!] **Y esto corrige una cifra de la tanda anterior.** Se habia escrito que el
+handle costaba **+217** contra +33 de la operacion, o sea 6,5 veces. Con las tres
+filas de la sonda --que cambian **una variable cada vez**-- sale **+166 contra
++68: 2,4 veces**. El handle sigue mandando, pero menos. La resta del testigo C
+(1230 - 926 = 304) NO sirve para esto: cambia capability **y** operacion a la
+vez, que es el defecto que la sonda de tres filas existe para arreglar.
 
 ★ **Cuatro casillas, no setenta y dos.** Un contador por operacion seria peso en
 el camino caliente y ademas obligaria al que cuenta a saber que operacion es --
@@ -311,7 +370,7 @@ Y hay que decir las dos cosas, no una:
 1. **El trabajo en la puerta fue correcto** y no se toca: es el suelo que paga
    toda operacion, es la superficie que BMO-X promete a quien programe encima, y
    es **el unico camino del arbol con juez** -- o sea que ademas de bajar 2618 a
-   872, es lo que enseno a medir. Sin el, este censo no se podria escribir.
+   884, es lo que enseno a medir. Sin el, este censo no se podria escribir.
 2. **Pero no es donde estan los ciclos.** Si el objetivo es *"la maquina va
    rapida"*, el orden es P2, P3 y luego todo lo demas.
 
@@ -322,7 +381,7 @@ Y hay que decir las dos cosas, no una:
 | tachado | por que numero | vuelve al censo si... |
 |---|---|---|
 | cambio de contexto (P4) | 0,04% de un nucleo | el tick sube de 1.000 Hz, o el cambio se hace mas de 50.000 veces/s |
-| la entrada (P7) | 872 ciclos = 0,15% de un microframe | jamas; el bus no va a acelerar |
+| la entrada (P7) | 884 ticks = 0,19% de un microframe | jamas; el bus no va a acelerar |
 | el arranque (P8) | ocurre una vez | nunca, salvo que el arranque pase a ser interactivo |
 | el toolchain (P10) | 0 ciclos en la maquina | nunca como consumidor; siempre como productor |
 | el RTC, `bmo-hash` en carga, el censo de extensiones | una vez o casi | si entran en un bucle |

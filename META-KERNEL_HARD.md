@@ -289,10 +289,14 @@ recoger lo que produce.
 
 ```
    [SILICIO]   Ryzen 5 5600X (Zen 3, Vermeer), 6 nucleos / 12 hilos, un CCD
-   [MEDIDO]    rdtsc                             69 ciclos
-   [MEDIDO]    puerta pelada (INVOKE, min)       872 -- 895 ciclos
-   [MEDIDO]    dispatch (la mitad en Rust)       84 (C) / 99 (Rust)
-   [MEDIDO]    resolver un handle                +217 (ultima sonda)
+   [MEDIDO]    rdtsc                             69 -- 107 ticks (ver R-TIME6)
+   [MEDIDO]    puerta pelada (INVOKE, min)       884 ticks = 240 ns
+               los dos testigos: 889-4 = 885 y 926-43 = 883. Dos ticks.
+   [MEDIDO]    dispatch (la mitad en Rust)       87 (C) / 104 (Rust)
+   [MEDIDO]    el stub (por resta)               785 -- 839, o sea el 89-91%
+   [MEDIDO]    resolver un handle                +166
+   [MEDIDO]    una operacion mas gorda           +68
+   [MEDIDO]    una llamada a funcion normal      19 ticks  <- la referencia
    [ANALISIS]  cruce syscall+sysretq             ~150 ciclos, IRREDUCIBLE
 ```
 
@@ -645,6 +649,30 @@ este fichero puede existir**. Es el unico componente que se mide a si mismo.
 - **R-TIME4.** Un contador es una **diferencia entre dos instantes**. Leerlo una
   vez da el total desde el arranque, y eso no es una medida de ahora.
 - **R-TIME5.** Dos testigos independientes o no hay numero.
+- **R-TIME6.** ★★ **UN TICK DE TSC NO ES UN CICLO DE NUCLEO, y la maquina lo
+  dice con sus dos instrumentos a la vez.** El TSC invariante cuenta a la
+  frecuencia BASE --3.700 MHz-- mientras el nucleo corre a la que le deje el
+  boost:
+
+  ```text
+     [MEDIDO]  reloj base   3700 MHz   el TSC
+     [MEDIDO]  reloj ahora  4519 MHz   MPERF/APERF
+               1 tick = 0,27 ns = 1,22 ciclos de nucleo a esa frecuencia
+               884 ticks = 240 ns = ~1.086 ciclos de nucleo
+  ```
+
+  Por tanto **todo numero medido con `rdtsc` se divide entre 3.700 M/s, nunca
+  entre la frecuencia de boost**. Mezclarlas da un porcentaje que parece
+  razonable y es falso por un 22%. Es el patron 2 de la casa --un campo que
+  viene en otra unidad-- y se pago aqui: la primera version de
+  `docs/CENSO_DE_EJES.md` uso el denominador equivocado.
+- **R-TIME7.** ★ **Lo que cuesta una instruccion NO es una constante: depende de
+  lo que tenga alrededor.** El mismo `rdtsc` midio **107 en un bucle de 4 ticks
+  y 69 en uno de 43** -- en el bucle largo el CPU fuera de orden lo solapa con el
+  trabajo de al lado. Se dan **los dos numeros**, nunca una media que no describe
+  ninguno de los dos casos. Y cuando el instrumento cueste tanto como lo medido
+  --`dispatch` mide 87-104 con un `rdtsc` de 69-107 dentro-- **la fila no se
+  puede leer**, por bien que se comporte el numero.
 
 **EL PRECIO.** `dispatch` "media" 309-319 ciclos durante **cuatro tandas**. Era
 un `printf` disfrazado de dispatcher: 225 ciclos por puerta metidos dentro de la
