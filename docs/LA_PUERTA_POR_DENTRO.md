@@ -72,15 +72,31 @@ recorre esto, en este orden:
 ## 2. Lo que esta MEDIDO y lo que no
 
 ```
-   MEDIDO (Ryzen, 17-08)                          ticks    ciclos     ns
+   MEDIDO (Ryzen, 17-08, segunda tanda)           ticks    ciclos     ns
    ------------------------------------------    ------   -------   ----
-   puerta pelada, testigo de Rust                   779       953    210
-   puerta pelada, testigo de C                      792       969    214
-   una operacion mas gorda (7e, OP_INFO)             30        36      8
-   resolver una capability (7d), sonda aislada      181       221     49
+   puerta pelada, testigo de Rust                   775       945    209
+   puerta pelada, testigo de C                      839      1026    226
+   una operacion mas gorda (7e, OP_INFO)             15        18      4
+   resolver una capability (7d), sonda aislada      194       236     52
    un sello `rdtsc` en bucle apretado               107       130     28
-   un sello `rdtsc` en bucle flojo                   69        84     18
+   un sello `rdtsc` en bucle flojo                   70        85     19
 ```
+
+★ **Y el numero que ordena el trabajo sale de dividir dos de esas filas:**
+
+```
+   resolver el permiso   194 ticks
+   hacer lo que pedia     15 ticks
+   ------------------------------
+   el handle cuesta 13 VECES la operacion que autoriza
+```
+
+[!] **La dispersion entre tandas es mayor de lo que decia el margen del
+trinquete.** El testigo de C dio 792 y 839 en dos tandas del mismo dia --un
+6%--, y `MARGEN_DE_RUIDO_POR_CIENTO` esta puesto en 5 sobre *"la peor medida
+observada"*. Sigue dentro del techo (839 < 960), pero el margen ya no sobra: la
+proxima vez que se apriete el trinquete hay que apretarlo contra **la peor de
+varias tandas**, no contra la ultima.
 
 ```
    NO MEDIDO -- y es la lista de lo que hay que medir
@@ -188,10 +204,33 @@ glifos y hace scroll**. No es un problema del camino de la llamada; es un
 problema de dibujo, y vive en otro eje.
 
 ★ **Y aqui es donde entra el instrumento nuevo del 17-08**: `sys/precio.bex`
-imprime ahora **cuantas veces se pide cada clase de puerta** desde el arranque
-(tarea / handle / consola / wait). El kernel lo clasificaba desde el 16-08 y
-nadie lo leia. Sin ese numero, `coste x veces` no se puede calcular y la
-prioridad es una intuicion -- que en este camino ya se equivoco dos veces.
+imprime ahora **cuantas veces se pide cada clase de puerta** (tarea / handle /
+consola / wait). El kernel lo clasificaba desde el 16-08 y nadie lo leia. Sin ese
+numero, `coste x veces` no se puede calcular y la prioridad es una intuicion --
+que en este camino ya se equivoco dos veces.
+
+**Primera lectura, y hay que leerla con dos avisos delante:**
+
+```
+   433.928 puertas    tarea 63,8%   handle 36,0%   consola 401   wait 0
+```
+
+```
+   coste x veces, con lo medido:
+   consola     401 x ~2,7 M ciclos  =  ~1.083 M ciclos
+   todo lo demas  433.527 x ~945    =    ~410 M ciclos
+```
+
+★★ **El 0,09% de las llamadas se lleva mas ciclos que el 99,91% restante.** Ese
+es el calculo que este histograma existe para permitir, y el que dice que **para
+el escritorio, optimizar la puerta importa menos que optimizar lo que la consola
+dibuja**. Una linea de consola cuesta como 2.800 puertas.
+
+[!] Pero esa foto **estaba contaminada por el propio metro**: de las 433.928
+puertas, ~390.000 son las de los dos testigos midiendose. Arreglado el 17-08
+--las cinco lecturas se toman ANTES de medir y antes de imprimir-- asi que la
+proxima tanda dira el trafico del ESCRITORIO, que es la pregunta. Hasta entonces
+los porcentajes de arriba describen al instrumento.
 
 ---
 
@@ -355,11 +394,12 @@ diseno.
 - **Que el reparto de trafico de la seccion 4 este visto.** El instrumento se
   escribio el 17-08 y **ningun CPU lo ha ejecutado**: hasta la proxima tanda, la
   columna "veces por segundo" sigue vacia.
-- **Que el modelo de CPU declarado en el presupuesto sea el correcto.** El arbol
-  se contradice a si mismo (`19h/01h` en `cpu/mod.rs`, `19h/21h` en el perfil) y
-  **nadie ha leido nunca ese byte en este chip**. Se toma el del perfil; lo
-  desempata la proxima tanda, y si sale `SIN TRINQUETE` la propia linea trae el
-  esperado y el leido.
+- ~~Que el modelo de CPU declarado sea el correcto.~~ ✅ **CERRADO el 17-08 por la
+  tanda**: el trinquete compara familia/modelo contra CPUID antes de juzgar, y
+  contesto `[EN PLAZO] 839, techo 960` -- o sea que el silicio dice **`19h/21h`**.
+  Las DOS copias del kernel que decian `19h/01h` estaban mal y una de ellas
+  llamaba a este chip *"Ryzen 7000 (Raphael, Zen 4)"* en `info`. Corregidas. ★ El
+  guardian del presupuesto midio, de paso, algo que no era su trabajo.
 
 ---
 

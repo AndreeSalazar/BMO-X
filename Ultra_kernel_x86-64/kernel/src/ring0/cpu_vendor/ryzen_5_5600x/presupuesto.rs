@@ -43,23 +43,22 @@ use crate::ring0::syscall::presupuesto::{Fila, Presupuestos, Suelo};
 /// puede usar estos numeros. Ver `es_esta_maquina`.
 pub static PRESUPUESTO: Presupuestos = Presupuestos {
     familia: 0x19,
-    // ** ESTE BYTE ES UNA AFIRMACION QUE NADIE HA COMPROBADO, y se dice.
+    // ** CONFIRMADO POR EL SILICIO EL 2026-08-17, y de la mejor manera: sin
+    // preguntarselo.
     //
-    // El arbol se contradice a si mismo sobre el modelo de este chip:
+    // El arbol se contradecia sobre el modelo de este chip -- el perfil decia
+    // `19h/21h` y `ring0/cpu/mod.rs` decia `19h/01h`, llamando ademas "Ryzen
+    // 7000 (Raphael, Zen 4)" al 21h. Se tomo el del perfil, y la tanda lo
+    // desempato: el trinquete **compara este byte contra CPUID antes de juzgar**
+    // y contesto `puerta [EN PLAZO] 839, techo 960`. Si el silicio hubiera dicho
+    // otra cosa, la linea habria sido `SIN TRINQUETE` con los dos numeros.
     //
-    //    cpu_vendor/ryzen_5_5600x/mod.rs   family_model: "19h/21h"   <- se toma
-    //    ring0/cpu/mod.rs                  is_ryzen_5_5600x = 19h/01h
-    //                                      y llama 19h/21h a un Ryzen 7000
+    // ** O sea que el guardian del presupuesto midio, de paso, algo que no era
+    // su trabajo: **cual de las dos copias del kernel mentia**. Las dos estaban
+    // en `0x01`; las dos corregidas.
     //
-    // Los dos no pueden tener razon. Se toma el del PERFIL porque el perfil es
-    // el que manda sobre los datos de su propio CPU (es la regla de esta
-    // carpeta), y **el silicio lo desempata en la proxima tanda**:
-    // `INFO_PRESUPUESTO_MAQUINA` lleva el esperado Y el leido, asi que si sale
-    // `SIN TRINQUETE` la propia linea trae los dos numeros y esto se arregla
-    // cambiando una cifra, no leyendo codigo.
-    //
-    // [!] Hasta entonces, el unico sintoma de la contradiccion era el NOMBRE
-    // que `info` imprime del CPU. Nadie lo mira, y por eso lleva ahi meses.
+    // [!] Y el unico sintoma que tuvo esa mentira durante meses fue el NOMBRE
+    // del CPU en `info`. Un dato que nadie mira no se comprueba solo.
     modelo: 0x21,
     // Medido por la calibracion del arranque en esta placa, y confirmado por los
     // dos testigos el 2026-08-17: `TSC 3700000000 Hz`.

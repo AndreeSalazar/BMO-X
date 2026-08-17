@@ -58,16 +58,33 @@ pub struct CpuFamilyModel {
 }
 
 impl CpuFamilyModel {
+    /// ** ESTE BYTE SE LEYO POR FIN EL 2026-08-17, y estaba mal desde el
+    /// principio.
+    ///
+    /// Decia `model == 0x01`, y ademas la rama de abajo llamaba **"Ryzen 7000
+    /// (Raphael, Zen 4)"** al `0x21`. O sea que en la maquina del dueno --un
+    /// 5600X-- `info` llevaba meses imprimiendo el nombre de otro procesador.
+    ///
+    /// Nadie lo vio porque el unico sintoma era ese nombre, y un nombre no
+    /// rompe nada. Lo desempato el trinquete del presupuesto: compara
+    /// familia/modelo contra lo que declara el perfil (`19h/21h`) y **si no
+    /// cuadra se niega a juzgar**. La tanda del 17-08 imprimio
+    /// `puerta [EN PLAZO] 839, techo 960` -- o sea que cuadro, o sea que el
+    /// silicio dice `19h/21h`.
+    ///
+    /// [!] La rama de Raphael **se borra en vez de corregirse**: para saber su
+    /// modelo hay que leerlo en un Raphael, y aqui no hay ninguno. Cambiar una
+    /// afirmacion sin medir por otra sin medir no arregla nada -- deja el mismo
+    /// fallo con otra cifra. Un Zen 4 caera en la fila generica de familia 19h,
+    /// que es verdad.
     pub fn is_ryzen_5_5600x(&self) -> bool {
-        self.family == 0x19 && self.model == 0x01
+        self.family == 0x19 && self.model == 0x21
     }
     pub fn name(&self) -> &'static str {
         if self.is_ryzen_5_5600x() {
             "Ryzen 5 5600X (Vermeer, Zen 3)"
-        } else if self.family == 0x19 && self.model == 0x21 {
-            "Ryzen 7000 series (Raphael, Zen 4)"
         } else if self.family == 0x19 {
-            "AMD Family 19h (Zen 3 era)"
+            "AMD Family 19h (Zen 3/Zen 4)"
         } else if self.family == 0x17 {
             "AMD Family 17h (Zen 1/2)"
         } else {

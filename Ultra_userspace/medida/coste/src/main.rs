@@ -435,6 +435,37 @@ fn decir(l: &mut Linea, etiqueta: &str, v: juez::Veredicto) {
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    // ** EL TRAFICO SE LEE LO PRIMERO DE TODO, ANTES DE MEDIR Y ANTES DE
+    // IMPRIMIR. Dos motivos, y los dos los enseno el metal del 17-08:
+    //
+    // 1. **Contaminacion.** Leido al final, el 90% de las puertas contadas eran
+    //    las de este propio programa: 4096 x 16 x 4 filas son ~262.000, mas las
+    //    del testigo de C. El reparto que salio --63,8% tarea, 36,0% handle--
+    //    describia AL METRO MIDIENDOSE, no al escritorio. Leido aqui, describe
+    //    lo que la maquina hizo ANTES de que esto arrancara, que es la pregunta.
+    //
+    // 2. **Ventana sucia**, y es el fallo que esta casa ya pago una vez. Entre
+    //    la lectura del total y la de las clases habia `di!`, y cada `di!`
+    //    **cruza la puerta** -- de 8 en 8 bytes. Por eso el aviso salto:
+    //
+    //        AVISO: las clases suman MAS que el total -- NO LEER
+    //
+    //    Las clases se leyeron 43 puertas despues del total. El instrumento se
+    //    caz  a si mismo, que es exactamente para lo que esa resta existe.
+    //
+    // [!] Y el ORDEN de las cinco lecturas importa: primero las cuatro clases y
+    // el total AL FINAL. Asi el total incluye las cuatro lecturas y las clases
+    // no, o sea que el sobrante cae en `sin casilla` -- pequeno y POSITIVO. Al
+    // reves, la suma se pasaria del total y no habria forma de distinguir ese
+    // ruido de un fallo de verdad.
+    let trafico = [
+        bmo::info(bmo::INFO_SYSCALL_CLASS | (bmo::SYSCALL_CLASS_TASK << 8)),
+        bmo::info(bmo::INFO_SYSCALL_CLASS | (bmo::SYSCALL_CLASS_HANDLE << 8)),
+        bmo::info(bmo::INFO_SYSCALL_CLASS | (bmo::SYSCALL_CLASS_CONSOLE << 8)),
+        bmo::info(bmo::INFO_SYSCALL_CLASS | (bmo::SYSCALL_CLASS_WAIT << 8)),
+    ];
+    let trafico_total = bmo::info(bmo::INFO_SYSCALL_CUENTA);
+
     let mut l = Linea::nueva();
     di!(l, "COSTE(rust): cuanto vale una puerta\n");
 
@@ -589,15 +620,24 @@ pub extern "C" fn _start() -> ! {
         if minimos[i] == 0 {
             continue;
         }
-        di!(
-            l,
-            "{}  min {} media {}, dispatch {}, fuera {}\n",
-            f.nombre,
-            minimos[i],
-            medias[i],
-            dispatches[i],
-            contra(minimos[i], dispatches[i]).unwrap_or(0)
-        );
+        // ** SIN METRO NO SE IMPRIME UN REPARTO, tampoco aqui. El 17-08 estas
+        // tres filas salieron como `dispatch 0, fuera 776`, que es el total
+        // entero disfrazado de reparto: la MISMA resta contra una medida que no
+        // ocurrio que se tapo en la fila 2, viva en el fichero de al lado.
+        // Arreglar un sitio y dejar el gemelo es medio arreglo.
+        if dispatches[i] == 0 {
+            di!(l, "{}  min {} media {}\n", f.nombre, minimos[i], medias[i]);
+        } else {
+            di!(
+                l,
+                "{}  min {} media {}, dispatch {}, fuera {}\n",
+                f.nombre,
+                minimos[i],
+                medias[i],
+                dispatches[i],
+                contra(minimos[i], dispatches[i]).unwrap_or(0)
+            );
+        }
     }
 
     // -- las dos restas, que es la sonda de verdad ---------------------
@@ -619,14 +659,23 @@ pub extern "C" fn _start() -> ! {
         // ** Y LA RESTA QUE CIERRA LA PREGUNTA: de lo que cuesta el handle,
         // cuanto cae dentro de `dispatch` y cuanto fuera. Dentro es codigo
         // caro; fuera es un fallo.
-        let dentro = contra(dispatches[2], dispatches[1]).unwrap_or(0);
-        let total = contra(minimos[2], minimos[1]).unwrap_or(0);
-        di!(
-            l,
-            "   ...de esos, {} dentro de dispatch y {} FUERA\n",
-            dentro,
-            contra(total, dentro).unwrap_or(0)
-        );
+        //
+        // [!] Solo si HAY metro. Sin el, esta linea decia `0 dentro y 194
+        // FUERA` -- y "194 fuera de dispatch" es exactamente la forma que tiene
+        // la anomalia que se lleva persiguiendo tres tandas. Un instrumento
+        // apagado no puede dar la respuesta que se esta buscando.
+        if dispatches[1] != 0 && dispatches[2] != 0 {
+            let dentro = contra(dispatches[2], dispatches[1]).unwrap_or(0);
+            let total = contra(minimos[2], minimos[1]).unwrap_or(0);
+            di!(
+                l,
+                "   ...de esos, {} dentro de dispatch y {} FUERA\n",
+                dentro,
+                contra(total, dentro).unwrap_or(0)
+            );
+        } else {
+            di!(l, "   ...dentro/fuera de dispatch: NO MEDIDO, hace falta el metro\n");
+        }
         bmo::invoke(paquete, ARCH_CERRAR as u32, 0, 0, 0);
     } else {
         di!(l, "   fila 3 NO SE MIDIO: el kernel no recuerda mi imagen\n");
@@ -650,21 +699,15 @@ pub extern "C" fn _start() -> ! {
     // en `dispatch` sin ninguna lista, con tres hechos que ya estan en
     // registros (ver `syscall/mod.rs`).
     //
-    // [!] Es el trafico DESDE EL ARRANQUE, no el de ahora: dice en que se ha
-    // gastado la sesion entera, incluido el arranque del escritorio. Para "que
-    // esta haciendo AHORA" haria falta restar dos lecturas separadas por un
-    // segundo, y eso es otro instrumento.
-    let total = bmo::info(bmo::INFO_SYSCALL_CUENTA);
+    // [!] Es el trafico **desde el arranque hasta que este programa empezo**:
+    // el arranque del kernel mas lo que el escritorio lleve hecho. No es "lo de
+    // ahora" --para eso harian falta dos lecturas separadas por un segundo-- y
+    // sobre todo **no incluye a este metro**, que es lo que lo hacia ilegible.
+    let total = trafico_total;
     let mut suma = 0u64;
-    di!(l, "5. el trafico de puertas desde el arranque: {total}\n");
-    for (clase, nombre) in [
-        (bmo::SYSCALL_CLASS_TASK, "tarea  "),
-        (bmo::SYSCALL_CLASS_HANDLE, "handle "),
-        (bmo::SYSCALL_CLASS_CONSOLE, "consola"),
-        (bmo::SYSCALL_CLASS_WAIT, "wait   "),
-    ] {
-        // El indice va EMPAQUETADO en el campo, como `INFO_MEM_QUIEN_*`.
-        let n = bmo::info(bmo::INFO_SYSCALL_CLASS | (clase << 8));
+    di!(l, "5. el trafico de puertas ANTES de esta tanda: {total}\n");
+    for (i, nombre) in ["tarea  ", "handle ", "consola", "wait   "].iter().enumerate() {
+        let n = trafico[i];
         suma = suma.saturating_add(n);
         // Porcentaje en decimas: sin coma flotante, y una clase que es el 0,4%
         // no puede salir como "0%" cuando es la que hay que mirar.
@@ -676,7 +719,11 @@ pub extern "C" fn _start() -> ! {
     // a la que no se le invento una: si esto sale grande, hay trafico que el
     // reparto no esta viendo, y entonces los porcentajes de arriba no valen.
     match total.checked_sub(suma) {
-        Some(fuera) => di!(l, "   sin casilla {fuera}  <- tiene que ser pequeno\n"),
+        // Ahi dentro caen la puerta retirada --que no tiene casilla a
+        // proposito-- y **las cuatro lecturas de arriba**, que son puertas de
+        // tarea contadas en el total y no en la foto de las clases. O sea que lo
+        // normal es un numero de un digito.
+        Some(fuera) => di!(l, "   sin casilla {fuera}  <- las 4 lecturas de esta foto + la puerta retirada\n"),
         None => di!(l, "   AVISO: las clases suman MAS que el total -- NO LEER\n"),
     }
 
