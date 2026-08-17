@@ -126,6 +126,27 @@ fn tables() -> &'static mut CapTables {
 }
 
 /// Active-queue kinds carry tag bit 63 (mirror of HandleKind::tag()).
+// -- ** EL FORMATO DEL HANDLE, CON NOMBRE -------------------------------
+//
+// Estos seis numeros vivian a pelo dentro de `encode` y `resolve`, **y otra vez
+// dentro de `platform/abi/.../handle/opaque.rs`**. El comentario de arriba de
+// este fichero ni lo disimulaba: dice *"mirror of bmo-abi handle/kind.rs"*.
+//
+// ** ES LA FORMA EXACTA DEL `#GP(0x18)` DEL 16-08 --el mismo numero en dos
+// ficheros que no se hablan-- y aqui habria salido peor: un desplazamiento mal
+// puesto COMPILA, devuelve "handle invalido", y se lee como un permiso
+// denegado. El otro al menos mataba la maquina.
+//
+// Con nombre, el guardian de `build.ps1` exige que los dos lados digan lo
+// mismo, igual que ya hace con las 49 operaciones y los 63 campos de `OP_INFO`.
+// **Un formato es un CONTRATO; escribirlo dos veces es tener dos.**
+pub const HANDLE_TAG_SHIFT: u64 = 63;
+pub const HANDLE_KIND_SHIFT: u64 = 56;
+pub const HANDLE_KIND_MASK: u64 = 0x7F;
+pub const HANDLE_GEN_SHIFT: u64 = 40;
+pub const HANDLE_GEN_MASK: u64 = 0xFFFF;
+pub const HANDLE_INDEX_MASK: u64 = 0x000000FF_FFFFFFFF;
+
 const fn kind_tag(kind: u8) -> u64 {
     match kind {
         KIND_CHANNEL => 1,
@@ -134,10 +155,10 @@ const fn kind_tag(kind: u8) -> u64 {
 }
 
 const fn encode(kind: u8, generation: u16, index: u64) -> u64 {
-    (kind_tag(kind) << 63)
-        | (((kind as u64) & 0x7F) << 56)
-        | (((generation as u64) & 0xFFFF) << 40)
-        | (index & 0x000000FF_FFFF_FFFF)
+    (kind_tag(kind) << HANDLE_TAG_SHIFT)
+        | (((kind as u64) & HANDLE_KIND_MASK) << HANDLE_KIND_SHIFT)
+        | (((generation as u64) & HANDLE_GEN_MASK) << HANDLE_GEN_SHIFT)
+        | (index & HANDLE_INDEX_MASK)
 }
 
 /// Grant a capability to `pid`. Returns the encoded handle, or `None` if
@@ -170,9 +191,9 @@ pub fn resolve(pid: u32, handle: u64, required_rights: u64) -> Result<Resolved, 
     if pid >= MAX_PROCS {
         return Err((ERROR_INVALID_HANDLE, 0));
     }
-    let kind = ((handle >> 56) & 0x7F) as u8;
-    let generation = ((handle >> 40) & 0xFFFF) as u16;
-    let index = (handle & 0x000000FF_FFFF_FFFF) as usize;
+    let kind = ((handle >> HANDLE_KIND_SHIFT) & HANDLE_KIND_MASK) as u8;
+    let generation = ((handle >> HANDLE_GEN_SHIFT) & HANDLE_GEN_MASK) as u16;
+    let index = (handle & HANDLE_INDEX_MASK) as usize;
     if index >= SLOTS_PER_PROC || generation == 0 {
         return Err((ERROR_INVALID_HANDLE, 0));
     }
@@ -181,7 +202,7 @@ pub fn resolve(pid: u32, handle: u64, required_rights: u64) -> Result<Resolved, 
     if !slot.live
         || slot.generation != generation
         || slot.kind != kind
-        || kind_tag(kind) != (handle >> 63)
+        || kind_tag(kind) != (handle >> HANDLE_TAG_SHIFT)
     {
         return Err((ERROR_INVALID_HANDLE, 0));
     }
