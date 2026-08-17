@@ -74,7 +74,7 @@ No sale de la memoria de nadie: sale de leer las crates y correr sus pruebas.
 | 3 capa de bloques | contrato unico | en codigo (`bmo-block`); AHCI si, **NVMe no** |
 | 4 solo lectura | montar y leer | **en metal** (06-08): monta F:, pinta el grafo |
 | 5 escritura | *"aqui empieza lo serio"* | **A MEDIAS -- ver abajo** |
-| 6 recolector | cuando haya que recoger | la CONTABILIDAD si (`espacio.rs`); el recolector no |
+| 6 recolector | cuando haya que recoger | la CONTABILIDAD si (`espacio.rs`) y **el TRIM de la cola libre tambien** (17-08); el recolector no |
 | 7 TimeBack encima | el historial deja de ser copia | no |
 
 ### El paso 5, con precision -- es la casilla del 1.0
@@ -158,6 +158,14 @@ solo el formato en disco, es **la vista del disco entera**.
 - **Comandos unicos, y por eso hay TERMINAL para discos duros.** El principio ya
   se aplico una vez, al mudar `sella` del terminal principal a la ventana de
   ESTRATOS: **el verbo vive donde vive el objeto.**
+
+  ✅ **El primer trozo esta puesto (17-08): la orden `disco`**, con `trim`,
+  `espacio` y `barrera` dentro. Y el reparto que deja es el mismo principio
+  llevado un paso mas: **`disco` administra el APARATO** --lo que gira, lo que
+  se le devuelve, la barrera-- y la ventana de ESTRATOS administra el
+  **VOLUMEN** --sellar, y algun dia restablecer un estrato--. Son dos objetos y
+  por eso son dos sitios; lo que no puede volver a pasar es que el verbo viva
+  donde no esta la cosa.
 
 Eso convierte el recolector de la section 9 --hoy una politica escrita-- en algo
 que **se VE**: el dueno mira los estratos y decide, en vez de leer una regla de
@@ -502,6 +510,34 @@ Tienes razon en que en un disco enorme esto importa poco. En tus 414 GiB de
 BMO-DATA importa bastante, y en un SSD hay un motivo extra: los bloques
 soltados hay que devolverselos al disco con `TRIM`, o el SSD sigue creyendo
 que estan ocupados y se le acaba el margen de escritura.
+
+### ✅ TRIM, hecho (2026-08-17) -- y son DOS trabajos, no uno
+
+Esta seccion llevaba las dos mitades metidas en la misma frase, y solo una era
+la dificil:
+
+```text
+   decirle al disco que lo libre es libre    <- HECHO
+   marcar lo alcanzable y soltar lo viejo    <- el recolector, sigue faltando
+```
+
+★★ **La primera no necesita a la segunda.** La cola libre del volumen es todo lo
+que hay por encima de `log_head`, y ese puntero **solo avanza**: ahi no llega
+ningun estrato, sin recorrer nada y sin marcar nada. Es la misma resta de la
+contabilidad de aqui arriba, leida al reves.
+
+Y hacia falta ya: sin ella el SSD sigue creyendo vivos --y copiando en cada
+recogida interna suya-- **todos los bloques que el volumen no ha usado nunca**,
+que recien formateado son casi todos.
+
+Se pide desde la terminal del escritorio, y **obedece a la regla de esta
+seccion**: `disco trim` ensena la propuesta --cuanto, desde que bloque, cuantas
+ordenes-- y no manda nada; `disco trim ya` la manda. Politica, no automatismo:
+no hay ningun demonio que recorte solo, y no va a haberlo.
+
+El camino entero y sus cuatro guardianes estan en
+`docs/componente/EL_DISCO_EXIGE.md`, seccion 12.1. Lo que importa aqui: **TRIM
+pasa por las mismas puertas que escribir**, porque es igual de destructivo.
 
 ### ✅ La contabilidad, hecha (2026-07-31)
 

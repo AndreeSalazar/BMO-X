@@ -463,3 +463,102 @@ reglas que lo sujetan estan en pruebas (`barrido::tests`), pero el metal manda:
   segundo. Escribir un rato largo con el escritorio abierto.
 - **No puede tironear.** Adopta como mucho UNA vez por barrido. Si el arranque
   da tirones de un segundo, es esto y hay que subir `BARRIDO_PERIODO_MS`.
+
+---
+---
+
+# TANDA DEL 2026-08-17 (tarde) -- EL DISCO YA SABE DEVOLVER
+
+Compila y **ningun CPU lo ha ejecutado**. Es la primera vez que BMO-X manda un
+comando de disco que no es leer, escribir, IDENTIFY o FLUSH -- y el unico
+destructivo de los cinco.
+
+> El porque y los cuatro guardianes: `docs/componente/EL_DISCO_EXIGE.md`,
+> seccion 12.1.
+
+## 1. Antes de tocar nada: `disco`
+
+En el terminal del escritorio (Ctrl+Alt), la palabra sola:
+
+```text
+   disco
+```
+
+Tiene que contestar tres bloques y ninguno inventado:
+
+```text
+   medio     ESTADO SOLIDO           lo de la tanda de esta manana
+   trim      si                      la palabra 169
+   volumen   montado   generacion N
+   libre     4xx.x GiB
+   devuelto  nada todavia en esta sesion
+```
+
+★ Si `trim` dice **no**, para: el resto de esta parte no aplica a este aparato y
+la propuesta se va a negar sola (y eso tambien es un resultado correcto).
+
+## 2. La propuesta, que NO manda nada
+
+```text
+   disco trim
+```
+
+Tiene que salir la cola libre en GiB, **desde que bloque** empieza, cuantos
+sectores son y un techo de ordenes. Y el disco no se puede haber movido: esta
+orden no llama al kernel.
+
+[!] **Si aqui aparece un numero absurdo** --mas GiB que el volumen, o un bloque
+de inicio mayor que el total-- **para y no escribas `ya`**. Ese numero es el
+mismo que va a usar la orden de verdad.
+
+## 3. La orden
+
+```text
+   disco trim ya
+```
+
+Lo que tiene que pasar:
+
+- Sale `mandando el recorte (esto tarda)...` **antes** de la espera. Si el
+  escritorio se congela sin ese renglon, el aviso llego tarde.
+- Termina con `DEVUELTO: <tamano>` y el numero de ordenes.
+- **F11 (CABINA)** lleva el relato: `recorte de la cola libre pedido por un
+  proceso de Ring 3`, `sectores devueltos al disco` y `ordenes DATA SET
+  MANAGEMENT`.
+
+Y despues, `disco` otra vez: la fila `devuelto` ya no dice *nada todavia*.
+
+## 4. LO QUE DE VERDAD SE ESTA PROBANDO -- reiniciar y leer
+
+Recortar la cola libre **no debe cambiar ni un dato**. La prueba es esta y no la
+de arriba:
+
+```text
+   reboot
+   disco            generacion la MISMA, libre lo MISMO, montado
+   ls               los ficheros de siempre, y `cat` de uno cualquiera
+```
+
+★★ Si despues de un recorte el volumen no monta, o un fichero sale a ceros, **el
+rango estaba mal** y lo que hay que traer de vuelta es el bloque de inicio que
+dijo la propuesta. Ese es el unico fallo que este camino puede tener y por eso
+la propuesta lo imprime antes.
+
+## 5. Los tres NO, que valen tanto como el si
+
+Cada uno prueba una puerta distinta, y ninguno debe colgar nada:
+
+```text
+   sin volumen montado  ->  "no hay volumen ESTRATOS montado, o su cola esta vacia"
+   disco no armado      ->  "sin permiso: gate de identidad o ventana"
+   disco sin TRIM       ->  "este disco NO declara TRIM (palabra 169)"
+```
+
+## 6. La barrera, de paso
+
+```text
+   disco barrera
+```
+
+Verde = el disco confirmo el `FLUSH CACHE`. Es la orden mas barata de comprobar
+y la que sostiene el sellado de ESTRATOS entero.

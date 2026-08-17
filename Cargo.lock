@@ -183,6 +183,7 @@ dependencies = [
  "bmo-net",
  "bmo-particiones",
  "bmo-rtc",
+ "bmo-trim",
  "bmo-uaudio",
  "bmo-uhid",
  "bmo-xhci",
@@ -244,6 +245,10 @@ dependencies = [
  "serde",
  "toml",
 ]
+
+[[package]]
+name = "bmo-trim"
+version = "0.1.0"
 
 [[package]]
 name = "bmo-uaudio"

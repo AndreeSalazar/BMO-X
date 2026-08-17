@@ -97,7 +97,10 @@ mod pruebas {
     fn c(medio: Medio, cola: Cola, enlace: Enlace, geom: Geometria, trim: bool, usadas: u8)
         -> Contraste
     {
-        Contraste::de(medio, cola, enlace, geom, Trim { soportado: trim }, usadas)
+        // `bloques_max` no entra en ningun contraste: dice cuanto cabe en una
+        // orden, no si el disco esta bien portado. Se pone el minimo que ACS-3
+        // garantiza para que la casilla hable de lo que esta probando.
+        Contraste::de(medio, cola, enlace, geom, Trim { soportado: trim, bloques_max: 1 }, usadas)
     }
 
     const GEOM_LLANA: Geometria = Geometria {

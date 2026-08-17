@@ -207,6 +207,11 @@ const INFO_DISCO_MEDIO: u64 = 0x3F;
 const INFO_DISCO_ENLACE: u64 = 0x40;
 const INFO_DISCO_GEOMETRIA: u64 = 0x41;
 const INFO_DISCO_JUICIO: u64 = 0x42;
+/// Lo que se le ha DEVUELTO al disco, y en cuantas ordenes cupo. Espejo de
+/// `bmo_abi::...::INFO_DISCO_TRIM_*`. Van los dos: los mismos sectores en una
+/// orden o en trescientas dicen cosas distintas de la palabra 105.
+const INFO_DISCO_TRIM_SECTORES: u64 = 0x43;
+const INFO_DISCO_TRIM_ORDENES: u64 = 0x44;
 /// La fecha de la placa, empaquetada. Espejo de `bmo_abi::...::INFO_FECHA`.
 const INFO_FECHA: u64 = 0x1F;
 
@@ -460,6 +465,8 @@ pub fn campo(n: u64) -> u64 {
         INFO_DISCO_ENLACE => crate::ring0::dev::disk::enlace(),
         INFO_DISCO_GEOMETRIA => crate::ring0::dev::disk::geometria(),
         INFO_DISCO_JUICIO => crate::ring0::dev::disk::juicio(),
+        INFO_DISCO_TRIM_SECTORES => crate::ring0::dev::disk::cuentas_trim().0,
+        INFO_DISCO_TRIM_ORDENES => crate::ring0::dev::disk::cuentas_trim().1,
         _ => 0,
     }
 }

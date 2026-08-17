@@ -26,7 +26,7 @@
 
 use bmo_userland as bmo;
 
-use super::{files, shell, system, Command};
+use super::{disco, files, shell, system, Command};
 use crate::desktop::Desktop;
 
 /// What the key loop should do once the command has run.
@@ -63,6 +63,17 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::Apps => system::apps(dsk, p),
         Command::Memoria => system::memory(dsk, p),
         Command::Smp(arg) => system::smp(dsk, p, arg),
+        // ** El unico brazo del router que puede ACTUAR sobre el almacen, y por
+        // eso las subordenes se separan aqui y no dentro de una funcion: en esta
+        // lista se ve de un vistazo que `trim ya` es la unica que hace algo.
+        Command::Disco(arg) => match arg {
+            b"" => disco::cuadro(dsk, p),
+            b"espacio" | b"libre" => disco::solo_espacio(dsk, p),
+            b"trim" | b"recorta" | b"recortar" => disco::trim_propuesta(dsk, p),
+            b"trim ya" | b"recorta ya" | b"recortar ya" => disco::trim_ya(dsk, p),
+            b"barrera" | b"flush" | b"vacia" => disco::barrera(dsk, p),
+            otro => disco::no_existe(dsk, p, otro),
+        },
         Command::Reboot => system::reboot(dsk, p),
         // `run` se queda en `_start`: se lleva la pantalla POR VALOR.
         Command::Launch(_) => After::Settle,

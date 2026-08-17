@@ -226,6 +226,33 @@ pub(crate) const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 /// concede -- aqui no hay una sola operacion que escriba.
 pub(crate) const TASK_OP_ES_NODO: u64 = 0x19;
 pub(crate) const TASK_OP_ES_TEXTO: u64 = 0x1A;
+/// **ADMINISTRAR EL DISCO desde donde vive el dueno.** `arg0` = `DISCO_OP_*`.
+///
+/// La segunda operacion de la tabla que cambia el estado del almacen, y la
+/// primera que se lo dice al APARATO en vez de al volumen. Ninguna de sus
+/// ordenes acepta un LBA: el rango lo calcula el kernel y lo comprueba contra la
+/// ventana de escritura. Ver `ring0/dev/disk/trim.rs`.
+pub(crate) const TASK_OP_DISCO: u64 = 0x29;
+/// Las ordenes del disco. Espejo de `bmo_abi::...::DISCO_OP_*`.
+///
+/// `pub(crate)` por correccion y no por estilo -- ver la nota de las `ES_NODO_*`
+/// mas abajo: una constante privada usada en un `match` de `mod.rs` no falla, se
+/// convierte en un nombre de variable que se traga todos los casos.
+pub(crate) const DISCO_OP_TRIM_LIBRE: u64 = 0x01;
+pub(crate) const DISCO_OP_BARRERA: u64 = 0x02;
+/// Los motivos que viajan en el byte alto de la respuesta. Espejo de
+/// `bmo_abi::...::DISCO_TRIM_*` -- un cero aqui y otro alli no son el mismo cero
+/// si alguien los desincroniza, y el sintoma seria un terminal que dice
+/// "recortado" cuando el disco dijo que no.
+pub(crate) const DISCO_TRIM_HECHO: u64 = 0;
+pub(crate) const DISCO_TRIM_SIN_DISCO: u64 = 1;
+pub(crate) const DISCO_TRIM_NO_SOPORTADO: u64 = 2;
+pub(crate) const DISCO_TRIM_SIN_PERMISO: u64 = 3;
+pub(crate) const DISCO_TRIM_SIN_VOLUMEN: u64 = 4;
+pub(crate) const DISCO_TRIM_RANGO: u64 = 5;
+pub(crate) const DISCO_TRIM_FALLO: u64 = 6;
+pub(crate) const DISCO_TRIM_MOTIVO_SHIFT: u64 = 56;
+pub(crate) const DISCO_TRIM_SECTORES_MASK: u64 = (1 << 56) - 1;
 /// Despertar los otros nucleos. Espejo de `bmo_abi::...::TASK_OP_SMP_DESPERTAR`.
 pub(crate) const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
 /// **El censo de audio, pedido desde Ring 3.**
@@ -253,22 +280,42 @@ pub(crate) const TASK_OP_CABINA_INFO: u64 = 0x23;
 pub(crate) const TASK_OP_CABINA_TEXTO: u64 = 0x24;
 /// Ofrecer un trozo del bloque propio. Es una operacion sobre `KIND_MEMORIA`.
 const MEM_OP_OFRECER: u64 = 0x03;
+// ** ESTAS CONSTANTES SON `pub(crate)` POR CORRECCION, NO POR ESTILO.
+//
+// === La trampa, que no da error de compilacion ===
+//
+// El despachador vive en `mod.rs`, o sea **fuera** de este modulo, y las mira en
+// un `match`. Una constante privada aqui no es visible alli -- y Rust no dice
+// "no existe": la trata como **una variable nueva que se ata a lo que venga**.
+// O sea que el primer brazo del `match` se traga TODOS los valores y los demas
+// quedan muertos, con un aviso de `unreachable_patterns` perdido entre otros.
+//
+// Se cazo el 2026-08-17 al escribir `TASK_OP_DISCO`, comprobandolo con un
+// programa de tres lineas en vez de razonarlo. Las doce del cursor de ESTRATOS
+// llevaban asi desde que se escribieron: `ES_NODO_RAIZ` era el brazo que
+// contestaba a todo, y por eso **el arbol de la ventana F12 no podia tener
+// hijos** -- `ES_NODO_HIJOS` no llegaba a ejecutarse nunca.
+//
+// > Un opcode que no compara es peor que uno duplicado: el duplicado lo caza el
+// > guardian del build, y esto no lo caza nadie porque a los ojos del compilador
+// > es un nombre de variable perfectamente legal.
+//
 /// Las preguntas del cursor. Espejo de `bmo_abi::...::ES_NODO_*`.
-const ES_NODO_RAIZ: u64 = 0x00;
-const ES_NODO_HIJOS: u64 = 0x01;
-const ES_NODO_TRUNCADO: u64 = 0x02;
-const ES_NODO_HONDO: u64 = 0x03;
-const ES_NODO_TIPO: u64 = 0x04;
-const ES_NODO_HIJO_TIPO: u64 = 0x05;
-const ES_NODO_ENTRAR: u64 = 0x06;
-const ES_NODO_SUBIR: u64 = 0x07;
-const ES_NODO_HIJO_BYTES: u64 = 0x08;
-const ES_NODO_HIJO_ATRIBUTOS: u64 = 0x09;
-const ES_NODO_HIJO_FIRMADO: u64 = 0x0A;
-const ES_NODO_VERIFICAR: u64 = 0x0B;
+pub(crate) const ES_NODO_RAIZ: u64 = 0x00;
+pub(crate) const ES_NODO_HIJOS: u64 = 0x01;
+pub(crate) const ES_NODO_TRUNCADO: u64 = 0x02;
+pub(crate) const ES_NODO_HONDO: u64 = 0x03;
+pub(crate) const ES_NODO_TIPO: u64 = 0x04;
+pub(crate) const ES_NODO_HIJO_TIPO: u64 = 0x05;
+pub(crate) const ES_NODO_ENTRAR: u64 = 0x06;
+pub(crate) const ES_NODO_SUBIR: u64 = 0x07;
+pub(crate) const ES_NODO_HIJO_BYTES: u64 = 0x08;
+pub(crate) const ES_NODO_HIJO_ATRIBUTOS: u64 = 0x09;
+pub(crate) const ES_NODO_HIJO_FIRMADO: u64 = 0x0A;
+pub(crate) const ES_NODO_VERIFICAR: u64 = 0x0B;
 /// Que texto pide `ES_TEXTO`, en los bits altos de `arg0`. Espejo de
 /// `bmo_abi::...::ES_TXT_*`.
-const ES_TXT_RUTA: u64 = 1;
+pub(crate) const ES_TXT_RUTA: u64 = 1;
 pub(crate) const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 pub(crate) const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 /// **Avisar al consumidor.** Era el syscall numero 1; ahora es una operacion

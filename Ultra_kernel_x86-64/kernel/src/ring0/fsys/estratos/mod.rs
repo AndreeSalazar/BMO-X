@@ -89,6 +89,50 @@ pub fn ocupacion() -> Option<es::Ocupacion> {
     Some(es::Ocupacion::de(sb.log_head, sb.total_blocks, sb.block_size))
 }
 
+/// **LA COLA LIBRE DEL VOLUMEN, en LBA absolutos.** `(lba, sectores)`.
+///
+/// === Que es exactamente, y por que se puede afirmar ===
+///
+/// Todo lo que hay **por encima de `log_head`** en un volumen ESTRATOS. Y no es
+/// una estimacion: `log_head` es el primer bloque libre de un puntero que **solo
+/// avanza**, asi que por encima de el no hay un solo bloque que ningun estrato
+/// alcance. No hace falta recorrer nada para saberlo -- es la misma resta que
+/// [`ocupacion`], leida al reves.
+///
+/// === Para que existe: es la mitad HONESTA del recolector ===
+///
+/// La seccion 9 del diseno tiene dos trabajos dentro y conviene no confundirlos:
+///
+/// ```text
+///   marcar lo alcanzable y soltar lo demas   <- eso es el RECOLECTOR, y no existe
+///   decirle al disco que lo libre es libre   <- esto, y hoy ya se puede
+/// ```
+///
+/// Lo segundo no necesita al primero y ya hace falta: sin ello el SSD sigue
+/// creyendo vivos --y copiando en cada recogida interna suya-- todos los bloques
+/// que este volumen no ha usado nunca (R-DISCO10). Es lo que en otros sistemas
+/// hace un `fstrim`, y aqui se puede decir con precision porque **la frontera es
+/// un numero del superbloque**, no un mapa que haya que reconstruir.
+///
+/// [!] `None` cuando no hay volumen montado o cuando la cola esta vacia. Y el
+/// rango se acota al TOTAL que declara el superbloque: si un volumen dijera
+/// tener mas bloques que la particion, quien lo pare es la ventana de escritura
+/// --que mira el rango entero-- y no una resta optimista de aqui.
+pub fn cola_libre() -> Option<(u64, u64)> {
+    let sb = unsafe { SUPER }?;
+    if !unsafe { MONTADO } {
+        return None;
+    }
+    let libres = sb.total_blocks.checked_sub(sb.log_head)?;
+    if libres == 0 {
+        return None;
+    }
+    let base = unsafe { BASE_LBA };
+    let lba = base.checked_add(sb.log_head.checked_mul(SECTORES_POR_BLOQUE as u64)?)?;
+    let sectores = libres.checked_mul(SECTORES_POR_BLOQUE as u64)?;
+    Some((lba, sectores))
+}
+
 /// Lee un bloque de ESTRATOS del volumen montado.
 pub(crate) fn read_block(bloque: u64, dst: &mut [u8; BLOQUE]) -> bool {
     let dev = match bmo_block::device() { Some(d) => d, None => return false };

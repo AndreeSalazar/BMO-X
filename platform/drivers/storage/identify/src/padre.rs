@@ -242,11 +242,25 @@ impl Geometria {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Trim {
     pub soportado: bool,
+    /// ** CUANTO CABE EN UN SOLO `DATA SET MANAGEMENT`, en bloques de 512 B.
+    ///
+    /// Palabra 105. Un bloque son 64 descriptores, y cada descriptor cubre hasta
+    /// 65.535 sectores -- o sea que **este numero es el techo de una orden**, y
+    /// quien mande mas de lo que cabe tiene que partir en varias.
+    ///
+    /// [!] El cero no es "ninguno": es **el disco callandose**, y ACS-3 dice que
+    /// uno siempre se admite. Se contesta 1 para que quien lo lea no tenga que
+    /// saber esa regla ni pueda leer un 0 como "no puedo mandar nada".
+    pub bloques_max: u16,
 }
 
 impl Trim {
     pub fn de(id: &Identify) -> Trim {
-        Trim { soportado: id.palabra(169) & 1 != 0 }
+        let declarado = id.palabra(105);
+        Trim {
+            soportado: id.palabra(169) & 1 != 0,
+            bloques_max: if declarado == 0 { 1 } else { declarado },
+        }
     }
 }
 
@@ -410,5 +424,25 @@ mod pruebas {
         let s = id(&[(169, 0xFFFE)]);
         let i = crate::abuelo::Identify::nuevo(&s).unwrap();
         assert!(!Trim::de(&i).soportado, "los otros 15 bits no son TRIM");
+    }
+
+    /// ** UN DISCO QUE NO DECLARA CUANTO ADMITE ADMITE UNO, no ninguno.
+    ///
+    /// Es la trampa del campo: el cero de la 105 se lee igual que "no puedo", y
+    /// leerlo asi dejaria sin TRIM a un disco que lo soporta. ACS-3 dice que un
+    /// bloque siempre vale, asi que el minimo se contesta aqui y no en cada
+    /// llamante.
+    #[test]
+    fn la_105_en_cero_significa_un_bloque() {
+        let s = id(&[(169, 1)]);
+        let i = crate::abuelo::Identify::nuevo(&s).unwrap();
+        assert_eq!(Trim::de(&i).bloques_max, 1);
+    }
+
+    #[test]
+    fn la_105_se_lee_tal_cual_cuando_el_disco_la_dice() {
+        let s = id(&[(169, 1), (105, 8)]);
+        let i = crate::abuelo::Identify::nuevo(&s).unwrap();
+        assert_eq!(Trim::de(&i).bloques_max, 8);
     }
 }

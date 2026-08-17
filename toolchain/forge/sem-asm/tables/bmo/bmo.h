@@ -187,6 +187,19 @@
 #define BMO_INFO_DISCO_GEOMETRIA         0x41
 #define BMO_INFO_DISCO_JUICIO            0x42
 
+/* -- ** LO QUE SE LE HA DEVUELTO AL DISCO (TRIM) ---------------------
+ *
+ * Sectores de 512 B recortados desde el arranque, y en cuantas ordenes de
+ * `DATA SET MANAGEMENT` cupieron. Van los DOS: los mismos sectores en una
+ * orden o en trescientas dicen cosas distintas del techo que declara el disco
+ * (palabra 105), y sin esa division "cuanto" no tiene con que compararse.
+ *
+ * [!] Un cero aqui significa **que nadie lo ha pedido**, no que no se pueda.
+ * Recortar en BMO-X lo pide una persona: la seccion 9 de ESTRATOS dice
+ * "politica, no automatismo", y no hay ningun demonio que lo haga solo. */
+#define BMO_INFO_DISCO_TRIM_SECTORES     0x43
+#define BMO_INFO_DISCO_TRIM_ORDENES      0x44
+
 /* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
  *
  * Cuantas filas cubre el censo, y dos mascaras sobre ESA lista en ESE orden:

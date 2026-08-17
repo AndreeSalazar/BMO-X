@@ -489,6 +489,12 @@ algo distinto** -- ninguna es decorativa.
    barrera   el FLUSH CACHE es LO UNICO: este disco no termina lo que empezo
 ```
 
+> **La primera dejo de ser verdad el 2026-08-17 por la tarde**, y se deja escrita
+> arriba porque es el antes de este capitulo. Ahora el sistema **sabe mandar la
+> orden** y hay un sitio desde donde pedirla: `disco trim` en la terminal del
+> escritorio. Lo que sigue faltando es el recolector -- ver la seccion 12.1, que
+> separa las dos mitades que se estaban confundiendo en una sola frase.
+
 La segunda **no es un fallo que arreglar**: es la ficha de este aparato dicha en
 voz alta, y tiene que estar delante el dia que ESTRATOS escriba contenido. Si
 algun dia sale la otra frase sin cambiar de disco, el que miente es el perfil.
@@ -616,6 +622,73 @@ nada**, y el propio `info` lo dice al lado del perfil en vez de callarlo.
 solido. Ninguno de los dos es un cuello hoy, y saberlo **tacha dos sospechosos**
 antes de la primera medida de escritura. Eso tambien es usar lo que el aparato
 ofrece: usar su respuesta para no buscar donde no hay nada.
+
+---
+
+## 12.1 TRIM, HECHO (2026-08-17) -- y las DOS mitades que se confundian
+
+El punto 1 de arriba ya no esta sobre la mesa: esta puesto. Lo que conviene
+dejar escrito es **que se hizo exactamente**, porque la frase *"falta TRIM"*
+tapaba dos trabajos distintos y solo uno era el dificil.
+
+```text
+   decirle al disco que lo libre es libre    <- ESTO, y ya esta
+   marcar lo alcanzable y soltar lo viejo    <- el RECOLECTOR, y sigue faltando
+```
+
+★★ **La primera mitad no necesita a la segunda**, y esa es toda la noticia. La
+cola libre de un volumen ESTRATOS es *todo lo que hay por encima de `log_head`*,
+y `log_head` es un puntero que **solo avanza**: no hay que recorrer nada ni
+marcar nada para saber que ahi no llega ningun estrato. Es una resta, la misma
+que ya hacia la contabilidad de la seccion 9.
+
+Y hacia falta desde el primer dia: sin esto el SSD sigue creyendo vivos --y
+copiando en cada recogida interna suya-- **todos los bloques que este volumen no
+ha usado nunca**, que en 414 GiB son casi todos.
+
+### El reparto, que es el de siempre
+
+```text
+   bmo-trim         el FORMATO: rango de LBA -> descriptores    9 casillas
+   bmo-ahci         el COMANDO: DATA SET MANAGEMENT + features
+   dev/disk/trim.rs el PEGAMENTO y los guardianes
+   fsys/estratos    QUE rango: la cola libre, de `log_head`
+   commands/disco.rs   la terminal: propone, y obedece si le dicen `ya`
+```
+
+El empaquetado vive fuera del kernel por lo mismo que `bmo-identify`: **un
+descriptor mal armado no da un fallo, hace que el disco olvide sectores que si
+importaban**, y eso se prueba con `cargo test` -- no flasheando.
+
+### Los cuatro guardianes, en orden
+
+TRIM **es destructivo**, asi que pasa por las mismas puertas que escribir y por
+una propia. Un TRIM sobre la ESP se lleva el `BOOTX64.EFI` igual de bien que una
+escritura, y en esta maquina esa particion tambien lleva el cargador de Windows.
+
+```text
+   hay disco?                  si no, no hay nada que recortar
+   lo declara la palabra 169?  no se manda "a ver si suena"
+   esta armada la escritura?   el gate de identidad, el mismo de write
+   cae dentro de una ventana?  ** el rango ENTERO, no tanda a tanda
+```
+
+★ El cuarto tiene su propia casilla y merece decirse: la cola libre son cientos
+de millones de sectores y no cabe en el `u16` de una escritura, asi que la
+tentacion era preguntar tanda a tanda. **Cada tanda habria caido dentro y nadie
+habria mirado el final del rango.** Se ensancho el contador, no la ventana.
+
+### Y lo que sigue faltando, dicho
+
+- El **recolector** de la seccion 9 (marcar y soltar versiones viejas). Sigue
+  siendo post-1.0 y sigue sin correr prisa: caben mas de veinte millones de
+  estratos antes del 70 %.
+- Un recorte **automatico**. No lo va a haber: la seccion 9 dice *politica, no
+  automatismo*, y aqui lo pide una persona escribiendo `disco trim ya`.
+- La prueba **en el Ryzen**. Esto compila y **ningun CPU lo ha ejecutado**: la
+  comprobacion es `disco trim`, leer la propuesta, `disco trim ya`, y que
+  `disco` diga despues cuantos sectores se devolvieron y en cuantas ordenes. Va
+  a la lista de `docs/metal/PRUEBA_EN_METAL.md`.
 
 ---
 

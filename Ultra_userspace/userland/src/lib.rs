@@ -120,6 +120,12 @@ pub const OP_ES_NODO: u32 = 0x19;
 pub const OP_ES_TEXTO: u32 = 0x1A;
 /// **Despierta los otros nucleos.** Ver [`crate::sys::smp_despertar`].
 pub const OP_SMP_DESPERTAR: u32 = 0x1B;
+/// ** **ADMINISTRAR EL DISCO.** `arg0` es la orden (`DISCO_OP_*`).
+///
+/// La segunda operacion del userland que cambia el estado del almacen --la
+/// primera fue sellar-- y la unica que se lo dice al APARATO. Ninguna de sus
+/// ordenes lleva un LBA: ver el modulo [`crate::disco`].
+pub const OP_DISCO: u32 = 0x29;
 /// **El censo de audio**: que el aparato diga como quiere las muestras.
 /// Devuelve 1 si encontro uno; los ocho numeros van a CABINA.
 pub const OP_AUDIO_CENSO: u32 = 0x28;
@@ -411,6 +417,15 @@ pub const DISCO_JUICIO_OCIOSAS_MASK: u64 = 0xFF;
 pub const DISCO_JUICIO_FRONTERA_SHIFT: u64 = 16;
 pub const DISCO_JUICIO_FRONTERA_MASK: u64 = 0xFFFF_FFFF;
 
+/// ** LO QUE SE LE HA DEVUELTO AL DISCO, en sectores de 512 B y en ordenes.
+///
+/// Cero no significa "no se puede": significa **que nadie lo ha pedido**. En
+/// BMO-X recortar lo pide una persona --la seccion 9 de ESTRATOS dice *politica,
+/// no automatismo*-- asi que estas dos filas son la prueba de que la orden se
+/// dio, de cuanto cubrio y de en cuantas ordenes cupo (la palabra 105).
+pub const INFO_DISCO_TRIM_SECTORES: u64 = 0x43;
+pub const INFO_DISCO_TRIM_ORDENES: u64 = 0x44;
+
 pub const USB_SALUD_XHCI: u64 = 1 << 0;
 pub const USB_SALUD_KBD: u64 = 1 << 1;
 /// El teclado tiene transferencia ENCOLADA. Sin esto esta enumerado, en
@@ -566,6 +581,9 @@ mod archivo;
 /// DIBUJO: recorte, linea y triangulo. Lo que el sistema no sabia hacer, y
 /// el oraculo con el que se juzgara la GPU. Ver la cabecera del modulo.
 mod dibujo;
+/// ** ADMINISTRAR EL DISCO: las dos unicas llamadas del userland que le dan una
+/// ORDEN al aparato en vez de preguntarle algo. Ver su cabecera.
+mod disco;
 mod entrada;
 mod memoria;
 mod pantalla;
@@ -581,6 +599,7 @@ pub mod estratos;
 
 pub use archivo::*;
 pub use dibujo::*;
+pub use disco::*;
 pub use entrada::*;
 pub use memoria::*;
 pub use pantalla::*;

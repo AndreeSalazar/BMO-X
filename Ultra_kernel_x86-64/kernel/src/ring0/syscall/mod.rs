@@ -586,6 +586,75 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 }
             }
         }
+        // ** ADMINISTRAR EL DISCO, y por eso se apunta ANTES de obedecer.
+        //
+        // === Por que esto vive en la superficie y no es una orden de Ring 0 ===
+        //
+        // Porque al shell de Ring 0 **no se vuelve**: en cuanto el compositor
+        // reclama la entrada, ese shell deja de leer el teclado. Una orden que
+        // solo existe alli es codigo que el dueno de la maquina no puede usar --
+        // ya paso con `smp`, con `audio` y con `ext`, y las tres tuvieron que
+        // subir. Recortar el disco nace directamente arriba.
+        //
+        // === Y lo que NO cruza esta puerta ===
+        //
+        // El LBA. Ninguna orden de esta familia lo acepta: el rango lo calcula el
+        // kernel --la cola libre de ESTRATOS, que sale de `log_head`-- y lo
+        // vuelve a comprobar contra la ventana de escritura. Dejar que Ring 3
+        // dijera donde recortar seria un borrado apuntable a cualquier sector,
+        // incluida la ESP donde vive el arranque del dueno.
+        TASK_OP_DISCO => {
+            use crate::ring0::dev::disk::{self, Recorte};
+            match arg0 {
+                DISCO_OP_TRIM_LIBRE => {
+                    crate::ring0::cabina::info(
+                        "disk",
+                        "recorte de la cola libre pedido por un proceso de Ring 3",
+                        scheduler::current_pid() as u64,
+                    );
+                    // El rango sale del volumen, no del llamante. Sin volumen
+                    // montado --o con la cola vacia-- no hay nada que devolver, y
+                    // eso es un motivo propio: no es que el disco no pueda.
+                    let Some((lba, sectores)) = crate::ring0::fsys::estratos::cola_libre() else {
+                        return BmoStatus::ok_value(
+                            DISCO_TRIM_SIN_VOLUMEN << DISCO_TRIM_MOTIVO_SHIFT,
+                        );
+                    };
+                    let (motivo, hechos) = match disk::recortar(lba, sectores) {
+                        Recorte::Hecho { sectores, ordenes } => {
+                            crate::ring0::cabina::info("disk", "sectores devueltos al disco", sectores);
+                            crate::ring0::cabina::info("disk", "ordenes DATA SET MANAGEMENT", ordenes);
+                            (DISCO_TRIM_HECHO, sectores)
+                        }
+                        Recorte::SinDisco => (DISCO_TRIM_SIN_DISCO, 0),
+                        Recorte::NoLoSoporta => (DISCO_TRIM_NO_SOPORTADO, 0),
+                        // El motivo en palabras va a CABINA porque por la puerta
+                        // cabe un numero; el numero dice CUAL de las puertas.
+                        Recorte::SinPermiso(why) => {
+                            crate::ring0::cabina::warn("disk", why, lba);
+                            (DISCO_TRIM_SIN_PERMISO, 0)
+                        }
+                        Recorte::RangoImposible => (DISCO_TRIM_RANGO, 0),
+                        // ** Lo que SI se recorto viaja con el fallo. Un recorte a
+                        // medias no se deshace, y callarlo haria que el sistema
+                        // volviera a mandar lo que ya estaba hecho.
+                        Recorte::Fallo { sectores } => (DISCO_TRIM_FALLO, sectores),
+                    };
+                    BmoStatus::ok_value(
+                        (motivo << DISCO_TRIM_MOTIVO_SHIFT)
+                            | (hechos & DISCO_TRIM_SECTORES_MASK),
+                    )
+                }
+                // La barrera a mano. Este disco declara `SOLO_BARRERA` --no tiene
+                // condensadores-- asi que esto es literalmente lo unico que tiene
+                // para terminar lo que empezo.
+                DISCO_OP_BARRERA => BmoStatus::ok_value(disk::flush() as u64),
+                // Una orden que no existe se contesta con cero, igual que en el
+                // cursor: quien pregunte de mas se entera, y sin obligar al
+                // llamante a distinguir dos formas de "nada".
+                _ => BmoStatus::ok_value(0),
+            }
+        }
         // -- El cursor de ESTRATOS --
         //
         // CONTESTA, no autoriza -- el mismo trato que `INFO` y que el klog.

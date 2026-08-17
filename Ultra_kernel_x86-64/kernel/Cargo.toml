@@ -28,6 +28,11 @@ bmo-estratos = { path = "../../platform/drivers/storage/estratos" }
 # y el juez vive en `platform/shared/` porque **alli se puede probar** (L7b).
 bmo-identify = { path = "../../platform/drivers/storage/identify" }
 bmo-disco-juicio = { path = "../../platform/shared/bmo-disco-juicio" }
+# El FORMATO de TRIM: un rango de LBA convertido en descriptores de
+# `DATA SET MANAGEMENT`. Fuera del kernel por lo mismo que los dos de arriba --
+# un descriptor mal empaquetado no da un fallo, hace que el disco olvide
+# sectores que si importaban, y eso se prueba con `cargo test`, no flasheando.
+bmo-trim = { path = "../../platform/drivers/storage/trim" }
 # BLAKE3, directo y no de rebote por ESTRATOS. El cargador lo usa POR TROZOS
 # --`Hasher::update` segun aterriza cada seccion-- y eso no es cosa del sistema
 # de ficheros: es del que carga. Sigue siendo UNA sola implementacion del hash,
