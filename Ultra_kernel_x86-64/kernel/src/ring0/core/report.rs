@@ -115,6 +115,10 @@ const INFO_SYSCALL_CICLOS: u64 = 0x30;
 // cae en ninguna de las tres casillas son las dos transiciones de privilegio.
 const INFO_SYSCALL_CICLOS_GUARDA: u64 = 0x35;
 const INFO_SYSCALL_CICLOS_RESTAURA: u64 = 0x36;
+// Y de QUE CLASE fue cada puerta, con el indice empaquetado como en
+// `INFO_MEM_QUIEN_*`: `campo | (clase << 8)`. Las cuatro suman MENOS que
+// `INFO_SYSCALL_CUENTA` y esa resta es la comprobacion del instrumento.
+const INFO_SYSCALL_CLASS: u64 = 0x3A;
 // Y lo que una puerta TIENE PERMITIDO costar: `meta << 32 | techo` en cada uno.
 // La tabla vive en `ring0/syscall/presupuesto.rs`.
 const INFO_PRESUPUESTO_PUERTA: u64 = 0x37;
@@ -227,6 +231,14 @@ pub fn campo(n: u64) -> u64 {
         INFO_CPU_HZ_REAL => crate::ring0::cpu::frequency::medir(),
         INFO_CPU_MW_PAQUETE => crate::ring0::cpu::power::medir().0,
         INFO_CPU_MW_NUCLEO_ACTUAL => crate::ring0::cpu::power::medir().1,
+        // El histograma por clase. Mismo desempaquetado que `INFO_MEM_QUIEN_*`
+        // y por la misma razon: una pregunta, un numero de campo, y el indice
+        // arriba. Una clase que no existe contesta 0, que es lo que significa
+        // "no hay tal casilla" -- y no se puede confundir con "cero puertas de
+        // esa clase" porque las clases que existen son un contrato.
+        c if c & 0xFF == INFO_SYSCALL_CLASS => {
+            crate::ring0::syscall::meter::doors_of_class((c >> 8) as usize)
+        }
         // Los tres se atienden juntos porque comparten el desempaquetado del
         // indice. Separarlos seria repetir el `>> 8` tres veces.
         c if c & 0xFF == INFO_MEM_QUIEN_PID

@@ -211,7 +211,14 @@ foreach ($name in @('NR_INVOKE', 'NR_CHANNEL_KICK', 'NR_WAIT')) {
 # acordarse de anadir la fila. Ahora se barren TODOS los `TASK_OP_*` y
 # `ARCH_OP_*` del kernel y se exige que cada uno exista en el ABI con el MISMO
 # numero. Anadir una operacion pasa a ser imposible de olvidar.
-$opsTodas = [regex]::Matches($kernelSyscalls, 'const\s+((?:TASK|ARCH)_OP_\w+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)')
+#
+# ** Y DESDE EL 2026-08-16 tambien las CLASES del histograma (`SYSCALL_CLASS_*`).
+# No son operaciones, pero cruzan a Ring 3 igual que ellas y tienen el mismo modo
+# de fallo, que ademas es mudo: si el kernel cuenta la consola en la casilla 2 y
+# Ring 3 lee la 1, sale un reparto **coherente y falso**. Entran aqui en vez de
+# en un guardian nuevo porque la comprobacion es identica -- mismo nombre, mismo
+# numero, en los dos lados.
+$opsTodas = [regex]::Matches($kernelSyscalls, 'const\s+((?:TASK|ARCH)_OP_\w+|SYSCALL_CLASS_\w+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+)')
 foreach ($m in $opsTodas) {
     $name = $m.Groups[1].Value
     $numK = $m.Groups[2].Value.ToUpperInvariant().Replace('_', '')

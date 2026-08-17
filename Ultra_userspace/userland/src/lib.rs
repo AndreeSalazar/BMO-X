@@ -221,6 +221,26 @@ pub const INFO_PRESUPUESTO_PUERTA: u64 = 0x37;
 pub const INFO_PRESUPUESTO_DISPATCH: u64 = 0x38;
 pub const INFO_PRESUPUESTO_HANDLE: u64 = 0x39;
 
+/// **De que CLASE fue cada puerta**, con el indice empaquetado:
+/// `INFO_SYSCALL_CLASS | (clase << 8)`. Se lee como delta, igual que el resto
+/// del metro.
+///
+/// El coste de cada clase ya estaba medido; lo que faltaba es **cuantas veces
+/// se pide cada una**, sin lo cual no hay porcentaje y no se puede ordenar el
+/// trabajo. Las cuatro suman MENOS que [`INFO_SYSCALL_CUENTA`] y la diferencia
+/// son las puertas que no son ninguna de las cuatro.
+pub const INFO_SYSCALL_CLASS: u64 = 0x3A;
+/// Pseudo-capability: `INVOKE(CURRENT_TASK, ...)`. No resuelve handle. ~875.
+pub const SYSCALL_CLASS_TASK: u64 = 0x00;
+/// Resolvio una capability real -- paga el handle. ~1125.
+pub const SYSCALL_CLASS_HANDLE: u64 = 0x01;
+/// Escritura de consola: dibuja glifos y hace scroll. ~2,2 M.
+pub const SYSCALL_CLASS_CONSOLE: u64 = 0x02;
+/// `WAIT`: la unica puerta que puede no devolver el turno.
+pub const SYSCALL_CLASS_WAIT: u64 = 0x03;
+/// Cuantas casillas tiene el histograma.
+pub const SYSCALL_CLASS_COUNT: u64 = 0x04;
+
 /// El censo de extensiones del CPU, en tres numeros: cuantas filas, que
 /// declara el silicio y que coge BMO. Bit `i` = fila `i`, y el nombre de esa
 /// fila se pide con [`INFO_TXT_EXT_NOMBRE`].

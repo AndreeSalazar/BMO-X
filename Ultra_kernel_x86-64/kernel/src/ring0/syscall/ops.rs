@@ -1,5 +1,19 @@
 //! **THE OPERATION TABLE** -- the numbers, and nothing that runs.
 //!
+//! ```text
+//!    [eje]     NINGUNO -- nothing in this file executes. Constants cost no
+//!              cycles, no cache lines and no bytes at run time
+//!    [camino]  P1 la puerta, at COMPILE time only
+//!    [gen]     ABUELO -- raw facts. A number here means nothing by itself
+//!    [exige]   R-FW1 (a shared constant, never a repeated literal),
+//!              L4 (the guards that read this file are proven to say NO)
+//! ```
+//!
+//! ** Declaring `[eje] NINGUNO` is not a formality: it is what stops somebody
+//! from ever "optimising" this file. What is expensive here is being WRONG, not
+//! being slow -- two operations with the same number compile fine and answer
+//! something nobody asked for.
+//!
 //! === Why the numbers live apart from the code that serves them ===
 //!
 //! Because they are not an implementation detail: they are **the contract**.
@@ -336,6 +350,44 @@ const _: () = assert!(
 /// `+16` no tocan los bits 0-1, el RPL sobrevive a la suma. Y en un CPU que si
 /// haga `OR 3` sigue saliendo bien, porque ya lo trae puesto.
 pub(crate) const SYSRET_SELECTOR_BASE: u64 = 0x13;
+
+// == THE COST CLASSES ====================================================
+//
+// Not what a door costs -- **which door happened**. The costs are already
+// measured (~875 task, ~1125 handle, ~2,2 M console); what was missing is how
+// often each one is asked, and without that the costs cannot be turned into a
+// share of the machine.
+//
+// ** ALL FOUR ARE DECIDED BY CONSTRUCTION. The first sketch split "cheap
+// operation" from "operation that walks a table", and that needs a hand-written
+// list of operations -- the exact thing that froze twice in this tree, thirty
+// lines above. These four come from facts the dispatcher already holds in
+// registers: which door, whether the handle was `CURRENT_TASK`, and whether the
+// operation is the console one (which has had its own branch from day one).
+//
+// The meaning of each index is the ABI's; the meter only counts. See
+// `META-KERNEL_HARD.md` L7 -- the counter is the grandfather and must not learn
+// what an operation is.
+pub(crate) const SYSCALL_CLASS_TASK: u64 = 0x00;
+pub(crate) const SYSCALL_CLASS_HANDLE: u64 = 0x01;
+pub(crate) const SYSCALL_CLASS_CONSOLE: u64 = 0x02;
+pub(crate) const SYSCALL_CLASS_WAIT: u64 = 0x03;
+pub(crate) const SYSCALL_CLASS_COUNT: u64 = 0x04;
+
+// ** Y LA RELACION SE COMPRUEBA, igual que con los selectores de abajo: el
+// histograma tiene tantas casillas como clases, y la ultima clase es la ultima
+// casilla. Escrito como assert y no como comentario porque anadir una clase
+// quinta sin ampliar el array daria un contador que se descarta en silencio --
+// y un contador que se pierde no se nota, que es justo lo que este fichero
+// existe para impedir.
+const _: () = assert!(
+    SYSCALL_CLASS_COUNT as usize == super::meter::CLASS_COUNT,
+    "el histograma del metro tiene otro numero de casillas que clases hay"
+);
+const _: () = assert!(
+    SYSCALL_CLASS_WAIT + 1 == SYSCALL_CLASS_COUNT,
+    "la ultima clase tiene que ser la ultima casilla: hay un hueco o un sobrante"
+);
 
 // ** Y LA RELACION SE COMPRUEBA, que es el arreglo de verdad.
 //

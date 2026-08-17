@@ -1,5 +1,18 @@
 //! `syscall::meter` -- how many cycles the kernel spends inside a door.
 //!
+//! ```text
+//!    [eje]     LATENCIA -- pays SIZE (two counters) to buy a NUMBER
+//!    [camino]  P1 la puerta -- 100% of every door
+//!    [fila]    DISPATCH (techo 105, meta 60) -- and this file is INSIDE it
+//!    [gen]     ABUELO -- it counts. It does not know what it is counting
+//!    [exige]   R-CPU5 (doble testigo), R-TIME1 (el metro se resta a si mismo),
+//!              R-TIME3 (el minimo es la respuesta; la media es otra cosa)
+//! ```
+//!
+//! ** THE TAG IS NOT DECORATION: `[gen] ABUELO` is what forbids this file from
+//! ever asking *"which operation was this?"*. The day it needs to know, the cut
+//! is wrong -- the caller passes the answer down. See `META-KERNEL_HARD.md` L7.
+//!
 //! # Why this exists
 //!
 //! On 2026-08-16 `c/coste.bex` measured a door from Ring 3: **2615 cycles
@@ -241,6 +254,65 @@ pub static mut CICLOS_GUARDA: u64 = 0;
 /// constantemente la sube. Esa diferencia, leida contra `dispatch`, dice cuanto
 /// esta cediendo el sistema sin tener que instrumentar el planificador.
 pub static mut CICLOS_RESTAURA: u64 = 0;
+
+// == THE CLASS HISTOGRAM: not how much a door costs, but WHICH doors happen ==
+//
+// `DOORS` answers *how many*. It cannot answer *which*, and without that the
+// per-class costs already measured --875 / 1125 / 2,2 M-- cannot be turned into
+// a share of the machine. A cost per call without calls per second is not a
+// percentage (`docs/CENSO_DE_EJES.md`, R-CENSO3).
+//
+// ** WHAT THIS FILE IS ALLOWED TO KNOW: nothing. It receives an index and adds
+// one. The meaning of each index lives in the ABI, and the decision of which
+// index applies lives in `dispatch`, which already holds those facts in
+// registers. That split is L7 and it is the reason this file has no `match` on
+// operations -- see the header tag.
+
+/// How many boxes the histogram has. Mirrors `bmo_abi::SYSCALL_CLASS_COUNT`;
+/// the build guard compares the two.
+pub const CLASS_COUNT: usize = 4;
+
+/// Doors served, split by class. Index meaning: see `SYSCALL_CLASS_*` in the
+/// ABI -- deliberately not repeated here, because repeating it here is how a
+/// file starts knowing things it must not know.
+static mut DOORS_BY_CLASS: [u64; CLASS_COUNT] = [0; CLASS_COUNT];
+
+/// Add one to a box.
+///
+/// `#[inline(always)]` and a bare volatile add: this runs on the path being
+/// measured, so it must cost what it looks like it costs.
+///
+/// [!] **What it costs, said out loud**: one load, one add, one store, about
+/// three cycles, inside the metered window -- so it lands in the `DISPATCH`
+/// row, whose ceiling is 105 with a 5% noise margin. It is disclosed here
+/// rather than discovered by someone comparing against a run from before this
+/// existed, which is the same courtesy the two counters above already got.
+///
+/// [!] An out-of-range index is dropped **on purpose, and it is a documented
+/// caller idiom, not a mute failure**: `dispatch` passes `SYSCALL_CLASS_COUNT`
+/// for the door that is none of the four (the retired syscall number), rather
+/// than inventing a box for it. The drop is not silent either -- the four boxes
+/// are read against [`doors`] and **the remainder is what was dropped**. A
+/// count that lands nowhere moves that remainder; it does not hide.
+#[inline(always)]
+pub fn count_class(class: usize) {
+    if class >= CLASS_COUNT {
+        return;
+    }
+    unsafe {
+        let p = core::ptr::addr_of_mut!(DOORS_BY_CLASS).cast::<u64>().add(class);
+        p.write_volatile(p.read_volatile().wrapping_add(1));
+    }
+}
+
+/// Doors served in one class since boot. Read as a DELTA, like everything else
+/// in this file. Out of range answers `0`, which is what "no such box" means.
+pub fn doors_of_class(class: usize) -> u64 {
+    if class >= CLASS_COUNT {
+        return 0;
+    }
+    unsafe { core::ptr::addr_of!(DOORS_BY_CLASS).cast::<u64>().add(class).read_volatile() }
+}
 
 /// Take the reading at the start of a door. Pairs with [`stop`].
 #[inline(always)]

@@ -203,6 +203,62 @@ pub const INFO_SYSCALL_CICLOS_GUARDA: u64 = 0x35;
 /// Ciclos devolviendo el contexto. Ver [`INFO_SYSCALL_CICLOS_GUARDA`].
 pub const INFO_SYSCALL_CICLOS_RESTAURA: u64 = 0x36;
 
+/// -- ** EL HISTOGRAMA POR CLASE: donde se USA la puerta -------------------
+///
+/// `INFO_SYSCALL_CUENTA` dice **cuantas** puertas. Esto dice **de que tipo**, y
+/// es la mitad que faltaba: se sabia lo que cuesta cada clase --875 / 1125 /
+/// 2,2 M-- y **no cuantas veces se pide cada una**, asi que *"donde se usa mas"*
+/// era una suposicion. Un coste por vez sin veces por segundo no es un
+/// porcentaje y no puede ordenar el trabajo (`docs/CENSO_DE_EJES.md`, R-CENSO3).
+///
+/// ```text
+///    0  TAREA     pseudo-capability: `INVOKE(CURRENT_TASK, ...)`   ~875
+///    1  HANDLE    resolvio una capability REAL                    ~1125
+///    2  CONSOLA   escritura de consola                            ~2,2 M
+///    3  ESPERA    `WAIT`                                          cede el turno
+/// ```
+///
+/// ** LAS CUATRO SE DECIDEN POR CONSTRUCCION, NO POR UNA LISTA. La primera
+/// version iba a separar "operacion barata" de "operacion que camina una tabla",
+/// y eso pedia una lista de operaciones escrita a mano -- que es lo que ya se
+/// quedo congelada dos veces en este arbol. Estas cuatro salen de datos que el
+/// despachador **ya tiene en registros**: que puerta es, si el handle era
+/// `CURRENT_TASK`, y si la operacion es la de consola (que tiene su propia rama
+/// desde siempre). Ninguna casilla necesita saber nada nuevo.
+///
+/// [!] **Por que CONSOLA se saca aparte aunque sea una operacion de tarea**:
+/// porque cuesta **2.500 veces** una puerta pelada. Metida en `TAREA` se lleva
+/// la media entera y tapa justo lo que se quiere ver. Es la unica operacion del
+/// sistema con esa diferencia de orden de magnitud, y por eso es una casilla y
+/// no el principio de una lista.
+///
+/// El indice va EMPAQUETADO en el campo, igual que `INFO_MEM_QUIEN_*`:
+/// `INFO_SYSCALL_CLASS | (clase << 8)`. Un campo nuevo por casilla habria sido
+/// cuatro numeros en el contrato congelado para responder una sola pregunta.
+///
+/// [!] **Y suman MENOS que [`INFO_SYSCALL_CUENTA`], a proposito**: lo que no cae
+/// en ninguna casilla es una puerta que no era ninguna de las cuatro (hoy, el
+/// numero de syscall retirado). Esa resta es la comprobacion del instrumento --
+/// si algun dia sale grande, hay trafico que este histograma no esta viendo.
+pub const INFO_SYSCALL_CLASS: u64 = 0x3A;
+
+/// `INVOKE` sobre `CURRENT_TASK`: no resuelve ningun handle.
+pub const SYSCALL_CLASS_TASK: u64 = 0x00;
+/// `INVOKE` que resolvio una capability real -- paga el handle.
+pub const SYSCALL_CLASS_HANDLE: u64 = 0x01;
+/// Escritura de consola: dibuja glifos y hace scroll.
+pub const SYSCALL_CLASS_CONSOLE: u64 = 0x02;
+/// `WAIT`: la unica puerta que puede no devolver el turno.
+pub const SYSCALL_CLASS_WAIT: u64 = 0x03;
+/// Cuantas casillas tiene el histograma. Ver [`INFO_SYSCALL_CLASS`].
+///
+/// [!] Va en HEXADECIMAL como sus cuatro hermanas, y no por gusto: el guardian
+/// del build las barre con el mismo patron que las operaciones
+/// (`= 0x...`), asi que un `= 4` decimal las dejaria **fuera de la
+/// comprobacion sin que nada avise** -- un guardian que lee menos no avisa de
+/// menos: avisa de nada.
+pub const SYSCALL_CLASS_COUNT: u64 = 0x04;
+
 /// -- ** EL PRESUPUESTO DE CICLOS ------------------------------------------
 ///
 /// Lo que una puerta **tiene permitido** costar. El metro dice lo que cuesta

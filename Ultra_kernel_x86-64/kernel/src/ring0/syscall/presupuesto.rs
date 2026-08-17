@@ -1,5 +1,18 @@
 //! `syscall::presupuesto` -- **lo que una puerta TIENE PERMITIDO costar.**
 //!
+//! ```text
+//!    [eje]     NINGUNO -- una tabla de constantes; no corre en la puerta
+//!    [camino]  P1 la puerta, pero se LEE desde Ring 3, no en el camino
+//!    [gen]     PADRE -- nombra y compone (techo, meta, porque). No sabe que
+//!              hay otras filas ni que significa la diferencia: eso es
+//!              `bmo-juicio`, el nieto, que vive fuera y se prueba
+//!    [exige]   R-CPU2 (nada entra en la puerta sin fila), R-TIME3
+//! ```
+//!
+//! ** Este fichero declara y NO juzga, y esa frontera es la que hizo que el
+//! fallo del 16-08 se pudiera arreglar en un `cargo test` de tres segundos en
+//! vez de en un flasheo.
+//!
 //! # Por que existe
 //!
 //! El 2026-08-16 una puerta paso de 2663 a ~1050 ciclos en tres piezas, y cada
