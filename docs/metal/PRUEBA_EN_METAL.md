@@ -503,13 +503,22 @@ la propuesta se va a negar sola (y eso tambien es un resultado correcto).
    disco trim
 ```
 
-Tiene que salir la cola libre en GiB, **desde que bloque** empieza, cuantos
-sectores son y un techo de ordenes. Y el disco no se puede haber movido: esta
-orden no llama al kernel.
+Tiene que salir la cola libre en GiB, **desde que bloque y desde que LBA**
+empieza, cuantos sectores son y cuantas ordenes va a costar:
 
-[!] **Si aqui aparece un numero absurdo** --mas GiB que el volumen, o un bloque
-de inicio mayor que el total-- **para y no escribas `ya`**. Ese numero es el
-mismo que va a usar la orden de verdad.
+```text
+   cola libre    413.9 GiB   desde el bloque 27
+   sectores      867543048 de 512 B   desde el LBA 2265088
+   ordenes       207   (el disco admite 1 bloque(s) por orden)
+```
+
+★ Esos numeros **no son una cuenta parecida**: los sirve la misma funcion del
+kernel que va a ejecutar el recorte (`INFO_DISCO_COLA_LBA` / `..._SECTORES`), y
+la cifra de ordenes sale de la palabra 105 del disco, no de una suposicion.
+
+[!] **Si aqui aparece un numero absurdo** --mas GiB que el volumen, un bloque de
+inicio mayor que el total, o un LBA por debajo del principio de la particion--
+**para y no escribas `ya`**. Ese numero es literalmente el que va a usar la orden.
 
 ## 3. La orden
 
@@ -562,3 +571,28 @@ Cada uno prueba una puerta distinta, y ninguno debe colgar nada:
 
 Verde = el disco confirmo el `FLUSH CACHE`. Es la orden mas barata de comprobar
 y la que sostiene el sellado de ESTRATOS entero.
+
+## 7. LO QUE HAY QUE TRAER DE VUELTA -- cinco cosas y ninguna es una impresion
+
+Esta guia no pide "a ver si va". Pide **numeros que decidan lo siguiente**:
+
+```text
+   1  `disco` ANTES        la foto entera: medio, trim, cola libre, devuelto=0
+   2  `disco trim`         los tres numeros de la propuesta (GiB, LBA, ordenes)
+   3  `disco trim ya`      lo que contesto, palabra por palabra
+   4  `disco` DESPUES      la fila `devuelto`: sectores y ordenes
+   5  DESPUES DE REINICIAR generacion, libre, y un `cat` de un fichero
+```
+
+**La forma barata de traerlas todas**: `save` despues de cada una. Vuelca la
+salida a `datos\salida.txt`, que esta en la FAT32 -- se enchufa el disco a
+Windows y se abre con el bloc de notas. Una foto de la pantalla vale para el
+punto 3 si algo sale en rojo, pero el texto se puede diferenciar contra el del
+dia siguiente y una foto no.
+
+★ **Y si algo falla, lo que decide es F11 (CABINA)**, no la linea roja del
+terminal: ahi va el motivo del aparato, el LBA donde se quedo y las dos cuentas
+del recorte. `save` tambien lo guarda.
+
+[!] Lo que **no** hace falta traer: nada del rendimiento. Cuanto tarda el
+recorte no importa hoy -- se pide una vez, a mano, y por una persona.

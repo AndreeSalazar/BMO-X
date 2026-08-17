@@ -426,6 +426,19 @@ pub const DISCO_JUICIO_FRONTERA_MASK: u64 = 0xFFFF_FFFF;
 pub const INFO_DISCO_TRIM_SECTORES: u64 = 0x43;
 pub const INFO_DISCO_TRIM_ORDENES: u64 = 0x44;
 
+/// ** EL RANGO QUE SE VA A RECORTAR, tal como lo va a usar la orden.
+///
+/// Estos dos numeros se podian deducir de `INFO_ES_*`, y deducirlos era tener
+/// **dos cuentas de la misma verdad**: la que se pinta en la propuesta y la que
+/// el kernel manda de verdad. Se separan el dia que una cambie, y separarse aqui
+/// es ensenar un rango y recortar otro. `0` = no hay volumen o la cola esta
+/// vacia.
+pub const INFO_DISCO_COLA_LBA: u64 = 0x45;
+pub const INFO_DISCO_COLA_SECTORES: u64 = 0x46;
+/// Bloques de payload por orden (palabra 105). **Nunca contesta 0**: uno siempre
+/// se admite, y el cero de esa palabra es el disco callandose.
+pub const INFO_DISCO_TRIM_BLOQUES: u64 = 0x47;
+
 pub const USB_SALUD_XHCI: u64 = 1 << 0;
 pub const USB_SALUD_KBD: u64 = 1 << 1;
 /// El teclado tiene transferencia ENCOLADA. Sin esto esta enumerado, en

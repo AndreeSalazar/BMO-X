@@ -38,14 +38,13 @@ use crate::scene::output::{Output, INK_ECHO, INK_ERR, INK_GOOD, INK_PLAIN};
 use crate::scene::{paint_status, INK_DIM};
 use crate::paint_output;
 
-/// Sectores de 512 B que cubre UNA orden con el minimo que garantiza ACS-3:
-/// un bloque de payload, 64 descriptores, 65.535 sectores cada uno.
+/// Sectores que cubre un bloque de payload: 64 descriptores de 65.535 sectores.
 ///
-/// ** Se usa solo para decir *"como mucho N ordenes"*. El disco puede admitir
-/// mas bloques por orden (palabra 105) y entonces seran menos -- por eso es un
-/// techo y se dice como tal, en vez de inventar un numero exacto que este lado
-/// no puede saber.
-const SECTORES_POR_ORDEN_MINIMA: u64 = 64 * 65_535;
+/// ** Es del FORMATO de `DATA SET MANAGEMENT`, no del disco ni de esta ventana:
+/// cuantos bloques caben en una orden lo dice el aparato
+/// (`INFO_DISCO_TRIM_BLOQUES`, la palabra 105) y se pregunta. Multiplicar los
+/// dos da el numero REAL de ordenes, no un techo inventado en este lado.
+const SECTORES_POR_BLOQUE_DE_PAYLOAD: u64 = 64 * 65_535;
 
 /// El cuadro entero: que aparato es, cuanto queda y que se le ha devuelto.
 pub(crate) fn cuadro(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
@@ -178,10 +177,17 @@ pub(crate) fn solo_espacio(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 
 /// **La propuesta**: que se recortaria, cuanto es, y por que no se pierde nada.
 ///
-/// ** Se pinta con los mismos numeros que la orden de verdad va a usar --la cola
-/// libre sale de `log_head` en los dos lados-- pero **no llama al kernel**. Una
-/// propuesta que tuviera que pedirle permiso al disco para poder ensenarse ya
-/// habria tocado el disco.
+/// === Los numeros son LOS DE LA ORDEN, no unos parecidos ===
+///
+/// El rango se pide con `INFO_DISCO_COLA_LBA` y `..._SECTORES`, y al otro lado
+/// esos dos campos los sirve **la misma funcion del kernel que ejecuta el
+/// recorte**. La primera version los deducia aqui de `INFO_ES_BLOQUES`,
+/// `INFO_ES_USADOS` y `INFO_ES_BLOQUE_TAM` -- una cuenta paralela que hoy da lo
+/// mismo y que el dia que una de las dos cambie **ensena un rango y recorta
+/// otro**. Una propuesta que no es exactamente la orden no es una propuesta.
+///
+/// [!] Sigue sin llamar al disco: son campos de informe. Una propuesta que
+/// tuviera que tocar el aparato para poder ensenarse ya lo habria tocado.
 fn propuesta(s: &mut Output) -> bool {
     section(s, b"recorte: la propuesta");
     if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
@@ -200,32 +206,36 @@ fn propuesta(s: &mut Output) -> bool {
         return false;
     }
 
-    let bloques = bmo::info(bmo::INFO_ES_BLOQUES);
-    let usados = bmo::info(bmo::INFO_ES_USADOS);
-    let tam = bmo::info(bmo::INFO_ES_BLOQUE_TAM).max(1);
-    let libres = bloques.saturating_sub(usados);
-    if libres == 0 {
+    let lba = bmo::info(bmo::INFO_DISCO_COLA_LBA);
+    let sectores = bmo::info(bmo::INFO_DISCO_COLA_SECTORES);
+    if sectores == 0 {
         s.with_ink(INK_ERR);
         s.text(b"    la cola libre esta vacia: el volumen esta lleno\n");
         s.with_ink(INK_PLAIN);
         return false;
     }
-    let sectores = libres.saturating_mul(tam) / 512;
 
     label(s, b"cola libre");
-    s.size(libres.saturating_mul(tam));
+    s.size(sectores.saturating_mul(512));
     s.text(b"   desde el bloque ");
-    s.dec(usados);
+    s.dec(bmo::info(bmo::INFO_ES_USADOS));
     s.byte(b'\n');
 
     label(s, b"sectores");
     s.dec(sectores);
-    s.text(b" de 512 B\n");
+    s.text(b" de 512 B   desde el LBA ");
+    s.dec(lba);
+    s.byte(b'\n');
 
+    // El numero REAL: lo que cabe en una orden lo dice el disco (palabra 105) y
+    // se pregunta, en vez de suponer el minimo y decir "como mucho".
+    let por_orden = bmo::info(bmo::INFO_DISCO_TRIM_BLOQUES).max(1)
+        .saturating_mul(SECTORES_POR_BLOQUE_DE_PAYLOAD);
     label(s, b"ordenes");
-    s.text(b"como mucho ");
-    s.dec(sectores.div_ceil(SECTORES_POR_ORDEN_MINIMA));
-    s.text(b"   (menos si el disco admite mas de un bloque)\n");
+    s.dec(sectores.div_ceil(por_orden));
+    s.text(b"   (el disco admite ");
+    s.dec(bmo::info(bmo::INFO_DISCO_TRIM_BLOQUES));
+    s.text(b" bloque(s) por orden)\n");
 
     // ** LA FRASE QUE JUSTIFICA QUE ESTO SEA SEGURO, y va en la propuesta y no
     // en un README: es lo que el que va a teclear `ya` necesita saber.
@@ -242,6 +252,28 @@ pub(crate) fn trim_propuesta(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     if propuesta(&mut dsk.out.grid) {
         dsk.out.grid.with_ink(INK_GOOD);
         dsk.out.grid.text(b"    escribe `disco trim ya` para mandarlo\n");
+        dsk.out.grid.with_ink(INK_PLAIN);
+    }
+    paint_status(p, &dsk.run_box, "trim: propuesta", INK_DIM);
+    dsk.field.n = 0;
+    After::Settle
+}
+
+/// `disco trim <algo que no es "ya">`.
+///
+/// Se ensena la propuesta igual --no toca nada-- y se dice **cual era la palabra
+/// buena**. Contestar "no lo conozco" a alguien que ya escribio `trim` seria
+/// mandarle a `help` teniendo la orden medio escrita.
+pub(crate) fn trim_argumento(dsk: &mut Desktop, p: &bmo::Pantalla, que: &[u8]) -> After {
+    let s = &mut dsk.out.grid;
+    s.with_ink(INK_ERR);
+    s.text(b"  `");
+    s.text(que);
+    s.text(b"` no significa nada detras de `trim`\n");
+    s.with_ink(INK_PLAIN);
+    if propuesta(&mut dsk.out.grid) {
+        dsk.out.grid.with_ink(INK_GOOD);
+        dsk.out.grid.text(b"    la palabra es `ya`:  disco trim ya\n");
         dsk.out.grid.with_ink(INK_PLAIN);
     }
     paint_status(p, &dsk.run_box, "trim: propuesta", INK_DIM);

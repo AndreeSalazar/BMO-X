@@ -212,6 +212,18 @@ const INFO_DISCO_JUICIO: u64 = 0x42;
 /// orden o en trescientas dicen cosas distintas de la palabra 105.
 const INFO_DISCO_TRIM_SECTORES: u64 = 0x43;
 const INFO_DISCO_TRIM_ORDENES: u64 = 0x44;
+/// ** LA COLA LIBRE, TAL COMO LA VA A USAR EL RECORTE -- no una cuenta parecida.
+///
+/// Ring 3 podia sacar estos dos numeros de `INFO_ES_BLOQUES`, `INFO_ES_USADOS` y
+/// `INFO_ES_BLOQUE_TAM`, y **esa era la curita**: la propuesta que se pinta y el
+/// rango que se manda salian de dos cuentas distintas que hoy dan lo mismo. Dos
+/// fuentes de una sola verdad se separan, y aqui separarse significa **ensenar
+/// un rango y recortar otro**. Ahora los dos leen `estratos::cola_libre()`.
+const INFO_DISCO_COLA_LBA: u64 = 0x45;
+const INFO_DISCO_COLA_SECTORES: u64 = 0x46;
+/// Bloques de payload que admite el disco en UNA orden (palabra 105). Con esto
+/// el numero de ordenes de la propuesta es el REAL y no un techo de Ring 3.
+const INFO_DISCO_TRIM_BLOQUES: u64 = 0x47;
 /// La fecha de la placa, empaquetada. Espejo de `bmo_abi::...::INFO_FECHA`.
 const INFO_FECHA: u64 = 0x1F;
 
@@ -467,6 +479,16 @@ pub fn campo(n: u64) -> u64 {
         INFO_DISCO_JUICIO => crate::ring0::dev::disk::juicio(),
         INFO_DISCO_TRIM_SECTORES => crate::ring0::dev::disk::cuentas_trim().0,
         INFO_DISCO_TRIM_ORDENES => crate::ring0::dev::disk::cuentas_trim().1,
+        // Los dos salen de la MISMA funcion que usa el recorte. Cero = no hay
+        // volumen montado o la cola esta vacia, que es la misma respuesta que
+        // le dara la orden a quien la pida.
+        INFO_DISCO_COLA_LBA => {
+            crate::ring0::fsys::estratos::cola_libre().map(|(lba, _)| lba).unwrap_or(0)
+        }
+        INFO_DISCO_COLA_SECTORES => {
+            crate::ring0::fsys::estratos::cola_libre().map(|(_, n)| n).unwrap_or(0)
+        }
+        INFO_DISCO_TRIM_BLOQUES => crate::ring0::dev::disk::trim_bloques_max() as u64,
         _ => 0,
     }
 }
