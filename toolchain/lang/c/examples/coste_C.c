@@ -222,7 +222,18 @@ void veredicto(char *label, unsigned long long medido, unsigned long long campo)
     meta = valor >> 32;
 
     if (techo == 0) {
-        printf("   %s: este kernel no declara presupuesto\n", label);
+        /* ** DOS MOTIVOS DISTINTOS PARA EL MISMO CERO.
+         *
+         * El kernel contesta `sin declarar` cuando no tiene la fila **o cuando
+         * la tiene medida en otra maquina**. Lo segundo no es una carencia: es
+         * el trinquete negandose a condenar con ticks de otro CPU. Decir "no
+         * declara presupuesto" ahi mandaria a buscar una tabla que existe y
+         * esta bien. */
+        if (bmo_info(BMO_INFO_PRESUPUESTO_MAQUINA) == 0) {
+            printf("   %s [-] SIN TRINQUETE: presupuesto de OTRA maquina\n", label);
+        } else {
+            printf("   %s: este kernel no declara presupuesto\n", label);
+        }
         return;
     }
     /* ** UN CERO NO ES UNA MEDIDA BARATA: ES UNA MEDIDA QUE NO OCURRIO.

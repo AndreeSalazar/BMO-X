@@ -146,6 +146,11 @@
 #define BMO_INFO_PRESUPUESTO_PUERTA      0x37
 #define BMO_INFO_PRESUPUESTO_DISPATCH    0x38
 #define BMO_INFO_PRESUPUESTO_HANDLE      0x39
+/* 1 si esas tres filas se midieron en LA MAQUINA QUE ESTA CORRIENDO. Un techo
+ * son ticks del TSC de una placa concreta; en otro CPU no son estrictos ni
+ * laxos, son de otra maquina. Con esto en 0 las tres contestan CERO --o sea
+ * "sin declarar"-- y el juez se calla en vez de inventarse un veredicto. */
+#define BMO_INFO_PRESUPUESTO_MAQUINA     0x3D
 
 /* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
  *

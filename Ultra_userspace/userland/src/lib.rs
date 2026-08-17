@@ -221,6 +221,30 @@ pub const INFO_PRESUPUESTO_PUERTA: u64 = 0x37;
 pub const INFO_PRESUPUESTO_DISPATCH: u64 = 0x38;
 pub const INFO_PRESUPUESTO_HANDLE: u64 = 0x39;
 
+/// **1 si ese presupuesto se midio en la maquina que esta corriendo.**
+///
+/// Un techo son ticks del TSC de una placa concreta; en otro CPU no son
+/// estrictos ni laxos, son **de otra maquina**. Cuando esto vale 0, los tres
+/// campos de arriba contestan **cero** --`sin declarar`-- para que nadie juzgue
+/// con numeros ajenos: el freno esta en el valor, y este campo solo da el
+/// MOTIVO para poder decirlo con palabras.
+pub const INFO_PRESUPUESTO_MAQUINA: u64 = 0x3D;
+
+/// Los bits de [`INFO_PRESUPUESTO_MAQUINA`]. Lleva **los dos lados** --lo
+/// esperado y lo leido del silicio-- porque un "no coincide" sin numeros manda
+/// a leer codigo, y con numeros se arregla cambiando una cifra:
+///
+/// ```text
+///    bit 0        coincide TODO -- el unico que decide
+///    bit 1        familia y modelo coinciden
+///    bit 2        el TSC coincide (dentro del 1%)
+///    bits  8..15  familia ESPERADA      16..23  modelo ESPERADO
+///    bits 24..31  familia LEIDA         32..39  modelo LEIDO
+/// ```
+pub const MAQ_COINCIDE: u64 = 1 << 0;
+pub const MAQ_CPU_OK: u64 = 1 << 1;
+pub const MAQ_TSC_OK: u64 = 1 << 2;
+
 /// **De que CLASE fue cada puerta**, con el indice empaquetado:
 /// `INFO_SYSCALL_CLASS | (clase << 8)`. Se lee como delta, igual que el resto
 /// del metro.

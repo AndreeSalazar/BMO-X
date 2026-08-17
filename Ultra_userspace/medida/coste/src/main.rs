@@ -322,6 +322,30 @@ fn decir_ciclos(l: &mut Linea, etiqueta: &str, ticks: u64, r: &juez::Reloj) {
 fn decir(l: &mut Linea, etiqueta: &str, v: juez::Veredicto) {
     use juez::Veredicto::*;
     match v {
+        // ** DOS MOTIVOS DISTINTOS PARA EL MISMO CERO, y se distinguen.
+        //
+        // El kernel contesta `sin declarar` en dos casos: no tiene la fila, o
+        // **la tiene medida en otra maquina**. Lo segundo no es una carencia:
+        // es el trinquete negandose a condenar con ticks de otro CPU, que es lo
+        // correcto. Decir "no declara presupuesto" en ese caso mandaria a
+        // buscar una tabla que existe y esta bien.
+        SinDeclarar if bmo::info(bmo::INFO_PRESUPUESTO_MAQUINA) & bmo::MAQ_COINCIDE == 0 => {
+            let v = bmo::info(bmo::INFO_PRESUPUESTO_MAQUINA);
+            di!(l, "   {etiqueta} [-] SIN TRINQUETE: el presupuesto es de OTRA maquina\n");
+            // ** Y LOS DOS LADOS, que es lo que convierte un "no" en un arreglo
+            // de una cifra. Se imprimen solo aqui: en la maquina buena esta
+            // linea no sale y el informe no se llena de identidades.
+            di!(
+                l,
+                "     esperaba CPU {:02x}h/{:02x}h y hay {:02x}h/{:02x}h; cpu {} tsc {}\n",
+                (v >> 8) & 0xFF,
+                (v >> 16) & 0xFF,
+                (v >> 24) & 0xFF,
+                (v >> 32) & 0xFF,
+                if v & bmo::MAQ_CPU_OK != 0 { "ok" } else { "NO" },
+                if v & bmo::MAQ_TSC_OK != 0 { "ok" } else { "NO" },
+            );
+        }
         SinDeclarar => di!(l, "   {etiqueta} [-] este kernel no declara presupuesto\n"),
         SePasa { medido, techo } => {
             di!(l, "   {etiqueta} [SE PASA] {medido} > techo {techo} -- REGRESION\n")

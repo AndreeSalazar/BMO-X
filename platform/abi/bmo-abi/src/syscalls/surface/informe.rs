@@ -291,6 +291,46 @@ pub const INFO_PRESUPUESTO_DISPATCH: u64 = 0x38;
 /// Presupuesto de resolver una capability. Ver [`INFO_PRESUPUESTO_PUERTA`].
 pub const INFO_PRESUPUESTO_HANDLE: u64 = 0x39;
 
+/// **1 si las tres filas de arriba se midieron en LA MAQUINA QUE ESTA
+/// CORRIENDO**; 0 si no.
+///
+/// # Por que un presupuesto tiene dueno
+///
+/// Un techo son **ticks del TSC de una placa concreta**. El mismo kernel
+/// arranca en cualquier x86-64, y alli esos numeros no son ni estrictos ni
+/// laxos: son **de otra maquina**. Juzgar con ellos da una falsa regresion en un
+/// CPU mas lento o un falso aprobado en uno mas rapido -- las dos son el mismo
+/// fallo, opinar sin derecho.
+///
+/// La identidad es familia y modelo de CPUID **mas la frecuencia del TSC**, con
+/// un 1% de tolerancia: dos CPU del mismo modelo con TSC distinto no pueden
+/// compartir una tabla escrita en ticks.
+///
+/// ** Y CUANDO ESTO ES 0, LOS TRES CAMPOS DE ARRIBA CONTESTAN CERO -- o sea
+/// `sin declarar`, que todo cliente ya sabe leer. La proteccion vive en el
+/// valor, no en que alguien se acuerde de consultar este campo: quien no lo
+/// conozca pierde el MOTIVO, jamas el freno. Al reves --contestar el techo bueno
+/// y confiar en que el cliente compruebe-- bastaria con un olvido para producir
+/// un veredicto falso.
+/// ```text
+///    bit 0        coincide TODO -- el unico que decide
+///    bit 1        familia y modelo coinciden
+///    bit 2        el TSC coincide (dentro del 1%)
+///    bits  8..15  familia ESPERADA      16..23  modelo ESPERADO
+///    bits 24..31  familia LEIDA         32..39  modelo LEIDO del silicio
+/// ```
+///
+/// ** Lleva los DOS LADOS a proposito. Un `bool` frena el trinquete y no lo
+/// arregla: el dia que diga que no, hay que saber si fallo el modelo o el reloj
+/// y con que numeros. Un "no" sin motivo manda a leer codigo; este manda a
+/// cambiar una cifra.
+pub const INFO_PRESUPUESTO_MAQUINA: u64 = 0x3D;
+
+/// Los bits de [`INFO_PRESUPUESTO_MAQUINA`].
+pub const MAQ_COINCIDE: u64 = 1 << 0;
+pub const MAQ_CPU_OK: u64 = 1 << 1;
+pub const MAQ_TSC_OK: u64 = 1 << 2;
+
 /// -- ** EL CENSO DE EXTENSIONES, legible desde Ring 3 ---------------------
 ///
 /// Cuantas extensiones cubre el censo, y dos mascaras de bits sobre ESA lista

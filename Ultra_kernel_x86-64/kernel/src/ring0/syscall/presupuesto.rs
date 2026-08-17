@@ -112,126 +112,148 @@ impl Fila {
     }
 }
 
-/// **La puerta pelada**: `INVOKE` de `BMO_OP_PID` sobre la tarea actual, medida
-/// desde Ring 3. Es el suelo del sistema: no resuelve ningun handle, asi que
-/// nada puede costar menos que esto.
+/// -- ** UN PRESUPUESTO ES DE UNA MAQUINA, NO DEL KERNEL -------------------
 ///
-/// Un trinquete se aprieta con lo que YA se consiguio, nunca con lo que se
-/// cree que se va a conseguir. Historia de este techo:
+/// # El defecto que esto cierra, dicho entero
+///
+/// Estas tres filas eran `const` del kernel: `techo 960` medido en el Ryzen del
+/// dueno. **Y el kernel arranca en cualquier x86-64.** En otro CPU los mismos
+/// numeros seguirian juzgando, y darian una de estas dos:
 ///
 /// ```text
-///    2618   antes de todo
-///    1625   pieza 1 (el XSAVE que no tenia por que existir)
-///     895   pieza 2 (`sysretq`) + los cuatro sellos fuera   <- HOY, 242 ns
+///    un CPU mas lento    -> [SE PASA] REGRESION   por no ser el mismo silicio
+///    un CPU mas rapido   -> [META]                cuando igual hay una regresion
 /// ```
 ///
-/// Se aprieta DESPUES de cada tanda que el metal confirma, no antes: cuando
-/// aqui ponia 1625, la pieza 2 todavia era una estimacion mia de ~1050 y salio
-/// en 895. Si hubiera puesto 1050 y la pieza saliera en 1100, el trinquete
-/// habria gritado por una mejora.
-pub const PUERTA_PELADA: Fila = Fila {
-    // 915 fue la peor de las tres tandas, +5% de margen de ruido.
-    techo: 960,
-    // ** LA META BAJA DE 400 A 300, y no por optimismo: por medida. Se puso 400
-    // contando 190 para `dispatch`, y `dispatch` resulto ser ~90. La cuenta
-    // buena es 150 de cruce + 60 de prologo/epilogo + 90 de Rust.
-    meta: 300,
-    porque: "150 de cruce irreducible + 60 de prologo/epilogo + 90 de dispatch",
-};
+/// Las dos son el mismo fallo de siempre en esta casa: **un veredicto donde no
+/// hay derecho a opinar**. Es el hermano del cero que felicitaba.
+///
+/// # Por que va en el PERFIL y no aqui
+///
+/// Porque `cpu_vendor/profile.rs` ya dice, en su primera linea, que cambiar de
+/// CPU es un cambio de perfil y nunca una edicion del kernel -- y un techo en
+/// ticks es exactamente un dato de ese CPU. Este fichero se queda con lo que SI
+/// es del kernel: la forma de la fila, la doctrina de los dos numeros y el
+/// margen de ruido. Estrenar un CPU pasa a ser copiar el directorio del perfil y
+/// pegar tres cifras medidas, sin tocar nada de aqui.
+///
+/// # [!] Y el TSC forma parte de la identidad, aunque no lo parezca
+///
+/// El presupuesto esta en **ticks**, y un tick vale lo que valga el TSC de esa
+/// maquina. Dos CPU del mismo modelo con TSC distinto **no son la misma maquina
+/// para esta tabla**, aunque CPUID diga lo mismo. Por eso se compara tambien la
+/// frecuencia, con un 1% de tolerancia: la calibracion del arranque no da el
+/// mismo entero dos veces.
+pub struct Presupuestos {
+    /// Familia y modelo de CPUID en los que se midieron estas filas.
+    pub familia: u8,
+    pub modelo: u8,
+    /// Frecuencia del TSC de la maquina donde se midieron, en Hz.
+    pub tsc_hz: u64,
+    /// Como se llama esa maquina, para poder decirlo cuando no coincida.
+    pub maquina: &'static str,
+    pub puerta: Fila,
+    pub dispatch: Fila,
+    pub handle: Fila,
+}
 
-/// **La mitad de Rust**: lo que tarda `dispatch` por dentro, que es lo unico
-/// que el metro sabe medir solo.
+/// Cuanto se le permite variar al TSC antes de decir que es otra maquina.
 ///
-/// ** ESTA FILA SE REESCRIBIO ENTERA CUANDO LA VENTANA SE LIMPIO.
-///
-/// Decia `techo 320, meta 190` porque las cuatro primeras tandas midieron
-/// **309-319**. Ese numero era falso: la ventana llevaba dentro un `printf`, y
-/// una puerta de consola cuesta ~2,1 M ciclos. Con la ventana cerrada antes de
-/// imprimir, las dos implementaciones dan **84 (C) y 99 (Rust)**.
-///
-/// O sea que **la mitad Rust de una puerta nunca fue el 12%: es el 10%, y son
-/// ~90 ciclos.** El 309 era un `printf` disfrazado de dispatcher.
-///
-/// ** Y LA TANDA DEL 16-08 EN METAL CERRO LA DISCUSION: 87 (C) y 104 (Rust),
-/// contra un `rdtsc` suelto que cuesta **69 en un bucle de 43 y 107 en uno de
-/// 4** -- no un numero, porque el CPU es fuera de orden y un bucle largo lo
-/// solapa.
-///
-/// O sea que el termometro es del tamano del enfermo: **el trabajo real de Rust
-/// son ~20 ticks debajo de ~70-107 de instrumento**, y esta fila, tal como
-/// estaba, NO SE PODIA LEER -- 104 contra techo 105 es un tick de gritar
-/// REGRESION por algo que no es el codigo.
-///
-/// ** POR ESO EL METRO SE RETIRO A `--features metro_puerta` (paso 1 de la
-/// biseccion). Consecuencias, dichas las dos:
-///
-/// ```text
-///    build normal    sin `rdtsc` aqui. La puerta cuesta 69-107 ticks menos.
-///                    `dispatch` vale 0 y el juez contesta ROTO, que es lo
-///                    correcto: no hay medida, no hay veredicto.
-///    --features ...  como hasta hoy, y es donde esta fila se juzga.
-/// ```
-///
-/// [!] La meta de 60 se queda **sin tocar** hasta que el build de medida diga
-/// cuanto cuesta `dispatch` con el metro fuera... que es imposible por
-/// definicion. Lo que la contestara es la resta entre los dos builds, medida
-/// desde Ring 3, donde no hay instrumento en medio.
-pub const DISPATCH: Fila = Fila {
-    // ** ESTE TECHO SE AFLOJA, DE 105 A 110, Y SE DICE EN VOZ ALTA.
-    //
-    // Aflojar un trinquete es lo contrario de para lo que existe, asi que el
-    // motivo va aqui y no en el mensaje de un commit: el 105 salia de 99 +5%, y
-    // el metal dio **104** -- dentro del techo, pero al 99% de el. Un trinquete
-    // sin margen sobre el ruido no es estricto, **es una alarma aleatoria**, y
-    // una alarma que salta sola se acaba ignorando (ver
-    // `MARGEN_DE_RUIDO_POR_CIENTO`). 104 es la ultima medida CONFIRMADA en
-    // metal; +5% da 110, que es la regla de la casa aplicada tal cual.
-    techo: 110,
-    meta: 60,
-    porque: "de los 87-104 medidos, 69-107 son los dos rdtsc del propio metro",
-};
+/// La calibracion del arranque no repite el entero exacto entre reinicios. Un
+/// 1% acepta ese ruido y sigue rechazando un CPU de otra frecuencia -- entre
+/// 3,7 y 4,7 GHz hay un 27%, o sea que no hay zona gris.
+const TOLERANCIA_TSC_POR_MIL: u64 = 10;
 
-/// **Lo que cuesta resolver una capability**: la fila 4 menos la fila 3.
+/// **El presupuesto de este arranque se midio en ESTA maquina?**
 ///
-/// ** ESTA FILA EXISTE POR UNA ANOMALIA, y es el mejor argumento de todo el
-/// fichero. Resolver un handle costaba 83 ciclos, de los que 76 caian dentro de
-/// `dispatch` y 7 en el stub -- ruido, y correcto: **el stub no sabe que
-/// operacion se pidio**. Con la pieza 1 puesta el mismo hueco salio en 342, con
-/// **257 de ellos en el stub**, que es un sitio donde no pueden estar.
+/// Si contesta que no, las tres filas cruzan a Ring 3 como `sin declarar` y el
+/// juez **se calla**. Esa es toda la diferencia entre un trinquete y una alarma
+/// aleatoria en un banco de pruebas ajeno.
+pub fn es_esta_maquina() -> bool {
+    veredicto_maquina() & MAQ_COINCIDE != 0
+}
+
+/// -- ** EL VEREDICTO DE IDENTIDAD, EMPAQUETADO Y CON LOS DOS LADOS ---------
 ///
-/// Nadie lo habria visto si no se hubieran comparado las dos tandas a mano. Un
-/// trinquete lo habria gritado solo, y por eso esta fila se declara aunque su
-/// techo sea, hoy, un numero que no me gusta.
-///
-/// ** Y LA ANOMALIA SOBREVIVIO A LAS DOS PIEZAS, o sea que es REAL y no era el
-/// instrumento:
+/// Un `bool` habria bastado para frenar el trinquete, y **no basta para
+/// arreglarlo**: el dia que conteste `false` en la maquina del dueno, hay que
+/// saber si fallo el modelo o el reloj, y con que numeros. Un no sin motivo
+/// manda a leer codigo; este campo manda a cambiar una cifra.
 ///
 /// ```text
-///                    total    dispatch   stub
-///    antes            +83       +76       +7     correcto
-///    pieza 1         +342       +85     +257     <- aparece
-///    pieza 2         +327       +84     +243     <- sigue
-///    ventana limpia  +338       +92     +246     <- y sigue
+///    bit 0        coincide TODO -- es el unico que decide
+///    bit 1        familia y modelo coinciden
+///    bit 2        el TSC coincide (dentro del 1%)
+///    bits  8..15  familia ESPERADA      16..23  modelo ESPERADO
+///    bits 24..31  familia LEIDA         32..39  modelo LEIDO del silicio
 /// ```
 ///
-/// La cuarta fila es la que la confirma del todo: se midio con la ventana ya
-/// cerrada antes de imprimir, o sea sin la contaminacion que hundio todo lo
-/// demas de este fichero. **La mitad de `dispatch` es correcta en las cuatro**
-/// --~85, la capability, donde tiene que estar-- y los ~246 del stub siguen
-/// exactamente igual.
+/// [!] **Y hace falta hoy, no en teoria: el arbol se contradice a si mismo.**
+/// `cpu/mod.rs` dice que un 5600X es `19h/01h` y llama `19h/21h` a un Ryzen
+/// 7000; el perfil de este directorio declara `family_model: "19h/21h"`. Los dos
+/// no pueden tener razon, **y nadie ha leido nunca el byte de este chip** --
+/// el unico sintoma era el nombre en `info`, que nadie mira. Este campo lo lee y
+/// lo ensena, y con eso la discusion se cierra con un dato en vez de con una
+/// opinion.
+pub const MAQ_COINCIDE: u64 = 1 << 0;
+pub const MAQ_CPU_OK: u64 = 1 << 1;
+pub const MAQ_TSC_OK: u64 = 1 << 2;
+
+pub fn veredicto_maquina() -> u64 {
+    let perfil = crate::ring0::cpu_vendor::profile::active();
+    let p = perfil.presupuesto;
+    let mut v = ((p.familia as u64) << 8) | ((p.modelo as u64) << 16);
+
+    // La identidad se le pregunta al SILICIO a traves del perfil, nunca al
+    // nombre del modulo: es la cadena que `profile.rs` documenta y que ya se
+    // rompio una vez en tres sitios.
+    let leida = (perfil.identidad)();
+    if let Some((familia, modelo)) = leida {
+        v |= ((familia as u64) << 24) | ((modelo as u64) << 32);
+        if familia == p.familia && modelo == p.modelo {
+            v |= MAQ_CPU_OK;
+        }
+    }
+
+    let hz = crate::ring0::task::scheduler::tsc_freq();
+    if hz != 0 && p.tsc_hz != 0 {
+        let (mayor, menor) = if hz > p.tsc_hz { (hz, p.tsc_hz) } else { (p.tsc_hz, hz) };
+        if (mayor - menor) * 1000 <= p.tsc_hz * TOLERANCIA_TSC_POR_MIL {
+            v |= MAQ_TSC_OK;
+        }
+    }
+
+    if v & MAQ_CPU_OK != 0 && v & MAQ_TSC_OK != 0 {
+        v |= MAQ_COINCIDE;
+    }
+    v
+}
+
+/// Las tres filas, ya empaquetadas para Ring 3 -- **y en cero si el presupuesto
+/// no es de esta maquina**.
 ///
-/// La mitad de `dispatch` se comporta perfecto en las tres tandas: ~85, que es
-/// la capability y esta donde tiene que estar. Lo que no puede existir son los
-/// **243 en el stub**, porque el stub no sabe que operacion se pidio.
-///
-/// [!] No hay explicacion, y despues de fallar dos veces razonando sobre este
-/// camino no se va a poner una tercera hipotesis por escrito. Lo que la
-/// resuelve es UNA sonda concreta: una fila mas en `c/coste.bex` que use un
-/// handle REAL con la operacion mas barata que exista. Si esa fila tambien
-/// carga los 243, es el camino del handle; si no, es `BMO_ARCH_TAMANO`.
-pub const HANDLE: Fila = Fila {
-    // 338 fue la peor observada, +5% de margen de ruido.
-    techo: 355,
-    meta: 80,
-    porque: "~90 en dispatch es correcto; los ~246 del stub son la anomalia viva",
-};
+/// ** LA SEGURIDAD ESTA EN EL VALOR, NO EN QUE ALGUIEN SE ACUERDE DE MIRAR.
+/// Devolver cero significa `sin declarar`, que todo cliente ya sabe leer desde
+/// el primer dia: el que no se entere de que existe `INFO_PRESUPUESTO_MAQUINA`
+/// pierde el MOTIVO, nunca la proteccion. Al reves --contestar el techo bueno y
+/// confiar en que el cliente compruebe un segundo campo-- bastaria con que uno
+/// se olvidara para que saliera un veredicto falso.
+pub fn puerta() -> u64 {
+    de(|p| &p.puerta)
+}
+
+pub fn dispatch() -> u64 {
+    de(|p| &p.dispatch)
+}
+
+pub fn handle() -> u64 {
+    de(|p| &p.handle)
+}
+
+fn de(cual: fn(&'static Presupuestos) -> &'static Fila) -> u64 {
+    if !es_esta_maquina() {
+        return 0;
+    }
+    cual(crate::ring0::cpu_vendor::profile::active().presupuesto).empaquetado()
+}
+
