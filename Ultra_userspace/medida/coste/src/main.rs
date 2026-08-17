@@ -66,6 +66,13 @@ const VUELTAS: u64 = 16;
 const NR_INVOKE: u32 = 0;
 const TAREA_ACTUAL: u64 = 0xFFFF_FFFF_FFFF_FFFE;
 const OP_PID: u64 = 0x0F;
+const OP_INFO: u64 = 0x13;
+const OP_MI_PAQUETE: u64 = 0x25;
+const ARCH_TAMANO: u64 = 0x03;
+const ARCH_CERRAR: u64 = 0x04;
+/// Un campo cualquiera de `OP_INFO`. Da igual cual: lo que se mide es la
+/// operacion, no el dato.
+const CAMPO_TICKS: u64 = 0x0C;
 
 // ===================== EL INSTRUMENTO, EN INSTRUCCIONES =====================
 
@@ -159,6 +166,64 @@ unsafe fn rdtsc_suelto(n: u64) {
 /// de cambio de tarea: el minimo es el unico valor que eso no puede inflar. Y
 /// la media se devuelve igual porque **la diferencia entre las dos ES la
 /// expropiacion**, que es una cifra util por su cuenta.
+// ===================== LAS CUATRO GENERACIONES =====================
+//
+// ** ESTO NO ES ESTILO, ES EL ARREGLO DE UN EXPERIMENTO MAL HECHO.
+//
+// La pregunta abierta desde el 16-08 es: **por que resolver un handle anade
+// ~246 ciclos FUERA de `dispatch`**, si el stub no sabe que operacion se pidio.
+// Cuatro tandas sin contestarla, y no por falta de precision: por como estaba
+// planteada la comparacion.
+//
+//     fila A:  pseudo-capability + operacion barata   (TAREA_ACTUAL, PID)
+//     fila B:  capability REAL   + operacion gorda    (handle, TAMANO)
+//
+// **Cambia DOS variables a la vez.** Los +246 pueden ser el handle o pueden ser
+// la operacion, y esa resta no puede separarlos. Una tanda mas de lo mismo iba
+// a dar el mismo numero y la misma duda.
+//
+// El reparto de abajo es lo que lo desbloquea, y cada nivel ignora al de
+// encima -- que es lo unico que hace que un reparto sea un reparto:
+//
+//     abuelo   `puertas`     N cruces y nada mas. No sabe que mide.
+//     padre    `Fila`        un nombre, una capability, una operacion.
+//                            No sabe que hay otras filas.
+//     hijo     `contra`      la diferencia entre dos filas.
+//                            No sabe que significa.
+//     nieto    `bmo-juicio`  el veredicto. Vive FUERA de este binario y se
+//                            prueba en el anfitrion.
+//
+// Con eso, las filas se eligen para que **entre dos consecutivas cambie UNA
+// SOLA COSA**, y la resta pasa a significar algo:
+//
+//     1  TAREA_ACTUAL + PID      el suelo: no se camina ninguna tabla
+//     2  TAREA_ACTUAL + INFO     MISMA capability, operacion mas gorda
+//     3  handle real  + TAMANO   capability REAL
+//
+//     2 - 1  =  lo que cuesta una operacion mas complicada
+//     3 - 2  =  lo que cuesta tener un handle de verdad
+//
+// Si el salto esta en `2 - 1`, los 246 nunca fueron del handle: son de que
+// `OP_INFO` hace mas trabajo. Si esta en `3 - 2`, es el camino de la
+// capability y hay un fallo donde se dijo.
+
+/// **El PADRE**: una fila medible. Un nombre y la pareja que la define.
+///
+/// No sabe que hay otras filas ni que alguien va a restarla: si lo supiera,
+/// anadir una cuarta obligaria a tocar esto.
+struct Fila {
+    nombre: &'static str,
+    cap: u64,
+    op: u64,
+}
+
+/// **El HIJO**: la diferencia entre dos filas, que es lo que de verdad se
+/// pregunta. `None` si sale al reves -- no se imprime una resta que dio la
+/// vuelta.
+fn contra(mayor: u64, menor: u64) -> Option<u64> {
+    mayor.checked_sub(menor)
+}
+
 fn medir(cuerpo: impl Fn(u64)) -> (u64, u64) {
     let mut mejor = 0u64;
     let mut total = 0u64;
@@ -293,9 +358,54 @@ pub extern "C" fn _start() -> ! {
         ));
     }
 
-    // -- 3. la factura del instrumento --------------------------------
+    // -- 3. LA SONDA: una variable por escalon ------------------------
+    //
+    // Las tres filas comparten el MISMO bucle de nueve instrucciones, con la
+    // capability y la operacion en registros. O sea que el lado de Ring 3 es
+    // **byte a byte identico** en las tres y no puede explicar ninguna
+    // diferencia -- que es justo lo que el programa de C no podia garantizar,
+    // porque alli la fila del handle lee una variable y la otra un literal.
+    let paquete = bmo::invoke(TAREA_ACTUAL, OP_MI_PAQUETE as u32, 0, 0, 0).value;
+    let filas = [
+        Fila { nombre: "1 pid    (pseudo-cap, op barata)", cap: TAREA_ACTUAL, op: OP_PID },
+        Fila { nombre: "2 info   (misma cap, op gorda)  ", cap: TAREA_ACTUAL, op: OP_INFO },
+        Fila { nombre: "3 tamano (cap REAL, op gorda)   ", cap: paquete, op: ARCH_TAMANO },
+    ];
+
+    let mut minimos = [0u64; 3];
+    for (i, f) in filas.iter().enumerate() {
+        // La fila 3 solo existe si el kernel recuerda nuestra imagen. Un `.bex`
+        // lanzado con `run` siempre la tiene; embebido, no.
+        if f.cap == 0 {
+            continue;
+        }
+        // ** OP_INFO y ARCH_TAMANO llevan su argumento en `rdx`, y el bucle lo
+        // pone a cero. Para `OP_INFO` eso es el campo 0, que es un campo tan
+        // valido como otro: lo que se mide es la operacion, no el dato.
+        let _ = CAMPO_TICKS;
+        let (min, media) = medir(|n| unsafe { puertas(f.cap, f.op, n) });
+        minimos[i] = min;
+        di!(l, "{}  min {min} ciclos/op, media {media}\n", f.nombre);
+    }
+
+    // -- las dos restas, que es la sonda de verdad ---------------------
+    match contra(minimos[1], minimos[0]) {
+        Some(d) => di!(l, "   fila2-fila1 = {d}  <- lo que cuesta una operacion mas gorda\n"),
+        None => di!(l, "   fila2-fila1: al reves; la operacion gorda salio mas barata\n"),
+    }
+    if minimos[2] != 0 {
+        match contra(minimos[2], minimos[1]) {
+            Some(d) => di!(l, "   fila3-fila2 = {d}  <- lo que cuesta un HANDLE de verdad\n"),
+            None => di!(l, "   fila3-fila2: al reves; el handle salio mas barato\n"),
+        }
+        bmo::invoke(paquete, ARCH_CERRAR as u32, 0, 0, 0);
+    } else {
+        di!(l, "   fila 3 NO SE MIDIO: el kernel no recuerda mi imagen\n");
+    }
+
+    // -- 4. la factura del instrumento --------------------------------
     let (tsc_min, _) = medir(|n| unsafe { rdtsc_suelto(n) });
-    di!(l, "3. rdtsc suelto  min {tsc_min} ciclos/op (menos la fila 1 = un sello)\n");
+    di!(l, "4. rdtsc suelto  min {tsc_min} ciclos/op (menos la fila 1 = un sello)\n");
 
     di!(l, "COSTE(rust): la fila 2 menos la 1 = la puerta desnuda\n");
     bmo::salir();
