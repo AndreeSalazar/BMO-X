@@ -61,6 +61,26 @@
 //! misma fila y separarlos en dos campos permitiria leer uno y no el otro, que
 //! es justo el error que hace decir *"cumple"* a algo que no llego a la meta.
 
+/// # EL MARGEN DEL TRINQUETE, y por que no es cero
+///
+/// La primera version puso cada `techo` clavado en la ultima medida. La tanda
+/// siguiente, **con el kernel byte a byte identico**, dio 915 donde la anterior
+/// dio 895 y el presupuesto grito `SE PASA -- REGRESION`.
+///
+/// No habia regresion: hay ruido. El minimo de 16 bloques sigue dependiendo del
+/// estado de la maquina --cache, historia del arranque, que mas hubiera listo--
+/// y entre tandas se mueve un ~2%.
+///
+/// ** UN TRINQUETE MAS APRETADO QUE EL RUIDO NO ES ESTRICTO: ES UNA ALARMA
+/// ALEATORIA. Y una alarma que salta sola se acaba ignorando, que es peor que
+/// no tenerla.
+///
+/// Asi que el techo se pone en **la peor medida observada mas un 5%**: por
+/// encima del ruido medido (2,2%) y muy por debajo de lo que mueve una pieza de
+/// verdad (las de hoy movieron del 30% al 60%). Una regresion real sigue
+/// gritando; el ruido, no.
+pub const MARGEN_DE_RUIDO_POR_CIENTO: u64 = 5;
+
 /// Una fila del presupuesto: lo que no puede empeorar y a donde tiene que ir.
 pub struct Fila {
     /// Ultima medida confirmada en metal. Cruzarlo es una REGRESION.
@@ -97,22 +117,37 @@ impl Fila {
 /// en 895. Si hubiera puesto 1050 y la pieza saliera en 1100, el trinquete
 /// habria gritado por una mejora.
 pub const PUERTA_PELADA: Fila = Fila {
-    techo: 895,
-    meta: 400,
-    porque: "150 de cruce irreducible + 60 de prologo/epilogo + 190 de dispatch",
+    // 915 fue la peor de las tres tandas, +5% de margen de ruido.
+    techo: 960,
+    // ** LA META BAJA DE 400 A 300, y no por optimismo: por medida. Se puso 400
+    // contando 190 para `dispatch`, y `dispatch` resulto ser ~90. La cuenta
+    // buena es 150 de cruce + 60 de prologo/epilogo + 90 de Rust.
+    meta: 300,
+    porque: "150 de cruce irreducible + 60 de prologo/epilogo + 90 de dispatch",
 };
 
 /// **La mitad de Rust**: lo que tarda `dispatch` por dentro, que es lo unico
 /// que el metro sabe medir solo.
 ///
-/// [!] La meta es 190 y no 311 porque **el 311 medido incluye el propio metro**:
-/// `meter::start`/`stop` son dos `rdtsc` y `coste.bex` midio que uno cuesta 69,
-/// no los ~25 que `meter.rs` estimo. Entre 70 y 140 de esos 311 son la regla,
-/// no lo medido. La meta esta puesta contra el `dispatch` de verdad.
+/// ** ESTA FILA SE REESCRIBIO ENTERA CUANDO LA VENTANA SE LIMPIO.
+///
+/// Decia `techo 320, meta 190` porque las cuatro primeras tandas midieron
+/// **309-319**. Ese numero era falso: la ventana llevaba dentro un `printf`, y
+/// una puerta de consola cuesta ~2,1 M ciclos. Con la ventana cerrada antes de
+/// imprimir, las dos implementaciones dan **84 (C) y 99 (Rust)**.
+///
+/// O sea que **la mitad Rust de una puerta nunca fue el 12%: es el 10%, y son
+/// ~90 ciclos.** El 309 era un `printf` disfrazado de dispatcher.
+///
+/// [!] Y de esos ~90 una parte grande es el PROPIO METRO: `meter::start`/`stop`
+/// son dos `rdtsc`, y uno cuesta 69 ciclos medidos. La meta de 60 esta puesta
+/// contra eso -- alcanzarla pasa por sacar el metro de `dispatch`, no por
+/// afinar el `match` de dos brazos.
 pub const DISPATCH: Fila = Fila {
-    techo: 320,
-    meta: 190,
-    porque: "el 311 medido lleva dentro 70-140 del propio metro",
+    // 99 fue la peor de las dos implementaciones, +5% redondeado hacia arriba.
+    techo: 105,
+    meta: 60,
+    porque: "de los ~90 medidos, buena parte son los dos rdtsc del propio metro",
 };
 
 /// **Lo que cuesta resolver una capability**: la fila 4 menos la fila 3.
@@ -131,11 +166,18 @@ pub const DISPATCH: Fila = Fila {
 /// instrumento:
 ///
 /// ```text
-///              total    dispatch   stub
-///    antes      +83       +76       +7     correcto
-///    pieza 1   +342       +85     +257     <- aparece
-///    pieza 2   +327       +84     +243     <- sigue
+///                    total    dispatch   stub
+///    antes            +83       +76       +7     correcto
+///    pieza 1         +342       +85     +257     <- aparece
+///    pieza 2         +327       +84     +243     <- sigue
+///    ventana limpia  +338       +92     +246     <- y sigue
 /// ```
+///
+/// La cuarta fila es la que la confirma del todo: se midio con la ventana ya
+/// cerrada antes de imprimir, o sea sin la contaminacion que hundio todo lo
+/// demas de este fichero. **La mitad de `dispatch` es correcta en las cuatro**
+/// --~85, la capability, donde tiene que estar-- y los ~246 del stub siguen
+/// exactamente igual.
 ///
 /// La mitad de `dispatch` se comporta perfecto en las tres tandas: ~85, que es
 /// la capability y esta donde tiene que estar. Lo que no puede existir son los
@@ -147,7 +189,8 @@ pub const DISPATCH: Fila = Fila {
 /// handle REAL con la operacion mas barata que exista. Si esa fila tambien
 /// carga los 243, es el camino del handle; si no, es `BMO_ARCH_TAMANO`.
 pub const HANDLE: Fila = Fila {
-    techo: 327,
+    // 338 fue la peor observada, +5% de margen de ruido.
+    techo: 355,
     meta: 80,
-    porque: "84 en dispatch es correcto; los 243 del stub son la anomalia viva",
+    porque: "~90 en dispatch es correcto; los ~246 del stub son la anomalia viva",
 };
