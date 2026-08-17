@@ -304,10 +304,43 @@ es del CPU, y jamas el veredicto.
 
 `~150` sale del analisis de la fila `puerta`, no de un cronometro. Por eso
 `INFO_SUELO_CRUCE` lleva un bit `medido` que hoy vale **0**: el ratio se puede
-mirar, y **no puede derivar ningun techo**. Medirlo pide una puerta que el stub
-conteste sin bajar a Rust, y eso no cabe en el kernel que se despliega -- rompe
-las dos puertas congeladas y la ignorancia del stub. Va en un build de medida,
-igual que el metro: **el instrumento se instala, contesta y se retira.**
+mirar, y **no puede derivar ningun techo**.
+
+### ★★ Y se puede ACOTAR sin tocar el stub, con el metro que ya existe
+
+La idea obvia --una puerta que el stub conteste sin bajar a Rust-- choca con dos
+reglas de la casa: **las DOS puertas congeladas** y la ignorancia del stub, que
+`entry.rs` prohibe romper por escrito. Pero no hace falta:
+
+```
+   [MEDIDO]   puerta - dispatch  =  TODO lo que no es Rust
+   [CONTADO]  el stub son 58 instrucciones -> a IPC 1, <= 58 ticks
+   ------------------------------------------------------------------
+              el suelo esta entre (puerta - dispatch - 58) y (puerta - dispatch)
+```
+
+Eso sale de una tanda con `--features metro_puerta`, que **ya existe**. Los dos
+testigos imprimen ahora esa cota.
+
+★ **Y la prediccion, que es lo que hace que valga la pena correrla.** Con los
+numeros del 16-08 --puerta 895, `dispatch` 104-- lo que no es Rust son **~780
+ticks**:
+
+```
+   el perfil declara hoy    suelo ~150 ticks     <- estimacion
+   la cota diria            suelo ~720-780       <- medido, 5x mas
+```
+
+Si sale asi, **la meta de 300 ticks para una puerta entera es fisicamente
+imposible** --el suelo solo ya se la come-- y esa fila hay que reescribirla. Un
+presupuesto con una meta inalcanzable no es exigente: es ruido, y ensena a
+ignorar la fila.
+
+[!] Y se dice *"lo que no es Rust"* y no *"el suelo"* a proposito: ahi dentro van
+las dos transiciones --irreducibles-- **y el marco que BMO eligio construir** (la
+reserva de 1096 B, el sello, los 20 `push`). Lo segundo se puede cambiar; lo
+primero no. Llamarlo suelo a secas seria declarar irreducible una decision de
+diseno.
 
 ---
 

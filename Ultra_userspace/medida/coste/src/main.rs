@@ -350,6 +350,44 @@ fn sobre_el_suelo(l: &mut Linea, puerta_ticks: u64) {
     );
 }
 
+/// Cuantas instrucciones tiene la via rapida del stub, contadas UNA A UNA sobre
+/// `syscall/entry.rs` el 2026-08-17: 31 de prologo + el `call` + 26 de epilogo.
+///
+/// [!] Es un numero **a mano**, y por eso se usa solo para acotar y nunca para
+/// juzgar: si alguien toca el stub y no lo actualiza, esta cota miente. Vive
+/// aqui --y no en el kernel-- porque es una lectura del codigo fuente, no un
+/// dato que el kernel sepa de si mismo.
+const INSTRUCCIONES_DEL_STUB: u64 = 58;
+
+/// ** ACOTAR EL SUELO SIN TOCAR EL STUB, que es la mitad que faltaba.
+///
+/// Con el metro puesto, `puerta - dispatch` es **todo el ensamblador mas las dos
+/// transiciones de privilegio**, medido. Y el ensamblador se puede acotar por
+/// arriba **contando instrucciones**: 58, y a un IPC de 1 --lo mas pesimista
+/// posible-- eso son 58 ticks.
+///
+/// ```text
+///    cruce >= (puerta - dispatch) - 58        <- MEDIDO, no estimado
+///    cruce <=  puerta - dispatch
+/// ```
+///
+/// Un intervalo medido vale mas que el `~150` que este arbol arrastra desde el
+/// primer analisis, y **no cuesta una sola linea del stub**: sale del metro que
+/// ya existe. Si la cota inferior sale muy por encima de 150, la meta de la fila
+/// `puerta` esta **por debajo del suelo fisico** y hay que reescribirla.
+fn acotar_el_suelo(l: &mut Linea, stub: u64) {
+    let bajo = stub.saturating_sub(INSTRUCCIONES_DEL_STUB);
+    // ** SE DICE "LO QUE NO ES RUST" Y NO "EL SUELO", y la diferencia importa:
+    // ahi dentro van las dos transiciones (irreducibles) **y** el marco que BMO
+    // eligio construir (la reserva de 1096 B, el sello, los 20 push). Lo segundo
+    // se puede cambiar; lo primero no. Llamarlo suelo a secas seria declarar
+    // irreducible una decision de diseno.
+    di!(
+        l,
+        "   lo que NO es Rust: {stub} ticks (de esos, <= {INSTRUCCIONES_DEL_STUB} son las instrucciones del stub -> el suelo esta entre {bajo} y {stub})\n"
+    );
+}
+
 /// Imprime el veredicto que el juez ya decidio. **Aqui no se juzga nada**: si
 /// la decision estuviera repartida entre el juez y su impresora, la mitad de
 /// las reglas no se podria probar en el anfitrion.
@@ -460,7 +498,8 @@ pub extern "C" fn _start() -> ! {
     match medida.dispatch_medio() {
         Some(d) => match juez::reparto(pelada_min, d) {
             juez::Reparto::Stub(stub) => {
-                di!(l, "   reparto: dentro de dispatch {d}, en el stub {stub}\n")
+                di!(l, "   reparto: dentro de dispatch {d}, en el stub {stub}\n");
+                acotar_el_suelo(&mut l, stub);
             }
             // ** EL CASO DEL 17-08. Con el metro retirado `dispatch` vale 0 y
             // la resta daba el total entero, impreso como "en el stub 792":
