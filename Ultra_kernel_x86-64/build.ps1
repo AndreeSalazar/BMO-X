@@ -225,6 +225,47 @@ foreach ($m in $opsTodas) {
 }
 Write-Host ('    operaciones kernel<->ABI: ' + $opsTodas.Count + ' comprobadas, ninguna a mano') -ForegroundColor DarkGray
 
+# ** EL CUARTO GUARDIAN: EL FORMATO DEL HANDLE (2026-08-16).
+#
+# Los tres de arriba comprueban NUMEROS DE OPERACION. Ninguno miraba **como
+# esta construido un handle**, y ese formato estaba escrito DOS VECES:
+# `ring0/obj/cap.rs` y `abi/fundamentals/handle/opaque.rs`. El kernel ni lo
+# disimulaba -- su comentario dice *"mirror of bmo-abi handle/kind.rs"*.
+#
+# Es la forma exacta del `#GP(0x18)` de este mismo dia: el mismo numero en dos
+# ficheros que no se hablan. Alli costo un arranque; aqui habria costado peor,
+# porque un desplazamiento mal puesto COMPILA, devuelve "handle invalido" y se
+# lee como un permiso denegado.
+#
+# [!] Y el fichero del ABI NO esta en `syscalls/surface/`, asi que hay que
+# leerlo aparte. Se exige que exista: si alguien lo mueve, esto PARA en vez de
+# comprobar contra una cadena vacia -- que es la trampa que ya documenta el
+# guardian de arriba.
+$abiHandleFile = Join-Path $root '..\platform\abi\bmo-abi\src\fundamentals\handle\opaque.rs'
+if (-not (Test-Path $abiHandleFile)) {
+    Fail ('no esta ' + $abiHandleFile + ' -- el formato del handle no se puede comprobar, y seguir seria fingir que si')
+}
+$abiHandle = Get-Content $abiHandleFile -Raw
+$capFile = Join-Path $root 'kernel\src\ring0\obj\cap.rs'
+if (-not (Test-Path $capFile)) { Fail ('no esta ' + $capFile) }
+$capSrc = Get-Content $capFile -Raw
+$fmtTodos = [regex]::Matches($capSrc, 'pub const\s+(HANDLE_\w+)\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|\d+)')
+if ($fmtTodos.Count -eq 0) {
+    Fail 'el kernel no declara ni una constante HANDLE_* -- el formato volvio a numeros a pelo'
+}
+foreach ($m in $fmtTodos) {
+    $name = $m.Groups[1].Value
+    $numK = $m.Groups[2].Value.ToUpperInvariant().Replace('_', '')
+    $abiMatch = [regex]::Match($abiHandle, ('pub const\s+' + $name + '\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|\d+)'))
+    if (-not $abiMatch.Success) {
+        Fail ('formato del handle: ' + $name + ' esta en el kernel y NO en el ABI')
+    }
+    if ($abiMatch.Groups[1].Value.ToUpperInvariant().Replace('_', '') -ne $numK) {
+        Fail ('formato del handle DISTINTO entre kernel y ABI: ' + $name)
+    }
+}
+Write-Host ('    formato del handle: ' + $fmtTodos.Count + ' campos, kernel y ABI dicen lo mismo') -ForegroundColor DarkGray
+
 # ** DOS OPERACIONES NO PUEDEN LLEVAR EL MISMO NUMERO.
 #
 # Y esto casi pasa el 2026-08-08: la autopsia se escribio en `0x1D` y `0x1E`,
