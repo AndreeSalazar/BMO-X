@@ -3,6 +3,9 @@ members = [
     "userland",
     "services/gui",
     "services/input",
+    # `medida/` no es `services/`: un servicio lo reclama alguien y vive
+    # mientras dure la sesion. Esto se ejecuta, contesta un numero y se muere.
+    "medida/coste",
 ]
 resolver = "2"
 
