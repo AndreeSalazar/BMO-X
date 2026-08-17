@@ -102,18 +102,29 @@ panel de la propia maquina.
 Es el unico camino **completo**: doble testigo, juez fuera del metal, tres filas
 con techo y meta, guardianes en el build.
 
-[!] ★ **Y sin embargo le falta la mitad de R-CENSO3: nadie ha contado cuantas
-puertas por segundo hace el escritorio.** El kernel ya lleva el contador
-(`Medida::puertas`), asi que la sonda es leerlo dos veces separadas por un
-segundo con el escritorio en marcha. **Es la medida mas barata que queda en todo
-el arbol y es la que le pone porcentaje a cinco tandas de trabajo.**
+### ✅ CONTESTADO EL 2026-08-17: la mitad que faltaba de R-CENSO3
 
-Mientras tanto, la aritmetica condicional:
+Decia aqui que **nadie habia contado cuantas puertas por segundo hace el
+escritorio**, y que era la medida mas barata que quedaba en el arbol. Ya esta
+hecha, y con ella el porcentaje de cinco tandas de trabajo:
 
 ```
-   [ARITMETICA]   10.000 puertas/s x 884  =  8,8 M ticks/s  =  0,24% de un nucleo
-                 100.000 puertas/s x 884  =   88 M ticks/s  =   2,4% de un nucleo
+   [MEDIDO]  uptime      41.698 ticks x 1 ms      =  41,7 s
+   [MEDIDO]  puertas     433.928, de las que ~393.000 son los dos metros
+   ---------------------------------------------------------------------
+             el sistema  ~40.700 en 41,7 s        =  ~976 puertas/segundo
+
+             976 x 945 ciclos = 922.000 ciclos/s de 4.513.000.000
+             = ** 0,02% DE UN NUCLEO **, o 204 us por segundo
 ```
+
+La aritmetica condicional que estaba escrita aqui apuntaba a 10.000-100.000
+puertas/s. **La realidad es diez veces menos que el extremo bajo.**
+
+★ Por R-CENSO1 --*"un camino que consume menos del 1% de un nucleo no se
+optimiza: se TACHA, y se anota el numero por el que se tacho"*-- este camino
+queda tachado **como cuello de botella**. Sigue vivo como CONTRATO, que es lo que
+la seccion de abajo ya decia antes de tener el numero.
 
 ★ **Por eso este camino queda como CONTRATO y no como cuello de botella.** Se
 optimiza porque es el suelo que paga toda operacion de toda aplicacion y porque
@@ -409,6 +420,7 @@ Y hay que decir las dos cosas, no una:
 
 | tachado | por que numero | vuelve al censo si... |
 |---|---|---|
+| ★ **la puerta (P1), como CUELLO DE BOTELLA** | **0,02% de un nucleo** -- 976 puertas/s x 945 ciclos, medido el 17-08 | una app cruce mas de **50.000 puertas/s**. Sigue VIVO como contrato: es el suelo que paga toda operacion de toda app futura |
 | cambio de contexto (P4) | 0,04% de un nucleo | el tick sube de 1.000 Hz, o el cambio se hace mas de 50.000 veces/s |
 | la entrada (P7) | 884 ticks = 0,19% de un microframe | jamas; el bus no va a acelerar |
 | el arranque (P8) | ocurre una vez | nunca, salvo que el arranque pase a ser interactivo |
