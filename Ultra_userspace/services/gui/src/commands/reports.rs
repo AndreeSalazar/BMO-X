@@ -608,9 +608,17 @@ pub(crate) fn report_system(s: &mut Output) {
     }
     s.with_ink(INK_PLAIN);
     s.byte(b'\n');
+    // ** Y la identidad del aparato SIGUE a su estado, dentro de la MISMA
+    // seccion. La primera tanda (17-08) saco dos secciones tituladas `disco` y
+    // con el teclado en medio: un nombre repetido no identifica nada, que es el
+    // mismo defecto que esta casa persigue en los ficheros.
+    //
+    // Arriba: esta listo y esta montado. Abajo: que aparato es y que exige. Son
+    // dos preguntas y por eso son dos bloques -- pero de UNA seccion, porque el
+    // que las busca busca "el disco".
+    report_disco(s);
 
     report_usb(s);
-    report_disco(s);
 }
 
 /// **EL CUADRO DE MANDOS DEL TECLADO**, el de `docs/componente/EL_TECLADO_EXIGE.md`,
@@ -723,8 +731,7 @@ fn aparato(s: &mut Output, nombre: &[u8], bits: u64, hay: u64, bomba: u64, corre
 /// Ver `docs/componente/EL_DISCO_EXIGE.md`.
 #[inline(never)]
 fn report_disco(s: &mut Output) {
-    section(s, b"disco");
-
+    // Sin `section`: esto va DENTRO de la seccion `disco`, detras de su estado.
     let medio = bmo::info(bmo::INFO_DISCO_MEDIO);
     let enlace = bmo::info(bmo::INFO_DISCO_ENLACE);
     let geo = bmo::info(bmo::INFO_DISCO_GEOMETRIA);
