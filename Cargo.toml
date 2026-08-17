@@ -18,6 +18,12 @@ members = [
     # rectangulos por fotograma tirados y el 7,2% de la pantalla sin escribir.
     # Un solo recorte para las tres orillas.
     "platform/shared/bmo-dibujo",
+    # El JUEZ de las medidas de ciclos. Vive aqui y no dentro del `.bex` que
+    # mide por la misma razon que la politica de foco vive en `bmo-input`: aqui
+    # se puede PROBAR. Un `.bex` es `no_main` para un target sin sistema
+    # operativo y no corre un test -- y el fallo del 16-08 costo un flasheo
+    # entero para descubrir algo que es una regla sobre numeros.
+    "platform/shared/bmo-juicio",
 
     # -- ABI (Foundation) --------------------------------------------
     "platform/abi/bmo-abi",
