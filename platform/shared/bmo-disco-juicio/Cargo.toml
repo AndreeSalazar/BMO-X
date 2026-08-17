@@ -1,0 +1,12 @@
+[package]
+name = "bmo-disco-juicio"
+version = "0.1.0"
+edition = "2021"
+description = "El juez del almacenamiento: el veredicto sobre un disco y el perfil de lo que no se puede preguntar"
+
+[lib]
+
+[dependencies]
+# Los hechos. Este crate NO lee el sector: recibe lo que las tres generaciones
+# de abajo ya nombraron, y es lo unico que opina encima (L7).
+bmo-identify = { path = "../../drivers/storage/identify" }

@@ -24,6 +24,11 @@ members = [
     # operativo y no corre un test -- y el fallo del 16-08 costo un flasheo
     # entero para descubrir algo que es una regla sobre numeros.
     "platform/shared/bmo-juicio",
+    # El JUEZ del almacenamiento, y por la misma razon que el de las medidas:
+    # aqui se puede PROBAR. En este componente equivocarse no da un fault en
+    # pantalla -- se lleva el trabajo de alguien, asi que toda la opinion del
+    # sistema sobre el disco vive bajo `cargo test`.
+    "platform/shared/bmo-disco-juicio",
 
     # -- ABI (Foundation) --------------------------------------------
     "platform/abi/bmo-abi",
@@ -55,6 +60,11 @@ members = [
     # ESTRATOS: el formato en disco del FS propio. Solo el FORMATO -- sin E/S,
     # para poder probarlo entero en el anfitrion antes de tocar un sector.
     "platform/drivers/storage/estratos",
+    # Lo que el disco CONTESTA. Tres generaciones que no opinan: la palabra en
+    # crudo, el campo con su sesgo, y la resta entre dos campos. Existe porque
+    # BMO-X razonaba sobre TRIM y sobre colas sin haber leido nunca la palabra
+    # que dice si el disco gira.
+    "platform/drivers/storage/identify",
     "platform/drivers/usb/input",
     "platform/drivers/usb/uhid",
     "platform/drivers/usb/uaudio",

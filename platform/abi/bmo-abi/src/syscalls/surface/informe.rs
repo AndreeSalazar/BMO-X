@@ -593,6 +593,154 @@ pub const USB_SALUD_EDAD_VIEJA: u64 = 0xFFFF;
 /// **apaga la luz**, que es justo el fallo que esta fila existe para no repetir.
 pub const INFO_USB_AVERIAS: u64 = 0x3C;
 
+// -- ** LO QUE EL DISCO CONTESTA (2026-08-17) -------------------------------
+//
+// Hasta hoy BMO-X le preguntaba al disco tres cosas --modelo, serie y
+// capacidad-- y **no sabia si su disco giraba**. Mientras tanto el arbol si
+// opinaba: el diseno de ESTRATOS razona sobre TRIM y la ley dice que un disco
+// *"da caudal cuando tiene cola"*. Ninguna de las dos frases es falsa; ninguna
+// estaba comprobada. Es L5 al reves -- hardcodea contratos, pregunta hechos.
+//
+// ** Los tres primeros campos son HECHOS y el cuarto es el VEREDICTO, y estan
+// separados a proposito (L7): quien pinte puede ensenar lo que dijo el aparato
+// aunque no este de acuerdo con lo que se concluyo de ello. Un veredicto sin su
+// evidencia al lado no se puede discutir.
+//
+// Los numeros y su origen: `docs/componente/EL_DISCO_EXIGE.md`.
+
+/// # `INFO_DISCO_MEDIO`: gira o no gira (palabra 217)
+///
+/// ```text
+///    0..15   la palabra 217 CRUDA, tal como la dio el disco
+///   16..17   0 no contesta - 1 NO ROTA - 2 ROTA - 3 valor reservado
+///   32..47   revoluciones por minuto, 0 si no rota o no contesta
+/// ```
+///
+/// ** **`no contesta` es un estado propio y no se colapsa a "es un HDD".** Los
+/// SSD tempranos devolvian `0000h`, y por eso Windows 7 no se fio de esta
+/// palabra sola: cruzaba su valor con una prueba real de lectura aleatoria. Es
+/// R-FW2 --*lo que el firmware declara se comprueba contra lo que el aparato
+/// hace*-- once anos antes de que esta casa la escribiera.
+///
+/// La palabra cruda viaja al lado del veredicto porque un rango reservado hay
+/// que poder verlo, no deducirlo.
+pub const INFO_DISCO_MEDIO: u64 = 0x3F;
+
+pub const DISCO_MEDIO_CRUDO_MASK: u64 = 0xFFFF;
+pub const DISCO_MEDIO_CLASE_SHIFT: u64 = 16;
+pub const DISCO_MEDIO_CLASE_MASK: u64 = 0x3;
+pub const DISCO_MEDIO_NO_CONTESTA: u64 = 0;
+pub const DISCO_MEDIO_NO_ROTA: u64 = 1;
+pub const DISCO_MEDIO_ROTA: u64 = 2;
+pub const DISCO_MEDIO_RESERVADO: u64 = 3;
+pub const DISCO_MEDIO_RPM_SHIFT: u64 = 32;
+pub const DISCO_MEDIO_RPM_MASK: u64 = 0xFFFF;
+
+/// # `INFO_DISCO_ENLACE`: el cable y la cola (palabras 75, 76 y 77)
+///
+/// ```text
+///    0..2    generaciones SOPORTADAS: bit0 Gen1, bit1 Gen2, bit2 Gen3
+///    4..6    generacion NEGOCIADA (1..3). 0 = el disco no lo dice
+///    8       NCQ soportado
+///   16..23   profundidad de cola, ** con el sesgo de -1 ya deshecho **
+///   24..31   ranuras que BMO usa de verdad hoy
+///   32..39   ranuras OCIOSAS: la resta de las dos de arriba
+/// ```
+///
+/// ** **Soportado y negociado son dos campos porque son dos preguntas.** Un
+/// disco Gen3 en un puerto Gen2 declara 3 y corre a 2; quedarse con la 76 da un
+/// techo que no existe.
+///
+/// ** Y las ranuras usadas viajan aqui, junto a las que el disco admite, para
+/// que **la resta se vea sin leer codigo**: hoy son 1 de 32.
+pub const INFO_DISCO_ENLACE: u64 = 0x40;
+
+pub const DISCO_ENLACE_GEN1: u64 = 1 << 0;
+pub const DISCO_ENLACE_GEN2: u64 = 1 << 1;
+pub const DISCO_ENLACE_GEN3: u64 = 1 << 2;
+pub const DISCO_ENLACE_NEGOCIADA_SHIFT: u64 = 4;
+pub const DISCO_ENLACE_NEGOCIADA_MASK: u64 = 0x7;
+pub const DISCO_ENLACE_NCQ: u64 = 1 << 8;
+pub const DISCO_ENLACE_COLA_SHIFT: u64 = 16;
+pub const DISCO_ENLACE_COLA_MASK: u64 = 0xFF;
+pub const DISCO_ENLACE_USADAS_SHIFT: u64 = 24;
+pub const DISCO_ENLACE_USADAS_MASK: u64 = 0xFF;
+pub const DISCO_ENLACE_OCIOSAS_SHIFT: u64 = 32;
+pub const DISCO_ENLACE_OCIOSAS_MASK: u64 = 0xFF;
+
+/// # `INFO_DISCO_GEOMETRIA`: el sector fisico y donde cae el LBA 0
+///
+/// ```text
+///    0..3    ** EXPONENTE **: hay 2^n sectores logicos en uno fisico
+///    4       la palabra 106 paso su guarda (bit15=0 y bit14=1)
+///    8..21   desplazamiento del LBA 0 dentro del primer sector fisico
+///   22       la palabra 209 paso su guarda
+///   23       TRIM soportado (palabra 169 bit 0)
+/// ```
+///
+/// ** **Los bits 0..3 son un exponente, no una cuenta**: un `3` son OCHO
+/// sectores logicos por fisico. Es la misma familia de campo que el `bInterval`
+/// del teclado, que se leyo como numero siendo exponente y dejo un teclado
+/// sondeado cada 35 minutos (R-DISCO2).
+///
+/// ** El desplazamiento existe por la herencia de MS-DOS: la primera particion
+/// empezaba en el **LBA 63**, que no es multiplo de 8, asi que sobre un disco de
+/// 4096 B fisicos cada escritura de 4 KB caia a caballo de dos sectores. Le
+/// importa a ESTRATOS porque su log crece en bloques de 4096: **desalineado,
+/// cada avance paga dos sectores fisicos en vez de uno, en silencio.**
+pub const INFO_DISCO_GEOMETRIA: u64 = 0x41;
+
+pub const DISCO_GEO_EXP_MASK: u64 = 0xF;
+pub const DISCO_GEO_106_VALIDA: u64 = 1 << 4;
+pub const DISCO_GEO_DESPL_SHIFT: u64 = 8;
+pub const DISCO_GEO_DESPL_MASK: u64 = 0x3FFF;
+pub const DISCO_GEO_209_VALIDA: u64 = 1 << 22;
+pub const DISCO_GEO_TRIM: u64 = 1 << 23;
+
+/// # `INFO_DISCO_JUICIO`: el veredicto -- y es el unico campo que OPINA
+///
+/// ```text
+///    0       hay PERFIL para este disco
+///    1       medio solido CONFIRMADO (no basta con que el perfil lo diga)
+///    2       ** la barrera FLUSH CACHE es lo unico que hay **
+///    3       el recolector puede avisar al disco (TRIM)
+///    4       el rendimiento del perfil esta MEDIDO, no es de catalogo
+///    5       solido SIN TRIM  -- R-DISCO10
+///    6       desalineado
+///    7       el enlace negocio por debajo de lo que el disco sabe hacer
+///    8..15   ranuras ociosas
+///   16..47   frontera de escritura en KiB. ** 0 = no se puede alinear **
+/// ```
+///
+/// Lo emite `bmo-disco-juicio`, que vive en `platform/shared/` y no en el
+/// kernel **porque alli se puede probar** (L7b). En este componente equivocarse
+/// no da un fault en pantalla: se lleva el trabajo de alguien.
+///
+/// ** **El bit 2 vale 1 tambien cuando NO hay perfil**, y ese es el diseno: no
+/// saber si el disco tiene condensadores **no autoriza a suponer que los
+/// tiene**. Un juez de rendimiento que se calla deja una cifra sin publicar; uno
+/// de almacenamiento que se calla tiene que dejar el sistema en el camino que no
+/// pierde datos.
+///
+/// ** Y la frontera contesta **0 sin perfil** en vez de un valor por defecto: el
+/// bloque de borrado no lo expone ningun SSD de consumo (R-DISCO8), asi que sin
+/// perfil no se alinea a nada -- y quien escriba tiene que saberlo en vez de
+/// alinear a un numero inventado.
+pub const INFO_DISCO_JUICIO: u64 = 0x42;
+
+pub const DISCO_JUICIO_HAY_PERFIL: u64 = 1 << 0;
+pub const DISCO_JUICIO_SOLIDO: u64 = 1 << 1;
+pub const DISCO_JUICIO_SOLO_BARRERA: u64 = 1 << 2;
+pub const DISCO_JUICIO_TRIM: u64 = 1 << 3;
+pub const DISCO_JUICIO_MEDIDO: u64 = 1 << 4;
+pub const DISCO_JUICIO_SOLIDO_SIN_TRIM: u64 = 1 << 5;
+pub const DISCO_JUICIO_DESALINEADO: u64 = 1 << 6;
+pub const DISCO_JUICIO_ENLACE_BAJO: u64 = 1 << 7;
+pub const DISCO_JUICIO_OCIOSAS_SHIFT: u64 = 8;
+pub const DISCO_JUICIO_OCIOSAS_MASK: u64 = 0xFF;
+pub const DISCO_JUICIO_FRONTERA_SHIFT: u64 = 16;
+pub const DISCO_JUICIO_FRONTERA_MASK: u64 = 0xFFFF_FFFF;
+
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 

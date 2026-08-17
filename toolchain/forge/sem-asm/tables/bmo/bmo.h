@@ -160,6 +160,33 @@
  * el suelo se mide, el multiplicador se escribe. */
 #define BMO_INFO_SUELO_CRUCE             0x3E
 
+/* -- ** LO QUE EL DISCO CONTESTA (2026-08-17) ------------------------
+ *
+ * Tres filas de HECHOS y una de VEREDICTO. Hasta hoy BMO-X le preguntaba al
+ * disco modelo, serie y capacidad, y **no sabia si giraba** -- mientras el
+ * diseno de ESTRATOS razonaba sobre TRIM y la ley sobre colas. Ninguna de esas
+ * frases era falsa; ninguna estaba comprobada.
+ *
+ * Capitulo con los numeros: docs/componente/EL_DISCO_EXIGE.md
+ *
+ * MEDIO      0..15 palabra 217 cruda | 16..17 clase | 32..47 rpm
+ *            clase: 0 no contesta, 1 NO ROTA, 2 ROTA, 3 reservado
+ * ENLACE     0..2 gen soportadas | 4..6 gen negociada | 8 NCQ
+ *            16..23 cola (sesgo -1 ya deshecho) | 24..31 usadas | 32..39 ociosas
+ * GEOMETRIA  0..3 EXPONENTE 2^n logicos por fisico | 4 la 106 valia
+ *            8..21 desplazamiento LBA 0 | 22 la 209 valia | 23 TRIM
+ * JUICIO     0 hay perfil | 1 solido confirmado | 2 la barrera es lo unico
+ *            3 TRIM | 4 rendimiento medido | 5 solido sin trim | 6 desalineado
+ *            7 enlace por debajo | 8..15 ociosas | 16..47 frontera en KiB
+ *
+ * [!] Bit 2 de JUICIO vale 1 tambien SIN perfil: no saber si el disco tiene
+ * condensadores no autoriza a suponer que los tiene. Y la frontera contesta 0
+ * en vez de un valor por defecto -- sin perfil no se alinea a nada. */
+#define BMO_INFO_DISCO_MEDIO             0x3F
+#define BMO_INFO_DISCO_ENLACE            0x40
+#define BMO_INFO_DISCO_GEOMETRIA         0x41
+#define BMO_INFO_DISCO_JUICIO            0x42
+
 /* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
  *
  * Cuantas filas cubre el censo, y dos mascaras sobre ESA lista en ESE orden:

@@ -103,6 +103,13 @@ name = "bmo-dibujo"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-disco-juicio"
+version = "0.1.0"
+dependencies = [
+ "bmo-identify",
+]
+
+[[package]]
 name = "bmo-estratos"
 version = "0.1.0"
 dependencies = [
@@ -145,6 +152,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-identify"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-input"
 version = "0.1.0"
 
@@ -163,9 +174,11 @@ dependencies = [
  "bmo-channel",
  "bmo-ciudad",
  "bmo-dibujo",
+ "bmo-disco-juicio",
  "bmo-estratos",
  "bmo-fat32",
  "bmo-hash",
+ "bmo-identify",
  "bmo-input",
  "bmo-net",
  "bmo-particiones",

@@ -191,6 +191,22 @@ const INFO_FUGAS: u64 = 0x1E;
 // el empaquetado se documentan en `dev/usb/salud.rs`.
 const INFO_USB_SALUD: u64 = 0x3B;
 const INFO_USB_AVERIAS: u64 = 0x3C;
+
+// -- ** LO QUE EL DISCO CONTESTA, y el veredicto sobre el (2026-08-17) -------
+//
+// Tres filas de HECHOS y una de VEREDICTO, y separadas a proposito: quien pinte
+// puede ensenar lo que dijo el aparato aunque no este de acuerdo con lo que se
+// concluyo. Un veredicto sin su evidencia al lado no se puede discutir.
+//
+// El reparto vive fuera de este fichero y en cuatro generaciones (L7): la
+// palabra cruda y los campos en `bmo-identify`, el veredicto en
+// `bmo-disco-juicio` --que esta en `platform/shared/` porque **alli se puede
+// probar**, y en este componente equivocarse se lleva el trabajo de alguien.
+// Aqui solo se empaqueta. Capitulo: `docs/componente/EL_DISCO_EXIGE.md`.
+const INFO_DISCO_MEDIO: u64 = 0x3F;
+const INFO_DISCO_ENLACE: u64 = 0x40;
+const INFO_DISCO_GEOMETRIA: u64 = 0x41;
+const INFO_DISCO_JUICIO: u64 = 0x42;
 /// La fecha de la placa, empaquetada. Espejo de `bmo_abi::...::INFO_FECHA`.
 const INFO_FECHA: u64 = 0x1F;
 
@@ -436,6 +452,14 @@ pub fn campo(n: u64) -> u64 {
         // pregunta, y su MMIO no esta ahi. Ver `dev/usb/salud.rs`.
         INFO_USB_SALUD => crate::ring0::dev::usb::salud::estado(),
         INFO_USB_AVERIAS => crate::ring0::dev::usb::salud::averias(),
+        // * Las cuatro leen la foto que dejo `identify()` en el arranque, no el
+        // aparato: mandar un IDENTIFY aqui seria hablarle al disco con el CR3
+        // del programa que pregunta, y ademas robarle la unica ranura de
+        // comando a quien la tuviera. Es la misma razon que las dos del USB.
+        INFO_DISCO_MEDIO => crate::ring0::dev::disk::medio(),
+        INFO_DISCO_ENLACE => crate::ring0::dev::disk::enlace(),
+        INFO_DISCO_GEOMETRIA => crate::ring0::dev::disk::geometria(),
+        INFO_DISCO_JUICIO => crate::ring0::dev::disk::juicio(),
         _ => 0,
     }
 }

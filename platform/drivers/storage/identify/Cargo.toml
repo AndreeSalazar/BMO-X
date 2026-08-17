@@ -1,0 +1,13 @@
+[package]
+name = "bmo-identify"
+version = "0.1.0"
+edition = "2021"
+description = "Lo que el disco CONTESTA: el IDENTIFY DEVICE repartido por herencia (abuelo/padre/hijo)"
+
+[lib]
+
+# Sin dependencias, y es una propiedad del diseno, no una casualidad: este crate
+# recibe 512 bytes y devuelve campos. No manda comandos, no toca registros y no
+# decide nada -- por eso se prueba entero en el anfitrion con sectores
+# inventados a mano. El VEREDICTO vive en `bmo-disco-juicio` (L7b).
+[dependencies]

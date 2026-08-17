@@ -610,6 +610,7 @@ pub(crate) fn report_system(s: &mut Output) {
     s.byte(b'\n');
 
     report_usb(s);
+    report_disco(s);
 }
 
 /// **EL CUADRO DE MANDOS DEL TECLADO**, el de `docs/componente/EL_TECLADO_EXIGE.md`,
@@ -707,6 +708,187 @@ fn aparato(s: &mut Output, nombre: &[u8], bits: u64, hay: u64, bomba: u64, corre
     }
     s.with_ink(INK_PLAIN);
     s.byte(b'\n');
+}
+
+/// ** EL DISCO: lo que CONTESTA, y luego lo que se concluye de ello.
+///
+/// El orden no es decorativo. Primero los hechos --gira, el cable, la
+/// geometria-- y **despues** el veredicto, porque asi se puede estar en
+/// desacuerdo con la conclusion sin perder la evidencia. Un veredicto que
+/// aparece sin lo que lo sostiene no se puede discutir, solo creer.
+///
+/// ** Y la primera linea es la que hasta el 2026-08-17 no existia: BMO-X le
+/// preguntaba al disco modelo, serie y capacidad, y **no sabia si giraba** --
+/// mientras el diseno de ESTRATOS razonaba sobre TRIM y la ley sobre colas.
+/// Ver `docs/componente/EL_DISCO_EXIGE.md`.
+#[inline(never)]
+fn report_disco(s: &mut Output) {
+    section(s, b"disco");
+
+    let medio = bmo::info(bmo::INFO_DISCO_MEDIO);
+    let enlace = bmo::info(bmo::INFO_DISCO_ENLACE);
+    let geo = bmo::info(bmo::INFO_DISCO_GEOMETRIA);
+    let juicio = bmo::info(bmo::INFO_DISCO_JUICIO);
+
+    // Sin foto no se inventa nada: se dice que no la hay y se sale.
+    if medio == 0 && enlace == 0 && geo == 0 {
+        label(s, b"identify");
+        s.with_ink(INK_ERR);
+        s.text(b"este kernel no lee las palabras del disco (o el IDENTIFY fallo)\n");
+        s.with_ink(INK_PLAIN);
+        return;
+    }
+
+    // -- EL MEDIO. La palabra 217, y su valor crudo al lado.
+    let clase = (medio >> bmo::DISCO_MEDIO_CLASE_SHIFT) & bmo::DISCO_MEDIO_CLASE_MASK;
+    let rpm = (medio >> bmo::DISCO_MEDIO_RPM_SHIFT) & bmo::DISCO_MEDIO_RPM_MASK;
+    label(s, b"medio");
+    match clase {
+        bmo::DISCO_MEDIO_NO_ROTA => {
+            s.with_ink(INK_GOOD);
+            s.text(b"ESTADO SOLIDO -- no paga busqueda de cabezal");
+        }
+        bmo::DISCO_MEDIO_ROTA => {
+            s.with_ink(INK_PLAIN);
+            s.text(b"ROTACIONAL, ");
+            s.dec(rpm);
+            s.text(b" rpm -- el ORDEN de los sectores manda");
+        }
+        bmo::DISCO_MEDIO_NO_CONTESTA => {
+            s.with_ink(INK_ERR);
+            s.text(b"el disco NO DICE si gira (217 = 0) -- no se asume nada");
+        }
+        _ => {
+            s.with_ink(INK_ERR);
+            s.text(b"la palabra 217 trae un valor RESERVADO: ");
+            s.hex(medio & bmo::DISCO_MEDIO_CRUDO_MASK, 4);
+        }
+    }
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+
+    // -- EL CABLE. Soportado y negociado son dos preguntas.
+    label(s, b"cable");
+    let mejor = if enlace & bmo::DISCO_ENLACE_GEN3 != 0 { 3 }
+        else if enlace & bmo::DISCO_ENLACE_GEN2 != 0 { 2 }
+        else if enlace & bmo::DISCO_ENLACE_GEN1 != 0 { 1 } else { 0 };
+    let nego = (enlace >> bmo::DISCO_ENLACE_NEGOCIADA_SHIFT)
+        & bmo::DISCO_ENLACE_NEGOCIADA_MASK;
+    s.text(b"SATA Gen");
+    s.dec(mejor);
+    s.text(b" soportado / ");
+    if nego == 0 {
+        s.text(b"el disco no dice a que velocidad va");
+    } else {
+        s.text(b"Gen");
+        s.dec(nego);
+        s.text(b" negociado");
+    }
+    if juicio & bmo::DISCO_JUICIO_ENLACE_BAJO != 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"   POR DEBAJO");
+        s.with_ink(INK_PLAIN);
+    }
+    s.byte(b'\n');
+
+    // -- ** LA COLA. La resta que dice cuanto del aparato esta parado.
+    let cola = (enlace >> bmo::DISCO_ENLACE_COLA_SHIFT) & bmo::DISCO_ENLACE_COLA_MASK;
+    let usadas = (enlace >> bmo::DISCO_ENLACE_USADAS_SHIFT) & bmo::DISCO_ENLACE_USADAS_MASK;
+    let ociosas = (enlace >> bmo::DISCO_ENLACE_OCIOSAS_SHIFT) & bmo::DISCO_ENLACE_OCIOSAS_MASK;
+    label(s, b"cola");
+    s.text(b"el disco admite ");
+    s.dec(cola);
+    s.text(b", BMO usa ");
+    s.dec(usadas);
+    if enlace & bmo::DISCO_ENLACE_NCQ == 0 {
+        s.text(b"   (sin NCQ)");
+    } else if ociosas > 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"   ");
+        s.dec(ociosas);
+        s.text(b" RANURAS PARADAS");
+        s.with_ink(INK_PLAIN);
+    }
+    s.byte(b'\n');
+
+    // -- LA GEOMETRIA. El exponente, no una cuenta.
+    label(s, b"sector");
+    if geo & bmo::DISCO_GEO_106_VALIDA == 0 {
+        s.text(b"el disco no declara geometria (palabra 106 sin guarda)");
+    } else {
+        let exp = geo & bmo::DISCO_GEO_EXP_MASK;
+        s.dec(1u64 << exp);
+        s.text(b" logicos por fisico = ");
+        s.dec(512u64 << exp);
+        s.text(b" B");
+        if geo & bmo::DISCO_GEO_209_VALIDA != 0 {
+            let d = (geo >> bmo::DISCO_GEO_DESPL_SHIFT) & bmo::DISCO_GEO_DESPL_MASK;
+            s.text(b", LBA 0 desplazado ");
+            s.dec(d);
+        }
+    }
+    s.byte(b'\n');
+
+    // -- EL VEREDICTO, y va detras de sus hechos a proposito.
+    label(s, b"perfil");
+    if juicio & bmo::DISCO_JUICIO_HAY_PERFIL == 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"SIN PERFIL para este disco -- se toma el camino conservador");
+    } else {
+        s.with_ink(INK_GOOD);
+        s.text(b"reconocido");
+        s.with_ink(INK_PLAIN);
+        if juicio & bmo::DISCO_JUICIO_MEDIDO == 0 {
+            s.text(b"   (sus cifras son de CATALOGO, no medidas)");
+        }
+    }
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+
+    label(s, b"trim");
+    if juicio & bmo::DISCO_JUICIO_SOLIDO_SIN_TRIM != 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"NO -- y el medio es solido: el recolector no puede avisar al disco");
+    } else if juicio & bmo::DISCO_JUICIO_TRIM != 0 {
+        s.with_ink(INK_GOOD);
+        s.text(b"si");
+    } else {
+        s.text(b"no (y el medio no lo necesita)");
+    }
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+
+    // ** La linea que no puede faltar el dia que se escriba de verdad.
+    label(s, b"barrera");
+    if juicio & bmo::DISCO_JUICIO_SOLO_BARRERA != 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"el FLUSH CACHE es LO UNICO: este disco no termina lo que empezo");
+    } else {
+        s.with_ink(INK_GOOD);
+        s.text(b"el disco tiene con que terminar un corte de corriente");
+    }
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+
+    label(s, b"alinear a");
+    let frontera = (juicio >> bmo::DISCO_JUICIO_FRONTERA_SHIFT)
+        & bmo::DISCO_JUICIO_FRONTERA_MASK;
+    if frontera == 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"NO SE PUEDE: el bloque de borrado no se le puede preguntar a un disco");
+    } else {
+        s.dec(frontera);
+        s.text(b" KiB   (declarado por el perfil, no leido)");
+    }
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+
+    if juicio & bmo::DISCO_JUICIO_DESALINEADO != 0 {
+        label(s, b"AVISO");
+        s.with_ink(INK_ERR);
+        s.text(b"LBA 0 no cae en frontera fisica: cada escritura paga dos sectores\n");
+        s.with_ink(INK_PLAIN);
+    }
 }
 
 /// Un contador que tiene que dar cero, con su motivo al lado cuando no lo da.

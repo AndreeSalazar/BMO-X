@@ -346,6 +346,71 @@ pub const INFO_FECHA: u64 = 0x1F;
 /// muriera. `USB_SALUD_EDAD_VIEJA` = hace mucho, o no hay reloj.
 pub const INFO_USB_SALUD: u64 = 0x3B;
 
+// -- ** LO QUE EL DISCO CONTESTA (2026-08-17) -------------------------------
+//
+// Cuatro filas: tres de HECHOS y una de VEREDICTO. Hasta hoy BMO-X preguntaba
+// modelo, serie y capacidad, y **no sabia si su disco giraba** -- mientras el
+// arbol razonaba sobre TRIM y sobre colas. El empaquetado se documenta en
+// `bmo-abi`; el porque, en `docs/componente/EL_DISCO_EXIGE.md`.
+
+/// Gira o no gira (palabra 217). `0..15` la palabra cruda, `16..17` la clase,
+/// `32..47` las RPM. ** `no contesta` es una clase propia y NO significa HDD.
+pub const INFO_DISCO_MEDIO: u64 = 0x3F;
+pub const DISCO_MEDIO_CRUDO_MASK: u64 = 0xFFFF;
+pub const DISCO_MEDIO_CLASE_SHIFT: u64 = 16;
+pub const DISCO_MEDIO_CLASE_MASK: u64 = 0x3;
+pub const DISCO_MEDIO_NO_CONTESTA: u64 = 0;
+pub const DISCO_MEDIO_NO_ROTA: u64 = 1;
+pub const DISCO_MEDIO_ROTA: u64 = 2;
+pub const DISCO_MEDIO_RESERVADO: u64 = 3;
+pub const DISCO_MEDIO_RPM_SHIFT: u64 = 32;
+pub const DISCO_MEDIO_RPM_MASK: u64 = 0xFFFF;
+
+/// El cable y la cola. Soportado (76) y negociado (77) son campos distintos
+/// porque son dos preguntas, y las ranuras USADAS viajan al lado de las que el
+/// disco admite para que la resta se vea sin leer codigo: hoy 1 de 32.
+pub const INFO_DISCO_ENLACE: u64 = 0x40;
+pub const DISCO_ENLACE_GEN1: u64 = 1 << 0;
+pub const DISCO_ENLACE_GEN2: u64 = 1 << 1;
+pub const DISCO_ENLACE_GEN3: u64 = 1 << 2;
+pub const DISCO_ENLACE_NEGOCIADA_SHIFT: u64 = 4;
+pub const DISCO_ENLACE_NEGOCIADA_MASK: u64 = 0x7;
+pub const DISCO_ENLACE_NCQ: u64 = 1 << 8;
+pub const DISCO_ENLACE_COLA_SHIFT: u64 = 16;
+pub const DISCO_ENLACE_COLA_MASK: u64 = 0xFF;
+pub const DISCO_ENLACE_USADAS_SHIFT: u64 = 24;
+pub const DISCO_ENLACE_USADAS_MASK: u64 = 0xFF;
+pub const DISCO_ENLACE_OCIOSAS_SHIFT: u64 = 32;
+pub const DISCO_ENLACE_OCIOSAS_MASK: u64 = 0xFF;
+
+/// El sector fisico y donde cae el LBA 0. ** Los bits `0..3` son un EXPONENTE:
+/// un 3 son OCHO sectores logicos por fisico, no tres.
+pub const INFO_DISCO_GEOMETRIA: u64 = 0x41;
+pub const DISCO_GEO_EXP_MASK: u64 = 0xF;
+pub const DISCO_GEO_106_VALIDA: u64 = 1 << 4;
+pub const DISCO_GEO_DESPL_SHIFT: u64 = 8;
+pub const DISCO_GEO_DESPL_MASK: u64 = 0x3FFF;
+pub const DISCO_GEO_209_VALIDA: u64 = 1 << 22;
+pub const DISCO_GEO_TRIM: u64 = 1 << 23;
+
+/// El veredicto, y es el unico campo que opina. ** `SOLO_BARRERA` vale 1
+/// tambien sin perfil: no saber si el disco tiene condensadores no autoriza a
+/// suponer que los tiene. Y la frontera contesta 0 en vez de un valor por
+/// defecto -- sin perfil no se alinea a un numero inventado.
+pub const INFO_DISCO_JUICIO: u64 = 0x42;
+pub const DISCO_JUICIO_HAY_PERFIL: u64 = 1 << 0;
+pub const DISCO_JUICIO_SOLIDO: u64 = 1 << 1;
+pub const DISCO_JUICIO_SOLO_BARRERA: u64 = 1 << 2;
+pub const DISCO_JUICIO_TRIM: u64 = 1 << 3;
+pub const DISCO_JUICIO_MEDIDO: u64 = 1 << 4;
+pub const DISCO_JUICIO_SOLIDO_SIN_TRIM: u64 = 1 << 5;
+pub const DISCO_JUICIO_DESALINEADO: u64 = 1 << 6;
+pub const DISCO_JUICIO_ENLACE_BAJO: u64 = 1 << 7;
+pub const DISCO_JUICIO_OCIOSAS_SHIFT: u64 = 8;
+pub const DISCO_JUICIO_OCIOSAS_MASK: u64 = 0xFF;
+pub const DISCO_JUICIO_FRONTERA_SHIFT: u64 = 16;
+pub const DISCO_JUICIO_FRONTERA_MASK: u64 = 0xFFFF_FFFF;
+
 pub const USB_SALUD_XHCI: u64 = 1 << 0;
 pub const USB_SALUD_KBD: u64 = 1 << 1;
 /// El teclado tiene transferencia ENCOLADA. Sin esto esta enumerado, en

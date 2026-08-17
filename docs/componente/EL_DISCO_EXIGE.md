@@ -17,29 +17,56 @@
 
 ---
 
-## 0. LA FRASE QUE ORDENA EL DOCUMENTO
+## 0. LA FRASE QUE ORDENABA EL DOCUMENTO -- ✅ CERRADA EL 17-08
 
-**BMO-X no sabe si su disco gira.** Nunca lo ha preguntado.
+**BMO-X no sabia si su disco giraba.** Nunca lo habia preguntado.
 
 ```
-   lo que se le pregunta hoy al IDENTIFY   (dev/disk/mod.rs::identify)
-      palabras 27..46    modelo
-      palabras 10..19    numero de serie
-      palabras 100..103  sectores direccionables
+   lo que se le preguntaba          modelo (27..46), serie (10..19),
+                                    sectores (100..103)
 
-   lo que NO se le pregunta, y decide el diseno entero de la escritura
+   lo que NO, y decide el diseno entero de la escritura
       palabra 217        ** ROTACIONAL O NO **   <- a una palabra de distancia
       palabra 169 bit 0  soporta TRIM
-      palabra 106        tamano de sector FISICO (4Kn / 512e)
-      palabra 76         generacion SATA negociada
+      palabras 106/209   sector FISICO y alineacion del LBA 0
+      palabras 76 / 77   generacion SATA soportada / NEGOCIADA
       palabra 75         profundidad de cola
 ```
 
-Y sin embargo el arbol **si tiene una opinion** sobre el asunto: `ESTRATOS.md`
-habla de soltar bloques *"o el SSD sigue creyendo"*, y la ley dice que un disco
-*"da caudal cuando tiene cola"*. O sea que el diseno **da por hecho** lo que el
-codigo no ha comprobado. Es L5 al reves --*hardcodea contratos, pregunta
-hechos*-- y aqui el hecho esta a una lectura de 16 bits.
+Y sin embargo el arbol **si tenia una opinion**: `ESTRATOS.md` habla de soltar
+bloques *"o el SSD sigue creyendo"*, y la ley dice que un disco *"da caudal
+cuando tiene cola"*. O sea que el diseno **daba por hecho** lo que el codigo no
+habia comprobado. Es L5 al reves --*hardcodea contratos, pregunta hechos*-- y el
+hecho estaba a una lectura de 16 bits **en un buffer que ya se pedia**.
+
+### ✅ Lo que hay hoy, y donde vive
+
+Las siete palabras se leen, y el reparto sigue L7 --cada generacion ignora para
+que sirve la de arriba, que es lo que hace **falsable** cada afirmacion sobre
+este disco:
+
+```
+   abuelo   bmo-identify::abuelo    la PALABRA n y el intercambio de bytes.
+                                    No sabe que significa ninguna
+   padre    bmo-identify::padre     Medio, Cola, Enlace, Geometria, Trim: una
+                                    palabra, su sesgo y su guarda cada uno
+   hijo     bmo-identify::hijo      Contraste: las restas entre dos del padre
+   nieto    bmo-disco-juicio        el VEREDICTO y el PERFIL. En
+                                    `platform/shared/`, con `cargo test` (L7b)
+```
+
+**45 pruebas de anfitrion**, y el kernel solo pega: `dev/disk/perfil.rs` toma la
+foto en el arranque y la empaqueta en cuatro campos de `OP_INFO`
+--`DISCO_MEDIO`, `DISCO_ENLACE`, `DISCO_GEOMETRIA` y `DISCO_JUICIO`-- que
+`info` pinta en la seccion `disco`.
+
+★ **Los tres primeros son HECHOS y el cuarto es el VEREDICTO, separados a
+proposito**: asi se puede estar en desacuerdo con la conclusion sin perder la
+evidencia. Un veredicto que aparece sin lo que lo sostiene no se puede discutir,
+solo creer.
+
+[!] **Nada de esto ha tocado un CPU todavia.** Compila, pasa sus pruebas y esta
+razonado. Lo que la primera tanda contesta esta en la section 10.
 
 ---
 
@@ -359,7 +386,57 @@ obligatoriamente es tambien el unico que se puede **cazar por su sombra**.
 
 ---
 
-## 10. EL PRECIO
+## 10. ★ LA PRIMERA TANDA: que contesta, y que descarta cada respuesta
+
+Arrancar y escribir `info`, seccion `disco`. Cinco lineas, y **cada una descarta
+algo distinto** -- ninguna es decorativa.
+
+```text
+   medio     ESTADO SOLIDO            lo esperado. Confirma la palabra 217
+             ROTACIONAL, n rpm        ** el disco de BMO no es el que creemos
+             el disco NO DICE si gira  R-DISCO6 se cumple igual: no se asume.
+                                       Pasa en SSD tempranos, y entonces hace
+                                       falta la prueba de Windows 7 -- medir
+             valor RESERVADO           el disco dice algo fuera de la spec
+
+   cable     Gen3 soportado / Gen3 negociado    lo esperado
+             ... / Gen2 negociado  POR DEBAJO   ** es el CABLE o el puerto,
+                                                no el disco. Se arregla con la
+                                                mano, no con codigo
+
+   cola      el disco admite 32, BMO usa 1  ->  31 RANURAS PARADAS
+             ** Si dice otra cosa que 32, el techo de la tanda de escritura
+             es otro y hay que rehacer la cuenta
+
+   sector    1 logico por fisico = 512 B    un disco clasico
+             8 logicos por fisico = 4096 B  ** ENTONCES LA ALINEACION IMPORTA,
+             + LBA 0 desplazado n           y el aviso de abajo tiene que salir
+
+   perfil    reconocido (cifras de CATALOGO)   lo esperado hoy
+             SIN PERFIL                        ** la identidad no cuadra: la
+                                               linea trae lo esperado y lo
+                                               leido, y se arregla cambiando
+                                               una cifra en `perfil.rs`
+```
+
+★★ **Y las dos que tienen que salir en rojo, porque son verdad:**
+
+```text
+   trim      si                       (y aun asi el recolector no lo manda)
+   barrera   el FLUSH CACHE es LO UNICO: este disco no termina lo que empezo
+```
+
+La segunda **no es un fallo que arreglar**: es la ficha de este aparato dicha en
+voz alta, y tiene que estar delante el dia que ESTRATOS escriba contenido. Si
+algun dia sale la otra frase sin cambiar de disco, el que miente es el perfil.
+
+[!] Lo que esta tanda **no** contesta: ninguna cifra de rendimiento. Las cuatro
+del perfil siguen siendo `[CATALOGO]` hasta que corra la sonda de la section 8 --
+y `info` lo dice al lado del perfil en vez de callarlo.
+
+---
+
+## 11. EL PRECIO
 
 De C6 en la ley, y sigue siendo el mejor resumen de por que este componente no
 se razona: `PI` declaraba los puertos 0,1,4,5 y el disco estaba en el 2. Y la
