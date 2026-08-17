@@ -70,9 +70,15 @@ const OP_INFO: u64 = 0x13;
 const OP_MI_PAQUETE: u64 = 0x25;
 const ARCH_TAMANO: u64 = 0x03;
 const ARCH_CERRAR: u64 = 0x04;
-/// Un campo cualquiera de `OP_INFO`. Da igual cual: lo que se mide es la
-/// operacion, no el dato.
-const CAMPO_TICKS: u64 = 0x0C;
+/// **`INFO_TICKS`, y el numero importa.**
+///
+/// La primera sonda paso `0` aqui creyendo que *"da igual el campo, lo que se
+/// mide es la operacion"*. Falso: los campos de `OP_INFO` empiezan en `0x01`,
+/// asi que el `0` cae en el brazo por defecto (`_ => 0` en `report.rs`) y lo
+/// que se midio fue **un rechazo**, el camino mas corto que existe dentro de
+/// `INFO`. Por eso salio 784 contra los 870 de `PID`: una operacion "mas
+/// gorda" que resulto mas barata que la barata.
+const CAMPO_TICKS: u64 = 0x0B;
 
 // ===================== EL INSTRUMENTO, EN INSTRUCCIONES =====================
 
@@ -93,13 +99,20 @@ const CAMPO_TICKS: u64 = 0x0C;
 /// una operacion desconocida vuelve con error, que para medir vale igual, pero
 /// una capability ajena no es cosa de un instrumento.
 #[inline(never)]
-unsafe fn puertas(cap: u64, op: u64, n: u64) {
+unsafe fn puertas(cap: u64, op: u64, a0: u64, n: u64) {
     core::arch::asm!(
         "2:",
         "mov eax, {nr}",
         "mov rdi, {cap}",
         "mov rsi, {op}",
-        "xor edx, edx",
+        // ** `a0` EN REGISTRO Y NO `xor edx, edx`, desde la segunda sonda.
+        //
+        // Estaba a cero fijo, y eso significaba que **ninguna fila podia pasar
+        // argumento**. La fila que tenia que medir `OP_INFO` sobre un campo de
+        // verdad acabo midiendo `INFO` sobre el campo 0, que no existe: un
+        // rechazo por el brazo por defecto. Un instrumento que no deja
+        // expresar la pregunta contesta otra.
+        "mov rdx, {a0}",
         "xor r10d, r10d",
         "xor r8d, r8d",
         "syscall",
@@ -108,6 +121,7 @@ unsafe fn puertas(cap: u64, op: u64, n: u64) {
         nr = const NR_INVOKE,
         cap = in(reg) cap,
         op = in(reg) op,
+        a0 = in(reg) a0,
         cnt = inout(reg) n => _,
         out("rax") _,
         out("rdi") _,
@@ -159,13 +173,6 @@ unsafe fn rdtsc_suelto(n: u64) {
 
 // ============================ LA MEDIDA ============================
 
-/// Minimo y media por operacion sobre [`VUELTAS`] bloques de [`LOTE`].
-///
-/// ** EL MINIMO ES LA RESPUESTA Y LA MEDIA ES EL SEGUNDO DATO. El planificador
-/// expropia en el borde de cada trap, o sea que toda puerta es una oportunidad
-/// de cambio de tarea: el minimo es el unico valor que eso no puede inflar. Y
-/// la media se devuelve igual porque **la diferencia entre las dos ES la
-/// expropiacion**, que es una cifra util por su cuenta.
 // ===================== LAS CUATRO GENERACIONES =====================
 //
 // ** ESTO NO ES ESTILO, ES EL ARREGLO DE UN EXPERIMENTO MAL HECHO.
@@ -215,6 +222,10 @@ struct Fila {
     nombre: &'static str,
     cap: u64,
     op: u64,
+    /// El primer argumento. Existe porque sin el la fila de `OP_INFO` no puede
+    /// nombrar su campo, y una fila que no puede expresar su pregunta mide
+    /// otra cosa sin avisar.
+    a0: u64,
 }
 
 /// **El HIJO**: la diferencia entre dos filas, que es lo que de verdad se
@@ -224,6 +235,13 @@ fn contra(mayor: u64, menor: u64) -> Option<u64> {
     mayor.checked_sub(menor)
 }
 
+/// Minimo y media por operacion sobre [`VUELTAS`] bloques de [`LOTE`].
+///
+/// ** EL MINIMO ES LA RESPUESTA Y LA MEDIA ES EL SEGUNDO DATO. El planificador
+/// expropia en el borde de cada trap, o sea que toda puerta es una oportunidad
+/// de cambio de tarea: el minimo es el unico valor que eso no puede inflar. Y
+/// la media se devuelve igual porque **la diferencia entre las dos ES la
+/// expropiacion**, que es una cifra util por su cuenta.
 fn medir(cuerpo: impl Fn(u64)) -> (u64, u64) {
     let mut mejor = 0u64;
     let mut total = 0u64;
@@ -321,7 +339,7 @@ pub extern "C" fn _start() -> ! {
     // la ventana y la llenarian de algo que no se estaba midiendo.
     let puertas0 = bmo::info(bmo::INFO_SYSCALL_CUENTA);
     let ciclos0 = bmo::info(bmo::INFO_SYSCALL_CICLOS);
-    let (pelada_min, pelada_media) = medir(|n| unsafe { puertas(TAREA_ACTUAL, OP_PID, n) });
+    let (pelada_min, pelada_media) = medir(|n| unsafe { puertas(TAREA_ACTUAL, OP_PID, 0, n) });
     let puertas_d = bmo::info(bmo::INFO_SYSCALL_CUENTA) - puertas0;
     let ciclos_d = bmo::info(bmo::INFO_SYSCALL_CICLOS) - ciclos0;
     // -- la ventana esta cerrada; a partir de aqui se puede imprimir --
@@ -367,9 +385,14 @@ pub extern "C" fn _start() -> ! {
     // porque alli la fila del handle lee una variable y la otra un literal.
     let paquete = bmo::invoke(TAREA_ACTUAL, OP_MI_PAQUETE as u32, 0, 0, 0).value;
     let filas = [
-        Fila { nombre: "1 pid    (pseudo-cap, op barata)", cap: TAREA_ACTUAL, op: OP_PID },
-        Fila { nombre: "2 info   (misma cap, op gorda)  ", cap: TAREA_ACTUAL, op: OP_INFO },
-        Fila { nombre: "3 tamano (cap REAL, op gorda)   ", cap: paquete, op: ARCH_TAMANO },
+        Fila { nombre: "1 pid    (pseudo-cap, op barata)", cap: TAREA_ACTUAL, op: OP_PID, a0: 0 },
+        Fila {
+            nombre: "2 ticks  (misma cap, op gorda)  ",
+            cap: TAREA_ACTUAL,
+            op: OP_INFO,
+            a0: CAMPO_TICKS,
+        },
+        Fila { nombre: "3 tamano (cap REAL, op gorda)   ", cap: paquete, op: ARCH_TAMANO, a0: 0 },
     ];
 
     let mut minimos = [0u64; 3];
@@ -382,8 +405,8 @@ pub extern "C" fn _start() -> ! {
         // ** OP_INFO y ARCH_TAMANO llevan su argumento en `rdx`, y el bucle lo
         // pone a cero. Para `OP_INFO` eso es el campo 0, que es un campo tan
         // valido como otro: lo que se mide es la operacion, no el dato.
-        let _ = CAMPO_TICKS;
-        let (min, media) = medir(|n| unsafe { puertas(f.cap, f.op, n) });
+        // (el campo viaja en `f.a0`, ver `Fila`)
+        let (min, media) = medir(|n| unsafe { puertas(f.cap, f.op, f.a0, n) });
         minimos[i] = min;
         di!(l, "{}  min {min} ciclos/op, media {media}\n", f.nombre);
     }
