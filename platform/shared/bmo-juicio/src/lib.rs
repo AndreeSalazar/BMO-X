@@ -234,6 +234,105 @@ pub fn stub_desde(min_total: u64, dispatch_medio: u64) -> Option<u64> {
     min_total.checked_sub(dispatch_medio)
 }
 
+/// Las tres respuestas posibles al repartir una puerta entre sus dos mitades.
+///
+/// ** LA TERCERA ES LA QUE FALTABA, y la trajo el metal del 2026-08-17: con el
+/// metro retirado `dispatch` vale 0, y `792 - 0 = 792` se imprimia como
+/// *"reparto: dentro de dispatch 0, en el stub 792"*. Eso no es un reparto: es
+/// una resta contra una medida que no ocurrio, con la forma exacta de un
+/// hallazgo. Es el mismo cero silencioso que ya se tapo en [`juzgar`], en el
+/// otro sitio donde asomaba.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Reparto {
+    /// Nadie midio `dispatch`. No hay dos mitades que repartir.
+    NoMedido,
+    /// La media de `dispatch` supera el minimo total. **Puede pasar sin que
+    /// nada este roto** -- una media inflada por expropiaciones contra un
+    /// minimo-- y por eso no es un fallo, es una respuesta.
+    MediaSobreMinimo,
+    /// El reparto se sostiene: esto es lo que queda fuera de `dispatch`.
+    Stub(u64),
+}
+
+/// Reparte una puerta entre su mitad Rust (`dispatch`) y el resto (el stub).
+///
+/// Ver [`Reparto`] para por que hay tres respuestas y no un numero.
+pub fn reparto(min_total: u64, dispatch_medio: u64) -> Reparto {
+    if dispatch_medio == 0 {
+        return Reparto::NoMedido;
+    }
+    match min_total.checked_sub(dispatch_medio) {
+        Some(stub) => Reparto::Stub(stub),
+        None => Reparto::MediaSobreMinimo,
+    }
+}
+
+/// -- ** LOS DOS RELOJES DE LA MAQUINA -------------------------------------
+///
+/// `rdtsc` cuenta **ticks del TSC**, y el TSC es INVARIANTE: va a la frecuencia
+/// base pase lo que pase con el boost. El nucleo, mientras, corre a otra cosa.
+/// El Ryzen del 2026-08-17 lo dijo con sus dos instrumentos a la vez:
+///
+/// ```text
+///    reloj base    3700 MHz   el TSC          <- lo que cuenta rdtsc
+///    reloj ahora   4529 MHz   MPERF/APERF     <- a lo que va el nucleo
+/// ```
+///
+/// O sea que **un tick son 1,22 ciclos**, y llamar "ciclos" a lo que mide
+/// `rdtsc` es un error del 22% -- el patron 2 de la casa, el campo que viene en
+/// otra unidad. Ver R-CENSO0 en `docs/CENSO_DE_EJES.md`.
+///
+/// [!] **Los presupuestos de `presupuesto.rs` estan en TICKS**, porque en ticks
+/// es como se midieron. Esta conversion es para LEER, no para juzgar: convertir
+/// antes de comparar contra el techo moveria el trinquete cada vez que el CPU
+/// cambia de frecuencia, que es justo lo que un trinquete no puede hacer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Reloj {
+    /// Frecuencia del TSC. `INFO_TSC_HZ`.
+    pub tsc_hz: u64,
+    /// Frecuencia real del nucleo AHORA, medida por MPERF/APERF.
+    /// `INFO_CPU_HZ_REAL`. Cero = esta maquina no sabe medirla.
+    pub nucleo_hz: u64,
+}
+
+impl Reloj {
+    /// Ticks -> ciclos de nucleo. `None` si falta un reloj.
+    ///
+    /// **`None` y no una estimacion**: sin `MPERF/APERF` no se sabe a que va el
+    /// nucleo, y rellenar con la frecuencia base daria un numero que parece una
+    /// medida y no lo es. Un cero aqui es exactamente el fallo que este crate
+    /// existe para no repetir.
+    pub fn ciclos(&self, ticks: u64) -> Option<u64> {
+        if self.tsc_hz == 0 || self.nucleo_hz == 0 {
+            return None;
+        }
+        // `u128` y no `u64`: 2,2 M ticks (una puerta de consola) por 4,5 GHz ya
+        // son 10^16 -- cabe, pero por poco, y el dia que alguien mida un
+        // segundo entero no cabria. Una multiplicacion que envuelve aqui daria
+        // un numero pequeno y creible.
+        let n = (ticks as u128) * (self.nucleo_hz as u128) / (self.tsc_hz as u128);
+        Some(n as u64)
+    }
+
+    /// Ticks -> nanosegundos. Esto **no** necesita el reloj del nucleo: el
+    /// tiempo lo da el TSC, que es para lo que sirve ser invariante.
+    pub fn nanos(&self, ticks: u64) -> Option<u64> {
+        if self.tsc_hz == 0 {
+            return None;
+        }
+        Some(((ticks as u128) * 1_000_000_000u128 / (self.tsc_hz as u128)) as u64)
+    }
+
+    /// Cuantos ciclos hay en un tick, **en centesimas** (122 = 1,22 ciclos).
+    ///
+    /// En centesimas porque aqui no hay coma flotante y porque el ratio importa
+    /// con dos cifras: entre 1,00 y 1,25 hay un 25% de diferencia en cada
+    /// numero de este documento.
+    pub fn centesimas(&self) -> Option<u64> {
+        self.ciclos(100)
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -442,5 +541,72 @@ mod pruebas {
         let p = Presupuesto::desempaquetar((7u64 << 32) | 0xFFFF_FFFF);
         assert_eq!(p.techo, 0xFFFF_FFFF);
         assert_eq!(p.meta, 7);
+    }
+
+    // ===== EL REPARTO, Y EL CERO QUE PARECIA UN HALLAZGO =====
+
+    /// **El caso del 2026-08-17.** Con el metro retirado `dispatch` vale 0 y la
+    /// resta daba el total entero, impreso como *"en el stub 792"*: una medida
+    /// que nadie tomo, con la forma de la respuesta que se estaba buscando.
+    #[test]
+    fn sin_metro_no_hay_reparto_que_imprimir() {
+        assert_eq!(reparto(792, 0), Reparto::NoMedido);
+    }
+
+    #[test]
+    fn el_reparto_bueno_del_ryzen_se_parte() {
+        assert_eq!(reparto(895, 309), Reparto::Stub(586));
+    }
+
+    /// Una media puede pasarse de un minimo sin que nada este roto. Se dice, no
+    /// se envuelve a un numero cercano a `u64::MAX`.
+    #[test]
+    fn una_media_sobre_el_minimo_se_dice_por_su_nombre() {
+        assert_eq!(reparto(895, 1116), Reparto::MediaSobreMinimo);
+    }
+
+    // ===== LOS DOS RELOJES =====
+
+    /// Los numeros que trajo el Ryzen el 2026-08-17.
+    fn ryzen_reloj() -> Reloj {
+        Reloj { tsc_hz: 3_700_000_000, nucleo_hz: 4_529_000_000 }
+    }
+
+    #[test]
+    fn una_puerta_en_ticks_no_es_una_puerta_en_ciclos() {
+        let r = ryzen_reloj();
+        // 792 ticks x 4529/3700 = 969,4 -> 969
+        assert_eq!(r.ciclos(792), Some(969));
+        assert_eq!(r.centesimas(), Some(122), "1 tick = 1,22 ciclos");
+        // Y el tiempo sale del TSC, no del nucleo: 792 / 3,7 GHz = 214 ns
+        assert_eq!(r.nanos(792), Some(214));
+    }
+
+    /// ** Sin `MPERF/APERF` no se contesta. Rellenar con la frecuencia base
+    /// daria `ciclos == ticks`, o sea un numero que parece medido y dice que el
+    /// nucleo va a la base -- que es justo lo que no se sabe.
+    #[test]
+    fn sin_reloj_de_nucleo_no_se_inventa_una_conversion() {
+        let r = Reloj { tsc_hz: 3_700_000_000, nucleo_hz: 0 };
+        assert_eq!(r.ciclos(792), None);
+        // El tiempo SI se puede dar: para eso el TSC es invariante.
+        assert_eq!(r.nanos(792), Some(214));
+    }
+
+    /// Una puerta de consola son ~2,2 M ticks. Por 4,5 GHz eso son 10^16: cabe
+    /// en `u64` por poco, y en `u128` sin pensarlo. La prueba existe para que
+    /// nadie lo devuelva a `u64` por parecer mas barato.
+    #[test]
+    fn lo_gordo_no_envuelve() {
+        let r = ryzen_reloj();
+        assert_eq!(r.ciclos(2_200_000), Some(2_692_918));
+        // ** Y el caso extremo se comprueba por su PROPIEDAD, no contra una
+        // constante escrita a mano: con 1,22 ciclos por tick el resultado tiene
+        // que SUBIR. Una multiplicacion que envolviera daria un numero mas
+        // pequeno que la entrada, y eso lo caza esta linea sin que nadie tenga
+        // que fiarse de mi aritmetica -- que en la primera version de esta
+        // prueba estaba mal por un 0,004%, y el `cargo test` lo dijo.
+        let gordo = u64::MAX / 2;
+        assert!(r.ciclos(gordo).unwrap() > gordo);
     }
 }

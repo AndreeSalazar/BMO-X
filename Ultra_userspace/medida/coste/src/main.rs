@@ -299,6 +299,23 @@ macro_rules! di {
     }};
 }
 
+/// **Lo mismo, en la unidad que se siente.** Ticks es lo que se mide; ciclos es
+/// lo que le cuesta al CPU; nanosegundos es lo que espera el que llama.
+///
+/// Las tres se dicen juntas o no se dice ninguna, y la conversion vive en
+/// `bmo-juicio` --con pruebas de anfitrion-- por la misma razon que el
+/// veredicto: es una regla sobre numeros, y una regla sobre numeros no se
+/// comprueba flasheando.
+fn decir_ciclos(l: &mut Linea, etiqueta: &str, ticks: u64, r: &juez::Reloj) {
+    match (r.ciclos(ticks), r.nanos(ticks)) {
+        (Some(c), Some(ns)) => di!(l, "{etiqueta} = {c} ciclos de nucleo = {ns} ns\n"),
+        // El tiempo SI se puede dar sin el reloj del nucleo: para eso el TSC es
+        // invariante. Se da lo que se sabe y se calla lo que no.
+        (None, Some(ns)) => di!(l, "{etiqueta} = {ns} ns (sin MPERF: los ciclos no se saben)\n"),
+        _ => di!(l, "{etiqueta}: sin reloj, ni ciclos ni tiempo\n"),
+    }
+}
+
 /// Imprime el veredicto que el juez ya decidio. **Aqui no se juzga nada**: si
 /// la decision estuviera repartida entre el juez y su impresora, la mitad de
 /// las reglas no se podria probar en el anfitrion.
@@ -324,11 +341,38 @@ fn decir(l: &mut Linea, etiqueta: &str, v: juez::Veredicto) {
 pub extern "C" fn _start() -> ! {
     let mut l = Linea::nueva();
     di!(l, "COSTE(rust): cuanto vale una puerta\n");
-    di!(l, "TSC {} Hz, lote {LOTE}, vueltas {VUELTAS}\n", bmo::info(bmo::INFO_TSC_HZ));
+
+    // -- ** LOS DOS RELOJES, Y CUAL CUENTA CADA COSA -------------------
+    //
+    // `rdtsc` cuenta TICKS del TSC, que es invariante: va a la frecuencia BASE
+    // pase lo que pase con el boost. El nucleo va a otra. Llamar "ciclos" a lo
+    // que mide `rdtsc` es un error del 22% en esta maquina -- lo destapo el
+    // propio panel el 16-08, poniendo los dos numeros uno al lado del otro.
+    //
+    // Se leen ANTES de abrir ninguna ventana de medida: son dos puertas, y una
+    // puerta dentro de la ventana es lo que ya contamino una tanda entera.
+    let reloj = juez::Reloj {
+        tsc_hz: bmo::info(bmo::INFO_TSC_HZ),
+        nucleo_hz: bmo::info(bmo::INFO_CPU_HZ_REAL),
+    };
+    di!(
+        l,
+        "TSC {} MHz (lo que cuenta rdtsc), nucleo {} MHz (a lo que va el CPU)\n",
+        reloj.tsc_hz / 1_000_000,
+        reloj.nucleo_hz / 1_000_000
+    );
+    match reloj.centesimas() {
+        Some(c) => di!(l, "un tick = {},{:02} ciclos. LOS PRESUPUESTOS VAN EN TICKS\n", c / 100, c % 100),
+        // Sin MPERF/APERF no hay conversion, y no se rellena con la frecuencia
+        // base: eso daria `ciclos == ticks`, o sea la afirmacion de que el
+        // nucleo no hace boost -- que es justo lo que no se sabe.
+        None => di!(l, "sin MPERF/APERF: se dan TICKS y nada mas\n"),
+    }
+    di!(l, "lote {LOTE}, vueltas {VUELTAS}\n");
 
     // -- 1. el bucle, para poder restarlo -----------------------------
     let (vacio_min, vacio_media) = medir(|n| unsafe { vacio(n) });
-    di!(l, "1. bucle vacio   min {vacio_min} ciclos/op, media {vacio_media}\n");
+    di!(l, "1. bucle vacio   min {vacio_min} ticks/op, media {vacio_media}\n");
 
     // -- 2. la puerta pelada ------------------------------------------
     //
@@ -352,14 +396,27 @@ pub extern "C" fn _start() -> ! {
         cerrada_sin_imprimir: true,
     };
 
-    di!(l, "2. puerta pelada min {pelada_min} ciclos/op, media {pelada_media}\n");
+    di!(l, "2. puerta pelada min {pelada_min} ticks/op, media {pelada_media}\n");
+    decir_ciclos(&mut l, "   una puerta", pelada_min, &reloj);
     match medida.dispatch_medio() {
-        Some(d) => match juez::stub_desde(pelada_min, d) {
-            Some(stub) => di!(l, "   reparto: dentro de dispatch {d}, en el stub {stub}\n"),
+        Some(d) => match juez::reparto(pelada_min, d) {
+            juez::Reparto::Stub(stub) => {
+                di!(l, "   reparto: dentro de dispatch {d}, en el stub {stub}\n")
+            }
+            // ** EL CASO DEL 17-08. Con el metro retirado `dispatch` vale 0 y
+            // la resta daba el total entero, impreso como "en el stub 792":
+            // una medida que nadie tomo, con la forma de la respuesta que se
+            // estaba buscando. Ahora se dice que no se midio.
+            juez::Reparto::NoMedido => di!(
+                l,
+                "   reparto: NO MEDIDO -- el metro esta retirado (`--features metro_puerta`)\n"
+            ),
             // [!] No se imprime una resta que dio la vuelta. `dispatch` es una
             // MEDIA y el total un MINIMO, asi que esto PUEDE pasar sin que nada
             // este roto -- y el 16-08 se creyo lo contrario.
-            None => di!(l, "   reparto: dispatch {d} > el minimo total; media contra minimo\n"),
+            juez::Reparto::MediaSobreMinimo => {
+                di!(l, "   reparto: dispatch {d} > el minimo total; media contra minimo\n")
+            }
         },
         None => di!(l, "   reparto: el kernel no conto ni una puerta\n"),
     }
@@ -447,12 +504,18 @@ pub extern "C" fn _start() -> ! {
 
     // -- las dos restas, que es la sonda de verdad ---------------------
     match contra(minimos[1], minimos[0]) {
-        Some(d) => di!(l, "   fila2-fila1 = {d}  <- lo que cuesta una operacion mas gorda\n"),
+        Some(d) => {
+            di!(l, "   fila2-fila1 = {d} ticks <- lo que cuesta una operacion mas gorda\n");
+            decir_ciclos(&mut l, "     esa operacion", d, &reloj);
+        }
         None => di!(l, "   fila2-fila1: al reves; la operacion gorda salio mas barata\n"),
     }
     if minimos[2] != 0 {
         match contra(minimos[2], minimos[1]) {
-            Some(d) => di!(l, "   fila3-fila2 = {d}  <- lo que cuesta un HANDLE de verdad\n"),
+            Some(d) => {
+                di!(l, "   fila3-fila2 = {d} ticks <- lo que cuesta un HANDLE de verdad\n");
+                decir_ciclos(&mut l, "     ese handle", d, &reloj);
+            }
             None => di!(l, "   fila3-fila2: al reves; el handle salio mas barato\n"),
         }
         // ** Y LA RESTA QUE CIERRA LA PREGUNTA: de lo que cuesta el handle,
@@ -473,7 +536,51 @@ pub extern "C" fn _start() -> ! {
 
     // -- 4. la factura del instrumento --------------------------------
     let (tsc_min, _) = medir(|n| unsafe { rdtsc_suelto(n) });
-    di!(l, "4. rdtsc suelto  min {tsc_min} ciclos/op (menos la fila 1 = un sello)\n");
+    di!(l, "4. rdtsc suelto  min {tsc_min} ticks/op (menos la fila 1 = un sello)\n");
+    decir_ciclos(&mut l, "   un sello", tsc_min.saturating_sub(vacio_min), &reloj);
+
+    // -- ** 5. EL TRAFICO: cuantas veces se pide cada clase de puerta --
+    //
+    // ** ESTA ES LA MITAD QUE FALTABA PARA PODER PRIORIZAR, y estaba escrita en
+    // el kernel desde el 16-08 sin que nadie la leyera.
+    //
+    //     coste real por segundo  =  coste por vez  x  VECES por segundo
+    //
+    // Las cuatro filas de arriba dan el primer factor. Sin el segundo, "por
+    // donde empiezo" es una intuicion -- y la intuicion, en este arbol, ya se
+    // equivoco dos veces con este mismo camino. El kernel clasifica cada puerta
+    // en `dispatch` sin ninguna lista, con tres hechos que ya estan en
+    // registros (ver `syscall/mod.rs`).
+    //
+    // [!] Es el trafico DESDE EL ARRANQUE, no el de ahora: dice en que se ha
+    // gastado la sesion entera, incluido el arranque del escritorio. Para "que
+    // esta haciendo AHORA" haria falta restar dos lecturas separadas por un
+    // segundo, y eso es otro instrumento.
+    let total = bmo::info(bmo::INFO_SYSCALL_CUENTA);
+    let mut suma = 0u64;
+    di!(l, "5. el trafico de puertas desde el arranque: {total}\n");
+    for (clase, nombre) in [
+        (bmo::SYSCALL_CLASS_TASK, "tarea  "),
+        (bmo::SYSCALL_CLASS_HANDLE, "handle "),
+        (bmo::SYSCALL_CLASS_CONSOLE, "consola"),
+        (bmo::SYSCALL_CLASS_WAIT, "wait   "),
+    ] {
+        // El indice va EMPAQUETADO en el campo, como `INFO_MEM_QUIEN_*`.
+        let n = bmo::info(bmo::INFO_SYSCALL_CLASS | (clase << 8));
+        suma = suma.saturating_add(n);
+        // Porcentaje en decimas: sin coma flotante, y una clase que es el 0,4%
+        // no puede salir como "0%" cuando es la que hay que mirar.
+        let d = if total > 0 { n.saturating_mul(1000) / total } else { 0 };
+        di!(l, "   {nombre} {n}  ({},{}%)\n", d / 10, d % 10);
+    }
+    // ** LA RESTA ES LA COMPROBACION DEL INSTRUMENTO, y por eso se imprime
+    // aunque sea cero. Lo que no cae en ninguna casilla es la puerta RETIRADA,
+    // a la que no se le invento una: si esto sale grande, hay trafico que el
+    // reparto no esta viendo, y entonces los porcentajes de arriba no valen.
+    match total.checked_sub(suma) {
+        Some(fuera) => di!(l, "   sin casilla {fuera}  <- tiene que ser pequeno\n"),
+        None => di!(l, "   AVISO: las clases suman MAS que el total -- NO LEER\n"),
+    }
 
     di!(l, "COSTE(rust): la fila 2 menos la 1 = la puerta desnuda\n");
     bmo::salir();
