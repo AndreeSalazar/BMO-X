@@ -1,0 +1,7 @@
+[package]
+name = "bmo-juicio"
+version = "0.1.0"
+edition = "2021"
+description = "El juez de las medidas de ciclos: invariantes y veredictos, probados FUERA del metal"
+
+[dependencies]
