@@ -616,6 +616,18 @@ microsegundos-milisegundos y **no se arregla con ciclos de CPU**.
   con copia, otro directo), **la conversion de coordenadas va en una funcion que
   ambos tengan que atravesar**.
 
+★ Ver `docs/componente/EL_DISCO_EXIGE.md`: **medio, ranura y aparato son tres
+preguntas distintas** --gira o no gira, cuantos comandos caben en vuelo, y que
+trae dentro-- y el arbol las trataba como una. Alli van `R-DISCO6..10` y el
+perfil de almacenamiento, con la doctrina de R-CPU8: se PREGUNTA lo que el
+aparato responde y se DECLARA solo lo que calla.
+
+★★ Y el hueco que destapo, porque es de este componente: **BMO-X no ha leido
+nunca la palabra 217 del IDENTIFY**, que es la que dice si el medio es
+rotacional. Se razona sobre TRIM y sobre colas sin haber comprobado el hecho del
+que dependen las dos. Es L5 incumplida, y esta a una lectura de 16 bits en un
+buffer que ya se pide.
+
 **EL PRECIO.** `PI` declaraba los puertos 0,1,4,5 y el disco estaba en el 2. Y la
 suma `+ part_lba` estaba escrita cuatro veces y **faltaba en los tres sitios del
 camino rapido**: un `.bex` se leia de dentro de la ESP -- codigo x86-64 real y
