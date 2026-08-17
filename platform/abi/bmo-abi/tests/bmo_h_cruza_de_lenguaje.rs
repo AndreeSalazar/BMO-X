@@ -107,6 +107,12 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     // CPU. Ver R-CPU8 y R-CPU10.
     ("BMO_INFO_PRESUPUESTO_MAQUINA", "INFO_PRESUPUESTO_MAQUINA", 0x3D),
     ("BMO_INFO_SUELO_CRUCE", "INFO_SUELO_CRUCE", 0x3E),
+    // Lo que el disco CONTESTA (3 filas) y el VEREDICTO sobre el (1). El
+    // capitulo esta en `docs/componente/EL_DISCO_EXIGE.md`.
+    ("BMO_INFO_DISCO_MEDIO", "INFO_DISCO_MEDIO", 0x3F),
+    ("BMO_INFO_DISCO_ENLACE", "INFO_DISCO_ENLACE", 0x40),
+    ("BMO_INFO_DISCO_GEOMETRIA", "INFO_DISCO_GEOMETRIA", 0x41),
+    ("BMO_INFO_DISCO_JUICIO", "INFO_DISCO_JUICIO", 0x42),
     // El censo de extensiones. Cruza por el mismo motivo que el metro: lo
     // sirve el kernel y lo leen dos lados distintos -- el escritorio en Rust y
     // cualquier `.bex` de C que quiera saber si tiene RDRAND antes de usarlo.
@@ -240,6 +246,10 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_PRESUPUESTO_HANDLE", s::INFO_PRESUPUESTO_HANDLE),
         ("BMO_INFO_PRESUPUESTO_MAQUINA", s::INFO_PRESUPUESTO_MAQUINA),
         ("BMO_INFO_SUELO_CRUCE", s::INFO_SUELO_CRUCE),
+        ("BMO_INFO_DISCO_MEDIO", s::INFO_DISCO_MEDIO),
+        ("BMO_INFO_DISCO_ENLACE", s::INFO_DISCO_ENLACE),
+        ("BMO_INFO_DISCO_GEOMETRIA", s::INFO_DISCO_GEOMETRIA),
+        ("BMO_INFO_DISCO_JUICIO", s::INFO_DISCO_JUICIO),
         ("BMO_INFO_CPU_EXT_N", s::INFO_CPU_EXT_N),
         ("BMO_INFO_CPU_EXT_HAY", s::INFO_CPU_EXT_HAY),
         ("BMO_INFO_CPU_EXT_USA", s::INFO_CPU_EXT_USA),

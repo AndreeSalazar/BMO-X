@@ -21,9 +21,20 @@
 
 ## 0. QUE ES CADA MITAD DE ESTE FICHERO
 
-**De la section 1 en adelante, el cuerpo es el documento recuperado TAL CUAL.**
-No se ha tocado una frase: es la version del 03-08, y por eso vale como fuente
---dice lo que se decidio y por que-- y **no vale como descripcion de hoy**.
+**De la section 1 en adelante, el cuerpo es el documento recuperado.** No se ha
+tocado una frase: es la version del 03-08, y por eso vale como fuente --dice lo
+que se decidio y por que-- y **no vale como descripcion de hoy**.
+
+[!] Con una excepcion que hay que decir, porque la primera version de esta
+cabecera prometia *"ni una frase tocada"* y ya no es exacto al byte: **al volver
+al arbol le alcanzo la regla del ASCII**, y `ascii-sweep` le tradujo 214 letras
+acentuadas (los simbolos con significado --★, ✅, ⏳-- se quedan, que es la regla
+que la propia herramienta tiene escrita para markdown).
+
+★ **Y el motivo de que hiciera falta es la misma historia otra vez**: este
+documento se borro el **03-08** y el barrido de las fuentes corrio el **08-08**.
+Escapo de la regla por estar ausente. Ninguna palabra cambia de significado; lo
+que cambia es que ahora cumple lo que cumple el resto del arbol.
 
 Esta section 0 es la unica parte nueva, y existe para lo que pidio el dueno el
 17-08: *modelar todo para poder mejorar, y hacer un 1.0 que funcione, porque lo
@@ -167,40 +178,40 @@ tocada.*
 
 
 > *Cada escritura deja una capa nueva encima sin destruir la de abajo.
-> Leer hacia atrás en el tiempo es bajar por los estratos.*
+> Leer hacia atras en el tiempo es bajar por los estratos.*
 
-**Estado**: pasos 1-4 del §10 HECHOS — el kernel monta ESTRATOS y lo lee. La
+**Estado**: pasos 1-4 del section 10 HECHOS -- el kernel monta ESTRATOS y lo lee. La
 escritura (paso 5) es lo siguiente. Este documento existe para que el formato se
-decida ANTES de tocar un sector — en un sistema de ficheros, equivocarse cuesta
+decida ANTES de tocar un sector -- en un sistema de ficheros, equivocarse cuesta
 datos.
 
 ---
 
 ## 1. La idea
 
-TimeBack y BMO-FS parecían dos proyectos. No lo son.
+TimeBack y BMO-FS parecian dos proyectos. No lo son.
 
-Git guarda **blobs** (contenido direccionado por su hash), **árboles**
-(nombre → hash) y **commits** (una raíz con padres). Un sistema de ficheros
-copy-on-write guarda **bloques** (contenido), **nodos** (nombre → bloque) y
-**superbloques** (una raíz que se cambia al final, cuando todo lo demás ya
-está en disco).
+Git guarda **blobs** (contenido direccionado por su hash), **arboles**
+(nombre -> hash) y **commits** (una raiz con padres). Un sistema de ficheros
+copy-on-write guarda **bloques** (contenido), **nodos** (nombre -> bloque) y
+**superbloques** (una raiz que se cambia al final, cuando todo lo demas ya
+esta en disco).
 
-Son la misma forma. Git es un sistema de ficheros que resultó ser control de
-versiones; un FS copy-on-write es control de versiones que resultó ser un
+Son la misma forma. Git es un sistema de ficheros que resulto ser control de
+versiones; un FS copy-on-write es control de versiones que resulto ser un
 sistema de ficheros. Nadie los ha unificado del todo porque en Unix el FS ya
-venía dado y Git tuvo que construirse encima, con un `.git/` que duplica todo
-lo que el FS ya sabía.
+venia dado y Git tuvo que construirse encima, con un `.git/` que duplica todo
+lo que el FS ya sabia.
 
 BMO-X no tiene esa herencia. Puede hacer que **el historial no sea una
 carpeta, sino una propiedad del suelo**:
 
 - Guardar **es** commitear, porque nunca se sobreescribe nada.
 - Recuperar un archivo de la semana pasada no es restaurar un respaldo: es
-  leer un puntero viejo que jamás se borró.
+  leer un puntero viejo que jamas se borro.
 - El sistema no puede "perder" el estado anterior por un fallo a media
-  escritura, porque el estado anterior sigue intacto hasta que la raíz nueva
-  está completa y verificada.
+  escritura, porque el estado anterior sigue intacto hasta que la raiz nueva
+  esta completa y verificada.
 
 ---
 
@@ -209,33 +220,33 @@ carpeta, sino una propiedad del suelo**:
 1. **Nunca se sobreescribe un bloque vivo.** Se escribe uno nuevo y se cambia
    el puntero al final. Un corte de luz a media escritura deja el sistema en
    el estado ANTERIOR, entero, no en uno a medias.
-2. **Todo lleva suma de verificación.** El sistema de ficheros detecta su
-   propia corrupción en vez de confiar en que el disco devuelve lo que
-   guardó. Un bloque que no cuadra con su hash es un FAULT en CABINA, no un
+2. **Todo lleva suma de verificacion.** El sistema de ficheros detecta su
+   propia corrupcion en vez de confiar en que el disco devuelve lo que
+   guardo. Un bloque que no cuadra con su hash es un FAULT en CABINA, no un
    archivo raro.
 3. **Tener el handle ES el permiso.** Sin root, sin `chmod`, sin uid/gid, sin
    autoridad ambiental. Un proceso no puede *nombrar* un archivo al que
    nadie le dio acceso.
-4. **La verificación vive dentro.** El FS no entrega una capability
-   *ejecutable* sobre una imagen que no pasó `bmo-verify`. La admisión deja
+4. **La verificacion vive dentro.** El FS no entrega una capability
+   *ejecutable* sobre una imagen que no paso `bmo-verify`. La admision deja
    de ser un paso del arranque y pasa a ser una propiedad del almacenamiento.
-5. **El dueño manda sobre el espacio.** El recolector nunca decide solo qué
-   se pierde: avisa, propone y obedece (§9).
-6. **La partición de arranque NUNCA depende de ESTRATOS** hasta que ESTRATOS
+5. **El dueno manda sobre el espacio.** El recolector nunca decide solo que
+   se pierde: avisa, propone y obedece (section 9).
+6. **La particion de arranque NUNCA depende de ESTRATOS** hasta que ESTRATOS
    se lo haya ganado. A: se queda en FAT32; ESTRATOS vive en BMO-DATA.
 
 ---
 
-## 3. Herencia: qué se roba y qué no
+## 3. Herencia: que se roba y que no
 
 | Sistema | Lo que vale | Lo que se deja |
 |---|---|---|
-| **NTFS** | **Todo es un archivo, incluidos los metadatos** (la tabla maestra es ella misma un archivo, y por eso el FS puede hacer crecer sus propias estructuras con su propio asignador). **Atributos con nombre**: un archivo no es un chorro de bytes, es un conjunto de flujos. **Archivos pequeños residentes**: los que caben viven *dentro* de su registro y no gastan bloque | 30 años de compatibilidad hacia atrás |
-| **ZFS / btrfs** | Copy-on-write, checksums en todo, árbol de Merkle (el hash raíz valida el árbol entero), instantáneas gratis | Volúmenes, RAID, caché ARC, compresión — nada de eso hace falta todavía |
-| **Git** | Direccionamiento por contenido: **deduplicación gratis**, y el historial son solo raíces extra | Que viva en una carpeta aparte del FS |
-| **Log-structured (NILFS2, LFS)** | Escribir **siempre secuencial**, que es exactamente lo que ama un SSD, y da instantáneas continuas | — (pero trae el recolector: §9) |
+| **NTFS** | **Todo es un archivo, incluidos los metadatos** (la tabla maestra es ella misma un archivo, y por eso el FS puede hacer crecer sus propias estructuras con su propio asignador). **Atributos con nombre**: un archivo no es un chorro de bytes, es un conjunto de flujos. **Archivos pequenos residentes**: los que caben viven *dentro* de su registro y no gastan bloque | 30 anos de compatibilidad hacia atras |
+| **ZFS / btrfs** | Copy-on-write, checksums en todo, arbol de Merkle (el hash raiz valida el arbol entero), instantaneas gratis | Volumenes, RAID, cache ARC, compresion -- nada de eso hace falta todavia |
+| **Git** | Direccionamiento por contenido: **deduplicacion gratis**, y el historial son solo raices extra | Que viva en una carpeta aparte del FS |
+| **Log-structured (NILFS2, LFS)** | Escribir **siempre secuencial**, que es exactamente lo que ama un SSD, y da instantaneas continuas | -- (pero trae el recolector: section 9) |
 | **Plan 9 / Venti** | Archivo permanente por hash: lo que entra no se pierde | El servidor de red |
-| **BMO** | Capabilities como permiso, `bmo-verify` como gate, CABINA como testigo | — |
+| **BMO** | Capabilities como permiso, `bmo-verify` como gate, CABINA como testigo | -- |
 
 ---
 
@@ -245,34 +256,34 @@ Cuatro tipos, todos identificados por el **hash BLAKE3 de su contenido**.
 
 ```
   BLOQUE     bytes crudos. La unidad de datos.
-  ATRIBUTO   un flujo con nombre: lista de bloques + tamaño.
+  ATRIBUTO   un flujo con nombre: lista de bloques + tamano.
   NODO       un archivo o directorio = conjunto de atributos.
-  ESTRATO    una raíz: nodo raíz + padre(s) + marca de tiempo + autor.
+  ESTRATO    una raiz: nodo raiz + padre(s) + marca de tiempo + autor.
 ```
 
-### Por qué atributos y no "el contenido del archivo"
+### Por que atributos y no "el contenido del archivo"
 
 Esta es la idea que se le roba a NTFS y la que mejor encaja con el ABI de BMO.
 Un `.bex` en ESTRATOS no es *un archivo*: es un nodo con varios flujos.
 
 ```
   hola_C.bex
-    ├── :datos        el código, el que se ejecuta
-    ├── :firma        el hash BLAKE3 firmado (lo que mira bmo-verify)
-    ├── :manifiesto   qué capabilities pide para correr
-    └── :origen       de qué fuente salió, con qué compilador, cuándo
+    +-- :datos        el codigo, el que se ejecuta
+    +-- :firma        el hash BLAKE3 firmado (lo que mira bmo-verify)
+    +-- :manifiesto   que capabilities pide para correr
+    +-- :origen       de que fuente salio, con que compilador, cuando
 ```
 
-Ningún sistema de ficheros clásico permite eso sin inventarse convenciones de
-nombres o archivos `.meta` sueltos que se pierden al copiar. Aquí el
+Ningun sistema de ficheros clasico permite eso sin inventarse convenciones de
+nombres o archivos `.meta` sueltos que se pierden al copiar. Aqui el
 manifiesto de capabilities **no puede separarse del binario**, porque es parte
 del mismo objeto.
 
-### ESTRATO: el commit que también es el superbloque
+### ESTRATO: el commit que tambien es el superbloque
 
 ```
   estrato {
-      raiz:     Hash        // el nodo raíz del árbol de directorios
+      raiz:     Hash        // el nodo raiz del arbol de directorios
       padre:    Hash        // el estrato anterior (0 = el primero)
       tiempo:   u64
       autor:    Autor       // kernel / usuario / proceso, con su pid
@@ -281,36 +292,36 @@ del mismo objeto.
   }
 ```
 
-Montar el sistema de ficheros = leer el último estrato válido. Volver atrás
-en el tiempo = leer uno anterior. **Son la misma operación.** No hay código de
-"restaurar": hay código de "montar", y se le pasa otro estrato.
+Montar el sistema de ficheros = leer el ultimo estrato valido. Volver atras
+en el tiempo = leer uno anterior. **Son la misma operacion.** No hay codigo de
+"restaurar": hay codigo de "montar", y se le pasa otro estrato.
 
 ---
 
 ## 5. Formato en disco
 
 ```
-  LBA 0     SUPERBLOQUE A   ┐ dos copias alternas. Se escribe la que NO
-  LBA 1     SUPERBLOQUE B   ┘ está en uso; si el corte llega a media
+  LBA 0     SUPERBLOQUE A   + dos copias alternas. Se escribe la que NO
+  LBA 1     SUPERBLOQUE B   + esta en uso; si el corte llega a media
                               escritura, la otra sigue entera.
-  LBA 2..   MAPA DE ESPACIO  bitmap de bloques, él mismo un archivo
-  ...       LOG              todo lo demás: bloques, nodos, estratos,
+  LBA 2..   MAPA DE ESPACIO  bitmap de bloques, el mismo un archivo
+  ...       LOG              todo lo demas: bloques, nodos, estratos,
                              escritos SIEMPRE hacia adelante
 ```
 
-**Superbloque** (el único sitio con posición fija):
+**Superbloque** (el unico sitio con posicion fija):
 
 ```
   magico:      b"ESTRATOS"
   version:     u32
   bloque_tam:  u32           // 4096
   disco_id:    [u8; 20]      // modelo+serie del disco (IDENTIFY)
-  estrato:     Hash          // el estrato más reciente
-  generacion:  u64           // el más alto de los dos superbloques gana
+  estrato:     Hash          // el estrato mas reciente
+  generacion:  u64           // el mas alto de los dos superbloques gana
   suma:        Hash
 ```
 
-`disco_id` no es decoración: es el **gate de identidad** grabado en el propio
+`disco_id` no es decoracion: es el **gate de identidad** grabado en el propio
 volumen. Si ESTRATOS se monta en un disco cuyo `IDENTIFY` no coincide con el
 que dice el superbloque, se monta **solo lectura** y CABINA grita. Un volumen
 clonado a otro disco no se escribe por accidente.
@@ -318,48 +329,48 @@ clonado a otro disco no se escribe por accidente.
 ### La escritura, paso a paso
 
 1. Se escriben los bloques nuevos en la punta del log. *(Nada apunta a ellos
-   todavía: si se corta aquí, es basura inofensiva.)*
+   todavia: si se corta aqui, es basura inofensiva.)*
 2. Se escriben los atributos y nodos que los referencian.
 3. Se escribe el estrato nuevo, con su suma.
-4. **Barrera**: se espera a que el disco confirme que todo lo anterior está
-   en el plato, no en su caché (`FLUSH CACHE`).
-5. Se escribe el superbloque alterno con la generación +1.
+4. **Barrera**: se espera a que el disco confirme que todo lo anterior esta
+   en el plato, no en su cache (`FLUSH CACHE`).
+5. Se escribe el superbloque alterno con la generacion +1.
 
-El punto de no retorno es el paso 5, y es **un solo sector**. Antes de él, el
-sistema es exactamente el de antes. Después, el nuevo. No hay estado
-intermedio observable — que es la definición de una transacción.
+El punto de no retorno es el paso 5, y es **un solo sector**. Antes de el, el
+sistema es exactamente el de antes. Despues, el nuevo. No hay estado
+intermedio observable -- que es la definicion de una transaccion.
 
 
-### ⏳ La transacción, hecha (2026-07-31) — pero sin tocar el disco
+### ⏳ La transaccion, hecha (2026-07-31) -- pero sin tocar el disco
 
-`bmo_estratos::escritura` — `Transaccion`, `Fase`, `Rechazo`. **Aquí no se
-escribe un sector**: es la máquina de estados que decide el ORDEN, y el orden es
-lo que cuesta datos si se equivoca. La E/S la hará el kernel.
+`bmo_estratos::escritura` -- `Transaccion`, `Fase`, `Rechazo`. **Aqui no se
+escribe un sector**: es la maquina de estados que decide el ORDEN, y el orden es
+lo que cuesta datos si se equivoca. La E/S la hara el kernel.
 
-Esa separación es lo que permite **probar en el anfitrión la parte peligrosa**,
+Esa separacion es lo que permite **probar en el anfitrion la parte peligrosa**,
 sin un disco delante. Hay 12 tests.
 
-**Es una máquina de estados y no una lista de escrituras** porque la crate es
+**Es una maquina de estados y no una lista de escrituras** porque la crate es
 `no_std` sin `alloc`: un plan son varios KiB por bloque y no hay `Vec` que
-devolver. Y la restricción mejoró el diseño — una lista se puede reordenar por
-accidente; **una máquina de estados no deja**: `commit()` antes de
+devolver. Y la restriccion mejoro el diseno -- una lista se puede reordenar por
+accidente; **una maquina de estados no deja**: `commit()` antes de
 `barrera_hecha()` devuelve `FueraDeOrden`, no depende de que nadie se acuerde.
 
-Lo que la máquina garantiza, cada uno con su test:
+Lo que la maquina garantiza, cada uno con su test:
 
 - el commit **no puede adelantarse a la barrera**;
-- el superbloque nuevo va **siempre a la copia alterna** — pisar la que manda
-  deja el volumen sin ningún superbloque válido si el corte llega a mitad;
-- no se reserva después de cerrar los datos;
-- el límite se comprueba en **cada** reserva, no sólo al abrir: una transacción
+- el superbloque nuevo va **siempre a la copia alterna** -- pisar la que manda
+  deja el volumen sin ningun superbloque valido si el corte llega a mitad;
+- no se reserva despues de cerrar los datos;
+- el limite se comprueba en **cada** reserva, no solo al abrir: una transaccion
   puede empezar cabiendo y dejar de caber a mitad, y pasarse es escribir fuera
-  de la partición;
+  de la particion;
 - una reserva absurda no da la vuelta al contador;
 - el gate de identidad y el 95 % rechazan **al abrir**;
 - abandonar no deshace nada y no hace falta: los bloques quedan sin que nada
   los apunte y el volumen sigue entero. Es el regalo de no sobreescribir;
 - ★ **el commit conserva el `disk_id`**. Construir el superbloque de cero lo
-  dejaba en ceros, y el síntoma sería de los peores: se escribe bien *una vez*,
+  dejaba en ceros, y el sintoma seria de los peores: se escribe bien *una vez*,
   y al siguiente arranque el gate de identidad da falso y ESTRATOS se monta en
   solo lectura **para siempre**, sin que nada lo explique.
 
@@ -371,42 +382,42 @@ que lo dispara. Nada de eso se ha tocado, y la escritura al disco sigue cerrada.
 
 ## 6. Nombres y rutas
 
-Un directorio es un nodo cuyo atributo `:entradas` mapea nombre → hash de
-nodo. Nada más.
+Un directorio es un nodo cuyo atributo `:entradas` mapea nombre -> hash de
+nodo. Nada mas.
 
-- Nombres en **Latin-1**, un byte por carácter, igual que la consola y el
+- Nombres en **Latin-1**, un byte por caracter, igual que la consola y el
   teclado (ver `keyboard.rs`). Sin UTF-8 en Ring 0, sin decodificador en el
-  camino. `ñ` y acentos funcionan porque el font ya los dibuja.
-- Sin distinción de mayúsculas al comparar, **pero conservando** cómo se
-  escribió. Es lo que espera cualquiera que venga de Windows y no cuesta nada.
+  camino. `n` y acentos funcionan porque el font ya los dibuja.
+- Sin distincion de mayusculas al comparar, **pero conservando** como se
+  escribio. Es lo que espera cualquiera que venga de Windows y no cuesta nada.
 
 ---
 
 ## 7. Capabilities: el permiso ES el handle
 
 En Unix cualquier proceso puede *nombrar* cualquier ruta y el kernel decide
-con uid/gid si le deja — autoridad ambiental, justo lo que BMO-X rechaza.
+con uid/gid si le deja -- autoridad ambiental, justo lo que BMO-X rechaza.
 
 En ESTRATOS, abrir no es "pedir por nombre y rezar":
 
 ```
-  Un proceso recibe una capability a un NODO (típicamente un directorio).
+  Un proceso recibe una capability a un NODO (tipicamente un directorio).
   Desde ella puede derivar capabilities a lo que hay dentro, nunca hacia
-  fuera ni hacia arriba. No existe ".." que escape del árbol concedido.
+  fuera ni hacia arriba. No existe ".." que escape del arbol concedido.
   Los derechos (leer / escribir / ejecutar / listar) viajan EN el handle y
-  solo pueden reducirse al derivarlos, jamás ampliarse.
+  solo pueden reducirse al derivarlos, jamas ampliarse.
 ```
 
-Consecuencia práctica: un compilador al que le das el directorio de su
-proyecto **no puede tocar nada más**, y no porque se lo prohíba una lista de
-permisos, sino porque el resto del disco no existe para él. No hay root que
-pueda saltárselo, porque no hay root.
+Consecuencia practica: un compilador al que le das el directorio de su
+proyecto **no puede tocar nada mas**, y no porque se lo prohiba una lista de
+permisos, sino porque el resto del disco no existe para el. No hay root que
+pueda saltarselo, porque no hay root.
 
-### El gate de ejecución
+### El gate de ejecucion
 
 `abrir(nodo, EJECUTAR)` comprueba el atributo `:firma` contra el contenido y
-lo pasa por `bmo-verify`. Si no cuadra, **no hay handle ejecutable** — el
-archivo se puede leer, copiar y borrar, pero no correr. La admisión de
+lo pasa por `bmo-verify`. Si no cuadra, **no hay handle ejecutable** -- el
+archivo se puede leer, copiar y borrar, pero no correr. La admision de
 binarios deja de ser un paso del arranque y pasa a ser una propiedad del
 suelo.
 
@@ -414,166 +425,166 @@ suelo.
 
 ## 8. TimeBack: no es una capa, es la misma cosa
 
-`platform/services/timeback` ya tiene el modelo (blobs, árboles, commits,
-refs, journal, rollback, CLI: ~54 KB). Lo que cambia es dónde vive:
+`platform/services/timeback` ya tiene el modelo (blobs, arboles, commits,
+refs, journal, rollback, CLI: ~54 KB). Lo que cambia es donde vive:
 
 | Hoy (TimeBack sobre un FS) | Con ESTRATOS |
 |---|---|
-| `tb add` copia el archivo a `objects/` | No copia nada: el bloque **ya está** direccionado por contenido |
+| `tb add` copia el archivo a `objects/` | No copia nada: el bloque **ya esta** direccionado por contenido |
 | `tb commit` escribe un objeto commit | Es el estrato que la escritura crea de todos modos |
-| El historial ocupa el doble | El historial ocupa lo que **cambió**, y nada más |
+| El historial ocupa el doble | El historial ocupa lo que **cambio**, y nada mas |
 | Hay que acordarse de commitear | Escribir es commitear |
 
 Los mandos de TimeBack siguen teniendo sentido, pero pasan a ser vistas sobre
 el disco en vez de una base de datos paralela: `tb log` recorre la cadena de
-estratos, `tb diff` compara dos árboles por hash (los subárboles con el mismo
-hash se saltan enteros — eso es gratis y es lo que hace a Git rápido), y
+estratos, `tb diff` compara dos arboles por hash (los subarboles con el mismo
+hash se saltan enteros -- eso es gratis y es lo que hace a Git rapido), y
 `tb restore` monta un estrato viejo.
 
 ### Un cambio obligatorio antes de nada
 
-`timeback::hash` usa **FNV-1a**. Es rápido, determinista y perfectamente
-válido para un índice… pero **no es criptográfico**. En un sistema de ficheros
+`timeback::hash` usa **FNV-1a**. Es rapido, determinista y perfectamente
+valido para un indice... pero **no es criptografico**. En un sistema de ficheros
 direccionado por contenido, dos bloques distintos con el mismo hash significan
-que uno sustituye al otro **en silencio**: pérdida de datos que ninguna suma
-detecta, porque la suma es justo lo que colisionó. Y siendo FNV, provocar esa
-colisión a propósito es trivial.
+que uno sustituye al otro **en silencio**: perdida de datos que ninguna suma
+detecta, porque la suma es justo lo que colisiono. Y siendo FNV, provocar esa
+colision a proposito es trivial.
 
 **ESTRATOS usa BLAKE3** (`platform/abi/bmo-abi/src/bef/blake3.rs`, ya
 presente, y el mismo que usa `bmo-verify`). Un solo algoritmo de hash en todo
-el sistema: contenido, firmas y verificación hablan el mismo idioma.
+el sistema: contenido, firmas y verificacion hablan el mismo idioma.
 
 ---
 
 ## 9. El recolector (GC)
 
 Un FS que nunca sobreescribe llena el disco de versiones viejas. Alguien tiene
-que decidir qué se puede soltar. Esta es la parte difícil de verdad — la que
-todo el mundo subestima y la razón por la que a btrfs le costó una década ser
+que decidir que se puede soltar. Esta es la parte dificil de verdad -- la que
+todo el mundo subestima y la razon por la que a btrfs le costo una decada ser
 fiable.
 
-**Decisión del dueño**: se implementa, con avisos, y el usuario manda.
+**Decision del dueno**: se implementa, con avisos, y el usuario manda.
 
-### Cómo funciona
+### Como funciona
 
-Un bloque se puede soltar cuando **ningún estrato conservado lo alcanza**. Se
-recorren las raíces vivas marcando lo alcanzable, y lo demás vuelve al mapa de
-espacio. Como todo está direccionado por contenido, un bloque compartido por
+Un bloque se puede soltar cuando **ningun estrato conservado lo alcanza**. Se
+recorren las raices vivas marcando lo alcanzable, y lo demas vuelve al mapa de
+espacio. Como todo esta direccionado por contenido, un bloque compartido por
 diez versiones se cuenta una vez.
 
-### Política, no automatismo
+### Politica, no automatismo
 
 ```
-  conservar todos los estratos de la última hora
-  conservar uno por hora del último día
-  conservar uno por día del último mes
+  conservar todos los estratos de la ultima hora
+  conservar uno por hora del ultimo dia
+  conservar uno por dia del ultimo mes
   conservar los marcados a mano (los que tienen nombre) PARA SIEMPRE
 ```
 
-Un estrato con nombre — *"antes de reparticionar"*, *"COBOL funcionando"* — no
-se toca nunca, aunque el disco esté lleno. Los automáticos se van adelgazando
-hacia atrás en el tiempo.
+Un estrato con nombre -- *"antes de reparticionar"*, *"COBOL funcionando"* -- no
+se toca nunca, aunque el disco este lleno. Los automaticos se van adelgazando
+hacia atras en el tiempo.
 
 ### Los avisos (esto es CABINA)
 
 El FS **nunca borra en silencio ni se llena por sorpresa**:
 
-- Al 70 % de ocupación: aviso ámbar con cuánto ocupa el historial y cuánto se
-  liberaría aplicando la política.
-- Al 85 %: FAULT rojo y propuesta concreta — *"soltar 47 estratos automáticos
-  de más de 30 días libera 12 GiB"*.
+- Al 70 % de ocupacion: aviso ambar con cuanto ocupa el historial y cuanto se
+  liberaria aplicando la politica.
+- Al 85 %: FAULT rojo y propuesta concreta -- *"soltar 47 estratos automaticos
+  de mas de 30 dias libera 12 GiB"*.
 - Al 95 %: **modo solo lectura**. Antes de perder datos por falta de sitio, el
   sistema se planta y te lo dice.
 - Y un mando manual: `estratos limpiar` con lo que va a soltar **listado antes
   de hacerlo**.
 
-Tienes razón en que en un disco enorme esto importa poco. En tus 414 GiB de
+Tienes razon en que en un disco enorme esto importa poco. En tus 414 GiB de
 BMO-DATA importa bastante, y en un SSD hay un motivo extra: los bloques
-soltados hay que devolvérselos al disco con `TRIM`, o el SSD sigue creyendo
-que están ocupados y se le acaba el margen de escritura.
+soltados hay que devolverselos al disco con `TRIM`, o el SSD sigue creyendo
+que estan ocupados y se le acaba el margen de escritura.
 
 ### ✅ La contabilidad, hecha (2026-07-31)
 
-`bmo_estratos::espacio` — `Ocupacion` y `Nivel`, con los cuatro umbrales de
-arriba, **probados en el anfitrión**. El kernel los expone en `estratos`.
+`bmo_estratos::espacio` -- `Ocupacion` y `Nivel`, con los cuatro umbrales de
+arriba, **probados en el anfitrion**. El kernel los expone en `estratos`.
 
-Y la cuenta resultó ser **una resta**: ESTRATOS reserva con un puntero que sólo
-avanza (`log_head` es el primer bloque libre), así que todo lo de debajo está
-usado. Ni mapa de bits, ni listas de huecos, ni fragmentación que medir — y eso
+Y la cuenta resulto ser **una resta**: ESTRATOS reserva con un puntero que solo
+avanza (`log_head` es el primer bloque libre), asi que todo lo de debajo esta
+usado. Ni mapa de bits, ni listas de huecos, ni fragmentacion que medir -- y eso
 es consecuencia directa de no sobreescribir nunca. El precio es que la cuenta
-sólo sube hasta que exista el recolector, y que suba **y se vea** es justo lo
+solo sube hasta que exista el recolector, y que suba **y se vea** es justo lo
 que se quiere.
 
-### El número que zanja cuándo hace falta el GC
+### El numero que zanja cuando hace falta el GC
 
 Con 414 GiB y bloques de 4 KiB son ~108 millones de bloques. Un `.bex` de C
 ocupa cinco. Aunque cada estrato guardara uno entero **sin compartir nada**,
-caben **más de veinte millones** antes de rozar el 70 % — y como todo está
-direccionado por contenido, lo que no cambia no se copia, así que el número real
+caben **mas de veinte millones** antes de rozar el 70 % -- y como todo esta
+direccionado por contenido, lo que no cambia no se copia, asi que el numero real
 es mucho mayor.
 
 Hay un test que lo comprueba (`en_414_gib_caben_millones_de_estratos`), y por eso
-el orden de la §10 no se toca: **el recolector va después de escribir, no antes**.
+el orden de la section 10 no se toca: **el recolector va despues de escribir, no antes**.
 
 Es la misma postura de Git y no por casualidad: `git gc` no borra tu historia,
-sólo lo que ya nadie alcanza, y el reflog guarda 90 días por si acaso. Para quien
-acumula a propósito, el historial **es el producto**. Lo que hace falta desde el
-primer día no es recoger: es **avisar**.
+solo lo que ya nadie alcanza, y el reflog guarda 90 dias por si acaso. Para quien
+acumula a proposito, el historial **es el producto**. Lo que hace falta desde el
+primer dia no es recoger: es **avisar**.
 
 ---
 
-## 10. Orden de construcción
+## 10. Orden de construccion
 
-ESTRATOS no se empieza hasta que lo de abajo esté firme. Cada paso deja algo
-que funciona por sí solo:
+ESTRATOS no se empieza hasta que lo de abajo este firme. Cada paso deja algo
+que funciona por si solo:
 
-1. **FAT32 sobre A: (leer)** — el disco ya se lee por sectores y la GPT está
+1. **FAT32 sobre A: (leer)** -- el disco ya se lee por sectores y la GPT esta
    parseada. Esto desbloquea la caja negra de CABINA y sacar los `.bex` de
    dentro del kernel. *No toca ESTRATOS.*
-2. **Gate de identidad** — `IDENTIFY` ya da modelo y serie; falta que sea una
-   comprobación de verdad. Sin esto no se escribe nada, en ningún sitio.
-3. **Capa de bloques** — el contrato único `leer / escribir / capacidad /
+2. **Gate de identidad** -- `IDENTIFY` ya da modelo y serie; falta que sea una
+   comprobacion de verdad. Sin esto no se escribe nada, en ningun sitio.
+3. **Capa de bloques** -- el contrato unico `leer / escribir / capacidad /
    identidad`, con AHCI y NVMe debajo. ESTRATOS habla con eso, no con SATA.
-4. ✅ **ESTRATOS solo lectura** — formatear desde el anfitrión con una
+4. ✅ **ESTRATOS solo lectura** -- formatear desde el anfitrion con una
    herramienta del toolchain, y que el kernel lo monte y lea. Sin riesgo:
-   si el formato está mal, se reformatea.
-5. **ESTRATOS escritura** — log, estratos, barreras. Aquí empieza lo serio.
-   *(La contabilidad de espacio de la §9 ya está: sin saber cuánto queda no se
+   si el formato esta mal, se reformatea.
+5. **ESTRATOS escritura** -- log, estratos, barreras. Aqui empieza lo serio.
+   *(La contabilidad de espacio de la section 9 ya esta: sin saber cuanto queda no se
    puede decidir si se acepta una escritura.)*
-6. **Recolector** — cuando haya algo que recoger.
-7. **TimeBack sobre ESTRATOS** — el historial deja de ser una copia.
+6. **Recolector** -- cuando haya algo que recoger.
+7. **TimeBack sobre ESTRATOS** -- el historial deja de ser una copia.
 
 ---
 
 ## 11. Lo que ESTRATOS NO va a ser
 
-Mismo criterio que BMO C y BMO C++: **acotado a propósito, terminable**.
+Mismo criterio que BMO C y BMO C++: **acotado a proposito, terminable**.
 
-- No hay volúmenes, RAID ni espejos.
-- No hay compresión ni cifrado en la v1.
+- No hay volumenes, RAID ni espejos.
+- No hay compresion ni cifrado en la v1.
 - No hay cuotas, ACLs ni usuarios: hay **capabilities**.
-- No hay enlaces duros. Los simbólicos, quizá.
+- No hay enlaces duros. Los simbolicos, quiza.
 - No es POSIX y no lo intenta.
 - No hay red.
 
-Un sistema de ficheros que hace bien seis cosas es infinitamente más útil que
-uno que hace treinta a medias — y sobre todo, es uno que **se puede terminar**.
+Un sistema de ficheros que hace bien seis cosas es infinitamente mas util que
+uno que hace treinta a medias -- y sobre todo, es uno que **se puede terminar**.
 
 ---
 
 ## 12. Riesgos, dichos antes
 
-- **Aquí se pierden datos.** Es el componente donde un bug no da un fault
-  bonito en pantalla: se lleva el trabajo de alguien. De ahí las reglas de la
-  §2 y el orden de la §10.
-- **El recolector es lo difícil**, no el formato.
-- **Las barreras de escritura hay que respetarlas.** Un SSD que dice "ya está"
-  cuando el dato sigue en su caché convierte cualquier diseño transaccional en
-  decoración. `FLUSH CACHE` no es opcional.
+- **Aqui se pierden datos.** Es el componente donde un bug no da un fault
+  bonito en pantalla: se lleva el trabajo de alguien. De ahi las reglas de la
+  section 2 y el orden de la section 10.
+- **El recolector es lo dificil**, no el formato.
+- **Las barreras de escritura hay que respetarlas.** Un SSD que dice "ya esta"
+  cuando el dato sigue en su cache convierte cualquier diseno transaccional en
+  decoracion. `FLUSH CACHE` no es opcional.
 - **Nunca dos escritores.** Mientras no haya SMP y bloqueo de verdad, ESTRATOS
   se monta desde un solo sitio.
 
 ---
 
-*Documento de diseño. La implementación empieza cuando los pasos 1 a 3 de la
-§10 estén hechos y probados en hardware real.*
+*Documento de diseno. La implementacion empieza cuando los pasos 1 a 3 de la
+section 10 esten hechos y probados en hardware real.*

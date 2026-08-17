@@ -43,6 +43,11 @@ use bmo_ahci::{storage_hal, StorageHal};
 mod irq;
 mod ventana;
 mod gate;
+// ** Lo que el disco CONTESTA, empaquetado para salir por `OP_INFO`. El reparto
+// de verdad vive FUERA del kernel, en cuatro generaciones (L7): `bmo-identify`
+// para los hechos y `bmo-disco-juicio` para el veredicto. Aqui solo se pega.
+mod perfil;
+pub use perfil::{enlace, geometria, juicio, medio};
 pub use gate::verify_identity;
 /// WHO HOLDS THE DISK: one owner at a time, with a count of waits and thefts.
 mod owner;
@@ -429,6 +434,23 @@ fn identify() {
         TOTAL_SECTORS = total;
     }
     crate::ring0::cabina::info("disk", model(), unsafe { TOTAL_SECTORS });
+
+    // ** Y AQUI SE LE PREGUNTA AL DISCO LO QUE NUNCA SE LE HABIA PREGUNTADO.
+    //
+    // El sector ya esta leido: las palabras 217 (gira o no), 169 (TRIM), 106 y
+    // 209 (geometria) y 75/76/77 (cola y cable) estaban **en este mismo buffer**
+    // desde el primer dia, y nadie las miraba. Ver R-DISCO6 y el capitulo
+    // `docs/componente/EL_DISCO_EXIGE.md`.
+    //
+    // Se le pasa el sector entero y no palabras sueltas a proposito: decidir
+    // que palabras importan es del padre, y este fichero no puede empezar a
+    // interpretar sin romper el reparto.
+    let sector = unsafe { core::slice::from_raw_parts(src, 512) };
+    perfil::tomar_foto(sector);
+    // Y se dice en el arranque, con su cifra: el medio es lo primero que decide
+    // como se le escribe a este aparato.
+    let (que_es, cifra) = perfil::medio_en_palabras();
+    crate::ring0::cabina::info("disk", que_es, cifra);
 }
 
 // -- ** EL DISCO TIENE UN DUENO CADA VEZ ------------------------------------

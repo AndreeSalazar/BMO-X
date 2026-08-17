@@ -23,6 +23,11 @@ bmo-fat32 = { path = "../../platform/drivers/storage/fat32" }
 # ESTRATOS: el formato propio. Solo lectura por ahora -- el modulo del kernel
 # (ring0/estratos.rs) no llama a `write` en ningun sitio.
 bmo-estratos = { path = "../../platform/drivers/storage/estratos" }
+# Lo que el disco CONTESTA (palabras 217, 169, 106, 209, 75, 76, 77) y el
+# VEREDICTO sobre el. Son dos crates y no una a proposito: los hechos no opinan
+# y el juez vive en `platform/shared/` porque **alli se puede probar** (L7b).
+bmo-identify = { path = "../../platform/drivers/storage/identify" }
+bmo-disco-juicio = { path = "../../platform/shared/bmo-disco-juicio" }
 # BLAKE3, directo y no de rebote por ESTRATOS. El cargador lo usa POR TROZOS
 # --`Hasher::update` segun aterriza cada seccion-- y eso no es cosa del sistema
 # de ficheros: es del que carga. Sigue siendo UNA sola implementacion del hash,
