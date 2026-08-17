@@ -571,6 +571,123 @@ pub(crate) fn report_system(s: &mut Output) {
     }
     s.with_ink(INK_PLAIN);
     s.byte(b'\n');
+
+    report_usb(s);
+}
+
+/// **EL CUADRO DE MANDOS DEL TECLADO**, el de `docs/EL_TECLADO_EXIGE.md`,
+/// leido desde donde vive el dueno.
+///
+/// # Por que esto no sobra teniendo ya la luz de la barra
+///
+/// Porque la luz contesta **si**, y esto contesta **cual**. Un testigo tiene que
+/// caber en una palabra o deja de leerse de un vistazo; el diagnostico son cinco
+/// numeros, y el capitulo dice que entre los cinco *"no queda sitio para una
+/// causa muda"*. Es la misma pareja que ya existe en dos sitios de esta casa:
+/// CABINA es la ventana viva y `cabina` el volcado.
+///
+/// [!] Y sobre todo: esto se puede **guardar**. La luz esta en la pantalla del
+/// dia malo; `info` se vuelca a `data\` y se puede mandar.
+#[inline(never)]
+fn report_usb(s: &mut Output) {
+    section(s, b"teclado y raton");
+    let salud = bmo::info(bmo::INFO_USB_SALUD);
+    let bits = salud & 0xFFFF;
+    let edad = (salud >> bmo::USB_SALUD_EDAD_SHIFT) & bmo::USB_SALUD_EDAD_MASK;
+
+    if bits & bmo::USB_SALUD_XHCI == 0 {
+        label(s, b"bus");
+        s.with_ink(INK_ERR);
+        s.text(b"sin controlador xHCI enumerado\n");
+        s.with_ink(INK_PLAIN);
+        return;
+    }
+
+    // E1. El latido va PRIMERO porque es el que invalida a los demas: los bits
+    // de abajo son una foto que saca el bombeo, y si nadie bombea, la foto es
+    // vieja aunque diga cosas bonitas.
+    label(s, b"latido");
+    if edad >= bmo::USB_SALUD_EDAD_VIEJA {
+        s.with_ink(INK_ERR);
+        s.text(b"el hilo del bus NO ha latido nunca");
+    } else if edad > 100 {
+        s.with_ink(INK_ERR);
+        s.text(b"parado hace ");
+        s.dec(edad);
+        s.text(b" ms  (late cada 4)");
+    } else {
+        s.with_ink(INK_GOOD);
+        s.text(b"vivo, hace ");
+        s.dec(edad);
+        s.text(b" ms");
+    }
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+
+    aparato(s, b"teclado", bits, bmo::USB_SALUD_KBD, bmo::USB_SALUD_KBD_BOMBA, bmo::USB_SALUD_KBD_CORRE);
+    aparato(s, b"raton", bits, bmo::USB_SALUD_RATON, bmo::USB_SALUD_RATON_BOMBA, bmo::USB_SALUD_RATON_CORRE);
+
+    if bits & bmo::USB_SALUD_XHC_AVERIADO != 0 {
+        label(s, b"xHC");
+        s.with_ink(INK_ERR);
+        s.text(b"USBSTS dice HSE/HCE: el controlador esta muerto\n");
+        s.with_ink(INK_PLAIN);
+    }
+
+    // Los cuatro que tienen que ser CERO. Se imprimen SIEMPRE, tambien en cero,
+    // y eso es el punto: un cuadro de mandos que solo ensena las filas malas no
+    // deja distinguir "esta bien" de "no se miro".
+    let av = bmo::info(bmo::INFO_USB_AVERIAS);
+    cero(s, b"evt perdidos", av & 0xFFFF, b"E2: el aparcadero se lleno -> endpoint mudo");
+    cero(s, b"no resucita", (av >> 16) & 0xFFFF, b"E3: reset+dequeue no completo");
+    cero(s, b"reparados", (av >> 32) & 0xFFFF, b"E3: hubo errores de bus, se repararon");
+    cero(s, b"avisos perdidos", (av >> 48) & 0xFFFF, b"E5: los salvo el barrido de 500 ms");
+}
+
+/// Una fila de aparato: adoptado, bombeando y corriendo. **Los tres, y por
+/// separado**: adoptado sin bombear es un periferico enumerado y mudo para
+/// siempre, y esa es exactamente la averia que no se veia.
+fn aparato(s: &mut Output, nombre: &[u8], bits: u64, hay: u64, bomba: u64, corre: u64) {
+    label(s, nombre);
+    if bits & hay == 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"no adoptado (desenchufado?)\n");
+        s.with_ink(INK_PLAIN);
+        return;
+    }
+    let vivo = bits & bomba != 0 && bits & corre != 0;
+    s.with_ink(if vivo { INK_GOOD } else { INK_ERR });
+    if bits & bomba != 0 {
+        s.text(b"encolado");
+    } else {
+        s.text(b"SIN ENCOLAR");
+    }
+    s.text(b" / ");
+    if bits & corre != 0 {
+        s.text(b"Running");
+    } else {
+        s.text(b"PARADO (Halted/Stopped)");
+    }
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+}
+
+/// Un contador que tiene que dar cero, con su motivo al lado cuando no lo da.
+fn cero(s: &mut Output, que: &[u8], v: u64, porque: &[u8]) {
+    label(s, que);
+    if v == 0 {
+        s.with_ink(INK_GOOD);
+        s.text(b"0");
+        s.with_ink(INK_PLAIN);
+        s.byte(b'\n');
+        return;
+    }
+    s.with_ink(INK_ERR);
+    s.dec(v);
+    s.text(b"   ");
+    s.text(porque);
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
 }
 
 

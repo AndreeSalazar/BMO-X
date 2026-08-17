@@ -145,7 +145,7 @@ basta -- sin la primera se mata lo bueno, sin la segunda se gira para siempre.
 **El numero:** `barrido_stats()` -> `(barridos, los que repararon algo)`. Si el
 primero sube y el segundo no, el bus esta sano.
 
-### E6 -- ★★ Que la averia se VEA. **ESTA ES LA QUE FALTA**
+### E6 -- ★★ Que la averia se VEA
 
 **Exige:** que cuando el teclado muera, el dueno lo sepa **sin buscarlo**.
 
@@ -153,9 +153,35 @@ primero sube y el segundo no, el bus esta sano.
 contadores, ser vigiladas... y el dueno sigue viendo *"el teclado no responde"* y
 nada mas.
 
-**Hoy: NO.** Los avisos existen y son correctos, pero se dicen **una vez**
-(deduplicados por bandera, y hacen bien: sesenta por segundo seria peor) y viven
-en un panel que hay que abrir.
+**Hoy: HECHO, y sin verificar en metal** (2026-08-17). Los avisos que ya habia
+siguen donde estaban --se dicen una vez, deduplicados, y hacen bien-- y encima de
+ellos hay ahora un **estado**:
+
+```
+   dev/usb/salud.rs      la foto la saca el BOMBEO, 250 veces por segundo
+   INFO_USB_SALUD        bits: hay xHCI / kbd adoptado / ENCOLADO / Running
+                         + la EDAD DEL LATIDO del hilo, en ms, en 16..31
+   INFO_USB_AVERIAS      los cuatro contadores que tienen que ser CERO
+   scene/testigo.rs      la LUZ, en la barra, al lado de la ficha de CABINA
+```
+
+★ **La foto se saca en el bombeo y no al preguntar**, y no es un detalle de
+implementacion: leer el estado de un endpoint recorre el Device Context y
+`USBSTS` es MMIO, **y las dos cosas solo estan mapeadas en el PML4 del kernel**.
+Un `OP_INFO` llega con el CR3 del que pregunta; mirar el hardware ahi seria un
+`#PF`.
+
+[!] **Y eso abre una trampa que hay que cerrar de frente**: una foto que se saca
+en el bombeo **se congela si el bombeo muere**, y entonces el ultimo valor bueno
+contestaria *"todo bien"* para siempre -- justo el dia malo. Por eso la edad del
+latido viaja **pegada a los bits y se calcula al preguntar**: es lo unico de esa
+palabra que envejece solo, o sea lo unico que puede delatar al que la escribe. Un
+informe de salud que no puede caducar es un informe que miente.
+
+★ **Y la luz se pinta SIEMPRE, tambien en verde.** Una luz que solo aparece
+cuando hay averia no se distingue de una luz que no funciona: si la primera vez
+que se ve es el dia malo, lo que dice no se puede creer. Es la misma razon por la
+que la ficha de CABINA esta siempre, escrita con otras palabras.
 
 > ★★ **LA REGLA: UNA AVERIA VIVA ES UN ESTADO, NO UN EVENTO.**
 >
@@ -225,6 +251,40 @@ Cinco numeros. Entre los cinco dicen **cual** de las seis exigencias fallo:
    todos limpios y sigue mudo      -> falta una septima exigencia. Escribirla aqui
 ```
 
+### ★ Y los cinco se leen ya DESDE EL ESCRITORIO, que es donde vive el dueno
+
+Desde el 2026-08-17 no hace falta el shell de Ring 0 --al que no se vuelve-- ni
+que el teclado funcione para poder mirarlos:
+
+| donde | que da | quien pinta |
+|---|---|---|
+| la **luz** de la barra | el veredicto en una palabra, encendido mientras dure | `scene/testigo.rs` |
+| la orden **`info`** | los cinco numeros, con su E al lado, y **se puede guardar** | `commands/reports.rs`, seccion `teclado y raton` |
+
+La pareja no es redundante: **la luz contesta SI, `info` contesta CUAL.** Un
+testigo tiene que caber en una palabra o deja de leerse de un vistazo; el
+diagnostico son cinco numeros. Y `info` se vuelca a `data\`, o sea que el dia
+malo se puede mandar por escrito en vez de contar de memoria.
+
+Lo que dice la luz, y en este orden --de fuera hacia dentro, porque **el orden ES
+el diagnostico**--:
+
+```
+   SIN BUS USB      gris    no hay xHCI: no hay bus que mirar
+   xHC MUERTO       rojo    USBSTS dice HSE/HCE. Lo demas es ruido
+   BUS PARADO       rojo    E1: el hilo no late hace >100 ms (late cada 4)
+   SIN TECLADO USB  rojo    E5: adoptado ya no esta. Desenchufado?
+   TECLADO PARADO   rojo    sin encolar, o endpoint fuera de Running
+   EVT PERDIDOS n   ambar   ** E2: LA HIPOTESIS DE ABAJO, CONFIRMADA
+   NO RESUCITA n    ambar   E3
+   REPARADO xn      ambar   E3: hay errores de bus, pero se reparan
+   AVISOS PERD n    ambar   E5: el barrido esta tapando avisos perdidos
+   TECLADO          verde   todo lo comprobable, comprobado
+```
+
+Mirar primero el teclado daria *"teclado parado"* cuando lo que se paro fue el
+hilo -- un diagnostico que manda a mirar el aparato equivocado.
+
 ---
 
 ## 5. Lo que falta para que sea "como Windows"
@@ -232,25 +292,58 @@ Cinco numeros. Entre los cinco dicen **cual** de las seis exigencias fallo:
 El dueno lo pidio asi: *"SIEMPRE estar abierto para cuando desconecte mi teclado
 o conecte con el USB, como Windows, para escribir basicamente"*.
 
-De las seis, **cinco estan puestas**. Enchufar y desenchufar ya funciona por
-diseno: aviso reactivo en 4 ms, red de 500 ms, y el desenchufe libera puerto,
-intentos y aparato.
+De las seis, **las seis estan puestas** desde el 2026-08-17. Enchufar y
+desenchufar ya funcionaba por diseno --aviso reactivo en 4 ms, red de 500 ms, y
+el desenchufe libera puerto, intentos y aparato--; lo que faltaba era enterarse,
+y eso es E6.
 
-Lo que falta es E6 y una consecuencia suya:
+Queda **una consecuencia suya, sin comprobar**:
 
 ```
-   1. E6   un bit de salud por INFO + una luz fija en el escritorio.
-           `INFO_USB_TECLADO_VIVO` -- estado, no evento.
-   2.      que el propio escritorio sepa RE-RECLAMAR la entrada cuando el
-           teclado vuelve. Hoy se suelta el aparato al desenchufarlo; queda
-           comprobar que al volver, quien tenia la entrada la recupera sin
-           que nadie relance nada.
+   que el propio escritorio sepa RE-RECLAMAR la entrada cuando el teclado
+   vuelve. Hoy se suelta el aparato al desenchufarlo; queda comprobar que al
+   volver, quien tenia la entrada la recupera sin que nadie relance nada.
 ```
 
-[!] El punto 2 esta **sin comprobar**, no dado por bueno. Es una fila de
-`VERDAD.md` escrita desde el punto de vista del que mira la pantalla:
-*"desenchufar el teclado con el escritorio abierto y volverlo a enchufar debe
-dejar escribir en la caja de Ejecutar sin tocar nada mas"*.
+[!] Esta **sin comprobar**, no dado por bueno. Es una fila escrita desde el punto
+de vista del que mira la pantalla: *"desenchufar el teclado con el escritorio
+abierto y volverlo a enchufar debe dejar escribir en la caja de Ejecutar sin
+tocar nada mas"*.
+
+### ★ Lo que hay que hacer en el Ryzen, y lo que descarta cada resultado
+
+Nada de esto lo ha ejecutado un CPU todavia: **compila y esta razonado, y eso no
+es lo mismo que funciona.**
+
+```
+   1. arrancar y mirar la barra, a la derecha
+      TECLADO en verde       -> la luz vive y el bus esta sano AHORA
+      cualquier otra cosa    -> ya esta dicho el problema, sin abrir nada
+
+   2. escribir `info` y leer la seccion `teclado y raton`
+      los cinco en su sitio  -> el cuadro de mandos entero es alcanzable
+                                desde donde vive el dueno. Guardalo.
+
+   3. DESENCHUFAR el teclado y mirar la luz (~1 s)
+      SIN TECLADO USB        -> E5 (b) hace lo que dice, y la luz reacciona
+      TECLADO en verde       -> el desenchufe no se atiende: mirar E5
+
+   4. VOLVER A ENCHUFARLO
+      vuelve a verde y ESCRIBE  -> las seis exigencias, cerradas
+      vuelve a verde y NO escribe -> es la fila de arriba: el bus lo readopto
+                                pero la ENTRADA no volvio a su dueno. Eso no
+                                es del teclado: es del escritorio.
+
+   5. usarlo hasta que se muera, y entonces mirar la luz SIN tocar nada
+      EVT PERDIDOS n         -> ** la hipotesis de la seccion 3, CONFIRMADA
+      TECLADO PARADO         -> E3: se paro y la resurreccion no lo trajo
+      BUS PARADO             -> E1: el hilo del bus, no el teclado
+      TECLADO en verde       -> ninguna de las seis. Falta la septima, y hay
+                                que escribirla aqui.
+```
+
+Ese ultimo caso es el unico que deja el problema abierto -- y aun asi **habria
+avanzado**: descartaria las seis de golpe, que hoy no se puede hacer.
 
 ---
 

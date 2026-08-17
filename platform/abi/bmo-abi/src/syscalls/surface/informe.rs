@@ -445,6 +445,82 @@ pub const INFO_FUGAS: u64 = 0x1E;
 /// `bmo_rtc::desempaquetar`.
 pub const INFO_FECHA: u64 = 0x1F;
 
+/// -- ** LA SALUD DEL BUS USB, COMO ESTADO ---------------------------------
+///
+/// La sexta exigencia de `docs/EL_TECLADO_EXIGE.md`, y la regla que la ordena:
+///
+/// > **Una averia viva es un ESTADO, no un evento.** Un aviso se dice una vez e
+/// > informa a quien ya estaba mirando; una averia que sigue ocurriendo
+/// > necesita una luz encendida mientras dure, y donde vive el dueno.
+///
+/// Las cinco exigencias anteriores del teclado estan cumplidas y **cada una
+/// tiene su contador** -- pero todos vivian en funciones de kernel que solo se
+/// leen desde el shell de Ring 0, al que no se vuelve. Estas dos filas son lo
+/// que convierte ese cuadro de mandos en algo que el escritorio puede pintar.
+///
+/// # `INFO_USB_SALUD`: los bits, mas la EDAD DEL LATIDO
+///
+/// ```text
+///    bit 0   hay controlador xHCI            sin esto, lo demas es cero y no
+///                                            significa "roto"
+///    bit 1   teclado adoptado
+///    bit 2   teclado con transferencia ENCOLADA   <- "enumero" != "escucha"
+///    bit 3   su endpoint en Running SEGUN EL HARDWARE
+///    bit 4   raton adoptado
+///    bit 5   raton bombeando
+///    bit 6   raton en Running
+///    bit 7   USBSTS dice HSE o HCE: el controlador esta muerto
+///   16..31   milisegundos desde el ultimo latido del hilo del bus
+/// ```
+///
+/// ** La edad viaja PEGADA a los bits y no en otro campo, porque es lo que
+/// permite no fiarse de ellos. Los bits son una foto que saca el bombeo; si el
+/// hilo del bus muere, la foto se congela y seguiria contestando *"todo bien"*
+/// para siempre. La edad **envejece sola**, asi que delata al que la escribe.
+/// `0xFFFF` = hace mucho, o no hay reloj con el que saberlo: las dos piden la
+/// misma reaccion, que es dejar de creerse el resto de la palabra.
+///
+/// El raton va al lado del teclado a proposito: **la asimetria entre los dos es
+/// medio diagnostico**. Lo que le pasa a uno y no al otro no puede ser del hilo
+/// del bus, ni del CR3 del MMIO, ni de la enumeracion -- solo puede ser algo
+/// por endpoint.
+pub const INFO_USB_SALUD: u64 = 0x3B;
+
+pub const USB_SALUD_XHCI: u64 = 1 << 0;
+pub const USB_SALUD_KBD: u64 = 1 << 1;
+pub const USB_SALUD_KBD_BOMBA: u64 = 1 << 2;
+pub const USB_SALUD_KBD_CORRE: u64 = 1 << 3;
+pub const USB_SALUD_RATON: u64 = 1 << 4;
+pub const USB_SALUD_RATON_BOMBA: u64 = 1 << 5;
+pub const USB_SALUD_RATON_CORRE: u64 = 1 << 6;
+pub const USB_SALUD_XHC_AVERIADO: u64 = 1 << 7;
+/// Donde empieza la edad del latido, en milisegundos, y su mascara.
+pub const USB_SALUD_EDAD_SHIFT: u64 = 16;
+pub const USB_SALUD_EDAD_MASK: u64 = 0xFFFF;
+/// *"Hace mucho, o no se puede saber"*. Ver arriba por que comparten valor.
+pub const USB_SALUD_EDAD_VIEJA: u64 = 0xFFFF;
+
+/// **Los cuatro contadores que tienen que ser CERO**, de 16 en 16 bits y
+/// saturados -- el mismo empaquetado que [`INFO_CPU_EXT_AVERIAS`], y por el
+/// mismo motivo: en campos separados se puede leer uno y no el otro, que es
+/// como se dice *"todo bien"* habiendo mirado la mitad.
+///
+/// ```text
+///    0..15   eventos PERDIDOS del aparcadero  E2  el endpoint se queda mudo
+///   16..31   recuperaciones FALLIDAS          E3  se resucito y no salio
+///   32..47   recuperaciones                   E3  hay errores de bus
+///   48..63   barridos que REPARARON algo      E5  se pierden avisos de puerto
+/// ```
+///
+/// Los dos primeros son averia; los dos ultimos son **desgaste**: el sistema se
+/// repara solo y funciona, pero cada uno es medio segundo en que el teclado no
+/// respondia. Quien pinta decide si eso es rojo o ambar; lo que no puede es
+/// decir que no lo sabia.
+///
+/// Saturan a `0xFFFF` en vez de dar la vuelta: un contador que vuelve a cero
+/// **apaga la luz**, que es justo el fallo que esta fila existe para no repetir.
+pub const INFO_USB_AVERIAS: u64 = 0x3C;
+
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 

@@ -162,6 +162,16 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
             dsk.win.cabina_open && dsk.win.top_before == W_CABINA,
             !dsk.win.cabina_open,
         );
+        // El testigo del USB vive en la misma barra, en la ranura siguiente a
+        // CABINA. Repintar las fichas no lo toca --esta despues-- pero SI lo
+        // tapa lo que repinta la barra entera, y de ahi se vuelve por aqui:
+        // `taskbar_dirty` es la senal comun de "la barra se ha vuelto a
+        // pintar". Olvidando lo pintado, la luz se dibuja en la vuelta
+        // siguiente.
+        //
+        // Un hueco vacio donde estaba la luz se lee como "no hay problema", que
+        // es la peor cosa que puede decir un instrumento que se borro.
+        scene::testigo::olvidar();
         dsk.win.taskbar_dirty = false;
     }
 
@@ -253,6 +263,24 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         if dsk.win.mem_open {
             scene::vitals::paint(&p, &dsk.win.mem);
         }
+    }
+
+    // -- ** EL TESTIGO DEL BUS USB: la luz que no hay que abrir --
+    //
+    // Aqui, con las vitales y antes del cursor, por el mismo motivo: lo que se
+    // pinta despues del cursor le come el save-under.
+    //
+    // ** Y SOLO EN FOTOGRAMAS QUE VAYAN A PINTAR, que es lo que lo hace seguro
+    // sin apartar el puntero a mano. La duda razonable es si eso lo puede dejar
+    // sin repintar justo el dia malo --si el teclado esta muerto y el raton
+    // quieto, no hay entrada que dispare nada--, y no: el parpadeo del cursor
+    // de escritura pone `will_paint` cada `BLINK` vueltas **sin que nadie toque
+    // un aparato**. La luz llega tarde como mucho medio parpadeo.
+    //
+    // Cada 15 fotogramas, como las vitales: es un estado que cambia despacio y
+    // mirarlo mas rapido no da mas informacion.
+    if dsk.tick.will_paint {
+        scene::testigo::refrescar(&p, dsk.tick.frames, 15);
     }
 
     // -- El cursor del raton, ENCIMA de todo y lo ultimo --

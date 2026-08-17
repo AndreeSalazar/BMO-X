@@ -170,6 +170,18 @@ const INFO_SPIN_PICO: u64 = 0x1D;
 // Recursos que un muerto dejo sin devolver. Misma clase que los choques: tiene
 // que ser CERO, y por eso vale. Ver `core/autopsia.rs`.
 const INFO_FUGAS: u64 = 0x1E;
+// -- ** LA SALUD DEL BUS USB, PARA QUIEN VIVE EN EL ESCRITORIO --
+//
+// E6 de `docs/EL_TECLADO_EXIGE.md`. Las cinco exigencias anteriores estan
+// cumplidas y cada una tiene su contador -- pero todos se leian desde el shell
+// de Ring 0, y al escritorio no se vuelve. O sea: cinco instrumentos correctos
+// que su dueno no podia mirar cuando el teclado se moria, que es el unico
+// momento en que hacen falta.
+//
+// Dos filas, y la tabla entera del capitulo cabe en dos `OP_INFO`. Los bits y
+// el empaquetado se documentan en `dev/usb/salud.rs`.
+const INFO_USB_SALUD: u64 = 0x3B;
+const INFO_USB_AVERIAS: u64 = 0x3C;
 /// La fecha de la placa, empaquetada. Espejo de `bmo_abi::...::INFO_FECHA`.
 const INFO_FECHA: u64 = 0x1F;
 
@@ -405,6 +417,11 @@ pub fn campo(n: u64) -> u64 {
         INFO_SPIN_CHOQUES => crate::ring0::plat::spin::contention().0 as u64,
         INFO_SPIN_PICO => crate::ring0::plat::spin::contention().1 as u64,
         INFO_FUGAS => crate::ring0::core::autopsy::fugas(),
+        // * Estas dos NO miran el hardware: leen la foto que dejo el ultimo
+        // bombeo. Tocar el xHCI aqui seria hacerlo con el CR3 del programa que
+        // pregunta, y su MMIO no esta ahi. Ver `dev/usb/salud.rs`.
+        INFO_USB_SALUD => crate::ring0::dev::usb::salud::estado(),
+        INFO_USB_AVERIAS => crate::ring0::dev::usb::salud::averias(),
         _ => 0,
     }
 }
