@@ -444,7 +444,10 @@ try {
     # donde mirar.
     $costeElf = Join-Path $usDir 'target\x86_64-unknown-none\release\coste'
     if (-not (Test-Path $costeElf)) { Fail 'no salio el ELF de medida/coste' }
-    $costeBex = Join-Path $dataBase 'sys\coster.bex'
+    # ** `precio` y no `coster`: el de C se llama `coste`, y dos palabras para la
+    # misma cosa dicen lo que son -- DOS MEDIDAS INDEPENDIENTES DE LA MISMA
+    # CANTIDAD, que tienen que coincidir. Si difieren, una miente.
+    $costeBex = Join-Path $dataBase 'sys\precio.bex'
     if (Test-Path $costeBex) { Remove-Item $costeBex -Force }
     $out = cargo run -p bmo-bex-link --quiet -- $costeElf $costeBex 2>&1
     $out | ForEach-Object {
@@ -454,7 +457,7 @@ try {
         }
     }
     if ($LASTEXITCODE -ne 0) { Fail 'bex-link fallo con medida/coste' }
-    if (-not (Test-Path $costeBex)) { Fail 'bex-link no produjo coster.bex' }
+    if (-not (Test-Path $costeBex)) { Fail 'bex-link no produjo precio.bex' }
 } finally { Pop-Location }
 
 # -- Programas COBOL de ejemplo -----------------------------------
