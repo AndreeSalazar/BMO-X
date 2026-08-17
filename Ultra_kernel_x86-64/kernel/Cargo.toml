@@ -57,6 +57,31 @@ bmo-net = { path = "../../platform/drivers/net" }
 # el anfitrion, que es lo que un fondo de arranque nunca podia.
 bmo-ciudad = { path = "../../platform/shared/bmo-ciudad" }
 
+[features]
+# ** EL METRO DE LA PUERTA, Y POR QUE NO VIENE POR DEFECTO (2026-08-16).
+#
+# `meter::start`/`stop` son dos `rdtsc`, y la tanda en metal midio lo que cuesta
+# uno: **69 ticks en un bucle de 43 y 107 en uno de 4**. `dispatch` entero mide
+# 87-104. O sea que el termometro es del tamano del enfermo -- la fila `DISPATCH`
+# no se puede leer, y encima cada puerta del sistema paga ese instrumento.
+#
+# La regla que ya lleva escrita `meter.rs` es la que decide: **el instrumento se
+# retira cuando contesta**. Los cuatro sellos del stub se retiraron el mismo dia
+# por costar el 17%; estos dos cuestan el 8-12% de una puerta y se quedaban.
+#
+# Con esto hay DOS builds y la diferencia entre ellos ES la medida, tomada desde
+# Ring 3 y sin sesgo:
+#
+#    normal                          sin metro. La puerta cuesta 69-107 menos.
+#    --features metro_puerta         como hasta hoy: `dispatch` se mide.
+#
+# [!] `build.ps1` NO lo pasa, asi que lo que se despliega es el build rapido. Y
+# [!] la cuenta de puertas NO se apaga: `DOORS` sigue contando en los dos, porque
+# es el denominador del histograma por clase y la medida mas barata que queda
+# pendiente (puertas por segundo del escritorio).
+default = []
+metro_puerta = []
+
 [[bin]]
 name =     "bmo-kernel"
 path = "src/main.rs"

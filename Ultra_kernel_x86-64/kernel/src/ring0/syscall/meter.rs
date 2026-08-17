@@ -314,21 +314,73 @@ pub fn doors_of_class(class: usize) -> u64 {
     unsafe { core::ptr::addr_of!(DOORS_BY_CLASS).cast::<u64>().add(class).read_volatile() }
 }
 
+// == THE METER RETIRES WHEN IT ANSWERS (2026-08-16, step 1 of the bisection) ==
+//
+// Metal said what one `rdtsc` costs: **69 ticks inside a 43-tick loop and 107
+// inside a 4-tick loop** -- not one number, because the CPU is out of order and
+// a long loop hides it. `dispatch` measures 87-104 in total. So the thermometer
+// is the size of the patient: that row cannot be read, and **every door in the
+// system pays for it**.
+//
+// The rule this file already carried decides it: an instrument that has given
+// its number and keeps charging is a toll. The four stub seals were retired the
+// same day for costing 17%; these two cost 8-12% of a door and were staying.
+//
+// Two builds now, and **the difference between them IS the measurement**, taken
+// from Ring 3 with no instrument in the middle:
+//
+//    normal                     no meter. A door costs 69-107 ticks less.
+//    --features metro_puerta    as before: `dispatch` is measured.
+//
+// [!] `DOORS` keeps counting in BOTH. It is the denominator of the class
+// histogram and of the cheapest measurement still pending -- doors per second.
+
 /// Take the reading at the start of a door. Pairs with [`stop`].
+#[cfg(feature = "metro_puerta")]
 #[inline(always)]
 pub fn start() -> u64 {
     crate::ring0::task::scheduler::rdtsc()
 }
 
-/// Close the reading opened by [`start`] and fold it in.
+/// Same shape, no reading. Written as a **second definition** and not as an
+/// `if` inside the first so that the fast build contains no branch at all --
+/// and so that a reader sees the two worlds side by side instead of guessing
+/// which half a `cfg!()` kept.
+#[cfg(not(feature = "metro_puerta"))]
+#[inline(always)]
+pub fn start() -> u64 {
+    0
+}
+
+/// How long the door took, or `0` when the meter is out of this build.
 ///
 /// `saturating_sub` and not `-`: the TSC is invariant on this CPU, but a value
 /// that went backwards would be a fact about the machine, not a reason to
 /// underflow into a number near `u64::MAX` that then poisons every average
 /// computed from the sum. A lost sample is visible; a huge one is a lie.
+#[cfg(feature = "metro_puerta")]
+#[inline(always)]
+fn elapsed_since(started: u64) -> u64 {
+    crate::ring0::task::scheduler::rdtsc().saturating_sub(started)
+}
+
+#[cfg(not(feature = "metro_puerta"))]
+#[inline(always)]
+fn elapsed_since(_started: u64) -> u64 {
+    0
+}
+
+/// Close the reading opened by [`start`] and fold it in.
+///
+/// [!] With the meter out, `CYCLES` stays at zero and `dispatch` reads as **0**.
+/// That is not a cheap door: it is **no measurement at all**, and `bmo-juicio`
+/// refuses to give a verdict for a zero rather than calling it `META`. The lie
+/// that would otherwise be printed --*"llego a la meta: 0"*-- is exactly the
+/// silent-zero pattern this tree hunts, so it is closed on the judge's side and
+/// not papered over here.
 #[inline(always)]
 pub fn stop(started: u64) {
-    let elapsed = crate::ring0::task::scheduler::rdtsc().saturating_sub(started);
+    let elapsed = elapsed_since(started);
     unsafe {
         let n = core::ptr::addr_of_mut!(DOORS);
         n.write_volatile(n.read_volatile().wrapping_add(1));
