@@ -4,10 +4,15 @@
 > QUE funciona, QUE falta, DONDE esta cada cosa y COMO se trabaja. Para el
 > detalle cronologico ver los commits y `BITACORA.md`.
 
-**BMO-X** = sistema operativo bare-metal en Rust: microkernel de **capabilities**
-con **superficie congelada de 2 syscalls** (`INVOKE`/`WAIT`) + operaciones sobre
-handles; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
-sin QEMU. Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
+**BMO-X** = sistema operativo bare-metal en Rust: **Meta-Kernel** de
+**capabilities** con **superficie congelada de 2 syscalls** (`INVOKE`/`WAIT`) +
+operaciones sobre handles; arranca en **hardware real** (MSI A320M PRO MAX + Ryzen 5 5600X),
+sin QEMU. **No es un microkernel: lleva su linaje** --2 syscalls, servicios en
+Ring 3, capabilities-- pero la palabra que lo define es la de su ley
+(`META-KERNEL_HARD.md`): **una regla solo existe aqui si al lado tiene el
+componente que la exige y el numero con el que la exige.** La firma no la pone
+una escuela de diseno; la ponen las piezas que hay dentro de la caja.
+Toolchain propio (C / COBOL / **Ada** / C++ -> BEF -> BEX nativo), y los
 tres primeros **ya han ejecutado en el Ryzen**.
 
 > ## ★★★ Al 2026-08-16 -- SE MIDIO LA PUERTA, Y EL CENSO PAGO SOLO

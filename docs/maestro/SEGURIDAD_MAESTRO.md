@@ -123,8 +123,13 @@ No lo dice este documento: lo dice **la propia tabla del kernel**, en
 `kernel/src/ring0/cpu_vendor/features/usage.rs:139`.
 
 > *"Las tres son GRATIS --bits de CR4 y de EFER-- y ninguna esta puesta, en un
-> microkernel cuyo lema declarado es cero confianza en el codigo. Es la seccion
-> mas incomoda de esta tabla y por eso va entera."*
+> sistema cuyo lema declarado es cero confianza en el codigo. Es la seccion mas
+> incomoda de esta tabla y por eso va entera."*
+
+★ Y esa tabla es el mejor ejemplo de lo que significa **Meta-Kernel**: la regla
+no la firma quien diseno el sistema, la firma el CPU. Cuatro bits que el
+silicio regala y que este sistema no enciende -- con su componente al lado y su
+numero, que es lo unico que `META-KERNEL_HARD.md` acepta como regla.
 
 Y debajo, las cuatro filas con su motivo escrito:
 
