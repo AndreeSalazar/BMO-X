@@ -106,16 +106,15 @@ que MAQUETA no hace, y por eso **estan prohibidas**, no reinterpretadas.
 
 ## 3. LAS PROPIEDADES -- LISTA CERRADA
 
-**Diecisiete.** Elegidas **contando** lo que `scene/` hace de verdad hoy, no lo
-que CSS ofrece. `border-radius` entro el mismo dia, al medir la raiz y descubrir
-que ya estaba implementada -- ver mas abajo.
+**Dieciseis.** Elegidas **contando** lo que `scene/` hace de verdad hoy, no lo
+que CSS ofrece. `border-radius` entro al medir la raiz y descubrir que ya estaba
+implementada; `margin` **salio** al escribir el nieto -- ver seccion 3b.
 
-⚠️ Y el numero estuvo mal dos veces antes de que el codigo lo contara: este
-parrafo dijo "diecisiete" cuando la tabla tenia dieciseis, y "dieciocho" cuando
-tenia diecisiete. **Lo destapo `value.rs`, donde las diecisiete son variantes de
-un `enum` y no se pueden contar mal.** Corolario para el resto del documento: un
-numero escrito en prosa que nadie ejecuta envejece igual que un valor puesto por
-prudencia.
+⚠️ Y el numero estuvo mal dos veces mientras vivio solo en prosa: dijo
+"diecisiete" con dieciseis en la tabla, y "dieciocho" con diecisiete. **Lo
+destapo `value.rs`, donde son variantes de un `enum` y no se pueden contar mal.**
+Un numero escrito en prosa que nadie ejecuta envejece igual que un valor puesto
+por prudencia.
 
 ### La caja
 
@@ -124,7 +123,6 @@ prudencia.
 | `width` | `Npx` | |
 | `height` | `Npx` | |
 | `padding` | `Npx` o cuatro `Npx` | arriba derecha abajo izquierda, como CSS |
-| `margin` | `Npx` o cuatro `Npx` | **no negativos** |
 
 ### La pintura
 
@@ -135,6 +133,27 @@ prudencia.
 | `border-width` | `Npx` | un solo grosor, los cuatro lados |
 | `border-color` | `#RRGGBB` | |
 | `border-radius` | `Npx` | ★ ver abajo: **ya existe**, con su limite |
+
+### 3b. ⚠️ `margin` SALIO de la lista, al escribir el nieto
+
+Estaba puesta y no llego a compilar nada. La razon es la misma que sostiene todo
+lo demas:
+
+> En CSS, **dos margenes verticales de hermanos se FUNDEN** -- dos de 10 px
+> pegados dan 10, no 20. MAQUETA no va a implementar esa regla, y aceptar
+> `margin` sin fundirlos haria que el fichero se viera distinto en el navegador
+> que en el Ryzen.
+
+Es exactamente el peligro del guardian de la seccion 5, en otro sitio. Y no
+cuesta nada: `gap` dentro de un `display:flex` y `padding` en el contenedor
+**cubren todos los casos contados en `scene/`**.
+
+### ★ Y `align-items` por defecto es `stretch`, no `start`
+
+Otra que casi se cuela. El valor por defecto de CSS es **`stretch`**, y estaba
+escrito `start`: una fila flex habria ajustado sus cajas al contenido aqui y las
+habria estirado al contenedor en el navegador. Misma familia -- **la
+previsualizacion mintiendo** -- descubierta al escribir la maquetacion.
 
 ### ★ `border-radius` estaba rechazado por la razon equivocada (corregido 17-08)
 
@@ -170,7 +189,7 @@ cobrandose una pieza el primer dia.
 | `flex-direction` | `row` \| `column` | solo con `display:flex` |
 | `gap` | `Npx` | solo con `display:flex` |
 | `justify-content` | `start` \| `center` \| `end` \| `space-between` | eje principal |
-| `align-items` | `start` \| `center` \| `end` | eje cruzado |
+| `align-items` | `stretch` \| `start` \| `center` \| `end` | eje cruzado. Por defecto **`stretch`**, como CSS |
 
 ### La colocacion absoluta
 
@@ -399,6 +418,7 @@ en una propiedad, y ninguna parece grave sola.
 | `:hover`, `:active` | es **conducta**, no maquetacion | v2, y sin tocar el layout |
 | `grid` | `flex` cubre lo medido en `scene/` | cuando algo real lo pida |
 | `float`, `z-index`, `overflow` | no hay caso en el arbol | cuando lo haya |
+| `margin` | sus margenes se FUNDEN en CSS y aqui no | cuando se implemente la fusion |
 | `@media` | una sola pantalla | cuando haya dos |
 | salto de linea automatico | esconderia la comprobacion 3 | nunca |
 | `<h1>`, `<p>`, `<button>`... | prometen semantica que no existe | nunca |

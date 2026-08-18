@@ -1,0 +1,65 @@
+<!--
+   LA CALCULADORA -- la cara de `Ultra_userspace/services/gui/src/scene/calc.rs`.
+
+   Es la primera victima del compilador y la prueba de que la idea se sostiene.
+   De las 214 lineas de `calc.rs`, 118 son maquetacion (`CalcPad`, `button`,
+   `key_at`, `contains`, las constantes y el cuerpo de `paint_calc`); las otras
+   96 son la maquina de estados de la calculadora y se quedan en Rust.
+
+   ** Y lo que mas se cobra no es el pintado.
+
+   Hoy `button()` calcula el rect de una tecla para PINTARLA y `key_at()` lo
+   calcula otra vez para saber CUAL SE PULSO. La misma aritmetica escrita dos
+   veces, y una clase de bug entera: el boton que se dibuja en un sitio y
+   responde en otro. Aqui las dos tablas salen de la misma pasada.
+
+   Los colores son los de `calc.rs`, sin cambiar ni uno.
+   Los huecos de la rejilla son cajas sin fondo: un hueco ES una caja.
+-->
+<maqueta>
+  <style>
+    .pad    { display:flex; flex-direction:column; gap:6px; padding:6px;
+              background-color:#182434; border-width:2px; border-color:#333D52 }
+    .visor  { height:40px; background-color:#161C28; color:#E6EDF6 }
+    .fila   { display:flex; flex-direction:row; gap:6px }
+    .hueco  { width:72px; height:72px }
+    .tecla  { width:72px; height:72px; background-color:#2B3B52; color:#E6EDF6 }
+    .op     { background-color:#3A5878 }
+    .igual  { background-color:#4C9BE8 }
+  </style>
+
+  <div class="pad">
+    <div class="visor"><span>0</span></div>
+
+    <div class="fila">
+      <div class="tecla" id="k_c">C</div>
+      <div class="tecla op" id="k_div">/</div>
+      <div class="tecla op" id="k_mul">*</div>
+      <div class="tecla op" id="k_sub">-</div>
+    </div>
+    <div class="fila">
+      <div class="tecla" id="k_7">7</div>
+      <div class="tecla" id="k_8">8</div>
+      <div class="tecla" id="k_9">9</div>
+      <div class="tecla op" id="k_add">+</div>
+    </div>
+    <div class="fila">
+      <div class="tecla" id="k_4">4</div>
+      <div class="tecla" id="k_5">5</div>
+      <div class="tecla" id="k_6">6</div>
+      <div class="hueco"></div>
+    </div>
+    <div class="fila">
+      <div class="tecla" id="k_1">1</div>
+      <div class="tecla" id="k_2">2</div>
+      <div class="tecla" id="k_3">3</div>
+      <div class="tecla igual" id="k_eq">=</div>
+    </div>
+    <div class="fila">
+      <div class="tecla" id="k_0">0</div>
+      <div class="tecla" id="k_dot">.</div>
+      <div class="hueco"></div>
+      <div class="hueco"></div>
+    </div>
+  </div>
+</maqueta>

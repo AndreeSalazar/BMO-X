@@ -211,6 +211,15 @@ name = "bmo-maqueta-diag"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-maqueta-layout"
+version = "0.1.0"
+dependencies = [
+ "bmo-maqueta-cascade",
+ "bmo-maqueta-diag",
+ "bmo-maqueta-node",
+]
+
+[[package]]
 name = "bmo-maqueta-lex"
 version = "0.1.0"
 
