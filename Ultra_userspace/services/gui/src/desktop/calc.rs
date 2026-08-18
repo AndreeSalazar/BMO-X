@@ -46,7 +46,7 @@
 use bmo_userland as bmo;
 
 use super::keys::Key;
-use super::{Desktop, W_RUN};
+use super::{Desktop, Ventana};
 use crate::scene::calc::paint_calc;
 use crate::scene::{paint_status, INK_BAD};
 
@@ -66,7 +66,7 @@ pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, ctrl: bool) ->
     // Cerrada, o con el foco en otra ventana, aqui no hay nada que decidir.
     // La guarda del foco es la misma que la de los demas paneles: con el foco
     // en Datos, un `7` es de Datos.
-    if !dsk.calc.visible || !dsk.win.focus.es_para(W_RUN) {
+    if !dsk.calc.visible || !dsk.win.focus.es_para(Ventana::Run) {
         return Key::Pass;
     }
 

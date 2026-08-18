@@ -32,7 +32,11 @@ pub(crate) mod calc;
 pub(crate) mod keys;
 pub(crate) mod mouse;
 pub(crate) mod paint;
+pub(crate) mod ventana;
 pub(crate) use boot::boot;
+/// **Which window is which.** An id is a TYPE here, not a loose `u8` -- the
+/// why is written where it lives, and it cost a repeated `3` to learn.
+pub(crate) use ventana::{Focus, Ventana};
 
 use core::mem::MaybeUninit;
 
@@ -47,17 +51,6 @@ use crate::scene::surface::Table;
 use crate::scene::RunBox;
 use crate::watch::Run;
 use crate::PATH_MAX;
-
-/// Which window a key belongs to. The policy lives in `bmo_input::Foco`; these
-/// are just the ids it is told about.
-pub(crate) const W_RUN: u8 = 0;
-pub(crate) const W_DATA: u8 = 1;
-pub(crate) const W_CABINA: u8 = 2;
-/// F7 -- the CPU. See `scene::vitals`.
-pub(crate) const W_CPU: u8 = 3;
-/// F8 -- memory, with WHO is eating it.
-pub(crate) const W_MEM: u8 = 4;
-pub(crate) const W_SOUND: u8 = 3;
 
 /// How many turns of the loop between blinks of the writing caret.
 ///
@@ -131,20 +124,20 @@ pub(crate) struct Windows {
     pub sound_open: bool,
     /// Who gets the keys. The policy lives in `bmo_input` and is tested THERE;
     /// here it is only asked, and what it decided is painted.
-    pub focus: bmo_input::Foco,
+    pub focus: Focus,
     /// Who covered whom last turn, so the paint happens only on a change.
-    pub top_before: u8,
+    pub top_before: Ventana,
     pub visible: bool,
     pub taskbar_dirty: bool,
-    pub taskbar_state_before: (bool, u8, bool, bool, bool),
+    pub taskbar_state_before: (bool, Ventana, bool, bool, bool),
     pub switcher_painted: bool,
     pub alt_before: bool,
 }
 
 impl Windows {
     pub fn new(p: &bmo::Pantalla) -> Self {
-        let mut focus = bmo_input::Foco::nuevo();
-        focus.open(W_RUN);
+        let mut focus = Focus::nuevo();
+        focus.open(Ventana::Run);
         Self {
             data: crate::scene::data::DataWindow::new(p),
             data_open: false,
@@ -157,10 +150,10 @@ impl Windows {
             sound: crate::scene::sound::SoundWindow::new(p),
             sound_open: false,
             focus,
-            top_before: W_RUN,
+            top_before: Ventana::Run,
             visible: true,
             taskbar_dirty: true,
-            taskbar_state_before: (false, 0u8, false, false, false),
+            taskbar_state_before: (false, Ventana::Run, false, false, false),
             switcher_painted: false,
             alt_before: false,
         }

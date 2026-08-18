@@ -13,7 +13,7 @@
 
 use bmo_userland as bmo;
 
-use super::{calc, Desktop, W_CABINA, W_DATA, W_RUN, W_SOUND};
+use super::{calc, Desktop, Ventana};
 use crate::scene::calc::paint_calc;
 use crate::scene::{self, TASKBAR_H};
 use crate::{erase_window, uncover};
@@ -109,17 +109,41 @@ pub(crate) fn on_pointer(
     // que esta ARRIBA --sea cual sea-- y despues por las demas: un clic
     // en la zona compartida es siempre de la de encima, y eso es una
     // regla, no una lista de casos.
-    let at = |v: u8| match v {
-        W_DATA => dsk.win.data_open && dsk.win.data.contains(pos.x, pos.y),
-        W_CABINA => dsk.win.cabina_open && dsk.win.cabina.chrome.contains(pos.x, pos.y),
-        W_SOUND => dsk.win.sound_open && dsk.win.sound.chrome.contains(pos.x, pos.y),
-        _ => dsk.win.visible && dsk.run_box.contains(pos.x, pos.y),
+    // ** SIN `_`, Y ESO CAMBIA LO QUE HACE.
+    //
+    // La ultima rama era `_ => dsk.win.visible && run_box.contains(...)`, o
+    // sea: **cualquier id que este `match` no conociera se contestaba como si
+    // fuera Ejecutar**. Y habia dos que no conocia --las vitales-- porque el
+    // raton no las tiene dadas de alta.
+    //
+    // No era teorico. `top_before` SI puede valer `Cpu` o `Mem` --lo pone el
+    // repintado de `keys/mod.rs`-- y la primera pregunta de aqui es
+    // `at(top_before)`. Con la ventana de CPU arriba y el puntero sobre la
+    // terminal, `at(Cpu)` contestaba "si" por la rama comodin, el clic se
+    // apuntaba a la ventana de CPU y **el teclado no volvia a Ejecutar al
+    // hacer clic en Ejecutar**. Un comodin en un `match` de identidades no es
+    // un caso por defecto: es un caso equivocado con buena letra.
+    let at = |v: Ventana| match v {
+        Ventana::Data => dsk.win.data_open && dsk.win.data.contains(pos.x, pos.y),
+        Ventana::Cabina => dsk.win.cabina_open && dsk.win.cabina.chrome.contains(pos.x, pos.y),
+        Ventana::Sound => dsk.win.sound_open && dsk.win.sound.chrome.contains(pos.x, pos.y),
+        // [!] LAS VITALES NO ESTAN EN EL RATON, y esto lo dice en voz alta en
+        // vez de esconderlo detras de un comodin. No se arrastran, sus botones
+        // no responden y un clic encima se lo lleva la ventana de DEBAJO --que
+        // ademas se queda el foco--. Su propio pie anuncia "arrastra el
+        // titulo", asi que hoy prometen algo que no hacen: es el pecado del
+        // 2026-08-09 otra vez, y es un trabajo aparte de este.
+        Ventana::Cpu | Ventana::Mem => false,
+        Ventana::Run => dsk.win.visible && dsk.run_box.contains(pos.x, pos.y),
     };
+    // De arriba abajo, que es `TODAS` del reves: la de encima se lleva el clic
+    // de la zona compartida. Antes era otra lista escrita a mano.
     let under_pointer = if at(dsk.win.top_before) {
         Some(dsk.win.top_before)
     } else {
-        [W_SOUND, W_CABINA, W_DATA, W_RUN]
+        Ventana::TODAS
             .into_iter()
+            .rev()
             .find(|&v| v != dsk.win.top_before && at(v))
     };
     // -- * LA RUEDA VA A LA VENTANA QUE HAY DEBAJO --
@@ -136,7 +160,7 @@ pub(crate) fn on_pointer(
     // mirando.
     if wheel != 0 {
         match under_pointer {
-            Some(W_CABINA) => {
+            Some(Ventana::Cabina) => {
                 // Positivo es hacia arriba, y en un log "arriba" es
                 // hacia ATRAS en el tiempo: el desplazamiento cuenta
                 // lineas hacia el pasado, asi que suma.
@@ -147,14 +171,14 @@ pub(crate) fn on_pointer(
                     new.clamp(0, any.saturating_sub(1) as i64) as u64;
                 scene::cabina::paint(&p, &dsk.win.cabina);
             }
-            Some(W_RUN) => {
+            Some(Ventana::Run) => {
                 // Tres filas por muesca: una sola se queda corta y una
                 // pagina entera se pasa. Es el paso de un terminal.
                 dsk.out.grid.scroll_view(wheel * 3);
             }
             // La rueda sobre el arbol de nodos mueve la seleccion. En la
             // pestana de numeros no hay nada que desplazar: cabe entera.
-            Some(W_DATA) if dsk.win.data.view == scene::data::View::Obra => {
+            Some(Ventana::Data) if dsk.win.data.view == scene::data::View::Obra => {
                 // Girar hacia arriba sube por la lista: `wheel` positivo
                 // es hacia arriba y la seleccion de arriba es la menor.
                 let how_many = bmo::estratos::hijos() as usize;
@@ -171,7 +195,7 @@ pub(crate) fn on_pointer(
     // ve y no esta tapada. Al salir de ella el realce se apaga, que es
     // la mitad que se olvida siempre: un boton que se queda encendido
     // cuando ya no lo senalas miente sobre donde esta el raton.
-    let hover_now = if dsk.calc.visible && dsk.win.top_before == W_RUN {
+    let hover_now = if dsk.calc.visible && dsk.win.top_before == Ventana::Run {
         dsk.calc_pad.key_at(pos.x, pos.y)
     } else {
         None
@@ -213,7 +237,7 @@ pub(crate) fn on_pointer(
         if hover_now != dsk.win.data.chrome.hover {
             dsk.win.data.chrome.hover = hover_now;
             scene::data::paint(&p, &dsk.win.data);
-            dsk.win.top_before = W_DATA;
+            dsk.win.top_before = Ventana::Data;
         }
 
         if button && !dsk.tick.button_before {
@@ -224,12 +248,12 @@ pub(crate) fn on_pointer(
             match dsk.win.data.chrome.button_at(pos.x, pos.y) {
                 Some(Button::Close) => {
                     dsk.win.data_open = false;
-                    dsk.win.focus.close(W_DATA);
+                    dsk.win.focus.close(Ventana::Data);
                     erase_window(
                         &p, &dsk.run_box, dsk.win.data.x(), dsk.win.data.y(),
                         dsk.win.data.width(), dsk.win.data.height(), dsk.win.visible,
                     );
-                    dsk.win.top_before = W_RUN;
+                    dsk.win.top_before = Ventana::Run;
                     uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 }
                 Some(Button::Minimize) => {
@@ -241,9 +265,9 @@ pub(crate) fn on_pointer(
                         dsk.win.data.width(), dsk.win.data.height(),
                     );
                     dsk.win.data.chrome.minimized = true;
-                    dsk.win.focus.close(W_DATA);
+                    dsk.win.focus.close(Ventana::Data);
                     erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                    dsk.win.top_before = W_RUN;
+                    dsk.win.top_before = Ventana::Run;
                     uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     dsk.win.taskbar_dirty = true;
                 }
@@ -257,7 +281,7 @@ pub(crate) fn on_pointer(
                     uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     dsk.win.data.relayout();
                     scene::data::paint(&p, &dsk.win.data);
-                    dsk.win.top_before = W_DATA;
+                    dsk.win.top_before = Ventana::Data;
                 }
                 None => {
                     // [!] `servido` y NO un `return`. Salir de `on_pointer`
@@ -296,7 +320,7 @@ pub(crate) fn on_pointer(
                                 dsk.win.data.to_top();
                                 dsk.win.data.verified = None;
                                 scene::data::paint(&p, &dsk.win.data);
-                                dsk.win.top_before = W_DATA;
+                                dsk.win.top_before = Ventana::Data;
                             }
                             servido = true;
                         }
@@ -316,7 +340,7 @@ pub(crate) fn on_pointer(
                                 dsk.win.data.to_top();
                                 dsk.win.data.verified = None;
                                 scene::data::paint(&p, &dsk.win.data);
-                                dsk.win.top_before = W_DATA;
+                                dsk.win.top_before = Ventana::Data;
                             }
                         }
                         Some(i) => {
@@ -334,7 +358,7 @@ pub(crate) fn on_pointer(
                                 dsk.win.data.to_top();
                             }
                             scene::data::paint(&p, &dsk.win.data);
-                            dsk.win.top_before = W_DATA;
+                            dsk.win.top_before = Ventana::Data;
                         }
                         None => {
                             dsk.win.data.chrome.grab(pos.x, pos.y);
@@ -363,7 +387,7 @@ pub(crate) fn on_pointer(
                 uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 dsk.win.data.relayout();
                 scene::data::paint(&p, &dsk.win.data);
-                dsk.win.top_before = W_DATA;
+                dsk.win.top_before = Ventana::Data;
             }
         }
     }
@@ -388,7 +412,7 @@ pub(crate) fn on_pointer(
     // arrastre de una ventana no depende de otra ventana, asi que va
     // aqui, al nivel de las demas.
     if dsk.win.cabina_open && !dsk.win.cabina.chrome.minimized {
-        if button && !dsk.win.cabina.chrome.grabbed() && dsk.win.focus.es_para(W_CABINA)
+        if button && !dsk.win.cabina.chrome.grabbed() && dsk.win.focus.es_para(Ventana::Cabina)
             && dsk.win.cabina.chrome.on_the_grip(pos.x, pos.y)
         {
             dsk.win.cabina.chrome.grab(pos.x, pos.y);
@@ -406,7 +430,7 @@ pub(crate) fn on_pointer(
                 erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                 uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 scene::cabina::paint(&p, &dsk.win.cabina);
-                dsk.win.top_before = W_CABINA;
+                dsk.win.top_before = Ventana::Cabina;
             }
         }
     }
@@ -456,7 +480,7 @@ pub(crate) fn on_pointer(
                     dsk.run_relayout();
                     scene::erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                     uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
-                    dsk.win.top_before = W_RUN;
+                    dsk.win.top_before = Ventana::Run;
                 }
                 None => {}
             }
@@ -483,13 +507,13 @@ pub(crate) fn on_pointer(
                 dsk.run_relayout();
                 scene::erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                 uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
-                dsk.win.top_before = W_RUN;
+                dsk.win.top_before = Ventana::Run;
             }
         }
     }
 
     if dsk.win.sound_open && !dsk.win.sound.chrome.minimized {
-        if button && !dsk.win.sound.chrome.grabbed() && dsk.win.focus.es_para(W_SOUND)
+        if button && !dsk.win.sound.chrome.grabbed() && dsk.win.focus.es_para(Ventana::Sound)
             && dsk.win.sound.chrome.on_the_grip(pos.x, pos.y)
         {
             dsk.win.sound.chrome.grab(pos.x, pos.y);
@@ -507,7 +531,7 @@ pub(crate) fn on_pointer(
                     &p, &dsk.win.sound, dsk.snd.cap.is_some(),
                     dsk.snd.devices, dsk.snd.volume, dsk.snd.pressed,
                 );
-                dsk.win.top_before = W_SOUND;
+                dsk.win.top_before = Ventana::Sound;
             }
         }
     }
@@ -621,20 +645,20 @@ pub(crate) fn on_pointer(
                 // encajada, con el foco y delante.
                 dsk.win.data.chrome.minimized = false;
                 dsk.win.data.chrome.fit(&p);
-                dsk.win.focus.open(W_DATA);
-                dsk.win.focus.clic_en(W_DATA);
+                dsk.win.focus.open(Ventana::Data);
+                dsk.win.focus.clic_en(Ventana::Data);
                 dsk.win.data.relayout();
                 scene::data::paint(&p, &dsk.win.data);
-                dsk.win.top_before = W_DATA;
+                dsk.win.top_before = Ventana::Data;
                 dsk.win.taskbar_dirty = true;
             } else if i == 0 {
                 if !dsk.win.visible {
                     dsk.win.visible = true;
                 }
-                dsk.win.focus.open(W_RUN);
-                dsk.win.focus.clic_en(W_RUN);
+                dsk.win.focus.open(Ventana::Run);
+                dsk.win.focus.clic_en(Ventana::Run);
                 uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
-                dsk.win.top_before = W_RUN;
+                dsk.win.top_before = Ventana::Run;
                 dsk.win.taskbar_dirty = true;
             } else if i == 2 {
                 // ** CABINA CON EL RATON, que es lo que la hace util.
@@ -649,19 +673,19 @@ pub(crate) fn on_pointer(
                 if dsk.win.cabina_open {
                     dsk.win.cabina.from = 0;
                     dsk.win.cabina.chrome.minimized = false;
-                    dsk.win.focus.open(W_CABINA);
-                    dsk.win.focus.clic_en(W_CABINA);
+                    dsk.win.focus.open(Ventana::Cabina);
+                    dsk.win.focus.clic_en(Ventana::Cabina);
                     scene::cabina::paint(&p, &dsk.win.cabina);
-                    dsk.win.top_before = W_CABINA;
+                    dsk.win.top_before = Ventana::Cabina;
                 } else {
-                    dsk.win.focus.close(W_CABINA);
+                    dsk.win.focus.close(Ventana::Cabina);
                     erase_window(
                         &p, &dsk.run_box,
                         dsk.win.cabina.chrome.x, dsk.win.cabina.chrome.y,
                         dsk.win.cabina.chrome.width, dsk.win.cabina.chrome.height,
                         dsk.win.visible,
                     );
-                    dsk.win.top_before = W_RUN;
+                    dsk.win.top_before = Ventana::Run;
                     uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     if dsk.win.data_open {
                         scene::data::paint(&p, &dsk.win.data);
@@ -683,17 +707,17 @@ pub(crate) fn on_pointer(
     // Sin esto, Alt+Tab a Ejecutar con Datos delante dejaria el teclado
     // en una linea tapada: escribirias sin ver nada. Es exactamente el
     // fallo que se acaba de arreglar, del reves.
-    let top = if dsk.win.cabina_open && dsk.win.focus.es_para(W_CABINA) {
-        W_CABINA
-    } else if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
-        W_DATA
+    let top = if dsk.win.cabina_open && dsk.win.focus.es_para(Ventana::Cabina) {
+        Ventana::Cabina
+    } else if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
+        Ventana::Data
     } else {
-        W_RUN
+        Ventana::Run
     };
     if top != dsk.win.top_before {
         match top {
-            W_CABINA => scene::cabina::paint(&p, &dsk.win.cabina),
-            W_DATA => scene::data::paint(&p, &dsk.win.data),
+            Ventana::Cabina => scene::cabina::paint(&p, &dsk.win.cabina),
+            Ventana::Data => scene::data::paint(&p, &dsk.win.data),
             // Sin guarda de `visible`: `uncover` ya no hace nada si
             // la caja esta escondida, y una guarda repetida es una que
             // puede quedarse desincronizada de la funcion.

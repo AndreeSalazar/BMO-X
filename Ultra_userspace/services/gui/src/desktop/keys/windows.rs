@@ -8,7 +8,7 @@
 use bmo_userland as bmo;
 
 use super::Key;
-use crate::desktop::{Desktop, W_CABINA, W_CPU, W_DATA, W_MEM, W_RUN, W_SOUND};
+use crate::desktop::{Desktop, Ventana};
 use crate::scene::{self};
 use crate::{erase_window, uncover};
 
@@ -25,7 +25,7 @@ pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, _alt_alone: bo
 // ventanas distintas y cada una contesta lo suyo.
 let toggle_data = if c == 0x94 {
     Some(!dsk.win.data_open)
-} else if c == 0x1B && dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
+} else if c == 0x1B && dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
     Some(false)
 } else {
     None
@@ -36,23 +36,23 @@ if let Some(open) = toggle_data {
         // Abrir es decirselo al foco y ya: en modo `Fijo` la
         // ventana aparece y NO se lleva el teclado, y quien
         // decide eso es la politica, no esta tecla.
-        dsk.win.focus.open(W_DATA);
+        dsk.win.focus.open(Ventana::Data);
         scene::data::paint(&p, &dsk.win.data);
-        dsk.win.top_before = if dsk.win.focus.es_para(W_DATA) { W_DATA } else { W_RUN };
+        dsk.win.top_before = if dsk.win.focus.es_para(Ventana::Data) { Ventana::Data } else { Ventana::Run };
         // En `Fijo` se ha pintado encima de una caja que sigue
         // teniendo el teclado: hay que devolverla arriba.
-        if dsk.win.top_before == W_RUN {
+        if dsk.win.top_before == Ventana::Run {
             uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         }
     } else {
         // Al cerrarla hay que devolver el fondo Y repintar
         // lo que tapaba: la caja de Ejecutar esta debajo.
-        dsk.win.focus.close(W_DATA);
+        dsk.win.focus.close(Ventana::Data);
         erase_window(
             &p, &dsk.run_box, dsk.win.data.x(), dsk.win.data.y(),
             dsk.win.data.width(), dsk.win.data.height(), dsk.win.visible,
         );
-        dsk.win.top_before = W_RUN;
+        dsk.win.top_before = Ventana::Run;
         uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
     }
     return Key::Taken;
@@ -76,10 +76,10 @@ let toggle_cpu = if c == 0x8F {
 if let Some(open) = toggle_cpu {
     dsk.win.cpu_open = open;
     if open {
-        dsk.win.focus.open(W_CPU);
+        dsk.win.focus.open(Ventana::Cpu);
         scene::vitals::paint(&p, &dsk.win.cpu);
     } else {
-        dsk.win.focus.close(W_CPU);
+        dsk.win.focus.close(Ventana::Cpu);
         erase_window(
             &p, &dsk.run_box, dsk.win.cpu.chrome.x, dsk.win.cpu.chrome.y,
             dsk.win.cpu.chrome.width, dsk.win.cpu.chrome.height, dsk.win.visible,
@@ -98,10 +98,10 @@ let toggle_mem = if c == 0x90 {
 if let Some(open) = toggle_mem {
     dsk.win.mem_open = open;
     if open {
-        dsk.win.focus.open(W_MEM);
+        dsk.win.focus.open(Ventana::Mem);
         scene::vitals::paint(&p, &dsk.win.mem);
     } else {
-        dsk.win.focus.close(W_MEM);
+        dsk.win.focus.close(Ventana::Mem);
         erase_window(
             &p, &dsk.run_box, dsk.win.mem.chrome.x, dsk.win.mem.chrome.y,
             dsk.win.mem.chrome.width, dsk.win.mem.chrome.height, dsk.win.visible,
@@ -130,19 +130,19 @@ if let Some(open) = toggle_klog {
         // ver el 90% de las veces. Para ir al arranque estan
         // RePag/AvPag.
         dsk.win.cabina.from = 0;
-        dsk.win.focus.open(W_CABINA);
+        dsk.win.focus.open(Ventana::Cabina);
         scene::cabina::paint(&p, &dsk.win.cabina);
-        dsk.win.top_before = if dsk.win.focus.es_para(W_CABINA) { W_CABINA } else { W_RUN };
-        if dsk.win.top_before == W_RUN {
+        dsk.win.top_before = if dsk.win.focus.es_para(Ventana::Cabina) { Ventana::Cabina } else { Ventana::Run };
+        if dsk.win.top_before == Ventana::Run {
             uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         }
     } else {
-        dsk.win.focus.close(W_CABINA);
+        dsk.win.focus.close(Ventana::Cabina);
         erase_window(
             &p, &dsk.run_box, dsk.win.cabina.chrome.x, dsk.win.cabina.chrome.y,
             dsk.win.cabina.chrome.width, dsk.win.cabina.chrome.height, dsk.win.visible,
         );
-        dsk.win.top_before = W_RUN;
+        dsk.win.top_before = Ventana::Run;
         uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         // Si Datos estaba abierta debajo, vuelve a verse.
         if dsk.win.data_open {
@@ -163,7 +163,7 @@ if let Some(open) = toggle_klog {
 // sistema no pidio ese tono).
 let toggle_sound = if c == 0x92 {
     Some(!dsk.win.sound_open)
-} else if c == 0x1B && dsk.win.sound_open && dsk.win.focus.es_para(W_SOUND) {
+} else if c == 0x1B && dsk.win.sound_open && dsk.win.focus.es_para(Ventana::Sound) {
     Some(false)
 } else {
     None
@@ -182,13 +182,13 @@ if let Some(open) = toggle_sound {
             None => 0,
         };
         dsk.snd.pressed = None;
-        dsk.win.focus.open(W_SOUND);
+        dsk.win.focus.open(Ventana::Sound);
         scene::sound::paint(
             &p, &dsk.win.sound, dsk.snd.cap.is_some(),
             dsk.snd.devices, dsk.snd.volume, dsk.snd.pressed,
         );
-        dsk.win.top_before = if dsk.win.focus.es_para(W_SOUND) { W_SOUND } else { W_RUN };
-        if dsk.win.top_before == W_RUN {
+        dsk.win.top_before = if dsk.win.focus.es_para(Ventana::Sound) { Ventana::Sound } else { Ventana::Run };
+        if dsk.win.top_before == Ventana::Run {
             uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         }
     } else {
@@ -198,12 +198,12 @@ if let Some(open) = toggle_sound {
             s.callar();
             s.release();
         }
-        dsk.win.focus.close(W_SOUND);
+        dsk.win.focus.close(Ventana::Sound);
         erase_window(
             &p, &dsk.run_box, dsk.win.sound.chrome.x, dsk.win.sound.chrome.y,
             dsk.win.sound.chrome.width, dsk.win.sound.chrome.height, dsk.win.visible,
         );
-        dsk.win.top_before = W_RUN;
+        dsk.win.top_before = Ventana::Run;
         uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         // Si habia ventanas debajo, vuelven a verse.
         if dsk.win.data_open {
