@@ -231,6 +231,38 @@ pub fn write_entry(idx: usize, datos: &[u8]) {
 }
 
 /// Saca hasta 7 bytes de la ENTRADA: `(n << 56) | empaquetado_LE`.
+///
+/// ** Y NUNCA CRUZA UN SALTO DE LINEA. Eso es parte del contrato, no una
+/// optimizacion, y sin ello el que lee lineas no puede ser correcto.
+///
+/// === El fallo que lo obligo, que llevaba aqui desde siempre ===
+///
+/// `bmo-lower::console::read_line` --lo que emite un `ACCEPT` de COBOL-- pide
+/// un paquete, lo desempaqueta byte a byte y al ver el `\n` da la linea por
+/// cerrada. **Lo que quedaba del paquete se perdia**: la llamada siguiente pide
+/// uno NUEVO, y esos bytes no vuelven.
+///
+/// Con la calculadora del escritorio eso era mortal. El compositor escribe sus
+/// tres lineas de golpe --`12.50\n3\n4\n`-- y despues lanza el motor, asi que
+/// los diez bytes ya estan en este anillo antes de la primera lectura:
+///
+/// ```text
+///   sin esta regla   paquete 1 = "12.50\n3"   -> el ACCEPT se queda "12.50"
+///                                                y TIRA el 3, que era la
+///                                                operacion que se pedia
+/// ```
+///
+/// El motor contestaba una cuenta que nadie habia pedido, sin dar error.
+///
+/// === Por que se arregla AQUI y no en el que lee ===
+///
+/// Un lector que no pierda el sobrante necesita **guardarlo entre llamadas**, y
+/// el codigo que emite el compilador no tiene donde: cada `ACCEPT` es una
+/// emision independiente, sin estado que sobreviva. Arreglarlo ahi obligaria a
+/// dar memoria persistente a todos los lectores presentes y futuros.
+///
+/// Aqui es una comparacion. Y el que lee bytes en crudo no pierde nada: sigue
+/// recibiendo todo, solo que en paquetes que acaban donde acaba una linea.
 pub fn read_entry(idx: usize) -> u64 {
     if idx >= MAX_CONSOLAS {
         return 0;
@@ -239,9 +271,15 @@ pub fn read_entry(idx: usize) -> u64 {
         let mut w = [0u8; 8];
         let mut n = 0usize;
         while n < 7 && IN_LEE[idx] != IN_ESCRIBE[idx] {
-            w[n] = IN_BUF[idx][IN_LEE[idx]];
+            let b = IN_BUF[idx][IN_LEE[idx]];
             IN_LEE[idx] = (IN_LEE[idx] + 1) % ENTRADA;
+            w[n] = b;
             n += 1;
+            // El salto SE ENTREGA --forma parte de la linea para quien la
+            // cierra-- y es lo ultimo que va en este paquete.
+            if b == b'\n' {
+                break;
+            }
         }
         ((n as u64) << 56) | u64::from_le_bytes(w)
     }

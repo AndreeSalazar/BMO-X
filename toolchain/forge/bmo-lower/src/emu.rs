@@ -1039,12 +1039,26 @@ impl Machine {
                 // siembra con `poner_entrada` y sale de 7 en 7, como en el
                 // kernel. Es lo que hace testeable el `ACCEPT` de COBOL.
                 op if op == TASK_OP_CONSOLE_READ => {
+                    // ** NUNCA CRUZA UN SALTO DE LINEA, igual que el kernel.
+                    //
+                    // El porque entero esta en `ring0/obj/console.rs`,
+                    // `read_entry`: sin esta regla, el que lee lineas pierde lo
+                    // que venga detras del `\n` en el mismo paquete.
+                    //
+                    // [!] Que este emulador lo copiara MAL era lo de menos; lo
+                    // grave habria sido copiarlo BIEN mientras el kernel lo
+                    // hacia mal, porque entonces el banco de pruebas diria que
+                    // si a un programa que en el Ryzen se equivoca.
                     let mut w = [0u8; 8];
                     let mut n = 0usize;
                     while n < 7 && self.entrada_cursor < self.entrada.len() {
-                        w[n] = self.entrada[self.entrada_cursor];
+                        let b = self.entrada[self.entrada_cursor];
                         self.entrada_cursor += 1;
+                        w[n] = b;
                         n += 1;
+                        if b == b'\n' {
+                            break;
+                        }
                     }
                     let v = ((n as u64) << 56) | u64::from_le_bytes(w);
                     self.finalizar_syscall(v);
