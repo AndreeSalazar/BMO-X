@@ -159,6 +159,7 @@ members = [
     "toolchain/tools/maqueta/diag",
     "toolchain/tools/maqueta/lex",
     "toolchain/tools/maqueta/node",
+    "toolchain/tools/maqueta/cascade",
 
     # -- FORGE (pipeline de compilacion) -----------------------------
     # Librerias OPCIONALES que cada frontend elige enlazar (nunca embudos).
