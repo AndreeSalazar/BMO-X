@@ -28,11 +28,13 @@
   <style>
     .pad    { display:flex; flex-direction:column; gap:6px; padding:6px;
               background-color:#182434; border-width:2px; border-color:#333D52 }
-    .visor  { height:40px; background-color:#161C28 }
+    .visor  { height:40px; background-color:#161C28; padding:0 8px 0 0;
+              display:flex; justify-content:end; align-items:center }
     .num    { color:#E6EDF6 }
     .fila   { display:flex; flex-direction:row; gap:6px }
     .hueco  { width:72px; height:72px }
-    .tecla  { width:72px; height:72px; background-color:#2B3B52; color:#E6EDF6 }
+    .tecla  { width:72px; height:72px; background-color:#2B3B52; color:#E6EDF6;
+              display:flex; justify-content:center; align-items:center }
     .op     { background-color:#3A5878 }
     .igual  { background-color:#4C9BE8 }
   </style>

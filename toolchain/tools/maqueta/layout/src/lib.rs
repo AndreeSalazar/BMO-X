@@ -86,6 +86,13 @@ pub struct Frame {
     pub rect: Rect,
     /// Inside the border and the padding -- where the text and children live.
     pub content: Rect,
+    /// Where the glyphs start, if this box carries text.
+    ///
+    /// ★ Separate from `content` because a box can centre its text, and centring
+    /// is **layout**: `calc.rs` writes `bx + CALC_BTN/2 - GLIFO_ANCHO/2` by hand
+    /// for every label. Leaving it to the emitter would put arithmetic in a
+    /// consumer, which is where it stops being checkable.
+    pub text_at: Option<Rect>,
     pub children: Vec<Frame>,
     pub span: Span,
 }
