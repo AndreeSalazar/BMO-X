@@ -118,6 +118,12 @@ pub(crate) struct Zonas {
     pub rejilla: Zona,
     /// El grafo. [`Zona::NADA`] si no cabe.
     pub grafo: Zona,
+    /// El terminal del pie. [`Zona::NADA`] mientras esta cerrado.
+    ///
+    /// * Le quita alto a los paneles y no se pinta encima de ellos, que es la
+    /// diferencia entre un panel y un cartel: abrirlo ENCOGE lo de arriba, asi
+    /// que nada queda tapado y nada hay que recordar donde estaba.
+    pub consola: Zona,
     /// La barra de estado.
     pub pie: Zona,
 }
@@ -130,7 +136,7 @@ impl Zonas {
     /// alto util, y un `u32` que baja de cero no da error: **da cuatro mil
     /// millones**, y el panel se pinta por toda la pantalla. Ya paso una vez en
     /// esta casa con `&ruta[..n]` y un `usize::MAX`.
-    pub fn repartir(c: &Chrome) -> Self {
+    pub fn repartir(c: &Chrome, consola: bool) -> Self {
         let x0 = c.x + MARGEN;
         let y0 = c.y + TITLE_H + 6;
         let ancho = c.width.saturating_sub(MARGEN * 2);
@@ -143,9 +149,20 @@ impl Zonas {
             .height
             .saturating_sub(TITLE_H + 6 + MIGA_H + PIE_H + MARGEN / 2);
 
+        // La consola sale del alto del CUERPO, no del pie: lo que encoge es lo
+        // que se mira, y el estado de abajo tiene que seguir estando.
+        let consola_h = if consola { super::consola::ALTO } else { 0 };
+        let cuerpo_h = cuerpo_h.saturating_sub(consola_h);
+
+        let consola = if consola_h > 0 {
+            Zona { x: x0, y: cuerpo_y + cuerpo_h, w: ancho, h: consola_h }
+        } else {
+            Zona::NADA
+        };
+
         let pie = Zona {
             x: x0,
-            y: cuerpo_y + cuerpo_h,
+            y: cuerpo_y + cuerpo_h + consola_h,
             w: ancho,
             h: PIE_H,
         };
@@ -182,6 +199,6 @@ impl Zonas {
             )
         };
 
-        Self { miga, arbol, rejilla, grafo, pie }
+        Self { miga, arbol, rejilla, grafo, consola, pie }
     }
 }

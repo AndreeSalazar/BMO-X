@@ -10,7 +10,7 @@ use super::Key;
 use crate::desktop::{Desktop, W_DATA, W_SOUND};
 use crate::scene::{self};
 
-pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, _alt_alone: bool) -> Key {
+pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, _alt_alone: bool, ctrl: bool) -> Key {
 // Las teclas de la ventana del sonido. **Solo con el foco
 // AQUI**: con el foco en Ejecutar, una `z` es una letra que el
 // dueno esta escribiendo, y robarsela para un atajo seria el
@@ -150,6 +150,33 @@ if dsk.win.cabina_open && (c == 0x87 || c == 0x88) {
 // y hasta hoy iban alli -- se navegaba una ventana tapada.
 if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
     use scene::data::{Seal, View};
+
+    // == ** LA CONSOLA VA PRIMERO, Y ESE ORDEN ES LA REGLA =================
+    //
+    // Lo pidio el dueno asi: *"al seleccionar el terminal eso es prioridad
+    // para que se active el atajo"*. Y no es una preferencia -- es que las
+    // flechas SIGNIFICAN DOS COSAS en esta ventana: mover la seleccion del
+    // explorador, y moverse por lo que estas escribiendo.
+    //
+    // Dos duenos para la misma tecla se resuelve con un orden, no con una
+    // heuristica. Si la consola tiene las teclas, son suyas y no se mira mas
+    // abajo. `ESC` se las devuelve al explorador sin cerrarla.
+    //
+    // [!] `Ctrl+n` se comprueba ANTES de eso, porque tiene que poder
+    // recuperar las teclas cuando la consola las solto. Un atajo que solo
+    // funciona si ya tienes el foco no sirve para pedir el foco.
+    if ctrl && c == 0xF1 {
+        dsk.win.data.consola.alternar();
+        scene::data::paint(p, &dsk.win.data);
+        return Key::Taken;
+    }
+    if dsk.win.data.consola.activa {
+        if dsk.win.data.consola.tecla(c) {
+            scene::data::paint(p, &dsk.win.data);
+        }
+        return Key::Taken;
+    }
+
     let mut served = true;
     match c {
         // TAB: numeros <-> explorador. Es la misma tecla que cambia

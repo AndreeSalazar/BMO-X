@@ -25,6 +25,9 @@ pub(crate) mod arbol;
 /// LOS ICONOS DEL SISTEMA: la cara de lo que no trae la suya dentro de un
 /// `.bex` -- una carpeta, un fichero, y lo que no se pudo leer.
 pub(crate) mod iconos;
+/// LA CONSOLA DE ESTRATOS: el terminal del pie de la ventana. No es una
+/// comodidad -- es lo que impide que una orden se equivoque de volumen.
+pub(crate) mod consola;
 pub(crate) mod cursor;
 /// La ENTRADA a Ring 3: lo que se ve cuando el userspace toma la maquina.
 pub(crate) mod splash;
