@@ -99,7 +99,7 @@ es un enlace de una sola direccion.
 
 Se escriben **antes de una sola linea de codigo**. Su trabajo, dicho por
 `PYTHON_MAESTRO.md`, es *"que esta investigacion no haya que reconstruirla"*.
-Los siete declaran seguir el metodo de `SMP_MAESTRO.md`.
+Los ocho declaran seguir el metodo de `SMP_MAESTRO.md`.
 
 | documento | escrito | la pregunta que separa |
 |---|---|---|
@@ -110,6 +110,7 @@ Los siete declaran seguir el metodo de `SMP_MAESTRO.md`.
 | [`AUDIO_MAESTRO.md`](maestro/AUDIO_MAESTRO.md) | 08-12 | del silencio a los gatitos, sin inventar un driver |
 | [`PYTHON_MAESTRO.md`](maestro/PYTHON_MAESTRO.md) | 08-16 | que hace falta de verdad, y no son los 2 syscalls |
 | [`SEGURIDAD_MAESTRO.md`](maestro/SEGURIDAD_MAESTRO.md) | 08-18 | integridad no es autoria, y que backdoor puede esconderse aqui |
+| [`IPC_MAESTRO.md`](maestro/IPC_MAESTRO.md) | 08-18 | serializar no es enmarcar, y donde acaba un mensaje |
 
 ---
 
