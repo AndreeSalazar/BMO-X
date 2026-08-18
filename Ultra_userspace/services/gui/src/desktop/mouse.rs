@@ -375,15 +375,26 @@ pub(crate) fn on_pointer(
             // ventana deja un rastro de copias de si misma: aqui no hay
             // recorte ni compositor que repinte lo de debajo solo.
             //
-            // Al ESTIRAR pasa lo mismo pero solo al encoger; borrar el
-            // rectangulo viejo entero cubre los dos casos con una regla
-            // en vez de con dos.
+            // Al ESTIRAR pasa lo mismo pero solo al encoger. Se borra la
+            // RESTA del viejo menos el nuevo, que cubre los dos casos con una
+            // regla y ademas no toca lo que la ventana sigue tapando.
             let (vx, vy, va, vl) = (
                 dsk.win.data.x(), dsk.win.data.y(),
                 dsk.win.data.width(), dsk.win.data.height(),
             );
             if dsk.win.data.chrome.follow_pointer(&p, pos.x, pos.y) {
-                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                scene::erase_moved(
+                    &p,
+                    &dsk.run_box,
+                    (vx, vy, va, vl),
+                    (
+                        dsk.win.data.x(),
+                        dsk.win.data.y(),
+                        dsk.win.data.width(),
+                        dsk.win.data.height(),
+                    ),
+                    dsk.win.visible,
+                );
                 uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 dsk.win.data.relayout();
                 scene::data::paint(&p, &dsk.win.data);
@@ -427,7 +438,18 @@ pub(crate) fn on_pointer(
                 dsk.win.cabina.chrome.width, dsk.win.cabina.chrome.height,
             );
             if dsk.win.cabina.chrome.follow_pointer(&p, pos.x, pos.y) {
-                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                scene::erase_moved(
+                    &p,
+                    &dsk.run_box,
+                    (vx, vy, va, vl),
+                    (
+                        dsk.win.cabina.chrome.x,
+                        dsk.win.cabina.chrome.y,
+                        dsk.win.cabina.chrome.width,
+                        dsk.win.cabina.chrome.height,
+                    ),
+                    dsk.win.visible,
+                );
                 uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 scene::cabina::paint(&p, &dsk.win.cabina);
                 dsk.win.top_before = Ventana::Cabina;
@@ -505,7 +527,19 @@ pub(crate) fn on_pointer(
                 // fondo con la geometria NUEVA o deja un rastro de
                 // copias de si misma.
                 dsk.run_relayout();
-                scene::erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                // ** Se borra la RESTA, no el rectangulo entero.
+                //
+                // Arrastrar movia la ventana unos pocos pixeles y borraba sus
+                // ~325.000 pixeles viejos --4,33 ms, la cuarta parte de un
+                // fotograma-- para descubrir una tira estrecha. El resto lo
+                // volvia a tapar ella misma un instante despues.
+                scene::erase_moved(
+                    &p,
+                    &dsk.run_box,
+                    (vx, vy, va, vl),
+                    (dsk.run_box.x, dsk.run_box.y, dsk.run_box.w(), dsk.run_box.h()),
+                    dsk.win.visible,
+                );
                 uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 dsk.win.top_before = Ventana::Run;
             }
@@ -525,7 +559,18 @@ pub(crate) fn on_pointer(
                 dsk.win.sound.chrome.width, dsk.win.sound.chrome.height,
             );
             if dsk.win.sound.chrome.follow_pointer(&p, pos.x, pos.y) {
-                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                scene::erase_moved(
+                    &p,
+                    &dsk.run_box,
+                    (vx, vy, va, vl),
+                    (
+                        dsk.win.sound.chrome.x,
+                        dsk.win.sound.chrome.y,
+                        dsk.win.sound.chrome.width,
+                        dsk.win.sound.chrome.height,
+                    ),
+                    dsk.win.visible,
+                );
                 uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 scene::sound::paint(
                     &p, &dsk.win.sound, dsk.snd.cap.is_some(),
