@@ -168,6 +168,25 @@ impl Focus {
         self.0.es_para(v.id())
     }
 
+    /// Quien tiene el foco, o `None` si no hay ninguna abierta.
+    ///
+    /// ** ES LA PREGUNTA, y `es_para` es la respuesta a una a la vez. Sin
+    /// esto, "quien manda?" solo se puede averiguar preguntando por cada
+    /// ventana **por su nombre** -- y eso es una lista escrita a mano, que es
+    /// de donde salio el `W_SOUND` que valia 3. `top_now` era seis ramas
+    /// `abierta && es_para(v)` de las que **como mucho una puede ser cierta**,
+    /// porque el foco es UNO: seis preguntas para leer un campo.
+    ///
+    /// * `bmo_input::Foco` tambien tiene `delante()`, y NO se asoma aqui a
+    /// proposito: hoy devuelve exactamente lo mismo que `actual()` --las dos
+    /// leen `orden[0]`-- asi que asomarla seria ofrecer dos nombres para una
+    /// sola respuesta. La pregunta que su documentacion promete --*quien se ve
+    /// delante*-- no la puede contestar una MRU: el z-order de verdad lo lleva
+    /// el compositor en `top_before`, y la politica no lo conoce.
+    pub(crate) fn actual(&self) -> Option<Ventana> {
+        self.0.actual().and_then(Ventana::de_id)
+    }
+
     pub(crate) fn open(&mut self, v: Ventana) {
         self.0.open(v.id());
     }

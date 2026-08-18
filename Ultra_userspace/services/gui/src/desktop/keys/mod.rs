@@ -189,19 +189,25 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
         // TODAS las abiertas, y la que tiene el foco la ULTIMA. La
         // version de dos ventanas enumeraba los casos a mano, y con
         // tres eso son seis ramas que dicen una sola regla.
-        let top_now = if dsk.win.mem_open && dsk.win.focus.es_para(Ventana::Mem) {
-            Ventana::Mem
-        } else if dsk.win.cpu_open && dsk.win.focus.es_para(Ventana::Cpu) {
-            Ventana::Cpu
-        } else if dsk.win.sound_open && dsk.win.focus.es_para(Ventana::Sound) {
-            Ventana::Sound
-        } else if dsk.win.cabina_open && dsk.win.focus.es_para(Ventana::Cabina) {
-            Ventana::Cabina
-        } else if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
-            Ventana::Data
-        } else {
-            Ventana::Run
-        };
+        // ** LA QUE TIENE EL FOCO, SI SIGUE ABIERTA. Y nada mas.
+        //
+        // Esto eran seis ramas `abierta && es_para(v)` encadenadas, de las
+        // que **como mucho una podia ser cierta** -- el foco es UNO. O sea,
+        // seis preguntas por nombre para leer un campo, y la septima lista
+        // escrita a mano que habia que ampliar con cada ventana nueva. No
+        // romperla no compilaba mal: daba una ventana que **nunca podia
+        // estar arriba**, que es el sintoma suave de siempre.
+        //
+        // El `filter` es la unica parte que no es evidente: el foco puede
+        // senalar una ventana ya CERRADA --se cierra sin sacarla de la MRU en
+        // algun camino-- y entonces manda Ejecutar, que es lo que la cadena
+        // hacia cayendose hasta el `else`.
+        let top_now = dsk
+            .win
+            .focus
+            .actual()
+            .filter(|&v| dsk.win.abierta(v))
+            .unwrap_or(Ventana::Run);
         // ** EL `match` NO LLEVA `_`, Y ESO ES LA MITAD DEL ARREGLO.
         //
         // Llevaba uno --`_ => {}`-- y ademas cada rama iba con guarda, asi
@@ -211,41 +217,27 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
         // "esta abierta" se pregunta DENTRO de su rama en vez de en la
         // guarda -- que es lo que deja el `match` exhaustivo de verdad.
         let paint_one = |v: Ventana, repintar: &mut bool, sal: &mut scene::output::Output| {
+            // "Esta abierta?" se pregunta UNA vez y fuera del `match`. Estaba
+            // seis veces dentro, una por rama, y cada una nombraba su bandera
+            // a mano.
+            if !dsk.win.abierta(v) {
+                return;
+            }
             match v {
-                Ventana::Cabina => {
-                    if dsk.win.cabina_open {
-                        scene::cabina::paint(&p, &dsk.win.cabina);
-                    }
-                }
-                Ventana::Data => {
-                    if dsk.win.data_open {
-                        scene::data::paint(&p, &dsk.win.data);
-                    }
-                }
+                Ventana::Cabina => scene::cabina::paint(&p, &dsk.win.cabina),
+                Ventana::Data => scene::data::paint(&p, &dsk.win.data),
                 // Las vitales son VISTAS: se repintan cada vez que les
                 // toca turno, que es lo que las diferencia de `info`.
-                Ventana::Cpu => {
-                    if dsk.win.cpu_open {
-                        scene::vitals::paint(&p, &dsk.win.cpu);
-                    }
-                }
-                Ventana::Mem => {
-                    if dsk.win.mem_open {
-                        scene::vitals::paint(&p, &dsk.win.mem);
-                    }
-                }
-                Ventana::Sound => {
-                    if dsk.win.sound_open {
-                        scene::sound::paint(
-                            &p,
-                            &dsk.win.sound,
-                            dsk.snd.cap.is_some(),
-                            dsk.snd.devices,
-                            dsk.snd.volume,
-                            dsk.snd.pressed,
-                        );
-                    }
-                }
+                Ventana::Cpu => scene::vitals::paint(&p, &dsk.win.cpu),
+                Ventana::Mem => scene::vitals::paint(&p, &dsk.win.mem),
+                Ventana::Sound => scene::sound::paint(
+                    &p,
+                    &dsk.win.sound,
+                    dsk.snd.cap.is_some(),
+                    dsk.snd.devices,
+                    dsk.snd.volume,
+                    dsk.snd.pressed,
+                ),
                 Ventana::Run => uncover(&p, &dsk.run_box, dsk.win.visible, sal, repintar),
             }
         };
