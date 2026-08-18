@@ -43,7 +43,7 @@ fn main() -> ExitCode {
         return fallo(&entrada, &src, &reparos);
     }
 
-    let codigo = bmo_maqueta_emit::rust::modulo(&entrada, &puesto);
+    let codigo = bmo_maqueta_emit::rust::modulo(&procedencia(&entrada), &puesto);
     if let Err(e) = std::fs::write(&salida, codigo) {
         eprintln!("maqueta: no puedo escribir {salida}: {e}");
         return ExitCode::from(2);
@@ -57,6 +57,46 @@ fn main() -> ExitCode {
         puesto.islands().len()
     );
     ExitCode::SUCCESS
+}
+
+/// **De donde salio esta cara, dicho igual lo escriba quien lo escriba.**
+///
+/// === El defecto que esto cierra, y lo cazo un guardian el 2026-08-18 ===
+///
+/// El emisor recibia la ruta **tal como se tecleo**, y la escribe en la primera
+/// linea del modulo generado. O sea que generar la MISMA cara desde el mismo
+/// fichero daba DOS artefactos distintos:
+///
+/// ```text
+///   maqueta pruebas/calc.maqueta ...        -> //! ... DESDE `pruebas/calc.maqueta`
+///   maqueta C:/Users/.../calc.maqueta ...   -> //! ... DESDE `C:/Users/...`
+/// ```
+///
+/// Con el fichero commiteado eso no es cosmetico: **un artefacto que depende de
+/// quien lo genera no se puede comparar**, y comparar es lo unico que impide que
+/// la cara pintada y su `.maqueta` se separen. El guardian de `build.ps1` lo
+/// invocaba con ruta absoluta y veia una deriva que no existia.
+///
+/// La procedencia se deduce **del fichero**, no de la invocacion: se sube hasta
+/// el `.git` y se cuenta desde ahi, con barras hacia adelante. Fuera de un
+/// repositorio se contesta lo que se tecleo, normalizado -- decir algo cierto
+/// vale mas que no decir nada.
+fn procedencia(entrada: &str) -> String {
+    let barras = |s: String| s.replace(std::path::MAIN_SEPARATOR, "/");
+    let Ok(abs) = std::fs::canonicalize(entrada) else {
+        return barras(entrada.to_string());
+    };
+    let mut raiz = abs.as_path();
+    while let Some(padre) = raiz.parent() {
+        if padre.join(".git").exists() {
+            if let Ok(rel) = abs.strip_prefix(padre) {
+                return barras(rel.to_string_lossy().into_owned());
+            }
+            break;
+        }
+        raiz = padre;
+    }
+    barras(entrada.to_string())
 }
 
 fn fallo(entrada: &str, src: &[u8], errores: &[bmo_maqueta_diag::Error]) -> ExitCode {

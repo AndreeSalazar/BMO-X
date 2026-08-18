@@ -57,7 +57,7 @@ fn fuera(c: &Frame, limite: &Rect, quien: &str) -> Error {
     )
 }
 
-/// ★ B. El texto que no cabe.
+/// * B. El texto que no cabe.
 ///
 /// Es la unica clase de fallo de este sistema que **se ve bonita en pantalla y
 /// esta mal**: un navegador lo esconde reajustando lineas, y BMO-X no puede --

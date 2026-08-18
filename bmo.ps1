@@ -65,20 +65,27 @@ if (-not $Rapido) {
     Titulo 'Banco de pruebas (anfitrion)'
     Push-Location $raiz
     try {
-        # ** LOS SEIS DEL ALMACENAMIENTO ENTRARON EL 2026-08-17, y faltaban.
+        # ** ESTA LISTA ERA DE SIETE, Y LO QUE FALTABA NO ERA POCO.
         #
-        # `bmo-trim`, `bmo-block`, `bmo-identify`, `bmo-disco-juicio`,
-        # `bmo-estratos` y `bmo-particiones` tenian 118 casillas escritas que
-        # **este banco no corria**, porque esta lista es a mano -- el mismo fallo
-        # que el guardian de opcodes de `build.ps1` documenta de si mismo: *"un
-        # guardian con lista tiene el mismo fallo que vigila"*.
+        # Es a mano, y por tanto tiene el mismo fallo que vigila el guardian de
+        # opcodes de `build.ps1`: *"un guardian con lista tiene el mismo fallo
+        # que vigila"*. Se le habian quedado fuera doce crates con casillas
+        # escritas que nadie corria.
         #
-        # Y son justo las que no se pueden comprobar de otra forma: aqui vive la
-        # ventana de escritura --la que deja fuera la particion de arranque-- y
-        # el empaquetado de TRIM, donde equivocarse no da un fallo sino un disco
-        # que olvida sectores que si importaban.
+        #   17-08  los SEIS del almacenamiento     118 casillas
+        #          aqui vive la ventana de escritura --la que deja fuera la
+        #          particion de arranque-- y el empaquetado de TRIM, donde
+        #          equivocarse no da un fallo: hace que el disco olvide
+        #          sectores que si importaban.
+        #
+        #   18-08  las SEIS de MAQUETA             134 casillas
+        #          el nieto calcula donde cae cada caja, y una cuenta mal
+        #          puesta no da un error -- **pinta el escritorio torcido**, y
+        #          eso ninguna compilacion lo caza.
         $paquetes = @('bmo-c-front', 'bmo-uaudio', 'bmo-abi', 'bmo-fat32', 'bmo-uhid', 'bmo-net', 'bmo-ciudad',
-                      'bmo-trim', 'bmo-block', 'bmo-identify', 'bmo-disco-juicio', 'bmo-estratos', 'bmo-particiones')
+                      'bmo-trim', 'bmo-block', 'bmo-identify', 'bmo-disco-juicio', 'bmo-estratos', 'bmo-particiones',
+                      'bmo-maqueta-lex', 'bmo-maqueta-node', 'bmo-maqueta-cascade',
+                      'bmo-maqueta-layout', 'bmo-maqueta-verdict', 'bmo-maqueta-emit')
         $total = 0
         foreach ($p in $paquetes) {
             # [!] AQUI SE DECIDE POR CONTEO, NO POR FRASE NI POR CODIGO DE SALIDA.

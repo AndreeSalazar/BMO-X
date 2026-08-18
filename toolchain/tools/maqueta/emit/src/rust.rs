@@ -11,7 +11,7 @@
 //! Emitir llamadas no tiene contrato: usa `Pantalla`, que ya existe, y lo que
 //! sale se puede **poner al lado de `paint_calc` y comparar linea a linea**.
 //!
-//! ⚠️ Y lo que esto NO da: no se puede cambiar sin recompilar. La version que si
+//! [!] Y lo que esto NO da: no se puede cambiar sin recompilar. La version que si
 //! --el recurso BEF 0x0B, escalon 8-- es un emisor mas, **y no toca ninguna de
 //! las cinco generaciones**, porque ninguna sabe que existe un emisor.
 //!
@@ -27,12 +27,12 @@
 
 //! ## [!] Lo que SALE tiene que ser ASCII puro
 //!
-//! Este fichero puede usar los simbolos de la casa (★, ⚠️) porque es fuente del
+//! Este fichero puede usar los simbolos de la casa (*, [!]) porque es fuente del
 //! anfitrion. Lo que emite **no**: se convierte en un fuente de BMO-X, y ahi la
 //! regla del 2026-08-08 dice ASCII. Una sola letra acentuada en un literal llego
 //! a hacer crecer un `.bex` de 512 bytes a 492.032.
 //!
-//! Se me colo un `★` en un comentario generado y lo cazo la prueba
+//! Se me colo un `*` en un comentario generado y lo cazo la prueba
 //! `lo_generado_esta_equilibrado_y_no_tiene_sorpresas`, no una lectura.
 
 use bmo_maqueta_layout::{Frame, Laid};

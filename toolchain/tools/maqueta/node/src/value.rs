@@ -122,7 +122,7 @@ impl Prop {
 
     /// Does this property only change how a box LOOKS, never where it is?
     ///
-    /// ★★ This is what makes `:hover` admissible. A hover rule may only touch
+    /// ** This is what makes `:hover` admissible. A hover rule may only touch
     /// these four, and therefore **cannot move a single box** -- so the layout is
     /// still computed exactly once, and `layout/` never learns that hover exists.
     /// Let hover set a `width` and the whole model breaks: you would need a
@@ -238,7 +238,7 @@ pub enum Value {
 
 /// Real CSS that MAQUETA does not have, each with **why** and **instead**.
 ///
-/// ★ This table is the difference between a compiler and a toy. "unknown
+/// * This table is the difference between a compiler and a toy. "unknown
 /// property `box-shadow`" tells the author nothing; naming the reason and the
 /// way out is what makes rejecting better than ignoring. Without it, the
 /// inversion this project is built on -- *a compiler rejects what it does not

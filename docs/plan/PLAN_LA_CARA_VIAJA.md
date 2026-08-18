@@ -175,7 +175,7 @@ Acertaron en el diagnostico (la complejidad de la web es un error) y pagaron por
 ello: renunciaron a la estetica entera. MAQUETA no tiene que renunciar, **porque
 compila**: los bordes, los colores y el flex se resuelven antes de viajar.
 
-⚠️ Y lo que hay que copiarles de verdad no es el formato: es **haber cambiado de
+⚠ Y lo que hay que copiarles de verdad no es el formato: es **haber cambiado de
 interlocutor**. Un `maqueta://` que hable con BMO-X en los dos extremos cuesta
 casi nada; hablar con un navegador cuesta la pila entera.
 
@@ -206,7 +206,7 @@ tener **cara propia**, que es este documento.
 
 ---
 
-## 6. ⚠️ EL PELIGRO, Y ES UNO SOLO PERO GORDO
+## 6. ⚠ EL PELIGRO, Y ES UNO SOLO PERO GORDO
 
 **Si la cara viaja, el veredicto NO viajo con ella.**
 

@@ -880,35 +880,63 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow) {
     });
 
     ty += 8;
-    // -- La verdad sobre la escritura --
+    // == LA VERDAD SOBRE LA ESCRITURA, y ahora la bandera SI la dice =========
+    //
+    // ** HASTA EL 2026-08-18 ESTE `if` ERA CODIGO MUERTO, y la rama de abajo la
+    // unica que se veia.
+    //
+    // `INFO_ES_ESCRIBIBLE` contestaba **un cero constante** en el kernel, con un
+    // comentario que decia que la transaccion existia pero que nadie la habia
+    // cableado al dispositivo. Era cierto el dia que se escribio; dejo de serlo
+    // cuando `sellar` empezo a escribir el superbloque de verdad -- y el disco
+    // de esta casa va por la generacion 3, o sea que ha commiteado tres veces.
+    //
+    // Este panel ya se habia arreglado una vez por exactamente lo mismo, y el
+    // arreglo fue prosa: se cambio lo que la rama DICE. El defecto no estaba
+    // aqui -- estaba en que el campo no podia decir otra cosa.
+    //
+    // > Un valor fijo puesto por prudencia envejece hacia la MENTIRA, y no
+    // > avisa: lo unico que cambia a su alrededor es el mundo.
+    //
+    // Ahora la bandera es la conjuncion de las condiciones que de verdad
+    // deciden --hay volumen, es de este disco, cabe, y el gate armo la
+    // escritura-- asi que las dos ramas significan algo.
     if bmo::info(bmo::INFO_ES_ESCRIBIBLE) != 0 {
         p.texto(tx, ty, "escritura: ABIERTA", INK_OK);
-    } else {
-        // ** ESTE PANEL MINTIO, Y SE VIO EN UNA FOTO.
-        //
-        // Decia *"la transaccion existe y esta probada (12 tests), pero nadie la
-        // ha cableado al dispositivo todavia: falta el write y el FLUSH CACHE de
-        // verdad"* -- y el 2026-08-13 el dueno sello desde esta misma ventana y
-        // la generacion subio a 3. O sea que el write y el FLUSH CACHE **si
-        // estaban cableados**, y el panel seguia contando el estado de hace dos
-        // semanas.
-        //
-        // Un panel de diagnostico que se queda viejo es peor que no tenerlo:
-        // este decia que no se podia escribir mientras el disco se escribia.
-        //
-        // Lo que la bandera dice de verdad es que la ventana de escritura de
-        // SECTORES SUELTOS esta cerrada -- el gate de identidad y el rango
-        // permitido--, no que la transaccion no exista. Son dos cosas y ahora se
-        // dicen por separado.
-        p.texto(tx, ty, "escritura: por TRANSACCION", 0x00F0_D070);
         ty += bmo::GLIFO_ALTO + 3;
-        p.texto(tx, ty, "  sellar SI escribe: cierra un estrato y sube la", INK_DIM);
+        p.texto(tx, ty, "  sellar cierra un estrato y sube la generacion,", INK_DIM);
         ty += bmo::GLIFO_ALTO + 2;
-        p.texto(tx, ty, "  generacion, con FLUSH CACHE de verdad.  TAB -> S.", INK_DIM);
+        p.texto(tx, ty, "  con FLUSH CACHE de verdad.  TAB -> S.", INK_DIM);
+    } else {
+        // ** UN "NO" QUE NO DICE CUAL DE LAS CUATRO ES UN "NO" QUE NO SIRVE.
+        //
+        // La bandera es una Y de varias condiciones, y cada una manda a mirar
+        // un sitio distinto: no hay volumen (se formatea), es de otro disco (se
+        // clono), no cabe (hay que recoger), o el gate del disco no armo (eso
+        // es del arranque, no de ESTRATOS). Ensenar solo "NO" obligaria a
+        // adivinar entre cuatro -- que es lo que costo una vuelta al metal en
+        // el recorte del 17-08.
+        //
+        // Y no hace falta un campo nuevo: las tres primeras ya se preguntan por
+        // separado en esta misma ventana, asi que si las tres dicen que si, el
+        // que queda es el gate.
+        p.texto(tx, ty, "escritura: CERRADA", 0x00F0_D070);
+        ty += bmo::GLIFO_ALTO + 3;
+        let montado = bmo::info(bmo::INFO_ES_MONTADO) != 0;
+        let mio = bmo::info(bmo::INFO_ES_IDENTIDAD) != 0;
+        let cabe = bmo::info(bmo::INFO_ES_NIVEL) < 3;
+        let porque: &str = if !montado {
+            "  no hay volumen montado: se formatea con estratos-fmt."
+        } else if !mio {
+            "  el volumen NO nacio en este disco: no se le escribe."
+        } else if !cabe {
+            "  por encima del 95%: solo lectura hasta que se recoja."
+        } else {
+            "  el gate de identidad del disco no armo la escritura."
+        };
+        p.texto(tx, ty, porque, INK_DIM);
         ty += bmo::GLIFO_ALTO + 2;
-        p.texto(tx, ty, "  lo que NO hay es escritura de sectores sueltos:", INK_DIM);
-        ty += bmo::GLIFO_ALTO + 2;
-        p.texto(tx, ty, "  aqui no se toca un bloque sin una transaccion.", INK_DIM);
+        p.texto(tx, ty, "  sin esto, sellar no escribe y el recorte tampoco.", INK_DIM);
     }
 
     ty += bmo::GLIFO_ALTO + 10;

@@ -54,7 +54,7 @@ pub fn place(b: &Styled, border: Rect) -> Frame {
         Display::Block => block(&flow, content),
     };
 
-    // ★ Absolutely positioned boxes are placed against the canvas, and that is
+    // * Absolutely positioned boxes are placed against the canvas, and that is
     // not a simplification: CSS anchors them to the nearest *positioned*
     // ancestor, MAQUETA has no `position:relative`, so there never is one and
     // the anchor is always the initial containing block. Same behaviour, arrived
@@ -89,7 +89,7 @@ pub fn place(b: &Styled, border: Rect) -> Frame {
 
 /// Where the glyphs start.
 ///
-/// ★ In a `block` box the text sits at the top left of the content, which is
+/// * In a `block` box the text sits at the top left of the content, which is
 /// what a browser does for left-to-right text. In a `flex` box the text is an
 /// **anonymous flex item** -- a real CSS concept, not an invention -- so
 /// `justify-content` and `align-items` move it, and that is how a label gets

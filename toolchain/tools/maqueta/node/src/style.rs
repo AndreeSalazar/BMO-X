@@ -139,7 +139,7 @@ fn rule(src: &[u8], toks: &[Token], i: &mut usize, errors: &mut Vec<Error>) -> O
 
 /// `:hover`, y nada mas. Devuelve si lo habia.
 ///
-/// ★ Es la UNICA pseudo-clase, y esta admitida por una razon estructural, no por
+/// * Es la UNICA pseudo-clase, y esta admitida por una razon estructural, no por
 /// utilidad: no puede tocar la maquetacion (ver el filtro de arriba), asi que la
 /// maquetacion se sigue calculando UNA vez y `layout/` no llega a enterarse de
 /// que el hover existe.

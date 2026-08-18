@@ -12,7 +12,7 @@
 //! grandson give a block box its parent's width and a flex item its content's
 //! width without either rule living in two places.
 //!
-//! ## ★ There is no default text colour, and that is deliberate
+//! ## * There is no default text colour, and that is deliberate
 //!
 //! Without inheritance, a default `color` would be inheritance from nowhere: a
 //! value nobody wrote, that looks intentional, and that ages into a lie exactly
@@ -48,7 +48,7 @@ pub enum Justify {
     SpaceBetween,
 }
 
-/// ★ `Stretch` is the default because **CSS's default is `stretch`**, and this
+/// * `Stretch` is the default because **CSS's default is `stretch`**, and this
 /// was very nearly a divergence nobody would have noticed: with `Start` as the
 /// default, a flex row would size its items to their content here and stretch
 /// them to the container in the browser. Same family as the ordering guardian --

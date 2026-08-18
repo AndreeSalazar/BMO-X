@@ -55,7 +55,7 @@ pub struct Styled {
     /// El estilo mientras el puntero esta encima, si alguna regla `:hover` toco
     /// esta caja. `None` = esta caja no reacciona.
     ///
-    /// ★ Es un estilo COMPLETO y no un parche: el consumidor no tiene que
+    /// * Es un estilo COMPLETO y no un parche: el consumidor no tiene que
     /// componer nada, solo elegir cual de los dos usa. Y por construccion los dos
     /// dan la MISMA geometria -- el padre no deja que una regla `:hover` toque
     /// nada que no sea pintura.

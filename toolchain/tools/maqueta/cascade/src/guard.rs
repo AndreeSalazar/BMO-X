@@ -5,7 +5,7 @@
 //! the same answer most of the time, and when they differ nothing crashes: the
 //! file simply looks one way in the browser preview and another on the Ryzen.
 //!
-//! ★★ **That is the worst failure this project can have.** The whole reason the
+//! ** **That is the worst failure this project can have.** The whole reason the
 //! tags are HTML's and the properties are CSS's is so a `.maqueta` can be opened
 //! in a browser while you write it. A preview that lies is worse than no
 //! preview, because it is trusted.
@@ -50,7 +50,7 @@ use bmo_maqueta_node::{Rule, Selector};
 
 /// 0 = etiqueta, 1 = clase, 2 = `:hover`.
 ///
-/// ★ El nivel 2 sale gratis y no es capricho: en CSS `.tecla:hover` puntua
+/// * El nivel 2 sale gratis y no es capricho: en CSS `.tecla:hover` puntua
 /// (0,2,0) y le gana a `.tecla` (0,1,0) este donde este, igual que una clase le
 /// gana a una etiqueta. La misma regla --los niveles no bajan-- cubre los tres
 /// sin una linea de forma nueva.
