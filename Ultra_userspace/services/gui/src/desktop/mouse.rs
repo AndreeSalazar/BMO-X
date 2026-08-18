@@ -13,9 +13,9 @@
 
 use bmo_userland as bmo;
 
-use super::{Desktop, W_CABINA, W_DATA, W_RUN, W_SOUND};
+use super::{calc, Desktop, W_CABINA, W_DATA, W_RUN, W_SOUND};
 use crate::scene::calc::paint_calc;
-use crate::scene::{self, paint_status, INK_BAD, TASKBAR_H};
+use crate::scene::{self, TASKBAR_H};
 use crate::{erase_window, uncover};
 
 /// One frame's worth of pointer.
@@ -86,37 +86,12 @@ pub(crate) fn on_pointer(
 
     if dsk.calc.visible && button && !dsk.tick.button_before && !dsk.calc.waiting {
         if let Some(t) = dsk.calc_pad.key_at(pos.x, pos.y) {
-            match t {
-                b'C' => dsk.calc.clear(),
-                b'+' => dsk.calc.operator(1),
-                b'-' => dsk.calc.operator(2),
-                b'*' => dsk.calc.operator(3),
-                b'/' => dsk.calc.operator(4),
-                b'=' => {
-                    if dsk.calc.op != 0 && dsk.calc.saved_n > 0 && dsk.calc.n > 0 {
-                        // Lanzar el MOTOR y darle los tres datos por su
-                        // consola. Aqui es donde la cara deja de saber
-                        // de aritmetica y empieza a saber COBOL.
-                        let cap = dsk.out.console.as_ref().map(|c| c.cap).unwrap_or(0);
-                        if bmo::ejecutar_en(b"cobol/calcgui.bex", cap).is_ok() {
-                            if let Some(cc) = dsk.out.console.as_ref() {
-                                cc.write(&dsk.calc.saved_path[..dsk.calc.saved_n]);
-                                cc.write(b"\n");
-                                cc.write(&[b'0' + dsk.calc.op]);
-                                cc.write(b"\n");
-                                cc.write(&dsk.calc.input[..dsk.calc.n]);
-                                cc.write(b"\n");
-                            }
-                            dsk.calc.waiting = true;
-                            dsk.resp_n = 0;
-                        } else {
-                            paint_status(&p, &dsk.run_box, "falta cobol/calcgui.bex", INK_BAD);
-                        }
-                    }
-                }
-                d => dsk.calc.feed(d),
-            }
-            paint_calc(&p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
+            // ** Lo que hacia esta tecla estaba escrito AQUI, y ahora vive en
+            // `desktop::calc`. Desde que el teclado tambien pulsa, tenerlo en
+            // los dos sitios seria la misma cuenta escrita dos veces -- que es
+            // exactamente lo que MAQUETA acaba de borrar del pintado, y no se
+            // arregla en un aparato para reinventarlo en el de al lado.
+            calc::pulsar(dsk, p, t);
         }
     }
     // -- El raton tambien manda en el foco --

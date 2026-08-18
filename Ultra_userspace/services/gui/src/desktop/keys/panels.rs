@@ -278,5 +278,19 @@ if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
         return Key::Taken;
     }
 }
+
+// -- ** La CALCULADORA: sus teclas, cuando las tiene --
+//
+// Va en este fichero por la misma regla que las demas: son teclas de un panel
+// abierto y la guarda es el foco. Lo que cambia es de QUE ventana es el panel
+// -- la calculadora se pinta pegada a la derecha de Ejecutar, asi que su foco
+// es `W_RUN` y no uno propio.
+//
+// [!] Y no puede quedarse TODAS las teclas por estar abierta: entonces no se
+// podria ni escribir `calc` para cerrarla. Quien decide es `desktop::calc`, y
+// lo decide con un orden. Devuelve `Pass` mientras las teclas no sean suyas.
+if crate::desktop::calc::on_key(dsk, p, c, ctrl) == Key::Taken {
+    return Key::Taken;
+}
     Key::Pass
 }

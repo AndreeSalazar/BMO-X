@@ -131,9 +131,19 @@ pub(crate) fn paint_cost(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 pub(crate) fn calculator(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.calc.visible = !dsk.calc.visible;
     if dsk.calc.visible {
+        // ** Abrirla le da el teclado, igual que `Ctrl+n` abre la consola de
+        // ESTRATOS y se lo queda de paso. Pedir la calculadora Y ADEMAS pedirle
+        // el teclado serian dos ordenes para una sola intencion.
+        dsk.calc.keys = true;
         paint_calc(&p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
-        dsk.out.grid.text(b"  calculadora: la cara en Rust, el calculo en COBOL\n");
+        // La cara ya no es Rust: la compila MAQUETA desde `calc.maqueta`. Este
+        // renglon lo decia y llevaba mintiendo desde el dia del puerto.
+        dsk.out.grid.text(b"  calculadora: la cara en MAQUETA, el calculo en COBOL\n");
+        dsk.out.grid.text(b"  las teclas son suyas; Ctrl+n se las devuelve a la linea\n");
     } else {
+        // Cerrarla suelta el teclado. Sin esto, volver a abrirla lo robaria en
+        // silencio: la bandera seguiria puesta de la vez anterior.
+        dsk.calc.keys = false;
         // Devolver esa zona a la escena.
         for f in 0..dsk.calc_pad.height {
             for co in 0..dsk.calc_pad.width {
