@@ -17,6 +17,16 @@
 //! pulsarlas ensena a no pulsar. Los archivos viven en la rejilla, que es donde
 //! se trabaja con ellos.
 //!
+//! === Y por que aqui NO hay iconos de carpeta ===
+//!
+//! La rejilla los lleva (`scene::iconos`) y este panel no, que parece una
+//! inconsistencia y no lo es: **aqui todas las filas son carpetas**. Un icono
+//! que sale igual en todas las filas no distingue nada -- ocupa dieciseis
+//! pixeles de un panel estrecho para decir lo que ya se sabia.
+//!
+//! Lo que si distingue es la flecha, y esa si esta: dice si la rama esta
+//! abierta o cerrada, que es lo unico que cambia de una fila a otra.
+//!
 //! === UN recorrido para pintar y para acertar con el raton ===
 //!
 //! [`filas`] enumera las filas en el orden en que se ven, y la usan los dos:
@@ -42,8 +52,19 @@ use super::{INK, INK_DIM};
 pub(crate) const ROW_H: u32 = 22;
 /// Cuanto se mete hacia dentro cada nivel.
 const SANGRIA: u32 = 12;
-/// Lo mas que se ensena de un nombre en este panel.
-const NOMBRE_MAX: usize = 20;
+/// [!] AQUI HABIA UN TOPE FIJO DE VEINTE CARACTERES, y estaba mal.
+///
+/// El sitio que le queda a un nombre depende de lo hondo que este: cada nivel
+/// se come `SANGRIA` pixeles por la izquierda. Con un tope fijo, los nombres de
+/// los niveles altos cabian de sobra y los de abajo se salian del panel --
+/// pintando por encima de la rejilla, que es el vecino.
+///
+/// Se calcula contra el ancho que de verdad queda.
+fn cabe_nombre(z: &Zona, x: u32) -> usize {
+    // Un caracter de margen a la derecha para el `~` de recortado.
+    let util = z.derecha().saturating_sub(x + bmo::GLIFO_ANCHO);
+    (util / bmo::GLIFO_ANCHO) as usize
+}
 
 /// Cuantas filas se piden de una vez. Con `ROW_H` a 22, cuarenta filas son 880
 /// pixeles de alto: mas de lo que cabe en ninguna ventana de esta pantalla, asi
@@ -184,9 +205,10 @@ pub(crate) fn paint(p: &bmo::Pantalla, z: &Zona, desde: usize, accent: u32, sel_
         p.texto(x, ty, if f.abierta { "v" } else { ">" }, INK_DIM);
         let mut nom = [0u8; 64];
         let n = bmo::estratos::nivel_hijo_nombre(f.nivel, f.indice, &mut nom);
-        let corte = n.min(NOMBRE_MAX);
+        let nx = x + 2 * bmo::GLIFO_ANCHO;
+        let corte = n.min(cabe_nombre(z, nx));
         let ink = if f.abierta { INK } else { INK_DIM };
-        let fin = p.texto_bytes(x + 2 * bmo::GLIFO_ANCHO, ty, &nom[..corte], ink);
+        let fin = p.texto_bytes(nx, ty, &nom[..corte], ink);
         // Un nombre recortado LO DICE. Sin esto, dos carpetas cuyo nombre solo
         // se diferencia por el final se ven iguales -- y en un panel estrecho
         // eso pasa mas de lo que parece.
