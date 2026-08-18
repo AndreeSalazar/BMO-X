@@ -28,6 +28,7 @@
 //! not an oversight.
 
 pub(crate) mod boot;
+pub(crate) mod calc;
 pub(crate) mod keys;
 pub(crate) mod mouse;
 pub(crate) mod paint;

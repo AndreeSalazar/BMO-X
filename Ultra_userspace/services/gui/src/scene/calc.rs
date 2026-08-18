@@ -57,6 +57,11 @@ pub(crate) struct Calc {
     pub(crate) op: u8,
     /// Se lanzo el motor y se espera su respuesta.
     pub(crate) waiting: bool,
+    /// **De quien son las teclas.** Con la calculadora abierta las cifras
+    /// significan dos cosas --el comando que se escribe y el operando--, asi
+    /// que hay que DECIRLO y no adivinarlo. `Ctrl+n` lo cambia; el porque
+    /// entero esta en `desktop::calc`.
+    pub(crate) keys: bool,
 }
 
 impl Calc {
@@ -69,6 +74,7 @@ impl Calc {
             saved_n: 0,
             op: 0,
             waiting: false,
+            keys: false,
         }
     }
 
@@ -76,6 +82,19 @@ impl Calc {
         if self.n < self.input.len() {
             self.input[self.n] = c;
             self.n += 1;
+        }
+    }
+
+    /// Borrar la ultima cifra tecleada.
+    ///
+    /// **No hay boton para esto en la cara** --el `.maqueta` no tiene tecla de
+    /// retroceso-- y por eso vive aqui y no en la tabla de teclas: es una
+    /// afordancia del teclado, no un dibujo. Con `C` al lado, una calculadora
+    /// de raton no lo necesita; escribiendo, equivocarse de una cifra y perder
+    /// el numero entero es lo que hace que se deje de usar.
+    pub(crate) fn backspace(&mut self) {
+        if self.n > 0 {
+            self.n -= 1;
         }
     }
 
@@ -225,14 +244,29 @@ pub(crate) fn paint_calc(p: &bmo::Pantalla, cc: &CalcPad, c: &Calc, hover: Optio
     };
     calc_gen::limpiar_isla(p, cc.x, cc.y, "visor");
 
+    // ** EL CURSOR DICE DE QUIEN SON LAS TECLAS, y hace falta decirlo.
+    //
+    // La calculadora se pinta pegada a la derecha de Ejecutar, que tiene su
+    // propio cursor parpadeando. Con las dos a la vista y sin esta marca, la
+    // unica forma de saber donde va a caer un `7` es pulsarlo y mirar -- y una
+    // cifra que aparece en el comando equivocado ya ensucio la linea.
+    //
+    // Ocupa su hueco ANTES de colocar el numero: si no, el cursor se pintaria
+    // encima de la ultima cifra en vez de detras de ella.
+    let caret = if c.keys { bmo::GLIFO_ANCHO } else { 0 };
+
     // Alineado a la DERECHA como cualquier calculadora: los numeros se comparan
     // por la unidad, no por la primera cifra.
     let text = c.shown();
     let text_w = text.len() as u32 * bmo::GLIFO_ANCHO;
+    let ty = cc.y + vy + (vh - bmo::GLIFO_ALTO) / 2;
     p.texto_bytes(
-        cc.x + vx + vw.saturating_sub(8 + text_w),
-        cc.y + vy + (vh - bmo::GLIFO_ALTO) / 2,
+        cc.x + vx + vw.saturating_sub(8 + caret + text_w),
+        ty,
         text,
         if c.waiting { INK_DIM } else { INK },
     );
+    if c.keys {
+        p.texto_bytes(cc.x + vx + vw.saturating_sub(8 + caret), ty, b"_", INK_DIM);
+    }
 }
