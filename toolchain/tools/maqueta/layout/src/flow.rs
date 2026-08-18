@@ -80,9 +80,52 @@ pub fn place(b: &Styled, border: Rect) -> Frame {
         style: b.style,
         rect: border,
         content,
+        text_at: donde_el_texto(b, content),
         children: placed,
         span: b.span,
     }
+}
+
+/// Where the glyphs start.
+///
+/// ★ In a `block` box the text sits at the top left of the content, which is
+/// what a browser does for left-to-right text. In a `flex` box the text is an
+/// **anonymous flex item** -- a real CSS concept, not an invention -- so
+/// `justify-content` and `align-items` move it, and that is how a label gets
+/// centred in its button.
+///
+/// This is here and not in the emitter on purpose: centring is arithmetic, and
+/// arithmetic in a consumer is arithmetic nobody checks. `calc.rs` writes
+/// `bx + CALC_BTN/2 - GLIFO_ANCHO/2` by hand, once per label.
+fn donde_el_texto(b: &Styled, content: Rect) -> Option<Rect> {
+    let t = b.text.as_ref()?;
+    let w = t.len() as u32 * crate::GLIFO_ANCHO;
+    let h = crate::GLIFO_ALTO;
+    if b.style.display != Display::Flex {
+        return Some(Rect { x: content.x, y: content.y, w, h });
+    }
+    let (libre_main, libre_cross, horizontal) = if b.style.direction == Direction::Row {
+        (content.w as i64 - w as i64, content.h as i64 - h as i64, true)
+    } else {
+        (content.h as i64 - h as i64, content.w as i64 - w as i64, false)
+    };
+    let main = match b.style.justify {
+        Justify::Start | Justify::SpaceBetween => 0,
+        Justify::Center => libre_main / 2,
+        Justify::End => libre_main,
+    };
+    let cross = match b.style.align {
+        Align::Stretch | Align::Start => 0,
+        Align::Center => libre_cross / 2,
+        Align::End => libre_cross,
+    };
+    let (dx, dy) = if horizontal { (main, cross) } else { (cross, main) };
+    Some(Rect {
+        x: (content.x as i64 + dx) as i32,
+        y: (content.y as i64 + dy) as i32,
+        w,
+        h,
+    })
 }
 
 /// Children stack downwards, each filling the width unless it named one.

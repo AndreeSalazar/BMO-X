@@ -266,3 +266,37 @@ fn las_medidas_del_glifo_siguen_siendo_las_del_kernel() {
     assert_eq!(GLIFO_ANCHO, leer("GLIFO_ANCHO"));
     assert_eq!(GLIFO_ALTO, leer("GLIFO_ALTO"));
 }
+
+// ------------------------------------------------------------------------
+//  Donde caen las letras
+// ------------------------------------------------------------------------
+
+#[test]
+fn en_una_caja_de_bloque_el_texto_empieza_arriba_a_la_izquierda() {
+    let l = run("<maqueta><div class=\"a\">hola</div></maqueta>                 <style>.a{width:200px;height:60px;padding:4px;color:#FFFFFF}</style>");
+    let t = l.root.children[0].text_at.unwrap();
+    assert_eq!((t.x, t.y), (4, 4));
+    assert_eq!((t.w, t.h), (4 * GLIFO_ANCHO, GLIFO_ALTO));
+}
+
+#[test]
+fn una_etiqueta_centrada_cae_donde_calc_rs_la_pone() {
+    // ★★ La comprobacion que vale: `calc.rs` centra a mano con
+    //
+    //     bx + CALC_BTN/2 - GLIFO_ANCHO/2  ,  by + CALC_BTN/2 - GLIFO_ALTO/2
+    //
+    // y en flex, un texto es un ELEMENTO ANONIMO --concepto real de CSS, no un
+    // invento-- asi que `justify-content` y `align-items` lo mueven igual. Si
+    // los dos numeros no coincidieran, el emisor produciria algo que no se
+    // parece a lo que hay hoy.
+    let l = run(include_str!("../../pruebas/calc.maqueta"));
+    let c = l.all().into_iter().find(|f| f.id.as_deref() == Some("k_c")).unwrap();
+
+    let (bx, by, btn) = (c.rect.x, c.rect.y, 72i32);
+    let esperado_x = bx + btn / 2 - GLIFO_ANCHO as i32 / 2;
+    let esperado_y = by + btn / 2 - GLIFO_ALTO as i32 / 2;
+
+    let t = c.text_at.unwrap();
+    assert_eq!((t.x, t.y), (esperado_x, esperado_y), "la etiqueta no cae donde calc.rs");
+    assert_eq!((t.x, t.y), (40, 82), "y ese sitio es este");
+}

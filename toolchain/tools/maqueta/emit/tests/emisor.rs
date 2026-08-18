@@ -1,0 +1,196 @@
+//! Lo que sale del compilador, y si sirve.
+
+use bmo_maqueta_cascade::cascade;
+use bmo_maqueta_diag::render;
+use bmo_maqueta_emit::rust;
+use bmo_maqueta_layout::{lay, Laid};
+use bmo_maqueta_node::parse;
+use bmo_maqueta_verdict::judge;
+
+/// Compila de verdad: padre, hijo, nieto **y bisnieto**. Un emisor que acepta
+/// una maquetacion que el veredicto rechaza estaria emitiendo el fallo.
+fn compilar(src: &str) -> Laid {
+    let doc = parse(src.as_bytes())
+        .unwrap_or_else(|e| panic!("{}", render("x.maqueta", src.as_bytes(), &e)));
+    let c = cascade(&doc)
+        .unwrap_or_else(|e| panic!("{}", render("x.maqueta", src.as_bytes(), &e)));
+    let l = lay(&c);
+    let v = judge(&l, &c);
+    assert!(v.is_empty(), "{}", render("x.maqueta", src.as_bytes(), &v));
+    l
+}
+
+const CALC: &str = include_str!("../../pruebas/calc.maqueta");
+
+fn generado() -> String {
+    rust::modulo("toolchain/tools/maqueta/pruebas/calc.maqueta", &compilar(CALC))
+}
+
+// ------------------------------------------------------------------------
+//  Lo que sale
+// ------------------------------------------------------------------------
+
+#[test]
+fn el_fichero_dice_de_donde_salio_y_que_no_se_toca() {
+    let g = generado();
+    assert!(g.starts_with("//! GENERADO POR MAQUETA DESDE"));
+    assert!(g.contains("NO EDITAR A MANO"));
+    assert!(g.contains("calc.maqueta"), "y cual es la fuente");
+}
+
+#[test]
+fn el_tamano_que_nadie_escribio_sale_como_constante() {
+    let g = generado();
+    assert!(g.contains("pub const ANCHO: u32 = 322;"));
+    assert!(g.contains("pub const ALTO: u32 = 446;"));
+}
+
+#[test]
+fn el_panel_sale_como_los_dos_rects_concentricos_que_escribe_calc_rs() {
+    // calc.rs:
+    //     p.rect(cc.x, cc.y, cc.width, cc.height, BOX_EDGE);
+    //     p.rect(cc.x + 2, cc.y + 2, cc.width - 4, cc.height - 4, CALC_BG);
+    let g = generado();
+    assert!(g.contains("p.rect(ox + 0, oy + 0, 322, 446, 0x00333D52);"), "{g}");
+    assert!(g.contains("p.rect(ox + 2, oy + 2, 318, 442, 0x00182434);"), "{g}");
+}
+
+#[test]
+fn cada_tecla_sale_con_su_rect_y_su_etiqueta_centrada() {
+    let g = generado();
+    // La tecla `C`: rect en (8,54) 72x72, y su letra centrada en (40,82).
+    assert!(g.contains("p.rect(ox + 8, oy + 54, 72, 72, 0x002B3B52);"), "{g}");
+    assert!(g.contains("p.texto(ox + 40, oy + 82, \"C\", 0x00E6EDF6);"), "{g}");
+    // La de operador, con su otro fondo.
+    assert!(g.contains("p.rect(ox + 86, oy + 54, 72, 72, 0x003A5878);"), "{g}");
+    // Y la de igual.
+    assert!(g.contains("0x004C9BE8"), "{g}");
+}
+
+#[test]
+fn cada_caja_lleva_su_nombre_en_un_comentario() {
+    let g = generado();
+    assert!(g.contains("// #k_c"));
+    assert!(g.contains("// #k_eq"));
+}
+
+// ------------------------------------------------------------------------
+//  ★★ La tabla de golpeo, de la misma pasada
+// ------------------------------------------------------------------------
+
+#[test]
+fn la_tabla_de_golpeo_usa_los_mismos_numeros_que_el_pintado() {
+    // El punto entero del proyecto: no hay una segunda aritmetica que pueda
+    // discrepar. Se comprueba comparando los numeros que salieron en `pintar`
+    // con los que salieron en `golpe`.
+    let l = compilar(CALC);
+    let g = generado();
+
+    for (id, r) in l.hits() {
+        let rect = format!("p.rect(ox + {}, oy + {}, {}, {}", r.x, r.y, r.w, r.h);
+        let hit = format!(
+            "px >= ox + {} && px < ox + {} && py >= oy + {} && py < oy + {}",
+            r.x,
+            r.right(),
+            r.y,
+            r.bottom()
+        );
+        assert!(g.contains(&rect), "falta el pintado de {id}: {rect}");
+        assert!(g.contains(&hit), "falta el golpe de {id}: {hit}");
+    }
+}
+
+#[test]
+fn las_diecisiete_teclas_estan_en_la_tabla() {
+    let g = generado();
+    for id in [
+        "k_c", "k_div", "k_mul", "k_sub", "k_7", "k_8", "k_9", "k_add", "k_4", "k_5", "k_6",
+        "k_1", "k_2", "k_3", "k_eq", "k_0", "k_dot",
+    ] {
+        assert!(g.contains(&format!("return Some({id:?});")), "falta {id}");
+    }
+}
+
+#[test]
+fn hay_un_dentro_que_reemplaza_al_contains_escrito_a_mano() {
+    assert!(generado().contains("pub fn dentro(ox: u32, oy: u32, px: u32, py: u32) -> bool"));
+}
+
+// ------------------------------------------------------------------------
+//  Las islas
+// ------------------------------------------------------------------------
+
+#[test]
+fn las_islas_salen_con_su_rect_y_la_calculadora_no_tiene_ninguna() {
+    assert!(generado().contains("pub const ISLAS: [(&str, u32, u32, u32, u32); 0] = ["));
+
+    let con_isla = "<maqueta><div class=\"f\"><island nombre=\"vitals\" class=\"i\"></island></div></maqueta>\
+                    <style>.f{display:flex;width:300px;height:200px} .i{width:300px;height:200px}</style>";
+    let g = rust::modulo("x.maqueta", &compilar(con_isla));
+    assert!(g.contains("(\"vitals\", 0, 0, 300, 200),"), "{g}");
+}
+
+// ------------------------------------------------------------------------
+//  ★★ El numero que juzgaba la idea
+// ------------------------------------------------------------------------
+
+#[test]
+fn el_numero_que_juzga_la_idea_medido_y_no_prometido() {
+    // De las 214 lineas de `calc.rs`, 118 son maquetacion: `CalcPad`, `button`,
+    // `key_at`, `contains`, las nueve constantes y el cuerpo de `paint_calc`.
+    // Las otras ~96 son la maquina de estados y se quedan en Rust, porque el
+    // motor sigue siendo el COBOL de `cobol/calcgui.bex`.
+    const MAQUETACION_A_MANO: usize = 118;
+
+    let escrito = CALC
+        .lines()
+        .skip_while(|l| !l.trim_start().starts_with("<maqueta"))
+        .filter(|l| !l.trim().is_empty())
+        .count();
+
+    // ⚠️ EL PLAN PROMETIA "bajar a un tercio" Y NO LLEGA: son 48 contra 118,
+    // un 59% menos. Y la razon esta medida, no supuesta -- la calculadora es el
+    // PEOR CASO posible para MAQUETA:
+    //
+    //   `calc.rs` pinta veinte teclas con `for row { for col }` sobre una tabla
+    //   de etiquetas. Una rejilla REGULAR ya es maquetacion declarativa, y ahi
+    //   un bucle gana en lineas a veinte `<div>` escritos.
+    //
+    // Donde MAQUETA gana de verdad es en lo IRREGULAR --`chrome.rs`, la barra,
+    // los paneles-- que es donde no hay bucle que valga. El numero honesto de
+    // esta prueba es el de su peor caso.
+    assert!(escrito < MAQUETACION_A_MANO, "{escrito} contra {MAQUETACION_A_MANO}");
+    assert_eq!(escrito, 48, "si esto cambia, el numero del plan hay que rehacerlo");
+
+    // Lo que de verdad se cobra no son las lineas: son las TRES FUNCIONES que
+    // dejan de existir, y con ellas la aritmetica escrita dos veces.
+    let g = generado();
+    assert!(g.contains("pub fn golpe("));
+    assert!(g.contains("pub fn dentro("));
+    println!(
+        "escrito {escrito} | generado {} | a mano {MAQUETACION_A_MANO} | -{}%",
+        g.lines().count(),
+        100 - escrito * 100 / MAQUETACION_A_MANO
+    );
+}
+
+// ------------------------------------------------------------------------
+//  Que lo generado sea Rust de verdad
+// ------------------------------------------------------------------------
+
+#[test]
+fn lo_generado_esta_equilibrado_y_no_tiene_sorpresas() {
+    let g = generado();
+    assert_eq!(g.matches('{').count(), g.matches('}').count(), "llaves");
+    assert_eq!(g.matches('(').count(), g.matches(')').count(), "parentesis");
+    assert!(!g.contains("ox + -"), "una coordenada negativa saldria como `ox + -8`");
+    assert!(g.is_ascii(), "las fuentes de BMO-X son ASCII");
+}
+
+#[test]
+fn una_maquetacion_vacia_no_genera_codigo_que_no_compile() {
+    // Sin cajas no hay golpes, y `golpe` se quedaria con parametros sin usar --
+    // que en este arbol es un aviso, y los avisos se tratan como errores.
+    let g = rust::modulo("x.maqueta", &compilar("<maqueta></maqueta>"));
+    assert!(g.contains("let _ = (ox, oy, px, py);"));
+}

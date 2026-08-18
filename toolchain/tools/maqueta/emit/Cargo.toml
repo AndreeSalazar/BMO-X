@@ -1,0 +1,15 @@
+[package]
+name = "bmo-maqueta-emit"
+version = "0.1.0"
+edition = "2021"
+description = "MAQUETA: turns a settled layout into something usable. A CONSUMER, not a generation -- nobody in the chain knows it exists."
+license = "Techne"
+
+[dependencies]
+bmo-maqueta-layout = { path = "../layout" }
+
+[dev-dependencies]
+bmo-maqueta-node = { path = "../node" }
+bmo-maqueta-cascade = { path = "../cascade" }
+bmo-maqueta-verdict = { path = "../verdict" }
+bmo-maqueta-diag = { path = "../diag" }

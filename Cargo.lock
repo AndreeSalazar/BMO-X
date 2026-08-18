@@ -211,6 +211,17 @@ name = "bmo-maqueta-diag"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-maqueta-emit"
+version = "0.1.0"
+dependencies = [
+ "bmo-maqueta-cascade",
+ "bmo-maqueta-diag",
+ "bmo-maqueta-layout",
+ "bmo-maqueta-node",
+ "bmo-maqueta-verdict",
+]
+
+[[package]]
 name = "bmo-maqueta-layout"
 version = "0.1.0"
 dependencies = [

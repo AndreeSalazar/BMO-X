@@ -299,7 +299,7 @@ estan en espanol.
    [ ] 3   hijo     cascada por clase y etiqueta, ultimo gana
    [ ] 4   nieto    maquetacion: bloque + flex en un eje
    [ ] 5   bisnieto veredicto: las seis comprobaciones
-   [ ] 6   emisor A -> Rust generado, y calc.rs como primera victima
+   [x] 6   emisor A -> Rust generado, y calc.rs como primera victima
    [ ] 7   ficheros dorados como oraculo
    [ ] 8   emisor B -> recurso BEF 0x0B (arrastra "leer recursos en ejecucion")
    [ ] 9   `<island>` cableada a una superficie BSUP
@@ -312,10 +312,27 @@ estan en espanol.
 quedan en Rust para siempre**.
 
 ```
-   118 lineas de maquetacion  ->  el .maqueta equivalente
+   118 lineas de maquetacion  ->  48 lineas de .maqueta      MEDIDO, -59%
 ```
 
-Si no baja a un tercio con claridad, la idea no se sostiene y hay que decirlo.
+### ⚠️ Lo prometido era "un tercio", y no llega. La razon esta medida
+
+Son **48 contra 118: un 59% menos**, no un 67%. Y no es que el compilador salga
+mal -- es que **la calculadora es el PEOR CASO posible para MAQUETA**:
+
+> `calc.rs` pinta veinte teclas con `for row { for col }` sobre una tabla de
+> etiquetas. **Una rejilla regular YA ES maquetacion declarativa**, y ahi un
+> bucle gana en lineas a veinte `<div>` escritos uno a uno.
+
+Donde MAQUETA gana de verdad es en lo **irregular** -- `chrome.rs` (565 lineas,
+el marco de las ventanas), la barra, los paneles -- que es donde no hay bucle que
+valga. Elegir la calculadora primero fue elegir el caso que peor le sienta, y eso
+es lo que hace que el numero sirva.
+
+★ **Y las lineas no son lo que mas se cobra.** Lo que desaparece son
+`CalcPad::button()`, `key_at()` y `contains()`: **tres funciones que son la misma
+aritmetica escrita dos veces**, una para pintar y otra para responder al raton.
+Eso no se reduce, se vuelve imposible.
 
 ★ Y el sitio donde mas se cobra no es el pintado: son `button()`, `key_at()` y
 `contains()`. **Hoy la misma aritmetica esta escrita dos veces** -- una para

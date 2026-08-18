@@ -162,6 +162,7 @@ members = [
     "toolchain/tools/maqueta/cascade",
     "toolchain/tools/maqueta/layout",
     "toolchain/tools/maqueta/verdict",
+    "toolchain/tools/maqueta/emit",
 
     # -- FORGE (pipeline de compilacion) -----------------------------
     # Librerias OPCIONALES que cada frontend elige enlazar (nunca embudos).
