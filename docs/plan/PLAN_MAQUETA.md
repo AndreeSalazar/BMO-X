@@ -23,14 +23,31 @@
 ## 0. QUE ES, EN UNA FRASE
 
 **Un compilador que lee un arbol de cajas y unas reglas, y emite las
-coordenadas ya calculadas.** Lo que hoy se escribe a mano en
-`Ultra_userspace/services/gui/src/scene/` -- 7.780 lineas de aritmetica de
-pixeles -- pasa a ser texto que se lee.
+coordenadas ya calculadas.** La aritmetica de pixeles que hoy se escribe a mano
+en `Ultra_userspace/services/gui/src/scene/` pasa a ser texto que se lee.
 
 ```
    HOY       calc.rs:       CALC_BTN = 72;  CALC_GAP = 6;  fn button(row,col)
    MANANA    calc.maqueta:  display:flex; gap:6px
 ```
+
+### ⚠️ El tamano del problema, MEDIDO el 17-08 (y era menor de lo que dije)
+
+La primera version de este documento decia *"7.780 lineas de `scene/`"*. **Es
+falso y sobrevende.** Contado:
+
+```
+   13.829   el servicio gui entero
+   -3.000   mouse.rs (699) + keys/* (1.374) + desktop/mod.rs (381) + gato.rs (515)
+            -- CERO llamadas de dibujo entre los cuatro. MAQUETA no los toca nunca
+   ~1.657   literales numericos en scene/; quitando 0/1/2 quedan ~700 magicos
+      118   de las 214 lineas de calc.rs son maquetacion (el resto es la maquina
+            de estados de la calculadora, y se queda en Rust para siempre)
+```
+
+**El escritorio no es sobre todo pintura: es sobre todo enrutado de entrada.**
+Decirlo al reves habria hecho que la primera medida contra `calc.rs` pareciera un
+fracaso cuando es un exito.
 
 ---
 
@@ -115,6 +132,40 @@ del DOM viene todo lo demas.
 una isla es un rect con nombre que otro proceso rellena -- que es **exactamente
 la superficie de `PLAN_DIRECTOR.md`** (`BSUP`, `MEM_OP_OFRECER` / `TASK_OP_TOMAR`).
 La mitad viva del escritorio ya tiene su mecanismo construido.
+
+### ★★ Y la frontera de verdad no era "quieto contra se mueve": es EL NUMERO DE HIJOS
+
+Leyendo `switcher.rs` (17-08) salio el caso que la tabla de arriba no describe.
+El conmutador **esta quieto** -- no se anima, no cuenta nada -- y sin embargo su
+altura es `ROW_H * lista.len() + ...`: **el numero de filas se sabe en ejecucion**,
+porque son las ventanas que haya abiertas. Igual `launcher.rs` (`for i in
+0..l.count`) y la lista de `mod.rs`.
+
+Un compilador estatico no puede maquetar eso, y fingir que si es como se llega a
+un motor de maquetacion en el aparato por la puerta de atras.
+
+**La regla, y es la que decide el alcance real del proyecto:**
+
+> **MAQUETA maqueta lo que tiene un numero de hijos CONOCIDO AL COMPILAR.
+> La repeticion sobre datos vivos es de quien tiene los datos.**
+
+En la practica: **la fila es un `.maqueta`, la lista es Rust.** El compilador
+resuelve el interior de UNA fila -- sus rects relativos al origen de la fila, que
+es lo irregular y lo que se equivoca una persona -- y Rust la coloca en un bucle
+con un `+= alto_de_fila` que el propio compilador emitio. Es exactamente como esta
+escrito hoy (`fy += ROW_H`), asi que no hay nada que reescribir: hay algo que
+dejar de calcular a mano.
+
+### ✅ Y un mecanismo que ya existia: `p.texto` devuelve la x siguiente
+
+```rust
+let mx = p.texto(x + 14, fy + 4, "modo: ", INK_DIM);
+let mx = p.texto(mx,     fy + 4, modo,     ACCENT);
+         p.texto(mx,     fy + 4, "   (Alt+M)", INK_DIM);
+```
+
+Eso es **flujo en linea**, y ya funciona. `<span>` no hay que inventarlo: hay que
+enchufarlo a lo que hace `Pantalla` desde siempre.
 
 ---
 
@@ -254,9 +305,24 @@ estan en espanol.
    [ ] 9   `<island>` cableada a una superficie BSUP
 ```
 
-**El escalon 6 es la prueba de que esto sirve, y tiene un numero**: `calc.rs` son
-214 lineas. Si el `.maqueta` equivalente mas el Rust que queda no bajan de ahi
-con claridad, la idea no se sostiene y hay que decirlo.
+**El escalon 6 es la prueba de que esto sirve, y tiene un numero -- afinado el
+17-08 despues de contar**: de las 214 lineas de `calc.rs`, **118 son maquetacion**
+(`CalcPad`, `button`, `key_at`, `contains`, las constantes y el cuerpo de
+`paint_calc`). Las otras ~96 son la maquina de estados de la calculadora y **se
+quedan en Rust para siempre**.
+
+```
+   118 lineas de maquetacion  ->  el .maqueta equivalente
+```
+
+Si no baja a un tercio con claridad, la idea no se sostiene y hay que decirlo.
+
+★ Y el sitio donde mas se cobra no es el pintado: son `button()`, `key_at()` y
+`contains()`. **Hoy la misma aritmetica esta escrita dos veces** -- una para
+pintar la tecla y otra para saber que tecla se pulso -- y esa duplicacion es una
+clase de bug entera (el boton que se dibuja en un sitio y responde en otro). El
+compilador conoce el rect final, asi que emite **la lista de pintado y la tabla
+de golpeo de una sola fuente**, y las tres funciones desaparecen.
 
 ---
 

@@ -106,8 +106,9 @@ que MAQUETA no hace, y por eso **estan prohibidas**, no reinterpretadas.
 
 ## 3. LAS PROPIEDADES -- LISTA CERRADA
 
-Diecisiete. Elegidas contando lo que `scene/` hace de verdad hoy, no lo que CSS
-ofrece.
+**Dieciocho.** Elegidas **contando** lo que `scene/` hace de verdad hoy, no lo
+que CSS ofrece. La numero 18 (`border-radius`) entro el mismo dia, al medir la
+raiz y descubrir que ya estaba implementada -- ver mas abajo.
 
 ### La caja
 
@@ -126,6 +127,33 @@ ofrece.
 | `color` | `#RRGGBB` | el color del texto de ESTE nodo, no de sus hijos |
 | `border-width` | `Npx` | un solo grosor, los cuatro lados |
 | `border-color` | `#RRGGBB` | |
+| `border-radius` | `Npx` | ★ ver abajo: **ya existe**, con su limite |
+
+### ★ `border-radius` estaba rechazado por la razon equivocada (corregido 17-08)
+
+La primera version de este contrato lo mandaba al escalon 4 del rasterizador
+(mezcla alfa). **Falso, y lo destapo mirar la raiz**: `scene/mod.rs:116` tiene
+`rounded_rect` desde hace tiempo -- *"Diecisiete `rect` y ya"* -- con una tabla
+de curva de ocho entradas:
+
+```rust
+const RADIUS: u32 = 8;
+const CURVE_TABLE: [u32; 8] = [8, 5, 3, 2, 1, 1, 0, 0];
+```
+
+O sea que **BMO-X redondea esquinas hoy, sin alfa**, apilando franjas de un pixel.
+Lo que daria el escalon 4 no es la forma: es el **borde suave**. Entra ahora, con
+dos avisos escritos:
+
+- ⚠️ **El borde es escalonado**, no suavizado. Aqui la previsualizacion en
+  navegador se separa mas que en ningun otro sitio.
+- ✅ **Y MAQUETA mejora lo que hay**: hoy existe **un solo radio** (8 px, con la
+  tabla puesta a mano). El compilador calcula la tabla para el radio que se pida,
+  asi que `border-radius:12px` deja de ser una tabla nueva que alguien escribe.
+
+★ Vale la pena anotar como salio: no salio de auditar el contrato, salio de
+**contar la raiz**. Es la regla de MODULAR #2 -- *medir antes de opinar* --
+cobrandose una pieza el primer dia.
 
 ### La colocacion
 
@@ -209,12 +237,13 @@ Un rechazo que no ensena la salida es un muro. **Cada error lleva dos notas: por
 que, y que escribir en su lugar.**
 
 ```
-maqueta: calc.maqueta:14:26: propiedad no soportada -- `border-radius`
-   14 |   .tecla { width:72px; border-radius:4px }
-      |                        ^^^^^^^^^^^^^^^^^
-      = por que: MAQUETA no dibuja esquinas redondeadas. El rasterizador esta
-        en el escalon 2 (triangulo) y esto pide el 4 (mezcla alfa).
-      = en su lugar: no hay forma de escribir esto hoy. Quitalo.
+maqueta: calc.maqueta:14:26: propiedad no soportada -- `box-shadow`
+   14 |   .tecla { width:72px; box-shadow:0 2px 4px #000 }
+      |                        ^^^^^^^^^^^^^^^^^^^^^^^^^
+      = por que: una sombra necesita mezcla alfa, y el rasterizador esta en el
+        escalon 2 (triangulo). La mezcla es el escalon 4.
+      = en su lugar: `scene/mod.rs` pinta sombras de ventana con dos capas de
+        color solido. Si hace falta aqui, se declara con dos `<div>`.
 ```
 
 ```
@@ -306,6 +335,47 @@ calculo del escritorio, que es lo que ya se decidio no hacer en `PLAN_DIRECTOR.m
 
 ---
 
+## 9b. LA OTRA FRONTERA: EL NUMERO DE HIJOS
+
+Un `.maqueta` **solo puede tener un numero de hijos conocido al compilar**. Es la
+regla que impide que esto derive en un motor de maquetacion dentro del aparato, y
+salio de leer `switcher.rs`: ese panel esta quieto y sin embargo su altura es
+`ROW_H * lista.len()` -- las ventanas abiertas, que se saben en ejecucion.
+
+> **La fila es un `.maqueta`. La lista es Rust.**
+
+MAQUETA resuelve el **interior** de una fila -- lo irregular, lo que una persona
+calcula mal -- y emite ademas su alto. Rust la repite con el `+=` de siempre.
+
+Un `.maqueta` cuyo numero de hijos dependa de algo que no esta en el fichero es
+un error, no una funcionalidad pendiente.
+
+---
+
+## 9c. EL TEMA: 62 COLORES QUE NO ESTAN EN NINGUN SITIO (medido 17-08)
+
+```
+   62   constantes de color con nombre en scene/ + desktop/
+   33   de ellas usadas UNA sola vez ademas de su definicion  (53%)
+   94   usos de INK_DIM      60 de INK      21 de ACCENT
+```
+
+★ **BMO-X ya tiene un tema; lo que no tiene es un sitio donde mirarlo.** Diez
+colores llevan el peso y estan repartidos por quince ficheros, y los otros 33 son
+la prueba del desgaste: cada panel nuevo inventa los suyos **porque no hay donde
+consultarlos**.
+
+Eso es exactamente la sensacion de Arch que motivo el proyecto -- *nada generado
+por una herramienta que no puedas leer* -- y aqui se cobra sola: un fichero de
+tema con esos diez nombres es mas control que cualquier panel de ajustes.
+
+⏳ **Pendiente de decidir**: si `.maqueta` puede importar un `tema.maqueta`
+compartido. Es la unica forma de que el tema exista de verdad, y es tambien la
+primera vez que un fichero dependeria de otro -- con lo que eso arrastra (orden
+de resolucion, y un ciclo posible). No se implementa hasta decidirlo.
+
+---
+
 ## 10. LO QUE ESTA RECHAZADO, NOMBRADO
 
 Que este por escrito importa: la deriva hacia navegador se hace de una propiedad
@@ -317,7 +387,8 @@ en una propiedad, y ninguna parece grave sola.
 | combinadores `.a .b`, `>` | igual | nunca en v1 |
 | `%`, `auto`, `calc()` | exigen el contenedor | nunca en v1 |
 | `rgba()`, `opacity` | no hay mezcla alfa | rasterizador escalon 4 |
-| `border-radius` | igual | rasterizador escalon 4 |
+| ~~`border-radius`~~ | **ACEPTADO el 17-08** -- ver seccion 3 | -- |
+| repeticion sobre datos vivos | el numero de hijos se sabe en ejecucion | nunca: es de Rust |
 | `:hover`, `:active` | es **conducta**, no maquetacion | v2, y sin tocar el layout |
 | `grid` | `flex` cubre lo medido en `scene/` | cuando algo real lo pida |
 | `float`, `z-index`, `overflow` | no hay caso en el arbol | cuando lo haya |
