@@ -34,18 +34,12 @@ pub(crate) fn nothing(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// para ti. Se rie del malentendido, nunca de quien
 /// lo tuvo.
 pub(crate) fn not_linux(dsk: &mut Desktop, p: &bmo::Pantalla, verb: &[u8]) -> After {
-    dsk.out.grid.text(b"    n_n_n
-");
-    dsk.out.grid.text(b"   ( -.- )   ~nya. eso aqui no se dice.
-");
-    dsk.out.grid.text(b"   ( u u )   esto NO es Linux, es BMO-X.
-");
-    dsk.out.grid.text(b"    ^^ ^^    no hay root que pedir:
-");
-    dsk.out.grid.text(b"             o te dieron la capability, o no existe.
-");
-    dsk.out.grid.text(b"
-");
+    dsk.out.grid.text(b"    n_n_n\n");
+    dsk.out.grid.text(b"   ( -.- )   ~nya. eso aqui no se dice.\n");
+    dsk.out.grid.text(b"   ( u u )   esto NO es Linux, es BMO-X.\n");
+    dsk.out.grid.text(b"    ^^ ^^    no hay root que pedir:\n");
+    dsk.out.grid.text(b"             o te dieron la capability, o no existe.\n");
+    dsk.out.grid.text(b"\n");
     let hint: &[u8] = match verb {
         b"sudo" | b"su" => {
             b"  aqui nadie ELEVA permisos: un proceso nace con lo que le
@@ -120,8 +114,7 @@ pub(crate) fn paint_cost(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
         dsk.out.grid.text(b"    cajas      ");
         let k = decimal(v.cajas as u64, &mut d);
         dsk.out.grid.text(&d[..k]);
-        dsk.out.grid.text(b"
-");
+        dsk.out.grid.text(b"\n");
         let k = decimal(v.bytes / 1024 / 1024, &mut d);
         dsk.out.grid.text(&d[..k]);
         dsk.out.grid.text(b" MiB movidos desde el arranque\n");
@@ -139,8 +132,7 @@ pub(crate) fn calculator(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.calc.visible = !dsk.calc.visible;
     if dsk.calc.visible {
         paint_calc(&p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
-        dsk.out.grid.text(b"  calculadora: la cara en Rust, el calculo en COBOL
-");
+        dsk.out.grid.text(b"  calculadora: la cara en Rust, el calculo en COBOL\n");
     } else {
         // Devolver esa zona a la escena.
         for f in 0..dsk.calc_pad.height {
@@ -163,44 +155,75 @@ pub(crate) fn clear(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     After::Settle
 }
 
+/// **LA AYUDA, POR CATEGORIAS.**
+///
+/// === Por que dejo de ser una lista ===
+///
+/// Eran treinta renglones seguidos, sin un solo rotulo, y el dueno lo dijo con
+/// la comparacion exacta: *"imaginate con help en CMD de Windows, es molesto"*.
+/// Y es el mismo defecto: una lista plana obliga a **leerla entera** para saber
+/// si lo que buscas esta, porque no hay forma de descartar un trozo de un
+/// vistazo. Con seis rotulos, el que busca como se mira el disco lee cuatro
+/// renglones y para.
+///
+/// El orden no es alfabetico ni historico: va **de lo que se usa mas a lo que se
+/// usa menos**, y dentro de cada grupo, la orden entera antes que sus variantes.
+///
+/// ** Y de paso se cayo una mentira: `presta <ruta>` llevaba anunciado aqui
+/// desde que se RETIRO. Hoy lo decide el compositor leyendo la bandera
+/// `WANTS_SCREEN` de la cabecera BEF --ver `main.rs`-- porque saberse de memoria
+/// que programas son graficos era poner la politica en los dedos del usuario.
+/// Una ayuda que ofrece una orden que contesta "no lo conozco" es peor que una
+/// ayuda incompleta: la incompleta no miente.
 pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
-    dsk.out.grid.text(b"  <ruta>       lanza un .bex   (cobol/banco.bex)\n");
-    dsk.out.grid.text(b"  run <ruta>   lo mismo, como en el shell de Ring 0\n");
-    // Va JUSTO detras de `run` porque es su hermana,
-    // y con la consecuencia delante: lo que sorprende
-    // no es que lance, es que el escritorio se vaya.
-    dsk.out.grid.text(b"  presta <ruta>  se lo lanza CON LA PANTALLA: el\n");
-    dsk.out.grid.text(b"               escritorio se aparta y vuelve cuando\n");
-    dsk.out.grid.text(b"               el programa termina  (c/ray.bex)\n");
-    dsk.out.grid.text(b"  cat <ruta>   ensena lo que hay dentro\n");
-    dsk.out.grid.text(b"  write <ruta> <texto>     lo guarda\n");
-    dsk.out.grid.text(b"  save [ruta]  vuelca esta salida a un .txt, con la\n");
-    dsk.out.grid.text(b"               tabla de consumo dentro  (= guarda)\n");
-    dsk.out.grid.text(b"               (por defecto datos/salida.txt, y cada\n");
-    dsk.out.grid.text(b"                programa que corre lo deja solo ahi)\n");
-    dsk.out.grid.text(b"  clear / cls  limpia esta salida\n");
-    dsk.out.grid.text(b"  TAB          completa   Ctrl+A/E inicio/fin\n");
-    dsk.out.grid.text(b"  Ctrl+K corta al final    Ctrl+W borra palabra\n");
-    dsk.out.grid.text(b"  Ctrl+U borra linea       Ctrl+L limpia\n");
-    dsk.out.grid.text(b"  info         RAM, CPU, tareas y disco\n");
-    dsk.out.grid.text(b"  cpu / mem    solo esa parte del informe\n");
-    dsk.out.grid.text(b"  ext          que ofrece el silicio y que coge BMO\n");
-    dsk.out.grid.text(b"  consumo / w  nucleos, hilos, MHz, W y RAM en TABLA\n");
-    dsk.out.grid.text(b"  apps         que programa tiene RAM pedida\n");
-    dsk.out.grid.text(b"  save cpu|mem|consumo|apps   cada tabla en SU\n");
-    dsk.out.grid.text(b"               fichero: datos/cpu.txt, mem.txt...\n");
-    dsk.out.grid.text(b"  perf         lo que cuesta pintar, medido\n");
-    // ** La unica caja de ordenes que puede cambiar el almacen. Se lista con su
-    // suborden destructiva SEPARADA y con el `ya` a la vista: una ayuda que
-    // dijera solo `disco` esconderia justo lo que hay que leer antes.
-    dsk.out.grid.text(b"  disco        que aparato es, cuanto queda y que se le\n");
-    dsk.out.grid.text(b"               ha devuelto  (disco espacio | barrera)\n");
-    dsk.out.grid.text(b"  disco trim   PROPONE devolverle al disco la cola libre\n");
-    dsk.out.grid.text(b"               del volumen; `disco trim ya` la manda\n");
-    dsk.out.grid.text(b"  estratos sellar   ESCRIBE EN EL DISCO (commit vacio)\n");
-    dsk.out.grid.text(b"  help         esto\n");
-    dsk.out.grid.text(b"  reboot       reinicia la maquina\n");
-    dsk.out.grid.text(b"  Ctrl+Alt     esconde o invoca esta ventana\n");
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  PROGRAMAS ---------------------------------------------------\n");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"    <ruta>        lanza un .bex        cobol/banco.bex\n");
+    dsk.out.grid.text(b"    run <ruta>    lo mismo, como en el shell de Ring 0\n");
+    dsk.out.grid.text(b"                  si el programa pide pantalla, se le presta sola\n");
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  ARCHIVOS ----------------------------------------------------\n");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"    ls [ruta]     que hay\n");
+    dsk.out.grid.text(b"    cat <ruta>    que hay DENTRO\n");
+    dsk.out.grid.text(b"    write <ruta> <texto>      lo guarda\n");
+    dsk.out.grid.text(b"    save [ruta]   vuelca esta salida a un .txt, con el consumo\n");
+    dsk.out.grid.text(b"                  dentro   (por defecto datos/salida.txt)\n");
+    dsk.out.grid.text(b"    save cpu|mem|consumo|apps   cada tabla en SU fichero\n");
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  EL DISCO ----------------------------------------------------\n");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"    disco         que aparato es, cuanto queda y que se le ha\n");
+    dsk.out.grid.text(b"                  devuelto      (disco espacio | disco barrera)\n");
+    dsk.out.grid.text(b"    disco trim    PROPONE devolverle al disco la cola libre;\n");
+    dsk.out.grid.text(b"                  `disco trim ya` la manda de verdad\n");
+    dsk.out.grid.text(b"    estratos sellar   ESCRIBE EN EL DISCO (commit vacio)\n");
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  EL SISTEMA --------------------------------------------------\n");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"    info          RAM, CPU, tareas y disco\n");
+    dsk.out.grid.text(b"    cpu / mem     solo esa parte del informe\n");
+    dsk.out.grid.text(b"    consumo       nucleos, hilos, MHz, W y RAM en TABLA\n");
+    dsk.out.grid.text(b"    apps          que programa tiene RAM pedida\n");
+    dsk.out.grid.text(b"    ext           que ofrece el silicio y que coge BMO\n");
+    dsk.out.grid.text(b"    fallo         la ultima autopsia de Ring 3\n");
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  LA MAQUINA --------------------------------------------------\n");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"    smp           los nucleos    (all | N | test | stop)\n");
+    dsk.out.grid.text(b"    red           tarjeta, enlace y tramas   (mac|link|tramas|phy)\n");
+    dsk.out.grid.text(b"    audio         como quiere las muestras el aparato\n");
+    dsk.out.grid.text(b"    reboot        reinicia la maquina\n");
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  ESTA CAJA ---------------------------------------------------\n");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"    clear         limpia esta salida\n");
+    dsk.out.grid.text(b"    calc          la calculadora     perf   lo que cuesta pintar\n");
+    dsk.out.grid.text(b"    TAB completa            Ctrl+A / Ctrl+E   inicio / fin\n");
+    dsk.out.grid.text(b"    Ctrl+K corta al final   Ctrl+W borra palabra   Ctrl+U linea\n");
+    dsk.out.grid.text(b"    Ctrl+Alt esconde o invoca esta ventana\n");
+    dsk.out.grid.text(b"    F11 CABINA (el kernel)      F12 ESTRATOS (el almacen)\n");
     paint_status(&p, &dsk.run_box, "listo", INK_DIM);
     dsk.field.n = 0;
     After::Settle
