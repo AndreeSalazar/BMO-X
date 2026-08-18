@@ -232,6 +232,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-maqueta-verdict"
+version = "0.1.0"
+dependencies = [
+ "bmo-maqueta-cascade",
+ "bmo-maqueta-diag",
+ "bmo-maqueta-layout",
+ "bmo-maqueta-node",
+]
+
+[[package]]
 name = "bmo-mods"
 version = "0.1.0"
 dependencies = [

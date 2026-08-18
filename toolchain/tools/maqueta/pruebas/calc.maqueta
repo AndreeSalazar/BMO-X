@@ -15,12 +15,21 @@
 
    Los colores son los de `calc.rs`, sin cambiar ni uno.
    Los huecos de la rejilla son cajas sin fondo: un hueco ES una caja.
+
+   ** Y una leccion que este fichero se llevo el primer dia.
+
+   El `<span>` del visor llevaba el color de `.visor`, su padre. NO LO HEREDA --
+   eso es literalmente lo que significa "sin herencia"-- y en pantalla habria
+   salido texto sin color. Lo cazo el bisnieto, no una mirada. `.num` existe por
+   eso, y es el precio del trato: una palabra mas en el marcado a cambio de que
+   nada sea implicito.
 -->
 <maqueta>
   <style>
     .pad    { display:flex; flex-direction:column; gap:6px; padding:6px;
               background-color:#182434; border-width:2px; border-color:#333D52 }
-    .visor  { height:40px; background-color:#161C28; color:#E6EDF6 }
+    .visor  { height:40px; background-color:#161C28 }
+    .num    { color:#E6EDF6 }
     .fila   { display:flex; flex-direction:row; gap:6px }
     .hueco  { width:72px; height:72px }
     .tecla  { width:72px; height:72px; background-color:#2B3B52; color:#E6EDF6 }
@@ -29,7 +38,7 @@
   </style>
 
   <div class="pad">
-    <div class="visor"><span>0</span></div>
+    <div class="visor"><span class="num">0</span></div>
 
     <div class="fila">
       <div class="tecla" id="k_c">C</div>
