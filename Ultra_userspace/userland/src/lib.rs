@@ -438,6 +438,9 @@ pub const INFO_DISCO_COLA_SECTORES: u64 = 0x46;
 /// Bloques de payload por orden (palabra 105). **Nunca contesta 0**: uno siempre
 /// se admite, y el cero de esa palabra es el disco callandose.
 pub const INFO_DISCO_TRIM_BLOQUES: u64 = 0x47;
+/// **Por que fallo el ultimo recorte**: `(clase << 32) | PxTFD`, con las clases
+/// en `DISCO_FALLO_*`. `0` = ninguno, y un recorte que sale bien lo borra.
+pub const INFO_DISCO_TRIM_FALLO: u64 = 0x48;
 
 pub const USB_SALUD_XHCI: u64 = 1 << 0;
 pub const USB_SALUD_KBD: u64 = 1 << 1;

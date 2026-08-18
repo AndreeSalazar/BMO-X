@@ -68,6 +68,37 @@ pub fn barrera() -> bool {
     invoke(CURRENT_TASK, OP_DISCO, DISCO_OP_BARRERA, 0, 0).value != 0
 }
 
+// -- ** POR QUE FALLO, cuando el motivo es `DISCO_TRIM_FALLO` ---------------
+//
+// Las cinco maneras de fallar del driver, que mandan a mirar sitios DISTINTOS:
+// `SIN_TIEMPO` acusa al presupuesto de espera, `APARATO` acusa al disco, y
+// `PETICION` acusa a quien armo el payload. Aplanarlas en "rechazo" --que es lo
+// que se hizo la primera vez-- pierde la unica pista que hay.
+
+pub const DISCO_FALLO_NINGUNO: u64 = 0;
+pub const DISCO_FALLO_NO_LISTO: u64 = 1;
+pub const DISCO_FALLO_OCUPADO: u64 = 2;
+/// No termino a tiempo. **No dijo que no: no contesto.**
+pub const DISCO_FALLO_SIN_TIEMPO: u64 = 3;
+/// El disco contesto con error. El `PxTFD` dice cual.
+pub const DISCO_FALLO_APARATO: u64 = 4;
+pub const DISCO_FALLO_PETICION: u64 = 5;
+pub const DISCO_FALLO_CLASE_SHIFT: u64 = 32;
+pub const DISCO_FALLO_TFD_MASK: u64 = 0xFFFF_FFFF;
+
+/// La clase de fallo en palabras, y **cada una manda a mirar otro sitio**.
+pub fn fallo_en_palabras(clase: u64) -> &'static [u8] {
+    match clase {
+        DISCO_FALLO_NINGUNO => b"sin fallo",
+        DISCO_FALLO_NO_LISTO => b"el puerto no estaba preparado",
+        DISCO_FALLO_OCUPADO => b"el disco no solto BSY/DRQ: ni se le pudo dar",
+        DISCO_FALLO_SIN_TIEMPO => b"NO CONTESTO A TIEMPO (no es que dijera que no)",
+        DISCO_FALLO_APARATO => b"el disco CONTESTO CON ERROR",
+        DISCO_FALLO_PETICION => b"la peticion era imposible antes de salir",
+        _ => b"clase desconocida",
+    }
+}
+
 /// El motivo en palabras, para pintarlo sin una segunda tabla en cada llamante.
 pub fn motivo_en_palabras(motivo: u64) -> &'static [u8] {
     match motivo {

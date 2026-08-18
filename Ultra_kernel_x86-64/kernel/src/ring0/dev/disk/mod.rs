@@ -51,7 +51,7 @@ pub use perfil::{enlace, geometria, juicio, medio, trim_bloques_max};
 /// ** DEVOLVER SECTORES AL DISCO. Destructivo, asi que pasa por los MISMOS
 /// guardianes que escribir y por uno propio: lo que el aparato declaro.
 mod trim;
-pub use trim::{cuentas_trim, recortar, Recorte};
+pub use trim::{cuentas_trim, recortar, ultimo_fallo, Recorte};
 pub use gate::verify_identity;
 /// WHO HOLDS THE DISK: one owner at a time, with a count of waits and thefts.
 mod owner;

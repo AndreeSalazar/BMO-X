@@ -83,6 +83,49 @@ static mut RECORTADOS: u64 = 0;
 /// Ordenes de `DATA SET MANAGEMENT` mandadas desde el arranque.
 static mut ORDENES: u64 = 0;
 
+/// **Por que fallo el ultimo recorte**: `(clase << 32) | PxTFD`.
+///
+/// === Por que este campo existe, y es una leccion pagada el 2026-08-17 ===
+///
+/// El primer recorte en metal contesto *"el disco RECHAZO la orden"* y **no
+/// habia forma de saber cual de los cinco fallos era**. El driver distingue
+/// `Busy`, `Timeout`, `Device(tfd)` y `BadRequest`, pero su `name()` devuelve
+/// una frase que los aplana, y el `tfd` --el registro donde el aparato **dice
+/// por que**-- se quedaba dentro del `enum` sin salir a ninguna parte.
+///
+/// ** El sintoma se llevo el numero por delante. La linea de CABINA decia "el
+/// disco respondio con error" y al lado el LBA, que era lo unico que no hacia
+/// falta. Un fallo que no trae su causa obliga a otra vuelta al metal, y una
+/// vuelta al metal cuesta un reinicio y una foto.
+///
+/// Los bits del `PxTFD` que valen: `0x01` ERR, y en el byte alto el registro de
+/// error del disco -- `0x04` ABRT (la orden no la conozco), `0x10` IDNF (ese
+/// sector no), `0x40` UNC. Se guarda **crudo** y se interpreta arriba: aqui no
+/// se opina, igual que con el `PHYstatus` de la red.
+static mut ULTIMO_FALLO: u64 = 0;
+
+/// Clases de fallo, para que Ring 3 no tenga que leer una frase.
+pub const DISCO_FALLO_NINGUNO: u64 = 0;
+pub const DISCO_FALLO_NO_LISTO: u64 = 1;
+pub const DISCO_FALLO_OCUPADO: u64 = 2;
+pub const DISCO_FALLO_SIN_TIEMPO: u64 = 3;
+pub const DISCO_FALLO_APARATO: u64 = 4;
+pub const DISCO_FALLO_PETICION: u64 = 5;
+
+/// `(clase << 32) | PxTFD` del ultimo recorte que fallo. `0` = ninguno.
+pub fn ultimo_fallo() -> u64 { unsafe { ULTIMO_FALLO } }
+
+/// Traduce el error del driver a `(clase, tfd)`. **El `tfd` no se pierde.**
+fn clasificar(e: bmo_ahci::DiskError) -> (u64, u32) {
+    match e {
+        bmo_ahci::DiskError::NotReady => (DISCO_FALLO_NO_LISTO, 0),
+        bmo_ahci::DiskError::Busy => (DISCO_FALLO_OCUPADO, 0),
+        bmo_ahci::DiskError::Timeout => (DISCO_FALLO_SIN_TIEMPO, 0),
+        bmo_ahci::DiskError::Device(tfd) => (DISCO_FALLO_APARATO, tfd),
+        bmo_ahci::DiskError::BadRequest => (DISCO_FALLO_PETICION, 0),
+    }
+}
+
 /// `(sectores, ordenes)` desde el arranque.
 ///
 /// ** Los dos, y no solo el primero. Un mismo numero de sectores en una orden o
@@ -147,9 +190,18 @@ pub fn recortar(lba: u64, sectores: u64) -> Recorte {
 
         while let Some(tanda) = rango.siguiente(buf, techo) {
             if let Err(e) = unsafe { bmo_ahci::trim_phys(unsafe { PORT }, dma, tanda.bloques) } {
-                // El LBA donde se quedo, que es lo unico util para mirarlo con
-                // otra herramienta. Lo de antes ya esta recortado de verdad.
-                crate::ring0::cabina::fault("disk", e.name(), lba + hechos);
+                // ** TRES LINEAS Y NO UNA, y cada una contesta otra pregunta.
+                //
+                // La primera version dejaba solo `e.name()` con el LBA al lado,
+                // y en metal eso resulto ser **la mitad que no hacia falta**:
+                // "el disco respondio con error" no distingue un ABRT de un
+                // timeout, y el LBA no se puede mirar con nada mientras no se
+                // sepa cual de los dos fue.
+                let (clase, tfd) = clasificar(e);
+                unsafe { ULTIMO_FALLO = (clase << 32) | tfd as u64 };
+                crate::ring0::cabina::fault("disk", e.name(), clase);
+                crate::ring0::cabina::fault("disk", "PxTFD crudo del recorte", tfd as u64);
+                crate::ring0::cabina::info("disk", "se quedo en el LBA", lba + hechos);
                 roto = true;
                 break;
             }
@@ -181,5 +233,9 @@ pub fn recortar(lba: u64, sectores: u64) -> Recorte {
     if roto {
         return Recorte::Fallo { sectores: hechos };
     }
+    // ** Un recorte que sale bien BORRA el fallo anterior. Un campo que solo
+    // sube contaria el fallo de ayer como si fuera el de hoy, y el que mire la
+    // pantalla despues de arreglarlo seguiria viendo el motivo viejo.
+    unsafe { ULTIMO_FALLO = 0 };
     Recorte::Hecho { sectores: hechos, ordenes }
 }

@@ -38,6 +38,21 @@ pub(crate) fn label(s: &mut Output, name: &[u8]) {
     }
 }
 
+/// Igual, pero a **10** y para los informes de una palabra.
+///
+/// ** Los catorce de arriba son de los informes en prosa, donde la etiqueta es
+/// una frase corta (`marcos libres`, `a Ring 3`). Cuando las etiquetas son de
+/// UNA palabra --`medium`, `link`, `queue`-- catorce dejan cuatro espacios en
+/// blanco en cada renglon y la tabla se lee como una lista suelta. Una tabla
+/// junta se lee de un vistazo; esa es toda la diferencia.
+pub(crate) fn campo(s: &mut Output, name: &[u8]) {
+    s.text(b"    ");
+    s.text(name);
+    for _ in name.len()..10 {
+        s.byte(b' ');
+    }
+}
+
 /// Una fila de la tabla de consumo: `que`, el valor a la DERECHA, y la unidad.
 ///
 /// Las tres columnas van a ancho fijo porque una tabla en la que los numeros no
@@ -735,7 +750,6 @@ fn aparato(s: &mut Output, nombre: &[u8], bits: u64, hay: u64, bomba: u64, corre
 /// que se separan a la tercera vez que alguien toca una.
 #[inline(never)]
 pub(crate) fn report_disco(s: &mut Output) {
-    // Sin `section`: esto va DENTRO de la seccion `disco`, detras de su estado.
     let medio = bmo::info(bmo::INFO_DISCO_MEDIO);
     let enlace = bmo::info(bmo::INFO_DISCO_ENLACE);
     let geo = bmo::info(bmo::INFO_DISCO_GEOMETRIA);
@@ -743,27 +757,26 @@ pub(crate) fn report_disco(s: &mut Output) {
 
     // Sin foto no se inventa nada: se dice que no la hay y se sale.
     if medio == 0 && enlace == 0 && geo == 0 {
-        label(s, b"identify");
+        campo(s, b"identify");
         s.with_ink(INK_ERR);
         s.text(b"este kernel no lee las palabras del disco (o el IDENTIFY fallo)\n");
         s.with_ink(INK_PLAIN);
         return;
     }
 
-    // -- EL MEDIO. La palabra 217, y su valor crudo al lado.
+    // -- EL MEDIO. Una palabra, y la frase SOLO cuando dice algo raro.
     let clase = (medio >> bmo::DISCO_MEDIO_CLASE_SHIFT) & bmo::DISCO_MEDIO_CLASE_MASK;
     let rpm = (medio >> bmo::DISCO_MEDIO_RPM_SHIFT) & bmo::DISCO_MEDIO_RPM_MASK;
-    label(s, b"medio");
+    campo(s, b"medium");
     match clase {
         bmo::DISCO_MEDIO_NO_ROTA => {
             s.with_ink(INK_GOOD);
-            s.text(b"ESTADO SOLIDO -- no paga busqueda de cabezal");
+            s.text(b"SSD");
         }
         bmo::DISCO_MEDIO_ROTA => {
-            s.with_ink(INK_PLAIN);
-            s.text(b"ROTACIONAL, ");
+            s.text(b"HDD, ");
             s.dec(rpm);
-            s.text(b" rpm -- el ORDEN de los sectores manda");
+            s.text(b" rpm   el ORDEN de los sectores manda");
         }
         bmo::DISCO_MEDIO_NO_CONTESTA => {
             s.with_ink(INK_ERR);
@@ -778,8 +791,8 @@ pub(crate) fn report_disco(s: &mut Output) {
     s.with_ink(INK_PLAIN);
     s.byte(b'\n');
 
-    // -- EL CABLE. Soportado y negociado son dos preguntas.
-    label(s, b"cable");
+    // -- EL CABLE. `soportado / negociado`, y nada mas cuando cuadran.
+    campo(s, b"link");
     let mejor = if enlace & bmo::DISCO_ENLACE_GEN3 != 0 { 3 }
         else if enlace & bmo::DISCO_ENLACE_GEN2 != 0 { 2 }
         else if enlace & bmo::DISCO_ENLACE_GEN1 != 0 { 1 } else { 0 };
@@ -787,13 +800,11 @@ pub(crate) fn report_disco(s: &mut Output) {
         & bmo::DISCO_ENLACE_NEGOCIADA_MASK;
     s.text(b"SATA Gen");
     s.dec(mejor);
-    s.text(b" soportado / ");
     if nego == 0 {
-        s.text(b"el disco no dice a que velocidad va");
+        s.text(b" / el disco no dice a que va");
     } else {
-        s.text(b"Gen");
+        s.text(b" / Gen");
         s.dec(nego);
-        s.text(b" negociado");
     }
     if juicio & bmo::DISCO_JUICIO_ENLACE_BAJO != 0 {
         s.with_ink(INK_ERR);
@@ -806,32 +817,34 @@ pub(crate) fn report_disco(s: &mut Output) {
     let cola = (enlace >> bmo::DISCO_ENLACE_COLA_SHIFT) & bmo::DISCO_ENLACE_COLA_MASK;
     let usadas = (enlace >> bmo::DISCO_ENLACE_USADAS_SHIFT) & bmo::DISCO_ENLACE_USADAS_MASK;
     let ociosas = (enlace >> bmo::DISCO_ENLACE_OCIOSAS_SHIFT) & bmo::DISCO_ENLACE_OCIOSAS_MASK;
-    label(s, b"cola");
-    s.text(b"el disco admite ");
-    s.dec(cola);
-    s.text(b", BMO usa ");
+    campo(s, b"queue");
     s.dec(usadas);
+    s.text(b" de ");
+    s.dec(cola);
     if enlace & bmo::DISCO_ENLACE_NCQ == 0 {
         s.text(b"   (sin NCQ)");
     } else if ociosas > 0 {
         s.with_ink(INK_ERR);
         s.text(b"   ");
         s.dec(ociosas);
-        s.text(b" RANURAS PARADAS");
+        s.text(b" PARADAS");
         s.with_ink(INK_PLAIN);
     }
     s.byte(b'\n');
 
     // -- LA GEOMETRIA. El exponente, no una cuenta.
-    label(s, b"sector");
+    campo(s, b"sector");
     if geo & bmo::DISCO_GEO_106_VALIDA == 0 {
-        s.text(b"el disco no declara geometria (palabra 106 sin guarda)");
+        s.text(b"sin declarar (palabra 106 sin guarda)");
     } else {
         let exp = geo & bmo::DISCO_GEO_EXP_MASK;
-        s.dec(1u64 << exp);
-        s.text(b" logicos por fisico = ");
         s.dec(512u64 << exp);
-        s.text(b" B");
+        s.text(b" B fisico");
+        if exp > 0 {
+            s.text(b" = ");
+            s.dec(1u64 << exp);
+            s.text(b" logicos");
+        }
         if geo & bmo::DISCO_GEO_209_VALIDA != 0 {
             let d = (geo >> bmo::DISCO_GEO_DESPL_SHIFT) & bmo::DISCO_GEO_DESPL_MASK;
             s.text(b", LBA 0 desplazado ");
@@ -841,28 +854,33 @@ pub(crate) fn report_disco(s: &mut Output) {
     s.byte(b'\n');
 
     // -- EL VEREDICTO, y va detras de sus hechos a proposito.
-    label(s, b"perfil");
+    campo(s, b"profile");
     if juicio & bmo::DISCO_JUICIO_HAY_PERFIL == 0 {
         s.with_ink(INK_ERR);
-        s.text(b"SIN PERFIL para este disco -- se toma el camino conservador");
+        s.text(b"NINGUNO para este disco -- se toma el camino conservador");
     } else {
         s.with_ink(INK_GOOD);
         s.text(b"reconocido");
         s.with_ink(INK_PLAIN);
         if juicio & bmo::DISCO_JUICIO_MEDIDO == 0 {
-            s.text(b"   (sus cifras son de CATALOGO, no medidas)");
+            s.text(b"   cifras de CATALOGO, no medidas");
         }
     }
     s.with_ink(INK_PLAIN);
     s.byte(b'\n');
 
-    label(s, b"trim");
+    // -- TRIM, y al lado lo que cabe en una orden: son la misma pregunta.
+    campo(s, b"trim");
     if juicio & bmo::DISCO_JUICIO_SOLIDO_SIN_TRIM != 0 {
         s.with_ink(INK_ERR);
-        s.text(b"NO -- y el medio es solido: el recolector no puede avisar al disco");
+        s.text(b"NO -- y el medio es solido: el recolector no puede avisar");
     } else if juicio & bmo::DISCO_JUICIO_TRIM != 0 {
         s.with_ink(INK_GOOD);
         s.text(b"si");
+        s.with_ink(INK_PLAIN);
+        s.text(b"   ");
+        s.dec(bmo::info(bmo::INFO_DISCO_TRIM_BLOQUES));
+        s.text(b" bloque(s) por orden");
     } else {
         s.text(b"no (y el medio no lo necesita)");
     }
@@ -870,32 +888,32 @@ pub(crate) fn report_disco(s: &mut Output) {
     s.byte(b'\n');
 
     // ** La linea que no puede faltar el dia que se escriba de verdad.
-    label(s, b"barrera");
+    campo(s, b"barrier");
     if juicio & bmo::DISCO_JUICIO_SOLO_BARRERA != 0 {
         s.with_ink(INK_ERR);
-        s.text(b"el FLUSH CACHE es LO UNICO: este disco no termina lo que empezo");
+        s.text(b"el FLUSH CACHE es LO UNICO: no termina lo que empezo");
     } else {
         s.with_ink(INK_GOOD);
-        s.text(b"el disco tiene con que terminar un corte de corriente");
+        s.text(b"tiene con que terminar un corte de corriente");
     }
     s.with_ink(INK_PLAIN);
     s.byte(b'\n');
 
-    label(s, b"alinear a");
+    campo(s, b"align");
     let frontera = (juicio >> bmo::DISCO_JUICIO_FRONTERA_SHIFT)
         & bmo::DISCO_JUICIO_FRONTERA_MASK;
     if frontera == 0 {
         s.with_ink(INK_ERR);
-        s.text(b"NO SE PUEDE: el bloque de borrado no se le puede preguntar a un disco");
+        s.text(b"NO SE PUEDE: el bloque de borrado no se le pregunta a un disco");
     } else {
         s.dec(frontera);
-        s.text(b" KiB   (declarado por el perfil, no leido)");
+        s.text(b" KiB   del perfil, no leido");
     }
     s.with_ink(INK_PLAIN);
     s.byte(b'\n');
 
     if juicio & bmo::DISCO_JUICIO_DESALINEADO != 0 {
-        label(s, b"AVISO");
+        campo(s, b"AVISO");
         s.with_ink(INK_ERR);
         s.text(b"LBA 0 no cae en frontera fisica: cada escritura paga dos sectores\n");
         s.with_ink(INK_PLAIN);

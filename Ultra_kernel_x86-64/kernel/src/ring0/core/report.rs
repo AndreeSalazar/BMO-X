@@ -224,6 +224,8 @@ const INFO_DISCO_COLA_SECTORES: u64 = 0x46;
 /// Bloques de payload que admite el disco en UNA orden (palabra 105). Con esto
 /// el numero de ordenes de la propuesta es el REAL y no un techo de Ring 3.
 const INFO_DISCO_TRIM_BLOQUES: u64 = 0x47;
+/// Por que fallo el ultimo recorte: `(clase << 32) | PxTFD`. 0 = ninguno.
+const INFO_DISCO_TRIM_FALLO: u64 = 0x48;
 /// La fecha de la placa, empaquetada. Espejo de `bmo_abi::...::INFO_FECHA`.
 const INFO_FECHA: u64 = 0x1F;
 
@@ -444,12 +446,32 @@ pub fn campo(n: u64) -> u64 {
                 bmo_estratos::Nivel::SoloLectura => 3,
             }
         }),
-        // * Hoy SIEMPRE cero, y a proposito. La maquina de estados de la
-        // transaccion existe y esta probada, pero **nadie la ha cableado al
-        // dispositivo**: no hay `write` ni `FLUSH CACHE`. Contestar 1 aqui
-        // seria prometer una escritura que no ocurre -- y en un almacen, una
-        // promesa de escritura que no ocurre es como se pierde el trabajo.
-        INFO_ES_ESCRIBIBLE => 0,
+        // ** ESTO CONTESTABA UN CERO CONSTANTE, Y ERA CIERTO HASTA QUE DEJO DE SERLO.
+        //
+        // El comentario que lo defendia decia que la maquina de estados existia
+        // pero que **nadie la habia cableado al dispositivo**: ni `write` ni
+        // `FLUSH CACHE`. Eso era verdad el dia que se escribio.
+        //
+        // Hoy `sellar` escribe el superbloque de verdad y hace las dos barreras
+        // --el disco de Eddi va por la generacion 3, o sea que ha commiteado
+        // tres veces-- y el recorte escribe tambien. O sea que el cero se
+        // convirtio en **una fila que dice que no se puede hacer lo que se
+        // acaba de hacer**, y en metal salio como `escribir NO` debajo de un
+        // volumen montado y sano.
+        //
+        // > Un valor fijo puesto por prudencia envejece hacia la MENTIRA, y no
+        // > avisa: lo unico que cambia a su alrededor es el mundo.
+        //
+        // Ahora son las tres condiciones que de verdad deciden, y las tres se
+        // preguntan a quien las sabe.
+        INFO_ES_ESCRIBIBLE => {
+            let hay_volumen = crate::ring0::fsys::estratos::is_mounted()
+                && crate::ring0::fsys::estratos::identidad_ok();
+            let sitio = crate::ring0::fsys::estratos::ocupacion()
+                .map(|o| o.nivel().admite_escritura())
+                .unwrap_or(false);
+            (hay_volumen && sitio && crate::ring0::dev::disk::write_armed()) as u64
+        }
         // Lo que Ring 3 ha PEDIDO. Cero hasta que un programa llame a
         // `KIND_MEMORIA` -- y por eso vale: es la unica fila del informe que
         // solo se mueve si alguien ejercio la capability.
@@ -489,6 +511,11 @@ pub fn campo(n: u64) -> u64 {
             crate::ring0::fsys::estratos::cola_libre().map(|(_, n)| n).unwrap_or(0)
         }
         INFO_DISCO_TRIM_BLOQUES => crate::ring0::dev::disk::trim_bloques_max() as u64,
+        // ** POR QUE fallo el ultimo recorte: `(clase << 32) | PxTFD`. Sin este
+        // campo, "el disco respondio con error" es una frase sin numero -- y en
+        // este componente el numero es lo unico que separa un ABRT de un
+        // timeout, o sea dos conversaciones distintas.
+        INFO_DISCO_TRIM_FALLO => crate::ring0::dev::disk::ultimo_fallo(),
         _ => 0,
     }
 }

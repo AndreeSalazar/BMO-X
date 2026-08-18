@@ -112,6 +112,23 @@ const CMD_TIMEOUT: u32 = 20_000_000;
 /// comandos), que son inmediatos salvo averia.
 const PORT_TIMEOUT: u32 = 1_000_000;
 
+/// ** LA PACIENCIA DE `DATA SET MANAGEMENT`, que no es la de una lectura.
+///
+/// Veinte veces [`CMD_TIMEOUT`], y el motivo no es "por si acaso": **una sola
+/// orden de TRIM puede cubrir gigabytes**. Lo que el aparato hace con ella --
+/// tocar sus tablas de traduccion y marcar bloques enteros como libres-- no se
+/// parece a mover 4 KiB, y la especificacion **no acota cuanto puede tardar**.
+///
+/// Compartir el presupuesto de una lectura no fue una decision: fue que este
+/// driver solo sabia pedir cosas parecidas entre si. Un `Timeout` aqui no
+/// significaria "el disco esta roto" sino "no le dimos tiempo", que es la peor
+/// clase de diagnostico -- el que acusa al aparato de lo que hizo el driver.
+///
+/// [!] Y sigue siendo un contador de VUELTAS, no un tiempo: quien gira aqui no
+/// tiene reloj. El limite existe para que un puerto muerto no cuelgue la
+/// maquina, no para cronometrar al disco.
+const DSM_TIMEOUT: u32 = CMD_TIMEOUT * 20;
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PortState { Empty, Present, Active, Error }
@@ -678,6 +695,41 @@ unsafe fn run_command(
     data: Option<(u64, u32)>,
     write: bool,
 ) -> Result<u16, DiskError> {
+    run_command_hasta(port_idx, command, features, lba, sector_count, data, write, CMD_TIMEOUT)
+}
+
+/// Igual, pero con **el presupuesto de espera dicho por quien manda el comando**.
+///
+/// === Por que un comando elige su propia paciencia ===
+///
+/// [`CMD_TIMEOUT`] se eligio para que **un puerto MUERTO no cuelgue la maquina**,
+/// no para cronometrar al disco -- y con eso en la cabeza, el mismo numero valia
+/// para todo lo que este driver sabia pedir: leer, escribir, IDENTIFY y FLUSH.
+/// Los cuatro le piden al aparato un trabajo acotado y parecido.
+///
+/// ** `DATA SET MANAGEMENT` rompe esa familia. Una sola orden puede cubrir
+/// **GIGABYTES** de disco, y lo que el aparato hace con ella --tocar sus tablas
+/// de traduccion, marcar bloques enteros como libres-- no se parece en nada a
+/// mover 4 KiB. La spec **no acota cuanto puede tardar**.
+///
+/// Compartir el presupuesto de una lectura no era una decision: era que nadie
+/// habia tenido que pensarlo todavia. Cada clase de comando dice el suyo.
+///
+/// [!] Sigue siendo un CONTADOR DE VUELTAS y no un tiempo. No se traduce a
+/// milisegundos a proposito: el que gira aqui no tiene reloj, y meterle uno
+/// seria darle al driver una dependencia nueva para una espera que casi nunca
+/// se agota.
+#[allow(clippy::too_many_arguments)]
+unsafe fn run_command_hasta(
+    port_idx: u8,
+    command: u8,
+    features: u16,
+    lba: u64,
+    sector_count: u16,
+    data: Option<(u64, u32)>,
+    write: bool,
+    limite: u32,
+) -> Result<u16, DiskError> {
     use core::sync::atomic::Ordering;
     // La marca ANTES de emitir: lo que cuenta es un aviso posterior a esto.
     // Tomarla despues perderia el aviso de un disco rapido que contesta entre
@@ -705,7 +757,7 @@ unsafe fn run_command(
             }
         }
         spun += 1;
-        if spun >= CMD_TIMEOUT { return Err(DiskError::Timeout); }
+        if spun >= limite { return Err(DiskError::Timeout); }
         // ** Y LA RED DE SEGURIDAD, que es lo que permite encender todo esto.
         //
         // Cada tantas vueltas se pregunta por MMIO **aunque no haya habido
@@ -938,8 +990,11 @@ pub unsafe fn write_sectors_phys(port_idx: u8, lba: u64, sector_count: u16, buf_
 pub unsafe fn trim_phys(port_idx: u8, buf_phys: u64, bloques: u16) -> Result<(), DiskError> {
     if bloques == 0 { return Err(DiskError::BadRequest); }
     let bytes = bloques as u32 * SECTOR as u32;
-    run_command(port_idx, ATA_CMD_DSM, DSM_TRIM, 0, bloques, Some((buf_phys, bytes)), true)
-        .map(|_| ())
+    run_command_hasta(
+        port_idx, ATA_CMD_DSM, DSM_TRIM, 0, bloques, Some((buf_phys, bytes)), true,
+        DSM_TIMEOUT,
+    )
+    .map(|_| ())
 }
 
 /// Ordena al disco bajar a la superficie todo lo que acepto y aun tiene en su

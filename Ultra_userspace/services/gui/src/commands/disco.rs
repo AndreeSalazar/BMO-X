@@ -31,7 +31,7 @@
 
 use bmo_userland as bmo;
 
-use super::reports::{label, report_disco, section};
+use super::reports::{campo, report_disco, section};
 use super::After;
 use crate::desktop::Desktop;
 use crate::scene::output::{Output, INK_ECHO, INK_ERR, INK_GOOD, INK_PLAIN};
@@ -65,56 +65,52 @@ pub(crate) fn cuadro(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// no se decide donde cae el ambar. La cuenta es **una resta** porque ESTRATOS
 /// reserva con un puntero que solo avanza -- ni mapa de bits ni fragmentacion.
 fn espacio(s: &mut Output) {
-    section(s, b"espacio del volumen");
+    section(s, b"volume");
     if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
-        label(s, b"volumen");
+        campo(s, b"estratos");
         s.with_ink(INK_ERR);
-        s.text(b"ningun ESTRATOS montado: no hay espacio del que hablar\n");
+        s.text(b"ningun volumen montado: no hay espacio del que hablar\n");
         s.with_ink(INK_PLAIN);
         return;
     }
     let bloques = bmo::info(bmo::INFO_ES_BLOQUES);
     let usados = bmo::info(bmo::INFO_ES_USADOS);
     let tam = bmo::info(bmo::INFO_ES_BLOQUE_TAM).max(1);
-    let libres = bloques.saturating_sub(usados);
 
-    label(s, b"volumen");
+    campo(s, b"estratos");
     s.with_ink(INK_GOOD);
-    s.text(b"montado");
-    s.with_ink(INK_PLAIN);
-    s.text(b"   generacion ");
+    s.text(b"gen ");
     s.dec(bmo::info(bmo::INFO_ES_GENERACION));
+    s.with_ink(INK_PLAIN);
     // La identidad va pegada: un volumen clonado se monta y se lee igual, y la
-    // diferencia es que NO tiene ventana de escritura. Sin esta linea, "montado"
-    // se lee como "listo para todo".
+    // diferencia es que NO tiene ventana de escritura. Sin esta linea,
+    // "montado" se lee como "listo para todo".
     if bmo::info(bmo::INFO_ES_IDENTIDAD) == 0 {
         s.with_ink(INK_ERR);
         s.text(b"   NO nacio en este disco (clonado?)");
         s.with_ink(INK_PLAIN);
+    } else {
+        s.text(b"   de este disco");
     }
     s.byte(b'\n');
 
-    label(s, b"bloques");
+    campo(s, b"used");
+    s.size(usados.saturating_mul(tam));
+    s.text(b" de ");
+    s.size(bloques.saturating_mul(tam));
+    s.text(b"   ");
+    s.pct(usados, bloques);
+    s.byte(b'\n');
+
+    campo(s, b"blocks");
     s.dec(usados);
     s.text(b" de ");
     s.dec(bloques);
     s.text(b"   de ");
-    s.dec(tam);
-    s.text(b" B cada uno\n");
+    s.dec(tam / 1024);
+    s.text(b" KiB\n");
 
-    label(s, b"usado");
-    s.size(usados.saturating_mul(tam));
-    s.text(b"   ");
-    s.bar(usados, bloques, 24);
-    s.byte(b' ');
-    s.pct(usados, bloques);
-    s.byte(b'\n');
-
-    label(s, b"libre");
-    s.size(libres.saturating_mul(tam));
-    s.byte(b'\n');
-
-    label(s, b"nivel");
+    campo(s, b"level");
     let nivel = bmo::info(bmo::INFO_ES_NIVEL);
     s.with_ink(if nivel == 0 { INK_GOOD } else { INK_ERR });
     s.text(match nivel {
@@ -126,7 +122,7 @@ fn espacio(s: &mut Output) {
     s.with_ink(INK_PLAIN);
     s.byte(b'\n');
 
-    label(s, b"escribir");
+    campo(s, b"write");
     if bmo::info(bmo::INFO_ES_ESCRIBIBLE) != 0 {
         s.with_ink(INK_GOOD);
         s.text(b"si");
@@ -142,28 +138,63 @@ fn espacio(s: &mut Output) {
 fn devuelto(s: &mut Output) {
     let sectores = bmo::info(bmo::INFO_DISCO_TRIM_SECTORES);
     let ordenes = bmo::info(bmo::INFO_DISCO_TRIM_ORDENES);
-    label(s, b"devuelto");
+    campo(s, b"trimmed");
     if sectores == 0 {
         s.with_ink(INK_ECHO);
-        s.text(b"nada todavia en esta sesion   (el recorte lo pide una persona)");
+        s.text(b"nada en esta sesion   (lo pide una persona)");
         s.with_ink(INK_PLAIN);
-        s.byte(b'\n');
+    } else {
+        s.size(sectores.saturating_mul(512));
+        s.text(b"   en ");
+        s.dec(ordenes);
+        s.text(b" ordenes");
+    }
+    s.byte(b'\n');
+    // ** Y el ultimo fallo, si lo hubo, EN LA MISMA TABLA. Un recorte que fallo
+    // hace un rato y no deja rastro en `disco` obliga a repetirlo para volver a
+    // ver el motivo -- y repetir es justo lo que no se debe hacer con la unica
+    // orden destructiva de la caja.
+    fallo(s);
+}
+
+/// El ultimo fallo del recorte, con **el numero del aparato al lado**.
+fn fallo(s: &mut Output) {
+    let v = bmo::info(bmo::INFO_DISCO_TRIM_FALLO);
+    if v == 0 {
         return;
     }
-    s.size(sectores.saturating_mul(512));
-    s.text(b"   en ");
-    s.dec(ordenes);
-    s.text(b" ordenes DATA SET MANAGEMENT\n");
+    let clase = v >> bmo::DISCO_FALLO_CLASE_SHIFT;
+    let tfd = v & bmo::DISCO_FALLO_TFD_MASK;
+    campo(s, b"fallo");
+    s.with_ink(INK_ERR);
+    s.text(bmo::fallo_en_palabras(clase));
+    s.with_ink(INK_PLAIN);
+    if clase == bmo::DISCO_FALLO_APARATO {
+        // El PxTFD CRUDO y luego los bits que se saben leer: el byte es la
+        // prueba y las palabras son la opinion. Mismo trato que el PHYstatus.
+        s.text(b"\n");
+        campo(s, b"PxTFD");
+        s.text(b"0x");
+        s.hex(tfd, 8);
+        let err = (tfd >> 8) & 0xFF;
+        if err & 0x04 != 0 {
+            s.text(b"   ABRT: el disco NO CONOCE esa orden");
+        } else if err & 0x10 != 0 {
+            s.text(b"   IDNF: ese sector no");
+        } else if err != 0 {
+            s.text(b"   error 0x");
+            s.hex(err, 2);
+        }
+    }
+    s.byte(b'\n');
 }
 
 /// Las ordenes de esta caja. Van al final de `disco` a secas, que es donde uno
 /// se pregunta "y ahora que puedo hacer con esto?".
 fn ordenes(s: &mut Output) {
     s.with_ink(INK_ECHO);
-    s.text(b"    disco trim      la PROPUESTA de recorte (no manda nada)\n");
-    s.text(b"    disco trim ya   la manda de verdad\n");
-    s.text(b"    disco espacio   cuanto queda en el volumen\n");
-    s.text(b"    disco barrera   FLUSH CACHE: baja al plato lo aceptado\n");
+    s.text(b"    disco trim   propone el recorte    trim ya   lo manda\n");
+    s.text(b"    disco espacio / barrera\n");
     s.with_ink(INK_PLAIN);
 }
 
@@ -188,7 +219,7 @@ pub(crate) fn solo_espacio(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 ///
 /// [!] Sigue sin llamar al disco: son campos de informe. Una propuesta que
 /// tuviera que tocar el aparato para poder ensenarse ya lo habria tocado.
-fn propuesta(s: &mut Output) -> bool {
+fn propuesta(s: &mut Output, explica: bool) -> bool {
     section(s, b"recorte: la propuesta");
     if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
         s.with_ink(INK_ERR);
@@ -215,13 +246,13 @@ fn propuesta(s: &mut Output) -> bool {
         return false;
     }
 
-    label(s, b"cola libre");
+    campo(s, b"free tail");
     s.size(sectores.saturating_mul(512));
     s.text(b"   desde el bloque ");
     s.dec(bmo::info(bmo::INFO_ES_USADOS));
     s.byte(b'\n');
 
-    label(s, b"sectores");
+    campo(s, b"sectors");
     s.dec(sectores);
     s.text(b" de 512 B   desde el LBA ");
     s.dec(lba);
@@ -231,7 +262,7 @@ fn propuesta(s: &mut Output) -> bool {
     // se pregunta, en vez de suponer el minimo y decir "como mucho".
     let por_orden = bmo::info(bmo::INFO_DISCO_TRIM_BLOQUES).max(1)
         .saturating_mul(SECTORES_POR_BLOQUE_DE_PAYLOAD);
-    label(s, b"ordenes");
+    campo(s, b"orders");
     s.dec(sectores.div_ceil(por_orden));
     s.text(b"   (el disco admite ");
     s.dec(bmo::info(bmo::INFO_DISCO_TRIM_BLOQUES));
@@ -239,17 +270,22 @@ fn propuesta(s: &mut Output) -> bool {
 
     // ** LA FRASE QUE JUSTIFICA QUE ESTO SEA SEGURO, y va en la propuesta y no
     // en un README: es lo que el que va a teclear `ya` necesita saber.
-    s.with_ink(INK_ECHO);
-    s.text(b"    no se pierde nada: la cola libre es todo lo que hay POR ENCIMA\n");
-    s.text(b"    de log_head, y ese puntero solo avanza -- ningun estrato llega\n");
-    s.text(b"    ahi. Esto no es el recolector: no suelta ni una version vieja.\n");
-    s.with_ink(INK_PLAIN);
+    //
+    // Y va SOLO cuando se propone. Al ejecutar se repetia entera, o sea tres
+    // renglones identicos a los de hace dos segundos -- y lo que el que mira
+    // busca en ese momento es el resultado, no el argumento que ya leyo.
+    if explica {
+        s.with_ink(INK_ECHO);
+        s.text(b"    no se pierde nada: por encima de log_head no llega ningun\n");
+        s.text(b"    estrato, y ese puntero solo avanza. NO es el recolector.\n");
+        s.with_ink(INK_PLAIN);
+    }
     true
 }
 
 /// `disco trim` -- la propuesta, y como pedirla.
 pub(crate) fn trim_propuesta(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
-    if propuesta(&mut dsk.out.grid) {
+    if propuesta(&mut dsk.out.grid, true) {
         dsk.out.grid.with_ink(INK_GOOD);
         dsk.out.grid.text(b"    escribe `disco trim ya` para mandarlo\n");
         dsk.out.grid.with_ink(INK_PLAIN);
@@ -271,7 +307,7 @@ pub(crate) fn trim_argumento(dsk: &mut Desktop, p: &bmo::Pantalla, que: &[u8]) -
     s.text(que);
     s.text(b"` no significa nada detras de `trim`\n");
     s.with_ink(INK_PLAIN);
-    if propuesta(&mut dsk.out.grid) {
+    if propuesta(&mut dsk.out.grid, true) {
         dsk.out.grid.with_ink(INK_GOOD);
         dsk.out.grid.text(b"    la palabra es `ya`:  disco trim ya\n");
         dsk.out.grid.with_ink(INK_PLAIN);
@@ -288,7 +324,7 @@ pub(crate) fn trim_argumento(dsk: &mut Desktop, p: &bmo::Pantalla, que: &[u8]) -
 /// mensaje escrito despues no explica nada -- para entonces la espera ya paso y
 /// lo que el dueno habria visto es un escritorio congelado sin motivo.
 pub(crate) fn trim_ya(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
-    if !propuesta(&mut dsk.out.grid) {
+    if !propuesta(&mut dsk.out.grid, false) {
         paint_status(p, &dsk.run_box, "trim", INK_DIM);
         dsk.field.n = 0;
         return After::Settle;
@@ -316,14 +352,25 @@ pub(crate) fn trim_ya(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
         }
         // ** El fallo lleva lo que SI se hizo. Un recorte a medias no se
         // deshace, y sin este numero el que mire creeria que no paso nada.
+        // ** EL MOTIVO SE PINTA AQUI, y esa es la leccion del 17-08.
+        //
+        // Antes decia "el disco RECHAZO la orden" y mandaba a F11. Las dos
+        // mitades estaban mal: **no siempre rechaza** --puede no contestar a
+        // tiempo, que acusa al driver y no al aparato-- y mandar a otra ventana
+        // por el numero es pedir un viaje mas cuando el que mira ya esta aqui.
         bmo::DISCO_TRIM_FALLO => {
             s.with_ink(INK_ERR);
-            s.text(b"    el disco RECHAZO la orden a mitad\n");
+            s.text(b"    NO SE PUDO: ");
+            let v = bmo::info(bmo::INFO_DISCO_TRIM_FALLO);
+            s.text(bmo::fallo_en_palabras(v >> bmo::DISCO_FALLO_CLASE_SHIFT));
             s.with_ink(INK_PLAIN);
-            s.text(b"    lo que SI se devolvio antes de romperse: ");
-            s.size(sectores.saturating_mul(512));
             s.byte(b'\n');
-            s.text(b"    el motivo del aparato esta en F11 (CABINA)\n");
+            fallo(s);
+            if sectores > 0 {
+                s.text(b"    se devolvio antes de romperse: ");
+                s.size(sectores.saturating_mul(512));
+                s.byte(b'\n');
+            }
         }
         otro => {
             s.with_ink(INK_ERR);
@@ -343,7 +390,7 @@ pub(crate) fn trim_ya(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 pub(crate) fn barrera(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     let ok = bmo::barrera();
     let s = &mut dsk.out.grid;
-    label(s, b"barrera");
+    campo(s, b"barrier");
     if ok {
         s.with_ink(INK_GOOD);
         s.text(b"el disco bajo al plato lo que tenia aceptado");
