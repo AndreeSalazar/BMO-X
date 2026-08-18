@@ -26,7 +26,7 @@
 
 use bmo_userland as bmo;
 
-use super::{disco, files, shell, system, Command};
+use super::{disco, files, guia, shell, system, Command};
 use crate::desktop::Desktop;
 
 /// What the key loop should do once the command has run.
@@ -46,6 +46,7 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::Calculator => shell::calculator(dsk, p),
         Command::Clear => shell::clear(dsk, p),
         Command::Help => shell::help(dsk, p),
+        Command::Guia => guia::guia(dsk, p),
         Command::NotAProgram(r) => shell::not_a_program(dsk, p, r),
         Command::Unknown => shell::unknown(dsk, p),
         Command::List(dir_path) => files::list(dsk, p, dir_path),

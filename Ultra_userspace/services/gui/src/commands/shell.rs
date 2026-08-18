@@ -179,7 +179,7 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.with_ink(INK_ECHO);
     dsk.out.grid.text(b"  PROGRAMAS ---------------------------------------------------\n");
     dsk.out.grid.with_ink(INK_PLAIN);
-    dsk.out.grid.text(b"    <ruta>        lanza un .bex        cobol/banco.bex\n");
+    dsk.out.grid.text(b"    <ruta>        lanza un .bex      cobol/2/banco.bex\n");
     dsk.out.grid.text(b"    run <ruta>    lo mismo, como en el shell de Ring 0\n");
     dsk.out.grid.text(b"                  si el programa pide pantalla, se le presta sola\n");
     dsk.out.grid.with_ink(INK_ECHO);
@@ -223,7 +223,10 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"    TAB completa            Ctrl+A / Ctrl+E   inicio / fin\n");
     dsk.out.grid.text(b"    Ctrl+K corta al final   Ctrl+W borra palabra   Ctrl+U linea\n");
     dsk.out.grid.text(b"    Ctrl+Alt esconde o invoca esta ventana\n");
-    dsk.out.grid.text(b"    F11 CABINA (el kernel)      F12 ESTRATOS (el almacen)\n");
+    dsk.out.grid.text(b"    F11 CABINA (el kernel)      F12 ESTRATOS (el almacen)
+");
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  y si no sabes por donde empezar:  guia\n");
     paint_status(&p, &dsk.run_box, "listo", INK_DIM);
     dsk.field.n = 0;
     After::Settle
