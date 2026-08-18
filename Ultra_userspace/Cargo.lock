@@ -30,6 +30,7 @@ version = "1.0.0"
 name = "bmo-service-gui"
 version = "0.1.0"
 dependencies = [
+ "bmo-dibujo",
  "bmo-input",
  "bmo-rtc",
  "bmo-userland",

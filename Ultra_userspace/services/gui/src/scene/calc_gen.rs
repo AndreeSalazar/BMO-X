@@ -14,6 +14,11 @@
 // hoy no se llama obligaria a regenerar el dia que alguien lo use.
 #![allow(dead_code)]
 
+// EL recorte de la casa, no uno propio: el mismo `Recorte` que usan el
+// rasterizador y el kernel, medio abierto `[x0, x1)`. `bmo-dibujo` nacio
+// porque hubo DOS --uno recortaba y otro descartaba-- y se tiraban 2.625
+// de 8.775 rectangulos por fotograma.
+use bmo_dibujo::Recorte;
 use bmo_userland as bmo;
 
 /// El tamano que MAQUETA dedujo del arbol. Nadie lo escribio.
@@ -90,163 +95,163 @@ pub fn pintar(p: &bmo::Pantalla, ox: u32, oy: u32) {
 /// fotograma de 60 Hz, y arrastrar hace uno por evento de raton. Esto son
 /// unas pocas llamadas a `rect`, que escriben por filas.
 ///
+/// El recorte es el `Recorte` de `bmo-dibujo`, medio abierto `[x0, x1)`:
+/// uno solo para las tres orillas.
+///
 /// Los rectangulos se RECORTAN; el texto entra entero o no entra, porque
 /// medio glifo no se puede pintar.
 pub fn pintar_en(p: &bmo::Pantalla, ox: u32, oy: u32, cx: u32, cy: u32, cw: u32, ch: u32) {
+    let limite = Recorte::nuevo(cx as i32, cy as i32, cw as i32, ch as i32);
     // div
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 0, oy + 0, 322, 446) {
-        p.rect(x, y, w, h, 0x00333D52);
+    let c = Recorte::nuevo(ox as i32 + 0, oy as i32 + 0, 322, 446).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x00333D52);
     }
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 2, oy + 2, 318, 442) {
-        p.rect(x, y, w, h, 0x00182434);
+    let c = Recorte::nuevo(ox as i32 + 2, oy as i32 + 2, 318, 442).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x00182434);
     }
     // isla visor
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 8, oy + 8, 306, 40) {
-        p.rect(x, y, w, h, 0x00161C28);
+    let c = Recorte::nuevo(ox as i32 + 8, oy as i32 + 8, 306, 40).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x00161C28);
     }
     // #k_c
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 8, oy + 54, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 8, oy as i32 + 54, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 40, oy + 82, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 40, oy as i32 + 82, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 40, oy + 82, "C", 0x00E6EDF6);
     }
     // #k_div
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 86, oy + 54, 72, 72) {
-        p.rect(x, y, w, h, 0x003A5878);
+    let c = Recorte::nuevo(ox as i32 + 86, oy as i32 + 54, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x003A5878);
     }
-    if cruza(cx, cy, cw, ch, ox + 118, oy + 82, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 118, oy as i32 + 82, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 118, oy + 82, "/", 0x00E6EDF6);
     }
     // #k_mul
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 164, oy + 54, 72, 72) {
-        p.rect(x, y, w, h, 0x003A5878);
+    let c = Recorte::nuevo(ox as i32 + 164, oy as i32 + 54, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x003A5878);
     }
-    if cruza(cx, cy, cw, ch, ox + 196, oy + 82, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 196, oy as i32 + 82, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 196, oy + 82, "*", 0x00E6EDF6);
     }
     // #k_sub
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 242, oy + 54, 72, 72) {
-        p.rect(x, y, w, h, 0x003A5878);
+    let c = Recorte::nuevo(ox as i32 + 242, oy as i32 + 54, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x003A5878);
     }
-    if cruza(cx, cy, cw, ch, ox + 274, oy + 82, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 274, oy as i32 + 82, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 274, oy + 82, "-", 0x00E6EDF6);
     }
     // #k_7
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 8, oy + 132, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 8, oy as i32 + 132, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 40, oy + 160, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 40, oy as i32 + 160, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 40, oy + 160, "7", 0x00E6EDF6);
     }
     // #k_8
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 86, oy + 132, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 86, oy as i32 + 132, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 118, oy + 160, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 118, oy as i32 + 160, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 118, oy + 160, "8", 0x00E6EDF6);
     }
     // #k_9
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 164, oy + 132, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 164, oy as i32 + 132, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 196, oy + 160, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 196, oy as i32 + 160, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 196, oy + 160, "9", 0x00E6EDF6);
     }
     // #k_add
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 242, oy + 132, 72, 72) {
-        p.rect(x, y, w, h, 0x003A5878);
+    let c = Recorte::nuevo(ox as i32 + 242, oy as i32 + 132, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x003A5878);
     }
-    if cruza(cx, cy, cw, ch, ox + 274, oy + 160, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 274, oy as i32 + 160, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 274, oy + 160, "+", 0x00E6EDF6);
     }
     // #k_4
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 8, oy + 210, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 8, oy as i32 + 210, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 40, oy + 238, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 40, oy as i32 + 238, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 40, oy + 238, "4", 0x00E6EDF6);
     }
     // #k_5
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 86, oy + 210, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 86, oy as i32 + 210, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 118, oy + 238, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 118, oy as i32 + 238, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 118, oy + 238, "5", 0x00E6EDF6);
     }
     // #k_6
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 164, oy + 210, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 164, oy as i32 + 210, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 196, oy + 238, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 196, oy as i32 + 238, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 196, oy + 238, "6", 0x00E6EDF6);
     }
     // #k_1
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 8, oy + 288, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 8, oy as i32 + 288, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 40, oy + 316, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 40, oy as i32 + 316, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 40, oy + 316, "1", 0x00E6EDF6);
     }
     // #k_2
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 86, oy + 288, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 86, oy as i32 + 288, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 118, oy + 316, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 118, oy as i32 + 316, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 118, oy + 316, "2", 0x00E6EDF6);
     }
     // #k_3
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 164, oy + 288, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 164, oy as i32 + 288, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 196, oy + 316, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 196, oy as i32 + 316, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 196, oy + 316, "3", 0x00E6EDF6);
     }
     // #k_eq
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 242, oy + 288, 72, 72) {
-        p.rect(x, y, w, h, 0x004C9BE8);
+    let c = Recorte::nuevo(ox as i32 + 242, oy as i32 + 288, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x004C9BE8);
     }
-    if cruza(cx, cy, cw, ch, ox + 274, oy + 316, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 274, oy as i32 + 316, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 274, oy + 316, "=", 0x00E6EDF6);
     }
     // #k_0
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 8, oy + 366, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 8, oy as i32 + 366, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 40, oy + 394, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 40, oy as i32 + 394, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 40, oy + 394, "0", 0x00E6EDF6);
     }
     // #k_dot
-    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 86, oy + 366, 72, 72) {
-        p.rect(x, y, w, h, 0x002B3B52);
+    let c = Recorte::nuevo(ox as i32 + 86, oy as i32 + 366, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
     }
-    if cruza(cx, cy, cw, ch, ox + 118, oy + 394, 8, 16) {
+    if !Recorte::nuevo(ox as i32 + 118, oy as i32 + 394, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 118, oy + 394, ".", 0x00E6EDF6);
     }
-}
-
-/// La parte de un rectangulo que cae dentro del limite. `None` si no se
-/// tocan -- y tocarse por el borde NO es tocarse: `[x0, x1)`, medio
-/// abierto, la misma regla que el recorte de `bmo-dibujo`. Si el borde
-/// contara, cada reparacion repintaria una fila de mas y se veria como
-/// una costura.
-fn corte(cx: u32, cy: u32, cw: u32, ch: u32, x: u32, y: u32, w: u32, h: u32)
-    -> Option<(u32, u32, u32, u32)>
-{
-    let x0 = if x > cx { x } else { cx };
-    let y0 = if y > cy { y } else { cy };
-    let x1 = if x + w < cx + cw { x + w } else { cx + cw };
-    let y1 = if y + h < cy + ch { y + h } else { cy + ch };
-    if x1 > x0 && y1 > y0 {
-        Some((x0, y0, x1 - x0, y1 - y0))
-    } else {
-        None
-    }
-}
-
-/// Se tocan? Para el texto, que es atomico.
-fn cruza(cx: u32, cy: u32, cw: u32, ch: u32, x: u32, y: u32, w: u32, h: u32) -> bool {
-    corte(cx, cy, cw, ch, x, y, w, h).is_some()
 }
 
 /// Repinta la caja `id` con sus colores de `:hover`. Llamalo cuando el

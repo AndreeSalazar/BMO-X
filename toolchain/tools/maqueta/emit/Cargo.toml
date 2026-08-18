@@ -7,6 +7,11 @@ license = "Techne"
 
 [dependencies]
 bmo-maqueta-layout = { path = "../layout" }
+# EL recortador de la casa, y no uno propio. `bmo-dibujo` existe porque hubo dos
+# --el previsualizador recortaba, el kernel descartaba-- y se tiraban 2.625 de
+# 8.775 rectangulos por fotograma. Escribir aqui un tercero habria sido repetir
+# ese fallo dentro de la herramienta que existe para que no se repitan.
+bmo-dibujo = { path = "../../../../platform/shared/bmo-dibujo" }
 
 [dev-dependencies]
 bmo-maqueta-node = { path = "../node" }

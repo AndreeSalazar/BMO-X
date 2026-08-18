@@ -16,3 +16,7 @@ bmo-userland = { path = "../../userland" }
 # este binario es `no_main` para un target sin sistema operativo y no corre un
 # test. Aqui solo se pinta lo que la politica ya decidio.
 bmo-input = { path = "../../../platform/drivers/usb/input", default-features = false }
+# El RECORTE, que usa la cara generada por MAQUETA para reparar un danio sin
+# repintarlo todo. Es el mismo `Recorte` que usan el rasterizador y el kernel:
+# medio abierto `[x0, x1)`, y una sola implementacion para las tres orillas.
+bmo-dibujo = { path = "../../../platform/shared/bmo-dibujo" }
