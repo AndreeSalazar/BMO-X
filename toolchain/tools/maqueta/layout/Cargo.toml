@@ -1,0 +1,14 @@
+[package]
+name = "bmo-maqueta-layout"
+version = "0.1.0"
+edition = "2021"
+description = "MAQUETA, grandson generation: box x box -> final rects. Never reads a colour and holds no opinion."
+license = "Techne"
+
+# `diag` is not here, and that is worth noticing: this generation cannot fail.
+# Everything it could complain about is a judgement about a finished layout, and
+# judgements belong to `verdict/`.
+[dependencies]
+bmo-maqueta-cascade = { path = "../cascade" }
+bmo-maqueta-node = { path = "../node" }
+bmo-maqueta-diag = { path = "../diag" }

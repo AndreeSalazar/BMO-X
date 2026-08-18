@@ -48,9 +48,15 @@ pub enum Justify {
     SpaceBetween,
 }
 
+/// ★ `Stretch` is the default because **CSS's default is `stretch`**, and this
+/// was very nearly a divergence nobody would have noticed: with `Start` as the
+/// default, a flex row would size its items to their content here and stretch
+/// them to the container in the browser. Same family as the ordering guardian --
+/// a preview that lies -- found in a different place.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Align {
     #[default]
+    Stretch,
     Start,
     Center,
     End,
@@ -63,7 +69,7 @@ pub enum Position {
     Absolute,
 }
 
-/// Every one of the seventeen properties, resolved.
+/// Every one of the sixteen properties, resolved.
 ///
 /// `Option` means *nobody said*; everything else carries the value CSS uses when
 /// nobody says, so that the browser preview and MAQUETA start from the same
@@ -74,7 +80,6 @@ pub struct Style {
     pub height: Option<u32>,
     /// top, right, bottom, left.
     pub padding: [u32; 4],
-    pub margin: [u32; 4],
     /// `None` = paint nothing. A box that is only a container is legitimate.
     pub background: Option<u32>,
     /// `None` = nobody said. See the module header: there is no default.
@@ -101,7 +106,6 @@ impl Style {
             (Prop::Width, Value::Px(n)) => self.width = Some(n),
             (Prop::Height, Value::Px(n)) => self.height = Some(n),
             (Prop::Padding, Value::Px4(v)) => self.padding = v,
-            (Prop::Margin, Value::Px4(v)) => self.margin = v,
             (Prop::BackgroundColor, Value::Color(c)) => self.background = Some(c),
             (Prop::Color, Value::Color(c)) => self.color = Some(c),
             (Prop::BorderWidth, Value::Px(n)) => self.border_width = n,
@@ -129,7 +133,8 @@ impl Style {
                 self.align = match k {
                     Keyword::Center => Align::Center,
                     Keyword::End => Align::End,
-                    _ => Align::Start,
+                    Keyword::Start => Align::Start,
+                    _ => Align::Stretch,
                 }
             }
             (Prop::Position, Value::Word(Keyword::Absolute)) => {

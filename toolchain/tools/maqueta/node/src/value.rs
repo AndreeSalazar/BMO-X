@@ -50,7 +50,7 @@ impl Tag {
     }
 }
 
-/// The seventeen properties. Counted from what `scene/` actually does, not from
+/// The sixteen properties. Counted from what `scene/` actually does, not from
 /// what CSS offers.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Prop {
@@ -58,7 +58,6 @@ pub enum Prop {
     Width,
     Height,
     Padding,
-    Margin,
     // the paint
     BackgroundColor,
     Color,
@@ -83,7 +82,6 @@ impl Prop {
             b"width" => Prop::Width,
             b"height" => Prop::Height,
             b"padding" => Prop::Padding,
-            b"margin" => Prop::Margin,
             b"background-color" => Prop::BackgroundColor,
             b"color" => Prop::Color,
             b"border-width" => Prop::BorderWidth,
@@ -106,7 +104,6 @@ impl Prop {
             Prop::Width => "width",
             Prop::Height => "height",
             Prop::Padding => "padding",
-            Prop::Margin => "margin",
             Prop::BackgroundColor => "background-color",
             Prop::Color => "color",
             Prop::BorderWidth => "border-width",
@@ -134,7 +131,7 @@ impl Prop {
             | Prop::Gap
             | Prop::Left
             | Prop::Top => Shape::OnePx,
-            Prop::Padding | Prop::Margin => Shape::OneOrFourPx,
+            Prop::Padding => Shape::OneOrFourPx,
             Prop::BackgroundColor | Prop::Color | Prop::BorderColor => Shape::Color,
             Prop::Display => Shape::Words(&[Keyword::Block, Keyword::Flex]),
             Prop::FlexDirection => Shape::Words(&[Keyword::Row, Keyword::Column]),
@@ -144,9 +141,12 @@ impl Prop {
                 Keyword::End,
                 Keyword::SpaceBetween,
             ]),
-            Prop::AlignItems => {
-                Shape::Words(&[Keyword::Start, Keyword::Center, Keyword::End])
-            }
+            Prop::AlignItems => Shape::Words(&[
+                Keyword::Stretch,
+                Keyword::Start,
+                Keyword::Center,
+                Keyword::End,
+            ]),
             Prop::Position => Shape::Words(&[Keyword::Absolute]),
         }
     }
@@ -170,6 +170,7 @@ pub enum Keyword {
     Center,
     End,
     SpaceBetween,
+    Stretch,
     Absolute,
 }
 
@@ -184,6 +185,7 @@ impl Keyword {
             b"center" => Keyword::Center,
             b"end" => Keyword::End,
             b"space-between" => Keyword::SpaceBetween,
+            b"stretch" => Keyword::Stretch,
             b"absolute" => Keyword::Absolute,
             _ => return None,
         })
@@ -199,6 +201,7 @@ impl Keyword {
             Keyword::Center => "center",
             Keyword::End => "end",
             Keyword::SpaceBetween => "space-between",
+            Keyword::Stretch => "stretch",
             Keyword::Absolute => "absolute",
         }
     }
@@ -268,6 +271,10 @@ pub fn known_rejection(name: &[u8]) -> Option<(&'static str, &'static str)> {
             "MAQUETA compila una imagen QUIETA. Lo que se mueve es codigo, y esa \
              frontera es lo que impide que esto acabe siendo un navegador.",
             "Rust, en el bucle de fotograma del compositor.",
+        ),
+        b"margin" | b"margin-top" | b"margin-left" => (
+            "los margenes verticales de CSS se FUNDEN entre hermanos (dos de 10px              pegados dan 10, no 20), y MAQUETA no va a implementar esa regla.              Aceptarla sin fundirlos haria que el fichero se viera distinto en el              navegador que en el Ryzen, que es justo lo que el guardian de la              cascada existe para impedir.",
+            "`gap` dentro de un `display:flex`, o `padding` en el contenedor. Las              dos cubren todos los casos contados en `scene/`.",
         ),
         b"border" => (
             "el atajo mezcla grosor, estilo y color, y de los tres solo existen dos.",
