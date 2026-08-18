@@ -333,6 +333,23 @@ pub const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
 /// `ring0/fsys/estratos.rs::sellar`.
 pub const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 
+/// **CREAR UN FICHERO EN ESTRATOS.** `arg0` es la suborden (`ES_CREAR_*`).
+///
+/// === Por que el contenido viaja de 8 en 8, y no por un puntero ===
+///
+/// Porque la superficie congelada no acepta punteros: no hay `copy_from_user` y
+/// traducir una direccion de Ring 3 contra su espacio es infraestructura que no
+/// existe. El nombre usa el renglon de [`TASK_OP_RUTA`], que ya sirve para
+/// `EJECUTAR` y para abrir; el contenido usa el suyo.
+///
+/// ** Y el contenido lleva CUENTA EXPLICITA (`arg2`) donde la ruta se corta en
+/// el primer cero. No es un capricho: en una ruta un ` ` no puede aparecer, y
+/// **en un fichero si**. Un fichero que se corta en su primer byte nulo no es un
+/// fichero: es la mitad de uno.
+///
+/// Devuelve la generacion nueva, o `0` con el motivo en CABINA.
+pub const TASK_OP_ES_CREAR: u64 = 0x2A;
+
 /// El cursor de ESTRATOS: `arg0` es la pregunta ([`ES_NODO_RAIZ`] y compania),
 /// `arg1` su argumento cuando lo lleva.
 pub const TASK_OP_ES_NODO: u64 = 0x19;

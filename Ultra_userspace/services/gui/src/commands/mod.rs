@@ -167,6 +167,13 @@ pub(crate) enum Command<'a> {
     /// quiero hacer"*. Y su ultimo bloque es el que de verdad hacia falta --
     /// **lo que todavia NO se puede**, para no buscarlo media hora.
     Guia,
+    /// **`estratos escribe <nombre> <texto>`** -- el primer fichero que BMO-X
+    /// guarda en SU sistema de ficheros.
+    ///
+    /// ** El sustantivo va delante por lo mismo que en `disco`: ya hay un
+    /// `escribe` y va a la FAT32. Dos ordenes con el mismo verbo y dos
+    /// volumenes distintos es como se guarda algo donde no se queria.
+    EstratosEscribe(&'a [u8], &'a [u8]),
     /// `reboot` -- reinicia la maquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aqui contestaba "no lo
@@ -297,8 +304,33 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // "no lo conozco". Una funcion que se muda sin dejar nota se convierte
         // en una funcion que desaparecio.
         b"sella" | b"sellar" => Command::SealMoved,
+        // ** `estratos escribe <nombre> <texto>` -- EL SUSTANTIVO DELANTE,
+        // igual que en `disco` y por el mismo motivo: escribe en el almacen y
+        // ya hay un `escribe` que va a la FAT32. Sin el sustantivo, dos ordenes
+        // con el mismo verbo irian a dos volumenes distintos.
         b"estratos" => {
-            if rest == b"sellar" { Command::SealMoved } else { Command::Help }
+            if rest == b"sellar" {
+                return Command::SealMoved;
+            }
+            let k = rest.iter().position(|&c| c == b' ').unwrap_or(rest.len());
+            let (sub, arg) = rest.split_at(k);
+            let mut j = 0;
+            while j < arg.len() && arg[j] == b' ' { j += 1; }
+            let arg = &arg[j..];
+            if sub != b"escribe" && sub != b"write" && sub != b"guarda" {
+                return Command::Help;
+            }
+            // El nombre es la PRIMERA palabra y el texto todo lo demas,
+            // espacios incluidos -- la misma regla que `escribe`.
+            match arg.iter().position(|&c| c == b' ') {
+                Some(k) => {
+                    let (nombre, texto) = arg.split_at(k);
+                    let mut j = 0;
+                    while j < texto.len() && texto[j] == b' ' { j += 1; }
+                    Command::EstratosEscribe(nombre, &texto[j..])
+                }
+                None => Command::Help,
+            }
         }
         b"clear" | b"cls" | b"limpia" => Command::Clear,
         b"ls" | b"dir" | b"lista" => Command::List(rest),

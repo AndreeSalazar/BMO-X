@@ -54,6 +54,7 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::Write(file_path, text) => files::write(dsk, p, file_path, text),
         Command::Save(arg) => files::save(dsk, p, arg),
         Command::SealMoved => system::seal_moved(dsk, p),
+        Command::EstratosEscribe(n, t) => system::estratos_escribe(dsk, p, n, t),
         Command::Net(what) => system::net(dsk, p, what),
         Command::Audio => system::audio(dsk, p),
         Command::Autopsy => system::autopsy(dsk, p),

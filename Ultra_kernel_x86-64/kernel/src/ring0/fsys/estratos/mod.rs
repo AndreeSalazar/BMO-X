@@ -30,6 +30,10 @@ pub(crate) use walk::*;
 /// DIRECTORIES: the only layer of ESTRATOS that deals in NAMES.
 pub(crate) mod dir;
 pub(crate) use dir::*;
+/// ** CREAR UN FICHERO: la mitad que toca el disco. El QUE bytes vive en
+/// `bmo_estratos::escritura` y se prueba en el anfitrion; aqui solo se pide
+/// sitio, se escriben cuatro bloques y se cierra.
+pub mod escribir;
 /// THE CURSOR: ESTRATOS driven from Ring 3, through TWO operations and not ten.
 #[path = "cursor.rs"]
 mod cursor_file;
@@ -157,7 +161,6 @@ pub(crate) fn read_block_from(base: u64, bloque: u64, dst: &mut [u8; BLOQUE]) ->
 /// depende: el gate de identidad del disco (`disk::write_armed`) y la ventana
 /// de la particion (`disk::write_window`). Aqui no se repiten -- repetir un
 /// guardian es tener dos sitios donde relajarlo.
-#[allow(dead_code)] // lo estrena el primer objeto con datos
 pub(crate) fn write_block(bloque: u64, src: &[u8; BLOQUE]) -> bool {
     let base = unsafe { BASE_LBA };
     let lba = base + bloque * SECTORES_POR_BLOQUE as u64;
@@ -206,6 +209,19 @@ pub enum WriteError {
     NoEscribio,
     /// **El `FLUSH CACHE` fallo**, y por eso NO se hizo el commit.
     SinBarrera,
+    /// El contenido no cabe donde se pidio ponerlo.
+    ///
+    /// ** Hoy significa **mas de 96 bytes**, que es lo que entra dentro del
+    /// nodo. Se rechaza en vez de partirlo en bloques a escondidas: partir es
+    /// otra operacion, con su arbol y sus niveles, y hacerla sin decirlo dejaria
+    /// al que llama sin saber cuanto va a costar.
+    NoCabe,
+    /// **No se pudieron leer las entradas que YA tiene la raiz.**
+    ///
+    /// Es el peor de todos y por eso tiene nombre propio: escribir sin ellas
+    /// dejaria un directorio con una sola entrada y el resto huerfano. Se para
+    /// ANTES de abrir la transaccion, o sea sin haber tocado un solo sector.
+    NoSeLeeLaRaiz,
 }
 
 impl WriteError {
@@ -215,6 +231,8 @@ impl WriteError {
             WriteError::Rechazada(r) => r.name(),
             WriteError::NoEscribio => "el disco no acepto el superbloque",
             WriteError::SinBarrera => "el FLUSH CACHE fallo: NO se hizo commit",
+            WriteError::NoCabe => "no cabe: hoy un fichero entra en 96 bytes",
+            WriteError::NoSeLeeLaRaiz => "no se pudieron leer las entradas de la raiz",
         }
     }
 }
@@ -307,6 +325,15 @@ pub fn seal() -> Result<u64, WriteError> {
     unsafe { SUPER = Some(nuevo) };
     crate::ring0::cabina::info("estratos", "COMMIT: generacion nueva", nuevo.generation);
     Ok(nuevo.generation)
+}
+
+/// **Deja fijado el superbloque nuevo tras un commit.**
+///
+/// Existe para que `escribir.rs` no toque el estatico: quien cambia el estado
+/// montado es este modulo, y el que escribe le dice lo que quedo. Un `static
+/// mut` que se asigna desde dos sitios es un estado con dos duenos.
+pub(crate) fn fijar_superbloque(nuevo: es::Superblock) {
+    unsafe { SUPER = Some(nuevo) };
 }
 
 /// Cual de las dos copias del superbloque manda ahora mismo.

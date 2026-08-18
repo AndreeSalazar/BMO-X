@@ -239,6 +239,19 @@ pub(crate) const TASK_OP_ES_TEXTO: u64 = 0x1A;
 /// ordenes acepta un LBA: el rango lo calcula el kernel y lo comprueba contra la
 /// ventana de escritura. Ver `ring0/dev/disk/trim.rs`.
 pub(crate) const TASK_OP_DISCO: u64 = 0x29;
+/// **CREAR UN FICHERO EN ESTRATOS.** `arg0` = suborden (`ES_CREAR_*`).
+///
+/// La tercera operacion de la tabla que cambia el almacen, y la primera que
+/// escribe CONTENIDO -- `sellar` commiteaba sin datos y el recorte le habla al
+/// aparato. Espejo de `bmo_abi::...::TASK_OP_ES_CREAR`.
+pub(crate) const TASK_OP_ES_CREAR: u64 = 0x2A;
+/// Las subordenes. Espejo de `bmo_abi::...::ES_CREAR_*`, y `pub(crate)` por lo
+/// mismo que las de disco: una constante privada usada en un `match` de
+/// `mod.rs` se convierte en un nombre de variable que se traga todos los casos.
+pub(crate) const ES_CREAR_LIMPIAR: u64 = 0x00;
+pub(crate) const ES_CREAR_DATOS: u64 = 0x01;
+pub(crate) const ES_CREAR_HACER: u64 = 0x02;
+pub(crate) const ES_CREAR_MAX: u64 = 96;
 /// Las ordenes del disco. Espejo de `bmo_abi::...::DISCO_OP_*`.
 ///
 /// `pub(crate)` por correccion y no por estilo -- ver la nota de las `ES_NODO_*`
