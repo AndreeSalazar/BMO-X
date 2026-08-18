@@ -24,7 +24,7 @@ use bmo_userland as bmo;
 use super::{BLINK, Desktop, Ventana};
 use crate::scene::calc::paint_calc;
 use crate::scene::output::paint_output;
-use crate::scene::{self, paint_field, ACCENT, TASKBAR};
+use crate::scene::{self, paint_field, paint_status, ACCENT, INK_BAD, TASKBAR};
 use crate::{erase_window, uncover};
 
 /// Everything that happens after the input has been read and understood.
@@ -38,9 +38,14 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     if let Some(c) = dsk.out.console.as_ref() {
         let mut buf = [0u8; 8];
         let mut drained = 0;
+        // Si el bucle acaba por FALTA de bytes y no por el tope, el anillo
+        // quedo vacio. Hace falta saberlo abajo: sin eso, cancelar la espera
+        // podria tirar una respuesta que todavia estaba en la cola.
+        let mut vacia = false;
         while drained < 64 {
             let read_bytes = c.read(&mut buf);
             if read_bytes == 0 {
+                vacia = true;
                 break;
             }
             if dsk.calc.waiting {
@@ -109,6 +114,23 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
                 dsk.out.grid.text(&buf[..read_bytes]);
             }
             drained += 1;
+        }
+
+        // ** Y SI EL MOTOR SE FUE SIN CONTESTAR, LA ESPERA SE ACABA SOLA.
+        //
+        // El 2026-08-18, en metal, el motor equivocado nunca mando su segunda
+        // linea y la calculadora se quedo esperando **para siempre**. Con las
+        // teclas suyas, eso dejo el escritorio sin teclado.
+        //
+        // `has_child` es exacto y no necesita reloj --que aqui no hay--: dice
+        // si queda alguien escribiendo en esta consola. Se pregunta solo con el
+        // anillo VACIO, porque un hijo que ya termino puede haber dejado su
+        // respuesta en la cola, y cancelar entonces seria tirarla.
+        if dsk.calc.waiting && vacia && !c.has_child() {
+            dsk.calc.clear();
+            paint_status(&p, &dsk.run_box, "el motor se fue sin contestar", INK_BAD);
+            dsk.save_under.lift(&p);
+            paint_calc(&p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
         }
     }
     // * Y solo en un fotograma que haya apartado el cursor. Un hijo que

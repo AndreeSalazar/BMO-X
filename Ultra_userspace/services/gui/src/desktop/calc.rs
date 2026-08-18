@@ -48,7 +48,7 @@ use bmo_userland as bmo;
 use super::keys::Key;
 use super::{Desktop, Ventana};
 use crate::scene::calc::paint_calc;
-use crate::scene::{paint_status, INK_BAD};
+use crate::scene::{paint_status, INK_BAD, INK_DIM};
 
 /// El atajo que PIDE y DEVUELVE el teclado.
 ///
@@ -57,6 +57,22 @@ use crate::scene::{paint_status, INK_BAD};
 /// choca con AltGr --que en espanol es `Ctrl+Alt`--, la trampa que ya costo una
 /// sesion entera de teclado. Ver `scene/consola.rs`.
 const PEDIR_TECLADO: u8 = 0xF1;
+
+/// ** EL MOTOR, Y LA RUTA LLEVA EL ESCALON.
+///
+/// `build.ps1` escribe cada ejemplo de COBOL en `cobol\<escalon>\`, y este es
+/// del 2 (el decimal). Aqui ponia `cobol/calcgui.bex`, **sin el escalon**, y en
+/// el Ryzen del 2026-08-18 eso lanzo un binario del 3 de agosto que seguia en
+/// `staging` de una organizacion anterior: 5.840 bytes hablando el protocolo
+/// VIEJO de una sola linea, contra los 3.768 de hoy.
+///
+/// El escritorio se quedo esperando para siempre una segunda linea que aquel
+/// motor no sabia mandar. **No fallo nada: contesto otro.**
+///
+/// [!] La causa de fondo es que `staging\` NO SE LIMPIA, asi que un fichero que
+/// el build dejo de producir sigue ahi tapando al bueno. Un fantasma no da
+/// error: contesta.
+const MOTOR: &[u8] = b"cobol/2/calcgui.bex";
 
 // -- ** LOS CODIGOS QUE ENTIENDE EL MOTOR --
 //
@@ -103,7 +119,24 @@ pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, ctrl: bool) ->
     // Mientras el motor no ha contestado las teclas SIGUEN siendo suyas aunque
     // no hagan nada: dejarlas caer a la linea escribiria un `7` dentro de un
     // comando que el dueno no esta mirando.
+    //
+    // ** PERO UNA ESPERA NO PUEDE SER UNA CARCEL.
+    //
+    // El 2026-08-18, en el Ryzen, el motor no contesto --se lanzaba el binario
+    // equivocado, ver `MOTOR`-- y como aqui se tomaba TODA tecla sin una sola
+    // excepcion, **el escritorio se quedo sin teclado**: no se podia escribir
+    // ni `reboot`. Que el fallo original fuera de otro no lo arregla; lo que
+    // hay que arreglar es que una app esperando no pueda secuestrar la maquina.
+    //
+    // `C` es la salida y es la que la mano busca sola -- la misma tecla que
+    // limpia. `Ctrl+n` tambien vale y se comprueba mas arriba a proposito, pero
+    // un atajo que hay que saberse no es una salida: es un secreto.
     if dsk.calc.waiting {
+        if c == b'c' || c == b'C' {
+            dsk.calc.clear();
+            paint_status(p, &dsk.run_box, "calculadora: espera cancelada", INK_DIM);
+            paint_calc(p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
+        }
         return Key::Taken;
     }
 
@@ -204,8 +237,8 @@ fn lanzar(dsk: &mut Desktop, p: &bmo::Pantalla, cod: u8, unario: bool) {
         return;
     }
     let cap = dsk.out.console.as_ref().map(|c| c.cap).unwrap_or(0);
-    if bmo::ejecutar_en(b"cobol/calcgui.bex", cap).is_err() {
-        paint_status(p, &dsk.run_box, "falta cobol/calcgui.bex", INK_BAD);
+    if bmo::ejecutar_en(MOTOR, cap).is_err() {
+        paint_status(p, &dsk.run_box, "falta cobol/2/calcgui.bex", INK_BAD);
         return;
     }
     if let Some(cc) = dsk.out.console.as_ref() {

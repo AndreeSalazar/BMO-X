@@ -51,6 +51,9 @@ if ($Todo) {
 
 $root = $PSScriptRoot
 if (-not $root) { $root = Split-Path -Parent $MyInvocation.MyCommand.Path }
+# La hora de arranque, para poder distinguir despues lo que este build produjo
+# de lo que se quedo de otro. Ver el guardian de fantasmas del final.
+$buildStart = Get-Date
 
 function Step { param($m) Write-Host ('  => ' + $m) -ForegroundColor Cyan }
 function Fail { param($m) Write-Host ('  [X] ' + $m) -ForegroundColor Red; exit 1 }
@@ -1237,6 +1240,37 @@ try {
 } finally {
     Pop-Location
     Remove-Item Env:\BMO_S1_BIN, Env:\BMO_S2_BIN, Env:\BMO_KERNEL_BIN -ErrorAction SilentlyContinue
+}
+
+# -- ** LOS FANTASMAS DE `staging\` -------------------------------
+#
+# `staging\` NO SE LIMPIA entre builds, a proposito: rehacer el volumen entero
+# cada vez cuesta minutos. El precio es que **un fichero que este build dejo de
+# producir se queda ahi para siempre**, y no como basura inerte: TAPANDO al
+# bueno.
+#
+# Paso de verdad el 2026-08-18. Los ejemplos de COBOL se reorganizaron de
+# `cobol\` a `cobol\<escalon>\`, los planos del 3 de agosto se quedaron, y el
+# escritorio --que lanzaba `cobol/calcgui.bex`-- siguio arrancando un motor de
+# quince dias atras. Hablaba un protocolo anterior, la calculadora se quedo
+# esperando una respuesta que no iba a llegar, y con las teclas suyas el Ryzen
+# se quedo sin teclado.
+#
+# ** UN FANTASMA NO DA ERROR: CONTESTA. Por eso hace falta mirarlo aqui.
+#
+# La comprobacion es una RESTA, no una lista: cualquier `.bex` mas viejo que el
+# arranque de este build es algo que ya no se produce. Un guardian con lista
+# tendria el mismo fallo que vigila.
+$fantasmas = @(Get-ChildItem -Path $dataBase -Recurse -Filter '*.bex' -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt $buildStart })
+if ($fantasmas.Count -gt 0) {
+    Write-Host ('    [!] {0} .bex en staging que este build NO ha producido:' -f $fantasmas.Count) -ForegroundColor Yellow
+    foreach ($f in $fantasmas) {
+        Write-Host ('        {0}' -f $f.FullName.Substring($dataBase.Length + 1)) -ForegroundColor Yellow
+    }
+    Write-Host '        Este build no los produce. Comprobar si alguno TAPA a uno bueno.' -ForegroundColor Yellow
+} else {
+    Write-Host '    staging: ningun .bex sobrante de un build anterior' -ForegroundColor DarkGray
 }
 
 # -- Validate outputs ----------------------------------------------
