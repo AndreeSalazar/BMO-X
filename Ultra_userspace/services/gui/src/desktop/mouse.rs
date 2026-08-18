@@ -179,7 +179,7 @@ pub(crate) fn on_pointer(
             }
             // La rueda sobre el arbol de nodos mueve la seleccion. En la
             // pestana de numeros no hay nada que desplazar: cabe entera.
-            Some(W_DATA) if dsk.win.data.view == scene::data::View::Nodes => {
+            Some(W_DATA) if dsk.win.data.view == scene::data::View::Obra => {
                 // Girar hacia arriba sube por la lista: `wheel` positivo
                 // es hacia arriba y la seleccion de arriba es la menor.
                 let how_many = bmo::estratos::hijos() as usize;
@@ -285,6 +285,47 @@ pub(crate) fn on_pointer(
                     dsk.win.top_before = W_DATA;
                 }
                 None => {
+                    // [!] `servido` y NO un `return`. Salir de `on_pointer`
+                    // aqui se saltaria `dsk.tick.button_before = button` del
+                    // final, y entonces el fotograma siguiente volveria a ver
+                    // "boton pulsado y antes no": el clic se repetiria mientras
+                    // mantienes pulsado, y mantener el raton sobre una fila del
+                    // arbol te iria metiendo carpeta adentro sola.
+                    let mut servido = false;
+                    // -- ** CLIC EN EL PANEL DE ARBOL --
+                    //
+                    // Va ANTES que el del grafo porque los dos miran el mismo
+                    // clic y solo uno puede quedarselo. El arbol tiene su
+                    // rectangulo, asi que "cae dentro" es una pregunta exacta y
+                    // no un orden de prioridad disfrazado.
+                    //
+                    // Un clic aqui SALTA: de `/a/b/c` a `/a/d` en un gesto, que
+                    // es justo lo que un panel de arbol compra sobre la miga de
+                    // pan.
+                    let z = scene::zonas::Zonas::repartir(&dsk.win.data.chrome);
+                    if dsk.win.data.view == scene::data::View::Obra {
+                        if let Some(fila) =
+                            scene::arbol::fila_en(&z.arbol, dsk.win.data.arbol_from, pos.x, pos.y)
+                        {
+                            let movido = match fila {
+                                // La raiz: se sube hasta arriba. Subiendo y no
+                                // con `a_la_raiz`, que releeria el directorio
+                                // entero para acabar donde subir deja gratis.
+                                None => {
+                                    scene::arbol::a_la_raiz_subiendo();
+                                    true
+                                }
+                                Some(f) => scene::arbol::saltar_a(f.nivel, f.indice),
+                            };
+                            if movido {
+                                dsk.win.data.to_top();
+                                dsk.win.data.verified = None;
+                                scene::data::paint(&p, &dsk.win.data);
+                                dsk.win.top_before = W_DATA;
+                            }
+                            servido = true;
+                        }
+                    }
                     // -- * CLIC DENTRO DEL GRAFO --
                     //
                     // El gesto que faltaba: hasta ahora el raton solo
@@ -292,7 +333,7 @@ pub(crate) fn on_pointer(
                     // de cajas en la que no se puede pulsar ninguna es
                     // una ventana que parece interactiva y no lo es.
                     let how_many = bmo::estratos::hijos() as usize;
-                    match dsk.win.data.box_at(pos.x, pos.y, how_many) {
+                    match if servido { None } else { dsk.win.data.box_at(pos.x, pos.y, how_many) } {
                         // La caja del PADRE: sube un nivel. Es el gesto
                         // que la mano busca sola cuando ya has bajado.
                         Some(i) if i == usize::MAX => {
