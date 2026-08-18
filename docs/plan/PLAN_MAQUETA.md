@@ -359,3 +359,67 @@ de golpeo de una sola fuente**, y las tres funciones desaparecen.
 Ver `docs/componente/LA_MAQUETA_EXIGE.md` (que acepta y que rechaza),
 `docs/plan/PLAN_DIRECTOR.md` (las superficies, que son las islas) y
 `META-KERNEL_HARD.md` L6 y L7 (la ley del reparto).
+
+---
+
+## LA SIGUIENTE VICTIMA: NINGUNA, Y ESO ES UN RESULTADO (2026-08-18)
+
+Se midieron **las catorce ventanas** del escritorio para elegir la segunda cara.
+El criterio se escribio antes de mirar, que es lo unico que separa una medida de
+elegir al ganador:
+
+```
+   cara FIJA        su tamano no depende de cuantos datos haya en ejecucion
+   IRREGULAR        no es un for anidado sobre una rejilla
+   POCO dato vivo   cada valor que cambia es una isla, y las islas no se ahorran
+```
+
+**Aptas: 0.**
+
+| ventana | dibujos | se estira | una caja por dato |
+|---|---|---|---|
+| `data.rs` (ESTRATOS) | 93 | 12 | si |
+| `splash.rs` | 41 | 6 | no |
+| `sound.rs` | 17 | 1 | si |
+| `cabina.rs` | 14 | 2 | no |
+| `vitals.rs` | 12 | 1 | no |
+| `chrome.rs` | 10 | 70 | no |
+
+### Por que, en una frase
+
+**MAQUETA compila coordenadas absolutas para UN tamano, y las ventanas de este
+escritorio se estiran.** La calculadora entro porque es la unica cara de tamano
+fijo que hay: no se redimensiona y no depende de la pantalla. No fue casualidad
+que saliera la primera, y explica por que el numero fue -50% y no el tercio
+prometido -- se eligio el caso mas facil porque era el unico.
+
+### Y de que fallan las que estan mas cerca
+
+De **una sola cosa**, y siempre la misma:
+
+```rust
+   c.chrome.y + c.chrome.height - bmo::GLIFO_ALTO - 8    // vitals, cabina
+   if x + TESTIGO_W >= p.ancho                           // testigo
+```
+
+Un renglon pegado al **borde de abajo**. En CSS eso es `bottom:8px`, y el
+contrato de hoy exige `left` y `top` con `position:absolute` -- **no hay
+`bottom` ni `right`**.
+
+### Las dos salidas, y la segunda respeta la ley
+
+1. **Las ventanas dejan de estirarse.** Es una decision de producto, no tecnica,
+   y se pagaria en usabilidad.
+2. ★★ **MAQUETA emite el ANCLA, no solo la coordenada.** Una caja anclada abajo
+   sale como *"tu `y` es `alto_del_marco - 30`"*, y quien pinta hace **una resta**
+   -- no una maquetacion. Eso NO es el motor en ejecucion que la ley prohibe:
+   no se vuelve a medir nada, no se recalcula ningun flujo, y el arbol sigue
+   resuelto en el anfitrion. Es la misma prueba que paso `:hover`: admisible por
+   la condicion, no por util.
+
+Con eso, tres ventanas pasan de "no" a "si" **sin tocar las cinco generaciones**:
+el ancla es un campo mas en lo que emite el consumidor.
+
+[!] Y ESTRATOS **sigue sin calificar aunque se anadan anclas**: dos de sus tres
+vistas dibujan una caja por hijo del volumen, y cuantos hay se sabe en ejecucion.
+Eso no es un limite del compilador -- es lo que separa una CARA de una LISTA.
