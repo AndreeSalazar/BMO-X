@@ -281,7 +281,7 @@ pub(crate) fn dispatch(
         if windows::on_key(dsk, p, c, g.alt_alone) == Key::Taken {
             continue;
         }
-        if panels::on_key(dsk, p, c, g.alt_alone) == Key::Taken {
+        if panels::on_key(dsk, p, c, g.alt_alone, g.ctrl) == Key::Taken {
             continue;
         }
         // -- * DE QUIEN es esta tecla? --

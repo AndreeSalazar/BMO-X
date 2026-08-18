@@ -302,7 +302,7 @@ pub(crate) fn on_pointer(
                     // Un clic aqui SALTA: de `/a/b/c` a `/a/d` en un gesto, que
                     // es justo lo que un panel de arbol compra sobre la miga de
                     // pan.
-                    let z = scene::zonas::Zonas::repartir(&dsk.win.data.chrome);
+                    let z = scene::zonas::Zonas::repartir(&dsk.win.data.chrome, dsk.win.data.consola.abierta);
                     if dsk.win.data.view == scene::data::View::Obra {
                         if let Some(fila) =
                             scene::arbol::fila_en(&z.arbol, dsk.win.data.arbol_from, pos.x, pos.y)

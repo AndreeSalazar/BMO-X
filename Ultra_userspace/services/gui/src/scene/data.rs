@@ -78,6 +78,7 @@
 use bmo_userland as bmo;
 
 use super::arbol;
+use super::consola::{self, Consola};
 use super::iconos;
 use super::chrome::Chrome;
 use super::zonas::{Zona, Zonas, MIGA_H};
@@ -137,6 +138,8 @@ pub(crate) struct DataWindow {
     pub(crate) verified: Option<u64>,
     /// Por donde va el sellado. Ver [`Seal`].
     pub(crate) seal: Seal,
+    /// El terminal del pie, `Ctrl+n`. Ver [`super::consola`].
+    pub(crate) consola: Consola,
 }
 
 /// **El estado del sellado, que es lo unico de esta ventana que ESCRIBE.**
@@ -224,6 +227,7 @@ impl DataWindow {
             arbol_from: 0,
             verified: None,
             seal: Seal::Idle,
+            consola: Consola::nueva(),
         }
     }
 
@@ -271,7 +275,7 @@ impl DataWindow {
     /// que aqui sale mal.
     fn graph_geometry(&self) -> (u32, u32, u32, u32) {
         const CHANNEL: u32 = 44;
-        let z = Zonas::repartir(&self.chrome).grafo;
+        let z = Zonas::repartir(&self.chrome, self.consola.abierta).grafo;
         let box_w = ((z.w.saturating_sub(CHANNEL)) / 2).max(NODE_MIN);
         let children_x = z.x + box_w + CHANNEL;
         (z.x, box_w, children_x, z.y + 4)
@@ -308,7 +312,7 @@ impl DataWindow {
     /// tiene -- y entonces dejan de ser la misma cosa vista de dos maneras,
     /// que es lo unico que justifica ponerlas juntas.
     fn fit_count(&self) -> usize {
-        let z = Zonas::repartir(&self.chrome);
+        let z = Zonas::repartir(&self.chrome, self.consola.abierta);
         // Si el grafo no cabe, manda la rejilla: sus filas son mas bajas y
         // caben mas. Preguntar por el panel que no se pinta daria un tope
         // inventado.
@@ -456,7 +460,7 @@ fn node_box(
 // cuando la ventana es estrecha sin que los otros dos se enteren.
 
 fn obra(p: &bmo::Pantalla, c: &DataWindow) {
-    let z = Zonas::repartir(&c.chrome);
+    let z = Zonas::repartir(&c.chrome, c.consola.abierta);
 
     if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
         p.texto(z.miga.x, z.miga.y, "ningun volumen ESTRATOS montado.", INK_BAD);
@@ -475,6 +479,7 @@ fn obra(p: &bmo::Pantalla, c: &DataWindow) {
     arbol::paint(p, &z.arbol, c.arbol_from, DATA_TITLE, NODE_SEL);
     paint_folders(p, c, &z.rejilla);
     paint_nodes(p, c, &z.grafo);
+    consola::paint(p, &z.consola, &c.consola, DATA_EDGE, DATA_TITLE);
     pie(p, c, &z.pie);
 
     // Los separadores. Una linea de un pixel entre paneles: sin ella, tres
@@ -597,7 +602,7 @@ fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
         ),
         Seal::Idle => p.texto(
             z.x, y,
-            "flechas mueven  ENTRAR baja  RETROCESO sube  clic en el arbol salta  V firma  S sella",
+            "flechas mueven  ENTRAR baja  clic en el arbol salta  V firma  S sella  Ctrl+n consola",
             INK_DIM,
         ),
     };
@@ -977,7 +982,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow) {
     }
 
     ty += bmo::GLIFO_ALTO + 10;
-    p.texto(tx, ty, "F12 o ESC cierran.   TAB: el explorador.", INK_DIM);
+    p.texto(tx, ty, "F12 o ESC cierran.   TAB: el explorador.   Ctrl+n: su consola.", INK_DIM);
     ty += bmo::GLIFO_ALTO + 2;
     // * Decirlo aqui evita el susto: con esta ventana delante el teclado es
     // SUYO, asi que teclear no escribe en la caja de abajo. Antes si escribia
