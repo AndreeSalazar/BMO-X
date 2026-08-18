@@ -15,6 +15,15 @@
 //! Datos; el dia que sean dos, esto pide un handle por cliente y se dice ahora
 //! para que nadie lo descubra por el sintoma.
 //!
+//! ** Y ese dia NO fue el del panel de arbol (2026-08-18). Parecia que si: un
+//! arbol a la izquierda y una rejilla a la derecha suenan a dos recorridos. No
+//! lo son -- son **el mismo recorrido mirado a dos profundidades**, y lo que
+//! faltaba no era otro cursor sino que este no se olvidara de por donde ha
+//! pasado. Ver `nivel_hijos` y compania, aqui abajo.
+//!
+//! El aviso sigue en pie tal cual para el caso de verdad: dos ventanas en
+//! sitios DISTINTOS.
+//!
 //! Era un `pub mod` dentro de `lib.rs`. Mismo codigo, fichero propio.
 
 use crate::*;
@@ -125,6 +134,48 @@ pub fn nombre_nivel(nivel: u64, dst: &mut [u8]) -> usize {
 /// llena -- lo que pase antes.
 pub fn hijo_nombre(i: u64, dst: &mut [u8]) -> usize {
     texto_de(i, dst)
+}
+
+// == ** EL ARBOL: los niveles por los que YA se ha pasado ===================
+//
+// Un panel de arbol --el de la izquierda de cualquier explorador-- ensena a la
+// vez los hijos de la raiz, los del nivel siguiente y los del siguiente, con la
+// rama por la que has bajado marcada. Con las funciones de arriba no se puede:
+// todas contestan del nivel donde ESTA el cursor.
+//
+// * Y la respuesta NO fue un segundo cursor. El aviso de la cabecera de este
+// fichero decia que dos clientes pedirian un handle por cliente, y sigue siendo
+// verdad para dos VENTANAS mirando sitios distintos. El arbol y la rejilla no
+// son eso: son el mismo recorrido a dos profundidades. Lo que se arreglo es que
+// el cursor no se olvide de por donde ha pasado -- `fsys/estratos/nivel.rs`.
+//
+// Ninguna de las cuatro toca el disco.
+
+/// Cuantos hijos tiene el nivel `nivel`. `0` si no se ha llegado a el.
+pub fn nivel_hijos(nivel: u64) -> u64 {
+    pregunta(0x0C, nivel)
+}
+
+/// El tipo del hijo `i` del nivel `nivel`: [`ARCHIVO`], [`DIRECTORIO`] o
+/// [`NOTHING`].
+pub fn nivel_hijo_tipo(nivel: u64, i: u64) -> u64 {
+    pregunta(0x0D, (nivel << 32) | (i & 0xFFFF_FFFF))
+}
+
+/// Por que hijo se bajo desde el nivel `nivel`. [`NINGUNO`] si por ninguno.
+pub fn nivel_elegido(nivel: u64) -> u64 {
+    pregunta(0x0E, nivel)
+}
+
+/// Lo que contesta [`nivel_elegido`] cuando de ese nivel no se bajo.
+///
+/// ** No es cero, y no puede serlo: **cero es el primer hijo**. Un arbol que
+/// tomara el cero como "ninguno" pintaria siempre la primera rama abierta.
+pub const NINGUNO: u64 = u64::MAX;
+
+/// El nombre del hijo `i` del nivel `nivel`, en `dst`.
+pub fn nivel_hijo_nombre(nivel: u64, i: u64, dst: &mut [u8]) -> usize {
+    texto_de((2u64 << 32) | ((nivel & 0xFFFF) << 16) | (i & 0xFFFF), dst)
 }
 
 /// El motor de los dos: saca un texto de ocho en ocho hasta que se acabe o
