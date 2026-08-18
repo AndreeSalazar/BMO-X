@@ -78,6 +78,7 @@
 use bmo_userland as bmo;
 
 use super::arbol;
+use super::iconos;
 use super::chrome::Chrome;
 use super::zonas::{Zona, Zonas, MIGA_H};
 use super::*;
@@ -651,16 +652,26 @@ fn paint_folders(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
 
     let mut i = c.from;
     while i < last {
-        let (type_name, color) = class_color(bmo::estratos::hijo_tipo(i as u64));
+        let kind = bmo::estratos::hijo_tipo(i as u64);
+        let (type_name, color) = class_color(kind);
+
         // El realce de la fila senalada. Va DEBAJO del texto y ocupa el ancho
         // entero: es como se lee "esta es la seleccionada" sin un cursor.
         if i == c.sel {
             p.rect(z.x, ty, z.w, ROW_H, NODE_SEL);
         }
-        // El cuadrito de color: dice la clase antes de leer la columna. Es el
-        // mismo color que su caja en el grafo, a proposito -- mirar el mismo
-        // nodo en los dos paneles no puede darle dos colores.
-        p.rect(z.x + 4, ty + (ROW_H - 8) / 2, 8, 8, color);
+        // ** EL ICONO. Aqui habia un cuadrito de color de ocho pixeles.
+        //
+        // El cuadrito decia la clase --y sigue diciendola, porque el icono va
+        // del mismo color-- pero habia que HABERLO APRENDIDO: azul es
+        // directorio, verde es archivo. Una carpeta se reconoce sin que nadie
+        // te la explique, y eso es lo unico que un icono tiene que hacer.
+        //
+        // La forma dice QUE ES y el color dice lo mismo, asi que se refuerzan
+        // en vez de competir. Y el color sigue siendo el de su caja en el
+        // grafo de al lado: mirar el mismo nodo en los dos paneles no puede
+        // darle dos colores.
+        super::iconos::pintar(p, z.x + 2, ty + (ROW_H - iconos::LADO) / 2, kind, color, 1);
 
         let mut nom = [0u8; 64];
         let n = bmo::estratos::hijo_nombre(i as u64, &mut nom);
