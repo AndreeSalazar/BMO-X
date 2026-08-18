@@ -312,12 +312,14 @@ estan en espanol.
 quedan en Rust para siempre**.
 
 ```
-   118 lineas de maquetacion  ->  48 lineas de .maqueta      MEDIDO, -59%
+   118 lineas de maquetacion  ->  58 lineas de .maqueta      MEDIDO, -50%
 ```
 
 ### ⚠️ Lo prometido era "un tercio", y no llega. La razon esta medida
 
-Son **48 contra 118: un 59% menos**, no un 67%. Y no es que el compilador salga
+Son **58 contra 118: la mitad**, no un tercio -- y el `.maqueta` ya incluye el
+realce de `:hover` (en Rust, `lighten()` mas la constante `HIGHLIGHT`) y los
+comentarios que explican por que cada cosa esta donde esta. Y no es que el compilador salga
 mal -- es que **la calculadora es el PEOR CASO posible para MAQUETA**:
 
 > `calc.rs` pinta veinte teclas con `for row { for col }` sobre una tabla de

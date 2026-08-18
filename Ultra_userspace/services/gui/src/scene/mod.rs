@@ -11,6 +11,9 @@ use bmo_userland as bmo;
 pub(crate) mod vitals;
 pub(crate) mod cabina;
 pub(crate) mod calc;
+/// La CARA de la calculadora, generada por MAQUETA desde
+/// `toolchain/tools/maqueta/pruebas/calc.maqueta`. No se edita a mano.
+pub(crate) mod calc_gen;
 pub(crate) mod switcher;
 pub(crate) mod data;
 pub(crate) mod cursor;

@@ -52,6 +52,14 @@ pub struct Styled {
     /// Only ever set on the root.
     pub canvas: Option<(u32, u32)>,
     pub style: Style,
+    /// El estilo mientras el puntero esta encima, si alguna regla `:hover` toco
+    /// esta caja. `None` = esta caja no reacciona.
+    ///
+    /// ★ Es un estilo COMPLETO y no un parche: el consumidor no tiene que
+    /// componer nada, solo elegir cual de los dos usa. Y por construccion los dos
+    /// dan la MISMA geometria -- el padre no deja que una regla `:hover` toque
+    /// nada que no sea pintura.
+    pub hover: Option<Style>,
     pub children: Vec<Styled>,
     pub span: Span,
 }
@@ -120,14 +128,30 @@ fn settle(
     orphans: &mut Vec<Finding>,
 ) -> Styled {
     let mut style = Style::default();
+    let mut hover: Option<Style> = None;
 
     // In file order, and every match overwrites the last. That is the entire
     // cascade -- and `guard.rs` is what makes so short a rule safe.
     for (k, rule) in doc.rules.iter().enumerate() {
-        if rule.selectors.iter().any(|s| matches(s, node)) {
-            used[k] = true;
+        if !rule.selectors.iter().any(|s| matches(s, node)) {
+            continue;
+        }
+        used[k] = true;
+        if rule.hover {
+            // El estado "encima" parte del de reposo: `guard.rs` garantiza que
+            // para cuando llega un `:hover`, el reposo ya esta entero.
+            let h = hover.get_or_insert(style);
+            for d in &rule.decls {
+                h.apply(d);
+            }
+        } else {
             for d in &rule.decls {
                 style.apply(d);
+            }
+            if let Some(h) = hover.as_mut() {
+                for d in &rule.decls {
+                    h.apply(d);
+                }
             }
         }
     }
@@ -151,6 +175,7 @@ fn settle(
             _ => None,
         },
         style,
+        hover,
         children: node
             .children
             .iter()

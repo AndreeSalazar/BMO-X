@@ -120,6 +120,20 @@ impl Prop {
         }
     }
 
+    /// Does this property only change how a box LOOKS, never where it is?
+    ///
+    /// ★★ This is what makes `:hover` admissible. A hover rule may only touch
+    /// these four, and therefore **cannot move a single box** -- so the layout is
+    /// still computed exactly once, and `layout/` never learns that hover exists.
+    /// Let hover set a `width` and the whole model breaks: you would need a
+    /// second layout per state, in the aparato, at frame time.
+    pub fn es_pintura(self) -> bool {
+        matches!(
+            self,
+            Prop::BackgroundColor | Prop::Color | Prop::BorderColor | Prop::BorderRadius
+        )
+    }
+
     /// What shape of value this property accepts. Knowing that is naming, which
     /// is this generation's whole job.
     pub fn shape(self) -> Shape {

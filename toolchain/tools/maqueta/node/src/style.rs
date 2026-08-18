@@ -36,10 +36,12 @@ pub fn parse(src: &[u8], toks: &[Token], errors: &mut Vec<Error>) -> Vec<Rule> {
 fn rule(src: &[u8], toks: &[Token], i: &mut usize, errors: &mut Vec<Error>) -> Option<Rule> {
     let start = *toks.get(*i)?;
     let mut selectors = Vec::new();
+    let mut hovers = Vec::new();
 
     loop {
-        let sel = selector(src, toks, i, errors)?;
+        let (sel, hov) = selector(src, toks, i, errors)?;
         selectors.push(sel);
+        hovers.push(hov);
         match toks.get(*i).map(|t| t.kind) {
             Some(Kind::Comma) => {
                 *i += 1;
@@ -105,11 +107,74 @@ fn rule(src: &[u8], toks: &[Token], i: &mut usize, errors: &mut Vec<Error>) -> O
         }
     }
 
+    let hover = hovers.first().copied().unwrap_or(false);
+    if hovers.iter().any(|h| *h != hover) {
+        errors.push(Error::new(
+            span_of(&start),
+            "esta regla mezcla selectores con `:hover` y sin el",
+            "asi la regla querria decir dos cosas a la vez, y habria que explicar              cual manda. Una regla es entera de reposo o entera de encima.",
+            "partirla en dos reglas.",
+        ));
+    }
+    if hover {
+        for d in &decls {
+            if !d.prop.es_pintura() {
+                errors.push(Error::new(
+                    d.span,
+                    &format!("`{}` no puede ir en una regla `:hover`", d.prop.name()),
+                    "una regla de `:hover` solo puede cambiar como se VE una caja,                      nunca donde esta. Si pudiera mover algo, la maquetacion habria que                      recalcularla por cada estado y dentro del aparato -- y entonces                      esto deja de ser un compilador y pasa a ser un motor en ejecucion.",
+                    "solo `background-color`, `color`, `border-color` y `border-radius`.",
+                ));
+            }
+        }
+    }
+
     Some(Rule {
         selectors,
         decls,
         span: span_of(&start),
+        hover,
     })
+}
+
+/// `:hover`, y nada mas. Devuelve si lo habia.
+///
+/// ★ Es la UNICA pseudo-clase, y esta admitida por una razon estructural, no por
+/// utilidad: no puede tocar la maquetacion (ver el filtro de arriba), asi que la
+/// maquetacion se sigue calculando UNA vez y `layout/` no llega a enterarse de
+/// que el hover existe.
+fn pseudo(src: &[u8], toks: &[Token], i: &mut usize, errors: &mut Vec<Error>) -> bool {
+    if toks.get(*i).map(|t| t.kind) != Some(Kind::Colon) {
+        return false;
+    }
+    let colon = toks[*i];
+    let n = match toks.get(*i + 1) {
+        Some(t) if t.kind == Kind::Ident => *t,
+        _ => {
+            errors.push(Error::new(
+                span_of(&colon),
+                "falta el nombre de la pseudo-clase",
+                "solo existe una: `:hover`.",
+                "por ejemplo `.tecla:hover`.",
+            ));
+            *i += 1;
+            return false;
+        }
+    };
+    *i += 2;
+    if n.text(src) == b"hover" {
+        return true;
+    }
+    errors.push(Error::new(
+        span_of(&n),
+        &format!(
+            "pseudo-clase no soportada -- `:{}`",
+            String::from_utf8_lossy(n.text(src))
+        ),
+        "la unica es `:hover`, y esta porque no puede mover nada. `:active`,          `:focus` y las demas piden un estado que MAQUETA no lleva: quien lleva el          estado es Rust.",
+        "`:hover`, o dejarlo en manos del codigo.",
+    ));
+    false
 }
 
 fn selector(
@@ -117,7 +182,7 @@ fn selector(
     toks: &[Token],
     i: &mut usize,
     errors: &mut Vec<Error>,
-) -> Option<Selector> {
+) -> Option<(Selector, bool)> {
     let t = *toks.get(*i)?;
     match t.kind {
         Kind::Dot => {
@@ -133,15 +198,14 @@ fn selector(
                 return None;
             }
             *i += 1;
-            Some(Selector::Class(
-                String::from_utf8_lossy(n.text(src)).into_owned(),
-            ))
+            let clase = Selector::Class(String::from_utf8_lossy(n.text(src)).into_owned());
+            Some((clase, pseudo(src, toks, i, errors)))
         }
         Kind::Ident => {
             let raw = t.text(src).to_vec();
             *i += 1;
             match value::Tag::from_name(&raw) {
-                Some(tag) => Some(Selector::Tag(tag)),
+                Some(tag) => Some((Selector::Tag(tag), pseudo(src, toks, i, errors))),
                 None => {
                     errors.push(value::unknown_tag(span_of(&t), &raw));
                     None

@@ -46,6 +46,7 @@ pub fn modulo(origen: &str, l: &Laid) -> String {
     let mut s = String::new();
     cabecera(&mut s, origen, l);
     pintar(&mut s, l);
+    realce(&mut s, l);
     golpe(&mut s, l);
     islas(&mut s, l);
     s
@@ -64,6 +65,11 @@ fn cabecera(s: &mut String, origen: &str, l: &Laid) {
          //! `.maqueta`.\n\
          \n\
          #![allow(clippy::identity_op, clippy::erasing_op)]\n\
+         // [!] `dead_code` aparte, y con motivo: este modulo ofrece la superficie\n\
+         // ENTERA de la maquetacion --pintar, realzar, golpear, las islas-- y\n\
+         // cual de esas usa la app es cosa de la app. Recortar lo que hoy no se\n\
+         // llama obligaria a regenerar el dia que alguien empiece a usarlo.\n\
+         #![allow(dead_code)]\n\
          \n\
          use bmo_userland as bmo;\n\
          \n\
@@ -128,6 +134,65 @@ fn pintar(s: &mut String, l: &Laid) {
     s.push_str("}\n\n");
 }
 
+/// El estado "encima", que es todo lo que MAQUETA sabe de animacion.
+///
+/// ** Repinta UNA caja con sus colores de `:hover`. No recoloca nada, porque no
+/// puede: el padre no deja que una regla `:hover` toque mas que pintura. Por eso
+/// esto cuesta un rect y no un recalculo.
+///
+/// Lo que se mueve de verdad --una transicion, un desplazamiento-- es Rust en el
+/// bucle de fotograma, y esa frontera es lo que impide que esto acabe siendo un
+/// navegador.
+fn realce(s: &mut String, l: &Laid) {
+    let con_hover: Vec<_> = l
+        .all()
+        .into_iter()
+        .filter(|f| f.hover.is_some() && f.id.is_some())
+        .collect();
+
+    s.push_str(
+        "/// Repinta la caja `id` con sus colores de `:hover`. Llamalo cuando el\n\
+         /// puntero entre, y `pintar` cuando salga.\n\
+         pub fn realce(p: &bmo::Pantalla, ox: u32, oy: u32, id: &str) {\n",
+    );
+    if con_hover.is_empty() {
+        s.push_str("    let _ = (p, ox, oy, id);\n");
+    }
+    for f in &con_hover {
+        let h = f.hover.expect("filtrado arriba");
+        let id = f.id.as_deref().expect("filtrado arriba");
+        let _ = writeln!(s, "    if id == {id:?} {{");
+        if let (Some(borde), true) = (h.border_color, h.border_width > 0) {
+            let _ = writeln!(
+                s,
+                "        p.rect(ox + {}, oy + {}, {}, {}, 0x{:08X});",
+                f.rect.x, f.rect.y, f.rect.w, f.rect.h, borde
+            );
+        }
+        if let Some(fondo) = h.background {
+            let d = h.border_width;
+            let _ = writeln!(
+                s,
+                "        p.rect(ox + {}, oy + {}, {}, {}, 0x{:08X});",
+                f.rect.x + d as i32,
+                f.rect.y + d as i32,
+                f.rect.w.saturating_sub(d * 2),
+                f.rect.h.saturating_sub(d * 2),
+                fondo
+            );
+        }
+        if let (Some(t), Some(at), Some(color)) = (&f.text, f.text_at, h.color) {
+            let _ = writeln!(
+                s,
+                "        p.texto(ox + {}, oy + {}, {:?}, 0x{:08X});",
+                at.x, at.y, t, color
+            );
+        }
+        s.push_str("        return;\n    }\n");
+    }
+    s.push_str("}\n\n");
+}
+
 fn golpe(s: &mut String, l: &Laid) {
     let hits = l.hits();
     s.push_str(
@@ -183,7 +248,57 @@ fn islas(s: &mut String, l: &Laid) {
             nombre, r.x, r.y, r.w, r.h
         );
     }
-    s.push_str("];\n");
+    s.push_str("];\n\n");
+
+    s.push_str(
+        "/// El rect de una isla por su nombre: x, y, ancho, alto.\n\
+         pub fn isla(nombre: &str) -> Option<(u32, u32, u32, u32)> {\n\
+         \x20   let mut k = 0;\n\
+         \x20   while k < ISLAS.len() {\n\
+         \x20       let (n, x, y, w, h) = ISLAS[k];\n\
+         \x20       if n == nombre {\n\
+         \x20           return Some((x, y, w, h));\n\
+         \x20       }\n\
+         \x20       k += 1;\n\
+         \x20   }\n\
+         \x20   None\n\
+         }\n\n",
+    );
+
+    s.push_str(
+        "/// Repinta el fondo de una isla, para borrar lo que hubiera dentro.\n\
+         ///\n\
+         /// ** Existe para que quien rellena la isla NO tenga que saber su color.\n\
+         /// Copiarlo en Rust seria una segunda verdad, y el dia que cambie el\n\
+         /// `.maqueta` una de las dos se quedaria vieja sin avisar.\n\
+         pub fn limpiar_isla(p: &bmo::Pantalla, ox: u32, oy: u32, nombre: &str) {\n",
+    );
+    let con_fondo: Vec<_> = l
+        .all()
+        .into_iter()
+        .filter(|f| f.island.is_some() && f.style.background.is_some())
+        .collect();
+    if con_fondo.is_empty() {
+        s.push_str("    let _ = (p, ox, oy, nombre);\n");
+    }
+    for f in con_fondo {
+        let n = f.island.as_deref().expect("filtrado arriba");
+        let fondo = f.style.background.expect("filtrado arriba");
+        let d = f.style.border_width;
+        let _ = writeln!(
+            s,
+            "    if nombre == {n:?} {{\n\
+             \x20       p.rect(ox + {}, oy + {}, {}, {}, 0x{:08X});\n\
+             \x20       return;\n\
+             \x20   }}",
+            f.rect.x + d as i32,
+            f.rect.y + d as i32,
+            f.rect.w.saturating_sub(d * 2),
+            f.rect.h.saturating_sub(d * 2),
+            fondo
+        );
+    }
+    s.push_str("}\n");
 }
 
 /// Como se llama una caja en un comentario: su `id`, su isla, o su etiqueta.

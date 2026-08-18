@@ -163,6 +163,7 @@ members = [
     "toolchain/tools/maqueta/layout",
     "toolchain/tools/maqueta/verdict",
     "toolchain/tools/maqueta/emit",
+    "toolchain/tools/maqueta/cli",
 
     # -- FORGE (pipeline de compilacion) -----------------------------
     # Librerias OPCIONALES que cada frontend elige enlazar (nunca embudos).
