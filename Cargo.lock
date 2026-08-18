@@ -199,6 +199,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-maqueta-cascade"
+version = "0.1.0"
+dependencies = [
+ "bmo-maqueta-diag",
+ "bmo-maqueta-node",
+]
+
+[[package]]
 name = "bmo-maqueta-diag"
 version = "0.1.0"
 
