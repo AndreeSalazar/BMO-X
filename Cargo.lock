@@ -226,6 +226,7 @@ version = "0.1.0"
 name = "bmo-maqueta-emit"
 version = "0.1.0"
 dependencies = [
+ "bmo-dibujo",
  "bmo-maqueta-cascade",
  "bmo-maqueta-diag",
  "bmo-maqueta-layout",

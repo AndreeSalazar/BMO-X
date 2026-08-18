@@ -236,23 +236,35 @@ fn hay_un_pintar_en_que_recorta_los_rects_y_deja_el_texto_entero() {
 
     // El panel entero se CORTA al danio: es la razon de existir de la funcion.
     assert!(
-        g.contains("if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 0, oy + 0, 322, 446) {"),
+        g.contains("let c = Recorte::nuevo(ox as i32 + 0, oy as i32 + 0, 322, 446).interseccion(&limite);"),
         "{g}"
     );
-    assert!(g.contains("p.rect(x, y, w, h, 0x00333D52);"), "{g}");
+    assert!(
+        g.contains("p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x00333D52);"),
+        "{g}"
+    );
 
     // El texto NO se corta: entero o nada, porque medio glifo no se pinta.
-    assert!(g.contains("if cruza(cx, cy, cw, ch, ox + 40, oy + 82, 8, 16) {"), "{g}");
+    assert!(
+        g.contains("if !Recorte::nuevo(ox as i32 + 40, oy as i32 + 82, 8, 16).interseccion(&limite).vacio() {"),
+        "{g}"
+    );
     assert!(g.contains("p.texto(ox + 40, oy + 82, \"C\", 0x00E6EDF6);"), "{g}");
 }
 
 #[test]
-fn el_recorte_generado_usa_el_intervalo_medio_abierto() {
-    // La misma regla que `bmo-dibujo`. Si el borde contara, cada reparacion
-    // repintaria una fila de mas y se veria como una costura.
+fn el_recorte_generado_es_EL_de_la_casa_y_no_uno_propio() {
+    // ** La correccion que mas vale de esta tanda: la primera version emitia su
+    // propio `corte`, y `Recorte` ya existia en `bmo-dibujo` con el mismo
+    // convenio medio abierto. Ese crate existe porque hubo DOS recortadores --el
+    // previsualizador recortaba, el kernel descartaba-- y se tiraban 2.625 de
+    // 8.775 rectangulos por fotograma. Un tercero, dentro de la herramienta que
+    // existe para que eso no se repita.
     let g = generado();
-    assert!(g.contains("if x1 > x0 && y1 > y0 {"), "{g}");
-    assert!(g.contains("fn cruza(cx: u32"), "y `cruza` sale de `corte`");
+    assert!(g.contains("use bmo_dibujo::Recorte;"), "{g}");
+    assert!(g.contains(".interseccion(&limite)"), "{g}");
+    assert!(!g.contains("fn corte(cx: u32"), "no puede haber un recortador propio");
+    assert!(!g.contains("fn cruza(cx: u32"), "ni una segunda forma de preguntarlo");
 }
 
 #[test]
@@ -268,7 +280,10 @@ fn pintar_y_pintar_en_dibujan_LO_MISMO() {
 
     for o in ordenes.iter().filter(|o| o.estado == Estado::Reposo) {
         let r = o.trazo.area();
-        let en_pintar_en = format!("cx, cy, cw, ch, ox + {}, oy + {}, {}, {}", r.x, r.y, r.w, r.h);
+        let en_pintar_en = format!(
+            "Recorte::nuevo(ox as i32 + {}, oy as i32 + {}, {}, {})",
+            r.x, r.y, r.w, r.h
+        );
         assert!(g.contains(&en_pintar_en), "falta en pintar_en: {en_pintar_en}");
     }
 }

@@ -1,61 +1,79 @@
 //! **QUE cae dentro de un rectangulo.** La pieza que convierte "repinta el
 //! fondo" en "repite lo que cruza esto".
 //!
-//! ## El numero que justifica este fichero
+//! ## [!] AQUI NO SE RECORTA: SE DELEGA
+//!
+//! La primera version de este fichero traia su propia interseccion de
+//! rectangulos. Estaba bien y estaba mal a la vez, porque **`Recorte` ya existe
+//! en `platform/shared/bmo-dibujo`** con el mismo convenio medio abierto -- y ese
+//! crate existe precisamente porque hubo DOS recortadores:
+//!
+//! ```text
+//!    previsualizador   for fx in x.max(0)..(x+w).min(ancho)   -> RECORTABA
+//!    kernel            if x >= 0 { fill_rect(...) }           -> DESCARTABA
+//! ```
+//!
+//! Se tiraban **2.625 de los 8.775 rectangulos de cada fotograma** y el 7,2% de
+//! la pantalla se quedaba sin escribir. Escribir aqui un tercero habria sido
+//! repetir ese fallo **dentro de la herramienta que existe para que no se
+//! repita**.
+//!
+//! Asi que este modulo aporta la parte que `bmo-dibujo` no tiene --*que hacer
+//! con una lista de trazos*-- y la geometria la pide.
+//!
+//! ## El numero que justifica el fichero
 //!
 //! Hoy `erase_box` devuelve el fondo recorriendo su rectangulo **pixel a
 //! pixel**, preguntandole a `scene_color` por cada uno:
 //!
 //! ```text
-//!    325.000 pixeles x 4 bytes                     = 1,3 MB
+//!    325.000 pixeles x 4 bytes                        = 1,3 MB
 //!    al ancho de banda medido en el Ryzen (~300 MB/s) = 4,33 ms
-//!    un fotograma a 60 Hz                          = 16,7 ms
+//!    un fotograma a 60 Hz                             = 16,7 ms
 //! ```
 //!
 //! **Un borrado se come la cuarta parte de un fotograma**, y arrastrar una
-//! ventana hace uno por evento de raton. Con la lista recortada son unas quince
-//! llamadas a `rect()`, que escriben por filas en vez de por pixeles.
+//! ventana hace uno por evento de raton.
 //!
 //! ## * Y ademas el texto viaja dentro
 //!
-//! `scene_color` "sabe de rectangulos, no de letras" -- lo dice su propia
-//! cabecera. Por eso los iconos del escritorio se comian al arrastrar una
-//! ventana por encima: su etiqueta no la podia devolver nadie. Una lista de
-//! trazos lleva las letras, asi que restaurar las devuelve sin que nadie tenga
-//! que acordarse.
+//! `scene_color` "sabe de rectangulos, no de letras" -- lo dice su cabecera. Por
+//! eso los iconos del escritorio se comian al arrastrar una ventana por encima:
+//! su etiqueta no la podia devolver nadie. Una lista de trazos lleva las letras.
 //!
 //! ## Recortar, no descartar
 //!
 //! Un `Rect` se **corta** a la parte visible; un `Texto` se deja entero o se
-//! deja fuera. No es capricho: el fondo del escritorio es un rectangulo del
-//! tamano de la pantalla, y descartarlo-o-pintarlo-entero haria que reparar un
-//! danio de 40x40 volviera a pintar 1920x1080. Un glifo, en cambio, es atomico:
-//! medio glifo no se puede pintar.
-//!
-//! [!] Es el mismo par de reglas que ya costo un fallo en este arbol:
-//! `bmo-dibujo` nacio porque el previsualizador **recortaba** y el kernel
-//! **descartaba**, y 2.625 de 8.775 rectangulos por fotograma se tiraban
-//! enteros. Aqui se dice cual es cual y por que.
+//! deja fuera. El fondo del escritorio es un rectangulo del tamano de la
+//! pantalla: descartarlo-o-pintarlo-entero haria que reparar un danio de 40x40
+//! volviera a pintar 1920x1080. Un glifo, en cambio, es atomico.
 
+use bmo_dibujo::Recorte;
 use bmo_maqueta_layout::Rect;
 
 use crate::orden::{Estado, Orden, Trazo};
 
-/// La parte de `r` que cae dentro de `limite`. `None` si no se tocan.
-pub fn corte(r: Rect, limite: Rect) -> Option<Rect> {
-    let x0 = r.x.max(limite.x);
-    let y0 = r.y.max(limite.y);
-    let x1 = r.right().min(limite.right());
-    let y1 = r.bottom().min(limite.bottom());
-    if x1 <= x0 as i64 || y1 <= y0 as i64 {
+/// De la caja del nieto al recorte de la casa.
+pub fn a_recorte(r: Rect) -> Recorte {
+    Recorte::nuevo(r.x, r.y, r.w as i32, r.h as i32)
+}
+
+/// Y de vuelta. `None` si no queda nada, que es lo que `vacio()` contesta.
+pub fn a_rect(r: Recorte) -> Option<Rect> {
+    if r.vacio() {
         return None;
     }
     Some(Rect {
-        x: x0,
-        y: y0,
-        w: (x1 - x0 as i64) as u32,
-        h: (y1 - y0 as i64) as u32,
+        x: r.x0,
+        y: r.y0,
+        w: r.ancho() as u32,
+        h: r.alto() as u32,
     })
+}
+
+/// La parte de `r` que cae dentro de `limite`. `None` si no se tocan.
+pub fn corte(r: Rect, limite: Rect) -> Option<Rect> {
+    a_rect(a_recorte(r).interseccion(&a_recorte(limite)))
 }
 
 /// Se tocan?
@@ -114,9 +132,9 @@ mod tests {
 
     #[test]
     fn tocarse_por_el_borde_no_es_tocarse() {
-        // `[x0, x1)`, medio abierto, como el scissor de Vulkan y como el
-        // `Recorte` de `bmo-dibujo`. Si el borde contara, cada reparacion
-        // repintaria una fila de mas y se veria como una costura.
+        // `[x0, x1)`, medio abierto. No es una regla de este fichero: es la de
+        // `bmo-dibujo`, y esta prueba esta aqui para que se vea que la heredamos
+        // y no la reinventamos.
         assert_eq!(corte(r(0, 0, 10, 10), r(10, 0, 10, 10)), None);
     }
 
@@ -144,6 +162,12 @@ mod tests {
         // Una caja centrada en algo mas pequeno cae en negativo -- el nieto lo
         // permite a proposito. Aqui no puede convertirse en un numero enorme.
         assert_eq!(corte(r(-50, -50, 100, 100), r(0, 0, 10, 10)), Some(r(0, 0, 10, 10)));
+    }
+
+    #[test]
+    fn el_ida_y_vuelta_con_el_recorte_de_la_casa_no_pierde_nada() {
+        let caja = r(7, 11, 40, 25);
+        assert_eq!(a_rect(a_recorte(caja)), Some(caja));
     }
 
     fn ordenes() -> Vec<Orden> {

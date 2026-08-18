@@ -60,6 +60,11 @@ fn cabecera(s: &mut String, origen: &str, l: &Laid) {
          // hoy no se llama obligaria a regenerar el dia que alguien lo use.\n\
          #![allow(dead_code)]\n\
          \n\
+         // EL recorte de la casa, no uno propio: el mismo `Recorte` que usan el\n\
+         // rasterizador y el kernel, medio abierto `[x0, x1)`. `bmo-dibujo` nacio\n\
+         // porque hubo DOS --uno recortaba y otro descartaba-- y se tiraban 2.625\n\
+         // de 8.775 rectangulos por fotograma.\n\
+         use bmo_dibujo::Recorte;\n\
          use bmo_userland as bmo;\n\
          \n\
          /// El tamano que MAQUETA dedujo del arbol. Nadie lo escribio.\n\
@@ -125,13 +130,17 @@ fn pintar_en(s: &mut String, ordenes: &[Orden]) {
          /// fotograma de 60 Hz, y arrastrar hace uno por evento de raton. Esto son\n\
          /// unas pocas llamadas a `rect`, que escriben por filas.\n\
          ///\n\
+         /// El recorte es el `Recorte` de `bmo-dibujo`, medio abierto `[x0, x1)`:\n\
+         /// uno solo para las tres orillas.\n\
+         ///\n\
          /// Los rectangulos se RECORTAN; el texto entra entero o no entra, porque\n\
          /// medio glifo no se puede pintar.\n\
-         pub fn pintar_en(p: &bmo::Pantalla, ox: u32, oy: u32, cx: u32, cy: u32, cw: u32, ch: u32) {\n",
+         pub fn pintar_en(p: &bmo::Pantalla, ox: u32, oy: u32, cx: u32, cy: u32, cw: u32, ch: u32) {\n\
+         \x20   let limite = Recorte::nuevo(cx as i32, cy as i32, cw as i32, ch as i32);\n",
     );
     let reposo: Vec<&Orden> = ordenes.iter().filter(|o| o.estado == Estado::Reposo).collect();
     if reposo.is_empty() {
-        s.push_str("    let _ = (p, ox, oy, cx, cy, cw, ch);\n");
+        s.push_str("    let _ = (p, ox, oy, limite);\n");
     }
     let mut ultimo = String::new();
     for o in reposo {
@@ -140,54 +149,32 @@ fn pintar_en(s: &mut String, ordenes: &[Orden]) {
             ultimo = o.de.clone();
         }
         let r = area(&o.trazo);
+        let caja = format!(
+            "Recorte::nuevo(ox as i32 + {}, oy as i32 + {}, {}, {})",
+            r.x, r.y, r.w, r.h
+        );
         match &o.trazo {
             Trazo::Rect { color, .. } => {
                 let _ = writeln!(
                     s,
-                    "    if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + {}, oy + {}, {}, {}) {{\n\
-                     \x20       p.rect(x, y, w, h, 0x{color:08X});\n\
-                     \x20   }}",
-                    r.x, r.y, r.w, r.h
+                    "    let c = {caja}.interseccion(&limite);\n\
+                     \x20   if !c.vacio() {{\n\
+                     \x20       p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x{color:08X});\n\
+                     \x20   }}"
                 );
             }
             Trazo::Texto { texto, color, .. } => {
                 let _ = writeln!(
                     s,
-                    "    if cruza(cx, cy, cw, ch, ox + {}, oy + {}, {}, {}) {{\n\
+                    "    if !{caja}.interseccion(&limite).vacio() {{\n\
                      \x20       p.texto(ox + {}, oy + {}, {texto:?}, 0x{color:08X});\n\
                      \x20   }}",
-                    r.x, r.y, r.w, r.h, r.x, r.y
+                    r.x, r.y
                 );
             }
         }
     }
     s.push_str("}\n\n");
-
-    s.push_str(
-        "/// La parte de un rectangulo que cae dentro del limite. `None` si no se\n\
-         /// tocan -- y tocarse por el borde NO es tocarse: `[x0, x1)`, medio\n\
-         /// abierto, la misma regla que el recorte de `bmo-dibujo`. Si el borde\n\
-         /// contara, cada reparacion repintaria una fila de mas y se veria como\n\
-         /// una costura.\n\
-         fn corte(cx: u32, cy: u32, cw: u32, ch: u32, x: u32, y: u32, w: u32, h: u32)\n\
-         \x20   -> Option<(u32, u32, u32, u32)>\n\
-         {\n\
-         \x20   let x0 = if x > cx { x } else { cx };\n\
-         \x20   let y0 = if y > cy { y } else { cy };\n\
-         \x20   let x1 = if x + w < cx + cw { x + w } else { cx + cw };\n\
-         \x20   let y1 = if y + h < cy + ch { y + h } else { cy + ch };\n\
-         \x20   if x1 > x0 && y1 > y0 {\n\
-         \x20       Some((x0, y0, x1 - x0, y1 - y0))\n\
-         \x20   } else {\n\
-         \x20       None\n\
-         \x20   }\n\
-         }\n\
-         \n\
-         /// Se tocan? Para el texto, que es atomico.\n\
-         fn cruza(cx: u32, cy: u32, cw: u32, ch: u32, x: u32, y: u32, w: u32, h: u32) -> bool {\n\
-         \x20   corte(cx, cy, cw, ch, x, y, w, h).is_some()\n\
-         }\n\n",
-    );
 }
 
 /// El estado "encima", que es todo lo que MAQUETA sabe de animacion.
