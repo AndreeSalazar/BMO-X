@@ -42,7 +42,7 @@ if let Some(open) = toggle_data {
         // En `Fijo` se ha pintado encima de una caja que sigue
         // teniendo el teclado: hay que devolverla arriba.
         if dsk.win.top_before == Ventana::Run {
-            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         }
     } else {
         // Al cerrarla hay que devolver el fondo Y repintar
@@ -53,7 +53,7 @@ if let Some(open) = toggle_data {
             dsk.win.data.width(), dsk.win.data.height(), dsk.win.visible,
         );
         dsk.win.top_before = Ventana::Run;
-        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+        uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
     }
     return Key::Taken;
 }
@@ -84,7 +84,7 @@ if let Some(open) = toggle_cpu {
             &p, &dsk.run_box, dsk.win.cpu.chrome.x, dsk.win.cpu.chrome.y,
             dsk.win.cpu.chrome.width, dsk.win.cpu.chrome.height, dsk.win.visible,
         );
-        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+        uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
     }
     return Key::Taken;
 }
@@ -106,7 +106,7 @@ if let Some(open) = toggle_mem {
             &p, &dsk.run_box, dsk.win.mem.chrome.x, dsk.win.mem.chrome.y,
             dsk.win.mem.chrome.width, dsk.win.mem.chrome.height, dsk.win.visible,
         );
-        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+        uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
     }
     return Key::Taken;
 }
@@ -134,7 +134,7 @@ if let Some(open) = toggle_klog {
         scene::cabina::paint(&p, &dsk.win.cabina);
         dsk.win.top_before = if dsk.win.focus.es_para(Ventana::Cabina) { Ventana::Cabina } else { Ventana::Run };
         if dsk.win.top_before == Ventana::Run {
-            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         }
     } else {
         dsk.win.focus.close(Ventana::Cabina);
@@ -143,7 +143,7 @@ if let Some(open) = toggle_klog {
             dsk.win.cabina.chrome.width, dsk.win.cabina.chrome.height, dsk.win.visible,
         );
         dsk.win.top_before = Ventana::Run;
-        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+        uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         // Si Datos estaba abierta debajo, vuelve a verse.
         if dsk.win.data_open {
             scene::data::paint(&p, &dsk.win.data);
@@ -189,7 +189,7 @@ if let Some(open) = toggle_sound {
         );
         dsk.win.top_before = if dsk.win.focus.es_para(Ventana::Sound) { Ventana::Sound } else { Ventana::Run };
         if dsk.win.top_before == Ventana::Run {
-            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         }
     } else {
         // * DEVOLVER EL APARATO. Esto es lo que impide que el
@@ -204,7 +204,7 @@ if let Some(open) = toggle_sound {
             dsk.win.sound.chrome.width, dsk.win.sound.chrome.height, dsk.win.visible,
         );
         dsk.win.top_before = Ventana::Run;
-        uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+        uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
         // Si habia ventanas debajo, vuelven a verse.
         if dsk.win.data_open {
             scene::data::paint(&p, &dsk.win.data);

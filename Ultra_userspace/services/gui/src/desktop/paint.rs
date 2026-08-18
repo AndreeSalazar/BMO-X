@@ -225,7 +225,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
             erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
         }
         if dead > 0 {
-            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
             // Lo que quedara debajo de la que se fue tiene que volver a
             // pintarse: `erase_window` devuelve el FONDO, no las ventanas.
             for s in dsk.table.iter_mut() {

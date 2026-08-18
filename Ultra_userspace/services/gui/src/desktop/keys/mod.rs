@@ -238,7 +238,7 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
                     dsk.snd.volume,
                     dsk.snd.pressed,
                 ),
-                Ventana::Run => uncover(&p, &dsk.run_box, dsk.win.visible, sal, repintar),
+                Ventana::Run => uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, sal, repintar),
             }
         };
         // ** Y LA LISTA ES `Ventana::TODAS`, NO UNA COPIA A MANO.
@@ -269,7 +269,7 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
             // ventana que no esta en la pantalla: escribirias en algo
             // invisible, que es la peor forma de perder una linea.
             dsk.win.focus.open(Ventana::Run);
-            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
             paint_status(&p, &dsk.run_box, "listo", INK_DIM);
         } else {
             dsk.win.focus.close(Ventana::Run);
