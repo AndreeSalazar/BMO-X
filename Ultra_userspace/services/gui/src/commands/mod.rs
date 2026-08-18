@@ -7,6 +7,10 @@ pub(crate) mod complete;
 /// ** LA TERMINAL DEL DISCO: la unica caja de ordenes que ACTUA sobre el
 /// almacen. Fichero propio por eso y no por tamano. Ver su cabecera.
 pub(crate) mod disco;
+/// ** POR DONDE EMPEZAR. La orden que faltaba, y la pidio quien lo escribio
+/// todo: *"ironicamente yo como creador no se usar"*. Va por TAREAS y no por
+/// ordenes -- ver su cabecera.
+pub(crate) mod guia;
 pub(crate) mod dispatch;
 pub(crate) mod files;
 pub(crate) mod shell;
@@ -157,6 +161,12 @@ pub(crate) enum Command<'a> {
     /// [`parse`] ya hace con el verbo de arriba; hacerlo una vez mas cuesta dos
     /// lineas y quita una clase entera de sorpresa.
     Disco(&'a [u8], &'a [u8]),
+    /// **`guia`** -- por donde empezar, por TAREAS y no por ordenes.
+    ///
+    /// No es un tercer catalogo: `ayuda` lista los verbos y esto contesta *"que
+    /// quiero hacer"*. Y su ultimo bloque es el que de verdad hacia falta --
+    /// **lo que todavia NO se puede**, para no buscarlo media hora.
+    Guia,
     /// `reboot` -- reinicia la maquina y no vuelve.
     ///
     /// Estaba en el shell del kernel desde siempre y aqui contestaba "no lo
@@ -360,6 +370,9 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         b"smp" | b"nucleos" => Command::Smp(rest),
         b"audio" | b"sonido" => Command::Audio,
         b"help" | b"?" | b"ayuda" => Command::Help,
+        // La puerta del que llega. `start` porque es la palabra que se
+        // teclea sin pensar cuando uno no sabe que teclear.
+        b"guia" | b"empezar" | b"start" => Command::Guia,
         _ if looks_like_program(line) => Command::Launch(line),
         // Parece un archivo pero no es un programa. Antes esto caia en
         // `Launch` y el kernel contestaba "sin firma no hay ejecucion" -- un
