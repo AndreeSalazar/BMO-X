@@ -73,41 +73,35 @@ if dsk.win.sound_open && dsk.win.focus.es_para(Ventana::Sound) {
     }
 }
 
-// RePag/AvPag dentro de la consola del kernel: recorrer el log.
+// -- ** LAS LETRAS DE CABINA: `G` y `A` --
 //
-// ** MIENTRAS CABINA ESTA ABIERTA, ESTAS TRES TECLAS SON SUYAS
-// -- RePag, AvPag y `G`-- y no se le piden al foco.
+// ** SE LE PIDEN AL FOCO, y eso es lo que las separa de RePag/AvPag.
 //
-// Antes se exigia `focus.es_para(Ventana::Cabina)`, y el 2026-08-09 eso
-// dio una ventana que **prometia en su pie algo que no hacia**:
-// el dueno abrio CABINA con F11, la vio ocupando la pantalla, y
-// RePag no movio nada. No era un fallo del scroll: era la
-// politica funcionando. **Abrir no es enfocar** --y no debe
-// serlo, porque robar el teclado a quien esta escribiendo es
-// mucho peor-- pero el compositor la PINTA encima igualmente,
-// asi que lo que se ve y lo que manda dejaban de coincidir.
+// Son LETRAS. Con el foco en Ejecutar una `a` es una letra que el dueno
+// esta escribiendo, y quedarsela para un atajo es el peor intercambio
+// posible: en espanol casi ninguna ruta se teclea sin una `a`, asi que
+// con CABINA abierta `ada/hola.bex` no se podia escribir. Y no daba
+// error de ninguna clase -- las letras se perdian y ya.
 //
-// La regla que queda: **las teclas de ESCRITURA son del foco;
-// las de NAVEGACION, de la ventana que estas mirando.** Una
-// letra sigue cayendo en Ejecutar; un RePag mueve lo que se ve.
-// Se paga que no se pueda recorrer el historial de Ejecutar con
-// CABINA delante -- y eso no se pierde, porque debajo de CABINA
-// no se ve.
-// -- F: cambiar el filtro de la ventana del kernel --
+// * Estuvieron sin guarda, y el comentario de RePag/AvPag llego a decir
+// que las teclas de CABINA eran TRES: RePag, AvPag y `G`. Cuando nacio
+// `A` se metio en el mismo regimen sin que nadie ampliara esa frase.
+// Es la misma forma que el `W_SOUND` que valia 3: **una lista escrita a
+// mano que no crece con lo que cuenta**, y el sintoma vuelve a ser suave
+// -- aqui no se cae nada, solo faltan dos letras.
 //
-// Solo con el foco AQUI: con el foco en Ejecutar, una `f` es una
-// letra que el dueno esta escribiendo, y robarsela para un atajo
-// seria el peor intercambio posible.
+// G: subir el listero de GRAVEDAD. Cinco escalones y vuelta. Se reinicia
+// el desplazamiento al cambiar: lo que se estaba mirando en la lista
+// vieja no senala nada en la nueva, y dejar el numero puesto haria que
+// la ventana pareciera vacia.
 //
-// Se reinicia el desplazamiento al cambiar: lo que se estaba
-// mirando en la lista vieja no senala nada en la nueva, y dejar
-// el numero puesto haria que la ventana pareciera vacia.
-// G: subir el listero de GRAVEDAD. Cinco escalones y vuelta.
-//
-// Es `G` y no `F` porque ya no filtra por FAMILIA de modulo
-// --eso lo hacia el klog, adivinando por el prefijo de la
-// linea-- sino por la severidad que CABINA lleva de verdad.
-if dsk.win.cabina_open && (c == b'g' || c == b'G') {
+// Es `G` y no `F` porque ya no filtra por FAMILIA de modulo --eso lo
+// hacia el klog, adivinando por el prefijo de la linea-- sino por la
+// severidad que CABINA lleva de verdad.
+if dsk.win.cabina_open
+    && dsk.win.focus.es_para(Ventana::Cabina)
+    && (c == b'g' || c == b'G')
+{
     dsk.win.cabina.minima = (dsk.win.cabina.minima + 1) % 5;
     dsk.win.cabina.from = 0;
     scene::cabina::paint(&p, &dsk.win.cabina);
@@ -124,12 +118,40 @@ if dsk.win.cabina_open && (c == b'g' || c == b'G') {
 // hace de verdad delante de la pantalla: **todo lo que produjo
 // esa pulsacion**, lo bueno y lo malo, en orden y sin nada de
 // antes. El kernel ya lo agrupaba; faltaba leerlo.
-if dsk.win.cabina_open && (c == b'a' || c == b'A') {
+if dsk.win.cabina_open
+    && dsk.win.focus.es_para(Ventana::Cabina)
+    && (c == b'a' || c == b'A')
+{
     dsk.win.cabina.last_only = !dsk.win.cabina.last_only;
     dsk.win.cabina.from = 0;
     scene::cabina::paint(&p, &dsk.win.cabina);
     return Key::Taken;
 }
+// -- RePag/AvPag dentro de la consola del kernel: recorrer el log --
+//
+// ** ESTAS DOS NO SE LE PIDEN AL FOCO, y son las unicas que no.
+//
+// Antes se exigia `focus.es_para(Ventana::Cabina)`, y el 2026-08-09 eso
+// dio una ventana que **prometia en su pie algo que no hacia**: el dueno
+// abrio CABINA con F11, la vio ocupando la pantalla, y RePag no movio
+// nada. No era un fallo del scroll: era la politica funcionando. **Abrir
+// no es enfocar** --y no debe serlo, porque robar el teclado a quien esta
+// escribiendo es mucho peor-- pero el compositor la PINTA encima
+// igualmente, asi que lo que se ve y lo que manda dejaban de coincidir.
+//
+// La regla que queda: **las teclas de ESCRITURA son del foco; las de
+// NAVEGACION, de la ventana que estas mirando.** Una letra sigue cayendo
+// en Ejecutar --`g` y `a` incluidas, ver arriba-- y un RePag mueve lo
+// que se ve. Se paga que no se pueda recorrer el historial de Ejecutar
+// con CABINA delante, y eso no se pierde porque debajo de CABINA no se
+// ve.
+//
+// [!] "La ventana que estas mirando" se comprueba aqui como
+// `cabina_open`, que es **"esta abierta"** y no "esta delante": con
+// CABINA tapada por Datos, estas dos siguen moviendo el log que NO se
+// ve, que es el fallo del 08-09 con el signo cambiado. La pregunta buena
+// ya existe --`bmo_input::Foco::esta_delante`-- y hoy no la llama nadie
+// en todo el repo: `Focus` ni siquiera la asoma. Es un trabajo aparte.
 if dsk.win.cabina_open && (c == 0x87 || c == 0x88) {
     let any = bmo::cabina_disponibles();
     if c == 0x87 {
