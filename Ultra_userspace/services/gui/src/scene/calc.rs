@@ -62,6 +62,15 @@ pub(crate) struct Calc {
     /// que hay que DECIRLO y no adivinarlo. `Ctrl+n` lo cambia; el porque
     /// entero esta en `desktop::calc`.
     pub(crate) keys: bool,
+    /// **Lo que ensena el visor NO es un numero.** Lo pone la tecla `$`, cuya
+    /// respuesta (`$12,345.67`) es una PRESENTACION y no un operando: tiene
+    /// moneda y millares, y seguir tecleando encima daria un texto que ningun
+    /// `PIC` puede leer. La siguiente cifra empieza de cero.
+    pub(crate) presentado: bool,
+    /// Ya llego la linea de ESTADO del motor; la siguiente es el valor.
+    pub(crate) respondio: bool,
+    /// Lo que dijo esa linea: `0` = lo que sigue es el resultado.
+    pub(crate) bien: bool,
 }
 
 impl Calc {
@@ -75,10 +84,19 @@ impl Calc {
             op: 0,
             waiting: false,
             keys: false,
+            presentado: false,
+            respondio: false,
+            bien: false,
         }
     }
 
     pub(crate) fn feed(&mut self, c: u8) {
+        // Lo que hay es una presentacion, no un numero: teclear encima la
+        // sustituye entera en vez de anadirle una cifra al final.
+        if self.presentado {
+            self.n = 0;
+            self.presentado = false;
+        }
         if self.n < self.input.len() {
             self.input[self.n] = c;
             self.n += 1;
@@ -98,11 +116,39 @@ impl Calc {
         }
     }
 
+    /// Cambiar el signo de lo que se esta tecleando.
+    ///
+    /// ** Vive en Rust y NO va al motor, a proposito: poner un menos delante es
+    /// EDITAR el operando, no calcular con el. Lanzar un proceso de COBOL para
+    /// esto seria gastar una puerta --969 ciclos-- en algo que no es una
+    /// cuenta. El `PIC S9(9)V99` del motor ya acepta el signo que se le mande.
+    pub(crate) fn negate(&mut self) {
+        if self.n == 0 {
+            return;
+        }
+        if self.input[0] == b'-' {
+            for i in 1..self.n {
+                self.input[i - 1] = self.input[i];
+            }
+            self.n -= 1;
+        } else if self.n < self.input.len() {
+            let mut i = self.n;
+            while i > 0 {
+                self.input[i] = self.input[i - 1];
+                i -= 1;
+            }
+            self.input[0] = b'-';
+            self.n += 1;
+        }
+    }
+
     pub(crate) fn clear(&mut self) {
         self.n = 0;
         self.saved_n = 0;
         self.op = 0;
         self.waiting = false;
+        self.presentado = false;
+        self.respondio = false;
     }
 
     /// Cierra el operando de la izquierda y anota que operacion viene.
@@ -179,6 +225,9 @@ fn tecla_de(id: &str) -> Option<u8> {
         "k_add" => b'+',
         "k_eq" => b'=',
         "k_dot" => b'.',
+        "k_pct" => b'%',
+        "k_neg" => b'~',
+        "k_money" => b'$',
         "k_0" => b'0',
         "k_1" => b'1',
         "k_2" => b'2',
@@ -203,6 +252,9 @@ fn id_de(tecla: u8) -> Option<&'static str> {
         b'+' => "k_add",
         b'=' => "k_eq",
         b'.' => "k_dot",
+        b'%' => "k_pct",
+        b'~' => "k_neg",
+        b'$' => "k_money",
         b'0' => "k_0",
         b'1' => "k_1",
         b'2' => "k_2",

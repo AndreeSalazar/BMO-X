@@ -66,6 +66,9 @@ pub fn pintar(p: &bmo::Pantalla, ox: u32, oy: u32) {
     // #k_6
     p.rect(ox + 164, oy + 210, 72, 72, 0x002B3B52);
     p.texto(ox + 196, oy + 238, "6", 0x00E6EDF6);
+    // #k_pct
+    p.rect(ox + 242, oy + 210, 72, 72, 0x003A5878);
+    p.texto(ox + 274, oy + 238, "%", 0x00E6EDF6);
     // #k_1
     p.rect(ox + 8, oy + 288, 72, 72, 0x002B3B52);
     p.texto(ox + 40, oy + 316, "1", 0x00E6EDF6);
@@ -84,6 +87,12 @@ pub fn pintar(p: &bmo::Pantalla, ox: u32, oy: u32) {
     // #k_dot
     p.rect(ox + 86, oy + 366, 72, 72, 0x002B3B52);
     p.texto(ox + 118, oy + 394, ".", 0x00E6EDF6);
+    // #k_neg
+    p.rect(ox + 164, oy + 366, 72, 72, 0x002B3B52);
+    p.texto(ox + 188, oy + 394, "+/-", 0x00E6EDF6);
+    // #k_money
+    p.rect(ox + 242, oy + 366, 72, 72, 0x003A5878);
+    p.texto(ox + 274, oy + 394, "$", 0x00E6EDF6);
 }
 
 /// Repinta SOLO lo que cae dentro de `(cx, cy, cw, ch)`, en coordenadas
@@ -204,6 +213,14 @@ pub fn pintar_en(p: &bmo::Pantalla, ox: u32, oy: u32, cx: u32, cy: u32, cw: u32,
     if !Recorte::nuevo(ox as i32 + 196, oy as i32 + 238, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 196, oy + 238, "6", 0x00E6EDF6);
     }
+    // #k_pct
+    let c = Recorte::nuevo(ox as i32 + 242, oy as i32 + 210, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x003A5878);
+    }
+    if !Recorte::nuevo(ox as i32 + 274, oy as i32 + 238, 8, 16).interseccion(&limite).vacio() {
+        p.texto(ox + 274, oy + 238, "%", 0x00E6EDF6);
+    }
     // #k_1
     let c = Recorte::nuevo(ox as i32 + 8, oy as i32 + 288, 72, 72).interseccion(&limite);
     if !c.vacio() {
@@ -251,6 +268,22 @@ pub fn pintar_en(p: &bmo::Pantalla, ox: u32, oy: u32, cx: u32, cy: u32, cw: u32,
     }
     if !Recorte::nuevo(ox as i32 + 118, oy as i32 + 394, 8, 16).interseccion(&limite).vacio() {
         p.texto(ox + 118, oy + 394, ".", 0x00E6EDF6);
+    }
+    // #k_neg
+    let c = Recorte::nuevo(ox as i32 + 164, oy as i32 + 366, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x002B3B52);
+    }
+    if !Recorte::nuevo(ox as i32 + 188, oy as i32 + 394, 24, 16).interseccion(&limite).vacio() {
+        p.texto(ox + 188, oy + 394, "+/-", 0x00E6EDF6);
+    }
+    // #k_money
+    let c = Recorte::nuevo(ox as i32 + 242, oy as i32 + 366, 72, 72).interseccion(&limite);
+    if !c.vacio() {
+        p.rect(c.x0 as u32, c.y0 as u32, c.ancho() as u32, c.alto() as u32, 0x003A5878);
+    }
+    if !Recorte::nuevo(ox as i32 + 274, oy as i32 + 394, 8, 16).interseccion(&limite).vacio() {
+        p.texto(ox + 274, oy + 394, "$", 0x00E6EDF6);
     }
 }
 
@@ -312,6 +345,11 @@ pub fn realce(p: &bmo::Pantalla, ox: u32, oy: u32, id: &str) {
         p.texto(ox + 196, oy + 238, "6", 0x00E6EDF6);
         return;
     }
+    if id == "k_pct" {
+        p.rect(ox + 242, oy + 210, 72, 72, 0x005A80A8);
+        p.texto(ox + 274, oy + 238, "%", 0x00E6EDF6);
+        return;
+    }
     if id == "k_1" {
         p.rect(ox + 8, oy + 288, 72, 72, 0x004B637E);
         p.texto(ox + 40, oy + 316, "1", 0x00E6EDF6);
@@ -340,6 +378,16 @@ pub fn realce(p: &bmo::Pantalla, ox: u32, oy: u32, id: &str) {
     if id == "k_dot" {
         p.rect(ox + 86, oy + 366, 72, 72, 0x004B637E);
         p.texto(ox + 118, oy + 394, ".", 0x00E6EDF6);
+        return;
+    }
+    if id == "k_neg" {
+        p.rect(ox + 164, oy + 366, 72, 72, 0x004B637E);
+        p.texto(ox + 188, oy + 394, "+/-", 0x00E6EDF6);
+        return;
+    }
+    if id == "k_money" {
+        p.rect(ox + 242, oy + 366, 72, 72, 0x005A80A8);
+        p.texto(ox + 274, oy + 394, "$", 0x00E6EDF6);
         return;
     }
 }
@@ -383,6 +431,9 @@ pub fn golpe(ox: u32, oy: u32, px: u32, py: u32) -> Option<&'static str> {
     if px >= ox + 164 && px < ox + 236 && py >= oy + 210 && py < oy + 282 {
         return Some("k_6");
     }
+    if px >= ox + 242 && px < ox + 314 && py >= oy + 210 && py < oy + 282 {
+        return Some("k_pct");
+    }
     if px >= ox + 8 && px < ox + 80 && py >= oy + 288 && py < oy + 360 {
         return Some("k_1");
     }
@@ -400,6 +451,12 @@ pub fn golpe(ox: u32, oy: u32, px: u32, py: u32) -> Option<&'static str> {
     }
     if px >= ox + 86 && px < ox + 158 && py >= oy + 366 && py < oy + 438 {
         return Some("k_dot");
+    }
+    if px >= ox + 164 && px < ox + 236 && py >= oy + 366 && py < oy + 438 {
+        return Some("k_neg");
+    }
+    if px >= ox + 242 && px < ox + 314 && py >= oy + 366 && py < oy + 438 {
+        return Some("k_money");
     }
     None
 }

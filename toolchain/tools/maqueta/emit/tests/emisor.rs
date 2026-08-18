@@ -171,7 +171,20 @@ fn el_numero_que_juzga_la_idea_medido_y_no_prometido() {
     // los paneles-- que es donde no hay bucle que valga. El numero honesto de
     // esta prueba es el de su peor caso.
     assert!(escrito < MAQUETACION_A_MANO, "{escrito} contra {MAQUETACION_A_MANO}");
-    assert_eq!(escrito, 58, "si esto cambia, el numero del plan hay que rehacerlo");
+    // ** 58 -> 61 AL LLENAR LOS TRES HUECOS, y las tres lineas NO son las
+    // teclas nuevas.
+    //
+    // La cara gano `%`, `+/-` y `$`, y **la cuenta estructural no subio ni
+    // una**: las tres teclas ocuparon el sitio de tres `.hueco` que ya estaban
+    // escritos, uno por uno. Lo que subio son cuatro renglones de comentario
+    // menos la regla `.hueco`, que al quedarse sin cajas dejo de compilar.
+    //
+    // [!] Y el 118 de la izquierda es el de la cara de DIECISIETE teclas. La
+    // version a mano de estas veinte tambien habria crecido --tres entradas mas
+    // en `CALC_KEYS`, tres ramas en el `match` del raton--, asi que la
+    // comparacion favorece al lado escrito a mano. Se deja asi a proposito: un
+    // numero que se maquilla al crecer no juzga nada.
+    assert_eq!(escrito, 61, "si esto cambia, el numero del plan hay que rehacerlo");
 
     // Lo que de verdad se cobra no son las lineas: son las TRES FUNCIONES que
     // dejan de existir, y con ellas la aritmetica escrita dos veces.

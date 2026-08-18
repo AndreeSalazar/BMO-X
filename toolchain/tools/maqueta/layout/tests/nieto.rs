@@ -210,7 +210,7 @@ fn the_calculator_lands_exactly_where_calc_rs_puts_it() {
     let l = run(include_str!("../../pruebas/calc.maqueta"));
 
     // The size nobody declared, worked out from the tree:
-    //    ancho  4*72 + 3*6 (huecos) + 2*6 (padding) + 2*2 (borde) = 322
+    //    ancho  4*72 + 3*6 (gap) + 2*6 (padding) + 2*2 (borde) = 322
     //    alto   40 + 6 + 5*72 + 4*6 + 2*6 + 2*2                   = 446
     assert_eq!(l.canvas, (322, 446), "el tamano que hoy calcula una persona");
 
@@ -230,8 +230,14 @@ fn the_calculator_lands_exactly_where_calc_rs_puts_it() {
     assert_eq!(hits["k_0"], r(8, 366, 72, 72));
     assert_eq!(hits["k_dot"], r(86, 366, 72, 72));
 
-    // Every key answers, and the grid is the one `CALC_KEYS` describes.
-    assert_eq!(hits.len(), 17, "quince teclas mas las dos de la fila 0");
+    // The three that used to be `.hueco`: they took the exact place the empty
+    // boxes were holding, which is why the canvas above did not move a pixel.
+    assert_eq!(hits["k_pct"], r(242, 210, 72, 72));
+    assert_eq!(hits["k_neg"], r(164, 366, 72, 72));
+    assert_eq!(hits["k_money"], r(242, 366, 72, 72));
+
+    // Every key answers: five rows of four, and no gap left.
+    assert_eq!(hits.len(), 20, "cinco filas de cuatro, sin un solo hueco");
     for rect in hits.values() {
         assert!(rect.inside(&pad.rect), "ninguna tecla se sale del panel");
     }
