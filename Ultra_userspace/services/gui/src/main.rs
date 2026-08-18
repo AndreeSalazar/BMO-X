@@ -320,13 +320,66 @@ pub(crate) fn dump_output(output: &Output, path: &[u8], from: usize, to: usize) 
 pub(crate) fn uncover(
     p: &bmo::Pantalla,
     run_box: &RunBox,
+    launcher: &scene::launcher::Launcher,
     visible: bool,
     output: &mut Output,
     repaint_field: &mut bool,
 ) {
+    // ** LA REJILLA DE ICONOS, Y VA ANTES DEL `return`.
+    //
+    // El fallo que arregla: `scene_color` --que se llama a si misma "el modelo
+    // entero del escritorio"-- sabe de la barra, de su marca, de la caja de
+    // Ejecutar y del degradado. NO SABE QUE EXISTEN LOS ICONOS. Y todo lo que
+    // restaura fondo le pregunta a ella, asi que arrastrar la terminal por
+    // encima de la rejilla se comia los iconos POR FRANJAS --una por evento de
+    // raton-- y no volvian hasta reiniciar.
+    //
+    // La funcion que hacia falta llevaba escrita desde el principio
+    // (`launcher::area`, con el comentario "para que quien repinte el fondo
+    // sepa que tiene que volver a pintar esto encima") y **no la llamaba
+    // nadie**: era el `warning: function 'area' is never used` de cada build.
+    //
+    // Va aqui y no en los treinta sitios que borran fondo, por lo mismo que
+    // dice el parrafo de arriba: aqui solo se puede olvidar en un sitio.
+    //
+    // [!] Y ANTES del `if !visible`: la caja de Ejecutar puede estar escondida
+    // y aun asi haberse borrado fondo encima de la rejilla --cerrar Datos,
+    // Sonido o CABINA sobre ella--. Con el `return` delante, esos tres casos se
+    // quedaban sin arreglar y el fallo habria parecido a medias arreglado, que
+    // es peor que no tocarlo.
+    //
+    // Se repinta entera aunque lo borrado no la tocara. Cuesta unos 6.000
+    // tests de pixel; lo que acaba de pasar por delante fueron 325.000
+    // escrituras pixel a pixel, asi que no es donde esta el gasto. Recortarlo
+    // al area danada es el trabajo del `.maqueta` -- ver PLAN_LA_CARA_VIAJA.
+    //
+    // ** Y NO se repinta si la caja la tapa entera, y eso no es ahorro: es
+    // CORRECCION. La rejilla va por debajo de las ventanas, asi que pintarla
+    // bajo una que la cubre le dibujaria los iconos ENCIMA. Aqui se sabe de una
+    // --la de Ejecutar, que se repinta cuatro lineas mas abajo-- y para eso
+    // sirve `launcher::area`.
+    //
+    // [!] Queda un hueco conocido: si es la ventana de Datos o la de Sonido la
+    // que tapa la rejilla, esto le pinta los iconos encima hasta que esa
+    // ventana se repinte. Es el mismo agujero que ya tenia `paint_run_box`
+    // aqui, y no se tapa con otro `if`: se tapa cuando el mueble del escritorio
+    // sea una lista de pintado que se pueda reproducir RECORTADA.
+    let (gx, gy, gw, gh) = scene::launcher::area(p, launcher);
+    let tapada = visible
+        && gw > 0
+        && run_box.x <= gx
+        && run_box.y <= gy
+        && run_box.x + run_box.w() >= gx + gw
+        && run_box.y + run_box.h() >= gy + gh;
+    if !tapada {
+        scene::launcher::paint(p, launcher);
+    }
+
     if !visible {
         return;
     }
+    // La caja va DESPUES: esta por encima de la rejilla, y pintarla al reves
+    // dejaria los iconos encima de la ventana.
     paint_run_box(p, run_box);
     *repaint_field = true;
     // La rejilla se marca sucia y NO se pinta aqui: pintarla ahora la dibujaria

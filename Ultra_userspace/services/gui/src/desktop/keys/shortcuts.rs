@@ -119,7 +119,7 @@ if alt_alone && (0x80..=0x83).contains(&c) {
                 };
                 if cambio {
                     erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     // Encajar CAMBIA el tamano, asi que las cajas del
                     // grafo hay que recolocarlas: sin esto la ventana
                     // mide una cosa y su contenido sigue midiendo otra.
@@ -143,7 +143,7 @@ if alt_alone && (0x80..=0x83).contains(&c) {
                 };
                 if cambio {
                     erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     scene::cabina::paint(&p, &dsk.win.cabina);
                     dsk.win.top_before = Ventana::Cabina;
                     moved = true;
@@ -163,7 +163,7 @@ if alt_alone && (0x80..=0x83).contains(&c) {
                 };
                 if cambio {
                     erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     scene::sound::paint(
                         &p, &dsk.win.sound, dsk.snd.cap.is_some(),
                         dsk.snd.devices, dsk.snd.volume, dsk.snd.pressed,
@@ -221,7 +221,7 @@ if alt_alone && (0x80..=0x83).contains(&c) {
                     // veces.
                     dsk.run_relayout();
                     erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     dsk.win.top_before = Ventana::Run;
                     moved = true;
                 }

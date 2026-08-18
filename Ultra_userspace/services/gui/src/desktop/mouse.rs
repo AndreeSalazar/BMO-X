@@ -254,7 +254,7 @@ pub(crate) fn on_pointer(
                         dsk.win.data.width(), dsk.win.data.height(), dsk.win.visible,
                     );
                     dsk.win.top_before = Ventana::Run;
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 }
                 Some(Button::Minimize) => {
                     // Minimizar NO es cerrar: la ventana sigue abierta
@@ -268,7 +268,7 @@ pub(crate) fn on_pointer(
                     dsk.win.focus.close(Ventana::Data);
                     erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                     dsk.win.top_before = Ventana::Run;
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     dsk.win.taskbar_dirty = true;
                 }
                 Some(Button::Maximize) => {
@@ -278,7 +278,7 @@ pub(crate) fn on_pointer(
                     // nada, pero borrar el rectangulo viejo entero
                     // cubre los dos casos con una sola regla.
                     erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     dsk.win.data.relayout();
                     scene::data::paint(&p, &dsk.win.data);
                     dsk.win.top_before = Ventana::Data;
@@ -384,7 +384,7 @@ pub(crate) fn on_pointer(
             );
             if dsk.win.data.chrome.follow_pointer(&p, pos.x, pos.y) {
                 erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 dsk.win.data.relayout();
                 scene::data::paint(&p, &dsk.win.data);
                 dsk.win.top_before = Ventana::Data;
@@ -428,7 +428,7 @@ pub(crate) fn on_pointer(
             );
             if dsk.win.cabina.chrome.follow_pointer(&p, pos.x, pos.y) {
                 erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 scene::cabina::paint(&p, &dsk.win.cabina);
                 dsk.win.top_before = Ventana::Cabina;
             }
@@ -479,7 +479,7 @@ pub(crate) fn on_pointer(
                     let (vx, vy, va, vl) = dsk.run_box.chrome.toggle_maximized(&p);
                     dsk.run_relayout();
                     scene::erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     dsk.win.top_before = Ventana::Run;
                 }
                 None => {}
@@ -506,7 +506,7 @@ pub(crate) fn on_pointer(
                 // copias de si misma.
                 dsk.run_relayout();
                 scene::erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 dsk.win.top_before = Ventana::Run;
             }
         }
@@ -526,7 +526,7 @@ pub(crate) fn on_pointer(
             );
             if dsk.win.sound.chrome.follow_pointer(&p, pos.x, pos.y) {
                 erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 scene::sound::paint(
                     &p, &dsk.win.sound, dsk.snd.cap.is_some(),
                     dsk.snd.devices, dsk.snd.volume, dsk.snd.pressed,
@@ -565,7 +565,7 @@ pub(crate) fn on_pointer(
                     Some(Button::Close) => {
                         if let Some((vx, vy, va, vl)) = dsk.table.close(i) {
                             erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                             for s in dsk.table.iter_mut() {
                                 s.repaint_all();
                             }
@@ -577,7 +577,7 @@ pub(crate) fn on_pointer(
                                 (s.chrome.x, s.chrome.y, s.chrome.width, s.chrome.height);
                             s.chrome.minimized = true;
                             erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                         }
                     }
                     // ** PANTALLA COMPLETA = QUE NO SE DIBUJE EL BORDE.
@@ -592,7 +592,7 @@ pub(crate) fn on_pointer(
                         if let Some(s) = dsk.table.get_mut(i) {
                             let (vx, vy, va, vl) = s.chrome.toggle_maximized(&p);
                             erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                            uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                             s.repaint_all();
                         }
                     }
@@ -621,7 +621,7 @@ pub(crate) fn on_pointer(
             if s.chrome.follow_pointer(&p, pos.x, pos.y) {
                 s.repaint_all();
                 erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
             }
         }
     }
@@ -657,7 +657,7 @@ pub(crate) fn on_pointer(
                 }
                 dsk.win.focus.open(Ventana::Run);
                 dsk.win.focus.clic_en(Ventana::Run);
-                uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                 dsk.win.top_before = Ventana::Run;
                 dsk.win.taskbar_dirty = true;
             } else if i == 2 {
@@ -686,7 +686,7 @@ pub(crate) fn on_pointer(
                         dsk.win.visible,
                     );
                     dsk.win.top_before = Ventana::Run;
-                    uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     if dsk.win.data_open {
                         scene::data::paint(&p, &dsk.win.data);
                     }
@@ -721,7 +721,7 @@ pub(crate) fn on_pointer(
             // Sin guarda de `visible`: `uncover` ya no hace nada si
             // la caja esta escondida, y una guarda repetida es una que
             // puede quedarse desincronizada de la funcion.
-            _ => uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field),
+            _ => uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field),
         }
         dsk.win.top_before = top;
     }
