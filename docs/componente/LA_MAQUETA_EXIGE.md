@@ -89,7 +89,7 @@ declara con tamano; una ventana que debe ajustarse a su contenido, no.
 
 Los **nodos de texto sueltos** son validos dentro de `<div>` y `<span>`, como en
 HTML. Se miden con `len * GLIFO_ANCHO` y **no se parten en lineas**: si no caben,
-es error (comprobacion 3 de la seccion 8).
+es error (comprobacion B de la seccion 7).
 
 Atributos aceptados: `class`, `id`, `nombre` (solo en `<island>`), `ancho`/`alto`
 (solo en `<maqueta>`). **Cualquier otro atributo es un error.**
@@ -287,25 +287,73 @@ encuentre en la pasada, no el primero.
 
 ---
 
-## 7. EL VEREDICTO: LAS SEIS COMPROBACIONES
+## 7. EL VEREDICTO: LAS DIEZ COMPROBACIONES
 
 Vive en `bmo-maqueta-verdict` (bisnieto). Corre sobre los rects **ya calculados**,
 o sea que no repite aritmetica: la mira.
 
-1. **Toda etiqueta, atributo y propiedad estan en las listas cerradas.**
-2. **Ninguna caja se sale de su padre** -- salvo `position:absolute`, que lo
-   declara.
-3. ★ **Todo texto cabe en su caja**: `len * GLIFO_ANCHO <= ancho - padding`.
-   Un navegador esconde esto reajustando lineas; **BMO-X no puede**, asi que el
-   texto se saldria por encima del borde y nadie avisaria.
-4. **Ninguna caja mide 0 de ancho o de alto.** Una caja invisible casi siempre es
-   una propiedad que se olvido, no una intencion.
-5. **Todo `id` es unico.** Es la clave de la tabla de golpeo: dos iguales y un
-   clic contesta lo que no es.
-6. **Toda `<island>` tiene `nombre` unico y un rect no vacio.**
+### ⚠️ La comprobacion 1 que decia este documento NO SE PUEDE FALLAR
 
-La comprobacion 3 es la que mas veces va a saltar y la que mas vale: es la unica
-clase de fallo de este sistema que **se ve bonita en pantalla y esta mal**.
+La primera version listaba *"toda etiqueta, atributo y propiedad estan en las
+listas cerradas"*. **No hay forma de que falle.** No existe `Tag::H1` ni
+`Prop::BoxShadow` en `value.rs`, asi que un documento que no cumpla eso no llega
+al veredicto: **muere en el padre, y por no poder ser NOMBRADO**.
+
+Escribirla habria dado una funcion que siempre dice que si -- **un guardian de
+mentira, que es peor que ninguno porque da confianza**. Se cae, y se sustituye
+por las que el codigo destapo al escribirse.
+
+### Cabe todo (`fit.rs`)
+
+**A.** Ninguna caja se sale de su padre -- las absolutas se juzgan contra el
+lienzo, no contra el padre.
+
+**B.** ★★ **Todo texto cabe en su caja**, de ancho (`len * GLIFO_ANCHO`) y de
+alto. Es la que mas vale: la fuente no parte palabras ni reajusta lineas, asi que
+las letras que sobran se pintan por encima del borde. **Un navegador lo esconde y
+BMO-X no puede** -- es el unico fallo de este sistema que queda *bonito* en
+pantalla estando mal. El mensaje da los dos numeros.
+
+**C.** Ninguna caja mide cero. Casi siempre es una propiedad olvidada, y como no
+pinta ni ocupa sitio, no hay forma de notarlo mirando la pantalla.
+
+### Los nombres responden (`names.rs`)
+
+**D.** Todo `id` es unico -- es la clave de la tabla de golpeo, y con dos iguales
+un clic contesta lo que no es.
+
+**E.** Toda `<island>` tiene nombre unico y un rect no vacio.
+
+**I.** Ninguna regla se queda sin casar con una caja.
+
+**J.** Ninguna clase se queda sin regla que la defina. (I y J son casi siempre
+los dos lados de la misma errata.)
+
+### Hay algo escrito que no hace nada (`idle.rs`)
+
+**F.** Ningun texto se queda sin `color`. Es el precio de no tener herencia,
+cobrado aqui en vez de pintando de un color que nadie eligio.
+
+**G.** Ningun `gap` en una caja que no es `flex`. En un navegador tampoco haria
+nada; la diferencia es que alli no te lo dice nadie.
+
+**H.** Ninguna `position:absolute` sin `left` y `top`.
+
+### Todas son errores, y sigue sin haber avisos
+
+Tambien F, G, I y J, que no rompen ninguna imagen. Es la regla que ordena el
+proyecto: *nada que compile y no haga lo que dice*.
+
+★ **La unica excepcion tiene su razon y no es una excepcion de verdad**: en un
+fichero **sin cajas** -- una paleta como `tema/tema.maqueta` -- no se juzga nada.
+Su raiz mide 0x0 y todas sus reglas salen sin usar, y **las dos cosas son la
+consecuencia trivial de no tener cajas**, no defectos del fichero. Se decide una
+sola vez, en `verdict::es_fragmento`.
+
+⚠️ Lo primero que se intento fue una excepcion suelta dentro de una comprobacion,
+y se le escapo otra: el veredicto aprobaba las reglas del tema y acto seguido se
+quejaba de que su raiz media cero. **Una excepcion repartida tapa el sintoma que
+se vio, no el que viene.**
 
 ---
 

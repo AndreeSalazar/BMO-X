@@ -1,0 +1,20 @@
+[package]
+name = "bmo-maqueta-verdict"
+version = "0.1.0"
+edition = "2021"
+description = "MAQUETA, great-grandson generation: the only one with an opinion. Reads finished rects and repeats no arithmetic."
+license = "Techne"
+
+# It reads what the two below produced. It is a crate of its own because it is
+# the piece that changes most often: every new rule about what counts as wrong
+# lands here, and the arithmetic must never move when the policy does.
+[dependencies]
+bmo-maqueta-layout = { path = "../layout" }
+bmo-maqueta-cascade = { path = "../cascade" }
+bmo-maqueta-diag = { path = "../diag" }
+
+# Only the tests need this, to build documents to judge. Keeping it out of
+# `[dependencies]` is not tidiness: the production graph is the evidence for
+# L7a, and a dependency that only tests use would blur it.
+[dev-dependencies]
+bmo-maqueta-node = { path = "../node" }
