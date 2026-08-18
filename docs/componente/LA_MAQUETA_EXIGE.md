@@ -1,0 +1,335 @@
+# LA MAQUETA EXIGE
+
+> Capitulo de componente en la forma de `META-KERNEL_HARD.md`: no *"que hace
+> MAQUETA"* -- eso esta en `docs/plan/PLAN_MAQUETA.md` -- sino **que exige MAQUETA
+> de quien quiera escribirle, y que le devuelve a la cara**.
+>
+> Escrito el **2026-08-17**. Este documento **es el contrato**: lo que no esta
+> aqui, no compila. Anadir algo a MAQUETA empieza por anadirlo a este fichero.
+
+---
+
+## 0. ★★ LA REGLA QUE ORDENA EL DOCUMENTO ENTERO
+
+```
+   UN NAVEGADOR IGNORA LO QUE NO ENTIENDE.
+   UN COMPILADOR LO RECHAZA.
+```
+
+Es la unica linea que separa esto de un navegador de juguete, y es tambien la ley
+de la casa: *nada que compile y no haga lo que dice*.
+
+Una propiedad aceptada en silencio y no honrada **es la mentira que envejece sin
+avisar** -- la misma clase que `INFO_ES_ESCRIBIBLE => 0`, un valor puesto por
+prudencia que tres meses despues era falso y nadie se entero. Por eso:
+
+- **toda etiqueta fuera de la seccion 2 es un error**, no un `<div>` generico;
+- **toda propiedad fuera de la seccion 3 es un error**, no una linea ignorada;
+- **toda unidad fuera de la seccion 4 es un error**, no un cero.
+
+Y un error de MAQUETA **detiene la compilacion**. No hay avisos.
+
+---
+
+## 1. EL FICHERO
+
+Extension `.maqueta`. **Marcado y estilo en el mismo fichero** -- es lo que pidio
+el dueno (*"HTML + CSS ambos combinado"*) y es la forma de Astro: un componente es
+un fichero, no tres.
+
+```html
+<maqueta>
+  <style>
+    .pad   { display:flex; flex-direction:column; gap:6px; padding:6px;
+             background-color:#182434; border-width:2px; border-color:#0E1620 }
+    .visor { height:40px; background-color:#101820; color:#DDE6F0 }
+    .fila  { display:flex; flex-direction:row; gap:6px }
+    .tecla { width:72px; height:72px; background-color:#2B3B52; color:#DDE6F0 }
+    .op    { background-color:#3A5878 }
+    .igual { background-color:#4C9BE8 }
+  </style>
+
+  <div class="pad">
+    <div class="visor"></div>
+    <div class="fila">
+      <div class="tecla" id="k_c">C</div>
+      <div class="tecla op" id="k_div">/</div>
+      <div class="tecla op" id="k_mul">*</div>
+      <div class="tecla op" id="k_sub">-</div>
+    </div>
+    ...
+  </div>
+</maqueta>
+```
+
+### `<maqueta>` sin tamano: el compilador lo calcula
+
+Si la raiz no declara `ancho`/`alto`, **MAQUETA los deduce del arbol y los emite
+como constantes**. Para el ejemplo de arriba salen `322 x 446`:
+
+```
+   ancho   4*72 (teclas) + 3*6 (huecos) + 2*6 (padding) + 2*2 (borde) = 322
+   alto    40 + 6 + 5*72 + 4*6 (huecos) + 2*6 (padding) + 2*2 (borde) = 446
+```
+
+★ **Ese es el trabajo que hoy hace una persona y a veces mal.** Un panel se
+declara con tamano; una ventana que debe ajustarse a su contenido, no.
+
+---
+
+## 2. LAS ETIQUETAS -- LISTA CERRADA
+
+| etiqueta | que es | notas |
+|---|---|---|
+| `<maqueta>` | la raiz. Una por fichero | atributos `ancho` / `alto`, opcionales |
+| `<style>` | el bloque de reglas. Uno por fichero | solo hijo directo de `<maqueta>` |
+| `<div>` | caja generica | el 95% de todo |
+| `<span>` | caja en linea, contiene texto | no acepta hijos |
+| `<island>` | el hueco que rellena otro proceso | atributo `nombre`, obligatorio y unico |
+
+Los **nodos de texto sueltos** son validos dentro de `<div>` y `<span>`, como en
+HTML. Se miden con `len * GLIFO_ANCHO` y **no se parten en lineas**: si no caben,
+es error (comprobacion 3 de la seccion 8).
+
+Atributos aceptados: `class`, `id`, `nombre` (solo en `<island>`), `ancho`/`alto`
+(solo en `<maqueta>`). **Cualquier otro atributo es un error.**
+
+★ **Por que `<div>` y `<span>` y no `<caja>` y `<texto>`**: son las dos unicas
+etiquetas de HTML que *no prometen semantica* -- literalmente "caja generica sin
+significado", que es lo que hay aqui. Usar sus nombres es honesto y ademas
+conserva la previsualizacion en navegador. `<h1>`, `<p>`, `<button>` prometen cosas
+que MAQUETA no hace, y por eso **estan prohibidas**, no reinterpretadas.
+
+`id` **no sirve para estilar**: es la clave de la tabla de golpeo (seccion 8).
+
+---
+
+## 3. LAS PROPIEDADES -- LISTA CERRADA
+
+Diecisiete. Elegidas contando lo que `scene/` hace de verdad hoy, no lo que CSS
+ofrece.
+
+### La caja
+
+| propiedad | valores | nota |
+|---|---|---|
+| `width` | `Npx` | |
+| `height` | `Npx` | |
+| `padding` | `Npx` o cuatro `Npx` | arriba derecha abajo izquierda, como CSS |
+| `margin` | `Npx` o cuatro `Npx` | **no negativos** |
+
+### La pintura
+
+| propiedad | valores | nota |
+|---|---|---|
+| `background-color` | `#RRGGBB` | |
+| `color` | `#RRGGBB` | el color del texto de ESTE nodo, no de sus hijos |
+| `border-width` | `Npx` | un solo grosor, los cuatro lados |
+| `border-color` | `#RRGGBB` | |
+
+### La colocacion
+
+| propiedad | valores | nota |
+|---|---|---|
+| `display` | `block` \| `flex` | por defecto `block` |
+| `flex-direction` | `row` \| `column` | solo con `display:flex` |
+| `gap` | `Npx` | solo con `display:flex` |
+| `justify-content` | `start` \| `center` \| `end` \| `space-between` | eje principal |
+| `align-items` | `start` \| `center` \| `end` | eje cruzado |
+
+### La colocacion absoluta
+
+| propiedad | valores | nota |
+|---|---|---|
+| `position` | `absolute` | relativa al ancestro `<maqueta>`, no al padre |
+| `left` | `Npx` | obligatoria con `position:absolute` |
+| `top` | `Npx` | obligatoria con `position:absolute` |
+
+⚠️ `position:absolute` **es la unica puerta trasera del sistema** y esta aqui
+porque los paneles del escritorio se colocan asi. Es tambien la unica forma de
+que una caja se salga de su padre legitimamente, y por eso desactiva la
+comprobacion 2 para ese nodo. **Usarla es declarar que sabes lo que haces.**
+
+---
+
+## 4. LAS UNIDADES
+
+**Solo `px`, y solo enteros.** El `0` puede ir sin unidad.
+
+No hay `%`, `auto`, `em`, `rem`, `vh`, `vw`, `fr`, `calc()`, decimales ni
+negativos.
+
+★ **Y esto no es pobreza, es L7**: `%` y `auto` exigen que una pieza conozca el
+tamano de su contenedor, y en MAQUETA *un padre no sabe que tiene padre*. La
+jerarquia elige el subconjunto; ver la seccion 4 de `PLAN_MAQUETA.md`.
+
+**Los colores son `#RRGGBB`.** No hay nombres (`red`), ni `rgb()`, ni `rgba()`,
+ni `transparent`. El pixel de BMO-X es `u32` en `0x00RRGGBB` y **no hay mezcla
+alfa**: el rasterizador esta en el escalon 2 y la mezcla es el 4. El dia que
+llegue el escalon 4, `rgba()` entra aqui -- y no antes.
+
+---
+
+## 5. LOS SELECTORES
+
+Dos formas, y nada mas:
+
+```
+   etiqueta      div { ... }
+   clase         .tecla { ... }
+```
+
+No hay combinadores (` `, `>`, `+`, `~`), ni `#id`, ni pseudo-clases, ni
+pseudo-elementos, ni `@media`, ni `*`.
+
+### ★ No hay especificidad: GANA EL ULTIMO
+
+La cascada de CSS es uno de los footguns mas famosos del oficio. MAQUETA lo borra:
+**las reglas se aplican en orden de fichero y la ultima que toca una propiedad
+gana.** Se lee de arriba abajo y se acabo.
+
+### ⚠️ Y la trampa que eso abre, con su guardian
+
+Un navegador **si** tiene especificidad: `.tecla` le gana a `div` aunque `div`
+venga despues. Asi que un fichero con las reglas mal ordenadas se veria de una
+forma en el navegador y de otra en BMO-X -- **la previsualizacion mentiria**, que
+es justo lo que no se puede permitir.
+
+**El guardian**: MAQUETA exige que las reglas esten **ordenadas de menos a mas
+especificas** -- primero las de etiqueta, despues las de clase. Con ese orden,
+"gana el ultimo" y "gana la mas especifica" dan **siempre** el mismo resultado, y
+las dos lecturas coinciden por construccion. Una regla de etiqueta despues de una
+de clase es un error.
+
+---
+
+## 6. LA FORMA EXACTA DE UN ERROR
+
+Un rechazo que no ensena la salida es un muro. **Cada error lleva dos notas: por
+que, y que escribir en su lugar.**
+
+```
+maqueta: calc.maqueta:14:26: propiedad no soportada -- `border-radius`
+   14 |   .tecla { width:72px; border-radius:4px }
+      |                        ^^^^^^^^^^^^^^^^^
+      = por que: MAQUETA no dibuja esquinas redondeadas. El rasterizador esta
+        en el escalon 2 (triangulo) y esto pide el 4 (mezcla alfa).
+      = en su lugar: no hay forma de escribir esto hoy. Quitalo.
+```
+
+```
+maqueta: panel.maqueta:8:12: unidad no soportada -- `50%`
+    8 |   .mitad { width:50% }
+      |            ^^^^^^^^^^
+      = por que: los porcentajes exigen conocer el contenedor, y en MAQUETA una
+        pieza no sabe que tiene padre (L7).
+      = en su lugar: un pixel exacto, o `display:flex` en el padre repartiendo
+        con `gap`.
+```
+
+**El compilador no emite nada si hay un solo error**, y da todos los que
+encuentre en la pasada, no el primero.
+
+---
+
+## 7. EL VEREDICTO: LAS SEIS COMPROBACIONES
+
+Vive en `bmo-maqueta-verdict` (bisnieto). Corre sobre los rects **ya calculados**,
+o sea que no repite aritmetica: la mira.
+
+1. **Toda etiqueta, atributo y propiedad estan en las listas cerradas.**
+2. **Ninguna caja se sale de su padre** -- salvo `position:absolute`, que lo
+   declara.
+3. ★ **Todo texto cabe en su caja**: `len * GLIFO_ANCHO <= ancho - padding`.
+   Un navegador esconde esto reajustando lineas; **BMO-X no puede**, asi que el
+   texto se saldria por encima del borde y nadie avisaria.
+4. **Ninguna caja mide 0 de ancho o de alto.** Una caja invisible casi siempre es
+   una propiedad que se olvido, no una intencion.
+5. **Todo `id` es unico.** Es la clave de la tabla de golpeo: dos iguales y un
+   clic contesta lo que no es.
+6. **Toda `<island>` tiene `nombre` unico y un rect no vacio.**
+
+La comprobacion 3 es la que mas veces va a saltar y la que mas vale: es la unica
+clase de fallo de este sistema que **se ve bonita en pantalla y esta mal**.
+
+---
+
+## 8. EL ORACULO: LOS FICHEROS DORADOS
+
+La previsualizacion en navegador **orienta**; la verdad es esto. Mismo papel que
+el rasterizador de `dibujo/` hace para la GPU: una referencia contra la que se
+puede juzgar.
+
+```
+   toolchain/tools/maqueta/pruebas/
+      calc.maqueta      la entrada
+      calc.esperado     la salida, en texto que lee una persona
+```
+
+`.esperado` es una linea por caja -- `id  x  y  ancho  alto` -- en orden de
+pintado, para que un cambio se vea como un diff y no como un fallo de test:
+
+```
+   pad        0    0  322  446
+   visor      8    8  306   40
+   fila_0     8   54  306   72
+   k_c        8   54   72   72
+   k_div     86   54   72   72
+   k_mul    164   54   72   72
+   k_sub    242   54   72   72
+   fila_1     8  132  306   72
+```
+
+**Determinismo obligatorio**: misma entrada, mismos bytes de salida. Sin mapas
+sin ordenar, sin direcciones, sin fechas.
+
+---
+
+## 9. LA ISLA
+
+```html
+<island nombre="vitals" class="panel_derecho"></island>
+```
+
+MAQUETA le calcula el rect y **no pinta nada dentro**. Emite la entrada en una
+tabla de islas; quien rellene ese rect es cosa de Rust.
+
+★ **Y no hay que inventar el mecanismo**: una isla es un rect con nombre que
+otro proceso rellena -- que es **exactamente la superficie de `PLAN_DIRECTOR.md`**
+(`BSUP`, `MEM_OP_OFRECER` / `TASK_OP_TOMAR`, la direccion por ranura). La mitad
+viva del escritorio ya tiene su cableado; MAQUETA solo le dice donde va.
+
+⚠️ Una isla **no se maqueta segun su contenido**: su tamano lo pone la maqueta,
+nunca el proceso que la rellena. Al reves seria dejar que una app cuelgue el
+calculo del escritorio, que es lo que ya se decidio no hacer en `PLAN_DIRECTOR.md`
+(decision 2: *la secuencia, no un cerrojo*).
+
+---
+
+## 10. LO QUE ESTA RECHAZADO, NOMBRADO
+
+Que este por escrito importa: la deriva hacia navegador se hace de una propiedad
+en una propiedad, y ninguna parece grave sola.
+
+| rechazado | por que | vuelve cuando |
+|---|---|---|
+| herencia de propiedades | el padre no conoce a su padre (L7) | nunca en v1 |
+| combinadores `.a .b`, `>` | igual | nunca en v1 |
+| `%`, `auto`, `calc()` | exigen el contenedor | nunca en v1 |
+| `rgba()`, `opacity` | no hay mezcla alfa | rasterizador escalon 4 |
+| `border-radius` | igual | rasterizador escalon 4 |
+| `:hover`, `:active` | es **conducta**, no maquetacion | v2, y sin tocar el layout |
+| `grid` | `flex` cubre lo medido en `scene/` | cuando algo real lo pida |
+| `float`, `z-index`, `overflow` | no hay caso en el arbol | cuando lo haya |
+| `@media` | una sola pantalla | cuando haya dos |
+| salto de linea automatico | esconderia la comprobacion 3 | nunca |
+| `<h1>`, `<p>`, `<button>`... | prometen semantica que no existe | nunca |
+| script de cualquier clase | esto es un compilador | nunca |
+
+★ `:hover` merece su linea: `calc.rs` **si** aclara la tecla bajo el puntero
+(`lighten()`), asi que el caso es real. Pero el realce no cambia **ni un rect** --
+solo un color. Cuando entre, entra como una segunda columna de colores en la
+tabla emitida, y **el nieto no se entera**. Meterlo en la maquetacion seria el
+primer paso hacia el DOM.
+
+Ver `docs/plan/PLAN_MAQUETA.md` (como se construye) y `META-KERNEL_HARD.md` L6/L7.
