@@ -596,3 +596,35 @@ del recorte. `save` tambien lo guarda.
 
 [!] Lo que **no** hace falta traer: nada del rendimiento. Cuanto tarda el
 recorte no importa hoy -- se pide una vez, a mano, y por una persona.
+
+## 8. LO QUE CONTESTO EL METAL (2026-08-17, primera vuelta)
+
+Las siete del aparato salieron limpias y **la propuesta salio exacta**: cola
+libre 414.5 GiB desde el bloque 24, LBA 68339904, **26 ordenes con 8 bloques
+cada una** -- o sea que la palabra 105 se leyo bien y el numero de ordenes es el
+del disco, no una suposicion.
+
+Y el recorte **fallo en la primera orden, con 0 B devueltos**.
+
+★★ Lo grave no fue el fallo: fue que **no habia forma de saber cual de los cinco
+era**. El driver los distingue --`Busy`, `Timeout`, `Device(tfd)`,
+`BadRequest`-- y la linea de CABINA decia *"el disco respondio con error"* con
+el LBA al lado, que era lo unico que no hacia falta. El `PxTFD`, que es donde el
+aparato **dice por que**, no salia del `enum`.
+
+Eso esta arreglado. La segunda vuelta contesta una de estas:
+
+```text
+   NO CONTESTO A TIEMPO        -> el sospechoso es el presupuesto de espera del
+                                  driver, no el disco. DSM ya lleva el suyo, 20x
+   el disco CONTESTO CON ERROR -> sale el PxTFD crudo y, si es ABRT, dicho:
+                                  "el disco NO CONOCE esa orden"
+   el puerto no estaba listo   -> no llego ni a salir
+```
+
+**Traer esa linea es toda la tarea de la segunda vuelta.** Con el numero delante,
+lo siguiente se decide en una tarde; sin el, se adivina.
+
+[!] Y una que ya no hace falta mirar: `escribir NO` era un cero fijo del kernel
+--`INFO_ES_ESCRIBIBLE => 0`, escrito cuando todavia no habia camino de
+escritura-- y no una negativa. La generacion 3 demuestra lo contrario.
