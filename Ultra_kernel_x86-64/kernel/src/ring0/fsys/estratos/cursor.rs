@@ -38,86 +38,83 @@ use super::*;
 // volumen --generacion, ocupacion, nivel-- y no podia ensenar **que hay dentro**,
 // porque no tenia de donde sacarlo. Esto es esa puerta.
 pub mod cursor {
+    use super::nivel::{Detalle, Nivel};
     use super::*;
+
+    pub use super::nivel::LEVEL_NAME;
 
     /// Cuanto se puede bajar. Dieciseis niveles de directorio es mas de lo que
     /// tiene ningun volumen razonable, y un tope explicito es mejor que una
     /// pila que crece hasta que algo se rompe.
     pub const HONDO_MAX: usize = 16;
-    /// Lo que se guarda del nombre de cada nivel de la ruta. Un nombre mas
-    /// largo se recorta **y se dice** -- ver `level_name`.
-    pub const LEVEL_NAME: usize = 32;
 
-    /// El buffer del cursor, SUYO. Ver [`super::listar_en`].
-    static mut BUF: [u8; MAX_ENTRIES * ENTRADA_LEN] = [0u8; MAX_ENTRIES * ENTRADA_LEN];
-    /// La ruta desde la raiz: `PILA[0]` es la raiz y `PILA[HONDO]` el actual.
-    static mut PILA: [Option<BlockPtr>; HONDO_MAX] = [None; HONDO_MAX];
-    /// El NAME de cada nivel, para poder ensenar la ruta de verdad.
+    /// **La ruta desde la raiz, con el listado de CADA nivel.**
     ///
-    /// * Se guarda al bajar y no se reconstruye despues, y ese es el motivo de
-    /// que exista: un `BlockPtr` sabe DONDE esta un nodo y **no sabe como se
-    /// llama** -- el nombre vive en la entrada del padre, no en el hijo. Para
-    /// sacarlo a posteriori habria que releer el directorio de arriba y buscar
-    /// que entrada apunta aqui. Anotarlo al pasar cuesta 64 bytes por nivel.
+    /// `PILA[0]` es la raiz y `PILA[HONDO]` donde estas. Lo que cambio es que
+    /// los de en medio **ya no estan vacios**: cada uno se queda con su nodo y
+    /// con lo que se leyo al pasar por el. El porque, y lo que cuesta, en la
+    /// cabecera de `nivel.rs`.
     ///
-    /// Sin esto, la ventana solo puede decir `profundidad 2`, y dos carpetas
-    /// distintas con los mismos nombres dentro se ven identicas.
-    static mut NAMES: [[u8; LEVEL_NAME]; HONDO_MAX] = [[0; LEVEL_NAME]; HONDO_MAX];
-    static mut NAMES_LEN: [usize; HONDO_MAX] = [0; HONDO_MAX];
+    /// [!] Ya no hay un `ACTUAL` aparte. Lo hubo, y era el mismo nodo que
+    /// `PILA[HONDO]` guarda ahora: dos copias del mismo dato, y una de las dos
+    /// podia quedarse atras.
+    static mut PILA: [Nivel; HONDO_MAX] = [const { Nivel::VACIO }; HONDO_MAX];
     static mut HONDO: usize = 0;
-    static mut ACTUAL: Option<Nodo> = None;
-    static mut CUANTAS: usize = 0;
-    static mut TRUNCADO: bool = false;
 
-    /// Relista el nodo actual. Todo lo que mueve el cursor acaba aqui.
-    pub(crate) fn relistar() -> bool {
+    fn pila() -> &'static mut [Nivel; HONDO_MAX] {
+        unsafe { &mut *core::ptr::addr_of_mut!(PILA) }
+    }
+
+    /// El nivel `k`, o `None` si esta por debajo de donde estamos.
+    ///
+    /// * Preguntar por un nivel mas hondo que `HONDO` no es un error del
+    /// llamante: el panel de arbol pinta de arriba abajo y se entera de donde
+    /// acaba la rama justo asi. Se contesta "no hay" y se sigue.
+    fn nivel_k(k: usize) -> Option<&'static Nivel> {
         unsafe {
-            let Some(n) = ACTUAL else {
-                CUANTAS = 0;
-                TRUNCADO = false;
-                return false;
-            };
-            let buf = &mut *core::ptr::addr_of_mut!(BUF);
-            match listar_en(&n, buf) {
-                Some((c, t)) => {
-                    CUANTAS = c.min(MAX_ENTRIES);
-                    TRUNCADO = t;
-                    true
-                }
-                // Un archivo no tiene `:entries`, y eso no es un fallo: es que
-                // no tiene hijos. Se contesta cero y se sigue.
-                None => {
-                    CUANTAS = 0;
-                    TRUNCADO = false;
-                    true
-                }
+            if k > HONDO || k >= HONDO_MAX {
+                return None;
             }
+            Some(&(*core::ptr::addr_of!(PILA))[k])
         }
+    }
+
+    /// El nivel donde esta el cursor.
+    fn aqui() -> &'static Nivel {
+        unsafe { &(*core::ptr::addr_of!(PILA))[HONDO] }
     }
 
     /// Pone el cursor en la raiz del volumen. `false` si no hay volumen.
     pub fn a_la_raiz() -> bool {
-        let Some((ptr, n)) = super::raiz() else {
-            unsafe { ACTUAL = None; HONDO = 0; CUANTAS = 0; }
-            return false;
-        };
-        unsafe {
-            PILA[0] = Some(ptr);
-            HONDO = 0;
-            ACTUAL = Some(n);
+        unsafe { HONDO = 0 };
+        let raiz = super::raiz();
+        let nv = &mut pila()[0];
+        nv.nombre_len = 0;
+        nv.elegido = None;
+        match raiz {
+            Some((ptr, n)) => {
+                nv.ptr = Some(ptr);
+                nv.nodo = Some(n);
+                nv.listar()
+            }
+            None => {
+                nv.ptr = None;
+                nv.nodo = None;
+                nv.listar();
+                false
+            }
         }
-        relistar()
     }
 
     /// Cuantos hijos tiene el nodo actual.
     pub fn hijos() -> u64 {
-        unsafe { CUANTAS as u64 }
+        aqui().cuantas as u64
     }
 
     /// 1 si el listado no cabia entero. **Se dice en vez de callarse**: un
     /// directorio truncado en silencio se ve igual que uno corto.
     pub fn truncado() -> u64 {
-        unsafe { TRUNCADO as u64 }
+        aqui().truncado as u64
     }
 
     /// Cuantos niveles se ha bajado desde la raiz.
@@ -127,44 +124,48 @@ pub mod cursor {
 
     /// El tipo del nodo actual: 0 archivo, 1 directorio, 2 no hay nada.
     pub fn tipo() -> u64 {
-        unsafe {
-            match ACTUAL {
-                Some(n) => if n.tipo == Tipo::Directorio { 1 } else { 0 },
-                None => 2,
+        match aqui().nodo {
+            Some(n) => {
+                if n.tipo == Tipo::Directorio {
+                    1
+                } else {
+                    0
+                }
             }
+            None => 2,
         }
     }
 
     pub(crate) fn entry_i(i: usize) -> Option<bmo_estratos::objects::Entrada> {
-        unsafe {
-            if i >= CUANTAS { return None; }
-            let buf = &*core::ptr::addr_of!(BUF);
-            bmo_estratos::objects::Entrada::decode(&buf[i * ENTRADA_LEN..(i + 1) * ENTRADA_LEN]).ok()
-        }
+        aqui().entrada(i)
     }
 
     /// El tipo del hijo `i`: 0 archivo, 1 directorio, 2 no se pudo leer.
     ///
-    /// Cuesta un salto al disco porque el tipo vive en el NODO y la entrada
-    /// solo guarda el nombre y a donde apunta. Es lo que hay: meter el tipo en
-    /// la entrada seria duplicar un dato que el nodo ya tiene, y dos copias de
-    /// un dato es una que puede mentir.
+    /// * **Ya no salta al disco.** El tipo vive en el nodo del hijo y la entrada
+    /// del directorio solo guarda el nombre y a donde apunta, asi que esto era
+    /// una lectura de bloque -- por fila y por repintado. Ahora se leyo al
+    /// listar el nivel. Ver la cabecera de `nivel.rs`.
     pub fn hijo_tipo(i: usize) -> u64 {
-        let Some(e) = entry_i(i) else { return 2 };
-        match super::nodo(&e.nodo) {
-            Some(n) => if n.tipo == Tipo::Directorio { 1 } else { 0 },
-            None => 2,
-        }
+        aqui().detalle(i).tipo as u64
     }
 
     /// Ocho bytes del nombre del hijo `i`, empaquetados en LE. `trozo` los
     /// numera. Es el mismo trato que `klog_texto`: la superficie no acepta
     /// punteros, asi que un nombre viaja de ocho en ocho.
     pub fn child_name(i: usize, trozo: usize) -> u64 {
-        let Some(e) = entry_i(i) else { return 0 };
+        nombre_de(aqui(), i, trozo)
+    }
+
+    /// El motor de los dos nombres de hijo: el del nivel actual y el de
+    /// cualquier nivel. Un solo sitio donde se parte un nombre en trozos.
+    fn nombre_de(nv: &Nivel, i: usize, trozo: usize) -> u64 {
+        let Some(e) = nv.entrada(i) else { return 0 };
         let name = e.nombre_str().as_bytes();
         let ini = trozo * 8;
-        if ini >= name.len() { return 0; }
+        if ini >= name.len() {
+            return 0;
+        }
         let fin = (ini + 8).min(name.len());
         let mut w = [0u8; 8];
         w[..fin - ini].copy_from_slice(&name[ini..fin]);
@@ -175,41 +176,106 @@ pub mod cursor {
     /// se puede bajar mas.
     pub fn entrar(i: usize) -> bool {
         let Some(e) = entry_i(i) else { return false };
-        unsafe {
-            if HONDO + 1 >= HONDO_MAX { return false; }
+        let h = unsafe { HONDO };
+        if h + 1 >= HONDO_MAX {
+            return false;
+        }
+        // Que sea directorio sale del detalle que ya se leyo: bajar no vuelve a
+        // preguntarle al disco algo que se supo al listar. El NODO si hay que
+        // traerlo -- es el que se va a listar ahora.
+        if aqui().detalle(i).tipo != 1 {
+            return false;
         }
         let Some(n) = super::nodo(&e.nodo) else { return false };
-        if n.tipo != Tipo::Directorio { return false; }
+        // Por donde se bajo, anotado en el nivel de ARRIBA: es el dato con el
+        // que el panel de arbol sabe que rama esta abierta.
+        pila()[h].elegido = Some(i);
+        unsafe { HONDO = h + 1 };
+        let nv = &mut pila()[h + 1];
+        nv.ptr = Some(e.nodo);
+        nv.nodo = Some(n);
+        nv.elegido = None;
+        // El nombre se anota AL PASAR. Despues ya no se sabe: la entrada que lo
+        // lleva es del padre y aqui ya no la tenemos delante.
+        nv.nombrar(e.nombre_str().as_bytes());
+        nv.listar()
+    }
+
+    /// Vuelve al padre. `false` si ya se esta en la raiz.
+    ///
+    /// * **Ya no toca el disco.** Antes subir traia otra vez el nodo del padre
+    /// y volvia a listarlo entero; ahora el nivel de arriba sigue leido desde
+    /// que se paso por el, asi que subir es restar uno. Es la propiedad que
+    /// permite recorrer un arbol con el raton sin que el disco se entere.
+    pub fn subir() -> bool {
         unsafe {
-            HONDO += 1;
-            PILA[HONDO] = Some(e.nodo);
-            // El nombre se anota AL PASAR. Despues ya no se sabe: la entrada
-            // que lo lleva es del padre y aqui ya no la tenemos delante.
-            let b = e.nombre_str().as_bytes();
-            let k = b.len().min(LEVEL_NAME);
-            NAMES[HONDO][..k].copy_from_slice(&b[..k]);
-            NAMES_LEN[HONDO] = k;
-            ACTUAL = Some(n);
+            if HONDO == 0 {
+                return false;
+            }
+            HONDO -= 1;
+            pila()[HONDO].elegido = None;
         }
-        relistar()
+        true
     }
 
     /// Ocho bytes del nombre del nivel `nivel` de la ruta. `nivel = 0` es la
     /// raiz, que no tiene nombre y contesta vacio -- la ventana pinta `/`.
     pub fn level_name(nivel: usize, trozo: usize) -> u64 {
-        unsafe {
-            if nivel == 0 || nivel > HONDO || nivel >= HONDO_MAX {
-                return 0;
-            }
-            let n = NAMES_LEN[nivel];
-            let ini = trozo * 8;
-            if ini >= n {
-                return 0;
-            }
-            let fin = (ini + 8).min(n);
-            let mut w = [0u8; 8];
-            w[..fin - ini].copy_from_slice(&NAMES[nivel][ini..fin]);
-            u64::from_le_bytes(w)
+        if nivel == 0 {
+            return 0;
+        }
+        let Some(nv) = nivel_k(nivel) else { return 0 };
+        let n = nv.nombre_len;
+        let ini = trozo * 8;
+        if ini >= n {
+            return 0;
+        }
+        let fin = (ini + 8).min(n);
+        let mut w = [0u8; 8];
+        w[..fin - ini].copy_from_slice(&nv.nombre[ini..fin]);
+        u64::from_le_bytes(w)
+    }
+
+    // -- ** EL ARBOL: preguntar por un nivel que NO es donde estas ----------
+    //
+    // Las cuatro de abajo son lo unico que el panel de arbol necesita y que
+    // antes no se podia pedir. Ninguna lee nada nuevo: contestan desde el
+    // listado que cada nivel guarda desde que se paso por el.
+    //
+    // * Y no hace falta ni una operacion mas. Con "cuantos hay", "como se
+    // llama", "que es" y "por cual se bajo" se pinta el arbol entero. La
+    // tentacion era exponer cada nivel como un cursor secundario -- diez
+    // operaciones y una tabla de handles para lo que hacen cuatro preguntas.
+
+    /// Cuantos hijos tiene el nivel `nivel`. `0` si ese nivel no existe.
+    pub fn nivel_hijos(nivel: usize) -> u64 {
+        nivel_k(nivel).map(|nv| nv.cuantas as u64).unwrap_or(0)
+    }
+
+    /// El tipo del hijo `i` del nivel `nivel`. `2` si no hay tal cosa.
+    pub fn nivel_hijo_tipo(nivel: usize, i: usize) -> u64 {
+        nivel_k(nivel)
+            .map(|nv| nv.detalle(i).tipo as u64)
+            .unwrap_or(Detalle::ILEGIBLE.tipo as u64)
+    }
+
+    /// Por que hijo se bajo desde el nivel `nivel`.
+    ///
+    /// `u64::MAX` es "por ninguno", y marca el nivel donde acaba la rama
+    /// abierta. Se contesta con un valor imposible y no con cero porque **cero
+    /// es un hijo perfectamente valido** -- el primero.
+    pub fn nivel_elegido(nivel: usize) -> u64 {
+        match nivel_k(nivel).and_then(|nv| nv.elegido) {
+            Some(i) => i as u64,
+            None => u64::MAX,
+        }
+    }
+
+    /// Ocho bytes del nombre del hijo `i` del nivel `nivel`.
+    pub fn nivel_child_name(nivel: usize, i: usize, trozo: usize) -> u64 {
+        match nivel_k(nivel) {
+            Some(nv) => nombre_de(nv, i, trozo),
+            None => 0,
         }
     }
 
@@ -218,19 +284,15 @@ pub mod cursor {
     // * Un grafo que solo ensena nombres contesta *que hay*; no contesta *que
     // es esto*. Lo de abajo es lo que el nodo ya lleva dentro y la ventana no
     // podia pedir: cuanto mide, cuantos atributos tiene y si va firmado.
+    //
+    // Los tres se leyeron al listar el nivel y aqui solo se sacan. Antes cada
+    // uno era una lectura de bloque, por fila y en cada repintado.
 
     /// Bytes del contenido del hijo `i`. Un directorio contesta el tamano de su
     /// lista de entries, que tambien es un dato: dice cuanto ocupa el propio
     /// directorio, no lo que hay dentro.
     pub fn hijo_bytes(i: usize) -> u64 {
-        let Some(e) = entry_i(i) else { return 0 };
-        let Some(n) = super::nodo(&e.nodo) else { return 0 };
-        let cual = if n.tipo == Tipo::Directorio {
-            bmo_estratos::objects::ATTR_ENTRADAS
-        } else {
-            bmo_estratos::objects::ATTR_DATOS
-        };
-        n.attr(cual).map(|a| a.size).unwrap_or(0)
+        aqui().detalle(i).bytes
     }
 
     /// Cuantos atributos lleva el hijo `i`.
@@ -239,9 +301,7 @@ pub mod cursor {
     /// carpetas: un nodo es **un conjunto de atributos**, y la diferencia entre
     /// un archivo y un directorio es cual lleva, no dos estructuras distintas.
     pub fn hijo_atributos(i: usize) -> u64 {
-        let Some(e) = entry_i(i) else { return 0 };
-        let Some(n) = super::nodo(&e.nodo) else { return 0 };
-        n.attrs().count() as u64
+        aqui().detalle(i).atributos as u64
     }
 
     /// Lleva `:firma` el hijo `i`? `1` si, `0` no.
@@ -250,9 +310,7 @@ pub mod cursor {
     /// contenido entero y hacerle el BLAKE3, y eso no puede pasar en cada
     /// repintado de una ventana. Para eso esta [`verify`], que se pide.
     pub fn hijo_firmado(i: usize) -> u64 {
-        let Some(e) = entry_i(i) else { return 0 };
-        let Some(n) = super::nodo(&e.nodo) else { return 0 };
-        n.attr(bmo_estratos::objects::ATTR_FIRMA).is_some() as u64
+        aqui().detalle(i).firmado as u64
     }
 
     /// El buffer donde se lee un archivo para verificarlo. Un tope honesto:
@@ -304,18 +362,6 @@ pub mod cursor {
             super::Firma::NoCuadra => 2,
             super::Firma::Ausente => 0,
         }
-    }
-
-    /// Vuelve al padre. `false` si ya se esta en la raiz.
-    pub fn subir() -> bool {
-        unsafe {
-            if HONDO == 0 { return false; }
-            HONDO -= 1;
-            let Some(ptr) = PILA[HONDO] else { return false };
-            let Some(n) = super::nodo(&ptr) else { return false };
-            ACTUAL = Some(n);
-        }
-        relistar()
     }
 }
 

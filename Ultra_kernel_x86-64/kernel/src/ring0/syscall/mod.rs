@@ -740,6 +740,17 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 // archivo entero y le hace el BLAKE3. Por eso se pide a mano y
                 // no se calcula al pintar.
                 ES_NODO_VERIFICAR => cursor::verify(arg1 as usize),
+                // -- ** El ARBOL: los niveles por los que YA se ha pasado --
+                //
+                // No leen nada nuevo del disco. Cada nivel se quedo con su
+                // listado al pasar por el (`fsys/estratos/nivel.rs`), asi que
+                // estas tres contestan de memoria -- que es la condicion para
+                // que un panel de arbol se pueda repintar al mover el raton.
+                ES_NODO_NIVEL_HIJOS => cursor::nivel_hijos(arg1 as usize),
+                ES_NODO_NIVEL_HIJO_TIPO => {
+                    cursor::nivel_hijo_tipo((arg1 >> 32) as usize, (arg1 & 0xFFFF_FFFF) as usize)
+                }
+                ES_NODO_NIVEL_ELEGIDO => cursor::nivel_elegido(arg1 as usize),
                 // Una pregunta que no existe se contesta con cero y no con un
                 // fallo: quien pregunte de mas se entera igual, y un `unsupported`
                 // aqui obligaria al panel a distinguir dos formas de "nada".
@@ -755,6 +766,12 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             let i = (arg0 & 0xFFFF_FFFF) as usize;
             BmoStatus::ok_value(match arg0 >> 32 {
                 ES_TXT_RUTA => cursor::level_name(i, arg1 as usize),
+                // Los bits bajos llevan DOS numeros aqui: `(nivel << 16) | i`.
+                // Caben de sobra --como mucho 16 niveles y 64 hijos-- y evitan
+                // una tercera puerta para el mismo mecanismo.
+                ES_TXT_NIVEL_HIJO => {
+                    cursor::nivel_child_name((i >> 16) & 0xFFFF, i & 0xFFFF, arg1 as usize)
+                }
                 _ => cursor::child_name(i, arg1 as usize),
             })
         }

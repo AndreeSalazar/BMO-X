@@ -81,6 +81,35 @@ pub const ES_NODO_HIJO_FIRMADO: u64 = 0x0A;
 /// en el volumen puede cambiar el archivo *y* recalcular su hash.
 pub const ES_NODO_VERIFICAR: u64 = 0x0B;
 
+// == ** EL ARBOL: preguntar por un nivel que NO es donde esta el cursor =====
+//
+// El cursor guarda la ruta desde la raiz, y desde 2026-08-18 cada nivel de esa
+// ruta **se queda con su listado**. Estas tres son la puerta a esos listados.
+//
+// Sirven para lo que un panel de arbol necesita y una lista no: ensenar a la
+// vez los hijos de la raiz, los del nivel siguiente y los del siguiente, con la
+// rama abierta marcada. **No son un segundo cursor** -- son el mismo recorrido
+// preguntado a otra profundidad, y por eso no piden handle, tabla ni
+// revocacion.
+//
+// Ninguna toca el disco: contestan de lo que se leyo al pasar.
+
+/// Cuantos hijos tiene el nivel `arg1`. `0` si ese nivel no existe todavia.
+pub const ES_NODO_NIVEL_HIJOS: u64 = 0x0C;
+
+/// El tipo del hijo de un nivel: `0` archivo, `1` directorio, `2` no hay.
+///
+/// `arg1` lleva los dos numeros: **`(nivel << 32) | indice`**.
+pub const ES_NODO_NIVEL_HIJO_TIPO: u64 = 0x0D;
+
+/// Por que hijo se bajo desde el nivel `arg1`, o `u64::MAX` si por ninguno.
+///
+/// * El valor imposible NO es un capricho: **cero es un hijo perfectamente
+/// valido** --el primero--, asi que "por ninguno" no se puede decir con un
+/// cero sin que el nivel donde acaba la rama se confunda con uno abierto por
+/// su primer hijo.
+pub const ES_NODO_NIVEL_ELEGIDO: u64 = 0x0E;
+
 /// Que texto pide [`TASK_OP_ES_TEXTO`], en los bits altos de `arg0`.
 ///
 /// Los bajos siguen siendo el indice. Se reparte el argumento en vez de anadir
@@ -91,6 +120,14 @@ pub const ES_TXT_HIJO: u64 = 0;
 
 /// El nombre del nivel `indice` de la ruta. `0` es la raiz y contesta vacio.
 pub const ES_TXT_RUTA: u64 = 1;
+
+/// El nombre de un hijo de CUALQUIER nivel, para el panel de arbol.
+///
+/// Los bits bajos de `arg0` llevan aqui **dos** numeros: `(nivel << 16) |
+/// indice`. Caben de sobra --como mucho dieciseis niveles y sesenta y cuatro
+/// hijos-- y ahorran una tercera puerta para el mismo mecanismo de siempre:
+/// sacar un nombre de ocho en ocho.
+pub const ES_TXT_NIVEL_HIJO: u64 = 2;
 
 // == ** LAS ONCE QUE FALTABAN EN EL CONTRATO (2026-08-17) ===================
 //

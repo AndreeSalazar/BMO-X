@@ -521,7 +521,27 @@ fn paint_nodes(p: &bmo::Pantalla, c: &DataWindow) {
         p.texto(tx, ty, "ningun volumen ESTRATOS montado.", INK_BAD);
         return;
     }
-    if !bmo::estratos::a_la_raiz() && bmo::estratos::tipo() == bmo::estratos::NOTHING {
+    // ** AQUI HABIA UN `a_la_raiz()`, Y PINTAR NO PUEDE NAVEGAR.
+    //
+    // La linea era `if !a_la_raiz() && tipo() == NOTHING`, y se leia como una
+    // comprobacion: *si no se llega ni a la raiz y no hay nada, quejate*. Pero
+    // `a_la_raiz()` no pregunta, **MUEVE EL CURSOR**. Y esto se ejecuta en cada
+    // repintado -- o sea al pulsar una flecha, y tambien al arrastrar la
+    // ventana.
+    //
+    // El efecto era que la vista de NODOS no podia navegar: bajabas a un
+    // directorio, el repintado que venia detras te devolvia a la raiz, y lo que
+    // se veia era siempre la raiz. La de CARPETAS no lo tenia y por eso si
+    // navegaba -- dos pestanas sobre el mismo cursor comportandose distinto.
+    //
+    // El sintoma tampoco acusaba a nadie: nunca hubo un error, solo un arbol
+    // que no se movia. Es el mismo patron de siempre en esta casa, una linea
+    // que compila y hace de mas.
+    //
+    // Ahora la guarda solo PREGUNTA. Poner el cursor en la raiz es cosa de
+    // quien entra en la vista (`keys/panels.rs`, al pulsar TAB), que es donde
+    // ya estaba escrito y donde tiene sentido: al entrar, no al pintar.
+    if bmo::estratos::tipo() == bmo::estratos::NOTHING {
         p.texto(tx, ty, "el volumen monta pero no tiene raiz legible.", INK_BAD);
         ty += bmo::GLIFO_ALTO + 4;
         p.texto(tx, ty, "el motivo esta en F11.", INK_DIM);

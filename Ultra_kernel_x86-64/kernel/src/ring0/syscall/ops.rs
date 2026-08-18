@@ -337,9 +337,21 @@ pub(crate) const ES_NODO_HIJO_BYTES: u64 = 0x08;
 pub(crate) const ES_NODO_HIJO_ATRIBUTOS: u64 = 0x09;
 pub(crate) const ES_NODO_HIJO_FIRMADO: u64 = 0x0A;
 pub(crate) const ES_NODO_VERIFICAR: u64 = 0x0B;
+// -- ** Las tres del ARBOL: preguntar por un nivel que NO es donde estas ----
+//
+// Reciben el nivel en `arg1`, y las que ademas necesitan un hijo lo empaquetan:
+// **`arg1 = (nivel << 32) | indice`**. Se reparte el argumento en vez de anadir
+// una operacion por combinacion, que es la misma decision que ya tomo
+// `ES_TEXTO` con sus bits altos.
+pub(crate) const ES_NODO_NIVEL_HIJOS: u64 = 0x0C;
+pub(crate) const ES_NODO_NIVEL_HIJO_TIPO: u64 = 0x0D;
+pub(crate) const ES_NODO_NIVEL_ELEGIDO: u64 = 0x0E;
 /// Que texto pide `ES_TEXTO`, en los bits altos de `arg0`. Espejo de
 /// `bmo_abi::...::ES_TXT_*`.
 pub(crate) const ES_TXT_RUTA: u64 = 1;
+/// El nombre de un hijo de CUALQUIER nivel. Los bits bajos de `arg0` llevan dos
+/// numeros: `(nivel << 16) | indice`.
+pub(crate) const ES_TXT_NIVEL_HIJO: u64 = 2;
 pub(crate) const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 pub(crate) const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 /// **Avisar al consumidor.** Era el syscall numero 1; ahora es una operacion
