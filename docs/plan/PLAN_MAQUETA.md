@@ -417,8 +417,30 @@ contrato de hoy exige `left` y `top` con `position:absolute` -- **no hay
    resuelto en el anfitrion. Es la misma prueba que paso `:hover`: admisible por
    la condicion, no por util.
 
-Con eso, tres ventanas pasan de "no" a "si" **sin tocar las cinco generaciones**:
-el ancla es un campo mas en lo que emite el consumidor.
+### [!] CORRECCION DEL MISMO DIA: las anclas NO convierten a esas tres
+
+La tabla de arriba decia que `vitals` y `cabina` no dibujan una caja por dato, y
+**era un fallo de la medida**, no de las ventanas. El barrido buscaba bucles de
+la forma `while x < hijos` y estas dicen otra cosa:
+
+```rust
+   while row_n < 16                          // vitals: UNA FILA POR PROCESO
+   while painted_count < count && i < any    // cabina: UNA FILA POR EVENTO
+```
+
+Las dos son **listas**, igual que ESTRATOS. Lo que se puede maquetar de ellas es
+su cabecera y su pie -- cuatro cajas-- mientras el 90% que importa se queda en
+Rust. Portarlas seria trabajo que **parece** progreso.
+
+Con el agujero tapado, la cuenta vuelve a salir la misma: **aptas, cero**. Y la
+conclusion se afila en vez de cambiar:
+
+> ★★ **El escritorio de BMO-X esta hecho de LISTAS, no de caras.** La calculadora
+> es la unica cara porque es lo unico cuyo contenido no sale de un dato.
+
+Las anclas siguen siendo correctas y siguen sin tener consumidor. Y esta casa ya
+sabe lo que pasa con el codigo escrito sin quien lo llame --el `pedir_lectura`
+que se borro antes de entrar--: **no se escriben.**
 
 [!] Y ESTRATOS **sigue sin calificar aunque se anadan anclas**: dos de sus tres
 vistas dibujan una caja por hijo del volumen, y cuantos hay se sabe en ejecucion.
