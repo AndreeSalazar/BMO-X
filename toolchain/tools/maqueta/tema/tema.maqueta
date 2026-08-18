@@ -1,0 +1,39 @@
+<!--
+   TEMA -- la paleta de BMO-X, en un sitio.
+
+   No es una paleta nueva: son los colores que YA usa el escritorio, sacados de
+   `Ultra_userspace/services/gui/src/` el 2026-08-17 con sus cuentas de uso.
+
+   ** POR QUE ESTE FICHERO ES EL PROYECTO ENTERO EN PEQUENO
+
+   Medido ese dia: 62 constantes de color con nombre repartidas por quince
+   ficheros, y 33 de ellas usadas UNA sola vez. Eso no era desorden -- doce
+   nombres llevaban todo el peso. Lo que faltaba era UN SITIO DONDE MIRARLOS.
+   Por eso cada panel nuevo se inventaba los suyos: no habia donde consultar.
+
+   Esa es exactamente la sensacion de Arch que motivo MAQUETA -- nada generado
+   por una herramienta que no puedas leer -- y aqui se cobra sin escribir codigo:
+   doce lineas contra quince ficheros.
+
+   [!] Mientras no exista el emisor, este fichero es la FUENTE y las constantes
+   de Rust son la copia. Dos sitios con la misma verdad es la deuda conocida de
+   esta fase, y se cierra en el escalon 6 (el emisor genera las constantes).
+-->
+<maqueta>
+  <style>
+    /* -- la tinta: lo que se lee ------------------------------------- */
+    /* INK_DIM es el color mas usado de todo BMO-X (127 usos): el sistema
+       habla en voz baja por defecto y sube el tono para lo que importa. */
+    .ink        { color:#E6EDF6 }   /* 63 usos  -- lo que se esta leyendo */
+    .ink-dim    { color:#8A9BB4 }   /* 127 usos -- todo lo demas */
+    .ink-ok     { color:#7EE787 }   /* 21 usos  -- salio bien */
+    .ink-bad    { color:#FF8A7A }   /* 38 usos  -- salio mal */
+    .accent     { color:#60A5FA }   /* 22 usos  -- esto se puede tocar */
+
+    /* -- las superficies: sobre que se lee ---------------------------- */
+    .box        { background-color:#1E2534; border-width:1px; border-color:#333D52 }
+    .field      { background-color:#161C28 }   /* donde se escribe */
+    .taskbar    { background-color:#0F131D; border-width:1px; border-color:#262F42 }
+    .bg-top     { background-color:#1B2233 }   /* el cielo del escritorio */
+  </style>
+</maqueta>

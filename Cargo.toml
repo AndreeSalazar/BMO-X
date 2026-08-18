@@ -147,6 +147,16 @@ members = [
     # va a salir en el Ryzen. Ver su cabecera: la regla estaba escrita desde el
     # primer dia y esta parte no la cumplia.
     "toolchain/tools/vista-ciudad",
+    # -- MAQUETA: el compilador de composicion del escritorio --------
+    #
+    # Cinco generaciones L7, una por carpeta, y los CONSUMIDORES al lado y no
+    # debajo (`emit/`, `vista/`, `cli/`) porque ninguna generacion sabe quien la
+    # consume. Eso se comprueba sin leer logica: mirando estas lineas. Si algun
+    # dia una flecha apunta hacia arriba, el corte esta mal (L7a).
+    #
+    # Contrato en `docs/componente/LA_MAQUETA_EXIGE.md`; plan en
+    # `docs/plan/PLAN_MAQUETA.md`; mapa de carpetas en su README.
+    "toolchain/tools/maqueta/lex",
 
     # -- FORGE (pipeline de compilacion) -----------------------------
     # Librerias OPCIONALES que cada frontend elige enlazar (nunca embudos).
