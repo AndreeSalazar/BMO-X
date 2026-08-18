@@ -685,10 +685,26 @@ habria mirado el final del rango.** Se ensancho el contador, no la ventana.
   estratos antes del 70 %.
 - Un recorte **automatico**. No lo va a haber: la seccion 9 dice *politica, no
   automatismo*, y aqui lo pide una persona escribiendo `disco trim ya`.
-- La prueba **en el Ryzen**. Esto compila y **ningun CPU lo ha ejecutado**: la
-  comprobacion es `disco trim`, leer la propuesta, `disco trim ya`, y que
-  `disco` diga despues cuantos sectores se devolvieron y en cuantas ordenes. Va
-  a la lista de `docs/metal/PRUEBA_EN_METAL.md`.
+- ~~La prueba en el Ryzen.~~ **HECHA el 2026-08-17 por la noche**:
+
+  ```text
+     DEVUELTO: 414.5 GiB   en 26 ordenes
+  ```
+
+  Las 26 que dijo la propuesta, ni una mas. ★★ Y la primera vuelta habia fallado
+  con 0 B: **el rango era identico** y lo unico que cambio en el camino del
+  comando fue el presupuesto de espera, asi que el disco nunca rechazo nada --
+  no le habiamos dado tiempo. Una orden que cubre 16 GiB no cabe en el reloj de
+  una lectura de 4 KiB, y compartirlo nunca fue una decision: fue que este
+  driver solo sabia pedir cosas parecidas entre si.
+
+  > El fallo acusaba al aparato y la culpa era del driver. Por eso las cinco
+  > clases de `DISCO_FALLO_*` tenian que existir **antes** que el arreglo.
+
+- **Lo que sigue sin probarse, y ahora es lo unico que importa**: que no se
+  llevo nada por delante. Eso no lo dice el mensaje verde -- lo dice el arranque
+  siguiente, con el volumen montando en la misma generacion y un fichero que se
+  lee entero. Ver la seccion 9 de `docs/metal/PRUEBA_EN_METAL.md`.
 
 ---
 

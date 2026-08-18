@@ -628,3 +628,38 @@ lo siguiente se decide en una tarde; sin el, se adivina.
 [!] Y una que ya no hace falta mirar: `escribir NO` era un cero fijo del kernel
 --`INFO_ES_ESCRIBIBLE => 0`, escrito cuando todavia no habia camino de
 escritura-- y no una negativa. La generacion 3 demuestra lo contrario.
+
+## 9. SEGUNDA VUELTA (2026-08-17, noche): RECORTA -- y era EL RELOJ, no el disco
+
+```text
+   DEVUELTO: 414.5 GiB   en 26 ordenes (total de la sesion)
+   con FLUSH CACHE detras: este disco no tiene condensadores
+```
+
+**26 ordenes, exactamente las que dijo la propuesta.** Ni una mas.
+
+★★ Y el diagnostico queda cerrado por eliminacion, no por fe: **el rango era
+identico al de la vuelta que fallo** --mismos sectores, mismo LBA 68339904-- y
+lo unico que cambio en el camino del comando fue el presupuesto de espera. O
+sea que el disco **nunca rechazo nada**: no le habiamos dado tiempo. Una orden
+que cubre 16 GiB no cabe en el reloj de una lectura de 4 KiB.
+
+> El fallo acusaba al aparato y la culpa era del driver. Por eso las cinco
+> clases tenian que existir antes que el arreglo: sin ellas, el sospechoso
+> habria sido el disco durante semanas.
+
+### LO QUE TODAVIA NO ESTA PROBADO, y es lo unico que importa ahora
+
+Que **no se llevo nada por delante**. Recortar la cola libre no debe cambiar un
+solo dato, y eso no lo dice el mensaje verde -- lo dice el arranque siguiente:
+
+```text
+   reboot
+   disco     generacion 3, y `trimmed` con lo devuelto
+   ls        los ficheros de siempre
+   cat <uno> y su contenido
+```
+
+Si el volumen monta con la misma generacion y un fichero se lee entero, el
+camino esta cerrado. Si no monta, el rango estaba mal y lo que hay que mirar es
+el `desde el LBA` que imprimio la propuesta.
