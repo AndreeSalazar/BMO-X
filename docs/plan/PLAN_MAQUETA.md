@@ -31,7 +31,7 @@ en `Ultra_userspace/services/gui/src/scene/` pasa a ser texto que se lee.
    MANANA    calc.maqueta:  display:flex; gap:6px
 ```
 
-### ⚠️ El tamano del problema, MEDIDO el 17-08 (y era menor de lo que dije)
+### ⚠ El tamano del problema, MEDIDO el 17-08 (y era menor de lo que dije)
 
 La primera version de este documento decia *"7.780 lineas de `scene/`"*. **Es
 falso y sobrevende.** Contado:
@@ -92,7 +92,7 @@ Eso es exactamente esto:
 | **isla** = el trozo que si vive | **`<island>`** = el rect que rellena Rust |
 | estilos con ambito por componente | igual, y **es lo que hace innecesaria la herencia** |
 
-### ✳️ Lo que ninguna distro da, dicho sin adorno
+### ✳ Lo que ninguna distro da, dicho sin adorno
 
 Ninguna distro **compone** el escritorio: todas **configuran uno ya escrito**.
 GNOME y KDE traen un compositor en C/C++ y te dan un panel de ajustes; Arch te da
@@ -105,7 +105,7 @@ Si las etiquetas son las de HTML y las propiedades son las de CSS de verdad,
 entonces **un `.maqueta` se abre en un navegador y se ve aproximadamente bien**.
 Previsualizacion gratis mientras se escribe, en Windows, sin arrancar el Ryzen.
 
-⚠️ **Aproximadamente**, y la palabra es literal: la fuente de BMO-X es de mapa de
+⚠ **Aproximadamente**, y la palabra es literal: la fuente de BMO-X es de mapa de
 bits y de ancho fijo, y la del navegador no. **La previsualizacion orienta; la
 verdad son los ficheros dorados** (seccion 8 de `LA_MAQUETA_EXIGE.md`). Confundir
 las dos cosas seria la primera forma de mentir de este compilador.
@@ -213,7 +213,7 @@ una tarde, y el dia del recurso se anade un segundo emisor **sin tocar ni una de
 las cinco generaciones**. La ley convirtio una decision irreversible en una
 reversible.
 
-### ⚠️ Correccion honesta a L7b
+### ⚠ Correccion honesta a L7b
 
 L7b dice *"el nieto siempre fuera del binario que mide"*, y su razon era el
 hardware: `bmo-juicio` vive en `platform/shared/` porque el kernel es `no_main` y
@@ -282,7 +282,7 @@ que producen `.bex` pasando por la base (`c`, `cobol`, `ada`). MAQUETA **no
 produce codigo**: produce coordenadas. Su parentesco es con `c-gen`, `cobol-gen`,
 `fontgen` y `bmo-pack` -- generadores de anfitrion. Va en `tools/`.
 
-⚠️ **Nombres en INGLES**, identificadores y comentarios, desde la primera linea
+⚠ **Nombres en INGLES**, identificadores y comentarios, desde la primera linea
 (regla del 2026-08-08, incumplida tres veces). `maqueta` sobrevive como **nombre
 de producto** -- como CABINA o DOOM -- no como identificador. **El disparador del
 fallo es exactamente este**: crear ficheros nuevos en un arbol cuyos vecinos
@@ -315,7 +315,7 @@ quedan en Rust para siempre**.
    118 lineas de maquetacion  ->  58 lineas de .maqueta      MEDIDO, -50%
 ```
 
-### ⚠️ Lo prometido era "un tercio", y no llega. La razon esta medida
+### ⚠ Lo prometido era "un tercio", y no llega. La razon esta medida
 
 Son **58 contra 118: la mitad**, no un tercio -- y el `.maqueta` ya incluye el
 realce de `:hover` (en Rust, `lighten()` mas la constante `HIGHLIGHT`) y los

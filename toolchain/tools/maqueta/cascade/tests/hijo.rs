@@ -78,7 +78,7 @@ fn a_class_after_a_tag_wins_and_both_readings_agree() {
 }
 
 // ------------------------------------------------------------------------
-//  ★ The consequence of the law, made observable
+//  * The consequence of the law, made observable
 // ------------------------------------------------------------------------
 
 #[test]
@@ -227,7 +227,7 @@ fn nothing_here_panics_on_a_document_with_no_rules() {
 
 /// `tema/tema.maqueta` was written by hand before a compiler existed to read it.
 ///
-/// ★ This is the check that keeps it honest. A palette file nobody compiles is
+/// * This is the check that keeps it honest. A palette file nobody compiles is
 /// exactly the thing MAQUETA was built to stop existing: twelve lines that look
 /// authoritative and might not parse. It costs one test and it can never rot.
 #[test]

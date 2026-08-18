@@ -149,7 +149,7 @@ fn space_between_spreads_the_free_room() {
 
 #[test]
 fn a_run_bigger_than_its_room_lands_at_a_negative_coordinate() {
-    // ★ And it must. A browser overflows symmetrically too, and clamping to zero
+    // * And it must. A browser overflows symmetrically too, and clamping to zero
     // here would hide exactly the overflow `verdict/` is built to catch. Same
     // trap the rasterizer wrote down: the wrong width flips the sign.
     let l = run("<maqueta><div class=\"f\"><div class=\"i\"></div></div></maqueta>\
@@ -174,7 +174,7 @@ fn an_absolute_box_is_anchored_to_the_canvas_and_leaves_the_flow() {
 }
 
 // ------------------------------------------------------------------------
-//  ★ The two tables, from one pass
+//  * The two tables, from one pass
 // ------------------------------------------------------------------------
 
 #[test]
@@ -202,7 +202,7 @@ fn islands_come_out_with_their_rects() {
 }
 
 // ------------------------------------------------------------------------
-//  ★★ The calculator: the number that judges the whole idea
+//  ** The calculator: the number that judges the whole idea
 // ------------------------------------------------------------------------
 
 #[test]
@@ -243,7 +243,7 @@ fn the_calculator_lands_exactly_where_calc_rs_puts_it() {
 
 #[test]
 fn las_medidas_del_glifo_siguen_siendo_las_del_kernel() {
-    // ⚠️ `GLIFO_ANCHO` and `GLIFO_ALTO` are a SECOND COPY: the originals live in
+    // [!] `GLIFO_ANCHO` and `GLIFO_ALTO` are a SECOND COPY: the originals live in
     // Ring 3, in another workspace, built for another target. There is no shared
     // home for them today.
     //
@@ -281,7 +281,7 @@ fn en_una_caja_de_bloque_el_texto_empieza_arriba_a_la_izquierda() {
 
 #[test]
 fn una_etiqueta_centrada_cae_donde_calc_rs_la_pone() {
-    // ★★ La comprobacion que vale: `calc.rs` centra a mano con
+    // ** La comprobacion que vale: `calc.rs` centra a mano con
     //
     //     bx + CALC_BTN/2 - GLIFO_ANCHO/2  ,  by + CALC_BTN/2 - GLIFO_ALTO/2
     //

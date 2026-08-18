@@ -5,7 +5,7 @@
 //! no colour is read, nothing is painted, and no opinion is held about whether
 //! the result is any good -- that is `verdict/`.
 //!
-//! ## ★ The two tables come from ONE pass, and that is the point
+//! ## * The two tables come from ONE pass, and that is the point
 //!
 //! `calc.rs` computes the geometry of a key twice today: once in `paint_calc` to
 //! draw it, and once in `key_at` to know which key was pressed. Two copies of one
@@ -32,7 +32,7 @@ use bmo_maqueta_cascade::{Cascaded, Style, Styled};
 use bmo_maqueta_diag::Span;
 use bmo_maqueta_node::Tag;
 
-/// ⚠️ **A SECOND COPY, and it is known.**
+/// [!] **A SECOND COPY, and it is known.**
 ///
 /// The real ones live in `Ultra_userspace/userland/src/pantalla.rs`, which is a
 /// different workspace built for `x86_64-unknown-none`; this crate runs on
@@ -82,7 +82,7 @@ pub struct Frame {
     pub text: Option<String>,
     /// Carried, not read: this generation never looks at a colour.
     pub style: Style,
-    /// ★★ Carried and never read EITHER -- and that is the proof that `:hover`
+    /// ** Carried and never read EITHER -- and that is the proof that `:hover`
     /// was admitted safely. The father forbids a hover rule from touching
     /// anything but paint, so both styles give the same geometry, so this
     /// generation has nothing to do with it. The layout is computed once.
@@ -93,7 +93,7 @@ pub struct Frame {
     pub content: Rect,
     /// Where the glyphs start, if this box carries text.
     ///
-    /// ★ Separate from `content` because a box can centre its text, and centring
+    /// * Separate from `content` because a box can centre its text, and centring
     /// is **layout**: `calc.rs` writes `bx + CALC_BTN/2 - GLIFO_ANCHO/2` by hand
     /// for every label. Leaving it to the emitter would put arithmetic in a
     /// consumer, which is where it stops being checkable.
@@ -128,7 +128,7 @@ impl Laid {
 
     /// The hit table: which id owns which rect.
     ///
-    /// ★ Same source as the paint list. That is what replaces `calc.rs`'s
+    /// * Same source as the paint list. That is what replaces `calc.rs`'s
     /// `button()`, `key_at()` and `contains()` -- three functions that are the
     /// same arithmetic written twice.
     pub fn hits(&self) -> Vec<(&str, Rect)> {

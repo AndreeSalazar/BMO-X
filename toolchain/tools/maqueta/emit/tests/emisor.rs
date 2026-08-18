@@ -75,7 +75,7 @@ fn cada_caja_lleva_su_nombre_en_un_comentario() {
 }
 
 // ------------------------------------------------------------------------
-//  ★★ La tabla de golpeo, de la misma pasada
+//  ** La tabla de golpeo, de la misma pasada
 // ------------------------------------------------------------------------
 
 #[test]
@@ -141,7 +141,7 @@ fn el_visor_de_la_calculadora_es_una_isla_y_sale_con_su_rect() {
 }
 
 // ------------------------------------------------------------------------
-//  ★★ El numero que juzgaba la idea
+//  ** El numero que juzgaba la idea
 // ------------------------------------------------------------------------
 
 #[test]
@@ -158,7 +158,7 @@ fn el_numero_que_juzga_la_idea_medido_y_no_prometido() {
         .filter(|l| !l.trim().is_empty())
         .count();
 
-    // ⚠️ EL PLAN PROMETIA "bajar a un tercio" Y NO LLEGA: son 58 contra 118,
+    // [!] EL PLAN PROMETIA "bajar a un tercio" Y NO LLEGA: son 58 contra 118,
     // un 52% menos --y el `.maqueta` ya incluye el realce de `:hover`, que en
     // Rust son `lighten()` mas la constante `HIGHLIGHT`. Y la razon esta medida, no supuesta -- la calculadora es el
     // PEOR CASO posible para MAQUETA:

@@ -51,7 +51,7 @@ pub fn outer_size(b: &Styled) -> Size {
 /// What the box needs if nothing constrains it -- CSS's `max-content`.
 fn intrinsic(b: &Styled) -> Size {
     if let Some(t) = &b.text {
-        // ★ The measurement that makes this whole compiler possible. The font is
+        // * The measurement that makes this whole compiler possible. The font is
         // a fixed-width bitmap, so text is arithmetic and not a rendering
         // problem: no shaping, no kerning, no fallback, no line breaking. And
         // `len()` is the character count because the father already refused

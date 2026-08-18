@@ -9,7 +9,7 @@
 //! rule about what counts as wrong touches this file and nothing else. The
 //! arithmetic must never be touched when the policy moves.
 //!
-//! ## ⚠️ La comprobacion 1 del contrato no se puede fallar aqui
+//! ## [!] La comprobacion 1 del contrato no se puede fallar aqui
 //!
 //! `LA_MAQUETA_EXIGE.md` seccion 7 la listaba primera: *toda etiqueta, atributo
 //! y propiedad estan en las listas cerradas*. **No hay forma de que falle.** No
@@ -52,7 +52,7 @@ use bmo_maqueta_layout::Laid;
 
 /// Es esto una maquetacion, o solo un fragmento?
 ///
-/// ★ Un fichero de paleta como `tema/tema.maqueta` no tiene ni una caja: solo
+/// * Un fichero de paleta como `tema/tema.maqueta` no tiene ni una caja: solo
 /// reglas para que las usen OTROS ficheros. Sobre el no hay nada que juzgar --
 /// su raiz mide 0x0 y todas sus reglas salen sin usar, y las dos cosas son la
 /// consecuencia trivial de no tener cajas, no defectos del fichero.

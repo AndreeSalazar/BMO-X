@@ -110,7 +110,7 @@ que MAQUETA no hace, y por eso **estan prohibidas**, no reinterpretadas.
 que CSS ofrece. `border-radius` entro al medir la raiz y descubrir que ya estaba
 implementada; `margin` **salio** al escribir el nieto -- ver seccion 3b.
 
-⚠️ Y el numero estuvo mal dos veces mientras vivio solo en prosa: dijo
+⚠ Y el numero estuvo mal dos veces mientras vivio solo en prosa: dijo
 "diecisiete" con dieciseis en la tabla, y "dieciocho" con diecisiete. **Lo
 destapo `value.rs`, donde son variantes de un `enum` y no se pueden contar mal.**
 Un numero escrito en prosa que nadie ejecuta envejece igual que un valor puesto
@@ -134,7 +134,7 @@ por prudencia.
 | `border-color` | `#RRGGBB` | |
 | `border-radius` | `Npx` | ★ ver abajo: **ya existe**, con su limite |
 
-### 3b. ⚠️ `margin` SALIO de la lista, al escribir el nieto
+### 3b. ⚠ `margin` SALIO de la lista, al escribir el nieto
 
 Estaba puesta y no llego a compilar nada. La razon es la misma que sostiene todo
 lo demas:
@@ -171,7 +171,7 @@ O sea que **BMO-X redondea esquinas hoy, sin alfa**, apilando franjas de un pixe
 Lo que daria el escalon 4 no es la forma: es el **borde suave**. Entra ahora, con
 dos avisos escritos:
 
-- ⚠️ **El borde es escalonado**, no suavizado. Aqui la previsualizacion en
+- ⚠ **El borde es escalonado**, no suavizado. Aqui la previsualizacion en
   navegador se separa mas que en ningun otro sitio.
 - ✅ **Y MAQUETA mejora lo que hay**: hoy existe **un solo radio** (8 px, con la
   tabla puesta a mano). El compilador calcula la tabla para el radio que se pida,
@@ -199,7 +199,7 @@ cobrandose una pieza el primer dia.
 | `left` | `Npx` | obligatoria con `position:absolute` |
 | `top` | `Npx` | obligatoria con `position:absolute` |
 
-⚠️ `position:absolute` **es la unica puerta trasera del sistema** y esta aqui
+⚠ `position:absolute` **es la unica puerta trasera del sistema** y esta aqui
 porque los paneles del escritorio se colocan asi. Es tambien la unica forma de
 que una caja se salga de su padre legitimamente, y por eso desactiva la
 comprobacion 2 para ese nodo. **Usarla es declarar que sabes lo que haces.**
@@ -242,7 +242,7 @@ La cascada de CSS es uno de los footguns mas famosos del oficio. MAQUETA lo borr
 **las reglas se aplican en orden de fichero y la ultima que toca una propiedad
 gana.** Se lee de arriba abajo y se acabo.
 
-### ⚠️ Y la trampa que eso abre, con su guardian
+### ⚠ Y la trampa que eso abre, con su guardian
 
 Un navegador **si** tiene especificidad: `.tecla` le gana a `div` aunque `div`
 venga despues. Asi que un fichero con las reglas mal ordenadas se veria de una
@@ -292,7 +292,7 @@ encuentre en la pasada, no el primero.
 Vive en `bmo-maqueta-verdict` (bisnieto). Corre sobre los rects **ya calculados**,
 o sea que no repite aritmetica: la mira.
 
-### ⚠️ La comprobacion 1 que decia este documento NO SE PUEDE FALLAR
+### ⚠ La comprobacion 1 que decia este documento NO SE PUEDE FALLAR
 
 La primera version listaba *"toda etiqueta, atributo y propiedad estan en las
 listas cerradas"*. **No hay forma de que falle.** No existe `Tag::H1` ni
@@ -350,7 +350,7 @@ Su raiz mide 0x0 y todas sus reglas salen sin usar, y **las dos cosas son la
 consecuencia trivial de no tener cajas**, no defectos del fichero. Se decide una
 sola vez, en `verdict::es_fragmento`.
 
-⚠️ Lo primero que se intento fue una excepcion suelta dentro de una comprobacion,
+⚠ Lo primero que se intento fue una excepcion suelta dentro de una comprobacion,
 y se le escapo otra: el veredicto aprobaba las reglas del tema y acto seguido se
 quejaba de que su raiz media cero. **Una excepcion repartida tapa el sintoma que
 se vio, no el que viene.**
@@ -402,7 +402,7 @@ otro proceso rellena -- que es **exactamente la superficie de `PLAN_DIRECTOR.md`
 (`BSUP`, `MEM_OP_OFRECER` / `TASK_OP_TOMAR`, la direccion por ranura). La mitad
 viva del escritorio ya tiene su cableado; MAQUETA solo le dice donde va.
 
-⚠️ Una isla **no se maqueta segun su contenido**: su tamano lo pone la maqueta,
+⚠ Una isla **no se maqueta segun su contenido**: su tamano lo pone la maqueta,
 nunca el proceso que la rellena. Al reves seria dejar que una app cuelgue el
 calculo del escritorio, que es lo que ya se decidio no hacer en `PLAN_DIRECTOR.md`
 (decision 2: *la secuencia, no un cerrojo*).

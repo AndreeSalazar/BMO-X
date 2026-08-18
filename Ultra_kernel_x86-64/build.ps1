@@ -495,6 +495,60 @@ foreach ($campo in ($infoCampos.Keys | Sort-Object)) {
 }
 Write-Host ('    OP_INFO: ' + $infoCampos.Count + ' campos, el mismo id en kernel, ABI y userland') -ForegroundColor DarkGray
 
+# == ** LA CARA GENERADA NO PUEDE DERIVAR DE SU `.maqueta` (2026-08-18) ======
+#
+# MAQUETA existe para que la cara del escritorio tenga **una sola verdad**: se
+# edita el `.maqueta` y el compilador emite el Rust. Pero el `_gen.rs` esta
+# COMMITEADO y **nadie lo regeneraba**, asi que hasta hoy habia dos verdades que
+# coincidian por suerte:
+#
+#     se edita el .maqueta y se olvida regenerar
+#       -> el escritorio pinta la cara VIEJA
+#       -> y el fichero que dice ser la fuente dice otra cosa
+#       -> no falla nada, ni al compilar ni al arrancar
+#
+# ** Es exactamente el modo de fallo que esta casa ya vigila en cuatro sitios
+# --el ABI, `bmo.h`, el formato del handle, la tabla de `OP_INFO`-- y el mas
+# ironico de todos: el sistema entero se construyo para no tener la maquetacion
+# escrita dos veces.
+#
+# No se comprueba con una lista: se barren los `.maqueta` que hay, se regenera
+# cada uno a un temporal y se compara. Un fichero nuevo entra solo.
+Step 'Validating generated faces match their .maqueta'
+$maqDir = Join-Path $root '../toolchain/tools/maqueta/pruebas'
+$maqFiles = @(Get-ChildItem -Path $maqDir -Filter '*.maqueta' -File -ErrorAction SilentlyContinue)
+if ($maqFiles.Count -eq 0) {
+    Fail ('no hay ni un .maqueta en ' + $maqDir + ' -- las caras generadas no se pueden comprobar')
+}
+# Donde vive el Rust de cada cara. Por convencion: `<nombre>_gen.rs` en la
+# escena del compositor -- la misma que declara la cabecera del generado.
+$escena = Join-Path $root '../Ultra_userspace/services/gui/src/scene'
+$lf = [string][char]10
+$crlf = [string][char]13 + $lf
+foreach ($maq in $maqFiles) {
+    $gen = Join-Path $escena ($maq.BaseName + '_gen.rs')
+    if (-not (Test-Path $gen)) {
+        Fail ('la cara ' + $maq.Name + ' no tiene su ' + $maq.BaseName + '_gen.rs -- o se genero y no se guardo, o el nombre no sigue la convencion')
+    }
+    $tmp = Join-Path $env:TEMP ($maq.BaseName + '_gen.comprobacion.rs')
+    Push-Location (Join-Path $root '..')
+    $salida = (cargo run -q -p bmo-maqueta -- $maq.FullName $tmp 2>&1 | Out-String)
+    Pop-Location
+    if (-not (Test-Path $tmp)) {
+        Write-Host $salida
+        Fail ('el compilador de maqueta no emitio nada para ' + $maq.Name)
+    }
+    # Los finales de linea no son la cara: se normalizan antes de comparar, o
+    # este guardian gritaria por un `git config` distinto en otra maquina.
+    $a = (Get-Content $gen -Raw).Replace($crlf, $lf)
+    $b = (Get-Content $tmp -Raw).Replace($crlf, $lf)
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+    if ($a -ne $b) {
+        Fail ('DERIVA: ' + $maq.Name + ' y ' + $maq.BaseName + '_gen.rs dicen caras distintas. Regenera con: cargo run -p bmo-maqueta -- ' + $maq.FullName + ' ' + $gen)
+    }
+}
+Write-Host ('    caras: ' + $maqFiles.Count + ' .maqueta, y su Rust generado dice lo mismo') -ForegroundColor DarkGray
+
 # -- ** Y LA CUARTA COPIA: `bmo.h`, LA CARA EN C DE LA MISMA TABLA --------
 #
 # El 2026-08-17 se anadieron `INFO_PRESUPUESTO_MAQUINA` y `INFO_SUELO_CRUCE` a

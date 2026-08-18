@@ -1,6 +1,6 @@
 //! # MAQUETA -- EMIT, un CONSUMIDOR (no una generacion)
 //!
-//! ★ **Ninguna de las cinco generaciones sabe que este crate existe**, y eso se
+//! * **Ninguna de las cinco generaciones sabe que este crate existe**, y eso se
 //! comprueba mirando los `Cargo.toml`: las flechas van `lex -> node -> cascade ->
 //! layout -> verdict`, y ninguna apunta aqui.
 //!
