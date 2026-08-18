@@ -5,8 +5,9 @@
 > crates podemos inspirar aunque JSON es ayuda pero recuerdo como que se tienen
 > que comunicarse, no?"*.
 >
-> Este documento contesta **de que copiar**. Las casillas de lo que falte iran a
-> un `PLAN_IPC.md` el dia que las haya; hoy no hay ninguna abierta.
+> Este documento contesta **de que copiar**. No tiene plan hermano porque hoy no
+> hay ninguna casilla abierta: lo que hacia falta se hizo el mismo dia. El dia
+> que la haya, su plan va en `plan/` y con el nombre que manda el indice.
 
 ---
 
