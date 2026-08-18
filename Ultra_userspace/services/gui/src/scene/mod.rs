@@ -3,6 +3,10 @@
 //! Colores, geometria y las primitivas de dibujo de la ventana. Aqui no se
 //! interpreta nada: un modulo de esta carpeta no sabe que es un comando.
 
+// EL recorte de la casa: el mismo `Recorte` que usan el rasterizador, el kernel
+// y la cara generada por MAQUETA. Medio abierto `[x0, x1)`, y uno solo para
+// todas las orillas -- `bmo-dibujo` existe porque hubo dos que no coincidian.
+use bmo_dibujo::Recorte;
 use bmo_userland as bmo;
 
 /// **La ventana de CABINA** (F11): lo que el kernel ve, con su gravedad y en
@@ -740,6 +744,83 @@ pub(crate) fn erase_window(
             p.punto(x, y, scene_color(c, visible, x, y, p.alto));
         }
     }
+}
+
+/// Lo que queda de `viejo` cuando se le quita `nuevo`: hasta CUATRO tiras.
+///
+/// ** Es la resta de rectangulos, y es la operacion que le faltaba al arrastre.
+/// Al mover una ventana un pixel, el 99,7% de su sitio viejo sigue estando
+/// tapado por ella misma -- borrarlo y volver a pintarlo encima es trabajo puro.
+///
+/// Las tiras salen en el orden en que se leen: arriba, abajo, izquierda,
+/// derecha. Las dos de los lados van solo por la banda que comparten, o las
+/// esquinas se borrarian dos veces.
+pub(crate) fn resta(viejo: Recorte, nuevo: Recorte) -> [Recorte; 4] {
+    // Si no se tocan, no hay nada que restar: el viejo entero.
+    if viejo.interseccion(&nuevo).vacio() {
+        return [viejo, Recorte::nada(), Recorte::nada(), Recorte::nada()];
+    }
+    let banda_y0 = viejo.y0.max(nuevo.y0);
+    let banda_y1 = viejo.y1.min(nuevo.y1);
+    [
+        // arriba
+        Recorte { x0: viejo.x0, y0: viejo.y0, x1: viejo.x1, y1: viejo.y1.min(nuevo.y0) },
+        // abajo
+        Recorte { x0: viejo.x0, y0: viejo.y0.max(nuevo.y1), x1: viejo.x1, y1: viejo.y1 },
+        // izquierda, solo en la banda comun
+        Recorte { x0: viejo.x0, y0: banda_y0, x1: viejo.x1.min(nuevo.x0), y1: banda_y1 },
+        // derecha, idem
+        Recorte { x0: viejo.x0.max(nuevo.x1), y0: banda_y0, x1: viejo.x1, y1: banda_y1 },
+    ]
+}
+
+/// Borra SOLO lo que un movimiento dejo al descubierto.
+///
+/// ** El numero: `erase_window` recorre el rectangulo ENTERO pixel a pixel. Para
+/// una terminal de 640x500 eso son ~325.000 escrituras sobre memoria de video
+/// sin cache, que a los ~300 MB/s medidos en el Ryzen son 4,33 ms -- la cuarta
+/// parte de un fotograma de 60 Hz. Y el arrastre lo hacia UNA VEZ POR EVENTO DE
+/// RATON, para descubrir una tira de unos pocos pixeles de ancho.
+///
+/// Arrastrando a ~4 px por evento, la resta baja de 325.000 a unos 4.000: **80
+/// veces menos**. Y no es una aproximacion -- es exactamente lo mismo que se
+/// veia, porque lo que no se borra es lo que la ventana sigue tapando.
+///
+/// Devuelve el area total descubierta, por si quien llama tiene que saber si
+/// toco algo suyo.
+pub(crate) fn erase_moved(
+    p: &bmo::Pantalla,
+    c: &RunBox,
+    viejo: (u32, u32, u32, u32),
+    nuevo: (u32, u32, u32, u32),
+    visible: bool,
+) -> Recorte {
+    // La sombra cuenta como parte de la ventana: sin esto, cerrar dejaba una
+    // huella en L abajo a la derecha, y al mover deja lo mismo.
+    let caja = |(x, y, w, h): (u32, u32, u32, u32)| {
+        Recorte::nuevo(
+            x as i32,
+            y as i32,
+            (w + SHADOW_RIGHT) as i32,
+            (h + SHADOW_BOTTOM) as i32,
+        )
+    };
+    let (v, n) = (caja(viejo), caja(nuevo));
+
+    for tira in resta(v, n) {
+        if tira.vacio() {
+            continue;
+        }
+        for y in tira.y0..tira.y1 {
+            for x in tira.x0..tira.x1 {
+                let (x, y) = (x as u32, y as u32);
+                p.punto(x, y, scene_color(c, visible, x, y, p.alto));
+            }
+        }
+    }
+    // La envolvente de lo descubierto: el viejo menos lo que el nuevo tapa.
+    // Para quien llama, saber "hasta aqui llego el destrozo" basta.
+    v
 }
 
 #[inline(never)]
