@@ -158,6 +158,30 @@ impl Windows {
             alt_before: false,
         }
     }
+
+    /// Esta abierta esta ventana?
+    ///
+    /// ** UN SITIO Y NO SEIS. La respuesta vivia repartida en seis banderas
+    /// `*_open` sueltas, y quien necesitaba la pregunta en general --el
+    /// repintado, el z-order, el raton-- la re-escribia entera cada vez. Tres
+    /// copias de la misma lista, y ninguna de las tres se rompia al anadir una
+    /// ventana: se quedaba corta en silencio, que es como las vitales se
+    /// pasaron un mes fuera del bucle de repintado.
+    ///
+    /// * `Run` contesta `visible` porque **no se cierra**: su bandera no es
+    /// "existe" sino "se ve". Es la misma distincion que ya hace `Windows`
+    /// arriba --abierta no es estar delante-- y aqui se dice en voz alta en
+    /// vez de dejar que cada sitio la resuelva a su manera.
+    pub fn abierta(&self, v: Ventana) -> bool {
+        match v {
+            Ventana::Run => self.visible,
+            Ventana::Data => self.data_open,
+            Ventana::Cabina => self.cabina_open,
+            Ventana::Cpu => self.cpu_open,
+            Ventana::Mem => self.mem_open,
+            Ventana::Sound => self.sound_open,
+        }
+    }
 }
 
 /// The output grid, the child's console, and the run being watched.
