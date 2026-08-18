@@ -156,7 +156,9 @@ members = [
     #
     # Contrato en `docs/componente/LA_MAQUETA_EXIGE.md`; plan en
     # `docs/plan/PLAN_MAQUETA.md`; mapa de carpetas en su README.
+    "toolchain/tools/maqueta/diag",
     "toolchain/tools/maqueta/lex",
+    "toolchain/tools/maqueta/node",
 
     # -- FORGE (pipeline de compilacion) -----------------------------
     # Librerias OPCIONALES que cada frontend elige enlazar (nunca embudos).

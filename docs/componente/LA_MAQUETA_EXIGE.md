@@ -106,9 +106,16 @@ que MAQUETA no hace, y por eso **estan prohibidas**, no reinterpretadas.
 
 ## 3. LAS PROPIEDADES -- LISTA CERRADA
 
-**Dieciocho.** Elegidas **contando** lo que `scene/` hace de verdad hoy, no lo
-que CSS ofrece. La numero 18 (`border-radius`) entro el mismo dia, al medir la
-raiz y descubrir que ya estaba implementada -- ver mas abajo.
+**Diecisiete.** Elegidas **contando** lo que `scene/` hace de verdad hoy, no lo
+que CSS ofrece. `border-radius` entro el mismo dia, al medir la raiz y descubrir
+que ya estaba implementada -- ver mas abajo.
+
+⚠️ Y el numero estuvo mal dos veces antes de que el codigo lo contara: este
+parrafo dijo "diecisiete" cuando la tabla tenia dieciseis, y "dieciocho" cuando
+tenia diecisiete. **Lo destapo `value.rs`, donde las diecisiete son variantes de
+un `enum` y no se pueden contar mal.** Corolario para el resto del documento: un
+numero escrito en prosa que nadie ejecuta envejece igual que un valor puesto por
+prudencia.
 
 ### La caja
 

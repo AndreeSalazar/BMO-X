@@ -1,0 +1,13 @@
+[package]
+name = "bmo-maqueta-node"
+version = "0.1.0"
+edition = "2021"
+description = "MAQUETA, father generation: tokens -> named boxes and named rules. Knows no parents, no siblings and no screen."
+license = "Techne"
+
+# Only the generation below, plus the shared error vocabulary. If a dependency
+# ever appears here pointing at `cascade`, `layout` or `verdict`, the cut is
+# wrong (L7a).
+[dependencies]
+bmo-maqueta-lex = { path = "../lex" }
+bmo-maqueta-diag = { path = "../diag" }
