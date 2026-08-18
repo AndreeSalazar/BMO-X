@@ -580,17 +580,27 @@ pub(crate) fn paint_run_box(p: &bmo::Pantalla, c: &RunBox) {
     p.texto(
         c.x + 18,
         c.y + 36,
-        // * `estratos` FALTABA AQUI, y por eso nadie sabia sellar.
+        // ** ESTA PISTA DEJA DE SER UN CATALOGO, y esa es la correccion.
         //
-        // La orden existe, se parsea, escribe en el disco y **no estaba escrita
-        // en ninguna parte que se vea**: solo salia en el volcado de `ayuda`, al
-        // que se llega tecleando algo mal. El dueno la pidio por su nombre el
-        // 2026-08-13 -- *"no se como lo sello"*-- teniendola delante.
+        // Era la SEGUNDA lista de ordenes del sistema, escrita a mano, y le
+        // paso lo unico que le puede pasar a una segunda lista: se separo de la
+        // primera. En la foto del 2026-08-18 anunciaba `sella` --que se mudo a
+        // F12 hace dias y aqui contesta "se mudo"-- y **no nombraba `disco`**,
+        // que es la orden mas nueva y la unica destructiva.
         //
-        // Es el patron 33 otra vez, girado: un mensaje que existe y sale por un
-        // canal que nadie mira. Una funcion que no se anuncia no es una funcion
-        // discreta: es una funcion que no esta.
-        "ruta de un .bex y Enter.  info / cpu / mem / perf / ls / lee / guarda / smp / sella / reboot.",
+        // El comentario que estaba en este sitio celebraba haber ANADIDO
+        // `estratos` por lo mismo: *"una funcion que no se anuncia no es una
+        // funcion discreta, es una funcion que no esta"*. Cierto, y por eso la
+        // linea se lleno -- hasta que anunciar se volvio mantener dos verdades.
+        //
+        // > Un catalogo duplicado no envejece: se PUDRE. La cura no es
+        // > actualizarlo, es que deje de ser un catalogo.
+        //
+        // Ahora nombra **las puertas** --lo que se teclea a diario y lo que hay
+        // que saber que existe-- y manda a `ayuda`, que es la lista entera, por
+        // categorias y en un solo sitio. Anadir una orden ya no obliga a tocar
+        // esto; si algun dia obliga, es que esta linea volvio a ser un catalogo.
+        "ruta de un .bex y Enter.   disco / info / ls / lee / guarda.   ayuda: la lista entera",
         INK_DIM,
     );
     // * Las dos ventanas del sistema, DICHAS. Un atajo que no esta escrito en
