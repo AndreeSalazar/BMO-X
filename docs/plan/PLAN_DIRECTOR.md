@@ -202,27 +202,64 @@ conversacion.
   Para una calculadora eso es gratis --un clic cada varios segundos--; para algo
   que siga al raton, es el precio equivocado.
 
-### B. Por un ANILLO COMPARTIDO, como la superficie pero al reves
+### B. Por un ANILLO ESCRITO DIRECTAMENTE, sin pasar por el kernel
 
-★★ La observacion que hace bonito este camino: **el prestamo de memoria ya
-existe, solo que en el otro sentido.** La app le presta sus pixeles al DIRECTOR;
-la entrada seria el DIRECTOR prestandole un anillo a la app. Misma maquinaria,
-espejada.
+Cero syscalls por evento: el DIRECTOR escribiria en la pagina de canal de la app
+con un `mov`, igual que hoy LEE sus pixeles con un `mov`. Es el prestamo de
+memoria del paso 2 **espejado**.
 
-Y el formato ya esta escrito: `platform/shared/bmo-channel` tiene
-`ChannelEntry { opcode, arg0, arg1, arg2 }` de **32 bytes fijos**, y su propio
-comentario dice *"0 = empty, 1 = key, 2 = mouse"*. **La entrada estaba prevista
-en ese fichero desde el primer dia y nadie la cableo.**
+- **a favor**: gratis por evento, y el enmarcado sigue siendo imposible de
+  romper -- una ranura ES un mensaje.
+- **en contra**: la pagina del canal de la app tendria que estar mapeada en el
+  DIRECTOR, y eso es autoridad nueva sobre un proceso ajeno. No es un
+  renombrado: es una frontera de confianza mas.
 
-- **a favor**: cero syscalls por evento, y el enmarcado es imposible de romper
-  --una ranura ES un mensaje--.
-- **en contra**: `bmo-channel` esta escrito para Ring 0 contra Ring 3
-  (`ring0_complete` / `ring3_submit`), y aqui los dos lados son Ring 3. Hay que
-  ver si eso es un renombrado o un contrato nuevo.
+## ★★ 2c.2b -- CORRECCION DEL MISMO DIA: A **YA ESTA CONSTRUIDO**
 
-**Que la bloquea**: esa pregunta, y nada mas. Es de medir, no de opinar --
-leer `ring3_submit` y decidir si el productor puede ser Ring 3 sin tocar la
-disciplina de capabilities.
+Lo de arriba se escribio diciendo que habia que *"ver si `bmo-channel` sirve
+entre dos Ring 3"*. Se miro, y la pregunta estaba mal hecha.
+
+★★ **`bmo-channel` NUNCA fue "Ring 0 contra Ring 3": ese nombre dice quien
+ESCRIBE la pagina, no de donde viene el mensaje.** Su propio `ring0_complete` lo
+tiene escrito desde que se escribio:
+
+> *"Existe para Endpoint RPC: una llamada de otro proceso no entra por el anillo
+> de submissions de ESTE servidor --el que la hizo tiene el suyo--, pero se le
+> entrega por el mismo camino por el que ya lee todo lo demas. **Asi el servidor
+> no necesita un segundo mecanismo de recepcion.**"*
+
+Y el kernel ya lo hace: `ring0/obj/endpoint.rs`, funcion `publish` -- escribe en
+el anillo de completions del servidor **por el physmap**, y el servidor lo
+recoge con el mismo `ring3_poll` que usa para todo.
+
+```
+   proceso A llama  ->  el kernel PUBLICA en el anillo de B  ->  B hace ring3_poll
+```
+
+**Eso es Ring 3 contra Ring 3 y lleva funcionando desde `rpc-demo`.** El camino A
+no hay que construirlo: hay que USARLO.
+
+### Lo que queda de diferencia, que es poco y concreto
+
+1. **RPC es una llamada que espera respuesta**; un evento de entrada no espera
+   nada. El endpoint concede un derecho de respuesta **one-shot en cada
+   llamada** (`cap::grant(KIND_REPLY)`), y para un clic eso sobra. Publicar sin
+   conceder la respuesta ya lo sabe hacer `ring0_complete`; lo que hay que ver
+   es por donde se pide eso sin inventar una operacion nueva.
+2. **El precio se queda**: sigue siendo una puerta por evento. Para una
+   calculadora es gratis --un clic cada varios segundos--; a 60 fotogramas
+   siguiendo al raton, no.
+
+★ **Asi que la eleccion entre A y B deja de ser arquitectonica y pasa a ser un
+NUMERO: cuantos eventos por segundo.** Y para el primer cliente --la
+calculadora-- la respuesta es A, sin discusion y sin escribir una linea de
+mecanismo nuevo.
+
+**Que la bloquea**: la pregunta 1, que es de leer `endpoint.rs`, no de disenar.
+
+**Como se sabe que quedo hecha**: una app con superficie recibe un clic por su
+anillo y no necesita un segundo mecanismo de recepcion -- que es literalmente lo
+que el comentario de `ring0_complete` prometio.
 
 **Como se sabe que quedo hecha**: `ray.bex` --ya portado en 2b-- reacciona a una
 tecla dentro de su ventana sin llevarse la pantalla.
