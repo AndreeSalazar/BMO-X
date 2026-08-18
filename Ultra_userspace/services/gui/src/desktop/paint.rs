@@ -48,6 +48,23 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
                 // programa no imprime prompts a proposito.
                 for &b in &buf[..read_bytes] {
                     if b == b'\n' {
+                        // ** LA PRIMERA LINEA ES EL ESTADO, NO LA RESPUESTA.
+                        //
+                        // El motor contesta `estado \n valor \n`. Antes mandaba
+                        // una sola linea y ESTE bucle daba por hecho que era un
+                        // numero -- asi que un "codigo no valido" del motor se
+                        // pintaba en la pantallita como si fuera una cifra.
+                        //
+                        // Con la tecla `$` eso deja de poder arreglarse
+                        // mirando: `$12,345.67` es una respuesta BUENA y no
+                        // parece un numero. Quien sabe si contesto es el motor,
+                        // y por eso lo dice el en vez de adivinarlo nosotros.
+                        if !dsk.calc.respondio {
+                            dsk.calc.respondio = true;
+                            dsk.calc.bien = dsk.resp_n > 0 && dsk.resp[0] == b'0';
+                            dsk.resp_n = 0;
+                            continue;
+                        }
                         if dsk.resp_n > 0 {
                             dsk.calc.input = [0; 20];
                             let k = dsk.resp_n.min(dsk.calc.input.len());
@@ -56,6 +73,14 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
                             dsk.calc.saved_n = 0;
                             dsk.calc.op = 0;
                             dsk.calc.waiting = false;
+                            dsk.calc.respondio = false;
+                            // Lo que no es una cifra es una PRESENTACION (`$`)
+                            // o un motivo: en los dos casos, teclear encima
+                            // empieza de cero en vez de anadir al final.
+                            dsk.calc.presentado = !dsk.calc.bien
+                                || dsk.calc.input[..k].iter().any(|c| {
+                                    !c.is_ascii_digit() && *c != b'.' && *c != b'-'
+                                });
                             // * El cursor SE APARTA antes de pintar aqui.
                             //
                             // Este es el unico pintado del bucle que no

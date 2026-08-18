@@ -14,7 +14,13 @@
    responde en otro. Aqui las dos tablas salen de la misma pasada.
 
    Los colores son los de `calc.rs`, sin cambiar ni uno.
-   Los huecos de la rejilla son cajas sin fondo: un hueco ES una caja.
+   ** Y los tres huecos se llenaron, lo que MATO el hueco.
+
+   La rejilla tenia tres cajas sin fondo --`.hueco`-- reservando sitio. Al
+   ocuparlas con `%`, `+/-` y `$`, su regla dejo de casar con nada, y el
+   bisnieto se nego a compilar: *"la regla `.hueco` no llega a ninguna caja"*.
+   Nadie lo habria visto leyendo; el que borra la ultima caja de una clase casi
+   nunca se acuerda de la clase.
 
    ** Y una leccion que este fichero se llevo el primer dia.
 
@@ -32,7 +38,6 @@
               background-color:#182434; border-width:2px; border-color:#333D52 }
     .visor  { height:40px; background-color:#161C28 }
     .fila   { display:flex; flex-direction:row; gap:6px }
-    .hueco  { width:72px; height:72px }
     .tecla  { width:72px; height:72px; background-color:#2B3B52; color:#E6EDF6;
               display:flex; justify-content:center; align-items:center }
     .op     { background-color:#3A5878 }
@@ -72,7 +77,7 @@
       <div class="tecla" id="k_4">4</div>
       <div class="tecla" id="k_5">5</div>
       <div class="tecla" id="k_6">6</div>
-      <div class="hueco"></div>
+      <div class="tecla op" id="k_pct">%</div>
     </div>
     <div class="fila">
       <div class="tecla" id="k_1">1</div>
@@ -83,8 +88,12 @@
     <div class="fila">
       <div class="tecla" id="k_0">0</div>
       <div class="tecla" id="k_dot">.</div>
-      <div class="hueco"></div>
-      <div class="hueco"></div>
+      <!-- Cambiar el signo es EDITAR lo que se teclea, no calcular: por eso
+           lleva el color llano de `C` y no el de los operadores. Lanzar un
+           proceso de COBOL para poner un menos seria gastar una puerta en
+           algo que no es una cuenta. -->
+      <div class="tecla" id="k_neg">+/-</div>
+      <div class="tecla op" id="k_money">$</div>
     </div>
   </div>
 </maqueta>

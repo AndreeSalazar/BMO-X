@@ -58,6 +58,24 @@ use crate::scene::{paint_status, INK_BAD};
 /// sesion entera de teclado. Ver `scene/consola.rs`.
 const PEDIR_TECLADO: u8 = 0xF1;
 
+// -- ** LOS CODIGOS QUE ENTIENDE EL MOTOR --
+//
+// Son el contrato con `toolchain/lang/cobol/examples/2-decimal/calcgui.cob`, y
+// viven aqui con nombre porque un `4` suelto en una llamada no dice "dividir".
+// Cambiar uno sin cambiar el otro da una cuenta equivocada y ningun error: el
+// motor contestaria lo que le pidieron, que no es lo que se quiso.
+//
+// [!] No hay codigo para `+/-`: cambiar el signo es EDITAR el operando, no
+// calcular con el, y no llega al motor. Ver `Calc::negate`.
+const OP_SUMA: u8 = 1;
+const OP_RESTA: u8 = 2;
+const OP_POR: u8 = 3;
+const OP_ENTRE: u8 = 4;
+/// Tanto por ciento: el segundo operando por ciento del primero.
+const OP_CIENTO: u8 = 5;
+/// Presentar como dinero. **Es de un solo operando**: no calcula, formatea.
+const OP_DINERO: u8 = 6;
+
 /// La tecla del teclado que se ofrece a la calculadora.
 ///
 /// Devuelve [`Key::Pass`] mientras las teclas no sean suyas, que es lo que deja
@@ -114,7 +132,11 @@ pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, ctrl: bool) ->
 fn tecla_de_teclado(c: u8) -> Option<u8> {
     Some(match c {
         b'0'..=b'9' => c,
-        b'+' | b'-' | b'*' | b'/' | b'=' => c,
+        b'+' | b'-' | b'*' | b'/' | b'=' | b'%' | b'$' => c,
+        // `n` de NEGAR. No hay tecla de `+/-` en ningun teclado, asi que se
+        // elige una letra y se dice; la alternativa era dejar el signo solo
+        // para el raton, que es lo que hace inutil media calculadora.
+        b'n' | b'N' => b'~',
         // ** La COMA tambien es el punto decimal, y no es un capricho: en el
         // teclado espanol el separador del bloque numerico es la coma, y
         // `calcgui.cob` lee un `PIC S9(9)V99`, que quiere un PUNTO. Traducirlo
@@ -135,23 +157,50 @@ fn tecla_de_teclado(c: u8) -> Option<u8> {
 pub(crate) fn pulsar(dsk: &mut Desktop, p: &bmo::Pantalla, t: u8) {
     match t {
         b'C' => dsk.calc.clear(),
-        b'+' => dsk.calc.operator(1),
-        b'-' => dsk.calc.operator(2),
-        b'*' => dsk.calc.operator(3),
-        b'/' => dsk.calc.operator(4),
-        b'=' => igual(dsk, p),
+        b'+' => dsk.calc.operator(OP_SUMA),
+        b'-' => dsk.calc.operator(OP_RESTA),
+        b'*' => dsk.calc.operator(OP_POR),
+        b'/' => dsk.calc.operator(OP_ENTRE),
+        b'%' => dsk.calc.operator(OP_CIENTO),
+        // El signo no sale de aqui: es edicion, y se ve al momento.
+        b'~' => dsk.calc.negate(),
+        // `$` no espera a un segundo operando ni a un `=`: lo que hay en el
+        // visor ya es todo lo que necesita.
+        b'$' => lanzar(dsk, p, OP_DINERO, true),
+        b'=' => {
+            if dsk.calc.op != 0 {
+                let cod = dsk.calc.op;
+                lanzar(dsk, p, cod, false);
+            }
+        }
         d => dsk.calc.feed(d),
     }
     paint_calc(p, &dsk.calc_pad, &dsk.calc, dsk.tick.calc_hover);
 }
 
-/// Lanzar el MOTOR y darle los tres datos por su consola.
+/// Lanzar el MOTOR y darle sus tres lineas por la consola.
 ///
 /// ** Aqui es donde la cara deja de saber aritmetica y empieza a saber COBOL.
-fn igual(dsk: &mut Desktop, p: &bmo::Pantalla) {
-    // Sin los tres datos no hay pregunta que hacer. Lanzar el motor igual
-    // gastaria un proceso entero para que conteste a medias.
-    if dsk.calc.op == 0 || dsk.calc.saved_n == 0 || dsk.calc.n == 0 {
+///
+/// `unario` distingue las dos formas que tiene una pregunta:
+///
+/// ```text
+///   binaria   izquierda  codigo  derecha    + - * / y %
+///   unaria    el visor   codigo  0          $, que no calcula sino presenta
+/// ```
+///
+/// El motor lee TRES lineas siempre, asi que la unaria manda un `0` de relleno
+/// que su rama no mira. Mandar menos lineas segun el codigo obligaria a los dos
+/// lados a ponerse de acuerdo sobre cuantas hay **antes** de saber cual es, y
+/// eso es un protocolo que se desincroniza a la primera.
+fn lanzar(dsk: &mut Desktop, p: &bmo::Pantalla, cod: u8, unario: bool) {
+    // Sin los datos no hay pregunta que hacer. Lanzar el motor igual gastaria
+    // un proceso entero para que conteste a medias.
+    if unario {
+        if dsk.calc.n == 0 {
+            return;
+        }
+    } else if dsk.calc.saved_n == 0 || dsk.calc.n == 0 {
         return;
     }
     let cap = dsk.out.console.as_ref().map(|c| c.cap).unwrap_or(0);
@@ -160,11 +209,19 @@ fn igual(dsk: &mut Desktop, p: &bmo::Pantalla) {
         return;
     }
     if let Some(cc) = dsk.out.console.as_ref() {
-        cc.write(&dsk.calc.saved_path[..dsk.calc.saved_n]);
+        if unario {
+            cc.write(&dsk.calc.input[..dsk.calc.n]);
+        } else {
+            cc.write(&dsk.calc.saved_path[..dsk.calc.saved_n]);
+        }
         cc.write(b"\n");
-        cc.write(&[b'0' + dsk.calc.op]);
+        cc.write(&[b'0' + cod]);
         cc.write(b"\n");
-        cc.write(&dsk.calc.input[..dsk.calc.n]);
+        if unario {
+            cc.write(b"0");
+        } else {
+            cc.write(&dsk.calc.input[..dsk.calc.n]);
+        }
         cc.write(b"\n");
     }
     dsk.calc.waiting = true;
