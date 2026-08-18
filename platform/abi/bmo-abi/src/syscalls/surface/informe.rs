@@ -786,6 +786,18 @@ pub const INFO_DISCO_COLA_SECTORES: u64 = 0x46;
 /// traduccion la hace `bmo-identify`, no quien pregunta.
 pub const INFO_DISCO_TRIM_BLOQUES: u64 = 0x47;
 
+/// # `INFO_DISCO_TRIM_FALLO`: **por que no se pudo recortar**
+///
+/// `(clase << 32) | PxTFD`, con las clases en `DISCO_FALLO_*`. `0` = ninguno,
+/// y un recorte que sale bien lo devuelve a cero -- un campo que solo sube
+/// contaria el fallo de ayer como si fuera el de hoy.
+///
+/// ** Existe porque en metal *"el disco respondio con error"* resulto no ser
+/// un diagnostico: no separa un ABRT de un timeout, que mandan a mirar sitios
+/// opuestos. El `PxTFD` va **crudo**, como el `PHYstatus` de la red: el byte
+/// es la prueba y las palabras son la opinion.
+pub const INFO_DISCO_TRIM_FALLO: u64 = 0x48;
+
 /// Fabricante ("AMD"), nombre comercial, microarquitectura y familia/modelo.
 pub const INFO_TXT_CPU_VENDOR: u64 = 0x01;
 

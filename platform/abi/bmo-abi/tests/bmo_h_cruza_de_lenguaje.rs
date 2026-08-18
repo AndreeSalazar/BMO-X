@@ -122,6 +122,7 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     ("BMO_INFO_DISCO_COLA_LBA", "INFO_DISCO_COLA_LBA", 0x45),
     ("BMO_INFO_DISCO_COLA_SECTORES", "INFO_DISCO_COLA_SECTORES", 0x46),
     ("BMO_INFO_DISCO_TRIM_BLOQUES", "INFO_DISCO_TRIM_BLOQUES", 0x47),
+    ("BMO_INFO_DISCO_TRIM_FALLO", "INFO_DISCO_TRIM_FALLO", 0x48),
     // El censo de extensiones. Cruza por el mismo motivo que el metro: lo
     // sirve el kernel y lo leen dos lados distintos -- el escritorio en Rust y
     // cualquier `.bex` de C que quiera saber si tiene RDRAND antes de usarlo.
@@ -264,6 +265,7 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_DISCO_COLA_LBA", s::INFO_DISCO_COLA_LBA),
         ("BMO_INFO_DISCO_COLA_SECTORES", s::INFO_DISCO_COLA_SECTORES),
         ("BMO_INFO_DISCO_TRIM_BLOQUES", s::INFO_DISCO_TRIM_BLOQUES),
+        ("BMO_INFO_DISCO_TRIM_FALLO", s::INFO_DISCO_TRIM_FALLO),
         ("BMO_INFO_CPU_EXT_N", s::INFO_CPU_EXT_N),
         ("BMO_INFO_CPU_EXT_HAY", s::INFO_CPU_EXT_HAY),
         ("BMO_INFO_CPU_EXT_USA", s::INFO_CPU_EXT_USA),

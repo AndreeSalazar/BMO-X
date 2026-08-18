@@ -62,3 +62,41 @@ pub const DISCO_TRIM_FALLO: u64 = 6;
 pub const DISCO_TRIM_MOTIVO_SHIFT: u64 = 56;
 /// Mascara de los sectores.
 pub const DISCO_TRIM_SECTORES_MASK: u64 = (1 << 56) - 1;
+
+// -- ** POR QUE FALLO, cuando el motivo es `DISCO_TRIM_FALLO` ---------------
+//
+// `DISCO_TRIM_FALLO` dice *que el disco no acepto la orden*; estas clases dicen
+// **cual de las cinco maneras**, y viajan en `INFO_DISCO_TRIM_FALLO` junto al
+// `PxTFD` crudo: `(clase << 32) | tfd`.
+//
+// === Por que hizo falta, y se pago en metal ===
+//
+// El primer recorte en el Ryzen (2026-08-17) contesto *"el disco RECHAZO la
+// orden"* y ahi se acabo la informacion. El driver distingue las cinco desde
+// siempre, pero su `name()` las aplana en una frase y el `tfd` --el registro
+// donde el aparato dice por que-- no salia del `enum`.
+//
+// ** Y las cinco mandan a mirar sitios distintos: `SIN_TIEMPO` acusa al
+// presupuesto de espera del driver, `APARATO` acusa al disco, y `PETICION`
+// acusa al que armo el payload. Llamarlas a las tres "rechazo" es perder la
+// unica pista que hay.
+
+pub const DISCO_FALLO_NINGUNO: u64 = 0;
+/// El puerto no estaba preparado.
+pub const DISCO_FALLO_NO_LISTO: u64 = 1;
+/// El disco no solto BSY/DRQ: no se le pudo ni dar la orden.
+pub const DISCO_FALLO_OCUPADO: u64 = 2;
+/// **No termino dentro del limite.** No es que dijera que no: es que no
+/// contesto -- y el sospechoso es el presupuesto de espera, no el aparato.
+pub const DISCO_FALLO_SIN_TIEMPO: u64 = 3;
+/// **El disco contesto con error.** El `PxTFD` de los bits bajos dice cual:
+/// `0x01` ERR, y en el byte alto el registro de error -- `0x04` ABRT (no
+/// conozco esa orden), `0x10` IDNF (ese sector no), `0x40` UNC.
+pub const DISCO_FALLO_APARATO: u64 = 4;
+/// La peticion era imposible antes de salir: cero bloques, o mas de lo que cabe.
+pub const DISCO_FALLO_PETICION: u64 = 5;
+
+/// Desplazamiento de la clase dentro de `INFO_DISCO_TRIM_FALLO`.
+pub const DISCO_FALLO_CLASE_SHIFT: u64 = 32;
+/// Mascara del `PxTFD` crudo.
+pub const DISCO_FALLO_TFD_MASK: u64 = 0xFFFF_FFFF;

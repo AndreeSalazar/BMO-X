@@ -215,6 +215,12 @@
 #define BMO_INFO_DISCO_COLA_SECTORES     0x46
 #define BMO_INFO_DISCO_TRIM_BLOQUES      0x47
 
+/* Por que fallo el ultimo recorte: (clase << 32) | PxTFD. 0 = ninguno.
+ * Clases: 1 puerto no listo, 2 ocupado, 3 SIN TIEMPO, 4 el aparato contesto
+ * con error, 5 peticion imposible. El PxTFD va crudo: 0x01 ERR, y en el byte
+ * alto 0x04 ABRT, 0x10 IDNF, 0x40 UNC. */
+#define BMO_INFO_DISCO_TRIM_FALLO        0x48
+
 /* -- EL CENSO DE EXTENSIONES DEL CPU ---------------------------------
  *
  * Cuantas filas cubre el censo, y dos mascaras sobre ESA lista en ESE orden:
