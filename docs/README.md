@@ -99,7 +99,7 @@ es un enlace de una sola direccion.
 
 Se escriben **antes de una sola linea de codigo**. Su trabajo, dicho por
 `PYTHON_MAESTRO.md`, es *"que esta investigacion no haya que reconstruirla"*.
-Los seis declaran seguir el metodo de `SMP_MAESTRO.md`.
+Los siete declaran seguir el metodo de `SMP_MAESTRO.md`.
 
 | documento | escrito | la pregunta que separa |
 |---|---|---|
@@ -109,6 +109,7 @@ Los seis declaran seguir el metodo de `SMP_MAESTRO.md`.
 | [`RED_MAESTRO.md`](maestro/RED_MAESTRO.md) | 08-11 | el limite que el dueno cree que quiere vs. el que le importa |
 | [`AUDIO_MAESTRO.md`](maestro/AUDIO_MAESTRO.md) | 08-12 | del silencio a los gatitos, sin inventar un driver |
 | [`PYTHON_MAESTRO.md`](maestro/PYTHON_MAESTRO.md) | 08-16 | que hace falta de verdad, y no son los 2 syscalls |
+| [`SEGURIDAD_MAESTRO.md`](maestro/SEGURIDAD_MAESTRO.md) | 08-18 | integridad no es autoria, y que backdoor puede esconderse aqui |
 
 ---
 
@@ -123,11 +124,14 @@ con **que la bloquea** y **como se sabe que quedo hecha**"*.
 | [`PLAN_AUTOCURACION.md`](plan/PLAN_AUTOCURACION.md) | las casillas de su MAESTRO |
 | [`PLAN_DIRECTOR.md`](plan/PLAN_DIRECTOR.md) | de compositor a administrador |
 | [`PLAN_ALMACENAMIENTO.md`](plan/PLAN_ALMACENAMIENTO.md) | repartir la pila de disco |
+| [`PLAN_MAQUETA.md`](plan/PLAN_MAQUETA.md) | como se construye el compilador de composicion |
+| [`PLAN_LA_CARA_VIAJA.md`](plan/PLAN_LA_CARA_VIAJA.md) | la maquetacion como DATO, y que pasa si viaja |
+| [`PLAN_SEGURIDAD.md`](plan/PLAN_SEGURIDAD.md) | las casillas de su MAESTRO, medidas contra el codigo |
 
-★ **El par MAESTRO + PLAN es la simetria de esta carpeta**, y hoy solo
-AUTOCURACION la tiene entera. No es un defecto por si mismo --DOOM nunca necesito
-un maestro, y Python todavia no tiene casillas-- pero **el dia que un maestro
-llegue a codigo, su plan va aqui y con este nombre**.
+★ **El par MAESTRO + PLAN es la simetria de esta carpeta**, y hoy la tienen
+entera AUTOCURACION y SEGURIDAD. No es un defecto que a los demas les falte
+--DOOM nunca necesito un maestro, y Python todavia no tiene casillas-- pero **el
+dia que un maestro llegue a codigo, su plan va aqui y con este nombre**.
 
 ---
 
