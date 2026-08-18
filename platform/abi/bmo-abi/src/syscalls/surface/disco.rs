@@ -100,3 +100,34 @@ pub const DISCO_FALLO_PETICION: u64 = 5;
 pub const DISCO_FALLO_CLASE_SHIFT: u64 = 32;
 /// Mascara del `PxTFD` crudo.
 pub const DISCO_FALLO_TFD_MASK: u64 = 0xFFFF_FFFF;
+
+// == ** CREAR UN FICHERO EN ESTRATOS: las subordenes de `TASK_OP_ES_CREAR` ===
+//
+// Viven aqui y no en `objetos` por lo que son: **ordenes que cambian el
+// almacen**, la misma familia que `DISCO_OP_*`. Que una escriba en el aparato y
+// la otra en el volumen no las separa -- las dos son lo que este fichero reune.
+
+/// Vacia el renglon del contenido. Se manda ANTES de acumular nada.
+///
+/// ** Existe para que un intento a medias no envenene al siguiente: si un
+/// programa muere despues de mandar tres trozos, el renglon se queda con ellos
+/// dentro. Empezar limpiando es mas barato que un tiempo de expiracion.
+pub const ES_CREAR_LIMPIAR: u64 = 0x00;
+
+/// Acumula contenido. `arg1` son 8 bytes en little-endian, y **cuantos de esos
+/// ocho valen** viaja empaquetado con la suborden: `ES_CREAR_DATOS | (n << 8)`.
+///
+/// ** Se parte `arg0` porque por la puerta caben dos argumentos y los dos estan
+/// ocupados. Es el mismo idioma que `INFO_MEM_QUIEN_*` y `AUTOPSIA_TEXTO`:
+/// cuando cabe un numero y hacen falta dos, se parte el numero.
+///
+/// El cero NO corta -- ver `TASK_OP_ES_CREAR`.
+pub const ES_CREAR_DATOS: u64 = 0x01;
+
+/// **Cierra la transaccion.** El nombre sale del renglon de `TASK_OP_RUTA` y el
+/// contenido del de arriba. Devuelve la generacion nueva, o `0`.
+pub const ES_CREAR_HACER: u64 = 0x02;
+
+/// Cuanto contenido admite el renglon. Es [`RESIDENTE_MAX`] de ESTRATOS: lo que
+/// cabe DENTRO del nodo, sin gastar un bloque de datos.
+pub const ES_CREAR_MAX: u64 = 96;

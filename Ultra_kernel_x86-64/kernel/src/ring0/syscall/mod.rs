@@ -671,6 +671,52 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 _ => BmoStatus::ok_value(0),
             }
         }
+        // ** CREAR UN FICHERO. La primera operacion del sistema que escribe
+        // CONTENIDO en el almacen: `sellar` commitea sin datos y el recorte le
+        // habla al aparato.
+        //
+        // El nombre sale del renglon de RUTA --el mismo que usan `EJECUTAR` y
+        // los dos de archivo-- y el contenido del suyo, que vive aqui abajo.
+        // Inventar un segundo mecanismo para el nombre habria sido tener dos
+        // sitios donde se pierde un byte.
+        TASK_OP_ES_CREAR => {
+            let pid = scheduler::current_pid();
+            // ** La CUENTA viaja empaquetada con la suborden: `sub | (n << 8)`.
+            //
+            // `invoke_current_task` recibe dos argumentos y los dos estan
+            // ocupados --la suborden y los ocho bytes--, asi que la cuenta no
+            // tiene registro propio. Repartir el primero es el mismo idioma que
+            // ya usan `INFO_MEM_QUIEN_*` y `AUTOPSIA_TEXTO`: cuando por la
+            // puerta cabe un numero y hacen falta dos, se parte el numero.
+            match arg0 & 0xFF {
+                ES_CREAR_LIMPIAR => {
+                    datos_limpiar(pid);
+                    BmoStatus::ok_value(0)
+                }
+                // `arg1` son los ocho bytes y `arg2` CUANTOS valen. La ruta se
+                // corta en el primer cero porque en una ruta un cero no puede
+                // aparecer; en un fichero SI, asi que aqui la cuenta es
+                // explicita o se entregaria la mitad de un fichero.
+                ES_CREAR_DATOS => BmoStatus::ok_value(datos_meter(pid, arg1, arg0 >> 8) as u64),
+                ES_CREAR_HACER => {
+                    let nombre = ruta_tomar(pid);
+                    let datos = datos_tomar(pid);
+                    crate::ring0::cabina::info(
+                        "estratos",
+                        "fichero nuevo pedido por un proceso de Ring 3",
+                        pid as u64,
+                    );
+                    match crate::ring0::fsys::estratos::escribir::crear_fichero(nombre, datos) {
+                        Ok(g) => BmoStatus::ok_value(g),
+                        Err(e) => {
+                            crate::ring0::cabina::warn("estratos", e.name(), 0);
+                            BmoStatus::ok_value(0)
+                        }
+                    }
+                }
+                _ => BmoStatus::ok_value(0),
+            }
+        }
         // -- El cursor de ESTRATOS --
         //
         // CONTESTA, no autoriza -- el mismo trato que `INFO` y que el klog.
@@ -775,6 +821,66 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
 // mezclarse. Dos procesos lanzando a la vez es un caso que hoy no existe --solo
 // el compositor tiene la caja-- y cuando exista, media ruta de cada uno seria un
 // fallo mucho peor que un lanzamiento perdido.
+
+// -- ** EL RENGLON DEL CONTENIDO, hermano del de la ruta --------------------
+//
+// Mismo mecanismo y por el mismo motivo --la superficie congelada no acepta
+// punteros-- con UNA diferencia que importa: aqui la cuenta es explicita. La
+// ruta se corta en el primer cero porque en una ruta un cero no puede aparecer;
+// en un fichero **si puede**, y cortarlo ahi seria entregar la mitad.
+//
+// Y va atado al pid como el de la ruta: dos procesos acumulando a la vez se
+// mezclarian el contenido, que aqui significa **escribir en el disco un fichero
+// con trozos de otro**.
+const DATOS_MAX: usize = 96;
+static mut DATOS_BUF: [u8; DATOS_MAX] = [0; DATOS_MAX];
+static mut DATOS_N: usize = 0;
+static mut DATOS_PID: u32 = u32::MAX;
+
+/// Vacia el renglon del proceso. Se manda ANTES de acumular.
+fn datos_limpiar(pid: u32) {
+    unsafe {
+        DATOS_PID = pid;
+        DATOS_N = 0;
+    }
+}
+
+/// Mete `cuantos` de los ocho bytes de `palabra`. Devuelve los que lleva.
+fn datos_meter(pid: u32, palabra: u64, cuantos: u64) -> usize {
+    unsafe {
+        if DATOS_PID != pid {
+            DATOS_PID = pid;
+            DATOS_N = 0;
+        }
+        let buf = &mut *core::ptr::addr_of_mut!(DATOS_BUF);
+        let n = (cuantos as usize).min(8);
+        for k in 0..n {
+            if DATOS_N >= DATOS_MAX {
+                break;
+            }
+            buf[DATOS_N] = ((palabra >> (k * 8)) & 0xFF) as u8;
+            DATOS_N += 1;
+        }
+        DATOS_N
+    }
+}
+
+/// Lo acumulado, y **vacia el renglon**: igual que `ruta_tomar`, para que un
+/// segundo fichero no herede el contenido del primero.
+fn datos_tomar(pid: u32) -> &'static [u8] {
+    unsafe {
+        if DATOS_PID != pid {
+            return &[];
+        }
+        let n = DATOS_N;
+        DATOS_N = 0;
+        // ** El slice se pide EXPLICITO. Tomar `&(*addr_of!(ARR))[..n]` crea
+        // una referencia a la desreferencia de un puntero crudo, y el kernel
+        // compila con esa lint en DENY: es la misma forma que ya documenta
+        // `AhciDisk::identity` en el driver del disco.
+        core::slice::from_raw_parts(core::ptr::addr_of!(DATOS_BUF) as *const u8, n)
+    }
+}
 
 const RUTA_MAX: usize = 128;
 static mut RUTA_BUF: [u8; RUTA_MAX] = [0; RUTA_MAX];

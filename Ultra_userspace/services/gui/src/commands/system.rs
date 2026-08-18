@@ -26,16 +26,12 @@ use crate::paint_output;
 /// dueno. **Una funcion que se muda sin dejar nota se
 /// convierte en una funcion que desaparecio.**
 pub(crate) fn seal_moved(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
-    dsk.out.grid.text(b"  sellar se mudo a la ventana de ESTRATOS.
-");
+    dsk.out.grid.text(b"  sellar se mudo a la ventana de ESTRATOS.\n");
     dsk.out.grid.with_ink(INK_GOOD);
-    dsk.out.grid.text(b"  F12  ->  TAB  ->  tecla S
-");
+    dsk.out.grid.text(b"  F12  ->  TAB  ->  tecla S\n");
     dsk.out.grid.with_ink(INK_PLAIN);
-    dsk.out.grid.text(b"  ahi se ve el volumen mientras se sella, que es
-");
-    dsk.out.grid.text(b"  donde tiene sentido: la generacion sube delante.
-");
+    dsk.out.grid.text(b"  ahi se ve el volumen mientras se sella, que es\n");
+    dsk.out.grid.text(b"  donde tiene sentido: la generacion sube delante.\n");
     paint_status(&p, &dsk.run_box, "esta en F12", INK);
     dsk.field.n = 0;
     After::Settle
@@ -52,6 +48,75 @@ pub(crate) fn seal_moved(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// cruzaban a Ring 3. Mismo criterio que `audio`: la
 /// orden existia SOLO en el shell de Ring 0, y dos
 /// shells con dos vocabularios son dos productos.
+/// **`estratos escribe <nombre> <texto>`** -- el primer fichero que BMO-X
+/// guarda en SU sistema de ficheros.
+///
+/// === Por que el sustantivo va delante ===
+///
+/// Porque ya hay un `escribe` y va a la FAT32. Dos ordenes con el mismo verbo
+/// escribiendo en dos volumenes distintos es como se guarda algo donde no se
+/// queria -- y aqui uno de los dos volumenes es el que Windows sabe leer y el
+/// otro no. Mismo criterio que `disco`: nombrar el objeto antes de darle una
+/// orden.
+///
+/// === Lo que cuesta, dicho ANTES ===
+///
+/// Cuatro bloques: el nodo del fichero, las entradas nuevas, el directorio nuevo
+/// y el estrato. Los tres ultimos no son del fichero, son **la version nueva del
+/// arbol** -- en ESTRATOS no se toca nada, se copia lo que cambia. Se dice
+/// porque `log_head` sube de cuatro en cuatro y quien mire la ocupacion tiene
+/// que saber por que.
+///
+/// [!] Y el techo de hoy son **96 bytes**: lo que cabe dentro del nodo. Mas
+/// grande pide un arbol de bloques con sus niveles, que es otra funcion y otra
+/// tanda. Se dice aqui en vez de dejar que el kernel conteste un cero.
+pub(crate) fn estratos_escribe(
+    dsk: &mut Desktop,
+    p: &bmo::Pantalla,
+    nombre: &[u8],
+    texto: &[u8],
+) -> After {
+    let s = &mut dsk.out.grid;
+    if texto.len() > bmo::estratos::ES_CREAR_MAX as usize {
+        s.with_ink(INK_ERR);
+        s.text(b"  no cabe: hoy un fichero de ESTRATOS entra en 96 bytes\n");
+        s.with_ink(INK_PLAIN);
+        s.text(b"  (mas grande pide un arbol de bloques, y es otra tanda)\n");
+        paint_status(p, &dsk.run_box, "no cabe", INK_DIM);
+        dsk.field.n = 0;
+        return After::Settle;
+    }
+    // El aviso va ANTES de llamar, como en `smp` y en el recorte: la llamada
+    // escribe cuatro bloques y hace dos barreras, y un mensaje escrito despues
+    // no explica una espera que ya paso.
+    s.text(b"  escribiendo en ESTRATOS (4 bloques y dos barreras)...\n");
+    paint_output(p, &dsk.run_box, &dsk.out.grid);
+    p.volcar();
+
+    let g = bmo::estratos::crear_fichero(nombre, texto);
+    let s = &mut dsk.out.grid;
+    if g == 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"  NO se guardo\n");
+        s.with_ink(INK_PLAIN);
+        // Los cuatro que se ven en la practica. El motivo exacto lo dice el
+        // kernel en F11: aqui no se adivina cual fue.
+        s.text(b"  el nombre ya existe / la carpeta esta llena (36) /\n");
+        s.text(b"  la escritura esta cerrada / no hay volumen.  F11 dice cual.\n");
+    } else {
+        s.with_ink(INK_GOOD);
+        s.text(b"  GUARDADO. generacion ");
+        s.dec(g);
+        s.with_ink(INK_PLAIN);
+        s.text(b"
+  F12 lo ensena, y tras reiniciar tiene que seguir ahi.\n");
+    }
+    paint_status(p, &dsk.run_box, "estratos", INK_DIM);
+    dsk.field.n = 0;
+    dsk.field.cur = 0;
+    After::NextKey
+}
+
 pub(crate) fn net(dsk: &mut Desktop, _p: &bmo::Pantalla, what: &[u8]) -> After {
     report_net(&mut dsk.out.grid, what);
     After::Settle

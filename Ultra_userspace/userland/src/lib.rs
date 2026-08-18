@@ -126,6 +126,12 @@ pub const OP_SMP_DESPERTAR: u32 = 0x1B;
 /// primera fue sellar-- y la unica que se lo dice al APARATO. Ninguna de sus
 /// ordenes lleva un LBA: ver el modulo [`crate::disco`].
 pub const OP_DISCO: u32 = 0x29;
+/// ** **CREAR UN FICHERO EN ESTRATOS.** `arg0` es la suborden (`ES_CREAR_*`).
+///
+/// El nombre viaja por el renglon de [`OP_RUTA`] y el contenido por el suyo, de
+/// 8 en 8 y **con cuenta explicita**: en un fichero un cero es un dato, y
+/// cortarlo ahi seria entregar la mitad de un fichero.
+pub const OP_ES_CREAR: u32 = 0x2A;
 /// **El censo de audio**: que el aparato diga como quiere las muestras.
 /// Devuelve 1 si encontro uno; los ocho numeros van a CABINA.
 pub const OP_AUDIO_CENSO: u32 = 0x28;

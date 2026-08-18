@@ -148,3 +148,64 @@ fn texto_de(que: u64, dst: &mut [u8]) -> usize {
     }
     escritos
 }
+
+// == ** CREAR UN FICHERO ====================================================
+//
+// Lo primero de este modulo que ESCRIBE. Todo lo de arriba contesta preguntas
+// --a la raiz, los hijos, los nombres-- y esto cambia el volumen.
+
+pub const ES_CREAR_LIMPIAR: u64 = 0x00;
+pub const ES_CREAR_DATOS: u64 = 0x01;
+pub const ES_CREAR_HACER: u64 = 0x02;
+/// Lo que cabe DENTRO del nodo, sin gastar un bloque de datos.
+pub const ES_CREAR_MAX: u64 = 96;
+
+/// **Crea `nombre` con `datos` dentro.** Devuelve la generacion nueva, o `0`.
+///
+/// === Como cruza, y por que asi ===
+///
+/// El nombre por el renglon de [`OP_RUTA`] --el mismo que ya usan `ejecutar` y
+/// los dos de archivo-- y el contenido por el suyo, de 8 en 8. La superficie
+/// congelada no acepta punteros y no hay `copy_from_user`: pasar una direccion
+/// de Ring 3 obligaria al kernel a traducirla contra el espacio del llamante.
+///
+/// ** Y el contenido lleva CUENTA. La ruta se corta en su primer cero porque en
+/// una ruta un cero no puede aparecer; en un fichero **si puede**, y cortarlo
+/// ahi seria guardar la mitad de un fichero sin que nada fallara.
+///
+/// El `0` no dice por que: el motivo va a CABINA (F11), que es donde caben las
+/// frases. Los cuatro que se ven en la practica son no caber en 96 bytes, que el
+/// nombre este repetido, que la carpeta este llena y que la escritura este
+/// cerrada.
+pub fn crear_fichero(nombre: &[u8], datos: &[u8]) -> u64 {
+    if datos.len() as u64 > ES_CREAR_MAX {
+        return 0;
+    }
+    // El nombre primero, por el renglon de siempre.
+    let mut i = 0;
+    while i < nombre.len() {
+        let mut w = [0u8; 8];
+        let n = (nombre.len() - i).min(8);
+        w[..n].copy_from_slice(&nombre[i..i + n]);
+        invoke(CURRENT_TASK, OP_RUTA, u64::from_le_bytes(w), 0, 0);
+        i += 8;
+    }
+    // Y el contenido por el suyo, limpiando antes: un intento a medias de hace
+    // un rato no puede envenenar este.
+    invoke(CURRENT_TASK, OP_ES_CREAR, ES_CREAR_LIMPIAR, 0, 0);
+    let mut i = 0;
+    while i < datos.len() {
+        let mut w = [0u8; 8];
+        let n = (datos.len() - i).min(8);
+        w[..n].copy_from_slice(&datos[i..i + n]);
+        invoke(
+            CURRENT_TASK,
+            OP_ES_CREAR,
+            ES_CREAR_DATOS | ((n as u64) << 8),
+            u64::from_le_bytes(w),
+            0,
+        );
+        i += 8;
+    }
+    invoke(CURRENT_TASK, OP_ES_CREAR, ES_CREAR_HACER, 0, 0).value
+}
