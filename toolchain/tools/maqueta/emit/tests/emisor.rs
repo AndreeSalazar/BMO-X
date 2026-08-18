@@ -121,8 +121,18 @@ fn hay_un_dentro_que_reemplaza_al_contains_escrito_a_mano() {
 // ------------------------------------------------------------------------
 
 #[test]
-fn las_islas_salen_con_su_rect_y_la_calculadora_no_tiene_ninguna() {
-    assert!(generado().contains("pub const ISLAS: [(&str, u32, u32, u32, u32); 0] = ["));
+fn el_visor_de_la_calculadora_es_una_isla_y_sale_con_su_rect() {
+    // ** Al cablear la calculadora al escritorio quedo claro que la pantallita
+    // no es una caja con texto: el NUMERO CAMBIA, asi que es dato vivo, asi que
+    // es una isla. La frontera del proyecto cayendo justo donde tenia que caer.
+    let g = generado();
+    assert!(g.contains("pub const ISLAS: [(&str, u32, u32, u32, u32); 1] = ["));
+    assert!(g.contains("(\"visor\", 8, 8, 306, 40),"), "{g}");
+
+    // Y quien la rellena no tiene que saber su color: se lo pide al generado.
+    assert!(g.contains("pub fn limpiar_isla("));
+    assert!(g.contains("if nombre == \"visor\""));
+    assert!(g.contains("pub fn isla(nombre: &str) -> Option<(u32, u32, u32, u32)>"));
 
     let con_isla = "<maqueta><div class=\"f\"><island nombre=\"vitals\" class=\"i\"></island></div></maqueta>\
                     <style>.f{display:flex;width:300px;height:200px} .i{width:300px;height:200px}</style>";
@@ -148,8 +158,9 @@ fn el_numero_que_juzga_la_idea_medido_y_no_prometido() {
         .filter(|l| !l.trim().is_empty())
         .count();
 
-    // ⚠️ EL PLAN PROMETIA "bajar a un tercio" Y NO LLEGA: son 48 contra 118,
-    // un 59% menos. Y la razon esta medida, no supuesta -- la calculadora es el
+    // ⚠️ EL PLAN PROMETIA "bajar a un tercio" Y NO LLEGA: son 58 contra 118,
+    // un 52% menos --y el `.maqueta` ya incluye el realce de `:hover`, que en
+    // Rust son `lighten()` mas la constante `HIGHLIGHT`. Y la razon esta medida, no supuesta -- la calculadora es el
     // PEOR CASO posible para MAQUETA:
     //
     //   `calc.rs` pinta veinte teclas con `for row { for col }` sobre una tabla
@@ -160,7 +171,7 @@ fn el_numero_que_juzga_la_idea_medido_y_no_prometido() {
     // los paneles-- que es donde no hay bucle que valga. El numero honesto de
     // esta prueba es el de su peor caso.
     assert!(escrito < MAQUETACION_A_MANO, "{escrito} contra {MAQUETACION_A_MANO}");
-    assert_eq!(escrito, 48, "si esto cambia, el numero del plan hay que rehacerlo");
+    assert_eq!(escrito, 58, "si esto cambia, el numero del plan hay que rehacerlo");
 
     // Lo que de verdad se cobra no son las lineas: son las TRES FUNCIONES que
     // dejan de existir, y con ellas la aritmetica escrita dos veces.

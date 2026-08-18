@@ -78,6 +78,7 @@ pub fn place(b: &Styled, border: Rect) -> Frame {
         island: b.island.clone(),
         text: b.text.clone(),
         style: b.style,
+        hover: b.hover,
         rect: border,
         content,
         text_at: donde_el_texto(b, content),

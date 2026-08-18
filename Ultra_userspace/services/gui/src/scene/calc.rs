@@ -1,36 +1,46 @@
-//! La calculadora: sus teclas, su caja y su pintado.
+//! La calculadora: su estado. **Su cara la compila MAQUETA.**
 //!
 //! Vive aparte porque no es del compositor: es una aplicacion que el compositor
 //! aloja. Mezclada con el bucle de fotograma parecia parte del sistema.
+//!
+//! ## ** QUE SE FUE DE ESTE FICHERO, Y ADONDE
+//!
+//! ```text
+//!    CALC_COLS/ROWS/BTN/GAP, los cuatro colores, CALC_KEYS
+//!    CalcPad::new, button(), key_at(), contains()
+//!    paint_calc(), HIGHLIGHT, lighten()
+//!         |
+//!         v
+//!    toolchain/tools/maqueta/pruebas/calc.maqueta   <- lo que se EDITA
+//!    scene/calc_gen.rs                              <- generado, no se toca
+//! ```
+//!
+//! Lo que se quedo es la MAQUINA DE ESTADOS, y se queda para siempre: lo que se
+//! teclea, el operando cerrado, que operacion viene. MAQUETA compila lo que esta
+//! quieto; esto es lo que cambia.
+//!
+//! ## El reparto entero, en tres piezas
+//!
+//! ```text
+//!    MAQUETA   la CARA     rects, etiquetas y la tabla de golpeo
+//!    Rust      la MANO     este fichero: el estado y quien lanza el motor
+//!    COBOL     la CABEZA   cobol/calcgui.bex, decimal exacto en centavos
+//! ```
+//!
+//! Es la separacion que Windows no hace --su calculadora lleva el motor dentro--
+//! y es la que permite cambiar una sin tocar las otras: manana el motor puede ser
+//! Ada y ni esto ni el `.maqueta` se enteran.
+//!
+//! [!] Para regenerar la cara:
+//!
+//! ```text
+//!   cargo run -p bmo-maqueta -- toolchain/tools/maqueta/pruebas/calc.maqueta //!                               Ultra_userspace/services/gui/src/scene/calc_gen.rs
+//! ```
 
 use bmo_userland as bmo;
 
+use super::calc_gen;
 use super::*;
-
-// -- La calculadora ------------------------------------------------------
-//
-// La CARA. El calculo lo hace `cobol/calcgui.bex`, en COBOL, con decimal
-// exacto en centavos. Es la separacion que Windows no hace --su calculadora
-// lleva el motor dentro de la app-- y es la que permite cambiar la una sin
-// tocar la otra: manana el motor puede ser Ada y esto no se entera.
-
-pub(crate) const CALC_COLS: usize = 4;
-pub(crate) const CALC_ROWS: usize = 5;
-pub(crate) const CALC_BTN: u32 = 72;
-pub(crate) const CALC_GAP: u32 = 6;
-pub(crate) const CALC_BG: u32 = 0x0018_2434;
-pub(crate) const CALC_KEY: u32 = 0x002B_3B52;
-pub(crate) const CALC_KEY_OP: u32 = 0x003A_5878;
-pub(crate) const CALC_KEY_EQ: u32 = 0x004C_9BE8;
-
-/// Las teclas, en el orden en que se dibujan. `\0` = hueco.
-pub(crate) const CALC_KEYS: [[u8; CALC_COLS]; CALC_ROWS] = [
-    [b'C', b'/', b'*', b'-'],
-    [b'7', b'8', b'9', b'+'],
-    [b'4', b'5', b'6', 0],
-    [b'1', b'2', b'3', b'='],
-    [b'0', b'.', 0, 0],
-];
 
 /// Estado de la calculadora. Los operandos se guardan como TEXTO, no como
 /// numero: quien sabe de numeros aqui es el COBOL, y convertir dos veces solo
@@ -97,118 +107,132 @@ impl Calc {
     }
 }
 
-/// Geometria del panel, a la derecha de la caja.
+/// Donde esta el panel. **Ya no calcula nada**: la geometria entera vive en
+/// `calc_gen`, y aqui solo queda de que esquina cuelga.
+///
+/// ** Antes esta struct tenia `screen_y` y `rejilla_y`, y `button(row, col)`
+/// rehacia la rejilla. La misma aritmetica estaba ademas en `key_at`, una vez
+/// para pintar y otra para responder al raton -- y esa duplicacion era una clase
+/// de bug entera. Ahora las dos salen de la misma pasada del compilador.
 pub(crate) struct CalcPad {
     pub(crate) x: u32,
     pub(crate) y: u32,
     pub(crate) width: u32,
     pub(crate) height: u32,
-    pub(crate) screen_y: u32,
-    pub(crate) rejilla_y: u32,
 }
 
 impl CalcPad {
     pub(crate) fn new(c: &RunBox) -> Self {
-        let width = CALC_COLS as u32 * (CALC_BTN + CALC_GAP) + CALC_GAP;
-        let height = CALC_ROWS as u32 * (CALC_BTN + CALC_GAP) + CALC_GAP + 56;
         Self {
             // Al lado de la terminal, sabiendo lo que MIDE ahora y no lo que
             // media cuando estaba clavada: desde que la ventana se estira,
             // `BOX_W` es su minimo y no su ancho.
             x: c.x + c.w() + 24,
             y: c.y,
-            width,
-            height,
-            screen_y: c.y + CALC_GAP,
-            rejilla_y: c.y + CALC_GAP + 50,
+            width: calc_gen::ANCHO,
+            height: calc_gen::ALTO,
         }
-    }
-
-    /// Rectangulo de la tecla `(row, col)`.
-    pub(crate) fn button(&self, row: usize, col: usize) -> (u32, u32) {
-        (
-            self.x + CALC_GAP + col as u32 * (CALC_BTN + CALC_GAP),
-            self.rejilla_y + row as u32 * (CALC_BTN + CALC_GAP),
-        )
     }
 
     /// Que tecla hay bajo `(px, py)`, si hay alguna.
+    ///
+    /// El compilador devuelve el `id` del `.maqueta` (`k_7`, `k_add`); aqui se
+    /// traduce al byte que espera la maquina de estados. **Esa traduccion es lo
+    /// unico que queda de la vieja tabla `CALC_KEYS`**, y es conducta, no
+    /// maquetacion: MAQUETA no sabe ni tiene por que saber que `k_add` suma.
     pub(crate) fn key_at(&self, px: u32, py: u32) -> Option<u8> {
-        for row in 0..CALC_ROWS {
-            for col in 0..CALC_COLS {
-                let t = CALC_KEYS[row][col];
-                if t == 0 {
-                    continue;
-                }
-                let (bx, by) = self.button(row, col);
-                if px >= bx && px < bx + CALC_BTN && py >= by && py < by + CALC_BTN {
-                    return Some(t);
-                }
-            }
-        }
-        None
+        tecla_de(calc_gen::golpe(self.x, self.y, px, py)?)
     }
 
-    pub(crate) fn contains(&self, px: u32, py: u32) -> bool {
-        px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
-    }
+    // [!] Aqui habia un `contains()` y **no lo llamaba nadie** -- llevaba muerto
+    // desde antes de este puerto. La regla de la casa es cablear o borrar, asi
+    // que se borra: si vuelve a hacer falta, el modulo generado ya trae
+    // `calc_gen::dentro`, que es la misma pregunta sin escribir la resta.
 }
 
-/// Cuanto se aclara un boton cuando el puntero esta encima.
-///
-/// * El realce va por SUMA y no por un color aparte, y es a proposito: cada
-/// clase de tecla tiene el suyo --igual, operador, digito-- y una tabla de
-/// colores "de encima" seria el doble de constantes que mantener sincronizadas.
-/// Sumar conserva la familia del boton y solo dice "este".
-const HIGHLIGHT: u32 = 0x0020_2830;
+/// `id` del `.maqueta` -> el byte que entiende `Calc`.
+fn tecla_de(id: &str) -> Option<u8> {
+    Some(match id {
+        "k_c" => b'C',
+        "k_div" => b'/',
+        "k_mul" => b'*',
+        "k_sub" => b'-',
+        "k_add" => b'+',
+        "k_eq" => b'=',
+        "k_dot" => b'.',
+        "k_0" => b'0',
+        "k_1" => b'1',
+        "k_2" => b'2',
+        "k_3" => b'3',
+        "k_4" => b'4',
+        "k_5" => b'5',
+        "k_6" => b'6',
+        "k_7" => b'7',
+        "k_8" => b'8',
+        "k_9" => b'9',
+        _ => return None,
+    })
+}
 
-fn lighten(color: u32) -> u32 {
-    // Canal a canal y con tope: sumar sobre el `u32` entero desbordaria de un
-    // componente al siguiente y un boton azul se volveria verde al pasar por
-    // encima.
-    let r = ((color >> 16) & 0xFF).min(0xFF - ((HIGHLIGHT >> 16) & 0xFF)) + ((HIGHLIGHT >> 16) & 0xFF);
-    let g = ((color >> 8) & 0xFF).min(0xFF - ((HIGHLIGHT >> 8) & 0xFF)) + ((HIGHLIGHT >> 8) & 0xFF);
-    let b = (color & 0xFF).min(0xFF - (HIGHLIGHT & 0xFF)) + (HIGHLIGHT & 0xFF);
-    (r << 16) | (g << 8) | b
+/// El otro sentido, para saber que caja realzar cuando el raton esta encima.
+fn id_de(tecla: u8) -> Option<&'static str> {
+    Some(match tecla {
+        b'C' => "k_c",
+        b'/' => "k_div",
+        b'*' => "k_mul",
+        b'-' => "k_sub",
+        b'+' => "k_add",
+        b'=' => "k_eq",
+        b'.' => "k_dot",
+        b'0' => "k_0",
+        b'1' => "k_1",
+        b'2' => "k_2",
+        b'3' => "k_3",
+        b'4' => "k_4",
+        b'5' => "k_5",
+        b'6' => "k_6",
+        b'7' => "k_7",
+        b'8' => "k_8",
+        b'9' => "k_9",
+        _ => return None,
+    })
 }
 
 /// Pinta la calculadora. `hover` es la tecla que tiene el puntero encima.
+///
+/// Tres llamadas donde habia cuarenta lineas de bucles y restas:
+///
+/// 1. `pintar` -- todo lo quieto, ya desenrollado por el compilador.
+/// 2. `realce` -- la tecla de debajo del puntero, con sus colores de `:hover`.
+/// 3. la pantallita -- **lo unico que cambia**, y por eso es lo unico que sigue
+///    siendo Rust: MAQUETA compila lo que esta quieto.
 pub(crate) fn paint_calc(p: &bmo::Pantalla, cc: &CalcPad, c: &Calc, hover: Option<u8>) {
-    p.rect(cc.x, cc.y, cc.width, cc.height, BOX_EDGE);
-    p.rect(cc.x + 2, cc.y + 2, cc.width - 4, cc.height - 4, CALC_BG);
+    calc_gen::pintar(p, cc.x, cc.y);
 
-    // La pantallita, alineada a la DERECHA como cualquier calculadora: los
-    // numeros se comparan por la unidad, no por la primera cifra.
-    p.rect(cc.x + CALC_GAP, cc.screen_y, cc.width - CALC_GAP * 2, 40, FIELD_BG);
+    if let Some(id) = hover.and_then(id_de) {
+        calc_gen::realce(p, cc.x, cc.y, id);
+    }
+
+    // ** La pantallita es una ISLA, y ahi cae la frontera del proyecto entera:
+    // el numero CAMBIA, asi que no es maquetacion. MAQUETA le reserva el sitio y
+    // le pone el fondo; quien tiene el numero lo escribe.
+    //
+    // Ni el rect ni el color estan escritos aqui: los dos se le piden al modulo
+    // generado, o serian una segunda verdad que envejece cuando cambie el
+    // `.maqueta`.
+    let Some((vx, vy, vw, vh)) = calc_gen::isla("visor") else {
+        return;
+    };
+    calc_gen::limpiar_isla(p, cc.x, cc.y, "visor");
+
+    // Alineado a la DERECHA como cualquier calculadora: los numeros se comparan
+    // por la unidad, no por la primera cifra.
     let text = c.shown();
     let text_w = text.len() as u32 * bmo::GLIFO_ANCHO;
-    let tx = cc.x + cc.width - CALC_GAP - 8 - text_w;
-    p.texto_bytes(tx, cc.screen_y + 12, text, if c.waiting { INK_DIM } else { INK });
-
-    for row in 0..CALC_ROWS {
-        for col in 0..CALC_COLS {
-            let t = CALC_KEYS[row][col];
-            if t == 0 {
-                continue;
-            }
-            let (bx, by) = cc.button(row, col);
-            let base = match t {
-                b'=' => CALC_KEY_EQ,
-                b'+' | b'-' | b'*' | b'/' | b'C' => CALC_KEY_OP,
-                _ => CALC_KEY,
-            };
-            // El boton bajo el puntero se aclara. Es la otra mitad de la mano:
-            // el cursor dice "aqui se pulsa" y esto dice "esto de aqui".
-            let color = if hover == Some(t) { lighten(base) } else { base };
-            p.rect(bx, by, CALC_BTN, CALC_BTN, color);
-            // La etiqueta, centrada.
-            p.glifo(
-                bx + CALC_BTN / 2 - bmo::GLIFO_ANCHO / 2,
-                by + CALC_BTN / 2 - bmo::GLIFO_ALTO / 2,
-                t,
-                INK,
-            );
-        }
-    }
+    p.texto_bytes(
+        cc.x + vx + vw.saturating_sub(8 + text_w),
+        cc.y + vy + (vh - bmo::GLIFO_ALTO) / 2,
+        text,
+        if c.waiting { INK_DIM } else { INK },
+    );
 }
-

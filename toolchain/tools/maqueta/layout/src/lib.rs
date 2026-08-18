@@ -82,6 +82,11 @@ pub struct Frame {
     pub text: Option<String>,
     /// Carried, not read: this generation never looks at a colour.
     pub style: Style,
+    /// ★★ Carried and never read EITHER -- and that is the proof that `:hover`
+    /// was admitted safely. The father forbids a hover rule from touching
+    /// anything but paint, so both styles give the same geometry, so this
+    /// generation has nothing to do with it. The layout is computed once.
+    pub hover: Option<Style>,
     /// The border box, in canvas coordinates.
     pub rect: Rect,
     /// Inside the border and the padding -- where the text and children live.

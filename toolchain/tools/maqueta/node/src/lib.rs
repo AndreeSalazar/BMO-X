@@ -97,6 +97,12 @@ pub struct Rule {
     pub selectors: Vec<Selector>,
     pub decls: Vec<Decl>,
     pub span: Span,
+    /// `.tecla:hover { ... }` -- applies only while the pointer is over the box.
+    ///
+    /// ★ It is a property of the RULE and not of each selector because a rule
+    /// where half the selectors hover and half do not has no single meaning, and
+    /// a meaning that has to be explained twice is one this compiler refuses.
+    pub hover: bool,
 }
 
 /// What a `.maqueta` file is, once named: a tree and a list of rules, side by

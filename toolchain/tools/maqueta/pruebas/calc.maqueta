@@ -20,27 +20,41 @@
 
    El `<span>` del visor llevaba el color de `.visor`, su padre. NO LO HEREDA --
    eso es literalmente lo que significa "sin herencia"-- y en pantalla habria
-   salido texto sin color. Lo cazo el bisnieto, no una mirada. `.num` existe por
-   eso, y es el precio del trato: una palabra mas en el marcado a cambio de que
-   nada sea implicito.
+   salido texto sin color. Lo cazo el bisnieto, no una mirada.
+
+   Al cablearlo al escritorio quedo claro que el `<span>` sobraba: el numero
+   CAMBIA, asi que el visor no es una caja con texto, es una ISLA. La leccion se
+   quedo igual de util y el fichero salio mas corto.
 -->
 <maqueta>
   <style>
     .pad    { display:flex; flex-direction:column; gap:6px; padding:6px;
               background-color:#182434; border-width:2px; border-color:#333D52 }
-    .visor  { height:40px; background-color:#161C28; padding:0 8px 0 0;
-              display:flex; justify-content:end; align-items:center }
-    .num    { color:#E6EDF6 }
+    .visor  { height:40px; background-color:#161C28 }
     .fila   { display:flex; flex-direction:row; gap:6px }
     .hueco  { width:72px; height:72px }
     .tecla  { width:72px; height:72px; background-color:#2B3B52; color:#E6EDF6;
               display:flex; justify-content:center; align-items:center }
     .op     { background-color:#3A5878 }
     .igual  { background-color:#4C9BE8 }
+
+    /* El estado ENCIMA. `calc.rs` lo hace con `lighten()`, sumando 0x202830 a
+       cada canal con tope; aqui son los mismos numeros, ya sumados.
+
+       ** Y solo puede cambiar COLORES: si una regla `:hover` pudiera mover algo,
+       habria que recalcular la maquetacion por cada estado y dentro del aparato.
+       Por esa condicion es admisible, no por util. */
+    .tecla:hover { background-color:#4B637E }
+    .op:hover    { background-color:#5A80A8 }
+    .igual:hover { background-color:#6CC3FF }
   </style>
 
   <div class="pad">
-    <div class="visor"><span class="num">0</span></div>
+    <!-- La pantallita es una ISLA y no una caja con texto, porque el numero
+         que ensena es DATO VIVO. MAQUETA le reserva el sitio y le pone el fondo;
+         quien tiene el numero lo escribe. Es la frontera del proyecto entera
+         cayendo justo donde tenia que caer. -->
+    <island nombre="visor" class="visor"></island>
 
     <div class="fila">
       <div class="tecla" id="k_c">C</div>

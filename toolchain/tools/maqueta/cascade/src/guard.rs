@@ -45,10 +45,19 @@
 //! contract. That is the same kind of failure as the father being unable to name
 //! `<h1>`, not the same kind as text overflowing its box.
 
-use bmo_maqueta_diag::{Error, Span};
+use bmo_maqueta_diag::Error;
 use bmo_maqueta_node::{Rule, Selector};
 
+/// 0 = etiqueta, 1 = clase, 2 = `:hover`.
+///
+/// ★ El nivel 2 sale gratis y no es capricho: en CSS `.tecla:hover` puntua
+/// (0,2,0) y le gana a `.tecla` (0,1,0) este donde este, igual que una clase le
+/// gana a una etiqueta. La misma regla --los niveles no bajan-- cubre los tres
+/// sin una linea de forma nueva.
 fn level(r: &Rule) -> u8 {
+    if r.hover {
+        return 2;
+    }
     u8::from(r.selectors.iter().any(|s| matches!(s, Selector::Class(_))))
 }
 
@@ -56,11 +65,12 @@ fn level(r: &Rule) -> u8 {
 /// findings too, and two spellings of the same rule in two messages is the kind
 /// of small lie that makes people distrust the whole output.
 pub fn describe(r: &Rule) -> String {
+    let sufijo = if r.hover { ":hover" } else { "" };
     r.selectors
         .iter()
         .map(|s| match s {
-            Selector::Tag(t) => t.name().to_string(),
-            Selector::Class(c) => format!(".{c}"),
+            Selector::Tag(t) => format!("{}{sufijo}", t.name()),
+            Selector::Class(c) => format!(".{c}{sufijo}"),
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -69,28 +79,33 @@ pub fn describe(r: &Rule) -> String {
 /// Refuse any stylesheet where "last wins" and "most specific wins" could
 /// disagree.
 pub fn check(rules: &[Rule], errors: &mut Vec<Error>) {
-    let mut first_class: Option<(Span, String)> = None;
+    // El nivel mas alto visto hasta aqui, y quien lo puso. Basta con eso: la
+    // regla es que los niveles NO BAJEN.
+    let mut techo: Option<(u8, String)> = None;
 
     for r in rules {
-        if level(r) == 1 {
-            if first_class.is_none() {
-                first_class = Some((r.span, describe(r)));
+        let n = level(r);
+        match &techo {
+            Some((alto, quien)) if n < *alto => {
+                errors.push(Error::new(
+                    r.span,
+                    &format!(
+                        "`{}` va despues de `{}`, y tiene que ir antes",
+                        describe(r),
+                        quien
+                    ),
+                    "MAQUETA resuelve por ORDEN --gana la ultima-- y un navegador \
+                     resuelve por ESPECIFICIDAD, donde una clase le gana a una \
+                     etiqueta y `:hover` le gana a la clase, esten donde esten. Con \
+                     este orden las dos lecturas dan resultados distintos, y entonces \
+                     la previsualizacion en navegador MIENTE. Un boceto en el que no \
+                     se puede confiar es peor que no tenerlo.",
+                    "las reglas de etiqueta arriba, luego las de clase, y las de \
+                     `:hover` al final. Con ese orden, `gana la ultima` y `gana la \
+                     mas especifica` dan siempre lo mismo.",
+                ));
             }
-            continue;
-        }
-        if let Some((_, ref who)) = first_class {
-            errors.push(Error::new(
-                r.span,
-                &format!("`{}` va despues de `{}`, y tiene que ir antes", describe(r), who),
-                "MAQUETA resuelve por ORDEN --gana la ultima-- y un navegador \
-                 resuelve por ESPECIFICIDAD, donde una clase le gana a una etiqueta \
-                 este donde este. Con este orden las dos lecturas dan resultados \
-                 distintos, y entonces la previsualizacion en navegador MIENTE. Un \
-                 boceto en el que no se puede confiar es peor que no tenerlo.",
-                "poner todas las reglas de etiqueta arriba y las de clase debajo. \
-                 Con ese orden, `gana la ultima` y `gana la mas especifica` dan \
-                 siempre lo mismo.",
-            ));
+            _ => techo = Some((n, describe(r))),
         }
     }
 }

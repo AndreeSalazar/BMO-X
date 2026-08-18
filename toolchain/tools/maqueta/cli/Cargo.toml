@@ -1,0 +1,18 @@
+[package]
+name = "bmo-maqueta"
+version = "0.1.0"
+edition = "2021"
+description = "El binario `maqueta`: compila un .maqueta a Rust. Un CONSUMIDOR de la cadena, no una generacion."
+license = "Techne"
+
+[[bin]]
+name = "maqueta"
+path = "src/main.rs"
+
+[dependencies]
+bmo-maqueta-node = { path = "../node" }
+bmo-maqueta-cascade = { path = "../cascade" }
+bmo-maqueta-layout = { path = "../layout" }
+bmo-maqueta-verdict = { path = "../verdict" }
+bmo-maqueta-emit = { path = "../emit" }
+bmo-maqueta-diag = { path = "../diag" }
