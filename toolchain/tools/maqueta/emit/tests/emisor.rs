@@ -192,8 +192,25 @@ fn el_numero_que_juzga_la_idea_medido_y_no_prometido() {
 #[test]
 fn lo_generado_esta_equilibrado_y_no_tiene_sorpresas() {
     let g = generado();
-    assert_eq!(g.matches('{').count(), g.matches('}').count(), "llaves");
-    assert_eq!(g.matches('(').count(), g.matches(')').count(), "parentesis");
+
+    // [!] Se cuenta SIN los comentarios, y lo aprendi rompiendolo: al documentar
+    // el recorte con `[x0, x1)` --el intervalo medio abierto-- el generado quedo
+    // con un `)` de mas y esta prueba salto. El codigo estaba perfecto.
+    //
+    // Sigue siendo una HEURISTICA: un texto del `.maqueta` con un parentesis
+    // suelto la volveria a enganar. Se queda porque avisa en tres milisegundos,
+    // y quien dice la verdad de verdad es `bmo.ps1`, que compila esto de veras.
+    let codigo: String = g
+        .lines()
+        .map(|l| match l.find("//") {
+            Some(i) => &l[..i],
+            None => l,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert_eq!(codigo.matches('{').count(), codigo.matches('}').count(), "llaves");
+    assert_eq!(codigo.matches('(').count(), codigo.matches(')').count(), "parentesis");
     assert!(!g.contains("ox + -"), "una coordenada negativa saldria como `ox + -8`");
     assert!(g.is_ascii(), "las fuentes de BMO-X son ASCII");
 }
@@ -204,4 +221,64 @@ fn una_maquetacion_vacia_no_genera_codigo_que_no_compile() {
     // que en este arbol es un aviso, y los avisos se tratan como errores.
     let g = rust::modulo("x.maqueta", &compilar("<maqueta></maqueta>"));
     assert!(g.contains("let _ = (ox, oy, px, py);"));
+}
+
+// ------------------------------------------------------------------------
+//  ** El pintado RECORTADO
+// ------------------------------------------------------------------------
+
+#[test]
+fn hay_un_pintar_en_que_recorta_los_rects_y_deja_el_texto_entero() {
+    let g = generado();
+    assert!(g.contains(
+        "pub fn pintar_en(p: &bmo::Pantalla, ox: u32, oy: u32, cx: u32, cy: u32, cw: u32, ch: u32)"
+    ));
+
+    // El panel entero se CORTA al danio: es la razon de existir de la funcion.
+    assert!(
+        g.contains("if let Some((x, y, w, h)) = corte(cx, cy, cw, ch, ox + 0, oy + 0, 322, 446) {"),
+        "{g}"
+    );
+    assert!(g.contains("p.rect(x, y, w, h, 0x00333D52);"), "{g}");
+
+    // El texto NO se corta: entero o nada, porque medio glifo no se pinta.
+    assert!(g.contains("if cruza(cx, cy, cw, ch, ox + 40, oy + 82, 8, 16) {"), "{g}");
+    assert!(g.contains("p.texto(ox + 40, oy + 82, \"C\", 0x00E6EDF6);"), "{g}");
+}
+
+#[test]
+fn el_recorte_generado_usa_el_intervalo_medio_abierto() {
+    // La misma regla que `bmo-dibujo`. Si el borde contara, cada reparacion
+    // repintaria una fila de mas y se veria como una costura.
+    let g = generado();
+    assert!(g.contains("if x1 > x0 && y1 > y0 {"), "{g}");
+    assert!(g.contains("fn cruza(cx: u32"), "y `cruza` sale de `corte`");
+}
+
+#[test]
+fn pintar_y_pintar_en_dibujan_LO_MISMO() {
+    // ** La comprobacion que vale: si las dos listas se separaran, reparar un
+    // danio pintaria algo distinto de lo que habia -- y eso en pantalla se ve
+    // como suciedad, no como un error.
+    use bmo_maqueta_emit::orden::{lista, Estado};
+
+    let l = compilar(CALC);
+    let ordenes = lista(&l);
+    let g = generado();
+
+    for o in ordenes.iter().filter(|o| o.estado == Estado::Reposo) {
+        let r = o.trazo.area();
+        let en_pintar_en = format!("cx, cy, cw, ch, ox + {}, oy + {}, {}, {}", r.x, r.y, r.w, r.h);
+        assert!(g.contains(&en_pintar_en), "falta en pintar_en: {en_pintar_en}");
+    }
+}
+
+#[test]
+fn el_realce_sale_de_la_misma_lista_y_con_el_id_del_golpeo() {
+    // `de` es `#k_c` en los comentarios; el `id` que llega del raton es `k_c`.
+    // Si no coincidieran, el realce no se dispararia nunca y nadie lo notaria
+    // hasta mirar la pantalla.
+    let g = generado();
+    assert!(g.contains("if id == \"k_c\" {"), "{g}");
+    assert!(g.contains("p.rect(ox + 8, oy + 54, 72, 72, 0x004B637E);"), "el color de :hover");
 }
