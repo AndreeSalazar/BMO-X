@@ -47,6 +47,29 @@ pub const TASK_OP_ENDPOINT_CREATE: u64 = 0x07;
 /// romper la exclusividad que hace que la entrada tenga un solo dueno. El
 /// terminal que lo lanzo le pasa lo que se teclea, por el mismo objeto que ya
 /// usa para hablar.
+///
+/// Devuelve `(n << 56) | bytes_LE` con hasta SIETE bytes, y `n = 0` cuando no
+/// hay nada todavia -- que no es un error: un programa que sondea no debe morir
+/// por preguntar.
+///
+/// ## ** UN PAQUETE NO CRUZA NUNCA UN SALTO DE LINEA
+///
+/// Si entre los bytes disponibles hay un `\n`, el paquete **acaba ahi**, con el
+/// salto incluido. Es contrato y no detalle de implementacion: lo cumplen el
+/// kernel (`ring0/obj/console.rs`, `read_entry`) y el emulador del banco de
+/// pruebas (`bmo-lower::emu`), y **tiene que cumplirlo cualquier otra cosa que
+/// algun dia sirva esta operacion**.
+///
+/// Lo que compra: el que lee LINEAS no necesita guardar nada entre llamadas.
+/// Sin la regla lo necesita, y el codigo que emite el compilador no tiene
+/// donde -- cada `ACCEPT` de COBOL es una emision independiente. Eso costo un
+/// fallo mudo real: la calculadora del escritorio manda `12.50\n3\n4\n` de
+/// golpe, el primer paquete traia `12.50\n3` y el `3` --la operacion que se
+/// pedia-- se perdia con el resto del paquete. El motor contestaba una cuenta
+/// que nadie habia pedido y nadie se enteraba.
+///
+/// El que lee bytes en crudo no pierde nada con la regla: recibe lo mismo, solo
+/// que en paquetes que acaban donde acaba una linea.
 pub const TASK_OP_CONSOLE_READ: u64 = 0x0F;
 
 /// Acumula hasta 8 bytes de una RUTA en el renglon del proceso.

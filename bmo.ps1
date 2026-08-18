@@ -82,7 +82,16 @@ if (-not $Rapido) {
         #          el nieto calcula donde cae cada caja, y una cuenta mal
         #          puesta no da un error -- **pinta el escritorio torcido**, y
         #          eso ninguna compilacion lo caza.
-        $paquetes = @('bmo-c-front', 'bmo-uaudio', 'bmo-abi', 'bmo-fat32', 'bmo-uhid', 'bmo-net', 'bmo-ciudad',
+        #
+        #   18-08  `bmo-cobol-front`                226 casillas
+        #          ** LA MAS GORDA QUE FALTABA, y la que mas duele: es el
+        #          hermano de `bmo-c-front`, que si estaba desde el primer dia.
+        #          Ahi dentro vive el banco que EJECUTA los programas en el
+        #          emulador -- el mismo que descubrio que `IF` ejecutaba las
+        #          dos ramas. Y ahi estan ahora las nueve de `calcgui`, que son
+        #          las unicas que comprueban que un motor de COBOL lanzado por
+        #          el escritorio contesta la cuenta que se le pidio.
+        $paquetes = @('bmo-c-front', 'bmo-cobol-front', 'bmo-uaudio', 'bmo-abi', 'bmo-fat32', 'bmo-uhid', 'bmo-net', 'bmo-ciudad',
                       'bmo-trim', 'bmo-block', 'bmo-identify', 'bmo-disco-juicio', 'bmo-estratos', 'bmo-particiones',
                       'bmo-maqueta-lex', 'bmo-maqueta-node', 'bmo-maqueta-cascade',
                       'bmo-maqueta-layout', 'bmo-maqueta-verdict', 'bmo-maqueta-emit')

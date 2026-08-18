@@ -63,3 +63,4 @@ mod file_status;
 mod binario;
 
 mod banca;
+mod calculadora;

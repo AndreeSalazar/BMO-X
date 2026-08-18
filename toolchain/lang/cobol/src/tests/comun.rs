@@ -44,6 +44,27 @@ pub(crate) fn run_cobol(src: &str) -> String {
     machine.console
 }
 
+/// Compila y ejecuta **sembrando lo que el terminal habria tecleado**.
+///
+/// Hasta hoy no existia, y por eso `ACCEPT` era la unica sentencia del lenguaje
+/// que nadie habia ejecutado nunca en el banco: los demas ejemplos o no leen
+/// nada o leen de un fichero. Lo que destapo escribirlo fue que **la lectura de
+/// linea perdia bytes** -- ver `TASK_OP_CONSOLE_READ` en la superficie del ABI.
+///
+/// [!] La entrada se siembra EXACTA, sin relleno: si el programa pide mas
+/// lineas de las que hay, `read_line` cede el turno en bucle y la prueba muere
+/// por presupuesto de pasos. Eso es correcto -- en la maquina estaria esperando
+/// a que alguien teclee-- y ademas es util: un `ACCEPT` de mas se ve.
+pub(crate) fn run_cobol_con_entrada(src: &str, entrada: &str) -> String {
+    use bmo_lower::emu::{run, Machine};
+    let bef = compile_source_to_bef(src).expect("el programa debe compilar");
+    let mut m = Machine::new(code_section(&bef));
+    m.poner_entrada(entrada);
+    let machine = run(m, 200_000);
+    assert!(machine.exited, "el programa debe terminar por INVOKE(EXIT)");
+    machine.console
+}
+
 /// Compila y ejecuta CON DISCO: se siembran los ficheros de entrada y se
 /// devuelve `(consola, maquina)` para poder mirar lo que quedo escrito.
 ///
