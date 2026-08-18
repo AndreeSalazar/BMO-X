@@ -1584,3 +1584,61 @@ sistema operativo, que es el estado en que el aparato llega sucio.
 
 [!] Diagnosticado leyendo el spec, **sin confirmar en metal todavia**. La prueba
 es exactamente la que lo destapo: reiniciar desde Windows.
+
+---
+
+## Ep. 43 -- La calculadora que espero a un fantasma de quince dias
+**Sintoma**: primer arranque con la calculadora terminada. La cara sale, las
+teclas responden. Se teclea `5+8`, se pulsa `=` **y se queda clavada**: sin
+resultado, sin error -- y el escritorio **deja de aceptar teclas**. No se puede
+escribir ni `reboot`.
+
+**Culpable**: no era la calculadora. Se lanzaba **otro motor**.
+
+```
+   staging\BMO-DATA\cobol\calcgui.bex     5.840 B    3 de agosto   <- este corria
+   staging\BMO-DATA\cobol\2\calcgui.bex   3.768 B    ese dia       <- este se construia
+```
+
+Los ejemplos de COBOL se reorganizaron de `cobol\` a `cobol\<escalon>\`, y los
+planos **se quedaron en `staging`**, que no se limpia entre builds. El
+escritorio pedia `cobol/calcgui.bex` --sin escalon-- y esa ruta seguia
+existiendo. Ese binario hablaba el protocolo anterior, de UNA sola linea; el
+escritorio, estrenado ese mismo dia, esperaba DOS. Se quedo esperando una
+segunda linea que aquel motor no sabia mandar.
+
+★★ **Un fantasma no da error: CONTESTA.** Por eso no lo caza ninguna
+compilacion, ningun test y ninguna comprobacion de formato. El fichero estaba
+bien, el programa era correcto, la ruta resolvia. Sencillamente **no era el que
+se creia estar ejecutando**.
+
+**Y debajo, el que convierte "se quedo clavada" en "hay que apagar la
+maquina"**: mientras esperaba, la calculadora se quedaba **toda** tecla sin una
+sola excepcion. Es la regla que se habia escrito a proposito --*si tiene las
+teclas, las tiene todas*-- y estaba bien... para una espera que termina. Con el
+motor mudo, esa misma regla apago el teclado del sistema.
+
+**Moraleja**: dos, y la segunda es la que se paga cara.
+
+**Una espera no puede ser una carcel.** Da igual de quien sea el fallo que la
+provoco: una app esperando no puede secuestrar la maquina. Ahora `C` la cancela
+--la tecla que la mano busca sola-- y ademas se cierra sola si el hijo murio sin
+contestar (`has_child` con el anillo vacio: exacto, y sin reloj, que aqui no
+hay). El `Ctrl+n` que ya existia funcionaba, pero **un atajo que hay que
+saberse no es una salida: es un secreto**.
+
+**Y lo que el build no borra, el build lo esconde.** No limpiar `staging` es una
+decision buena --rehacerlo entero cuesta minutos-- pero su precio no era basura
+inerte: era un binario viejo TAPANDO al nuevo. El guardian nuevo compara por
+fecha, que es una **resta** y no una lista: cualquier `.bex` mas viejo que el
+arranque del build. En su primera ejecucion encontro otro (`apps\doom640.bex`).
+Un guardian con lista tendria el mismo fallo que vigila.
+
+[!] Y el episodio tiene una coda que vale mas que el episodio: **el mismo dia se
+habia arreglado otro fallo mudo en el mismo camino** --`CONSOLE_READ` entregaba
+paquetes de 7 bytes y el lector de lineas TIRABA lo que viniera detras del
+`\n`--, y aun asi la calculadora no funciono en metal. Dos fallos distintos, en
+la misma frase de codigo, encontrados con doce horas de diferencia. **El emulador
+encontro el primero; solo el metal podia encontrar el segundo**, porque el
+emulador ejecuta el `.cob` que se le da y nunca pregunta que binario hay en el
+disco.
