@@ -152,29 +152,36 @@ if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
     use scene::data::{Seal, View};
     let mut served = true;
     match c {
-        // TAB: numeros <-> nodos. Es la misma tecla que cambia de
-        // pestana en todas partes.
+        // TAB: numeros <-> explorador. Es la misma tecla que cambia
+        // de pestana en todas partes.
         b'\t' => {
             dsk.win.data.view = match dsk.win.data.view {
                 View::Numbers => {
-                    // Al entrar en el arbol se empieza por la
-                    // raiz. Conservar el sitio de la ultima vez
+                    // ** AQUI Y SOLO AQUI SE VA A LA RAIZ.
+                    //
+                    // Al ENTRAR en el explorador se empieza por
+                    // arriba: conservar el sitio de la ultima vez
                     // ensenaria un directorio que ya no se sabe
                     // cual es.
+                    //
+                    // [!] Y este es el UNICO sitio del compositor
+                    // que mueve el cursor sin que nadie lo haya
+                    // pedido. Lo era tambien `paint_nodes`, que
+                    // llamaba a `a_la_raiz()` en cada repintado y
+                    // por eso la vista de nodos no podia navegar.
+                    // Pintar no navega.
                     bmo::estratos::a_la_raiz();
                     dsk.win.data.to_top();
-                    View::Nodes
+                    dsk.win.data.arbol_from = 0;
+                    View::Obra
                 }
-                // ** DE NODOS A CARPETAS **SIN TOCAR EL CURSOR**.
+                // ** Y AL SALIR NO SE TOCA EL CURSOR.
                 //
-                // Y eso es lo que hace que se sientan una sola
-                // cosa: estas en `/cobol/10` mirando el grafo,
-                // pulsas TAB y estas en `/cobol/10` mirando la
-                // lista. Volver a la raiz aqui --como se hace al
-                // ENTRAR desde numeros-- convertiria las dos
-                // pestanas en dos programas.
-                View::Nodes => View::Folders,
-                View::Folders => View::Numbers,
+                // Estas en `/cobol/10`, miras los numeros, vuelves
+                // con TAB y sigues en `/cobol/10`. Devolverlo a la
+                // raiz al salir convertiria las dos pestanas en
+                // dos programas.
+                View::Obra => View::Numbers,
             };
             dsk.win.data.seal = Seal::Idle;
         }

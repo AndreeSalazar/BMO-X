@@ -34,9 +34,14 @@
 //! === * LAS DOS CARAS (spec del dueno, CUMPLIDA el 2026-08-03) ===
 //!
 //! `[numeros]` contesta *"como esta el almacen?"* -- generacion, espacio,
-//! identidad, nivel. `[nodos]` contesta *"que hay dentro?"*. Son preguntas
+//! identidad, nivel. `[explorador]` contesta *"que hay dentro?"*. Son preguntas
 //! distintas y por eso son dos pestanas y no una pantalla: meter un arbol entre
 //! la generacion y la ocupacion deja las dos ilegibles. `TAB` cambia.
+//!
+//! ** El explorador fue a su vez DOS pestanas --`nodos` y `carpetas`-- hasta el
+//! 2026-08-18, y ahora son tres paneles de una sola vista: arbol, rejilla y
+//! grafo. El porque, en [`View::Obra`]; el reparto del ancho, en
+//! `scene::zonas`.
 //!
 //! La referencia que puso el dueno era buena y concreta: **un grafo tipo n8n** --
 //! cajas con titulo y nombre, unidas por lineas, con color por clase. No una
@@ -72,7 +77,9 @@
 
 use bmo_userland as bmo;
 
+use super::arbol;
 use super::chrome::Chrome;
+use super::zonas::{Zona, Zonas, MIGA_H};
 use super::*;
 use crate::text::decimal;
 
@@ -80,12 +87,12 @@ use crate::text::decimal;
 // dice de que ventana estas hablando antes de leer su titulo. Lo que cambia es
 // el tono -- el verde de antes era de rotulador, escogido para verse en una foto
 // de una pantalla que a lo mejor ni arrancaba.
-const DATA_BG: u32 = 0x0013_1C18;
-const DATA_TITLE_BG: u32 = 0x001B_2622;
+pub(crate) const DATA_BG: u32 = 0x0013_1C18;
+pub(crate) const DATA_TITLE_BG: u32 = 0x001B_2622;
 /// El borde, discreto. Lo que separa la ventana del fondo es la sombra.
-const DATA_EDGE: u32 = 0x002C_4038;
+pub(crate) const DATA_EDGE: u32 = 0x002C_4038;
 /// Y el acento verde, que si puede ser vivo: es una linea, no un marco.
-const DATA_TITLE: u32 = 0x0034_D399;
+pub(crate) const DATA_TITLE: u32 = 0x0034_D399;
 
 /// Los cuatro niveles de `bmo_estratos::espacio`, con su color.
 ///
@@ -114,6 +121,13 @@ pub(crate) struct DataWindow {
     pub(crate) sel: usize,
     /// Primer hijo visible: la lista es mas larga que la ventana.
     pub(crate) from: usize,
+    /// Primera fila visible DEL ARBOL, que es un desplazamiento distinto.
+    ///
+    /// * Y tiene que serlo: el arbol ensena los hermanos de todos los niveles y
+    /// la rejilla los hijos de uno solo, asi que sus listas no miden lo mismo
+    /// ni de lejos. Con un `from` compartido, bajar por la rejilla arrastraria
+    /// el arbol a una fila que no tiene nada que ver.
+    pub(crate) arbol_from: usize,
     /// Lo que dijo la ultima verificacion de firma, si se pidio alguna.
     ///
     /// `None` es "no se ha preguntado", y **no es lo mismo que "sin firma"**:
@@ -171,24 +185,22 @@ const DATA_PCT_H: u32 = 44;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum View {
     Numbers,
-    Nodes,
-    /// ** LA TERCERA CARA: el mismo volumen como CARPETAS.
+    /// ** LAS DOS LECTURAS A LA VEZ: el arbol, la rejilla y el grafo.
     ///
-    /// Peticion del dueno el 2026-08-13: *"el TAB ese mismo es EXPLORADOR como
-    /// Windows 11 para ver carpetas"*.
+    /// Eran dos pestanas --`nodos` y `carpetas`-- y el dueno pidio juntarlas el
+    /// 2026-08-18, con el argumento que las justifica:
     ///
-    /// Y sale casi gratis, que es lo que la hace buena idea: **no lee otra
-    /// cosa**. Es el MISMO cursor de ESTRATOS que alimenta el grafo --
-    /// `hijo_nombre`, `hijo_tipo`, `hijo_bytes`, `entrar`, `subir`-- pintado
-    /// como una lista en vez de como cajas con aristas. Las teclas tampoco
-    /// cambian: el despacho de `main.rs` da la navegacion a todo lo que no sea
-    /// `Numbers`, asi que esta vista la hereda entera.
+    /// > *"en explorer es 2D y en nodos es 3D, asi mas facil de gestionar"*
     ///
-    /// Y esa es exactamente la idea que el dueno lleva describiendo desde el
-    /// principio: **un explorador con dos modos sobre el mismo dato**. El
-    /// familiar para trabajar y el de grafo para ver como se conecta. No son dos
-    /// programas: son dos `paint`.
-    Folders,
+    /// Y no es una preferencia de aspecto. En ESTRATOS **una carpeta no es una
+    /// carpeta: es un nodo con atributos**. La rejilla contesta *que hay
+    /// dentro* y el grafo contesta *que es esto y como se conecta* -- dos
+    /// preguntas distintas sobre el mismo dato. Con una pestana detras de otra
+    /// habia que elegir cual de las dos mirar, y elegir entre ellas es
+    /// exactamente lo que no hace falta: caben las dos.
+    ///
+    /// El reparto del ancho vive en `scene::zonas`, no aqui.
+    Obra,
 }
 
 // El alto de la barra de titulo --que es el asa-- sale de `super::TITLE_H`:
@@ -208,6 +220,7 @@ impl DataWindow {
             view: View::Numbers,
             sel: 0,
             from: 0,
+            arbol_from: 0,
             verified: None,
             seal: Seal::Idle,
         }
@@ -224,7 +237,7 @@ impl DataWindow {
     /// y se selecciona otra. Las dos usan las mismas constantes y el mismo
     /// reparto del ancho a proposito.
     pub(crate) fn box_at(&self, px: u32, py: u32, how_many: usize) -> Option<usize> {
-        if self.view != View::Nodes || self.chrome.minimized {
+        if self.view != View::Obra || self.chrome.minimized {
             return None;
         }
         let (tx, box_w, children_x, first_y) = self.graph_geometry();
@@ -248,14 +261,19 @@ impl DataWindow {
 
     /// El reparto del grafo: `(x del padre, ancho de caja, x de los hijos, y de
     /// la primera fila)`. **Lo comparten quien pinta y quien acierta.**
+    /// Donde caen las cajas del grafo: `(x, ancho, x de los hijos, primera y)`.
+    ///
+    /// ** Sale de `Zonas` y no de `chrome`, y ese es el cambio que permite que
+    /// el grafo comparta ventana con la rejilla. Se recalcula en vez de
+    /// guardarse porque es aritmetica pura -- guardarlo obligaria a acordarse
+    /// de refrescarlo al mover la ventana, que es justo la clase de "acordarse"
+    /// que aqui sale mal.
     fn graph_geometry(&self) -> (u32, u32, u32, u32) {
         const CHANNEL: u32 = 44;
-        let tx = self.chrome.x + 16;
-        let usable = self.chrome.width.saturating_sub(32);
-        let box_w = ((usable.saturating_sub(CHANNEL)) / 2).max(NODE_MIN);
-        let children_x = tx + box_w + CHANNEL;
-        let first_y = self.chrome.y + TITLE_H + 6 + bmo::GLIFO_ALTO + 10 + 4;
-        (tx, box_w, children_x, first_y)
+        let z = Zonas::repartir(&self.chrome).grafo;
+        let box_w = ((z.w.saturating_sub(CHANNEL)) / 2).max(NODE_MIN);
+        let children_x = z.x + box_w + CHANNEL;
+        (z.x, box_w, children_x, z.y + 4)
     }
 
     // Los atajos de siempre, para no escribir `.chrome.` en cada uso. Son
@@ -280,10 +298,22 @@ impl DataWindow {
         }
     }
 
-    /// Cuantas cajas de hijo caben de una vez en la vista de nodos.
+    /// **Cuantos hijos se ensenan de una vez, en LOS DOS paneles.**
+    ///
+    /// Mide con las cajas del grafo, que son las mas altas, y la rejilla usa
+    /// este mismo numero aunque le cabrian mas filas. Es a proposito: las dos
+    /// columnas tienen que ensenar el MISMO tramo de hijos. Con dos cuentas
+    /// distintas, la lista ensenaria un archivo que el grafo de al lado no
+    /// tiene -- y entonces dejan de ser la misma cosa vista de dos maneras,
+    /// que es lo unico que justifica ponerlas juntas.
     fn fit_count(&self) -> usize {
-        let usable = self.chrome.height.saturating_sub(TITLE_H + 56);
-        (usable / (NODE_H + NODE_GAP)).max(1) as usize
+        let z = Zonas::repartir(&self.chrome);
+        // Si el grafo no cabe, manda la rejilla: sus filas son mas bajas y
+        // caben mas. Preguntar por el panel que no se pinta daria un tope
+        // inventado.
+        let alto = if z.grafo.hay() { z.grafo.h } else { z.rejilla.h };
+        let paso = if z.grafo.hay() { NODE_H + NODE_GAP } else { ROW_H };
+        (alto.saturating_sub(28) / paso).max(1) as usize
     }
 
     /// Mueve la seleccion y arrastra la ventana de scroll con ella.
@@ -408,73 +438,216 @@ fn node_box(
     }
 }
 
-/// La vista de NODOS: el nodo actual a la izquierda y sus hijos a la derecha,
-/// unidos por una espina y sus ramas.
+// == ** EL EXPLORADOR: los tres paneles a la vez ============================
+//
+// Eran dos pestanas y ahora es una vista. El argumento del dueno, que es el
+// que manda aqui:
+//
+//   > "en explorer es 2D y en nodos es 3D, asi mas facil de gestionar"
+//
+// Traducido a lo que ESTRATOS es de verdad: la rejilla contesta *que hay* y el
+// grafo contesta *que es esto*. Un directorio de este volumen no es una
+// carpeta, es un nodo con atributos -- y eso la rejilla no lo puede ensenar
+// por mucho que se le anadan columnas.
+//
+// ** Y ninguno de los tres paneles sabe donde esta: cada uno recibe su
+// rectangulo de `scene::zonas`. Es lo que permite que el grafo se retire
+// cuando la ventana es estrecha sin que los otros dos se enteren.
+
+fn obra(p: &bmo::Pantalla, c: &DataWindow) {
+    let z = Zonas::repartir(&c.chrome);
+
+    if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
+        p.texto(z.miga.x, z.miga.y, "ningun volumen ESTRATOS montado.", INK_BAD);
+        return;
+    }
+    // La guarda solo PREGUNTA. Poner el cursor en la raiz es de quien entra en
+    // la vista (`keys/panels.rs`) -- ver la nota larga que dejo ahi el fallo de
+    // "pintar navegaba".
+    if bmo::estratos::tipo() == bmo::estratos::NOTHING {
+        p.texto(z.miga.x, z.miga.y, "el volumen monta pero no tiene raiz legible.", INK_BAD);
+        p.texto(z.miga.x, z.miga.y + bmo::GLIFO_ALTO + 4, "el motivo esta en F11.", INK_DIM);
+        return;
+    }
+
+    miga(p, &z.miga);
+    arbol::paint(p, &z.arbol, c.arbol_from, DATA_TITLE, NODE_SEL);
+    paint_folders(p, c, &z.rejilla);
+    paint_nodes(p, c, &z.grafo);
+    pie(p, c, &z.pie);
+
+    // Los separadores. Una linea de un pixel entre paneles: sin ella, tres
+    // columnas de texto sobre el mismo fondo se leen como una sola tabla mal
+    // alineada.
+    for x in [z.arbol.derecha(), z.grafo.x.wrapping_sub(6)] {
+        if x > z.miga.x && x < z.miga.derecha() {
+            p.rect(x + 5, z.rejilla.y, 1, z.rejilla.h, DATA_EDGE);
+        }
+    }
+}
+
+/// **LA MIGA DE PAN**: `/ > cobol > 10`, y a la derecha cuantos hijos hay.
+///
+/// Antes ponia `profundidad 2`, y eso no dice DONDE estas: dos carpetas
+/// distintas con los mismos nombres dentro se veian identicas.
+///
+/// Los nombres los guarda el cursor AL BAJAR, porque despues ya no se saben: un
+/// nodo no sabe como se llama -- el nombre vive en la entrada de su padre.
+///
+/// * Estaba ESCRITA DOS VECES, una en cada pestana, y por eso vive aqui ahora:
+/// con las dos vistas a la vez habria pintado dos migas distintas del mismo
+/// sitio.
+fn miga(p: &bmo::Pantalla, z: &Zona) {
+    let hondo = bmo::estratos::hondo();
+    let ty = z.y + (MIGA_H - bmo::GLIFO_ALTO) / 2;
+    let mut x = p.texto(z.x, ty, "/", DATA_TITLE);
+    let mut level = 1u64;
+    while level <= hondo {
+        let mut nom = [0u8; 40];
+        let n = bmo::estratos::nombre_nivel(level, &mut nom);
+        x = p.texto(x + 2, ty, " > ", INK_DIM);
+        // El ultimo tramo en blanco y los de antes apagados: se lee de un
+        // vistazo donde estas sin perder de donde vienes.
+        let ink = if level == hondo { INK } else { INK_DIM };
+        x = p.texto_bytes(x, ty, &nom[..n], ink);
+        level += 1;
+    }
+    let mut b = [0u8; 10];
+    let x = p.texto(x + 3 * bmo::GLIFO_ANCHO, ty, "hijos ", INK_DIM);
+    let n = decimal(bmo::estratos::hijos(), &mut b);
+    let x = p.texto_bytes(x, ty, &b[..n], INK);
+    if bmo::estratos::truncado() {
+        // Se DICE. Un listado recortado en silencio se ve igual que un
+        // directorio con pocos archivos, y esa confusion cuesta horas.
+        p.texto(x, ty, "  (RECORTADO)", INK_BAD);
+    }
+    p.rect(z.x, z.abajo() - 2, z.w, 1, DATA_EDGE);
+}
+
+/// **EL PIE**: el detalle del nodo senalado, y la linea que anuncia las teclas.
+///
+/// Las dos lineas ya existian sueltas al fondo de la ventana, cada una midiendo
+/// por su cuenta contra `chrome.height`. Aqui reciben su zona.
+fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
+    let how_many = bmo::estratos::hijos() as usize;
+    p.rect(z.x, z.y, z.w, 1, DATA_EDGE);
+
+    // -- * EL DETALLE del nodo senalado --
+    //
+    // Un grafo que solo ensena nombres contesta *que hay*; no contesta *que es
+    // esto*.
+    let dy = z.y + 5;
+    if c.sel < how_many {
+        let mut b = [0u8; 10];
+        let x = p.texto(z.x, dy, "sel: ", INK_DIM);
+        let n = decimal(bmo::estratos::hijo_bytes(c.sel as u64), &mut b);
+        let x = p.texto_bytes(x, dy, &b[..n], INK);
+        let x = p.texto(x, dy, " B   atributos ", INK_DIM);
+        let n = decimal(bmo::estratos::hijo_atributos(c.sel as u64), &mut b);
+        let x = p.texto_bytes(x, dy, &b[..n], INK);
+        // La firma. **Se dice si la LLEVA; que CUADRE se pide con V** -- leer el
+        // archivo entero y hacerle el BLAKE3 en cada repintado convertiria un
+        // panel en un martillo sobre el disco.
+        let x = p.texto(x, dy, "   firma ", INK_DIM);
+        let x = if bmo::estratos::hijo_firmado(c.sel as u64) {
+            p.texto(x, dy, "SI", INK_OK)
+        } else {
+            p.texto(x, dy, "no", INK_DIM)
+        };
+        let vx = x + 2 * bmo::GLIFO_ANCHO;
+        match c.verified {
+            None => { p.texto(vx, dy, "V comprueba", INK_DIM); }
+            Some(bmo::estratos::FIRMA_CUADRA) => { p.texto(vx, dy, "CUADRA", INK_OK); }
+            // El unico mensaje de esta ventana que significa "hay un problema
+            // en el disco". Por eso es el unico en rojo.
+            Some(bmo::estratos::FIRMA_NO_CUADRA) => { p.texto(vx, dy, "NO CUADRA", INK_BAD); }
+            Some(bmo::estratos::FIRMA_AUSENTE) => { p.texto(vx, dy, "sin firma", INK_DIM); }
+            // TENUE y no rojo: el archivo esta bien, lo que no cabe es nuestro
+            // buffer de comprobacion. En rojo mandaba a buscar una corrupcion
+            // que no existe.
+            Some(bmo::estratos::FIRMA_NO_CABE) => { p.texto(vx, dy, "no cabe (>256 KiB)", INK_DIM); }
+            _ => { p.texto(vx, dy, "no se pudo leer", INK_BAD); }
+        }
+    }
+
+    // -- ** `S sella` DICHO EN LA BARRA, y esa es la mitad del arreglo --
+    //
+    // La orden de sellar existia desde hacia dias y **no estaba escrita en
+    // ningun sitio que se vea**: el dueno la busco teniendola delante. Una
+    // funcion que no se anuncia no es discreta, es una funcion que no esta.
+    let y = z.y + 5 + bmo::GLIFO_ALTO + 5;
+    match c.seal {
+        Seal::Asking => p.texto(
+            z.x, y,
+            "S OTRA VEZ para SELLAR (escribe en el disco)   otra tecla cancela",
+            0x00F0_D070,
+        ),
+        Seal::Done(g) => {
+            let x = p.texto(z.x, y, "SELLADO. generacion ", INK_OK);
+            let mut b = [0u8; 10];
+            let n = decimal(g, &mut b);
+            let x = p.texto_bytes(x, y, &b[..n], INK_OK);
+            p.texto(x, y, "   reinicia y mirala otra vez: eso prueba la barrera", INK_DIM)
+        }
+        Seal::Failed => p.texto(
+            z.x, y,
+            "NO se sello. el volumen sigue igual; el motivo esta en F11.",
+            INK_BAD,
+        ),
+        Seal::Idle => p.texto(
+            z.x, y,
+            "flechas mueven  ENTRAR baja  RETROCESO sube  clic en el arbol salta  V firma  S sella",
+            INK_DIM,
+        ),
+    };
+}
+
 /// El alto de una fila del explorador. Una linea de texto y aire a los lados:
 /// lo justo para que el realce de la seleccion no toque las letras.
 const ROW_H: u32 = 22;
 
-/// **La vista de CARPETAS: el mismo volumen, como lo ensena un explorador.**
+/// **LA REJILLA: los hijos del nodo actual, como los ensena un explorador.**
 ///
-/// Comparte cursor con el grafo --literalmente el mismo, no una copia-- asi que
-/// entrar aqui y salir al grafo deja el sitio donde estaba. Es lo que hace que
-/// las dos pestanas se sientan una sola cosa vista de dos maneras, que era la
-/// peticion.
+/// Comparte cursor con el grafo --literalmente el mismo, no una copia-- y desde
+/// que los dos se pintan a la vez comparte tambien la VENTANA de scroll: las
+/// dos columnas ensenan exactamente los mismos hijos, uno como lista y otro
+/// como cajas. Es lo que las hace dos lecturas de una cosa y no dos listas que
+/// hay que cuadrar con la vista.
 ///
 /// Tres columnas y ni una mas: **nombre, que es, cuanto ocupa**. Un explorador
-/// que ensena diez columnas por defecto obliga a leerlas todas para encontrar la
-/// unica que importaba.
-fn paint_folders(p: &bmo::Pantalla, c: &DataWindow) {
-    let tx = c.chrome.x + 16;
-    let mut ty = c.chrome.y + TITLE_H + 6;
-
-    if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
-        p.texto(tx, ty, "ningun volumen ESTRATOS montado.", INK_BAD);
+/// que ensena diez columnas por defecto obliga a leerlas todas para encontrar
+/// la unica que importaba.
+fn paint_folders(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
+    if !z.hay() {
         return;
     }
-    let hondo = bmo::estratos::hondo();
     let how_many = bmo::estratos::hijos() as usize;
+    let mut ty = z.y;
 
-    // La miga de pan, igual que en el grafo: sin ella dos carpetas con los
-    // mismos nombres dentro se ven identicas.
-    {
-        let mut x = p.texto(tx, ty, "/", DATA_TITLE);
-        let mut level = 1u64;
-        while level <= hondo {
-            let mut nom = [0u8; 40];
-            let n = bmo::estratos::nombre_nivel(level, &mut nom);
-            x = p.texto(x + 2, ty, " > ", INK_DIM);
-            let ink = if level == hondo { INK } else { INK_DIM };
-            x = p.texto_bytes(x, ty, &nom[..n], ink);
-            level += 1;
-        }
-    }
-    ty += bmo::GLIFO_ALTO + 8;
-
-    // La cabecera de columnas, y su linea. Las `x` salen del ancho del marco
-    // para que estirar la ventana de sitio a los nombres largos, que es para lo
-    // que se estira.
-    let width = c.chrome.width.saturating_sub(32);
-    let col_kind = tx + (width * 55) / 100;
-    let col_size = tx + (width * 78) / 100;
-    p.texto(tx + 22, ty, "nombre", INK_DIM);
+    // La cabecera de columnas, y su linea. Las `x` salen del ancho de LA ZONA
+    // --no del marco-- para que estirar la ventana de sitio a los nombres
+    // largos sin invadir al panel de al lado.
+    let col_kind = z.x + (z.w * 55) / 100;
+    let col_size = z.x + (z.w * 78) / 100;
+    p.texto(z.x + 22, ty, "nombre", INK_DIM);
     p.texto(col_kind, ty, "que es", INK_DIM);
     p.texto(col_size, ty, "bytes", INK_DIM);
     ty += bmo::GLIFO_ALTO + 3;
-    p.rect(tx, ty, width, 1, DATA_EDGE);
+    p.rect(z.x, ty, z.w, 1, DATA_EDGE);
     ty += 4;
 
     if how_many == 0 {
-        p.texto(tx + 22, ty + 4, "esta vacio.", INK_DIM);
+        p.texto(z.x + 22, ty + 4, "esta vacio.", INK_DIM);
         return;
     }
 
-    // Cuantas filas caben. Se descuenta la barra de teclas del pie: una lista
-    // que se pinta por debajo de su propia leyenda es una lista que miente
-    // sobre cuanto hay.
-    let to = c.chrome.y + c.chrome.height - bmo::GLIFO_ALTO - 14;
-    let fit_count = ((to.saturating_sub(ty)) / ROW_H).max(1) as usize;
-    let last = (c.from + fit_count).min(how_many);
+    // ** El cuantas-caben sale de `fit_count`, que mide con las cajas del
+    // GRAFO y no con estas filas. Es a proposito: las dos columnas tienen que
+    // ensenar el mismo tramo de hijos, y el tramo lo manda el panel que menos
+    // cosas mete. Con dos cuentas distintas, la lista ensenaria un archivo que
+    // el grafo de al lado no tiene -- y entonces ya no son la misma cosa vista
+    // de dos maneras.
+    let last = (c.from + c.fit_count()).min(how_many);
 
     let mut i = c.from;
     while i < last {
@@ -482,17 +655,17 @@ fn paint_folders(p: &bmo::Pantalla, c: &DataWindow) {
         // El realce de la fila senalada. Va DEBAJO del texto y ocupa el ancho
         // entero: es como se lee "esta es la seleccionada" sin un cursor.
         if i == c.sel {
-            p.rect(tx, ty, width, ROW_H, NODE_SEL);
+            p.rect(z.x, ty, z.w, ROW_H, NODE_SEL);
         }
         // El cuadrito de color: dice la clase antes de leer la columna. Es el
-        // mismo color que su caja en el grafo, a proposito -- cambiar de
-        // pestana no puede cambiarle el color a un nodo.
-        p.rect(tx + 4, ty + (ROW_H - 8) / 2, 8, 8, color);
+        // mismo color que su caja en el grafo, a proposito -- mirar el mismo
+        // nodo en los dos paneles no puede darle dos colores.
+        p.rect(z.x + 4, ty + (ROW_H - 8) / 2, 8, 8, color);
 
         let mut nom = [0u8; 64];
         let n = bmo::estratos::hijo_nombre(i as u64, &mut nom);
         let ty_texto = ty + (ROW_H - bmo::GLIFO_ALTO) / 2;
-        p.texto_bytes(tx + 22, ty_texto, &nom[..n], INK);
+        p.texto_bytes(z.x + 22, ty_texto, &nom[..n], INK);
         p.texto(col_kind, ty_texto, type_name, INK_DIM);
         let mut b = [0u8; 10];
         let nb = decimal(bmo::estratos::hijo_bytes(i as u64), &mut b);
@@ -507,94 +680,38 @@ fn paint_folders(p: &bmo::Pantalla, c: &DataWindow) {
     if last < how_many {
         let mut b = [0u8; 10];
         let nb = decimal((how_many - last) as u64, &mut b);
-        let x = p.texto(tx + 22, ty + 2, "y ", INK_DIM);
+        let x = p.texto(z.x + 22, ty + 2, "y ", INK_DIM);
         let x = p.texto_bytes(x, ty + 2, &b[..nb], INK);
         p.texto(x, ty + 2, " mas abajo", INK_DIM);
     }
 }
 
-fn paint_nodes(p: &bmo::Pantalla, c: &DataWindow) {
-    let tx = c.chrome.x + 16;
-    let mut ty = c.chrome.y + TITLE_H + 6;
-
-    if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
-        p.texto(tx, ty, "ningun volumen ESTRATOS montado.", INK_BAD);
+/// **EL GRAFO: el nodo actual y sus hijos, unidos por una curva cada uno.**
+///
+/// * La spec del dueno, cumplida: un grafo tipo n8n -- cajas con titulo y
+/// nombre, unidas por lineas, con color por clase. No una lista con sangrias.
+///
+/// Y desde el 2026-08-18 **no es una pestana: es la columna de la derecha**,
+/// junto a la rejilla. La razon esta en la cabecera de [`View::Obra`] y es la
+/// que da sentido a tener las dos a la vez: la rejilla contesta *que hay
+/// dentro* y esto contesta *que es eso y como se conecta*.
+fn paint_nodes(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
+    if !z.hay() {
         return;
     }
-    // ** AQUI HABIA UN `a_la_raiz()`, Y PINTAR NO PUEDE NAVEGAR.
-    //
-    // La linea era `if !a_la_raiz() && tipo() == NOTHING`, y se leia como una
-    // comprobacion: *si no se llega ni a la raiz y no hay nada, quejate*. Pero
-    // `a_la_raiz()` no pregunta, **MUEVE EL CURSOR**. Y esto se ejecuta en cada
-    // repintado -- o sea al pulsar una flecha, y tambien al arrastrar la
-    // ventana.
-    //
-    // El efecto era que la vista de NODOS no podia navegar: bajabas a un
-    // directorio, el repintado que venia detras te devolvia a la raiz, y lo que
-    // se veia era siempre la raiz. La de CARPETAS no lo tenia y por eso si
-    // navegaba -- dos pestanas sobre el mismo cursor comportandose distinto.
-    //
-    // El sintoma tampoco acusaba a nadie: nunca hubo un error, solo un arbol
-    // que no se movia. Es el mismo patron de siempre en esta casa, una linea
-    // que compila y hace de mas.
-    //
-    // Ahora la guarda solo PREGUNTA. Poner el cursor en la raiz es cosa de
-    // quien entra en la vista (`keys/panels.rs`, al pulsar TAB), que es donde
-    // ya estaba escrito y donde tiene sentido: al entrar, no al pintar.
-    if bmo::estratos::tipo() == bmo::estratos::NOTHING {
-        p.texto(tx, ty, "el volumen monta pero no tiene raiz legible.", INK_BAD);
-        ty += bmo::GLIFO_ALTO + 4;
-        p.texto(tx, ty, "el motivo esta en F11.", INK_DIM);
-        return;
-    }
-
-    let hondo = bmo::estratos::hondo();
     let how_many = bmo::estratos::hijos() as usize;
-
-    // -- * LA MIGA DE PAN, con nombres de verdad --
-    //
-    // Antes ponia `profundidad 2`, y eso no dice DONDE estas: dos carpetas
-    // distintas con los mismos nombres dentro se veian identicas. Ahora es
-    // `/ > cobol > 10`, que es la unica forma de saber que estas mirando.
-    //
-    // Los nombres los guarda el cursor AL BAJAR, porque despues ya no se
-    // saben: un nodo no sabe como se llama -- el nombre vive en la entrada de
-    // su padre.
-    {
-        let mut x = p.texto(tx, ty, "/", DATA_TITLE);
-        let mut level = 1u64;
-        while level <= hondo {
-            let mut nom = [0u8; 40];
-            let n = bmo::estratos::nombre_nivel(level, &mut nom);
-            x = p.texto(x + 2, ty, " > ", INK_DIM);
-            // El ultimo tramo en blanco y los de antes apagados: se lee de un
-            // vistazo donde estas sin perder de donde vienes.
-            let ink = if level == hondo { INK } else { INK_DIM };
-            x = p.texto_bytes(x, ty, &nom[..n], ink);
-            level += 1;
-        }
-        let mut b = [0u8; 10];
-        let x = p.texto(x + 3 * bmo::GLIFO_ANCHO, ty, "hijos ", INK_DIM);
-        let n = decimal(how_many as u64, &mut b);
-        let x = p.texto_bytes(x, ty, &b[..n], INK);
-        if bmo::estratos::truncado() {
-            // Se DICE. Un listado recortado en silencio se ve igual que un
-            // directorio con pocos archivos, y esa confusion cuesta horas.
-            p.texto(x, ty, "  (RECORTADO)", INK_BAD);
-        }
-    }
-    ty += bmo::GLIFO_ALTO + 10;
+    let hondo = bmo::estratos::hondo();
 
     // -- * EL REPARTO DEL ANCHO --
     //
-    // Las cajas ya no miden lo mismo pase lo que pase: el ancho util se parte
-    // entre las dos columnas y el canal de las ramas. Estirar la ventana hace
-    // que quepan nombres mas largos, que es para lo que uno la estira.
+    // Las cajas no miden lo mismo pase lo que pase: el ancho de LA ZONA se
+    // parte entre las dos columnas y el canal de las ramas. Estirar la ventana
+    // hace que quepan nombres mas largos, que es para lo que uno la estira.
     //
-    // ** Y sale de `graph_geometry`, **la misma que usa el acierto del
-    // raton**. Tenerlo dos veces era garantizar que un dia se pulsara una caja
-    // y se seleccionara otra: dos copias de una geometria se separan solas.
-    let (_, box_w, children_x, first_y) = c.graph_geometry();
+    // ** Y sale de `graph_geometry`, **la misma que usa el acierto del raton**.
+    // Tenerlo dos veces era garantizar que un dia se pulsara una caja y se
+    // seleccionara otra: dos copias de una geometria se separan solas.
+    let (tx, box_w, children_x, first_y) = c.graph_geometry();
 
     // -- El nodo actual, a la izquierda --
     let parent_y = first_y;
@@ -635,21 +752,15 @@ fn paint_nodes(p: &bmo::Pantalla, c: &DataWindow) {
     // del hijo, **y se puede seguir con el dedo**. Eso es lo que convierte un
     // cuadro de tuberias en un grafo.
     //
-    // Los tirantes van horizontales y a media distancia (`CHANNEL/2`), que es lo
-    // que hace que la curva salga y entre en horizontal aunque el hijo este
-    // muy abajo: la clasica S. Ver `bmo::curve`.
-    let fit_count = c.fit_count();
-    let last = (c.from + fit_count).min(how_many);
-    // El recorte, que hasta ahora no existia: las aristas no pueden salirse del
-    // marco de la ventana. Con codos calculados a mano no hacia falta --nunca
-    // se salian por construccion--; una curva se sale en cuanto el marco se
-    // encoge, y sin esto pintaria por encima de lo que haya al lado.
-    let rec = bmo::Recorte::nuevo(
-        c.chrome.x as i32 + 1,
-        (c.chrome.y + TITLE_H) as i32,
-        c.chrome.width as i32 - 2,
-        c.chrome.height as i32 - TITLE_H as i32 - 1,
-    );
+    // Los tirantes van horizontales y a media distancia, que es lo que hace que
+    // la curva salga y entre en horizontal aunque el hijo este muy abajo: la
+    // clasica S. Ver `bmo::curve`.
+    let last = (c.from + c.fit_count()).min(how_many);
+    // El recorte: las aristas no pueden salirse de SU panel. Antes se recortaba
+    // contra el marco de la ventana entera, que con una sola vista dentro venia
+    // a ser lo mismo; ahora no lo es -- una curva que se saliera por la
+    // izquierda se pintaria encima de la rejilla.
+    let rec = bmo::Recorte::nuevo(z.x as i32, z.y as i32, z.w as i32, z.h as i32);
     let out_y = parent_y + NODE_H / 2;
     let out_x = tx + box_w;
     // El tirante: la mitad del canal. Sale de la geometria y no de un numero a
@@ -687,73 +798,6 @@ fn paint_nodes(p: &bmo::Pantalla, c: &DataWindow) {
     // dejarlas naciendo de un borde. Con una sola espina hacia falta uno; con
     // una curva por hijo, todas salen de aqui y por eso se nota mas.
     p.rect(out_x - 1, out_y - 2, 5, 5, DATA_EDGE_LINE);
-
-    // -- * EL PANEL DE DETALLE del nodo senalado --
-    //
-    // Un grafo que solo ensena nombres contesta *que hay*; no contesta *que es
-    // esto*. Va al PIE y en una linea: es informacion de apoyo, y un panel
-    // lateral se comeria el ancho que las cajas necesitan para sus nombres.
-    if c.sel < how_many {
-        let dy = c.chrome.y + c.chrome.height - TITLE_H - bmo::GLIFO_ALTO - 2;
-        p.rect(c.chrome.x + 1, dy - 6, c.chrome.width - 2, 1, DATA_EDGE);
-        let mut b = [0u8; 10];
-        let x = p.texto(tx, dy, "sel: ", INK_DIM);
-        let n = decimal(bmo::estratos::hijo_bytes(c.sel as u64), &mut b);
-        let x = p.texto_bytes(x, dy, &b[..n], INK);
-        let x = p.texto(x, dy, " B   atributos ", INK_DIM);
-        let n = decimal(bmo::estratos::hijo_atributos(c.sel as u64), &mut b);
-        let x = p.texto_bytes(x, dy, &b[..n], INK);
-        // La firma. **Se dice si la LLEVA; que CUADRE se pide con V** -- leer el
-        // archivo entero y hacerle el BLAKE3 en cada repintado convertiria un
-        // panel en un martillo sobre el disco.
-        let x = p.texto(x, dy, "   firma ", INK_DIM);
-        let x = if bmo::estratos::hijo_firmado(c.sel as u64) {
-            p.texto(x, dy, "SI", INK_OK)
-        } else {
-            p.texto(x, dy, "no", INK_DIM)
-        };
-        // Y el resultado de la ultima verificacion, si se pidio.
-        match c.verified {
-            None => {
-                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "V comprueba", INK_DIM);
-            }
-            Some(bmo::estratos::FIRMA_CUADRA) => {
-                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "CUADRA", INK_OK);
-            }
-            Some(bmo::estratos::FIRMA_NO_CUADRA) => {
-                // El unico mensaje de esta ventana que significa "hay un
-                // problema en el disco". Por eso es el unico en rojo.
-                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "NO CUADRA", INK_BAD);
-            }
-            Some(bmo::estratos::FIRMA_AUSENTE) => {
-                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "sin firma", INK_DIM);
-            }
-            Some(bmo::estratos::FIRMA_NO_CABE) => {
-                // TENUE y no rojo: el archivo esta bien, lo que no cabe es
-                // nuestro buffer de comprobacion. Pintarlo en rojo mandaba a
-                // buscar una corrupcion que no existe.
-                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "no cabe (>256 KiB)", INK_DIM);
-            }
-            _ => {
-                p.texto(x + 2 * bmo::GLIFO_ANCHO, dy, "no se pudo leer", INK_BAD);
-            }
-        }
-    }
-
-    // Si la lista no cabe entera, decirlo con numeros y no con puntos
-    // suspensivos: "3-8 de 40" se lee; "..." no dice cuanto falta.
-    if how_many > fit_count {
-        let mut b = [0u8; 10];
-        let y = c.chrome.y + c.chrome.height - TITLE_H - bmo::GLIFO_ALTO;
-        let n = decimal(c.from as u64 + 1, &mut b);
-        let x = p.texto_bytes(children_x, y, &b[..n], INK_DIM);
-        let x = p.texto(x, y, "-", INK_DIM);
-        let n = decimal(last as u64, &mut b);
-        let x = p.texto_bytes(x, y, &b[..n], INK_DIM);
-        let x = p.texto(x, y, " de ", INK_DIM);
-        let n = decimal(how_many as u64, &mut b);
-        p.texto_bytes(x, y, &b[..n], INK_DIM);
-    }
 }
 
 /// Pinta la consola de datos entera.
@@ -778,59 +822,21 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow) {
     let px = px + 2 * bmo::GLIFO_ANCHO;
     // Las pestanas: la activa lleva su subrayado. Un corchete pintado de otro
     // color se pierde en una foto; una linea debajo no.
-    let (c1, c2, c3) = match c.view {
-        View::Numbers => (INK, INK_DIM, INK_DIM),
-        View::Nodes => (INK_DIM, INK, INK_DIM),
-        View::Folders => (INK_DIM, INK_DIM, INK),
+    let (c1, c2) = match c.view {
+        View::Numbers => (INK, INK_DIM),
+        View::Obra => (INK_DIM, INK),
     };
     let fin1 = p.texto(px, c.chrome.y + 8, "numeros", c1);
     let px2 = fin1 + 2 * bmo::GLIFO_ANCHO;
-    let fin2 = p.texto(px2, c.chrome.y + 8, "nodos", c2);
-    let px3 = fin2 + 2 * bmo::GLIFO_ANCHO;
-    let fin3 = p.texto(px3, c.chrome.y + 8, "carpetas", c3);
+    let fin2 = p.texto(px2, c.chrome.y + 8, "explorador", c2);
     let (sx, sw) = match c.view {
         View::Numbers => (px, fin1 - px),
-        View::Nodes => (px2, fin2 - px2),
-        View::Folders => (px3, fin3 - px3),
+        View::Obra => (px2, fin2 - px2),
     };
     p.rect(sx, c.chrome.y + 8 + bmo::GLIFO_ALTO + 2, sw, 2, DATA_TITLE);
 
-    if c.view == View::Nodes || c.view == View::Folders {
-        if c.view == View::Nodes {
-            paint_nodes(p, c);
-        } else {
-            paint_folders(p, c);
-        }
-        let y = c.chrome.y + c.chrome.height - bmo::GLIFO_ALTO - 8;
-        // ** `S sella` DICHO EN LA BARRA, y esa es la mitad del arreglo.
-        //
-        // La orden de sellar existia desde hacia dias y **no estaba escrita en
-        // ningun sitio que se vea**: el dueno la busco teniendola delante. Una
-        // funcion que no se anuncia no es discreta, es una funcion que no esta.
-        match c.seal {
-            Seal::Asking => p.texto(
-                tx, y,
-                "S OTRA VEZ para SELLAR (escribe en el disco)   otra tecla cancela",
-                0x00F0_D070,
-            ),
-            Seal::Done(g) => {
-                let x = p.texto(tx, y, "SELLADO. generacion ", INK_OK);
-                let mut b = [0u8; 10];
-                let n = decimal(g, &mut b);
-                let x = p.texto_bytes(x, y, &b[..n], INK_OK);
-                p.texto(x, y, "   reinicia y mirala otra vez: eso prueba la barrera", INK_DIM)
-            }
-            Seal::Failed => p.texto(
-                tx, y,
-                "NO se sello. el volumen sigue igual; el motivo esta en F11.",
-                INK_BAD,
-            ),
-            Seal::Idle => p.texto(
-                tx, y,
-                "flechas mueven  ENTRAR baja  RETROCESO sube  V firma  S sella  F12 cierra",
-                INK_DIM,
-            ),
-        };
+    if c.view == View::Obra {
+        obra(p, c);
         return;
     }
 
@@ -960,7 +966,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow) {
     }
 
     ty += bmo::GLIFO_ALTO + 10;
-    p.texto(tx, ty, "F12 o ESC cierran.   TAB: nodos y carpetas.", INK_DIM);
+    p.texto(tx, ty, "F12 o ESC cierran.   TAB: el explorador.", INK_DIM);
     ty += bmo::GLIFO_ALTO + 2;
     // * Decirlo aqui evita el susto: con esta ventana delante el teclado es
     // SUYO, asi que teclear no escribe en la caja de abajo. Antes si escribia

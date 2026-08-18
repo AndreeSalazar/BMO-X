@@ -16,6 +16,12 @@ pub(crate) mod calc;
 pub(crate) mod calc_gen;
 pub(crate) mod switcher;
 pub(crate) mod data;
+/// EL REPARTO de la ventana de ESTRATOS en paneles. Un solo sitio donde se
+/// decide donde cae cada cosa, para que pintar y acertar con el raton no puedan
+/// discrepar.
+pub(crate) mod zonas;
+/// EL PANEL DE ARBOL: la rama por la que has bajado, con sus hermanas.
+pub(crate) mod arbol;
 pub(crate) mod cursor;
 /// La ENTRADA a Ring 3: lo que se ve cuando el userspace toma la maquina.
 pub(crate) mod splash;
