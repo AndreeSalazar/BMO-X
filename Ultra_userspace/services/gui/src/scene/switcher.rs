@@ -17,6 +17,7 @@
 use bmo_userland as bmo;
 
 use super::*;
+use crate::desktop::Ventana;
 
 const SW_BG: u32 = 0x0016_2032;
 const SW_EDGE: u32 = 0x0060_80A8;
@@ -25,26 +26,22 @@ const SW_SEL: u32 = 0x002E_4C74;
 const ROW_H: u32 = bmo::GLIFO_ALTO + 8;
 const SW_W: u32 = 420;
 
-/// El nombre de cada ventana, indexado por su id.
+/// El nombre de cada ventana.
 ///
-/// El id es el mismo `u8` que maneja `bmo_input::focus`: ahi es un numero sin
-/// significado --la politica no sabe que es una ventana-- y aqui se le pone
-/// nombre. Cada ventana nueva es una fila mas en esta tabla.
-/// * CABINA y Sonido faltaban aqui, y el atajo las ensenaba como `?`.
+/// ** LA TABLA YA NO ESTA AQUI, y ese es el arreglo. Estuvo, con un `_ =>
+/// "?"` al final, y mintio dos veces: CABINA y Sonido salieron como `?` por
+/// no ampliarla al nacer, y la ventana de CPU se anunciaba como "Sonido"
+/// porque compartia el id 3 con ella.
 ///
-/// Las dos nacieron despues de esta tabla, y la linea de arriba --*"cada ventana
-/// nueva es una fila mas"*-- no se leyo ninguna de las dos veces. El sintoma es
-/// suave y por eso duro: Alt+Tab funcionaba, conmutaba bien, y solo mentia en el
-/// nombre. **Una tabla que hay que acordarse de ampliar se queda corta**; lo que
-/// impide que vuelva a pasar es que ahora se nombra la ventana que se esta
-/// moviendo con las flechas, y un `?` que se mueve se ve enseguida.
+/// El sintoma de una tabla que se queda corta es suave y por eso dura: Alt+Tab
+/// funciona, conmuta bien, y solo miente en el nombre. Ahora los nombres son
+/// de `Ventana`, donde el `match` es EXHAUSTIVO --sin `_`-- y una ventana
+/// nueva no compila hasta que tiene el suyo. Aqui solo queda la traduccion
+/// desde el id que guarda la politica, y el `?` que ya no puede pasar.
 pub(crate) fn name(id: u8) -> &'static str {
-    match id {
-        0 => "Ejecutar",
-        1 => "Datos (ESTRATOS)",
-        2 => "CABINA (kernel)",
-        3 => "Sonido",
-        _ => "?",
+    match Ventana::de_id(id) {
+        Some(v) => v.nombre(),
+        None => "?",
     }
 }
 

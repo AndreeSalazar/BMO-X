@@ -21,7 +21,7 @@
 
 use bmo_userland as bmo;
 
-use super::{Desktop, BLINK, W_CABINA, W_DATA, W_RUN};
+use super::{BLINK, Desktop, Ventana};
 use crate::scene::calc::paint_calc;
 use crate::scene::output::paint_output;
 use crate::scene::{self, paint_field, ACCENT, TASKBAR};
@@ -103,7 +103,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         //
         // Y es ARRIBA, no ABIERTA: con Datos abierta pero detras, la
         // rejilla se ve y tiene que seguir escribiendose.
-        if dsk.win.visible && dsk.win.top_before != W_DATA && !dsk.win.switcher_painted {
+        if dsk.win.visible && dsk.win.top_before != Ventana::Data && !dsk.win.switcher_painted {
             paint_output(&p, &dsk.run_box, &dsk.out.grid);
             dsk.out.grid.dirty = false;
         } else if !dsk.win.visible {
@@ -133,11 +133,11 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         dsk.win.taskbar_dirty = true;
     }
     if dsk.win.taskbar_dirty && dsk.tick.will_paint {
-        scene::paint_chip(&p, 0, "Ejecutar", ACCENT, dsk.win.visible && dsk.win.top_before == W_RUN, !dsk.win.visible);
+        scene::paint_chip(&p, 0, "Ejecutar", ACCENT, dsk.win.visible && dsk.win.top_before == Ventana::Run, !dsk.win.visible);
         if dsk.win.data_open {
             scene::paint_chip(
                 &p, 1, "ESTRATOS", 0x0034_D399,
-                dsk.win.top_before == W_DATA, dsk.win.data.chrome.minimized,
+                dsk.win.top_before == Ventana::Data, dsk.win.data.chrome.minimized,
             );
         } else {
             // Cerrada: su hueco vuelve al color de la barra. Una ficha que
@@ -159,7 +159,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // recordatorio.
         scene::paint_chip(
             &p, 2, "CABINA", 0x00F5_9E0B,
-            dsk.win.cabina_open && dsk.win.top_before == W_CABINA,
+            dsk.win.cabina_open && dsk.win.top_before == Ventana::Cabina,
             !dsk.win.cabina_open,
         );
         // El testigo del USB vive en la misma barra, en la ranura siguiente a
@@ -194,7 +194,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     if dsk.tick.repaint_field
         && dsk.tick.will_paint
         && dsk.win.visible
-        && dsk.win.top_before != W_DATA
+        && dsk.win.top_before != Ventana::Data
         && !dsk.win.switcher_painted
     {
         paint_field(&p, &dsk.run_box, dsk.field.line(), dsk.field.cur, dsk.field.caret);
@@ -301,11 +301,11 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // del kernel no puede pedir la mano -- senalaria algo que no se
         // puede pulsar, que es peor que no senalar nada.
         let shape = if dsk.calc.visible
-            && dsk.win.top_before == W_RUN
+            && dsk.win.top_before == Ventana::Run
             && dsk.calc_pad.key_at(dsk.tick.ax, dsk.tick.ay).is_some()
         {
             scene::cursor::Shape::Hand
-        } else if dsk.win.visible && dsk.win.top_before == W_RUN && dsk.run_box.on_field(dsk.tick.ax, dsk.tick.ay) {
+        } else if dsk.win.visible && dsk.win.top_before == Ventana::Run && dsk.run_box.on_field(dsk.tick.ax, dsk.tick.ay) {
             scene::cursor::Shape::Beam
         } else {
             scene::cursor::Shape::Arrow

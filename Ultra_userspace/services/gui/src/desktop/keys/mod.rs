@@ -40,7 +40,7 @@ pub(crate) mod windows;
 
 use bmo_userland as bmo;
 
-use super::{Desktop, W_CABINA, W_CPU, W_DATA, W_MEM, W_RUN, W_SOUND};
+use super::{Desktop, Ventana};
 use crate::scene::{self, scene_color};
 use crate::scene::{paint_status, INK_DIM};
 use crate::{erase_box, uncover};
@@ -189,42 +189,75 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
         // TODAS las abiertas, y la que tiene el foco la ULTIMA. La
         // version de dos ventanas enumeraba los casos a mano, y con
         // tres eso son seis ramas que dicen una sola regla.
-        let top_now = if dsk.win.mem_open && dsk.win.focus.es_para(W_MEM) {
-            W_MEM
-        } else if dsk.win.cpu_open && dsk.win.focus.es_para(W_CPU) {
-            W_CPU
-        } else if dsk.win.sound_open && dsk.win.focus.es_para(W_SOUND) {
-            W_SOUND
-        } else if dsk.win.cabina_open && dsk.win.focus.es_para(W_CABINA) {
-            W_CABINA
-        } else if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
-            W_DATA
+        let top_now = if dsk.win.mem_open && dsk.win.focus.es_para(Ventana::Mem) {
+            Ventana::Mem
+        } else if dsk.win.cpu_open && dsk.win.focus.es_para(Ventana::Cpu) {
+            Ventana::Cpu
+        } else if dsk.win.sound_open && dsk.win.focus.es_para(Ventana::Sound) {
+            Ventana::Sound
+        } else if dsk.win.cabina_open && dsk.win.focus.es_para(Ventana::Cabina) {
+            Ventana::Cabina
+        } else if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
+            Ventana::Data
         } else {
-            W_RUN
+            Ventana::Run
         };
-        let paint_one = |v: u8, repintar: &mut bool, sal: &mut scene::output::Output| {
+        // ** EL `match` NO LLEVA `_`, Y ESO ES LA MITAD DEL ARREGLO.
+        //
+        // Llevaba uno --`_ => {}`-- y ademas cada rama iba con guarda, asi
+        // que una ventana olvidada aqui no daba error: daba una ventana que
+        // no se repintaba. Con `Ventana` y sin `_`, anadir la septima no
+        // compila hasta que se diga que hacer con ella, y la condicion de
+        // "esta abierta" se pregunta DENTRO de su rama en vez de en la
+        // guarda -- que es lo que deja el `match` exhaustivo de verdad.
+        let paint_one = |v: Ventana, repintar: &mut bool, sal: &mut scene::output::Output| {
             match v {
-                W_CABINA if dsk.win.cabina_open => {
-                    scene::cabina::paint(&p, &dsk.win.cabina)
+                Ventana::Cabina => {
+                    if dsk.win.cabina_open {
+                        scene::cabina::paint(&p, &dsk.win.cabina);
+                    }
                 }
-                W_DATA if dsk.win.data_open => scene::data::paint(&p, &dsk.win.data),
+                Ventana::Data => {
+                    if dsk.win.data_open {
+                        scene::data::paint(&p, &dsk.win.data);
+                    }
+                }
                 // Las vitales son VISTAS: se repintan cada vez que les
                 // toca turno, que es lo que las diferencia de `info`.
-                W_CPU if dsk.win.cpu_open => scene::vitals::paint(&p, &dsk.win.cpu),
-                W_MEM if dsk.win.mem_open => scene::vitals::paint(&p, &dsk.win.mem),
-                W_SOUND if dsk.win.sound_open => scene::sound::paint(
-                    &p,
-                    &dsk.win.sound,
-                    dsk.snd.cap.is_some(),
-                    dsk.snd.devices,
-                    dsk.snd.volume,
-                    dsk.snd.pressed,
-                ),
-                W_RUN => uncover(&p, &dsk.run_box, dsk.win.visible, sal, repintar),
-                _ => {}
+                Ventana::Cpu => {
+                    if dsk.win.cpu_open {
+                        scene::vitals::paint(&p, &dsk.win.cpu);
+                    }
+                }
+                Ventana::Mem => {
+                    if dsk.win.mem_open {
+                        scene::vitals::paint(&p, &dsk.win.mem);
+                    }
+                }
+                Ventana::Sound => {
+                    if dsk.win.sound_open {
+                        scene::sound::paint(
+                            &p,
+                            &dsk.win.sound,
+                            dsk.snd.cap.is_some(),
+                            dsk.snd.devices,
+                            dsk.snd.volume,
+                            dsk.snd.pressed,
+                        );
+                    }
+                }
+                Ventana::Run => uncover(&p, &dsk.run_box, dsk.win.visible, sal, repintar),
             }
         };
-        for v in [W_RUN, W_DATA, W_CABINA, W_SOUND] {
+        // ** Y LA LISTA ES `Ventana::TODAS`, NO UNA COPIA A MANO.
+        //
+        // Aqui decia `[Ventana::Run, Ventana::Data, Ventana::Cabina,
+        // Ventana::Sound]` -- cuatro de seis. Las vitales no estaban, y lo
+        // unico que las salvaba de quedarse tapadas era que se repintan solas
+        // cada 15 fotogramas desde `paint.rs`. O sea que el z-order no las
+        // ordenaba: flotaban, y a los ~250 ms volvian a aparecer por encima
+        // de lo que las hubiera tapado.
+        for v in Ventana::TODAS {
             if v != top_now {
                 paint_one(v, &mut dsk.tick.repaint_field, &mut dsk.out.grid);
             }
@@ -243,11 +276,11 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
             // para el foco. Sin esto, Alt+Tab llevaria el teclado a una
             // ventana que no esta en la pantalla: escribirias en algo
             // invisible, que es la peor forma de perder una linea.
-            dsk.win.focus.open(W_RUN);
+            dsk.win.focus.open(Ventana::Run);
             uncover(&p, &dsk.run_box, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
             paint_status(&p, &dsk.run_box, "listo", INK_DIM);
         } else {
-            dsk.win.focus.close(W_RUN);
+            dsk.win.focus.close(Ventana::Run);
             erase_box(&p, &dsk.run_box);
         }
     }
@@ -292,7 +325,7 @@ pub(crate) fn dispatch(
         //
         // Ninguna abierta --todas escondidas-- tampoco es "Ejecutar por
         // defecto": las teclas se descartan y vuelven al invocarla.
-        if !dsk.win.focus.es_para(W_RUN) {
+        if !dsk.win.focus.es_para(Ventana::Run) {
             continue;
         }
         if let Edit::Launch(target, n) = editor::on_key(dsk, p, c, g.ctrl) {

@@ -7,7 +7,7 @@
 use bmo_userland as bmo;
 
 use super::Key;
-use crate::desktop::{Desktop, W_DATA, W_SOUND};
+use crate::desktop::{Desktop, Ventana};
 use crate::scene::{self};
 
 pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, _alt_alone: bool, ctrl: bool) -> Key {
@@ -16,7 +16,7 @@ pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, _alt_alone: bo
 // dueno esta escribiendo, y robarsela para un atajo seria el
 // peor intercambio posible. Es la misma regla que la `f` del
 // klog.
-if dsk.win.sound_open && dsk.win.focus.es_para(W_SOUND) {
+if dsk.win.sound_open && dsk.win.focus.es_para(Ventana::Sound) {
     if let Some(s) = &dsk.snd.cap {
         // Flechas: el volumen, de diez en diez.
         //
@@ -78,7 +78,7 @@ if dsk.win.sound_open && dsk.win.focus.es_para(W_SOUND) {
 // ** MIENTRAS CABINA ESTA ABIERTA, ESTAS TRES TECLAS SON SUYAS
 // -- RePag, AvPag y `G`-- y no se le piden al foco.
 //
-// Antes se exigia `focus.es_para(W_CABINA)`, y el 2026-08-09 eso
+// Antes se exigia `focus.es_para(Ventana::Cabina)`, y el 2026-08-09 eso
 // dio una ventana que **prometia en su pie algo que no hacia**:
 // el dueno abrio CABINA con F11, la vio ocupando la pantalla, y
 // RePag no movio nada. No era un fallo del scroll: era la
@@ -148,7 +148,7 @@ if dsk.win.cabina_open && (c == 0x87 || c == 0x88) {
 // teclas DE ESTA VENTANA. Con Datos delante, las flechas no
 // tienen nada que ver con el historial de comandos de Ejecutar,
 // y hasta hoy iban alli -- se navegaba una ventana tapada.
-if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
+if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
     use scene::data::{Seal, View};
 
     // == ** LA CONSOLA VA PRIMERO, Y ESE ORDEN ES LA REGLA =================
@@ -284,7 +284,7 @@ if dsk.win.data_open && dsk.win.focus.es_para(W_DATA) {
 // Va en este fichero por la misma regla que las demas: son teclas de un panel
 // abierto y la guarda es el foco. Lo que cambia es de QUE ventana es el panel
 // -- la calculadora se pinta pegada a la derecha de Ejecutar, asi que su foco
-// es `W_RUN` y no uno propio.
+// es `Ventana::Run` y no uno propio.
 //
 // [!] Y no puede quedarse TODAS las teclas por estar abierta: entonces no se
 // podria ni escribir `calc` para cerrarla. Quien decide es `desktop::calc`, y

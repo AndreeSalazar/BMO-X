@@ -530,6 +530,36 @@ mod tests {
         assert_eq!(f.actual(), Some(EJECUTAR), "y se la trae al frente");
     }
 
+    /// ** DOS VENTANAS CON EL MISMO ID SON UNA SOLA VENTANA.
+    ///
+    /// No es un fallo de aqui --un id es un `u8` y este modulo no sabe que hay
+    /// detras-- pero es la trampa que se cobro el compositor: `W_CPU` y
+    /// `W_SOUND` valian los dos 3 desde el 2026-08-12, y nada dejo de
+    /// compilar. Se fija como test porque el sintoma no se parece a la causa:
+    /// la segunda ventana no entra en la lista --y Alt+Tab no puede llegar a
+    /// ella-- y cerrar UNA deja a la otra en la pantalla y sin teclado, de
+    /// donde no la saca ni un clic.
+    ///
+    /// La regla para quien reparta ids: **son identidades, no etiquetas.**
+    #[test]
+    fn dos_ventanas_con_el_mismo_id_son_una_sola() {
+        let mut f = Foco::nuevo();
+        f.open(EJECUTAR);
+        f.open(TERCERA);
+        // La "otra" ventana, que reusa el id sin saberlo.
+        f.open(TERCERA);
+        assert_eq!(f.abiertas(), 2, "la segunda no entra: `open` no duplica");
+
+        // Se cierra UNA de las dos, y la que sigue abierta pierde el teclado.
+        f.close(TERCERA);
+        assert!(!f.es_para(TERCERA), "la que queda se quedo sin foco");
+        f.clic_en(TERCERA);
+        assert!(
+            !f.es_para(TERCERA),
+            "y el clic no la rescata: `clic_en` mueve una ventana que ENCUENTRA",
+        );
+    }
+
     /// `focus-follows-mouse`: pasar por encima basta, sin clic. Y en los otros
     /// modos el puntero NO mueve el foco -- que es justo lo que espera quien no
     /// pidio ese modo.
