@@ -152,6 +152,118 @@ Que la ventana ensene algo distinto no quiere decir que la superficie falle.
 
 ---
 
+# ★★ PASO 2c -- LA ENTRADA: hoy una app puede ENSENAR, no la puedes TOCAR
+
+> Anadido el **2026-08-18**, al preguntar el dueno por que la calculadora no
+> puede ser `apps/calculadora.bex` con su icono. La respuesta salio de leer este
+> mismo plan: **los pasos 1, 2, 2b, 3, 4 y 5 hablan todos de PIXELES**. Ninguno
+> manda un clic hacia dentro.
+
+```
+   HECHO     la app dibuja en su memoria  ->  el DIRECTOR la pega en un marco
+   FALTA     el dedo del usuario          ->  la app
+```
+
+Por eso DOOM funciona y una calculadora en una ventana no puede: DOOM se lleva
+la pantalla ENTERA y con ella el teclado. Es el modelo viejo --relevo, no caja--
+y no sirve para nada que quiera compartir el escritorio.
+
+★ **Esto no desbloquea la calculadora: desbloquea la primera app normal de
+BMO-X, sea cual sea.** La calculadora solo es el mejor primer cliente que hay,
+porque lo caro ya esta hecho y probado: 20 rects, una isla y una tabla de golpeo
+que sale del mismo arbol que se pinta.
+
+## 2c.1 -- Traducir el golpe. **No la bloquea nada.**
+
+El DIRECTOR sabe donde pego cada superficie, asi que un clic en `(px, py)` de
+pantalla es un clic en `(px - ox, py - oy)` de la app. Es una resta, y es la
+misma que `calc_gen::golpe` ya hace dentro de la calculadora.
+
+⚠ Y la regla que se hereda del paso 2.5: **las coordenadas que salen tienen que
+caer dentro de la superficie que la app declaro**. Mandarle un clic en `(5000,
+5000)` a una app de 322x446 es darle un numero que no puede significar nada.
+
+**Como se sabe que quedo hecha**: el DIRECTOR sabe decir *"este clic es de la
+superficie 2, en su pixel (81, 210)"* sin que la app exista todavia.
+
+## 2c.2 -- ★★ POR DONDE VIAJA UN EVENTO. Aqui hay que ELEGIR.
+
+Y no por la consola, que es lo que acaba de costar un fallo mudo -- ver
+`docs/maestro/IPC_MAESTRO.md`. Dos caminos, los dos con piezas ya construidas:
+
+### A. Por un ENDPOINT (`TASK_OP_ENDPOINT_CREATE` / `_CONNECT`)
+
+Existe, y **sus tres guardias ya se probaron en hardware** con
+`toolchain/tools/rpc-demo`. Es Ring 3 contra Ring 3, que es exactamente esta
+conversacion.
+
+- **a favor**: no hay nada que inventar, y el kernel garantiza la entrega.
+- **en contra**: **969 ciclos por evento** (ver `docs/componente/LA_PUERTA_POR_DENTRO.md`).
+  Para una calculadora eso es gratis --un clic cada varios segundos--; para algo
+  que siga al raton, es el precio equivocado.
+
+### B. Por un ANILLO COMPARTIDO, como la superficie pero al reves
+
+★★ La observacion que hace bonito este camino: **el prestamo de memoria ya
+existe, solo que en el otro sentido.** La app le presta sus pixeles al DIRECTOR;
+la entrada seria el DIRECTOR prestandole un anillo a la app. Misma maquinaria,
+espejada.
+
+Y el formato ya esta escrito: `platform/shared/bmo-channel` tiene
+`ChannelEntry { opcode, arg0, arg1, arg2 }` de **32 bytes fijos**, y su propio
+comentario dice *"0 = empty, 1 = key, 2 = mouse"*. **La entrada estaba prevista
+en ese fichero desde el primer dia y nadie la cableo.**
+
+- **a favor**: cero syscalls por evento, y el enmarcado es imposible de romper
+  --una ranura ES un mensaje--.
+- **en contra**: `bmo-channel` esta escrito para Ring 0 contra Ring 3
+  (`ring0_complete` / `ring3_submit`), y aqui los dos lados son Ring 3. Hay que
+  ver si eso es un renombrado o un contrato nuevo.
+
+**Que la bloquea**: esa pregunta, y nada mas. Es de medir, no de opinar --
+leer `ring3_submit` y decidir si el productor puede ser Ring 3 sin tocar la
+disciplina de capabilities.
+
+**Como se sabe que quedo hecha**: `ray.bex` --ya portado en 2b-- reacciona a una
+tecla dentro de su ventana sin llevarse la pantalla.
+
+## 2c.3 -- De quien son las teclas, que ya esta contestado
+
+No hace falta politica nueva: **`bmo_input::foco` ya decide quien tiene el
+teclado**, y es lo mismo que gobierna las ventanas del escritorio. Una app con
+superficie es una ventana mas.
+
+★ Y la regla ya se escribio dos veces en esta casa --la consola de ESTRATOS y la
+calculadora--: *dos duenos para una tecla se resuelve con un ORDEN, nunca con
+una heuristica*. Aqui el orden lo da el foco.
+
+## 2c.4 -- Y una app que no contesta
+
+Un evento mandado a un proceso muerto no puede colgar al DIRECTOR. Ya hay con
+que preguntarlo (`PRESTADO_OP_DUENO`, del paso 2), asi que es la misma pregunta
+en el mismo sitio, no una nueva.
+
+⚠ Con el camino A esto importa mas: una llamada bloqueante a una app que no
+responde **para el escritorio entero**. Si se elige A, la entrega tiene que
+poder rendirse.
+
+## 2c.5 -- Y ENTONCES `apps/calculadora.bex`
+
+Con 2c hecho, la app suelta es **mudanza, no invencion**:
+
+```
+   la cara        calc_gen.rs ya pinta contra un origen, no contra la pantalla
+   el motor       cobol/calcgui.bex no se entera de nada
+   el estado      scene/calc.rs sale del compositor tal cual
+   el icono       BICO + bmo-pack, y el clic que lanza, ya funcionan
+```
+
+★ Lo unico de verdad nuevo seria que la calculadora **pinte en su superficie en
+vez de en la `Pantalla`** -- y eso es cambiar a que le pasa el origen, porque el
+emisor de MAQUETA nunca supo donde estaba la ventana.
+
+---
+
 # PASO 3 -- Cerrar sin ser root
 
 *"opcion para cerrar fuerte"* suena a boton y es **autoridad**: matar un proceso
