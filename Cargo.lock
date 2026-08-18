@@ -199,8 +199,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-maqueta-diag"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-maqueta-lex"
 version = "0.1.0"
+
+[[package]]
+name = "bmo-maqueta-node"
+version = "0.1.0"
+dependencies = [
+ "bmo-maqueta-diag",
+ "bmo-maqueta-lex",
+]
 
 [[package]]
 name = "bmo-mods"
