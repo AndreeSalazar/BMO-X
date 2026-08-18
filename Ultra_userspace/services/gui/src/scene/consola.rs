@@ -307,7 +307,13 @@ impl Consola {
             let k = m.min(COLS - 24);
             buf[2..2 + k].copy_from_slice(&nom[..k]);
             let mut j = 2 + k;
-            while j < 22 && j < COLS {
+            // [!] Aqui decia `j < 22 && j < COLS`, y la segunda mitad **no se
+            // evaluaba nunca**: `COLS` es 110. La intencion --no salirse del
+            // buffer si algun dia la fila se estrecha-- era buena; escrita asi
+            // era una guarda que no guarda, y clippy la rechaza por su nombre.
+            // Decidida al COMPILAR, dice lo mismo y ademas es verdad.
+            const COL_TIPO: usize = if 22 < COLS { 22 } else { COLS };
+            while j < COL_TIPO {
                 buf[j] = b' ';
                 j += 1;
             }

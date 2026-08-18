@@ -8,7 +8,7 @@
 use bmo_userland as bmo;
 
 use super::Key;
-use crate::desktop::{Desktop, W_CABINA, W_DATA, W_SOUND};
+use crate::desktop::{Desktop, W_CABINA, W_DATA, W_RUN, W_SOUND};
 use crate::scene::{self, paint_status, ACCENT};
 use crate::{erase_window, uncover};
 
