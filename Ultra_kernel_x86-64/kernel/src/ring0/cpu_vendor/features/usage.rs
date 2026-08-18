@@ -137,8 +137,15 @@ pub fn of(f: Feat) -> Use {
 
         // ================= proteccion que el CPU regala =================
         // ** Las tres son GRATIS -- bits de CR4 y de EFER-- y ninguna esta
-        // puesta, en un microkernel cuyo lema declarado es cero confianza en el
+        // puesta, en un sistema cuyo lema declarado es cero confianza en el
         // codigo. Es la seccion mas incomoda de esta tabla y por eso va entera.
+        //
+        // [!] Y esta tabla es el sitio donde MENOS se puede decir "microkernel"
+        // --como decia este comentario--: lo que la ley de la casa exige es que
+        // una regla traiga el COMPONENTE que la pide y su NUMERO. Aqui el
+        // componente es el CPU y el numero son cuatro bits que regala y nadie
+        // enciende. Eso es lo que significa Meta-Kernel; el linaje de
+        // microkernel es de donde venimos, no lo que juzga.
         Feat::Nx => Use::No("nadie toca EFER.NXE: TODA pagina que BMO mapea es ejecutable"),
         Feat::Smep => Use::No("impide que Ring 0 EJECUTE una pagina de Ring 3. Un bit de CR4"),
         Feat::Smap => Use::No("impide que Ring 0 LEA una de Ring 3 sin querer. Otro bit"),
