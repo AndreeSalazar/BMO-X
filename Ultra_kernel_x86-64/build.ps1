@@ -59,6 +59,31 @@ function Step { param($m) Write-Host ('  => ' + $m) -ForegroundColor Cyan }
 function Fail { param($m) Write-Host ('  [X] ' + $m) -ForegroundColor Red; exit 1 }
 function Hash256 { param($p) (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() }
 
+# ** LOS GUARDIANES DE PYTHON, en un sitio: habia DOS bloques identicos y el
+# tercero (L6a) seria la tercera. Sin Python se avisa; si falla, el build para.
+function Guardian {
+    param($paso, $script, $queMide, $siFalla)
+    Step $paso
+    $ruta = Join-Path (Split-Path -Parent $root) $script
+    $py = (Get-Command python -ErrorAction SilentlyContinue)
+    if (-not $py) { $falta = 'python no encontrado' }
+    elseif (-not (Test-Path $ruta)) { $falta = 'falta ' + (Split-Path -Leaf $script) }
+    else { $falta = '' }
+    if ($falta) {
+        Write-Host ('  [!] ' + $falta + ': no se comprueba ' + $queMide) -ForegroundColor Yellow
+        return
+    }
+    $env:PYTHONIOENCODING = 'utf-8'
+    $salida = & $py.Source $ruta --check
+    if ($LASTEXITCODE -ne 0) {
+        $salida | ForEach-Object { Write-Host ('    ' + $_) -ForegroundColor Red }
+        Fail $siFalla
+    }
+    $salida | Where-Object { $_ -match 'clean:' } | ForEach-Object {
+        Write-Host ('    ' + $_.Trim()) -ForegroundColor DarkGray
+    }
+}
+
 # ===========================================================================
 #  EL ESPEJO: lo que hay EN EL DISCO contra lo que acaba de salir del build
 # ===========================================================================
@@ -153,24 +178,9 @@ Write-Host ''
 #
 # Si no hay Python se AVISA y se sigue: un portico que no se puede levantar no
 # debe cerrar la puerta. Pero si corre y falla, el build para.
-Step 'Validating source encoding (sources are ASCII)'
-$sweep = Join-Path (Split-Path -Parent $root) 'toolchain\tools\ascii-sweep\ascii_sweep.py'
-$python = (Get-Command python -ErrorAction SilentlyContinue)
-if (-not $python) {
-    Write-Host '  [!] python no encontrado: no se comprueba la codificacion' -ForegroundColor Yellow
-} elseif (-not (Test-Path $sweep)) {
-    Write-Host '  [!] falta ascii_sweep.py: no se comprueba la codificacion' -ForegroundColor Yellow
-} else {
-    $env:PYTHONIOENCODING = 'utf-8'
-    $encOut = & $python.Source $sweep --check
-    if ($LASTEXITCODE -ne 0) {
-        $encOut | ForEach-Object { Write-Host ('    ' + $_) -ForegroundColor Red }
-        Fail 'codificacion: hay no-ASCII donde la regla no lo permite (ver arriba)'
-    }
-    $encOut | Where-Object { $_ -match 'clean:' } | ForEach-Object {
-        Write-Host ('    ' + $_.Trim()) -ForegroundColor DarkGray
-    }
-}
+Guardian 'Validating source encoding (sources are ASCII)' `
+    'toolchain\tools\ascii-sweep\ascii_sweep.py' 'la codificacion' `
+    'codificacion: hay no-ASCII donde la regla no lo permite (ver arriba)'
 
 # ---------------------------------------------------------------------------
 # ** EL QUINTO GUARDIAN: LAS CITAS A DOCUMENTOS (2026-08-17).
@@ -196,25 +206,15 @@ if (-not $python) {
 # Es la leccion que ya dejo escrita el guardian del `.h`: el que se corre a mano
 # no protege igual que el que se corre solo.
 #
-# Mismo trato que la codificacion: sin Python se avisa y se sigue; si corre y
-# falla, el build para.
-Step 'Validating document citations resolve'
-$enlaces = Join-Path (Split-Path -Parent $root) 'toolchain\tools\enlaces\enlaces.py'
-if (-not $python) {
-    Write-Host '  [!] python no encontrado: no se comprueban las citas' -ForegroundColor Yellow
-} elseif (-not (Test-Path $enlaces)) {
-    Write-Host '  [!] falta enlaces.py: no se comprueban las citas' -ForegroundColor Yellow
-} else {
-    $env:PYTHONIOENCODING = 'utf-8'
-    $lnkOut = & $python.Source $enlaces --check
-    if ($LASTEXITCODE -ne 0) {
-        $lnkOut | ForEach-Object { Write-Host ('    ' + $_) -ForegroundColor Red }
-        Fail 'citas: hay documentos citados que no existen (ver arriba)'
-    }
-    $lnkOut | Where-Object { $_ -match 'clean:' } | ForEach-Object {
-        Write-Host ('    ' + $_.Trim()) -ForegroundColor DarkGray
-    }
-}
+# El trato lo pone `Guardian`, arriba, y es el mismo para los tres.
+Guardian 'Validating document citations resolve' `
+    'toolchain\tools\enlaces\enlaces.py' 'las citas' `
+    'citas: hay documentos citados que no existen (ver arriba)'
+# ** L6a: TRINQUETE, no muro -- juzga el delta contra `LINEA_BASE.txt`. El por
+# que esta entero en la cabecera de `censo_modular.py`, y ahi solo hay uno.
+Guardian 'Validating L6a: no new module over the line' `
+    'toolchain\tools\censo-modular\censo_modular.py' 'L6a' `
+    'L6a: un modulo nuevo pasa de las 1.000 lineas, o uno de la linea base crecio'
 
 # Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
 Step 'Validating Ring 0 syscall contract'

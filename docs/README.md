@@ -215,7 +215,36 @@ traer de vuelta vive hoy repartido entre los mensajes de commit. **Escribir
 
 ---
 
-## 6. El guardian: `toolchain/tools/enlaces/enlaces.py`
+## 6. Los guardianes
+
+Dos, y los dos existen por la misma razon: **una regla que nadie mide se
+incumple sin que nada grite.**
+
+### 6.1 `toolchain/tools/censo-modular/censo_modular.py` -- el metro de L6a
+
+```bash
+python toolchain/tools/censo-modular/censo_modular.py --check
+```
+
+L6a pone un numero --*un modulo que pase de ~1.000 lineas se parte, no es una
+sugerencia*-- y hasta el 2026-08-18 **nada lo comprobaba**. La prueba de que eso
+importa esta en la propia bitacora: `gui/main.rs` **crecio 1.244 lineas** entre
+el 08-04 y el 08-12 teniendo ya un plan escrito para partirlo. Nadie decidio
+eso; paso un commit cada vez, y ningun paso era lo bastante grande como para
+parar.
+
+★ **No juzga el pasado: es un TRINQUETE.** Dieciocho ficheros incumplen L6a hoy,
+y un guardian que fallara con los dieciocho se apagaria el primer dia. Asi que
+compara contra `LINEA_BASE.txt` y solo dice NO a dos cosas: **un fichero nuevo
+por encima de 1.000**, o **uno de la lista que crecio**. Encoger es noticia
+buena, se anuncia y se vuelve a sellar. El arbol solo puede mejorar.
+
+Y clasifica **la especie**, que es lo que dice cuanto cuesta el corte:
+`CAJON` (media ~30 lineas por funcion: mover texto, demostrable con un hash),
+`GIGANTE` (media 150+: el estado local tiene que volverse un struct primero, y
+eso es diseno), `TABLA` y `mixto`.
+
+### 6.2 `toolchain/tools/enlaces/enlaces.py` -- las citas
 
 Un indice que envia a un fichero que no existe es peor que no tener indice.
 

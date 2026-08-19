@@ -139,6 +139,26 @@ imposible de no ver.
   pasen** --pasaban antes--: es que **el compilador emita los mismos bytes**. 33
   `.bex` hasheados antes y despues, identicos.
 
+**★★ Y desde el 2026-08-18, L6a tiene las cinco piezas.** Le faltaban las tres
+ultimas y por eso se incumplia sin ruido: `gui/main.rs` crecio 1.244 lineas
+entre el 08-04 y el 08-12 **teniendo ya un plan escrito para partirlo**.
+
+```
+   numero declarado    1.000 lineas, aqui arriba
+   motivo al lado      el denominador de la busqueda
+   metro real          `toolchain/tools/censo-modular/censo_modular.py`
+   juez                LINEA_BASE.txt: un fichero de la lista solo puede ENCOGER
+   guardian            --check sale con 1, y ya rechazo dos sondas:
+                       una NUEVA de 1.101 lineas y una que CRECIO +5
+```
+
+★ El juez es un **trinquete y no un muro**, y esa es la decision: dieciocho
+ficheros incumplen L6a hoy, y un guardian que fallara con los dieciocho se
+apagaria el primer dia -- *"uno que grita sin motivo se desconecta, y entonces
+no protege nada"*, que ya estaba escrito en el guardian de los enlaces. Asi que
+no juzga el pasado: juzga **el delta**. Lo que hay se arregla cortando; lo que
+se prohibe es que aparezca otro.
+
 ### L7. ★ LA HERENCIA: abuelo, padre, hijo y nieto
 
 L6 dice **cuando** partir. Esta dice **como se ordenan los trozos**, y es la que
