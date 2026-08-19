@@ -50,13 +50,22 @@
 //! Sin esa regla las dos se pelearian por la misma flecha, y el que pierde ese
 //! tipo de pelea siempre es el que mira la pantalla.
 //!
-//! === Lo que NO hace, dicho aqui ===
+//! === ** TODO ACTUA DONDE ESTAS, y eso costo bajar hasta el disco ===
 //!
-//! `nuevo` **solo funciona en la raiz**, porque `crear_fichero` del kernel
-//! escribe la entrada en la raiz y punto (`fsys/estratos/escribir.rs`: lee
-//! `dir::raiz()` y anade ahi). Estando en `/datos` y creando en `/` la ventana
-//! estaria mintiendo sobre su propio contexto -- que es justo lo que esta
-//! consola existe para evitar. Asi que se niega y dice por que.
+//! Hasta el 19-08 `nuevo` **se negaba fuera de la raiz**: el kernel anadia la
+//! entrada en `dir::raiz()` y punto, asi que crear en `/` mientras la ventana
+//! ensena `/datos` habria sido la ventana mintiendo sobre su propio contexto --
+//! justo lo que esta consola existe para evitar. Se nego, y dijo por que.
+//!
+//! Ya no hace falta. La maquina de abajo republica la rama entera hasta la raiz
+//! (`escribir::aplicar`), asi que los cuatro verbos mandan **la ruta completa
+//! del destino** y actuan donde esta el cursor.
+//!
+//! Esa es la frase entera de esta consola: **el contexto es el cursor**, que es
+//! lo unico que un terminal dentro de una ventana tiene y uno de fuera no.
+//!
+//! [!] Y despues de cada gesto se manda `recargar`. Sin eso el cursor seguiria
+//! ensenando el estrato de antes: borrarias un fichero y ahi seguiria.
 
 use bmo_userland as bmo;
 
@@ -275,6 +284,9 @@ impl Consola {
             b"donde" | b"pwd" => self.donde(),
             b"cd" => self.cd(resto),
             b"nuevo" => self.nuevo(resto),
+            b"carpeta" | b"mkdir" => self.carpeta(resto),
+            b"borra" | b"quita" => self.borra(resto),
+            b"renombra" | b"mv" => self.renombra(resto),
             b"sella" | b"sellar" => self.sella(),
             // Un verbo que no existe se dice, y se dice DONDE mirar. Un "no
             // reconocido" a secas deja al que lo escribio sin siguiente paso.
@@ -294,11 +306,62 @@ impl Consola {
     fn ayuda(&mut self) {
         self.usadas = 0;
         self.di(b"ls  cd NOMBRE  cd ..  cd /  donde   moverse y mirar", T_DIM);
-        self.di(b"nuevo N TEXTO   crea un fichero -- ESCRIBE EN EL DISCO", T_DIM);
-        self.di(b"sella           commitea       -- ESCRIBE EN EL DISCO", T_DIM);
-        self.di(b"clear           limpia esta salida", T_DIM);
-        self.di(b"ESC devuelve las teclas al explorador, sin cerrar.", T_DIM);
-        self.di(b"Ctrl+n cierra la consola.  flecha arriba: la anterior.", T_DIM);
+        self.di(b"nuevo N TEXTO   crea un fichero      ESCRIBEN EN EL DISCO", T_DIM);
+        self.di(b"carpeta N       crea una carpeta     y todos actuan DONDE", T_DIM);
+        self.di(b"borra N         deja de nombrarla    ESTAS, no en la raiz", T_DIM);
+        self.di(b"renombra V N    sin tocar el nodo", T_DIM);
+        self.di(b"sella           commitea             clear limpia esto", T_DIM);
+        self.di(b"ESC suelta las teclas.  Ctrl+n cierra.  arriba: la anterior.", T_DIM);
+    }
+
+    /// **La ruta del sitio donde esta el cursor, con `nombre` al final.**
+    ///
+    /// ** Esto es lo que convierte a esta consola en lo que decia ser. Antes
+    /// mandaba solo el nombre, el kernel lo anadia a la raiz, y por eso `nuevo`
+    /// se NEGABA fuera de la raiz: crear en `/` mientras la ventana ensena
+    /// `/datos` habria sido la ventana mintiendo sobre su propio contexto.
+    ///
+    /// Ahora se manda el destino entero. **El contexto es el cursor**, que es
+    /// lo unico que un terminal dentro de una ventana tiene y uno de fuera no.
+    fn ruta_de(&self, nombre: &[u8], dst: &mut [u8; COLS]) -> usize {
+        let mut k = 0usize;
+        let hondo = bmo::estratos::hondo();
+        let mut nivel = 1u64;
+        while nivel <= hondo {
+            let mut nom = [0u8; 40];
+            let m = bmo::estratos::nombre_nivel(nivel, &mut nom);
+            if k + m + 1 >= COLS {
+                return 0;
+            }
+            dst[k..k + m].copy_from_slice(&nom[..m]);
+            k += m;
+            dst[k] = b'/';
+            k += 1;
+            nivel += 1;
+        }
+        if k + nombre.len() > COLS {
+            return 0;
+        }
+        dst[k..k + nombre.len()].copy_from_slice(nombre);
+        k + nombre.len()
+    }
+
+    /// Lo que se hace despues de CUALQUIER gesto que salga bien.
+    ///
+    /// [!] `recargar` no es un adorno: el cursor guarda el listado de cada nivel
+    /// desde que se paso por el, asi que sin esto la ventana seguiria ensenando
+    /// el estrato de antes -- borrarias un fichero y ahi seguiria.
+    fn hecho(&mut self, g: u64, que: &[u8]) {
+        if g == 0 {
+            self.di2(que, b": NO se hizo. el volumen sigue igual.", T_BAD);
+            self.di(b"el motivo esta en F11.", T_DIM);
+            return;
+        }
+        bmo::estratos::recargar();
+        let mut d = [0u8; 10];
+        let kd = decimal(g, &mut d);
+        self.di2(que, b" HECHO. generacion ", T_OK);
+        self.di2(b"  ahora va por la ", &d[..kd], T_OK);
     }
 
     fn donde(&mut self) {
@@ -425,46 +488,90 @@ impl Consola {
         self.di2(a, b": aqui no hay nada con ese nombre.", T_BAD);
     }
 
-    /// **`nuevo NOMBRE TEXTO`** -- lo unico de esta consola que crea algo.
+    /// **`nuevo NOMBRE TEXTO`** -- crea un fichero DONDE ESTAS.
     fn nuevo(&mut self, a: &[u8]) {
         let (nombre, texto) = partir(a);
         if nombre.is_empty() {
             self.di(b"nuevo NOMBRE TEXTO", T_BAD);
             return;
         }
-        // ** SOLO EN LA RAIZ, Y SE NIEGA EN VEZ DE MENTIR.
-        //
-        // `crear_fichero` del kernel anade la entrada en la RAIZ: no mira donde
-        // esta el cursor. Dejarlo pasar desde `/datos` crearia el fichero en
-        // `/` mientras la ventana ensena `/datos` -- o sea, la ventana mintiendo
-        // sobre su propio contexto, que es exactamente lo que esta consola
-        // existe para que no pase.
-        if bmo::estratos::hondo() != 0 {
-            self.di(b"hoy solo se crea en la RAIZ: el kernel anade la", T_BAD);
-            self.di(b"entrada ahi. sube con `cd /` y vuelve a pedirlo.", T_DIM);
-            return;
-        }
-        if texto.len() as u64 > bmo::estratos::ES_CREAR_MAX {
+        if texto.len() as u64 > bmo::estratos::ES_GESTO_MAX {
             let mut d = [0u8; 10];
-            let kd = decimal(bmo::estratos::ES_CREAR_MAX, &mut d);
+            let kd = decimal(bmo::estratos::ES_GESTO_MAX, &mut d);
             self.di2(b"no cabe. el tope de hoy son ", &d[..kd], T_BAD);
             self.di(b"bytes: es lo que entra DENTRO del nodo, sin gastar", T_DIM);
             self.di(b"un bloque de datos. mas grande pide un arbol.", T_DIM);
             return;
         }
-        match bmo::estratos::crear_fichero(nombre, texto) {
-            0 => {
-                self.di(b"NO se creo. el volumen sigue igual.", T_BAD);
-                self.di(b"el motivo esta en F11 (nombre repetido, sin sitio,", T_DIM);
-                self.di(b"o la escritura cerrada).", T_DIM);
-            }
-            g => {
-                let mut d = [0u8; 10];
-                let kd = decimal(g, &mut d);
-                self.di2(b"CREADO. generacion ", &d[..kd], T_OK);
-                self.di(b"reinicia y mira si sigue: eso es lo que lo prueba.", T_DIM);
-            }
+        let mut ruta = [0u8; COLS];
+        let n = self.ruta_de(nombre, &mut ruta);
+        if n == 0 {
+            self.di(b"esa ruta no cabe.", T_BAD);
+            return;
         }
+        let g = bmo::estratos::crear_fichero(&ruta[..n], texto);
+        self.hecho(g, b"fichero");
+    }
+
+    /// **`carpeta NOMBRE`** -- una carpeta vacia donde estas.
+    fn carpeta(&mut self, a: &[u8]) {
+        if a.is_empty() {
+            self.di(b"carpeta NOMBRE", T_BAD);
+            return;
+        }
+        let mut ruta = [0u8; COLS];
+        let n = self.ruta_de(a, &mut ruta);
+        if n == 0 {
+            self.di(b"esa ruta no cabe.", T_BAD);
+            return;
+        }
+        let g = bmo::estratos::crear_carpeta(&ruta[..n]);
+        self.hecho(g, b"carpeta");
+    }
+
+    /// **`borra NOMBRE`** -- quita una entrada de donde estas.
+    ///
+    /// ** No pide confirmacion, y no es un descuido: **en ESTRATOS borrar no
+    /// destruye**. Se publica un arbol sin esa entrada; el nodo, su contenido y
+    /// el estrato de ayer siguen enteros. Pedir un "seguro?" para algo que no
+    /// pierde nada ensena a contestar que si sin leer -- y entonces el dia que
+    /// se pregunte de verdad, tampoco se leera.
+    fn borra(&mut self, a: &[u8]) {
+        if a.is_empty() {
+            self.di(b"borra NOMBRE", T_BAD);
+            return;
+        }
+        let mut ruta = [0u8; COLS];
+        let n = self.ruta_de(a, &mut ruta);
+        if n == 0 {
+            self.di(b"esa ruta no cabe.", T_BAD);
+            return;
+        }
+        let g = bmo::estratos::quitar(&ruta[..n]);
+        if g != 0 {
+            self.di(b"deja de nombrarse. el estrato de ayer lo sigue teniendo.", T_DIM);
+        }
+        self.hecho(g, b"quitado");
+    }
+
+    /// **`renombra VIEJO NUEVO`** -- sin tocar el nodo.
+    fn renombra(&mut self, a: &[u8]) {
+        let (viejo, nuevo) = partir(a);
+        if viejo.is_empty() || nuevo.is_empty() {
+            self.di(b"renombra VIEJO NUEVO", T_BAD);
+            return;
+        }
+        let mut ruta = [0u8; COLS];
+        let n = self.ruta_de(viejo, &mut ruta);
+        if n == 0 {
+            self.di(b"esa ruta no cabe.", T_BAD);
+            return;
+        }
+        let g = bmo::estratos::renombrar(&ruta[..n], nuevo);
+        if g != 0 {
+            self.di(b"el nodo no se ha tocado: su firma sigue valiendo.", T_DIM);
+        }
+        self.hecho(g, b"renombrado");
     }
 
     fn sella(&mut self) {

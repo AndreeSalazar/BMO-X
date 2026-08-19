@@ -60,6 +60,10 @@ use crate::ring0::plat::trap::TrapFrame;
 /// there has a twin in `bmo-abi`, in `bmo.h` and in the userland runtime, and
 /// the build guard refuses to link if they disagree.
 pub(crate) mod ops;
+/// EL RENGLON DE LOS GESTOS sobre ESTRATOS: crear, borrar, renombrar, carpetas.
+/// Salio de aqui por L6a, y el corte se eligio porque el brazo dejo de ser
+/// "crear un fichero" el dia que la maquina de abajo aprendio cuatro verbos.
+mod gesto;
 /// THE DOOR ITSELF: the naked entry stub. The only code in the kernel that runs
 /// with no frame, no stack of its own and no compiler help.
 mod entry;
@@ -679,43 +683,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // los dos de archivo-- y el contenido del suyo, que vive aqui abajo.
         // Inventar un segundo mecanismo para el nombre habria sido tener dos
         // sitios donde se pierde un byte.
-        TASK_OP_ES_CREAR => {
-            let pid = scheduler::current_pid();
-            // ** La CUENTA viaja empaquetada con la suborden: `sub | (n << 8)`.
-            //
-            // `invoke_current_task` recibe dos argumentos y los dos estan
-            // ocupados --la suborden y los ocho bytes--, asi que la cuenta no
-            // tiene registro propio. Repartir el primero es el mismo idioma que
-            // ya usan `INFO_MEM_QUIEN_*` y `AUTOPSIA_TEXTO`: cuando por la
-            // puerta cabe un numero y hacen falta dos, se parte el numero.
-            match arg0 & 0xFF {
-                ES_CREAR_LIMPIAR => {
-                    datos_limpiar(pid);
-                    BmoStatus::ok_value(0)
-                }
-                // `arg1` son los ocho bytes y `arg2` CUANTOS valen. La ruta se
-                // corta en el primer cero porque en una ruta un cero no puede
-                // aparecer; en un fichero SI, asi que aqui la cuenta es
-                // explicita o se entregaria la mitad de un fichero.
-                ES_CREAR_DATOS => BmoStatus::ok_value(datos_meter(pid, arg1, arg0 >> 8) as u64),
-                ES_CREAR_HACER => {
-                    let nombre = ruta_tomar(pid);
-                    let datos = datos_tomar(pid);
-                    crate::ring0::cabina::info(
-                        "estratos",
-                        "fichero nuevo pedido por un proceso de Ring 3",
-                        pid as u64,
-                    );
-                    match crate::ring0::fsys::estratos::escribir::crear_fichero(nombre, datos) {
-                        Ok(g) => BmoStatus::ok_value(g),
-                        Err(e) => {
-                            crate::ring0::cabina::warn("estratos", e.name(), 0);
-                            BmoStatus::ok_value(0)
-                        }
-                    }
-                }
-                _ => BmoStatus::ok_value(0),
-            }
+        // ** EL RENGLON DE LOS GESTOS: crear, borrar, renombrar, carpetas.
+        //
+        // Cuatro verbos y una sola maquina debajo, asi que una sola operacion
+        // arriba. El despacho vive en `gesto.rs` -- aqui solo se le pasa quien
+        // lo pide, que es lo unico que este lado sabe.
+        TASK_OP_ES_GESTO => {
+            BmoStatus::ok_value(gesto::servir(scheduler::current_pid(), arg0, arg1))
         }
         // -- El cursor de ESTRATOS --
         //
@@ -751,6 +725,9 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     cursor::nivel_hijo_tipo((arg1 >> 32) as usize, (arg1 & 0xFFFF_FFFF) as usize)
                 }
                 ES_NODO_NIVEL_ELEGIDO => cursor::nivel_elegido(arg1 as usize),
+                // La UNICA del cursor que toca el disco, y por eso se pide a
+                // mano: se manda despues de escribir, no en cada repintado.
+                ES_NODO_RECARGAR => cursor::recargar() as u64,
                 // Una pregunta que no existe se contesta con cero y no con un
                 // fallo: quien pregunte de mas se entera igual, y un `unsupported`
                 // aqui obligaria al panel a distinguir dos formas de "nada".
@@ -855,7 +832,7 @@ static mut DATOS_N: usize = 0;
 static mut DATOS_PID: u32 = u32::MAX;
 
 /// Vacia el renglon del proceso. Se manda ANTES de acumular.
-fn datos_limpiar(pid: u32) {
+pub(super) fn datos_limpiar(pid: u32) {
     unsafe {
         DATOS_PID = pid;
         DATOS_N = 0;
@@ -863,7 +840,7 @@ fn datos_limpiar(pid: u32) {
 }
 
 /// Mete `cuantos` de los ocho bytes de `palabra`. Devuelve los que lleva.
-fn datos_meter(pid: u32, palabra: u64, cuantos: u64) -> usize {
+pub(super) fn datos_meter(pid: u32, palabra: u64, cuantos: u64) -> usize {
     unsafe {
         if DATOS_PID != pid {
             DATOS_PID = pid;
@@ -884,7 +861,7 @@ fn datos_meter(pid: u32, palabra: u64, cuantos: u64) -> usize {
 
 /// Lo acumulado, y **vacia el renglon**: igual que `ruta_tomar`, para que un
 /// segundo fichero no herede el contenido del primero.
-fn datos_tomar(pid: u32) -> &'static [u8] {
+pub(super) fn datos_tomar(pid: u32) -> &'static [u8] {
     unsafe {
         if DATOS_PID != pid {
             return &[];
@@ -926,7 +903,7 @@ fn ruta_push(pid: u32, empaquetado: u64) {
 
 /// La ruta acumulada, y el renglon queda vacio. Devuelve `""` si el que llama
 /// no es el que la escribio -- no se lanza la ruta de otro.
-fn ruta_tomar(pid: u32) -> &'static str {
+pub(super) fn ruta_tomar(pid: u32) -> &'static str {
     unsafe {
         if RUTA_PID != pid {
             return "";
