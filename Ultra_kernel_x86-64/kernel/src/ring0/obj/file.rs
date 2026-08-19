@@ -224,7 +224,7 @@ static mut BUF_PAGS: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Los tres son "cuantos bytes hay que contar", que es lo que preguntan
 /// `ARCH_OP_TAMANO` y `ARCH_OP_SALTAR`. Lo que cambia entre los tres es **donde
 /// estan esos bytes**, y eso lo dice [`REFLEJO`].
-static mut LARGO: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+pub(super) static mut LARGO: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Por donde va la lectura.
 static mut CURSOR: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Nombre 8.3 y directorio destino, para el momento de guardar.
@@ -291,78 +291,6 @@ pub fn cuentas() -> (u64, u64) {
     unsafe { (BYTES_REFLEJADOS, RETROCESOS) }
 }
 
-// -- ** EL ARCHIVO QUE SE ESTA TRAYENDO --------------------------------------
-//
-// `open` lee el fichero ENTERO antes de devolver el handle. Para un `.txt` no se
-// nota; para un `.bex` de 813 KB, el que lo pidio no existe durante toda la
-// lectura -- y si el que lo pidio es el escritorio, el escritorio no pinta.
-//
-// [`abrir_asinc`] devuelve el handle **en cuanto sabe que el archivo existe**, y
-// los bytes van llegando en trozos. Cada vez que alguien pregunta se avanza un
-// presupuesto; entre pregunta y pregunta, el que espera **duerme** y el resto
-// del sistema corre.
-//
-// === Por que el avance lo empuja el que PREGUNTA ===
-//
-// La alternativa era seguir la cadena desde el manejador de interrupcion. No:
-// seguir una cadena FAT es leer mas disco --la propia tabla-- asi que seria
-// pedir E/S desde dentro de la interrupcion de E/S. Empujando desde la pregunta,
-// el trabajo ocurre en el turno de quien lo quiere, que es de quien es.
-
-/// Cluster por el que va la carga. `0` = no hay carga en curso.
-static mut LOAD_CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
-/// Lo que mide el archivo entero, mientras se trae.
-///
-/// * Aqui NO hay un contador de trozos. Se escribio, para que el `wait` supiera
-/// si habia habido progreso desde la ultima mirada -- y como ese `wait` no
-/// llego a existir (ver `syscall.rs`), el contador se quedaba subiendo para
-/// nadie. Lo que hace falta saber de fuera --cuanto ha llegado-- ya lo dice
-/// `LARGO`, y lo contesta `ARCH_OP_LISTO`.
-static mut LOAD_TOTAL: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
-
-/// Cuanto se trae de una vez.
-///
-/// 128 KiB: bastante para que un archivo normal llegue en una o dos vueltas, y
-/// poco para que el kernel no se quede dentro mas de lo que dura un turno. El
-/// numero correcto se sabra midiendo en metal; este es el que no estorba.
-const TROZO: usize = 128 * 1024;
-
-/// Se esta trayendo todavia?
-pub fn loading(i: usize) -> bool {
-    unsafe { i < MAX_ABIERTOS && LOAD_CLUSTER[i] != 0 }
-}
-
-/// **Trae el siguiente trozo.** `true` si el archivo ya esta entero.
-///
-/// Lo llama cualquier operacion sobre el handle: preguntar por el archivo ES lo
-/// que lo hace avanzar. Si no habia carga en curso, contesta que si -- un
-/// archivo que ya estaba entero lo esta igual despues de preguntar.
-pub fn avanzar(i: usize) -> bool {
-    if !loading(i) {
-        return true;
-    }
-    unsafe {
-        let cluster = LOAD_CLUSTER[i];
-        let total = LOAD_TOTAL[i];
-        let ya = LARGO[i];
-        let dst = buf(i);
-        let (leidos, siguiente) =
-            crate::ring0::fsys::fs::leer_trozo(cluster, ya, total as u32, dst, TROZO);
-        LARGO[i] = ya + leidos;
-        // `siguiente == 0` es fin -- de la cadena o del archivo. Y `leidos == 0`
-        // tambien corta: un tramo que no avanza dos veces seguidas seria un
-        // bucle infinito en el que pregunta, y prefiero un archivo corto que se
-        // nota a una maquina que no vuelve.
-        if siguiente == 0 || leidos == 0 {
-            LOAD_CLUSTER[i] = 0;
-            crate::ring0::cabina::info("arch", "archivo completo", LARGO[i] as u64);
-            return true;
-        }
-        LOAD_CLUSTER[i] = siguiente;
-        false
-    }
-}
-
 fn free_slot() -> Option<usize> {
     unsafe { (0..MAX_ABIERTOS).find(|&i| OWNER[i] == NO_OWNER) }
 }
@@ -371,7 +299,7 @@ fn free_slot() -> Option<usize> {
 ///
 /// La direccion sale de `phys_to_virt`: el kernel ve toda la RAM por el mapa
 /// fisico, asi que no hace falta mapear nada para tocar estos marcos.
-unsafe fn buf(i: usize) -> &'static mut [u8] {
+pub(super) unsafe fn buf(i: usize) -> &'static mut [u8] {
     if BUF_FIS[i] == 0 {
         return &mut [];
     }
@@ -524,6 +452,43 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
     // Cada motivo manda a hacer algo distinto, y por eso no se aplanan todos a
     // "no esta": quien escribe `lee apps/` tiene que enterarse de que eso es
     // una carpeta, no ponerse a buscar un archivo que nunca existio.
+    // ** ESTRATOS PRIMERO, Y SI NO ESTA AHI, FAT32.
+    //
+    // La regla no es de aqui: la lleva usando `task::launch::Fuente::abrir`
+    // para localizar un binario. Aplicarla tambien al abrir es lo que hace que
+    // abrir un fichero y ejecutarlo resuelvan al MISMO fichero -- dos reglas
+    // distintas para la misma ruta seria la peor de las opciones.
+    //
+    // El fichero entra ENTERO en el buffer y la ranura NO refleja: un fichero de
+    // ESTRATOS no es una cadena que se pueda pedir a trozos, y hoy mide como
+    // mucho 96 bytes. El porque, y cuando habra que volver a mirarlo, en
+    // `obj/estratos.rs`.
+    if let Some((nodo, mide)) = super::estratos::buscar(ruta) {
+        unsafe {
+            if !reserve(i, mide.max(1)) {
+                crate::ring0::cabina::warn("arch", "sin RAM para el fichero de ESTRATOS", mide as u64);
+                return Err(ERROR_TOO_LARGE);
+            }
+            let leidos = super::estratos::leer(&nodo, buf(i));
+            REFLEJO[i] = false;
+            LARGO[i] = leidos;
+            CURSOR[i] = 0;
+            WRITES[i] = false;
+            DESBORDO[i] = false;
+            super::cargando::LOAD_CLUSTER[i] = 0;
+            OWNER[i] = pid;
+            return match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ, i as u64) {
+                Some(h) => {
+                    crate::ring0::cabina::bytes("arch", "archivo de ESTRATOS leido", leidos as u64);
+                    Ok(h)
+                }
+                None => {
+                    release(i);
+                    Err(cap::ERROR_PERMISSION_DENIED)
+                }
+            };
+        }
+    }
     use crate::ring0::fsys::fs::LoadError;
     // Se resuelve la ruta UNA vez y se guarda por donde empieza. Es lo unico
     // que hay que hacer una sola vez; todo lo demas se hace cuando hace falta.
@@ -552,7 +517,7 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
         RET_AL_ABRIR[i] = RETROCESOS;
         WINDOW_OFF[i] = 0;
         WINDOW_LEN[i] = 0;
-        LOAD_CLUSTER[i] = 0;
+        super::cargando::LOAD_CLUSTER[i] = 0;
         LARGO[i] = mide;
         CURSOR[i] = 0;
         WRITES[i] = false;
@@ -614,17 +579,17 @@ pub fn abrir_asinc(pid: u32, ruta: &str) -> Result<u64, u32> {
         WRITES[i] = false;
         DESBORDO[i] = false;
         OWNER[i] = pid;
-        LOAD_TOTAL[i] = mide;
+        super::cargando::LOAD_TOTAL[i] = mide;
         // Un archivo vacio ya esta entero: nunca hay carga en curso para el, y
         // marcarla dejaria a quien pregunte esperando un trozo que no existe.
-        LOAD_CLUSTER[i] = if mide == 0 { 0 } else { cluster };
+        super::cargando::LOAD_CLUSTER[i] = if mide == 0 { 0 } else { cluster };
         match cap::grant(pid, cap::KIND_ARCHIVO, cap::RIGHT_READ | cap::RIGHT_WAIT, i as u64) {
             Some(h) => {
                 crate::ring0::cabina::info("arch", "archivo abierto SIN terminar de leer", mide as u64);
                 Ok(h)
             }
             None => {
-                LOAD_CLUSTER[i] = 0;
+                super::cargando::LOAD_CLUSTER[i] = 0;
                 release_buffer(i);
                 OWNER[i] = NO_OWNER;
                 Err(cap::ERROR_PERMISSION_DENIED)
@@ -853,7 +818,7 @@ fn release(i: usize) {
         START[i] = bmo_fat32::Cursor::vacio();
         WINDOW_OFF[i] = 0;
         WINDOW_LEN[i] = 0;
-        LOAD_CLUSTER[i] = 0;
+        super::cargando::LOAD_CLUSTER[i] = 0;
     }
 }
 
@@ -870,12 +835,12 @@ pub fn operation(idx: u64, op: u64, arg0: u64) -> Option<u64> {
     // todos los de hoy-- funciona igual: pide bytes, y los bytes acaban
     // llegando. La diferencia es que ahora **entre trozo y trozo puede dormir**,
     // en vez de estar dentro del kernel hasta el final.
-    if !escribe && loading(i) && op != ARCH_OP_CERRAR {
-        avanzar(i);
+    if !escribe && super::cargando::hay(i) && op != ARCH_OP_CERRAR {
+        super::cargando::avanzar(i);
     }
     match op {
         ARCH_OP_LISTO => Some(unsafe {
-            let entero = if loading(i) { 0u64 } else { 1u64 << 63 };
+            let entero = if super::cargando::hay(i) { 0u64 } else { 1u64 << 63 };
             entero | LARGO[i] as u64
         }),
         // El modo manda. Pedirle bytes a un archivo de escritura no es un
