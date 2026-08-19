@@ -226,6 +226,17 @@ pub enum WriteError {
     /// dejaria un directorio con una sola entrada y el resto huerfano. Se para
     /// ANTES de abrir la transaccion, o sea sin haber tocado un solo sector.
     NoSeLeeLaRaiz,
+    /// **Un tramo de la ruta no existe, o existe y no es un directorio.**
+    ///
+    /// Se distingue de `NoCabe` porque manda a hacer algo distinto: aqui no hay
+    /// nada que encoger, hay que crear la carpeta o escribir bien la ruta.
+    RutaNoEsta,
+    /// La ruta baja mas de lo que esta version sabe republicar.
+    ///
+    /// ** Tocar una hoja republica la rama ENTERA hasta la raiz, asi que la
+    /// profundidad no es un capricho: es cuantos bloques cuesta la operacion.
+    /// El tope se dice en vez de descubrirse con una reserva que no cabe.
+    MuyHondo,
 }
 
 impl WriteError {
@@ -237,6 +248,8 @@ impl WriteError {
             WriteError::SinBarrera => "el FLUSH CACHE fallo: NO se hizo commit",
             WriteError::NoCabe => "no cabe: hoy un fichero entra en 96 bytes",
             WriteError::NoSeLeeLaRaiz => "no se pudieron leer las entradas de la raiz",
+            WriteError::RutaNoEsta => "esa ruta no existe, o no es un directorio",
+            WriteError::MuyHondo => "la ruta baja demasiado para republicarla",
         }
     }
 }
