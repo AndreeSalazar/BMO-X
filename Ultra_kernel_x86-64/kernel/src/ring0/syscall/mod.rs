@@ -1178,7 +1178,7 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // ** UN HIJO QUE ESTE PROCESO LANZO. Tener el handle ES el
             // permiso -- ver `obj/tarea.rs`.
             cap::KIND_TAREA => {
-                match crate::ring0::obj::tarea::operation(resolved.object, frame.rsi) {
+                match crate::ring0::obj::tarea::operation(resolved.object, frame.rsi, frame.rdx) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }

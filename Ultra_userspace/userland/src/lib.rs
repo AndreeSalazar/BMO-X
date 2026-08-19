@@ -150,6 +150,7 @@ pub const OP_HIJO: u32 = 0x2B;
 pub const TAREA_OP_VIVE: u32 = 0x01;
 pub const TAREA_OP_TID: u32 = 0x02;
 pub const TAREA_OP_CERRAR: u32 = 0x03;
+pub const TAREA_OP_DELANTE: u32 = 0x04;
 /// **Abrir un archivo SIN esperar a que llegue entero.** Mismo handle que
 /// `OP_ARCHIVO_ABRIR`; lo que cambia es cuando vuelve. Ver
 /// [`crate::Archivo::leer_de_asinc`].

@@ -18,6 +18,25 @@ use crate::ring0::plat::trap;
 
 pub const MAX_TASKS: usize = 64;
 pub const DEFAULT_QUANTUM_TICKS: u16 = 4;
+
+/// Lo que dura el turno de la que esta DELANTE. Paso 4 de `PLAN_DIRECTOR.md`.
+///
+/// ** Y ES QUANTUM Y NO PRIORIDAD, QUE ES LA DECISION ENTERA DEL PASO 4.
+///
+/// `choose_next` es prioridad ESTRICTA y sin envejecimiento: una tarea de
+/// prioridad 1 le gana el turno a las de 0 **siempre que este lista**, y ceder
+/// no ayuda porque quien cede sigue listo. Subirle la prioridad a la app de
+/// delante le ganaria el turno al DIRECTOR --que esta en 0-- y entonces sus
+/// pixeles dejarian de componerse: la ventana de delante seria la primera en
+/// dejar de refrescarse. El efecto contrario al que la regla busca.
+///
+/// El quantum no tiene ese modo de fallo. La rueda sigue dando la vuelta
+/// entera y nadie se queda fuera; lo unico que cambia es **cuanto** dura cada
+/// parada. La prioridad es un ORDEN --y un orden estricto excluye--; el quantum
+/// es un REPARTO.
+///
+/// ** El foco no decide QUIEN corre. Decide CUANTO.
+pub const QUANTUM_DELANTE: u16 = 8;
 /// 16 KiB, por el mismo motivo que en `proc.rs`: el contexto con XSAVE ocupa
 /// ~3,3 KiB de pila en cada trap, contra los 720 bytes de cuando eran 8 KiB.
 const TASK_STACK_PAGES: u64 = 4;
@@ -44,6 +63,9 @@ pub struct Task {
     pub state: TaskState,
     pub priority: u8,
     pub remaining_ticks: u16,
+    /// Lo que dura SU turno cuando le toca. `DEFAULT_QUANTUM_TICKS` para todas;
+    /// [`QUANTUM_DELANTE`] para la que el usuario tiene delante.
+    pub quantum: u16,
     /// fxsave-base of the saved context (see trap.rs); 0 = never ran.
     pub context_rsp: u64,
     pub stack_phys: u64,
@@ -66,6 +88,7 @@ impl Task {
         state: TaskState::Empty,
         priority: 0,
         remaining_ticks: 0,
+        quantum: DEFAULT_QUANTUM_TICKS,
         context_rsp: 0,
         stack_phys: 0,
         stack_pages: 0,
@@ -259,6 +282,7 @@ pub fn init(tsc_hz: u64) {
         state: TaskState::Running,
         priority: 0,
         remaining_ticks: DEFAULT_QUANTUM_TICKS,
+        quantum: DEFAULT_QUANTUM_TICKS,
         ..Task::EMPTY
     };
     s.next_tid = 2;
@@ -354,7 +378,7 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
         crate::ring0::plat::trap::seal(outgoing, s.tasks[s.current].tid);
     }
     s.tasks[next].state = TaskState::Running;
-    s.tasks[next].remaining_ticks = DEFAULT_QUANTUM_TICKS;
+    s.tasks[next].remaining_ticks = s.tasks[next].quantum;
     s.current = next;
     percpu::set_trap_rsp(next_rsp);
     // Address space + Ring 3 trap landing pads follow the selected task.
@@ -488,7 +512,7 @@ pub fn on_timer() {
         current.remaining_ticks -= 1;
         return;
     }
-    current.remaining_ticks = DEFAULT_QUANTUM_TICKS;
+    current.remaining_ticks = current.quantum;
     schedule_locked(s, Saliente::Publicado);
 }
 
@@ -549,6 +573,7 @@ pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
         state: TaskState::Ready,
         priority: priority.min(31),
         remaining_ticks: DEFAULT_QUANTUM_TICKS,
+        quantum: DEFAULT_QUANTUM_TICKS,
         context_rsp: context,
         stack_phys: stack_base,
         stack_pages: TASK_STACK_PAGES,
@@ -584,6 +609,7 @@ pub fn spawn_user(
         state: TaskState::Ready,
         priority: priority.min(31),
         remaining_ticks: DEFAULT_QUANTUM_TICKS,
+        quantum: DEFAULT_QUANTUM_TICKS,
         context_rsp,
         stack_phys: kernel_stack_phys,
         stack_pages: kernel_stack_pages,
@@ -662,6 +688,35 @@ pub fn exit_current() {
 /// ** Y NO se reprograma aqui.** Marcar basta: `choose_next` ya no la elige, y
 /// `reap` la recoge en la siguiente pasada con el mismo camino que sigue una
 /// que hizo `EXIT` por su cuenta. Un camino menos que mantener.
+/// **Poner (o quitar) el turno largo a una tarea.** `true` si se aplico.
+///
+/// La llama `obj::tarea::operation`, o sea alguien con la capability del
+/// hijo. Igual que `terminar`, aqui no se comprueba el parentesco: el permiso
+/// ES el handle.
+///
+/// ** Se apaga el de todos los demas de Ring 3 antes de encender el suyo.**
+/// Delante hay UNO. Sin esa vuelta, cada cambio de foco dejaria una app mas
+/// con turno largo y en diez minutos lo tendrian todas -- que es la misma
+/// forma en que `nice()` dejo de significar nada en otros sistemas, solo que
+/// por descuido en vez de por pedirlo.
+pub fn delante(tid: u32) -> bool {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    let mut encontrada = false;
+    for i in 0..s.tasks.len() {
+        if !s.tasks[i].is_user || s.tasks[i].state == TaskState::Empty {
+            continue;
+        }
+        if s.tasks[i].tid == tid {
+            s.tasks[i].quantum = QUANTUM_DELANTE;
+            encontrada = true;
+        } else {
+            s.tasks[i].quantum = DEFAULT_QUANTUM_TICKS;
+        }
+    }
+    encontrada
+}
+
 pub fn terminar(tid: u32) -> bool {
     let _g = SCHED_LOCK.lock();
     let s = sched();

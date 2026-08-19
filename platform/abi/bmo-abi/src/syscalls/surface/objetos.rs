@@ -386,6 +386,18 @@ pub const TAREA_OP_TID: u64 = 0x02;
 /// a que se entere seria esperar para siempre.
 pub const TAREA_OP_CERRAR: u64 = 0x03;
 
+/// **Este hijo es el que el usuario tiene DELANTE.** `arg0` = 1 lo pone,
+/// `0` lo quita. Delante hay uno: ponerselo a otro se lo quita al anterior.
+///
+/// ** Da un TURNO MAS LARGO, no una prioridad mas alta.** La prioridad de
+/// este planificador es estricta: la app de delante le ganaria el turno al
+/// DIRECTOR y sus propios pixeles dejarian de componerse. El quantum reparte
+/// sin excluir -- el foco decide CUANTO corre cada una, no QUIEN corre.
+///
+/// ** Y una app no puede pedirselo: no hay operacion para eso sobre uno
+/// mismo. La gana estando delante, y quien lo dice es quien la lanzo.
+pub const TAREA_OP_DELANTE: u64 = 0x04;
+
 /// Operaciones sobre un handle de sonido.
 ///
 /// `AUDIO_OP_DEVICES` existe para **preguntar en vez de suponer**: contesta una

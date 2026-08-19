@@ -718,6 +718,20 @@ pub(crate) fn on_pointer(
                         if let Some(s) = dsk.table.get_mut(i) {
                             s.chrome.grab(pos.x, pos.y);
                         }
+                        // ** PASO 4: la que se toca pasa a DELANTE, y delante
+                        // se gana apuntando. No sube su prioridad --eso le
+                        // ganaria el turno al propio DIRECTOR y su ventana
+                        // seria la primera en dejar de refrescarse-- sino su
+                        // QUANTUM: corre mas rato cada vuelta, y la rueda
+                        // sigue dando la vuelta entera.
+                        //
+                        // Ponerselo a una se lo quita a la anterior: lo hace
+                        // el kernel en la misma pasada, porque delante hay UNO.
+                        if let Some(tid) = dsk.table.get_mut(i).map(|s| s.tid) {
+                            if let Some(h) = bmo::Hijo::por_tid(tid) {
+                                h.delante(true);
+                            }
+                        }
                     }
                 }
             }
