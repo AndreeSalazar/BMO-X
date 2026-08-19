@@ -301,9 +301,18 @@ motivos que apuntan al mismo sitio: `mod.rs` esta en la linea base de L6a con
 1.363 lineas y no puede crecer, y lo que se guarda no son bytes sino una
 capability ya resuelta -- su sitio es donde se resuelve.
 
-** Se puede ejercitar TECLEANDO: la consola son 110 columnas, asi que una linea
-larga pasa de 96 y toma el camino nuevo. Es lo unico que separa esto de un
-camino que nadie corre -- la leccion del Ep. 45, aplicada antes y no despues.
+[!] **Y dije que se ejercitaba tecleando. Era falso, y lo caza un numero.**
+`LINEA_MAX` --lo que admite la linea de entrada de esa consola-- son **96 bytes
+contando el verbo**, asi que por teclado es imposible pasarse del renglon. El
+camino nuevo se habria quedado compilando sin que nadie lo corriera: el Ep. 45
+otra vez, y esta vez en la misma frase que presumia de haberlo evitado.
+
+** Por eso existe `guarda NOMBRE`: vuelca a un fichero lo que la consola ha
+contestado. Seis lineas de hasta 110 columnas son hasta 666 bytes, siempre por
+encima del renglon. Es el primer cliente de verdad del camino, y es util por si
+mismo -- lo que contesto `disco espacio`, o el motivo por el que fallo un gesto,
+queda guardado **en el volumen versionado** y no en un FAT32 que lo sobreescribe
+la proxima vez.
 
 [ ] **Casilla de metal, sin marcar**: nadie ha escrito todavia un fichero de mas
 de 96 bytes desde Ring 3 en el Ryzen. Compila, pasa los guardianes y sus piezas

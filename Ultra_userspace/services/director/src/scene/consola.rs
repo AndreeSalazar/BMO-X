@@ -340,6 +340,7 @@ impl Consola {
             b"borra" | b"quita" => self.borra(resto),
             b"renombra" | b"mv" => self.renombra(resto),
             b"sella" | b"sellar" => self.sella(),
+            b"guarda" | b"save" => self.guarda(resto),
             // Un verbo que no existe se dice, y se dice DONDE mirar. Un "no
             // reconocido" a secas deja al que lo escribio sin siguiente paso.
             _ => {
@@ -361,7 +362,7 @@ impl Consola {
         self.di(b"new N TEXTO     crea un fichero      ESCRIBEN EN EL DISCO", T_DIM);
         self.di(b"carpeta N       crea una carpeta     y todos actuan DONDE", T_DIM);
         self.di(b"copia ORG DST   trae de FAT32        ESTAS, no en la raiz", T_DIM);
-        self.di(b"borra N         deja de nombrarla", T_DIM);
+        self.di(b"borra N         deja de nombrarla   guarda N: vuelca esto", T_DIM);
         self.di(b"marca NOMBRE    fija esta version    vuelve N: atras", T_DIM);
         self.di(b"ESC suelta las teclas.  Ctrl+n cierra.  arriba: la anterior.", T_DIM);
     }
@@ -598,6 +599,67 @@ impl Consola {
             }
         };
         self.hecho(g, b"fichero");
+    }
+
+    /// **`guarda NOMBRE`** -- escribe a un fichero lo que la consola contesto.
+    ///
+    /// === Por que existe, y no es una comodidad ===
+    ///
+    /// Es el primer cliente de `crear_desde`, o sea del camino que entrega el
+    /// contenido por un bloque de memoria en vez de por el renglon. Y hacia
+    /// falta uno de verdad: **por la linea de entrada no cabe**. `LINEA_MAX`
+    /// son 96 bytes contando el verbo, asi que tecleando es imposible pasarse
+    /// de los 96 que admite el renglon -- el camino nuevo se habria quedado
+    /// compilando sin que nadie lo corriera nunca, que es exactamente el fallo
+    /// del Ep. 45.
+    ///
+    /// Seis lineas de hasta 110 columnas son hasta 666 bytes. Siempre por
+    /// encima del renglon, y por eso esto lo ejercita de verdad.
+    ///
+    /// ** Y es util por si mismo: lo que contesto `disco espacio`, o el motivo
+    /// por el que un gesto fallo, queda guardado **en el volumen versionado**
+    /// -- no en un FAT32 que lo sobreescribe la proxima vez.
+    fn guarda(&mut self, a: &[u8]) {
+        let (nombre, _) = partir(a);
+        if nombre.is_empty() {
+            self.di(b"guarda NOMBRE   (vuelca lo que hay en la consola)", T_BAD);
+            return;
+        }
+        if self.usadas == 0 {
+            self.di(b"la consola no ha dicho nada todavia.", T_BAD);
+            return;
+        }
+        let m = match bloque_de_contenido() {
+            Some(m) => m,
+            None => {
+                self.di(b"no hay bloque para el contenido.", T_BAD);
+                return;
+            }
+        };
+        // La ruta ANTES de llenar el bloque: si no cabe, no se ha tocado nada.
+        let mut ruta = [0u8; COLS];
+        let k = self.ruta_de(nombre, &mut ruta);
+        if k == 0 {
+            self.di(b"esa ruta no cabe.", T_BAD);
+            return;
+        }
+        // Las lineas que hay AHORA, que son las de antes de esta orden: el
+        // verbo se teclea, no se pinta.
+        let mut n = 0usize;
+        for f in 0..self.usadas {
+            let fila = self.salida[f];
+            let largo = fila.iter().position(|&b| b == 0).unwrap_or(COLS);
+            // SAFETY: el bloque son 64 KiB y esto son seis lineas de 110 mas
+            // su salto -- 666 bytes en el peor caso.
+            unsafe {
+                core::ptr::copy_nonoverlapping(fila.as_ptr(), m.base().add(n), largo);
+                n += largo;
+                *m.base().add(n) = b'\n';
+            }
+            n += 1;
+        }
+        let g = bmo::estratos::crear_desde(&ruta[..k], m.handle(), 0, n as u64);
+        self.hecho(g, b"volcado");
     }
 
     /// **`vuelve N`** -- el arbol de hace N versiones, sin copiar nada.
