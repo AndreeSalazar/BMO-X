@@ -52,7 +52,20 @@
  * que se paga por trabajar con angulos en vez de con vectores.
  */
 
+/* La superficie sale del MONTON, y el monton pide UN bloque al kernel. La
+ * imagen son 640*400*4 = 1.024.000 bytes, o sea que con el 1 MiB de serie no
+ * cabe: `malloc` devolveria 0 y no habria ventana. Se declara antes del
+ * `#include`, que es como `<stdlib.h>` lo lee. */
+#define BMO_MONTON_BYTES (2 * 1024 * 1024)
+#include <stdlib.h>
+
 #include <bmo/bmo.h>
+#include <bmo/superficie.h>
+
+/* Lo que mide la ventana cuando hay compositor. En pantalla exclusiva se usa
+ * lo que mida el panel, que es lo que hacia este programa desde el primer dia. */
+#define VEN_ANCHO 640
+#define VEN_ALTO  400
 
 /* Operaciones sobre el handle de pantalla (KIND_FRAMEBUFFER). */
 #define FB_BASE   0x01
@@ -170,6 +183,9 @@ int main() {
     /* La barra de ayuda. Declaradas arriba porque BMO C pide las
      * declaraciones al principio de la funcion, estilo C89. */
     int bx; int by; int bw; int bh;
+    /* La ventana, si hay compositor. 0 = no lo hay, y entonces se va por el
+     * camino de la pantalla exclusiva de siempre. */
+    BMO_SUPERFICIE *sup;
 
     /* * LA PANTALLA TIENE UN SOLO DUENO, y eso no es una limitacion de este
      * programa: es el modelo. `gui.bex` la reclama al arrancar y no la suelta,
@@ -179,25 +195,58 @@ int main() {
      * cediera la pantalla a cualquiera que la pida seria un compositor que no
      * sirve. Lo que falta es que el escritorio sepa PRESTARLA y recuperarla, y
      * eso es trabajo suyo, no de un ejemplo. */
-    pant = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_PANTALLA_RECLAMAR, 0, 0, 0);
-    if (pant == 0) {
-        printf("la pantalla ya tiene dueno: el escritorio la reclamo al arrancar\n");
-        printf("esto corre desde el shell de Ring 0, donde no hay compositor\n");
-        return 1;
-    }
-    base = bmo_valor(pant, FB_BASE, 0, 0, 0);
-    dims = bmo_valor(pant, FB_DIMS, 0, 0, 0);
-    st = bmo_valor(pant, FB_STRIDE, 0, 0, 0);
-    fb = (unsigned int *)base;
-    ancho = (int)(dims >> 32);
-    alto = (int)(dims & 0xFFFFFFFF);
-    stride = (int)(st >> 32);
+    /* ** PRIMERO SE PIDE VENTANA, Y SOLO SI NO HAY SE TOMA LA PANTALLA.
+     *
+     * Ese orden es el paso 2b de `docs/plan/PLAN_DIRECTOR.md`, y no es una
+     * preferencia: mientras el escritorio viva, `PANTALLA_RECLAMAR` contesta
+     * que no, asi que preguntar primero por ahi seria preguntar por el camino
+     * que casi nunca esta abierto.
+     *
+     * `bmo_superficie_crear` devuelve 0 cuando **nadie compone** --lanzado
+     * desde el shell de Ring 0--, y eso no es un fallo: es la otra mitad del
+     * mismo programa. */
+    pant = 0;
+    ent = 0;
+    sup = bmo_superficie_crear(VEN_ANCHO, VEN_ALTO);
+    if (sup != 0) {
+        fb = bmo_superficie_pixeles(sup);
+        ancho = VEN_ANCHO;
+        alto = VEN_ALTO;
+        /* Sin relleno: la cabecera declara `stride = ancho`, y quien pinta
+         * tiene que usar el MISMO numero o pintaria en diagonal. */
+        stride = VEN_ANCHO;
+        printf("raycaster: en una ventana de 640x400\n");
+        /* *** Y AQUI NO SE RECLAMA LA ENTRADA, A PROPOSITO.
+         *
+         * `ENTRADA_RECLAMAR` es de la pantalla entera: pedirla desde dentro de
+         * una ventana le quitaria el teclado al escritorio, que es exactamente
+         * el modelo viejo del que esto sale. Asi que en ventana **este
+         * programa se mira y no se toca** -- es la casilla 4 de
+         * `META-APP_HARD.md`, y se cierra en el paso 2c, no aqui.
+         *
+         * Se sale por el boton de cerrar del marco, que lo pone el DIRECTOR. */
+    } else {
+        /* * LA PANTALLA TIENE UN SOLO DUENO. Si no hay compositor que preste
+         * una caja, se toma entera, que es lo que este ejemplo hacia siempre. */
+        pant = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_PANTALLA_RECLAMAR, 0, 0, 0);
+        if (pant == 0) {
+            printf("ni ventana ni pantalla: no hay donde dibujar\n");
+            return 1;
+        }
+        base = bmo_valor(pant, FB_BASE, 0, 0, 0);
+        dims = bmo_valor(pant, FB_DIMS, 0, 0, 0);
+        st = bmo_valor(pant, FB_STRIDE, 0, 0, 0);
+        fb = (unsigned int *)base;
+        ancho = (int)(dims >> 32);
+        alto = (int)(dims & 0xFFFFFFFF);
+        stride = (int)(st >> 32);
 
-    /* SIN ENTRADA NO SE ARRANCA. Ver la nota al final del fichero. */
-    ent = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ENTRADA_RECLAMAR, 0, 0, 0);
-    if (ent == 0) {
-        printf("sin teclado: no arranco, porque no podria salir\n");
-        return 1;
+        /* SIN ENTRADA NO SE ARRANCA. Ver la nota al final del fichero. */
+        ent = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ENTRADA_RECLAMAR, 0, 0, 0);
+        if (ent == 0) {
+            printf("sin teclado: no arranco, porque no podria salir\n");
+            return 1;
+        }
     }
 
     posx = 3 * UNO + 32768;
@@ -321,6 +370,10 @@ int main() {
         by = alto - 22;
         bx = 24;
         i = 0;
+        /* Solo en pantalla exclusiva: en una ventana la salida es el boton de
+         * cerrar del marco, que ya esta ahi y lo pone el DIRECTOR. Dibujar
+         * ademas estas barras seria ensenar una salida que aqui no existe. */
+        if (sup != 0) i = 6;
         while (i < 6) {
             y = by;
             while (y < by + bh) {
@@ -333,6 +386,7 @@ int main() {
         }
         bx = bx + 22;
         y = by;
+        if (sup != 0) y = by + bh;
         while (y < by + bh) {
             x = bx;
             while (x < bx + bw + 14) { fb[y * stride + x] = 0x0000E5FF; x = x + 1; }
@@ -349,6 +403,9 @@ int main() {
          * personaje sigue andando despues de soltar. Ocho por cuadro es mas de
          * lo que produce un dedo, asi que la cola nunca se atrasa. */
         i = 0;
+        /* En ventana no hay handle de entrada --no se reclamo-- asi que no hay
+         * cola que drenar. Es la casilla 4: se mira y no se toca. */
+        if (ent == 0) i = 8;
         while (i < 8) {
             i = i + 1;
             tecla = (int)bmo_valor(ent, ENT_TECLA, 0, 0, 0);
@@ -448,10 +505,19 @@ int main() {
          * Cuesta un INVOKE por fotograma, que es lo mismo que ya cuesta leer una
          * tecla. Y con el handle revocado la operacion contesta 0, que es un
          * valor que `FB_BASE` no puede devolver siendo valido. */
-        if (bmo_valor(pant, FB_BASE, 0, 0, 0) == 0) {
-            printf("raycaster: me quitaron la pantalla, salgo\n");
-            return 0;
+        if (sup == 0) {
+            if (bmo_valor(pant, FB_BASE, 0, 0, 0) == 0) {
+                printf("raycaster: me quitaron la pantalla, salgo\n");
+                return 0;
+            }
         }
+
+        /* ** EL DIBUJO ESTA ENTERO. Es `R-APP4` de `META-APP_HARD.md`, y va
+         * DESPUES del ultimo pixel del fotograma y nunca antes: subir la
+         * secuencia al empezar seria prometer un dibujo que todavia se esta
+         * haciendo, y el peor caso dejaria de ser "se ve el anterior una vuelta
+         * mas" para pasar a ser "se ve medio dibujo". */
+        if (sup != 0) bmo_superficie_lista(sup);
 
         /* Ceder el turno. Sin esto el bucle se come el quantum entero y el
          * sistema va a tirones -- esta dicho en `bmo.h` y aqui se cumple. */
@@ -462,6 +528,9 @@ int main() {
      * heredar los restos de otro. */
     fila = fb;
     i = 0;
+    /* Solo si la pantalla era nuestra. En ventana, borrar seria borrar la
+     * propia superficie y dejarle al DIRECTOR un rectangulo negro que pegar. */
+    if (sup != 0) i = alto * stride;
     while (i < alto * stride) { fila[i] = 0; i = i + 1; }
     printf("raycaster: fuera\n");
     return 0;

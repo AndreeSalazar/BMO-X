@@ -79,6 +79,10 @@
 #define BMO_SUPERFICIE_H
 
 #include <bmo/bmo.h>
+/* Los dos numeros con los que se nombra el bloque del monton. Se traen aqui
+ * porque `MEM_OFRECER` presta `base + desde` y sin ellos no hay ni base ni
+ * desde -- y no traerlos es lo que rompio el puerto de `ray.bex` a ventana. */
+#include <bmo/bloque.h>
 
 /* Ofrecer un trozo del bloque propio. Operacion sobre `KIND_MEMORIA`. */
 #define BMO_MEM_OFRECER 0x03

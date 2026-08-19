@@ -134,7 +134,7 @@ declararse bastante para la imagen, o `malloc` devuelve 0 y no hay ventana.
 
 ---
 
-# ★ PASO 2b -- LO SIGUIENTE: portar `ray.bex`
+# ★ PASO 2b -- portar `ray.bex` a una ventana ✅ HECHO
 
 La prueba de que esto vale. Dibuja en la superficie en vez de en el framebuffer y
 aparece en una caja con sus tres botones. Cuatro cosas, en orden:
@@ -149,6 +149,29 @@ aparece en una caja con sus tres botones. Cuatro cosas, en orden:
 ⚠ Y hay una trampa apuntada de antes que aplica aqui: **el mapa del raycaster
 valia CERO**, asi que `ray.bex` va a dibujar otro laberinto del que se recuerda.
 Que la ventana ensene algo distinto no quiere decir que la superficie falle.
+
+## ★ HECHO el 2026-08-19 -- y con dos cosas que no estaban en la lista
+
+`raycaster_C.c` compila a **19.394 bytes** con los dos caminos dentro: pide
+ventana primero y **solo si no hay compositor** toma la pantalla entera.
+
+1. ★★ **El orden de los cuatro pasos estaba al reves de como se escribio.** La
+   superficie se pide ANTES de reclamar la pantalla, no despues: mientras el
+   escritorio viva, `PANTALLA_RECLAMAR` contesta que no, asi que preguntar
+   primero por ahi es preguntar por el camino que casi nunca esta abierto.
+
+2. ★★ **En ventana NO se reclama la entrada, y eso es la casilla 4 en vivo.**
+   `ENTRADA_RECLAMAR` es de la pantalla entera: pedirla desde dentro de una caja
+   le quitaria el teclado al escritorio, que es el modelo viejo del que esto
+   sale. Asi que `ray.bex` en ventana **se mira y no se toca** -- literalmente el
+   estado que 2c existe para cambiar. Tampoco pinta las barras de "como se sale":
+   la salida es el boton de cerrar del marco, que ya lo pone el DIRECTOR.
+
+[!] Y el fallo de REX que destapo, porque es el primer programa que pidio
+superficie sin pedir ficheros: **`superficie.h` leia `__bmo_bloque_cap` sin
+traerlo** --lo declaraba `archivo.h`-- asi que una app que solo queria una
+ventana no compilaba, y el error nombraba un simbolo con dos guiones bajos que
+el programa no habia escrito nunca. De ahi sale `<bmo/bloque.h>`.
 
 ---
 
