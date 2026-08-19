@@ -562,21 +562,41 @@ impl Consola {
             self.di(b"new NOMBRE TEXTO", T_BAD);
             return;
         }
-        if texto.len() as u64 > bmo::estratos::ES_GESTO_MAX {
-            let mut d = [0u8; 10];
-            let kd = decimal(bmo::estratos::ES_GESTO_MAX, &mut d);
-            self.di2(b"no cabe. el tope de hoy son ", &d[..kd], T_BAD);
-            self.di(b"bytes: es lo que entra DENTRO del nodo, sin gastar", T_DIM);
-            self.di(b"un bloque de datos. mas grande pide un arbol.", T_DIM);
-            return;
-        }
         let mut ruta = [0u8; COLS];
         let n = self.ruta_de(nombre, &mut ruta);
         if n == 0 {
             self.di(b"esa ruta no cabe.", T_BAD);
             return;
         }
-        let g = bmo::estratos::crear_fichero(&ruta[..n], texto);
+        // ** DOS CAMINOS, Y EL TOPE DEJO DE SER UN MURO (2026-08-19).
+        //
+        // Hasta hoy esto contestaba *"no cabe, el tope son 96 bytes"* y era
+        // verdad a medias: 96 es lo que acumula el RENGLON del syscall, no lo
+        // que sabe guardar el sistema de ficheros. El formato parte un fichero
+        // en bloques desde el 19-08 y lo unico que faltaba era como entregarlo.
+        //
+        // Lo corto sigue yendo por el renglon --dos llamadas y ni un bloque de
+        // memoria pedido-- y lo largo va por un bloque propio. La linea de esta
+        // consola son 110 columnas, asi que el segundo camino se ejercita
+        // tecleando: es lo que separa esto de un camino que nadie corre.
+        let g = if texto.len() as u64 <= bmo::estratos::ES_GESTO_MAX {
+            bmo::estratos::crear_fichero(&ruta[..n], texto)
+        } else {
+            match bloque_de_contenido() {
+                Some(m) => {
+                    // SAFETY: el bloque es de este proceso, esta mapeado, y
+                    // `texto` cabe -- lo comprueba `bloque_de_contenido`.
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(texto.as_ptr(), m.base(), texto.len());
+                    }
+                    bmo::estratos::crear_desde(&ruta[..n], m.handle(), 0, texto.len() as u64)
+                }
+                None => {
+                    self.di(b"no hay bloque para el contenido largo.", T_BAD);
+                    return;
+                }
+            }
+        };
         self.hecho(g, b"fichero");
     }
 
@@ -802,4 +822,29 @@ fn numero(s: &[u8]) -> u64 {
 /// Compara sin distinguir mayusculas, que es como compara ESTRATOS los nombres.
 fn igual_sin_caja(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.eq_ignore_ascii_case(y))
+}
+
+/// **El bloque por el que viaja un contenido que no cabe en el renglon.**
+///
+/// Se pide UNA vez y se reusa. No es tacaneria: un proceso tiene CUATRO
+/// peticiones de memoria en total, asi que pedir una por fichero se acabaria a
+/// la cuarta linea larga.
+///
+/// * 64 KiB, que es mucho mas de lo que cabe en una linea de consola --110
+/// columnas-- y lo justo para que esto siga sirviendo cuando el contenido no
+/// venga de teclear.
+static mut CONTENIDO: Option<bmo::Memoria> = None;
+
+/// El bloque, pidiendolo la primera vez. `None` si el kernel no lo da.
+fn bloque_de_contenido() -> Option<&'static bmo::Memoria> {
+    // `addr_of_mut!` y no `&mut CONTENIDO`: tomar una referencia a un `static
+    // mut` es lo que el compilador rechaza con razon, y aqui ademas la
+    // referencia que se devuelve vive mas que la llamada.
+    let slot = core::ptr::addr_of_mut!(CONTENIDO);
+    unsafe {
+        if (*slot).is_none() {
+            *slot = bmo::Memoria::request(64 * 1024);
+        }
+        (*slot).as_ref()
+    }
 }

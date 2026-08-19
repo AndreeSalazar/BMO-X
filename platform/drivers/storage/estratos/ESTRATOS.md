@@ -60,12 +60,20 @@ fichero cuenta algo que el codigo desmiente -- la primera fue estar borrado doce
 dias. Un documento de estado se envejece solo: se pone al dia o se borra.
 
 ```
-   crate bmo-estratos          2.206 lineas, 53 pruebas verdes, no_std sin alloc
-     lib.rs        538   el formato: superbloque A/B, generacion, sumas   10
-     objects.rs    572   bloques, atributos, nodos, entradas               13
-     read.rs       214   el descenso por el arbol (kernel y fmt, el MISMO)  6
-     escritura.rs  649   la maquina de estados de la transaccion           18
-     espacio.rs    233   la contabilidad de la section 9                    6
+   crate bmo-estratos          3.031 lineas, 71 pruebas verdes, no_std sin alloc
+     lib.rs             541   el formato: superbloque A/B, generacion, sumas
+     objects.rs         572   bloques, atributos, nodos, entradas
+     read.rs            214   el descenso por el arbol (kernel y fmt, el MISMO)
+     escritura/mod.rs   409   CUANDO: la maquina de estados de la transaccion
+     escritura/guardar  679   QUE: nodos, entradas, y el techo de una carpeta
+     flujo.rs           383   partir un flujo en bloques y construir su arbol
+     espacio.rs         233   la contabilidad de la section 9
+
+     [!] Se partio el 19-08 al cruzar L6a (1.057 lineas). Es texto MOVIDO, y el
+     corte no hubo que inventarlo: el propio fichero ya decia que eran dos
+     mitades --la transaccion sabe CUANDO se puede escribir, las piezas saben
+     QUE bytes hay que poner--. Se reexporta entero: quien lo usa lo escribe
+     igual que ayer.
 
    kernel ring0/fsys/estratos/   1.604 lineas -- monta, LEE y YA ESCRIBE
      mod.rs        437   el montaje y la identidad
@@ -245,6 +253,62 @@ nunca**, por una linea (`cerrar_datos`). Ver Ep. 45 de la bitacora. La leccion
 --*probar cada pieza no es probar el camino*-- es la razon de que esta casilla
 de metal exista y de que no sea burocracia.
 
+### ★★★ LA PUERTA: EL TECHO DE 96 SE CAE ENTERO (2026-08-19)
+
+El techo eran DOS limites con el mismo numero, y el 19-08 solo cayo uno:
+
+```
+   RESIDENTE_MAX = 96   lo que cabe DENTRO del nodo    <- lo tumbo `flujo`
+   DATOS_MAX     = 96   el renglon del syscall         <- lo tumba ESTO
+```
+
+`flujo` dejo al formato sabiendo partir un fichero en bloques, y Ring 3 seguia
+sin poder entregarlo: el contenido viajaba **de ocho en ocho bytes**. Un MiB por
+ahi son 131.072 cruces de anillo, que a 969 ciclos la puerta son ~127 millones
+de ciclos, unos 32 ms **solo en cruzar**.
+
+** Y el arreglo no habia que inventarlo: estaba hecho, para FAT32, a veinte
+metros. `ARCH_OP_LEER_EN` lo dice en su propio comentario --*"no se arregla
+validando punteros de Ring 3; se arregla no necesitandola: el destino es un
+bloque que concedio el kernel, asi que comprobar es una resta"*--. ESTRATOS no
+se habia enterado.
+
+```
+   ES_GESTO_ORIGEN      handle de KIND_MEMORIA + desplazamiento. Anota, no lee
+   ES_GESTO_FICHERO_DE  los bytes a tomar. DOS llamadas para cualquier tamano
+```
+
+★ **Y lo que quita es un rodeo que era obligatorio.** Sin esto, la unica forma
+de meter mas de 96 bytes en ESTRATOS era dejarlos antes en FAT32 y copiarlos:
+el documento de una aplicacion tenia que pasar por un sistema de ficheros **que
+sobreescribe** para llegar al que no sobreescribe. El argumento entero de
+ESTRATOS tenia delante un tramo donde no se cumplia ninguna de sus promesas.
+
+**El reparto, y por que cada cosa cae donde cae:**
+
+```
+   syscall/gesto.rs   resuelve la capability con RIGHT_READ --el kernel LEE, no
+                      escribe dentro-- y comprueba el rango con una resta
+   copiar.rs          "fuera" pasa a ser DOS sitios: Fat32 y Ram. UNA variante
+                      de `Gesto`, no dos: dos caminos se separan y uno se queda
+                      sin el arreglo del otro
+   consola.rs         `new` deja de tener muro. Lo corto sigue yendo por el
+                      renglon; lo largo, por un bloque de 64 KiB pedido una vez
+```
+
+[!] El renglon del origen vive en `gesto.rs` y **no en `syscall/mod.rs`** por dos
+motivos que apuntan al mismo sitio: `mod.rs` esta en la linea base de L6a con
+1.363 lineas y no puede crecer, y lo que se guarda no son bytes sino una
+capability ya resuelta -- su sitio es donde se resuelve.
+
+** Se puede ejercitar TECLEANDO: la consola son 110 columnas, asi que una linea
+larga pasa de 96 y toma el camino nuevo. Es lo unico que separa esto de un
+camino que nadie corre -- la leccion del Ep. 45, aplicada antes y no despues.
+
+[ ] **Casilla de metal, sin marcar**: nadie ha escrito todavia un fichero de mas
+de 96 bytes desde Ring 3 en el Ryzen. Compila, pasa los guardianes y sus piezas
+estan probadas; el camino entero no.
+
 ## 0.1.1 EL PLAN DESPUES DEL 1.0, ORDENADO (2026-08-18)
 
 Reordenado a peticion del dueno: *"vamos a terminar con ESTRATOS, reorganizar el
@@ -269,7 +333,7 @@ en dos mitades que no son el mismo trabajo.
 |---|---|---|
 | 1.1 | **leer el contenido desde Ring 3** | **HECHO** (19-08). `Archivo` resuelve ESTRATOS primero y FAT32 despues, con la misma regla que usa `launch`. |
 | 1.2a | **el techo de 96, por el lado del DISCO** | **HECHO** (19-08). `flujo.rs` construye el arbol de indireccion sin `alloc`, y `Gesto::Copia` lo usa: una copia de FAT32 escribe lo que mida. |
-| 1.2b | **el techo de 96, por el lado de la PUERTA** | El contenido de `new` viaja dentro del renglon del syscall: `ES_GESTO_MAX = 96` en el ABI. Para escribir 5 KiB desde Ring 3 hace falta pasar un **buffer**, no bytes en linea. ** Y esa misma puerta es la que necesita `guardar`. |
+| 1.2b | **el techo de 96, por el lado de la PUERTA** | **HECHO** (19-08). `ES_GESTO_ORIGEN` + `ES_GESTO_FICHERO_DE`: el contenido viaja por una capability de `KIND_MEMORIA`, dos llamadas para cualquier tamano. Ver *"La puerta"* mas arriba. ** Y esa misma puerta es la que necesita `guardar`, que ya no esta bloqueada. |
 | 1.3 | **subir el tope de 36 por carpeta** | `ENTRADAS_POR_BLOQUE` = un bloque de entradas. Necesita que `:entradas` use indireccion **al republicar** -- la misma maquinaria de 1.2a, asi que sale casi gratis. Junta de paso los tres numeros distintos (36 escribir / 64 listar / 36 formatear). |
 | 1.4 | **el guardia de los topes** | **HECHO** (19-08). No sube ningun tope: impide que se pasen en silencio. Ver *"El guardia de los topes"* en la section 0.1. |
 

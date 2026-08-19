@@ -36,7 +36,7 @@ pub(crate) use dir::*;
 pub mod escribir;
 /// ** TRAER UN FICHERO DE FUERA: el contenido lo lee el kernel y no cruza el
 /// renglon de 96 bytes del syscall. Es lo que hace util el techo levantado.
-pub(crate) mod copiar;
+pub mod copiar;
 /// LA HISTORIA DEL VOLUMEN: la cadena de versiones hacia atras. Existia en el
 /// disco desde el primer dia --cada estrato guarda su padre-- y no tenia puerta.
 pub(crate) mod historia;

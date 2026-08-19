@@ -65,6 +65,16 @@ impl Memoria {
         self.base as *mut u8
     }
 
+    /// **El handle del bloque**, para las operaciones que lo reciben.
+    ///
+    /// * Es una capability, no una direccion: quien la recibe puede comprobar
+    /// que es tuya y con que derechos, cosa que con un puntero no se puede.
+    /// Lo usa `estratos::crear_desde` para entregar el contenido de un fichero
+    /// sin mandarlo de ocho en ocho.
+    pub fn handle(&self) -> u64 {
+        self.cap
+    }
+
     /// Lo que se pidio.
     pub fn bytes(&self) -> u64 {
         self.bytes

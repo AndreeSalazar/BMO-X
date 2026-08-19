@@ -191,6 +191,57 @@ pub const ES_GESTO_MARCAR: u64 = 0x07;
 /// se deshace el contenido y se conserva el registro de que se deshizo.
 pub const ES_GESTO_VOLVER: u64 = 0x08;
 
-/// Cuanto contenido admite el renglon. Es [`RESIDENTE_MAX`] de ESTRATOS: lo que
+/// **DE DONDE SALE EL CONTENIDO: un bloque de `KIND_MEMORIA` propio.**
+///
+/// `arg1` es el handle del bloque. Los bits altos de `arg0` llevan el
+/// DESPLAZAMIENTO dentro de el: `ES_GESTO_ORIGEN | (offset << 8)`.
+///
+/// Anota nada mas: no lee un byte y no escribe en el disco. Lo ejecuta
+/// [`ES_GESTO_FICHERO_DE`], que es quien trae la cuenta.
+///
+/// === ** POR QUE UN HANDLE Y NO UN PUNTERO ===
+///
+/// Porque un puntero de Ring 3 habria que validarlo, y esa infraestructura no
+/// existe en esta superficie -- a proposito. Un bloque de `KIND_MEMORIA` **lo
+/// entrego el kernel**, asi que comprobar que el rango cae dentro es una RESTA
+/// contra lo que se entrego, no un recorrido de tablas de pagina.
+///
+/// Es exactamente la forma que ya tienen `ARCH_OP_LEER_EN` y
+/// `ARCH_OP_ESCRIBIR_DE` para FAT32, y la que este renglon no tenia.
+///
+/// ** Se pide con `RIGHT_READ` y no con `RIGHT_WRITE`: el kernel LEE el bloque,
+/// no escribe dentro. Exigir mas autoridad de la que la operacion usa es
+/// justo lo que un sistema de capabilities no debe hacer.
+pub const ES_GESTO_ORIGEN: u64 = 0x09;
+
+/// **Crea un fichero con el contenido del bloque anotado en
+/// [`ES_GESTO_ORIGEN`].** `arg1` son los BYTES a tomar.
+///
+/// La ruta lleva el destino entero, igual que [`ES_GESTO_FICHERO`].
+///
+/// === Lo que esto cambia, y por que no es "el renglon pero mas grande" ===
+///
+/// El renglon acumula de ocho en ocho y para en [`ES_GESTO_MAX`]. Un MiB por
+/// ahi serian 131.072 cruces de anillo. Aqui son DOS llamadas --anotar y
+/// ejecutar-- para cualquier tamano, porque **el contenido no viaja: viaja
+/// donde esta**.
+///
+/// ** Y quita el rodeo que hoy es obligatorio. Sin esto, la unica forma de
+/// meter mas de 96 bytes en ESTRATOS es dejarlos antes en FAT32 y copiarlos
+/// con [`ES_GESTO_COPIA`] -- o sea que el documento de una aplicacion tiene que
+/// pasar por un sistema de ficheros **que sobreescribe** para llegar al que no
+/// sobreescribe. Todo el argumento de ESTRATOS tiene delante un tramo donde no
+/// se cumple.
+///
+/// El techo que queda es el del volumen, y lo dice el nivel de ocupacion.
+pub const ES_GESTO_FICHERO_DE: u64 = 0x0A;
+
+/// Cuanto contenido admite EL RENGLON. Es [`RESIDENTE_MAX`] de ESTRATOS: lo que
 /// cabe DENTRO del nodo, sin gastar un bloque de datos.
+///
+/// ** ESTO YA NO ES EL TECHO DE UN FICHERO, y llego a serlo por accidente. Dos
+/// limites distintos coincidieron en 96 --lo que cabe en el nodo y lo que
+/// acumula el renglon-- y el segundo se quedo mandando sobre el primero.
+/// [`ES_GESTO_FICHERO_DE`] entrega el contenido por un bloque de memoria y no
+/// pasa por aqui: este numero solo mide el renglon corto.
 pub const ES_GESTO_MAX: u64 = 96;

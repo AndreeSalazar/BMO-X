@@ -92,14 +92,19 @@ pub enum Gesto<'a> {
     Quitar { nombre: &'a str },
     /// Cambiarle el nombre a una entrada, sin tocar su nodo.
     Renombrar { viejo: &'a str, nuevo: &'a str },
-    /// **Traer un fichero de FAT32.** El contenido lo lee el kernel.
+    /// **Traer un fichero DE FUERA.** El contenido lo lee el kernel.
     ///
     /// ** Es el unico gesto cuyo coste NO se sabe leyendo el gesto: depende del
-    /// tamano del origen, que hay que ir a mirar al otro volumen. Por eso
-    /// `aplicar` lo pregunta antes de reservar, y por eso este es el unico que
-    /// puede fallar con "esa ruta no existe" hablando de OTRO sistema de
-    /// ficheros.
-    Copia { nombre: &'a str, origen: &'a str },
+    /// tamano del origen, que hay que ir a medir. Por eso `aplicar` lo pregunta
+    /// antes de reservar, y por eso este es el unico que puede fallar con "esa
+    /// ruta no existe" hablando de OTRO sistema de ficheros.
+    ///
+    /// ** Y "fuera" son DOS sitios desde el 19-08: el volumen FAT32 y un bloque
+    /// de memoria de Ring 3. Es UNA variante y no dos porque lo que hacen es lo
+    /// mismo --medir, reservar, escribir el arbol, colgar el nodo-- y solo
+    /// cambia de donde salen los bytes. Dos variantes serian dos caminos por
+    /// mantener, y uno de los dos se quedaria sin el arreglo del otro.
+    Copia { nombre: &'a str, origen: super::copiar::Origen<'a> },
 }
 
 impl Gesto<'_> {
@@ -482,7 +487,14 @@ fn motivo(g: &Gesto) -> &'static str {
         Gesto::Carpeta { .. } => "carpeta nueva",
         Gesto::Quitar { .. } => "entrada quitada",
         Gesto::Renombrar { .. } => "entrada renombrada",
-        Gesto::Copia { .. } => "fichero copiado de FAT32",
+        // ** El motivo distingue los dos fueras, y no es cosmetica: esto se
+        // queda ESCRITO en el estrato, o sea en el historial que se mira meses
+        // despues. "Copiado de FAT32" sobre un fichero que escribio una
+        // aplicacion seria una linea de historia falsa.
+        Gesto::Copia { origen: super::copiar::Origen::Fat32(_), .. } => "fichero copiado de FAT32",
+        Gesto::Copia { origen: super::copiar::Origen::Ram { .. }, .. } => {
+            "fichero escrito por una aplicacion"
+        }
     }
 }
 
@@ -684,7 +696,28 @@ pub fn quitar(ruta: &str, nombre: &str) -> Result<u64, WriteError> {
 
 /// **Trae `origen` de FAT32 y lo guarda como `nombre` dentro de `ruta`.**
 pub fn copiar_fichero(ruta: &str, nombre: &str, origen: &str) -> Result<u64, WriteError> {
-    aplicar(ruta, Gesto::Copia { nombre, origen })
+    aplicar(
+        ruta,
+        Gesto::Copia { nombre, origen: super::copiar::Origen::Fat32(origen) },
+    )
+}
+
+/// **Crea `nombre` dentro de `ruta` con los `size` bytes que hay en `base`.**
+///
+/// El hermano de [`copiar_fichero`] con el otro fuera: un bloque de memoria de
+/// Ring 3 en vez de una ruta de FAT32.
+///
+/// # Safety
+///
+/// `base` tiene que apuntar a `size` bytes legibles **del proceso que esta
+/// corriendo ahora**. Quien llama es `syscall/gesto.rs`, que lo saca de un
+/// bloque `KIND_MEMORIA` propio tras comprobar el rango contra lo que el kernel
+/// le entrego -- la misma regla, escrita igual, que `file::write_from`.
+pub unsafe fn crear_desde(ruta: &str, nombre: &str, base: u64, size: u32) -> Result<u64, WriteError> {
+    aplicar(
+        ruta,
+        Gesto::Copia { nombre, origen: super::copiar::Origen::Ram { base, size } },
+    )
 }
 
 /// **Renombra `viejo` a `nuevo` dentro de `ruta`.** El nodo no se toca.
