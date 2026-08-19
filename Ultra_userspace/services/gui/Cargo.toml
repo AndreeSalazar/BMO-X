@@ -20,3 +20,6 @@ bmo-input = { path = "../../../platform/drivers/usb/input", default-features = f
 # repintarlo todo. Es el mismo `Recorte` que usan el rasterizador y el kernel:
 # medio abierto `[x0, x1)`, y una sola implementacion para las tres orillas.
 bmo-dibujo = { path = "../../../platform/shared/bmo-dibujo" }
+# LA RESTA que convierte un clic de pantalla en un clic de la app. Fuera del
+# `.bex` por la misma razon que el foco: aqui no corre un test, alli si.
+bmo-golpe = { path = "../../../platform/shared/bmo-golpe" }

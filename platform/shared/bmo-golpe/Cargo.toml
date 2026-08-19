@@ -1,0 +1,12 @@
+[package]
+name = "bmo-golpe"
+version = "0.1.0"
+edition = "2021"
+description = "La resta que convierte un clic de pantalla en un clic de la app. Hijo de L7: relaciona la caja con el punto, y no sabe que significa el resultado."
+license = "Techne"
+
+# Sin dependencias, y aqui eso es un requisito y no un alarde: este crate existe
+# para poder PROBARSE en el anfitrion. Una sola dependencia de Ring 3 lo ataria
+# a un binario `no_main` que no corre un test -- que es exactamente la razon por
+# la que la politica de foco vive en `bmo-input` y no en el compositor (L7b).
+[dependencies]

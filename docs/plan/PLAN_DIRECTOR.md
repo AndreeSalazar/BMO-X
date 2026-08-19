@@ -186,6 +186,25 @@ caer dentro de la superficie que la app declaro**. Mandarle un clic en `(5000,
 **Como se sabe que quedo hecha**: el DIRECTOR sabe decir *"este clic es de la
 superficie 2, en su pixel (81, 210)"* sin que la app exista todavia.
 
+### ★ HECHA el 2026-08-19
+
+`platform/shared/bmo-golpe` --nueve filas en verde-- y `Table::golpe` en el
+compositor. Tres cosas que salieron al escribirla y no estaban previstas:
+
+1. **Fuera no es (0,0): fuera es que no hay golpe.** La resta devuelve
+   `Option`. Un saturado convertiria un clic de fuera en un clic en el borde, y
+   cada app tendria que descubrir por su cuenta que ese cero era mentira.
+2. **El recorte del golpe y el de los pixeles son el MISMO codigo.** `compose`
+   pasa a usar la misma `visible()`. Dos copias de esa cuenta serian un borde
+   donde se ve una cosa y se pulsa otra -- y eso no da error, da un numero.
+3. **Se comprueban las DOS cajas**: la visible y la que la app declaro. Lo
+   segundo es dato de otro proceso y se usa solo como tope, asi que la frontera
+   de confianza no se reparte entre dos modulos.
+
+★ Y vive fuera del `.bex` por L7b: es un **hijo** --relaciona la caja con el
+punto y no sabe que significa el resultado-- y ahi se prueba en tres segundos en
+vez de en una tanda de flasheo.
+
 ## 2c.2 -- ★★ POR DONDE VIAJA UN EVENTO. Aqui hay que ELEGIR.
 
 Y no por la consola, que es lo que acaba de costar un fallo mudo -- ver

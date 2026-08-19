@@ -137,6 +137,10 @@ name = "bmo-fontgen"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-golpe"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-gpu-rdna4"
 version = "0.1.0"
 

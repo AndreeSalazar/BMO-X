@@ -18,6 +18,10 @@ members = [
     # rectangulos por fotograma tirados y el 7,2% de la pantalla sin escribir.
     # Un solo recorte para las tres orillas.
     "platform/shared/bmo-dibujo",
+    # LA RESTA: un clic de pantalla -> un clic de la app. Vive aqui y no dentro
+    # del compositor por lo mismo que el juez de las medidas: aqui se PRUEBA.
+    # Paso 2c.1 de `docs/plan/PLAN_DIRECTOR.md`.
+    "platform/shared/bmo-golpe",
     # El JUEZ de las medidas de ciclos. Vive aqui y no dentro del `.bex` que
     # mide por la misma razon que la politica de foco vive en `bmo-input`: aqui
     # se puede PROBAR. Un `.bex` es `no_main` para un target sin sistema
