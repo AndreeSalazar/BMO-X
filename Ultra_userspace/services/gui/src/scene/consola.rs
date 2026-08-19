@@ -107,6 +107,14 @@ pub(crate) struct Consola {
     tinta: [u8; LINEAS],
     /// Cuantas lineas de salida hay escritas, hasta `LINEAS`.
     usadas: usize,
+    /// Ya se saludo alguna vez?
+    ///
+    /// [!] Sin esto, `alternar` soltaba la linea de bienvenida en CADA
+    /// apertura: abrir y cerrar tres veces dejaba tres saludos iguales
+    /// apilados, comiendose la mitad de las seis lineas de salida. Visto en el
+    /// Ryzen el 2026-08-18 -- y el sintoma no era "un mensaje de mas", era que
+    /// la respuesta a la orden que acababas de escribir ya no cabia.
+    estrenada: bool,
     /// La ultima orden, para la flecha arriba.
     ///
     /// UNA, no un historial. En un terminal de dos verbos, repetir la anterior
@@ -126,6 +134,7 @@ impl Consola {
             salida: [[0; COLS]; LINEAS],
             tinta: [T_DIM; LINEAS],
             usadas: 0,
+            estrenada: false,
             ultima: [0; LINEA_MAX],
             ultima_n: 0,
         }
@@ -170,7 +179,14 @@ impl Consola {
         } else {
             if !self.abierta {
                 self.abierta = true;
-                self.di(b"consola de ESTRATOS. `ayuda` lista lo que hay.", T_DIM);
+                // El saludo es una PRESENTACION, y a uno se le presenta una
+                // vez. Repetirlo en cada apertura no informa de nada nuevo y
+                // empuja hacia arriba lo unico que importa, que es lo que
+                // contesto la ultima orden.
+                if !self.estrenada {
+                    self.estrenada = true;
+                    self.di(b"consola de ESTRATOS. `ayuda` lista lo que hay.", T_DIM);
+                }
             }
             self.activa = true;
         }
@@ -244,6 +260,17 @@ impl Consola {
         let (verbo, resto) = partir(orden);
         match verbo {
             b"ayuda" | b"?" => self.ayuda(),
+            // ** LA BUSCO EL DUENO EL PRIMER DIA Y NO ESTABA.
+            //
+            // Con seis lineas de salida, limpiar no es una comodidad: es la
+            // unica forma de que la respuesta siguiente se lea entera. Se
+            // aceptan las dos palabras --la inglesa porque es la que sale de
+            // los dedos, la castellana porque es el idioma de la casa-- y no
+            // es una concesion: un terminal que rechaza la palabra que todo el
+            // mundo teclea gasta una linea de error en decirlo.
+            b"clear" | b"limpia" | b"cls" => {
+                self.usadas = 0;
+            }
             b"ls" | b"dir" => self.ls(),
             b"donde" | b"pwd" => self.donde(),
             b"cd" => self.cd(resto),
@@ -257,13 +284,21 @@ impl Consola {
         }
     }
 
+    /// La ayuda LIMPIA antes de escribir, y cabe justa en las seis lineas.
+    ///
+    /// ** No es un detalle de aspecto. La salida son seis lineas; la ayuda
+    /// ocupaba ocho contando el eco, asi que las dos primeras --entre ellas
+    /// `ls`, que es la orden mas basica que hay-- se salian por arriba antes de
+    /// que nadie pudiera leerlas. Una ayuda que se corta sola es peor que no
+    /// tenerla: dice que existe algo y no dice que.
     fn ayuda(&mut self) {
-        self.di(b"ls            lo que hay en este nodo", T_DIM);
-        self.di(b"cd NOMBRE     baja. `cd ..` sube, `cd /` a la raiz", T_DIM);
-        self.di(b"donde         la ruta donde estas", T_DIM);
-        self.di(b"nuevo N TEXTO crea un fichero. ESCRIBE EN EL DISCO", T_DIM);
-        self.di(b"sella         commitea. ESCRIBE EN EL DISCO", T_DIM);
-        self.di(b"ESC devuelve las teclas al explorador. Ctrl+n cierra.", T_DIM);
+        self.usadas = 0;
+        self.di(b"ls  cd NOMBRE  cd ..  cd /  donde   moverse y mirar", T_DIM);
+        self.di(b"nuevo N TEXTO   crea un fichero -- ESCRIBE EN EL DISCO", T_DIM);
+        self.di(b"sella           commitea       -- ESCRIBE EN EL DISCO", T_DIM);
+        self.di(b"clear           limpia esta salida", T_DIM);
+        self.di(b"ESC devuelve las teclas al explorador, sin cerrar.", T_DIM);
+        self.di(b"Ctrl+n cierra la consola.  flecha arriba: la anterior.", T_DIM);
     }
 
     fn donde(&mut self) {

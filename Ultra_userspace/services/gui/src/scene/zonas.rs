@@ -102,9 +102,21 @@ pub(crate) const PIE_H: u32 = 40;
 const ARBOL_W: u32 = 168;
 /// Por debajo de esto la rejilla deja de ser una rejilla.
 const REJILLA_MIN: u32 = 240;
-/// Por debajo de esto el grafo no puede dibujar dos columnas de cajas y una
-/// curva entre ellas, que es lo minimo para que sea un grafo y no una lista.
-const GRAFO_MIN: u32 = 260;
+/// Lo que el grafo necesita para ser un grafo: **dos columnas de cajas y el
+/// canal entre ellas**.
+///
+/// ** NO ES UN NUMERO PUESTO A OJO, Y ANTES LO ERA.
+///
+/// Aqui habia un `260`. El grafo pinta dos cajas de `NODE_MIN` con `CHANNEL` en
+/// medio, o sea `2*170 + 44 = 384`. Entre 260 y 383 este reparto daba el panel
+/// por bueno **y las cajas de los hijos se pintaban fuera de la ventana**, sobre
+/// el escritorio: `node_box` no recorta, solo las curvas llevan `Recorte`.
+///
+/// Se vio en el Ryzen el 2026-08-18, en una foto, y es la clase de fallo que
+/// esta casa ya conoce: dos constantes en dos ficheros que tienen que cuadrar y
+/// nadie las obliga. Ahora **la cuenta se hace aqui con los numeros del grafo**,
+/// asi que cambiar el tamano de una caja mueve este minimo solo.
+const GRAFO_MIN: u32 = 2 * super::data::NODE_MIN + super::data::CHANNEL;
 /// Que parte del sitio sobrante se lleva el grafo cuando cabe.
 const GRAFO_PCT: u32 = 42;
 
@@ -202,3 +214,10 @@ impl Zonas {
         Self { miga, arbol, rejilla, grafo, consola, pie }
     }
 }
+
+/// [!] Y que no se pueda volver a torcer: si alguien sube `NODE_MIN` sin mirar,
+/// esto no compila en vez de pintar por encima del escritorio.
+const _: () = assert!(
+    GRAFO_MIN >= 2 * super::data::NODE_MIN + super::data::CHANNEL,
+    "el panel del grafo tiene que caber sus dos columnas y el canal"
+);
