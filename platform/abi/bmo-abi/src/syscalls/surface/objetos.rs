@@ -121,6 +121,41 @@ pub const ES_NODO_NIVEL_ELEGIDO: u64 = 0x0E;
 /// para en el mas hondo que siga estando.
 pub const ES_NODO_RECARGAR: u64 = 0x0F;
 
+// == ** LA HISTORIA DEL VOLUMEN =============================================
+//
+// Cada estrato guarda un puntero a su PADRE, asi que recorrer esa cadena ES
+// recorrer la historia. Estaba en el disco desde el primer dia y no tenia
+// puerta -- igual que le paso al arbol antes del cursor.
+//
+// ** `RELEER` es la UNICA que toca el disco: un bloque por version. Las demas
+// contestan de lo que aquella dejo guardado, porque un panel que releyera la
+// cadena en cada repintado serian doscientas lecturas por mover el raton.
+
+/// **Recorre la cadena y guarda las versiones.** Devuelve cuantas se leyeron.
+/// Se pide al abrir el panel y despues de escribir.
+pub const ES_HIST_RELEER: u64 = 0x10;
+
+/// Cuantas versiones hay guardadas.
+pub const ES_HIST_CUANTAS: u64 = 0x11;
+
+/// Se corto el recorrido por el tope? Una historia recortada en silencio se ve
+/// igual que un volumen joven.
+pub const ES_HIST_RECORTADA: u64 = 0x12;
+
+/// Cuando se hizo la version `arg1`, en el formato de `INFO_FECHA`. `0` = sin
+/// fechar.
+pub const ES_HIST_CUANDO: u64 = 0x13;
+
+/// Que proceso hizo la version `arg1`.
+pub const ES_HIST_QUIEN: u64 = 0x14;
+
+/// Lleva nombre la version `arg1`?
+///
+/// ** Las que si son PERMANENTES: el recolector no las suelta jamas. Por eso
+/// esto no es un adorno de la lista -- es la diferencia entre una version que
+/// puede desaparecer y una a la que siempre se podra volver.
+pub const ES_HIST_CON_NOMBRE: u64 = 0x15;
+
 /// Que texto pide [`TASK_OP_ES_TEXTO`], en los bits altos de `arg0`.
 ///
 /// Los bajos siguen siendo el indice. Se reparte el argumento en vez de anadir
@@ -139,6 +174,9 @@ pub const ES_TXT_RUTA: u64 = 1;
 /// hijos-- y ahorran una tercera puerta para el mismo mecanismo de siempre:
 /// sacar un nombre de ocho en ocho.
 pub const ES_TXT_NIVEL_HIJO: u64 = 2;
+
+/// El nombre de la version `indice` de la historia.
+pub const ES_TXT_HIST_NOMBRE: u64 = 3;
 
 // == ** LAS ONCE QUE FALTABAN EN EL CONTRATO (2026-08-17) ===================
 //

@@ -1675,6 +1675,75 @@ el rect VIEJO de una con el fondo NUEVO de la otra. Al reves es el rastro que
 
 ---
 
+## Ep. 45 -- Faltaba una linea, y nunca se guardo un fichero
+**Sintoma**: ninguno. `estratos` decia *"NO se hizo, el volumen sigue igual"* y
+el motivo en F11 era `fuera de orden`. Nadie lo leyo porque **nadie lo ejecuto**:
+el commit que estreno la escritura (`1c96b133`, 18-08) se cerro con "sin probar
+en metal", y encima se le anadieron dos dias de funciones.
+
+**Culpable**: la transaccion tiene cuatro fases --`Datos -> Barrera -> Commit ->
+Cerrada`-- y el kernel llamaba `reserve` y despues `barrera_hecha` **saltandose
+`cerrar_datos()`**, que es la que pasa de la primera a la segunda. La barrera
+exigia estar en Barrera, contestaba `FueraDeOrden`, y el commit no ocurria
+jamas. `sellar` si la llamaba, y por eso el 13-08 se vio `generacion 3` en el
+Ryzen: aquel camino estaba entero y el de guardar un fichero no.
+
+**Moraleja**: **probar cada pieza no es probar el camino.** La maquina de
+estados estaba bien probada -- `una_transaccion_normal_recorre_las_cuatro_fases`
+recorre la secuencia completa, `cerrar_datos` incluido, y pasa desde el primer
+dia. Lo que no estaba probado era **quien la usa**, y ese hueco no lo cierra
+otro test de anfitrion: solo lo cierra ejecutarlo una vez.
+
+★ Y el diseno aguanto entero. Dijo que no, con su motivo, y la ventana lo
+repitio en pantalla. No hubo silencio, ni medio arbol escrito, ni un superbloque
+apuntando a bloques que no llegaron al plato. **El fallo fue de quien la usaba y
+la maquina lo paro** -- que es exactamente para lo que estaba.
+
+[!] La casilla de metal no es burocracia. Es el unico sitio donde se descubre
+esto, y llevaba dos dias sin marcarse mientras encima se construia.
+
+---
+
+## Ep. 46 -- Todas mis versiones decian ser permanentes
+**Sintoma**: tampoco ninguno, y este habria tardado meses en salir: el volumen
+creceria para siempre y se notaria **el dia que se llenara**.
+
+**Culpable**: `Estrato::con_nombre()` mira si el motivo esta puesto, y la §9 dice
+que **los estratos CON NOMBRE no los suelta el recolector jamas**. O sea que el
+motivo no es una etiqueta descriptiva: es lo que hace PERMANENTE a una version.
+Y yo escribia "fichero nuevo", "carpeta nueva", "entrada quitada" en todas.
+
+**Moraleja**: **un campo que tiene consecuencias no es un campo de texto.** Se
+llamaba `motivo` y se leia como una descripcion; lo que decide es si algo se
+puede borrar. La prueba que lo decia ya existia desde el primer dia y se llamaba
+`un_estrato_automatico_no_lleva_nombre` -- estaba escrito, y aun asi se piso.
+
+★ El texto no se perdio: se fue a CABINA, que es donde tenia que estar desde el
+principio. **Para contar lo que paso, no para marcar el disco.**
+
+---
+
+## Ep. 47 -- El techo eran dos techos con el mismo numero
+**Sintoma**: un fichero de ESTRATOS media como mucho 96 bytes. Se levanto el
+tope --`flujo` aprendio a partir el contenido en bloques con su arbol de
+indireccion-- y **seguia sin poder pasar de 96**.
+
+**Culpable**: `RESIDENTE_MAX` (lo que cabe dentro del nodo) y `DATOS_MAX` (el
+renglon del syscall) valen los dos 96 y no tienen nada que ver. Se habia tumbado
+uno y el otro ni se habia mirado.
+
+**Moraleja**: **dos limites con el mismo valor se leen como uno.** El numero
+coincidia por casualidad y eso basto para que nadie preguntara si eran el mismo.
+Cuando un tope no cede al quitarle su causa, la causa era otra.
+
+★ Y la salida no fue ensanchar el renglon. Meter 4 KiB de ocho en ocho serian
+512 llamadas por bloque: esa puerta no esta hecha para eso. **El contenido dejo
+de cruzar el anillo** -- `copia` manda dos NOMBRES y el kernel lee la fuente el
+mismo, que ademas es lo que de verdad hacia falta: meter en ESTRATOS los
+ficheros que ya estan en FAT32.
+
+---
+
 ## Y lo que quedo PREPARADO ese mismo dia, para cuando vengan mas
 
 Esta bitacora es de episodios, no de planes -- asi que aqui solo va **donde

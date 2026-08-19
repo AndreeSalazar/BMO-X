@@ -363,12 +363,24 @@ pub(crate) const ES_NODO_NIVEL_ELEGIDO: u64 = 0x0E;
 /// escribir: la pila guarda el estrato de antes y sin esto seguiria
 /// ensenandolo.
 pub(crate) const ES_NODO_RECARGAR: u64 = 0x0F;
+/// -- LA HISTORIA: la cadena de versiones hacia atras --
+///
+/// `RELEER` es la unica que toca el disco --un bloque por version-- y por eso
+/// se pide a mano. Las otras contestan de lo que aquella dejo guardado.
+pub(crate) const ES_HIST_RELEER: u64 = 0x10;
+pub(crate) const ES_HIST_CUANTAS: u64 = 0x11;
+pub(crate) const ES_HIST_RECORTADA: u64 = 0x12;
+pub(crate) const ES_HIST_CUANDO: u64 = 0x13;
+pub(crate) const ES_HIST_QUIEN: u64 = 0x14;
+pub(crate) const ES_HIST_CON_NOMBRE: u64 = 0x15;
 /// Que texto pide `ES_TEXTO`, en los bits altos de `arg0`. Espejo de
 /// `bmo_abi::...::ES_TXT_*`.
 pub(crate) const ES_TXT_RUTA: u64 = 1;
 /// El nombre de un hijo de CUALQUIER nivel. Los bits bajos de `arg0` llevan dos
 /// numeros: `(nivel << 16) | indice`.
 pub(crate) const ES_TXT_NIVEL_HIJO: u64 = 2;
+/// El nombre de la version `indice` de la historia.
+pub(crate) const ES_TXT_HIST_NOMBRE: u64 = 3;
 pub(crate) const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 pub(crate) const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 /// **Avisar al consumidor.** Era el syscall numero 1; ahora es una operacion

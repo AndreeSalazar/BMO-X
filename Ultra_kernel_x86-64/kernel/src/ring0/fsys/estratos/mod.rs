@@ -37,6 +37,9 @@ pub mod escribir;
 /// ** TRAER UN FICHERO DE FUERA: el contenido lo lee el kernel y no cruza el
 /// renglon de 96 bytes del syscall. Es lo que hace util el techo levantado.
 pub(crate) mod copiar;
+/// LA HISTORIA DEL VOLUMEN: la cadena de versiones hacia atras. Existia en el
+/// disco desde el primer dia --cada estrato guarda su padre-- y no tenia puerta.
+pub(crate) mod historia;
 /// UN NIVEL de la ruta: su nodo, su listado y el detalle de cada hijo, leidos
 /// UNA VEZ al pasar por el. Es lo que permite pintar un arbol y lo que quita el
 /// martillo sobre el disco en cada repintado.

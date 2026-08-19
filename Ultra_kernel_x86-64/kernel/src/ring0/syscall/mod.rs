@@ -728,6 +728,19 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 // La UNICA del cursor que toca el disco, y por eso se pide a
                 // mano: se manda despues de escribir, no en cada repintado.
                 ES_NODO_RECARGAR => cursor::recargar() as u64,
+                // -- La HISTORIA. `RELEER` es la unica que lee del disco.
+                ES_HIST_RELEER => {
+                    crate::ring0::fsys::estratos::historia::releer() as u64
+                }
+                ES_HIST_CUANTAS => crate::ring0::fsys::estratos::historia::cuantas(),
+                ES_HIST_RECORTADA => crate::ring0::fsys::estratos::historia::recortada(),
+                ES_HIST_CUANDO => {
+                    crate::ring0::fsys::estratos::historia::cuando(arg1 as usize)
+                }
+                ES_HIST_QUIEN => crate::ring0::fsys::estratos::historia::quien(arg1 as usize),
+                ES_HIST_CON_NOMBRE => {
+                    crate::ring0::fsys::estratos::historia::con_nombre(arg1 as usize)
+                }
                 // Una pregunta que no existe se contesta con cero y no con un
                 // fallo: quien pregunte de mas se entera igual, y un `unsupported`
                 // aqui obligaria al panel a distinguir dos formas de "nada".
@@ -746,6 +759,9 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 // Los bits bajos llevan DOS numeros aqui: `(nivel << 16) | i`.
                 // Caben de sobra --como mucho 16 niveles y 64 hijos-- y evitan
                 // una tercera puerta para el mismo mecanismo.
+                ES_TXT_HIST_NOMBRE => {
+                    crate::ring0::fsys::estratos::historia::nombre(i, arg1 as usize)
+                }
                 ES_TXT_NIVEL_HIJO => {
                     cursor::nivel_child_name((i >> 16) & 0xFFFF, i & 0xFFFF, arg1 as usize)
                 }

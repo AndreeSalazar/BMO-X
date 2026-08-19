@@ -38,6 +38,9 @@ pub(crate) mod consola;
 /// EL MENU DEL CLIC DERECHO: lo que se puede hacer con lo que senalas. Se
 /// construye del CONTEXTO, y lo que eliges se escribe en la consola.
 pub(crate) mod menu;
+/// LA PESTANA `historial`: la cadena de versiones, dibujada. Existia en el
+/// disco desde el primer dia; lo que faltaba eran las fechas y los nombres.
+pub(crate) mod historial;
 pub(crate) mod cursor;
 /// La ENTRADA a Ring 3: lo que se ve cuando el userspace toma la maquina.
 pub(crate) mod splash;
