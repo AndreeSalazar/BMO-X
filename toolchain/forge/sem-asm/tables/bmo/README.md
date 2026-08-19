@@ -6,7 +6,7 @@
 > hay, para que sirve cada pieza y por donde se empieza.
 
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
-programa. Nueve cabeceras, 2.316 lineas, y dos propiedades que conviene saber
+programa. Diez cabeceras, 2.360 lineas, y dos propiedades que conviene saber
 antes de usarlas:
 
 1. **No es un runtime.** Una cabecera de REX **trae el cuerpo**: no hay
@@ -19,27 +19,32 @@ antes de usarlas:
 
 ---
 
-## Las nueve piezas
+## Las diez piezas
 
 | Cabecera | Lineas | Que resuelve | Ejemplo |
 |---|---|---|---|
 | [`bmo.h`](bmo.h) | 334 | las dos puertas, en C. **Se empieza por aqui** | `examples/sonda_C.c`, `examples/raycaster_C.c` |
-| [`archivo.h`](archivo.h) | 444 | leer ficheros de verdad, contra `KIND_ARCHIVO` | `examples/leer_C.c` |
+| [`archivo.h`](archivo.h) | 446 | leer ficheros de verdad, contra `KIND_ARCHIVO` | `examples/leer_C.c` |
 | [`entrada.h`](entrada.h) | 335 | teclado y raton | ⚠ **ninguno** |
 | [`monton.h`](monton.h) | 284 | `malloc`/`free`/`realloc` sobre UN bloque del kernel. Llega por `<stdlib.h>` | `examples/memoria_C.c` |
 | [`musica.h`](musica.h) | 255 | notas, figuras y compas, encima de `sonido.h` | `examples/vivaldi_C.c`, `examples/musica_C.c` |
 | [`paquete.h`](paquete.h) | 245 | leer los datos que viajan **dentro** del propio `.bex` | `examples/caja_C.c` |
-| [`superficie.h`](superficie.h) | 190 | dibujar en TU memoria y ofrecerla al DIRECTOR | ⚠ **ninguno** |
+| [`superficie.h`](superficie.h) | 194 | dibujar en TU memoria y ofrecerla al DIRECTOR | `examples/raycaster_C.c` |
 | [`scroll.h`](scroll.h) | 126 | una ventana que se mueve sobre un historial | `examples/scroll_C.c` |
 | [`sonido.h`](sonido.h) | 103 | el sonido | `examples/sonido_C.c` |
+| [`bloque.h`](bloque.h) | 38 | que bloque del kernel es el del monton. Lo traen `archivo.h` y `superficie.h` | -- |
 
 Los ejemplos viven en `toolchain/lang/c/examples/`.
 
-★ **Los dos huecos de la tabla no son casualidad y hay que decirlos**:
-`superficie.h` y `entrada.h` son justamente las dos piezas que hacen falta para
-escribir la primera app con ventana, y son las dos que **no tienen un ejemplo
-que copiar**. Tienen tests (`lang/c/src/tests/puerta.rs`), que prueban que
-funcionan pero no ensenan a usarlas.
+★ **Queda UN hueco, y es el que importa ahora**: `entrada.h` no tiene ejemplo.
+Eran dos hasta el 2026-08-19, cuando `raycaster_C.c` se porto a ventana (paso 2b
+de `PLAN_DIRECTOR.md`) y `superficie.h` gano el suyo. El de `entrada.h` llega con
+el paso 2c: hoy una app en ventana no recibe teclas, asi que un ejemplo ensenaria
+a reclamar la pantalla entera, que es el modelo del que se sale.
+
+[!] Y lo que ese puerto destapo: `superficie.h` leia `__bmo_bloque_cap` **sin
+traerlo**, asi que una app que solo queria una ventana no compilaba. De ahi sale
+`bloque.h`.
 
 ---
 

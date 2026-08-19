@@ -7,7 +7,7 @@
 >
 > Escrito el **2026-08-18**, el mismo dia que su hermana mayor, y por un motivo
 > concreto: al preguntar *"que le falta a BMO-X para que entre gente de fuera"*
-> aparecio que **el SDK ya existia** --2.316 lineas en nueve cabeceras-- y que
+> aparecio que **el SDK ya existia** --2.360 lineas en diez cabeceras-- y que
 > no tenia ni nombre ni indice. Vivia dentro del directorio de tablas del
 > ensamblador. Ahora se llama **REX**.
 >
@@ -112,8 +112,9 @@ las dos preguntas que lo impiden, y se contestan antes de escribir codigo:
 Si la respuesta es si, eso es un punto unico de fallo que la ley del kernel no
 contempla. Una cabecera que trae el cuerpo, si. Un servicio obligatorio, no.
 
-★ Las nueve cabeceras de hoy pasan las dos limpiamente. Escribirlo aqui no es
-felicitarse: es dejar el criterio puesto **antes** de que se escriba la decima.
+★ Las diez cabeceras de hoy pasan las dos limpiamente. Escribirlo aqui no es
+felicitarse: es dejar el criterio puesto **antes** de que se escriba la once --
+y `bloque.h`, la decima, se escribio DESPUES de esta ley y paso las dos.
 
 ---
 
@@ -198,22 +199,23 @@ funcion parecia barata, y el sistema carga con la fama.
 
 ---
 
-## 4. EL CENSO -- las nueve piezas que REX ya tiene
+## 4. EL CENSO -- las diez piezas que REX ya tiene
 
 Medido el 2026-08-18 sobre `toolchain/forge/sem-asm/tables/bmo/`:
 
 | Pieza | Lineas | Que resuelve |
 |---|---|---|
 | `bmo.h` | 334 | las dos puertas, en C |
-| `archivo.h` | 444 | ficheros de verdad, contra `KIND_ARCHIVO` |
+| `archivo.h` | 446 | ficheros de verdad, contra `KIND_ARCHIVO` |
 | `entrada.h` | 335 | teclado y raton |
 | `monton.h` | 284 | `malloc` sobre UN bloque del kernel |
 | `musica.h` | 255 | notas, figuras y compas |
 | `paquete.h` | 245 | los datos que viajan dentro del propio `.bex` |
-| `superficie.h` | 190 | dibujar en TU memoria y ofrecerla |
+| `superficie.h` | 194 | dibujar en TU memoria y ofrecerla |
 | `scroll.h` | 126 | una ventana que se mueve sobre un historial |
 | `sonido.h` | 103 | el sonido |
-| | **2.316** | |
+| `bloque.h` | 38 | que bloque del kernel es el del monton |
+| | **2.360** | |
 
 Y el enlace de Rust, aparte: `toolchain/lang/base/bmo-rt`, 922 lineas
 (`crt0`, `syscall`, `heap`, `string`, `fmt`, `ffi`, `init`).

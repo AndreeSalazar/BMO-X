@@ -91,12 +91,12 @@ Un tercer syscall existio y se retiro el 2026-08-10 --`CHANNEL_KICK` era una
 operacion con numero propio-- y **su numero no se recicla**: un binario viejo
 que lo llame falla diciendolo.
 
-### 2.2 REX -- las nueve cabeceras
+### 2.2 REX -- las diez cabeceras
 
-2.316 lineas en `toolchain/forge/sem-asm/tables/bmo/`, con su indice al lado:
+2.360 lineas en `toolchain/forge/sem-asm/tables/bmo/`, con su indice al lado:
 `bmo.h` (las dos puertas), `archivo.h`, `entrada.h`, `monton.h`, `musica.h`,
-`paquete.h`, `superficie.h`, `scroll.h`, `sonido.h`. Y `bmo-rt` (922 lineas)
-como enlace de Rust.
+`paquete.h`, `superficie.h`, `scroll.h`, `sonido.h`, `bloque.h`. Y `bmo-rt`
+(922 lineas) como enlace de Rust.
 
 ★ **Una cabecera de REX trae el cuerpo.** No hay `libbmo.so` que alguien tenga
 que resolver despues, porque no hay enlazado dinamico: lo que incluyes compila

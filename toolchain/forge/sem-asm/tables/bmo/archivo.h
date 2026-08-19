@@ -144,8 +144,10 @@ typedef struct BMO_FILE FILE;
  *
  * Valen 0 hasta el primer `malloc`, y eso es lo correcto: antes de pedir
  * memoria no hay bloque del que hablar. */
-unsigned long long __bmo_bloque_cap;
-unsigned long long __bmo_bloque_base;
+/* ** SE MUDARON a `<bmo/bloque.h>` el 2026-08-19, y el motivo esta alli: las
+ * necesita tambien `<bmo/superficie.h>`, que hasta ese dia las leia sin
+ * traerlas -- o sea que una app que solo queria una ventana no compilaba. */
+#include <bmo/bloque.h>
 
 /* Monta un `FILE` sobre una capability de archivo ya conseguida.
  *

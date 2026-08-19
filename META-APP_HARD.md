@@ -126,7 +126,7 @@ linea**:
 | decimal exacto en centavos | el COBOL de la casa |
 | una cara declarativa, con su tabla de golpeo | MAQUETA |
 | que un fallo suyo no mate el escritorio | R-APP5 y R-APP6 |
-| las nueve cabeceras con las que se escribe todo lo de arriba | **REX**, [`META-SDK_HARD.md`](META-SDK_HARD.md) |
+| las diez cabeceras con las que se escribe todo lo de arriba | **REX**, [`META-SDK_HARD.md`](META-SDK_HARD.md) |
 
 ★★ **Eso ultimo es lo que ningun framework da**: aqui el aislamiento no es una
 promesa de la libreria, es la frontera del proceso.
