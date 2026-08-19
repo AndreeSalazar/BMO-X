@@ -53,6 +53,9 @@ pub mod obj {
     /// `KIND_MEMORIA`: bloques que un proceso PIDE. No es un asignador -- ver
     /// la cabecera del modulo.
     pub mod memory;
+    /// `KIND_TAREA`: un hijo que YO lance. Cerrar es una operacion de su
+    /// handle, no un poder del que cierra -- paso 3 de `PLAN_DIRECTOR.md`.
+    pub mod tarea;
 }
 
 /// Procesos: admitirlos, planificarlos, lanzarlos desde el disco.

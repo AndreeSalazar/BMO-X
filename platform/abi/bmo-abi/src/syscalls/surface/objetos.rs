@@ -362,6 +362,30 @@ pub const PRESTADO_OP_DUENO: u64 = 0x03;
 /// abrir y cerrar ventanas agota las ranuras de prestamo hasta reiniciar.
 pub const PRESTADO_OP_SOLTAR: u64 = 0x04;
 
+/// Operaciones sobre un handle de `KIND_TAREA`: **un hijo que yo lance**.
+///
+/// El objeto de la capability es el TID del hijo, y los tid no se reciclan
+/// --`next_tid` solo sube--, asi que un handle viejo nunca puede acabar
+/// nombrando a otro proceso. Es la misma propiedad que `PRESTADO_OP_SOLTAR`
+/// tuvo que ganarse revocando el handle: aqui sale gratis.
+/// Sigue vivo? `1` o `0`. Es el mismo detector que `PRESTADO_OP_DUENO`, pero
+/// preguntado desde el otro lado y sin necesitar un prestamo por medio.
+pub const TAREA_OP_VIVE: u64 = 0x01;
+
+/// El TID, para poder casar este handle con la superficie que ofrecio.
+///
+/// Sin esto el DIRECTOR tendria dos listas --las ventanas y los hijos-- sin
+/// nada que las una, que es el patron de fallo numero uno de esta casa.
+pub const TAREA_OP_TID: u64 = 0x02;
+
+/// **CERRARLO.** El hijo termina como si hubiera llamado a `EXIT`: sus
+/// capabilities se revocan, su ventana se retira y su ranura se recicla.
+///
+/// ** No es una senal ni una peticion: no hay a quien pedirsela. Un programa
+/// en ventana puede no tener entrada --hoy ninguno la tiene-- asi que esperar
+/// a que se entere seria esperar para siempre.
+pub const TAREA_OP_CERRAR: u64 = 0x03;
+
 /// Operaciones sobre un handle de sonido.
 ///
 /// `AUDIO_OP_DEVICES` existe para **preguntar en vez de suponer**: contesta una

@@ -141,6 +141,15 @@ pub const OP_TOMAR: u32 = 0x1C;
 pub const MEM_OP_OFRECER: u32 = 0x03;
 /// **Quien me lanzo**, como TID. `0` si nadie -- ver [`crate::sys::mi_padre`].
 pub const OP_MI_PADRE: u32 = 0x26;
+
+/// **El handle sobre un hijo que YO lance**, por su tid. Solo BUSCA lo que
+/// `EJECUTAR` ya concedio: quien no lo lanzo no encuentra nada.
+pub const OP_HIJO: u32 = 0x2B;
+
+/// Operaciones sobre un handle de hijo. Ver `obj/tarea.rs` en el kernel.
+pub const TAREA_OP_VIVE: u32 = 0x01;
+pub const TAREA_OP_TID: u32 = 0x02;
+pub const TAREA_OP_CERRAR: u32 = 0x03;
 /// **Abrir un archivo SIN esperar a que llegue entero.** Mismo handle que
 /// `OP_ARCHIVO_ABRIR`; lo que cambia es cuando vuelve. Ver
 /// [`crate::Archivo::leer_de_asinc`].

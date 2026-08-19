@@ -646,6 +646,42 @@ pub fn exit_current() {
     schedule_locked(s, Saliente::Publicado);
 }
 
+/// **Cerrar OTRA tarea**, la que lleva ese `tid`. `true` si estaba viva y se
+/// marco; `false` si ya no estaba o si no se puede cerrar.
+///
+/// La llama `obj::tarea::cerrar`, o sea alguien que tiene la capability del
+/// hijo. Aqui no se comprueba el parentesco **a proposito**: el permiso ES el
+/// handle, y repartir la misma comprobacion entre dos sitios es como se acaba
+/// teniendo dos reglas que no dicen lo mismo.
+///
+/// ** SOLO TAREAS DE RING 3. Un `.bex` se puede cerrar; el hilo del bus USB o
+/// el contexto de arranque, no. No es prudencia: una tarea de kernel no tiene
+/// espacio propio que destruir ni capabilities que revocar, asi que marcarla
+/// `Exited` seria dejar a medias algo que nadie va a recoger.
+///
+/// ** Y NO se reprograma aqui.** Marcar basta: `choose_next` ya no la elige, y
+/// `reap` la recoge en la siguiente pasada con el mismo camino que sigue una
+/// que hizo `EXIT` por su cuenta. Un camino menos que mantener.
+pub fn terminar(tid: u32) -> bool {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    for i in 0..s.tasks.len() {
+        if s.tasks[i].tid != tid || i == 0 {
+            continue;
+        }
+        if !s.tasks[i].is_user {
+            return false;
+        }
+        if s.tasks[i].state == TaskState::Empty || s.tasks[i].state == TaskState::Exited {
+            return false;
+        }
+        s.tasks[i].state = TaskState::Exited;
+        crate::ring0::cabina::info("sched", "cerrado por quien lo lanzo (tid)", tid as u64);
+        return true;
+    }
+    false
+}
+
 pub fn wait_current(key: u64, deadline_tsc: u64) {
     let _g = SCHED_LOCK.lock();
     let s = sched();
