@@ -153,23 +153,45 @@ Lo que se anadio encima ese mismo dia, todo sobre el mismo camino:
    historial             la cadena de versiones, dibujada
 ```
 
-### QUE FALTA PARA 1.0, y es UNA SOLA COSA
-
-**Reiniciar y comprobar que sigue ahi.**
-
-La casilla ya esta escrita en `docs/metal/VERIFICACION_METAL.md` section 7:
-*"la generacion despues del reinicio es la de antes + 1"*. Es lo unico que
-separa una barrera que funciona de una que se cree, y **no se puede pasar en el
-anfitrion**: hay que apagar el Ryzen.
+### ESTRATOS ES 1.0 -- 2026-08-19
 
 ```
-   PARA 1.0        [x] escribir contenido        hecho el 18-08
-                   [ ] releerlo TRAS REINICIAR   <- la unica prueba que vale
+   PARA 1.0        [x] escribir contenido           18-08 en codigo, 19-08 en metal
+                   [x] releerlo TRAS REINICIAR      19-08  <- la prueba que vale
                    [x] el nivel de ocupacion decide si se acepta
                    [x] NUNCA dos escritores (se monta desde un solo sitio)
 ```
 
----
+La casilla que faltaba era la del section 7 de `docs/metal/VERIFICACION_METAL.md`, y no
+se podia pasar en el anfitrion: hay que apagar el Ryzen. Se apago, y al volver
+la cadena de versiones seguia entera --dos de ese mismo dia y el estrato
+original del formateador, con su nombre y sin fecha--.
+
+** Eso es lo unico que separa una barrera que funciona de una que se cree. El
+mensaje verde dice que el disco acepto; el arranque siguiente dice que es
+verdad.
+
+### Lo que hay encima del 1.0, todo del 19-08
+
+```
+   leer desde Ring 3     `Archivo` resuelve ESTRATOS primero y FAT32 despues,
+                         con la MISMA regla que usa `launch` para un binario
+   republicar la rama    crear / borrar / renombrar / carpeta a cualquier
+                         profundidad: UNA maquina y cuatro verbos
+   el arbol de un flujo  el techo de 96 bytes, con indireccion y sin `alloc`
+   copia                 el contenido NO cruza el anillo: dos nombres, y el
+                         kernel lee la fuente el mismo
+   la hora               `tiempo` llevaba un cero desde el dia uno
+   marca NOMBRE          lo que hace PERMANENTE a una version -- y la
+                         referencia que hace posible una rama
+   vuelve N              un puntero. No copia, y no pierde lo de en medio
+   historial             la cadena de versiones, con fechas y nombres
+```
+
+[!] Y el fallo que lo explica todo: `crear_fichero` **no habia funcionado
+nunca**, por una linea (`cerrar_datos`). Ver Ep. 45 de la bitacora. La leccion
+--*probar cada pieza no es probar el camino*-- es la razon de que esta casilla
+de metal exista y de que no sea burocracia.
 
 ## 0.1.1 EL PLAN DESPUES DEL 1.0, ORDENADO (2026-08-18)
 
@@ -232,7 +254,47 @@ antes porque **ninguna desbloquea nada**: mejoran el uso de lo que ya funciona.
 Pulsar una fila de la rejilla, scroll propio para el grafo, recortar nombres
 largos, y las que salgan de usarlo.
 
-### TRAMO 4 -- EL RECOLECTOR, y por que es el ULTIMO
+### TRAMO 4 -- EL RECOLECTOR: **APLAZADO A PROPOSITO** (decision del 19-08)
+
+El dueno lo dijo asi: *"COMPACTAR no es tan mal, asi que abandono el GC si es
+por motivos, aunque igual es Git viviente, no es necesario el GC"*. Y tiene los
+dos motivos de su parte.
+
+**1. No hay donde anotar un bloque libre.** ESTRATOS reserva con `log_head`, un
+puntero que **solo avanza**, y por eso la ocupacion es una resta. No hay mapa de
+bits ni lista de libres, asi que un recolector **no puede soltar un bloque
+suelto**. Solo hay dos salidas y las dos son tanda grande:
+
+```
+   A  MAPA DE LIBRES   estructura nueva en el formato, que hay que escribir de
+                       forma atomica y que sobreviva a un corte. Rompe la
+                       propiedad de que la ocupacion sea una resta.
+   B  COMPACTAR        copiar lo vivo hacia adelante y bajar `log_head`. Es el
+                       limpiador de un log-structured FS: no cambia el formato,
+                       pero mover un bloque cambia quien lo nombra, asi que hay
+                       que republicar los arboles que lo apuntan.
+```
+
+★ **Elegido B**, y no por gusto: el cuerpo de este documento ya apostaba por ese
+mundo --escritura siempre secuencial, *"lo que ama un SSD"*-- asi que A seria
+contradecir el diseno para arreglar algo que todavia no duele.
+
+**2. Y todavia no duele, con numero.** En 414 GiB caben mas de **veinte
+millones** de estratos antes del 70 %, y hay prueba
+(`espacio.rs::en_414_gib_caben_millones_de_estratos`). Un gesto cuesta entre 4 y
+7 bloques, asi que son del orden de **doce millones de gestos** antes del primer
+aviso ambar. A cien escrituras al dia eso son siglos.
+
+[!] Lo que NO se aplaza es saber cuando dejara de valer: el panel `[numeros]` ya
+pinta la ocupacion y su nivel, y el nivel 3 --por encima del 95 %-- **pone el
+volumen en solo lectura antes de perder nada**. El sistema avisa mucho antes de
+llegar; lo que no hay es quien recoja cuando avise.
+
+** Y la mitad honesta ya estaba hecha desde el 17-08: `disco trim` le dice al
+SSD que la cola libre es libre. La section 9 metia dos trabajos en una frase y uno
+esta cerrado.
+
+### TRAMO 4-bis -- lo que era el recolector, cuando toque
 
 ★★ **Un recolector antes del tramo 2 no tendria nada que recoger.** Mientras
 solo se crea, todo estrato es alcanzable desde el superbloque: no hay basura.
