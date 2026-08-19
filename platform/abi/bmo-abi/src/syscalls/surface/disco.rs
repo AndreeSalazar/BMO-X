@@ -164,6 +164,21 @@ pub const ES_GESTO_RENOMBRAR: u64 = 0x05;
 /// un fichero en bloques, pero Ring 3 seguia sin poder entregarlo.
 pub const ES_GESTO_COPIA: u64 = 0x06;
 
+/// **Marca la version en curso con un nombre**, que viaja por el renglon de la
+/// ruta.
+///
+/// ** Un nombre no describe una version: la hace PERMANENTE. `con_nombre()` es
+/// lo que el recolector mira para no soltar un estrato jamas, asi que los gestos
+/// automaticos van SIN nombre y esto es el acto aparte de una persona.
+///
+/// Y es tambien la referencia que hace posible una rama: el superbloque apunta a
+/// una sola punta, asi que una version vieja a la que se quiera volver tiene que
+/// estar nombrada o nadie la alcanza.
+///
+/// Cuesta UN bloque: el estrato nuevo apunta a la MISMA raiz. Marcar un volumen
+/// de 400 GiB cuesta lo mismo que marcar uno vacio.
+pub const ES_GESTO_MARCAR: u64 = 0x07;
+
 /// Cuanto contenido admite el renglon. Es [`RESIDENTE_MAX`] de ESTRATOS: lo que
 /// cabe DENTRO del nodo, sin gastar un bloque de datos.
 pub const ES_GESTO_MAX: u64 = 96;

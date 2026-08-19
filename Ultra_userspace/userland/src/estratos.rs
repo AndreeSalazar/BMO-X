@@ -227,6 +227,7 @@ pub const ES_GESTO_CARPETA: u64 = 0x03;
 pub const ES_GESTO_QUITAR: u64 = 0x04;
 pub const ES_GESTO_RENOMBRAR: u64 = 0x05;
 pub const ES_GESTO_COPIA: u64 = 0x06;
+pub const ES_GESTO_MARCAR: u64 = 0x07;
 /// Lo que cabe DENTRO del nodo, sin gastar un bloque de datos.
 pub const ES_GESTO_MAX: u64 = 96;
 
@@ -307,6 +308,17 @@ pub fn quitar(ruta: &[u8]) -> u64 {
     mandar_ruta(ruta);
     mandar_datos(&[]);
     invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_QUITAR, 0, 0).value
+}
+
+/// **Marca la version en curso con `nombre`.** Devuelve la generacion, o `0`.
+///
+/// ** Un nombre no describe una version: la hace PERMANENTE. Es lo que el
+/// recolector mira para no soltarla jamas, y lo que permite volver a ella
+/// cuando la punta ya se ha ido por otro lado.
+pub fn marcar(nombre: &[u8]) -> u64 {
+    mandar_ruta(nombre);
+    mandar_datos(&[]);
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_MARCAR, 0, 0).value
 }
 
 /// **Trae `origen` de FAT32 y lo guarda en `destino`.**

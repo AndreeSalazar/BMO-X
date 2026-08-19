@@ -116,6 +116,15 @@ pub(super) fn servir(pid: u32, arg0: u64, arg1: u64) -> u64 {
             }
             Some(escribir::aplicar(dir, Gesto::Copia { nombre, origen }))
         }),
+        // ** El unico que NO parte la ruta: aqui no hay destino, hay un
+        // NOMBRE. Partirlo por la ultima barra convertiria `copia de ayer` en
+        // otra cosa el dia que alguien use una barra en un nombre.
+        ES_GESTO_MARCAR => {
+            let nombre = ruta_tomar(pid);
+            datos_tomar(pid);
+            crate::ring0::cabina::info("estratos", "marcar la version", pid as u64);
+            escribir::marcar(nombre).unwrap_or(0)
+        }
         ES_GESTO_RENOMBRAR => hacer(pid, "renombrar una entrada", |ruta, datos| {
             let (dir, viejo) = partir(ruta)?;
             // El nombre nuevo viene por el renglon del contenido.

@@ -325,9 +325,17 @@ impl Consola {
             b"ls" | b"dir" => self.ls(),
             b"donde" | b"pwd" => self.donde(),
             b"cd" => self.cd(resto),
-            b"nuevo" => self.nuevo(resto),
+            // ** `new` es el nombre y `nuevo` sigue valiendo.
+            //
+            // Lo pidio el dueno: *"da flojera poner nuevo, ta raro decir
+            // nuevo"*. Y no rompe nada de lo ya tecleado -- la casa ya acepta
+            // las dos formas en `clear`/`limpia` y en `mkdir`/`carpeta`. Lo que
+            // cambia es cual se ANUNCIA en la ayuda, que es lo unico que
+            // ensena que palabra usar.
+            b"new" | b"nuevo" => self.nuevo(resto),
             b"carpeta" | b"mkdir" => self.carpeta(resto),
             b"copia" | b"copy" | b"cp" => self.copia(resto),
+            b"marca" | b"mark" | b"tag" => self.marca(resto),
             b"borra" | b"quita" => self.borra(resto),
             b"renombra" | b"mv" => self.renombra(resto),
             b"sella" | b"sellar" => self.sella(),
@@ -349,11 +357,11 @@ impl Consola {
     fn ayuda(&mut self) {
         self.usadas = 0;
         self.di(b"ls  cd NOMBRE  cd ..  cd /  donde   moverse y mirar", T_DIM);
-        self.di(b"nuevo N TEXTO   crea un fichero      ESCRIBEN EN EL DISCO", T_DIM);
+        self.di(b"new N TEXTO     crea un fichero      ESCRIBEN EN EL DISCO", T_DIM);
         self.di(b"carpeta N       crea una carpeta     y todos actuan DONDE", T_DIM);
         self.di(b"copia ORG DST   trae de FAT32        ESTAS, no en la raiz", T_DIM);
         self.di(b"borra N         deja de nombrarla", T_DIM);
-        self.di(b"sella           commitea             clear limpia esto", T_DIM);
+        self.di(b"marca NOMBRE    fija esta version    clear limpia esto", T_DIM);
         self.di(b"ESC suelta las teclas.  Ctrl+n cierra.  arriba: la anterior.", T_DIM);
     }
 
@@ -403,8 +411,19 @@ impl Consola {
         bmo::estratos::recargar();
         let mut d = [0u8; 10];
         let kd = decimal(g, &mut d);
-        self.di2(que, b" HECHO. generacion ", T_OK);
-        self.di2(b"  ahora va por la ", &d[..kd], T_OK);
+        // ** UNA linea, no dos. Estaba partido --`... generacion` y el numero
+        // en la de abajo-- y en pantalla se leia como una frase cortada. Visto
+        // en el Ryzen el 2026-08-19, en la foto del primer fichero guardado.
+        let mut buf = [0u8; COLS];
+        let mut k = que.len().min(COLS);
+        buf[..k].copy_from_slice(&que[..k]);
+        for b in b" HECHO. generacion " {
+            if k < COLS { buf[k] = *b; k += 1; }
+        }
+        for b in &d[..kd] {
+            if k < COLS { buf[k] = *b; k += 1; }
+        }
+        self.di(&buf[..k], T_OK);
     }
 
     fn donde(&mut self) {
@@ -535,7 +554,7 @@ impl Consola {
     fn nuevo(&mut self, a: &[u8]) {
         let (nombre, texto) = partir(a);
         if nombre.is_empty() {
-            self.di(b"nuevo NOMBRE TEXTO", T_BAD);
+            self.di(b"new NOMBRE TEXTO", T_BAD);
             return;
         }
         if texto.len() as u64 > bmo::estratos::ES_GESTO_MAX {
@@ -554,6 +573,30 @@ impl Consola {
         }
         let g = bmo::estratos::crear_fichero(&ruta[..n], texto);
         self.hecho(g, b"fichero");
+    }
+
+    /// **`marca NOMBRE`** -- esta version no se suelta jamas.
+    ///
+    /// ** La unica orden que no toca ni un fichero y aun asi escribe en el
+    /// disco. Lo que publica es un estrato que apunta al MISMO arbol con un
+    /// nombre puesto -- un bloque, y a partir de ahi el recolector no puede
+    /// llevarse esa version ni lo que cuelga de ella.
+    ///
+    /// Los gestos normales van sin nombre a proposito: son automaticos y el
+    /// volumen tiene que poder adelgazar. Esto es el acto de una persona
+    /// diciendo *"a esta quiero poder volver siempre"*.
+    fn marca(&mut self, a: &[u8]) {
+        if a.is_empty() {
+            self.di(b"marca NOMBRE", T_BAD);
+            self.di(b"la version de ahora queda fija: nadie la suelta.", T_DIM);
+            return;
+        }
+        let g = bmo::estratos::marcar(a);
+        if g != 0 {
+            self.di2(b"marcada: ", a, T_DIM);
+            self.di(b"esta version ya no se suelta. el resto si adelgaza.", T_DIM);
+        }
+        self.hecho(g, b"marca");
     }
 
     /// **`copia ORIGEN DESTINO`** -- trae un fichero de FAT32.
