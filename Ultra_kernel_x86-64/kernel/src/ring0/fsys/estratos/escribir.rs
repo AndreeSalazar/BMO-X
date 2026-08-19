@@ -692,8 +692,33 @@ pub fn renombrar(ruta: &str, viejo: &str, nuevo: &str) -> Result<u64, WriteError
     aplicar(ruta, Gesto::Renombrar { viejo, nuevo })
 }
 
-/// Las entradas de la raiz, en `dst`. `0` si el atributo esta vacio.
+/// Las entradas de un nivel, ENTERAS o ninguna. `0` si el atributo esta vacio.
+///
+/// === ** POR QUE SE MIDE ANTES DE LEER ===
+///
+/// Porque `walk::flujo` **trunca en silencio** cuando el destino se llena, y
+/// hace bien: su otro cliente es el panel que pinta un listado, y ahi lo que se
+/// quiere es lo que quepa. Aqui no. Aqui la lista se vuelve a escribir, asi que
+/// leer la mitad y publicar seria **dejar fuera del arbol vivo** todas las
+/// entradas a partir de la 37 -- sin un error, sin un aviso, y con el gesto
+/// contestando que fue bien.
+///
+/// El tope es NUESTRO --`:entradas` vive en un bloque mientras no tenga
+/// indireccion-- y por eso lo dice el, con su propio motivo. Es la misma regla
+/// que ya sigue `cursor::verify` con su buffer de 256 KiB: *un limite propio se
+/// confiesa, no se disfraza de fallo del disco.*
+///
+/// [!] Y hasta hoy no reventaba por una casualidad aritmetica: 4096 no es
+/// multiplo de 112, asi que el corte dejaba 64 bytes sueltos y la crate del
+/// formato lo rechazaba con `BadField` -- que aqui se traducia a *"ese nombre no
+/// vale"* o *"esa ruta no existe"*. Dos mensajes que mandan a mirar donde no es,
+/// y una garantia de datos colgando de una division que no sale exacta.
 fn leer_entradas(a: &Attr, dst: &mut [u8; BLOQUE]) -> Result<usize, WriteError> {
+    // Lo que YA hay no cabe de una vez: se para ANTES de leer nada y antes de
+    // abrir la transaccion, o sea sin haber tocado un solo sector.
+    if a.size as usize > dst.len() {
+        return Err(WriteError::CarpetaNoCabeEntera);
+    }
     match walk::flujo(a, dst) {
         Some(n) => Ok(n),
         // No poder leer lo que YA hay es lo peor que puede pasar aqui: escribir

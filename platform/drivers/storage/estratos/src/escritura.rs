@@ -964,6 +964,67 @@ mod guardar {
         );
     }
 
+    /// ** LO QUE HOY IMPIDE UNA PERDIDA SILENCIOSA ES UNA CASUALIDAD.
+    ///
+    /// El kernel lee las entradas que YA tiene una carpeta a UN bloque, y el
+    /// lector de flujos **trunca sin quejarse** cuando el destino se llena
+    /// --hace bien: el panel que pinta un listado quiere lo que quepa--. Si esa
+    /// lista truncada pasara por buena, republicar la carpeta la dejaria sin
+    /// las entradas de la 37 en adelante: el arbol viejo seguiria entero, pero
+    /// el vivo perderia nombres **sin decir una palabra**.
+    ///
+    /// No pasa, y no es por diseno: 4096 no es multiplo de 112, asi que un
+    /// bloque lleno hasta el borde arrastra 64 bytes de sobra y los tres verbos
+    /// lo rechazan con *"esto no es una lista de entradas"*. Con `ENTRADA_LEN`
+    /// de 64 o de 128 el resto daria cero y la perdida seria muda.
+    ///
+    /// Por eso esto se prueba: el dia que alguien redondee `ENTRADA_LEN` a una
+    /// potencia de dos, se cae esta prueba y no un disco de datos.
+    ///
+    /// ** Y el cinturon de verdad no es este: es que el kernel mire `a.size`
+    /// ANTES de leer (`leer_entradas`) y que el formateador no pueda crear una
+    /// carpeta que no quepa. Esto es la red de debajo.
+    #[test]
+    fn un_listado_truncado_no_pasa_por_una_lista_entera() {
+        assert_ne!(
+            BLOQUE % ENTRADA_LEN,
+            0,
+            "si el bloque fuera multiplo exacto, un listado truncado seria \
+             indistinguible de uno completo y los tres verbos lo aceptarian"
+        );
+
+        // Una carpeta llena hasta el tope de HOY: 36 entradas, 4032 bytes.
+        let mut b = [0u8; BLOQUE];
+        let mut usados = 0usize;
+        for i in 0..ENTRADAS_POR_BLOQUE {
+            let mut sig = [0u8; BLOQUE];
+            let nom = [b'f', b'a' + (i / 26) as u8, b'a' + (i % 26) as u8];
+            let nombre = core::str::from_utf8(&nom).unwrap();
+            usados = entradas_con(&b[..usados], nombre, ptr(100 + i as u64, b"x"), &mut sig).unwrap();
+            b = sig;
+        }
+
+        // Lo que le llegaria al kernel si la carpeta tuviera MAS: el bloque
+        // entero, con la entrada 37 cortada por la mitad.
+        let truncado = &b[..BLOQUE];
+        assert_ne!(truncado.len(), usados, "el caso que se prueba es el corte");
+
+        let mut r = [0u8; BLOQUE];
+        assert!(
+            entradas_sin(truncado, "faa", &mut r).is_err(),
+            "borrar sobre un listado cortado publicaria la carpeta sin el resto"
+        );
+        assert!(
+            entradas_renombrando(truncado, "faa", "zzz", &mut r).is_err(),
+            "renombrar sobre un listado cortado haria lo mismo"
+        );
+        assert!(
+            entradas_repuntando(truncado, "faa", ptr(999, b"x"), &mut r).is_err(),
+            "y repuntar un nivel de paso es el que mas duele: no lo pide nadie, \
+             pasa por estar de camino"
+        );
+    }
+
     /// Y el directorio entero: nodo -> bloque de entradas -> el fichero.
     /// Es el camino que recorrera el lector de verdad.
     #[test]

@@ -427,11 +427,38 @@ pub mod cursor {
 }
 
 /// Busca un hijo por nombre dentro de un directorio, sin distinguir mayusculas.
+///
+/// === ** "NO ESTA" Y "NO LO SE" NO SON LO MISMO ===
+///
+/// `entries` contesta DOS cosas --cuantas leyo y si se quedo corto-- y aqui el
+/// segundo se tiraba con un `_`. Sobre una carpeta de mas de
+/// [`dir::MAX_ENTRIES`] entradas eso convierte *"no cabia en el buffer"* en
+/// *"ese archivo no existe"*, y quien lo pregunta no son solo los paneles:
+/// `open` --el que arranca un `.bex`-- y `resolver` --el que baja por la ruta
+/// de CUALQUIER gesto de escritura-- pasan por aqui. Un programa que esta en el
+/// disco contestaria "no existe" por el sitio que ocupa en la lista.
+///
+/// La firma no cambia: `None` sigue queriendo decir *no lo encontre*, que es
+/// verdad. Lo que faltaba era decir **cuando esa verdad puede ser corta**, y
+/// eso es exactamente para lo que existe CABINA.
+///
+/// [!] El tope no se puede levantar aqui: son 64 entradas porque el buffer es
+/// fijo y no hay `alloc`. Lo levanta la indireccion de `:entradas`, que es el
+/// mismo trabajo que `flujo` ya hizo para el contenido.
 pub(crate) fn buscar_en(dir: &Nodo, name: &str) -> Option<BlockPtr> {
-    let (n, _) = entries(dir)?;
+    let (n, truncado) = entries(dir)?;
     for i in 0..n {
         let e = entrada(i)?;
         if e.se_llama(name) { return Some(e.nodo); }
+    }
+    // No estaba en lo que se leyo Y no se leyo todo: el "no" que se devuelve no
+    // es un "no" del disco, es un "no" de este buffer.
+    if truncado {
+        crate::ring0::cabina::warn(
+            "estratos",
+            "el listado no cabia entero: ese nombre puede existir y no verse",
+            n as u64,
+        );
     }
     None
 }
