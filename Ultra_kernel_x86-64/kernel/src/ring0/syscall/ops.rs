@@ -243,15 +243,22 @@ pub(crate) const TASK_OP_DISCO: u64 = 0x29;
 ///
 /// La tercera operacion de la tabla que cambia el almacen, y la primera que
 /// escribe CONTENIDO -- `sellar` commiteaba sin datos y el recorte le habla al
-/// aparato. Espejo de `bmo_abi::...::TASK_OP_ES_CREAR`.
-pub(crate) const TASK_OP_ES_CREAR: u64 = 0x2A;
+/// aparato. Espejo de `bmo_abi::...::TASK_OP_ES_GESTO`.
+pub(crate) const TASK_OP_ES_GESTO: u64 = 0x2A;
 /// Las subordenes. Espejo de `bmo_abi::...::ES_CREAR_*`, y `pub(crate)` por lo
 /// mismo que las de disco: una constante privada usada en un `match` de
 /// `mod.rs` se convierte en un nombre de variable que se traga todos los casos.
-pub(crate) const ES_CREAR_LIMPIAR: u64 = 0x00;
-pub(crate) const ES_CREAR_DATOS: u64 = 0x01;
-pub(crate) const ES_CREAR_HACER: u64 = 0x02;
-pub(crate) const ES_CREAR_MAX: u64 = 96;
+pub(crate) const ES_GESTO_LIMPIAR: u64 = 0x00;
+pub(crate) const ES_GESTO_DATOS: u64 = 0x01;
+pub(crate) const ES_GESTO_FICHERO: u64 = 0x02;
+/// Crea una carpeta vacia donde diga la ruta.
+pub(crate) const ES_GESTO_CARPETA: u64 = 0x03;
+/// Quita la entrada que diga la ruta. **No destruye**: deja de nombrar.
+pub(crate) const ES_GESTO_QUITAR: u64 = 0x04;
+/// Renombra la entrada que diga la ruta. El nombre NUEVO va por el renglon del
+/// contenido -- es el unico verbo que necesita dos nombres.
+pub(crate) const ES_GESTO_RENOMBRAR: u64 = 0x05;
+pub(crate) const ES_GESTO_MAX: u64 = 96;
 /// Las ordenes del disco. Espejo de `bmo_abi::...::DISCO_OP_*`.
 ///
 /// `pub(crate)` por correccion y no por estilo -- ver la nota de las `ES_NODO_*`
@@ -346,6 +353,10 @@ pub(crate) const ES_NODO_VERIFICAR: u64 = 0x0B;
 pub(crate) const ES_NODO_NIVEL_HIJOS: u64 = 0x0C;
 pub(crate) const ES_NODO_NIVEL_HIJO_TIPO: u64 = 0x0D;
 pub(crate) const ES_NODO_NIVEL_ELEGIDO: u64 = 0x0E;
+/// **Relee el arbol y deja el cursor donde estaba.** Se manda despues de
+/// escribir: la pila guarda el estrato de antes y sin esto seguiria
+/// ensenandolo.
+pub(crate) const ES_NODO_RECARGAR: u64 = 0x0F;
 /// Que texto pide `ES_TEXTO`, en los bits altos de `arg0`. Espejo de
 /// `bmo_abi::...::ES_TXT_*`.
 pub(crate) const ES_TXT_RUTA: u64 = 1;

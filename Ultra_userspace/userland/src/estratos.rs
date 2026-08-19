@@ -173,6 +173,17 @@ pub fn nivel_elegido(nivel: u64) -> u64 {
 /// tomara el cero como "ninguno" pintaria siempre la primera rama abierta.
 pub const NINGUNO: u64 = u64::MAX;
 
+/// **Relee el arbol y deja el cursor donde estaba.**
+///
+/// Se manda DESPUES de cualquier gesto que escriba. Sin esto el cursor sigue
+/// ensenando el estrato de antes: borrarias un fichero y ahi seguiria.
+///
+/// Es la unica del cursor que toca el disco, y por eso se pide a mano en vez de
+/// hacerse sola en cada repintado.
+pub fn recargar() -> bool {
+    pregunta(0x0F, 0) != 0
+}
+
 /// El nombre del hijo `i` del nivel `nivel`, en `dst`.
 pub fn nivel_hijo_nombre(nivel: u64, i: u64, dst: &mut [u8]) -> usize {
     texto_de((2u64 << 32) | ((nivel & 0xFFFF) << 16) | (i & 0xFFFF), dst)
@@ -200,50 +211,50 @@ fn texto_de(que: u64, dst: &mut [u8]) -> usize {
     escritos
 }
 
-// == ** CREAR UN FICHERO ====================================================
+// == ** LOS CUATRO GESTOS ==================================================
 //
-// Lo primero de este modulo que ESCRIBE. Todo lo de arriba contesta preguntas
+// Lo unico de este modulo que ESCRIBE. Todo lo de arriba contesta preguntas
 // --a la raiz, los hijos, los nombres-- y esto cambia el volumen.
+//
+// * UNA operacion y cuatro subordenes, porque debajo hay UNA maquina y cuatro
+// verbos (`fsys::estratos::escribir::Gesto`). La forma de la puerta es la forma
+// del codigo que sirve.
 
-pub const ES_CREAR_LIMPIAR: u64 = 0x00;
-pub const ES_CREAR_DATOS: u64 = 0x01;
-pub const ES_CREAR_HACER: u64 = 0x02;
+pub const ES_GESTO_LIMPIAR: u64 = 0x00;
+pub const ES_GESTO_DATOS: u64 = 0x01;
+pub const ES_GESTO_FICHERO: u64 = 0x02;
+pub const ES_GESTO_CARPETA: u64 = 0x03;
+pub const ES_GESTO_QUITAR: u64 = 0x04;
+pub const ES_GESTO_RENOMBRAR: u64 = 0x05;
 /// Lo que cabe DENTRO del nodo, sin gastar un bloque de datos.
-pub const ES_CREAR_MAX: u64 = 96;
+pub const ES_GESTO_MAX: u64 = 96;
 
-/// **Crea `nombre` con `datos` dentro.** Devuelve la generacion nueva, o `0`.
+/// Manda la ruta por el renglon de [`OP_RUTA`], de ocho en ocho.
 ///
-/// === Como cruza, y por que asi ===
-///
-/// El nombre por el renglon de [`OP_RUTA`] --el mismo que ya usan `ejecutar` y
-/// los dos de archivo-- y el contenido por el suyo, de 8 en 8. La superficie
-/// congelada no acepta punteros y no hay `copy_from_user`: pasar una direccion
-/// de Ring 3 obligaria al kernel a traducirla contra el espacio del llamante.
-///
-/// ** Y el contenido lleva CUENTA. La ruta se corta en su primer cero porque en
-/// una ruta un cero no puede aparecer; en un fichero **si puede**, y cortarlo
-/// ahi seria guardar la mitad de un fichero sin que nada fallara.
-///
-/// El `0` no dice por que: el motivo va a CABINA (F11), que es donde caben las
-/// frases. Los cuatro que se ven en la practica son no caber en 96 bytes, que el
-/// nombre este repetido, que la carpeta este llena y que la escritura este
-/// cerrada.
-pub fn crear_fichero(nombre: &[u8], datos: &[u8]) -> u64 {
-    if datos.len() as u64 > ES_CREAR_MAX {
-        return 0;
-    }
-    // El nombre primero, por el renglon de siempre.
+/// El mismo que ya usan `ejecutar` y los dos de archivo: la superficie congelada
+/// no acepta punteros y no hay `copy_from_user`, asi que pasar una direccion de
+/// Ring 3 obligaria al kernel a traducirla contra el espacio del llamante.
+fn mandar_ruta(ruta: &[u8]) {
     let mut i = 0;
-    while i < nombre.len() {
+    while i < ruta.len() {
         let mut w = [0u8; 8];
-        let n = (nombre.len() - i).min(8);
-        w[..n].copy_from_slice(&nombre[i..i + n]);
+        let n = (ruta.len() - i).min(8);
+        w[..n].copy_from_slice(&ruta[i..i + n]);
         invoke(CURRENT_TASK, OP_RUTA, u64::from_le_bytes(w), 0, 0);
         i += 8;
     }
-    // Y el contenido por el suyo, limpiando antes: un intento a medias de hace
-    // un rato no puede envenenar este.
-    invoke(CURRENT_TASK, OP_ES_CREAR, ES_CREAR_LIMPIAR, 0, 0);
+}
+
+/// Manda el contenido por su renglon, limpiando antes.
+///
+/// ** Y lleva CUENTA. La ruta se corta en su primer cero porque en una ruta un
+/// cero no puede aparecer; en un contenido **si puede**, y cortarlo ahi seria
+/// guardar la mitad de un fichero sin que nada fallara.
+///
+/// Se limpia siempre, incluso para mandar nada: un intento a medias de hace un
+/// rato no puede envenenar este.
+fn mandar_datos(datos: &[u8]) {
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_LIMPIAR, 0, 0);
     let mut i = 0;
     while i < datos.len() {
         let mut w = [0u8; 8];
@@ -251,12 +262,64 @@ pub fn crear_fichero(nombre: &[u8], datos: &[u8]) -> u64 {
         w[..n].copy_from_slice(&datos[i..i + n]);
         invoke(
             CURRENT_TASK,
-            OP_ES_CREAR,
-            ES_CREAR_DATOS | ((n as u64) << 8),
+            OP_ES_GESTO,
+            ES_GESTO_DATOS | ((n as u64) << 8),
             u64::from_le_bytes(w),
             0,
         );
         i += 8;
     }
-    invoke(CURRENT_TASK, OP_ES_CREAR, ES_CREAR_HACER, 0, 0).value
+}
+
+/// **Crea `ruta` con `datos` dentro.** Devuelve la generacion nueva, o `0`.
+///
+/// ** `ruta` es el destino ENTERO --`datos/notas/x.txt`-- y el kernel le corta
+/// el ultimo tramo. Antes era solo un nombre y por eso solo se podia crear en la
+/// raiz; una ruta ya contiene su nombre, asi que no hacia falta un segundo
+/// canal, hacia falta leerla entera.
+///
+/// El `0` no dice por que: el motivo va a CABINA (F11), que es donde caben las
+/// frases. Los que se ven en la practica son no caber en 96 bytes, el nombre
+/// repetido, la carpeta llena, la ruta que no existe y la escritura cerrada.
+pub fn crear_fichero(ruta: &[u8], datos: &[u8]) -> u64 {
+    if datos.len() as u64 > ES_GESTO_MAX {
+        return 0;
+    }
+    mandar_ruta(ruta);
+    mandar_datos(datos);
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_FICHERO, 0, 0).value
+}
+
+/// **Crea la carpeta `ruta`**, vacia. Devuelve la generacion nueva, o `0`.
+pub fn crear_carpeta(ruta: &[u8]) -> u64 {
+    mandar_ruta(ruta);
+    mandar_datos(&[]);
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_CARPETA, 0, 0).value
+}
+
+/// **Quita `ruta`.** Devuelve la generacion nueva, o `0`.
+///
+/// ** No destruye nada: publica un arbol sin esa entrada. El nodo, su contenido
+/// y el estrato de ayer siguen donde estaban -- **borrar aqui es dejar de
+/// nombrar**. Lo que se suelta de verdad es cosa del recolector.
+pub fn quitar(ruta: &[u8]) -> u64 {
+    mandar_ruta(ruta);
+    mandar_datos(&[]);
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_QUITAR, 0, 0).value
+}
+
+/// **Le cambia el nombre a `ruta`.** Devuelve la generacion nueva, o `0`.
+///
+/// `nuevo` es solo el nombre, no una ruta: renombrar no mueve de carpeta.
+///
+/// * El nodo NO se toca -- la entrada nueva apunta al mismo bloque, asi que el
+/// contenido, los atributos y la `:firma` siguen siendo los de antes.
+/// **Renombrar un fichero firmado no le invalida la firma**, cosa que hacerlo
+/// por el camino largo --quitar y crear-- si haria.
+pub fn renombrar(ruta: &[u8], nuevo: &[u8]) -> u64 {
+    mandar_ruta(ruta);
+    // El nombre nuevo va por el renglon del contenido: es el unico verbo que
+    // necesita dos nombres, y ese renglon lleva cuenta explicita de bytes.
+    mandar_datos(nuevo);
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_RENOMBRAR, 0, 0).value
 }

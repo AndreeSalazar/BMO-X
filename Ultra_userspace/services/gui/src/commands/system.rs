@@ -77,7 +77,7 @@ pub(crate) fn estratos_escribe(
     texto: &[u8],
 ) -> After {
     let s = &mut dsk.out.grid;
-    if texto.len() > bmo::estratos::ES_CREAR_MAX as usize {
+    if texto.len() > bmo::estratos::ES_GESTO_MAX as usize {
         s.with_ink(INK_ERR);
         s.text(b"  no cabe: hoy un fichero de ESTRATOS entra en 96 bytes\n");
         s.with_ink(INK_PLAIN);

@@ -191,6 +191,33 @@ fn resolver(ruta: &str) -> Result<usize, WriteError> {
 /// commit deja el volumen exactamente como estaba: lo escrito no lo alcanza
 /// nadie.
 pub fn aplicar(ruta: &str, gesto: Gesto) -> Result<u64, WriteError> {
+    match publicar(ruta, &gesto) {
+        Ok(g) => Ok(g),
+        Err(e) => {
+            // ** TODO FALLO PASA POR AQUI, Y POR ESO CABINA ESTA AQUI Y NO EN
+            // CADA VERBO.
+            //
+            // Cuatro verbos y una sola caja negra: si el aviso viviera en cada
+            // uno, el dia que se anada el quinto se olvidaria -- y un gesto que
+            // falla en silencio sobre un disco es la peor sorpresa que hay.
+            crate::ring0::cabina::warn("estratos", e.name(), 0);
+            // Y lo segundo es lo que de verdad tranquiliza al que lee el log
+            // despues: **el commit es el UNICO punto en el que el volumen
+            // cambia**, y no se llego a el. Lo escrito antes de fallar no lo
+            // alcanza nadie -- son bloques sueltos, que es justo el trabajo del
+            // recolector, no una corrupcion.
+            crate::ring0::cabina::info(
+                "estratos",
+                "el gesto NO se hizo: el volumen sigue en su generacion",
+                0,
+            );
+            Err(e)
+        }
+    }
+}
+
+/// El trabajo de verdad. Lo envuelve [`aplicar`], que es quien avisa.
+fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     let sb = superbloque().ok_or(WriteError::SinVolumen)?;
 
     // -- Lo de HOY, antes de abrir nada. Si esto falla, no se ha tocado nada.
@@ -200,7 +227,7 @@ pub fn aplicar(ruta: &str, gesto: Gesto) -> Result<u64, WriteError> {
     // -- El objeto nuevo, si el gesto trae uno. Se codifica ANTES de reservar
     // para que "no cabe" se diga sin haber pedido un solo bloque.
     let mut objeto = [0u8; NODO_LEN];
-    let hay_objeto = match &gesto {
+    let hay_objeto = match gesto {
         Gesto::Fichero { datos, .. } => {
             objeto = nodo_de_fichero(datos).map_err(|_| WriteError::NoCabe)?;
             true
@@ -246,7 +273,7 @@ pub fn aplicar(ruta: &str, gesto: Gesto) -> Result<u64, WriteError> {
 
         let n_ent = if k == hondo {
             // El nivel del final: aqui pasa lo que el gesto pedia.
-            match &gesto {
+            match gesto {
                 Gesto::Fichero { nombre, .. } | Gesto::Carpeta { nombre } => entradas_con(
                     &previas[..n_previas],
                     nombre,
@@ -309,7 +336,7 @@ pub fn aplicar(ruta: &str, gesto: Gesto) -> Result<u64, WriteError> {
         sb.estrato,
         0,
         es::Autor::Proceso(crate::ring0::task::scheduler::current_pid()),
-        motivo(&gesto),
+        motivo(gesto),
     );
     let e_bytes = estrato.encode();
     let p_estrato = BlockPtr::nuevo(cursor, 0, &e_bytes);
@@ -336,7 +363,7 @@ pub fn aplicar(ruta: &str, gesto: Gesto) -> Result<u64, WriteError> {
     }
 
     super::fijar_superbloque(nuevo);
-    crate::ring0::cabina::info("estratos", motivo(&gesto), nuevo.generation);
+    crate::ring0::cabina::info("estratos", motivo(gesto), nuevo.generation);
     Ok(nuevo.generation)
 }
 

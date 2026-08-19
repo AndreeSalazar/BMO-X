@@ -110,6 +110,17 @@ pub const ES_NODO_NIVEL_HIJO_TIPO: u64 = 0x0D;
 /// su primer hijo.
 pub const ES_NODO_NIVEL_ELEGIDO: u64 = 0x0E;
 
+/// **Relee el arbol y deja el cursor donde estaba.**
+///
+/// Cada nivel del cursor guarda su listado desde que se paso por el --por eso
+/// pintar no toca el disco-- y eso lo deja MINTIENDO en cuanto alguien escribe.
+/// El sintoma no seria un error: seria borrar un fichero y seguir viendolo.
+///
+/// Se rehace el camino por NOMBRE, no por indice: al quitar una entrada de en
+/// medio, los indices de ayer senalan a otra cosa. Si un tramo ya no existe, se
+/// para en el mas hondo que siga estando.
+pub const ES_NODO_RECARGAR: u64 = 0x0F;
+
 /// Que texto pide [`TASK_OP_ES_TEXTO`], en los bits altos de `arg0`.
 ///
 /// Los bajos siguen siendo el indice. Se reparte el argumento en vez de anadir

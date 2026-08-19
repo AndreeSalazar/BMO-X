@@ -218,6 +218,67 @@ pub mod cursor {
         true
     }
 
+    /// **Vuelve a leer el arbol y se queda DONDE ESTABA.**
+    ///
+    /// === Por que hace falta, y por que es una sorpresa si no esta ===
+    ///
+    /// Cada nivel guarda su nodo y su listado desde que se paso por el. Eso es
+    /// lo que hace que pintar el arbol no toque el disco -- y es exactamente lo
+    /// que lo deja MINTIENDO en cuanto alguien escribe: el volumen tiene un
+    /// estrato nuevo y la pila sigue apuntando al de antes.
+    ///
+    /// El sintoma no seria un error. Seria borrar un fichero y verlo ahi.
+    ///
+    /// === Por que se rehace el CAMINO y no solo la raiz ===
+    ///
+    /// Volver a la raiz seria correcto y seria molesto: escribes en
+    /// `/datos/notas` y te devuelve arriba en cada gesto. Aqui se guardan los
+    /// nombres, se baja a la raiz nueva y se vuelve a bajar por ellos.
+    ///
+    /// ** Y si un tramo ya no existe --porque lo que se acaba de borrar era la
+    /// carpeta donde estabas-- **se para ahi**. No es un fallo: es el sitio mas
+    /// hondo que sigue existiendo, que es donde uno quiere quedarse.
+    pub fn recargar() -> bool {
+        // El camino se copia ANTES de tocar la pila: `a_la_raiz` la reescribe.
+        let hondo = unsafe { HONDO };
+        let mut camino = [[0u8; LEVEL_NAME]; HONDO_MAX];
+        let mut largos = [0usize; HONDO_MAX];
+        for k in 1..=hondo {
+            if let Some(nv) = nivel_k(k) {
+                camino[k] = nv.nombre;
+                largos[k] = nv.nombre_len;
+            }
+        }
+        if !a_la_raiz() {
+            return false;
+        }
+        for k in 1..=hondo {
+            let n = largos[k];
+            if n == 0 {
+                break;
+            }
+            let Ok(nombre) = core::str::from_utf8(&camino[k][..n]) else { break };
+            // Se busca por NOMBRE y no por indice: el indice de ayer puede ser
+            // otra cosa hoy -- justo lo que pasa al quitar una entrada de en
+            // medio, que es la operacion que mas veces va a llamar aqui.
+            let mut i = 0usize;
+            let mut encontrado = false;
+            while i < aqui().cuantas {
+                if let Some(e) = aqui().entrada(i) {
+                    if e.se_llama(nombre) {
+                        encontrado = entrar(i);
+                        break;
+                    }
+                }
+                i += 1;
+            }
+            if !encontrado {
+                break;
+            }
+        }
+        true
+    }
+
     /// Ocho bytes del nombre del nivel `nivel` de la ruta. `nivel = 0` es la
     /// raiz, que no tiene nombre y contesta vacio -- la ventana pinta `/`.
     pub fn level_name(nivel: usize, trozo: usize) -> u64 {

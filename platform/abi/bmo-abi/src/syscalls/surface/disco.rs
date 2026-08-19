@@ -101,7 +101,7 @@ pub const DISCO_FALLO_CLASE_SHIFT: u64 = 32;
 /// Mascara del `PxTFD` crudo.
 pub const DISCO_FALLO_TFD_MASK: u64 = 0xFFFF_FFFF;
 
-// == ** CREAR UN FICHERO EN ESTRATOS: las subordenes de `TASK_OP_ES_CREAR` ===
+// == ** CREAR UN FICHERO EN ESTRATOS: las subordenes de `TASK_OP_ES_GESTO` ===
 //
 // Viven aqui y no en `objetos` por lo que son: **ordenes que cambian el
 // almacen**, la misma familia que `DISCO_OP_*`. Que una escriba en el aparato y
@@ -112,22 +112,45 @@ pub const DISCO_FALLO_TFD_MASK: u64 = 0xFFFF_FFFF;
 /// ** Existe para que un intento a medias no envenene al siguiente: si un
 /// programa muere despues de mandar tres trozos, el renglon se queda con ellos
 /// dentro. Empezar limpiando es mas barato que un tiempo de expiracion.
-pub const ES_CREAR_LIMPIAR: u64 = 0x00;
+pub const ES_GESTO_LIMPIAR: u64 = 0x00;
 
 /// Acumula contenido. `arg1` son 8 bytes en little-endian, y **cuantos de esos
-/// ocho valen** viaja empaquetado con la suborden: `ES_CREAR_DATOS | (n << 8)`.
+/// ocho valen** viaja empaquetado con la suborden: `ES_GESTO_DATOS | (n << 8)`.
 ///
 /// ** Se parte `arg0` porque por la puerta caben dos argumentos y los dos estan
 /// ocupados. Es el mismo idioma que `INFO_MEM_QUIEN_*` y `AUTOPSIA_TEXTO`:
 /// cuando cabe un numero y hacen falta dos, se parte el numero.
 ///
-/// El cero NO corta -- ver `TASK_OP_ES_CREAR`.
-pub const ES_CREAR_DATOS: u64 = 0x01;
+/// El cero NO corta -- ver `TASK_OP_ES_GESTO`.
+pub const ES_GESTO_DATOS: u64 = 0x01;
 
 /// **Cierra la transaccion.** El nombre sale del renglon de `TASK_OP_RUTA` y el
 /// contenido del de arriba. Devuelve la generacion nueva, o `0`.
-pub const ES_CREAR_HACER: u64 = 0x02;
+pub const ES_GESTO_FICHERO: u64 = 0x02;
+
+/// **Crea una carpeta vacia** donde diga la ruta.
+///
+/// Una carpeta recien nacida es un nodo de directorio SIN `:entradas`. No es un
+/// nodo a medias: un directorio es un nodo con `:entradas`, y uno vacio es uno
+/// que todavia no la tiene.
+pub const ES_GESTO_CARPETA: u64 = 0x03;
+
+/// **Quita la entrada** que diga la ruta.
+///
+/// ** No destruye nada. Se publica un arbol nuevo sin esa entrada; el bloque de
+/// ayer, el nodo del fichero y el estrato anterior siguen donde estaban.
+/// **Borrar en ESTRATOS es dejar de nombrar**, y lo que se suelta de verdad es
+/// cosa del recolector.
+pub const ES_GESTO_QUITAR: u64 = 0x04;
+
+/// **Renombra la entrada** que diga la ruta. El nombre NUEVO viaja por el
+/// renglon del contenido ([`ES_GESTO_DATOS`]).
+///
+/// * El nodo NO se toca: la entrada nueva apunta al mismo bloque, asi que el
+/// contenido, los atributos y la `:firma` siguen siendo los de antes.
+/// Renombrar un fichero firmado no le invalida la firma.
+pub const ES_GESTO_RENOMBRAR: u64 = 0x05;
 
 /// Cuanto contenido admite el renglon. Es [`RESIDENTE_MAX`] de ESTRATOS: lo que
 /// cabe DENTRO del nodo, sin gastar un bloque de datos.
-pub const ES_CREAR_MAX: u64 = 96;
+pub const ES_GESTO_MAX: u64 = 96;

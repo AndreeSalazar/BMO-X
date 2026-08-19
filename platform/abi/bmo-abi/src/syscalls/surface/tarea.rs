@@ -371,7 +371,7 @@ pub const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 /// fichero: es la mitad de uno.
 ///
 /// Devuelve la generacion nueva, o `0` con el motivo en CABINA.
-pub const TASK_OP_ES_CREAR: u64 = 0x2A;
+pub const TASK_OP_ES_GESTO: u64 = 0x2A;
 
 /// El cursor de ESTRATOS: `arg0` es la pregunta ([`ES_NODO_RAIZ`] y compania),
 /// `arg1` su argumento cuando lo lleva.
