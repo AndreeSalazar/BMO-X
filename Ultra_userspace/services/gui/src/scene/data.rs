@@ -80,6 +80,7 @@ use bmo_userland as bmo;
 use super::arbol;
 use super::consola::{self, Consola};
 use super::iconos;
+use super::menu::{self, Menu};
 use super::numeros;
 use super::chrome::Chrome;
 use super::zonas::{Zona, Zonas, MIGA_H};
@@ -128,6 +129,8 @@ pub(crate) struct DataWindow {
     pub(crate) seal: Seal,
     /// El terminal del pie, `Ctrl+n`. Ver [`super::consola`].
     pub(crate) consola: Consola,
+    /// El menu del clic derecho. Ver [`super::menu`].
+    pub(crate) menu: Menu,
 }
 
 /// **El estado del sellado, que es lo unico de esta ventana que ESCRIBE.**
@@ -216,6 +219,7 @@ impl DataWindow {
             verified: None,
             seal: Seal::Idle,
             consola: Consola::nueva(),
+            menu: Menu::nuevo(),
         }
     }
 
@@ -273,6 +277,36 @@ impl DataWindow {
         let box_w = z.w.saturating_sub(CHANNEL) / 2;
         let children_x = z.x + box_w + CHANNEL;
         (z.x, box_w, children_x, z.y + 4)
+    }
+
+    /// **Sobre que hijo cayo el puntero EN LA REJILLA.**
+    ///
+    /// Faltaba: se navegaba con las flechas o por el arbol, y pulsar una fila no
+    /// hacia nada. Una lista que parece pulsable y no lo es ensena a no pulsar.
+    ///
+    /// La geometria sale de `Zonas` y de `REJILLA_CABECERA`, las mismas que usa
+    /// el pintado.
+    pub(crate) fn fila_rejilla_en(&self, px: u32, py: u32) -> Option<usize> {
+        if self.view != View::Obra || self.chrome.minimized {
+            return None;
+        }
+        let z = Zonas::repartir(&self.chrome, self.consola.abierta).rejilla;
+        if !z.contiene(px, py) {
+            return None;
+        }
+        let y0 = z.y + REJILLA_CABECERA;
+        if py < y0 {
+            return None;
+        }
+        let k = ((py - y0) / ROW_H) as usize;
+        let i = self.from + k;
+        // Por debajo de la ultima fila es el PANEL, no la ultima. Pulsar el
+        // hueco de abajo no puede seleccionar lo que hay mas arriba.
+        if i < bmo::estratos::hijos() as usize && k < self.fit_count() {
+            Some(i)
+        } else {
+            None
+        }
     }
 
     // Los atajos de siempre, para no escribir `.chrome.` en cada uso. Son
@@ -489,6 +523,9 @@ fn obra(p: &bmo::Pantalla, c: &DataWindow) {
     paint_nodes(p, c, &z.grafo);
     consola::paint(p, &z.consola, &c.consola, DATA_EDGE, DATA_TITLE);
     pie(p, c, &z.pie);
+    // EL ULTIMO de todo: es lo unico que puede taparlo todo, y si se pintara
+    // antes lo taparia cualquier panel que venga detras.
+    menu::paint(p, &c.menu, NODE_BG, DATA_TITLE);
 
     // Los separadores. Una linea de un pixel entre paneles: sin ella, tres
     // columnas de texto sobre el mismo fondo se leen como una sola tabla mal
@@ -616,6 +653,14 @@ fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
     };
 }
 
+/// Lo que ocupa la cabecera de la rejilla antes de la primera fila.
+///
+/// ** Sale de aqui y lo usan LOS DOS: el que pinta las filas y el que decide
+/// sobre cual cayo el raton. Es el mismo aviso que lleva `box_at` desde que se
+/// escribio -- dos copias de una geometria se separan solas, y el sintoma es
+/// pulsar un fichero y que se seleccione el de al lado.
+pub(crate) const REJILLA_CABECERA: u32 = bmo::GLIFO_ALTO + 7;
+
 /// El alto de una fila del explorador. Una linea de texto y aire a los lados:
 /// lo justo para que el realce de la seleccion no toque las letras.
 const ROW_H: u32 = 22;
@@ -646,9 +691,8 @@ fn paint_folders(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
     p.texto(z.x + 22, ty, "nombre", INK_DIM);
     p.texto(col_kind, ty, "que es", INK_DIM);
     p.texto(col_size, ty, "bytes", INK_DIM);
-    ty += bmo::GLIFO_ALTO + 3;
-    p.rect(z.x, ty, z.w, 1, DATA_EDGE);
-    ty += 4;
+    p.rect(z.x, z.y + bmo::GLIFO_ALTO + 3, z.w, 1, DATA_EDGE);
+    ty = z.y + REJILLA_CABECERA;
 
     if how_many == 0 {
         p.texto(z.x + 22, ty + 4, "esta vacio.", INK_DIM);

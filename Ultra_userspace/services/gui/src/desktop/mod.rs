@@ -223,6 +223,12 @@ pub(crate) struct Tick {
     /// A click is a BUTTON GOING DOWN, not "the button is down". Without the
     /// edge, holding it would type a hundred times a second.
     pub button_before: bool,
+    /// El flanco del boton DERECHO, aparte del izquierdo.
+    ///
+    /// * Tiene que ser otro: los dos botones llegan en la misma mascara pero
+    /// significan cosas distintas, y con un solo flanco mantener pulsado el
+    /// derecho reabriria el menu en cada fotograma.
+    pub derecho_before: bool,
     pub combo_before: bool,
     pub key_during_combo: bool,
     /// Which calculator key the pointer is over, if any. Carried as state
@@ -419,6 +425,7 @@ pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'sta
             ax: u32::MAX,
             ay: u32::MAX,
             button_before: false,
+            derecho_before: false,
             combo_before: false,
             key_during_combo: false,
             calc_hover: None,
