@@ -1,5 +1,7 @@
 //! **EL JUEZ DE LAS MEDIDAS** -- invariantes y veredictos, sin tocar el metal.
 //!
+//! generacion: nieto
+//!
 //! # Por que existe, y por que NO esta escrito en el programa que mide
 //!
 //! El 2026-08-16 `c/coste.bex` imprimio `dispatch [SE PASA] 1116 > techo 320`

@@ -1,5 +1,7 @@
 //! # MAQUETA -- CASCADE, the son generation
 //!
+//! generacion: hijo
+//!
 //! **Relates a `Node` to a `Rule`** and produces a box whose style is settled.
 //! L7: *the son relates two of the father's, and does not know what the relation
 //! means.* This one does not know what a screen is, what a pixel is worth, or

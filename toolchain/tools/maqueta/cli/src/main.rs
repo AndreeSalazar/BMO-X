@@ -1,5 +1,7 @@
 //! # `maqueta` -- el binario
 //!
+//! generacion: ninguna -- el binario que las junta
+//!
 //! ```text
 //!   cargo run -p bmo-maqueta -- entrada.maqueta salida.rs
 //! ```

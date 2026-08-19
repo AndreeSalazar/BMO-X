@@ -1,5 +1,7 @@
 //! # MAQUETA -- DIAG, the shape of a rejection
 //!
+//! generacion: ninguna -- la forma de un rechazo, compartida
+//!
 //! **This is not a generation.** It is shared vocabulary, sitting below the
 //! whole L7 chain the way `bmo-abi` sits below both the kernel and the
 //! toolchain: a contract that belongs to nobody. `node`, `cascade`, `layout` and

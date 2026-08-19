@@ -281,6 +281,15 @@ eje CICLOS se ordena **por veces por segundo**. Todo lo que sigue se recorre en
 Y al lado va la **generacion** (ley L7), porque es lo que dice que puede y que
 no puede saber cada trozo:
 
+> ⚠ **Estas etiquetas dicen CUANTO SABE cada pieza, no quien importa a quien.**
+> Aqui el trabajo es una cadena de llamadas, asi que la dependencia va al reves
+> que en una tuberia de datos: `entry.rs` es el abuelo **y hace `use
+> super::dispatch`**, o sea que nombra al padre. Es correcto y es lo que hace
+> falsable la medida --*el stub no sabe que operacion se pidio*--, pero por eso
+> el guardian de L7 **no puede juzgar esta tabla**: solo juzga generaciones que
+> son crates, donde la relacion esta declarada. Ver L7c en
+> [`META-KERNEL_HARD.md`](../META-KERNEL_HARD.md).
+
 | # | pieza | veces | coste | generacion | fila |
 |---|---|---|---|---|---|
 | 1 | `syscall/entry.rs` -- el stub | **100%** | **785-839 de 884 (89-91%)** | **abuelo** -- no sabe que operacion se pidio | ★ **NINGUNA** |

@@ -1,5 +1,7 @@
 //! # MAQUETA -- LAYOUT, the grandson generation
 //!
+//! generacion: nieto
+//!
 //! **Relates a box to the boxes around it** and settles where each one lands.
 //! L7: it does not know what is done with the numbers. There is no screen here,
 //! no colour is read, nothing is painted, and no opinion is held about whether

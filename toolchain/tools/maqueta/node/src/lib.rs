@@ -1,5 +1,7 @@
 //! # MAQUETA -- NODE, the father generation
 //!
+//! generacion: padre
+//!
 //! Tokens in; **named pieces** out. A `Node` is a box that knows what it is; a
 //! `Rule` is a rule that knows what it says. Neither knows the other exists.
 //!

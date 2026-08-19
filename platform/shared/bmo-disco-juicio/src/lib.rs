@@ -1,5 +1,7 @@
 //! **EL NIETO** -- el veredicto sobre un disco. El unico que opina.
 //!
+//! generacion: nieto
+//!
 //! [eje]     CORRECCION
 //! [exige]   R-DISCO6..10, R-CPU8, R-CPU9, L7b
 //!
