@@ -266,6 +266,11 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 None => cap_err((cap::ERROR_PERMISSION_DENIED, cap::FLAG_NEEDS_CAP)),
             }
         }
+        // **Solo BUSCA** lo concedido al lanzar. Ver `obj/tarea.rs`.
+        TASK_OP_HIJO => match crate::ring0::obj::tarea::buscar(scheduler::current_pid(), arg0) {
+            Some(handle) => BmoStatus::ok_value(handle),
+            None => cap_err((cap::ERROR_PERMISSION_DENIED, cap::FLAG_NEEDS_CAP)),
+        },
         TASK_OP_ENDPOINT_CREATE => {
             match endpoint::create(scheduler::current_pid(), arg0 as usize) {
                 Some(handle) => BmoStatus::ok_value(handle),
@@ -816,6 +821,9 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     if let Some(hijo) = informe.pid {
                         crate::ring0::task::family::recordar(hijo, pid);
                     }
+                    // ** El handle sobre el hijo: la autoridad de cerrarlo
+                    // se concede una vez, aqui, a quien lanzo. Ver `obj/tarea.rs`.
+                    crate::ring0::obj::tarea::conceder(pid, tid);
                     BmoStatus::ok_value(tid as u64)
                 }
                 Err(f) => {
@@ -1167,6 +1175,14 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             // por aqui**: esta MAPEADO, asi que el proceso lo toca con un `mov`
             // y el kernel no se entera. Ese es el punto entero de que exista --
             // un syscall por byte seria justo lo contrario de prestar memoria.
+            // ** UN HIJO QUE ESTE PROCESO LANZO. Tener el handle ES el
+            // permiso -- ver `obj/tarea.rs`.
+            cap::KIND_TAREA => {
+                match crate::ring0::obj::tarea::operation(resolved.object, frame.rsi) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
             cap::KIND_PRESTADO => {
                 match crate::ring0::obj::loan::operation(
                     resolved.object, frame.rsi, scheduler::current_pid(),

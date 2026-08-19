@@ -654,19 +654,38 @@ pub(crate) fn on_pointer(
                 // que no se encienden al pasar por encima.
                 let gesture = dsk.table.get_mut(i).and_then(|s| s.chrome.button_at(pos.x, pos.y));
                 match gesture {
-                    // ** CERRAR NO MATA A LA APP: le quita la caja.
+                    // ** CERRAR RETIRA LA CAJA **Y** CIERRA EL PROCESO --
+                    // paso 3 del plan, hecho el 2026-08-19.
                     //
-                    // Matar un proceso ajeno por ser el DIRECTOR seria
-                    // `root` con otro nombre, en el sistema cuya primera
-                    // clausula dice que la autoridad no se hereda. Matar
-                    // se hara con el handle que devolvio LANZARLA --
-                    // paso 3 del plan-- y no desde aqui.
+                    // Y sigue sin ser `root`: el DIRECTOR no cierra "porque
+                    // es el DIRECTOR", cierra porque **tiene el handle de
+                    // haberlo lanzado**. `Hijo::por_tid` solo encuentra lo
+                    // que `EJECUTAR` concedio; sobre una app que lanzo otro,
+                    // no hay nada que encontrar y este boton no hace nada.
+                    //
+                    // ** El orden importa: primero la caja, despues el
+                    // proceso. Al reves, `revoke_all` correria mientras esta
+                    // vuelta todavia puede leer su superficie.
                     Some(Button::Close) => {
+                        // El tid ANTES de soltar: `close` se lleva la
+                        // superficie, y con ella la unica forma de saber de
+                        // quien era esa ventana.
+                        let tid = dsk.table.get_mut(i).map(|s| s.tid);
                         if let Some((vx, vy, va, vl)) = dsk.table.close(i) {
                             erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                             uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                             for s in dsk.table.iter_mut() {
                                 s.repaint_all();
+                            }
+                        }
+                        // Una app en ventana puede no tener entrada --hoy
+                        // ninguna la tiene-- asi que pedirle que se vaya
+                        // seria pedirselo a alguien que no escucha. Sin
+                        // esto, cerrar dejaba un proceso dibujando para
+                        // nadie hasta reiniciar.
+                        if let Some(tid) = tid {
+                            if let Some(h) = bmo::Hijo::por_tid(tid) {
+                                h.cerrar();
                             }
                         }
                     }

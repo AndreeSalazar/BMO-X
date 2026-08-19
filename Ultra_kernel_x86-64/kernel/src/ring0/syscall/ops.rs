@@ -245,6 +245,10 @@ pub(crate) const TASK_OP_DISCO: u64 = 0x29;
 /// escribe CONTENIDO -- `sellar` commiteaba sin datos y el recorte le habla al
 /// aparato. Espejo de `bmo_abi::...::TASK_OP_ES_GESTO`.
 pub(crate) const TASK_OP_ES_GESTO: u64 = 0x2A;
+
+/// El handle sobre un hijo que YO lance. Espejo de
+/// `bmo_abi::...::TASK_OP_HIJO`. Solo BUSCA lo ya concedido en `EJECUTAR`.
+pub(crate) const TASK_OP_HIJO: u64 = 0x2B;
 /// Las subordenes. Espejo de `bmo_abi::...::ES_CREAR_*`, y `pub(crate)` por lo
 /// mismo que las de disco: una constante privada usada en un `match` de
 /// `mod.rs` se convierte en un nombre de variable que se traga todos los casos.

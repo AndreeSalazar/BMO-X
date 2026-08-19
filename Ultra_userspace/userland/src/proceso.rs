@@ -130,3 +130,37 @@ pub fn leer_consola(dst: &mut [u8; 8]) -> usize {
     n.min(7)
 }
 
+/// **UN HIJO QUE ESTE PROCESO LANZO.** Tenerlo ES el permiso de cerrarlo.
+///
+/// No hay forma de conseguir uno de un proceso que no lanzaste: la capability
+/// se concede en `EJECUTAR` y [`Hijo::por_tid`] solo la busca. Por eso cerrar
+/// una app no es una autoridad del DIRECTOR sino una consecuencia de haberla
+/// lanzado -- paso 3 de `docs/plan/PLAN_DIRECTOR.md`.
+pub struct Hijo {
+    pub cap: u64,
+}
+
+impl Hijo {
+    /// El handle del hijo con ese tid, si este proceso lo lanzo.
+    ///
+    /// El tid es el que devolvio `ejecutar_en`, y tambien el que trae una
+    /// superficie ofrecida: por ahi se casan la ventana y el proceso sin que el
+    /// compositor tenga que llevar una segunda lista.
+    pub fn por_tid(tid: u32) -> Option<Self> {
+        let cap = invoke(CURRENT_TASK, OP_HIJO, tid as u64, 0, 0).valor()?;
+        Some(Self { cap })
+    }
+
+    /// Sigue vivo?
+    pub fn vive(&self) -> bool {
+        invoke(self.cap, TAREA_OP_VIVE, 0, 0, 0).value != 0
+    }
+
+    /// **Cerrarlo.** `true` si estaba vivo y se cerro.
+    ///
+    /// Cerrar algo ya cerrado contesta `false` y no es un fallo: es lo que pasa
+    /// cuando se pulsa la X de una app que acababa de salir sola.
+    pub fn cerrar(&self) -> bool {
+        invoke(self.cap, TAREA_OP_CERRAR, 0, 0, 0).value != 0
+    }
+}

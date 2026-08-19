@@ -373,6 +373,19 @@ pub const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 /// Devuelve la generacion nueva, o `0` con el motivo en CABINA.
 pub const TASK_OP_ES_GESTO: u64 = 0x2A;
 
+/// **EL HANDLE SOBRE UN HIJO QUE YO LANCE.** `arg0` = el tid que devolvio
+/// [`TASK_OP_EJECUTAR`]. Devuelve un handle de `KIND_TAREA`, o falla.
+///
+/// No concede nada: la capability se concedio al LANZAR, y esto solo la
+/// encuentra -- exactamente lo mismo que hace [`TASK_OP_CHANNEL_OPEN`] con el
+/// canal que ya se sembro. Quien no lanzo ese proceso no tiene la capability, y
+/// aqui no hay nada que buscar.
+///
+/// ** Y ese es el reparto que evita un `root` con otro nombre: el DIRECTOR
+/// cierra lo que EL lanzo porque tiene su handle, no porque sea el DIRECTOR.
+/// Ver `docs/plan/PLAN_DIRECTOR.md`, paso 3.
+pub const TASK_OP_HIJO: u64 = 0x2B;
+
 /// El cursor de ESTRATOS: `arg0` es la pregunta ([`ES_NODO_RAIZ`] y compania),
 /// `arg1` su argumento cuando lo lleva.
 pub const TASK_OP_ES_NODO: u64 = 0x19;

@@ -79,6 +79,14 @@ pub const KIND_ENDPOINT: u8 = 0x70;
 /// Derecho EFIMERO a responder UNA llamada concreta. Se consume al usarlo.
 pub const KIND_REPLY: u8 = 0x71;
 
+/// **UN HIJO QUE YO LANCE.** El objeto es su TID.
+///
+/// Se concede en `TASK_OP_EJECUTAR`, a quien lanzo -- y por eso cerrar un
+/// proceso ajeno no es una autoridad del DIRECTOR: es tener su handle. Los tid
+/// no se reciclan (`next_tid` solo sube), asi que un handle viejo nunca acaba
+/// nombrando a otro proceso.
+pub const KIND_TAREA: u8 = 0x80;
+
 // Rights bits (mirror of bmo-abi BmoCap ids: bit N = capability N).
 pub const RIGHT_READ: u64 = 1 << 0;
 pub const RIGHT_WRITE: u64 = 1 << 1;
@@ -289,7 +297,16 @@ pub fn revoke_all(pid: u32) {
     // Va primero tambien porque `unmap_page` devuelve el marco sin liberarlo --
     // son del compositor-- y liberarlos aqui seria entregarle el escritorio a
     // otro proceso.
-    crate::ring0::obj::loan::process_died(pid, crate::ring0::mm::vmm::read_cr3());
+    // ** EL CR3 ES EL DEL QUE MUERE, NO EL ACTIVO.
+    //
+    // Leia `read_cr3()`, que solo es el correcto cuando el que muere es el que
+    // llama -- y hasta el paso 3 del DIRECTOR ese era el unico caso. Con
+    // `TAREA_OP_CERRAR` el que llama es el PADRE, asi que `read_cr3()` seria el
+    // espacio del padre y `undo` desmapearia paginas del que cierra en vez de
+    // las del cerrado. Compila, y se lleva por delante al DIRECTOR.
+    let aspace = crate::ring0::task::scheduler::cr3_de_pid(pid)
+        .unwrap_or_else(crate::ring0::mm::vmm::read_cr3);
+    crate::ring0::obj::loan::process_died(pid, aspace);
     crate::ring0::obj::memory::process_died(pid);
     // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.

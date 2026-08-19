@@ -363,7 +363,7 @@ emisor de MAQUETA nunca supo donde estaba la ventana.
 
 ---
 
-# PASO 3 -- Cerrar sin ser root
+# PASO 3 -- Cerrar sin ser root ✅ HECHO el 2026-08-19
 
 *"opcion para cerrar fuerte"* suena a boton y es **autoridad**: matar un proceso
 ajeno. Si el DIRECTOR puede matar a cualquiera *porque es el DIRECTOR*, eso es
@@ -380,6 +380,33 @@ existe -- ya lo sabe, porque el los abrio.
 
 `Ctrl+Alt+ESC` sigue siendo el que no se puede quitar, porque vive en Ring 0 y
 no depende de que nadie este vivo.
+
+## Como quedo, y las dos cosas que salieron al escribirlo
+
+```
+   KIND_TAREA          el objeto es el TID del hijo
+   se concede en       TASK_OP_EJECUTAR, a quien lanzo -- una vez
+   se recupera con     TASK_OP_HIJO(tid), que solo BUSCA
+   operaciones         TAREA_OP_VIVE, TAREA_OP_TID, TAREA_OP_CERRAR
+```
+
+★ **No hay comprobacion de parentesco, y es a proposito.** El permiso ES el
+handle: `TASK_OP_HIJO` es un `cap::find`, igual que `CHANNEL_OPEN`, asi que a
+quien no lanzo ese proceso no hay nada que darle. Anadir ademas un *"es tu
+hijo?"* seria la misma regla en dos sitios, que es como se acaba con dos reglas
+que no dicen lo mismo.
+
+★ **El tid como objeto sale gratis**: `next_tid` solo sube, asi que un handle
+viejo nunca acaba nombrando a otro proceso. Es la propiedad que `loan.rs` tuvo
+que GANARSE revocando el handle al soltar --alli la direccion si se reutiliza--
+y que aqui viene con el numero.
+
+[!] **Y el fallo latente que destapo**, porque este es el primer caso en que
+muere un proceso que NO es el que llama: `cap::revoke_all` le pasaba a
+`loan::process_died` el **CR3 activo**. Con `TAREA_OP_CERRAR` el que llama es el
+padre, asi que `undo` habria desmapeado paginas **del que cierra** en vez de las
+del cerrado: compila, y se lleva por delante al DIRECTOR. Ahora se busca el
+espacio del que muere con `cr3_de_pid`.
 
 ---
 
