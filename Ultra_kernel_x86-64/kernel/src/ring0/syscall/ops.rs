@@ -261,6 +261,9 @@ pub(crate) const ES_GESTO_RENOMBRAR: u64 = 0x05;
 /// Trae un fichero de FAT32. La ruta lleva el DESTINO y el renglon del
 /// contenido lleva el ORIGEN -- el contenido de verdad no cruza la puerta.
 pub(crate) const ES_GESTO_COPIA: u64 = 0x06;
+/// Marca la version en curso con el nombre que traiga la ruta. Un nombre es lo
+/// que hace PERMANENTE a una version: el recolector no la suelta jamas.
+pub(crate) const ES_GESTO_MARCAR: u64 = 0x07;
 pub(crate) const ES_GESTO_MAX: u64 = 96;
 /// Las ordenes del disco. Espejo de `bmo_abi::...::DISCO_OP_*`.
 ///

@@ -484,6 +484,80 @@ pub fn crear_fichero(nombre: &str, datos: &[u8]) -> Result<u64, WriteError> {
     aplicar("", Gesto::Fichero { nombre, datos })
 }
 
+/// **MARCA la version en curso con un nombre.** Devuelve la generacion nueva.
+///
+/// === Que es un nombre aqui, y por que no es una etiqueta ===
+///
+/// `Estrato::con_nombre()` mira si el motivo esta puesto, y la section 9 dice que
+/// **los estratos CON NOMBRE no los suelta el recolector jamas**. Asi que poner
+/// un nombre no describe una version: la hace PERMANENTE.
+///
+/// Los gestos normales van sin nombre a proposito -- son automaticos, y el
+/// volumen tiene que poder adelgazar. Esto es el acto aparte, de una persona,
+/// que dice *"a esta quiero poder volver siempre"*.
+///
+/// === ** Y ES TAMBIEN LO QUE HACE POSIBLE UNA RAMA ===
+///
+/// El superbloque apunta a UN estrato: la punta. Si se vuelve a una version
+/// vieja y se escribe encima, la cadena se bifurca --cada estrato guarda su
+/// padre, asi que la historia ya es un arbol-- pero **no hay donde apuntar la
+/// otra punta**, y lo que nadie alcanza es basura.
+///
+/// Un nombre es esa referencia. Es el `ref` de git, y sale gratis del mecanismo
+/// que ya existia para no soltar lo importante.
+///
+/// === Lo que cuesta ===
+///
+/// UN bloque. No se copia nada: el estrato nuevo apunta a la MISMA raiz que el
+/// de ahora. Marcar un volumen de 400 GiB cuesta lo mismo que marcar uno vacio,
+/// y eso es consecuencia directa de no sobreescribir nunca.
+pub fn marcar(nombre: &str) -> Result<u64, WriteError> {
+    let sb = superbloque().ok_or(WriteError::SinVolumen)?;
+    if nombre.is_empty() {
+        return Err(WriteError::NoCabe);
+    }
+    // El arbol de AHORA. Lo que se marca es la version que manda, no una nueva:
+    // por eso se lee su raiz y se vuelve a publicar tal cual.
+    let actual = super::estrato().ok_or(WriteError::NoSeLeeLaRaiz)?;
+
+    let mut t = es::escritura::Transaccion::open(&sb, copia_en_uso(), identidad_ok())
+        .map_err(WriteError::Rechazada)?;
+    let base = t.reserve(1).map_err(WriteError::Rechazada)?;
+
+    let cuando = crate::ring0::dev::clock::ahora();
+    let estrato = es::Estrato::new(
+        actual.raiz,
+        sb.estrato,
+        cuando,
+        es::Autor::Proceso(crate::ring0::task::scheduler::current_pid()),
+        nombre,
+    );
+    let bytes = estrato.encode();
+    poner(base, &bytes)?;
+    let p_estrato = BlockPtr::nuevo(base, 0, &bytes);
+
+    // El mismo orden de siempre, que es el unico que no pierde datos.
+    t.cerrar_datos().map_err(WriteError::Rechazada)?;
+    if !disk::flush() {
+        t.abandonar();
+        return Err(WriteError::SinBarrera);
+    }
+    t.barrera_hecha().map_err(WriteError::Rechazada)?;
+    let (destino, nuevo) = t.commit(p_estrato).map_err(WriteError::Rechazada)?;
+    if !write_superblock(destino, &nuevo.encode()) {
+        crate::ring0::cabina::fault("estratos", "no se pudo escribir el superbloque", destino);
+        return Err(WriteError::NoEscribio);
+    }
+    if !disk::flush() {
+        crate::ring0::cabina::warn("estratos", "el commit no se pudo vaciar al plato", destino);
+        return Err(WriteError::SinBarrera);
+    }
+    super::fijar_superbloque(nuevo);
+    unsafe { super::ESTRATO_FECHA = cuando };
+    crate::ring0::cabina::info("estratos", "version marcada: no se soltara", nuevo.generation);
+    Ok(nuevo.generation)
+}
+
 /// **Crea la carpeta `nombre` dentro de `ruta`.**
 pub fn crear_carpeta(ruta: &str, nombre: &str) -> Result<u64, WriteError> {
     aplicar(ruta, Gesto::Carpeta { nombre })
