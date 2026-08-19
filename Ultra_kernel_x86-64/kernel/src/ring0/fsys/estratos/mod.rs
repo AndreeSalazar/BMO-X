@@ -237,6 +237,23 @@ pub enum WriteError {
     /// Se distingue de `NoCabe` porque manda a hacer algo distinto: aqui no hay
     /// nada que encoger, hay que crear la carpeta o escribir bien la ruta.
     RutaNoEsta,
+    /// **La carpeta esta llena.**
+    ///
+    /// ** Esto contestaba `NoCabe`, o sea *"no cabe: hoy un fichero entra en 96
+    /// bytes"* -- y era MENTIRA: el fichero cabia de sobra, la que no admitia
+    /// una entrada mas era la carpeta. Dos limites distintos con el mismo
+    /// mensaje mandan a encoger el fichero, que no arregla nada.
+    ///
+    /// El tope es `ENTRADAS_POR_BLOQUE` (36) mientras `:entradas` viva en UN
+    /// bloque sin indireccion. No es del formato: es de esta version.
+    CarpetaLlena,
+    /// El nombre no vale para lo que se pidio: repetido al crear, ausente al
+    /// borrar, o ya ocupado al renombrar.
+    ///
+    /// Los tres los rechaza `bmo_estratos::escritura` con el mismo error, y
+    /// aqui llegan juntos. Separarlos pide errores mas ricos en la crate del
+    /// formato -- se dice en vez de inventarse cual de los tres fue.
+    NombreNoVale,
     /// La ruta baja mas de lo que esta version sabe republicar.
     ///
     /// ** Tocar una hoja republica la rama ENTERA hasta la raiz, asi que la
@@ -256,6 +273,8 @@ impl WriteError {
             WriteError::NoSeLeeLaRaiz => "no se pudieron leer las entradas de la raiz",
             WriteError::RutaNoEsta => "esa ruta no existe, o no es un directorio",
             WriteError::MuyHondo => "la ruta baja demasiado para republicarla",
+            WriteError::CarpetaLlena => "la carpeta esta llena: 36 entradas es el tope de hoy",
+            WriteError::NombreNoVale => "ese nombre no vale: repetido, ausente o ya ocupado",
         }
     }
 }

@@ -320,7 +320,24 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
                     entradas_renombrando(&previas[..n_previas], viejo, nuevo, entradas)
                 }
             }
-            .map_err(|_| WriteError::NoCabe)?
+            // ** LOS DOS MOTIVOS SE SEPARAN AQUI, y antes eran uno solo.
+            //
+            // Todo esto contestaba `NoCabe` --*"no cabe: hoy un fichero entra
+            // en 96 bytes"*-- y para una carpeta llena eso es MENTIRA: el
+            // fichero cabia, la carpeta no. Un mensaje asi manda a encoger el
+            // fichero, que no arregla nada, y esconde el limite de verdad.
+            //
+            // La cuenta se hace ANTES de mirar el resultado porque la crate del
+            // formato rechaza los tres casos --lleno, repetido, ausente-- con el
+            // mismo error. Lo que si se puede saber aqui es si estaba llena.
+            .map_err(|_| {
+                let cabian = n_previas / es::objects::ENTRADA_LEN;
+                if cabian >= es::escritura::ENTRADAS_POR_BLOQUE {
+                    WriteError::CarpetaLlena
+                } else {
+                    WriteError::NombreNoVale
+                }
+            })?
         } else {
             // Un nivel de paso: su hijo tiene nodo nuevo, asi que su entrada
             // tiene que apuntar ahi. El nombre es el que se uso para bajar.
