@@ -24,6 +24,17 @@
 > Vive en la raiz y no en `componente/` a proposito: una app no es una pieza de
 > esta maquina, es lo que la maquina existe para alojar. Es una LEY, no un
 > capitulo.
+>
+> ## ★ Y SON TRES: [`META-SDK_HARD.md`](../META-SDK_HARD.md)
+>
+> Del mismo dia. La ley de **REX**, la libreria con la que se escribe una app --
+> las nueve cabeceras `<bmo/...>` que ya existian y no tenian nombre. La firma
+> **la ley de una app**, porque REX existe solo para que cumplirla no cueste
+> escribirla siete veces.
+>
+> Contesta la pregunta que un SDK tiene que contestar antes de crecer: **cuando
+> una comodidad es una cabecera y cuando es una operacion nueva.** Su indice
+> vive al lado de los ficheros, en `toolchain/forge/sem-asm/tables/bmo/`.
 
 ---
 

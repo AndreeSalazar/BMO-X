@@ -10,6 +10,11 @@
 > Hermano de [`META-KERNEL_HARD.md`](META-KERNEL_HARD.md) y con la misma forma:
 > aqui una regla solo existe si al lado tiene **de donde sale** y **que se
 > rompe** si no se cumple.
+>
+> ★ Y tiene hermana menor, del mismo dia:
+> [`META-SDK_HARD.md`](META-SDK_HARD.md) -- la ley de **REX**, la libreria con
+> la que se escribe una app. Existe para que las siete reglas de aqui abajo no
+> haya que escribirlas siete veces, una por app.
 
 ---
 
@@ -121,6 +126,7 @@ linea**:
 | decimal exacto en centavos | el COBOL de la casa |
 | una cara declarativa, con su tabla de golpeo | MAQUETA |
 | que un fallo suyo no mate el escritorio | R-APP5 y R-APP6 |
+| las nueve cabeceras con las que se escribe todo lo de arriba | **REX**, [`META-SDK_HARD.md`](META-SDK_HARD.md) |
 
 ★★ **Eso ultimo es lo que ningun framework da**: aqui el aislamiento no es una
 promesa de la libreria, es la frontera del proceso.
@@ -167,14 +173,39 @@ es potencia, es **sitio compartido**.
 
 | lo que falta | que desbloquea |
 |---|---|
-| **SDL** | ★★ la palanca mas grande que existe: miles de juegos apuntan ahi |
-| compilacion separada | proyectos de mas de un fichero sin dolor |
+| ★ **compilacion separada** | proyectos de mas de un fichero sin dolor. **Es la primera**, ver abajo |
+| **entrada a una ventana** | la casilla 4 de aqui arriba: sin ella una app no se puede tocar |
 | `libm` completa | todo lo que haga trigonometria o punto flotante serio |
-| monton de verdad | cualquier cosa que no sepa su tamano al compilar |
+| **audio de verdad** | hoy hay contrato (`KIND_AUDIO`) y el altavoz del PC; no hay driver HDA ni isocrono por USB |
+| ~~monton de verdad~~ | **HECHO** el 2026-08-09: `<bmo/monton.h>`, un asignador de Ring 3 sobre UN bloque del kernel |
 
-★★ **SDL es una capa fina sobre "dame una superficie, dame teclas, dame
-sonido"** -- y BMO-X tendra las tres. Portar SDL no es portar un juego: es
-portar el catalogo.
+### El caso de SDL, corregido el mismo dia que se escribio
+
+La primera version de esta seccion decia *"SDL es una capa fina sobre dame una
+superficie, dame teclas, dame sonido -- y BMO-X tendra las tres"*. Al medirlo
+contra el arbol, la frase se cae por tres sitios y conviene que quede escrito:
+
+1. **De las tres, hoy hay una y media.** El tiempo esta entero (`INFO_TICKS` +
+   `WAIT`); las teclas solo por relevo de pantalla entera; **el sonido no
+   existe** -- `ring0/obj/audio.rs` abre diciendo *"esto no es un driver de
+   audio"*.
+2. **SDL tambien pide HILOS**, y no hay hilos de Ring 3.
+   `toolchain/lang/c/BRECHA.md` lo dice cuatro veces. SDL 1.2 se puede construir
+   sin ellos, pero entonces el callback de audio hay que bombearlo desde el
+   bucle de la app, y eso es una decision de diseno, no un detalle.
+3. ★★ **SDL no va ANTES que la compilacion separada: es el mejor argumento a
+   favor de ella.** Son del orden de cien ficheros `.c`, y hoy solo hay unity
+   build -- donde dos `static` con el mismo nombre en ficheros distintos dejan
+   de ocultarse y pasan a ser una redefinicion.
+
+★ Y la conclusion util, porque separa dos objetivos que estaban mezclados:
+**SDL no es el camino para abrir DOOM** --DOOM ya corre sin SDL, con su propia
+capa de plataforma-- sino el camino para que **otro** traiga su juego. Lo que
+frena a DOOM son la casilla 4 y un fallo de codegen, no una libreria.
+
+Lo que si sale de mirar SDL de cerca esta en
+[`META-SDK_HARD.md`](META-SDK_HARD.md) seccion 4.1: sus subsistemas y las nueve
+cabeceras de REX son **las mismas siete cajas**, derivadas por separado.
 
 ### 5.4 Y lo que NO va a caber, dicho para que nadie se lo prometa
 
