@@ -45,3 +45,8 @@ Ultra_kernel_x86-64/staging/
 # ni en un guion, ni en un documento.
 *.rlib
 *.rmeta
+
+# Los `.pyc` de las herramientas. Dos se colaron al arbol el 08 (ascii-sweep) y
+# siguen versionados; esto impide el tercero. Sacar los dos viejos es otro
+# commit, porque borrar ficheros versionados no es una regla de ignorado.
+__pycache__/

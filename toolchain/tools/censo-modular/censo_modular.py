@@ -80,6 +80,8 @@ import re
 import subprocess
 import sys
 
+import herencia
+
 # -- The number L6a puts, and where it comes from ------------------------------
 #
 # 1.000 lines is not a taste: it is the figure written in L6a of
@@ -348,16 +350,25 @@ def main():
     nuevos, crecidos, encogidos, salidos = juicio(fichas, techos, exentos)
     informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos)
 
+    fallo = 0
     if not techos:
         print('\n[!] no hay linea base todavia: `--sellar` la graba.')
-        return 0
-
-    if nuevos or crecidos:
+    elif nuevos or crecidos:
         print('\nL6a: %d nuevos, %d crecidos.' % (len(nuevos), len(crecidos)))
-        return 1 if args.check else 0
+        fallo = 1
+    else:
+        print('\nclean: ningun fichero nuevo por encima de %d y ninguno crecio.' % LIMITE)
 
-    print('\nclean: ningun fichero nuevo por encima de %d y ninguno crecio.' % LIMITE)
-    return 0
+    # ** UNA PUERTA, DOS PREGUNTAS. L7 la contesta `herencia.py` y vive aparte
+    # porque es OTRA pregunta --L6b: el corte se elige por la pregunta que
+    # responde el fichero-- pero entra por aqui. Asi `build.ps1` tiene un solo
+    # guardian que llamar, que es la misma forma que el sistema entero: una
+    # puerta, muchas operaciones detras.
+    print('\n-- L7, la herencia --')
+    if herencia.revisar(raiz):
+        fallo = 1
+
+    return fallo if args.check else 0
 
 
 if __name__ == '__main__':

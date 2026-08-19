@@ -207,6 +207,33 @@ mal**: o el dato sube como parametro, o las dos son la misma generacion.
 *"Alli se puede PROBAR; este binario es `no_main` para un target sin sistema
 operativo y no corre un test."*
 
+**★★ L7c. La generacion se comprueba entre CRATES, nunca entre ficheros.**
+Anadida el 2026-08-18, al ponerle metro a L7 y descubrir por que el metro obvio
+--leer los `use`-- habria condenado codigo correcto en su primera vuelta:
+
+```
+   una TUBERIA de datos   el consumidor importa al productor
+                          -> conocimiento y dependencia apuntan IGUAL
+   una CADENA de llamadas el que llama importa al llamado
+                          -> el que MENOS sabe importa al que MAS sabe
+```
+
+`syscall/entry.rs` esta etiquetado **abuelo** en `docs/CENSO_DE_EJES.md`, y su
+linea 41 dice `use super::dispatch;`: **el abuelo nombra al padre.** No es un
+fallo del kernel. Es que ahi la etiqueta dice *cuanto sabe cada pieza* --que es
+lo que hace falsable la medida-- y no *quien importa a quien*.
+
+Donde las dos coinciden es donde la generacion **es un crate**, y entonces la
+relacion no se deduce: esta declarada en el `[dependencies]` de un
+`Cargo.toml`, un `pub use` no la puede esconder y no hay heuristica. Por eso el
+guardian (`toolchain/tools/censo-modular/herencia.py`) solo juzga crates, y por
+eso un crate que lleve varias generaciones dentro **lo declara** (`generacion:
+varias`) en vez de callarse.
+
+*El precio*: MAQUETA sale limpia --seis aristas y todas bajan-- y la puerta no
+se puede juzgar asi. Saberlo costo un `grep`; construir el metro equivocado
+habria costado el guardian entero, porque uno que grita sin motivo se apaga.
+
 ---
 
 ## 2. Los cinco ejes, y cual manda en BMO-X

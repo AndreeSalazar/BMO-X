@@ -1,5 +1,7 @@
 //! **LO QUE EL DISCO CONTESTA** -- el IDENTIFY DEVICE, repartido por herencia.
 //!
+//! generacion: varias -- abuelo, padre e hijo viven DENTRO, por modulos
+//!
 //! [eje]     CORRECCION -- aqui no se optimiza nada, se lee bien
 //! [exige]   R-DISCO2, R-DISCO6, R-DISCO7, R-FW2, L5, L7
 //!

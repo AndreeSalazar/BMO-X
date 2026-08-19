@@ -220,7 +220,7 @@ traer de vuelta vive hoy repartido entre los mensajes de commit. **Escribir
 Dos, y los dos existen por la misma razon: **una regla que nadie mide se
 incumple sin que nada grite.**
 
-### 6.1 `toolchain/tools/censo-modular/censo_modular.py` -- el metro de L6a
+### 6.1 `toolchain/tools/censo-modular/` -- el metro de L6a y de L7
 
 ```bash
 python toolchain/tools/censo-modular/censo_modular.py --check
@@ -243,6 +243,18 @@ Y clasifica **la especie**, que es lo que dice cuanto cuesta el corte:
 `CAJON` (media ~30 lineas por funcion: mover texto, demostrable con un hash),
 `GIGANTE` (media 150+: el estado local tiene que volverse un struct primero, y
 eso es diseno), `TABLA` y `mixto`.
+
+**La otra mitad, `herencia.py`, contesta L7** y entra por la misma llamada: una
+puerta, dos preguntas. Lee la generacion que cada crate declara en su cabecera
+--`//! generacion: abuelo`-- y su `[dependencies]`, y dice NO cuando una
+generacion depende de otra **mas alta**, o sea cuando el conocimiento sube.
+
+★ Juzga **crates y no ficheros**, y el motivo esta en L7c de
+[`META-KERNEL_HARD.md`](../META-KERNEL_HARD.md): en una cadena de llamadas la
+dependencia se invierte --`entry.rs`, que es abuelo, hace `use super::dispatch`
+y nombra al padre-- asi que un guardian que leyera los `use` habria condenado
+codigo correcto el primer dia. Entre crates la relacion esta **declarada**, no
+deducida. Hoy: 11 crates etiquetados, 6 aristas juzgadas, todas bajan.
 
 ### 6.2 `toolchain/tools/enlaces/enlaces.py` -- las citas
 

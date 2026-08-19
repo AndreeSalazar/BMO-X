@@ -1,5 +1,7 @@
 //! # MAQUETA -- VERDICT, the great-grandson generation
 //!
+//! generacion: bisnieto
+//!
 //! **The only one with an opinion.** Everything below computes; this one judges.
 //!
 //! It reads finished rects and repeats no arithmetic -- it looks at what the

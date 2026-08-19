@@ -1,5 +1,7 @@
 //! # MAQUETA -- LEX, the grandfather generation
 //!
+//! generacion: abuelo
+//!
 //! Bytes in, tokens out. **This module does not know whether the document is
 //! valid**, what a `div` is, or that a tree will ever be built. It reports raw
 //! lexical facts and nothing else.
