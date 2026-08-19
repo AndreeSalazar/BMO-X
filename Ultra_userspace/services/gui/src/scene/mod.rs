@@ -20,6 +20,9 @@ pub(crate) mod calc;
 pub(crate) mod calc_gen;
 pub(crate) mod switcher;
 pub(crate) mod data;
+/// LA PESTANA `numeros`: como esta el almacen. Salio de `data.rs` por L6a, y
+/// el corte se eligio por nombres libres: no comparte nada con el explorador.
+pub(crate) mod numeros;
 /// EL REPARTO de la ventana de ESTRATOS en paneles. Un solo sitio donde se
 /// decide donde cae cada cosa, para que pintar y acertar con el raton no puedan
 /// discrepar.
