@@ -55,6 +55,9 @@
 /// escribe un sector -- se decide el ORDEN, que es lo que cuesta datos si se
 /// equivoca, y por eso se prueba en el anfitrion.
 pub mod escritura;
+/// PARTIR UN FLUJO EN BLOQUES y construir su arbol: el espejo de `read`. Es lo
+/// que sube el techo de los 96 bytes que caben dentro de un nodo.
+pub mod flujo;
 pub mod espacio;
 pub mod objects;
 pub mod read;

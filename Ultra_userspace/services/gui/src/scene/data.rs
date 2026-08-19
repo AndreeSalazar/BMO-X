@@ -416,6 +416,40 @@ const NODE_BG: u32 = 0x001B_2622;
 /// Y la senalada, otro peldano mas. La profundidad se lee sola.
 const NODE_SEL: u32 = 0x0024_332C;
 
+/// **LO SELECCIONADO VA EN AZUL, y el azul no me lo he inventado.**
+///
+/// `tema/tema.maqueta` lo tiene escrito desde que existe la paleta:
+///
+/// ```text
+///   .accent  #60A5FA   22 usos -- esto se puede tocar
+/// ```
+///
+/// Seleccionar ES decir "esto se puede tocar": lo que este realzado es sobre lo
+/// que van a actuar el menu, `ENTRAR` y `V`. Asi que el color ya estaba
+/// decidido y aqui solo se usa.
+///
+/// ** Y va en AZUL sobre una ventana VERDE a proposito. El verde dice de que
+/// ventana estas hablando --es la identidad de ESTRATOS-- y el azul dice sobre
+/// que vas a actuar. Son dos preguntas distintas: si la seleccion fuera otro
+/// verde habria que compararla con el fondo para verla.
+const SEL_FONDO: u32 = 0x0015_2A45;
+/// El filo de neon. Un pixel del acento entero, sin apagar.
+///
+/// El relleno solo no basta: sobre un fondo oscuro un azul apagado se lee como
+/// una sombra. Lo que hace que se vea SELECCIONADO es el borde vivo, igual que
+/// el subrayado de la pestana activa -- una linea de color se ve en una foto y
+/// un relleno de color no.
+const SEL_NEON: u32 = ACCENT;
+
+/// Pinta el realce de lo seleccionado: relleno y filo.
+fn realce(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32) {
+    p.rect(x, y, w, h, SEL_FONDO);
+    p.rect(x, y, w, 1, SEL_NEON);
+    p.rect(x, y + h - 1, w, 1, SEL_NEON);
+    p.rect(x, y, 1, h, SEL_NEON);
+    p.rect(x + w - 1, y, 1, h, SEL_NEON);
+}
+
 /// **Un color por clase, y el mismo en toda la ventana.** Es el punto 2 de la
 /// spec: si el verde significara una cosa en el padre y otra en los hijos, el
 /// color dejaria de informar y solo decoraria.
@@ -445,8 +479,17 @@ fn node_box(
     // La senalada lleva el borde del acento y un cuerpo un punto mas claro. Un
     // borde blanco a secas se lee como "esto esta roto"; el realce de una
     // seleccion tiene que ser el color del sistema, no una alarma.
+    // ** El filo de la seleccionada es el ACENTO, no el color de su clase.
+    //
+    // Antes era el color de clase, y eso mezclaba dos preguntas en un pixel:
+    // "que es esto" y "es esto lo senalado". Un directorio seleccionado y uno
+    // sin seleccionar se diferenciaban en el TONO del mismo azul celeste.
+    //
+    // Ahora la clase la sigue diciendo el punto de dentro, y el filo dice
+    // seleccion. El mismo azul que la rejilla, para que mirar el mismo nodo en
+    // los dos paneles no de dos respuestas.
     let (edge, cuerpo) = if pointed_at {
-        (color, NODE_SEL)
+        (SEL_NEON, SEL_FONDO)
     } else {
         (DATA_EDGE, NODE_BG)
     };
@@ -715,7 +758,7 @@ fn paint_folders(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
         // El realce de la fila senalada. Va DEBAJO del texto y ocupa el ancho
         // entero: es como se lee "esta es la seleccionada" sin un cursor.
         if i == c.sel {
-            p.rect(z.x, ty, z.w, ROW_H, NODE_SEL);
+            realce(p, z.x, ty, z.w, ROW_H);
         }
         // ** EL ICONO. Aqui habia un cuadrito de color de ocho pixeles.
         //
