@@ -356,6 +356,35 @@ pub(crate) fn fijar_superbloque(nuevo: es::Superblock) {
     unsafe { SUPER = Some(nuevo) };
 }
 
+/// **Cuando se hizo la version que manda ahora**, empaquetada como `INFO_FECHA`.
+///
+/// === Por que se guarda y no se lee cada vez ===
+///
+/// Sacarla del estrato cuesta **una lectura de bloque**, y quien la pregunta es
+/// un panel que se repinta al mover el raton. Es el mismo martillo sobre el
+/// disco que ya costo el detalle de cada hijo del cursor -- y ahi la leccion
+/// quedo escrita: lo que solo cambia al escribir se lee al escribir.
+///
+/// Se pone en dos sitios y en ninguno mas: al montar y al commitear. Los dos son
+/// exactamente los momentos en los que la version que manda cambia.
+pub(crate) static mut ESTRATO_FECHA: u64 = 0;
+
+/// Cuando se hizo la version en curso. `0` = no se sabe.
+///
+/// ** El cero no es "el ano cero": es **no hay fecha**, y hay que distinguirlo.
+/// Un volumen escrito por una maquina sin reloj creible tiene versiones sin
+/// fechar, y pintarlas como 1970 mentiria con mas conviccion que dejarlas en
+/// blanco. Es la misma regla que ya sigue `clock::ahora`.
+pub fn fecha_estrato() -> u64 {
+    unsafe { ESTRATO_FECHA }
+}
+
+/// Relee la fecha del estrato en curso. Cuesta un bloque, y por eso se llama
+/// solo al montar: despues la mantiene el propio commit.
+pub(crate) fn refrescar_fecha() {
+    unsafe { ESTRATO_FECHA = estrato().map_or(0, |e| e.tiempo) };
+}
+
 /// Cual de las dos copias del superbloque manda ahora mismo.
 ///
 /// Se recalcula leyendo, en vez de guardarse al montar: dos fuentes de la misma
@@ -424,6 +453,9 @@ pub fn mount() {
             SUPER = Some(sb);
             MONTADO = true;
         }
+        // La fecha de la version que manda. Cuesta un bloque y se paga UNA vez,
+        // al montar: a partir de aqui la mantiene el propio commit.
+        refrescar_fecha();
 
         // El gate del section 5: nacio este volumen en el disco que tenemos delante?
         // Modelo, serie Y capacidad. Si no cuadra es un volumen clonado, y con

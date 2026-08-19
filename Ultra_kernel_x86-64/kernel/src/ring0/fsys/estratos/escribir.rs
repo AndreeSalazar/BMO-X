@@ -387,10 +387,20 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     // primer dia y aqui no hay reloj cableado, asi que la historia no tiene
     // fechas todavia. Se dice en vez de que alguien lo descubra mirando una
     // lista de versiones todas a la misma hora.
+    // ** LA HORA, QUE HASTA HOY ERA UN CERO.
+    //
+    // El campo estaba en el formato desde el primer dia y aqui se escribia
+    // `0` -- o sea que la historia del volumen existia y **no tenia fechas**:
+    // una lista de versiones todas a la misma hora.
+    //
+    // `clock::ahora()` contesta `0` si la placa no dio una hora creible, y eso
+    // se guarda tal cual: **no se inventa una fecha**. Una version fechada en
+    // 1970 miente con mas conviccion que una sin fechar.
+    let cuando = crate::ring0::dev::clock::ahora();
     let estrato = es::Estrato::new(
         p_raiz,
         sb.estrato,
-        0,
+        cuando,
         es::Autor::Proceso(crate::ring0::task::scheduler::current_pid()),
         "",
     );
@@ -419,6 +429,9 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     }
 
     super::fijar_superbloque(nuevo);
+    // La fecha de la version que acaba de mandar. Se sabe aqui sin leer nada:
+    // es la que acabamos de escribir.
+    unsafe { super::ESTRATO_FECHA = cuando };
     crate::ring0::cabina::info("estratos", motivo(gesto), nuevo.generation);
     Ok(nuevo.generation)
 }

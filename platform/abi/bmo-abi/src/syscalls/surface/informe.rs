@@ -440,6 +440,15 @@ pub const INFO_DATOS_MONTADO: u64 = 0x10;
 pub const INFO_ES_MONTADO: u64 = 0x11;
 
 /// Generacion del superbloque: cuantas transacciones lleva el volumen.
+/// **Cuando se hizo la version en curso**, en el formato de [`INFO_FECHA`].
+///
+/// ** `0` es **sin fechar**, no el ano cero. El campo `tiempo` del estrato
+/// existia desde el primer dia y el kernel escribia un cero en el: la historia
+/// del volumen no tenia fechas. Desde el 2026-08-19 lleva la de la placa, y
+/// sigue siendo cero cuando la placa no da una hora creible -- una version
+/// fechada en 1970 miente con mas conviccion que una sin fechar.
+pub const INFO_ES_FECHA: u64 = 0x49;
+
 pub const INFO_ES_GENERACION: u64 = 0x12;
 
 pub const INFO_ES_BLOQUES: u64 = 0x13;
