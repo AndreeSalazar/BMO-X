@@ -13,6 +13,17 @@
 > componente* y el censo dice *por donde pasa el trabajo de verdad y que se
 > puede TACHAR*. Son dos caras de lo mismo, asi que no tienen familia: tienen
 > pareja.
+>
+> ## ★ Y TIENE HERMANA: [`META-APP_HARD.md`](../META-APP_HARD.md)
+>
+> Escrita el 2026-08-18, un anillo mas arriba y con la misma forma. La del
+> kernel la firma **el silicio**; la de una app la firma **la superficie del
+> sistema** -- que a su vez la firmo el silicio. Contesta *que exige BMO-X de
+> algo que quiera ser una app, y que le devuelve a cambio*.
+>
+> Vive en la raiz y no en `componente/` a proposito: una app no es una pieza de
+> esta maquina, es lo que la maquina existe para alojar. Es una LEY, no un
+> capitulo.
 
 ---
 
