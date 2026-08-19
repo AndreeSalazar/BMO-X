@@ -230,9 +230,42 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
                 // con TAB y sigues en `/cobol/10`. Devolverlo a la
                 // raiz al salir convertiria las dos pestanas en
                 // dos programas.
-                View::Obra => View::Numbers,
+                View::Obra => {
+                    // ** La historia se RELEE al entrar, no al pintar.
+                    //
+                    // Cuesta un bloque por version. Releerla en cada
+                    // repintado serian doscientas lecturas por mover
+                    // el raton -- el mismo martillo sobre el disco
+                    // que ya costo el detalle del cursor.
+                    bmo::estratos::hist_releer();
+                    dsk.win.data.hist_from = 0;
+                    dsk.win.data.hist_sel = 0;
+                    View::Historial
+                }
+                View::Historial => View::Numbers,
             };
             dsk.win.data.seal = Seal::Idle;
+        }
+        // El historial tiene sus propias flechas: mueven por versiones, no
+        // por hijos. Y no escribe nada -- aqui solo se mira.
+        _ if dsk.win.data.view == View::Historial => {
+            let cuantas = bmo::estratos::hist_cuantas() as usize;
+            match c {
+                0x80 => dsk.win.data.hist_sel = dsk.win.data.hist_sel.saturating_sub(1),
+                0x81 => {
+                    if cuantas > 0 && dsk.win.data.hist_sel + 1 < cuantas {
+                        dsk.win.data.hist_sel += 1;
+                    }
+                }
+                _ => served = false,
+            }
+            if served {
+                // Arrastrar la ventana de scroll con la seleccion: si no,
+                // bajar mas alla de lo que se ve senala una caja invisible.
+                if dsk.win.data.hist_sel < dsk.win.data.hist_from {
+                    dsk.win.data.hist_from = dsk.win.data.hist_sel;
+                }
+            }
         }
         _ if dsk.win.data.view == View::Numbers => served = false,
         // ARRIBA / ABAJO por la lista de hijos.

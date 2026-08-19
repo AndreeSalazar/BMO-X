@@ -184,6 +184,47 @@ pub fn recargar() -> bool {
     pregunta(0x0F, 0) != 0
 }
 
+// == ** LA HISTORIA: la cadena de versiones hacia atras ====================
+//
+// Cada estrato guarda un puntero a su padre, asi que recorrer esa cadena ES
+// recorrer la historia. Estaba en el disco desde el primer dia y no tenia
+// puerta, igual que le paso al arbol antes del cursor.
+
+/// **Recorre la cadena y guarda las versiones.** Devuelve cuantas se leyeron.
+///
+/// ** La UNICA de aqui que toca el disco: un bloque por version. Se pide al
+/// abrir el panel y despues de escribir, que son los dos momentos en los que la
+/// historia cambia. Releerla en cada repintado serian doscientas lecturas por
+/// mover el raton.
+pub fn hist_releer() -> u64 {
+    pregunta(0x10, 0)
+}
+/// Cuantas versiones hay guardadas.
+pub fn hist_cuantas() -> u64 {
+    pregunta(0x11, 0)
+}
+/// Se corto por el tope? Una historia recortada en silencio se ve igual que un
+/// volumen joven.
+pub fn hist_recortada() -> bool {
+    pregunta(0x12, 0) != 0
+}
+/// Cuando se hizo la version `i`, en el formato de [`crate::INFO_FECHA`].
+pub fn hist_cuando(i: u64) -> u64 {
+    pregunta(0x13, i)
+}
+/// Que proceso la hizo.
+pub fn hist_quien(i: u64) -> u64 {
+    pregunta(0x14, i)
+}
+/// Lleva nombre? Las que si son PERMANENTES.
+pub fn hist_con_nombre(i: u64) -> bool {
+    pregunta(0x15, i) != 0
+}
+/// El nombre de la version `i`, en `dst`.
+pub fn hist_nombre(i: u64, dst: &mut [u8]) -> usize {
+    texto_de((3u64 << 32) | (i & 0xFFFF_FFFF), dst)
+}
+
 /// El nombre del hijo `i` del nivel `nivel`, en `dst`.
 pub fn nivel_hijo_nombre(nivel: u64, i: u64, dst: &mut [u8]) -> usize {
     texto_de((2u64 << 32) | ((nivel & 0xFFFF) << 16) | (i & 0xFFFF), dst)

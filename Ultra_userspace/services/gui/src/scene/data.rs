@@ -131,6 +131,13 @@ pub(crate) struct DataWindow {
     pub(crate) consola: Consola,
     /// El menu del clic derecho. Ver [`super::menu`].
     pub(crate) menu: Menu,
+    /// Primera version visible en el historial, y cual esta senalada.
+    ///
+    /// Aparte de las del explorador por lo mismo que el scroll del arbol: son
+    /// listas de cosas distintas y compartir el indice haria que moverse por
+    /// una arrastrara la otra a una fila sin relacion.
+    pub(crate) hist_from: usize,
+    pub(crate) hist_sel: usize,
 }
 
 /// **El estado del sellado, que es lo unico de esta ventana que ESCRIBE.**
@@ -196,6 +203,13 @@ pub(crate) enum View {
     ///
     /// El reparto del ancho vive en `scene::zonas`, no aqui.
     Obra,
+    /// ** LA HISTORIA del volumen: la cadena de versiones hacia atras.
+    ///
+    /// Es la tercera pregunta, y distinta de las otras dos: `[numeros]` dice
+    /// COMO ESTA el almacen, `[explorador]` QUE HAY dentro, y esta **QUE HA
+    /// PASADO**. Un volumen que nunca sobreescribe tiene esa tercera respuesta
+    /// y ningun sistema de ficheros clasico la tiene.
+    Historial,
 }
 
 // El alto de la barra de titulo --que es el asa-- sale de `super::TITLE_H`:
@@ -220,6 +234,8 @@ impl DataWindow {
             seal: Seal::Idle,
             consola: Consola::nueva(),
             menu: Menu::nuevo(),
+            hist_from: 0,
+            hist_sel: 0,
         }
     }
 
@@ -933,21 +949,47 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow) {
     let px = px + 2 * bmo::GLIFO_ANCHO;
     // Las pestanas: la activa lleva su subrayado. Un corchete pintado de otro
     // color se pierde en una foto; una linea debajo no.
-    let (c1, c2) = match c.view {
-        View::Numbers => (INK, INK_DIM),
-        View::Obra => (INK_DIM, INK),
+    let (c1, c2, c3) = match c.view {
+        View::Numbers => (INK, INK_DIM, INK_DIM),
+        View::Obra => (INK_DIM, INK, INK_DIM),
+        View::Historial => (INK_DIM, INK_DIM, INK),
     };
     let fin1 = p.texto(px, c.chrome.y + 8, "numeros", c1);
     let px2 = fin1 + 2 * bmo::GLIFO_ANCHO;
     let fin2 = p.texto(px2, c.chrome.y + 8, "explorador", c2);
+    let px3 = fin2 + 2 * bmo::GLIFO_ANCHO;
+    let fin3 = p.texto(px3, c.chrome.y + 8, "historial", c3);
     let (sx, sw) = match c.view {
         View::Numbers => (px, fin1 - px),
         View::Obra => (px2, fin2 - px2),
+        View::Historial => (px3, fin3 - px3),
     };
     p.rect(sx, c.chrome.y + 8 + bmo::GLIFO_ALTO + 2, sw, 2, DATA_TITLE);
 
     if c.view == View::Obra {
         obra(p, c);
+        return;
+    }
+    if c.view == View::Historial {
+        // El panel ocupa el cuerpo entero: aqui no hay arbol ni rejilla que
+        // repartir, hay una sola columna de versiones.
+        let z = Zonas::repartir(&c.chrome, false);
+        historial::paint(
+            p,
+            &z.rejilla,
+            c.hist_from,
+            c.hist_sel,
+            DATA_EDGE,
+            NODE_BG,
+            SEL_NEON,
+            SEL_FONDO,
+        );
+        let y = c.chrome.y + c.chrome.height - bmo::GLIFO_ALTO - 8;
+        p.texto(
+            tx, y,
+            "mirar y ya: volver a una version todavia no esta. TAB sigue.",
+            INK_DIM,
+        );
         return;
     }
 

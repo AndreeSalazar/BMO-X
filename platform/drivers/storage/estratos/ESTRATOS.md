@@ -126,6 +126,33 @@ dejaria al llamante sin saber cuantos bloques va a necesitar.
 [!] O sea que *"BMO-X guarda un fichero en su propio sistema"* es cierto **y** el
 fichero mide como mucho 96 bytes. Las dos mitades de la frase importan.
 
+### ★★★★ GUARDO UN FICHERO EN METAL (2026-08-19)
+
+```
+   new prueba.txt hola   ->   fichero HECHO. generacion 4
+```
+
+`prueba.txt` (4 B) en la rejilla y en el grafo del Ryzen. **El paso 5 dejo de
+ser codigo.**
+
+[!] Y hasta ese dia **no habia funcionado nunca**, por UNA LINEA: `crear_fichero`
+llamaba `reserve` y despues `barrera_hecha` saltandose `cerrar_datos()`, asi que
+la barrera contestaba `FueraDeOrden` y el commit no ocurria. Faltaba desde
+`1c96b133`. Ver Ep. 45 de la bitacora -- la leccion es que **probar cada pieza no
+es probar el camino**.
+
+Lo que se anadio encima ese mismo dia, todo sobre el mismo camino:
+
+```
+   leer desde Ring 3     `Archivo` resuelve ESTRATOS primero, FAT32 despues
+   republicar la rama    crear/borrar/renombrar/carpeta a cualquier profundidad
+   el arbol de un flujo  el techo de 96 bytes, con indireccion y sin `alloc`
+   copia                 el contenido NO cruza el anillo: dos nombres y ya
+   la hora               el campo `tiempo` llevaba un cero desde el dia uno
+   marca NOMBRE          lo que hace PERMANENTE a una version, y la ref de rama
+   historial             la cadena de versiones, dibujada
+```
+
 ### QUE FALTA PARA 1.0, y es UNA SOLA COSA
 
 **Reiniciar y comprobar que sigue ahi.**
