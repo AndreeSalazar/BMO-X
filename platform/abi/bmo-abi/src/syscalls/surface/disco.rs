@@ -179,6 +179,18 @@ pub const ES_GESTO_COPIA: u64 = 0x06;
 /// de 400 GiB cuesta lo mismo que marcar uno vacio.
 pub const ES_GESTO_MARCAR: u64 = 0x07;
 
+/// **Vuelve a la version `arg1` pasos atras.** `0` es la de ahora.
+///
+/// ** No copia nada. Los bloques de aquella version siguen todos en el disco
+/// --nada se sobreescribio nunca-- asi que volver es publicar UN estrato que
+/// apunta a la misma raiz. Volver un volumen de 400 GiB cuesta lo mismo que
+/// volver uno vacio.
+///
+/// ** Y lo de en medio NO se pierde: el estrato nuevo tiene por padre la punta
+/// de ahora, no la version a la que se vuelve. Es un *revert*, no un *reset* --
+/// se deshace el contenido y se conserva el registro de que se deshizo.
+pub const ES_GESTO_VOLVER: u64 = 0x08;
+
 /// Cuanto contenido admite el renglon. Es [`RESIDENTE_MAX`] de ESTRATOS: lo que
 /// cabe DENTRO del nodo, sin gastar un bloque de datos.
 pub const ES_GESTO_MAX: u64 = 96;

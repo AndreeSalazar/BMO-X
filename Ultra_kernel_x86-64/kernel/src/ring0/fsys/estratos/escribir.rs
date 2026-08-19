@@ -558,6 +558,103 @@ pub fn marcar(nombre: &str) -> Result<u64, WriteError> {
     Ok(nuevo.generation)
 }
 
+/// **VUELVE a la version `n` pasos atras.** `0` es la de ahora y no hace nada.
+///
+/// === ** NO SE COPIA NADA, Y ESA ES LA FRASE ENTERA ===
+///
+/// Los bloques de aquella version **siguen todos en el disco**: nada se
+/// sobreescribio nunca. Volver es publicar un estrato nuevo que apunta a la
+/// MISMA raiz que tenia aquella.
+///
+/// UN BLOQUE. Volver un volumen de 400 GiB cuesta exactamente lo mismo que
+/// volver uno vacio, y eso no es una optimizacion: es lo que significa
+/// copy-on-write cuando se lleva hasta el final.
+///
+/// === Y LO DE EN MEDIO NO SE PIERDE ===
+///
+/// El estrato nuevo tiene por padre **la punta de ahora**, no la version a la
+/// que se vuelve. Asi que la cadena queda:
+///
+/// ```text
+///   nueva -> 50 -> 49 -> ... -> 20 -> ...
+///   (el arbol de la 20)   (la historia entera, intacta)
+/// ```
+///
+/// Es un *revert*, no un *reset*: se deshace el contenido y **se conserva el
+/// registro de que se deshizo**. En un almacen eso no es un detalle -- borrar
+/// la historia para volver atras es perder la unica prueba de lo que paso.
+///
+/// === Va SIN NOMBRE, como cualquier gesto ===
+///
+/// Un nombre hace permanente a una version, y eso lo decide una persona. Volver
+/// es un gesto mas; si esta vuelta importa, se marca despues. Ponerle nombre
+/// aqui seria decidir por el dueno que su disco no puede adelgazar.
+pub fn volver(n: usize) -> Result<u64, WriteError> {
+    let sb = superbloque().ok_or(WriteError::SinVolumen)?;
+    if n == 0 {
+        // Volver a donde ya estas no es un error, pero tampoco es una version
+        // nueva: se dice que no en vez de gastar un bloque en no cambiar nada.
+        return Err(WriteError::NoCabe);
+    }
+    // Se recorre la cadena hasta la que se pide. Cuesta un bloque por paso y se
+    // paga UNA vez, aqui -- no en el panel que la ensena.
+    let mut donde = sb.estrato;
+    let mut destino = None;
+    let mut k = 0usize;
+    while k <= n {
+        if donde.es_nulo() {
+            break;
+        }
+        let d = super::seguir(&donde, 0).ok_or(WriteError::NoSeLeeLaRaiz)?;
+        let e = es::Estrato::decode(d).map_err(|_| WriteError::NoSeLeeLaRaiz)?;
+        if k == n {
+            destino = Some(e.raiz);
+            break;
+        }
+        donde = e.padre;
+        k += 1;
+    }
+    // Pedir una version que no existe se dice, en vez de volver a la mas vieja
+    // que si -- eso seria obedecer una orden distinta de la que se dio.
+    let raiz = destino.ok_or(WriteError::RutaNoEsta)?;
+
+    let mut t = es::escritura::Transaccion::open(&sb, copia_en_uso(), identidad_ok())
+        .map_err(WriteError::Rechazada)?;
+    let base = t.reserve(1).map_err(WriteError::Rechazada)?;
+
+    let cuando = crate::ring0::dev::clock::ahora();
+    let estrato = es::Estrato::new(
+        raiz,
+        sb.estrato,
+        cuando,
+        es::Autor::Proceso(crate::ring0::task::scheduler::current_pid()),
+        "",
+    );
+    let bytes = estrato.encode();
+    poner(base, &bytes)?;
+    let p_estrato = BlockPtr::nuevo(base, 0, &bytes);
+
+    t.cerrar_datos().map_err(WriteError::Rechazada)?;
+    if !disk::flush() {
+        t.abandonar();
+        return Err(WriteError::SinBarrera);
+    }
+    t.barrera_hecha().map_err(WriteError::Rechazada)?;
+    let (destino_sb, nuevo) = t.commit(p_estrato).map_err(WriteError::Rechazada)?;
+    if !write_superblock(destino_sb, &nuevo.encode()) {
+        crate::ring0::cabina::fault("estratos", "no se pudo escribir el superbloque", destino_sb);
+        return Err(WriteError::NoEscribio);
+    }
+    if !disk::flush() {
+        crate::ring0::cabina::warn("estratos", "el commit no se pudo vaciar al plato", destino_sb);
+        return Err(WriteError::SinBarrera);
+    }
+    super::fijar_superbloque(nuevo);
+    unsafe { super::ESTRATO_FECHA = cuando };
+    crate::ring0::cabina::info("estratos", "vuelta a una version anterior", nuevo.generation);
+    Ok(nuevo.generation)
+}
+
 /// **Crea la carpeta `nombre` dentro de `ruta`.**
 pub fn crear_carpeta(ruta: &str, nombre: &str) -> Result<u64, WriteError> {
     aplicar(ruta, Gesto::Carpeta { nombre })

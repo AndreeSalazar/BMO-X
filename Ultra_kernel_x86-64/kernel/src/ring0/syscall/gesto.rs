@@ -125,6 +125,13 @@ pub(super) fn servir(pid: u32, arg0: u64, arg1: u64) -> u64 {
             crate::ring0::cabina::info("estratos", "marcar la version", pid as u64);
             escribir::marcar(nombre).unwrap_or(0)
         }
+        // El unico que no necesita ningun renglon: el numero cabe en `arg1`.
+        // Pedir una ruta para esto habria sido inventar un texto donde ya hay
+        // un entero.
+        ES_GESTO_VOLVER => {
+            crate::ring0::cabina::info("estratos", "volver a una version", pid as u64);
+            escribir::volver(arg1 as usize).unwrap_or(0)
+        }
         ES_GESTO_RENOMBRAR => hacer(pid, "renombrar una entrada", |ruta, datos| {
             let (dir, viejo) = partir(ruta)?;
             // El nombre nuevo viene por el renglon del contenido.

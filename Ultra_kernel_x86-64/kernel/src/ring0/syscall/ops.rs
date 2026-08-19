@@ -264,6 +264,9 @@ pub(crate) const ES_GESTO_COPIA: u64 = 0x06;
 /// Marca la version en curso con el nombre que traiga la ruta. Un nombre es lo
 /// que hace PERMANENTE a una version: el recolector no la suelta jamas.
 pub(crate) const ES_GESTO_MARCAR: u64 = 0x07;
+/// Vuelve a la version `arg1` pasos atras. No copia nada: publica un estrato
+/// que apunta a la MISMA raiz que aquella.
+pub(crate) const ES_GESTO_VOLVER: u64 = 0x08;
 pub(crate) const ES_GESTO_MAX: u64 = 96;
 /// Las ordenes del disco. Espejo de `bmo_abi::...::DISCO_OP_*`.
 ///

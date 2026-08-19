@@ -269,6 +269,7 @@ pub const ES_GESTO_QUITAR: u64 = 0x04;
 pub const ES_GESTO_RENOMBRAR: u64 = 0x05;
 pub const ES_GESTO_COPIA: u64 = 0x06;
 pub const ES_GESTO_MARCAR: u64 = 0x07;
+pub const ES_GESTO_VOLVER: u64 = 0x08;
 /// Lo que cabe DENTRO del nodo, sin gastar un bloque de datos.
 pub const ES_GESTO_MAX: u64 = 96;
 
@@ -349,6 +350,15 @@ pub fn quitar(ruta: &[u8]) -> u64 {
     mandar_ruta(ruta);
     mandar_datos(&[]);
     invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_QUITAR, 0, 0).value
+}
+
+/// **Vuelve a la version `n` pasos atras.** Devuelve la generacion, o `0`.
+///
+/// ** No copia nada y no pierde lo de en medio: publica UN estrato que apunta a
+/// la misma raiz que aquella, con la punta de ahora por padre. Es un *revert*,
+/// no un *reset*.
+pub fn volver(n: u64) -> u64 {
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_VOLVER, n, 0).value
 }
 
 /// **Marca la version en curso con `nombre`.** Devuelve la generacion, o `0`.
