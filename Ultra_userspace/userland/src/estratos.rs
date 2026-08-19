@@ -270,7 +270,13 @@ pub const ES_GESTO_RENOMBRAR: u64 = 0x05;
 pub const ES_GESTO_COPIA: u64 = 0x06;
 pub const ES_GESTO_MARCAR: u64 = 0x07;
 pub const ES_GESTO_VOLVER: u64 = 0x08;
+pub const ES_GESTO_ORIGEN: u64 = 0x09;
+pub const ES_GESTO_FICHERO_DE: u64 = 0x0A;
 /// Lo que cabe DENTRO del nodo, sin gastar un bloque de datos.
+///
+/// ** Es el tope DEL RENGLON, no el de un fichero. [`crear_desde`] no pasa por
+/// aqui: entrega el contenido por un bloque de memoria y su unico techo es el
+/// del volumen.
 pub const ES_GESTO_MAX: u64 = 96;
 
 /// Manda la ruta por el renglon de [`OP_RUTA`], de ocho en ocho.
@@ -332,6 +338,52 @@ pub fn crear_fichero(ruta: &[u8], datos: &[u8]) -> u64 {
     mandar_ruta(ruta);
     mandar_datos(datos);
     invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_FICHERO, 0, 0).value
+}
+
+/// **Crea `ruta` con `n` bytes tomados de `bloque`, a partir de `desde`.**
+/// Devuelve la generacion nueva, o `0`.
+///
+/// === Por que esto existe, y que rodeo quita ===
+///
+/// [`crear_fichero`] manda el contenido por el renglon, de ocho en ocho, y para
+/// en 96 bytes. Un MiB por ahi serian 131.072 cruces de anillo.
+///
+/// ** Aqui el contenido **no viaja: viaja donde esta**. Se le da al kernel el
+/// handle de un bloque propio y el se lo lleva al disco. Son DOS llamadas para
+/// cualquier tamano, y el kernel comprueba el rango con una resta contra lo que
+/// el mismo entrego -- no hay ningun puntero de Ring 3 que validar.
+///
+/// [!] Sin esto, la unica forma de meter en ESTRATOS algo mas grande que 96
+/// bytes era dejarlo antes en FAT32 y llamar a [`copiar`]. O sea que un
+/// documento tenia que pasar por un sistema de ficheros **que sobreescribe**
+/// para llegar al que no sobreescribe.
+///
+/// ```no_run
+/// let m = bmo::Memoria::request(64 * 1024)?;
+/// // ... llenar m.base() ...
+/// bmo::estratos::crear_desde(b"datos/informe.txt", m.handle(), 0, 4096);
+/// ```
+pub fn crear_desde(ruta: &[u8], bloque: u64, desde: u64, n: u64) -> u64 {
+    if n == 0 {
+        return 0;
+    }
+    // El origen se anota ANTES de la ruta a proposito: si el handle no vale, no
+    // se ha llenado ningun renglon y no hay nada que limpiar.
+    if invoke(
+        CURRENT_TASK,
+        OP_ES_GESTO,
+        ES_GESTO_ORIGEN | (desde << 8),
+        bloque,
+        0,
+    )
+    .value
+        == 0
+    {
+        return 0;
+    }
+    mandar_ruta(ruta);
+    mandar_datos(&[]);
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_FICHERO_DE, n, 0).value
 }
 
 /// **Crea la carpeta `ruta`**, vacia. Devuelve la generacion nueva, o `0`.

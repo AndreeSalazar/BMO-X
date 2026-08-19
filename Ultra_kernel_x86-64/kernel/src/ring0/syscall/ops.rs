@@ -271,6 +271,14 @@ pub(crate) const ES_GESTO_MARCAR: u64 = 0x07;
 /// Vuelve a la version `arg1` pasos atras. No copia nada: publica un estrato
 /// que apunta a la MISMA raiz que aquella.
 pub(crate) const ES_GESTO_VOLVER: u64 = 0x08;
+/// Anota DE DONDE sale el contenido: `arg1` es el handle de un bloque de
+/// `KIND_MEMORIA` propio y los bits altos de `arg0` el desplazamiento. No lee ni
+/// escribe nada -- lo ejecuta `ES_GESTO_FICHERO_DE`.
+pub(crate) const ES_GESTO_ORIGEN: u64 = 0x09;
+/// Crea un fichero con los `arg1` bytes del bloque anotado. Es a este renglon lo
+/// que `ARCH_OP_ESCRIBIR_DE` es al de FAT32: el contenido no viaja, viaja donde
+/// esta. Sin esto, meter mas de 96 bytes obliga a pasar por FAT32.
+pub(crate) const ES_GESTO_FICHERO_DE: u64 = 0x0A;
 pub(crate) const ES_GESTO_MAX: u64 = 96;
 /// Las ordenes del disco. Espejo de `bmo_abi::...::DISCO_OP_*`.
 ///

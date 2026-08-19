@@ -51,6 +51,7 @@
 use super::ops::*;
 use super::{datos_limpiar, datos_meter, datos_tomar, ruta_tomar};
 use crate::ring0::fsys::estratos::escribir::{self, Gesto};
+use crate::ring0::obj::cap;
 
 /// Parte `a/b/c.txt` en `("a/b", "c.txt")`.
 ///
@@ -114,8 +115,29 @@ pub(super) fn servir(pid: u32, arg0: u64, arg1: u64) -> u64 {
             if origen.is_empty() {
                 return None;
             }
-            Some(escribir::aplicar(dir, Gesto::Copia { nombre, origen }))
+            // ** El TIPO del origen no se construye aqui. `copiar_fichero` lo
+            // pone, y asi `Origen` se queda dentro de `fsys::estratos` -- que
+            // es de quien es. El borde resuelve capabilities y parte rutas; de
+            // como se llama por dentro el sitio de donde salen los bytes no
+            // tiene por que enterarse.
+            Some(escribir::copiar_fichero(dir, nombre, origen))
         }),
+        // ** ANOTAR DE DONDE SALE EL CONTENIDO. No lee un byte.
+        ES_GESTO_ORIGEN => origen_poner(pid, arg1, arg0 >> 8),
+        // ** Y EJECUTARLO. `arg1` son los bytes a tomar.
+        //
+        // El origen se toma --y el renglon se vacia-- ANTES de mirar la ruta, y
+        // por el mismo motivo que `hacer` vacia los otros dos salga bien o mal:
+        // un gesto que falla no puede dejarle el origen puesto al siguiente, y
+        // el siguiente puede ser otro fichero.
+        ES_GESTO_FICHERO_DE => {
+            let origen = origen_tomar(pid, arg1);
+            hacer(pid, "fichero desde un bloque propio", |ruta, _| {
+                let (dir, nombre) = partir(ruta)?;
+                let (base, size) = origen?;
+                Some(unsafe { escribir::crear_desde(dir, nombre, base, size) })
+            })
+        }
         // ** El unico que NO parte la ruta: aqui no hay destino, hay un
         // NOMBRE. Partirlo por la ultima barra convertiria `copia de ayer` en
         // otra cosa el dia que alguien use una barra en un nombre.
@@ -174,4 +196,71 @@ fn hacer(
             0
         }
     }
+}
+
+// -- ** EL RENGLON DEL ORIGEN, y por que la capability se resuelve AQUI -------
+//
+// Los otros dos renglones --la ruta y el contenido-- viven en `syscall/mod.rs`.
+// Este no, por dos razones que apuntan al mismo sitio:
+//
+//   1. `syscall/mod.rs` esta en la linea base de L6a con 1.363 lineas y **no
+//      puede crecer**. Un renglon mas ahi lo rechaza el censo, y con razon.
+//   2. Este renglon no guarda bytes: guarda una capability YA RESUELTA. Su sitio
+//      es donde se resuelve, y eso es el borde del syscall -- que es este
+//      fichero tanto como `mod.rs`.
+//
+// ** Lo que NO cambia es la regla que `mod.rs` escribio al despachar
+// `ARCH_OP_LEER_EN`: *hace falta resolver una SEGUNDA capability y las
+// capabilities viven en este borde*. Se resuelve en el borde. Lo que baja a
+// `fsys::estratos` es una direccion ya comprobada, no un handle.
+static mut ORIGEN_BASE: u64 = 0;
+static mut ORIGEN_DESDE: u64 = 0;
+static mut ORIGEN_PID: u32 = u32::MAX;
+
+/// Anota el bloque `handle` con su desplazamiento. `1` si vale, `0` si no.
+///
+/// ** Se pide `RIGHT_READ` y no `RIGHT_WRITE`: el kernel LEE el bloque para
+/// llevarselo al disco, no escribe dentro. Exigir mas autoridad de la que la
+/// operacion usa es lo que un sistema de capabilities no debe hacer -- y es la
+/// misma distincion que separa `ARCH_OP_LEER_EN` de `ARCH_OP_ESCRIBIR_DE`.
+fn origen_poner(pid: u32, handle: u64, desde: u64) -> u64 {
+    let bloque = match cap::resolve(pid, handle, cap::RIGHT_READ) {
+        Ok(b) if b.kind == cap::KIND_MEMORIA => b,
+        _ => {
+            crate::ring0::cabina::warn("estratos", "ese handle no es un bloque propio", handle);
+            return 0;
+        }
+    };
+    unsafe {
+        ORIGEN_BASE = bloque.object;
+        ORIGEN_DESDE = desde;
+        ORIGEN_PID = pid;
+    }
+    1
+}
+
+/// La direccion y el tamano, **y vacia el renglon**. `None` si no cuadra.
+///
+/// La comprobacion del rango es UNA RESTA contra lo que el kernel entrego, y esa
+/// es la idea entera: no hay que validar un puntero de Ring 3 porque no hay
+/// ningun puntero de Ring 3 -- hay un bloque que dimos nosotros.
+fn origen_tomar(pid: u32, cuantos: u64) -> Option<(u64, u32)> {
+    let (base, desde) = unsafe {
+        if ORIGEN_PID != pid {
+            return None;
+        }
+        ORIGEN_PID = u32::MAX;
+        (ORIGEN_BASE, ORIGEN_DESDE)
+    };
+    // Un fichero de cero bytes no tiene arbol que construir. Se dice aqui, que
+    // es donde el numero llega, en vez de dejar que lo descubra `plan_de`.
+    if cuantos == 0 || cuantos > u32::MAX as u64 {
+        return None;
+    }
+    let tam = crate::ring0::obj::memory::handed_over_by(pid);
+    if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {
+        crate::ring0::cabina::warn("estratos", "ese rango no cae dentro del bloque", cuantos);
+        return None;
+    }
+    Some((base + desde, cuantos as u32))
 }
