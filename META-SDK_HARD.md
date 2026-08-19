@@ -314,7 +314,8 @@ cabecera de REX.
 
 ---
 
-Ver [`META-KERNEL_HARD.md`](META-KERNEL_HARD.md) (la ley de la maquina),
+Ver [`EL_FUERO.md`](EL_FUERO.md) (el reparto entero: que se concede y que se
+exige), [`META-KERNEL_HARD.md`](META-KERNEL_HARD.md) (la ley de la maquina),
 [`META-APP_HARD.md`](META-APP_HARD.md) (la ley de una app),
 [`QUE_DESBLOQUEA.md`](docs/identidad/QUE_DESBLOQUEA.md) (que desbloquea que, y
 por que no es el lenguaje) y

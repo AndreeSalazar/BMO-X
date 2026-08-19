@@ -1,7 +1,9 @@
 # REX -- las cabeceras con las que se escribe una app de BMO-X
 
-> **La ley esta en [`META-SDK_HARD.md`](../../../../../META-SDK_HARD.md).** Esto
-> es el indice: que hay, para que sirve cada pieza y por donde se empieza.
+> **La ley esta en [`META-SDK_HARD.md`](../../../../../META-SDK_HARD.md)** y el
+> reparto entero --lo que el sistema concede y lo que exige-- en
+> [`EL_FUERO.md`](../../../../../EL_FUERO.md). Esto es el indice de REX: que
+> hay, para que sirve cada pieza y por donde se empieza.
 
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
 programa. Nueve cabeceras, 2.316 lineas, y dos propiedades que conviene saber
