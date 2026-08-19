@@ -348,6 +348,126 @@ pub fn entradas_con(
     Ok(fin + ENTRADA_LEN)
 }
 
+/// **El bloque de `:entradas` de un directorio, con una entrada MENOS.**
+///
+/// La mitad pura de BORRAR. `previas` son los bytes de hoy y `dst` recibe el
+/// bloque nuevo entero; devuelve cuantos bytes utiles tiene.
+///
+/// === Borrar aqui NO destruye nada, y eso no es un detalle ===
+///
+/// Se escribe un bloque de entradas NUEVO sin esa entrada. El bloque de ayer
+/// sigue donde estaba, el nodo del fichero sigue donde estaba, y el estrato
+/// anterior los alcanza a los dos. **Borrar en ESTRATOS es dejar de nombrar,
+/// no destruir** -- lo que se suelta de verdad es cosa del recolector, y ese
+/// es exactamente el trabajo que esta operacion le CREA (ver section 0.1.1).
+///
+/// Por eso un explorador de este sistema puede tener un boton de borrar sin que
+/// de miedo, cosa que sobre FAT32 no seria verdad.
+///
+/// ** UN NOMBRE QUE NO ESTA ES UN ERROR, no un exito silencioso. Contestar "ya
+/// esta" a `borra loquesea.txt` deja al que lo escribio creyendo que habia algo
+/// y ya no. Que no estuviera nunca y que se haya ido son dos cosas distintas.
+///
+/// [!] **El orden de las que quedan se conserva.** La rejilla y el grafo del
+/// escritorio senalan sus hijos POR INDICE; reordenarlas al borrar movria la
+/// seleccion a otro fichero sin que nadie lo pidiera.
+pub fn entradas_sin(
+    previas: &[u8],
+    nombre: &str,
+    dst: &mut [u8; BLOQUE],
+) -> Result<usize, FormatError> {
+    let cuantas = previas.len() / ENTRADA_LEN;
+    if previas.len() % ENTRADA_LEN != 0 {
+        return Err(FormatError::BadField);
+    }
+    // Se busca ANTES de copiar nada: si no esta, el buffer del llamante se
+    // queda como estaba en vez de con medio directorio dentro.
+    let mut quitar = None;
+    for i in 0..cuantas {
+        let e = Entrada::decode(&previas[i * ENTRADA_LEN..(i + 1) * ENTRADA_LEN])?;
+        if e.se_llama(nombre) {
+            quitar = Some(i);
+            break;
+        }
+    }
+    let quitar = quitar.ok_or(FormatError::BadField)?;
+    *dst = [0u8; BLOQUE];
+    let mut fin = 0usize;
+    for i in 0..cuantas {
+        if i == quitar {
+            continue;
+        }
+        dst[fin..fin + ENTRADA_LEN]
+            .copy_from_slice(&previas[i * ENTRADA_LEN..(i + 1) * ENTRADA_LEN]);
+        fin += ENTRADA_LEN;
+    }
+    Ok(fin)
+}
+
+/// **El bloque de `:entradas` con una entrada RENOMBRADA.**
+///
+/// === Por que no es borrar y volver a crear ===
+///
+/// Porque **el nodo no se toca**. La entrada nueva apunta al MISMO `BlockPtr`,
+/// asi que el contenido, los atributos y la `:firma` del fichero siguen siendo
+/// los de antes -- renombrar un fichero firmado no le invalida la firma, y esa
+/// propiedad se pierde en cuanto se hace por el camino largo.
+///
+/// Un nombre es una entrada del padre; el fichero ni se entera.
+///
+/// ** Y conserva SU SITIO en la lista. Borrar-y-anadir lo mandaria al final, y
+/// una carpeta que se reordena sola cada vez que renombras algo es una carpeta
+/// en la que no se puede trabajar.
+///
+/// Se rechaza si `viejo` no esta, y tambien si `nuevo` ya existe -- por lo
+/// mismo que [`entradas_con`]: sustituir es politica, y la politica la toma
+/// quien llama.
+pub fn entradas_renombrando(
+    previas: &[u8],
+    viejo: &str,
+    nuevo: &str,
+    dst: &mut [u8; BLOQUE],
+) -> Result<usize, FormatError> {
+    let cuantas = previas.len() / ENTRADA_LEN;
+    if previas.len() % ENTRADA_LEN != 0 {
+        return Err(FormatError::BadField);
+    }
+    let mut cual = None;
+    for i in 0..cuantas {
+        let e = Entrada::decode(&previas[i * ENTRADA_LEN..(i + 1) * ENTRADA_LEN])?;
+        if e.se_llama(nuevo) && !e.se_llama(viejo) {
+            return Err(FormatError::BadField);
+        }
+        if e.se_llama(viejo) {
+            cual = Some((i, e.nodo));
+        }
+    }
+    let (cual, nodo) = cual.ok_or(FormatError::BadField)?;
+    // El nombre nuevo se valida antes de tocar `dst`, igual que en `entradas_con`.
+    let renombrada = Entrada::nueva(nuevo, nodo)?;
+    *dst = [0u8; BLOQUE];
+    dst[..previas.len()].copy_from_slice(previas);
+    let ini = cual * ENTRADA_LEN;
+    dst[ini..ini + ENTRADA_LEN].copy_from_slice(&renombrada.encode());
+    Ok(cuantas * ENTRADA_LEN)
+}
+
+/// **El nodo de un directorio RECIEN NACIDO**, sin una sola entrada.
+///
+/// No lleva `:entradas`, y no es un nodo a medias: **un directorio es un nodo
+/// con `:entradas`, y uno vacio es uno que todavia no lo tiene**. Los dos
+/// lectores de esta casa ya lo trataban asi antes de que existiera esta funcion
+/// --`listar_en` contesta `None` y el cursor lo cuenta como cero hijos, y
+/// `crear_fichero` lee `None` como "ninguna previa"--, asi que crear carpetas no
+/// estrena ningun camino: estrena el unico que ya estaba probado.
+///
+/// La alternativa --gastar un bloque de 4 KiB para guardar cero entradas-- seria
+/// pagar un bloque por cada carpeta vacia y ademas inventarse un segundo estado
+/// para lo mismo.
+pub fn nodo_de_directorio_vacio() -> [u8; NODO_LEN] {
+    Nodo::nuevo(Tipo::Directorio).encode()
+}
+
 /// **El nodo de un directorio** que apunta a ese bloque de entradas.
 ///
 /// `entradas` es el puntero al bloque que acaba de llenar [`entradas_con`], y
@@ -594,6 +714,109 @@ mod guardar {
         let n = entradas_con(&[], "nota.txt", ptr(10, b"a"), &mut b).unwrap();
         let mut b2 = [0u8; BLOQUE];
         assert!(entradas_con(&b[..n], "nota.txt", ptr(11, b"b"), &mut b2).is_err());
+    }
+
+    // == ** QUITAR, RENOMBRAR Y NACER: la mitad pura de gestionar ==========
+    //
+    // Las tres se prueban aqui, en el anfitrion y sin disco, por la misma razon
+    // que se probo asi la de crear: el ORDEN de una transaccion lo impone el
+    // tipo, pero LO QUE SE ESCRIBE se puede comprobar entero sin encender nada.
+
+    /// La casilla que vale: se quita una y las otras dos siguen, EN SU ORDEN.
+    #[test]
+    fn quitar_una_deja_las_demas_y_en_el_mismo_orden() {
+        let mut b = [0u8; BLOQUE];
+        let n = entradas_con(&[], "uno.txt", ptr(10, b"a"), &mut b).unwrap();
+        let mut b2 = [0u8; BLOQUE];
+        let n = entradas_con(&b[..n], "dos.txt", ptr(11, b"b"), &mut b2).unwrap();
+        let mut b3 = [0u8; BLOQUE];
+        let n = entradas_con(&b2[..n], "tres.txt", ptr(12, b"c"), &mut b3).unwrap();
+
+        let mut fuera = [0u8; BLOQUE];
+        let m = entradas_sin(&b3[..n], "dos.txt", &mut fuera).unwrap();
+        assert_eq!(m, 2 * ENTRADA_LEN);
+        assert_eq!(Entrada::decode(&fuera[..ENTRADA_LEN]).unwrap().nombre_str(), "uno.txt");
+        let seg = &fuera[ENTRADA_LEN..2 * ENTRADA_LEN];
+        assert_eq!(Entrada::decode(seg).unwrap().nombre_str(), "tres.txt");
+    }
+
+    /// ** EL BLOQUE DE AYER NO SE TOCA. Es la casilla del copy-on-write por el
+    /// otro lado: borrar tampoco sobreescribe, y por eso el estrato anterior
+    /// sigue teniendo el fichero entero.
+    #[test]
+    fn borrar_no_toca_el_bloque_viejo() {
+        let mut viejo = [0u8; BLOQUE];
+        let n = entradas_con(&[], "nota.txt", ptr(10, b"a"), &mut viejo).unwrap();
+        let mut nuevo = [0u8; BLOQUE];
+        assert_eq!(entradas_sin(&viejo[..n], "nota.txt", &mut nuevo).unwrap(), 0);
+        // El de ayer, intacto: ahi sigue el fichero para quien lo alcance.
+        assert_eq!(Entrada::decode(&viejo[..ENTRADA_LEN]).unwrap().nombre_str(), "nota.txt");
+    }
+
+    /// Borrar lo que no esta NO es un exito silencioso.
+    #[test]
+    fn quitar_lo_que_no_esta_lo_dice() {
+        let mut b = [0u8; BLOQUE];
+        let n = entradas_con(&[], "uno.txt", ptr(10, b"a"), &mut b).unwrap();
+        let mut fuera = [0u8; BLOQUE];
+        assert!(entradas_sin(&b[..n], "otro.txt", &mut fuera).is_err());
+    }
+
+    /// ** RENOMBRAR NO TOCA EL NODO, y esa es toda la diferencia con
+    /// borrar-y-crear: el `BlockPtr` de la entrada nueva es el de la vieja, asi
+    /// que el contenido y la `:firma` del fichero siguen siendo los suyos.
+    #[test]
+    fn renombrar_conserva_el_nodo_y_su_sitio() {
+        let mut b = [0u8; BLOQUE];
+        let n = entradas_con(&[], "uno.txt", ptr(10, b"a"), &mut b).unwrap();
+        let mut b2 = [0u8; BLOQUE];
+        let n = entradas_con(&b[..n], "dos.txt", ptr(11, b"b"), &mut b2).unwrap();
+
+        let mut r = [0u8; BLOQUE];
+        let m = entradas_renombrando(&b2[..n], "uno.txt", "nuevo.txt", &mut r).unwrap();
+        assert_eq!(m, 2 * ENTRADA_LEN);
+        let e = Entrada::decode(&r[..ENTRADA_LEN]).unwrap();
+        assert_eq!(e.nombre_str(), "nuevo.txt");
+        // El nodo, el MISMO. Si esto cambiara, renombrar seria copiar.
+        assert_eq!(e.nodo.lba, 10);
+        // Y sigue siendo la primera: renombrar no reordena la carpeta.
+        let seg = &r[ENTRADA_LEN..2 * ENTRADA_LEN];
+        assert_eq!(Entrada::decode(seg).unwrap().nombre_str(), "dos.txt");
+    }
+
+    /// Renombrar a un nombre que ya existe se rechaza, igual que crearlo.
+    /// Sustituir es politica y la politica la toma quien llama.
+    #[test]
+    fn renombrar_encima_de_otro_no_pasa_de_aqui() {
+        let mut b = [0u8; BLOQUE];
+        let n = entradas_con(&[], "uno.txt", ptr(10, b"a"), &mut b).unwrap();
+        let mut b2 = [0u8; BLOQUE];
+        let n = entradas_con(&b[..n], "dos.txt", ptr(11, b"b"), &mut b2).unwrap();
+        let mut r = [0u8; BLOQUE];
+        assert!(entradas_renombrando(&b2[..n], "uno.txt", "dos.txt", &mut r).is_err());
+    }
+
+    /// Y renombrar algo al MISMO nombre no es un choque consigo mismo.
+    #[test]
+    fn renombrar_al_mismo_nombre_no_choca_consigo_mismo() {
+        let mut b = [0u8; BLOQUE];
+        let n = entradas_con(&[], "uno.txt", ptr(10, b"a"), &mut b).unwrap();
+        let mut r = [0u8; BLOQUE];
+        assert!(entradas_renombrando(&b[..n], "uno.txt", "uno.txt", &mut r).is_ok());
+    }
+
+    /// ** UNA CARPETA VACIA ES UN NODO SIN `:entradas`, y los lectores de esta
+    /// casa ya lo trataban asi antes de que se pudiera crear una.
+    #[test]
+    fn una_carpeta_recien_nacida_es_un_directorio_sin_entradas() {
+        let bytes = nodo_de_directorio_vacio();
+        let n = Nodo::decode(&bytes).unwrap();
+        assert_eq!(n.tipo, Tipo::Directorio);
+        assert!(n.attr(ATTR_ENTRADAS).is_none(), "vacia = todavia no tiene la lista");
+        // Y la primera entrada que se le meta parte de cero, que es justo lo que
+        // `crear_fichero` ya hacia leyendo `None` como "ninguna previa".
+        let mut b = [0u8; BLOQUE];
+        assert_eq!(entradas_con(&[], "dentro.txt", ptr(50, b"x"), &mut b).unwrap(), ENTRADA_LEN);
     }
 
     /// El techo de la carpeta se dice en vez de descubrirse el dia 37.
