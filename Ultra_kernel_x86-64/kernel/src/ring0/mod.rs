@@ -29,6 +29,13 @@
 /// adivinable; un handle concedido no.
 pub mod obj {
     pub mod file;
+    /// LA PUERTA DE ESTRATOS para un `Archivo`: leer desde Ring 3 lo que se
+    /// escribio en el sistema de ficheros propio. Tramo 1.1.
+    mod estratos;
+    /// EL ARCHIVO QUE SE ESTA TRAYENDO: la carga por trozos de una ranura.
+    /// Salio de `file.rs` por L6a, y el corte se eligio por nombres libres --
+    /// es un ciclo de vida, no un camino de datos.
+    mod cargando;
     /// `KIND_AUDIO`: el derecho a hacer ruido. Es el CONTRATO, no el driver --
     /// ver la cabecera del modulo.
     pub mod audio;
