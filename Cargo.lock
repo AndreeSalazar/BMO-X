@@ -126,6 +126,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-fat"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-fat32"
 version = "0.1.0"
 dependencies = [

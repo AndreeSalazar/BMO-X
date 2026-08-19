@@ -1,0 +1,16 @@
+[package]
+name = "bmo-fat"
+version = "0.1.0"
+edition = "2021"
+description = "FAT12/16/32 como FORMATO y como FRONTERA: lo que UEFI exige del volumen de arranque"
+
+[lib]
+
+[dependencies]
+# NINGUNA, y por ahora es literal: `bpb.rs` no lee del disco -- recibe el sector
+# de arranque ya leido y contesta. El dia que entre `datos.rs` hara falta
+# `bmo-block`, que es EL CONTRATO; nunca un driver concreto.
+#
+# Se llama `bmo-fat` y no `bmo-fat32` porque FAT12, FAT16 y FAT32 son UN formato
+# con tres anchuras de entrada: mismo BPB, misma entrada de directorio, mismo
+# nombre largo. Ver `docs/plan/PLAN_FAT32.md`, seccion 5.
