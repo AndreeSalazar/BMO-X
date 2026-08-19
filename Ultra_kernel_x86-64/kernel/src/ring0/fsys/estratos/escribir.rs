@@ -331,12 +331,33 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
 
     // -- El estrato, apuntando a la raiz NUEVA.
     let p_raiz = hijo.ok_or(WriteError::NoSeLeeLaRaiz)?;
+    // ** EL MOTIVO VA VACIO, Y ESO NO ES UN OLVIDO.
+    //
+    // `Estrato::con_nombre()` mira si el motivo esta puesto, y la section 9 dice
+    // que **los estratos CON NOMBRE no los suelta el recolector jamas**. O sea
+    // que el motivo no es una etiqueta descriptiva: es lo que hace PERMANENTE a
+    // una version.
+    //
+    // Yo escribia "fichero nuevo" en todos. Con eso, cada gesto quedaba marcado
+    // como permanente y **el recolector no habria podido soltar ni uno** -- el
+    // volumen creceria para siempre y nadie lo notaria hasta que se llenara.
+    // Justo lo contrario de lo que dice la prueba que ya existia:
+    // `un_estrato_automatico_no_lleva_nombre`.
+    //
+    // Un gesto normal es AUTOMATICO y va sin nombre. Ponerle uno es un acto
+    // aparte, de una persona, y es lo que convierte una version en un punto al
+    // que se puede volver siempre.
+    //
+    // [!] Y `tiempo` sigue siendo un CERO. El campo esta en el formato desde el
+    // primer dia y aqui no hay reloj cableado, asi que la historia no tiene
+    // fechas todavia. Se dice en vez de que alguien lo descubra mirando una
+    // lista de versiones todas a la misma hora.
     let estrato = es::Estrato::new(
         p_raiz,
         sb.estrato,
         0,
         es::Autor::Proceso(crate::ring0::task::scheduler::current_pid()),
-        motivo(gesto),
+        "",
     );
     let e_bytes = estrato.encode();
     let p_estrato = BlockPtr::nuevo(cursor, 0, &e_bytes);
