@@ -30,3 +30,10 @@
 # aplica a la fabrica y no a lo que emite.
 
 [EXENTOS]
+
+# SUBIDAS -- cada techo que se levanto, con su por que. No se borran: una
+# lista de excusas que se puede leer entera es lo que hace caro poner la
+# siguiente.
+
+[SUBIDAS]
+Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs        1349 -> 1363  el despacho de KIND_TAREA (paso 3 del DIRECTOR). Se movio `conceder` y `buscar` a obj/tarea.rs y bajo de +32 a +14; los 14 no se quitan sin partir el fichero. Anotado a mano el 19-08: la subida es anterior a que esta seccion existiera.

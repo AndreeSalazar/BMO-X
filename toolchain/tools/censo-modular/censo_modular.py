@@ -71,6 +71,13 @@ Usage
     py censo_modular.py               the report
     py censo_modular.py --check       exit 1 if something is new or grew
     py censo_modular.py --sellar      re-record the baseline as it is today
+    py censo_modular.py --sellar --motivo "..."   ... and a ceiling may go UP
+
+A ceiling that goes up needs a written reason, refused without one, and the
+reason is kept forever in the `[SUBIDAS]` section. That rule is the owner's,
+and it is the whole of it: **everything has its why; what has none is removed
+and replaced.** It was added on 2026-08-19 after a ceiling was re-sealed with
+its reason living only in a commit message -- which is where nobody looks.
 """
 
 import argparse
@@ -212,10 +219,15 @@ def censar(raiz):
 
 
 def leer_linea_base():
-    """{ruta: lineas} de los techos, y {ruta: motivo} de los exentos."""
-    techos, exentos = {}, {}
+    """Techos, exentos y **subidas con su motivo**.
+
+    Una subida es un techo que se levanto. Se guarda para siempre, con su por
+    que al lado, porque un numero que sube sin motivo escrito es justo lo que
+    este fichero existe para impedir.
+    """
+    techos, exentos, subidas = {}, {}, []
     if not os.path.isfile(BASE):
-        return techos, exentos
+        return techos, exentos, subidas
     seccion = None
     for cruda in io.open(BASE, encoding='utf-8'):
         linea = cruda.strip()
@@ -229,10 +241,47 @@ def leer_linea_base():
             techos[partes[1].strip()] = int(partes[0])
         elif seccion == 'EXENTOS' and len(partes) == 2:
             exentos[partes[0]] = partes[1].strip()
-    return techos, exentos
+        elif seccion == 'SUBIDAS':
+            subidas.append(linea)
+    return techos, exentos, subidas
 
 
-def sellar(fichas, exentos):
+def sellar(fichas, exentos, techos, subidas, motivo):
+    """Regraba la linea base. **Se niega si algo sube y no trae motivo.**
+
+    Bajar no se pregunta: un reparto que quita lineas se explica solo. Subir,
+    no. Y hasta el 2026-08-19 esto no lo comprobaba nadie -- se re-sello un
+    techo (`syscall/mod.rs`, +14) y el unico sitio donde quedo el por que fue
+    un mensaje de commit, que es donde nadie lo va a buscar dentro de un ano.
+
+    Es la regla del dueno aplicada a la propia herramienta: **todo tiene su por
+    que; lo que no lo tiene, se quita.**
+    """
+    suben = []
+    for f in fichas:
+        if f.lineas > LIMITE and f.ruta not in exentos and not f.generado:
+            viejo = techos.get(f.ruta)
+            if viejo is not None and f.lineas > viejo:
+                suben.append((f.ruta, viejo, f.lineas))
+    if suben and not motivo:
+        print('[X] hay techos que SUBEN y `--sellar` no acepta una subida muda:')
+        for ruta, viejo, nuevo in suben:
+            print('    %s: %d -> %d (+%d)' % (ruta, viejo, nuevo, nuevo - viejo))
+        print('    vuelve a intentarlo con `--motivo "por que sube"`.')
+        return 1
+    for ruta, viejo, nuevo in suben:
+        subidas.append('%-58s %d -> %d  %s' % (ruta, viejo, nuevo, motivo))
+
+    # ** Y SE DICE LO QUE SE LLEVA. Sellar borraba en silencio las buenas
+    # noticias: el 19-08 `obj/file.rs` y `scene/data.rs` bajaron de 1.000 --al
+    # partir `cargando.rs`-- y salieron de la lista sin que nadie lo leyera. Un
+    # trinquete que solo cuenta lo que cuesta y nunca lo que se gano acaba
+    # pareciendo un peaje.
+    vivos = {f.ruta for f in fichas if f.lineas > LIMITE}
+    for ruta, viejo in sorted(techos.items()):
+        if ruta not in vivos:
+            print('    [+] sale de la lista  %s (estaba en %d)' % (ruta, viejo))
+
     hoy = []
     hoy.append('# LINEA BASE del censo modular -- el techo de cada fichero que')
     hoy.append('# hoy incumple L6a. La regla del trinquete: un fichero de esta')
@@ -253,10 +302,18 @@ def sellar(fichas, exentos):
     hoy.append('# aplica a la fabrica y no a lo que emite.')
     hoy.append('')
     hoy.append('[EXENTOS]')
-    for ruta, motivo in sorted(exentos.items()):
-        hoy.append('%s  %s' % (ruta, motivo))
+    for ruta, m in sorted(exentos.items()):
+        hoy.append('%s  %s' % (ruta, m))
+    hoy.append('')
+    hoy.append('# SUBIDAS -- cada techo que se levanto, con su por que. No se')
+    hoy.append('# borran: una lista de excusas que se puede leer entera es lo que')
+    hoy.append('# hace caro poner la siguiente.')
+    hoy.append('')
+    hoy.append('[SUBIDAS]')
+    hoy.extend(subidas)
     hoy.append('')
     io.open(BASE, 'w', encoding='utf-8', newline='\n').write('\n'.join(hoy))
+    return 0
 
 
 # == NIETO =====================================================================
@@ -288,7 +345,7 @@ def juicio(fichas, techos, exentos):
     return nuevos, crecidos, encogidos, salidos
 
 
-def informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos):
+def informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos, subidas):
     print('%7s %5s %6s  %-58s %s' % ('lineas', 'fns', 'media', 'fichero', 'especie'))
     fuera = []
     for f in fichas:
@@ -312,6 +369,8 @@ def informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos):
     for f in fuera:
         motivo = exentos.get(f.ruta) or 'lo emite una fabrica: dice AUTO-GENERADO'
         print('  [-] fuera del censo  %s (%d) -- %s' % (f.ruta, f.lineas, motivo))
+    for s in subidas:
+        print('  [^] techo levantado  %s' % s)
 
     for f, techo in encogidos:
         print('  [+] ENCOGIO   %s: %d -> %d' % (f.ruta, techo, f.lineas))
@@ -333,6 +392,8 @@ def main():
                     help='sale con 1 si algo es nuevo o crecio')
     ap.add_argument('--sellar', action='store_true',
                     help='vuelve a grabar la linea base tal como esta hoy')
+    ap.add_argument('--motivo', default='',
+                    help='POR QUE sube un techo. Sin esto, una subida se rechaza')
     ap.add_argument('--raiz', default=None, help='raiz del repo (por defecto, la de este fichero)')
     args = ap.parse_args()
 
@@ -340,15 +401,16 @@ def main():
         os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..'))
 
     fichas = censar(raiz)
-    techos, exentos = leer_linea_base()
+    techos, exentos, subidas = leer_linea_base()
 
     if args.sellar:
-        sellar(fichas, exentos)
+        if sellar(fichas, exentos, techos, subidas, args.motivo.strip()):
+            return 1
         print('linea base sellada: %s' % BASE)
         return 0
 
     nuevos, crecidos, encogidos, salidos = juicio(fichas, techos, exentos)
-    informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos)
+    informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos, subidas)
 
     fallo = 0
     if not techos:
