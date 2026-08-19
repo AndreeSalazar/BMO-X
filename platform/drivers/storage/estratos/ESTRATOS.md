@@ -49,20 +49,33 @@ citado es falso.
 
 ---
 
-## 0.1 EL ESTADO REAL, MEDIDO CONTRA EL CODIGO (2026-08-17)
+## 0.1 EL ESTADO REAL, MEDIDO CONTRA EL CODIGO (2026-08-18)
 
-No sale de la memoria de nadie: sale de leer las crates y correr sus pruebas.
+No sale de la memoria de nadie: sale de leer las crates, correr sus pruebas y
+mirar la historia.
+
+[!] **Esta section decia el 17-08 que el paso 5 estaba A MEDIAS. Ya no lo esta,
+y el documento se quedo un dia entero mintiendo.** Es la segunda vez que este
+fichero cuenta algo que el codigo desmiente -- la primera fue estar borrado doce
+dias. Un documento de estado se envejece solo: se pone al dia o se borra.
 
 ```
-   crate bmo-estratos          46 pruebas verdes, no_std y sin alloc
-     lib.rs        el formato: superbloque A/B, generacion, sumas
-     objects.rs    bloques, atributos, nodos, entradas de directorio
-     read.rs       el descenso por el arbol (kernel y formateador, el MISMO)
-     escritura.rs  la maquina de estados de la transaccion
-     espacio.rs    la contabilidad de la section 9
+   crate bmo-estratos          2.206 lineas, 53 pruebas verdes, no_std sin alloc
+     lib.rs        538   el formato: superbloque A/B, generacion, sumas   10
+     objects.rs    572   bloques, atributos, nodos, entradas               13
+     read.rs       214   el descenso por el arbol (kernel y fmt, el MISMO)  6
+     escritura.rs  649   la maquina de estados de la transaccion           18
+     espacio.rs    233   la contabilidad de la section 9                    6
+
+   kernel ring0/fsys/estratos/   1.604 lineas -- monta, LEE y YA ESCRIBE
+     mod.rs        437   el montaje y la identidad
+     cursor.rs     441   el recorrido que Ring 3 usa para pintar
+     nivel.rs      247   los niveles del arbol
+     walk.rs       207   el descenso
+     escribir.rs   204   ** CREAR UN FICHERO. Nuevo el 18-08
+     dir.rs         68
 
    toolchain/tools/estratos-fmt      formatea un volumen desde el anfitrion
-   kernel  ring0/fsys/estratos/      monta, comprueba identidad y LEE
 ```
 
 ### Los pasos de la section 10, contra lo que hay
@@ -73,24 +86,72 @@ No sale de la memoria de nadie: sale de leer las crates y correr sus pruebas.
 | 2 gate de identidad | sin esto no se escribe | **en metal** (07-26) |
 | 3 capa de bloques | contrato unico | en codigo (`bmo-block`); AHCI si, **NVMe no** |
 | 4 solo lectura | montar y leer | **en metal** (06-08): monta F:, pinta el grafo |
-| 5 escritura | *"aqui empieza lo serio"* | **A MEDIAS -- ver abajo** |
+| 5 escritura | *"aqui empieza lo serio"* | **HECHO EN CODIGO** (18-08, `1c96b133`) -- ver abajo |
 | 6 recolector | cuando haya que recoger | la CONTABILIDAD si (`espacio.rs`) y **el TRIM de la cola libre tambien** (17-08); el recolector no |
 | 7 TimeBack encima | el historial deja de ser copia | no |
 
-### El paso 5, con precision -- es la casilla del 1.0
+### El paso 5, con precision -- que se hizo y que falta
 
-La maquina de estados existe (`escritura.rs`: `open` -> `reserve` ->
-`cerrar_datos` -> `barrera_hecha` -> `commit`), **el orden lo impone el tipo** y
-no la memoria de quien llama, y el kernel la conduce de verdad contra el disco.
+**Se escribe un fichero de verdad, desde Ring 3.** `1c96b133` cablea 582 lineas:
+`ring0/fsys/estratos/escribir.rs`, dos syscalls, `userland/src/estratos.rs` y la
+orden en la ventana. Ya no es el commit vacio del 17-08.
 
-**Pero solo se ha ejecutado el COMMIT VACIO.** El propio kernel lo dice al lado
-de la llamada: *"Sin datos: se cierra la fase inmediatamente"*. O sea que esta
-probado el ORDEN --reservar, barrera `FLUSH CACHE`, superbloque alterno-- y **no
-se ha escrito un solo byte de contenido**. En metal llego a
-`SELLADO. generacion 3`.
+El copy-on-write se ve en el reparto, que es lo unico propio de esa pieza:
 
-[!] Y falta la mitad que prueba algo: **reiniciar y ver si sigue en 3.** Eso es
-lo unico que separa una barrera que funciona de una que se cree.
+```
+   base+0   el nodo del FICHERO      con su contenido dentro (residente)
+   base+1   el bloque de ENTRADAS    las de antes + la nueva
+   base+2   el nodo del DIRECTORIO   que apunta al bloque de entradas
+   base+3   el ESTRATO               que apunta al directorio
+```
+
+Los tres ultimos no son del fichero: son **la version nueva del arbol**. En un
+sistema que sobreescribe, anadir una entrada toca UN bloque; aqui no se toca
+ninguno, se copian los que cambian. Por eso el arbol de ayer sigue entero y
+alcanzable, que es la razon de que este sistema de ficheros exista.
+
+#### Los DOS TECHOS de esta version, dichos y no descubiertos
+
+| techo | valor | donde |
+|---|---|---|
+| bytes por fichero | **96** | `RESIDENTE_MAX`, `objects.rs:134` |
+| ficheros por carpeta | **36** | `ENTRADAS_POR_BLOQUE`, `escritura.rs` |
+
+Ninguno es del formato: `Attr::en_bloques` admite cuatro niveles de indireccion
+y nadie los ha escrito todavia. `nodo_de_fichero` devuelve `BadField` pasando de
+96 bytes **y no parte el contenido en bloques a escondidas**, que es la decision
+correcta -- partir es otra funcion, con su arbol y sus niveles, y mezclarlas
+dejaria al llamante sin saber cuantos bloques va a necesitar.
+
+[!] O sea que *"BMO-X guarda un fichero en su propio sistema"* es cierto **y** el
+fichero mide como mucho 96 bytes. Las dos mitades de la frase importan.
+
+### QUE FALTA PARA 1.0, y es UNA SOLA COSA
+
+**Reiniciar y comprobar que sigue ahi.**
+
+La casilla ya esta escrita en `docs/metal/VERIFICACION_METAL.md` section 7:
+*"la generacion despues del reinicio es la de antes + 1"*. Es lo unico que
+separa una barrera que funciona de una que se cree, y **no se puede pasar en el
+anfitrion**: hay que apagar el Ryzen.
+
+```
+   PARA 1.0        [x] escribir contenido        hecho el 18-08
+                   [ ] releerlo TRAS REINICIAR   <- la unica prueba que vale
+                   [x] el nivel de ocupacion decide si se acepta
+                   [x] NUNCA dos escritores (se monta desde un solo sitio)
+
+   POST-1.0        subir el techo de 96 bytes (la indireccion de `en_bloques`)
+                   subir el techo de 36 ficheros por carpeta
+                   el recolector (section 9) -- *"lo dificil, no el formato"*
+                   TimeBack encima (paso 7)
+                   NVMe debajo de la capa de bloques
+```
+
+[!] **El riesgo de la section 12 sigue igual, y no baja con el progreso**:
+*"aqui un bug no da un fault bonito en pantalla: se lleva el trabajo de
+alguien."* El 1.0 se estrena en F: --el disco de datos-- y no en el NVMe, que es
+el Windows del dueno.
 
 ---
 
