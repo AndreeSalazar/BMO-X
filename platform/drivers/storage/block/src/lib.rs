@@ -30,10 +30,22 @@
 //!
 //! ## Estado
 //!
-//! Implementado por AHCI/SATA en el kernel (`ring0/dev/disk.rs`). **NVMe no**:
-//! la crate `bmo-nvme` existe y tiene lectura y escritura, pero nadie la ha
-//! puesto detras de este contrato todavia, y en esta maquina el NVMe es el
-//! disco de Windows. Se dice, no se insinua.
+//! Implementado por AHCI/SATA en el kernel (`ring0/dev/disk/`, que es un
+//! directorio de ocho ficheros desde el reparto del 14-08).
+//!
+//! **NVMe no, y ya ni siquiera hay de donde partir.** Esta nota decia que *"la
+//! crate `bmo-nvme` existe y tiene lectura y escritura, pero nadie la ha puesto
+//! detras de este contrato"*. **No existe**: se la llevo `b33f3966` el
+//! 2026-08-03 --*"fuera seis librerias huerfanas, 3.671 lineas que nadie
+//! cableo"*-- y esta cabecera siguio prometiendola quince dias.
+//!
+//! [!] Es el MISMO commit que borro `ESTRATOS.md`. Dejo dos punteros rotos y
+//! solo se encontro uno: el del diseno lo destapo el guardian de citas porque
+//! apuntaba a una RUTA, y este no, porque afirma que existe una CRATE. El
+//! guardian comprueba caminos de fichero, no inventario.
+//!
+//! Lo que no cambia: en esta maquina el NVMe es el disco de Windows del dueno.
+//! Se dice, no se insinua.
 
 #![no_std]
 
