@@ -459,9 +459,38 @@ operacion va sobre el handle de un HIJO, y a el lo lanzo el kernel. No hay
 handle suyo en manos de nadie, asi que no hay por donde pedirlo. La propiedad
 que la hace no-`root` es estructural, no una promesa.
 
-**Lo que falta para cerrarlo del todo**: hoy lo dispara el CLIC sobre una
-ventana. Cuando el foco sepa nombrar apps --su enum es cerrado y de seis-- lo
-disparara tambien Alt+Tab.
+## ★ Y EL FOCO YA SABE NOMBRAR UNA APP -- mismo dia, y era el vocabulario
+
+`Ventana::App(u8)`, el hueco de la mesa de superficies. Lo que rompio para
+entrar es lo que lo hace valer: el enum era **C-like** y `id()` era
+`self as u8`, o sea **seis ventanas decididas al compilar**. Una app no cabia
+ahi, y por eso 2c.3 daba el foco por resuelto: la POLITICA si estaba en
+`bmo_input::foco` --con sus veinte pruebas-- y lo que faltaba era el
+vocabulario para nombrarla.
+
+Ahora `id()` es un `match`, y un id puede salir de un dato en vez de una
+constante. El compilador pidio la rama `App` en los **cuatro** sitios que
+deciden algo por ventana, que es exactamente lo que `nombre()` prometia: *una
+ventana nueva no arranca hasta que tiene nombre*.
+
+```
+   nace la caja      table.collect devuelve EL HUECO  ->  focus.open(App(i))
+   se toca           focus.clic_en(App(i))
+   se cierra         focus.close(App(i))
+   MAX_VENTANAS      8 -> 10   seis fijas + las cuatro cajas
+```
+
+★★ **Y el turno se aplica en UN solo sitio**: una vez por vuelta, cuando el
+foco CAMBIA. Ponerlo en el clic dejaba fuera a Alt+Tab --por ahi no pasa-- y
+tener la misma regla en dos sitios es como se acaba con dos que no dicen lo
+mismo. De paso evita sesenta cruces de puerta por segundo repitiendo algo que
+ya era verdad.
+
+[!] `Windows::abierta` contesta **`true`** para una app y no consulta nada: un
+`App` solo entra en la lista del foco cuando nace su caja y sale cuando se
+cierra, asi que la verdad la garantiza quien llama. Contestar `false` seria
+peor que no contestar -- `top_now` caeria a `Run` y repintaria la terminal cada
+vez que el foco estuviera en una app.
 
 ---
 

@@ -106,6 +106,9 @@ if alt_alone && (0x80..=0x83).contains(&c) {
     // tiene el foco. La que se mueve es **la que estas mirando en
     // la ventanita**, y eso se puede explicar en una frase.
     match dsk.win.focus.pointed_at() {
+        // Mover una app con el teclado pide traducir la tecla a su marco, y
+        // eso es del paso 2c. Hoy se dice que no en vez de moverla a medias.
+        Some(Ventana::App(_)) => {}
         Some(Ventana::Data) => {
             if dsk.win.data_open && !dsk.win.data.chrome.minimized {
                 let (vx, vy, va, vl) = (

@@ -355,28 +355,31 @@ impl Table {
     /// kernel diga que no deja al compositor mapeando memoria ajena dentro de un
     /// fotograma sin tope, y un programa que ofrezca en bucle podria estirar esa
     /// vuelta hasta que se note.
-    pub(crate) fn collect(&mut self, p: &bmo::Pantalla) -> bool {
+    /// Devuelve **en que hueco** nacio la ventana, no solo que nacio: sin ese
+    /// numero el escritorio no puede nombrarla al foco, y una app sin nombre
+    /// es una app que Alt+Tab no ve.
+    pub(crate) fn collect(&mut self, p: &bmo::Pantalla) -> Option<usize> {
         let Some(gap) = self.sup.iter().position(|s| s.is_none()) else {
             // Sin sitio no se toma. Dejarla ofrecida es lo correcto: la app
             // sigue esperando y la recogemos cuando se cierre una ventana, en
             // vez de tomarla para no poder ensenarla.
-            return false;
+            return None;
         };
         let Some((handle, base, bytes)) = bmo::tomar_prestado_de() else {
-            return false;
+            return None;
         };
         let tid = bmo::prestado_dueno(handle);
         match Surface::new(p, handle, base, bytes, tid) {
             Some(s) => {
                 self.sup[gap] = Some(s);
-                true
+                Some(gap)
             }
             None => {
                 // Lo ofrecido no es una superficie. Se devuelve en vez de
                 // quedarselo: retener memoria ajena que no sabemos leer es
                 // gastarle una ranura del kernel a quien nos la presto.
                 bmo::soltar_prestado(handle);
-                false
+                None
             }
         }
     }

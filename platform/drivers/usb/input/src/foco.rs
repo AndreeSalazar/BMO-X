@@ -39,7 +39,11 @@
 
 /// Cuantas ventanas puede haber. Fijo y pequeno a proposito: aqui no hay
 /// allocator, y un escritorio con mas de ocho ventanas no es este proyecto.
-pub const MAX_VENTANAS: usize = 8;
+/// De 8 a 10 el 2026-08-19: seis ventanas fijas del escritorio **mas las
+/// cuatro cajas de apps** (`scene::surface::MAX`). Con ocho, la tercera app
+/// que se abriera no habria entrado en la lista y su Alt+Tab habria sido un
+/// silencio -- el mismo modo de fallo suave que ya costo dos veces aqui.
+pub const MAX_VENTANAS: usize = 10;
 
 /// Que politica sigue el foco.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

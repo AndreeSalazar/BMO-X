@@ -148,6 +148,14 @@ pub(crate) fn on_pointer(
         // 2026-08-09 otra vez, y es un trabajo aparte de este.
         Ventana::Cpu | Ventana::Mem => false,
         Ventana::Run => dsk.win.visible && dsk.run_box.contains(pos.x, pos.y),
+        // ** LAS APPS NO SE BUSCAN AQUI: este `match` recorre las ventanas
+        // FIJAS del escritorio, y una superficie no es una de ellas -- vive
+        // en `dsk.table`, que tiene su propio `at()` unas lineas mas abajo y
+        // que ademas necesita saber en QUE pixel suyo cayo el clic.
+        //
+        // Contestar `false` aqui no es esconderlas: es decir que la pregunta
+        // "esta el puntero sobre esta ventana fija?" no se le hace a una app.
+        Ventana::App(_) => false,
     };
     // De arriba abajo, que es `TODAS` del reves: la de encima se lleva el clic
     // de la zona compartida. Antes era otra lista escrita a mano.
@@ -688,6 +696,9 @@ pub(crate) fn on_pointer(
                                 h.cerrar();
                             }
                         }
+                        // Y el foco deja de conocerla. Sin esto, Alt+Tab
+                        // seguiria parando en una caja que ya no existe.
+                        dsk.win.focus.close(Ventana::App(i as u8));
                     }
                     Some(Button::Minimize) => {
                         if let Some(s) = dsk.table.get_mut(i) {
@@ -718,20 +729,12 @@ pub(crate) fn on_pointer(
                         if let Some(s) = dsk.table.get_mut(i) {
                             s.chrome.grab(pos.x, pos.y);
                         }
-                        // ** PASO 4: la que se toca pasa a DELANTE, y delante
-                        // se gana apuntando. No sube su prioridad --eso le
-                        // ganaria el turno al propio DIRECTOR y su ventana
-                        // seria la primera en dejar de refrescarse-- sino su
-                        // QUANTUM: corre mas rato cada vuelta, y la rueda
-                        // sigue dando la vuelta entera.
-                        //
-                        // Ponerselo a una se lo quita a la anterior: lo hace
-                        // el kernel en la misma pasada, porque delante hay UNO.
-                        if let Some(tid) = dsk.table.get_mut(i).map(|s| s.tid) {
-                            if let Some(h) = bmo::Hijo::por_tid(tid) {
-                                h.delante(true);
-                            }
-                        }
+                        // ** EL CLIC LE DA EL FOCO, y el turno largo sale de
+                        // ahi: lo aplica `turno_al_foco` una vez por vuelta,
+                        // en un solo sitio. Pedirlo tambien aqui seria la
+                        // misma regla en dos sitios -- y ademas Alt+Tab se
+                        // quedaria fuera, porque por aqui no pasa.
+                        dsk.win.focus.clic_en(Ventana::App(i as u8));
                     }
                 }
             }
