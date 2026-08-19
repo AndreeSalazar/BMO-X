@@ -43,7 +43,20 @@ pub(crate) fn on_pointer(
     //
     // Ver `under_pointer`.
     // -- Los botones de la calculadora --
-    let button = pos.botones != 0;
+    // ** LOS DOS BOTONES ERAN EL MISMO, Y ESO ERA UN FALLO.
+    //
+    // Esto era `pos.botones != 0`, o sea que **pulsar con el derecho hacia lo
+    // mismo que con el izquierdo**: el clic derecho sobre un icono lanzaba la
+    // app. No daba error y por eso llevaba ahi desde que hay raton.
+    //
+    // La mascara viene del informe HID tal cual (`uhid::raton`): bit 0 el
+    // izquierdo, bit 1 el DERECHO. Hay prueba que lo fija --
+    // `mover_y_pulsar_a_la_vez_son_dos_eventos` espera un `2`-- asi que el
+    // numero no es una suposicion de este lado.
+    const IZQUIERDO: u8 = 0b001;
+    const DERECHO: u8 = 0b010;
+    let button = pos.botones & IZQUIERDO != 0;
+    let derecho = pos.botones & DERECHO != 0;
 
     // -- ** UN CLIC EN UN ICONO: dar clic y ya --------------------
     //
@@ -219,6 +232,47 @@ pub(crate) fn on_pointer(
         // se lo pida, no que tu se lo des.
         if button && !dsk.tick.button_before {
             dsk.win.focus.clic_en(v);
+        }
+    }
+
+    // == ** EL CLIC DERECHO: el menu de lo que se puede hacer =============
+    //
+    // Va ANTES del bloque de la ventana de Datos porque el menu, mientras esta
+    // abierto, **se queda con el clic**: es lo que hay encima de todo, y lo que
+    // hay encima manda. Sin esa regla, pulsar `borrar` seleccionaria ademas la
+    // fila que hay debajo del menu.
+    if dsk.win.data_open && !dsk.win.data.chrome.minimized && dsk.win.data.view == scene::data::View::Obra {
+        // El menu abierto se queda con el clic izquierdo: o eliges una entrada,
+        // o lo cierras pulsando fuera. Las dos cosas son "ya no hay menu".
+        if dsk.win.data.menu.visible && button && !dsk.tick.button_before {
+            let elegida = dsk.win.data.menu.entrada_en(pos.x, pos.y);
+            let sobre = dsk.win.data.menu.sobre;
+            dsk.win.data.menu.cerrar();
+            if let Some(e) = elegida {
+                usar_entrada(dsk, &p, e, sobre);
+            }
+            scene::data::paint(&p, &dsk.win.data);
+            dsk.win.top_before = Ventana::Data;
+            dsk.tick.button_before = pos.botones != 0;
+            dsk.tick.ax = pos.x;
+            dsk.tick.ay = pos.y;
+            return;
+        }
+        // Y el derecho lo ABRE, sobre lo que haya debajo.
+        if derecho && !dsk.tick.derecho_before {
+            let sobre = match dsk.win.data.fila_rejilla_en(pos.x, pos.y) {
+                Some(i) => {
+                    // Senalar y abrir el menu son la misma pulsacion: si no, el
+                    // menu hablaria de una fila y el realce estaria en otra.
+                    dsk.win.data.sel = i;
+                    dsk.win.data.verified = None;
+                    scene::menu::Sobre::Hijo(i)
+                }
+                None => scene::menu::Sobre::Aqui,
+            };
+            dsk.win.data.menu.abrir(pos.x, pos.y, sobre);
+            scene::data::paint(&p, &dsk.win.data);
+            dsk.win.top_before = Ventana::Data;
         }
     }
 
@@ -741,6 +795,9 @@ pub(crate) fn on_pointer(
         }
     }
     dsk.tick.button_before = button;
+    // El flanco del derecho, aparte: sin el, mantenerlo pulsado reabriria el
+    // menu en cada fotograma -- el mismo fallo que ya se evito con el arbol.
+    dsk.tick.derecho_before = derecho;
 
     // -- * El foco arrastra el Z-order --
     //
@@ -781,4 +838,52 @@ pub(crate) fn on_pointer(
     // el 2026-08-04, con los seis parches de medida: contestaban
     // "llegan informes del raton?" y esa pregunta la contesta ya el
     // propio puntero moviendose. Ver la nota del escritorio.
+}
+
+/// **Lo que hace una entrada del menu.**
+///
+/// * Casi todas escriben la orden en la CONSOLA en vez de hacerla por su
+/// cuenta, y esa es la decision del menu entero (ver `scene::menu`): no hay un
+/// segundo sitio donde se escriba en el disco, se ve la orden que se ejecuto, y
+/// se aprende el terminal usando el raton.
+///
+/// Las dos que no pasan por ahi --entrar y subir-- es porque no escriben nada:
+/// mueven el cursor, que es lo mismo que hace una flecha.
+fn usar_entrada(
+    dsk: &mut Desktop,
+    p: &bmo::Pantalla,
+    e: scene::menu::Entrada,
+    sobre: scene::menu::Sobre,
+) {
+    use scene::menu::{Hace, Sobre};
+    // El nombre de lo senalado, que es lo que la orden necesita.
+    let mut nom = [0u8; 64];
+    let n = match sobre {
+        Sobre::Hijo(i) => bmo::estratos::hijo_nombre(i as u64, &mut nom),
+        Sobre::Aqui => 0,
+    };
+    match e.hace {
+        Hace::Entrar => {
+            if let Sobre::Hijo(i) = sobre {
+                if bmo::estratos::entrar(i as u64) {
+                    dsk.win.data.to_top();
+                    dsk.win.data.verified = None;
+                }
+            }
+        }
+        Hace::Subir => {
+            if bmo::estratos::subir() {
+                dsk.win.data.to_top();
+                dsk.win.data.verified = None;
+            }
+        }
+        Hace::Verificar => {
+            if let Sobre::Hijo(i) = sobre {
+                dsk.win.data.verified = Some(bmo::estratos::verificar(i as u64));
+            }
+        }
+        Hace::Orden => dsk.win.data.consola.poner_orden(e.verbo, &nom[..n], true),
+        Hace::Empezar => dsk.win.data.consola.poner_orden(e.verbo, &nom[..n], false),
+    }
+    let _ = p;
 }

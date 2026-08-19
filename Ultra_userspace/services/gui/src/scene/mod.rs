@@ -35,6 +35,9 @@ pub(crate) mod iconos;
 /// LA CONSOLA DE ESTRATOS: el terminal del pie de la ventana. No es una
 /// comodidad -- es lo que impide que una orden se equivoque de volumen.
 pub(crate) mod consola;
+/// EL MENU DEL CLIC DERECHO: lo que se puede hacer con lo que senalas. Se
+/// construye del CONTEXTO, y lo que eliges se escribe en la consola.
+pub(crate) mod menu;
 pub(crate) mod cursor;
 /// La ENTRADA a Ring 3: lo que se ve cuando el userspace toma la maquina.
 pub(crate) mod splash;

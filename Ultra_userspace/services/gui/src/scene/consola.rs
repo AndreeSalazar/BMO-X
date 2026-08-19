@@ -201,6 +201,48 @@ impl Consola {
         }
     }
 
+    /// **Le pone una orden ya escrita.** La usa el menu del clic derecho.
+    ///
+    /// `ejecutar` la lanza; si no, deja el cursor puesto al final para que
+    /// termines de teclear -- que es lo que pasa con `renombra`, donde falta un
+    /// nombre que solo sabes tu.
+    ///
+    /// ** Y abre la consola si estaba cerrada. Una orden que se ejecuta sin que
+    /// se vea donde es exactamente lo que este terminal existe para evitar: aqui
+    /// se escribe lo que se hace, y se ve escrito.
+    pub(crate) fn poner_orden(&mut self, verbo: &str, arg: &[u8], ejecutar: bool) {
+        if !self.abierta {
+            self.alternar();
+        }
+        self.activa = true;
+        self.n = 0;
+        for b in verbo.as_bytes() {
+            if self.n < LINEA_MAX {
+                self.linea[self.n] = *b;
+                self.n += 1;
+            }
+        }
+        if !arg.is_empty() && self.n < LINEA_MAX {
+            self.linea[self.n] = b' ';
+            self.n += 1;
+            for b in arg {
+                if self.n < LINEA_MAX {
+                    self.linea[self.n] = *b;
+                    self.n += 1;
+                }
+            }
+        }
+        // El espacio del final cuando falta un argumento: se ve que la orden no
+        // esta terminada, sin tener que leerla entera.
+        if !ejecutar && self.n < LINEA_MAX {
+            self.linea[self.n] = b' ';
+            self.n += 1;
+        }
+        if ejecutar {
+            self.ejecutar();
+        }
+    }
+
     /// Una tecla, cuando la consola tiene las teclas.
     ///
     /// Devuelve `true` si algo cambio y hay que repintar.
