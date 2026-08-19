@@ -287,6 +287,32 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
             }
         }
         _ if dsk.win.data.view == View::Numbers => served = false,
+        // ** F2 RENOMBRA LO SENALADO, como en cualquier explorador.
+        //
+        // No estrena camino: escribe `renombra <lo senalado> ` en la consola y
+        // **deja el cursor puesto**, que es exactamente lo que hace la entrada
+        // `renombrar` del menu del clic derecho. Tres formas de pedir lo mismo
+        // --tecla, menu y teclear la orden entera-- y **un solo sitio donde
+        // pasa**: la consola sigue siendo el unico que escribe en el disco.
+        //
+        // Y por eso deja el cursor en vez de ejecutar: falta el nombre nuevo, y
+        // eso solo lo sabe una persona. Es la misma distincion que el menu tiene
+        // entre `Orden` y `Empezar`.
+        //
+        // [!] `F2` es el byte `0x8A` (`KEY_F1` es `0x89`). Una tecla de funcion
+        // no produce caracter en ninguna distribucion, asi que no puede chocar
+        // con escribir -- el mismo motivo por el que la ventana entera vive en
+        // F12.
+        0x8A => {
+            let cuantos = bmo::estratos::hijos() as usize;
+            if dsk.win.data.sel < cuantos {
+                let mut nom = [0u8; 64];
+                let n = bmo::estratos::hijo_nombre(dsk.win.data.sel as u64, &mut nom);
+                dsk.win.data.consola.poner_orden("renombra", &nom[..n], false);
+            } else {
+                served = false;
+            }
+        }
         // ARRIBA / ABAJO por la lista de hijos.
         // Al cambiar de caja se borra la verificacion: es de
         // UN archivo, y un `CUADRA` viejo bajo el nombre de
