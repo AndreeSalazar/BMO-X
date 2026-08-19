@@ -348,6 +348,55 @@ pub fn entradas_con(
     Ok(fin + ENTRADA_LEN)
 }
 
+/// **El bloque de `:entradas` con una entrada APUNTANDO A OTRO SITIO.**
+///
+/// El mismo nombre, otro `BlockPtr`. Es la pieza que hace posible tocar algo
+/// que NO esta en la raiz.
+///
+/// === Por que hace falta una tercera transformacion ===
+///
+/// Para crear un fichero en `/a/b` no basta con reescribir las entradas de `b`:
+/// `b` tiene un nodo nuevo, asi que la entrada `b` de `a` apunta al de ayer, y
+/// hay que reescribir `a` tambien. Y entonces `a` tiene nodo nuevo, y la raiz
+/// tambien. **Cambiar una hoja republica la rama entera hasta la raiz.**
+///
+/// Eso no es un coste que se pueda evitar: es lo que significa no sobreescribir.
+/// El arbol de ayer sigue completo porque ninguno de sus bloques se toca.
+///
+/// ** Y no es [`entradas_renombrando`] del reves. Renombrar cambia el NOMBRE y
+/// conserva el nodo; esto conserva el nombre y cambia el NODO. Que sean dos
+/// funciones y no una con banderas es a proposito: la que se equivoque de
+/// direccion se nota leyendo la llamada, no depurando el arbol.
+pub fn entradas_repuntando(
+    previas: &[u8],
+    nombre: &str,
+    nodo: BlockPtr,
+    dst: &mut [u8; BLOQUE],
+) -> Result<usize, FormatError> {
+    let cuantas = previas.len() / ENTRADA_LEN;
+    if previas.len() % ENTRADA_LEN != 0 {
+        return Err(FormatError::BadField);
+    }
+    let mut cual = None;
+    for i in 0..cuantas {
+        let e = Entrada::decode(&previas[i * ENTRADA_LEN..(i + 1) * ENTRADA_LEN])?;
+        if e.se_llama(nombre) {
+            cual = Some(i);
+            break;
+        }
+    }
+    // Que no este es un fallo del recorrido, no del que llamo: se llego hasta
+    // aqui bajando por esa entrada. Si ha desaparecido entre el descenso y la
+    // vuelta, escribir seria publicar un arbol inventado.
+    let cual = cual.ok_or(FormatError::BadField)?;
+    let nueva = Entrada::nueva(nombre, nodo)?;
+    *dst = [0u8; BLOQUE];
+    dst[..previas.len()].copy_from_slice(previas);
+    let ini = cual * ENTRADA_LEN;
+    dst[ini..ini + ENTRADA_LEN].copy_from_slice(&nueva.encode());
+    Ok(cuantas * ENTRADA_LEN)
+}
+
 /// **El bloque de `:entradas` de un directorio, con una entrada MENOS.**
 ///
 /// La mitad pura de BORRAR. `previas` son los bytes de hoy y `dst` recibe el
@@ -817,6 +866,37 @@ mod guardar {
         // `crear_fichero` ya hacia leyendo `None` como "ninguna previa".
         let mut b = [0u8; BLOQUE];
         assert_eq!(entradas_con(&[], "dentro.txt", ptr(50, b"x"), &mut b).unwrap(), ENTRADA_LEN);
+    }
+
+    /// ** REPUNTAR conserva el nombre y cambia el nodo -- el reves de
+    /// renombrar. Es lo que republica la rama al tocar algo hondo.
+    #[test]
+    fn repuntar_conserva_el_nombre_y_cambia_el_nodo() {
+        let mut b = [0u8; BLOQUE];
+        let n = entradas_con(&[], "sub", ptr(10, b"viejo"), &mut b).unwrap();
+        let mut b2 = [0u8; BLOQUE];
+        let n = entradas_con(&b[..n], "otra.txt", ptr(11, b"z"), &mut b2).unwrap();
+
+        let mut r = [0u8; BLOQUE];
+        let m = entradas_repuntando(&b2[..n], "sub", ptr(99, b"nuevo"), &mut r).unwrap();
+        assert_eq!(m, 2 * ENTRADA_LEN);
+        let e = Entrada::decode(&r[..ENTRADA_LEN]).unwrap();
+        assert_eq!(e.nombre_str(), "sub", "el nombre no cambia");
+        assert_eq!(e.nodo.lba, 99, "el nodo SI cambia");
+        // La vecina, intacta y en su sitio.
+        let seg = &r[ENTRADA_LEN..2 * ENTRADA_LEN];
+        assert_eq!(Entrada::decode(seg).unwrap().nombre_str(), "otra.txt");
+    }
+
+    /// Repuntar algo que no esta es un fallo del RECORRIDO, y se para.
+    /// Se llego hasta aqui bajando por esa entrada; si ya no esta, escribir
+    /// seria publicar un arbol inventado.
+    #[test]
+    fn repuntar_lo_que_no_esta_se_para() {
+        let mut b = [0u8; BLOQUE];
+        let n = entradas_con(&[], "sub", ptr(10, b"a"), &mut b).unwrap();
+        let mut r = [0u8; BLOQUE];
+        assert!(entradas_repuntando(&b[..n], "otra", ptr(99, b"x"), &mut r).is_err());
     }
 
     /// El techo de la carpeta se dice en vez de descubrirse el dia 37.
