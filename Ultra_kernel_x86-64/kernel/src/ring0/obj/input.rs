@@ -1,5 +1,10 @@
 //! `KIND_INPUT` -- el raton como capability.
 //!
+//! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
+//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
+//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
+//! no sabe: quien lo llamo ni por que
+//!
 //! El kernel ya sabia donde esta el raton: `dev::usb` acumula los deltas del
 //! HID desde que el xHCI lo enumero. Lo que no habia era forma de que ese dato
 //! **saliera de Ring 0**, asi que el puntero era un numero que solo servia para

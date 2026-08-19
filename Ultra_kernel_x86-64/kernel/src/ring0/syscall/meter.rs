@@ -1,5 +1,11 @@
 //! `syscall::meter` -- how many cycles the kernel spends inside a door.
 //!
+//! generacion: ninguna -- es el INSTRUMENTO que mide la puerta, no un escalon
+//! de la herencia. Aparece en el censo de ejes porque casi todo lo que
+//! cuesta `dispatch` es el propio metro --69-107 ciclos de sus 87-104--
+//! y eso hay que decirlo donde se mide.
+//! no sabe: que esta midiendo
+//!
 //! ```text
 //!    [eje]     LATENCIA -- pays SIZE (two counters) to buy a NUMBER
 //!    [camino]  P1 la puerta -- 100% of every door

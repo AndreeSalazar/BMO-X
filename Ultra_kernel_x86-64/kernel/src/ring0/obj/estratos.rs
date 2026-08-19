@@ -1,5 +1,10 @@
 //! **LA PUERTA DE ESTRATOS PARA UN `Archivo`** -- tramo 1.1 del plan.
 //!
+//! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
+//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
+//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
+//! no sabe: quien lo llamo ni por que
+//!
 //! === El agujero que tapa ===
 //!
 //! Desde el 18-08 se puede ESCRIBIR un fichero en ESTRATOS desde Ring 3, y no

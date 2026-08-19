@@ -1,5 +1,10 @@
 //! `KIND_ARCHIVO` -- **leer y escribir lo que hay dentro**, como capability.
 //!
+//! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
+//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
+//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
+//! no sabe: quien lo llamo ni por que
+//!
 //! Hermano de [`crate::ring0::obj::directory`]. Aquel deja PREGUNTAR que hay en el
 //! disco; este deja abrir uno de esos nombres y mover sus bytes.
 //!

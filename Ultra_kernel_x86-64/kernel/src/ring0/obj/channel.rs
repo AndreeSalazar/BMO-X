@@ -1,5 +1,10 @@
 //! Ring 0 ownership of the shared BMO Channel pages.
 //!
+//! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
+//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
+//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
+//! no sabe: quien lo llamo ni por que
+//!
 //! F3: each estuary is a capability-addressed kernel object. `CHANNEL_KICK`
 //! and the timer tick service submissions with a budget, publish
 //! completions, and wake `WAIT`ers through `scheduler::wake_by_key` using
