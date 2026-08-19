@@ -151,6 +151,19 @@ pub const ES_GESTO_QUITAR: u64 = 0x04;
 /// Renombrar un fichero firmado no le invalida la firma.
 pub const ES_GESTO_RENOMBRAR: u64 = 0x05;
 
+/// **Trae un fichero de FAT32 a ESTRATOS.**
+///
+/// La ruta lleva el DESTINO; el renglon del contenido ([`ES_GESTO_DATOS`])
+/// lleva el ORIGEN, como texto.
+///
+/// ** El contenido NO cruza la puerta. Viajan dos NOMBRES, y el kernel lee la
+/// fuente el mismo: meter un fichero por el renglon de ocho en ocho serian 512
+/// llamadas por bloque, y ese renglon no esta hecho para eso.
+///
+/// Es lo que hace util el techo que `flujo` levanto: el formato ya sabia partir
+/// un fichero en bloques, pero Ring 3 seguia sin poder entregarlo.
+pub const ES_GESTO_COPIA: u64 = 0x06;
+
 /// Cuanto contenido admite el renglon. Es [`RESIDENTE_MAX`] de ESTRATOS: lo que
 /// cabe DENTRO del nodo, sin gastar un bloque de datos.
 pub const ES_GESTO_MAX: u64 = 96;

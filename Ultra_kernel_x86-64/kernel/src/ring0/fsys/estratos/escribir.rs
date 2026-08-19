@@ -92,13 +92,24 @@ pub enum Gesto<'a> {
     Quitar { nombre: &'a str },
     /// Cambiarle el nombre a una entrada, sin tocar su nodo.
     Renombrar { viejo: &'a str, nuevo: &'a str },
+    /// **Traer un fichero de FAT32.** El contenido lo lee el kernel.
+    ///
+    /// ** Es el unico gesto cuyo coste NO se sabe leyendo el gesto: depende del
+    /// tamano del origen, que hay que ir a mirar al otro volumen. Por eso
+    /// `aplicar` lo pregunta antes de reservar, y por eso este es el unico que
+    /// puede fallar con "esa ruta no existe" hablando de OTRO sistema de
+    /// ficheros.
+    Copia { nombre: &'a str, origen: &'a str },
 }
 
 impl Gesto<'_> {
     /// Cuesta un bloque para el objeto nuevo, o ninguno.
     fn bloques_de_objeto(&self) -> u64 {
         match self {
-            Gesto::Fichero { .. } | Gesto::Carpeta { .. } => 1,
+            // La copia cuesta su nodo Y su arbol, y el arbol solo lo sabe
+            // quien ha ido a medir el origen. Aqui se cuenta el nodo; el resto
+            // lo suma `aplicar` con lo que le diga `copiar::coste`.
+            Gesto::Fichero { .. } | Gesto::Carpeta { .. } | Gesto::Copia { .. } => 1,
             Gesto::Quitar { .. } | Gesto::Renombrar { .. } => 0,
         }
     }
@@ -236,10 +247,25 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
             objeto = nodo_de_directorio_vacio();
             true
         }
+        // El nodo de una copia se hace DESPUES de escribir su arbol: hasta que
+        // no existe la raiz no hay puntero que meterle. Aqui solo se dice que
+        // habra objeto.
+        Gesto::Copia { .. } => true,
         _ => false,
     };
 
-    let cuesta = gesto.bloques_de_objeto() + 2 * niveles as u64 + 1;
+    // ** LA COPIA SE MIDE ANTES DE RESERVAR. Es lo unico que hay que ir a
+    // preguntarle a otro volumen, y hacerlo aqui --antes de abrir la
+    // transaccion-- es lo que permite que "ese origen no existe" se conteste
+    // sin haber tocado un sector de este.
+    let flujo = match &gesto {
+        Gesto::Copia { origen, .. } => Some(super::copiar::coste(origen)?),
+        _ => None,
+    };
+    let cuesta = gesto.bloques_de_objeto()
+        + flujo.map(|(bloques, _, _)| bloques).unwrap_or(0)
+        + 2 * niveles as u64
+        + 1;
     let mut t = es::escritura::Transaccion::open(&sb, copia_en_uso(), identidad_ok())
         .map_err(WriteError::Rechazada)?;
     let base = t.reserve(cuesta).map_err(WriteError::Rechazada)?;
@@ -247,6 +273,13 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     // El objeto va el primero, para que su puntero exista antes de la lista que
     // lo nombra.
     let mut cursor = base;
+    // El CONTENIDO de una copia va antes que su nodo, por lo mismo que el nodo
+    // va antes que la entrada que lo nombra: un puntero se escribe cuando ya
+    // existe aquello a lo que apunta.
+    if let (Gesto::Copia { origen, .. }, Some((bloques, plan, size))) = (&gesto, flujo) {
+        objeto = super::copiar::traer(origen, plan, size, cursor)?;
+        cursor += bloques;
+    }
     let p_objeto = if hay_objeto {
         let p = BlockPtr::nuevo(cursor, 0, &objeto);
         poner(cursor, &objeto)?;
@@ -274,7 +307,9 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
         let n_ent = if k == hondo {
             // El nivel del final: aqui pasa lo que el gesto pedia.
             match gesto {
-                Gesto::Fichero { nombre, .. } | Gesto::Carpeta { nombre } => entradas_con(
+                Gesto::Fichero { nombre, .. }
+                | Gesto::Carpeta { nombre }
+                | Gesto::Copia { nombre, .. } => entradas_con(
                     &previas[..n_previas],
                     nombre,
                     p_objeto.ok_or(WriteError::NoCabe)?,
@@ -399,6 +434,7 @@ fn motivo(g: &Gesto) -> &'static str {
         Gesto::Carpeta { .. } => "carpeta nueva",
         Gesto::Quitar { .. } => "entrada quitada",
         Gesto::Renombrar { .. } => "entrada renombrada",
+        Gesto::Copia { .. } => "fichero copiado de FAT32",
     }
 }
 
@@ -427,6 +463,11 @@ pub fn quitar(ruta: &str, nombre: &str) -> Result<u64, WriteError> {
     aplicar(ruta, Gesto::Quitar { nombre })
 }
 
+/// **Trae `origen` de FAT32 y lo guarda como `nombre` dentro de `ruta`.**
+pub fn copiar_fichero(ruta: &str, nombre: &str, origen: &str) -> Result<u64, WriteError> {
+    aplicar(ruta, Gesto::Copia { nombre, origen })
+}
+
 /// **Renombra `viejo` a `nuevo` dentro de `ruta`.** El nodo no se toca.
 pub fn renombrar(ruta: &str, viejo: &str, nuevo: &str) -> Result<u64, WriteError> {
     aplicar(ruta, Gesto::Renombrar { viejo, nuevo })
@@ -449,7 +490,7 @@ fn leer_entradas(a: &Attr, dst: &mut [u8; BLOQUE]) -> Result<usize, WriteError> 
 /// verifica los `len` bytes del objeto, asi que la basura de detras no rompe
 /// nada -- pero un bloque recien reservado con datos viejos dentro es justo lo
 /// que no se quiere encontrar el dia que alguien mire el disco a mano.
-fn poner(bloque: u64, datos: &[u8]) -> Result<(), WriteError> {
+pub(super) fn poner(bloque: u64, datos: &[u8]) -> Result<(), WriteError> {
     if datos.len() > BLOQUE {
         return Err(WriteError::NoCabe);
     }

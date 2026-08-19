@@ -258,6 +258,9 @@ pub(crate) const ES_GESTO_QUITAR: u64 = 0x04;
 /// Renombra la entrada que diga la ruta. El nombre NUEVO va por el renglon del
 /// contenido -- es el unico verbo que necesita dos nombres.
 pub(crate) const ES_GESTO_RENOMBRAR: u64 = 0x05;
+/// Trae un fichero de FAT32. La ruta lleva el DESTINO y el renglon del
+/// contenido lleva el ORIGEN -- el contenido de verdad no cruza la puerta.
+pub(crate) const ES_GESTO_COPIA: u64 = 0x06;
 pub(crate) const ES_GESTO_MAX: u64 = 96;
 /// Las ordenes del disco. Espejo de `bmo_abi::...::DISCO_OP_*`.
 ///

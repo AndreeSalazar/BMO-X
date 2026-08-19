@@ -348,6 +348,32 @@ pub fn entradas_con(
     Ok(fin + ENTRADA_LEN)
 }
 
+/// **El nodo de un fichero GRANDE**, cuyo contenido vive en bloques.
+///
+/// El hermano de [`nodo_de_fichero`], para lo que no cabe dentro del nodo. La
+/// diferencia entera es de que atributo se cuelga:
+///
+/// ```text
+///   pequeno   :datos RESIDENTE -- los bytes van dentro del nodo
+///   grande    :datos EN BLOQUES -- el nodo guarda donde esta la raiz del arbol
+/// ```
+///
+/// `raiz` y `niveles` salen de haber escrito ya el arbol (`flujo::Arbol`), y por
+/// eso esta funcion no toca disco: para cuando se la llama, el contenido ya
+/// esta puesto y lo unico que falta es la ficha que lo nombra.
+///
+/// ** Y sigue habiendo DOS funciones y no una con un `if`. Cual se usa lo decide
+/// el tamano, y el que llama tiene que saber cual le toca **antes de reservar**:
+/// una gasta un bloque y la otra gasta los del arbol entero.
+pub fn nodo_de_fichero_grande(
+    size: u64,
+    niveles: u8,
+    raiz: BlockPtr,
+) -> Result<[u8; NODO_LEN], FormatError> {
+    let a = Attr::en_bloques(ATTR_DATOS, size, niveles, raiz)?;
+    Ok(Nodo::nuevo(Tipo::Archivo).con(a)?.encode())
+}
+
 /// **El bloque de `:entradas` con una entrada APUNTANDO A OTRO SITIO.**
 ///
 /// El mismo nombre, otro `BlockPtr`. Es la pieza que hace posible tocar algo
@@ -866,6 +892,23 @@ mod guardar {
         // `crear_fichero` ya hacia leyendo `None` como "ninguna previa".
         let mut b = [0u8; BLOQUE];
         assert_eq!(entradas_con(&[], "dentro.txt", ptr(50, b"x"), &mut b).unwrap(), ENTRADA_LEN);
+    }
+
+    /// El nodo de un fichero grande dice DONDE esta, no lo lleva dentro.
+    ///
+    /// ** Es la casilla que separa las dos formas: el pequeno responde
+    /// `datos_residentes()` y el grande responde `raiz()`. Confundirlas seria
+    /// leer 96 bytes de puntero como si fueran texto.
+    #[test]
+    fn un_fichero_grande_guarda_donde_esta_y_no_el_contenido() {
+        let raiz = ptr(77, b"la raiz del arbol");
+        let bytes = nodo_de_fichero_grande(10_000, 1, raiz).unwrap();
+        let n = Nodo::decode(&bytes).unwrap();
+        let a = n.attr(ATTR_DATOS).expect("el nodo tiene :datos");
+        assert!(!a.es_residente(), "10.000 bytes NO caben dentro del nodo");
+        assert_eq!(a.size, 10_000);
+        assert_eq!(a.raiz().unwrap().lba, 77);
+        assert!(a.datos_residentes().is_none(), "no lleva bytes dentro");
     }
 
     /// ** REPUNTAR conserva el nombre y cambia el nodo -- el reves de
