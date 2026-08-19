@@ -408,6 +408,24 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     let p_estrato = BlockPtr::nuevo(cursor, 0, &e_bytes);
     poner(cursor, &e_bytes)?;
 
+    // ** SE ACABAN LOS DATOS. ESTA LINEA FALTABA, Y SIN ELLA NO SE ESCRIBIA NADA.
+    //
+    // La transaccion tiene cuatro fases --Datos, Barrera, Commit, Cerrada-- y
+    // `barrera_hecha()` exige estar en Barrera. Sin este `cerrar_datos()` la
+    // transaccion seguia en Datos, asi que la barrera devolvia `FueraDeOrden`
+    // y **el commit no llegaba a ocurrir jamas**.
+    //
+    // [!] Faltaba desde el commit que estreno la escritura (`1c96b133`, 18-08),
+    // no desde el refactor de ayer: `crear_fichero` NUNCA ha guardado un
+    // fichero. `sellar` si funcionaba --y por eso se vio la generacion 3 en el
+    // Ryzen-- porque aquel camino si la llamaba.
+    //
+    // ** Y la maquina de estados hizo EXACTAMENTE lo que tenia que hacer: dijo
+    // que no, con su motivo, y la ventana contestaba "NO se hizo". Lo que
+    // faltaba no era una comprobacion mas: era ejecutarlo una vez. Es la razon
+    // entera de la casilla de metal que sigue sin marcarse.
+    t.cerrar_datos().map_err(WriteError::Rechazada)?;
+
     // -- LA BARRERA. Hasta aqui el volumen sigue siendo el de antes.
     if !disk::flush() {
         t.abandonar();
