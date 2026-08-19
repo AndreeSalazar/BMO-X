@@ -266,9 +266,42 @@ impl Desktop {
     /// donde estaba: pintandose en el vacio y, peor, **respondiendo a clics en
     /// un sitio donde ya no hay nada** -- que es un fallo mudo, de los que este
     /// arbol persigue.
-    pub(crate) fn run_relayout(&mut self) {
+    /// ** Y DESDE EL 2026-08-18 TAMBIEN LA BORRA DE DONDE ESTABA.
+    ///
+    /// Ese dia, en el Ryzen, la foto salio con **dos calculadoras**: la vieja
+    /// en su sitio y la nueva encima, las dos con el mismo `40.00` en el visor.
+    /// Esta funcion movia **donde se va a pintar** y nadie se ocupaba de los
+    /// pixeles de donde ya no esta.
+    ///
+    /// El comentario de arriba decia que sin ella la calculadora se quedaria
+    /// "pintandose en el vacio". Era exacto y estaba incompleto: se movio el
+    /// sitio y se dejo el dibujo.
+    ///
+    /// Va aqui y no en los tres llamadores por el mismo motivo que existe la
+    /// funcion: **todo lo que se coloca a partir de la terminal se entera en UN
+    /// sitio**. Repartirlo entre `shortcuts.rs` y las dos ramas de `mouse.rs`
+    /// es como se consigue que el cuarto llamador se olvide.
+    ///
+    /// [!] El borrado va DESPUES de `run_box.relayout()` y ANTES de mover
+    /// `calc_pad`: hace falta el rect VIEJO de la calculadora y el fondo NUEVO
+    /// de la terminal, que ya se movio. Al reves se borra con la geometria
+    /// equivocada, que es el rastro que este arbol ya cazo tres veces.
+    pub(crate) fn run_relayout(&mut self, p: &bmo::Pantalla) {
         self.run_box.relayout();
+        if self.calc.visible {
+            for f in 0..self.calc_pad.height {
+                for co in 0..self.calc_pad.width {
+                    let (px, py) = (self.calc_pad.x + co, self.calc_pad.y + f);
+                    let fondo =
+                        crate::scene::scene_color(&self.run_box, self.win.visible, px, py, p.alto);
+                    p.punto(px, py, fondo);
+                }
+            }
+        }
         self.calc_pad = CalcPad::new(&self.run_box);
+        if self.calc.visible {
+            crate::scene::calc::paint_calc(p, &self.calc_pad, &self.calc, self.tick.calc_hover);
+        }
     }
 }
 

@@ -219,7 +219,7 @@ if alt_alone && (0x80..=0x83).contains(&c) {
                     // color de fondo con la geometria vieja y dejaria
                     // el rastro que este mismo fichero ya cazo tres
                     // veces.
-                    dsk.run_relayout();
+                    dsk.run_relayout(&p);
                     erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                     uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     dsk.win.top_before = Ventana::Run;
