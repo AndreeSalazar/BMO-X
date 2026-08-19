@@ -1,0 +1,34 @@
+# LINEA BASE del censo modular -- el techo de cada fichero que
+# hoy incumple L6a. La regla del trinquete: un fichero de esta
+# lista solo puede ENCOGER. Si crece, o si aparece uno nuevo por
+# encima de 1000 lineas, `censo_modular.py --check` dice NO.
+#
+# No se edita a mano: se regenera con `--sellar` cuando un
+# reparto baja un numero, y el commit ensena cuanto bajo.
+
+[TECHOS]
+  2948  toolchain/lang/cobol/src/codegen.rs
+  2537  platform/drivers/storage/fat32/src/lib.rs
+  2321  toolchain/lang/c/src/codegen/mod.rs
+  2207  toolchain/forge/bmo-lower/src/emu.rs
+  2011  toolchain/lang/cobol/src/parser.rs
+  1621  toolchain/lang/cpp/src/parser.rs
+  1584  platform/drivers/usb/xhci/src/lib.rs
+  1563  Ultra_kernel_x86-64/build.ps1
+  1416  platform/abi/bmo-abi/src/bef/validator.rs
+  1349  Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs
+  1345  Ultra_userspace/services/gui/src/commands/reports.rs
+  1204  Ultra_kernel_x86-64/kernel/src/ring0/dev/usb/mod.rs
+  1196  toolchain/lang/c/src/parser/preprocessor.rs
+  1162  Ultra_kernel_x86-64/kernel/src/ring0/task/proc.rs
+  1036  platform/drivers/storage/ahci/src/controller.rs
+  1027  Ultra_kernel_x86-64/kernel/src/ring0/obj/file.rs
+  1027  Ultra_userspace/services/gui/src/scene/data.rs
+  1001  toolchain/lang/c/src/parser/declarations.rs
+
+# EXENTOS -- un "no" con motivo escrito, que se puede discutir.
+# Aqui solo entra lo que NO lo escribio una persona: si la
+# modularidad de un fichero la decide su fabrica, la regla se le
+# aplica a la fabrica y no a lo que emite.
+
+[EXENTOS]
