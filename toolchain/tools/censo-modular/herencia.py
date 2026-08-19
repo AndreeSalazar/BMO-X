@@ -209,12 +209,63 @@ def informe(crates, juzgables, con_varias, rotas):
         print('\nclean: ninguna dependencia sube de generacion.')
 
 
+def etiquetas_sueltas(raiz, crates):
+    """`generacion:` en ficheros que NO son la cabeza de un crate.
+
+    No es un fallo y no puede serlo: L7c dice que la generacion se comprueba
+    entre crates. Se cuentan y se dicen **porque el silencio seria la trampa**
+    -- alguien que etiquete un modulo esperando que lo juzguen tiene derecho a
+    saber que no lo juzga nadie, y por que.
+    """
+    cabezas = set()
+    for c in crates.values():
+        for cabeza in ('src/lib.rs', 'src/main.rs'):
+            cabezas.add((c.carpeta + '/' + cabeza).replace('//', '/'))
+    salida = subprocess.run(
+        ['git', '-C', raiz, 'ls-files'],
+        capture_output=True, text=True, check=True,
+    ).stdout.splitlines()
+    sueltas = []
+    for f in salida:
+        if not f.endswith('.rs') or f in cabezas:
+            continue
+        try:
+            s = io.open(os.path.join(raiz, f), encoding='utf-8', errors='replace').read(4000)
+        except OSError:
+            continue
+        m = ETIQUETA.search(s)
+        if m:
+            sueltas.append((f, m.group(1)))
+    return sueltas
+
+
 def revisar(raiz):
-    """Devuelve (0, informe impreso) o (1, ...). Lo usa `censo_modular --check`."""
+    """Devuelve 0 o 1, con el informe impreso. Lo usa `censo_modular --check`."""
     crates = censar(raiz)
     juzgables, con_varias = aristas(crates)
     rotas = juicio(juzgables)
     informe(crates, juzgables, con_varias, rotas)
+
+    # El vocabulario esta CERRADO. Una palabra inventada no rompe el arbol,
+    # pero empieza la deriva de siempre: dos listas de lo mismo que dejan de
+    # decir lo mismo. Se avisa en cuanto aparece.
+    validas = set(RANGO) | set(DECLARADAS_SIN_RANGO)
+    raras = [c for c in crates.values()
+             if c.generacion and c.generacion not in validas]
+    for c in raras:
+        print('  [!] palabra no declarada  %s dice `%s`. El vocabulario es: %s'
+              % (c.nombre, c.generacion, ', '.join(sorted(validas))))
+
+    sueltas = etiquetas_sueltas(raiz, crates)
+    if sueltas:
+        cuenta = {}
+        for _, gen in sueltas:
+            cuenta[gen] = cuenta.get(gen, 0) + 1
+        print('\n%d ficheros llevan `generacion:` sin ser la cabeza de un crate'
+              % len(sueltas))
+        print('(%s). Se documentan y NO se juzgan: L7c.'
+              % ', '.join('%s %d' % (g, n) for g, n in sorted(cuenta.items())))
+
     return 1 if rotas else 0
 
 

@@ -1,5 +1,10 @@
 //! x86-64 SYSCALL entry and BMO ABI v2 dispatcher (**2** frozen syscalls).
 //!
+//! generacion: padre -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
+//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
+//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
+//! no sabe: que objeto hay detras del handle
+//!
 //! ```text
 //!    [eje]     LATENCIA -- pays SIZE (the match arms) to buy cycles
 //!    [camino]  P1 la puerta -- 100% of every door

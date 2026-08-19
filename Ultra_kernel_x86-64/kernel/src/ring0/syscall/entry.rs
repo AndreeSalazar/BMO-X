@@ -1,5 +1,10 @@
 //! **THE DOOR ITSELF** -- the naked entry stub and its installation.
 //!
+//! generacion: abuelo -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
+//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
+//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
+//! no sabe: que operacion se pidio
+//!
 //! ```text
 //!    [eje]     LATENCIA -- the only axis. Nothing here is allowed to trade
 //!              cycles for anything, because everything else waits on it

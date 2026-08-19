@@ -1,5 +1,10 @@
 //! **EL ARCHIVO QUE SE ESTA TRAYENDO** -- la carga por trozos de una ranura.
 //!
+//! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
+//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
+//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
+//! no sabe: quien lo llamo ni por que
+//!
 //! === Por que es un fichero y no un trozo de `file.rs` ===
 //!
 //! Por L6a: `obj/file.rs` estaba en 1.026 lineas, en la linea base del censo, y

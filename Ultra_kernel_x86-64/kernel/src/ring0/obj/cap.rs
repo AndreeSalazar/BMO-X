@@ -1,5 +1,10 @@
 //! Ring 0 Capability Engine (F3).
 //!
+//! generacion: hijo -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
+//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
+//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
+//! no sabe: que significa la operacion que autoriza
+//!
 //! Per-process capability tables backing the 3-syscall BMO ABI v2 surface.
 //! Every kernel object a Ring 3 task can name is reached through a
 //! `BmoHandle`-encoded capability: `INVOKE`/`CHANNEL_KICK`/`WAIT` resolve
