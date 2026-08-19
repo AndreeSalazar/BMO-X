@@ -35,6 +35,17 @@
 > Contesta la pregunta que un SDK tiene que contestar antes de crecer: **cuando
 > una comodidad es una cabecera y cuando es una operacion nueva.** Su indice
 > vive al lado de los ficheros, en `toolchain/forge/sem-asm/tables/bmo/`.
+>
+> ## ★★ Y LAS TRES SE REPARTEN EN UNA: [`EL_FUERO.md`](../EL_FUERO.md)
+>
+> Las leyes dicen **que esta prohibido y por que**. El FUERO dice **que hay,
+> donde esta y por donde se empieza** -- lo que BMO-X le concede a quien quiera
+> construir sobre el, y lo que le exige a cambio. No es una cuarta ley: si
+> contradice a una, la ley gana y el FUERO esta viejo.
+>
+> Se llama fuero y no SDK a proposito: un SDK es un kit para desarrollar contra
+> una API; aqui se **concede** una maquina con condiciones escritas, y las leyes
+> viajan dentro de lo que se entrega.
 
 ---
 

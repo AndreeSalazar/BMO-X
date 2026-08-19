@@ -145,6 +145,7 @@ because the reason a decision was made is worth more than the decision.
 
 | Document | What is in it |
 |---|---|
+| ★ **[EL_FUERO.md](EL_FUERO.md)** | **Start here if you want to build on BMO-X.** What the system grants you, what it demands back, and what it deliberately does not grant. Not an SDK -- a charter |
 | **[META-KERNEL_HARD.md](META-KERNEL_HARD.md)** | The law of the machine. A rule exists only if it carries the component that demands it and the number it demands |
 | **[META-APP_HARD.md](META-APP_HARD.md)** | The law of an app. What BMO-X demands of anything that wants to be one, and what it gives back |
 | **[META-SDK_HARD.md](META-SDK_HARD.md)** | The law of **REX**: the nine `<bmo/...>` headers an app is written with, and the two tests that keep a library from becoming a framework |
