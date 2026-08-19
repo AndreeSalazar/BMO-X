@@ -152,6 +152,40 @@ impl Surface {
         (self.chrome.x + 1, self.chrome.y + TITLE_H)
     }
 
+    /// **Lo que de verdad se esta viendo del interior**, en coordenadas de
+    /// pantalla y ya recortado contra el marco Y contra el lienzo.
+    ///
+    /// Es el MISMO recorte que hace [`Surface::compose`], y esta escrito una
+    /// sola vez a proposito: si el golpe se recortara distinto que los pixeles,
+    /// habria un borde donde se ve una cosa y se pulsa otra. Ese es el tipo de
+    /// fallo que no da error -- da un numero.
+    fn visible(&self, p: &bmo::Pantalla, cab: &Header) -> bmo_golpe::Visible {
+        let (x, y) = self.inner();
+        let gap_w = self.chrome.width.saturating_sub(2);
+        let gap_h = self.chrome.height.saturating_sub(TITLE_H + 1);
+        bmo_golpe::Visible {
+            x,
+            y,
+            ancho: cab.width.min(gap_w).min(p.ancho.saturating_sub(x)),
+            alto: cab.height.min(gap_h).min(p.alto.saturating_sub(y)),
+        }
+    }
+
+    /// **De quien es este golpe y en que pixel suyo cae.** `None` si no es de
+    /// esta superficie.
+    ///
+    /// La resta vive en `bmo-golpe` y no aqui: alli se puede PROBAR (L7b). Lo
+    /// de este lado es solo juntar los dos hechos que la resta necesita -- la
+    /// caja visible y lo que la app declaro.
+    pub(crate) fn golpe(&self, p: &bmo::Pantalla, px: u32, py: u32) -> Option<(u32, u32)> {
+        if self.chrome.minimized {
+            return None;
+        }
+        let cab = Header::read(self.base, self.bytes)?;
+        let d = bmo_golpe::Declarada { ancho: cab.width, alto: cab.height };
+        bmo_golpe::traducir(self.visible(p, &cab), d, px, py)
+    }
+
     /// **Pega los pixeles.** Solo si la secuencia cambio; `true` si pinto.
     ///
     /// Se recorta contra el marco Y contra la pantalla: una ventana arrastrada
@@ -164,13 +198,14 @@ impl Surface {
         if cab.sequence == self.stuck {
             return false;
         }
-        let (x0, y0) = self.inner();
         // Lo que cabe: el hueco del marco, lo que mide la superficie, y lo que
         // queda de pantalla. El menor de los tres, y ninguno se puede saltar.
-        let gap_w = self.chrome.width.saturating_sub(2);
-        let gap_h = self.chrome.height.saturating_sub(TITLE_H + 1);
-        let width = cab.width.min(gap_w).min(p.ancho.saturating_sub(x0));
-        let height = cab.height.min(gap_h).min(p.alto.saturating_sub(y0));
+        // ** Sale de `visible()`, que es el MISMO recorte que usa el golpe: dos
+        // copias de esta cuenta serian un borde donde se ve una cosa y se pulsa
+        // otra, y eso no da error, da un numero.
+        let v = self.visible(p, &cab);
+        let (x0, y0) = (v.x, v.y);
+        let (width, height) = (v.ancho, v.alto);
         if width == 0 || height == 0 {
             self.stuck = cab.sequence;
             return false;
@@ -282,6 +317,31 @@ impl Table {
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Surface> {
         self.sup.iter_mut().filter_map(|s| s.as_mut())
+    }
+
+    /// **De que superficie es este golpe, y en que pixel suyo.**
+    ///
+    /// Paso 2c.1 de `docs/plan/PLAN_DIRECTOR.md`, y su prueba es literalmente
+    /// poder contestar *"este clic es de la superficie 2, en su pixel
+    /// (81, 210)"* **sin que la app exista todavia**: aqui no se manda nada a
+    /// nadie, solo se traduce.
+    ///
+    /// [!] El orden es el de la mesa, que hoy es el de llegada. Cuando dos cajas
+    /// se solapen habra que preguntarle al foco quien esta delante -- y eso ya
+    /// tiene dueno (`bmo_input::foco`, paso 2c.3), asi que no se inventa aqui
+    /// una segunda politica que luego habria que reconciliar.
+    // Todavia no lo llama nadie, y eso es el plan y no un olvido: 2c.1 se
+    // entrega SOLA para que su fallo no se confunda con el del transporte.
+    // Quien lo llame es el paso 2c.3, cuando el foco diga de quien es la tecla.
+    #[allow(dead_code)]
+    pub(crate) fn golpe(&self, p: &bmo::Pantalla, px: u32, py: u32) -> Option<(usize, u32, u32)> {
+        for (i, s) in self.sup.iter().enumerate() {
+            let Some(s) = s.as_ref() else { continue };
+            if let Some((lx, ly)) = s.golpe(p, px, py) {
+                return Some((i, lx, ly));
+            }
+        }
+        None
     }
 
     /// **Recoge lo que alguien haya ofrecido.** Devuelve `true` si nacio una

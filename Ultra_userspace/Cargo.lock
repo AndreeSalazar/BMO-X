@@ -7,6 +7,10 @@ name = "bmo-dibujo"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-golpe"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-input"
 version = "0.1.0"
 
@@ -31,6 +35,7 @@ name = "bmo-service-gui"
 version = "0.1.0"
 dependencies = [
  "bmo-dibujo",
+ "bmo-golpe",
  "bmo-input",
  "bmo-rtc",
  "bmo-userland",
