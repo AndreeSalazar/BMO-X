@@ -24,7 +24,7 @@
 //! segundos**, no en una tanda de flasheo.
 //!
 //! Por eso este crate vive en `platform/shared/` y no dentro del `.bex`: es la
-//! misma razon que ya dejo escrita `services/gui/Cargo.toml` sobre la politica
+//! misma razon que ya dejo escrita `services/director/Cargo.toml` sobre la politica
 //! de foco -- *"alli se puede PROBAR; este binario es `no_main` para un target
 //! sin sistema operativo y no corre un test"*.
 //!

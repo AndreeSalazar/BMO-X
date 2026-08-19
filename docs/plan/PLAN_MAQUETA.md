@@ -24,7 +24,7 @@
 
 **Un compilador que lee un arbol de cajas y unas reglas, y emite las
 coordenadas ya calculadas.** La aritmetica de pixeles que hoy se escribe a mano
-en `Ultra_userspace/services/gui/src/scene/` pasa a ser texto que se lee.
+en `Ultra_userspace/services/director/src/scene/` pasa a ser texto que se lee.
 
 ```
    HOY       calc.rs:       CALC_BTN = 72;  CALC_GAP = 6;  fn button(row,col)

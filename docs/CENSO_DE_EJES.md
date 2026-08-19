@@ -135,7 +135,7 @@ Decir lo contrario seria vender el trabajo por lo que no es.
 ### P2 -- EL PINTADO | eje THROUGHPUT | componentes C5, C2, C4, C3
 
 ```
-   Ultra_userspace/services/gui/          (el compositor)
+   Ultra_userspace/services/director/          (el compositor)
    platform/shared/bmo-dibujo             (rasterizador y LIENZO)
    Ultra_userspace/userland/src/pantalla.rs, dibujo/
    ring0/obj/fb.rs, ring0/core/splash/lienzo.rs

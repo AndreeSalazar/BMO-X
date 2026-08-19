@@ -1,11 +1,11 @@
 [package]
-name = "bmo-service-gui"
+name = "bmo-service-director"
 version = "0.1.0"
 edition = "2021"
 description = "El compositor de BMO — el proceso Ring 3 que es dueno de la pantalla"
 
 [[bin]]
-name = "compositor"
+name = "director"
 path = "src/main.rs"
 
 [dependencies]

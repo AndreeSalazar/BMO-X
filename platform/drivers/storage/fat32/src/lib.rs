@@ -2283,7 +2283,7 @@ mod tests {
     ///
     /// Un `.bex` no se lee de principio a fin. Antes de aterrizar la primera
     /// seccion, el cargador necesita los **hashes** (`Signature`) y las
-    /// **relocations**, y las dos van al final del fichero -- en `gui.bex`, la
+    /// **relocations**, y las dos van al final del fichero -- en `d.bex`, la
     /// firma esta en el `0x4B680` de `0x4B728` y el codigo empieza en el `0x200`.
     ///
     /// Con un solo cursor eso es un salto al final y una vuelta atras, o sea un

@@ -71,7 +71,7 @@ salta al vacio y muere con un `#UD` en Ring 3.
 
 - `apps/launcher`, *"shell del escritorio"*. Eran **nueve lineas** que hacen
   `hlt` para siempre, y su trabajo ya estaba hecho: el lanzador de verdad son
-  440 lineas en `services/gui/src/scene/launcher.rs`, lee `apps\` del disco,
+  440 lineas en `services/director/src/scene/launcher.rs`, lee `apps\` del disco,
   saca el icono de dentro de cada `.bex` y lanza al pulsar. Un crate vacio con
   el nombre del que si funciona es peor que no tener nada: manda a leer el
   fichero equivocado.
@@ -89,7 +89,7 @@ como `.bex` con su icono dentro, y el escritorio las encuentra sola.
 
 ```powershell
 cd Ultra_userspace
-cargo +nightly build -p bmo-service-gui --release --target x86_64-unknown-none
+cargo +nightly build -p bmo-service-director --release --target x86_64-unknown-none
 ```
 
 O, lo normal, dejar que lo haga la cadena entera:
