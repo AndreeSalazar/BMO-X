@@ -71,7 +71,7 @@ const ALINEACION_EN_FICHERO: u64 = 8;
 ///
 /// # Lo que cuesta
 ///
-/// Hasta 511 bytes por seccion cargable. En `gui.bex`, con tres, son 1,5 KB de
+/// Hasta 511 bytes por seccion cargable. En `d.bex`, con tres, son 1,5 KB de
 /// 308 KB: **el 0,5%**. A cambio, el camino rapido del disco existe siempre en
 /// vez de cuando el fichero salga alineado por suerte.
 const ALINEACION_DE_LO_CARGABLE: u64 = 512;

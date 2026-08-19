@@ -17,7 +17,7 @@
   1563  Ultra_kernel_x86-64/build.ps1
   1416  platform/abi/bmo-abi/src/bef/validator.rs
   1363  Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs
-  1345  Ultra_userspace/services/gui/src/commands/reports.rs
+  1345  Ultra_userspace/services/director/src/commands/reports.rs
   1204  Ultra_kernel_x86-64/kernel/src/ring0/dev/usb/mod.rs
   1196  toolchain/lang/c/src/parser/preprocessor.rs
   1162  Ultra_kernel_x86-64/kernel/src/ring0/task/proc.rs
@@ -31,9 +31,9 @@
 
 [EXENTOS]
 
-# SUBIDAS -- cada techo que se levanto, con su por que. No se borran: una
-# lista de excusas que se puede leer entera es lo que hace caro poner la
-# siguiente.
+# SUBIDAS -- cada techo que se levanto, con su por que. No se
+# borran: una lista de excusas que se puede leer entera es lo que
+# hace caro poner la siguiente.
 
 [SUBIDAS]
 Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs        1349 -> 1363  el despacho de KIND_TAREA (paso 3 del DIRECTOR). Se movio `conceder` y `buscar` a obj/tarea.rs y bajo de +32 a +14; los 14 no se quitan sin partir el fichero. Anotado a mano el 19-08: la subida es anterior a que esta seccion existiera.

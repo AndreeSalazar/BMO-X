@@ -56,7 +56,7 @@ es un error: es la respuesta correcta a "quien compone para mi".
 
 # ~~PASO 2~~ -- El lado del DIRECTOR ✅ HECHO (falta metal)
 
-`Ultra_userspace/services/gui/src/scene/surface.rs`. Una `Table` de cuatro
+`Ultra_userspace/services/director/src/scene/surface.rs`. Una `Table` de cuatro
 cajas, y en el bucle principal tres puntos: **recoger** al principio,
 **componer** al final --justo antes del cursor del raton, que es lo unico que va
 por encima-- y el raton en medio.
@@ -494,9 +494,37 @@ vez que el foco estuviera en una app.
 
 ---
 
-# PASO 5 -- El rename
+# PASO 5 -- El rename ✅ HECHO el 2026-08-19
 
-`sys/gui.bex` -> `sys/director.bex`. Al final, cuando los cuatro esten hechos.
+Los cuatro estaban hechos, asi que el nombre ya estaba **cobrado**: *un nombre
+describe algo hecho, no una intencion.*
 
-Toca: `build.ps1` (el destino de `bex-link`), el arranque del kernel que lo
-lanza, y `Ultra_userspace/services/gui/` -> `services/director/`.
+```
+   services/director/        ->  services/director/
+   bmo-service-director      ->  bmo-service-director
+   bin `compositor`     ->  bin `director`
+   sys/gui.bex          ->  sys/d.bex
+```
+
+## ★★ Y EL FICHERO NO SE LLAMA `director.bex`, QUE ES LO INTERESANTE
+
+`director` son **ocho caracteres exactos**: cabe en 8.3. O sea que el limite del
+sistema de ficheros --el que decidio `gui` en su dia-- aqui no decide nada.
+
+Lo que decide es del dueno: *"es para escritura en caso de que mi Ring 3 se caiga
+y tenga que escribir"*. **Con el escritorio muerto esto se teclea a mano** desde
+el shell de Ring 0, y ahi lo que cuenta son las letras.
+
+★ Una letra no es una abreviatura: es una firma. Es la regla por la que `cc`,
+`ld` y `sh` se llaman asi -- **lo que mas se usa lleva el nombre mas corto**. Y
+no pierde nada, porque el NOMBRE y el ASA son dos cosas distintas y este arbol
+ya las separaba: el crate, el binario y el fichero nunca se llamaron igual.
+
+```
+   el NOMBRE   DIRECTOR   lo dicen el arranque, CABINA y las tres leyes
+   el ASA      d.bex      lo que se escribe cuando no queda escritorio
+```
+
+⚠ Y el 8.3 sigue mandando en todo lo demas: el driver FAT32 del kernel se niega
+a recortar nombres, porque un nombre recortado abre otro archivo -- y en un
+cargador de programas eso es ejecutar otro binario.

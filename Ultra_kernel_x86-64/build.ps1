@@ -13,7 +13,7 @@
     #
     # Existe porque `-Flash` y `-Data` separados tienen una trampa silenciosa:
     # `-Flash` actualiza el ARRANQUE y `-Data` los PROGRAMAS, y quien olvida el
-    # segundo arranca un kernel nuevo con un `sys\gui.bex` viejo. No falla nada:
+    # segundo arranca un kernel nuevo con un `sys\d.bex` viejo. No falla nada:
     # simplemente estas probando el build de antes y no lo sabes. Paso una tarde
     # el 2026-08-04.
     #
@@ -90,7 +90,7 @@ function Guardian {
 #
 # ** Esto existe por un fallo concreto y caro: el 2026-08-04 se desplego con
 # `-Flash` y sin `-Data`, o sea que se actualizo el ARRANQUE y no los
-# PROGRAMAS. La maquina arranco un kernel nuevo con un `sys\gui.bex` de dos
+# PROGRAMAS. La maquina arranco un kernel nuevo con un `sys\d.bex` de dos
 # commits antes. **No fallo nada** -- simplemente se estuvo probando el build de
 # ayer, y las conclusiones de esa tarde eran sobre codigo que ya no existia.
 #
@@ -525,7 +525,7 @@ if ($maqFiles.Count -eq 0) {
 }
 # Donde vive el Rust de cada cara. Por convencion: `<nombre>_gen.rs` en la
 # escena del compositor -- la misma que declara la cabecera del generado.
-$escena = Join-Path $root '../Ultra_userspace/services/gui/src/scene'
+$escena = Join-Path $root '../Ultra_userspace/services/director/src/scene'
 $lf = [string][char]10
 $crlf = [string][char]13 + $lf
 foreach ($maq in $maqFiles) {
@@ -667,29 +667,29 @@ foreach ($s in $stages) {
 # su guion de enlazado, que fija la base en USER_IMAGE_BASE. `bex-link` traduce
 # el ELF a un contenedor BEF y comprueba, seccion por seccion, que las
 # direcciones que escribio el enlazador son las que el kernel va a mapear.
-Step 'Building Ring 3 userspace (compositor)...'
+Step 'Building Ring 3 userspace (DIRECTOR)...'
 $usDir = Join-Path (Split-Path -Parent $root) 'Ultra_userspace'
 if (-not (Test-Path $usDir)) { Fail 'Ultra_userspace/ no existe' }
 Push-Location $usDir
 try {
     $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-    $out = cargo +nightly build -p bmo-service-gui --release --target x86_64-unknown-none 2>&1
+    $out = cargo +nightly build -p bmo-service-director --release --target x86_64-unknown-none 2>&1
     $out | ForEach-Object {
         if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [userspace] ' + $_) -ForegroundColor DarkGray }
     }
     if ($LASTEXITCODE -ne 0) { Fail 'userspace build failed' }
 } finally { Pop-Location }
 
-$compositorElf = Join-Path $usDir 'target\x86_64-unknown-none\release\compositor'
-if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
+$compositorElf = Join-Path $usDir 'target\x86_64-unknown-none\release\director'
+if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del DIRECTOR' }
 # El .bex sale a staging\BMO-DATA\apps\, que es el espejo de lo que hay que
-# copiar al volumen de datos. La ruta de dentro (apps\gui.bex) tiene que cuadrar
+# copiar al volumen de datos. La ruta de dentro (sys\d.bex) tiene que cuadrar
 # con `RUTA_COMPOSITOR` de phase.rs: es el contrato entre el build y el arranque.
 #
-# * `gui.bex` y no `compositor.bex`: el driver FAT32 del kernel es 8.3 y se
-# NIEGA a recortar nombres (un nombre recortado abre otro archivo, y en un
-# cargador de programas eso es ejecutar otro binario). `compositor` son diez
-# caracteres y no cabe en los ocho del campo.
+# ** `d.bex` y no `director.bex`: `director` son ocho exactos y CABRIA. Lo que
+# decide es que con el escritorio muerto esto se teclea a mano; el por que
+# entero, en `core/desktop.rs`. Y el 8.3 si manda en lo demas: el driver FAT32
+# se NIEGA a recortar, porque un nombre recortado abre otro archivo.
 # -- El volumen de datos, POR CATEGORIAS ---------------------------
 #
 # Antes todo caia en un solo `apps\`: los siete .bex de COBOL, los de C, el de
@@ -699,7 +699,7 @@ if (-not (Test-Path $compositorElf)) { Fail 'no salio el ELF del compositor' }
 # La primera division es **programa o dato**; dentro de los programas, por quien
 # los compila:
 #
-#     sys\     el sistema: lo que arranca solo (gui.bex)
+#     sys\     el sistema: lo que arranca solo (d.bex, el DIRECTOR)
 #     cobol\  c\  ada\      los ejemplos, por lenguaje
 #     datos\   lo que los programas LEEN y ESCRIBEN
 #
@@ -721,7 +721,7 @@ foreach ($d in @('sys', 'cobol', 'c', 'ada', 'datos', 'apps')) {
 foreach ($n in 1..10) {
     New-Item -ItemType Directory -Path (Join-Path $dataBase ('cobol\' + $n)) -Force | Out-Null
 }
-$compositorBex = Join-Path $dataBase 'sys\gui.bex'
+$compositorBex = Join-Path $dataBase 'sys\d.bex'
 Push-Location (Split-Path -Parent $root)
 try {
     if (Test-Path $compositorBex) { Remove-Item $compositorBex -Force }
@@ -735,7 +735,7 @@ try {
     if ($LASTEXITCODE -ne 0) { Fail 'bex-link failed' }
     # Se borro antes a proposito: si `bex-link` no lo ha vuelto a escribir, se
     # copiaria al disco el compositor de la vez anterior y el build mentiria.
-    if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo gui.bex' }
+    if (-not (Test-Path $compositorBex)) { Fail 'bex-link no produjo d.bex' }
 
     # -- La MEDIDA, que no es un servicio -------------------------------
     #

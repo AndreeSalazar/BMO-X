@@ -39,9 +39,17 @@ use super::shell::ui::{SH_TITLE, SH_VALUE};
 /// caracteres; no cabia, y el fallo habria salido como `NameTooLong` despues
 /// de copiarlo -- o sea, despues de creer que ya estaba.
 ///
-/// `gui` ademas es el nombre que ya usa el crate (`bmo-service-gui`) y la
-/// etiqueta con la que habla en CABINA. Un nombre, no tres.
-pub(crate) const COMPOSITOR_PATH: &str = "sys/gui.bex";
+/// ** Y DESDE EL 2026-08-19 SE LLAMA `d.bex` -- paso 5 de `PLAN_DIRECTOR.md`.
+///
+/// `director` son ocho caracteres exactos, asi que cabria: el 8.3 no es lo que
+/// decide aqui. Lo que decide es que **si Ring 3 se cae, esto se teclea a
+/// mano** desde el shell de Ring 0, y con el escritorio muerto lo que cuenta
+/// son las letras que hay que escribir.
+///
+/// Una letra no es una abreviatura: es una firma, la misma regla por la que
+/// `cc`, `ld` y `sh` se llaman asi. El NOMBRE del programa es DIRECTOR --lo
+/// dicen el arranque, CABINA y las tres leyes-- y `d.bex` es su asa.
+pub(crate) const COMPOSITOR_PATH: &str = "sys/d.bex";
 
 /// Arranca el escritorio desde el disco. Va DESPUES de montar el volumen de
 /// datos -- antes no habria de donde leerlo.

@@ -31,7 +31,7 @@ name = "bmo-rtc"
 version = "1.0.0"
 
 [[package]]
-name = "bmo-service-gui"
+name = "bmo-service-director"
 version = "0.1.0"
 dependencies = [
  "bmo-dibujo",

@@ -74,7 +74,13 @@ Usage
     py censo_modular.py --sellar --motivo "..."   ... and a ceiling may go UP
 
 A ceiling that goes up needs a written reason, refused without one, and the
-reason is kept forever in the `[SUBIDAS]` section. That rule is the owner's,
+reason is kept forever in the `[SUBIDAS]` section.
+
+A RENAME is the known gap: the file arrives as NUEVO at its new path and the
+old ceiling leaves the list, so nothing looks like a rise and `--sellar` does
+not ask. The tree does not get worse -- same file, same size, new path -- but
+the move is only recorded in the commit. Closing it means matching by content,
+and that is a bigger tool than this one. That rule is the owner's,
 and it is the whole of it: **everything has its why; what has none is removed
 and replaced.** It was added on 2026-08-19 after a ceiling was re-sealed with
 its reason living only in a commit message -- which is where nobody looks.

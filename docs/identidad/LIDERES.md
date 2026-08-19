@@ -105,7 +105,7 @@ cambiar mas**. `FB_OP_DIMS` es una lectura y no hay nada al lado que escriba.
 Lo bueno: **el compositor ya no supone la resolucion.** Todas sus cajas se
 calculan con `p.ancho`/`p.alto` y `.min()`, y la escala del texto sale de la
 altura de la pantalla. Se reviso entero el 08-09 y **no hay ni un numero de
-resolucion clavado** en `services/gui/`.
+resolucion clavado** en `services/director/`.
 
 ★ Lo malo esta en el KERNEL, y es lo unico que hay que arreglar antes de que
 llegue la GPU:

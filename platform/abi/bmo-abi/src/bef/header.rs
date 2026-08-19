@@ -72,7 +72,7 @@ bitflags::bitflags! {
         /// # Por que existe
         ///
         /// Hasta el 2026-08-07 la pantalla era del primero que la pedia -- orden
-        /// de llegada, no autoridad. Y `gui.bex` la reclama al arrancar, asi que
+        /// de llegada, no autoridad. Y `d.bex` --el DIRECTOR-- la reclama al arrancar, asi que
         /// cualquier programa grafico se llevaba un "ya tiene dueno".
         ///
         /// El arreglo provisional fue un verbo en el escritorio (`presta
