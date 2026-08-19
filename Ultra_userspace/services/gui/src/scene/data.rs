@@ -706,7 +706,7 @@ fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
         ),
         Seal::Idle => p.texto(
             z.x, y,
-            "flechas mueven  ENTRAR baja  clic en el arbol salta  V firma  S sella  Ctrl+n consola",
+            "flechas mueven  ENTRAR baja  F2 renombra  V firma  S sella  Ctrl+n consola",
             INK_DIM,
         ),
     };
