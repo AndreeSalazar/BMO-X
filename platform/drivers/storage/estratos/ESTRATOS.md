@@ -140,13 +140,79 @@ anfitrion**: hay que apagar el Ryzen.
                    [ ] releerlo TRAS REINICIAR   <- la unica prueba que vale
                    [x] el nivel de ocupacion decide si se acepta
                    [x] NUNCA dos escritores (se monta desde un solo sitio)
-
-   POST-1.0        subir el techo de 96 bytes (la indireccion de `en_bloques`)
-                   subir el techo de 36 ficheros por carpeta
-                   el recolector (section 9) -- *"lo dificil, no el formato"*
-                   TimeBack encima (paso 7)
-                   NVMe debajo de la capa de bloques
 ```
+
+---
+
+## 0.1.1 EL PLAN DESPUES DEL 1.0, ORDENADO (2026-08-18)
+
+Reordenado a peticion del dueno: *"vamos a terminar con ESTRATOS, reorganizar el
+plan para llegar a completar la base"*. Lo que sigue **no es una lista de deseos
+por orden de ganas**: cada tramo desbloquea al siguiente, y donde no lo hace se
+dice.
+
+### TRAMO 0 -- el 1.0. Una prueba, y no es de codigo
+
+Apagar el Ryzen y encenderlo. `docs/metal/VERIFICACION_METAL.md` section 7.
+Nada de lo de abajo vale nada si esta falla: seria construir encima de una
+barrera que se cree.
+
+### TRAMO 1 -- LA BASE: que se pueda usar como un sistema de ficheros
+
+Hoy se escribe un fichero de **como mucho 96 bytes**, **solo en la raiz**, y
+**no se puede volver a leer desde Ring 3**. Las cuatro de este tramo son las que
+convierten eso en un sistema de ficheros.
+
+| # | que | por que va aqui |
+|---|---|---|
+| 1.1 | **leer el contenido desde Ring 3** | El kernel YA sabe (`est::open` + `est::read`, los usa `task/launch.rs` para arrancar un `.bex` de ESTRATOS). Lo que no hay es **puerta**: `obj/file.rs` resuelve rutas solo por `fsys::fs`, o sea FAT32. Escribir sin poder releer es media funcion, y es la mas barata de las cuatro porque la capacidad ya existe. |
+| 1.2 | **subir el techo de 96 bytes** | `Attr::en_bloques` admite cuatro niveles de indireccion **y nadie los ha escrito**. Es el techo que mas duele: con el puesto, "BMO-X guarda un fichero" lleva asterisco. |
+| 1.3 | **crear fuera de la raiz** | `crear_fichero` lee `dir::raiz()` y anade ahi, mire donde mire el cursor. Por eso la consola de la ventana **se niega** fuera de la raiz en vez de mentir sobre su contexto. |
+| 1.4 | **subir el techo de 36 por carpeta** | `ENTRADAS_POR_BLOQUE` = un bloque de entradas. Necesita que `:entradas` use indireccion -- **la misma maquinaria que 1.2**, asi que despues de aquella sale casi gratis. |
+
+### TRAMO 2 -- GESTIONAR: borrar, renombrar, crear carpeta
+
+La maquinaria es la que `crear_fichero` ya tiene: reservar, escribir el arbol
+nuevo, barrera, superbloque alterno. Lo que cambia es que entradas lleva la
+lista nueva.
+
+★ **Y en copy-on-write borrar NO destruye nada.** Es publicar un arbol *sin* esa
+entrada; el estrato anterior sigue entero y alcanzable. Esa es la diferencia
+entera con un sistema que sobreescribe, y es lo que permite que el explorador
+tenga un boton de borrar sin que de miedo.
+
+### TRAMO 3 -- las comodidades de la ventana
+
+Lo que el dueno llama *"agregar con `clear` eso para facilitar"*. Van aqui y no
+antes porque **ninguna desbloquea nada**: mejoran el uso de lo que ya funciona.
+Pulsar una fila de la rejilla, scroll propio para el grafo, recortar nombres
+largos, y las que salgan de usarlo.
+
+### TRAMO 4 -- EL RECOLECTOR, y por que es el ULTIMO
+
+★★ **Un recolector antes del tramo 2 no tendria nada que recoger.** Mientras
+solo se crea, todo estrato es alcanzable desde el superbloque: no hay basura.
+**Borrar es lo que CREA el trabajo del recolector** -- en copy-on-write, quitar
+una entrada no libera un bloque, solo deja huerfano el arbol viejo.
+
+Y el numero dice que tampoco corre prisa despues: en 414 GiB caben **mas de
+veinte millones de estratos** antes del 70 % aunque nada se comparta, y hay
+prueba (`espacio.rs`, `en_414_gib_caben_millones_de_estratos`).
+
+[!] Ojo con la palabra: la section 9 metia DOS trabajos en una frase y **uno ya
+esta hecho**.
+
+```
+   decirle al disco que lo libre es libre    <- HECHO (TRIM, 17-08)
+   marcar lo alcanzable y soltar lo viejo    <- esto es el recolector
+```
+
+### Lo que sigue fuera de todo esto
+
+TimeBack encima (paso 7) y NVMe debajo de la capa de bloques. Ninguno de los dos
+bloquea nada de arriba.
+
+---
 
 [!] **El riesgo de la section 12 sigue igual, y no baja con el progreso**:
 *"aqui un bug no da un fault bonito en pantalla: se lleva el trabajo de
