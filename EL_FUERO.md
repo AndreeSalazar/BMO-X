@@ -79,15 +79,15 @@ contradice a una ley, la ley gana y este fichero esta viejo.
 ```
 
 Congeladas. Todo lo demas --abrir un fichero, leer el raton, reclamar la
-pantalla-- es una **operacion sobre una capability**, y hoy son **92**
+pantalla-- es una **operacion sobre una capability**, y hoy son **93**
 (medidas el 19-08 sobre `platform/abi/bmo-abi/src/syscalls/surface/`; eran 69 el
 11-08 y 88 el 18-08).
 
-⚠ **Dos puertas es la FORMA; 92 es el TAMANO.** Confundirlas hace que la ley
-suene mejor de lo que es. Lo que impide que 92 se conviertan en 350 es la regla
+⚠ **Dos puertas es la FORMA; 93 es el TAMANO.** Confundirlas hace que la ley
+suene mejor de lo que es. Lo que impide que 93 se conviertan en 350 es la regla
 `R-REX3`: *comodidad es cabecera, autoridad es operacion*.
 
-★ Las cuatro que entraron el 19-08 --`TASK_OP_HIJO` y las tres de `KIND_TAREA`--
+★ Las cinco que entraron el 19-08 --`TASK_OP_HIJO` y las cuatro de `KIND_TAREA`--
 son el ejemplo de esa regla funcionando **a favor** de crecer: cerrar un proceso
 es AUTORIDAD, no comodidad, asi que le tocaba operacion. La regla no existe para
 que la superficie no crezca nunca: existe para que cuando crezca se sepa por que.

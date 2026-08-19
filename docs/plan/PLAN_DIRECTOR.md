@@ -410,7 +410,7 @@ espacio del que muere con `cr3_de_pid`.
 
 ---
 
-# PASO 4 -- Prioridad por FOCO
+# PASO 4 -- Prioridad por FOCO ✅ HECHO el 2026-08-19
 
 > **La prioridad no es un atributo del proceso. Es una consecuencia de a donde
 > mira el usuario.**
@@ -423,6 +423,45 @@ Aqui no hace falta esa API. El DIRECTOR ya sabe quien tiene el foco
 (`bmo_input::foco`), y el foco lo decide el usuario apuntando. **Una app no
 puede subirse la prioridad porque no hay donde pedirla: la gana estando
 delante.** Una operacion mas hacia el planificador, no un sistema nuevo.
+
+## ★★ Y AL ESCRIBIRLO: NO ES PRIORIDAD, ES QUANTUM
+
+`TAREA_OP_DELANTE`, sobre el handle del hijo. Y **no toca `priority`**, por un
+motivo que solo se ve mirando `choose_next`:
+
+```rust
+if task.state == Ready && (best.is_none() || task.priority > best_priority)
+```
+
+Es prioridad **estricta y sin envejecimiento**. Una tarea de prioridad 1 le gana
+el turno a las de 0 siempre que este lista, y ceder no ayuda porque quien cede
+sigue listo. O sea que subirle la prioridad a la app de delante **le ganaria el
+turno al DIRECTOR**, que esta en 0 -- y sus pixeles dejarian de componerse.
+**La ventana de delante seria la primera en dejar de refrescarse**: exactamente
+lo contrario de lo que la regla busca.
+
+El quantum no tiene ese modo de fallo. La rueda sigue dando la vuelta entera y
+nadie se queda fuera; lo unico que cambia es cuanto dura cada parada.
+
+```
+   la PRIORIDAD es un ORDEN     y un orden estricto EXCLUYE
+   el QUANTUM   es un REPARTO   y un reparto no deja a nadie fuera
+```
+
+★ **El foco no decide QUIEN corre. Decide CUANTO.** 4 ticks los demas, 8 la de
+delante, y delante hay uno: ponerselo a una se lo quita a la anterior en la
+misma pasada. Sin eso, cada cambio de foco dejaria una app mas con turno largo
+y en diez minutos lo tendrian todas -- que es como `nice()` dejo de significar
+nada en otros sistemas, solo que por descuido en vez de por pedirlo.
+
+★★ **Y el DIRECTOR no puede favorecerse a si mismo**, y no por prudencia: la
+operacion va sobre el handle de un HIJO, y a el lo lanzo el kernel. No hay
+handle suyo en manos de nadie, asi que no hay por donde pedirlo. La propiedad
+que la hace no-`root` es estructural, no una promesa.
+
+**Lo que falta para cerrarlo del todo**: hoy lo dispara el CLIC sobre una
+ventana. Cuando el foco sepa nombrar apps --su enum es cerrado y de seis-- lo
+disparara tambien Alt+Tab.
 
 ---
 

@@ -56,6 +56,8 @@ const OP_VIVE: u64 = 0x01;
 const OP_TID: u64 = 0x02;
 /// Cerrarlo. Ver `bmo_abi::...::TAREA_OP_CERRAR`.
 const OP_CERRAR: u64 = 0x03;
+/// Ponerlo delante. Ver `bmo_abi::...::TAREA_OP_DELANTE`.
+const OP_DELANTE: u64 = 0x04;
 
 /// **Conceder el handle**, en el momento de lanzar. Lo llama el brazo de
 /// `TASK_OP_EJECUTAR`, y vive aqui y no alli porque es oficio de este objeto:
@@ -87,7 +89,7 @@ pub fn buscar(pid: u32, tid: u64) -> Option<u64> {
 /// el error de siempre. No se inventa un `0`: un cero aqui seria
 /// indistinguible de *"esta muerto"*, y esa es exactamente la confusion que
 /// `PRESTADO_OP_DUENO` documenta al otro lado.
-pub fn operation(objeto: u64, op: u64) -> Option<u64> {
+pub fn operation(objeto: u64, op: u64, arg: u64) -> Option<u64> {
     let tid = objeto as u32;
     match op {
         OP_TID => Some(tid as u64),
@@ -114,6 +116,16 @@ pub fn operation(objeto: u64, op: u64) -> Option<u64> {
             };
             cap::revoke_all(pid);
             Some(if scheduler::terminar(tid) { 1 } else { 0 })
+        }
+        OP_DELANTE => {
+            // Quitarselo es dejar a TODOS en el turno normal: no hace falta
+            // recordar quien lo tenia, porque delante hay uno y `delante()`
+            // ya apaga el de los demas al encender el suyo.
+            if arg == 0 {
+                scheduler::delante(0);
+                return Some(1);
+            }
+            Some(if scheduler::delante(tid) { 1 } else { 0 })
         }
         _ => None,
     }

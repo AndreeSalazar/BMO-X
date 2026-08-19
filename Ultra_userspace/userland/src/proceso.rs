@@ -156,6 +156,15 @@ impl Hijo {
         invoke(self.cap, TAREA_OP_VIVE, 0, 0, 0).value != 0
     }
 
+    /// **Ponerlo delante**: turno mas largo mientras el usuario lo mire.
+    ///
+    /// No sube la prioridad --eso le ganaria el turno al propio DIRECTOR-- y
+    /// ponerselo a uno se lo quita al anterior. `delante(false)` los deja a
+    /// todos en el turno normal.
+    pub fn delante(&self, si: bool) -> bool {
+        invoke(self.cap, TAREA_OP_DELANTE, u64::from(si), 0, 0).value != 0
+    }
+
     /// **Cerrarlo.** `true` si estaba vivo y se cerro.
     ///
     /// Cerrar algo ya cerrado contesta `false` y no es un fallo: es lo que pasa
