@@ -167,14 +167,31 @@ convierten eso en un sistema de ficheros.
 |---|---|---|
 | 1.1 | **leer el contenido desde Ring 3** | El kernel YA sabe (`est::open` + `est::read`, los usa `task/launch.rs` para arrancar un `.bex` de ESTRATOS). Lo que no hay es **puerta**: `obj/file.rs` resuelve rutas solo por `fsys::fs`, o sea FAT32. Escribir sin poder releer es media funcion, y es la mas barata de las cuatro porque la capacidad ya existe. |
 | 1.2 | **subir el techo de 96 bytes** | `Attr::en_bloques` admite cuatro niveles de indireccion **y nadie los ha escrito**. Es el techo que mas duele: con el puesto, "BMO-X guarda un fichero" lleva asterisco. |
-| 1.3 | **crear fuera de la raiz** | `crear_fichero` lee `dir::raiz()` y anade ahi, mire donde mire el cursor. Por eso la consola de la ventana **se niega** fuera de la raiz en vez de mentir sobre su contexto. |
-| 1.4 | **subir el techo de 36 por carpeta** | `ENTRADAS_POR_BLOQUE` = un bloque de entradas. Necesita que `:entradas` use indireccion -- **la misma maquinaria que 1.2**, asi que despues de aquella sale casi gratis. |
+| 1.3 | **subir el techo de 36 por carpeta** | `ENTRADAS_POR_BLOQUE` = un bloque de entradas. Necesita que `:entradas` use indireccion -- **la misma maquinaria que 1.2**, asi que despues de aquella sale casi gratis. |
 
-### TRAMO 2 -- GESTIONAR: borrar, renombrar, crear carpeta
+### TRAMO 2 -- GESTIONAR: crear en cualquier sitio, borrar, renombrar, carpetas
 
-La maquinaria es la que `crear_fichero` ya tiene: reservar, escribir el arbol
-nuevo, barrera, superbloque alterno. Lo que cambia es que entradas lleva la
-lista nueva.
+[!] **Este tramo se reagrupo el 19-08, y la correccion la pidio el dueno.** El
+"crear fuera de la raiz" estaba en el tramo 1 como si fuera otra cosa. No lo es:
+
+```
+   entradas_con(previas, nombre, nodo, dst)     "la lista con una MAS"
+```
+
+Borrar es esa misma funcion con una MENOS. Renombrar, con una CAMBIADA. Crear
+carpeta es esa mas `nodo_de_directorio`. Y crear fuera de la raiz es ese mismo
+trabajo aplicado a una RUTA en vez de a la raiz. **Son una sola maquina y cuatro
+verbos**; hacer el de crear por separado seria escribirla dos veces.
+
+La maquinaria de disco es la que `crear_fichero` ya tiene: reservar, escribir el
+arbol nuevo, barrera, superbloque alterno. Lo que cambia es que ahora hay que
+republicar **cada nivel de la ruta**, no solo la raiz.
+
+```
+   [x] la mitad PURA          `entradas_sin`, `entradas_renombrando`,
+                              `nodo_de_directorio_vacio` -- 7 pruebas (19-08)
+   [ ] la mitad que ESCRIBE   recorrer la ruta y republicar nivel a nivel
+```
 
 ★ **Y en copy-on-write borrar NO destruye nada.** Es publicar un arbol *sin* esa
 entrada; el estrato anterior sigue entero y alcanzable. Esa es la diferencia
