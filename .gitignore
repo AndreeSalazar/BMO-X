@@ -37,3 +37,11 @@ wlog*.txt
 # y se copia al volumen de datos. Un binario que se regenera siempre no se
 # versiona — lo que se versiona es el crate que lo produce.
 Ultra_kernel_x86-64/staging/
+
+# Artefactos compilados sueltos. `**/target/` ya tapa lo que cargo deja en su
+# sitio; esto es para lo que aparece FUERA de el -- como `libtest_asm.rlib`, que
+# vivio en la raiz desde el 01-08 porque un `revert` lo devolvio por reflejo
+# cuando un `git add -A` se lo llevo. Nadie lo nombraba en ningun `Cargo.toml`,
+# ni en un guion, ni en un documento.
+*.rlib
+*.rmeta
