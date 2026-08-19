@@ -110,21 +110,73 @@ sistema que sobreescribe, anadir una entrada toca UN bloque; aqui no se toca
 ninguno, se copian los que cambian. Por eso el arbol de ayer sigue entero y
 alcanzable, que es la razon de que este sistema de ficheros exista.
 
-#### Los DOS TECHOS de esta version, dichos y no descubiertos
+#### Los TOPES de esta version, dichos y no descubiertos
 
-| techo | valor | donde |
-|---|---|---|
-| bytes por fichero | **96** | `RESIDENTE_MAX`, `objects.rs:134` |
-| ficheros por carpeta | **36** | `ENTRADAS_POR_BLOQUE`, `escritura.rs` |
+| tope | valor | donde | quien lo sufre |
+|---|---|---|---|
+| bytes por fichero (crear) | **96** | `RESIDENTE_MAX`, `objects.rs:134` | `Gesto::Fichero` |
+| bytes por fichero (copiar) | -- | `flujo.rs` lo tumbo el 19-08 | nadie: `Gesto::Copia` parte en bloques |
+| entradas por carpeta (escribir) | **36** | `ENTRADAS_POR_BLOQUE`, `escritura.rs` | republicar cualquier nivel |
+| entradas por carpeta (listar/buscar) | **64** | `MAX_ENTRIES`, `dir.rs` | `buscar_en`, y por debajo `open` y `resolver` |
+| entradas por carpeta (formatear) | **36** | `cabe_la_carpeta`, `estratos-fmt` | desde el 19-08; antes no habia |
 
 Ninguno es del formato: `Attr::en_bloques` admite cuatro niveles de indireccion
-y nadie los ha escrito todavia. `nodo_de_fichero` devuelve `BadField` pasando de
-96 bytes **y no parte el contenido en bloques a escondidas**, que es la decision
-correcta -- partir es otra funcion, con su arbol y sus niveles, y mezclarlas
-dejaria al llamante sin saber cuantos bloques va a necesitar.
+y hasta el 19-08 **solo el formateador del anfitrion los escribia**. `flujo.rs`
+los escribe ya desde el kernel y sin `alloc`, pero de momento **solo lo usa
+`Gesto::Copia`**: el contenido de `new` viaja dentro del renglon del syscall
+(`ES_GESTO_MAX = 96` en el ABI), asi que el techo que le queda a crear **no es
+de disco, es de puerta**. La copia lo esquiva porque su contenido no cruza el
+anillo -- lo va a buscar el kernel.
 
 [!] O sea que *"BMO-X guarda un fichero en su propio sistema"* es cierto **y** el
-fichero mide como mucho 96 bytes. Las dos mitades de la frase importan.
+fichero que se escribe con `new` mide como mucho 96 bytes. Las dos mitades de la
+frase importan.
+
+#### ** EL GUARDIA DE LOS TOPES (2026-08-19) -- lo que estaba colgando de una casualidad
+
+Los topes estaban dichos. Lo que no estaba era **quien los vigila**, y al mirar
+el camino entero aparecieron tres agujeros del mismo eje:
+
+```
+   estratos-fmt        SIN TOPE   podia parir carpetas que el kernel no sabe tocar
+   buscar_en           64         se tragaba el flag de truncado con un `_`
+   leer_entradas       36         no miraba `a.size` antes de leer
+```
+
+**1. `buscar_en` convertia "no cabia" en "no existe".** `entries` contesta dos
+cosas --cuantas leyo y si se quedo corto-- y la segunda se tiraba. Por debajo de
+esa funcion estan `open` --el que arranca un `.bex`-- y `resolver` --el que baja
+por la ruta de CUALQUIER gesto de escritura--. En una carpeta de mas de 64, un
+programa que esta en el disco contestaba *"esa ruta no existe"* por el sitio que
+ocupa en la lista. Ahora el `None` sigue siendo `None` --es verdad que no se
+encontro-- pero CABINA dice cuando esa verdad puede ser corta.
+
+**2. `leer_entradas` no reventaba por una casualidad aritmetica.** Lee las
+entradas que ya hay a UN bloque, y `walk::flujo` **trunca en silencio** cuando el
+destino se llena --a proposito: su otro cliente es el panel que pinta--. Con la
+lista cortada, republicar habria publicado la carpeta **sin las entradas de la 37
+en adelante**: el arbol viejo entero, el vivo con nombres de menos y el gesto
+diciendo que fue bien.
+
+★ **No pasaba porque 4096 no es multiplo de 112.** El corte deja 64 bytes
+sueltos y la crate del formato lo rechaza por *"esto no es una lista de
+entradas"*. Con `ENTRADA_LEN` de 64 o de 128 el resto daria cero y la perdida
+seria muda. Una garantia de datos no puede colgar de una division que no sale
+exacta: ahora se mira `a.size` antes de leer y se contesta
+`CarpetaNoCabeEntera`, que es un motivo y no un accidente. Y la casualidad tiene
+prueba propia (`un_listado_truncado_no_pasa_por_una_lista_entera`), para que el
+dia que alguien redondee `ENTRADA_LEN` a una potencia de dos se caiga una prueba
+y no un disco.
+
+**3. El formateador podia crear el estado malo.** Escribe con `Vec`, asi que una
+carpeta de mil entradas se escribia sin pestanear -- y quedaba un volumen que
+arranca, que se lee, y que **rechaza toda escritura dentro de esa carpeta**. El
+sitio de decir que no es el unico momento en que esa carpeta todavia no existe:
+`cabe_la_carpeta`, antes de meter el primer fichero.
+
+[!] Y el error nuevo no toca el ABI: el syscall de gestos **no devuelve codigo
+de motivo**, devuelve 0 y cuenta el porque por CABINA. Un motivo mas es una
+variante y una linea de texto, no una puerta nueva.
 
 ### ★★★★ GUARDO UN FICHERO EN METAL (2026-08-19)
 
@@ -208,15 +260,25 @@ barrera que se cree.
 
 ### TRAMO 1 -- LA BASE: que se pueda usar como un sistema de ficheros
 
-Hoy se escribe un fichero de **como mucho 96 bytes**, **solo en la raiz**, y
-**no se puede volver a leer desde Ring 3**. Las cuatro de este tramo son las que
-convierten eso en un sistema de ficheros.
+[!] **Este tramo se escribio el 18-08 y el 19-08 lo dejo a medias de verdad.**
+Decia *"solo en la raiz"* y *"no se puede volver a leer desde Ring 3"*: las dos
+son falsas desde ese mismo dia. Lo que queda es el techo, y el techo se partio
+en dos mitades que no son el mismo trabajo.
 
-| # | que | por que va aqui |
+| # | que | estado |
 |---|---|---|
-| 1.1 | **leer el contenido desde Ring 3** | El kernel YA sabe (`est::open` + `est::read`, los usa `task/launch.rs` para arrancar un `.bex` de ESTRATOS). Lo que no hay es **puerta**: `obj/file.rs` resuelve rutas solo por `fsys::fs`, o sea FAT32. Escribir sin poder releer es media funcion, y es la mas barata de las cuatro porque la capacidad ya existe. |
-| 1.2 | **subir el techo de 96 bytes** | `Attr::en_bloques` admite cuatro niveles de indireccion **y nadie los ha escrito**. Es el techo que mas duele: con el puesto, "BMO-X guarda un fichero" lleva asterisco. |
-| 1.3 | **subir el techo de 36 por carpeta** | `ENTRADAS_POR_BLOQUE` = un bloque de entradas. Necesita que `:entradas` use indireccion -- **la misma maquinaria que 1.2**, asi que despues de aquella sale casi gratis. |
+| 1.1 | **leer el contenido desde Ring 3** | **HECHO** (19-08). `Archivo` resuelve ESTRATOS primero y FAT32 despues, con la misma regla que usa `launch`. |
+| 1.2a | **el techo de 96, por el lado del DISCO** | **HECHO** (19-08). `flujo.rs` construye el arbol de indireccion sin `alloc`, y `Gesto::Copia` lo usa: una copia de FAT32 escribe lo que mida. |
+| 1.2b | **el techo de 96, por el lado de la PUERTA** | El contenido de `new` viaja dentro del renglon del syscall: `ES_GESTO_MAX = 96` en el ABI. Para escribir 5 KiB desde Ring 3 hace falta pasar un **buffer**, no bytes en linea. ** Y esa misma puerta es la que necesita `guardar`. |
+| 1.3 | **subir el tope de 36 por carpeta** | `ENTRADAS_POR_BLOQUE` = un bloque de entradas. Necesita que `:entradas` use indireccion **al republicar** -- la misma maquinaria de 1.2a, asi que sale casi gratis. Junta de paso los tres numeros distintos (36 escribir / 64 listar / 36 formatear). |
+| 1.4 | **el guardia de los topes** | **HECHO** (19-08). No sube ningun tope: impide que se pasen en silencio. Ver *"El guardia de los topes"* en la section 0.1. |
+
+★ **Y falta un verbo, que no estaba en ninguna lista.** No hay `guardar`: los
+gestos son crear, carpeta, quitar, renombrar y copiar, y `entradas_con` rechaza
+un nombre repetido. O sea que **un fichero tiene hoy una sola version para
+siempre**; lo que versiona es el arbol. *"Cada escritura publica un estrato
+nuevo"* es cierto del arbol y todavia no lo es del fichero. Es el quinto verbo de
+la misma maquina --la lista con una CAMBIADA-- y comparte puerta con 1.2b.
 
 ### TRAMO 2 -- GESTIONAR: crear en cualquier sitio, borrar, renombrar, carpetas
 

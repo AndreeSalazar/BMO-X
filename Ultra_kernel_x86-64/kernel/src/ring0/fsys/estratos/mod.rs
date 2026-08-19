@@ -247,6 +247,32 @@ pub enum WriteError {
     /// El tope es `ENTRADAS_POR_BLOQUE` (36) mientras `:entradas` viva en UN
     /// bloque sin indireccion. No es del formato: es de esta version.
     CarpetaLlena,
+    /// **LA CARPETA YA TIENE MAS ENTRADAS DE LAS QUE SE LEEN DE UNA VEZ.**
+    ///
+    /// ** No es `CarpetaLlena`, y confundirlos seria repetir el error del
+    /// 19-08 con otro disfraz. `CarpetaLlena` dice *"no cabe una mas"* y manda
+    /// a borrar algo. Esto dice *"lo que ya hay no lo se leer entero"*, y ahi
+    /// borrar no arregla nada: la carpeta la creo el formateador del anfitrion,
+    /// que no tiene el tope de un bloque, y **esta version del kernel no puede
+    /// republicarla sin dejarse nombres fuera**.
+    ///
+    /// === Por que esto se para en vez de seguir ===
+    ///
+    /// `leer_entradas` lee a UN bloque y el lector de flujos trunca en silencio
+    /// --a proposito: el panel que pinta un listado quiere lo que quepa--. Con
+    /// la lista cortada, republicar publicaria la carpeta **sin las entradas de
+    /// la 37 en adelante**. El arbol viejo seguiria entero, que es el consuelo
+    /// del copy-on-write, pero el vivo perderia nombres.
+    ///
+    /// Hoy eso lo tumbaba una casualidad --4096 no es multiplo de 112, asi que
+    /// el corte deja 64 bytes de sobra y la crate del formato lo rechaza-- y el
+    /// gesto moria con `NombreNoVale` o `RutaNoEsta`: **dos mensajes que mandan
+    /// a mirar donde no es**. Una garantia de datos no puede depender de una
+    /// division que no sale exacta.
+    ///
+    /// El tope es de ESTA version, no del formato: `:entradas` con indireccion
+    /// lo levanta, y es el mismo trabajo que ya hizo `flujo` para el contenido.
+    CarpetaNoCabeEntera,
     /// El nombre no vale para lo que se pidio: repetido al crear, ausente al
     /// borrar, o ya ocupado al renombrar.
     ///
@@ -274,6 +300,9 @@ impl WriteError {
             WriteError::RutaNoEsta => "esa ruta no existe, o no es un directorio",
             WriteError::MuyHondo => "la ruta baja demasiado para republicarla",
             WriteError::CarpetaLlena => "la carpeta esta llena: 36 entradas es el tope de hoy",
+            WriteError::CarpetaNoCabeEntera => {
+                "esa carpeta pasa de 36 entradas: esta version no la sabe republicar"
+            }
             WriteError::NombreNoVale => "ese nombre no vale: repetido, ausente o ya ocupado",
         }
     }

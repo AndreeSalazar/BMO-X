@@ -1468,10 +1468,13 @@ formato del raton en el log de arranque.
 
 1. ~~**Capability de MEMORIA**~~ -- **HECHA** (`a9ccd4f8`), con su programa y
    su contador en `info`. Falta la foto.
-2. **Cablear la escritura de ESTRATOS al dispositivo.** La transaccion existe y
-   esta probada (12 tests); faltan el `write` y el `FLUSH CACHE` de verdad. Es
-   lo unico que separa "un almacen que se lee" de un almacen. **Es el frente
-   grande que queda.**
+2. ~~**Cablear la escritura de ESTRATOS al dispositivo.**~~ -- **HECHO**, y
+   ESTRATOS es **1.0** desde el 19-08 (`3c715ca5`): se escribe desde Ring 3, se
+   relee TRAS REINICIAR en el Ryzen, y encima lleva borrar, renombrar, copiar,
+   marcar una version y volver a ella. Lo que queda de ese frente ya no es
+   "cablear": son los TOPES --96 bytes en `new` por el renglon del syscall, 36
+   entradas por carpeta-- y **un verbo que falta, `guardar`**. Ver la section
+   0.1.1 de `ESTRATOS.md`.
 3. ~~**Write-combining del framebuffer**~~ -- **HECHO y verificado** (`952681c7`
    + el `sfence` de `3409ea8e`).
 4. **Ada hacia ACATS** -- el estandar trae su propio banco de conformidad, que
