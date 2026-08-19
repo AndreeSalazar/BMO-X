@@ -284,6 +284,26 @@ en el mismo sitio, no una nueva.
 responde **para el escritorio entero**. Si se elige A, la entrega tiene que
 poder rendirse.
 
+## ★★ 2c.4b -- EL ORDEN, y por que la calculadora va la ULTIMA
+
+Cuatro pasos, y cada uno se puede comprobar **solo**:
+
+```
+   1  leer `endpoint.rs`     publicar un evento SIN conceder derecho de respuesta
+   2  traducir el golpe      clic de pantalla -> clic de la app (una resta)
+   3  `ray.bex` RECIBE       una tecla dentro de su ventana, sin llevarse la pantalla
+   4  `calculadora.bex`      la mudanza
+```
+
+★ **El 3 es la prueba, y va antes que el 4 a proposito.** `ray.bex` ya esta
+portado a superficie (paso 2b) y no tiene estado que perder: si recibe una tecla,
+la entrada funciona. Si se hiciera al reves --mudar primero la calculadora-- un
+fallo no diria si es de la entrada o de la mudanza, y se depuraria en dos sitios
+a la vez.
+
+Es la misma disciplina que la sonda de DOOM: **el instrumento antes que el
+paciente**.
+
 ## 2c.5 -- Y ENTONCES `apps/calculadora.bex`
 
 Con 2c hecho, la app suelta es **mudanza, no invencion**:

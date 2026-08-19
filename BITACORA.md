@@ -1642,3 +1642,53 @@ la misma frase de codigo, encontrados con doce horas de diferencia. **El emulado
 encontro el primero; solo el metal podia encontrar el segundo**, porque el
 emulador ejecuta el `.cob` que se le da y nunca pregunta que binario hay en el
 disco.
+
+## Ep. 44 -- Dos calculadoras en la misma foto
+**Sintoma**: la primera foto de la calculadora funcionando de verdad --`40.00`
+en el visor, la cara de MAQUETA, el motor en COBOL-- sale con **DOS
+calculadoras**: la vieja en su sitio y la nueva encima, las dos con el mismo
+numero. La terminal se habia arrastrado.
+
+**Culpable**: `run_relayout` movia **donde se va a pintar** y nadie se ocupaba
+de los pixeles de **donde ya no esta**.
+
+Lo mas util del episodio es que el fallo estaba **medio escrito en su propio
+comentario**. Decia que sin esa funcion la calculadora se quedaria *"pintandose
+en el vacio, y peor, respondiendo a clics en un sitio donde ya no hay nada"*.
+Las dos mitades eran ciertas y faltaba la tercera: **se movio el sitio y se dejo
+el dibujo**.
+
+**Moraleja**: **mover algo son dos operaciones, no una.** Poner el sitio nuevo y
+borrar el viejo. Un comentario que enumera dos consecuencias de tres suena
+completo -- y la que falta es justo la que nadie busca, porque el codigo hace lo
+que el comentario promete.
+
+★ Y el arreglo va **en la funcion, no en sus tres llamadores**, por el mismo
+motivo por el que la funcion existe: todo lo que se coloca a partir de la
+terminal se entera en UN sitio. Repartirlo entre `shortcuts.rs` y las dos ramas
+de `mouse.rs` es como se consigue que el cuarto llamador se olvide.
+
+[!] El orden dentro es lo unico delicado y quedo escrito: se borra **despues**
+de recolocar la terminal y **antes** de mover la calculadora, porque hace falta
+el rect VIEJO de una con el fondo NUEVO de la otra. Al reves es el rastro que
+`shortcuts.rs` dice haber cazado ya tres veces.
+
+---
+
+## Y lo que quedo PREPARADO ese mismo dia, para cuando vengan mas
+
+Esta bitacora es de episodios, no de planes -- asi que aqui solo va **donde
+mirar**, que es lo que hace falta dentro de seis meses:
+
+```
+   META-APP_HARD.md               que exige BMO-X de algo que quiera ser una app,
+                                  y que le devuelve. Hermano de META-KERNEL_HARD.
+   docs/plan/PLAN_DIRECTOR.md     paso 2c: la entrada. La UNICA casilla que
+                                  separa la calculadora de ser `calculadora.bex`.
+   docs/maestro/IPC_MAESTRO.md    por donde se hablan dos programas, y por que
+                                  JSON no era la pregunta.
+```
+
+★★ **La frase que resume los tres**: hoy una app de BMO-X **puede ensenar, y no
+la puedes tocar**. Cuando eso cambie, no cambia para la calculadora: cambia para
+todas las que vengan detras.
