@@ -628,6 +628,10 @@ pub extern "C" fn _start() -> ! {
     // se los lleva POR VALOR y los devuelve, asi que tienen que poder moverse.
     // Ver la cabecera de `desktop/mod.rs`.
     let (mut p, mut input, mut dsk) = desktop::boot();
+    // Quien tenia el foco la vuelta pasada. Sirve para no repetir la misma
+    // orden al kernel sesenta veces por segundo: el turno largo se pide
+    // cuando el foco CAMBIA, no mientras siga donde estaba.
+    let mut foco_antes: Option<desktop::Ventana> = None;
     loop {
         // -- Termino el programa que se lanzo? Entonces, a guardarlo --
         //
@@ -661,13 +665,40 @@ pub extern "C" fn _start() -> ! {
         // entera **mirando**, no porque nadie le mande un mensaje. Una operacion
         // que ya existia y ninguna cola nueva.
         let mut born = false;
-        if dsk.table.collect(&p) {
+        if let Some(hueco) = dsk.table.collect(&p) {
             born = true;
+            // ** Y SE LE DICE AL FOCO QUE EXISTE. Hasta hoy una app tenia
+            // caja pero no nombre: `bmo_input::foco` habla en ids y ninguno
+            // era suyo, asi que Alt+Tab pasaba de largo por encima de una
+            // ventana que se estaba viendo.
+            dsk.win.focus.open(desktop::Ventana::App(hueco as u8));
         }
         // Y las que se quedaron sin dueno. Va ANTES de pintar nada: la ventana
         // de una app muerta tiene que desaparecer en el mismo fotograma en que
         // se sabe, no en el siguiente.
         let dead = dsk.table.reap_dead(&mut dsk.tick.dead_boxes);
+
+        // ** EL FOCO SE CONVIERTE EN TURNO, Y EN UN SOLO SITIO.
+        //
+        // Aqui y no en el clic: por el clic no pasa Alt+Tab, y tener la
+        // misma regla en dos sitios es como se acaba con dos reglas que no
+        // dicen lo mismo. Una vez por vuelta, y solo cuando CAMBIA -- si no,
+        // serian dos cruces de puerta por fotograma para repetir lo que ya
+        // era verdad.
+        //
+        // No sube prioridad: alarga el turno. La app de delante corriendo
+        // por encima del DIRECTOR seria la primera en dejar de refrescarse.
+        let foco_ahora = dsk.win.focus.actual();
+        if foco_ahora != foco_antes {
+            foco_antes = foco_ahora;
+            if let Some(desktop::Ventana::App(i)) = foco_ahora {
+                if let Some(tid) = dsk.table.get_mut(i as usize).map(|s| s.tid) {
+                    if let Some(h) = bmo::Hijo::por_tid(tid) {
+                        h.delante(true);
+                    }
+                }
+            }
+        }
 
         // -- Va a pintar algo este fotograma? --
         //

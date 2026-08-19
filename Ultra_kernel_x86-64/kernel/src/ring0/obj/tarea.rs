@@ -67,6 +67,7 @@ const OP_DELANTE: u64 = 0x04;
 /// en un fallo porque la tabla de capabilities este llena. Quien quiera el
 /// handle lo pide con `TASK_OP_HIJO` y descubre alli que no esta.
 pub fn conceder(padre_pid: u32, tid: u32) {
+    crate::ring0::cabina::info("tarea", "handle del hijo concedido (tid)", tid as u64);
     let _ = cap::grant(
         padre_pid,
         cap::KIND_TAREA,

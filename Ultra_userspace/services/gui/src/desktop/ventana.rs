@@ -49,18 +49,32 @@ use bmo_input::Modo;
 /// El orden de los numeros no significa nada --el foco no los compara-- salvo
 /// que **son distintos**, que es justo lo que aqui se esta comprando.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u8)]
 pub(crate) enum Ventana {
+    /// **UNA APP EN SU CAJA**, por su hueco en la mesa de superficies (0..3).
+    ///
+    /// ** LA VARIANTE QUE ROMPIO EL `repr(u8)`, Y ESO ES LA MEJORA.
+    ///
+    /// Hasta el 2026-08-19 este enum era C-like y `id()` era `self as u8`: seis
+    /// ventanas fijas, decididas al compilar. Una app no cabia ahi, y por eso
+    /// `bmo_input::foco` --que si tenia la politica-- **no tenia forma de
+    /// nombrarla**: el plan daba el foco de las apps por resuelto y lo que
+    /// faltaba no era la politica, era el vocabulario.
+    ///
+    /// Ahora `id()` es un `match`, que es lo que permite que un id salga de un
+    /// dato y no de una constante. El precio es que ya no hay `as u8`; la
+    /// ganancia es que el escritorio puede nombrar algo que no existia cuando
+    /// se compilo.
+    App(u8),
     /// La terminal. Arranca con el foco y es la unica que no se cierra.
-    Run = 0,
+    Run,
     /// F12 -- Datos, el explorador de ESTRATOS.
-    Data = 1,
+    Data,
     /// F11 -- CABINA, la consola del kernel.
-    Cabina = 2,
+    Cabina,
     /// F7 -- las vitales del CPU. Ver `scene::vitals`.
-    Cpu = 3,
+    Cpu,
     /// F8 -- la memoria, con QUIEN se la esta comiendo.
-    Mem = 4,
+    Mem,
     /// F10 -- el sonido. Ver `scene::sound`.
     ///
     /// ** ES 5 Y NO 3, Y ESE ES EL MOTIVO DE ESTE FICHERO.
@@ -79,7 +93,7 @@ pub(crate) enum Ventana {
     /// muertas, ESC ya no la cerraba, el asa ya no la arrastraba, y un clic
     /// tampoco la rescataba --`clic_en` mueve una ventana que ENCUENTRA, no
     /// mete una nueva--. La unica salida era F10 dos veces.
-    Sound = 5,
+    Sound,
 }
 
 impl Ventana {
@@ -104,8 +118,20 @@ impl Ventana {
     /// **La unica funcion del compositor que convierte una ventana en un id.**
     /// Todo lo demas habla en `Ventana`, y por eso ya no se puede escribir un
     /// 3 donde iba un 5.
+    /// Los ids de las apps empiezan DESPUES de los fijos, y el 6 no es magia:
+    /// es `TODAS.len()`, o sea que anadir una ventana fija los corre solos.
+    pub(crate) const PRIMERA_APP: u8 = Ventana::TODAS.len() as u8;
+
     pub(crate) fn id(self) -> u8 {
-        self as u8
+        match self {
+            Ventana::Run => 0,
+            Ventana::Data => 1,
+            Ventana::Cabina => 2,
+            Ventana::Cpu => 3,
+            Ventana::Mem => 4,
+            Ventana::Sound => 5,
+            Ventana::App(i) => Ventana::PRIMERA_APP + i,
+        }
     }
 
     /// Y de vuelta. `None` para un id que no es de nadie -- que hoy no puede
@@ -118,6 +144,10 @@ impl Ventana {
             3 => Ventana::Cpu,
             4 => Ventana::Mem,
             5 => Ventana::Sound,
+            // Las cuatro cajas de `scene::surface::MAX`. Un id mas alto no es
+            // de nadie: se contesta `None` en vez de inventar una app numero
+            // cinco que no tiene donde vivir.
+            6..=9 => Ventana::App(id - Ventana::PRIMERA_APP),
             _ => return None,
         })
     }
@@ -140,6 +170,13 @@ impl Ventana {
             Ventana::Cpu => "CPU",
             Ventana::Mem => "Memoria",
             Ventana::Sound => "Sonido",
+            // Sin el numero seria imposible saber cual de las cuatro conmuta.
+            // El nombre de verdad --el del programa-- lo sabe la superficie, no
+            // este enum: aqui solo hay un hueco de mesa.
+            Ventana::App(0) => "App 1",
+            Ventana::App(1) => "App 2",
+            Ventana::App(2) => "App 3",
+            Ventana::App(_) => "App 4",
         }
     }
 }

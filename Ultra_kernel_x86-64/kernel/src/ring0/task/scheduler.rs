@@ -710,6 +710,13 @@ pub fn delante(tid: u32) -> bool {
         if s.tasks[i].tid == tid {
             s.tasks[i].quantum = QUANTUM_DELANTE;
             encontrada = true;
+            // ** SE DICE EN CABINA, y no es traza de mas: el turno largo no
+            // se VE. Un proceso que corre el doble se parece a uno que corre
+            // normal en una maquina que va bien, asi que sin esta linea la
+            // unica forma de saber si el foco movio algo seria leer el
+            // codigo. El dueno vive en el escritorio: lo que no llega a
+            // CABINA, para el no ha pasado.
+            crate::ring0::cabina::info("sched", "turno largo, esta delante (tid)", tid as u64);
         } else {
             s.tasks[i].quantum = DEFAULT_QUANTUM_TICKS;
         }

@@ -224,6 +224,10 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
                 return;
             }
             match v {
+                // Una app se pinta sola: el DIRECTOR pega su superficie en
+                // `compose`, no la dibuja. Repintarla desde aqui seria
+                // inventarse sus pixeles.
+                Ventana::App(_) => {}
                 Ventana::Cabina => scene::cabina::paint(&p, &dsk.win.cabina),
                 Ventana::Data => scene::data::paint(&p, &dsk.win.data),
                 // Las vitales son VISTAS: se repintan cada vez que les

@@ -180,6 +180,16 @@ impl Windows {
             Ventana::Cpu => self.cpu_open,
             Ventana::Mem => self.mem_open,
             Ventana::Sound => self.sound_open,
+            // ** UNA APP ESTA ABIERTA SI EL FOCO LA CONOCE, y eso no es
+            // una suposicion: un `Ventana::App` solo entra en la lista
+            // cuando `table.collect` da a luz su caja, y sale cuando se
+            // cierra. Aqui no hay una bandera que consultar porque la
+            // verdad vive en la mesa de superficies, no en este struct.
+            //
+            // Contestar `false` seria peor que no contestar: `top_now`
+            // caeria a `Run` y repintaria la terminal cada vez que el foco
+            // estuviera en una app.
+            Ventana::App(_) => true,
         }
     }
 }
