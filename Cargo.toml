@@ -57,10 +57,6 @@ members = [
     "platform/drivers/storage/particiones",
     "platform/drivers/storage/ahci",
     "platform/drivers/storage/fat32",
-    # FAT12/16/32 como FRONTERA: lo que UEFI exige del volumen de arranque. No
-    # sustituye a `fat32` todavia -- convive hasta pasar sus 21 casillas.
-    # Ver `docs/plan/PLAN_FAT32.md`.
-    "platform/drivers/storage/fat",
     # ESTRATOS: el formato en disco del FS propio. Solo el FORMATO -- sin E/S,
     # para poder probarlo entero en el anfitrion antes de tocar un sector.
     "platform/drivers/storage/estratos",
