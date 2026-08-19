@@ -22,8 +22,21 @@ esta escrito en **C**, y BMO C ya pasa 32 de 32 sondas.
 
 ## Lo que BMO-X tiene HOY
 
-Medido sobre `platform/abi/bmo-abi/src/syscalls/surface.rs` y los drivers del
+Medido sobre `platform/abi/bmo-abi/src/syscalls/surface/` y los drivers del
 arbol.
+
+> ★★ **AL 2026-08-18: 2 syscalls y 88 OPERACIONES.** El mismo `grep` sobre el
+> mismo directorio, en tres fechas del arbol: **69** el 11-08 (`cf878698`),
+> **73** el 14-08 (`324f7654`), **88** hoy. O sea +27% en una semana, y son 43
+> `TASK`, 9 `ARCH`, 6 `INPUT`, 4 `AUDIO`, 4 `FB`, 4 `PRESTADO`, 4 `CONSOLA`...
+>
+> Dos cosas de esa cifra, y ninguna es cosmetica. La primera: **la fuente de la
+> medicion se movio** -- `surface.rs` es hoy un directorio de siete ficheros, y
+> por eso el numero envejecio sin que nadie lo notara. La segunda: **dos puertas
+> es la FORMA, 88 es el TAMANO**, y prometer que la superficie cabe en la cabeza
+> hay que hacerlo con el numero de hoy. Donde va lo que crece sin tocar la
+> puerta esta en [`META-SDK_HARD.md`](../../META-SDK_HARD.md) 1.1: *comodidad es
+> cabecera, autoridad es operacion*.
 
 > **Al 2026-08-11: 2 syscalls y 39 operaciones.** Cuando este documento se
 > escribio eran 3 y 22, y las dos mitades de ese cambio dicen lo mismo:
@@ -226,13 +239,37 @@ es el que uno espera:
 
 | # | Palanca | Que desbloquea | Necesita C++? |
 |---|---|---|---|
-| 1 | **Portar SDL** -- SDL 1.2 es C, y su capa de plataforma son ~4 funciones (video, entrada, audio, tiempo). **BMO ya tiene las cuatro** | ★ **cientos** de juegos y aplicaciones de golpe, sin tocarlos uno a uno | **NO** |
-| 2 | **Compilacion separada** | todo lo que pase de ~100k lineas. Hoy es el techo duro del sistema | **NO** |
-| 3 | **libc: el asignador sobre `KIND_MEMORIA`** | DOOM, Lua, SQLite y todo lo demas | **NO** |
-| 4 | **Pila de red + TLS** | navegador, servidores, actualizaciones, todo lo conectado | **NO** |
-| 5 | El **C++ acotado** | ImGui, Box2D, y escribir lo grande de BMO sin ahogarse | -- |
+| 1 | **Compilacion separada** | todo lo que pase de ~100k lineas. Hoy es el techo duro del sistema, **y es lo que bloquea a SDL** | **NO** |
+| 2 | **Portar SDL 1.2** -- es C, y su capa de plataforma es pequena y esta bien delimitada | ★ **cientos** de juegos y aplicaciones de golpe, sin tocarlos uno a uno | **NO** |
+| 3 | **Pila de red + TLS** | navegador, servidores, actualizaciones, todo lo conectado | **NO** |
+| 4 | El **C++ acotado** | ImGui, Box2D, y escribir lo grande de BMO sin ahogarse | -- |
+| ~~x~~ | ~~**libc: el asignador sobre `KIND_MEMORIA`**~~ | **HECHO** el 2026-08-09: `<bmo/monton.h>` | -- |
 
-Las cuatro primeras son C y sistema. Ninguna pide clases.
+Las tres primeras son C y sistema. Ninguna pide clases.
+
+### ⚠ La fila 1 y la 2 estaban al reves, y por que
+
+Hasta el 2026-08-18 esta tabla ponia SDL en el puesto 1 con esta frase: *"su
+capa de plataforma son ~4 funciones (video, entrada, audio, tiempo). **BMO ya
+tiene las cuatro**"*. Medida contra el arbol, se cae por tres sitios:
+
+1. **De las cuatro, hay dos y media.** Tiempo, entero. Video, entero --y encaja
+   mejor de lo que decia: `SDL_Flip` **es** `R-APP4`. Entrada, solo por relevo
+   de pantalla entera. **Audio, no**: `ring0/obj/audio.rs` abre diciendo *"esto
+   no es un driver de audio"*, y debajo solo hay el altavoz del PC.
+2. **Faltaba nombrar los HILOS.** SDL 1.2 trae subsistema de hilos y su audio
+   arranca uno propio; aqui no hay hilos de Ring 3 y
+   `toolchain/lang/c/BRECHA.md` lo repite cuatro veces. Se puede construir sin
+   ellos, pero es una decision de diseno que hay que tomar antes.
+3. ★★ **SDL son del orden de cien ficheros `.c`, y hoy solo hay unity build.**
+   Dos `static` con el mismo nombre en ficheros distintos dejan de ocultarse y
+   pasan a ser una redefinicion. O sea: **SDL no adelanta a la compilacion
+   separada -- es el mejor argumento a favor de ella.**
+
+★ Y la consecuencia que separa dos objetivos que estaban mezclados: **SDL no es
+el camino para abrir DOOM.** DOOM ya corre sin SDL, con su propia capa de
+plataforma; lo que le falta es sitio compartido y un fallo de codegen. SDL es el
+camino para que **otro** traiga su juego.
 
 ## Y sobre la GPU
 
