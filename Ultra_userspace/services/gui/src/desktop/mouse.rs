@@ -499,7 +499,7 @@ pub(crate) fn on_pointer(
                 }
                 Some(Button::Maximize) => {
                     let (vx, vy, va, vl) = dsk.run_box.chrome.toggle_maximized(&p);
-                    dsk.run_relayout();
+                    dsk.run_relayout(&p);
                     scene::erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                     uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                     dsk.win.top_before = Ventana::Run;
@@ -526,7 +526,7 @@ pub(crate) fn on_pointer(
                 // `erase_window` tiene que preguntar por el color de
                 // fondo con la geometria NUEVA o deja un rastro de
                 // copias de si misma.
-                dsk.run_relayout();
+                dsk.run_relayout(&p);
                 // ** Se borra la RESTA, no el rectangulo entero.
                 //
                 // Arrastrar movia la ventana unos pocos pixeles y borraba sus
