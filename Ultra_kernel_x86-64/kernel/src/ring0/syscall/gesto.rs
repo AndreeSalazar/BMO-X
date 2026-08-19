@@ -106,6 +106,16 @@ pub(super) fn servir(pid: u32, arg0: u64, arg1: u64) -> u64 {
             let (dir, nombre) = partir(ruta)?;
             Some(escribir::aplicar(dir, Gesto::Quitar { nombre }))
         }),
+        ES_GESTO_COPIA => hacer(pid, "copiar un fichero de FAT32", |ruta, datos| {
+            let (dir, nombre) = partir(ruta)?;
+            // El ORIGEN viene por el renglon del contenido, igual que el nombre
+            // nuevo de `renombrar`. Son dos nombres y ningun byte de fichero.
+            let origen = core::str::from_utf8(datos).ok()?;
+            if origen.is_empty() {
+                return None;
+            }
+            Some(escribir::aplicar(dir, Gesto::Copia { nombre, origen }))
+        }),
         ES_GESTO_RENOMBRAR => hacer(pid, "renombrar una entrada", |ruta, datos| {
             let (dir, viejo) = partir(ruta)?;
             // El nombre nuevo viene por el renglon del contenido.

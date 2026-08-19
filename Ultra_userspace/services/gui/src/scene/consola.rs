@@ -327,6 +327,7 @@ impl Consola {
             b"cd" => self.cd(resto),
             b"nuevo" => self.nuevo(resto),
             b"carpeta" | b"mkdir" => self.carpeta(resto),
+            b"copia" | b"copy" | b"cp" => self.copia(resto),
             b"borra" | b"quita" => self.borra(resto),
             b"renombra" | b"mv" => self.renombra(resto),
             b"sella" | b"sellar" => self.sella(),
@@ -350,8 +351,8 @@ impl Consola {
         self.di(b"ls  cd NOMBRE  cd ..  cd /  donde   moverse y mirar", T_DIM);
         self.di(b"nuevo N TEXTO   crea un fichero      ESCRIBEN EN EL DISCO", T_DIM);
         self.di(b"carpeta N       crea una carpeta     y todos actuan DONDE", T_DIM);
-        self.di(b"borra N         deja de nombrarla    ESTAS, no en la raiz", T_DIM);
-        self.di(b"renombra V N    sin tocar el nodo", T_DIM);
+        self.di(b"copia ORG DST   trae de FAT32        ESTAS, no en la raiz", T_DIM);
+        self.di(b"borra N         deja de nombrarla", T_DIM);
         self.di(b"sella           commitea             clear limpia esto", T_DIM);
         self.di(b"ESC suelta las teclas.  Ctrl+n cierra.  arriba: la anterior.", T_DIM);
     }
@@ -553,6 +554,34 @@ impl Consola {
         }
         let g = bmo::estratos::crear_fichero(&ruta[..n], texto);
         self.hecho(g, b"fichero");
+    }
+
+    /// **`copia ORIGEN DESTINO`** -- trae un fichero de FAT32.
+    ///
+    /// ** La unica orden de esta consola que menciona el OTRO volumen, y lo dice
+    /// en su respuesta. El resto actua solo sobre ESTRATOS; esta cruza, y una
+    /// orden que cruza sin decirlo es como se guarda algo donde no se queria.
+    ///
+    /// El origen es una ruta de FAT32 tal cual --`c/holac.bex`--, y el destino
+    /// es un nombre que cae DONDE ESTAS, como los demas verbos.
+    fn copia(&mut self, a: &[u8]) {
+        let (origen, destino) = partir(a);
+        if origen.is_empty() || destino.is_empty() {
+            self.di(b"copia ORIGEN DESTINO", T_BAD);
+            self.di(b"el origen es de FAT32; el destino cae donde estas.", T_DIM);
+            return;
+        }
+        let mut ruta = [0u8; COLS];
+        let n = self.ruta_de(destino, &mut ruta);
+        if n == 0 {
+            self.di(b"esa ruta no cabe.", T_BAD);
+            return;
+        }
+        let g = bmo::estratos::copiar(&ruta[..n], origen);
+        if g != 0 {
+            self.di2(b"traido de FAT32: ", origen, T_DIM);
+        }
+        self.hecho(g, b"copia");
     }
 
     /// **`carpeta NOMBRE`** -- una carpeta vacia donde estas.

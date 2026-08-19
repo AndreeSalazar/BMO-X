@@ -34,6 +34,9 @@ pub(crate) use dir::*;
 /// `bmo_estratos::escritura` y se prueba en el anfitrion; aqui solo se pide
 /// sitio, se escriben cuatro bloques y se cierra.
 pub mod escribir;
+/// ** TRAER UN FICHERO DE FUERA: el contenido lo lee el kernel y no cruza el
+/// renglon de 96 bytes del syscall. Es lo que hace util el techo levantado.
+pub(crate) mod copiar;
 /// UN NIVEL de la ruta: su nodo, su listado y el detalle de cada hijo, leidos
 /// UNA VEZ al pasar por el. Es lo que permite pintar un arbol y lo que quita el
 /// martillo sobre el disco en cada repintado.

@@ -226,6 +226,7 @@ pub const ES_GESTO_FICHERO: u64 = 0x02;
 pub const ES_GESTO_CARPETA: u64 = 0x03;
 pub const ES_GESTO_QUITAR: u64 = 0x04;
 pub const ES_GESTO_RENOMBRAR: u64 = 0x05;
+pub const ES_GESTO_COPIA: u64 = 0x06;
 /// Lo que cabe DENTRO del nodo, sin gastar un bloque de datos.
 pub const ES_GESTO_MAX: u64 = 96;
 
@@ -306,6 +307,20 @@ pub fn quitar(ruta: &[u8]) -> u64 {
     mandar_ruta(ruta);
     mandar_datos(&[]);
     invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_QUITAR, 0, 0).value
+}
+
+/// **Trae `origen` de FAT32 y lo guarda en `destino`.**
+///
+/// ** El contenido NO pasa por aqui. Viajan los dos NOMBRES y el kernel lee la
+/// fuente el mismo -- por eso esta es la unica forma de meter en ESTRATOS algo
+/// mas grande que los 96 bytes del renglon.
+///
+/// Y por eso tampoco hay un tope de tamano en esta funcion: el que hay es el
+/// del volumen, y lo dice el nivel de ocupacion.
+pub fn copiar(destino: &[u8], origen: &[u8]) -> u64 {
+    mandar_ruta(destino);
+    mandar_datos(origen);
+    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_COPIA, 0, 0).value
 }
 
 /// **Le cambia el nombre a `ruta`.** Devuelve la generacion nueva, o `0`.
