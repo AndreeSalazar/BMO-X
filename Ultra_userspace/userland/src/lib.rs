@@ -321,6 +321,8 @@ pub const INFO_DATOS_MONTADO: u64 = 0x10;
 /// de `OP_INFO`, que es como crece esta superficie sin tocar el ABI.
 pub const INFO_ES_MONTADO: u64 = 0x11;
 /// Generacion del superbloque: cuantas transacciones lleva el volumen.
+/// Cuando se hizo la version en curso. `0` = sin fechar.
+pub const INFO_ES_FECHA: u64 = 0x49;
 pub const INFO_ES_GENERACION: u64 = 0x12;
 pub const INFO_ES_BLOQUES: u64 = 0x13;
 pub const INFO_ES_USADOS: u64 = 0x14;

@@ -77,6 +77,32 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow, tx: u32) {
         p.texto(x, y, "  transacciones desde el formateo", INK_DIM);
     });
 
+    // ** LA FECHA DE LA VERSION EN CURSO, que hasta hoy no existia.
+    //
+    // El campo `tiempo` del estrato llevaba un CERO desde el primer dia: el
+    // volumen tenia historia y no tenia fechas. Ahora la lleva, y por eso se
+    // ensena aqui -- justo debajo de la generacion, que es su pareja: una dice
+    // CUANTAS versiones van y la otra CUANDO se hizo esta.
+    //
+    // Sin fecha no se pinta nada. **No se inventa una**: un volumen escrito por
+    // una maquina sin reloj creible tiene versiones sin fechar, y ensenarlas
+    // como 1970 mentiria con mas conviccion que dejarlas en blanco.
+    row("cuando", &mut ty, &|x, y| {
+        let v = bmo::info(bmo::INFO_ES_FECHA);
+        match bmo_rtc::desempaquetar(v) {
+            Some(f) => {
+                let mut b = [0u8; 24];
+                let n = bmo_rtc::escribir(&f, &mut b);
+                let x = p.texto_bytes(x, y, &b[..n.min(19)], INK);
+                p.texto(x, y, "   cuando se hizo esta version", INK_DIM);
+            }
+            None => {
+                let x = p.texto(x, y, "sin fechar", INK_DIM);
+                p.texto(x, y, "   la placa no dio una hora creible", INK_DIM);
+            }
+        }
+    });
+
     row("espacio", &mut ty, &|x, y| {
         let x = magnitude(p, x, y, used_count * tam, INK);
         let x = p.texto(x, y, " de ", INK_DIM);

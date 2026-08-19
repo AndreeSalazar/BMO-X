@@ -167,6 +167,8 @@ const INFO_ES_BLOQUE_TAM: u64 = 0x15;
 const INFO_ES_NIVEL: u64 = 0x16;
 const INFO_ES_IDENTIDAD: u64 = 0x17;
 const INFO_ES_ESCRIBIBLE: u64 = 0x18;
+/// Cuando se hizo la version en curso. `0` = sin fechar.
+const INFO_ES_FECHA: u64 = 0x49;
 /// Lo que Ring 3 ha pedido con `KIND_MEMORIA`. Ver `surface.rs`.
 const INFO_MEM_ENTREGADA: u64 = 0x19;
 // -- SMP --
@@ -426,6 +428,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_DATOS_MONTADO => crate::ring0::fsys::fs::data_mounted() as u64,
         INFO_ES_MONTADO => crate::ring0::fsys::estratos::is_mounted() as u64,
         INFO_ES_IDENTIDAD => crate::ring0::fsys::estratos::identidad_ok() as u64,
+        INFO_ES_FECHA => crate::ring0::fsys::estratos::fecha_estrato(),
         INFO_ES_GENERACION => {
             crate::ring0::fsys::estratos::superbloque().map_or(0, |sb| sb.generation)
         }
