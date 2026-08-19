@@ -257,6 +257,25 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
                         dsk.win.data.hist_sel += 1;
                     }
                 }
+                // ** ENTRAR VUELVE a la version senalada, y no pregunta.
+                //
+                // Es la misma razon que `borra`: **volver no destruye**. El
+                // estrato nuevo tiene por padre la punta de ahora, asi que lo
+                // que se deshace sigue en la cadena y se puede volver a el.
+                // Un "seguro?" para algo que no pierde nada ensena a contestar
+                // que si sin leer.
+                b'\r' | b'\n' => {
+                    let n = dsk.win.data.hist_sel as u64;
+                    if n > 0 && bmo::estratos::volver(n) != 0 {
+                        // El arbol de ahora es otro: el cursor y la historia
+                        // tienen que releerse los dos.
+                        bmo::estratos::recargar();
+                        bmo::estratos::hist_releer();
+                        dsk.win.data.hist_sel = 0;
+                        dsk.win.data.hist_from = 0;
+                        dsk.win.data.to_top();
+                    }
+                }
                 _ => served = false,
             }
             if served {

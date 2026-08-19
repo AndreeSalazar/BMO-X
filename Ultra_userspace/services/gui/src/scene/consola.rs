@@ -336,6 +336,7 @@ impl Consola {
             b"carpeta" | b"mkdir" => self.carpeta(resto),
             b"copia" | b"copy" | b"cp" => self.copia(resto),
             b"marca" | b"mark" | b"tag" => self.marca(resto),
+            b"vuelve" | b"revert" => self.vuelve(resto),
             b"borra" | b"quita" => self.borra(resto),
             b"renombra" | b"mv" => self.renombra(resto),
             b"sella" | b"sellar" => self.sella(),
@@ -361,7 +362,7 @@ impl Consola {
         self.di(b"carpeta N       crea una carpeta     y todos actuan DONDE", T_DIM);
         self.di(b"copia ORG DST   trae de FAT32        ESTAS, no en la raiz", T_DIM);
         self.di(b"borra N         deja de nombrarla", T_DIM);
-        self.di(b"marca NOMBRE    fija esta version    clear limpia esto", T_DIM);
+        self.di(b"marca NOMBRE    fija esta version    vuelve N: atras", T_DIM);
         self.di(b"ESC suelta las teclas.  Ctrl+n cierra.  arriba: la anterior.", T_DIM);
     }
 
@@ -409,6 +410,10 @@ impl Consola {
             return;
         }
         bmo::estratos::recargar();
+        // ** Y la HISTORIA tambien. Tenia el mismo cabo suelto que el cursor:
+        // cada gesto publica una version nueva, asi que la lista del historial
+        // se quedaba con la cadena de antes -- marcabas algo y no aparecia.
+        bmo::estratos::hist_releer();
         let mut d = [0u8; 10];
         let kd = decimal(g, &mut d);
         // ** UNA linea, no dos. Estaba partido --`... generacion` y el numero
@@ -573,6 +578,26 @@ impl Consola {
         }
         let g = bmo::estratos::crear_fichero(&ruta[..n], texto);
         self.hecho(g, b"fichero");
+    }
+
+    /// **`vuelve N`** -- el arbol de hace N versiones, sin copiar nada.
+    ///
+    /// ** No pierde lo de en medio: el estrato nuevo tiene por padre la punta
+    /// de ahora, asi que la cadena entera sigue ahi y esta vuelta se puede
+    /// deshacer igual. Es un *revert*, no un *reset*.
+    fn vuelve(&mut self, a: &[u8]) {
+        let n = numero(a);
+        if n == 0 {
+            self.di(b"vuelve N   (N versiones hacia atras, 1 o mas)", T_BAD);
+            self.di(b"mira la pestana historial para ver cuales hay.", T_DIM);
+            return;
+        }
+        let g = bmo::estratos::volver(n);
+        if g != 0 {
+            self.di(b"el arbol es el de entonces. la historia sigue entera:", T_DIM);
+            self.di(b"esta vuelta tambien es una version, y se puede deshacer.", T_DIM);
+        }
+        self.hecho(g, b"vuelta");
     }
 
     /// **`marca NOMBRE`** -- esta version no se suelta jamas.
@@ -755,6 +780,23 @@ fn partir(s: &[u8]) -> (&[u8], &[u8]) {
         Some(i) => (&s[..i], recortar(&s[i + 1..])),
         None => (s, &s[0..0]),
     }
+}
+
+/// Un entero decimal, o `0` si no lo es.
+///
+/// El cero vale por las dos cosas --"no es un numero" y "cero"-- y aqui da
+/// igual: `vuelve 0` es volver a donde ya estas, que tampoco se hace.
+fn numero(s: &[u8]) -> u64 {
+    let mut v = 0u64;
+    let mut hay = false;
+    for b in s {
+        if !b.is_ascii_digit() {
+            return 0;
+        }
+        v = v.saturating_mul(10).saturating_add((b - b'0') as u64);
+        hay = true;
+    }
+    if hay { v } else { 0 }
 }
 
 /// Compara sin distinguir mayusculas, que es como compara ESTRATOS los nombres.

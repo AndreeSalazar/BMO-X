@@ -1708,7 +1708,7 @@ esto, y llevaba dos dias sin marcarse mientras encima se construia.
 **Sintoma**: tampoco ninguno, y este habria tardado meses en salir: el volumen
 creceria para siempre y se notaria **el dia que se llenara**.
 
-**Culpable**: `Estrato::con_nombre()` mira si el motivo esta puesto, y la §9 dice
+**Culpable**: `Estrato::con_nombre()` mira si el motivo esta puesto, y la section 9 dice
 que **los estratos CON NOMBRE no los suelta el recolector jamas**. O sea que el
 motivo no es una etiqueta descriptiva: es lo que hace PERMANENTE a una version.
 Y yo escribia "fichero nuevo", "carpeta nueva", "entrada quitada" en todas.
