@@ -1,0 +1,10 @@
+# sonda: p06_puerta              espera: COMPILA
+# fija: la puerta se llama desde `llano` SIN `crudo`. No es sintaxis: `invoca`
+# viene de `usa bmo`, que baja a la fila [syscall] de intrinsics.toml.
+# Y no necesita `crudo` porque al otro lado hay un kernel que COMPRUEBA:
+# una capability existe para arbitrar autoridad.
+perfil llano
+usa bmo
+
+funcion escribe_byte(salida es natural64, b es natural8) devuelve natural64
+   devuelve invoca(salida, OP_ESCRIBIR, b, 0, 0)

@@ -1,0 +1,8 @@
+# sonda: p07_puerto_sin_crudo    espera: E0072
+# fija: un puerto de E/S SI necesita `crudo`, porque al otro lado NO HAY NADIE
+# que compruebe. `crudo` no marca "bajo nivel": marca "aqui nadie comprueba".
+perfil llano
+usa metal
+
+funcion lee_tecla devuelve natural8
+   devuelve entrada_puerto(0x60)

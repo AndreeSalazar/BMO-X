@@ -476,11 +476,11 @@ arbol**. Existe porque se lee como una frase, y **cuesta cero gramatica**.
 
 ---
 
-## 15. Las palabras clave -- 41, y viven en una TABLA
+## 15. Las palabras clave -- 49, y ya viven en una TABLA
 
 ```text
 perfil  llano  pleno  usa
-funcion  devuelve  registro  operacion  campo
+funcion  devuelve  registro  operacion
 cambiante  es  un  de  a
 si  sino  para  cada  en  hasta  repite  veces  mientras
 corta  continua  falla  crudo  paralelo
@@ -490,9 +490,16 @@ cierto  falso  nada  quiza  error  fallo  valor  motivo
 lista  tabla
 ```
 
-⚠★ **Estas palabras NO se escriben en el parser: van en
-`tables/lang/inti/palabras.toml`**, el mismo patron que `intrinsics.toml`
-(*"anadir una instruccion = 1 entrada TOML, CERO Rust"*).
+⚠★ **Estas palabras NO se escriben en el parser: viven en
+[`tables/lang/inti/palabras.toml`](../../forge/sem-asm/tables/lang/inti/palabras.toml)**,
+que ya existe -- el mismo patron que `intrinsics.toml` (*"anadir una
+instruccion = 1 entrada TOML, CERO Rust"*). El fichero **trae ya la columna en
+ingles**, no para activarla, sino para que la frase de abajo se pueda comprobar
+en vez de creer.
+
+Y vive en `tables/` y no en `lang/inti/` por un motivo concreto: **`tables/` es
+la raiz que consulta `bmo-mods`**. Quien deje su version en `$BMO_MODS` gana,
+**sin bifurcar el repo**. Un dialecto de INTI es un fichero, no un fork.
 
 **Motivo, y es una decision de hoy que se paga o se cobra hoy:** palabras clave
 en espanol significa que nadie fuera de tu idioma contribuye. Con la tabla,
@@ -523,7 +530,105 @@ tildes no tropieza.
 
 ---
 
-## 17. Como se comprueba que esto es verdad
+## 17. Como llega INTI al sistema -- ★ LA PUERTA NO ES SINTAXIS
+
+> Pregunta de Eddi, 2026-08-19: *"como es lenguaje de sistema, no viven los
+> syscall, no? aunque suene extrano, pero si es para poder tener control en
+> ellas, para uso."*
+
+**No suena extrano: es la pregunta correcta, y la respuesta es que NO.** Ni una
+palabra clave de INTI habla de `INVOKE`, de `WAIT` ni de capabilities. Y aun
+asi se tiene control absoluto sobre ellas. Las dos cosas a la vez, y este es
+el motivo.
+
+### Por que no, con el precedente delante
+
+**C nunca tuvo `read()` como palabra clave.** Era una funcion de biblioteca, y
+la instruccion de trampa vivia en unas lineas de ensamblador dentro de libc.
+Por eso C pudo pasar del PDP-11 al Interdata: **el lenguaje no sabia en que
+sistema estaba corriendo**.
+
+★★★ Si `invoca` fuera sintaxis de INTI, **el lenguaje quedaria casado con este
+sistema operativo** y se perderia justo la mitad de la portabilidad que la
+seccion 7 del maestro llama *"el SISTEMA se porta"* -- que es la unica razon
+historica por la que existio C.
+
+Y hay un segundo motivo, del propio arbol: **la superficie son DOS syscalls
+congelados**. Meterlos en la gramatica seria congelar la gramatica al ritmo del
+kernel, cuando la decision de BMO-X fue la contraria: *la API crece por dentro,
+en la pareja (tipo de objeto, operacion), y el ABI no se toca*.
+
+### Los tres escalones, y en cual esta cada cosa
+
+```text
+   usa superficie / archivo / entrada / paquete      <- REX: lo que se escribe
+      guarda "notas.txt", texto                          normalmente
+      pinta rectangulo(10, 10, 100, 50)
+
+   usa bmo                                           <- la puerta, envuelta
+      codigo = invoca(cap, operacion, a0, a1, a2)
+      valor  = invoca_valor(cap, operacion, a0, a1, a2)
+      espera(esperable, visto, tiempo)
+
+   usa metal                                         <- los intrinsecos
+      entrada_puerto(0x60)      escribe_puerto(0x60, x)
+      lee_reloj()               para()
+```
+
+**Ninguno de esos nombres es palabra clave.** Los tres escalones son **tablas**:
+
+| escalon | donde vive | quien lo puede tapar |
+|---|---|---|
+| REX | `tables/bmo/*.h` y su equivalente para INTI | `$BMO_MODS`, sin bifurcar el repo |
+| la puerta | `tables/bmo/` sobre el intrinseco | igual |
+| los intrinsecos | `tables/arch/x86_64/intrinsics.toml` | igual |
+
+★ Y eso ya funciona asi para C: `__syscall(...)` **es una fila de
+`intrinsics.toml`** con sus bytes (`0F 05`) y el registro de cada argumento
+escrito ahi. Hay dos filas y no una porque **la puerta contesta dos cosas**:
+codigo en `rax` (`[syscall]`) y valor en `rdx` (`[syscall_valor]`). *Se lee
+como C, se comporta como ASM, y ninguna de las dos mitades esconde nada de la
+otra.* INTI hereda ese mecanismo entero: **anadir una operacion del sistema =
+una entrada de tabla, CERO lineas del compilador.**
+
+### ★★ Y la distincion que decide donde hace falta `crudo`
+
+```text
+   invoca(cap, op, ...)        NO necesita `crudo`
+   entrada_puerto(0x60)        SI necesita `crudo`
+```
+
+No es una inconsistencia, es la regla del sistema aplicada al lenguaje:
+
+> **Una capability existe para arbitrar AUTORIDAD.** Al otro lado de `invoca`
+> hay un kernel que comprueba quien eres y que puedes hacer. Al otro lado de
+> un puerto de E/S **no hay nadie**.
+
+O sea: `crudo` no marca *"esto es de bajo nivel"* -- marca **"aqui nadie
+comprueba por ti"**. La puerta es de bajo nivel y esta comprobada; un `outb`
+no lo esta. Por eso uno se escribe y el otro no.
+
+### Lo que esto te da, que es lo que preguntabas
+
+- **Control total**: desde `perfil llano` se puede llamar a la puerta desnuda
+  con los seis argumentos, sin nada en medio. Es el equivalente exacto de lo
+  que hoy hace `bmo.h`.
+- **Sin casarse con el sistema**: el dia que INTI compile para otra maquina, lo
+  que cambia es una carpeta de tablas. La gramatica no se entera.
+- **Y sin dos mundos**: `guarda "x", texto` y `invoca(cap, 7, ...)` son el mismo
+  lenguaje, en el mismo fichero si hace falta. Es lo segundo que C le dio a
+  Unix -- *el kernel y las herramientas se escribian igual*.
+
+⚠ **Correccion a como se dijo antes:** en los ejemplos del maestro se escribio
+que *"`guarda` es del lenguaje, no de una libreria que hay que instalar"*. Lo
+segundo es cierto y lo primero no: **`guarda` es de la biblioteca base, y la
+biblioteca base viaja DENTRO** -- que es la propiedad de REX (*"una cabecera
+trae el cuerpo: no hay `libbmo.so` que alguien tenga que resolver despues"*).
+No hay nada que instalar **y** no es sintaxis. Las dos cosas.
+
+---
+
+## 18. Como se comprueba que esto es verdad
 
 `CENSO.md` -- una sonda por construccion, cada una con su veredicto **escrito
 por delante**. Cuando exista el lexer (F1), el test compara el informe **entero**

@@ -27,7 +27,8 @@ Tres cosas lo definen, y ninguna es negociable:
 |---|---|
 | [`GRAMATICA.md`](GRAMATICA.md) | **la sintaxis**, fijada: las diez decisiones visibles, cada construccion con su ejemplo, y la EBNF completa |
 | [`REGLAS.md`](REGLAS.md) | **las doce reglas** que sustituyen a los 203 comportamientos indefinidos de C, con su codigo de error |
-| [`CENSO.md`](CENSO.md) | **35 sondas** con el veredicto escrito por delante, para que el desacuerdo se vea solo |
+| [`CENSO.md`](CENSO.md) | **38 sondas** con el veredicto escrito por delante, para que el desacuerdo se vea solo |
+| [`palabras.toml`](../../forge/sem-asm/tables/lang/inti/palabras.toml) | las **49 palabras clave**, en una tabla y con la columna inglesa ya escrita |
 | `censo/*.inti` | las sondas. Cada una lleva su expectativa en la primera linea |
 
 El **porque** de todo esto -- la investigacion, los numeros y las alternativas
@@ -90,6 +91,26 @@ funcion lee_tecla devuelve natural8
    crudo
       devuelve entrada_puerto(0x60)
 ```
+
+## La puerta no es sintaxis
+
+Ni una palabra clave de INTI habla de `INVOKE`, `WAIT` o capabilities -- y aun
+asi se tiene control absoluto sobre ellas. Tres escalones, y **los tres son
+tablas**, no gramatica:
+
+```text
+   usa superficie / archivo / entrada    REX: lo normal      guarda "x", t
+   usa bmo                               la puerta           invoca(cap, op, ...)
+   usa metal                             los intrinsecos     entrada_puerto(0x60)
+```
+
+★ **`invoca` NO necesita `crudo`; un puerto SI.** Al otro lado de una capability
+hay un kernel que comprueba; al otro lado de un `outb` no hay nadie. `crudo` no
+marca *"bajo nivel"*: marca **"aqui nadie comprueba por ti"**.
+
+Motivo de fondo: **`read()` nunca fue palabra clave de C**, y por eso Unix pudo
+saltar al Interdata. Un lenguaje que reserva los syscalls de su sistema queda
+casado con el. Detalle entero en [`GRAMATICA.md`](GRAMATICA.md) sec. 17.
 
 ## Lo siguiente
 
