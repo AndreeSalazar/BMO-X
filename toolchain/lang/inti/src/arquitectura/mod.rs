@@ -63,6 +63,16 @@ pub struct Maquina {
     piden_crudo: HashSet<String>,
     ancho_de_puntero: u32,
     alineacion_maxima: u32,
+    /// nombre -> numero, para todos los registros que la maquina declara.
+    registros: HashMap<String, u8>,
+    /// Los que el emisor puede repartir entre temporales, en orden.
+    ///
+    /// ** Sale de la tabla y no del emisor. El asignador de F3 llevaba esta
+    /// lista escrita a mano en Rust durante unas horas, y no habia motivo:
+    /// **anadir una instruccion es una fila de TOML, y un registro tambien
+    /// deberia serlo**.
+    temporales: Vec<String>,
+    trabajo: Vec<String>,
 }
 
 impl Maquina {
@@ -124,12 +134,36 @@ impl Maquina {
                 .unwrap_or(por_defecto)
         };
 
+        let mut registros = HashMap::new();
+        if let Some(t) = raiz.get("registros").and_then(|v| v.as_table()) {
+            for (k, v) in t {
+                if let Some(n) = v.get("n").and_then(|x| x.as_integer()) {
+                    registros.insert(k.clone(), n as u8);
+                }
+            }
+        }
+
+        let lista = |clave: &str| -> Vec<String> {
+            raiz.get("reparto")
+                .and_then(|r| r.get(clave))
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+
         Some(Self {
             nombre,
             nombres,
             piden_crudo,
             ancho_de_puntero: numero("ancho_de_puntero", 8),
             alineacion_maxima: numero("alineacion_maxima", 16),
+            registros,
+            temporales: lista("temporales"),
+            trabajo: lista("trabajo"),
         })
     }
 
@@ -162,6 +196,33 @@ impl Maquina {
     /// Al otro lado de esto, hay alguien que comprueba?
     pub fn pide_crudo(&self, nombre: &str) -> bool {
         self.piden_crudo.contains(nombre)
+    }
+
+    /// El numero de un registro por su nombre.
+    pub fn registro(&self, nombre: &str) -> Option<u8> {
+        self.registros.get(nombre).copied()
+    }
+
+    /// Cuantos registros declara la maquina.
+    pub fn cuantos_registros(&self) -> usize {
+        self.registros.len()
+    }
+
+    /// ** Los que el emisor reparte entre temporales, ya como numeros.
+    ///
+    /// El emisor no decide cuales son: los LEE. El dia que `bmo_lower` traiga
+    /// los prefijos de `r8`..`r15`, esta lista crece en la tabla **y no cambia
+    /// una linea de codigo**.
+    pub fn temporales(&self) -> Vec<u8> {
+        self.temporales
+            .iter()
+            .filter_map(|n| self.registro(n))
+            .collect()
+    }
+
+    /// Los de trabajo: donde se hace toda operacion binaria.
+    pub fn trabajo(&self) -> Vec<u8> {
+        self.trabajo.iter().filter_map(|n| self.registro(n)).collect()
     }
 
     pub fn ancho_de_puntero(&self) -> u32 {

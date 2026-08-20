@@ -55,6 +55,86 @@ orden_de_bytes = "pequeno_primero"
 la_pila_crece = "hacia_abajo"
 
 # ===================================================================
+#  ** LOS REGISTROS, y para que sirve cada uno
+# ===================================================================
+#
+#  Peticion de Eddi (2026-08-19): *"que `usa x86_64` CARGUE TODO lo que x86-64
+#  representa... como dijiste registros, pero en x86-64 dira por que"*.
+#
+#  Y arregla algo que estaba mal desde hace unas horas: el asignador de
+#  registros de F3 llevaba la lista **escrita a mano en Rust**. Eso es
+#  exactamente lo que `intrinsics.toml` decidio no hacer nunca -- *"anadir una
+#  instruccion = 1 entrada TOML, CERO Rust"* -- y no habia motivo para que los
+#  registros fueran la excepcion.
+#
+#  Ahora el emisor no DECIDE que registros usar: los LEE.
+#
+#  == Los roles, y que significa cada uno ==
+#
+#    trabajo      donde se hace la operacion. Toda binaria los usa
+#    argumento    por aqui llegan los parametros, en este orden
+#    libre        se puede usar sin pedir permiso... hasta la proxima llamada
+#    preservado   si lo tocas, lo devuelves como estaba
+#    pila/marco   no se tocan nunca. La maquina los usa para saber donde esta
+#
+#  ** El que decide el reparto es `preservado`. Un registro libre es mas barato
+#  --no hay que guardarlo-- pero **una llamada lo puede pisar**; un preservado
+#  sobrevive a la llamada y cuesta dos instrucciones. Esa es toda la diferencia,
+#  y de ahi sale el freno del asignador.
+[registros]
+#  numero, nombre, rol, y el porque cuando lo tiene.
+rax = { n = 0, rol = "trabajo",    nota = "y por aqui se devuelve el resultado" }
+rcx = { n = 1, rol = "trabajo",    nota = "el otro lado de toda operacion binaria" }
+rdx = { n = 2, rol = "argumento",  orden = 3, nota = "y el resto de una division cae aqui" }
+rbx = { n = 3, rol = "preservado", nota = "usarlo cuesta guardarlo y devolverlo" }
+rsp = { n = 4, rol = "pila",       nota = "la cima. No se toca" }
+rbp = { n = 5, rol = "marco",      nota = "desde aqui se cuentan las locales" }
+rsi = { n = 6, rol = "argumento",  orden = 2 }
+rdi = { n = 7, rol = "argumento",  orden = 1 }
+r8  = { n = 8, rol = "argumento",  orden = 5 }
+r9  = { n = 9, rol = "argumento",  orden = 6 }
+r10 = { n = 10, rol = "libre" }
+r11 = { n = 11, rol = "libre" }
+r12 = { n = 12, rol = "preservado" }
+r13 = { n = 13, rol = "preservado" }
+r14 = { n = 14, rol = "preservado" }
+r15 = { n = 15, rol = "preservado" }
+
+# ===================================================================
+#  El reparto: cuales usa INTI para que
+# ===================================================================
+#
+#  Esto no es la ABI: es **la decision de INTI dentro de la ABI**, y por eso
+#  esta en una seccion aparte. La ABI dice lo que se puede; esto dice lo que se
+#  hace.
+[reparto]
+
+#  Los de trabajo. Toda operacion binaria pasa por ellos, asi que no se pueden
+#  repartir entre temporales.
+trabajo = ["rax", "rcx"]
+
+#  ** Los que el asignador reparte entre los temporales.
+#
+#  Son estos tres y no mas por dos motivos, y los dos son concretos:
+#
+#    1. `rdx`, `rsi` y `rdi` traen los argumentos al entrar, y el prologo YA los
+#       ha copiado al marco cuando el reparto empieza. Ese orden no es casual:
+#       romperlo perderia los parametros.
+#    2. `r8`..`r15` necesitan un prefijo distinto en cada instruccion, y
+#       `bmo_lower` no trae hoy esos helpers. Es trabajo del emisor de bytes, no
+#       de esta tabla -- y el dia que los traiga, **esta linea crece y no cambia
+#       nada mas**.
+temporales = ["rdx", "rsi", "rdi"]
+
+#  OJO: Y por que NO se usan los preservados, que serian ocho mas:
+#
+#  Porque sobrevivir a una llamada solo importa si hay llamadas, y guardarlos
+#  cuesta dos instrucciones por funcion **aunque no se use ninguna**. Mientras
+#  el emisor no emita llamadas, pagar eso seria pagar por un problema que no se
+#  tiene. El dia que las emita, esta lista es la que cambia.
+preservados_en_uso = []
+
+# ===================================================================
 #  Los nombres: como se llama en INTI cada instruccion
 # ===================================================================
 #
@@ -204,6 +284,48 @@ piden = [
 #
 #  La regla sigue siendo la misma y por eso se puede aplicar sin discutir:
 #  **al otro lado, hay alguien que comprueba?**
+
+# ===================================================================
+#  ** "SE PUEDEN HACER LIBRERIAS DE BINARIOS?" -- hasta donde llega una tabla
+# ===================================================================
+#
+#  Pregunta de Eddi (2026-08-19), y no exagera: es la pregunta correcta sobre
+#  el limite de este fichero.
+#
+#  La respuesta corta es **si, y ya se hace** -- `intrinsics.toml` lleva los
+#  bytes de 62 instrucciones y ningun compilador de BMO los escribe a mano.
+#
+#  La larga tiene un limite, y conviene saberlo antes de chocar con el:
+#
+#  == Lo que SI cabe en una tabla ==
+#
+#  Una instruccion de forma fija. `hlt` son dos bytes y siempre los mismos;
+#  `outb` son dos bytes y sus operandos van en registros que la propia
+#  instruccion fija. Ahi una fila con `bytes = [...]` lo dice todo.
+#
+#  == Lo que NO cabe, y por que ==
+#
+#  ** `mov rax, [rbp-24]` NO ES UNA INSTRUCCION: es una FAMILIA.
+#
+#  Cambia con el registro de destino, con el registro base, con el tamano del
+#  desplazamiento, con si hace falta un indice, y con si alguno de los dos
+#  registros pasa del septimo --que entonces pide otro prefijo--. Son cientos
+#  de combinaciones, y ponerlas en una tabla seria escribir a mano lo que un
+#  algoritmo de veinte lineas calcula: **la codificacion de x86-64 no es una
+#  lista, es una construccion** (prefijo, opcode, ModRM, SIB, desplazamiento).
+#
+#  == Y de ahi sale el reparto correcto, que es lo util ==
+#
+#      la TABLA dice   QUE instruccion, y como se llama en INTI
+#      el CODIFICADOR dice   COMO se escribe con estos operandos
+#
+#  ** Separar esas dos cosas es lo que hace que otra maquina sea *otra tabla y
+#  otro codificador*, sin tocar nada mas. Si los bytes vivieran mezclados con la
+#  decision de que instruccion usar, portar seria reescribir el emisor entero en
+#  vez de anadir una carpeta.
+#
+#  Hoy el codificador vive en `bmo_lower::x86` y lo comparten C, COBOL, Ada,
+#  C++ e INTI. Es la pieza que **si** merece estar escrita en Rust, y la unica.
 
 # ===================================================================
 #  ** LAS FORTALEZAS DE ESTA MAQUINA, dichas para poder usarlas

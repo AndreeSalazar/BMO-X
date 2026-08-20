@@ -62,3 +62,60 @@ fn un_nombre_con_separadores_no_es_una_arquitectura() {
     assert!(Maquina::buscar(&r, "../secreto").is_none());
     assert!(Maquina::buscar(&r, "x86_64/..").is_none());
 }
+
+// ===================================================================
+//  ** `usa x86_64` carga la maquina ENTERA
+// ===================================================================
+
+/// Peticion de Eddi: *"que `usa x86_64` CARGUE TODO lo que x86-64 representa"*.
+/// Los dieciseis registros, con su numero.
+#[test]
+fn la_tabla_trae_los_dieciseis_registros() {
+    let m = x86();
+    assert_eq!(m.cuantos_registros(), 16);
+    assert_eq!(m.registro("rax"), Some(0));
+    assert_eq!(m.registro("rsp"), Some(4));
+    assert_eq!(m.registro("r15"), Some(15));
+    assert_eq!(m.registro("no_existe"), None);
+}
+
+/// ** Y el reparto: el emisor no DECIDE que registros usar, los LEE.
+///
+/// Es lo que arregla el asignador de F3, que llevaba la lista escrita a mano en
+/// Rust. Anadir una instruccion es una fila de TOML; un registro tambien.
+#[test]
+fn el_reparto_sale_de_la_tabla_y_no_del_emisor() {
+    let m = x86();
+    // rdx, rsi, rdi
+    assert_eq!(m.temporales(), vec![2, 6, 7]);
+    // rax, rcx
+    assert_eq!(m.trabajo(), vec![0, 1]);
+}
+
+/// Los de trabajo y los de reparto **no se solapan**. Si se solaparan, una
+/// operacion binaria pisaria un temporal vivo -- y el fallo aparece solo cuando
+/// la expresion es lo bastante larga.
+#[test]
+fn los_de_trabajo_no_estan_en_el_reparto() {
+    let m = x86();
+    for t in m.temporales() {
+        assert!(
+            !m.trabajo().contains(&t),
+            "el registro {} esta en las dos listas",
+            t
+        );
+    }
+}
+
+/// Ni la pila ni el marco se reparten jamas. Repartir `rsp` no da un programa
+/// lento: da uno que no vuelve.
+#[test]
+fn la_pila_y_el_marco_no_se_reparten_nunca() {
+    let m = x86();
+    let rsp = m.registro("rsp").unwrap();
+    let rbp = m.registro("rbp").unwrap();
+    assert!(!m.temporales().contains(&rsp));
+    assert!(!m.temporales().contains(&rbp));
+    assert!(!m.trabajo().contains(&rsp));
+    assert!(!m.trabajo().contains(&rbp));
+}

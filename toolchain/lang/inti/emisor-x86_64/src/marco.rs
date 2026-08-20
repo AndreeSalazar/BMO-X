@@ -51,19 +51,18 @@ use bmo_inti_front::ir::{FuncionIr, Instr, Local, Temporal, Valor};
 /// hay una constante porque este crate **ES** el de esa maquina.
 pub const PALABRA: i32 = 8;
 
-/// Los registros que se reparten entre los temporales.
+/// Los registros que se reparten entre los temporales, **cuando la tabla de la
+/// maquina no esta a mano**.
 ///
-/// Son tres y no mas por dos motivos concretos:
+/// ** Es un respaldo, no la fuente. La lista de verdad vive en
+/// `arch/x86_64/inti.toml`, seccion `[reparto]`, y llega por
+/// [`Marco::con_registros`].
 ///
-/// - `rax` y `rcx` son los de trabajo: toda operacion binaria los usa.
-/// - `r8`..`r15` necesitan un prefijo distinto en cada instruccion, y
-///   `bmo_lower` no trae hoy esos helpers. Anadirlos es trabajo del emisor de
-///   bytes, no de este reparto.
-///
-/// `rdx`, `rsi` y `rdi` traen los argumentos al entrar -- y el prologo los ha
-/// copiado al marco **antes** de que este reparto empiece a usarlos. Ese orden
-/// no es casual y romperlo perderia los parametros.
-const DISPONIBLES: [u8; 3] = [2, 6, 7]; // rdx, rsi, rdi
+/// Existe por lo mismo que el vocabulario tiene respaldo: un emisor que no
+/// arranca porque falta un fichero de datos es peor que uno que arranca con lo
+/// que traia. Y aqui **si** se puede nombrar la maquina: este crate ES el de
+/// esa maquina.
+const RESPALDO: [u8; 3] = [2, 6, 7]; // rdx, rsi, rdi
 
 /// Donde vive un valor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,13 +82,23 @@ pub struct Marco {
 }
 
 impl Marco {
+    /// El reparto con los registros de respaldo.
     pub fn de(f: &FuncionIr) -> Self {
+        Self::con_registros(f, &RESPALDO)
+    }
+
+    /// ** El reparto con los registros que diga la maquina.
+    ///
+    /// Es la forma buena: el emisor no decide cuales son, los recibe de
+    /// `arch/<maquina>/inti.toml`. El dia que la tabla anada `r10` y `r11`,
+    /// este fichero no cambia.
+    pub fn con_registros(f: &FuncionIr, disponibles: &[u8]) -> Self {
         let mut m = Self {
             locales: f.locales,
             temporales: f.temporales,
             sitios: Vec::new(),
         };
-        m.sitios = m.reparte(f);
+        m.sitios = m.reparte(f, disponibles);
         m
     }
 
@@ -142,7 +151,7 @@ impl Marco {
     //  El reparto
     // -----------------------------------------------------------------
 
-    fn reparte(&self, f: &FuncionIr) -> Vec<Sitio> {
+    fn reparte(&self, f: &FuncionIr, disponibles: &[u8]) -> Vec<Sitio> {
         let mut sitios: Vec<Sitio> = (0..f.temporales)
             .map(|i| Sitio::Pila(self.en_pila(Temporal(i))))
             .collect();
@@ -159,7 +168,7 @@ impl Marco {
 
         // Recorrido lineal: los tramos ya salen ordenados por nacimiento,
         // porque un temporal nace donde se le asigna por primera vez.
-        let mut libres: Vec<u8> = DISPONIBLES.to_vec();
+        let mut libres: Vec<u8> = disponibles.to_vec();
         // (fin del tramo, registro) de lo que esta vivo ahora.
         let mut vivos: Vec<(usize, u8, u32)> = Vec::new();
 
