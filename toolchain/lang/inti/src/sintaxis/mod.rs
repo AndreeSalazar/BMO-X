@@ -363,6 +363,25 @@ fn declaracion(c: &mut Cursor) -> Option<Decl> {
     if let Clase::Nombre(_) = c.mira().clase {
         return constante(c);
     }
+    // `cambiante` arriba del todo: se detecta a proposito para poder explicar
+    // POR QUE no vale, en vez de soltar "esto no puede ir aqui".
+    if c.mira().es(Simbolo::Cambiante) {
+        let sitio = c.sitio();
+        c.di(
+            Aviso::nuevo(
+                codigos::CAMBIANTE_ARRIBA,
+                "Lo de nivel superior no puede ser `cambiante`.",
+                sitio,
+            )
+            .con_habia(
+                "Todo lo de arriba se CONGELA cuando el modulo termina de cargarse, y por eso se puede prestar a otra tarea sin un solo cerrojo. Eso es lo que hace que INTI no necesite un GIL."
+                    .to_string(),
+            )
+            .con_hacer("quita el `cambiante`, o metelo dentro de una funcion"),
+        );
+        c.hasta_fin_de_linea();
+        return None;
+    }
 
     let sitio = c.sitio();
     let hay = c.mira().como_se_llama();

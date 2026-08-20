@@ -129,6 +129,8 @@ impl Modulos {
 pub struct Comun {
     ambos: Vec<String>,
     solo_pleno: Vec<String>,
+    pueden_fallar: Vec<String>,
+    modifican: Vec<String>,
 }
 
 impl Comun {
@@ -154,10 +156,37 @@ impl Comun {
                 .map(|t| t.keys().cloned().collect())
                 .unwrap_or_default()
         };
+        let lista = |seccion: &str, clave: &str| -> Vec<String> {
+            raiz.get(seccion)
+                .and_then(|s| s.get(clave))
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
         Self {
             ambos: claves("ambos"),
             solo_pleno: claves("pleno"),
+            pueden_fallar: lista("avisos", "pueden_fallar"),
+            modifican: lista("avisos", "modifican_la_coleccion"),
         }
+    }
+
+    /// Las de la biblioteca que pueden fallar.
+    ///
+    /// Salen de la tabla porque son un dato **sobre la biblioteca**: quien
+    /// anada una que falla lo dice ahi, y la comprobacion queda cubierta sin
+    /// tocar el compilador.
+    pub fn pueden_fallar(&self) -> &[String] {
+        &self.pueden_fallar
+    }
+
+    /// Esta operacion modifica la coleccion que recibe?
+    pub fn modifica(&self, nombre: &str) -> bool {
+        self.modifican.iter().any(|s| s == nombre)
     }
 
     /// Los nombres disponibles en un perfil.
@@ -193,7 +222,26 @@ pub fn comprobar(m: &Modulo, comun: &Comun, extra: &[String]) -> Cosecha<()> {
         avisos: Vec::new(),
         ambitos: Vec::new(),
         conocidos: Vec::new(),
+        recorriendo: Vec::new(),
+        pueden_fallar: Vec::new(),
+        la_funcion_falla: false,
     };
+
+    // Quien puede fallar se sabe ANTES de mirar ningun cuerpo: si no, una
+    // funcion que llama a otra declarada mas abajo se libraria.
+    for d in &m.declaraciones {
+        let f = match d {
+            Decl::Funcion(f) => f,
+            Decl::Operacion { funcion, .. } => funcion,
+            _ => continue,
+        };
+        if f.retorno.as_ref().map(|r| r.puede_fallar).unwrap_or(false) {
+            v.pueden_fallar.push(f.nombre.clone());
+        }
+    }
+    for n in comun.pueden_fallar() {
+        v.pueden_fallar.push(n.to_string());
+    }
 
     // El ambito del modulo: lo de nivel superior y lo que traen los `usa`.
     v.entra();
@@ -225,6 +273,18 @@ struct Vigia<'c> {
     avisos: Vec<Aviso>,
     ambitos: Vec<HashMap<String, Ficha>>,
     conocidos: Vec<String>,
+    /// Las colecciones que se estan recorriendo ahora mismo.
+    ///
+    /// Es una pila porque los bucles se anidan, y hay que saber **todas** las
+    /// abiertas: tocar la del bucle de fuera desde el de dentro es igual de
+    /// malo que tocar la propia.
+    recorriendo: Vec<String>,
+    /// Las funciones que pueden fallar: las que declararon `o error` y las que
+    /// la tabla marca.
+    pueden_fallar: Vec<String>,
+    /// La funcion que se esta mirando declaro `o error`? Solo entonces
+    /// `devuelve f(...)` cuenta como mirar el resultado: lo pasa a quien llamo.
+    la_funcion_falla: bool,
 }
 
 impl<'c> Vigia<'c> {
@@ -296,6 +356,8 @@ impl<'c> Vigia<'c> {
     }
 
     fn funcion(&mut self, f: &Funcion) {
+        let antes = self.la_funcion_falla;
+        self.la_funcion_falla = f.retorno.as_ref().map(|r| r.puede_fallar).unwrap_or(false);
         self.entra_funcion();
         for p in &f.parametros {
             // Un parametro nace en la funcion, no fuera: por eso `de_fuera` es
@@ -305,6 +367,7 @@ impl<'c> Vigia<'c> {
         }
         self.bloque_sin_ambito(&f.cuerpo);
         self.sale();
+        self.la_funcion_falla = antes;
     }
 
     fn bloque(&mut self, b: &Bloque) {
@@ -328,7 +391,7 @@ impl<'c> Vigia<'c> {
                 sitio,
                 ..
             } => {
-                self.expresion(valor);
+                self.expresion_mirada(valor);
                 self.asigna(destino, *cambiante, *sitio);
             }
             Sent::Si { ramas, sino, .. } => {
@@ -355,7 +418,14 @@ impl<'c> Vigia<'c> {
                 // El nombre del bucle nace en el bucle y no se puede cambiar
                 // dentro: cambiarlo seria pelearse con el que recorre.
                 self.declara(nombre, false, *sitio);
+                // La coleccion queda marcada como "en uso" mientras dure.
+                if let Expr::Nombre(coleccion, _) = desde {
+                    self.recorriendo.push(coleccion.clone());
+                }
                 self.bloque_sin_ambito(cuerpo);
+                if matches!(desde, Expr::Nombre(..)) {
+                    self.recorriendo.pop();
+                }
                 self.sale();
             }
             Sent::Repite { forma, cuerpo, .. } => {
@@ -367,13 +437,79 @@ impl<'c> Vigia<'c> {
             }
             Sent::Devuelve { valor, .. } => {
                 if let Some(e) = valor {
-                    self.expresion(e);
+                    // Devolver un resultado que falla SOLO cuenta como mirarlo
+                    // si esta funcion tambien declaro `o error`: entonces no lo
+                    // esta ignorando, lo esta pasando.
+                    if self.la_funcion_falla {
+                        self.expresion_mirada(e);
+                    } else {
+                        self.expresion(e);
+                    }
                 }
             }
             Sent::Falla { motivo, .. } => self.expresion(motivo),
             Sent::Corta(_) | Sent::Continua(_) => {}
             Sent::Crudo { cuerpo, .. } | Sent::Paralelo { cuerpo, .. } => self.bloque(cuerpo),
             Sent::Expresion(e) => self.expresion(e),
+        }
+    }
+
+    /// Una expresion en una posicion donde **si** se mira el resultado.
+    ///
+    /// Son tres, y no hay una cuarta:
+    ///
+    /// ```text
+    ///    r = divide(a, b)              se guarda para mirarlo despues
+    ///    divide(a, b) o si no 0        se mira ahora mismo
+    ///    devuelve divide(a, b)         se pasa a quien llamo... si la funcion
+    ///                                  tambien declaro `o error`
+    /// ```
+    ///
+    /// ** La comprobacion es de POSICION y no de nivel superior, que es donde
+    /// estuvo mal media hora: `escribe(divide(10, 0))` esconde la llamada
+    /// dentro de otra, y es exactamente el caso que hay que cazar -- pasarle a
+    /// alguien un valor que puede no existir.
+    fn expresion_mirada(&mut self, e: &Expr) {
+        match e {
+            Expr::Llamada {
+                que, argumentos, ..
+            } => {
+                self.expresion(que);
+                for a in argumentos {
+                    self.expresion(&a.valor);
+                }
+            }
+            otra => self.expresion(otra),
+        }
+    }
+
+    /// Una llamada que puede fallar, escrita donde nadie mira el resultado.
+    ///
+    /// Es la promesa mas fuerte del sistema de errores: **ignorar un error es
+    /// un error de COMPILACION**. Sin esto, `o si no` seria una costumbre en
+    /// vez de una regla, y el `except:` pelado de Python volveria por la puerta
+    /// de atras: no escribir nada.
+    fn quiza_ignora_un_error(&mut self, que: &Expr, sitio: Sitio) {
+        {
+            if let Expr::Nombre(n, _) = que {
+                if self.pueden_fallar.iter().any(|x| x == n) {
+                    self.avisos.push(
+                        Aviso::nuevo(
+                            codigos::ERROR_IGNORADO,
+                            format!("`{}` puede fallar, y aqui nadie mira el resultado.", n),
+                            sitio,
+                        )
+                        .con_habia(
+                            "En INTI un error es un DATO, no algo que salta solo. Si nadie lo mira, el programa sigue como si nada con un valor que no existe."
+                                .to_string(),
+                        )
+                        .con_hacer(format!(
+                            "guardalo y mira `si fallo`, o escribe `{}(...) o si no <valor>`",
+                            n
+                        )),
+                    );
+                }
+            }
         }
     }
 
@@ -476,8 +612,12 @@ impl<'c> Vigia<'c> {
             }
             Expr::Unaria { valor, .. } => self.expresion(valor),
             Expr::Llamada {
-                que, argumentos, ..
+                que,
+                argumentos,
+                sitio,
             } => {
+                self.quiza_muta_iterando(que, argumentos, *sitio);
+                self.quiza_ignora_un_error(que, *sitio);
                 self.expresion(que);
                 for a in argumentos {
                     self.expresion(&a.valor);
@@ -491,13 +631,52 @@ impl<'c> Vigia<'c> {
             Expr::OSiNo {
                 intento, respaldo, ..
             } => {
-                self.expresion(intento);
+                // `o si no` es exactamente mirar el resultado.
+                self.expresion_mirada(intento);
                 match respaldo {
                     Respaldo::Valor(v) => self.expresion(v),
                     Respaldo::Bloque(b) => self.bloque(b),
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Tocar la coleccion que se esta recorriendo: el bug clasico de borrar
+    /// mientras se itera. Aqui **no compila**.
+    ///
+    /// La lista de lo que cuenta como "tocar" sale de la biblioteca y no de una
+    /// constante escrita aqui: quien anada una operacion que modifica una lista
+    /// lo dice en la tabla, y esta comprobacion queda cubierta sola.
+    fn quiza_muta_iterando(&mut self, que: &Expr, argumentos: &[Argumento], sitio: Sitio) {
+        let nombre = match que {
+            Expr::Nombre(n, _) => n,
+            _ => return,
+        };
+        if !self.comun.modifica(nombre) {
+            return;
+        }
+        for a in argumentos {
+            if let Expr::Nombre(objetivo, _) = &a.valor {
+                if self.recorriendo.iter().any(|c| c == objetivo) {
+                    self.avisos.push(
+                        Aviso::nuevo(
+                            codigos::MUTA_ITERANDO,
+                            format!(
+                                "`{}` se esta recorriendo ahora mismo, y `{}` la modifica.",
+                                objetivo, nombre
+                            ),
+                            sitio,
+                        )
+                        .con_habia(
+                            "Cambiar una coleccion mientras se recorre es el bug que en otros lenguajes se salta un elemento sin avisar. Aqui no compila."
+                                .to_string(),
+                        )
+                        .con_hacer("junta lo que quieras cambiar en otra lista y hazlo al salir"),
+                    );
+                    return;
+                }
+            }
         }
     }
 
