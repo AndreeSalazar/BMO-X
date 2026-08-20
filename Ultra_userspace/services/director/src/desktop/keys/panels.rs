@@ -193,8 +193,13 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
         return Key::Taken;
     }
     if dsk.win.data.consola.activa {
-        if dsk.win.data.consola.tecla(c) {
-            scene::data::paint(p, &dsk.win.data);
+        // ** CUANTO se repinta lo decide la TECLA, no el hecho de haber pulsado
+        // una. Aqui habia un `if ... { paint(ventana entera) }`, o sea el panel
+        // completo --arbol, rejilla, iconos, historial-- por cada letra.
+        match dsk.win.data.consola.tecla(c) {
+            scene::consola::Repinta::Nada => {}
+            scene::consola::Repinta::Consola => scene::data::paint_consola(p, &dsk.win.data),
+            scene::consola::Repinta::Ventana => scene::data::paint(p, &dsk.win.data),
         }
         return Key::Taken;
     }

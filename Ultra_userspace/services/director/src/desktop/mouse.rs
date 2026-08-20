@@ -295,11 +295,23 @@ pub(crate) fn on_pointer(
         // El realce de los botones. Solo cuando CAMBIA -- repintarlo
         // cada fotograma serian 1.700 pixeles de memoria de video sin
         // cache para dejarlo igual, y ademas pisaria el cursor.
+        //
+        // [!] **Y ese comentario describia lo que aqui NO se hacia.** Decia
+        // 1.700 pixeles y llamaba a `data::paint`, que repinta la ventana
+        // ENTERA: marco, pestanas, arbol, rejilla con iconos e historial. Pasar
+        // el puntero por encima de los tres botones cambia el realce cinco o
+        // seis veces --entrar y salir de cada uno-- asi que un gesto de medio
+        // segundo eran seis repintados completos del panel. Es exactamente lo
+        // que se siente como *"al pasar por cerrar va lento"*.
+        //
+        // La caja de Ejecutar ya lo hacia bien, con `paint_buttons`, treinta
+        // lineas mas abajo. Dos ventanas con el mismo cromo y solo una tenia el
+        // arreglo -- que es la regla que este arbol lleva repitiendo toda la
+        // semana en otros sitios.
         let hover_now = dsk.win.data.chrome.button_at(pos.x, pos.y);
         if hover_now != dsk.win.data.chrome.hover {
             dsk.win.data.chrome.hover = hover_now;
-            scene::data::paint(&p, &dsk.win.data);
-            dsk.win.top_before = Ventana::Data;
+            dsk.win.data.chrome.paint_buttons(&p, scene::data::DATA_TITLE_BG);
         }
 
         if button && !dsk.tick.button_before {
