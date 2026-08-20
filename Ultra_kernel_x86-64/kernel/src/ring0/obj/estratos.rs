@@ -40,14 +40,23 @@
 //!    su arbol de indireccion, y `est::read` lo reconstruye entero de una vez
 //!    (`bmo_estratos::read::descender`). No hay un "siguiente trozo" que pedir
 //!    sin rehacer el recorrido.
-//! 2. **Hoy miden como mucho 96 bytes** -- `RESIDENTE_MAX`. Reflejar 96 bytes
-//!    seria montar la maquinaria de la ventana para algo que cabe en dos
-//!    palabras.
+//! 2. ~~**Hoy miden como mucho 96 bytes**~~ -- **YA NO, y esta nota ha
+//!    VENCIDO**. Decia *"cuando el tramo 1.2 suba ese techo, esta decision hay
+//!    que volver a mirarla"*, y el 1.2 se hizo el 19-08: `flujo` parte el
+//!    contenido en bloques y `ES_GESTO_ORIGEN` lo entrega desde Ring 3. Un
+//!    fichero de ESTRATOS puede medir MiB.
 //!
-//! ** Cuando el tramo 1.2 suba ese techo, esta decision hay que volver a
-//! mirarla, y por eso esta escrita aqui y no supuesta. Un fichero de ESTRATOS de
-//! 4 MiB por esta puerta se traeria entero a RAM, que es exactamente lo que
-//! `doom1.wad` enseno que no se puede hacer.
+//! ** LO QUE SE DECIDE AL VOLVER A MIRARLA (2026-08-20): se sigue trayendo
+//! ENTERO, y el tope deja de ser un numero para ser una pregunta al asignador.
+//! `reserve` pide marcos FISICOS CONTIGUOS del tamano del fichero: un `.bex` de
+//! 4 MiB son 1.024 paginas seguidas, y si la RAM esta fragmentada contesta
+//! `ERROR_TOO_LARGE`. No se rompe -- se niega, que es lo correcto.
+//!
+//! Se mantiene porque el cliente de hoy es `launch`, y **un binario se necesita
+//! entero**: leerlo por trozos no ahorraria nada. El dia que haya un VISOR la
+//! cuenta cambia --una pantalla de texto son dos KiB de un fichero que puede
+//! medir cuatro MiB-- y entonces hara falta leer un RANGO. Esa es la nota nueva,
+//! y como la de antes, se escribe en vez de suponerse.
 
 use crate::ring0::fsys::estratos as est;
 
