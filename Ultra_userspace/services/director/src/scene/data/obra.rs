@@ -55,7 +55,7 @@ pub(crate) fn obra(p: &bmo::Pantalla, c: &DataWindow) {
     arbol::paint(p, &z.arbol, c.arbol_from, DATA_TITLE, NODE_SEL);
     paint_folders(p, c, &z.rejilla);
     paint_nodes(p, c, &z.grafo);
-    consola::paint(p, &z.consola, &c.consola, DATA_EDGE, DATA_TITLE);
+    consola::paint(p, &z.consola, &c.consola, DATA_BG, DATA_EDGE, DATA_TITLE);
     pie(p, c, &z.pie);
     // EL ULTIMO de todo: es lo unico que puede taparlo todo, y si se pintara
     // antes lo taparia cualquier panel que venga detras.
