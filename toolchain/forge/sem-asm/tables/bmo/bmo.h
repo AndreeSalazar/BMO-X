@@ -318,6 +318,28 @@ void bmo_ceder() {
     bmo_codigo(BMO_TAREA_ACTUAL, BMO_OP_CEDER, 0, 0, 0);
 }
 
+/* ** DORMIR de verdad, en nanosegundos. La SEGUNDA puerta.
+ *
+ * `bmo_ceder()` no espera: suelta el turno y vuelve a la cola LISTO, asi que un
+ * bucle que solo cede sigue comiendose un turno entero cada vuelta. Para un
+ * programa que toma la pantalla eso da igual --no hay nadie mas-- pero para uno
+ * EN UNA VENTANA es lo contrario de lo que hace falta: el DIRECTOR tiene que
+ * componer sus pixeles, y compite con el por el mismo nucleo.
+ *
+ * ** El sintoma que esto arregla, y se vio en el Ryzen el 2026-08-19: el
+ * raycaster en ventana dejaba el escritorio tan lento que parecia que el
+ * teclado no respondia. No lo tenia secuestrado --en ventana no reclama la
+ * entrada-- simplemente no quedaba turno para pintar la tecla.
+ *
+ * `WAIT` con `esperable = 0` es una espera pura por tiempo: la tarea se marca
+ * BLOQUEADA y no vuelve a la cola hasta el plazo, asi que el turno es de otro
+ * de verdad y no un rato prestado.
+ *
+ * A 60 fotogramas por segundo, 16.000.000 ns. */
+void bmo_dormir(unsigned long long nanos) {
+    __syscall(BMO_WAIT, 0, 0, nanos, 0, 0);
+}
+
 /* Un dato numerico del sistema. `0` si el kernel no sabe contestar ese campo. */
 unsigned long long bmo_info(unsigned long long campo) {
     return bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_INFO, campo, 0, 0);
