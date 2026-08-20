@@ -5,7 +5,7 @@
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
 > 🟢 **De F0 a F2d en verde (2026-08-19).** El contrato, el lexico, la
-> gramatica, los perfiles, los nombres, la IR **y el emisor**: **206 pruebas**.
+> gramatica, los perfiles, los nombres, la IR **y el emisor**: **210 pruebas**.
 > ★★ Una suma de INTI **compila, corre y da 7**, y su `.bex` pasa `bmo-verify`.
 
 ## Que es, en una frase
@@ -33,7 +33,7 @@ Tres cosas lo definen, y ninguna es negociable:
 | [`palabras.toml`](../../forge/sem-asm/tables/lang/inti/palabras.toml) | las **49 palabras clave**, en una tabla y con la columna inglesa ya escrita |
 | [`comun.toml`](../../forge/sem-asm/tables/lang/inti/comun.toml) | ★ **la biblioteca que esta sin pedirla** -- donde vive la facilidad |
 | [`modulos.toml`](../../forge/sem-asm/tables/lang/inti/modulos.toml) | lo que trae cada `usa <modulo>` de REX |
-| [`arch/x86_64/inti.toml`](../../forge/sem-asm/tables/arch/x86_64/inti.toml) | lo que trae `usa <la maquina>` |
+| [`arch/x86_64/inti.toml`](../../forge/sem-asm/tables/arch/x86_64/inti.toml) | ★★ **la maquina entera**: nombres, los 16 registros con su rol, el reparto y el perfil |
 | `censo/*.inti` | las sondas. Cada una lleva su expectativa en la primera linea |
 | [`LINAJE.md`](LINAJE.md) | ★★ **abuelo, padre, hijo, nieto**: que aguanta cada pieza sola, y como se cambia de golpe. Con `tests/linaje.rs`, que lo vigila |
 | [`ARQUITECTURA.md`](ARQUITECTURA.md) | **por que el compilador esta partido asi** -- el criterio de corte, la regla de dependencias, y por que la modularidad es lo que mantiene el syscall fuera del lenguaje |
