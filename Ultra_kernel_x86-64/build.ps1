@@ -66,11 +66,13 @@ function Guardian {
     Step $paso
     $ruta = Join-Path (Split-Path -Parent $root) $script
     $py = (Get-Command python -ErrorAction SilentlyContinue)
-    if (-not $py) { $falta = 'python no encontrado' }
-    elseif (-not (Test-Path $ruta)) { $falta = 'falta ' + (Split-Path -Leaf $script) }
-    else { $falta = '' }
-    if ($falta) {
-        Write-Host ('  [!] ' + $falta + ': no se comprueba ' + $queMide) -ForegroundColor Yellow
+    # ** FALTA EL SCRIPT y NO HAY PYTHON no son lo mismo, y hasta el 20-08 los
+    # dos avisaban y seguian. Un path mal escrito dejo un guardian MUERTO y el
+    # build dijo COMPLETE igual -- el fallo que este fichero ya describe:
+    # avisar de nada, y con tono tranquilizador. El script es del REPO: para.
+    if (-not (Test-Path $ruta)) { Fail ('guardian MUERTO: falta ' + $script) }
+    if (-not $py) {
+        Write-Host ('  [!] python no encontrado: no se comprueba ' + $queMide) -ForegroundColor Yellow
         return
     }
     $env:PYTHONIOENCODING = 'utf-8'
@@ -215,6 +217,12 @@ Guardian 'Validating document citations resolve' `
 Guardian 'Validating L6a: no new module over the line' `
     'toolchain\tools\censo-modular\censo_modular.py' 'L6a' `
     'L6a: un modulo nuevo pasa de las 1.000 lineas, o uno de la linea base crecio'
+
+# ** EL AMBITO de un commit, y SOLO el ambito. Trinquete como el de L6a, y no
+# mira la prosa: el por que entero esta en la cabecera de ambitos.py.
+Guardian 'Validating commit scopes' `
+    'toolchain\tools\ambitos\ambitos.py' 'los ambitos de los commits' `
+    'ambitos: un commit usa un ambito que no esta en AMBITOS.txt (ver arriba)'
 
 # Keep the no-alloc Ring 0 syscall view synchronized with canonical bmo-abi.
 Step 'Validating Ring 0 syscall contract'

@@ -1,0 +1,26 @@
+tipo(ambito): LA LECCION, no lo que se toco
+
+# ---------------------------------------------------------------------------
+# Esto es un RECORDATORIO, no un formulario. Borra lo que no uses: nadie
+# comprueba estas secciones, y si alguien las comprobara estos commits se
+# volverian huecos rellenados sin pensar.
+#
+# Lo unico que un guardian mira es el ambito entre parentesis
+# (toolchain/tools/ambitos/AMBITOS.txt) y que el mensaje sea ASCII.
+#
+#   tipos    feat  fix  docs  refactor  perf  test  chore
+# ---------------------------------------------------------------------------
+
+# ** EL POR QUE, que es lo que no se puede sacar del diff.
+#    Que estaba mal, desde cuando, y que lo destapo.
+
+# LO QUE SE DECIDIO Y LO QUE SE DESCARTO, si hubo eleccion.
+#    Un motivo escrito es lo que impide volver a discutirlo en enero.
+
+# VERIFICADO
+#     las ordenes que corriste, y lo que contestaron
+
+# [!] LO QUE NO ESTA PROBADO, dicho por delante.
+#     Sobre todo si falta la casilla de metal: compila no es funciona.
+
+# Co-Authored-By: ...
