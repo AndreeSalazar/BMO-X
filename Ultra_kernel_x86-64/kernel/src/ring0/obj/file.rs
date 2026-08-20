@@ -465,9 +465,9 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
     // distintas para la misma ruta seria la peor de las opciones.
     //
     // El fichero entra ENTERO en el buffer y la ranura NO refleja: un fichero de
-    // ESTRATOS no es una cadena que se pueda pedir a trozos, y hoy mide como
-    // mucho 96 bytes. El porque, y cuando habra que volver a mirarlo, en
-    // `obj/estratos.rs`.
+    // ESTRATOS no es una cadena que se pueda pedir a trozos. Lo de "y hoy mide
+    // como mucho 96 bytes" VENCIO el 19-08 y ya no se dice aqui: el limite es
+    // la RAM contigua, y quien lo cuenta es `obj/estratos.rs`.
     if let Some((nodo, mide)) = super::estratos::buscar(ruta) {
         unsafe {
             if !reserve(i, mide.max(1)) {
