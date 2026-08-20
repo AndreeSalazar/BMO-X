@@ -2,9 +2,8 @@
 
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
-> 🟢 **F0 escrito y F1 en verde (2026-08-19).** El contrato entero, el lexico
-> y la gramatica: **92 pruebas**. Entra texto y sale un arbol. No hay runtime
-> ni emisor todavia.
+> 🟢 **F0, F1 y F2a en verde (2026-08-19).** El contrato entero, el lexico, la
+> gramatica y el analisis de perfiles: **109 pruebas**. Todavia no emite bytes.
 
 ## Que es, en una frase
 
@@ -87,10 +86,10 @@ y el mismo lenguaje escribiendo sistema:
 perfil llano
 
 funcion lee_tecla devuelve natural8
-   repite mientras (entrada_puerto(0x64) bits_y 1) = 0
-      espera()
-
    crudo
+      repite mientras (entrada_puerto(0x64) bits_y 1) = 0
+         espera()
+
       devuelve entrada_puerto(0x60)
 ```
 
@@ -120,7 +119,7 @@ casado con el. Detalle entero en [`GRAMATICA.md`](GRAMATICA.md) sec. 17.
    cargo test -p bmo-inti-front
 ```
 
-92 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
+109 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
 de compilador** (hay lista negra), que **el dedo cae en la columna exacta**
 contando caracteres y no bytes, que **el mismo lexer lee ingles** sin cambiar
 una linea, que una palabra clave **con tilde sigue siendo palabra clave**, y que
@@ -140,7 +139,9 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | **F0** | gramatica, doce reglas, censo | ✅ **escrito** (2026-08-19) |
 | **F1a** | **lexico**: palabras, textos, numeros, sangria, parejas, y los avisos de 4 partes | ✅ **verde** (2026-08-19) |
 | **F1b** | **arbol + sintaxis**: precedencia de 10 niveles, declaraciones, sentencias, recuperacion de errores | ✅ **92 pruebas en verde** (2026-08-19) |
-| F2 | ★ INTI LLANO compilando a `.bex` nativo, por `bmo-verify` | pendiente |
+| **F2a** | **el analisis de perfiles**: `llano` contra `pleno`, `crudo` contado | ✅ **109 pruebas en verde** (2026-08-19) |
+| F2b | nombres y `cambiante` | pendiente |
+| F2c | ★ INTI LLANO compilando a `.bex` nativo, por `bmo-verify` | pendiente |
 | F3 | las doce reglas con sus sondas en verde | pendiente |
 | F4 | ★★ la foto del Ryzen | pendiente |
 | F5-F7 | PLENO, congelado y tareas, y el REPL | pendiente |

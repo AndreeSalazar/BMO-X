@@ -23,6 +23,10 @@
 //!    lexico     de bytes a piezas. No conoce la gramatica.
 //!      pieza      los datos, sin logica: los lee todo el mundo
 //!      sangria    el margen, que es lo unico con estado del barrido
+//!
+//!    arbol      la forma de un programa. Cero decisiones.
+//!    sintaxis   aplica la gramatica. No sabe si los nombres existen.
+//!    perfil     `llano` contra `pleno`. No emite un byte.
 //! ```
 //!
 //! OJO: **Lo que este crate NO enlaza todavia**: `bmo-abi`, `bmo-lower` y
@@ -42,6 +46,7 @@ pub mod arbol;
 pub mod aviso;
 pub mod lexico;
 pub mod palabras;
+pub mod perfil;
 pub mod sintaxis;
 
 pub use aviso::{Aviso, Cosecha, Sitio};
@@ -84,4 +89,26 @@ pub fn leer(fuente: &str) -> Cosecha<Modulo> {
     let mut avisos = piezas.avisos;
     avisos.append(&mut arbol.avisos);
     Cosecha::con(arbol.valor, avisos)
+}
+
+/// El fuente entero: barrido, gramatica y perfil.
+///
+/// Es lo mas lejos que llega INTI hoy. Los avisos de las tres fases salen
+/// juntos y en orden, que es lo que `Cosecha` existe para permitir.
+pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
+    let raices = bmo_mods::Roots::find();
+    let (vocab, _) = Vocabulario::cargar(&raices);
+    let v = match vocab {
+        Ok(v) => v,
+        Err(e) => panic!("palabras.toml esta roto y ni el respaldo carga: {}", e),
+    };
+
+    let piezas = lexico::barrer(fuente, &v);
+    let mut arbol = sintaxis::leer(&piezas.valor, &v);
+    let mut perfiles = perfil::comprobar(&arbol.valor, &perfil::Catalogo::cargar(&raices));
+
+    let mut avisos = piezas.avisos;
+    avisos.append(&mut arbol.avisos);
+    avisos.append(&mut perfiles.avisos);
+    Cosecha::con(perfiles.valor, avisos)
 }

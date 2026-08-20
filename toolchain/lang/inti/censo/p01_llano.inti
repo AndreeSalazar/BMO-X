@@ -1,10 +1,14 @@
 # sonda: p01_llano               espera: COMPILA
 # fija: el perfil de sistema. Sin monton, tamanos exactos, y `crudo` visible.
+#
+# OJO al bucle de espera: TAMBIEN toca el puerto, asi que va dentro del mismo
+# `crudo`. La primera version de esta sonda lo dejaba fuera, y lo cazo el
+# analisis de perfiles el 2026-08-19.
 perfil llano
 
 funcion lee_tecla devuelve natural8
-    repite mientras (entrada_puerto(0x64) bits_y 1) = 0
-        espera()
-
     crudo
+        repite mientras (entrada_puerto(0x64) bits_y 1) = 0
+            espera()
+
         devuelve entrada_puerto(0x60)

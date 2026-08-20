@@ -171,3 +171,52 @@ fn las_sondas_que_dicen_compila_se_leen_enteras() {
         );
     }
 }
+
+/// Las sondas de PERFIL, comprobadas de verdad.
+///
+/// Estas ya no son promesas: `p02`, `p03`, `p04` y `p07` declaran un codigo que
+/// el analisis de perfiles sabe dar hoy, asi que se exige. Las demas siguen
+/// esperando a su fase.
+#[test]
+fn las_sondas_de_perfil_dan_su_codigo() {
+    const AHORA_SE_PUEDEN: &[(&str, &str)] = &[
+        ("p02_llano_sin_lista", "E0070"),
+        ("p03_llano_sin_numero", "E0020"),
+        ("p04_crudo_en_pleno", "E0071"),
+        ("p07_puerto_sin_crudo", "E0072"),
+    ];
+
+    for (nombre, esperado) in AHORA_SE_PUEDEN {
+        let (_, texto) = sondas()
+            .into_iter()
+            .find(|(n, _)| n == nombre)
+            .unwrap_or_else(|| panic!("falta la sonda {}", nombre));
+
+        let c = bmo_inti_front::comprobar(&texto);
+        assert!(
+            c.codigos().contains(esperado),
+            "{} tenia que dar {} y dio {:?}\n{}",
+            nombre,
+            esperado,
+            c.codigos(),
+            c.pintar(&format!("{}.inti", nombre))
+        );
+    }
+}
+
+/// Y las que dicen COMPILA siguen sin dar ni un aviso al pasar por el perfil.
+#[test]
+fn las_sondas_que_compilan_pasan_el_perfil() {
+    for (nombre, texto) in sondas() {
+        if !veredicto(&texto).starts_with("COMPILA") {
+            continue;
+        }
+        let c = bmo_inti_front::comprobar(&texto);
+        assert!(
+            !c.hay_errores(),
+            "{} dice COMPILA y el perfil la rechaza:\n{}",
+            nombre,
+            c.pintar(&format!("{}.inti", nombre))
+        );
+    }
+}
