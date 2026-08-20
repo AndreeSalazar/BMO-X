@@ -37,10 +37,10 @@ version = 1
 [llano]
 tipos_que_crecen = ["texto", "lista", "tabla"]
 
-#  `numero` es aparte y por otro motivo: no crece, pero **no dice su tamano**.
-#  Sin tamano no se puede reservar en la pila ni elegir la instruccion, asi que
+#  `numero` es aparte y por otro motivo: no crece, pero **no dice su medida**.
+#  Sin medida no se puede reservar en la pila ni elegir la instruccion, asi que
 #  en `llano` hay que escribir `entero32`, `natural8`, etc.
-tipos_sin_tamano = ["numero", "decimal"]
+tipos_sin_medida = ["numero", "decimal"]
 
 # ===================================================================
 #  Lo que NO esta aqui, y es a proposito

@@ -155,7 +155,7 @@ fn un_programa_sin_crudo_lo_dice_con_un_cero() {
 fn el_catalogo_incrustado_carga() {
     let cat = Catalogo::por_defecto();
     assert!(cat.crecen.contains("texto"));
-    assert!(cat.sin_tamano.contains("numero"));
+    assert!(cat.without_size.contains("numero"));
     // Lo que pide `crudo` ya no vive aqui: se mudo a la arquitectura, que es
     // de donde depende. Ver `arquitectura::pruebas`.
 }
