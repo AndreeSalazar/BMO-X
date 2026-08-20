@@ -3,7 +3,7 @@
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
 > 🟢 **F0, F1, F2a y F2b en verde (2026-08-19).** El contrato, el lexico, la
-> gramatica, los perfiles y los nombres: **155 pruebas**. Todavia no emite bytes.
+> gramatica, los perfiles, los nombres y la IR: **170 pruebas**. Todavia no emite bytes.
 
 ## Que es, en una frase
 
@@ -33,7 +33,7 @@ Tres cosas lo definen, y ninguna es negociable:
 | [`arch/x86_64/inti.toml`](../../forge/sem-asm/tables/arch/x86_64/inti.toml) | lo que trae `usa <la maquina>` |
 | `censo/*.inti` | las sondas. Cada una lleva su expectativa en la primera linea |
 | [`ARQUITECTURA.md`](ARQUITECTURA.md) | **por que el compilador esta partido asi** -- el criterio de corte, la regla de dependencias, y por que la modularidad es lo que mantiene el syscall fuera del lenguaje |
-| `src/` | el frontend. `aviso`, `palabras`, `lexico`, `arbol`, `sintaxis` |
+| `src/` | el frontend. `aviso`, `palabras`, `lexico`, `arbol`, `sintaxis`, `perfil`, `nombres`, `arquitectura`, `ir` |
 
 El **porque** de todo esto -- la investigacion, los numeros y las alternativas
 descartadas -- esta en [`docs/maestro/INTI_MAESTRO.md`](../../../docs/maestro/INTI_MAESTRO.md).
@@ -140,7 +140,7 @@ casado con el. Detalle entero en [`GRAMATICA.md`](GRAMATICA.md) sec. 17.
    cargo test -p bmo-inti-front
 ```
 
-155 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
+170 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
 de compilador** (hay lista negra), que **el dedo cae en la columna exacta**
 contando caracteres y no bytes, que **el mismo lexer lee ingles** sin cambiar
 una linea, que una palabra clave **con tilde sigue siendo palabra clave**, y que
@@ -162,7 +162,8 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | **F1b** | **arbol + sintaxis**: precedencia de 10 niveles, declaraciones, sentencias, recuperacion de errores | ✅ **92 pruebas en verde** (2026-08-19) |
 | **F2a** | **el analisis de perfiles**: `llano` contra `pleno`, `crudo` contado | ✅ **verde** (2026-08-19) |
 | **F2b** | **nombres, `cambiante` y la biblioteca comun**: quisiste-decir, alcance por funcion, y la **llamada sin parentesis** | ✅ **142 pruebas en verde** (2026-08-19) |
-| F2c | ★ INTI LLANO compilando a `.bex` nativo, por `bmo-verify` | pendiente |
+| **F2c** | **la IR**: instrucciones con temporales, y las comprobaciones anti-UB **hechas instruccion** | ✅ **170 pruebas en verde** (2026-08-19) |
+| F2d | ★ el emisor: INTI LLANO a `.bex` nativo, por `bmo-verify` | pendiente |
 | F3 | las doce reglas con sus sondas en verde | pendiente |
 | F4 | ★★ la foto del Ryzen | pendiente |
 | F5-F7 | PLENO, congelado y tareas, y el REPL | pendiente |

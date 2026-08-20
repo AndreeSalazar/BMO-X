@@ -192,3 +192,34 @@ funcion lee_tecla devuelve natural8
         );
     }
 }
+
+/// Y la IR que sale tampoco nombra ninguna maquina.
+///
+/// Lo anterior mira el CODIGO del compilador; esto mira su SALIDA. Son dos
+/// cosas distintas: un compilador escrito con cuidado podria seguir metiendo un
+/// registro dentro de lo que produce.
+#[test]
+fn la_ir_que_sale_no_nombra_ninguna_maquina() {
+    let fuente = "\
+perfil llano
+
+funcion suma(a es entero32, b es entero32) devuelve entero32
+    devuelve a + b
+";
+    let v = bmo_inti_front::Vocabulario::por_defecto().expect("sin vocabulario");
+    let piezas = bmo_inti_front::lexico::barrer(fuente, &v);
+    let arbol = bmo_inti_front::sintaxis::leer(&piezas.valor, &v);
+    assert!(!arbol.hay_errores(), "{}", arbol.pintar("suma.inti"));
+
+    let ir = bmo_inti_front::ir::bajar(&arbol.valor).valor;
+    assert_eq!(ir.comprobaciones(), 1, "la suma trae su comprobacion");
+
+    let texto = format!("{:?}", ir).to_lowercase();
+    for palabra in DE_UNA_MAQUINA {
+        assert!(
+            !contiene_palabra(&texto, palabra),
+            "la IR nombra `{}`",
+            palabra
+        );
+    }
+}
