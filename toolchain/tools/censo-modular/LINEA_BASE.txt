@@ -10,7 +10,7 @@
   2948  toolchain/lang/cobol/src/codegen.rs
   2537  platform/drivers/storage/fat32/src/lib.rs
   2321  toolchain/lang/c/src/codegen/mod.rs
-  2207  toolchain/forge/bmo-lower/src/emu.rs
+  2228  toolchain/forge/bmo-lower/src/emu.rs
   2011  toolchain/lang/cobol/src/parser.rs
   1621  toolchain/lang/cpp/src/parser.rs
   1584  platform/drivers/usb/xhci/src/lib.rs
@@ -37,3 +37,4 @@
 
 [SUBIDAS]
 Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs        1349 -> 1363  el despacho de KIND_TAREA (paso 3 del DIRECTOR). Se movio `conceder` y `buscar` a obj/tarea.rs y bajo de +32 a +14; los 14 no se quitan sin partir el fichero. Anotado a mano el 19-08: la subida es anterior a que esta seccion existiera.
+toolchain/forge/bmo-lower/src/emu.rs                       2207 -> 2228  flags_add en el emulador: `add` usaba `flags_logic`, que pone `of` a FALSO siempre. El hueco duro meses porque NINGUN lenguaje de BMO emitia un `jo` -- C no comprueba el desbordamiento, y lo que no se emite no se emula. INTI es el primero que lo necesita (su regla 1: desbordar ATRAPA). Sin esto el emulador contesta que nunca desborda, que es la peor respuesta: HACE PASAR el test que deberia fallar. Son 21 lineas de correccion en un CAJON que ya estaba sobre la linea.

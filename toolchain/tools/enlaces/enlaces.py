@@ -81,6 +81,25 @@ import sys
 # sin ancla detras. El ancla se descarta al resolver.
 LINK_MD = re.compile(r"\]\(\s*([^)\s#]+\.md)(?:#[^)\s]*)?\s*\)")
 
+# ** UNA CITA CON ESQUEMA NO ES UN DOCUMENTO DEL ARBOL.
+#
+# LINK_MD caza cualquier enlace cuyo destino acabe en esas tres letras, y en
+# GitHub las paginas de un repo
+# ACABAN asi:
+#
+#     [Starlark: design principles](https://github.com/bazelbuild/starlark/blob/master/design.md)
+#
+# Este guardian las tomaba por rutas relativas y contestaba "no existe desde
+# docs/maestro" -- tres veces, y con eso **paraba el build entero**. Las demas
+# URLs del mismo documento pasaban de largo solo porque no acaban en `.md`, que
+# es la clase de suerte que no sostiene a un guardian.
+#
+# ** Y esto NO es aflojar la regla: es dejar de afirmar lo que no se ha
+# comprobado. Comprobar una URL pide red, y un guardian de build que sale a
+# internet falla cuando no hay wifi -- que es el falso positivo mas caro que
+# existe. Se cuentan aparte y se dice cuantas son.
+ESQUEMA = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+
 # Una ruta entre backticks que acaba en .md, con o sin barras. El backtick es lo
 # que la distingue de una frase que casualmente acabe en esas tres letras.
 #
@@ -156,6 +175,7 @@ def main():
     basenames = index_basenames(root)
     roto = []
     total = 0
+    externas = 0
 
     for rel in tracked_files(root):
         full = os.path.join(root, rel)
@@ -167,6 +187,11 @@ def main():
 
         for n, linea in enumerate(lineas, 1):
             for m in LINK_MD.finditer(linea):
+                # Fuera del arbol: se cuenta y no se juzga. `TICK_MD` no puede
+                # caer aqui -- su clase de caracteres no admite los dos puntos.
+                if ESQUEMA.match(m.group(1)):
+                    externas += 1
+                    continue
                 total += 1
                 porque = resolve(root, rel, m.group(1), "link", basenames)
                 if porque:
@@ -177,15 +202,18 @@ def main():
                 if porque:
                     roto.append((rel, n, m.group(1), porque))
 
+    fuera = ("" if not externas
+             else "  (%d externas: llevan esquema y no se comprueban)" % externas)
+
     if roto:
         print("citas a documentos que NO resuelven:")
         for rel, n, target, porque in roto:
             print("  %s:%d  ->  %s   (%s)" % (rel, n, target, porque))
         print("")
-        print("%d citas rotas de %d" % (len(roto), total))
+        print("%d citas rotas de %d%s" % (len(roto), total, fuera))
         return 1 if args.check else 0
 
-    print("clean: las %d citas a documentos resuelven" % total)
+    print("clean: las %d citas a documentos resuelven%s" % (total, fuera))
     return 0
 
 
