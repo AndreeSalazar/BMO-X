@@ -51,7 +51,7 @@
 
 use bmo_userland as bmo;
 
-use super::{BG_TOP, INK};
+use super::{ACCENT, BG_TOP, INK};
 
 /// Cuantas apps caben en el escritorio. Doce es lo que entra en una fila y
 /// media a 1080p; pasado eso hace falta una rejilla con scroll, y eso es otra
@@ -107,7 +107,28 @@ impl App {
 pub struct Launcher {
     apps: [App; MAX_APPS],
     count: usize,
+    /// El icono SENALADO, si hay alguno.
+    ///
+    /// ** Antes no existia porque un clic LANZABA, y lo que se lanza no hace
+    /// falta senalarlo. Pero un escritorio en el que pulsar un icono arranca un
+    /// programa al primer toque no deja mirar sin ejecutar -- y es la unica
+    /// rejilla de la casa donde pulsar no se podia deshacer.
+    sel: Option<usize>,
+    /// El fotograma del ultimo clic y sobre que icono cayo. Ver `DOBLE_CLIC`.
+    clic_frame: u32,
+    clic_app: usize,
 }
+
+/// Cuantos fotogramas caben entre los dos clics de un doble clic.
+///
+/// El mismo numero que usa la rejilla de ESTRATOS, y por el mismo motivo: en
+/// Ring 3 no hay reloj mas fino que el segundo, asi que esto se cuenta en
+/// fotogramas. A los ~60 por segundo del escritorio son unos 400 ms.
+pub const DOBLE_CLIC: u32 = 24;
+
+/// El realce de la celda senalada. Un relleno tenue, no un marco: un borde de
+/// un pixel alrededor de un icono transparente se lee como suciedad.
+const SEL_BG: u32 = 0x001E_3A5F;
 
 impl Launcher {
     /// Recorre `apps\`, se queda con los `.bex` y le saca el icono a cada uno.
@@ -126,6 +147,9 @@ impl Launcher {
         let mut me = Self {
             apps: [const { App::EMPTY }; MAX_APPS],
             count: 0,
+            sel: None,
+            clic_frame: 0,
+            clic_app: 0,
         };
         let Ok(dir) = bmo::Directorio::open(b"apps") else {
             // No hay `apps\`: no es un fallo, es un disco sin aplicaciones.
@@ -173,6 +197,42 @@ impl Launcher {
     /// apuntar a un cuadro de 32x32 con un raton es mas dificil de lo que
     /// parece, y el nombre de debajo forma parte de lo que uno cree estar
     /// pulsando.
+    /// Cual esta senalado.
+    pub fn sel(&self) -> Option<usize> {
+        self.sel
+    }
+
+    /// **Un clic en el icono `i`.** `true` si es el SEGUNDO de un doble clic.
+    ///
+    /// Es la misma regla que la rejilla de ESTRATOS y esta escrita igual a
+    /// proposito: el primero SENALA, el segundo ABRE. Dos rejillas con dos
+    /// costumbres distintas en el mismo escritorio serian dos cosas que
+    /// aprender donde deberia haber una.
+    pub fn clic(&mut self, i: usize, frame: u32) -> bool {
+        let doble = self.clic_frame != 0
+            && self.clic_app == i
+            && frame.wrapping_sub(self.clic_frame) <= DOBLE_CLIC;
+        self.sel = Some(i);
+        // El segundo clic cierra el gesto, o un tercero abriria otra vez.
+        self.clic_frame = if doble { 0 } else { frame };
+        self.clic_app = i;
+        doble
+    }
+
+    /// Quita el realce. Lo llama quien pulsa FUERA de la rejilla.
+    pub fn soltar(&mut self) -> bool {
+        let habia = self.sel.is_some();
+        self.sel = None;
+        self.clic_frame = 0;
+        habia
+    }
+
+    /// El rectangulo de la celda `i`, para borrarla o realzarla.
+    pub fn celda(&self, p: &bmo::Pantalla, i: usize) -> (u32, u32, u32, u32) {
+        let (cx, cy) = self.cell(p, i);
+        (cx, cy, CELL_W, CELL_H)
+    }
+
     pub fn app_at(&self, p: &bmo::Pantalla, x: u32, y: u32) -> Option<usize> {
         let per_row = self.per_row(p);
         if per_row == 0 || y < GRID_Y || x < GRID_X {
@@ -209,25 +269,63 @@ impl Launcher {
 /// Pinta la rejilla entera. Va DESPUES del fondo y antes de las ventanas.
 pub fn paint(p: &bmo::Pantalla, l: &Launcher) {
     for i in 0..l.count {
-        let (cx, cy) = l.cell(p, i);
-        let app = &l.apps[i];
-        // El icono, centrado en la celda.
-        let ix = cx + (CELL_W - ICON_PX) / 2;
-        if app.tiene_icono {
-            paint_pixels(p, ix, cy, &app.pixeles);
-        } else {
-            paint_default(p, ix, cy, app.name());
-        }
-        // El nombre debajo, centrado y SIN el `.bex`: la extension es la misma
-        // en todos, asi que ocupa sitio y no distingue nada.
-        let visible = without_extension(app.name());
-        let width = visible.len() as u32 * 8;
-        let tx = if width < CELL_W {
-            cx + (CELL_W - width) / 2
-        } else {
-            cx
-        };
-        p.texto_bytes(tx, cy + ICON_PX + 6, visible, INK);
+        paint_una(p, l, i);
+    }
+}
+
+/// **Pinta UNA celda**: su realce si esta senalada, el icono y el nombre.
+///
+/// Existe aparte para que cambiar de icono senalado no cueste repintar los
+/// doce. Con tres apps la diferencia no se nota; con doce y un fondo en
+/// degradado, si -- y la regla no deberia depender de cuantas haya.
+///
+/// ** El que la llama para BORRAR un realce tiene que devolver el fondo antes
+/// (`scene::erase_window` sobre [`Launcher::celda`]): aqui no se pinta fondo,
+/// porque el fondo del escritorio es un degradado y esto no lo sabe calcular.
+pub fn paint_una(p: &bmo::Pantalla, l: &Launcher, i: usize) {
+    if i >= l.count {
+        return;
+    }
+    let (cx, cy) = l.cell(p, i);
+    let app = &l.apps[i];
+    if l.sel == Some(i) {
+        p.rect(cx + 2, cy - 4, CELL_W - 4, CELL_H - 8, SEL_BG);
+        p.rect(cx + 2, cy - 4, CELL_W - 4, 1, ACCENT);
+    }
+    // El icono, centrado en la celda.
+    let ix = cx + (CELL_W - ICON_PX) / 2;
+    if app.tiene_icono {
+        paint_pixels(p, ix, cy, &app.pixeles);
+    } else {
+        paint_default(p, ix, cy, app.name());
+    }
+    // El nombre debajo, centrado y SIN el `.bex`: la extension es la misma
+    // en todos, asi que ocupa sitio y no distingue nada.
+    let visible = without_extension(app.name());
+    let width = visible.len() as u32 * 8;
+    let tx = if width < CELL_W {
+        cx + (CELL_W - width) / 2
+    } else {
+        cx
+    };
+    p.texto_bytes(tx, cy + ICON_PX + 6, visible, INK);
+}
+
+/// **Repinta la rejilla entera devolviendo antes el fondo de cada celda.**
+///
+/// Es lo que hay que hacer cuando cambia QUIEN esta senalado: el realce viejo
+/// solo se va devolviendo el degradado que habia debajo, y eso [`paint_una`] no
+/// lo sabe hacer -- ni debe, porque el fondo es del escritorio y no de la
+/// rejilla.
+///
+/// ** Vive aqui y no en el manejador del raton porque hacia falta en DOS
+/// sitios --al senalar y al soltar-- y dos copias del mismo bucle es como se
+/// acaba teniendo dos que no borran lo mismo.
+pub(crate) fn repintar(p: &bmo::Pantalla, c: &super::RunBox, l: &Launcher, visible: bool) {
+    for k in 0..l.count() {
+        let (cx, cy, cw, ch) = l.celda(p, k);
+        super::erase_window(p, c, cx, cy - 4, cw, ch, visible);
+        paint_una(p, l, k);
     }
 }
 

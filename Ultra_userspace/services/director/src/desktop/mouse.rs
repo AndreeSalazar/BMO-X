@@ -76,7 +76,20 @@ pub(crate) fn on_pointer(
         && !dsk.win.cabina_open
         && !dsk.win.sound_open
     {
+        // -- ** UN CLIC SENALA. DOS ABREN. Y ENTRAR tambien abre.
+        //
+        // Antes un solo clic LANZABA. Eso deja un escritorio en el que no se
+        // puede mirar sin ejecutar: pulsar para ver como se llama un icono
+        // arrancaba el programa, y de un lanzamiento no se vuelve solo.
+        //
+        // ** Lo bonito es que ENTRAR sale gratis. El primer clic deja escrito
+        // `run <ruta>` en la caja de Ejecutar pero **no inyecta el salto de
+        // linea**, asi que la orden queda preparada y es ENTRAR quien la
+        // dispara -- que es exactamente lo que el dueno pidio, y sin una
+        // segunda regla que mantener.
         if let Some(i) = dsk.launcher.app_at(&p, pos.x, pos.y) {
+            let doble = dsk.launcher.clic(i, dsk.tick.frames);
+            scene::launcher::repintar(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible);
             if let Some(app) = dsk.launcher.app(i) {
                 let r = app.path();
                 // `run ` + la ruta. Si no cupiera se deja como estaba:
@@ -88,12 +101,16 @@ pub(crate) fn on_pointer(
                     dsk.field.n = 4 + r.len();
                     dsk.field.cur = dsk.field.n;
                     dsk.tick.repaint_field = true;
-                    if dsk.field.ni < dsk.field.injected.len() {
+                    // Solo el SEGUNDO dispara.
+                    if doble && dsk.field.ni < dsk.field.injected.len() {
                         dsk.field.injected[dsk.field.ni] = b'\n';
                         dsk.field.ni += 1;
                     }
                 }
             }
+        } else if dsk.launcher.soltar() {
+            // Pulsar en el fondo quita el realce, como en cualquier escritorio.
+            scene::launcher::repintar(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible);
         }
     }
 
@@ -396,6 +413,34 @@ pub(crate) fn on_pointer(
                                 scene::data::paint(&p, &dsk.win.data);
                                 dsk.win.top_before = Ventana::Data;
                             }
+                            servido = true;
+                        }
+                        // -- ** CLIC EN LA REJILLA: senalar, y abrir al SEGUNDO
+                        //
+                        // Faltaba entero. `fila_rejilla_en` existia desde que
+                        // hay menu contextual, pero solo lo miraba el boton
+                        // DERECHO: con el izquierdo se podia abrir un menu
+                        // sobre un archivo y no se podia senalar ese archivo.
+                        // Una lista en la que se pulsa y no pasa nada parece
+                        // rota aunque el teclado la recorra bien.
+                        //
+                        // ** El primero SOLO senala. Abrir con un clic suelto
+                        // en una lista donde tambien se arrastra la ventana
+                        // seria entrar en carpetas sin querer.
+                        //
+                        // Y el segundo hace **lo mismo que ENTRAR**, llamando a
+                        // lo mismo: `entrar` dice que no cuando es un archivo,
+                        // y entonces no pasa nada -- que es correcto, porque un
+                        // archivo no tiene dentro. El dia que haya con que
+                        // abrirlo, se anade en `entrar` y las dos formas lo
+                        // heredan a la vez.
+                        else if let Some(i) = dsk.win.data.fila_rejilla_en(pos.x, pos.y) {
+                            let doble = dsk.win.data.clic_rejilla(i, dsk.tick.frames);
+                            if doble && bmo::estratos::entrar(i as u64) {
+                                dsk.win.data.to_top();
+                            }
+                            scene::data::paint(&p, &dsk.win.data);
+                            dsk.win.top_before = Ventana::Data;
                             servido = true;
                         }
                     }

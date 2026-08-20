@@ -842,10 +842,34 @@ impl Consola {
 }
 
 /// Pinta la consola en su zona.
-pub(crate) fn paint(p: &bmo::Pantalla, z: &Zona, c: &Consola, borde: u32, acento: u32) {
+pub(crate) fn paint(
+    p: &bmo::Pantalla,
+    z: &Zona,
+    c: &Consola,
+    fondo: u32,
+    borde: u32,
+    acento: u32,
+) {
     if !z.hay() || !c.abierta {
         return;
     }
+    // ** LA ZONA SE BORRA ENTERA, Y ANTES ESTO NO ESTABA.
+    //
+    // Se podia no estar mientras el UNICO camino hasta aqui repintaba la
+    // ventana completa un instante antes: el cuerpo quedaba en su color y esto
+    // escribia encima de un fondo ya limpio. Era una dependencia que no estaba
+    // dicha en ningun sitio, y al aparecer el segundo camino --repintar SOLO la
+    // consola, para que teclear no cueste la ventana entera-- se rompio en la
+    // primera letra: los glifos nuevos se dibujaban ENCIMA de los viejos y el
+    // renglon se volvia un amasijo.
+    //
+    // ** La regla que deja, y vale para cualquier panel de esta ventana: **quien
+    // pinta una zona la deja ENTERA**, fondo incluido. Un pintor que depende de
+    // lo que hizo el anterior solo funciona mientras haya un solo orden posible.
+    //
+    // Cuesta un `rect` de mas cuando se viene del repintado completo. Es
+    // exactamente el precio que hay que pagar por no tener una regla implicita.
+    p.rect(z.x, z.y, z.w, z.h, fondo);
     p.rect(z.x, z.y, z.w, 1, borde);
 
     let mut y = z.y + 5;
