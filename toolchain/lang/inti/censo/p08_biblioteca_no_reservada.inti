@@ -7,4 +7,4 @@ funcion escribe(cosa es texto)
     consola_bruta(cosa)
 
 funcion principal
-    escribe "esta es la mia"
+    escribe("esta es la mia")

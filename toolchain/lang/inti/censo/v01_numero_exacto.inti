@@ -3,4 +3,4 @@
 perfil pleno
 
 funcion principal
-    escribe 0.1 + 0.2
+    escribe(0.1 + 0.2)

@@ -7,4 +7,4 @@ funcion principal
     b es entero16  = 32767
     c es entero32  = 2147483647
     d es natural64 = 18446744073709551615
-    escribe a, b, c, d
+    escribe(a, b, c, d)

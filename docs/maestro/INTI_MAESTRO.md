@@ -297,7 +297,7 @@ lo que le salio caro. Una sola tabla, y cada fila termina en una decision.
 | # | la sorpresa | INTI | regla |
 |---|---|---|---|
 | 1 | `def f(x, lista=[])`: el `[]` se crea una vez y todas las llamadas lo comparten | el valor por defecto se **congela** al declarar | 10.7 |
-| 2 | `[lambda: i for i in range(3)]` da `2,2,2` | captura **por valor al crear** | 10.8 |
+| 2 | `[lambda: i for i in range(3)]` da `2,2,2` | **no hay closures**: sin captura no hay *late binding* | 10.5 |
 | 3 | `a is b` con 256 y con 257 dan cosas distintas | **`es` no existe**: un VALOR no tiene identidad | 10.2 |
 | 4 | `b = a` con listas no copia | pasar no permite cambiar (+ copia-al-escribir) | 10.7 |
 | 5 | `t[1] += [3]` **anade y ademas falla** | un congelado no se toca, y falla **antes** | 10.2 |
@@ -456,6 +456,59 @@ esta elegida: otra arquitectura es otra carpeta de tablas**, no otro compilador.
 ⚠ Y el limite, dicho: **portable no significa que el `.bex` corra en otra
 maquina.** Significa que el **fuente** vuelve a compilar. C nunca prometio mas
 que eso, y prometer mas seria WASM -- otro trabajo, y esta descartado (sec. 13).
+
+---
+
+### 7.1 CONTROL NO ES PRIVILEGIO -- y INTI no da root
+
+> Duda de Eddi, 2026-08-19: *"que viva en control... pero suena extrano, control
+> total como root, pero neh... no es root, no? Es por motivos, necesito eso para
+> portabilidad."*
+
+**No es root.** Y la confusion es tan comun que conviene partirla en **tres ejes
+independientes**, porque cada uno lo concede alguien distinto:
+
+| eje | la pregunta | quien lo concede | INTI |
+|---|---|---|---|
+| **EXPRESION** | *puedo DECIRLO?* -- este byte aqui, este tamano exacto, esta instruccion | **el lenguaje** | ✅ **esto es lo que INTI da** |
+| **PERMISO** | *me DEJAN hacerlo?* -- tocar esa pagina, reclamar la pantalla, leer ese disco | el kernel: capabilities, MMU y anillo | ⛔ INTI no lo toca |
+| **CONFIANZA** | *alguien FIRMO que esto puede correr?* | `bmo-verify` y la firma del BEF | ⛔ tampoco |
+
+★★★ **La frase que lo cierra: INTI da control sobre TU maquina, no autoridad
+sobre la de nadie.** Root es lo segundo. Y ademas son opuestos en algo que este
+proyecto ya tiene escrito: **root es AMBIENTAL** --lo tienes por ser quien
+eres-- y aqui *el privilegio no es ambiental, se sostiene por capabilities
+explicitas*. Una capability se pasa y se revoca; root no se revoca, se tiene.
+
+#### La prueba de que el lenguaje no podria dar privilegio aunque quisiera
+
+Un `.bex` de INTI corre en **Ring 3** y pasa por el gate. Lo unico que hace el
+lenguaje es **emitir bytes**; quien decide si esos bytes pueden tocar algo es la
+MMU y el anillo. Aunque INTI compilara un `outb` a un puerto en un programa de
+usuario, **el hardware contesta con un `#GP`**. El lenguaje no puede escalar
+privilegios **porque el privilegio no vive en el lenguaje**.
+
+⚠ Y el caso honesto que hay que decir: el dia que se escriba un driver en INTI
+LLANO, ese codigo si tendra privilegio -- **pero por donde lo cargan, no por en
+que lenguaje esta escrito**. Es exactamente lo que pasa hoy con el kernel, que
+esta en Rust: nadie diria que Rust "da root".
+
+> **Ningun lenguaje da root. El cargador y el anillo dan root.**
+
+#### Y por que el control SI hace falta para la portabilidad, que era tu motivo
+
+Va al grano: la mitad B de la seccion 7 -- *el SISTEMA se porta* -- solo se
+cumple si **lo que hoy solo se puede escribir en ensamblador se puede escribir
+en INTI**. Disposicion exacta, tamanos exactos, la instruccion concreta cuando
+hace falta.
+
+Si INTI no tuviera ese control, habria partes de BMO-X **atadas para siempre al
+ensamblador de x86**, y esas partes no se moverian nunca a ARM ni a RISC-V. O
+sea: **el control de expresion es el precio de la portabilidad**, y no tiene
+nada que ver con el permiso.
+
+★ El resumen en una linea: `crudo` no te da permisos nuevos. Te deja **decir**
+lo que ya podias hacer -- y hace que se vea.
 
 ---
 
@@ -1120,11 +1173,11 @@ funcion principal
    repite mientras haya linea en lee()
       partes = parte linea por ","
       si cuenta de partes no es 2
-         escribe "salto esta linea, no tiene dos partes:", linea
+         escribe("salto esta linea, no tiene dos partes:", linea)
          continua
 
       nota = numero(partes[1]) o si no
-         escribe "'", partes[1], "' no es un numero. La salto."
+         escribe("'", partes[1], "' no es un numero. La salto.")
          continua
 
       anade Alumno(partes[0], nota) a alumnos
@@ -1133,7 +1186,7 @@ funcion principal
    escribe "media:", m                    # 4.15, no 4.1499999999999995
 
    guarda "media.txt", texto(m) o si no
-      escribe "no pude guardar:", motivo
+      escribe("no pude guardar:", motivo)
 ```
 
 Y el mismo lenguaje, perfil LLANO, escribiendo sistema:

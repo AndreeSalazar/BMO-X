@@ -10,11 +10,11 @@ funcion divide(a es numero, b es numero) devuelve numero o error
 funcion principal
     r = divide(10, 0)
     si fallo r
-        escribe "fallo:", motivo de r
+        escribe("fallo:", motivo de r)
 
     x = divide(10, 2) o si no 0
-    escribe x
+    escribe(x)
 
     y = divide(10, 0) o si no
-        escribe "otra vez"
+        escribe("otra vez")
         devuelve

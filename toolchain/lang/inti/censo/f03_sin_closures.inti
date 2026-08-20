@@ -1,0 +1,15 @@
+# sonda: f03_sin_closures       espera: E0101
+# fija: no hay funciones anonimas ni anidadas, asi que la sorpresa 2 de Python
+# (late binding) no existe POR AUSENCIA y no por una regla de captura.
+#
+# El motivo es del perfil, no del gusto: una captura hay que guardarla en algun
+# sitio, y en `llano` no hay monton. Tenerlas solo en `pleno` serian dos
+# lenguajes con una gramatica.
+#
+# Lo que SI hay: una funcion como valor. `f = media` guarda la funcion, `f(x)`
+# la llama. Es lo que hace C, y basta para una tabla de operaciones.
+perfil pleno
+
+funcion principal
+    funcion dentro() devuelve numero
+        devuelve 1

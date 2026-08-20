@@ -149,3 +149,25 @@ fn el_corpus_cubre_los_dos_perfiles() {
     assert!(llano >= 5, "pocas sondas de `llano`: {}", llano);
     assert!(pleno >= 10, "pocas sondas de `pleno`: {}", pleno);
 }
+
+/// Las sondas, pasadas por la GRAMATICA y no solo por el barrido.
+///
+/// Aqui solo se comprueban las que declaran `COMPILA`: las que esperan un
+/// codigo de una fase que aun no existe (`E0030` es del analisis de nombres)
+/// no se pueden juzgar todavia, y fingir que si seria peor que no mirarlas.
+#[test]
+fn las_sondas_que_dicen_compila_se_leen_enteras() {
+    for (nombre, texto) in sondas() {
+        let v = veredicto(&texto);
+        if !v.starts_with("COMPILA") {
+            continue;
+        }
+        let c = bmo_inti_front::leer(&texto);
+        assert!(
+            !c.hay_errores(),
+            "{} dice COMPILA y no se lee:\n{}",
+            nombre,
+            c.pintar(&format!("{}.inti", nombre))
+        );
+    }
+}
