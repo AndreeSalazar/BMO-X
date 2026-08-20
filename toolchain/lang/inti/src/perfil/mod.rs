@@ -28,7 +28,7 @@
 //!    `en paralelo` no             `en paralelo` si
 //! ```
 //!
-//! ★ Y la que decide donde hace falta `crudo`: **no marca "bajo nivel", marca
+//! ** Y la que decide donde hace falta `crudo`: **no marca "bajo nivel", marca
 //! "aqui nadie comprueba por ti"**. Por eso `invoca` no lo necesita --al otro
 //! lado hay un kernel que valida una capability-- y `entrada_puerto` si.
 
@@ -112,7 +112,7 @@ impl Catalogo {
 pub struct Informe {
     /// Cuantos bloques `crudo` tiene el modulo.
     ///
-    /// ★★ Este numero es el que convierte *"cuanto de mi programa esta atado a
+    /// ** Este numero es el que convierte *"cuanto de mi programa esta atado a
     /// esta maquina?"* en un dato. Va al informe del `.bex` para que
     /// `bmo-verify` pueda exigirlo firmado.
     pub bloques_crudo: usize,
