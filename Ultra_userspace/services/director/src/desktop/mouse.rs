@@ -436,8 +436,15 @@ pub(crate) fn on_pointer(
                         // heredan a la vez.
                         else if let Some(i) = dsk.win.data.fila_rejilla_en(pos.x, pos.y) {
                             let doble = dsk.win.data.clic_rejilla(i, dsk.tick.frames);
-                            if doble && bmo::estratos::entrar(i as u64) {
-                                dsk.win.data.to_top();
+                            if doble {
+                                // Lo MISMO que ENTRAR, y llamando a lo mismo:
+                                // baja si es carpeta, y si es archivo lo abre
+                                // en el visor. Dos gestos, una regla.
+                                if bmo::estratos::entrar(i as u64) {
+                                    dsk.win.data.to_top();
+                                } else {
+                                    dsk.win.data.ver_senalado();
+                                }
                             }
                             scene::data::paint(&p, &dsk.win.data);
                             dsk.win.top_before = Ventana::Data;

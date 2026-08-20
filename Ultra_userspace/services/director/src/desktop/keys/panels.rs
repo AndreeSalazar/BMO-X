@@ -192,6 +192,33 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
         scene::data::paint(p, &dsk.win.data);
         return Key::Taken;
     }
+    // -- ** EL VISOR SE QUEDA CON LAS TECLAS mientras esta abierto --
+    //
+    // Antes que el explorador y despues de la consola, que es el orden en el
+    // que estan puestos en la pantalla. Mientras se mira un fichero, las
+    // flechas son del texto: moverian la seleccion de una rejilla que no se
+    // esta viendo, y al salir te encontrarias en otro sitio sin haber pedido
+    // moverte.
+    if dsk.win.data.visor.abierto {
+        let caben = dsk.win.data.visor_caben();
+        let (repinta, cierra) = match c {
+            // ESC vuelve a la rejilla. Es la misma tecla que devuelve las
+            // teclas en la consola: salir de donde estas, sin cerrar nada.
+            0x1B => (true, true),
+            0x80 => (dsk.win.data.visor.mover(-1, caben), false),
+            0x81 => (dsk.win.data.visor.mover(1, caben), false),
+            0x87 => (dsk.win.data.visor.mover(-(caben as isize), caben), false),
+            0x88 => (dsk.win.data.visor.mover(caben as isize, caben), false),
+            _ => (false, false),
+        };
+        if cierra {
+            dsk.win.data.visor.cerrar();
+        }
+        if repinta {
+            scene::data::paint(p, &dsk.win.data);
+        }
+        return Key::Taken;
+    }
     if dsk.win.data.consola.activa {
         // ** CUANTO se repinta lo decide la TECLA, no el hecho de haber pulsado
         // una. Aqui habia un `if ... { paint(ventana entera) }`, o sea el panel
@@ -333,6 +360,12 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
             if bmo::estratos::entrar(dsk.win.data.sel as u64) {
                 dsk.win.data.to_top();
                 dsk.win.data.verified = None;
+            } else {
+                // ** `entrar` dice que no cuando es un ARCHIVO, y hasta hoy ahi
+                // se acababa: la tecla no hacia nada y parecia que la lista
+                // estuviera muerta. Un archivo no tiene dentro donde bajar,
+                // pero SI tiene dentro que ver -- y es la misma intencion.
+                dsk.win.data.ver_senalado();
             }
         }
         // RETROCESO / IZQUIERDA: subir al padre.
