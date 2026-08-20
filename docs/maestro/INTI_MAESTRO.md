@@ -927,19 +927,138 @@ resta y no una suposicion, y menos mal."*
 en `sem-asm`, en BMO C y en INTI LLANO --, los tres en el mismo `.bex`, los tres
 medidos con la misma fila de control, corriendo en el Ryzen.
 
-Y el criterio de aceptacion, escrito ahora para que no se negocie despues:
+Y el criterio de aceptacion, escrito ahora para que no se negocie despues.
+
+### CORRECCION del 2026-08-19, el mismo dia: **un solo liston no vale**
+
+Se escribio *"INTI LLANO >= 90% de BMO C"* y **se queda corto**. Comprobado en
+`codegen/mod.rs`:
 
 ```text
-   INTI LLANO >= 90% de BMO C        -> el lenguaje esta bien
-   entre el 70% y el 90%             -> hay un sitio concreto que arreglar,
-                                        y la sonda dice cual
-   < 70%                             -> el emisor tiene un fallo de diseno,
-                                        no INTI
+   1399:  self.code.push(0x50);   // push rax -> el valor vive en [rsp]
 ```
 
-⚠ Fijate en que la referencia es **BMO C y no el ensamblador**. Comparar contra
-ASM escrito a mano por un experto mide al experto, no al compilador; comparar
-contra C mide lo unico accionable: **si el emisor esta haciendo su trabajo.**
+**BMO C evalua expresiones POR PILA**, con acumulador en `rax`. Estar al 90% de
+eso mide que el emisor funciona -- **no que el lenguaje este al nivel del
+ensamblador**. Hacen falta dos listones y dicen cosas distintas:
+
+```text
+   LLANO vs BMO C        >= 90%   -> el emisor funciona (higiene)
+   LLANO vs ASM a mano   >= 85%   -> ★ el liston de verdad, en el bucle de
+                                     referencia y SIN SIMD
+   LLANO vs ASM con SIMD  se pierde, y se recupera escribiendo ESE trozo
+                          en `crudo`
+```
+
+★★ Y la referencia doble no es indecision: **contra C se mide el emisor, contra
+ASM se mide el lenguaje.** Comparar solo contra ASM escrito por un experto mide
+al experto; comparar solo contra C deja pasar un emisor mediocre si el de al
+lado tambien lo es.
+
+### 13.6 Los TRES mecanismos que valen el 90% de la distancia
+
+No es una lista interminable. Contra el ensamblador, casi todo esta aqui:
+
+| # | mecanismo | lo que vale | lo que cuesta |
+|---|---|---|---|
+| **1** | **Asignacion de registros** -- que un valor viva en un registro durante todo su tramo de vida en vez de empujarse a la pila | **2-4x** en codigo aritmetico, sin tocar una linea del programa del usuario | ~800-1.500 lineas. ⚠ pide **una IR con temporales**, que es el cambio estructural de verdad |
+| **2** | **Meter funciones en linea** | aqui vale mas que en otros lenguajes: **las comprobaciones de INTI son funciones**, y sin inline cada una cuesta una llamada (20 ciclos) en vez de dos instrucciones | ~300 lineas, si ya hay IR |
+| **3** | **Borrar la comprobacion que se puede demostrar** | es lo que hace que "sin UB" cueste **1% y no 30%** | ~400 lineas |
+
+★★★ Y una ventaja de INTI que es GRATIS, porque es diseno y no optimizacion:
+**`para cada x en lista` no tiene indice.** No hay nada que comprobar porque no
+hay nada que pueda salirse. **El bucle idiomatico del lenguaje es justamente el
+que no paga**, y por eso el 1% es alcanzable de verdad y no una esperanza.
+
+Lo demas -- sacar invariantes del bucle, `lea` para aritmetica de direcciones,
+no recalcular una comparacion que la ALU ya dejo en las banderas, funciones hoja
+sin marco -- vale entre el **1% y el 5%** cada una. Son reales y van **despues**:
+hacerlas antes de tener registros es pintar una casa sin cimientos.
+
+### 13.7 SIMD: no se autovectoriza, y es una decision
+
+GCC y LLVM llevan veinte anos en la autovectorizacion y **sigue siendo fragil**:
+funciona hasta que cambias una linea y deja de funcionar sin decirtelo.
+
+INTI da **SIMD por intrinsecos de tabla**, con el mecanismo que ya existe
+(`intrinsics.toml`: bytes exactos, aridad validada, cero Rust por instruccion
+nueva). Quien quiere SIMD lo escribe, y no depende de que el compilador adivine.
+Es la misma decision que el proyecto ya tomo con `__outb` y con la puerta.
+
+### 13.8 ★★★ EL TRATO: el tiempo se gasta al compilar, no al ejecutar
+
+Idea de Eddi, 2026-08-19, y es la que ordena toda la seccion:
+
+> *"INTI compila pero analiza, se tarda un poco... PERO ES PROCESO. Luego el
+> resultado: aqui se libera TODO el potencial, para estar al nivel de ASM, no de
+> C."*
+
+**Es correcto, y en BMO-X lo es mas que en cualquier otro sitio.** Tres razones,
+y la tercera es propia de este sistema:
+
+1. **Un programa se compila una vez y se ejecuta millones.** El tiempo de
+   compilacion es el sitio barato.
+2. ★★ **El analisis ya hay que pagarlo por CORRECCION, no por velocidad.** Para
+   que INTI no tenga comportamiento indefinido hay que demostrar que un indice
+   esta en rango, que un entero no se pasa, que un prestamo no sobrevive. **Y
+   saber el rango es exactamente lo que te deja BORRAR la comprobacion.** La
+   seguridad y la velocidad piden el mismo trabajo: el mecanismo 3 sale **de
+   camino** del que ya era obligatorio.
+3. **El `.bex` viaja firmado y no se recompila en el destino.** El tiempo se
+   paga UNA vez, en la maquina de quien lo escribe, y todos los que lo ejecutan
+   reciben el resultado. En un mundo con JIT esto no seria asi.
+
+Los tres pasos, con su nombre, porque son tres cosas distintas y solo una es
+optimizacion:
+
+```text
+   1. ANALISIS OBLIGATORIO   perfil, mutabilidad, las doce reglas
+                             -> sin esto el lenguaje no cumple lo que promete
+   2. LA IR, y lo que ENSENA  rangos, tramos de vida, lo que se puede probar
+                             -> el subproducto del paso 1
+   3. EMISION                 usar lo aprendido para NO emitir lo que sobra
+                             -> aqui se suelta el potencial
+```
+
+#### ⚠ La acotacion, y viene del propio `PROPOSITO.md`
+
+*"100% del potencial"* hay que decirlo con cuidado, porque **es literalmente la
+promesa que hizo Itanium**: el hardware dejaria de reordenar porque *el
+compilador lo haria mejor, en tiempo de compilacion, con toda la informacion del
+programa delante*. Los compiladores nunca llegaron, y no por falta de dinero:
+**parte de lo que hace falta solo se sabe en ejecucion** -- que rama se toma,
+que cache falla.
+
+Asi que el trato de arriba es bueno **y tiene un techo**:
+
+- Mas tiempo de compilacion compra los tres mecanismos de 13.6. Eso es la
+  distancia contra C, y se gana entera.
+- **No compra lo que solo se sabe corriendo**, ni lo que el experto sabe de sus
+  datos (*"este array siempre tiene 16"*).
+
+Por eso el liston es **>= 85% contra ASM sin SIMD** y no *"el 100%"*: el numero
+es una medida, no una aspiracion. Y el 15% que falta tiene su valvula escrita
+desde el primer dia -- `crudo`.
+
+★★ El corolario que hace innecesaria la carrera: **si el 3% de tu programa
+necesita la instruccion exacta, lo escribes en `crudo`; el otro 97% no tiene por
+que pagar por ello.** Es exactamente lo que hace C en Linux hoy: nadie escribe
+un kernel entero en ensamblador porque el compilador pierda un 8%.
+
+### 13.9 El orden, y lo que NO toca todavia
+
+```text
+   F2      emitir codigo CORRECTO, aunque sea lento
+   F2.5    la IR con temporales            <- el cambio estructural
+   F3      asignacion de registros         <- aqui llega el 2-4x
+   F3.5    inline + borrado de comprobaciones
+   F4      las decimas, medidas una a una
+```
+
+~2.500-3.500 lineas sobre lo que hay. ⚠ **y el orden no se puede cambiar**: si
+se intentan los registros antes de que el lenguaje compile algo correcto, un
+fallo no se sabra si es del asignador o del parser. Un compilador rapido y
+equivocado no sirve para nada.
 
 ---
 
