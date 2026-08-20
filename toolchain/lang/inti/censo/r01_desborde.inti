@@ -1,0 +1,7 @@
+# sonda: r01_desborde            espera: E1001 en ejecucion
+# regla 1: desbordar ATRAPA. No da la vuelta en silencio.
+perfil llano
+
+funcion principal
+   cambiante total es entero32 = 2147483600
+   total = total + 100

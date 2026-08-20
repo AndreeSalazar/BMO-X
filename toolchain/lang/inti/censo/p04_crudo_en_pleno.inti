@@ -1,0 +1,8 @@
+# sonda: p04_crudo_en_pleno      espera: E0071
+# fija: `crudo` no existe en `pleno`. La ventana sin comprobar es del perfil
+# de sistema, y ahi se cuenta y se puede exigir firmada.
+perfil pleno
+
+funcion principal
+   crudo
+      escribe_puerto(0x60, 0)

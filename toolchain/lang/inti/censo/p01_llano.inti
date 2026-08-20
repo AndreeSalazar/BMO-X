@@ -1,0 +1,10 @@
+# sonda: p01_llano               espera: COMPILA
+# fija: el perfil de sistema. Sin monton, tamanos exactos, y `crudo` visible.
+perfil llano
+
+funcion lee_tecla devuelve natural8
+   repite mientras (entrada_puerto(0x64) bits_y 1) = 0
+      espera()
+
+   crudo
+      devuelve entrada_puerto(0x60)

@@ -1,0 +1,7 @@
+# sonda: c01_fija             espera: E0030
+# fija: sin `cambiante`, un nombre no se reasigna.
+perfil pleno
+
+funcion principal
+   x = 5
+   x = 6

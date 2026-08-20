@@ -1,0 +1,13 @@
+# sonda: c03_comparar         espera: COMPILA
+# fija: `=` compara en una expresion y asigna en una sentencia. Sin
+# ambiguedad porque asignar NO es una expresion.
+perfil pleno
+
+funcion principal
+   nombre = "eddi"
+   si nombre = "eddi"
+      escribe "eres tu"
+   si nombre no es "ana"
+      escribe "no eres ana"
+   si 5 es un numero
+      escribe "cinco es un numero"

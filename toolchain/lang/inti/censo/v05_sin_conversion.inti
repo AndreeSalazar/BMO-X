@@ -1,0 +1,6 @@
+# sonda: v05_sin_conversion   espera: E0022
+# fija: no hay conversion implicita entre tipos. Se pide con nombre.
+perfil pleno
+
+funcion principal
+   escribe "23" + 1

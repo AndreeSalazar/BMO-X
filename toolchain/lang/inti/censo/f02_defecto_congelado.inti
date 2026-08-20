@@ -1,0 +1,11 @@
+# sonda: f02_defecto_congelado   espera: COMPILA + la lista NO se acumula
+# fija: el valor por defecto se CONGELA al declarar la funcion. La sorpresa
+# numero 1 de Python no puede existir; intentar anadirle algo es E0032.
+perfil pleno
+
+funcion apunta(x es numero, donde es lista de numero = [])
+   escribe cuenta de donde
+
+funcion principal
+   apunta(1)
+   apunta(2)

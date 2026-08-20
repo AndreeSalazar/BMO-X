@@ -1,0 +1,6 @@
+# sonda: v01_numero_exacto    espera: COMPILA + SALIDA "0.3"
+# fija: `numero` es decimal EXACTO por defecto. Es la promesa de portada.
+perfil pleno
+
+funcion principal
+   escribe 0.1 + 0.2

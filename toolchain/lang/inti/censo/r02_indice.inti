@@ -1,0 +1,8 @@
+# sonda: r02_indice              espera: E0090 al compilar
+# regla 2: si el compilador ve el rango, ni siquiera compila. Con un indice
+# calculado en ejecucion, atrapa con E1002.
+perfil pleno
+
+funcion principal
+   notas = [1, 2, 3]
+   escribe notas[3]

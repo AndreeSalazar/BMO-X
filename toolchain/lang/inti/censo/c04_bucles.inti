@@ -1,0 +1,14 @@
+# sonda: c04_bucles           espera: COMPILA
+# fija: un solo bucle con tres formas, y el rango excluye el final.
+perfil pleno
+
+funcion principal
+   para cada i en 0 hasta 3
+      escribe i
+
+   repite 2 veces
+      escribe "."
+
+   cambiante quedan = cierto
+   repite mientras quedan
+      quedan = falso

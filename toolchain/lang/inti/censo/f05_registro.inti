@@ -1,0 +1,12 @@
+# sonda: f05_registro            espera: COMPILA
+perfil pleno
+
+registro Alumno
+   nombre es texto
+   nota   es numero
+   activo es logico = cierto
+
+funcion principal
+   a = Alumno("ana", 9)
+   b = Alumno(nombre: "luis", nota: 7)
+   escribe a.nombre, b.nota

@@ -1,0 +1,20 @@
+# sonda: e01_error_como_dato     espera: COMPILA
+# fija: las tres formas de tratar un error, y no hay una cuarta.
+perfil pleno
+
+funcion divide(a es numero, b es numero) devuelve numero o error
+   si b = 0
+      falla "no se puede dividir entre cero"
+   devuelve a / b
+
+funcion principal
+   r = divide(10, 0)
+   si fallo r
+      escribe "fallo:", motivo de r
+
+   x = divide(10, 2) o si no 0
+   escribe x
+
+   y = divide(10, 0) o si no
+      escribe "otra vez"
+      devuelve
