@@ -46,6 +46,7 @@ pub mod arbol;
 pub mod arquitectura;
 pub mod aviso;
 pub mod lexico;
+pub mod nombres;
 pub mod palabras;
 pub mod perfil;
 pub mod sintaxis;
@@ -119,8 +120,22 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
     let mut perfiles =
         perfil::comprobar(&arbol.valor, &perfil::Catalogo::cargar(&raices), &maquinas);
 
+    // Los nombres que traen los `usa`: los de las maquinas declaradas y los de
+    // los modulos de REX.
+    let modulos = nombres::Modulos::cargar(&raices);
+    let mut extra: Vec<String> = maquinas
+        .iter()
+        .flat_map(|m| m.nombres_que_trae())
+        .collect();
+    for (n, _) in &arbol.valor.usa {
+        extra.extend(modulos.trae(n).iter().cloned());
+    }
+    let mut nombres =
+        nombres::comprobar(&arbol.valor, &nombres::Comun::cargar(&raices), &extra);
+
     let mut avisos = piezas.avisos;
     avisos.append(&mut arbol.avisos);
     avisos.append(&mut perfiles.avisos);
+    avisos.append(&mut nombres.avisos);
     Cosecha::con(perfiles.valor, avisos)
 }

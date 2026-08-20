@@ -2,8 +2,8 @@
 
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
-> 🟢 **F0, F1 y F2a en verde (2026-08-19).** El contrato entero, el lexico, la
-> gramatica y el analisis de perfiles: **109 pruebas**. Todavia no emite bytes.
+> 🟢 **F0, F1, F2a y F2b en verde (2026-08-19).** El contrato, el lexico, la
+> gramatica, los perfiles y los nombres: **136 pruebas**. Todavia no emite bytes.
 
 ## Que es, en una frase
 
@@ -28,6 +28,9 @@ Tres cosas lo definen, y ninguna es negociable:
 | [`REGLAS.md`](REGLAS.md) | **las doce reglas** que sustituyen a los 203 comportamientos indefinidos de C, con su codigo de error |
 | [`CENSO.md`](CENSO.md) | **38 sondas** con el veredicto escrito por delante, para que el desacuerdo se vea solo |
 | [`palabras.toml`](../../forge/sem-asm/tables/lang/inti/palabras.toml) | las **49 palabras clave**, en una tabla y con la columna inglesa ya escrita |
+| [`comun.toml`](../../forge/sem-asm/tables/lang/inti/comun.toml) | ★ **la biblioteca que esta sin pedirla** -- donde vive la facilidad |
+| [`modulos.toml`](../../forge/sem-asm/tables/lang/inti/modulos.toml) | lo que trae cada `usa <modulo>` de REX |
+| [`arch/x86_64/inti.toml`](../../forge/sem-asm/tables/arch/x86_64/inti.toml) | lo que trae `usa <la maquina>` |
 | `censo/*.inti` | las sondas. Cada una lleva su expectativa en la primera linea |
 | [`ARQUITECTURA.md`](ARQUITECTURA.md) | **por que el compilador esta partido asi** -- el criterio de corte, la regla de dependencias, y por que la modularidad es lo que mantiene el syscall fuera del lenguaje |
 | `src/` | el frontend. `aviso`, `palabras`, `lexico`, `arbol`, `sintaxis` |
@@ -119,7 +122,7 @@ casado con el. Detalle entero en [`GRAMATICA.md`](GRAMATICA.md) sec. 17.
    cargo test -p bmo-inti-front
 ```
 
-109 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
+136 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
 de compilador** (hay lista negra), que **el dedo cae en la columna exacta**
 contando caracteres y no bytes, que **el mismo lexer lee ingles** sin cambiar
 una linea, que una palabra clave **con tilde sigue siendo palabra clave**, y que
@@ -139,8 +142,8 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | **F0** | gramatica, doce reglas, censo | ✅ **escrito** (2026-08-19) |
 | **F1a** | **lexico**: palabras, textos, numeros, sangria, parejas, y los avisos de 4 partes | ✅ **verde** (2026-08-19) |
 | **F1b** | **arbol + sintaxis**: precedencia de 10 niveles, declaraciones, sentencias, recuperacion de errores | ✅ **92 pruebas en verde** (2026-08-19) |
-| **F2a** | **el analisis de perfiles**: `llano` contra `pleno`, `crudo` contado | ✅ **109 pruebas en verde** (2026-08-19) |
-| F2b | nombres y `cambiante` | pendiente |
+| **F2a** | **el analisis de perfiles**: `llano` contra `pleno`, `crudo` contado | ✅ **verde** (2026-08-19) |
+| **F2b** | **nombres, `cambiante` y la biblioteca comun**: quisiste-decir, alcance por funcion | ✅ **136 pruebas en verde** (2026-08-19) |
 | F2c | ★ INTI LLANO compilando a `.bex` nativo, por `bmo-verify` | pendiente |
 | F3 | las doce reglas con sus sondas en verde | pendiente |
 | F4 | ★★ la foto del Ryzen | pendiente |

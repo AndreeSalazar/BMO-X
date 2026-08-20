@@ -142,6 +142,12 @@ impl Maquina {
         self.nombres.len()
     }
 
+    /// Todos los nombres que trae, para que el analisis de nombres los de por
+    /// declarados.
+    pub fn nombres_que_trae(&self) -> Vec<String> {
+        self.nombres.keys().cloned().collect()
+    }
+
     /// Este nombre lo trae esta maquina?
     pub fn conoce(&self, nombre: &str) -> bool {
         self.nombres.contains_key(nombre)

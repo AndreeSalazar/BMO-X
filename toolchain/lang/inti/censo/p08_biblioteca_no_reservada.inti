@@ -1,10 +1,11 @@
 # sonda: p08_biblioteca_no_reservada   espera: COMPILA
 # fija: `escribe`, `guarda`, `cuenta` e `invoca` NO son palabras clave: son
-# biblioteca. Se pueden redefinir. Un lenguaje se juzga por lo que RESERVA.
+# biblioteca, y se pueden redefinir. Un lenguaje se juzga por lo que RESERVA.
 perfil pleno
 
 funcion escribe(cosa es texto)
-    consola_bruta(cosa)
+    # la mia no hace nada, y aun asi compila
+    devuelve
 
 funcion principal
     escribe("esta es la mia")

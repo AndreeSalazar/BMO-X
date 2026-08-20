@@ -2,9 +2,9 @@
 # regla 9: nada de "al menos 16 bits".
 perfil llano
 
-funcion principal
+funcion anchos devuelve natural64
     a es entero8   = 127
     b es entero16  = 32767
     c es entero32  = 2147483647
     d es natural64 = 18446744073709551615
-    escribe(a, b, c, d)
+    devuelve d
