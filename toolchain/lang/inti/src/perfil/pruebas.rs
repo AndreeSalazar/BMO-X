@@ -45,9 +45,9 @@ fn en_llano_no_hay_texto() {
     assert_eq!(c, vec!["E0070"]);
 }
 
-/// Sin tamano no hay pila. La obligacion sale del perfil, no del gusto.
+/// Sin medida no hay pila. La obligacion sale del perfil, no del gusto.
 #[test]
-fn en_llano_hay_que_decir_el_tamano() {
+fn en_llano_hay_que_decir_la_medida() {
     let c = codigos_de("perfil llano\n\nfuncion cuenta(x es numero) devuelve numero\n    devuelve x\n");
     assert!(c.iter().all(|x| *x == "E0020"), "{:?}", c);
     assert!(!c.is_empty());

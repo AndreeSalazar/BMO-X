@@ -113,7 +113,7 @@ impl Marco {
     /// desplazamiento de cada uno no depende de a quien le tocara registro --
     /// que es la clase de dependencia que convierte un fallo del asignador en
     /// un fallo del marco.
-    pub fn tamano(&self) -> i32 {
+    pub fn size(&self) -> i32 {
         let bruto = (self.locales + self.temporales) as i32 * PALABRA;
         (bruto + 15) & !15
     }
@@ -335,9 +335,9 @@ mod pruebas {
 
     #[test]
     fn el_marco_se_alinea_a_dieciseis() {
-        assert_eq!(Marco::de(&funcion(1, 0, vec![])).tamano(), 16);
-        assert_eq!(Marco::de(&funcion(3, 0, vec![])).tamano(), 32);
-        assert_eq!(Marco::de(&funcion(0, 0, vec![])).tamano(), 0);
+        assert_eq!(Marco::de(&funcion(1, 0, vec![])).size(), 16);
+        assert_eq!(Marco::de(&funcion(3, 0, vec![])).size(), 32);
+        assert_eq!(Marco::de(&funcion(0, 0, vec![])).size(), 0);
     }
 
     // ---------------------------------------------------------------

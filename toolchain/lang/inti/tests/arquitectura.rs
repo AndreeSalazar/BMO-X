@@ -147,7 +147,7 @@ fn cada_operacion_de_bits_es_una_instruccion_en_esta_maquina() {
             op
         );
     }
-    // Y la que se llama distinto porque el tamano importa.
+    // Y la que se llama distinto porque la medida importa.
     assert!(m.conoce("da_la_vuelta32") && m.conoce("da_la_vuelta64"));
 }
 

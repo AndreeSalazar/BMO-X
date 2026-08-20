@@ -7,7 +7,7 @@
 //! no seria atado"*.
 //!
 //! El problema de una regla asi es que **se cumple sola el primer dia y se
-//! rompe el tercero**, cuando alguien necesita saber el tamano de un puntero
+//! rompe el tercero**, cuando alguien necesita saber la medida de un puntero
 //! para calcular algo y escribe un `8` en el sitio equivocado. No se rompe por
 //! descuido: se rompe porque es *lo mas facil* en ese momento, igual que meter
 //! el syscall en el compilador.
@@ -117,7 +117,7 @@ fn el_frontend_no_nombra_ninguna_maquina() {
     );
 }
 
-/// Y tampoco supone un tamano de puntero.
+/// Y tampoco supone una medida de puntero.
 ///
 /// Se busca la forma en que ese supuesto se cuela de verdad: un `8` escrito a
 /// mano al lado de la palabra "puntero", o un `usize` usado como si fuera el
@@ -128,7 +128,7 @@ fn el_frontend_no_nombra_ninguna_maquina() {
 /// `puntero`+numero y no `usize` a secas: un test que salta por todo no lo lee
 /// nadie.)
 #[test]
-fn el_frontend_no_supone_un_tamano_de_puntero() {
+fn el_frontend_no_supone_una_medida_de_puntero() {
     let mut culpables = Vec::new();
 
     for f in fuentes() {
