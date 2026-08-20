@@ -61,6 +61,37 @@ fn ejecuta(fuente: &str, a: u64, b: u64) -> u64 {
     m.regs[0] // rax
 }
 
+/// Como [`ejecuta`], pero arrancando por la funcion que se diga.
+///
+/// Hace falta desde que hay llamadas: el modulo ya no tiene una sola funcion, y
+/// arrancar siempre por la primera probaria la de arriba en vez de la que
+/// interesa.
+fn ejecuta_en(fuente: &str, nombre: &str, a: u64, b: u64) -> u64 {
+    let e = emitido(fuente);
+    let inicio = e
+        .inicios
+        .iter()
+        .find(|(n, _)| n == nombre)
+        .map(|(_, off)| *off)
+        .unwrap_or_else(|| panic!("no encuentro la funcion {}", nombre));
+
+    // El mismo `crt0` de diez bytes, pero llamando a la de dentro.
+    let largo = e.codigo.len() as i32;
+    let mut codigo = Vec::new();
+    codigo.push(0xE9); // jmp por encima del modulo
+    codigo.extend_from_slice(&largo.to_le_bytes());
+    codigo.extend_from_slice(&e.codigo);
+    codigo.push(0xE8); // call a la funcion pedida
+    let desde = codigo.len() as i32 + 4;
+    codigo.extend_from_slice(&((inicio as i32 + 5) - desde).to_le_bytes());
+
+    let mut m = Machine::new(codigo);
+    m.regs[7] = a;
+    m.regs[6] = b;
+    let m = run(m, 100_000);
+    m.regs[0]
+}
+
 const SUMA: &str = "\
 perfil llano
 
@@ -262,4 +293,87 @@ fn con_registros_la_comprobacion_sigue_estando() {
     assert_eq!(e.comprobaciones, 1);
     assert_eq!(ejecuta(SUMA, i64::MAX as u64, 1), 1001);
     assert_eq!(ejecuta(SUMA, 3, 4), 7);
+}
+
+// ===================================================================
+//  *** Las llamadas: lo que desbloquea todo lo demas
+// ===================================================================
+
+/// Una funcion de INTI llama a otra de INTI, y sale el numero bueno.
+///
+/// Es la pieza que faltaba para que exista un runtime: **todo runtime son
+/// llamadas**. Sin esto, `pleno` no podia empezar.
+#[test]
+fn una_funcion_llama_a_otra_y_corre() {
+    let f = "\
+perfil llano
+
+funcion doble(x es entero64) devuelve entero64
+    devuelve x + x
+
+funcion principal(a es entero64, b es entero64) devuelve entero64
+    devuelve doble(a) + b
+";
+    // doble(3) + 4 = 10
+    assert_eq!(ejecuta_en(f, "principal", 3, 4), 10);
+    assert_eq!(ejecuta_en(f, "principal", 10, 1), 21);
+}
+
+/// Y hacia ATRAS: una funcion puede llamar a otra declarada mas abajo.
+///
+/// ** Por eso los destinos se resuelven al final del modulo y no sobre la
+/// marcha: resolverlos segun se emite obligaria a ordenar las funciones por
+/// quien llama a quien, y eso es imposible en cuanto dos se llaman entre si.
+#[test]
+fn se_puede_llamar_a_una_funcion_declarada_mas_abajo() {
+    let f = "\
+perfil llano
+
+funcion principal(a es entero64, b es entero64) devuelve entero64
+    devuelve mas_tarde(a)
+
+funcion mas_tarde(x es entero64) devuelve entero64
+    devuelve x + 100
+";
+    assert_eq!(ejecuta_en(f, "principal", 5, 0), 105);
+}
+
+/// ** El freno del asignador, ejercitado por fin.
+///
+/// Una funcion con llamadas no reparte registros -- los tres se los puede pisar
+/// la funcion llamada. Y lo que importa es que **sigue dando el resultado
+/// correcto**: el freno no rompe nada, solo deja de optimizar.
+#[test]
+fn con_llamadas_no_se_reparten_registros_y_sigue_bien() {
+    let con = "\
+perfil llano
+
+funcion uno(x es entero64) devuelve entero64
+    devuelve x
+
+funcion principal(a es entero64, b es entero64) devuelve entero64
+    devuelve uno(a) + uno(b)
+";
+    let e = emitido(con);
+    assert!(e.en_registros == 0, "con llamadas, nada a registros");
+    assert!(e.en_pila > 0, "y los temporales van al marco");
+    assert_eq!(ejecuta_en(con, "principal", 6, 7), 13);
+}
+
+/// La pila queda alineada a 16 antes de cada llamada. Si no lo estuviera, el
+/// fallo aparece DENTRO de la funcion llamada -- el peor sitio posible.
+#[test]
+fn el_marco_deja_la_pila_alineada_para_llamar() {
+    let f = "\
+perfil llano
+
+funcion uno(x es entero64) devuelve entero64
+    devuelve x + 1
+
+funcion principal(a es entero64, b es entero64) devuelve entero64
+    cambiante t = uno(a)
+    t = t + uno(b)
+    devuelve t
+";
+    assert_eq!(ejecuta_en(f, "principal", 1, 2), 5);
 }
