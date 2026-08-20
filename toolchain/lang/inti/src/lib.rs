@@ -99,11 +99,35 @@ pub fn leer(fuente: &str) -> Cosecha<Modulo> {
     Cosecha::con(arbol.valor, avisos)
 }
 
-/// El fuente entero: barrido, gramatica y perfil.
+
+/// Lee un fuente **y le trae las piezas de INTI que pidio con un `usa`**.
 ///
-/// Es lo mas lejos que llega INTI hoy. Los avisos de las tres fases salen
-/// juntos y en orden, que es lo que `Cosecha` existe para permitir.
-pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
+/// ## Que es esto exactamente, y que NO es
+///
+/// Es INCLUSION: las declaraciones de `runtime/monton/*.inti` se meten en el
+/// mismo modulo que las del usuario, y salen en el mismo `.bex`.
+///
+/// OJO: **No es enlazado, y la diferencia se paga.** Diez programas que usen el
+/// monton llevan diez copias del monton. Es exactamente lo que se le critica a
+/// Go en la seccion 13c del maestro, asi que decirlo aqui es lo minimo.
+///
+/// La respuesta buena ya esta escrita en esa misma seccion y no es "enlazar
+/// mejor": el runtime es codigo que no cambia, o sea **congelado**, y lo
+/// congelado en BMO-X se PRESTA en vez de copiarse (`MEM_OP_OFRECER`). El dia
+/// que exista compilacion separada, esta funcion pasa a resolver nombres en vez
+/// de pegar fuentes, y el segundo programa que arranque no paga el monton otra
+/// vez.
+///
+/// Se hace asi hoy porque la alternativa era tener el monton escrito, probado y
+/// **sin forma de usarlo**, que en este proyecto cuenta como no tenerlo.
+///
+/// ## El precio que si se cobra ya
+///
+/// Una pieza traida se compila con SUS `usa`, y esos `usa` acaban en la lista
+/// del modulo. O sea que `usa monton` deja a mano los nombres de `memoria`, que
+/// el fichero no pidio. Es una fuga, esta marcada, y desaparece con lo mismo
+/// que lo anterior.
+pub fn armar(fuente: &str) -> Cosecha<Modulo> {
     let raices = bmo_mods::Roots::find();
     let (vocab, _) = Vocabulario::cargar(&raices);
     let v = match vocab {
@@ -113,6 +137,40 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
 
     let piezas = lexico::barrer(fuente, &v);
     let mut arbol = sintaxis::leer(&piezas.valor, &v);
+    let mut avisos = piezas.avisos;
+    avisos.append(&mut arbol.avisos);
+
+    // Lo que el fuente pidio, en el orden en que lo pidio.
+    let pedidos: Vec<String> = arbol.valor.usa.iter().map(|(n, _)| n.clone()).collect();
+    for nombre in pedidos {
+        for (fichero, texto) in tablas::Runtime::traer(&raices, &nombre) {
+            let p = lexico::barrer(&texto, &v);
+            let mut a = sintaxis::leer(&p.valor, &v);
+            // ** Una pieza del runtime que no compila NO se traga en silencio.
+            //
+            // Sus avisos salen con los del usuario, y el `fichero` va en el
+            // texto porque el sitio que traen apunta a lineas de OTRO fuente:
+            // sin eso, el que compila ve "linea 12" y mira su linea 12.
+            for mut x in p.avisos.into_iter().chain(a.avisos.drain(..)) {
+                x.que_paso = format!("en la pieza `{}`: {}", fichero, x.que_paso);
+                avisos.push(x);
+            }
+            arbol.valor.declaraciones.append(&mut a.valor.declaraciones);
+            arbol.valor.usa.extend(a.valor.usa);
+        }
+    }
+
+    Cosecha::con(arbol.valor, avisos)
+}
+
+/// El fuente entero: barrido, gramatica y perfil.
+///
+/// Es lo mas lejos que llega INTI hoy. Los avisos de las tres fases salen
+/// juntos y en orden, que es lo que `Cosecha` existe para permitir.
+pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
+    let raices = bmo_mods::Roots::find();
+    // El vocabulario lo carga `armar`: aqui ya no hace falta.
+    let mut arbol = armar(fuente);
 
     // `usa x86_64` trae los nombres de una maquina. Un `usa` que no sea una
     // arquitectura conocida no es un error: sera `usa entrada`, que es REX.
@@ -143,8 +201,7 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
     let mut nombres =
         nombres::comprobar(&arbol.valor, &nombres::Comun::cargar(&raices), &extra);
 
-    let mut avisos = piezas.avisos;
-    avisos.append(&mut arbol.avisos);
+    let mut avisos = std::mem::take(&mut arbol.avisos);
     avisos.append(&mut perfiles.avisos);
     avisos.append(&mut nombres.avisos);
     Cosecha::con(perfiles.valor, avisos)
@@ -163,14 +220,8 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
 /// queja no.
 pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core::Event>) {
     let raices = bmo_mods::Roots::find();
-    let (vocab, _) = Vocabulario::cargar(&raices);
-    let v = match vocab {
-        Ok(v) => v,
-        Err(e) => panic!("palabras.toml esta roto y ni el respaldo carga: {}", e),
-    };
-
-    let piezas = lexico::barrer(fuente, &v);
-    let mut arbol = sintaxis::leer(&piezas.valor, &v);
+    // El vocabulario lo carga `armar`: aqui ya no hace falta.
+    let mut arbol = armar(fuente);
 
     let maquinas: Vec<arquitectura::Maquina> = arbol
         .valor
@@ -203,8 +254,7 @@ pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core:
         funciones: ir.funciones.len(),
     };
 
-    let mut avisos = piezas.avisos;
-    avisos.append(&mut arbol.avisos);
+    let mut avisos = std::mem::take(&mut arbol.avisos);
     avisos.append(&mut perfiles.avisos);
     avisos.append(&mut nombres_.avisos);
 

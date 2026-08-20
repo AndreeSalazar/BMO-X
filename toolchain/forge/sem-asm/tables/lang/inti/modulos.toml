@@ -143,6 +143,12 @@ piden = [
 [constantes]
 mi_tarea = "0xFFFFFFFFFFFFFFFE"
 
+#  Las dos operaciones que el monton necesita. No estan todas las del kernel a
+#  proposito: esta seccion crece cuando algo la usa, no antes. Una tabla llena
+#  de numeros que nadie pide es una lista que nadie revisa.
+op_pedir_memoria   = "0x15"
+op_base_del_bloque = "0x01"
+
 #  ** LOS BITS -- el nombre es agnostico, la instruccion es de la maquina.
 #
 #  Peticion de Eddi (2026-08-19): *"una libreria de binarios literalmente, pero

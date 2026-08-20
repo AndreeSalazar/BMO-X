@@ -184,3 +184,72 @@ impl Modulos {
             .unwrap_or(&[])
     }
 }
+
+/// Las piezas de INTI que estan escritas EN INTI.
+///
+/// ## ** Por que el monton no esta en Rust
+///
+/// Porque `llano` presume de poder escribir el sistema, y la forma de
+/// demostrarlo no es repetirlo: es **escribir en `llano` la pieza que hace
+/// posible `pleno`**. Si el monton hubiera que escribirlo en Rust, la frase
+/// "INTI puede escribir el sistema" seria publicidad.
+///
+/// Y trae dos cosas gratis que no se pueden fingir:
+///
+/// - sus bloques `crudo` **se cuentan**, porque pasan por el mismo analisis que
+///   los de cualquier programa;
+/// - vive en `tables/`, asi que **`$BMO_MODS` puede sustituirlo sin bifurcar el
+///   compilador**. Cambiar el repartidor de memoria del lenguaje es dejar otro
+///   fichero delante.
+///
+/// ## Como se busca
+///
+/// ```text
+///    lang/inti/runtime/<nombre>/          una carpeta de piezas, en orden
+///    lang/inti/runtime/<nombre>.inti      o una pieza sola
+/// ```
+///
+/// La carpeta va primero a proposito: **lo modular es el caso normal**, y el
+/// fichero suelto es la excepcion para lo que no da para dos piezas.
+pub struct Runtime;
+
+impl Runtime {
+    /// Lo que trae un `usa <nombre>` que sea una pieza escrita en INTI.
+    ///
+    /// Vacio si no lo es, que no es un error: puede ser una maquina, o un
+    /// modulo de REX.
+    pub fn traer(raices: &Roots, nombre: &str) -> Vec<(String, String)> {
+        // Un nombre con separadores buscaria fuera del sitio. No se limpia --
+        // se rechaza: un `usa ../../algo` que "casi" funciona es peor que uno
+        // que no existe.
+        if nombre.is_empty() || !nombre.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            return Vec::new();
+        }
+
+        if let Some(dir) = raices.locate(&format!("lang/inti/runtime/{}", nombre)) {
+            if dir.is_dir() {
+                let mut piezas: Vec<(String, String)> = std::fs::read_dir(&dir)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .filter(|e| e.path().extension().is_some_and(|x| x == "inti"))
+                    .filter_map(|e| {
+                        let n = e.file_name().to_string_lossy().to_string();
+                        std::fs::read_to_string(e.path()).ok().map(|t| (n, t))
+                    })
+                    .collect();
+                // Por nombre de fichero, para que dos compilaciones de la misma
+                // fuente den el mismo binario. El orden de `read_dir` lo elige
+                // el sistema de ficheros, y eso no es una fuente.
+                piezas.sort_by(|a, b| a.0.cmp(&b.0));
+                return piezas;
+            }
+        }
+
+        raices
+            .locate(&format!("lang/inti/runtime/{}.inti", nombre))
+            .and_then(|p| std::fs::read_to_string(&p).ok().map(|t| (nombre.to_string(), t)))
+            .into_iter()
+            .collect()
+    }
+}

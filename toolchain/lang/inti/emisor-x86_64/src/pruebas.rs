@@ -17,15 +17,18 @@ use bmo_lower::emu::{run, Machine};
 
 /// Compila un fuente de INTI hasta bytes.
 fn emitido(fuente: &str) -> Emitido {
-    let v = Vocabulario::por_defecto().expect("sin vocabulario");
-    let piezas = lexico::barrer(fuente, &v);
-    let arbol = sintaxis::leer(&piezas.valor, &v);
+    // ** Por `armar` y no por `sintaxis::leer` a pelo: es lo que hace el
+    // compilador de verdad, y es lo unico que trae las piezas que el fuente
+    // pidio con un `usa`. Un banco que compila por otro camino prueba otro
+    // compilador.
+    let arbol = bmo_inti_front::armar(fuente);
     assert!(
         !arbol.hay_errores(),
         "el fuente de la prueba no se lee: {}",
         arbol.pintar("prueba.inti")
     );
-    let ir = ir::bajar(&arbol.valor).valor;
+    let modulos = bmo_inti_front::tablas::Modulos::cargar(&bmo_mods::Roots::find());
+    let ir = ir::bajar_con(&arbol.valor, &modulos).valor;
     emitir(&ir)
 }
 
@@ -699,4 +702,139 @@ fn la_puerta_tiene_dos_registros_de_respuesta() {
     assert_eq!(t.puerta.recogida(Some("codigo")), t.puerta.codigo);
     // Lo desconocido se trata como codigo: es lo unico seguro.
     assert_eq!(t.puerta.recogida(None), t.puerta.codigo);
+}
+
+// ===================================================================
+//  ** F4c -- EL MONTON, y en piezas
+// ===================================================================
+//
+//  Peticion de Eddi: *"si MONTON es monolitico = modular, para poder evitar
+//  problemas o choques. INTI como siempre modular"*.
+//
+//  Y la primera consecuencia de tomarselo en serio fue **descubrir que yo me
+//  habia equivocado**: dije que el monton estaba bloqueado por las variables de
+//  modulo. Lo esta un monton MONOLITICO, el de C, que guarda su estado en una
+//  global escondida.
+//
+//  Uno modular no lo necesita: **el estado del monton vive DENTRO del monton**.
+//
+//      monton + 0   libre   la primera direccion sin repartir
+//      monton + 8   fin     la primera que ya no es suya
+//      monton + 16  ...     desde aqui se reparte
+//
+//  ** Y eso no es un apano para esquivar una funcionalidad que falta: es mejor.
+//  Un `malloc` con estado global es autoridad ambiente -- cualquiera reparte de
+//  lo mismo sin haberlo pedido. `pide(monton, n)` tiene la forma de una
+//  capability: **para repartir de un monton hay que tenerlo**.
+//
+//  Las piezas, y la unica frontera entre ellas es la tabla de arriba:
+//
+//      origen.inti    habla con el kernel   y NO sabe repartir
+//      reparto.inti   sabe repartir         y NO habla con el kernel
+
+const CON_MONTON: &str = "\
+perfil llano
+usa monton
+
+funcion principal devuelve entero32
+";
+
+/// ** LA PRUEBA DE F4c: el monton se pide, se reparte, y las cuentas salen.
+#[test]
+fn el_monton_reparte_y_los_trozos_no_se_pisan() {
+    let f = format!(
+        "{}{}{}{}",
+        CON_MONTON,
+        "    m = monton_nuevo(4096)
+",
+        "    a = pide(m, 8)
+    b = pide(m, 8)
+",
+        "    devuelve b - a
+"
+    );
+    // Ocho bytes pedidos, dieciseis de distancia: alineado, y sin solaparse.
+    assert_eq!(arranca(&f).syscalls.last().unwrap().arg0, 16);
+}
+
+/// Lo repartido se puede USAR. Que es de lo que iba todo esto.
+#[test]
+fn en_lo_que_reparte_el_monton_se_puede_escribir() {
+    let f = format!(
+        "{}{}{}{}{}",
+        CON_MONTON,
+        "    m = monton_nuevo(4096)
+",
+        "    a = pide(m, 8)
+    b = pide(m, 8)
+",
+        "    crudo
+        escribe_natural64(a, 111)
+",
+        "        escribe_natural64(b, 222)
+        devuelve lee_natural64(a) + lee_natural64(b)
+"
+    );
+    // Si `a` y `b` se solaparan, esto daria 444.
+    assert_eq!(arranca(&f).syscalls.last().unwrap().arg0, 333);
+}
+
+/// ** Un monton que se acaba dice que NO, y no reparte lo que no tiene.
+///
+/// Es la mitad que se olvida de todo asignador, y la que convierte un fallo de
+/// memoria en una corrupcion silenciosa cuando falta: sin esta comprobacion,
+/// `pide` devolveria una direccion **fuera del bloque** y el programa
+/// escribiria en la memoria de otro.
+#[test]
+fn un_monton_lleno_contesta_cero() {
+    let f = format!(
+        "{}    m = monton_nuevo(4096)\n    devuelve pide(m, 100000)\n",
+        CON_MONTON
+    );
+    assert_eq!(arranca(&f).syscalls.last().unwrap().arg0, 0);
+}
+
+/// Y lo que queda baja segun se reparte, que es como se comprueba que reparte
+/// de verdad en vez de devolver direcciones sueltas.
+#[test]
+fn lo_que_queda_baja_segun_se_reparte() {
+    let antes = format!("{}    m = monton_nuevo(4096)\n    devuelve queda_en(m)\n", CON_MONTON);
+    let despues = format!(
+        "{}    m = monton_nuevo(4096)\n    a = pide(m, 8)\n    devuelve queda_en(m)\n",
+        CON_MONTON
+    );
+    let a = arranca(&antes).syscalls.last().unwrap().arg0;
+    let d = arranca(&despues).syscalls.last().unwrap().arg0;
+    assert_eq!(a, 4096 - 16, "la cabecera del monton ocupa 16");
+    assert_eq!(d, a - 16, "y un trozo de 8 se lleva 16 por la alineacion");
+}
+
+/// El monton pide su memoria al KERNEL, no a una zona inventada.
+#[test]
+fn el_monton_sale_de_la_puerta() {
+    let f = format!("{}    m = monton_nuevo(4096)\n    devuelve 0\n", CON_MONTON);
+    let m = arranca(&f);
+    assert_eq!(m.memoria_entregada(), 4096);
+}
+
+/// ** Y las piezas siguen siendo piezas: `usa monton` trae DOS ficheros, y el
+/// orden en que llegan no lo elige el sistema de ficheros.
+///
+/// Sin el orden fijo, dos compilaciones del mismo fuente darian dos binarios
+/// distintos -- y entonces "este .bex es el que audite" deja de poder decirse.
+#[test]
+fn el_monton_llega_en_piezas_y_en_orden() {
+    let piezas = bmo_inti_front::tablas::Runtime::traer(&bmo_mods::Roots::find(), "monton");
+    let nombres: Vec<&str> = piezas.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(nombres, vec!["origen.inti", "reparto.inti"]);
+}
+
+/// Un `usa` que no es una pieza no trae nada, y eso no es un error.
+#[test]
+fn un_usa_que_no_es_una_pieza_no_trae_nada() {
+    let r = bmo_mods::Roots::find();
+    assert!(bmo_inti_front::tablas::Runtime::traer(&r, "x86_64").is_empty());
+    assert!(bmo_inti_front::tablas::Runtime::traer(&r, "bmo").is_empty());
+    // Y un nombre que intente salirse del sitio no busca en ningun lado.
+    assert!(bmo_inti_front::tablas::Runtime::traer(&r, "../monton").is_empty());
 }

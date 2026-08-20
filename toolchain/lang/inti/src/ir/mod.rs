@@ -602,7 +602,11 @@ impl<'t> Descenso<'t> {
                 Valor::Const(Const::Nada)
             }
             Expr::OSiNo { intento, .. } => self.expresion(intento),
-            _ => Valor::Const(Const::Nada),
+            // ** Sin `_ =>`. El `match` cubre todas las formas del arbol, y
+            // dejarlo cerrado significa que **anadir una forma nueva no
+            // compila** hasta que alguien decida como se baja. Con el comodin,
+            // la forma nueva se habria bajado a `nada` en silencio -- que es
+            // como se pierde una funcionalidad sin un solo test en rojo.
         }
     }
 }

@@ -1,0 +1,32 @@
+# EL ORIGEN -- de donde viene la memoria de un monton.
+#
+# Esta pieza habla con el kernel y no sabe repartir. La de al lado
+# (`reparto.inti`) sabe repartir y no habla con el kernel. Se pueden cambiar
+# por separado porque solo se tocan en la DISPOSICION del monton, que esta
+# escrita en MONTON.md y aqui debajo.
+#
+#     monton + 0   libre   la primera direccion sin repartir
+#     monton + 8   fin     la primera direccion que ya no es del monton
+#     monton + 16  ...     desde aqui se reparte
+perfil llano
+usa bmo
+usa memoria
+
+# Pide un monton al sistema y lo deja listo para repartir.
+#
+# Devuelve 0 si el kernel dice que no. NO se inventa un monton pequeno ni se
+# reintenta: quien pide 4 KiB y recibe 0 tiene que enterarse aqui y no dos
+# funciones mas adelante.
+funcion monton_nuevo(cuantos es natural64) devuelve natural64
+    crudo
+        bloque = invoca_valor(mi_tarea, op_pedir_memoria, cuantos, 0, 0)
+        si bloque = 0
+            devuelve 0
+
+        base = invoca_valor(bloque, op_base_del_bloque, 0, 0, 0)
+        si base = 0
+            devuelve 0
+
+        escribe_natural64(base, base + 16)
+        escribe_natural64(base + 8, base + cuantos)
+        devuelve base
