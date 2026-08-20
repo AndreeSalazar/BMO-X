@@ -1423,6 +1423,115 @@ Lo distintivo de INTI no es la sintaxis. Es eso.
 
 ---
 
+## 13c. NECESITA INTI UN RUNTIME? -- la palabra tapa cinco cosas
+
+> Pregunta de Eddi, 2026-08-19: *"no se si el runtime es necesario. Muchos
+> lenguajes usan runtime, pero quiero diferenciar POR QUE mi BMO-X si usara o
+> no."*
+
+La pregunta parece dificil porque **"runtime" no quiere decir una cosa, quiere
+decir cinco**, y casi ninguna discusion las separa. Separadas, la respuesta sale
+sola.
+
+### Las cinco cosas que se llaman igual
+
+| # | que es | quien lo tiene |
+|---|---|---|
+| **1** | **El arranque.** Alguien tiene que llamar a `principal` y recoger lo que devuelve | **todos**, incluido C. Son unas decenas de bytes (`crt0`) |
+| **2** | **Funciones de biblioteca**: copiar memoria, formatear, comparar textos | todos. Y son **funciones normales**: se enlazan y ya |
+| **3** | **Gestion de memoria**: pedir y soltar | solo los que tienen cosas que **crecen** |
+| **4** | **Una maquina virtual** que interpreta | Python, Java, los interpretados |
+| **5** | **Servicios de fondo**: hilos del recolector, planificador propio, manejadores de senales | **Go**, Java, Erlang |
+
+★★ Cuando alguien dice *"C no tiene runtime"* esta diciendo que no tiene 3, 4 ni
+5. Tiene 1 y 2 como todo el mundo. Y cuando alguien dice *"Go tiene un runtime
+enorme"* esta hablando del **5**: Go mete su propio planificador dentro de cada
+binario.
+
+### Donde cae cada lenguaje, y donde cae INTI
+
+```text
+                    1      2      3      4      5
+   C                si     si     no     no     no
+   Rust             si     si     no*    no     no      (*el que tu pidas)
+   Go               si     si     SI     no     SI
+   Python           si     si     SI     SI     SI
+   ------------------------------------------------
+   INTI LLANO       si     si     NO     no     no      <- como C
+   INTI PLENO       si     si     SI     no     NO      <- como Rust con caja
+```
+
+**La respuesta, entonces:**
+
+- **`llano` no necesita runtime**, y eso es lo que lo hace un lenguaje de
+  sistema. Puede escribir un manejador de interrupciones porque no hay nada
+  debajo que tenga que estar vivo.
+- **`pleno` si, y es inevitable.** No por parecerse a Python: porque
+  `texto + texto` **tiene que pedirle memoria a alguien**. Cualquier lenguaje
+  con cosas que crecen lo necesita, y decir lo contrario seria mentir.
+- ★ **Pero nunca 4 ni 5.** No hay maquina virtual --el AOT emite nativo-- y no
+  hay hilos ocultos: una tarea de INTI es una tarea del sistema, no una tarea
+  verde de un planificador propio.
+
+> **La pregunta util no es "si runtime o no". Es CUAL de los cinco, y de quien.**
+
+### ★★★ Y aqui esta la diferencia de BMO-X, que era lo que preguntabas
+
+Go trae su propio planificador y su propio gestor de memoria **porque el sistema
+operativo no le da lo que necesita en la forma que quiere**. Tiene que traerselo
+puesto, y por eso pesa.
+
+Aqui el kernel **ya da** lo que el punto 3 necesita, y ademas en la forma buena:
+
+```text
+   KIND_MEMORIA        el kernel entrega UN bloque grande
+   malloc              y repartirlo es cosa de Ring 3   <- ya decidido
+   MEM_OP_OFRECER      prestar paginas entre procesos
+   las tareas          las da el sistema, no el lenguaje
+```
+
+★★ **El runtime de INTI PLENO es delgado porque el sistema operativo es tuyo.**
+No hay que reimplementar un planificador para esquivar al de abajo: el de abajo
+hace lo que se le pide.
+
+### ★★★ Y el remate, que no lo puede copiar nadie: EL RUNTIME SE PRESTA
+
+Esta es la parte que sale de una decision tomada hace tres dias y que nadie
+habia conectado con esto.
+
+El runtime de `pleno` es **codigo que no cambia nunca**. O sea: **congelado**. Y
+lo congelado, en BMO-X, es `IMMORTAL` -- y lo inmortal **se presta en vez de
+copiarse** (`MEM_OP_OFRECER`, *"se abre, no se carga"*).
+
+```text
+   Go        ~1,5 MB de runtime DENTRO de cada binario
+             diez programas = diez copias
+
+   INTI      el runtime congelado, prestado
+             diez programas = UNA copia, y nueve prestamos
+```
+
+**El segundo programa de INTI que arranca no paga el runtime otra vez.** Eso no
+es una optimizacion que se pueda anadir a Go: necesita un sistema operativo que
+sepa prestar paginas inmortales, y el unico que hay es este.
+
+### El numero, para no prometer de mas
+
+⚠ Todavia no existe, asi que esto es una estimacion y se marca como tal:
+
+```text
+   el `crt0` de `llano`                          decenas de bytes
+   el runtime de `pleno` (monton, texto, listas,
+   tablas, contador de referencias, congelado)   ~4.000-7.000 lineas
+                                                 unas decenas de KB
+```
+
+Comparado: el runtime de Go son ~1,5 MB y el de Java decenas de MB. La
+diferencia no es que aqui se escriba mejor -- es que **los puntos 4 y 5 no
+estan**, y esos son los que pesan.
+
+---
+
 ## 14. LO QUE NO ENTRA, con motivo
 
 | fuera | motivo |

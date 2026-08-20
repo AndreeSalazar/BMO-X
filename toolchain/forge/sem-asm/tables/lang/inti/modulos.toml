@@ -34,6 +34,36 @@ invoca_valor  = "la misma puerta, recogiendo el valor en vez del codigo"
 espera_a      = "despiertame CUANDO pase esto"
 mi_paquete    = "la capability de mi propio .bex, para leer sus recursos"
 
+#  ** LOS BITS -- el nombre es agnostico, la instruccion es de la maquina.
+#
+#  Peticion de Eddi (2026-08-19): *"una libreria de binarios literalmente, pero
+#  usando su fortaleza para casos MUY ESPECIFICOS"*.
+#
+#  Y la forma correcta de hacerlo es esta, que no es obvia:
+#
+#      `cuenta_unos(x)` existe en TODAS las maquinas
+#      en x86-64 es UNA instruccion (`popcnt`)
+#      en una maquina sin ella son doce, y el programa sigue siendo el mismo
+#
+#  ** Por eso estos nombres viven aqui y no en `arch/x86_64/inti.toml`: lo que
+#  va en la tabla de una maquina es lo que **solo existe alli** --puertos de
+#  E/S, registros de control, tablas del sistema--. Contar bits no es de x86:
+#  es de todas, y x86 resulta que lo hace rapido.
+#
+#  La diferencia se ve al portar: un programa que usa `usa binarios` se mueve; y
+#  uno que usa `usa x86_64` declara que no.
+#
+#  ** Y hay un test que lo aprovecha: en x86-64, CADA operacion de esta lista
+#  tiene una instruccion detras. Si algun dia una deja de tenerla, se sabra --
+#  que es exactamente lo que hay que saber antes de escribir un bucle apretado.
+[binarios]
+cuenta_unos    = "cuantos bits estan a uno"
+primer_uno     = "la posicion del bit mas bajo que esta a uno"
+ultimo_uno     = "la del mas alto"
+ceros_delante  = "cuantos ceros hay antes del primer uno, por arriba"
+ceros_detras   = "cuantos hay despues, por abajo"
+da_la_vuelta   = "invierte el orden de los bytes de un numero"
+
 [entrada]
 espera_tecla  = "para hasta que se pulse una tecla, y la devuelve"
 hay_tecla     = "hay algo pulsado sin esperar?"
