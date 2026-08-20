@@ -1515,12 +1515,33 @@ copiarse** (`MEM_OP_OFRECER`, *"se abre, no se carga"*).
 es una optimizacion que se pueda anadir a Go: necesita un sistema operativo que
 sepa prestar paginas inmortales, y el unico que hay es este.
 
-### El numero, para no prometer de mas
+### El numero, y cual de los dos ya se puede mirar
 
-⚠ Todavia no existe, asi que esto es una estimacion y se marca como tal:
+★★ **El punto 1 dejo de ser una estimacion el 2026-08-20: son 32 bytes**, y hay
+un test que los cuenta (`el_arranque_cabe_en_treinta_y_dos_bytes`).
 
 ```text
-   el `crt0` de `llano`                          decenas de bytes
+   call principal          5     y quien llama es esto, no una biblioteca
+   mov  <arg2>, <retorno>  3     el codigo de salida, antes de tocar nada
+   mov  <arg0>, imm64      10    sobre quien: la propia tarea
+   mov  <arg1>, imm32      5     que: salir
+   mov  <numero>, imm32    5     por que puerta: la unica que hay
+   syscall                 2
+   jmp  -2                 2     si la puerta devuelve, no se sigue
+   ------------------------------------------------------------------
+                          32
+```
+
+★ Y fijate en lo que **no** aparece en esa lista, porque es la seccion entera
+dicha en negativo: no hay poner la pila a cero (la pone el kernel al cargar el
+`.bex`), no hay limpiar la BSS (el cargador entrega paginas a cero), no hay
+montar un monton, y no hay arrancar ningun planificador. Cada linea que falta es
+una que Go **si** tiene que traerse puesta, y por el mismo motivo: su sistema
+operativo no le da eso, y este si.
+
+⚠ El otro sigue siendo una estimacion, y se marca como tal:
+
+```text
    el runtime de `pleno` (monton, texto, listas,
    tablas, contador de referencias, congelado)   ~4.000-7.000 lineas
                                                  unas decenas de KB

@@ -55,13 +55,17 @@
 //! O sea: **INTI LLANO con aritmetica entera y control**. Que es justo lo que
 //! hace falta para que el primer `.bex` exista y pase el gate.
 
+pub mod arranque;
 pub mod marco;
+pub mod puerta;
 
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
+use bmo_abi::syscalls::surface::NR_INVOKE;
 use bmo_inti_front::arbol::Op;
 use bmo_inti_front::ir::{Comprobacion, Const, FuncionIr, Instr, Local, ModuloIr, Valor};
 use bmo_lower::x86;
 use marco::{Marco, Sitio};
+use puerta::Puerta;
 
 /// Los dos registros de trabajo.
 ///
@@ -104,10 +108,69 @@ pub struct Emitido {
     /// emite obligaria a ordenar las funciones por quien llama a quien -- y eso
     /// es imposible en cuanto dos se llaman entre si.
     huecos_de_llamada: Vec<(usize, String)>,
+    /// Si este modulo trae su propio arranque.
+    ///
+    /// ** Es la diferencia entre un programa y una biblioteca, y la decide un
+    /// dato del fuente --que exista `principal`-- y no una bandera de la linea
+    /// de ordenes. Un `.bex` que arranca por accidente y otro que no arranca
+    /// porque faltaba un flag son el mismo fallo con dos caras.
+    pub arranca: bool,
+}
+
+/// Lo que el emisor lee ANTES de escribir un byte.
+///
+/// ** Aqui esta el permiso que este crate tiene y el frontend no: puede decir
+/// "x86_64" en voz alta. Es lo que justifica que sea un crate aparte -- y por
+/// eso carga SU tabla, y no una generica que le pasen desde fuera.
+///
+/// Se lee una vez por modulo. Por funcion seria releer TOML en cada funcion del
+/// programa; una vez por proceso obligaria a un estatico, que es la clase de
+/// cosa que hace que dos compilaciones dentro del mismo proceso no den lo mismo.
+pub struct Taller {
+    /// Como se cruza la puerta aqui.
+    pub puerta: Puerta,
+    /// Los nombres que abren esa puerta.
+    ///
+    /// ** Salen de `modulos.toml`, que es AGNOSTICO: `invoca` se llama igual en
+    /// toda maquina. Lo unico que este crate aporta es donde van sus
+    /// argumentos. Si la lista viviera aqui escrita a mano, cada emisor nuevo
+    /// tendria que acordarse de copiarla -- y el dia que se anadiera una
+    /// operacion a la puerta, se acordaria uno solo.
+    pub nombres_de_puerta: Vec<String>,
+    /// Los registros que el asignador puede repartir, leidos de `[reparto]`.
+    pub temporales: Vec<u8>,
+}
+
+impl Taller {
+    pub fn nuevo() -> Self {
+        let raices = bmo_mods::Roots::find();
+        let maquina = bmo_inti_front::arquitectura::Maquina::buscar(&raices, "x86_64");
+        let temporales = maquina
+            .as_ref()
+            .map(|m| m.temporales())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| marco::RESPALDO.to_vec());
+        Self {
+            puerta: Puerta::de(maquina.as_ref()),
+            nombres_de_puerta: bmo_inti_front::nombres::Modulos::cargar(&raices)
+                .trae("bmo")
+                .to_vec(),
+            temporales,
+        }
+    }
+
+    fn abre_la_puerta(&self, nombre: &str) -> bool {
+        self.nombres_de_puerta.iter().any(|n| n == nombre)
+    }
+}
+
+/// Emite un modulo entero con las tablas de esta maquina.
+pub fn emitir(m: &ModuloIr) -> Emitido {
+    emitir_con(m, &Taller::nuevo())
 }
 
 /// Emite un modulo entero.
-pub fn emitir(m: &ModuloIr) -> Emitido {
+pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
     let mut salida = Emitido {
         codigo: Vec::new(),
         inicios: Vec::new(),
@@ -115,11 +178,26 @@ pub fn emitir(m: &ModuloIr) -> Emitido {
         en_registros: 0,
         en_pila: 0,
         huecos_de_llamada: Vec::new(),
+        arranca: false,
     };
+
+    // ** El arranque va PRIMERO, y solo si hay a quien llamar.
+    //
+    // Primero porque el kernel entra por el principio del codigo y el `.bex`
+    // declara `entry_offset = 0`. Y "solo si" porque un modulo sin `principal`
+    // es una biblioteca -- y una biblioteca que arranca sola no es una
+    // comodidad, es un fallo.
+    if m.funciones.iter().any(|f| f.nombre == arranque::PRINCIPAL) {
+        let hueco = arranque::emitir(&mut salida.codigo, &taller.puerta, IZQ);
+        salida
+            .huecos_de_llamada
+            .push((hueco, arranque::PRINCIPAL.to_string()));
+        salida.arranca = true;
+    }
 
     for f in &m.funciones {
         salida.inicios.push((f.nombre.clone(), salida.codigo.len()));
-        let cuenta = emitir_funcion(f, &mut salida.codigo);
+        let cuenta = emitir_funcion(f, &mut salida.codigo, taller);
         salida.comprobaciones += cuenta.comprobaciones;
         salida.en_registros += cuenta.en_registros;
         salida.en_pila += cuenta.en_pila;
@@ -161,8 +239,8 @@ struct Cuenta {
     huecos_de_llamada: Vec<(usize, String)>,
 }
 
-fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>) -> Cuenta {
-    let marco = Marco::de(f);
+fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
+    let marco = Marco::con_registros(f, &taller.temporales);
     let mut cuenta = Cuenta {
         en_registros: marco.en_registros(),
         en_pila: f.temporales as usize - marco.en_registros(),
@@ -295,6 +373,33 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>) -> Cuenta {
                 que,
                 argumentos,
             } => {
+                // ** Y antes de nada: es esto una llamada, o es LA PUERTA?
+                //
+                // La diferencia no la decide una palabra del lenguaje. La
+                // decide una fila de `modulos.toml` que el usuario pidio con
+                // `usa bmo` -- y por eso `invoca` nunca fue palabra clave, que
+                // era la condicion que Eddi puso dos veces.
+                //
+                // Aqui se ve entera: quitar esa fila de la tabla apaga la
+                // puerta sin tocar una linea de este fichero.
+                if let Valor::Nombre(n) = que {
+                    if taller.abre_la_puerta(n) {
+                        let p = &taller.puerta;
+                        for (i, a) in argumentos.iter().enumerate().take(p.caben()) {
+                            carga(out, p.argumentos[i], a, &marco);
+                        }
+                        // Solo hay una puerta. Ese es el congelamiento de los
+                        // dos syscalls, visto desde el unico sitio donde se
+                        // notaria si dejara de ser verdad.
+                        x86::mov_r32_imm32(out, p.numero, NR_INVOKE);
+                        x86::syscall(out);
+                        if let Some(d) = destino {
+                            guarda_temporal(out, p.resultado, *d, &marco);
+                        }
+                        continue;
+                    }
+                }
+
                 // Los argumentos van a los registros que dice la convencion.
                 //
                 // ** Y aqui se ve para que sirve el freno del asignador: como
@@ -476,6 +581,10 @@ fn binaria(out: &mut Vec<u8>, op: Op) {
 /// checkpoint comun, y aqui no se abre un quinto camino que lo esquive.
 pub fn empaquetar(e: &Emitido) -> Result<Vec<u8>, String> {
     let mut b = BefBuilder::new();
+    // Por donde entra el kernel. El arranque es lo primero que se emitio, asi
+    // que es cero -- pero se dice, porque un cero que coincide con el valor por
+    // defecto no distingue "decidido" de "olvidado".
+    b.entry_offset = 0;
     b.add_section(BefSection::code(e.codigo.clone()));
     let bytes = b.build().map_err(|x| x.to_string())?;
 
