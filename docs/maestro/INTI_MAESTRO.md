@@ -1153,6 +1153,98 @@ necesita la instruccion exacta, lo escribes en `crudo`; el otro 97% no tiene por
 que pagar por ello.** Es exactamente lo que hace C en Linux hoy: nadie escribe
 un kernel entero en ensamblador porque el compilador pierda un 8%.
 
+### 13.10 ★★★ EL ENSAMBLADOR NO ES RENDIMIENTO: es control
+
+> Pregunta de Eddi, 2026-08-19: *"investiga, hubo caso que en ASM fue lento y es
+> ironico, no? Por eso: su ASM no es siempre rendimiento."*
+
+**Tiene razon, y los casos son mejores de lo que esperaba.** Los tres primeros
+son de velocidad; el cuarto es el ironico de verdad.
+
+#### 1. El ensamblador de ayer es el codigo lento de manana
+
+Copiar memoria en x86 tuvo **tres respuestas correctas distintas en veinte
+anos**:
+
+```text
+   antes de 2012   `rep movsb` es lento -> todo el mundo escribe copias SSE
+                   a mano, y tiene razon
+   Ivy Bridge      llega ERMSB y `rep movsb` se vuelve el camino rapido...
+   (2012)          ...pero con ~35 ciclos de ARRANQUE, asi que para cadenas
+                   cortas sigue perdiendo. La respuesta correcta depende del
+                   TAMANO
+   Ice Lake        llega FSRM y el arranque casi desaparece
+```
+
+**Todo el ensamblador escrito a mano en la primera epoca --que era correcto--
+paso a ser el camino lento sin que nadie tocara una linea.** El binario no
+cambio; cambio el silicio debajo.
+
+#### 2. Y el numero: el `memcpy` de la biblioteca gana al ASM a mano
+
+Medido y publicado: una copia escrita a mano con SSE2 da **3,97 GiB/s**, y el
+`memcpy` de la biblioteca del sistema da **6,51 GiB/s** en la misma maquina.
+**El ensamblador a mano pierde por un 39%**, y no por estar mal escrito: pierde
+porque la biblioteca **elige estrategia segun el tamano** y el codigo a mano
+hace siempre lo mismo.
+
+★ La leccion no es "el humano escribe peor". Es que **un humano escribe UNA
+respuesta y el problema tiene varias**.
+
+#### 3. Escribir AVX no siempre gana
+
+En la misma medida, la version con AVX de 256 bits dio **4,00 GiB/s** contra los
+3,97 de SSE2: **la instruccion mas moderna no compro nada**, porque el cuello no
+estaba en el ancho del registro sino en el ancho de banda de la memoria.
+
+#### 4. ★★★ EL IRONICO: el ensamblador no era lento, hacia lento a lo de al lado
+
+Este es el bueno, y es del **kernel de Linux, 2018**.
+
+GCC estima lo que cuesta un bloque de ensamblador en linea **contando lineas**:
+mira los saltos de linea y los punto y coma y supone que cada uno es una
+instruccion. Un bloque de `asm` con directivas y datos --que no son
+instrucciones-- **le parece carisimo**. Y entonces GCC decide que la funcion que
+lo contiene es demasiado cara para meterla en linea.
+
+Resultado: **codigo escrito en ensamblador para ir rapido impedia optimizar todo
+lo que tenia alrededor**. La solucion que se acepto en el kernel fue mover el
+ensamblador a macros para que el compilador viera *una* instruccion en vez de
+veinte.
+
+Y hay un efecto mas, de fondo: **un bloque de ensamblador es opaco**. El
+compilador no puede propagar una constante a traves de el, ni reordenarlo, ni
+darse cuenta de que su resultado no se usa. Cada bloque es un muro.
+
+> **El ensamblador no era lento. Era un muro, y el muro salia caro a los dos
+> lados.**
+
+#### Lo que esto decide en INTI, y no es una anecdota
+
+`crudo` es exactamente eso: un bloque que el compilador no puede tocar. Asi que
+hereda el problema del punto 4, y de ahi salen dos reglas:
+
+1. **Un `crudo` se escribe lo mas pequeno posible.** No "esta funcion es de bajo
+   nivel, la meto entera en `crudo`", sino las dos lineas que de verdad no se
+   pueden decir de otra forma.
+2. ★★ **El contador de `crudo` mide dos cosas a la vez**, y esto no se habia
+   dicho: cuenta **a que maquina te atas** (sec. 7.2) y ademas **cuanto le has
+   atado las manos al optimizador**. Un programa con 200 bloques `crudo` no es
+   solo poco portable: es poco optimizable, y por el mismo motivo.
+
+★★★ **Y la conclusion que contesta la pregunta:** *ASM = rendimiento* es una
+creencia de cuando los compiladores eran malos y las CPU simples. Hoy el
+ensamblador da **control y acceso** -- llegar a un puerto, a un registro de
+control, a una instruccion que el lenguaje no tiene. Eso no lo da nada mas, y
+por eso `crudo` existe.
+
+Pero **no da velocidad por si mismo**, y creer que si es como se acaba con un
+programa que va mas lento *por culpa* de sus partes escritas a mano. Por eso
+`crudo` esta en INTI para lo que **no se puede expresar de otra manera**, y no
+para lo que uno quiere que corra rapido.
+
+---
+
 ### 13.9 El orden, y lo que NO toca todavia
 
 ```text
@@ -1228,7 +1320,7 @@ funcion principal
    repite mientras haya linea en lee()
       partes = parte linea por ","
       si cuenta de partes no es 2
-         escribe("salto esta linea, no tiene dos partes:", linea)
+         escribe "salto esta linea, no tiene dos partes:", linea
          continua
 
       nota = numero(partes[1]) o si no
@@ -1241,7 +1333,7 @@ funcion principal
    escribe "media:", m                    # 4.15, no 4.1499999999999995
 
    guarda "media.txt", texto(m) o si no
-      escribe("no pude guardar:", motivo)
+      escribe "no pude guardar:", motivo
 ```
 
 Y el mismo lenguaje, perfil LLANO, escribiendo sistema:
@@ -1289,6 +1381,11 @@ sintaxis**: es la biblioteca base, y la biblioteca base **viaja dentro**. Ver
   [Integer overflow checking cost (Dan Luu)](https://danluu.com/integer-overflow/) --
   [A Formal Model of Checked C](https://arxiv.org/pdf/2201.13394)
 - **Detectar en vez de definir**: [Zig: compilation modes / detectable illegal behavior](https://ziglang.org/learn/overview/)
+- **El ensamblador a mano que se queda atras**: [Going faster than memcpy (Squadrick)](https://squadrick.dev/journal/going-faster-than-memcpy) --
+  [When to use REP MOVSB](https://sqlpey.com/assembly/rep-movsb-performance/) --
+  [LLVM: hand written memcpy replaced with builtin](https://github.com/llvm/llvm-project/issues/56467)
+- **El asm en linea que impide optimizar (kernel de Linux, 2018)**: [x86: macrofying inline asm for better compilation](https://lkml.iu.edu/hypermail/linux/kernel/1810.0/03182.html) --
+  [Optimizing Inline Assembly (Microsoft)](https://learn.microsoft.com/en-us/cpp/assembler/inline/optimizing-inline-assembly?view=msvc-170)
 - **Valores y contador de referencias en un lenguaje de sistema**: [Swift: Automatic Reference Counting](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/automaticreferencecounting/)
 - **ABC y el origen de Python**: [The Making of Python (Artima)](https://www.artima.com/articles/the-making-of-python) --
   [General Python FAQ](https://docs.python.org/3/faq/general.html)
