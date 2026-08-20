@@ -98,6 +98,8 @@ pub const SIN_HERENCIA: Codigo = Codigo("E0100");
 /// hay que guardarla en algun sitio, y en `llano` no hay monton. Tenerlas solo
 /// en `pleno` serian dos lenguajes con una gramatica.
 pub const SIN_FUNCION_ANIDADA: Codigo = Codigo("E0101");
+/// Un nombre que no esta declarado ni lo trae ningun `usa`.
+pub const NOMBRE_DESCONOCIDO: Codigo = Codigo("E0110");
 
 // ===================================================================
 //  E1xxx -- atrapa en ejecucion, y llega como dato
@@ -157,6 +159,7 @@ pub const TODOS: &[Codigo] = &[
     INDICE_VISIBLE,
     SIN_HERENCIA,
     SIN_FUNCION_ANIDADA,
+    NOMBRE_DESCONOCIDO,
     DESBORDE,
     INDICE,
     ENTRE_CERO,

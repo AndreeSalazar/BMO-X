@@ -1,8 +1,11 @@
 # sonda: r07_desplaza            espera: COMPILA con aviso A2007 + da 0
 # regla 7: desplazar mas bits que el ancho da CERO, definido. Y si el
 # desplazamiento es constante, el compilador avisa.
+#
+# Devuelve en vez de escribir: en `llano` no hay `escribe`, porque formatear
+# pide memoria. Lo cazo el analisis de nombres el 2026-08-19.
 perfil llano
 
-funcion principal
+funcion de_mas devuelve entero32
     x es entero32 = 1
-    escribe(x desplaza izquierda 40)
+    devuelve x desplaza izquierda 40

@@ -1,0 +1,73 @@
+#  modulos.toml -- que nombres trae cada `usa`.
+#
+#  == Las tres tablas, y por que son tres ==
+#
+#      comun.toml               lo que esta SIN PEDIRLO
+#      modulos.toml (esta)      lo que trae `usa <modulo>`   <- REX
+#      arch/<m>/inti.toml       lo que trae `usa <maquina>`  <- el metal
+#
+#  La linea que las separa es una sola pregunta: **lo escribe casi todo el
+#  mundo?** Si si, va en `comun.toml`. Si lo escriben algunos, es un modulo y
+#  hay que pedirlo. Y si ademas ata el fichero a una maquina, es una
+#  arquitectura y pedirlo es declararlo.
+#
+#  == Lo que el compilador hace con esto ==
+#
+#  Saber que el nombre existe. Nada mas: los cuerpos estan en REX, que **trae el
+#  cuerpo dentro** porque aqui no hay enlazado dinamico.
+#
+#  ** Y fijate en lo que NO cambia: `invoca` sigue sin ser palabra clave y sin
+#  ser sintaxis. Es una fila de una tabla, como `outb`. La puerta del sistema
+#  entra en INTI por el mismo sitio que entra una instruccion cualquiera.
+
+[meta]
+version = 1
+
+#  La puerta: las dos llamadas congeladas del sistema.
+#
+#  No esta en `comun.toml` a proposito, aunque sea lo mas "de sistema" que hay:
+#  **no todo programa habla con el kernel**, y uno que no lo hace no tiene por
+#  que tener `invoca` ocupando un nombre.
+[bmo]
+invoca        = "haz esto AHORA sobre una capability; devuelve el codigo"
+invoca_valor  = "la misma puerta, recogiendo el valor en vez del codigo"
+espera_a      = "despiertame CUANDO pase esto"
+mi_paquete    = "la capability de mi propio .bex, para leer sus recursos"
+
+[entrada]
+espera_tecla  = "para hasta que se pulse una tecla, y la devuelve"
+hay_tecla     = "hay algo pulsado sin esperar?"
+raton         = "donde esta el raton y que botones tiene apretados"
+
+[superficie]
+mi_superficie = "la superficie donde dibuja esta app"
+pinta         = "vuelca lo dibujado"
+rectangulo    = "un rectangulo relleno"
+linea         = "una linea de un punto a otro"
+triangulo     = "un triangulo relleno"
+texto_en      = "escribe un texto en una posicion"
+limpia        = "deja la superficie de un solo color"
+
+[archivo]
+abre_para_leer    = "abre un fichero y devuelve por donde va"
+abre_para_escribir = "lo mismo, para escribir"
+lee_bloque        = "trae unos bytes a donde tu digas"
+escribe_bloque    = "manda unos bytes"
+cierra            = "suelta el fichero"
+
+[paquete]
+recurso       = "abre algo de dentro de mi propio .bex, sin cargarlo entero"
+recursos      = "la lista de lo que hay dentro"
+
+[sonido]
+suena         = "un tono a una frecuencia y un tiempo"
+calla         = "para el sonido"
+
+#  == Lo que NO esta, y es una decision ==
+#
+#  `red`: bloqueada por el sistema, no por INTI. Entre `net rx` y algo que se
+#  parezca a un socket estan ARP, IP, TCP, DNS y TLS.
+#
+#  Y no hay un `usa todo`. Un modulo que lo trae todo es una biblioteca comun
+#  con otro nombre, y entonces la pregunta de arriba --lo escribe casi todo el
+#  mundo?-- deja de tener respuesta.

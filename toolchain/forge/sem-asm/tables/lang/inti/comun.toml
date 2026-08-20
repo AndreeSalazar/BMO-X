@@ -1,0 +1,137 @@
+#  comun.toml -- lo que esta sin pedirlo.
+#
+#  == La idea, y es de Eddi (2026-08-19) ==
+#
+#      "si es algo complicado me gustaria que crees otra libreria, algo simple
+#       para simplificar DEMASIADO la sintaxis, para facilitar; en usos nada
+#       mas, por algo es inspirado en Python"
+#
+#  Y la forma correcta de hacerlo es **no tocar la sintaxis**.
+#
+#  == Por que la facilidad vive AQUI y no en la gramatica ==
+#
+#  Es la leccion de Python, mirada de cerca: su gramatica es pequena --caben
+#  treinta y pico construcciones-- y lo que la gente llama "Python es facil" son
+#  en realidad `len`, `sorted`, `sum`, `enumerate`, `join`, `range`. Nombres, no
+#  sintaxis.
+#
+#  Y es la leccion de ABC al reves. ABC metio todo dentro del lenguaje, y por
+#  eso cuando algo faltaba no habia forma de anadirlo: **un lenguaje crece por
+#  su biblioteca o no crece**.
+#
+#  Asi que cada vez que algo se escriba largo en INTI, la respuesta por defecto
+#  es una fila en este fichero, y NO una palabra clave nueva. Anadir sintaxis es
+#  la ultima opcion, no la primera.
+#
+#  == Que hace el compilador con esto ==
+#
+#  Solo dos cosas, y ninguna es implementar la funcion:
+#
+#    1. saber que el nombre EXISTE, para poder decir "no se que es `escrbe`"
+#       con un "quisiste decir `escribe`?" al lado;
+#    2. saber en que perfil vale, para que `llano` no prometa lo que no tiene.
+#
+#  Los cuerpos estan en REX. Aqui no hay ni una linea de implementacion, y por
+#  eso este fichero se puede tapar con `$BMO_MODS` sin bifurcar nada.
+
+[meta]
+version = 1
+
+# ===================================================================
+#  Los que valen en LOS DOS perfiles
+# ===================================================================
+#
+#  No crecen y no reservan: son cuentas y comparaciones. Un manejador de
+#  interrupciones puede llamarlos.
+[ambos]
+#  Los tres del mecanismo de errores. El parser lee `fallo r`, `valor de r` y
+#  `motivo de r` como llamadas de biblioteca --que es lo que son-- asi que
+#  tienen que EXISTIR aqui o el analisis de nombres los denuncia. Lo hizo, y por
+#  eso estan.
+fallo         = "esto que devolvio una funcion, fallo?"
+valor         = "el valor que traia, si no fallo"
+motivo        = "por que fallo"
+
+minimo        = "el menor de dos numeros"
+maximo        = "el mayor de dos numeros"
+absoluto      = "el valor sin signo"
+redondea      = "al entero mas cercano"
+suelo         = "al entero de abajo"
+techo         = "al entero de arriba"
+raiz          = "la raiz cuadrada"
+suma_circular = "suma que da la vuelta a proposito, en vez de atrapar"
+resta_circular = "resta que da la vuelta a proposito"
+entre_medias  = "encaja un numero entre un minimo y un maximo"
+
+# ===================================================================
+#  Los del perfil PLENO
+# ===================================================================
+#
+#  Estos crecen, reservan o miran colecciones, asi que piden monton.
+[pleno]
+
+# -- lo primero que escribe cualquiera --------------------------------
+escribe       = "saca cosas por la consola, separadas por un espacio"
+lee           = "lee una linea de la entrada"
+pregunta      = "escribe algo y lee la respuesta en una linea"
+
+# -- convertir, y siempre con nombre ----------------------------------
+numero        = "de texto a numero; puede fallar"
+texto         = "de lo que sea a texto"
+entero        = "de numero a entero, atrapando si no cabe"
+logico        = "de texto a cierto/falso"
+
+# -- colecciones -------------------------------------------------------
+cuenta        = "cuantos elementos tiene"
+esta_vacia    = "no tiene ninguno"
+primero       = "el primer elemento"
+ultimo        = "el ultimo elemento"
+anade         = "pone un elemento al final"
+quita         = "saca un elemento"
+inserta       = "pone un elemento en una posicion"
+tiene         = "esta este elemento dentro?"
+donde_esta    = "en que posicion esta; puede fallar"
+ordena        = "una copia ordenada"
+al_reves      = "una copia del reves"
+suma          = "la suma de todos"
+media         = "la media de todos"
+copia         = "una copia de verdad, no otro nombre para lo mismo"
+trozo         = "una parte, de una posicion a otra"
+
+# -- texto -------------------------------------------------------------
+parte         = "corta un texto por un separador y da una lista"
+junta         = "pega una lista con un separador en medio"
+empieza_por   = "el texto empieza con esto?"
+acaba_en      = "el texto acaba con esto?"
+mayusculas    = "una copia en mayusculas"
+minusculas    = "una copia en minusculas"
+sin_espacios  = "una copia sin los espacios de los extremos"
+reemplaza     = "cambia todas las apariciones de una cosa por otra"
+largo         = "cuantas letras tiene"
+
+# -- ficheros, que en BMO-X van a ESTRATOS ------------------------------
+guarda        = "escribe un texto en un fichero; puede fallar"
+abre          = "lee un fichero entero como texto; puede fallar"
+lineas_de     = "recorre un fichero linea a linea; puede fallar"
+existe        = "hay un fichero con ese nombre?"
+borra         = "borra un fichero; puede fallar"
+
+# -- tablas -------------------------------------------------------------
+claves        = "las claves de una tabla"
+valores       = "los valores de una tabla"
+
+# ===================================================================
+#  Lo que NO esta aqui, y por que
+# ===================================================================
+#
+#  - `invoca`, `espera_a`: son la puerta, y llegan con `usa bmo`. No estan
+#    siempre porque no todo programa habla con el sistema.
+#  - `entrada_puerto` y companyia: llegan con `usa <la maquina>`, que ademas es
+#    la declaracion de que el fichero se ata a una.
+#  - `pinta`, `superficie`, `sonido`: llegan con su modulo de REX. Meterlos aqui
+#    obligaria a todo programa a arrastrar el dibujo.
+#
+#  ** La regla para anadir una fila: **se escribe en casi todos los programas**.
+#  Si se escribe en algunos, es un modulo con su `usa`. Una biblioteca comun que
+#  crece sin freno acaba siendo una lista de nombres reservados que nadie puede
+#  usar para sus variables.
