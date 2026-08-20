@@ -318,6 +318,47 @@ la proxima vez.
 de 96 bytes desde Ring 3 en el Ryzen. Compila, pasa los guardianes y sus piezas
 estan probadas; el camino entero no.
 
+### ★★★ EL QUINTO VERBO: `guardar` (2026-08-20)
+
+La frase que define a ESTRATOS ya es cierta del FICHERO, no solo del arbol.
+
+```
+   guarda diag.txt      -> version 1
+   guarda diag.txt      -> version 2, y la 1 sigue entera y alcanzable
+```
+
+** Y NO HIZO FALTA UNA FUNCION NUEVA EN LA CRATE DEL FORMATO. La que hacia falta
+--conservar el nombre y cambiar el NODO-- ya estaba escrita y probada:
+`entradas_repuntando`, que es lo que se le hace a cada nivel de paso de una
+ruta al republicarla. **El quinto verbo era la misma maquina mirada desde otro
+sitio**, y por eso costo cablear y no disenar.
+
+```
+   ES_GESTO_GUARDAR  0x0B   mismo renglon del origen, misma puerta que 1.2b
+   Gesto::Guardar          entradas_repuntando, o entradas_con si no estaba
+```
+
+#### Por que CREAR-O-SUSTITUIR puede ser UN verbo aqui, y en otro sitio no
+
+En un sistema que sobreescribe, guardar encima de algo que no sabias que existia
+**pierde lo que habia**, y por eso hace falta preguntar antes.
+
+★ Aqui no puede perder nada: el nodo viejo, su contenido y el estrato que lo
+nombraba siguen enteros y alcanzables. Guardar encima **publica una version, no
+destruye una** -- y `vuelve N` va a la de antes cambiando un puntero.
+
+Es la unica casa donde este verbo puede ser una sola cosa en vez de dos con una
+pregunta en medio. Y `ES_GESTO_FICHERO_DE` sigue existiendo para lo contrario:
+cuando la intencion es CREAR y hay que enterarse de que el nombre ya estaba.
+
+[!] El orden de las dos funciones importa y esta escrito al lado: se intenta
+SUSTITUIR primero. Al reves, `entradas_con` rechazaria el duplicado y se acabaria
+creando un segundo fichero con el mismo nombre justo en el caso en el que hay que
+hacer lo contrario.
+
+[ ] **Casilla de metal, sin marcar**: falta guardar dos veces el mismo nombre en
+el Ryzen y ver las dos versiones en el historial.
+
 ## 0.1.1 EL PLAN DESPUES DEL 1.0, ORDENADO (2026-08-18)
 
 Reordenado a peticion del dueno: *"vamos a terminar con ESTRATOS, reorganizar el
@@ -346,12 +387,13 @@ en dos mitades que no son el mismo trabajo.
 | 1.3 | **subir el tope de 36 por carpeta** | `ENTRADAS_POR_BLOQUE` = un bloque de entradas. Necesita que `:entradas` use indireccion **al republicar** -- la misma maquinaria de 1.2a, asi que sale casi gratis. Junta de paso los tres numeros distintos (36 escribir / 64 listar / 36 formatear). |
 | 1.4 | **el guardia de los topes** | **HECHO** (19-08). No sube ningun tope: impide que se pasen en silencio. Ver *"El guardia de los topes"* en la section 0.1. |
 
-★ **Y falta un verbo, que no estaba en ninguna lista.** No hay `guardar`: los
-gestos son crear, carpeta, quitar, renombrar y copiar, y `entradas_con` rechaza
-un nombre repetido. O sea que **un fichero tiene hoy una sola version para
-siempre**; lo que versiona es el arbol. *"Cada escritura publica un estrato
-nuevo"* es cierto del arbol y todavia no lo es del fichero. Es el quinto verbo de
-la misma maquina --la lista con una CAMBIADA-- y comparte puerta con 1.2b.
+★ **HECHO EL 20-08: EL QUINTO VERBO.** Faltaba `guardar`, y no estaba en
+ninguna lista. Los gestos eran crear, carpeta, quitar, renombrar y copiar, y
+`entradas_con` rechaza un nombre repetido: **un fichero tenia UNA version para
+siempre**. Lo que se versionaba era el arbol, asi que *"cada escritura publica un
+estrato nuevo"* era cierto del arbol y falso del fichero.
+
+Ver *"El quinto verbo"* mas abajo.
 
 ### TRAMO 2 -- GESTIONAR: crear en cualquier sitio, borrar, renombrar, carpetas
 

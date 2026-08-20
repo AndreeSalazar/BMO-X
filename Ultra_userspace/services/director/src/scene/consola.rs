@@ -396,7 +396,7 @@ impl Consola {
         self.di(b"new N TEXTO     crea un fichero      ESCRIBEN EN EL DISCO", T_DIM);
         self.di(b"carpeta N       crea una carpeta     y todos actuan DONDE", T_DIM);
         self.di(b"copia ORG DST   trae de FAT32        ESTAS, no en la raiz", T_DIM);
-        self.di(b"borra N         deja de nombrarla   guarda N: vuelca esto", T_DIM);
+        self.di(b"borra N         deja de nombrarla   guarda N: vuelca (y versiona)", T_DIM);
         self.di(b"marca NOMBRE    fija esta version    vuelve N: atras", T_DIM);
         self.di(b"ESC suelta las teclas.  Ctrl+n cierra.  arriba: la anterior.", T_DIM);
     }
@@ -692,7 +692,15 @@ impl Consola {
             }
             n += 1;
         }
-        let g = bmo::estratos::crear_desde(&ruta[..k], m.handle(), 0, n as u64);
+        // ** GUARDAR y no CREAR, desde el 20-08. Con `crear_desde`, un
+        // segundo `guarda diag.txt` fallaba por nombre repetido -- o sea que la
+        // orden servia UNA vez por nombre, que para un volcado de diagnostico
+        // es justo al reves de lo que se quiere.
+        //
+        // Ahora publica la version nueva del MISMO fichero, y el historial las
+        // ensena las dos. Es la demostracion mas corta que hay de para que
+        // existe ESTRATOS: guardar encima sin perder lo de antes.
+        let g = bmo::estratos::guardar_desde(&ruta[..k], m.handle(), 0, n as u64);
         self.hecho(g, b"volcado");
     }
 
