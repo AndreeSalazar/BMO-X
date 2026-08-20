@@ -36,10 +36,20 @@
 //! este fichero**, que es lo que `LINAJE.md` habia prometido. Se pudo porque la
 //! IR ya traia los temporales.
 //!
+//! ## ** Las llamadas, desde el 2026-08-19
+//!
+//! Una funcion de INTI llama a otra de INTI. Es la pieza que desbloquea todo lo
+//! demas, porque **todo runtime son llamadas**.
+//!
+//! Y los destinos se resuelven **al final del modulo**: una funcion puede
+//! llamar a otra declarada mas abajo, y resolver sobre la marcha obligaria a
+//! ordenar las funciones por quien llama a quien -- imposible en cuanto dos se
+//! llaman entre si.
+//!
 //! ## OJO: Lo que hoy NO hace, dicho por delante
 //!
-//! - **No llama a la biblioteca**: no hay runtime todavia. Y mientras no lo
-//!   haya, el asignador puede repartir libremente -- ver el freno de `marco`.
+//! - **No llama fuera del modulo**: una funcion de biblioteca pide enlazado, y
+//!   el hueco se deja marcado en vez de inventarle una direccion.
 //! - **No emite `pleno`**: texto, listas y tablas piden monton.
 //!
 //! O sea: **INTI LLANO con aritmetica entera y control**. Que es justo lo que
@@ -61,6 +71,13 @@ use marco::{Marco, Sitio};
 const IZQ: u8 = 0; // rax
 const DER: u8 = 1; // rcx
 
+/// Por donde llegan y se mandan los argumentos, en orden.
+///
+/// Es la convencion de llamada de esta maquina, y por eso esta linea solo puede
+/// existir en este crate: el frontend tiene prohibido saber que existe algo
+/// llamado "registro de argumento".
+const ARGUMENTOS: [u8; 6] = [7, 6, 2, 1, 8, 9]; // rdi, rsi, rdx, rcx, r8, r9
+
 /// Lo que sale de emitir un modulo.
 pub struct Emitido {
     pub codigo: Vec<u8>,
@@ -80,6 +97,13 @@ pub struct Emitido {
     /// estimacion, se puede seguir en el tiempo -- igual que los `crudo`.
     pub en_registros: usize,
     pub en_pila: usize,
+    /// Llamadas cuyo destino todavia no se sabia al emitirlas.
+    ///
+    /// ** Se resuelven al final del modulo y no sobre la marcha, porque una
+    /// funcion puede llamar a otra **declarada mas abajo**. Resolver segun se
+    /// emite obligaria a ordenar las funciones por quien llama a quien -- y eso
+    /// es imposible en cuanto dos se llaman entre si.
+    huecos_de_llamada: Vec<(usize, String)>,
 }
 
 /// Emite un modulo entero.
@@ -90,21 +114,62 @@ pub fn emitir(m: &ModuloIr) -> Emitido {
         comprobaciones: 0,
         en_registros: 0,
         en_pila: 0,
+        huecos_de_llamada: Vec::new(),
     };
 
     for f in &m.funciones {
         salida.inicios.push((f.nombre.clone(), salida.codigo.len()));
-        emitir_funcion(f, &mut salida);
+        let cuenta = emitir_funcion(f, &mut salida.codigo);
+        salida.comprobaciones += cuenta.comprobaciones;
+        salida.en_registros += cuenta.en_registros;
+        salida.en_pila += cuenta.en_pila;
+        salida.huecos_de_llamada.extend(cuenta.huecos_de_llamada);
+    }
+
+    // Ahora si: todas las funciones tienen sitio, asi que todas las llamadas
+    // tienen destino.
+    let huecos = std::mem::take(&mut salida.huecos_de_llamada);
+    for (hueco, nombre) in huecos {
+        let destino = salida
+            .inicios
+            .iter()
+            .find(|(n, _)| *n == nombre)
+            .map(|(_, off)| *off);
+        // Una llamada a algo que no esta en este modulo se deja en cero: seria
+        // una funcion de la biblioteca, y para eso hace falta enlazado. Se deja
+        // marcada en vez de inventarle una direccion.
+        if let Some(d) = destino {
+            let rel = (d as i64 - (hueco as i64 + 4)) as i32;
+            salida.codigo[hueco..hueco + 4].copy_from_slice(&rel.to_le_bytes());
+        }
     }
 
     salida
 }
 
-fn emitir_funcion(f: &FuncionIr, salida: &mut Emitido) {
+/// Lo que una funcion aprende mientras se emite.
+///
+/// Se DEVUELVE en vez de escribirse sobre la marcha porque el codigo esta
+/// prestado mientras se emite. No es una pelea con el prestamo: es la senal de
+/// que emitir y contabilizar son dos cosas, y mezclarlas fue lo primero que
+/// probe.
+#[derive(Default)]
+struct Cuenta {
+    comprobaciones: usize,
+    en_registros: usize,
+    en_pila: usize,
+    huecos_de_llamada: Vec<(usize, String)>,
+}
+
+fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>) -> Cuenta {
     let marco = Marco::de(f);
-    salida.en_registros += marco.en_registros();
-    salida.en_pila += f.temporales as usize - marco.en_registros();
-    let out = &mut salida.codigo;
+    let mut cuenta = Cuenta {
+        en_registros: marco.en_registros(),
+        en_pila: f.temporales as usize - marco.en_registros(),
+        ..Default::default()
+    };
+    let mut comprobaciones = 0usize;
+    let mut salida_huecos: Vec<(usize, String)> = Vec::new();
 
     // Prologo.
     out.push(0x55); // push rbp
@@ -127,7 +192,6 @@ fn emitir_funcion(f: &FuncionIr, salida: &mut Emitido) {
     // El orden de esos registros es la convencion de llamada de esta maquina, y
     // por eso esta linea solo puede existir en este crate: el frontend tiene
     // prohibido saber que existe algo llamado "registro de argumento".
-    const ARGUMENTOS: [u8; 6] = [7, 6, 2, 1, 8, 9]; // rdi, rsi, rdx, rcx, r8, r9
     for i in 0..f.parametros.min(6) as usize {
         mov_a_marco(out, marco.local(Local(i as u32)), ARGUMENTOS[i]);
     }
@@ -181,7 +245,7 @@ fn emitir_funcion(f: &FuncionIr, salida: &mut Emitido) {
 
             // ** La regla, en bytes.
             Instr::Comprueba { que, .. } => {
-                salida.comprobaciones += 1;
+                comprobaciones += 1;
                 match que {
                     Comprobacion::Desborde => {
                         // `jo` mira la bandera que la propia suma dejo puesta:
@@ -199,7 +263,7 @@ fn emitir_funcion(f: &FuncionIr, salida: &mut Emitido) {
                         // emitir en vez de emitir algo que no comprueba: una
                         // comprobacion que no comprueba es peor que ninguna,
                         // porque el numero de arriba diria que si esta.
-                        salida.comprobaciones -= 1;
+                        comprobaciones -= 1;
                     }
                 }
             }
@@ -226,8 +290,44 @@ fn emitir_funcion(f: &FuncionIr, salida: &mut Emitido) {
                 out.extend_from_slice(&[0, 0, 0, 0]);
             }
 
-            // Sin runtime todavia: se dejan sin emitir a proposito.
-            Instr::Llama { .. } | Instr::Metal { .. } => {}
+            Instr::Llama {
+                destino,
+                que,
+                argumentos,
+            } => {
+                // Los argumentos van a los registros que dice la convencion.
+                //
+                // ** Y aqui se ve para que sirve el freno del asignador: como
+                // una funcion con llamadas no reparte registros, ningun
+                // argumento puede estar viviendo en `rdi` cuando toca cargar el
+                // siguiente. Cargarlos en orden es seguro **porque el reparto
+                // se apago**, no por suerte.
+                for (i, a) in argumentos.iter().enumerate().take(6) {
+                    carga(out, ARGUMENTOS[i], a, &marco);
+                }
+
+                match que {
+                    Valor::Nombre(n) => {
+                        out.push(0xE8); // call rel32
+                        salida_huecos.push((out.len(), n.clone()));
+                        out.extend_from_slice(&[0, 0, 0, 0]);
+                    }
+                    otro => {
+                        // Una llamada a un valor --una funcion guardada en una
+                        // variable-- pide `call reg`. Se deja sin emitir en vez
+                        // de emitir algo que salta a donde no debe.
+                        let _ = otro;
+                    }
+                }
+
+                // Lo que devuelve viene en el registro de retorno.
+                if let Some(d) = destino {
+                    guarda_temporal(out, IZQ, *d, &marco);
+                }
+            }
+            // El metal se emite cuando el emisor lea `intrinsics.toml`. Se deja
+            // marcado, no escondido.
+            Instr::Metal { .. } => {}
         }
     }
 
@@ -257,6 +357,10 @@ fn emitir_funcion(f: &FuncionIr, salida: &mut Emitido) {
         let rel = (destino as i64 - (hueco as i64 + 4)) as i32;
         out[hueco..hueco + 4].copy_from_slice(&rel.to_le_bytes());
     }
+
+    cuenta.comprobaciones = comprobaciones;
+    cuenta.huecos_de_llamada = salida_huecos;
+    cuenta
 }
 
 fn epilogo(out: &mut Vec<u8>) {
