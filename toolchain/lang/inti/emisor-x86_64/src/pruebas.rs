@@ -12,6 +12,7 @@
 
 use super::*;
 use bmo_inti_front::{ir, lexico, palabras::Vocabulario, sintaxis};
+use bmo_abi::syscalls::surface::{CURRENT_TASK, TASK_OP_EXIT};
 use bmo_lower::emu::{run, Machine};
 
 /// Compila un fuente de INTI hasta bytes.
@@ -32,6 +33,11 @@ fn emitido(fuente: &str) -> Emitido {
 /// dejo en el registro de retorno.
 fn ejecuta(fuente: &str, a: u64, b: u64) -> u64 {
     let e = emitido(fuente);
+    // La PRIMERA FUNCION, que desde F4a ya no es el byte cero: si el modulo
+    // trae `principal`, el byte cero es el arranque. Suponerlo llamaria al
+    // `crt0` en vez de a la funcion, y el test moriria contando un fallo que
+    // no es suyo.
+    let primera = e.inicios.first().map(|(_, off)| *off).unwrap_or(0);
 
     // Un `crt0` de diez bytes. Hace falta porque una funcion acaba en `ret`, y
     // un `ret` sin nadie que la haya llamado devuelve a cualquier sitio.
@@ -51,7 +57,8 @@ fn ejecuta(fuente: &str, a: u64, b: u64) -> u64 {
     codigo.extend_from_slice(&largo.to_le_bytes());
     codigo.extend_from_slice(&e.codigo);
     codigo.push(0xE8); // call rel32
-    codigo.extend_from_slice(&(-(largo + 5)).to_le_bytes());
+    let desde = codigo.len() as i32 + 4;
+    codigo.extend_from_slice(&((primera as i32 + 5) - desde).to_le_bytes());
 
     let mut m = Machine::new(codigo);
     // Los dos primeros argumentos, donde la convencion dice.
@@ -376,4 +383,192 @@ funcion principal(a es entero64, b es entero64) devuelve entero64
     devuelve t
 ";
     assert_eq!(ejecuta_en(f, "principal", 1, 2), 5);
+}
+
+
+// ===================================================================
+//  ** F4a -- EL ARRANQUE. Un programa que empieza y termina solo.
+// ===================================================================
+//
+//  Hasta aqui, cada prueba de este banco envolvia el modulo en un `crt0` de
+//  diez bytes escrito a mano, porque una funcion que acaba en `ret` sin nadie
+//  que la haya llamado devuelve a cualquier sitio.
+//
+//  ** Eso se acabo. El modulo trae el suyo, y estas pruebas ejecutan el codigo
+//  TAL CUAL SALE DEL EMISOR, desde el byte cero, igual que hara el kernel.
+//
+//  Y la parte que importa: no comprueban que "no explota". Comprueban que el
+//  programa **termino hablando con el kernel**, y con que le hablo.
+
+/// Corre lo que salio del emisor, desde el principio y sin envoltorio.
+fn arranca(fuente: &str) -> Machine {
+    let e = emitido(fuente);
+    assert!(e.arranca, "este fuente tiene `principal` y deberia arrancar solo");
+    run(Machine::new(e.codigo), 100_000)
+}
+
+/// ** LA PRUEBA DE F4a: un programa de INTI arranca, corre y sale por la
+/// puerta con SU codigo.
+///
+/// Las tres cosas de golpe, y ninguna se puede fingir:
+///
+///   - `exited` solo se pone si algo cruzo la puerta con `TASK_OP_EXIT`.
+///   - `arg0` es lo que `principal` devolvio, asi que el valor viajo desde el
+///     `devuelve` hasta el kernel.
+///   - y el emulador **para**: no se cae del final del codigo.
+#[test]
+fn un_programa_arranca_solo_y_sale_por_la_puerta_con_su_codigo() {
+    let m = arranca("perfil llano\n\nfuncion principal devuelve entero32\n    devuelve 7\n");
+
+    assert!(m.exited, "el programa no salio por la puerta");
+    let ultima = m.syscalls.last().expect("ninguna llamada al sistema");
+    assert_eq!(ultima.capability, CURRENT_TASK, "sale sobre su propia tarea");
+    assert_eq!(ultima.operation, TASK_OP_EXIT);
+    assert_eq!(ultima.arg0, 7, "el codigo de salida es lo que devolvio");
+}
+
+/// Y el codigo viaja: no es un cero disfrazado.
+#[test]
+fn el_codigo_de_salida_es_el_que_devuelve_y_no_otro() {
+    for n in [0u64, 1, 42, 255] {
+        let f = format!(
+            "perfil llano\n\nfuncion principal devuelve entero32\n    devuelve {}\n",
+            n
+        );
+        assert_eq!(arranca(&f).syscalls.last().unwrap().arg0, n);
+    }
+}
+
+/// El arranque no se salta el trabajo: llama de verdad, y lo que la funcion
+/// calcula es lo que sale.
+#[test]
+fn el_arranque_llama_a_principal_de_verdad() {
+    let f = "\
+perfil llano
+
+funcion doble(x es entero64) devuelve entero64
+    devuelve x + x
+
+funcion principal devuelve entero32
+    devuelve doble(21)
+";
+    assert_eq!(arranca(f).syscalls.last().unwrap().arg0, 42);
+}
+
+/// ** Y lo contrario, que es la mitad que se olvida: un modulo SIN `principal`
+/// no arranca solo.
+///
+/// Es la diferencia entre un programa y una biblioteca, y la decide el fuente.
+/// Un `.bex` de biblioteca que arrancara al cargarse haria lo que le diera la
+/// gana la primera vez que alguien lo abriera para leerle una funcion.
+#[test]
+fn una_biblioteca_no_arranca_sola() {
+    let e = emitido(SUMA);
+    assert!(!e.arranca);
+    assert!(
+        !e.codigo.windows(2).any(|w| w == [0x0F, 0x05]),
+        "una biblioteca no cruza ninguna puerta"
+    );
+}
+
+// ===================================================================
+//  ** LA PUERTA -- `invoca` no es un `call`
+// ===================================================================
+
+/// La puerta se cruza de verdad, y **no** por una llamada.
+///
+/// Un `call` a `invoca` habria compilado igual de bien y habria saltado a la
+/// direccion cero, porque no existe ninguna funcion con ese nombre. Compilar no
+/// prueba nada aqui: hay que verla cruzar.
+#[test]
+fn invoca_cruza_la_puerta_en_vez_de_llamar() {
+    let f = "\
+perfil llano
+usa bmo
+
+funcion principal devuelve entero32
+    respuesta = invoca(7, 3, 0, 0, 0)
+    devuelve 0
+";
+    let m = arranca(f);
+    // Dos: la del programa y la de su salida.
+    assert_eq!(m.syscalls.len(), 2, "{:?}", m.syscalls);
+    assert_eq!(m.syscalls[0].capability, 7, "la capability que se pidio");
+    assert_eq!(m.syscalls[0].operation, 3, "y la operacion");
+}
+
+/// ** El cuarto argumento de la puerta NO es el cuarto de una llamada.
+///
+/// Es la fila que justifica que `[puerta]` sea una tabla y no seis lineas de
+/// Rust: `syscall` machaca `rcx` con la direccion de vuelta **en el silicio**,
+/// asi que un argumento puesto ahi se pierde entre la instruccion y el kernel.
+///
+/// Y el fallo no se veria: el programa correria, cruzaria la puerta, y el
+/// kernel recibiria un numero que no es. Por eso se comprueba aqui y no se
+/// confia en haberlo escrito bien.
+#[test]
+fn el_cuarto_argumento_de_la_puerta_no_es_el_de_una_llamada() {
+    let t = Taller::nuevo();
+    assert_eq!(t.puerta.argumentos[3], 10, "r10, y no rcx");
+    assert_ne!(
+        t.puerta.argumentos[3], ARGUMENTOS[3],
+        "la puerta y la llamada no pueden coincidir en el cuarto"
+    );
+    // Los otros cinco si coinciden, y eso tambien hay que fijarlo: si algun dia
+    // dejan de hacerlo, sera por un cambio y no por un despiste.
+    for i in [0, 1, 2, 4, 5] {
+        assert_eq!(t.puerta.argumentos[i], ARGUMENTOS[i], "argumento {}", i);
+    }
+}
+
+/// Los nombres que abren la puerta salen de `modulos.toml`, no de este crate.
+///
+/// ** Es la condicion que Eddi puso dos veces --*"la puerta no vive en el
+/// lenguaje"*--, comprobada donde se rompe: si alguien escribiera la lista a
+/// mano dentro del emisor, este test seguiria pasando y la promesa estaria
+/// rota. Por eso lo que se comprueba es que `invoca` esta Y que un nombre
+/// cualquiera no.
+#[test]
+fn los_nombres_de_la_puerta_salen_de_la_tabla() {
+    let t = Taller::nuevo();
+    assert!(t.abre_la_puerta("invoca"));
+    assert!(t.abre_la_puerta("espera_a"));
+    assert!(!t.abre_la_puerta("suma"));
+    assert!(!t.abre_la_puerta("lee_reloj"), "eso es metal, no la puerta");
+}
+
+/// Y el `.bex` de un programa entero pasa el gate.
+#[test]
+fn el_bex_de_un_programa_con_arranque_pasa_el_gate() {
+    let e = emitido("perfil llano\n\nfuncion principal devuelve entero32\n    devuelve 0\n");
+    assert!(e.arranca);
+    let bytes = empaquetar(&e).expect("el gate lo rechazo");
+    assert!(!bytes.is_empty());
+}
+
+/// ** CUANTO PESA EL ARRANQUE. El numero, no la impresion.
+///
+/// La seccion 13c del maestro dice que el punto 1 de los cinco runtimes son
+/// *"unas decenas de bytes"* y lo marca como estimacion, porque cuando se
+/// escribio no existia. Ya existe, asi que aqui esta medido -- y este test es
+/// el que se entera el dia que alguien lo engorde sin darse cuenta.
+///
+/// ```text
+///    call principal          5     y quien lo llama es esto, no una biblioteca
+///    mov  <arg2>, <retorno>  3     el codigo de salida, antes de tocar nada
+///    mov  <arg0>, imm64      10    sobre quien: la propia tarea
+///    mov  <arg1>, imm32      5     que: salir
+///    mov  <numero>, imm32    5     por que puerta: la unica que hay
+///    syscall                 2
+///    jmp  -2                 2     si la puerta devuelve, no se sigue
+/// ```
+///
+/// Comparalo con lo que trae Go dentro de cada binario --~1,5 MB-- y la
+/// diferencia no es que aqui se escriba mejor: es que los puntos 4 y 5 **no
+/// estan**, y esos son los que pesan.
+#[test]
+fn el_arranque_cabe_en_treinta_y_dos_bytes() {
+    let e = emitido("perfil llano\n\nfuncion principal devuelve entero32\n    devuelve 0\n");
+    let arranque = e.inicios.first().map(|(_, off)| *off).expect("sin funciones");
+    assert_eq!(arranque, 32, "el arranque de INTI, en bytes");
 }

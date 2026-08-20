@@ -107,6 +107,60 @@ r15 = { n = 15, rol = "preservado" }
 #  Esto no es la ABI: es **la decision de INTI dentro de la ABI**, y por eso
 #  esta en una seccion aparte. La ABI dice lo que se puede; esto dice lo que se
 #  hace.
+# ===================================================================
+#  LA PUERTA -- el nombre esta en otra tabla; aqui esta el COMO
+# ===================================================================
+#
+#  ** Esto no contradice lo que se dice al final de este fichero. Lo completa, y
+#  la diferencia es toda la arquitectura de INTI en cuatro lineas:
+#
+#      QUE se puede llamar   ->  `modulos.toml`, seccion [bmo]     (agnostico)
+#      COMO se cruza aqui    ->  esta seccion                      (de x86-64)
+#
+#  Un programa pide `usa bmo` y escribe `invoca(...)`. Esa linea es identica en
+#  toda maquina. Lo que cambia por maquina es DONDE van los argumentos, y eso no
+#  puede vivir en el frontend ni puede vivir en el emisor escrito a mano: vive
+#  aqui, que es donde vive todo lo que depende de esta maquina y de ninguna
+#  otra.
+#
+#  Por eso `invoca` sigue sin estar en `[nombres]`: un programa que solo quiere
+#  `lee_reloj` sigue sin tener la puerta a mano. Esta seccion no da acceso a
+#  nada -- solo dice como se emite lo que ya se tenia derecho a pedir.
+[puerta]
+
+#  La instruccion. Se nombra por su fila de `intrinsics.toml`, no por sus bytes:
+#  quien emite los bytes es `bmo_lower`.
+instruccion = "syscall"
+
+#  Donde va el numero de la puerta. Solo hay una (INVOKE = 0) y ese es el
+#  congelamiento del que habla el maestro: dos syscalls y ya.
+numero = "rax"
+
+#  ** POR DONDE VAN LOS ARGUMENTOS. Y aqui esta la fila que importa:
+#
+#      llamada normal   rdi  rsi  rdx  rcx  r8  r9
+#      la puerta        rdi  rsi  rdx  r10  r8  r9
+#                                      ^^^
+#
+#  El CUARTO no es `rcx`, y no es un capricho de nadie: la instruccion `syscall`
+#  **machaca `rcx`** con la direccion de vuelta, en el silicio, antes de que el
+#  kernel mire nada. Un argumento puesto ahi se pierde entre la instruccion y su
+#  destino.
+#
+#  ** Esa es la clase de detalle por la que las tablas ganan al codigo: escrito
+#  aqui es un dato que se puede comparar con el manual y con el kernel. Escrito
+#  a mano dentro de un emisor es una linea que alguien copia mal una vez y
+#  nadie vuelve a leer.
+argumentos = ["rdi", "rsi", "rdx", "r10", "r8", "r9"]
+
+#  Por donde vuelve la respuesta.
+resultado = "rax"
+
+#  Lo que la puerta destruye por el camino, aunque nadie se lo pida. Se declara
+#  para que el dia que el asignador reparta estos registros, no los reparta
+#  encima de una llamada al sistema.
+destruye = ["rcx", "r11"]
+
 [reparto]
 
 #  Los de trabajo. Toda operacion binaria pasa por ellos, asi que no se pueden

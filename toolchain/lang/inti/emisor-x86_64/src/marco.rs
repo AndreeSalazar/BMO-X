@@ -62,7 +62,7 @@ pub const PALABRA: i32 = 8;
 /// arranca porque falta un fichero de datos es peor que uno que arranca con lo
 /// que traia. Y aqui **si** se puede nombrar la maquina: este crate ES el de
 /// esa maquina.
-const RESPALDO: [u8; 3] = [2, 6, 7]; // rdx, rsi, rdi
+pub const RESPALDO: [u8; 3] = [2, 6, 7]; // rdx, rsi, rdi
 
 /// Donde vive un valor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
