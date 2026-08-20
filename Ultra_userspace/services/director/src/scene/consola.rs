@@ -133,6 +133,21 @@ pub(crate) struct Consola {
     ultima_n: usize,
 }
 
+/// **Cuanto hay que repintar despues de una tecla.**
+///
+/// Existe porque la respuesta no es si o no: es *cuanto*. Y la diferencia entre
+/// las dos que pintan es de varios ordenes de magnitud, asi que darlas por
+/// iguales es lo que hacia que escribir aqui se sintiera pastoso.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Repinta {
+    /// Nada cambio: no se toca un pixel.
+    Nada,
+    /// Solo el renglon y lo que la consola ha contestado.
+    Consola,
+    /// La ventana entera: la orden pudo cambiar el arbol.
+    Ventana,
+}
+
 impl Consola {
     pub(crate) const fn nueva() -> Self {
         Self {
@@ -245,35 +260,54 @@ impl Consola {
 
     /// Una tecla, cuando la consola tiene las teclas.
     ///
-    /// Devuelve `true` si algo cambio y hay que repintar.
-    pub(crate) fn tecla(&mut self, c: u8) -> bool {
+    /// === ** POR QUE ESTO YA NO ES UN `bool` ===
+    ///
+    /// Porque `true` solo decia *"hay que repintar"* y quien llamaba no tenia
+    /// forma de saber CUANTO. Repintaba la ventana ENTERA --sombra, borde,
+    /// barra, los tres botones, las pestanas, el arbol, la rejilla con sus
+    /// iconos y el historial-- **en cada letra tecleada**. Escribir `ls` eran
+    /// dos repintados completos de un panel de varios cientos de miles de
+    /// pixeles, sobre memoria de video sin cache.
+    ///
+    /// Eso es lo que se sentia como *"el terminal va lento"*, y no era ni el
+    /// teclado ni el disco: era el pintado.
+    ///
+    /// Las teclas se reparten solas en dos grupos y no hay que adivinar cual es
+    /// cual: **una letra solo cambia el renglon**; solo ENTRAR puede haber
+    /// creado un fichero o cambiado de carpeta, y entonces si cambia el arbol.
+    pub(crate) fn tecla(&mut self, c: u8) -> Repinta {
         match c {
             // ESC devuelve las teclas al explorador SIN cerrar: lo que contesto
             // la orden sigue en pantalla mientras navegas.
+            // ESC devuelve el foco al explorador: eso cambia el pie de la
+            // ventana, no solo la consola.
             0x1B => {
                 self.activa = false;
-                true
+                Repinta::Ventana
             }
+            // ** La UNICA que puede haber tocado el volumen. Un `new`, un
+            // `borra` o un `cd` cambian el arbol y la rejilla, asi que aqui si
+            // se paga la ventana entera -- una vez por ORDEN, no por letra.
             b'\r' | b'\n' => {
                 self.ejecutar();
-                true
+                Repinta::Ventana
             }
             0x08 => {
                 if self.n > 0 {
                     self.n -= 1;
                 }
-                true
+                Repinta::Consola
             }
             // Flecha arriba: la ultima orden.
             0x80 => {
                 self.linea = self.ultima;
                 self.n = self.ultima_n;
-                true
+                Repinta::Consola
             }
             // Flecha abajo: limpia el renglon.
             0x81 => {
                 self.n = 0;
-                true
+                Repinta::Consola
             }
             // Los imprimibles, y solo esos. Un byte de control metido en la
             // linea se veria como un glifo raro y se pasaria al parser.
@@ -282,9 +316,9 @@ impl Consola {
                     self.linea[self.n] = c;
                     self.n += 1;
                 }
-                true
+                Repinta::Consola
             }
-            _ => false,
+            _ => Repinta::Nada,
         }
     }
 
