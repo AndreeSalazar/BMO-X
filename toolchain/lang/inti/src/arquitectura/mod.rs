@@ -96,8 +96,13 @@ pub struct Puerta {
     pub numero: String,
     /// Por donde van los argumentos, en orden.
     pub argumentos: Vec<String>,
-    /// Por donde vuelve la respuesta.
-    pub resultado: String,
+    /// Por donde vuelve el CODIGO. 0 es lo unico que significa exito.
+    pub codigo: String,
+    /// Por donde vuelve el VALOR: un handle, un puntero, un numero.
+    ///
+    /// ** Son dos registros y no uno. Cual de los dos lee cada nombre lo dice
+    /// `modulos.toml`, porque eso es del ABI de BMO-X y no de esta maquina.
+    pub valor: String,
     /// Lo que la puerta se lleva por delante aunque nadie se lo pida.
     pub destruye: Vec<String>,
 }
@@ -209,7 +214,8 @@ impl Maquina {
                 // cosa, que es peor que no compilar.
                 Some(Puerta {
                     numero: texto("numero")?,
-                    resultado: texto("resultado")?,
+                    codigo: texto("codigo")?,
+                    valor: texto("valor")?,
                     argumentos: vector("argumentos"),
                     destruye: vector("destruye"),
                 })

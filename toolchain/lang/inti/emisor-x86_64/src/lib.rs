@@ -137,6 +137,8 @@ pub struct Taller {
     /// tendria que acordarse de copiarla -- y el dia que se anadiera una
     /// operacion a la puerta, se acordaria uno solo.
     pub nombres_de_puerta: Vec<String>,
+    /// Que recoge cada nombre de la puerta. Agnostico: sale de `modulos.toml`.
+    pub recoge: bmo_inti_front::tablas::Modulos,
     /// Los registros que el asignador puede repartir, leidos de `[reparto]`.
     pub temporales: Vec<u8>,
 }
@@ -145,6 +147,7 @@ impl Taller {
     pub fn nuevo() -> Self {
         let raices = bmo_mods::Roots::find();
         let maquina = bmo_inti_front::arquitectura::Maquina::buscar(&raices, "x86_64");
+        let modulos = bmo_inti_front::tablas::Modulos::cargar(&raices);
         let temporales = maquina
             .as_ref()
             .map(|m| m.temporales())
@@ -152,9 +155,8 @@ impl Taller {
             .unwrap_or_else(|| marco::RESPALDO.to_vec());
         Self {
             puerta: Puerta::de(maquina.as_ref()),
-            nombres_de_puerta: bmo_inti_front::nombres::Modulos::cargar(&raices)
-                .trae("bmo")
-                .to_vec(),
+            nombres_de_puerta: modulos.trae("bmo").to_vec(),
+            recoge: modulos,
             temporales,
         }
     }
@@ -393,8 +395,12 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                         // notaria si dejara de ser verdad.
                         x86::mov_r32_imm32(out, p.numero, NR_INVOKE);
                         x86::syscall(out);
+                        // ** Y de DONDE se recoge no lo decide la instruccion:
+                        // lo decide el nombre. La misma puerta contesta un
+                        // codigo y un valor a la vez, por registros distintos.
                         if let Some(d) = destino {
-                            guarda_temporal(out, p.resultado, *d, &marco);
+                            let de = p.recogida(taller.recoge.recoge(n));
+                            guarda_temporal(out, de, *d, &marco);
                         }
                         continue;
                     }
@@ -428,6 +434,44 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                 // Lo que devuelve viene en el registro de retorno.
                 if let Some(d) = destino {
                     guarda_temporal(out, IZQ, *d, &marco);
+                }
+            }
+            // ** TOCAR MEMORIA. La IR pide "lee 8 bytes de esta direccion" y
+            // aqui se elige la instruccion. Ese es el reparto entero: el ancho
+            // en bytes es agnostico, el opcode no.
+            Instr::Lee {
+                destino,
+                direccion,
+                ancho,
+            } => {
+                carga(out, IZQ, direccion, &marco);
+                match ancho {
+                    // Un byte se lee con `movzx` y no con un `mov` de 8 bits:
+                    // el `mov` dejaria intactos los 56 bits de arriba, asi que
+                    // el resultado traeria basura de lo que hubiera antes en el
+                    // registro. Lo peor es que funcionaria casi siempre.
+                    1 => x86::movzx_r32_byte_at_reg(out, IZQ, IZQ),
+                    8 => x86::mov_r64_at_reg(out, IZQ, IZQ),
+                    // Los otros anchos no estan en `modulos.toml` todavia, asi
+                    // que aqui no puede llegar ninguno. Si llegara, dejar el
+                    // registro como estaba es mentir con la direccion dentro.
+                    _ => x86::zero_r32(out, IZQ),
+                }
+                guarda_temporal(out, IZQ, *destino, &marco);
+            }
+            Instr::Escribe {
+                direccion,
+                valor,
+                ancho,
+            } => {
+                // El valor primero: cargar la direccion antes lo perderia si
+                // los dos vivieran en el mismo sitio.
+                carga(out, DER, valor, &marco);
+                carga(out, IZQ, direccion, &marco);
+                match ancho {
+                    1 => x86::mov_byte_at_reg_from_low(out, IZQ, DER),
+                    8 => x86::mov_at_reg_from_r64(out, IZQ, DER),
+                    _ => {}
                 }
             }
             // El metal se emite cuando el emisor lea `intrinsics.toml`. Se deja

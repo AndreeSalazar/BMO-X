@@ -31,8 +31,10 @@ pub struct Puerta {
     pub numero: u8,
     /// Por donde van los argumentos, en orden.
     pub argumentos: Vec<u8>,
-    /// Por donde vuelve la respuesta.
-    pub resultado: u8,
+    /// Por donde vuelve el CODIGO. 0 es lo unico que significa exito.
+    pub codigo: u8,
+    /// Por donde vuelve el VALOR: un handle, un puntero, un numero.
+    pub valor: u8,
 }
 
 /// El respaldo, para cuando la tabla no esta a mano.
@@ -46,7 +48,8 @@ pub struct Puerta {
 /// contrastar con el manual.
 const RESPALDO_ARGUMENTOS: [u8; 6] = [7, 6, 2, 10, 8, 9]; // rdi rsi rdx r10 r8 r9
 const RESPALDO_NUMERO: u8 = 0; // rax
-const RESPALDO_RESULTADO: u8 = 0; // rax
+const RESPALDO_CODIGO: u8 = 0; // rax
+const RESPALDO_VALOR: u8 = 2; // rdx
 
 impl Puerta {
     /// La receta que diga la maquina; el respaldo si no la dice o si nombra un
@@ -63,8 +66,12 @@ impl Puerta {
         let maquina = m.expect("si hay receta hay maquina");
 
         let uno = |n: &str| maquina.registro(n);
-        let (numero, resultado) = match (uno(&receta.numero), uno(&receta.resultado)) {
-            (Some(a), Some(b)) => (a, b),
+        let (numero, codigo, valor) = match (
+            uno(&receta.numero),
+            uno(&receta.codigo),
+            uno(&receta.valor),
+        ) {
+            (Some(a), Some(b), Some(c)) => (a, b, c),
             _ => return Self::respaldo(),
         };
         let mut argumentos = Vec::with_capacity(receta.argumentos.len());
@@ -78,7 +85,25 @@ impl Puerta {
         Self {
             numero,
             argumentos,
-            resultado,
+            codigo,
+            valor,
+        }
+    }
+
+    /// De que registro se recoge, segun lo que el nombre pida.
+    ///
+    /// ** La palabra viene de `modulos.toml`, que es agnostico. Aqui solo se
+    /// traduce a un registro de esta maquina -- que es toda la division de
+    /// trabajo de INTI en cuatro lineas.
+    ///
+    /// Lo desconocido se trata como codigo: es lo unico seguro. Un nombre nuevo
+    /// que en realidad devolviera un puntero daria cero, y cero es lo que
+    /// devuelve un kernel que dice que no. Tratarlo como valor entregaria el
+    /// codigo de exito --tambien cero-- disfrazado de puntero valido.
+    pub fn recogida(&self, que: Option<&str>) -> u8 {
+        match que {
+            Some("valor") => self.valor,
+            _ => self.codigo,
         }
     }
 
@@ -86,7 +111,8 @@ impl Puerta {
         Self {
             numero: RESPALDO_NUMERO,
             argumentos: RESPALDO_ARGUMENTOS.to_vec(),
-            resultado: RESPALDO_RESULTADO,
+            codigo: RESPALDO_CODIGO,
+            valor: RESPALDO_VALOR,
         }
     }
 

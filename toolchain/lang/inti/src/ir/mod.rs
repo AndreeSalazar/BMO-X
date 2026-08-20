@@ -134,6 +134,27 @@ pub enum Instr {
         que: Valor,
         argumentos: Vec<Valor>,
     },
+    /// Lee `ancho` bytes de una direccion.
+    ///
+    /// ** `ancho` va en BYTES, no en el nombre de un registro de la maquina:
+    /// "8" es verdad en toda maquina y "qword" solo en una. Traducirlo a la
+    /// instruccion es trabajo del emisor, y ese es el reparto entero.
+    ///
+    /// Esta instruccion **no comprueba nada**, y esa es su definicion. Por eso
+    /// los nombres que la generan piden `crudo`: al otro lado de una direccion
+    /// cruda no hay ningun kernel que valide. No es un descuido de la IR --
+    /// es lo que se pidio.
+    Lee {
+        destino: Temporal,
+        direccion: Valor,
+        ancho: u32,
+    },
+    /// Escribe `ancho` bytes en una direccion.
+    Escribe {
+        direccion: Valor,
+        valor: Valor,
+        ancho: u32,
+    },
     /// Un intrinseco de la maquina, por NOMBRE. El emisor lo busca en las
     /// tablas de la arquitectura; este modulo no sabe que hay detras.
     Metal {
@@ -195,16 +216,25 @@ impl ModuloIr {
 
 /// Baja un modulo entero.
 pub fn bajar(m: &Modulo) -> Cosecha<ModuloIr> {
+    bajar_con(m, &crate::tablas::Modulos::por_defecto())
+}
+
+/// Baja un modulo entero sabiendo que trae cada `usa`.
+///
+/// ** La tabla que entra aqui es AGNOSTICA: dice que `lee_natural64` lee ocho
+/// bytes y que `mi_tarea` vale tal numero. Ninguna de las dos cosas depende de
+/// una maquina, y por eso este modulo puede leerlas sin romper su promesa.
+pub fn bajar_con(m: &Modulo, tabla: &crate::tablas::Modulos) -> Cosecha<ModuloIr> {
     let mut salida = ModuloIr::default();
 
     for d in &m.declaraciones {
         match d {
             Decl::Funcion(f) => {
-                let ir = Descenso::nueva(&mut salida.textos).funcion(f);
+                let ir = Descenso::nueva(&mut salida.textos, tabla).funcion(f);
                 salida.funciones.push(ir);
             }
             Decl::Operacion { tipo, funcion } => {
-                let mut ir = Descenso::nueva(&mut salida.textos).funcion(funcion);
+                let mut ir = Descenso::nueva(&mut salida.textos, tabla).funcion(funcion);
                 // El nombre lleva el tipo delante para que dos operaciones con
                 // el mismo nombre en tipos distintos no se pisen.
                 ir.nombre = format!("{}.{}", tipo, funcion.nombre);
@@ -216,7 +246,7 @@ pub fn bajar(m: &Modulo) -> Cosecha<ModuloIr> {
                 ..
             } => {
                 for f in operaciones {
-                    let mut ir = Descenso::nueva(&mut salida.textos).funcion(f);
+                    let mut ir = Descenso::nueva(&mut salida.textos, tabla).funcion(f);
                     ir.nombre = format!("{}.{}", nombre, f.nombre);
                     salida.funciones.push(ir);
                 }
@@ -236,10 +266,11 @@ struct Descenso<'t> {
     textos: &'t mut Vec<String>,
     /// Donde salta un `corta` y donde un `continua`, de fuera a dentro.
     bucles: Vec<(Etiqueta, Etiqueta)>,
+    tabla: &'t crate::tablas::Modulos,
 }
 
 impl<'t> Descenso<'t> {
-    fn nueva(textos: &'t mut Vec<String>) -> Self {
+    fn nueva(textos: &'t mut Vec<String>, tabla: &'t crate::tablas::Modulos) -> Self {
         Self {
             instrucciones: Vec::new(),
             siguiente_temporal: 0,
@@ -247,6 +278,7 @@ impl<'t> Descenso<'t> {
             locales: Vec::new(),
             textos,
             bucles: Vec::new(),
+            tabla,
         }
     }
 
@@ -433,7 +465,16 @@ impl<'t> Descenso<'t> {
             Expr::Nada(_) => Valor::Const(Const::Nada),
             Expr::Nombre(n, _) => match self.busca_local(n) {
                 Some(l) => Valor::Local(l),
-                None => Valor::Nombre(n.clone()),
+                // ** Una constante del ABI se resuelve AQUI y no en el emisor.
+                //
+                // Es agnostica --`mi_tarea` vale lo mismo en toda maquina--, asi
+                // que el sitio donde deja de ser un nombre es este. Bajarla al
+                // emisor obligaria a cada emisor nuevo a acordarse de mirar la
+                // misma tabla.
+                None => match self.tabla.constante(n) {
+                    Some(v) => Valor::Const(Const::Entero(v as i64)),
+                    None => Valor::Nombre(n.clone()),
+                },
             },
             Expr::Tipo(n, _) => Valor::Nombre(n.clone()),
             Expr::Binaria {
@@ -476,6 +517,41 @@ impl<'t> Descenso<'t> {
             Expr::Llamada {
                 que, argumentos, ..
             } => {
+                // ** Es esto una llamada, o es tocar memoria?
+                //
+                // Lo decide `modulos.toml`, igual que la puerta. Y por el mismo
+                // motivo: `lee_natural64` no puede ser una funcion de verdad
+                // --seria una llamada por cada byte-- pero tampoco puede ser
+                // una palabra del lenguaje, porque entonces un programa que no
+                // toca memoria tendria que conocerla.
+                if let Expr::Nombre(n, _) = &**que {
+                    if let Some((hace, ancho)) = self.tabla.accede(n) {
+                        let hace = hace.to_string();
+                        let mut vs: Vec<Valor> = argumentos
+                            .iter()
+                            .map(|a| self.expresion(&a.valor))
+                            .collect();
+                        if hace == "lee" && !vs.is_empty() {
+                            let t = self.temporal();
+                            self.pon(Instr::Lee {
+                                destino: t,
+                                direccion: vs.remove(0),
+                                ancho,
+                            });
+                            return Valor::Temporal(t);
+                        }
+                        if hace == "escribe" && vs.len() >= 2 {
+                            let valor = vs.remove(1);
+                            self.pon(Instr::Escribe {
+                                direccion: vs.remove(0),
+                                valor,
+                                ancho,
+                            });
+                            return Valor::Const(Const::Nada);
+                        }
+                    }
+                }
+
                 let q = self.expresion(que);
                 let args: Vec<Valor> = argumentos
                     .iter()

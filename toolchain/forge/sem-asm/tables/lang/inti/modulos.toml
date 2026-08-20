@@ -34,6 +34,115 @@ invoca_valor  = "la misma puerta, recogiendo el valor en vez del codigo"
 espera_a      = "despiertame CUANDO pase esto"
 mi_paquete    = "la capability de mi propio .bex, para leer sus recursos"
 
+#  ** QUE RECOGE CADA UNO. No es una nota: el compilador lo lee.
+#
+#  La puerta de BMO-X contesta DOS cosas a la vez, por sitios distintos: un
+#  CODIGO (0 = exito, y banderas del kernel en los bits altos) y un VALOR (un
+#  handle, un puntero, un numero). La instruccion que se emite es la misma; lo
+#  unico que cambia es de donde se lee la respuesta despues.
+#
+#  ** Esto vive aqui y no en la tabla de la maquina porque es del ABI de BMO-X:
+#  que `invoca_valor` recoja el valor es verdad en toda maquina. DONDE esta ese
+#  valor es lo que cambia, y eso si esta en `arch/<maquina>/inti.toml`.
+#
+#  Y sin esta seccion el fallo seria mudo: el emisor leeria el mismo registro
+#  para los dos, `invoca_valor` devolveria el codigo, y todo puntero pedido al
+#  kernel valdria cero -- que es indistinguible de un kernel que dice que no.
+[recoge]
+invoca        = "codigo"
+invoca_valor  = "valor"
+espera_a      = "codigo"
+mi_paquete    = "valor"
+
+# ===================================================================
+#  ** LA MEMORIA -- leer y escribir una direccion
+# ===================================================================
+#
+#  Sin esto, un programa de INTI puede pedirle un bloque al kernel y **no puede
+#  tocarlo**. Que es exactamente donde estabamos: la puerta se abrio en F4a y al
+#  otro lado no habia manos.
+#
+#  Es agnostico y no puede no serlo: toda maquina tiene memoria y toda maquina
+#  sabe leer un byte. Lo que cambia por maquina es la instruccion, y eso lo
+#  resuelve el emisor.
+#
+#  ** POR QUE PIDE `crudo`, con la misma regla de siempre:
+#
+#      al otro lado, hay alguien que comprueba?
+#
+#  De una direccion cruda, NO HAY NADIE. No hay kernel que valide una
+#  capability como en `invoca`, y no hay comprobacion de limites como en un
+#  indice de lista -- porque no hay lista: hay un numero. Escribir en la
+#  direccion equivocada corrompe lo que hubiera alli y el programa sigue.
+#
+#  ** Y aqui esta la consecuencia bonita: el MONTON de `pleno` se va a escribir
+#  en `llano`, y sus bloques `crudo` se van a CONTAR. El sitio donde nadie
+#  comprueba por ti sale en el informe del .bex, con un numero, en vez de ser
+#  una zona de confianza que nadie mira.
+[memoria]
+lee_natural8      = "el byte que hay en esa direccion"
+lee_natural64     = "la palabra de 8 bytes que hay en esa direccion"
+escribe_natural8  = "pon ese byte en esa direccion"
+escribe_natural64 = "pon esa palabra de 8 bytes en esa direccion"
+
+#  ** Faltan los de 16 y 32 bits, y se dice en vez de dejar el hueco.
+#
+#  No es una decision de diseno: es que `bmo_lower` no trae hoy los ayudantes
+#  para esos dos anchos, y escribirlos a mano dentro del emisor de INTI seria
+#  poner en un sitio lo que tiene que estar en el otro. Entran el dia que
+#  `bmo_lower` los emita.
+#
+#  Una tabla incompleta que no declara que lo esta parece una tabla completa.
+
+#  ** QUE HACE CADA UNO, en datos. El compilador lo lee.
+#
+#  `bytes` es el ancho, y esta en BYTES a proposito: "8" es verdad en toda
+#  maquina, "qword" solo en una.
+[accede]
+lee_natural8      = { hace = "lee",     bytes = 1 }
+lee_natural64     = { hace = "lee",     bytes = 8 }
+escribe_natural8  = { hace = "escribe", bytes = 1 }
+escribe_natural64 = { hace = "escribe", bytes = 8 }
+
+# ===================================================================
+#  Que pide `crudo` DE LO QUE TRAEN LOS MODULOS
+# ===================================================================
+#
+#  ** Esta seccion afina una decision anterior, no la contradice.
+#
+#  `[crudo]` estuvo en `biblioteca.toml`, se mudo a `arch/<maquina>/inti.toml`
+#  con este motivo escrito: *lo que exige `crudo` depende de la maquina*
+#  (`entrada_puerto` existe en x86 y no en ARM).
+#
+#  Sigue siendo verdad, y la regla de verdad era mas general:
+#
+#      ** el `crudo` VIAJA CON QUIEN TRAE EL NOMBRE
+#
+#  La maquina trae `entrada_puerto` y trae su `crudo`. El modulo `memoria` trae
+#  `escribe_natural64` y trae el suyo. Dos sitios porque hay dos fuentes de
+#  nombres, no porque la regla sea distinta -- y asi un fichero sin `usa
+#  memoria` no tiene que recordar que existe una prohibicion sobre un nombre
+#  que no puede escribir.
+[crudo]
+piden = [
+    "lee_natural8", "lee_natural64",
+    "escribe_natural8", "escribe_natural64",
+]
+
+# ===================================================================
+#  Constantes del ABI de BMO-X
+# ===================================================================
+#
+#  Numeros que no son de ninguna maquina: son del sistema. Un programa que
+#  escribiera `-2` donde va "mi propia tarea" compilaria igual y no se
+#  entenderia nunca mas.
+#
+#  ** Van como TEXTO en hexadecimal porque un TOML guarda enteros con signo, y
+#  `0xFFFFFFFFFFFFFFFE` no cabe en uno. Escribirlo como `-2` habria funcionado
+#  y habria sido justo la mentira que esta seccion existe para no contar.
+[constantes]
+mi_tarea = "0xFFFFFFFFFFFFFFFE"
+
 #  ** LOS BITS -- el nombre es agnostico, la instruccion es de la maquina.
 #
 #  Peticion de Eddi (2026-08-19): *"una libreria de binarios literalmente, pero

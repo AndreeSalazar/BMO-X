@@ -55,6 +55,7 @@ pub mod nombres;
 pub mod palabras;
 pub mod perfil;
 pub mod sintaxis;
+pub mod tablas;
 
 pub use aviso::{Aviso, Cosecha, Sitio};
 pub use lexico::{Clase, Pieza, Signo};
@@ -122,12 +123,16 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
         .filter_map(|(n, _)| arquitectura::Maquina::buscar(&raices, n))
         .collect();
 
-    let mut perfiles =
-        perfil::comprobar(&arbol.valor, &perfil::Catalogo::cargar(&raices), &maquinas);
+    let modulos = tablas::Modulos::cargar(&raices);
+    let mut perfiles = perfil::comprobar(
+        &arbol.valor,
+        &perfil::Catalogo::cargar(&raices),
+        &maquinas,
+        &modulos,
+    );
 
     // Los nombres que traen los `usa`: los de las maquinas declaradas y los de
     // los modulos de REX.
-    let modulos = nombres::Modulos::cargar(&raices);
     let mut extra: Vec<String> = maquinas
         .iter()
         .flat_map(|m| m.nombres_que_trae())
@@ -174,17 +179,20 @@ pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core:
         .filter_map(|(n, _)| arquitectura::Maquina::buscar(&raices, n))
         .collect();
 
-    let mut perfiles =
-        perfil::comprobar(&arbol.valor, &perfil::Catalogo::cargar(&raices), &maquinas);
-
-    let modulos = nombres::Modulos::cargar(&raices);
+    let modulos = tablas::Modulos::cargar(&raices);
+    let mut perfiles = perfil::comprobar(
+        &arbol.valor,
+        &perfil::Catalogo::cargar(&raices),
+        &maquinas,
+        &modulos,
+    );
     let mut extra: Vec<String> = maquinas.iter().flat_map(|m| m.nombres_que_trae()).collect();
     for (n, _) in &arbol.valor.usa {
         extra.extend(modulos.trae(n).iter().cloned());
     }
     let mut nombres_ = nombres::comprobar(&arbol.valor, &nombres::Comun::cargar(&raices), &extra);
 
-    let ir = ir::bajar(&arbol.valor).valor;
+    let ir = ir::bajar_con(&arbol.valor, &modulos).valor;
 
     let parte = cabina::Parte {
         fichero: fichero.to_string(),
