@@ -200,3 +200,66 @@ funcion dos(a es entero64) devuelve entero64
     assert_eq!(e.inicios[1].0, "dos");
     assert!(e.inicios[1].1 > e.inicios[0].1, "la segunda va detras");
 }
+
+// ===================================================================
+//  *** F3: los temporales viven en registros
+// ===================================================================
+
+/// Cuantas veces el codigo toca el marco.
+///
+/// Un `mov` contra `[rbp+disp32]` empieza por `48 8B` (leer) o `48 89`
+/// (escribir), y el tercer byte lleva el registro metido dentro. Contarlos es
+/// contar **las veces que el programa baja a memoria**, que es exactamente lo
+/// que F3 existe para reducir.
+fn accesos_al_marco(codigo: &[u8]) -> usize {
+    let modrm: Vec<u8> = (0u8..8).map(|r| 0x85 | (r << 3)).collect();
+    codigo
+        .windows(3)
+        .filter(|w| w[0] == 0x48 && (w[1] == 0x8B || w[1] == 0x89) && modrm.contains(&w[2]))
+        .count()
+}
+
+/// *** Con tres registros, una suma no baja a memoria mas que para recoger sus
+/// parametros al entrar.
+#[test]
+fn los_temporales_ya_no_bajan_a_memoria() {
+    let e = emitido(SUMA);
+    assert!(e.en_registros >= 1, "algun temporal tiene que ir a registro");
+    assert_eq!(e.en_pila, 0, "y ninguno deberia quedarse en la pila");
+
+    // Los dos unicos accesos son los dos parametros, que el prologo copia al
+    // marco. Todo lo demas vive en registros.
+    assert_eq!(
+        accesos_al_marco(&e.codigo),
+        4,
+        "dos escrituras de parametros y sus dos lecturas: el resto es registro"
+    );
+}
+
+/// Y una expresion con dos operaciones tampoco.
+#[test]
+fn una_expresion_encadenada_se_queda_en_registros() {
+    let f = "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve entero64\n    devuelve a + b * 2\n";
+    let e = emitido(f);
+    assert_eq!(e.en_pila, 0);
+    // Y sigue dando lo que tiene que dar.
+    assert_eq!(ejecuta(f, 3, 4), 11);
+}
+
+/// ** El numero que se puede seguir en el tiempo, como los `crudo`.
+#[test]
+fn el_emisor_dice_cuantos_temporales_salvo() {
+    let e = emitido(SUMA);
+    assert_eq!(e.en_registros + e.en_pila, 1, "la suma usa un temporal");
+    assert_eq!(e.en_registros, 1);
+}
+
+/// OJO: Y lo que NO cambio: sigue atrapando. Optimizar no puede quitar una
+/// comprobacion que el lenguaje promete -- y este test es el que lo impide.
+#[test]
+fn con_registros_la_comprobacion_sigue_estando() {
+    let e = emitido(SUMA);
+    assert_eq!(e.comprobaciones, 1);
+    assert_eq!(ejecuta(SUMA, i64::MAX as u64, 1), 1001);
+    assert_eq!(ejecuta(SUMA, 3, 4), 7);
+}

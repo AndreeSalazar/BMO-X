@@ -30,11 +30,16 @@
 //! Ese `jo` es el "sin comportamiento indefinido" en bytes. La seccion 6.3 dice
 //! que cuesta ~1%; aqui esta la instruccion que se va a medir.
 //!
+//! ## ** F3: los temporales viven en registros
+//!
+//! Desde el 2026-08-19. Y el cambio ocurrio **en `marco.rs` y en tres lineas de
+//! este fichero**, que es lo que `LINAJE.md` habia prometido. Se pudo porque la
+//! IR ya traia los temporales.
+//!
 //! ## OJO: Lo que hoy NO hace, dicho por delante
 //!
-//! - **No asigna registros.** Todo pasa por la pila, como BMO C. Es el techo de
-//!   13.6 y es a proposito: el orden dice *primero correcto, luego rapido*.
-//! - **No llama a la biblioteca**: no hay runtime todavia.
+//! - **No llama a la biblioteca**: no hay runtime todavia. Y mientras no lo
+//!   haya, el asignador puede repartir libremente -- ver el freno de `marco`.
 //! - **No emite `pleno`**: texto, listas y tablas piden monton.
 //!
 //! O sea: **INTI LLANO con aritmetica entera y control**. Que es justo lo que
@@ -46,7 +51,7 @@ use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_inti_front::arbol::Op;
 use bmo_inti_front::ir::{Comprobacion, Const, FuncionIr, Instr, Local, ModuloIr, Valor};
 use bmo_lower::x86;
-use marco::Marco;
+use marco::{Marco, Sitio};
 
 /// Los dos registros de trabajo.
 ///
@@ -68,6 +73,13 @@ pub struct Emitido {
     /// eliminacion de comprobaciones, **la diferencia entre los dos numeros es
     /// exactamente lo que el optimizador quito**, y se podra leer sin creerselo.
     pub comprobaciones: usize,
+    /// Cuantos temporales viven en un registro, y cuantos en la pila.
+    ///
+    /// ** Es el numero de F3: si el segundo baja y el primero sube, el
+    /// asignador esta haciendo su trabajo. Y como sale del emisor y no de una
+    /// estimacion, se puede seguir en el tiempo -- igual que los `crudo`.
+    pub en_registros: usize,
+    pub en_pila: usize,
 }
 
 /// Emite un modulo entero.
@@ -76,6 +88,8 @@ pub fn emitir(m: &ModuloIr) -> Emitido {
         codigo: Vec::new(),
         inicios: Vec::new(),
         comprobaciones: 0,
+        en_registros: 0,
+        en_pila: 0,
     };
 
     for f in &m.funciones {
@@ -88,6 +102,8 @@ pub fn emitir(m: &ModuloIr) -> Emitido {
 
 fn emitir_funcion(f: &FuncionIr, salida: &mut Emitido) {
     let marco = Marco::de(f);
+    salida.en_registros += marco.en_registros();
+    salida.en_pila += f.temporales as usize - marco.en_registros();
     let out = &mut salida.codigo;
 
     // Prologo.
@@ -259,7 +275,17 @@ fn carga(out: &mut Vec<u8>, reg: u8, v: &Valor, marco: &Marco) {
             x86::zero_r32(out, reg)
         }
         Valor::Local(l) => mov_de_marco(out, reg, marco.local(*l)),
-        Valor::Temporal(t) => mov_de_marco(out, reg, marco.temporal(*t)),
+        // ** F3: si el temporal vive en un registro, esto es un `mov` entre
+        // registros en vez de una lectura de memoria. Ese es el 2-4x, y cabe en
+        // estas tres lineas porque la IR ya traia los temporales.
+        Valor::Temporal(t) => match marco.sitio(*t) {
+            Sitio::Registro(r) => {
+                if r != reg {
+                    x86::mov_r64_r64(out, reg, r);
+                }
+            }
+            Sitio::Pila(disp) => mov_de_marco(out, reg, disp),
+        },
         // Una funcion o algo de un `usa`: lo resuelve el enlazado, que todavia
         // no existe.
         Valor::Nombre(_) => x86::zero_r32(out, reg),
@@ -272,7 +298,14 @@ fn guarda_temporal(
     t: bmo_inti_front::ir::Temporal,
     marco: &Marco,
 ) {
-    mov_a_marco(out, marco.temporal(t), reg);
+    match marco.sitio(t) {
+        Sitio::Registro(r) => {
+            if r != reg {
+                x86::mov_r64_r64(out, r, reg);
+            }
+        }
+        Sitio::Pila(disp) => mov_a_marco(out, disp, reg),
+    }
 }
 
 /// `mov reg, [rbp+disp]`

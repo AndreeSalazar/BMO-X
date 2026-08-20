@@ -130,17 +130,19 @@ agnosticismo prohibe en el padre lo que aqui se hace en cada linea.
 
 | pieza | de que esta hecha | si falla |
 |---|---|---|
-| `marco` | un reparto de ranuras y el ancho de palabra | los valores caen mal. **Y es el UNICO fichero que cambia el dia de los registros** |
+| `marco` | un reparto de ranuras, el ancho de palabra **y el asignador de registros** | los valores caen mal. ★★ **Y fue el UNICO fichero que cambio el dia de los registros -- la promesa se cumplio** |
 | `lib` (la seleccion) | de `Instr` a bytes, con `bmo_lower::x86` | no hay `.bex`. El frontend entero sigue en pie |
 
 ★★★ **Esta es la generacion mas sustituible de todas, y a proposito.** El dia de
 ARM se escribe `emisor-aarch64/` al lado y **no se toca ni una linea del
 frontend**. Es la mitad B de la portabilidad convertida en dos carpetas.
 
-⚠ Lo que hoy es su punto flojo, dicho: todo va a la pila. **No es un fallo de
-diseno, es el orden** -- primero correcto, luego rapido -- y cuando toque
-arreglarlo, `marco.rs` es lo unico que cambia. La IR ya trae los temporales, que
-es lo unico que un asignador necesita.
+★★★ **Y la promesa se cobro el mismo dia.** F3 --los temporales en registros--
+cambio `marco.rs` **y tres lineas de `lib.rs`**. Nada del frontend, nada de la
+IR, nada de los contratos. Se pudo porque la IR ya traia los temporales, que es
+lo unico que un asignador necesita.
+
+Es la primera vez que este linaje se pone a prueba de verdad, y aguanto.
 
 ---
 
