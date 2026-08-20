@@ -6,4 +6,4 @@ perfil pleno
 funcion principal
     lista = [1, 2, 3]
     si lista
-        escribe "hay cosas"
+        escribe("hay cosas")

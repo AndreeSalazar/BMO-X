@@ -9,4 +9,4 @@ funcion divide(a es numero, b es numero) devuelve numero o error
     devuelve a / b
 
 funcion principal
-    escribe divide(10, 0)
+    escribe(divide(10, 0))

@@ -4,10 +4,10 @@ perfil pleno
 
 funcion principal
     para cada i en 0 hasta 3
-        escribe i
+        escribe(i)
 
     repite 2 veces
-        escribe "."
+        escribe(".")
 
     cambiante quedan = cierto
     repite mientras quedan

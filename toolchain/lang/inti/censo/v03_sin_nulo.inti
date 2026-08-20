@@ -8,4 +8,4 @@ funcion busca(nombre es texto) devuelve quiza numero
 
 funcion principal
     n = busca("ana")
-    escribe n + 1
+    escribe(n + 1)

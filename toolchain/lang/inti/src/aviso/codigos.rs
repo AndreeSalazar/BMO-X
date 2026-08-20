@@ -94,6 +94,10 @@ pub const CRUZA_MUTABLE: Codigo = Codigo("E0080");
 pub const INDICE_VISIBLE: Codigo = Codigo("E0090");
 /// Herencia. No hay.
 pub const SIN_HERENCIA: Codigo = Codigo("E0100");
+/// Una funcion dentro de otra. No hay, y el motivo es del perfil: una captura
+/// hay que guardarla en algun sitio, y en `llano` no hay monton. Tenerlas solo
+/// en `pleno` serian dos lenguajes con una gramatica.
+pub const SIN_FUNCION_ANIDADA: Codigo = Codigo("E0101");
 
 // ===================================================================
 //  E1xxx -- atrapa en ejecucion, y llega como dato
@@ -152,6 +156,7 @@ pub const TODOS: &[Codigo] = &[
     CRUZA_MUTABLE,
     INDICE_VISIBLE,
     SIN_HERENCIA,
+    SIN_FUNCION_ANIDADA,
     DESBORDE,
     INDICE,
     ENTRE_CERO,

@@ -70,7 +70,7 @@ primera linea, asi que **la sonda y su expectativa no se pueden separar**.
 |---|---|---|
 | `f01_funcion` | funcion con tipos, `devuelve`, `de` como llamada | **COMPILA** |
 | `f02_defecto_congelado` | ★ el defecto se congela: la sorpresa 1 de Python no existe | **COMPILA**, la lista no se acumula |
-| `f03_captura_por_valor` | ★ captura por valor: mata el *late binding* | **COMPILA** + `0 1 2` |
+| `f03_sin_closures` | ★ no hay funciones anidadas ni anonimas: el *late binding* no existe **por ausencia** | `E0101` |
 | `f04_parametro_fijo` | un parametro no se cambia dentro | `E0033` |
 | `f05_registro` | campos, defecto, construccion posicional y por nombre | **COMPILA** |
 | `f06_sin_herencia` | no hay herencia | `E0100` |

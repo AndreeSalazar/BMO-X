@@ -2,8 +2,9 @@
 
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
-> 🟢 **F0 escrito y F1a en verde (2026-08-19).** El contrato entero, y el
-> **lexico completo con 59 pruebas**. No hay parser ni runtime todavia.
+> 🟢 **F0 escrito y F1 en verde (2026-08-19).** El contrato entero, el lexico
+> y la gramatica: **92 pruebas**. Entra texto y sale un arbol. No hay runtime
+> ni emisor todavia.
 
 ## Que es, en una frase
 
@@ -30,7 +31,7 @@ Tres cosas lo definen, y ninguna es negociable:
 | [`palabras.toml`](../../forge/sem-asm/tables/lang/inti/palabras.toml) | las **49 palabras clave**, en una tabla y con la columna inglesa ya escrita |
 | `censo/*.inti` | las sondas. Cada una lleva su expectativa en la primera linea |
 | [`ARQUITECTURA.md`](ARQUITECTURA.md) | **por que el compilador esta partido asi** -- el criterio de corte, la regla de dependencias, y por que la modularidad es lo que mantiene el syscall fuera del lenguaje |
-| `src/` | el frontend. `aviso`, `palabras`, `lexico` |
+| `src/` | el frontend. `aviso`, `palabras`, `lexico`, `arbol`, `sintaxis` |
 
 El **porque** de todo esto -- la investigacion, los numeros y las alternativas
 descartadas -- esta en [`docs/maestro/INTI_MAESTRO.md`](../../../docs/maestro/INTI_MAESTRO.md).
@@ -119,20 +120,26 @@ casado con el. Detalle entero en [`GRAMATICA.md`](GRAMATICA.md) sec. 17.
    cargo test -p bmo-inti-front
 ```
 
-59 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
+92 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
 de compilador** (hay lista negra), que **el dedo cae en la columna exacta**
 contando caracteres y no bytes, que **el mismo lexer lee ingles** sin cambiar
 una linea, que una palabra clave **con tilde sigue siendo palabra clave**, y que
-**ninguna de las 38 sondas lleva un fallo de escritura escondido** -- lo que
-destapo que el corpus usaba tres espacios y la gramatica cuatro.
+**ninguna de las 38 sondas lleva un fallo de escritura escondido**, y que **las
+que dicen COMPILA se leen enteras**.
+
+★ Ese ultimo grupo se gano el sitio cuatro veces el primer dia. El corpus y la
+gramatica no estaban de acuerdo en: la sangria (tres espacios contra cuatro),
+las llamadas sin parentesis (`escribe x`), formas que no existian
+(`anade X a Y`), y una funcion anonima en una sonda de un lenguaje que no
+tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 
 ## Lo siguiente
 
 | fase | entregable | estado |
 |---|---|---|
 | **F0** | gramatica, doce reglas, censo | ✅ **escrito** (2026-08-19) |
-| **F1a** | **lexico**: palabras, textos, numeros, sangria, parejas, y los avisos de 4 partes | ✅ **59 pruebas en verde** (2026-08-19) |
-| F1b | arbol + sintaxis: de piezas a arbol | pendiente |
+| **F1a** | **lexico**: palabras, textos, numeros, sangria, parejas, y los avisos de 4 partes | ✅ **verde** (2026-08-19) |
+| **F1b** | **arbol + sintaxis**: precedencia de 10 niveles, declaraciones, sentencias, recuperacion de errores | ✅ **92 pruebas en verde** (2026-08-19) |
 | F2 | ★ INTI LLANO compilando a `.bex` nativo, por `bmo-verify` | pendiente |
 | F3 | las doce reglas con sus sondas en verde | pendiente |
 | F4 | ★★ la foto del Ryzen | pendiente |

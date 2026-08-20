@@ -9,4 +9,4 @@ registro Alumno
 funcion principal
     a = Alumno("ana", 9)
     b = Alumno(nombre: "luis", nota: 7)
-    escribe a.nombre, b.nota
+    escribe(a.nombre, b.nota)

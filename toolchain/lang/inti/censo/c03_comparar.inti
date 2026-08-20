@@ -6,8 +6,8 @@ perfil pleno
 funcion principal
     nombre = "eddi"
     si nombre = "eddi"
-        escribe "eres tu"
+        escribe("eres tu")
     si nombre no es "ana"
-        escribe "no eres ana"
+        escribe("no eres ana")
     si 5 es un numero
-        escribe "cinco es un numero"
+        escribe("cinco es un numero")

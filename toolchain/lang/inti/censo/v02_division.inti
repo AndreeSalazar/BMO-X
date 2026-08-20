@@ -4,5 +4,5 @@
 perfil pleno
 
 funcion principal
-    escribe 5 / 2
-    escribe 5 entre 2
+    escribe(5 / 2)
+    escribe(5 entre 2)

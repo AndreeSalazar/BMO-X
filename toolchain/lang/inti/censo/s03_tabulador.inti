@@ -3,4 +3,4 @@
 perfil pleno
 
 funcion principal
-	escribe "sangrado con tabulador"
+	escribe("sangrado con tabulador")

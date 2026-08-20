@@ -151,7 +151,7 @@ cambiante z es entero32 = 0 # con tipo explicito
 |---|---|---|
 | 1 | `(...)`, `f(...)`, `a[i]`, `a.campo` | |
 | 2 | `-x`, `no x` | unarios |
-| 3 | `elevado a` | `2 elevado a 8` |
+| 3 | `elevado` | `2 elevado 8` |
 | 4 | `*`, `/`, `entre`, `resto` | `entre` = cociente entero; `/` divide de verdad |
 | 5 | `+`, `-` | |
 | 6 | `desplaza ... izquierda/derecha`, `bits_y`, `bits_o`, `bits_xor` | sobre todo en `llano` |
@@ -278,8 +278,13 @@ funcion divide(a, b) devuelve numero o error     # puede fallar
   existir**.
 - Las funciones son valores: `f = media` guarda la funcion, `f(x)` la llama.
   **`f` y `f()` se ven distintos a proposito.**
-- Las capturas son **por valor en el momento de crear la funcion**, lo que mata
-  el *late binding* (sorpresa 2).
+- ★ **No hay funciones anidadas ni anonimas** (`E0101`), y el motivo es del
+  perfil y no del gusto: **una captura hay que guardarla en algun sitio, y en
+  `llano` no hay monton.** Tenerlas solo en `pleno` serian dos lenguajes con
+  una gramatica. Consecuencia buena: sin capturas, la sorpresa 2 de Python
+  (*late binding*) **no existe por ausencia**, sin necesidad de ninguna regla.
+- ⚠ **Una llamada lleva SIEMPRE parentesis**, o `de` si es de un argumento:
+  `escribe("hola")`, `cuenta de notas`. `escribe "hola"` no es una llamada.
 
 ---
 
@@ -456,7 +461,7 @@ suma          = bits , { ( "+" | "-" ) , bits } ;
 bits          = prod , { ( "bits_y" | "bits_o" | "bits_xor"
                          | "desplaza" ( "izquierda" | "derecha" ) ) , prod } ;
 prod          = pot , { ( "*" | "/" | "entre" | "resto" ) , pot } ;
-pot           = unario , [ "elevado" , "a" , pot ] ;
+pot           = unario , [ "elevado" , pot ] ;
 unario        = [ "-" | "no" ] , sufijo ;
 sufijo        = primario , { "(" , [ args ] , ")" | "[" , expr , "]"
                            | "." , NOMBRE } ;
@@ -490,6 +495,31 @@ cierto  falso  nada  quiza  error  fallo  valor  motivo
 lista  tabla
 ```
 
+### ★ Las seis palabras que TAMBIEN son nombres
+
+Descubierto escribiendo el parser, el 2026-08-19, y es una correccion de
+verdad: **`y` y `o` son operadores... y son los nombres de variable mas usados
+del mundo despues de `x`.** Un lenguaje en el que no se puede escribir `x, y`
+--ni `p.y`-- tiene un problema.
+
+La salida no es quitar los operadores. Es que la palabra signifique una cosa
+**en posicion de operador** y otra **en posicion de valor**:
+
+```text
+   x = y            # `y` es un NOMBRE: aqui toca un valor
+   si a y b         # `y` es el OPERADOR: aqui toca un operador
+   p.y = 3          # detras de un punto, cualquier palabra es un campo
+```
+
+Son seis: **`y`, `o`, `a`, `un`, `en`, `de`**. No hay ambiguedad porque el
+parser siempre sabe cual de las dos posiciones espera -- no se elige
+adivinando, se elige por el sitio. Es lo mismo que hacen `await` en JavaScript
+o `record` en Java.
+
+Y de paso se quito el `a` de `elevado a`, que ahora es solo `elevado`: **una
+palabra clave de una letra que ademas es el nombre mas comun de una variable es
+una trampa, y la mas barata de quitar es la que no hacia falta.**
+
 ⚠★ **Estas palabras NO se escriben en el parser: viven en
 [`tables/lang/inti/palabras.toml`](../../forge/sem-asm/tables/lang/inti/palabras.toml)**,
 que ya existe -- el mismo patron que `intrinsics.toml` (*"anadir una
@@ -518,7 +548,7 @@ tildes no tropieza.
 |---|---|
 | `:` de bloque, `;`, `{}` de bloque | la sangria |
 | ternario `a ? b : c` | `si` |
-| `lambda` con reglas propias | una `funcion` con nombre |
+| `lambda` y funciones anidadas | una `funcion` en el margen, y `f = media` para pasarla como valor |
 | comprensiones anidadas | `para cada` |
 | decoradores | una funcion que llama a otra |
 | `global` / `nonlocal` | no hacen falta: un nombre es del bloque donde nacio |
