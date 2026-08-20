@@ -1,5 +1,7 @@
 # INTI -- el lenguaje de BMO-X
 
+![INTI](../../../docs/arte/inti.png)
+
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
 > 🟢 **De F0 a F2d en verde (2026-08-19).** El contrato, el lexico, la
