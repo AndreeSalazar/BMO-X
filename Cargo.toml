@@ -119,6 +119,10 @@ members = [
     # son compatibilidad con el mundo, y este es el unico que no le debe nada
     # a nadie. Ver docs/maestro/INTI_MAESTRO.md.
     "toolchain/lang/inti",
+    # El emisor de x86-64, en su propio crate: el frontend tiene PROHIBIDO
+    # nombrar una maquina (hay un test) y un emisor la nombra en cada linea.
+    # La frontera del agnosticismo no es una convencion, es el arbol.
+    "toolchain/lang/inti/emisor-x86_64",
     "toolchain/lang/ada",
     "toolchain/lang/cobol",
     "toolchain/lang/cpp",

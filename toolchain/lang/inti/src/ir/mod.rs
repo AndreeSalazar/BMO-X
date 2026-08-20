@@ -158,6 +158,12 @@ pub enum Instr {
 #[derive(Debug, Clone)]
 pub struct FuncionIr {
     pub nombre: String,
+    /// Cuantas de las locales son parametros.
+    ///
+    /// Son las PRIMERAS, y por eso basta un numero. El emisor lo necesita para
+    /// guardarlos donde la maquina los deje al entrar -- pero **cuales son esos
+    /// sitios es cosa suya**: aqui solo se dice cuantos.
+    pub parametros: u32,
     /// Cuantas ranuras locales pide. El TAMANO de cada una lo decide el emisor
     /// con el perfil de la maquina: aqui solo se cuentan.
     pub locales: u32,
@@ -284,6 +290,7 @@ impl<'t> Descenso<'t> {
         self.bloque(&f.cuerpo);
         FuncionIr {
             nombre: f.nombre.clone(),
+            parametros: f.parametros.len() as u32,
             locales: self.locales.len() as u32,
             temporales: self.siguiente_temporal,
             instrucciones: self.instrucciones,
