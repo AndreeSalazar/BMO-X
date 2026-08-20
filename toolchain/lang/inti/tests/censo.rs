@@ -228,3 +228,35 @@ fn las_sondas_que_compilan_pasan_el_perfil() {
         );
     }
 }
+
+/// ** Lo que INTI le cuenta a CABINA de una sonda de verdad.
+///
+/// Es la prueba de que el puente no es un tipo suelto: una sonda del censo
+/// entra por un lado y por el otro sale la foto que el sistema puede seguir en
+/// el tiempo.
+#[test]
+fn una_sonda_le_cuenta_su_parte_a_cabina() {
+    let (_, texto) = sondas()
+        .into_iter()
+        .find(|(n, _)| n == "p01_llano")
+        .expect("falta p01_llano");
+
+    let (parte, eventos) = bmo_inti_front::informar(&texto, "p01_llano.inti");
+
+    assert_eq!(parte.perfil, "llano");
+    assert_eq!(parte.arquitecturas, vec!["x86_64".to_string()]);
+    assert_eq!(parte.bloques_crudo, 1, "la sonda tiene un `crudo`");
+
+    // Todo va en la capa de los lenguajes, con el nombre de INTI.
+    assert!(!eventos.is_empty());
+    for e in &eventos {
+        assert_eq!(e.module_str(), "inti");
+    }
+    // Y una sonda que compila no manda ni un fallo.
+    assert!(
+        !eventos
+            .iter()
+            .any(|e| e.severity == cabina_core::Severity::Fault),
+        "p01_llano compila: no deberia haber fallos"
+    );
+}

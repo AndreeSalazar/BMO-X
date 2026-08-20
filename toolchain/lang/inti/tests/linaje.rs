@@ -43,6 +43,10 @@ fn generaciones() -> HashMap<&'static str, u32> {
     // -- PADRES: leen a los abuelos y nada mas. --------------------------
     g.insert("lexico", 1);
     g.insert("arquitectura", 1);
+    // `cabina` traduce avisos y numeros a eventos. Mira a `aviso` y a nadie
+    // mas: si mirase a `perfil` o a `ir` seria un quinto analisis disfrazado de
+    // informe, y se los llevaria por delante el dia que se reescriban.
+    g.insert("cabina", 1);
 
     // -- HIJOS -----------------------------------------------------------
     g.insert("arbol", 2);
