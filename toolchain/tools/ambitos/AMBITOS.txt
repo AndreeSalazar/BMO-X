@@ -1,0 +1,147 @@
+# AMBITOS -- que puede ir entre los parentesis de un asunto de commit.
+#
+# No se escribio a mano: salio de contar el historial el 2026-08-20, y por eso
+# arranca con TODO lo que ya se usaba, ruido incluido. La cuenta entre
+# parentesis es cuantas veces se ha usado ese nombre, y se regenera con
+# `--sellar`.
+#
+# ** ESTA LISTA ESTA PARA PODARSE, y esa es la mitad del trabajo que no puede
+# hacer una herramienta. Contados hoy hay 111 ambitos distintos: eso no es una
+# lista cerrada, es un desague. Los que aparecen UNA vez casi siempre son un
+# nombre de aquel dia; los que se repiten con dos formas --`disk` y `disco`,
+# `ram` y `mm`, `c-front` y `c`-- son el mismo componente contado dos veces.
+#
+# Borrar una linea de aqui es lo que hace que ese nombre deje de valer. Moverla
+# a [ALIAS] es mejor todavia: entonces el guardian no dice "no existe", dice
+# COMO SE LLAMA AHORA, que es lo unico que el que se equivoca necesita saber.
+#
+# ** Lo que este fichero NO decide: nada de la prosa. El titulo, su longitud y
+# lo que cuente el cuerpo no los mira nadie. Ver la cabecera de `ambitos.py`.
+
+# El commit en el que se cerro la lista. Solo se juzga lo que viene DESPUES:
+# los 69 `gui` de ayer no se reescriben, y un guardian que fallara por ellos se
+# apagaria en una semana. Se mueve con `--sellar`.
+[DESDE]
+201fa944cf2a3d39418ada57d84ef3be65bfd3e3   la lista se cierra aqui (2026-08-20)
+
+# Viejo -> como se llama ahora, y por que. Un alias no es un error del que
+# escribe: es un nombre que se quedo atras, y decirle el nuevo cuesta lo mismo
+# que decirle que no.
+[ALIAS]
+gui            -> director     el compositor se renombro el 19-08 (`3e9552a4`)
+escritorio     -> director     el mismo componente, tercer nombre
+ui             -> director     el mismo componente, cuarto nombre
+
+# Los que valen. Ordenados por uso, que es el orden en el que se ve el ruido.
+[AMBITOS]
+c                (64)
+kernel           (52)
+cobol            (47)
+estratos         (44)
+inti             (28)
+usb              (23)
+boot             (13)
+director         (13)
+maqueta          (13)
+medida           (12)
+mm               (12)
+smp              (12)
+cpu              (11)
+abi              (10)
+bef              (9)
+disk             (9)
+ring0            (9)
+c-front          (8)
+disco            (8)
+puerta           (8)
+cpp              (7)
+metal            (7)
+ahci             (6)
+cabina           (6)
+ciudad           (6)
+fs               (6)
+ipc              (6)
+lienzo           (6)
+cap              (5)
+ram              (5)
+audio            (4)
+build            (4)
+forge            (4)
+gpu              (4)
+lanzar           (4)
+proc             (4)
+red              (4)
+shell            (4)
+toolchain        (4)
+caja             (3)
+calc             (3)
+censo            (3)
+coste            (3)
+docs             (3)
+emu              (3)
+ext              (3)
+fat32            (3)
+input            (3)
+intro            (3)
+lower            (3)
+ring3            (3)
+verify           (3)
+xhci             (3)
+axion            (2)
+block            (2)
+c-gen            (2)
+carga            (2)
+cobol-gen        (2)
+codegen          (2)
+contrato         (2)
+dibujo           (2)
+explorador       (2)
+fb               (2)
+readme           (2)
+repo             (2)
+userspace        (2)
+ada              (1)
+arch             (1)
+bex              (1)
+bitacora         (1)
+bmo-abi          (1)
+bmo-cobol-front  (1)
+bmo-rt           (1)
+byte-defender    (1)
+consola          (1)
+deuda            (1)
+dir              (1)
+doom             (1)
+faggin           (1)
+fat              (1)
+fault            (1)
+fuero            (1)
+guardianes       (1)
+hash             (1)
+herencia         (1)
+hud              (1)
+identidad        (1)
+juicio           (1)
+l1               (1)
+lang             (1)
+memoria          (1)
+meta-app         (1)
+meta-sdk         (1)
+mods             (1)
+net              (1)
+perfil           (1)
+presupuesto      (1)
+raiz             (1)
+reglas           (1)
+reparto          (1)
+rex              (1)
+rust             (1)
+sched            (1)
+seguridad        (1)
+semantic         (1)
+signing          (1)
+teclado          (1)
+userland         (1)
+virt             (1)
+vista            (1)
+vmm              (1)

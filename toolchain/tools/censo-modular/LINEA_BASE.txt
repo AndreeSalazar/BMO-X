@@ -14,7 +14,7 @@
   2011  toolchain/lang/cobol/src/parser.rs
   1621  toolchain/lang/cpp/src/parser.rs
   1584  platform/drivers/usb/xhci/src/lib.rs
-  1563  Ultra_kernel_x86-64/build.ps1
+  1571  Ultra_kernel_x86-64/build.ps1
   1416  platform/abi/bmo-abi/src/bef/validator.rs
   1363  Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs
   1345  Ultra_userspace/services/director/src/commands/reports.rs
@@ -38,3 +38,5 @@
 [SUBIDAS]
 Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs        1349 -> 1363  el despacho de KIND_TAREA (paso 3 del DIRECTOR). Se movio `conceder` y `buscar` a obj/tarea.rs y bajo de +32 a +14; los 14 no se quitan sin partir el fichero. Anotado a mano el 19-08: la subida es anterior a que esta seccion existiera.
 toolchain/forge/bmo-lower/src/emu.rs                       2207 -> 2228  flags_add en el emulador: `add` usaba `flags_logic`, que pone `of` a FALSO siempre. El hueco duro meses porque NINGUN lenguaje de BMO emitia un `jo` -- C no comprueba el desbordamiento, y lo que no se emite no se emula. INTI es el primero que lo necesita (su regla 1: desbordar ATRAPA). Sin esto el emulador contesta que nunca desborda, que es la peor respuesta: HACE PASAR el test que deberia fallar. Son 21 lineas de correccion en un CAJON que ya estaba sobre la linea.
+Ultra_kernel_x86-64/build.ps1                              1563 -> 1569  el SEXTO guardian (ambitos de commit): 5 lineas, y son irreducibles -- una llamada a `Guardian` son cuatro y la quinta dice donde esta el por que. [!] Y lo que esto destapa es otra cosa: build.ps1 lleva 1.568 lineas con 8 funciones (media 197) y el censo lo llama `desconocida` porque es PowerShell. Cada guardian nuevo lo engorda, asi que o se parte o esta lista tendra una entrada por guardian.
+Ultra_kernel_x86-64/build.ps1                              1569 -> 1571  el helper `Guardian` distingue por fin FALTA EL SCRIPT de NO HAY PYTHON: 2 lineas. Lo primero es del repo --un path mal escrito dejo el guardian de ambitos MUERTO y el build dijo COMPLETE igual-- y lo segundo del entorno. Es literalmente el fallo que este fichero ya tenia descrito tres veces: un guardian que lee menos no avisa de menos, avisa de nada.

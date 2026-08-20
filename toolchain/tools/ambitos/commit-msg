@@ -1,0 +1,22 @@
+#!/bin/sh
+# El hook que juzga el AMBITO de un commit, antes de que exista.
+#
+# === Por que este hook es OPCIONAL, y a proposito ===
+#
+# Un hook vive en `.git/hooks` y NO viaja con el repositorio: el que clone no lo
+# tiene. Se podria forzar con `core.hooksPath`, y no se hace -- eso se lleva por
+# delante cualquier hook que el dueno tenga puesto por su cuenta, y un guardian
+# que rompe las herramientas de al lado no dura.
+#
+# El que SIEMPRE corre es el paso del build (`ambitos.py --check`). Este solo
+# adelanta el aviso al momento en que todavia es barato: antes de que el commit
+# exista, cuando arreglarlo es escribir otra palabra en vez de tocar historial.
+#
+# === Instalarlo ===
+#
+#   cp toolchain/tools/ambitos/commit-msg .git/hooks/commit-msg
+#
+# En Windows con Git for Windows no hace falta chmod: `sh` lo ejecuta igual.
+# Para saltarselo una vez: `git commit --no-verify`.
+
+exec python "$(git rev-parse --show-toplevel)/toolchain/tools/ambitos/ambitos.py" --msg "$1"
