@@ -94,7 +94,7 @@ mira hacia arriba **ni hacia los lados**:
 
 ```text
    gen 0   aviso        palabras          <- no miran a nadie
-   gen 1   lexico       arquitectura
+   gen 1   lexico       arquitectura      cabina
    gen 2   arbol
    gen 3   sintaxis
    gen 4   perfil       nombres      ir   <- y NO se miran entre ellos
@@ -108,6 +108,7 @@ mira hacia arriba **ni hacia los lados**:
 | `palabras` | 0 | un TOML y un `HashMap` | **todo** | el compilador no arranca. Es el unico con respaldo incrustado, y por eso |
 | `lexico` | 1 | un bucle sobre caracteres y una pila de margenes | **casi todo**: entra texto, salen piezas | no hay piezas. Se cambia entero sin tocar la gramatica |
 | `arquitectura` | 1 | un TOML por maquina | **todo** | `usa x86_64` no encuentra nada, **y eso es una respuesta correcta** |
+| `cabina` | 1 | una traduccion de avisos y numeros a eventos | **todo** | el sistema deja de enterarse. **Todo lo demas compila igual** |
 | `arbol` | 2 | datos puros, cero decisiones | **todo**: no tiene logica que falle | nada: si el arbol esta mal, esta mal quien lo construyo |
 | `sintaxis` | 3 | descenso recursivo y una tabla de precedencia | **casi todo** | no hay arbol. Se reescribe leyendo solo `GRAMATICA.md` |
 | `perfil` | 4 | un recorrido y dos listas de la tabla | **todo** | `llano` deja de vigilarse. **El resto compila igual** |

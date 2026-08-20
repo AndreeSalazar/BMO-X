@@ -29,6 +29,7 @@
 //!    perfil     `llano` contra `pleno`. No emite un byte.
 //!    nombres    quien es cada nombre, y si se puede cambiar.
 //!    ir         del arbol a instrucciones. NO nombra ninguna maquina.
+//!    cabina     lo que INTI le cuenta al sistema, en la capa `Lang`.
 //! ```
 //!
 //! OJO: **Lo que este crate NO enlaza todavia**: `bmo-abi`, `bmo-lower` y
@@ -46,6 +47,7 @@
 
 pub mod arbol;
 pub mod arquitectura;
+pub mod cabina;
 pub mod ir;
 pub mod aviso;
 pub mod lexico;
@@ -141,4 +143,63 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
     avisos.append(&mut perfiles.avisos);
     avisos.append(&mut nombres.avisos);
     Cosecha::con(perfiles.valor, avisos)
+}
+
+/// El camino entero, y lo que CABINA necesita saber al final.
+///
+/// ** Una sola llamada y el sistema tiene la foto: que fallo, donde, a que
+/// maquina se ata el programa y lo que paga por no tener comportamiento
+/// indefinido.
+///
+/// Es la peticion de Eddi -- *"CABINA va a estar vigilando a INTI por completo,
+/// porque es el PRINCIPAL para decir y senalar que fallo, para asi mejorar en
+/// avances"* -- y lo importante es que **no se manda solo lo que fallo**. Los
+/// numeros van tambien, porque un numero se puede seguir en el tiempo y una
+/// queja no.
+pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core::Event>) {
+    let raices = bmo_mods::Roots::find();
+    let (vocab, _) = Vocabulario::cargar(&raices);
+    let v = match vocab {
+        Ok(v) => v,
+        Err(e) => panic!("palabras.toml esta roto y ni el respaldo carga: {}", e),
+    };
+
+    let piezas = lexico::barrer(fuente, &v);
+    let mut arbol = sintaxis::leer(&piezas.valor, &v);
+
+    let maquinas: Vec<arquitectura::Maquina> = arbol
+        .valor
+        .usa
+        .iter()
+        .filter_map(|(n, _)| arquitectura::Maquina::buscar(&raices, n))
+        .collect();
+
+    let mut perfiles =
+        perfil::comprobar(&arbol.valor, &perfil::Catalogo::cargar(&raices), &maquinas);
+
+    let modulos = nombres::Modulos::cargar(&raices);
+    let mut extra: Vec<String> = maquinas.iter().flat_map(|m| m.nombres_que_trae()).collect();
+    for (n, _) in &arbol.valor.usa {
+        extra.extend(modulos.trae(n).iter().cloned());
+    }
+    let mut nombres_ = nombres::comprobar(&arbol.valor, &nombres::Comun::cargar(&raices), &extra);
+
+    let ir = ir::bajar(&arbol.valor).valor;
+
+    let parte = cabina::Parte {
+        fichero: fichero.to_string(),
+        perfil: arbol.valor.perfil.nombre().to_string(),
+        arquitecturas: perfiles.valor.arquitecturas.clone(),
+        bloques_crudo: perfiles.valor.bloques_crudo,
+        comprobaciones: ir.comprobaciones(),
+        funciones: ir.funciones.len(),
+    };
+
+    let mut avisos = piezas.avisos;
+    avisos.append(&mut arbol.avisos);
+    avisos.append(&mut perfiles.avisos);
+    avisos.append(&mut nombres_.avisos);
+
+    let eventos = cabina::eventos(&parte, &avisos);
+    (parte, eventos)
 }

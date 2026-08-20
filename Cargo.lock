@@ -168,6 +168,7 @@ name = "bmo-inti-front"
 version = "0.1.0"
 dependencies = [
  "bmo-mods",
+ "cabina-core",
  "toml",
 ]
 

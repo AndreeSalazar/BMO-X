@@ -24,7 +24,17 @@ description = "INTI -- el lenguaje de BMO-X. Frontend: de texto a arbol."
 bmo-mods = { path = "../../forge/bmo-mods" }
 # Para leer `palabras.toml`. La misma version que usa sem-asm.
 toml = "0.8"
+# CABINA: lo que INTI le cuenta al sistema. Se enlaza el NUCLEO, que es el que
+# define el evento -- no el servicio que lo pinta. Un compilador que dependiera
+# del renderizador no podria compilar en una maquina sin pantalla.
+#
+# ** Y la capa `Lang` ya existia en `cabina-core` antes que INTI: el sitio
+# estaba hecho y llevaba tiempo vacio.
+cabina-core = { path = "../../../platform/services/cabina-core", features = ["std"] }
 
 [lib]
 name = "bmo_inti_front"
 path = "src/lib.rs"
+
+[dev-dependencies]
+cabina-core = { path = "../../../platform/services/cabina-core", features = ["std"] }

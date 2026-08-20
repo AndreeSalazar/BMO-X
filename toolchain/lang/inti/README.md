@@ -5,7 +5,7 @@
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
 > 🟢 **De F0 a F2d en verde (2026-08-19).** El contrato, el lexico, la
-> gramatica, los perfiles, los nombres, la IR **y el emisor**: **188 pruebas**.
+> gramatica, los perfiles, los nombres, la IR **y el emisor**: **196 pruebas**.
 > ★★ Una suma de INTI **compila, corre y da 7**, y su `.bex` pasa `bmo-verify`.
 
 ## Que es, en una frase
@@ -169,7 +169,8 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | **F2b** | **nombres, `cambiante` y la biblioteca comun**: quisiste-decir, alcance por funcion, y la **llamada sin parentesis** | ✅ **142 pruebas en verde** (2026-08-19) |
 | **F2c** | **la IR**: instrucciones con temporales, y las comprobaciones anti-UB **hechas instruccion** | ✅ **170 pruebas en verde** (2026-08-19) |
 | **F2d** | ★★ **el emisor**: INTI LLANO a bytes que CORREN, y el `.bex` pasa el gate | ✅ **184 pruebas en verde** (2026-08-19) |
-| **linaje** | la jerarquia de piezas, **con test que la hace cumplir** | ✅ **188 pruebas en verde** (2026-08-19) |
+| **linaje** | la jerarquia de piezas, **con test que la hace cumplir** | ✅ verde |
+| **CABINA** | ★★ INTI **le cuenta al sistema** que fallo Y lo que sabe, en la capa `Lang` | ✅ **202 pruebas en verde** (2026-08-19) |
 | F3 | registros de verdad (hoy todo va a la pila) | pendiente |
 | F3 | las doce reglas con sus sondas en verde | pendiente |
 | F4 | ★★ la foto del Ryzen | pendiente |
