@@ -13,15 +13,16 @@
 #  recompilar el compilador -- que es exactamente lo que `intrinsics.toml`
 #  decidio no hacer nunca.
 #
-#  == Y por que la seccion `[crudo]` es PROVISIONAL ==
+#  == La seccion `[crudo]` se MUDO ==
 #
-#  Lo que exige `crudo` depende de la maquina: `entrada_puerto` existe en x86 y
-#  no en ARM, donde el equivalente es una lectura a una direccion mapeada. Asi
-#  que el sitio definitivo de esa lista es `tables/arch/<arquitectura>/`, junto
-#  a `intrinsics.toml`, y aqui esta mientras solo haya una arquitectura.
+#  Estuvo aqui marcada como provisional durante unas horas, con el motivo
+#  escrito: lo que exige `crudo` depende de la maquina (`entrada_puerto` existe
+#  en x86 y no en ARM). Ya vive en `arch/<arquitectura>/inti.toml`, que es su
+#  sitio.
 #
-#  Se deja anotado a proposito: una lista provisional que nadie marca como
-#  provisional se queda diez anos.
+#  ** Y de paso quedo mejor de lo que estaba: ahora `entrada_puerto` solo
+#  EXISTE si el fichero escribio `usa x86_64`. Antes existia siempre y a veces
+#  estaba prohibido, que es una regla mas que recordar.
 
 [meta]
 version = 1
@@ -40,24 +41,6 @@ tipos_que_crecen = ["texto", "lista", "tabla"]
 #  Sin tamano no se puede reservar en la pila ni elegir la instruccion, asi que
 #  en `llano` hay que escribir `entero32`, `natural8`, etc.
 tipos_sin_tamano = ["numero", "decimal"]
-
-# ===================================================================
-#  Lo que exige un bloque `crudo`
-# ===================================================================
-#
-#  La regla no es "esto es de bajo nivel": es **aqui nadie comprueba por ti**.
-#  Por eso `invoca` NO esta en esta lista aunque sea la puerta del sistema --
-#  al otro lado hay un kernel que valida una capability. Y `entrada_puerto` si
-#  esta, porque al otro lado no hay nadie.
-[crudo]
-nombres = [
-    "entrada_puerto",
-    "escribe_puerto",
-    "lee_msr",
-    "escribe_msr",
-    "memoria_fisica",
-    "salta_a",
-]
 
 # ===================================================================
 #  Lo que NO esta aqui, y es a proposito

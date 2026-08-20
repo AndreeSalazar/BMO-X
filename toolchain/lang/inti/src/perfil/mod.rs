@@ -37,6 +37,7 @@ use std::collections::HashSet;
 use bmo_mods::Roots;
 
 use crate::arbol::*;
+use crate::arquitectura::Maquina;
 use crate::aviso::{codigos, Aviso, Cosecha, Sitio};
 
 /// La ruta relativa a una raiz de tablas.
@@ -54,7 +55,6 @@ const INCRUSTADA: &str =
 pub struct Catalogo {
     crecen: HashSet<String>,
     sin_tamano: HashSet<String>,
-    piden_crudo: HashSet<String>,
 }
 
 impl Catalogo {
@@ -94,7 +94,6 @@ impl Catalogo {
         Self {
             crecen: lista("llano", "tipos_que_crecen"),
             sin_tamano: lista("llano", "tipos_sin_tamano"),
-            piden_crudo: lista("crudo", "nombres"),
         }
     }
 
@@ -102,7 +101,6 @@ impl Catalogo {
         Self {
             crecen: HashSet::new(),
             sin_tamano: HashSet::new(),
-            piden_crudo: HashSet::new(),
         }
     }
 }
@@ -110,6 +108,12 @@ impl Catalogo {
 /// Lo que sale del analisis, aparte de los avisos.
 #[derive(Debug, Clone, Default)]
 pub struct Informe {
+    /// Las arquitecturas que el fichero declaro con `usa`.
+    ///
+    /// ** Es la otra mitad del medidor: `crudo` dice **cuanto** no se comprueba
+    /// y esto dice **a que maquina se ata**. Un modulo con esta lista vacia se
+    /// recompila en cualquier sitio.
+    pub arquitecturas: Vec<String>,
     /// Cuantos bloques `crudo` tiene el modulo.
     ///
     /// ** Este numero es el que convierte *"cuanto de mi programa esta atado a
@@ -119,12 +123,20 @@ pub struct Informe {
 }
 
 /// Comprueba un modulo contra su perfil.
-pub fn comprobar(m: &Modulo, cat: &Catalogo) -> Cosecha<Informe> {
+///
+/// `maquinas` son las que el fichero declaro con `usa` y existen. Sin ellas,
+/// un nombre como `entrada_puerto` es un nombre cualquiera -- que es lo
+/// correcto: **solo existe si dijiste `usa x86_64`**.
+pub fn comprobar(m: &Modulo, cat: &Catalogo, maquinas: &[Maquina]) -> Cosecha<Informe> {
+    let mut informe = Informe::default();
+    informe.arquitecturas = maquinas.iter().map(|x| x.nombre().to_string()).collect();
+
     let mut v = Vigia {
         perfil: m.perfil,
         cat,
+        maquinas,
         avisos: Vec::new(),
-        informe: Informe::default(),
+        informe,
         dentro_de_crudo: false,
     };
 
@@ -138,6 +150,7 @@ pub fn comprobar(m: &Modulo, cat: &Catalogo) -> Cosecha<Informe> {
 struct Vigia<'c> {
     perfil: Perfil,
     cat: &'c Catalogo,
+    maquinas: &'c [Maquina],
     avisos: Vec<Aviso>,
     informe: Informe,
     dentro_de_crudo: bool,
@@ -337,7 +350,10 @@ impl<'c> Vigia<'c> {
 
     /// El nombre toca el metal y no esta dentro de un `crudo`.
     fn quiza_pide_crudo(&mut self, nombre: &str, sitio: Sitio) {
-        if self.dentro_de_crudo || !self.cat.piden_crudo.contains(nombre) {
+        if self.dentro_de_crudo {
+            return;
+        }
+        if !self.maquinas.iter().any(|m| m.pide_crudo(nombre)) {
             return;
         }
         self.avisos.push(
