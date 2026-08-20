@@ -3,7 +3,7 @@
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
 > 🟢 **F0, F1, F2a y F2b en verde (2026-08-19).** El contrato, el lexico, la
-> gramatica, los perfiles y los nombres: **142 pruebas**. Todavia no emite bytes.
+> gramatica, los perfiles y los nombres: **149 pruebas**. Todavia no emite bytes.
 
 ## Que es, en una frase
 
@@ -96,6 +96,24 @@ funcion lee_tecla devuelve natural8
       devuelve entrada_puerto(0x60)
 ```
 
+## Modo Python: una columna, no una libreria
+
+```python
+profile full
+
+def saludar(nombre):
+    return "Hola " + nombre
+```
+
+Eso **se lee tal cual** cambiando `idioma_por_defecto` a `"py"` en
+[`palabras.toml`](../../forge/sem-asm/tables/lang/inti/palabras.toml). Cero
+lineas de compilador -- porque las palabras clave estuvieron en una tabla desde
+el primer dia.
+
+★★ Y cambia las **palabras**, no las **reglas**: `0.1 + 0.2` sigue dando `0.3`,
+desbordar sigue atrapando, `var` sigue haciendo falta. **La sintaxis de Python
+sin las quince sorpresas.**
+
 ## La puerta no es sintaxis
 
 Ni una palabra clave de INTI habla de `INVOKE`, `WAIT` o capabilities -- y aun
@@ -122,7 +140,7 @@ casado con el. Detalle entero en [`GRAMATICA.md`](GRAMATICA.md) sec. 17.
    cargo test -p bmo-inti-front
 ```
 
-142 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
+149 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
 de compilador** (hay lista negra), que **el dedo cae en la columna exacta**
 contando caracteres y no bytes, que **el mismo lexer lee ingles** sin cambiar
 una linea, que una palabra clave **con tilde sigue siendo palabra clave**, y que

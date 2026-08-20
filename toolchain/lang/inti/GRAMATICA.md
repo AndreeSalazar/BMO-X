@@ -366,6 +366,105 @@ operacion Punto suma(a, b) devuelve Punto
 
 ---
 
+## 11b. ★★ El BLOQUE PROPIO de un registro
+
+Peticion de Eddi: *"si declaras, ese mismo se convierte BLOQUE... para facilitar
+el uso, una sola llamada porque YA esta declarada"*.
+
+Las operaciones de un tipo se escriben **dentro** del tipo, y ahi no hay que
+repetir su nombre:
+
+```text
+registro Punto
+   x es numero
+   y es numero
+
+   operacion suma(a, b) devuelve Punto
+      devuelve Punto(a.x + b.x, a.y + b.y)
+
+   operacion compara(a, b) devuelve numero
+      devuelve a.x - b.x
+```
+
+contra la forma suelta, que **sigue existiendo**:
+
+```text
+operacion Punto suma(a, b) devuelve Punto
+   ...
+```
+
+★ Y sale **el mismo nodo del arbol** por los dos caminos, igual que pasa con la
+llamada sin parentesis. No hay dos maneras de declarar una operacion: hay una,
+escrita de dos formas, y la de dentro no repite lo que ya se dijo en la linea de
+arriba.
+
+⚠ **Lo que esto NO es:** no es una clase. Dentro del bloque no hay `self`, no
+hay herencia, y una `operacion` no ve los campos por arte de magia -- recibe sus
+argumentos como cualquier funcion. Lo unico que cambia es **donde se escribe**.
+
+---
+
+## 11c. ★★★ MODO PYTHON -- y la ironia es que no hace falta ninguna libreria
+
+Peticion de Eddi: *"la libreria `usar modo python`; es ironico pero es libreria
+para eso"*.
+
+Es ironico de verdad, **porque no es una libreria: es una columna** de
+`palabras.toml`. Lo que costo fue decidirlo el primer dia -- poner las palabras
+en una tabla en vez de en el parser.
+
+```python
+profile full
+
+def saludar(nombre):
+    return "Hola " + nombre
+```
+
+Eso **se lee tal cual**, y hay un test que lo comprueba. Se activa cambiando
+`meta.idioma_por_defecto` a `"py"`, o dejando el fichero en `$BMO_MODS` con ese
+cambio. **Cero lineas de compilador.**
+
+### El `:` del final se acepta y se ignora
+
+No es una segunda sintaxis: es **tolerancia**. Quien viene de Python escribe
+`def f(x):` sin pensarlo, y hacerle tropezar en el primer caracter para ganar una
+regla no compra nada. Dentro de una pareja el `:` sigue significando lo suyo
+(`{"a": 1}`, `f(x: 1)`), y por eso solo se come **justo antes del final de la
+linea**.
+
+### ★★ Lo que NO cambia, y es lo importante
+
+La columna cambia las **palabras**, no las **reglas**:
+
+```python
+profile full
+
+def media(notas):
+    var total = 0            # `var` sigue haciendo falta
+    for each n in notas:
+        total = total + n    # y desbordar sigue ATRAPANDO
+    return total / count of notas
+```
+
+`0.1 + 0.2` sigue dando `0.3`, no hay `global`, no hay `lambda`, y los errores
+siguen siendo datos.
+
+★★★ **Eso es exactamente lo que se buscaba: la sintaxis de Python sin las
+quince sorpresas.** Si tambien cambiaran las reglas, esto seria un Python peor
+-- y ya hay uno bueno.
+
+Lo que Python tiene y aqui no cabe, con su equivalente:
+
+| Python | INTI en modo `py` |
+|---|---|
+| `elif` | `else if` -- dos palabras que ya existen |
+| `lambda` | no hay funciones anonimas (`E0101`), y el motivo es el perfil |
+| `global` | no hace falta: el ambito es de funcion y lo de arriba esta congelado |
+| `try/except` | los errores son datos: `or else` |
+| `print(x)` | `print x` tambien vale (sec. 10b) |
+
+---
+
 ## 12. Errores: se escriben o no compila
 
 Tres formas, y no hay una cuarta:

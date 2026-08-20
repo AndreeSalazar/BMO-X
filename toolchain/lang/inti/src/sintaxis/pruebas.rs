@@ -536,3 +536,129 @@ fn un_nombre_solo_no_llama() {
     let b = en_principal("escribe\n");
     assert!(matches!(&b[0], Sent::Expresion(Expr::Nombre(..))), "{:?}", &b[0]);
 }
+
+// ===================================================================
+//  El modo Python: una columna, no una libreria
+// ===================================================================
+
+fn arbol_py(fuente: &str) -> Cosecha<Modulo> {
+    let v = Vocabulario::desde_texto(
+        include_str!("../../../../forge/sem-asm/tables/lang/inti/palabras.toml"),
+        Some("py"),
+    )
+    .expect("no carga el modo python");
+    let piezas = crate::lexico::barrer(fuente, &v);
+    assert!(
+        piezas.codigos().is_empty(),
+        "no lexa limpio: {:?}",
+        piezas.codigos()
+    );
+    leer(&piezas.valor, &v)
+}
+
+/// El ejemplo que dio Eddi, escrito tal cual:
+///
+/// ```python
+///    def saludar(nombre):
+///        return "Hola " + nombre
+/// ```
+#[test]
+fn el_ejemplo_de_python_se_lee_tal_cual() {
+    let m = arbol_py(
+        "profile full\n\ndef saludar(nombre):\n    return \"Hola \" + nombre\n",
+    );
+    assert!(!m.hay_errores(), "{}", m.pintar("saludar.inti"));
+    assert_eq!(m.valor.perfil, Perfil::Pleno);
+    match &m.valor.declaraciones[0] {
+        Decl::Funcion(f) => {
+            assert_eq!(f.nombre, "saludar");
+            assert_eq!(f.parametros.len(), 1);
+            assert!(matches!(&f.cuerpo[0], Sent::Devuelve { valor: Some(_), .. }));
+        }
+        otra => panic!("no es una funcion: {:?}", otra),
+    }
+}
+
+/// El `:` de Python al final de la linea se acepta y se ignora. No es una
+/// segunda sintaxis: es tolerancia.
+#[test]
+fn los_dos_puntos_del_final_se_ignoran() {
+    let m = arbol_py(
+        "profile full\n\ndef f(x):\n    if x > 0:\n        return 1\n    return 0\n",
+    );
+    assert!(!m.hay_errores(), "{}", m.pintar("f.inti"));
+}
+
+/// Y dentro de una pareja el `:` sigue significando lo suyo.
+#[test]
+fn los_dos_puntos_de_una_tabla_siguen_valiendo() {
+    let b = en_principal("x = {\"a\": 1, \"b\": 2}\n");
+    match &b[0] {
+        Sent::Asigna { valor, .. } => assert!(matches!(valor, Expr::Tabla(v, _) if v.len() == 2)),
+        otra => panic!("{:?}", otra),
+    }
+}
+
+/// Cambian las PALABRAS, no las REGLAS: `var` sigue haciendo falta para poder
+/// cambiar un nombre, igual que `cambiante`.
+#[test]
+fn el_modo_python_no_trae_las_reglas_de_python() {
+    let m = arbol_py("profile full\n\ndef f():\n    var total = 0\n    total = 1\n");
+    assert!(!m.hay_errores(), "{}", m.pintar("f.inti"));
+    match &m.valor.declaraciones[0] {
+        Decl::Funcion(f) => match &f.cuerpo[0] {
+            Sent::Asigna { cambiante, .. } => assert!(*cambiante),
+            otra => panic!("{:?}", otra),
+        },
+        _ => panic!(),
+    }
+}
+
+// ===================================================================
+//  El bloque propio de un registro
+// ===================================================================
+
+/// ** Una `operacion` escrita DENTRO del registro no repite el nombre del tipo,
+/// porque ya se dijo en la linea de arriba.
+#[test]
+fn un_registro_lleva_sus_operaciones_dentro() {
+    let m = arbol(
+        "perfil pleno\n\
+         registro Punto\n\
+         \x20   x es numero\n\
+         \x20   y es numero\n\
+         \n\
+         \x20   operacion suma(a, b) devuelve Punto\n\
+         \x20       devuelve Punto(a.x + b.x, a.y + b.y)\n",
+    );
+    assert!(!m.hay_errores(), "{}", m.pintar("punto.inti"));
+    match &m.valor.declaraciones[0] {
+        Decl::Registro {
+            nombre,
+            campos,
+            operaciones,
+            ..
+        } => {
+            assert_eq!(nombre, "Punto");
+            assert_eq!(campos.len(), 2, "los campos siguen siendo dos");
+            assert_eq!(operaciones.len(), 1);
+            assert_eq!(operaciones[0].nombre, "suma");
+        }
+        otra => panic!("{:?}", otra),
+    }
+}
+
+/// Y la forma suelta sigue existiendo: es el mismo nodo por dos caminos.
+#[test]
+fn la_operacion_suelta_sigue_valiendo() {
+    let m = arbol(
+        "perfil pleno\n\
+         registro Punto\n\
+         \x20   x es numero\n\
+         \n\
+         operacion Punto suma(a, b) devuelve Punto\n\
+         \x20   devuelve a\n",
+    );
+    assert!(!m.hay_errores(), "{}", m.pintar("punto.inti"));
+    assert!(matches!(&m.valor.declaraciones[1], Decl::Operacion { tipo, .. } if tipo == "Punto"));
+}

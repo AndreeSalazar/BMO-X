@@ -317,15 +317,36 @@ mod pruebas {
     /// tener EXACTAMENTE las mismas claves. Una clave suelta en un idioma seria
     /// una palabra que existe a medias.
     #[test]
-    fn los_dos_idiomas_tienen_las_mismas_claves() {
+    fn todas_las_columnas_tienen_las_mismas_claves() {
         let raiz: toml::Value = INCRUSTADO.parse().expect("la tabla no es TOML");
         let es = raiz["es"].as_table().expect("falta [es]");
-        let en = raiz["en"].as_table().expect("falta [en]");
 
-        let solo_es: Vec<_> = es.keys().filter(|k| !en.contains_key(*k)).collect();
-        let solo_en: Vec<_> = en.keys().filter(|k| !es.contains_key(*k)).collect();
-        assert!(solo_es.is_empty(), "solo en castellano: {:?}", solo_es);
-        assert!(solo_en.is_empty(), "solo en ingles: {:?}", solo_en);
+        for otro in ["en", "py"] {
+            let t = raiz[otro]
+                .as_table()
+                .unwrap_or_else(|| panic!("falta [{}]", otro));
+            let faltan: Vec<_> = es.keys().filter(|k| !t.contains_key(*k)).collect();
+            let sobran: Vec<_> = t.keys().filter(|k| !es.contains_key(*k)).collect();
+            assert!(faltan.is_empty(), "a [{}] le faltan: {:?}", otro, faltan);
+            assert!(sobran.is_empty(), "a [{}] le sobran: {:?}", otro, sobran);
+        }
+    }
+
+    /// ** El modo Python: la peticion de Eddi resuelta con una columna.
+    #[test]
+    fn el_modo_python_es_una_columna() {
+        let v = Vocabulario::desde_texto(INCRUSTADO, Some("py")).expect("no carga");
+        assert_eq!(v.cuantas(), 49);
+        assert_eq!(v.reconocer("def"), Some(Simbolo::Funcion));
+        assert_eq!(v.reconocer("return"), Some(Simbolo::Devuelve));
+        assert_eq!(v.reconocer("class"), Some(Simbolo::Registro));
+        assert_eq!(v.reconocer("while"), Some(Simbolo::Mientras));
+        // Con mayuscula, como en Python. El lexer pregunta al vocabulario antes
+        // de decidir que una palabra en mayuscula es un tipo.
+        assert_eq!(v.reconocer("True"), Some(Simbolo::Cierto));
+        assert_eq!(v.reconocer("None"), Some(Simbolo::Nada));
+        // Y `funcion` deja de ser palabra clave en ese dialecto.
+        assert_eq!(v.reconocer("funcion"), None);
     }
 
     /// El numero que declara `[meta]` y el que hay tienen que coincidir, y los

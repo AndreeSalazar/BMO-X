@@ -144,6 +144,21 @@ impl<'p> Cursor<'p> {
     /// vez y tira el resto: es lo que evita que un parentesis de mas convierta
     /// el fichero en una cascada.
     pub(crate) fn fin_de_linea(&mut self) {
+        // ** El `:` de Python al final de la linea se acepta y se ignora.
+        //
+        // No es una segunda sintaxis: es TOLERANCIA. Quien viene de Python
+        // escribe `def f(x):` sin pensarlo, y hacerle tropezar en el primer
+        // caracter para ganar una regla no compra nada. Dentro de una pareja el
+        // `:` sigue significando lo suyo (`{a: 1}`, `f(x: 1)`), y por eso solo
+        // se come **justo antes del final de la linea**.
+        if self.mira().es_signo(Signo::DosPuntos)
+            && matches!(
+                self.piezas.get(self.i + 1).map(|p| &p.clase),
+                Some(Clase::FinLinea)
+            )
+        {
+            self.avanza();
+        }
         if matches!(self.mira().clase, Clase::FinLinea) {
             self.avanza();
             return;
@@ -439,11 +454,23 @@ fn registro(c: &mut Cursor) -> Option<Decl> {
     }
 
     let mut campos = Vec::new();
+    let mut operaciones = Vec::new();
     if matches!(c.mira().clase, Clase::Sangra) {
         c.avanza();
         while !c.se_acabo() && !matches!(c.mira().clase, Clase::Desangra) {
             if matches!(c.mira().clase, Clase::FinLinea) {
                 c.avanza();
+                continue;
+            }
+            // ** El BLOQUE PROPIO: una `operacion` escrita dentro del registro
+            // no repite el nombre del tipo, porque ya se dijo arriba.
+            if c.mira().es(Simbolo::Operacion) {
+                let sitio_op = c.sitio();
+                c.avanza();
+                match cabecera_de_funcion(c, sitio_op) {
+                    Some(f) => operaciones.push(f),
+                    None => c.hasta_fin_de_linea(),
+                }
                 continue;
             }
             match campo(c) {
@@ -459,6 +486,7 @@ fn registro(c: &mut Cursor) -> Option<Decl> {
     Some(Decl::Registro {
         nombre,
         campos,
+        operaciones,
         sitio,
     })
 }
