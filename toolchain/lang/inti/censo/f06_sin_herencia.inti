@@ -3,7 +3,7 @@
 perfil pleno
 
 registro Persona
-   nombre es texto
+    nombre es texto
 
 registro Alumno de Persona
-   nota es numero
+    nota es numero

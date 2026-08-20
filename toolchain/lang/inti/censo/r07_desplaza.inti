@@ -4,5 +4,5 @@
 perfil llano
 
 funcion principal
-   x es entero32 = 1
-   escribe x desplaza izquierda 40
+    x es entero32 = 1
+    escribe x desplaza izquierda 40

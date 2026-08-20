@@ -115,6 +115,10 @@ members = [
     # Ada: crate PROPIO y sin dependencia de los demas frontends. Cada
     # lenguaje es un pipeline individual y completo -- lo unico compartido son
     # contratos (BEF, los 2 syscalls) y librerias opcionales (bmo-lower).
+    # INTI -- el lenguaje propio. No es el quinto frontend: los otros cuatro
+    # son compatibilidad con el mundo, y este es el unico que no le debe nada
+    # a nadie. Ver docs/maestro/INTI_MAESTRO.md.
+    "toolchain/lang/inti",
     "toolchain/lang/ada",
     "toolchain/lang/cobol",
     "toolchain/lang/cpp",

@@ -3,8 +3,8 @@
 perfil llano
 
 funcion lee_tecla devuelve natural8
-   repite mientras (entrada_puerto(0x64) bits_y 1) = 0
-      espera()
+    repite mientras (entrada_puerto(0x64) bits_y 1) = 0
+        espera()
 
-   crudo
-      devuelve entrada_puerto(0x60)
+    crudo
+        devuelve entrada_puerto(0x60)

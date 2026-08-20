@@ -4,5 +4,5 @@
 perfil pleno
 
 funcion principal
-   crudo
-      escribe_puerto(0x60, 0)
+    crudo
+        escribe_puerto(0x60, 0)

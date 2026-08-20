@@ -2,6 +2,7 @@
 perfil pleno
 
 funcion principal
-   cambiante x = 5
-   x = x + 1
-   escribe x
+    cambiante x = 5
+    x = x + 1
+    escribe x
+    

@@ -4,4 +4,4 @@
 perfil llano
 
 funcion cuenta(x es numero) devuelve numero
-   devuelve x + 1
+    devuelve x + 1

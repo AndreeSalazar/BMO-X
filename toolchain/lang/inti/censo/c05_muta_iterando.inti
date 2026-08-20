@@ -4,6 +4,6 @@
 perfil pleno
 
 funcion principal
-   cambiante notas = [1, 2, 3]
-   para cada n en notas
-      quita n de notas
+    cambiante notas = [1, 2, 3]
+    para cada n en notas
+        quita n de notas

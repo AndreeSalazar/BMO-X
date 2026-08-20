@@ -2,9 +2,8 @@
 
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
-> 🟡 **Estado: F0 -- CONTRATO ESCRITO, CERO CODIGO.** No hay lexer, ni parser,
-> ni runtime. Lo que hay es lo que se decidio, escrito de forma que se pueda
-> discutir y medir despues.
+> 🟢 **F0 escrito y F1a en verde (2026-08-19).** El contrato entero, y el
+> **lexico completo con 59 pruebas**. No hay parser ni runtime todavia.
 
 ## Que es, en una frase
 
@@ -30,6 +29,8 @@ Tres cosas lo definen, y ninguna es negociable:
 | [`CENSO.md`](CENSO.md) | **38 sondas** con el veredicto escrito por delante, para que el desacuerdo se vea solo |
 | [`palabras.toml`](../../forge/sem-asm/tables/lang/inti/palabras.toml) | las **49 palabras clave**, en una tabla y con la columna inglesa ya escrita |
 | `censo/*.inti` | las sondas. Cada una lleva su expectativa en la primera linea |
+| [`ARQUITECTURA.md`](ARQUITECTURA.md) | **por que el compilador esta partido asi** -- el criterio de corte, la regla de dependencias, y por que la modularidad es lo que mantiene el syscall fuera del lenguaje |
+| `src/` | el frontend. `aviso`, `palabras`, `lexico` |
 
 El **porque** de todo esto -- la investigacion, los numeros y las alternativas
 descartadas -- esta en [`docs/maestro/INTI_MAESTRO.md`](../../../docs/maestro/INTI_MAESTRO.md).
@@ -112,12 +113,26 @@ Motivo de fondo: **`read()` nunca fue palabra clave de C**, y por eso Unix pudo
 saltar al Interdata. Un lenguaje que reserva los syscalls de su sistema queda
 casado con el. Detalle entero en [`GRAMATICA.md`](GRAMATICA.md) sec. 17.
 
+## Como se comprueba
+
+```text
+   cargo test -p bmo-inti-front
+```
+
+59 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
+de compilador** (hay lista negra), que **el dedo cae en la columna exacta**
+contando caracteres y no bytes, que **el mismo lexer lee ingles** sin cambiar
+una linea, que una palabra clave **con tilde sigue siendo palabra clave**, y que
+**ninguna de las 38 sondas lleva un fallo de escritura escondido** -- lo que
+destapo que el corpus usaba tres espacios y la gramatica cuatro.
+
 ## Lo siguiente
 
 | fase | entregable | estado |
 |---|---|---|
 | **F0** | gramatica, doce reglas, censo | ✅ **escrito** (2026-08-19) |
-| F1 | lexer + parser -> AST, con los mensajes de 4 partes | pendiente |
+| **F1a** | **lexico**: palabras, textos, numeros, sangria, parejas, y los avisos de 4 partes | ✅ **59 pruebas en verde** (2026-08-19) |
+| F1b | arbol + sintaxis: de piezas a arbol | pendiente |
 | F2 | ★ INTI LLANO compilando a `.bex` nativo, por `bmo-verify` | pendiente |
 | F3 | las doce reglas con sus sondas en verde | pendiente |
 | F4 | ★★ la foto del Ryzen | pendiente |

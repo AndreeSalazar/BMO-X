@@ -3,12 +3,12 @@
 perfil pleno
 
 funcion principal
-   para cada i en 0 hasta 3
-      escribe i
+    para cada i en 0 hasta 3
+        escribe i
 
-   repite 2 veces
-      escribe "."
+    repite 2 veces
+        escribe "."
 
-   cambiante quedan = cierto
-   repite mientras quedan
-      quedan = falso
+    cambiante quedan = cierto
+    repite mientras quedan
+        quedan = falso
