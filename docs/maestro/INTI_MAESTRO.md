@@ -512,6 +512,61 @@ lo que ya podias hacer -- y hace que se vea.
 
 ---
 
+### 7.2 AGNOSTICO, y vigilado con un test
+
+> Regla de Eddi, 2026-08-19: *"INTI es agnostico, entonces mis lenguajes son
+> agnosticos, lo mismo con BMO ABI; no va a representar x86-64 exclusivo, si no
+> seria atado. Por eso tenias razon en la palabra CRUDO."*
+
+**La ley:** el frontend de INTI **no puede nombrar una maquina**. Ni registros,
+ni opcodes, ni anchos de palabra, ni convenciones de llamada. Lo que si sabe de
+la maquina vive en `tables/arch/<arquitectura>/`, que es una carpeta de
+**datos**.
+
+#### El reparto, con la frontera dicha
+
+| capa | sabe de la maquina | por que |
+|---|---|---|
+| `lexico`, `arbol`, `sintaxis` | **nada** | un `si` es un `si` en cualquier procesador |
+| analisis (perfiles, nombres, tipos) | **nada** | tampoco |
+| la IR | **nada** | por eso hay una IR: si el arbol fuera a bytes, la maquina se colaria en el arbol |
+| el **perfil de maquina** | ancho de puntero, alineacion, orden de bytes, registros, convencion | ★ son **datos**, no codigo |
+| la seleccion de instrucciones | todo | y vive en `tables/arch/`, como `intrinsics.toml` |
+
+#### ⚠ Y esto NO es una promesa: hay un test
+
+`tests/agnostico.rs` recorre el frontend entero y falla si aparece `rax`,
+`x86`, `sysv`, `modrm`... **incluidos los comentarios**, a proposito: un
+comentario que explica algo en terminos de `rax` es la senal de que alguien
+estaba pensando en x86 mientras escribia una parte que no debia saber de eso.
+
+Una regla asi **se cumple sola el primer dia y se rompe el tercero**, cuando
+alguien necesita el tamano de un puntero y escribe un `8`. No se rompe por
+descuido: se rompe porque en ese momento es *lo mas facil* -- exactamente igual
+que meter el syscall en el compilador. Por eso se vigila como se vigila la
+codificacion con `ascii-sweep`.
+
+★ Lo que el test **no** puede probar: que INTI corra en ARM. Eso solo lo prueba
+un ARM. Prueba que **nadie ha escrito todavia la linea que lo impediria**, y eso
+se puede saber hoy y sin hardware.
+
+#### ★★ Y `crudo` no es solo una valvula: es el MEDIDOR
+
+Aqui es donde la palabra se gana el nombre. Como `crudo` hay que **escribirlo**
+y el compilador lo **cuenta**, la pregunta *"cuanto de mi programa esta atado a
+esta maquina?"* deja de ser una impresion y pasa a ser **un numero que sale en
+el informe del `.bex`**.
+
+```text
+   programa de 4.000 lineas, 2 bloques `crudo`  ->  se porta, y se sabe por donde
+   programa de 4.000 lineas, 200 bloques        ->  no se porta, y tambien se sabe
+```
+
+Ningun otro lenguaje puede decirte eso: en C, lo atado a la maquina esta
+repartido en `#ifdef`s que nadie ha contado nunca.
+
+---
+
 ## 8. "ESTRICTO PARA FACILITAR, PERO TE AYUDA" -- en que se diferencia de Rust
 
 Eddi lo dijo asi y merece precision, porque **hay dos estricteces muy
