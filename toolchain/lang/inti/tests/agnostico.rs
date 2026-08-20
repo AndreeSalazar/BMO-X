@@ -168,10 +168,10 @@ perfil llano
 usa metal
 
 funcion lee_tecla devuelve natural8
-    repite mientras (entrada_puerto(0x64) bits_y 1) = 0
-        espera()
-
     crudo
+        repite mientras (entrada_puerto(0x64) bits_y 1) = 0
+            espera()
+
         devuelve entrada_puerto(0x60)
 ";
     let c = bmo_inti_front::leer(fuente);

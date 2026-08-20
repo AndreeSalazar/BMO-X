@@ -554,6 +554,13 @@ fn operacion(c: &mut Cursor) -> Option<Decl> {
 
 fn cabecera_de_funcion(c: &mut Cursor, sitio: Sitio) -> Option<Funcion> {
     let nombre = match c.mira().clase.clone() {
+        // `funcion a(...)`: una funcion llamada `a` o `y` es legitima, igual
+        // que una variable.
+        Clase::Palabra(s) if es_nombrable(s) => {
+            let n = c.vocab.texto(s).to_string();
+            c.avanza();
+            n
+        }
         Clase::Nombre(n) => {
             c.avanza();
             n

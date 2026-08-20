@@ -52,6 +52,9 @@ un trozo del lexer, y va dentro.
 | `lexico::pieza` | *"los datos que salen de leer texto"* | como se leyeron |
 | `lexico::sangria` | *"una pila de margenes"* | que hay letras alrededor |
 | `lexico` | *"de bytes a piezas"* | la gramatica |
+| `arbol` | *"la forma de un programa"* | como se leyo |
+| `sintaxis` | *"de piezas a arbol"* | si los nombres existen |
+| `perfil` | *"esto cabe en el perfil declarado?"* | como se emite |
 
 Y lo que ese criterio **rechazo**: no hay un modulo `util`, ni `comun`, ni
 `helpers`. Ninguno de los tres pasa la prueba, porque los tres se explican
@@ -136,6 +139,25 @@ va a vivir, y ese no es el lexer.
 
 Suelto, se prueba sin lexer: entra `[0, 4, 8, 0]` y salen tres piezas.
 
+### `perfil` -- la frontera entre `llano` y `pleno`
+
+**Que es.** Recorre el arbol y contesta una pregunta: *esto cabe en el perfil
+que declaro el fichero?*
+
+**Por que existe aparte.** Porque el parser **avanza** y esto **decide**. Un
+`crudo` es sintacticamente igual de valido en los dos perfiles; lo que cambia es
+si esta permitido, y esa es una pregunta sobre el modulo entero, no sobre la
+linea.
+
+**Lo que saca, ademas de avisos.** ★★ El numero de bloques `crudo`. Es lo que
+convierte *"cuanto de mi programa esta atado a esta maquina?"* en un dato que va
+al informe del `.bex`.
+
+**Y lo que NO decide el compilador**: que crece y que pide `crudo` sale de
+`tables/lang/inti/biblioteca.toml`. Son datos sobre la biblioteca, no sobre el
+lenguaje -- si vivieran en el compilador, anadir una operacion de sistema
+obligaria a recompilarlo.
+
 ### `lexico` -- el barrido
 
 **Que es.** De bytes a piezas.
@@ -185,7 +207,7 @@ estos modulos**:
 |---|---|---|
 | `arbol` | los nodos, datos puros | no llama a nadie |
 | `sintaxis` | de piezas a arbol | solo conoce `pieza` y `arbol` |
-| `perfil` | que admite `llano` y que `pleno` | dice si o no, no emite |
+| ~~`perfil`~~ | ✅ **hecho** | |
 | `nombres` | quien es cada nombre y si es `cambiante` | tampoco emite |
 | `emision` | de arbol a `.bex`, via `bmo-lower` | **aqui SI se emite** -- y la puerta llega como una **fila de tabla** (`intrinsics.toml`), igual que en BMO C |
 

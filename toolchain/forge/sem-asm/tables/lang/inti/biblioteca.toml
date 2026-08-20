@@ -1,0 +1,72 @@
+#  biblioteca.toml -- lo que el compilador tiene que saber de la biblioteca
+#  base sin conocerla.
+#
+#  == Por que esto es una tabla ==
+#
+#  El analisis de perfiles necesita contestar dos preguntas:
+#
+#      1. este tipo, crece? (entonces pide monton, y en `llano` no hay)
+#      2. este nombre, toca el metal? (entonces hay que escribirlo en `crudo`)
+#
+#  Las dos respuestas son DATOS sobre la biblioteca, no sobre el lenguaje. Si
+#  vivieran en el compilador, anadir una operacion de sistema obligaria a
+#  recompilar el compilador -- que es exactamente lo que `intrinsics.toml`
+#  decidio no hacer nunca.
+#
+#  == Y por que la seccion `[crudo]` es PROVISIONAL ==
+#
+#  Lo que exige `crudo` depende de la maquina: `entrada_puerto` existe en x86 y
+#  no en ARM, donde el equivalente es una lectura a una direccion mapeada. Asi
+#  que el sitio definitivo de esa lista es `tables/arch/<arquitectura>/`, junto
+#  a `intrinsics.toml`, y aqui esta mientras solo haya una arquitectura.
+#
+#  Se deja anotado a proposito: una lista provisional que nadie marca como
+#  provisional se queda diez anos.
+
+[meta]
+version = 1
+
+# ===================================================================
+#  Lo que el perfil `llano` NO admite
+# ===================================================================
+#
+#  El criterio es uno solo: **crece**. Un `texto` al que se le pega otro texto
+#  tiene que pedir memoria, y en `llano` no hay a quien pedirsela. No es una
+#  lista de cosas prohibidas por gusto: es la consecuencia de no tener monton.
+[llano]
+tipos_que_crecen = ["texto", "lista", "tabla"]
+
+#  `numero` es aparte y por otro motivo: no crece, pero **no dice su tamano**.
+#  Sin tamano no se puede reservar en la pila ni elegir la instruccion, asi que
+#  en `llano` hay que escribir `entero32`, `natural8`, etc.
+tipos_sin_tamano = ["numero", "decimal"]
+
+# ===================================================================
+#  Lo que exige un bloque `crudo`
+# ===================================================================
+#
+#  La regla no es "esto es de bajo nivel": es **aqui nadie comprueba por ti**.
+#  Por eso `invoca` NO esta en esta lista aunque sea la puerta del sistema --
+#  al otro lado hay un kernel que valida una capability. Y `entrada_puerto` si
+#  esta, porque al otro lado no hay nadie.
+[crudo]
+nombres = [
+    "entrada_puerto",
+    "escribe_puerto",
+    "lee_msr",
+    "escribe_msr",
+    "memoria_fisica",
+    "salta_a",
+]
+
+# ===================================================================
+#  Lo que NO esta aqui, y es a proposito
+# ===================================================================
+#
+#  El catalogo completo de REX (`escribe`, `guarda`, `pinta`, `cuenta`...) no
+#  vive en esta tabla. El compilador no necesita conocerlo para analizar
+#  perfiles: le basta saber que crece y que no comprueba nadie.
+#
+#  Meter aqui la lista entera convertiria este fichero en una segunda
+#  declaracion de la biblioteca, y dos declaraciones de la misma cosa acaban
+#  discrepando. La biblioteca se declara en REX, en un sitio.

@@ -20,7 +20,8 @@ primera linea, asi que **la sonda y su expectativa no se pueden separar**.
 
 ## El numero
 
-**38 sondas. 0 medidas.** (F0 no compila nada: eso es F1.)
+**38 sondas. 4 medidas de verdad** (las de perfil, desde F2a), y el resto
+esperando a su fase.
 
 | familia | sondas | que fija |
 |---|---|---|

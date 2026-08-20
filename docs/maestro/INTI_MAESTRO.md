@@ -1252,12 +1252,12 @@ Y el mismo lenguaje, perfil LLANO, escribiendo sistema:
 perfil llano
 
 funcion lee_tecla devuelve entero8
-   repite mientras (entrada_puerto(0x64) y 1) es 0
-      espera()
-
    crudo
-      devuelve entrada_puerto(0x60)      # el unico sitio que el lenguaje
-                                         # no puede comprobar, y se VE
+      repite mientras (entrada_puerto(0x64) bits_y 1) = 0
+         espera()
+
+      devuelve entrada_puerto(0x60)      # los DOS puertos van dentro: el
+                                         # bucle tambien toca el metal
 ```
 
 Lo que hay que mirar: **`cambiante` aparece y se ve**; no hay `try` ni `except`

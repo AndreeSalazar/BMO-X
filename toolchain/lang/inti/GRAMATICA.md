@@ -371,10 +371,10 @@ Y **si** hay, y sirve para escribir un driver:
 perfil llano
 
 funcion lee_tecla devuelve natural8
-   repite mientras (entrada_puerto(0x64) bits_y 1) = 0
-      espera()
-
    crudo
+      repite mientras (entrada_puerto(0x64) bits_y 1) = 0
+         espera()
+
       devuelve entrada_puerto(0x60)
 ```
 
