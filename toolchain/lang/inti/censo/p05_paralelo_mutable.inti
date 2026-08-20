@@ -4,7 +4,7 @@
 perfil pleno
 
 funcion principal
-   cambiante acumulado = [0]
-   en paralelo
-      anade 1 a acumulado
-      anade 2 a acumulado
+    cambiante acumulado = [0]
+    en paralelo
+        anade 1 a acumulado
+        anade 2 a acumulado

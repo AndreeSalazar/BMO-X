@@ -3,4 +3,4 @@
 perfil llano
 
 funcion principal
-   notas = [1, 2, 3]
+    notas = [1, 2, 3]

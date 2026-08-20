@@ -164,6 +164,14 @@ name = "bmo-input"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-inti-front"
+version = "0.1.0"
+dependencies = [
+ "bmo-mods",
+ "toml",
+]
+
+[[package]]
 name = "bmo-juicio"
 version = "0.1.0"
 

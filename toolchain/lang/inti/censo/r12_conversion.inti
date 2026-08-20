@@ -3,5 +3,5 @@
 perfil llano
 
 funcion principal
-   f es flotante64 = 1e30
-   escribe entero32(f)
+    f es flotante64 = 1e30
+    escribe entero32(f)

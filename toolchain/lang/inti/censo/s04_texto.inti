@@ -3,7 +3,7 @@
 perfil pleno
 
 funcion principal
-   nombre = "eddi"
-   escribe "hola {nombre}"
-   escribe "una llave literal: \{"
-   escribe "salto:\nfin"
+    nombre = "eddi"
+    escribe "hola {nombre}"
+    escribe "una llave literal: \{"
+    escribe "salto:\nfin"

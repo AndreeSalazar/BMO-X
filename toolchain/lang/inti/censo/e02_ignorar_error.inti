@@ -4,9 +4,9 @@
 perfil pleno
 
 funcion divide(a es numero, b es numero) devuelve numero o error
-   si b = 0
-      falla "entre cero no"
-   devuelve a / b
+    si b = 0
+        falla "entre cero no"
+    devuelve a / b
 
 funcion principal
-   escribe divide(10, 0)
+    escribe divide(10, 0)

@@ -7,4 +7,4 @@ perfil llano
 usa bmo
 
 funcion escribe_byte(salida es natural64, b es natural8) devuelve natural64
-   devuelve invoca(salida, OP_ESCRIBIR, b, 0, 0)
+    devuelve invoca(salida, OP_ESCRIBIR, b, 0, 0)

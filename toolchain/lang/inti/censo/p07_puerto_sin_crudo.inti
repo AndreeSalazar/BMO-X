@@ -5,4 +5,4 @@ perfil llano
 usa metal
 
 funcion lee_tecla devuelve natural8
-   devuelve entrada_puerto(0x60)
+    devuelve entrada_puerto(0x60)

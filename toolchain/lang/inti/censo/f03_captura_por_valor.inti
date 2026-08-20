@@ -4,10 +4,10 @@
 perfil pleno
 
 funcion principal
-   cambiante fs = []
-   para cada i en 0 hasta 3
-      anade funcion() devuelve numero
-         devuelve i
-      a fs
-   para cada f en fs
-      escribe f()
+    cambiante fs = []
+    para cada i en 0 hasta 3
+        anade funcion() devuelve numero
+            devuelve i
+        a fs
+    para cada f en fs
+        escribe f()

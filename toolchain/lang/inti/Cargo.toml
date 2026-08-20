@@ -1,0 +1,30 @@
+[package]
+name = "bmo-inti-front"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "INTI -- el lenguaje de BMO-X. Frontend: de texto a arbol."
+
+# -- Lo que enlaza, y lo que NO ------------------------------------
+#
+# NO depende de ningun otro frontend, igual que Ada no depende de COBOL: cada
+# lenguaje es un pipeline individual y completo (regla 2 del proyecto --
+# "contratos y formatos, NUNCA cerebros").
+#
+# Y de momento NO depende de `bmo-abi`, `bmo-lower` ni `bmo-verify`, que es lo
+# que enlazan los otros cuatro. No es un olvido: **F1 no emite bytes**. Entra
+# texto y sale un arbol. Enlazar el emisor antes de tener nada que emitir
+# ataria el frontend a la forma del backend antes de saber si encaja, que es
+# exactamente el orden que este proyecto evita.
+[dependencies]
+# La raiz de tablas y su regla de precedencia ($BMO_MODS -> mods/ -> tables/).
+# Se enlaza en vez de reimplementarse porque la lista de rutas candidatas ya
+# estuvo copiada en dos sitios una vez, y una de las copias apunto durante
+# meses a un directorio muerto.
+bmo-mods = { path = "../../forge/bmo-mods" }
+# Para leer `palabras.toml`. La misma version que usa sem-asm.
+toml = "0.8"
+
+[lib]
+name = "bmo_inti_front"
+path = "src/lib.rs"

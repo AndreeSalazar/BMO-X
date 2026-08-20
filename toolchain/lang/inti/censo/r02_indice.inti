@@ -4,5 +4,5 @@
 perfil pleno
 
 funcion principal
-   notas = [1, 2, 3]
-   escribe notas[3]
+    notas = [1, 2, 3]
+    escribe notas[3]

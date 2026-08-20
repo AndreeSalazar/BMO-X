@@ -1,4 +1,4 @@
 # sonda: s02_sin_perfil    espera: E0001
 # fija: un modulo sin `perfil` no compila. No hay perfil por defecto.
 funcion principal
-   escribe "hola"
+    escribe "hola"

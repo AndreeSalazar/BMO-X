@@ -4,5 +4,5 @@
 perfil llano
 
 funcion principal
-   cambiante x es entero32
-   escribe x
+    cambiante x es entero32
+    escribe x

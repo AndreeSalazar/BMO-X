@@ -3,5 +3,5 @@
 perfil pleno
 
 funcion suma_uno(x es numero) devuelve numero
-   x = x + 1
-   devuelve x
+    x = x + 1
+    devuelve x

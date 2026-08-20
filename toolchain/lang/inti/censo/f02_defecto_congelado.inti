@@ -4,8 +4,8 @@
 perfil pleno
 
 funcion apunta(x es numero, donde es lista de numero = [])
-   escribe cuenta de donde
+    escribe cuenta de donde
 
 funcion principal
-   apunta(1)
-   apunta(2)
+    apunta(1)
+    apunta(2)

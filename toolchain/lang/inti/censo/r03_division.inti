@@ -3,5 +3,5 @@
 perfil pleno
 
 funcion principal
-   cambiante b = 0
-   escribe 10 / b
+    cambiante b = 0
+    escribe 10 / b

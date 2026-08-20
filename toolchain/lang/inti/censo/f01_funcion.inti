@@ -2,12 +2,12 @@
 perfil pleno
 
 funcion media(numeros es lista de numero) devuelve numero
-   si esta vacia numeros
-      devuelve 0
-   cambiante suma = 0
-   para cada n en numeros
-      suma = suma + n
-   devuelve suma / cuenta de numeros
+    si esta vacia numeros
+        devuelve 0
+    cambiante suma = 0
+    para cada n en numeros
+        suma = suma + n
+    devuelve suma / cuenta de numeros
 
 funcion principal
-   escribe media([8, 6, 9])
+    escribe media([8, 6, 9])

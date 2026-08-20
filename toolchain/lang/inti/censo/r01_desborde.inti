@@ -3,5 +3,5 @@
 perfil llano
 
 funcion principal
-   cambiante total es entero32 = 2147483600
-   total = total + 100
+    cambiante total es entero32 = 2147483600
+    total = total + 100
