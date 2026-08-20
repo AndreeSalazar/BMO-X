@@ -184,6 +184,16 @@ barrera_lectura = "lfence"
 barrera_escritura = "sfence"
 
 # -- cuentas de bits ---------------------------------------------------
+#
+#  OJO: Estos SEIS tambien los sirve `usa binarios`, con los mismos nombres y de
+#  forma portable. Aqui estan porque en esta maquina son UNA instruccion, y
+#  porque un programa de `llano` que ya declaro `usa x86_64` no deberia tener
+#  que pedir dos modulos para contar bits.
+#
+#  ** La diferencia no es tecnica, es de declaracion: quien escribe
+#  `usa binarios` dice *"esto se porta"*; quien escribe `usa x86_64` dice
+#  *"esto no"*. El compilador no elige por ti cual de las dos cosas quieres
+#  decir.
 cuenta_unos     = "popcnt"
 primer_uno      = "bsf"
 ultimo_uno      = "bsr"

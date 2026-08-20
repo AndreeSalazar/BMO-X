@@ -119,3 +119,49 @@ fn la_pila_y_el_marco_no_se_reparten_nunca() {
     assert!(!m.trabajo().contains(&rsp));
     assert!(!m.trabajo().contains(&rbp));
 }
+
+/// ** En x86-64, CADA operacion de `usa binarios` tiene una instruccion detras.
+///
+/// Peticion de Eddi: *"una libreria de binarios literalmente, usando su
+/// fortaleza para casos MUY ESPECIFICOS"*. Esto es lo que la hace util de
+/// verdad: el nombre es agnostico --se porta-- y en ESTA maquina cuesta una
+/// instruccion.
+///
+/// Si algun dia una deja de tenerla, este test lo dice. Y eso es exactamente lo
+/// que hay que saber antes de escribir un bucle apretado: no *"existe"*, sino
+/// *"cuanto cuesta aqui"*.
+#[test]
+fn cada_operacion_de_bits_es_una_instruccion_en_esta_maquina() {
+    let m = x86();
+    const BITS: &[&str] = &[
+        "cuenta_unos",
+        "primer_uno",
+        "ultimo_uno",
+        "ceros_delante",
+        "ceros_detras",
+    ];
+    for op in BITS {
+        assert!(
+            m.conoce(op),
+            "`{}` no tiene instruccion en x86-64: seria una llamada",
+            op
+        );
+    }
+    // Y la que se llama distinto porque el tamano importa.
+    assert!(m.conoce("da_la_vuelta32") && m.conoce("da_la_vuelta64"));
+}
+
+/// Lo que SI es exclusivo de esta maquina no lo sirve ninguna libreria
+/// portable: si lo usas, es que declaraste `usa x86_64`.
+#[test]
+fn lo_exclusivo_de_la_maquina_no_esta_en_ninguna_libreria() {
+    let m = x86();
+    for solo_aqui in ["entrada_puerto", "escribe_puerto", "lee_cr0", "carga_gdt"] {
+        assert!(m.conoce(solo_aqui));
+        assert!(
+            m.pide_crudo(solo_aqui) || solo_aqui.starts_with("lee_"),
+            "{} deberia pedir crudo o ser una lectura",
+            solo_aqui
+        );
+    }
+}
