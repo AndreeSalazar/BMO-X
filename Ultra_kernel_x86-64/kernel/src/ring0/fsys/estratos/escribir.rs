@@ -105,6 +105,32 @@ pub enum Gesto<'a> {
     /// cambia de donde salen los bytes. Dos variantes serian dos caminos por
     /// mantener, y uno de los dos se quedaria sin el arreglo del otro.
     Copia { nombre: &'a str, origen: super::copiar::Origen<'a> },
+    /// **GUARDAR: la version NUEVA de un fichero que ya esta.**
+    ///
+    /// === El verbo que le faltaba a un sistema de ficheros con historial ===
+    ///
+    /// Hasta hoy los verbos eran crear, carpeta, quitar, renombrar y copiar, y
+    /// `entradas_con` rechaza un nombre repetido. O sea que **un fichero tenia
+    /// UNA version para siempre**: lo que se versionaba era el arbol. La frase
+    /// que define a ESTRATOS --*cada escritura publica un estrato nuevo*-- era
+    /// cierta del arbol y no lo era del fichero.
+    ///
+    /// ** Y NO hizo falta una funcion nueva en la crate del formato:
+    /// `entradas_repuntando` ya hacia exactamente esto --conservar el nombre y
+    /// cambiar el NODO-- porque es lo que se le hace a cada nivel de paso de
+    /// una ruta. El quinto verbo era la misma maquina mirada desde otro sitio.
+    ///
+    /// === CREAR O SUSTITUIR, en un solo verbo, y por que aqui si vale ===
+    ///
+    /// Si el nombre no esta, lo crea. Si esta, publica el nodo nuevo en su
+    /// entrada. En un sistema que sobreescribe eso seria peligroso -- guardar
+    /// encima de algo que no sabias que existia PIERDE lo que habia.
+    ///
+    /// ** Aqui no puede perder nada. El nodo viejo, su contenido y el estrato
+    /// que lo nombraba siguen enteros y alcanzables: guardar encima **publica
+    /// una version, no destruye una**. Es la unica casa donde este verbo puede
+    /// ser una sola cosa en vez de dos con una pregunta en medio.
+    Guardar { nombre: &'a str, origen: super::copiar::Origen<'a> },
 }
 
 impl Gesto<'_> {
@@ -114,7 +140,10 @@ impl Gesto<'_> {
             // La copia cuesta su nodo Y su arbol, y el arbol solo lo sabe
             // quien ha ido a medir el origen. Aqui se cuenta el nodo; el resto
             // lo suma `aplicar` con lo que le diga `copiar::coste`.
-            Gesto::Fichero { .. } | Gesto::Carpeta { .. } | Gesto::Copia { .. } => 1,
+            Gesto::Fichero { .. }
+            | Gesto::Carpeta { .. }
+            | Gesto::Copia { .. }
+            | Gesto::Guardar { .. } => 1,
             Gesto::Quitar { .. } | Gesto::Renombrar { .. } => 0,
         }
     }
@@ -254,8 +283,8 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
         }
         // El nodo de una copia se hace DESPUES de escribir su arbol: hasta que
         // no existe la raiz no hay puntero que meterle. Aqui solo se dice que
-        // habra objeto.
-        Gesto::Copia { .. } => true,
+        // habra objeto. `Guardar` es igual: su contenido tambien viene de fuera.
+        Gesto::Copia { .. } | Gesto::Guardar { .. } => true,
         _ => false,
     };
 
@@ -264,7 +293,9 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     // transaccion-- es lo que permite que "ese origen no existe" se conteste
     // sin haber tocado un sector de este.
     let flujo = match &gesto {
-        Gesto::Copia { origen, .. } => Some(super::copiar::coste(origen)?),
+        Gesto::Copia { origen, .. } | Gesto::Guardar { origen, .. } => {
+            Some(super::copiar::coste(origen)?)
+        }
         _ => None,
     };
     let cuesta = gesto.bloques_de_objeto()
@@ -281,7 +312,11 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     // El CONTENIDO de una copia va antes que su nodo, por lo mismo que el nodo
     // va antes que la entrada que lo nombra: un puntero se escribe cuando ya
     // existe aquello a lo que apunta.
-    if let (Gesto::Copia { origen, .. }, Some((bloques, plan, size))) = (&gesto, flujo) {
+    if let (
+        Gesto::Copia { origen, .. } | Gesto::Guardar { origen, .. },
+        Some((bloques, plan, size)),
+    ) = (&gesto, flujo)
+    {
         objeto = super::copiar::traer(origen, plan, size, cursor)?;
         cursor += bloques;
     }
@@ -320,6 +355,23 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
                     p_objeto.ok_or(WriteError::NoCabe)?,
                     entradas,
                 ),
+                // ** CREAR O SUSTITUIR, decidido MIRANDO lo que hay.
+                //
+                // No es una bandera del llamante: es una pregunta a las
+                // entradas de ahora mismo. `entradas_repuntando` falla si el
+                // nombre no esta --hace bien: para un nivel de paso, no estar
+                // es que el recorrido miente-- asi que aqui se prueba esa y se
+                // cae a `entradas_con` cuando dice que no.
+                //
+                // ** El orden importa: se intenta SUSTITUIR primero. Al reves,
+                // `entradas_con` rechazaria el duplicado y se acabaria creando
+                // un segundo fichero con el mismo nombre en el unico caso en el
+                // que hay que hacer justo lo contrario.
+                Gesto::Guardar { nombre, .. } => {
+                    let nodo = p_objeto.ok_or(WriteError::NoCabe)?;
+                    entradas_repuntando(&previas[..n_previas], nombre, nodo, entradas)
+                        .or_else(|_| entradas_con(&previas[..n_previas], nombre, nodo, entradas))
+                }
                 Gesto::Quitar { nombre } => entradas_sin(&previas[..n_previas], nombre, entradas),
                 Gesto::Renombrar { viejo, nuevo } => {
                     entradas_renombrando(&previas[..n_previas], viejo, nuevo, entradas)
@@ -509,6 +561,7 @@ fn motivo(g: &Gesto) -> &'static str {
         Gesto::Copia { origen: super::copiar::Origen::Ram { .. }, .. } => {
             "fichero escrito por una aplicacion"
         }
+        Gesto::Guardar { .. } => "version nueva de un fichero",
     }
 }
 
@@ -716,10 +769,35 @@ pub fn copiar_fichero(ruta: &str, nombre: &str, origen: &str) -> Result<u64, Wri
     )
 }
 
+/// **GUARDA `nombre` dentro de `ruta`: lo crea, o publica su version nueva.**
+///
+/// El quinto verbo, y el que hace VISIBLE lo unico que ningun sistema de
+/// ficheros clasico da. Guardar dos veces el mismo nombre deja DOS versiones
+/// del mismo fichero en el historial, no dos ficheros y no una perdida.
+///
+/// # Safety
+///
+/// `base` tiene que apuntar a `size` bytes legibles **del proceso que esta
+/// corriendo ahora**. Quien llama es `syscall/gesto.rs`, que lo saca de un
+/// bloque `KIND_MEMORIA` propio tras comprobar el rango contra lo que el kernel
+/// le entrego -- la misma regla, escrita igual, que `file::write_from`.
+pub unsafe fn guardar_desde(
+    ruta: &str,
+    nombre: &str,
+    base: u64,
+    size: u32,
+) -> Result<u64, WriteError> {
+    aplicar(
+        ruta,
+        Gesto::Guardar { nombre, origen: super::copiar::Origen::Ram { base, size } },
+    )
+}
+
 /// **Crea `nombre` dentro de `ruta` con los `size` bytes que hay en `base`.**
 ///
-/// El hermano de [`copiar_fichero`] con el otro fuera: un bloque de memoria de
-/// Ring 3 en vez de una ruta de FAT32.
+/// El hermano de [`guardar_desde`] que EXIGE que no exista: si el nombre esta
+/// cogido, falla. Los dos hacen falta -- "crea esto" y "guarda esto" son dos
+/// intenciones distintas, y la primera quiere enterarse de que ya habia algo.
 ///
 /// # Safety
 ///

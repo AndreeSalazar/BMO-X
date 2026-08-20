@@ -279,6 +279,9 @@ pub(crate) const ES_GESTO_ORIGEN: u64 = 0x09;
 /// que `ARCH_OP_ESCRIBIR_DE` es al de FAT32: el contenido no viaja, viaja donde
 /// esta. Sin esto, meter mas de 96 bytes obliga a pasar por FAT32.
 pub(crate) const ES_GESTO_FICHERO_DE: u64 = 0x0A;
+/// Guarda el contenido del bloque anotado: lo crea, o publica su version nueva.
+/// El quinto verbo -- el unico que versiona un FICHERO y no solo el arbol.
+pub(crate) const ES_GESTO_GUARDAR: u64 = 0x0B;
 pub(crate) const ES_GESTO_MAX: u64 = 96;
 /// Las ordenes del disco. Espejo de `bmo_abi::...::DISCO_OP_*`.
 ///

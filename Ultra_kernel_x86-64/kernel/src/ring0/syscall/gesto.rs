@@ -138,6 +138,17 @@ pub(super) fn servir(pid: u32, arg0: u64, arg1: u64) -> u64 {
                 Some(unsafe { escribir::crear_desde(dir, nombre, base, size) })
             })
         }
+        // ** EL QUINTO VERBO. Mismo renglon, misma puerta, y lo unico que
+        // cambia es que este NO se queja si el nombre ya estaba: publica su
+        // version nueva. Ver `ES_GESTO_GUARDAR` en el ABI.
+        ES_GESTO_GUARDAR => {
+            let origen = origen_tomar(pid, arg1);
+            hacer(pid, "guardar una version nueva", |ruta, _| {
+                let (dir, nombre) = partir(ruta)?;
+                let (base, size) = origen?;
+                Some(unsafe { escribir::guardar_desde(dir, nombre, base, size) })
+            })
+        }
         // ** El unico que NO parte la ruta: aqui no hay destino, hay un
         // NOMBRE. Partirlo por la ultima barra convertiria `copia de ayer` en
         // otra cosa el dia que alguien use una barra en un nombre.

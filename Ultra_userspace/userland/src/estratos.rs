@@ -272,6 +272,7 @@ pub const ES_GESTO_MARCAR: u64 = 0x07;
 pub const ES_GESTO_VOLVER: u64 = 0x08;
 pub const ES_GESTO_ORIGEN: u64 = 0x09;
 pub const ES_GESTO_FICHERO_DE: u64 = 0x0A;
+pub const ES_GESTO_GUARDAR: u64 = 0x0B;
 /// Lo que cabe DENTRO del nodo, sin gastar un bloque de datos.
 ///
 /// ** Es el tope DEL RENGLON, no el de un fichero. [`crear_desde`] no pasa por
@@ -364,6 +365,32 @@ pub fn crear_fichero(ruta: &[u8], datos: &[u8]) -> u64 {
 /// bmo::estratos::crear_desde(b"datos/informe.txt", m.handle(), 0, 4096);
 /// ```
 pub fn crear_desde(ruta: &[u8], bloque: u64, desde: u64, n: u64) -> u64 {
+    desde_un_bloque(ES_GESTO_FICHERO_DE, ruta, bloque, desde, n)
+}
+
+/// **Guarda `ruta` con `n` bytes de `bloque`: lo crea, o publica su version
+/// nueva.** Devuelve la generacion, o `0`.
+///
+/// === La diferencia con [`crear_desde`], que es la que importa ===
+///
+/// `crear_desde` se queja si el nombre ya esta. Esto no: publica el contenido
+/// nuevo en la MISMA entrada, y el fichero pasa a tener dos versiones.
+///
+/// ** Y guardar encima aqui no puede perder nada. El nodo viejo, su contenido y
+/// el estrato que lo nombraba siguen enteros: la pestana `historial` ensena las
+/// dos y `vuelve N` va a la de antes cambiando un puntero. Es lo unico que
+/// ningun sistema de ficheros clasico puede dar, y hasta hoy ESTRATOS lo tenia
+/// para el ARBOL y no para el FICHERO.
+pub fn guardar_desde(ruta: &[u8], bloque: u64, desde: u64, n: u64) -> u64 {
+    desde_un_bloque(ES_GESTO_GUARDAR, ruta, bloque, desde, n)
+}
+
+/// El envio que comparten los dos: anotar el origen y mandar el verbo.
+///
+/// Una sola funcion porque el camino es identico y solo cambia la suborden
+/// final. Dos copias serian dos sitios donde arreglar el dia que la puerta
+/// cambie -- y una de las dos se quedaria sin el arreglo.
+fn desde_un_bloque(verbo: u64, ruta: &[u8], bloque: u64, desde: u64, n: u64) -> u64 {
     if n == 0 {
         return 0;
     }
@@ -383,7 +410,7 @@ pub fn crear_desde(ruta: &[u8], bloque: u64, desde: u64, n: u64) -> u64 {
     }
     mandar_ruta(ruta);
     mandar_datos(&[]);
-    invoke(CURRENT_TASK, OP_ES_GESTO, ES_GESTO_FICHERO_DE, n, 0).value
+    invoke(CURRENT_TASK, OP_ES_GESTO, verbo, n, 0).value
 }
 
 /// **Crea la carpeta `ruta`**, vacia. Devuelve la generacion nueva, o `0`.

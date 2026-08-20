@@ -236,6 +236,29 @@ pub const ES_GESTO_ORIGEN: u64 = 0x09;
 /// El techo que queda es el del volumen, y lo dice el nivel de ocupacion.
 pub const ES_GESTO_FICHERO_DE: u64 = 0x0A;
 
+/// **GUARDA el contenido del bloque anotado: lo crea, o publica su version
+/// nueva.** `arg1` son los BYTES a tomar, igual que [`ES_GESTO_FICHERO_DE`].
+///
+/// === El quinto verbo, y por que hacia falta ===
+///
+/// Los otros cuatro --crear, carpeta, quitar, renombrar-- versionan el ARBOL.
+/// Ninguno versiona un FICHERO: crear rechaza un nombre repetido, asi que un
+/// fichero tenia UNA version para siempre. *"Cada escritura publica un estrato
+/// nuevo"* era cierto del arbol y no lo era de lo que hay dentro.
+///
+/// === Y por que crear-o-sustituir puede ser UN verbo aqui ===
+///
+/// En un sistema que sobreescribe, guardar encima de algo que no sabias que
+/// existia PIERDE lo que habia, y por eso hace falta preguntar antes.
+///
+/// ** Aqui no puede perder nada: el nodo viejo, su contenido y el estrato que
+/// lo nombraba siguen enteros y alcanzables. Guardar encima **publica una
+/// version, no destruye una** -- y el historial las ensena las dos.
+///
+/// [`ES_GESTO_FICHERO_DE`] sigue existiendo para lo contrario: cuando la
+/// intencion es CREAR y hay que enterarse de que el nombre ya estaba.
+pub const ES_GESTO_GUARDAR: u64 = 0x0B;
+
 /// Cuanto contenido admite EL RENGLON. Es [`RESIDENTE_MAX`] de ESTRATOS: lo que
 /// cabe DENTRO del nodo, sin gastar un bloque de datos.
 ///
