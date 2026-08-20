@@ -1,0 +1,10 @@
+# sonda: p05_paralelo_mutable    espera: E0080
+# fija: lo que cruza a otra tarea esta CONGELADO o se copia. Por eso no hay
+# GIL: no hay nada compartido y mutable a la vez.
+perfil pleno
+
+funcion principal
+   cambiante acumulado = [0]
+   en paralelo
+      anade 1 a acumulado
+      anade 2 a acumulado

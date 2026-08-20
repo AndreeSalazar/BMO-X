@@ -1,0 +1,7 @@
+# sonda: f04_parametro_fijo      espera: E0033
+# fija: un parametro no se cambia dentro salvo que se declare `cambiante`.
+perfil pleno
+
+funcion suma_uno(x es numero) devuelve numero
+   x = x + 1
+   devuelve x

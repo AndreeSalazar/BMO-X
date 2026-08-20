@@ -1,0 +1,7 @@
+# sonda: p03_llano_sin_numero    espera: E0020
+# fija: en `llano` hay que decir el tamano. Sin tamanos no hay perfil sin
+# monton, asi que la obligacion sale del perfil, no del gusto.
+perfil llano
+
+funcion cuenta(x es numero) devuelve numero
+   devuelve x + 1

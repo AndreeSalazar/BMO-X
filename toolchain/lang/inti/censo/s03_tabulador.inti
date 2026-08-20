@@ -1,0 +1,6 @@
+# sonda: s03_tabulador     espera: E0010
+# fija: el tabulador es un error, no una alternativa a los 4 espacios.
+perfil pleno
+
+funcion principal
+	escribe "sangrado con tabulador"

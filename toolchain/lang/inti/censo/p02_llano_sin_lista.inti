@@ -1,0 +1,6 @@
+# sonda: p02_llano_sin_lista     espera: E0070
+# fija: en `llano` no hay lista, texto ni tabla: crecen, y crecer pide monton.
+perfil llano
+
+funcion principal
+   notas = [1, 2, 3]

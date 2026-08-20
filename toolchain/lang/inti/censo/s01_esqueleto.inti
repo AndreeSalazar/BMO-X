@@ -1,0 +1,6 @@
+# sonda: s01_esqueleto     espera: COMPILA
+# fija: perfil obligatorio + principal como punto de entrada
+perfil pleno
+
+funcion principal
+   escribe "hola"

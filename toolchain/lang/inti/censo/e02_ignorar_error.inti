@@ -1,0 +1,12 @@
+# sonda: e02_ignorar_error       espera: E0060
+# fija: ignorar un resultado que puede fallar es error de COMPILACION. No hay
+# `except:` pelado porque no hay nada que tragarse.
+perfil pleno
+
+funcion divide(a es numero, b es numero) devuelve numero o error
+   si b = 0
+      falla "entre cero no"
+   devuelve a / b
+
+funcion principal
+   escribe divide(10, 0)

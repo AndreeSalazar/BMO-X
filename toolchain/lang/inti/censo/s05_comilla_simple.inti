@@ -1,0 +1,6 @@
+# sonda: s05_comilla_simple   espera: E0011
+# fija: la comilla simple NO existe. Una forma menos.
+perfil pleno
+
+funcion principal
+   escribe 'hola'

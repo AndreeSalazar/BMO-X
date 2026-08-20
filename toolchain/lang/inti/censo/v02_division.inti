@@ -1,0 +1,8 @@
+# sonda: v02_division         espera: COMPILA + SALIDA "2.5" y "2"
+# fija: `/` divide de verdad, `entre` da cociente entero. Nombres distintos,
+# no dos simbolos que se parecen.
+perfil pleno
+
+funcion principal
+   escribe 5 / 2
+   escribe 5 entre 2

@@ -1,0 +1,8 @@
+# sonda: r04_sin_valor           espera: E0031
+# regla 4: leer sin inicializar NO SE PUEDE ESCRIBIR. No existe declarar sin
+# valor, asi que el UB mas antiguo de C no tiene sintaxis aqui.
+perfil llano
+
+funcion principal
+   cambiante x es entero32
+   escribe x

@@ -1,0 +1,7 @@
+# sonda: r12_conversion          espera: E1012 en ejecucion
+# regla 12: convertir un flotante fuera de rango ATRAPA. Es lo que hace WASM.
+perfil llano
+
+funcion principal
+   f es flotante64 = 1e30
+   escribe entero32(f)

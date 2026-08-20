@@ -1,0 +1,8 @@
+# sonda: r07_desplaza            espera: COMPILA con aviso A2007 + da 0
+# regla 7: desplazar mas bits que el ancho da CERO, definido. Y si el
+# desplazamiento es constante, el compilador avisa.
+perfil llano
+
+funcion principal
+   x es entero32 = 1
+   escribe x desplaza izquierda 40

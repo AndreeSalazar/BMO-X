@@ -1,0 +1,7 @@
+# sonda: r03_division            espera: E1003 en ejecucion
+# regla 3: dividir entre cero atrapa, entero y decimal.
+perfil pleno
+
+funcion principal
+   cambiante b = 0
+   escribe 10 / b

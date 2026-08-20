@@ -1,0 +1,7 @@
+# sonda: c02_cambiante        espera: COMPILA
+perfil pleno
+
+funcion principal
+   cambiante x = 5
+   x = x + 1
+   escribe x

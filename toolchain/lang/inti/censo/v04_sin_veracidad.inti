@@ -1,0 +1,9 @@
+# sonda: v04_sin_veracidad    espera: E0040
+# fija: `si` exige `logico`. La veracidad de Python (`if lista:`) no existe:
+# se escribe `si no esta vacia lista`. Una regla menos que aprender.
+perfil pleno
+
+funcion principal
+   lista = [1, 2, 3]
+   si lista
+      escribe "hay cosas"

@@ -1,0 +1,9 @@
+# sonda: f06_sin_herencia        espera: E0100
+# fija: no hay herencia. Ni MRO, ni super(), ni self.
+perfil pleno
+
+registro Persona
+   nombre es texto
+
+registro Alumno de Persona
+   nota es numero

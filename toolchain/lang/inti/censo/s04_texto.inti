@@ -1,0 +1,9 @@
+# sonda: s04_texto         espera: COMPILA
+# fija: comillas dobles, interpolacion, y los cinco escapes
+perfil pleno
+
+funcion principal
+   nombre = "eddi"
+   escribe "hola {nombre}"
+   escribe "una llave literal: \{"
+   escribe "salto:\nfin"
