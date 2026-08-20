@@ -1,0 +1,41 @@
+# EL REPARTO -- como se parte un monton que ya existe.
+#
+# Esta pieza NO habla con el kernel. Recibe la direccion de un monton y lo unico
+# que sabe de el es su disposicion.
+perfil llano
+usa memoria
+
+# Reserva `cuantos` bytes. Devuelve 0 si no caben.
+funcion pide(monton es natural64, cuantos es natural64) devuelve natural64
+    crudo
+        si monton = 0
+            devuelve 0
+
+        libre = lee_natural64(monton)
+        fin = lee_natural64(monton + 8)
+        pasos = (cuantos + 15) entre 16
+        nuevo = libre + pasos * 16
+        si nuevo > fin
+            devuelve 0
+
+        escribe_natural64(monton, nuevo)
+        devuelve libre
+
+# Cuanto queda sin repartir.
+funcion queda_en(monton es natural64) devuelve natural64
+    crudo
+        si monton = 0
+            devuelve 0
+        devuelve lee_natural64(monton + 8) - lee_natural64(monton)
+
+# Suelta un trozo. HOY NO HACE NADA, y se dice en vez de fingir.
+#
+# Este reparto es de AVANCE: el cursor solo sube. Soltar de verdad pide una
+# lista de huecos, y esa es la pieza siguiente -- que entra AQUI, en este
+# fichero, sin tocar `origen.inti` ni un programa que ya use `pide`.
+#
+# Existe desde hoy para que los programas escriban la llamada desde el
+# principio. Un `suelta` que aparece mas tarde obliga a repasar todo lo escrito
+# antes; uno que ya esta y no hace nada, no.
+funcion suelta(monton es natural64, trozo es natural64) devuelve natural64
+    devuelve 0
