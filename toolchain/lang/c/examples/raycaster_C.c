@@ -519,9 +519,26 @@ int main() {
          * mas" para pasar a ser "se ve medio dibujo". */
         if (sup != 0) bmo_superficie_lista(sup);
 
-        /* Ceder el turno. Sin esto el bucle se come el quantum entero y el
-         * sistema va a tirones -- esta dicho en `bmo.h` y aqui se cumple. */
-        bmo_ceder();
+        /* ** EN VENTANA SE DUERME; CON LA PANTALLA ENTERA SE CEDE.
+         *
+         * No es un detalle de cortesia: `bmo_ceder()` vuelve a la cola LISTO, o
+         * sea que un bucle que solo cede se lleva un turno entero cada vuelta.
+         * Con la pantalla para uno eso no molesta a nadie. En una ventana, el
+         * que sufre es el DIRECTOR -- que es justo quien tiene que componer
+         * estos pixeles.
+         *
+         * Visto en el Ryzen el 2026-08-19: el escritorio se quedaba tan lento
+         * que parecia que el teclado no respondia. No estaba secuestrado
+         * --aqui no se reclama la entrada-- es que no quedaba turno para
+         * pintar la tecla.
+         *
+         * 16 ms son ~60 fotogramas por segundo, que es todo lo que puede
+         * ensenar la pantalla. */
+        if (sup != 0) {
+            bmo_dormir(16000000);
+        } else {
+            bmo_ceder();
+        }
     }
 
     /* Dejar la pantalla en negro al salir: quien viene detras no tiene por que
