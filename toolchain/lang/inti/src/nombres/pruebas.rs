@@ -230,3 +230,72 @@ fn no_sugiere_disparates_con_nombres_cortos() {
         c.avisos[0].que_hacer
     );
 }
+
+// ===================================================================
+//  Las tres promesas que faltaban
+// ===================================================================
+
+/// ** Ignorar un error es error de COMPILACION. Sin esto, `o si no` seria una
+/// costumbre en vez de una regla.
+#[test]
+fn ignorar_un_error_no_compila() {
+    let c = comprueba(
+        "perfil pleno\n\n\
+         funcion divide(a, b) devuelve numero o error\n\
+         \x20   si b = 0\n\
+         \x20       falla \"entre cero no\"\n\
+         \x20   devuelve a / b\n\
+         \n\
+         funcion principal\n\
+         \x20   divide(10, 0)\n",
+    );
+    assert_eq!(c.codigos(), vec!["E0060"]);
+    assert!(c.avisos[0].que_habia.contains("un error es un DATO"));
+}
+
+/// Y mirarlo con `o si no` es exactamente mirarlo.
+#[test]
+fn con_o_si_no_ya_se_mira() {
+    let c = comprueba(
+        "perfil pleno\n\n\
+         funcion divide(a, b) devuelve numero o error\n\
+         \x20   devuelve a / b\n\
+         \n\
+         funcion principal\n\
+         \x20   divide(10, 0) o si no 0\n",
+    );
+    assert!(c.codigos().is_empty(), "{:?}", c.codigos());
+}
+
+/// Las de la BIBLIOTECA tambien: la lista sale de la tabla.
+#[test]
+fn una_de_la_biblioteca_que_falla_tambien_se_exige() {
+    let c = comprueba("perfil pleno\n\nfuncion principal\n    guarda(\"x.txt\", \"hola\")\n");
+    assert_eq!(c.codigos(), vec!["E0060"]);
+}
+
+/// ** Borrar mientras se itera: el bug que en otros lenguajes se salta un
+/// elemento sin avisar. Aqui no compila.
+#[test]
+fn mutar_la_coleccion_que_se_recorre_no_compila() {
+    let c = en_principal("cambiante notas = [1, 2, 3]\npara cada n en notas\n    quita(notas, n)\n");
+    assert_eq!(c, vec!["E0050"]);
+}
+
+/// Y tocar la del bucle de FUERA desde el de dentro es igual de malo.
+#[test]
+fn tampoco_la_del_bucle_de_fuera() {
+    let c = en_principal(
+        "cambiante a = [1]\ncambiante b = [2]\npara cada x en a\n    para cada y en b\n        anade(a, 1)\n",
+    );
+    assert!(c.contains(&"E0050"), "{:?}", c);
+}
+
+/// Modificar OTRA coleccion mientras se recorre una vale.
+#[test]
+fn modificar_otra_coleccion_si_vale() {
+    let c = en_principal(
+        "notas = [1, 2]\ncambiante buenas = []\npara cada n en notas\n    anade(buenas, n)\n",
+    );
+    assert!(c.is_empty(), "{:?}", c);
+}

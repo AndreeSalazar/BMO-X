@@ -172,18 +172,26 @@ fn las_sondas_que_dicen_compila_se_leen_enteras() {
     }
 }
 
-/// Las sondas de PERFIL, comprobadas de verdad.
+/// Las sondas que YA se pueden juzgar, comprobadas de verdad.
 ///
-/// Estas ya no son promesas: `p02`, `p03`, `p04` y `p07` declaran un codigo que
-/// el analisis de perfiles sabe dar hoy, asi que se exige. Las demas siguen
-/// esperando a su fase.
+/// Estas ya no son promesas: declaran un codigo que alguna fase sabe dar hoy,
+/// asi que se exige. Las demas siguen esperando a la suya, y la lista crece
+/// cada vez que una fase aprende algo -- que es la forma de que el censo mida
+/// el avance en vez de describirlo.
 #[test]
-fn las_sondas_de_perfil_dan_su_codigo() {
+fn las_sondas_que_ya_se_pueden_dan_su_codigo() {
     const AHORA_SE_PUEDEN: &[(&str, &str)] = &[
         ("p02_llano_sin_lista", "E0070"),
         ("p03_llano_sin_numero", "E0020"),
         ("p04_crudo_en_pleno", "E0071"),
         ("p07_puerto_sin_crudo", "E0072"),
+        // Desde F2b: los nombres.
+        ("c01_fija", "E0030"),
+        ("c05_muta_iterando", "E0050"),
+        ("e02_ignorar_error", "E0060"),
+        ("f04_parametro_fijo", "E0030"),
+        ("f06_sin_herencia", "E0100"),
+        ("f03_sin_closures", "E0101"),
     ];
 
     for (nombre, esperado) in AHORA_SE_PUEDEN {

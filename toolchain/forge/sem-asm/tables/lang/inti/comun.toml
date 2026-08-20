@@ -121,6 +121,34 @@ claves        = "las claves de una tabla"
 valores       = "los valores de una tabla"
 
 # ===================================================================
+#  Lo que el compilador tiene que saber para AVISAR
+# ===================================================================
+#
+#  Dos listas, y las dos son datos **sobre la biblioteca**, no sobre el
+#  lenguaje. Quien anada una operacion nueva las actualiza aqui, y las
+#  comprobaciones que dependen de ellas quedan cubiertas sin tocar el
+#  compilador.
+[avisos]
+
+#  Las que pueden fallar. Ignorar una es error de compilacion (E0060).
+#
+#  ** Es la promesa mas fuerte del sistema de errores: en INTI un error es un
+#  DATO, y si nadie lo mira el programa sigue como si nada con un valor que no
+#  existe. Sin esta comprobacion, `o si no` seria una costumbre en vez de una
+#  regla -- y el `except:` pelado de Python volveria por la puerta de atras, que
+#  es no escribir nada.
+pueden_fallar = [
+    "numero", "logico", "entero",
+    "guarda", "abre", "lineas_de", "borra",
+    "donde_esta",
+]
+
+#  Las que MODIFICAN la coleccion que reciben. Llamarlas sobre la coleccion que
+#  se esta recorriendo es E0050: el bug que en otros lenguajes se salta un
+#  elemento sin avisar.
+modifican_la_coleccion = ["anade", "quita", "inserta"]
+
+# ===================================================================
 #  Lo que NO esta aqui, y por que
 # ===================================================================
 #

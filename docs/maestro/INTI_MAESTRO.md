@@ -567,6 +567,98 @@ repartido en `#ifdef`s que nadie ha contado nunca.
 
 ---
 
+### 7.3 EL DINAMISMO COMO LIBRERIA -- anotado, no construido
+
+> Idea de Eddi, 2026-08-19: *"he estado pensando en una libreria de dinamismo,
+> TODOS son objetos... pero seria para anotar luego, porque el dinamismo NO es
+> la base de INTI. No imitando a Python en la base, sino librerias para usos
+> generales."*
+
+⚠ **Esto no esta implementado y no toca ahora.** Se escribe porque la idea es
+buena y porque **la decision que la hace posible ya esta tomada**: si se anota
+mal ahora, dentro de seis meses no cabra.
+
+#### La inversion, que es lo que hace que esto funcione
+
+```text
+   Python   dinamico por defecto, y NO SE PUEDE SALIR
+   INTI     estatico por defecto, y el dinamismo SE PIDE
+```
+
+★★★ Es la sorpresa 3 de la seccion 5 puesta del reves. Python decidio que todo
+es objeto **para todo el mundo**, y por eso un entero cuesta 28 bytes aunque tu
+programa no necesite ni uno dinamico. Aqui lo dinamico lo paga **quien lo usa**.
+
+#### Para que sirve de verdad, que no es "porque Python lo hace"
+
+Hay cosas que **no se pueden escribir sin dinamismo**, y no son pocas:
+
+| lo que pide | por que necesita dinamismo |
+|---|---|
+| leer un fichero de configuracion | no sabes que hay dentro hasta abrirlo |
+| una tabla con valores de tipos distintos | el tipo depende de la clave |
+| un REPL | el tipo de lo que se teclea se sabe al teclearlo |
+| pasar datos entre programas | el que envia y el que recibe se compilaron aparte |
+| un depurador que ensena la memoria | tiene que saber que ES cada cosa |
+
+La ultima es la que decide, porque es una promesa de este documento: **P5, el
+lenguaje ensena su maquina.**
+
+#### ★★ Y la pieza clave YA EXISTE
+
+`bmo_abi::dynobj` -- 16 bytes de cabecera, bit 63 = INMORTAL, 0x70 ranuras
+numeradas, 14 tests en verde desde el 2026-08-16. Se escribio para Python, y
+resulta ser **exactamente el runtime que esta libreria necesitaria**:
+
+```text
+   +0   refs        u64   bit 63 = INMORTAL   <- y el inmortal es el CONGELADO
+   +8   type_index  u32   INDICE, nunca un puntero
+   +12  flags       u32   PRESTADO, RASTREADO
+```
+
+★★★ Y encaja con la seccion 4 de una manera que no estaba planeada: **un objeto
+dinamico INMORTAL es un valor congelado**, o sea que la libreria de dinamismo
+hereda gratis el modelo sin GIL. Lo dinamico que cruza entre tareas esta
+congelado, y lo congelado no tiene contador que corromper.
+
+#### Como se veria, para que se pueda discutir
+
+```text
+perfil pleno
+usa dinamico
+
+funcion principal
+   cosa = suelto(42)              # un valor sin tipo fijo
+   escribe que_es(cosa)           # "numero"
+
+   caja = tabla_suelta()
+   pon caja, "nombre", "ana"
+   pon caja, "edad", 30
+
+   si es_numero(saca(caja, "edad"))
+      escribe "la edad es un numero"
+```
+
+Fijate en lo que **no** pasa: `cosa` no contagia. El resto del programa sigue
+siendo estatico, y sacar un valor de la caja **obliga a preguntarle que es**.
+Eso es lo contrario de Python, donde lo dinamico entra sin decir nada y sale
+igual.
+
+#### Las tres reglas que habria que respetar, escritas ahora
+
+1. **`usa dinamico` es una declaracion, como `usa x86_64`.** Se cuenta, y sale
+   en el informe: *cuanto de mi programa no se sabe hasta que corre.*
+2. **Solo en `pleno`.** Un objeto dinamico pide monton por definicion.
+3. ★ **Sacar un valor obliga a preguntar.** Si `saca` devolviera algo usable sin
+   mirarlo, habriamos vuelto a las quince sorpresas por la puerta de atras --
+   que es justo lo que este lenguaje se escribio para no hacer.
+
+**Cuando toca**: despues del emisor y de las tareas. Antes no, porque una
+libreria de dinamismo sin runtime que la sostenga es una promesa, y este
+documento tiene una regla sobre las promesas.
+
+---
+
 ## 8. "ESTRICTO PARA FACILITAR, PERO TE AYUDA" -- en que se diferencia de Rust
 
 Eddi lo dijo asi y merece precision, porque **hay dos estricteces muy
