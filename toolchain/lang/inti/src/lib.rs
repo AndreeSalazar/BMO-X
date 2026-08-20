@@ -27,6 +27,8 @@
 //!    arbol      la forma de un programa. Cero decisiones.
 //!    sintaxis   aplica la gramatica. No sabe si los nombres existen.
 //!    perfil     `llano` contra `pleno`. No emite un byte.
+//!    nombres    quien es cada nombre, y si se puede cambiar.
+//!    ir         del arbol a instrucciones. NO nombra ninguna maquina.
 //! ```
 //!
 //! OJO: **Lo que este crate NO enlaza todavia**: `bmo-abi`, `bmo-lower` y
@@ -44,6 +46,7 @@
 
 pub mod arbol;
 pub mod arquitectura;
+pub mod ir;
 pub mod aviso;
 pub mod lexico;
 pub mod nombres;
