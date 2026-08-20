@@ -54,7 +54,7 @@ const INCRUSTADA: &str =
 #[derive(Debug, Clone)]
 pub struct Catalogo {
     crecen: HashSet<String>,
-    sin_tamano: HashSet<String>,
+    without_size: HashSet<String>,
 }
 
 impl Catalogo {
@@ -93,14 +93,14 @@ impl Catalogo {
         };
         Self {
             crecen: lista("llano", "tipos_que_crecen"),
-            sin_tamano: lista("llano", "tipos_sin_tamano"),
+            without_size: lista("llano", "tipos_sin_medida"),
         }
     }
 
     fn vacio() -> Self {
         Self {
             crecen: HashSet::new(),
-            sin_tamano: HashSet::new(),
+            without_size: HashSet::new(),
         }
     }
 }
@@ -416,7 +416,7 @@ impl<'c> Vigia<'c> {
                 }
                 if self.cat.crecen.contains(n) {
                     self.crece(&format!("`{}`", n), sitio);
-                } else if self.cat.sin_tamano.contains(n) {
+                } else if self.cat.without_size.contains(n) {
                     self.avisos.push(
                         Aviso::nuevo(
                             codigos::FALTA_TAMANO,
