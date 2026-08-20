@@ -324,7 +324,7 @@ de decisiones que ademas compran otra cosa -- ninguna necesita un parche.
 
 ⚠ Lo que **no** se hereda de Python, y conviene decirlo aqui para que nadie lo
 busque: el modelo de objetos, el `dict` como mecanismo de todo, los metodos
-`__dunder__`, las clases, `eval` y la compatibilidad. Ver la seccion 13.
+`__dunder__`, las clases, `eval` y la compatibilidad. Ver la seccion 14.
 
 ---
 
@@ -836,7 +836,114 @@ que este proyecto ya acordo: **el CONTRATO antes que el codigo**, igual que
 
 ---
 
-## 13. LO QUE NO ENTRA, con motivo
+## 13. INTI CONTRA EL ENSAMBLADOR -- que se pierde, y quien lo va a decir
+
+> Duda de Eddi, 2026-08-19: *"estoy empezando a sentir extranado INTI vs ASM en
+> velocidad, aunque si, ambos tienen su propio lado, aunque INTI......"*
+
+Es la pregunta correcta y llega en el momento correcto. Se contesta en cuatro
+partes, y la primera es separar dos preguntas que se confunden todo el rato.
+
+### 13.1 Son DOS preguntas, y solo una tiene debate
+
+| | contra ASM a mano | hay discusion |
+|---|---|---|
+| **INTI PLENO** interpretado | **50-200x mas lento** | **no.** Es el precio de un interprete, en cualquier sitio, y no lo arregla ningun kernel |
+| **INTI PLENO** en modo AOT | ~15-60x | no |
+| **INTI LLANO** | **el 90-99% de ASM** | ✅ **aqui esta la pregunta de verdad** |
+
+★★ **Y por eso existen los dos perfiles.** No son una comodidad: son la
+respuesta a esta duda **tomada por adelantado**. Un lenguaje con un solo perfil
+habria tenido que elegir entre ser facil y ser rapido, y habria acertado la
+mitad de las veces.
+
+### 13.2 Los TRES sitios donde INTI LLANO pierde contra ASM escrito a mano
+
+Sin adornos, porque el numero incomodo va delante:
+
+| donde | cuanto | se puede recuperar |
+|---|---|---|
+| **Las comprobaciones** (desborde, limites) que el ensamblador simplemente no hace | **~1%** medido: desbordamiento 0,8%, limites 0,881% | no, y no se quiere: es lo que compra el "sin comportamiento indefinido" |
+| **El prologo y la convencion de llamada** que un humano se salta cuando sabe que no hace falta | unos ciclos por llamada; medible con la fila 2 de `coste` (una llamada son **20 ciclos**) | si, en parte: funciones que se meten en linea |
+| **Lo que un humano ve y un compilador no**: elegir registros con la vista puesta en el bucle entero, reutilizar una bandera de la CPU ya calculada, SIMD escrito a mano | esto **si puede ser 2-5x** en un nucleo apretado | ⚠ no del todo. Es real y hay que decirlo |
+
+### 13.3 Los tres sitios donde INTI LLANO **gana** a ASM escrito a mano
+
+Y esto no es consuelo, es el motivo por el que Unix se reescribio:
+
+- **No se equivoca de registro.** El fallo tipico de un ensamblador a mano no es
+  ser lento: es olvidarse de restaurar `rbx` en una rama de tres.
+- **Se puede reescribir sin miedo.** Un bucle de ASM optimizado a mano es un
+  bloque que nadie vuelve a tocar. Uno de INTI se reescribe el martes.
+- **Se porta.** Y esa es la mitad B de la seccion 7, la unica razon historica
+  por la que existio C.
+
+★★★ **El precedente exacto, y es el mismo miedo:** en 1973, reescribir el kernel
+de Unix en C fue *audaz* precisamente porque todo el mundo sabia que se perdia
+velocidad frente al ensamblador -- *"en aquel momento la programacion de sistemas
+se hacia en ensamblador para sacarle el maximo al hardware"*. **Perdieron algo de
+velocidad y ganaron el sistema entero.** Y ni siquiera lo perdieron del todo: el
+arranque y el cambio de contexto **siguieron en ensamblador**, igual que aqui.
+
+### 13.4 ★★ Y la parte que deshace la pregunta: INTI no compite con ASM, lo INCLUYE
+
+Aqui el ensamblador **no es el rival de INTI: es su suelo**, y ya esta cableado.
+
+```text
+   crudo
+       escribe_puerto(0x60, x)      -> una FILA de intrinsics.toml, bytes exactos
+```
+
+En BMO C esto ya funciona asi y la propiedad esta escrita en `bmo.h`: *"no es
+una caja negra tipo `asm()` que el compilador copia sin leer. El compilador
+emite ESOS bytes"*. O sea que la comparacion honesta no es *INTI o ASM*, sino:
+
+> **cuanto de tu programa necesita de verdad la instruccion exacta?**
+
+En DOOM fue ~0%. En un driver, tres lineas. Y esas tres lineas **se escriben en
+INTI**, dentro de un `crudo`, con los bytes de una tabla.
+
+### 13.5 Como se va a zanjar: midiendo, no discutiendo
+
+⚠ **Hoy cualquier cifra de INTI seria inventada**, porque no hay generador de
+codigo: F1 es texto y piezas. Decir "va a ir al 95% de C" ahora mismo seria
+exactamente la clase de promesa que `PROPOSITO.md` manda medir en vez de
+respetar.
+
+El banco ya existe y solo hay que copiarlo. `coste_C.bex` zanjo la discusion de
+la puerta (2.663 -> 969 ciclos) con un metodo que se reutiliza tal cual:
+
+```text
+   fila 1   bucle vacio          la base
+   fila 2   una llamada          20 ciclos
+   fila 5   rdtsc suelto         ** el instrumento, para RESTARLO
+```
+
+★ La fila 5 es la que hace que esto sea una medida y no una impresion: *"un
+`rdtsc` suelto son 69 ciclos, no ~25. La fila existia para que esto fuera una
+resta y no una suposicion, y menos mal."*
+
+**La sonda de INTI, cuando exista F2**: el mismo bucle escrito tres veces --
+en `sem-asm`, en BMO C y en INTI LLANO --, los tres en el mismo `.bex`, los tres
+medidos con la misma fila de control, corriendo en el Ryzen.
+
+Y el criterio de aceptacion, escrito ahora para que no se negocie despues:
+
+```text
+   INTI LLANO >= 90% de BMO C        -> el lenguaje esta bien
+   entre el 70% y el 90%             -> hay un sitio concreto que arreglar,
+                                        y la sonda dice cual
+   < 70%                             -> el emisor tiene un fallo de diseno,
+                                        no INTI
+```
+
+⚠ Fijate en que la referencia es **BMO C y no el ensamblador**. Comparar contra
+ASM escrito a mano por un experto mide al experto, no al compilador; comparar
+contra C mide lo unico accionable: **si el emisor esta haciendo su trabajo.**
+
+---
+
+## 14. LO QUE NO ENTRA, con motivo
 
 | fuera | motivo |
 |---|---|
@@ -854,7 +961,7 @@ que este proyecto ya acordo: **el CONTRATO antes que el codigo**, igual que
 
 ---
 
-## 14. LOS RIESGOS
+## 15. LOS RIESGOS
 
 | riesgo | senal temprana | que lo desactiva |
 |---|---|---|
@@ -863,11 +970,11 @@ que este proyecto ya acordo: **el CONTRATO antes que el codigo**, igual que
 | **"Lenguaje de juguete"** | que solo sirva para el REPL | el criterio de DOOM: un programa **real** en INTI corriendo en el Ryzen |
 | **El 1% resulta ser 30%** | F3 mide y sale caro | ya esta previsto donde: comprobar en el diseno cuesta 1%, parchear despues cuesta 29,1%. Si sale caro, **es que se puso una comprobacion en el sitio equivocado** |
 | **Sintaxis por gusto** | discutir palabras clave mas de un dia | manda la seccion 9: sin evidencia, se copia lo que funciona |
-| **La deriva a Python** | *"esto seria facil de anadir y Python lo tiene"* | releer la seccion 13 antes de anadir |
+| **La deriva a Python** | *"esto seria facil de anadir y Python lo tiene"* | releer la seccion 14 antes de anadir |
 
 ---
 
-## 15. UN PROGRAMA ENTERO
+## 16. UN PROGRAMA ENTERO
 
 ```text
 # notas.inti -- lee notas, saca la media, la guarda.
@@ -935,7 +1042,7 @@ sintaxis**: es la biblioteca base, y la biblioteca base **viaja dentro**. Ver
 
 ---
 
-## 16. FUENTES
+## 17. FUENTES
 
 - **C y Unix**: [The Development of the C Language, Ritchie (HOPL II)](https://www.nokia.com/bell-labs/about/dennis-m-ritchie/chist.pdf) --
   [dl.acm.org/doi/10.1145/234286.1057834](https://dl.acm.org/doi/10.1145/234286.1057834) --
