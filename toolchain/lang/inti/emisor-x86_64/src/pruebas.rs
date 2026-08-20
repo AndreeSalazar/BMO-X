@@ -572,3 +572,131 @@ fn el_arranque_cabe_en_treinta_y_dos_bytes() {
     let arranque = e.inicios.first().map(|(_, off)| *off).expect("sin funciones");
     assert_eq!(arranque, 32, "el arranque de INTI, en bytes");
 }
+
+
+// ===================================================================
+//  ** F4b -- LA MEMORIA. La puerta se abrio y al otro lado no habia manos.
+// ===================================================================
+//
+//  F4a dejo a INTI pidiendole un bloque al kernel y **sin poder tocarlo**: no
+//  habia forma de leer ni escribir una direccion. Un lenguaje de sistema al que
+//  le falta eso no es un lenguaje de sistema, es una calculadora con syscalls.
+
+/// Escribir y volver a leer. Lo minimo, y lo que no estaba.
+#[test]
+fn una_direccion_se_escribe_y_se_lee() {
+    let f = "\
+perfil llano
+usa memoria
+
+funcion principal devuelve entero32
+    crudo
+        escribe_natural64(0x200000, 12345)
+        devuelve lee_natural64(0x200000)
+";
+    assert_eq!(arranca(f).syscalls.last().unwrap().arg0, 12345);
+}
+
+/// ** Un byte se lee ENTERO y sin basura detras.
+///
+/// Se lee con `movzx` y no con un `mov` de 8 bits, y la diferencia importa: el
+/// `mov` dejaria intactos los 56 bits de arriba, asi que el resultado traeria
+/// lo que hubiera antes en el registro. **Y funcionaria casi siempre** -- solo
+/// fallaria cuando el registro viniera sucio, que es cuando ya nadie mira.
+///
+/// Por eso el test ensucia el registro a proposito antes de leer: escribe un
+/// numero grande, lo lee, y luego lee un byte.
+#[test]
+fn un_byte_se_lee_entero_y_sin_arrastrar_lo_de_antes() {
+    let f = "\
+perfil llano
+usa memoria
+
+funcion principal devuelve entero32
+    crudo
+        escribe_natural64(0x200000, 0x1122334455667788)
+        sucio = lee_natural64(0x200000)
+        escribe_natural8(0x300000, 200)
+        devuelve lee_natural8(0x300000) + sucio - sucio
+";
+    assert_eq!(arranca(f).syscalls.last().unwrap().arg0, 200);
+}
+
+/// ** LA PRUEBA DE F4b: el programa le PIDE memoria al kernel y la USA.
+///
+/// El camino entero, y cada paso es uno que no existia hace dos commits:
+///
+///   1. cruza la puerta para pedir un bloque       (F4a)
+///   2. recoge el HANDLE, no el codigo             (el fallo que destapo esto)
+///   3. vuelve a cruzar para preguntar por su base
+///   4. escribe en esa direccion                   (F4b)
+///   5. la lee
+///   6. y sale por la puerta con lo que leyo       (F4a)
+///
+/// ** Y `mi_tarea` es un nombre, no un `-2`. Un programa que escribiera el
+/// numero crudo compilaria igual y no se entenderia nunca mas.
+#[test]
+fn el_programa_pide_memoria_al_kernel_y_la_usa() {
+    let f = "\
+perfil llano
+usa bmo
+usa memoria
+
+funcion principal devuelve entero32
+    crudo
+        bloque = invoca_valor(mi_tarea, 0x15, 4096, 0, 0)
+        base = invoca_valor(bloque, 0x01, 0, 0, 0)
+        escribe_natural64(base, 4321)
+        devuelve lee_natural64(base)
+";
+    let m = arranca(f);
+    assert_eq!(
+        m.syscalls.last().unwrap().arg0,
+        4321,
+        "lo que se escribio en la memoria del kernel es lo que se leyo"
+    );
+    assert_eq!(m.memoria_entregada(), 4096, "y el kernel entrego lo pedido");
+}
+
+/// ** `invoca_valor` recoge el VALOR, no el codigo. Corriendo, no leyendo.
+///
+/// Este es el fallo que F4a se llevo puesto sin enterarse: la puerta contesta
+/// DOS cosas a la vez --el codigo en un registro y el valor en otro-- y el
+/// emisor leia el mismo para los dos.
+///
+/// El sintoma habria sido perfecto para no encontrarlo nunca: `invoca_valor`
+/// devolvia el codigo, que en el caso bueno vale CERO. O sea que todo puntero
+/// pedido al kernel habria valido cero, que es exactamente lo que devuelve un
+/// kernel que dice que no.
+#[test]
+fn invoca_valor_recoge_el_valor_y_no_el_codigo() {
+    let comun = "\
+perfil llano
+usa bmo
+
+funcion principal devuelve entero32
+    devuelve ";
+
+    // El codigo de una peticion que sale bien es 0.
+    let codigo = format!("{}invoca(mi_tarea, 0x15, 4096, 0, 0)\n", comun);
+    assert_eq!(arranca(&codigo).syscalls.last().unwrap().arg0, 0);
+
+    // El valor es un handle, y un handle no es cero.
+    let valor = format!("{}invoca_valor(mi_tarea, 0x15, 4096, 0, 0)\n", comun);
+    let h = arranca(&valor).syscalls.last().unwrap().arg0;
+    assert_ne!(h, 0, "un handle de memoria no puede ser cero");
+}
+
+/// Y los dos leen de registros distintos, dicho donde se decide.
+#[test]
+fn la_puerta_tiene_dos_registros_de_respuesta() {
+    let t = Taller::nuevo();
+    assert_ne!(
+        t.puerta.codigo, t.puerta.valor,
+        "el codigo y el valor no pueden volver por el mismo sitio"
+    );
+    assert_eq!(t.puerta.recogida(Some("valor")), t.puerta.valor);
+    assert_eq!(t.puerta.recogida(Some("codigo")), t.puerta.codigo);
+    // Lo desconocido se trata como codigo: es lo unico seguro.
+    assert_eq!(t.puerta.recogida(None), t.puerta.codigo);
+}

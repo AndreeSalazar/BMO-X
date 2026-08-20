@@ -58,67 +58,15 @@ use bmo_mods::Roots;
 
 use crate::arbol::*;
 use crate::aviso::{codigos, Aviso, Cosecha, Sitio};
+// ** La tabla de modulos se MUDO a `tablas`, y no por gusto: la necesitan tres
+// piezas de esta misma generacion, asi que tenerla aqui las ataba entre si.
+// Lo dijo `tests/linaje.rs` antes que nadie. Ver `tablas/mod.rs`.
+pub use crate::tablas::Modulos;
 
 pub const RUTA: &str = "lang/inti/comun.toml";
-pub const RUTA_MODULOS: &str = "lang/inti/modulos.toml";
 
 const INCRUSTADA: &str = include_str!("../../../../forge/sem-asm/tables/lang/inti/comun.toml");
-const INCRUSTADOS: &str =
-    include_str!("../../../../forge/sem-asm/tables/lang/inti/modulos.toml");
 
-/// Que nombres trae cada `usa <modulo>` de REX.
-///
-/// Es la tercera tabla del reparto, y la linea que las separa es una sola
-/// pregunta: **lo escribe casi todo el mundo?** Si si, va en `comun.toml`; si
-/// lo escriben algunos, es un modulo y hay que pedirlo.
-#[derive(Debug, Clone, Default)]
-pub struct Modulos {
-    por_nombre: HashMap<String, Vec<String>>,
-}
-
-impl Modulos {
-    pub fn por_defecto() -> Self {
-        Self::desde_texto(INCRUSTADOS)
-    }
-
-    pub fn cargar(raices: &Roots) -> Self {
-        match raices
-            .locate(RUTA_MODULOS)
-            .and_then(|p| std::fs::read_to_string(p).ok())
-        {
-            Some(t) => Self::desde_texto(&t),
-            None => Self::por_defecto(),
-        }
-    }
-
-    fn desde_texto(t: &str) -> Self {
-        let raiz: toml::Value = match t.parse() {
-            Ok(v) => v,
-            Err(_) => return Self::default(),
-        };
-        let mut por_nombre = HashMap::new();
-        if let Some(tabla) = raiz.as_table() {
-            for (k, v) in tabla {
-                if k == "meta" {
-                    continue;
-                }
-                if let Some(t) = v.as_table() {
-                    por_nombre.insert(k.clone(), t.keys().cloned().collect());
-                }
-            }
-        }
-        Self { por_nombre }
-    }
-
-    /// Los nombres que trae un `usa`. Vacio si no es un modulo conocido -- que
-    /// no es un error: puede ser una arquitectura, y esa la resuelve otro.
-    pub fn trae(&self, modulo: &str) -> &[String] {
-        self.por_nombre
-            .get(modulo)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-    }
-}
 
 /// Los nombres que estan sin pedirlos.
 ///

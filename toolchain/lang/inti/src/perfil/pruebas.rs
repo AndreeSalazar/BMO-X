@@ -22,7 +22,12 @@ fn comprueba(fuente: &str) -> Cosecha<Informe> {
         .iter()
         .filter_map(|(n, _)| Maquina::buscar(&bmo_mods::Roots::find(), n))
         .collect();
-    comprobar(&arbol.valor, &Catalogo::por_defecto(), &maquinas)
+    comprobar(
+        &arbol.valor,
+        &Catalogo::por_defecto(),
+        &maquinas,
+        &crate::tablas::Modulos::por_defecto(),
+    )
 }
 
 fn codigos_de(fuente: &str) -> Vec<&'static str> {
@@ -170,9 +175,65 @@ fn una_tabla_rota_no_acusa_al_programa() {
     let fuente = "perfil llano\n\nfuncion principal\n    saludo = \"hola\"\n";
     let piezas = lexico::barrer(fuente, &v);
     let arbol = sintaxis::leer(&piezas.valor, &v);
-    let c = comprobar(&arbol.valor, &cat, &[]);
+    let c = comprobar(
+        &arbol.valor,
+        &cat,
+        &[],
+        &crate::tablas::Modulos::por_defecto(),
+    );
     // El texto sigue siendo texto y `llano` sigue sin monton, asi que eso se
     // denuncia igual; lo que no puede pasar es que la tabla rota invente
     // prohibiciones nuevas.
     assert_eq!(c.codigos(), vec!["E0070"]);
+}
+
+/// ** Tocar una direccion cruda pide `crudo`, Y SIN NOMBRAR NINGUNA MAQUINA.
+///
+/// Aqui se ve que la regla no era "lo de la maquina pide crudo". Era:
+///
+///     al otro lado, hay alguien que comprueba?
+///
+/// De una direccion cruda no hay nadie -- no hay kernel que valide una
+/// capability como en `invoca`, y no hay comprobacion de limites como en un
+/// indice, porque no hay lista: hay un numero. Y eso es verdad en toda maquina,
+/// asi que la prohibicion viaja con el modulo que trae el nombre y no con la
+/// arquitectura.
+#[test]
+fn escribir_en_una_direccion_fuera_de_crudo_se_denuncia() {
+    let c = codigos_de(
+        "perfil llano
+usa memoria
+
+funcion principal
+    escribe_natural64(0x200000, 1)
+",
+    );
+    assert_eq!(c, vec!["E0072"]);
+}
+
+#[test]
+fn leer_una_direccion_fuera_de_crudo_tambien() {
+    let c = codigos_de(
+        "perfil llano
+usa memoria
+
+funcion lee devuelve natural64
+    devuelve lee_natural64(0x200000)
+",
+    );
+    assert_eq!(c, vec!["E0072"]);
+}
+
+#[test]
+fn dentro_de_crudo_la_memoria_vale() {
+    let c = codigos_de(
+        "perfil llano
+usa memoria
+
+         funcion principal
+             crudo
+                 escribe_natural64(0x200000, 1)
+",
+    );
+    assert!(c.is_empty(), "{:?}", c);
 }

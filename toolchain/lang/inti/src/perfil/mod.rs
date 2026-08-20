@@ -127,7 +127,12 @@ pub struct Informe {
 /// `maquinas` son las que el fichero declaro con `usa` y existen. Sin ellas,
 /// un nombre como `entrada_puerto` es un nombre cualquiera -- que es lo
 /// correcto: **solo existe si dijiste `usa x86_64`**.
-pub fn comprobar(m: &Modulo, cat: &Catalogo, maquinas: &[Maquina]) -> Cosecha<Informe> {
+pub fn comprobar(
+    m: &Modulo,
+    cat: &Catalogo,
+    maquinas: &[Maquina],
+    modulos: &crate::tablas::Modulos,
+) -> Cosecha<Informe> {
     let mut informe = Informe::default();
     informe.arquitecturas = maquinas.iter().map(|x| x.nombre().to_string()).collect();
 
@@ -135,6 +140,7 @@ pub fn comprobar(m: &Modulo, cat: &Catalogo, maquinas: &[Maquina]) -> Cosecha<In
         perfil: m.perfil,
         cat,
         maquinas,
+        modulos,
         avisos: Vec::new(),
         informe,
         dentro_de_crudo: false,
@@ -151,6 +157,8 @@ struct Vigia<'c> {
     perfil: Perfil,
     cat: &'c Catalogo,
     maquinas: &'c [Maquina],
+    /// Lo que traen los `usa` que no son maquinas.
+    modulos: &'c crate::tablas::Modulos,
     avisos: Vec<Aviso>,
     informe: Informe,
     dentro_de_crudo: bool,
@@ -358,7 +366,11 @@ impl<'c> Vigia<'c> {
         if self.dentro_de_crudo {
             return;
         }
-        if !self.maquinas.iter().any(|m| m.pide_crudo(nombre)) {
+        // ** Dos fuentes, una regla: el `crudo` viaja con quien trae el
+        // nombre. La maquina trae `entrada_puerto` y su prohibicion; el modulo
+        // `memoria` trae `escribe_natural64` y la suya.
+        let de_la_maquina = self.maquinas.iter().any(|m| m.pide_crudo(nombre));
+        if !de_la_maquina && !self.modulos.pide_crudo(nombre) {
             return;
         }
         self.avisos.push(
@@ -369,7 +381,8 @@ impl<'c> Vigia<'c> {
             )
             .con_habia(
                 "`crudo` no marca \"esto es de bajo nivel\": marca \"aqui nadie comprueba \
-                 por ti\". Al otro lado de un puerto no hay ningun kernel que valide nada."
+                 por ti\". Al otro lado de un puerto --o de una direccion cruda-- no hay \
+                 ningun kernel que valide nada."
                     .to_string(),
             )
             .con_hacer("mete la linea dentro de un bloque `crudo`"),

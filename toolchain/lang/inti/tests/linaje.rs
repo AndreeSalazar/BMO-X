@@ -47,6 +47,10 @@ fn generaciones() -> HashMap<&'static str, u32> {
     // mas: si mirase a `perfil` o a `ir` seria un quinto analisis disfrazado de
     // informe, y se los llevaria por delante el dia que se reescriban.
     g.insert("cabina", 1);
+    // ** `tablas` esta aqui y no arriba porque su sitio lo decidio ESTE test.
+    // Vivia dentro de `nombres` (gen 4) y ataba a sus dos hermanos. La regla que
+    // salio: **una tabla vive en la generacion mas baja que la necesita**.
+    g.insert("tablas", 1);
 
     // -- HIJOS -----------------------------------------------------------
     g.insert("arbol", 2);

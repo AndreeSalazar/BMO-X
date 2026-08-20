@@ -153,8 +153,30 @@ numero = "rax"
 #  nadie vuelve a leer.
 argumentos = ["rdi", "rsi", "rdx", "r10", "r8", "r9"]
 
-#  Por donde vuelve la respuesta.
-resultado = "rax"
+#  ** POR DONDE VUELVE LA RESPUESTA. Y son DOS, que es lo que casi se me pasa.
+#
+#  La puerta de BMO-X no contesta una cosa: contesta un CODIGO y un VALOR, por
+#  registros distintos y a la vez.
+#
+#      rax   el codigo. 0 es lo unico que significa exito, y los 32 bits altos
+#            llevan las banderas del kernel -- la que distingue "no tienes
+#            permiso" de "ese handle no existe", por ejemplo.
+#      rdx   el valor. Un handle, un puntero, un numero.
+#
+#  Por eso `usa bmo` trae DOS nombres para una sola puerta: `invoca` recoge el
+#  codigo y `invoca_valor` recoge el valor. **La instruccion que se emite es
+#  identica**; lo unico que cambia es de que registro se lee despues.
+#
+#  ** Y esto es exactamente lo que el emisor hizo mal el primer dia: leia `rax`
+#  para los dos, asi que `invoca_valor` devolvia el codigo. Habria compilado,
+#  habria corrido, y todo puntero pedido al kernel habria valido cero -- que es
+#  indistinguible de un kernel que dice que no.
+#
+#  Cual recoge cual **no se decide aqui**: eso es del ABI de BMO-X, no de esta
+#  maquina, y vive en `modulos.toml`, seccion [recoge]. Aqui solo esta el par de
+#  registros.
+codigo = "rax"
+valor = "rdx"
 
 #  Lo que la puerta destruye por el camino, aunque nadie se lo pida. Se declara
 #  para que el dia que el asignador reparta estos registros, no los reparta
