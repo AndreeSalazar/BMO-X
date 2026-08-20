@@ -1,4 +1,4 @@
-# CENSO DE INTI -- 35 sondas, y el veredicto escrito POR DELANTE
+# CENSO DE INTI -- 38 sondas, y el veredicto escrito POR DELANTE
 
 > **F0.** 🟡 Ninguna sonda esta medida: **hoy no existe el compilador**. Lo que
 > hace este documento es fijar **que tiene que pasar**, para que el dia que el
@@ -20,7 +20,7 @@ primera linea, asi que **la sonda y su expectativa no se pueden separar**.
 
 ## El numero
 
-**35 sondas. 0 medidas.** (F0 no compila nada: eso es F1.)
+**38 sondas. 0 medidas.** (F0 no compila nada: eso es F1.)
 
 | familia | sondas | que fija |
 |---|---|---|
@@ -29,7 +29,7 @@ primera linea, asi que **la sonda y su expectativa no se pueden separar**.
 | `c` control | 5 | fijo/cambiante, comparar, los tres bucles |
 | `f` funciones | 6 | registros, capturas, defectos congelados, sin herencia |
 | `e` errores | 2 | las tres formas, y que ignorar no compila |
-| `p` perfiles | 5 | la frontera llano/pleno, `crudo`, `en paralelo` |
+| `p` perfiles | 8 | la frontera llano/pleno, `crudo`, `en paralelo`, **y la puerta** |
 | `r` reglas | 7 | las que se pueden ver desde el fuente |
 
 ---
@@ -91,6 +91,9 @@ primera linea, asi que **la sonda y su expectativa no se pueden separar**.
 | `p03_llano_sin_numero` | en `llano` hay que decir el tamano | `E0020` |
 | `p04_crudo_en_pleno` | `crudo` no existe en `pleno` | `E0071` |
 | `p05_paralelo_mutable` | ★★ lo que cruza esta congelado, o no cruza | `E0080` |
+| `p06_puerta` | ★★ la puerta se llama sin `crudo`: al otro lado hay un kernel que comprueba | **COMPILA** |
+| `p07_puerto_sin_crudo` | un puerto **si** lo necesita: al otro lado no hay nadie | `E0072` |
+| `p08_biblioteca_no_reservada` | ★ `escribe` e `invoca` **no son palabras clave**: se pueden redefinir | **COMPILA** |
 
 ## Las reglas que se ven desde el fuente
 
@@ -129,7 +132,7 @@ sondas en verde"*: **siete se declaran hoy y cinco nacen alli**.
    cargo test -p bmo-inti-front sonda_
 ```
 
-Cinco ejes, 35 casillas, y el informe **entero** comparado contra la constante
+Siete ejes, 38 casillas, y el informe **entero** comparado contra la constante
 del censo -- el mismo mecanismo que le encontro a BMO C cuatro defectos sin
 encender la maquina (el alineado de agregados, las cuatro operaciones que
 miraban mal el bit alto, `<strings.h>` ausente y `fread` a la pila).

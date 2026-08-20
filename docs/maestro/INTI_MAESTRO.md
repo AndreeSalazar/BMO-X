@@ -758,6 +758,7 @@ Esto es lo que INTI puede hacer **el primer dia**, todo con piezas en metal:
 | `guarda "notas.txt", texto` | ESTRATOS desde Ring 3 | HECHO (18-08) |
 | `abre recurso("logo.png")` | `Resources 0x0B` + `TASK_OP_MI_PAQUETE` | HECHO (09-08) |
 | `crudo { escribe_puerto(0x60, x) }` | `intrinsics.toml` (`__outb`) | HECHO |
+| `invoca(cap, op, a0, a1, a2)` | la puerta: fila `[syscall]` de `intrinsics.toml` | HECHO |
 | `en paralelo: ...` | tareas aisladas + prestamo de congelados | contrato listo, falta cablear |
 
 ★★ **Y la que no tiene nadie:** *"se abre, no se carga"*. En Python, `import`
@@ -765,6 +766,19 @@ lee, descomprime y copia a RAM. Aqui **el modulo vive en el `.bex` y se lee por
 desplazamiento sin traerlo entero** -- lo mismo que le quito el 87,1% a DOOM. Un
 programa de INTI es **un fichero**: codigo, modulos, imagenes **y su firma
 dentro**. Un `.pyz` no puede llevar su firma.
+
+★★ **Y una precision que hay que tener clara: nada de eso es sintaxis.** La
+puerta **no vive en la gramatica** -- `invoca` viene de `usa bmo`, que baja a la
+fila `[syscall]` de `intrinsics.toml`. Es la leccion de C otra vez: **`read()`
+nunca fue una palabra clave**, y por eso Unix pudo saltar al Interdata. Si INTI
+reservara `INVOKE`, quedaria casado con este sistema y se perderia la mitad B de
+la portabilidad (sec. 7). Los tres escalones -- REX, la puerta, los intrinsecos
+-- son **tablas**, y por tanto se pueden tapar con `bmo-mods` sin bifurcar nada.
+
+★ Y la regla que decide donde hace falta `crudo`: **`invoca` no lo necesita y un
+puerto de E/S si**. No es incoherencia -- al otro lado de una capability hay un
+kernel que comprueba; al otro lado de un `outb` no hay nadie. `crudo` no marca
+*"bajo nivel"*, marca **"aqui nadie comprueba por ti"**.
 
 ★★★ **Y la que responde a P5:** el depurador de INTI puede ensenar la memoria
 **de verdad**, no un dibujo. Nada de lo que Sorva llama *maquina nocional* tiene
@@ -915,8 +929,9 @@ funcion lee_tecla devuelve entero8
 Lo que hay que mirar: **`cambiante` aparece y se ve**; no hay `try` ni `except`
 y **no hay error sin tratar**; la suma **atrapa** en vez de dar la vuelta; el
 decimal es exacto; **`crudo` es la unica ventana sin comprobar y esta escrita en
-el codigo**, no escondida; y `guarda` es del lenguaje, no de una libreria que
-hay que instalar.
+el codigo**, no escondida; y **`guarda` no hay que instalarlo, y tampoco es
+sintaxis**: es la biblioteca base, y la biblioteca base **viaja dentro**. Ver
+`toolchain/lang/inti/GRAMATICA.md` sec. 17.
 
 ---
 

@@ -1,0 +1,192 @@
+#  palabras.toml -- las palabras clave de INTI
+#
+#  == Por que esto es una TABLA y no un `match` en el lexer ==
+#
+#  Las palabras clave de INTI estan en castellano, y eso es una decision con
+#  evidencia detras: los novatos que programan con las palabras y el entorno en
+#  su lengua demuestran conceptos nuevos mas rapido, y en el mundo hispano el
+#  caso existe y es masivo (PSeInt lleva desde 2003).
+#
+#  Pero tiene un precio real y hay que decirlo: **nadie fuera de tu idioma va a
+#  contribuir**. Este fichero es lo que hace que ese precio sea reversible.
+#
+#  Con la tabla, INTI habla otro idioma anadiendo UNA COLUMNA y sin tocar una
+#  linea del compilador. Sin la tabla, cambiarlo despues cuesta el parser
+#  entero. Hacerlo asi hoy no cuesta nada; es el mismo patron que
+#  `arch/x86_64/intrinsics.toml`, donde anadir una instruccion es una entrada y
+#  cero Rust.
+#
+#  == Por que vive aqui y no dentro de `lang/inti/` ==
+#
+#  Porque `tables/` es la raiz que consulta `bmo-mods`: quien deje su propia
+#  version en `$BMO_MODS` o en `mods/` gana, **sin bifurcar el repo**. Es el
+#  mismo motivo por el que REX vive aqui y no en una carpeta mas bonita. Un
+#  dialecto de INTI --en ingles, en quechua, o con las palabras que quiera un
+#  colegio-- es un fichero, no un fork.
+#
+#  == El contrato ==
+#
+#  Las dos tablas de abajo tienen que tener EXACTAMENTE las mismas claves. Un
+#  test lo comprueba, porque una clave suelta en un idioma seria una palabra
+#  que existe a medias: reservada al lexar y desconocida al parsear.
+#
+#  Las claves son el SIMBOLO interno (lo que ve el parser) y nunca cambian.
+#  Los valores son lo que se teclea.
+
+[meta]
+version = 1
+idioma_por_defecto = "es"
+palabras = 49
+
+#  Las tildes son ALIAS: la version acentuada de una palabra lexa igual que la
+#  ASCII, asi que quien escribe con tildes no tropieza y el fichero canonico
+#  sigue siendo ASCII (lo exige `ascii-sweep`, que corre dentro de `build.ps1`).
+alias_por_tilde = true
+
+
+# ===================================================================
+#  Castellano -- el idioma por defecto
+# ===================================================================
+[es]
+
+#  -- el modulo -------------------------------------------------------
+PERFIL     = "perfil"
+LLANO      = "llano"
+PLENO      = "pleno"
+USA        = "usa"
+
+#  -- declaraciones ---------------------------------------------------
+FUNCION    = "funcion"
+DEVUELVE   = "devuelve"
+REGISTRO   = "registro"
+OPERACION  = "operacion"
+
+#  -- nombres y tipos -------------------------------------------------
+CAMBIANTE  = "cambiante"
+ES         = "es"
+UN         = "un"
+DE         = "de"
+A          = "a"
+
+#  -- control ---------------------------------------------------------
+SI         = "si"
+SINO       = "sino"
+PARA       = "para"
+CADA       = "cada"
+EN         = "en"
+HASTA      = "hasta"
+REPITE     = "repite"
+VECES      = "veces"
+MIENTRAS   = "mientras"
+CORTA      = "corta"
+CONTINUA   = "continua"
+
+#  -- errores y perfiles ----------------------------------------------
+FALLA      = "falla"
+CRUDO      = "crudo"
+PARALELO   = "paralelo"
+
+#  -- operadores que son palabras -------------------------------------
+Y          = "y"
+O          = "o"
+NO         = "no"
+ENTRE      = "entre"
+RESTO      = "resto"
+ELEVADO    = "elevado"
+DESPLAZA   = "desplaza"
+IZQUIERDA  = "izquierda"
+DERECHA    = "derecha"
+BITS_Y     = "bits_y"
+BITS_O     = "bits_o"
+BITS_XOR   = "bits_xor"
+
+#  -- valores ---------------------------------------------------------
+CIERTO     = "cierto"
+FALSO      = "falso"
+NADA       = "nada"
+QUIZA      = "quiza"
+ERROR      = "error"
+FALLO      = "fallo"
+VALOR      = "valor"
+MOTIVO     = "motivo"
+LISTA      = "lista"
+TABLA      = "tabla"
+
+
+# ===================================================================
+#  Ingles -- la prueba de que la columna cuesta un fichero
+#
+#  No esta activo: `meta.idioma_por_defecto` manda. Esta escrito para que la
+#  afirmacion "el ingles es una columna" se pueda comprobar en vez de creer.
+# ===================================================================
+[en]
+
+PERFIL     = "profile"
+LLANO      = "plain"
+PLENO      = "full"
+USA        = "use"
+
+FUNCION    = "function"
+DEVUELVE   = "returns"
+REGISTRO   = "record"
+OPERACION  = "operation"
+
+CAMBIANTE  = "mutable"
+ES         = "is"
+UN         = "a"
+DE         = "of"
+A          = "to"
+
+SI         = "if"
+SINO       = "else"
+PARA       = "for"
+CADA       = "each"
+EN         = "in"
+HASTA      = "until"
+REPITE     = "repeat"
+VECES      = "times"
+MIENTRAS   = "while"
+CORTA      = "break"
+CONTINUA   = "continue"
+
+FALLA      = "fail"
+CRUDO      = "raw"
+PARALELO   = "parallel"
+
+Y          = "and"
+O          = "or"
+NO         = "not"
+ENTRE      = "div"
+RESTO      = "rem"
+ELEVADO    = "raised"
+DESPLAZA   = "shift"
+IZQUIERDA  = "left"
+DERECHA    = "right"
+BITS_Y     = "bits_and"
+BITS_O     = "bits_or"
+BITS_XOR   = "bits_xor"
+
+CIERTO     = "true"
+FALSO      = "false"
+NADA       = "none"
+QUIZA      = "maybe"
+ERROR      = "error"
+FALLO      = "failed"
+VALOR      = "value"
+MOTIVO     = "reason"
+LISTA      = "list"
+TABLA      = "map"
+
+
+# ===================================================================
+#  Lo que NO esta aqui, y es a proposito
+# ===================================================================
+#
+#  `escribe`, `guarda`, `pinta`, `cuenta`, `anade`, `invoca`, `entrada_puerto`
+#  NO son palabras clave: son la biblioteca base (REX y los intrinsecos). Por
+#  eso se pueden tapar, redefinir y ampliar sin tocar el lenguaje -- y por eso
+#  la puerta del sistema no vive en la gramatica. Ver `GRAMATICA.md` sec. 17.
+#
+#  Un lenguaje se juzga por lo que RESERVA. INTI reserva 49 palabras; C reserva
+#  32 y ademas se quedo sin poder llamar a nada `new`. La diferencia esta en
+#  que aqui casi todo lo que parece del lenguaje es biblioteca.
