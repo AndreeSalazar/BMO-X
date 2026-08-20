@@ -131,6 +131,8 @@ pub(crate) struct DataWindow {
     /// ensenar `sin firma` sin haber mirado seria contestar por el disco.
     /// Se borra al cambiar de nodo -- el resultado es de UN archivo.
     pub(crate) verified: Option<u64>,
+    /// Lo que se esta mirando dentro de un fichero, si hay algo.
+    pub(crate) visor: Visor,
     /// El fotograma del ultimo clic en la rejilla, y sobre que fila cayo.
     ///
     /// ** SE CUENTA EN FOTOGRAMAS Y NO EN MILISEGUNDOS, y no es por gusto: en
@@ -249,6 +251,7 @@ impl DataWindow {
             from: 0,
             arbol_from: 0,
             verified: None,
+            visor: Visor::VACIO,
             clic_frame: 0,
             clic_fila: 0,
             seal: Seal::Idle,
@@ -344,6 +347,74 @@ impl DataWindow {
         self.clic_frame = if doble { 0 } else { frame };
         self.clic_fila = i;
         doble
+    }
+
+    /// **La ruta ENTERA del hijo `i`**, desde la raiz. `0` si no cabe.
+    ///
+    /// Hermana de `Consola::ruta_de`, y viven separadas mientras cada una use
+    /// su propio ancho: la de la consola escribe en su renglon de `COLS` y esta
+    /// en el buffer del que abre. El dia que las dos quieran lo mismo, esta es
+    /// la que se queda -- aqui es donde vive el cursor.
+    pub(crate) fn ruta_del_hijo(&self, i: usize, dst: &mut [u8; 128]) -> usize {
+        let mut k = 0usize;
+        let hondo = bmo::estratos::hondo();
+        let mut nivel = 1u64;
+        while nivel <= hondo {
+            let mut nom = [0u8; 64];
+            let m = bmo::estratos::nombre_nivel(nivel, &mut nom);
+            if k + m + 1 >= dst.len() {
+                return 0;
+            }
+            dst[k..k + m].copy_from_slice(&nom[..m]);
+            k += m;
+            dst[k] = b'/';
+            k += 1;
+            nivel += 1;
+        }
+        let mut nom = [0u8; 64];
+        let m = bmo::estratos::hijo_nombre(i as u64, &mut nom);
+        if m == 0 || k + m > dst.len() {
+            return 0;
+        }
+        dst[k..k + m].copy_from_slice(&nom[..m]);
+        k + m
+    }
+
+    /// **Cuantas lineas del visor caben en el panel.**
+    ///
+    /// La cuenta vive aqui y no en `keys/`: el reparto de zonas es de esta
+    /// ventana. Quien mueve el scroll solo tiene que saber CUANTO, no donde
+    /// empieza la rejilla ni cuanto ocupa una cabecera.
+    pub(crate) fn visor_caben(&self) -> usize {
+        let z = Zonas::repartir(&self.chrome, self.consola.abierta).rejilla;
+        if !z.hay() {
+            return 1;
+        }
+        // La cabecera del visor se lleva un renglon y su raya.
+        let util = z.h.saturating_sub(bmo::GLIFO_ALTO + 12);
+        ((util / bmo::GLIFO_ALTO) as usize).max(1)
+    }
+
+    /// **Abre el fichero senalado en el visor.** `false` si no era un fichero.
+    ///
+    /// ** Se pregunta por el TIPO y no se prueba a abrir: un directorio se abre
+    /// igual como ruta, y el visor ensenaria sus entradas crudas como si fueran
+    /// texto. Eso no es ver un fichero, es ensenar el formato por dentro.
+    pub(crate) fn ver_senalado(&mut self) -> bool {
+        if self.sel >= bmo::estratos::hijos() as usize {
+            return false;
+        }
+        if bmo::estratos::hijo_tipo(self.sel as u64) != bmo::estratos::ARCHIVO {
+            return false;
+        }
+        let mut ruta = [0u8; 128];
+        let k = self.ruta_del_hijo(self.sel, &mut ruta);
+        if k == 0 {
+            return false;
+        }
+        let mut nom = [0u8; 64];
+        let m = bmo::estratos::hijo_nombre(self.sel as u64, &mut nom);
+        self.visor.abrir(&ruta[..k], &nom[..m])
     }
 
     pub(crate) fn fila_rejilla_en(&self, px: u32, py: u32) -> Option<usize> {
@@ -597,6 +668,13 @@ fn node_box(
 /// para saber en que fila cayo un clic. Viven con quien las dibuja.
 mod obra;
 pub(crate) use obra::{obra, REJILLA_CABECERA, ROW_H};
+
+/// **El VISOR**: lo que hay DENTRO de un fichero, donde iria la rejilla.
+///
+/// Fichero propio y no una funcion mas aqui: `data.rs` ya se partio una vez por
+/// L6a, y lo que se anade a una ventana crece por su cuenta.
+pub(crate) mod visor;
+pub(crate) use visor::Visor;
 
 /// **Repinta SOLO la consola del pie.**
 ///

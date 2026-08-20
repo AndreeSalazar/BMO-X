@@ -53,7 +53,15 @@ pub(crate) fn obra(p: &bmo::Pantalla, c: &DataWindow) {
 
     miga(p, &z.miga);
     arbol::paint(p, &z.arbol, c.arbol_from, DATA_TITLE, NODE_SEL);
-    paint_folders(p, c, &z.rejilla);
+    // ** EL VISOR OCUPA EL SITIO DE LA REJILLA, no se pone encima. Entrar en un
+    // fichero es como entrar en una carpeta: cambias lo que hay en ese panel y
+    // ESC te devuelve. Pintarlo flotando pediria un marco, un foco y una regla
+    // de que tapa a que -- tres cosas para lo que aqui es cambiar una vista.
+    if c.visor.abierto {
+        super::visor::paint(p, &z.rejilla, &c.visor);
+    } else {
+        paint_folders(p, c, &z.rejilla);
+    }
     paint_nodes(p, c, &z.grafo);
     consola::paint(p, &z.consola, &c.consola, DATA_BG, DATA_EDGE, DATA_TITLE);
     pie(p, c, &z.pie);
@@ -181,7 +189,7 @@ fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
         ),
         Seal::Idle => p.texto(
             z.x, y,
-            "flechas mueven  ENTRAR baja  F2 renombra  V firma  S sella  Ctrl+n consola",
+            "flechas mueven  ENTRAR baja o VE  F2 renombra  V firma  S sella  Ctrl+n consola",
             INK_DIM,
         ),
     };
