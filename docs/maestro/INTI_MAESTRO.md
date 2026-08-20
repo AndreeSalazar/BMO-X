@@ -1354,6 +1354,75 @@ equivocado no sirve para nada.
 
 ---
 
+## 13b. DE DONDE VIENE CADA PIEZA -- y que no vino de ningun sitio
+
+> Pregunta de Eddi, 2026-08-19: *"INTI parece un lenguaje de programacion que se
+> inspira (o roba) con todo eso?"*
+
+Se inspira, y **conviene decir de quien en vez de disimularlo**. Todo lenguaje
+se construye sobre otros; lo que separa un diseno de una copia es si se sabe
+**por que** se tomo cada cosa.
+
+| pieza | de quien | y por que se tomo |
+|---|---|---|
+| Bloques por sangria | ABC -> Python | 9.1: es lo unico que batio al placebo |
+| `=` que compara y asigna sin ambiguedad | **Quorum** | porque asignar no es una expresion. Y Quorum es el unico lenguaje disenado con evidencia |
+| Congelar al terminar el modulo | **Starlark** | es lo que quita el GIL sin cerrojos |
+| VALOR / COSA, con copia-al-escribir | **Swift** | prueba de que refcount + valores funciona en un lenguaje de sistema |
+| Definirlo TODO, sin nada indefinido | **WebAssembly** | portabilidad y cero UB a la vez: C decia que habia que elegir |
+| Aislamiento en vez de cerrojos | **Erlang, Pony** | 40 anos sin un data race |
+| Errores como datos | Go, Rust | pero sin `panic`: aqui un error es un valor y punto |
+| Mensajes que ensenan | **Elm, Rust** | 9.2: el error es la interfaz principal |
+| Una sola estructura y pocas palabras | **Lua** | un lenguaje se juzga por lo que RESERVA |
+| Salir del lenguaje, `crudo` como `unsafe` | **C, Rust** | 2: la leccion de ABC |
+| Niveles graduales, idioma propio | **Hedy, PSeInt** | 9.4: la barrera del idioma esta medida |
+| Decimal exacto | **COBOL** -- el tuyo | ya estaba pagado en `bmo_lower::packed` |
+| Perfiles (`llano` / `pleno`) | **Ada** -- el tuyo, ZFP | 1.4: la salida a la tension |
+
+### ★★ Pero un lenguaje no se define por lo que toma. Se define por lo que RECHAZA.
+
+Y esta lista es mas propia que la de arriba:
+
+```text
+   las quince sorpresas          la identidad observable y la mutabilidad
+                                 por defecto: quitadas de raiz
+   el GIL                        rompiendo el eslabon 2, no con cerrojos
+   los 203 UB                    definidos uno a uno
+   la herencia y las clases      no hay MRO, ni `self`, ni metaclases
+   las closures                  y el motivo es del PERFIL, no del gusto
+   el nulo                       `quiza T`, y hay que mirarlo
+   el shadowing dentro de una funcion
+   `eval`                        rompe el AOT y el gate
+   la compatibilidad con Python  la tentacion mas cara del documento
+```
+
+★ Rechazar tiene un coste que copiar no tiene: **hay que sostenerlo**. Cada
+"no" de esa lista ha tenido que defenderse contra un caso concreto en dos dias,
+y dos de ellos se corrigieron cuando el caso gano (el alcance por bloque, y la
+biblioteca tapando nombres de variable).
+
+### ★★★ Y lo que no vino de ningun sitio
+
+Una cosa de INTI **no esta tomada de nadie**, y no por merito: porque **no
+existia donde tomarla**.
+
+> **El modelo de concurrencia de INTI y el modelo de memoria de BMO-X son la
+> misma decision.**
+
+El "valor congelado" de Starlark y el objeto `IMMORTAL` de `bmo_abi::dynobj` no
+se parecen: **son la misma cosa**, y una ya estaba implementada antes de que el
+lenguaje existiera. Lo congelado no tiene contador que corromper, y por eso se
+puede prestar entre tareas *y* entre procesos con el mismo mecanismo.
+
+Rust, Go y Python eligieron su modelo de concurrencia **contra un sistema
+operativo que ya existia y no podian cambiar**. Aqui es al reves, y es lo unico
+de este documento que **un lenguaje portable no puede copiar** -- no porque sea
+dificil, sino porque necesita un sistema operativo debajo que sea tuyo.
+
+Lo distintivo de INTI no es la sintaxis. Es eso.
+
+---
+
 ## 14. LO QUE NO ENTRA, con motivo
 
 | fuera | motivo |
