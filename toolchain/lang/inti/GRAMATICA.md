@@ -283,8 +283,53 @@ funcion divide(a, b) devuelve numero o error     # puede fallar
   `llano` no hay monton.** Tenerlas solo en `pleno` serian dos lenguajes con
   una gramatica. Consecuencia buena: sin capturas, la sorpresa 2 de Python
   (*late binding*) **no existe por ausencia**, sin necesidad de ninguna regla.
-- ⚠ **Una llamada lleva SIEMPRE parentesis**, o `de` si es de un argumento:
-  `escribe("hola")`, `cuenta de notas`. `escribe "hola"` no es una llamada.
+- Una llamada se escribe de tres maneras y **las tres dan el mismo arbol**:
+  `escribe("hola")`, `escribe "hola"` (sec. 10b) y `cuenta de notas` para un
+  solo argumento.
+
+---
+
+## 10b. ★★ La forma de sentencia: una llamada sin parentesis
+
+Peticion de Eddi: *"la otra libreria es para quitar las `()` y otras cosas, para
+ACERCAR o estar igual que la sintaxis de Python pero ULTRA simplificado"*.
+
+```text
+   escribe "hola"
+   escribe "media:", m
+   guarda "notas.txt", texto(m)
+   anade notas, 5
+```
+
+Y **no rompe la regla de que `f` y `f()` se ven distintos**, porque solo vale
+**al principio de una sentencia y con argumentos**:
+
+```text
+   escribe            <- el VALOR de la funcion, no una llamada
+   escribe()          <- la llamada sin argumentos
+   escribe "hola"     <- la llamada con uno
+```
+
+### La pieza que decide, y es una sola
+
+Detras del nombre tiene que venir algo que **empieza un valor y no puede
+continuar una expresion**: un texto, un numero, otro nombre, un tipo,
+`cierto`/`falso`/`nada`, o una tabla. Lo que queda fuera:
+
+| se escribe | se lee como | por que |
+|---|---|---|
+| `x = 5` | asignacion | `=` continua la sentencia |
+| `p.x = 3` | asignacion | `.` continua el nombre |
+| `notas[0] = 5` | asignacion | `[` es un indice, no un argumento |
+| `total - 1` | expresion | ⚠ `-` es ambiguo y se queda fuera |
+| `f(1)` | la llamada de siempre | `(` ya tiene su forma |
+
+⚠ **El `-` se queda fuera a proposito.** `escribe -1` podria ser `escribe(-1)` o
+una resta, y **una regla que hay que pensar no simplifica nada**. Para pasar un
+negativo: `escribe(-1)`.
+
+★ Y sale **el mismo nodo del arbol** que con parentesis: no hay dos formas de
+llamar, hay una escrita de dos maneras. Hay un test que lo comprueba.
 
 ---
 

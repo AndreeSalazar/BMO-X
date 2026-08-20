@@ -119,6 +119,51 @@ azar_de_verdad  = "rdseed"
 # -- lo que el CPU dice de si mismo -------------------------------------
 que_cpu_eres    = "cpuid"
 
+# -- ATOMICAS: la fortaleza que x86 tiene y casi nadie mas ------------
+#
+#  ** x86-64 tiene un modelo de memoria FUERTE (TSO): las escrituras se ven en
+#  orden. En ARM no, y por eso alli el mismo programa necesita barreras que aqui
+#  sobran. Es la fortaleza mas real de esta maquina y la que menos se nombra.
+#
+#  Lo que eso significa para INTI: estas operaciones son la base de cualquier
+#  cosa compartida entre nucleos, y aqui son una instruccion.
+intercambia        = "xchg"
+compara_y_cambia   = "cmpxchg"
+suma_y_devuelve    = "xadd"
+suma_atomica       = "lock_add"
+o_atomica          = "lock_or"
+y_atomica          = "lock_and"
+
+# -- las tablas del sistema (arranque y cambio de modo) ---------------
+carga_gdt       = "lgdt"
+carga_idt       = "lidt"
+lee_gdt         = "sgdt"
+lee_idt         = "sidt"
+carga_tr        = "ltr"
+carga_ldt       = "lldt"
+cambia_gs       = "swapgs"
+
+# -- el resto de los registros de control -----------------------------
+lee_cr2         = "cr2"
+lee_cr4         = "cr4"
+escribe_cr4     = "set_cr4"
+lee_banderas    = "flags"
+escribe_banderas = "set_flags"
+
+# -- estado extendido (XSAVE): lo que hace cara una puerta ------------
+lee_xcr         = "xgetbv"
+escribe_xcr     = "xsetbv"
+
+# -- esperar sin quemar el nucleo -------------------------------------
+vigila          = "monitor"
+duerme_hasta    = "mwait"
+
+# -- depurar y morir a proposito --------------------------------------
+punto_de_ruptura = "int3"
+instruccion_invalida = "ud2"
+tira_cache_sin_escribir = "invd"
+
+
 # ===================================================================
 #  Cuales piden `crudo`
 # ===================================================================
@@ -139,18 +184,68 @@ piden = [
     "entrada_puerto", "entrada_puerto16", "entrada_puerto32",
     "escribe_puerto", "escribe_puerto16", "escribe_puerto32",
     "lee_msr", "escribe_msr",
-    "lee_cr0", "escribe_cr0", "lee_cr3", "escribe_cr3",
+    "lee_cr0", "escribe_cr0", "lee_cr2", "lee_cr3", "escribe_cr3",
+    "lee_cr4", "escribe_cr4",
     "sin_interrupciones", "con_interrupciones",
-    "tira_la_cache", "olvida_pagina", "limpia_linea",
+    "tira_la_cache", "tira_cache_sin_escribir", "olvida_pagina", "limpia_linea",
+    "carga_gdt", "carga_idt", "carga_tr", "carga_ldt", "cambia_gs",
+    "escribe_banderas", "escribe_xcr",
+    "vigila", "duerme_hasta",
+    "instruccion_invalida",
 ]
 
+#  ** Y fijate en cuales NO piden `crudo` aunque suenen peligrosas:
+#
+#    - las ATOMICAS (`compara_y_cambia`, `suma_atomica`...): al otro lado esta
+#      la coherencia de cache del propio silicio, que SI comprueba. Una
+#      operacion atomica mal usada da un resultado raro, no una maquina rota.
+#    - `lee_gdt`, `lee_idt`, `lee_cr0`... LEER no rompe nada.
+#    - `punto_de_ruptura`: para el programa y ya. Es lo que se espera de el.
+#
+#  La regla sigue siendo la misma y por eso se puede aplicar sin discutir:
+#  **al otro lado, hay alguien que comprueba?**
+
 # ===================================================================
-#  Lo que falta, dicho para que no se olvide
+#  ** LAS FORTALEZAS DE ESTA MAQUINA, dichas para poder usarlas
 # ===================================================================
 #
-#  De los 62 intrinsecos de `intrinsics.toml` aqui hay nombre para unos 35. Los
-#  que faltan (`lgdt`, `ltr`, `xsetbv`, `monitor`, `mwait`, `cmpxchg`...) son de
-#  arranque y de SMP, y entran cuando haya un programa de INTI que los pida.
+#  Peticion de Eddi: *"en x86-64 vamos a expandir, pero MAS exclusivo para
+#  x86-64, SU FORTALEZA"*. Estas son, y ninguna es "va rapido":
 #
-#  Se dice a proposito en vez de dejar el hueco: una tabla incompleta que no
-#  declara que lo esta parece una tabla completa.
+#  1. ** MODELO DE MEMORIA FUERTE (TSO). Las escrituras se ven en el orden en
+#     que se hicieron. En ARM no, y por eso alli el mismo programa necesita
+#     barreras que aqui sobran. Es la fortaleza mas real de x86-64 y la que
+#     menos se nombra: **codigo compartido entre nucleos que aqui es correcto,
+#     alli no lo es**, y el compilador tendra que meter las barreras al portar.
+#
+#  2. ATOMICAS de una instruccion. `lock cmpxchg` hace lo que en otras
+#     arquitecturas son dos instrucciones y un bucle de reintento.
+#
+#  3. `cpuid`: la maquina se describe a si misma. No hace falta una tabla de
+#     modelos ni adivinar por el nombre.
+#
+#  4. Instrucciones de cadena (`rep movsb`) que en el silicio moderno son el
+#     camino rapido para copiar. OJO: **no siempre lo fueron** -- ver la seccion
+#     13.10 del maestro, que es justo el ejemplo de que el ensamblador de ayer
+#     es el codigo lento de manana.
+#
+#  5. Un contador de ciclos barato (`rdtsc`) que hace posible el metodo de este
+#     proyecto: medir en vez de opinar.
+#
+# ===================================================================
+#  Lo que NO tiene nombre, y es a proposito
+# ===================================================================
+#
+#  ** `syscall` y `syscall_valor` NO estan en esta tabla, aunque sean dos filas
+#  de `intrinsics.toml`. La puerta del sistema llega por `usa bmo`, que es un
+#  modulo, y no por la arquitectura. Si estuviera aqui, un programa que solo
+#  quiere `lee_reloj` tendria la puerta a mano sin pedirla -- y la frontera
+#  entre "hablo con el metal" y "hablo con el kernel" es justo la que este
+#  lenguaje no quiere borrar.
+#
+#  De los 62 intrinsecos quedan sin nombre los de cadena (`rep movsb` y
+#  companyia), que no estan en `intrinsics.toml` todavia. Entran el dia que
+#  `bmo_lower` los emita.
+#
+#  Se dice en vez de dejar el hueco: una tabla incompleta que no declara que lo
+#  esta parece una tabla completa.

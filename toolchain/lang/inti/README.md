@@ -3,7 +3,7 @@
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
 > 🟢 **F0, F1, F2a y F2b en verde (2026-08-19).** El contrato, el lexico, la
-> gramatica, los perfiles y los nombres: **136 pruebas**. Todavia no emite bytes.
+> gramatica, los perfiles y los nombres: **142 pruebas**. Todavia no emite bytes.
 
 ## Que es, en una frase
 
@@ -122,7 +122,7 @@ casado con el. Detalle entero en [`GRAMATICA.md`](GRAMATICA.md) sec. 17.
    cargo test -p bmo-inti-front
 ```
 
-136 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
+142 pruebas. Las que se ganan el sitio: que **el mensaje de error no tiene jerga
 de compilador** (hay lista negra), que **el dedo cae en la columna exacta**
 contando caracteres y no bytes, que **el mismo lexer lee ingles** sin cambiar
 una linea, que una palabra clave **con tilde sigue siendo palabra clave**, y que
@@ -143,7 +143,7 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | **F1a** | **lexico**: palabras, textos, numeros, sangria, parejas, y los avisos de 4 partes | ✅ **verde** (2026-08-19) |
 | **F1b** | **arbol + sintaxis**: precedencia de 10 niveles, declaraciones, sentencias, recuperacion de errores | ✅ **92 pruebas en verde** (2026-08-19) |
 | **F2a** | **el analisis de perfiles**: `llano` contra `pleno`, `crudo` contado | ✅ **verde** (2026-08-19) |
-| **F2b** | **nombres, `cambiante` y la biblioteca comun**: quisiste-decir, alcance por funcion | ✅ **136 pruebas en verde** (2026-08-19) |
+| **F2b** | **nombres, `cambiante` y la biblioteca comun**: quisiste-decir, alcance por funcion, y la **llamada sin parentesis** | ✅ **142 pruebas en verde** (2026-08-19) |
 | F2c | ★ INTI LLANO compilando a `.bex` nativo, por `bmo-verify` | pendiente |
 | F3 | las doce reglas con sus sondas en verde | pendiente |
 | F4 | ★★ la foto del Ryzen | pendiente |

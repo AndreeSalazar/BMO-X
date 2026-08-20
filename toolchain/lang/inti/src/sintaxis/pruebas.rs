@@ -461,3 +461,78 @@ fn un_fallo_no_se_lleva_el_resto_del_fichero() {
         "la funcion de despues tiene que seguir leyendose"
     );
 }
+
+// ===================================================================
+//  La forma de sentencia: una llamada sin parentesis
+// ===================================================================
+
+/// `escribe "hola"` es `escribe("hola")`. **El mismo nodo**: no hay dos formas
+/// de llamar, hay una escrita de dos maneras.
+#[test]
+fn una_llamada_sin_parentesis_da_el_mismo_arbol() {
+    let con = en_principal("escribe(\"hola\")\n");
+    let sin = en_principal("escribe \"hola\"\n");
+    match (&con[0], &sin[0]) {
+        (Sent::Expresion(a), Sent::Expresion(b)) => match (a, b) {
+            (
+                Expr::Llamada {
+                    que: q1,
+                    argumentos: a1,
+                    ..
+                },
+                Expr::Llamada {
+                    que: q2,
+                    argumentos: a2,
+                    ..
+                },
+            ) => {
+                assert!(matches!(&**q1, Expr::Nombre(n, _) if n == "escribe"));
+                assert!(matches!(&**q2, Expr::Nombre(n, _) if n == "escribe"));
+                assert_eq!(a1.len(), 1);
+                assert_eq!(a2.len(), 1);
+            }
+            otro => panic!("no son dos llamadas: {:?}", otro),
+        },
+        otro => panic!("{:?}", otro),
+    }
+}
+
+#[test]
+fn con_varios_argumentos_tambien() {
+    let b = en_principal("escribe \"media:\", 4, cierto\n");
+    match &b[0] {
+        Sent::Expresion(Expr::Llamada { argumentos, .. }) => assert_eq!(argumentos.len(), 3),
+        otro => panic!("{:?}", otro),
+    }
+}
+
+/// Y lo que NO puede confundirse, que es donde se gana la regla.
+#[test]
+fn la_asignacion_sigue_siendo_una_asignacion() {
+    assert!(matches!(&en_principal("x = 5\n")[0], Sent::Asigna { .. }));
+    assert!(matches!(
+        &en_principal("cambiante p = 1\np = 2\n")[1],
+        Sent::Asigna { .. }
+    ));
+}
+
+#[test]
+fn un_indice_no_es_una_llamada() {
+    let b = en_principal("cambiante notas = [1, 2]\nnotas[0] = 5\n");
+    assert!(matches!(&b[1], Sent::Asigna { .. }), "{:?}", &b[1]);
+}
+
+/// El `-` se queda fuera a proposito: `escribe -1` podria ser dos cosas, y una
+/// regla que hay que pensar no simplifica nada.
+#[test]
+fn el_menos_no_abre_una_llamada() {
+    let b = en_principal("cambiante total = 5\ntotal - 1\n");
+    assert!(matches!(&b[1], Sent::Expresion(Expr::Binaria { .. })), "{:?}", &b[1]);
+}
+
+/// Un nombre solo sigue siendo el VALOR de la funcion, no una llamada.
+#[test]
+fn un_nombre_solo_no_llama() {
+    let b = en_principal("escribe\n");
+    assert!(matches!(&b[0], Sent::Expresion(Expr::Nombre(..))), "{:?}", &b[0]);
+}

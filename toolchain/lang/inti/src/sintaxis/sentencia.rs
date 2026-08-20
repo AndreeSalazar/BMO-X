@@ -88,7 +88,95 @@ pub(crate) fn sentencia(c: &mut Cursor) -> Option<Sent> {
         c.i = guardado;
     }
 
+    if let Some(l) = llamada_de_sentencia(c) {
+        return Some(l);
+    }
+
     asignacion_o_expresion(c)
+}
+
+/// **La forma de sentencia**: una llamada sin parentesis.
+///
+/// ```text
+///    escribe "hola"                ->  escribe("hola")
+///    escribe "media:", m           ->  escribe("media:", m)
+///    guarda "notas.txt", texto     ->  guarda("notas.txt", texto)
+/// ```
+///
+/// ## Por que esto NO rompe la regla de que `f` y `f()` se ven distintos
+///
+/// Porque solo vale **al principio de una sentencia y con argumentos**. Un
+/// nombre solo (`f`) sigue siendo el valor de la funcion; `f()` sigue siendo la
+/// llamada sin argumentos. Lo que se gana es el caso que se escribe mil veces
+/// al dia, y se gana sin una sola ambiguedad -- porque la decision se toma
+/// mirando UNA pieza.
+///
+/// ## La pieza que decide
+///
+/// Detras del nombre tiene que venir algo que **empieza un valor y no puede
+/// continuar una expresion**: un texto, un numero, otro nombre, un tipo,
+/// `cierto`/`falso`/`nada`, o una tabla.
+///
+/// Lo que queda fuera, y cada uno por su motivo:
+///
+/// ```text
+///    x = 5           `=` continua la sentencia    -> asignacion
+///    p.x = 3         `.` continua el nombre       -> asignacion
+///    notas[0] = 5    `[` es un indice             -> asignacion
+///    total - 1       `-` es ambiguo               -> expresion
+///    f(1)            `(` es la llamada de siempre -> se lee como siempre
+/// ```
+///
+/// OJO: el `-` se queda fuera a proposito. `escribe -1` podria ser
+/// `escribe(-1)` o una resta, y **una regla que hay que pensar no simplifica
+/// nada**. Para pasar un negativo: `escribe(-1)`.
+fn llamada_de_sentencia(c: &mut Cursor) -> Option<Sent> {
+    let sitio = c.sitio();
+
+    let nombre = match c.mira().clase.clone() {
+        Clase::Nombre(n) => n,
+        Clase::Palabra(s) if super::es_nombrable(s) => c.vocab.texto(s).to_string(),
+        _ => return None,
+    };
+
+    if !empieza_un_argumento(c.piezas.get(c.i + 1)) {
+        return None;
+    }
+    c.avanza();
+
+    let mut argumentos = Vec::new();
+    loop {
+        let valor = super::expresion::expresion(c)?;
+        argumentos.push(Argumento {
+            nombre: None,
+            valor,
+        });
+        if !c.come_signo(Signo::Coma) {
+            break;
+        }
+    }
+    c.fin_de_linea();
+
+    Some(Sent::Expresion(Expr::Llamada {
+        que: Box::new(Expr::Nombre(nombre, sitio)),
+        argumentos,
+        sitio,
+    }))
+}
+
+fn empieza_un_argumento(p: Option<&crate::lexico::Pieza>) -> bool {
+    match p {
+        Some(p) => match &p.clase {
+            Clase::Texto(_) | Clase::Numero(_) | Clase::Nombre(_) | Clase::Tipo(_) => true,
+            Clase::Signo(Signo::LlaveAbre) => true,
+            Clase::Palabra(s) => matches!(
+                s,
+                Simbolo::Cierto | Simbolo::Falso | Simbolo::Nada
+            ),
+            _ => false,
+        },
+        None => false,
+    }
 }
 
 fn si(c: &mut Cursor) -> Option<Sent> {
