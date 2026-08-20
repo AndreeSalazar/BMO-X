@@ -174,7 +174,7 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>) -> Cuenta {
     // Prologo.
     out.push(0x55); // push rbp
     x86::mov_r64_r64(out, 5, 4); // mov rbp, rsp
-    let tam = marco.tamano();
+    let tam = marco.size();
     if tam > 0 {
         if tam <= 127 {
             x86::sub_r64_imm8(out, 4, tam as i8);

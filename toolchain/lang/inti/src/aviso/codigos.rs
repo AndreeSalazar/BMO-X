@@ -58,7 +58,7 @@ pub const NUMERO_RARO: Codigo = Codigo("E0016");
 /// Se cierra un parentesis que nadie abrio, o al reves.
 pub const PAREJA_ROTA: Codigo = Codigo("E0017");
 
-/// En `llano` hay que decir el tamano: `numero` no existe alli.
+/// En `llano` hay que decir la medida: `numero` no existe alli.
 pub const FALTA_TAMANO: Codigo = Codigo("E0020");
 /// Un `quiza T` usado sin mirarlo antes.
 pub const QUIZA_SIN_MIRAR: Codigo = Codigo("E0021");

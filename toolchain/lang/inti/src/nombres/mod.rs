@@ -699,7 +699,7 @@ impl<'c> Vigia<'c> {
                      manejador de interrupciones."
                         .to_string(),
                 )
-                .con_hacer("cambia el fichero a `perfil pleno`, o hazlo con tamanos fijos"),
+                .con_hacer("cambia el fichero a `perfil pleno`, o hazlo con medidas fijas"),
             );
             return;
         }

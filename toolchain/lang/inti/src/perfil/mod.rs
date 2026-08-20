@@ -23,7 +23,7 @@
 //!    llano                        pleno
 //!    ------------------------     ------------------------
 //!    sin texto/lista/tabla        todo
-//!    tamanos exactos              `numero` vale
+//!    medidas exactas              `numero` vale
 //!    `crudo` SI                   `crudo` no (E0071)
 //!    `en paralelo` no             `en paralelo` si
 //! ```
@@ -388,7 +388,7 @@ impl<'c> Vigia<'c> {
                  escribir un manejador de interrupciones."
                     .to_string(),
             )
-            .con_hacer("cambia el fichero a `perfil pleno`, o usa un tamano fijo"),
+            .con_hacer("cambia el fichero a `perfil pleno`, o usa una medida fija"),
         );
     }
 
@@ -400,7 +400,7 @@ impl<'c> Vigia<'c> {
                 sitio,
             )
             .con_habia(
-                "Sin tipo no hay tamano, y sin tamano no se puede reservar en la pila. \
+                "Sin tipo no hay medida, y sin medida no se puede reservar en la pila. \
                  La obligacion sale del perfil, no del gusto."
                     .to_string(),
             )
@@ -424,7 +424,7 @@ impl<'c> Vigia<'c> {
                             sitio,
                         )
                         .con_habia(
-                            "Hay que decir el tamano exacto. Sin tamano no se puede elegir \
+                            "Hay que decir la medida exacta. Sin medida no se puede elegir \
                              la instruccion ni reservar en la pila."
                                 .to_string(),
                         )
