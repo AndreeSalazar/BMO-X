@@ -476,21 +476,35 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     Ok(nuevo.generation)
 }
 
-/// Lo que queda escrito EN EL ESTRATO como motivo del cambio.
+/// Lo que se CUENTA de un gesto. Va a CABINA (F11), no al estrato.
 ///
-/// ** Se guarda dentro del propio estrato, no en un log aparte: recorrer la
-/// cadena hacia atras es recorrer la historia, y una historia que no dice que
-/// paso en cada paso es una lista de numeros.
+/// [!] **Esta cabecera decia "lo que queda escrito EN EL ESTRATO", y era
+/// falso** -- lo desmiente el comentario que hay veinte lineas mas arriba, en
+/// el sitio donde se escribe el estrato: el motivo va VACIO a proposito, porque
+/// `Estrato::con_nombre()` mira si esta puesto y **un estrato con nombre no lo
+/// suelta el recolector jamas**. Escribir "fichero nuevo" en todos dejaria el
+/// volumen creciendo para siempre.
+///
+/// O sea que el estrato tiene DOS campos que se parecen y no lo son:
+///
+/// ```text
+///   el NOMBRE   lo pone una persona con `marca`, y hace la version PERMANENTE
+///   el motivo   esto. Se dice en el log y se pierde con el arranque
+/// ```
+///
+/// ** Y la foto del 19-08 lo confirma sin discutir: el panel de historial pinta
+/// *"automatica -- el recolector puede soltarla"* en las tres versiones del dia.
+/// Ninguna lleva nombre, que es justo lo que este `match` NO debe cambiar.
 fn motivo(g: &Gesto) -> &'static str {
     match g {
         Gesto::Fichero { .. } => "fichero nuevo",
         Gesto::Carpeta { .. } => "carpeta nueva",
         Gesto::Quitar { .. } => "entrada quitada",
         Gesto::Renombrar { .. } => "entrada renombrada",
-        // ** El motivo distingue los dos fueras, y no es cosmetica: esto se
-        // queda ESCRITO en el estrato, o sea en el historial que se mira meses
-        // despues. "Copiado de FAT32" sobre un fichero que escribio una
-        // aplicacion seria una linea de historia falsa.
+        // ** El motivo distingue los dos fueras, y no es cosmetica aunque sea
+        // solo el log: "copiado de FAT32" sobre un fichero que escribio una
+        // aplicacion manda a buscar un origen que no existe, y CABINA es
+        // exactamente donde se va a mirar cuando algo no cuadre.
         Gesto::Copia { origen: super::copiar::Origen::Fat32(_), .. } => "fichero copiado de FAT32",
         Gesto::Copia { origen: super::copiar::Origen::Ram { .. }, .. } => {
             "fichero escrito por una aplicacion"
