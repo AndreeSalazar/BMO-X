@@ -164,7 +164,12 @@ impl<'c> Vigia<'c> {
     fn declaracion(&mut self, d: &Decl) {
         match d {
             Decl::Constante { valor, .. } => self.expresion(valor),
-            Decl::Registro { campos, .. } => {
+            Decl::Registro {
+                campos, operaciones, ..
+            } => {
+                for f in operaciones {
+                    self.funcion(f);
+                }
                 for c in campos {
                     if let Some(t) = &c.tipo {
                         self.tipo(t, c.sitio);

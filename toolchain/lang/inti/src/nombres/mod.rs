@@ -285,7 +285,11 @@ impl<'c> Vigia<'c> {
     fn declaracion(&mut self, d: &Decl) {
         match d {
             Decl::Constante { valor, .. } => self.expresion(valor),
-            Decl::Registro { .. } => {}
+            Decl::Registro { operaciones, .. } => {
+                for f in operaciones {
+                    self.funcion(f);
+                }
+            }
             Decl::Funcion(f) => self.funcion(f),
             Decl::Operacion { funcion, .. } => self.funcion(funcion),
         }

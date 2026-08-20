@@ -112,6 +112,13 @@ pub enum Decl {
     Registro {
         nombre: String,
         campos: Vec<Campo>,
+        /// ** Las operaciones escritas DENTRO del registro.
+        ///
+        /// `operacion suma(a, b)` dentro de `registro Punto` es lo mismo que
+        /// `operacion Punto suma(a, b)` fuera -- **el mismo nodo por dos
+        /// caminos**, como pasa con la llamada sin parentesis. Dentro no se
+        /// repite el nombre del tipo porque ya se dijo en la linea de arriba.
+        operaciones: Vec<Funcion>,
         sitio: Sitio,
     },
     Funcion(Funcion),

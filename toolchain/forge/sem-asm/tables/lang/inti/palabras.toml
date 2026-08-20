@@ -179,6 +179,104 @@ TABLA      = "map"
 
 
 # ===================================================================
+#  ** MODO PYTHON -- la prueba de que un dialecto es un fichero
+# ===================================================================
+#
+#  Peticion de Eddi (2026-08-19): *"la libreria `usar modo python`; es ironico
+#  pero es libreria para eso: cuando la sintaxis de INTI ya se sabe, se ultra
+#  simplifica"*.
+#
+#  Y es ironico de verdad, porque **no hace falta ninguna libreria**: es una
+#  columna mas de este fichero. Lo que costo fue decidirlo el primer dia --
+#  poner las palabras en una tabla en vez de en el parser.
+#
+#  Se activa cambiando `meta.idioma_por_defecto` a "py", o dejando este fichero
+#  en `$BMO_MODS` con ese cambio. **Cero lineas de compilador.**
+#
+#  == Lo que INTI sigue haciendo a su manera, y por que ==
+#
+#  Esta columna cambia las PALABRAS, no las REGLAS. Con `def` y `return` se
+#  escribe igual que en Python, pero `0.1 + 0.2` sigue dando `0.3`, desbordar
+#  sigue atrapando, y `x = 5` sigue sin poder cambiarse sin `var`.
+#
+#  ** Eso es exactamente lo que se quiere: la sintaxis de Python **sin las
+#  quince sorpresas**. Si tambien cambiaran las reglas, esto seria un Python
+#  peor, y ya hay uno bueno.
+#
+#  Lo que Python tiene y aqui no cabe:
+#
+#    `elif`      -> se escribe `else if`, que son dos palabras que ya existen
+#    `lambda`    -> no hay funciones anonimas (E0101), y el motivo es el perfil
+#    `global`    -> no hace falta: el ambito es de funcion y lo de arriba esta
+#                   congelado
+#    `try/except`-> los errores son datos: `or else`
+#
+#  Y `profile full` en la primera linea sigue siendo obligatorio. No hay perfil
+#  por defecto ni en castellano ni en Python.
+[py]
+
+PERFIL     = "profile"
+LLANO      = "plain"
+PLENO      = "full"
+USA        = "import"
+
+FUNCION    = "def"
+DEVUELVE   = "return"
+REGISTRO   = "class"
+OPERACION  = "method"
+
+CAMBIANTE  = "var"
+ES         = "is"
+UN         = "a"
+DE         = "of"
+A          = "to"
+
+SI         = "if"
+SINO       = "else"
+PARA       = "for"
+CADA       = "each"
+EN         = "in"
+HASTA      = "until"
+REPITE     = "repeat"
+VECES      = "times"
+MIENTRAS   = "while"
+CORTA      = "break"
+CONTINUA   = "continue"
+
+FALLA      = "raise"
+CRUDO      = "raw"
+PARALELO   = "parallel"
+
+Y          = "and"
+O          = "or"
+NO         = "not"
+ENTRE      = "idiv"
+RESTO      = "mod"
+ELEVADO    = "pow"
+DESPLAZA   = "shift"
+IZQUIERDA  = "left"
+DERECHA    = "right"
+BITS_Y     = "band"
+BITS_O     = "bor"
+BITS_XOR   = "bxor"
+
+#  Estas tres se escriben con mayuscula, como en Python. El lexer pregunta al
+#  vocabulario ANTES de decidir que una palabra en mayuscula es un tipo, asi
+#  que `True` se reconoce sin una sola linea de codigo nueva.
+CIERTO     = "True"
+FALSO      = "False"
+NADA       = "None"
+
+QUIZA      = "maybe"
+ERROR      = "error"
+FALLO      = "failed"
+VALOR      = "value"
+MOTIVO     = "reason"
+LISTA      = "list"
+TABLA      = "dict"
+
+
+# ===================================================================
 #  Lo que NO esta aqui, y es a proposito
 # ===================================================================
 #
