@@ -172,6 +172,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-inti-x86-64"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+ "bmo-inti-front",
+ "bmo-lower",
+ "bmo-verify",
+]
+
+[[package]]
 name = "bmo-juicio"
 version = "0.1.0"
 

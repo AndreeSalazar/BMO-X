@@ -1,0 +1,38 @@
+[package]
+name = "bmo-inti-x86-64"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "INTI para x86-64: de la IR a bytes. El unico sitio que puede nombrar una maquina."
+
+# -- Por que esto es un CRATE APARTE y no un modulo del frontend ---
+#
+# Porque `bmo-inti-front/tests/agnostico.rs` prohibe que el frontend nombre una
+# maquina, y un emisor **tiene que nombrarla en cada linea**. Meterlo dentro
+# habria obligado a una excepcion en el test, y una regla con excepciones deja
+# de vigilar a la semana.
+#
+# Asi la frontera no es una convencion: **es el arbol de directorios**. El dia
+# de otra arquitectura sera `emisor-aarch64/` al lado, con el mismo frontend
+# encima y sin tocarlo.
+#
+# El nombre del directorio dice la maquina, igual que `usa x86_64` la dice en el
+# fichero del usuario.
+[dependencies]
+bmo-inti-front = { path = ".." }
+# Los bytes de x86-64 y el emulador que los ejecuta.
+bmo-lower = { path = "../../../forge/bmo-lower" }
+# El contenedor BEF.
+bmo-abi = { path = "../../../../platform/abi/bmo-abi" }
+# EL GATE. Ningun .bex se escribe sin pasar por aqui: es el "unico checkpoint
+# comun" de la filosofia, y no se anade un quinto camino que lo esquive.
+bmo-verify = { path = "../../../forge/bmo-verify" }
+
+[lib]
+name = "bmo_inti_x86_64"
+path = "src/lib.rs"
+
+[dev-dependencies]
+# El banco EJECUTA los bytes emitidos. Un `si` que no bifurca se ve igual que
+# uno que si en un volcado; solo se distinguen corriendolos.
+bmo-lower = { path = "../../../forge/bmo-lower", features = ["emulator"] }

@@ -2,8 +2,9 @@
 
 > **INTI** -- el sol en quechua. Extension `.inti`.
 >
-> 🟢 **F0, F1, F2a y F2b en verde (2026-08-19).** El contrato, el lexico, la
-> gramatica, los perfiles, los nombres y la IR: **170 pruebas**. Todavia no emite bytes.
+> 🟢 **De F0 a F2d en verde (2026-08-19).** El contrato, el lexico, la
+> gramatica, los perfiles, los nombres, la IR **y el emisor**: **184 pruebas**.
+> ★★ Una suma de INTI **compila, corre y da 7**, y su `.bex` pasa `bmo-verify`.
 
 ## Que es, en una frase
 
@@ -33,7 +34,8 @@ Tres cosas lo definen, y ninguna es negociable:
 | [`arch/x86_64/inti.toml`](../../forge/sem-asm/tables/arch/x86_64/inti.toml) | lo que trae `usa <la maquina>` |
 | `censo/*.inti` | las sondas. Cada una lleva su expectativa en la primera linea |
 | [`ARQUITECTURA.md`](ARQUITECTURA.md) | **por que el compilador esta partido asi** -- el criterio de corte, la regla de dependencias, y por que la modularidad es lo que mantiene el syscall fuera del lenguaje |
-| `src/` | el frontend. `aviso`, `palabras`, `lexico`, `arbol`, `sintaxis`, `perfil`, `nombres`, `arquitectura`, `ir` |
+| `src/` | el frontend, **agnostico**: `aviso`, `palabras`, `lexico`, `arbol`, `sintaxis`, `perfil`, `nombres`, `arquitectura`, `ir` |
+| [`emisor-x86_64/`](emisor-x86_64/) | ★ **el emisor**, en su propio crate: es el unico que puede nombrar una maquina |
 
 El **porque** de todo esto -- la investigacion, los numeros y las alternativas
 descartadas -- esta en [`docs/maestro/INTI_MAESTRO.md`](../../../docs/maestro/INTI_MAESTRO.md).
@@ -163,7 +165,8 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | **F2a** | **el analisis de perfiles**: `llano` contra `pleno`, `crudo` contado | ✅ **verde** (2026-08-19) |
 | **F2b** | **nombres, `cambiante` y la biblioteca comun**: quisiste-decir, alcance por funcion, y la **llamada sin parentesis** | ✅ **142 pruebas en verde** (2026-08-19) |
 | **F2c** | **la IR**: instrucciones con temporales, y las comprobaciones anti-UB **hechas instruccion** | ✅ **170 pruebas en verde** (2026-08-19) |
-| F2d | ★ el emisor: INTI LLANO a `.bex` nativo, por `bmo-verify` | pendiente |
+| **F2d** | ★★ **el emisor**: INTI LLANO a bytes que CORREN, y el `.bex` pasa el gate | ✅ **184 pruebas en verde** (2026-08-19) |
+| F3 | registros de verdad (hoy todo va a la pila) | pendiente |
 | F3 | las doce reglas con sus sondas en verde | pendiente |
 | F4 | ★★ la foto del Ryzen | pendiente |
 | F5-F7 | PLENO, congelado y tareas, y el REPL | pendiente |

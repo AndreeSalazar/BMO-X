@@ -503,6 +503,27 @@ impl Machine {
         self.of = ((a ^ b) & (a ^ r)) >> 63 != 0;
     }
 
+    /// Flags de una suma `a + b`.
+    ///
+    /// ** Existe desde el 2026-08-19, y el hueco duro meses sin verse: `add`
+    /// usaba `flags_logic`, que pone `of` a FALSO siempre. Ningun lenguaje de
+    /// BMO lo habia notado porque **ninguno emitia un `jo`** -- C no comprueba
+    /// el desbordamiento, y lo que no se emite no se emula.
+    ///
+    /// INTI es el primero que lo necesita: su regla 1 dice que desbordar
+    /// ATRAPA, y eso baja a `add` + `jo`. Sin esto, el emulador contestaba que
+    /// nunca desborda -- que es la peor respuesta posible, porque hace pasar el
+    /// test que deberia fallar.
+    fn flags_add(&mut self, a: u64, b: u64) {
+        let r = a.wrapping_add(b);
+        self.zf = r == 0;
+        self.sf = (r as i64) < 0;
+        self.cf = r < a;
+        // Con signo: si los dos operandos tienen el mismo signo y el resultado
+        // sale con el contrario, se paso de la cuenta.
+        self.of = ((!(a ^ b)) & (a ^ r)) >> 63 != 0;
+    }
+
     fn flags_logic(&mut self, r: u64) {
         self.zf = r == 0;
         self.sf = (r as i64) < 0;
@@ -1444,7 +1465,7 @@ impl Machine {
                     }
                     0x01 => {
                         let r = a.wrapping_add(b);
-                        self.flags_logic(r);
+                        self.flags_add(a, b);
                         self.store(dst, r, ancho);
                     }
                     0x29 => {
