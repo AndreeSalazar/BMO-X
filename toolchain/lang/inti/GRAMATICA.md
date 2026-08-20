@@ -600,7 +600,7 @@ en la pareja (tipo de objeto, operacion), y el ABI no se toca*.
       valor  = invoca_valor(cap, operacion, a0, a1, a2)
       espera(esperable, visto, tiempo)
 
-   usa metal                                         <- los intrinsecos
+   usa x86_64                                        <- los intrinsecos
       entrada_puerto(0x60)      escribe_puerto(0x60, x)
       lee_reloj()               para()
 ```
@@ -611,7 +611,7 @@ en la pareja (tipo de objeto, operacion), y el ABI no se toca*.
 |---|---|---|
 | REX | `tables/bmo/*.h` y su equivalente para INTI | `$BMO_MODS`, sin bifurcar el repo |
 | la puerta | `tables/bmo/` sobre el intrinseco | igual |
-| los intrinsecos | `tables/arch/x86_64/intrinsics.toml` | igual |
+| los intrinsecos | `tables/arch/<maquina>/inti.toml` (los nombres) sobre `intrinsics.toml` (los bytes) | igual |
 
 ★ Y eso ya funciona asi para C: `__syscall(...)` **es una fila de
 `intrinsics.toml`** con sus bytes (`0F 05`) y el registro de cada argumento

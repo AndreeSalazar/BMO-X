@@ -5,6 +5,7 @@
 # `crudo`. La primera version de esta sonda lo dejaba fuera, y lo cazo el
 # analisis de perfiles el 2026-08-19.
 perfil llano
+usa x86_64
 
 funcion lee_tecla devuelve natural8
     crudo

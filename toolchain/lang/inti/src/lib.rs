@@ -43,6 +43,7 @@
 //! ```
 
 pub mod arbol;
+pub mod arquitectura;
 pub mod aviso;
 pub mod lexico;
 pub mod palabras;
@@ -105,7 +106,18 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
 
     let piezas = lexico::barrer(fuente, &v);
     let mut arbol = sintaxis::leer(&piezas.valor, &v);
-    let mut perfiles = perfil::comprobar(&arbol.valor, &perfil::Catalogo::cargar(&raices));
+
+    // `usa x86_64` trae los nombres de una maquina. Un `usa` que no sea una
+    // arquitectura conocida no es un error: sera `usa entrada`, que es REX.
+    let maquinas: Vec<arquitectura::Maquina> = arbol
+        .valor
+        .usa
+        .iter()
+        .filter_map(|(n, _)| arquitectura::Maquina::buscar(&raices, n))
+        .collect();
+
+    let mut perfiles =
+        perfil::comprobar(&arbol.valor, &perfil::Catalogo::cargar(&raices), &maquinas);
 
     let mut avisos = piezas.avisos;
     avisos.append(&mut arbol.avisos);

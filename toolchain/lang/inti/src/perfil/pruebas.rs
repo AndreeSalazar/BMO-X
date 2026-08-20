@@ -1,7 +1,7 @@
 //! Pruebas del analisis de perfiles.
 
 use super::*;
-use crate::{lexico, palabras::Vocabulario, sintaxis};
+use crate::{arquitectura::Maquina, lexico, palabras::Vocabulario, sintaxis};
 
 fn comprueba(fuente: &str) -> Cosecha<Informe> {
     let v = Vocabulario::por_defecto().unwrap();
@@ -12,7 +12,17 @@ fn comprueba(fuente: &str) -> Cosecha<Informe> {
         "el fuente de la prueba no se lee: {}",
         arbol.pintar("prueba.inti")
     );
-    comprobar(&arbol.valor, &Catalogo::por_defecto())
+    // Las pruebas cargan la maquina si el fuente la declaro, igual que hace el
+    // compilador de verdad.
+    // El mismo camino que hace el compilador de verdad: un `usa` que es una
+    // arquitectura conocida trae su maquina; uno que no, no.
+    let maquinas: Vec<Maquina> = arbol
+        .valor
+        .usa
+        .iter()
+        .filter_map(|(n, _)| Maquina::buscar(&bmo_mods::Roots::find(), n))
+        .collect();
+    comprobar(&arbol.valor, &Catalogo::por_defecto(), &maquinas)
 }
 
 fn codigos_de(fuente: &str) -> Vec<&'static str> {
@@ -82,7 +92,7 @@ fn crudo_no_existe_en_pleno() {
 #[test]
 fn tocar_un_puerto_fuera_de_crudo_se_denuncia() {
     let c = codigos_de(
-        "perfil llano\n\nfuncion lee devuelve natural8\n    devuelve entrada_puerto(0x60)\n",
+        "perfil llano\nusa x86_64\n\nfuncion lee devuelve natural8\n    devuelve entrada_puerto(0x60)\n",
     );
     assert_eq!(c, vec!["E0072"]);
 }
@@ -146,9 +156,8 @@ fn el_catalogo_incrustado_carga() {
     let cat = Catalogo::por_defecto();
     assert!(cat.crecen.contains("texto"));
     assert!(cat.sin_tamano.contains("numero"));
-    assert!(cat.piden_crudo.contains("entrada_puerto"));
-    // Y la que no esta, que es la que importa:
-    assert!(!cat.piden_crudo.contains("invoca"));
+    // Lo que pide `crudo` ya no vive aqui: se mudo a la arquitectura, que es
+    // de donde depende. Ver `arquitectura::pruebas`.
 }
 
 /// Una tabla ilegible no puede convertirse en "todo esta prohibido": eso
@@ -161,7 +170,7 @@ fn una_tabla_rota_no_acusa_al_programa() {
     let fuente = "perfil llano\n\nfuncion principal\n    saludo = \"hola\"\n";
     let piezas = lexico::barrer(fuente, &v);
     let arbol = sintaxis::leer(&piezas.valor, &v);
-    let c = comprobar(&arbol.valor, &cat);
+    let c = comprobar(&arbol.valor, &cat, &[]);
     // El texto sigue siendo texto y `llano` sigue sin monton, asi que eso se
     // denuncia igual; lo que no puede pasar es que la tabla rota invente
     // prohibiciones nuevas.

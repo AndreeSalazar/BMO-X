@@ -1,0 +1,156 @@
+#  inti.toml -- lo que INTI necesita saber de x86-64.
+#
+#  == La idea, y es de Eddi (2026-08-19) ==
+#
+#      "pensaba que podrias crear una libreria `usar x86-64`; esa es libreria
+#       PARA ahorrar esfuerzo, una sola llamada, y asi facilitar la escritura
+#       en INTI"
+#
+#  Eso es esto. Una linea en el fichero:
+#
+#      usa x86_64
+#
+#  y el programa tiene los nombres de abajo. Sin declarar nada, sin cabeceras,
+#  sin repetir bytes.
+#
+#  == Y lo que la idea arregla, que es mas de lo que parece ==
+#
+#  El nombre del modulo **es la declaracion de que el fichero no es portable**.
+#  `usa metal` --que es como se escribia antes-- esconde la arquitectura:
+#  el metal de que maquina? `usa x86_64` la dice, y entonces:
+#
+#    - el compilador la puede CONTAR, igual que cuenta los `crudo`;
+#    - compilando para otra maquina, la linea falla con un mensaje claro en vez
+#      de con un nombre desconocido a mitad de fichero;
+#    - y el fichero se puede leer de arriba abajo sabiendo a que se ata.
+#
+#  ** Ademas cierra un cabo suelto: la lista de "que pide `crudo`" estaba en
+#  `lang/inti/biblioteca.toml` marcada como PROVISIONAL, porque depende de la
+#  maquina. Aqui esta en su sitio.
+#
+#  == Lo que NO se repite aqui ==
+#
+#  Los BYTES. Estan en `intrinsics.toml`, que es la fuente y la comparte BMO C.
+#  Este fichero solo dice **como se llama en INTI** cada uno y **si alguien
+#  comprueba al otro lado**. Dos declaraciones de los mismos bytes acabarian
+#  discrepando.
+
+[meta]
+arquitectura = "x86_64"
+version = 1
+# La tabla de bytes que hay detras de los nombres de abajo.
+intrinsecos = "intrinsics.toml"
+
+# ===================================================================
+#  El perfil de la maquina
+# ===================================================================
+#
+#  Son DATOS, y por eso estan aqui y no en el compilador. El frontend de INTI
+#  no puede nombrar una maquina --hay un test que lo comprueba-- asi que el
+#  ancho de un puntero tiene que llegarle por este camino o por ninguno.
+[maquina]
+ancho_de_puntero = 8
+alineacion_maxima = 16
+orden_de_bytes = "pequeno_primero"
+la_pila_crece = "hacia_abajo"
+
+# ===================================================================
+#  Los nombres: como se llama en INTI cada instruccion
+# ===================================================================
+#
+#  ** Y aqui esta la portabilidad de verdad, no en una promesa:
+#
+#  El dia que exista `arch/aarch64/inti.toml`, `lee_reloj` seguira existiendo
+#  --con otra instruccion detras-- y `escribe_puerto` NO, porque ARM no tiene
+#  puertos de E/S. Asi que un programa que solo use `lee_reloj` se porta, y uno
+#  que use `escribe_puerto` no.
+#
+#  El compilador no decide cual es cual: lo dice esta tabla, y el programa se
+#  entera al compilar para la otra maquina en vez de al ejecutarse.
+[nombres]
+# -- tiempo y espera ------------------------------------------------
+lee_reloj       = "rdtsc"
+lee_reloj_serio = "rdtscp"
+espera          = "pause"
+para            = "hlt"
+nada_que_hacer  = "nop"
+
+# -- puertos de E/S (esto no existe fuera de x86) --------------------
+entrada_puerto        = "inb"
+entrada_puerto16      = "inw"
+entrada_puerto32      = "inl"
+escribe_puerto        = "outb"
+escribe_puerto16      = "outw"
+escribe_puerto32      = "outl"
+
+# -- registros de control y modelo -----------------------------------
+lee_msr         = "rdmsr"
+escribe_msr     = "wrmsr"
+lee_cr0         = "cr0"
+escribe_cr0     = "set_cr0"
+lee_cr3         = "cr3"
+escribe_cr3     = "set_cr3"
+
+# -- interrupciones y cache ------------------------------------------
+sin_interrupciones = "cli"
+con_interrupciones = "sti"
+tira_la_cache      = "wbinvd"
+olvida_pagina      = "invlpg"
+limpia_linea       = "clflush"
+
+# -- barreras ---------------------------------------------------------
+barrera         = "mfence"
+barrera_lectura = "lfence"
+barrera_escritura = "sfence"
+
+# -- cuentas de bits ---------------------------------------------------
+cuenta_unos     = "popcnt"
+primer_uno      = "bsf"
+ultimo_uno      = "bsr"
+ceros_delante   = "lzcnt"
+ceros_detras    = "tzcnt"
+da_la_vuelta32  = "bswap"
+da_la_vuelta64  = "bswap64"
+
+# -- azar --------------------------------------------------------------
+azar            = "rdrand"
+azar_de_verdad  = "rdseed"
+
+# -- lo que el CPU dice de si mismo -------------------------------------
+que_cpu_eres    = "cpuid"
+
+# ===================================================================
+#  Cuales piden `crudo`
+# ===================================================================
+#
+#  La regla no es "esto es de bajo nivel". Es:
+#
+#      ** al otro lado, hay alguien que comprueba?
+#
+#  `lee_reloj` no cambia nada y no puede romper nada: no pide `crudo`.
+#  `escribe_puerto` habla con un aparato que hara lo que le mandes: si.
+#  `sin_interrupciones` puede dejar la maquina sorda: si.
+#
+#  Y por eso `invoca` --la puerta del sistema-- no aparece en ninguna lista de
+#  este fichero: al otro lado hay un kernel que valida una capability. La puerta
+#  es de bajisimo nivel Y esta comprobada.
+[crudo]
+piden = [
+    "entrada_puerto", "entrada_puerto16", "entrada_puerto32",
+    "escribe_puerto", "escribe_puerto16", "escribe_puerto32",
+    "lee_msr", "escribe_msr",
+    "lee_cr0", "escribe_cr0", "lee_cr3", "escribe_cr3",
+    "sin_interrupciones", "con_interrupciones",
+    "tira_la_cache", "olvida_pagina", "limpia_linea",
+]
+
+# ===================================================================
+#  Lo que falta, dicho para que no se olvide
+# ===================================================================
+#
+#  De los 62 intrinsecos de `intrinsics.toml` aqui hay nombre para unos 35. Los
+#  que faltan (`lgdt`, `ltr`, `xsetbv`, `monitor`, `mwait`, `cmpxchg`...) son de
+#  arranque y de SMP, y entran cuando haya un programa de INTI que los pida.
+#
+#  Se dice a proposito en vez de dejar el hueco: una tabla incompleta que no
+#  declara que lo esta parece una tabla completa.
