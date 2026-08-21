@@ -58,6 +58,20 @@ pub const NUMERO_RARO: Codigo = Codigo("E0016");
 /// Se cierra un parentesis que nadie abrio, o al reves.
 pub const PAREJA_ROTA: Codigo = Codigo("E0017");
 
+/// Un numero literal que no cabe en 64 bits.
+///
+/// ** Existe porque durante un dia no existio: `0xFFFFFFFFFFFFFFFF` --que es un
+/// `natural64` perfectamente valido-- no cabia en el `i64` con el que se
+/// guardaban los literales, la conversion fallaba, y **el numero se convertia
+/// en CERO sin una sola queja**.
+///
+/// Lo primero se arreglo: los literales guardan el PATRON DE BITS, asi que
+/// cualquier `natural64` cabe. Este codigo es para lo segundo -- lo que de
+/// verdad no quepa en 64 bits tiene que decirlo, porque un cero silencioso en
+/// una mascara o en una capability es de los fallos que no se encuentran
+/// mirando el programa: el programa esta bien.
+pub const NUMERO_ENORME: Codigo = Codigo("E0018");
+
 /// En `llano` hay que decir la medida: `numero` no existe alli.
 pub const FALTA_TAMANO: Codigo = Codigo("E0020");
 /// Un `quiza T` usado sin mirarlo antes.
