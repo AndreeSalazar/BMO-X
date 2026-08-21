@@ -229,3 +229,17 @@ mod pruebas {
         }
     }
 }
+
+/// Un campo que no existe, o algo que no tiene campos.
+pub const CAMPO_DESCONOCIDO: Codigo = Codigo("E0120");
+
+/// No se sabe cuanto mide algo que hay que medir.
+///
+/// ** Es el aviso que sustituye a un comportamiento peor: antes de que
+/// existiera `disposicion`, `p.x` se bajaba a `p` --el campo se ignoraba, sin
+/// una queja-- y `a[i]` daba la direccion en vez del valor. Compilaba, corria,
+/// y hacia otra cosa.
+pub const SIN_MEDIDA: Codigo = Codigo("E0121");
+
+/// Un campo de registro sin tipo.
+pub const CAMPO_SIN_TIPO: Codigo = Codigo("E0122");

@@ -57,6 +57,11 @@ fn generaciones() -> HashMap<&'static str, u32> {
 
     // -- NIETOS: los que aplican reglas sobre la forma. ------------------
     g.insert("sintaxis", 3);
+    // ** `disposicion` es HERMANO de `sintaxis` y no lo mira: mide tipos y
+    // campos sobre el arbol ya leido. Va en 3 y no en 4 porque `ir` --que es de
+    // 4-- necesita su plano, y **una pieza vive en la generacion mas baja que
+    // la necesita**. Es la misma regla que mudo `tablas`.
+    g.insert("disposicion", 3);
 
     // -- BISNIETOS: analisis y descenso. Ninguno mira a otro. ------------
     g.insert("perfil", 4);
@@ -242,10 +247,25 @@ fn cambiar_un_modulo_no_arrastra_a_medio_compilador() {
                 quien_lo_mira += 1;
             }
         }
-        // `aviso` lo mira todo el mundo a proposito: es el contrato del
-        // mensaje, y un contrato compartido es lo contrario de un acoplamiento.
-        // El resto no puede pasar de la mitad del compilador.
-        let tope = if *modulo == "aviso" { 99 } else { 6 };
+        // ** LA LINEA QUE SEPARA "contrato" DE "acoplamiento", que es la que
+        // este test estaba midiendo mal.
+        //
+        //     un modulo que DEFINE UNA FORMA COMPARTIDA -> lo mira todo el
+        //     mundo, y esta bien: para eso existe
+        //
+        //     un modulo que HACE UN TRABAJO -> si lo miran muchos, es que el
+        //     trabajo se colo dentro de otros
+        //
+        // `aviso` estaba exento desde el principio con ese motivo escrito.
+        // `arbol` es exactamente lo mismo --el contrato de la FORMA, como
+        // `aviso` es el del MENSAJE-- y estaba contado como si fuera trabajo.
+        // Se vio cuando entro `disposicion` y lo puso en 7: la respuesta no era
+        // subir el tope, era clasificarlo bien.
+        //
+        // Y el criterio sigue mordiendo donde importa: `lexico`, `sintaxis`,
+        // `ir`, `perfil` y `nombres` hacen trabajo, y ninguno esta exento.
+        let contrato = matches!(modulo.as_ref(), "aviso" | "arbol");
+        let tope = if contrato { 99 } else { 6 };
         assert!(
             quien_lo_mira <= tope,
             "{} lo miran {} ficheros: cambiarlo ya no es cambiar una pieza",

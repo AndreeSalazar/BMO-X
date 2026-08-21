@@ -1,0 +1,82 @@
+#  medidas.toml -- cuanto mide cada tipo, y como se alinea.
+#
+#  == Por que esto es una tabla, y no una `match` en el compilador ==
+#
+#  Porque la respuesta **depende de la maquina** en cuanto se sale de los tipos
+#  con la medida en el nombre. `natural32` mide cuatro bytes en todas partes --lo
+#  dice el nombre-- pero un puntero no, y `numero` tampoco.
+#
+#  ** Y hay una consecuencia que no es obvia: mientras la disposicion sea una
+#  tabla, dos maquinas distintas pueden dar disposiciones distintas SIN QUE EL
+#  COMPILADOR CAMBIE. El dia que INTI compile para 32 bits, lo que cambia es
+#  `puntero = 4` en una tabla de esa maquina, no un fichero de Rust.
+#
+#  == La regla de alineacion, y por que es esta ==
+#
+#  Un tipo se alinea a su propia medida, y un registro a la del campo mas
+#  exigente. No es la unica regla posible --se podria empaquetar todo sin
+#  huecos-- pero es la que usan las ABI de verdad, y por eso es la que deja
+#  hablar con lo que ya existe.
+#
+#  Un acceso desalineado en x86 funciona y va mas lento; en otras maquinas
+#  **falla**. Esa es exactamente la clase de cosa que INTI promete no dejar al
+#  azar.
+
+[meta]
+version = 1
+
+# ===================================================================
+#  Los que dicen su medida en el nombre
+# ===================================================================
+#
+#  ** Estos no dependen de ninguna maquina, y ese es el motivo de que existan.
+#  `perfil llano` los EXIGE (`E0020`) justamente por esto: sin medida no se
+#  puede reservar en la pila ni elegir la instruccion.
+[bytes]
+natural8   = 1
+natural16  = 2
+natural32  = 4
+natural64  = 8
+entero8    = 1
+entero16   = 2
+entero32   = 4
+entero64   = 8
+flotante32 = 4
+flotante64 = 8
+
+#  `logico` mide un byte y no un bit: un bit no tiene direccion, y todo lo que
+#  vive en un registro o en un campo tiene que poder tenerla.
+logico     = 1
+
+# ===================================================================
+#  Los que dependen de la maquina
+# ===================================================================
+#
+#  ** Estos estan aqui con el valor de hoy --64 bits-- y marcados. Cuando haya
+#  una segunda maquina se mudan a `arch/<maquina>/inti.toml`, que es donde vive
+#  todo lo que cambia con ella.
+#
+#  Se dejan aqui de momento en vez de adelantar la mudanza: mover un dato a un
+#  sitio "por si acaso" antes de que exista el segundo caso es como se acaba con
+#  tres tablas que dicen lo mismo.
+[bytes_de_esta_maquina]
+puntero = 8
+
+#  Un `bufer de T` es una DIRECCION y nada mas: no lleva su longitud dentro.
+#  Por eso indexarlo pide `crudo`, y por eso `lista de T` --que si la lleva-- es
+#  de `pleno`. Dos tipos porque son dos promesas distintas, no por gusto.
+bufer   = 8
+
+# ===================================================================
+#  Lo que NO tiene medida, y es a proposito
+# ===================================================================
+#
+#  `numero`, `decimal`, `texto`, `lista` y `tabla` no estan.
+#
+#  No es un hueco: `biblioteca.toml` ya dice que los dos primeros no dicen su
+#  medida y que los tres ultimos CRECEN. En `llano` estan prohibidos por eso
+#  mismo, y en `pleno` lo que se guarda en un campo es una referencia --que mide
+#  lo que un puntero-- y no la cosa.
+#
+#  El dia que `pleno` tenga campos de `texto`, la fila que hace falta es
+#  `referencia = 8` y no una medida para `texto`.

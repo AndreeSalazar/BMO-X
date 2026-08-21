@@ -216,7 +216,8 @@ impl ModuloIr {
 
 /// Baja un modulo entero.
 pub fn bajar(m: &Modulo) -> Cosecha<ModuloIr> {
-    bajar_con(m, &crate::tablas::Modulos::por_defecto())
+    let plano = crate::disposicion::comprobar(m, crate::disposicion::Medidas::por_defecto()).valor;
+    bajar_con(m, &crate::tablas::Modulos::por_defecto(), &plano)
 }
 
 /// Baja un modulo entero sabiendo que trae cada `usa`.
@@ -224,17 +225,21 @@ pub fn bajar(m: &Modulo) -> Cosecha<ModuloIr> {
 /// ** La tabla que entra aqui es AGNOSTICA: dice que `lee_natural64` lee ocho
 /// bytes y que `mi_tarea` vale tal numero. Ninguna de las dos cosas depende de
 /// una maquina, y por eso este modulo puede leerlas sin romper su promesa.
-pub fn bajar_con(m: &Modulo, tabla: &crate::tablas::Modulos) -> Cosecha<ModuloIr> {
+pub fn bajar_con(
+    m: &Modulo,
+    tabla: &crate::tablas::Modulos,
+    plano: &crate::disposicion::Plano,
+) -> Cosecha<ModuloIr> {
     let mut salida = ModuloIr::default();
 
     for d in &m.declaraciones {
         match d {
             Decl::Funcion(f) => {
-                let ir = Descenso::nueva(&mut salida.textos, tabla).funcion(f);
+                let ir = Descenso::nueva(&mut salida.textos, tabla, plano).funcion(f);
                 salida.funciones.push(ir);
             }
             Decl::Operacion { tipo, funcion } => {
-                let mut ir = Descenso::nueva(&mut salida.textos, tabla).funcion(funcion);
+                let mut ir = Descenso::nueva(&mut salida.textos, tabla, plano).funcion(funcion);
                 // El nombre lleva el tipo delante para que dos operaciones con
                 // el mismo nombre en tipos distintos no se pisen.
                 ir.nombre = format!("{}.{}", tipo, funcion.nombre);
@@ -246,7 +251,7 @@ pub fn bajar_con(m: &Modulo, tabla: &crate::tablas::Modulos) -> Cosecha<ModuloIr
                 ..
             } => {
                 for f in operaciones {
-                    let mut ir = Descenso::nueva(&mut salida.textos, tabla).funcion(f);
+                    let mut ir = Descenso::nueva(&mut salida.textos, tabla, plano).funcion(f);
                     ir.nombre = format!("{}.{}", nombre, f.nombre);
                     salida.funciones.push(ir);
                 }
@@ -267,10 +272,17 @@ struct Descenso<'t> {
     /// Donde salta un `corta` y donde un `continua`, de fuera a dentro.
     bucles: Vec<(Etiqueta, Etiqueta)>,
     tabla: &'t crate::tablas::Modulos,
+    plano: &'t crate::disposicion::Plano,
+    /// Los tipos declarados de la funcion que se esta bajando.
+    tipos: std::collections::HashMap<String, crate::arbol::Tipo>,
 }
 
 impl<'t> Descenso<'t> {
-    fn nueva(textos: &'t mut Vec<String>, tabla: &'t crate::tablas::Modulos) -> Self {
+    fn nueva(
+        textos: &'t mut Vec<String>,
+        tabla: &'t crate::tablas::Modulos,
+        plano: &'t crate::disposicion::Plano,
+    ) -> Self {
         Self {
             instrucciones: Vec::new(),
             siguiente_temporal: 0,
@@ -279,6 +291,62 @@ impl<'t> Descenso<'t> {
             textos,
             bucles: Vec::new(),
             tabla,
+            plano,
+            tipos: std::collections::HashMap::new(),
+        }
+    }
+
+    /// La direccion de un sitio de memoria escrito con `.` o con `[]`.
+    ///
+    /// ** Devolver la DIRECCION y no el valor es lo que deja usar la misma
+    /// cuenta para leer y para escribir. `p.x` y `p.x = 3` calculan
+    /// exactamente lo mismo; lo unico que cambia es la instruccion de despues.
+    ///
+    /// `None` si no se sabe la disposicion -- y entonces no se emite nada,
+    /// porque `disposicion` ya lo denuncio. Emitir "algo" para un programa que
+    /// esta mal es como un compilador acaba produciendo binarios plausibles.
+    fn direccion_de(&mut self, e: &Expr) -> Option<(Valor, u32)> {
+        match e {
+            Expr::Campo { que, nombre, .. } => {
+                let t = self.plano.tipo_de(que, &self.tipos)?;
+                let crate::arbol::Tipo::Nombre(r) = t else {
+                    return None;
+                };
+                let hueco = self.plano.registro(&r)?.campo(nombre)?;
+                let (desplazamiento, medida) = (hueco.desplazamiento, hueco.medida);
+                let base = self.expresion(que);
+                let t = self.temporal();
+                self.pon(Instr::Binaria {
+                    destino: t,
+                    op: Op::Suma,
+                    izquierda: base,
+                    derecha: Valor::Const(Const::Entero(desplazamiento as i64)),
+                });
+                Some((Valor::Temporal(t), medida))
+            }
+            Expr::Indice { que, indice, .. } => {
+                let t = self.plano.tipo_de(que, &self.tipos)?;
+                let (_, medida) = self.plano.elemento(&t)?;
+                let base = self.expresion(que);
+                let i = self.expresion(indice);
+                // indice * medida
+                let paso = self.temporal();
+                self.pon(Instr::Binaria {
+                    destino: paso,
+                    op: Op::Por,
+                    izquierda: i,
+                    derecha: Valor::Const(Const::Entero(medida as i64)),
+                });
+                let t = self.temporal();
+                self.pon(Instr::Binaria {
+                    destino: t,
+                    op: Op::Suma,
+                    izquierda: base,
+                    derecha: Valor::Temporal(paso),
+                });
+                Some((Valor::Temporal(t), medida))
+            }
+            _ => None,
         }
     }
 
@@ -316,6 +384,9 @@ impl<'t> Descenso<'t> {
     }
 
     fn funcion(mut self, f: &arbol::Funcion) -> FuncionIr {
+        // Los tipos escritos de esta funcion. Sin esto, `p.x` no sabe de que
+        // registro es `p` -- y esa es toda la informacion que hace falta.
+        self.tipos = crate::disposicion::tipos_de(f);
         for p in &f.parametros {
             self.local(&p.nombre);
         }
@@ -339,17 +410,33 @@ impl<'t> Descenso<'t> {
         match s {
             Sent::Asigna { destino, valor, .. } => {
                 let v = self.expresion(valor);
-                if let Expr::Nombre(n, _) = destino {
-                    let l = self.local(n);
-                    self.pon(Instr::Guarda {
-                        destino: l,
-                        valor: v,
-                    });
+                match destino {
+                    Expr::Nombre(n, _) => {
+                        let l = self.local(n);
+                        self.pon(Instr::Guarda {
+                            destino: l,
+                            valor: v,
+                        });
+                    }
+                    // ** `p.x = 3` y `a[i] = 3`: la MISMA cuenta que al leer, y
+                    // por eso comparten `direccion_de`. Lo unico que cambia es
+                    // la instruccion del final.
+                    Expr::Campo { .. } | Expr::Indice { .. } => {
+                        if let Some((direccion, ancho)) = self.direccion_de(destino) {
+                            self.pon(Instr::Escribe {
+                                direccion,
+                                valor: v,
+                                ancho,
+                            });
+                        }
+                        // Si no se supo la direccion, no se emite nada:
+                        // `disposicion` ya lo denuncio y aqui no hay nada que
+                        // inventar.
+                    }
+                    // Asignar a otra cosa no es asignar a nada: es una forma
+                    // que la gramatica no deberia haber dejado pasar.
+                    _ => {}
                 }
-                // `p.x = 3` y `a[i] = 3` piden saber la disposicion de un
-                // registro, que es trabajo del emisor con el perfil de maquina.
-                // Se dejan sin bajar a proposito en vez de inventarles una
-                // forma que luego no cuadre.
             }
             Sent::Si { ramas, sino, .. } => self.si(ramas, sino.as_ref()),
             Sent::Repite { forma, cuerpo, .. } => self.repite(forma, cuerpo),
@@ -565,27 +652,64 @@ impl<'t> Descenso<'t> {
                 });
                 Valor::Temporal(t)
             }
-            Expr::Indice { que, indice, sitio } => {
-                let q = self.expresion(que);
-                let i = self.expresion(indice);
-                let t = self.temporal();
-                self.pon(Instr::Binaria {
-                    destino: t,
-                    op: Op::Suma,
-                    izquierda: q,
-                    derecha: i,
-                });
-                // Regla 2: un indice siempre se comprueba. Lo que el compilador
-                // pueda demostrar se quitara despues -- pero se quita, no se
-                // olvida.
-                self.pon(Instr::Comprueba {
-                    que: Comprobacion::Indice,
-                    sobre: Valor::Temporal(t),
-                    sitio: *sitio,
-                });
-                Valor::Temporal(t)
+            Expr::Indice { .. } | Expr::Campo { .. } => {
+                // ** Antes esto era el agujero: `p.x` se bajaba a `p` --el campo
+                // se ignoraba sin una queja-- y `a[i]` bajaba a la DIRECCION del
+                // elemento en vez de a su valor. Compilaba, corria, y hacia
+                // otra cosa.
+                //
+                // Ahora se calcula la direccion con el plano y **se lee**. Un
+                // acceso es siempre dos pasos, y antes solo se daba el primero.
+                //
+                // OJO: un `bufer` no lleva su longitud, asi que aqui no hay
+                // `Comprueba::Indice` que valga -- no hay contra que comprobar.
+                // Por eso indexarlo pide `crudo`, y por eso `lista de T` (que si
+                // la lleva) sera otra cosa cuando llegue `pleno`.
+                match self.direccion_de(e) {
+                    Some((direccion, ancho)) => {
+                        let t = self.temporal();
+                        self.pon(Instr::Lee {
+                            destino: t,
+                            direccion,
+                            ancho,
+                        });
+                        Valor::Temporal(t)
+                    }
+                    // ** Y si NO se supo la disposicion, un indice sigue
+                    // trayendo su comprobacion.
+                    //
+                    // Casi se pierde aqui: al enchufar el plano, este camino se
+                    // quedo sin emitir nada y con el se fue la Regla 2 --*un
+                    // indice SIEMPRE se comprueba*-- sin que nadie la borrara.
+                    // La cazo su propio test, que es para lo que estaba.
+                    //
+                    // Lo que se indexa sin disposicion conocida es una `lista de
+                    // T` de `pleno`, y esa SI lleva su longitud dentro: tiene
+                    // contra que comprobar, y por eso no pide `crudo`.
+                    None => match e {
+                        Expr::Indice { que, indice, sitio } => {
+                            let q = self.expresion(que);
+                            let i = self.expresion(indice);
+                            let t = self.temporal();
+                            self.pon(Instr::Binaria {
+                                destino: t,
+                                op: Op::Suma,
+                                izquierda: q,
+                                derecha: i,
+                            });
+                            self.pon(Instr::Comprueba {
+                                que: Comprobacion::Indice,
+                                sobre: Valor::Temporal(t),
+                                sitio: *sitio,
+                            });
+                            Valor::Temporal(t)
+                        }
+                        // Un campo sin disposicion ya lo denuncio
+                        // `disposicion`. No se inventa nada.
+                        _ => Valor::Const(Const::Nada),
+                    },
+                }
             }
-            Expr::Campo { que, .. } => self.expresion(que),
             Expr::Lista(v, _) => {
                 // Los elementos se bajan para que sus efectos ocurran; la lista
                 // en si necesita el runtime, que todavia no existe.

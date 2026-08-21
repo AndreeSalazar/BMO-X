@@ -55,6 +55,7 @@ pub mod nombres;
 pub mod palabras;
 pub mod perfil;
 pub mod sintaxis;
+pub mod disposicion;
 pub mod tablas;
 
 pub use aviso::{Aviso, Cosecha, Sitio};
@@ -201,9 +202,13 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
     let mut nombres =
         nombres::comprobar(&arbol.valor, &nombres::Comun::cargar(&raices), &extra);
 
+    // La cuarta: cuanto mide cada cosa y donde esta cada campo.
+    let mut plano = disposicion::comprobar(&arbol.valor, disposicion::Medidas::cargar(&raices));
+
     let mut avisos = std::mem::take(&mut arbol.avisos);
     avisos.append(&mut perfiles.avisos);
     avisos.append(&mut nombres.avisos);
+    avisos.append(&mut plano.avisos);
     Cosecha::con(perfiles.valor, avisos)
 }
 
@@ -243,7 +248,8 @@ pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core:
     }
     let mut nombres_ = nombres::comprobar(&arbol.valor, &nombres::Comun::cargar(&raices), &extra);
 
-    let ir = ir::bajar_con(&arbol.valor, &modulos).valor;
+    let plano = disposicion::comprobar(&arbol.valor, disposicion::Medidas::cargar(&raices));
+    let ir = ir::bajar_con(&arbol.valor, &modulos, &plano.valor).valor;
 
     let parte = cabina::Parte {
         fichero: fichero.to_string(),

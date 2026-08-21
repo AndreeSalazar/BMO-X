@@ -730,6 +730,10 @@ pub(crate) fn lee_tipo(c: &mut Cursor) -> Option<Tipo> {
         c.exige(Simbolo::De, "Se escribe `lista de <tipo>`.");
         return lee_tipo(c).map(|t| Tipo::Lista(Box::new(t)));
     }
+    if c.come(Simbolo::Bufer) {
+        c.exige(Simbolo::De, "Se escribe `bufer de <tipo>`.");
+        return lee_tipo(c).map(|t| Tipo::Bufer(Box::new(t)));
+    }
     if c.come(Simbolo::Tabla) {
         c.exige(Simbolo::De, "Se escribe `tabla de <clave> a <valor>`.");
         let clave = lee_tipo(c)?;

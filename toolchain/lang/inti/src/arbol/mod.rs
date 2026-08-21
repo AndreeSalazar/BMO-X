@@ -58,6 +58,15 @@ pub enum Tipo {
     Nombre(String),
     /// `lista de T`
     Lista(Box<Tipo>),
+    /// `bufer de T` -- una DIRECCION, y de que estan hechos los elementos.
+    ///
+    /// ** No lleva su longitud dentro, y esa es toda la diferencia con
+    /// `lista de T`: por eso `bufer` vive en `llano` y `lista` en `pleno`, y por
+    /// eso indexar un bufer pide `crudo` -- no hay nadie que compruebe el
+    /// limite porque no hay limite guardado en ningun sitio.
+    ///
+    /// Es lo que hace falta para escribir un framebuffer sin pagar nada.
+    Bufer(Box<Tipo>),
     /// `tabla de T a U`
     Tabla(Box<Tipo>, Box<Tipo>),
     /// `quiza T` -- puede no haber valor, y no se puede usar sin mirarlo.
