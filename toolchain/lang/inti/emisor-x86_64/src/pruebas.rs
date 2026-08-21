@@ -838,3 +838,150 @@ fn un_usa_que_no_es_una_pieza_no_trae_nada() {
     // Y un nombre que intente salirse del sitio no busca en ningun lado.
     assert!(bmo_inti_front::tablas::Runtime::traer(&r, "../monton").is_empty());
 }
+
+// ===================================================================
+//  ** F5a -- LOS CUATRO ANCHOS, y el primer framebuffer
+// ===================================================================
+//
+//  Faltaban el de 16 y el de 32. Estaba declarado en la tabla con su motivo
+//  --`bmo_lower` no traia los ayudantes-- y se anadieron ALLI, que es donde
+//  tenian que estar.
+//
+//  El de 32 no es uno mas: **es el que escribe un pixel**.
+
+/// Cada ancho guarda y devuelve lo suyo, ni un bit mas.
+#[test]
+fn los_cuatro_anchos_van_y_vuelven() {
+    for (bits, valor) in [
+        (8u32, 200u64),
+        (16, 60000),
+        (32, 4000000000),
+        (64, 12345678901234),
+    ] {
+        let f = format!(
+            "perfil llano
+usa memoria
+
+funcion principal devuelve entero32
+{}{}{}",
+            "    crudo
+",
+            format!("        escribe_natural{}(0x200000, {})
+", bits, valor),
+            format!("        devuelve lee_natural{}(0x200000)
+", bits)
+        );
+        assert_eq!(
+            arranca(&f).syscalls.last().unwrap().arg0,
+            valor,
+            "ancho de {} bits",
+            bits
+        );
+    }
+}
+
+/// ** Y lo de al lado NO se toca. Es la mitad que se olvida de un `escribe`.
+///
+/// Un `escribe_natural8` que en realidad escribiera cuatro bytes pasaria el
+/// test de arriba tan campante -- lee lo mismo que escribio-- y **se llevaria
+/// por delante los tres bytes siguientes**. En un array eso es el elemento de
+/// al lado, y el fallo aparece en otra parte del programa.
+#[test]
+fn escribir_un_ancho_no_pisa_lo_de_al_lado() {
+    let f = "\
+perfil llano
+usa memoria
+
+funcion principal devuelve entero32
+    crudo
+        escribe_natural64(0x200000, 0xFFFFFFFFFFFFFFFF)
+        escribe_natural8(0x200000, 0)
+        devuelve lee_natural64(0x200000)
+";
+    // Solo el byte bajo a cero: quedan siete bytes de unos.
+    assert_eq!(
+        arranca(f).syscalls.last().unwrap().arg0,
+        0xFFFF_FFFF_FFFF_FF00
+    );
+}
+
+#[test]
+fn escribir_dos_bytes_no_pisa_los_otros_seis() {
+    let f = "\
+perfil llano
+usa memoria
+
+funcion principal devuelve entero32
+    crudo
+        escribe_natural64(0x200000, 0xFFFFFFFFFFFFFFFF)
+        escribe_natural16(0x200000, 0)
+        devuelve lee_natural64(0x200000)
+";
+    assert_eq!(
+        arranca(f).syscalls.last().unwrap().arg0,
+        0xFFFF_FFFF_FFFF_0000
+    );
+}
+
+/// ** EL PRIMER FRAMEBUFFER DE INTI.
+///
+/// Pide memoria al kernel, la reparte con su propio monton, y **rellena
+/// pixeles de 32 bits en un bucle**. Que es, quitando el nombre bonito, lo que
+/// hace un motor grafico en su linea mas caliente.
+///
+/// Aqui se juntan las cuatro piezas de hoy y ninguna sobra:
+///
+///   F4a  arranca solo y sale por la puerta
+///   F4b  toca memoria
+///   F4c  el monton se la reparte
+///   F5a  y el ancho de 32 es el que cabe un pixel
+#[test]
+fn inti_rellena_una_pantalla_de_pixeles() {
+    let f = "\
+perfil llano
+usa monton
+usa memoria
+
+funcion pinta(pantalla es natural64, cuantos es natural64, color es natural64)
+    crudo
+        cambiante i = 0
+        repite mientras i < cuantos
+            escribe_natural32(pantalla + i * 4, color)
+            i = i + 1
+
+funcion principal devuelve entero32
+    m = monton_nuevo(4096)
+    p = pide(m, 64)
+    pinta(p, 16, 65280)
+    crudo
+        devuelve lee_natural32(p + 40)
+";
+    // El pixel 10 de 16, y ninguno se escribio dos veces ni se quedo sin
+    // escribir: si el bucle contara mal, este seria cero.
+    assert_eq!(arranca(f).syscalls.last().unwrap().arg0, 65280);
+}
+
+/// Y el ultimo pixel se escribe, que es donde se ve si el bucle se queda corto.
+#[test]
+fn el_ultimo_pixel_tambien_se_pinta() {
+    let f = "\
+perfil llano
+usa monton
+usa memoria
+
+funcion pinta(pantalla es natural64, cuantos es natural64, color es natural64)
+    crudo
+        cambiante i = 0
+        repite mientras i < cuantos
+            escribe_natural32(pantalla + i * 4, color)
+            i = i + 1
+
+funcion principal devuelve entero32
+    m = monton_nuevo(4096)
+    p = pide(m, 64)
+    pinta(p, 16, 7)
+    crudo
+        devuelve lee_natural32(p + 60)
+";
+    assert_eq!(arranca(f).syscalls.last().unwrap().arg0, 7);
+}

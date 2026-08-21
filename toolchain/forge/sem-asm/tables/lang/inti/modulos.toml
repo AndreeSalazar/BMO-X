@@ -81,18 +81,20 @@ mi_paquete    = "valor"
 #  una zona de confianza que nadie mira.
 [memoria]
 lee_natural8      = "el byte que hay en esa direccion"
-lee_natural64     = "la palabra de 8 bytes que hay en esa direccion"
+lee_natural16     = "los dos bytes que hay en esa direccion"
+lee_natural32     = "los cuatro bytes que hay en esa direccion"
+lee_natural64     = "los ocho bytes que hay en esa direccion"
 escribe_natural8  = "pon ese byte en esa direccion"
-escribe_natural64 = "pon esa palabra de 8 bytes en esa direccion"
+escribe_natural16 = "pon esos dos bytes en esa direccion"
+escribe_natural32 = "pon esos cuatro bytes en esa direccion"
+escribe_natural64 = "pon esos ocho bytes en esa direccion"
 
-#  ** Faltan los de 16 y 32 bits, y se dice en vez de dejar el hueco.
+#  ** Los cuatro anchos estan. Los de 16 y 32 faltaron un dia, con el motivo
+#  escrito: `bmo_lower` no traia los ayudantes, y escribirlos a mano dentro del
+#  emisor de INTI habria puesto en un sitio lo que tiene que estar en el otro.
 #
-#  No es una decision de diseno: es que `bmo_lower` no trae hoy los ayudantes
-#  para esos dos anchos, y escribirlos a mano dentro del emisor de INTI seria
-#  poner en un sitio lo que tiene que estar en el otro. Entran el dia que
-#  `bmo_lower` los emita.
-#
-#  Una tabla incompleta que no declara que lo esta parece una tabla completa.
+#  Se anadieron ALLI, no aqui. Y el de 32 es el que escribe un pixel en un
+#  framebuffer, que era el motivo concreto para no dejarlo pendiente.
 
 #  ** QUE HACE CADA UNO, en datos. El compilador lo lee.
 #
@@ -100,8 +102,12 @@ escribe_natural64 = "pon esa palabra de 8 bytes en esa direccion"
 #  maquina, "qword" solo en una.
 [accede]
 lee_natural8      = { hace = "lee",     bytes = 1 }
+lee_natural16     = { hace = "lee",     bytes = 2 }
+lee_natural32     = { hace = "lee",     bytes = 4 }
 lee_natural64     = { hace = "lee",     bytes = 8 }
 escribe_natural8  = { hace = "escribe", bytes = 1 }
+escribe_natural16 = { hace = "escribe", bytes = 2 }
+escribe_natural32 = { hace = "escribe", bytes = 4 }
 escribe_natural64 = { hace = "escribe", bytes = 8 }
 
 # ===================================================================
@@ -125,8 +131,9 @@ escribe_natural64 = { hace = "escribe", bytes = 8 }
 #  que no puede escribir.
 [crudo]
 piden = [
-    "lee_natural8", "lee_natural64",
-    "escribe_natural8", "escribe_natural64",
+    "lee_natural8", "lee_natural16", "lee_natural32", "lee_natural64",
+    "escribe_natural8", "escribe_natural16", "escribe_natural32",
+    "escribe_natural64",
 ]
 
 # ===================================================================

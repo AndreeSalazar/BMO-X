@@ -367,3 +367,36 @@ funcion principal
     assert!(c.valor.iter().any(|p| p.es(Simbolo::Devuelve)));
     assert!(c.valor.iter().any(|p| p.es(Simbolo::De)));
 }
+
+/// ** El natural64 mas grande CABE, y el que no cabe se denuncia.
+///
+/// Durante un dia `0xFFFFFFFFFFFFFFFF` --que es un `natural64` perfectamente
+/// valido-- no cabia en el `i64` de los literales, la conversion fallaba, y el
+/// numero **se convertia en CERO sin una sola queja**.
+///
+/// Se encontro escribiendo una prueba de otra cosa, que es como se encuentran
+/// estos: nadie escribe un test para el caso que cree que funciona.
+#[test]
+fn el_natural64_mas_grande_cabe() {
+    assert_eq!(
+        super::valor_entero("FFFFFFFFFFFFFFFF", super::Base::Dieciseis),
+        Some(-1i64),
+        "el patron de bits, que es lo que se guarda"
+    );
+    assert_eq!(codigos_de("x = 0xFFFFFFFFFFFFFFFF"), Vec::<&str>::new());
+}
+
+#[test]
+fn un_numero_que_no_cabe_en_64_bits_se_dice() {
+    assert_eq!(codigos_de("x = 0xFFFFFFFFFFFFFFFFF"), vec!["E0018"]);
+}
+
+/// Y el patron se lee como diga el tipo, no como diga el literal.
+#[test]
+fn el_literal_guarda_bits_y_no_una_interpretacion() {
+    // El mismo hueco de 64 bits, escrito de las dos formas.
+    assert_eq!(
+        super::valor_entero("18446744073709551615", super::Base::Diez),
+        super::valor_entero("FFFFFFFFFFFFFFFF", super::Base::Dieciseis)
+    );
+}

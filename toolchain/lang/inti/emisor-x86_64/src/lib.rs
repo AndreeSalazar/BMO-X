@@ -451,10 +451,17 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                     // el resultado traeria basura de lo que hubiera antes en el
                     // registro. Lo peor es que funcionaria casi siempre.
                     1 => x86::movzx_r32_byte_at_reg(out, IZQ, IZQ),
+                    2 => x86::movzx_r32_word_at_reg(out, IZQ, IZQ),
+                    // ** El de 32 no lleva `movzx` y no es un olvido: escribir
+                    // la mitad baja de un registro **pone a cero la mitad
+                    // alta** en 64 bits. Por debajo de 32, el silicio conserva
+                    // lo que hubiera, y por eso 8 y 16 si lo necesitan.
+                    4 => x86::mov_r32_at_reg(out, IZQ, IZQ),
                     8 => x86::mov_r64_at_reg(out, IZQ, IZQ),
-                    // Los otros anchos no estan en `modulos.toml` todavia, asi
-                    // que aqui no puede llegar ninguno. Si llegara, dejar el
-                    // registro como estaba es mentir con la direccion dentro.
+                    // Un ancho que no esta en la tabla no puede llegar aqui.
+                    // Si llegara, devolver cero es lo unico honesto: dejar el
+                    // registro como estaba seria mentir con la direccion
+                    // dentro, y esa mentira parece un puntero valido.
                     _ => x86::zero_r32(out, IZQ),
                 }
                 guarda_temporal(out, IZQ, *destino, &marco);
@@ -470,6 +477,8 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                 carga(out, IZQ, direccion, &marco);
                 match ancho {
                     1 => x86::mov_byte_at_reg_from_low(out, IZQ, DER),
+                    2 => x86::mov_word_at_reg_from_r16(out, IZQ, DER),
+                    4 => x86::mov_at_reg_from_r32(out, IZQ, DER),
                     8 => x86::mov_at_reg_from_r64(out, IZQ, DER),
                     _ => {}
                 }

@@ -624,13 +624,10 @@ fn comprobacion_de(op: Op) -> Option<Comprobacion> {
     }
 }
 
+/// El valor de un literal. **La cuenta vive en `lexico`**, que es de quien es el
+/// numero -- aqui solo se pide.
 fn parse_entero(texto: &str, base: crate::lexico::Base) -> Option<i64> {
-    match base {
-        crate::lexico::Base::Diez => texto.parse::<i64>().ok(),
-        crate::lexico::Base::Dieciseis => i64::from_str_radix(texto.trim_start_matches("0x"), 16)
-            .or_else(|_| i64::from_str_radix(texto.trim_start_matches("0X"), 16))
-            .ok(),
-    }
+    crate::lexico::valor_entero(texto, base)
 }
 
 #[cfg(test)]

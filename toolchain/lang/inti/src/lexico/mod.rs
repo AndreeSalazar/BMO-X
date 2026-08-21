@@ -439,6 +439,39 @@ fn leer_texto(
     (None, cs.len(), avisos)
 }
 
+
+/// El valor de un literal entero, guardado como PATRON DE BITS.
+///
+/// ## ** Por que se intenta dos veces, y en este orden
+///
+/// El hueco es de 64 bits y en el caben dos lecturas del mismo patron: con
+/// signo y sin el. `0xFFFFFFFFFFFFFFFF` es un `natural64` valido --el mas
+/// grande-- y **no cabe en un `i64`**.
+///
+/// Durante un dia esto se resolvia con un solo intento, el de `i64`, y cuando
+/// fallaba el numero **se convertia en cero sin una queja**.
+///
+/// Asi que: primero con signo (que es lo que quiere decir un `-1` escrito a
+/// mano), y si no cabe, sin signo guardando los bits. Quien carga el valor hace
+/// `as u64`, o sea que el patron llega intacto y **quien decide como se lee es
+/// el TIPO** -- que es justo donde debe decidirse.
+///
+/// ## Y por que vive AQUI y no donde se usa
+///
+/// Porque el que necesita preguntarlo primero es este modulo: un literal que no
+/// cabe hay que denunciarlo al leerlo, no cuatro generaciones despues. Tenerlo
+/// en el descenso obligaria a comprobarlo dos veces con dos copias de la misma
+/// cuenta, y dos copias de una cuenta acaban discrepando.
+pub fn valor_entero(texto: &str, base: Base) -> Option<i64> {
+    let (crudo, radix) = match base {
+        Base::Diez => (texto, 10),
+        Base::Dieciseis => (texto.trim_start_matches("0x").trim_start_matches("0X"), 16),
+    };
+    i64::from_str_radix(crudo, radix)
+        .ok()
+        .or_else(|| u64::from_str_radix(crudo, radix).ok().map(|v| v as i64))
+}
+
 /// Lee un numero. Decimal o hexadecimal, sin separadores.
 fn leer_numero(
     cs: &[char],
@@ -471,6 +504,24 @@ fn leer_numero(
             return (None, i, avisos);
         }
         let texto: String = cs[arranca..i].iter().collect();
+        // ** Se comprueba AQUI, al leerlo, y no cuatro generaciones despues.
+        if valor_entero(&texto, Base::Dieciseis).is_none() {
+            avisos.push(
+                Aviso::nuevo(
+                    codigos::NUMERO_ENORME,
+                    format!("`{}` no cabe en 64 bits.", texto),
+                    Sitio::nuevo(linea, columna_inicial + arranca + 1),
+                )
+                .con_linea(cuerpo)
+                .con_habia(
+                    "El numero mas grande que cabe es 0xFFFFFFFFFFFFFFFF. Se dice en vez \
+                     de recortarlo: un literal recortado en silencio parece un numero \
+                     valido y no lo es."
+                        .to_string(),
+                )
+                .con_hacer("quita digitos, o parte el valor en dos"),
+            );
+        }
         return (
             Some(Numero {
                 texto,

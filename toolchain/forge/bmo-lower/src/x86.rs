@@ -453,6 +453,58 @@ pub fn mov_at_reg_from_r64(out: &mut Vec<u8>, base: u8, src: u8) {
     modrm_at_base(out, src & 7, base);
 }
 
+/// `mov <dst32>, [<base>]` -- lee cuatro bytes.
+///
+/// ** Escribir la mitad baja de un registro **pone a cero la mitad alta** en
+/// 64 bits, asi que esto ya deja el valor extendido sin ceros a mano. Es la
+/// razon de que no haga falta un `movzx` de 32, y de que si haga falta uno de
+/// 16 y otro de 8: por debajo de 32 el silicio **conserva** lo que hubiera.
+pub fn mov_r32_at_reg(out: &mut Vec<u8>, dst: u8, base: u8) {
+    let rex = 0x40 | (((dst >> 3) & 1) << 2) | ((base >> 3) & 1);
+    if rex != 0x40 {
+        out.push(rex);
+    }
+    out.push(0x8B);
+    modrm_at_base(out, dst & 7, base);
+}
+
+/// `mov [<base>], <src32>` -- escribe cuatro bytes.
+///
+/// Es el que escribe un pixel de 32 bits en un framebuffer, que es el motivo
+/// concreto por el que existe.
+pub fn mov_at_reg_from_r32(out: &mut Vec<u8>, base: u8, src: u8) {
+    let rex = 0x40 | (((src >> 3) & 1) << 2) | ((base >> 3) & 1);
+    if rex != 0x40 {
+        out.push(rex);
+    }
+    out.push(0x89);
+    modrm_at_base(out, src & 7, base);
+}
+
+/// `movzx <dst32>, word [<base>]` -- lee dos bytes y pone el resto a cero.
+pub fn movzx_r32_word_at_reg(out: &mut Vec<u8>, dst: u8, base: u8) {
+    let rex = 0x40 | (((dst >> 3) & 1) << 2) | ((base >> 3) & 1);
+    if rex != 0x40 {
+        out.push(rex);
+    }
+    out.extend_from_slice(&[0x0F, 0xB7]);
+    modrm_at_base(out, dst & 7, base);
+}
+
+/// `mov word [<base>], <src16>` -- escribe dos bytes.
+///
+/// El `0x66` de delante es el prefijo de tamano de operando: la misma
+/// instruccion que escribe cuatro bytes escribe dos cuando lo lleva.
+pub fn mov_word_at_reg_from_r16(out: &mut Vec<u8>, base: u8, src: u8) {
+    out.push(0x66);
+    let rex = 0x40 | (((src >> 3) & 1) << 2) | ((base >> 3) & 1);
+    if rex != 0x40 {
+        out.push(rex);
+    }
+    out.push(0x89);
+    modrm_at_base(out, src & 7, base);
+}
+
 /// `push <r64>` / `pop <r64>`.
 pub fn push_r64(out: &mut Vec<u8>, reg: u8) {
     if reg >= 8 {
