@@ -625,7 +625,94 @@ arbol**. Existe porque se lee como una frase, y **cuesta cero gramatica**.
 
 ---
 
-## 15. Las palabras clave -- 49, y ya viven en una TABLA
+## 14b. `bufer de T` -- lo que se indexa en `llano`
+
+Anadido el **2026-08-20**, y es la palabra clave numero 50.
+
+```inti
+funcion pinta(pantalla es bufer de natural32, cuantos es entero64, color es entero64)
+    crudo
+        cambiante i = 0
+        repite mientras i < cuantos
+            pantalla[i] = color
+            i = i + 1
+```
+
+### Por que hacia falta una palabra mas
+
+`lista de T` **lleva su longitud dentro**, o sea que crece, o sea que es de
+`pleno`. En `llano` no habia ninguna forma de decir *"una direccion, y los
+elementos miden esto"* -- y sin eso no se puede escribir un framebuffer ni
+recorrer una tabla del kernel.
+
+Se podria haber reutilizado `lista` con otra semantica segun el perfil. Eso
+habria dejado el contador en 49 **y habria hecho que la misma palabra signifique
+dos cosas segun una linea de arriba**, que es la clase de sorpresa que este
+lenguaje existe para no tener.
+
+> Una palabra mas se paga una vez y se ve. Una palabra con dos significados se
+> paga cada vez que alguien lee un fichero.
+
+### La diferencia con `lista`, en una tabla
+
+| | `bufer de T` | `lista de T` |
+|---|---|---|
+| perfil | `llano` | `pleno` |
+| que es | una direccion | una direccion **y su longitud** |
+| crece | no | si |
+| indexar | pide `crudo` | comprobado |
+
+★★ Y la razon de la ultima fila es la regla de siempre: **al otro lado, hay
+alguien que comprueba?** Un `bufer` no guarda su longitud en ningun sitio, asi
+que **no hay contra que comprobar el indice**. No es que la comprobacion se
+haya olvidado -- no existe la informacion para hacerla, y `crudo` es
+exactamente como se dice eso.
+
+### Lo que el tipo te ahorra
+
+```text
+   sin bufer   escribe_natural32(pantalla + i * 4, color)
+   con bufer   pantalla[i] = color
+```
+
+El `* 4` desaparece del fuente porque **lo sabe el tipo**. Y no es solo mas
+corto: el `4` escrito a mano es un numero que hay que cambiar en todos los
+sitios el dia que los pixeles sean de 16 bits, **y el que no se cambie compilara
+igual**.
+
+---
+
+## 14c. `registro` -- los campos tienen sitio de verdad
+
+Un `registro` de `llano` se pasa **por direccion**, y `p.x` es esa direccion mas
+un desplazamiento que sale de medir los campos de antes.
+
+```inti
+registro Punto
+    x es entero64
+    y es entero64
+
+funcion mueve(p es Punto, dx es entero64)
+    p.x = p.x + dx
+```
+
+- El tipo tiene que estar **escrito** (`p es Punto`). No hay inferencia, y es
+  una decision: con ella, cambiar una linea de arriba cambiaria en silencio el
+  ancho de un acceso a memoria veinte lineas mas abajo.
+- Los campos se **alinean** a su medida, y el registro se redondea a la del
+  campo mas exigente, para que uno detras de otro en un array siga cuadrando.
+- ★ **El orden es el escrito**, y no se reordena para ahorrar huecos. Un
+  `registro` de INTI tiene que poder describir algo que YA existe --una
+  estructura del kernel, una cabecera de fichero-- y para eso el orden es el
+  contrato, no una oportunidad.
+
+Las medidas viven en `tables/lang/inti/medidas.toml`. ★ Mientras sean una tabla,
+**dos maquinas distintas pueden dar disposiciones distintas sin que el
+compilador cambie**.
+
+---
+
+## 15. Las palabras clave -- 50, y ya viven en una TABLA
 
 ```text
 perfil  llano  pleno  usa

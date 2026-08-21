@@ -36,7 +36,22 @@
 [meta]
 version = 1
 idioma_por_defecto = "es"
-palabras = 49
+palabras = 50
+
+#  ** LA NUMERO 50 ES `bufer`, y se cuenta porque las palabras se cuentan.
+#
+#  Entro el 2026-08-20 y el motivo es concreto: `lista de T` lleva su longitud
+#  dentro, o sea que crece, o sea que es de `pleno`. En `llano` no habia NINGUNA
+#  forma de decir "una direccion, y los elementos miden esto" -- y sin eso no se
+#  puede escribir un framebuffer ni recorrer una tabla del kernel.
+#
+#  Se podria haber evitado reutilizando `lista` con otra semantica segun el
+#  perfil. Eso habria dejado el contador en 49 y habria hecho que la misma
+#  palabra signifique dos cosas distintas segun una linea de arriba, que es
+#  exactamente la clase de sorpresa que este lenguaje existe para no tener.
+#
+#  Una palabra mas es un precio que se paga una vez y se ve. Una palabra con dos
+#  significados se paga cada vez que alguien lee un fichero.
 
 #  Las tildes son ALIAS: la version acentuada de una palabra lexa igual que la
 #  ASCII, asi que quien escribe con tildes no tropieza y el fichero canonico
@@ -111,6 +126,7 @@ VALOR      = "valor"
 MOTIVO     = "motivo"
 LISTA      = "lista"
 TABLA      = "tabla"
+BUFER      = "bufer"
 
 
 # ===================================================================
@@ -176,6 +192,7 @@ VALOR      = "value"
 MOTIVO     = "reason"
 LISTA      = "list"
 TABLA      = "map"
+BUFER      = "buffer"
 
 
 # ===================================================================
@@ -274,6 +291,7 @@ VALOR      = "value"
 MOTIVO     = "reason"
 LISTA      = "list"
 TABLA      = "dict"
+BUFER      = "buffer"
 
 
 # ===================================================================
@@ -285,6 +303,6 @@ TABLA      = "dict"
 #  eso se pueden tapar, redefinir y ampliar sin tocar el lenguaje -- y por eso
 #  la puerta del sistema no vive en la gramatica. Ver `GRAMATICA.md` sec. 17.
 #
-#  Un lenguaje se juzga por lo que RESERVA. INTI reserva 49 palabras; C reserva
+#  Un lenguaje se juzga por lo que RESERVA. INTI reserva 50 palabras; C reserva
 #  32 y ademas se quedo sin poder llamar a nada `new`. La diferencia esta en
 #  que aqui casi todo lo que parece del lenguaje es biblioteca.

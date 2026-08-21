@@ -445,6 +445,13 @@ impl<'c> Vigia<'c> {
                     );
                 }
             }
+            // ** Un `bufer` SI vale en `llano`, y esa es su razon de existir.
+            //
+            // Es una direccion: no crece, no pide monton, y mide lo que un
+            // puntero. Lo que no lleva es su longitud -- por eso indexarlo pide
+            // `crudo` y `lista de T` no. Dos tipos porque son dos promesas
+            // distintas, y aqui se ve cual es cual.
+            Tipo::Bufer(dentro) => self.tipo(dentro, sitio),
             Tipo::Lista(t) => {
                 if self.llano() {
                     self.crece("una lista", sitio);
