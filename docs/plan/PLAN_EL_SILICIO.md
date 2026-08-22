@@ -319,6 +319,30 @@ exigirlo firmado"*. **No va.** `bmo-verify` no tiene ni la palabra.
               bloques `crudo` y sus piezas.  Y `bmo-verify` puede exigirlo.
 ```
 
+#### P1 -- LA PREDICCION, escrita ANTES de construirlo
+
+> Eddi: *"el samurai, aunque este preparado para la guerra, tiene que estar
+> fortalecido: siempre predice TODO, y la CPU es el motivo que predice."*
+>
+> Escrita el 2026-08-22 antes de la primera linea de codigo. Una prediccion que
+> se escribe despues de ver el resultado no vale nada.
+
+| lo que se pregunta | prediccion | si sale otra cosa |
+|---|---|---|
+| **el codigo emitido** | **identico byte a byte.** El manifiesto no toca `Code` | algo del manifiesto se colo en la emision |
+| **el tamano de `cpu.bex`** | crece de **8.752** a algo entre 9.000 y 9.800: el TOML son ~400 bytes, mas una entrada de tabla, mas el relleno hasta la frontera de sector | no crece = no se escribio; crece mucho mas = el TOML lleva algo que no toca |
+| **el gate** | **sigue diciendo que si.** La seccion `Manifest` ya tiene validador (UTF-8 no vacio) desde antes de este trabajo | rechaza = el header miente sobre si mismo, y hay que mirar `validate_flag_coherence` |
+| **el aviso de coherencia** | **no sale.** `HAS_MANIFEST` se pone SOLA al anadir la seccion | *"hay seccion manifest y el header no lo anuncia"* = se olvido, y se va a olvidar siempre |
+| **la frontera de sector** | **se conserva.** Lo que se carga tiene que empezar en multiplo de 512 o el disco no puede escribir en los marcos del proceso | si se rompe, el `.bex` no se carga desde disco y el sintoma aparece lejos de aqui |
+| **la carga en el Ryzen** | **no cambia nada.** El cargador solo mapea `Code`, `RoData`, `Data` y `Bss`: `Manifest` es inerte | no arranca = la seccion no era inerte |
+| **leer el perfil sin el fuente** | `perfil = "llano"`, `crudo = 1`, `arquitecturas = ["x86_64"]`, y **las piezas del monton con SU perfil declarado** | |
+
+⚠ **La fila de la carga en el Ryzen no se puede cerrar aqui.** Se puede
+argumentar leyendo `ram.rs` --y se hizo-- pero **argumentar no es medir**. Queda
+abierta hasta el proximo arranque, y va a la lista de pendientes de hardware.
+
+---
+
 ### P2 -- LA REGLA DEL MEZCLADO
 
 Con costuras, la regla se puede **decir**:
