@@ -171,6 +171,29 @@ op_base_del_bloque = "0x01"
 #  no antes.
 op_consola_escribir = "0x06"
 
+#  ** GUARDAR UN FICHERO SIN BIBLIOTECA, que es lo que `llano` necesita.
+#
+#  `usa archivo` trae los nombres de REX y hoy sus llamadas NO TIENEN DESTINO:
+#  hace falta enlazado, y no lo hay. Pero guardar un fichero no necesita
+#  biblioteca -- necesita la PUERTA, que es lo unico que `llano` tiene:
+#
+#      op_ruta            acumula la ruta de 8 en 8 bytes, por valor
+#      op_archivo_crear   la consume y devuelve el handle (con `invoca_valor`)
+#      op_arch_escribir   sobre EL HANDLE: (n << 56) | bytes. Hasta 7 por vez
+#      op_arch_cerrar     y AQUI es donde el contenido llega al disco
+#
+#  ** Fijate en la tercera: va sobre el handle del fichero y no sobre `mi_tarea`.
+#  Es la diferencia entre pedirle algo al sistema y pedirle algo a UNA COSA que
+#  el sistema te dio -- que es el modelo de capabilities entero, visto desde un
+#  programa de usuario.
+#
+#  La ruta viaja de 8 en 8 y por VALOR por lo mismo que la consola: la superficie
+#  congelada no acepta punteros, y asi Ring 0 no valida memoria ajena.
+op_ruta            = "0x0B"
+op_archivo_crear   = "0x11"
+op_arch_escribir   = "0x02"
+op_arch_cerrar     = "0x04"
+
 #  ** LOS BITS -- el nombre es agnostico, la instruccion es de la maquina.
 #
 #  Peticion de Eddi (2026-08-19): *"una libreria de binarios literalmente, pero

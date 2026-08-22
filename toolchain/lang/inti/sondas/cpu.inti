@@ -120,6 +120,9 @@ funcion et_atom devuelve natural64
 funcion et_xcr0 devuelve natural64
     devuelve 2314885531092280184
 
+funcion et_azar devuelve natural64
+    devuelve 2314885532198468193
+
 funcion et_fin devuelve natural64
     devuelve 3251720329925504301
 
@@ -248,32 +251,120 @@ funcion prueba_atomicas(dir es natural64) devuelve natural64
     devuelve mal
 
 # ===================================================================
-#  6. EL INFORME
+#  6. ** GUARDAR -- que el informe no se quede en la pantalla
+# ===================================================================
+#
+# Peticion de Eddi: *"traer en save para guardar datos"*.
+#
+# ** Y aqui esta la parte interesante: `usa archivo` trae los nombres de REX y
+# sus llamadas HOY NO TIENEN DESTINO -- hace falta enlazado y no lo hay. Si esta
+# sonda los usara, compilaria, correria, y no guardaria nada.
+#
+# Pero guardar un fichero no necesita biblioteca: necesita LA PUERTA, que es lo
+# unico que `llano` tiene. Cuatro operaciones y ya:
+#
+#     la ruta se acumula de 8 en 8      porque la superficie no acepta punteros
+#     crear devuelve un HANDLE          y a partir de ahi se le habla a EL
+#     escribir mete 7 bytes por vez     (n << 56) | los bytes
+#     cerrar es donde llega al disco
+#
+# ** La tercera va sobre el handle del fichero y NO sobre `mi_tarea`. Es la
+# diferencia entre pedirle algo al sistema y pedirle algo a UNA COSA que el
+# sistema te dio -- el modelo de capabilities entero, visto desde un programa.
+
+funcion pon_ruta(trozo es natural64)
+    invoca(mi_tarea, op_ruta, trozo, 0, 0)
+
+# Abre `/inti/cpu.txt` para escribir y devuelve su handle.
+#
+# ** Los dos numeros son la ruta en ASCII, empaquetada. En `llano` no hay `texto`
+# y esto es lo que cuesta: el precio de no tener runtime debajo.
+funcion abre_el_informe devuelve natural64
+    pon_ruta(8098368684913748271)
+    pon_ruta(500237086325)
+    devuelve invoca_valor(mi_tarea, op_archivo_crear, 0, 0, 0)
+
+# Mete `n` bytes de `w`. Siete como mucho.
+#
+# ** SIETE y no ocho, y el motivo es la forma del argumento: el byte alto lleva
+# la CUENTA, no un dato. Pasar los ocho pisaria la cuenta con el ultimo caracter
+# y el kernel escribiria un numero de bytes que nadie pidio.
+#
+# Por eso la mascara: se quedan los siete bajos y el alto lo pone `n`.
+funcion mete_n(fichero es natural64, w es natural64, n es natural64)
+    invoca(fichero, op_arch_escribir, (n desplaza izquierda 56) bits_o (w bits_y 72057594037927935), 0, 0)
+
+# Una palabra ENTERA de ocho caracteres: siete y luego el que sobra.
+#
+# ** Existe porque el informe se escribe en palabras de ocho --las etiquetas y
+# los medios hexadecimales-- y la puerta entrega de siete en siete. Partirlo aqui
+# una vez es mejor que acordarse en cada llamada.
+funcion mete8(fichero es natural64, w es natural64)
+    mete_n(fichero, w, 7)
+    mete_n(fichero, w desplaza derecha 56, 1)
+
+funcion cierra_el_informe(fichero es natural64)
+    invoca(fichero, op_arch_cerrar, 0, 0, 0)
+
+# ===================================================================
+#  7. EL INFORME
 # ===================================================================
 
+# Un salto de linea, para que el fichero se lea como un informe y no como un
+# churro de 200 caracteres.
+funcion salto(fichero es natural64)
+    mete_n(fichero, 10, 1)
+
+# **UNA LINEA DEL INFORME: a la pantalla Y al fichero.**
+#
+# ** Las dos a la vez y desde el mismo sitio, para que no puedan discrepar. Si
+# fueran dos recorridos separados, el dia que alguien anada una medida se
+# acordaria de uno de los dos -- y el fichero que se guarda seria distinto del
+# que se vio.
+funcion linea(fichero es natural64, etiqueta es natural64, dato es natural64)
+    palabra(etiqueta)
+    hex(dato)
+    si fichero no es 0
+        mete8(fichero, etiqueta)
+        mete_n(fichero, 32, 1)
+        mete8(fichero, ocho_hex(dato, 60))
+        mete8(fichero, ocho_hex(dato, 28))
+        salto(fichero)
+
 funcion principal devuelve entero32
+    # ** El fichero se abre PRIMERO y se sigue aunque falle.
+    #
+    # Un cero significa que no se pudo crear --volumen de solo lectura, o el
+    # nombre no cabe en 8.3-- y en ese caso el informe sale solo por pantalla.
+    # Parar aqui perderia las medidas por no poder guardarlas, que seria
+    # cambiar lo importante por lo comodo.
+    f es natural64 = abre_el_informe()
+
     # -- quien eres
-    palabra(et_vendor())
-    hex(cuantas_hojas())
-    hex(firma_del_cpu())
+    linea(f, et_vendor(), cuantas_hojas())
+    linea(f, et_vendor(), firma_del_cpu())
 
     # -- a que ritmo cuentas
-    palabra(et_tsc())
-    hex(cuanto_avanza_el_reloj())
+    linea(f, et_tsc(), cuanto_avanza_el_reloj())
 
     # -- que tienes encendido
-    palabra(et_xcr0())
-    hex(estado_extendido())
+    linea(f, et_xcr0(), estado_extendido())
+
+    # -- el azar del silicio: 1 = las dos tiradas salieron distintas
+    linea(f, et_azar(), azar_dos_veces())
 
     # -- las cuentas de bits: CERO es aprobado
-    palabra(et_bits())
-    hex(prueba_bits())
+    linea(f, et_bits(), prueba_bits())
 
     # -- las atomicas, sobre memoria de verdad
-    palabra(et_atom())
     m = monton_nuevo(4096)
     p es bufer de natural64 = pide(m, 64)
-    hex(prueba_atomicas(p))
+    linea(f, et_atom(), prueba_atomicas(p))
 
     palabra(et_fin())
+    si f no es 0
+        mete8(f, et_fin())
+        salto(f)
+        cierra_el_informe(f)
+
     devuelve 0

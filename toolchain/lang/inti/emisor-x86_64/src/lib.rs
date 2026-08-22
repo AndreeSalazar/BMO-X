@@ -243,12 +243,30 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
             .iter()
             .find(|(n, _)| *n == nombre)
             .map(|(_, off)| *off);
-        // Una llamada a algo que no esta en este modulo se deja en cero: seria
-        // una funcion de la biblioteca, y para eso hace falta enlazado. Se deja
-        // marcada en vez de inventarle una direccion.
-        if let Some(d) = destino {
-            let rel = (d as i64 - (hueco as i64 + 4)) as i32;
-            salida.codigo[hueco..hueco + 4].copy_from_slice(&rel.to_le_bytes());
+        // ** UNA LLAMADA SIN DESTINO SE APUNTA, que es lo que este comentario
+        // decia y no hacia.
+        //
+        // Decia *"se deja marcada en vez de inventarle una direccion"*, y la
+        // dejaba en CERO sin marcar nada. Un `call` con desplazamiento cero
+        // salta a la instruccion siguiente: no revienta, no se queja, y devuelve
+        // lo que hubiera en el registro de retorno.
+        //
+        // Y eso es exactamente lo que hoy le pasa a `usa archivo`, `usa
+        // superficie` y los demas modulos de REX: **traen los nombres, el
+        // analisis los aprueba, y la llamada no va a ninguna parte**. Un
+        // programa que guarda un fichero compilaba, corria, y no guardaba nada.
+        //
+        // Hace falta enlazado para arreglarlo de verdad. Hasta entonces, lo
+        // unico honesto es que se sepa.
+        match destino {
+            Some(d) => {
+                let rel = (d as i64 - (hueco as i64 + 4)) as i32;
+                salida.codigo[hueco..hueco + 4].copy_from_slice(&rel.to_le_bytes());
+            }
+            None => salida.sin_emitir.push(format!(
+                "{}: la llamada no tiene destino -- no esta en este modulo y no hay enlazado",
+                nombre
+            )),
         }
     }
 
