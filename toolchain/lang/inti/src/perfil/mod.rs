@@ -107,6 +107,15 @@ impl Catalogo {
         }
     }
 
+    /// **Que perfiles sabe bajar a bytes este compilador.** Sale de la tabla,
+    /// no de un `if`, y por eso se puede ENSENAR: es la lista que contesta
+    /// *"que puedes hacer?"* en vez de esperar a que alguien choque con `E0073`.
+    pub fn perfiles_que_llegan(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.llegan_a_bytes.iter().cloned().collect();
+        v.sort();
+        v
+    }
+
     fn vacio() -> Self {
         Self {
             crecen: HashSet::new(),

@@ -107,6 +107,68 @@ impl Comprobacion {
             Comprobacion::Conversion(_) => "E1012",
         }
     }
+
+    /// Las cuatro, para poder recorrerlas. Una lista que se puede recorrer es
+    /// la diferencia entre *"creo que faltaba una"* y un numero.
+    pub const TODAS: [Comprobacion; 4] = [
+        Comprobacion::Desborde,
+        Comprobacion::Indice,
+        Comprobacion::EntreCero,
+        Comprobacion::Conversion(4),
+    ];
+
+    /// Como se llama en castellano, para un informe que lee una persona.
+    pub fn nombre(self) -> &'static str {
+        match self {
+            Comprobacion::Desborde => "desborde",
+            Comprobacion::Indice => "indice fuera de rango",
+            Comprobacion::EntreCero => "dividir entre cero",
+            Comprobacion::Conversion(_) => "conversion que no cabe",
+        }
+    }
+
+    /// **Llega a bytes hoy?**
+    ///
+    /// ## ** Por que esto vive aqui y no dentro del emisor
+    ///
+    /// Porque es una pregunta sobre la REGLA y no sobre una maquina: la 2 no
+    /// sale en ninguna, y por el mismo motivo en todas -- un `bufer` no lleva su
+    /// longitud, y eso no depende del procesador. Ponerlo en el emisor haria que
+    /// cada maquina nueva tuviera que volver a decidirlo, y la segunda decidiria
+    /// distinto.
+    ///
+    /// *** Y este comentario ya nombro dos procesadores en su primera version.
+    /// Lo casco `agnostico.rs`, que es la prueba que prohibe que el frontend
+    /// nombre una maquina -- **hasta en la prosa**. Se deja escrito porque
+    /// demuestra por que esa prueba mira los comentarios y no solo el codigo: el
+    /// dia que el frontend "sepa" de una maquina, lo va a saber primero alguien
+    /// que lea, y despues alguien que escriba.
+    ///
+    /// *** El emisor tiene un `match` que decide lo mismo. **Hay una prueba que
+    /// exige que los dos digan lo mismo**, porque dos listas que dicen lo mismo
+    /// se separan el dia que alguien toca una: es exactamente el fallo que este
+    /// proyecto lleva persiguiendo desde el censo de las diez sondas.
+    pub fn llega_a_bytes(self) -> bool {
+        match self {
+            Comprobacion::Desborde | Comprobacion::EntreCero | Comprobacion::Conversion(_) => true,
+            Comprobacion::Indice => false,
+        }
+    }
+
+    /// Y si no llega, **por que**. Vacio si llega.
+    ///
+    /// ** Un "no" sin motivo produce una pregunta que hay que ir a buscar al
+    /// codigo. Este es el mismo criterio que `E0073`: distinguir *"esta
+    /// prohibido"* de *"todavia no se hacerlo"* es la mitad del valor del aviso.
+    pub fn por_que_no(self) -> &'static str {
+        match self {
+            Comprobacion::Indice => {
+                "un `bufer` es una direccion y no lleva su longitud, asi que no hay contra \
+                 que comprobar. Nace con `lista de T`"
+            }
+            _ => "",
+        }
+    }
 }
 
 
