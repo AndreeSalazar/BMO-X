@@ -55,6 +55,15 @@ const INCRUSTADA: &str =
 pub struct Catalogo {
     crecen: HashSet<String>,
     without_size: HashSet<String>,
+    /// Los perfiles que el compilador sabe bajar a bytes HOY.
+    ///
+    /// ** No es una prohibicion del lenguaje: `pleno` esta especificado entero y
+    /// es legitimo. Es el compilador diciendo lo que no sabe hacer todavia --y
+    /// distinguir esas dos cosas es la mitad del valor del aviso.
+    ///
+    /// Vive en la tabla y no en un `if` porque el dia que `pleno` baje a bytes
+    /// lo que cambia es una fila. Un `if` habria que encontrarlo.
+    llegan_a_bytes: HashSet<String>,
 }
 
 impl Catalogo {
@@ -94,6 +103,7 @@ impl Catalogo {
         Self {
             crecen: lista("llano", "tipos_que_crecen"),
             without_size: lista("llano", "tipos_sin_medida"),
+            llegan_a_bytes: lista("bytes", "llegan"),
         }
     }
 
@@ -101,6 +111,9 @@ impl Catalogo {
         Self {
             crecen: HashSet::new(),
             without_size: HashSet::new(),
+            // ** Vacio quiere decir NO ACUSAR, y aqui tambien: una tabla
+            // ilegible no puede convertirse en "ningun perfil llega a bytes".
+            llegan_a_bytes: HashSet::new(),
         }
     }
 }
@@ -135,13 +148,49 @@ pub fn comprobar(
 ) -> Cosecha<Informe> {
     let mut informe = Informe::default();
     informe.arquitecturas = maquinas.iter().map(|x| x.nombre().to_string()).collect();
+    let mut avisos_del_perfil: Vec<Aviso> = Vec::new();
+
+    // ** LO PRIMERO: sabe este compilador bajar este perfil a bytes?
+    //
+    // Va antes de mirar nada porque no es una regla del programa, es una del
+    // COMPILADOR -- y si la respuesta es que no, todo lo que se diga despues
+    // habla de un binario que no se va a poder producir.
+    //
+    // Hasta el 22-08 no se preguntaba, y un fichero con `perfil pleno` salia
+    // como un `.bex` FIRMADO de 768 bytes que devolvia ceros: `numero` se baja a
+    // cero, `texto` y `lista` no existen, y las llamadas a REX no tienen
+    // destino. El gate decia que si sobre algo que no hacia nada, y una firma
+    // sobre eso es peor que ninguna firma.
+    let nombre_del_perfil = m.perfil.nombre();
+    if !cat.llegan_a_bytes.is_empty() && !cat.llegan_a_bytes.contains(nombre_del_perfil) {
+        avisos_del_perfil.push(
+            Aviso::nuevo(
+                codigos::PERFIL_SIN_BYTES,
+                format!(
+                    "El compilador todavia no sabe bajar `perfil {}` a bytes.",
+                    nombre_del_perfil
+                ),
+                Sitio::default(),
+            )
+            .con_habia(
+                concat!(
+                    "No es que el perfil este prohibido: esta especificado entero y es ",
+                    "legitimo. Lo que falta es su runtime -- `texto`, `lista` y `tabla` piden ",
+                    "monton, y `numero` es decimal exacto. Sin eso, lo que saldria es un ",
+                    "`.bex` firmado que devuelve ceros."
+                )
+                .to_string(),
+            )
+            .con_hacer("escribe `perfil llano`, que si llega a bytes, o espera a que `pleno` este"),
+        );
+    }
 
     let mut v = Vigia {
         perfil: m.perfil,
         cat,
         maquinas,
         modulos,
-        avisos: Vec::new(),
+        avisos: avisos_del_perfil,
         informe,
         dentro_de_crudo: false,
     };

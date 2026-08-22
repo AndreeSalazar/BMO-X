@@ -71,6 +71,10 @@ fn en_llano_no_hay_tareas() {
 }
 
 /// Y lo mismo escrito en `pleno` no dice nada.
+///
+/// ** Lo unico que sale es `E0073`, que no habla del programa sino del
+/// COMPILADOR: no sabe bajar `pleno` a bytes todavia. El dia que llegue, esta
+/// lista se queda vacia y la prueba falla -- que es como tiene que enterarse.
 #[test]
 fn en_pleno_todo_eso_vale() {
     let c = codigos_de(
@@ -79,17 +83,21 @@ fn en_pleno_todo_eso_vale() {
          \x20   saludo = \"hola\"\n\
          \x20   devuelve 0\n",
     );
-    assert!(c.is_empty(), "{:?}", c);
+    assert_eq!(c, vec!["E0073"], "en `pleno` no sale nada del PROGRAMA: solo lo que el compilador no sabe hacer todavia");
 }
 
 // ===================================================================
 //  `crudo`
 // ===================================================================
 
+/// OJO: desde el 22-08 TODO fuente de `pleno` trae ademas `E0073` -- el
+/// compilador no sabe bajar ese perfil a bytes todavia. Se mira que `E0071`
+/// este, no que sea el unico: exigir la lista exacta ataria esta prueba a una
+/// limitacion temporal del compilador, que no es lo que prueba.
 #[test]
 fn crudo_no_existe_en_pleno() {
     let c = codigos_de("perfil pleno\n\nfuncion principal\n    crudo\n        espera()\n");
-    assert_eq!(c, vec!["E0071"]);
+    assert!(c.contains(&"E0071"), "{:?}", c);
 }
 
 /// La regla que decide: `crudo` no marca "bajo nivel", marca "aqui nadie

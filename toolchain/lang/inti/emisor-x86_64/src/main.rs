@@ -90,6 +90,23 @@ fn main() {
     // regla que el banco se puso en F2d.
     let (parte, eventos) = bmo_inti_front::informar(&texto, &nombre);
 
+    // ** LOS AVISOS SALEN DE `comprobar`, QUE ES EL QUE LOS JUNTA TODOS.
+    //
+    // Aqui habia una lista escrita a mano con TRES analisis --sintaxis,
+    // disposicion, tipos-- y el compilador corria los cinco. Los otros dos
+    // --`perfil` y `nombres`-- se calculaban y **se tiraban**.
+    //
+    // *** Lo que eso significaba: `crudo` dentro de `perfil pleno` NO SE
+    // DENUNCIABA. Un nombre desconocido tampoco. La sonda `p04_crudo_en_pleno`
+    // del censo daba su E0071 en el banco y salia limpia por la linea de
+    // ordenes, que es por donde la usa una persona.
+    //
+    // ** Y la causa no era olvidar dos lineas: era escribir a mano una lista que
+    // ya existia en otro sitio. Es el mismo fallo que el censo tenia con sus
+    // diez sondas, y por eso el arreglo no es anadir dos entradas -- es usar la
+    // funcion que los junta, para que no se pueda volver a olvidar ninguno.
+    let revisado = bmo_inti_front::comprobar(&texto);
+
     let arbol = bmo_inti_front::armar(&texto);
     let raices = bmo_mods::Roots::find();
     let modulos = bmo_inti_front::tablas::Modulos::cargar(&raices);
@@ -97,24 +114,16 @@ fn main() {
         &arbol.valor,
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
-    let tipos = bmo_inti_front::tipos::comprobar(&arbol.valor, &plano.valor);
 
     // -- Los avisos, con el formato de cuatro partes ------------------------
     //
     // Se pintan TODOS antes de decidir si se sigue: un compilador que para en
     // el primero obliga a compilar diez veces para ver diez errores.
     let mut hay_error = false;
-    for (c, quien) in [
-        (&arbol.avisos, "sintaxis"),
-        (&plano.avisos, "disposicion"),
-        (&tipos.avisos, "tipos"),
-    ] {
-        for a in c {
-            let _ = quien;
-            eprint!("{}", a.pintar(&nombre));
-            if a.codigo.0.starts_with('E') {
-                hay_error = true;
-            }
+    for a in &revisado.avisos {
+        eprint!("{}", a.pintar(&nombre));
+        if a.codigo.0.starts_with('E') {
+            hay_error = true;
         }
     }
     if hay_error {

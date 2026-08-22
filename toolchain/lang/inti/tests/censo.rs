@@ -186,9 +186,17 @@ fn las_sondas_que_compilan_pasan_el_perfil() {
             continue;
         }
         let c = bmo_inti_front::comprobar(&texto);
+        // ** Los codigos del COMPILADOR no cuentan: `E0073` dice que no sabe
+        // bajar `pleno` a bytes, y eso no rechaza el fuente -- lo rechaza a el.
+        let del_programa: Vec<&str> = c
+            .codigos()
+            .into_iter()
+            .filter(|x| x.starts_with('E') && !del_compilador(x))
+            .collect();
         assert!(
-            !c.hay_errores(),
-            "{} dice COMPILA y el perfil la rechaza:\n{}",
+            del_programa.is_empty(),
+            "{} dice COMPILA y el perfil la rechaza:
+{}",
             nombre,
             c.pintar(&format!("{}.inti", nombre))
         );
@@ -278,6 +286,27 @@ const TODAVIA_NO: &[(&str, &str)] = &[
     ),
 ];
 
+/// Codigos que hablan del COMPILADOR y no del programa.
+///
+/// ## ** Por que hace falta la distincion, y por que es UNA lista
+///
+/// `E0073` dice *"no se bajar este perfil a bytes todavia"*. No es un fallo del
+/// fuente: una sonda de `pleno` que declara `COMPILA` sigue siendo correcta, y
+/// lo que no esta es el runtime.
+///
+/// Mezclarlos haria una de dos cosas, las dos malas: o el censo entero se pone
+/// rojo por una limitacion temporal, o se afloja el criterio y deja de mirar lo
+/// que si es del programa.
+///
+/// ** Y hay una prueba que exige que esta lista SIGA HACIENDO FALTA. El dia que
+/// `pleno` baje a bytes, esto sobra -- y una exencion que ya no hace falta miente
+/// sobre lo que el compilador sabe hacer.
+const DEL_COMPILADOR: &[&str] = &["E0073"];
+
+fn del_compilador(codigo: &str) -> bool {
+    DEL_COMPILADOR.contains(&codigo)
+}
+
 fn exenta(nombre: &str) -> Option<&'static str> {
     TODAVIA_NO
         .iter()
@@ -311,7 +340,11 @@ fn cada_sonda_cumple_el_veredicto_que_declara() {
         let v = veredicto(&texto);
         let c = bmo_inti_front::comprobar(&texto);
         let cods = c.codigos();
-        let errores: Vec<&str> = cods.iter().copied().filter(|x| x.starts_with('E')).collect();
+        let errores: Vec<&str> = cods
+            .iter()
+            .copied()
+            .filter(|x| x.starts_with('E') && !del_compilador(x))
+            .collect();
 
         let cumple = if v.starts_with("COMPILA") {
             errores.is_empty()
@@ -398,4 +431,25 @@ fn ninguna_sonda_muere_en_el_parser_salvo_las_que_lo_buscan() {
             );
         }
     }
+}
+
+/// ** LA EXENCION DE `E0073` TIENE QUE CADUCAR SOLA.
+///
+/// El dia que `pleno` baje a bytes, `DEL_COMPILADOR` deja de hacer falta -- y una
+/// lista de excusas que sobrevive a su motivo es peor que no tenerla, porque
+/// tapa lo que venga detras.
+///
+/// Asi que esta prueba exige que la excusa SIGA SIENDO CIERTA: si un fuente de
+/// `pleno` deja de dar `E0073`, aqui se entera alguien.
+#[test]
+fn la_excusa_de_pleno_sigue_haciendo_falta() {
+    let c = bmo_inti_front::comprobar("perfil pleno
+
+funcion principal
+    devuelve 0
+");
+    assert!(
+        c.codigos().contains(&"E0073"),
+        "`pleno` ya no da E0073: quita `DEL_COMPILADOR` del censo y las dos          exenciones de `perfil/pruebas.rs`. Lo que fue una excusa correcta acaba          de convertirse en una mentira."
+    );
 }

@@ -101,6 +101,17 @@ pub const LLANO_NO_ADMITE: Codigo = Codigo("E0070");
 pub const CRUDO_EN_PLENO: Codigo = Codigo("E0071");
 /// Tocar el metal fuera de un bloque `crudo`.
 pub const METAL_SIN_CRUDO: Codigo = Codigo("E0072");
+
+/// Un perfil que el compilador todavia no sabe bajar a bytes.
+///
+/// ** No es una prohibicion del lenguaje: es el compilador diciendo lo que NO
+/// SABE hacer, que es distinto y hay que distinguirlo. `perfil pleno` es
+/// legitimo y esta especificado entero; lo que falta es su runtime.
+///
+/// Hasta el 2026-08-22 no se decia, y un fichero de `pleno` salia como un
+/// `.bex` firmado de 768 bytes que devolvia ceros. El gate decia que si sobre
+/// algo que no hacia nada -- y una firma sobre eso es peor que no tener firma.
+pub const PERFIL_SIN_BYTES: Codigo = Codigo("E0073");
 /// Cruzar algo mutable a otra tarea.
 pub const CRUZA_MUTABLE: Codigo = Codigo("E0080");
 

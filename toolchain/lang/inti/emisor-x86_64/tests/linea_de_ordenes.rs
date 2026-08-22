@@ -210,3 +210,126 @@ fn sin_fichero_sale_la_ayuda_y_no_dice_que_todo_fue_bien() {
     assert!(!bien, "sin fichero no puede salir bien");
     assert!(salida.contains("INTI"));
 }
+
+
+// ===================================================================
+//  ** LO QUE EL COMPILADOR SABE TIENE QUE SALIR POR LA PUERTA
+// ===================================================================
+//
+//  El compilador corre CINCO analisis. La linea de ordenes pintaba TRES.
+//
+//  Los otros dos --`perfil` y `nombres`-- se calculaban y se tiraban, asi que
+//  `crudo` dentro de `perfil pleno` no se denunciaba y un nombre desconocido
+//  tampoco. La sonda `p04_crudo_en_pleno` del censo daba su `E0071` en el banco
+//  y salia LIMPIA por la linea de ordenes -- que es por donde lo usa una
+//  persona.
+//
+//  *** Y la causa no fue olvidar dos lineas: fue escribir a mano una lista que
+//  ya existia en otro sitio. Es el mismo fallo que el censo tenia con sus diez
+//  sondas, y el mismo que `SOLO_EN_METAL` evita al ser una lista de exenciones.
+//
+//  ** Por eso esta prueba NO enumera los cinco analisis. Compara lo que
+//  `comprobar` produce contra lo que la consola imprime, sea lo que sea. Un
+//  analisis nuevo entra en la comparacion solo. Una lista de cinco aqui tendria
+//  exactamente el fallo que esta vigilando.
+
+/// Fuentes que rompen cada analisis por separado.
+///
+/// ** Uno por analisis y no un programa que los rompa todos: si se mezclaran,
+/// un aviso podria tapar a otro --`nombres` calla si `sintaxis` no leyo el
+/// arbol-- y la prueba pasaria por el motivo equivocado.
+const ROMPE_UNO: &[(&str, &str)] = &[
+    (
+        "perfil",
+        "perfil pleno\n\nfuncion principal\n    crudo\n        cambiante x = 1\n",
+    ),
+    (
+        "nombres",
+        "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve entero64\n    devuelve no_existe_esto(a)\n",
+    ),
+    (
+        "disposicion",
+        "perfil llano\n\nregistro P\n    x es texto\n",
+    ),
+    (
+        "tipos",
+        "perfil llano\n\nfuncion f(x es flotante64, n es entero64) devuelve flotante64\n    devuelve x + n\n",
+    ),
+];
+
+/// **EL INVARIANTE**: ningun aviso se queda dentro.
+///
+/// Lo que `comprobar` sabe y la consola no dice es un fallo que el usuario no
+/// puede ver de ninguna forma -- y un compilador que se calla la mitad de lo que
+/// sabe es peor que uno que no lo sabe, porque el silencio parece aprobacion.
+#[test]
+fn la_consola_no_se_calla_ningun_aviso_que_el_compilador_conozca() {
+    for (analisis, fuente) in ROMPE_UNO {
+        let d = caja(&format!("puerta-{}", analisis));
+        let ruta = escribe(&d, "x.inti", fuente);
+
+        // Lo que el compilador sabe, preguntado en proceso.
+        let sabe: Vec<&str> = bmo_inti_front::comprobar(fuente).codigos();
+        assert!(
+            !sabe.is_empty(),
+            "el fuente de `{}` ya no rompe nada: la prueba dejo de probar algo",
+            analisis
+        );
+
+        // Y lo que dice por la consola.
+        let (_, _, err) = compila(&[ruta.to_str().unwrap(), "-c"]);
+        for codigo in &sabe {
+            assert!(
+                err.contains(codigo),
+                "el analisis de `{}` produce `{}` y la consola NO lo dice.\n\
+                 sabe: {:?}\nconsola:\n{}",
+                analisis,
+                codigo,
+                sabe,
+                err
+            );
+        }
+    }
+}
+
+/// Y no escribe un `.bex` cuando cualquiera de ellos falla.
+///
+/// ** Es la otra mitad y no es la misma prueba: un compilador podria pintar el
+/// aviso y escribir el fichero igual. Entonces el que lo encuentre manana veria
+/// el `.bex` y no el mensaje -- que es la regla del gate mirada desde fuera.
+#[test]
+fn ningun_analisis_deja_escribir_un_bex_cuando_denuncia() {
+    for (analisis, fuente) in ROMPE_UNO {
+        let d = caja(&format!("gate-{}", analisis));
+        let ruta = escribe(&d, "y.inti", fuente);
+        let (bien, _, _) = compila(&[ruta.to_str().unwrap()]);
+        assert!(!bien, "`{}` denuncia y el compilador salio bien", analisis);
+        assert!(
+            !d.join("y.bex").exists(),
+            "`{}` denuncia y aun asi escribio el `.bex`",
+            analisis
+        );
+    }
+}
+
+/// ** LA SONDA DEL CENSO, POR LA PUERTA DE VERDAD.
+///
+/// `p04_crudo_en_pleno` declara `E0071` desde F0 y el banco lo comprobaba
+/// llamando a `comprobar` directamente. Por la linea de ordenes salia limpia.
+///
+/// Que una sonda del corpus se compruebe SOLO por dentro es la misma clase de
+/// hueco que tenia el propio censo: se prueba el camino que no usa nadie.
+#[test]
+fn una_sonda_del_censo_da_su_codigo_por_la_linea_de_ordenes() {
+    let sonda = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("censo")
+        .join("p04_crudo_en_pleno.inti");
+    let (bien, _, err) = compila(&[sonda.to_str().unwrap(), "-c"]);
+    assert!(!bien, "una sonda que declara un error no puede compilar");
+    assert!(
+        err.contains("E0071"),
+        "la sonda declara E0071 y la consola dice:\n{}",
+        err
+    );
+}
