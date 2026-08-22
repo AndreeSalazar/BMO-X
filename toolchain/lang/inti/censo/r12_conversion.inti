@@ -1,7 +1,11 @@
 # sonda: r12_conversion          espera: E1012 en ejecucion
 # regla 12: convertir un flotante fuera de rango ATRAPA. Es lo que hace WASM.
+#
+# OJO: esta sonda escribia `escribe(...)` en `perfil llano`, donde no existe, asi
+# que daba E0070 al COMPILAR y nunca llegaba a ejecutarse. Devolver el valor es
+# lo que hace un programa de `llano` de verdad.
 perfil llano
 
-funcion principal
+funcion principal devuelve entero32
     f es flotante64 = 1e30
-    escribe(entero32(f))
+    devuelve entero32(f)
