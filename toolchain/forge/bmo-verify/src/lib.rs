@@ -56,6 +56,13 @@ use bmo_abi::bef::validator;
 /// Como puede viajar cada seccion de un BEF. Ver `docs/identidad/LA_RAM.md`, PARTE IX.
 pub mod ram;
 
+// -- ** DECLARACION: que dice este binario de si mismo ------------------------
+//
+// La tercera pregunta. `verify()` mira el ENVASE y `ram` mira COMO VIAJA; esto
+// mira lo que el binario DECLARA. Es opcional a proposito: exigirlo dentro de
+// `verify()` rechazaria hoy todo lo que compila BMO C, COBOL y Ada.
+pub mod declaracion;
+
 
 /// Veredicto de la verificacion de un BEF.
 #[derive(Clone, Debug, PartialEq, Eq)]

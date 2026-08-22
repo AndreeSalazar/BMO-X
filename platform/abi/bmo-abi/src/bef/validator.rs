@@ -1342,14 +1342,33 @@ mod tests {
         );
     }
 
-    /// Al reves es una omision, no una mentira: avisa y deja pasar. Sube a
-    /// error el dia que los productores pongan las banderas.
+    /// Al reves es una omision, no una mentira: avisa y deja pasar.
+    ///
+    /// ** 2026-08-22: la bandera **ya no se puede omitir desde `BefBuilder`**,
+    /// que la enciende al ver la seccion. Asi que para seguir probando LA REGLA
+    /// --que es de quien VALIDA, no de quien escribe-- hay que apagarla a mano
+    /// sobre los bytes ya escritos. Y ese es justo el caso que el validador
+    /// existe para cazar: **un binario de otro productor**.
+    ///
+    /// La prueba no se borro al arreglar el escritor, y ese es el punto: por
+    /// aqui puede seguir entrando un `.bex` que no salio de este toolchain.
     #[test]
     fn una_seccion_sin_su_bandera_avisa_pero_no_invalida() {
         let mut b = BefBuilder::new();
         b.add_section(BefSection::code(vec![0xC3; 16]));
         b.add_section(BefSection::manifest_toml(b"name = \"x\"\n".to_vec()));
-        let bytes = b.build().unwrap();
+        let mut bytes = b.build().unwrap();
+
+        // `flags` vive en el byte 8 del header: magic(4) + major(2) + minor(2).
+        const FLAGS: usize = 8;
+        let antes = u32::from_le_bytes(bytes[FLAGS..FLAGS + 4].try_into().unwrap());
+        assert!(
+            antes & BefFlags::HAS_MANIFEST.bits() != 0,
+            "el escritor tenia que haber encendido HAS_MANIFEST solo"
+        );
+        let apagada = antes & !BefFlags::HAS_MANIFEST.bits();
+        bytes[FLAGS..FLAGS + 4].copy_from_slice(&apagada.to_le_bytes());
+
         let r = validate(&bytes);
         assert!(r.is_valid, "no invalida: {:?}", r.issues);
         assert!(
