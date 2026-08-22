@@ -245,3 +245,123 @@ usa memoria
     );
     assert!(c.is_empty(), "{:?}", c);
 }
+
+// ===================================================================
+//  ** LA COSTURA -- de que fichero es la linea que se acusa
+// ===================================================================
+
+/// **Un fallo que vive en una pieza traida NO acusa al fichero del usuario.**
+///
+/// ## Que se rompia, medido
+///
+/// `armar` mete las declaraciones de las piezas en el mismo modulo que las del
+/// usuario. Sin costuras, este analisis --que corre sobre el arbol ya
+/// fusionado-- no puede distinguirlas, y el aviso salia asi:
+///
+/// ```text
+///    E0070 En el perfil `llano` no se puede usar `texto`.
+///       en usuario.inti, linea 3:        <- y la linea 3 estaba EN BLANCO
+/// ```
+///
+/// *** El mensaje de cuatro partes tiene un hueco para el DONDE. Un donde que
+/// senala a otro fichero no es un detalle de formato: es la parte del mensaje
+/// que decide a que fichero va a mirar quien lo lee.
+#[test]
+fn un_fallo_de_una_pieza_dice_de_que_pieza_es() {
+    let v = Vocabulario::por_defecto().unwrap();
+    // Lo que escribio el usuario: `llano` y limpio.
+    let mio = lexico::barrer("perfil llano
+
+funcion principal
+    devuelve 0
+", &v);
+    let mut arbol = sintaxis::leer(&mio.valor, &v);
+    // Lo que traeria un `usa`: se declara `pleno` y usa `texto`.
+    let suyo = lexico::barrer("perfil pleno
+
+funcion saluda(a es texto)
+    devuelve a
+", &v);
+    let mut pieza = sintaxis::leer(&suyo.valor, &v);
+
+    // La misma fusion que hace `armar`, con su costura.
+    let desde = arbol.valor.declaraciones.len();
+    arbol.valor.declaraciones.append(&mut pieza.valor.declaraciones);
+    let hasta = arbol.valor.declaraciones.len();
+    arbol.valor.piezas.push(crate::arbol::Pieza {
+        fichero: "saludos/cortesia.inti".to_string(),
+        usa: "saludos".to_string(),
+        perfil: pieza.valor.perfil,
+        desde,
+        hasta,
+    });
+
+    let c = comprobar(
+        &arbol.valor,
+        &Catalogo::por_defecto(),
+        &[],
+        &crate::tablas::Modulos::por_defecto(),
+    );
+    let texto = c.pintar("usuario.inti");
+    assert!(
+        texto.contains("saludos/cortesia.inti"),
+        "el aviso no dice de que pieza es:
+{}",
+        texto
+    );
+    assert!(
+        texto.contains("`usa saludos`"),
+        "el aviso no dice quien la trajo:
+{}",
+        texto
+    );
+    assert!(
+        !texto.contains("en usuario.inti, linea"),
+        "el aviso sigue acusando al fichero del usuario:
+{}",
+        texto
+    );
+}
+
+/// **La pieza se lleva escrito el perfil que declaro para si misma.**
+///
+/// ** Hoy no se juzga, y por eso hace falta comprobar que se GUARDA: un dato
+/// que nadie mira todavia es exactamente el que se pierde en la siguiente
+/// refactorizacion. La regla del mezclado se escribe encima de esto.
+#[test]
+fn la_costura_recuerda_el_perfil_que_declaro_la_pieza() {
+    let v = Vocabulario::por_defecto().unwrap();
+    let mio = lexico::barrer("perfil llano
+
+funcion principal
+    devuelve 0
+", &v);
+    let mut arbol = sintaxis::leer(&mio.valor, &v);
+    let suyo = lexico::barrer("perfil pleno
+
+funcion dos devuelve entero32
+    devuelve 2
+", &v);
+    let mut pieza = sintaxis::leer(&suyo.valor, &v);
+
+    let desde = arbol.valor.declaraciones.len();
+    arbol.valor.declaraciones.append(&mut pieza.valor.declaraciones);
+    let hasta = arbol.valor.declaraciones.len();
+    arbol.valor.piezas.push(crate::arbol::Pieza {
+        fichero: "x/y.inti".to_string(),
+        usa: "x".to_string(),
+        perfil: pieza.valor.perfil,
+        desde,
+        hasta,
+    });
+
+    // El modulo dice `llano` y lleva dentro un trozo que se declaro `pleno`.
+    assert_eq!(arbol.valor.perfil, Perfil::Llano);
+    assert_eq!(arbol.valor.piezas[0].perfil, Perfil::Pleno);
+    // Y sabe de que trozo es cada declaracion.
+    assert!(arbol.valor.pieza_de(desde).is_some(), "la traida no tiene pieza");
+    assert!(
+        arbol.valor.pieza_de(0).is_none(),
+        "la del usuario no puede tener pieza"
+    );
+}

@@ -150,14 +150,37 @@ pub fn armar(fuente: &str) -> Cosecha<Modulo> {
             let mut a = sintaxis::leer(&p.valor, &v);
             // ** Una pieza del runtime que no compila NO se traga en silencio.
             //
-            // Sus avisos salen con los del usuario, y el `fichero` va en el
-            // texto porque el sitio que traen apunta a lineas de OTRO fuente:
-            // sin eso, el que compila ve "linea 12" y mira su linea 12.
-            for mut x in p.avisos.into_iter().chain(a.avisos.drain(..)) {
-                x.que_paso = format!("en la pieza `{}`: {}", fichero, x.que_paso);
-                avisos.push(x);
+            // Sus avisos salen con los del usuario, y llevan de DONDE vienen:
+            // el sitio que traen apunta a lineas de OTRO fuente, asi que sin
+            // eso el que compila ve "linea 12" y mira su linea 12.
+            //
+            // ** Antes eso se hacia metiendo el nombre del fichero DENTRO de
+            // `que_paso`. Funcionaba y era mentira de forma: el mensaje de
+            // cuatro partes tiene un hueco para el DONDE, y meter el donde en
+            // el que-paso deja el hueco del donde diciendo el fichero
+            // equivocado. Ahora va en su campo.
+            for x in p.avisos.into_iter().chain(a.avisos.drain(..)) {
+                avisos.push(x.con_pieza(
+                    format!("{}/{}", nombre, fichero),
+                    nombre.clone(),
+                ));
             }
+            // ** LA COSTURA. Donde empieza y donde acaba lo que trajo esta
+            // pieza, y con que perfil venia escrita.
+            //
+            // Se anota ANTES de fusionar el rango porque despues las dos
+            // mitades son indistinguibles -- que es exactamente el problema
+            // que esto existe para quitar.
+            let desde = arbol.valor.declaraciones.len();
             arbol.valor.declaraciones.append(&mut a.valor.declaraciones);
+            let hasta = arbol.valor.declaraciones.len();
+            arbol.valor.piezas.push(crate::arbol::Pieza {
+                fichero: format!("{}/{}", nombre, fichero),
+                usa: nombre.clone(),
+                perfil: a.valor.perfil,
+                desde,
+                hasta,
+            });
             arbol.valor.usa.extend(a.valor.usa);
         }
     }

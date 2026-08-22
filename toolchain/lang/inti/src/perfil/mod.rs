@@ -190,12 +190,18 @@ pub fn comprobar(
         cat,
         maquinas,
         modulos,
+        piezas: &m.piezas,
+        en_declaracion: 0,
         avisos: avisos_del_perfil,
         informe,
         dentro_de_crudo: false,
     };
 
-    for d in &m.declaraciones {
+    // ** El indice se lleva al dia porque es lo unico que dice DE DONDE sale la
+    // declaracion que se esta mirando. El recorrido de dentro no lo sabe --y no
+    // tiene por que--: aqui arriba se sabe, y desde aqui viaja.
+    for (i, d) in m.declaraciones.iter().enumerate() {
+        v.en_declaracion = i;
         v.declaracion(d);
     }
 
@@ -208,6 +214,14 @@ struct Vigia<'c> {
     maquinas: &'c [Maquina],
     /// Lo que traen los `usa` que no son maquinas.
     modulos: &'c crate::tablas::Modulos,
+    /// **Las costuras del modulo**: que trozo vino de que fichero.
+    ///
+    /// ** Este analisis corre sobre el arbol YA FUSIONADO, asi que sin esto no
+    /// puede distinguir una declaracion del usuario de una que trajo un `usa`
+    /// -- y acusa al fichero equivocado con toda naturalidad.
+    piezas: &'c [crate::arbol::Pieza],
+    /// En que declaracion del modulo estamos. Lo pone el recorrido de arriba.
+    en_declaracion: usize,
     avisos: Vec<Aviso>,
     informe: Informe,
     dentro_de_crudo: bool,
@@ -216,6 +230,25 @@ struct Vigia<'c> {
 impl<'c> Vigia<'c> {
     fn llano(&self) -> bool {
         self.perfil == Perfil::Llano
+    }
+
+    /// **Acusa, y dice de donde sale lo acusado.**
+    ///
+    /// ** Es un metodo y no seis `push` con la misma linea copiada al lado
+    /// porque el dia que se anada una comprobacion, un `push` a pelo saldria
+    /// sin marcar y nadie lo notaria: el aviso seria correcto, solo que
+    /// senalando al fichero del que compila. Un fallo que no rompe nada es el
+    /// que sobrevive.
+    fn acusa(&mut self, a: Aviso) {
+        let marcado = match self
+            .piezas
+            .iter()
+            .find(|p| self.en_declaracion >= p.desde && self.en_declaracion < p.hasta)
+        {
+            Some(p) => a.con_pieza(p.fichero.clone(), p.usa.clone()),
+            None => a,
+        };
+        self.avisos.push(marcado);
     }
 
     fn declaracion(&mut self, d: &Decl) {
@@ -312,7 +345,7 @@ impl<'c> Vigia<'c> {
 
     fn crudo(&mut self, cuerpo: &Bloque, sitio: Sitio) {
         if !self.llano() {
-            self.avisos.push(
+            self.acusa(
                 Aviso::nuevo(
                     codigos::CRUDO_EN_PLENO,
                     "`crudo` no existe en el perfil `pleno`.",
@@ -335,7 +368,7 @@ impl<'c> Vigia<'c> {
 
     fn paralelo(&mut self, cuerpo: &Bloque, sitio: Sitio) {
         if self.llano() {
-            self.avisos.push(
+            self.acusa(
                 Aviso::nuevo(
                     codigos::LLANO_NO_ADMITE,
                     "`en paralelo` no existe en el perfil `llano`.",
@@ -422,7 +455,7 @@ impl<'c> Vigia<'c> {
         if !de_la_maquina && !self.modulos.pide_crudo(nombre) {
             return;
         }
-        self.avisos.push(
+        self.acusa(
             Aviso::nuevo(
                 codigos::METAL_SIN_CRUDO,
                 format!("`{}` tiene que ir dentro de un bloque `crudo`.", nombre),
@@ -439,7 +472,7 @@ impl<'c> Vigia<'c> {
     }
 
     fn crece(&mut self, que: &str, sitio: Sitio) {
-        self.avisos.push(
+        self.acusa(
             Aviso::nuevo(
                 codigos::LLANO_NO_ADMITE,
                 format!("En el perfil `llano` no se puede usar {}.", que),
@@ -455,7 +488,7 @@ impl<'c> Vigia<'c> {
     }
 
     fn falta_tipo(&mut self, nombre: &str, sitio: Sitio) {
-        self.avisos.push(
+        self.acusa(
             Aviso::nuevo(
                 codigos::FALTA_TAMANO,
                 format!("En `llano`, `{}` tiene que decir su tipo.", nombre),
@@ -479,7 +512,7 @@ impl<'c> Vigia<'c> {
                 if self.cat.crecen.contains(n) {
                     self.crece(&format!("`{}`", n), sitio);
                 } else if self.cat.without_size.contains(n) {
-                    self.avisos.push(
+                    self.acusa(
                         Aviso::nuevo(
                             codigos::FALTA_TAMANO,
                             format!("En el perfil `llano` no existe `{}`.", n),
