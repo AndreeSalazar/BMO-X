@@ -17,7 +17,7 @@
 //! visible el reparto -- y el reparto es justamente lo que fallaba antes de F5d,
 //! cuando aqui no habia nada y la rama estaba vacia.
 
-use bmo_inti_front::ir::Valor;
+use bmo_inti_front::ir::{FuncionIr, Instr, Temporal, Valor};
 use bmo_lower::x86;
 
 use crate::marco::Marco;
@@ -139,6 +139,67 @@ pub(crate) fn metal(
     if let Some(d) = destino {
         guarda_temporal(out, IZQ, d, marco);
     }
+}
+
+/// **QUE REGISTROS PISA una funcion por sus instrucciones de maquina.**
+///
+/// ## ** Por que esto existe, y lo que costaba no tenerlo
+///
+/// El asignador de registros se frenaba entero --cero temporales en registro--
+/// en cuanto una funcion tenia UNA instruccion de maquina. El comentario del
+/// freno decia *"una llamada puede pisar estos tres registros"*, y eso es verdad
+/// de una llamada: puede pisar lo que quiera.
+///
+/// ** Pero una instruccion de maquina NO es una llamada. `rdtsc` pisa `rdx` y el
+/// de trabajo, y nada mas -- **y eso ya esta escrito en `intrinsics.toml`**, en
+/// las mismas filas que el emisor usa para emitirla. El freno pagaba el precio
+/// de la peor sin mirar la tabla que tenia al lado.
+///
+/// Lo destapo el Ryzen: el bucle de la sonda costo ~47 ticks por vuelta cuando
+/// deberia costar tres o cuatro, y la causa medida fue que el contador vivia en
+/// la pila. **Un numero que solo el metal contesta, apuntando a una decision del
+/// compilador.**
+///
+/// ## Lo que se cuenta como pisado, y por que de mas
+///
+/// ```text
+///    los `args`     ahi se cargan los operandos, asi que se pierden
+///    el `returns`   ahi sale el resultado
+///    `rdx` SIEMPRE  porque `recoge_de` lo usa para juntar los de 64 bits
+///                   partidos en dos, y eso no esta en la fila del intrinseco
+/// ```
+///
+/// ** `rdx` de mas es a proposito: es la unica sobre-aproximacion, y quitarla
+/// pediria que la tabla dijera algo que hoy no dice. Un registro de menos es
+/// lentitud; uno de mas es un valor pisado -- y de las dos, sobra la primera.
+pub(crate) fn registros_que_pisa(f: &FuncionIr, taller: &Taller) -> Vec<u8> {
+    let mut pisa = vec![2u8]; // rdx, por `recoge_de`
+    let (Some(maquina), Some(intrinsecos)) = (taller.maquina.as_ref(), taller.intrinsecos.as_ref())
+    else {
+        // Sin tablas no se sabe, y no saber se paga con el freno entero: es
+        // la respuesta segura, no la comoda.
+        return (0..16).collect();
+    };
+    for i in &f.instrucciones {
+        let Instr::Metal { nombre, .. } = i else {
+            continue;
+        };
+        let Some(def) = maquina.instruccion(nombre).and_then(|x| intrinsecos.get(x)) else {
+            // Un nombre que no se sabe emitir tampoco se sabe acotar.
+            return (0..16).collect();
+        };
+        for a in &def.args {
+            if let Some(r) = registro_llamado(a) {
+                pisa.push(r);
+            }
+        }
+        if let Some(r) = def.returns.as_deref().and_then(registro_llamado) {
+            pisa.push(r);
+        }
+    }
+    pisa.sort_unstable();
+    pisa.dedup();
+    pisa
 }
 
 /// El numero de registro que hay detras de un nombre de `intrinsics.toml`.

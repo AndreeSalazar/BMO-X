@@ -332,3 +332,129 @@ fn el_arranque_cabe_en_treinta_y_dos_bytes() {
     let arranque = e.inicios.first().map(|(_, off)| *off).expect("sin funciones");
     assert_eq!(arranque, 32, "el arranque de INTI, en bytes");
 }
+
+// -------------------------------------------------------------------
+//  ** EL FRENO DEL ASIGNADOR: acotado por la tabla, no apagado
+// -------------------------------------------------------------------
+//
+//  Lo destapo el Ryzen. El bucle de la sonda costo ~47 ticks por vuelta cuando
+//  deberia costar tres o cuatro, y la causa medida fue que el contador vivia en
+//  la pila: el asignador se apagaba ENTERO en cuanto la funcion tenia una
+//  instruccion de maquina.
+//
+//  ** El comentario del freno decia *"una llamada puede pisar estos tres
+//  registros"*. Verdad de una llamada -- al otro lado hay codigo que el emisor
+//  no ha visto. Falso de una instruccion: `rdtsc` pisa `rdx` y el de trabajo, y
+//  **eso ya estaba escrito en `intrinsics.toml`**, en la misma fila que el
+//  emisor usa para emitirla.
+//
+//  Era pagar el precio de la peor sin mirar la tabla que tenia al lado.
+
+/// Cuantos temporales viven en registro, de un fuente.
+fn en_registro(fuente: &str) -> usize {
+    emitido(fuente).en_registros
+}
+
+/// **UNA INSTRUCCION DE MAQUINA YA NO APAGA EL REPARTO.**
+///
+/// El mismo bucle, con y sin `crudo`. Antes el de la derecha daba CERO.
+#[test]
+fn una_instruccion_de_maquina_no_apaga_los_registros() {
+    let sin = "\
+perfil llano
+
+funcion f(a es entero64, b es entero64) devuelve natural64
+    cambiante i es natural64 = 0
+    repite mientras i < 1000
+        i = i + 1
+    devuelve i
+";
+    let con = "\
+perfil llano
+usa x86_64
+
+funcion f(a es entero64, b es entero64) devuelve natural64
+    crudo
+        cambiante antes es natural64 = lee_reloj()
+        cambiante i es natural64 = 0
+        repite mientras i < 1000
+            i = i + 1
+        devuelve i - antes
+";
+    assert!(en_registro(sin) > 0, "sin metal siempre hubo registros");
+    assert!(
+        en_registro(con) > 0,
+        "una instruccion de maquina volvio a apagar el reparto entero: el bucle \
+         de la sonda vuelve a costar ~47 ticks por vuelta en el Ryzen"
+    );
+}
+
+/// ** UNA LLAMADA SI LO APAGA, y eso NO es una regresion.
+///
+/// OJO: `en_registros` es del MODULO, no de una funcion. Por eso `otra` devuelve
+/// una constante -- si hiciera una cuenta, su propio temporal contaria y la
+/// prueba mediria otra cosa. Costo un fallo verlo.
+///
+/// Al otro lado de un `call` hay codigo que este emisor no ha visto, asi que no
+/// se puede acotar lo que pisa. La diferencia entre las dos es la mitad del
+/// valor del arreglo: si esto empezara a repartir registros, la sonda de arriba
+/// seguiria verde y los programas con llamadas se romperian en silencio.
+#[test]
+fn una_llamada_si_apaga_el_reparto() {
+    let f = "\
+perfil llano
+
+funcion otra(x es entero64) devuelve entero64
+    devuelve 1
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    cambiante i es entero64 = 0
+    repite mientras i < 10
+        i = otra(i)
+    devuelve i
+";
+    assert_eq!(
+        en_registro(f),
+        0,
+        "una llamada tiene que seguir frenando el reparto: no se sabe que pisa"
+    );
+}
+
+/// **Y LO QUE LA TABLA DICE QUE SE PISA, NO SE REPARTE.**
+///
+/// Es la otra direccion y la que de verdad protege. Las atomicas cargan sus
+/// operandos en `rdi` y `rsi` --lo dice su fila-- asi que esos dos no pueden
+/// llevar un temporal vivo. Si el acotado fuera de mas, aqui saldria un valor
+/// pisado y el `.bex` daria otro numero.
+#[test]
+fn los_registros_que_la_tabla_declara_no_se_reparten() {
+    let f = "\
+perfil llano
+usa x86_64
+usa monton
+usa memoria
+
+funcion principal devuelve entero32
+    m = monton_nuevo(4096)
+    p es bufer de natural64 = pide(m, 64)
+    crudo
+        escribe_natural64(p, 100)
+        cambiante a es natural64 = suma_y_devuelve(p, 5)
+        cambiante b es natural64 = intercambia(p, 7)
+        cambiante c es natural64 = lee_natural64(p)
+        si a no es 100
+            devuelve 1
+        si b no es 105
+            devuelve 2
+        si c no es 7
+            devuelve 3
+    devuelve 0
+";
+    // ** Y se EJECUTA, que es lo unico que distingue un reparto correcto de uno
+    // que parece correcto. Un registro pisado no da un error: da otro numero.
+    assert_eq!(
+        arranca(f).syscalls.last().unwrap().arg0,
+        0,
+        "una atomica leyo un valor pisado: el acotado del freno se paso"
+    );
+}
