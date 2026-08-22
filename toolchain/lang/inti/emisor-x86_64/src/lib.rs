@@ -62,6 +62,8 @@ mod operaciones;
 mod reglas;
 pub mod puerta;
 
+use bmo_abi::bef::katanas::{self, Katana};
+use bmo_abi::bef::sections::SectionKind;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::syscalls::surface::NR_INVOKE;
 use bmo_inti_front::ir::{
@@ -108,6 +110,12 @@ pub struct Emitido {
     /// estimacion, se puede seguir en el tiempo -- igual que los `crudo`.
     pub en_registros: usize,
     pub en_pila: usize,
+    /// **LAS KATANAS**: `(codigo, offset, longitud)` de cada bloque de trampa,
+    /// con el offset dentro de `codigo`.
+    ///
+    /// *** Es lo que convierte *"este binario atrapa"* de afirmacion en algo que
+    /// se puede ir a mirar. Va a la seccion `Katanas 0x16` del `.bex`.
+    pub katanas: Vec<(u64, usize, usize)>,
     /// Llamadas cuyo destino todavia no se sabia al emitirlas.
     ///
     /// ** Se resuelven al final del modulo y no sobre la marcha, porque una
@@ -207,6 +215,7 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
     let mut salida = Emitido {
         codigo: Vec::new(),
         inicios: Vec::new(),
+        katanas: Vec::new(),
         comprobaciones: 0,
         en_registros: 0,
         en_pila: 0,
@@ -235,6 +244,7 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         salida.comprobaciones += cuenta.comprobaciones;
         salida.en_registros += cuenta.en_registros;
         salida.en_pila += cuenta.en_pila;
+        salida.katanas.extend(cuenta.katanas);
         salida.huecos_de_llamada.extend(cuenta.huecos_de_llamada);
         salida.sin_emitir.extend(cuenta.sin_emitir);
     }
@@ -297,6 +307,13 @@ struct Cuenta {
     /// esta bien-- asi que sin una lista no se entera nadie hasta que el binario
     /// hace otra cosa en metal.
     sin_emitir: Vec<String>,
+    /// **Donde acabo el bloque de trampa de cada regla**: `(codigo, offset,
+    /// longitud)`, con el offset DENTRO de la seccion de codigo.
+    ///
+    /// ** Este dato solo lo tiene quien emite, y hasta hoy se tiraba. Sin el, la
+    /// afirmacion *"este binario atrapa"* no se puede contrastar con nada: el
+    /// bloque esta en los bytes y **nadie sabe donde**.
+    katanas: Vec<(u64, usize, usize)>,
 }
 
 fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
@@ -666,6 +683,10 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
         // errores como datos de verdad, esto construira el valor de error.
         x86::mov_r64_imm64(out, IZQ, codigo);
         epilogo(out);
+        // ** Y se APUNTA DONDE QUEDO. Es el unico momento en toda la compilacion
+        // en que se sabe: dentro de un instante estos bytes son indistinguibles
+        // del resto del codigo.
+        cuenta.katanas.push((codigo, atrapa, out.len() - atrapa));
         for (h, c) in huecos_de_atrapa.iter().filter(|(_, c)| *c == codigo) {
             let _ = c;
             let rel = (atrapa as i64 - (*h as i64 + 4)) as i32;
@@ -789,9 +810,50 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
     // ** La bandera `HAS_MANIFEST` NO se pone aqui: la enciende `build()` al ver
     // la seccion. Un productor que se acuerda es un productor que un dia no se
     // acuerda.
+    // ** DECLARAR ES UN ACTO, y por eso las dos vistas van juntas.
+    //
+    // El manifiesto es el TOML para humanos; la mesa de katanas es la version
+    // que se lee sin parser. **Dos vistas del mismo hecho** -- la misma regla
+    // que `requisitos.rs` dejo escrita para Ring 0.
+    //
+    // *** Y por eso van dentro del MISMO `if`. La primera vez se escribieron
+    // separadas y el `.bex` sin manifiesto crecio igual: un binario que no
+    // declara su perfil pero si donde corta. Medio declarado no es una postura,
+    // es un descuido con forma de decision.
+    //
+    // Sin manifiesto, `empaquetar` produce exactamente lo que producia antes de
+    // P1 -- y hay una prueba que lo fija en 8.752 bytes sobre la sonda de
+    // verdad, para que esa linea base no se pueda mover sin querer.
     if let Some(t) = manifiesto {
         b.add_section(BefSection::manifest_toml(t.as_bytes().to_vec()));
+
+        // Por cada regla, su codigo y DONDE esta su bloque de trampa. Es lo que
+        // convierte *"este binario atrapa"* en algo que se puede ir a mirar:
+        // sin esto el bloque esta en los bytes y **nadie sabe donde**.
+        //
+        // Va aunque este vacia. Cero katanas es la respuesta honesta de un
+        // binario sin reglas, y es distinta de no traer tabla, que es no decir
+        // nada -- la primera se puede contrastar y la segunda no.
+        let filas: Vec<Katana> = e
+            .katanas
+            .iter()
+            .map(|(codigo, off, len)| Katana {
+                codigo: *codigo as u32,
+                offset: *off as u32,
+                longitud: *len as u32,
+            })
+            .collect();
+        let tabla = katanas::construir(&filas).map_err(|f| f.nombre().to_string())?;
+        // ** Y se revisa CONTRA EL CODIGO antes de escribirla, no despues.
+        //
+        // Aqui es donde el emisor puede equivocarse de verdad: un offset mal
+        // apuntado da una tabla que dice que la trampa esta donde hay otra cosa.
+        // Comprobarlo despues seria dejar el fichero escrito con la mentira
+        // dentro.
+        katanas::revisar(&tabla, e.codigo.len()).map_err(|f| f.nombre().to_string())?;
+        b.add_section(BefSection::new(SectionKind::Katanas, tabla));
     }
+
 
     let bytes = b.build().map_err(|x| x.to_string())?;
 

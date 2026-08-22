@@ -39,6 +39,7 @@ pub mod linker;
 pub mod loader;
 pub mod manifest;
 pub mod paquete;
+pub mod katanas;
 pub mod recursos;
 pub mod relocations;
 pub mod requisitos;
