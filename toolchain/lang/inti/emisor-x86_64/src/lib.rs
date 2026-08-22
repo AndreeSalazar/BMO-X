@@ -767,16 +767,50 @@ fn mov_a_marco(out: &mut Vec<u8>, disp: i32, reg: u8) {
 ///
 /// Ningun `.bex` del sistema se escribe sin pasar por `bmo-verify`: es el unico
 /// checkpoint comun, y aqui no se abre un quinto camino que lo esquive.
-pub fn empaquetar(e: &Emitido) -> Result<Vec<u8>, String> {
+pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, String> {
     let mut b = BefBuilder::new();
     // Por donde entra el kernel. El arranque es lo primero que se emitio, asi
     // que es cero -- pero se dice, porque un cero que coincide con el valor por
     // defecto no distingue "decidido" de "olvidado".
     b.entry_offset = 0;
     b.add_section(BefSection::code(e.codigo.clone()));
+
+    // ** LO QUE EL BINARIO DICE DE SI MISMO, y llega HECHO.
+    //
+    // Este crate no sabe que es un perfil, ni que es una pieza, ni que es
+    // `crudo`. Recibe un texto y lo mete en su seccion -- por la misma regla que
+    // le prohibe al frontend saber que existe un "registro de argumento".
+    //
+    // El `Option` no es una comodidad: hay bancos que emiten bytes sin compilar
+    // un modulo, y para esos no hay modulo del que declarar nada. Poner un
+    // manifiesto vacio ahi diria "este binario no trae piezas", que es una
+    // respuesta distinta de "no lo se".
+    //
+    // ** La bandera `HAS_MANIFEST` NO se pone aqui: la enciende `build()` al ver
+    // la seccion. Un productor que se acuerda es un productor que un dia no se
+    // acuerda.
+    if let Some(t) = manifiesto {
+        b.add_section(BefSection::manifest_toml(t.as_bytes().to_vec()));
+    }
+
     let bytes = b.build().map_err(|x| x.to_string())?;
 
-    match bmo_verify::verify(&bytes) {
+    // ** EL GATE SE EXIGE A SI MISMO LO QUE ACABA DE PROMETER.
+    //
+    // Si se paso un manifiesto, el `.bex` TIENE que traerlo. Sin esta linea, el
+    // dia que alguien rompa el cableado --un `None` que se cuela, una seccion
+    // que no se anade-- saldria un binario correcto por dentro y **mudo por
+    // fuera**, con el gate diciendo que todo esta bien.
+    //
+    // Es la clase de fallo que este proyecto ya conoce: el que no rompe nada y
+    // sobrevive. Cuesta una comparacion y se cierra aqui.
+    let veredicto = if manifiesto.is_some() {
+        bmo_verify::declaracion::exige_manifiesto(&bytes)
+    } else {
+        bmo_verify::verify(&bytes)
+    };
+
+    match veredicto {
         bmo_verify::Verdict::Ok => Ok(bytes),
         bmo_verify::Verdict::Rejected(motivos) => Err(motivos.join("; ")),
     }

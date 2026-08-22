@@ -302,7 +302,7 @@ fn los_nombres_de_la_puerta_salen_de_la_tabla() {
 fn el_bex_de_un_programa_con_arranque_pasa_el_gate() {
     let e = emitido("perfil llano\n\nfuncion principal devuelve entero32\n    devuelve 0\n");
     assert!(e.arranca);
-    let bytes = empaquetar(&e).expect("el gate lo rechazo");
+    let bytes = empaquetar(&e, None).expect("el gate lo rechazo");
     assert!(!bytes.is_empty());
 }
 

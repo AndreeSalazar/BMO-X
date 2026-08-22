@@ -53,6 +53,7 @@ pub mod aviso;
 pub mod lexico;
 pub mod nombres;
 pub mod palabras;
+pub mod manifiesto;
 pub mod perfil;
 pub mod sintaxis;
 pub mod disposicion;

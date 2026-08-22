@@ -127,11 +127,22 @@ pub struct Informe {
     /// y esto dice **a que maquina se ata**. Un modulo con esta lista vacia se
     /// recompila en cualquier sitio.
     pub arquitecturas: Vec<String>,
-    /// Cuantos bloques `crudo` tiene el modulo.
+    /// **Cuantos bloques `crudo` tiene el modulo, PIEZAS INCLUIDAS.**
     ///
-    /// ** Este numero es el que convierte *"cuanto de mi programa esta atado a
-    /// esta maquina?"* en un dato. Va al informe del `.bex` para que
-    /// `bmo-verify` pueda exigirlo firmado.
+    /// ** Este numero es el que convierte *"cuanto de mi programa no lo
+    /// comprueba nadie?"* en un dato. Desde el 2026-08-22 **va dentro del
+    /// `.bex`**, en la seccion `Manifest` que escribe `crate::manifiesto`, y
+    /// `bmo_verify::declaracion::exige_manifiesto` puede exigirla.
+    ///
+    /// *** **Hasta ese dia esta linea decia que ya iba, y no iba**: el perfil
+    /// salia por la consola con `-i` y se moria ahi. `bmo-verify` no tenia ni
+    /// la palabra. Se deja escrito porque un comentario que afirmaba algo que
+    /// no existia es de la familia de fallos que este proyecto persigue -- y
+    /// el que menos se nota, porque nadie compila un comentario.
+    ///
+    /// ** Y cuenta las de las PIEZAS. Un fuente con un solo `crudo` que hace
+    /// `usa monton` declara **cuatro**: el medidor no dice cuantas ventanas
+    /// abriste, dice **cuantas trae este binario**.
     pub bloques_crudo: usize,
 }
 

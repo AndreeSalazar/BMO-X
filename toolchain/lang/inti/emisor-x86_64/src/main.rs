@@ -157,13 +157,26 @@ fn main() {
         return;
     }
 
+    // -- LO QUE EL BINARIO VA A DECIR DE SI MISMO --------------------------
+    //
+    // ** Hasta el 2026-08-22 el `.bex` salia con UNA seccion, `Code`, y el
+    // perfil moria en la consola. Un `.bex` de INTI llegaba al kernel
+    // indistinguible de cualquier otra cosa: para saber si podia correr en Ring
+    // 0 habia que tener el fuente delante.
+    //
+    // Sale de `arbol` y de `revisado`, que son los que YA se calcularon arriba.
+    // Calcularlo por otro camino seria describir un modulo distinto del que se
+    // acaba de emitir.
+    let manifiesto = bmo_inti_front::manifiesto::de(&arbol.valor, &revisado.valor, &nombre);
+    let manifiesto = manifiesto.a_toml();
+
     // -- EL GATE, y va antes de escribir -----------------------------------
     //
     // `empaquetar` llama a `bmo-verify`. Verificar despues dejaria un fichero
     // malo en el disco con un mensaje al lado, y el que lo encuentre manana vera
     // el `.bex` y no el mensaje. Un gate que avisa cuando el dano ya esta hecho
     // es un informe, no un gate.
-    let bytes = match bmo_inti_x86_64::empaquetar(&emitido) {
+    let bytes = match bmo_inti_x86_64::empaquetar(&emitido, Some(&manifiesto)) {
         Ok(b) => b,
         Err(e) => fin(&format!("el `.bex` no pasa el gate: {}", e)),
     };

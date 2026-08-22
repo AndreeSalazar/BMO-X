@@ -74,16 +74,30 @@ fn u64_en(b: &[u8], i: usize) -> u64 {
     u64::from_le_bytes(v)
 }
 
-/// Donde vive la seccion de recursos DENTRO DEL FICHERO, si la hay.
+/// **Donde vive una seccion CUALQUIERA dentro del fichero, si la hay.**
 ///
 /// Devuelve `(file_offset, file_size)`. Es lo que necesita alguien que quiera
-/// leer un recurso **sin tener el paquete entero en memoria**: con esto y el
-/// indice, un recurso es un `fseek` y un `fread`.
-pub fn localizar_recursos(bex: &[u8]) -> Option<(bx_u64, bx_u64)> {
+/// leer una seccion **sin tener el fichero entero en memoria**: con esto, leer
+/// un recurso es un `fseek` y un `fread`.
+///
+/// ## ** Por que este lector vive aqui y no en `sections.rs`
+///
+/// Porque lee **bytes**, no structs. `SectionTable::parse` construye un
+/// `&[SectionEntry]` sobre el buffer y para eso exige que el buffer este
+/// alineado a 8 -- cosa que un `Vec<u8>` recien leido de un fichero cumple casi
+/// siempre, **que es la peor frecuencia posible**.
+///
+/// ## Y por que es generico desde el 2026-08-22
+///
+/// Nacio sabiendo leer solo `Resources`. Cuando INTI necesito leer su
+/// `Manifest`, la opcion facil era copiar el recorrido con otra constante
+/// dentro -- y dos recorridos de la misma tabla se separan el dia que uno
+/// aprende algo que el otro no. Se generalizo en vez de copiarse.
+pub fn localizar(bex: &[u8], clase: SectionKind) -> Option<(bx_u64, bx_u64)> {
     let (tabla, count) = tabla_de(bex)?;
     for i in 0..count {
         let e = &bex[tabla + i * SectionEntry::SIZE..tabla + (i + 1) * SectionEntry::SIZE];
-        if e[E_KIND] == SectionKind::Resources as u8 {
+        if e[E_KIND] == clase as u8 {
             let off = u64_en(e, E_FILE_OFFSET);
             let size = u64_en(e, E_FILE_SIZE);
             if (off as usize).checked_add(size as usize)? > bex.len() {
@@ -95,10 +109,20 @@ pub fn localizar_recursos(bex: &[u8]) -> Option<(bx_u64, bx_u64)> {
     None
 }
 
+/// Los bytes de una seccion cualquiera, si el fichero entero esta a mano.
+pub fn seccion(bex: &[u8], clase: SectionKind) -> Option<&[u8]> {
+    let (off, size) = localizar(bex, clase)?;
+    bex.get(off as usize..(off + size) as usize)
+}
+
+/// Donde vive la seccion de recursos DENTRO DEL FICHERO, si la hay.
+pub fn localizar_recursos(bex: &[u8]) -> Option<(bx_u64, bx_u64)> {
+    localizar(bex, SectionKind::Resources)
+}
+
 /// Los bytes de la seccion de recursos, si el paquete entero esta a mano.
 pub fn seccion_recursos(bex: &[u8]) -> Option<&[u8]> {
-    let (off, size) = localizar_recursos(bex)?;
-    bex.get(off as usize..(off + size) as usize)
+    seccion(bex, SectionKind::Resources)
 }
 
 /// El directorio ya validado, en un paso.

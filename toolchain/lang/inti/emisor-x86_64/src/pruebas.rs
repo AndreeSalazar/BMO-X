@@ -238,7 +238,7 @@ fn comparar_no_emite_comprobacion() {
 #[test]
 fn el_bex_que_sale_pasa_el_gate() {
     let e = emitido(SUMA);
-    let bex = empaquetar(&e).expect("el gate lo rechazo");
+    let bex = empaquetar(&e, None).expect("el gate lo rechazo");
     assert!(bex.len() > 64, "un .bex de verdad tiene cabecera");
     assert_eq!(&bex[0..4], b"BEF1", "la marca del contenedor");
 }

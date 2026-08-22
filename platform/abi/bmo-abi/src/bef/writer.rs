@@ -374,6 +374,29 @@ impl BefBuilder {
         self.header.entry_offset = self.entry_offset;
         self.header.section_table_offset = BefHeader::SIZE as u64;
 
+        // ** LA BANDERA LA PONE QUIEN ESCRIBE LA SECCION, NO QUIEN SE ACUERDA.
+        //
+        // El validador ya tenia la regla --*"hay seccion X y el header no lo
+        // anuncia: un consumidor que se fie de la bandera no la mirara"*-- y la
+        // dejaba en aviso "hasta que los productores pongan las banderas".
+        //
+        // Ponerlas aqui es ese dia. Y va aqui y no en cada productor porque un
+        // productor que se acuerda es un productor que un dia no se acuerda: el
+        // binario saldria correcto por dentro y mudo por fuera, que es
+        // exactamente el fallo que no rompe nada y sobrevive.
+        //
+        // OJO: solo se ENCIENDEN. Una bandera que el escritor apagara pisaria
+        // lo que el que llama decidio a proposito.
+        for (bandera, clase) in [
+            (BefFlags::HAS_MANIFEST, SectionKind::Manifest),
+            (BefFlags::HAS_SHADERS, SectionKind::Shaders),
+            (BefFlags::HAS_TLS, SectionKind::Tls),
+        ] {
+            if self.sections.iter().any(|s| s.kind == clase) {
+                self.header.flags |= bandera.bits();
+            }
+        }
+
         let header_size = BefHeader::SIZE as u64;
         let table_size = (count as u64) * (SectionEntry::SIZE as u64);
         let table_offset = header_size;

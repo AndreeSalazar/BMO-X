@@ -303,9 +303,9 @@ en blanco.
               sigue acusando al fichero propio.  4 pruebas, verdes.
 ```
 
-### P1 -- EL PERFIL VIAJA DENTRO DEL `.bex`
+### P1 -- EL PERFIL VIAJA DENTRO DEL `.bex`. HECHO (2026-08-22)
 
-Hoy `empaquetar()` escribe **una** seccion: `Code`. El perfil, los bloques
+Hasta hoy `empaquetar()` escribia **una** seccion: `Code`. El perfil, los bloques
 `crudo` y las arquitecturas salen por la consola con `-i` y **se mueren ahi**. El
 sitio ya existe y esta vacio: **`SectionKind::Manifest = 0x09`**, con su escritor
 `BefSection::manifest_toml()` y su validador.
@@ -317,7 +317,29 @@ exigirlo firmado"*. **No va.** `bmo-verify` no tiene ni la palabra.
 ```text
    aprobado:  leer un `.bex` de INTI sin ver el fuente y saber su perfil, sus
               bloques `crudo` y sus piezas.  Y `bmo-verify` puede exigirlo.
+
+   ✅ las dos mitades.  15 pruebas nuevas.
 ```
+
+**Como quedo:**
+
+```text
+   frontend   `manifiesto/`     escribe el TOML y lo vuelve a leer
+   emisor     `empaquetar()`    lo recibe HECHO y lo mete en Manifest 0x09
+                                -- no sabe que es un perfil, y no tiene por que
+   escritor   `BefBuilder`      enciende `HAS_MANIFEST` SOLO, al ver la seccion
+   gate       `exige_manifiesto`  y el compilador de INTI se lo exige a SI MISMO
+```
+
+★★★ **La ultima linea es la que impide que esto se deshaga.** Si manana alguien
+rompe el cableado, el compilador **se niega a escribir el fichero** en vez de
+sacar un `.bex` correcto por dentro y mudo por fuera. No se anadio una
+comprobacion nueva: se uso el gate que ya se llamaba, con la politica puesta.
+
+⚠ Y no se metio en `verify()`: exigir el manifiesto a todo el mundo rechazaria
+hoy cada `.bex` de BMO C, COBOL y Ada. Eso no seria un gate mas estricto, seria
+el toolchain dejando de compilar. **Es una politica que el productor elige, y
+INTI es el primero que la elige sobre si mismo.**
 
 #### P1 -- LA PREDICCION, escrita ANTES de construirlo
 
@@ -327,19 +349,57 @@ exigirlo firmado"*. **No va.** `bmo-verify` no tiene ni la palabra.
 > Escrita el 2026-08-22 antes de la primera linea de codigo. Una prediccion que
 > se escribe despues de ver el resultado no vale nada.
 
-| lo que se pregunta | prediccion | si sale otra cosa |
-|---|---|---|
-| **el codigo emitido** | **identico byte a byte.** El manifiesto no toca `Code` | algo del manifiesto se colo en la emision |
-| **el tamano de `cpu.bex`** | crece de **8.752** a algo entre 9.000 y 9.800: el TOML son ~400 bytes, mas una entrada de tabla, mas el relleno hasta la frontera de sector | no crece = no se escribio; crece mucho mas = el TOML lleva algo que no toca |
-| **el gate** | **sigue diciendo que si.** La seccion `Manifest` ya tiene validador (UTF-8 no vacio) desde antes de este trabajo | rechaza = el header miente sobre si mismo, y hay que mirar `validate_flag_coherence` |
-| **el aviso de coherencia** | **no sale.** `HAS_MANIFEST` se pone SOLA al anadir la seccion | *"hay seccion manifest y el header no lo anuncia"* = se olvido, y se va a olvidar siempre |
-| **la frontera de sector** | **se conserva.** Lo que se carga tiene que empezar en multiplo de 512 o el disco no puede escribir en los marcos del proceso | si se rompe, el `.bex` no se carga desde disco y el sintoma aparece lejos de aqui |
-| **la carga en el Ryzen** | **no cambia nada.** El cargador solo mapea `Code`, `RoData`, `Data` y `Bss`: `Manifest` es inerte | no arranca = la seccion no era inerte |
-| **leer el perfil sin el fuente** | `perfil = "llano"`, `crudo = 1`, `arquitecturas = ["x86_64"]`, y **las piezas del monton con SU perfil declarado** | |
+| lo que se pregunta | prediccion | si sale otra cosa | salio |
+|---|---|---|---|
+| **el codigo emitido** | **identico byte a byte.** El manifiesto no toca `Code` | algo del manifiesto se colo en la emision | ✅ **acertada.** Byte a byte, y el `.bex` sin manifiesto sigue midiendo **8.752** exactos |
+| **el tamano de `cpu.bex`** | crece de **8.752** a algo entre 9.000 y 9.800: el TOML son ~400 bytes, mas una entrada de tabla, mas el relleno hasta la frontera de sector | no crece = no se escribio; crece mucho mas = el TOML lleva algo que no toca | ✅ **acertada. 9.183** (predije 9.000-9.800) |
+| **el gate** | **sigue diciendo que si.** La seccion `Manifest` ya tiene validador (UTF-8 no vacio) desde antes de este trabajo | rechaza = el header miente sobre si mismo, y hay que mirar `validate_flag_coherence` | ✅ **acertada** |
+| **el aviso de coherencia** | **no sale.** `HAS_MANIFEST` se pone SOLA al anadir la seccion | *"hay seccion manifest y el header no lo anuncia"* = se olvido, y se va a olvidar siempre | ✅ **acertada**, y mejor de lo previsto: la bandera la pone ahora `BefBuilder::build()` |
+| **la frontera de sector** | **se conserva.** Lo que se carga tiene que empezar en multiplo de 512 o el disco no puede escribir en los marcos del proceso | si se rompe, el `.bex` no se carga desde disco y el sintoma aparece lejos de aqui | ✅ **acertada.** `Code` en el 512 |
+| **la carga en el Ryzen** | **no cambia nada.** El cargador solo mapea `Code`, `RoData`, `Data` y `Bss`: `Manifest` es inerte | no arranca = la seccion no era inerte | ⏳ **ABIERTA.** No se puede cerrar en esta maquina |
+| **leer el perfil sin el fuente** | `perfil = "llano"`, `crudo = 1`, `arquitecturas = ["x86_64"]`, y **las piezas del monton con SU perfil declarado** | ❌ **FALLO EN EL NUMERO.** Perfil, arquitecturas y piezas acertados; `crudo` NO es 1: es **10** |
 
 ⚠ **La fila de la carga en el Ryzen no se puede cerrar aqui.** Se puede
 argumentar leyendo `ram.rs` --y se hizo-- pero **argumentar no es medir**. Queda
 abierta hasta el proximo arranque, y va a la lista de pendientes de hardware.
+
+El argumento, para que se pueda juzgar: el cargador solo mapea `Code`, `RoData`,
+`Data` y `Bss`, y el header lo dice con todas las letras --*"un bit desconocido
+se RECHAZA, al reves que una seccion desconocida: **una seccion que no entiendo
+es data inerte**"*--. Es un argumento bueno. Sigue sin ser una medida.
+
+#### P1 -- LO QUE SALIO (2026-08-22)
+
+**Cinco acertadas, una FALLADA y una abierta.**
+
+*** **La fallada, dicha entera: predije `crudo = 1` para la sonda y son 10.**
+
+```text
+   [modulo]
+   perfil = "llano"
+
+   [metal]
+   crudo = 10
+   arquitecturas = ["x86_64"]
+
+   [[pieza]] monton/origen.inti    usa = "monton"   perfil = "llano"
+   [[pieza]] monton/reparto.inti   usa = "monton"   perfil = "llano"
+```
+
+Siete son de la propia sonda --`cuantas_hojas`, `firma_del_cpu`, `una_medida`,
+`estado_extendido`, `azar_dos_veces`, `prueba_bits`, `prueba_atomicas`-- y tres
+vienen dentro de las piezas del monton.
+
+★★ **Y el fallo vale mas que el acierto**, porque es exactamente lo que este
+peldano existe para arreglar: yo, que acababa de leer ese fichero entero, dije
+un numero equivocado sobre el. **El medidor no dice cuantas ventanas abriste:
+dice cuantas trae el binario.** Nadie lo sabia de memoria porque hasta hoy no se
+podia leer sin abrir el fuente -- que es la frase con la que empieza este
+peldano.
+
+★ Y una cosa que no se buscaba: el `.bex` **ya trae una seccion
+`Requisitos = 0x15`** de 93 bytes, escrita sola por el constructor. Es el sitio
+que P4 necesita para la mesa de aterrizaje, y **ya esta ahi**.
 
 ---
 

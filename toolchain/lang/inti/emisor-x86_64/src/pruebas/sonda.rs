@@ -136,7 +136,7 @@ fn la_sonda_entera_compila_y_pasa_el_gate() {
         e.sin_emitir
     );
     assert!(e.arranca, "la sonda tiene que arrancar sola");
-    let bytes = empaquetar(&e).expect("el `.bex` no pasa el gate");
+    let bytes = empaquetar(&e, None).expect("el `.bex` no pasa el gate");
     assert_eq!(&bytes[..4], b"BEF1");
 }
 
