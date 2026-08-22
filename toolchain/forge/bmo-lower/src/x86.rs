@@ -132,6 +132,35 @@ pub fn shr_r64_imm8(out: &mut Vec<u8>, reg: u8, imm: u8) {
     out.push(imm);
 }
 
+/// `shl <r64>, cl` -- desplazar por un valor de EJECUCION, no constante.
+///
+/// ** El contador va en `cl` y en ningun otro sitio: lo fija la instruccion, no
+/// una convencion. Por eso quien la emite tiene que haber puesto el numero ahi
+/// antes.
+///
+/// OJO con lo que hace cuando el contador es GRANDE: el silicio se queda con
+/// los 6 bits bajos, asi que desplazar 64 posiciones desplaza CERO y devuelve el
+/// numero intacto. La Regla 7 de INTI dice que tiene que dar cero, asi que quien
+/// la emita tiene que anadir la comprobacion. No se hace aqui: esto emite la
+/// instruccion que EXISTE, no la que a un lenguaje le gustaria.
+pub fn shl_r64_cl(out: &mut Vec<u8>, reg: u8) {
+    out.push(0x48 | ((reg >> 3) & 1));
+    out.push(0xD3);
+    out.push(modrm_reg_direct(4, reg & 7));
+}
+
+/// `shr <r64>, cl` -- y hacia el otro lado, metiendo CEROS por arriba.
+///
+/// ** Ceros y no el bit de signo: `shr` y no `sar`. Para un `natural` es lo
+/// correcto siempre; el dia que INTI distinga el desplazamiento con signo sera
+/// otra fila de la tabla y otra instruccion, no una bandera de esta.
+pub fn shr_r64_cl(out: &mut Vec<u8>, reg: u8) {
+    out.push(0x48 | ((reg >> 3) & 1));
+    out.push(0xD3);
+    out.push(modrm_reg_direct(5, reg & 7));
+}
+
+
 /// `and <reg>, <imm32>` -- quedarse con los bits bajos.
 pub fn and_r64_imm32(out: &mut Vec<u8>, reg: u8, imm: u32) {
     out.push(rex_w(0, reg));

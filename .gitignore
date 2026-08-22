@@ -50,3 +50,6 @@ Ultra_kernel_x86-64/staging/
 # siguen versionados; esto impide el tercero. Sacar los dos viejos es otro
 # commit, porque borrar ficheros versionados no es una regla de ignorado.
 __pycache__/
+
+# Los `.bex` de las sondas se generan con `inti`; el fuente es lo que se guarda.
+toolchain/lang/inti/sondas/*.bex

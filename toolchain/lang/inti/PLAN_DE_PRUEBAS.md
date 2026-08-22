@@ -126,32 +126,53 @@ ninguno le habia preguntado. **Quedan preguntas sin hacer.**
 
 ## 4. PELDANO 3 -- EL METAL: donde estamos, y que hace falta
 
-**Estado: ⛔ CERO. Es el peldano que bloquea todo lo de abajo.**
+**Estado: ⛔ CERO en el metal, pero el fichero YA EXISTE.**
 
-Ya no falta nada de mi lado: desde F6b `inti fichero.inti` produce un `.bex` que
-pasa el gate. **Lo que falta es la maquina.**
+`sondas/cpu.inti` esta escrita, compila, pasa el gate y **su formateador esta
+calibrado en el emulador**. Lo que falta es la maquina.
 
 ### 3.1 Las tres pruebas, en orden
 
 | # | prueba | criterio de aprobado |
 |---|---|---|
 | **M1** | **el hola mundo del metal**: un `.bex` de INTI arranca y sale por la puerta con un codigo elegido | el kernel recoge exactamente ese codigo |
-| **M2** | **las 36 instrucciones que el emulador no puede dar** | cada una devuelve algo, y las que se puedan comparar contra un valor conocido cuadran |
+| **M2** | **lo que este CPU le cuenta a un programa de Ring 3** -- `sondas/cpu.inti` | las dos lineas que dicen CERO salen a cero; las demas salen con un numero |
 | **M3** | **las tres reglas atrapan en metal**: desborde, entre cero, conversion | los codigos 1001, 1003 y 1012 salen por la puerta |
 
-### 3.2 ⚠ Por que M2 no es una lista de 36 sondas sueltas
+### 3.2 ⚠ CORRECCION (21-08): M2 no puede ser las 36, y el motivo es el ANILLO
 
-Porque cada arranque cuesta un reinicio. **Un programa que las ejecute todas y
-saque los resultados por la puerta vale por 36**; treinta y seis programas valen
-por uno y cuestan treinta y seis reinicios.
+Escribi esta fila hace unas horas como *"las 36 instrucciones que el emulador no
+puede dar"*. **Es imposible, y no por el emulador: por el anillo.**
 
-★ Y hay una trampa que hay que evitar por delante: de las 36, **muchas no
-devuelven un valor comparable** (`cli`, `lgdt`, `wbinvd`). Para esas el criterio
-no puede ser *"da el numero correcto"* sino *"no tumba la maquina y el programa
-sigue"*, que es lo unico que se puede afirmar. Decirlo antes evita una tabla de
-resultados que parece decir mas de lo que dice.
+De las 36, **la mayoria son de Ring 0** y un `.bex` corre en Ring 3. Llamarlas no
+daria un valor raro: daria un `#GP` y se llevaria el programa por delante en la
+primera linea.
 
-### 3.3 Lo que M1 puede destapar, y no seria culpa de INTI
+```text
+   cli sti hlt wbinvd invd invlpg      paran o vacian la maquina entera
+   lgdt lidt ltr lldt swapgs           tablas del sistema
+   cr0 cr2 cr3 cr4                     LEER un registro de control tambien es
+                                       Ring 0, no solo escribirlo
+   rdmsr wrmsr xsetbv                  registros del modelo
+   in* out*                            puertos de E/S
+   monitor mwait                       esperar sin quemar el nucleo
+```
+
+★★ Asi que M2 es **lo que este CPU le cuenta a un programa de USUARIO**, que
+sigue siendo una lista larga y ademas es la que describe el silicio: quien eres,
+a que ritmo cuentas, que extensiones tienes encendidas, y si sabes hacer
+atomicas de una instruccion.
+
+**Que un driver use las de Ring 0 es otra sonda y otro anillo.** Decirlo vale mas
+que una tabla con treinta y seis huecos que nadie sabe explicar.
+
+### 3.3 Y una sonda es UN programa, no treinta y seis
+
+Cada arranque cuesta un reinicio. Un programa que lo pregunte todo y saque los
+resultados por la puerta vale por todos; treinta y seis programas valen por uno y
+cuestan treinta y seis reinicios.
+
+### 3.4 Lo que M1 puede destapar, y no seria culpa de INTI
 
 El `.bex` de INTI no ha pasado nunca por el cargador de verdad. Lo que se prueba
 ahi no es solo el compilador: es **el contrato entero** -- secciones, `entry_offset`,
