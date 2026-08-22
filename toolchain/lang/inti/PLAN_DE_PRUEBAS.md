@@ -126,17 +126,43 @@ ninguno le habia preguntado. **Quedan preguntas sin hacer.**
 
 ## 4. PELDANO 3 -- EL METAL: donde estamos, y que hace falta
 
-**Estado: ✅ M1 y M2 HECHOS en el Ryzen (22-08). M3 esperando una ejecucion.**
+**Estado: ✅ M1, M2 y M3 HECHOS en el Ryzen (22-08). El peldano 3 esta CERRADO.**
 
     -- cpu -  0x10          la hoja maxima, como se predijo
-    -- cpu -  0x00A20F12    familia 0x19 modelo 0x21: Zen 4 (Raphael)
-    tsc       0xB519        mejor de ocho
-    ruido     0x16B1        12,5% de dispersion DENTRO de una tanda
+    -- cpu -  0x00A20F12    familia 0x19, modelo 0x21, revision 2: Zen 3
+                            (Vermeer) -- el Ryzen 5 5600X del banco
+    tsc       0xB588        mejor de ocho: 46.472
+    ruido     0x17B4        6.068, o sea 13,1% de dispersion DENTRO de la tanda
     xcr0      0x07          x87+SSE+AVX. AVX-512 esta APAGADO
     azar      0x01
+    reglas    0x00  <- ★★★ APROBADO. Las tres reglas anti-UB atrapan EN SILICIO
     bits      0x00  <- APROBADO, 8 comprobaciones
     atomicas  0x00  <- APROBADO, 9 comprobaciones sobre memoria del kernel
     -- fin -
+
+★★★ **M3 es la linea que decide si la portada es verdad.** *"INTI no tiene
+comportamiento indefinido"* estaba comprobado en el emulador --que escribimos
+nosotros, mirando bytes que escribimos nosotros, y que se equivoco tres veces
+este mes-- y **nunca en un procesador**. Ahora se le pregunto al silicio, y las
+tres contestaron con su codigo de trampa:
+
+```text
+   desborde     4.000.000.000 al cuadrado no cabe en 64 bits   -> 1001
+   entre cero   el divisor vale cero, y se sabe en EJECUCION   -> 1003
+   conversion   1e30 no es ningun entero32                     -> 1012
+```
+
+**Los dos sitios dicen cero: emulador y metal de acuerdo, la frase se sostiene.**
+La Regla 2 no esta, y no es un olvido -- un `bufer` no lleva su longitud, asi que
+no hay contra que comprobar. Nace con `lista de T`.
+
+⚠ **CORRECCION (22-08): este chip NO es un Zen 4.** La linea de la firma decia
+*"Zen 4 (Raphael)"* y es falso: familia 19h **modelo 21h** es **Vermeer**, el Zen
+3 de escritorio; Raphael es 19h modelo 61h. El banco es un Ryzen 5 5600X y
+`docs/evidencia/README.md` ya lo tenia bien. ★ **Es la misma equivocacion que ya
+se corrigio en `info`** (ver `docs/componente/LA_PUERTA_POR_DENTRO.md`): el numero
+estaba bien leido y mal nombrado, que es el fallo mas facil de repetir porque no
+lo destapa ninguna prueba.
 
 ★★★ Siete de ocho lineas acertaron la prediccion escrita por delante. Y en
 CUATRO ejecuciones **las lineas de hechos salieron bit por bit identicas**: solo
@@ -148,16 +174,18 @@ sola vez y no tenia resolucion: la optimizacion del freno del asignador salio
 publica la dispersion al lado.
 
 ```text
-   los tres minimos    46.731  46.435  46.361   -> se repiten dentro del 0,8%
-   la dispersion       12,5% DENTRO de una tanda
+   los cuatro minimos  46.731  46.435  46.361  46.472  -> dentro del 0,8%
+   la dispersion       12,5% y 13,1% DENTRO de una misma tanda
 ```
 
 **El minimo es estable aunque la dispersion sea grande**, y de ahi sale el
 umbral: para poder AFIRMAR una mejora hay que mover el minimo mas de ~1%.
 Sin ese numero, el peldano 6 no puede empezar.
 
-`sondas/cpu.inti` esta escrita, compila, pasa el gate y **su formateador esta
-calibrado en el emulador**. Lo que falta es la maquina.
+`sondas/cpu.inti` esta escrita, compila, pasa el gate, **su formateador se
+calibro en el emulador antes de medir con el** -- y ya corrio en la maquina. Lo
+que falta de este peldano no es un arranque: es la Regla 2, que nace con
+`lista de T`.
 
 ### 3.1 Las tres pruebas, en orden
 
@@ -165,7 +193,7 @@ calibrado en el emulador**. Lo que falta es la maquina.
 |---|---|---|
 | **M1** | **el hola mundo del metal**: un `.bex` de INTI arranca y sale por la puerta con un codigo elegido | el kernel recoge exactamente ese codigo |
 | **M2** | **lo que este CPU le cuenta a un programa de Ring 3** -- `sondas/cpu.inti` | las dos lineas que dicen CERO salen a cero; las demas salen con un numero |
-| **M3** | **las tres reglas atrapan en metal**: desborde, entre cero, conversion | ⏳ **la linea `reglas` de la sonda sale a CERO**. Ya esta escrita y calibrada en el emulador; falta un arranque |
+| **M3** | **las tres reglas atrapan en metal**: desborde, entre cero, conversion | ✅ **la linea `reglas` salio a CERO en el Ryzen (22-08)**. Las tres devolvieron su codigo de trampa: 1001, 1003, 1012 |
 
 ### 3.2 ⚠ CORRECCION (21-08): M2 no puede ser las 36, y el motivo es el ANILLO
 
