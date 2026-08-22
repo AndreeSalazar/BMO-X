@@ -10,7 +10,6 @@
   2948  toolchain/lang/cobol/src/codegen.rs
   2537  platform/drivers/storage/fat32/src/lib.rs
   2321  toolchain/lang/c/src/codegen/mod.rs
-  2228  toolchain/forge/bmo-lower/src/emu.rs
   2011  toolchain/lang/cobol/src/parser.rs
   1621  toolchain/lang/cpp/src/parser.rs
   1584  platform/drivers/usb/xhci/src/lib.rs

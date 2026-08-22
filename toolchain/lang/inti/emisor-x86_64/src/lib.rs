@@ -57,6 +57,9 @@
 
 pub mod arranque;
 pub mod marco;
+mod metal;
+mod operaciones;
+mod reglas;
 pub mod puerta;
 
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
@@ -67,6 +70,9 @@ use bmo_inti_front::ir::{
 };
 use bmo_lower::x86;
 use marco::{Marco, Sitio};
+use metal::metal;
+use operaciones::{binaria, flotante};
+use reglas::regla_doce;
 use puerta::Puerta;
 
 /// Los dos registros de trabajo.
@@ -74,8 +80,8 @@ use puerta::Puerta;
 /// Dos bastan mientras todo viva en la pila: uno para cada lado de una
 /// operacion binaria. Cuando llegue el asignador de registros esto desaparece,
 /// y ese es justo el cambio que la IR con temporales hace posible.
-const IZQ: u8 = 0; // rax
-const DER: u8 = 1; // rcx
+pub(crate) const IZQ: u8 = 0; // rax
+pub(crate) const DER: u8 = 1; // rcx
 
 /// Por donde llegan y se mandan los argumentos, en orden.
 ///
@@ -680,7 +686,7 @@ fn epilogo(out: &mut Vec<u8>) {
     out.push(0xC3); // ret
 }
 
-fn carga(out: &mut Vec<u8>, reg: u8, v: &Valor, marco: &Marco) {
+pub(crate) fn carga(out: &mut Vec<u8>, reg: u8, v: &Valor, marco: &Marco) {
     match v {
         Valor::Const(Const::Entero(n)) => x86::mov_r64_imm64(out, reg, *n as u64),
         // ** Un flotante se carga como lo que es: OCHO BYTES. La conversion de
@@ -715,7 +721,7 @@ fn carga(out: &mut Vec<u8>, reg: u8, v: &Valor, marco: &Marco) {
     }
 }
 
-fn guarda_temporal(
+pub(crate) fn guarda_temporal(
     out: &mut Vec<u8>,
     reg: u8,
     t: bmo_inti_front::ir::Temporal,
@@ -745,429 +751,6 @@ fn mov_a_marco(out: &mut Vec<u8>, disp: i32, reg: u8) {
     out.push(0x89);
     out.push(0x85 | (reg << 3));
     out.extend_from_slice(&disp.to_le_bytes());
-}
-
-fn binaria(out: &mut Vec<u8>, op: Op) {
-    match op {
-        Op::Suma => x86::add_r64_r64(out, IZQ, DER),
-        Op::Resta => x86::sub_r64_r64(out, IZQ, DER),
-        Op::Por => x86::imul_r64_r64(out, IZQ, DER),
-        Op::Entre | Op::Divide => {
-            x86::cqo(out);
-            x86::idiv_r64(out, DER);
-        }
-        Op::Resto => {
-            x86::cqo(out);
-            x86::idiv_r64(out, DER);
-            x86::mov_r64_r64(out, IZQ, 2); // el resto vive en rdx
-        }
-        Op::BitsY => {
-            out.extend_from_slice(&[0x48, 0x21, 0xC8]); // and rax, rcx
-        }
-        Op::BitsO => x86::or_r64_r64(out, IZQ, DER),
-        Op::BitsXor => x86::xor_r64_r64(out, IZQ, DER),
-
-        // ** LOS DESPLAZAMIENTOS, Y LA REGLA 7 DENTRO.
-        //
-        // Hasta el 21-08 estos dos caian en el `_ => {}` de abajo y **no se
-        // emitia nada**: `x desplaza izquierda 8` devolvia `x` intacto.
-        // Compilaba, corria, y daba otro numero. Lo destapo la sonda del Ryzen
-        // al intentar imprimir un hexadecimal, que es el primer programa de
-        // INTI que necesitaba desplazar de verdad.
-        //
-        // ** Y no basta con la instruccion, porque el silicio no hace lo que
-        // INTI promete: se queda con los SEIS BITS BAJOS del contador, asi que
-        // desplazar 64 posiciones desplaza cero y devuelve el numero entero. La
-        // Regla 7 dice que da CERO, y eso hay que emitirlo.
-        //
-        // Tres instrucciones de mas, y el salto no salta salvo cuando el
-        // programa pidio algo que no tiene sentido.
-        Op::DesplazaIzquierda | Op::DesplazaDerecha => {
-            if matches!(op, Op::DesplazaIzquierda) {
-                x86::shl_r64_cl(out, IZQ);
-            } else {
-                x86::shr_r64_cl(out, IZQ);
-            }
-            // El `cmp` va DESPUES a proposito: el desplazamiento no toca el
-            // contador, asi que sigue entero para poder mirarlo.
-            x86::cmp_r64_imm32(out, DER, 64);
-            let cabe = x86::salto_corto(out, 0x72); // jb
-            x86::zero_r32(out, IZQ);
-            x86::cierra_salto_corto(out, cabe);
-        }
-
-        // Las comparaciones dejan el resultado en 0/1.
-        Op::Igual | Op::NoEs | Op::Menor | Op::Mayor | Op::MenorIgual | Op::MayorIgual => {
-            x86::cmp_r64_r64(out, IZQ, DER);
-            // ** El orden importa y costo un test: `setcc` PRIMERO y despues
-            // extender. Poner el registro a cero antes con un `xor` --que es lo
-            // que hace `zero_r32`-- **destruye las banderas que el `cmp` acaba
-            // de dejar**, y entonces la comparacion contesta siempre lo mismo.
-            let cc = match op {
-                Op::Igual => 0x94,
-                Op::NoEs => 0x95,
-                Op::Menor => 0x9C,
-                Op::Mayor => 0x9F,
-                Op::MenorIgual => 0x9E,
-                _ => 0x9D,
-            };
-            out.extend_from_slice(&[0x0F, cc, 0xC0]); // setcc al
-            out.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
-        }
-        // Lo que pide runtime o no cabe en una instruccion.
-        _ => {}
-    }
-}
-
-/// Las operaciones de coma flotante.
-///
-/// ## ** EL MODELO, y por que este y no el bueno
-///
-/// Los valores viven en registros normales **como patron de bits** y solo cruzan
-/// a los de coma flotante para la operacion. Cuesta dos cruces por operacion.
-///
-/// A cambio: **el asignador de registros, el marco y la convencion de llamada no
-/// cambian ni una linea**. Ese es el trato entero. La version rapida --repartir
-/// tambien los registros de coma flotante-- es un asignador nuevo, y no se
-/// escribe hasta que haya algo que medir. El dia que se escriba, lo que cambia
-/// es DONDE viven los valores, no que operacion se emite.
-///
-/// ## Lo que NO lleva detras: ninguna comprobacion
-///
-/// Y no es una excepcion a "INTI no tiene comportamiento indefinido". Es que
-/// IEEE-754 **define** el desbordamiento y la division por cero: dan infinito y
-/// NaN, que son valores. La Regla 1 y la Regla 3 existen porque en los enteros
-/// esos dos casos no tienen respuesta; aqui la tienen, y desde 1985.
-///
-/// ## ** Y LA REGLA 11, que es la que se ve en lo que NO esta escrito aqui
-///
-/// No hay `fma`, y no hay reasociacion. `a * b + c` emite una multiplicacion y
-/// una suma, con su redondeo en medio, **aunque la maquina sepa hacer las dos de
-/// una vez y mas preciso**. Se deja rendimiento en la mesa a proposito: el mismo
-/// programa tiene que dar el mismo bit en cualquier maquina, y esa es la unica
-/// portabilidad que C no dio nunca.
-fn flotante(out: &mut Vec<u8>, op: Op) {
-    match op {
-        Op::Suma | Op::Resta | Op::Por | Op::Divide => {
-            x86::movq_xmm_de_r64(out, 0, IZQ);
-            x86::movq_xmm_de_r64(out, 1, DER);
-            match op {
-                Op::Suma => x86::addsd(out),
-                Op::Resta => x86::subsd(out),
-                Op::Por => x86::mulsd(out),
-                _ => x86::divsd(out),
-            }
-            x86::movq_r64_de_xmm(out, IZQ, 0);
-        }
-
-        // ** LAS COMPARACIONES, Y EL NaN, que es donde esto se gana o se pierde
-        //
-        // Comparar deja las banderas como una comparacion SIN SIGNO --el
-        // silicio ya tradujo-- y por eso se reusan los mismos `setcc`. Lo que no
-        // traduce es el NaN: sale "no comparable" y enciende las tres banderas a
-        // la vez, incluida la de "menor".
-        //
-        // Consecuencia: preguntar `a < b` con la bandera de menor contestaria
-        // **que si** cuando alguno es NaN. Asi que `<` y `<=` se hacen DANDO LA
-        // VUELTA a los operandos y preguntando por `>` y `>=`, que miran la
-        // bandera que el NaN deja en el otro sentido.
-        //
-        // Es un truco de una linea y evita dos saltos por comparacion.
-        Op::Igual | Op::NoEs | Op::Menor | Op::Mayor | Op::MenorIgual | Op::MayorIgual => {
-            let del_reves = matches!(op, Op::Menor | Op::MenorIgual);
-            let (a, b) = if del_reves { (DER, IZQ) } else { (IZQ, DER) };
-            x86::movq_xmm_de_r64(out, 0, a);
-            x86::movq_xmm_de_r64(out, 1, b);
-            x86::comisd(out);
-            match op {
-                // seta / setae: falsas ante un NaN, que es lo que manda IEEE.
-                Op::Mayor | Op::Menor => x86::setcc_low(out, 0x97, IZQ),
-                Op::MayorIgual | Op::MenorIgual => x86::setcc_low(out, 0x93, IZQ),
-                // ** La igualdad NO se puede hacer con una sola bandera: el NaN
-                // enciende la de igual. Hay que exigir ADEMAS que si fueran
-                // comparables. Dos `setcc` y un `and`.
-                Op::Igual => {
-                    x86::setcc_low(out, 0x94, IZQ); // sete
-                    x86::setcc_low(out, 0x9B, DER); // setnp -- y comparables
-                    x86::and_low_low(out, IZQ, DER);
-                }
-                // ** Y la desigualdad es la unica comparacion que un NaN hace
-                // CIERTA. No es una rareza: `x no es x` es como se pregunta si
-                // algo es NaN, y tiene que contestar que si.
-                _ => {
-                    x86::setcc_low(out, 0x95, IZQ); // setne
-                    x86::setcc_low(out, 0x9A, DER); // setp -- o no comparables
-                    x86::or_low_low(out, IZQ, DER);
-                }
-            }
-            x86::movzx_r64_low(out, IZQ, IZQ);
-        }
-
-        // Los bits, el resto y el cociente entero no existen aqui, y no se
-        // emite nada **porque `disposicion` ya los denuncio con E0123**. Este
-        // camino solo se recorre en un programa que no va a llegar a ejecutarse.
-        _ => {}
-    }
-}
-
-/// LA REGLA 12 EN BYTES: cabe este numero de coma flotante en tantos bytes?
-///
-/// ## ** Por que hacen falta DOS preguntas y no una
-///
-/// La instruccion que trunca **no avisa cuando el numero no cabe**: devuelve el
-/// entero mas negativo como centinela y sigue. Y ese centinela es ambiguo,
-/// porque tambien es el resultado legitimo de convertir exactamente `-2^63`.
-///
-/// ```text
-///    1. es el centinela?   -> puede ser desborde... o el numero de verdad
-///       si lo es, se compara el ORIGINAL con -2^63 exacto:
-///          iguales      -> era legitimo, sigue
-///          distintos    -> desbordo, o era NaN. Atrapa
-///    2. cabe en n bytes?   -> extender los bajos con signo y comparar
-/// ```
-///
-/// ## ** Y el NaN, que es el caso que se cuela sin la segunda bandera
-///
-/// Un NaN truncado da tambien el centinela. Al compararlo con `-2^63` sale
-/// "no comparable", que enciende la bandera de igualdad **a la vez** que la de
-/// paridad. Sin mirar la segunda, `entero64(0.0 / 0.0)` pasaria por legitimo.
-///
-/// ## Lo que cuesta en el camino que NO atrapa
-///
-/// Dos comparaciones y dos saltos que no saltan. El bloque del centinela se
-/// esquiva entero con el primer salto, asi que un programa normal paga tres
-/// instrucciones -- y un procesador fuera de orden las predice todas, porque
-/// nunca saltan.
-fn regla_doce(
-    out: &mut Vec<u8>,
-    sobre: &Valor,
-    bytes: u32,
-    marco: &Marco,
-    huecos: &mut Vec<(usize, u64)>,
-    codigo: u64,
-) {
-    // El original, en el registro de coma flotante, y el truncado en el de
-    // trabajo. La instruccion no toca el original: hace falta entero mas abajo.
-    carga(out, IZQ, sobre, marco);
-    x86::movq_xmm_de_r64(out, 0, IZQ);
-    x86::cvttsd2si_r64(out, IZQ);
-
-    // -- 1. es el centinela?
-    x86::mov_r64_imm64(out, DER, 0x8000_0000_0000_0000);
-    x86::cmp_r64_r64(out, IZQ, DER);
-    // Si NO lo es, la conversion de 64 bits fue limpia: al ancho directamente.
-    let al_ancho = x86::salto_corto(out, 0x75); // jne
-
-    // Lo es. El unico original que puede darlo legitimamente es `-2^63`, cuyo
-    // patron de bits se escribe entero para que se pueda comparar con el manual.
-    x86::mov_r64_imm64(out, DER, 0xC3E0_0000_0000_0000);
-    x86::movq_xmm_de_r64(out, 1, DER);
-    x86::comisd(out);
-    // No comparable (NaN) -> fuera.
-    out.extend_from_slice(&[0x0F, 0x8A]); // jp
-    huecos.push((out.len(), codigo));
-    out.extend_from_slice(&[0, 0, 0, 0]);
-    // Comparable y distinto de -2^63 -> desbordo.
-    out.extend_from_slice(&[0x0F, 0x85]); // jne
-    huecos.push((out.len(), codigo));
-    out.extend_from_slice(&[0, 0, 0, 0]);
-
-    x86::cierra_salto_corto(out, al_ancho);
-
-    // -- 2. cabe en `bytes`?
-    //
-    // ** En ocho no hay nada que preguntar: lo que cupo en el truncado cabe en
-    // el destino, y el unico caso raro --el centinela-- ya se resolvio arriba.
-    if bytes >= 8 {
-        return;
-    }
-    match bytes {
-        4 => x86::movsxd_r64_r32(out, DER, IZQ),
-        2 => x86::movsx_r64_r16(out, DER, IZQ),
-        _ => x86::movsx_r64_r8(out, DER, IZQ),
-    }
-    x86::cmp_r64_r64(out, IZQ, DER);
-    // Si extender los bajos con signo no devuelve el mismo numero, es que los
-    // altos llevaban algo -- o sea, no cabia.
-    out.extend_from_slice(&[0x0F, 0x85]); // jne
-    huecos.push((out.len(), codigo));
-    out.extend_from_slice(&[0, 0, 0, 0]);
-}
-
-/// EL METAL: un nombre de INTI se vuelve los bytes de una instruccion.
-///
-/// ## ** Que estaba roto, dicho sin adornos
-///
-/// Esta funcion no existia, y en su sitio habia `Instr::Metal { .. } => {}`.
-/// La tabla de x86-64 llevaba desde F2b con **setenta y tantos nombres** --los
-/// puertos de E/S, los registros de control, las atomicas, las cuentas de
-/// bits-- y ni uno solo llegaba a un byte. Un `lee_reloj()` compilaba, pasaba
-/// el analisis de nombres, pasaba el de perfiles, pasaba el gate, y devolvia lo
-/// que hubiera en el registro de trabajo.
-///
-/// Es el fallo que este proyecto persigue desde el principio: **la pieza que se
-/// calcula bien y no la lee nadie**. Aqui la leia el frontend entero y se caia
-/// en la ultima linea.
-///
-/// ## Las dos tablas, y por que son dos
-///
-/// ```text
-///    arch/x86_64/inti.toml   como se llama en INTI   `cuenta_unos` -> `popcnt`
-///    arch/x86_64/intrinsics  que bytes son           `popcnt` -> F3 0F B8 C0
-/// ```
-///
-/// La segunda la comparte con BMO C, y ese es el punto: **los bytes se declaran
-/// una vez**. La primera es de INTI porque el nombre es del lenguaje.
-///
-/// ## Lo que hace cuando NO puede
-///
-/// Lo apunta y sigue. No emite nada plausible, y no calla: el nombre entra en
-/// `sin_emitir`, que viaja hasta CABINA y hasta un test que lo exige vacio para
-/// la tabla entera. Un intrinseco que no se puede emitir es una fila mal
-/// escrita, y una fila mal escrita en una tabla de driver se descubre en metal
-/// y seis meses tarde si nadie la cuenta.
-fn metal(
-    out: &mut Vec<u8>,
-    nombre: &str,
-    argumentos: &[Valor],
-    destino: Option<bmo_inti_front::ir::Temporal>,
-    marco: &Marco,
-    taller: &Taller,
-    sin_emitir: &mut Vec<String>,
-) {
-    let Some(maquina) = taller.maquina.as_ref() else {
-        sin_emitir.push(format!("{}: no hay tabla de maquina", nombre));
-        return;
-    };
-    let Some(instruccion) = maquina.instruccion(nombre) else {
-        sin_emitir.push(format!("{}: la maquina no dice que instruccion es", nombre));
-        return;
-    };
-    let Some(intrinsecos) = taller.intrinsecos.as_ref() else {
-        sin_emitir.push(format!("{}: no hay tabla de bytes", nombre));
-        return;
-    };
-    let Some(def) = intrinsecos.get(instruccion) else {
-        sin_emitir.push(format!(
-            "{}: `{}` no esta en intrinsics.toml",
-            nombre, instruccion
-        ));
-        return;
-    };
-    if argumentos.len() != def.args.len() {
-        // ** Y esto NO es un aviso cosmetico. Emitir la instruccion con un
-        // registro sin cargar la ejecuta con lo que hubiera dentro: un
-        // `escribe_puerto` con el puerto sin poner habla con un aparato que no
-        // es. Se prefiere no emitir y decirlo.
-        sin_emitir.push(format!(
-            "{}: pide {} argumento(s) y le dieron {}",
-            nombre,
-            def.args.len(),
-            argumentos.len()
-        ));
-        return;
-    }
-
-    // 1. Cada argumento a SU registro.
-    //
-    // ** Se puede cargar en orden y sin apilar --que es lo que hace BMO C--
-    // porque el asignador ya se freno: `marco.rs` no reparte registros en una
-    // funcion que tiene un `Metal`, exactamente igual que con una llamada. Sin
-    // ese freno, cargar en `rdx` podria pisar un temporal que vive alli.
-    for (i, a) in argumentos.iter().enumerate() {
-        // ** El caso raro primero, porque es el que existe de verdad: hay
-        // instrucciones que reciben un valor de 64 bits PARTIDO en dos
-        // registros de 32. Nacieron antes de que hubiera registros de 64 y el
-        // silicio nunca las cambio.
-        //
-        // Cargarlo en uno solo escribe la mitad baja y deja la alta con lo que
-        // hubiera. En un registro de control del CPU, esa mitad alta son bits
-        // que encienden cosas.
-        if def.args[i] == "u64_edx_eax" {
-            carga(out, IZQ, a, marco);
-            x86::mov_r64_r64(out, 2, IZQ);
-            x86::shr_r64_imm8(out, 2, 32);
-            continue;
-        }
-        match registro_llamado(&def.args[i]) {
-            Some(r) => carga(out, r, a, marco),
-            None => {
-                sin_emitir.push(format!(
-                    "{}: no se en que registro va `{}`",
-                    nombre, def.args[i]
-                ));
-                return;
-            }
-        }
-    }
-
-    // 2. Los bytes EXACTOS de la tabla. Ni uno escrito aqui.
-    out.extend_from_slice(&def.bytes);
-
-    // 3. Y el valor, donde este emisor espera todo resultado.
-    recoge_de(out, def.returns.as_deref());
-
-    if let Some(d) = destino {
-        guarda_temporal(out, IZQ, d, marco);
-    }
-}
-
-/// El numero de registro que hay detras de un nombre de `intrinsics.toml`.
-///
-/// ** Los nombres de la tabla son los del ENSAMBLADOR --`al`, `dx`, `eax`-- y
-/// no los de INTI, porque la tabla la comparten cinco lenguajes. `al`, `ax`,
-/// `eax` y `rax` son el mismo registro visto con cuatro anchos, y para saber
-/// cual cargar da igual el ancho: la instruccion ya lo fija.
-fn registro_llamado(nombre: &str) -> Option<u8> {
-    Some(match nombre {
-        "rax" | "eax" | "ax" | "al" => 0,
-        "rcx" | "ecx" | "cx" | "cl" => 1,
-        "rdx" | "edx" | "dx" | "dl" => 2,
-        "rbx" | "ebx" | "bx" | "bl" => 3,
-        "rsp" => 4,
-        "rbp" => 5,
-        "rsi" | "esi" | "si" => 6,
-        "rdi" | "edi" | "di" => 7,
-        "r8" => 8,
-        "r9" => 9,
-        "r10" => 10,
-        "r11" => 11,
-        _ => return None,
-    })
-}
-
-/// Deja el resultado de la instruccion donde el emisor lo espera.
-///
-/// ** El caso que importa es el primero, y es de silicio: hay instrucciones
-/// viejas que parten un valor de 64 bits en DOS registros de 32, porque nacieron
-/// antes de que existieran los de 64. Recogerlo de uno solo devuelve la mitad
-/// baja -- y la mitad baja de un contador de ciclos parece un numero perfecto.
-fn recoge_de(out: &mut Vec<u8>, devuelve: Option<&str>) {
-    match devuelve {
-        Some("u64_edx_eax") => {
-            x86::shl_r64_imm8(out, 2, 32);
-            x86::or_r64_r64(out, IZQ, 2);
-        }
-        // Un byte o dos: el resto del registro puede traer basura de antes, asi
-        // que se extiende con ceros en vez de dejarla.
-        Some("al") => out.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]),
-        Some("ax") => out.extend_from_slice(&[0x48, 0x0F, 0xB7, 0xC0]),
-        // La puerta contesta el valor por otro registro. Aqui no se cruza la
-        // puerta, pero hay instrucciones que dejan el resultado ahi.
-        Some("rdx") | Some("edx") => x86::mov_r64_r64(out, IZQ, 2),
-        // "eax"/"rax": ya esta donde tiene que estar. Escribir la mitad baja de
-        // un registro en esta maquina pone la alta a cero, asi que tampoco hay
-        // que limpiar.
-        Some(_) => {}
-        // ** Y la que NO devuelve nada --`hlt`, `cli`, una barrera-- deja un
-        // CERO, no lo que hubiera.
-        //
-        // No es cosmetica: `x = para()` no tiene sentido y aun asi se puede
-        // escribir. Con basura, el programa sigue con un numero que parece
-        // valido; con cero, hace lo mismo siempre y se puede reproducir. Entre
-        // dos cosas mal, la que no cambia entre ejecuciones.
-        None => x86::zero_r32(out, IZQ),
-    }
 }
 
 /// Envuelve el codigo en un `.bex` y **lo pasa por el gate**.
