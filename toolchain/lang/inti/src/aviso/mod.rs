@@ -71,6 +71,27 @@ pub struct Aviso {
     pub que_habia: String,
     /// Que hacer. En imperativo, y si se puede, codigo pegable.
     pub que_hacer: String,
+    /// **La pieza de la que salio, cuando no salio del fichero que se compila.**
+    ///
+    /// ** `None` es la respuesta normal y quiere decir *"lo escribio quien
+    /// compila"*. Lleva algo solo cuando el aviso nace dentro de una pieza que
+    /// trajo un `usa` -- y entonces el nombre que se le pasa a `pintar` es el
+    /// equivocado, porque apunta al fichero que LLAMA.
+    ///
+    /// Es el mismo motivo por el que el fichero entra por argumento y no por
+    /// campo, visto del otro lado: el nombre por defecto no se sabe aqui, pero
+    /// **la procedencia si** -- y es justo el dato que el de fuera no tiene.
+    pub pieza: Option<Procedencia>,
+}
+
+/// De donde vino un aviso que no nacio en el fichero que se compila.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Procedencia {
+    /// El fichero de la pieza.
+    pub fichero: String,
+    /// El `usa` que la metio en este programa. Saber donde esta el fallo no
+    /// explica por que ese fichero forma parte de tu programa.
+    pub usa: String,
 }
 
 impl Aviso {
@@ -82,7 +103,18 @@ impl Aviso {
             linea_fuente: String::new(),
             que_habia: String::new(),
             que_hacer: String::new(),
+            pieza: None,
         }
+    }
+
+    /// Marca de que pieza salio. Lo pone quien SABE que esta mirando algo
+    /// traido: el aviso no puede averiguarlo solo.
+    pub fn con_pieza(mut self, fichero: impl Into<String>, usa: impl Into<String>) -> Self {
+        self.pieza = Some(Procedencia {
+            fichero: fichero.into(),
+            usa: usa.into(),
+        });
+        self
     }
 
     pub fn con_linea(mut self, linea: impl Into<String>) -> Self {
@@ -120,10 +152,22 @@ impl Aviso {
     pub fn pintar(&self, fichero: &str) -> String {
         let mut s = String::new();
         s.push_str(&format!("{} {}\n", self.codigo, self.que_paso));
-        s.push_str(&format!(
-            "   en {}, linea {}:\n",
-            fichero, self.sitio.linea
-        ));
+        // ** EL SITIO DICE EL FICHERO DE VERDAD, no el que se esta compilando.
+        //
+        // Cuando el aviso viene de una pieza traida, decir el fichero del
+        // usuario manda a mirar una linea que puede estar EN BLANCO. Un mensaje
+        // de cuatro partes con el fichero equivocado no es un mensaje de cuatro
+        // partes: es tres y una pista falsa.
+        match &self.pieza {
+            Some(p) => s.push_str(&format!(
+                "   en {}, linea {}:   (la trajo {} con `usa {}`)\n",
+                p.fichero, self.sitio.linea, fichero, p.usa
+            )),
+            None => s.push_str(&format!(
+                "   en {}, linea {}:\n",
+                fichero, self.sitio.linea
+            )),
+        }
         if !self.linea_fuente.is_empty() {
             s.push_str(&format!("      {}\n", self.linea_fuente.trim_end()));
             // El dedo debajo de la columna exacta. Se cuenta en caracteres y

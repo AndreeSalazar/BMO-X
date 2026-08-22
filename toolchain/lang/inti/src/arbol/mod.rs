@@ -39,6 +39,56 @@ impl Perfil {
     }
 }
 
+/// **DE DONDE SALIO UN TROZO DEL MODULO, y con que perfil venia escrito.**
+///
+/// ## Por que existe -- la costura
+///
+/// `armar` mete las declaraciones de las piezas que pidio un `usa` en el MISMO
+/// modulo que las del usuario. Eso es inclusion, no enlazado, y hasta el
+/// 2026-08-22 la fusion no dejaba ni una marca: el modulo resultante era un
+/// monton de declaraciones sin costuras.
+///
+/// ** Y un modulo sin costuras no puede contestar dos preguntas que hacen
+/// falta:
+///
+/// ```text
+///    de que fichero es esta linea?     -> el aviso acusaba al fichero del
+///                                         usuario aunque el fallo viviera en
+///                                         una pieza del runtime
+///    de que esta hecho este binario?   -> el `.bex` declara UN perfil para
+///                                         algo cosido de varios
+/// ```
+///
+/// *** La primera es un fallo vivo: un `texto` en la linea 3 de una pieza salia
+/// como *"en tu_fichero.inti, linea 3"*, que puede estar en blanco. Un mensaje
+/// de cuatro partes con el fichero equivocado **no es un mensaje de cuatro
+/// partes**: es tres y una pista falsa.
+///
+/// La segunda es la que sostiene lo que viene detras. El perfil no puede
+/// viajar en el `.bex` mientras el compilador no sepa decir de que esta hecho.
+#[derive(Debug, Clone)]
+pub struct Pieza {
+    /// Como se llama el fichero de donde salio. El del usuario NO esta aqui:
+    /// una pieza es siempre algo TRAIDO.
+    pub fichero: String,
+    /// El `usa` que la trajo. Sin esto el que lee el aviso sabe donde esta el
+    /// fallo y no por que ese fichero forma parte de su programa.
+    pub usa: String,
+    /// **El perfil que la pieza declaro para SI MISMA.**
+    ///
+    /// ** Se guarda y hoy no se juzga, y las dos mitades son a proposito. Lo
+    /// que se compila se juzga contra el perfil del fichero que llama --que es
+    /// el estricto, y por eso la garantia aguanta--; lo que falta es la regla
+    /// que diga que hacer cuando una pieza se declara MAS LAXA que quien la
+    /// trae. Esa regla se escribe con el dato delante, no antes.
+    pub perfil: Perfil,
+    /// Donde empieza y donde acaba en `declaraciones`. Un rango y no una marca
+    /// por declaracion: la fusion mete bloques enteros, asi que las costuras
+    /// son los bordes de esos bloques y no hacen falta N copias del nombre.
+    pub desde: usize,
+    pub hasta: usize,
+}
+
 /// Un fichero entero.
 #[derive(Debug, Clone)]
 pub struct Modulo {
@@ -47,6 +97,20 @@ pub struct Modulo {
     /// Lo que se importa, en orden.
     pub usa: Vec<(String, Sitio)>,
     pub declaraciones: Vec<Decl>,
+    /// Las costuras: que trozo de `declaraciones` vino de donde. Vacio cuando
+    /// el fichero no trajo nada, que es el caso de un fuente sin `usa`.
+    pub piezas: Vec<Pieza>,
+}
+
+impl Modulo {
+    /// De que pieza salio la declaracion numero `i`, si es que salio de alguna.
+    ///
+    /// `None` quiere decir **la escribio el usuario**, que es la respuesta
+    /// correcta y no una ausencia de dato: las declaraciones propias van
+    /// delante y las traidas detras.
+    pub fn pieza_de(&self, i: usize) -> Option<&Pieza> {
+        self.piezas.iter().find(|p| i >= p.desde && i < p.hasta)
+    }
 }
 
 /// Un tipo, tal y como se escribio. **No esta resuelto**: `Nombre("numero")` y

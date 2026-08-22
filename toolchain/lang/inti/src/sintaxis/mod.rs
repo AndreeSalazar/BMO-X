@@ -263,6 +263,10 @@ pub fn leer(piezas: &[Pieza], vocab: &Vocabulario) -> Cosecha<Modulo> {
             sitio_perfil,
             usa,
             declaraciones,
+            // Un fichero leido solo es de UNA pieza: la suya. Las costuras las
+            // pone `armar`, que es quien fusiona -- aqui no hay nada cosido
+            // todavia y un vector vacio lo dice sin mentir.
+            piezas: Vec::new(),
         },
         c.avisos,
     )
