@@ -43,12 +43,25 @@ fn con_cambiante_si() {
     assert!(en_principal("cambiante x = 5\nx = x + 1\n").is_empty());
 }
 
+/// ** UN PARAMETRO DA `E0033`, NO `E0030`, y la diferencia es el consejo.
+///
+/// Esta prueba exigia `E0030` --el aviso generico de "se fijo y no se puede
+/// cambiar"--, y ese aviso manda a *"la linea donde nace, sin `cambiante`"*. La
+/// linea donde nace un parametro es la FIRMA, donde no hay ningun `=` que
+/// quitar: el consejo era correcto y no se podia seguir, que es la peor clase
+/// de mensaje.
+///
+/// El codigo propio existia desde F0 y el comentario de `declara` prometia
+/// usarlo desde F2b. No se usaba porque la ficha no guardaba de donde venia el
+/// nombre -- y esta prueba, al exigir el generico, **congelaba el fallo en su
+/// sitio**. Lo destapo la matriz del censo: `f04_parametro_fijo` declara
+/// `E0033` desde el primer dia y nadie lo comparaba.
 #[test]
 fn un_parametro_no_se_cambia_dentro() {
     let c = codigos_de(
         "perfil pleno\n\nfuncion suma_uno(x)\n    x = x + 1\n",
     );
-    assert_eq!(c, vec!["E0030"]);
+    assert_eq!(c, vec!["E0033"]);
 }
 
 #[test]

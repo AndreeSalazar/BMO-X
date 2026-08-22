@@ -160,6 +160,13 @@ struct Ficha {
     sitio: Sitio,
     /// Nacio en un bloque de fuera del que se esta mirando ahora.
     de_fuera: bool,
+    /// ** Nacio como PARAMETRO, y eso cambia el mensaje.
+    ///
+    /// Sin este campo, cambiar un parametro daba el aviso generico *"se fijo y
+    /// no se puede cambiar"*, que manda a buscar la linea donde nacio -- y la
+    /// linea donde nace un parametro es la firma, donde no hay ningun `=` que
+    /// quitar. El consejo era correcto y no se podia seguir.
+    es_parametro: bool,
 }
 
 /// Comprueba los nombres de un modulo.
@@ -268,8 +275,16 @@ impl<'c> Vigia<'c> {
                     cambiante: false,
                     sitio: Sitio::default(),
                     de_fuera: true,
+                    es_parametro: false,
                 },
             );
+        }
+    }
+
+    fn declara_parametro(&mut self, nombre: &str, cambiante: bool, sitio: Sitio) {
+        self.declara(nombre, cambiante, sitio);
+        if let Some(f) = self.ambitos.last_mut().and_then(|a| a.get_mut(nombre)) {
+            f.es_parametro = true;
         }
     }
 
@@ -281,6 +296,7 @@ impl<'c> Vigia<'c> {
                     cambiante,
                     sitio,
                     de_fuera: false,
+                    es_parametro: false,
                 },
             );
         }
@@ -311,7 +327,7 @@ impl<'c> Vigia<'c> {
             // Un parametro nace en la funcion, no fuera: por eso `de_fuera` es
             // falso y por eso cambiarlo sin `cambiante` se puede denunciar con
             // su codigo propio.
-            self.declara(&p.nombre, p.cambiante, p.sitio);
+            self.declara_parametro(&p.nombre, p.cambiante, p.sitio);
         }
         self.bloque_sin_ambito(&f.cuerpo);
         self.sale();
@@ -518,6 +534,33 @@ impl<'c> Vigia<'c> {
                             .to_string(),
                     )
                     .con_hacer("devuelvelo desde la funcion y asignalo donde haga falta"),
+                );
+            }
+            // ** UN PARAMETRO TIENE SU PROPIO CODIGO, y no es cosmetica.
+            //
+            // El aviso generico manda a *"la linea donde nace, sin `cambiante`"*
+            // -- y la linea donde nace un parametro es la firma, donde no hay
+            // ningun `=` que quitar. El consejo era correcto y no se podia
+            // seguir, que es la peor clase de mensaje.
+            //
+            // El codigo existia (`E0033`) y el comentario de arriba prometia
+            // usarlo desde F2b. No se usaba porque la ficha no guardaba de donde
+            // venia el nombre.
+            Some(f) if !f.cambiante && f.es_parametro => {
+                self.avisos.push(
+                    Aviso::nuevo(
+                        codigos::PARAMETRO_FIJO,
+                        format!("`{}` es un parametro y no se puede cambiar.", nombre),
+                        sitio,
+                    )
+                    .con_habia(
+                        "Un parametro llega con el valor que le dio quien llamo. Cambiarlo                          aqui dentro no cambia nada alli fuera, asi que la linea de abajo                          diria una cosa y el que llamo creeria otra."
+                            .to_string(),
+                    )
+                    .con_hacer(format!(
+                        "declaralo `cambiante {}` en la firma si de verdad es tuyo, o copialo:                          `cambiante mio = {}`",
+                        nombre, nombre
+                    )),
                 );
             }
             Some(f) if !f.cambiante => {

@@ -1,9 +1,14 @@
 # sonda: v04_sin_veracidad    espera: E0040
 # fija: `si` exige `logico`. La veracidad de Python (`if lista:`) no existe:
-# se escribe `si no esta vacia lista`. Una regla menos que aprender.
+# se escribe `si no esta vacia cosas`. Una regla menos que aprender.
+#
+# OJO: esta sonda decia `lista = [1, 2, 3]` y NO COMPILABA -- `lista` es palabra
+# clave (`lista de T`), igual que `para` lo era en la tabla de la maquina. Daba
+# tres errores de sintaxis y nadie lo veia, porque el test del censo solo miraba
+# margenes y comillas: nunca preguntaba si la sonda se LEE.
 perfil pleno
 
 funcion principal
-    lista = [1, 2, 3]
-    si lista
+    cosas = [1, 2, 3]
+    si cosas
         escribe("hay cosas")

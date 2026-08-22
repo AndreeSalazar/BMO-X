@@ -158,6 +158,18 @@ las llamadas sin parentesis (`escribe x`), formas que no existian
 (`anade X a Y`), y una funcion anonima en una sonda de un lenguaje que no
 tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 
+## Que falta para poder afirmar lo que se afirma
+
+[`PLAN_DE_PRUEBAS.md`](PLAN_DE_PRUEBAS.md) -- los siete peldanos, en orden de
+DEPENDENCIA y no de importancia, cada uno con un criterio de aprobado que se
+puede ejecutar.
+
+⚠ El numero incomodo esta ahi y conviene leerlo antes que esta tabla:
+**ninguna linea de INTI ha corrido nunca en un procesador**, y el programa mas
+grande que ha compilado tiene **once lineas**.
+
+---
+
 ## Lo siguiente
 
 | fase | entregable | estado |
@@ -188,7 +200,7 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | F6 | PLENO: texto, lista, tabla, decimal, contador de referencias | pendiente |
 | F7 | congelado y tareas, y el REPL | pendiente |
 
-**Hoy: 1.137 pruebas en verde** en INTI y en todo lo que comparte tabla con el
+**Hoy: 1.138 pruebas en verde** en INTI y en todo lo que comparte tabla con el
 (BMO C, COBOL, C++, Ada y `bmo-lower`).
 
 ⚠ Y el numero incomodo, que esta medido y no estimado: de los **61 nombres** de

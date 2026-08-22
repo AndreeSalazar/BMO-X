@@ -52,7 +52,7 @@ esperando a su fase.
 | `v01_numero_exacto` | ★ `0.1 + 0.2` da `0.3` | **COMPILA** + salida `0.3` |
 | `v02_division` | `/` divide, `entre` da cociente entero | **COMPILA** + `2.5` y `2` |
 | `v03_sin_nulo` | no hay nulo: `quiza T` hay que mirarlo | `E0021` |
-| `v04_sin_veracidad` | `si` exige `logico`; `if lista:` no existe | `E0040` |
+| `v04_sin_veracidad` (⚠ NO COMPILABA hasta el 21-08: usaba `lista`, que es palabra clave) | `si` exige `logico`; `if lista:` no existe | `E0040` |
 | `v05_sin_conversion` | `"23" + 1` no se convierte solo | `E0022` |
 | `v06_mezcla_clases` | ✅ **coma flotante y entero no se mezclan** -- son los mismos ocho bytes leidos con dos alfabetos | `E0022` |
 | `v07_sin_veracidad_llano` | ✅ **una condicion es una pregunta**, no "algo que no es cero" | `E0040` |

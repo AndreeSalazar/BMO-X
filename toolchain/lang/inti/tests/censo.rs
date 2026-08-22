@@ -177,40 +177,6 @@ fn las_sondas_que_dicen_compila_se_leen_enteras() {
 /// Estas ya no son promesas: declaran un codigo que alguna fase sabe dar hoy,
 /// asi que se exige. Las demas siguen esperando a la suya, y la lista crece
 /// cada vez que una fase aprende algo -- que es la forma de que el censo mida
-/// el avance en vez de describirlo.
-#[test]
-fn las_sondas_que_ya_se_pueden_dan_su_codigo() {
-    const AHORA_SE_PUEDEN: &[(&str, &str)] = &[
-        ("p02_llano_sin_lista", "E0070"),
-        ("p03_llano_sin_numero", "E0020"),
-        ("p04_crudo_en_pleno", "E0071"),
-        ("p07_puerto_sin_crudo", "E0072"),
-        // Desde F2b: los nombres.
-        ("c01_fija", "E0030"),
-        ("c05_muta_iterando", "E0050"),
-        ("e02_ignorar_error", "E0060"),
-        ("f04_parametro_fijo", "E0030"),
-        ("f06_sin_herencia", "E0100"),
-        ("f03_sin_closures", "E0101"),
-    ];
-
-    for (nombre, esperado) in AHORA_SE_PUEDEN {
-        let (_, texto) = sondas()
-            .into_iter()
-            .find(|(n, _)| n == nombre)
-            .unwrap_or_else(|| panic!("falta la sonda {}", nombre));
-
-        let c = bmo_inti_front::comprobar(&texto);
-        assert!(
-            c.codigos().contains(esperado),
-            "{} tenia que dar {} y dio {:?}\n{}",
-            nombre,
-            esperado,
-            c.codigos(),
-            c.pintar(&format!("{}.inti", nombre))
-        );
-    }
-}
 
 /// Y las que dicen COMPILA siguen sin dar ni un aviso al pasar por el perfil.
 #[test]
@@ -259,4 +225,177 @@ fn una_sonda_le_cuenta_su_parte_a_cabina() {
             .any(|e| e.severity == cabina_core::Severity::Fault),
         "p01_llano compila: no deberia haber fallos"
     );
+}
+
+// ===================================================================
+//  ** EL CENSO ENTERO, y no diez elegidas a mano
+// ===================================================================
+//
+//  Hasta el 2026-08-21 este fichero comprobaba **diez** sondas contra su
+//  veredicto, escritas en una lista. Las otras treinta y dos declaraban un
+//  veredicto que no miraba nadie.
+//
+//  Y una lista a mano tiene un fallo que no se ve: **no crece sola**. Cada vez
+//  que el compilador aprendia algo nuevo, la sonda que ya se podia comprobar
+//  seguia sin comprobarse hasta que alguien se acordara de anadirla. Nadie se
+//  acordaba, porque nada fallaba.
+//
+//  ** Lo que costo: `v04_sin_veracidad` llevaba desde F0 SIN COMPILAR --usaba
+//  `lista` como nombre de variable, y `lista` es palabra clave-- y daba tres
+//  errores de sintaxis. Es el mismo fallo que `para` en la tabla de la maquina,
+//  y sobrevivio por el mismo motivo: el corpus se miraba por encima (margenes,
+//  comillas) y **nunca se le preguntaba si se LEE**.
+//
+//  Ahora se recorren las 42 y la lista es de EXENCIONES, no de inclusiones. Una
+//  exencion hay que justificarla; una inclusion que falta no la echa de menos
+//  nadie.
+
+/// Las sondas cuyo veredicto pide una fase que todavia no existe.
+///
+/// ** Cada una con su motivo, y el motivo tiene que ser una FASE, no una excusa.
+/// Si algun dia una de estas empieza a cumplir su veredicto, el test lo dice:
+/// una exencion que ya no hace falta es tan mala como una que falta.
+const TODAVIA_NO: &[(&str, &str)] = &[
+    (
+        "p05_paralelo_mutable",
+        "E0080 pide el analisis de tareas, que nace con `paralelo` (F7)",
+    ),
+    (
+        "r02_indice",
+        "E0090 pide saber la LONGITUD, y un `bufer` no la lleva. Nace con `lista de T` de `pleno`",
+    ),
+    (
+        "v03_sin_nulo",
+        "E0021 pide `quiza T`, que no esta construido",
+    ),
+    (
+        "v04_sin_veracidad",
+        "E0040 existe y funciona en `llano` (ver v07). Aqui es `pleno`, donde `tipos` no entra todavia",
+    ),
+    (
+        "v05_sin_conversion",
+        "E0022 existe y funciona en `llano` (ver v06). Aqui es texto + numero, que es el modelo de `pleno`",
+    ),
+];
+
+fn exenta(nombre: &str) -> Option<&'static str> {
+    TODAVIA_NO
+        .iter()
+        .find(|(n, _)| *n == nombre)
+        .map(|(_, por_que)| *por_que)
+}
+
+/// **LA MATRIZ ENTERA**: cada sonda contra el veredicto que ella misma declara.
+///
+/// ## Los tres tipos de veredicto, y que se puede exigir de cada uno
+///
+/// ```text
+///    COMPILA          no puede salir ni un error
+///    Exxxx            ese codigo tiene que estar
+///    Exxxx ejecucion  tiene que COMPILAR limpio; que atrape lo prueba el
+///                     banco del emisor, que es quien puede ejecutar
+/// ```
+///
+/// ** La tercera fila es la que mas se presta a enganar. Exigir aqui que atrape
+/// seria imposible --este test no ejecuta nada-- pero **no exigir nada la
+/// dejaria pasar aunque no compilara**, que es exactamente lo que le pasaba a
+/// `r12_conversion`: escribia `escribe(...)` en `perfil llano`, donde no existe,
+/// asi que daba E0070 al compilar y no llegaba nunca a la parte que probaba.
+#[test]
+fn cada_sonda_cumple_el_veredicto_que_declara() {
+    let mut fallan: Vec<String> = Vec::new();
+    let mut sobran: Vec<String> = Vec::new();
+    let mut miradas = 0usize;
+
+    for (nombre, texto) in sondas() {
+        let v = veredicto(&texto);
+        let c = bmo_inti_front::comprobar(&texto);
+        let cods = c.codigos();
+        let errores: Vec<&str> = cods.iter().copied().filter(|x| x.starts_with('E')).collect();
+
+        let cumple = if v.starts_with("COMPILA") {
+            errores.is_empty()
+        } else if v.contains("ejecucion") {
+            // Compila limpio; atrapar se prueba donde se puede ejecutar.
+            errores.is_empty()
+        } else if v.starts_with('E') || v.starts_with('A') {
+            cods.contains(&&v[..5])
+        } else {
+            true
+        };
+
+        match (cumple, exenta(&nombre)) {
+            (true, None) => miradas += 1,
+            (true, Some(por_que)) => sobran.push(format!(
+                "{} ya cumple `{}` y sigue exenta.\n      motivo escrito: {}",
+                nombre, v, por_que
+            )),
+            (false, Some(_)) => {}
+            (false, None) => fallan.push(format!(
+                "{} dice `{}` y da {:?}\n{}",
+                nombre,
+                v,
+                cods,
+                c.pintar(&format!("{}.inti", nombre))
+            )),
+        }
+    }
+
+    assert!(
+        fallan.is_empty(),
+        "{} sonda(s) no cumplen lo que declaran:\n\n{}",
+        fallan.len(),
+        fallan.join("\n")
+    );
+    // ** Y la otra direccion, que es la que impide que la lista se pudra: una
+    // exencion que ya no hace falta miente sobre lo que el compilador sabe
+    // hacer, y ademas tapa el caso el dia que se rompa.
+    assert!(
+        sobran.is_empty(),
+        "{} exencion(es) ya no hacen falta -- quitalas de TODAVIA_NO:\n  {}",
+        sobran.len(),
+        sobran.join("\n  ")
+    );
+
+    assert!(
+        miradas >= 37,
+        "solo se comprobaron {} sondas de {}",
+        miradas,
+        sondas().len()
+    );
+}
+
+/// ** TODA SONDA SE TIENE QUE PODER LEER, incluidas las que declaran un error.
+///
+/// Es la prueba que faltaba y la que habria cazado `v04` el primer dia. Una
+/// sonda que declara `E0040` y muere con tres `E0017` de sintaxis **no esta
+/// probando la regla que dice probar**: esta probando que el parser se queja, y
+/// eso ya lo prueba otro.
+///
+/// La distincion es fina y es la que importa: un error de SINTAXIS en una sonda
+/// que espera un error SEMANTICO significa que la sonda esta mal escrita, no que
+/// el lenguaje funcione.
+#[test]
+fn ninguna_sonda_muere_en_el_parser_salvo_las_que_lo_buscan() {
+    // Las que SI buscan un error de sintaxis, por su codigo declarado.
+    const DE_SINTAXIS: &[&str] = &["E0001", "E0010", "E0011", "E0017"];
+
+    for (nombre, texto) in sondas() {
+        let v = veredicto(&texto);
+        if DE_SINTAXIS.iter().any(|c| v.starts_with(c)) {
+            continue;
+        }
+        let c = bmo_inti_front::comprobar(&texto);
+        for codigo in c.codigos() {
+            assert!(
+                !DE_SINTAXIS.contains(&codigo),
+                "{} declara `{}` y no se lee: da {} en el parser.\n{}\n\
+                 Una sonda que muere en el parser no prueba la regla que dice probar.",
+                nombre,
+                v,
+                codigo,
+                c.pintar(&format!("{}.inti", nombre))
+            );
+        }
+    }
 }
