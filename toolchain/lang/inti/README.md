@@ -183,11 +183,12 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | **sonda 32** | la tesis de la tabla, ejercitada: otra maquina da otra disposicion **sin tocar Rust** | ✅ verde (2026-08-21) |
 | **F5e** | ★★ **las reglas que se contaban y no llegaban a bytes**: la 3 y la 12 atrapan y corren. La 2 espera a `lista de T` | ✅ verde (2026-08-21) |
 | **F6a** | ★★★ **LOS TIPOS**: `flotante64 + entero64` deja de compilar. Y una condicion es una pregunta, no "algo que no es cero" | ✅ verde (2026-08-21) |
-| F6b | ★★ la foto del Ryzen -- **lo unico que el emulador no puede dar** | ⏳ metal |
+| **F6b** | ★★★ **LA LINEA DE ORDENES**: `inti fichero.inti` produce un `.bex`. Hasta hoy INTI compilaba **solo dentro de sus pruebas** | ✅ verde (2026-08-21) |
+| F6c | ★★ la foto del Ryzen -- **lo unico que el emulador no puede dar**, y ahora ya hay fichero que llevar | ⏳ metal |
 | F6 | PLENO: texto, lista, tabla, decimal, contador de referencias | pendiente |
 | F7 | congelado y tareas, y el REPL | pendiente |
 
-**Hoy: 1.128 pruebas en verde** en INTI y en todo lo que comparte tabla con el
+**Hoy: 1.137 pruebas en verde** en INTI y en todo lo que comparte tabla con el
 (BMO C, COBOL, C++, Ada y `bmo-lower`).
 
 ⚠ Y el numero incomodo, que esta medido y no estimado: de los **61 nombres** de

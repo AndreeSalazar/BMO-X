@@ -1802,6 +1802,110 @@ sistema*.
 
 ---
 
+## 13g. ★★★ "PUEDE INTI EJECUTAR UN `float.i` COMO PYTHON?" -- y la respuesta desarma la pregunta
+
+> Pregunta de Eddi, 2026-08-21: *"me hice pregunta si INTI es inspirado en Python
+> en sintaxis, que no espera que puede tomar control en BEX, antes de BEF? Porque
+> Python es como ya sabes, todo. INTI no es posible? Ese es el lenguaje canon de
+> BMO-X y no BEX que ejecuta."*
+
+### 13g.1 ⚠ Primero el hecho que deshace media pregunta: **Python tampoco**
+
+Cuando escribes `./script.py`, el kernel **no ejecuta el `.py`**. Lee la primera
+linea, ve `#!/usr/bin/python3`, **carga el BINARIO ELF del interprete** y le pasa
+tu fichero **como un argumento**.
+
+```text
+   lo que parece      el .py se ejecuta
+   lo que pasa        se ejecuta /usr/bin/python3, y tu fichero es un DATO
+```
+
+★★ **El `.py` nunca fue ejecutable. El interprete si.** Lo que Python invento no
+fue una forma de ejecutar fuentes: fue **una comodidad de dos lineas en el
+cargador**, y esa comodidad se puede tener aqui sin tocar nada de lo que importa.
+
+### 13g.2 Entonces que hace falta para que `float.i` "se ejecute"
+
+Tres cosas, y **dos ya existen**:
+
+| pieza | que es | estado |
+|---|---|---|
+| un `.bex` llamado `inti` | el compilador. Firmado, en Ring 3, como cualquier otro programa | ✅ **hecho el 21-08** |
+| que compile un fichero de disco | `.inti` entra, `.bex` sale, pasando el gate | ✅ hecho |
+| que la consola sepa que un `.i` se le entrega a el | una fila en la tabla de la consola | ⏳ pendiente, y es corto |
+
+Y **nada de esto toca el gate**: lo que acaba corriendo sigue siendo un `.bex`
+verificado. La comodidad se gana en la consola, que es donde Python la gano.
+
+★ Asi que la respuesta a *"INTI no es posible?"* es: **si es posible, y por el
+mismo camino por el que Python lo hizo** -- no por uno nuevo.
+
+### 13g.3 ⛔ Lo que NO se va a hacer, y por que no es lo mismo
+
+Lo que suena parecido y es otra cosa es **meter el compilador en el kernel**,
+para que el cargador lea un `.i` directamente. Eso si esta descartado, y por dos
+motivos que ya estaban escritos:
+
+1. **Pondria un lenguaje entero en Ring 0.** El kernel pasaria de cargar bytes a
+   analizar texto de usuario, que es superficie de ataque nueva y del peor tipo.
+2. **Rompe el gate.** La seccion 14 dice que `eval` esta fuera porque *lo que
+   ejecuta paso el control*. Un fuente que se carga sin compilar no ha pasado
+   nada: no hay firma que valga sobre un texto que se interpreta.
+
+★★ Y hay un tercero que solo se ve aqui: **el `.bex` es una identidad del
+sistema**. Es lo que se firma, lo que se federa y lo que `bmo-verify` mira. Un
+sistema que ejecuta fuentes no puede prometer que lo que corre es lo que se
+aprobo.
+
+### 13g.4 ★★ "El lenguaje canon de BMO-X es INTI y no BEX" -- mitad verdad, otra vez
+
+Es el mismo reparto de 13d, y conviene decirlo con las dos palabras:
+
+```text
+   INTI   el FUENTE canonico.    Lo que una persona lee y cambia
+   BEX    el ARTEFACTO canonico. Lo que el kernel carga y lo que lleva la firma
+```
+
+No compiten porque **no se puede elegir uno**. Un sistema sin fuente canonico no
+se puede mantener; uno sin artefacto canonico no se puede verificar.
+
+### 13g.5 ★★★ Y AQUI ESTA LA IDEA QUE SI ES NUEVA: el ejecutable lleva su fuente dentro
+
+La seccion `Resources` (0x0B) del formato BEF ya existe y `bmo-pack` ya la
+escribe. **Nada impide que un `.bex` de INTI lleve dentro el `.inti` que lo
+produjo.**
+
+Y entonces pasa algo que ni Python ni Linux pueden ofrecer:
+
+| | Python | un `.so` de Linux | un `.bex` de INTI con su fuente |
+|---|---|---|---|
+| ves lo que corre | ✅ pero **no esta firmado** | ⛔ es opaco | ✅ **y esta firmado** |
+| puedes comprobar que el fuente es ese | ⛔ no hay binario que comparar | ⛔ | ✅ **recompilando** |
+
+★★ **Y la comprobacion es posible por algo que ya esta hecho y probado**: el test
+`el_mismo_fuente_emite_los_mismos_bytes`. Si el mismo fuente da siempre los
+mismos bytes, entonces **recompilar el fuente que el `.bex` lleva dentro y
+comparar con su seccion de codigo demuestra que ese fuente produjo ese binario**.
+
+Eso no es transparencia como gesto: es **procedencia verificable**, y es
+exactamente el argumento que la federacion necesita. Una firma dice *quien lo
+mando*; esto dice *que es lo que mando*.
+
+⚠ El precio, dicho: el `.bex` engorda lo que mida el fuente. Se paga por
+programa y se puede quitar por programa -- una bandera, no una decision del
+sistema.
+
+### 13g.6 Y lo que esto desbloquea de paso, que era la otra mitad de la pregunta
+
+> *"puedo traer datos en BMO-X para ejecutar los tests de `datos.i`"*
+
+Si, y ya: un `.i` es un fichero como cualquier otro. El compilador lo lee, y un
+programa de INTI puede leerlo tambien con `usa archivo`. **Datos de prueba
+escritos en el propio lenguaje** no piden nada nuevo -- piden lo que hoy ya
+existe.
+
+---
+
 ## 14. LO QUE NO ENTRA, con motivo
 
 | fuera | motivo |
