@@ -300,7 +300,18 @@ struct Cuenta {
 }
 
 fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
-    let marco = Marco::con_registros(f, &taller.temporales);
+    // ** Los que la maquina pisa por sus propias instrucciones se quitan del
+    // reparto; el resto sigue disponible. Antes se apagaba el reparto ENTERO en
+    // cuanto habia una, y eso es pagar el precio de una llamada por algo que la
+    // tabla acota en una fila.
+    let pisados = metal::registros_que_pisa(f, taller);
+    let libres: Vec<u8> = taller
+        .temporales
+        .iter()
+        .copied()
+        .filter(|r| !pisados.contains(r))
+        .collect();
+    let marco = Marco::con_registros(f, &libres);
     let mut cuenta = Cuenta {
         en_registros: marco.en_registros(),
         en_pila: f.temporales as usize - marco.en_registros(),

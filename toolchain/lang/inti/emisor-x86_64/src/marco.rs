@@ -156,11 +156,25 @@ impl Marco {
             .map(|i| Sitio::Pila(self.en_pila(Temporal(i))))
             .collect();
 
-        // El freno: una llamada puede pisar estos tres registros.
+        // ** EL FRENO, y solo para lo que de verdad no se puede acotar.
+        //
+        // Una LLAMADA puede pisar cualquier cosa: al otro lado hay codigo que
+        // este fichero no ha visto. Ahi no queda mas que apagar el reparto.
+        //
+        // ** Una instruccion de maquina NO. Pisa exactamente lo que dice su fila
+        // de `intrinsics.toml`, y quien la emite ya lee esa fila. Hasta el 22-08
+        // las dos frenaban igual --y por eso el bucle de la sonda del Ryzen
+        // costo ~47 ticks por vuelta con el contador viviendo en la pila--.
+        //
+        // Ahora lo que pisan se resta de `disponibles` antes de llegar aqui, que
+        // es donde la tabla puede hablar. Este fichero solo ve la lista.
         if f.instrucciones
             .iter()
-            .any(|i| matches!(i, Instr::Llama { .. } | Instr::Metal { .. }))
+            .any(|i| matches!(i, Instr::Llama { .. }))
         {
+            return sitios;
+        }
+        if disponibles.is_empty() {
             return sitios;
         }
 
