@@ -126,7 +126,35 @@ ninguno le habia preguntado. **Quedan preguntas sin hacer.**
 
 ## 4. PELDANO 3 -- EL METAL: donde estamos, y que hace falta
 
-**Estado: ⛔ CERO en el metal, pero el fichero YA EXISTE.**
+**Estado: ✅ M1 y M2 HECHOS en el Ryzen (22-08). M3 esperando una ejecucion.**
+
+    -- cpu -  0x10          la hoja maxima, como se predijo
+    -- cpu -  0x00A20F12    familia 0x19 modelo 0x21: Zen 4 (Raphael)
+    tsc       0xB519        mejor de ocho
+    ruido     0x16B1        12,5% de dispersion DENTRO de una tanda
+    xcr0      0x07          x87+SSE+AVX. AVX-512 esta APAGADO
+    azar      0x01
+    bits      0x00  <- APROBADO, 8 comprobaciones
+    atomicas  0x00  <- APROBADO, 9 comprobaciones sobre memoria del kernel
+    -- fin -
+
+★★★ Siete de ocho lineas acertaron la prediccion escrita por delante. Y en
+CUATRO ejecuciones **las lineas de hechos salieron bit por bit identicas**: solo
+se movio la medida. Una medida varia, un hecho no.
+
+★★ **Y el instrumento se calibro por el camino.** El primer intento medio una
+sola vez y no tenia resolucion: la optimizacion del freno del asignador salio
+0,6% por debajo con un ruido del 11,6%. Ahora se toma la MEJOR DE OCHO y se
+publica la dispersion al lado.
+
+```text
+   los tres minimos    46.731  46.435  46.361   -> se repiten dentro del 0,8%
+   la dispersion       12,5% DENTRO de una tanda
+```
+
+**El minimo es estable aunque la dispersion sea grande**, y de ahi sale el
+umbral: para poder AFIRMAR una mejora hay que mover el minimo mas de ~1%.
+Sin ese numero, el peldano 6 no puede empezar.
 
 `sondas/cpu.inti` esta escrita, compila, pasa el gate y **su formateador esta
 calibrado en el emulador**. Lo que falta es la maquina.
@@ -137,7 +165,7 @@ calibrado en el emulador**. Lo que falta es la maquina.
 |---|---|---|
 | **M1** | **el hola mundo del metal**: un `.bex` de INTI arranca y sale por la puerta con un codigo elegido | el kernel recoge exactamente ese codigo |
 | **M2** | **lo que este CPU le cuenta a un programa de Ring 3** -- `sondas/cpu.inti` | las dos lineas que dicen CERO salen a cero; las demas salen con un numero |
-| **M3** | **las tres reglas atrapan en metal**: desborde, entre cero, conversion | los codigos 1001, 1003 y 1012 salen por la puerta |
+| **M3** | **las tres reglas atrapan en metal**: desborde, entre cero, conversion | ⏳ **la linea `reglas` de la sonda sale a CERO**. Ya esta escrita y calibrada en el emulador; falta un arranque |
 
 ### 3.2 ⚠ CORRECCION (21-08): M2 no puede ser las 36, y el motivo es el ANILLO
 

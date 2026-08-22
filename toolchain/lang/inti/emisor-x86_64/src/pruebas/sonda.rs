@@ -139,3 +139,55 @@ fn la_sonda_entera_compila_y_pasa_el_gate() {
     let bytes = empaquetar(&e).expect("el `.bex` no pasa el gate");
     assert_eq!(&bytes[..4], b"BEF1");
 }
+
+/// ** M3: LAS TRES REGLAS ATRAPAN, y con SU codigo.
+///
+/// Es la linea que decide si *"INTI no tiene comportamiento indefinido"* es
+/// verdad o es una frase. Aqui se comprueba en el emulador; en el Ryzen lo
+/// contesta el silicio.
+///
+/// Que se compruebe en los DOS sitios es el punto: si el emulador dice cero y el
+/// metal dice otra cosa, el sospechoso es el emulador -- y ya se ha equivocado
+/// tres veces este mes. Si los dos dicen cero, la frase se sostiene.
+#[test]
+fn las_tres_reglas_de_la_sonda_atrapan_en_el_emulador() {
+    let fuente = format!(
+        "{}funcion principal devuelve entero32
+    devuelve entero32(prueba_reglas())
+",
+        maquinaria_de_cpu()
+    );
+    let m = arranca(&fuente);
+    let salio = m.syscalls.last().expect("no salio por la puerta").arg0;
+    assert_eq!(
+        salio, 0,
+        "una regla no atrapo. bit 0 = desborde, bit 1 = entre cero, bit 2 = conversion"
+    );
+}
+
+/// Y cada una por separado, para que el numero de arriba diga DONDE cuando
+/// falle. Un cero agregado que se rompe sin decir cual no sirve de nada.
+#[test]
+fn cada_regla_de_la_sonda_devuelve_su_codigo() {
+    for (fn_inti, codigo) in [
+        ("desborda", 1001u64),
+        ("entre_cero", 1003),
+        ("convierte_de_mas", 1012),
+    ] {
+        let fuente = format!(
+            "{}funcion principal devuelve entero32
+    devuelve entero32({}())
+",
+            maquinaria_de_cpu(),
+            fn_inti
+        );
+        let m = arranca(&fuente);
+        assert_eq!(
+            m.syscalls.last().unwrap().arg0,
+            codigo,
+            "`{}` tenia que atrapar con {}",
+            fn_inti,
+            codigo
+        );
+    }
+}

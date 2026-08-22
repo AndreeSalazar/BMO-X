@@ -76,6 +76,7 @@ se espera medir**.
 | `azar` | **0x00000001** -- dos tiradas distintas | **0** = `rdrand` devuelve siempre lo mismo, o no ejecuto |
 | `bits` | ★ **0x00000000** | **cualquier otro numero**: cada bit dice que cuenta fallo. Ver la tabla de abajo |
 | `atomicas` | ★ **0x00000000** | idem, y ahi el sospechoso es la memoria, no el CPU |
+| **`reglas`** | ★★★ **0x00000000.** Las tres reglas anti-UB atrapando **en silicio**: desborde (bit 0), entre cero (bit 1), conversion (bit 2). Es la linea que decide si *"INTI no tiene comportamiento indefinido"* es verdad o es una frase | cualquier bit encendido = esa regla NO atrapo, y el programa siguio con un numero inventado |
 | `ruido` | **la peor menos la mejor de ocho.** Cuanto mas bajo, mas se puede afirmar | si es mayor que `tsc`, la medida no vale para comparar nada |
 | `-- fin -` | **tiene que salir** | si no sale, el programa murio antes: mira cual fue la ultima linea |
 

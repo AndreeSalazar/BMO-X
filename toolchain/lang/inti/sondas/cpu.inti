@@ -126,6 +126,9 @@ funcion et_azar devuelve natural64
 funcion et_ruido devuelve natural64
     devuelve 2314885871266526578
 
+funcion et_reglas devuelve natural64
+    devuelve 2314977070736172402
+
 funcion et_fin devuelve natural64
     devuelve 3251720329925504301
 
@@ -250,6 +253,51 @@ funcion prueba_bits devuelve natural64
             mal = mal bits_o 64
         si cuenta_unos(4095) no es 12
             mal = mal bits_o 128
+    devuelve mal
+
+# ===================================================================
+#  ** M3 -- LAS REGLAS, ATRAPANDO EN METAL
+# ===================================================================
+#
+# *** Esta es la linea que decide si la frase de la portada es verdad.
+#
+# "INTI no tiene comportamiento indefinido" se ha comprobado en el emulador
+# --que escribimos nosotros, mirando bytes que escribimos nosotros-- y **nunca
+# en un procesador**. Aqui se le pregunta al silicio.
+#
+# Las tres que llegan a bytes, cada una en su funcion. Una funcion que atrapa
+# DEVUELVE EL CODIGO: la trampa pone el numero en el registro de retorno y sale,
+# asi que preguntar "devolvio 1001?" es preguntar "atrapo?".
+#
+# ** Y la Regla 2 no esta, y no es un olvido: un `bufer` no lleva su longitud,
+# asi que no hay contra que comprobar. Nace con `lista de T`.
+
+# Regla 1: multiplicar dos numeros grandes no cabe en 64 bits.
+funcion desborda devuelve natural64
+    cambiante x es entero64 = 4000000000
+    devuelve x * x
+
+# Regla 3: el divisor es CERO, y se sabe en ejecucion -- no constante, para que
+# el compilador no pueda verlo desde el fuente.
+funcion entre_cero devuelve natural64
+    cambiante c es entero64 = 0
+    devuelve 10 entre c
+
+# Regla 12: 1e30 no es ningun `entero32`.
+funcion convierte_de_mas devuelve natural64
+    devuelve entero32(1e30)
+
+# **CERO ES APROBADO**, como en `bits` y en `atomicas`. Cada bit dice que regla
+# no atrapo -- y una regla que no atrapa no es una regla lenta: es un programa
+# que sigue con un numero inventado.
+funcion prueba_reglas devuelve natural64
+    cambiante mal es natural64 = 0
+    si desborda() no es 1001
+        mal = mal bits_o 1
+    si entre_cero() no es 1003
+        mal = mal bits_o 2
+    si convierte_de_mas() no es 1012
+        mal = mal bits_o 4
     devuelve mal
 
 # ===================================================================
@@ -399,6 +447,9 @@ funcion principal devuelve entero32
 
     # -- el azar del silicio: 1 = las dos tiradas salieron distintas
     linea(f, et_azar(), azar_dos_veces())
+
+    # -- LAS REGLAS atrapando en metal: CERO es aprobado
+    linea(f, et_reglas(), prueba_reglas())
 
     # -- las cuentas de bits: CERO es aprobado
     linea(f, et_bits(), prueba_bits())
