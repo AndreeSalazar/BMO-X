@@ -721,7 +721,7 @@ $dataBase = Join-Path $root 'staging\BMO-DATA'
 # no es cosmetica: `c\`, `cobol\` y `ada\` los llena este build desde el repo, y
 # `apps\` lo llena lo que alguien traiga de fuera -- hoy DOOM. Hasta ahora no lo
 # creaba nadie aunque varios mensajes ya nombraban rutas `apps/...`.
-foreach ($d in @('sys', 'cobol', 'c', 'ada', 'datos', 'apps')) {
+foreach ($d in @('sys', 'cobol', 'c', 'ada', 'inti', 'datos', 'apps')) {
     New-Item -ItemType Directory -Path (Join-Path $dataBase $d) -Force | Out-Null
 }
 # * Y dentro de cobol\, un nivel por carpeta. Ver el bloque de $cobolEjemplos
@@ -996,6 +996,13 @@ try {
     # resuelve `#include <bmo/...>`. Con ellos se toma el de modulos, que no lo
     # llama.
     Compilar-Ejemplos $cEjemplos 'bmo-c-front' 'c' 'ok:|error' $dataBase $repo
+
+    Step 'Building INTI probes...'
+    # ** `run inti/cpu.bex`. Por el MISMO helper que los otros tres: si INTI
+    # necesitara un camino propio al disco, seria que no es un frontend mas. Y es
+    # el fallo que este bloque ya tenia escrito de C -- *compila y no se
+    # despliega* -- repetido con INTI, cuyo .bex vivia fuera del espejo.
+    Compilar-Ejemplos @(@{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.bex'; dir = 'inti' }) 'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
 
     # -- Meter los datos DENTRO del .bex ---------------------------
     #

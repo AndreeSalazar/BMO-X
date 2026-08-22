@@ -17,7 +17,7 @@
 //! visible el reparto -- y el reparto es justamente lo que fallaba antes de F5d,
 //! cuando aqui no habia nada y la rama estaba vacia.
 
-use bmo_inti_front::ir::{Temporal, Valor};
+use bmo_inti_front::ir::Valor;
 use bmo_lower::x86;
 
 use crate::marco::Marco;

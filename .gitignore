@@ -53,5 +53,3 @@ __pycache__/
 
 # Los `.bex` de las sondas se generan con `inti`; el fuente es lo que se guarda.
 toolchain/lang/inti/sondas/*.bex
-inti/*.bex
-inti/*.txt

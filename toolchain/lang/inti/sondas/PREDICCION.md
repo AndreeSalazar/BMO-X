@@ -1,21 +1,20 @@
-# `inti/` -- lo que se lleva al Ryzen
+# `cpu.inti` -- la prediccion, escrita antes de correrla
 
 ```text
    run inti/cpu.bex
 ```
 
-Copia esta carpeta al volumen de datos de BMO-X. Dentro va **`cpu.bex`**, y el
-programa deja su informe en **`/inti/cpu.txt`** ademas de sacarlo por pantalla.
+El `.bex` lo produce **`build.ps1`**, en `staging\BMO-DATA\inti\cpu.bex`, que es
+el espejo de lo que va al volumen de datos. Sale del mismo paso que los ejemplos
+de C, COBOL y Ada.
 
-## Volver a generarlo
+OJO: la primera version se dejo en una carpeta `inti/` del repo y **nunca llego
+al FAT32**. Es el mismo fallo que este bloque del build ya tenia escrito de
+cuando le paso a C: *un lenguaje que compila y cuyo binario no se despliega esta
+a medias*.
 
-```bash
-cargo build -p bmo-inti-x86-64 --bin inti
-./target/debug/inti toolchain/lang/inti/sondas/cpu.inti -o inti/cpu.bex --informe
-```
-
-El `.bex` **no se guarda en git**: es un artefacto. Lo que se guarda es el
-fuente, en `toolchain/lang/inti/sondas/cpu.inti`.
+El programa deja su informe en **`/inti/cpu.txt`** ademas de sacarlo por
+pantalla.
 
 ---
 
