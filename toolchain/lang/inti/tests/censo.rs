@@ -2,19 +2,19 @@
 //!
 //! ## Que puede y que no puede comprobar esto todavia
 //!
-//! `CENSO.md` declara 38 sondas con su veredicto escrito por delante. La
+//! `CENSO.md` declara 40 sondas con su veredicto escrito por delante. La
 //! mayoria de esos veredictos son de fases que **no existen aun** (`E0030` es
 //! del analisis de nombres, `E0080` del de tareas). Comprobarlos hoy seria
 //! fingir.
 //!
 //! Lo que si se puede comprobar hoy, y es exactamente lo que hace este fichero:
 //!
-//! 1. **Que las 38 sondas se pueden leer**, y que ninguna lleva un fallo de
+//! 1. **Que las 40 sondas se pueden leer**, y que ninguna lleva un fallo de
 //!    escritura escondido -- margenes torcidos, comillas sin cerrar, signos de
 //!    otro lenguaje.
 //! 2. **Que las que declaran un veredicto LEXICO lo cumplen ya.**
 //!
-//! El primer punto ya se gano el sitio antes de correr: las 38 sondas estaban
+//! El primer punto ya se gano el sitio antes de correr: las primeras 38 estaban
 //! escritas con **tres** espacios de sangria y la gramatica dice **cuatro**. El
 //! documento y el corpus llevaban dos dias sin estar de acuerdo, y nadie lo
 //! habria visto leyendo.
@@ -54,7 +54,7 @@ fn veredicto(texto: &str) -> String {
 
 #[test]
 fn el_censo_tiene_las_sondas_que_dice() {
-    assert_eq!(sondas().len(), 38, "el numero del censo y el de la carpeta");
+    assert_eq!(sondas().len(), 40, "el numero del censo y el de la carpeta");
 }
 
 /// Cada sonda declara su veredicto en la primera linea, para que la sonda y su

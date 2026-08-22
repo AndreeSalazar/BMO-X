@@ -103,7 +103,7 @@ multi = """
 | `entero8` `entero16` `entero32` `entero64` | tamano **exacto**, con signo | `entero32` |
 | `natural8` .. `natural64` | sin signo | `natural8` |
 | `decimal` | la forma exacta de `numero`, si se quiere nombrar | |
-| `flotante32` `flotante64` | IEEE-754 **estricto**, cuando se pide | |
+| `flotante32` `flotante64` | IEEE-754 **estricto**, cuando se pide. En `llano` es lo que significa un punto (14d) | `2.5` |
 | `logico` | `cierto` / `falso` | |
 | `letra` | un punto de codigo Unicode | `'a'` no: se escribe `letra "a"` |
 | `texto` | cadena UTF-8 inmutable | `"hola"` |
@@ -709,6 +709,81 @@ funcion mueve(p es Punto, dx es entero64)
 Las medidas viven en `tables/lang/inti/medidas.toml`. ★ Mientras sean una tabla,
 **dos maquinas distintas pueden dar disposiciones distintas sin que el
 compilador cambie**.
+
+---
+
+## 14d. `flotante64` -- el numero que mide, no el que cuenta
+
+Hasta F5c, INTI sabia contar y no sabia medir. Un `natural32` cabe un pixel,
+pero no cabe una posicion, ni un angulo, ni una escala.
+
+```inti
+funcion escala(x es flotante64, factor es flotante64) devuelve flotante64
+    devuelve x * factor + 0.5
+
+funcion desde_entero(n es entero64) devuelve flotante64
+    devuelve flotante64(n)
+```
+
+- **Un literal con punto es de coma flotante en `llano`**, y decimal exacto en
+  `pleno`. Es la unica vez que el perfil cambia lo que algo *significa* en vez
+  de lo que se permite -- y el motivo es que `decimal` no existe en `llano`, por
+  no decir su medida.
+- **La clase de una operacion sale del tipo escrito**, no del aspecto del valor.
+  `a * 2` con `a es flotante64` es de coma flotante aunque el `2` no lleve punto.
+- **`flotante64(n)` y `entero64(f)` se escriben como una llamada y no lo son.**
+  Son la instruccion `Convierte`, y el compilador sabe cuales lo son porque las
+  dos listas estan en `medidas.toml`. La conversion **se pide**: no hay ninguna
+  implicita, que es la regla del censo `v05`.
+- `entero64(f)` **trunca hacia el cero**: 2,9 da 2 y -2,9 da -2.
+
+### Lo que NO lleva detras: ninguna comprobacion
+
+Y no es una excepcion a *"INTI no tiene comportamiento indefinido"*:
+
+```text
+   1 / 0        enteros    -> ATRAPA (Regla 3). No hay respuesta que dar
+   1.0 / 0.0    flotante   -> infinito. La respuesta esta escrita desde 1985
+```
+
+Las Reglas 1 y 3 existen porque en los enteros desbordar y dividir entre cero no
+tienen resultado, y cualquier bit que salga se lo invento el compilador. En
+IEEE-754 lo tienen --infinito y NaN, que son **valores** con los que se puede
+seguir operando--. Atrapar aqui no anadiria seguridad: quitaria la aritmetica.
+
+### ⚠ El NaN, y las seis comparaciones
+
+`0.0 / 0.0` da NaN, y un NaN **pierde las cinco primeras comparaciones y gana la
+sexta**:
+
+| | con un NaN dentro |
+|---|---|
+| `<` `>` `<=` `>=` `=` | **falso**, siempre |
+| `no es` | **cierto** -- y por eso `x no es x` es como se pregunta si algo es NaN |
+
+No sale gratis: el silicio enciende la bandera de "iguales" **a la vez** que la
+de "no comparables", asi que una igualdad escrita de la forma obvia contesta que
+si. INTI la escribe de la forma que no.
+
+### ★ La Regla 11, que se ve en lo que NO se emite
+
+`a * b + c` emite **una multiplicacion y una suma**, con su redondeo en medio,
+aunque la maquina sepa hacer las dos de una vez y con mas precision. Se deja
+rendimiento en la mesa a proposito.
+
+El motivo es la unica portabilidad que C nunca dio: **el mismo fuente tiene que
+dar el mismo bit en cualquier maquina**. Un compilador de C con las banderas de
+siempre puede fundir esas dos operaciones, y entonces no lo da. Aqui no se puede,
+y hay un test que lo vigila mirando los bytes.
+
+### Lo que no existe, con motivo
+
+`bits_y`, `bits_o`, `bits_xor`, `desplaza` y `entre` sobre un flotante **no
+compilan** (`E0123`). No es que falte emitirlos: es que los ocho bytes de un
+flotante son signo, exponente y mantisa, asi que `f bits_o 1` no enciende el bit
+de las unidades -- toca el exponente y devuelve un numero que no se parece a
+ninguno de los dos. Quien quiera los bits de verdad los pide por su nombre, y
+entonces esta pidiendo un entero.
 
 ---
 

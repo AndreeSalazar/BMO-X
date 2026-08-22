@@ -505,6 +505,205 @@ pub fn mov_word_at_reg_from_r16(out: &mut Vec<u8>, base: u8, src: u8) {
     modrm_at_base(out, src & 7, base);
 }
 
+// ===================================================================
+//  ** COMA FLOTANTE ESCALAR (SSE)
+// ===================================================================
+//
+//  Estos bytes ya se emitian, pero desde DENTRO del generador de BMO C, escritos
+//  a mano en cada sitio. Aqui estan una vez, con nombre, para que el segundo
+//  lenguaje que los necesite no los vuelva a escribir -- que es exactamente lo
+//  que paso con los anchos de 16 y 32 bits.
+//
+//  ** El modelo de INTI: los valores viven en registros normales como PATRON DE
+//  BITS, y solo cruzan a `xmm` para la operacion. Cuesta dos `movq` por
+//  operacion y a cambio **el asignador de registros, el marco y la convencion de
+//  llamada no cambian ni una linea**.
+//
+//  No es la version rapida y no pretende serlo. Es la version que se puede
+//  escribir entera hoy y medir manana: el dia que haya reparto de `xmm`, lo que
+//  cambia es donde viven los valores, no que operacion se emite.
+
+/// `movq <xmm>, <r64>` -- el patron de bits, tal cual, al registro de coma
+/// flotante. **No convierte**: 5 no se vuelve 5.0.
+pub fn movq_xmm_de_r64(out: &mut Vec<u8>, xmm: u8, reg: u8) {
+    out.extend_from_slice(&[0x66, 0x48 | ((reg >> 3) & 1) | (((xmm >> 3) & 1) << 2)]);
+    out.extend_from_slice(&[0x0F, 0x6E]);
+    out.push(modrm_reg_direct(xmm & 7, reg & 7));
+}
+
+/// `movq <r64>, <xmm>` -- y de vuelta.
+pub fn movq_r64_de_xmm(out: &mut Vec<u8>, reg: u8, xmm: u8) {
+    out.extend_from_slice(&[0x66, 0x48 | ((reg >> 3) & 1) | (((xmm >> 3) & 1) << 2)]);
+    out.extend_from_slice(&[0x0F, 0x7E]);
+    out.push(modrm_reg_direct(xmm & 7, reg & 7));
+}
+
+/// Las cuatro operaciones de doble precision, sobre `xmm0` y `xmm1`.
+///
+/// ** Y fijate en lo que NO llevan detras: ninguna comprobacion.
+///
+/// No es un olvido ni una excepcion a "INTI no tiene comportamiento indefinido".
+/// Es que **IEEE-754 define el desbordamiento y la division por cero**: dan
+/// infinito y NaN, que son valores. La Regla 1 y la Regla 3 existen porque en
+/// los ENTEROS esos dos casos no tienen respuesta; aqui la tienen, y esta
+/// escrita en una norma de 1985.
+pub fn addsd(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[0xF2, 0x0F, 0x58, 0xC1]);
+}
+
+pub fn subsd(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[0xF2, 0x0F, 0x5C, 0xC1]);
+}
+
+pub fn mulsd(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[0xF2, 0x0F, 0x59, 0xC1]);
+}
+
+pub fn divsd(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[0xF2, 0x0F, 0x5E, 0xC1]);
+}
+
+/// `comisd xmm0, xmm1` -- compara y deja las banderas como un `cmp` de enteros.
+///
+/// ** Eso es lo que deja que las comparaciones de coma flotante reutilicen los
+/// mismos `setcc` que las de enteros: el silicio ya tradujo. Lo que NO traduce
+/// es el NaN, que sale "no comparable" y pone las tres banderas -- por eso una
+/// comparacion con NaN es falsa mire por donde se mire.
+pub fn comisd(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[0x66, 0x0F, 0x2F, 0xC1]);
+}
+
+/// `cvtsi2sd <xmm0>, <r64>` -- un entero se convierte de verdad. 5 -> 5.0.
+pub fn cvtsi2sd_de_r64(out: &mut Vec<u8>, reg: u8) {
+    out.extend_from_slice(&[0xF2, 0x48 | ((reg >> 3) & 1), 0x0F, 0x2A]);
+    out.push(modrm_reg_direct(0, reg & 7));
+}
+
+/// `cvttsd2si <r64>, <xmm0>` -- y de vuelta, TRUNCANDO.
+///
+/// ** La doble `t` no es un adorno: es "truncate", y elige el redondeo. 2,9 da
+/// 2 y -2,9 da -2, que es lo que hace un lenguaje de sistema al convertir. La
+/// version sin la segunda `t` redondea al par mas cercano, que es correcto para
+/// aritmetica y sorprendente para una conversion escrita a mano.
+///
+/// OJO con lo que devuelve cuando el numero NO CABE: el valor mas negativo del
+/// entero, como centinela, y sin levantar nada que se pueda mirar despues. Por
+/// eso la Regla 12 no se puede cumplir con esta instruccion sola.
+pub fn cvttsd2si_r64(out: &mut Vec<u8>, reg: u8) {
+    out.extend_from_slice(&[0xF2, 0x48 | (((reg >> 3) & 1) << 2), 0x0F, 0x2C]);
+    out.push(modrm_reg_direct(reg & 7, 0));
+}
+
+// ===================================================================
+//  ** CABE ESTO EN MENOS BYTES? -- la pregunta de la Regla 12
+// ===================================================================
+//
+//  Extender con SIGNO los bytes bajos y comparar con el original es el modo
+//  clasico de preguntar *"cabia?"*, y funciona por una razon bonita: si el
+//  valor cabia en n bytes, extenderlo devuelve el mismo numero; si no cabia, la
+//  extension inventa unos bits altos distintos de los que habia.
+//
+//  ** Y es una pregunta que hay que hacer explicita porque la maquina NO la
+//  hace: escribir un registro de 32 bits tira los otros 32 sin quejarse. Ese
+//  silencio es exactamente el comportamiento indefinido del que INTI se escapa.
+
+/// `movsxd <r64>, <low32(src)>` -- los 32 bajos, con su signo, a 64.
+pub fn movsxd_r64_r32(out: &mut Vec<u8>, dst: u8, src: u8) {
+    out.push(0x48 | (((dst >> 3) & 1) << 2) | ((src >> 3) & 1));
+    out.push(0x63);
+    out.push(modrm_reg_direct(dst & 7, src & 7));
+}
+
+/// `movsx <r64>, <low16(src)>`.
+pub fn movsx_r64_r16(out: &mut Vec<u8>, dst: u8, src: u8) {
+    out.push(0x48 | (((dst >> 3) & 1) << 2) | ((src >> 3) & 1));
+    out.extend_from_slice(&[0x0F, 0xBF]);
+    out.push(modrm_reg_direct(dst & 7, src & 7));
+}
+
+/// `movsx <r64>, <low8(src)>`.
+pub fn movsx_r64_r8(out: &mut Vec<u8>, dst: u8, src: u8) {
+    out.push(0x48 | (((dst >> 3) & 1) << 2) | ((src >> 3) & 1));
+    out.extend_from_slice(&[0x0F, 0xBE]);
+    out.push(modrm_reg_direct(dst & 7, src & 7));
+}
+
+/// Un salto CORTO hacia delante, con el hueco sin rellenar.
+///
+/// Devuelve la posicion del byte de desplazamiento, que hay que cerrar con
+/// [`cierra_salto_corto`] cuando se sepa el destino.
+///
+/// ** Corto y no largo porque estos saltos son de una comprobacion a la
+/// siguiente linea: caben de sobra en un byte, y usar cuatro donde caben uno es
+/// engordar el camino que SIEMPRE se recorre para ahorrar en el que casi nunca.
+pub fn salto_corto(out: &mut Vec<u8>, cc: u8) -> usize {
+    out.extend_from_slice(&[cc, 0]);
+    out.len() - 1
+}
+
+/// Cierra un [`salto_corto`] para que caiga en el final actual del codigo.
+pub fn cierra_salto_corto(out: &mut Vec<u8>, hueco: usize) {
+    let destino = out.len();
+    let rel = destino as i64 - (hueco as i64 + 1);
+    debug_assert!(
+        (-128..=127).contains(&rel),
+        "un salto corto no llega: {} bytes",
+        rel
+    );
+    out[hueco] = rel as u8;
+}
+
+// ===================================================================
+//  ** DE BANDERAS A 0/1 -- la plomeria de toda comparacion
+// ===================================================================
+//
+//  Estos bytes tambien se escribian a mano en cada sitio que comparaba. Estan
+//  aqui por el mismo motivo que los de arriba: **el segundo lenguaje que
+//  compare no tiene que volver a escribirlos**.
+//
+//  Y hay una razon mas fuerte que la comodidad. Una comparacion de coma
+//  flotante necesita mirar DOS banderas --el resultado y la de "no comparable"--
+//  y combinarlas. Con los bytes sueltos por el emisor, esa combinacion se
+//  escribe distinta cada vez que hace falta; con nombres, se escribe una.
+
+/// `setcc <low(reg)>` -- pone el byte bajo a 1 o a 0 segun la bandera.
+///
+/// OJO al orden, que costo un test en su dia: `setcc` va PRIMERO y la extension
+/// despues. Poner el registro a cero antes con un `xor` **destruye las banderas
+/// que la comparacion acaba de dejar**, y entonces contesta siempre lo mismo.
+pub fn setcc_low(out: &mut Vec<u8>, cc: u8, reg: u8) {
+    if reg >= 4 {
+        out.push(0x40 | ((reg >> 3) & 1));
+    }
+    out.extend_from_slice(&[0x0F, cc]);
+    out.push(modrm_reg_direct(0, reg & 7));
+}
+
+/// `movzx <r64>, <low(src)>` -- el byte de `setcc`, extendido con ceros.
+pub fn movzx_r64_low(out: &mut Vec<u8>, dst: u8, src: u8) {
+    out.push(0x48 | (((dst >> 3) & 1) << 2) | ((src >> 3) & 1));
+    out.extend_from_slice(&[0x0F, 0xB6]);
+    out.push(modrm_reg_direct(dst & 7, src & 7));
+}
+
+/// `and <low(dst)>, <low(src)>` -- dos condiciones que tienen que darse las dos.
+pub fn and_low_low(out: &mut Vec<u8>, dst: u8, src: u8) {
+    if dst >= 4 || src >= 4 {
+        out.push(0x40 | (((src >> 3) & 1) << 2) | ((dst >> 3) & 1));
+    }
+    out.push(0x20);
+    out.push(modrm_reg_direct(src & 7, dst & 7));
+}
+
+/// `or <low(dst)>, <low(src)>` -- o una o la otra.
+pub fn or_low_low(out: &mut Vec<u8>, dst: u8, src: u8) {
+    if dst >= 4 || src >= 4 {
+        out.push(0x40 | (((src >> 3) & 1) << 2) | ((dst >> 3) & 1));
+    }
+    out.push(0x08);
+    out.push(modrm_reg_direct(src & 7, dst & 7));
+}
+
 /// `push <r64>` / `pop <r64>`.
 pub fn push_r64(out: &mut Vec<u8>, reg: u8) {
     if reg >= 8 {

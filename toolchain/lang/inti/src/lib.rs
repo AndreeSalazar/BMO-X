@@ -199,6 +199,13 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
     for (n, _) in &arbol.valor.usa {
         extra.extend(modulos.trae(n).iter().cloned());
     }
+    // ** Y las conversiones, que se escriben como una llamada.
+    //
+    // `flotante64(n)` no es una funcion y aun asi tiene que EXISTIR para el
+    // analisis de nombres, o lo denuncia como una falta de ortografia. Los
+    // nombres salen de `medidas.toml`, que es la misma tabla que decide como se
+    // baja: una sola lista, no dos que puedan discrepar.
+    extra.extend(disposicion::Medidas::cargar(&raices).conversiones());
     let mut nombres =
         nombres::comprobar(&arbol.valor, &nombres::Comun::cargar(&raices), &extra);
 
@@ -246,10 +253,18 @@ pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core:
     for (n, _) in &arbol.valor.usa {
         extra.extend(modulos.trae(n).iter().cloned());
     }
+    // ** Y las conversiones, que se escriben como una llamada.
+    //
+    // `flotante64(n)` no es una funcion y aun asi tiene que EXISTIR para el
+    // analisis de nombres, o lo denuncia como una falta de ortografia. Los
+    // nombres salen de `medidas.toml`, que es la misma tabla que decide como se
+    // baja: una sola lista, no dos que puedan discrepar.
+    extra.extend(disposicion::Medidas::cargar(&raices).conversiones());
     let mut nombres_ = nombres::comprobar(&arbol.valor, &nombres::Comun::cargar(&raices), &extra);
 
     let plano = disposicion::comprobar(&arbol.valor, disposicion::Medidas::cargar(&raices));
-    let ir = ir::bajar_con(&arbol.valor, &modulos, &plano.valor).valor;
+    let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
+    let ir = ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
 
     let parte = cabina::Parte {
         fichero: fichero.to_string(),
@@ -258,6 +273,12 @@ pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core:
         bloques_crudo: perfiles.valor.bloques_crudo,
         comprobaciones: ir.comprobaciones(),
         funciones: ir.funciones.len(),
+        instrucciones: ir.instrucciones(),
+        // ** Vacio, y NO por olvido: esta funcion no emite un byte. Lo que no
+        // llego a emitirse solo lo sabe quien emitio, y este camino se queda en
+        // la IR. Poner un cero aqui diria "no falto nada", que es una respuesta
+        // distinta de "no lo se".
+        sin_emitir: Vec::new(),
     };
 
     let mut avisos = std::mem::take(&mut arbol.avisos);

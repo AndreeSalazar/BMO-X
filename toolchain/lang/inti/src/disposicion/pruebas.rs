@@ -233,3 +233,157 @@ fn en_pleno_no_se_mide_nada_todavia() {
     let c = codigos_de("perfil pleno\n\nregistro Alumno\n    nombre es texto\n    nota es numero\n");
     assert!(c.is_empty(), "{:?}", c);
 }
+
+
+// ===================================================================
+//  ** F5c -- LA CLASE. De que son los numeros de una operacion.
+// ===================================================================
+
+/// Lo que devuelve la primera funcion del fuente, con sus tipos. El andamio de
+/// las tres pruebas de abajo.
+fn devuelto(fuente: &str) -> (Plano, Expr, HashMap<String, Tipo>) {
+    let v = Vocabulario::por_defecto().unwrap();
+    let piezas = lexico::barrer(fuente, &v);
+    let arbol = sintaxis::leer(&piezas.valor, &v);
+    assert!(!arbol.hay_errores(), "{}", arbol.pintar("prueba.inti"));
+    let plano = comprobar(&arbol.valor, Medidas::por_defecto()).valor;
+    let Decl::Funcion(f) = &arbol.valor.declaraciones[0] else {
+        panic!("la prueba no encuentra su funcion");
+    };
+    let tipos = tipos_de(f);
+    let Sent::Devuelve { valor: Some(e), .. } = &f.cuerpo[0] else {
+        panic!("la prueba no encuentra su `devuelve`");
+    };
+    (plano, e.clone(), tipos)
+}
+
+/// Un literal con punto es de coma flotante y uno sin punto no. Es la respuesta
+/// mas simple de las cuatro, y la que sostiene las demas.
+#[test]
+fn el_punto_es_lo_que_hace_flotante_a_un_literal() {
+    let (p, e, t) = devuelto(&format!(
+        "{}funcion f devuelve flotante64\n    devuelve 1.5\n",
+        CABECERA
+    ));
+    assert!(p.es_flotante(&e, &t));
+
+    let (p, e, t) = devuelto(&format!(
+        "{}funcion f devuelve entero64\n    devuelve 15\n",
+        CABECERA
+    ));
+    assert!(!p.es_flotante(&e, &t));
+}
+
+/// ** LA PREGUNTA SE CONTESTA CON EL TIPO ESCRITO, no con el aspecto del valor.
+///
+/// `a * 2` con `a es flotante64` es de coma flotante aunque el `2` no lleve
+/// punto. **Lo decide lo que esta declarado**, que es la unica cosa que se puede
+/// leer sin ejecutar nada -- y en un lenguaje que escribe sistema, el ancho de
+/// una operacion tiene que estar escrito en algun sitio que se pueda leer.
+#[test]
+fn el_tipo_declarado_decide_la_clase_y_no_el_literal() {
+    let (p, e, t) = devuelto(&format!(
+        "{}funcion f(a es flotante64, b es entero64) devuelve flotante64\n    devuelve a * 2\n",
+        CABECERA
+    ));
+    assert!(
+        p.es_flotante(&e, &t),
+        "`a * 2` con `a` flotante es de coma flotante"
+    );
+}
+
+#[test]
+fn dos_enteros_no_se_vuelven_flotantes_por_dividirse() {
+    let (p, e, t) = devuelto(&format!(
+        "{}funcion f(a es entero64, b es entero64) devuelve entero64\n    devuelve a / b\n",
+        CABECERA
+    ));
+    assert!(!p.es_flotante(&e, &t));
+}
+
+/// ** E0123: LOS BITS SOBRE UN FLOTANTE SE DENUNCIAN.
+///
+/// Y el motivo no es que falte emitirlos. Es que la pregunta no significa nada:
+/// los ocho bytes de un flotante son signo, exponente y mantisa, asi que `f | 1`
+/// no enciende el bit de las unidades -- toca el exponente y devuelve un numero
+/// que no se parece a ninguno de los dos.
+///
+/// Sin este aviso, el emisor no tendria que emitir para ese caso, **no emitiria
+/// nada**, y el programa compilaria y daria basura. Es el mismo agujero que F5b
+/// cerro en los campos, visto en otro sitio.
+#[test]
+fn los_bits_sobre_un_flotante_se_denuncian() {
+    let codigos = codigos_de(&format!(
+        "{}funcion f(a es flotante64, b es entero64) devuelve flotante64\n    devuelve a bits_o 1\n",
+        CABECERA
+    ));
+    assert!(codigos.contains(&"E0123"), "no se denuncio: {:?}", codigos);
+}
+
+/// Y el cociente entero tampoco, que es el que mas se cuela: `entre` sobre
+/// flotantes parece razonable y no lo es.
+#[test]
+fn el_cociente_entero_sobre_flotantes_tambien_se_denuncia() {
+    let codigos = codigos_de(&format!(
+        "{}funcion f(a es flotante64, b es entero64) devuelve flotante64\n    devuelve a entre 2\n",
+        CABECERA
+    ));
+    assert!(codigos.contains(&"E0123"), "{:?}", codigos);
+}
+
+/// ** Y LO QUE NO SE DENUNCIA, que es la mitad que hace util al aviso.
+///
+/// Un aviso que salta de mas se desactiva en una semana, y entonces ya no
+/// vigila nada. Las cuatro operaciones y las seis comparaciones estan todas en
+/// IEEE-754 con su resultado escrito, y ninguna puede quejarse.
+#[test]
+fn las_operaciones_que_si_existen_no_se_denuncian() {
+    for op in ["+", "-", "*", "/", "<", ">", "<=", ">="] {
+        let codigos = codigos_de(&format!(
+            "{}funcion f(a es flotante64, b es flotante64) devuelve logico\n    devuelve a {} b\n",
+            CABECERA, op
+        ));
+        assert!(
+            !codigos.contains(&"E0123"),
+            "`{}` se denuncio y no debia: {:?}",
+            op,
+            codigos
+        );
+    }
+}
+
+/// Y los bits sobre ENTEROS siguen siendo legales, que es lo que el aviso no
+/// puede haber roto de paso.
+#[test]
+fn los_bits_sobre_enteros_siguen_siendo_legales() {
+    let codigos = codigos_de(&format!(
+        "{}funcion f(a es natural64, b es natural64) devuelve natural64\n    devuelve a bits_o b\n",
+        CABECERA
+    ));
+    assert!(!codigos.contains(&"E0123"), "{:?}", codigos);
+}
+
+// -------------------------------------------------------------------
+//  Las conversiones, que salen de la misma tabla
+// -------------------------------------------------------------------
+
+#[test]
+fn la_tabla_dice_cuales_son_conversiones() {
+    let m = Medidas::por_defecto();
+    assert!(m.es_conversion("flotante64"));
+    assert!(m.es_conversion("entero32"));
+    assert!(m.es_conversion("natural8"));
+    // Un puntero mide, pero no se convierte: no esta en ninguna de las dos
+    // listas de `[clase]`, y ese es el criterio.
+    assert!(!m.es_conversion("puntero"));
+    assert!(!m.es_conversion("texto"));
+}
+
+#[test]
+fn una_conversion_dice_a_que_clase_va() {
+    let m = Medidas::por_defecto();
+    assert!(m.es_flotante("flotante64"));
+    assert!(!m.es_flotante("entero64"));
+    assert!(m.es_entero("natural16"));
+    assert!(!m.es_entero("flotante32"));
+}

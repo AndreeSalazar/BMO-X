@@ -67,6 +67,12 @@ pub struct Modulos {
     /// registro equivocado no falla, DEVUELVE OTRA COSA. Y las dos cosas son
     /// numeros del mismo ancho, asi que nada se queja.
     recoge: HashMap<String, String>,
+    /// Los modulos cuyos nombres se bajan a UNA INSTRUCCION, no a una llamada.
+    ///
+    /// ** Sin esto, `cuenta_unos(x)` se bajaba a un `call` a un simbolo que no
+    /// existe: compilaba, pasaba el analisis de nombres --porque el nombre esta
+    /// en la tabla-- y el binario saltaba a la nada.
+    instrucciones: HashSet<String>,
 }
 
 impl Modulos {
@@ -94,14 +100,17 @@ impl Modulos {
         let mut accede = HashMap::new();
         let mut pide_crudo = HashSet::new();
         let mut constantes = HashMap::new();
+        let mut instrucciones = HashSet::new();
         if let Some(tabla) = raiz.as_table() {
             for (k, v) in tabla {
                 // `recoge` no es un modulo: nadie escribe `usa recoge`. Es una
                 // columna mas sobre nombres que ya trae otro.
                 // Estas no son modulos: nadie escribe `usa recoge`. Son
                 // columnas mas sobre nombres que ya trae otro.
-                if matches!(k.as_str(), "meta" | "recoge" | "accede" | "crudo" | "constantes")
-                {
+                if matches!(
+                    k.as_str(),
+                    "meta" | "recoge" | "accede" | "crudo" | "constantes" | "instrucciones"
+                ) {
                     continue;
                 }
                 if let Some(t) = v.as_table() {
@@ -133,6 +142,13 @@ impl Modulos {
             {
                 pide_crudo.extend(a.iter().filter_map(|x| x.as_str().map(String::from)));
             }
+            if let Some(a) = raiz
+                .get("instrucciones")
+                .and_then(|c| c.get("son"))
+                .and_then(|v| v.as_array())
+            {
+                instrucciones.extend(a.iter().filter_map(|x| x.as_str().map(String::from)));
+            }
             if let Some(t) = raiz.get("constantes").and_then(|v| v.as_table()) {
                 for (k, v) in t {
                     if let Some(x) = v.as_str() {
@@ -150,7 +166,17 @@ impl Modulos {
             accede,
             pide_crudo,
             constantes,
+            instrucciones,
         }
+    }
+
+    /// Los nombres de este modulo, se bajan a una instruccion?
+    ///
+    /// ** La diferencia no es cosmetica: una funcion se llama y una instruccion
+    /// se emite. Bajar una instruccion como llamada produce un salto a un
+    /// simbolo que no existe -- y eso **compila**.
+    pub fn son_instrucciones(&self, modulo: &str) -> bool {
+        self.instrucciones.contains(modulo)
     }
 
     /// Que acceso a memoria es este nombre, y de que ancho en bytes.

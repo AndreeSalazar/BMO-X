@@ -1,0 +1,8 @@
+# sonda: r11_flotante            espera: COMPILA
+# regla 11: IEEE-754 estricto. Las cuatro operaciones y las seis comparaciones
+# existen y no llevan comprobacion detras: infinito y NaN son valores.
+perfil llano
+
+funcion principal devuelve flotante64
+    x es flotante64 = flotante64(7)
+    devuelve x / 2.0 + 0.5

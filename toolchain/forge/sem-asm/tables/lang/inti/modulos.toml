@@ -186,6 +186,23 @@ ceros_delante  = "cuantos ceros hay antes del primer uno, por arriba"
 ceros_detras   = "cuantos hay despues, por abajo"
 da_la_vuelta   = "invierte el orden de los bytes de un numero"
 
+#  ** QUE MODULOS SE BAJAN A UNA INSTRUCCION, y no a una llamada.
+#
+#  Esta seccion existe por un fallo concreto: `cuenta_unos(x)` se bajaba a una
+#  LLAMADA a un simbolo que no existe. Compilaba, pasaba el analisis de nombres
+#  --el nombre esta en la tabla-- y el binario saltaba a la nada.
+#
+#  La causa no era el emisor: era que **nadie le decia al descenso que estos
+#  nombres no son funciones**. Un modulo de REX trae funciones con cuerpo; este
+#  trae los seis nombres de arriba, que en cada maquina son una instruccion o
+#  doce, pero nunca un `call`.
+#
+#  ** Y por que es una FILA y no un `if nombre == "binarios"` dentro del
+#  compilador: porque el dia que haya un segundo modulo asi --uno de atomicas,
+#  por ejemplo-- lo que tiene que cambiar es este fichero.
+[instrucciones]
+son = ["binarios"]
+
 [entrada]
 espera_tecla  = "para hasta que se pulse una tecla, y la devuelve"
 hay_tecla     = "hay algo pulsado sin esperar?"

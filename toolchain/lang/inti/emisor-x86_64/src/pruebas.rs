@@ -41,7 +41,13 @@ fn emitido(fuente: &str) -> Emitido {
         "la disposicion no cuadra: {}",
         plano.pintar("prueba.inti")
     );
-    let ir = ir::bajar_con(&arbol.valor, &modulos, &plano.valor).valor;
+    // ** Y el METAL: los nombres que son una instruccion y no una funcion.
+    //
+    // Sin esta linea, `lee_reloj()` se baja a una llamada a un simbolo que no
+    // existe -- que es exactamente lo que hacia el compilador entero antes de
+    // F5d. Un banco que compila por otro camino prueba otro compilador.
+    let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
+    let ir = ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
     emitir(&ir)
 }
 
@@ -1195,4 +1201,1042 @@ funcion principal devuelve entero32
         devuelve lee_natural32(p + 60)
 ";
     assert_eq!(arranca(f).syscalls.last().unwrap().arg0, 123);
+}
+
+// ===================================================================
+//  ** F5c -- LA COMA FLOTANTE. El cuarto tipo de numero que se puede tocar.
+// ===================================================================
+//
+//  Hasta hoy INTI sabia contar y no sabia medir. Un `natural32` cabe un pixel,
+//  pero no cabe una posicion, ni un angulo, ni una escala -- y por eso F5a
+//  llegaba a rellenar un framebuffer de un color y no a mover nada dentro.
+//
+//  ** Y el modelo esta escrito en `flotante()`: los valores viven en registros
+//  normales como PATRON DE BITS y solo cruzan para la operacion. Estas pruebas
+//  no lo saben ni les importa; miran numeros. Ese es el punto de mirarlos.
+
+/// Los bits de un `f64`, que es lo que devuelve la funcion, leidos como numero.
+fn como_numero(u: u64) -> f64 {
+    f64::from_bits(u)
+}
+
+const SUMA_FLOTANTE: &str = "\
+perfil llano
+
+funcion f devuelve flotante64
+    devuelve 2.5 + 1.25
+";
+
+#[test]
+fn una_suma_de_coma_flotante_corre_y_da_el_numero() {
+    let r = como_numero(ejecuta(SUMA_FLOTANTE, 0, 0));
+    assert_eq!(r, 3.75, "salio {}", r);
+}
+
+/// Las cuatro, y una de ellas es la que no se puede hacer con enteros: `/`.
+///
+/// ** `5 / 2` da `2.5` y no `2`. Es la sorpresa 10 de Python contestada al
+/// reves: en INTI el simbolo divide de verdad y el cociente entero tiene su
+/// propia palabra (`entre`). Aqui se ve que no es una promesa de la gramatica.
+#[test]
+fn las_cuatro_operaciones() {
+    let de = |e: &str| {
+        como_numero(ejecuta(
+            &format!(
+                "perfil llano\n\nfuncion f devuelve flotante64\n    devuelve {}\n",
+                e
+            ),
+            0,
+            0,
+        ))
+    };
+    assert_eq!(de("2.5 + 1.25"), 3.75);
+    assert_eq!(de("2.5 - 1.25"), 1.25);
+    assert_eq!(de("2.5 * 4.0"), 10.0);
+    assert_eq!(de("5.0 / 2.0"), 2.5);
+}
+
+/// ** DIVIDIR ENTRE CERO NO ATRAPA, y es la prueba de que la Regla 3 esta bien
+/// entendida.
+///
+/// La Regla 3 existe porque en los ENTEROS `1 / 0` no tiene respuesta: cualquier
+/// bit que salga se lo invento el compilador. En IEEE-754 la tiene --infinito--
+/// y esta escrita desde 1985. Atrapar aqui no anadiria seguridad: quitaria la
+/// aritmetica.
+#[test]
+fn entre_cero_da_infinito_y_no_atrapa() {
+    let f = "perfil llano\n\nfuncion f devuelve flotante64\n    devuelve 1.0 / 0.0\n";
+    assert_eq!(como_numero(ejecuta(f, 0, 0)), f64::INFINITY);
+
+    // Y la comprobacion no esta ni en la IR.
+    //
+    // ** Se cuenta AQUI y no en los bytes emitidos, y la diferencia importa:
+    // el emisor todavia no materializa la de division --lo dice el mismo, con
+    // su motivo, en `Instr::Comprueba`--, asi que contando bytes esta prueba
+    // saldria verde igual si la regla estuviera puesta. La regla vive en la
+    // IR; es ahi donde hay que preguntar si esta.
+    assert_eq!(reglas_de(f), 0, "un flotante no lleva comprobacion detras");
+}
+
+/// ** Y EL CONTRASTE, que es lo que hace valer la prueba de arriba: la misma
+/// division con enteros SI trae su comprobacion.
+#[test]
+fn la_misma_division_con_enteros_si_trae_su_regla() {
+    let f = "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve entero64\n    devuelve a / b\n";
+    assert_eq!(reglas_de(f), 1, "la Regla 3 desaparecio de los enteros");
+}
+
+/// Cuantas comprobaciones de las doce reglas trae la IR de este fuente.
+///
+/// ** Contarlas es lo que separa *"INTI no tiene comportamiento indefinido"* de
+/// una frase, y por eso la IR las lleva como instrucciones y no como bytes
+/// sueltos dentro del emisor: lo que es una instruccion se puede contar.
+fn reglas_de(fuente: &str) -> usize {
+    let arbol = bmo_inti_front::armar(fuente);
+    assert!(!arbol.hay_errores(), "{}", arbol.pintar("prueba.inti"));
+    let raices = bmo_mods::Roots::find();
+    let modulos = bmo_inti_front::tablas::Modulos::cargar(&raices);
+    let plano = bmo_inti_front::disposicion::comprobar(
+        &arbol.valor,
+        bmo_inti_front::disposicion::Medidas::cargar(&raices),
+    );
+    let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
+    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal)
+        .valor
+        .funciones
+        .iter()
+        .flat_map(|f| f.instrucciones.iter())
+        .filter(|i| matches!(i, bmo_inti_front::ir::Instr::Comprueba { .. }))
+        .count()
+}
+
+// -------------------------------------------------------------------
+//  ** LAS COMPARACIONES, Y EL NaN
+// -------------------------------------------------------------------
+
+fn compara(e: &str) -> u64 {
+    ejecuta(
+        &format!(
+            "perfil llano\n\nfuncion f devuelve logico\n    devuelve {}\n",
+            e
+        ),
+        0,
+        0,
+    )
+}
+
+#[test]
+fn las_seis_comparaciones() {
+    assert_eq!(compara("1.5 < 2.5"), 1);
+    assert_eq!(compara("2.5 < 1.5"), 0);
+    assert_eq!(compara("2.5 > 1.5"), 1);
+    assert_eq!(compara("1.5 > 2.5"), 0);
+    assert_eq!(compara("1.5 <= 1.5"), 1);
+    assert_eq!(compara("1.5 >= 2.5"), 0);
+    assert_eq!(compara("1.5 = 1.5"), 1);
+    assert_eq!(compara("1.5 no es 2.5"), 1);
+}
+
+/// ** ESTA ES LA PRUEBA QUE DECIDE SI LA COMA FLOTANTE ESTA BIEN HECHA.
+///
+/// Un NaN --lo que sale de `0.0 / 0.0`-- no es mayor, ni menor, ni igual a
+/// nada. Y el silicio no lo regala: la comparacion enciende la bandera de
+/// "iguales" A LA VEZ que la de "no comparables", asi que una igualdad escrita
+/// de la forma obvia contesta **que si**.
+///
+/// Las cinco primeras tienen que salir falsas. Y la sexta, cierta -- porque
+/// `x no es x` es exactamente como se pregunta si algo es NaN, y tiene que
+/// poder contestarse.
+#[test]
+fn un_nan_pierde_las_cinco_comparaciones_y_gana_la_sexta() {
+    assert_eq!(compara("0.0 / 0.0 < 1.0"), 0, "un NaN no es menor");
+    assert_eq!(compara("0.0 / 0.0 > 1.0"), 0, "ni mayor");
+    assert_eq!(compara("0.0 / 0.0 <= 1.0"), 0);
+    assert_eq!(compara("0.0 / 0.0 >= 1.0"), 0);
+    assert_eq!(compara("0.0 / 0.0 = 1.0"), 0, "ni igual");
+    assert_eq!(
+        compara("0.0 / 0.0 no es 1.0"),
+        1,
+        "y la desigualdad es la unica que un NaN hace CIERTA"
+    );
+}
+
+/// El NaN contra si mismo, que es el caso que enganaria a la version ingenua.
+#[test]
+fn un_nan_no_es_igual_ni_a_si_mismo() {
+    assert_eq!(compara("0.0 / 0.0 = 0.0 / 0.0"), 0);
+    assert_eq!(compara("0.0 / 0.0 no es 0.0 / 0.0"), 1);
+}
+
+// -------------------------------------------------------------------
+//  ** LA CONVERSION, que es la unica vez que los bits CAMBIAN
+// -------------------------------------------------------------------
+
+/// `flotante64(5)` da 5.0, no los bits de 5 mirados del reves.
+///
+/// ** Confundir las dos cosas da `2,47e-323` donde tiene que haber un `5.0`, y
+/// no rompe nada: sigue siendo un flotante valido. Por eso hay una prueba.
+#[test]
+fn un_entero_se_convierte_de_verdad_y_no_se_reinterpreta() {
+    let f = "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve flotante64\n    devuelve flotante64(a)\n";
+    assert_eq!(como_numero(ejecuta(f, 5, 0)), 5.0);
+    assert_eq!(como_numero(ejecuta(f, 0, 0)), 0.0);
+}
+
+/// Con signo, que es la otra mitad: `-7` tiene que dar `-7.0` y no 1,8e19.
+#[test]
+fn la_conversion_es_con_signo() {
+    let f = "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve flotante64\n    devuelve flotante64(a)\n";
+    assert_eq!(como_numero(ejecuta(f, (-7i64) as u64, 0)), -7.0);
+}
+
+/// Y de vuelta, TRUNCANDO. 2,9 da 2 y -2,9 da -2.
+#[test]
+fn de_flotante_a_entero_se_trunca_hacia_el_cero() {
+    let f = "perfil llano\n\nfuncion f devuelve entero64\n    devuelve entero64(2.9)\n";
+    assert_eq!(ejecuta(f, 0, 0), 2);
+    let g = "perfil llano\n\nfuncion f devuelve entero64\n    devuelve entero64(0.0 - 2.9)\n";
+    assert_eq!(ejecuta(g, 0, 0) as i64, -2, "hacia el cero, no hacia abajo");
+}
+
+/// Ida y vuelta por una variable declarada: el tipo escrito es lo que decide,
+/// no el literal.
+#[test]
+fn el_tipo_declarado_manda_sobre_la_operacion() {
+    let f = "\
+perfil llano
+
+funcion f(a es entero64, b es entero64) devuelve flotante64
+    x es flotante64 = flotante64(a)
+    devuelve x / 2.0
+";
+    assert_eq!(
+        como_numero(ejecuta(f, 7, 0)),
+        3.5,
+        "si fuera entera, saldria 3"
+    );
+}
+
+// -------------------------------------------------------------------
+//  ** LA REGLA 11, que se comprueba en lo que NO se emite
+// -------------------------------------------------------------------
+
+/// **La Regla 11 no se puede probar mirando un resultado**: `a * b + c` da el
+/// mismo numero con la operacion fundida y sin ella casi siempre. La diferencia
+/// esta en el redondeo de en medio, y solo aparece en unos pocos valores de
+/// cada millon.
+///
+/// Asi que se prueba mirando los BYTES: si no hay una instruccion de
+/// multiplicar-y-sumar emitida, no hay forma de que el redondeo se salte.
+///
+/// ** Y esto es la portabilidad que C no da. Un compilador de C con las
+/// banderas de siempre PUEDE fundir esas dos operaciones, y entonces el mismo
+/// fuente da bits distintos en dos maquinas. INTI lo prohibe y paga el precio
+/// en velocidad, porque el argumento de venta de este sistema es que se puede
+/// verificar -- y no se verifica lo que no da el mismo resultado dos veces.
+#[test]
+fn la_regla_11_no_funde_la_multiplicacion_con_la_suma() {
+    let f = "perfil llano\n\nfuncion f devuelve flotante64\n    devuelve 2.0 * 3.0 + 1.0\n";
+    let e = emitido(f);
+    // Las instrucciones de multiplicar-y-sumar viven todas detras de dos
+    // prefijos concretos. Que no aparezca ninguno es la prueba.
+    let fundida = e.codigo.iter().any(|b| *b == 0xC4 || *b == 0x62);
+    assert!(!fundida, "se emitio una instruccion de multiplicar-y-sumar");
+    // Y da el numero correcto, que sin esto seria una prueba que aprueba un
+    // programa que no calcula nada.
+    assert_eq!(como_numero(ejecuta(f, 0, 0)), 7.0);
+}
+
+/// El mismo fuente, los mismos bytes. Dos veces.
+///
+/// ** Parece tonto y no lo es: es la mitad comprobable de *"el mismo programa da
+/// el mismo bit"*. Si el emisor tuviera cualquier cosa que dependiera del
+/// entorno --el orden de un mapa, una direccion, la hora-- se veria aqui.
+#[test]
+fn el_mismo_fuente_emite_los_mismos_bytes() {
+    let a = emitido(SUMA_FLOTANTE);
+    let b = emitido(SUMA_FLOTANTE);
+    assert_eq!(a.codigo, b.codigo);
+}
+
+
+// ===================================================================
+//  ** F5d -- EL METAL. La tabla de la maquina deja de ser decorativa.
+// ===================================================================
+//
+//  Lo que estaba roto, dicho sin adornos: `Instr::Metal { .. } => {}`.
+//
+//  La tabla de x86-64 llevaba desde F2b con setenta y tantos nombres --los
+//  puertos, los registros de control, las atomicas, las cuentas de bits-- y
+//  NINGUNO llegaba a un byte. Peor: el descenso ni siquiera generaba
+//  `Instr::Metal`, asi que `lee_reloj()` se bajaba a una LLAMADA a un simbolo
+//  que no existe. Compilaba, pasaba nombres, pasaba perfiles, pasaba el gate.
+//
+//  Es el fallo que este proyecto persigue desde el principio, y esta vez con
+//  cuatro capas de por medio: la pieza que se calcula bien y no la lee nadie.
+
+/// Un fuente que llama a `nombre` con la aridad que la tabla dice.
+///
+/// ** Todo dentro de `crudo`, y da igual que el nombre no lo pida: escribirlo
+/// de mas no cambia lo que se emite, y asi la matriz no tiene que llevar una
+/// segunda lista de cuales lo piden. Una lista que hay que mantener a mano al
+/// lado de una tabla es la forma de que las dos discrepen.
+fn llamada_a(nombre: &str, cuantos: usize) -> String {
+    let args: Vec<String> = (0..cuantos).map(|i| format!("{}", i + 1)).collect();
+    format!(
+        "perfil llano\nusa x86_64\nusa binarios\n\n\
+         funcion f devuelve entero64\n    crudo\n        devuelve {}({})\n",
+        nombre,
+        args.join(", ")
+    )
+}
+
+/// **LA MATRIZ DE CONFORMIDAD**: cada nombre de la tabla de la maquina se
+/// compila, y se exige que salgan bytes.
+///
+/// ## ** Por que esto tenia que existir, y lo dice la propia tabla
+///
+/// El comentario de `Intrinsics::names()` lo lleva pidiendo desde que se
+/// escribio: *"sin poder recorrerla, una fila con el nombre de un registro mal
+/// escrito no falla hasta que alguien la usa -- y 'alguien la usa' en una tabla
+/// de driver puede ser dentro de seis meses y en metal"*.
+///
+/// Esto es eso, recorrido entero. Y no comprueba que los bytes sean los
+/// correctos --eso lo hacen las pruebas de abajo, una a una-- sino algo mas
+/// basico y que nadie miraba: **que salga alguno**.
+#[test]
+fn cada_nombre_de_la_maquina_emite_bytes() {
+    let taller = Taller::nuevo();
+    let maquina = taller.maquina.as_ref().expect("sin tabla de maquina");
+    let intrinsecos = taller.intrinsecos.as_ref().expect("sin tabla de bytes");
+
+    let mut mudos: Vec<String> = Vec::new();
+    let mut probados = 0usize;
+
+    for nombre in maquina.nombres_que_trae() {
+        let Some(instruccion) = maquina.instruccion(&nombre) else {
+            mudos.push(format!("{}: la maquina no dice que instruccion es", nombre));
+            continue;
+        };
+        let Some(def) = intrinsecos.get(instruccion) else {
+            mudos.push(format!(
+                "{} -> `{}`: no esta en intrinsics.toml",
+                nombre, instruccion
+            ));
+            continue;
+        };
+        let e = emitido(&llamada_a(&nombre, def.args.len()));
+        if !e.sin_emitir.is_empty() {
+            mudos.extend(e.sin_emitir.iter().cloned());
+            continue;
+        }
+        // Y que los bytes de la instruccion esten DE VERDAD dentro. Sin esto,
+        // un camino que no emitiera nada y tampoco se quejara pasaria.
+        assert!(
+            e.codigo
+                .windows(def.bytes.len())
+                .any(|w| w == def.bytes.as_slice()),
+            "`{}` compila y sus bytes no aparecen: {:02X?}",
+            nombre,
+            def.bytes
+        );
+        probados += 1;
+    }
+
+    assert!(
+        mudos.is_empty(),
+        "{} nombre(s) de la tabla no llegan a un byte:\n  {}",
+        mudos.len(),
+        mudos.join("\n  ")
+    );
+    assert!(probados >= 60, "solo se probaron {} nombres", probados);
+}
+
+/// Y la otra mitad: `usa binarios`, que es la que SE PORTA.
+///
+/// ** La diferencia con la de arriba no es tecnica --las dos acaban en la misma
+/// instruccion en esta maquina-- es de DECLARACION: quien escribe `usa
+/// binarios` dice *"esto se porta"*, y quien escribe `usa x86_64` dice *"esto
+/// no"*. El compilador no elige por ti cual de las dos cosas quieres decir.
+///
+/// Que los seis salgan aqui es lo que hace verdad esa frase. Si uno no saliera,
+/// `usa binarios` seria una promesa de portabilidad sobre algo que no compila.
+#[test]
+fn los_binarios_portables_emiten_todos() {
+    let taller = Taller::nuevo();
+    let modulos = bmo_inti_front::tablas::Modulos::cargar(&bmo_mods::Roots::find());
+    let nombres = modulos.trae("binarios");
+    assert!(!nombres.is_empty(), "el modulo `binarios` esta vacio");
+
+    let maquina = taller.maquina.as_ref().expect("sin tabla de maquina");
+    let intrinsecos = taller.intrinsecos.as_ref().expect("sin tabla de bytes");
+    let mut mudos = Vec::new();
+    for n in nombres {
+        let cuantos = maquina
+            .instruccion(n)
+            .and_then(|i| intrinsecos.get(i))
+            .map(|d| d.args.len())
+            .unwrap_or(1);
+        let e = emitido(&llamada_a(n, cuantos));
+        mudos.extend(e.sin_emitir.iter().cloned());
+    }
+    assert!(
+        mudos.is_empty(),
+        "`usa binarios` promete portabilidad sobre algo que no emite:\n  {}",
+        mudos.join("\n  ")
+    );
+}
+
+// -------------------------------------------------------------------
+//  Y que hagan lo que dicen, no solo que salgan bytes
+// -------------------------------------------------------------------
+
+/// `cuenta_unos` cuenta bits de verdad, corriendo.
+///
+/// ** Es la prueba que la matriz NO puede dar. La matriz dice que los bytes
+/// estan; esta dice que son los bytes correctos. Las dos hacen falta: una fila
+/// con los bytes de otra instruccion pasa la primera y falla esta.
+#[test]
+fn cuenta_unos_cuenta_bits() {
+    let f = "\
+perfil llano
+usa binarios
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    crudo
+        devuelve cuenta_unos(a)
+";
+    assert_eq!(ejecuta(f, 0, 0), 0);
+    assert_eq!(ejecuta(f, 1, 0), 1);
+    assert_eq!(ejecuta(f, 0xFF, 0), 8);
+    assert_eq!(ejecuta(f, 0b1010_1010, 0), 4);
+}
+
+/// `ceros_detras` sobre una potencia de dos da el exponente.
+#[test]
+fn ceros_detras_encuentra_el_bit_bajo() {
+    let f = "\
+perfil llano
+usa binarios
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    crudo
+        devuelve ceros_detras(a)
+";
+    assert_eq!(ejecuta(f, 1, 0), 0);
+    assert_eq!(ejecuta(f, 8, 0), 3);
+    assert_eq!(ejecuta(f, 256, 0), 8);
+}
+
+/// ** Y la que demuestra que la lectura del valor esta bien hecha: `lee_reloj`
+/// devuelve SESENTA Y CUATRO bits, partidos en dos registros de 32 por el
+/// silicio.
+///
+/// Recogerlo de uno solo da la mitad baja -- y la mitad baja de un contador de
+/// ciclos parece un numero perfectamente razonable. Es exactamente el fallo que
+/// `invoca_valor` tuvo el primer dia, en otro sitio.
+#[test]
+fn lee_reloj_junta_las_dos_mitades() {
+    let f = "\
+perfil llano
+usa x86_64
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    crudo
+        devuelve lee_reloj()
+";
+    let e = emitido(f);
+    assert!(e.sin_emitir.is_empty(), "{:?}", e.sin_emitir);
+    // Los dos bytes de la instruccion, y detras el desplazamiento que junta las
+    // mitades. Sin el segundo, la instruccion esta y el numero es la mitad.
+    assert!(
+        e.codigo.windows(2).any(|w| w == [0x0F, 0x31]),
+        "no se emitio la instruccion"
+    );
+    assert!(
+        e.codigo
+            .windows(4)
+            .any(|w| w == [0x48, 0xC1, 0xE2, 0x20]),
+        "la mitad alta no se junta: el reloj devolveria solo 32 bits"
+    );
+}
+
+/// Una instruccion sin argumentos y sin resultado deja un CERO, no basura.
+///
+/// ** Entre dos cosas mal, la que no cambia entre ejecuciones. `x = para()` no
+/// tiene sentido y se puede escribir; con basura el programa sigue con un
+/// numero que parece valido y distinto cada vez.
+#[test]
+fn lo_que_no_devuelve_nada_deja_cero() {
+    let f = "\
+perfil llano
+usa x86_64
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    crudo
+        devuelve nada_que_hacer()
+";
+    assert_eq!(ejecuta(f, 0xDEAD, 0xBEEF), 0);
+}
+
+/// ** Y LA PRUEBA DE QUE LA MATRIZ MUERDE: un nombre que no esta en la tabla no
+/// se emite en silencio, se apunta.
+///
+/// Una lista de fallos que nunca se llena no vigila nada. Aqui se llena a
+/// proposito, pidiendo una aridad que la instruccion no tiene.
+#[test]
+fn lo_que_no_se_puede_emitir_se_apunta() {
+    let f = "\
+perfil llano
+usa x86_64
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    crudo
+        devuelve lee_reloj(1, 2, 3)
+";
+    let e = emitido(f);
+    assert!(
+        !e.sin_emitir.is_empty(),
+        "una llamada con la aridad mal tenia que apuntarse"
+    );
+    assert!(
+        e.sin_emitir[0].contains("lee_reloj"),
+        "el apunte no dice de quien es: {:?}",
+        e.sin_emitir
+    );
+}
+
+
+// ===================================================================
+//  ** HASTA DONDE LLEGA EL EMULADOR -- y donde empieza el metal
+// ===================================================================
+//
+//  Peticion de Eddi (2026-08-21): *"intenta completar todo lo que el emulador
+//  llegue hasta donde pueda... y si el emulador no deja claro el metal lo
+//  pruebe"*.
+//
+//  ** La trampa que esto evita es concreta y este proyecto ya la ha pisado: un
+//  banco que solo prueba lo que el emulador sabe **se lee como si probara
+//  todo**. Las instrucciones que el emulador no conoce simplemente no tienen
+//  test, y no tener test se parece mucho a estar bien.
+//
+//  Asi que se recorre la tabla ENTERA, se ejecuta cada una, y las que el
+//  emulador no sabe se quedan escritas AQUI con su nombre. La lista es una
+//  constante y se compara entera, igual que el censo: si crece sin que nadie lo
+//  decida, el test lo dice.
+//
+//  == Y por que el emulador no las sabe, que no es un descuido suyo ==
+//
+//  Porque no hay nada que emular. `wbinvd` tira una cache que aqui no existe;
+//  `cpuid` describe un silicio que aqui no hay; `lgdt` carga una tabla que solo
+//  significa algo con una MMU detras. Emularlas seria inventarse una respuesta,
+//  y una respuesta inventada en un banco es peor que no tener banco.
+//
+//  ** Lo que estas van a necesitar es el Ryzen. Y ahora estan contadas, que era
+//  la diferencia entre "pendiente" y "olvidado".
+
+/// Las que el emulador NO sabe ejecutar, y por eso su prueba es el metal.
+///
+/// ** Ordenada y comparada ENTERA. Si el dia de manana una que hoy corre deja de
+/// correr, o una nueva se cuela, el test no dice "algo cambio": dice cual.
+const SOLO_EN_METAL: &[&str] = &[
+    "azar", "azar_de_verdad", "cambia_gs", "carga_gdt", "carga_idt",
+    "carga_ldt", "carga_tr", "duerme_hasta", "entrada_puerto",
+    "entrada_puerto16", "entrada_puerto32", "escribe_banderas",
+    "escribe_cr0", "escribe_cr3", "escribe_cr4", "escribe_msr",
+    "escribe_puerto", "escribe_puerto16", "escribe_puerto32",
+    "escribe_xcr", "lee_banderas", "lee_cr0", "lee_cr2", "lee_cr3",
+    "lee_cr4", "lee_gdt", "lee_idt", "lee_msr", "lee_reloj",
+    "lee_reloj_serio", "lee_xcr", "olvida_pagina", "que_cpu_eres",
+    "tira_cache_sin_escribir", "tira_la_cache", "vigila",
+];
+
+/// Emite una llamada a cada nombre de la maquina y **la ejecuta**.
+///
+/// Devuelve `(las que corrieron, las que el emulador no supo)`.
+fn hasta_donde_llega() -> (Vec<String>, Vec<String>) {
+    let taller = Taller::nuevo();
+    let maquina = taller.maquina.as_ref().expect("sin tabla de maquina");
+    let intrinsecos = taller.intrinsecos.as_ref().expect("sin tabla de bytes");
+
+    let mut corren = Vec::new();
+    let mut no = Vec::new();
+
+    // El emulador se queja con un panico cuando no conoce un opcode, que es lo
+    // correcto para el --callarse seria ejecutar otra cosa-- pero aqui hay que
+    // recogerlo. Se silencia el mensaje: setenta panicos esperados en la salida
+    // esconden el uno que no lo era.
+    let anterior = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
+    for nombre in maquina.nombres_que_trae() {
+        let Some(def) = maquina.instruccion(&nombre).and_then(|i| intrinsecos.get(i)) else {
+            continue;
+        };
+        let fuente = llamada_a(&nombre, def.args.len());
+        let e = emitido(&fuente);
+        if !e.sin_emitir.is_empty() {
+            continue;
+        }
+        let codigo = con_arranque(&e);
+        let salio = std::panic::catch_unwind(move || {
+            let m = Machine::new(codigo);
+            let m = run(m, 10_000);
+            m.regs[0]
+        });
+        match salio {
+            Ok(_) => corren.push(nombre.clone()),
+            Err(_) => no.push(nombre.clone()),
+        }
+    }
+
+    std::panic::set_hook(anterior);
+    corren.sort();
+    no.sort();
+    (corren, no)
+}
+
+/// El mismo `crt0` de diez bytes que usa `ejecuta`, sacado aparte para poder
+/// pasarlo a un `catch_unwind`.
+fn con_arranque(e: &Emitido) -> Vec<u8> {
+    let primera = e.inicios.first().map(|(_, off)| *off).unwrap_or(0);
+    let largo = e.codigo.len() as i32;
+    let mut codigo = Vec::new();
+    codigo.push(0xE9);
+    codigo.extend_from_slice(&largo.to_le_bytes());
+    codigo.extend_from_slice(&e.codigo);
+    codigo.push(0xE8);
+    let desde = codigo.len() as i32 + 4;
+    codigo.extend_from_slice(&((primera as i32 + 5) - desde).to_le_bytes());
+    codigo
+}
+
+/// **EL MAPA**: que parte de la tabla de la maquina se puede probar aqui, y que
+/// parte hay que llevar al Ryzen.
+#[test]
+fn el_emulador_llega_hasta_donde_dice_la_lista() {
+    let (corren, no) = hasta_donde_llega();
+
+    assert_eq!(
+        no,
+        SOLO_EN_METAL
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+        "\nla frontera entre el emulador y el metal se movio.\n\
+         corren aqui: {}\n\
+         solo en metal: {:?}\n\
+         Si el cambio es a proposito, actualiza SOLO_EN_METAL. Si no, alguien \
+         emitio bytes distintos.",
+        corren.len(),
+        no
+    );
+
+    // ** Y un SUELO, para que la parte probable no se encoja sin que nadie lo
+    // decida. Hoy son 25 de 61 -- menos de la mitad, y esa es la cifra
+    // incomoda de este fichero: **la mayor parte de la libreria de la maquina
+    // no se puede verificar aqui**.
+    //
+    // No por un fallo del emulador: por su regla. Devolver un cero como si
+    // fuera el valor de un registro de control seria inventarse un dato, y un
+    // emulador que inventa datos es peor que uno que no los tiene.
+    //
+    // Sin este suelo, alguien podria romper 20 de las 25 y el test seguiria en
+    // verde: la lista de arriba solo vigila las que FALLAN.
+    assert!(
+        corren.len() >= 25,
+        "solo {} nombres se pueden probar aqui, de {}",
+        corren.len(),
+        corren.len() + no.len()
+    );
+}
+
+
+// ===================================================================
+//  ** LAS TRES FRASES CON LAS QUE SE DEFINE INTI, hechas assert
+// ===================================================================
+//
+//  Eddi lo dice asi: *"INTI es inspiracion de Python en sintaxis, pero nivel de
+//  rendimiento de ASM, y fuera del syscall"*.
+//
+//  Son tres afirmaciones distintas y **dos de ellas se pueden comprobar aqui
+//  mismo**. La tercera --la sintaxis-- no se mide con un test: se mide leyendo,
+//  y para eso esta el censo.
+//
+//  ** Por que estan juntas en un bloque en vez de repartidas: porque la frase se
+//  usa entera para describir el lenguaje, y una frase que se usa entera tiene
+//  que poder fallar entera. Si algun dia una de estas deja de ser verdad, lo
+//  honesto es dejar de decirla.
+
+/// Un programa que CALCULA no cruza la puerta ni una vez.
+///
+/// ## ** Que se esta comprobando de verdad
+///
+/// Que la aritmetica de INTI no pasa por ningun runtime que a su vez hable con
+/// el kernel. En Python `2 + 2` recorre el despacho de objetos; aqui son dos
+/// instrucciones y la puerta ni aparece en los bytes.
+///
+/// Y no es una perogrullada: el maestro tiene un numero para esto --**969
+/// ciclos** cuesta cruzar la puerta contra **20** una llamada-- y toda la
+/// arquitectura del lenguaje se decidio con el delante. Este test es lo que
+/// impide que esa decision se erosione sin que nadie lo note.
+#[test]
+fn un_programa_que_calcula_no_cruza_la_puerta() {
+    let f = "\
+perfil llano
+
+funcion media(a es entero64, b es entero64) devuelve entero64
+    cambiante t = 0
+    cambiante i = 0
+    repite mientras i < 10
+        t = t + a * i + b
+        i = i + 1
+    devuelve t entre 10
+";
+    let e = emitido(f);
+    // `0F 05` es la puerta. En un programa que solo cuenta, no puede estar.
+    assert!(
+        !e.codigo.windows(2).any(|w| w == [0x0F, 0x05]),
+        "un programa que solo calcula esta cruzando la puerta"
+    );
+    // Y ademas corre y da el numero: sin esto seria un test que aprueba un
+    // binario vacio, que efectivamente no cruza ninguna puerta.
+    assert_eq!(ejecuta(f, 2, 3), (0..10).map(|i| 2 * i + 3).sum::<u64>() / 10);
+}
+
+/// **EL BUCLE MAS CALIENTE QUE INTI SABE ESCRIBIR HOY, sin una sola llamada.**
+///
+/// ## ** Esta es la frase de "nivel de ASM", y aqui esta lo que significa
+///
+/// No significa *"va tan rapido como el ensamblador que escribiria un experto"*
+/// -- eso es medible y todavia no esta medido. Significa algo mas estrecho y
+/// que si se puede comprobar: **entre el fuente y la instruccion no hay nadie**.
+/// Ni despacho, ni contador de referencias, ni una llamada por elemento.
+///
+/// Ese es exactamente el techo que Python no puede levantar, y no por lentitud
+/// del interprete: `x + y` alli **es** una llamada, y lo seguiria siendo
+/// compilado. Aqui el bucle entero son saltos y aritmetica.
+#[test]
+fn el_bucle_de_pixeles_no_llama_a_nadie() {
+    let f = "\
+perfil llano
+usa memoria
+
+funcion pinta(pantalla es bufer de natural32, cuantos es entero64, color es entero64)
+    cambiante i = 0
+    repite mientras i < cuantos
+        crudo
+            pantalla[i] = color
+        i = i + 1
+";
+    let e = emitido(f);
+    assert!(
+        !e.codigo.windows(2).any(|w| w == [0x0F, 0x05]),
+        "el bucle cruza la puerta"
+    );
+    // ** Y ninguna LLAMADA, que es la mitad que de verdad importa: un
+    // rasterizador que llama una vez por pixel tiene un techo que ninguna
+    // optimizacion posterior levanta.
+    //
+    // Se cuenta en la IR y NO buscando el byte de la instruccion. El primer
+    // intento buscaba `E8` suelto en el codigo y fallaba: ese byte aparece
+    // dentro de cualquier inmediato o desplazamiento que lo lleve. Un test que
+    // da falsos positivos se desactiva en una semana, y entonces ya no vigila
+    // nada -- es la misma leccion que `agnostico.rs` aprendio con `rsi` dentro
+    // de `conversion`.
+    assert_eq!(llamadas_de(f), 0, "el bucle llama a alguien por pixel");
+}
+
+/// Cuantas llamadas de verdad hay en la IR de este fuente.
+fn llamadas_de(fuente: &str) -> usize {
+    let arbol = bmo_inti_front::armar(fuente);
+    assert!(!arbol.hay_errores(), "{}", arbol.pintar("prueba.inti"));
+    let raices = bmo_mods::Roots::find();
+    let modulos = bmo_inti_front::tablas::Modulos::cargar(&raices);
+    let plano = bmo_inti_front::disposicion::comprobar(
+        &arbol.valor,
+        bmo_inti_front::disposicion::Medidas::cargar(&raices),
+    );
+    let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
+    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal)
+        .valor
+        .funciones
+        .iter()
+        .flat_map(|f| f.instrucciones.iter())
+        .filter(|i| matches!(i, bmo_inti_front::ir::Instr::Llama { .. }))
+        .count()
+}
+
+/// ** Y LA MEDIDA, que es lo que convierte la frase en un numero.
+///
+/// Cuantas comprobaciones anti-UB lleva ese mismo bucle, y cuantas instrucciones
+/// de maquina. Los dos numeros van a CABINA en cada compilacion, asi que **se
+/// pueden seguir en el tiempo**: el dia que alguien anada una comprobacion de
+/// mas en el sitio equivocado, el numero sube y se ve.
+///
+/// La seccion 6.3 del maestro dice que comprobar cuesta ~1%. Esto no lo mide
+/// --medirlo pide el Ryzen-- pero dice **contra que** se va a medir, que es lo
+/// unico que se puede saber hoy sin hardware.
+#[test]
+fn el_precio_de_no_tener_ub_esta_contado() {
+    let f = "\
+perfil llano
+
+funcion suma(a es entero64, b es entero64) devuelve entero64
+    devuelve a + b * 2
+";
+    // Dos operaciones que se pueden pasar de la cuenta, dos comprobaciones.
+    // Ni una de mas: comparar no puede desbordar y no la lleva.
+    assert_eq!(reglas_de(f), 2);
+
+    let g = "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve logico\n    devuelve a < b\n";
+    assert_eq!(reglas_de(g), 0, "una comparacion no puede salirse");
+}
+
+/// La tercera pata: **fuera del syscall no quiere decir sin acceso al sistema**.
+///
+/// ** Es la distincion que el maestro llama "control no es privilegio", y aqui
+/// se ve en bytes: el mismo compilador emite un programa sin puerta (arriba) y
+/// uno con puerta (este), y **la diferencia es una linea del fuente** -- `usa
+/// bmo` -- no una bandera del compilador ni una palabra clave.
+///
+/// Quitar esa fila de `modulos.toml` apaga la puerta sin tocar una linea de
+/// Rust. Eso es lo que significa que la puerta no sea sintaxis.
+#[test]
+fn la_puerta_llega_por_una_linea_del_fuente_y_no_por_otra_via() {
+    let sin = "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve entero64\n    devuelve a + b\n";
+    let con = "\
+perfil llano
+usa bmo
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    devuelve invoca(a, b, 0, 0, 0)
+";
+    let hay = |src: &str| emitido(src).codigo.windows(2).any(|w| w == [0x0F, 0x05]);
+    assert!(!hay(sin), "sin `usa bmo` no puede haber puerta");
+    assert!(hay(con), "con `usa bmo` tiene que haberla");
+}
+
+
+// ===================================================================
+//  ** F5e -- LAS REGLAS QUE SE CALCULABAN Y NO LLEGABAN A UN BYTE
+// ===================================================================
+//
+//  De las cuatro comprobaciones de la IR, **una sola llegaba al binario**. Las
+//  otras tres estaban declaradas, contadas en la IR, documentadas... y el
+//  emisor las descontaba y no emitia nada.
+//
+//  El motivo estaba escrito y era honesto -- *"piden mirar un operando ANTES de
+//  la operacion"* -- pero era un diagnostico, no un arreglo. El arreglo era
+//  mover la comprobacion al sitio donde sirve, y eso es de la IR, no del
+//  emisor: por eso el fallo sobrevivio a que alguien lo entendiera.
+//
+//  ** Y la que sigue sin salir --la 2-- ahora esta sola y por OTRO motivo: no
+//  hay contra que comprobar, porque un `bufer` no lleva su longitud. Esa espera
+//  a `lista de T`. Un pendiente con su causa exacta vale mucho mas que tres
+//  juntos con una causa que solo explicaba dos.
+
+/// Los codigos con los que atrapa cada regla, tal como salen en el registro de
+/// retorno.
+const DESBORDE: u64 = 1001;
+const ENTRE_CERO: u64 = 1003;
+const CONVERSION: u64 = 1012;
+
+// -------------------------------------------------------------------
+//  REGLA 3 -- dividir entre cero
+// -------------------------------------------------------------------
+
+const DIVIDE: &str = "\
+perfil llano
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    devuelve a entre b
+";
+
+/// ** LA PRUEBA QUE NO SE PODIA ESCRIBIR HASTA HOY.
+///
+/// Antes esto no daba 1003: **se llevaba el emulador por delante**, igual que
+/// se lleva un procesador de verdad. Dividir entre cero en x86 no da un numero
+/// raro -- levanta una excepcion antes de dejar nada.
+///
+/// Y por eso la comprobacion tenia que ir ANTES: despues de la division no hay
+/// programa que mire el resultado.
+#[test]
+fn dividir_entre_cero_atrapa_con_su_codigo() {
+    assert_eq!(ejecuta(DIVIDE, 10, 0), ENTRE_CERO);
+}
+
+/// Y dividir de verdad sigue dividiendo. Sin esto, una comprobacion que
+/// atrapara SIEMPRE pasaria la prueba de arriba.
+#[test]
+fn dividir_entre_algo_sigue_dando_el_cociente() {
+    assert_eq!(ejecuta(DIVIDE, 10, 2), 5);
+    assert_eq!(ejecuta(DIVIDE, 7, 7), 1);
+}
+
+/// El resto tambien: es la misma instruccion y el mismo cero.
+#[test]
+fn el_resto_entre_cero_tambien_atrapa() {
+    let f = "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve entero64\n    devuelve a resto b\n";
+    assert_eq!(ejecuta(f, 10, 0), ENTRE_CERO);
+    assert_eq!(ejecuta(f, 10, 3), 1);
+}
+
+// -------------------------------------------------------------------
+//  ** DOS REGLAS, DOS CODIGOS -- que es lo que el destino unico impedia
+// -------------------------------------------------------------------
+
+/// ** Con un solo sitio al que saltar, atrapar por dividir entre cero habria
+/// devuelto **1001** -- el codigo de desbordar -- y el programa habria dicho
+/// que le paso otra cosa.
+///
+/// No es un detalle de presentacion: un error como dato que miente sobre su
+/// causa es peor que no tenerlo, porque quien lo lea va a buscar donde no es.
+#[test]
+fn cada_regla_atrapa_con_SU_codigo_y_no_con_el_de_otra() {
+    let dos_reglas = "\
+perfil llano
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    devuelve (a * a) entre b
+";
+    // Multiplicar sin pasarse, dividir entre cero -> 1003.
+    assert_eq!(ejecuta(dos_reglas, 3, 0), ENTRE_CERO);
+    // Multiplicar pasandose -> 1001, y en el MISMO binario.
+    assert_eq!(ejecuta(dos_reglas, 1 << 40, 1), DESBORDE);
+    // Y sin pasarse ni dividir entre cero, el numero.
+    assert_eq!(ejecuta(dos_reglas, 6, 4), 9);
+}
+
+// -------------------------------------------------------------------
+//  REGLA 12 -- convertir un flotante que no cabe
+// -------------------------------------------------------------------
+
+fn convierte(tipo: &str, expr: &str) -> u64 {
+    ejecuta(
+        &format!(
+            "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve entero64\n    devuelve {}({})\n",
+            tipo, expr
+        ),
+        0,
+        0,
+    )
+}
+
+/// El caso de la sonda `r12_conversion`: 1e30 no es ningun `entero32`.
+#[test]
+fn un_flotante_que_no_cabe_atrapa() {
+    assert_eq!(convierte("entero32", "1e30"), CONVERSION);
+    assert_eq!(convierte("entero64", "1e30"), CONVERSION);
+}
+
+/// ** Y EL ANCHO IMPORTA, que es por lo que la comprobacion lo lleva dentro.
+///
+/// El mismo numero cabe en uno y no en el otro. Una comprobacion que no supiera
+/// contra que mide seria una que aprueba todo.
+#[test]
+fn el_mismo_numero_cabe_en_uno_y_no_en_el_otro() {
+    assert_eq!(convierte("entero64", "1e10"), 10_000_000_000);
+    assert_eq!(convierte("entero32", "1e10"), CONVERSION);
+}
+
+/// Los tres anchos estrechos, cada uno en su borde.
+#[test]
+fn cada_ancho_atrapa_en_su_borde() {
+    assert_eq!(convierte("entero8", "127.0"), 127);
+    assert_eq!(convierte("entero8", "128.0"), CONVERSION);
+    assert_eq!(convierte("entero16", "32767.0"), 32767);
+    assert_eq!(convierte("entero16", "32768.0"), CONVERSION);
+}
+
+/// ** TRUNCAR NO ES REDONDEAR, y aqui es donde se ve que la comprobacion mide
+/// lo correcto.
+///
+/// `-128.5` no cabe *como numero* en un `entero8`, pero **truncado si**: da
+/// -128. Una comprobacion escrita contra el valor original y no contra el
+/// truncado rechazaria este programa, que es correcto.
+#[test]
+fn lo_que_truncado_cabe_no_atrapa_aunque_el_original_no_quepa() {
+    assert_eq!(convierte("entero8", "0.0 - 128.5") as i8, -128);
+    assert_eq!(convierte("entero8", "127.9"), 127);
+}
+
+/// ** EL NaN, que es el que se cuela sin la bandera de "no comparable".
+///
+/// Truncar un NaN devuelve el mismo centinela que un desbordamiento. Al
+/// compararlo con el limite sale "no comparable", que enciende la bandera de
+/// igualdad **a la vez** que la de paridad -- asi que sin mirar la segunda,
+/// esto pasaria por un numero legitimo.
+#[test]
+fn un_nan_no_es_ningun_entero() {
+    assert_eq!(convierte("entero64", "0.0 / 0.0"), CONVERSION);
+    assert_eq!(convierte("entero32", "0.0 / 0.0"), CONVERSION);
+}
+
+/// Y el infinito tampoco.
+#[test]
+fn el_infinito_no_es_ningun_entero() {
+    assert_eq!(convierte("entero64", "1.0 / 0.0"), CONVERSION);
+    assert_eq!(convierte("entero64", "0.0 - 1.0 / 0.0"), CONVERSION);
+}
+
+/// ** EL CASO QUE HACE FALTA EL SEGUNDO PASO: `-2^63` SI cabe.
+///
+/// Truncarlo devuelve el mismo centinela que un desbordamiento, asi que una
+/// comprobacion que solo mirara el centinela rechazaria un numero perfectamente
+/// legitimo -- el mas negativo que existe.
+///
+/// Por eso, cuando sale el centinela, se compara el ORIGINAL con `-2^63` exacto.
+#[test]
+fn el_entero_mas_negativo_no_es_un_desbordamiento() {
+    let r = convierte("entero64", "0.0 - 9223372036854775808.0");
+    assert_eq!(r, i64::MIN as u64, "el mas negativo se rechazo, y es valido");
+}
+
+/// Lo justo por debajo si desborda.
+#[test]
+fn justo_por_debajo_del_mas_negativo_atrapa() {
+    assert_eq!(
+        convierte("entero64", "0.0 - 9300000000000000000.0"),
+        CONVERSION
+    );
+}
+
+/// Y lo normal sigue funcionando, que es lo que una comprobacion mal puesta se
+/// lleva por delante sin que nadie lo note hasta que un programa real falla.
+#[test]
+fn las_conversiones_normales_no_atrapan() {
+    assert_eq!(convierte("entero64", "2.9"), 2);
+    assert_eq!(convierte("entero32", "1000.0"), 1000);
+    assert_eq!(convierte("entero64", "0.0"), 0);
+    assert_eq!(convierte("entero8", "0.0 - 1.0") as i8, -1);
+}
+
+// -------------------------------------------------------------------
+//  Y la cuenta, que es lo que se puede seguir en el tiempo
+// -------------------------------------------------------------------
+
+/// ** Las que la IR pide y las que el binario lleva ya CUADRAN para tres de las
+/// cuatro reglas.
+///
+/// El `Emitido` cuenta las que SALIERON, no las que se pidieron, y esa
+/// diferencia es a proposito: el dia que haya eliminacion de comprobaciones,
+/// restar los dos numeros dara exactamente lo que el optimizador quito.
+///
+/// Hoy la unica diferencia es la Regla 2, y tiene su motivo escrito.
+#[test]
+fn lo_que_la_ir_pide_y_lo_que_el_binario_lleva_ya_cuadran() {
+    let f = "\
+perfil llano
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    devuelve (a + b) entre (a - b)
+";
+    // Dos sumas/restas (Regla 1) y una division (Regla 3).
+    assert_eq!(reglas_de(f), 3);
+    assert_eq!(
+        emitido(f).comprobaciones,
+        3,
+        "la IR pide tres y el binario tiene que llevar tres"
+    );
 }

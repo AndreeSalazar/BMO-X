@@ -173,9 +173,27 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 | **CABINA** | ★★ INTI **le cuenta al sistema** que fallo Y lo que sabe, en la capa `Lang` | ✅ **202 pruebas en verde** (2026-08-19) |
 | **F3** | ★★★ **los temporales viven en REGISTROS** -- recorrido lineal, y solo cambio `marco.rs` | ✅ **206 pruebas en verde** (2026-08-19) |
 | F3b | ★★ **las llamadas**: una funcion de INTI llama a otra, incluso declarada mas abajo | ✅ verde (2026-08-19) |
-| F3 | las doce reglas con sus sondas en verde | pendiente |
-| F4 | ★★ la foto del Ryzen | pendiente |
-| F5-F7 | PLENO, congelado y tareas, y el REPL | pendiente |
+| **F4a** | ★★ **el arranque**: un programa empieza y termina solo, y sale por la puerta | ✅ verde (2026-08-20) |
+| **F4b** | **la memoria**: la puerta se abrio en F4a y al otro lado no habia manos | ✅ verde (2026-08-20) |
+| **F4c** | **el monton**, en piezas y escrito en el propio INTI | ✅ verde (2026-08-20) |
+| **F5a** | los **cuatro anchos**, y el de 32 es el que cabe un pixel | ✅ verde (2026-08-20) |
+| **F5b** | ★★ **la disposicion**: `p.x` y `a[i]` dejan de mentir. Nace `medidas.toml` | ✅ verde (2026-08-20) |
+| **F5c** | ★★ **la coma flotante**: las cuatro operaciones, las seis comparaciones con el NaN correcto, y la conversion | ✅ verde (2026-08-21) |
+| **F5d** | ★★★ **el metal**: `usa x86_64` y `usa binarios` dejan de ser una tabla que nadie emite | ✅ verde (2026-08-21) |
+| **sonda 32** | la tesis de la tabla, ejercitada: otra maquina da otra disposicion **sin tocar Rust** | ✅ verde (2026-08-21) |
+| F5e | ★★ la foto del Ryzen -- **lo unico que el emulador no puede dar** | ⏳ metal |
+| F6 | PLENO: texto, lista, tabla, decimal, contador de referencias | pendiente |
+| F7 | congelado y tareas, y el REPL | pendiente |
+
+**Hoy: 1.096 pruebas en verde** en INTI y en todo lo que comparte tabla con el
+(BMO C, COBOL, C++, Ada y `bmo-lower`).
+
+⚠ Y el numero incomodo, que esta medido y no estimado: de los **61 nombres** de
+la tabla de x86-64, **25 se pueden ejecutar en el emulador y 36 solo en metal**.
+No es un fallo del emulador: es su regla -- devolver un cero como si fuera el
+valor de un registro de control seria inventarse un dato. Los 36 estan
+**escritos con nombre** en `SOLO_EN_METAL`, que es la diferencia entre pendiente
+y olvidado.
 
 ⚠ **El REPL va el ultimo a proposito.** Un interprete no puede escribir un
 driver, y lo primero que INTI tiene que demostrar es que es un lenguaje de

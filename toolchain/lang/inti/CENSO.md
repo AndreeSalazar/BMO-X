@@ -1,4 +1,4 @@
-# CENSO DE INTI -- 38 sondas, y el veredicto escrito POR DELANTE
+# CENSO DE INTI -- 40 sondas, y el veredicto escrito POR DELANTE
 
 > **F0.** 🟡 Ninguna sonda esta medida: **hoy no existe el compilador**. Lo que
 > hace este documento es fijar **que tiene que pasar**, para que el dia que el
@@ -20,7 +20,7 @@ primera linea, asi que **la sonda y su expectativa no se pueden separar**.
 
 ## El numero
 
-**38 sondas. 4 medidas de verdad** (las de perfil, desde F2a), y el resto
+**40 sondas. 4 medidas de verdad** (las de perfil, desde F2a), y el resto
 esperando a su fase.
 
 | familia | sondas | que fija |
@@ -31,7 +31,7 @@ esperando a su fase.
 | `f` funciones | 6 | registros, capturas, defectos congelados, sin herencia |
 | `e` errores | 2 | las tres formas, y que ignorar no compila |
 | `p` perfiles | 8 | la frontera llano/pleno, `crudo`, `en paralelo`, **y la puerta** |
-| `r` reglas | 7 | las que se pueden ver desde el fuente |
+| `r` reglas | 9 | las que se pueden ver desde el fuente |
 
 ---
 
@@ -106,6 +106,8 @@ esperando a su fase.
 | `r04_sin_valor` | 4 -- ★ leer sin inicializar **no se puede escribir** | `E0031` |
 | `r07_desplaza` | 7 -- desplazar de mas da cero, con aviso | **COMPILA** + `A2007` + `0` |
 | `r09_tamanos` | 9 -- tamanos exactos | **COMPILA** |
+| `r11_flotante` | 11 -- las cuatro operaciones y la conversion existen | **COMPILA** |
+| `r11_bits_flotante` | 11 -- los bits sobre un flotante **no compilan** | `E0123` |
 | `r12_conversion` | 12 -- flotante fuera de rango atrapa | `E1012` |
 
 ### ⚠ Las cinco reglas que NO tienen sonda aqui, y por que
@@ -133,7 +135,7 @@ sondas en verde"*: **siete se declaran hoy y cinco nacen alli**.
    cargo test -p bmo-inti-front sonda_
 ```
 
-Siete ejes, 38 casillas, y el informe **entero** comparado contra la constante
+Siete ejes, 40 casillas, y el informe **entero** comparado contra la constante
 del censo -- el mismo mecanismo que le encontro a BMO C cuatro defectos sin
 encender la maquina (el alineado de agregados, las cuatro operaciones que
 miraban mal el bit alto, `<strings.h>` ausente y `fread` a la pila).
