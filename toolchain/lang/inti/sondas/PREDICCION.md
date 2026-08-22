@@ -1,10 +1,10 @@
 # `cpu.inti` -- la prediccion, escrita antes de correrla
 
 ```text
-   run inti/cpu.bex
+   run inti/cpu.ibex
 ```
 
-El `.bex` lo produce **`build.ps1`**, en `staging\BMO-DATA\inti\cpu.bex`, que es
+El `.bex` lo produce **`build.ps1`**, en `staging\BMO-DATA\inti\cpu.ibex`, que es
 el espejo de lo que va al volumen de datos. Sale del mismo paso que los ejemplos
 de C, COBOL y Ada.
 

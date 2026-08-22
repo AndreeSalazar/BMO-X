@@ -5,19 +5,19 @@
 Es la sonda del **peldano 3** de [`PLAN_DE_PRUEBAS.md`](../PLAN_DE_PRUEBAS.md):
 la primera vez que una linea de INTI corre en un procesador de verdad.
 
-**El `.bex` lo produce `build.ps1`**, en `staging\BMO-DATA\inti\cpu.bex` -- el
+**El `.bex` lo produce `build.ps1`**, en `staging\BMO-DATA\inti\cpu.ibex` -- el
 espejo de lo que va al volumen de datos. Sale del mismo paso que los ejemplos de
 C, COBOL y Ada, y por el mismo helper:
 
 ```powershell
-Compilar-Ejemplos @(@{ src = '...\cpu.inti'; out = 'cpu.bex'; dir = 'inti' }) `
+Compilar-Ejemplos @(@{ src = '...\cpu.inti'; out = 'cpu.ibex'; dir = 'inti' }) `
     'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
 ```
 
-En la maquina: `run inti/cpu.bex`. A mano, para probar:
+En la maquina: `run inti/cpu.ibex`. A mano, para probar:
 
 ```bash
-cargo run -p bmo-inti-x86-64 -- toolchain/lang/inti/sondas/cpu.inti -o cpu.bex --informe
+cargo run -p bmo-inti-x86-64 -- toolchain/lang/inti/sondas/cpu.inti -o cpu.ibex --informe
 ```
 
 OJO: la primera version se dejo en una carpeta `inti/` del repo y **nunca llego

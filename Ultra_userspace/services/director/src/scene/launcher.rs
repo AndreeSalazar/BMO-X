@@ -411,9 +411,25 @@ fn upper(b: u8) -> u8 {
     }
 }
 
+/// **Lanzable**: `.bex`, y desde el 2026-08-22 tambien `.ibex`.
+///
+/// ## Por que son dos y no una
+///
+/// Son **el mismo formato**: un `.ibex` es un BEF, lo carga el mismo cargador y
+/// lo lee el mismo gate. Lo que cambia es a que se ha comprometido quien lo
+/// escribio -- declara su perfil, sus piezas y su mesa de katanas, y no llega al
+/// disco si esa mesa no cuadra con sus bytes.
+///
+/// ** Asi que la extension no cambia como se lanza: cambia lo que se puede
+/// afirmar de el sin abrirlo. Por eso aqui son dos nombres y una sola rama.
+///
+/// Se comprueba `.ibex` ANTES que `.bex` porque `.bex` no es sufijo de `.ibex`
+/// --el punto lo impide-- pero un `ends_with` mal escrito lo seria, y de esos
+/// hay uno en cada base de codigo.
 fn ends_in_bex(n: &[u8]) -> bool {
     let l = n.len();
-    l >= 4 && n[l - 4..].eq_ignore_ascii_case(b".bex")
+    (l >= 5 && n[l - 5..].eq_ignore_ascii_case(b".ibex"))
+        || (l >= 4 && n[l - 4..].eq_ignore_ascii_case(b".bex"))
 }
 
 fn without_extension(n: &[u8]) -> &[u8] {

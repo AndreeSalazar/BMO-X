@@ -998,11 +998,17 @@ try {
     Compilar-Ejemplos $cEjemplos 'bmo-c-front' 'c' 'ok:|error' $dataBase $repo
 
     Step 'Building INTI probes...'
-    # ** `run inti/cpu.bex`. Por el MISMO helper que los otros tres: si INTI
+    # ** `run inti/cpu.ibex`. Por el MISMO helper que los otros tres: si INTI
     # necesitara un camino propio al disco, seria que no es un frontend mas. Y es
     # el fallo que este bloque ya tenia escrito de C -- *compila y no se
-    # despliega* -- repetido con INTI, cuyo .bex vivia fuera del espejo.
-    Compilar-Ejemplos @(@{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.bex'; dir = 'inti' }) 'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
+    # despliega* -- repetido con INTI, cuyo binario vivia fuera del espejo.
+    #
+    # ** `.ibex` desde el 2026-08-22, y no es un cambio de gusto: es el MISMO
+    # formato --lo carga el mismo cargador y lo lee el mismo gate-- con un nombre
+    # que dice a que se ha comprometido. Un `.ibex` en el disco declara su
+    # perfil, sus piezas y su mesa de katanas, y no habria llegado aqui si esa
+    # mesa no cuadrara con sus bytes. `.bex` se queda para los otros tres.
+    Compilar-Ejemplos @(@{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.ibex'; dir = 'inti' }) 'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
 
     # -- Meter los datos DENTRO del .bex ---------------------------
     #

@@ -36,7 +36,7 @@ fn compila(fuente: &PathBuf) -> Vec<u8> {
         String::from_utf8_lossy(&s.stdout),
         String::from_utf8_lossy(&s.stderr)
     );
-    std::fs::read(fuente.with_extension("bex")).expect("no hay `.bex`")
+    std::fs::read(fuente.with_extension("ibex")).expect("no hay `.bex`")
 }
 
 /// El fuente trae `usa monton`, que es lo unico que hoy mete piezas de verdad.

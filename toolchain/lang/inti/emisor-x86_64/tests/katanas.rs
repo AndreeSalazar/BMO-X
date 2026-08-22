@@ -50,7 +50,7 @@ fn compila(fuente: &PathBuf) -> Vec<u8> {
         String::from_utf8_lossy(&s.stdout),
         String::from_utf8_lossy(&s.stderr)
     );
-    std::fs::read(fuente.with_extension("bex")).expect("no hay `.bex`")
+    std::fs::read(fuente.with_extension("ibex")).expect("no hay `.bex`")
 }
 
 /// Las tres reglas que llegan a bytes, cada una provocada a proposito.
