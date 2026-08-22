@@ -14,7 +14,7 @@
   1689  toolchain/forge/bmo-lower/src/emu/mod.rs
   1621  toolchain/lang/cpp/src/parser.rs
   1584  platform/drivers/usb/xhci/src/lib.rs
-  1571  Ultra_kernel_x86-64/build.ps1
+  1578  Ultra_kernel_x86-64/build.ps1
   1416  platform/abi/bmo-abi/src/bef/validator.rs
   1363  Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs
   1345  Ultra_userspace/services/director/src/commands/reports.rs
@@ -40,3 +40,4 @@ Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs        1349 -> 1363  el desp
 toolchain/forge/bmo-lower/src/emu.rs                       2207 -> 2228  flags_add en el emulador: `add` usaba `flags_logic`, que pone `of` a FALSO siempre. El hueco duro meses porque NINGUN lenguaje de BMO emitia un `jo` -- C no comprueba el desbordamiento, y lo que no se emite no se emula. INTI es el primero que lo necesita (su regla 1: desbordar ATRAPA). Sin esto el emulador contesta que nunca desborda, que es la peor respuesta: HACE PASAR el test que deberia fallar. Son 21 lineas de correccion en un CAJON que ya estaba sobre la linea.
 Ultra_kernel_x86-64/build.ps1                              1563 -> 1569  el SEXTO guardian (ambitos de commit): 5 lineas, y son irreducibles -- una llamada a `Guardian` son cuatro y la quinta dice donde esta el por que. [!] Y lo que esto destapa es otra cosa: build.ps1 lleva 1.568 lineas con 8 funciones (media 197) y el censo lo llama `desconocida` porque es PowerShell. Cada guardian nuevo lo engorda, asi que o se parte o esta lista tendra una entrada por guardian.
 Ultra_kernel_x86-64/build.ps1                              1569 -> 1571  el helper `Guardian` distingue por fin FALTA EL SCRIPT de NO HAY PYTHON: 2 lineas. Lo primero es del repo --un path mal escrito dejo el guardian de ambitos MUERTO y el build dijo COMPLETE igual-- y lo segundo del entorno. Es literalmente el fallo que este fichero ya tenia descrito tres veces: un guardian que lee menos no avisa de menos, avisa de nada.
+Ultra_kernel_x86-64/build.ps1                              1571 -> 1578  el paso que despliega la sonda de INTI: 7 lineas, y son las que hacen que `run inti/cpu.bex` exista. El .bex de cpu.inti se estaba dejando en una carpeta del repo y NUNCA LLEGABA AL FAT32 -- que es literalmente el fallo que este mismo bloque tiene escrito de cuando le paso a C: un lenguaje que compila y cuyo binario no se despliega esta a medias. Reusa `Compilar-Ejemplos`, asi que no anade logica: una fila de tabla, un Step y la llamada. [!] Y confirma lo que la SUBIDA anterior predijo -- cada paso nuevo engorda este fichero, asi que o se parte o esta lista tendra una entrada por paso.

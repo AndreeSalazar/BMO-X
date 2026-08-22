@@ -64,7 +64,6 @@ pub mod puerta;
 
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::syscalls::surface::NR_INVOKE;
-use bmo_inti_front::arbol::Op;
 use bmo_inti_front::ir::{
     Clase, Comprobacion, Const, FuncionIr, Instr, Local, ModuloIr, Valor,
 };

@@ -51,8 +51,8 @@ pub use forma::{
     Clase, Comprobacion, Const, Etiqueta, FuncionIr, Instr, Local, ModuloIr, Temporal, Valor,
 };
 
-use crate::arbol::{self, Bloque, Decl, Expr, Modulo, Op, OpUno, Repeticion, Sent};
-use crate::aviso::{Cosecha, Sitio};
+use crate::arbol::{self, Bloque, Decl, Expr, Modulo, Op, Repeticion, Sent};
+use crate::aviso::Cosecha;
 
 /// Baja un modulo entero.
 pub fn bajar(m: &Modulo) -> Cosecha<ModuloIr> {

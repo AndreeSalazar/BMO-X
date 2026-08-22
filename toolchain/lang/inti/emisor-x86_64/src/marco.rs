@@ -207,7 +207,7 @@ impl Marco {
 fn tramos_de_vida(f: &FuncionIr) -> Vec<(usize, usize)> {
     let mut tramos = vec![(usize::MAX, 0usize); f.temporales as usize];
 
-    let mut toca = |t: Temporal, i: usize, tramos: &mut Vec<(usize, usize)>| {
+    let toca = |t: Temporal, i: usize, tramos: &mut Vec<(usize, usize)>| {
         let e = &mut tramos[t.0 as usize];
         if e.0 == usize::MAX {
             e.0 = i;
@@ -217,7 +217,7 @@ fn tramos_de_vida(f: &FuncionIr) -> Vec<(usize, usize)> {
         }
     };
 
-    let mut mira = |v: &Valor, i: usize, tramos: &mut Vec<(usize, usize)>| {
+    let mira = |v: &Valor, i: usize, tramos: &mut Vec<(usize, usize)>| {
         if let Valor::Temporal(t) = v {
             toca(*t, i, tramos);
         }
