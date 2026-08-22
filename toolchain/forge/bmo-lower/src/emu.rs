@@ -344,6 +344,16 @@ pub struct Machine {
     sf: bool,
     of: bool,
     cf: bool,
+    /// **La bandera de paridad.** En la aritmetica de enteros no la mira casi
+    /// nadie; en la de coma flotante es la que distingue *"no son iguales"* de
+    /// *"no se pueden comparar"*.
+    ///
+    /// `comisd` la enciende cuando alguno de los dos es NaN, y ESA es la unica
+    /// forma de preguntarlo: sin ella, `a = b` con un NaN dentro contesta que
+    /// si, porque el no-ordenado tambien enciende la de igualdad. Se modela por
+    /// lo mismo que `df`: es estado invisible que hace que algo funcione aqui y
+    /// conteste al reves en el silicio.
+    pf: bool,
     /// **La bandera de direccion.** Con `df` en falso las instrucciones de
     /// cadena avanzan y con `df` puesta retroceden.
     ///
@@ -395,6 +405,7 @@ impl Machine {
             sf: false,
             of: false,
             cf: false,
+            pf: false,
             df: false,
         };
         m.regs[RSP] = STACK_TOP;
@@ -501,6 +512,7 @@ impl Machine {
         // Overflow con signo: los operandos difieren en signo y el
         // resultado toma el del sustraendo.
         self.of = ((a ^ b) & (a ^ r)) >> 63 != 0;
+        self.paridad(r);
     }
 
     /// Flags de una suma `a + b`.
@@ -522,6 +534,26 @@ impl Machine {
         // Con signo: si los dos operandos tienen el mismo signo y el resultado
         // sale con el contrario, se paso de la cuenta.
         self.of = ((!(a ^ b)) & (a ^ r)) >> 63 != 0;
+        self.paridad(r);
+    }
+
+    /// Las banderas de un producto con signo: `cf` y `of` a la vez si el
+    /// resultado no cabe en el ancho del destino.
+    ///
+    /// ** `imul` NO toca `zf` ni `sf` en el silicio, y aqui tampoco: dejarlas a
+    /// algo razonable seria inventarse un estado que un `jz` detras leeria.
+    fn banderas_producto(&mut self, a: i64, b: i64, wide: bool) {
+        let cabe = if wide {
+            a.checked_mul(b).is_some()
+        } else {
+            // De 32 bits: cabe si el producto de los dos truncados a 32 sigue
+            // entrando en 32 con signo.
+            let (a, b) = (a as i32 as i64, b as i32 as i64);
+            let r = a.wrapping_mul(b);
+            r == r as i32 as i64
+        };
+        self.cf = !cabe;
+        self.of = !cabe;
     }
 
     fn flags_logic(&mut self, r: u64) {
@@ -529,6 +561,14 @@ impl Machine {
         self.sf = (r as i64) < 0;
         self.cf = false;
         self.of = false;
+        self.paridad(r);
+    }
+
+    /// La paridad del BYTE BAJO, que es lo que mide `pf` en x86 -- no la del
+    /// resultado entero. Es una rareza heredada del 8080 y esta aqui escrita
+    /// para que nadie la "arregle" a la del valor completo.
+    fn paridad(&mut self, r: u64) {
+        self.pf = (r as u8).count_ones() % 2 == 0;
     }
 
     /// Siembra lo que el terminal habria tecleado. El `\n` final hace falta:
@@ -1441,6 +1481,21 @@ impl Machine {
                 };
                 self.write_reg(reg, imm, wide);
             }
+            // ** ALU de UN BYTE: `and r/m8, r8` y `or r/m8, r8`.
+            //
+            // Son las hermanas estrechas de `0x21` y `0x09`, y hacen falta
+            // desde que una comparacion de coma flotante junta DOS `setcc`:
+            // `setcc` escribe un byte, asi que combinarlos tiene que ser de un
+            // byte tambien. Con la version ancha se leerian los siete bytes de
+            // arriba, que no son de nadie.
+            0x20 | 0x08 => {
+                let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
+                let a = self.load(dst, false) & 0xFF;
+                let b = self.read_reg(reg, false) & 0xFF;
+                let r = if byte == 0x20 { a & b } else { a | b };
+                self.flags_logic(r);
+                self.store_u8(dst, r);
+            }
             // ALU  r/m, reg
             0x89 | 0x09 | 0x01 | 0x29 | 0x85 | 0x31 | 0x39 | 0x21 => {
                 let (reg, dst) = self.modrm(rex_r, rex_x, rex_b);
@@ -1541,6 +1596,7 @@ impl Machine {
                 };
                 let a = self.load(src, wide) as i64;
                 let r = a.wrapping_mul(imm) as u64;
+                self.banderas_producto(a, imm, wide);
                 self.write_reg(reg, r, wide);
             }
             // grupo 1 con imm8: /0 add, /5 sub, /7 cmp, /4 and
@@ -1833,6 +1889,35 @@ impl Machine {
                 let target = self.pop();
                 self.rip = target as usize;
             }
+            // ** LAS TRES QUE PARAN EL PROGRAMA: `hlt`, `int3` y `ud2`.
+            //
+            // Se modelan por la misma regla que las barreras y por la contraria
+            // que `rdmsr`: **esto es COMPORTAMIENTO, no un dato**.
+            //
+            // `hlt` para el CPU hasta la siguiente interrupcion; aqui no hay
+            // interrupciones, asi que para y ya -- que es exactamente lo que
+            // hace en el silicio cuando no llega ninguna. `int3` y `ud2`
+            // levantan una excepcion que, sin manejador, termina el programa.
+            //
+            // No se inventa ningun valor: `rax` se queda como estaba. Lo unico
+            // que se dice es *"aqui se acabo"*, y eso es verdad en las tres.
+            //
+            // Antes daban panic, y la consecuencia era peor de lo que parece:
+            // una tabla de INTI con setenta nombres de maquina no se podia
+            // recorrer entera para ver cuales salen, porque la primera parada
+            // se llevaba el banco por delante.
+            0xF4 | 0xCC => self.exited = true,
+            // ** `cli` y `sti` -- la misma regla que las barreras.
+            //
+            // Aqui NO HAY interrupciones que habilitar ni que apagar, asi que
+            // apagarlas es un no-op **de verdad** y no una simplificacion: no
+            // hay nada que pudiera llegar y no llegue.
+            //
+            // Se modelan y `rdmsr` sigue dando panic porque son cosas distintas:
+            // esto no contesta nada, y aquello contestaria un dato inventado.
+            // La linea del emulador no es "de bajo nivel", es **te estoy
+            // devolviendo un valor que me acabo de inventar?**
+            0xFA | 0xFB => {}
             // cdqe/cwde -- extiende eax a rax con signo
             0x98 => {
                 if wide {
@@ -1957,15 +2042,23 @@ impl Machine {
                         // `jb`), no `jg`/`jl`. Modelarlo con SF seria hacer
                         // pasar codigo que en el silicio salta al reves.
                         //
-                        // No-ordenado (algun NaN) pone las tres a 1. No pasa
-                        // hoy, y esta dicho para que el dia que pase no
-                        // parezca "menor que".
+                        // No-ordenado (algun NaN) pone las TRES a 1, `pf`
+                        // incluida.
+                        //
+                        // ** Esto decia "no pasa hoy" hasta que INTI empezo a
+                        // comparar flotantes. Ahora pasa, y `pf` es la unica
+                        // bandera que distingue un NaN de una igualdad: sin
+                        // ella, `a = b` con un NaN dentro contesta que si --
+                        // porque el no-ordenado enciende `zf` igual que la
+                        // igualdad de verdad.
                         if a.is_nan() || b.is_nan() {
                             self.zf = true;
                             self.cf = true;
+                            self.pf = true;
                         } else {
                             self.zf = a == b;
                             self.cf = a < b;
+                            self.pf = false;
                         }
                         self.sf = false;
                         self.of = false;
@@ -2028,7 +2121,32 @@ impl Machine {
                         // `cvtt` trunca hacia cero; `cvt` (0x2D) redondearia.
                         // BMO solo emite el que trunca, que es lo que manda C
                         // para un cast a entero: `(int)2.7` son 2.
-                        self.write_reg(reg, (v as i64) as u64, true);
+                        //
+                        // ** Y LO QUE PASA CUANDO NO CABE, que estaba mal.
+                        //
+                        // Esto escribia `v as i64` a secas, que en Rust
+                        // **satura**: 1e30 daba el entero mas grande y un NaN
+                        // daba cero. El silicio no hace ninguna de las dos:
+                        // devuelve el entero mas NEGATIVO como centinela, para
+                        // los dos casos y sin levantar nada.
+                        //
+                        // La diferencia no es academica. Es la unica senal que
+                        // el procesador da de que la conversion no cabia, asi
+                        // que **es la que la Regla 12 de INTI tiene que mirar**.
+                        // Con la version que satura, un programa que comprueba
+                        // el centinela pasaba aqui y atrapaba en metal -- o al
+                        // reves, que es peor.
+                        //
+                        // Es exactamente la clase de fallo que este emulador
+                        // existe para no tener: uno donde el banco dice que si
+                        // y el Ryzen dice que no.
+                        let r = if v.is_nan() || v >= 9223372036854775808.0 || v < -9223372036854775808.0
+                        {
+                            i64::MIN
+                        } else {
+                            v as i64
+                        };
+                        self.write_reg(reg, r as u64, true);
                     }
                     // movsx reg, r/m8 -- carga un char CON signo
                     0xBE => {
@@ -2154,12 +2272,34 @@ impl Machine {
                             let _ = self.modrm(rex_r, rex_x, rex_b); // clflush
                         }
                     }
+                    // `ud2` -- instruccion invalida a proposito. Termina.
+                    //
+                    // Igual que `int3`: es comportamiento, no un dato. Un
+                    // programa que la ejecuta se acaba ahi, en el emulador y en
+                    // el silicio.
+                    0x0B => self.exited = true,
                     // imul reg, r/m
+                    //
+                    // ** Y PONE BANDERAS, que es lo que faltaba y era grave.
+                    //
+                    // Esto multiplicaba y no tocaba `of`, asi que un `jo`
+                    // detras **nunca saltaba**. BMO C no lo noto porque C no
+                    // comprueba el desbordamiento; INTI si, y su Regla 1 salia
+                    // verde aqui y habria atrapado en el Ryzen.
+                    //
+                    // El silicio enciende `cf` y `of` a la vez cuando el
+                    // producto con signo no cabe en el registro -- que es
+                    // exactamente la pregunta que la Regla 1 hace.
+                    //
+                    // Es hermano del hueco de `add` que se encontro el 19-08 con
+                    // las mismas palabras: *ningun lenguaje de BMO lo habia
+                    // notado porque ninguno emitia un `jo`*.
                     0xAF => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
                         let a = self.read_reg(reg, wide) as i64;
                         let b = self.load(src, wide) as i64;
                         let r = a.wrapping_mul(b) as u64;
+                        self.banderas_producto(a, b, wide);
                         self.write_reg(reg, r, wide);
                     }
                     // setcc r/m8 -- deja 0 o 1 segun la condicion
@@ -2195,6 +2335,11 @@ impl Machine {
             0x7 => !self.cf && !self.zf,
             0x8 => self.sf,
             0x9 => !self.sf,
+            // ** `p` / `np`: "no comparables" y "comparables". Solo tienen
+            // sentido detras de una comparacion de coma flotante, y sin ellas
+            // no hay forma de escribir una igualdad que el NaN no engane.
+            0xA => self.pf,
+            0xB => !self.pf,
             0xC => self.sf != self.of,
             0xD => self.sf == self.of,
             0xE => self.zf || (self.sf != self.of),

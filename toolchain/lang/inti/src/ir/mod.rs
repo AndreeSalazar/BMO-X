@@ -56,6 +56,21 @@ pub struct Etiqueta(pub u32);
 #[derive(Debug, Clone, PartialEq)]
 pub enum Const {
     Entero(i64),
+    /// El PATRON DE BITS de un flotante IEEE-754, no su texto.
+    ///
+    /// ** Y aqui esta la linea que separa las dos cosas que en castellano se
+    /// llaman igual:
+    ///
+    /// ```text
+    ///    Flotante   IEEE-754 binario. Mide lo que dice su nombre. Es `llano`
+    ///    Decimal    exacto, todavia texto, y NO dice cuanto mide. Es `pleno`
+    /// ```
+    ///
+    /// Son dos variantes y no una con una bandera porque **no se convierten la
+    /// una en la otra sin perder algo**: 0,1 no existe en binario, y el dia que
+    /// alguien "unifique" estas dos el decimal exacto deja de serlo en silencio.
+    /// Ese es exactamente el motivo por el que el lexer tampoco convierte.
+    Flotante(u64),
     Decimal(String),
     /// Indice en el pozo de textos del modulo.
     Texto(u32),
@@ -86,8 +101,12 @@ pub enum Comprobacion {
     EntreCero,
     /// Regla 2: indice fuera de rango.
     Indice,
-    /// Regla 12: convertir un flotante que no cabe.
-    Conversion,
+    /// Regla 12: convertir un flotante que no cabe, **en tantos bytes**.
+    ///
+    /// ** Lleva el ancho porque sin el la pregunta no tiene respuesta: 1e10
+    /// cabe de sobra en un `entero64` y no cabe en un `entero32`. Una
+    /// comprobacion que no sabe contra que mide es una que aprueba todo.
+    Conversion(u32),
 }
 
 impl Comprobacion {
@@ -97,9 +116,34 @@ impl Comprobacion {
             Comprobacion::Desborde => "E1001",
             Comprobacion::Indice => "E1002",
             Comprobacion::EntreCero => "E1003",
-            Comprobacion::Conversion => "E1012",
+            Comprobacion::Conversion(_) => "E1012",
         }
     }
+}
+
+/// Con que aritmetica se opera.
+///
+/// ## ** Por que viaja en la IR en vez de deducirla el emisor
+///
+/// Porque el emisor **no puede**. Los ocho bytes de un `flotante64` y los de un
+/// `natural64` son indistinguibles: no hay nada en el valor que diga cual es.
+/// Lo dice el tipo, el tipo lo sabe el plano, y el plano se consulta una vez --
+/// al bajar. Un emisor que tuviera que adivinarlo acertaria casi siempre, que
+/// es la peor de las opciones.
+///
+/// Y no nombra ninguna maquina: *"de coma flotante"* es una clase de ARITMETICA,
+/// no un sitio donde vivir. Hay maquinas que la hacen en registros propios,
+/// otras en una pila con mas precision de la que se pidio, y otras llamando a
+/// una funcion porque no tienen la instruccion. Las tres son este mismo
+/// `Clase::Flotante`, y cual toca es cosa del emisor de cada una.
+///
+/// (Esta explicacion nombraba un registro concreto en su primera version y la
+/// tumbo `tests/agnostico.rs`. Tenia razon dos veces, como en F5b: el frontend
+/// no puede nombrarlo, y la frase dice mas sin el.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Clase {
+    Entero,
+    Flotante,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -111,6 +155,7 @@ pub enum Instr {
     Binaria {
         destino: Temporal,
         op: Op,
+        clase: Clase,
         izquierda: Valor,
         derecha: Valor,
     },
@@ -128,6 +173,22 @@ pub enum Instr {
         que: Comprobacion,
         sobre: Valor,
         sitio: Sitio,
+    },
+    /// Cambia de clase de numero: `flotante64(n)`, `entero64(f)`.
+    ///
+    /// ** Es una INSTRUCCION y no una llamada, y esa es la decision. Escrito
+    /// `flotante64(n)` parece una llamada y en C lo seria; aqui no, porque una
+    /// llamada cuesta una convencion entera y esto es un `mov` con nombre.
+    ///
+    /// Y hay una razon mejor: **una conversion es el sitio donde vive la Regla
+    /// 12**. Convertir 1e30 a `entero32` no tiene resultado, y lo que no tiene
+    /// resultado atrapa. Eso se puede exigir de una instruccion; de una llamada
+    /// a una funcion cualquiera, no.
+    Convierte {
+        destino: Temporal,
+        valor: Valor,
+        desde: Clase,
+        hacia: Clase,
     },
     Llama {
         destino: Option<Temporal>,
@@ -212,12 +273,69 @@ impl ModuloIr {
             .filter(|i| matches!(i, Instr::Comprueba { .. }))
             .count()
     }
+
+    /// Cuantas instrucciones de la maquina toca el modulo.
+    ///
+    /// ** Es el hermano del contador de bloques `crudo`, y mide otra cosa: un
+    /// `crudo` dice *"aqui nadie comprueba"*, y este dice *"aqui se habla con
+    /// el silicio"*. Un programa puede tener mucho de lo primero y nada de lo
+    /// segundo --el monton, sin ir mas lejos-- y al reves.
+    ///
+    /// Va a CABINA como numero por el mismo motivo que los demas: *"este
+    /// programa se esta atando mas a la maquina que el mes pasado"* deja de ser
+    /// una impresion.
+    pub fn instrucciones(&self) -> usize {
+        self.funciones
+            .iter()
+            .flat_map(|f| f.instrucciones.iter())
+            .filter(|i| matches!(i, Instr::Metal { .. }))
+            .count()
+    }
 }
 
 /// Baja un modulo entero.
 pub fn bajar(m: &Modulo) -> Cosecha<ModuloIr> {
     let plano = crate::disposicion::comprobar(m, crate::disposicion::Medidas::por_defecto()).valor;
-    bajar_con(m, &crate::tablas::Modulos::por_defecto(), &plano)
+    let tabla = crate::tablas::Modulos::por_defecto();
+    let metal = metal_que_declara(m, &bmo_mods::Roots::find(), &tabla);
+    bajar_con(m, &tabla, &plano, &metal)
+}
+
+/// Los nombres que son una instruccion, segun lo que el FUENTE declaro.
+///
+/// ## ** Las dos fuentes, y por que son dos
+///
+/// ```text
+///    usa x86_64     nombres que SOLO existen ahi   -> el fichero no se porta
+///    usa binarios   nombres que existen en todas   -> el fichero SI se porta
+/// ```
+///
+/// Las dos acaban emitiendo una instruccion en esta maquina, y por eso salen
+/// juntas de aqui. Lo que cambia es lo que el programa **declaro**, y eso ya lo
+/// cuenta `perfil` -- que es donde tiene que contarse.
+///
+/// OJO: esto vive en `ir` y no nombra ninguna maquina. El nombre `"x86_64"` sale
+/// de `m.usa`, o sea del fichero del usuario. Buscar una tabla por un nombre que
+/// te dan no es conocerla.
+pub fn metal_que_declara(
+    m: &Modulo,
+    raices: &bmo_mods::Roots,
+    tabla: &crate::tablas::Modulos,
+) -> Vec<String> {
+    let mut v = Vec::new();
+    for (n, _) in &m.usa {
+        if let Some(maquina) = crate::arquitectura::Maquina::buscar(raices, n) {
+            v.extend(maquina.nombres_que_trae());
+        } else {
+            // ** Un modulo de REX cuyos nombres son instrucciones aqui. Hoy solo
+            // `binarios`, y por eso la pregunta se hace a la TABLA y no con un
+            // `if n == "binarios"`: el dia que haya un segundo, es una fila.
+            if tabla.son_instrucciones(n) {
+                v.extend(tabla.trae(n).iter().cloned());
+            }
+        }
+    }
+    v
 }
 
 /// Baja un modulo entero sabiendo que trae cada `usa`.
@@ -229,17 +347,18 @@ pub fn bajar_con(
     m: &Modulo,
     tabla: &crate::tablas::Modulos,
     plano: &crate::disposicion::Plano,
+    metal: &[String],
 ) -> Cosecha<ModuloIr> {
     let mut salida = ModuloIr::default();
 
     for d in &m.declaraciones {
         match d {
             Decl::Funcion(f) => {
-                let ir = Descenso::nueva(&mut salida.textos, tabla, plano).funcion(f);
+                let ir = Descenso::nueva(&mut salida.textos, tabla, plano, m.perfil, metal).funcion(f);
                 salida.funciones.push(ir);
             }
             Decl::Operacion { tipo, funcion } => {
-                let mut ir = Descenso::nueva(&mut salida.textos, tabla, plano).funcion(funcion);
+                let mut ir = Descenso::nueva(&mut salida.textos, tabla, plano, m.perfil, metal).funcion(funcion);
                 // El nombre lleva el tipo delante para que dos operaciones con
                 // el mismo nombre en tipos distintos no se pisen.
                 ir.nombre = format!("{}.{}", tipo, funcion.nombre);
@@ -251,7 +370,7 @@ pub fn bajar_con(
                 ..
             } => {
                 for f in operaciones {
-                    let mut ir = Descenso::nueva(&mut salida.textos, tabla, plano).funcion(f);
+                    let mut ir = Descenso::nueva(&mut salida.textos, tabla, plano, m.perfil, metal).funcion(f);
                     ir.nombre = format!("{}.{}", nombre, f.nombre);
                     salida.funciones.push(ir);
                 }
@@ -273,6 +392,32 @@ struct Descenso<'t> {
     bucles: Vec<(Etiqueta, Etiqueta)>,
     tabla: &'t crate::tablas::Modulos,
     plano: &'t crate::disposicion::Plano,
+    /// ** Que perfil, y hace falta por UNA sola pregunta: que es `3.5`.
+    ///
+    /// En `llano` es un `flotante64` --binario, ocho bytes-- porque `decimal`
+    /// esta prohibido alli por no decir su medida. En `pleno` es un decimal
+    /// EXACTO, y convertirlo a binario para "ya tenerlo hecho" perderia la
+    /// exactitud que el lenguaje promete en la portada.
+    ///
+    /// El mismo caracter en el fuente, dos cosas distintas, y lo decide una
+    /// palabra escrita en la primera linea del fichero. Es la unica vez que el
+    /// perfil cambia lo que SIGNIFICA algo en vez de lo que se permite.
+    perfil: crate::arbol::Perfil,
+    /// Los nombres que son UNA INSTRUCCION de la maquina, no una funcion.
+    ///
+    /// ## ** Por que llegan de fuera y no se buscan aqui
+    ///
+    /// Porque este modulo no puede nombrar una maquina, y ese es todo el
+    /// asunto. La lista se monta arriba, a partir de lo que el FUENTE declaro
+    /// con `usa` -- asi que el nombre de la maquina lo escribio el usuario, no
+    /// el compilador.
+    ///
+    /// ** Y sin esta lista pasaba lo peor que puede pasar: `lee_reloj()` se
+    /// bajaba a una LLAMADA a un simbolo que no existe. Compilaba, pasaba el
+    /// analisis de nombres --porque el nombre existe en la tabla--, pasaba el
+    /// de perfiles, y el binario saltaba a la nada. La tabla de la maquina
+    /// estaba entera y no la leia nadie a la hora de emitir.
+    metal: &'t [String],
     /// Los tipos declarados de la funcion que se esta bajando.
     tipos: std::collections::HashMap<String, crate::arbol::Tipo>,
 }
@@ -282,6 +427,8 @@ impl<'t> Descenso<'t> {
         textos: &'t mut Vec<String>,
         tabla: &'t crate::tablas::Modulos,
         plano: &'t crate::disposicion::Plano,
+        perfil: crate::arbol::Perfil,
+        metal: &'t [String],
     ) -> Self {
         Self {
             instrucciones: Vec::new(),
@@ -292,6 +439,8 @@ impl<'t> Descenso<'t> {
             bucles: Vec::new(),
             tabla,
             plano,
+            perfil,
+            metal,
             tipos: std::collections::HashMap::new(),
         }
     }
@@ -319,6 +468,9 @@ impl<'t> Descenso<'t> {
                 self.pon(Instr::Binaria {
                     destino: t,
                     op: Op::Suma,
+                    // Una direccion es un entero. Siempre. Aunque lo que haya al
+                    // final sea un flotante: `p.x` suma bytes, no numeros.
+                    clase: Clase::Entero,
                     izquierda: base,
                     derecha: Valor::Const(Const::Entero(desplazamiento as i64)),
                 });
@@ -334,6 +486,7 @@ impl<'t> Descenso<'t> {
                 self.pon(Instr::Binaria {
                     destino: paso,
                     op: Op::Por,
+                    clase: Clase::Entero,
                     izquierda: i,
                     derecha: Valor::Const(Const::Entero(medida as i64)),
                 });
@@ -341,6 +494,7 @@ impl<'t> Descenso<'t> {
                 self.pon(Instr::Binaria {
                     destino: t,
                     op: Op::Suma,
+                    clase: Clase::Entero,
                     izquierda: base,
                     derecha: Valor::Temporal(paso),
                 });
@@ -527,7 +681,23 @@ impl<'t> Descenso<'t> {
         match e {
             Expr::Numero(n, _) => {
                 if n.con_punto {
-                    Valor::Const(Const::Decimal(n.texto.clone()))
+                    // ** LA MISMA ESCRITURA, DOS VALORES, y lo decide el perfil.
+                    //
+                    // `llano` no tiene `decimal` --lo prohibe `biblioteca.toml`
+                    // por no decir su medida--, asi que alli `3.5` es binario y
+                    // se convierte AQUI, una vez, al bajar. `pleno` lo deja en
+                    // texto porque su `numero` es decimal exacto y pasarlo por
+                    // un binario intermedio lo estropearia sin avisar.
+                    match (self.perfil, n.texto.parse::<f64>()) {
+                        (crate::arbol::Perfil::Llano, Ok(f)) => {
+                            Valor::Const(Const::Flotante(f.to_bits()))
+                        }
+                        // Si no se deja convertir, se queda como estaba en vez
+                        // de inventarle un valor. Un cero aqui compilaria y
+                        // daria otra cosa, que es el fallo que F5b acaba de
+                        // cerrar en los campos.
+                        _ => Valor::Const(Const::Decimal(n.texto.clone())),
+                    }
                 } else {
                     match parse_entero(&n.texto, n.base) {
                         Some(v) => Valor::Const(Const::Entero(v)),
@@ -570,19 +740,49 @@ impl<'t> Descenso<'t> {
                 derecha,
                 sitio,
             } => {
+                // La clase se pregunta ANTES de bajar los operandos, sobre
+                // el arbol: una vez bajados ya no son mas que valores, y un
+                // valor no dice de que tipo era.
+                let clase = if self.plano.es_flotante(e, &self.tipos) {
+                    Clase::Flotante
+                } else {
+                    Clase::Entero
+                };
                 let i = self.expresion(izquierda);
                 let d = self.expresion(derecha);
+
+                // ** LAS DOS FAMILIAS DE COMPROBACION, y por que van en sitios
+                // distintos. Costo un dia entenderlo y explica por que tres de
+                // las cuatro no llegaban a bytes:
+                //
+                //     DESBORDAR   se sabe DESPUES, mirando la bandera que la
+                //                 propia operacion dejo puesta
+                //     ENTRE CERO  se sabe ANTES, mirando el divisor -- porque
+                //                 despues de dividir entre cero ya no hay nada
+                //                 que mirar: la maquina se ha llevado el
+                //                 programa por delante
+                //
+                // Ponerlas las dos detras --que es lo que se hacia-- deja la
+                // segunda sin nada que comprobar, y entonces o se emite algo
+                // que no comprueba o no se emite nada. Se hizo lo segundo, que
+                // era lo honesto, y esto es el arreglo de verdad.
+                if let Some(c) = comprobacion_antes(*op, clase) {
+                    self.pon(Instr::Comprueba {
+                        que: c,
+                        sobre: d.clone(),
+                        sitio: *sitio,
+                    });
+                }
+
                 let t = self.temporal();
                 self.pon(Instr::Binaria {
                     destino: t,
                     op: *op,
+                    clase,
                     izquierda: i,
                     derecha: d,
                 });
-                // ** Aqui es donde "sin comportamiento indefinido" deja de ser
-                // una frase: la comprobacion se emite al lado de la operacion,
-                // y se puede contar.
-                if let Some(c) = comprobacion_de(*op) {
+                if let Some(c) = comprobacion_despues(*op, clase) {
                     self.pon(Instr::Comprueba {
                         que: c,
                         sobre: Valor::Temporal(t),
@@ -611,6 +811,88 @@ impl<'t> Descenso<'t> {
                 // --seria una llamada por cada byte-- pero tampoco puede ser
                 // una palabra del lenguaje, porque entonces un programa que no
                 // toca memoria tendria que conocerla.
+                // ** Y antes: es esto una CONVERSION?
+                //
+                // `flotante64(n)` se escribe como una llamada y no lo es. Se
+                // mira aqui, antes que nada, porque el nombre de un tipo no
+                // puede ser tambien el de una funcion -- lo impide que los
+                // tipos vayan en mayuscula y estos no son tipos de usuario, son
+                // filas de `medidas.toml`.
+                if let Expr::Nombre(n, sitio) = &**que {
+                    if self.plano.es_conversion(n) && argumentos.len() == 1 {
+                        let hacia = if self.plano.convierte_a_flotante(n) {
+                            Clase::Flotante
+                        } else {
+                            Clase::Entero
+                        };
+                        let desde = if self.plano.es_flotante(&argumentos[0].valor, &self.tipos) {
+                            Clase::Flotante
+                        } else {
+                            Clase::Entero
+                        };
+                        let v = self.expresion(&argumentos[0].valor);
+
+                        // ** LA REGLA 12, y va ANTES por lo mismo que la 3:
+                        // despues de truncar ya no queda el numero original que
+                        // mirar -- queda un entero cualquiera, y el que salio de
+                        // 1e30 se parece a uno legitimo.
+                        //
+                        // Y lleva el ANCHO del destino porque sin el la pregunta
+                        // no tiene respuesta: 1e10 cabe en un `entero64` y no
+                        // cabe en un `entero32`. Sale del plano, que es quien
+                        // mide.
+                        if desde == Clase::Flotante && hacia == Clase::Entero {
+                            let bytes = self
+                                .plano
+                                .medida_de(&crate::arbol::Tipo::Nombre(n.clone()))
+                                .unwrap_or(8);
+                            self.pon(Instr::Comprueba {
+                                que: Comprobacion::Conversion(bytes),
+                                sobre: v.clone(),
+                                sitio: *sitio,
+                            });
+                        }
+
+                        let t = self.temporal();
+                        self.pon(Instr::Convierte {
+                            destino: t,
+                            valor: v,
+                            desde,
+                            hacia,
+                        });
+                        // OJO: de entero a flotante NO se comprueba nada, y no
+                        // es un olvido. Puede perder PRECISION --un `entero64`
+                        // grande no cabe exacto en la mantisa-- pero el
+                        // resultado sigue siendo un numero, y eso IEEE-754 lo
+                        // define. Solo el otro sentido puede no tener respuesta.
+                        return Valor::Temporal(t);
+                    }
+                }
+                // ** ES ESTO UNA INSTRUCCION DE LA MAQUINA?
+                //
+                // `lee_reloj()` no es una llamada: son dos bytes. Bajarlo como
+                // llamada --que es lo que se hacia-- produce un salto a un
+                // simbolo que no existe, y **compila**. La tabla de la maquina
+                // llevaba desde F2b entera y sin que nadie la leyera al emitir.
+                //
+                // Va ANTES que `accede` y que la llamada normal porque es lo
+                // mas especifico: un nombre que la maquina trae no puede ser
+                // ademas otra cosa.
+                if let Expr::Nombre(n, _) = &**que {
+                    if self.metal.iter().any(|m| m == n) {
+                        let args: Vec<Valor> = argumentos
+                            .iter()
+                            .map(|a| self.expresion(&a.valor))
+                            .collect();
+                        let t = self.temporal();
+                        self.pon(Instr::Metal {
+                            destino: Some(t),
+                            nombre: n.clone(),
+                            argumentos: args,
+                        });
+                        return Valor::Temporal(t);
+                    }
+                }
                 if let Expr::Nombre(n, _) = &**que {
                     if let Some((hace, ancho)) = self.tabla.accede(n) {
                         let hace = hace.to_string();
@@ -694,6 +976,7 @@ impl<'t> Descenso<'t> {
                             self.pon(Instr::Binaria {
                                 destino: t,
                                 op: Op::Suma,
+                                clase: Clase::Entero,
                                 izquierda: q,
                                 derecha: i,
                             });
@@ -737,13 +1020,43 @@ impl<'t> Descenso<'t> {
 
 /// Que comprobacion pide cada operacion. Sale de `REGLAS.md` y de ningun otro
 /// sitio.
-fn comprobacion_de(op: Op) -> Option<Comprobacion> {
+/// La que se sabe ANTES de operar, mirando un operando.
+///
+/// ** Solo hay una familia aqui, y es la de dividir: el cero del divisor es la
+/// unica cosa que hay que ver **antes**, porque despues de la division no queda
+/// programa que mire nada.
+fn comprobacion_antes(op: Op, clase: Clase) -> Option<Comprobacion> {
+    if matches!(clase, Clase::Flotante) {
+        return None;
+    }
+    match op {
+        Op::Divide | Op::Entre | Op::Resto => Some(Comprobacion::EntreCero),
+        _ => None,
+    }
+}
+
+/// La que se sabe DESPUES, mirando lo que la operacion dejo dicho.
+fn comprobacion_despues(op: Op, clase: Clase) -> Option<Comprobacion> {
+    // ** LA COMA FLOTANTE NO LLEVA COMPROBACION, y no es una excepcion comoda
+    // a "INTI no tiene comportamiento indefinido". Es que ya esta definido.
+    //
+    // La Regla 1 y la Regla 3 existen porque en los ENTEROS desbordar y dividir
+    // entre cero **no tienen respuesta**: cualquier bit que salga es una
+    // invencion del compilador. En IEEE-754 si la tienen --infinito y NaN, que
+    // son valores con los que se puede seguir operando-- y esta escrita en una
+    // norma de 1985.
+    //
+    // Atrapar aqui no anadiria ni una pizca de seguridad. Quitaria la
+    // aritmetica: un calculo que desborda a infinito y luego vuelve al rango es
+    // corriente, y con una trampa en medio no se puede escribir.
+    if matches!(clase, Clase::Flotante) {
+        return None;
+    }
     match op {
         // Regla 1: las tres que se pasan de la cuenta.
         Op::Suma | Op::Resta | Op::Por | Op::Elevado => Some(Comprobacion::Desborde),
-        // Regla 3.
-        Op::Divide | Op::Entre | Op::Resto => Some(Comprobacion::EntreCero),
-        // Comparar, los bits y la logica no pueden salirse.
+        // Comparar, los bits y la logica no pueden salirse. Y la Regla 3 ya no
+        // esta aqui: se mudo a `comprobacion_antes`, que es donde servia.
         _ => None,
     }
 }

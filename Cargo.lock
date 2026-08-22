@@ -180,6 +180,7 @@ dependencies = [
  "bmo-inti-front",
  "bmo-lower",
  "bmo-mods",
+ "bmo-sem-asm",
  "bmo-verify",
 ]
 

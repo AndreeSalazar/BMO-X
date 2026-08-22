@@ -243,3 +243,18 @@ pub const SIN_MEDIDA: Codigo = Codigo("E0121");
 
 /// Un campo de registro sin tipo.
 pub const CAMPO_SIN_TIPO: Codigo = Codigo("E0122");
+
+/// Una operacion que no existe para la coma flotante.
+///
+/// ** Los bits de un `flotante64` no son un numero: son signo, exponente y
+/// mantisa metidos en ocho bytes. `f | 1` no enciende un bit de nada -- toca el
+/// exponente, y el resultado es otro flotante cualquiera.
+///
+/// Que este DENUNCIADO y no simplemente "no soportado" es la diferencia: sin el
+/// aviso, el emisor no tendria que emitir para ese caso, no emitiria nada, y el
+/// programa compilaria y daria basura. Es el mismo agujero que F5b cerro en los
+/// campos, visto en otro sitio.
+///
+/// Y hay una salida escrita: quien quiera los bits DE VERDAD los pide por su
+/// nombre, y entonces esta pidiendo un entero, que es lo que son.
+pub const FLOTANTE_SIN_BITS: Codigo = Codigo("E0123");

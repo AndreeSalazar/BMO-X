@@ -80,3 +80,38 @@ bufer   = 8
 #
 #  El dia que `pleno` tenga campos de `texto`, la fila que hace falta es
 #  `referencia = 8` y no una medida para `texto`.
+
+# ===================================================================
+#  Que tipos se operan con la aritmetica de coma flotante
+# ===================================================================
+#
+#  ** Esta seccion no dice cuanto mide nada: dice CON QUE SE OPERA. Esta aqui
+#  porque es la otra mitad de la misma pregunta -- un tipo se define por lo que
+#  mide y por lo que se le puede hacer, y separarlas en dos tablas seria pedir
+#  que no discrepen nunca.
+#
+#  Y hace falta que sea un dato porque el descenso tiene que decidir si `a + b`
+#  se baja a la aritmetica de enteros o a la de coma flotante, y esa decision
+#  **no se puede tomar mirando los bits**: los ocho bytes de un `flotante64` y
+#  los de un `natural64` son indistinguibles. Sale del tipo, y el tipo sale de
+#  aqui.
+#
+#  ** Y lo que se gana teniendolo escrito: una maquina sin coma flotante deja
+#  esta lista vacia, y entonces `a + b` de flotantes no compila en vez de
+#  compilar a algo que el silicio no tiene. Hoy no hay ninguna asi; el dia que
+#  la haya, el compilador no cambia.
+[clase]
+flotantes = ["flotante32", "flotante64"]
+
+#  Y los que se operan con la aritmetica de enteros. La lista existe por
+#  simetria y por una cosa mas: **las dos juntas son el catalogo de conversiones
+#  que el lenguaje admite**. `flotante64(n)` y `entero32(f)` se escriben como
+#  una llamada y no lo son -- son la instruccion `Convierte`, y el compilador
+#  sabe cuales lo son porque estan aqui.
+#
+#  Si esto no fuera una tabla, anadir `entero128` el dia que exista obligaria a
+#  tocar el descenso. Asi es una fila.
+enteros = [
+    "natural8", "natural16", "natural32", "natural64",
+    "entero8", "entero16", "entero32", "entero64",
+]

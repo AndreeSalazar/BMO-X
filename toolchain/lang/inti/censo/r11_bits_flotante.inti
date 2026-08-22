@@ -1,0 +1,8 @@
+# sonda: r11_bits_flotante       espera: E0123
+# regla 11: los bits de un flotante son signo, exponente y mantisa. `bits_o` no
+# enciende el bit de las unidades -- toca el exponente. No compila.
+perfil llano
+
+funcion principal devuelve flotante64
+    x es flotante64 = 2.5
+    devuelve x bits_o 1

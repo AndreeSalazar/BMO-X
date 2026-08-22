@@ -45,6 +45,16 @@ const INCRUSTADA: &str = include_str!("../../../../forge/sem-asm/tables/lang/int
 #[derive(Debug, Clone, Default)]
 pub struct Medidas {
     bytes: HashMap<String, u32>,
+    /// Los tipos que se operan con la aritmetica de coma flotante.
+    ///
+    /// ** Es una LISTA y no un `match` por lo mismo que las medidas: el dia que
+    /// haya una maquina sin coma flotante, la lista se queda vacia y `a + b` de
+    /// flotantes deja de compilar -- en vez de compilar a algo que el silicio no
+    /// tiene. El compilador no se entera de que cambio nada.
+    flotantes: Vec<String>,
+    /// Los que se operan con la aritmetica de enteros. Las dos listas juntas
+    /// son el catalogo de conversiones que el lenguaje admite.
+    enteros: Vec<String>,
 }
 
 impl Medidas {
@@ -57,6 +67,18 @@ impl Medidas {
             Some(t) => Self::desde_texto(&t),
             None => Self::por_defecto(),
         }
+    }
+
+    /// Las medidas que dice ESTE texto de tabla.
+    ///
+    /// ** Es publica por una sola razon, y es la que justifica el modulo
+    /// entero: `tests/segunda_maquina.rs` necesita darle a INTI la tabla de una
+    /// maquina que no existe y comprobar que el compilador la obedece. Sin esta
+    /// puerta, la frase *"cambiar de maquina es cambiar una tabla"* solo se
+    /// podria comprobar teniendo la segunda maquina -- o sea, nunca hasta que
+    /// fuera tarde para arreglarlo.
+    pub fn desde_tabla(t: &str) -> Self {
+        Self::desde_texto(t)
     }
 
     fn desde_texto(t: &str) -> Self {
@@ -78,7 +100,58 @@ impl Medidas {
                 }
             }
         }
-        Self { bytes }
+        let lista = |cual: &str| -> Vec<String> {
+            raiz.get("clase")
+                .and_then(|v| v.get(cual))
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        Self {
+            bytes,
+            flotantes: lista("flotantes"),
+            enteros: lista("enteros"),
+        }
+    }
+
+    /// Este tipo, se opera con coma flotante?
+    pub fn es_flotante(&self, nombre: &str) -> bool {
+        self.flotantes.iter().any(|f| f == nombre)
+    }
+
+    /// Este tipo, se opera con enteros?
+    pub fn es_entero(&self, nombre: &str) -> bool {
+        self.enteros.iter().any(|f| f == nombre)
+    }
+
+    /// Todos los nombres que son una conversion.
+    ///
+    /// ** Existe para el analisis de NOMBRES, y ese es el punto: `flotante64(n)`
+    /// se escribe como una llamada, asi que quien busca nombres desconocidos
+    /// tiene que saber que existe -- o denuncia `flotante64` como un error de
+    /// escritura. Le llega desde aqui, de la MISMA tabla que decide como se
+    /// baja, y no de una segunda lista en otro fichero.
+    ///
+    /// Dos listas de lo mismo acaban discrepando, y el dia que discrepen el
+    /// compilador aprobaria un nombre que luego no sabe emitir.
+    pub fn conversiones(&self) -> Vec<String> {
+        let mut v = self.flotantes.clone();
+        v.extend(self.enteros.iter().cloned());
+        v
+    }
+
+    /// Este nombre, es una conversion? `flotante64(n)`, `entero32(f)`.
+    ///
+    /// ** Se escribe como una llamada porque asi se lee, no porque lo sea. La
+    /// gramatica no gasta ni una regla en esto -- es la decision 7 de
+    /// `GRAMATICA.md` aplicada otra vez: si algo se lee bien con la forma que
+    /// ya existe, no se le inventa una.
+    pub fn es_conversion(&self, nombre: &str) -> bool {
+        self.es_flotante(nombre) || self.es_entero(nombre)
     }
 
     pub fn de(&self, nombre: &str) -> Option<u32> {
@@ -162,6 +235,16 @@ impl Plano {
         self.registros.get(nombre)
     }
 
+    /// Este nombre, es una conversion de numero?
+    pub fn es_conversion(&self, nombre: &str) -> bool {
+        self.medidas.es_conversion(nombre)
+    }
+
+    /// Y de las dos clases, a cual convierte.
+    pub fn convierte_a_flotante(&self, nombre: &str) -> bool {
+        self.medidas.es_flotante(nombre)
+    }
+
     /// El tipo de una expresion, si esta escrito en algun sitio.
     ///
     /// ** Vive en el plano y no en cada usuario porque **los dos que preguntan
@@ -182,6 +265,55 @@ impl Plano {
                 self.elemento(&t).map(|(t, _)| t)
             }
             _ => None,
+        }
+    }
+
+    /// Esta expresion, se opera con coma flotante?
+    ///
+    /// ## ** Por que la contesta el plano y no el descenso
+    ///
+    /// Por lo mismo que `tipo_de`: **los dos que preguntan tienen que dar la
+    /// misma respuesta**. Si el descenso lo decidiera por su cuenta, el dia que
+    /// discrepara del comprobador el compilador aprobaria una suma de enteros y
+    /// emitiria una de flotantes -- y los dos bits caben en los mismos ocho
+    /// bytes, asi que nadie se enteraria hasta ver un numero raro.
+    ///
+    /// ## De donde sale la respuesta, en orden
+    ///
+    /// ```text
+    ///    3.5              lleva punto     -> flotante
+    ///    flotante64(x)    se pidio        -> flotante
+    ///    a + b            si alguno lo es -> flotante
+    ///    x                lo dice su tipo -> la tabla decide
+    /// ```
+    ///
+    /// OJO: `a + b` con uno de cada NO es una conversion implicita -- eso lo
+    /// prohibe la regla del censo `v05`. Es que si uno es flotante, la
+    /// aritmetica es de flotantes; que el otro pueda estar ahi es una pregunta
+    /// de tipos, y la contesta quien comprueba, no quien emite.
+    pub fn es_flotante(&self, e: &Expr, tipos: &HashMap<String, Tipo>) -> bool {
+        match e {
+            // Un literal con punto es de coma flotante en `llano` **porque
+            // `decimal` no existe alli**: `biblioteca.toml` lo prohibe por no
+            // decir su medida. En `pleno` la respuesta sera la otra, y este
+            // modulo no trabaja en `pleno`.
+            Expr::Numero(n, _) => n.con_punto,
+            Expr::Binaria {
+                izquierda,
+                derecha,
+                ..
+            } => self.es_flotante(izquierda, tipos) || self.es_flotante(derecha, tipos),
+            Expr::Unaria { valor, .. } => self.es_flotante(valor, tipos),
+            // `flotante64(x)` dice de que es lo que sale, y lo dice el nombre
+            // que se escribio. Una conversion en INTI se pide, no se supone.
+            Expr::Llamada { que, .. } => match &**que {
+                Expr::Nombre(n, _) => self.medidas.es_flotante(n),
+                _ => false,
+            },
+            _ => match self.tipo_de(e, tipos) {
+                Some(Tipo::Nombre(n)) => self.medidas.es_flotante(&n),
+                _ => false,
+            },
         }
     }
 
@@ -465,10 +597,14 @@ impl Revision<'_> {
                 self.mira_indice(que, *sitio);
             }
             Expr::Binaria {
-                izquierda, derecha, ..
+                op,
+                izquierda,
+                derecha,
+                sitio,
             } => {
                 self.expresion(izquierda);
                 self.expresion(derecha);
+                self.mira_operacion(*op, e, *sitio);
             }
             Expr::Unaria { valor, .. } => self.expresion(valor),
             Expr::Llamada { que, argumentos, .. } => {
@@ -483,6 +619,45 @@ impl Revision<'_> {
 
     fn tipo_de(&self, e: &Expr) -> Option<Tipo> {
         self.plano.tipo_de(e, self.tipos)
+    }
+
+    /// Esta operacion, existe para lo que se le esta dando?
+    ///
+    /// ** Solo hay una familia que no: **los bits sobre un flotante**. Y no es
+    /// una carencia del emisor que ya se anadira -- es que la pregunta no tiene
+    /// sentido. Los ocho bytes de un `flotante64` son signo, exponente y
+    /// mantisa; `f | 1` no enciende el bit de las unidades de nada, toca el
+    /// exponente y devuelve un numero que no se parece a ninguno de los dos.
+    ///
+    /// El resto SI existen: sumar, restar, multiplicar, dividir y las seis
+    /// comparaciones estan todas en IEEE-754 con su resultado escrito.
+    fn mira_operacion(&mut self, op: crate::arbol::Op, e: &Expr, sitio: Sitio) {
+        use crate::arbol::Op;
+        let de_bits = matches!(
+            op,
+            Op::BitsY
+                | Op::BitsO
+                | Op::BitsXor
+                | Op::DesplazaIzquierda
+                | Op::DesplazaDerecha
+                | Op::Resto
+                | Op::Entre
+        );
+        if !de_bits || !self.plano.es_flotante(e, self.tipos) {
+            return;
+        }
+        self.avisos.push(
+            Aviso::nuevo(
+                codigos::FLOTANTE_SIN_BITS,
+                "Esta operacion no existe para un numero de coma flotante.".to_string(),
+                sitio,
+            )
+            .con_habia(
+                "Los ocho bytes de un flotante son signo, exponente y mantisa, no un                  numero en binario. Operarlos a bits no toca lo que parece que toca."
+                    .to_string(),
+            )
+            .con_hacer("usa `/` para dividir, o convierte a entero primero si lo que quieres son los bits"),
+        );
     }
 
     fn mira_campo(&mut self, que: &Expr, nombre: &str, sitio: Sitio) {

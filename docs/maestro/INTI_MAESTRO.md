@@ -457,6 +457,51 @@ esta elegida: otra arquitectura es otra carpeta de tablas**, no otro compilador.
 maquina.** Significa que el **fuente** vuelve a compilar. C nunca prometio mas
 que eso, y prometer mas seria WASM -- otro trabajo, y esta descartado (sec. 13).
 
+### ★★★ ACTUALIZACION 2026-08-21: la B ya no es una promesa, es una sonda
+
+La frase de arriba --*"la forma de la portabilidad ya esta elegida"*-- era una
+**tesis sin comprobar**, y una tesis de portabilidad que nadie ejercita se rompe
+el dia que alguien escribe un `8` donde tocaba una tabla. Sin darse cuenta, y
+porque en ese momento es lo mas facil.
+
+Asi que se comprueba, en `tests/segunda_maquina.rs`: se le da al compilador la
+tabla de una maquina que **no existe** --la de 64 bits con `puntero = 4`-- y se
+mira si obedece.
+
+```text
+   registro Enlace          64 bits          32 bits
+      antes  es bufer         @0  (8)          @0  (4)
+      luego  es bufer         @8  (8)          @4  (4)
+      marca  es natural8     @16  (1)          @8  (1)
+                            medida 24        medida 12
+                            alinea  8        alinea  4
+```
+
+**La mitad, y ni una linea de Rust distinta entre las dos columnas.** Y no se
+queda en la disposicion: el descenso emite `Lee` de 8 bytes con una tabla y de 4
+con la otra, con el mismo fuente caracter por caracter -- que es la parte que un
+test de lectura no puede ver, y donde este proyecto ya se ha quemado con piezas
+que se calculan bien y no las lee nadie.
+
+★ **La diferencia con `agnostico.rs`, que es la que importa:**
+
+```text
+   agnostico.rs        nadie ESCRIBIO la linea que ataria el compilador
+   segunda_maquina.rs  y ademas, cambiar la tabla CAMBIA lo que emite
+```
+
+La primera es una prohibicion y se comprueba leyendo. La segunda es una
+**capacidad** y solo se comprueba ejercitandola.
+
+⚠ **Y lo que la sonda NO dice, por delante:** que INTI compile para 32 bits. No
+compila -- no hay emisor, ni convencion de llamada, ni marco. Lo que decide es si
+ese trabajo sera *escribir un emisor* o *desenterrar ochos repartidos por el
+compilador*, que es la diferencia entre un mes y un ano. **Salio lo primero.**
+
+Sigue en pie lo unico que no se puede saber sin hardware: C no demostro nada en
+1973 escribiendo el kernel; lo demostro en **1977 moviendolo al Interdata**. INTI
+esta en su 1973, con la sonda pasada.
+
 ---
 
 ### 7.1 CONTROL NO ES PRIVILEGIO -- y INTI no da root
@@ -957,7 +1002,7 @@ Esto es lo que INTI puede hacer **el primer dia**, todo con piezas en metal:
 | `tecla = espera tecla()` | `entrada.h` + teclado USB | HECHO |
 | `guarda "notas.txt", texto` | ESTRATOS desde Ring 3 | HECHO (18-08) |
 | `abre recurso("logo.png")` | `Resources 0x0B` + `TASK_OP_MI_PAQUETE` | HECHO (09-08) |
-| `crudo { escribe_puerto(0x60, x) }` | `intrinsics.toml` (`__outb`) | HECHO |
+| `crudo { escribe_puerto(0x60, x) }` | `intrinsics.toml` (`__outb`) | HECHO **en INTI desde F5d** (21-08); antes solo en BMO C |
 | `invoca(cap, op, a0, a1, a2)` | la puerta: fila `[syscall]` de `intrinsics.toml` | HECHO |
 | `en paralelo: ...` | tareas aisladas + prestamo de congelados | contrato listo, falta cablear |
 
@@ -1007,7 +1052,9 @@ no puede escribir un driver. Asi que:
 | **F2** | ★ **INTI LLANO compila a `.bex` nativo** | un programa sin monton que `escribe` y suma, **corriendo en el emulador**, y pasando `bmo-verify` | ~2.500 |
 | **F3** | Las 12 reglas, **con sus sondas en verde** | atrapa el desbordamiento, atrapa el indice, IEEE-754 estricto | ~1.000 |
 | **F4** | ★★ **La foto del Ryzen**: un programa de INTI LLANO en metal | la prueba de aceptacion. **Aqui INTI ya es un lenguaje de verdad** | ~600 |
-| **F5** | INTI PLENO: valores, texto, lista, tabla, decimal, contador de referencias | tests de anfitrion + una app que pinta y guarda | ~3.000 |
+| **F5a-c** | ✅ **HECHO (20-08 / 21-08)**: los cuatro anchos, `disposicion` (`p.x` y `a[i]` dejan de mentir) y **la coma flotante** -- las cuatro operaciones, las seis comparaciones con el NaN correcto, y la conversion | pruebas del emisor, todas ejecutando en el emulador | ~2.000 |
+| **F5d** | ✅ **HECHO (21-08)**: ★★★ **EL METAL**. `usa x86_64` y `usa binarios` llevaban desde F2b con 61 nombres y **ninguno llegaba a un byte** -- el descenso los bajaba a una llamada a un simbolo inexistente y el emisor tenia una rama vacia. Ver [`ESTADO.md`](../../toolchain/lang/inti/ESTADO.md) | **la matriz de conformidad**: una llamada a cada nombre de la tabla, y sus bytes tienen que aparecer | ~500 |
+| **F5d+** | INTI PLENO: valores, texto, lista, tabla, decimal, contador de referencias | tests de anfitrion + una app que pinta y guarda | ~3.000 |
 | **F6** | Congelar + tareas + prestamo | dos tareas, dos nucleos, cero cerrojos | ~1.500 |
 | **F7** | El REPL | `>>>`, `2+2`, `4` -- **la comodidad, no la esencia** | ~1.200 |
 

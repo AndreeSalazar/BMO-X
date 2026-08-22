@@ -29,6 +29,12 @@ bmo-abi = { path = "../../../../platform/abi/bmo-abi" }
 bmo-verify = { path = "../../../forge/bmo-verify" }
 # Las raices de las tablas. El emisor lee SU tabla de maquina.
 bmo-mods = { path = "../../../forge/bmo-mods" }
+# ** LOS BYTES DE CADA INSTRUCCION, y es LA MISMA tabla que lee BMO C.
+#
+# `arch/x86_64/inti.toml` dice como se llama `popcnt` en INTI; esta dice que
+# bytes son. Dos declaraciones de los mismos bytes acabarian discrepando, y la
+# que discrepara seria la que nadie prueba.
+bmo-sem-asm = { path = "../../../forge/sem-asm" }
 
 [lib]
 name = "bmo_inti_x86_64"

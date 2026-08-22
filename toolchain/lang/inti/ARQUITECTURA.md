@@ -203,18 +203,30 @@ Y una regla de fuera:
 La forma esta elegida para que **el syscall no tenga sitio comodo en ninguno de
 estos modulos**:
 
-| modulo futuro | que hara | por que sigue sin poder tocar la puerta |
-|---|---|---|
-| `arbol` | los nodos, datos puros | no llama a nadie |
-| `sintaxis` | de piezas a arbol | solo conoce `pieza` y `arbol` |
-| ~~`perfil`~~ | ✅ **hecho** | |
-| `nombres` | quien es cada nombre y si es `cambiante` | tampoco emite |
-| `emision` | de arbol a `.bex`, via `bmo-lower` | **aqui SI se emite** -- y la puerta llega como una **fila de tabla** (`intrinsics.toml`), igual que en BMO C |
+⚠ **Esta seccion se escribio cuando todo esto era futuro. Ya no lo es**, y se
+deja con las casillas marcadas en vez de borrarla: lo que importaba era la
+prediccion, y se puede comprobar si acerto.
 
-★ Fijate en la ultima fila: cuando por fin haya un modulo que emite bytes, la
-puerta seguira sin ser sintaxis, porque llegara **por la misma via que una
-instruccion cualquiera**: una entrada en una tabla que `sem-asm` ya sabe leer.
-`invoca` no sera una palabra clave nunca, sera un nombre de la biblioteca base.
+| modulo | que hace | por que sigue sin poder tocar la puerta | |
+|---|---|---|---|
+| `arbol` | los nodos, datos puros | no llama a nadie | ✅ |
+| `sintaxis` | de piezas a arbol | solo conoce `pieza` y `arbol` | ✅ |
+| `perfil` | `llano` contra `pleno` | no emite un byte | ✅ |
+| `nombres` | quien es cada nombre y si es `cambiante` | tampoco emite | ✅ |
+| `disposicion` | cuanto mide cada cosa y donde esta cada campo | mide, no llama | ✅ (F5b) |
+| `ir` | de arbol a instrucciones | **no nombra ninguna maquina** | ✅ (F2c) |
+| `emisor-x86_64` | de la IR a bytes | **aqui SI se emite** -- y la puerta llega como una **fila de tabla**, igual que en BMO C | ✅ (F2d) |
+
+★ Y la prediccion acerto entera. El emisor existe desde F2d y **`invoca` sigue
+sin ser palabra clave**: llega por `usa bmo`, que es una fila de `modulos.toml`.
+Quitar esa fila apaga la puerta sin tocar una linea de Rust.
+
+★★ Lo que la prediccion NO vio, y costo caro: **el emisor tenia la tabla de la
+maquina y no la leia**. `Instr::Metal` era una rama vacia y el descenso ni
+siquiera la generaba, asi que setenta nombres de `arch/x86_64/inti.toml`
+compilaban y no producian un byte. Lo arreglo F5d, y la leccion es la de siempre
+en este proyecto: *no basta con que la pieza este; hay que comprobar que alguien
+la lee*. Ahora lo comprueba una matriz que recorre la tabla entera.
 
 ---
 
@@ -237,7 +249,7 @@ Las sondas de `censo/*.inti` **no son ejemplos**: son el corpus contra el que se
 mide el lenguaje, y llevan su veredicto en la primera linea para que la sonda y
 su expectativa no se puedan separar.
 
-★ Ya se gano el sitio el primer dia. Las 38 sondas estaban escritas con **tres**
+★ Ya se gano el sitio el primer dia. Las 38 sondas de entonces --hoy 40-- estaban escritas con **tres**
 espacios de sangria y `GRAMATICA.md` dice **cuatro**. El documento y el corpus
 llevaban dos dias sin estar de acuerdo, **y nadie lo habria visto leyendo**: lo
 encontro el lexer en cuanto hubo uno. Estan reindentadas, y el test

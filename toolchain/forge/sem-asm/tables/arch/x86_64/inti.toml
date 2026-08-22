@@ -228,7 +228,14 @@ preservados_en_uso = []
 lee_reloj       = "rdtsc"
 lee_reloj_serio = "rdtscp"
 espera          = "pause"
-para            = "hlt"
+#  ** Se llamaba `para` hasta el 21-08 y NO SE PODIA ESCRIBIR: `para` es palabra
+#  clave (`para cada x en xs`), asi que `para()` no llegaba ni al analisis de
+#  nombres -- moria en el parser con un mensaje que hablaba de otra cosa.
+#
+#  Llevaba asi desde que se escribio la tabla, y no lo vio nadie porque **nadie
+#  habia compilado nunca una llamada a un nombre de este fichero**. Lo caza la
+#  matriz de conformidad, que es justo para lo que esta.
+detiene         = "hlt"
 nada_que_hacer  = "nop"
 
 # -- puertos de E/S (esto no existe fuera de x86) --------------------
@@ -275,6 +282,14 @@ primer_uno      = "bsf"
 ultimo_uno      = "bsr"
 ceros_delante   = "lzcnt"
 ceros_detras    = "tzcnt"
+#  ** `da_la_vuelta` a secas es el que promete `usa binarios`, y hasta el 21-08
+#  NO ESTABA AQUI: solo estaban las dos versiones con el ancho en el nombre. O
+#  sea que el modulo portable prometia un nombre que esta maquina no sabia
+#  traducir, y el programa se enteraba al emitir -- en silencio.
+#
+#  Va al de 64 porque es el ancho de un entero de INTI. Quien quiera el otro lo
+#  pide por su nombre, que para eso lo lleva escrito.
+da_la_vuelta    = "bswap64"
 da_la_vuelta32  = "bswap"
 da_la_vuelta64  = "bswap64"
 

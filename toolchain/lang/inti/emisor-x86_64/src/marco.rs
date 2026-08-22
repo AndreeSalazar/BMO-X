@@ -243,6 +243,17 @@ fn tramos_de_vida(f: &FuncionIr) -> Vec<(usize, usize)> {
                 mira(valor, i, &mut tramos);
                 toca(*destino, i, &mut tramos);
             }
+            // ** Sin esta rama la conversion COMPILARIA IGUAL, y su temporal no
+            // tendria sitio: nace en `usize::MAX` --"nunca se uso"-- y el
+            // reparto lo ignora. El resultado no seria un fallo de compilacion,
+            // seria un numero que sale de donde no debe.
+            //
+            // Es exactamente la clase de olvido que este fichero castiga, y por
+            // eso la lista de arriba tiene que crecer cada vez que crece la IR.
+            Instr::Convierte { destino, valor, .. } => {
+                mira(valor, i, &mut tramos);
+                toca(*destino, i, &mut tramos);
+            }
             Instr::Comprueba { sobre, .. } => mira(sobre, i, &mut tramos),
             Instr::Guarda { valor, .. } => mira(valor, i, &mut tramos),
             Instr::Devuelve(Some(v)) => mira(v, i, &mut tramos),
@@ -348,6 +359,7 @@ mod pruebas {
         Instr::Binaria {
             destino: Temporal(destino),
             op: Op::Suma,
+            clase: bmo_inti_front::ir::Clase::Entero,
             izquierda: Valor::Temporal(Temporal(a)),
             derecha: Valor::Temporal(Temporal(b)),
         }
