@@ -123,6 +123,9 @@ funcion et_xcr0 devuelve natural64
 funcion et_azar devuelve natural64
     devuelve 2314885532198468193
 
+funcion et_ruido devuelve natural64
+    devuelve 2314885871266526578
+
 funcion et_fin devuelve natural64
     devuelve 3251720329925504301
 
@@ -146,12 +149,13 @@ funcion firma_del_cpu devuelve natural64
     crudo
         devuelve que_cpu_eres(1)
 
-# **A QUE RITMO CUENTAS.** Dos lecturas del contador de ciclos y la diferencia.
+# **A QUE RITMO CUENTAS.** Mil vueltas de un bucle, cronometradas.
 #
-# ** Es el numero que hace posible el metodo de este proyecto --medir en vez de
-# opinar-- y aqui se comprueba lo minimo: que AVANZA. Un contador que no avanza
-# convierte toda medida futura en cero.
-funcion cuanto_avanza_el_reloj devuelve natural64
+# ** UNA medida, sin adornos. Lo que la contamina --una interrupcion, un cambio
+# de frecuencia, un fallo de cache-- solo puede SUMAR tiempo, nunca restarlo.
+# Por eso la de arriba se repite y se guarda la MENOR: es la muestra menos
+# contaminada, no un promedio de contaminaciones.
+funcion una_medida devuelve natural64
     crudo
         cambiante antes es natural64 = lee_reloj()
         cambiante i es natural64 = 0
@@ -159,6 +163,46 @@ funcion cuanto_avanza_el_reloj devuelve natural64
             i = i + 1
         cambiante despues es natural64 = lee_reloj_serio()
         devuelve despues - antes
+
+# **LA MEJOR DE OCHO.**
+#
+# ** Esto se anadio el 22-08 y el motivo es un fracaso: la primera optimizacion
+# de INTI juzgada en metal --acotar el freno del asignador-- salio 0,6% por
+# debajo de la mejor medida anterior, con un RUIDO del 11,6% entre dos
+# ejecuciones sin tocar nada.
+#
+# O sea que la regla no tenia resolucion para medir lo que se le pedia. Y una
+# regla que no la tiene no da un numero malo: da un numero que parece bueno.
+#
+# Ocho y no tres porque el minimo de una muestra pequena sigue siendo ruidoso, y
+# ocho vueltas de mil cuestan menos de medio milisegundo.
+funcion cuanto_avanza_el_reloj devuelve natural64
+    cambiante mejor es natural64 = una_medida()
+    cambiante k es natural64 = 0
+    repite mientras k < 7
+        cambiante m es natural64 = una_medida()
+        si m < mejor
+            mejor = m
+        k = k + 1
+    devuelve mejor
+
+# **EL RUIDO, que es lo que dice si el numero de arriba vale.**
+#
+# ** La peor menos la mejor. Sin esto, una medida es un numero sin margen -- y
+# un numero sin margen no se puede comparar con otro. Este es el que dice cuanto
+# tiene que bajar una optimizacion para que se pueda AFIRMAR que bajo.
+funcion el_ruido devuelve natural64
+    cambiante peor es natural64 = 0
+    cambiante mejor es natural64 = una_medida()
+    cambiante k es natural64 = 0
+    repite mientras k < 8
+        cambiante m es natural64 = una_medida()
+        si m < mejor
+            mejor = m
+        si m > peor
+            peor = m
+        k = k + 1
+    devuelve peor - mejor
 
 # **QUE TIENES ENCENDIDO.** El registro de control extendido dice que partes del
 # estado del CPU estan activas. Es lo que hace cara una puerta, y el numero que
@@ -346,6 +390,9 @@ funcion principal devuelve entero32
 
     # -- a que ritmo cuentas
     linea(f, et_tsc(), cuanto_avanza_el_reloj())
+
+    # -- que tienes encendido
+    linea(f, et_ruido(), el_ruido())
 
     # -- que tienes encendido
     linea(f, et_xcr0(), estado_extendido())
