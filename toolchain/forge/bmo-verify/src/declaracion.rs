@@ -24,6 +24,7 @@
 //! *"va al informe del `.bex` para que `bmo-verify` pueda exigirlo firmado"*.
 //! Esta es la mitad que faltaba para que lo sea.
 
+use bmo_abi::bef::katanas;
 use bmo_abi::bef::paquete;
 use bmo_abi::bef::sections::SectionKind;
 
@@ -66,6 +67,93 @@ pub fn exige_manifiesto(bef: &[u8]) -> Verdict {
         )]);
     }
     Verdict::Ok
+}
+
+/// **QUE LA MESA DE KATANAS NO MIENTA SOBRE EL CODIGO QUE TIENE AL LADO.**
+///
+/// ## Las tres capas, y lo que prueba cada una
+///
+/// ```text
+///    katanas::revisar        la FORMA      cada bloque cae dentro del codigo
+///    lleva_su_codigo         lo ARITMETICO el bloque materializa ese numero
+///    (el emisor, en x86)     el PATRON     y es de verdad un `mov` + retorno
+/// ```
+///
+/// ** Aqui viven las dos primeras. La tercera **no puede vivir aqui**: sabe
+/// x86, y este crate verifica el ENVASE. La cabecera del modulo lo dice desde
+/// 2026-08-12 y sigue siendo verdad.
+///
+/// ## Y por que esto NO contradice aquella cabecera
+///
+/// Aquella dice que este gate no comprueba *"lo que hacen las instrucciones"*, y
+/// no lo comprueba: **esto no dice que el codigo sea seguro**. Dice que **la
+/// DECLARACION cuadra con los bytes**. Un binario que promete una trampa en el
+/// byte 3.351 y tiene otra cosa ahi no es inseguro: es **mal formado como
+/// promesa**, y la forma sigue siendo el trabajo de esta casa.
+///
+/// > Verificar una declaracion es verificar la forma de una promesa, no la
+/// > seguridad del codigo.
+///
+/// ## Lo que NO comprueba, dicho por delante
+///
+/// Que no **falte** ninguna katana. Una tabla vacia es la tabla honesta de un
+/// binario sin reglas, y desde aqui no se distingue de uno al que se las
+/// quitaron. Eso pide recorrer el codigo entero con un decodificador y exigir
+/// que cada operacion que pide regla traiga la suya al lado.
+///
+/// **Esto cierra la mentira facil. La dificil sigue abierta, y esta escrito.**
+pub fn exige_katanas(bef: &[u8]) -> Verdict {
+    let base = crate::verify(bef);
+    if !base.is_ok() {
+        return base;
+    }
+    let tabla = match paquete::seccion(bef, SectionKind::Katanas) {
+        Some(t) => t,
+        None => {
+            return Verdict::Rejected(vec![String::from(
+                "el binario no declara sus reglas: falta la seccion Katanas (0x16)",
+            )])
+        }
+    };
+    let codigo = match paquete::seccion(bef, SectionKind::Code) {
+        Some(c) => c,
+        None => {
+            return Verdict::Rejected(vec![String::from(
+                "no hay seccion de codigo contra la que comprobar las katanas",
+            )])
+        }
+    };
+
+    let n = match katanas::revisar(tabla, codigo.len()) {
+        Ok(n) => n,
+        Err(f) => return Verdict::Rejected(vec![String::from(f.nombre())]),
+    };
+
+    let mut motivos = Vec::new();
+    for i in 0..n {
+        let k = match katanas::katana(tabla, i) {
+            Some(k) => k,
+            None => {
+                motivos.push(format!("la katana {} no se puede leer", i));
+                continue;
+            }
+        };
+        let bloque = &codigo[k.offset as usize..(k.offset + k.longitud) as usize];
+        if !katanas::lleva_su_codigo(bloque, k.codigo) {
+            // ** El motivo lleva el numero y el sitio, no "la tabla esta mal".
+            // Quien lea esto tiene que poder ir al byte.
+            motivos.push(format!(
+                "la katana {} dice devolver E{} desde el byte {} y ese bloque no lleva \
+                 ese numero dentro",
+                i, k.codigo, k.offset
+            ));
+        }
+    }
+    if motivos.is_empty() {
+        Verdict::Ok
+    } else {
+        Verdict::Rejected(motivos)
+    }
 }
 
 #[cfg(test)]

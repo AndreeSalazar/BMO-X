@@ -866,8 +866,22 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
     //
     // Es la clase de fallo que este proyecto ya conoce: el que no rompe nada y
     // sobrevive. Cuesta una comparacion y se cierra aqui.
+    // ** Y desde S2, tambien QUE LA MESA CUADRE CON EL CODIGO.
+    //
+    // *** Esta es la linea que hace que la mesa de katanas valga algo. Sin ella
+    // la tabla es una lista de numeros que nadie ha contrastado con nada -- y un
+    // offset mal apuntado saldria firmado, diciendo que la trampa esta donde hay
+    // otra cosa.
+    //
+    // El compilador se lo exige a SI MISMO: si algun dia el emisor se equivoca
+    // de offset, **no se escribe el fichero**. Es la unica postura que se
+    // sostiene, porque quien escribe la tabla es tambien quien podria mentir sin
+    // querer.
     let veredicto = if manifiesto.is_some() {
-        bmo_verify::declaracion::exige_manifiesto(&bytes)
+        match bmo_verify::declaracion::exige_manifiesto(&bytes) {
+            bmo_verify::Verdict::Ok => bmo_verify::declaracion::exige_katanas(&bytes),
+            malo => malo,
+        }
     } else {
         bmo_verify::verify(&bytes)
     };

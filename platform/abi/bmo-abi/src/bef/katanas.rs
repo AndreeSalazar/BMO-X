@@ -242,6 +242,27 @@ pub fn revisar(seccion: &[u8], codigo_len: usize) -> Result<usize, Falta> {
     Ok(n)
 }
 
+/// **El bloque materializa el numero que la tabla dice?**
+///
+/// ## Que prueba esto exactamente, que es menos de lo que parece
+///
+/// Busca los ocho bytes del codigo, en little-endian, dentro del bloque. Si no
+/// estan, **el bloque no esta devolviendo ese numero como un inmediato**.
+///
+/// ** Y ahi acaba lo que se puede afirmar desde aqui, que no sabe x86 ni lo
+/// quiere saber. Un bloque podria construir el numero con dos operaciones en
+/// vez de cargarlo entero, y esta funcion diria que no lo lleva. Para INTI eso
+/// no pasa --su trampa es un `mov` de un inmediato y nada mas-- pero para un
+/// binario de otro sitio esto es una condicion **necesaria y no suficiente**.
+///
+/// Se dice aqui y no en el sitio que la llama porque una funcion que promete de
+/// mas es peor que una que no existe: la primera hace que alguien deje de
+/// mirar.
+pub fn lleva_su_codigo(bloque: &[u8], codigo: bx_u32) -> bool {
+    let buscado = (codigo as u64).to_le_bytes();
+    bloque.windows(8).any(|v| v == buscado)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
