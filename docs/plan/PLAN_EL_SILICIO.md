@@ -535,6 +535,105 @@ contrato y una excavacion.
 
 ---
 
+## 8. LA EXCLUSIVIDAD DE INTI: contrato, no formato (2026-08-22)
+
+> Eddi: *"quizas podemos crear un hermano de bex... eso seria exclusivo para
+> Inti, ojo exclusivo... investiga si hay D, si no aplica la C + B."*
+
+### 8.1 Lo que dijeron los datos
+
+Se midio antes de decidir.
+
+| lo que se pregunto | respuesta |
+|---|---|
+| cuantas veces ha limitado BEF a INTI | **cero.** Tres veces hizo falta un sitio y las tres estaba declarado y vacio: `Resources 0x0B`, `Manifest 0x09`, `Requisitos 0x15` |
+| cuanto queda libre del formato | **234 de 255** clases de seccion, **19 de 32** bits de bandera, 6 bytes reservados. El formato esta al 8% |
+| cuanto costaria un hermano | 40+ ficheros consumen BEF; el camino de carga son **1.585 lineas** |
+| y de esas, cuantas son las que no se pueden tocar | **538**: `bmo-bex-gate`, que existe **porque esa decision ya estuvo escrita dos veces** |
+| arranca BMO-X con un `.bex`? | **no.** UEFI + `BOOTX64.EFI` + `kernel.elf` + las etapas faggin. El kernel nunca fue un `.bex` |
+
+★★★ **El dato que decidio**: `bmo-bex-gate` nacio para unir una decision que se
+habia partido en dos, y su cabecera dice *"ninguno de los dos es dueno de la
+decision, asi que ninguno puede desviarse de ella"*. Un formato hermano
+**volveria a partirla, a proposito**. Seria deshacer ese trabajo con mas trabajo.
+
+### 8.2 La D que se busco, y la que aparecio
+
+- **D1 -- solo demostrar, sin declarar.** Nada puede mentir porque no hay nada
+  declarado. ❌ Pierde la INTENCION y pierde las PIEZAS --de que fichero vino
+  algo no esta en los bytes-- y obliga a deducir al cargar, que es lo que el
+  propio formato prohibe.
+- **D2 -- exclusividad por firma.** ❌ `verify_ed25519` dice que si a una firma de
+  ceros y no lo llama nadie. Y da **identidad, no propiedad**: exclusivo pasa a
+  ser "quien tenga la llave", que contradice federar en vez de vender.
+- **D3 -- un formato subconjunto.** Es C4 con otras palabras.
+
+★★ **D1 no se tiro: era la mitad que le faltaba a C.**
+
+> **Declarar sin comprobar es propaganda. Comprobar sin declarar es adivinar.**
+> **Las dos juntas son un contrato.**
+
+### 8.3 La decision: C + B, y la extension es `.ibex`
+
+`.ibex` y no `.i` **porque el linaje se ve en el nombre**: es un BEX, y lo hizo
+INTI.
+
+Y la extension **no es decoracion: es el nombre de un veredicto.** Un fichero se
+llama `.ibex` solo si paso la comprobacion. Entonces `ls` dice cuales estan
+sujetos al contrato, y un `.bex` de INTI que falla **no llega a llamarse
+`.ibex`**. B sin C es un sombrero; C sin B es invisible.
+
+### 8.4 Los pasos, y donde estamos
+
+```text
+   S1  la mesa de katanas    HECHO   Katanas 0x16: por regla, codigo y offset
+   S2  la comprobacion       HECHO   la mesa contra los bytes, y el gate corta
+   S3  `.ibex`                       la extension, y SOLO si pasa S2
+   S4  DIRECTOR y el shell           que la reconozcan
+   S5  el barrido lineal             cada imul/idiv/cvttsd2si con su regla
+```
+
+### 8.5 ⚠ LA REGLA QUE SALIO DE LA ROCA 3
+
+Se penso comprobar el techo de `crudo` barriendo el codigo en busca de los
+opcodes de los 31 intrinsecos que lo piden. **No se puede**, y el motivo es un
+numero: **9 de esos 31 son de un solo byte** (`cli` = `FA`, `sti` = `FB`,
+`hlt` = `F4`, `inb`, `outb`...), y esos bytes aparecen todo el rato dentro de
+inmediatos y desplazamientos.
+
+> ★★★ **Un barrido de bytes puede ABSOLVER, no puede CONDENAR.**
+> Si no encuentra nada, no hay nada. Si encuentra algo, puede ser un inmediato --
+> y rechazar un binario honesto es el peor fallo que puede tener un gate.
+
+Por eso el techo de `crudo` **se movio a S5**, donde habra decodificador. Es la
+diferencia entre una comprobacion que se sostiene y una que parece que se
+sostiene.
+
+### 8.6 Y por que la exclusividad NO es el formato
+
+INTI emite **una sola seccion de codigo y ni un byte de datos dentro** (medido:
+`empaquetar` anade `Code`, `Manifest` y `Katanas`, y nada mas). Eso hace su
+codigo **decodificable en linea recta de principio a fin**, cosa que un binario
+de C no garantiza -- tablas de saltos, datos incrustados.
+
+★★★ **Ahi esta la exclusividad, y es tecnica y no un decreto:**
+
+> INTI no es exclusivo por tener formato propio. Es exclusivo porque **acepta
+> una restriccion** --nada de datos en el codigo, toda regla con su bloque
+> declarado-- **que hace sus binarios demostrables**. Y la restriccion se
+> comprueba.
+
+Cualquiera puede cumplirla. Casi nadie va a querer pagarla. Por eso el FORMATO
+de la mesa vive en `bmo-abi` --para que cualquiera pueda leerla-- y el CONTENIDO
+lo escribe quien se lo ha ganado.
+
+⚠ Y una consecuencia que hay que escribir: *"nada de datos en `.code`"* pasa a
+ser **invariante declarado de INTI**, no una casualidad de `llano`. El dia que
+`pleno` tenga textos, van a `RoData` y el codigo sigue puro. Si eso se rompe, S5
+se cae.
+
+---
+
 ## 6. C, Y QUE SITIO LE TOCA
 
 La pregunta del dueno, contestada sin adornos.

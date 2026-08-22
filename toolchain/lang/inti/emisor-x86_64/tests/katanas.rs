@@ -153,6 +153,101 @@ fn un_binario_sin_reglas_declara_cero_y_no_calla() {
     assert_eq!(katanas::cuantas(tabla).unwrap(), 0);
 }
 
+/// ***LA PRUEBA QUE DEMUESTRA QUE EL GATE CORTA.***
+///
+/// Se coge un `.bex` bueno y se le **falsifica una katana**: se cambia el
+/// numero que devuelve un bloque de trampa, dejando la tabla diciendo lo de
+/// antes. El binario sigue siendo un BEF perfectamente bien formado -- magic,
+/// secciones, tamanos, todo en orden -- y `verify()` lo acepta.
+///
+/// *** Y la exigencia lo rechaza, nombrando la katana y el byte.
+///
+/// ** Sin esta prueba, `exige_katanas` podria estar devolviendo `Ok` siempre y
+/// las otras tres seguirian en verde. Una comprobacion que nunca ha dicho que no
+/// no se ha probado: se ha ejecutado.
+#[test]
+fn una_katana_falsificada_no_pasa_la_exigencia() {
+    let d = caja("falsa");
+    let fuente = d.join("tres.inti");
+    std::fs::write(&fuente, LAS_TRES).unwrap();
+    let mut bex = compila(&fuente);
+
+    // Donde vive la primera katana, en el fichero.
+    let (cod_off, _) = paquete::localizar(&bex, SectionKind::Code).unwrap();
+    let tabla = paquete::seccion(&bex, SectionKind::Katanas).unwrap();
+    let k = katanas::katana(tabla, 0).unwrap();
+
+    // El inmediato empieza dos bytes despues del `48 B8`.
+    let inmediato = cod_off as usize + k.offset as usize + 2;
+    let antes = u64::from_le_bytes(bex[inmediato..inmediato + 8].try_into().unwrap());
+    assert_eq!(antes, k.codigo as u64, "el bloque no era el que creia");
+
+    // La falsificacion: el bloque pasa a devolver 7. La tabla sigue diciendo
+    // que devuelve `k.codigo`.
+    bex[inmediato..inmediato + 8].copy_from_slice(&7u64.to_le_bytes());
+
+    // ** El BEF sigue bien formado. Eso es lo que hace la prueba interesante.
+    assert!(
+        bmo_verify::verify(&bex).is_ok(),
+        "el envase sigue siendo valido, y tiene que serlo para que esto pruebe algo"
+    );
+
+    match bmo_verify::declaracion::exige_katanas(&bex) {
+        bmo_verify::Verdict::Ok => panic!("una katana falsificada paso la exigencia"),
+        bmo_verify::Verdict::Rejected(motivos) => {
+            assert!(
+                motivos.iter().any(|m| m.contains(&format!("E{}", k.codigo))),
+                "el motivo no nombra la regla: {:?}",
+                motivos
+            );
+            assert!(
+                motivos.iter().any(|m| m.contains(&k.offset.to_string())),
+                "el motivo no dice a que byte ir: {:?}",
+                motivos
+            );
+        }
+    }
+}
+
+/// **Y un `.bex` que no declara sus reglas tampoco pasa.**
+///
+/// Es la otra mitad: sin esta, `exige_katanas` seria una comprobacion que solo
+/// mira lo que ya esta y se calla cuando no hay nada que mirar.
+#[test]
+fn un_binario_sin_mesa_no_pasa_la_exigencia() {
+    let d = caja("sinmesa");
+    let fuente = d.join("simple.inti");
+    std::fs::write(
+        &fuente,
+        "perfil llano\n\nfuncion principal devuelve entero32\n    devuelve 0\n",
+    )
+    .unwrap();
+    let texto = std::fs::read_to_string(&fuente).unwrap();
+
+    // Emitido a mano y empaquetado SIN declarar: es lo que producia antes de S1.
+    let arbol = bmo_inti_front::armar(&texto);
+    let raices = bmo_mods::Roots::find();
+    let modulos = bmo_inti_front::tablas::Modulos::cargar(&raices);
+    let plano = bmo_inti_front::disposicion::comprobar(
+        &arbol.valor,
+        bmo_inti_front::disposicion::Medidas::cargar(&raices),
+    );
+    let metal = bmo_inti_front::ir::metal_que_declara(&arbol.valor, &raices, &modulos);
+    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let e = bmo_inti_x86_64::emitir(&ir);
+    let mudo = bmo_inti_x86_64::empaquetar(&e, None).expect("el gate lo rechazo");
+
+    assert!(bmo_verify::verify(&mudo).is_ok(), "el envase es valido");
+    match bmo_verify::declaracion::exige_katanas(&mudo) {
+        bmo_verify::Verdict::Ok => panic!("un binario sin mesa paso la exigencia"),
+        bmo_verify::Verdict::Rejected(m) => assert!(
+            m.iter().any(|x| x.contains("Katanas")),
+            "la razon no nombra lo que falta: {:?}",
+            m
+        ),
+    }
+}
+
 /// **La sonda del Ryzen declara sus katanas.**
 ///
 /// `cpu.bex` es el fichero que vuela, y su linea `reglas = 0` del 22-08 dice que
