@@ -63,7 +63,7 @@ fn un_fuente_de_disco_produce_un_bex_de_disco() {
     let (bien, salida, err) = compila(&[fuente.to_str().unwrap()]);
     assert!(bien, "no compilo: {}{}", salida, err);
 
-    let bex = d.join("float.bex");
+    let bex = d.join("float.ibex");
     assert!(bex.exists(), "no escribio el `.bex`");
     let bytes = std::fs::read(&bex).expect("no puedo leer el `.bex`");
     assert!(bytes.len() > 64, "el `.bex` mide {} bytes", bytes.len());
@@ -87,7 +87,7 @@ fn la_salida_se_puede_elegir() {
     ]);
     assert!(bien, "{}", err);
     assert!(otro.exists());
-    assert!(!d.join("x.bex").exists(), "escribio ademas el de por defecto");
+    assert!(!d.join("x.ibex").exists(), "escribio ademas el de por defecto");
 }
 
 /// ** LO QUE ESTA MAL NO DEJA UN FICHERO EN EL DISCO.
@@ -106,7 +106,7 @@ fn un_fuente_con_errores_no_escribe_nada() {
     let (bien, _, err) = compila(&[fuente.to_str().unwrap()]);
     assert!(!bien, "un fuente mal tiene que fallar");
     assert!(err.contains("E0022"), "no dijo cual era el problema: {}", err);
-    assert!(!d.join("malo.bex").exists(), "escribio el `.bex` de todos modos");
+    assert!(!d.join("malo.ibex").exists(), "escribio el `.bex` de todos modos");
 }
 
 /// ** LOS AVISOS SALEN TODOS, no solo el primero.
@@ -155,7 +155,7 @@ fn comprobar_no_escribe() {
     let (bien, salida, err) = compila(&[fuente.to_str().unwrap(), "-c"]);
     assert!(bien, "{}", err);
     assert!(salida.contains("compila"));
-    assert!(!d.join("c.bex").exists(), "escribio con `-c`");
+    assert!(!d.join("c.ibex").exists(), "escribio con `-c`");
 }
 
 /// ** EL INFORME: los numeros que el compilador SABE.
@@ -305,7 +305,7 @@ fn ningun_analisis_deja_escribir_un_bex_cuando_denuncia() {
         let (bien, _, _) = compila(&[ruta.to_str().unwrap()]);
         assert!(!bien, "`{}` denuncia y el compilador salio bien", analisis);
         assert!(
-            !d.join("y.bex").exists(),
+            !d.join("y.ibex").exists(),
             "`{}` denuncia y aun asi escribio el `.bex`",
             analisis
         );
@@ -331,5 +331,45 @@ fn una_sonda_del_censo_da_su_codigo_por_la_linea_de_ordenes() {
         err.contains("E0071"),
         "la sonda declara E0071 y la consola dice:\n{}",
         err
+    );
+}
+
+/// **INTI ESCRIBE `.ibex`, Y NUNCA `.bex`.**
+///
+/// ## Por que esto es una prueba y no una convencion
+///
+/// `.ibex` **no es una etiqueta: es el nombre de un veredicto.** El fichero
+/// llega al disco solo si paso las dos exigencias de `empaquetar` -- declara lo
+/// que es, y su mesa de katanas cuadra con sus bytes. Asi que un `.ibex` en un
+/// disco **ya paso el contrato**, y eso se puede afirmar sin abrir nada.
+///
+/// *** Y por eso el nombre por defecto no puede volver a `.bex` sin querer: seria
+/// devolverle a INTI un nombre que no dice a que se ha comprometido, y nadie lo
+/// notaria hasta que alguien se fiara de la extension.
+///
+/// `.bex` se queda para los demas lenguajes. No por ser peores: porque no emiten
+/// reglas y no tienen nada que declarar en esta mesa.
+#[test]
+fn el_nombre_por_defecto_es_ibex_y_no_bex() {
+    let d = caja("extension");
+    let fuente = escribe(&d, "prog.inti", BUENO);
+    let (bien, salida, err) = compila(&[fuente.to_str().unwrap()]);
+    assert!(bien, "no compilo: {}{}", salida, err);
+
+    assert!(
+        d.join("prog.ibex").exists(),
+        "no escribio `prog.ibex`:
+{}{}",
+        salida,
+        err
+    );
+    assert!(
+        !d.join("prog.bex").exists(),
+        "escribio ademas un `.bex`: dos nombres para lo mismo obligan a preguntar cual es cual"
+    );
+    assert!(
+        salida.contains(".ibex"),
+        "la linea de `ok:` no dice el nombre que escribio: {}",
+        salida
     );
 }
