@@ -43,6 +43,31 @@ tipos_que_crecen = ["texto", "lista", "tabla"]
 tipos_sin_medida = ["numero", "decimal"]
 
 # ===================================================================
+#  ** QUE PERFILES LLEGAN A BYTES HOY
+# ===================================================================
+#
+#  Esta fila existe por un fallo que se vio el 2026-08-22 corriendo la sonda del
+#  Ryzen: un fichero con `perfil pleno` COMPILABA y salia un `.bex` de 768 bytes
+#  que pasaba el gate. Y no hacia nada, porque `pleno` no esta construido:
+#
+#      `texto`, `lista` y `tabla` no existen -- no hay monton ni contador
+#      `numero` es decimal exacto y se baja a un CERO
+#      las llamadas a REX no tienen destino: no hay enlazado
+#
+#  ** Lo peor no era que no funcionara: era que el gate DIJERA QUE SI. Un `.bex`
+#  firmado que devuelve ceros es exactamente lo que este proyecto persigue --
+#  algo que compila y no hace lo que dice-- y encima con la firma detras.
+#
+#  ** Y esta en una TABLA y no en un `if` del compilador a proposito: el dia que
+#  `pleno` baje a bytes, lo que cambia es esta linea. Un `if` habria que
+#  encontrarlo; una fila se lee.
+#
+#  El aviso dice `todavia`, y hay una prueba que falla el dia que deje de ser
+#  verdad -- para que la fila no se quede mintiendo al reves.
+[bytes]
+llegan = ["llano"]
+
+# ===================================================================
 #  Lo que NO esta aqui, y es a proposito
 # ===================================================================
 #

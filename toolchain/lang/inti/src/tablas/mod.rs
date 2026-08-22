@@ -194,6 +194,20 @@ impl Modulos {
         self.constantes.get(nombre).copied()
     }
 
+    /// Los nombres de todas las constantes.
+    ///
+    /// ** Existe porque el analisis de NOMBRES tiene que saber que existen. El
+    /// descenso las resolvia --`self.tabla.constante(n)`-- y nadie se las habia
+    /// ensenado a quien busca nombres desconocidos, asi que `mi_tarea` era un
+    /// error de ortografia para el compilador.
+    ///
+    /// No se noto durante dias porque la linea de ordenes tiraba los avisos de
+    /// `nombres`. Dos huecos tapandose el uno al otro: el analisis no sabia, y
+    /// el que lo habria dicho estaba mudo.
+    pub fn constantes(&self) -> Vec<String> {
+        self.constantes.keys().cloned().collect()
+    }
+
     /// Que recoge este nombre de la puerta: `"codigo"` o `"valor"`.
     ///
     /// `None` si el nombre no cruza ninguna puerta, que es lo normal.

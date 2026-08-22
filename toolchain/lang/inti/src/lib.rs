@@ -200,6 +200,10 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
     for (n, _) in &arbol.valor.usa {
         extra.extend(modulos.trae(n).iter().cloned());
     }
+    // ** Y las CONSTANTES del ABI. `mi_tarea` y las operaciones de la puerta se
+    // escriben como un nombre cualquiera, y el descenso las resuelve contra la
+    // tabla -- pero quien busca nombres desconocidos no las conocia.
+    extra.extend(modulos.constantes());
     // ** Y las conversiones, que se escriben como una llamada.
     //
     // `flotante64(n)` no es una funcion y aun asi tiene que EXISTIR para el
@@ -264,6 +268,10 @@ pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core:
     for (n, _) in &arbol.valor.usa {
         extra.extend(modulos.trae(n).iter().cloned());
     }
+    // ** Y las CONSTANTES del ABI. `mi_tarea` y las operaciones de la puerta se
+    // escriben como un nombre cualquiera, y el descenso las resuelve contra la
+    // tabla -- pero quien busca nombres desconocidos no las conocia.
+    extra.extend(modulos.constantes());
     // ** Y las conversiones, que se escriben como una llamada.
     //
     // `flotante64(n)` no es una funcion y aun asi tiene que EXISTIR para el
