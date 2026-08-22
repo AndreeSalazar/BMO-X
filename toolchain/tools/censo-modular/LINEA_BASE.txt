@@ -11,6 +11,7 @@
   2537  platform/drivers/storage/fat32/src/lib.rs
   2321  toolchain/lang/c/src/codegen/mod.rs
   2011  toolchain/lang/cobol/src/parser.rs
+  1689  toolchain/forge/bmo-lower/src/emu/mod.rs
   1621  toolchain/lang/cpp/src/parser.rs
   1584  platform/drivers/usb/xhci/src/lib.rs
   1571  Ultra_kernel_x86-64/build.ps1
