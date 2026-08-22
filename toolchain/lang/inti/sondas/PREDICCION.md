@@ -67,22 +67,22 @@ prediccion que se escribe despues de ver el resultado no vale nada, y este
 proyecto ya tiene el metodo -- *medir en vez de opinar*, y **decir antes lo que
 se espera medir**.
 
-| linea | prediccion | si sale otra cosa |
-|---|---|---|
-| `-- cpu -` (1) | **entre 0x0D y 0x10**. Un Ryzen moderno entiende hasta la hoja 13-16 | **0x00000000** = `cpuid` no llego a ejecutarse |
-| `-- cpu -` (2) | **0x00A20F1x** o parecido: familia 0x19 (Zen 3/4) codificada | 0 = lo mismo de arriba |
-| `tsc` | ~~0x400-0x2000~~ **FALLO: salio 0xB68B**. Con la medida nueva (mejor de ocho) deberia bajar de ahi | **0** = el contador no avanza, y toda medida futura vale cero |
-| `xcr0` | **0x00000007** (x87 + SSE + AVX) o **0x00000207** con AVX-512 | **0** = el estado extendido no esta encendido, y eso explicaria el `#GP` de `xrstor` |
-| `azar` | **0x00000001** -- dos tiradas distintas | **0** = `rdrand` devuelve siempre lo mismo, o no ejecuto |
-| `bits` | ★ **0x00000000** | **cualquier otro numero**: cada bit dice que cuenta fallo. Ver la tabla de abajo |
-| `atomicas` | ★ **0x00000000** | idem, y ahi el sospechoso es la memoria, no el CPU |
-| **`reglas`** | ★★★ **0x00000000.** Las tres reglas anti-UB atrapando **en silicio**: desborde (bit 0), entre cero (bit 1), conversion (bit 2). Es la linea que decide si *"INTI no tiene comportamiento indefinido"* es verdad o es una frase | cualquier bit encendido = esa regla NO atrapo, y el programa siguio con un numero inventado |
-| `ruido` | **la peor menos la mejor de ocho.** Cuanto mas bajo, mas se puede afirmar | si es mayor que `tsc`, la medida no vale para comparar nada |
-| `-- fin -` | **tiene que salir** | si no sale, el programa murio antes: mira cual fue la ultima linea |
+| linea | prediccion | si sale otra cosa | ✅ salio (22-08, Ryzen) |
+|---|---|---|---|
+| `-- cpu -` (1) | **entre 0x0D y 0x10**. Un Ryzen moderno entiende hasta la hoja 13-16 | **0x00000000** = `cpuid` no llego a ejecutarse | **0x10** ✅ acertada |
+| `-- cpu -` (2) | **0x00A20F1x** o parecido: familia 0x19 (Zen 3/4) codificada | 0 = lo mismo de arriba | **0x00A20F12** ✅ acertada. ⚠ Es Zen **3** (Vermeer, 19h/21h), no Zen 4: Raphael es 19h/61h |
+| `tsc` | ~~0x400-0x2000~~ **FALLO: salio 0xB68B**. Con la medida nueva (mejor de ocho) deberia bajar de ahi | **0** = el contador no avanza, y toda medida futura vale cero | **0xB588** (46.472). Bajo, si: la mejor de ocho |
+| `xcr0` | **0x00000007** (x87 + SSE + AVX) o **0x00000207** con AVX-512 | **0** = el estado extendido no esta encendido, y eso explicaria el `#GP` de `xrstor` | **0x07** ✅ acertada. Sin AVX-512, como toca en Zen 3 |
+| `azar` | **0x00000001** -- dos tiradas distintas | **0** = `rdrand` devuelve siempre lo mismo, o no ejecuto | **0x01** ✅ acertada |
+| `bits` | ★ **0x00000000** | **cualquier otro numero**: cada bit dice que cuenta fallo. Ver la tabla de abajo | **0x00** ★ APROBADO |
+| `atomicas` | ★ **0x00000000** | idem, y ahi el sospechoso es la memoria, no el CPU | **0x00** ★ APROBADO |
+| **`reglas`** | ★★★ **0x00000000.** Las tres reglas anti-UB atrapando **en silicio**: desborde (bit 0), entre cero (bit 1), conversion (bit 2). Es la linea que decide si *"INTI no tiene comportamiento indefinido"* es verdad o es una frase | cualquier bit encendido = esa regla NO atrapo, y el programa siguio con un numero inventado | ★★★ **0x00** APROBADO. Las tres atraparon: 1001, 1003, 1012 |
+| `ruido` | **la peor menos la mejor de ocho.** Cuanto mas bajo, mas se puede afirmar | si es mayor que `tsc`, la medida no vale para comparar nada | **0x17B4** (6.068) = 13,1%. Menor que `tsc`, o sea que la medida vale |
+| `-- fin -` | **tiene que salir** | si no sale, el programa murio antes: mira cual fue la ultima linea | **salio** ✅ el programa llego al final |
 
-### ⚠ Las dos unicas que se pueden SUSPENDER
+### ⚠ Las TRES unicas que se pueden SUSPENDER
 
-Las demas dicen lo que el CPU diga y no hay contra que compararlas. Estas dos
+Las demas dicen lo que el CPU diga y no hay contra que compararlas. Estas tres
 tienen respuesta conocida, **y ya dan cero en el emulador**:
 
 ```text
@@ -104,10 +104,21 @@ tienen respuesta conocida, **y ya dan cero en el emulador**:
               bit 6   cambio cuando NO debia
               bit 7   ...y encima toco la memoria
               bit 8   suma_atomica no sumo
+
+   reglas     bit 0   desborde: 4e9 * 4e9 no atrapo (no devolvio 1001)
+              bit 1   entre cero: dividir por cero no atrapo (no devolvio 1003)
+              bit 2   conversion: entero32(1e30) no atrapo (no devolvio 1012)
 ```
+
+★★ **La Regla 2 no esta en esa lista, y no es un olvido**: un `bufer` no lleva su
+longitud, asi que no hay contra que comprobar el indice. Nace con `lista de T`.
 
 ★ Un cero en el Ryzen **confirma**; un numero distinto **senala al silicio y no a
 la sonda**, porque la sonda ya dio cero en el emulador.
+
+★★★ **Y las tres dieron cero en el Ryzen el 22-08.** Que las reglas atrapen en
+los DOS sitios es el punto entero: si el emulador dijera cero y el metal otra
+cosa, el sospechoso seria el emulador.
 
 ---
 

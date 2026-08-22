@@ -265,7 +265,7 @@ compilador*, que es la diferencia entre un mes y un ano. Salio lo primero.
 
 | | que | por que va ahi |
 |---|---|---|
-| 1 | **La foto del Ryzen** | es lo unico que el emulador no puede dar, y hay 36 nombres esperandola. **Ya hay fichero que llevar**: desde F6b `inti fichero.inti` produce un `.bex` |
+| ~~1~~ | ~~**La foto del Ryzen**~~ | ✅ **HECHA (22-08).** M1, M2 y M3 corrieron en el Ryzen 5 5600X: `reglas`, `bits` y `atomicas` salieron a CERO y el informe se guardo en disco. Ver `PLAN_DE_PRUEBAS.md` §4 |
 | 2 | **PLENO** | texto, lista, tabla, decimal, contador de referencias. Es una bifurcacion de diseno, no trabajo mecanico |
 | 2b | **Los tipos de retorno** | `si hay_algo()` no se comprueba porque el tipo que devuelve una funcion no se resuelve todavia. Es lo que le falta a `tipos` para cubrir el fichero entero |
 | 3 | **La Regla 2** | ⏳ **no es deuda del emisor**: un `bufer` es una direccion y no lleva su longitud, asi que no hay contra que comprobar. Nace con `lista de T`, que si la lleva -- o sea, con el 2 |
@@ -293,6 +293,12 @@ El segundo es hermano exacto del hueco de `add` que se encontro el 19-08, con
 las mismas palabras: *ningun lenguaje de BMO lo habia notado porque ninguno
 emitia un `jo`*. BMO C no comprueba el desbordamiento; INTI si, y su Regla 1
 salia verde aqui y habria atrapado en metal.
+
+★★★ **Y el 22-08 el silicio lo confirmo.** La sonda pregunto las tres reglas en
+el Ryzen y la linea `reglas` salio a **0x00**: desborde devolvio 1001, entre cero
+1003 y conversion 1012. **Emulador arreglado y metal dicen lo mismo**, que es la
+unica forma de que *"INTI no tiene comportamiento indefinido"* deje de ser una
+frase sobre un emulador que escribimos nosotros.
 
 ---
 
