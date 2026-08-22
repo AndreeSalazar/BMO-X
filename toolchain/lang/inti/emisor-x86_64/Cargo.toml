@@ -40,6 +40,19 @@ bmo-sem-asm = { path = "../../../forge/sem-asm" }
 name = "bmo_inti_x86_64"
 path = "src/lib.rs"
 
+# ** LA PUERTA DE ENTRADA DEL COMPILADOR, que hasta el 21-08 no existia.
+#
+# INTI compilaba solo dentro de sus pruebas: no habia forma de coger un `.inti`
+# de un disco y sacar un `.bex`. Asi que la foto del Ryzen era imposible --no
+# habia fichero que llevar-- y nadie que no fuera el banco podia escribir un
+# programa.
+#
+# Vive aqui y no en el frontend porque produce bytes de UNA maquina, y el
+# frontend tiene prohibido nombrar ninguna.
+[[bin]]
+name = "inti"
+path = "src/main.rs"
+
 [dev-dependencies]
 # El banco EJECUTA los bytes emitidos. Un `si` que no bifurca se ve igual que
 # uno que si en un volcado; solo se distinguen corriendolos.

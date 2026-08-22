@@ -27,7 +27,7 @@ dice*. Si una fila no tiene con que comprobarse, lo pone.
 | **estricto para facilitar** | que dos cosas que no se pueden operar juntas **no compilen** | ✅ **desde F6a** |
 | **fuera del syscall** | contando la instruccion de la puerta en los bytes emitidos | ✅ **hecho, y es un test** |
 
-Y el numero que resume el dia: **1.128 pruebas en verde** en INTI y en todo lo
+Y el numero que resume el dia: **1.137 pruebas en verde** en INTI y en todo lo
 que comparte tabla con el.
 
 ---
@@ -265,7 +265,7 @@ compilador*, que es la diferencia entre un mes y un ano. Salio lo primero.
 
 | | que | por que va ahi |
 |---|---|---|
-| 1 | **La foto del Ryzen** | es lo unico que el emulador no puede dar, y hay 36 nombres esperandola |
+| 1 | **La foto del Ryzen** | es lo unico que el emulador no puede dar, y hay 36 nombres esperandola. **Ya hay fichero que llevar**: desde F6b `inti fichero.inti` produce un `.bex` |
 | 2 | **PLENO** | texto, lista, tabla, decimal, contador de referencias. Es una bifurcacion de diseno, no trabajo mecanico |
 | 2b | **Los tipos de retorno** | `si hay_algo()` no se comprueba porque el tipo que devuelve una funcion no se resuelve todavia. Es lo que le falta a `tipos` para cubrir el fichero entero |
 | 3 | **La Regla 2** | ⏳ **no es deuda del emisor**: un `bufer` es una direccion y no lleva su longitud, asi que no hay contra que comprobar. Nace con `lista de T`, que si la lleva -- o sea, con el 2 |
