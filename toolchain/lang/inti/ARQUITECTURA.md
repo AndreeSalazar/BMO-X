@@ -214,6 +214,7 @@ prediccion, y se puede comprobar si acerto.
 | `perfil` | `llano` contra `pleno` | no emite un byte | ✅ |
 | `nombres` | quien es cada nombre y si es `cambiante` | tampoco emite | ✅ |
 | `disposicion` | cuanto mide cada cosa y donde esta cada campo | mide, no llama | ✅ (F5b) |
+| `tipos` | si dos cosas se pueden operar juntas | juzga, no calcula: lee el plano | ✅ (F6a) |
 | `ir` | de arbol a instrucciones | **no nombra ninguna maquina** | ✅ (F2c) |
 | `emisor-x86_64` | de la IR a bytes | **aqui SI se emite** -- y la puerta llega como una **fila de tabla**, igual que en BMO C | ✅ (F2d) |
 

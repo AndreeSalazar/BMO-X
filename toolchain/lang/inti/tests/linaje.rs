@@ -67,6 +67,14 @@ fn generaciones() -> HashMap<&'static str, u32> {
     g.insert("perfil", 4);
     g.insert("nombres", 4);
     g.insert("ir", 4);
+    // ** `tipos` es el cuarto analisis, y el unico que USA lo que otro calculo.
+    //
+    // No rompe la ley de los hermanos, y la distincion vale la pena: `tipos` no
+    // mira a `disposicion`, mira al PLANO -- que es un dato ya hecho, de la
+    // generacion 3. La diferencia es la misma que entre llamar a alguien y leer
+    // lo que dejo escrito: el dia que `disposicion` se reescriba, lo que tiene
+    // que seguir existiendo es el plano, no sus funciones.
+    g.insert("tipos", 4);
 
     g
 }
@@ -201,14 +209,14 @@ fn los_abuelos_no_dependen_de_nadie() {
 /// calculo, y llamarle parece gratis. No lo es: el dia que uno de los dos se
 /// reescriba, el otro se va con el.
 #[test]
-fn los_tres_analisis_no_se_miran_entre_ellos() {
+fn los_analisis_no_se_miran_entre_ellos() {
     let g = generaciones();
     let hermanos: Vec<&str> = g
         .iter()
         .filter(|(_, n)| **n == 4)
         .map(|(m, _)| *m)
         .collect();
-    assert!(hermanos.len() >= 3, "deberia haber tres analisis");
+    assert!(hermanos.len() >= 4, "deberia haber cuatro analisis");
 
     for (modulo, ruta) in modulos() {
         if ruta.file_stem().unwrap() == "pruebas" || !hermanos.contains(&modulo.as_str()) {

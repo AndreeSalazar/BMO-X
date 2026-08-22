@@ -282,6 +282,31 @@ pub enum Op {
     DesplazaDerecha,
 }
 
+/// Con que aritmetica se opera.
+///
+/// ## ** Por que viaja en la IR en vez de deducirla el emisor
+///
+/// Porque el emisor **no puede**. Los ocho bytes de un `flotante64` y los de un
+/// `natural64` son indistinguibles: no hay nada en el valor que diga cual es.
+/// Lo dice el tipo, el tipo lo sabe el plano, y el plano se consulta una vez --
+/// al bajar. Un emisor que tuviera que adivinarlo acertaria casi siempre, que
+/// es la peor de las opciones.
+///
+/// Y no nombra ninguna maquina: *"de coma flotante"* es una clase de ARITMETICA,
+/// no un sitio donde vivir. Hay maquinas que la hacen en registros propios,
+/// otras en una pila con mas precision de la que se pidio, y otras llamando a
+/// una funcion porque no tienen la instruccion. Las tres son este mismo
+/// `Clase::Flotante`, y cual toca es cosa del emisor de cada una.
+///
+/// (Esta explicacion nombraba un registro concreto en su primera version y la
+/// tumbo `tests/agnostico.rs`. Tenia razon dos veces, como en F5b: el frontend
+/// no puede nombrarlo, y la frase dice mas sin el.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Clase {
+    Entero,
+    Flotante,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpUno {
     /// `-x`

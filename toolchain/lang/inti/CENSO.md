@@ -1,4 +1,4 @@
-# CENSO DE INTI -- 40 sondas, y el veredicto escrito POR DELANTE
+# CENSO DE INTI -- 42 sondas, y el veredicto escrito POR DELANTE
 
 > **F0.** 🟡 Ninguna sonda esta medida: **hoy no existe el compilador**. Lo que
 > hace este documento es fijar **que tiene que pasar**, para que el dia que el
@@ -20,7 +20,7 @@ primera linea, asi que **la sonda y su expectativa no se pueden separar**.
 
 ## El numero
 
-**40 sondas. 4 medidas de verdad** (las de perfil, desde F2a), y el resto
+**42 sondas. 4 medidas de verdad** (las de perfil, desde F2a), y el resto
 esperando a su fase.
 
 | familia | sondas | que fija |
@@ -54,6 +54,8 @@ esperando a su fase.
 | `v03_sin_nulo` | no hay nulo: `quiza T` hay que mirarlo | `E0021` |
 | `v04_sin_veracidad` | `si` exige `logico`; `if lista:` no existe | `E0040` |
 | `v05_sin_conversion` | `"23" + 1` no se convierte solo | `E0022` |
+| `v06_mezcla_clases` | ✅ **coma flotante y entero no se mezclan** -- son los mismos ocho bytes leidos con dos alfabetos | `E0022` |
+| `v07_sin_veracidad_llano` | ✅ **una condicion es una pregunta**, no "algo que no es cero" | `E0040` |
 
 ## Control y nombres
 
@@ -135,7 +137,7 @@ sondas en verde"*: **siete se declaran hoy y cinco nacen alli**.
    cargo test -p bmo-inti-front sonda_
 ```
 
-Siete ejes, 40 casillas, y el informe **entero** comparado contra la constante
+Siete ejes, 42 casillas, y el informe **entero** comparado contra la constante
 del censo -- el mismo mecanismo que le encontro a BMO C cuatro defectos sin
 encender la maquina (el alineado de agregados, las cuatro operaciones que
 miraban mal el bit alto, `<strings.h>` ausente y `fread` a la pila).
