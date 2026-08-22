@@ -22,11 +22,12 @@ dice*. Si una fila no tiene con que comprobarse, lo pone.
 | la frase | como se comprueba | estado |
 |---|---|---|
 | **sintaxis de Python** | leyendo. 40 sondas del censo, con su veredicto por delante | ✅ **hecho** |
-| **rendimiento de ASM** | dos preguntas, y solo una esta contestada | ⚠ **la mitad** |
+| **rendimiento de ASM** | ⚠ **la frase esta mal planteada** -- ver 2.0. Lo que se quiere es CONTROL de ASM, y eso si | ✅ **reencuadrado** |
 | **sin comportamiento indefinido** | las doce reglas, y **cuantas llegan a bytes** | ✅ **3 de 4** atrapan y corren |
+| **estricto para facilitar** | que dos cosas que no se pueden operar juntas **no compilen** | ✅ **desde F6a** |
 | **fuera del syscall** | contando la instruccion de la puerta en los bytes emitidos | ✅ **hecho, y es un test** |
 
-Y el numero que resume el dia: **1.114 pruebas en verde** en INTI y en todo lo
+Y el numero que resume el dia: **1.128 pruebas en verde** en INTI y en todo lo
 que comparte tabla con el.
 
 ---
@@ -53,10 +54,25 @@ Lo caza la matriz de conformidad de F5d, no una lectura.
 
 ---
 
-## 2. "Nivel de rendimiento de ASM" -- son DOS preguntas
+## 2. "Nivel de rendimiento de ASM" -- la frase esta mal planteada
 
-Aqui esta la parte que los documentos mezclaban, y separarla cambia lo que hay
-que hacer despues.
+### 2.0 ⚠ Primero, la correccion, que es de Eddi (21-08)
+
+> *"recuerda el nivel de rendimiento de ASM, que no se engane, porque fue mito:
+> ya se demostro que Linux uso ASM y fue lento en el kernel."*
+
+Tiene razon, y el maestro ya lo tenia escrito en 13.10 -- **el ensamblador no es
+rendimiento, es control** -- mientras la portada seguia prometiendo lo otro.
+
+Un `rep movsb` fue el camino lento durante una decada y hoy es el rapido: el
+codigo que lo evitaba a mano se quedo atras **sin cambiar una linea**. El
+ensamblador de ayer no sabe nada del silicio de manana.
+
+★ Asi que la frase correcta no es *"rendimiento de ensamblador"* sino **"control
+de ensamblador, con la sintaxis de Python"**. Y eso si se puede sostener, porque
+son dos afirmaciones comprobables en vez de una que no lo es.
+
+### 2.1 La pregunta que SI importa: hay alguien entre el fuente y la instruccion?
 
 ### 2.1 La pregunta estructural: hay alguien entre el fuente y la instruccion?
 
@@ -80,7 +96,10 @@ compilado. Por eso el maestro dice que el AOT de PLENO daria 2-4x y no 50x.
 
 ### 2.2 La pregunta de velocidad: cuanto mas lento que ASM escrito a mano?
 
-**Sin contestar, y no se puede contestar aqui.** Pide el Ryzen y un metodo, y los
+**Sin contestar, y ademas NO es la pregunta que decide nada** -- ver 2.0. Se deja
+aqui porque alguien la va a hacer, no porque el proyecto dependa de ella.
+
+**No se puede contestar aqui.** Pide el Ryzen y un metodo, y los
 dos estan escritos en la seccion 13.5 del maestro -- pero *escrito* no es
 *medido*.
 
@@ -248,6 +267,7 @@ compilador*, que es la diferencia entre un mes y un ano. Salio lo primero.
 |---|---|---|
 | 1 | **La foto del Ryzen** | es lo unico que el emulador no puede dar, y hay 36 nombres esperandola |
 | 2 | **PLENO** | texto, lista, tabla, decimal, contador de referencias. Es una bifurcacion de diseno, no trabajo mecanico |
+| 2b | **Los tipos de retorno** | `si hay_algo()` no se comprueba porque el tipo que devuelve una funcion no se resuelve todavia. Es lo que le falta a `tipos` para cubrir el fichero entero |
 | 3 | **La Regla 2** | ⏳ **no es deuda del emisor**: un `bufer` es una direccion y no lleva su longitud, asi que no hay contra que comprobar. Nace con `lista de T`, que si la lleva -- o sea, con el 2 |
 | 4 | **Congelar y tareas** | el eslabon que rompe el GIL |
 | 5 | **El REPL** | el ultimo a proposito: *un interprete no puede escribir un driver* |

@@ -1600,6 +1600,208 @@ estan**, y esos son los que pesan.
 
 ---
 
+## 13d. INTI Y BMO ABI -- que es cada uno, y por que no compiten
+
+> Pregunta de Eddi, 2026-08-21: *"es como hermano de BMO ABI, pero es INTI que
+> vive fuera de syscall... yo se que tengo BMO ABI pero ese mismo es para
+> extranjero, pero para la casa es INTI que toma el control de BMO-X. Eso
+> podemos hablar un poco, tiene sentido o que?"*
+
+Tiene sentido, y bastante mas del que parece. Pero cada palabra de la frase pide
+una correccion, y las tres correcciones juntas son la arquitectura.
+
+### 13d.1 Son de naturaleza distinta, y por eso no se pisan
+
+```text
+   BMO ABI    un CONTRATO.  Existe porque dos que no se fian necesitan una forma
+   INTI       un MATERIAL.  Es de lo que esta hecho el sistema
+```
+
+Un contrato es **estrecho y congelado** -- tiene que serlo, porque cosas que tu
+no escribiste dependen de el. Un material es **ancho y mutable** -- manana puede
+tener una palabra clave mas.
+
+★★ Confundirlos es lo que produce sistemas donde tocar el lenguaje rompe
+binarios ajenos. Y es exactamente el reparto que Unix tuvo cincuenta anos: **C
+fue el material, la tabla de syscalls fue el contrato.** Ninguno sustituyo al
+otro, y no por falta de tiempo.
+
+### 13d.2 ⚠ La correccion: no son hermanos
+
+Hermano implica que estan al mismo nivel. No lo estan, y **la direccion
+importa**:
+
+> **El ABI es una FORMA. INTI es un MATERIAL. Un material puede expresar muchas
+> formas; una forma no produce materiales.**
+
+Hoy el ABI esta declarado en Rust. El dia que INTI escriba el kernel, **el ABI
+seguira existiendo sin cambiar una linea**, porque un ABI no es un artefacto del
+lenguaje: es un acuerdo sobre bytes y sobre quien puede pedir que.
+
+Ese es el test de que no son hermanos: uno puede reescribir al otro, y no al
+reves.
+
+### 13d.3 ★★★ Y esto es lo que la frase toca sin decirlo
+
+*"Vive fuera del syscall por algo."*
+
+**Ese "por algo" no es una propiedad de INTI. Es una propiedad que le regalo el
+ABI.**
+
+INTI puede vivir fuera del syscall **porque BMO-X decidio que ES un syscall**:
+dos, congelados, y solo para *autoridad*. En un sistema con trescientas llamadas
+al kernel, un lenguaje de la casa seguiria cruzando la puerta constantemente --
+memoria, ficheros, tiempo, todo. Aqui no, porque la puerta no es para trabajar:
+es para pedir permiso.
+
+Los **969 ciclos contra 20** no son un problema que INTI esquiva. Son la razon
+por la que el ABI se diseno como se diseno, y INTI esta de pie encima de esa
+decision. Eso es mas fuerte que la hermandad.
+
+### 13d.4 "Toma el control de BMO-X" -- mitad verdad, y la mitad buena
+
+La seccion 7.1 ya partia esto en tres ejes y conviene no perderlo:
+
+| eje | INTI |
+|---|---|
+| **EXPRESION** -- puedo *decirlo*? este byte, este ancho, esta instruccion | ✅ **esto si lo toma** |
+| **PERMISO** -- me *dejan* hacerlo? | ⛔ eso lo dan las capabilities y el anillo |
+| **CONFIANZA** -- alguien firmo que esto puede correr? | ⛔ eso es `bmo-verify` |
+
+Lo que *"toma el control"* nombra bien es otra cosa, y es real: **hoy las partes
+de BMO-X que solo Rust puede escribir estan atadas a Rust.** Cuando INTI las
+escriba, el sistema pasa a ser escribible en un lenguaje que es tuyo.
+
+Eso es soberania sobre el **FUENTE**, no sobre la maquina. Y es exactamente lo
+que C le dio a Unix en 1973 -- ni mas, ni menos.
+
+### 13d.5 ⚠ LA REGLA DE LA PUERTA PRIVADA, que es lo unico que puede estropear esto
+
+Si *"para la casa es INTI"* se endurece hasta *"la casa no necesita el ABI"*, se
+pierde la federacion. El modelo comercial se sostiene sobre una **Base
+inmutable**, y la Base **es** el ABI. El dia que el codigo de casa lo esquive
+porque *somos familia*, deja de ser inmutable en la practica y el argumento de
+venta se cae con ella.
+
+La regla que lo mantiene sano es corta:
+
+> ★★★ **INTI lo escribe la casa, pero NO tiene puerta privada.**
+
+Y hoy eso es literalmente cierto **y esta en un test**: `usa bmo` es una fila de
+`modulos.toml`, INTI cruza los mismos dos syscalls que cualquiera, y no existe
+ningun `inti_syscall`. Quitar esa fila apaga la puerta sin tocar una linea de
+Rust, y `la_puerta_llega_por_una_linea_del_fuente_y_no_por_otra_via` lo
+comprueba en las dos direcciones.
+
+★ **El encuadre es defendible ante alguien de fuera precisamente porque INTI no
+se dio un atajo.**
+
+### 13d.6 Una correccion mas, pequena: el ABI no es "para extranjeros"
+
+El kernel tambien lo usa por dentro. La frontera no es *nativo contra
+extranjero*: es la frontera de **AUTORIDAD**. La cruza cualquiera que salga de
+su dominio de confianza, incluida la casa.
+
+Por eso INTI cruzandolo no es una concesion ni una torpeza: es lo correcto.
+
+---
+
+## 13e. ⚠ "NIVEL DE RENDIMIENTO DE ASM" -- la frase que hay que dejar de decir
+
+> Correccion de Eddi, 2026-08-21: *"recuerda el nivel de rendimiento de ASM, que
+> no se engane, porque fue mito: ya se demostro que Linux uso ASM y fue lento en
+> el kernel."*
+
+Tiene razon, y este documento ya lo tenia escrito en la seccion 13.10 -- **el
+ensamblador no es rendimiento, es control** -- pero la frase de la portada seguia
+prometiendo lo otro. Se corrige aqui, porque una promesa que no se puede cumplir
+erosiona las que si.
+
+### Lo que el mito dice, y por que es falso
+
+*"Escrito a mano en ensamblador va mas rapido."* Fue verdad hasta los noventa y
+dejo de serlo, y el caso mas citado esta en el propio Linux: **rutinas escritas a
+mano que el compilador acabo superando**, porque el ensamblador de ayer no sabe
+nada del silicio de manana -- no reordena, no conoce la latencia nueva de una
+instruccion, no aprovecha una unidad que no existia cuando se escribio.
+
+★★ Un `rep movsb` fue el camino lento durante una decada y hoy es el rapido. El
+codigo que lo evitaba a mano se quedo atras **sin cambiar una linea**.
+
+### Entonces que es lo que INTI si promete
+
+Dos cosas, y ninguna es velocidad bruta:
+
+```text
+   1. CONTROL     poder DECIR el byte, el ancho y la instruccion exactos
+   2. SIN NADIE EN MEDIO   entre el fuente y la instruccion no hay despacho,
+                           ni contador de referencias, ni una llamada por
+                           elemento
+```
+
+La segunda **si esta comprobada y es un test**: el bucle mas caliente que INTI
+sabe escribir --rellenar un framebuffer-- emite **cero llamadas y cero cruces de
+la puerta**. Ese es el techo que Python no puede levantar, y no por lentitud del
+interprete: alli `x + y` **es** una llamada, y lo seguiria siendo compilado.
+
+### ★ La forma correcta de decirlo, para el dia del lanzamiento
+
+| se dice | ✅/❌ |
+|---|---|
+| *"rendimiento de ensamblador"* | ❌ no se puede sostener, y no hace falta |
+| *"control de ensamblador, con la sintaxis de Python"* | ✅ y ademas es lo que de verdad se quiere |
+| *"entre el fuente y la instruccion no hay nadie"* | ✅ y hay un test |
+| *"el mismo programa da el mismo bit en cualquier maquina"* | ✅ Regla 11, y hay un test |
+
+⚠ Y la comparacion con ASM escrito a mano seguira sin contestarse hasta que haya
+un Ryzen y un metodo -- que es la seccion 13.5. **Escrito no es medido**, y decir
+que si sin medirlo seria justo el mito que esta seccion desmonta.
+
+---
+
+## 13f. RUST Y INTI -- por que no compiten, dicho sin adornos
+
+> Pregunta de Eddi, 2026-08-21: *"hablamos de INTI para no usar Rust; Rust es
+> bueno pero esta en lo suyo, no? Rust e INTI son parecidos, pero INTI es el
+> lenguaje exclusivo de BMO-X."*
+
+### Lo que Rust hace mejor, y hay que decirlo primero
+
+Mas maduro, con un comprobador de prestamos que INTI no va a igualar pronto, un
+ecosistema enorme y quince anos de trabajo encima. **INTI no es mejor que Rust**
+y decir lo contrario haria dudar de todo lo demas.
+
+### Lo que Rust no puede ser aqui, que es otra cosa
+
+★★ **Rust es de otros.** Su hoja de ruta, su biblioteca estandar, su ABI inestable
+y sus decisiones las toma gente que no sabe que BMO-X existe. Eso no es un
+defecto de Rust -- es lo normal en un lenguaje que sirve a mucha gente -- pero
+tiene tres consecuencias concretas aqui:
+
+| | con Rust | con INTI |
+|---|---|---|
+| la tabla de instrucciones | es de `core::arch`, y la fija otro | es `intrinsics.toml`, y es del sistema |
+| lo que significa el idioma | ingles, y no se negocia | una columna de `palabras.toml` |
+| el precio de la seguridad | `unsafe`, y se cuenta a mano | `crudo`, y **el compilador lo publica en el informe del `.bex`** |
+
+La tercera es la que mas se nota: en BMO-X, un `.bex` de INTI llega con **cuantas
+ventanas sin comprobar tiene y a que maquina se ata**, y eso va a CABINA con un
+numero que se puede seguir en el tiempo. Eso no se puede anadir a Rust desde
+fuera: pide que el compilador sea del sistema.
+
+### La frase correcta
+
+> **Rust escribe el kernel de hoy. INTI es el lenguaje al que el sistema quiere
+> llegar.** No es una sustitucion en marcha: es el mismo movimiento que Unix hizo
+> con el ensamblador del PDP-7, y alli tampoco se tiro todo el ensamblador -- el
+> arranque y el cambio de contexto siguen en ASM cincuenta anos despues.
+
+⚠ Y el limite honesto: **INTI no tiene que tragarse `entry.rs`.** La seccion 1.1
+lo dice y sigue valiendo -- *el lenguaje del sistema nunca escribio el 100% del
+sistema*.
+
+---
+
 ## 14. LO QUE NO ENTRA, con motivo
 
 | fuera | motivo |

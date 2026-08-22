@@ -1,0 +1,7 @@
+# sonda: v06_mezcla_clases       espera: E0022
+# fija: no hay conversion implicita. Mezclar coma flotante y entero no da un
+# numero raro: lee los mismos ocho bytes con dos alfabetos y da OTRO numero.
+perfil llano
+
+funcion escala(x es flotante64, n es entero64) devuelve flotante64
+    devuelve x * n

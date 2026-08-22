@@ -56,6 +56,7 @@ pub mod palabras;
 pub mod perfil;
 pub mod sintaxis;
 pub mod disposicion;
+pub mod tipos;
 pub mod tablas;
 
 pub use aviso::{Aviso, Cosecha, Sitio};
@@ -212,10 +213,20 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
     // La cuarta: cuanto mide cada cosa y donde esta cada campo.
     let mut plano = disposicion::comprobar(&arbol.valor, disposicion::Medidas::cargar(&raices));
 
+    // ** Y la quinta: que lo que se opera junto se pueda operar junto.
+    //
+    // Va DESPUES del plano y no en paralelo, porque necesita sus respuestas --y
+    // es el unico analisis que depende de otro--. No es una excepcion a que los
+    // analisis no se miren entre ellos: `tipos` no mira a `disposicion`, mira al
+    // PLANO, que es un dato ya calculado. La diferencia es la misma que entre
+    // llamar a alguien y leer lo que dejo escrito.
+    let mut tipos = tipos::comprobar(&arbol.valor, &plano.valor);
+
     let mut avisos = std::mem::take(&mut arbol.avisos);
     avisos.append(&mut perfiles.avisos);
     avisos.append(&mut nombres.avisos);
     avisos.append(&mut plano.avisos);
+    avisos.append(&mut tipos.avisos);
     Cosecha::con(perfiles.valor, avisos)
 }
 

@@ -121,30 +121,10 @@ impl Comprobacion {
     }
 }
 
-/// Con que aritmetica se opera.
-///
-/// ## ** Por que viaja en la IR en vez de deducirla el emisor
-///
-/// Porque el emisor **no puede**. Los ocho bytes de un `flotante64` y los de un
-/// `natural64` son indistinguibles: no hay nada en el valor que diga cual es.
-/// Lo dice el tipo, el tipo lo sabe el plano, y el plano se consulta una vez --
-/// al bajar. Un emisor que tuviera que adivinarlo acertaria casi siempre, que
-/// es la peor de las opciones.
-///
-/// Y no nombra ninguna maquina: *"de coma flotante"* es una clase de ARITMETICA,
-/// no un sitio donde vivir. Hay maquinas que la hacen en registros propios,
-/// otras en una pila con mas precision de la que se pidio, y otras llamando a
-/// una funcion porque no tienen la instruccion. Las tres son este mismo
-/// `Clase::Flotante`, y cual toca es cosa del emisor de cada una.
-///
-/// (Esta explicacion nombraba un registro concreto en su primera version y la
-/// tumbo `tests/agnostico.rs`. Tenia razon dos veces, como en F5b: el frontend
-/// no puede nombrarlo, y la frase dice mas sin el.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Clase {
-    Entero,
-    Flotante,
-}
+/// Con que aritmetica se opera. **Vive en `arbol`**, que es donde vive la forma
+/// compartida: la preguntan el que comprueba tipos y el que emite, y dos copias
+/// serian dos criterios.
+pub use crate::arbol::Clase;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instr {
@@ -740,10 +720,27 @@ impl<'t> Descenso<'t> {
                 derecha,
                 sitio,
             } => {
-                // La clase se pregunta ANTES de bajar los operandos, sobre
-                // el arbol: una vez bajados ya no son mas que valores, y un
-                // valor no dice de que tipo era.
-                let clase = if self.plano.es_flotante(e, &self.tipos) {
+                // ** LA CLASE SALE DE LOS OPERANDOS, no de la expresion entera,
+                // y la diferencia importa en un caso concreto: **comparar**.
+                //
+                //     0.0 / 0.0 = 1.0    la expresion vale un `logico`
+                //                        la OPERACION es de coma flotante
+                //
+                // Preguntando por la expresion, una comparacion de flotantes se
+                // bajaba a una comparacion de ENTEROS -- y comparar dos NaN como
+                // enteros da que son iguales, que es justo lo contrario de lo
+                // que manda IEEE-754.
+                //
+                // Lo cazaron las pruebas del NaN en cuanto `clase_de` aprendio a
+                // contestar "esto no es un numero, es una pregunta". Son dos
+                // preguntas distintas y ahora cada una se hace donde toca.
+                //
+                // Y se pregunta ANTES de bajar los operandos, sobre el arbol:
+                // una vez bajados ya no son mas que valores, y un valor no dice
+                // de que tipo era.
+                let clase = if self.plano.es_flotante(izquierda, &self.tipos)
+                    || self.plano.es_flotante(derecha, &self.tipos)
+                {
                     Clase::Flotante
                 } else {
                     Clase::Entero

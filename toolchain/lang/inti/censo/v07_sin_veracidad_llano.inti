@@ -1,0 +1,9 @@
+# sonda: v07_sin_veracidad_llano espera: E0040
+# fija: una condicion es una pregunta, no "algo que no es cero". Es la sorpresa
+# de Python que INTI quita: alli `si lista`, `si 0` y `si "0"` son tres reglas.
+perfil llano
+
+funcion f(n es entero64) devuelve entero64
+    si n
+        devuelve 1
+    devuelve 0

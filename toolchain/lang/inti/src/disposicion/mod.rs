@@ -292,28 +292,86 @@ impl Plano {
     /// aritmetica es de flotantes; que el otro pueda estar ahi es una pregunta
     /// de tipos, y la contesta quien comprueba, no quien emite.
     pub fn es_flotante(&self, e: &Expr, tipos: &HashMap<String, Tipo>) -> bool {
+        matches!(self.clase_de(e, tipos), Some(crate::arbol::Clase::Flotante))
+    }
+
+    /// Con que aritmetica se opera esto -- y **`None` cuando no se sabe**.
+    ///
+    /// ## ** La diferencia entre `None` y `Entero` es la que hace posible
+    /// comprobar tipos
+    ///
+    /// `es_flotante` devuelve un `bool`, asi que un tipo desconocido y un entero
+    /// contestan lo mismo: *no*. Para BAJAR sirve --si no consta que es
+    /// flotante, se opera con enteros-- pero para COMPROBAR no: denunciar
+    /// `a + b` porque uno es flotante y del otro no se sabe nada seria un aviso
+    /// que salta de mas, y un aviso que salta de mas se desactiva en una semana.
+    ///
+    /// ```text
+    ///    Some(Flotante)   consta, y es de coma flotante
+    ///    Some(Entero)     consta, y es de enteros
+    ///    None             no consta -- un literal, o algo sin tipo escrito
+    /// ```
+    ///
+    /// ** Y `None` para un literal es una decision, no un hueco: `a * 2` con `a`
+    /// flotante es correcto. El `2` no es "un entero que se convierte": es un
+    /// numero que todavia no ha elegido forma. Eso NO es conversion implicita
+    /// --lo que `v05` prohibe-- porque no hay dos tipos, hay uno y un literal.
+    pub fn clase_de(
+        &self,
+        e: &Expr,
+        tipos: &HashMap<String, Tipo>,
+    ) -> Option<crate::arbol::Clase> {
+        use crate::arbol::Clase;
         match e {
             // Un literal con punto es de coma flotante en `llano` **porque
             // `decimal` no existe alli**: `biblioteca.toml` lo prohibe por no
             // decir su medida. En `pleno` la respuesta sera la otra, y este
             // modulo no trabaja en `pleno`.
-            Expr::Numero(n, _) => n.con_punto,
+            //
+            // Y uno SIN punto no dice de que es: `2` vale en las dos
+            // aritmeticas, y por eso contesta `None` y no `Entero`.
+            Expr::Numero(n, _) => n.con_punto.then_some(Clase::Flotante),
             Expr::Binaria {
+                op,
                 izquierda,
                 derecha,
                 ..
-            } => self.es_flotante(izquierda, tipos) || self.es_flotante(derecha, tipos),
-            Expr::Unaria { valor, .. } => self.es_flotante(valor, tipos),
+            } => {
+                // Comparar da un `logico`, no un numero. Preguntarle su clase
+                // de aritmetica no tiene sentido, y contestar `Entero` haria que
+                // `si (a < b)` pareciera un entero mal puesto.
+                if es_de_comparar(*op) {
+                    return None;
+                }
+                self.clase_de(izquierda, tipos)
+                    .or_else(|| self.clase_de(derecha, tipos))
+            }
+            Expr::Unaria { valor, .. } => self.clase_de(valor, tipos),
             // `flotante64(x)` dice de que es lo que sale, y lo dice el nombre
             // que se escribio. Una conversion en INTI se pide, no se supone.
             Expr::Llamada { que, .. } => match &**que {
-                Expr::Nombre(n, _) => self.medidas.es_flotante(n),
-                _ => false,
+                Expr::Nombre(n, _) if self.medidas.es_flotante(n) => Some(Clase::Flotante),
+                Expr::Nombre(n, _) if self.medidas.es_entero(n) => Some(Clase::Entero),
+                _ => None,
             },
             _ => match self.tipo_de(e, tipos) {
-                Some(Tipo::Nombre(n)) => self.medidas.es_flotante(&n),
-                _ => false,
+                Some(Tipo::Nombre(n)) if self.medidas.es_flotante(&n) => Some(Clase::Flotante),
+                Some(Tipo::Nombre(n)) if self.medidas.es_entero(&n) => Some(Clase::Entero),
+                // Un `bufer` es una direccion, y una direccion es un entero.
+                Some(Tipo::Bufer(_)) => Some(Clase::Entero),
+                _ => None,
             },
+        }
+    }
+
+    /// La clase que tiene un tipo ESCRITO, sin mirar ninguna expresion.
+    pub fn clase_del_tipo(&self, t: &Tipo) -> Option<crate::arbol::Clase> {
+        use crate::arbol::Clase;
+        match t {
+            Tipo::Nombre(n) if self.medidas.es_flotante(n) => Some(Clase::Flotante),
+            Tipo::Nombre(n) if self.medidas.es_entero(n) => Some(Clase::Entero),
+            Tipo::Bufer(_) => Some(Clase::Entero),
+            _ => None,
         }
     }
 
@@ -326,6 +384,27 @@ impl Plano {
             _ => None,
         }
     }
+}
+
+/// Este operador produce un `logico` en vez de un numero?
+///
+/// ** Lo usan dos preguntas distintas --de que clase es esto, y sirve como
+/// condicion-- y por eso esta suelto: dos copias serian dos criterios sobre la
+/// misma lista de operadores.
+pub fn es_de_comparar(op: crate::arbol::Op) -> bool {
+    use crate::arbol::Op;
+    matches!(
+        op,
+        Op::Igual
+            | Op::NoEs
+            | Op::Menor
+            | Op::Mayor
+            | Op::MenorIgual
+            | Op::MayorIgual
+            | Op::EsUn
+            | Op::Y
+            | Op::O
+    )
 }
 
 /// Los tipos que se conocen dentro de una funcion, por nombre.
