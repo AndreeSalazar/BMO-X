@@ -63,6 +63,16 @@ pub enum SectionKind {
     /// tendria que haber un contrato. `Manifest = 0x09` sigue siendo el TOML
     /// para humanos; esta es su version compilada, que se lee sin parser.
     Requisitos = 0x15,
+
+    // --- 2026-08-22: lo que el binario declara sobre SUS PROPIAS REGLAS ---
+    /// **Las katanas**: por cada regla anti-UB que el binario trae, su codigo y
+    /// donde esta su bloque de trampa dentro de `Code`. Ver `katanas.rs`.
+    ///
+    /// Hoy solo la escribe INTI, porque hoy solo INTI emite reglas. El FORMATO
+    /// vive aqui de todas formas, y a proposito: **para que cualquiera pueda
+    /// leerla** sin tener el compilador delante. Un formato que solo entiende
+    /// quien lo escribe es un club, no un contrato.
+    Katanas = 0x16,
 }
 
 impl SectionKind {
@@ -89,6 +99,7 @@ impl SectionKind {
             0x13 => Some(Self::Reflect),
             0x14 => Some(Self::Closures),
             0x15 => Some(Self::Requisitos),
+            0x16 => Some(Self::Katanas),
             _ => None,
         }
     }
