@@ -63,6 +63,11 @@ fn main() {
             // Compila y no escribe. Para saber si un fuente esta bien sin
             // ensuciar el disco con un `.bex` que no se va a usar.
             "-c" | "--comprueba" => solo_mirar = true,
+            // ** LO QUE SI SE HACER. Ver `puedo()`.
+            "-p" | "--puedo" => {
+                puedo();
+                exit(0);
+            }
             "-h" | "--ayuda" => {
                 ayuda(&args[0]);
                 exit(0);
@@ -256,10 +261,107 @@ fn ayuda(programa: &str) {
     println!("  -o, --salida <ruta>   donde dejar el `.bex` (por defecto, al lado)");
     println!("  -i, --informe         los numeros que el compilador sabe");
     println!("  -c, --comprueba       compila y no escribe nada");
+    println!("  -p, --puedo           lo que se hacer hoy, y lo que no y por que");
     println!("  -h, --ayuda           esto");
     println!();
     println!("Este programa NO ejecuta nada: escribe un `.bex` firmado, y quien");
     println!("lo ejecuta es el kernel. La puerta del sistema entra por `usa bmo`.");
+}
+
+/// **LO QUE SE HACER HOY -- y lo que no, con el motivo.**
+///
+/// ## Por que existe, y es una peticion de Eddi
+///
+/// > *"si algo no procesa, tiene que exponer lo que pueda hacer... INTI puede
+/// > ayudar a traducir QUE FALLA y por que, para poder evitar problemas."*
+///
+/// ** INTI ya sabia decir lo que NO puede: `sin_emitir` cuenta lo que se pidio
+/// emitir y no llego a un byte, y `E0073` distingue *"esta prohibido"* de
+/// *"todavia no se hacerlo"*. Las dos son buenas y las dos son NEGATIVAS: solo
+/// contestan cuando ya chocaste.
+///
+/// *** Lo que faltaba es la mitad positiva. Un compilador que solo sabe decir
+/// que no se parece a una pared; uno que sabe decir lo que si sabe hacer es una
+/// guia. Y el dato es exactamente el mismo, leido al reves.
+///
+/// ## Y sale ENTERO de las tablas
+///
+/// Ni una lista escrita aqui. Los perfiles salen de `biblioteca.toml`, los
+/// nombres de la maquina de `arch/x86_64/inti.toml`, sus bytes de
+/// `intrinsics.toml`, y las reglas de `Comprobacion::TODAS`. Una lista escrita
+/// aqui seria una segunda lista, y dos listas que dicen lo mismo se separan.
+fn puedo() {
+    let raices = bmo_mods::Roots::find();
+    println!("INTI -- lo que se hacer hoy. Nada de esto esta escrito aqui:");
+    println!("todo sale de las mismas tablas con las que compilo.");
+    println!();
+
+    // -- Los perfiles -------------------------------------------------------
+    let cat = bmo_inti_front::perfil::Catalogo::cargar(&raices);
+    let llegan = cat.perfiles_que_llegan();
+    println!("PERFILES");
+    for nombre in ["llano", "pleno"] {
+        if llegan.iter().any(|x| x == nombre) {
+            println!("  {:<8} SI -- compilo esto y sale un `.ibex`", nombre);
+        } else {
+            println!("  {:<8} NO todavia (E0073). El perfil esta especificado", nombre);
+            println!("           entero y es legitimo: lo que falta es su runtime.");
+        }
+    }
+    println!();
+
+    // -- Las reglas ---------------------------------------------------------
+    //
+    // ** El "no" trae su motivo. Un no sin motivo manda a buscar al codigo.
+    println!("LAS REGLAS ANTI-UB, en bytes");
+    for c in bmo_inti_front::ir::Comprobacion::TODAS {
+        if c.llega_a_bytes() {
+            println!("  {} {:<22} SI, y atrapa devolviendo su codigo", c.codigo(), c.nombre());
+        } else {
+            println!("  {} {:<22} NO -- {}", c.codigo(), c.nombre(), c.por_que_no());
+        }
+    }
+    println!();
+
+    // -- La maquina ---------------------------------------------------------
+    //
+    // ** Se RECORRE la tabla, no se cuenta a mano. Un nombre que la tabla trae y
+    // el emisor no sabe emitir sale aqui por su nombre -- que es justo lo que
+    // `sin_emitir` cuenta cuando ya has escrito el programa.
+    let taller = bmo_inti_x86_64::Taller::nuevo();
+    match (taller.maquina.as_ref(), taller.intrinsecos.as_ref()) {
+        (Some(maquina), Some(intrinsecos)) => {
+            let nombres = maquina.nombres_que_trae();
+            let mudos: Vec<String> = nombres
+                .iter()
+                .filter(|n| {
+                    maquina
+                        .instruccion(n)
+                        .and_then(|i| intrinsecos.get(i))
+                        .is_none()
+                })
+                .cloned()
+                .collect();
+            println!("LA MAQUINA x86_64  (`usa x86_64`)");
+            println!(
+                "  {} nombres en la tabla, {} con bytes detras",
+                nombres.len(),
+                nombres.len() - mudos.len()
+            );
+            if mudos.is_empty() {
+                println!("  ninguno mudo");
+            } else {
+                println!("  MUDOS -- la tabla los nombra y no hay bytes:");
+                for m in &mudos {
+                    println!("    {}", m);
+                }
+            }
+        }
+        _ => println!("LA MAQUINA x86_64  -- no encuentro sus tablas"),
+    }
+    println!();
+    println!("Y lo que NO sabe hacer un `.inti` cualquiera te lo dice al compilar:");
+    println!("`sin_emitir` nombra lo que se pidio y no llego a un byte, con su motivo.");
 }
 
 fn fin(que: &str) -> ! {

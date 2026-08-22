@@ -408,3 +408,79 @@ mod memoria;
 mod metal;
 mod reglas;
 mod sonda;
+
+// ===================================================================
+//  ** QUE LAS DOS LISTAS NO SE SEPAREN
+// ===================================================================
+
+/// **`Comprobacion::llega_a_bytes()` y el `match` del emisor dicen lo mismo.**
+///
+/// ## Por que hace falta esta prueba
+///
+/// Desde que existe `--puedo`, la respuesta a *"que reglas sabes emitir?"* vive
+/// en DOS sitios: la tabla de `ir::forma` --que es la que se le ensena a una
+/// persona-- y el `match` de `Instr::Comprueba` --que es la que emite bytes.
+///
+/// *** Dos listas que dicen lo mismo se separan el dia que alguien toca una. Y
+/// esta se separaria hacia el peor lado posible: el compilador anunciando una
+/// regla que no emite. Un binario saldria firmado, sin la comprobacion dentro,
+/// y con el propio compilador habiendo dicho que si.
+///
+/// Es el mismo fallo del censo de las diez sondas y el de los cinco analisis de
+/// la linea de ordenes, la tercera vez.
+///
+/// ## Como lo comprueba, y por que asi
+///
+/// No lee el `match`: **emite**. Para cada regla se compila un fuente que la
+/// provoca y se mira si salio su bloque de trampa a la mesa de katanas. Leer el
+/// codigo fuente del emisor seria comprobar lo que esta escrito; emitir
+/// comprueba lo que hace.
+#[test]
+fn lo_que_inti_dice_que_emite_es_lo_que_emite() {
+    use bmo_inti_front::ir::Comprobacion;
+
+    // Un fuente por regla, elegido para que la IR pida ESA comprobacion.
+    let provoca = |c: Comprobacion| -> Option<&'static str> {
+        match c {
+            Comprobacion::Desborde => Some("perfil llano\n\nfuncion f devuelve natural64\n    cambiante x es entero64 = 4000000000\n    devuelve x * x\n"),
+            Comprobacion::EntreCero => Some("perfil llano\n\nfuncion f devuelve natural64\n    cambiante c es entero64 = 0\n    devuelve 10 entre c\n"),
+            Comprobacion::Conversion(_) => Some("perfil llano\n\nfuncion f devuelve natural64\n    devuelve entero32(1e30)\n"),
+            // ** La 2 no se puede provocar y ESO es el dato: indexar un `bufer`
+            // pide `crudo` justamente porque no hay contra que comprobar.
+            Comprobacion::Indice => None,
+        }
+    };
+
+    for c in Comprobacion::TODAS {
+        let codigo: u32 = c.codigo()[1..].parse().expect("el codigo no es un numero");
+        match provoca(c) {
+            Some(fuente) => {
+                assert!(
+                    c.llega_a_bytes(),
+                    "{} se puede provocar y la tabla dice que no llega a bytes",
+                    c.codigo()
+                );
+                let e = emitido(fuente);
+                assert!(
+                    e.katanas.iter().any(|(k, _, _)| *k as u32 == codigo),
+                    "la tabla dice que {} ({}) llega a bytes y el emisor no saco su bloque: {:?}",
+                    c.codigo(),
+                    c.nombre(),
+                    e.katanas
+                );
+            }
+            None => {
+                assert!(
+                    !c.llega_a_bytes(),
+                    "{} no se puede provocar y la tabla dice que llega a bytes",
+                    c.codigo()
+                );
+                assert!(
+                    !c.por_que_no().is_empty(),
+                    "{} no llega a bytes y no dice por que -- un `no` sin motivo manda                      a buscar al codigo",
+                    c.codigo()
+                );
+            }
+        }
+    }
+}
