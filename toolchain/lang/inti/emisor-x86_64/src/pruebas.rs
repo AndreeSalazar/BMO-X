@@ -2240,3 +2240,169 @@ funcion f(a es entero64, b es entero64) devuelve entero64
         "la IR pide tres y el binario tiene que llevar tres"
     );
 }
+
+
+// ===================================================================
+//  ** LA SONDA DEL RYZEN, calibrada antes de medir con ella
+// ===================================================================
+//
+//  `sondas/cpu.inti` va a correr en un procesador de verdad y sacar numeros por
+//  la consola. Si el FORMATEADOR estuviera mal, esos numeros serian basura y la
+//  culpa pareceria del CPU.
+//
+//  ** Un instrumento se calibra antes de medir con el. Eso es esto.
+//
+//  Y se calibra con EL FICHERO DE VERDAD, no con una copia de sus funciones: se
+//  lee `cpu.inti`, se le quita su `principal` y se le pone otro que solo
+//  ejercita la maquinaria. Una copia se separaria del original en la primera
+//  correccion, y entonces esta prueba aprobaria un formateador que ya no es el
+//  que va al metal.
+
+/// El fuente de `cpu.inti` SIN su `principal`, para poder ponerle otro.
+fn maquinaria_de_cpu() -> String {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("sondas")
+        .join("cpu.inti");
+    let texto = std::fs::read_to_string(&p)
+        .unwrap_or_else(|e| panic!("no puedo leer {}: {}", p.display(), e));
+    let corte = texto
+        .find("funcion principal")
+        .expect("cpu.inti tiene que tener un `principal`");
+    texto[..corte].to_string()
+}
+
+/// Lo que el programa escribio en la consola, ya desempaquetado.
+///
+/// ** El kernel corta en el primer byte cero, y aqui se hace igual: si esta
+/// prueba leyera los ocho bytes siempre, aprobaria una palabra a medias que en
+/// la maquina saldria cortada.
+fn lo_escrito(m: &Machine) -> Vec<String> {
+    m.syscalls
+        .iter()
+        .filter(|s| s.operation == 0x06)
+        .map(|s| {
+            let b = s.arg0.to_le_bytes();
+            let fin = b.iter().position(|x| *x == 0).unwrap_or(8);
+            String::from_utf8_lossy(&b[..fin]).to_string()
+        })
+        .collect()
+}
+
+/// **LA CALIBRACION**: un numero conocido tiene que salir con sus dieciseis
+/// digitos, en orden y en minusculas.
+///
+/// ** El orden es la parte que se rompe sin avisar. Los caracteres van
+/// empaquetados little-endian --el primero en el byte BAJO-- porque asi es como
+/// el kernel lee la palabra. Al reves saldria el numero del reves, y un numero
+/// del reves parece un fallo del procesador.
+#[test]
+fn la_sonda_del_cpu_imprime_el_numero_que_es() {
+    let fuente = format!(
+        "{}funcion principal devuelve entero32\n    hex(81985529216486895)\n    devuelve 0\n",
+        maquinaria_de_cpu()
+    );
+    let m = arranca(&fuente);
+    let dice = lo_escrito(&m);
+    assert_eq!(
+        dice,
+        vec!["01234567", "89abcdef"],
+        "0x0123456789ABCDEF tiene que salir en hexadecimal y en orden"
+    );
+}
+
+/// Los bordes: el cero y el mas grande.
+///
+/// ** El cero es el que caza un formateador que "optimiza" quitando los ceros de
+/// delante: aqui NO se quitan, porque un informe con columnas de ancho fijo se
+/// lee de un vistazo y uno de ancho variable no.
+#[test]
+fn los_dos_bordes_salen_enteros() {
+    let de = |v: &str| {
+        let fuente = format!(
+            "{}funcion principal devuelve entero32\n    hex({})\n    devuelve 0\n",
+            maquinaria_de_cpu(),
+            v
+        );
+        lo_escrito(&arranca(&fuente))
+    };
+    assert_eq!(de("0"), vec!["00000000", "00000000"], "el cero no se encoge");
+    assert_eq!(
+        de("18446744073709551615"),
+        vec!["ffffffff", "ffffffff"],
+        "el mas grande sale entero"
+    );
+}
+
+/// ** LAS CUENTAS DE BITS DAN CERO, que es lo unico del informe que se puede
+/// aprobar o suspender sin mirar un manual.
+///
+/// Las demas lineas dicen lo que el CPU diga --y no hay contra que compararlas--
+/// pero estas tienen respuesta conocida: si sale algo distinto de cero, el CPU y
+/// el compilador no estan de acuerdo, y cada bit dice en cual.
+///
+/// Que se compruebe AQUI y no solo en el metal es lo que hace util la linea del
+/// informe: si el emulador ya dice cero, un cero en el Ryzen confirma; y un
+/// numero distinto en el Ryzen senala al silicio y no a la sonda.
+#[test]
+fn las_cuentas_de_bits_de_la_sonda_dan_cero_en_el_emulador() {
+    let fuente = format!(
+        "{}funcion principal devuelve entero32\n    devuelve entero32(prueba_bits())\n",
+        maquinaria_de_cpu()
+    );
+    let m = arranca(&fuente);
+    let ultima = m.syscalls.last().expect("no salio por la puerta");
+    assert_eq!(
+        ultima.arg0, 0,
+        "una cuenta de bits no cuadra; cada bit del numero dice cual"
+    );
+}
+
+/// Y las etiquetas son texto legible, no numeros que parezcan texto.
+///
+/// ** Se escriben a mano en decimal --en `llano` no hay `texto`, porque un texto
+/// crece y crecer pide monton-- y una constante mal calculada da ocho bytes
+/// perfectamente validos que en la pantalla son basura. Esta prueba las lee.
+#[test]
+fn las_etiquetas_de_la_sonda_se_leen() {
+    let fuente = format!(
+        "{}funcion principal devuelve entero32\n    \
+         palabra(et_vendor())\n    palabra(et_tsc())\n    palabra(et_bits())\n    \
+         palabra(et_atom())\n    palabra(et_xcr0())\n    palabra(et_fin())\n    devuelve 0\n",
+        maquinaria_de_cpu()
+    );
+    let dice = lo_escrito(&arranca(&fuente));
+    assert_eq!(dice.len(), 6, "faltan etiquetas");
+    for (i, e) in dice.iter().enumerate() {
+        assert!(
+            e.chars().all(|c| c.is_ascii_graphic() || c == ' '),
+            "la etiqueta {} no es texto legible: {:?}",
+            i,
+            e
+        );
+        assert!(!e.is_empty(), "la etiqueta {} sale vacia", i);
+    }
+}
+
+/// **Y LA SONDA ENTERA COMPILA Y PASA EL GATE.**
+///
+/// ** No se puede EJECUTAR aqui --llama a `lee_reloj` y a `que_cpu_eres`, que el
+/// emulador no contesta a proposito-- pero que compile y pase el gate es lo que
+/// separa "hay un fichero que llevar al Ryzen" de "hay un fichero".
+#[test]
+fn la_sonda_entera_compila_y_pasa_el_gate() {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("sondas")
+        .join("cpu.inti");
+    let texto = std::fs::read_to_string(&p).expect("no puedo leer cpu.inti");
+    let e = emitido(&texto);
+    assert!(
+        e.sin_emitir.is_empty(),
+        "hay cosas que no llegan a un byte: {:?}",
+        e.sin_emitir
+    );
+    assert!(e.arranca, "la sonda tiene que arrancar sola");
+    let bytes = empaquetar(&e).expect("el `.bex` no pasa el gate");
+    assert_eq!(&bytes[..4], b"BEF1");
+}

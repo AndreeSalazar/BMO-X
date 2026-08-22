@@ -1,0 +1,279 @@
+# cpu.inti -- QUE LE CUENTA ESTE PROCESADOR A UN PROGRAMA DE USUARIO
+#
+# ===================================================================
+#  Que es esto, y por que existe
+# ===================================================================
+#
+# Es la sonda del peldano 3 de PLAN_DE_PRUEBAS.md: la primera vez que una linea
+# de INTI corre en un procesador de verdad.
+#
+# Y esta escrita como UN SOLO programa a proposito. Cada arranque cuesta un
+# reinicio, asi que treinta y seis programas valen por uno y cuestan treinta y
+# seis reinicios. Este vale por todos.
+#
+# ===================================================================
+#  ** LO QUE UN PROGRAMA DE RING 3 NO PUEDE HACER, dicho por delante
+# ===================================================================
+#
+# De los 36 nombres que el emulador no sabe ejecutar, **la mayoria son de Ring 0**
+# y este `.bex` corre en Ring 3. Ejecutarlos aqui no da un valor raro: da un
+# `#GP` y se lleva el programa por delante en la primera linea.
+#
+#     cli sti hlt wbinvd invd invlpg      paran o vacian la maquina entera
+#     lgdt lidt ltr lldt swapgs           tablas del sistema
+#     cr0 cr2 cr3 cr4 y sus escrituras    LEER un registro de control tambien
+#                                         es Ring 0, no solo escribirlo
+#     rdmsr wrmsr xsetbv                  registros del modelo
+#     in* out*                            puertos de E/S
+#     monitor mwait                       esperar sin quemar el nucleo
+#
+# ** Asi que este programa NO los llama. Que un driver los use es otra sonda y
+# otro anillo -- y decirlo aqui vale mas que una tabla de resultados con
+# treinta y seis huecos que nadie sabe explicar.
+#
+# Lo que SI se puede preguntar desde Ring 3 sigue siendo una lista larga, y es
+# la que de verdad describe el silicio: quien eres, a que ritmo cuentas, que
+# extensiones tienes encendidas, y si sabes hacer atomicas de una instruccion.
+#
+# ===================================================================
+#  Como se lee el informe
+# ===================================================================
+#
+# Cada resultado son tres lineas de consola de ocho bytes:
+#
+#     el nombre        "tsc     "
+#     los 16 digitos   "0000ABCD" "12345678"
+#
+# Ocho bytes por llamada porque es lo que cabe en la puerta: todo pasa POR VALOR,
+# y eso es lo que hace que Ring 0 no tenga que validar memoria ajena para
+# imprimir. En `llano` no hay `escribe` --formatear pide memoria-- asi que la
+# puerta es el unico camino, y esta sonda es la prueba de que basta.
+
+perfil llano
+usa bmo
+usa x86_64
+usa binarios
+usa monton
+usa memoria
+
+# ===================================================================
+#  1. LA MAQUINARIA DE CONTAR
+# ===================================================================
+#
+# ** Va primero y se prueba en el emulador ANTES de ir al metal. Si el formateo
+# estuviera mal, el informe del Ryzen seria basura y la culpa pareceria del CPU.
+# Un instrumento se calibra antes de medir con el.
+
+funcion palabra(w es natural64)
+    invoca(mi_tarea, op_consola_escribir, w, 0, 0)
+
+# Un digito hexadecimal como letra ASCII.
+funcion letra(d es natural64) devuelve natural64
+    si d < 10
+        devuelve 48 + d
+    devuelve 87 + d
+
+# Ocho digitos de `v`, empezando por el nibble que hay en el bit `desde`.
+#
+# ** Empaquetados little-endian: el PRIMER caracter va en el byte BAJO, porque
+# asi es como el kernel lee la palabra. Al reves saldria el numero del reves y
+# pareceria un fallo del procesador.
+funcion ocho_hex(v es natural64, desde es natural64) devuelve natural64
+    cambiante w es natural64 = 0
+    cambiante i es natural64 = 0
+    repite mientras i < 8
+        cambiante d es natural64 = 0
+        d = (v desplaza derecha (desde - i * 4)) bits_y 15
+        w = w bits_o (letra(d) desplaza izquierda (i * 8))
+        i = i + 1
+    devuelve w
+
+# Los 64 bits, en dos palabras de ocho.
+funcion hex(v es natural64)
+    palabra(ocho_hex(v, 60))
+    palabra(ocho_hex(v, 28))
+
+# ===================================================================
+#  2. LAS ETIQUETAS
+# ===================================================================
+#
+# ** Ocho letras ASCII empaquetadas a mano, en decimal.
+#
+# No es comodo y es a proposito: en `llano` no hay `texto`, porque un texto
+# crece y crecer pide monton. Escribir la constante es el precio de no tener
+# runtime debajo -- y es exactamente el precio que este lenguaje decidio pagar.
+#
+# El nombre de cada una dice lo que imprime.
+
+funcion et_vendor devuelve natural64
+    devuelve 3251728056521338157
+
+funcion et_tsc devuelve natural64
+    devuelve 2314885530822865780
+
+funcion et_bits devuelve natural64
+    devuelve 2314885532216486242
+
+funcion et_atom devuelve natural64
+    devuelve 8314035691561383009
+
+funcion et_xcr0 devuelve natural64
+    devuelve 2314885531092280184
+
+funcion et_fin devuelve natural64
+    devuelve 3251720329925504301
+
+# ===================================================================
+#  3. LO QUE EL PROCESADOR CONTESTA
+# ===================================================================
+
+# **QUIEN ERES.** La hoja cero de la identificacion devuelve el numero de hoja
+# mas alto que este CPU entiende. Es el primer numero que hay que mirar: si sale
+# cero, no hay nada mas que preguntar.
+#
+# OJO: hoy solo llega UN registro de los cuatro. Esta escrito en la tabla de
+# intrinsecos con su motivo -- los otros tres estan pendientes -- y por eso aqui
+# no se pide la cadena del fabricante, que vive en los otros tres.
+funcion cuantas_hojas devuelve natural64
+    crudo
+        devuelve que_cpu_eres(0)
+
+# La hoja uno: familia, modelo y revision, empaquetados.
+funcion firma_del_cpu devuelve natural64
+    crudo
+        devuelve que_cpu_eres(1)
+
+# **A QUE RITMO CUENTAS.** Dos lecturas del contador de ciclos y la diferencia.
+#
+# ** Es el numero que hace posible el metodo de este proyecto --medir en vez de
+# opinar-- y aqui se comprueba lo minimo: que AVANZA. Un contador que no avanza
+# convierte toda medida futura en cero.
+funcion cuanto_avanza_el_reloj devuelve natural64
+    crudo
+        cambiante antes es natural64 = lee_reloj()
+        cambiante i es natural64 = 0
+        repite mientras i < 1000
+            i = i + 1
+        cambiante despues es natural64 = lee_reloj_serio()
+        devuelve despues - antes
+
+# **QUE TIENES ENCENDIDO.** El registro de control extendido dice que partes del
+# estado del CPU estan activas. Es lo que hace cara una puerta, y el numero que
+# explico el `#GP` de `xrstor` de julio.
+funcion estado_extendido devuelve natural64
+    crudo
+        devuelve lee_xcr(0)
+
+# **AZAR DEL SILICIO.** Dos tiradas: lo unico que se puede afirmar sin leer la
+# bandera de validez es que no salga siempre lo mismo.
+funcion azar_dos_veces devuelve natural64
+    crudo
+        cambiante a es natural64 = azar()
+        cambiante b es natural64 = azar()
+        si a = b
+            devuelve 0
+        devuelve 1
+
+# ===================================================================
+#  4. LAS CUENTAS DE BITS -- la lista larga que SI se puede comprobar
+# ===================================================================
+#
+# ** Estas tienen una respuesta CONOCIDA, y por eso son las unicas de todo el
+# informe que se pueden aprobar o suspender sin mirar un manual. Las demas dicen
+# lo que el CPU diga; estas dicen si el CPU y el compilador estan de acuerdo.
+#
+# Cada bit del resultado es una comprobacion: 0 significa que todas cuadraron.
+
+funcion prueba_bits devuelve natural64
+    cambiante mal es natural64 = 0
+    crudo
+        si cuenta_unos(255) no es 8
+            mal = mal bits_o 1
+        si cuenta_unos(0) no es 0
+            mal = mal bits_o 2
+        si ceros_detras(8) no es 3
+            mal = mal bits_o 4
+        si ceros_detras(1) no es 0
+            mal = mal bits_o 8
+        si primer_uno(8) no es 3
+            mal = mal bits_o 16
+        si ultimo_uno(8) no es 3
+            mal = mal bits_o 32
+        si ceros_delante(1) no es 31
+            mal = mal bits_o 64
+        si cuenta_unos(4095) no es 12
+            mal = mal bits_o 128
+    devuelve mal
+
+# ===================================================================
+#  5. LAS ATOMICAS -- la fortaleza de esta maquina, y la menos nombrada
+# ===================================================================
+#
+# ** x86-64 tiene un modelo de memoria FUERTE y atomicas de una instruccion. En
+# otras arquitecturas lo mismo son dos instrucciones y un bucle de reintento.
+#
+# Se prueban sobre una direccion de verdad, pedida al monton -- que es la unica
+# forma honesta: una atomica sobre una direccion inventada no prueba nada y
+# corrompe lo que hubiera.
+
+
+funcion prueba_atomicas(dir es natural64) devuelve natural64
+    cambiante mal es natural64 = 0
+    crudo
+        escribe_natural64(dir, 100)
+        # Sumar y devolver lo ANTERIOR.
+        si suma_y_devuelve(dir, 5) no es 100
+            mal = mal bits_o 1
+        si lee_natural64(dir) no es 105
+            mal = mal bits_o 2
+        # Intercambiar.
+        si intercambia(dir, 7) no es 105
+            mal = mal bits_o 4
+        si lee_natural64(dir) no es 7
+            mal = mal bits_o 8
+        # Comparar y cambiar: con el esperado correcto, cambia.
+        si compara_y_cambia(dir, 7, 42) no es 7
+            mal = mal bits_o 16
+        si lee_natural64(dir) no es 42
+            mal = mal bits_o 32
+        # Con el esperado equivocado, NO cambia.
+        si compara_y_cambia(dir, 999, 1) no es 42
+            mal = mal bits_o 64
+        si lee_natural64(dir) no es 42
+            mal = mal bits_o 128
+        # Suma atomica sin devolver.
+        suma_atomica(dir, 8)
+        si lee_natural64(dir) no es 50
+            mal = mal bits_o 256
+    devuelve mal
+
+# ===================================================================
+#  6. EL INFORME
+# ===================================================================
+
+funcion principal devuelve entero32
+    # -- quien eres
+    palabra(et_vendor())
+    hex(cuantas_hojas())
+    hex(firma_del_cpu())
+
+    # -- a que ritmo cuentas
+    palabra(et_tsc())
+    hex(cuanto_avanza_el_reloj())
+
+    # -- que tienes encendido
+    palabra(et_xcr0())
+    hex(estado_extendido())
+
+    # -- las cuentas de bits: CERO es aprobado
+    palabra(et_bits())
+    hex(prueba_bits())
+
+    # -- las atomicas, sobre memoria de verdad
+    palabra(et_atom())
+    m = monton_nuevo(4096)
+    p es bufer de natural64 = pide(m, 64)
+    hex(prueba_atomicas(p))
+
+    palabra(et_fin())
+    devuelve 0

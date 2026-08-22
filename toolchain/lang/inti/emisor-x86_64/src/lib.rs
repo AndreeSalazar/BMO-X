@@ -748,6 +748,36 @@ fn binaria(out: &mut Vec<u8>, op: Op) {
         }
         Op::BitsO => x86::or_r64_r64(out, IZQ, DER),
         Op::BitsXor => x86::xor_r64_r64(out, IZQ, DER),
+
+        // ** LOS DESPLAZAMIENTOS, Y LA REGLA 7 DENTRO.
+        //
+        // Hasta el 21-08 estos dos caian en el `_ => {}` de abajo y **no se
+        // emitia nada**: `x desplaza izquierda 8` devolvia `x` intacto.
+        // Compilaba, corria, y daba otro numero. Lo destapo la sonda del Ryzen
+        // al intentar imprimir un hexadecimal, que es el primer programa de
+        // INTI que necesitaba desplazar de verdad.
+        //
+        // ** Y no basta con la instruccion, porque el silicio no hace lo que
+        // INTI promete: se queda con los SEIS BITS BAJOS del contador, asi que
+        // desplazar 64 posiciones desplaza cero y devuelve el numero entero. La
+        // Regla 7 dice que da CERO, y eso hay que emitirlo.
+        //
+        // Tres instrucciones de mas, y el salto no salta salvo cuando el
+        // programa pidio algo que no tiene sentido.
+        Op::DesplazaIzquierda | Op::DesplazaDerecha => {
+            if matches!(op, Op::DesplazaIzquierda) {
+                x86::shl_r64_cl(out, IZQ);
+            } else {
+                x86::shr_r64_cl(out, IZQ);
+            }
+            // El `cmp` va DESPUES a proposito: el desplazamiento no toca el
+            // contador, asi que sigue entero para poder mirarlo.
+            x86::cmp_r64_imm32(out, DER, 64);
+            let cabe = x86::salto_corto(out, 0x72); // jb
+            x86::zero_r32(out, IZQ);
+            x86::cierra_salto_corto(out, cabe);
+        }
+
         // Las comparaciones dejan el resultado en 0/1.
         Op::Igual | Op::NoEs | Op::Menor | Op::Mayor | Op::MenorIgual | Op::MayorIgual => {
             x86::cmp_r64_r64(out, IZQ, DER);

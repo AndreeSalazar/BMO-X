@@ -156,6 +156,21 @@ mi_tarea = "0xFFFFFFFFFFFFFFFE"
 op_pedir_memoria   = "0x15"
 op_base_del_bloque = "0x01"
 
+#  ** LA CONSOLA, que es el unico camino que un programa de `llano` tiene para
+#  CONTAR algo.
+#
+#  En `llano` no hay `escribe`: formatear pide memoria. Lo unico que queda es la
+#  puerta, y por ella caben OCHO BYTES por llamada, empaquetados y por valor.
+#
+#  Todo pasa por valor a proposito, y no es una limitacion temporal: es lo que
+#  hace que Ring 0 no tenga que validar memoria ajena en la ruta de impresion.
+#  El kernel corta en el primer byte cero.
+#
+#  Entra en la tabla hoy porque hoy la usa alguien --`cpu.inti`, la sonda del
+#  Ryzen-- que es la regla que esta seccion se puso: crece cuando algo la pide,
+#  no antes.
+op_consola_escribir = "0x06"
+
 #  ** LOS BITS -- el nombre es agnostico, la instruccion es de la maquina.
 #
 #  Peticion de Eddi (2026-08-19): *"una libreria de binarios literalmente, pero
