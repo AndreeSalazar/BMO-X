@@ -56,6 +56,7 @@
 //! hace falta para que el primer `.bex` exista y pase el gate.
 
 pub mod arranque;
+pub mod barrido;
 pub mod marco;
 mod metal;
 mod operaciones;
@@ -711,6 +712,64 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
     cuenta
 }
 
+/// **EL BARRIDO, COMO GATE: ninguna operacion sin su regla.**
+///
+/// ## Lo que anade sobre `exige_katanas`
+///
+/// Aquella comprueba que las reglas DECLARADAS estan donde dice. Esta pregunta
+/// al reves y cierra la otra mitad: **por cada operacion que pide regla, esta la
+/// suya?** Una mesa vacia pasa la primera y no pasa esta.
+///
+/// ## *** Y cuando NO puede afirmar nada, NO rechaza
+///
+/// Si el barrido se atasca --un intrinseco de un byte dentro de un `crudo`, una
+/// instruccion que este lector todavia no conoce-- la respuesta correcta es
+/// **callar**, no negar. Son tres cosas distintas:
+///
+/// ```text
+///    completo + sin descubiertas   -> pasa
+///    completo + alguna descubierta -> NO PASA, y se dice cual y donde
+///    atascado                      -> pasa, porque no se ha demostrado nada
+/// ```
+///
+/// ** Un verificador que rechaza lo que no entiende es un verificador que se
+/// apaga en una semana, y entonces no verifica nada. Es la misma regla que
+/// impidio comprobar el techo de `crudo` con un barrido de bytes: **absolver se
+/// puede sin certeza; condenar no**.
+fn auditar(e: &Emitido) -> bmo_verify::Verdict {
+    let taller = Taller::nuevo();
+    let maquina: Vec<Vec<u8>> = match &taller.intrinsecos {
+        Some(t) => t
+            .names()
+            .iter()
+            .filter_map(|n| t.get(n).map(|d| d.bytes.clone()))
+            .collect(),
+        None => Vec::new(),
+    };
+    let b = barrido::recorrer_con(&e.codigo, &maquina);
+    if !b.completo() {
+        return bmo_verify::Verdict::Ok;
+    }
+    let trampas: Vec<(u64, usize)> = e.katanas.iter().map(|(c, o, _)| (*c, *o)).collect();
+    let malas = barrido::descubiertas(&b, &e.inicios, &trampas);
+    if malas.is_empty() {
+        return bmo_verify::Verdict::Ok;
+    }
+    // ** El motivo lleva el byte, no un recuento. Quien lo lea tiene que poder
+    // ir al sitio: un "faltan 3 reglas" manda a buscar.
+    bmo_verify::Verdict::Rejected(
+        malas
+            .iter()
+            .map(|d| {
+                format!(
+                    "la operacion del byte {} pide la regla {} y en su funcion no hay                      ningun salto que vaya a un bloque de esa regla",
+                    d.off, d.regla
+                )
+            })
+            .collect(),
+    )
+}
+
 fn epilogo(out: &mut Vec<u8>) {
     x86::mov_r64_r64(out, 4, 5); // mov rsp, rbp
     out.push(0x5D); // pop rbp
@@ -879,7 +938,10 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
     // querer.
     let veredicto = if manifiesto.is_some() {
         match bmo_verify::declaracion::exige_manifiesto(&bytes) {
-            bmo_verify::Verdict::Ok => bmo_verify::declaracion::exige_katanas(&bytes),
+            bmo_verify::Verdict::Ok => match bmo_verify::declaracion::exige_katanas(&bytes) {
+                bmo_verify::Verdict::Ok => auditar(e),
+                malo => malo,
+            },
             malo => malo,
         }
     } else {

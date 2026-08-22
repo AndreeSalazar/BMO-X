@@ -588,10 +588,24 @@ sujetos al contrato, y un `.bex` de INTI que falla **no llega a llamarse
 ```text
    S1  la mesa de katanas    HECHO   Katanas 0x16: por regla, codigo y offset
    S2  la comprobacion       HECHO   la mesa contra los bytes, y el gate corta
-   S3  `.ibex`                       la extension, y SOLO si pasa S2
-   S4  DIRECTOR y el shell           que la reconozcan
-   S5  el barrido lineal             cada imul/idiv/cvttsd2si con su regla
+   S3  `.ibex`               HECHO   la extension, y SOLO si pasa el contrato
+   S4  DIRECTOR y el shell   HECHO   la reconocen; `build.ps1` la despliega
+   S5  el barrido lineal     HECHO   cada operacion, con su regla al lado
 ```
+
+★★★ **EL CICLO ESTA CERRADO.** Un `.ibex` que llega al disco ha pasado, en
+este orden y sin poder saltarse ninguno:
+
+```text
+   declara lo que es          Manifest 0x09
+   declara donde corta        Katanas 0x16
+   la mesa cuadra con sus bytes            exige_katanas
+   y ninguna operacion se quedo sin regla  el barrido
+```
+
+Y lo que queda abierto esta escrito, no escondido: el techo de `crudo` (roca 3),
+las katanas del silicio (P4/P5 de la seccion 5), y que el barrido **calla** en vez
+de negar cuando no puede leer algo.
 
 ### 8.5 ⚠ LA REGLA QUE SALIO DE LA ROCA 3
 
