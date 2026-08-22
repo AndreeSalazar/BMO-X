@@ -161,6 +161,7 @@ con **que la bloquea** y **como se sabe que quedo hecha**"*.
 | [`PLAN_MAQUETA.md`](plan/PLAN_MAQUETA.md) | como se construye el compilador de composicion |
 | [`PLAN_LA_CARA_VIAJA.md`](plan/PLAN_LA_CARA_VIAJA.md) | la maquetacion como DATO, y que pasa si viaja |
 | [`PLAN_SEGURIDAD.md`](plan/PLAN_SEGURIDAD.md) | las casillas de su MAESTRO, medidas contra el codigo |
+| [`PLAN_EL_SILICIO.md`](plan/PLAN_EL_SILICIO.md) | que el PERFIL de INTI decida quien ejecuta las reglas: el programa o la CPU |
 
 ★ **El par MAESTRO + PLAN es la simetria de esta carpeta**, y hoy la tienen
 entera AUTOCURACION y SEGURIDAD. No es un defecto que a los demas les falte

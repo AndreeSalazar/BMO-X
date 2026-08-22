@@ -56,6 +56,36 @@ Eso descarta los tres modelos que no se eligieron:
 
 ---
 
+## ⚠ UN AGUJERO ABIERTO en la 1, y vive dentro de la 3 (22-08)
+
+**`-2^63 entre -1` no lo comprueba nadie.**
+
+El cociente no cabe en 64 bits, asi que es la Regla 1 -- pero se escribe como
+una division, y de la division solo se comprueba **el divisor**. Medido:
+
+```text
+   cambiante a es entero64 = -9223372036854775808
+   cambiante b es entero64 = -1
+   devuelve a entre b          ->  reglas pedidas 1, emitidas 1, y sale firmado
+```
+
+★★ El emisor pone `cqo; idiv`, y ante eso el procesador levanta **`#DE` -- el
+mismo vector que dividir entre cero**. O sea que en el Ryzen ese programa **muere
+con una autopsia del kernel** en vez de atrapar con `E1001`.
+
+No es comportamiento indefinido --la muerte esta definida-- pero **no es lo que
+esta tabla promete**, y esa distancia es justo la que no se puede permitir.
+
+★ Y la forma del fallo es el espejo de todo lo demas: en los otros sitios INTI
+comprueba en software lo que el silicio ya sabia. **Aqui el silicio corta y era
+INTI quien no sabia que eso era una regla.**
+
+> **Sonda que falta: `r01b_cociente`.** Aprobado: `-2^63 entre -1` devuelve
+> `E1001`. Se tapa en software y **no espera a nada** --ver
+> `docs/plan/PLAN_EL_SILICIO.md` sec. 2.4 y 7.4.
+
+---
+
 ## Lo que NO se puede definir gratis, dicho por delante
 
 Tres cosas, y se dicen aqui para que nadie las descubra como una decepcion:
