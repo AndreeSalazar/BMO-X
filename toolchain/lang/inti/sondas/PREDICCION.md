@@ -18,6 +18,48 @@ pantalla.
 
 ---
 
+## ⚠ LO QUE PASO, Y LO QUE CAMBIO DESPUES (22-08)
+
+**Corrio. Siete de las ocho lineas acertaron la prediccion**, y las que dan cero
+--`bits` y `atomicas`, diecisiete comprobaciones-- salieron a cero. El programa
+llego a `-- fin -`. La sonda escribio ella misma `/inti/cpu.txt`, o sea que
+guardar por la puerta funciona.
+
+★ Y en tres ejecuciones **las seis lineas de hechos salieron bit por bit
+identicas**. Solo se movio `tsc`. Eso es lo que tiene que pasar: una medida
+varia, un hecho no.
+
+### La que fallo, y lo que enseno
+
+`tsc` salio 6 veces por encima del techo predicho. La causa se midio: el
+asignador de registros se apagaba entero en cuanto una funcion tenia una
+instruccion de maquina, asi que el bucle vivia en la pila.
+
+Se arreglo --acotando el freno con lo que las tablas ya declaran-- y el resultado
+fue **0,6% por debajo de la mejor medida anterior, con un ruido del 11,6% entre
+dos ejecuciones sin tocar nada**.
+
+*** O sea: no se puede afirmar ninguna mejora. Y el motivo de fondo es que el
+arreglo ataco la mitad equivocada -- `cambiante i` es una LOCAL, y las locales no
+van nunca a registro: solo los temporales. El contador seguia yendo a memoria.
+
+### Por eso esta sonda mide distinto desde el 22-08
+
+```text
+   antes    una medida
+   ahora    la MEJOR DE OCHO, y una linea `ruido` con la peor menos la mejor
+```
+
+Lo que contamina una medida --una interrupcion, un cambio de frecuencia, un fallo
+de cache-- solo puede SUMAR tiempo. Asi que el minimo es la muestra menos
+contaminada, y no un promedio de contaminaciones.
+
+** Y la linea `ruido` es la que decide si el numero de al lado sirve: **una
+optimizacion tiene que bajar mas que el ruido para que se pueda decir que bajo**.
+Sin ese margen, un numero es un numero suelto.
+
+---
+
 ## LA PREDICCION, escrita ANTES de correrlo
 
 ★★★ **Esto es lo que espero que salga.** Va escrito por delante a proposito: una
@@ -29,11 +71,12 @@ se espera medir**.
 |---|---|---|
 | `-- cpu -` (1) | **entre 0x0D y 0x10**. Un Ryzen moderno entiende hasta la hoja 13-16 | **0x00000000** = `cpuid` no llego a ejecutarse |
 | `-- cpu -` (2) | **0x00A20F1x** o parecido: familia 0x19 (Zen 3/4) codificada | 0 = lo mismo de arriba |
-| `tsc` | **entre 0x400 y 0x2000** (1.000-8.000 ciclos para mil vueltas de bucle) | **0** = el contador no avanza, y toda medida futura vale cero |
+| `tsc` | ~~0x400-0x2000~~ **FALLO: salio 0xB68B**. Con la medida nueva (mejor de ocho) deberia bajar de ahi | **0** = el contador no avanza, y toda medida futura vale cero |
 | `xcr0` | **0x00000007** (x87 + SSE + AVX) o **0x00000207** con AVX-512 | **0** = el estado extendido no esta encendido, y eso explicaria el `#GP` de `xrstor` |
 | `azar` | **0x00000001** -- dos tiradas distintas | **0** = `rdrand` devuelve siempre lo mismo, o no ejecuto |
 | `bits` | ★ **0x00000000** | **cualquier otro numero**: cada bit dice que cuenta fallo. Ver la tabla de abajo |
 | `atomicas` | ★ **0x00000000** | idem, y ahi el sospechoso es la memoria, no el CPU |
+| `ruido` | **la peor menos la mejor de ocho.** Cuanto mas bajo, mas se puede afirmar | si es mayor que `tsc`, la medida no vale para comparar nada |
 | `-- fin -` | **tiene que salir** | si no sale, el programa murio antes: mira cual fue la ultima linea |
 
 ### ⚠ Las dos unicas que se pueden SUSPENDER
