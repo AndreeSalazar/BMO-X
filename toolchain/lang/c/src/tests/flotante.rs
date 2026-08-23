@@ -172,3 +172,58 @@ int main() { return 0; }
 }
 
 
+
+/// *** LOS TRES INTRINSECOS SSE, **EJECUTADOS** -- no solo emitidos.
+///
+/// La matriz de conformidad de `semantic.rs` dice que la fila es EMITIBLE.
+/// Esto dice que hace lo que promete, y es la diferencia entre `maxsd` y
+/// `minsd`: los dos emiten cuatro bytes y solo uno da el numero correcto.
+///
+/// ** Y los numeros estan elegidos para que la ruta EQUIVOCADA se vea. Si los
+/// argumentos pasaran por la pila --por `rax`, que es lo que hacia este camino
+/// hasta el 2026-08-23-- se convertirian a entero ANTES de la instruccion y la
+/// salida seria `200 100 100`. Un `2` en vez de un `2.5` no se nota a simple
+/// vista; un `250` contra un `200`, si.
+///
+/// [!] Todos los valores son exactos en binario (1.25, 2.5, 2.25, 1.5) a
+/// proposito: un test de coma flotante que depende del redondeo mide el
+/// redondeo, no lo que dice medir.
+#[test]
+fn los_intrinsecos_sse_calculan_y_no_solo_compilan() {
+    let out = run_c_con_pp(
+        r#"
+#include <semantic/semantic.h>
+int main() {
+    printf("%d %d %d\n",
+        (int)(__maxsd(1.25, 2.5) * 100),
+        (int)(__minsd(1.25, 2.5) * 100),
+        (int)(__sqrtsd(2.25) * 100));
+    return 0;
+}
+"#,
+    );
+    assert_eq!(out.trim(), "250 125 150");
+}
+
+/// Y el valor VUELVE por donde debe: un intrinseco que declara
+/// `returns = "xmm0"` es una expresion FLOTANTE, no un entero.
+///
+/// Sin eso, `double m = __maxsd(a, b)` iria a buscar el resultado a `rax` y
+/// guardaria basura -- el mismo fallo que ya se cazo una vez con las llamadas
+/// normales, y que el comentario de `expr_is_float` describe palabra por
+/// palabra: *un numero cualquiera, no un error*.
+#[test]
+fn un_intrinseco_que_devuelve_xmm0_se_puede_guardar_en_un_double() {
+    let out = run_c_con_pp(
+        r#"
+#include <semantic/semantic.h>
+int main() {
+    double m;
+    m = __maxsd(1.25, 2.5);
+    printf("%d\n", (int)(m * 100));
+    return 0;
+}
+"#,
+    );
+    assert_eq!(out.trim(), "250");
+}

@@ -116,6 +116,30 @@ impl Codegen {
         let arg_regs = def.args.clone();
         let returns = def.returns.clone();
 
+        // === * LA RUTA SSE: un argumento en `xmm` NO PASA POR LA PILA ===
+        //
+        // La tabla compartida crecio el 2026-08-22 con `sqrtsd`, `minsd` y
+        // `maxsd` --las trajo INTI, que es quien las pedia-- y este camino no se
+        // entero. El volcado de abajo es un `pop` a un registro ENTERO, asi que
+        // `xmm1` cayo en el `_ =>` de `emit_pop_to_reg` y la matriz de
+        // conformidad se puso roja. **La tabla crecio y el segundo consumidor
+        // no**, que es el patron y no el accidente.
+        //
+        // ** Y hacerlo por la pila no era la version corta: un `double` no vive
+        // en `rax`. Evaluar el argumento por el camino entero lo convertiria a
+        // entero ANTES de la instruccion, y `__maxsd(1.5, 2.5)` daria `2.0` en
+        // vez de `2.5` -- algo que compila y no hace lo que dice, con la firma
+        // detras.
+        //
+        // El camino bueno ya existia al lado. `floats.rs::emit_fbinop` tiene la
+        // forma EXACTA de estas filas --deja `a` en xmm0, `b` en xmm1 y suelta
+        // los bytes de `<op>sd xmm0, xmm1`-- porque es lo que ya hacen `addsd`
+        // y sus tres hermanas desde el primer dia.
+        if arg_regs.iter().any(|r| r.starts_with("xmm")) {
+            self.emit_intrinseco_sse(name, &arg_regs, &bytes, args);
+            return;
+        }
+
         // 1) evaluar cada argumento a rax y apilarlo (orden de aparicion)
         for a in args {
             self.emit_expr(a);
@@ -131,6 +155,33 @@ impl Codegen {
         self.code.extend_from_slice(&bytes);
         // 4) normalizar el valor de retorno a rax
         self.emit_intrinsic_return(returns.as_deref());
+    }
+
+    /// * Un intrinseco cuyos argumentos van en `xmm`: por la ruta de coma
+    /// flotante, no por la pila.
+    ///
+    /// Las formas admitidas son las que la tabla tiene hoy: un argumento en
+    /// `xmm0` (el destino es el mismo operando, como `sqrtsd`), o dos en
+    /// `xmm0`+`xmm1` en ese orden.
+    ///
+    /// ** Cualquier otra cosa **se dice**. Una fila con `xmm2`, o que mezcle un
+    /// entero con un flotante, no tiene camino aqui todavia -- y emitir lo mas
+    /// parecido seria exactamente el fallo que este fichero existe para no
+    /// tener. El mensaje dice donde esta la fila, que es lo unico util cuando
+    /// esto salte dentro de seis meses.
+    fn emit_intrinseco_sse(&mut self, name: &str, regs: &[String], bytes: &[u8], args: &[Expr]) {
+        match regs {
+            [uno] if uno == "xmm0" => {
+                self.emit_fexpr_operand(&args[0]);
+                self.code.extend_from_slice(bytes);
+            }
+            [a, b] if a == "xmm0" && b == "xmm1" => {
+                self.emit_fbinop(&args[0], &args[1], bytes);
+            }
+            _ => self.errors.push(format!(
+                "intrinsic __{name}(): la ruta SSE de BMO C sabe emitir [xmm0] y                  [xmm0, xmm1]; esta fila pide {regs:?}                  (tables/arch/x86_64/intrinsics.toml)"
+            )),
+        }
     }
 
     /// Saca el tope de la pila al registro destino de un argumento.
