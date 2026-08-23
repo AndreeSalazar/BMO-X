@@ -77,5 +77,6 @@ pub mod header;
 /// de `header`, y lo que INTI le anade.
 pub mod lista;
 pub mod slots;
+pub mod texto;
 
 pub use header::{DynHeader, DynVarHeader};
