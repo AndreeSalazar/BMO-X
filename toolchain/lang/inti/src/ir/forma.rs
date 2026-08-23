@@ -222,6 +222,25 @@ pub enum Instr {
         contra: Option<Valor>,
         sitio: Sitio,
     },
+    /// **La direccion de una tabla congelada.**
+    ///
+    /// ## ** Por que es una INSTRUCCION y no un `Valor`
+    ///
+    /// Un `Valor::Congelado(i)` habria sido mas corto de escribir y habria
+    /// obligado a que **cada sitio que carga un valor** supiera apuntar una
+    /// reubicacion -- veintitres sitios, y el dia que alguien anadiera el
+    /// veinticuatro se le olvidaria. El resultado seria una tabla que se carga
+    /// con la direccion sin rellenar: un cero, otra vez.
+    ///
+    /// Siendo una instruccion, el emisor la atiende en UN sitio, ahi tiene la
+    /// lista de reubicaciones a mano, y todo lo de despues ve un temporal
+    /// normal. Y los `match` cerrados obligan a atenderla en todos los
+    /// recorridos -- el reparto de registros, el barrido, el informe.
+    Direccion {
+        destino: Temporal,
+        /// Indice en `ModuloIr::congelados`.
+        congelado: u32,
+    },
     /// Cambia de clase de numero: `flotante64(n)`, `entero64(f)`.
     ///
     /// ** Es una INSTRUCCION y no una llamada, y esa es la decision. Escrito
@@ -301,11 +320,33 @@ pub struct FuncionIr {
     pub instrucciones: Vec<Instr>,
 }
 
+/// **Una tabla CONGELADA: sus bytes, ya hechos.**
+///
+/// ** Nace de una `constante` cuyo valor es una lista de literales. No crece, no
+/// pide monton, y por eso cabe en `llano` -- es lo que la seccion 10.2 del
+/// maestro llama CONGELADO: *"inmortal. Nadie lo cambia, nadie cuenta sus
+/// referencias"*.
+///
+/// Los bytes van a `SectionKind::RoData = 0x02` del `.bex`, y el codigo llega a
+/// ellos por una reubicacion -- **no van dentro de la seccion de codigo**. Meter
+/// datos ahi romperia el barrido lineal, que es lo que hace que un `.ibex` se
+/// pueda recorrer entero y es la exclusividad tecnica de INTI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Congelado {
+    pub nombre: String,
+    /// Los bytes, ya en el orden de esta maquina.
+    pub bytes: Vec<u8>,
+    /// Cuanto mide un elemento. Hace falta para indexar.
+    pub ancho: u32,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ModuloIr {
     pub funciones: Vec<FuncionIr>,
     /// El pozo de textos. Se comparte, y por eso puede prestarse congelado.
     pub textos: Vec<String>,
+    /// **Las tablas congeladas del modulo**, en el orden en que se declararon.
+    pub congelados: Vec<Congelado>,
 }
 
 impl ModuloIr {
