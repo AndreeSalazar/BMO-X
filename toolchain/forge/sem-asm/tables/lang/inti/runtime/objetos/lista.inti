@@ -121,7 +121,7 @@ funcion sitio_de(l es natural64, i es natural64, ancho es natural64) devuelve na
             devuelve 0
         devuelve l + 32 + i * ancho
 
-# Anade un elemento AL FINAL. Devuelve 1 si cupo, 0 si la lista estaba llena.
+# Agrega un elemento AL FINAL. Devuelve 1 si cupo, 0 si la lista estaba llena.
 #
 # [!] NO crece sola todavia. Cuando `cuantos` llega a `capacidad` esto contesta
 # 0 en vez de reservar una lista mas grande y copiar -- y se dice en vez de
@@ -131,7 +131,7 @@ funcion sitio_de(l es natural64, i es natural64, ancho es natural64) devuelve na
 # **soltar la vieja** (que ya se puede desde hoy) -- pero sobre todo, decidir
 # quien manda cuando alguien guardo la direccion antigua. Esa es una decision de
 # diseno, no trabajo mecanico, y se escribe con el caso delante.
-funcion anade(l es natural64, dato es natural64, ancho es natural64) devuelve natural64
+funcion agrega(l es natural64, dato es natural64, ancho es natural64) devuelve natural64
     crudo
         si l = 0
             devuelve 0

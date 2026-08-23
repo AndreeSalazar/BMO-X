@@ -622,8 +622,28 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                     // La comprobacion nace con `lista de T` de `pleno`, que SI
                     // lleva la suya. No es deuda de este fichero: es una que
                     // espera a un tipo que todavia no existe.
+                    // *** LA REGLA 2, EN BYTES (2026-08-23).
+                    //
+                    // Aqui ponia `comprobaciones -= 1;` y nada mas: la regla se
+                    // pedia en la IR, **no se emitia**, y encima se descontaba
+                    // del recuento para que el numero no mintiera. Era la unica
+                    // de las cuatro que no llegaba a un byte.
+                    //
+                    // ** Lo que faltaba no era el emisor: era CONTRA QUE
+                    // comparar. `sitio_de` de `runtime/objetos/lista.inti`
+                    // compara el indice con `cuantos` --que vive en la cabecera
+                    // de la lista, a un `mov`-- y devuelve **0 si se sale**.
+                    // Esto convierte ese 0 en la trampa.
+                    //
+                    // Son las mismas cuatro instrucciones que la Regla 3, y por
+                    // la misma razon: lo que no tiene resultado no se mira
+                    // DESPUES, se pregunta.
                     Comprobacion::Indice => {
-                        comprobaciones -= 1;
+                        carga(out, IZQ, sobre, &marco);
+                        x86::test_r64_r64(out, IZQ, IZQ);
+                        out.extend_from_slice(&[0x0F, 0x84]); // jz
+                        huecos_de_atrapa.push((out.len(), codigo));
+                        out.extend_from_slice(&[0, 0, 0, 0]);
                     }
                 }
             }

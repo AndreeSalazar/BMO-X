@@ -1202,7 +1202,18 @@ impl Revision<'_> {
                 .con_hacer("mete la linea dentro de un bloque `crudo`"),
             );
         }
-        if self.plano.elemento(&t).is_none() {
+        // *** Y UNA `lista de T` SE INDEXA, desde el 2026-08-23.
+        //
+        // Este aviso decia *"`lista de <tipo>` lleva su longitud dentro y es de
+        // `pleno`"* -- describiendo un futuro. Ese futuro llego:
+        // `runtime/objetos/lista.inti` existe, `sitio_de` compara el indice
+        // contra `cuantos`, y el descenso lo usa.
+        //
+        // ** Se distingue por la FORMA del tipo y no por el perfil: lo que se
+        // puede indexar es lo que SABE DONDE ACABA. Un `bufer` no lo sabe --por
+        // eso pide `crudo`-- y una lista si.
+        let indexable = self.plano.elemento(&t).is_some() || matches!(t, Tipo::Lista(_));
+        if !indexable {
             self.avisos.push(
                 Aviso::nuevo(
                     codigos::CAMPO_DESCONOCIDO,
@@ -1210,11 +1221,10 @@ impl Revision<'_> {
                     sitio,
                 )
                 .con_habia(
-                    "En `llano` lo que se indexa es un `bufer de <tipo>`. `lista de <tipo>` \
-                     lleva su longitud dentro y es de `pleno`."
+                    "Lo que se indexa es un `bufer de <tipo>` --con `crudo`, porque no sabe                      donde acaba-- o una `lista de <tipo>`, que si lo sabe y por eso se                      comprueba."
                         .to_string(),
                 )
-                .con_hacer("declaralo como `bufer de <tipo>`"),
+                .con_hacer("declaralo como `bufer de <tipo>` o como `lista de <tipo>`"),
             );
         }
     }

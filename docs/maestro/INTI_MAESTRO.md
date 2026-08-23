@@ -1047,6 +1047,41 @@ funcion**. Con eso `global`, `nonlocal` y `UnboundLocalError` **no existen**.
 - Comentario `#`. Sin comprensiones anidadas, sin ternario, sin `lambda` con
   reglas propias, sin decoradores, sin walrus.
 
+### 10.10b ⚠ LA REGLA DE LA ENE: ASCII se ELIGE, no se mutila
+
+> Eddi, 2026-08-23: *"cuando dijiste `anade` en vez de `añade`: elimina eso por
+> ASCII y que sea logico, y piensa en sinonimos correctos. Si no hay, usa el
+> ingles como `add`."*
+
+**La regla, en orden:**
+
+```text
+   1. una palabra castellana que YA sea ASCII       `agrega`
+   2. si no la hay, la inglesa                      `size`
+   3. NUNCA la castellana sin su ene                `anade`, `tamano`
+```
+
+★★ **Y el motivo no es estetico.** Una palabra mutilada no es ASCII: es una
+palabra MAL ESCRITA que resulta caber en ASCII. Cuesta tres cosas a la vez:
+
+- **no se puede buscar** -- quien busque `añade` en el fuente no encuentra nada;
+- **enseña a escribir mal** -- el primero que copie el estilo escribira `nino`
+  y `pequeno` en sus propios identificadores;
+- **y no ahorra nada**, porque el sinonimo correcto casi siempre existe.
+
+★ Ya se pago una vez: `tamano()` paso a `size()` el 2026-08-20 (`fc665530`,
+*"fuera las palabras sin su ene"*). Aquel dia no habia sinonimo castellano
+--`medida` estaba ocupada, `largo` significa otra cosa-- y se cogio el ingles,
+que es el escalon 2. **`anade` si lo tenia y se colo igual**: `agrega` es
+castellano, correcto, y ASCII sin tocarle una letra.
+
+⚠ **Y esto vale SOLO para los identificadores.** La prosa de los comentarios
+sigue siendo ASCII por el guardian, con sus enes caidas y sin remedio: ahi la
+alternativa seria escribir en otro idioma, y el idioma del proyecto es este.
+La diferencia es que **un comentario se lee y un identificador se ESCRIBE**.
+
+---
+
 ### 10.10 El idioma: espanol en ASCII, y en una TABLA
 
 | pieza | decision | motivo |

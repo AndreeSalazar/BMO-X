@@ -23,7 +23,7 @@ dice*. Si una fila no tiene con que comprobarse, lo pone.
 |---|---|---|
 | **sintaxis de Python** | leyendo. 40 sondas del censo, con su veredicto por delante | ✅ **hecho** |
 | **rendimiento de ASM** | ⚠ **la frase esta mal planteada** -- ver 2.0. Lo que se quiere es CONTROL de ASM, y eso si | ✅ **reencuadrado** |
-| **sin comportamiento indefinido** | las doce reglas, y **cuantas llegan a bytes** | ✅ **3 de 4** atrapan y corren |
+| **sin comportamiento indefinido** | las doce reglas, y **cuantas llegan a bytes** | ✅ **4 de 4** atrapan y corren (23-08) |
 | **estricto para facilitar** | que dos cosas que no se pueden operar juntas **no compilen** | ✅ **desde F6a** |
 | **fuera del syscall** | contando la instruccion de la puerta en los bytes emitidos | ✅ **hecho, y es un test** |
 
@@ -268,7 +268,7 @@ compilador*, que es la diferencia entre un mes y un ano. Salio lo primero.
 | ~~1~~ | ~~**La foto del Ryzen**~~ | ✅ **HECHA (22-08).** M1, M2 y M3 corrieron en el Ryzen 5 5600X: `reglas`, `bits` y `atomicas` salieron a CERO y el informe se guardo en disco. Ver `PLAN_DE_PRUEBAS.md` §4 |
 | 2 | **PLENO** | ⏳ **en marcha (23-08)**: `texto` mide, `numero` tiene disposicion --16 bytes, coeficiente `entero64` + escala-- y la puerta de `disposicion` esta abierta. Falta lo que vive en EJECUCION: monton, contador de referencias, y que `[bytes] llegan` admita `pleno` |
 | 2b | **Los tipos de retorno** | `si hay_algo()` no se comprueba porque el tipo que devuelve una funcion no se resuelve todavia. ⭐ **Y desde el 23-08 es la fila que mas desbloquea**: la deduccion ya cubre el constructor, la copia y el literal de texto, y `x = f()` es el siguiente escalon |
-| 3 | **La Regla 2** | ⏳ **no es deuda del emisor**: un `bufer` es una direccion y no lleva su longitud, asi que no hay contra que comprobar. Nace con `lista de T`, que si la lleva -- o sea, con el 2 |
+| ~~3~~ | ~~**La Regla 2**~~ | ✅ **HECHA (23-08)**. Nacio con `lista de T`, como estaba escrito: `sitio_de` compara el indice contra `cuantos` --que vive a un `mov` en la cabecera-- y el descenso la usa. **Las CUATRO llegan a bytes.** Y un `bufer` sigue sin comprobarse, que no es deuda: no existe la informacion |
 | 4 | **Congelar y tareas** | el eslabon que rompe el GIL |
 | 5 | **El REPL** | el ultimo a proposito: *un interprete no puede escribir un driver* |
 

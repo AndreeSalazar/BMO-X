@@ -162,11 +162,12 @@ impl Comprobacion {
     /// proyecto lleva persiguiendo desde el censo de las diez sondas.
     pub fn llega_a_bytes(self) -> bool {
         match self {
+            // ✅ LAS CUATRO. La 2 entro el 2026-08-23, con `lista de T`.
             Comprobacion::Desborde
             | Comprobacion::Cociente
             | Comprobacion::EntreCero
-            | Comprobacion::Conversion(_) => true,
-            Comprobacion::Indice => false,
+            | Comprobacion::Conversion(_)
+            | Comprobacion::Indice => true,
         }
     }
 
@@ -176,23 +177,11 @@ impl Comprobacion {
     /// codigo. Este es el mismo criterio que `E0073`: distinguir *"esta
     /// prohibido"* de *"todavia no se hacerlo"* es la mitad del valor del aviso.
     pub fn por_que_no(self) -> &'static str {
+        // [!] VACIO PARA LAS CINCO desde el 2026-08-23: **las cuatro reglas
+        // llegan a bytes**. La funcion se queda --y el `match` tambien-- porque
+        // el dia que entre una regla que no llegue, este es su sitio y el aviso
+        // ya lo exige: un "no" sin motivo manda a buscar al codigo.
         match self {
-            Comprobacion::Indice => {
-                // [!] Y desde el 2026-08-23 esta frase esta a MEDIAS. `lista de
-                // T` YA existe en ejecucion --`runtime/objetos/lista.inti`-- y
-                // comprueba su indice contra `cuantos`, que vive a un `mov` de
-                // distancia en su cabecera.
-                //
-                // Lo que sigue sin poder comprobarse es indexar un `bufer`, y
-                // eso no va a cambiar: no es que falte la comprobacion, es que
-                // **no existe la informacion**.
-                //
-                // *** Lo que falta para que esta fila diga `true` es que el
-                // DESCENSO baje `a[i]` de una lista a `sitio_de` en vez de a la
-                // aritmetica cruda. Mientras no lo haga, contestar que si aqui
-                // seria prometer una comprobacion que el binario no lleva.
-                "un `bufer` es una direccion y no lleva su longitud, asi que no hay contra                  que comprobar. En `lista de T` SI se comprueba, y falta que el descenso                  la use"
-            }
             _ => "",
         }
     }

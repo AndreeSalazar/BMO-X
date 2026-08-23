@@ -453,9 +453,30 @@ fn lo_que_inti_dice_que_emite_es_lo_que_emite() {
             Comprobacion::Cociente => Some(
                 "perfil llano\n\nfuncion f devuelve entero64\n    cambiante a es entero64 = -9223372036854775808\n    cambiante b es entero64 = -1\n    devuelve a entre b\n",
             ),
-            // ** La 2 no se puede provocar y ESO es el dato: indexar un `bufer`
-            // pide `crudo` justamente porque no hay contra que comprobar.
-            Comprobacion::Indice => None,
+            // *** LA 2 YA SE PUEDE PROVOCAR (2026-08-23), y ese es el dato.
+            //
+            // Hasta hoy esta rama devolvia `None` con el motivo *"indexar un
+            // `bufer` pide `crudo` justamente porque no hay contra que
+            // comprobar"*. Sigue siendo verdad **del bufer** -- y `lista de T`
+            // si lleva su longitud, asi que indexarla se comprueba.
+            //
+            // ** El fuente es `pleno` a proposito: un `lista de T` no cabe en
+            // `llano` --crece, pide monton-- asi que la unica forma de escribir
+            // esta regla es en el perfil que la admite. `emitido` no pasa por el
+            // gate de `[bytes] llegan`, que es otro peldano.
+            //
+            // Y es un PARAMETRO y no un literal: `[1, 2]` todavia no baja a
+            // `lista_nueva`, y una prueba que dependiera de eso estaria midiendo
+            // dos cosas.
+            Comprobacion::Indice => Some(
+                "perfil pleno
+usa objetos
+usa monton
+
+funcion f(notas es lista de entero64) devuelve entero64
+    devuelve notas[5]
+",
+            ),
         }
     };
 
@@ -1467,7 +1488,7 @@ fn una_lista_nueva_tiene_capacidad_y_ningun_elemento() {
 #[test]
 fn anadir_guarda_y_el_indice_lo_encuentra() {
     let f = con_lista(
-        "        anade(l, 11, 8)\n        anade(l, 22, 8)\n        si cuantos(l) no es 2\n            devuelve 0\n        d = sitio_de(l, 1, 8)\n        devuelve lee_natural64(d)\n",
+        "        agrega(l, 11, 8)\n        agrega(l, 22, 8)\n        si cuantos(l) no es 2\n            devuelve 0\n        d = sitio_de(l, 1, 8)\n        devuelve lee_natural64(d)\n",
     );
     assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 22);
 }
@@ -1488,7 +1509,7 @@ fn anadir_guarda_y_el_indice_lo_encuentra() {
 fn un_indice_fuera_de_rango_no_da_una_direccion() {
     // Dos elementos: el 0 y el 1 valen, el 2 no.
     let f = con_lista(
-        "        anade(l, 11, 8)\n        anade(l, 22, 8)\n        si sitio_de(l, 0, 8) = 0\n            devuelve 0\n        si sitio_de(l, 1, 8) = 0\n            devuelve 0\n        si sitio_de(l, 2, 8) no es 0\n            devuelve 0\n        devuelve 1\n",
+        "        agrega(l, 11, 8)\n        agrega(l, 22, 8)\n        si sitio_de(l, 0, 8) = 0\n            devuelve 0\n        si sitio_de(l, 1, 8) = 0\n            devuelve 0\n        si sitio_de(l, 2, 8) no es 0\n            devuelve 0\n        devuelve 1\n",
     );
     assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 1);
 }
@@ -1502,7 +1523,7 @@ fn un_indice_fuera_de_rango_no_da_una_direccion() {
 #[test]
 fn el_limite_es_cuantos_hay_y_no_cuantos_caben() {
     let f = con_lista(
-        "        anade(l, 11, 8)\n        anade(l, 22, 8)\n        devuelve sitio_de(l, 3, 8)\n",
+        "        agrega(l, 11, 8)\n        agrega(l, 22, 8)\n        devuelve sitio_de(l, 3, 8)\n",
     );
     assert_eq!(
         ejecuta_en(&f, "prueba", 0x40000, 0),
@@ -1519,7 +1540,7 @@ fn el_limite_es_cuantos_hay_y_no_cuantos_caben() {
 #[test]
 fn una_lista_llena_contesta_que_no_cabe() {
     let f = con_lista(
-        "        anade(l, 1, 8)\n        anade(l, 2, 8)\n        anade(l, 3, 8)\n        anade(l, 4, 8)\n        devuelve anade(l, 5, 8)\n",
+        "        agrega(l, 1, 8)\n        agrega(l, 2, 8)\n        agrega(l, 3, 8)\n        agrega(l, 4, 8)\n        devuelve agrega(l, 5, 8)\n",
     );
     assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 0);
 }
@@ -1534,7 +1555,7 @@ fn una_lista_llena_contesta_que_no_cabe() {
 #[test]
 fn la_lista_que_construye_inti_la_acepta_el_abi() {
     use bmo_abi::dynobj::lista as abi;
-    let f = con_lista("        anade(l, 11, 8)\n        anade(l, 22, 8)\n        devuelve l\n");
+    let f = con_lista("        agrega(l, 11, 8)\n        agrega(l, 22, 8)\n        devuelve l\n");
     let e = emitido(&f);
     let inicio = e
         .inicios
@@ -1567,4 +1588,66 @@ fn la_lista_que_construye_inti_la_acepta_el_abi() {
     assert_eq!(l.count, 2, "dos elementos");
     assert_eq!(l.capacidad, 4, "y sitio para cuatro");
     assert_eq!(l.refs, 1, "nace con UN dueno: la construyo alguien");
+}
+
+/// ***LA REGLA 2 SALE EN LOS BYTES, Y ATRAPA (2026-08-23).***
+///
+/// Era la unica de las cuatro que no llegaba: el emisor tenia
+/// `Comprobacion::Indice => { comprobaciones -= 1; }` -- no emitia nada, y
+/// encima se descontaba para que el recuento no mintiera.
+///
+/// ** Lo que faltaba no era el emisor: era CONTRA QUE comparar. `sitio_de`
+/// compara el indice con `cuantos` --que vive a un `mov` en la cabecera de la
+/// lista-- y devuelve 0 si se sale. El `Comprueba` convierte ese 0 en `E1002`.
+#[test]
+fn indexar_una_lista_emite_su_katana_de_regla_2() {
+    let e = emitido(
+        "perfil pleno\nusa objetos\nusa monton\n\nfuncion f(notas es lista de entero64) devuelve entero64\n    devuelve notas[5]\n",
+    );
+    assert!(
+        e.katanas.iter().any(|(k, _, _)| *k as u32 == 1002),
+        "la Regla 2 no saco su bloque: {:?}",
+        e.katanas
+    );
+}
+
+/// Y baja a `sitio_de`, no a una suma de direccion e indice.
+///
+/// ** Sumar a pelo daria una direccion **dentro del bloque** para cualquier
+/// indice que quepa en el monton: basura con la direccion bien puesta, que es el
+/// peor resultado posible. `sitio_de` es lo que hace que el 5 de una lista de
+/// dos elementos no sea una direccion.
+#[test]
+fn indexar_una_lista_llama_a_sitio_de() {
+    let m = ir_de(
+        "perfil pleno\nusa objetos\nusa monton\n\nfuncion f(notas es lista de entero64) devuelve entero64\n    devuelve notas[5]\n",
+    );
+    let f = m.funciones.iter().find(|f| f.nombre == "f").expect("sin `f`");
+    assert!(
+        f.instrucciones.iter().any(|i| matches!(
+            i,
+            Instr::Llama { que: Valor::Nombre(n), .. } if n == "sitio_de"
+        )),
+        "`notas[5]` no llamo a `sitio_de`: {:?}",
+        f.instrucciones
+    );
+}
+
+/// [!] Y UN `bufer` SIGUE SIN COMPROBARSE, que es la otra mitad y no cambia.
+///
+/// No es que la comprobacion se haya olvidado: **no existe la informacion para
+/// hacerla**. Por eso indexarlo pide `crudo`, y por eso son dos tipos.
+#[test]
+fn indexar_un_bufer_sigue_sin_llamar_a_nadie() {
+    let m = ir_de(
+        "perfil llano\nusa memoria\n\nfuncion f(p es bufer de entero64) devuelve entero64\n    crudo\n        devuelve p[5]\n",
+    );
+    let f = m.funciones.iter().find(|f| f.nombre == "f").expect("sin `f`");
+    assert!(
+        !f.instrucciones.iter().any(|i| matches!(
+            i,
+            Instr::Llama { que: Valor::Nombre(n), .. } if n == "sitio_de"
+        )),
+        "un `bufer` no tiene contra que comprobar y no puede llamar a `sitio_de`"
+    );
 }
