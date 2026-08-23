@@ -55,6 +55,13 @@ pub struct Medidas {
     /// Los que se operan con la aritmetica de enteros. Las dos listas juntas
     /// son el catalogo de conversiones que el lenguaje admite.
     enteros: Vec<String>,
+    /// **Los enteros que NO llevan signo.**
+    ///
+    /// ** Es un dato sobre los TIPOS y no sobre la maquina --que `natural64` no
+    /// lleve signo es verdad en todo silicio-- y aun asi vive aqui y no en un
+    /// `match` del emisor, por el mismo motivo que las otras dos listas: el
+    /// emisor PREGUNTA y elige la instruccion, no lo decide el.
+    sin_signo: Vec<String>,
     /// **Los tipos cuya alineacion NO es su medida.**
     ///
     /// ** Hasta el 2026-08-23 este mapa no hacia falta y no por descuido: todos
@@ -153,6 +160,7 @@ impl Medidas {
             alineaciones,
             flotantes: lista("flotantes"),
             enteros: lista("enteros"),
+            sin_signo: lista("sin_signo"),
             // [!] `desde_tabla` cambia la MAQUINA, no la BIBLIOTECA. Un
             // `flotante32` puede medir otra cosa en otro silicio; que un `texto`
             // crezca no depende del chip. Por eso la segunda maquina de
@@ -181,6 +189,16 @@ impl Medidas {
     /// Este tipo, se opera con coma flotante?
     pub fn es_flotante(&self, nombre: &str) -> bool {
         self.flotantes.iter().any(|f| f == nombre)
+    }
+
+    /// **Este tipo lleva signo?** `false` para los `natural*`.
+    ///
+    /// [!] Y para lo que NO esta en ninguna lista devuelve `true`, que es lo
+    /// conservador: con signo es lo que INTI emitia para todo hasta el
+    /// 2026-08-23, asi que un tipo desconocido no cambia de comportamiento por
+    /// existir esta lista.
+    pub fn lleva_signo(&self, nombre: &str) -> bool {
+        !self.sin_signo.iter().any(|f| f == nombre)
     }
 
     /// Este tipo, se opera con enteros?
@@ -409,6 +427,25 @@ impl Plano {
     /// de tipos, y la contesta quien comprueba, no quien emite.
     pub fn es_flotante(&self, e: &Expr, tipos: &HashMap<String, Tipo>) -> bool {
         matches!(self.clase_de(e, tipos), Some(crate::arbol::Clase::Flotante))
+    }
+
+    /// **Esta expresion se opera SIN SIGNO?** (2026-08-23)
+    ///
+    /// Basta con que UNO de los lados sea un `natural`: si `a` es `natural64`,
+    /// `a < b` compara direcciones y cuentas, no numeros con signo.
+    ///
+    /// [!] Y por defecto CON signo. Es lo que INTI emitia para todo hasta hoy,
+    /// asi que un tipo del que no se sabe nada no cambia de comportamiento por
+    /// existir esta pregunta -- lo que cambia es lo que SI se sabe.
+    ///
+    /// ** Se pregunta sobre el ARBOL y antes de bajar los operandos, igual que
+    /// `es_flotante` y por el mismo motivo escrito alli: una vez bajados ya no
+    /// son mas que valores, y un valor no dice de que tipo era.
+    pub fn sin_signo(&self, e: &Expr, tipos: &HashMap<String, Tipo>) -> bool {
+        match self.tipo_de(e, tipos) {
+            Some(Tipo::Nombre(n)) => !self.medidas.lleva_signo(&n),
+            _ => false,
+        }
     }
 
     /// Con que aritmetica se opera esto -- y **`None` cuando no se sabe**.

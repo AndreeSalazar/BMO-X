@@ -18,7 +18,9 @@ use bmo_lower::x86;
 
 use crate::{DER, IZQ};
 
-pub(crate) fn binaria(out: &mut Vec<u8>, op: Op) {
+/// *** `sin_signo` cambia CUATRO instrucciones, y ninguna falla al emitirse:
+/// las cuatro dan otro numero. Ver `medidas.toml`, seccion `sin_signo`.
+pub(crate) fn binaria(out: &mut Vec<u8>, op: Op, sin_signo: bool) {
     match op {
         Op::Suma => x86::add_r64_r64(out, IZQ, DER),
         Op::Resta => x86::sub_r64_r64(out, IZQ, DER),
@@ -29,8 +31,16 @@ pub(crate) fn binaria(out: &mut Vec<u8>, op: Op) {
             // otras cuatro. Un emisor que anadiera reglas por su cuenta romperia
             // la cuenta que compara lo que la IR pide con lo que el binario
             // lleva -- y esa resta es la que medira al optimizador.
-            x86::cqo(out);
-            x86::idiv_r64(out, DER);
+            // ** `div` limpia `rdx` con un `xor`; `idiv` lo rellena con el
+            // signo de `rax` (`cqo`). Usar `cqo` + `div` o `xor` + `idiv` no
+            // falla: divide otra cosa.
+            if sin_signo {
+                x86::zero_r32(out, 2); // xor edx, edx
+                x86::div_r64(out, DER);
+            } else {
+                x86::cqo(out);
+                x86::idiv_r64(out, DER);
+            }
             if matches!(op, Op::Resto) {
                 x86::mov_r64_r64(out, IZQ, 2); // el resto vive en rdx
             }
@@ -59,8 +69,14 @@ pub(crate) fn binaria(out: &mut Vec<u8>, op: Op) {
         Op::DesplazaIzquierda | Op::DesplazaDerecha => {
             if matches!(op, Op::DesplazaIzquierda) {
                 x86::shl_r64_cl(out, IZQ);
-            } else {
+            } else if sin_signo {
                 x86::shr_r64_cl(out, IZQ);
+            } else {
+                // ** ARRASTRANDO EL SIGNO. Hasta el 2026-08-23 esto era `shr`
+                // siempre, asi que `-8 desplaza derecha 1` daba
+                // 9.223.372.036.854.775.804 en vez de -4. El fallo al reves del
+                // de las comparaciones, y del mismo dia.
+                x86::sar_r64_cl(out, IZQ);
             }
             // El `cmp` va DESPUES a proposito: el desplazamiento no toca el
             // contador, asi que sigue entero para poder mirarlo.
@@ -77,13 +93,20 @@ pub(crate) fn binaria(out: &mut Vec<u8>, op: Op) {
             // extender. Poner el registro a cero antes con un `xor` --que es lo
             // que hace `zero_r32`-- **destruye las banderas que el `cmp` acaba
             // de dejar**, y entonces la comparacion contesta siempre lo mismo.
+            // ** IGUAL y NO ES no dependen del signo: dos patrones de bits son
+            // iguales o no lo son. Las otras cuatro SI, y esa es toda la
+            // diferencia entre `setl` y `setb`.
             let cc = match op {
                 Op::Igual => 0x94,
                 Op::NoEs => 0x95,
-                Op::Menor => 0x9C,
-                Op::Mayor => 0x9F,
-                Op::MenorIgual => 0x9E,
-                _ => 0x9D,
+                Op::Menor if sin_signo => 0x92,      // setb
+                Op::Mayor if sin_signo => 0x97,      // seta
+                Op::MenorIgual if sin_signo => 0x96, // setbe
+                _ if sin_signo => 0x93,              // setae
+                Op::Menor => 0x9C,                   // setl
+                Op::Mayor => 0x9F,                   // setg
+                Op::MenorIgual => 0x9E,              // setle
+                _ => 0x9D,                           // setge
             };
             out.extend_from_slice(&[0x0F, cc, 0xC0]); // setcc al
             out.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al

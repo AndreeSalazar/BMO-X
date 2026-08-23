@@ -420,6 +420,7 @@ mod pruebas {
             destino: Temporal(destino),
             op: Op::Suma,
             clase: bmo_inti_front::ir::Clase::Entero,
+            sin_signo: false,
             izquierda: Valor::Temporal(Temporal(a)),
             derecha: Valor::Temporal(Temporal(b)),
         }

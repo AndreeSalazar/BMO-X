@@ -1023,3 +1023,268 @@ fn un_doble_libera_no_convierte_el_objeto_en_inmortal() {
     assert_eq!(quedo, 0, "satura en cero");
     assert_eq!(quedo & INMORTAL, 0, "y sobre todo: NO se volvio inmortal");
 }
+
+// ===================================================================
+//  *** `texto + texto` PIDE MEMORIA DE VERDAD (2026-08-23)
+// ===================================================================
+
+/// Dos textos fabricados a mano en el monton, y el cuerpo con `a` y `b` a mano.
+///
+/// ** Se fabrican a mano y no con un literal a proposito: un literal vive en
+/// `RoData`, es INMORTAL, y probar `junta` con dos inmortales no diria nada
+/// sobre el caso que importa -- el del texto CONTADO que puede morir.
+fn con_dos_textos(cuerpo: &str) -> String {
+    format!(
+        "perfil llano\nusa objetos\nusa monton\n\nfuncion prueba(base es natural64, cuantos es natural64) devuelve natural64\n    crudo\n        escribe_natural64(base, base + 32)\n        escribe_natural64(base + 8, base + 4096)\n        escribe_natural64(base + 16, 0)\n        a = pide(base, 26)\n        escribe_natural64(a, 1)\n        escribe_natural64(a + 16, 2)\n        escribe_natural8(a + 24, 104)\n        escribe_natural8(a + 25, 111)\n        b = pide(base, 27)\n        escribe_natural64(b, 1)\n        escribe_natural64(b + 16, 3)\n        escribe_natural8(b + 24, 108)\n        escribe_natural8(b + 25, 97)\n        escribe_natural8(b + 26, 33)\n{}",
+        cuerpo
+    )
+}
+
+/// ***JUNTAR DOS TEXTOS RESERVA, COPIA, Y EL RESULTADO ES VALIDO.***
+///
+/// `"ho" + "la!"` -> `"hola!"`, cinco bytes, un dueno.
+///
+/// ** Y reserva porque un texto es INMUTABLE: si `a + b` no puede tocar ni `a`
+/// ni `b`, el resultado es un TERCER objeto. No es una torpeza que se arreglara
+/// -- es la consecuencia de la linea que define el tipo.
+#[test]
+fn juntar_dos_textos_reserva_uno_nuevo_y_lo_copia_entero() {
+    let f = con_dos_textos(
+        "        c = junta(base, a, b)\n        si mide(c) no es 5\n            devuelve 0\n        si lee_natural8(c + 24) no es 104\n            devuelve 0\n        si lee_natural8(c + 25) no es 111\n            devuelve 0\n        si lee_natural8(c + 26) no es 108\n            devuelve 0\n        si lee_natural8(c + 27) no es 97\n            devuelve 0\n        si lee_natural8(c + 28) no es 33\n            devuelve 0\n        devuelve 1\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 1, "\"ho\" + \"la!\" no dio \"hola!\"");
+}
+
+/// ***Y EL RESULTADO LO VALIDA EL ABI DE RUST, no INTI.***
+///
+/// ** El programa deja el texto en memoria del emulador; aqui se sacan sus
+/// bytes y se le pasan a `bmo_abi::dynobj::texto::revisar`, **que es otro
+/// codigo**. Si `junta` validara su propio resultado estaria comprobando su
+/// aritmetica contra si misma -- que es la trampa que `png.rs` ya dejo escrita.
+///
+/// `revisar` mira lo que INTI no mira: que el UTF-8 sea valido de verdad.
+#[test]
+fn el_texto_que_junta_construye_lo_acepta_el_abi() {
+    use bmo_abi::dynobj::texto as abi;
+    let f = con_dos_textos("        devuelve junta(base, a, b)\n");
+    let e = emitido(&f);
+    let inicio = e
+        .inicios
+        .iter()
+        .find(|(n, _)| n == "prueba")
+        .map(|(_, o)| *o)
+        .expect("sin `prueba`");
+
+    // El mismo `crt0` de diez bytes que usa `ejecuta`, para poder leer la
+    // memoria DESPUES en vez de solo el registro de retorno.
+    let largo = e.codigo.len() as i32;
+    let mut codigo = Vec::new();
+    codigo.push(0xE9);
+    codigo.extend_from_slice(&largo.to_le_bytes());
+    codigo.extend_from_slice(&e.codigo);
+    codigo.push(0xE8);
+    let desde = codigo.len() as i32 + 4;
+    codigo.extend_from_slice(&((inicio as i32 + 5) - desde).to_le_bytes());
+
+    let mut m = Machine::new(codigo);
+    m.regs[7] = 0x40000;
+    m.regs[6] = 0;
+    let m = run(m, 200_000);
+    let donde = m.regs[0];
+    assert_ne!(donde, 0, "`junta` no devolvio nada");
+
+    // Los bytes del objeto, tal cual quedaron en la memoria del emulador.
+    let mut bytes = Vec::new();
+    for i in 0..(abi::CABECERA_LEN as u64 + 5) {
+        bytes.push(m.read_u8_pub(donde + i));
+    }
+
+    let t = abi::revisar(&bytes).expect("el ABI rechazo el texto que construyo INTI");
+    assert_eq!(t.bytes, 5, "cinco bytes");
+    assert_eq!(t.refs, 1, "nace con UN dueno, no inmortal: lo construyo alguien");
+    assert_eq!(abi::contenido(&bytes).unwrap(), b"hola!");
+}
+
+/// *** LA CABECERA MIDE 24 EN LOS DOS SITIOS, y hay que exigirlo.
+///
+/// El 24 esta escrito en `texto.inti` a mano y en `dynobj::texto::CABECERA_LEN`
+/// como constante. **Dos escrituras del mismo numero se separan el dia que
+/// alguien toca una** -- es la misma razon por la que existe la prueba que hace
+/// coincidir el contador de INTI con el del ABI.
+///
+/// Se comprueba de la unica forma que se puede desde fuera: si INTI usara otro
+/// numero, los bytes del contenido no caerian donde el ABI los busca.
+#[test]
+fn el_desplazamiento_del_contenido_coincide_con_el_del_abi() {
+    use bmo_abi::dynobj::texto as abi;
+    let f = con_dos_textos(
+        &format!("        c = junta(base, a, b)\n        devuelve lee_natural8(c + {})\n", abi::CABECERA_LEN),
+    );
+    // 104 es la `h` de "ho": el PRIMER byte del contenido.
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 104);
+}
+
+/// ***LA GUARDIA QUE `crudo` APAGO, PUESTA A MANO.***
+///
+/// ## Y esta prueba es la respuesta a una pregunta de Eddi
+///
+/// > *"TODOS los componentes deberian tener detector de UB?"*
+///
+/// Dentro de un bloque `crudo` la Regla 1 esta APAGADA: tocar memoria cruda no
+/// puede pagar una guardia por operacion. Asi que en `junta` la suma `na + nb`
+/// **puede dar la vuelta**, y si lo hiciera: `total` sale pequeno, `pide`
+/// devuelve un bloque pequeno, y los dos bucles escriben FUERA. Eso es un
+/// desbordamiento de bufer -- el fallo mas caro de los ultimos veinte anos.
+///
+/// ** Por eso la guardia se escribe a mano. No es desconfianza del lenguaje: es
+/// la consecuencia de haber pedido `crudo`, y la unica forma honrada de usarlo
+/// es poner de vuelta lo que uno mismo desactivo.
+///
+/// *** Y lo que hace que esto no sea "como en C": **el bloque `crudo` se
+/// CUENTA**. Sale en el manifiesto del `.bex` con un numero. En C todo el
+/// fichero es `crudo` y no hay numero que mirar.
+#[test]
+fn una_cabecera_mentirosa_no_desborda_el_bufer_nuevo() {
+    // `a` dice medir casi 2^64. `na + nb` da la vuelta y `total` sale ridiculo.
+    let f = con_dos_textos(
+        "        escribe_natural64(a + 16, 18446744073709551615)\n        devuelve junta(base, a, b)\n",
+    );
+    assert_eq!(
+        ejecuta_en(&f, "prueba", 0x40000, 0),
+        0,
+        "la suma dio la vuelta y `junta` siguio: eso escribe fuera del bloque"
+    );
+}
+
+/// Comparar es BYTE A BYTE, y se dice en vez de insinuar otra cosa.
+///
+/// ** Dos textos que se ven iguales en pantalla pueden tener bytes distintos
+/// --normalizacion Unicode-- y el maestro deja eso FUERA por escrito.
+#[test]
+fn dos_textos_se_comparan_por_sus_bytes() {
+    let iguales = con_dos_textos(
+        "        c = junta(base, a, b)\n        d = junta(base, a, b)\n        devuelve iguales(c, d)\n",
+    );
+    assert_eq!(ejecuta_en(&iguales, "prueba", 0x40000, 0), 1);
+
+    let distintos = con_dos_textos("        devuelve iguales(a, b)\n");
+    assert_eq!(ejecuta_en(&distintos, "prueba", 0x40000, 0), 0, "miden distinto");
+}
+
+// ===================================================================
+//  *** EL SIGNO (2026-08-23) -- cuatro familias, y ninguna fallaba
+// ===================================================================
+//
+//  Se destapo escribiendo A MANO una guardia de desbordamiento dentro de un
+//  bloque `crudo`. La guardia estaba bien y no saltaba, porque el emisor bajaba
+//  TODA comparacion con `setl` -- la version con signo.
+//
+//  ** No era comportamiento indefinido. Era peor de encontrar: **una respuesta
+//  equivocada, en silencio, sin que ninguna de las doce reglas saltara.** Las
+//  reglas vigilan lo que C deja SIN DEFINIR; esto estaba definido, y mal.
+
+/// ***`2 < 18446744073709551615` EN `natural64` ES CIERTO.***
+///
+/// Con `setl` daba 0: leidos con signo, 2^64-1 es -1. Y este no es un caso de
+/// laboratorio -- son **direcciones**: `si nuevo > fin` dentro del propio
+/// monton compara punteros, y el dia que uno pase del bit 63 la comparacion
+/// contesta al reves.
+#[test]
+fn los_naturales_se_comparan_sin_signo() {
+    let f = "perfil llano\n\nfuncion prueba(a es natural64, b es natural64) devuelve natural64\n    si a < b\n        devuelve 1\n    devuelve 0\n";
+    assert_eq!(ejecuta_en(f, "prueba", 2, u64::MAX), 1, "2 < 2^64-1");
+    assert_eq!(ejecuta_en(f, "prueba", u64::MAX, 2), 0, "y al reves, no");
+}
+
+/// Y los enteros SIGUEN con signo, que es la otra mitad y la que se podia
+/// romper al arreglar la primera.
+#[test]
+fn los_enteros_se_siguen_comparando_con_signo() {
+    let f = "perfil llano\n\nfuncion prueba(a es entero64, b es entero64) devuelve natural64\n    si a < b\n        devuelve 1\n    devuelve 0\n";
+    assert_eq!(ejecuta_en(f, "prueba", (-1i64) as u64, 2), 1, "-1 < 2");
+    assert_eq!(ejecuta_en(f, "prueba", 2, (-1i64) as u64), 0);
+}
+
+/// ***DIVIDIR: `div` para los naturales, `idiv` para los enteros.***
+///
+/// Con `idiv`, dividir 2^63 entre 2 no da 2^62: da una **excepcion del
+/// procesador**, porque el cociente no cabe en un `entero64` con signo.
+#[test]
+fn dividir_un_natural_grande_no_revienta() {
+    let f = "perfil llano\n\nfuncion prueba(a es natural64, b es natural64) devuelve natural64\n    devuelve a entre b\n";
+    assert_eq!(ejecuta_en(f, "prueba", 1u64 << 63, 2), 1u64 << 62);
+    assert_eq!(ejecuta_en(f, "prueba", u64::MAX, 2), u64::MAX / 2);
+}
+
+/// Y la division con signo sigue dando negativo.
+#[test]
+fn dividir_enteros_sigue_llevando_el_signo() {
+    let f = "perfil llano\n\nfuncion prueba(a es entero64, b es entero64) devuelve entero64\n    devuelve a entre b\n";
+    assert_eq!(ejecuta_en(f, "prueba", (-8i64) as u64, 2), (-4i64) as u64);
+}
+
+/// ***DESPLAZAR A LA DERECHA: el fallo AL REVES, y del mismo dia.***
+///
+/// Aqui el emisor emitia `shr` SIEMPRE --metiendo ceros por arriba-- que es lo
+/// correcto para un natural y falso para un entero negativo:
+///
+/// ```text
+///    -8 desplaza derecha 1     con `sar`  ->  -4
+///                              con `shr`  ->  9.223.372.036.854.775.804
+/// ```
+///
+/// ** El propio `x86::shr_r64_cl` predijo el dia: *"el dia que INTI distinga el
+/// desplazamiento con signo sera otra fila de la tabla y otra instruccion"*.
+#[test]
+fn desplazar_un_entero_negativo_arrastra_el_signo() {
+    let f = "perfil llano\n\nfuncion prueba(a es entero64, b es entero64) devuelve entero64\n    devuelve a desplaza derecha b\n";
+    assert_eq!(ejecuta_en(f, "prueba", (-8i64) as u64, 1), (-4i64) as u64);
+
+    // Y un natural sigue metiendo ceros, que es lo suyo.
+    let g = "perfil llano\n\nfuncion prueba(a es natural64, b es natural64) devuelve natural64\n    devuelve a desplaza derecha b\n";
+    assert_eq!(ejecuta_en(g, "prueba", u64::MAX, 1), u64::MAX >> 1);
+}
+
+/// [!] Y LA ARITMETICA DE DIRECCIONES ES SIN SIGNO, aunque nadie escriba un
+/// tipo: `p.x` y `a[i]` suman bytes a una direccion, y una direccion no puede
+/// ser negativa.
+///
+/// ** Sin esto, un registro colocado por encima del bit 63 se indexaria al
+/// reves. Hoy no pasa porque el monton vive bajo, y "hoy no pasa" es
+/// exactamente como se escriben los fallos que aparecen dentro de dos anos.
+#[test]
+fn la_aritmetica_de_direcciones_no_lleva_signo() {
+    // Se mira en la IR y no en los bytes a proposito: un `add` es el mismo byte
+    // lleve signo o no. Lo que cambia es lo que se emite DESPUES --la
+    // comparacion, el desplazamiento, la guardia-- y eso sale de esta marca.
+    let fuente = concat!(
+        "perfil llano\n\n",
+        "registro Punto\n    x es entero64\n    y es entero64\n\n",
+        "funcion prueba(p es Punto) devuelve entero64\n    devuelve p.y\n"
+    );
+    let arbol = bmo_inti_front::armar(fuente);
+    assert!(!arbol.hay_errores(), "{}", arbol.pintar("p.inti"));
+    let raices = bmo_mods::Roots::find();
+    let modulos = bmo_inti_front::tablas::Modulos::cargar(&raices);
+    let plano = bmo_inti_front::disposicion::comprobar(
+        &arbol.valor,
+        bmo_inti_front::disposicion::Medidas::cargar(&raices),
+    );
+    let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
+    let m = ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+
+    let sumas: Vec<bool> = m
+        .funciones
+        .iter()
+        .flat_map(|f| f.instrucciones.iter())
+        .filter_map(|i| match i {
+            Instr::Binaria { sin_signo, .. } => Some(*sin_signo),
+            _ => None,
+        })
+        .collect();
+    assert!(!sumas.is_empty(), "sin aritmetica de campos que mirar");
+    assert!(
+        sumas.iter().all(|s| *s),
+        "la aritmetica de direcciones perdio la marca de sin signo: {sumas:?}"
+    );
+}

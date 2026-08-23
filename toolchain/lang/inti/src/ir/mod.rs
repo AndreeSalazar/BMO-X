@@ -300,6 +300,11 @@ impl<'t> Descenso<'t> {
                     // Una direccion es un entero. Siempre. Aunque lo que haya al
                     // final sea un flotante: `p.x` suma bytes, no numeros.
                     clase: Clase::Entero,
+                    // ** Y SIN SIGNO, que es lo mismo por otro lado: una
+                    // direccion no puede ser negativa, y compararla con signo
+                    // parte el espacio de memoria en dos mundos en cuanto pasa
+                    // del bit 63.
+                    sin_signo: true,
                     izquierda: base,
                     derecha: Valor::Const(Const::Entero(desplazamiento as i64)),
                 });
@@ -316,6 +321,7 @@ impl<'t> Descenso<'t> {
                     destino: paso,
                     op: Op::Por,
                     clase: Clase::Entero,
+                    sin_signo: true, // aritmetica de direcciones: ver arriba
                     izquierda: i,
                     derecha: Valor::Const(Const::Entero(medida as i64)),
                 });
@@ -324,6 +330,7 @@ impl<'t> Descenso<'t> {
                     destino: t,
                     op: Op::Suma,
                     clase: Clase::Entero,
+                    sin_signo: true,
                     izquierda: base,
                     derecha: Valor::Temporal(paso),
                 });
@@ -649,6 +656,19 @@ impl<'t> Descenso<'t> {
                 } else {
                     Clase::Entero
                 };
+                // *** Y SI LLEVA SIGNO, que hasta el 2026-08-23 no se preguntaba
+                // NUNCA: el emisor bajaba `setl`, `idiv` y `jo` para todo, asi
+                // que `2 < 18446744073709551615` en `natural64` daba FALSO.
+                //
+                // ** No era comportamiento indefinido -- era peor de encontrar:
+                // una respuesta equivocada, en silencio, sin que ninguna de las
+                // doce reglas saltara. Las reglas vigilan lo que C deja sin
+                // definir; esto estaba definido, y mal.
+                //
+                // Basta con que UNO de los lados sea `natural`: si `a` es una
+                // direccion, `a < b` compara direcciones.
+                let sin_signo = self.plano.sin_signo(izquierda, &self.tipos)
+                    || self.plano.sin_signo(derecha, &self.tipos);
                 let i = self.expresion(izquierda);
                 let d = self.expresion(derecha);
 
@@ -710,6 +730,7 @@ impl<'t> Descenso<'t> {
                     destino: t,
                     op: *op,
                     clase,
+                    sin_signo,
                     izquierda: i,
                     derecha: d,
                 });
@@ -910,6 +931,7 @@ impl<'t> Descenso<'t> {
                                 destino: t,
                                 op: Op::Suma,
                                 clase: Clase::Entero,
+                                sin_signo: true,
                                 izquierda: q,
                                 derecha: i,
                             });

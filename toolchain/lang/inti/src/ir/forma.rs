@@ -197,6 +197,23 @@ pub enum Instr {
         destino: Temporal,
         op: Op,
         clase: Clase,
+        /// **Se opera SIN SIGNO?** (2026-08-23)
+        ///
+        /// ** Es una bandera y no una tercera `Clase` a proposito. `Clase` dice
+        /// con QUE ARITMETICA se opera --entera o de coma flotante-- y eso
+        /// decide el juego de instrucciones entero. El signo no cambia el juego:
+        /// cambia CUATRO instrucciones dentro del mismo.
+        ///
+        /// ```text
+        ///    < > <= >=          setb/seta   en vez de  setl/setg
+        ///    entre, resto       div         en vez de  idiv
+        ///    desplaza derecha   shr         en vez de  sar
+        ///    la Regla 1         jc          en vez de  jo
+        /// ```
+        ///
+        /// Meterlo en `Clase` habria obligado a los 121 sitios que la miran a
+        /// atender un caso que a 117 de ellos no les cambia nada.
+        sin_signo: bool,
         izquierda: Valor,
         derecha: Valor,
     },

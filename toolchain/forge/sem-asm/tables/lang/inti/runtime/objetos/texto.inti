@@ -1,0 +1,141 @@
+# EL TEXTO CONSTRUIDO -- el que SI pide memoria.
+#
+# ## Por que juntar dos textos RESERVA, y no es una torpeza que se arreglara
+#
+# Porque un `texto` es INMUTABLE. Lo dice la gramatica en la linea que lo
+# define --*"cadena UTF-8 inmutable"*-- y de ahi sale todo lo demas: si `a + b`
+# no puede tocar ni `a` ni `b`, el resultado tiene que ser un TERCER objeto.
+#
+# ** No hay version lista de esto. Es el mismo precio que paga Java, y la salida
+# tambien es la misma en todas partes --un constructor aparte para el caso del
+# bucle-- pero eso es otra pieza y no se va a fingir que sale gratis de esta.
+#
+#     juntar en un bucle reserva UNA VEZ POR VUELTA
+#
+# ## La forma la declara el ABI, y este fichero la OBEDECE
+#
+# `bmo_abi::dynobj::texto`, cabecera de 24 bytes:
+#
+#     objeto + 0    refs         contador. Bit 63 = INMORTAL
+#     objeto + 8    type_index   indice en la tabla de tipos, nunca puntero
+#     objeto + 12   flags
+#     objeto + 16   bytes        **BYTES, no caracteres**
+#     objeto + 24   los bytes
+#
+# [!] El 24 esta escrito DOS VECES --aqui y en `dynobj::texto::CABECERA_LEN`--
+# y dos escrituras del mismo numero se separan el dia que alguien toca una. Hay
+# una prueba que exige que coincidan, por lo mismo que la hay para el contador.
+#
+# ## *** Y NACE CON UN DUENO, no inmortal
+#
+#     un literal        INMORTAL   vive en RoData, nadie lo cuenta, no muere
+#     uno construido    refs = 1   lo tiene quien lo pidio, y puede morir
+#
+# Es la seccion 10.2 del maestro: CONGELADO contra CONTADO. Los dos son `texto`
+# y se usan igual; lo que cambia es quien paga por ellos.
+perfil llano
+usa monton
+usa memoria
+
+# Los bytes que mide un texto. **Bytes, no caracteres.**
+funcion mide(texto es natural64) devuelve natural64
+    crudo
+        si texto = 0
+            devuelve 0
+        devuelve lee_natural64(texto + 16)
+
+# Junta dos textos en uno nuevo. Devuelve 0 si no cabe.
+#
+# ## *** AQUI ESTA LA UNICA COMPROBACION QUE INTI NO PONE SOLA, Y POR QUE
+#
+# Este cuerpo es un bloque `crudo`, y `crudo` significa una cosa exacta: **aqui
+# nadie comprueba por ti**. La Regla 1 --que atrapa el desbordamiento en cada
+# suma-- esta APAGADA dentro, porque tocar memoria cruda no puede pagar una
+# guardia por operacion.
+#
+# Asi que `na + nb` puede dar la vuelta. Con dos textos de verdad no pasa nunca;
+# con dos cabeceras corruptas, `total` sale pequeno, `pide` da un bloque
+# pequeno, y los dos bucles de abajo escriben **fuera**. Eso es exactamente un
+# desbordamiento de bufer, que es el fallo que se lleva veinte anos siendo el
+# mas caro del mundo.
+#
+# ** Por eso se escribe A MANO. No es desconfianza del lenguaje: es la
+# consecuencia de haber pedido `crudo`, y la unica forma honrada de usarlo es
+# poner la guardia que uno mismo desactivo.
+#
+#     si na + nb < na    ->  dio la vuelta
+#
+# *** Y lo que hace que esto no sea "como en C": el bloque `crudo` SE CUENTA.
+# Sale en el manifiesto del `.bex`, con un numero, y hay una prueba que lo fija.
+# En C todo el fichero es `crudo` y no hay numero que mirar.
+funcion junta(monton es natural64, a es natural64, b es natural64) devuelve natural64
+    crudo
+        si a = 0
+            devuelve 0
+        si b = 0
+            devuelve 0
+
+        # ** LOS TIPOS SE ESCRIBEN, y aqui NO es por gusto.
+        #
+        # La comparacion de abajo --`si total < na`-- se baja SIN SIGNO o CON
+        # signo segun lo que el compilador sepa de estos dos nombres. Y de
+        # `lee_natural64` no sabe nada todavia: es un nombre que trae un `usa`,
+        # y los tipos de retorno de esos no se deducen (2026-08-23).
+        #
+        # *** Sin estas tres palabras, `total < na` se emite con `setl` y **la
+        # guardia no salta**: leidos con signo, un `total` que dio la vuelta
+        # parece mayor. La guardia estaria escrita, compilada, contada en el
+        # manifiesto -- y no serviria de nada.
+        na es natural64 = lee_natural64(a + 16)
+        nb es natural64 = lee_natural64(b + 16)
+        total es natural64 = na + nb
+
+        # LA GUARDIA QUE `crudo` APAGO. Ver la cabecera de esta funcion.
+        si total < na
+            devuelve 0
+
+        nuevo = pide(monton, total + 24)
+        si nuevo = 0
+            devuelve 0
+
+        # La cabecera. Un dueno, y sin banderas: no esta prestado ni vigilado.
+        escribe_natural64(nuevo, 1)
+        escribe_natural32(nuevo + 8, 0)
+        escribe_natural32(nuevo + 12, 0)
+        escribe_natural64(nuevo + 16, total)
+
+        cambiante i = 0
+        repite mientras i < na
+            escribe_natural8(nuevo + 24 + i, lee_natural8(a + 24 + i))
+            i = i + 1
+
+        cambiante j = 0
+        repite mientras j < nb
+            escribe_natural8(nuevo + 24 + na + j, lee_natural8(b + 24 + j))
+            j = j + 1
+
+        devuelve nuevo
+
+# Son iguales? 1 si lo son.
+#
+# ** Byte a byte, y sin normalizar nada. Dos textos que "se ven igual" en
+# pantalla pueden tener bytes distintos --es lo que Unicode llama
+# normalizacion-- y el maestro deja eso FUERA por escrito. Comparar aqui es
+# comparar BYTES, y decirlo es mejor que insinuar otra cosa.
+funcion iguales(a es natural64, b es natural64) devuelve natural64
+    crudo
+        si a = 0
+            devuelve 0
+        si b = 0
+            devuelve 0
+
+        na es natural64 = lee_natural64(a + 16)
+        si na no es lee_natural64(b + 16)
+            devuelve 0
+
+        cambiante i = 0
+        repite mientras i < na
+            si lee_natural8(a + 24 + i) no es lee_natural8(b + 24 + i)
+                devuelve 0
+            i = i + 1
+        devuelve 1

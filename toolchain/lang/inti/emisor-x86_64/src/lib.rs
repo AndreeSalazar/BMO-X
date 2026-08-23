@@ -445,6 +445,7 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                 destino,
                 op,
                 clase,
+                sin_signo,
                 izquierda,
                 derecha,
             } => {
@@ -455,7 +456,12 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                 // asi que un emisor que lo decidiera mirando el valor acertaria
                 // casi siempre -- que es peor que fallar siempre.
                 match clase {
-                    Clase::Entero => binaria(out, *op),
+                    // ** Y el SIGNO viene de la IR por lo mismo que la clase:
+                    // los ocho bytes de un `natural64` y los de un `entero64`
+                    // son indistinguibles, asi que un emisor que lo decidiera
+                    // mirando el valor acertaria casi siempre -- que es peor que
+                    // fallar siempre.
+                    Clase::Entero => binaria(out, *op, *sin_signo),
                     Clase::Flotante => flotante(out, *op),
                 }
                 guarda_temporal(out, IZQ, *destino, &marco);
