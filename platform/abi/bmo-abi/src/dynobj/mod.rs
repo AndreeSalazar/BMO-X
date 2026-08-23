@@ -73,6 +73,9 @@
 //!   behaviour: it is bytes and numbers.
 
 pub mod header;
+/// La forma de una `lista de T` en memoria: la primera instancia del contrato
+/// de `header`, y lo que INTI le anade.
+pub mod lista;
 pub mod slots;
 
 pub use header::{DynHeader, DynVarHeader};
