@@ -388,6 +388,7 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
         ..Default::default()
     };
     let mut comprobaciones = 0usize;
+    let mut monton_pedido = 0usize;
     let mut salida_huecos: Vec<(usize, String)> = Vec::new();
     let mut sin_emitir: Vec<String> = Vec::new();
     let mut reubicaciones: Vec<(usize, u32)> = Vec::new();
@@ -734,6 +735,22 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                 guarda_temporal(out, IZQ, *destino, &marco);
             }
 
+            // *** EL MONTON DE LA TAREA: se DICE, no se baja a un cero.
+            //
+            // El slot vive en la seccion `Data` --la 1 en la numeracion de las
+            // reubicaciones-- y quien lo rellena tiene que ser el arranque,
+            // llamando a `monton_nuevo` antes de `principal`. Eso todavia no
+            // existe: `arranque.rs` lo lleva escrito en su propia cabecera,
+            // *"montar un monton: no, eso es `pleno` y llega despues"*.
+            //
+            // ** Bajarlo a un cero seria repetir exactamente el fallo que
+            // `Const::Texto` tuvo durante meses: una pieza que se calcula bien y
+            // no la lee nadie, y un binario firmado que devuelve basura. Aqui se
+            // dice, con el numero de cuantas veces hizo falta.
+            Instr::MontonDeLaTarea { .. } => {
+                monton_pedido += 1;
+            }
+
             Instr::Escribe {
                 direccion,
                 valor,
@@ -858,6 +875,24 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
     }
 
     cuenta.comprobaciones = comprobaciones;
+    // *** Y SI ALGUIEN PIDIO EL MONTON DE LA TAREA, SE DICE (2026-08-23).
+    //
+    // `texto + texto` baja a una llamada a `junta`, que necesita un monton. El
+    // monton de la tarea es AMBIENTE --un operador no tiene hueco donde
+    // llevarlo-- y su slot vive en la seccion `Data`, que la rellena el
+    // arranque. Eso todavia no existe.
+    //
+    // ** Se dice aqui en vez de bajarlo a un cero por lo mismo que se dijo el
+    // pozo de textos durante meses: **una pieza que se calcula bien y no la lee
+    // nadie es la firma de fallo de este proyecto**. Y por eso el gate de
+    // `[bytes] llegan` sigue sin admitir `pleno`: no se puede firmar un binario
+    // cuyo `a + b` de textos apunta a ninguna parte.
+    if monton_pedido > 0 {
+        sin_emitir.push(format!(
+            "{} vez/veces se pidio el monton de la tarea y no hay: falta que el arranque              lo monte y lo deje en la seccion `Data`",
+            monton_pedido
+        ));
+    }
     cuenta.huecos_de_llamada = salida_huecos;
     cuenta.reubicaciones = reubicaciones;
     cuenta.sin_emitir = sin_emitir;
@@ -979,7 +1014,7 @@ fn nombres_sueltos(f: &FuncionIr) -> Vec<String> {
                 }
             }
             // No lleva ningun `Valor`: su dato es un indice de tabla.
-            Instr::Direccion { .. } => {}
+            Instr::Direccion { .. } | Instr::MontonDeLaTarea { .. } => {}
             Instr::Lee { direccion, .. } => mira(direccion, &mut sueltos),
             Instr::Escribe {
                 direccion, valor, ..

@@ -919,6 +919,44 @@ punto** (la coma ya separa argumentos); `1/3` **redondea a 28 digitos y avisa
 una vez**, no falla; y **sin enteros de precision arbitraria** en la primera
 version -- si hace falta criptografia, entra como libreria y no como tipo.
 
+### 10.3b ⚠ LA LEY DE LOS 64 BITS -- honesto al silicio, no al catalogo
+
+> Eddi, 2026-08-23: *"no imites todo Rust. Si Rust pone `i128`, es su problema.
+> Necesito que mi INTI sea honesto a base de CPU desde 64 bit, a menos que me
+> den 128 bits: ahí cambian las cosas."*
+
+**Regla:** el ancho maximo de un entero de INTI es **el ancho que la maquina
+sabe operar en una instruccion**. Hoy son 64. No hay `entero128` ni
+`natural128`, y no es una carencia: es la misma tesis del lenguaje aplicada al
+tipo mas usado.
+
+```text
+   entero64      un `add`, un `imul`, un `idiv`      -> UNA instruccion
+   entero128     una rutina de biblioteca            -> software fingiendo
+```
+
+★★ **Y ya se cobro una vez, el mismo dia.** Este documento prometio durante
+meses un `decimal` con **coeficiente de 128 bits**. Al ir a construirlo la cifra
+bajo a 64 --seccion 10.3-- con el argumento que la resume: *"INTI es un guiador
+al Samurai CPU"*. Un lenguaje cuya portada dice **"no hay nadie entre el fuente
+y la instruccion"** no puede meter una llamada oculta en su tipo numerico.
+
+⚠ **Lo que esto NO dice**, para que no se lea de mas:
+
+- **No prohibe numeros grandes.** La criptografia los necesita y entran como
+  **libreria, no como tipo** (10.3). Escrito `grande.multiplica(a, b)`, el
+  precio se lee; escrito `a * b`, se esconde.
+- **No es una decision para siempre.** La frase de Eddi lleva su propia puerta:
+  *"a menos que me den 128 bits"*. El dia que el silicio opere 128 en una
+  instruccion, esta seccion cambia -- y **lo que cambia es una fila de
+  `medidas.toml`**, no el compilador.
+
+★ Es la misma forma de la seccion 7.1: INTI no promete lo que la maquina no
+tiene. Prometerlo es como se acaba con un lenguaje que "soporta" algo que en
+realidad emula.
+
+---
+
 ### 10.4 Concurrencia
 
 Las tres reglas de la seccion 4 (R1/R2/R3). Sin GIL, sin cerrojos, sin

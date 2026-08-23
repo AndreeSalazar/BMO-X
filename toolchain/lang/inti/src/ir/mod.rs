@@ -274,6 +274,17 @@ impl<'t> Descenso<'t> {
         }
     }
 
+    /// Es esta expresion un `texto`?
+    ///
+    /// ** Se pregunta sobre el ARBOL y no sobre el valor ya bajado, por lo mismo
+    /// que la clase y el signo: un valor no dice de que tipo era.
+    fn es_texto(&self, e: &Expr) -> bool {
+        matches!(
+            self.plano.tipo_de(e, &self.tipos),
+            Some(crate::arbol::Tipo::Nombre(ref n)) if n == "texto"
+        )
+    }
+
     /// La direccion de un sitio de memoria escrito con `.` o con `[]`.
     ///
     /// ** Devolver la DIRECCION y no el valor es lo que deja usar la misma
@@ -669,6 +680,40 @@ impl<'t> Descenso<'t> {
                 // direccion, `a < b` compara direcciones.
                 let sin_signo = self.plano.sin_signo(izquierda, &self.tipos)
                     || self.plano.sin_signo(derecha, &self.tipos);
+
+                // *** `texto + texto` NO ES UNA SUMA: ES UNA LLAMADA (2026-08-23)
+                //
+                // Bajarlo a un `add` sumaria las DOS DIRECCIONES y devolveria un
+                // numero que no apunta a ningun sitio. Compilaria, correria, y
+                // daria basura -- la misma familia que el signo de esta misma
+                // manana: **una respuesta equivocada, en silencio**.
+                //
+                // Lo que hace falta es reservar y copiar, porque un `texto` es
+                // INMUTABLE: si `a + b` no puede tocar ni `a` ni `b`, el
+                // resultado es un TERCER objeto. Eso es `junta`, y esta escrita
+                // en INTI en `runtime/objetos/texto.inti`.
+                //
+                // ** El monton NO viaja en la expresion: un operador no tiene
+                // hueco donde llevarlo. Se coge con `Instr::MontonDeLaTarea`,
+                // que es ambiente -- como en cualquier lenguaje con objetos.
+                if matches!(op, Op::Suma) && self.es_texto(izquierda) && self.es_texto(derecha) {
+                    // [!] IZQUIERDA PRIMERO. La Regla 8 fija el orden de
+                    // evaluacion, y este camino no puede tener otro que el de
+                    // al lado: si `a` y `b` fueran llamadas con efecto, `a + b`
+                    // los haria en distinto orden segun el TIPO de a y b. Eso es
+                    // una sorpresa que depende de algo invisible.
+                    let i = self.expresion(izquierda);
+                    let d = self.expresion(derecha);
+                    let m = self.temporal();
+                    self.pon(Instr::MontonDeLaTarea { destino: m });
+                    let t = self.temporal();
+                    self.pon(Instr::Llama {
+                        destino: Some(t),
+                        que: Valor::Nombre("junta".to_string()),
+                        argumentos: vec![Valor::Temporal(m), i, d],
+                    });
+                    return Valor::Temporal(t);
+                }
                 let i = self.expresion(izquierda);
                 let d = self.expresion(derecha);
 
