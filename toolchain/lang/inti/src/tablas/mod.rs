@@ -293,3 +293,171 @@ impl Runtime {
             .collect()
     }
 }
+
+// ===================================================================
+//  EL CATALOGO DE LA BIBLIOTECA
+// ===================================================================
+//
+//  ** Se mudo aqui desde `perfil` el 2026-08-23, y no lo pidio un diseno:
+//  lo pidio `tests/linaje.rs`, con la misma frase con la que este modulo nacio.
+//
+//      disposicion (gen 3) mira a perfil (gen 4) en mod.rs
+//
+//  `disposicion` necesito saber si un tipo CRECE --para poder decir que un
+//  campo de `texto` mide una referencia-- y la lista vivia dentro de `perfil`,
+//  que es su hermano mayor. Pedirsela lo habria atado: el dia que `perfil` se
+//  reescriba, `disposicion` se va con el.
+//
+//  *** Y la regla que resuelve es la que este fichero ya tenia escrita arriba:
+//
+//      Una tabla vive en la generacion mas baja que la necesita.
+//
+//  Es la SEGUNDA vez que se aplica --`Modulos` fue la primera-- y la segunda vez
+//  es la que dice si una regla era una regla o una excusa.
+//
+//  [!] Lo que NO se mudo: el recorrido que decide a quien acusar. Eso es
+//  analisis y sigue en `perfil`. Aqui solo esta el DATO -- que es la linea que
+//  separa este modulo de sus lectores.
+
+pub const RUTA_BIBLIOTECA: &str = "lang/inti/biblioteca.toml";
+
+const INCRUSTADA: &str =
+    include_str!("../../../../forge/sem-asm/tables/lang/inti/biblioteca.toml");
+
+/// Lo que el compilador sabe de la biblioteca sin conocerla.
+///
+/// Sale de `biblioteca.toml` por el mismo motivo que las palabras: **son datos
+/// sobre la biblioteca, no sobre el lenguaje**. Si vivieran aqui, anadir una
+/// operacion de sistema obligaria a recompilar el compilador.
+#[derive(Debug, Clone)]
+pub struct Catalogo {
+    crecen: HashSet<String>,
+    without_size: HashSet<String>,
+    /// **Lo que `llano` no admite por lo que CUESTA.**
+    ///
+    /// ** Lista aparte de `without_size` porque el motivo es otro, y el mensaje
+    /// tambien: uno manda a poner una medida y el otro explica un precio. Una
+    /// sola lista habria obligado a un mensaje que valiera para los dos, y un
+    /// mensaje que vale para dos motivos no explica ninguno.
+    cuestan: HashSet<String>,
+    /// Los perfiles que el compilador sabe bajar a bytes HOY.
+    ///
+    /// ** No es una prohibicion del lenguaje: `pleno` esta especificado entero y
+    /// es legitimo. Es el compilador diciendo lo que no sabe hacer todavia --y
+    /// distinguir esas dos cosas es la mitad del valor del aviso.
+    ///
+    /// Vive en la tabla y no en un `if` porque el dia que `pleno` baje a bytes
+    /// lo que cambia es una fila. Un `if` habria que encontrarlo.
+    llegan_a_bytes: HashSet<String>,
+}
+
+impl Catalogo {
+    pub fn por_defecto() -> Self {
+        Self::desde_texto(INCRUSTADA)
+    }
+
+    pub fn cargar(raices: &Roots) -> Self {
+        match raices.locate(RUTA_BIBLIOTECA).and_then(|p| std::fs::read_to_string(p).ok()) {
+            Some(t) => Self::desde_texto(&t),
+            None => Self::por_defecto(),
+        }
+    }
+
+    /// Si la tabla esta rota se usa una vacia **y el analisis deja de acusar**.
+    ///
+    /// Es a proposito: una tabla ilegible no puede convertirse en "todo esta
+    /// prohibido", porque entonces un fichero de datos corrupto pararia
+    /// compilaciones correctas y el mensaje hablaria del programa del usuario
+    /// en vez de la instalacion.
+    pub(crate) fn desde_texto(t: &str) -> Self {
+        let raiz: toml::Value = match t.parse() {
+            Ok(v) => v,
+            Err(_) => return Self::vacio(),
+        };
+        let lista = |seccion: &str, clave: &str| -> HashSet<String> {
+            raiz.get(seccion)
+                .and_then(|s| s.get(clave))
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        Self {
+            crecen: lista("llano", "tipos_que_crecen"),
+            without_size: lista("llano", "tipos_sin_medida"),
+            cuestan: lista("llano", "tipos_que_cuestan"),
+            llegan_a_bytes: lista("bytes", "llegan"),
+        }
+    }
+
+    /// **Este tipo crece?** -- y por tanto se guarda por REFERENCIA.
+    ///
+    /// La pregunta nacio para el perfil (*"crece, luego pide monton, y en
+    /// `llano` no hay"*) y resulta que la misma fila contesta otra:
+    /// **`disposicion` necesita saber cuanto mide un campo de `texto`**, y lo que
+    /// mide es una direccion, no el texto.
+    ///
+    /// ** Se expone en vez de copiar la lista a `medidas.toml` porque son la
+    /// MISMA fila leida dos veces, y dos declaraciones de la misma cosa acaban
+    /// discrepando -- que es lo que este fichero ya avisa de si mismo.
+    pub fn crece(&self, nombre: &str) -> bool {
+        self.crecen.contains(nombre)
+    }
+
+    /// **Este tipo no dice su medida?** -- y entonces no cabe en `llano`.
+    ///
+    /// Hoy la lista esta vacia y se queda: el dia que aparezca un tipo asi, el
+    /// sitio existe y el mensaje ya esta escrito.
+    pub fn sin_medida(&self, nombre: &str) -> bool {
+        self.without_size.contains(nombre)
+    }
+
+    /// **Este tipo cuesta demasiado para `llano`?** -- que no es lo mismo que
+    /// faltarle algo. `numero` mide: lo que pasa es que una suma suya cuesta
+    /// entre 5 y 20 veces una entera.
+    pub fn cuesta(&self, nombre: &str) -> bool {
+        self.cuestan.contains(nombre)
+    }
+
+    /// **Este perfil llega a bytes hoy?**
+    ///
+    /// [!] La lista vacia significa *"no lo se"*, no *"ninguno"*, y por eso el
+    /// llamador tiene que mirar tambien si esta vacia. Es la misma cautela que
+    /// `vacio()`: una tabla ilegible no puede parar compilaciones correctas.
+    pub fn llega_a_bytes(&self, perfil: &str) -> bool {
+        self.llegan_a_bytes.is_empty() || self.llegan_a_bytes.contains(perfil)
+    }
+
+    /// **Que perfiles sabe bajar a bytes este compilador.** Sale de la tabla,
+    /// no de un `if`, y por eso se puede ENSENAR: es la lista que contesta
+    /// *"que puedes hacer?"* en vez de esperar a que alguien choque con `E0073`.
+    pub fn perfiles_que_llegan(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.llegan_a_bytes.iter().cloned().collect();
+        v.sort();
+        v
+    }
+
+    /// [!] Vacio, y NO por defecto: `Medidas::default()` es lo que queda cuando
+    /// la tabla de medidas esta rota, y ahi todo esta vacio ya. Que el catalogo
+    /// tambien lo este mantiene la misma respuesta --*"no se cuanto mide"*-- en
+    /// vez de anadir una segunda historia encima de una instalacion mala.
+    fn vacio() -> Self {
+        Self {
+            crecen: HashSet::new(),
+            without_size: HashSet::new(),
+            cuestan: HashSet::new(),
+            // ** Vacio quiere decir NO ACUSAR, y aqui tambien: una tabla
+            // ilegible no puede convertirse en "ningun perfil llega a bytes".
+            llegan_a_bytes: HashSet::new(),
+        }
+    }
+}
+
+impl Default for Catalogo {
+    fn default() -> Self {
+        Self::vacio()
+    }
+}

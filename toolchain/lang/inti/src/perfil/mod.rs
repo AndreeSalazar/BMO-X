@@ -32,109 +32,16 @@
 //! "aqui nadie comprueba por ti"**. Por eso `invoca` no lo necesita --al otro
 //! lado hay un kernel que valida una capability-- y `entrada_puerto` si.
 
-use std::collections::HashSet;
 
-use bmo_mods::Roots;
 
 use crate::arbol::*;
 use crate::arquitectura::Maquina;
+// El catalogo se mudo a `tablas` (gen 1) el 23-08: lo necesita tambien
+// `disposicion`, que es de la 3 y no puede mirar aqui. Ver el LINAJE.
+pub use crate::tablas::{Catalogo, RUTA_BIBLIOTECA as RUTA};
 use crate::aviso::{codigos, Aviso, Cosecha, Sitio};
 
 /// La ruta relativa a una raiz de tablas.
-pub const RUTA: &str = "lang/inti/biblioteca.toml";
-
-const INCRUSTADA: &str =
-    include_str!("../../../../forge/sem-asm/tables/lang/inti/biblioteca.toml");
-
-/// Lo que el compilador sabe de la biblioteca sin conocerla.
-///
-/// Sale de `biblioteca.toml` por el mismo motivo que las palabras: **son datos
-/// sobre la biblioteca, no sobre el lenguaje**. Si vivieran aqui, anadir una
-/// operacion de sistema obligaria a recompilar el compilador.
-#[derive(Debug, Clone)]
-pub struct Catalogo {
-    crecen: HashSet<String>,
-    without_size: HashSet<String>,
-    /// **Lo que `llano` no admite por lo que CUESTA.**
-    ///
-    /// ** Lista aparte de `without_size` porque el motivo es otro, y el mensaje
-    /// tambien: uno manda a poner una medida y el otro explica un precio. Una
-    /// sola lista habria obligado a un mensaje que valiera para los dos, y un
-    /// mensaje que vale para dos motivos no explica ninguno.
-    cuestan: HashSet<String>,
-    /// Los perfiles que el compilador sabe bajar a bytes HOY.
-    ///
-    /// ** No es una prohibicion del lenguaje: `pleno` esta especificado entero y
-    /// es legitimo. Es el compilador diciendo lo que no sabe hacer todavia --y
-    /// distinguir esas dos cosas es la mitad del valor del aviso.
-    ///
-    /// Vive en la tabla y no en un `if` porque el dia que `pleno` baje a bytes
-    /// lo que cambia es una fila. Un `if` habria que encontrarlo.
-    llegan_a_bytes: HashSet<String>,
-}
-
-impl Catalogo {
-    pub fn por_defecto() -> Self {
-        Self::desde_texto(INCRUSTADA)
-    }
-
-    pub fn cargar(raices: &Roots) -> Self {
-        match raices.locate(RUTA).and_then(|p| std::fs::read_to_string(p).ok()) {
-            Some(t) => Self::desde_texto(&t),
-            None => Self::por_defecto(),
-        }
-    }
-
-    /// Si la tabla esta rota se usa una vacia **y el analisis deja de acusar**.
-    ///
-    /// Es a proposito: una tabla ilegible no puede convertirse en "todo esta
-    /// prohibido", porque entonces un fichero de datos corrupto pararia
-    /// compilaciones correctas y el mensaje hablaria del programa del usuario
-    /// en vez de la instalacion.
-    fn desde_texto(t: &str) -> Self {
-        let raiz: toml::Value = match t.parse() {
-            Ok(v) => v,
-            Err(_) => return Self::vacio(),
-        };
-        let lista = |seccion: &str, clave: &str| -> HashSet<String> {
-            raiz.get(seccion)
-                .and_then(|s| s.get(clave))
-                .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        Self {
-            crecen: lista("llano", "tipos_que_crecen"),
-            without_size: lista("llano", "tipos_sin_medida"),
-            cuestan: lista("llano", "tipos_que_cuestan"),
-            llegan_a_bytes: lista("bytes", "llegan"),
-        }
-    }
-
-    /// **Que perfiles sabe bajar a bytes este compilador.** Sale de la tabla,
-    /// no de un `if`, y por eso se puede ENSENAR: es la lista que contesta
-    /// *"que puedes hacer?"* en vez de esperar a que alguien choque con `E0073`.
-    pub fn perfiles_que_llegan(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.llegan_a_bytes.iter().cloned().collect();
-        v.sort();
-        v
-    }
-
-    fn vacio() -> Self {
-        Self {
-            crecen: HashSet::new(),
-            without_size: HashSet::new(),
-            cuestan: HashSet::new(),
-            // ** Vacio quiere decir NO ACUSAR, y aqui tambien: una tabla
-            // ilegible no puede convertirse en "ningun perfil llega a bytes".
-            llegan_a_bytes: HashSet::new(),
-        }
-    }
-}
 
 /// Lo que sale del analisis, aparte de los avisos.
 #[derive(Debug, Clone, Default)]
@@ -191,7 +98,7 @@ pub fn comprobar(
     // destino. El gate decia que si sobre algo que no hacia nada, y una firma
     // sobre eso es peor que ninguna firma.
     let nombre_del_perfil = m.perfil.nombre();
-    if !cat.llegan_a_bytes.is_empty() && !cat.llegan_a_bytes.contains(nombre_del_perfil) {
+    if !cat.llega_a_bytes(nombre_del_perfil) {
         avisos_del_perfil.push(
             Aviso::nuevo(
                 codigos::PERFIL_SIN_BYTES,
@@ -557,9 +464,9 @@ impl<'c> Vigia<'c> {
                 if !self.llano() {
                     return;
                 }
-                if self.cat.crecen.contains(n) {
+                if self.cat.crece(n) {
                     self.crece(&format!("`{}`", n), sitio);
-                } else if self.cat.cuestan.contains(n) {
+                } else if self.cat.cuesta(n) {
                     self.acusa(
                         Aviso::nuevo(
                             codigos::CUESTA_DEMASIADO,
@@ -582,7 +489,7 @@ impl<'c> Vigia<'c> {
                             ),
                         ),
                     );
-                } else if self.cat.without_size.contains(n) {
+                } else if self.cat.sin_medida(n) {
                     self.acusa(
                         Aviso::nuevo(
                             codigos::FALTA_TAMANO,
