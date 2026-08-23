@@ -540,3 +540,154 @@ icono por defecto seria un cuadro macizo con una `D`.
 
 Ver [`QUE_DESBLOQUEA.md`](../identidad/QUE_DESBLOQUEA.md) para el censo, `AVANCES.md` para el
 estado y `BMO-externo/doom-port/` (fuera del repo) para la sonda y el unity.
+
+
+---
+
+# ★★★ EL PLAN DE 2026-08-23 -- Y LA MUERTE DE DOOM, LOCALIZADA EN UNA LINEA
+
+> La pregunta del dueno: *"entonces el plan para arrancar a DOOM no es por abrir
+> o compilar sino por sondas rojas, no?"*. **Si.** Y son tres puertas
+> independientes, que es lo que hacia falta separar.
+
+```text
+   ABRIR      hecho en codigo el 23-08 (el doble clic).  Falta UN ARRANQUE.
+   COMPILAR   `doom.bex` compila hoy: 880.250 B, bandera puesta.  El que NO
+              pasa es el build de la IMAGEN, y lo para L6a -- que es de INTI y
+              no de DOOM.
+   JUGAR      las sondas rojas.  Y a partir de hoy ya no son una investigacion:
+              son una linea con nombre y numero.
+```
+
+## 1 -- ✅ LOCALIZADO: `resolve_arrow_expr_offset` acaba en `.unwrap_or(0)`
+
+`toolchain/lang/c/src/parser/types.rs`:
+
+```rust
+    pub(super) fn resolve_arrow_expr_offset(&self, expr: &Expr, field: &str) -> u32 {
+        self.resolve_expr_type(expr)
+            .and_then(|t| Self::pointee_struct_of(&t).map(str::to_string))
+            .and_then(|s| self.get_field_offset(&s, field))
+            .unwrap_or(0)          //  <-- AQUI
+    }
+```
+
+**Cuando el tipo de la base no se deduce, el offset del campo pasa a ser CERO en
+silencio.** Ni error ni aviso: la escritura cae en el primer campo del struct.
+
+Y `tope - 1` es una binaria, que `resolve_expr_type` no sabe tipar. Asi que:
+
+```c
+   (tope - 1)->next = &unsorted;    // escribe en `prev`, que es el campo 0
+```
+
+`next` conserva `ds + 1` --una posicion mas alla del final--, el recorrido se
+va del array, y en `+0x2c` (`scale`) revienta. **Es `R_SortVisSprites+0x2c6`
+exacto, sin un cabo suelto.**
+
+[!] Y tiene hermano en el mismo camino: `field_type_via_pointer` termina en
+`.unwrap_or(TypeSpec::Long)`, o sea que el **ancho** de la escritura tambien se
+inventa: 8 bytes.
+
+### Como se llego, en cinco casillas y una vuelta
+
+`toolchain/lang/c/src/tests/sonda_resta_de_punteros.rs`:
+
+```text
+   `tope - 1` calcula la direccion            VERDE   560 = 7 x 80
+   con el puntero en una VARIABLE, escribe    VERDE
+   EN LINEA, escribe                          ROJA
+   y donde cae                                `1 0`  -> al campo 0, no al suyo
+```
+
+★★ **La casilla que nombra al culpable es la ultima**, y por eso se conserva: un
+`ROJA` dice que algo falla; `1 0` dice **que** falla. La diferencia entre las dos
+verdes --variable intermedia si, en linea no-- es lo que apunta al TIPO y no a
+la aritmetica ni al `->`.
+
+## 2 -- ⚠ LA BIFURCACION, que es de diseno y no de teclado
+
+El arreglo no es cambiar el `0` por otro numero. Son dos cosas y **hay que hacer
+las dos**:
+
+```text
+   A. ENSENAR a `resolve_expr_type` a tipar una binaria de puntero:
+      `p - n`, `p + n` y `&arr[i]` conservan el tipo de `p`.
+      Eso es lo que arregla a DOOM.
+
+   B. Y que lo NO deducible deje de valer cero:
+      un offset que no se sabe es un ERROR de compilacion, no un 0.
+```
+
+⚠ **B tiene radio de explosion y hay que decirlo por delante**: hoy el `0`
+acierta **por casualidad** cada vez que el campo pedido resulta ser el primero
+del struct. Al convertirlo en error, cualquier sitio que estuviera viviendo de
+esa casualidad deja de compilar -- y eso incluye codigo de C del mundo, no solo
+DOOM. Es la ley de la casa (*nada que compile y no haga lo que dice*) contra el
+riesgo de que el arreglo se lleve por delante lo que hoy anda.
+
+★ El orden que lo hace barato: **A primero y solo**, con el banco entero
+delante. Si A pone verdes las tres casillas rojas y no rompe ninguna de las 449,
+DOOM se recompila y se prueba. **B va despues y por su cuenta**, porque su
+trabajo no es arreglar DOOM: es que el proximo fallo de esta familia se vea.
+
+## 3 -- LA SEGUNDA SONDA ROJA, y la prediccion de que es la misma familia
+
+```text
+   la_resta_al_reves_sale_negativa   `arr - &arr[5]`  ->  -679168, esperado -5
+```
+
+Su propia cabecera ya dice *"falla lo que se le da a restar"*, no la division. Y
+lo que se le da a restar es un array **decaido** en el lado izquierdo, o sea otra
+vez **un operando cuyo tipo hay que deducir**.
+
+> ★ **PREDICCION, escrita antes de tocar nada:** el paso A de arriba pone esta
+> casilla verde tambien, o la deja a un pelo. Si despues de A sigue dando
+> -679168, entonces son dos bugs y no uno, y esta es de `pointer_scale`.
+
+## 4 -- ★★★ Y LA PREDICCION GRANDE: el destrozo del MONTON puede ser el MISMO bug
+
+Del 14-08, la firma del bloque roto de la zona de DOOM:
+
+```text
+   BLOQUE 1336 en +1889056: dice 0, hasta el siguiente hay 672 | tag 1 id 1d4a11
+```
+
+Lo que se dedujo entonces, y sigue siendo cierto: **no es un desbordamiento**
+--`tag` e `id` estan intactos-- sino *"un almacenamiento suelto del ancho de un
+puntero, con valor 0"*, en el **offset 0** de la cabecera. Y en `memblock_t` el
+campo del offset 0 es `size`.
+
+★★★ Ahora hay que leer esa frase otra vez con el bug de la seccion 1 al lado:
+
+```text
+   offset 0        <- lo que devuelve `resolve_arrow_expr_offset` cuando falla
+   8 bytes         <- lo que mide `TypeSpec::Long`, el tipo que se inventa
+                      `field_type_via_pointer` cuando falla
+```
+
+**Las dos mitades de la firma son exactamente las dos mitades del fallo.**
+
+> ★ **PREDICCION:** en `z_zone.c` hay al menos una escritura por flecha sobre
+> una base calculada, y el paso A la arregla. Si tras A el monton sale SANO del
+> arranque, eran el mismo bug y DOOM pierde sus dos muertes de una vez.
+>
+> **Y si no**, tambien vale: querra decir que el destrozo del monton es otra
+> cosa, y habra costado un arranque saberlo en vez de una semana.
+
+## 5 -- EL ORDEN, con lo que aprueba cada peldano
+
+```text
+   [x] 1  localizar                sonda que dice `1 0`, no solo ROJA
+   [ ] 2  A: tipar la binaria      las 3 casillas nuevas en verde, y 449 sin
+                                   una roja nueva
+   [ ] 3  recompilar `doom.bex`    y comparar el tamano contra 880.250
+   [ ] 4  ARRANQUE                 pasa del primer fotograma dibujado?  y el
+                                   monton, sale sano?  (la prediccion de 4)
+   [ ] 5  B: el cero deja de ser   por su cuenta, con el radio medido: cuantos
+          una respuesta            sitios del arbol vivian de la casualidad
+```
+
+[!] El peldano 3 no puede llegar al disco mientras L6a pare el build. **No es
+una dependencia de DOOM: es la puerta de al lado**, y esta escrita en la seccion
+0 de `../metal/PRUEBA_EN_METAL_0823.md`.
