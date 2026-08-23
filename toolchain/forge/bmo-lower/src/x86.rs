@@ -151,13 +151,28 @@ pub fn shl_r64_cl(out: &mut Vec<u8>, reg: u8) {
 
 /// `shr <r64>, cl` -- y hacia el otro lado, metiendo CEROS por arriba.
 ///
-/// ** Ceros y no el bit de signo: `shr` y no `sar`. Para un `natural` es lo
-/// correcto siempre; el dia que INTI distinga el desplazamiento con signo sera
-/// otra fila de la tabla y otra instruccion, no una bandera de esta.
+/// ** Ceros y no el bit de signo: `shr` y no `sar`. Es lo correcto para un
+/// `natural`, y para un `entero` negativo NO lo es: `-8 desplaza derecha 1`
+/// tiene que dar -4, y metiendo ceros da un numero positivo gigante.
+///
+/// *** El dia que se predijo aqui llego el 2026-08-23: *"sera otra fila de la
+/// tabla y otra instruccion, no una bandera de esta"*. Es [`sar_r64_cl`], y la
+/// fila es `[clase] sin_signo` en `medidas.toml`.
 pub fn shr_r64_cl(out: &mut Vec<u8>, reg: u8) {
     out.push(0x48 | ((reg >> 3) & 1));
     out.push(0xD3);
     out.push(modrm_reg_direct(5, reg & 7));
+}
+
+/// `sar <r64>, cl` -- hacia la derecha ARRASTRANDO EL BIT DE SIGNO.
+///
+/// ** El hermano con signo de [`shr_r64_cl`], y la unica diferencia en los
+/// bytes es el campo `/7` en vez de `/5`. La diferencia en el resultado no es
+/// pequena: `-8 >> 1` da -4 con este y 9.223.372.036.854.775.804 con el otro.
+pub fn sar_r64_cl(out: &mut Vec<u8>, reg: u8) {
+    out.push(0x48 | ((reg >> 3) & 1));
+    out.push(0xD3);
+    out.push(modrm_reg_direct(7, reg & 7));
 }
 
 

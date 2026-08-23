@@ -173,6 +173,36 @@ enteros = [
 ]
 
 # ===================================================================
+#  *** LOS QUE NO LLEVAN SIGNO (2026-08-23)
+# ===================================================================
+#
+#  Esta fila nace de un fallo que se destapo escribiendo una guardia de
+#  desbordamiento a mano, y que llevaba ahi desde que INTI compara numeros:
+#
+#      2 < 18446744073709551615   con natural64   ->  daba FALSO
+#
+#  Porque el emisor bajaba TODA comparacion con `setl`, que es la version CON
+#  SIGNO: leidos asi, 2^64-1 es -1 y la respuesta es correcta... para otro tipo.
+#
+#  ** No era comportamiento indefinido. Era algo peor de encontrar: **una
+#  respuesta equivocada, en silencio, sin que ninguna regla saltara**. Las doce
+#  reglas de INTI vigilan lo que el estandar de C deja sin definir; esto estaba
+#  definido y mal.
+#
+#  *** Y afectaba a CUATRO familias, no a una:
+#
+#      < > <= >=          `setl/setg` en vez de `setb/seta`
+#      entre, resto       `cqo` + `idiv` en vez de `xor rdx` + `div`
+#      desplaza derecha   `shr` SIEMPRE -- que es el fallo al reves: correcto
+#                         para un natural y falso para un entero negativo
+#      la Regla 1         `jo` (desborde con signo) en vez de `jc` (acarreo)
+#
+#  ** Y esta en una TABLA porque es un dato sobre los TIPOS, no sobre la
+#  maquina: que `natural64` no lleve signo es verdad en todo silicio. El emisor
+#  pregunta y elige la instruccion; no lo decide el.
+sin_signo = ["natural8", "natural16", "natural32", "natural64"]
+
+# ===================================================================
 #  Lo que NO se alinea a su propia medida
 # ===================================================================
 #
