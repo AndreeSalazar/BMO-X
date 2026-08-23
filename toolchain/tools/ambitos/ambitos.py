@@ -108,7 +108,17 @@ def juzgar(mensaje, ambitos, alias):
 
     malos = sorted({c for c in mensaje if ord(c) > 126})
     if malos:
-        motivos.append("el mensaje trae bytes no-ASCII: " + " ".join(malos))
+        # ** Los caracteres van por su CODIGO, no en crudo (2026-08-23).
+        #
+        # En crudo, este aviso no se podia leer. La consola de Windows es cp1252
+        # y `print` reventaba con un UnicodeEncodeError al escribir el motivo --
+        # o sea que **el guardian se caia intentando decir lo que habia cazado**,
+        # y el commit se rechazaba con un traceback en vez de con su razon.
+        #
+        # Un aviso sobre bytes no-ASCII que a su vez es no-ASCII es un aviso que
+        # solo funciona cuando no hace falta.
+        nombres = " ".join("U+%04X" % ord(c) for c in malos)
+        motivos.append("el mensaje trae bytes no-ASCII: " + nombres)
 
     m = ASUNTO.match(asunto)
     if not m:
