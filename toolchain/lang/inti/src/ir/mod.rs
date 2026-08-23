@@ -241,6 +241,14 @@ struct Descenso<'t> {
     metal: &'t [String],
     /// Los tipos declarados de la funcion que se esta bajando.
     tipos: std::collections::HashMap<String, crate::arbol::Tipo>,
+    /// **Cuantos literales de lista se quedaron sin construir** por no saber el
+    /// ancho de su elemento.
+    ///
+    /// ** Se cuenta en vez de callar. Un `[1, 2, 3]` que baja a `nada` es
+    /// exactamente la firma de fallo que este proyecto persigue -- y `Const::
+    /// Texto` estuvo bajando a un cero durante meses precisamente porque el
+    /// emisor lo confesaba y nadie mas.
+    sin_ancho: usize,
 }
 
 impl<'t> Descenso<'t> {
@@ -271,7 +279,64 @@ impl<'t> Descenso<'t> {
             perfil,
             metal,
             tipos: std::collections::HashMap::new(),
+            sin_ancho: 0,
         }
+    }
+
+    /// **Construye una `lista de T` a partir de su literal**, si se puede.
+    ///
+    /// Devuelve `None` cuando no hay tipo escrito de donde sacar el ancho, y
+    /// entonces el camino normal sigue -- que hoy no emite la lista y lo dice.
+    ///
+    /// ```text
+    ///    m = monton de la tarea
+    ///    l = lista_nueva(m, cuantos, ancho)
+    ///    agrega(l, x0, ancho)
+    ///    agrega(l, x1, ancho)
+    /// ```
+    ///
+    /// ** La capacidad es EXACTA --los elementos que hay-- y no un numero con
+    /// holgura. Un literal se escribe entero: si despues crece, crecer es otra
+    /// operacion y ya tiene su propio "no cabe". Reservar de mas "por si acaso"
+    /// seria una politica de crecimiento metida donde no toca.
+    fn lista_literal(&mut self, destino: &Expr, valor: &Expr) -> Option<Valor> {
+        let Expr::Lista(elementos, _) = valor else {
+            return None;
+        };
+        // El ancho sale del tipo del DESTINO, que es el unico sitio donde esta
+        // escrito. Un `Expr::Lista` no lo lleva y no puede llevarlo.
+        let ancho = self.ancho_de_lista(destino)?;
+
+        let m = self.temporal();
+        self.pon(Instr::MontonDeLaTarea { destino: m });
+        let l = self.temporal();
+        self.pon(Instr::Llama {
+            destino: Some(l),
+            que: Valor::Nombre("lista_nueva".to_string()),
+            argumentos: vec![
+                Valor::Temporal(m),
+                Valor::Const(Const::Entero(elementos.len() as i64)),
+                Valor::Const(Const::Entero(ancho as i64)),
+            ],
+        });
+        // [!] EN ORDEN, y de izquierda a derecha. `agrega` pone al final, asi
+        // que el orden de estas llamadas ES el orden de la lista -- y ademas es
+        // el orden en que la Regla 8 dice que se evaluan los elementos. Las dos
+        // cosas coinciden aqui por suerte, y se escribe para que el dia que
+        // dejen de coincidir alguien lo vea.
+        for x in elementos {
+            let v = self.expresion(x);
+            self.pon(Instr::Llama {
+                destino: None,
+                que: Valor::Nombre("agrega".to_string()),
+                argumentos: vec![
+                    Valor::Temporal(l),
+                    v,
+                    Valor::Const(Const::Entero(ancho as i64)),
+                ],
+            });
+        }
+        Some(Valor::Temporal(l))
     }
 
     /// **Si esto es una `lista de T`, cuanto mide su elemento.**
@@ -422,6 +487,7 @@ impl<'t> Descenso<'t> {
             locales: self.locales.len() as u32,
             temporales: self.siguiente_temporal,
             instrucciones: self.instrucciones,
+            sin_ancho: self.sin_ancho,
         }
     }
 
@@ -434,6 +500,28 @@ impl<'t> Descenso<'t> {
     fn sentencia(&mut self, s: &Sent) {
         match s {
             Sent::Asigna { destino, valor, .. } => {
+                // *** `notas es lista de entero64 = [1, 2, 3]` (2026-08-23).
+                //
+                // Se construye AQUI y no en `expresion` por una razon que no es
+                // de comodidad: **el ancho del elemento sale del TIPO, y una
+                // expresion no sabe adonde va**. `[1, 2, 3]` a secas no dice si
+                // sus elementos miden uno, cuatro u ocho -- y sin ese numero no
+                // hay lista que reservar.
+                //
+                // ** La alternativa era deducir el elemento de los literales, y
+                // eso tiene reglas propias que nadie ha escrito: que mide
+                // `[1, 2.5]`? La deduccion de este compilador ya dejo esa fila
+                // fuera a proposito, con su motivo.
+                //
+                // Asi que se construye donde el tipo ESTA ESCRITO, y donde no lo
+                // este sigue sin construirse -- y `expresion` lo dice.
+                if let Some(v) = self.lista_literal(destino, valor) {
+                    if let Expr::Nombre(n, _) = destino {
+                        let l = self.local(n);
+                        self.pon(Instr::Guarda { destino: l, valor: v });
+                    }
+                    return;
+                }
                 let v = self.expresion(valor);
                 match destino {
                     Expr::Nombre(n, _) => {
@@ -1060,12 +1148,27 @@ impl<'t> Descenso<'t> {
                     },
                 }
             }
+            // ** UN LITERAL DE LISTA **SIN TIPO ESCRITO** (2026-08-23).
+            //
+            // El runtime ya existe --`lista_nueva` y `agrega`-- y un literal se
+            // construye de verdad cuando el destino dice de que es:
+            // `notas es lista de entero64 = [1, 2, 3]`. Eso pasa en
+            // `lista_literal`, en el descenso de la asignacion.
+            //
+            // *** Aqui llega el que NO lo dice, y sigue sin construirse. No es
+            // pereza: **el ancho del elemento sale del TIPO**, y `[1, 2, 3]` a
+            // secas no dice si sus elementos miden uno, cuatro u ocho. Deducirlo
+            // de los literales tiene reglas propias que nadie ha escrito -- que
+            // mide `[1, 2.5]`? -- y la deduccion de este compilador ya dejo esa
+            // fila fuera con su motivo.
+            //
+            // [!] Los elementos SI se bajan, para que sus efectos ocurran. Lo
+            // que no se hace es inventar una lista.
             Expr::Lista(v, _) => {
-                // Los elementos se bajan para que sus efectos ocurran; la lista
-                // en si necesita el runtime, que todavia no existe.
                 for x in v {
                     self.expresion(x);
                 }
+                self.sin_ancho += 1;
                 Valor::Const(Const::Nada)
             }
             Expr::Tabla(pares, _) => {

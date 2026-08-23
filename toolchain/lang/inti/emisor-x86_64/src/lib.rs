@@ -254,6 +254,24 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
     // veces lo mismo.
     salida.congelados = m.congelados.clone();
 
+    // *** Y LOS LITERALES DE LISTA QUE NO SE PUDIERON CONSTRUIR, SE DICEN.
+    //
+    // Un `[1, 2, 3]` sin tipo escrito baja a `nada`, porque **el ancho del
+    // elemento sale del TIPO** y una expresion suelta no sabe adonde va. Es una
+    // carencia real y con arreglo conocido --escribir el tipo-- asi que se
+    // cuenta en vez de callar.
+    //
+    // ** Es la leccion de `Const::Texto`, que bajo a un cero durante meses: lo
+    // unico que impidio que se olvidara fue que el emisor lo confesaba con un
+    // numero.
+    let sin_ancho: usize = m.funciones.iter().map(|f| f.sin_ancho).sum();
+    if sin_ancho > 0 {
+        salida.sin_emitir.push(format!(
+            "{} literal(es) de lista sin construir: no se sabe cuanto mide su elemento.              Escribe el tipo del destino, como `notas es lista de entero64 = [1, 2, 3]`",
+            sin_ancho
+        ));
+    }
+
     // ** SE MIRA LA IR, NO EL PERFIL. Montar un monton cuesta dos cruces de la
     // puerta, y un programa que no toca objetos no tiene por que pagarlos.
     // Preguntarselo al perfil seria adivinar; preguntarselo a la IR es leer.

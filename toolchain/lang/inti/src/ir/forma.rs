@@ -361,6 +361,14 @@ pub struct FuncionIr {
     pub locales: u32,
     pub temporales: u32,
     pub instrucciones: Vec<Instr>,
+    /// **Cuantos literales de lista se quedaron sin construir** por no saber el
+    /// ancho de su elemento (2026-08-23).
+    ///
+    /// ** Se cuenta en vez de callar. Un `[1, 2, 3]` que baja a `nada` es la
+    /// firma de fallo que este proyecto persigue, y ya se pago una vez:
+    /// `Const::Texto` bajo a un cero durante meses, y lo unico que impidio que
+    /// se olvidara fue que el emisor lo confesaba con un numero.
+    pub sin_ancho: usize,
 }
 
 /// **Una tabla CONGELADA: sus bytes, ya hechos.**
