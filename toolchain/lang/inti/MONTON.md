@@ -36,13 +36,32 @@ Que es exactamente como funciona todo lo demas en BMO-X.
 ## 1. LA DISPOSICION -- la unica frontera entre las piezas
 
 ```text
-    monton + 0    libre    la primera direccion sin repartir
-    monton + 8    fin      la primera direccion que ya NO es del monton
-    monton + 16   ...      desde aqui se reparte
+    monton + 0    libre     la primera direccion sin repartir
+    monton + 8    fin       la primera direccion que ya NO es del monton
+    monton + 16   huecos    la cabeza de la lista de huecos, 0 = ninguno
+    monton + 24   ...       reservado, para que el reparto empiece alineado a 16
+    monton + 32   ...       desde aqui se reparte
 ```
 
-Tres lineas. **Todo lo que una pieza sabe de la otra esta aqui**, y por eso una
-pieza se puede cambiar de golpe sin mirar la de al lado.
+Y **cada trozo repartido lleva su medida delante** (2026-08-23):
+
+```text
+    trozo - 16    medida      bytes del payload, siempre multiplo de 16
+    trozo -  8    siguiente   solo mientras esta suelto. 0 si esta en uso
+    trozo         el payload, alineado a 16
+```
+
+**Todo lo que una pieza sabe de la otra esta aqui**, y por eso una pieza se
+puede cambiar de golpe sin mirar la de al lado.
+
+★ **Lo que cuesta, dicho con el numero delante: 16 bytes por trozo.** Lo que
+compra es que `suelta` se pueda escribir -- hasta hoy recibia una direccion y
+nada mas, y una direccion sola no dice cuanto devolver.
+
+⚠ **La alternativa era `suelta(monton, trozo, cuantos)`**, que sale gratis en
+memoria. Se descarto por lo que cuesta en la otra moneda: **un numero equivocado
+ahi no falla, corrompe el monton en silencio**. Una cabecera no se puede
+mentir.
 
 ---
 
@@ -68,25 +87,61 @@ funciones mas adelante.
 
 | operacion | que hace |
 |---|---|
-| `pide(monton, cuantos)` | reserva, alineado a 16. **0 si no cabe** |
-| `queda_en(monton)` | cuanto queda sin repartir |
-| `suelta(monton, trozo)` | hoy no hace nada -- ver abajo |
+| `pide(monton, cuantos)` | reserva, alineado a 16. **Mira los huecos ANTES de avanzar**. 0 si no cabe |
+| `queda_en(monton)` | cuanto queda sin repartir, contando solo el cursor |
+| `queda_suelto(monton)` | cuantos bytes hay sueltos y reutilizables |
+| `suelta(monton, trozo)` | ✅ **SUELTA DE VERDAD**. Devuelve los bytes que vuelven |
 
 ---
 
-## 3. ** LO QUE `suelta` NO HACE, dicho antes de que alguien lo suponga
+## 3. ✅ `suelta` YA SUELTA (2026-08-23) -- y lo que ESTA seccion decia antes
 
-Este reparto es **de avance**: el cursor solo sube. `suelta` existe, se puede
-llamar, y **no devuelve nada al monton**.
+Esta seccion se llamaba *"LO QUE `suelta` NO HACE, dicho antes de que alguien lo
+suponga"* y decia:
 
-No esta escondido en un TODO. Esta aqui, en la tabla, y en el propio fichero.
+> Este reparto es **de avance**: el cursor solo sube. `suelta` existe, se puede
+> llamar, y **no devuelve nada al monton**.
 
-Y existe desde el primer dia a proposito: un `suelta` que aparece mas tarde
-obliga a repasar todo lo escrito antes; uno que ya esta y no hace nada, no.
+Ya no. Un trozo soltado entra en una lista de huecos y **el siguiente `pide` lo
+reutiliza** -- comprobado ejecutando, que es lo unico que lo decide:
 
-**Donde entra el que si suelte:** en `reparto.inti`, y en ningun otro sitio. Una
-lista de huecos cambia ese fichero entero y **no toca `origen.inti` ni un solo
-programa que ya use `pide`**. Esa frase es toda la razon de partirlo en dos.
+```text
+    a = pide(m, 100)
+    suelta(m, a)
+    c = pide(m, 100)        ->   c ES LA MISMA DIRECCION QUE a
+```
+
+★ Y el monton se puede **auditar**: `queda_suelto` recorre la lista y suma. Sin
+ese numero, *"suelta de verdad"* seria una afirmacion sin forma de comprobarla
+desde fuera.
+
+### ⚠ La prediccion que esta seccion hizo, y la mitad que fallo
+
+Decia que la lista de huecos *"cambia `reparto.inti` entero y **no toca
+`origen.inti`** ni un solo programa que ya use `pide`"*.
+
+```text
+    ningun programa cambia      ✅ se cumplio
+    no toca `origen.inti`       ❌ NO se cumplio
+```
+
+**Una lista de huecos necesita una CABEZA**, y una cabeza es estado *del monton*,
+no del repartidor: tiene que sobrevivir entre llamadas y vivir donde vive el
+resto de lo que un monton sabe de si mismo. O sea, en la cabecera -- que la
+escribe `origen`.
+
+★★ Se deja escrito porque la frase que fallo era exactamente la clase de frase
+que este proyecto se cree: **una prediccion sobre un limite de modulo, escrita
+antes de intentarlo.** La mitad buena --que ningun programa cambia-- es la que de
+verdad justificaba partir el fichero en dos, y esa aguanto.
+
+### Lo que sigue sin hacer, y hay que decirlo
+
+- **Los huecos no se juntan.** Dos trozos sueltos y contiguos siguen siendo dos
+  huecos, asi que pedir uno del doble avanza el cursor aunque el sitio estuviera
+  ahi. Es fragmentacion, y se paga.
+- **El cursor no baja**, ni siquiera al soltar el ultimo. Solo se podria con el
+  ultimo, y una regla que funciona a veces es peor que una que no funciona nunca.
 
 ---
 
@@ -133,7 +188,8 @@ Es una fuga, esta marcada, y se va con lo mismo.
 
 ## 6. Lo que falta, en orden
 
-1. **`suelta` de verdad** -- lista de huecos. Solo `reparto.inti`.
+1. ~~**`suelta` de verdad**~~ -- ✅ **HECHO (23-08)**, con seis pruebas que
+   ejecutan. Lo que queda de ese frente es **juntar huecos contiguos**.
 2. **Que `pleno` lo use solo**: hoy un programa escribe `monton_nuevo`; un
    `texto + texto` todavia no sabe pedir memoria a nadie.
 3. **Compilacion separada**, y con ella el runtime prestado.

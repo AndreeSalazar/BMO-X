@@ -2,40 +2,124 @@
 #
 # Esta pieza NO habla con el kernel. Recibe la direccion de un monton y lo unico
 # que sabe de el es su disposicion.
+#
+#     monton + 0    libre     la primera direccion sin repartir
+#     monton + 8    fin       la primera direccion que ya NO es del monton
+#     monton + 16   huecos    la cabeza de la lista de huecos, 0 = ninguno
+#     monton + 24   ...       reservado, para que el reparto empiece alineado
+#     monton + 32   ...       desde aqui se reparte
+#
+# *** CADA TROZO LLEVA SU MEDIDA DELANTE (2026-08-23)
+#
+#     trozo - 16    medida      bytes del payload, siempre multiplo de 16
+#     trozo -  8    siguiente   solo mientras esta suelto. 0 si esta en uso
+#     trozo         el payload, alineado a 16
+#
+# ** Cuesta 16 bytes por trozo y hay que decirlo. Lo que compra es que `suelta`
+# SE PUEDA ESCRIBIR: hasta hoy recibia una direccion y nada mas, y una direccion
+# sola no dice cuanto devolver.
+#
+# La alternativa era pedirle la medida a quien suelta --`suelta(monton, trozo,
+# cuantos)`-- y sale gratis en memoria. Se descarto por lo que cuesta en la otra
+# moneda: **un numero equivocado ahi no falla, corrompe el monton en silencio**,
+# y este lenguaje existe para no tener esa clase de fallo. Una cabecera no se
+# puede mentir.
 perfil llano
 usa memoria
 
 # Reserva `cuantos` bytes. Devuelve 0 si no caben.
+#
+# Mira PRIMERO la lista de huecos y solo despues avanza el cursor: si no, un
+# programa que suelta y vuelve a pedir seguiria comiendose el monton.
 funcion pide(monton es natural64, cuantos es natural64) devuelve natural64
     crudo
         si monton = 0
             devuelve 0
 
+        pasos = (cuantos + 15) entre 16
+        medida = pasos * 16
+
+        # 1. EL PRIMERO QUE QUEPA.
+        #
+        # ** Primero-que-quepa y no mejor-ajuste a proposito. El mejor ajuste
+        # recorre la lista ENTERA en cada peticion para ahorrar unos bytes, y
+        # este monton reparte a 16: los bytes que ahorraria ya estan
+        # redondeados. Se paga un recorrido y no se compra nada.
+        cambiante anterior = 0
+        cambiante hueco = lee_natural64(monton + 16)
+        repite mientras hueco no es 0
+            si lee_natural64(hueco - 16) >= medida
+                # Sacarlo de la lista. Si es la cabeza, la cabeza cambia; si no,
+                # el de delante se salta este.
+                si anterior = 0
+                    escribe_natural64(monton + 16, lee_natural64(hueco - 8))
+                sino
+                    escribe_natural64(anterior - 8, lee_natural64(hueco - 8))
+                # ** Y se marca EN USO. Sin esto, un trozo repartido conserva el
+                # enlace del que fue su vecino en la lista, y el dia que alguien
+                # recorra los huecos para contarlos se mete por una rama que ya
+                # no es suya.
+                escribe_natural64(hueco - 8, 0)
+                devuelve hueco
+            anterior = hueco
+            hueco = lee_natural64(hueco - 8)
+
+        # 2. NO HABIA HUECO: avanzar el cursor.
         libre = lee_natural64(monton)
         fin = lee_natural64(monton + 8)
-        pasos = (cuantos + 15) entre 16
-        nuevo = libre + pasos * 16
+        nuevo = libre + 16 + medida
         si nuevo > fin
             devuelve 0
 
         escribe_natural64(monton, nuevo)
-        devuelve libre
+        escribe_natural64(libre, medida)
+        escribe_natural64(libre + 8, 0)
+        devuelve libre + 16
 
-# Cuanto queda sin repartir.
+# Cuanto queda SIN REPARTIR, contando solo el cursor.
+#
+# [!] No cuenta lo que hay suelto en la lista de huecos, y no es un descuido: son
+# dos numeros distintos y juntarlos en uno daria una respuesta que no sirve para
+# ninguna de las dos preguntas. Lo suelto lo dice `queda_suelto`.
 funcion queda_en(monton es natural64) devuelve natural64
     crudo
         si monton = 0
             devuelve 0
         devuelve lee_natural64(monton + 8) - lee_natural64(monton)
 
-# Suelta un trozo. HOY NO HACE NADA, y se dice en vez de fingir.
+# Cuantos bytes hay SUELTOS y reutilizables, recorriendo la lista.
 #
-# Este reparto es de AVANCE: el cursor solo sube. Soltar de verdad pide una
-# lista de huecos, y esa es la pieza siguiente -- que entra AQUI, en este
-# fichero, sin tocar `origen.inti` ni un programa que ya use `pide`.
+# ** Existe para que el monton se pueda AUDITAR, que es la costumbre de esta
+# casa: un numero que sale del propio monton y no de quien lo usa. Sin esto,
+# "suelta de verdad" seria una afirmacion sin forma de comprobarla.
+funcion queda_suelto(monton es natural64) devuelve natural64
+    crudo
+        si monton = 0
+            devuelve 0
+        cambiante total = 0
+        cambiante hueco = lee_natural64(monton + 16)
+        repite mientras hueco no es 0
+            total = total + lee_natural64(hueco - 16)
+            hueco = lee_natural64(hueco - 8)
+        devuelve total
+
+# Suelta un trozo, DE VERDAD. Devuelve los bytes que vuelven al monton.
 #
-# Existe desde hoy para que los programas escriban la llamada desde el
-# principio. Un `suelta` que aparece mas tarde obliga a repasar todo lo escrito
-# antes; uno que ya esta y no hace nada, no.
+# ** Devuelve la medida y no un si/no porque es lo unico que quien suelta no
+# puede saber por su cuenta -- y porque es el numero con el que una prueba puede
+# exigir que el monton haya recibido algo.
+#
+# El cursor NO baja. Un trozo suelto vuelve por la lista de huecos, no
+# desandando el camino: solo se podria desandar el ULTIMO, y una regla que
+# funciona a veces es peor que una que no funciona nunca.
 funcion suelta(monton es natural64, trozo es natural64) devuelve natural64
-    devuelve 0
+    crudo
+        si monton = 0
+            devuelve 0
+        si trozo = 0
+            devuelve 0
+
+        medida = lee_natural64(trozo - 16)
+        escribe_natural64(trozo - 8, lee_natural64(monton + 16))
+        escribe_natural64(monton + 16, trozo)
+        devuelve medida
