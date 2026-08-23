@@ -216,6 +216,24 @@ impl Plano {
             // Un bufer es una direccion. Lo que mide su ELEMENTO se pregunta
             // con `elemento`, que es otra pregunta.
             Tipo::Bufer(_) => self.medidas.de("bufer"),
+            // ** LO QUE CRECE SE GUARDA POR REFERENCIA (2026-08-22).
+            //
+            // Un `lista de T` vive en el monton --con su cabecera, su contador y
+            // su capacidad, ver `bmo_abi::dynobj::lista`-- y lo que se guarda en
+            // una variable es **donde esta**, no lo que es. Mide lo que un
+            // puntero y **no depende de cuantos elementos tenga**, que es justo
+            // lo que hace que un campo de lista sea posible.
+            //
+            // *** Y se sabe por la FORMA del tipo, no por una lista de nombres:
+            // `Lista` y `Tabla` son variantes del arbol, asi que la pregunta se
+            // contesta mirando, sin una segunda tabla que mantener de acuerdo
+            // con `tipos_que_crecen`.
+            //
+            // ** `texto` no esta aqui, y no es un olvido: es un `Tipo::Nombre`,
+            // no una variante, y hasta que exista de verdad su medida sigue
+            // siendo *"no lo se"* -- que es la respuesta correcta para algo que
+            // no se puede construir todavia.
+            Tipo::Lista(_) | Tipo::Tabla(_, _) => self.medidas.de("referencia"),
             _ => None,
         }
     }
@@ -227,6 +245,8 @@ impl Plano {
                 None => self.medidas.de(n),
             },
             Tipo::Bufer(_) => self.medidas.de("bufer"),
+            // Una referencia se alinea como lo que es: una direccion.
+            Tipo::Lista(_) | Tipo::Tabla(_, _) => self.medidas.de("referencia"),
             _ => None,
         }
     }
