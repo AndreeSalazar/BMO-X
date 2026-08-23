@@ -397,3 +397,40 @@ bytes = [0x0F, 0x01, 0xC9]
 [ud2]
 description = "Instruccion invalida A PROPOSITO: dispara #UD. Asi se marca aqui-no-se-debe-llegar"
 bytes = [0x0F, 0x0B]
+
+# ===================================================================
+#  ** COMA FLOTANTE ESCALAR -- lo que un motor grafico pide (2026-08-22)
+# ===================================================================
+#
+#  Eddi: *"los motores exigen matematicas"*. Y tenia razon en algo mas concreto
+#  de lo que parecia: `+ - * /` de flotantes ya se emitian --son operadores del
+#  lenguaje-- pero la tabla de la maquina **no exponia ni un nombre de coma
+#  flotante**. Un `ray.inti` no estaba bloqueado por `pleno`: estaba bloqueado
+#  por la raiz cuadrada.
+#
+#  ** Estas tres filas se pudieron escribir porque el emisor aprendio UNA
+#  convencion --`xmm0`..`xmm3`--, no tres instrucciones. INTI lleva los
+#  flotantes en registros generales; la tabla nombra el registro SSE y el emisor
+#  cruza el puente con un `movq`, igual que ya hacia con `u64_edx_eax`.
+#
+#  Ninguna pide `crudo`, y por la regla de siempre: **al otro lado hay alguien
+#  que comprueba**. La raiz de un negativo da NaN, que es un valor DEFINIDO por
+#  IEEE-754 -- y si alguien lo convierte a entero, ahi le espera la Regla 12.
+
+[sqrtsd]
+description = "Raiz cuadrada de un flotante64: raiz(x)"
+bytes = [0xF2, 0x0F, 0x51, 0xC0]  # sqrtsd xmm0, xmm0
+args = ["xmm0"]
+returns = "xmm0"
+
+[minsd]
+description = "El menor de dos flotante64: minimo(a, b)"
+bytes = [0xF2, 0x0F, 0x5D, 0xC1]  # minsd xmm0, xmm1
+args = ["xmm0", "xmm1"]
+returns = "xmm0"
+
+[maxsd]
+description = "El mayor de dos flotante64: maximo(a, b)"
+bytes = [0xF2, 0x0F, 0x5F, 0xC1]  # maxsd xmm0, xmm1
+args = ["xmm0", "xmm1"]
+returns = "xmm0"

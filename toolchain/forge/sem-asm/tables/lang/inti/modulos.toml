@@ -239,7 +239,34 @@ da_la_vuelta   = "invierte el orden de los bytes de un numero"
 #  compilador: porque el dia que haya un segundo modulo asi --uno de atomicas,
 #  por ejemplo-- lo que tiene que cambiar es este fichero.
 [instrucciones]
-son = ["binarios"]
+son = ["binarios", "matematica"]
+
+# ===================================================================
+#  ** MATEMATICA -- lo que un motor grafico pide (2026-08-22)
+# ===================================================================
+#
+#  Eddi: *"los motores exigen matematicas"*. Y faltaba menos de lo que parecia:
+#  `+ - * /` de flotantes ya se emitian --son operadores del lenguaje-- pero la
+#  raiz cuadrada **no existia por ningun nombre**. Un `ray.inti` no estaba
+#  bloqueado por `pleno`: se paraba en la primera normal de un vector.
+#
+#  ** Y estos nombres viven AQUI y no en `arch/x86_64/inti.toml` por la misma
+#  regla que trajo `binarios`, escrita unas lineas mas arriba:
+#
+#      lo que va en la tabla de una maquina es lo que SOLO existe alli.
+#
+#  Una raiz cuadrada existe en todas. En x86-64 es una instruccion (`sqrtsd`);
+#  en una maquina que no la tenga seran veinte y el programa sera el mismo.
+#
+#  *** La primera version las puso en la tabla de x86-64 y **eso habria obligado
+#  a un motor grafico a escribir `usa x86_64`**, o sea a declararse no portable
+#  para hacer una raiz cuadrada. La regla ya estaba escrita; lo que fallo fue
+#  leerla antes.
+[matematica]
+raiz    = "la raiz cuadrada de un flotante64"
+minimo  = "el menor de dos flotante64"
+maximo  = "el mayor de dos flotante64"
+
 
 [entrada]
 espera_tecla  = "para hasta que se pulse una tecla, y la devuelve"
