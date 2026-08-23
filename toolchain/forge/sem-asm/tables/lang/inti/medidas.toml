@@ -59,7 +59,37 @@ logico     = 1
 #  Se dejan aqui de momento en vez de adelantar la mudanza: mover un dato a un
 #  sitio "por si acaso" antes de que exista el segundo caso es como se acaba con
 #  tres tablas que dicen lo mismo.
+
+#  ===================================================================
+#   ** `numero`: LA DECISION DEL 2026-08-23, y por que esta fila importa
+#  ===================================================================
+#
+#   Esta fila abre la puerta de `pleno` en `disposicion`, que llevaba cerrada
+#   desde que ese modulo existe. Su comentario decia la condicion, y esta es.
+#
+#       numero  =  16     coeficiente entero64 + escala natural8 + 7 reservados
+#
+#   ** El coeficiente es de 64 bits y NO de 128, que es lo que el maestro dijo
+#   durante meses. Lo decidio Eddi con una frase: *"INTI es un guiador al
+#   Samurai CPU"*. Un `imul` de 64 bits ES una instruccion; uno de 128 es
+#   software fingiendo serlo -- y meter eso en el tipo mas usado contradice la
+#   tesis entera del lenguaje.
+#
+#   *** Y LA ESCALA VIAJA DENTRO, que es la diferencia con COBOL. Un
+#   `PICTURE S9(7)V99` dice su escala AL COMPILAR, y por eso cabe en 4 bytes.
+#   INTI escribe `x es numero` y ya --`1`, `2.5` y `0.1` son los tres `numero`--
+#   asi que la escala no la sabe nadie hasta que hay un valor.
+#
+#   El precio, por delante: **~18 digitos significativos EN TOTAL**. Con escala
+#   2 son 16 digitos enteros; con escala 6, doce. Es el mismo techo que tienen
+#   los datos que el COBOL de al lado lee.
+#
+#   `decimal` es el mismo tipo con su nombre largo (10.3), asi que mide igual.
+#   El dia que dejaran de medir lo mismo seria porque son dos tipos, y entonces
+#   la linea que sobra es esta, no la de arriba.
 [bytes_de_esta_maquina]
+numero  = 16
+decimal = 16
 puntero = 8
 
 #  Un `bufer de T` es una DIRECCION y nada mas: no lleva su longitud dentro.
@@ -88,15 +118,24 @@ referencia = 8
 #  Lo que NO tiene medida, y es a proposito
 # ===================================================================
 #
-#  `numero`, `decimal`, `texto`, `lista` y `tabla` no estan.
+#  ** Esta seccion tenia CINCO nombres y le quedan tres (2026-08-23):
 #
-#  No es un hueco: `biblioteca.toml` ya dice que los dos primeros no dicen su
-#  medida y que los tres ultimos CRECEN. En `llano` estan prohibidos por eso
-#  mismo, y en `pleno` lo que se guarda en un campo es una referencia --que mide
-#  lo que un puntero-- y no la cosa.
+#      texto  lista  tabla
 #
-#  El dia que `pleno` tenga campos de `texto`, la fila que hace falta es
-#  `referencia = 8` y no una medida para `texto`.
+#  `numero` y `decimal` se fueron arriba: ya tienen su disposicion decidida.
+#  Los tres que quedan **no van a tener fila aqui nunca**, y por un motivo que
+#  no es el mismo: CRECEN. Lo que crece no cabe en un campo de tamano fijo, asi
+#  que lo que se guarda es su direccion y la fila que los mide es `referencia`.
+#
+#  *** Y su lista NO se copia aqui. Vive en `biblioteca.toml` como
+#  `tipos_que_crecen`, la leen `perfil` y `disposicion`, y hay una prueba
+#  --`texto_mide_una_referencia_porque_crece`-- que exige que este fichero siga
+#  sin saber medir un `texto`. Si algun dia lo supiera, seria porque alguien
+#  copio la lista.
+#
+#  [!] La prediccion que hizo esta seccion se cumplio: decia *"el dia que
+#  `pleno` tenga campos de `texto`, la fila que hace falta es `referencia = 8` y
+#  no una medida para `texto`"*. Fue esa fila, y nada mas que esa fila.
 
 # ===================================================================
 #  Que tipos se operan con la aritmetica de coma flotante
@@ -132,3 +171,24 @@ enteros = [
     "natural8", "natural16", "natural32", "natural64",
     "entero8", "entero16", "entero32", "entero64",
 ]
+
+# ===================================================================
+#  Lo que NO se alinea a su propia medida
+# ===================================================================
+#
+#  Hasta el 2026-08-23 esta seccion no existia, y no por descuido: **todos los
+#  tipos de antes median una potencia de dos y se alineaban a ella**, asi que
+#  `alineacion_de` podia contestar con la medida y acertaba siempre.
+#
+#  `numero` rompe la coincidencia. Mide 16 porque lleva un `entero64` y un byte
+#  de escala, pero **el campo mas exigente que tiene dentro pide 8**, no 16.
+#  Alinearlo a 16 no seria incorrecto --sobra-- pero mentiria sobre el tipo, y
+#  peor: meteria hasta 8 bytes de hueco delante de cada `numero` dentro de un
+#  registro, sin que nadie pudiera ver por que.
+#
+#  ** La regla que estaba escondida dentro de la coincidencia, ahora escrita:
+#  la alineacion de un tipo es la de su campo mas exigente, y solo coincide con
+#  la medida cuando el tipo es UNA cosa.
+[alineacion]
+numero  = 8
+decimal = 8

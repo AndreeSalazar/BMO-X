@@ -45,7 +45,14 @@ fn los_tipos_con_medida_en_el_nombre_miden_lo_que_dicen() {
 fn lo_que_no_dice_su_medida_no_mide_cero() {
     let m = Medidas::por_defecto();
     assert_eq!(m.de("texto"), None);
-    assert_eq!(m.de("numero"), None);
+    assert_eq!(m.de("Inventado"), None);
+
+    // ** `numero` SALIO de esta prueba el 2026-08-23: ya dice su medida.
+    // 16 bytes -- coeficiente `entero64` mas escala -- y se alinea a 8, que es
+    // el primer tipo del lenguaje en el que medir y alinear no son lo mismo.
+    assert_eq!(m.de("numero"), Some(16));
+    assert_eq!(m.alineacion("numero"), Some(8), "no a 16: dentro hay un i64");
+    assert_eq!(m.alineacion("natural32"), Some(4), "y el resto sigue coincidiendo");
 }
 
 #[test]
@@ -496,54 +503,91 @@ fn texto_mide_una_referencia_porque_crece() {
     assert_eq!(p.medida_de(&Tipo::Nombre("Inventado".to_string())), None);
 }
 
-/// *** LA PUERTA DE `pleno` YA SOLO ESPERA AL DECIMAL (2026-08-23).
+/// *** LA PUERTA DE `pleno` ESTA ABIERTA (2026-08-23).
 ///
-/// La puerta de `comprobar` lleva su condicion escrita desde que existe, y
-/// hasta hoy la condicion era `texto`. Ya no: `texto` mide. Esta prueba fija
-/// **cual es la que queda**, para que el dia que tambien caiga no haya que
-/// deducirlo leyendo el comentario.
+/// Tuvo dos condiciones y las dos estaban escritas antes de caer:
 ///
-/// ** Se mide por las piezas y no abriendo la puerta, a proposito: abrirla para
-/// probar que se puede abrir seria abrirla. Lo que se comprueba es que las dos
-/// mitades del registro de `pleno` ya saben decir su sitio, y que la que falta
-/// es exactamente una.
+/// ```text
+///    texto    no media        -> mide una REFERENCIA, porque CRECE
+///    numero   sin disposicion -> coeficiente entero64 + escala, 16 / 8
+/// ```
+///
+/// ** Y lo que esta prueba NO dice, que importa igual: `pleno` no compila.
+/// `[bytes] llegan = ["llano"]` sigue en su sitio. Medir es el escalon de
+/// debajo de emitir -- saber DONDE va cada campo antes de saber escribir el
+/// codigo que lo toca-- y se hace primero a proposito: una disposicion mal
+/// elegida se paga en cada dato que llegue a disco.
 #[test]
-fn la_puerta_de_pleno_ya_solo_espera_al_decimal() {
-    let p = plano_vacio();
-
-    // Los tres tipos de `pleno` que crecen: los tres saben medir, y miden lo
-    // mismo, que es lo que hace posible un campo de ellos.
-    for t in [
-        Tipo::Nombre("texto".to_string()),
-        Tipo::Lista(Box::new(Tipo::Nombre("entero64".to_string()))),
-        Tipo::Tabla(
-            Box::new(Tipo::Nombre("texto".to_string())),
-            Box::new(Tipo::Nombre("entero64".to_string())),
-        ),
-    ] {
-        assert_eq!(
-            p.medida_de(&t),
-            Some(8),
-            "lo que crece se guarda por referencia: {t:?}"
-        );
-    }
-
-    // *** Y LA QUE FALTA. `numero` en `pleno` es decimal exacto --coeficiente
-    // de 128 bits mas escala-- y esa disposicion no esta decidida: cuantos
-    // bytes, en que orden, y donde va el signo.
-    //
-    // No es un olvido y no se tapa con un numero cualquiera: mientras no se
-    // decida, la respuesta honrada es "no lo se".
-    assert_eq!(
-        p.medida_de(&Tipo::Nombre("numero".to_string())),
-        None,
-        "el decimal no tiene disposicion todavia, y por eso la puerta sigue \
-         cerrada. El dia que la tenga, esto pasa a ser Some(..) y la puerta \
-         se abre entera."
+fn la_puerta_de_pleno_esta_abierta_y_un_registro_suyo_se_mide() {
+    let p = plano_de(
+        "perfil pleno\n\nregistro Cuenta\n    titular es texto\n    saldo es numero\n    movimientos es lista de numero\n",
     );
-    assert_eq!(p.medida_de(&Tipo::Nombre("decimal".to_string())), None);
+    assert!(!p.hay_errores(), "{:?}", p.codigos());
+    let r = p.valor.registro("Cuenta").expect("la puerta corto");
 
-    // [!] Y `numero` NO crece: no es que pida monton, es que cuesta. Las dos
-    // listas contestan preguntas distintas y esta prueba no las confunde.
-    assert!(!p.crece("numero"));
+    // titular  ->  8 (referencia)
+    // saldo    -> 16 (coeficiente + escala), alineado a 8: cae en el 8
+    // movimientos -> 8 (referencia)
+    assert_eq!(r.campo("titular").unwrap().desplazamiento, 0);
+    assert_eq!(r.campo("saldo").unwrap().desplazamiento, 8);
+    assert_eq!(r.campo("movimientos").unwrap().desplazamiento, 24);
+    assert_eq!(r.medida, 32);
+    assert_eq!(r.alineacion, 8, "el campo mas exigente pide 8, no 16");
+}
+
+/// ** Y la alineacion de `numero` NO es su medida -- la unica del lenguaje.
+///
+/// Si `numero` se alineara a 16, este registro mediria 48 en vez de 32: ocho
+/// bytes de hueco delante del `saldo` que nadie podria explicar mirando el
+/// fuente. La fila `[alineacion] numero = 8` es la que lo impide, y esta prueba
+/// es la que se entera si alguien la quita.
+#[test]
+fn un_numero_no_abre_un_hueco_delante() {
+    let p = plano_de(
+        "perfil pleno\n\nregistro Fila\n    marca es natural8\n    importe es numero\n",
+    );
+    let r = p.valor.registro("Fila").unwrap();
+    assert_eq!(r.campo("importe").unwrap().desplazamiento, 8, "al 8, no al 16");
+    assert_eq!(r.medida, 24);
+}
+
+
+/// *** EN `pleno` SE MIDE, PERO TODAVIA NO SE COMPRUEBA EL CAMPO.
+///
+/// Las dos mitades de este modulo tienen perfiles distintos desde el
+/// 2026-08-23, y no por comodidad: son dos preguntas.
+///
+/// ```text
+///    MEDIR      cuanto ocupa un tipo    -> no infiere nada. Vale en los dos
+///    COMPROBAR  este `.campo` existe?   -> necesita el tipo de quien lo pide,
+///                                          y en `pleno` ese tipo se INFIERE
+/// ```
+///
+/// ** Lo destapo `censo/f05_registro.inti`, que declara COMPILA y llevaba
+/// compilando desde F0. Al abrir la puerta entera se puso roja con un aviso que
+/// era **una regla de `llano` metida en `pleno`**: exigirle a `a` que diga su
+/// tipo, cuando en `pleno` los tipos son opcionales (10.11) y el suyo sale de
+/// `Alumno(...)`.
+///
+/// La inferencia no existe todavia. Lo que no puede pasar es que su ausencia se
+/// disfrace de error del programa del usuario.
+#[test]
+fn en_pleno_se_mide_pero_todavia_no_se_comprueba_el_campo() {
+    // Sin tipo escrito y usando un campo: en `pleno` esto es LEGITIMO.
+    let p = plano_de("perfil pleno\n\nregistro Punto\n    x es entero64\n\nfuncion f(p)\n    devuelve p.x\n");
+    assert!(
+        p.codigos().is_empty(),
+        "en `pleno` un tipo sin escribir se infiere, no se denuncia: {:?}",
+        p.codigos()
+    );
+    // Y aun asi el registro SE MIDIO: la mitad de arriba si trabajo.
+    assert_eq!(p.valor.registro("Punto").unwrap().medida, 8);
+
+    // El mismo fuente en `llano` si se denuncia, y sigue siendo correcto:
+    // alli los tipos son obligatorios.
+    let l = plano_de(&format!(
+        "{}registro Punto\n    x es entero64\n\nfuncion f(p)\n    devuelve p.x\n",
+        CABECERA
+    ));
+    assert_eq!(l.codigos(), vec!["E0121"]);
 }

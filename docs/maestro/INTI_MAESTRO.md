@@ -842,8 +842,62 @@ visible**, con dos formas por dentro:
 
 ```text
    entero    i64                            para contar
-   decimal   coeficiente 128b + escala      para dinero y para lo demas
+   decimal   coeficiente i64 + escala       para dinero y para lo demas
 ```
+
+### ⚠ CORRECCION del 2026-08-23: el coeficiente es de 64 bits, no de 128
+
+Este documento dijo **128 bits** desde que se escribio, y era una cifra elegida
+sin nadie enfrente. Al ir a construirlo hubo que decidirla de verdad, y la
+decision es de Eddi con un argumento mejor que la cifra:
+
+> *"INTI es un guiador al Samurai CPU."*
+
+Un `imul` de 64 bits **es una instruccion**. Un coeficiente de 128 bits no
+existe en el silicio: es software fingiendo ser una instruccion, y en un
+lenguaje cuya tesis entera es *"no hay nadie entre el fuente y la instruccion"*
+eso es la contradiccion mas cara que se podia meter en el tipo mas usado.
+
+**La disposicion, entonces:**
+
+```text
+   numero  =  16 bytes, alineacion 8
+
+     0..8    coeficiente   entero64     el numero SIN el punto
+     8..9    escala        natural8     cuantos digitos hay tras el punto
+     9..16   reservado                  y NO desperdiciado: ver abajo
+```
+
+★ **Y la escala va en el DATO, no en la declaracion. Ahi esta la diferencia con
+COBOL.** Un `PICTURE S9(7)V99` dice su escala al compilar, y por eso COBOL puede
+guardar el numero en 4 bytes. INTI escribe `x es numero` y ya: `1`, `2.5` y
+`0.1` son los tres `numero`. Sin escala declarada, la escala tiene que viajar
+**dentro**.
+
+** Lo que cuesta, dicho con el numero delante:
+
+```text
+   ~18 digitos SIGNIFICATIVOS EN TOTAL, no 18 mas los decimales
+
+   escala 2 (centimos)  ->  16 digitos enteros:  99.999.999.999.999,99
+   escala 6             ->  12 digitos enteros:  999.999.999.999,000000
+```
+
+Para dinero sobra --son noventa y nueve billones-- y **para una escala grande se
+queda corto**. Se acepta por delante: es exactamente el techo que tiene el COBOL
+de al lado, y el que tienen los datos que ese COBOL lee.
+
+[!] Los 7 bytes de la cola estan **reservados, no desperdiciados**. El dia que
+haga falta una bandera --NaN decimal, infinito, o una escala de mas de 255-- hay
+sitio sin mover un solo campo ni recompilar un solo `.bex`. Ensanchar despues un
+tipo que ya esta en disco es lo que no se puede hacer; dejar el hueco es gratis
+hoy.
+
+★★ **Lo que esto NO resuelve, y hay que decirlo:** `bmo_lower::packed` --el BCD
+que ya esta en el arbol-- es el **intercambio**, no el motor. Sirve para LEER y
+ESCRIBIR los datos que ya existen, que es para lo que se escribio. La aritmetica
+de `numero` --alinear escalas, redondear al dividir-- es otra pieza y todavia no
+existe. El maestro decia que el motor estaba pagado: estaba pagada **la mitad**.
 
 y una promesa que se puede poner en la portada:
 
