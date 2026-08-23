@@ -224,6 +224,20 @@ preservados_en_uso = []
 #  El compilador no decide cual es cual: lo dice esta tabla, y el programa se
 #  entera al compilar para la otra maquina en vez de al ejecutarse.
 [nombres]
+# -- ** matematicas de coma flotante --------------------------------
+#
+#  Los operadores `+ - * /` de flotantes ya se emitian: son del lenguaje. Estos
+#  son los que no tienen simbolo y hasta el 22-08 **no existian por ningun
+#  nombre**, asi que un motor grafico en INTI se paraba en la primera normal de
+#  un vector.
+#
+#  ** Ninguno pide `crudo`: la raiz de un negativo da NaN, que es un valor
+#  DEFINIDO por IEEE-754. Y si alguien lo convierte a entero, ahi esta la Regla
+#  12 esperando. Al otro lado hay quien comprueba.
+raiz            = "sqrtsd"
+minimo          = "minsd"
+maximo          = "maxsd"
+
 # -- tiempo y espera ------------------------------------------------
 lee_reloj       = "rdtsc"
 lee_reloj_serio = "rdtscp"

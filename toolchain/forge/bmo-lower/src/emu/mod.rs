@@ -1317,6 +1317,43 @@ impl Machine {
                             Operand::Mem(a) => self.store(Operand::Mem(a), v, if f3 { 4 } else { 8 }),
                         }
                     }
+                    // ** sqrtsd / minsd / maxsd -- las que un motor grafico
+                    // pide y `+ - * /` no dan (2026-08-22).
+                    //
+                    // La raiz es UNARIA y las otras dos binarias, pero las tres
+                    // comparten la forma: destino izquierdo, fuente derecha. Se
+                    // modelan aqui y no en un bloque aparte porque separarlas
+                    // seria repetir el `modrm` y el orden de los operandos --
+                    // que es justo donde este emulador ya se equivoco una vez.
+                    //
+                    // *** `minsd`/`maxsd` NO son conmutativas ante un NaN: el
+                    // silicio devuelve el operando FUENTE si cualquiera de los
+                    // dos es NaN. Se modela asi a proposito, aunque sorprenda:
+                    // un emulador que "arregla" al procesador es un emulador que
+                    // aprueba programas que el metal suspende.
+                    0x51 | 0x5D | 0x5F if f2 => {
+                        let (reg, src) = self.modrm(rex_r, rex_x, rex_b);
+                        let b = f64::from_bits(self.leer_xmm(src));
+                        let a = f64::from_bits(self.xmm[reg]);
+                        let r = match second {
+                            0x51 => b.sqrt(),
+                            0x5D => {
+                                if a.is_nan() || b.is_nan() || b < a {
+                                    b
+                                } else {
+                                    a
+                                }
+                            }
+                            _ => {
+                                if a.is_nan() || b.is_nan() || b > a {
+                                    b
+                                } else {
+                                    a
+                                }
+                            }
+                        };
+                        self.xmm[reg] = r.to_bits();
+                    }
                     // addsd / mulsd / subsd / divsd
                     0x58 | 0x59 | 0x5C | 0x5E if f2 => {
                         let (reg, src) = self.modrm(rex_r, rex_x, rex_b);

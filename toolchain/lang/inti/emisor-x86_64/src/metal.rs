@@ -118,6 +118,22 @@ pub(crate) fn metal(
             x86::shr_r64_imm8(out, 2, 32);
             continue;
         }
+        // ** LOS REGISTROS DE COMA FLOTANTE, y son otra clase de sitio.
+        //
+        // Este emisor lleva los flotantes en registros GENERALES: un
+        // `flotante64` son ocho bytes y se cargan con un `mov` como cualquier
+        // otro numero. Las instrucciones SSE no los leen de ahi -- viven en su
+        // propio banco.
+        //
+        // ** Asi que la tabla nombra `xmm0` y aqui se cruza el puente con un
+        // `movq`. Es exactamente lo mismo que hace `u64_edx_eax` un poco mas
+        // arriba: **la tabla nombra la convencion y el emisor la honra**, en vez
+        // de que cada instruccion nueva pida una linea de Rust.
+        if let Some(x) = registro_flotante(&def.args[i]) {
+            carga(out, IZQ, a, marco);
+            x86::movq_xmm_de_r64(out, x, IZQ);
+            continue;
+        }
         match registro_llamado(&def.args[i]) {
             Some(r) => carga(out, r, a, marco),
             None => {
@@ -226,6 +242,22 @@ pub(crate) fn registro_llamado(nombre: &str) -> Option<u8> {
     })
 }
 
+/// **Los registros de coma flotante, por su nombre.**
+///
+/// ** Solo los cuatro primeros, y es a proposito: son los que una instruccion
+/// SSE escalar puede necesitar, y una lista corta que se lee entera vale mas que
+/// una larga que nadie repasa. El dia que haga falta `xmm4`, es una linea -- y
+/// quien la anada estara mirando esta.
+pub(crate) fn registro_flotante(nombre: &str) -> Option<u8> {
+    Some(match nombre {
+        "xmm0" => 0,
+        "xmm1" => 1,
+        "xmm2" => 2,
+        "xmm3" => 3,
+        _ => return None,
+    })
+}
+
 /// Deja el resultado de la instruccion donde el emisor lo espera.
 ///
 /// ** El caso que importa es el primero, y es de silicio: hay instrucciones
@@ -245,6 +277,10 @@ pub(crate) fn recoge_de(out: &mut Vec<u8>, devuelve: Option<&str>) {
         // La puerta contesta el valor por otro registro. Aqui no se cruza la
         // puerta, pero hay instrucciones que dejan el resultado ahi.
         Some("rdx") | Some("edx") => x86::mov_r64_r64(out, IZQ, 2),
+        // ** Y el camino de vuelta desde el banco de coma flotante.
+        Some(n) if registro_flotante(n).is_some() => {
+            x86::movq_r64_de_xmm(out, IZQ, registro_flotante(n).unwrap())
+        }
         // "eax"/"rax": ya esta donde tiene que estar. Escribir la mitad baja de
         // un registro en esta maquina pone la alta a cero, asi que tampoco hay
         // que limpiar.

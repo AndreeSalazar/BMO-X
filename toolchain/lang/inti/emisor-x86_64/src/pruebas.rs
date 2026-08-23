@@ -484,3 +484,62 @@ fn lo_que_inti_dice_que_emite_es_lo_que_emite() {
         }
     }
 }
+
+// ===================================================================
+//  ** LA MATEMATICA QUE PIDE UN MOTOR (2026-08-22)
+// ===================================================================
+
+/// **`raiz` da la raiz cuadrada, y se comprueba EJECUTANDOLA.**
+///
+/// ## Por que esta prueba tuvo que esperar al emulador
+///
+/// La matriz de conformidad ya decia que `raiz` emite bytes. Eso prueba que
+/// **sale algo**, no que salga lo correcto -- y son dos cosas distintas que este
+/// proyecto ya ha confundido antes.
+///
+/// *** Para probar lo segundo hay que ejecutarlo, y el emulador no conocia
+/// `sqrtsd`: manejaba `0F 58..5F` de la aritmetica y `0x51` se le quedaba fuera.
+/// O sea que INTI podia emitir una instruccion **que ninguna prueba podia
+/// ejecutar**. Se le enseno al emulador antes de escribir esto.
+#[test]
+fn la_raiz_cuadrada_da_la_raiz_cuadrada() {
+    let f = "perfil llano\nusa matematica\n\nfuncion r(x es flotante64) devuelve flotante64\n    devuelve raiz(x)\n";
+    for v in [0.0f64, 1.0, 2.0, 9.0, 1e30] {
+        let salio = como_numero(ejecuta(f, v.to_bits(), 0));
+        assert_eq!(
+            salio.to_bits(),
+            v.sqrt().to_bits(),
+            "raiz({}) dio {} y tenia que dar {}",
+            v,
+            salio,
+            v.sqrt()
+        );
+    }
+}
+
+/// **La longitud de un vector: `raiz(x*x + y*y)`.**
+///
+/// *** Es la primitiva de la que cuelga un motor grafico entero -- normalizar,
+/// distancia, interseccion de un rayo con una esfera. Y hasta hoy **no se podia
+/// escribir en INTI**: los operadores estaban, la raiz no.
+///
+/// Se comprueba con un triangulo 3-4-5, que da un entero exacto y por eso no
+/// necesita margen: si sale 5.0 clavado, la cadena entera --cargar, multiplicar,
+/// sumar, cruzar al banco SSE, volver-- esta bien.
+#[test]
+fn la_longitud_de_un_vector_sale_exacta() {
+    let f = "perfil llano\nusa matematica\n\nfuncion largo(x es flotante64, y es flotante64) devuelve flotante64\n    devuelve raiz(x * x + y * y)\n";
+    let salio = como_numero(ejecuta(f, 3.0f64.to_bits(), 4.0f64.to_bits()));
+    assert_eq!(salio, 5.0, "el 3-4-5 no da 5");
+}
+
+/// **`minimo` y `maximo`, que es lo que recorta un color a su rango.**
+#[test]
+fn minimo_y_maximo_recortan() {
+    let mn = "perfil llano\nusa matematica\n\nfuncion m(a es flotante64, b es flotante64) devuelve flotante64\n    devuelve minimo(a, b)\n";
+    let mx = "perfil llano\nusa matematica\n\nfuncion m(a es flotante64, b es flotante64) devuelve flotante64\n    devuelve maximo(a, b)\n";
+    assert_eq!(como_numero(ejecuta(mn, 2.0f64.to_bits(), 7.0f64.to_bits())), 2.0);
+    assert_eq!(como_numero(ejecuta(mn, 7.0f64.to_bits(), 2.0f64.to_bits())), 2.0);
+    assert_eq!(como_numero(ejecuta(mx, 2.0f64.to_bits(), 7.0f64.to_bits())), 7.0);
+    assert_eq!(como_numero(ejecuta(mx, 7.0f64.to_bits(), 2.0f64.to_bits())), 7.0);
+}
