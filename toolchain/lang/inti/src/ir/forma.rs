@@ -178,8 +178,20 @@ impl Comprobacion {
     pub fn por_que_no(self) -> &'static str {
         match self {
             Comprobacion::Indice => {
-                "un `bufer` es una direccion y no lleva su longitud, asi que no hay contra \
-                 que comprobar. Nace con `lista de T`"
+                // [!] Y desde el 2026-08-23 esta frase esta a MEDIAS. `lista de
+                // T` YA existe en ejecucion --`runtime/objetos/lista.inti`-- y
+                // comprueba su indice contra `cuantos`, que vive a un `mov` de
+                // distancia en su cabecera.
+                //
+                // Lo que sigue sin poder comprobarse es indexar un `bufer`, y
+                // eso no va a cambiar: no es que falte la comprobacion, es que
+                // **no existe la informacion**.
+                //
+                // *** Lo que falta para que esta fila diga `true` es que el
+                // DESCENSO baje `a[i]` de una lista a `sitio_de` en vez de a la
+                // aritmetica cruda. Mientras no lo haga, contestar que si aqui
+                // seria prometer una comprobacion que el binario no lleva.
+                "un `bufer` es una direccion y no lleva su longitud, asi que no hay contra                  que comprobar. En `lista de T` SI se comprueba, y falta que el descenso                  la use"
             }
             _ => "",
         }

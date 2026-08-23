@@ -1,0 +1,155 @@
+# LA LISTA EN EJECUCION -- la que crece, y la que SABE CUANTO MIDE.
+#
+# ## *** AQUI NACE LA REGLA 2, y llevaba desde F0 esperando
+#
+# `REGLAS.md` la tiene escrita desde el primer dia y `Comprobacion::llega_a_bytes`
+# contesta que NO por ella, con el motivo exacto:
+#
+#     "un `bufer` es una direccion y no lleva su longitud, asi que no hay contra
+#      que comprobar. Nace con `lista de T`"
+#
+# Es esta. Una lista lleva `cuantos` en su cabecera, **a un `mov` de distancia**,
+# asi que comprobar un indice es una comparacion y un salto. Eso es toda la
+# diferencia entre los dos tipos, y por eso son dos tipos:
+#
+#     bufer de T     una direccion cruda. Indexarlo pide `crudo`
+#     lista de T     lleva su longitud. Indexarla se comprueba, y no pide nada
+#
+# ## La forma la declara el ABI, y este fichero la OBEDECE
+#
+# `bmo_abi::dynobj::lista`, cabecera de 32 bytes:
+#
+#     objeto + 0    refs         contador. Bit 63 = INMORTAL
+#     objeto + 8    type_index   indice en la tabla de tipos, nunca puntero
+#     objeto + 12   flags
+#     objeto + 16   cuantos      ELEMENTOS ocupados, no bytes
+#     objeto + 24   capacidad    elementos que CABEN
+#     objeto + 32   los elementos
+#
+# ** Son 32 y no 24 como el texto porque una lista CRECE, y lo que crece dentro
+# de su bloque necesita saber cuanto le queda. Un texto es inmutable: guardar
+# cuanto "cabe" en algo que no puede cambiar seria un campo que nadie lee.
+#
+# ## Y el ancho del elemento entra POR ARGUMENTO
+#
+# No vive en la lista. Lo dice el TIPO --`lista de entero64` mide ocho, `lista de
+# natural8` mide uno-- y la tabla de tipos todavia no existe:
+# `SectionKind::TypeMap = 0x10` es el quinto hueco declarado y vacio del formato.
+#
+# *** Se prefiere la dependencia VISIBLE a la comodidad: mientras el ancho entre
+# por la firma, se ve quien lo sabe. Guardarlo dentro haria la lista
+# autodescriptiva hoy a cambio de tener el mismo dato en dos sitios -- y dos
+# sitios que dicen lo mismo se separan.
+#
+# ## [!] DOS PARAMETROS SE LLAMAN RARO, Y ES EL LENGUAJE QUIEN LO PIDE
+#
+#     `l`      y no `lista`   -- `lista` es parte del tipo `lista de T`
+#     `dato`   y no `valor`   -- `valor` es parte de `valor de resultado`
+#
+# ** No es capricho de estilo: son palabras clave, el parser lo dice con las
+# cuatro partes, y hacerle caso sale mas barato que pelearse con la gramatica del
+# propio lenguaje que uno escribe. Se anota porque **es lo primero con lo que va
+# a chocar quien escriba la primera libreria de INTI**, y el aviso ya se lo dice
+# -- pero saber que le paso al runtime tambien ahorra el susto.
+perfil llano
+usa monton
+usa memoria
+
+# Cuantos elementos tiene. **Elementos, no bytes.**
+funcion cuantos(l es natural64) devuelve natural64
+    crudo
+        si l = 0
+            devuelve 0
+        devuelve lee_natural64(l + 16)
+
+# Cuantos caben sin volver a reservar.
+funcion caben(l es natural64) devuelve natural64
+    crudo
+        si l = 0
+            devuelve 0
+        devuelve lee_natural64(l + 24)
+
+# Una lista nueva y vacia, con sitio para `capacidad` elementos de `ancho`
+# bytes. Devuelve 0 si no cabe.
+#
+# ** Nace con UN dueno y con `cuantos` a cero: tiene sitio y no tiene nada. La
+# diferencia con un literal congelado es la misma que en `texto` -- un literal
+# es INMORTAL y vive en `RoData`; esto lo construyo alguien y puede morir.
+funcion lista_nueva(monton es natural64, capacidad es natural64, ancho es natural64) devuelve natural64
+    crudo
+        # LA GUARDIA QUE `crudo` APAGO. `capacidad * ancho` puede dar la vuelta,
+        # y entonces `pide` daria un bloque ridiculo en el que todo escribe
+        # fuera. Es la misma de `junta`, y por el mismo motivo: la unica forma
+        # honrada de usar `crudo` es reponer lo que uno mismo desactivo.
+        si ancho = 0
+            devuelve 0
+        sitio es natural64 = capacidad * ancho
+        si sitio entre ancho no es capacidad
+            devuelve 0
+
+        nueva es natural64 = pide(monton, sitio + 32)
+        si nueva = 0
+            devuelve 0
+
+        escribe_natural64(nueva, 1)
+        escribe_natural32(nueva + 8, 0)
+        escribe_natural32(nueva + 12, 0)
+        escribe_natural64(nueva + 16, 0)
+        escribe_natural64(nueva + 24, capacidad)
+        devuelve nueva
+
+# *** EL INDICE COMPROBADO: LA REGLA 2, EN CUATRO INSTRUCCIONES.
+#
+# Devuelve la DIRECCION del elemento `i`, o **0 si el indice se sale**.
+#
+# ** Devuelve la direccion y no el valor a proposito: la misma cuenta sirve para
+# leer y para escribir. Es la misma decision que ya tomo `ir::sitio_de` para
+# `p.x` y `a[i]`, y por el mismo motivo -- devolver el valor obligaria a una
+# segunda funcion que repitiera la comprobacion, y dos comprobaciones de lo
+# mismo se separan.
+#
+# *** Y el limite esta A UN `mov` DE DISTANCIA, en un sitio fijo de la cabecera.
+# Eso es lo que hace que la Regla 2 salga casi gratis de esta forma, y lo que un
+# `bufer` no puede tener: no lleva su longitud, asi que no hay contra que
+# comparar. No es que la comprobacion se haya olvidado -- es que no existe la
+# informacion para hacerla.
+funcion sitio_de(l es natural64, i es natural64, ancho es natural64) devuelve natural64
+    crudo
+        si l = 0
+            devuelve 0
+        si i >= lee_natural64(l + 16)
+            devuelve 0
+        devuelve l + 32 + i * ancho
+
+# Anade un elemento AL FINAL. Devuelve 1 si cupo, 0 si la lista estaba llena.
+#
+# [!] NO crece sola todavia. Cuando `cuantos` llega a `capacidad` esto contesta
+# 0 en vez de reservar una lista mas grande y copiar -- y se dice en vez de
+# fingir, igual que `suelta` estuvo diciendo durante meses que no soltaba.
+#
+# ** Crecer pide DOS cosas que no estan: reservar el doble y copiar (barato), y
+# **soltar la vieja** (que ya se puede desde hoy) -- pero sobre todo, decidir
+# quien manda cuando alguien guardo la direccion antigua. Esa es una decision de
+# diseno, no trabajo mecanico, y se escribe con el caso delante.
+funcion anade(l es natural64, dato es natural64, ancho es natural64) devuelve natural64
+    crudo
+        si l = 0
+            devuelve 0
+        hay es natural64 = lee_natural64(l + 16)
+        si hay >= lee_natural64(l + 24)
+            devuelve 0
+
+        donde es natural64 = l + 32 + hay * ancho
+        si ancho = 1
+            escribe_natural8(donde, dato)
+        sino
+            si ancho = 2
+                escribe_natural16(donde, dato)
+            sino
+                si ancho = 4
+                    escribe_natural32(donde, dato)
+                sino
+                    escribe_natural64(donde, dato)
+
+        escribe_natural64(l + 16, hay + 1)
+        devuelve 1
