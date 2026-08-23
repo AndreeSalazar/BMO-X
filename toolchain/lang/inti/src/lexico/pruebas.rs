@@ -400,3 +400,40 @@ fn el_literal_guarda_bits_y_no_una_interpretacion() {
         super::valor_entero("FFFFFFFFFFFFFFFF", super::Base::Dieciseis)
     );
 }
+
+/// **UN TIPO EMPIEZA ALTO Y SIGUE BAJO. TODO ALTO ES UN NOMBRE.**
+///
+/// ## Lo que arregla, y era el ejemplo de la propia gramatica
+///
+/// Hasta el 2026-08-22 bastaba la mayuscula inicial, asi que `MAXIMO` era un
+/// TIPO -- y `GRAMATICA.md` linea 40 dice, literalmente:
+///
+/// ```text
+///    MAXIMO = 100     # constante: se CONGELA al cargar el modulo
+/// ```
+///
+/// *** Ese ejemplo daba `E0017`, con un mensaje que nombraba las constantes
+/// entre lo que SI vale y rechazaba una.
+///
+/// ** Y de paso las dos formas valen: quien no quiera teclear en mayusculas no
+/// tiene por que. La convencion de MAYUSCULAS viene de C y es una costumbre.
+#[test]
+fn todo_mayusculas_es_un_nombre_y_no_un_tipo() {
+    let clase = |t: &str| piezas(t).into_iter().next().unwrap();
+
+    assert!(
+        matches!(clase("MAXIMO"), Clase::Nombre(_)),
+        "`MAXIMO` tiene que ser un nombre"
+    );
+    assert!(
+        matches!(clase("ANCHO_MAXIMO"), Clase::Nombre(_)),
+        "con guion bajo tambien"
+    );
+    assert!(
+        matches!(clase("maximo"), Clase::Nombre(_)),
+        "y en minusculas, como siempre"
+    );
+    // ** Y los tipos siguen siendo tipos: alto y luego bajo.
+    assert!(matches!(clase("Alumno"), Clase::Tipo(_)));
+    assert!(matches!(clase("TablaDeSenos"), Clase::Tipo(_)));
+}

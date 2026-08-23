@@ -3,8 +3,20 @@
 # viene de `usa bmo`, que baja a la fila [syscall] de intrinsics.toml.
 # Y no necesita `crudo` porque al otro lado hay un kernel que COMPRUEBA:
 # una capability existe para arbitrar autoridad.
+#
+# *** 2026-08-22: esta sonda decia `OP_ESCRIBIR`, y **ese nombre no existe**. La
+# operacion se llama `op_arch_escribir` en `modulos.toml`.
+#
+# Compilaba igual, y ese es el hallazgo: en MAYUSCULAS el lexico lo tomaba por un
+# TIPO, nadie comprueba los tipos contra ninguna tabla, y el emisor lo bajaba a
+# un CERO. O sea que esta sonda decia COMPILA usando un nombre inventado que
+# valia cero -- el mismo fallo que `maximo = 100`, dentro del censo que existe
+# para cazarlo.
+#
+# Lo destapo separar TIPO de constante en el lexico. La sonda sigue probando lo
+# que decia --que la puerta se llama sin `crudo`-- y ahora con un nombre que es.
 perfil llano
 usa bmo
 
 funcion escribe_byte(salida es natural64, b es natural8) devuelve natural64
-    devuelve invoca(salida, OP_ESCRIBIR, b, 0, 0)
+    devuelve invoca(salida, op_arch_escribir, b, 0, 0)
