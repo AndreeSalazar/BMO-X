@@ -256,8 +256,8 @@ fn instruccion(c: &[u8], off: usize) -> Option<Paso> {
             Some(Paso { off, len: i - off, que: Que::Corriente })
         }
         // ALU r/m, r y sus parientes. Todos ModRM y nada detras.
-        0x01 | 0x09 | 0x21 | 0x29 | 0x31 | 0x39 | 0x63 | 0x85 | 0x88 | 0x89 | 0x8A | 0x8B
-        | 0x8D => modrm(c, i).map(|fin| Paso { off, len: fin - off, que: Que::Corriente }),
+        0x01 | 0x09 | 0x21 | 0x29 | 0x31 | 0x39 | 0x63 | 0x85 | 0x87 | 0x88 | 0x89 | 0x8A
+        | 0x8B | 0x8D => modrm(c, i).map(|fin| Paso { off, len: fin - off, que: Que::Corriente }),
         // ALU r/m, imm8.
         0x83 | 0xC0 | 0xC1 | 0x6B => {
             let fin = modrm(c, i)?;

@@ -1,0 +1,172 @@
+# UN PNG ESCRITO EN INTI -- hasta donde llega `perfil llano` hoy.
+#
+# No es una sonda: es un PROGRAMA. Construye una imagen de 8x8 en memoria, la
+# envuelve en un PNG valido y la deja en el disco.
+perfil llano
+usa bmo
+usa monton
+usa memoria
+usa binarios
+
+# ===================================================================
+#  Escribir en un bufer
+# ===================================================================
+
+funcion pon8(dir es natural64, i es natural64, v es natural64)
+    crudo
+        escribe_natural8(dir + i, v bits_y 255)
+
+# PNG es BIG-ENDIAN en todas sus longitudes y sumas.
+funcion pon32(dir es natural64, i es natural64, v es natural64)
+    pon8(dir, i, v desplaza derecha 24)
+    pon8(dir, i + 1, v desplaza derecha 16)
+    pon8(dir, i + 2, v desplaza derecha 8)
+    pon8(dir, i + 3, v)
+
+# ===================================================================
+#  Las dos sumas de comprobacion que pide el formato
+# ===================================================================
+
+# CRC-32 sin tabla: ocho vueltas por byte. La tabla seria mas rapida y pediria
+# 1 KiB que este programa no necesita.
+funcion crc32(dir es natural64, desde es natural64, cuantos es natural64) devuelve natural64
+    cambiante c es natural64 = 4294967295
+    cambiante i es natural64 = 0
+    repite mientras i < cuantos
+        crudo
+            c = c bits_xor lee_natural8(dir + desde + i)
+        cambiante k es natural64 = 0
+        repite mientras k < 8
+            si (c bits_y 1) = 1
+                c = (c desplaza derecha 1) bits_xor 3988292384
+            sino
+                c = c desplaza derecha 1
+            k = k + 1
+        i = i + 1
+    devuelve c bits_xor 4294967295
+
+funcion adler32(dir es natural64, desde es natural64, cuantos es natural64) devuelve natural64
+    cambiante a es natural64 = 1
+    cambiante b es natural64 = 0
+    cambiante i es natural64 = 0
+    repite mientras i < cuantos
+        crudo
+            a = (a + lee_natural8(dir + desde + i)) resto 65521
+        b = (b + a) resto 65521
+        i = i + 1
+    devuelve (b desplaza izquierda 16) bits_o a
+
+# ===================================================================
+#  Un trozo del formato: longitud, nombre, datos, y su CRC
+# ===================================================================
+#
+# Devuelve donde acaba, para que quien llama siga escribiendo detras.
+funcion trozo(dir es natural64, en es natural64, nombre es natural64, datos es natural64) devuelve natural64
+    pon32(dir, en, datos)
+    pon32(dir, en + 4, nombre)
+    # El CRC cubre el nombre y los datos, no la longitud.
+    cambiante suma es natural64 = crc32(dir, en + 4, datos + 4)
+    pon32(dir, en + 8 + datos, suma)
+    devuelve en + 12 + datos
+
+# ===================================================================
+#  El fichero
+# ===================================================================
+
+funcion pon_ruta(trozo_de_ruta es natural64)
+    invoca(mi_tarea, op_ruta, trozo_de_ruta, 0, 0)
+
+funcion abre devuelve natural64
+    pon_ruta(8027718465759373615)
+    pon_ruta(113724026151276)
+    devuelve invoca_valor(mi_tarea, op_archivo_crear, 0, 0, 0)
+
+# La puerta acepta SIETE bytes por vez: el byte alto lleva la cuenta.
+funcion vuelca(fichero es natural64, dir es natural64, cuantos es natural64)
+    cambiante i es natural64 = 0
+    repite mientras i < cuantos
+        cambiante quedan es natural64 = cuantos - i
+        cambiante n es natural64 = 7
+        si quedan < 7
+            n = quedan
+        cambiante w es natural64 = 0
+        cambiante j es natural64 = 0
+        repite mientras j < n
+            crudo
+                w = w bits_o (lee_natural8(dir + i + j) desplaza izquierda (j * 8))
+            j = j + 1
+        invoca(fichero, op_arch_escribir, (n desplaza izquierda 56) bits_o w, 0, 0)
+        i = i + n
+
+funcion principal devuelve entero32
+    m = monton_nuevo(8192)
+    si m = 0
+        devuelve 1
+    p es bufer de natural8 = pide(m, 2048)
+
+    cambiante lado es natural64 = 8
+    # Los pixeles en crudo: por fila, un byte de filtro y luego RGB.
+    cambiante crudos es natural64 = lado * (1 + lado * 3)
+    cambiante base es natural64 = 1024
+
+    cambiante y es natural64 = 0
+    cambiante o es natural64 = base
+    repite mientras y < lado
+        pon8(p, o, 0)
+        o = o + 1
+        cambiante x es natural64 = 0
+        repite mientras x < lado
+            pon8(p, o, x * 32)
+            pon8(p, o + 1, y * 32)
+            pon8(p, o + 2, 128)
+            o = o + 3
+            x = x + 1
+        y = y + 1
+
+    # -- la firma
+    pon8(p, 0, 137)
+    pon8(p, 1, 80)
+    pon8(p, 2, 78)
+    pon8(p, 3, 71)
+    pon8(p, 4, 13)
+    pon8(p, 5, 10)
+    pon8(p, 6, 26)
+    pon8(p, 7, 10)
+    cambiante en es natural64 = 8
+
+    # -- IHDR: ancho, alto, 8 bits, color 2 (RGB), y tres ceros
+    pon32(p, en + 8, lado)
+    pon32(p, en + 12, lado)
+    pon8(p, en + 16, 8)
+    pon8(p, en + 17, 2)
+    pon8(p, en + 18, 0)
+    pon8(p, en + 19, 0)
+    pon8(p, en + 20, 0)
+    en = trozo(p, en, 1229472850, 13)
+
+    # -- IDAT: zlib con un bloque SIN COMPRIMIR
+    cambiante d es natural64 = en + 8
+    pon8(p, d, 120)
+    pon8(p, d + 1, 1)
+    pon8(p, d + 2, 1)
+    pon8(p, d + 3, crudos)
+    pon8(p, d + 4, crudos desplaza derecha 8)
+    pon8(p, d + 5, 65535 - crudos)
+    pon8(p, d + 6, (65535 - crudos) desplaza derecha 8)
+    cambiante i es natural64 = 0
+    repite mientras i < crudos
+        crudo
+            escribe_natural8(p + d + 7 + i, lee_natural8(p + base + i))
+        i = i + 1
+    pon32(p, d + 7 + crudos, adler32(p, base, crudos))
+    en = trozo(p, en, 1229209940, 11 + crudos)
+
+    # -- IEND
+    en = trozo(p, en, 1229278788, 0)
+
+    f = abre()
+    si f = 0
+        devuelve 2
+    vuelca(f, p, en)
+    invoca(f, op_arch_cerrar, 0, 0, 0)
+    devuelve 0

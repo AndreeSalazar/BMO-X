@@ -268,7 +268,40 @@ fn tramos_de_vida(f: &FuncionIr) -> Vec<(usize, usize)> {
                 mira(valor, i, &mut tramos);
                 toca(*destino, i, &mut tramos);
             }
-            Instr::Comprueba { sobre, .. } => mira(sobre, i, &mut tramos),
+            Instr::Comprueba { sobre, contra, .. } => {
+                mira(sobre, i, &mut tramos);
+                if let Some(c) = contra {
+                    mira(c, i, &mut tramos);
+                }
+            }
+            // *** LEER Y ESCRIBIR MEMORIA, y faltaban las dos (2026-08-22).
+            //
+            // Sin estas ramas, un temporal que solo se usa como direccion --o
+            // como valor-- **no cuenta como vivo ahi**, y el reparto le da su
+            // registro a otro. El resultado son dos temporales vivos a la vez en
+            // el MISMO registro, y una escritura que se pierde.
+            //
+            // ** Lo destapo un programa de verdad --el escritor de PNG de
+            // `ejemplos/`-- y no el banco: hacen falta DOS operaciones antes de
+            // la escritura para que los dos temporales coincidan. Con una sola,
+            // el reparto acierta por casualidad.
+            //
+            // *** Y lo peor: este fichero ya tenia la regla escrita dos ramas mas
+            // arriba, en `Convierte` -- *"la lista de arriba tiene que crecer
+            // cada vez que crece la IR"*. La IR crecio con `Lee` y `Escribe` y la
+            // lista no. Lo tapo un `_ => {}`.
+            Instr::Lee {
+                destino, direccion, ..
+            } => {
+                mira(direccion, i, &mut tramos);
+                toca(*destino, i, &mut tramos);
+            }
+            Instr::Escribe {
+                direccion, valor, ..
+            } => {
+                mira(direccion, i, &mut tramos);
+                mira(valor, i, &mut tramos);
+            }
             Instr::Guarda { valor, .. } => mira(valor, i, &mut tramos),
             Instr::Devuelve(Some(v)) => mira(v, i, &mut tramos),
             Instr::SaltaSi { cond, .. } => mira(cond, i, &mut tramos),
@@ -297,7 +330,17 @@ fn tramos_de_vida(f: &FuncionIr) -> Vec<(usize, usize)> {
                     toca(*d, i, &mut tramos);
                 }
             }
-            _ => {}
+            // ** SIN COMODIN, y es el arreglo de verdad.
+            //
+            // El `_ => {}` que habia aqui es lo que dejo pasar `Lee` y
+            // `Escribe`. Con las variantes enumeradas, una instruccion nueva en
+            // la IR **no compila** hasta que alguien diga si tiene temporales
+            // dentro -- que es la unica forma de que la lista crezca con la IR.
+            //
+            // Es la misma decision que se tomo en `ir::expresion()`: *"con
+            // comodin, una forma nueva del arbol se bajaria a `nada` en
+            // silencio"*.
+            Instr::Etiqueta(_) | Instr::Salta(_) | Instr::Devuelve(None) => {}
         }
     }
 
