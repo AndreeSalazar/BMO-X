@@ -923,7 +923,7 @@ version -- si hace falta criptografia, entra como libreria y no como tipo.
 
 > Eddi, 2026-08-23: *"no imites todo Rust. Si Rust pone `i128`, es su problema.
 > Necesito que mi INTI sea honesto a base de CPU desde 64 bit, a menos que me
-> den 128 bits: ahí cambian las cosas."*
+> den 128 bits: ahi cambian las cosas."*
 
 **Regla:** el ancho maximo de un entero de INTI es **el ancho que la maquina
 sabe operar en una instruccion**. Hoy son 64. No hay `entero128` ni
@@ -1049,7 +1049,8 @@ funcion**. Con eso `global`, `nonlocal` y `UnboundLocalError` **no existen**.
 
 ### 10.10b ⚠ LA REGLA DE LA ENE: ASCII se ELIGE, no se mutila
 
-> Eddi, 2026-08-23: *"cuando dijiste `anade` en vez de `añade`: elimina eso por
+> Eddi, 2026-08-23: *"cuando dijiste `anade` en vez de la palabra con ENE:
+> elimina eso por
 > ASCII y que sea logico, y piensa en sinonimos correctos. Si no hay, usa el
 > ingles como `add`."*
 
@@ -1064,8 +1065,9 @@ funcion**. Con eso `global`, `nonlocal` y `UnboundLocalError` **no existen**.
 ★★ **Y el motivo no es estetico.** Una palabra mutilada no es ASCII: es una
 palabra MAL ESCRITA que resulta caber en ASCII. Cuesta tres cosas a la vez:
 
-- **no se puede buscar** -- quien busque `añade` en el fuente no encuentra nada;
-- **enseña a escribir mal** -- el primero que copie el estilo escribira `nino`
+- **no se puede buscar** -- quien escriba la palabra entera y la busque en el
+  fuente no encuentra nada;
+- **entrena a escribir mal** -- el primero que copie el estilo escribira `nino`
   y `pequeno` en sus propios identificadores;
 - **y no ahorra nada**, porque el sinonimo correcto casi siempre existe.
 

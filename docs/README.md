@@ -211,6 +211,7 @@ se deshace va al final.**
 | [`PRUEBA_EN_METAL_0810.md`](metal/PRUEBA_EN_METAL_0810.md) | **2026-08-10** |
 | [`PRUEBA_EN_METAL.md`](metal/PRUEBA_EN_METAL.md) | ⚠ **2026-08-12** -- el nombre no lo dice |
 | [`PRUEBA_EN_METAL_0813.md`](metal/PRUEBA_EN_METAL_0813.md) | **2026-08-13** |
+| [`PRUEBA_EN_METAL_0823.md`](metal/PRUEBA_EN_METAL_0823.md) | **2026-08-23** -- ★ la vigente |
 
 ### ⚠ Las dos cosas que esta tabla existe para decir
 
@@ -224,6 +225,11 @@ sin decidir**; mientras tanto, la fecha vive aqui.
 presupuesto por perfil, el kernel de medida con interruptor) y lo que hay que
 traer de vuelta vive hoy repartido entre los mensajes de commit. **Escribir
 `metal/` para el 08-17 es la casilla abierta de esta carpeta.**
+
+**3. Y la del 08-23 SI la tiene, con una advertencia que va la primera.** Su
+seccion 0 dice que **el build no pasa el guardian de MODULAR**, o sea que hoy no
+sale imagen y ninguna de sus pruebas se puede hacer hasta que eso se decida. Una
+hoja que manda al Ryzen sin decir eso mandaria a nadie a ningun sitio.
 
 ---
 

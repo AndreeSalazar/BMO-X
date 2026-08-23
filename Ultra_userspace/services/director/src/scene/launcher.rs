@@ -51,6 +51,7 @@
 
 use bmo_userland as bmo;
 
+use super::double_click::DoubleClick;
 use super::{ACCENT, BG_TOP, INK};
 
 /// Cuantas apps caben en el escritorio. Doce es lo que entra en una fila y
@@ -114,17 +115,12 @@ pub struct Launcher {
     /// programa al primer toque no deja mirar sin ejecutar -- y es la unica
     /// rejilla de la casa donde pulsar no se podia deshacer.
     sel: Option<usize>,
-    /// El fotograma del ultimo clic y sobre que icono cayo. Ver `DOBLE_CLIC`.
-    clic_frame: u32,
-    clic_app: usize,
+    /// La mitad abierta de un doble clic. Vive en `scene::double_click` porque
+    /// la rejilla de ESTRATOS hace exactamente lo mismo, y porque hasta hoy las
+    /// dos lo contaban en VUELTAS DEL BUCLE -- que es por lo que un icono se
+    /// podia senalar y no se abria nunca.
+    doble: DoubleClick,
 }
-
-/// Cuantos fotogramas caben entre los dos clics de un doble clic.
-///
-/// El mismo numero que usa la rejilla de ESTRATOS, y por el mismo motivo: en
-/// Ring 3 no hay reloj mas fino que el segundo, asi que esto se cuenta en
-/// fotogramas. A los ~60 por segundo del escritorio son unos 400 ms.
-pub const DOBLE_CLIC: u32 = 24;
 
 /// El realce de la celda senalada. Un relleno tenue, no un marco: un borde de
 /// un pixel alrededor de un icono transparente se lee como suciedad.
@@ -148,8 +144,7 @@ impl Launcher {
             apps: [const { App::EMPTY }; MAX_APPS],
             count: 0,
             sel: None,
-            clic_frame: 0,
-            clic_app: 0,
+            doble: DoubleClick::new(),
         };
         let Ok(dir) = bmo::Directorio::open(b"apps") else {
             // No hay `apps\`: no es un fallo, es un disco sin aplicaciones.
@@ -191,12 +186,6 @@ impl Launcher {
         }
     }
 
-    /// Que app cae bajo `(x, y)`, si es que hay alguna.
-    ///
-    /// El area sensible es **la celda entera**, no solo los pixeles del icono:
-    /// apuntar a un cuadro de 32x32 con un raton es mas dificil de lo que
-    /// parece, y el nombre de debajo forma parte de lo que uno cree estar
-    /// pulsando.
     /// Cual esta senalado.
     pub fn sel(&self) -> Option<usize> {
         self.sel
@@ -204,26 +193,21 @@ impl Launcher {
 
     /// **Un clic en el icono `i`.** `true` si es el SEGUNDO de un doble clic.
     ///
-    /// Es la misma regla que la rejilla de ESTRATOS y esta escrita igual a
-    /// proposito: el primero SENALA, el segundo ABRE. Dos rejillas con dos
+    /// Es la misma regla que la rejilla de ESTRATOS, y desde el 2026-08-23 es
+    /// literalmente el mismo codigo --`scene::double_click`-- y no dos copias
+    /// que se parecen: el primero SENALA, el segundo ABRE. Dos rejillas con dos
     /// costumbres distintas en el mismo escritorio serian dos cosas que
     /// aprender donde deberia haber una.
-    pub fn clic(&mut self, i: usize, frame: u32) -> bool {
-        let doble = self.clic_frame != 0
-            && self.clic_app == i
-            && frame.wrapping_sub(self.clic_frame) <= DOBLE_CLIC;
+    pub fn clic(&mut self, i: usize) -> bool {
         self.sel = Some(i);
-        // El segundo clic cierra el gesto, o un tercero abriria otra vez.
-        self.clic_frame = if doble { 0 } else { frame };
-        self.clic_app = i;
-        doble
+        self.doble.hit(i)
     }
 
     /// Quita el realce. Lo llama quien pulsa FUERA de la rejilla.
     pub fn soltar(&mut self) -> bool {
         let habia = self.sel.is_some();
         self.sel = None;
-        self.clic_frame = 0;
+        self.doble.clear();
         habia
     }
 
@@ -233,6 +217,12 @@ impl Launcher {
         (cx, cy, CELL_W, CELL_H)
     }
 
+    /// Que app cae bajo `(x, y)`, si es que hay alguna.
+    ///
+    /// El area sensible es **la celda entera**, no solo los pixeles del icono:
+    /// apuntar a un cuadro de 32x32 con un raton es mas dificil de lo que
+    /// parece, y el nombre de debajo forma parte de lo que uno cree estar
+    /// pulsando.
     pub fn app_at(&self, p: &bmo::Pantalla, x: u32, y: u32) -> Option<usize> {
         let per_row = self.per_row(p);
         if per_row == 0 || y < GRID_Y || x < GRID_X {

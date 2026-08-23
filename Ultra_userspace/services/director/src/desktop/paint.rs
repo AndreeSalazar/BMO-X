@@ -282,7 +282,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         dsk.table.compose(&p);
     }
 
-    if dsk.tick.frames == 1 {
+    if dsk.tick.loops == 1 {
         bmo::consola("primer fotograma completo\n");
     }
 
@@ -298,17 +298,22 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     //     derroche que el troceado por regiones acaba de quitar en otro
     //     sitio.
     //   * Y los numeros del CPU son MEDIDAS POR DIFERENCIA: con intervalos
-    //     de 16 ms la ventana es tan corta que el resultado tiembla. A 15
-    //     fotogramas son ~250 ms, que es donde un vatio se lee quieto.
+    //     de 16 ms la ventana es tan corta que el resultado tiembla. Un cuarto
+    //     de segundo es donde un vatio se lee quieto.
     //
     // O sea que refrescar mas no daria mas informacion: daria la misma
     // temblando.
-    if (dsk.win.cpu_open || dsk.win.mem_open) && dsk.tick.frames % 15 == 0 {
+    //
+    // ** Y ESO ES EXACTAMENTE LO QUE PASABA. Aqui ponia `frames % 15 == 0`, con
+    // un comentario que daba por hecho que quince vueltas eran ~250 ms porque
+    // el escritorio iba a 60 por segundo. El bucle no tiene freno: `Tick::pulse`
+    // ya lo mide, y el cuarto de segundo lo pone ahora el reloj de referencia.
+    if (dsk.win.cpu_open || dsk.win.mem_open) && dsk.tick.quarter {
         if dsk.win.cpu_open {
-            scene::vitals::paint(&p, &dsk.win.cpu);
+            scene::vitals::paint(&p, &dsk.win.cpu, dsk.tick.loops_per_second);
         }
         if dsk.win.mem_open {
-            scene::vitals::paint(&p, &dsk.win.mem);
+            scene::vitals::paint(&p, &dsk.win.mem, dsk.tick.loops_per_second);
         }
     }
 
@@ -324,10 +329,12 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // de escritura pone `will_paint` cada `BLINK` vueltas **sin que nadie toque
     // un aparato**. La luz llega tarde como mucho medio parpadeo.
     //
-    // Cada 15 fotogramas, como las vitales: es un estado que cambia despacio y
-    // mirarlo mas rapido no da mas informacion.
+    // Cada cuarto de segundo, como las vitales: es un estado que cambia despacio
+    // y mirarlo mas rapido no da mas informacion. Va en CICLOS y no en el flanco
+    // `quarter` porque esta llamada solo ocurre en vueltas que pintan, y un
+    // flanco que se levanta en una vuelta que no pinta no lo veria nadie.
     if dsk.tick.will_paint {
-        scene::testigo::refrescar(&p, dsk.tick.frames, 15);
+        scene::testigo::refrescar(&p, dsk.tick.quarter_cycles());
     }
 
     // -- El cursor del raton, ENCIMA de todo y lo ultimo --

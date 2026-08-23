@@ -46,10 +46,17 @@ pub(crate) mod cursor;
 pub(crate) mod splash;
 /// El LOGO, en dos mascaras de 1 bit. Generado por `docs/arte/gato_a_mascara.py`.
 pub(crate) mod gato;
+/// La REJILLA de iconos del escritorio: un `.bex` por celda, con la cara que
+/// trae dentro. Senalar es un clic; abrir son dos -- ver `double_click`.
+pub(crate) mod launcher;
 /// El MARCO compartido: geometria, arrastre, estirar, maximizar y los tres
 /// botones. Lo que toda ventana tiene y ninguna deberia escribir dos veces.
-pub(crate) mod launcher;
 pub(crate) mod chrome;
+/// **El GESTO de abrir**, y el unico sitio donde vive. Las dos rejillas de la
+/// casa --iconos y ESTRATOS-- preguntan aqui si un clic fue el segundo, y se
+/// mide en CICLOS: contarlo en vueltas del bucle es lo que tenia el escritorio
+/// senalando iconos sin abrir ninguno.
+pub(crate) mod double_click;
 pub(crate) mod output;
 /// **La luz del bus USB en la barra**: si el teclado se muere, se ve sin abrir
 /// nada. E6 de `docs/componente/EL_TECLADO_EXIGE.md`.
