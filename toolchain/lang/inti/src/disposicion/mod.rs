@@ -258,6 +258,18 @@ impl Registro {
 pub struct Plano {
     medidas: Medidas,
     registros: HashMap<String, Registro>,
+    /// **Que devuelve cada funcion**, de las que lo dicen.
+    ///
+    /// ** Esta aqui y no en `tipos` (gen 4) por la regla de siempre: una tabla
+    /// vive en la generacion mas baja que la necesita, y quien la necesita
+    /// primero es la deduccion de este modulo. `tipos` la lee del plano, que es
+    /// un dato ya hecho -- no llama a nadie.
+    ///
+    /// [!] Solo las que lo DICEN. Una funcion sin `devuelve T` no entra, y su
+    /// ausencia se convierte en *"no lo se"*, que es lo correcto: INTI no
+    /// deduce el retorno del cuerpo, y fingir que si lo hace elegiria un tipo
+    /// mirando el primer `devuelve` que aparezca.
+    retornos: HashMap<String, Tipo>,
 }
 
 impl Plano {
@@ -332,6 +344,11 @@ impl Plano {
 
     pub fn registro(&self, nombre: &str) -> Option<&Registro> {
         self.registros.get(nombre)
+    }
+
+    /// Que devuelve esta funcion, si lo dijo.
+    pub fn retorno_de(&self, nombre: &str) -> Option<&Tipo> {
+        self.retornos.get(nombre)
     }
 
     /// Este nombre, es una conversion de numero?
@@ -613,11 +630,22 @@ fn deduce(e: &Expr, sabidos: &HashMap<String, Tipo>, plano: Option<&Plano>) -> O
         // pondria en el mapa un tipo que no existe, y el siguiente en preguntar
         // se lo creeria.
         Expr::Llamada { que, .. } => {
-            let Expr::Tipo(n, _) = que.as_ref() else {
-                return None;
-            };
             let p = plano?;
-            p.registro(n).map(|_| Tipo::Nombre(n.clone()))
+            match que.as_ref() {
+                Expr::Tipo(n, _) => p.registro(n).map(|_| Tipo::Nombre(n.clone())),
+                // `x = f()` -- lo que la funcion DIJO que devuelve (2026-08-23).
+                //
+                // *** Era el punto 2b de `ESTADO.md` y llevaba en la lista desde
+                // que existe `tipos`: *"`si hay_algo()` no se comprueba porque el
+                // tipo que devuelve una funcion no se resuelve todavia"*.
+                //
+                // ** Sale de lo que la funcion ESCRIBIO en su `devuelve T`, no de
+                // mirarle el cuerpo. Una funcion que no lo dice sigue sin
+                // contestar, y eso es lo correcto: deducirlo del primer
+                // `devuelve` que aparezca elegiria un tipo por orden de lectura.
+                Expr::Nombre(n, _) => p.retorno_de(n).cloned(),
+                _ => None,
+            }
         }
         Expr::Texto(_, _) => Some(Tipo::Nombre("texto".to_string())),
         // Copiar no cambia de tipo. Y solo vale para lo que YA se sabe, asi que
@@ -689,6 +717,7 @@ pub fn comprobar(m: &Modulo, medidas: Medidas) -> Cosecha<Plano> {
     let mut plano = Plano {
         medidas,
         registros: HashMap::new(),
+        retornos: HashMap::new(),
     };
     let mut avisos = Vec::new();
 
@@ -800,6 +829,31 @@ pub fn comprobar(m: &Modulo, medidas: Medidas) -> Cosecha<Plano> {
                     campos: huecos,
                 },
             );
+        }
+    }
+
+    // 1b. Que devuelve cada funcion. **Antes de la fase 2, y el orden importa**:
+    //     una funcion puede llamar a otra declarada MAS ABAJO, y recogerlas
+    //     sobre la marcha haria que `x = f()` se dedujera o no segun donde
+    //     estuviera escrita `f`. Un lenguaje en el que el orden de las
+    //     declaraciones cambia lo que se comprueba es un lenguaje con una regla
+    //     que nadie escribio.
+    //
+    //     *** Y SOLO LAS QUE NO PUEDEN FALLAR. `devuelve numero o error` NO
+    //     devuelve un `numero`: devuelve una cosa que hay que MIRAR antes
+    //     (`E0060`). Meterla aqui como `numero` dejaria comprobar `x.campo`
+    //     contra el tipo de dentro sin que nadie haya abierto el sobre -- que es
+    //     justo la costumbre que `quiza T` y `o error` existen para impedir.
+    //
+    //     Es la misma regla de arriba una vez mas: deducir MAL es peor que no
+    //     deducir.
+    for d in &m.declaraciones {
+        if let Decl::Funcion(f) = d {
+            if let Some(r) = &f.retorno {
+                if !r.puede_fallar {
+                    plano.retornos.insert(f.nombre.clone(), r.tipo.clone());
+                }
+            }
         }
     }
 

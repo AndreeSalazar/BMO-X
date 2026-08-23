@@ -192,6 +192,7 @@ fn un_bufer_mide_lo_que_un_puntero_y_su_elemento_lo_suyo() {
     let p = Plano {
         medidas: Medidas::por_defecto(),
         registros: HashMap::new(),
+        retornos: HashMap::new(),
     };
     let t = Tipo::Bufer(Box::new(Tipo::Nombre("natural32".into())));
     assert_eq!(p.medida_de(&t), Some(8), "es una direccion");
@@ -629,4 +630,52 @@ fn lo_que_no_se_deduce_se_calla_en_pleno_y_se_denuncia_en_llano() {
         CABECERA
     ));
     assert_eq!(llano.codigos(), vec!["E0121"]);
+}
+
+/// *** `x = f()` -- LO QUE LA FUNCION DIJO QUE DEVUELVE (2026-08-23).
+///
+/// Era el punto 2b de `ESTADO.md`, en la lista desde que existe `tipos`:
+/// *"`si hay_algo()` no se comprueba porque el tipo que devuelve una funcion no
+/// se resuelve todavia"*.
+///
+/// ** Sale de lo que la funcion ESCRIBIO, no de mirarle el cuerpo. Y el orden de
+/// las declaraciones no importa: los retornos se recogen enteros antes de
+/// comprobar nada, porque un lenguaje donde el orden cambia lo que se comprueba
+/// tiene una regla que nadie escribio.
+#[test]
+fn el_tipo_que_devuelve_una_funcion_se_deduce() {
+    // `f` esta declarada DESPUES de quien la usa, a proposito.
+    let c = codigos_de(
+        "perfil pleno\n\nregistro Punto\n    x es entero64\n\nfuncion principal\n    p = origen()\n    escribe(p.inventado)\n\nfuncion origen devuelve Punto\n    devuelve Punto(0)\n",
+    );
+    assert_eq!(c, vec!["E0120"], "el campo se comprueba contra `Punto`");
+}
+
+/// *** Y LO QUE **PUEDE FALLAR** NO SE DEDUCE, que es la mitad que importa.
+///
+/// `devuelve Punto o error` NO devuelve un `Punto`: devuelve algo que hay que
+/// MIRAR antes (`E0060`). Meterlo en el mapa como `Punto` dejaria comprobar
+/// `p.x` contra el tipo de dentro **sin que nadie haya abierto el sobre** -- que
+/// es exactamente la costumbre que `o error` existe para impedir.
+///
+/// ** Es la regla de este modulo otra vez: deducir MAL es peor que no deducir.
+#[test]
+fn lo_que_puede_fallar_no_se_deduce() {
+    let c = codigos_de(
+        "perfil pleno\n\nregistro Punto\n    x es entero64\n\nfuncion principal\n    p = origen()\n    escribe(p.inventado)\n\nfuncion origen devuelve Punto o error\n    devuelve Punto(0)\n",
+    );
+    assert!(
+        c.is_empty(),
+        "no se deduce, asi que no se comprueba -- y sobre todo NO se da por bueno: {c:?}"
+    );
+}
+
+/// Una funcion sin `devuelve` no dice nada, y este modulo no se lo inventa
+/// leyendole el cuerpo.
+#[test]
+fn una_funcion_sin_retorno_escrito_no_deduce_nada() {
+    let c = codigos_de(
+        "perfil pleno\n\nregistro Punto\n    x es entero64\n\nfuncion principal\n    p = origen()\n    escribe(p.inventado)\n\nfuncion origen\n    escribe(1)\n",
+    );
+    assert!(c.is_empty(), "{c:?}");
 }
