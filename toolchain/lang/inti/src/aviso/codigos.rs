@@ -112,6 +112,18 @@ pub const METAL_SIN_CRUDO: Codigo = Codigo("E0072");
 /// `.bex` firmado de 768 bytes que devolvia ceros. El gate decia que si sobre
 /// algo que no hacia nada -- y una firma sobre eso es peor que no tener firma.
 pub const PERFIL_SIN_BYTES: Codigo = Codigo("E0073");
+
+/// **El binario sale con otro perfil del que se escribio** (P2, 2026-08-23).
+///
+/// ** Un perfil es una PROMESA, y la rompe su eslabon mas debil: una sola pieza
+/// `pleno` deja al binario entero sin poder correr en Ring 0, aunque el fichero
+/// principal sea impecable.
+///
+/// *** No es un error del programa: es una CONSECUENCIA que hay que decir.
+/// Hasta hoy era silencio -- un fichero `llano` que traia una pieza `pleno`
+/// salia firmado, sin una palabra, y su autor seguia creyendo que tenia un
+/// binario de Ring 0.
+pub const PERFIL_MEZCLADO: Codigo = Codigo("E0074");
 /// **Lo que `llano` no admite por lo que CUESTA**, no por lo que le falta.
 ///
 /// ** `numero` es decimal exacto y su suma cuesta 5-20 veces una entera de 64

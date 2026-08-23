@@ -52,6 +52,30 @@ pub struct Informe {
     /// y esto dice **a que maquina se ata**. Un modulo con esta lista vacia se
     /// recompila en cualquier sitio.
     pub arquitecturas: Vec<String>,
+    /// **EL PERFIL RESULTANTE: el mas PERMISIVO de los que componen el binario.**
+    ///
+    /// ## ** Por que el mas permisivo y no el mas estricto (2026-08-23)
+    ///
+    /// Porque el perfil de un binario es una PROMESA, y una promesa la rompe su
+    /// eslabon mas debil. `llano` promete *"esto puede correr en Ring 0, dentro
+    /// de un manejador de interrupciones"*. Si UNA de las piezas es `pleno`
+    /// --pide monton, cuenta referencias-- **el binario entero deja de poder**,
+    /// aunque el resto sea impecable.
+    ///
+    /// *** Y lo que se JUZGA es otra cosa: **cada pieza contra el perfil que
+    /// ELLA declaro**. Las dos mitades son distintas y confundirlas es lo que
+    /// tenia parado a `pleno`:
+    ///
+    /// ```text
+    ///    juzgar     por pieza    `reparto.inti` dice `llano`, luego su `crudo`
+    ///                            es legitimo aunque lo traiga un `pleno`
+    ///    declarar   por binario  y si algo dentro es `pleno`, el binario lo es
+    /// ```
+    ///
+    /// [!] Hasta hoy se juzgaba TODO contra el perfil del fichero principal, y
+    /// por eso un programa `pleno` **no podia usar su propio runtime**: el
+    /// runtime esta escrito en `llano` precisamente para poder tocar el metal.
+    pub perfil_resultante: String,
     /// **Cuantos bloques `crudo` tiene el modulo, PIEZAS INCLUIDAS.**
     ///
     /// ** Este numero es el que convierte *"cuanto de mi programa no lo
@@ -97,7 +121,55 @@ pub fn comprobar(
     // cero, `texto` y `lista` no existen, y las llamadas a REX no tienen
     // destino. El gate decia que si sobre algo que no hacia nada, y una firma
     // sobre eso es peor que ninguna firma.
-    let nombre_del_perfil = m.perfil.nombre();
+    // *** P2 -- LA REGLA DEL MEZCLADO (2026-08-23).
+    //
+    // El perfil de un binario es el mas PERMISIVO de los que lo componen,
+    // porque un perfil es una promesa y una promesa la rompe su eslabon mas
+    // debil. Una sola pieza `pleno` deja al binario entero sin poder correr en
+    // Ring 0, aunque el fichero principal sea impecable.
+    let resultante = m
+        .piezas
+        .iter()
+        .map(|p| p.perfil)
+        .chain(std::iter::once(m.perfil))
+        .fold(m.perfil, mas_permisivo);
+    informe.perfil_resultante = resultante.nombre().to_string();
+
+    // ** Y SI NO ES EL QUE SE ESCRIBIO, SE DICE. Eso es P2 entero: *"una pieza
+    // que se declara mas laxa que quien la trae es una DECISION, no un
+    // silencio"*.
+    //
+    // Hasta hoy era silencio: un fichero `llano` que traia una pieza `pleno`
+    // salia como un `.bex` firmado, sin una palabra, y su autor seguia creyendo
+    // que tenia un binario de Ring 0.
+    if resultante != m.perfil {
+        let culpables: Vec<String> = m
+            .piezas
+            .iter()
+            .filter(|p| p.perfil == resultante)
+            .map(|p| format!("`{}` (la trajo `usa {}`)", p.fichero, p.usa))
+            .collect();
+        avisos_del_perfil.push(
+            Aviso::nuevo(
+                codigos::PERFIL_MEZCLADO,
+                format!(
+                    "Escribiste `perfil {}`, pero el binario sale `perfil {}`.",
+                    m.perfil.nombre(),
+                    resultante.nombre()
+                ),
+                m.sitio_perfil,
+            )
+            .con_habia(format!(
+                "Un perfil es una promesa, y la rompe su eslabon mas debil. Lo que la rompe aqui: {}.",
+                culpables.join(", ")
+            ))
+            .con_hacer(
+                "escribe el perfil que sale, o cambia la pieza por una que quepa en el tuyo",
+            ),
+        );
+    }
+
+    let nombre_del_perfil = resultante.nombre();
     if !cat.llega_a_bytes(nombre_del_perfil) {
         avisos_del_perfil.push(
             Aviso::nuevo(
@@ -175,9 +247,42 @@ struct Vigia<'c> {
     dentro_de_crudo: bool,
 }
 
+/// El mas permisivo de dos perfiles. `pleno` gana a `llano`.
+fn mas_permisivo(a: Perfil, b: Perfil) -> Perfil {
+    if a == Perfil::Pleno || b == Perfil::Pleno {
+        Perfil::Pleno
+    } else {
+        Perfil::Llano
+    }
+}
+
 impl<'c> Vigia<'c> {
+    /// **El perfil contra el que se juzga LO QUE SE ESTA MIRANDO AHORA.**
+    ///
+    /// *** El de la PIEZA de donde salio, no el del modulo. Es la otra mitad de
+    /// P2, y la que desbloqueo `pleno`:
+    ///
+    /// `runtime/monton/reparto.inti` dice `perfil llano` **precisamente para
+    /// poder tocar el metal**, y al fusionarlo en un programa `pleno` su `crudo`
+    /// pasaba a ser ilegal (`E0071`). O sea que **`pleno` no podia usar su
+    /// propio runtime**, y la causa no era ninguna de las dos piezas: era juzgar
+    /// a las dos contra el perfil de una.
+    ///
+    /// [!] Y `None` --lo que escribio el usuario-- se juzga contra el del
+    /// modulo, que es lo correcto y no una ausencia de dato.
+    fn perfil_de_aqui(&self) -> Perfil {
+        match self
+            .piezas
+            .iter()
+            .find(|p| self.en_declaracion >= p.desde && self.en_declaracion < p.hasta)
+        {
+            Some(p) => p.perfil,
+            None => self.perfil,
+        }
+    }
+
     fn llano(&self) -> bool {
-        self.perfil == Perfil::Llano
+        self.perfil_de_aqui() == Perfil::Llano
     }
 
     /// **Acusa, y dice de donde sale lo acusado.**
