@@ -445,6 +445,14 @@ fn lo_que_inti_dice_que_emite_es_lo_que_emite() {
             Comprobacion::Desborde => Some("perfil llano\n\nfuncion f devuelve natural64\n    cambiante x es entero64 = 4000000000\n    devuelve x * x\n"),
             Comprobacion::EntreCero => Some("perfil llano\n\nfuncion f devuelve natural64\n    cambiante c es entero64 = 0\n    devuelve 10 entre c\n"),
             Comprobacion::Conversion(_) => Some("perfil llano\n\nfuncion f devuelve natural64\n    devuelve entero32(1e30)\n"),
+            // ** La del cociente: `-2^63 entre -1` no cabe en 64 bits. Se
+            // provoca con constantes para que la IR no tenga que adivinar
+            // nada -- y aun asi la comprobacion se emite, porque hoy no hay
+            // eliminacion de comprobaciones y el dia que la haya, esta
+            // prueba dira que ha empezado.
+            Comprobacion::Cociente => Some(
+                "perfil llano\n\nfuncion f devuelve entero64\n    cambiante a es entero64 = -9223372036854775808\n    cambiante b es entero64 = -1\n    devuelve a entre b\n",
+            ),
             // ** La 2 no se puede provocar y ESO es el dato: indexar un `bufer`
             // pide `crudo` justamente porque no hay contra que comprobar.
             Comprobacion::Indice => None,
@@ -598,4 +606,47 @@ fn mezcla_clava_los_extremos() {
     let f = "perfil llano\nusa matematica\n\nfuncion m(t es flotante64) devuelve flotante64\n    devuelve mezcla(0.1, 0.7, t)\n";
     assert_eq!(como_numero(ejecuta(f, 0.0f64.to_bits(), 0)), 0.1, "en t=0 tiene que dar `a` clavado");
     assert_eq!(como_numero(ejecuta(f, 1.0f64.to_bits(), 0)), 0.7, "en t=1 tiene que dar `b` clavado");
+}
+
+/// ***EL AGUJERO DE LA REGLA 1 QUE VIVIA DENTRO DE LA 3.***
+///
+/// `-2^63 entre -1` no cabe en 64 bits: es un DESBORDE. Pero se escribe como una
+/// division, y de la division solo se comprobaba el divisor.
+///
+/// Hasta el 2026-08-22 ese fuente compilaba limpio, salia firmado, y en el Ryzen
+/// **moria con una autopsia del kernel** en vez de atrapar con E1001 -- porque
+/// `idiv` levanta `#DE`, el mismo vector que dividir entre cero.
+///
+/// ** No era comportamiento indefinido: la muerte esta definida. Pero no era lo
+/// que `REGLAS.md` promete, y esa distancia es la que no se puede permitir.
+#[test]
+fn el_cociente_que_no_cabe_atrapa_con_e1001() {
+    let f = "perfil llano\n\nfuncion d(a es entero64, b es entero64) devuelve entero64\n    devuelve a entre b\n";
+    assert_eq!(
+        ejecuta(f, i64::MIN as u64, (-1i64) as u64),
+        1001,
+        "`-2^63 entre -1` tenia que atrapar con E1001"
+    );
+}
+
+/// **Y las divisiones normales siguen dividiendo.**
+///
+/// ** Sin esta prueba, la guardia podria estar atrapando SIEMPRE y la de arriba
+/// seguiria en verde. Una comprobacion que dice que si a todo no comprueba nada.
+#[test]
+fn la_guardia_del_cociente_no_estorba_a_las_demas() {
+    let f = "perfil llano\n\nfuncion d(a es entero64, b es entero64) devuelve entero64\n    devuelve a entre b\n";
+    assert_eq!(ejecuta(f, 100u64, 7u64), 14);
+    assert_eq!(ejecuta(f, (-100i64) as u64, (-1i64) as u64), 100u64, "-100/-1 = 100, y CABE");
+    assert_eq!(ejecuta(f, i64::MIN as u64, 2u64), (i64::MIN / 2) as u64);
+    // El divisor cero sigue siendo la Regla 3, no la 1.
+    assert_eq!(ejecuta(f, 5u64, 0u64), 1003);
+}
+
+/// **El resto tambien**: `-2^63 resto -1` desborda por el mismo motivo.
+#[test]
+fn el_resto_lleva_la_misma_guardia() {
+    let f = "perfil llano\n\nfuncion r(a es entero64, b es entero64) devuelve entero64\n    devuelve a resto b\n";
+    assert_eq!(ejecuta(f, i64::MIN as u64, (-1i64) as u64), 1001);
+    assert_eq!(ejecuta(f, 100u64, 7u64), 2);
 }

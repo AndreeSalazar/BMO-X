@@ -1,0 +1,22 @@
+# sonda: r01b_cociente           espera: E1001 en ejecucion
+# regla 1, escondida dentro de una division: `-2^63 entre -1` NO CABE en 64
+# bits, asi que es un DESBORDE aunque se escriba con una barra.
+#
+# ** Hasta el 2026-08-22 esto no lo comprobaba nadie. De la division solo se
+# miraba el divisor --la Regla 3-- y el cociente que no cabe se colaba: el
+# programa compilaba limpio, salia firmado, y en el Ryzen moria con una autopsia
+# del kernel, porque `idiv` levanta `#DE` -- el MISMO vector que dividir entre
+# cero.
+#
+# No era comportamiento indefinido: la muerte esta definida. Pero no era lo que
+# la tabla de REGLAS.md promete, y esa distancia es la que no se puede permitir.
+#
+# *** Y la forma del fallo es el espejo de todo lo demas: en los otros sitios
+# INTI comprueba en software lo que el silicio ya sabia. Aqui el silicio cortaba
+# y era INTI quien no sabia que eso era una regla.
+perfil llano
+
+funcion principal devuelve entero64
+    cambiante a es entero64 = -9223372036854775808
+    cambiante b es entero64 = -1
+    devuelve a entre b

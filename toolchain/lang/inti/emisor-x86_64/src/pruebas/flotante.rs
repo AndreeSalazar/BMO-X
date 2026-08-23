@@ -80,7 +80,11 @@ fn entre_cero_da_infinito_y_no_atrapa() {
 #[test]
 fn la_misma_division_con_enteros_si_trae_su_regla() {
     let f = "perfil llano\n\nfuncion f(a es entero64, b es entero64) devuelve entero64\n    devuelve a / b\n";
-    assert_eq!(reglas_de(f), 1, "la Regla 3 desaparecio de los enteros");
+    // ** DOS: la del divisor cero (E1003) y la del cociente que no cabe
+    // (E1001, y es la Regla 1 escondida dentro de una division). La segunda
+    // se anadio el 2026-08-22; hasta entonces `-2^63 entre -1` mataba el
+    // programa con una autopsia en vez de atrapar.
+    assert_eq!(reglas_de(f), 2, "a los enteros les faltan reglas de la division");
 }
 
 

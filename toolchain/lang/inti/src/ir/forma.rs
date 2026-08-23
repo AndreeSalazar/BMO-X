@@ -89,6 +89,16 @@ pub enum Comprobacion {
     EntreCero,
     /// Regla 2: indice fuera de rango.
     Indice,
+    /// **Regla 1, escondida dentro de una division**: `-2^63 entre -1` no cabe.
+    ///
+    /// ** Comparte codigo con `Desborde` --las dos son la Regla 1-- y es una
+    /// variante aparte porque **mira DOS valores**: el cociente solo no cabe
+    /// cuando el dividendo es el minimo Y el divisor es -1. Ninguna de las otras
+    /// necesita mas de uno.
+    ///
+    /// Hasta el 2026-08-22 no la pedia nadie, y el silicio cortaba igual: `idiv`
+    /// levanta `#DE` y el programa moria con una autopsia en vez de atrapar.
+    Cociente,
     /// Regla 12: convertir un flotante que no cabe, **en tantos bytes**.
     ///
     /// ** Lleva el ancho porque sin el la pregunta no tiene respuesta: 1e10
@@ -101,7 +111,7 @@ impl Comprobacion {
     /// El codigo con el que atrapa.
     pub fn codigo(self) -> &'static str {
         match self {
-            Comprobacion::Desborde => "E1001",
+            Comprobacion::Desborde | Comprobacion::Cociente => "E1001",
             Comprobacion::Indice => "E1002",
             Comprobacion::EntreCero => "E1003",
             Comprobacion::Conversion(_) => "E1012",
@@ -110,8 +120,9 @@ impl Comprobacion {
 
     /// Las cuatro, para poder recorrerlas. Una lista que se puede recorrer es
     /// la diferencia entre *"creo que faltaba una"* y un numero.
-    pub const TODAS: [Comprobacion; 4] = [
+    pub const TODAS: [Comprobacion; 5] = [
         Comprobacion::Desborde,
+        Comprobacion::Cociente,
         Comprobacion::Indice,
         Comprobacion::EntreCero,
         Comprobacion::Conversion(4),
@@ -121,6 +132,7 @@ impl Comprobacion {
     pub fn nombre(self) -> &'static str {
         match self {
             Comprobacion::Desborde => "desborde",
+            Comprobacion::Cociente => "cociente que no cabe",
             Comprobacion::Indice => "indice fuera de rango",
             Comprobacion::EntreCero => "dividir entre cero",
             Comprobacion::Conversion(_) => "conversion que no cabe",
@@ -150,7 +162,10 @@ impl Comprobacion {
     /// proyecto lleva persiguiendo desde el censo de las diez sondas.
     pub fn llega_a_bytes(self) -> bool {
         match self {
-            Comprobacion::Desborde | Comprobacion::EntreCero | Comprobacion::Conversion(_) => true,
+            Comprobacion::Desborde
+            | Comprobacion::Cociente
+            | Comprobacion::EntreCero
+            | Comprobacion::Conversion(_) => true,
             Comprobacion::Indice => false,
         }
     }
@@ -198,6 +213,13 @@ pub enum Instr {
     Comprueba {
         que: Comprobacion,
         sobre: Valor,
+        /// **El segundo valor, para las reglas que miran dos.**
+        ///
+        /// ** `None` es lo normal: desbordar, dividir entre cero y convertir se
+        /// deciden con UN valor. La unica que necesita dos es el cociente que no
+        /// cabe -- y por eso el campo es un `Option` y no un segundo `Valor`
+        /// obligatorio que las demas tendrian que rellenar con algo falso.
+        contra: Option<Valor>,
         sitio: Sitio,
     },
     /// Cambia de clase de numero: `flotante64(n)`, `entero64(f)`.

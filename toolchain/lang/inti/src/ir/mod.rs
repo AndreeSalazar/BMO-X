@@ -548,6 +548,36 @@ impl<'t> Descenso<'t> {
                     self.pon(Instr::Comprueba {
                         que: c,
                         sobre: d.clone(),
+                        contra: None,
+                        sitio: *sitio,
+                    });
+                }
+
+                // *** Y LA OTRA MITAD DE LA DIVISION, que hasta el 2026-08-22 no
+                // pedia nadie: `-2^63 entre -1` NO CABE en 64 bits.
+                //
+                // Es la Regla 1 --un desborde-- pero se escribe con una barra, y
+                // de la division solo se comprobaba el divisor. El resultado era
+                // un programa que compilaba limpio, salia firmado, y en metal
+                // moria con una autopsia del kernel: `idiv` levanta `#DE`, el
+                // MISMO vector que dividir entre cero.
+                //
+                // ** Se pide AQUI, en la IR, y no se emite por su cuenta en el
+                // emisor. La diferencia importa: hay una prueba que exige que lo
+                // que la IR pide y lo que el binario lleva cuadren, y esa resta
+                // es la que dira lo que quito el optimizador el dia que haya uno.
+                // Un emisor que anade reglas por su cuenta rompe esa cuenta.
+                //
+                // Y lleva DOS valores porque el cociente solo se sale cuando el
+                // dividendo es el minimo Y el divisor es -1. Es la unica de las
+                // cinco que necesita mirar dos.
+                if matches!(op, Op::Entre | Op::Divide | Op::Resto)
+                    && !matches!(clase, Clase::Flotante)
+                {
+                    self.pon(Instr::Comprueba {
+                        que: Comprobacion::Cociente,
+                        sobre: i.clone(),
+                        contra: Some(d.clone()),
                         sitio: *sitio,
                     });
                 }
@@ -564,6 +594,7 @@ impl<'t> Descenso<'t> {
                     self.pon(Instr::Comprueba {
                         que: c,
                         sobre: Valor::Temporal(t),
+                        contra: None,
                         sitio: *sitio,
                     });
                 }
@@ -627,6 +658,7 @@ impl<'t> Descenso<'t> {
                             self.pon(Instr::Comprueba {
                                 que: Comprobacion::Conversion(bytes),
                                 sobre: v.clone(),
+                                contra: None,
                                 sitio: *sitio,
                             });
                         }
@@ -761,6 +793,7 @@ impl<'t> Descenso<'t> {
                             self.pon(Instr::Comprueba {
                                 que: Comprobacion::Indice,
                                 sobre: Valor::Temporal(t),
+                                contra: None,
                                 sitio: *sitio,
                             });
                             Valor::Temporal(t)

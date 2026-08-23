@@ -103,6 +103,7 @@ esperando a su fase.
 | sonda | regla | espera |
 |---|---|---|
 | `r01_desborde` | 1 -- desbordar atrapa | `E1001` en ejecucion |
+| `r01b_cociente` | 1 -- **`-2^63 entre -1` no cabe**, y se escribe como division | `E1001` en ejecucion |
 | `r02_indice` | 2 -- indice constante fuera de rango **no compila** | `E0090` |
 | `r03_division` | 3 -- dividir entre cero atrapa | `E1003` |
 | `r04_sin_valor` | 4 -- ★ leer sin inicializar **no se puede escribir** | `E0031` |

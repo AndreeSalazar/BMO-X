@@ -455,7 +455,7 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
             }
 
             // ** La regla, en bytes.
-            Instr::Comprueba { que, sobre, .. } => {
+            Instr::Comprueba { que, sobre, contra, .. } => {
                 comprobaciones += 1;
                 let codigo: u64 = que.codigo()[1..].parse().unwrap_or(0);
                 match que {
@@ -480,6 +480,38 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                         out.extend_from_slice(&[0x0F, 0x84]); // jz
                         huecos_de_atrapa.push((out.len(), codigo));
                         out.extend_from_slice(&[0, 0, 0, 0]);
+                    }
+
+                    // *** LA REGLA 1 ESCONDIDA DENTRO DE UNA DIVISION.
+                    //
+                    // `-2^63 entre -1` no cabe en 64 bits. Es la unica de las
+                    // cinco que mira DOS valores, y por eso `Comprueba` lleva un
+                    // `contra`: el cociente solo se sale cuando el dividendo es
+                    // el minimo Y el divisor es -1.
+                    //
+                    // El camino que no atrapa paga una comparacion y un salto
+                    // que no salta: al segundo `cmp` solo se entra si el divisor
+                    // es exactamente -1, que casi nunca.
+                    Comprobacion::Cociente => {
+                        let Some(divisor) = contra else {
+                            // Sin el segundo valor no hay nada que comprobar, y
+                            // callar aqui seria emitir una regla que aprueba
+                            // todo. Se dice y no se emite.
+                            sin_emitir.push(
+                                "la regla del cociente llego sin su segundo valor".to_string(),
+                            );
+                            continue;
+                        };
+                        carga(out, DER, divisor, &marco);
+                        x86::cmp_r64_imm32(out, DER, -1);
+                        let al_final = x86::salto_corto(out, 0x75); // jne
+                        carga(out, IZQ, sobre, &marco);
+                        x86::mov_r64_imm64(out, 2, i64::MIN as u64);
+                        x86::cmp_r64_r64(out, IZQ, 2);
+                        out.extend_from_slice(&[0x0F, 0x84]); // je -> atrapa
+                        huecos_de_atrapa.push((out.len(), codigo));
+                        out.extend_from_slice(&[0, 0, 0, 0]);
+                        x86::cierra_salto_corto(out, al_final);
                     }
 
                     // ** REGLA 12 -- cabe este numero en tantos bytes?

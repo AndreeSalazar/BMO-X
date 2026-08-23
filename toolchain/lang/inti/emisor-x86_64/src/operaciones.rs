@@ -23,14 +23,17 @@ pub(crate) fn binaria(out: &mut Vec<u8>, op: Op) {
         Op::Suma => x86::add_r64_r64(out, IZQ, DER),
         Op::Resta => x86::sub_r64_r64(out, IZQ, DER),
         Op::Por => x86::imul_r64_r64(out, IZQ, DER),
-        Op::Entre | Op::Divide => {
+        Op::Entre | Op::Divide | Op::Resto => {
+            // ** La guardia del cociente NO esta aqui: la pide la IR con
+            // `Comprobacion::Cociente` y la emite `Instr::Comprueba`, como las
+            // otras cuatro. Un emisor que anadiera reglas por su cuenta romperia
+            // la cuenta que compara lo que la IR pide con lo que el binario
+            // lleva -- y esa resta es la que medira al optimizador.
             x86::cqo(out);
             x86::idiv_r64(out, DER);
-        }
-        Op::Resto => {
-            x86::cqo(out);
-            x86::idiv_r64(out, DER);
-            x86::mov_r64_r64(out, IZQ, 2); // el resto vive en rdx
+            if matches!(op, Op::Resto) {
+                x86::mov_r64_r64(out, IZQ, 2); // el resto vive en rdx
+            }
         }
         Op::BitsY => {
             out.extend_from_slice(&[0x48, 0x21, 0xC8]); // and rax, rcx
