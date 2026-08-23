@@ -434,3 +434,28 @@ description = "El mayor de dos flotante64: maximo(a, b)"
 bytes = [0xF2, 0x0F, 0x5F, 0xC1]  # maxsd xmm0, xmm1
 args = ["xmm0", "xmm1"]
 returns = "xmm0"
+
+#  ** `absoluto` NO ES UNA INSTRUCCION, y aun asi cabe en una fila.
+#
+#  x86-64 no tiene "valor absoluto de un double". Lo que hay es apagar el bit
+#  del signo, y como INTI lleva los flotantes en registros GENERALES eso son dos
+#  instrucciones enteras y ni una de coma flotante:
+#
+#      mov rcx, 0x7FFF_FFFF_FFFF_FFFF     la mascara, sin el bit 63
+#      and rax, rcx                        y fuera el signo
+#
+#  *** Y cabe aqui porque esta columna se llama `bytes`, no `instruccion`. Una
+#  secuencia FIJA es tan dato como una sola -- lo que no cabria es una que
+#  dependiera de los operandos.
+#
+#  Se hace asi y no con `andpd` a proposito: `andpd` necesitaria la mascara en
+#  memoria o en otro xmm, o sea una constante que alguien tiene que colocar. Esto
+#  no toca memoria y no pide SSE4.1 ni nada posterior a 1999.
+[absd]
+description = "Valor absoluto de un flotante64: absoluto(x)"
+bytes = [
+    0x48, 0xB9, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F,  # mov rcx, mascara
+    0x48, 0x21, 0xC8,                                            # and rax, rcx
+]
+args = ["rax"]
+returns = "rax"
