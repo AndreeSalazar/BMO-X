@@ -335,9 +335,41 @@ pub struct FuncionIr {
 pub struct Congelado {
     pub nombre: String,
     /// Los bytes, ya en el orden de esta maquina.
+    ///
+    /// [!] **Sin cabecera.** Si `clase` pide una, la pone el EMISOR: la forma de
+    /// un objeto del monton la declara `bmo-abi`, y este crate no lo enlaza a
+    /// proposito (ver la cabecera de su `Cargo.toml`). Poner aqui veinticuatro
+    /// bytes a mano seria una segunda declaracion del mismo contrato.
     pub bytes: Vec<u8>,
     /// Cuanto mide un elemento. Hace falta para indexar.
     pub ancho: u32,
+    /// **Que clase de cosa congelada es.**
+    pub clase: ClaseCongelada,
+}
+
+/// *** LAS DOS COSAS QUE VIVEN CONGELADAS, y por que son la misma (2026-08-23).
+///
+/// El pozo de textos y las tablas constantes nacieron separados y **no eran dos
+/// mecanismos**: el pozo existia aparte solo porque `RoData` no existia todavia,
+/// asi que `Const::Texto` bajaba a un CERO y el emisor lo confesaba en su lista
+/// de "sin emitir".
+///
+/// La seccion 10.2 del maestro ya los tenia juntos desde el principio:
+///
+/// ```text
+///    CONGELADO   inmortal. Nadie lo cambia, nadie cuenta sus referencias.
+///                literales, constantes, un modulo cargado
+/// ```
+///
+/// ** Lo unico que los separa es si llevan cabecera de objeto, y eso lo decide
+/// esta etiqueta -- no dos caminos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaseCongelada {
+    /// Una tabla de literales: `PRIMOS = [2, 3, 5]`. Bytes pelados.
+    Tabla,
+    /// Un literal de texto. El emisor le pone delante la cabecera de
+    /// `bmo_abi::dynobj::texto`, **con el bit de INMORTAL puesto**.
+    Texto,
 }
 
 #[derive(Debug, Clone, Default)]

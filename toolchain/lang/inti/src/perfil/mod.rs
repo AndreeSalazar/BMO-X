@@ -253,6 +253,27 @@ impl<'c> Vigia<'c> {
                 if let Some(t) = tipo {
                     self.tipo(t, s.sitio());
                 }
+                // *** ATAR UN TEXTO A UN NOMBRE ES TENER UNA VARIABLE `texto`,
+                // y eso sigue sin caber en `llano` (2026-08-23).
+                //
+                // ** La linea que este arreglo traza, y conviene verla entera:
+                //
+                //     lee_natural8("hola" + i)   dentro de `crudo`  ->  VALE
+                //     saludo = "hola"                               ->  E0070
+                //
+                // Los BYTES de un literal estan congelados y se llega a ellos
+                // igual que a los de `PRIMOS`: son una direccion en `RoData` y
+                // no cuestan nada. Lo que no cabe es la VARIABLE, porque una
+                // variable de tipo `texto` es del tipo que crece -- y que HOY
+                // solo se le pueda meter un literal no es una propiedad del
+                // tipo, es una carencia del perfil que manana no lo sera.
+                //
+                // *** Deducirlo del literal y no del tipo escrito es a proposito:
+                // en `llano` los tipos son obligatorios, asi que la unica forma
+                // de que aparezca un `texto` sin escribirlo es esta.
+                if self.llano() && tipo.is_none() && matches!(valor, Expr::Texto(_, _)) {
+                    self.crece("un texto", s.sitio());
+                }
                 self.expresion(valor);
             }
             Sent::Si { ramas, sino, .. } => {
@@ -339,9 +360,32 @@ impl<'c> Vigia<'c> {
 
     fn expresion(&mut self, e: &Expr) {
         match e {
-            Expr::Texto(_, sitio) if self.llano() => {
-                self.crece("un texto", *sitio);
-            }
+            // *** UN LITERAL DE TEXTO NO CRECE, y por eso ya no se denuncia
+            // (2026-08-23).
+            //
+            // Esto decia `self.crece("un texto")` en `llano`, con el motivo
+            // *"lo que crece pide memoria"*. Y **un literal no crece**: es
+            // CONGELADO --seccion 10.2 del maestro-- asi que sus bytes viven en
+            // `RoData` con el bit de INMORTAL puesto, nadie le cuenta las
+            // referencias y **no se reserva nada**.
+            //
+            // ** Es EXACTAMENTE el fallo que se cerro el 22-08 con
+            // `PRIMOS = [2, 3, 5]`, un tipo mas alla. La comprobacion no
+            // distinguia *"esto crece"* de *"esto es un literal congelado"*, y
+            // por eso la lista de al lado ya tiene su excepcion.
+            //
+            // *** Y la de aqui es MAS FUERTE que la de la lista. Una lista
+            // literal solo esta congelada dentro de una `constante` --fuera se
+            // le puede anadir-- y por eso su brazo mira `en_constante`. Un texto
+            // es INMUTABLE por definicion del tipo: `"hola"` no puede crecer en
+            // ningun sitio, asi que no hace falta preguntar donde esta.
+            //
+            // [!] Lo que SIGUE denunciado es el TIPO `texto` en una declaracion,
+            // y no es incoherencia: una variable de ese tipo puede acabar
+            // guardando un texto CONSTRUIDO, y eso si pide monton. Se puede
+            // llegar a los bytes congelados --con `crudo`, como se llega a
+            // `PRIMOS`-- y no se puede tener la variable. Es la misma linea.
+            Expr::Texto(_, _) => {}
             Expr::Lista(v, sitio) => {
                 // ** Una lista dentro de una CONSTANTE esta congelada: no crece,
                 // no pide monton, y cabe en `llano`. Va a `RoData`.

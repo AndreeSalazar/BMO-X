@@ -651,61 +651,91 @@ fn el_resto_lleva_la_misma_guardia() {
     assert_eq!(ejecuta(f, 100u64, 7u64), 2);
 }
 
-/// **EL POZO DE TEXTOS SE CAE, Y AHORA LO DICE.**
+/// *** LOS TEXTOS LLEGAN A BYTES (2026-08-23), y lo que decia antes.
 ///
-/// ## Lo que estaba pasando en silencio
+/// Esta prueba se llamaba `los_textos_que_no_llegan_a_bytes_se_dicen` y exigia
+/// que el emisor CONFESARA que el pozo se perdia:
 ///
-/// `ir::bajar` interna cada literal de texto en `ModuloIr::textos`: los
-/// deduplica, les da un indice, y deja escrito que *"se comparte, y por eso
-/// puede prestarse congelado"*.
+/// ```text
+///    `ir::bajar` interna cada literal en `ModuloIr::textos`... y el emisor no
+///    lo mira ni una vez. `Const::Texto(i)` baja a un cero.
+/// ```
 ///
-/// *** Y el emisor no lo miraba **ni una vez**. `grep textos` en `lib.rs` daba
-/// cero. `Const::Texto(i)` baja a un cero y el pozo se pierde entero.
+/// Era la firma de fallo de siempre --la pieza que se calcula bien y no lee
+/// nadie-- y el aviso se dejo escrito porque no habia adonde llevarlos. Ahora
+/// si: **un literal ES un congelado**, va a `RoData` con su cabecera de objeto,
+/// y el codigo llega a el por una reubicacion.
 ///
-/// Es la firma de fallo que este proyecto persigue desde el principio: **la
-/// pieza que se calcula bien y no la lee nadie**. No se puede arreglar hoy --los
-/// textos son de `pleno` y `pleno` no llega a bytes-- pero **callarse no era una
-/// opcion**: sin esto, el dia que alguien abra `pleno` se encontraria con
-/// literales que compilan y valen cero.
-///
-/// El sitio al que van existe y esta vacio: `SectionKind::RoData = 0x02`.
+/// ** El pozo nunca fue un segundo mecanismo: existia porque `RoData` no
+/// existia.
 #[test]
-fn los_textos_que_no_llegan_a_bytes_se_dicen() {
-    let e = emitido("perfil pleno
+fn los_textos_llegan_a_bytes_y_ya_no_se_confiesan() {
+    let e = emitido(
+        "perfil pleno
 
 funcion f
     escribe(\"hola\")
     escribe(\"adios\")
-");
+",
+    );
     assert!(
-        e.sin_emitir.iter().any(|x| x.contains("texto(s) del pozo")),
-        "el pozo se cayo callandose: {:?}",
+        !e.sin_emitir.iter().any(|x| x.contains("pozo")),
+        "el pozo ya no se pierde, asi que no hay nada que confesar: {:?}",
         e.sin_emitir
     );
-    // Y dice CUANTOS, que es lo que convierte el aviso en un numero seguible.
-    assert!(
-        e.sin_emitir.iter().any(|x| x.contains("2 texto")),
-        "no dice cuantos: {:?}",
-        e.sin_emitir
-    );
+    // Dos literales distintos -> dos congelados, y los dos son textos.
+    let textos: Vec<_> = e
+        .congelados
+        .iter()
+        .filter(|c| matches!(c.clase, bmo_inti_front::ir::ClaseCongelada::Texto))
+        .collect();
+    assert_eq!(textos.len(), 2, "{:?}", e.congelados);
+    assert_eq!(textos[0].bytes, b"hola");
+    assert_eq!(textos[1].bytes, b"adios");
 }
 
-/// Y un fuente sin textos no se queja de nada.
+/// El pozo no repite, y por tanto los congelados tampoco: el mismo literal dos
+/// veces es UN objeto congelado, no dos.
 ///
-/// ** Sin esta, el aviso podria estar saliendo siempre y la de arriba seguiria
-/// en verde -- y un aviso que sale siempre es ruido que entrena a no mirar.
+/// ** Que se comparta es exactamente lo que la inmortalidad permite. Un objeto
+/// contado no se podria compartir asi sin tocar su contador en cada sitio.
 #[test]
-fn un_fuente_sin_textos_no_avisa_del_pozo() {
-    let e = emitido("perfil llano
+fn el_mismo_texto_dos_veces_es_un_solo_congelado() {
+    let e = emitido(
+        "perfil pleno
+
+funcion f
+    escribe(\"hola\")
+    escribe(\"hola\")
+",
+    );
+    let textos = e
+        .congelados
+        .iter()
+        .filter(|c| matches!(c.clase, bmo_inti_front::ir::ClaseCongelada::Texto))
+        .count();
+    assert_eq!(textos, 1, "el pozo deduplica, y el congelado hereda eso");
+}
+
+/// Y un fuente sin textos no crea ningun congelado de texto.
+#[test]
+fn un_fuente_sin_textos_no_crea_congelados_de_texto() {
+    let e = emitido(
+        "perfil llano
 
 funcion f devuelve entero32
     devuelve 7
-");
+",
+    );
     assert!(
         !e.sin_emitir.iter().any(|x| x.contains("pozo")),
         "aviso de pozo sin textos: {:?}",
         e.sin_emitir
     );
+    assert!(e
+        .congelados
+        .iter()
+        .all(|c| !matches!(c.clase, bmo_inti_front::ir::ClaseCongelada::Texto)));
 }
 
 // ===================================================================

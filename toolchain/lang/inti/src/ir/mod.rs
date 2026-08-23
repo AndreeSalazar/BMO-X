@@ -47,7 +47,7 @@
 
 pub mod forma;
 
-pub use forma::{Congelado,
+pub use forma::{ClaseCongelada, Congelado,
     Clase, Comprobacion, Const, Etiqueta, FuncionIr, Instr, Local, ModuloIr, Temporal, Valor,
 };
 
@@ -126,6 +126,10 @@ pub fn bajar_con(
     let mut congeladas: std::collections::HashMap<String, Const> =
         std::collections::HashMap::new();
     let mut tablas: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    // El mapa "indice del pozo -> indice en congelados", compartido por todas
+    // las funciones: el pozo no se repite, asi que su congelado tampoco.
+    let mut textos_congelados: Vec<u32> = Vec::new();
+
     for d in &m.declaraciones {
         if let Decl::Constante { nombre, valor, .. } = d {
             if let Some(c) = congelar(valor) {
@@ -138,6 +142,7 @@ pub fn bajar_con(
                     nombre: nombre.clone(),
                     bytes,
                     ancho,
+                    clase: crate::ir::forma::ClaseCongelada::Tabla,
                 });
             }
             // ** Lo que NO se deja congelar no se inventa: se queda fuera, el
@@ -150,11 +155,11 @@ pub fn bajar_con(
     for d in &m.declaraciones {
         match d {
             Decl::Funcion(f) => {
-                let ir = Descenso::nueva(&mut salida.textos, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(f);
+                let ir = Descenso::nueva(&mut salida.textos, &mut salida.congelados, &mut textos_congelados, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(f);
                 salida.funciones.push(ir);
             }
             Decl::Operacion { tipo, funcion } => {
-                let mut ir = Descenso::nueva(&mut salida.textos, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(funcion);
+                let mut ir = Descenso::nueva(&mut salida.textos, &mut salida.congelados, &mut textos_congelados, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(funcion);
                 // El nombre lleva el tipo delante para que dos operaciones con
                 // el mismo nombre en tipos distintos no se pisen.
                 ir.nombre = format!("{}.{}", tipo, funcion.nombre);
@@ -166,7 +171,7 @@ pub fn bajar_con(
                 ..
             } => {
                 for f in operaciones {
-                    let mut ir = Descenso::nueva(&mut salida.textos, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(f);
+                    let mut ir = Descenso::nueva(&mut salida.textos, &mut salida.congelados, &mut textos_congelados, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(f);
                     ir.nombre = format!("{}.{}", nombre, f.nombre);
                     salida.funciones.push(ir);
                 }
@@ -184,6 +189,18 @@ struct Descenso<'t> {
     siguiente_etiqueta: u32,
     locales: Vec<String>,
     textos: &'t mut Vec<String>,
+    /// Los congelados del modulo, para poder ANADIR el de un literal de texto.
+    ///
+    /// ** Es `&mut` y las tablas constantes no lo son porque las tablas se
+    /// conocen enteras antes de bajar nada --son declaraciones-- y un literal
+    /// aparece **dentro de una expresion**, que es aqui.
+    congelados: &'t mut Vec<crate::ir::forma::Congelado>,
+    /// Indice del pozo de textos -> indice en `congelados`.
+    ///
+    /// [!] No es la identidad y no se puede suponer: en `congelados` ya viven
+    /// las tablas constantes, que se declararon antes. Suponerlo cargaria la
+    /// direccion de una tabla creyendo que era un texto -- que compila.
+    textos_congelados: &'t mut Vec<u32>,
     /// **Las constantes CONGELADAS de este modulo.**
     ///
     /// ** Se resuelven aqui, en la IR, y no en el emisor: una constante vale lo
@@ -229,6 +246,8 @@ struct Descenso<'t> {
 impl<'t> Descenso<'t> {
     fn nueva(
         textos: &'t mut Vec<String>,
+        congelados: &'t mut Vec<crate::ir::forma::Congelado>,
+        textos_congelados: &'t mut Vec<u32>,
         congeladas: &'t std::collections::HashMap<String, Const>,
         tablas: &'t std::collections::HashMap<String, u32>,
         tabla: &'t crate::tablas::Modulos,
@@ -242,6 +261,8 @@ impl<'t> Descenso<'t> {
             siguiente_etiqueta: 0,
             locales: Vec::new(),
             textos,
+            congelados,
+            textos_congelados,
             congeladas,
             tablas,
             bucles: Vec::new(),
@@ -516,15 +537,48 @@ impl<'t> Descenso<'t> {
                     }
                 }
             }
+            // *** UN LITERAL DE TEXTO ES UN CONGELADO, y siempre lo fue.
+            //
+            // Hasta hoy vivia en un "pozo de textos" aparte, y **no eran dos
+            // mecanismos**: el pozo existia porque `RoData` no existia. El
+            // emisor lo confesaba en su lista de "sin emitir" --*"N texto(s) del
+            // pozo no llegan a bytes: `Const::Texto` baja a cero"*-- y ahi
+            // llevaba desde F2.
+            //
+            // La seccion 10.2 del maestro los tenia juntos desde el principio:
+            // *"CONGELADO: literales, constantes, un modulo cargado"*.
+            //
+            // ** Y baja a `Instr::Direccion` por el mismo motivo que una tabla,
+            // que quedo escrito el 22-08: un `Const` que necesita una
+            // REUBICACION obligaria a los veintitres sitios que cargan un valor
+            // a saber apuntarla. Siendo una instruccion, el emisor la atiende en
+            // UNO.
+            //
+            // [!] Los bytes van SIN cabecera. La forma de un objeto la declara
+            // `bmo-abi`, y este crate no lo enlaza a proposito -- la cabecera de
+            // 24 bytes con el bit de INMORTAL la pone el emisor, que si lo
+            // conoce.
             Expr::Texto(t, _) => {
                 let i = match self.textos.iter().position(|x| x == t) {
                     Some(i) => i,
                     None => {
                         self.textos.push(t.clone());
+                        self.congelados.push(crate::ir::forma::Congelado {
+                            nombre: format!("texto {}", self.textos.len() - 1),
+                            bytes: t.clone().into_bytes(),
+                            ancho: 1,
+                            clase: crate::ir::forma::ClaseCongelada::Texto,
+                        });
+                        self.textos_congelados.push(self.congelados.len() as u32 - 1);
                         self.textos.len() - 1
                     }
                 };
-                Valor::Const(Const::Texto(i as u32))
+                let dst = self.temporal();
+                self.pon(Instr::Direccion {
+                    destino: dst,
+                    congelado: self.textos_congelados[i],
+                });
+                Valor::Temporal(dst)
             }
             Expr::Logico(b, _) => Valor::Const(Const::Logico(*b)),
             Expr::Nada(_) => Valor::Const(Const::Nada),
