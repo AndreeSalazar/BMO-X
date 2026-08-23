@@ -129,9 +129,18 @@ fn un_campo_sin_tipo_se_denuncia() {
     assert_eq!(c, vec!["E0122"]);
 }
 
+/// ** El ejemplo dejo de ser `texto` el 2026-08-23, y el cambio ES la noticia.
+///
+/// `texto` YA MIDE --una referencia-- asi que este modulo no tiene nada que
+/// decirle. Quien lo rechaza en `llano` es `perfil`, y con el motivo bueno:
+/// *"lo que crece pide memoria, y `llano` no tiene monton"*, en vez de *"no se
+/// cuanto mide"*. Son dos frases distintas y solo una manda a hacer algo.
+///
+/// Lo que sigue sin medida es un nombre que **no existe en ningun sitio**, que
+/// es de lo que este aviso hablaba de verdad desde el principio.
 #[test]
 fn un_campo_que_no_se_puede_medir_se_denuncia() {
-    let c = codigos_de(&format!("{}registro Punto\n    x es texto\n", CABECERA));
+    let c = codigos_de(&format!("{}registro Punto\n    x es Inventado\n", CABECERA));
     assert_eq!(c, vec!["E0121"]);
 }
 
@@ -443,17 +452,98 @@ fn una_tabla_tambien_mide_lo_que_una_referencia() {
 /// ** Y hasta que `texto` mida, `disposicion` no puede abrir su puerta a
 /// `pleno`: la abriria denunciando `nombre es texto`, que alli es correcto. Esta
 /// prueba fija el estado real para que el dia que cambie, se vea.
+/// *** `texto` MIDE, y mide lo que mide una direccion (2026-08-23).
+///
+/// La prueba que habia aqui se llamaba `texto_sigue_sin_medida_y_por_eso_la_
+/// puerta_de_pleno_no_se_abre` y fijaba el estado CONTRARIO a proposito, para
+/// que el dia que cambiara se viera. Es hoy.
+///
+/// ** Y lo que cambio no es una fila: es de DONDE sale la respuesta. `texto` no
+/// tiene --ni va a tener-- una fila en `medidas.toml`; lo que tiene es un sitio
+/// en `tipos_que_crecen`, y lo que crece se guarda por referencia. La tabla de
+/// medidas sigue diciendo que no lo sabe y el PLANO si. Son dos preguntas
+/// distintas, y ahora tienen dos respuestas distintas.
 #[test]
-fn texto_sigue_sin_medida_y_por_eso_la_puerta_de_pleno_no_se_abre() {
+fn texto_mide_una_referencia_porque_crece() {
     let p = plano_vacio();
+    assert!(p.crece("texto"), "`texto` sale de `tipos_que_crecen`");
     assert_eq!(
         p.medida_de(&Tipo::Nombre("texto".to_string())),
-        None,
-        "`texto` no tiene medida hasta que sea una referencia declarada"
+        Some(8),
+        "lo que crece se guarda por referencia, y una referencia mide 8"
     );
-    // Un bufer si, y esa es la diferencia entera entre los dos.
+    assert_eq!(
+        p.alineacion_de(&Tipo::Nombre("texto".to_string())),
+        Some(8),
+        "y se alinea como lo que es: una direccion"
+    );
+
+    // [!] Y LA TABLA DE MEDIDAS NO SE ENTERO, que es justo lo que se buscaba:
+    // `texto` no mide 8 porque alguien escribiera `texto = 8`, sino porque
+    // crece. El dia que esto conteste `Some(8)`, la lista se habra copiado --
+    // que es el fallo que se quiso evitar, no un detalle de estilo.
+    assert_eq!(Medidas::por_defecto().de("texto"), None);
+
+    // Un bufer mide lo mismo por OTRO motivo: es una direccion cruda, sin
+    // cabecera y sin contador. La diferencia entre los dos no es el numero.
     assert_eq!(
         p.medida_de(&Tipo::Bufer(Box::new(Tipo::Nombre("natural8".to_string())))),
         Some(8)
     );
+
+    // Y un nombre que ni crece ni esta en la tabla sigue sin medida: la lista
+    // no es un comodin que conteste que si a todo.
+    assert_eq!(p.medida_de(&Tipo::Nombre("Inventado".to_string())), None);
+}
+
+/// *** LA PUERTA DE `pleno` YA SOLO ESPERA AL DECIMAL (2026-08-23).
+///
+/// La puerta de `comprobar` lleva su condicion escrita desde que existe, y
+/// hasta hoy la condicion era `texto`. Ya no: `texto` mide. Esta prueba fija
+/// **cual es la que queda**, para que el dia que tambien caiga no haya que
+/// deducirlo leyendo el comentario.
+///
+/// ** Se mide por las piezas y no abriendo la puerta, a proposito: abrirla para
+/// probar que se puede abrir seria abrirla. Lo que se comprueba es que las dos
+/// mitades del registro de `pleno` ya saben decir su sitio, y que la que falta
+/// es exactamente una.
+#[test]
+fn la_puerta_de_pleno_ya_solo_espera_al_decimal() {
+    let p = plano_vacio();
+
+    // Los tres tipos de `pleno` que crecen: los tres saben medir, y miden lo
+    // mismo, que es lo que hace posible un campo de ellos.
+    for t in [
+        Tipo::Nombre("texto".to_string()),
+        Tipo::Lista(Box::new(Tipo::Nombre("entero64".to_string()))),
+        Tipo::Tabla(
+            Box::new(Tipo::Nombre("texto".to_string())),
+            Box::new(Tipo::Nombre("entero64".to_string())),
+        ),
+    ] {
+        assert_eq!(
+            p.medida_de(&t),
+            Some(8),
+            "lo que crece se guarda por referencia: {t:?}"
+        );
+    }
+
+    // *** Y LA QUE FALTA. `numero` en `pleno` es decimal exacto --coeficiente
+    // de 128 bits mas escala-- y esa disposicion no esta decidida: cuantos
+    // bytes, en que orden, y donde va el signo.
+    //
+    // No es un olvido y no se tapa con un numero cualquiera: mientras no se
+    // decida, la respuesta honrada es "no lo se".
+    assert_eq!(
+        p.medida_de(&Tipo::Nombre("numero".to_string())),
+        None,
+        "el decimal no tiene disposicion todavia, y por eso la puerta sigue \
+         cerrada. El dia que la tenga, esto pasa a ser Some(..) y la puerta \
+         se abre entera."
+    );
+    assert_eq!(p.medida_de(&Tipo::Nombre("decimal".to_string())), None);
+
+    // [!] Y `numero` NO crece: no es que pida monton, es que cuesta. Las dos
+    // listas contestan preguntas distintas y esta prueba no las confunde.
+    assert!(!p.crece("numero"));
 }

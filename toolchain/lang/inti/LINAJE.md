@@ -100,6 +100,27 @@ mira hacia arriba **ni hacia los lados**:
    gen 4   perfil       nombres      ir   <- y NO se miran entre ellos
 ```
 
+★★ **Y `tablas` se llevo su SEGUNDA inquilina el 2026-08-23**, por el mismo test
+y con la misma frase. `disposicion` (gen 3) necesito saber si un tipo **crece**
+--para poder decir que un campo de `texto` mide una referencia-- y la lista
+vivia dentro de `perfil`, que es su hermano MAYOR:
+
+```text
+   disposicion (gen 3) mira a perfil (gen 4) en mod.rs
+```
+
+El `Catalogo` entero se mudo a `tablas`. Y lo que **no** se mudo es la linea que
+importa: el recorrido que decide a quien acusar sigue en `perfil`. **Aqui va el
+dato; alli, la decision.**
+
+> La regla no cambio, se aplico: *una tabla vive en la generacion mas baja que
+> la necesita*. La primera vez fue `Modulos`. **La segunda vez es la que dice si
+> una regla era una regla o una excusa.**
+
+★ De paso salio gratis lo que siempre sale al mudar algo: `perfil` metia la mano
+en cuatro campos privados del catalogo. Ahora pregunta --`crece`, `cuesta`,
+`sin_medida`, `llega_a_bytes`--, que es una API en vez de una intimidad.
+
 ### Pieza por pieza: de que es capaz sola
 
 | pieza | gen | de que esta hecha | que aguanta sola | si falla |
@@ -111,7 +132,9 @@ mira hacia arriba **ni hacia los lados**:
 | `cabina` | 1 | una traduccion de avisos y numeros a eventos | **todo** | el sistema deja de enterarse. **Todo lo demas compila igual** |
 | `arbol` | 2 | datos puros, cero decisiones | **todo**: no tiene logica que falle | nada: si el arbol esta mal, esta mal quien lo construyo |
 | `sintaxis` | 3 | descenso recursivo y una tabla de precedencia | **casi todo** | no hay arbol. Se reescribe leyendo solo `GRAMATICA.md` |
-| `perfil` | 4 | un recorrido y dos listas de la tabla | **todo** | `llano` deja de vigilarse. **El resto compila igual** |
+| `disposicion` | 3 | dos tablas leidas y una suma de desplazamientos | **todo** | no hay plano: `p.x` y `a[i]` dejan de resolverse. La gramatica sigue en pie |
+| `tablas` | 1 | TOML y `HashMap`. **Cero decisiones** | **todo**: no compila una linea de INTI | el compilador no sabe que trae `usa`, ni que crece. Con respaldo incrustado |
+| `perfil` | 4 | **un recorrido**, y nada mas: sus listas se mudaron a `tablas` el 23-08 | **todo** | `llano` deja de vigilarse. **El resto compila igual** |
 | `nombres` | 4 | una pila de ambitos | **todo** | no se avisa de nombres. El resto compila igual |
 | `ir` | 4 | un descenso a instrucciones | **todo** | no hay bytes. La gramatica sigue en pie |
 

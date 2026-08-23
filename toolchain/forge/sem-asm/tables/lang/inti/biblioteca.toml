@@ -34,6 +34,26 @@ version = 1
 #  El criterio es uno solo: **crece**. Un `texto` al que se le pega otro texto
 #  tiene que pedir memoria, y en `llano` no hay a quien pedirsela. No es una
 #  lista de cosas prohibidas por gusto: es la consecuencia de no tener monton.
+#
+#  ** ESTA FILA TIENE DOS LECTORES DESDE EL 2026-08-23, y contesta dos preguntas.
+#
+#      perfil        crece? -> pide monton -> en `llano` no hay      (E0070)
+#      disposicion   crece? -> se guarda por REFERENCIA -> mide 8
+#
+#  *** Son la misma fila a proposito, y no dos. Lo que crece no cabe en una
+#  variable de tamano fijo; luego lo que cabe es su direccion. Es la MISMA
+#  propiedad mirada desde dos sitios, asi que copiarla a `medidas.toml` --que
+#  seria lo comodo-- solo compraria el dia en que las dos listas discrepen.
+#
+#  Por eso `texto` NO tiene fila en `medidas.toml` y aun asi mide: mide porque
+#  esta AQUI. Hay una prueba que lo vigila por los dos lados
+#  (`texto_mide_una_referencia_porque_crece`): exige que el plano diga 8 y que
+#  la tabla de medidas siga diciendo que no sabe.
+#
+#  [!] Y `lista`/`tabla` estan en la lista por el perfil, no por la medida:
+#  esas dos se saben por la FORMA del tipo (son variantes del arbol) y
+#  `disposicion` no necesita preguntar aqui por ellas. `texto` es un nombre, y
+#  un nombre solo se sabe consultando.
 [llano]
 tipos_que_crecen = ["texto", "lista", "tabla"]
 

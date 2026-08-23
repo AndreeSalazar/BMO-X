@@ -55,6 +55,20 @@ pub struct Medidas {
     /// Los que se operan con la aritmetica de enteros. Las dos listas juntas
     /// son el catalogo de conversiones que el lenguaje admite.
     enteros: Vec<String>,
+    /// **Los tipos con nombre que CRECEN**, y que por tanto se guardan por
+    /// referencia. Sale de `biblioteca.toml`, no de esta tabla.
+    ///
+    /// ** No se copia aqui a proposito. `tipos_que_crecen` ya existe alli, la
+    /// lee `perfil` para contestar *"esto pide monton"*, y **es la misma fila**:
+    /// lo que crece no cabe en una variable, luego lo que cabe es su direccion.
+    /// Copiarla seria tener dos sitios diciendo lo mismo hasta el dia que uno
+    /// se quede atras.
+    ///
+    /// *** Y la razon de que `texto` necesite una LISTA y `lista de T` no:
+    /// `Lista` y `Tabla` son variantes del arbol --se saben por la FORMA-- y
+    /// `texto` es un `Tipo::Nombre`, indistinguible de `entero64` sin preguntar
+    /// por el nombre. La forma se mira; el nombre se consulta.
+    crecen: crate::tablas::Catalogo,
 }
 
 impl Medidas {
@@ -63,10 +77,15 @@ impl Medidas {
     }
 
     pub fn cargar(raices: &Roots) -> Self {
-        match raices.locate(RUTA).and_then(|p| std::fs::read_to_string(p).ok()) {
+        let mut m = match raices.locate(RUTA).and_then(|p| std::fs::read_to_string(p).ok()) {
             Some(t) => Self::desde_texto(&t),
             None => Self::por_defecto(),
-        }
+        };
+        // La biblioteca se carga con las MISMAS raices, para que `$BMO_MODS`
+        // tape las dos tablas o ninguna. Taparlas a medias es como se consigue
+        // que un mod cambie lo que crece y no lo que mide.
+        m.crecen = crate::tablas::Catalogo::cargar(raices);
+        m
     }
 
     /// Las medidas que dice ESTE texto de tabla.
@@ -115,7 +134,17 @@ impl Medidas {
             bytes,
             flotantes: lista("flotantes"),
             enteros: lista("enteros"),
+            // [!] `desde_tabla` cambia la MAQUINA, no la BIBLIOTECA. Un
+            // `flotante32` puede medir otra cosa en otro silicio; que un `texto`
+            // crezca no depende del chip. Por eso la segunda maquina de
+            // `tests/segunda_maquina.rs` se lleva el catalogo de siempre.
+            crecen: crate::tablas::Catalogo::por_defecto(),
         }
+    }
+
+    /// Este tipo con nombre, crece? -- y entonces mide una referencia.
+    pub fn crece(&self, nombre: &str) -> bool {
+        self.crecen.crece(nombre)
     }
 
     /// Este tipo, se opera con coma flotante?
@@ -209,6 +238,15 @@ impl Plano {
     /// eso el programa no se rompe -- hace otra cosa.
     pub fn medida_de(&self, t: &Tipo) -> Option<u32> {
         match t {
+            // ** LO QUE CRECE VA PRIMERO, y el orden es la regla.
+            //
+            // Si `texto` llegara a tener una fila en `medidas.toml` --por un
+            // mod, o por un descuido-- ganaria la fila y un campo de texto
+            // mediria lo que dijera ese numero. Y estaria MAL: lo que crece no
+            // cabe en un campo de tamano fijo, se mire como se mire. Preguntando
+            // por aqui primero, ese numero no puede hacer dano; preguntando
+            // despues, lo haria en silencio.
+            Tipo::Nombre(n) if self.crece(n) => self.medidas.de("referencia"),
             Tipo::Nombre(n) => self
                 .medidas
                 .de(n)
@@ -240,6 +278,8 @@ impl Plano {
 
     pub fn alineacion_de(&self, t: &Tipo) -> Option<u32> {
         match t {
+            // Una referencia se alinea como lo que es, igual que abajo.
+            Tipo::Nombre(n) if self.crece(n) => self.medidas.de("referencia"),
             Tipo::Nombre(n) => match self.registros.get(n) {
                 Some(r) => Some(r.alineacion),
                 None => self.medidas.de(n),
@@ -249,6 +289,12 @@ impl Plano {
             Tipo::Lista(_) | Tipo::Tabla(_, _) => self.medidas.de("referencia"),
             _ => None,
         }
+    }
+
+    /// Este nombre, es de algo que crece? -- y por tanto se guarda por
+    /// referencia. La respuesta vive en `biblioteca.toml` y la trae `perfil`.
+    pub fn crece(&self, nombre: &str) -> bool {
+        self.medidas.crece(nombre)
     }
 
     pub fn registro(&self, nombre: &str) -> Option<&Registro> {
@@ -494,21 +540,45 @@ pub fn comprobar(m: &Modulo, medidas: Medidas) -> Cosecha<Plano> {
     };
     let mut avisos = Vec::new();
 
-    // ** ESTE MODULO SOLO TRABAJA EN `llano`, y no es una excepcion comoda.
+    // ** ESTE MODULO SOLO TRABAJA EN `llano`, y el motivo CAMBIO el 2026-08-23.
     //
-    // En `pleno` la pregunta es OTRA. Un campo alli no es "una direccion mas un
-    // desplazamiento fijo": un `texto` crece, lo que se guarda es una
-    // referencia, y ese modelo no esta construido. Medir un `registro` de
-    // `pleno` con las reglas de `llano` daria dos cosas y las dos malas:
-    // denunciar `nombre es texto` --que es correcto alli-- y, si no lo
-    // denunciara, inventarle una disposicion que luego no sera la suya.
+    // === Lo que decia antes, y ya no es verdad ===
     //
-    // En `llano` si es la pregunta correcta, porque `llano` no tiene otra: sin
-    // monton, todo lo que se toca es una direccion con una medida.
+    // Decia que en `pleno` un `texto` crece, que lo que se guarda es una
+    // referencia, y que ese modelo no estaba construido -- asi que abrir la
+    // puerta denunciaria `nombre es texto`, que alli es correcto.
     //
-    // El dia que `pleno` tenga su modelo, la fila que hace falta es
-    // `referencia = 8` en `medidas.toml` y esta puerta se abre. Esta aqui
-    // arriba, entera y con su motivo, en vez de repartida en `if`s por dentro.
+    // **Eso esta resuelto.** `texto` mide una referencia, y no por una fila
+    // suya sino porque esta en `tipos_que_crecen`. Medido con la puerta abierta
+    // a proposito para ver que salia:
+    //
+    //     registro Persona                    -> medida 16, alineacion 8
+    //         nombre es texto                    dos referencias, sin una queja
+    //         notas es lista de entero64
+    //
+    // === *** Y lo que la mantiene cerrada AHORA, que es otra cosa ===
+    //
+    // La misma sonda, con el otro campo:
+    //
+    //     registro Cuenta                     -> E0121, medida 0
+    //         saldo es numero
+    //
+    // `numero` en `pleno` es **decimal exacto** --coeficiente de 128 bits mas
+    // escala, seccion 10.3 del maestro-- y esa disposicion **no esta decidida**.
+    // No es que falte una fila: es que nadie ha dicho todavia cuantos bytes son,
+    // en que orden, ni donde va el signo. Es una decision de diseno del dueno,
+    // no trabajo mecanico, y el plan lo dice con esas palabras.
+    //
+    // ** Abrir la puerta hoy cambiaria un aviso correcto por otro peor: diria
+    // *"no se cuanto mide `numero`"*, que manda a buscar una medida que no
+    // falta, en vez de *"el decimal no tiene disposicion todavia"*, que explica
+    // una decision pendiente. Es la distincion de la familia `E0073`, y este
+    // compilador ya la pago una vez.
+    //
+    // El dia que el decimal tenga su forma, lo que hace falta es su fila en
+    // `medidas.toml` y **esta puerta se abre entera**. La otra mitad ya esta
+    // pagada, y hay una prueba que lo fija:
+    // `pruebas::la_puerta_de_pleno_ya_solo_espera_al_decimal`.
     if !matches!(m.perfil, crate::arbol::Perfil::Llano) {
         return Cosecha::con(plano, avisos);
     }

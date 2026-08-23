@@ -196,12 +196,12 @@ fn un_programa_sin_crudo_lo_dice_con_un_cero() {
 #[test]
 fn el_catalogo_incrustado_carga() {
     let cat = Catalogo::por_defecto();
-    assert!(cat.crecen.contains("texto"));
+    assert!(cat.crece("texto"));
     // ** `numero` ya NO esta en `sin_medida`: esta en `cuestan`, que es su
     // motivo de verdad. La lista vieja se queda vacia y con su sitio hecho.
-    assert!(!cat.without_size.contains("numero"));
-    assert!(cat.cuestan.contains("numero"));
-    assert!(cat.cuestan.contains("decimal"));
+    assert!(!cat.sin_medida("numero"));
+    assert!(cat.cuesta("numero"));
+    assert!(cat.cuesta("decimal"));
     // Lo que pide `crudo` ya no vive aqui: se mudo a la arquitectura, que es
     // de donde depende. Ver `arquitectura::pruebas`.
 }
