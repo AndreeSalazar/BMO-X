@@ -299,3 +299,143 @@ int main() {{
          sigue pidiendo de una lista vacia"
     );
 }
+
+// ---------------------------------------------------------------------------
+// ** EL ESTRECHAMIENTO, 2026-08-23: de un barrio a una linea.
+//
+// La casilla circular de arriba acusaba a una forma --`(tope - 1)->next = X`,
+// una flecha sobre un puntero CALCULADO-- pero esa linea hace tres cosas a la
+// vez: calcular la direccion, elegir el campo, y guardar. Un sospechoso con
+// tres partes no es un sospechoso: es un barrio.
+//
+// Las cinco de abajo lo parten, y la respuesta salio en la primera vuelta:
+//
+//     calcular la direccion    VERDE
+//     con variable intermedia  VERDE
+//     guardar en linea         ROJA  -- y cae en el campo 0, no en el suyo
+//
+// *** **EL CULPABLE, LOCALIZADO**: `parser/types.rs`,
+// `resolve_arrow_expr_offset`, que acaba en **`.unwrap_or(0)`**. Cuando el
+// tipo de la base no se puede deducir --y `tope - 1` es una binaria, que
+// `resolve_expr_type` no sabe tipar-- el offset del campo se convierte en
+// CERO en silencio. No hay error, no hay aviso: la escritura cae en el primer
+// campo del struct.
+//
+// En `vissprite_t` el campo 0 es `prev`. O sea que `(tope-1)->next = &unsorted`
+// escribe en `prev` y **`next` conserva `ds + 1`**, una posicion mas alla del
+// final. El recorrido se va del array, y en `+0x2c` --`scale`-- revienta.
+// Es `R_SortVisSprites+0x2c6` sin un solo cabo suelto.
+//
+// [!] Y tiene un hermano en el mismo camino: `field_type_via_pointer` termina
+// en `.unwrap_or(TypeSpec::Long)`, o sea que el ANCHO de la escritura tambien
+// se inventa cuando el tipo no se deduce.
+// ---------------------------------------------------------------------------
+
+/// **PARTE 1: `tope - 1` calcula la direccion buena?** VERDE.
+///
+/// Puntero global menos entero, sin tocar memoria. Absuelve a la aritmetica.
+#[test]
+fn la_resta_de_uno_a_un_puntero_global_retrocede_un_elemento() {
+    let salida = run_c(&format!(
+        "{MOLDE}
+struct vs arr[8];
+vs_t *tope;
+int main() {{
+    tope = &arr[8];
+    printf(\"%d\", (int)((char *)(tope - 1) - (char *)arr));
+    return 0;
+}}"
+    ));
+    assert_eq!(salida, "560", "siete elementos de 80 bytes");
+}
+
+/// **PARTE 2: con el puntero en una VARIABLE, la escritura cae bien.** VERDE.
+///
+/// Es la mitad que absuelve al `->` en general: guardar por una flecha
+/// funciona. Lo que no funciona es cuando la base va EN LINEA.
+#[test]
+fn guardar_por_una_flecha_sobre_una_variable_puntero_cae_en_su_sitio() {
+    let salida = run_c(&format!(
+        "{MOLDE}
+struct vs arr[8];
+vs_t *tope;
+int main() {{
+    vs_t *p;
+    tope = &arr[8];
+    arr[7].next = 0;
+    p = tope - 1;
+    p->next = &arr[0];
+    printf(\"%d\", (int)(arr[7].next == &arr[0]));
+    return 0;
+}}"
+    ));
+    assert_eq!(salida, "1", "la variable intermedia si tiene tipo declarado");
+}
+
+/// **PARTE 3: y EN LINEA no.** ROJA.
+///
+/// La unica diferencia con la casilla de arriba es que el puntero no pasa por
+/// una variable. Ahi se pierde el tipo, y con el tipo se pierde el offset.
+#[test]
+#[ignore = "bug abierto: la flecha sobre un puntero calculado resuelve offset 0"]
+fn guardar_por_una_flecha_sobre_un_puntero_calculado_cae_en_el_ultimo() {
+    let salida = run_c(&format!(
+        "{MOLDE}
+struct vs arr[8];
+vs_t *tope;
+int main() {{
+    tope = &arr[8];
+    arr[7].next = 0;
+    (tope - 1)->next = &arr[0];
+    printf(\"%d\", (int)(arr[7].next == &arr[0]));
+    return 0;
+}}"
+    ));
+    assert_eq!(salida, "1", "la escritura tiene que caer en arr[7].next");
+}
+
+/// **PARTE 4: DONDE cae, que es lo que nombra al culpable.** ROJA.
+///
+/// Da `1 0`: la escritura fue a `prev` --offset 0-- en vez de a `next`
+/// --offset 8--. Eso no es una direccion mal calculada: es un OFFSET DE CAMPO
+/// que vale cero. Ver la cabecera de esta seccion.
+#[test]
+#[ignore = "bug abierto: da `1 0`, o sea que el campo resuelto fue el offset 0"]
+fn la_flecha_calculada_no_escribe_en_el_campo_cero() {
+    let salida = run_c(&format!(
+        "{MOLDE}
+struct vs arr[8];
+vs_t *tope;
+int main() {{
+    tope = &arr[8];
+    arr[7].prev = 0;
+    arr[7].next = 0;
+    (tope - 1)->next = &arr[3];
+    printf(\"%d %d\", (int)(arr[7].prev == &arr[3]), (int)(arr[7].next == &arr[3]));
+    return 0;
+}}"
+    ));
+    assert_eq!(salida, "0 1", "si sale `1 0`, la flecha resolvio offset 0");
+}
+
+/// **PARTE 5: la forma exacta de DOOM** -- guardar la direccion de una LOCAL.
+/// ROJA por lo mismo, y se conserva porque es la linea literal del juego
+/// (`unsorted` es una local de `R_SortVisSprites`).
+#[test]
+#[ignore = "bug abierto: misma causa que las dos de arriba"]
+fn guardar_la_direccion_de_una_local_por_un_puntero_calculado() {
+    let salida = run_c(&format!(
+        "{MOLDE}
+struct vs arr[8];
+vs_t *tope;
+int main() {{
+    struct vs centinela;
+    tope = &arr[8];
+    arr[7].next = 0;
+    (tope - 1)->next = &centinela;
+    printf(\"%d\", (int)(arr[7].next == &centinela));
+    return 0;
+}}"
+    ));
+    assert_eq!(salida, "1", "la cadena tiene que llegar al centinela");
+}
