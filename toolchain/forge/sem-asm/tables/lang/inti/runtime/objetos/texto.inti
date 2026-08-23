@@ -46,28 +46,29 @@ funcion mide(texto es natural64) devuelve natural64
 
 # Junta dos textos en uno nuevo. Devuelve 0 si no cabe.
 #
-# ## *** AQUI ESTA LA UNICA COMPROBACION QUE INTI NO PONE SOLA, Y POR QUE
+# ## *** LO QUE PASA SI DOS CABECERAS MIENTEN, y quien lo para
 #
-# Este cuerpo es un bloque `crudo`, y `crudo` significa una cosa exacta: **aqui
-# nadie comprueba por ti**. La Regla 1 --que atrapa el desbordamiento en cada
-# suma-- esta APAGADA dentro, porque tocar memoria cruda no puede pagar una
-# guardia por operacion.
+# `na + nb` puede dar la vuelta. Si lo hiciera: `total` sale pequeno, `pide` da
+# un bloque pequeno, y los dos bucles de abajo escriben **fuera** -- un
+# desbordamiento de bufer, el fallo mas caro de los ultimos veinte anos.
 #
-# Asi que `na + nb` puede dar la vuelta. Con dos textos de verdad no pasa nunca;
-# con dos cabeceras corruptas, `total` sale pequeno, `pide` da un bloque
-# pequeno, y los dos bucles de abajo escriben **fuera**. Eso es exactamente un
-# desbordamiento de bufer, que es el fallo que se lleva veinte anos siendo el
-# mas caro del mundo.
+# ** Y LO PARA LA REGLA 1, SOLA. Aqui hubo una guardia escrita a mano con un
+# comentario que decia *"la guardia que `crudo` apago"*, y **era falso**: `crudo`
+# no apaga las reglas del lenguaje. Se comprobo el 2026-08-23 --una prueba del
+# decimal esperaba un 0 y recibio 1001-- y la guardia se quito.
 #
-# ** Por eso se escribe A MANO. No es desconfianza del lenguaje: es la
-# consecuencia de haber pedido `crudo`, y la unica forma honrada de usarlo es
-# poner la guardia que uno mismo desactivo.
+# *** Lo que `crudo` significa es otra cosa, y mejor: **"aqui se toca el metal, y
+# al otro lado no hay nadie que compruebe"**. Es un permiso que vigila `perfil`,
+# no un interruptor. Asi que **el runtime de INTI esta protegido por las reglas
+# de INTI**, incluso donde toca memoria cruda.
 #
-#     si na + nb < na    ->  dio la vuelta
+# ** Y atrapar es MEJOR que devolver 0. Un `0` es un numero, y quien no mire el
+# resultado sigue con un texto que no existe. La trampa mata la tarea con un
+# codigo que dice que regla corto y en que byte.
 #
-# *** Y lo que hace que esto no sea "como en C": el bloque `crudo` SE CUENTA.
-# Sale en el manifiesto del `.bex`, con un numero, y hay una prueba que lo fija.
-# En C todo el fichero es `crudo` y no hay numero que mirar.
+# [!] Sigue siendo verdad que el bloque `crudo` SE CUENTA, y sale en el
+# manifiesto del `.bex` con un numero. En C todo el fichero es `crudo` y no hay
+# numero que mirar.
 funcion junta(monton es natural64, a es natural64, b es natural64) devuelve natural64
     crudo
         si a = 0
@@ -77,23 +78,17 @@ funcion junta(monton es natural64, a es natural64, b es natural64) devuelve natu
 
         # ** LOS TIPOS SE ESCRIBEN, y aqui NO es por gusto.
         #
-        # La comparacion de abajo --`si total < na`-- se baja SIN SIGNO o CON
-        # signo segun lo que el compilador sepa de estos dos nombres. Y de
-        # `lee_natural64` no sabe nada todavia: es un nombre que trae un `usa`,
-        # y los tipos de retorno de esos no se deducen (2026-08-23).
+        # De `lee_natural64` el compilador no sabe el tipo de retorno todavia
+        # --es un nombre que trae un `usa`, y esos no se deducen (2026-08-23)--
+        # asi que sin estas palabras `total` no seria un `natural64` y su suma
+        # se comprobaria CON SIGNO: `jo` en vez de `jc`.
         #
-        # *** Sin estas tres palabras, `total < na` se emite con `setl` y **la
-        # guardia no salta**: leidos con signo, un `total` que dio la vuelta
-        # parece mayor. La guardia estaria escrita, compilada, contada en el
-        # manifiesto -- y no serviria de nada.
+        # *** Y ahi esta el motivo de verdad: la Regla 1 la pone el compilador
+        # sola, pero **elige la instruccion segun el tipo**. Un tipo que falta no
+        # quita la comprobacion: la pone equivocada.
         na es natural64 = lee_natural64(a + 16)
         nb es natural64 = lee_natural64(b + 16)
         total es natural64 = na + nb
-
-        # LA GUARDIA QUE `crudo` APAGO. Ver la cabecera de esta funcion.
-        si total < na
-            devuelve 0
-
         nuevo = pide(monton, total + 24)
         si nuevo = 0
             devuelve 0

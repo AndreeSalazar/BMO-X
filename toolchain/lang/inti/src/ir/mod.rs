@@ -849,6 +849,7 @@ impl<'t> Descenso<'t> {
                         que: c,
                         sobre: d.clone(),
                         contra: None,
+                        sin_signo,
                         sitio: *sitio,
                     });
                 }
@@ -876,6 +877,7 @@ impl<'t> Descenso<'t> {
                 {
                     self.pon(Instr::Comprueba {
                         que: Comprobacion::Cociente,
+                        sin_signo,
                         sobre: i.clone(),
                         contra: Some(d.clone()),
                         sitio: *sitio,
@@ -896,6 +898,7 @@ impl<'t> Descenso<'t> {
                         que: c,
                         sobre: Valor::Temporal(t),
                         contra: None,
+                        sin_signo,
                         sitio: *sitio,
                     });
                 }
@@ -960,6 +963,10 @@ impl<'t> Descenso<'t> {
                                 que: Comprobacion::Conversion(bytes),
                                 sobre: v.clone(),
                                 contra: None,
+                                // La Regla 12 mira un FLOTANTE contra el rango
+                                // del entero destino. El signo del destino lo
+                                // lleva `bytes`, no esta bandera.
+                                sin_signo: false,
                                 sitio: *sitio,
                             });
                         }
@@ -1112,6 +1119,9 @@ impl<'t> Descenso<'t> {
                                 que: Comprobacion::Indice,
                                 sobre: Valor::Temporal(dir),
                                 contra: None,
+                                // Una direccion no lleva signo, y esta se mira
+                                // contra cero: da igual, pero se dice.
+                                sin_signo: true,
                                 sitio: *sitio,
                             });
                             let t = self.temporal();
@@ -1138,6 +1148,7 @@ impl<'t> Descenso<'t> {
                                 que: Comprobacion::Indice,
                                 sobre: Valor::Temporal(t),
                                 contra: None,
+                                sin_signo: true,
                                 sitio: *sitio,
                             });
                             Valor::Temporal(t)

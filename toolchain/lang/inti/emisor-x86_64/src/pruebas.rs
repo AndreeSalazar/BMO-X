@@ -115,6 +115,36 @@ fn ejecuta_en(fuente: &str, nombre: &str, a: u64, b: u64) -> u64 {
     codigo.extend_from_slice(&((inicio as i32 + 5) - desde).to_le_bytes());
 
     let mut m = Machine::new(codigo);
+
+    // *** Y LAS TABLAS CONGELADAS SE CARGAN, que hasta hoy NO PASABA.
+    //
+    // `Instr::Direccion` deja un inmediato a CERO y una reubicacion, porque la
+    // direccion de `RoData` la elige el cargador. Este banco no tenia cargador,
+    // asi que el cero se quedaba y **una tabla congelada se leia de la direccion
+    // cero**: numeros al azar, con el codigo correcto.
+    //
+    // ** Ninguna prueba unitaria habia visto nunca una tabla de verdad. Las que
+    // existian miran los BYTES del `.ibex` --que es otra pregunta, y sigue
+    // siendo suya-- y ninguna la EJECUTABA. Lo destapo el decimal: `POTENCIAS`
+    // daba basura y el fichero estaba bien.
+    //
+    // [!] La disposicion sale de `rodata_de`, la MISMA funcion que usa
+    // `empaquetar`. Copiarla aqui habria dado dos layouts que se separan el dia
+    // que uno cambie -- que es el fallo que este proyecto lleva todo el dia
+    // cazando.
+    let (rodata, donde) = crate::rodata_de(&e);
+    if !rodata.is_empty() {
+        let base = m.load_data(&rodata);
+        for (off, i) in &e.reubicaciones {
+            if let Some(d) = donde.get(*i as usize) {
+                let dir = (base + d).to_le_bytes();
+                // +5 por el `jmp` del `crt0` que va delante del modulo.
+                let hueco = *off + 5;
+                m.code[hueco..hueco + 8].copy_from_slice(&dir);
+            }
+        }
+    }
+
     m.regs[7] = a;
     m.regs[6] = b;
     let m = run(m, 100_000);
@@ -1145,35 +1175,35 @@ fn el_desplazamiento_del_contenido_coincide_con_el_del_abi() {
     assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 104);
 }
 
-/// ***LA GUARDIA QUE `crudo` APAGO, PUESTA A MANO.***
+/// ***UNA CABECERA MENTIROSA NO DESBORDA EL BUFER: ATRAPA.***
 ///
 /// ## Y esta prueba es la respuesta a una pregunta de Eddi
 ///
 /// > *"TODOS los componentes deberian tener detector de UB?"*
 ///
-/// Dentro de un bloque `crudo` la Regla 1 esta APAGADA: tocar memoria cruda no
-/// puede pagar una guardia por operacion. Asi que en `junta` la suma `na + nb`
-/// **puede dar la vuelta**, y si lo hiciera: `total` sale pequeno, `pide`
-/// devuelve un bloque pequeno, y los dos bucles escriben FUERA. Eso es un
-/// desbordamiento de bufer -- el fallo mas caro de los ultimos veinte anos.
+/// Si `na + nb` diera la vuelta: `total` sale pequeno, `pide` devuelve un bloque
+/// pequeno, y los dos bucles escriben **fuera** -- un desbordamiento de bufer,
+/// el fallo mas caro de los ultimos veinte anos.
 ///
-/// ** Por eso la guardia se escribe a mano. No es desconfianza del lenguaje: es
-/// la consecuencia de haber pedido `crudo`, y la unica forma honrada de usarlo
-/// es poner de vuelta lo que uno mismo desactivo.
+/// ** Y LO PARA EL PROPIO LENGUAJE. Aqui hubo una guardia escrita a mano con el
+/// motivo *"la que `crudo` apago"*, y era falso: **`crudo` no apaga las reglas**.
+/// Es un permiso para tocar el metal, no un interruptor.
 ///
-/// *** Y lo que hace que esto no sea "como en C": **el bloque `crudo` se
-/// CUENTA**. Sale en el manifiesto del `.bex` con un numero. En C todo el
-/// fichero es `crudo` y no hay numero que mirar.
+/// *** Asi que la respuesta a la pregunta es esta: no hace falta que cada
+/// componente traiga su detector. Hace falta que **el lenguaje no deje agujeros
+/// que detectar** -- y que los sitios donde uno pide permiso para salirse SE
+/// CUENTEN. El bloque `crudo` sale en el manifiesto del `.bex` con un numero; en
+/// C todo el fichero es `crudo` y no hay numero que mirar.
 #[test]
-fn una_cabecera_mentirosa_no_desborda_el_bufer_nuevo() {
+fn una_cabecera_mentirosa_atrapa_en_vez_de_desbordar() {
     // `a` dice medir casi 2^64. `na + nb` da la vuelta y `total` sale ridiculo.
     let f = con_dos_textos(
         "        escribe_natural64(a + 16, 18446744073709551615)\n        devuelve junta(base, a, b)\n",
     );
     assert_eq!(
         ejecuta_en(&f, "prueba", 0x40000, 0),
-        0,
-        "la suma dio la vuelta y `junta` siguio: eso escribe fuera del bloque"
+        1001,
+        "la suma dio la vuelta y nadie la paro: eso escribe fuera del bloque"
     );
 }
 
@@ -1738,4 +1768,204 @@ fn un_literal_sin_tipo_escrito_no_se_construye_y_el_emisor_lo_dice() {
 fn un_programa_sin_literales_de_lista_no_avisa() {
     let e = emitido("perfil llano\n\nfuncion principal devuelve entero32\n    devuelve 7\n");
     assert!(!e.sin_emitir.iter().any(|x| x.contains("literal(es) de lista")));
+}
+
+// ===================================================================
+//  *** EL DECIMAL EXACTO (2026-08-23) -- la promesa de la portada
+// ===================================================================
+
+/// Tres numeros a mano: `a` en `base`, `b` en `base+16`, el resultado en `+32`.
+fn con_decimales(cuerpo: &str) -> String {
+    format!(
+        "perfil llano\nusa decimal\nusa memoria\n\nfuncion prueba(base es natural64, x es natural64) devuelve natural64\n    crudo\n        a = base\n        b = base + 16\n        c = base + 32\n{}",
+        cuerpo
+    )
+}
+
+/// ***`0.1 + 0.2` DA `0.3`.*** Es la frase de la portada, ejecutada.
+///
+/// ** En binario no existe un `0.1`. Lo que existe es **un entero y una
+/// escala**: `0.1` es el par `(1, 1)`, `0.2` es `(2, 1)`, y sumarlos da `(3, 1)`
+/// -- que es `0.3` EXACTO. No hay redondeo porque no hay conversion.
+#[test]
+fn cero_uno_mas_cero_dos_da_cero_tres() {
+    let f = con_decimales(
+        "        pon_numero(a, 1, 1)\n        pon_numero(b, 2, 1)\n        si suma(c, a, b) no es 1\n            devuelve 0\n        si escala(c) no es 1\n            devuelve 0\n        devuelve natural64(coeficiente(c))\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 3, "(1,1) + (2,1) = (3,1)");
+}
+
+/// ***LAS ESCALAS SE IGUALAN SUBIENDO, NUNCA BAJANDO.***
+///
+/// `1.5 + 0.25` = `(15,1) + (25,2)`. Subir `15` a escala 2 da `150`, y
+/// `150 + 25 = 175` -> `1.75`, exacto.
+///
+/// ** Bajar seria dividir, y dividir pierde: `0.25` a escala 1 seria `0.2` o
+/// `0.3` **y habria que elegir**. Subir no pierde nada, asi que la suma de dos
+/// exactos sigue siendo exacta -- que es lo que separa esto de un flotante.
+#[test]
+fn las_escalas_se_igualan_subiendo_y_no_se_pierde_nada() {
+    let f = con_decimales(
+        "        pon_numero(a, 15, 1)\n        pon_numero(b, 25, 2)\n        si suma(c, a, b) no es 1\n            devuelve 0\n        si escala(c) no es 2\n            devuelve 0\n        devuelve natural64(coeficiente(c))\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 175, "1.5 + 0.25 = 1.75");
+}
+
+/// Y con los negativos igual: `(-1,1) + (2,1)` = `0.1`.
+#[test]
+fn los_negativos_suman_con_su_signo() {
+    let f = con_decimales(
+        "        pon_numero(a, -1, 1)\n        pon_numero(b, 2, 1)\n        suma(c, a, b)\n        devuelve natural64(coeficiente(c))\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 1, "-0.1 + 0.2 = 0.1");
+}
+
+/// ***MULTIPLICAR SUMA LAS ESCALAS, y no iguala nada.***
+///
+/// `0.5 * 0.25` = `(5,1) * (25,2)` = `(125, 3)` = `0.125`. Sale exacto sin tocar
+/// nada: es la operacion BARATA de este formato, al reves que en coma flotante.
+#[test]
+fn multiplicar_suma_las_escalas() {
+    let f = con_decimales(
+        "        pon_numero(a, 5, 1)\n        pon_numero(b, 25, 2)\n        si multiplica(c, a, b) no es 1\n            devuelve 0\n        si escala(c) no es 3\n            devuelve 0\n        devuelve natural64(coeficiente(c))\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 125, "0.5 * 0.25 = 0.125");
+}
+
+/// ***Y CUANDO NO CABE, LO DICE. No da un numero equivocado.***
+///
+/// Dentro de `crudo` la Regla 1 esta APAGADA, asi que la guardia se escribe a
+/// mano: la suma de dos con signo desborda cuando los dos sumandos tienen el
+/// mismo signo y el resultado tiene otro.
+///
+/// [!] Y esa comprobacion mira CON SIGNO. Funciona desde esta misma manana:
+/// hasta hoy el emisor bajaba toda comparacion con `setl` mirase lo que mirase,
+/// y esta guardia habria acertado por casualidad -- que es peor que fallar.
+#[test]
+fn una_suma_que_no_cabe_atrapa_con_la_regla_1() {
+    let f = con_decimales(
+        "        pon_numero(a, 9223372036854775807, 0)\n        pon_numero(b, 1, 0)\n        devuelve suma(c, a, b)\n",
+    );
+    assert_eq!(
+        ejecuta_en(&f, "prueba", 0x40000, 0),
+        1001,
+        "el maximo mas uno tenia que atrapar con la Regla 1"
+    );
+}
+
+/// ***UNA TRAMPA DENTRO DE UNA LIBRERIA SE CONVIERTE EN UN NUMERO.***
+///
+/// # Esta prueba fija un DEFECTO, no una virtud. Es P4.
+///
+/// `sube(1e18, 18)` desborda y **atrapa de verdad**: llamada a pelo devuelve
+/// `1001`. Pero llamada desde `suma` no para nada, y `suma` contesta `1` como si
+/// hubiera salido bien.
+///
+/// ## Por que, y es una linea del emisor
+///
+/// El bloque de atrapar hace esto:
+///
+/// ```text
+///    mov  <retorno>, 1001
+///    <epilogo>
+///    ret
+/// ```
+///
+/// **Pone el codigo en el registro de retorno y VUELVE.** No mata la tarea. Asi
+/// que para quien llamo, atrapar y devolver un numero **son la misma cosa** -- y
+/// `1001` es un coeficiente perfectamente valido.
+///
+/// *** Y ESTO YA ESTABA EN EL PLAN, con nombre y con la frase justa:
+/// `PLAN_EL_SILICIO.md`, **P4 -- EL CAMINO DE VUELTA: atrapar deja de ser
+/// devolver un numero**, descrito como *"el peldano que sostiene todo lo
+/// demas"*. Lo que anade esta prueba es que deja de ser una prevision: es un
+/// caso, con su numero.
+///
+/// [!] Y es el fallo silencioso mas grande que hay hoy en INTI. Las cuatro
+/// reglas atrapan --eso es cierto y esta comprobado-- pero **una trampa dentro
+/// de una libreria no llega a nadie**. Cuanto mas runtime se escriba en INTI,
+/// mas caro sale.
+///
+/// El dia que P4 entre, esta prueba se pone roja. Es lo que se quiere.
+#[test]
+fn hoy_una_trampa_en_una_libreria_vuelve_como_un_numero() {
+    // A pelo: atrapa, y se ve.
+    let sola = con_decimales("        devuelve natural64(sube(1000000000000000000, 18))\n");
+    assert_eq!(
+        ejecuta_en(&sola, "prueba", 0x40000, 0),
+        1001,
+        "`sube` tiene que atrapar: `1e18 * 1e18` no cabe"
+    );
+
+    // Desde dentro: la misma trampa, y el llamante no se entera.
+    let dentro = con_decimales(
+        "        pon_numero(a, 1000000000000000000, 0)\n        pon_numero(b, 1, 18)\n        devuelve suma(c, a, b)\n",
+    );
+    assert_eq!(
+        ejecuta_en(&dentro, "prueba", 0x40000, 0),
+        1,
+        "P4: `suma` recibio 1001 como si fuera un coeficiente y siguio"
+    );
+}
+
+/// Comparar tambien iguala escalas: `0.5` y `0.50` son el MISMO numero.
+#[test]
+fn comparar_iguala_escalas_antes_de_mirar() {
+    let f = con_decimales(
+        "        pon_numero(a, 5, 1)\n        pon_numero(b, 50, 2)\n        si menor(a, b) no es 0\n            devuelve 0\n        si menor(b, a) no es 0\n            devuelve 0\n        devuelve 1\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 1, "0.5 no es menor que 0.50");
+
+    let g = con_decimales(
+        "        pon_numero(a, 5, 1)\n        pon_numero(b, 51, 2)\n        devuelve menor(a, b)\n",
+    );
+    assert_eq!(ejecuta_en(&g, "prueba", 0x40000, 0), 1, "0.50 < 0.51");
+}
+
+/// [!] Y LA ESCALA TIENE TECHO: 18, porque `10^19` no cabe en un `entero64`.
+///
+/// ** Que la tabla acabe donde acaba el tipo no es casualidad: es el limite del
+/// coeficiente dicho de otra forma. Pedir mas contesta 0 -- **no la ultima
+/// potencia**, porque quien pide `10^25` tiene un problema que no se arregla
+/// dandole `10^18`: se convertiria en un numero equivocado en vez de en un no.
+#[test]
+fn la_escala_tiene_techo_y_pasarse_no_devuelve_lo_mas_parecido() {
+    let f = con_decimales("        devuelve natural64(potencia(19))\n");
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 0);
+
+    let g = con_decimales("        devuelve natural64(potencia(18))\n");
+    assert_eq!(ejecuta_en(&g, "prueba", 0x40000, 0), 1_000_000_000_000_000_000);
+}
+
+/// ***`crudo` NO APAGA LAS REGLAS.*** Y esto hubo que comprobarlo (2026-08-23).
+///
+/// Durante todo el dia se escribio lo contrario en tres ficheros del runtime:
+/// *"dentro de `crudo` la Regla 1 esta APAGADA, porque tocar memoria cruda no
+/// puede pagar una guardia por operacion"*. **Es falso.**
+///
+/// `ir::mod.rs` baja `Sent::Crudo` con `self.bloque(cuerpo)` y nada mas: las
+/// comprobaciones se emiten igual. Lo destapo una prueba del decimal que
+/// esperaba un `0` y recibio **1001** -- el codigo de la Regla 1.
+///
+/// ## *** Y lo que `crudo` SI significa, que es otra cosa y mejor
+///
+/// Es un permiso, no un interruptor: **"aqui se toca el metal, y al otro lado no
+/// hay nadie que compruebe"**. Lo vigila `perfil`, que sin `crudo` no deja
+/// llamar a `lee_natural64`. Las reglas del LENGUAJE siguen puestas.
+///
+/// ** O sea que el runtime de INTI esta protegido por las reglas de INTI incluso
+/// donde toca memoria cruda. Es mejor de lo que yo estaba escribiendo.
+#[test]
+fn crudo_no_apaga_las_reglas_del_lenguaje() {
+    let e = emitido("perfil llano
+
+funcion f(a es entero64, b es entero64) devuelve entero64
+    crudo
+        devuelve a + b
+");
+    assert!(
+        e.katanas.iter().any(|(k, _, _)| *k as u32 == 1001),
+        "una suma dentro de `crudo` se quedo sin su Regla 1: {:?}",
+        e.katanas
+    );
 }
