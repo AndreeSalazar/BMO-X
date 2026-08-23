@@ -221,6 +221,7 @@ pub fn comprobar(
         modulos,
         piezas: &m.piezas,
         en_declaracion: 0,
+        en_constante: false,
         avisos: avisos_del_perfil,
         informe,
         dentro_de_crudo: false,
@@ -251,6 +252,17 @@ struct Vigia<'c> {
     piezas: &'c [crate::arbol::Pieza],
     /// En que declaracion del modulo estamos. Lo pone el recorrido de arriba.
     en_declaracion: usize,
+    /// **Estamos dentro del valor de una `constante`?**
+    ///
+    /// ** Porque ahi una lista literal NO CRECE: se congela cuando el modulo
+    /// acaba de cargarse, y eso es lo que dice la seccion 10.2 del maestro --
+    /// *"CONGELADO: inmortal. Nadie lo cambia, nadie cuenta sus referencias.
+    /// Literales, constantes, un modulo cargado"*.
+    ///
+    /// *** La comprobacion de `llano` no distinguia *"esto crece"* de *"esto es
+    /// un literal congelado"*, y por eso una tabla de senos o de CRC no se podia
+    /// escribir. Es la misma regla, con la distincion que le faltaba.
+    en_constante: bool,
     avisos: Vec<Aviso>,
     informe: Informe,
     dentro_de_crudo: bool,
@@ -282,7 +294,12 @@ impl<'c> Vigia<'c> {
 
     fn declaracion(&mut self, d: &Decl) {
         match d {
-            Decl::Constante { valor, .. } => self.expresion(valor),
+            Decl::Constante { valor, .. } => {
+                let antes = self.en_constante;
+                self.en_constante = true;
+                self.expresion(valor);
+                self.en_constante = antes;
+            }
             Decl::Registro {
                 campos, operaciones, ..
             } => {
@@ -419,7 +436,9 @@ impl<'c> Vigia<'c> {
                 self.crece("un texto", *sitio);
             }
             Expr::Lista(v, sitio) => {
-                if self.llano() {
+                // ** Una lista dentro de una CONSTANTE esta congelada: no crece,
+                // no pide monton, y cabe en `llano`. Va a `RoData`.
+                if self.llano() && !self.en_constante {
                     self.crece("una lista", *sitio);
                 }
                 for x in v {

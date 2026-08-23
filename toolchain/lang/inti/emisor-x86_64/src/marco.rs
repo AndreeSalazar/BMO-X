@@ -290,6 +290,9 @@ fn tramos_de_vida(f: &FuncionIr) -> Vec<(usize, usize)> {
             // arriba, en `Convierte` -- *"la lista de arriba tiene que crecer
             // cada vez que crece la IR"*. La IR crecio con `Lee` y `Escribe` y la
             // lista no. Lo tapo un `_ => {}`.
+            // La direccion de una tabla congelada nace en un temporal, como
+            // cualquier otra cosa que se calcula.
+            Instr::Direccion { destino, .. } => toca(*destino, i, &mut tramos),
             Instr::Lee {
                 destino, direccion, ..
             } => {

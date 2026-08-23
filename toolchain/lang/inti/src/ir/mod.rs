@@ -47,7 +47,7 @@
 
 pub mod forma;
 
-pub use forma::{
+pub use forma::{Congelado,
     Clase, Comprobacion, Const, Etiqueta, FuncionIr, Instr, Local, ModuloIr, Temporal, Valor,
 };
 
@@ -125,10 +125,20 @@ pub fn bajar_con(
     // cero. Con su ejemplo escrito en `GRAMATICA.md`.
     let mut congeladas: std::collections::HashMap<String, Const> =
         std::collections::HashMap::new();
+    let mut tablas: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     for d in &m.declaraciones {
         if let Decl::Constante { nombre, valor, .. } = d {
             if let Some(c) = congelar(valor) {
                 congeladas.insert(nombre.clone(), c);
+            } else if let Some((bytes, ancho)) = congelar_tabla(valor) {
+                // ** Una TABLA congelada: no cabe en un inmediato, asi que va a
+                // `RoData` y lo que se carga es su direccion.
+                tablas.insert(nombre.clone(), salida.congelados.len() as u32);
+                salida.congelados.push(crate::ir::forma::Congelado {
+                    nombre: nombre.clone(),
+                    bytes,
+                    ancho,
+                });
             }
             // ** Lo que NO se deja congelar no se inventa: se queda fuera, el
             // nombre llega suelto al emisor y **el emisor lo dice** por
@@ -140,11 +150,11 @@ pub fn bajar_con(
     for d in &m.declaraciones {
         match d {
             Decl::Funcion(f) => {
-                let ir = Descenso::nueva(&mut salida.textos, &congeladas, tabla, plano, m.perfil, metal).funcion(f);
+                let ir = Descenso::nueva(&mut salida.textos, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(f);
                 salida.funciones.push(ir);
             }
             Decl::Operacion { tipo, funcion } => {
-                let mut ir = Descenso::nueva(&mut salida.textos, &congeladas, tabla, plano, m.perfil, metal).funcion(funcion);
+                let mut ir = Descenso::nueva(&mut salida.textos, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(funcion);
                 // El nombre lleva el tipo delante para que dos operaciones con
                 // el mismo nombre en tipos distintos no se pisen.
                 ir.nombre = format!("{}.{}", tipo, funcion.nombre);
@@ -156,7 +166,7 @@ pub fn bajar_con(
                 ..
             } => {
                 for f in operaciones {
-                    let mut ir = Descenso::nueva(&mut salida.textos, &congeladas, tabla, plano, m.perfil, metal).funcion(f);
+                    let mut ir = Descenso::nueva(&mut salida.textos, &congeladas, &tablas, tabla, plano, m.perfil, metal).funcion(f);
                     ir.nombre = format!("{}.{}", nombre, f.nombre);
                     salida.funciones.push(ir);
                 }
@@ -180,6 +190,8 @@ struct Descenso<'t> {
     /// mismo en toda maquina. Es la misma decision que ya estaba tomada para las
     /// constantes del ABI unas lineas mas abajo.
     congeladas: &'t std::collections::HashMap<String, Const>,
+    /// Las tablas congeladas, por nombre -> indice en `ModuloIr::congelados`.
+    tablas: &'t std::collections::HashMap<String, u32>,
     /// Donde salta un `corta` y donde un `continua`, de fuera a dentro.
     bucles: Vec<(Etiqueta, Etiqueta)>,
     tabla: &'t crate::tablas::Modulos,
@@ -218,6 +230,7 @@ impl<'t> Descenso<'t> {
     fn nueva(
         textos: &'t mut Vec<String>,
         congeladas: &'t std::collections::HashMap<String, Const>,
+        tablas: &'t std::collections::HashMap<String, u32>,
         tabla: &'t crate::tablas::Modulos,
         plano: &'t crate::disposicion::Plano,
         perfil: crate::arbol::Perfil,
@@ -230,6 +243,7 @@ impl<'t> Descenso<'t> {
             locales: Vec::new(),
             textos,
             congeladas,
+            tablas,
             bucles: Vec::new(),
             tabla,
             plano,
@@ -527,6 +541,16 @@ impl<'t> Descenso<'t> {
                 // **y valia cero** -- con su ejemplo en `GRAMATICA.md`.
                 None if self.congeladas.contains_key(n) => {
                     Valor::Const(self.congeladas[n].clone())
+                }
+                // ** Una TABLA congelada no cabe en un inmediato: lo que se
+                // carga es su DIRECCION, y eso es una instruccion.
+                None if self.tablas.contains_key(n) => {
+                    let t = self.temporal();
+                    self.pon(Instr::Direccion {
+                        destino: t,
+                        congelado: self.tablas[n],
+                    });
+                    Valor::Temporal(t)
                 }
                 // ** Una constante del ABI se resuelve AQUI y no en el emisor.
                 //
@@ -924,6 +948,43 @@ fn congelar(e: &Expr) -> Option<Const> {
         },
         _ => None,
     }
+}
+
+/// **Una lista de literales, congelada a bytes.**
+///
+/// ## El ancho, que es la decision de esta funcion
+///
+/// Los elementos salen como **`entero64`**, ocho bytes cada uno. Es una eleccion
+/// y se dice: la gramatica de una constante --`NOMBRE = expr`-- no tiene sitio
+/// para escribir el tipo, asi que hay que elegir uno.
+///
+/// ** Ocho porque **nunca trunca un literal**: una tabla de CRC-32 tiene valores
+/// que no caben en cuatro bytes con signo, y una tabla que pierde bits en
+/// silencio es peor que una tabla que ocupa el doble.
+///
+/// *** Lo que cuesta esta escrito para que se pueda cambiar cuando haga falta:
+/// una tabla de 256 bytes ocupa 2 KiB en vez de 256. El dia que la gramatica
+/// deje decir `senos es bufer de entero32 = [...]`, **lo que cambia es este
+/// numero**.
+///
+/// Y no entra nada que haya que calcular: una lista con una llamada dentro no
+/// esta congelada, esta pendiente.
+fn congelar_tabla(e: &Expr) -> Option<(Vec<u8>, u32)> {
+    let Expr::Lista(elementos, _) = e else {
+        return None;
+    };
+    let mut bytes = Vec::with_capacity(elementos.len() * 8);
+    for x in elementos {
+        match congelar(x)? {
+            Const::Entero(v) => bytes.extend_from_slice(&v.to_le_bytes()),
+            Const::Flotante(b) => bytes.extend_from_slice(&b.to_le_bytes()),
+            Const::Logico(b) => bytes.extend_from_slice(&(b as u64).to_le_bytes()),
+            // ** Un decimal exacto no cabe en ocho bytes y no se le inventa una
+            // conversion: se queda fuera y el emisor lo dice.
+            _ => return None,
+        }
+    }
+    Some((bytes, 8))
 }
 
 /// La que se sabe DESPUES, mirando lo que la operacion dejo dicho.

@@ -64,6 +64,7 @@ mod reglas;
 pub mod puerta;
 
 use bmo_abi::bef::katanas::{self, Katana};
+use bmo_abi::bef::relocations::{Relocation, RelocationKind};
 use bmo_abi::bef::sections::SectionKind;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::syscalls::surface::NR_INVOKE;
@@ -111,6 +112,11 @@ pub struct Emitido {
     /// estimacion, se puede seguir en el tiempo -- igual que los `crudo`.
     pub en_registros: usize,
     pub en_pila: usize,
+    /// **Las tablas congeladas del modulo**, tal y como van a `RoData`.
+    pub congelados: Vec<bmo_inti_front::ir::Congelado>,
+    /// Donde hay que escribir la direccion de cada tabla: `(offset en el codigo,
+    /// indice del congelado)`. Se convierten en reubicaciones del `.bex`.
+    pub reubicaciones: Vec<(usize, u32)>,
     /// **LAS KATANAS**: `(codigo, offset, longitud)` de cada bloque de trampa,
     /// con el offset dentro de `codigo`.
     ///
@@ -217,6 +223,8 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         codigo: Vec::new(),
         inicios: Vec::new(),
         katanas: Vec::new(),
+        congelados: Vec::new(),
+        reubicaciones: Vec::new(),
         comprobaciones: 0,
         en_registros: 0,
         en_pila: 0,
@@ -231,6 +239,11 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
     // declara `entry_offset = 0`. Y "solo si" porque un modulo sin `principal`
     // es una biblioteca -- y una biblioteca que arranca sola no es una
     // comodidad, es un fallo.
+    // ** Las tablas congeladas viajan tal cual: la IR ya las tiene en bytes y
+    // este crate solo decide DONDE van. Convertirlas aqui seria decidir dos
+    // veces lo mismo.
+    salida.congelados = m.congelados.clone();
+
     if m.funciones.iter().any(|f| f.nombre == arranque::PRINCIPAL) {
         let hueco = arranque::emitir(&mut salida.codigo, &taller.puerta, IZQ);
         salida
@@ -246,6 +259,16 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         salida.en_registros += cuenta.en_registros;
         salida.en_pila += cuenta.en_pila;
         salida.katanas.extend(cuenta.katanas);
+        // ** Los huecos YA vienen en coordenadas del MODULO: `emitir_funcion`
+        // escribe sobre `salida.codigo`, no sobre un buffer propio, asi que
+        // `out.len()` de ahi dentro ya es absoluto.
+        //
+        // *** La primera version les sumaba el inicio de la funcion y quedaban
+        // apuntando mas alla del hueco. No lo canto ninguna prueba: lo canto
+        // mirar los bytes del `.ibex` y ver que ahi no habia ocho ceros. Es la
+        // misma comprobacion que hacen las katanas, y por eso ellas nunca lo
+        // tuvieron: usan `out.len()` tal cual desde el primer dia.
+        salida.reubicaciones.extend(cuenta.reubicaciones.iter().copied());
         salida.huecos_de_llamada.extend(cuenta.huecos_de_llamada);
         salida.sin_emitir.extend(cuenta.sin_emitir);
         // ** Y los nombres que se van a bajar a un cero, con el suyo delante.
@@ -336,6 +359,9 @@ struct Cuenta {
     /// esta bien-- asi que sin una lista no se entera nadie hasta que el binario
     /// hace otra cosa en metal.
     sin_emitir: Vec<String>,
+    /// **Donde queda el hueco de la direccion de cada tabla congelada**:
+    /// `(offset del inmediato, indice del congelado)`.
+    reubicaciones: Vec<(usize, u32)>,
     /// **Donde acabo el bloque de trampa de cada regla**: `(codigo, offset,
     /// longitud)`, con el offset DENTRO de la seccion de codigo.
     ///
@@ -366,6 +392,7 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
     let mut comprobaciones = 0usize;
     let mut salida_huecos: Vec<(usize, String)> = Vec::new();
     let mut sin_emitir: Vec<String> = Vec::new();
+    let mut reubicaciones: Vec<(usize, u32)> = Vec::new();
 
     // Prologo.
     out.push(0x55); // push rbp
@@ -683,6 +710,26 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                 }
                 guarda_temporal(out, IZQ, *destino, &marco);
             }
+            // *** LA DIRECCION DE UNA TABLA CONGELADA (2026-08-22).
+            //
+            // Se emite un `mov reg, imm64` con el inmediato **a cero**, y se
+            // apunta donde quedo: la direccion de verdad no se sabe hasta que el
+            // cargador coloque `RoData`, y la rellena una reubicacion.
+            //
+            // ** Y esto es una INSTRUCCION de la IR, no un `Valor`, justamente
+            // para que este sea el UNICO sitio del emisor que tiene que apuntar
+            // una reubicacion. Con un `Valor::Congelado`, los veintitres sitios
+            // que cargan un valor tendrian que acordarse -- y el dia que alguien
+            // anadiera el veinticuatro, la tabla se cargaria con un cero.
+            Instr::Direccion { destino, congelado } => {
+                x86::mov_r64_imm64(out, IZQ, 0);
+                // El inmediato son los ocho ultimos bytes de lo que se acaba de
+                // emitir. Contarlo desde el principio del `mov` obligaria a
+                // saber si el REX esta o no.
+                reubicaciones.push((out.len() - 8, *congelado));
+                guarda_temporal(out, IZQ, *destino, &marco);
+            }
+
             Instr::Escribe {
                 direccion,
                 valor,
@@ -808,6 +855,7 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
 
     cuenta.comprobaciones = comprobaciones;
     cuenta.huecos_de_llamada = salida_huecos;
+    cuenta.reubicaciones = reubicaciones;
     cuenta.sin_emitir = sin_emitir;
     cuenta
 }
@@ -926,6 +974,8 @@ fn nombres_sueltos(f: &FuncionIr) -> Vec<String> {
                     mira(a, &mut sueltos);
                 }
             }
+            // No lleva ningun `Valor`: su dato es un indice de tabla.
+            Instr::Direccion { .. } => {}
             Instr::Lee { direccion, .. } => mira(direccion, &mut sueltos),
             Instr::Escribe {
                 direccion, valor, ..
@@ -1033,6 +1083,53 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
     // defecto no distingue "decidido" de "olvidado".
     b.entry_offset = 0;
     b.add_section(BefSection::code(e.codigo.clone()));
+
+    // *** LAS TABLAS CONGELADAS, EN `RoData` -- y NO dentro del codigo.
+    //
+    // Meterlas en `Code` habria sido mas corto: no harian falta reubicaciones y
+    // la direccion se sabria al emitir. **Y habria roto el barrido lineal**, que
+    // es lo que hace que un `.ibex` se pueda recorrer de principio a fin -- la
+    // exclusividad tecnica de INTI, escrita en `barrido.rs`.
+    //
+    // Un binario de C mete datos entre las instrucciones y por eso no se puede
+    // recorrer. Que INTI no lo haga es la restriccion que le paga esa propiedad,
+    // y aqui es donde se respeta o se pierde.
+    if !e.congelados.is_empty() {
+        let mut rodata: Vec<u8> = Vec::new();
+        let mut donde: Vec<u64> = Vec::with_capacity(e.congelados.len());
+        for c in &e.congelados {
+            // Alineadas a ocho: una tabla de `entero64` leida a medias es lenta
+            // en el mejor caso y una excepcion en el peor.
+            while rodata.len() % 8 != 0 {
+                rodata.push(0);
+            }
+            donde.push(rodata.len() as u64);
+            rodata.extend_from_slice(&c.bytes);
+        }
+        b.add_section(BefSection::rodata(rodata));
+
+        // ** `SeccionAbs64` y no `Abs64`: no hay simbolo de por medio, hay una
+        // POSICION dentro de otra seccion de este mismo binario. Y ojo con la
+        // trampa que el propio formato deja escrita -- los codigos de seccion de
+        // una reubicacion **no son los de `SectionKind`**: aqui `2` es rodata.
+        let relocs: Vec<Relocation> = e
+            .reubicaciones
+            .iter()
+            .filter_map(|(off, i)| {
+                donde.get(*i as usize).map(|d| Relocation {
+                    offset: *off as u64,
+                    symbol_idx: 2, // rodata, en la numeracion de las reubicaciones
+                    kind: RelocationKind::SeccionAbs64 as u8,
+                    target_section: 0, // el hueco vive en el codigo
+                    _pad: [0; 2],
+                    addend: *d as i64,
+                })
+            })
+            .collect();
+        if !relocs.is_empty() {
+            b.add_section(BefSection::relocs(relocs));
+        }
+    }
 
     // ** LO QUE EL BINARIO DICE DE SI MISMO, y llega HECHO.
     //
