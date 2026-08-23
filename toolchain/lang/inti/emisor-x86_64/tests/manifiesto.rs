@@ -76,9 +76,18 @@ fn el_bex_dice_su_perfil_su_crudo_y_de_que_esta_hecho() {
     // medidor no dice *"cuantas ventanas sin comprobar abriste"*, dice
     // **cuantas trae este binario** -- y un `usa` mete las suyas. Se fija aqui
     // para que el dia que cambie, cambie a proposito.
+    //
+    // *** ERAN 4 Y SON 6 (2026-08-23). El monton crecio dos bloques `crudo`:
+    // `queda_suelto`, que es nuevo, y `suelta`, que antes era un `devuelve 0`
+    // sin tocar memoria y ahora enhebra la lista de huecos.
+    //
+    // ** Que este numero suba al hacer el monton mas capaz **es la propiedad, no
+    // el problema**: `crudo` cuenta los sitios donde nadie comprueba por ti, y un
+    // repartidor de memoria es exactamente eso. Lo que no puede pasar es que suba
+    // sin que nadie se entere -- y por eso esta fijado aqui.
     assert_eq!(
-        m.crudo, 4,
-        "uno del fuente y tres de las piezas del monton: {:?}",
+        m.crudo, 6,
+        "uno del fuente y cinco de las piezas del monton: {:?}",
         m
     );
     assert!(
@@ -204,7 +213,26 @@ fn la_sonda_del_ryzen_emite_los_mismos_bytes_que_antes_de_p1() {
     // ** Y tiene una consecuencia que hay que decir: `cpu.ibex` ya no es el
     // fichero que corrio en el Ryzen el 22-08. Hace lo mismo y una cosa mas, y
     // la proxima medida se compara contra ESTE.
-    assert_eq!(sin.len(), 8856, "la emision de la sonda cambio de tamano");
+    //
+    //     10.432  con el monton que SUELTA de verdad (2026-08-23)
+    //
+    // *** Y ESTOS +1.576 BYTES SON EL PRECIO DE "INCLUSION, NO ENLAZADO",
+    // medido por primera vez en algo real.
+    //
+    // La sonda escribe `usa monton`, asi que **lleva el monton entero dentro**.
+    // Hacer que `suelta` suelte le anadio dos bucles y una funcion, y eso
+    // engorda A CADA PROGRAMA que use el monton -- no solo a los que sueltan.
+    //
+    // ** `MONTON.md` ya lo tenia escrito en su seccion 5: *"diez programas que
+    // usen el monton llevan diez copias, que es literalmente lo que la seccion
+    // 13c del maestro le critica a Go"*. Esto es esa frase con un numero
+    // detras, y la respuesta tambien esta escrita: el runtime es codigo que no
+    // cambia, o sea CONGELADO, y lo congelado en BMO-X **se presta en vez de
+    // copiarse**. El dia que exista compilacion separada, este numero baja.
+    //
+    // [!] Y la consecuencia de siempre: `cpu.ibex` vuelve a no ser el fichero
+    // que corrio en el Ryzen. La proxima medida se compara contra ESTE.
+    assert_eq!(sin.len(), 10432, "la emision de la sonda cambio de tamano");
 }
 
 /// **EL CODIGO NO CAMBIA POR LLEVAR MANIFIESTO.**

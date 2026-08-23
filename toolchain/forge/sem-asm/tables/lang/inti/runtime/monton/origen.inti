@@ -5,9 +5,26 @@
 # por separado porque solo se tocan en la DISPOSICION del monton, que esta
 # escrita en MONTON.md y aqui debajo.
 #
-#     monton + 0   libre   la primera direccion sin repartir
-#     monton + 8   fin     la primera direccion que ya no es del monton
-#     monton + 16  ...     desde aqui se reparte
+#     monton + 0    libre    la primera direccion sin repartir
+#     monton + 8    fin      la primera direccion que ya no es del monton
+#     monton + 16   huecos   la cabeza de la lista de huecos, 0 = ninguno
+#     monton + 24   ...      reservado, para que el reparto empiece alineado
+#     monton + 32   ...      desde aqui se reparte
+#
+# *** LA CABECERA CRECIO DE 16 A 32 EL 2026-08-23, y hay que decir por que
+# TOCA A ESTE FICHERO.
+#
+# `MONTON.md` predijo que la lista de huecos *"cambia `reparto.inti` entero y NO
+# toca `origen.inti` ni un solo programa que ya use `pide`"*. **La segunda mitad
+# se cumplio; la primera no.**
+#
+# Una lista de huecos necesita una CABEZA, y una cabeza es estado DEL MONTON, no
+# del repartidor: tiene que sobrevivir entre llamadas y vivir donde vive el
+# resto de lo que un monton sabe de si mismo. O sea, aqui.
+#
+# ** Y los 8 bytes de `monton + 24` no se usan: estan para que el reparto
+# empiece en un multiplo de 16, que es lo que `pide` promete y lo que
+# `dynobj::lista` da por hecho al elegir una cabecera de 32.
 perfil llano
 usa bmo
 usa memoria
@@ -27,6 +44,8 @@ funcion monton_nuevo(cuantos es natural64) devuelve natural64
         si base = 0
             devuelve 0
 
-        escribe_natural64(base, base + 16)
+        escribe_natural64(base, base + 32)
         escribe_natural64(base + 8, base + cuantos)
+        # Sin huecos: un monton recien nacido no ha soltado nada.
+        escribe_natural64(base + 16, 0)
         devuelve base

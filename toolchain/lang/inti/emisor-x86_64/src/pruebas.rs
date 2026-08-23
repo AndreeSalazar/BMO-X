@@ -807,3 +807,112 @@ fn un_nombre_que_el_emisor_no_resuelve_no_se_baja_a_cero_en_silencio() {
         e.sin_emitir
     );
 }
+
+// ===================================================================
+//  *** EL MONTON RECIBE DE VERDAD (2026-08-23)
+// ===================================================================
+//
+//  `MONTON.md` llevaba desde que existe diciendo la verdad incomoda en su
+//  seccion 3: *"`suelta` existe, se puede llamar, y NO devuelve nada al
+//  monton"*. Ya devuelve.
+//
+//  ** Y estas pruebas EJECUTAN. Un asignador que compila no dice nada: lo unico
+//  que decide si un trozo vuelve es pedirlo, soltarlo, y volver a pedir.
+
+/// El montaje comun: un monton fabricado a mano sobre una direccion cualquiera.
+///
+/// *** No pasa por `monton_nuevo`, y es a proposito: `reparto.inti` **no habla
+/// con el kernel** --lo dice su primera linea-- asi que probarlo a traves de la
+/// puerta probaria las dos piezas juntas y no diria cual falla. Aqui se le da la
+/// disposicion escrita a mano, que es todo lo que esa pieza sabe de un monton.
+fn con_monton(cuerpo: &str) -> String {
+    format!(
+        "perfil llano\nusa monton\n\nfuncion prueba(base es natural64, cuantos es natural64) devuelve natural64\n    crudo\n        escribe_natural64(base, base + 32)\n        escribe_natural64(base + 8, base + cuantos)\n        escribe_natural64(base + 16, 0)\n{}",
+        cuerpo
+    )
+}
+
+/// ***UN TROZO SOLTADO VUELVE, Y EL SIGUIENTE `pide` LO REUTILIZA.***
+///
+/// Es la prueba entera en una linea: `c` tiene que ser **la misma direccion**
+/// que `a`. Si el reparto siguiera siendo solo de avance, `c` estaria mas
+/// adelante y el monton se habria comido cien bytes que ya no usaba nadie.
+#[test]
+fn un_trozo_soltado_se_reutiliza_en_el_siguiente_pide() {
+    let f = con_monton(
+        "        a = pide(base, 100)\n        b = pide(base, 100)\n        suelta(base, a)\n        c = pide(base, 100)\n        si c no es a\n            devuelve 0\n        si b = a\n            devuelve 0\n        devuelve 1\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 4096), 1);
+}
+
+/// **`suelta` devuelve CUANTOS bytes vuelven**, y el numero sale de la cabecera
+/// del trozo, no de quien suelta.
+///
+/// 100 bytes pedidos se redondean a 112 --el monton reparte a 16-- y eso es lo
+/// que vuelve. Que el numero no sea 100 es la prueba de que sale de la cabecera.
+#[test]
+fn suelta_dice_cuantos_bytes_devuelve_y_salen_de_la_cabecera() {
+    let f = con_monton(
+        "        a = pide(base, 100)\n        devuelve suelta(base, a)\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 4096), 112);
+}
+
+/// *** EL MONTON SE PUEDE AUDITAR: `queda_suelto` recorre la lista y suma.
+///
+/// ** Sin este numero, *"suelta de verdad"* seria una afirmacion sin forma de
+/// comprobarla desde fuera. Es la costumbre de esta casa: el dato sale del
+/// propio monton, no de quien lo usa.
+#[test]
+fn lo_suelto_se_puede_contar_y_vuelve_a_cero_al_reutilizarlo() {
+    // Dos trozos sueltos: 112 + 112.
+    let dos = con_monton(
+        "        a = pide(base, 100)\n        b = pide(base, 100)\n        suelta(base, a)\n        suelta(base, b)\n        devuelve queda_suelto(base)\n",
+    );
+    assert_eq!(ejecuta_en(&dos, "prueba", 0x40000, 4096), 224);
+
+    // Y al reutilizar uno, la cuenta baja: el hueco sale de la lista.
+    let uno = con_monton(
+        "        a = pide(base, 100)\n        b = pide(base, 100)\n        suelta(base, a)\n        suelta(base, b)\n        c = pide(base, 100)\n        devuelve queda_suelto(base)\n",
+    );
+    assert_eq!(ejecuta_en(&uno, "prueba", 0x40000, 4096), 112);
+}
+
+/// [!] Y EL CURSOR NO SE MUEVE al soltar: un trozo vuelve por la lista, no
+/// desandando el camino.
+///
+/// ** Desandar solo se podria con el ULTIMO trozo, y una regla que funciona a
+/// veces es peor que una que no funciona nunca -- porque la primera se aprende
+/// mal y se usa donde no vale.
+#[test]
+fn soltar_no_baja_el_cursor() {
+    let f = con_monton(
+        "        a = pide(base, 100)\n        antes = queda_en(base)\n        suelta(base, a)\n        si queda_en(base) no es antes\n            devuelve 0\n        devuelve 1\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 4096), 1);
+}
+
+/// Un hueco demasiado pequeno NO se reutiliza: se sigue mirando, y si ninguno
+/// cabe, avanza el cursor.
+///
+/// ** Sin esta, `pide` podria estar devolviendo el primer hueco de la lista sin
+/// mirar su medida -- y la prueba de arriba seguiria en verde, porque alli todos
+/// los trozos miden lo mismo.
+#[test]
+fn un_hueco_que_no_cabe_no_se_reutiliza() {
+    let f = con_monton(
+        "        pequeno = pide(base, 16)\n        suelta(base, pequeno)\n        grande = pide(base, 500)\n        si grande = pequeno\n            devuelve 0\n        devuelve 1\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 4096), 1);
+}
+
+/// Soltar la direccion cero no toca nada, y no es una comprobacion de adorno:
+/// `pide` devuelve 0 cuando no cabe, asi que **el cero llega aqui por el camino
+/// normal** el dia que un programa no mire lo que le dieron.
+#[test]
+fn soltar_un_cero_no_rompe_la_lista() {
+    let f = con_monton(
+        "        suelta(base, 0)\n        devuelve queda_suelto(base)\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 4096), 0);
+}

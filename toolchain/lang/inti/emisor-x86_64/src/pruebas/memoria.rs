@@ -181,8 +181,23 @@ fn el_monton_reparte_y_los_trozos_no_se_pisan() {
         "    devuelve b - a
 "
     );
-    // Ocho bytes pedidos, dieciseis de distancia: alineado, y sin solaparse.
-    assert_eq!(arranca(&f).syscalls.last().unwrap().arg0, 16);
+    // *** ERAN 16 Y AHORA SON 32, y el cambio es la noticia (2026-08-23).
+    //
+    // Ocho bytes pedidos se redondean a 16 --el monton reparte a 16-- y desde
+    // hoy cada trozo lleva delante una cabecera de otros 16 con su medida.
+    //
+    //     16   el payload, redondeado
+    //   + 16   la cabecera: medida y enlace de la lista de huecos
+    //   = 32   de distancia entre dos trozos seguidos
+    //
+    // ** Ese es el precio de que `suelta` SE PUEDA ESCRIBIR. Hasta hoy recibia
+    // una direccion y nada mas, y una direccion sola no dice cuanto devolver:
+    // `MONTON.md` lo tenia escrito en su seccion 3, *"suelta existe, se puede
+    // llamar, y no devuelve nada al monton"*.
+    //
+    // Y esta prueba es la que lo cazo. Estaba escrita para que la disposicion
+    // del monton no se pudiera cambiar sin que alguien lo dijera, y funciono.
+    assert_eq!(arranca(&f).syscalls.last().unwrap().arg0, 32);
 }
 
 /// Lo repartido se puede USAR. Que es de lo que iba todo esto.
@@ -233,8 +248,19 @@ fn lo_que_queda_baja_segun_se_reparte() {
     );
     let a = arranca(&antes).syscalls.last().unwrap().arg0;
     let d = arranca(&despues).syscalls.last().unwrap().arg0;
-    assert_eq!(a, 4096 - 16, "la cabecera del monton ocupa 16");
-    assert_eq!(d, a - 16, "y un trozo de 8 se lleva 16 por la alineacion");
+    // *** LOS DOS NUMEROS CAMBIARON EL 2026-08-23, y por dos motivos distintos.
+    //
+    // La cabecera del MONTON crecio de 16 a 32: le entro `huecos` --la cabeza de
+    // la lista-- mas ocho bytes reservados para que el reparto siga empezando en
+    // un multiplo de 16.
+    //
+    // ** Una cabeza de lista es estado DEL MONTON y no del repartidor: tiene que
+    // sobrevivir entre llamadas. `MONTON.md` predijo que la lista de huecos *"no
+    // toca `origen.inti`"* y **esa mitad de la prediccion no se cumplio**.
+    assert_eq!(a, 4096 - 32, "la cabecera del monton ocupa 32: le entro `huecos`");
+    // Y un trozo de 8 se lleva 32: 16 de payload redondeado + 16 de SU cabecera,
+    // que es lo que hace que `suelta` sepa cuanto devolver.
+    assert_eq!(d, a - 32, "16 de payload y 16 de cabecera propia");
 }
 
 /// El monton pide su memoria al KERNEL, no a una zona inventada.
