@@ -564,15 +564,30 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
             }
 
             // ** La regla, en bytes.
-            Instr::Comprueba { que, sobre, contra, .. } => {
+            Instr::Comprueba { que, sobre, contra, sin_signo, .. } => {
                 comprobaciones += 1;
                 let codigo: u64 = que.codigo()[1..].parse().unwrap_or(0);
                 match que {
+                    // *** LA REGLA 1 MIRA DOS BANDERAS DISTINTAS (2026-08-23).
+                    //
+                    // La comprobacion no vuelve a calcular nada: pregunta por lo
+                    // que la operacion dejo puesto. Pero **no es la misma
+                    // bandera**:
+                    //
+                    //     con signo    `jo`   el resultado no cabe con su signo
+                    //     sin signo    `jc`   la suma se dio la vuelta por arriba
+                    //
+                    // ** Con `jo` para todo, `2^64-1 + 3` sobre `natural64` NO
+                    // atrapaba: el resultado daba la vuelta a 2 y nadie decia
+                    // nada. Era la cuarta familia del fallo del signo de esta
+                    // manana, y la unica que se quedo sin arreglar -- el commit
+                    // de aquel arreglo la daba por hecha y no lo estaba.
+                    //
+                    // Lo destapo quitar una guardia REDUNDANTE en `junta`: el
+                    // programa dejo de atrapar y se puso a copiar 2^64 bytes.
                     Comprobacion::Desborde => {
-                        // `jo` mira la bandera que la propia suma dejo puesta:
-                        // la comprobacion no vuelve a calcular nada, solo
-                        // pregunta. Por eso cuesta lo que cuesta.
-                        out.extend_from_slice(&[0x0F, 0x80]);
+                        let cc = if *sin_signo { 0x82 } else { 0x80 };
+                        out.extend_from_slice(&[0x0F, cc]);
                         huecos_de_atrapa.push((out.len(), codigo));
                         out.extend_from_slice(&[0, 0, 0, 0]);
                     }
@@ -1182,6 +1197,55 @@ fn mov_a_marco(out: &mut Vec<u8>, disp: i32, reg: u8) {
     out.extend_from_slice(&disp.to_le_bytes());
 }
 
+/// **Los bytes de `RoData` y donde cae cada congelado dentro.**
+///
+/// ## Por que es una funcion y no diez lineas dentro de `empaquetar`
+///
+/// Porque tiene DOS clientes y **los dos tienen que ver exactamente lo mismo**:
+/// el `.ibex` que se escribe al disco, y el banco de pruebas que ejecuta en el
+/// emulador.
+///
+/// *** Hasta el 2026-08-23 el banco NO tenia esto, y la consecuencia era peor de
+/// lo que parece: `ejecuta_en` corre el codigo crudo, sin secciones y sin
+/// reubicaciones, asi que **una tabla congelada se leia de la direccion cero**.
+/// Ninguna prueba unitaria habia visto nunca una tabla de verdad -- las que
+/// existian miraban los BYTES del `.ibex`, que es otra pregunta.
+///
+/// Lo destapo el decimal: `POTENCIAS` daba numeros al azar y el codigo estaba
+/// bien. Duplicar esta disposicion en el banco habria dado dos layouts que se
+/// separan el dia que uno cambie; por eso se comparte.
+pub fn rodata_de(e: &Emitido) -> (Vec<u8>, Vec<u64>) {
+    let mut rodata: Vec<u8> = Vec::new();
+    let mut donde: Vec<u64> = Vec::with_capacity(e.congelados.len());
+    for c in &e.congelados {
+        // Alineadas a ocho: una tabla de `entero64` leida a medias es lenta en
+        // el mejor caso y una excepcion en el peor.
+        while rodata.len() % 8 != 0 {
+            rodata.push(0);
+        }
+        donde.push(rodata.len() as u64);
+        // *** UN TEXTO LLEVA CABECERA DE OBJETO; UNA TABLA, NO.
+        //
+        // Y la pone AQUI y no el frontend a proposito: la forma de un objeto del
+        // monton la declara `bmo_abi::dynobj`, y el frontend no enlaza `bmo-abi`
+        // -- es la linea que le deja no saber de bytes.
+        //
+        // ** `congelado` y no `nacer`: el bit 63 puesto, INMORTAL. Un literal no
+        // se cuenta, no se libera, y ademas vive en una seccion de solo lectura.
+        if matches!(c.clase, ClaseCongelada::Texto) {
+            let n = c.bytes.len() as u64;
+            let mut cab = vec![0u8; dynobj_texto::CABECERA_LEN];
+            // `type_index` = 0 mientras no exista el mapa de tipos.
+            // Cero significa "el `TypeMap` no existe", no "el tipo cero".
+            dynobj_texto::congelado(&mut cab, 0, n)
+                .expect("la cabecera de un texto siempre cabe en su propio tamano");
+            rodata.extend_from_slice(&cab);
+        }
+        rodata.extend_from_slice(&c.bytes);
+    }
+    (rodata, donde)
+}
+
 /// Envuelve el codigo en un `.bex` y **lo pasa por el gate**.
 ///
 /// Ningun `.bex` del sistema se escribe sin pasar por `bmo-verify`: es el unico
@@ -1235,43 +1299,7 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
     }
 
     if !e.congelados.is_empty() {
-        let mut rodata: Vec<u8> = Vec::new();
-        let mut donde: Vec<u64> = Vec::with_capacity(e.congelados.len());
-        for c in &e.congelados {
-            // Alineadas a ocho: una tabla de `entero64` leida a medias es lenta
-            // en el mejor caso y una excepcion en el peor.
-            while rodata.len() % 8 != 0 {
-                rodata.push(0);
-            }
-            donde.push(rodata.len() as u64);
-            // *** UN TEXTO LLEVA CABECERA DE OBJETO; UNA TABLA, NO.
-            //
-            // Y la pone AQUI y no el frontend a proposito: la forma de un objeto
-            // del monton la declara `bmo_abi::dynobj`, y el frontend no enlaza
-            // `bmo-abi` --lo dice la cabecera de su `Cargo.toml`, y es la linea
-            // que le deja no saber de bytes--. Escribir alli veinticuatro bytes
-            // a mano seria una segunda declaracion del mismo contrato, que es
-            // como acaban discrepando.
-            //
-            // ** `congelado` y no `nacer`: el bit 63 puesto, INMORTAL. Un
-            // literal no se cuenta, no se libera y ademas vive en una seccion de
-            // solo lectura -- las tres cosas dicen lo mismo y ninguna sobra.
-            if matches!(c.clase, ClaseCongelada::Texto) {
-                let n = c.bytes.len() as u64;
-                let mut cab = vec![0u8; dynobj_texto::CABECERA_LEN];
-                // `type_index` = 0 mientras no exista el mapa de tipos.
-                //
-                // [!] Cero significa *"el `TypeMap` no existe"*, no *"el tipo
-                // cero"*. `SectionKind::TypeMap = 0x10` es el quinto hueco
-                // declarado y vacio del formato, y `lista.rs` ya lo dejo dicho.
-                // Inventar aqui una numeracion propia es como se consiguen dos
-                // numeraciones el dia que llegue la de verdad.
-                dynobj_texto::congelado(&mut cab, 0, n)
-                    .expect("la cabecera de un texto siempre cabe en su propio tamano");
-                rodata.extend_from_slice(&cab);
-            }
-            rodata.extend_from_slice(&c.bytes);
-        }
+        let (rodata, donde) = rodata_de(e);
         b.add_section(BefSection::rodata(rodata));
 
         // ** `SeccionAbs64` y no `Abs64`: no hay simbolo de por medio, hay una

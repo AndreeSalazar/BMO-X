@@ -77,15 +77,17 @@ funcion caben(l es natural64) devuelve natural64
 # es INMORTAL y vive en `RoData`; esto lo construyo alguien y puede morir.
 funcion lista_nueva(monton es natural64, capacidad es natural64, ancho es natural64) devuelve natural64
     crudo
-        # LA GUARDIA QUE `crudo` APAGO. `capacidad * ancho` puede dar la vuelta,
-        # y entonces `pide` daria un bloque ridiculo en el que todo escribe
-        # fuera. Es la misma de `junta`, y por el mismo motivo: la unica forma
-        # honrada de usar `crudo` es reponer lo que uno mismo desactivo.
+        # ** `capacidad * ancho` puede darse la vuelta, y lo ATRAPA la Regla 1
+        # sola: `crudo` no apaga las reglas del lenguaje. Aqui hubo una guardia
+        # a mano con ese motivo escrito, y era falso -- se comprobo el
+        # 2026-08-23 y se quito.
+        #
+        # Lo que si se mira es el ancho CERO, que no es un desbordamiento: es una
+        # peticion sin sentido que daria una lista de cero bytes en la que todo
+        # indice cabe.
         si ancho = 0
             devuelve 0
         sitio es natural64 = capacidad * ancho
-        si sitio entre ancho no es capacidad
-            devuelve 0
 
         nueva es natural64 = pide(monton, sitio + 32)
         si nueva = 0

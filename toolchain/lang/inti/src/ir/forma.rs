@@ -230,6 +230,21 @@ pub enum Instr {
     /// no abortar.
     Comprueba {
         que: Comprobacion,
+        /// **Se opera sin signo?** (2026-08-23, la cuarta familia del signo)
+        ///
+        /// *** La Regla 1 mira una BANDERA que la operacion dejo puesta, y no es
+        /// la misma:
+        ///
+        /// ```text
+        ///    con signo    `jo`   desborde: el resultado no cabe con su signo
+        ///    sin signo    `jc`   acarreo:  la suma se dio la vuelta por arriba
+        /// ```
+        ///
+        /// ** Con `jo` para todo, `2^64-1 + 3` sobre `natural64` **no atrapa**:
+        /// el resultado da la vuelta a 2 y nadie dice nada. Se descubrio al
+        /// quitar una guardia redundante en `junta` -- el programa dejo de
+        /// atrapar y se puso a copiar 2^64 bytes.
+        sin_signo: bool,
         sobre: Valor,
         /// **El segundo valor, para las reglas que miran dos.**
         ///

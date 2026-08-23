@@ -1,0 +1,193 @@
+# EL DECIMAL EXACTO -- `0.1 + 0.2` da `0.3`, y aqui esta el porque.
+#
+# ## La promesa que este fichero paga
+#
+# La portada del lenguaje dice:
+#
+#     escribe 0.1 + 0.2      ->   0.3      y no 0.30000000000000004
+#
+# En binario no existe un `0.1`. Lo que existe es **un entero y una escala**: el
+# `0.1` es el par `(1, 1)` -- coeficiente uno, un digito tras el punto -- y
+# sumarlo con `0.2` = `(2, 1)` da `(3, 1)`, que es `0.3` exacto. No hay redondeo
+# porque no hay conversion.
+#
+# ## LA DISPOSICION, que la decidio Eddi el 2026-08-23
+#
+#     numero  =  16 bytes, alineacion 8
+#
+#       0..8    coeficiente   entero64     el numero SIN el punto
+#       8..9    escala        natural8     digitos tras el punto
+#       9..16   reservado
+#
+# ** El coeficiente es de 64 bits y NO de 128, y esa es LA LEY DE LOS 64 BITS
+# (maestro 10.3b): *"INTI es un guiador al Samurai CPU"*. Un `imul` de 64 bits
+# ES una instruccion; uno de 128 es software fingiendo serlo, y meterlo en el
+# tipo mas usado contradice la tesis entera del lenguaje.
+#
+# ** Y NO ES UN OBJETO DEL MONTON. Mide 16 bytes fijos, no crece, no se comparte
+# y no se cuenta: es un VALOR, como un `registro`. Por eso `numero` puede vivir
+# en un campo sin que nadie reserve nada.
+#
+# *** Y POR ESO ESTE FICHERO NO VIVE EN `runtime/objetos/`, sino en el suyo.
+# Empezo alli y duro cinco minutos: `usa objetos` trae el monton entero --lo
+# necesitan `texto` y `lista`-- y arrastrarselo a quien solo quiere SUMAR es
+# exactamente el precio que se midio el 23-08 con la sonda del Ryzen, que engordo
+# 1.576 bytes por llevar un monton que no usaba.
+#
+#     usa decimal    quiero numeros exactos       -- y nada mas
+#     usa objetos    quiero texto y listas        -- y trae el monton
+#
+# ## *** LO QUE HACE POSIBLE ESTO ES UNA TABLA CONGELADA
+#
+# Sumar dos decimales de escala distinta pide multiplicar por una potencia de
+# diez, y `POTENCIAS` es exactamente la clase de tabla que INTI **no podia
+# escribir** hasta el 2026-08-22: `perfil` denunciaba `[1, 10, 100]` con `E0070`,
+# *"lo que crece pide memoria"* -- y una constante no crece, esta CONGELADA.
+#
+# Aquel arreglo se hizo por un CRC de PNG. Lo cobra esto.
+perfil llano
+usa memoria
+
+# Diez elevado a `i`, para `i` de 0 a 18.
+#
+# ** Hasta el 18 y no mas: `10^19` no cabe en un `entero64` con signo. Que la
+# tabla acabe donde acaba el tipo no es una casualidad -- es el limite del
+# coeficiente dicho de otra forma, y por eso `escala_maxima` lo lee de aqui en
+# vez de escribir un 18 a mano.
+POTENCIAS = [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000, 10000000000, 100000000000, 1000000000000, 10000000000000, 100000000000000, 1000000000000000, 10000000000000000, 100000000000000000, 1000000000000000000]
+
+# La escala mas grande que un `entero64` puede llevar.
+funcion escala_maxima devuelve natural64
+    devuelve 18
+
+# El coeficiente de un numero: el valor SIN el punto.
+funcion coeficiente(n es natural64) devuelve entero64
+    crudo
+        devuelve entero64(lee_natural64(n))
+
+# Cuantos digitos hay tras el punto.
+funcion escala(n es natural64) devuelve natural64
+    crudo
+        devuelve lee_natural8(n + 8)
+
+# Escribe un numero. Devuelve 1 si la escala cabe.
+funcion pon_numero(n es natural64, coef es entero64, esc es natural64) devuelve natural64
+    crudo
+        si esc > escala_maxima()
+            devuelve 0
+        escribe_natural64(n, natural64(coef))
+        escribe_natural8(n + 8, esc)
+        escribe_natural64(n + 9, 0)
+        devuelve 1
+
+# Diez elevado a `i`. Devuelve 0 si se pasa de la tabla.
+#
+# ** Devolver 0 y no la ultima potencia: quien pida `10^25` tiene un problema que
+# no se arregla dandole `10^18`, y darselo lo convertiria en un numero equivocado
+# en vez de en un no.
+funcion potencia(i es natural64) devuelve entero64
+    crudo
+        si i > escala_maxima()
+            devuelve 0
+        devuelve entero64(lee_natural64(POTENCIAS + i * 8))
+
+# Sube un coeficiente `cuantos` digitos.
+#
+# *** Y NO LLEVA GUARDIA DE DESBORDAMIENTO, porque no hace falta: **`crudo` no
+# apaga las reglas del lenguaje**. `c * p` es un `Op::Por` sobre enteros, asi que
+# el descenso le pone su Regla 1 y el binario ATRAPA con `E1001`.
+#
+# ** Aqui hubo una guardia escrita a mano --una division para comprobar el
+# producto-- con un comentario que decia *"la guardia que `crudo` apago"*. Era
+# falso, se comprobo el 2026-08-23, y se quito: una guardia que no puede saltar
+# es codigo muerto que ademas MIENTE sobre por que esta.
+#
+# ** Lo que `crudo` significa es otra cosa y mejor: *"aqui se toca el metal, y al
+# otro lado no hay nadie que compruebe"*. Es un permiso que vigila `perfil`. Las
+# reglas del lenguaje siguen puestas -- **el runtime de INTI esta protegido por
+# las reglas de INTI**.
+funcion sube(c es entero64, cuantos es natural64) devuelve entero64
+    crudo
+        si cuantos = 0
+            devuelve c
+        p es entero64 = potencia(cuantos)
+        si p = 0
+            devuelve 0
+        si c = 0
+            devuelve 0
+        devuelve c * p
+
+# *** LA SUMA EXACTA. `destino = a + b`. Devuelve 1 si salio.
+#
+# ## Las dos escalas se igualan SUBIENDO, nunca bajando
+#
+# Bajar una escala es dividir, y dividir pierde digitos: `0.25` a escala 1 seria
+# `0.2` o `0.3` **y habria que elegir**. Subir no pierde nada -- `0.2` a escala 2
+# es `0.20`, exacto -- asi que la suma de dos exactos sigue siendo exacta.
+#
+# ** Es lo que separa este decimal de un flotante: aqui no hay una regla de
+# redondeo escondida en la suma. Si no cabe, se dice.
+#
+# ## Y el desbordamiento lo ATRAPA la Regla 1, no una guardia
+#
+# `ca + cb` es una suma de enteros, asi que el descenso le pone su comprobacion
+# y el binario atrapa con `E1001`. **Aqui no hay nada escrito a mano**, y el
+# motivo importa: `crudo` no apaga las reglas -- eso se creyo durante un dia y se
+# comprobo que era falso.
+#
+# ** Y la trampa es MEJOR que devolver un 0. Un `0` es un numero: quien no mire
+# el resultado sigue con una suma equivocada. Una trampa para la tarea con un
+# codigo que dice cual regla corto y en que byte.
+funcion suma(destino es natural64, a es natural64, b es natural64) devuelve natural64
+    crudo
+        ea es natural64 = escala(a)
+        eb es natural64 = escala(b)
+        cambiante ca es entero64 = coeficiente(a)
+        cambiante cb es entero64 = coeficiente(b)
+
+        cambiante e es natural64 = ea
+        si ea < eb
+            ca = sube(ca, eb - ea)
+            si ca = 0
+                devuelve 0
+            e = eb
+        sino
+            si eb < ea
+                cb = sube(cb, ea - eb)
+                si cb = 0
+                    devuelve 0
+
+        devuelve pon_numero(destino, ca + cb, e)
+
+# `destino = a * b`. Devuelve 1 si salio.
+#
+# ** Multiplicar NO iguala escalas: las SUMA. `0.5 * 0.25` es `(5,1) * (25,2)` =
+# `(125, 3)` = `0.125`, y sale exacto sin tocar nada. Es la operacion barata de
+# este formato, al reves que en coma flotante.
+#
+# [!] Y por eso la escala puede pasarse del 18 aunque los dos factores quepan.
+# `pon_numero` lo dice; aqui no se recorta en silencio.
+funcion multiplica(destino es natural64, a es natural64, b es natural64) devuelve natural64
+    crudo
+        ca es entero64 = coeficiente(a)
+        cb es entero64 = coeficiente(b)
+        devuelve pon_numero(destino, ca * cb, escala(a) + escala(b))
+
+# Compara dos numeros: 1 si `a` es menor que `b`, 0 si no.
+#
+# ** Iguala escalas primero, como la suma. Comparar `(5,1)` con `(50,2)` sin
+# igualar diria que 0.5 < 0.50, que es falso y ademas absurdo.
+funcion menor(a es natural64, b es natural64) devuelve natural64
+    crudo
+        ea es natural64 = escala(a)
+        eb es natural64 = escala(b)
+        cambiante ca es entero64 = coeficiente(a)
+        cambiante cb es entero64 = coeficiente(b)
+        si ea < eb
+            ca = sube(ca, eb - ea)
+        sino
+            si eb < ea
+                cb = sube(cb, ea - eb)
+        si ca < cb
+            devuelve 1
+        devuelve 0
