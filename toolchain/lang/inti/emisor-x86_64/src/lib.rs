@@ -660,10 +660,50 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
                 valor,
                 ancho,
             } => {
-                // El valor primero: cargar la direccion antes lo perderia si
-                // los dos vivieran en el mismo sitio.
-                carga(out, DER, valor, &marco);
-                carga(out, IZQ, direccion, &marco);
+                // *** LOS DOS PUEDEN VIVIR EN EL REGISTRO DEL OTRO, y entonces
+                // no hay orden que valga.
+                //
+                // Aqui habia esto escrito: *"el valor primero: cargar la
+                // direccion antes lo perderia si los dos vivieran en el mismo
+                // sitio"*. Vio la mitad del problema y arreglo la mitad.
+                //
+                // La otra mitad: si la DIRECCION vive en `DER`, cargar el valor
+                // ahi primero la machaca **antes de leerla**. Y si ademas el
+                // valor vive en `IZQ`, cualquiera de los dos ordenes destroza al
+                // otro:
+                //
+                // ```text
+                //    valor en IZQ, direccion en DER
+                //    mov rcx, rax   -> el valor pisa la direccion
+                //    mov rax, rcx   -> y ahora los dos son el valor
+                // ```
+                //
+                // ** Lo encontro un programa de verdad --el escritor de PNG de
+                // `ejemplos/`-- y no una prueba: hacen falta DOS operaciones
+                // antes de la escritura para que los dos registros esten
+                // ocupados a la vez. Con una sola, cualquiera de los dos ordenes
+                // funciona, y por eso el banco no lo vio nunca.
+                //
+                // El caso cruzado se resuelve con un intercambio; los demas, con
+                // el orden que no pisa.
+                let en_izq = |v: &Valor| {
+                    matches!(v, Valor::Temporal(t) if marco.sitio(*t) == Sitio::Registro(IZQ))
+                };
+                let en_der = |v: &Valor| {
+                    matches!(v, Valor::Temporal(t) if marco.sitio(*t) == Sitio::Registro(DER))
+                };
+                if en_izq(valor) && en_der(direccion) {
+                    // Cruzados: un `xchg` y los dos quedan donde toca.
+                    x86::xchg_r64_r64(out, IZQ, DER);
+                } else if en_der(direccion) {
+                    // La direccion ya esta donde estorba: se salva primero.
+                    carga(out, IZQ, direccion, &marco);
+                    carga(out, DER, valor, &marco);
+                } else {
+                    // El caso corriente, y el que ya estaba bien.
+                    carga(out, DER, valor, &marco);
+                    carga(out, IZQ, direccion, &marco);
+                }
                 match ancho {
                     1 => x86::mov_byte_at_reg_from_low(out, IZQ, DER),
                     2 => x86::mov_word_at_reg_from_r16(out, IZQ, DER),

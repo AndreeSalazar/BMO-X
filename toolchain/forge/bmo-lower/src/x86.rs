@@ -244,6 +244,17 @@ pub fn sub_r64_imm8(out: &mut Vec<u8>, reg: u8, imm: i8) {
 }
 
 /// `cqo` -- extiende el signo de `rax` a `rdx:rax`, lo que `idiv` espera.
+/// `xchg <a>, <b>` entre registros de 64 bits.
+///
+/// ** Existe para el caso en que dos valores viven cada uno en el registro que
+/// el otro necesita. Sin ella hay que pasar por un tercero, y en un emisor con
+/// dos registros de trabajo no hay tercero.
+pub fn xchg_r64_r64(out: &mut Vec<u8>, a: u8, b: u8) {
+    out.push(rex_w(a, b));
+    out.push(0x87);
+    out.push(modrm_reg_direct(a & 7, b & 7));
+}
+
 pub fn cqo(out: &mut Vec<u8>) {
     out.extend_from_slice(&[0x48, 0x99]);
 }
