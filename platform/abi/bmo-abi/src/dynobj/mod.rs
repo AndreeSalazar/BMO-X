@@ -1,31 +1,40 @@
-//! `dynobj` -- the shape of a DYNAMICALLY TYPED value, as a contract.
+//! `dynobj` -- LA FORMA DE UN OBJETO CON VIDA PROPIA, como contrato.
 //!
-//! This is the first piece of `docs/maestro/PYTHON_MAESTRO.md`, and it is deliberately
-//! not called `python`.
+//! # ** DE QUIEN ES ESTO, Y POR QUE CAMBIO (2026-08-23)
 //!
-//! # Why this is not "the Python module"
+//! Aqui ponia *"this is the first piece of `docs/maestro/PYTHON_MAESTRO.md`"*, y
+//! eso dejo de ser verdad. Decision de Eddi:
 //!
-//! It is the same call already decided for packed decimal: `bmo_lower::packed`
-//! holds BCD because *packing is a REPRESENTATION, not language semantics* --
-//! COBOL's `COMP-3`, Ada Annex F `Decimal` and PL/I `FIXED DECIMAL` all want the
-//! same nibbles. An object header is the same kind of thing:
+//! > *"es ironico que intente renovar Python para mi sistema, pero no hay
+//! > sentido. INTI toma su lugar."*
+//!
+//! **Este es el modelo de objetos de INTI**, y sus dos primeros inquilinos son
+//! `lista` y `texto`. No se renombra a `inti` por el mismo motivo por el que no
+//! se llamo `python`: lo que vive aqui es una REPRESENTACION, no la semantica de
+//! ningun lenguaje.
 //!
 //! ```text
-//!    what lives here      the header, the immortal bit, the slot numbers
-//!    what does NOT        what `a + b` MEANS when a is str and b is int
+//!    lo que vive aqui   la cabecera, el bit de inmortal, los numeros de ranura
+//!    lo que NO          que SIGNIFICA `a + b` cuando `a` es texto y `b` es lista
 //! ```
 //!
-//! The second one is Python semantics and stays in `toolchain/lang/python`.
+//! Es la misma linea que separa `bmo_lower::packed` --que guarda BCD porque
+//! empaquetar es una representacion, y `COMP-3` de COBOL, el `Decimal` del Annex
+//! F de Ada y el `FIXED DECIMAL` de PL/I piden los mismos nibbles-- de la
+//! `PICTURE`, que es de COBOL y se queda en COBOL.
 //!
-//! # Why it is not inside `runtime/`
+//! ** Y esa linea es lo que hace que este fichero **no haya tenido que cambiar**
+//! al cambiar de dueno. Un contrato escrito sobre bytes sobrevive al lenguaje
+//! que lo pidio primero; uno escrito sobre semantica, no.
 //!
-//! `runtime/` already exists here with `TypeRegistry`, `VTableStore` and
-//! `LangBridge` -- but it is a cross-language *interface* registry, a different
-//! job, and its only callers today are its own tests.
+//! # Por que no vive dentro de `runtime/`
 //!
-//! ** And it could not serve this purpose anyway: `VTableEntry` is
-//! `Option<extern "C" fn()>`, a raw function pointer. See the next section for
-//! why a raw pointer cannot appear in an object that gets lent.
+//! `runtime/` ya existe aqui con `TypeRegistry`, `VTableStore` y `LangBridge`,
+//! pero es un registro de INTERFACES entre lenguajes: otro trabajo.
+//!
+//! ** Y no podria servir para esto de todas formas: `VTableEntry` es un
+//! `Option<extern "C" fn()>`, un puntero crudo a funcion. La seccion siguiente
+//! dice por que un puntero crudo no puede aparecer en un objeto que se presta.
 //!
 //! # ** THE CONSTRAINT THAT SHAPES EVERYTHING HERE
 //!
@@ -45,12 +54,15 @@
 //!    would fault. That is why [`header::may_write`] exists as its own question,
 //!    separate from [`header::retain`].
 //!
-//! ** Both of these are decisions that CANNOT be retrofitted. CPython learned
-//! the second one the hard way: immortal objects (PEP 683) arrived in 3.12,
-//! years after the header was fixed, and cost a release cycle -- because until
-//! then every `fork()`ed child dirtied every shared page just by *reading*
-//! objects. Deciding it on day one is the entire reason this module is written
-//! before a single line of interpreter.
+//! ** Las dos son decisiones que NO SE PUEDEN METER DESPUES, y hay una factura
+//! ajena que lo demuestra: CPython aprendio la segunda tarde. Los objetos
+//! inmortales (PEP 683) llegaron en la 3.12, anos despues de fijar la cabecera,
+//! y costaron un ciclo de version entero -- porque hasta entonces cada hijo de
+//! un `fork()` ensuciaba todas las paginas compartidas **solo por LEER**.
+//!
+//! *** Eso se cita como EVIDENCIA y no como herencia. Lo que se copia no es el
+//! diseno de nadie: es el escarmiento. Y es la razon entera de que este modulo
+//! se escribiera **antes que una sola linea de lo que lo usa**.
 //!
 //! # What is here and what is not
 //!
@@ -60,8 +72,10 @@
 //! it.
 //!
 //! ```text
-//!    header    the sixteen bytes every dynamic object starts with
-//!    slots     the numbered operations of a type, like TASK_OP_*
+//!    header    los dieciseis bytes con los que empieza todo objeto
+//!    slots     las operaciones numeradas de un tipo, como los `TASK_OP_*`
+//!    lista     la primera instancia: `lista de T`
+//!    texto     la segunda: cadena UTF-8 inmutable
 //! ```
 //!
 //! Not here yet, and each has its reason:

@@ -1435,3 +1435,136 @@ fn un_programa_sin_objetos_no_monta_ningun_monton() {
     );
     assert!(e.reubicaciones_del_monton.is_empty());
 }
+
+// ===================================================================
+//  *** LA LISTA EN EJECUCION, Y LA REGLA 2 (2026-08-23)
+// ===================================================================
+//
+//  `REGLAS.md` tiene la Regla 2 escrita desde F0 y
+//  `Comprobacion::llega_a_bytes` contesta que NO por ella, con el motivo:
+//  *"un `bufer` es una direccion y no lleva su longitud, asi que no hay contra
+//  que comprobar. **Nace con `lista de T`**"*.
+//
+//  Es esta.
+
+fn con_lista(cuerpo: &str) -> String {
+    format!(
+        "perfil llano\nusa objetos\nusa monton\n\nfuncion prueba(base es natural64, n es natural64) devuelve natural64\n    crudo\n        escribe_natural64(base, base + 32)\n        escribe_natural64(base + 8, base + 4096)\n        escribe_natural64(base + 16, 0)\n        l = lista_nueva(base, 4, 8)\n{}",
+        cuerpo
+    )
+}
+
+/// ***UNA LISTA NUEVA NACE CON SITIO Y SIN NADA, y con un dueno.***
+#[test]
+fn una_lista_nueva_tiene_capacidad_y_ningun_elemento() {
+    let f = con_lista(
+        "        si cuantos(l) no es 0\n            devuelve 0\n        si caben(l) no es 4\n            devuelve 0\n        si referencias(l) no es 1\n            devuelve 0\n        devuelve 1\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 1);
+}
+
+/// Anadir guarda de verdad, y `sitio_de` devuelve donde esta.
+#[test]
+fn anadir_guarda_y_el_indice_lo_encuentra() {
+    let f = con_lista(
+        "        anade(l, 11, 8)\n        anade(l, 22, 8)\n        si cuantos(l) no es 2\n            devuelve 0\n        d = sitio_de(l, 1, 8)\n        devuelve lee_natural64(d)\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 22);
+}
+
+/// ***LA REGLA 2: UN INDICE QUE SE SALE NO DEVUELVE UNA DIRECCION.***
+///
+/// ** Y el limite esta **a un `mov` de distancia**, en un sitio fijo de la
+/// cabecera. Eso es toda la diferencia entre los dos tipos, y por eso son dos:
+///
+/// ```text
+///    bufer de T    una direccion cruda. Indexarlo pide `crudo`
+///    lista de T    lleva su longitud. Indexarla se comprueba
+/// ```
+///
+/// *** Un `bufer` no puede tener esta comprobacion. No es que se haya olvidado:
+/// **no existe la informacion para hacerla.**
+#[test]
+fn un_indice_fuera_de_rango_no_da_una_direccion() {
+    // Dos elementos: el 0 y el 1 valen, el 2 no.
+    let f = con_lista(
+        "        anade(l, 11, 8)\n        anade(l, 22, 8)\n        si sitio_de(l, 0, 8) = 0\n            devuelve 0\n        si sitio_de(l, 1, 8) = 0\n            devuelve 0\n        si sitio_de(l, 2, 8) no es 0\n            devuelve 0\n        devuelve 1\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 1);
+}
+
+/// [!] Y el limite es `cuantos`, NO `capacidad`. La lista tiene sitio para
+/// cuatro y solo dos elementos: el indice 3 CABE en el bloque y **no existe**.
+///
+/// ** Sin esta prueba, comparar contra `capacidad` pasaria la de arriba y
+/// dejaria leer memoria reservada y sin escribir -- que es basura con la
+/// direccion bien puesta, el peor resultado posible.
+#[test]
+fn el_limite_es_cuantos_hay_y_no_cuantos_caben() {
+    let f = con_lista(
+        "        anade(l, 11, 8)\n        anade(l, 22, 8)\n        devuelve sitio_de(l, 3, 8)\n",
+    );
+    assert_eq!(
+        ejecuta_en(&f, "prueba", 0x40000, 0),
+        0,
+        "el 3 cabe en el bloque y no existe en la lista"
+    );
+}
+
+/// Una lista llena lo DICE en vez de escribir fuera.
+///
+/// ** No crece sola todavia, y se dice igual que `suelta` estuvo diciendo
+/// durante meses que no soltaba. Crecer pide decidir quien manda cuando alguien
+/// guardo la direccion antigua, y eso es diseno, no trabajo mecanico.
+#[test]
+fn una_lista_llena_contesta_que_no_cabe() {
+    let f = con_lista(
+        "        anade(l, 1, 8)\n        anade(l, 2, 8)\n        anade(l, 3, 8)\n        anade(l, 4, 8)\n        devuelve anade(l, 5, 8)\n",
+    );
+    assert_eq!(ejecuta_en(&f, "prueba", 0x40000, 0), 0);
+}
+
+/// ***Y LO QUE CONSTRUYE INTI LO ACEPTA EL ABI DE RUST.***
+///
+/// ** Otro codigo, a proposito: `bmo_abi::dynobj::lista::revisar` mira lo que
+/// INTI no mira --que no diga tener mas elementos de los que caben, que los
+/// elementos quepan en el bloque, que no este viva con cero referencias-- y si
+/// `lista.inti` validara su propio resultado estaria comprobando su aritmetica
+/// contra si misma.
+#[test]
+fn la_lista_que_construye_inti_la_acepta_el_abi() {
+    use bmo_abi::dynobj::lista as abi;
+    let f = con_lista("        anade(l, 11, 8)\n        anade(l, 22, 8)\n        devuelve l\n");
+    let e = emitido(&f);
+    let inicio = e
+        .inicios
+        .iter()
+        .find(|(n, _)| n == "prueba")
+        .map(|(_, o)| *o)
+        .expect("sin `prueba`");
+
+    let largo = e.codigo.len() as i32;
+    let mut codigo = Vec::new();
+    codigo.push(0xE9);
+    codigo.extend_from_slice(&largo.to_le_bytes());
+    codigo.extend_from_slice(&e.codigo);
+    codigo.push(0xE8);
+    let desde = codigo.len() as i32 + 4;
+    codigo.extend_from_slice(&((inicio as i32 + 5) - desde).to_le_bytes());
+
+    let mut m = Machine::new(codigo);
+    m.regs[7] = 0x40000;
+    m.regs[6] = 0;
+    let m = run(m, 200_000);
+    let donde = m.regs[0];
+    assert_ne!(donde, 0, "`lista_nueva` no devolvio nada");
+
+    let mut bytes = Vec::new();
+    for i in 0..(abi::CABECERA_LEN as u64 + 4 * 8) {
+        bytes.push(m.read_u8_pub(donde + i));
+    }
+    let l = abi::revisar(&bytes, 8).expect("el ABI rechazo la lista que construyo INTI");
+    assert_eq!(l.count, 2, "dos elementos");
+    assert_eq!(l.capacidad, 4, "y sitio para cuatro");
+    assert_eq!(l.refs, 1, "nace con UN dueno: la construyo alguien");
+}
