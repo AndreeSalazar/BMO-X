@@ -208,7 +208,7 @@ fn barrer_linea(
 
             if let Some(s) = vocab.reconocer(&palabra) {
                 piezas.push(Pieza::nueva(Clase::Palabra(s), sitio_de(arranca)));
-            } else if palabra.chars().next().map(|p| p.is_uppercase()).unwrap_or(false) {
+            } else if es_nombre_de_tipo(&palabra) {
                 piezas.push(Pieza::nueva(Clase::Tipo(palabra), sitio_de(arranca)));
             } else {
                 if !palabra.is_ascii() {
@@ -364,6 +364,44 @@ fn cierra_a(s: Signo) -> Option<Signo> {
         Signo::LlaveCierra => Some(Signo::LlaveAbre),
         _ => None,
     }
+}
+
+/// **Un TIPO empieza por mayuscula Y lleva alguna minuscula.**
+///
+/// ## Por que las dos condiciones, y no solo la primera
+///
+/// Hasta el 2026-08-22 bastaba con la mayuscula inicial, y eso hacia que
+/// `MAXIMO` fuera un TIPO. Consecuencia: **el ejemplo de constante de la propia
+/// `GRAMATICA.md` no compilaba**:
+///
+/// ```text
+///    MAXIMO = 100     # constante: se CONGELA al cargar el modulo
+///    -> E0017 "en el nivel de arriba solo van `funcion`, `registro`,
+///              `operacion` y constantes. Aqui hay el tipo `MAXIMO`"
+/// ```
+///
+/// Un mensaje que nombra las constantes entre lo que vale, y rechaza una.
+///
+/// ** La regla nueva separa las dos convenciones sin pedirle nada a nadie:
+///
+/// ```text
+///    Alumno   Punto   TablaDeSenos      empiezan alto y siguen bajo -> TIPO
+///    MAXIMO   TOPE    ANCHO_MAXIMO      todo alto                   -> nombre
+///    maximo   tope                      todo bajo                   -> nombre
+/// ```
+///
+/// *** Y de paso las dos formas de escribir una constante valen: quien no quiera
+/// teclear en mayusculas, no tiene que hacerlo. La convencion de MAYUSCULAS
+/// viene de C y es una costumbre, no una obligacion del lenguaje.
+///
+/// ** Un nombre de una sola letra en alto --`T`-- se lee como NOMBRE, no como
+/// tipo. Es el caso raro y se decide asi a proposito: `lista de T` es notacion de
+/// los documentos, no algo que nadie escriba, y un registro llamado `T` es un
+/// registro sin nombre.
+fn es_nombre_de_tipo(palabra: &str) -> bool {
+    let mut letras = palabra.chars();
+    let alta = letras.next().map(|p| p.is_uppercase()).unwrap_or(false);
+    alta && palabra.chars().any(|c| c.is_lowercase())
 }
 
 fn es_inicio_de_nombre(c: char) -> bool {
