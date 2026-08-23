@@ -248,6 +248,13 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         salida.katanas.extend(cuenta.katanas);
         salida.huecos_de_llamada.extend(cuenta.huecos_de_llamada);
         salida.sin_emitir.extend(cuenta.sin_emitir);
+        // ** Y los nombres que se van a bajar a un cero, con el suyo delante.
+        for n in nombres_sueltos(f) {
+            salida.sin_emitir.push(format!(
+                "`{}`: el emisor no sabe que es y lo baja a un CERO",
+                n
+            ));
+        }
     }
 
     // *** EL POZO DE TEXTOS SE CALCULA Y NO LO LEE NADIE (2026-08-22).
@@ -861,6 +868,85 @@ fn auditar(e: &Emitido) -> bmo_verify::Verdict {
             })
             .collect(),
     )
+}
+
+/// **LOS NOMBRES QUE LLEGAN SUELTOS Y SE BAJAN A UN CERO.**
+///
+/// ## Por que existe, y lo que costaba no tenerla
+///
+/// `carga()` acaba en `Valor::Nombre(_) => zero_r32`. Es lo unico que puede
+/// hacer --no sabe que es ese nombre-- y **lo hacia callandose**.
+///
+/// *** Eso convirtio `maximo = 100` en cero durante toda la vida del lenguaje:
+/// la IR tiraba `Decl::Constante` con un `{}`, el nombre llegaba aqui suelto, y
+/// salia un binario que compilaba limpio, pasaba el gate, salia FIRMADO y valia
+/// cero -- con el ejemplo escrito en `GRAMATICA.md`.
+///
+/// ** Arreglar las constantes cierra ESE caso. Esta funcion cierra la CLASE: un
+/// nombre que el emisor no sabe resolver no se convierte en un numero en
+/// silencio, se dice. Es la misma decision que `sin_emitir` para los
+/// intrinsecos, aplicada a los valores.
+///
+/// ## Lo que NO cuenta
+///
+/// El destino de una llamada. `Instr::Llama { que: Valor::Nombre(f) }` es lo
+/// normal: asi se llama a una funcion, y se resuelve al final del modulo con los
+/// huecos. Contarlo aqui llenaria el informe de ruido y entrenaria a no mirarlo.
+fn nombres_sueltos(f: &FuncionIr) -> Vec<String> {
+    let mut sueltos = Vec::new();
+    let mut mira = |v: &Valor, sueltos: &mut Vec<String>| {
+        if let Valor::Nombre(n) = v {
+            sueltos.push(n.clone());
+        }
+    };
+    for i in &f.instrucciones {
+        // ** SIN COMODIN, y por lo que le paso a `marco.rs` el 22-08: un `_ =>`
+        // dejo `Lee` y `Escribe` fuera del recuento de vivos y costo dos
+        // temporales en el mismo registro. Aqui la lista tiene que crecer con la
+        // IR, y sin comodin no se puede olvidar.
+        match i {
+            Instr::Mueve { origen, .. } => mira(origen, &mut sueltos),
+            Instr::Binaria {
+                izquierda, derecha, ..
+            } => {
+                mira(izquierda, &mut sueltos);
+                mira(derecha, &mut sueltos);
+            }
+            Instr::Unaria { valor, .. } => mira(valor, &mut sueltos),
+            Instr::Comprueba { sobre, contra, .. } => {
+                mira(sobre, &mut sueltos);
+                if let Some(c) = contra {
+                    mira(c, &mut sueltos);
+                }
+            }
+            Instr::Convierte { valor, .. } => mira(valor, &mut sueltos),
+            // `que` es el DESTINO de la llamada: ahi un nombre es lo normal.
+            Instr::Llama { argumentos, .. } => {
+                for a in argumentos {
+                    mira(a, &mut sueltos);
+                }
+            }
+            Instr::Lee { direccion, .. } => mira(direccion, &mut sueltos),
+            Instr::Escribe {
+                direccion, valor, ..
+            } => {
+                mira(direccion, &mut sueltos);
+                mira(valor, &mut sueltos);
+            }
+            Instr::Metal { argumentos, .. } => {
+                for a in argumentos {
+                    mira(a, &mut sueltos);
+                }
+            }
+            Instr::Guarda { valor, .. } => mira(valor, &mut sueltos),
+            Instr::SaltaSi { cond, .. } => mira(cond, &mut sueltos),
+            Instr::Devuelve(Some(v)) => mira(v, &mut sueltos),
+            Instr::Etiqueta(_) | Instr::Salta(_) | Instr::Devuelve(None) => {}
+        }
+    }
+    sueltos.sort();
+    sueltos.dedup();
+    sueltos
 }
 
 fn epilogo(out: &mut Vec<u8>) {

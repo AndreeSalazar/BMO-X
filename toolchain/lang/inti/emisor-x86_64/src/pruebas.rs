@@ -707,3 +707,73 @@ funcion f devuelve entero32
         e.sin_emitir
     );
 }
+
+// ===================================================================
+//  ** LAS CONSTANTES CONGELADAS (2026-08-22)
+// ===================================================================
+
+/// ***`maximo = 100` VALIA CERO, y compilaba limpio.***
+///
+/// ## Lo que estaba pasando
+///
+/// `Decl::Constante` existia en la gramatica --con su ejemplo, `MAXIMO = 100`--,
+/// en el arbol, y en el analisis de perfiles, que recorria su valor. Y en la IR
+/// se tiraba con un `Decl::Constante { .. } => {}`.
+///
+/// *** El nombre llegaba suelto al emisor, `carga` lo bajaba a un `zero_r32`, y
+/// salia un `.ibex` que compilaba limpio, pasaba el gate, salia FIRMADO **y
+/// devolvia cero**. Tres capas con la pieza puesta y ninguna que la construyera.
+#[test]
+fn una_constante_del_modulo_vale_lo_que_dice() {
+    let f = "perfil llano\n\nmaximo = 100\n\nfuncion cuanto devuelve entero32\n    devuelve maximo\n";
+    assert_eq!(ejecuta_en(f, "cuanto", 0, 0), 100);
+    assert!(emitido(f).sin_emitir.is_empty(), "y sin quejarse de nada");
+}
+
+/// **Una constante declarada DEBAJO de quien la usa vale igual.**
+///
+/// ** En el nivel superior no hay orden: todo se congela cuando el modulo acaba
+/// de cargarse. Por eso se recogen en una pasada propia antes de bajar las
+/// funciones -- resolverlas sobre la marcha obligaria a ordenar el fichero por
+/// quien usa a quien, que es imposible en cuanto dos se usan entre si.
+#[test]
+fn una_constante_vale_aunque_se_declare_despues() {
+    let f = "perfil llano\n\nfuncion cuanto devuelve entero32\n    devuelve tope\n\ntope = 42\n";
+    assert_eq!(ejecuta_en(f, "cuanto", 0, 0), 42);
+}
+
+/// **Y el menos de un numero se congela**: `-1` es una constante, no una resta.
+#[test]
+fn una_constante_negativa_se_congela() {
+    let f = "perfil llano\n\nfondo = 0 - 7\n\nfuncion cuanto devuelve entero64\n    devuelve fondo\n";
+    // ** `0 - 7` es una OPERACION, no un literal: no se congela, y por eso el
+    // emisor lo dice en vez de bajarlo a cero. Es la mitad honesta del arreglo.
+    let e = emitido(f);
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("`fondo`")),
+        "una constante que no se puede congelar tiene que decirse: {:?}",
+        e.sin_emitir
+    );
+}
+
+/// ***Y ESTA ES LA QUE CIERRA LA CLASE, no el caso.***
+///
+/// Arreglar las constantes quita el sintoma. Lo que quita la FAMILIA es que un
+/// nombre que el emisor no sabe resolver **deje de convertirse en un numero en
+/// silencio**.
+///
+/// ** `carga()` acaba en `Valor::Nombre(_) => zero_r32`, y es lo unico que puede
+/// hacer. Lo que no puede es callarselo: cualquier cosa que se cuele por ahi
+/// --hoy, o dentro de un ano con una construccion nueva-- sale por `sin_emitir`
+/// con su nombre delante.
+#[test]
+fn un_nombre_que_el_emisor_no_resuelve_no_se_baja_a_cero_en_silencio() {
+    // `fondo` no se congela porque su valor es una operacion.
+    let f = "perfil llano\n\nfondo = 0 - 7\n\nfuncion f devuelve entero64\n    devuelve fondo\n";
+    let e = emitido(f);
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("lo baja a un CERO")),
+        "el aviso no dice lo que pasa: {:?}",
+        e.sin_emitir
+    );
+}
