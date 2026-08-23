@@ -552,42 +552,81 @@ fn un_numero_no_abre_un_hueco_delante() {
 }
 
 
-/// *** EN `pleno` SE MIDE, PERO TODAVIA NO SE COMPRUEBA EL CAMPO.
-///
-/// Las dos mitades de este modulo tienen perfiles distintos desde el
-/// 2026-08-23, y no por comodidad: son dos preguntas.
-///
-/// ```text
-///    MEDIR      cuanto ocupa un tipo    -> no infiere nada. Vale en los dos
-///    COMPROBAR  este `.campo` existe?   -> necesita el tipo de quien lo pide,
-///                                          y en `pleno` ese tipo se INFIERE
-/// ```
-///
-/// ** Lo destapo `censo/f05_registro.inti`, que declara COMPILA y llevaba
-/// compilando desde F0. Al abrir la puerta entera se puso roja con un aviso que
-/// era **una regla de `llano` metida en `pleno`**: exigirle a `a` que diga su
-/// tipo, cuando en `pleno` los tipos son opcionales (10.11) y el suyo sale de
-/// `Alumno(...)`.
-///
-/// La inferencia no existe todavia. Lo que no puede pasar es que su ausencia se
-/// disfrace de error del programa del usuario.
-#[test]
-fn en_pleno_se_mide_pero_todavia_no_se_comprueba_el_campo() {
-    // Sin tipo escrito y usando un campo: en `pleno` esto es LEGITIMO.
-    let p = plano_de("perfil pleno\n\nregistro Punto\n    x es entero64\n\nfuncion f(p)\n    devuelve p.x\n");
-    assert!(
-        p.codigos().is_empty(),
-        "en `pleno` un tipo sin escribir se infiere, no se denuncia: {:?}",
-        p.codigos()
-    );
-    // Y aun asi el registro SE MIDIO: la mitad de arriba si trabajo.
-    assert_eq!(p.valor.registro("Punto").unwrap().medida, 8);
+// ===================================================================
+//  La DEDUCCION de tipos (2026-08-23)
+// ===================================================================
 
-    // El mismo fuente en `llano` si se denuncia, y sigue siendo correcto:
-    // alli los tipos son obligatorios.
-    let l = plano_de(&format!(
+/// *** EL CASO QUE LO PIDIO, y que llevaba desde F0 sin comprobarse.
+///
+/// `censo/f05_registro.inti` declara COMPILA y usa `a.nombre` sin haber escrito
+/// nunca `a es Alumno`. En `pleno` eso es LEGITIMO --los tipos son opcionales,
+/// 10.11-- y hasta hoy la unica forma de no denunciarlo era no mirar.
+///
+/// ** Ahora se mira: `Alumno(...)` solo puede ser el constructor de `Alumno`,
+/// asi que `a` es un `Alumno` y su campo se comprueba **igual que en `llano`**.
+#[test]
+fn en_pleno_el_tipo_de_un_constructor_se_deduce() {
+    let bueno = plano_de(
+        "perfil pleno\n\nregistro Alumno\n    nombre es texto\n\nfuncion principal\n    a = Alumno(\"ana\")\n    escribe(a.nombre)\n",
+    );
+    assert!(bueno.codigos().is_empty(), "{:?}", bueno.codigos());
+
+    // *** Y LO QUE DEMUESTRA QUE NO SE ESTA CALLANDO: un campo que no existe
+    // se caza. Sin deduccion esto pasaba sin una palabra.
+    let malo = plano_de(
+        "perfil pleno\n\nregistro Alumno\n    nombre es texto\n\nfuncion principal\n    a = Alumno(\"ana\")\n    escribe(a.inventado)\n",
+    );
+    assert_eq!(malo.codigos(), vec!["E0120"], "un campo que no existe, en `pleno`");
+}
+
+/// Copiar no cambia de tipo, y el orden de las lineas manda -- que es el orden
+/// en que se leen.
+#[test]
+fn copiar_una_variable_arrastra_su_tipo() {
+    let c = codigos_de(
+        "perfil pleno\n\nregistro Alumno\n    nombre es texto\n\nfuncion principal\n    a = Alumno(\"ana\")\n    b = a\n    escribe(b.inventado)\n",
+    );
+    assert_eq!(c, vec!["E0120"]);
+}
+
+/// ** EL TIPO ESCRITO GANA SIEMPRE a la deduccion.
+///
+/// Si alguien escribio el tipo, eso es lo que vale aunque la deduccion opinara
+/// otra cosa: porque entonces lo que hay es un error de tipos, y decir eso es de
+/// `tipos`, no de este modulo. Aqui la regla es de precedencia, no de arbitraje.
+#[test]
+fn el_tipo_escrito_gana_a_la_deduccion() {
+    let c = codigos_de(
+        "perfil pleno\n\nregistro Alumno\n    nombre es texto\n\nregistro Vacio\n    x es entero64\n\nfuncion principal\n    a es Vacio = Alumno(\"ana\")\n    escribe(a.nombre)\n",
+    );
+    // `a` es un `Vacio` porque lo dice el fuente, y `Vacio` no tiene `.nombre`.
+    assert_eq!(c, vec!["E0120"]);
+}
+
+/// [!] Y LO QUE **NO** SE DEDUCE SIGUE SIN DEDUCIRSE, que es la mitad que
+/// mantiene esto honesto.
+///
+/// Un parametro sin tipo en `pleno` no se puede deducir --su tipo viene de quien
+/// llama, y eso pide resolver llamadas-- asi que este modulo **se calla**. En
+/// `llano` el mismo fuente si se denuncia, y sigue siendo correcto: alli los
+/// tipos son obligatorios.
+///
+/// ** La diferencia no es de severidad: es de quien tiene la culpa. Un tipo que
+/// falta en `llano` es del programa; en `pleno` es del compilador.
+#[test]
+fn lo_que_no_se_deduce_se_calla_en_pleno_y_se_denuncia_en_llano() {
+    let pleno = plano_de("perfil pleno\n\nregistro Punto\n    x es entero64\n\nfuncion f(p)\n    devuelve p.x\n");
+    assert!(
+        pleno.codigos().is_empty(),
+        "en `pleno` lo que no se sabe deducir todavia no se acusa: {:?}",
+        pleno.codigos()
+    );
+    // Y aun asi el registro SE MIDIO: la mitad de arriba trabajo igual.
+    assert_eq!(pleno.valor.registro("Punto").unwrap().medida, 8);
+
+    let llano = plano_de(&format!(
         "{}registro Punto\n    x es entero64\n\nfuncion f(p)\n    devuelve p.x\n",
         CABECERA
     ));
-    assert_eq!(l.codigos(), vec!["E0121"]);
+    assert_eq!(llano.codigos(), vec!["E0121"]);
 }
