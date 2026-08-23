@@ -134,6 +134,20 @@ impl Codegen {
                 .firmas
                 .get(n)
                 .map_or(false, |(_, ret)| Self::is_float_ty(ret)),
+            // ** Y un INTRINSECO no tiene firma: la suya vive en la TABLA.
+            //
+            // `sqrtsd`, `minsd` y `maxsd` declaran `returns = "xmm0"`. Sin esta
+            // rama, `double m = __maxsd(a, b)` iria a buscar el valor a `rax` --
+            // el mismo fallo que cuenta el parrafo de arriba, con la misma
+            // pinta: **un numero cualquiera, no un error**.
+            //
+            // Y va contra la tabla y no contra una lista de tres nombres, para
+            // que la cuarta fila que devuelva `xmm0` no tenga que acordarse de
+            // pasar por aqui.
+            Expr::Intrinsic(n, _) => self
+                .intrinsics
+                .get(n)
+                .map_or(false, |d| d.returns.as_deref() == Some("xmm0")),
             _ => false,
         }
     }

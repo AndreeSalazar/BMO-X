@@ -132,6 +132,20 @@ impl Codegen {
                 self.code.extend_from_slice(&bits.to_le_bytes());
                 self.code.extend_from_slice(&[0x66, 0x48, 0x0F, 0x6E, 0xC0]); // movq xmm0, rax
             }
+            // ** Un INTRINSECO que devuelve `xmm0` ya deja el valor donde esta
+            // ruta lo espera: no hay nada que convertir, solo que emitirlo.
+            //
+            // Y tiene que estar ESCRITO. Sin este brazo caia en el `_ =>` del
+            // final --*"cualquier otra cosa: es entera"*--, que llama a
+            // `emit_fexpr_operand`, que pregunta `expr_is_float`, que ahora dice
+            // que SI, que vuelve a llamar aqui: **la pila se desborda antes de
+            // emitir un byte**. El comodin no se equivocaba de respuesta, se
+            // equivocaba de pregunta.
+            //
+            // [!] La invariante que lo hace correcto: aqui solo llegan las filas
+            // con `returns = "xmm0"`, porque `expr_is_float` es quien abre la
+            // puerta y solo la abre para esas.
+            Expr::Intrinsic(n, args) => self.emit_intrinsic(n, args),
             Expr::Var(n) => self.emit_load_float_var(n),
             Expr::Cast(t, inner) if Self::is_float_ty(t) => {
                 // (double)algo -- si algo ya es float, no-op; si es entero, convierte

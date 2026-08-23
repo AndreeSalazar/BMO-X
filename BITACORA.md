@@ -1744,6 +1744,54 @@ ficheros que ya estan en FAT32.
 
 ---
 
+## Ep. 48 -- La tabla crecio y el segundo consumidor no
+**Sintoma**: `main` con un test en rojo y nadie enterado. La matriz de
+conformidad de BMO C decia `__maxsd no compila: registro de argumento
+desconocido: xmm1`. Salio al contar los tests para una cifra del README, no al
+trabajar en C.
+
+**Culpable**: `intrinsics.toml` es una tabla **compartida**, y el 22-08 le
+entraron tres filas nuevas --`sqrtsd`, `minsd`, `maxsd`-- porque las pidio INTI.
+Hasta ese dia el unico flotante de la tabla era ninguno, asi que el emisor de
+intrinsecos de C solo sabia volcar argumentos a registros ENTEROS: evaluar a
+`rax`, `push`, y `pop` al destino. `xmm1` cayo en el `_ =>` que dice *"registro
+desconocido"*, que es lo unico que hizo bien todo el episodio.
+
+**Moraleja**: **una tabla compartida tiene mas de un lector, y crecer por uno la
+rompe para el otro.** Es el precio de la decision que este proyecto ya tomo a
+proposito --tablas y no cerebros-- y el precio se paga aqui: quien anade una
+fila tiene que preguntarse quien mas la lee. Hoy son cinco frontends.
+
+★ Y lo mejor del episodio es que **la matriz de conformidad existia y funciono**.
+Se escribio con este motivo textual: *"el codegen valida el nombre de cada
+registro al emitir, asi que una fila con `rex` en vez de `rax` no falla hasta que
+alguien la usa -- y en una tabla de driver 'alguien la usa' puede ser dentro de
+seis meses, en metal, buscando otra cosa"*. Cazo exactamente eso. Lo que fallo
+no fue la red: fue que **nadie corrio el workspace**, y una maraton de un dia en
+un lenguaje se cierra probando ese lenguaje.
+
+★★ **Y el arreglo corto era el fallo.** Ensenarle `xmm0`/`xmm1` a
+`emit_pop_to_reg` habria compilado y habria estado MAL: un `double` no vive en
+`rax`, asi que evaluar el argumento por el camino entero lo trunca **antes** de
+la instruccion y `__maxsd(1.25, 2.5)` devuelve `2.0`. Compila, pasa el gate, sale
+firmado, y da otro numero. El camino bueno ya existia al lado --`emit_fbinop`,
+que deja `a` en xmm0 y `b` en xmm1-- porque es literalmente lo que hace `addsd`
+desde el primer dia.
+
+[!] Y al conectarlo aparecio el tercero, que es el de siempre: `expr_is_float`
+paso a decir que si de un intrinseco, `emit_fexpr` no tenia brazo para
+`Expr::Intrinsic`, cayo en su `_ => "cualquier otra cosa es entera"`, que vuelve
+a preguntar `expr_is_float`... **y la pila se desbordo antes de emitir un byte**.
+El comodin no se equivocaba de respuesta: se equivocaba de pregunta. Cuarta vez.
+
+★★★ Las dos pruebas nuevas **EJECUTAN**, que era lo que faltaba: `flotante.rs`
+tenia trece tests de coma flotante y ninguno corria nada -- todos miraban bytes.
+Los numeros estan elegidos para que la ruta equivocada se vea (`250 125 150`
+contra `200 100 100`), porque un `2` en vez de un `2.5` no se nota y un `250`
+contra un `200`, si.
+
+---
+
 ## Y lo que quedo PREPARADO ese mismo dia, para cuando vengan mas
 
 Esta bitacora es de episodios, no de planes -- asi que aqui solo va **donde
