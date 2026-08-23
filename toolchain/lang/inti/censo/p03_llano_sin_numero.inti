@@ -1,6 +1,12 @@
-# sonda: p03_llano_sin_numero    espera: E0020
-# fija: en `llano` hay que decir el tamano. Sin tamanos no hay perfil sin
-# monton, asi que la obligacion sale del perfil, no del gusto.
+# sonda: p03_llano_sin_numero    espera: E0074
+# fija: `numero` no vale en `llano`, y el motivo NO es que le falte la medida
+# --el maestro la tiene decidida: coeficiente de 128 bits mas escala-- sino lo
+# que CUESTA: una suma decimal vale 5-20 sumas enteras de 64 bits, y `llano` es
+# el perfil que escribe drivers.
+#
+# Hasta el 22-08 esta sonda esperaba E0020, "hay que decir la medida exacta". El
+# codigo era correcto y el motivo era falso: mandaba a poner una medida que no
+# faltaba.
 perfil llano
 
 funcion cuenta(x es numero) devuelve numero

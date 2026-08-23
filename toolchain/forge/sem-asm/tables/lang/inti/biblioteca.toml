@@ -37,10 +37,35 @@ version = 1
 [llano]
 tipos_que_crecen = ["texto", "lista", "tabla"]
 
-#  `numero` es aparte y por otro motivo: no crece, pero **no dice su medida**.
-#  Sin medida no se puede reservar en la pila ni elegir la instruccion, asi que
-#  en `llano` hay que escribir `entero32`, `natural8`, etc.
-tipos_sin_medida = ["numero", "decimal"]
+#  Lo que no dice su medida. Hoy no hay nada: la lista se queda porque el dia
+#  que aparezca un tipo asi, el sitio existe y el mensaje ya esta escrito.
+tipos_sin_medida = []
+
+# ===================================================================
+#  ** Lo que `llano` no admite POR LO QUE CUESTA (2026-08-22)
+# ===================================================================
+#
+#  `numero` estuvo hasta hoy en `tipos_sin_medida`, con este motivo escrito:
+#  *"no crece, pero no dice su medida"*. **Y era falso.**
+#
+#  El maestro lo tiene decidido desde que se escribio, seccion 10.3:
+#
+#      entero    i64                            para contar
+#      decimal   coeficiente 128b + escala      para dinero y para lo demas
+#
+#  Eso ES una medida. Lo que pasa con `numero` en `llano` no es que no se sepa
+#  cuanto ocupa: es que **una suma decimal cuesta 5-20 veces una entera de 64
+#  bits**, y `llano` es el perfil que escribe drivers y manejadores de
+#  interrupciones.
+#
+#  *** Y la diferencia no es de matiz, es de mensaje. Un error que dice *"dime la
+#  medida"* manda a buscar una medida que no falta. El que dice *"esto cuesta
+#  esto, y aqui ese precio no se paga sin decirlo"* explica una decision.
+#
+#  Es la misma familia que `E0073`: distinguir **prohibido** de **no se hacerlo
+#  todavia** de **cuesta y aqui no se paga** son tres cosas, y confundirlas es
+#  lo que hace que un compilador parezca caprichoso.
+tipos_que_cuestan = ["numero", "decimal"]
 
 # ===================================================================
 #  ** QUE PERFILES LLEGAN A BYTES HOY

@@ -50,12 +50,41 @@ fn en_llano_no_hay_texto() {
     assert_eq!(c, vec!["E0070"]);
 }
 
-/// Sin medida no hay pila. La obligacion sale del perfil, no del gusto.
+/// **`numero` en `llano` se rechaza POR LO QUE CUESTA, no por lo que le falta.**
+///
+/// ## ** Lo que esta prueba corrige, y era un mensaje que mentia
+///
+/// Hasta el 2026-08-22 esto daba `E0020` --*"hay que decir la medida exacta"*--
+/// y el motivo era falso. El maestro tiene decidido desde que se escribio que
+/// `numero` es `coeficiente 128b + escala`: **eso es una medida**.
+///
+/// Lo que pasa en `llano` es otra cosa: una suma decimal cuesta 5-20 veces una
+/// entera de 64 bits, y `llano` escribe drivers.
+///
+/// *** Un error que dice "dime la medida" manda a buscar una medida que no
+/// falta. El que dice el precio explica una decision. Y el mensaje **es** la
+/// interfaz principal de este lenguaje.
 #[test]
-fn en_llano_hay_que_decir_la_medida() {
+fn en_llano_numero_se_rechaza_por_lo_que_cuesta() {
     let c = codigos_de("perfil llano\n\nfuncion cuenta(x es numero) devuelve numero\n    devuelve x\n");
-    assert!(c.iter().all(|x| *x == "E0020"), "{:?}", c);
+    assert!(c.iter().all(|x| *x == "E0074"), "{:?}", c);
     assert!(!c.is_empty());
+}
+
+/// Y el mensaje trae **el precio y la salida**, no una queja.
+#[test]
+fn el_mensaje_de_numero_dice_el_precio_y_la_salida() {
+    let t = comprueba("perfil llano\n\nfuncion f(x es numero)\n    devuelve\n")
+        .pintar("prueba.inti");
+    assert!(t.contains("E0074"), "{}", t);
+    assert!(t.contains("5 y 20"), "no dice el precio:\n{}", t);
+    assert!(t.contains("drivers"), "no dice por que aqui no:\n{}", t);
+    assert!(t.contains("perfil pleno"), "no dice a donde ir:\n{}", t);
+    assert!(
+        !t.contains("medida exacta"),
+        "sigue mandando a buscar una medida que no falta:\n{}",
+        t
+    );
 }
 
 #[test]
@@ -168,7 +197,11 @@ fn un_programa_sin_crudo_lo_dice_con_un_cero() {
 fn el_catalogo_incrustado_carga() {
     let cat = Catalogo::por_defecto();
     assert!(cat.crecen.contains("texto"));
-    assert!(cat.without_size.contains("numero"));
+    // ** `numero` ya NO esta en `sin_medida`: esta en `cuestan`, que es su
+    // motivo de verdad. La lista vieja se queda vacia y con su sitio hecho.
+    assert!(!cat.without_size.contains("numero"));
+    assert!(cat.cuestan.contains("numero"));
+    assert!(cat.cuestan.contains("decimal"));
     // Lo que pide `crudo` ya no vive aqui: se mudo a la arquitectura, que es
     // de donde depende. Ver `arquitectura::pruebas`.
 }
