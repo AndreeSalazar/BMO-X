@@ -543,3 +543,59 @@ fn minimo_y_maximo_recortan() {
     assert_eq!(como_numero(ejecuta(mx, 2.0f64.to_bits(), 7.0f64.to_bits())), 7.0);
     assert_eq!(como_numero(ejecuta(mx, 7.0f64.to_bits(), 2.0f64.to_bits())), 7.0);
 }
+
+/// **`absoluto` quita el signo sin tocar la coma flotante.**
+///
+/// No hay instruccion de "valor absoluto de un double" en x86-64. Lo que hay es
+/// apagar el bit 63, y como INTI lleva los flotantes en registros generales eso
+/// son dos instrucciones ENTERAS -- que caben en una fila de la tabla porque esa
+/// columna se llama `bytes`, no `instruccion`.
+#[test]
+fn absoluto_quita_el_signo_y_deja_el_cero_negativo_en_cero() {
+    let f = "perfil llano\nusa matematica\n\nfuncion a(x es flotante64) devuelve flotante64\n    devuelve absoluto(x)\n";
+    for v in [-3.5f64, 3.5, -0.0, 0.0, -1e300] {
+        assert_eq!(como_numero(ejecuta(f, v.to_bits(), 0)), v.abs(), "absoluto({})", v);
+    }
+}
+
+/// ***LA PRIMERA LIBRERIA ESCRITA EN INTI QUE NO ES EL MONTON.***
+///
+/// `potencia` no es una instruccion: **ningun procesador tiene "eleva este
+/// double a la enesima"**. Asi que esta escrita en INTI, en
+/// `runtime/matematica/potencias.inti`, y la trae `usa matematica` por el mismo
+/// camino que el monton.
+///
+/// ** Hasta hoy, lo que INTI no podia pedirle al silicio se lo pedia a Rust.
+/// Esto es lo primero que se escribe a si mismo -- y es un paso del camino
+/// largo: el dia que INTI se compile solo, todo lo que hoy es Rust sera esto.
+#[test]
+fn potencia_por_cuadrados_sucesivos() {
+    let f = "perfil llano\nusa matematica\n\nfuncion p(b es flotante64, n es natural64) devuelve flotante64\n    devuelve potencia(b, n)\n";
+    for (base, exp) in [(2.0f64, 10u64), (3.0, 0), (1.5, 4), (10.0, 3), (0.5, 8)] {
+        let salio = como_numero(ejecuta(f, base.to_bits(), exp));
+        assert_eq!(salio, base.powi(exp as i32), "{}^{}", base, exp);
+    }
+}
+
+/// **La distancia al cuadrado, que es la funcion mas usada de un motor.**
+///
+/// Sin la raiz a proposito: para saber cual de dos cosas esta mas cerca la raiz
+/// no hace falta, porque conserva el orden.
+#[test]
+fn la_distancia_al_cuadrado_no_saca_la_raiz() {
+    let f = "perfil llano\nusa matematica\n\nfuncion d(ax es flotante64, ay es flotante64) devuelve flotante64\n    devuelve distancia2(ax, ay, 0.0, 0.0)\n";
+    assert_eq!(como_numero(ejecuta(f, 3.0f64.to_bits(), 4.0f64.to_bits())), 25.0);
+}
+
+/// **`mezcla` devuelve los extremos CLAVADOS.**
+///
+/// *** Es la prueba que justifica como esta escrita. `a + (b - a) * t` y
+/// `a*(1-t) + b*t` son la misma formula en el papel y **no en coma flotante**:
+/// la segunda no devuelve `a` exacto cuando `t` vale 0. En un degradado no se
+/// nota; en el extremo de una animacion, si.
+#[test]
+fn mezcla_clava_los_extremos() {
+    let f = "perfil llano\nusa matematica\n\nfuncion m(t es flotante64) devuelve flotante64\n    devuelve mezcla(0.1, 0.7, t)\n";
+    assert_eq!(como_numero(ejecuta(f, 0.0f64.to_bits(), 0)), 0.1, "en t=0 tiene que dar `a` clavado");
+    assert_eq!(como_numero(ejecuta(f, 1.0f64.to_bits(), 0)), 0.7, "en t=1 tiene que dar `b` clavado");
+}

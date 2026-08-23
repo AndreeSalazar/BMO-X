@@ -1,0 +1,93 @@
+# POTENCIAS -- lo que el silicio NO da, escrito en INTI.
+#
+# ===================================================================
+#  ** Por que esta pieza importa mas de lo que parece
+# ===================================================================
+#
+# `raiz`, `minimo`, `maximo` y `absoluto` son instrucciones: el silicio las
+# tiene y la tabla las nombra. Elevar a una potencia **no**. Ningun procesador
+# tiene "eleva este double a la enesima".
+#
+# *** Asi que esto es la primera libreria escrita EN INTI que no es el monton.
+# Y esa es la frase entera: hasta hoy, lo que INTI no podia pedirle al silicio
+# se lo pedia a Rust. Aqui no -- aqui se lo escribe.
+#
+# Es un paso pequeno del camino largo: el dia que INTI se compile a si mismo,
+# todo lo que hoy es Rust sera esto.
+#
+# ===================================================================
+#  Y por que exponente ENTERO y no `pow` de verdad
+# ===================================================================
+#
+# `pow(x, y)` con `y` real se hace con `exp(y * ln(x))`, y eso son dos series
+# con sus tablas de coeficientes y su analisis de error. Es una tarde bien
+# empleada y **no es esta tarde**.
+#
+# ** Lo que resuelve el exponente entero es lo que un motor pide de verdad:
+# `x*x` para una distancia al cuadrado, `x^5` para un brillo especular, `x^2.2`
+# de gamma -- ese ultimo no, y por eso se dice aqui en vez de descubrirlo.
+#
+# El dia que haga falta el real, entra al lado y este no se toca: quien quiere
+# un entero no tiene por que pagar una serie.
+
+perfil llano
+usa matematica
+
+# `base` elevado a `exponente`.
+#
+# ** Por cuadrados sucesivos y no multiplicando una y otra vez: `x^20` son cinco
+# vueltas en vez de veinte. No es una optimizacion prematura -- es el algoritmo
+# de toda la vida, y escribir el lento primero seria escribirlo dos veces.
+#
+#     exponente impar ->  el resultado se lleva un `base`
+#     siempre       ->  `base` se eleva al cuadrado y el exponente se parte por dos
+#
+# Y el exponente es `natural64` a proposito: un exponente negativo pide dividir, y
+# `1/x^n` lo escribe quien lo quiera. Meterlo aqui obligaria a contestar que
+# pasa con `0 elevado a -1`, y esa respuesta es de quien la necesite.
+# *** El parametro se llamo `veces` en la primera version y NO COMPILABA:
+# `veces` es palabra clave (`repite veces 10`), asi que moria en el parser con un
+# mensaje que hablaba de otra cosa. Es exactamente lo que le paso a `para` en la
+# tabla de la maquina el 21-08, y por el mismo motivo: **nadie habia escrito
+# todavia un programa que usara ese nombre**.
+funcion potencia(base es flotante64, exponente es natural64) devuelve flotante64
+    cambiante resultado es flotante64 = 1.0
+    cambiante b es flotante64 = base
+    cambiante n es natural64 = exponente
+    repite mientras n > 0
+        si (n bits_y 1) = 1
+            resultado = resultado * b
+        b = b * b
+        n = n desplaza derecha 1
+    devuelve resultado
+
+# La distancia al cuadrado entre dos puntos del plano.
+#
+# ** Existe SIN la raiz a proposito, y es la funcion mas usada de un motor
+# grafico: para saber cual de dos cosas esta mas cerca **no hace falta la
+# raiz**, porque la raiz conserva el orden. Sacarla cuesta una instruccion que
+# no hacia falta, y en un bucle de millones de comparaciones eso se nota.
+#
+# Quien quiera la distancia de verdad escribe `raiz(distancia2(...))` y sabe lo
+# que esta pagando.
+funcion distancia2(ax es flotante64, ay es flotante64, bx es flotante64, by es flotante64) devuelve flotante64
+    cambiante dx es flotante64 = ax - bx
+    cambiante dy es flotante64 = ay - by
+    devuelve dx * dx + dy * dy
+
+# Deja `v` dentro de `[bajo, alto]`.
+#
+# Es `clamp`, y son `minimo` y `maximo` en el orden que no se equivoca: primero
+# el suelo y luego el techo. Al reves da lo mismo salvo cuando `bajo > alto`, y
+# entonces este devuelve `alto` -- que es una respuesta, no un accidente.
+funcion recorta(v es flotante64, bajo es flotante64, alto es flotante64) devuelve flotante64
+    devuelve minimo(maximo(v, bajo), alto)
+
+# Interpolacion lineal: donde esta `t` entre `a` y `b`.
+#
+# ** Escrita como `a + (b - a) * t` y no como `a*(1-t) + b*t`. Las dos son la
+# misma en el papel y **no en coma flotante**: la primera devuelve `a` clavado
+# cuando `t` vale 0, y la segunda casi. En un degradado no se nota; en el
+# extremo de una animacion, si.
+funcion mezcla(a es flotante64, b es flotante64, t es flotante64) devuelve flotante64
+    devuelve a + (b - a) * t

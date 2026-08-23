@@ -266,6 +266,7 @@ son = ["binarios", "matematica"]
 raiz    = "la raiz cuadrada de un flotante64"
 minimo  = "el menor de dos flotante64"
 maximo  = "el mayor de dos flotante64"
+absoluto = "el valor absoluto de un flotante64"
 
 
 [entrada]

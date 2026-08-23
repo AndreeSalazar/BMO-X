@@ -237,6 +237,7 @@ preservados_en_uso = []
 raiz            = "sqrtsd"
 minimo          = "minsd"
 maximo          = "maxsd"
+absoluto        = "absd"
 
 # -- tiempo y espera ------------------------------------------------
 lee_reloj       = "rdtsc"
