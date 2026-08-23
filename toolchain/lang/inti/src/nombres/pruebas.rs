@@ -299,7 +299,7 @@ fn mutar_la_coleccion_que_se_recorre_no_compila() {
 #[test]
 fn tampoco_la_del_bucle_de_fuera() {
     let c = en_principal(
-        "cambiante a = [1]\ncambiante b = [2]\npara cada x en a\n    para cada y en b\n        anade(a, 1)\n",
+        "cambiante a = [1]\ncambiante b = [2]\npara cada x en a\n    para cada y en b\n        agrega(a, 1)\n",
     );
     assert!(c.contains(&"E0050"), "{:?}", c);
 }
@@ -308,7 +308,7 @@ fn tampoco_la_del_bucle_de_fuera() {
 #[test]
 fn modificar_otra_coleccion_si_vale() {
     let c = en_principal(
-        "notas = [1, 2]\ncambiante buenas = []\npara cada n en notas\n    anade(buenas, n)\n",
+        "notas = [1, 2]\ncambiante buenas = []\npara cada n en notas\n    agrega(buenas, n)\n",
     );
     assert!(c.is_empty(), "{:?}", c);
 }

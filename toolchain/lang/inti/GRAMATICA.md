@@ -21,7 +21,7 @@ Fichero: `.inti`. Codificacion: **UTF-8**; las palabras clave son **ASCII**.
 | 4 | **Palabras, no simbolos**, para lo que no se aprende en el colegio: `y`, `o`, `no`, `entre`, `resto` | `&&`, `\|\|`, `!`, `%` no comunican nada a quien empieza |
 | 5 | **Simbolos donde SI se aprenden en el colegio**: `+ - * / < > <= >=` | son notacion matematica, no convencion de programador |
 | 6 | **`cambiante` para poder cambiar** | 10.7: mata cuatro sorpresas de golpe |
-| 7 | **`de` es azucar de llamada de un argumento**: `cuenta de lista` = `cuenta(lista)` | se lee como una frase y no anade gramatica |
+| 7 | **`de` es azucar de llamada de un argumento**: `cuenta de lista` = `cuenta(lista)` | se lee como una frase y no agrega gramatica |
 | 8 | **Los errores se escriben o no compila**: `o si no` | 10.6 |
 | 9 | **`perfil` en la primera linea**: `llano` o `pleno` | 1.4: un solo lenguaje, dos perfiles |
 | 10 | **`crudo` es la unica ventana sin comprobar, y se ve** | 6.6 |
@@ -298,7 +298,7 @@ ACERCAR o estar igual que la sintaxis de Python pero ULTRA simplificado"*.
    escribe "hola"
    escribe "media:", m
    guarda "notas.txt", texto(m)
-   anade notas, 5
+   agrega notas, 5
 ```
 
 Y **no rompe la regla de que `f` y `f()` se ven distintos**, porque solo vale

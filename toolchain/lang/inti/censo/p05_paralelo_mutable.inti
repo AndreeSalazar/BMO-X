@@ -6,5 +6,5 @@ perfil pleno
 funcion principal
     cambiante acumulado = [0]
     en paralelo
-        anade(acumulado, 1)
-        anade(acumulado, 2)
+        agrega(acumulado, 1)
+        agrega(acumulado, 2)

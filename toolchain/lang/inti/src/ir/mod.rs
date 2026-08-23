@@ -274,6 +274,20 @@ impl<'t> Descenso<'t> {
         }
     }
 
+    /// **Si esto es una `lista de T`, cuanto mide su elemento.**
+    ///
+    /// ** El ancho sale del TIPO y no de la lista: `lista de entero64` mide
+    /// ocho y `lista de natural8` mide uno, y el objeto en el monton no lo
+    /// guarda. La tabla de tipos --`SectionKind::TypeMap = 0x10`-- sigue siendo
+    /// el quinto hueco declarado y vacio del formato, asi que mientras tanto la
+    /// dependencia se lleva VISIBLE: por la firma de `sitio_de`.
+    fn ancho_de_lista(&self, e: &Expr) -> Option<u32> {
+        match self.plano.tipo_de(e, &self.tipos)? {
+            crate::arbol::Tipo::Lista(dentro) => self.plano.medida_de(&dentro),
+            _ => None,
+        }
+    }
+
     /// Es esta expresion un `texto`?
     ///
     /// ** Se pregunta sobre el ARBOL y no sobre el valor ya bajado, por lo mismo
@@ -978,6 +992,48 @@ impl<'t> Descenso<'t> {
                     // T` de `pleno`, y esa SI lleva su longitud dentro: tiene
                     // contra que comprobar, y por eso no pide `crudo`.
                     None => match e {
+                        // *** INDEXAR UNA `lista de T`: LA REGLA 2, DE VERDAD
+                        // (2026-08-23).
+                        //
+                        // Baja a `sitio_de(l, i, ancho)`, que compara el indice
+                        // contra `cuantos` --que vive a un `mov` de distancia en
+                        // la cabecera de la lista-- y devuelve **0 si se sale**.
+                        // El `Comprueba` de detras convierte ese 0 en la trampa
+                        // `E1002`.
+                        //
+                        // ** Hasta hoy este camino sumaba la direccion y el
+                        // indice a pelo y pedia un `Comprueba::Indice` que **el
+                        // emisor tiraba a la basura**: no emitia nada y ademas
+                        // se descontaba del recuento. La regla estaba escrita,
+                        // pedida, y no llegaba a un solo byte.
+                        Expr::Indice { que, indice, sitio } if self.ancho_de_lista(que).is_some() => {
+                            let ancho = self.ancho_de_lista(que).unwrap();
+                            let l = self.expresion(que);
+                            let i = self.expresion(indice);
+                            let dir = self.temporal();
+                            self.pon(Instr::Llama {
+                                destino: Some(dir),
+                                que: Valor::Nombre("sitio_de".to_string()),
+                                argumentos: vec![
+                                    l,
+                                    i,
+                                    Valor::Const(Const::Entero(ancho as i64)),
+                                ],
+                            });
+                            self.pon(Instr::Comprueba {
+                                que: Comprobacion::Indice,
+                                sobre: Valor::Temporal(dir),
+                                contra: None,
+                                sitio: *sitio,
+                            });
+                            let t = self.temporal();
+                            self.pon(Instr::Lee {
+                                destino: t,
+                                direccion: Valor::Temporal(dir),
+                                ancho,
+                            });
+                            Valor::Temporal(t)
+                        }
                         Expr::Indice { que, indice, sitio } => {
                             let q = self.expresion(que);
                             let i = self.expresion(indice);

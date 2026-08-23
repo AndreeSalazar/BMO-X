@@ -86,7 +86,7 @@ cuenta        = "cuantos elementos tiene"
 esta_vacia    = "no tiene ninguno"
 primero       = "el primer elemento"
 ultimo        = "el ultimo elemento"
-anade         = "pone un elemento al final"
+agrega        = "pone un elemento al final"
 quita         = "saca un elemento"
 inserta       = "pone un elemento en una posicion"
 tiene         = "esta este elemento dentro?"
@@ -146,7 +146,7 @@ pueden_fallar = [
 #  Las que MODIFICAN la coleccion que reciben. Llamarlas sobre la coleccion que
 #  se esta recorriendo es E0050: el bug que en otros lenguajes se salta un
 #  elemento sin avisar.
-modifican_la_coleccion = ["anade", "quita", "inserta"]
+modifican_la_coleccion = ["agrega", "quita", "inserta"]
 
 # ===================================================================
 #  Lo que NO esta aqui, y por que
