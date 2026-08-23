@@ -169,29 +169,23 @@ pub fn comprobar(
         );
     }
 
-    let nombre_del_perfil = resultante.nombre();
-    if !cat.llega_a_bytes(nombre_del_perfil) {
-        avisos_del_perfil.push(
-            Aviso::nuevo(
-                codigos::PERFIL_SIN_BYTES,
-                format!(
-                    "El compilador todavia no sabe bajar `perfil {}` a bytes.",
-                    nombre_del_perfil
-                ),
-                Sitio::default(),
-            )
-            .con_habia(
-                concat!(
-                    "No es que el perfil este prohibido: esta especificado entero y es ",
-                    "legitimo. Lo que falta es su runtime -- `texto`, `lista` y `tabla` piden ",
-                    "monton, y `numero` es decimal exacto. Sin eso, lo que saldria es un ",
-                    "`.bex` firmado que devuelve ceros."
-                )
-                .to_string(),
-            )
-            .con_hacer("escribe `perfil llano`, que si llega a bytes, o espera a que `pleno` este"),
-        );
-    }
+    // *** EL GATE ATOMICO: se mira LO QUE SE USA, no la etiqueta (2026-08-23).
+    //
+    // Aqui se preguntaba `llega_a_bytes(perfil)` -- un nombre, y con el se
+    // aceptaba o se rechazaba el programa entero. Fallaba en las dos direcciones
+    // a la vez:
+    //
+    //     DE MAS   un `pleno` que solo usa `texto` y `lista` --que bajan
+    //              enteros desde hoy-- se rechazaba por culpa de `tabla`
+    //     DE MENOS el dia que se abriera por perfil, un `pleno` que SI usa
+    //              `tabla` pasaria igual, con `tabla` devolviendo ceros
+    //
+    // ** Lo dijo Eddi mejor: *"es como ir al aeropuerto: la maquina puede decir
+    // que no tienes armas, sin embargo tu cuerpo es un arma"*. El gate miraba el
+    // pasaporte. Ahora mira lo que traes.
+    //
+    // [!] Y la denuncia se hace ABAJO, cuando el recorrido ya sabe que piezas
+    // aparecieron -- no aqui, donde solo se sabe un nombre.
 
     let mut v = Vigia {
         perfil: m.perfil,
@@ -201,6 +195,7 @@ pub fn comprobar(
         piezas: &m.piezas,
         en_declaracion: 0,
         en_constante: false,
+        usadas: std::collections::BTreeMap::new(),
         avisos: avisos_del_perfil,
         informe,
         dentro_de_crudo: false,
@@ -212,6 +207,34 @@ pub fn comprobar(
     for (i, d) in m.declaraciones.iter().enumerate() {
         v.en_declaracion = i;
         v.declaracion(d);
+    }
+
+    // *** EL GATE ATOMICO, ahora que se sabe QUE TRAE el programa.
+    //
+    // Una pieza por aviso, con su nombre y con el sitio donde aparecio la
+    // primera vez. **Un aviso por pieza y no uno que las junte**: cada una se
+    // arregla por separado --o quitandola, o esperando a que baje-- y un aviso
+    // que dice "tres cosas no bajan" obliga a leer el codigo para saber cuales.
+    for (pieza, sitio) in &v.usadas {
+        if v.cat.baja(pieza) {
+            continue;
+        }
+        let puede: Vec<String> = v.cat.piezas_que_bajan();
+        v.avisos.push(
+            Aviso::nuevo(
+                codigos::PERFIL_SIN_BYTES,
+                format!("El compilador todavia no sabe bajar `{}` a bytes.", pieza),
+                *sitio,
+            )
+            .con_habia(format!(
+                "No esta prohibido: esta especificado y es legitimo. Lo que falta es cablearlo, y hasta entonces lo que saldria es un `.bex` firmado que devuelve ceros. Lo que SI baja hoy: {}.",
+                if puede.is_empty() { "nada".to_string() } else { puede.join(", ") }
+            ))
+            .con_hacer(format!(
+                "quita `{}` del programa, o espera a que baje. Lo demas de tu fichero puede compilar sin el",
+                pieza
+            )),
+        );
     }
 
     Cosecha::con(v.informe, v.avisos)
@@ -242,6 +265,14 @@ struct Vigia<'c> {
     /// un literal congelado"*, y por eso una tabla de senos o de CRC no se podia
     /// escribir. Es la misma regla, con la distincion que le faltaba.
     en_constante: bool,
+    /// **Que piezas de `pleno` aparecen en el programa, y DONDE la primera vez.**
+    ///
+    /// *** Es el dato del gate atomico. Un perfil es una etiqueta; lo que decide
+    /// si un binario hace lo que dice es que piezas usa. Se guarda el sitio de la
+    /// PRIMERA aparicion porque el aviso tiene un hueco para el DONDE, y mandar a
+    /// mirar la linea 1 cuando el `texto` esta en la 40 es la mitad del mensaje
+    /// perdida.
+    usadas: std::collections::BTreeMap<String, Sitio>,
     avisos: Vec<Aviso>,
     informe: Informe,
     dentro_de_crudo: bool,
@@ -270,6 +301,26 @@ impl<'c> Vigia<'c> {
     ///
     /// [!] Y `None` --lo que escribio el usuario-- se juzga contra el del
     /// modulo, que es lo correcto y no una ausencia de dato.
+    /// **Apunta que esta pieza aparece**, y donde la vio por primera vez.
+    ///
+    /// ** Solo las que el gate atomico vigila. No es una lista de nombres
+    /// escrita aqui: es la tabla `[bytes.bajan]` de `biblioteca.toml`, y por eso
+    /// una pieza nueva entra anadiendo una fila y no tocando este fichero.
+    fn usa_pieza(&mut self, nombre: &str, sitio: Sitio) {
+        // [!] SOLO DONDE EL PERFIL LA PERMITE. En `llano` estas piezas ya estan
+        // rechazadas --crecen, o cuestan-- y anadir "ademas no baja" seria un
+        // segundo aviso para una sola cosa.
+        //
+        // ** Dos avisos por un fallo no es el doble de informacion: es ruido que
+        // entrena a leer solo el primero.
+        if self.llano() {
+            return;
+        }
+        if self.cat.vigilada(nombre) {
+            self.usadas.entry(nombre.to_string()).or_insert(sitio);
+        }
+    }
+
     fn perfil_de_aqui(&self) -> Perfil {
         match self
             .piezas
@@ -490,8 +541,9 @@ impl<'c> Vigia<'c> {
             // guardando un texto CONSTRUIDO, y eso si pide monton. Se puede
             // llegar a los bytes congelados --con `crudo`, como se llega a
             // `PRIMOS`-- y no se puede tener la variable. Es la misma linea.
-            Expr::Texto(_, _) => {}
+            Expr::Texto(_, sitio) => self.usa_pieza("texto", *sitio),
             Expr::Lista(v, sitio) => {
+                self.usa_pieza("lista", *sitio);
                 // ** Una lista dentro de una CONSTANTE esta congelada: no crece,
                 // no pide monton, y cabe en `llano`. Va a `RoData`.
                 if self.llano() && !self.en_constante {
@@ -610,6 +662,7 @@ impl<'c> Vigia<'c> {
     fn tipo(&mut self, t: &Tipo, sitio: Sitio) {
         match t {
             Tipo::Nombre(n) => {
+                self.usa_pieza(n, sitio);
                 if !self.llano() {
                     return;
                 }
@@ -662,12 +715,14 @@ impl<'c> Vigia<'c> {
             // distintas, y aqui se ve cual es cual.
             Tipo::Bufer(dentro) => self.tipo(dentro, sitio),
             Tipo::Lista(t) => {
+                self.usa_pieza("lista", sitio);
                 if self.llano() {
                     self.crece("una lista", sitio);
                 }
                 self.tipo(t, sitio);
             }
             Tipo::Tabla(k, v) => {
+                self.usa_pieza("tabla", sitio);
                 if self.llano() {
                     self.crece("una tabla", sitio);
                 }

@@ -124,6 +124,21 @@ pub const PERFIL_SIN_BYTES: Codigo = Codigo("E0073");
 /// salia firmado, sin una palabra, y su autor seguia creyendo que tenia un
 /// binario de Ring 0.
 pub const PERFIL_MEZCLADO: Codigo = Codigo("E0074");
+
+/// **Se pidio algo y no llego a un byte** (2026-08-23).
+///
+/// *** LAS MANOS DESNUDAS DEL GATE. Una llamada sin destino es un `call` a un
+/// simbolo que no existe: un binario que carga, salta a la nada, y se lleva la
+/// maquina por delante. **Ninguna tabla de tipos ve eso.**
+///
+/// ** Hasta hoy era un `aviso:` por la salida de errores y el `.ibex` se
+/// escribia igual. El gate de perfiles lo tapaba por accidente --como `pleno` no
+/// compilaba, nadie llegaba hasta aqui-- y al hacerlo atomico quedo a la vista.
+///
+/// Es la ley de esta casa sin excepcion: **nada que compile y no haga lo que
+/// dice**. Cada linea de `sin_emitir` es "esto se pidio y no llego a un byte", y
+/// no hay grado intermedio.
+pub const SIN_LLEGAR_A_BYTES: Codigo = Codigo("E0075");
 /// **Lo que `llano` no admite por lo que CUESTA**, no por lo que le falta.
 ///
 /// ** `numero` es decimal exacto y su suma cuesta 5-20 veces una entera de 64

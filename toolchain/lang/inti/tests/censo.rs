@@ -288,19 +288,28 @@ const TODAVIA_NO: &[(&str, &str)] = &[
 
 /// Codigos que hablan del COMPILADOR y no del programa.
 ///
-/// ## ** Por que hace falta la distincion, y por que es UNA lista
-///
-/// `E0073` dice *"no se bajar este perfil a bytes todavia"*. No es un fallo del
-/// fuente: una sonda de `pleno` que declara `COMPILA` sigue siendo correcta, y
-/// lo que no esta es el runtime.
+/// `E0073` dice *"no se bajar esto a bytes todavia"*. No es un fallo del fuente:
+/// una sonda que declara `COMPILA` y usa `numero` sigue siendo correcta **como
+/// programa**, y lo que no esta es el descenso.
 ///
 /// Mezclarlos haria una de dos cosas, las dos malas: o el censo entero se pone
 /// rojo por una limitacion temporal, o se afloja el criterio y deja de mirar lo
 /// que si es del programa.
 ///
-/// ** Y hay una prueba que exige que esta lista SIGA HACIENDO FALTA. El dia que
-/// `pleno` baje a bytes, esto sobra -- y una exencion que ya no hace falta miente
-/// sobre lo que el compilador sabe hacer.
+/// ## ** LO QUE CAMBIO EL 2026-08-23, y casi me lleva a borrar esta lista
+///
+/// `E0073` decia *"no se bajar este PERFIL"* -- una etiqueta -- y al hacerse el
+/// gate ATOMICO paso a decir *"no se bajar esta PIEZA"*. La prueba que vigilaba
+/// la exencion se puso roja, como estaba escrito que pasaria, y la primera
+/// lectura fue *"caduco, fuera"*.
+///
+/// **Y era media verdad.** `perfil pleno` a secas ya no da `E0073` -- eso si
+/// caduco. Pero `numero` y `tabla` siguen sin bajar, y una sonda que los use
+/// sigue siendo un programa correcto contra un compilador incompleto.
+///
+/// *** Asi que la exencion se queda, y lo que mejora es su PRECISION: antes
+/// tapaba un perfil entero; ahora tapa exactamente las piezas que faltan, y el
+/// dia que bajen deja de aparecer sola.
 const DEL_COMPILADOR: &[&str] = &["E0073"];
 
 fn del_compilador(codigo: &str) -> bool {
@@ -433,23 +442,51 @@ fn ninguna_sonda_muere_en_el_parser_salvo_las_que_lo_buscan() {
     }
 }
 
-/// ** LA EXENCION DE `E0073` TIENE QUE CADUCAR SOLA.
+/// *** LA EXENCION DE `E0073` CADUCO, Y ESTA PRUEBA LO CELEBRA (2026-08-23).
 ///
-/// El dia que `pleno` baje a bytes, `DEL_COMPILADOR` deja de hacer falta -- y una
-/// lista de excusas que sobrevive a su motivo es peor que no tenerla, porque
-/// tapa lo que venga detras.
+/// Se llamaba `la_excusa_de_pleno_sigue_haciendo_falta` y exigia lo contrario:
+/// que `perfil pleno` siguiera dando `E0073`, para que el dia que dejara de
+/// darlo **se enterara alguien**. Se entero: se puso roja sola.
 ///
-/// Asi que esta prueba exige que la excusa SIGA SIENDO CIERTA: si un fuente de
-/// `pleno` deja de dar `E0073`, aqui se entera alguien.
+/// ## Lo que cambio, y es el gate atomico
+///
+/// `E0073` decia *"no se bajar este PERFIL"* -- una etiqueta, y con ella se
+/// rechazaba el programa entero. Ahora dice *"no se bajar esta PIEZA"*, y solo
+/// para a quien la use.
+///
+/// ** Asi que un `pleno` que solo toca `texto` y `lista` **compila**, y uno que
+/// toca `tabla` se para con el nombre de `tabla` y la linea donde aparece.
+///
+/// [!] Y la prueba se queda, del reves: si `perfil pleno` a secas volviera a dar
+/// `E0073`, seria que el gate ha vuelto a mirar el pasaporte.
 #[test]
-fn la_excusa_de_pleno_sigue_haciendo_falta() {
+fn pleno_a_secas_ya_no_se_rechaza_por_su_etiqueta() {
     let c = bmo_inti_front::comprobar("perfil pleno
 
 funcion principal
     devuelve 0
 ");
     assert!(
-        c.codigos().contains(&"E0073"),
-        "`pleno` ya no da E0073: quita `DEL_COMPILADOR` del censo y las dos          exenciones de `perfil/pruebas.rs`. Lo que fue una excusa correcta acaba          de convertirse en una mentira."
+        !c.codigos().contains(&"E0073"),
+        "el gate volvio a mirar el perfil en vez de las piezas: {:?}",
+        c.codigos()
     );
+}
+
+/// Y lo que SI sigue parando: usar una pieza que no baja.
+///
+/// ** Es la otra mitad del gate atomico, y la que lo hace MAS estricto que el
+/// viejo: el dia que se abriera por perfil, esto habria pasado con `tabla`
+/// devolviendo ceros.
+#[test]
+fn una_pieza_que_no_baja_para_el_programa_con_su_nombre() {
+    let c = bmo_inti_front::comprobar("perfil pleno
+
+funcion f(indice es tabla de texto a entero64)
+    devuelve
+");
+    assert!(c.codigos().contains(&"E0073"), "{:?}", c.codigos());
+    let texto = c.pintar("prueba.inti");
+    assert!(texto.contains("`tabla`"), "el aviso no dice que pieza es:
+{}", texto);
 }

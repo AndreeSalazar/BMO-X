@@ -88,29 +88,59 @@ tipos_sin_medida = []
 tipos_que_cuestan = ["numero", "decimal"]
 
 # ===================================================================
-#  ** QUE PERFILES LLEGAN A BYTES HOY
+#  *** EL GATE ATOMICO: QUE PIEZAS BAJAN A BYTES (2026-08-23)
 # ===================================================================
 #
-#  Esta fila existe por un fallo que se vio el 2026-08-22 corriendo la sonda del
-#  Ryzen: un fichero con `perfil pleno` COMPILABA y salia un `.bex` de 768 bytes
-#  que pasaba el gate. Y no hacia nada, porque `pleno` no esta construido:
+#  Aqui habia una lista de PERFILES: `llegan = ["llano"]`. Un nombre, y con el
+#  se aceptaba o se rechazaba el programa entero.
 #
-#      `texto`, `lista` y `tabla` no existen -- no hay monton ni contador
-#      `numero` es decimal exacto y se baja a un CERO
-#      las llamadas a REX no tienen destino: no hay enlazado
+#  ## Por que eso estaba mal, dicho por Eddi
 #
-#  ** Lo peor no era que no funcionara: era que el gate DIJERA QUE SI. Un `.bex`
-#  firmado que devuelve ceros es exactamente lo que este proyecto persigue --
-#  algo que compila y no hace lo que dice-- y encima con la firma detras.
+#  > *"es como ir al aeropuerto: la maquina puede decir que no tienes armas, sin
+#  > embargo tu cuerpo es un arma. Ese gate tiene que desarrollar algo mas
+#  > atomico."*
 #
-#  ** Y esta en una TABLA y no en un `if` del compilador a proposito: el dia que
-#  `pleno` baje a bytes, lo que cambia es esta linea. Un `if` habria que
-#  encontrarlo; una fila se lee.
+#  El gate miraba el PASAPORTE, no lo que traes. Y fallaba en las dos
+#  direcciones a la vez:
 #
-#  El aviso dice `todavia`, y hay una prueba que falla el dia que deje de ser
-#  verdad -- para que la fila no se quede mintiendo al reves.
-[bytes]
-llegan = ["llano"]
+#      DE MAS   un `pleno` que solo usa `texto` y `lista` --que bajan enteros
+#               desde hoy-- se rechazaba por culpa de `tabla`, que no toca
+#
+#      DE MENOS el dia que se abriera por perfil, un `pleno` que SI usa `tabla`
+#               pasaria igual, con `tabla` devolviendo ceros
+#
+#  ** Un perfil es una etiqueta. Lo que decide si un binario hace lo que dice es
+#  **que piezas usa y cuales sabe bajar el compilador**, y eso es esta tabla.
+#
+#  ## Y la otra mitad del gate no esta aqui: esta en `sin_emitir`
+#
+#  Una pieza que baja no basta. Una LLAMADA sin destino --un `call` a un simbolo
+#  que no existe-- produce un binario que carga y salta a la nada, y eso ninguna
+#  tabla de tipos lo ve. Por eso `main.rs` dejo de escribir el `.ibex` cuando
+#  algo no llego a un byte: **son las manos desnudas del gate.**
+#
+#  ## Como se lee esta tabla
+#
+#  `true`  = el compilador sabe bajarla, y un programa que la use compila.
+#  `false` = todavia no. Un programa que la use se rechaza CON SU NOMBRE, y uno
+#            que no la toque compila aunque sea del mismo perfil.
+#
+#  ** El dia que una fila pase a `true`, lo que cambia es una fila.
+[bytes.bajan]
+#  El literal vive en `RoData` con el bit de INMORTAL, `a + b` llama a `junta`, y
+#  el monton lo monta el arranque. Entero desde el 23-08.
+texto = true
+#  Literal, indice con Regla 2, `agrega` y `sitio_de`. Entero desde el 23-08.
+lista = true
+#  ** Tiene disposicion --16 bytes, coeficiente + escala-- y tiene runtime
+#  (`runtime/decimal`), pero **el descenso no lo usa**: `a + b` de dos `numero`
+#  todavia baja a una suma de enteros. Lo que falta es cablearlo, como se cablearon
+#  `texto` y `lista`.
+numero = false
+decimal = false
+#  ** Ni forma, ni runtime, ni descenso. Es la unica de las cuatro que no ha
+#  empezado.
+tabla = false
 
 # ===================================================================
 #  Lo que NO esta aqui, y es a proposito
