@@ -112,6 +112,18 @@ pub const METAL_SIN_CRUDO: Codigo = Codigo("E0072");
 /// `.bex` firmado de 768 bytes que devolvia ceros. El gate decia que si sobre
 /// algo que no hacia nada -- y una firma sobre eso es peor que no tener firma.
 pub const PERFIL_SIN_BYTES: Codigo = Codigo("E0073");
+/// **Lo que `llano` no admite por lo que CUESTA**, no por lo que le falta.
+///
+/// ** `numero` es decimal exacto y su suma cuesta 5-20 veces una entera de 64
+/// bits. No es que no se sepa cuanto mide --el maestro lo tiene decidido:
+/// coeficiente de 128 bits mas escala-- es que `llano` escribe drivers y ahi
+/// ese precio no se paga sin decirlo.
+///
+/// *** Existe separado de `E0020` porque el motivo es otro, y un motivo
+/// equivocado manda a buscar lo que no falta. Tercera pareja de la misma
+/// familia: **prohibido** / **no se hacerlo todavia** (`E0073`) / **cuesta y
+/// aqui no se paga**.
+pub const CUESTA_DEMASIADO: Codigo = Codigo("E0074");
 /// Cruzar algo mutable a otra tarea.
 pub const CRUZA_MUTABLE: Codigo = Codigo("E0080");
 

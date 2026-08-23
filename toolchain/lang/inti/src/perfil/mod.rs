@@ -55,6 +55,13 @@ const INCRUSTADA: &str =
 pub struct Catalogo {
     crecen: HashSet<String>,
     without_size: HashSet<String>,
+    /// **Lo que `llano` no admite por lo que CUESTA.**
+    ///
+    /// ** Lista aparte de `without_size` porque el motivo es otro, y el mensaje
+    /// tambien: uno manda a poner una medida y el otro explica un precio. Una
+    /// sola lista habria obligado a un mensaje que valiera para los dos, y un
+    /// mensaje que vale para dos motivos no explica ninguno.
+    cuestan: HashSet<String>,
     /// Los perfiles que el compilador sabe bajar a bytes HOY.
     ///
     /// ** No es una prohibicion del lenguaje: `pleno` esta especificado entero y
@@ -103,6 +110,7 @@ impl Catalogo {
         Self {
             crecen: lista("llano", "tipos_que_crecen"),
             without_size: lista("llano", "tipos_sin_medida"),
+            cuestan: lista("llano", "tipos_que_cuestan"),
             llegan_a_bytes: lista("bytes", "llegan"),
         }
     }
@@ -120,6 +128,7 @@ impl Catalogo {
         Self {
             crecen: HashSet::new(),
             without_size: HashSet::new(),
+            cuestan: HashSet::new(),
             // ** Vacio quiere decir NO ACUSAR, y aqui tambien: una tabla
             // ilegible no puede convertirse en "ningun perfil llega a bytes".
             llegan_a_bytes: HashSet::new(),
@@ -531,6 +540,29 @@ impl<'c> Vigia<'c> {
                 }
                 if self.cat.crecen.contains(n) {
                     self.crece(&format!("`{}`", n), sitio);
+                } else if self.cat.cuestan.contains(n) {
+                    self.acusa(
+                        Aviso::nuevo(
+                            codigos::CUESTA_DEMASIADO,
+                            format!("En el perfil `llano` no existe `{}`.", n),
+                            sitio,
+                        )
+                        .con_habia(
+                            concat!(
+                                "`numero` es decimal exacto, y una suma suya cuesta entre 5 y ",
+                                "20 veces una entera de 64 bits. No es que falte decir su ",
+                                "medida: es que `llano` escribe drivers y manejadores de ",
+                                "interrupciones, y ahi ese precio no se paga sin decirlo.",
+                            )
+                                .to_string(),
+                        )
+                        .con_hacer(
+                            concat!(
+                                "escribe `entero64` --o el ancho que necesites-- o cambia el ",
+                                "fichero a `perfil pleno`, donde `numero` es el tipo por defecto",
+                            ),
+                        ),
+                    );
                 } else if self.cat.without_size.contains(n) {
                     self.acusa(
                         Aviso::nuevo(
