@@ -1651,3 +1651,91 @@ fn indexar_un_bufer_sigue_sin_llamar_a_nadie() {
         "un `bufer` no tiene contra que comprobar y no puede llamar a `sitio_de`"
     );
 }
+
+// ===================================================================
+//  *** EL LITERAL DE LISTA SE CONSTRUYE (2026-08-23)
+// ===================================================================
+
+const LITERAL: &str = "perfil pleno\nusa objetos\nusa monton\n\nfuncion principal\n    notas es lista de entero64 = [11, 22, 33]\n";
+
+/// ***`[11, 22, 33]` BAJA A `lista_nueva` Y TRES `agrega`.***
+///
+/// ** Y en ORDEN. `agrega` pone al final, asi que el orden de las llamadas ES el
+/// orden de la lista -- y ademas es el orden en que la Regla 8 dice que se
+/// evaluan los elementos. Las dos cosas coinciden aqui, y por eso hay que
+/// mirarlas: el dia que dejen de coincidir, alguien tiene que verlo.
+#[test]
+fn un_literal_de_lista_se_construye_en_orden() {
+    let m = ir_de(LITERAL);
+    let f = m.funciones.iter().find(|f| f.nombre == "principal").expect("sin `principal`");
+    let llamadas: Vec<&str> = f
+        .instrucciones
+        .iter()
+        .filter_map(|i| match i {
+            Instr::Llama { que: Valor::Nombre(n), .. } => Some(n.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        llamadas,
+        vec!["lista_nueva", "agrega", "agrega", "agrega"],
+        "el literal no se construyo, o no en orden"
+    );
+}
+
+/// La capacidad es EXACTA: los elementos que hay, no un numero con holgura.
+///
+/// ** Un literal se escribe entero. Si despues crece, crecer es otra operacion y
+/// ya tiene su propio "no cabe". Reservar de mas "por si acaso" seria una
+/// politica de crecimiento metida donde no toca.
+#[test]
+fn la_capacidad_del_literal_es_la_que_tiene() {
+    let m = ir_de(LITERAL);
+    let f = m.funciones.iter().find(|f| f.nombre == "principal").unwrap();
+    let args = f
+        .instrucciones
+        .iter()
+        .find_map(|i| match i {
+            Instr::Llama { que: Valor::Nombre(n), argumentos, .. } if n == "lista_nueva" => {
+                Some(argumentos.clone())
+            }
+            _ => None,
+        })
+        .expect("sin `lista_nueva`");
+    assert_eq!(args.len(), 3, "lista_nueva(monton, capacidad, ancho)");
+    assert_eq!(args[1], Valor::Const(Const::Entero(3)), "tres elementos");
+    assert_eq!(args[2], Valor::Const(Const::Entero(8)), "de entero64: ocho");
+}
+
+/// ***Y SIN TIPO ESCRITO NO SE CONSTRUYE, PERO SE DICE.***
+///
+/// El ancho del elemento sale del TIPO, y `[1, 2, 3]` a secas no dice si sus
+/// elementos miden uno, cuatro u ocho. Deducirlo de los literales tiene reglas
+/// propias que nadie ha escrito: **que mide `[1, 2.5]`?**
+///
+/// ** Lo que no puede pasar es que baje a `nada` en silencio. Es la leccion de
+/// `Const::Texto`, que bajo a un cero durante meses: lo unico que impidio que se
+/// olvidara fue que el emisor lo confesaba **con un numero**.
+#[test]
+fn un_literal_sin_tipo_escrito_no_se_construye_y_el_emisor_lo_dice() {
+    let e = emitido("perfil pleno\nusa objetos\nusa monton\n\nfuncion principal\n    notas = [1, 2, 3]\n");
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("literal(es) de lista sin construir")),
+        "se cayo callandose: {:?}",
+        e.sin_emitir
+    );
+    // Y dice CUANTOS, que es lo que lo convierte en un aviso seguible.
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("1 literal")),
+        "no dice cuantos: {:?}",
+        e.sin_emitir
+    );
+}
+
+/// Y un programa sin literales de lista no se queja de nada. Un aviso que sale
+/// siempre es ruido que entrena a no mirar.
+#[test]
+fn un_programa_sin_literales_de_lista_no_avisa() {
+    let e = emitido("perfil llano\n\nfuncion principal devuelve entero32\n    devuelve 7\n");
+    assert!(!e.sin_emitir.iter().any(|x| x.contains("literal(es) de lista")));
+}

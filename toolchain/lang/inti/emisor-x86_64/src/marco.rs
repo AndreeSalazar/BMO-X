@@ -387,6 +387,7 @@ mod pruebas {
             locales,
             temporales,
             instrucciones,
+            sin_ancho: 0,
         }
     }
 
