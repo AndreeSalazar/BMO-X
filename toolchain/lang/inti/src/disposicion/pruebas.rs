@@ -387,3 +387,73 @@ fn una_conversion_dice_a_que_clase_va() {
     assert!(m.es_entero("natural16"));
     assert!(!m.es_entero("flotante32"));
 }
+
+// ===================================================================
+//  ** LO QUE CRECE SE MIDE POR REFERENCIA (2026-08-22)
+// ===================================================================
+
+use crate::arbol::Tipo;
+
+fn plano_vacio() -> Plano {
+    plano_de(&format!("{}funcion f devuelve entero32
+    devuelve 0
+", CABECERA)).valor
+}
+
+/// **Una `lista de T` mide lo que una referencia, no lo que la lista.**
+///
+/// *** Es la propiedad que hace posible que exista un campo de lista: si midiera
+/// lo que la lista, el registro que la contiene cambiaria de tamano cada vez que
+/// alguien anadiera un elemento -- y un registro que cambia de tamano no se
+/// puede colocar en un marco.
+///
+/// La lista de verdad vive en el monton, con su contador y su capacidad, y lo
+/// que se guarda es DONDE esta. Ver `bmo_abi::dynobj::lista`.
+#[test]
+fn una_lista_mide_lo_que_una_referencia() {
+    let p = plano_vacio();
+    let de_enteros = Tipo::Lista(Box::new(Tipo::Nombre("entero32".to_string())));
+    let de_flotantes = Tipo::Lista(Box::new(Tipo::Nombre("flotante64".to_string())));
+
+    assert_eq!(p.medida_de(&de_enteros), Some(8));
+    // ** Y las dos miden lo MISMO aunque sus elementos midan distinto: eso es
+    // exactamente lo que dice que se guarda la direccion y no la cosa.
+    assert_eq!(p.medida_de(&de_enteros), p.medida_de(&de_flotantes));
+    assert_eq!(p.alineacion_de(&de_enteros), Some(8));
+}
+
+/// **Y una `tabla` igual**: lo que crece se guarda donde esta.
+#[test]
+fn una_tabla_tambien_mide_lo_que_una_referencia() {
+    let p = plano_vacio();
+    let t = Tipo::Tabla(
+        Box::new(Tipo::Nombre("entero32".to_string())),
+        Box::new(Tipo::Nombre("entero64".to_string())),
+    );
+    assert_eq!(p.medida_de(&t), Some(8));
+}
+
+/// **`texto` sigue SIN medida, y hoy es la respuesta correcta.**
+///
+/// *** No es un olvido y es la puerta que falta. `lista` y `tabla` se saben por
+/// la FORMA del tipo --son variantes del arbol-- y `texto` es un `Tipo::Nombre`,
+/// asi que pide una lista de nombres: la de *"lo que crece se guarda por
+/// referencia"*, que hoy vive en `biblioteca.toml` como `tipos_que_crecen`.
+///
+/// ** Y hasta que `texto` mida, `disposicion` no puede abrir su puerta a
+/// `pleno`: la abriria denunciando `nombre es texto`, que alli es correcto. Esta
+/// prueba fija el estado real para que el dia que cambie, se vea.
+#[test]
+fn texto_sigue_sin_medida_y_por_eso_la_puerta_de_pleno_no_se_abre() {
+    let p = plano_vacio();
+    assert_eq!(
+        p.medida_de(&Tipo::Nombre("texto".to_string())),
+        None,
+        "`texto` no tiene medida hasta que sea una referencia declarada"
+    );
+    // Un bufer si, y esa es la diferencia entera entre los dos.
+    assert_eq!(
+        p.medida_de(&Tipo::Bufer(Box::new(Tipo::Nombre("natural8".to_string())))),
+        Some(8)
+    );
+}

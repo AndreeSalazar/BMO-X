@@ -67,6 +67,23 @@ puntero = 8
 #  de `pleno`. Dos tipos porque son dos promesas distintas, no por gusto.
 bufer   = 8
 
+#  ** LO QUE CRECE SE GUARDA POR REFERENCIA, no entero (2026-08-22).
+#
+#  Un `lista de T` o una `tabla` viven en el monton y lo que se guarda en una
+#  variable --o en un campo-- es **donde estan**, no lo que son. Mide lo que un
+#  puntero y no depende de cuantos elementos tenga.
+#
+#  *** Esta fila la predijo este mismo fichero, unas lineas mas abajo: *"el dia
+#  que `pleno` tenga campos de `texto`, la fila que hace falta es
+#  `referencia = 8` y no una medida para `texto`"*. Es esa fila.
+#
+#  ** Y es una fila aparte de `puntero` aunque hoy midan lo mismo, porque
+#  contestan preguntas distintas: `puntero` es "una direccion cruda de esta
+#  maquina" y `referencia` es "un objeto del monton, con su contador". El dia que
+#  una referencia lleve algo mas --una etiqueta, un indice de tipo-- lo que
+#  cambia es esta fila y no la de al lado.
+referencia = 8
+
 # ===================================================================
 #  Lo que NO tiene medida, y es a proposito
 # ===================================================================
