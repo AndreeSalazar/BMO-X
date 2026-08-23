@@ -64,15 +64,28 @@
 //! proposito: dos campos que se comparan en cada `anade` y que no pueden
 //! desbordar el uno contra el otro por ser de distinto tamano.
 //!
-//! ## *** LO QUE ESTA FORMA NO PROMETE TODAVIA
+//! ## LO QUE ESTA FORMA NO PROMETIA, Y YA SI (2026-08-23)
 //!
-//! **El contador cuenta y no libera.** `release` puede llegar a cero y la
-//! memoria no vuelve a ningun sitio, porque `suelta` no suelta. Eso no es un
-//! fallo de esta cabecera --el contador es correcto-- pero decir *"INTI libera
-//! al instante"* seria falso hasta que el monton sepa recibir.
+//! Aqui ponia:
 //!
-//! Se escribe aqui porque es exactamente la clase de frase que se queda en una
-//! portada y nadie vuelve a comprobar.
+//! > **El contador cuenta y no libera.** `release` puede llegar a cero y la
+//! > memoria no vuelve a ningun sitio, porque `suelta` no suelta. [...] decir
+//! > *"INTI libera al instante"* seria falso hasta que el monton sepa recibir.
+//!
+//! **El monton ya sabe recibir.** `runtime/monton/reparto.inti` tiene lista de
+//! huecos --cada trozo lleva su medida delante-- y
+//! `runtime/objetos/contador.inti` llama a `suelta` cuando el contador llega a
+//! cero. Las dos cosas se comprueban EJECUTANDO, no leyendo.
+//!
+//! *** Y esta nota se escribio con este motivo textual: *"es exactamente la
+//! clase de frase que se queda en una portada y nadie vuelve a comprobar"*.
+//! Cumplio: se vino a buscar el dia que dejo de ser verdad.
+//!
+//! ## Lo que sigue sin prometer, para que el hueco no se cierre en falso
+//!
+//! **Los huecos no se juntan.** Dos trozos sueltos y contiguos siguen siendo dos
+//! huecos, asi que pedir uno del doble avanza el cursor aunque el sitio
+//! estuviera ahi. Es fragmentacion, se paga, y esta escrita en `MONTON.md`.
 
 #![allow(dead_code)]
 

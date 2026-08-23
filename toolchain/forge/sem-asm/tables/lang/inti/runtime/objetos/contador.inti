@@ -1,0 +1,111 @@
+# EL CONTADOR DE REFERENCIAS -- quien tiene un objeto, y cuando muere.
+#
+# ## Por que es un modulo APARTE y no una tercera pieza de `monton`
+#
+# Porque contesta otra pregunta. El monton dice DONDE cabe algo; esto dice
+# CUANTOS lo tienen. Y hay un motivo medido, no de gusto: el 2026-08-23 se conto
+# lo que cuesta la inclusion sin enlazado --la sonda del Ryzen paso de 8.856 a
+# 10.432 bytes al crecer el monton-- asi que meter el contador dentro de
+# `usa monton` engordaria a todo programa que solo quiera memoria cruda.
+#
+#     usa monton     quiero repartir memoria
+#     usa objetos    quiero objetos con vida propia   (y trae el monton)
+#
+# ## LA FORMA QUE CUENTA, y no se decide aqui
+#
+# La declara `bmo_abi::dynobj::header`, y este fichero la OBEDECE:
+#
+#     objeto + 0    refs         contador. **El bit 63 = INMORTAL**
+#     objeto + 8    type_index   indice en la tabla de tipos, nunca puntero
+#     objeto + 12   flags
+#
+# ** El objeto empieza donde empieza su cabecera de `dynobj`, que es exactamente
+# la direccion que devolvio `pide`. Por eso `libera` puede pasarsela a `suelta`
+# tal cual: la medida del bloque vive en `objeto - 16`, delante, y la puso el
+# monton. Las dos cabeceras son de duenos distintos y no se pisan.
+#
+# ## *** LAS TRES REGLAS, Y LAS TRES SON DEL ABI
+#
+#     INMORTAL     ni se sube ni se baja. Nunca. Ni una escritura.
+#     SATURA       un contador en cero se queda en cero, no da la vuelta
+#     EL ULTIMO    de 1 a 0 no es "bajar": es MORIR, y el trozo vuelve
+#
+# ** La del medio parece de adorno y es la mas cara de las tres. Si un contador
+# en cero diera la vuelta, valdria 0xFFFF_FFFF_FFFF_FFFF -- **que tiene el bit
+# 63 puesto**. Un doble-`libera` convertiria el objeto en INMORTAL en silencio:
+# una fuga que no se denuncia a si misma jamas. Lo dice `header.rs` con esas
+# palabras, y aqui se repite porque aqui es donde se puede romper.
+perfil llano
+usa monton
+usa memoria
+
+# El bit 63, que es lo que marca a un objeto como inmortal.
+#
+# Se calcula en vez de escribirse: `1 << 63` no cabe en un entero con signo, y
+# un literal de esa forma no se puede escribir sin mentir sobre su tipo.
+funcion bit_inmortal devuelve natural64
+    devuelve 1 desplaza izquierda 63
+
+# Cuantas referencias dice tener. En un inmortal el numero no significa nada:
+# preguntar por el es preguntar por `es_inmortal`.
+funcion referencias(objeto es natural64) devuelve natural64
+    crudo
+        si objeto = 0
+            devuelve 0
+        devuelve lee_natural64(objeto)
+
+# Es inmortal? 1 si lo es, 0 si no.
+funcion es_inmortal(objeto es natural64) devuelve natural64
+    crudo
+        si objeto = 0
+            devuelve 0
+        si (lee_natural64(objeto) bits_y bit_inmortal()) = 0
+            devuelve 0
+        devuelve 1
+
+# Uno mas lo tiene. Devuelve el contador que queda.
+#
+# ** A un INMORTAL no se le escribe, y no basta con dejar el numero igual:
+# escribir los mismos bytes en una pagina de solo lectura **falla igual**. Un
+# literal de texto vive en `RoData`, asi que esto no es teorico.
+funcion retiene(objeto es natural64) devuelve natural64
+    crudo
+        si objeto = 0
+            devuelve 0
+        cuantas = lee_natural64(objeto)
+        si (cuantas bits_y bit_inmortal()) no es 0
+            devuelve cuantas
+        escribe_natural64(objeto, cuantas + 1)
+        devuelve cuantas + 1
+
+# Uno menos lo tiene. Devuelve 1 si el objeto MURIO y su trozo volvio al monton.
+#
+# ** Devuelve "murio" y no el contador que queda a proposito: es la unica
+# pregunta que quien suelta no puede contestar mirando despues, porque despues
+# el objeto ya no esta. Leer su contador para enterarse seria leer un trozo
+# soltado -- el fallo clasico de un contador de referencias, cometido por la
+# funcion que existe para evitarlo.
+funcion libera(monton es natural64, objeto es natural64) devuelve natural64
+    crudo
+        si objeto = 0
+            devuelve 0
+
+        cuantas = lee_natural64(objeto)
+
+        # 1. INMORTAL: no se toca. Ni el contador, ni el monton.
+        si (cuantas bits_y bit_inmortal()) no es 0
+            devuelve 0
+
+        # 2. SATURA EN CERO. Ver la cabecera: dar la vuelta encenderia el bit 63
+        # y un doble-libera dejaria el objeto inmortal, sin decirlo nunca.
+        si cuantas = 0
+            devuelve 0
+
+        # 3. EL ULTIMO: de 1 a 0 no es bajar, es morir.
+        si cuantas = 1
+            escribe_natural64(objeto, 0)
+            suelta(monton, objeto)
+            devuelve 1
+
+        escribe_natural64(objeto, cuantas - 1)
+        devuelve 0

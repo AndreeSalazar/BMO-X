@@ -190,6 +190,12 @@ Es una fuga, esta marcada, y se va con lo mismo.
 
 1. ~~**`suelta` de verdad**~~ -- ✅ **HECHO (23-08)**, con seis pruebas que
    ejecutan. Lo que queda de ese frente es **juntar huecos contiguos**.
+1b. ~~**El contador de referencias**~~ -- ✅ **HECHO (23-08)**, y en un modulo
+   APARTE: `usa objetos`, no `usa monton`. El motivo es el numero de la seccion
+   5 -- meterlo dentro engordaria a todo programa que solo quiera memoria cruda.
+   Cinco pruebas que ejecutan, y una que exige que diga **lo mismo que
+   `bmo_abi::dynobj::header`**, porque dos escrituras de la misma regla se
+   separan el dia que alguien toca una.
 2. **Que `pleno` lo use solo**: hoy un programa escribe `monton_nuevo`; un
    `texto + texto` todavia no sabe pedir memoria a nadie.
 3. **Compilacion separada**, y con ella el runtime prestado.
