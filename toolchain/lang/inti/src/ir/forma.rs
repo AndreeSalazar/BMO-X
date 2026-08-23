@@ -258,6 +258,31 @@ pub enum Instr {
         /// Indice en `ModuloIr::congelados`.
         congelado: u32,
     },
+    /// **La direccion del monton de ESTA TAREA** (2026-08-23).
+    ///
+    /// ## Por que es una instruccion y no un argumento mas
+    ///
+    /// Porque `a + b` no tiene donde llevarlo. Todas las funciones del monton
+    /// reciben el monton por parametro --`pide(monton, cuantos)`-- y eso vale
+    /// mientras lo escriba una persona. Un OPERADOR no tiene ese hueco: nadie
+    /// escribe `a +(monton) b`.
+    ///
+    /// Asi que el monton de la tarea es **ambiente**, como en cualquier lenguaje
+    /// con objetos, y esta instruccion es por donde se coge.
+    ///
+    /// ## ** Y es la misma decision que `Instr::Direccion`, por el mismo motivo
+    ///
+    /// Podria ser un `Valor::MontonDeLaTarea` y seria mas corto. Obligaria a los
+    /// veintitres sitios que cargan un valor a saber resolverlo, y el dia que
+    /// alguien anadiera el veinticuatro se le olvidaria. Siendo una instruccion,
+    /// el emisor la atiende en UN sitio y todo lo de despues ve un temporal.
+    ///
+    /// [!] El slot vive en la seccion `Data` --la 1 en la numeracion de las
+    /// reubicaciones-- y quien lo rellena es el arranque. Mientras eso no exista,
+    /// el emisor la pone en `sin_emitir` en vez de bajarla a un cero.
+    MontonDeLaTarea {
+        destino: Temporal,
+    },
     /// Cambia de clase de numero: `flotante64(n)`, `entero64(f)`.
     ///
     /// ** Es una INSTRUCCION y no una llamada, y esa es la decision. Escrito

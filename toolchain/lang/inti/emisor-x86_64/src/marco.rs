@@ -293,6 +293,10 @@ fn tramos_de_vida(f: &FuncionIr) -> Vec<(usize, usize)> {
             // La direccion de una tabla congelada nace en un temporal, como
             // cualquier otra cosa que se calcula.
             Instr::Direccion { destino, .. } => toca(*destino, i, &mut tramos),
+            // ** Tiene destino, luego VIVE. Olvidarlo aqui es lo que destapo un
+            // PNG el 22-08: un temporal que no cuenta como vivo se lleva el
+            // registro de otro, y el programa no falla -- da otro numero.
+            Instr::MontonDeLaTarea { destino } => toca(*destino, i, &mut tramos),
             Instr::Lee {
                 destino, direccion, ..
             } => {

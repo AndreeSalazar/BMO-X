@@ -1288,3 +1288,104 @@ fn la_aritmetica_de_direcciones_no_lleva_signo() {
         "la aritmetica de direcciones perdio la marca de sin signo: {sumas:?}"
     );
 }
+
+// ===================================================================
+//  *** `texto + texto` BAJA A UNA LLAMADA, no a un `add` (2026-08-23)
+// ===================================================================
+
+fn ir_de(fuente: &str) -> bmo_inti_front::ir::ModuloIr {
+    let arbol = bmo_inti_front::armar(fuente);
+    assert!(!arbol.hay_errores(), "{}", arbol.pintar("p.inti"));
+    let raices = bmo_mods::Roots::find();
+    let modulos = bmo_inti_front::tablas::Modulos::cargar(&raices);
+    let plano = bmo_inti_front::disposicion::comprobar(
+        &arbol.valor,
+        bmo_inti_front::disposicion::Medidas::cargar(&raices),
+    );
+    let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
+    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor
+}
+
+const DOS_TEXTOS: &str = "perfil pleno\n\nfuncion principal\n    a = \"ho\"\n    b = \"la\"\n    c = a + b\n";
+
+/// ***SUMAR DOS TEXTOS NO ES SUMAR: ES RESERVAR Y COPIAR.***
+///
+/// Bajarlo a un `add` sumaria las DOS DIRECCIONES y devolveria un numero que no
+/// apunta a ningun sitio. **Compilaria, correria, y daria basura** -- la misma
+/// familia que el signo: una respuesta equivocada, en silencio.
+///
+/// ** Y hace falta reservar porque un `texto` es INMUTABLE: si `a + b` no puede
+/// tocar ni `a` ni `b`, el resultado es un TERCER objeto. Eso es `junta`, y esta
+/// escrita en INTI en `runtime/objetos/texto.inti`.
+#[test]
+fn sumar_dos_textos_baja_a_junta_y_no_a_una_suma() {
+    let m = ir_de(DOS_TEXTOS);
+    let instrs: Vec<&Instr> = m.funciones.iter().flat_map(|f| f.instrucciones.iter()).collect();
+
+    let llama_a_junta = instrs.iter().any(|i| matches!(
+        i,
+        Instr::Llama { que: Valor::Nombre(n), .. } if n == "junta"
+    ));
+    assert!(llama_a_junta, "`a + b` de textos no llamo a `junta`");
+
+    // Y NO hay ninguna suma entera de por medio: eso seria sumar punteros.
+    let suma_entera = instrs.iter().any(|i| matches!(
+        i,
+        Instr::Binaria { op: bmo_inti_front::arbol::Op::Suma, .. }
+    ));
+    assert!(!suma_entera, "quedo un `add`: eso suma dos direcciones");
+}
+
+/// Y el monton llega por `Instr::MontonDeLaTarea`, no por la expresion.
+///
+/// ** Un operador no tiene hueco donde llevarlo: nadie escribe `a +(monton) b`.
+/// Por eso el monton de la tarea es AMBIENTE, como en cualquier lenguaje con
+/// objetos, y esta instruccion es por donde se coge.
+#[test]
+fn el_monton_llega_por_su_instruccion_y_es_el_primer_argumento() {
+    let m = ir_de(DOS_TEXTOS);
+    let instrs: Vec<&Instr> = m.funciones.iter().flat_map(|f| f.instrucciones.iter()).collect();
+
+    let el_monton = instrs.iter().find_map(|i| match i {
+        Instr::MontonDeLaTarea { destino } => Some(*destino),
+        _ => None,
+    });
+    let el_monton = el_monton.expect("nadie pidio el monton de la tarea");
+
+    let args = instrs.iter().find_map(|i| match i {
+        Instr::Llama { que: Valor::Nombre(n), argumentos, .. } if n == "junta" => Some(argumentos),
+        _ => None,
+    }).expect("sin llamada a `junta`");
+
+    assert_eq!(args.len(), 3, "junta(monton, a, b)");
+    assert_eq!(
+        args[0],
+        Valor::Temporal(el_monton),
+        "el monton tiene que ser el PRIMER argumento"
+    );
+}
+
+/// ***Y EL EMISOR LO DICE en vez de bajarlo a un cero.***
+///
+/// El slot del monton vive en la seccion `Data` y quien lo rellena tiene que ser
+/// el arranque. Eso no existe todavia -- `arranque.rs` lo lleva escrito en su
+/// cabecera: *"montar un monton: no, eso es `pleno` y llega despues"*.
+///
+/// ** Bajarlo a un cero repetiria exactamente el fallo que `Const::Texto` tuvo
+/// durante meses: una pieza que se calcula bien y no la lee nadie. Por eso se
+/// confiesa, con el numero de cuantas veces hizo falta -- y por eso el gate de
+/// `[bytes] llegan` sigue sin admitir `pleno`.
+#[test]
+fn el_monton_que_no_existe_se_confiesa_con_su_numero() {
+    let e = emitido(DOS_TEXTOS);
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("monton de la tarea")),
+        "el monton se cayo callandose: {:?}",
+        e.sin_emitir
+    );
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("1 vez")),
+        "no dice cuantas: {:?}",
+        e.sin_emitir
+    );
+}
