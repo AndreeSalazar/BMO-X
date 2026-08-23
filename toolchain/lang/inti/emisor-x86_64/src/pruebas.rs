@@ -1365,27 +1365,73 @@ fn el_monton_llega_por_su_instruccion_y_es_el_primer_argumento() {
     );
 }
 
-/// ***Y EL EMISOR LO DICE en vez de bajarlo a un cero.***
+/// ***EL ARRANQUE MONTA EL MONTON DE LA TAREA (2026-08-23).***
 ///
-/// El slot del monton vive en la seccion `Data` y quien lo rellena tiene que ser
-/// el arranque. Eso no existe todavia -- `arranque.rs` lo lleva escrito en su
-/// cabecera: *"montar un monton: no, eso es `pleno` y llega despues"*.
+/// Decisiones de Eddi: **4096 bytes, y si falla la tarea muere.**
 ///
-/// ** Bajarlo a un cero repetiria exactamente el fallo que `Const::Texto` tuvo
-/// durante meses: una pieza que se calcula bien y no la lee nadie. Por eso se
-/// confiesa, con el numero de cuantas veces hizo falta -- y por eso el gate de
-/// `[bytes] llegan` sigue sin admitir `pleno`.
+/// ```text
+///    mov  edi, 4096
+///    call monton_nuevo
+///    test rax, rax
+///    jnz  hay            -- si no, `exit(1004)` y no se llega a `principal`
+///    mov  rcx, <slot>    -- inmediato a cero + reubicacion a `Data`
+///    mov  [rcx], rax
+///    call principal
+/// ```
+///
+/// ** Muere ANTES de `principal` a proposito. Si se dejara seguir, el primer
+/// `texto + texto` reservaria sobre un monton cero, `junta` devolveria 0, y el
+/// fallo aparecerria paginas mas adelante sin relacion visible con su causa.
 #[test]
-fn el_monton_que_no_existe_se_confiesa_con_su_numero() {
-    let e = emitido(DOS_TEXTOS);
+fn el_arranque_monta_el_monton_y_ya_no_se_confiesa() {
+    let f = "perfil pleno\nusa objetos\nusa monton\n\nfuncion principal\n    a = \"ho\"\n    b = \"la\"\n    c = a + b\n";
+    let e = emitido(f);
     assert!(
-        e.sin_emitir.iter().any(|x| x.contains("monton de la tarea")),
-        "el monton se cayo callandose: {:?}",
+        !e.sin_emitir.iter().any(|x| x.contains("monton de la tarea")),
+        "el monton ya se monta, no hay nada que confesar: {:?}",
         e.sin_emitir
     );
+    // [!] Los huecos de llamada NO se pueden mirar aqui: `emitir` los VACIA al
+    // parchearlos. Que la llamada a `monton_nuevo` se resolvio se sabe por lo
+    // contrario -- si no se hubiera resuelto, estaria en `sin_emitir`.
     assert!(
-        e.sin_emitir.iter().any(|x| x.contains("1 vez")),
-        "no dice cuantas: {:?}",
+        !e.sin_emitir.iter().any(|x| x.contains("monton_nuevo")),
+        "la llamada a `monton_nuevo` se quedo sin destino: {:?}",
         e.sin_emitir
     );
+    // Mas los huecos que alcanzan el slot: uno por cada `a + b`.
+    assert!(
+        !e.reubicaciones_del_monton.is_empty(),
+        "nadie apunta al slot del monton"
+    );
+    // El tamano y el codigo de muerte, en los bytes.
+    assert!(
+        e.codigo
+            .windows(4)
+            .any(|w| w == arranque::MONTON_DE_LA_TAREA.to_le_bytes()),
+        "no aparece el 4096 del monton de la tarea"
+    );
+    assert!(
+        e.codigo
+            .windows(8)
+            .any(|w| w == arranque::SIN_MONTON.to_le_bytes()),
+        "no aparece el codigo con el que muere si no hay monton"
+    );
+}
+
+/// [!] Y UN PROGRAMA QUE NO TOCA OBJETOS NO PAGA EL MONTON.
+///
+/// ** Montarlo cuesta DOS cruces de la puerta. Se decide mirando la IR --si
+/// nadie emitio `MontonDeLaTarea`, no hace falta-- y no el perfil, que seria
+/// adivinar: hay programas de `pleno` que no tocan un objeto en su vida.
+#[test]
+fn un_programa_sin_objetos_no_monta_ningun_monton() {
+    let e = emitido("perfil llano\n\nfuncion principal devuelve entero32\n    devuelve 7\n");
+    assert!(
+        !e.huecos_de_llamada
+            .iter()
+            .any(|(_, n)| n == arranque::MONTON_NUEVO),
+        "monto un monton que nadie pidio"
+    );
+    assert!(e.reubicaciones_del_monton.is_empty());
 }

@@ -115,6 +115,14 @@ pub struct Emitido {
     pub en_pila: usize,
     /// **Las tablas congeladas del modulo**, tal y como van a `RoData`.
     pub congelados: Vec<bmo_inti_front::ir::Congelado>,
+    /// Los huecos del codigo que hay que rellenar con la direccion del **slot
+    /// del monton de la tarea**, que vive en la seccion `Data`.
+    ///
+    /// ** Lista aparte de `reubicaciones` --las de `RoData`-- porque apuntan a
+    /// otra seccion, y mezclarlas obligaria a llevar el destino en cada entrada
+    /// para distinguirlas. Dos listas cortas dicen mas que una larga con una
+    /// etiqueta.
+    pub reubicaciones_del_monton: Vec<usize>,
     /// Donde hay que escribir la direccion de cada tabla: `(offset en el codigo,
     /// indice del congelado)`. Se convierten en reubicaciones del `.bex`.
     pub reubicaciones: Vec<(usize, u32)>,
@@ -225,6 +233,7 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         inicios: Vec::new(),
         katanas: Vec::new(),
         congelados: Vec::new(),
+        reubicaciones_del_monton: Vec::new(),
         reubicaciones: Vec::new(),
         comprobaciones: 0,
         en_registros: 0,
@@ -245,11 +254,28 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
     // veces lo mismo.
     salida.congelados = m.congelados.clone();
 
+    // ** SE MIRA LA IR, NO EL PERFIL. Montar un monton cuesta dos cruces de la
+    // puerta, y un programa que no toca objetos no tiene por que pagarlos.
+    // Preguntarselo al perfil seria adivinar; preguntarselo a la IR es leer.
+    let necesita_monton = m
+        .funciones
+        .iter()
+        .flat_map(|f| f.instrucciones.iter())
+        .any(|i| matches!(i, Instr::MontonDeLaTarea { .. }));
+
     if m.funciones.iter().any(|f| f.nombre == arranque::PRINCIPAL) {
-        let hueco = arranque::emitir(&mut salida.codigo, &taller.puerta, IZQ);
+        let p = arranque::emitir(&mut salida.codigo, &taller.puerta, IZQ, necesita_monton);
         salida
             .huecos_de_llamada
-            .push((hueco, arranque::PRINCIPAL.to_string()));
+            .push((p.principal, arranque::PRINCIPAL.to_string()));
+        if let Some(h) = p.monton_nuevo {
+            salida
+                .huecos_de_llamada
+                .push((h, arranque::MONTON_NUEVO.to_string()));
+        }
+        if let Some(h) = p.slot_del_monton {
+            salida.reubicaciones_del_monton.push(h);
+        }
         salida.arranca = true;
     }
 
@@ -271,6 +297,9 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         // tuvieron: usan `out.len()` tal cual desde el primer dia.
         salida.reubicaciones.extend(cuenta.reubicaciones.iter().copied());
         salida.huecos_de_llamada.extend(cuenta.huecos_de_llamada);
+        salida
+            .reubicaciones_del_monton
+            .extend(cuenta.reubicaciones_del_monton);
         salida.sin_emitir.extend(cuenta.sin_emitir);
         // ** Y los nombres que se van a bajar a un cero, con el suyo delante.
         for n in nombres_sueltos(f) {
@@ -360,6 +389,8 @@ struct Cuenta {
     /// **Donde queda el hueco de la direccion de cada tabla congelada**:
     /// `(offset del inmediato, indice del congelado)`.
     reubicaciones: Vec<(usize, u32)>,
+    /// Los huecos que apuntan al slot del monton, en la seccion `Data`.
+    reubicaciones_del_monton: Vec<usize>,
     /// **Donde acabo el bloque de trampa de cada regla**: `(codigo, offset,
     /// longitud)`, con el offset DENTRO de la seccion de codigo.
     ///
@@ -388,7 +419,7 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
         ..Default::default()
     };
     let mut comprobaciones = 0usize;
-    let mut monton_pedido = 0usize;
+    let mut reubicaciones_del_monton: Vec<usize> = Vec::new();
     let mut salida_huecos: Vec<(usize, String)> = Vec::new();
     let mut sin_emitir: Vec<String> = Vec::new();
     let mut reubicaciones: Vec<(usize, u32)> = Vec::new();
@@ -747,8 +778,27 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
             // `Const::Texto` tuvo durante meses: una pieza que se calcula bien y
             // no la lee nadie, y un binario firmado que devuelve basura. Aqui se
             // dice, con el numero de cuantas veces hizo falta.
-            Instr::MontonDeLaTarea { .. } => {
-                monton_pedido += 1;
+            // *** EL MONTON DE LA TAREA, en dos instrucciones.
+            //
+            //     mov IZQ, <slot>     inmediato a cero + reubicacion a `Data`
+            //     mov IZQ, [IZQ]      y lo que hay dentro es el monton
+            //
+            // Son dos y no una porque la direccion del slot **no se sabe al
+            // emitir**: la elige el cargador. Es exactamente la misma forma que
+            // `Instr::Direccion` usa para llegar a `RoData`, y por el mismo
+            // motivo.
+            //
+            // ** Quien lo llena es el arranque, ANTES de `principal`. Si
+            // `monton_nuevo` dijo que no, la tarea ya murio alli: aqui no puede
+            // haber un cero.
+            Instr::MontonDeLaTarea { destino } => {
+                x86::mov_r64_imm64(out, IZQ, 0);
+                reubicaciones_del_monton.push(out.len() - 8);
+                // `mov IZQ, [IZQ]`
+                out.push(0x48 | ((IZQ >> 3) & 1) << 2 | ((IZQ >> 3) & 1));
+                out.push(0x8B);
+                out.push(((IZQ & 7) << 3) | (IZQ & 7));
+                guarda_temporal(out, IZQ, *destino, &marco);
             }
 
             Instr::Escribe {
@@ -875,24 +925,7 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
     }
 
     cuenta.comprobaciones = comprobaciones;
-    // *** Y SI ALGUIEN PIDIO EL MONTON DE LA TAREA, SE DICE (2026-08-23).
-    //
-    // `texto + texto` baja a una llamada a `junta`, que necesita un monton. El
-    // monton de la tarea es AMBIENTE --un operador no tiene hueco donde
-    // llevarlo-- y su slot vive en la seccion `Data`, que la rellena el
-    // arranque. Eso todavia no existe.
-    //
-    // ** Se dice aqui en vez de bajarlo a un cero por lo mismo que se dijo el
-    // pozo de textos durante meses: **una pieza que se calcula bien y no la lee
-    // nadie es la firma de fallo de este proyecto**. Y por eso el gate de
-    // `[bytes] llegan` sigue sin admitir `pleno`: no se puede firmar un binario
-    // cuyo `a + b` de textos apunta a ninguna parte.
-    if monton_pedido > 0 {
-        sin_emitir.push(format!(
-            "{} vez/veces se pidio el monton de la tarea y no hay: falta que el arranque              lo monte y lo deje en la seccion `Data`",
-            monton_pedido
-        ));
-    }
+    cuenta.reubicaciones_del_monton = reubicaciones_del_monton;
     cuenta.huecos_de_llamada = salida_huecos;
     cuenta.reubicaciones = reubicaciones;
     cuenta.sin_emitir = sin_emitir;
@@ -1133,6 +1166,36 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
     // Un binario de C mete datos entre las instrucciones y por eso no se puede
     // recorrer. Que INTI no lo haga es la restriccion que le paga esa propiedad,
     // y aqui es donde se respeta o se pierde.
+    // *** LA SECCION `Data`: OCHO BYTES, y son el monton de la tarea.
+    //
+    // Es la primera vez que INTI emite una seccion ESCRIBIBLE. `RoData` la
+    // rellena el compilador y no cambia; esta nace a cero y **la escribe el
+    // arranque** con lo que le devuelva `monton_nuevo`.
+    //
+    // ** Ocho bytes y no una pagina: lo que vive aqui es UNA DIRECCION, no el
+    // monton. El monton lo da el kernel y vive donde el kernel diga.
+    //
+    // [!] La numeracion de las reubicaciones NO es la de `SectionKind`: alli
+    // `Data = 0x03`, y aqui es **1** (`0` = code, `1` = data, `2` = rodata), que
+    // es lo que `relocations.rs` deja escrito. Cruzar las dos daria un binario
+    // que carga y escribe el monton encima del codigo.
+    let mut relocs_data: Vec<Relocation> = Vec::new();
+    if !e.reubicaciones_del_monton.is_empty() {
+        b.add_section(BefSection::data(vec![0u8; 8]));
+        relocs_data = e
+            .reubicaciones_del_monton
+            .iter()
+            .map(|off| Relocation {
+                offset: *off as u64,
+                symbol_idx: 1, // data, en la numeracion de las reubicaciones
+                kind: RelocationKind::SeccionAbs64 as u8,
+                target_section: 0, // el hueco vive en el codigo
+                _pad: [0; 2],
+                addend: 0,
+            })
+            .collect();
+    }
+
     if !e.congelados.is_empty() {
         let mut rodata: Vec<u8> = Vec::new();
         let mut donde: Vec<u64> = Vec::with_capacity(e.congelados.len());
@@ -1177,23 +1240,28 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
         // POSICION dentro de otra seccion de este mismo binario. Y ojo con la
         // trampa que el propio formato deja escrita -- los codigos de seccion de
         // una reubicacion **no son los de `SectionKind`**: aqui `2` es rodata.
-        let relocs: Vec<Relocation> = e
-            .reubicaciones
-            .iter()
-            .filter_map(|(off, i)| {
-                donde.get(*i as usize).map(|d| Relocation {
-                    offset: *off as u64,
-                    symbol_idx: 2, // rodata, en la numeracion de las reubicaciones
-                    kind: RelocationKind::SeccionAbs64 as u8,
-                    target_section: 0, // el hueco vive en el codigo
-                    _pad: [0; 2],
-                    addend: *d as i64,
-                })
+        relocs_data.extend(e.reubicaciones.iter().filter_map(|(off, i)| {
+            donde.get(*i as usize).map(|d| Relocation {
+                offset: *off as u64,
+                symbol_idx: 2, // rodata, en la numeracion de las reubicaciones
+                kind: RelocationKind::SeccionAbs64 as u8,
+                target_section: 0, // el hueco vive en el codigo
+                _pad: [0; 2],
+                addend: *d as i64,
             })
-            .collect();
-        if !relocs.is_empty() {
-            b.add_section(BefSection::relocs(relocs));
-        }
+        }));
+    }
+
+    // ** LAS REUBICACIONES VAN JUNTAS Y AL FINAL, y esto era un fallo esperando.
+    //
+    // Estaban DENTRO del `if` de las tablas congeladas, asi que un programa que
+    // pidiera el monton de la tarea **y no tuviera ni una tabla** se habria
+    // llevado su seccion `Data` sin la reubicacion que la alcanza: el inmediato
+    // se quedaria a cero y el monton estaria en la direccion 0.
+    //
+    // Compilaria, pasaria el gate, y moriria al primer `texto + texto`.
+    if !relocs_data.is_empty() {
+        b.add_section(BefSection::relocs(relocs_data));
     }
 
     // ** LO QUE EL BINARIO DICE DE SI MISMO, y llega HECHO.
