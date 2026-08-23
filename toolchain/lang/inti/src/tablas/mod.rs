@@ -348,7 +348,19 @@ pub struct Catalogo {
     ///
     /// Vive en la tabla y no en un `if` porque el dia que `pleno` baje a bytes
     /// lo que cambia es una fila. Un `if` habria que encontrarlo.
-    llegan_a_bytes: HashSet<String>,
+    /// **Que PIEZAS sabe bajar a bytes el compilador** (el gate atomico).
+    ///
+    /// *** Antes era una lista de PERFILES, y el gate miraba el pasaporte en vez
+    /// de lo que traes. Fallaba en las dos direcciones: rechazaba un `pleno` que
+    /// solo usa `texto` --que baja entero-- y habria dejado pasar uno que usa
+    /// `tabla`, que devuelve ceros.
+    ///
+    /// ** Lo que decide si un binario hace lo que dice no es su etiqueta: es
+    /// **que piezas usa y cuales sabe bajar el compilador**.
+    bajan: HashSet<String>,
+    /// Todas las que la tabla NOMBRA, digan `true` o `false`. Es el catalogo de
+    /// lo que el gate vigila.
+    vigiladas: HashSet<String>,
 }
 
 impl Catalogo {
@@ -389,7 +401,8 @@ impl Catalogo {
             crecen: lista("llano", "tipos_que_crecen"),
             without_size: lista("llano", "tipos_sin_medida"),
             cuestan: lista("llano", "tipos_que_cuestan"),
-            llegan_a_bytes: lista("bytes", "llegan"),
+            bajan: bajan_y_vigiladas(&raiz).0,
+            vigiladas: bajan_y_vigiladas(&raiz).1,
         }
     }
 
@@ -422,28 +435,34 @@ impl Catalogo {
         self.cuestan.contains(nombre)
     }
 
-    /// **Este perfil llega a bytes hoy?**
+    /// **Sabe el compilador bajar esta pieza a bytes?**
     ///
-    /// [!] La lista vacia significa *"no lo se"*, no *"ninguno"*, y por eso el
-    /// llamador tiene que mirar tambien si esta vacia. Es la misma cautela que
-    /// `vacio()`: una tabla ilegible no puede parar compilaciones correctas.
-    pub fn llega_a_bytes(&self, perfil: &str) -> bool {
-        self.llegan_a_bytes.is_empty() || self.llegan_a_bytes.contains(perfil)
+    /// [!] La tabla VACIA significa *"no lo se"*, no *"ninguna"*, y por eso
+    /// contesta que si: una instalacion rota no puede convertirse en "nada
+    /// compila". Es la misma cautela que `vacio()`.
+    pub fn baja(&self, pieza: &str) -> bool {
+        self.bajan.is_empty() || self.bajan.contains(pieza)
     }
 
-    /// **Que perfiles sabe bajar a bytes este compilador.** Sale de la tabla,
-    /// no de un `if`, y por eso se puede ENSENAR: es la lista que contesta
-    /// *"que puedes hacer?"* en vez de esperar a que alguien choque con `E0073`.
-    pub fn perfiles_que_llegan(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.llegan_a_bytes.iter().cloned().collect();
+    /// **Vigila el gate esta pieza?** -- o sea, esta en la tabla, diga si o no.
+    ///
+    /// ** Hace falta aparte de `baja` porque son dos preguntas: `natural64` no
+    /// esta vigilado (no es de `pleno`) y `tabla` esta vigilado y contesta que
+    /// NO. Con una sola pregunta, todo lo que no estuviera en la tabla parecia
+    /// que baja -- y eso es cierto, pero no se puede DECIR.
+    pub fn vigilada(&self, pieza: &str) -> bool {
+        self.vigiladas.contains(pieza)
+    }
+
+    /// **Las piezas que SI bajan, ordenadas.** Sale de la tabla, no de un `if`,
+    /// y por eso se puede ENSENAR: es la lista que contesta *"que puedes
+    /// hacer?"* en vez de esperar a que alguien choque con un `E0073`.
+    pub fn piezas_que_bajan(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.bajan.iter().cloned().collect();
         v.sort();
         v
     }
 
-    /// [!] Vacio, y NO por defecto: `Medidas::default()` es lo que queda cuando
-    /// la tabla de medidas esta rota, y ahi todo esta vacio ya. Que el catalogo
-    /// tambien lo este mantiene la misma respuesta --*"no se cuanto mide"*-- en
-    /// vez de anadir una segunda historia encima de una instalacion mala.
     fn vacio() -> Self {
         Self {
             crecen: HashSet::new(),
@@ -451,7 +470,8 @@ impl Catalogo {
             cuestan: HashSet::new(),
             // ** Vacio quiere decir NO ACUSAR, y aqui tambien: una tabla
             // ilegible no puede convertirse en "ningun perfil llega a bytes".
-            llegan_a_bytes: HashSet::new(),
+            bajan: HashSet::new(),
+            vigiladas: HashSet::new(),
         }
     }
 }
@@ -460,4 +480,23 @@ impl Default for Catalogo {
     fn default() -> Self {
         Self::vacio()
     }
+}
+
+/// Las dos mitades de `[bytes.bajan]`: las que bajan, y todas las que nombra.
+fn bajan_y_vigiladas(raiz: &toml::Value) -> (HashSet<String>, HashSet<String>) {
+    let mut bajan = HashSet::new();
+    let mut vigiladas = HashSet::new();
+    if let Some(t) = raiz
+        .get("bytes")
+        .and_then(|b| b.get("bajan"))
+        .and_then(|v| v.as_table())
+    {
+        for (k, val) in t {
+            vigiladas.insert(k.clone());
+            if val.as_bool() == Some(true) {
+                bajan.insert(k.clone());
+            }
+        }
+    }
+    (bajan, vigiladas)
 }

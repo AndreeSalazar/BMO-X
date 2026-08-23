@@ -146,11 +146,38 @@ fn main() {
     // Un intrinseco mudo no rompe la compilacion --el resto del programa esta
     // bien-- asi que sin esto la unica senal seria el binario haciendo otra cosa
     // en metal. Y para un fichero que va a un Ryzen, esa senal llega tarde.
+    // *** Y ESTO YA NO ES UN AVISO: ES UN NO (2026-08-23).
+    //
+    // ## Las manos desnudas del gate
+    //
+    // Aqui ponia `eprintln!("aviso: ...")` y se seguia: el `.ibex` se escribia
+    // igual. Y eso deja pasar lo que ninguna tabla de tipos puede ver -- **una
+    // llamada sin destino es un `call` a un simbolo que no existe**, o sea un
+    // binario que carga, salta a la nada, y se lleva la maquina por delante.
+    //
+    // ** El gate de perfiles lo tapaba por accidente: como `pleno` no compilaba,
+    // nadie llegaba hasta aqui. Al hacer el gate ATOMICO --que mira lo que usas
+    // en vez de tu etiqueta-- ese agujero quedaba a la vista, y taparlo es la
+    // otra mitad del mismo cambio.
+    //
+    // *** Y es la ley de esta casa aplicada sin excepcion: **nada que compile y
+    // no haga lo que dice**. Cada linea de `sin_emitir` es literalmente "esto se
+    // pidio y no llego a un byte". Un binario con una de esas no hace lo que
+    // dice su fuente, y no hay grado intermedio.
     if !emitido.sin_emitir.is_empty() {
-        eprintln!("aviso: {} cosa(s) no llegaron a un byte:", emitido.sin_emitir.len());
+        eprintln!(
+            "E0075 {} cosa(s) se pidieron y no llegaron a un byte.",
+            emitido.sin_emitir.len()
+        );
         for m in &emitido.sin_emitir {
             eprintln!("  - {}", m);
         }
+        eprintln!(
+            "   Un binario al que le falta algo no hace lo que dice su fuente, asi que"
+        );
+        eprintln!("   no se escribe. Antes esto era un aviso y el `.ibex` salia igual.");
+        eprintln!("no se ha escrito nada.");
+        exit(1);
     }
 
     if informe {
@@ -296,16 +323,18 @@ fn puedo() {
     println!("todo sale de las mismas tablas con las que compilo.");
     println!();
 
-    // -- Los perfiles -------------------------------------------------------
+    // -- LAS PIEZAS, que es lo que el gate mira de verdad ------------------
+    //
+    // ** Antes esto listaba PERFILES, y era la pregunta equivocada: un perfil es
+    // una etiqueta. Lo que decide si un programa compila es que PIEZAS usa.
     let cat = bmo_inti_front::perfil::Catalogo::cargar(&raices);
-    let llegan = cat.perfiles_que_llegan();
-    println!("PERFILES");
-    for nombre in ["llano", "pleno"] {
-        if llegan.iter().any(|x| x == nombre) {
-            println!("  {:<8} SI -- compilo esto y sale un `.ibex`", nombre);
+    let bajan = cat.piezas_que_bajan();
+    println!("PIEZAS (el gate mira lo que USAS, no tu perfil)");
+    for nombre in ["texto", "lista", "tabla", "numero", "decimal"] {
+        if bajan.iter().any(|x| x == nombre) {
+            println!("  {:<8} SI -- un programa que la use compila", nombre);
         } else {
-            println!("  {:<8} NO todavia (E0073). El perfil esta especificado", nombre);
-            println!("           entero y es legitimo: lo que falta es su runtime.");
+            println!("  {:<8} NO todavia (E0073), y solo te para si LA USAS", nombre);
         }
     }
     println!();
