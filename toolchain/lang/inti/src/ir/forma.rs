@@ -162,7 +162,7 @@ impl Comprobacion {
     /// proyecto lleva persiguiendo desde el censo de las diez sondas.
     pub fn llega_a_bytes(self) -> bool {
         match self {
-            // ✅ LAS CUATRO. La 2 entro el 2026-08-23, con `lista de T`.
+            // *** LAS CUATRO. La 2 entro el 2026-08-23, con `lista de T`.
             Comprobacion::Desborde
             | Comprobacion::Cociente
             | Comprobacion::EntreCero
