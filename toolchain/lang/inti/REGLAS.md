@@ -41,7 +41,7 @@ Eso descarta los tres modelos que no se eligieron:
 
 | # | en C | en INTI | error | sonda |
 |---|---|---|---|---|
-| **1** | desbordar un entero con signo: **indefinido** | ✅ **atrapa**, y corre. Para dar la vuelta a proposito: `suma_circular(a, b)` | `E1001` | `r01_desborde` |
+| **1** | desbordar un entero con signo: **indefinido** | ✅ **atrapa**, y corre. Para dar la vuelta a proposito: `suma_circular(a, b)`. **Incluye el cociente que no cabe** (`-2^63 entre -1`), que se escribe con una barra y es esta regla | `E1001` | `r01_desborde`, `r01b_cociente` |
 | **2** | indice fuera del array: **indefinido** | ⏳ **espera a `lista de T`**: un `bufer` no lleva su longitud, asi que no hay contra que comprobar -- y por eso indexarlo pide `crudo` | `E1002` / `E0090` | `r02_indice` |
 | **3** | dividir entre cero: **indefinido** | ✅ **atrapa**, y corre. La comprobacion mira el DIVISOR antes de dividir: despues de dividir entre cero no queda programa que mire nada | `E1003` | `r03_division` |
 | **4** | leer sin inicializar: **indefinido** | **imposible de escribir**: no existe declarar sin valor | `E0031` | `r04_sin_valor` |
@@ -56,33 +56,45 @@ Eso descarta los tres modelos que no se eligieron:
 
 ---
 
-## ⚠ UN AGUJERO ABIERTO en la 1, y vive dentro de la 3 (22-08)
+## ✅ EL AGUJERO DE LA 1 QUE VIVIA DENTRO DE LA 3 -- CERRADO (22-08)
 
-**`-2^63 entre -1` no lo comprueba nadie.**
+**`-2^63 entre -1` ya atrapa con `E1001`.**
 
-El cociente no cabe en 64 bits, asi que es la Regla 1 -- pero se escribe como
-una division, y de la division solo se comprueba **el divisor**. Medido:
+El cociente no cabe en 64 bits, asi que es la Regla 1 -- pero se escribe como una
+division, y de la division solo se comprobaba **el divisor**. Estuvo abierto
+menos de un dia y esto es lo que era:
 
 ```text
-   cambiante a es entero64 = -9223372036854775808
-   cambiante b es entero64 = -1
-   devuelve a entre b          ->  reglas pedidas 1, emitidas 1, y sale firmado
+   antes    compilaba limpio, salia FIRMADO, y en el Ryzen moria con una
+            autopsia del kernel -- `idiv` levanta `#DE`, el MISMO vector que
+            dividir entre cero
+   ahora    devuelve E1001, y hay sonda: `r01b_cociente`
 ```
 
-★★ El emisor pone `cqo; idiv`, y ante eso el procesador levanta **`#DE` -- el
-mismo vector que dividir entre cero**. O sea que en el Ryzen ese programa **muere
-con una autopsia del kernel** en vez de atrapar con `E1001`.
+★★ **Una division pide DOS reglas**, y las dos van delante:
 
-No es comportamiento indefinido --la muerte esta definida-- pero **no es lo que
-esta tabla promete**, y esa distancia es justo la que no se puede permitir.
+```text
+   EntreCero   el divisor es cero            -> E1003
+   Cociente    el cociente no cabe           -> E1001
+```
 
-★ Y la forma del fallo es el espejo de todo lo demas: en los otros sitios INTI
-comprueba en software lo que el silicio ya sabia. **Aqui el silicio corta y era
-INTI quien no sabia que eso era una regla.**
+★ **La pide la IR, no la anade el emisor por su cuenta.** La diferencia no es de
+estilo: hay una prueba que exige que *lo que la IR pide* y *lo que el binario
+lleva* cuadren, y esa resta es la que medira al optimizador el dia que haya uno.
+Un emisor que anade reglas por su cuenta rompe esa cuenta antes de que sirva.
 
-> **Sonda que falta: `r01b_cociente`.** Aprobado: `-2^63 entre -1` devuelve
-> `E1001`. Se tapa en software y **no espera a nada** --ver
-> `docs/plan/PLAN_EL_SILICIO.md` sec. 2.4 y 7.4.
+★ Y `Comprobacion::Cociente` es **la unica de las cinco que mira DOS valores** --
+el cociente solo se sale cuando el dividendo es el minimo Y el divisor es -1. Por
+eso `Instr::Comprueba` gano un `contra: Option<Valor>`, y es un `Option` para que
+las otras cuatro no tengan que rellenarlo con algo falso.
+
+⚠ **Lo que costo, medido**: `cpu.ibex` pasa de 8.752 a 8.856 bytes, +104. Y eso
+tiene una consecuencia que hay que decir: **ese fichero ya no es el que corrio en
+el Ryzen el 22-08**. Hace lo mismo y una cosa mas, y la proxima medida se compara
+contra este.
+
+En el camino que no atrapa se paga **una comparacion y un salto que no salta**:
+al segundo `cmp` solo se entra si el divisor es exactamente -1.
 
 ---
 

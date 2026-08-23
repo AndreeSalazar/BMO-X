@@ -54,7 +54,7 @@ fn veredicto(texto: &str) -> String {
 
 #[test]
 fn el_censo_tiene_las_sondas_que_dice() {
-    assert_eq!(sondas().len(), 42, "el numero del censo y el de la carpeta");
+    assert_eq!(sondas().len(), 43, "el numero del censo y el de la carpeta");
 }
 
 /// Cada sonda declara su veredicto en la primera linea, para que la sonda y su

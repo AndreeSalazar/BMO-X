@@ -218,11 +218,12 @@ perfil llano
 funcion f(a es entero64, b es entero64) devuelve entero64
     devuelve (a + b) entre (a - b)
 ";
-    // Dos sumas/restas (Regla 1) y una division (Regla 3).
-    assert_eq!(reglas_de(f), 3);
+    // Dos sumas/restas (Regla 1) y una division, que trae DOS: el divisor cero
+    // (Regla 3) y el cociente que no cabe (Regla 1 otra vez, desde el 22-08).
+    assert_eq!(reglas_de(f), 4);
     assert_eq!(
         emitido(f).comprobaciones,
-        3,
-        "la IR pide tres y el binario tiene que llevar tres"
+        4,
+        "la IR pide cuatro y el binario tiene que llevar cuatro"
     );
 }

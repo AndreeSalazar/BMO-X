@@ -191,9 +191,20 @@ fn la_sonda_del_ryzen_emite_los_mismos_bytes_que_antes_de_p1() {
         paquete::seccion(&con, SectionKind::Code),
         "el manifiesto cambio el codigo de la sonda"
     );
-    // El fichero sin manifiesto tiene que seguir midiendo lo de siempre: es el
-    // numero que aparece en `PLAN_DE_PRUEBAS.md` al lado de la medida del Ryzen.
-    assert_eq!(sin.len(), 8752, "la emision de la sonda cambio de tamano");
+    // ** LA LINEA BASE, Y SE MOVIO A PROPOSITO EL 2026-08-22.
+    //
+    //     8.752   hasta que se anadio la regla del cociente
+    //     8.856   con ella: +104 bytes, la guardia de `-2^63 entre -1` en cada
+    //             division que la sonda hace
+    //
+    // *** Este numero NO se toca para que un test pase. Se movio porque el
+    // binario lleva una regla mas de verdad, y la diferencia esta contada:
+    // `reglas emitidas` subio en el informe.
+    //
+    // ** Y tiene una consecuencia que hay que decir: `cpu.ibex` ya no es el
+    // fichero que corrio en el Ryzen el 22-08. Hace lo mismo y una cosa mas, y
+    // la proxima medida se compara contra ESTE.
+    assert_eq!(sin.len(), 8856, "la emision de la sonda cambio de tamano");
 }
 
 /// **EL CODIGO NO CAMBIA POR LLEVAR MANIFIESTO.**

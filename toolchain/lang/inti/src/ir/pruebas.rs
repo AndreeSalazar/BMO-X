@@ -101,10 +101,30 @@ fn una_suma_trae_su_comprobacion_de_desborde() {
     assert_eq!(comprobaciones(&f), vec![Comprobacion::Desborde]);
 }
 
+/// **UNA DIVISION TRAE DOS REGLAS, y en este orden.**
+///
+/// ** Las dos son de la division y ninguna sobra:
+///
+/// ```text
+///    EntreCero   el divisor es cero        -> E1003
+///    Cociente    `-2^63 entre -1` no cabe  -> E1001, y es la Regla 1
+/// ```
+///
+/// *** La segunda no la pedia nadie hasta el 2026-08-22. El cociente que no
+/// cabe se escribe con una barra, asi que se colaba entre las dos: de la
+/// division solo se miraba el divisor. En metal eso era una autopsia del
+/// kernel en vez de una trampa, porque `idiv` levanta `#DE` -- el mismo
+/// vector que dividir entre cero.
+///
+/// El ORDEN se fija a proposito: las dos van ANTES de la division, porque
+/// despues de dividir mal ya no queda programa que mire nada.
 #[test]
-fn una_division_trae_la_de_entre_cero() {
+fn una_division_trae_sus_dos_reglas() {
     let f = en_funcion("devuelve a / b\n");
-    assert_eq!(comprobaciones(&f), vec![Comprobacion::EntreCero]);
+    assert_eq!(
+        comprobaciones(&f),
+        vec![Comprobacion::EntreCero, Comprobacion::Cociente]
+    );
 }
 
 /// Comparar y los bits no pueden salirse, asi que no pagan nada.
