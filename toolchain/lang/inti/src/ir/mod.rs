@@ -387,7 +387,17 @@ impl<'t> Descenso<'t> {
     fn funcion(mut self, f: &arbol::Funcion) -> FuncionIr {
         // Los tipos escritos de esta funcion. Sin esto, `p.x` no sabe de que
         // registro es `p` -- y esa es toda la informacion que hace falta.
-        self.tipos = crate::disposicion::tipos_de(f);
+        // *** CON DEDUCCION, y esto era un agujero de medio dia (2026-08-23).
+        //
+        // Aqui ponia `tipos_de(f)` -- solo los tipos ESCRITOS. Asi que la
+        // deduccion que se construyo esta manana la usaba `disposicion` para
+        // COMPROBAR y no la usaba la IR para EMITIR: **dos respuestas distintas a
+        // "de que tipo es esto" dentro del mismo compilador.**
+        //
+        // ** Y se noto donde se tenia que notar: `a = "ho"` seguido de `a + b`
+        // no bajaba a `junta`, porque aqui `a` no tenia tipo. La comprobacion
+        // decia que si y el codigo decia que no -- y el que manda es el codigo.
+        self.tipos = crate::disposicion::tipos_de_con(f, Some(self.plano));
         for p in &f.parametros {
             self.local(&p.nombre);
         }
