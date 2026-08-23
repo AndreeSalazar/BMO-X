@@ -55,6 +55,16 @@ pub struct Medidas {
     /// Los que se operan con la aritmetica de enteros. Las dos listas juntas
     /// son el catalogo de conversiones que el lenguaje admite.
     enteros: Vec<String>,
+    /// **Los tipos cuya alineacion NO es su medida.**
+    ///
+    /// ** Hasta el 2026-08-23 este mapa no hacia falta y no por descuido: todos
+    /// los tipos anteriores median una potencia de dos y se alineaban a ella,
+    /// asi que contestar con la medida acertaba SIEMPRE. `numero` rompe la
+    /// coincidencia --mide 16 y se alinea a 8-- y al romperla deja ver que
+    /// eran dos preguntas todo el rato.
+    ///
+    /// Vacio significa *"todos coinciden"*, que es lo que era verdad hasta hoy.
+    alineaciones: HashMap<String, u32>,
     /// **Los tipos con nombre que CRECEN**, y que por tanto se guardan por
     /// referencia. Sale de `biblioteca.toml`, no de esta tabla.
     ///
@@ -110,6 +120,14 @@ impl Medidas {
         // diferencia entre "mide 4 en todas partes" y "mide 4 en esta maquina"
         // es del que ESCRIBE la tabla, no del que la lee. Al leerla, un tipo
         // mide lo que mide.
+        let mut alineaciones = HashMap::new();
+        if let Some(t) = raiz.get("alineacion").and_then(|v| v.as_table()) {
+            for (k, v) in t {
+                if let Some(n) = v.as_integer() {
+                    alineaciones.insert(k.clone(), n as u32);
+                }
+            }
+        }
         for seccion in ["bytes", "bytes_de_esta_maquina"] {
             if let Some(t) = raiz.get(seccion).and_then(|v| v.as_table()) {
                 for (k, v) in t {
@@ -132,6 +150,7 @@ impl Medidas {
         };
         Self {
             bytes,
+            alineaciones,
             flotantes: lista("flotantes"),
             enteros: lista("enteros"),
             // [!] `desde_tabla` cambia la MAQUINA, no la BIBLIOTECA. Un
@@ -140,6 +159,18 @@ impl Medidas {
             // `tests/segunda_maquina.rs` se lleva el catalogo de siempre.
             crecen: crate::tablas::Catalogo::por_defecto(),
         }
+    }
+
+    /// **A cuanto se alinea este tipo.**
+    ///
+    /// La respuesta por defecto es su medida --que fue verdad para todo hasta
+    /// que existio `numero`-- y la tabla puede desmentirla fila a fila.
+    ///
+    /// [!] El orden importa: la excepcion PRIMERO. Al reves, un tipo con
+    /// alineacion propia se alinearia a su medida y la fila no serviria de
+    /// nada, en silencio.
+    pub fn alineacion(&self, nombre: &str) -> Option<u32> {
+        self.alineaciones.get(nombre).copied().or_else(|| self.de(nombre))
     }
 
     /// Este tipo con nombre, crece? -- y entonces mide una referencia.
@@ -282,7 +313,9 @@ impl Plano {
             Tipo::Nombre(n) if self.crece(n) => self.medidas.de("referencia"),
             Tipo::Nombre(n) => match self.registros.get(n) {
                 Some(r) => Some(r.alineacion),
-                None => self.medidas.de(n),
+                // ** `alineacion` y no `de`: desde `numero`, medir y alinear
+                // dejaron de ser la misma pregunta.
+                None => self.medidas.alineacion(n),
             },
             Tipo::Bufer(_) => self.medidas.de("bufer"),
             // Una referencia se alinea como lo que es: una direccion.
@@ -540,48 +573,39 @@ pub fn comprobar(m: &Modulo, medidas: Medidas) -> Cosecha<Plano> {
     };
     let mut avisos = Vec::new();
 
-    // ** ESTE MODULO SOLO TRABAJA EN `llano`, y el motivo CAMBIO el 2026-08-23.
+    // === *** LA PUERTA SE ABRIO EL 2026-08-23, y aqui queda su historia ===
     //
-    // === Lo que decia antes, y ya no es verdad ===
+    // Este modulo trabajo SOLO en `llano` desde que existe, y la puerta tuvo
+    // dos condiciones, no una. Las dos estaban escritas y se cayeron por
+    // separado:
     //
-    // Decia que en `pleno` un `texto` crece, que lo que se guarda es una
-    // referencia, y que ese modelo no estaba construido -- asi que abrir la
-    // puerta denunciaria `nombre es texto`, que alli es correcto.
+    //     `texto`   no media      -> 22/23-08: mide una REFERENCIA, y no por
+    //                                una fila suya sino porque CRECE
+    //     `numero`  sin disposicion -> 23-08: coeficiente entero64 + escala,
+    //                                16 bytes, alineacion 8
     //
-    // **Eso esta resuelto.** `texto` mide una referencia, y no por una fila
-    // suya sino porque esta en `tipos_que_crecen`. Medido con la puerta abierta
-    // a proposito para ver que salia:
+    // ** La segunda la decidio Eddi, y con el argumento que hace al lenguaje:
+    // *"INTI es un guiador al Samurai CPU"*. Un `imul` de 64 bits ES una
+    // instruccion; el coeficiente de 128 bits que este proyecto llevaba meses
+    // prometiendo es software fingiendo serlo.
     //
-    //     registro Persona                    -> medida 16, alineacion 8
-    //         nombre es texto                    dos referencias, sin una queja
+    // Medido con la puerta abierta, que es como se supo que se podia abrir:
+    //
+    //     registro Persona                  ->  medida 16, alineacion 8
+    //         nombre es texto
     //         notas es lista de entero64
     //
-    // === *** Y lo que la mantiene cerrada AHORA, que es otra cosa ===
+    // [!] Y LO QUE ESTO NO SIGNIFICA, dicho aqui para que no se lea de mas:
+    // **`pleno` no compila.** `biblioteca.toml` sigue diciendo
+    // `[bytes] llegan = ["llano"]`, asi que un modulo `pleno` no baja a bytes y
+    // no sale un `.bex` firmado. Lo unico que cambia es que ahora se puede
+    // MEDIR, que es el escalon de debajo: saber donde va cada campo antes de
+    // saber emitir el codigo que lo toca.
     //
-    // La misma sonda, con el otro campo:
-    //
-    //     registro Cuenta                     -> E0121, medida 0
-    //         saldo es numero
-    //
-    // `numero` en `pleno` es **decimal exacto** --coeficiente de 128 bits mas
-    // escala, seccion 10.3 del maestro-- y esa disposicion **no esta decidida**.
-    // No es que falte una fila: es que nadie ha dicho todavia cuantos bytes son,
-    // en que orden, ni donde va el signo. Es una decision de diseno del dueno,
-    // no trabajo mecanico, y el plan lo dice con esas palabras.
-    //
-    // ** Abrir la puerta hoy cambiaria un aviso correcto por otro peor: diria
-    // *"no se cuanto mide `numero`"*, que manda a buscar una medida que no
-    // falta, en vez de *"el decimal no tiene disposicion todavia"*, que explica
-    // una decision pendiente. Es la distincion de la familia `E0073`, y este
-    // compilador ya la pago una vez.
-    //
-    // El dia que el decimal tenga su forma, lo que hace falta es su fila en
-    // `medidas.toml` y **esta puerta se abre entera**. La otra mitad ya esta
-    // pagada, y hay una prueba que lo fija:
-    // `pruebas::la_puerta_de_pleno_ya_solo_espera_al_decimal`.
-    if !matches!(m.perfil, crate::arbol::Perfil::Llano) {
-        return Cosecha::con(plano, avisos);
-    }
+    // ** Se hace en este orden a proposito, y es el mismo que este proyecto usa
+    // siempre: el CONTRATO antes que el codigo. Una disposicion mal elegida se
+    // paga en cada dato que se escriba a disco; el emisor que la use se puede
+    // reescribir el martes.
 
     // 1. Medir los registros. En el orden en que se declararon, que es lo que
     //    permite que uno lleve otro dentro sin resolver dependencias: si el de
@@ -660,7 +684,41 @@ pub fn comprobar(m: &Modulo, medidas: Medidas) -> Cosecha<Plano> {
         }
     }
 
-    // 2. Comprobar cada uso.
+    // 2. Comprobar cada uso. **SOLO EN `llano`**, y esto lo descubrio el censo.
+    //
+    // === *** La puerta no era una, eran DOS, y solo cayo la de medir ===
+    //
+    // Al abrir la de arriba, `censo/f05_registro.inti` --que declara COMPILA y
+    // llevaba compilando desde F0-- se puso roja con dos `E0121`:
+    //
+    //     perfil pleno
+    //     funcion principal
+    //         a = Alumno("ana", 9)
+    //         escribe(a.nombre)      <- "no se sabe de que tipo es esto"
+    //
+    // Y el aviso era **una regla de `llano` metida en `pleno`**. En `llano` los
+    // tipos son obligatorios (`E0020`), asi que exigir que `a` diga el suyo es
+    // correcto alli. En `pleno` son OPCIONALES --seccion 10.11 del maestro-- y
+    // el tipo de `a` sale de INFERIRLO de `Alumno(...)`. La inferencia no
+    // existe todavia; lo que no puede pasar es que su ausencia se disfrace de
+    // error del programa.
+    //
+    // ** Asi que las dos mitades de este modulo tienen perfiles distintos, y no
+    // es una excepcion comoda: son dos preguntas.
+    //
+    //     MEDIR      cuanto ocupa un tipo         <- no necesita inferir nada.
+    //                                               Vale en los dos perfiles
+    //     COMPROBAR  este `.campo` existe?        <- necesita saber el tipo de
+    //                                               quien lo pide, y en `pleno`
+    //                                               ese tipo se infiere
+    //
+    // El dia que `pleno` tenga inferencia, esta condicion se borra y no hay que
+    // tocar nada mas. La prueba que lo fija es
+    // `en_pleno_se_mide_pero_todavia_no_se_comprueba_el_campo`.
+    if !matches!(m.perfil, crate::arbol::Perfil::Llano) {
+        return Cosecha::con(plano, avisos);
+    }
+
     for d in &m.declaraciones {
         match d {
             Decl::Funcion(f) => revisa_funcion(f, &plano, &mut avisos),
