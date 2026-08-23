@@ -144,26 +144,32 @@ pub(crate) fn olvidar() {
 
 /// Lee la salud del bus y pinta la luz **si cambio algo**.
 ///
-/// Se llama una vez por fotograma. Las dos lecturas de `OP_INFO` cuestan dos
-/// puertas de ~884 ciclos, y aun asi no se hacen siempre: `cada` las espacia.
-/// No porque duelan --a 60 fps serian 106.000 ciclos por segundo, nada-- sino
-/// porque un estado que cambia despacio no se aprende mirandolo mas rapido.
-pub(crate) fn refrescar(p: &bmo::Pantalla, frames: u32, cada: u32) {
-    // ** Se cuenta LA DISTANCIA al ultimo refresco, no `frames % cada`. El
-    // modulo parece lo mismo y no lo es: quien llama solo lo hace en los
-    // fotogramas que pintan, asi que un `% 15` puede caer sistematicamente en
-    // vueltas que no pintan y dejar la luz sin mirar durante mucho rato. La
-    // distancia no depende de con que fotogramas coincida.
-    static mut VISTO_EN: u32 = 0;
+/// Se llama una vez por vuelta que pinte. Las dos lecturas de `OP_INFO` cuestan
+/// dos puertas de ~884 ciclos, y aun asi no se hacen siempre: `cada_ciclos` las
+/// espacia. No porque duelan, sino porque un estado que cambia despacio no se
+/// aprende mirandolo mas rapido.
+///
+/// ** `cada_ciclos` SON CICLOS Y ANTES ERAN VUELTAS. El llamante pasaba `15` con
+/// un comentario que afirmaba que eran ~250 ms porque el escritorio iba a 60 por
+/// segundo; el bucle del escritorio no tiene freno y nadie lo habia contado. Lo
+/// que llega ahora es `Tick::quarter_cycles()`, que sale del reloj de
+/// referencia. Ver `desktop::Tick`.
+pub(crate) fn refrescar(p: &bmo::Pantalla, cada_ciclos: u64) {
+    // ** Se cuenta LA DISTANCIA al ultimo refresco, y por eso esto no puede leer
+    // el flanco `Tick::quarter`: quien llama solo lo hace en las vueltas que
+    // pintan, asi que un flanco levantado en una vuelta muda no lo veria nadie.
+    // La distancia no depende de con que vuelta coincida.
+    static mut VISTO_EN: u64 = 0;
     // Se COPIA el valor en vez de preguntarle al `static`: un `ULTIMA.is_none()`
     // toma una referencia compartida a un `static mut`, que es UB aunque
     // compile y el compilador lo avisa. `Luz` es `Copy`, asi que leerlo cuesta
     // lo mismo y no crea ninguna referencia.
     let previa = unsafe { ULTIMA };
-    if previa.is_some() && frames.wrapping_sub(unsafe { VISTO_EN }) < cada {
+    let ahora = bmo::ciclos();
+    if previa.is_some() && ahora.wrapping_sub(unsafe { VISTO_EN }) < cada_ciclos {
         return;
     }
-    unsafe { VISTO_EN = frames };
+    unsafe { VISTO_EN = ahora };
     let luz = leer();
     if previa == Some(luz) {
         return;

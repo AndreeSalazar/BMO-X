@@ -224,7 +224,14 @@ pub(crate) struct SoundState {
 /// What only lives for one turn of the loop, plus the two edge detectors that
 /// have to remember the turn before.
 pub(crate) struct Tick {
-    pub frames: u32,
+    /// **Vueltas del bucle principal**, no fotogramas.
+    ///
+    /// * SE LLAMABA `frames`, Y ESE NOMBRE ERA EL FALLO. Este contador sube una
+    /// vez por vuelta y el bucle no tiene freno --acaba en `yield_screen()` y
+    /// vuelve--, asi que una vuelta que no pinta nada son unas pocas puertas.
+    /// Quien leia `frames` entendia "fotogramas de pantalla" y calibraba contra
+    /// sesenta por segundo; tres sitios lo hicieron. Ver `loops_per_second`.
+    pub loops: u32,
     pub will_paint: bool,
     pub repaint_field: bool,
     /// Where the mouse cursor was left. `u32::MAX` means "nowhere yet".
@@ -247,6 +254,118 @@ pub(crate) struct Tick {
     /// The rectangles left behind by windows whose app died, to give back to
     /// the desktop. A mailbox, not a state: filled and emptied in one turn.
     pub dead_boxes: [(u32, u32, u32, u32); crate::scene::surface::MAX],
+    /// **How many passes of the main loop fit in a second**, last time a whole
+    /// second could be closed. `0` until the first one closes.
+    ///
+    /// * IT IS MEASURED BECAUSE IT WAS BEING ASSUMED. Two grids timed their
+    /// double click by counting `frames` against a constant whose comment said
+    /// *"a los ~60 por segundo del escritorio son unos 400 ms"* -- and this
+    /// loop has no pacing at all: it ends in `yield_screen()` and comes right
+    /// back. Nobody had ever counted, so nobody knew whether that gesture was
+    /// 400 ms or 4. The gesture now uses cycles (`scene::double_click`), and
+    /// this number exists so the rhythm itself stops being a guess. It shows in
+    /// F7, which is the window for when something feels slow.
+    pub loops_per_second: u32,
+    /// **True on the pass that opened a new quarter second.** Whoever refreshes
+    /// on a rhythm reads this instead of counting passes.
+    ///
+    /// It is consumed in `desktop::paint::compose`, which runs on EVERY pass --
+    /// if it were read only on passes that paint, the edge would be missed. The
+    /// USB witness light does have that constraint, and that is why it keeps
+    /// its own distance instead: see `scene::testigo::refrescar`.
+    pub quarter: bool,
+    /// The open sample: when it started (cycles) and at which pass.
+    sample_at: u64,
+    sample_loops: u32,
+    /// When the current quarter second started, in cycles.
+    quarter_at: u64,
+    /// The reference clock, asked **once** in the life of the process.
+    ///
+    /// `INFO_TSC_HZ` never changes, and asking it every pass would put a 969
+    /// cycle syscall inside the loop this field exists to measure -- an
+    /// instrument that changes what it measures. `u64::MAX` is what gets stored
+    /// when the kernel answers `0`: the second never closes, no rate is ever
+    /// published, and the question is not asked again.
+    tsc_hz: u64,
+}
+
+/// What `tsc_hz` holds when the kernel could not give a reference clock.
+///
+/// Not `0`: zero means "not asked yet", and telling them apart is what keeps
+/// the question from being asked once per pass forever.
+const NO_CLOCK: u64 = u64::MAX;
+
+/// How often anything that refreshes on a rhythm should refresh.
+///
+/// A quarter of a second, and the number comes from the measurement itself: the
+/// CPU rows of F7 are **differences between two readings**, so a window of 16 ms
+/// makes a watt tremble instead of settle. Refreshing faster does not give more
+/// information -- it gives the same information shaking.
+const QUARTER_MS: u64 = 250;
+
+/// Passes between refreshes when there is no reference clock. Exactly what the
+/// two callers used before this existed, so a machine without a calibrated TSC
+/// is left no worse than it was.
+const QUARTER_LOOPS: u32 = 15;
+
+impl Tick {
+    /// **One pass of the main loop.** Counts it, raises the rhythm edge, and
+    /// closes the second when it is due.
+    ///
+    /// `bmo::ciclos()` is `rdtsc`, not a syscall -- a couple of dozen cycles --
+    /// so reading it every pass is affordable. What is not affordable is kept
+    /// out on purpose: see `tsc_hz`.
+    pub fn pulse(&mut self) {
+        self.loops = self.loops.wrapping_add(1);
+        let now = bmo::ciclos();
+        if self.tsc_hz == 0 {
+            let hz = bmo::info(bmo::INFO_TSC_HZ);
+            self.tsc_hz = if hz == 0 { NO_CLOCK } else { hz };
+            self.sample_at = now;
+            self.sample_loops = self.loops;
+            self.quarter_at = now;
+            self.quarter = false;
+            return;
+        }
+        if self.tsc_hz == NO_CLOCK {
+            // Sin reloj no hay ritmo que medir: se cuenta como se contaba.
+            self.quarter = self.loops % QUARTER_LOOPS == 0;
+            return;
+        }
+        self.quarter = now.wrapping_sub(self.quarter_at) >= self.ciclos_de(QUARTER_MS);
+        if self.quarter {
+            self.quarter_at = now;
+        }
+        if now.wrapping_sub(self.sample_at) >= self.tsc_hz {
+            self.loops_per_second = self.loops.wrapping_sub(self.sample_loops);
+            self.sample_at = now;
+            self.sample_loops = self.loops;
+        }
+    }
+
+    /// The same quarter second as `quarter`, in cycles, for whoever cannot read
+    /// the edge because they are not called on every pass.
+    pub fn quarter_cycles(&self) -> u64 {
+        self.ciclos_de(QUARTER_MS)
+    }
+
+    /// How many cycles `ms` milliseconds are **on this machine**.
+    ///
+    /// It is handed out instead of the frequency because the caller should not
+    /// have to do this conversion again: three places got the same conversion
+    /// wrong by assuming a rate instead of asking for one.
+    ///
+    /// ** ZERO when there is no reference clock -- and zero means *"no spacing
+    /// is possible, look every time"*, not *"never"*. A caller that spaces two
+    /// `OP_INFO` reads is then paying a few hundred cycles it did not have to;
+    /// a caller that never looks again leaves a light lying about the bus. Of
+    /// the two ways to be wrong without a clock, that is the cheap one.
+    pub fn ciclos_de(&self, ms: u64) -> u64 {
+        if self.tsc_hz == 0 || self.tsc_hz == NO_CLOCK {
+            return 0;
+        }
+        (self.tsc_hz / 1_000) * ms
+    }
 }
 
 /// The whole desktop, minus the screen and the input capability.
@@ -429,7 +548,7 @@ pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'sta
             pressed: None,
         });
         core::ptr::addr_of_mut!((*slot).tick).write(Tick {
-            frames: 0,
+            loops: 0,
             will_paint: false,
             repaint_field: false,
             ax: u32::MAX,
@@ -440,6 +559,12 @@ pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'sta
             key_during_combo: false,
             calc_hover: None,
             dead_boxes: [(0, 0, 0, 0); crate::scene::surface::MAX],
+            loops_per_second: 0,
+            quarter: false,
+            sample_at: 0,
+            sample_loops: 0,
+            quarter_at: 0,
+            tsc_hz: 0,
         });
         core::ptr::addr_of_mut!((*slot).resp).write([0; 24]);
         core::ptr::addr_of_mut!((*slot).resp_n).write(0);

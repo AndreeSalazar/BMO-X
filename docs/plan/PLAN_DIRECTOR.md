@@ -528,3 +528,88 @@ ya las separaba: el crate, el binario y el fichero nunca se llamaron igual.
 ⚠ Y el 8.3 sigue mandando en todo lo demas: el driver FAT32 del kernel se niega
 a recortar nombres, porque un nombre recortado abre otro archivo -- y en un
 cargador de programas eso es ejecutar otro binario.
+
+
+---
+
+# ★★ EL RITMO DEL ESCRITORIO ERA UNA SUPOSICION -- 2026-08-23
+
+> Lo trajo el dueno como una queja de uso: *"el DIRECTOR algo falla en darle
+> autoridad en pantalla para que DOOM tome"*. La autoridad estaba bien. Lo que
+> fallaba era **que el icono no llegaba a lanzar nada.**
+
+## Lo que se encontro, y no era uno sino tres
+
+El 19-08 (`cc5e6922`) un clic paso a SENALAR y el lanzamiento a **doble** clic.
+El gesto se media contando `Tick::frames` contra una constante:
+
+```text
+   pub const DOBLE_CLIC: u32 = 24;   // "a los ~60 por segundo, unos 400 ms"
+```
+
+Ese comentario tenia dos afirmaciones y **ninguna se sostiene**:
+
+1. **El contador no cuenta fotogramas: cuenta VUELTAS DEL BUCLE.** Sube una vez
+   por pasada y el bucle no tiene freno --acaba en `yield_screen()` y vuelve--,
+   asi que una vuelta muda son unas pocas puertas. Nadie lo habia contado nunca.
+2. **Si hay reloj fino en Ring 3**, y se estaba usando trescientas lineas mas
+   abajo en el mismo fichero: `lend_screen` construye su presupuesto de treinta
+   segundos con `bmo::ciclos()` y `INFO_TSC_HZ`. El motivo escrito para contar
+   fotogramas --*"en Ring 3 no hay reloj mas fino que el segundo"*-- era falso
+   cuando se escribio.
+
+★★★ **Y el aviso estaba escrito, en el sitio correcto, un mes antes.** El campo
+`clic_frame` de la ventana de Datos lo decia con todas las letras:
+
+> *"si el bucle del escritorio corre mas rapido, la ventana del doble clic se
+> acorta sola. Es el precio de no tener un contador fino, y se paga
+> sabiendolo."*
+
+El riesgo estaba bien visto. Lo que estaba mal era la premisa de la que colgaba,
+y **un riesgo aceptado sobre una premisa falsa no es una decision: es un fallo
+con documentacion**.
+
+## Los TRES sitios, porque la suposicion era la misma
+
+```text
+   doble clic de los iconos      scene/launcher.rs      -> no lanzaba
+   doble clic de ESTRATOS        scene/data/mod.rs      -> no abria
+   refresco de F7 / F8           desktop/paint.rs       -> `frames % 15`, y los
+                                                          vatios son DIFERENCIAS
+                                                          entre dos lecturas
+   la luz del bus USB            scene/testigo.rs       -> distancia de 15 vueltas
+```
+
+Las dos ultimas no rompen nada visible: **refrescan de mas**. Los numeros del CPU
+en F7 son diferencias entre dos lecturas, y con una ventana corta un vatio
+tiembla en vez de asentarse -- que es exactamente lo que el comentario de
+`paint.rs` temia y daba por evitado.
+
+## Como quedo
+
+```text
+   scene/double_click.rs   NUEVO.  El gesto, en CICLOS y en un solo sitio.
+                           400 ms, convertidos con INFO_TSC_HZ al usarlos.
+   Tick::pulse()           cuenta la vuelta, levanta el flanco del cuarto de
+                           segundo y CIERRA UN SEGUNDO: `loops_per_second`.
+   Tick::frames            pasa a llamarse `loops`.  El nombre era la mentira.
+   F7                      fila `escritorio`: N vueltas/s, del bucle, no
+                           fotogramas.  La cifra deja de ser una suposicion.
+```
+
+★ **Y el fallback esta elegido en los dos sentidos, no por comodidad:** sin
+`INFO_TSC_HZ` la ventana del gesto se abre entera --el segundo clic sobre lo
+mismo abre, tarde lo que tarde-- y el espaciado de los refrescos vale `0`, o sea
+*"mira siempre"*. De las dos formas de equivocarse sin reloj se coge la barata:
+un raton sin reloj todavia sabe distinguir dos de uno, y una luz que no vuelve a
+mirar miente sobre el bus.
+
+```text
+   aprobado:  doble clic en el icono de DOOM y arranca; doble clic en la
+              rejilla de ESTRATOS y entra; y F7 dice cuantas vueltas da esto
+              de verdad.  Ver `../metal/PRUEBA_EN_METAL_0823.md`.
+```
+
+⚠ **Nada de esto lo ha visto un CPU.** Compila, enlaza a `d.bex` (544.088 B) y
+el banco del anfitrion sigue en 1.304 filas verdes -- pero el gesto es del raton
+de una persona, y eso no se prueba en un emulador.

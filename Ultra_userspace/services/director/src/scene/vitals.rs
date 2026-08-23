@@ -122,7 +122,10 @@ fn bar(used_one: u64, total: u64, width: usize, dst: &mut [u8], n: &mut usize) {
     place(b"]", dst, n);
 }
 
-pub(crate) fn paint(p: &bmo::Pantalla, c: &VitalsWindow) {
+/// `vueltas` son las del bucle del escritorio en el ultimo segundo entero
+/// (`desktop::Tick::loops_per_second`). Llega como argumento y no se calcula
+/// aqui porque una VISTA no mide: mide quien da las vueltas.
+pub(crate) fn paint(p: &bmo::Pantalla, c: &VitalsWindow, vueltas: u32) {
     if c.chrome.minimized {
         return;
     }
@@ -154,7 +157,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &VitalsWindow) {
     let mut b = [0u8; 96];
 
     match c.which {
-        Which::Cpu => paint_cpu(p, c, tx, &mut y, step, &mut b),
+        Which::Cpu => paint_cpu(p, c, tx, &mut y, step, &mut b, vueltas),
         Which::Memoria => paint_memory(p, c, tx, &mut y, step, &mut b),
     }
 
@@ -175,7 +178,15 @@ fn row(p: &bmo::Pantalla, x: u32, y: u32, etiq: &str, b: &[u8], ink: u32) {
     }
 }
 
-fn paint_cpu(p: &bmo::Pantalla, c: &VitalsWindow, tx: u32, y: &mut u32, step: u32, b: &mut [u8; 96]) {
+fn paint_cpu(
+    p: &bmo::Pantalla,
+    c: &VitalsWindow,
+    tx: u32,
+    y: &mut u32,
+    step: u32,
+    b: &mut [u8; 96],
+    vueltas: u32,
+) {
     let _ = c;
 
     // ** LO PRIMERO ES QUE SABE MEDIR, y no una medida.
@@ -257,6 +268,29 @@ fn paint_cpu(p: &bmo::Pantalla, c: &VitalsWindow, tx: u32, y: &mut u32, step: u3
     num(bmo::info(bmo::INFO_TAREAS_LISTAS), b, &mut n);
     place(b" listas", b, &mut n);
     row(p, tx, *y, "planificador", &b[..n], INK);
+    *y += step;
+
+    // ** LA VUELTA DEL ESCRITORIO, que hasta hoy nadie habia contado.
+    //
+    // Tres sitios calibraron un ritmo contra "unos 60 por segundo" sin que
+    // ninguno lo midiera, y el doble clic de los iconos era uno de ellos: con el
+    // bucle corriendo mucho mas rapido, la ventana del gesto se encogia sola y
+    // un icono se podia senalar sin abrirse nunca. Ver `scene::double_click`.
+    //
+    // Va en F7 porque F7 es la ventana de "algo va lento", y esta es la cifra
+    // que dice si el lento es el escritorio.
+    let mut n = 0usize;
+    if vueltas == 0 && hz == 0 {
+        // Sin reloj de referencia no hay ritmo que medir, y decir "aun" seria
+        // prometer un numero que no va a llegar nunca.
+        place(b"-- (sin reloj de referencia)", b, &mut n);
+    } else if vueltas == 0 {
+        place(b"-- (aun sin un segundo entero)", b, &mut n);
+    } else {
+        num(vueltas as u64, b, &mut n);
+        place(b" vueltas/s   del bucle, no fotogramas", b, &mut n);
+    }
+    row(p, tx, *y, "escritorio", &b[..n], if vueltas == 0 { INK_DIM } else { INK });
 }
 
 fn paint_memory(p: &bmo::Pantalla, c: &VitalsWindow, tx: u32, y: &mut u32, step: u32, b: &mut [u8; 96]) {

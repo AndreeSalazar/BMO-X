@@ -79,6 +79,7 @@ use bmo_userland as bmo;
 
 use super::arbol;
 use super::consola::{self, Consola};
+use super::double_click::DoubleClick;
 use super::iconos;
 use super::menu::{self, Menu};
 use super::numeros;
@@ -90,13 +91,6 @@ use super::*;
 // dice de que ventana estas hablando antes de leer su titulo. Lo que cambia es
 // el tono -- el verde de antes era de rotulador, escogido para verse en una foto
 // de una pantalla que a lo mejor ni arrancaba.
-/// Cuantos fotogramas caben entre los dos clics de un doble clic.
-///
-/// Veinticuatro, que a los ~60 por segundo del escritorio son unos 400 ms -- la
-/// cifra que usan todos y la que tiene la mano acostumbrada. Ver `clic_frame`
-/// en [`DataWindow`] para por que esto se mide en fotogramas.
-pub(crate) const DOBLE_CLIC: u32 = 24;
-
 pub(crate) const DATA_BG: u32 = 0x0013_1C18;
 pub(crate) const DATA_TITLE_BG: u32 = 0x001B_2622;
 /// El borde, discreto. Lo que separa la ventana del fondo es la sombra.
@@ -133,18 +127,19 @@ pub(crate) struct DataWindow {
     pub(crate) verified: Option<u64>,
     /// Lo que se esta mirando dentro de un fichero, si hay algo.
     pub(crate) visor: Visor,
-    /// El fotograma del ultimo clic en la rejilla, y sobre que fila cayo.
+    /// La mitad abierta de un doble clic en la rejilla. Ver
+    /// [`super::double_click`].
     ///
-    /// ** SE CUENTA EN FOTOGRAMAS Y NO EN MILISEGUNDOS, y no es por gusto: en
-    /// Ring 3 el unico reloj que hay es `INFO_FECHA`, que da la hora de la
-    /// placa **al segundo**. Con esa resolucion no se puede distinguir un doble
-    /// clic de dos clics seguidos.
+    /// ** AQUI VIVIA EL AVISO QUE ACABO SIENDO EL FALLO. Decia que esto se
+    /// contaba en fotogramas porque *"en Ring 3 el unico reloj que hay es
+    /// `INFO_FECHA`, que da la hora de la placa al segundo"*, y remataba: *"si
+    /// el bucle del escritorio corre mas rapido, la ventana del doble clic se
+    /// acorta sola. Es el precio de no tener un contador fino, y se paga
+    /// sabiendolo."*
     ///
-    /// La consecuencia, dicha: si el bucle del escritorio corre mas rapido, la
-    /// ventana del doble clic se acorta sola. Es el precio de no tener un
-    /// contador fino, y se paga sabiendolo.
-    clic_frame: u32,
-    clic_fila: usize,
+    /// El riesgo estaba bien visto y **la premisa era falsa**: `bmo::ciclos()`
+    /// es `rdtsc` y Ring 3 puede ejecutarlo. No habia precio que pagar.
+    doble: DoubleClick,
     /// Por donde va el sellado. Ver [`Seal`].
     pub(crate) seal: Seal,
     /// El terminal del pie, `Ctrl+n`. Ver [`super::consola`].
@@ -252,8 +247,7 @@ impl DataWindow {
             arbol_from: 0,
             verified: None,
             visor: Visor::VACIO,
-            clic_frame: 0,
-            clic_fila: 0,
+            doble: DoubleClick::new(),
             seal: Seal::Idle,
             consola: Consola::nueva(),
             menu: Menu::nuevo(),
@@ -332,21 +326,14 @@ impl DataWindow {
     /// espera y lo que hace que senalar salga gratis. Lo que el doble anade es
     /// ABRIR, y por eso el primero nunca abre nada.
     ///
-    /// ** El segundo clic CIERRA el gesto (`clic_frame = 0`). Sin eso, tres
-    /// clics seguidos serian dos aperturas: la tercera pulsacion volveria a
-    /// caer dentro de la ventana de la segunda y abriria otra vez, que es
-    /// justo lo que no hace ningun escritorio.
-    pub(crate) fn clic_rejilla(&mut self, i: usize, frame: u32) -> bool {
-        let doble = self.clic_frame != 0
-            && self.clic_fila == i
-            && frame.wrapping_sub(self.clic_frame) <= DOBLE_CLIC;
+    /// ** El segundo clic CIERRA el gesto, y eso lo hace `DoubleClick::hit`:
+    /// sin ello tres clics seguidos serian dos aperturas.
+    pub(crate) fn clic_rejilla(&mut self, i: usize) -> bool {
         self.sel = i;
         // El veredicto de una firma es de UN archivo: al cambiar de fila se
         // borra, o un `CUADRA` viejo se quedaria debajo del nombre de otro.
         self.verified = None;
-        self.clic_frame = if doble { 0 } else { frame };
-        self.clic_fila = i;
-        doble
+        self.doble.hit(i)
     }
 
     /// **La ruta ENTERA del hijo `i`**, desde la raiz. `0` si no cabe.

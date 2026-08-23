@@ -88,7 +88,7 @@ pub(crate) fn on_pointer(
         // dispara -- que es exactamente lo que el dueno pidio, y sin una
         // segunda regla que mantener.
         if let Some(i) = dsk.launcher.app_at(&p, pos.x, pos.y) {
-            let doble = dsk.launcher.clic(i, dsk.tick.frames);
+            let doble = dsk.launcher.clic(i);
             scene::launcher::repintar(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible);
             if let Some(app) = dsk.launcher.app(i) {
                 let r = app.path();
@@ -435,7 +435,7 @@ pub(crate) fn on_pointer(
                         // abrirlo, se anade en `entrar` y las dos formas lo
                         // heredan a la vez.
                         else if let Some(i) = dsk.win.data.fila_rejilla_en(pos.x, pos.y) {
-                            let doble = dsk.win.data.clic_rejilla(i, dsk.tick.frames);
+                            let doble = dsk.win.data.clic_rejilla(i);
                             if doble {
                                 // Lo MISMO que ENTRAR, y llamando a lo mismo:
                                 // baja si es carpeta, y si es archivo lo abre

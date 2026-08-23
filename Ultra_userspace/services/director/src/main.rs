@@ -654,7 +654,7 @@ pub extern "C" fn _start() -> ! {
             );
         }
 
-        dsk.tick.frames = dsk.tick.frames.wrapping_add(1);
+        dsk.tick.pulse();
         dsk.tick.repaint_field = false;
 
         // -- * ALGUIEN OFRECE UNA SUPERFICIE? --
