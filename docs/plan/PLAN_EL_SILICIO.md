@@ -403,7 +403,7 @@ que P4 necesita para la mesa de aterrizaje, y **ya esta ahi**.
 
 ---
 
-### P2 -- LA REGLA DEL MEZCLADO
+### P2 -- LA REGLA DEL MEZCLADO. ✅ HECHO (2026-08-23)
 
 Con costuras, la regla se puede **decir**:
 
@@ -421,6 +421,49 @@ dice.
               partes, y el manifiesto declara el perfil RESULTANTE, no el
               declarado.
 ```
+
+★★★ **Y AL CONSTRUIRLO SALIO QUE ERAN DOS REGLAS, NO UNA** -- y la segunda era
+la que tenia parado al lenguaje:
+
+```text
+   JUZGAR      cada pieza contra el perfil que ELLA declaro
+   DECLARAR    el binario, contra el MAS PERMISIVO de todos
+```
+
+**Confundirlas es lo que impedia que `pleno` usara su propio runtime.** El
+runtime esta escrito en `llano` *precisamente para poder tocar el metal*, y al
+fusionarlo en un programa `pleno` su `crudo` pasaba a ser ilegal:
+
+```text
+   E0071  `crudo` no existe en el perfil `pleno`
+      en objetos/contador.inti, linea 52
+```
+
+El fallo no era de ninguna de las dos piezas: era **juzgar a las dos contra el
+perfil de una**.
+
+★ Y el `pleno` que trae `llano` es el caso NORMAL, no la excepcion. Hoy compila
+sin una queja de perfil; lo unico que queda delante es el gate de
+`[bytes] llegan`, que es otro peldano y esta ahi a proposito.
+
+### Por que el mas PERMISIVO, y no el mas estricto
+
+El plan decia *"el mas ESTRICTO"* y al escribirlo se vio que era al reves. Un
+perfil es una **promesa**, y una promesa la rompe su eslabon mas debil:
+
+> `llano` promete *"esto puede correr en Ring 0, dentro de un manejador"*. Si UNA
+> pieza es `pleno` --pide monton, cuenta referencias-- **el binario entero deja
+> de poder**, aunque el resto sea impecable.
+
+Con "el mas estricto" un `llano` que trajera un `pleno` saldria declarado
+`llano`, que es exactamente la firma equivocada: **el cargador leeria ese campo
+para decidir Ring 0.**
+
+⚠ Y el aviso nuevo (`E0074`) senala **al fichero del usuario**, al reves que los
+de una pieza. No es incoherencia: el fallo esta ahi, en la linea donde escribio
+`perfil llano`.
+
+---
 
 ### P3 -- INTI ENTRA EN `FrontendKind`
 

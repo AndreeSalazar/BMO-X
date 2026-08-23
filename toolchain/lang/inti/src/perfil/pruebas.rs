@@ -342,8 +342,15 @@ funcion principal
     devuelve 0
 ", &v);
     let mut arbol = sintaxis::leer(&mio.valor, &v);
-    // Lo que traeria un `usa`: se declara `pleno` y usa `texto`.
-    let suyo = lexico::barrer("perfil pleno
+    // Lo que traeria un `usa`: se declara `llano` y **usa `texto`**, que alli
+    // no cabe. El fallo es SUYO, no del que la trajo.
+    //
+    // [!] El ejemplo cambio el 2026-08-23 con P2. Antes la pieza se declaraba
+    // `pleno` y su `texto` bastaba para provocar el aviso, porque TODO se
+    // juzgaba contra el perfil del fichero principal. Desde P2 cada pieza se
+    // juzga contra el suyo, asi que un `texto` en una pieza `pleno` **es
+    // correcto** -- y este test necesitaba un fallo que siguiera siendolo.
+    let suyo = lexico::barrer("perfil llano
 
 funcion saluda(a es texto)
     devuelve a
@@ -381,12 +388,116 @@ funcion saluda(a es texto)
 {}",
         texto
     );
+    // *** Y NO ACUSA AL FICHERO DEL USUARIO, que es lo que esta prueba existe
+    // para impedir: el hueco del DONDE es la parte del mensaje que decide a que
+    // fichero va a mirar quien lo lee.
     assert!(
         !texto.contains("en usuario.inti, linea"),
         "el aviso sigue acusando al fichero del usuario:
 {}",
         texto
     );
+}
+
+/// *** P2: UNA PIEZA MAS LAXA QUE QUIEN LA TRAE **SE DICE** (2026-08-23).
+///
+/// Un perfil es una PROMESA. `llano` promete *"esto puede correr en Ring 0"*, y
+/// si una sola pieza es `pleno` --pide monton, cuenta referencias-- **el binario
+/// entero deja de poder**, aunque el fichero principal sea impecable.
+///
+/// ** Hasta hoy era silencio. El plan lo tenia medido el 22-08: *"un fichero
+/// `llano` que trae una pieza `pleno` sale como un `.bex` firmado de 880 bytes
+/// sin una palabra"*, y su autor seguia creyendo que tenia Ring 0.
+///
+/// [!] Y este aviso SI senala al fichero del usuario, al reves que el de arriba.
+/// No es incoherencia: **el fallo esta ahi**, en la linea donde escribio `perfil
+/// llano`. El de arriba acusa a la pieza porque el fallo es de la pieza.
+#[test]
+fn una_pieza_mas_laxa_que_quien_la_trae_se_dice() {
+    let v = Vocabulario::por_defecto().unwrap();
+    let mio = lexico::barrer("perfil llano
+
+funcion principal
+    devuelve 0
+", &v);
+    let mut arbol = sintaxis::leer(&mio.valor, &v);
+    // La pieza es `pleno` y por dentro esta bien: no tiene ningun fallo propio.
+    let suyo = lexico::barrer("perfil pleno
+
+funcion saluda devuelve entero64
+    devuelve 7
+", &v);
+    let mut pieza = sintaxis::leer(&suyo.valor, &v);
+
+    let desde = arbol.valor.declaraciones.len();
+    arbol.valor.declaraciones.append(&mut pieza.valor.declaraciones);
+    let hasta = arbol.valor.declaraciones.len();
+    arbol.valor.piezas.push(crate::arbol::Pieza {
+        fichero: "saludos/cortesia.inti".to_string(),
+        usa: "saludos".to_string(),
+        perfil: pieza.valor.perfil,
+        desde,
+        hasta,
+    });
+
+    let c = comprobar(
+        &arbol.valor,
+        &Catalogo::por_defecto(),
+        &[],
+        &crate::tablas::Modulos::por_defecto(),
+    );
+    assert!(c.codigos().contains(&"E0074"), "{:?}", c.codigos());
+    // Y dice CUAL la rompe, que es lo unico accionable del aviso.
+    let texto = c.pintar("usuario.inti");
+    assert!(texto.contains("saludos/cortesia.inti"), "{}", texto);
+
+    // *** Y EL BINARIO SE DECLARA `pleno`, no `llano`. Es la otra mitad de P2:
+    // el manifiesto dice lo que el binario ES, no lo que su autor escribio --
+    // porque quien lee ese campo es el cargador, para decidir Ring 0.
+    assert_eq!(c.valor.perfil_resultante, "pleno");
+}
+
+/// Y al reves NO se dice nada: un `pleno` que trae piezas `llano` sale `pleno`,
+/// que es lo que su autor escribio.
+///
+/// *** Este es el caso que tenia parado al lenguaje. El runtime esta escrito en
+/// `llano` **precisamente para poder tocar el metal**, asi que un programa
+/// `pleno` que lo usa es el caso NORMAL, no la excepcion.
+#[test]
+fn un_pleno_que_trae_piezas_llano_no_se_queja() {
+    let v = Vocabulario::por_defecto().unwrap();
+    let mio = lexico::barrer("perfil pleno
+
+funcion principal
+    devuelve 0
+", &v);
+    let mut arbol = sintaxis::leer(&mio.valor, &v);
+    let suyo = lexico::barrer("perfil llano
+
+funcion mide(a es natural64) devuelve natural64
+    devuelve a
+", &v);
+    let mut pieza = sintaxis::leer(&suyo.valor, &v);
+
+    let desde = arbol.valor.declaraciones.len();
+    arbol.valor.declaraciones.append(&mut pieza.valor.declaraciones);
+    let hasta = arbol.valor.declaraciones.len();
+    arbol.valor.piezas.push(crate::arbol::Pieza {
+        fichero: "monton/reparto.inti".to_string(),
+        usa: "monton".to_string(),
+        perfil: pieza.valor.perfil,
+        desde,
+        hasta,
+    });
+
+    let c = comprobar(
+        &arbol.valor,
+        &Catalogo::por_defecto(),
+        &[],
+        &crate::tablas::Modulos::por_defecto(),
+    );
+    assert!(!c.codigos().contains(&"E0074"), "{:?}", c.codigos());
+    assert_eq!(c.valor.perfil_resultante, "pleno");
 }
 
 /// **La pieza se lleva escrito el perfil que declaro para si misma.**

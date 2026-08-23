@@ -25,6 +25,9 @@ fn lo_escrito_se_vuelve_a_leer_igual() {
         hasta: 1,
     });
     let mut informe = Informe::default();
+    // El perfil RESULTANTE, que es lo que va al manifiesto desde P2: no lo que
+    // el fichero declaro, sino lo que el binario ES.
+    informe.perfil_resultante = "llano".to_string();
     informe.bloques_crudo = 3;
     informe.arquitecturas = vec!["x86_64".to_string()];
 

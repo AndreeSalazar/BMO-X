@@ -81,7 +81,23 @@ pub struct PiezaDeclarada {
 pub fn de(m: &Modulo, informe: &Informe, fuente: &str) -> Manifiesto {
     Manifiesto {
         lenguaje: "inti".to_string(),
-        perfil: m.perfil.nombre().to_string(),
+        // *** EL RESULTANTE, no el declarado (P2, 2026-08-23).
+        //
+        // Es lo que el plan pedia con estas palabras: *"el manifiesto declara el
+        // perfil RESULTANTE, no el declarado"*. Y no es cosmetico: quien lee
+        // este campo es el cargador, para decidir si un `.bex` puede correr en
+        // Ring 0. Poner ahi lo que el fichero DIJO en vez de lo que el binario
+        // ES seria firmar la promesa equivocada.
+        perfil: if informe.perfil_resultante.is_empty() {
+            // [!] VACIO significa **que nadie corrio `perfil::comprobar`**, no
+            // "sin perfil". Pasa en los bancos que arman un manifiesto sin
+            // analizar, y lo unico que se sabe entonces es lo que el fichero
+            // DECLARO -- que es peor respuesta que la resultante, y mucho mejor
+            // que un campo vacio en un `.bex` que el cargador va a leer.
+            m.perfil.nombre().to_string()
+        } else {
+            informe.perfil_resultante.clone()
+        },
         fuente: fuente.to_string(),
         crudo: informe.bloques_crudo,
         arquitecturas: informe.arquitecturas.clone(),

@@ -65,7 +65,13 @@ fn el_aviso_de_una_pieza_nombra_la_pieza_y_no_al_que_la_trae() {
         &d,
         "cortesia",
         "saludos.inti",
-        "perfil pleno
+        // [!] La pieza se declara `llano` y usa `texto`, que alli NO cabe: el
+        // fallo es SUYO. El ejemplo cambio el 2026-08-23 con P2 -- antes decia
+        // `perfil pleno` y bastaba, porque todo se juzgaba contra el perfil del
+        // fichero principal. Desde P2 cada pieza se juzga contra el suyo, asi
+        // que un `texto` en una pieza `pleno` es CORRECTO, y esta prueba
+        // necesitaba un fallo que siguiera siendolo.
+        "perfil llano
 
 funcion saluda(a es texto) devuelve texto
     devuelve a
