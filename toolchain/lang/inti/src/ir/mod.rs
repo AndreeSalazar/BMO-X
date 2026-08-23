@@ -112,14 +112,39 @@ pub fn bajar_con(
 ) -> Cosecha<ModuloIr> {
     let mut salida = ModuloIr::default();
 
+    // *** LAS CONSTANTES CONGELADAS, ANTES QUE NADA.
+    //
+    // Se recogen en una pasada propia y no dentro del bucle de abajo porque una
+    // funcion declarada ARRIBA puede usar una constante declarada abajo: en el
+    // nivel superior no hay orden, todo se congela cuando el modulo acaba de
+    // cargarse. Resolverlas sobre la marcha obligaria a ordenar el fichero.
+    //
+    // ** Hasta el 2026-08-22 esta pasada no existia y `Decl::Constante` se
+    // tiraba con un `{}`. El nombre llegaba suelto al emisor y `carga` lo bajaba
+    // a un CERO: `maximo = 100` compilaba, pasaba el gate, salia firmado y valia
+    // cero. Con su ejemplo escrito en `GRAMATICA.md`.
+    let mut congeladas: std::collections::HashMap<String, Const> =
+        std::collections::HashMap::new();
+    for d in &m.declaraciones {
+        if let Decl::Constante { nombre, valor, .. } = d {
+            if let Some(c) = congelar(valor) {
+                congeladas.insert(nombre.clone(), c);
+            }
+            // ** Lo que NO se deja congelar no se inventa: se queda fuera, el
+            // nombre llega suelto al emisor y **el emisor lo dice** por
+            // `sin_emitir`. Meter aqui un cero seria repetir el fallo que esta
+            // pasada viene a cerrar.
+        }
+    }
+
     for d in &m.declaraciones {
         match d {
             Decl::Funcion(f) => {
-                let ir = Descenso::nueva(&mut salida.textos, tabla, plano, m.perfil, metal).funcion(f);
+                let ir = Descenso::nueva(&mut salida.textos, &congeladas, tabla, plano, m.perfil, metal).funcion(f);
                 salida.funciones.push(ir);
             }
             Decl::Operacion { tipo, funcion } => {
-                let mut ir = Descenso::nueva(&mut salida.textos, tabla, plano, m.perfil, metal).funcion(funcion);
+                let mut ir = Descenso::nueva(&mut salida.textos, &congeladas, tabla, plano, m.perfil, metal).funcion(funcion);
                 // El nombre lleva el tipo delante para que dos operaciones con
                 // el mismo nombre en tipos distintos no se pisen.
                 ir.nombre = format!("{}.{}", tipo, funcion.nombre);
@@ -131,7 +156,7 @@ pub fn bajar_con(
                 ..
             } => {
                 for f in operaciones {
-                    let mut ir = Descenso::nueva(&mut salida.textos, tabla, plano, m.perfil, metal).funcion(f);
+                    let mut ir = Descenso::nueva(&mut salida.textos, &congeladas, tabla, plano, m.perfil, metal).funcion(f);
                     ir.nombre = format!("{}.{}", nombre, f.nombre);
                     salida.funciones.push(ir);
                 }
@@ -149,6 +174,12 @@ struct Descenso<'t> {
     siguiente_etiqueta: u32,
     locales: Vec<String>,
     textos: &'t mut Vec<String>,
+    /// **Las constantes CONGELADAS de este modulo.**
+    ///
+    /// ** Se resuelven aqui, en la IR, y no en el emisor: una constante vale lo
+    /// mismo en toda maquina. Es la misma decision que ya estaba tomada para las
+    /// constantes del ABI unas lineas mas abajo.
+    congeladas: &'t std::collections::HashMap<String, Const>,
     /// Donde salta un `corta` y donde un `continua`, de fuera a dentro.
     bucles: Vec<(Etiqueta, Etiqueta)>,
     tabla: &'t crate::tablas::Modulos,
@@ -186,6 +217,7 @@ struct Descenso<'t> {
 impl<'t> Descenso<'t> {
     fn nueva(
         textos: &'t mut Vec<String>,
+        congeladas: &'t std::collections::HashMap<String, Const>,
         tabla: &'t crate::tablas::Modulos,
         plano: &'t crate::disposicion::Plano,
         perfil: crate::arbol::Perfil,
@@ -197,6 +229,7 @@ impl<'t> Descenso<'t> {
             siguiente_etiqueta: 0,
             locales: Vec::new(),
             textos,
+            congeladas,
             bucles: Vec::new(),
             tabla,
             plano,
@@ -483,6 +516,18 @@ impl<'t> Descenso<'t> {
             Expr::Nada(_) => Valor::Const(Const::Nada),
             Expr::Nombre(n, _) => match self.busca_local(n) {
                 Some(l) => Valor::Local(l),
+                // ** UNA CONSTANTE DEL MODULO, y va antes que la del ABI porque
+                // es de ESTE fichero: lo de dentro tapa a lo de fuera, que es lo
+                // que espera cualquiera que lea el fuente de arriba abajo.
+                //
+                // *** Hasta el 2026-08-22 esto no existia: `Decl::Constante` se
+                // tiraba en `bajar_con` con un `{}`, el nombre llegaba al emisor
+                // suelto, y `carga` lo bajaba a un CERO. O sea que
+                // `maximo = 100` compilaba limpio, pasaba el gate, salia firmado
+                // **y valia cero** -- con su ejemplo en `GRAMATICA.md`.
+                None if self.congeladas.contains_key(n) => {
+                    Valor::Const(self.congeladas[n].clone())
+                }
                 // ** Una constante del ABI se resuelve AQUI y no en el emisor.
                 //
                 // Es agnostica --`mi_tarea` vale lo mismo en toda maquina--, asi
@@ -842,6 +887,41 @@ fn comprobacion_antes(op: Op, clase: Clase) -> Option<Comprobacion> {
     }
     match op {
         Op::Divide | Op::Entre | Op::Resto => Some(Comprobacion::EntreCero),
+        _ => None,
+    }
+}
+
+/// **Un valor que se puede CONGELAR al cargar el modulo.**
+///
+/// ## Que entra y que no
+///
+/// Entran los literales: un numero, un `si/no`, `nada`. Y el menos de un numero,
+/// porque `-1` se escribe con dos piezas y nadie lo lee como dos cosas.
+///
+/// ** NO entra una llamada, ni una operacion entre dos nombres, ni nada que pida
+/// ejecutar algo. No es una limitacion tecnica: es lo que significa **congelado**
+/// en la seccion 10.2 del maestro -- *"inmortal, nadie lo cambia"*. Un valor que
+/// hay que calcular no esta congelado, esta pendiente.
+///
+/// *** Y lo que no entra **no se inventa**. Devolver un cero aqui seria
+/// exactamente el fallo que esta funcion viene a cerrar.
+fn congelar(e: &Expr) -> Option<Const> {
+    match e {
+        Expr::Numero(n, _) if !n.con_punto => {
+            parse_entero(&n.texto, n.base).map(Const::Entero)
+        }
+        // ** El flotante se congela como BITS y no como texto: es `llano` quien
+        // usa constantes hoy, y alli `3.5` es IEEE-754. En `pleno` un `numero`
+        // es decimal exacto y esa conversion lo estropearia -- por eso no se
+        // hace aqui, se deja fuera y el emisor lo dice.
+        Expr::Numero(n, _) => n.texto.parse::<f64>().ok().map(|f| Const::Flotante(f.to_bits())),
+        Expr::Logico(b, _) => Some(Const::Logico(*b)),
+        Expr::Nada(_) => Some(Const::Nada),
+        Expr::Unaria { op: crate::arbol::OpUno::Menos, valor, .. } => match congelar(valor)? {
+            Const::Entero(v) => Some(Const::Entero(-v)),
+            Const::Flotante(bits) => Some(Const::Flotante((-f64::from_bits(bits)).to_bits())),
+            _ => None,
+        },
         _ => None,
     }
 }
