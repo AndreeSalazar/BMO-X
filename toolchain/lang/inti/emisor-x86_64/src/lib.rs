@@ -250,6 +250,27 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         salida.sin_emitir.extend(cuenta.sin_emitir);
     }
 
+    // *** EL POZO DE TEXTOS SE CALCULA Y NO LO LEE NADIE (2026-08-22).
+    //
+    // `ir::bajar` interna cada literal de texto en `ModuloIr::textos` -- los
+    // deduplica, les da un indice, y deja escrito que *"se comparte, y por eso
+    // puede prestarse congelado"*. Y este emisor **no lo mira ni una vez**:
+    // `Const::Texto(i)` baja a un cero.
+    //
+    // ** Es la firma de fallo que este proyecto persigue desde el principio: la
+    // pieza que se calcula bien y no la lee nadie. Aqui se dice en vez de
+    // callarse, que es lo unico que se puede hacer hoy sin mentir -- los textos
+    // son de `pleno`, y `pleno` no llega a bytes.
+    //
+    // El sitio al que van esta en el formato desde que se diseno y vacio:
+    // `SectionKind::RoData = 0x02`. Cuando `pleno` abra, van ahi.
+    if !m.textos.is_empty() {
+        salida.sin_emitir.push(format!(
+            "{} texto(s) del pozo no llegan a bytes: `Const::Texto` baja a cero              hasta que exista `RoData`",
+            m.textos.len()
+        ));
+    }
+
     // Ahora si: todas las funciones tienen sitio, asi que todas las llamadas
     // tienen destino.
     let huecos = std::mem::take(&mut salida.huecos_de_llamada);

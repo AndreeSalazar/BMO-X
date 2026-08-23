@@ -650,3 +650,60 @@ fn el_resto_lleva_la_misma_guardia() {
     assert_eq!(ejecuta(f, i64::MIN as u64, (-1i64) as u64), 1001);
     assert_eq!(ejecuta(f, 100u64, 7u64), 2);
 }
+
+/// **EL POZO DE TEXTOS SE CAE, Y AHORA LO DICE.**
+///
+/// ## Lo que estaba pasando en silencio
+///
+/// `ir::bajar` interna cada literal de texto en `ModuloIr::textos`: los
+/// deduplica, les da un indice, y deja escrito que *"se comparte, y por eso
+/// puede prestarse congelado"*.
+///
+/// *** Y el emisor no lo miraba **ni una vez**. `grep textos` en `lib.rs` daba
+/// cero. `Const::Texto(i)` baja a un cero y el pozo se pierde entero.
+///
+/// Es la firma de fallo que este proyecto persigue desde el principio: **la
+/// pieza que se calcula bien y no la lee nadie**. No se puede arreglar hoy --los
+/// textos son de `pleno` y `pleno` no llega a bytes-- pero **callarse no era una
+/// opcion**: sin esto, el dia que alguien abra `pleno` se encontraria con
+/// literales que compilan y valen cero.
+///
+/// El sitio al que van existe y esta vacio: `SectionKind::RoData = 0x02`.
+#[test]
+fn los_textos_que_no_llegan_a_bytes_se_dicen() {
+    let e = emitido("perfil pleno
+
+funcion f
+    escribe(\"hola\")
+    escribe(\"adios\")
+");
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("texto(s) del pozo")),
+        "el pozo se cayo callandose: {:?}",
+        e.sin_emitir
+    );
+    // Y dice CUANTOS, que es lo que convierte el aviso en un numero seguible.
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("2 texto")),
+        "no dice cuantos: {:?}",
+        e.sin_emitir
+    );
+}
+
+/// Y un fuente sin textos no se queja de nada.
+///
+/// ** Sin esta, el aviso podria estar saliendo siempre y la de arriba seguiria
+/// en verde -- y un aviso que sale siempre es ruido que entrena a no mirar.
+#[test]
+fn un_fuente_sin_textos_no_avisa_del_pozo() {
+    let e = emitido("perfil llano
+
+funcion f devuelve entero32
+    devuelve 7
+");
+    assert!(
+        !e.sin_emitir.iter().any(|x| x.contains("pozo")),
+        "aviso de pozo sin textos: {:?}",
+        e.sin_emitir
+    );
+}
