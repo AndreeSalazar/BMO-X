@@ -50,6 +50,39 @@ fn en_llano_no_hay_texto() {
     assert_eq!(c, vec!["E0070"]);
 }
 
+/// *** PERO SUS BYTES SI SE PUEDEN LEER, y esa es la linea (2026-08-23).
+///
+/// Hasta hoy CUALQUIER literal de texto se denunciaba en `llano` con *"lo que
+/// crece pide memoria"*. **Y un literal no crece**: es CONGELADO, sus bytes
+/// viven en `RoData` con el bit de INMORTAL puesto, y llegar a ellos es una
+/// direccion y nada mas.
+///
+/// ** Era el mismo fallo que se cerro el 22-08 con `PRIMOS = [2, 3, 5]`, un tipo
+/// mas alla -- y a los dos se llega igual: con `crudo`.
+///
+/// La linea que queda trazada:
+///
+/// ```text
+///    lee_natural8("hola" + i)   dentro de `crudo`   ->  VALE
+///    saludo = "hola"                                ->  E0070
+/// ```
+///
+/// Lo que no cabe en `llano` no son los bytes: es la VARIABLE. Y que hoy solo se
+/// le pueda meter un literal no es una propiedad del tipo `texto`, es una
+/// carencia del perfil que manana puede no serlo.
+#[test]
+fn en_llano_los_bytes_de_un_literal_si_se_pueden_leer() {
+    let fuente = concat!(
+        "perfil llano\n",
+        "usa memoria\n\n",
+        "funcion b(i es natural64) devuelve natural64\n",
+        "    crudo\n",
+        "        devuelve lee_natural8(\"hola\" + i)\n"
+    );
+    let c = codigos_de(fuente);
+    assert!(c.is_empty(), "un literal congelado cabe en `llano`: {c:?}");
+}
+
 /// **`numero` en `llano` se rechaza POR LO QUE CUESTA, no por lo que le falta.**
 ///
 /// ## ** Lo que esta prueba corrige, y era un mensaje que mentia

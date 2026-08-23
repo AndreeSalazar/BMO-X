@@ -64,12 +64,13 @@ mod reglas;
 pub mod puerta;
 
 use bmo_abi::bef::katanas::{self, Katana};
+use bmo_abi::dynobj::texto as dynobj_texto;
 use bmo_abi::bef::relocations::{Relocation, RelocationKind};
 use bmo_abi::bef::sections::SectionKind;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::syscalls::surface::NR_INVOKE;
 use bmo_inti_front::ir::{
-    Clase, Comprobacion, Const, FuncionIr, Instr, Local, ModuloIr, Valor,
+    Clase, ClaseCongelada, Comprobacion, Const, FuncionIr, Instr, Local, ModuloIr, Valor,
 };
 use bmo_lower::x86;
 use marco::{Marco, Sitio};
@@ -282,24 +283,21 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
 
     // *** EL POZO DE TEXTOS SE CALCULA Y NO LO LEE NADIE (2026-08-22).
     //
-    // `ir::bajar` interna cada literal de texto en `ModuloIr::textos` -- los
-    // deduplica, les da un indice, y deja escrito que *"se comparte, y por eso
-    // puede prestarse congelado"*. Y este emisor **no lo mira ni una vez**:
-    // `Const::Texto(i)` baja a un cero.
+    // *** RESUELTO EL 2026-08-23. Lo que decia aqui, y ya no es verdad:
     //
-    // ** Es la firma de fallo que este proyecto persigue desde el principio: la
-    // pieza que se calcula bien y no la lee nadie. Aqui se dice en vez de
-    // callarse, que es lo unico que se puede hacer hoy sin mentir -- los textos
-    // son de `pleno`, y `pleno` no llega a bytes.
+    //     `ir::bajar` interna cada literal de texto en `ModuloIr::textos` -- los
+    //     deduplica, les da un indice, y deja escrito que "se comparte, y por
+    //     eso puede prestarse congelado". Y este emisor **no lo mira ni una
+    //     vez**: `Const::Texto(i)` baja a un cero.
     //
-    // El sitio al que van esta en el formato desde que se diseno y vacio:
-    // `SectionKind::RoData = 0x02`. Cuando `pleno` abra, van ahi.
-    if !m.textos.is_empty() {
-        salida.sin_emitir.push(format!(
-            "{} texto(s) del pozo no llegan a bytes: `Const::Texto` baja a cero              hasta que exista `RoData`",
-            m.textos.len()
-        ));
-    }
+    // Era la firma de fallo de siempre --la pieza que se calcula bien y no la
+    // lee nadie-- y el aviso se quedo escrito porque no habia adonde llevarlos.
+    // Ahora si: **un literal de texto ES un congelado**, va a `RoData` con su
+    // cabecera de objeto y el codigo llega a el por una reubicacion, igual que
+    // una tabla constante.
+    //
+    // ** Y el pozo no era un segundo mecanismo: existia porque `RoData` no
+    // existia. La seccion 10.2 del maestro ya los tenia juntos.
 
     // Ahora si: todas las funciones tienen sitio, asi que todas las llamadas
     // tienen destino.
@@ -1104,6 +1102,32 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
                 rodata.push(0);
             }
             donde.push(rodata.len() as u64);
+            // *** UN TEXTO LLEVA CABECERA DE OBJETO; UNA TABLA, NO.
+            //
+            // Y la pone AQUI y no el frontend a proposito: la forma de un objeto
+            // del monton la declara `bmo_abi::dynobj`, y el frontend no enlaza
+            // `bmo-abi` --lo dice la cabecera de su `Cargo.toml`, y es la linea
+            // que le deja no saber de bytes--. Escribir alli veinticuatro bytes
+            // a mano seria una segunda declaracion del mismo contrato, que es
+            // como acaban discrepando.
+            //
+            // ** `congelado` y no `nacer`: el bit 63 puesto, INMORTAL. Un
+            // literal no se cuenta, no se libera y ademas vive en una seccion de
+            // solo lectura -- las tres cosas dicen lo mismo y ninguna sobra.
+            if matches!(c.clase, ClaseCongelada::Texto) {
+                let n = c.bytes.len() as u64;
+                let mut cab = vec![0u8; dynobj_texto::CABECERA_LEN];
+                // `type_index` = 0 mientras no exista el mapa de tipos.
+                //
+                // [!] Cero significa *"el `TypeMap` no existe"*, no *"el tipo
+                // cero"*. `SectionKind::TypeMap = 0x10` es el quinto hueco
+                // declarado y vacio del formato, y `lista.rs` ya lo dejo dicho.
+                // Inventar aqui una numeracion propia es como se consiguen dos
+                // numeraciones el dia que llegue la de verdad.
+                dynobj_texto::congelado(&mut cab, 0, n)
+                    .expect("la cabecera de un texto siempre cabe en su propio tamano");
+                rodata.extend_from_slice(&cab);
+            }
             rodata.extend_from_slice(&c.bytes);
         }
         b.add_section(BefSection::rodata(rodata));

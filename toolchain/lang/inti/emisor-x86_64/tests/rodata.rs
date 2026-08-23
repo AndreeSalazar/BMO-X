@@ -207,3 +207,101 @@ fn la_tabla_no_esta_en_la_seccion_de_codigo() {
         );
     }
 }
+
+// ===================================================================
+//  *** UN LITERAL DE TEXTO, EN EL DISCO (2026-08-23)
+// ===================================================================
+
+/// *** Y ESTE FUENTE ES `llano`, QUE ERA MEDIA PRUEBA POR SI SOLO.
+///
+/// Hasta el 2026-08-23 `perfil` denunciaba cualquier literal de texto en `llano`
+/// con `E0070`, *"lo que crece pide memoria"*. **Y un literal no crece**: es
+/// CONGELADO. Era el mismo fallo que se cerro el 22-08 con `PRIMOS = [2, 3, 5]`,
+/// un tipo mas alla.
+///
+/// ** Se llega a sus bytes igual que a los de `PRIMOS`: con `crudo` y una
+/// direccion. Lo que sigue sin poderse tener en `llano` es una VARIABLE de tipo
+/// `texto`, porque esa si podria acabar guardando un texto construido.
+const SALUDO: &str = "\
+perfil llano
+usa memoria
+
+funcion byte_de(i es natural64) devuelve natural64
+    crudo
+        devuelve lee_natural8(\"hola\" + i)
+
+funcion principal devuelve entero32
+    devuelve entero32(byte_de(0))
+";
+
+/// ***EL LITERAL DE TEXTO LLEGA AL `.ibex` CON SU CABECERA DE OBJETO.***
+///
+/// Y no cuesta nada: la seccion 10.2 del maestro dice que un literal esta
+/// CONGELADO --*"inmortal. Nadie lo cambia, nadie cuenta sus referencias"*--
+/// asi que no se reserva en el monton, nadie toca su contador, y sus bytes
+/// viven en una seccion de solo lectura.
+///
+/// ** O sea que `x = "hola"` **no necesita runtime**. Es lo que hace que este
+/// escalon se pudiera subir hoy y el siguiente --el texto CONSTRUIDO-- no.
+///
+/// La forma que se busca es `bmo_abi::dynobj::texto`:
+///
+/// ```text
+///    0..8    refs = 1<<63     INMORTAL
+///    8..12   type_index = 0   el TypeMap no existe todavia, y cero lo dice
+///    12..16  flags = 0
+///    16..24  bytes = 4
+///    24..28  "hola"
+/// ```
+#[test]
+fn un_literal_de_texto_llega_a_rodata_con_su_cabecera_inmortal() {
+    let bef = compila(SALUDO, "texto");
+    let bytes = paquete::seccion(&bef, SectionKind::RoData)
+        .expect("no hay RoData: el literal no llego");
+
+    // Los bytes del texto tienen que estar, y enteros.
+    let i = bytes
+        .windows(4)
+        .position(|w| w == b"hola")
+        .expect("los bytes del literal no estan en RoData");
+
+    // Y justo delante, su cabecera de 24 bytes.
+    assert!(i >= 24, "el texto no tiene sitio para su cabecera delante");
+    let cab = i - 24;
+
+    let refs = u64_en(bytes, cab);
+    assert_ne!(
+        refs & (1u64 << 63),
+        0,
+        "un literal tiene que nacer INMORTAL: seccion 10.2 del maestro"
+    );
+    assert_eq!(
+        refs & !(1u64 << 63),
+        0,
+        "y con el contador a cero debajo: a un inmortal no le cuenta nadie"
+    );
+    assert_eq!(
+        u64_en(bytes, cab + 16),
+        4,
+        "la cabecera guarda BYTES, y `hola` son cuatro"
+    );
+}
+
+/// *** Y LOS BYTES DEL TEXTO **NO** ESTAN DENTRO DEL CODIGO.
+///
+/// Es la misma restriccion que paga el barrido lineal, y la razon por la que
+/// las tablas constantes tampoco van ahi: un recorrido en linea recta empezaria
+/// a decodificar la palabra "hola" como si fueran instrucciones.
+///
+/// ** Un binario de C mete datos entre las instrucciones y por eso no se puede
+/// recorrer. Que INTI no lo haga es lo que le paga esa propiedad -- y esta
+/// prueba es donde se respeta o se pierde.
+#[test]
+fn los_bytes_de_un_texto_no_viven_en_la_seccion_de_codigo() {
+    let bef = compila(SALUDO, "texto-fuera-del-codigo");
+    let bytes = paquete::seccion(&bef, SectionKind::Code).expect("no hay codigo");
+    assert!(
+        bytes.windows(4).all(|w| w != b"hola"),
+        "el literal se colo en la seccion de codigo y el barrido lineal se cae"
+    );
+}
