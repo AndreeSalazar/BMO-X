@@ -4,21 +4,22 @@
 
 # BMO-X
 
-**A bare-metal orchestrator that boots on real hardware and runs COBOL, C and
-Ada -- compiled by its own toolchain. No LLVM. No GCC. No QEMU.**
+**A bare-metal orchestrator that boots on real hardware and runs COBOL, C, Ada
+and INTI -- compiled by its own toolchain. No LLVM. No GCC. No QEMU.**
 
 ![status](https://img.shields.io/badge/boots_on-real_hardware-2ea043)
 ![cpu](https://img.shields.io/badge/verified_on-Ryzen_5_5600X-2ea043)
 ![ram](https://img.shields.io/badge/RAM_footprint-5.4_MiB-1f6feb)
 ![syscalls](https://img.shields.io/badge/syscalls-2_frozen-1f6feb)
-![languages](https://img.shields.io/badge/native_languages-COBOL_-_C_-_Ada-8957e5)
+![languages](https://img.shields.io/badge/native_languages-COBOL_-_C_-_Ada_-_INTI-8957e5)
+![inti](https://img.shields.io/badge/system_language-INTI-f0883e)
 ![license](https://img.shields.io/badge/license-Techne_v2.0-d29922)
 
 Written from scratch in Rust -- the boot chain, the kernel, the drivers, the
 filesystem, and three native compilers. It boots on an AMD Ryzen 5 5600X and
 occupies **5.4 MiB of 14.8 GiB of RAM**.
 
-**1.279 commits - 702 files - 17 April to 13 August 2026 - one developer.**
+**1.560 commits - 1.032 files - 17 April to 22 August 2026 - one developer.**
 
 ---
 
@@ -62,6 +63,7 @@ under it is a slogan.
 | Disk | AHCI, FAT32 read *and* write, plus ESTRATOS, its own copy-on-write volume |
 | 12 cores | SMP bring-up, `12 of 12` |
 | Ring 3 isolation | a fault kills the task; the kernel takes the screen back and prints its last four lines |
+| Traps its own undefined behaviour | INTI `llano` on the Ryzen: overflow, divide-by-zero and bad conversion all caught **in metal** |
 
 **The rescue that makes the rest safe**: `Ctrl+Alt+ESC` returns keyboard *and*
 screen to the kernel from any program, checked at the one point in Ring 0 every
@@ -85,8 +87,8 @@ proof it works is a number: **the operations went 22 -> 40 while the doors went
 *Cost*: every new ability needs a handle kind to hang from, so there is no quick
 way to add "just one syscall".
 
-**Its own compilers.** COBOL, C and Ada, straight to machine code and BMO's own
-`.bex` container. No LLVM, no libc, no linker.
+**Its own compilers.** COBOL, C, Ada and INTI, straight to machine code and
+BMO's own `.bex` container. No LLVM, no libc, no linker.
 *Cost*: every bug in every language is ours, and a missing corner of C is found
 by a program that dies, not by a spec.
 
@@ -109,6 +111,71 @@ absence of failure -- surviving it and being able to say what happened.
 
 ---
 
+<p align="center">
+  <img src="docs/arte/inti.png" alt="INTI -- habla con la CPU" width="360">
+</p>
+
+## Why INTI exists
+
+**INTI is the system language of BMO-X.** Python's syntax, assembly's control,
+and a compiler that will not leave a single operation without a rule. It
+compiles straight to `.bex`, it runs on the Ryzen, and its checks reach real
+bytes -- not a document.
+
+### C is not dead here. It was demoted.
+
+C still compiles, is still tested, and stays. It is the only way to run the C
+that already exists in the world, and that is worth keeping. What changed is
+narrower and final: **BMO-X stops writing *new* system code in C.**
+
+The reason is one clause C wrote in 1972 and never revisited. Undefined
+behaviour was a *portability* bargain -- dozens of incompatible machines, tiny
+compilers, and no honest way to say what a signed overflow meant on all of them
+at once. It was the right trade **then**.
+
+Fifty years later the clause had not moved, but what it bought had switched
+sides: the compiler stopped reading it as *"anything may happen"* and started
+reading it as *"this cannot happen, therefore I may delete the code around it."*
+The programmer never agreed to the second reading. He inherited it.
+
+And here the bargain has nothing left to buy: **one machine, one toolchain, and
+every source in the tree.** There is no foreign compiler to stay compatible with
+and no unknown architecture to hold the door open for. Keeping undefined
+behaviour in BMO-X costs everything and purchases nothing.
+
+### The evidence is from this house, not from a paper
+
+The strongest argument for INTI was not argued. It was found:
+
+| what the emulator did | what the silicon actually does |
+|---|---|
+| `cvttsd2si` **saturated** -- `1e30` gave the largest integer, NaN gave zero | returns the most negative value as a sentinel, for both |
+| `imul` **set no flags** | sets `cf` and `of` when the product does not fit |
+
+Both holes sat in the emulator for months while BMO C compiled against them, and
+nobody noticed. **They surfaced the week INTI arrived, and the reason is exact:
+BMO C never emits a `jo`.** There was no one to ask the question.
+
+On **2026-08-22** the question was put to the real Ryzen 5 5600X. The probe line
+`reglas` came back `0x00`: overflow trapped as `1001`, divide-by-zero as `1003`,
+bad conversion as `1012`. **The emulator and the metal agree** -- which is the
+only way "INTI has no undefined behaviour" stops being a claim about an emulator
+we wrote ourselves.
+
+### The cost, stated
+
+The checks cost about **1%**. Three of the four rules that matter reach bytes and
+run; the rest are 🟡 or ⚪ and the tracker says which. `INTI PLENO` -- text,
+lists, tables, exact decimal -- **is not built**, and the compiler refuses to
+emit a signed binary for it rather than emitting one that quietly returns zeros.
+
+> The design is **[INTI_MAESTRO.md](docs/maestro/INTI_MAESTRO.md)**; who executes
+> the cut is **[PLAN_EL_SILICIO.md](docs/plan/PLAN_EL_SILICIO.md)**; and
+> **[ESTADO.md](toolchain/lang/inti/ESTADO.md)** takes the three claims apart and
+> says which of them is paid for.
+
+---
+
 ## What it deliberately does not do
 
 No networking stack, no GPU driver, no dynamic linking, no processes talking
@@ -128,7 +195,7 @@ were seen on the real machine and the things marked 🟡 say so.
 - `Ultra_kernel_x86-64\build.ps1 -BuildOnly` builds everything and runs the
   guards: sources are ASCII, and the syscall contract is compared across the
   kernel, the ABI and the userland runtime -- 49 operations, none by hand.
-- `cargo test --workspace --exclude bmo-kernel` -- **1.130 tests**.
+- `cargo test --workspace --exclude bmo-kernel` -- **2.052 tests**.
 - `cargo test -p bmo-c-front probe_` -- **nine axes, 143 cells, half a second**:
   the census of what the C compiler actually supports, including the rows that
   are still broken. A census that hides its red rows is worth nothing.
