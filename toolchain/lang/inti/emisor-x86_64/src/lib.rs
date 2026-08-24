@@ -844,6 +844,23 @@ fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) -> Cuenta {
             // ** Quien lo llena es el arranque, ANTES de `principal`. Si
             // `monton_nuevo` dijo que no, la tarea ya murio alli: aqui no puede
             // haber un cero.
+            // *** LA DIRECCION DE UNA LOCAL: un `lea`, y nada mas.
+            //
+            // `lea IZQ, [rbp + disp]` calcula la direccion sin leer la memoria,
+            // que es exactamente lo que hace falta: un `numero` mide 16 bytes y
+            // **no se puede cargar**, solo senalar.
+            //
+            // ** Y `lea` no toca banderas, que importa aqui: entre una operacion
+            // y su Regla 1 no puede meterse nada que las pise.
+            Instr::DireccionDeLocal { destino, local } => {
+                let disp = marco.local(*local);
+                out.push(0x48 | (((IZQ >> 3) & 1) << 2));
+                out.push(0x8D); // lea
+                out.push(0x85 | ((IZQ & 7) << 3)); // [rbp + disp32]
+                out.extend_from_slice(&disp.to_le_bytes());
+                guarda_temporal(out, IZQ, *destino, &marco);
+            }
+
             Instr::MontonDeLaTarea { destino } => {
                 x86::mov_r64_imm64(out, IZQ, 0);
                 reubicaciones_del_monton.push(out.len() - 8);
@@ -1100,7 +1117,9 @@ fn nombres_sueltos(f: &FuncionIr) -> Vec<String> {
                 }
             }
             // No lleva ningun `Valor`: su dato es un indice de tabla.
-            Instr::Direccion { .. } | Instr::MontonDeLaTarea { .. } => {}
+            Instr::Direccion { .. }
+            | Instr::MontonDeLaTarea { .. }
+            | Instr::DireccionDeLocal { .. } => {}
             Instr::Lee { direccion, .. } => mira(direccion, &mut sueltos),
             Instr::Escribe {
                 direccion, valor, ..

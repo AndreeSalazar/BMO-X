@@ -132,20 +132,47 @@ fn en_llano_no_hay_tareas() {
     assert_eq!(c, vec!["E0070"]);
 }
 
-/// Y lo mismo escrito en `pleno` no dice nada.
+/// *** Y LO MISMO EN `pleno` YA NO DICE NADA DE NADA (2026-08-23).
 ///
-/// ** Lo unico que sale es `E0073`, que no habla del programa sino del
-/// COMPILADOR: no sabe bajar `pleno` a bytes todavia. El dia que llegue, esta
-/// lista se queda vacia y la prueba falla -- que es como tiene que enterarse.
+/// Esta prueba exigia `E0073` --*"el compilador no sabe bajar `pleno` a bytes
+/// todavia"*-- y llevaba escrito su propio final: *"el dia que llegue, esta
+/// lista se queda vacia y la prueba falla, que es como tiene que enterarse"*.
+///
+/// **Se entero.** `lista de numero`, un literal de texto y un `numero` bajan los
+/// tres, asi que no queda nada que decir: ni del programa, ni del compilador.
+///
+/// ** Y es la primera vez que un fuente de `pleno` sale LIMPIO. No porque se
+/// aflojara el criterio --el gate es mas estricto que ayer: mira las piezas en
+/// vez de la etiqueta y ademas rechaza lo que no llega a un byte-- sino porque
+/// las piezas que este fuente usa ya estan.
 #[test]
 fn en_pleno_todo_eso_vale() {
     let c = codigos_de(
-        "perfil pleno\n\n\
-         funcion media(notas es lista de numero) devuelve numero\n\
-         \x20   saludo = \"hola\"\n\
-         \x20   devuelve 0\n",
+        "perfil pleno
+
+         funcion media(notas es lista de numero) devuelve numero
+             saludo = \"hola\"
+             devuelve 0
+",
     );
-    assert_eq!(c, vec!["E0073"], "en `pleno` no sale nada del PROGRAMA: solo lo que el compilador no sabe hacer todavia");
+    assert!(c.is_empty(), "en `pleno` esto ya no tiene nada que decir: {c:?}");
+}
+
+/// [!] Y lo que SIGUE diciendo algo: `tabla`, la unica de las cuatro que no ha
+/// empezado.
+///
+/// ** El gate atomico nombra la PIEZA, no el perfil. Ese es todo el cambio: el
+/// mismo programa con `tabla` se para, y sin ella compila.
+#[test]
+fn en_pleno_lo_unico_que_queda_es_la_tabla() {
+    let c = codigos_de(
+        "perfil pleno
+
+funcion f(indice es tabla de texto a entero64)
+    devuelve
+",
+    );
+    assert_eq!(c, vec!["E0073"]);
 }
 
 // ===================================================================
