@@ -930,6 +930,23 @@ pub(crate) fn shell_placa() {
         while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
         while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
     }
+    /// ** Una direccion se escribe en HEX y no en decimal, y no es estilo: el
+    /// mapa de memoria de una placa esta alineado a potencias de dos, asi que
+    /// en hex los ceros del final DICEN el tamano de la ventana. En decimal
+    /// `4026531840` no dice nada; `0xF0000000` se lee de un vistazo.
+    fn hex(b: &mut [u8; 80], o: &mut usize, v: u64) {
+        const D: &[u8; 16] = b"0123456789ABCDEF";
+        let mut visto = false;
+        let mut i = 60i32;
+        while i >= 0 {
+            let n = ((v >> i) & 0xF) as usize;
+            if n != 0 || visto || i == 0 {
+                visto = true;
+                if *o < b.len() { b[*o] = D[n]; *o += 1; }
+            }
+            i -= 4;
+        }
+    }
 
     // Quien fabrico este firmware, dicho por el propio XSDT.
     {
@@ -963,6 +980,61 @@ pub(crate) fn shell_placa() {
         txt(&mut b, &mut o, " B  ");
         txt(&mut b, &mut o, f.que_es);
         if let Ok(t) = core::str::from_utf8(&b[..o]) { s_log(t); }
+    }
+
+
+    // === LA VENTANA DE PCIe EN MEMORIA ==============================
+    //
+    // ** Es la fila que mas desbloquea de todo el censo. Hoy PCI se lee por los
+    // puertos 0xCF8/0xCFC y eso alcanza 256 bytes por funcion; PCIe tiene 4096,
+    // y los otros 3.840 son las capabilities extendidas. No se llega a ellas
+    // "con mas cuidado": hace falta esta direccion.
+    {
+        let mut r = [placa::RangoEcam { base: 0, segmento: 0, bus_desde: 0, bus_hasta: 0 };
+            placa::MAX_ECAM];
+        let n = placa::ecam(rsdp, &mut r);
+        if n == 0 {
+            s_log("[placa] sin MCFG: PCI se queda en 256 B por funcion, sin caps extendidas");
+        } else {
+            for i in 0..n {
+                let mut b = [0u8; 80];
+                let mut o = 0usize;
+                txt(&mut b, &mut o, "[placa] PCIe config en 0x");
+                hex(&mut b, &mut o, r[i].base);
+                txt(&mut b, &mut o, "  buses ");
+                dec(&mut b, &mut o, r[i].bus_desde as u64);
+                txt(&mut b, &mut o, "..");
+                dec(&mut b, &mut o, r[i].bus_hasta as u64);
+                txt(&mut b, &mut o, "  (4096 B por funcion)");
+                if let Ok(t) = core::str::from_utf8(&b[..o]) { s_log(t); }
+            }
+        }
+    }
+
+    // === LA IOMMU ===================================================
+    //
+    // *** Lo que esta fila decide no es rendimiento: es si un aparato con DMA
+    // puede escribir donde quiera. Una capability dice que puede hacer un
+    // PROCESO y no dice NADA de lo que puede hacer un APARATO.
+    {
+        let mut v = [placa::Ivhd {
+            tipo: 0, banderas: 0, largo: 0, id_dispositivo: 0, base_mmio: 0, segmento: 0,
+        }; placa::MAX_IOMMU];
+        let m = placa::iommu(rsdp, &mut v);
+        if m == 0 {
+            s_log("[placa] [!] sin IVRS: nada limita adonde escribe un aparato con DMA");
+        } else {
+            for i in 0..m {
+                let mut b = [0u8; 80];
+                let mut o = 0usize;
+                txt(&mut b, &mut o, "[placa] IOMMU tipo 0x");
+                hex(&mut b, &mut o, v[i].tipo as u64);
+                txt(&mut b, &mut o, "  registros en 0x");
+                hex(&mut b, &mut o, v[i].base_mmio);
+                if let Ok(t) = core::str::from_utf8(&b[..o]) { s_log(t); }
+            }
+            s_log("[placa]     la hay y se sabe donde. ENCENDERLA es otro trabajo");
+        }
     }
 
     // El resumen, y la unica cifra que puede ser mala.
