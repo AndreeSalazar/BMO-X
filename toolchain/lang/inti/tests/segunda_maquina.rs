@@ -133,7 +133,7 @@ fn plano_con(fuente: &str, tabla: &str) -> Plano {
 fn anchos_leidos(fuente: &str, tabla: &str) -> Vec<u32> {
     let m = arbol_de(fuente);
     let plano = plano_con(fuente, tabla);
-    let c = ir::bajar_con(&m, &tablas::Modulos::por_defecto(), &plano, &[]);
+    let c = ir::bajar_con(&m, &tablas::Modulos::por_defecto(), &plano, &[], &nec());
     assert!(!c.hay_errores(), "la sonda no baja: {:?}", c.codigos());
     c.valor
         .funciones
@@ -316,4 +316,13 @@ fn las_dos_tablas_no_son_la_misma() {
         Some(8),
         "y la de hoy sigue siendo de 64: si esto cambia, cambio el producto"
     );
+}
+
+/// La tabla de necesidades de las pruebas: **la incrustada**.
+///
+/// ** Y no la del disco a proposito. Una prueba que leyera `$BMO_MODS` diria
+/// cosas distintas segun quien la corra, que es justo lo que un test no puede
+/// hacer. La que se comprueba contra el disco es otra, y esta declarada aparte.
+fn nec() -> bmo_inti_front::necesidades::Necesidades {
+    bmo_inti_front::necesidades::Necesidades::por_defecto()
 }

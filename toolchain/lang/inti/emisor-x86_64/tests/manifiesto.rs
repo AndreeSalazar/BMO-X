@@ -183,7 +183,7 @@ fn la_sonda_del_ryzen_emite_los_mismos_bytes_que_antes_de_p1() {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = bmo_inti_front::ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec()).valor;
     let emitido = bmo_inti_x86_64::emitir(&ir);
 
     let sin = bmo_inti_x86_64::empaquetar(&emitido, None).expect("el gate lo rechazo");
@@ -257,7 +257,7 @@ fn la_seccion_de_codigo_es_identica_con_manifiesto_y_sin_el() {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = bmo_inti_front::ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec()).valor;
     let emitido = bmo_inti_x86_64::emitir(&ir);
     let sin = bmo_inti_x86_64::empaquetar(&emitido, None).expect("el gate lo rechazo");
 
@@ -298,4 +298,13 @@ fn anadir_el_manifiesto_no_rompe_la_frontera_de_sector() {
             );
         }
     }
+}
+
+/// La tabla de necesidades de las pruebas: **la incrustada**.
+///
+/// ** Y no la del disco a proposito. Una prueba que leyera `$BMO_MODS` diria
+/// cosas distintas segun quien la corra, que es justo lo que un test no puede
+/// hacer. La que se comprueba contra el disco es otra, y esta declarada aparte.
+fn nec() -> bmo_inti_front::necesidades::Necesidades {
+    bmo_inti_front::necesidades::Necesidades::por_defecto()
 }

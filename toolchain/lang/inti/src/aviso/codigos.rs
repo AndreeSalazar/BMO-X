@@ -123,7 +123,7 @@ pub const PERFIL_SIN_BYTES: Codigo = Codigo("E0073");
 /// Hasta hoy era silencio -- un fichero `llano` que traia una pieza `pleno`
 /// salia firmado, sin una palabra, y su autor seguia creyendo que tenia un
 /// binario de Ring 0.
-pub const PERFIL_MEZCLADO: Codigo = Codigo("E0074");
+pub const PERFIL_MEZCLADO: Codigo = Codigo("E0076");
 
 /// **Se pidio algo y no llego a un byte** (2026-08-23).
 ///
@@ -194,6 +194,31 @@ pub const NOMBRE_NO_ASCII: Codigo = Codigo("A2010");
 /// Se escribe a mano a proposito: una lista generada no habria detectado el
 /// duplicado que motivo este test, porque el generador habria repetido el
 /// error.
+// -- `necesita`: lo que un programa declara -------------------------------
+//
+// ** Los cuatro son del MISMO sitio --la linea `necesita`-- y aun asi son
+// cuatro y no uno. Un solo codigo obligaria a leer el texto para saber que
+// arreglar, y el contrato de cuatro partes existe justamente para no tener que
+// leer el texto: el codigo ya dice de que familia es el fallo.
+
+/// La clase que se pide no esta en `necesidades.toml`.
+pub const NECESITA_DESCONOCIDA: Codigo = Codigo("E0130");
+/// La unidad que acompana al numero no esta en la tabla.
+pub const UNIDAD_DESCONOCIDA: Codigo = Codigo("E0131");
+/// Un `necesita` sin motivo.
+///
+/// *** No es rigor por gusto: el ABI se niega a construir la seccion
+/// (*"un requisito obligatorio sin motivo no se puede contestar"*), asi que sin
+/// esta comprobacion el fallo apareceria al empaquetar y hablando de bytes, en
+/// vez de en la linea que lo escribio.
+pub const NECESITA_SIN_MOTIVO: Codigo = Codigo("E0132");
+/// Se pide mas de lo que la tabla deja pedir.
+pub const NECESITA_DE_MAS: Codigo = Codigo("E0133");
+/// La misma clase declarada dos veces. **No se suman**: dos lineas que hablan
+/// de lo mismo son un descuido, y elegir una por el orden seria adivinar.
+pub const NECESITA_REPETIDA: Codigo = Codigo("E0134");
+
+/// Todos los codigos, para el test que comprueba que ninguno se repite.
 pub const TODOS: &[Codigo] = &[
     FALTA_PERFIL,
     CAMBIANTE_ARRIBA,
@@ -231,6 +256,26 @@ pub const TODOS: &[Codigo] = &[
     CONVERSION,
     DESPLAZA_DE_MAS,
     NOMBRE_NO_ASCII,
+    // ** Los NUEVE que faltaban hasta el 2026-08-23. Ver el doc de arriba.
+    //
+    // [!] El noveno --`NUMERO_ENORME`-- no lo encontro nadie leyendo: lo saco la
+    // prueba en su primera ejecucion. Que la lista de "los que faltan" estuviera
+    // ella misma incompleta es la mejor razon posible para que la prueba exista.
+    NUMERO_ENORME,
+    PERFIL_SIN_BYTES,
+    PERFIL_MEZCLADO,
+    SIN_LLEGAR_A_BYTES,
+    CUESTA_DEMASIADO,
+    CAMPO_DESCONOCIDO,
+    SIN_MEDIDA,
+    CAMPO_SIN_TIPO,
+    FLOTANTE_SIN_BITS,
+    // `necesita`
+    NECESITA_DESCONOCIDA,
+    UNIDAD_DESCONOCIDA,
+    NECESITA_SIN_MOTIVO,
+    NECESITA_DE_MAS,
+    NECESITA_REPETIDA,
 ];
 
 #[cfg(test)]
@@ -278,6 +323,52 @@ mod pruebas {
             }
         }
     }
+
+    /// *** NINGUN CODIGO SE QUEDA FUERA DE `TODOS`, y esta es la prueba que
+    /// faltaba.
+    ///
+    /// ** El 2026-08-23 habia OCHO codigos declarados y no apuntados, y dos de
+    /// ellos compartian el `E0074`. El test de unicidad de arriba estaba escrito
+    /// y pasaba **sin ver el duplicado**, porque los duplicados no estaban en la
+    /// lista que miraba.
+    ///
+    /// Asi que este lee el fichero --a si mismo-- y exige que todo `pub const`
+    /// de tipo `Codigo` aparezca abajo. La lista sigue escribiendose a mano; lo
+    /// que ya no puede es quedarse corta en silencio.
+    #[test]
+    fn ninguno_se_queda_fuera_de_la_lista() {
+        const YO: &str = include_str!("codigos.rs");
+        let lista = YO
+            .split("pub const TODOS")
+            .nth(1)
+            .expect("la lista tiene que estar en este fichero");
+        let mut fuera = Vec::new();
+        for linea in YO.lines() {
+            let l = linea.trim();
+            let Some(resto) = l.strip_prefix("pub const ") else {
+                continue;
+            };
+            let Some((nombre, tipo)) = resto.split_once(": ") else {
+                continue;
+            };
+            if !tipo.starts_with("Codigo =") || nombre == "TODOS" {
+                continue;
+            }
+            // Se busca el nombre seguido de coma: `INDICE` no puede colarse
+            // como parte de `INDICE_VISIBLE`.
+            let apuntado = lista
+                .lines()
+                .any(|x| x.trim().trim_end_matches(',') == nombre);
+            if !apuntado {
+                fuera.push(nombre.to_string());
+            }
+        }
+        assert!(
+            fuera.is_empty(),
+            "estos codigos existen y no estan en TODOS, asi que el test de              unicidad no los mira: {fuera:?}"
+        );
+    }
+
 }
 
 /// Un campo que no existe, o algo que no tiene campos.

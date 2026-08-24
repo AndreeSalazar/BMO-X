@@ -261,8 +261,8 @@ fn el_arranque_monta_el_monton_y_ya_no_se_confiesa() {
     assert!(
         e.codigo
             .windows(4)
-            .any(|w| w == arranque::MONTON_DE_LA_TAREA.to_le_bytes()),
-        "no aparece el 4096 del monton de la tarea"
+            .any(|w| w == (arranque::MONTON_POR_DEFECTO as u32).to_le_bytes()),
+        "no aparece el 4096 del monton de una tarea que no pidio otra cosa"
     );
     assert!(
         e.codigo

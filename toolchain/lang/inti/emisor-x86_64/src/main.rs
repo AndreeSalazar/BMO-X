@@ -138,7 +138,8 @@ fn main() {
 
     // -- El descenso y los bytes -------------------------------------------
     let metal = bmo_inti_front::ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal,
+        &bmo_inti_front::necesidades::Necesidades::cargar(&raices)).valor;
     let emitido = bmo_inti_x86_64::emitir(&ir);
 
     // ** LO QUE NO LLEGO A UN BYTE, y sale ANTES de escribir nada.

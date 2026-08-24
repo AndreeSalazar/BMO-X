@@ -138,6 +138,19 @@ pub const CLASE_ENTRADA: bx_u16 = 0x0005;
 pub const CLASE_CPU: bx_u16 = 0x0006;
 /// Huecos de proceso: un programa que lanza hijos y necesita que quepan.
 pub const CLASE_PROCESOS: bx_u16 = 0x0007;
+/// **El MONTON de la tarea: lo que el programa reparte en ejecucion.** En bytes.
+///
+/// *** Y NO ES [`CLASE_MEMORIA`], aunque las dos se midan en bytes. La de
+/// arriba es lo que tiene que existir **antes de la primera instruccion**
+/// --codigo, datos, pila-- y la decide el CARGADOR mirando el fichero. Esta es
+/// lo que la tarea va a pedirle al sistema **despues de arrancar**, y solo la
+/// sabe el programa.
+///
+/// ** Se anade una clase en vez de sumar las dos cantidades porque un sistema
+/// que no pueda dar el monton puede querer cargar el programa igual --y dejar
+/// que muera con su codigo-- mientras que no poder dar la pila es no poder
+/// cargarlo. Son dos decisiones distintas y necesitan dos numeros distintos.
+pub const CLASE_MONTON: bx_u16 = 0x0008;
 
 // -- Las unidades -----------------------------------------------------------
 
@@ -292,6 +305,7 @@ pub fn clase_conocida(clase: bx_u16) -> bool {
             | CLASE_ENTRADA
             | CLASE_CPU
             | CLASE_PROCESOS
+            | CLASE_MONTON
     )
 }
 

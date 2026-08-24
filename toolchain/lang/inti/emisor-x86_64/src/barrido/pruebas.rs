@@ -33,7 +33,7 @@ fn emitido(fuente: &str) -> crate::Emitido {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = bmo_inti_front::ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec()).valor;
     let _ = Taller::nuevo();
     emitir(&ir)
 }
@@ -181,4 +181,13 @@ fn ante_lo_desconocido_se_para_y_no_opina() {
         }
         Barrido::Completo(p) => panic!("leyo lo que no existe: {:?}", p),
     }
+}
+
+/// La tabla de necesidades de las pruebas: **la incrustada**.
+///
+/// ** Y no la del disco a proposito. Una prueba que leyera `$BMO_MODS` diria
+/// cosas distintas segun quien la corra, que es justo lo que un test no puede
+/// hacer. La que se comprueba contra el disco es otra, y esta declarada aparte.
+fn nec() -> bmo_inti_front::necesidades::Necesidades {
+    bmo_inti_front::necesidades::Necesidades::por_defecto()
 }

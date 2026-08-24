@@ -237,7 +237,7 @@ pub fn leer(piezas: &[Pieza], vocab: &Vocabulario) -> Cosecha<Modulo> {
     let mut c = Cursor::nuevo(piezas, vocab);
 
     let (perfil, sitio_perfil) = lee_perfil(&mut c);
-    let usa = lee_usa(&mut c);
+    let (usa, necesita) = lee_cabecera(&mut c);
 
     let mut declaraciones = Vec::new();
     while !c.se_acabo() {
@@ -262,6 +262,7 @@ pub fn leer(piezas: &[Pieza], vocab: &Vocabulario) -> Cosecha<Modulo> {
             perfil,
             sitio_perfil,
             usa,
+            necesita,
             declaraciones,
             // Un fichero leido solo es de UNA pieza: la suya. Las costuras las
             // pone `armar`, que es quien fusiona -- aqui no hay nada cosido
@@ -321,15 +322,29 @@ fn lee_perfil(c: &mut Cursor) -> (Perfil, Sitio) {
     (Perfil::Pleno, sitio)
 }
 
-fn lee_usa(c: &mut Cursor) -> Vec<(String, Sitio)> {
+/// **LA CABECERA DEL MODULO: `usa` y `necesita`, en el orden que sea.**
+///
+/// ** Las dos en el mismo bucle a proposito. Con una funcion por palabra, un
+/// fichero que escribiera `necesita` antes que `usa` habria dejado el `usa`
+/// abajo, sin importar nada y sin un aviso -- porque el segundo lector no
+/// habria llegado a mirarlo. El orden entre dos lineas de cabecera no significa
+/// nada, y lo que no significa nada no debe cambiar el resultado.
+fn lee_cabecera(c: &mut Cursor) -> (Vec<(String, Sitio)>, Vec<Necesidad>) {
     let mut v = Vec::new();
+    let mut necesidades = Vec::new();
     loop {
         if matches!(c.mira().clase, Clase::FinLinea) {
             c.avanza();
             continue;
         }
+        if c.mira().es(Simbolo::Necesita) {
+            if let Some(x) = lee_necesita(c) {
+                necesidades.push(x);
+            }
+            continue;
+        }
         if !c.mira().es(Simbolo::Usa) {
-            return v;
+            return (v, necesidades);
         }
         c.avanza();
         let sitio = c.sitio();
@@ -352,6 +367,94 @@ fn lee_usa(c: &mut Cursor) -> Vec<(String, Sitio)> {
         }
         c.fin_de_linea();
     }
+}
+
+/// **UNA LINEA `necesita`.**
+///
+/// ```text
+///     necesita monton 64 megas "los pesos del modelo viven en RAM"
+/// ```
+///
+/// ** La unidad y el motivo se leen si estan y NO se exigen aqui. Que falte el
+/// motivo es un error --lo dice `E0132`-- pero es un error de SIGNIFICADO, y
+/// quien lo dice es quien tiene la tabla delante. Un parser que exigiera el
+/// motivo tendria que explicar por que, y para explicarlo tendria que saber que
+/// el ABI se niega a escribir un requisito sin el. No lo sabe ni tiene que
+/// saberlo.
+fn lee_necesita(c: &mut Cursor) -> Option<Necesidad> {
+    let sitio = c.sitio();
+    c.avanza(); // `necesita`
+
+    let clase = match c.avanza().clase {
+        Clase::Nombre(n) => n,
+        otra => {
+            c.di(
+                Aviso::nuevo(
+                    codigos::PAREJA_ROTA,
+                    "Despues de `necesita` va el nombre de lo que se pide.",
+                    sitio,
+                )
+                .con_habia(format!(
+                    "Aqui hay {}.",
+                    Pieza::nueva(otra, sitio).como_se_llama()
+                ))
+                .con_hacer("por ejemplo `necesita monton 64 megas \"y el motivo\"`"),
+            );
+            c.hasta_fin_de_linea();
+            return None;
+        }
+    };
+
+    let sitio_n = c.sitio();
+    let cantidad = match c.avanza().clase {
+        // ** El numero sigue siendo TEXTO aqui, como en todas partes: el lexer
+        // no lo convierte a proposito. Lo pasa una vez quien sabe en que forma
+        // va a vivir, y para un requisito esa forma es un `u64` de bytes.
+        Clase::Numero(x) if !x.con_punto => x.texto,
+        otra => {
+            c.di(
+                Aviso::nuevo(
+                    codigos::PAREJA_ROTA,
+                    "Despues de la clase va CUANTO se necesita, en un numero entero.",
+                    sitio_n,
+                )
+                .con_habia(format!(
+                    "Aqui hay {}.",
+                    Pieza::nueva(otra, sitio_n).como_se_llama()
+                ))
+                .con_hacer("por ejemplo `necesita monton 64 megas \"y el motivo\"`"),
+            );
+            c.hasta_fin_de_linea();
+            return None;
+        }
+    };
+
+    let unidad = match &c.mira().clase {
+        Clase::Nombre(u) => {
+            let u = u.clone();
+            c.avanza();
+            Some(u)
+        }
+        _ => None,
+    };
+
+    let motivo = match &c.mira().clase {
+        Clase::Texto(t) => {
+            let t = t.clone();
+            c.avanza();
+            Some(t)
+        }
+        _ => None,
+    };
+
+    c.fin_de_linea();
+    Some(Necesidad {
+        clase,
+        cantidad,
+        unidad,
+        motivo,
+        sitio,
+    })
 }
 
 fn declaracion(c: &mut Cursor) -> Option<Decl> {

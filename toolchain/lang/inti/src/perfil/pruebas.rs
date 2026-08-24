@@ -483,7 +483,10 @@ funcion saluda devuelve entero64
         &[],
         &crate::tablas::Modulos::por_defecto(),
     );
-    assert!(c.codigos().contains(&"E0074"), "{:?}", c.codigos());
+    // [!] E0076 y no E0074: el 74 ya estaba ocupado por `CUESTA_DEMASIADO`.
+    // El choque se colo el mismo dia que entro esta regla y lo saco la prueba
+    // `ninguno_se_queda_fuera_de_la_lista` -- no un lector.
+    assert!(c.codigos().contains(&"E0076"), "{:?}", c.codigos());
     // Y dice CUAL la rompe, que es lo unico accionable del aviso.
     let texto = c.pintar("usuario.inti");
     assert!(texto.contains("saludos/cortesia.inti"), "{}", texto);

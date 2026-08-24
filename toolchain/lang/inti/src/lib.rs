@@ -51,6 +51,7 @@ pub mod cabina;
 pub mod ir;
 pub mod aviso;
 pub mod lexico;
+pub mod necesidades;
 pub mod nombres;
 pub mod palabras;
 pub mod manifiesto;
@@ -250,11 +251,26 @@ pub fn comprobar(fuente: &str) -> Cosecha<perfil::Informe> {
     // llamar a alguien y leer lo que dejo escrito.
     let mut tipos = tipos::comprobar(&arbol.valor, &plano.valor);
 
+    // ** Y la SEXTA: que lo que el fichero dice necesitar se pueda pedir.
+    //
+    // [!] `bajar_con` llama a esta MISMA funcion, y eso no es tener dos
+    // respuestas a la misma pregunta -- es una funcion pura llamada dos veces
+    // sobre los mismos datos. La que si eran dos respuestas era `tipos_de` y
+    // `tipos_de_con`, que **decidian distinto**; aqui el peligro seria
+    // reimplementar la comprobacion, no repetirla.
+    //
+    // Y tiene que estar aqui, en la fase de comprobar, porque quien pasa el
+    // fichero por el revisor tiene que enterarse de que su `necesita` esta mal
+    // sin llegar a emitir un byte.
+    let mut necesita =
+        necesidades::revisa(&arbol.valor, &necesidades::Necesidades::cargar(&raices));
+
     let mut avisos = std::mem::take(&mut arbol.avisos);
     avisos.append(&mut perfiles.avisos);
     avisos.append(&mut nombres.avisos);
     avisos.append(&mut plano.avisos);
     avisos.append(&mut tipos.avisos);
+    avisos.append(&mut necesita.avisos);
     Cosecha::con(perfiles.valor, avisos)
 }
 
@@ -307,7 +323,14 @@ pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core:
 
     let plano = disposicion::comprobar(&arbol.valor, disposicion::Medidas::cargar(&raices));
     let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let mut ir_ = ir::bajar_con(
+        &arbol.valor,
+        &modulos,
+        &plano.valor,
+        &metal,
+        &necesidades::Necesidades::cargar(&raices),
+    );
+    let ir = ir_.valor;
 
     let parte = cabina::Parte {
         fichero: fichero.to_string(),
@@ -327,6 +350,10 @@ pub fn informar(fuente: &str, fichero: &str) -> (cabina::Parte, Vec<cabina_core:
     let mut avisos = std::mem::take(&mut arbol.avisos);
     avisos.append(&mut perfiles.avisos);
     avisos.append(&mut nombres_.avisos);
+    // ** Los de `necesita` salen con los demas y no aparte: para quien escribe,
+    // una linea mal puesta en la cabecera es un fallo del fichero como
+    // cualquier otro.
+    avisos.append(&mut ir_.avisos);
 
     let eventos = cabina::eventos(&parte, &avisos);
     (parte, eventos)

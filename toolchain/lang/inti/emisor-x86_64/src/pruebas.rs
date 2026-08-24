@@ -47,7 +47,7 @@ fn emitido(fuente: &str) -> Emitido {
     // existe -- que es exactamente lo que hacia el compilador entero antes de
     // F5d. Un banco que compila por otro camino prueba otro compilador.
     let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let ir = ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec()).valor;
     emitir(&ir)
 }
 
@@ -312,7 +312,7 @@ fn reglas_de(fuente: &str) -> usize {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal)
+    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec())
         .valor
         .funciones
         .iter()
@@ -332,7 +332,7 @@ fn llamadas_de(fuente: &str) -> usize {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal)
+    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec())
         .valor
         .funciones
         .iter()
@@ -382,7 +382,7 @@ pub(super) fn ir_de(fuente: &str) -> bmo_inti_front::ir::ModuloIr {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor
+    ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec()).valor
 }
 
 fn con_arranque(e: &Emitido) -> Vec<u8> {
@@ -457,6 +457,7 @@ mod marco;
 mod memoria;
 mod metal;
 mod monton;
+mod necesita;
 mod objetos;
 mod reglas;
 mod signo;
@@ -884,3 +885,11 @@ fn un_nombre_que_el_emisor_no_resuelve_no_se_baja_a_cero_en_silencio() {
     );
 }
 
+/// La tabla de necesidades de las pruebas: **la incrustada**.
+///
+/// ** Y no la del disco a proposito. Una prueba que leyera `$BMO_MODS` diria
+/// cosas distintas segun quien la corra, que es justo lo que un test no puede
+/// hacer. La que se comprueba contra el disco es otra, y esta declarada aparte.
+fn nec() -> bmo_inti_front::necesidades::Necesidades {
+    bmo_inti_front::necesidades::Necesidades::por_defecto()
+}
