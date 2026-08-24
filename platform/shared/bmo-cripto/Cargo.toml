@@ -1,0 +1,17 @@
+[package]
+name = "bmo-cripto"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "El techo del plan: la criptografia de BMO-X, escrita y con sus vectores"
+
+# Sin dependencias, y es una decision de SEGURIDAD, no de gusto.
+#
+# El dia que esto firme un `.bex`, quien lo audite tiene que poder leer las
+# lineas. Una cadena de confianza que empieza en un `Cargo.toml` no es una
+# cadena de confianza: es una promesa de otro.
+[dependencies]
+
+[lib]
+name = "bmo_cripto"
+path = "src/lib.rs"

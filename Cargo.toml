@@ -10,6 +10,12 @@ members = [
     # El unico BLAKE3 del sistema: firmas del BEF, bmo-verify y ESTRATOS
     # calculan la MISMA suma porque ejecutan el MISMO codigo.
     "platform/shared/bmo-hash",
+    # EL TECHO DEL PLAN, empezado por abajo. SHA-256 esta debajo de HMAC, de
+    # HKDF, del transcript de TLS y de la huella que firma un X.509 -- y ademas
+    # es la unica pieza de cripto que se puede comprobar del todo sin hardware,
+    # sin red y sin nadie al otro lado: NIST publico los vectores en FIPS 180-4.
+    # Se escribe y no se trae: ver la cabecera de su `Cargo.toml`.
+    "platform/shared/bmo-cripto",
     # Lo que la PLACA BASE cuenta de si misma. Vive aqui y no dentro del kernel
     # por lo mismo que `bmo-net`: leer memoria fisica es del kernel, pero decidir
     # si esos 36 bytes son una tabla ACPI valida es interpretacion de bits, y
