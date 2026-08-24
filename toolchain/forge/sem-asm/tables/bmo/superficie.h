@@ -78,8 +78,31 @@
  * ```text
  *    +0   CABEZA (u32)   la escribe el DIRECTOR
  *    +4   COLA   (u32)   la escribe la app
- *    +8   las ranuras, de 8 bytes cada una
+ *    +8   PUNTERO: x en los 16 bajos, y en los 16 altos.  El DIRECTOR
+ *    +12  BOTONES en el byte 0, y DENTRO en el byte 1.    El DIRECTOR
+ *    +16  las ranuras, de 8 bytes cada una
  * ```
+ *
+ * == ** POR QUE EL PUNTERO NO ES UNA RANURA, Y EL CLIC SI ==
+ *
+ * Son dos cosas de naturaleza distinta y meterlas en la misma cola las rompe a
+ * las dos:
+ *
+ * ```text
+ *    un CLIC      es un HECHO.  Paso, y si se pierde no vuelve a pasar
+ *    la POSICION  es un ESTADO. Solo importa la ultima, y las de antes
+ *                 no valen nada
+ * ```
+ *
+ * Un anillo de 64 ranuras con una posicion que cambia sesenta veces por segundo
+ * se llena en un segundo, y entonces **el DIRECTOR descarta las NUEVAS** --que
+ * es lo correcto para un hecho-- o sea que la app acabaria leyendo donde estuvo
+ * el raton hace un segundo y creyendose que es ahora. Un buzon lleno de
+ * posiciones no es lento: **miente**.
+ *
+ * Por eso la posicion se PISA en un sitio fijo. La app lee la ultima y no hay
+ * cola que se atrase; y si lee dos veces seguidas sin que el raton se mueva, le
+ * contesta lo mismo, que es exactamente lo que un estado tiene que hacer.
  *
  * Un escritor y un lector, cada uno con su indice: no hace falta cerrojo, por
  * la misma razon que no lo hace falta la secuencia. Vacio es `cabeza == cola`;
@@ -163,10 +186,12 @@
  * origen de la ventana antes de dejarlas ahi. Una app no sabe --ni tiene por
  * que saber-- donde la pusieron.
  *
- * ** HOY SOLO VIAJA EL CLIC (el boton BAJANDO). Soltar no se publica todavia,
- * asi que dentro de una app no se puede arrastrar. Esta dicho aqui y no
- * escondido: media promesa contada entera es una limitacion; contada a medias
- * es un fallo. */
+ * ** VIAJAN LAS DOS CARAS: el boton bajando y subiendo, con `PULSADA` puesta o
+ * no. Lo que NO hay es CAPTURA -- si sueltas fuera de la ventana, ese soltar no
+ * llega, porque se entrega a quien esta debajo del puntero y ya no eres tu.
+ * Para arrastrar algo hasta el borde hace falta captura, y no esta. Dicho aqui
+ * y no escondido: media promesa contada entera es una limitacion; contada a
+ * medias es un fallo. */
 #define BMO_SUP_EV_RATON 0x8000000000000000ULL
 
 int bmo_sup_es_raton(unsigned long long e) {
@@ -188,8 +213,9 @@ int bmo_sup_raton_botones(unsigned long long e) {
     return (int)(e & 0xFF);
 }
 
-/* Lo que ocupa el buzon antes de la primera ranura: cabeza y cola. */
-#define BMO_SUP_BUZON_CABECERA 8
+
+/* Lo que ocupa el buzon antes de la primera ranura: cabeza, cola y el puntero. */
+#define BMO_SUP_BUZON_CABECERA 16
 /* Lo que mide una ranura: un evento crudo. */
 #define BMO_SUP_BUZON_RANURA 8
 
@@ -294,11 +320,13 @@ BMO_SUPERFICIE *bmo_superficie_crear_con_buzon(int ancho, int alto, int ranuras)
     bmo_sup_poner(s->base, 6, (unsigned int)buzon);
     bmo_sup_poner(s->base, 7, (unsigned int)ranuras);
     if (ranuras > 0) {
-        /* Cabeza y cola a cero: el buzon nace vacio. Se escriben ANTES de
-         * ofrecer el bloque -- si se dejaran para despues, el DIRECTOR podria
-         * tomar la superficie y leer una cola con basura dentro. */
+        /* Cabeza, cola y puntero a cero: el buzon nace vacio y sin raton
+         * dentro. Se escriben ANTES de ofrecer el bloque -- si se dejaran para
+         * despues, el DIRECTOR podria tomar la superficie y leer basura. */
         bmo_sup_poner(s->base, (int)(buzon / 4), 0);
         bmo_sup_poner(s->base, (int)(buzon / 4) + 1, 0);
+        bmo_sup_poner(s->base, (int)(buzon / 4) + 2, 0);
+        bmo_sup_poner(s->base, (int)(buzon / 4) + 3, 0);
     }
 
     padre = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_MI_PADRE, 0, 0, 0);
@@ -369,6 +397,51 @@ unsigned long long bmo_superficie_evento(BMO_SUPERFICIE *s) {
     cola = (cola + 1) & (ranuras - 1);
     bmo_sup_poner(s->base, idx + 1, cola);
     return e;
+}
+
+/* -- ** DONDE ESTA EL PUNTERO AHORA, que es un ESTADO y no un evento ----
+ *
+ * Se lee cuando hace falta y no se consume: dos lecturas seguidas sin que el
+ * raton se haya movido contestan lo mismo. Ver el porque en la cabecera.
+ *
+ * `bmo_superficie_dentro` es el que hay que preguntar primero: cuando el raton
+ * no esta encima, x e y conservan **la ultima posicion buena**, que es lo unico
+ * util que se puede dejar ahi -- ponerlas a cero diria que el puntero esta en
+ * la esquina, y eso es una posicion, no una ausencia. */
+int bmo_superficie_dentro(BMO_SUPERFICIE *s) {
+    unsigned long long buz;
+    if (s == 0) {
+        return 0;
+    }
+    buz = (unsigned long long)bmo_sup_leer(s->base, 6);
+    if (buz == 0) {
+        return 0;
+    }
+    return (int)((bmo_sup_leer(s->base, (int)(buz / 4) + 3) >> 8) & 0xFF);
+}
+
+int bmo_superficie_puntero_x(BMO_SUPERFICIE *s) {
+    unsigned long long buz;
+    if (s == 0) {
+        return 0;
+    }
+    buz = (unsigned long long)bmo_sup_leer(s->base, 6);
+    if (buz == 0) {
+        return 0;
+    }
+    return (int)(bmo_sup_leer(s->base, (int)(buz / 4) + 2) & 0xFFFF);
+}
+
+int bmo_superficie_puntero_y(BMO_SUPERFICIE *s) {
+    unsigned long long buz;
+    if (s == 0) {
+        return 0;
+    }
+    buz = (unsigned long long)bmo_sup_leer(s->base, 6);
+    if (buz == 0) {
+        return 0;
+    }
+    return (int)((bmo_sup_leer(s->base, (int)(buz / 4) + 2) >> 16) & 0xFFFF);
 }
 
 #endif /* BMO_SUPERFICIE_H */
