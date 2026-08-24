@@ -119,7 +119,7 @@ motivos delante.
 |---|---|---|
 | 1 | Enumerar PCIe y mapear los BAR | ★ **ya se hace** en BMO (xHCI, AHCI) |
 | 2 | **Cargar el firmware por el PSP** | ⚠ el muro -- ver abajo |
-| 3 | Anillos de comandos (GFX, compute, SDMA) + timbres | ★ **la forma es la de xHCI**, ya peleada en metal |
+| 3 | Anillos de comandos (GFX, compute, SDMA) + timbres | ★ **la forma es la de xHCI**, ya peleada en metal -- y desde el 2026-08-24 el molde esta PARTIDO: `xhci/lib.rs` (anillos, TRB, init, eventos) 688 lineas, `enumerar.rs` 284, `transferencia.rs` 688. Un molde de 1.583 lineas no se copia, se hojea |
 | 4 | Gestor de memoria de video: VRAM, GTT, tablas de pagina de la GPU | proyecto propio, documentado en `amdgpu` |
 | 5 | SPIR-V -> ISA de RDNA | ★ proyecto propio. **La ISA de RDNA si esta publicada** por AMD |
 | 6 | La API de Vulkan encima | se reutiliza entera de B1 |
