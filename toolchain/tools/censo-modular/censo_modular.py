@@ -249,7 +249,31 @@ def mayor_funcion(texto, ruta):
     if not cortes:
         return None
     cortes.append(texto.count('\n'))
-    return max(b - a for a, b in zip(cortes, cortes[1:]))
+    pares = list(zip(cortes, cortes[1:]))
+    mayor, (ini, fin) = max(((b - a, (a, b)) for a, b in pares), key=lambda x: x[0])
+
+    # *** Y CUANTO ESTADO COMPARTE, que es lo que decide si se puede partir.
+    #
+    # ** Lo enseno `syscall/mod.rs` el 2026-08-24. Tenia una funcion de 795
+    # lineas y este censo la marcaba `CON MONSTRUO` -- *"partirla es diseno, no
+    # tijeras"*. Al medirla:
+    #
+    #     locales a nivel del cuerpo   0
+    #     estado compartido            los tres parametros, y nada mas
+    #
+    # **No era un monstruo: era un DESPACHADOR con cuarenta y cinco brazos
+    # independientes**, y cada brazo era una funcion esperando nombre. Se partio
+    # moviendo texto en una tarde.
+    #
+    # *** La media dijo `mixto`, el tamano dijo `CON MONSTRUO`, y los dos se
+    # equivocaron igual: **midieron lo GRANDE que es la funcion y no lo que
+    # decide si se puede partir, que es su ESTADO.** El propio doc de este
+    # fichero lo llevaba escrito --*"el estado local compartido tiene que
+    # volverse un struct primero"*-- y nadie lo media.
+    lineas = texto.split('\n')[ini:fin]
+    estado = sum(1 for l in lineas
+                 if l.startswith('    let ') or l.startswith('    static '))
+    return mayor, estado
 
 
 def medir(ruta):
@@ -264,8 +288,9 @@ def medir(ruta):
     # (`cobol-gen`, `c-gen`). Se busca solo en la cabecera: un fichero que la
     # mencione a mitad esta hablando de otro, no declarandose.
     generado = 'AUTO-GENERADO' in s[:400] or 'AUTO-GENERATED' in s[:400]
+    m = mayor_funcion(s, ruta)
     return (lineas, (len(patron.findall(s)) if patron else None), generado,
-            mayor_funcion(s, ruta))
+            m[0] if m else None, m[1] if m else None)
 
 
 # == PADRE =====================================================================
@@ -273,7 +298,10 @@ def medir(ruta):
 # other Fichas exist, which is why nothing here compares or sorts.
 
 class Ficha:
-    def __init__(self, ruta, lineas, funciones, generado=False, mayor=None):
+    def __init__(self, ruta, lineas, funciones, generado=False, mayor=None, estado=None):
+        # **Cuanto estado comparte la funcion mas grande.** Es lo que decide si
+        # se parte moviendo texto o si pide un struct antes. Ver `mayor_funcion`.
+        self.estado = estado
         # **La funcion mas grande.** Ver `mayor_funcion`: la media esconde un
         # monstruo entre pequenas, y este censo existe para separarlos.
         self.mayor = mayor
@@ -324,6 +352,15 @@ def especie(ficha):
     # "el fichero ES una funcion" --eso ya lo dice la media-- sino **"hay una
     # que no se va a poder mover sin diseNo"**.
     if ficha.mayor and ficha.lineas and ficha.mayor * 3 > ficha.lineas:
+        # *** Y AQUI SE MIRA EL ESTADO, no el tamano. Una funcion enorme que no
+        # declara casi nada no es un monstruo: es un DESPACHADOR, y se parte
+        # moviendo texto. Ver `mayor_funcion`.
+        #
+        # El umbral son CINCO locales, y sale de los dos casos medidos:
+        # `syscall::invoke_current_task` tenia 0 y se partio en una tarde;
+        # `task::admit_payload_desde` tiene decenas y sigue entera.
+        if ficha.estado is not None and ficha.estado <= 5:
+            return 'DESPACHADOR'
         return 'CON MONSTRUO'
     m = ficha.media
     if m is None:
@@ -339,7 +376,8 @@ COMO_SE_PARTE = {
     'CAJON': 'mecanico: mover texto, y demostrable byte a byte (L6d)',
     'GIGANTE': 'pide DISENO: el estado local tiene que volverse un struct',
     'mixto': 'a mano: hay funciones grandes entre las pequenas',
-    'CON MONSTRUO': 'UNA funcion se lleva >1/3: moverla es mecanico, PARTIRLA es diseno',
+    'CON MONSTRUO': 'UNA funcion se lleva >1/3 Y comparte estado: PARTIRLA es diseno',
+    'DESPACHADOR': 'UNA funcion enorme SIN estado: son brazos sueltos, se parten moviendo texto',
     'TABLA': 'son datos, no logica: mirar si lo deberia emitir una fabrica',
     'desconocida': 'sin cuenta de funciones para este lenguaje',
 }
@@ -361,10 +399,10 @@ def censar(raiz):
         m = medir(os.path.join(raiz, f))
         if m is None:
             continue
-        lineas, funciones, generado, mayor = m
+        lineas, funciones, generado, mayor, estado = m
         if lineas < AVISO:
             continue
-        fichas.append(Ficha(f, lineas, funciones, generado, mayor))
+        fichas.append(Ficha(f, lineas, funciones, generado, mayor, estado))
     fichas.sort(key=lambda x: -x.lineas)
     return fichas
 
