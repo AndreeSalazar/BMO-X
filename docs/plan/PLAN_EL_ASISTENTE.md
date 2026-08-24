@@ -96,11 +96,27 @@ enganosas**, y `crew.rs` lo dice en su primera linea:
 O sea: **el reparto multinucleo YA FUNCIONA**, y esta probado en metal. Lo que
 falta no es SMP.
 
-**Lo que falta es que llegue a Ring 3.** `crew` es un modulo del kernel; un
-programa de INTI no tiene por donde pedirle nada. Y eso es exactamente el
-problema que la memoria del proyecto ya tiene con otro nombre --
-*"el escritorio no tiene salida: lo que solo es orden del kernel es codigo que
-Eddi no puede usar"*.
+**Lo que falta es que un programa pueda darle SU trabajo.** Y hay que decirlo
+con precision, porque a medias suena a otra cosa:
+
+```text
+   lo que Ring 3 YA puede    TASK_OP_SMP_DESPERTAR: arrancar, parar, y MEDIR
+   lo que Ring 3 NO puede    decir "reparte ESTA funcion mia entre n partes"
+```
+
+`crew::prueba` corre una faena **del kernel**. No hay camino para una funcion de
+Ring 3, y `crew.rs` lo dice sin rodeos: *"no hay tareas de Ring 3 corriendo en
+otro nucleo"*.
+
+Y eso es exactamente el problema que la memoria del proyecto ya tiene con otro
+nombre -- *"el escritorio no tiene salida: lo que solo es orden del kernel es
+codigo que Eddi no puede usar"*. Aqui los nucleos estan encendidos, medidos, y
+son del kernel.
+
+[!] **Y el paso 0 sigue sin foto.** `smp prueba` contesto `0.00x` en metal el
+2026-08-08, y desde entonces lleva tres testigos --`ENTRARON`/`VIERON`/`HECHOS`--
+que nadie ha fotografiado. Disenar la puerta sobre un reparto que no se sabe si
+funciona seria disenar sobre nada: **esa foto va antes.**
 
 Lo que MWAIT arregla es otra cosa y hay que separarla: hoy un obrero en espera
 **gira al 100%** en vez de dormir. Eso es consumo, no capacidad. Para un
