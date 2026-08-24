@@ -219,6 +219,39 @@ def anillo(ruta, raiz='.'):
 # know what a limit is, it does not know there are other files, and it has no
 # opinion about the numbers it returns.
 
+def mayor_funcion(texto, ruta):
+    """**Cuanto ocupa la funcion MAS GRANDE.** `None` si no se sabe contar.
+
+    *** POR QUE ESTA MEDIDA HACIA FALTA, y lo enseno un fichero de verdad
+    ==================================================================
+
+    El 2026-08-24 el censo llamaba CAJON a `task/proc.rs` --media 58 lineas por
+    funcion-- y eso decia *"se parte moviendo texto"*. Al abrirlo:
+
+        `admit_payload_desde` era UNA FUNCION DE 607 LINEAS
+
+    **Diecinueve funciones pequenas y un monstruo dan la misma media que veinte
+    medianas.** La media es un promedio, y un promedio esconde exactamente lo
+    que este censo existe para separar: un cajon se parte mecanicamente y un
+    monstruo pide un cambio de diseNo.
+
+    ** La medida es una APROXIMACION y se dice: se toma la distancia entre dos
+    aperturas de funcion consecutivas. Un `fn` anidado la partiria en dos y daria
+    de menos -- nunca de mas, que es el lado seguro para una alarma. Contar
+    llaves de verdad pediria un parser, y un parser por lenguaje es otro
+    proyecto; esta cuenta ya distingue 607 de 58, que es lo que hacia falta.
+    """
+    patron = APERTURA.get(os.path.splitext(ruta)[1])
+    if patron is None:
+        return None
+    # La linea de cada apertura, y el final del fichero como ultimo corte.
+    cortes = [texto.count('\n', 0, m.start()) for m in patron.finditer(texto)]
+    if not cortes:
+        return None
+    cortes.append(texto.count('\n'))
+    return max(b - a for a, b in zip(cortes, cortes[1:]))
+
+
 def medir(ruta):
     """(lineas, funciones, generado) de UN fichero. `funciones` None si no se sabe."""
     try:
@@ -231,7 +264,8 @@ def medir(ruta):
     # (`cobol-gen`, `c-gen`). Se busca solo en la cabecera: un fichero que la
     # mencione a mitad esta hablando de otro, no declarandose.
     generado = 'AUTO-GENERADO' in s[:400] or 'AUTO-GENERATED' in s[:400]
-    return lineas, (len(patron.findall(s)) if patron else None), generado
+    return (lineas, (len(patron.findall(s)) if patron else None), generado,
+            mayor_funcion(s, ruta))
 
 
 # == PADRE =====================================================================
@@ -239,7 +273,10 @@ def medir(ruta):
 # other Fichas exist, which is why nothing here compares or sorts.
 
 class Ficha:
-    def __init__(self, ruta, lineas, funciones, generado=False):
+    def __init__(self, ruta, lineas, funciones, generado=False, mayor=None):
+        # **La funcion mas grande.** Ver `mayor_funcion`: la media esconde un
+        # monstruo entre pequenas, y este censo existe para separarlos.
+        self.mayor = mayor
         # ** El anillo se guarda en la ficha y no se pregunta cada vez: es un
         # hecho sobre el fichero, igual que sus lineas.
         self.anillo = anillo(ruta)
@@ -276,6 +313,18 @@ def especie(ficha):
     # metro de algo que el metro sabe perfectamente.
     if ficha.funciones == 0:
         return 'TABLA'
+    # *** EL MONSTRUO SE MIRA ANTES QUE LA MEDIA (2026-08-24).
+    #
+    # ** Una funcion que se lleva mas de un tercio del fichero manda sobre el
+    # promedio, y no al reves: `task/proc.rs` tenia media 58 --CAJON, "se parte
+    # moviendo texto"-- y dentro una funcion de 607 lineas. Diecinueve pequenas
+    # y un monstruo dan la misma media que veinte medianas.
+    #
+    # El umbral es UN TERCIO y no la mitad porque lo que se quiere cazar no es
+    # "el fichero ES una funcion" --eso ya lo dice la media-- sino **"hay una
+    # que no se va a poder mover sin diseNo"**.
+    if ficha.mayor and ficha.lineas and ficha.mayor * 3 > ficha.lineas:
+        return 'CON MONSTRUO'
     m = ficha.media
     if m is None:
         return 'desconocida'
@@ -290,6 +339,7 @@ COMO_SE_PARTE = {
     'CAJON': 'mecanico: mover texto, y demostrable byte a byte (L6d)',
     'GIGANTE': 'pide DISENO: el estado local tiene que volverse un struct',
     'mixto': 'a mano: hay funciones grandes entre las pequenas',
+    'CON MONSTRUO': 'UNA funcion se lleva >1/3: moverla es mecanico, PARTIRLA es diseno',
     'TABLA': 'son datos, no logica: mirar si lo deberia emitir una fabrica',
     'desconocida': 'sin cuenta de funciones para este lenguaje',
 }
@@ -311,10 +361,10 @@ def censar(raiz):
         m = medir(os.path.join(raiz, f))
         if m is None:
             continue
-        lineas, funciones, generado = m
+        lineas, funciones, generado, mayor = m
         if lineas < AVISO:
             continue
-        fichas.append(Ficha(f, lineas, funciones, generado))
+        fichas.append(Ficha(f, lineas, funciones, generado, mayor))
     fichas.sort(key=lambda x: -x.lineas)
     return fichas
 
