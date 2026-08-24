@@ -111,6 +111,8 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
             clear_screen();
         } else if cmd == b"info" {
             super::hardware::shell_info(ctx);
+        } else if cmd == b"banda" {
+            super::banda::shell_banda();
         } else if cmd == b"smp" {
             super::hardware::shell_smp(b"");
         } else if cmd.len() > 4 && &cmd[..4] == b"smp " {
