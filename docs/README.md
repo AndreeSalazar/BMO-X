@@ -137,6 +137,7 @@ Los ocho declaran seguir el metodo de `SMP_MAESTRO.md`.
 | documento | escrito | la pregunta que separa |
 |---|---|---|
 | [`SMP_MAESTRO.md`](maestro/SMP_MAESTRO.md) | 08-06 | que mitad de Cell copiar y que mitad seria un error |
+| [`OPTIMIZACION_MAESTRO.md`](maestro/OPTIMIZACION_MAESTRO.md) | **la regla es que es LO ULTIMO**: quien pone el presupuesto de cada camino, por que el teclado no se optimiza nunca, y el 97% de burocracia de una puerta |
 | [`AUTOCURACION_MAESTRO.md`](maestro/AUTOCURACION_MAESTRO.md) | 08-08 | de INFORMAR un fallo a ACTUAR sobre el |
 | [`AXION_MAESTRO.md`](maestro/AXION_MAESTRO.md) | 08-11 | el mando de los nucleos, por PERFIL |
 | [`RED_MAESTRO.md`](maestro/RED_MAESTRO.md) | 08-11 | el limite que el dueno cree que quiere vs. el que le importa |

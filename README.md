@@ -268,6 +268,41 @@ and **[PLAN_EL_ASISTENTE.md](docs/plan/PLAN_EL_ASISTENTE.md)**.
 
 ---
 
+## What is next, and what blocks it
+
+The plans are public because an estimate nobody can check is advertising. Each
+row below is **work on top of something that already runs**, except the last one.
+
+| | | blocked by |
+|---|---|---|
+| 🟡 | **Receive an Ethernet frame** -- the ring is written, the NIC is profiled and its MAC was read on metal | one boot |
+| 🟡 | **Give the 12 cores work from Ring 3** -- they already run a kernel-side workload, `12 of 12` | an ABI operation, and one photo first |
+| ⚪ | **A LAN that works and is measured** -- `ping`, files, banking terminals against a local server | the transmit ring, then a TCP stack |
+| ⚪ | **Sound** -- volume already reaches the USB headset by control transfer | isochronous transfers in xHCI |
+| ⚪ | **A local assistant**, running as a Ring 3 app over your own files | `exp`, and the core door |
+| ⛔ | **Anything over the internet** | **cryptography** -- and that is the ceiling |
+
+**The ceiling has a name.** Everything above it is work; cryptography is the one
+piece that is an *invention*. X25519, AES-GCM, SHA-256, X.509 -- written wrong it
+does not fail, it **works and does not protect**.
+
+And it is the same debt twice: the elliptic curve HTTPS needs is the one a signed
+`.bex` needs. Today `verify_ed25519` says yes to a signature of zeros, and
+nothing calls it yet. **Paying it once collects twice.**
+
+The full reasoning, with what each piece costs and why:
+**[PLAN_EL_PERFIL_TOTAL.md](docs/plan/PLAN_EL_PERFIL_TOTAL.md)** (what this
+machine gives without buying anything) and
+**[PLAN_EL_ASISTENTE.md](docs/plan/PLAN_EL_ASISTENTE.md)**.
+
+> **On estimates.** A profile here measures between **600 and 1.900 lines** --
+> that is four measurements, not an opinion: the Ryzen profile is 952, AHCI is
+> 1.103, xHCI is 1.871. Where a number has not been measured, this repository
+> says *not measured* rather than guessing. That is not modesty; a guess written
+> down becomes a fact three months later.
+
+---
+
 ## How to be suspicious of it
 
 The claim worth checking is not "it works" -- it is that the things marked 🟢
