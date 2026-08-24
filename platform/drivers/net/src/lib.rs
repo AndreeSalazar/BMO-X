@@ -333,14 +333,58 @@ impl EthHeader {
     /// The source address as one number, same convention as [`Identidad::mac_u64`]:
     /// printable and comparable at a glance against any other system.
     pub fn src_u64(&self) -> u64 {
-        let m = &self.src;
-        ((m[0] as u64) << 40)
-            | ((m[1] as u64) << 32)
-            | ((m[2] as u64) << 24)
-            | ((m[3] as u64) << 16)
-            | ((m[4] as u64) << 8)
-            | (m[5] as u64)
+        mac_u64(&self.src)
     }
+
+    /// **The DESTINATION as one number**, and it is not a nicety.
+    ///
+    /// ** Showing only the source cannot tell "the receive filter works" apart
+    /// from "the filter is wide open". A card in promiscuous mode and one
+    /// filtering correctly produce the *same* source addresses; what differs is
+    /// **who the frames were addressed to**. Step 1 is supposed to answer three
+    /// questions, and without this it can only answer two.
+    pub fn dst_u64(&self) -> u64 {
+        mac_u64(&self.dst)
+    }
+
+    /// **What the ethertype is CALLED**, or an empty string if we do not know it.
+    ///
+    /// ** A number is not a reading. `0x0806` means ARP to somebody who has the
+    /// table memorised and means nothing to everybody else -- and this line is
+    /// meant to be read on a screen, once, by a person deciding whether the
+    /// driver works.
+    ///
+    /// [!] The unknown case returns `"tipo"` bare: the raw number is printed
+    /// next to it anyway, and a word like "unknown" would push the number that
+    /// says everything off an 80-column line.
+    ///
+    /// ** It returns the whole LABEL and not just the name because the line it
+    /// feeds takes `(mensaje, numero)`: there is no text-only line in CABINA,
+    /// and inventing one to print four letters would be a worse trade than
+    /// putting the four letters where the message already goes.
+    pub fn nombre_del_tipo(&self) -> &'static str {
+        match self.ethertype {
+            0x0806 => "     tipo ARP",
+            0x0800 => "     tipo IPv4",
+            0x86DD => "     tipo IPv6",
+            0x8100 => "     tipo VLAN",
+            // Below 0x0600 the field is a LENGTH, not a type. That is 802.3, and
+            // seeing it on a modern LAN is itself the finding.
+            n if n < 0x0600 => "     [!] es un LARGO, no un tipo (802.3)",
+            _ => "     tipo",
+        }
+    }
+}
+
+/// Six bytes to one number, most significant first -- the order they are written
+/// in when a person says a MAC out loud.
+fn mac_u64(m: &Mac) -> u64 {
+    ((m[0] as u64) << 40)
+        | ((m[1] as u64) << 32)
+        | ((m[2] as u64) << 24)
+        | ((m[3] as u64) << 16)
+        | ((m[4] as u64) << 8)
+        | (m[5] as u64)
 }
 
 /// Registers that step 1 writes. Separate from [`reg`] on purpose: that module is
@@ -627,4 +671,64 @@ mod tests {
         assert_ne!(c & rcr::AB, 0, "broadcast is what makes a plugged cable produce traffic");
         assert_ne!(c & rcr::APM, 0, "and our own address, obviously");
     }
+
+    /// *** EL DESTINO ES LO QUE PRUEBA EL FILTRO, y por eso se mira.
+    ///
+    /// ** Una tarjeta en modo promiscuo y una filtrando bien dan **los mismos
+    /// origenes**. Lo que cambia es a quien iban dirigidas las tramas. Sin el
+    /// destino, la foto del paso 1 no distingue las dos cosas -- y una de las
+    /// tres preguntas que ese paso existe para contestar se quedaria sin
+    /// contestar mientras la casilla se pone verde.
+    #[test]
+    fn la_cabecera_da_origen_Y_destino() {
+        // Un ARP de broadcast: lo mas probable que reciba esta maquina primero.
+        let mut trama = [0u8; 60];
+        trama[0..6].copy_from_slice(&[0xFF; 6]);
+        trama[6..12].copy_from_slice(&[0x2C, 0xF0, 0x5D, 0xD9, 0x3C, 0xE3]);
+        trama[12] = 0x08;
+        trama[13] = 0x06;
+
+        let h = EthHeader::parse(&trama).expect("catorce bytes hay");
+        assert_eq!(h.src_u64(), 0x2CF05DD93CE3, "el origen, como se dice en voz alta");
+        assert_eq!(h.dst_u64(), 0xFFFFFFFFFFFF, "y el destino, que es el que faltaba");
+        assert!(h.is_broadcast());
+    }
+
+    /// El ethertype viaja BIG-endian y esta maquina es little-endian. Leerlo del
+    /// modo nativo convierte `0x0806` en `0x0608`, que no coincide con nada y
+    /// parece un protocolo desconocido en vez de un fallo de orden de bytes.
+    #[test]
+    fn el_tipo_se_lee_del_cable_y_trae_su_nombre() {
+        let mut t = [0u8; 14];
+        t[12] = 0x08;
+        t[13] = 0x06;
+        let h = EthHeader::parse(&t).unwrap();
+        assert_eq!(h.ethertype, 0x0806, "ARP, no 0x0608");
+        assert!(h.nombre_del_tipo().contains("ARP"));
+
+        t[12] = 0x08;
+        t[13] = 0x00;
+        assert!(EthHeader::parse(&t).unwrap().nombre_del_tipo().contains("IPv4"));
+
+        // ** Uno que no conocemos NO dice "desconocido": el numero se imprime al
+        // lado igual, y una palabra que no informa empujaria fuera de la linea
+        // al numero que si.
+        t[12] = 0x99;
+        t[13] = 0x99;
+        let x = EthHeader::parse(&t).unwrap();
+        assert_eq!(x.nombre_del_tipo().trim(), "tipo");
+    }
+
+    /// [!] Por debajo de `0x0600` el campo es un LARGO, no un tipo. Eso es
+    /// 802.3, y verlo en una LAN moderna **es el hallazgo**, asi que la etiqueta
+    /// lo grita en vez de callarlo.
+    #[test]
+    fn un_largo_disfrazado_de_tipo_se_denuncia() {
+        let mut t = [0u8; 14];
+        t[12] = 0x00;
+        t[13] = 0x2E; // 46: un largo de 802.3
+        let h = EthHeader::parse(&t).unwrap();
+        assert!(h.nombre_del_tipo().contains("LARGO"), "{}", h.nombre_del_tipo());
+    }
+
 }
