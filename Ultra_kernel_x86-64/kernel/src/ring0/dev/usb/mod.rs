@@ -293,6 +293,41 @@ fn poll_ascii_interno() -> Option<u8> {
 /// consumidores de lo mismo -- el que quiere caracteres y el que quiere teclas
 /// crudas (ver [`evento_tecla`]). Si el segundo tuviera que llamar al primero
 /// para que el bus avanzara, se comeria un caracter por cada evento que pide.
+/// **BOMBEAR EL BUS A MANO, desde fuera.**
+///
+/// *** POR QUE EXISTE ESTA PUERTA (2026-08-24)
+///
+/// El dueno corrio `smp prueba` en el Ryzen y **la maquina dejo de hacerle
+/// caso**: el teclado se quedo mudo y `reboot` no llego nunca al kernel. Los
+/// tres sintomas eran UNO.
+///
+/// ```text
+///    `smp prueba` corre 400.000.000 vueltas DOS veces
+///        -> el BSP gira ~medio segundo sin bombear el bus
+///        -> se pierden avisos del endpoint de interrupcion
+///        -> y EL EVENTO ES EL PERMISO para volver a encolar
+///        -> LA BOMBA SE PARA, y el teclado se queda mudo
+///        -> lo que se teclee despues no llega a ningun sitio
+/// ```
+///
+/// ** Y el barrido de red corre cada **500 ms**, o sea justo en el borde: medio
+/// segundo sin bombear es exactamente el tiempo que tarda la red en tocar. No
+/// habia margen.
+///
+/// *** LA REGLA QUE SALE DE AQUI, y vale para todo lo que venga:
+///
+/// > **Cualquier trabajo de Ring 0 que dure mas de unos milisegundos tiene que
+/// > bombear el bus al terminar.** No durante -- eso arruinaria una medida --
+/// > sino AL SALIR, y a proposito.
+///
+/// [!] Y bombear al salir es mejor que bombear durante, precisamente porque
+/// `smp prueba` es un CRONOMETRO: meterle trabajo entre las dos lecturas
+/// contaminaria el numero que existe para medir. La medida se queda limpia y el
+/// rescate es explicito.
+pub(crate) fn rescatar_el_bus() {
+    bombear_interno();
+}
+
 fn bombear_interno() {
     // Correr si hay CUALQUIER dispositivo enumerado (no solo teclado): asi el
     // mouse late en el diagnostico aunque el teclado no haya enumerado.

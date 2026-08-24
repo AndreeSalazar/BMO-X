@@ -62,6 +62,24 @@ pub(super) fn smp_despertar(arg0: u64, arg1: u64) -> BmoStatus {
             2 => {
                 let (alive, _) = smp::alive();
                 let (uno, todos, partes) = crew::prueba(alive);
+
+                // *** Y EL BUS SE RESCATA AL SALIR. (2026-08-24)
+                //
+                // ** `crew::prueba` corre 400.000.000 vueltas DOS veces, o sea
+                // que el BSP gira ~medio segundo sin bombear el USB. Y el
+                // evento de un endpoint de interrupcion ES EL PERMISO para
+                // volver a encolar: perder uno no pierde una pulsacion, PARA LA
+                // BOMBA.
+                //
+                // *** Le paso al dueno en el Ryzen el 24-08: despues de `smp
+                // prueba` el teclado se quedo mudo y `reboot` no llego nunca al
+                // kernel. **Los tres sintomas que reporto eran UNO.**
+                //
+                // [!] Se bombea AL SALIR y no durante, a proposito: esto es un
+                // CRONOMETRO, y meterle trabajo entre las dos lecturas
+                // contaminaria el numero que existe para medir. La medida se
+                // queda limpia y el rescate es explicito.
+                crate::ring0::dev::usb::rescatar_el_bus();
                 crate::ring0::cabina::info("smp", "ticks con UN nucleo", uno);
                 crate::ring0::cabina::info("smp", "ticks con todos", todos);
                 crate::ring0::cabina::info("smp", "partes que corrieron", partes as u64);
@@ -118,7 +136,83 @@ pub(super) fn smp_despertar(arg0: u64, arg1: u64) -> BmoStatus {
                         pico as u64,
                     );
                 }
-                crate::ring0::core::dashboard::dashboard_log("[smp] prueba de reparto hecha");
+                // ===========================================================
+                //  *** LA SEGUNDA MEDIDA, Y ES LA QUE HACE HONESTO EL NUMERO
+                // ===========================================================
+                //
+                // Peticion del dueno el 2026-08-24, con estas palabras: *"el SMP
+                // si no es honesto a base de Perfil no me sirve"*. Y tenia razon.
+                //
+                // ** La faena de arriba es una CADENA DE DEPENDENCIAS --lo dice
+                // su propio comentario en `crew.rs`-- y eso la hace perfecta
+                // para comprobar que el reparto funciona y **la peor posible
+                // para predecir un trabajo de verdad**:
+                //
+                //    LATENCIA   el nucleo esta casi parado esperando, asi que
+                //               el segundo hilo SMT llena esos huecos
+                //               -> hasta ~2x por nucleo. EL MEJOR CASO
+                //    ANCHO      las unidades saturadas. El segundo hilo no
+                //               encuentra hueco porque no lo hay
+                //               -> el caso REAL de un calculo denso
+                //
+                // *** El 24-08 el Ryzen dio 11,59x sobre 12 hilos --el 96,6%--
+                // contra una prediccion escrita que decia "~6x es el techo
+                // honesto". **La prediccion no estaba equivocada: la faena no
+                // era la que suponia.** Y un numero que solo vale para la faena
+                // que lo produjo, presentado como "lo que acelera esta maquina",
+                // es un numero deshonesto por bueno que sea.
+                let (uno_a, todos_a, partes_a) = crew::prueba_ancho(alive);
+                // El bus otra vez: son otros ~medio segundo sin bombear.
+                crate::ring0::dev::usb::rescatar_el_bus();
+                crate::ring0::cabina::info("smp", "ANCHO: ticks con UN nucleo", uno_a);
+                crate::ring0::cabina::info("smp", "ANCHO: ticks con todos", todos_a);
+                crate::ring0::cabina::info("smp", "ANCHO: partes que corrieron", partes_a as u64);
+
+                // === Y AHORA CONTRA EL PERFIL, que es lo que se pidio =======
+                //
+                // ** Una aceleracion sin el perfil al lado no se puede juzgar:
+                // "11,59x" es magnifico sobre 12 hilos y seria un desastre sobre
+                // 64. El numero que importa no es la x -- es **la x DIVIDIDA
+                // por lo que esta maquina tiene**, y eso lo dice el perfil del
+                // CPU, no una constante escrita aqui (ley 24).
+                if let Some(t) = (crate::ring0::cpu_vendor::profile::active().nucleos)() {
+                    crate::ring0::cabina::count("smp", "perfil: nucleos FISICOS", t.nucleos as u64);
+                    crate::ring0::cabina::count("smp", "perfil: hilos LOGICOS", t.hilos as u64);
+
+                    let lat = if todos > 0 { uno.saturating_mul(100) / todos } else { 0 };
+                    let anc = if todos_a > 0 { uno_a.saturating_mul(100) / todos_a } else { 0 };
+                    crate::ring0::cabina::count("smp", "x100 LATENCIA -- el mejor caso", lat);
+                    crate::ring0::cabina::count("smp", "x100 ANCHO -- el calculo denso", anc);
+
+                    // *** LA FILA QUE CONTESTA DE VERDAD: cuanto rinde cada
+                    // nucleo FISICO en un trabajo que satura las unidades. Si
+                    // sale cerca de 100, esta maquina esta dando todo lo que
+                    // tiene y el SMT no anade nada -- que es exactamente lo que
+                    // le va a pasar a un motor de inferencia.
+                    if t.nucleos > 0 {
+                        crate::ring0::cabina::count(
+                            "smp",
+                            "  ...ANCHO por nucleo FISICO, x100",
+                            anc / t.nucleos as u64,
+                        );
+                    }
+                    // Y la distancia entre las dos, que es la medida del SMT.
+                    if anc > 0 && lat > anc {
+                        crate::ring0::cabina::count(
+                            "smp",
+                            "  ...lo que el SMT anade, x100 (latencia/ancho)",
+                            lat.saturating_mul(100) / anc,
+                        );
+                    }
+                }
+                if partes_a == 0 {
+                    crate::ring0::cabina::warn(
+                        "smp",
+                        "[!] la medida de ANCHO no completo: no se puede juzgar",
+                        0,
+                    );
+                }
+                crate::ring0::core::dashboard::dashboard_log("[smp] prueba de reparto hecha (latencia + ancho)");
                 if todos > 0 && partes > 0 {
                     BmoStatus::ok_value(uno.saturating_mul(100) / todos)
                 } else {
