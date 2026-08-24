@@ -358,12 +358,50 @@ pub fn rx_poll() -> u32 {
             match bmo_net::EthHeader::parse(trama) {
                 Some(h) => {
                     RX_FRAMES = RX_FRAMES.wrapping_add(1);
-                    crate::ring0::cabina::mac("red", "trama de", h.src_u64());
-                    crate::ring0::cabina::info(
-                        "red",
-                        "  ...tipo y largo",
-                        ((h.ethertype as u64) << 16) | largo as u64,
-                    );
+
+                    // *** LA FOTO DEL PASO 1, y son CUATRO lineas y no dos.
+                    //
+                    // ** Antes se imprimian el origen y un numero con el tipo y
+                    // el largo EMPAQUETADOS en un solo `u64`. Las dos cosas
+                    // estaban mal por el mismo motivo:
+                    //
+                    //   1. `((tipo << 16) | largo)` obliga a quien mira la
+                    //      pantalla a deshacer un desplazamiento con la cabeza.
+                    //      Un numero que hay que decodificar no es una lectura.
+                    //   2. Sin el DESTINO, esta foto no distingue "el filtro de
+                    //      recepcion funciona" de "el filtro esta abierto de
+                    //      par en par" -- las dos dan los mismos origenes. El
+                    //      paso 1 tiene tres preguntas que contestar y asi solo
+                    //      contestaba dos.
+                    crate::ring0::cabina::mac("red", "trama DE", h.src_u64());
+                    crate::ring0::cabina::mac("red", "     PARA", h.dst_u64());
+                    // ** EL TIPO CON SU NOMBRE EN EL MENSAJE. `0x0806` es ARP
+                    // para quien tenga la tabla memorizada y no es nada para
+                    // todos los demas -- y esta linea la lee una persona una
+                    // vez, decidiendo si el driver sirve.
+                    crate::ring0::cabina::id("red", h.nombre_del_tipo(), h.ethertype as u64);
+                    crate::ring0::cabina::bytes("red", "     largo", largo as u64);
+
+                    // *** LA TRAMPA QUE HAY QUE CAZAR AQUI Y NO TRES ARRANQUES
+                    // DESPUES: que el origen sea NUESTRA PROPIA MAC.
+                    //
+                    // ** El paso 1 NO TRANSMITE -- `CR.TE` se queda apagado a
+                    // proposito-- asi que una trama que diga venir de nosotros
+                    // no puede ser nuestra. Significa una de dos, y las dos son
+                    // hallazgos: la tarjeta esta en loopback interno, o el
+                    // anillo esta leyendo memoria que no es la suya.
+                    //
+                    // Sin este aviso, eso se veria como "la red RECIBE" y la
+                    // casilla se pondria verde por el motivo equivocado.
+                    if let Some(yo) = ID {
+                        if h.src_u64() == yo.mac_u64() {
+                            crate::ring0::cabina::warn(
+                                "red",
+                                "[!] dice venir de NOSOTROS y aqui no se transmite",
+                                h.src_u64(),
+                            );
+                        }
+                    }
                 }
                 // Under fourteen bytes there is no header. Counted separately: a
                 // runt is a cable or a filter problem, not a missing frame.
