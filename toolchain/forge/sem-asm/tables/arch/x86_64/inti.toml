@@ -237,6 +237,31 @@ preservados_en_uso = []
 raiz            = "sqrtsd"
 minimo          = "minsd"
 maximo          = "maxsd"
+
+# ===================================================================
+#  *** CUATRO REALES A LA VEZ (2026-08-23)
+# ===================================================================
+#
+#  Eddi: *"dale con SIMD entonces, AVX2"*.
+#
+#  ** Y PIDEN `crudo`, al reves que `raiz` y compania. El motivo es la regla de
+#  siempre: **al otro lado, hay alguien que comprueba?**
+#
+#      raiz(-1)          da NaN, que es un valor DEFINIDO por IEEE-754
+#      suma_de_cuatro    escribe 32 bytes en una direccion que le das TU
+#
+#  Lo segundo es memoria cruda, y nadie comprueba que quepan. Es exactamente lo
+#  mismo que `escribe_natural64`, y por eso va en la misma lista.
+#
+#  ** El nombre lleva "de_cuatro" y no "vectorial" a proposito: **el numero es
+#  parte del contrato**. Quien escriba el bucle tiene que saber que avanza de
+#  cuatro en cuatro, y un nombre que lo esconda le deja escribir un bucle que
+#  pisa memoria en la ultima vuelta.
+suma_de_cuatro       = "avx_suma4"
+resta_de_cuatro      = "avx_resta4"
+por_de_cuatro        = "avx_por4"
+funde_de_cuatro      = "avx_funde4"
+limpia_los_altos     = "avx_sin_altos"
 absoluto        = "absd"
 
 # -- tiempo y espera ------------------------------------------------
@@ -377,6 +402,10 @@ tira_cache_sin_escribir = "invd"
 #  es de bajisimo nivel Y esta comprobada.
 [crudo]
 piden = [
+    # ** Las cuatro de AVX escriben 32 bytes en una direccion que da el
+    # programa, y nadie comprueba que quepan. Es memoria cruda, como
+    # `escribe_natural64`, asi que estan aqui por la misma regla.
+    "suma_de_cuatro", "resta_de_cuatro", "por_de_cuatro", "funde_de_cuatro",
     "entrada_puerto", "entrada_puerto16", "entrada_puerto32",
     "escribe_puerto", "escribe_puerto16", "escribe_puerto32",
     "lee_msr", "escribe_msr",

@@ -435,6 +435,101 @@ bytes = [0xF2, 0x0F, 0x5F, 0xC1]  # maxsd xmm0, xmm1
 args = ["xmm0", "xmm1"]
 returns = "xmm0"
 
+# ===================================================================
+#  *** AVX2: CUATRO REALES A LA VEZ (2026-08-23)
+# ===================================================================
+#
+#  ## Por que estas trabajan con DIRECCIONES y no con valores
+#
+#  Todo lo demas de esta tabla mueve ocho bytes: caben en un registro. Un `ymm`
+#  son **treinta y dos** -- cuatro `flotante64` de golpe-- y eso no cabe en un
+#  temporal de INTI, que es una palabra y esa es toda su definicion.
+#
+#  ** Asi que estas no reciben numeros: reciben TRES DIRECCIONES. Es la misma
+#  forma que `escribe_natural64` y que el decimal, y por el mismo motivo -- lo
+#  que no cabe en un registro se senala.
+#
+#  ## Y cada fila son CUATRO instrucciones, no una
+#
+#      vmovupd ymm0, [a]        traer cuatro
+#      vmovupd ymm1, [b]        traer otros cuatro
+#      v<op>pd ymm0, ymm0, ymm1 operarlos
+#      vmovupd [destino], ymm0  dejarlos
+#
+#  ** Esta tabla siempre pudo llevar secuencias --`bytes` es una lista-- y hasta
+#  hoy ninguna fila lo habia necesitado. `absoluto` fue la primera en no ser una
+#  instruccion; estas son las primeras en ser cuatro.
+#
+#  ## [!] `sin_altos` NO ES OPCIONAL, y por eso esta aqui
+#
+#  Mezclar codigo AVX y codigo SSE **sin limpiar la mitad alta de los `ymm`**
+#  cuesta decenas de ciclos por transicion en muchos AMD e Intel. No es un fallo:
+#  es el precio de dejar los registros a medias.
+#
+#  Se pone como fila propia --y no escondida al final de cada operacion-- porque
+#  limpiarlos en cada una desperdicia el bucle entero: se limpia UNA VEZ al
+#  salir. Que sea visible es lo que deja escribirlo bien.
+#
+#  ## Y NO LAS EMITE NADIE SOLO: el compilador no vectoriza
+#
+#  Es la decision de 13.7 del maestro, y no cambia: quien quiera cuatro a la vez
+#  lo escribe. Lo que esta tabla anade es que **se pueda escribir**, no que
+#  ocurra por arte de magia -- y el bloque `crudo` que hace falta SE CUENTA.
+
+[avx_suma4]
+description = "Cuatro flotante64 de golpe: destino[0..4] = a[0..4] + b[0..4]"
+bytes = [
+    0xC5, 0xFD, 0x10, 0x06,        # vmovupd ymm0, [rsi]
+    0xC5, 0xFD, 0x10, 0x0A,        # vmovupd ymm1, [rdx]
+    0xC5, 0xFD, 0x58, 0xC1,        # vaddpd  ymm0, ymm0, ymm1
+    0xC5, 0xFD, 0x11, 0x07,        # vmovupd [rdi], ymm0
+]
+args = ["rdi", "rsi", "rdx"]
+
+[avx_resta4]
+description = "Cuatro de golpe: destino = a - b"
+bytes = [
+    0xC5, 0xFD, 0x10, 0x06,
+    0xC5, 0xFD, 0x10, 0x0A,
+    0xC5, 0xFD, 0x5C, 0xC1,        # vsubpd
+    0xC5, 0xFD, 0x11, 0x07,
+]
+args = ["rdi", "rsi", "rdx"]
+
+[avx_por4]
+description = "Cuatro de golpe: destino = a * b"
+bytes = [
+    0xC5, 0xFD, 0x10, 0x06,
+    0xC5, 0xFD, 0x10, 0x0A,
+    0xC5, 0xFD, 0x59, 0xC1,        # vmulpd
+    0xC5, 0xFD, 0x11, 0x07,
+]
+args = ["rdi", "rsi", "rdx"]
+
+#  *** LA QUE HACE QUE ESTO VALGA LA PENA: multiplicar Y sumar en una.
+#
+#  `destino += a * b`, cuatro a la vez, en UNA instruccion del silicio. Es la
+#  operacion de la que esta hecho un producto de matrices, y por eso es la unica
+#  fila de esta seccion que justifica las otras tres.
+#
+#  ** Y lee el destino ANTES de escribirlo --`231` significa exactamente eso: el
+#  acumulador es el operando de destino--. Por eso son cuatro instrucciones y no
+#  cinco: no hace falta traerlo aparte.
+[avx_funde4]
+description = "Cuatro de golpe, multiplicar y acumular: destino = destino + a * b"
+bytes = [
+    0xC5, 0xFD, 0x10, 0x07,        # vmovupd ymm0, [rdi]   (el acumulador)
+    0xC5, 0xFD, 0x10, 0x0E,        # vmovupd ymm1, [rsi]
+    0xC4, 0xE2, 0xF5, 0xB8, 0x02,  # vfmadd231pd ymm0, ymm1, [rdx]
+    0xC5, 0xFD, 0x11, 0x07,        # vmovupd [rdi], ymm0
+]
+args = ["rdi", "rsi", "rdx"]
+
+[avx_sin_altos]
+description = "Limpia la mitad alta de los ymm: sin esto, volver a SSE cuesta decenas de ciclos"
+bytes = [0xC5, 0xF8, 0x77]         # vzeroupper
+args = []
+
 #  ** `absoluto` NO ES UNA INSTRUCCION, y aun asi cabe en una fila.
 #
 #  x86-64 no tiene "valor absoluto de un double". Lo que hay es apagar el bit
