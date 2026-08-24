@@ -409,10 +409,11 @@ impl Table {
     /// se solapen habra que preguntarle al foco quien esta delante -- y eso ya
     /// tiene dueno (`bmo_input::foco`, paso 2c.3), asi que no se inventa aqui
     /// una segunda politica que luego habria que reconciliar.
-    // Todavia no lo llama nadie, y eso es el plan y no un olvido: 2c.1 se
-    // entrega SOLA para que su fallo no se confunda con el del transporte.
-    // Quien lo llame es el paso 2c.3, cuando el foco diga de quien es la tecla.
-    #[allow(dead_code)]
+    // ** YA TIENE LLAMANTE (2026-08-23): `desktop::keys::app::raton`. Lo que
+    // decia aqui --"todavia no lo llama nadie, y eso es el plan"-- se cumplio
+    // entero: 2c.1 se entrego SOLA para que su fallo no se confundiera con el
+    // del transporte, y el transporte llego cuatro dias despues sin que hubiera
+    // que tocar una linea de esta funcion.
     pub(crate) fn golpe(&self, p: &bmo::Pantalla, px: u32, py: u32) -> Option<(usize, u32, u32)> {
         for (i, s) in self.sup.iter().enumerate() {
             let Some(s) = s.as_ref() else { continue };

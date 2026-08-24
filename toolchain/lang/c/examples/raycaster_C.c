@@ -205,6 +205,45 @@ int accion_de_scancode(int sc) {
     return K_NADA;
 }
 
+/* -- 1.6  EL MENU, dibujado con barras -----------------------------------
+ *
+ * No hay fuente de texto para una app de C --REX no trae ninguna todavia-- asi
+ * que las opciones son BARRAS: una fila por ajuste, y tantos segmentos
+ * encendidos como vale. Se lee de un vistazo y no promete un idioma que este
+ * programa no sabe escribir.
+ *
+ * La fila SENALADA lleva su marca a la izquierda. Es la unica diferencia que
+ * hace falta para poder navegar sin leer.
+ *
+ * ** LA GEOMETRIA VIVE EN CUATRO FUNCIONES Y NO EN DOS COPIAS, y eso no es
+ * limpieza: es que el menu se PINTA y se GOLPEA, y si las dos cuentas no dan lo
+ * mismo hay un borde donde se ve una casilla y se pulsa la de al lado. Ese
+ * fallo no da error -- da un numero equivocado, que es peor. Es la misma
+ * decision que el DIRECTOR tomo al recortar el golpe con la misma funcion que
+ * recorta los pixeles. */
+#define MENU_FILAS 3
+#define MENU_ANCHO 240
+#define MENU_SEG_ANCHO 60
+#define MENU_SEG_PASO 66
+#define MENU_FILA_ALTO 14
+#define MENU_FILA_PASO 30
+
+int menu_px(int ancho) {
+    return (ancho - MENU_ANCHO) / 2;
+}
+
+int menu_py(int alto) {
+    return (alto - (24 + MENU_FILAS * MENU_FILA_PASO)) / 2;
+}
+
+int menu_fila_y(int alto, int f) {
+    return menu_py(alto) + 22 + f * MENU_FILA_PASO;
+}
+
+int menu_seg_x(int ancho, int k) {
+    return menu_px(ancho) + 26 + k * MENU_SEG_PASO;
+}
+
 /* Un rectangulo relleno. Estaba escrito tres veces en el bucle principal, con
  * los mismos cuatro `while` anidados cada vez. */
 void barra(unsigned int *fb, int stride, int x, int y, int w, int h, unsigned int c) {
@@ -221,32 +260,19 @@ void barra(unsigned int *fb, int stride, int x, int y, int w, int h, unsigned in
     }
 }
 
-/* -- 1.6  EL MENU, dibujado con barras -----------------------------------
- *
- * No hay fuente de texto para una app de C --REX no trae ninguna todavia-- asi
- * que las opciones son BARRAS: una fila por ajuste, y tantos segmentos
- * encendidos como vale. Se lee de un vistazo y no promete un idioma que este
- * programa no sabe escribir.
- *
- * La fila SENALADA lleva su marca a la izquierda. Es la unica diferencia que
- * hace falta para poder navegar sin leer. */
-#define MENU_FILAS 3
-
 void menu_pinta(unsigned int *fb, int stride, int ancho, int alto, int sel,
                 int fov, int vel, int tema) {
-    int px; int py; int pw; int ph;
+    int px; int py; int ph;
     int f;
     int v;
     int k;
-    int cx;
 
-    pw = 240;
-    ph = 24 + MENU_FILAS * 30;
-    px = (ancho - pw) / 2;
-    py = (alto - ph) / 2;
+    px = menu_px(ancho);
+    py = menu_py(alto);
+    ph = 24 + MENU_FILAS * MENU_FILA_PASO;
 
-    barra(fb, stride, px, py, pw, ph, 0x00101828);
-    barra(fb, stride, px, py, pw, 2, 0x0000E5FF);
+    barra(fb, stride, px, py, MENU_ANCHO, ph, 0x00101828);
+    barra(fb, stride, px, py, MENU_ANCHO, 2, 0x0000E5FF);
 
     f = 0;
     while (f < MENU_FILAS) {
@@ -256,22 +282,55 @@ void menu_pinta(unsigned int *fb, int stride, int ancho, int alto, int sel,
 
         /* La marca de la fila senalada. */
         if (f == sel) {
-            barra(fb, stride, px + 10, py + 22 + f * 30, 6, 14, 0x0000E5FF);
+            barra(fb, stride, px + 10, menu_fila_y(alto, f), 6, MENU_FILA_ALTO, 0x0000E5FF);
         }
         /* Tres segmentos: los encendidos hasta `v`. */
         k = 0;
-        cx = px + 26;
         while (k < 3) {
             if (k <= v) {
-                barra(fb, stride, cx, py + 22 + f * 30, 60, 14, 0x00308CB0);
+                barra(fb, stride, menu_seg_x(ancho, k), menu_fila_y(alto, f),
+                      MENU_SEG_ANCHO, MENU_FILA_ALTO, 0x00308CB0);
             } else {
-                barra(fb, stride, cx, py + 22 + f * 30, 60, 14, 0x00203038);
+                barra(fb, stride, menu_seg_x(ancho, k), menu_fila_y(alto, f),
+                      MENU_SEG_ANCHO, MENU_FILA_ALTO, 0x00203038);
             }
-            cx = cx + 66;
             k = k + 1;
         }
         f = f + 1;
     }
+}
+
+/* **Donde cayo un clic dentro del menu.** `-1` si en ninguna casilla.
+ *
+ * Devuelve `fila * 4 + segmento` empaquetado en un entero en vez de escribir en
+ * dos punteros de salida: dos huecos que el llamante tiene que declarar y no
+ * olvidarse de mirar son dos sitios donde equivocarse, y aqui el resultado
+ * SIEMPRE viaja junto -- una fila sin su segmento no significa nada.
+ *
+ * ** Usa `menu_fila_y` y `menu_seg_x`, las mismas que pinta `menu_pinta`. No
+ * hay una segunda cuenta que pueda desviarse de la primera. */
+int menu_golpe(int ancho, int alto, int mx, int my) {
+    int f;
+    int k;
+    int y;
+    int x;
+
+    f = 0;
+    while (f < MENU_FILAS) {
+        y = menu_fila_y(alto, f);
+        if (my >= y && my < y + MENU_FILA_ALTO) {
+            k = 0;
+            while (k < 3) {
+                x = menu_seg_x(ancho, k);
+                if (mx >= x && mx < x + MENU_SEG_ANCHO) {
+                    return f * 4 + k;
+                }
+                k = k + 1;
+            }
+        }
+        f = f + 1;
+    }
+    return -1;
 }
 
 int main() {
@@ -323,6 +382,15 @@ int main() {
     int fov; int vel; int tema;
     int accion;
     unsigned long long ev;
+    /* Lo que devuelve `menu_golpe`, ya partido. */
+    int g; int v;
+    /* ** EL CAMPO DE VISION SE REHACE DESDE LA DIRECCION, y por eso es una
+     * BANDERA y no una cuenta repetida en cada sitio que lo cambia. El plano de
+     * camara es perpendicular a la direccion: escalarlo por su cuenta lo
+     * dejaria torcido en cuanto se hubiera girado una vez, y el sintoma seria
+     * una imagen que se deforma sola despues de dar una vuelta. Se rehace UNA
+     * vez por fotograma, despues de leer la entrada. */
+    int refov;
     /* Lo que sale de los ajustes, ya en las unidades del bucle. */
     int paso_v;
     int fovval;
@@ -406,6 +474,7 @@ int main() {
 
     menu = 0;
     sel = 0;
+    refov = 0;
     fov = 1;   /* 0 estrecho, 1 normal, 2 ancho */
     vel = 1;   /* 0 lenta,    1 normal, 2 rapida */
     tema = 1;  /* 0 noche,    1 normal, 2 claro  */
@@ -584,6 +653,33 @@ int main() {
             if (sup != 0) {
                 ev = bmo_superficie_evento(sup);
                 if ((ev & BMO_EVENTO_HAY) == 0) break;
+                /* ** EL BIT 63 SE PREGUNTA ANTES QUE NADA, y no es una
+                 * comodidad: en un evento de raton el byte bajo son los
+                 * BOTONES. Leerlo como scancode haria que cada clic pareciera
+                 * la tecla numero 1 -- un fallo que no da error, da un
+                 * movimiento. Ver `<bmo/superficie.h>`. */
+                if (bmo_sup_es_raton(ev) == 1) {
+                    /* Un clic solo significa algo con el menu abierto. Con el
+                     * menu cerrado se descarta, y eso esta dicho aqui en vez de
+                     * inventarle un significado: una app que reacciona a lo que
+                     * no entiende es peor que una que no reacciona.
+                     *
+                     * ** Y LAS COORDENADAS YA SON SUYAS: el DIRECTOR resto el
+                     * origen de la ventana con la MISMA funcion que recorta los
+                     * pixeles, asi que aqui no hay nada que ajustar. */
+                    if (menu == 1) {
+                        g = menu_golpe(ancho, alto, bmo_sup_raton_x(ev),
+                                       bmo_sup_raton_y(ev));
+                        if (g >= 0) {
+                            sel = g / 4;
+                            v = g - sel * 4;
+                            if (sel == 0) { fov = v; refov = 1; }
+                            if (sel == 1) vel = v;
+                            if (sel == 2) tema = v;
+                        }
+                    }
+                    continue;
+                }
                 /* ** SOLO AL PULSAR. El buzon trae las DOS caras de cada tecla,
                  * y sin esto cada pulsacion contaria dos veces: un paso al
                  * bajar el dedo y otro al subirlo. Es la diferencia que la cola
@@ -624,32 +720,14 @@ int main() {
                     if (sel == 0 && fov > 0) fov = fov - 1;
                     if (sel == 1 && vel > 0) vel = vel - 1;
                     if (sel == 2 && tema > 0) tema = tema - 1;
-                    /* ** EL CAMPO DE VISION SE REHACE DESDE LA DIRECCION.
-                     *
-                     * El plano de camara es perpendicular a ella, asi que
-                     * escalarlo por su cuenta lo dejaria torcido en cuanto se
-                     * hubiera girado una vez -- y el sintoma seria una imagen
-                     * que se deforma sola despues de dar una vuelta. */
-                    if (sel == 0) {
-                        fovval = 43690;
-                        if (fov == 0) fovval = 32768;
-                        if (fov == 2) fovval = 58982;
-                        plax = fmul(0 - diry, fovval);
-                        play = fmul(dirx, fovval);
-                    }
+                    if (sel == 0) refov = 1;
                     continue;
                 }
                 if (accion == K_MAS || accion == K_GIRA_DER) {
                     if (sel == 0 && fov < 2) fov = fov + 1;
                     if (sel == 1 && vel < 2) vel = vel + 1;
                     if (sel == 2 && tema < 2) tema = tema + 1;
-                    if (sel == 0) {
-                        fovval = 43690;
-                        if (fov == 0) fovval = 32768;
-                        if (fov == 2) fovval = 58982;
-                        plax = fmul(0 - diry, fovval);
-                        play = fmul(dirx, fovval);
-                    }
+                    if (sel == 0) refov = 1;
                     continue;
                 }
                 continue;
@@ -718,6 +796,15 @@ int main() {
                 if (pared(nx >> 16, posy >> 16) == 0) posx = nx;
                 if (pared(posx >> 16, ny >> 16) == 0) posy = ny;
             }
+        }
+
+        if (refov == 1) {
+            fovval = 43690;
+            if (fov == 0) fovval = 32768;
+            if (fov == 2) fovval = 58982;
+            plax = fmul(0 - diry, fovval);
+            play = fmul(dirx, fovval);
+            refov = 0;
         }
 
         /* -- EL MENU, ENCIMA DE TODO -------------------------------------

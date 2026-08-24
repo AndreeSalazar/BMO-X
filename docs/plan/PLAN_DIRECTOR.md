@@ -518,11 +518,66 @@ viejo.
 memoria compartida es exactamente la clase de cosa que un emulador no prueba.
 Ver `../metal/PRUEBA_EN_METAL_0823.md`.
 
+## EL RATON, el mismo dia y por el mismo camino
+
+`Table::golpe` llevaba desde el 19-08 escrito y **sin llamante**, con su
+`#[allow(dead_code)]` y el motivo al lado: *"2c.1 se entrega SOLA para que su
+fallo no se confunda con el del transporte"*. El transporte llego cuatro dias
+despues y **no hubo que tocar una linea de esa funcion**.
+
+```text
+   bit 63       1 = raton, 0 = tecla
+   bit 8        HAY, en los dos
+   bit 9        PULSADA: la tecla baja, o el boton baja
+   bits 0..7    el scancode, o la mascara de BOTONES
+   bits 16..31  x dentro de la app, en pixeles suyos
+   bits 32..47  y
+```
+
+★★ **Una tecla sigue siendo, bit a bit, lo que devuelve `bmo_entrada_evento`**
+--el kernel nunca enciende el 63-- asi que el codigo que ya sabia leer teclas
+vale sin tocar una coma. Y por eso mismo el bit **tiene que preguntarse**: en un
+evento de raton el byte bajo son los BOTONES, y leerlo como scancode haria que
+cada clic pareciera la tecla numero 1. Un fallo que no da error: da un
+movimiento. De ahi que REX traiga `bmo_sup_es_raton` en vez de dejar al llamante
+acordarse de una mascara.
+
+### ★ Y una tecla y un clic NO se reparten igual
+
+```text
+   una TECLA  va a quien tiene el FOCO
+   un CLIC    va a DONDE SE PULSO
+```
+
+Preguntarle al foco por un clic seria mandarselo a una ventana distinta de la
+que el dedo estaba tocando. Por eso `keys::app::raton` no mira el foco y
+`keys::app::reenviar` si.
+
+★ Y el recorte sale gratis: `Table::golpe` contesta `None` fuera del contenido,
+que es **la misma funcion que recorta los pixeles**. Un clic en la barra de
+titulo no llega a la app sin que haga falta una segunda comprobacion -- y por
+eso no puede haber un borde donde se ve una cosa y se pulsa otra.
+
+⚠ **Hoy solo viaja el clic (el boton BAJANDO).** Soltar no se publica, asi que
+dentro de una app no se puede arrastrar. Esta dicho en la cabecera de REX y aqui:
+media promesa contada entera es una limitacion; contada a medias es un fallo.
+
+### El cliente: las casillas del menu de `ray.bex` se pulsan
+
+Y la geometria del menu paso a vivir en cuatro funciones --`menu_px`,
+`menu_py`, `menu_fila_y`, `menu_seg_x`-- que usan **el pintado y el golpe**. No
+es limpieza: si las dos cuentas no dan lo mismo hay un borde donde se ve una
+casilla y se pulsa la de al lado, y eso no da error, da un numero equivocado.
+Es la misma decision que el DIRECTOR tomo al recortar el golpe con la misma
+funcion que recorta los pixeles.
+
 ## Lo que esto deja abierto, dicho por delante
 
-1. **El raton todavia no viaja por el buzon.** `bmo-golpe` sabe traducir el
-   clic desde 2c.1 y el buzon admitiria el evento sin cambiar de forma, pero
-   nadie lo publica: hoy solo van teclas.
+1. **Soltar el boton no viaja**, asi que no hay arrastre dentro de una app. Y el
+   MOVIMIENTO del puntero tampoco: un anillo de eventos es la forma equivocada
+   de contar una posicion que cambia sesenta veces por segundo --se llenaria y
+   se descartarian los nuevos, o sea que la app leeria posiciones VIEJAS--. Lo
+   que quiere el raton es un CAMPO DE ESTADO en la cabecera, no una ranura.
 2. **El foco se le da a cualquier app**, tenga buzon o no. Una app que solo
    ensena y se lleva el foco deja la linea de Ejecutar muda mientras este
    delante. Se sabe como se arregla --preguntarle al buzon-- y no se hizo aqui
@@ -531,6 +586,10 @@ Ver `../metal/PRUEBA_EN_METAL_0823.md`.
 3. **La app ve tambien los atajos del escritorio que no estan en la lista
    cerrada.** Es el precio de que las dos colas sean independientes: no hay
    forma de saber que caracter salio de que scancode.
+4. ⚠ **`desktop/mouse.rs` esta en 995 lineas**, a cinco de que L6a lo rechace --
+   y es un `GIGANTE` (2 funciones, media 497), o sea la especie mas cara de
+   partir: el estado local tiene que volverse un struct antes de mover nada.
+   **El proximo trabajo que toque el raton parte ese fichero primero.**
 
 # PASO 3 -- Cerrar sin ser root ✅ HECHO el 2026-08-19
 
