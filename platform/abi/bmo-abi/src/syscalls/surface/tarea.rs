@@ -411,6 +411,54 @@ pub const TASK_OP_ES_NODO: u64 = 0x19;
 /// puede (ver `DISCO_TRIM_*`).
 pub const TASK_OP_DISCO: u64 = 0x29;
 
+/// **ARMAR Y SONDEAR LA RED desde donde vive el dueno.** `arg0` = `RED_OP_*`.
+///
+/// ## *** Por que esta operacion existe (2026-08-24)
+///
+/// El `net` del escritorio esta escrito para SOLO INFORMAR, y cuando el dueno
+/// pidio `net rx` en el Ryzen le contesto *"receptor apagado (net rx en Ring
+/// 0)"* -- mandandole a un shell **al que no se vuelve**.
+///
+/// > Un camino que solo existe en Ring 0 es un camino que el dueno de su propia
+/// > maquina no puede tomar.
+///
+/// La respuesta no es que el escritorio toque la NIC: es que **Ring 3 pida y el
+/// kernel decida**, con la misma forma y la misma regla que `TASK_OP_DISCO` --
+/// se apunta en CABINA antes y despues.
+///
+/// [!] Y NO PUEDE TRANSMITIR, por construccion: `CR.TE` se queda apagado y no
+/// hay `RED_OP_*` que lo encienda. Un error aqui no puede molestar a nadie mas
+/// de la red.
+pub const TASK_OP_RED: u64 = 0x2C;
+
+/// **Que cuenta la placa de si misma.** `arg0` = `PLACA_OP_*`, `arg1` = indice.
+///
+/// Contesta y no concede, igual que `INFO` y el klog: no cambia nada.
+pub const TASK_OP_PLACA: u64 = 0x2D;
+
+/// Armar el receptor. Idempotente: armar dos veces no arma dos anillos.
+pub const RED_OP_ARMAR: u64 = 0x01;
+/// Vaciar lo que llego y devolver los descriptores. Cuantas tramas se leyeron.
+pub const RED_OP_SONDEAR: u64 = 0x02;
+
+pub const RED_ARMADO_OK: u64 = 0;
+/// Sin cable. Es un motivo propio: no es que el anillo falle, es que no van a
+/// llegar tramas por correcto que sea todo lo demas.
+pub const RED_SIN_ENLACE: u64 = 1;
+pub const RED_NO_ARMA: u64 = 2;
+pub const RED_SIN_TARJETA: u64 = 3;
+
+pub const PLACA_OP_CUANTAS: u64 = 0x01;
+/// `arg1` = indice. La firma en los cuatro bytes bajos; bit 32 = paso su suma,
+/// bit 33 = es AML y aqui no se ejecuta.
+pub const PLACA_OP_TABLA: u64 = 0x02;
+/// La base de ECAM, o 0 si no hay MCFG.
+pub const PLACA_OP_ECAM: u64 = 0x03;
+/// Los registros del primer IOMMU, o 0 si no hay IVRS -- y eso significa que
+/// **nada limita adonde escribe un aparato con DMA**.
+pub const PLACA_OP_IOMMU: u64 = 0x04;
+
+
 /// Ocho bytes del nombre del hijo `arg0`; `arg1` numera el trozo.
 ///
 /// De ocho en ocho porque la superficie congelada no acepta punteros, y es el

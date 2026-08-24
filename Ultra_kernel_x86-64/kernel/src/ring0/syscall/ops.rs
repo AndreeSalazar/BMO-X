@@ -249,6 +249,75 @@ pub(crate) const TASK_OP_ES_GESTO: u64 = 0x2A;
 /// El handle sobre un hijo que YO lance. Espejo de
 /// `bmo_abi::...::TASK_OP_HIJO`. Solo BUSCA lo ya concedido en `EJECUTAR`.
 pub(crate) const TASK_OP_HIJO: u64 = 0x2B;
+
+/// **ARMAR Y SONDEAR LA RED desde donde vive el dueno.** `arg0` = `RED_OP_*`.
+///
+/// ## *** POR QUE ESTA OPERACION EXISTE (2026-08-24)
+///
+/// El 24-08 el dueno tecleo `net rx` en el Ryzen y le contesto:
+///
+/// ```text
+///    receptor    apagado   (net rx en Ring 0)
+/// ```
+///
+/// Y no era un fallo: el `net` del escritorio esta escrito para SOLO INFORMAR
+/// --*"ninguna transmite ni un byte: son campos de INFORME"*-- y te manda al
+/// shell de Ring 0. **Al que no se vuelve.**
+///
+/// > Un camino que solo existe en Ring 0 es un camino que el dueno de su propia
+/// > maquina no puede tomar.
+///
+/// ** Y la respuesta no es *"que el escritorio toque la NIC"*: es que Ring 3
+/// PIDA y el kernel DECIDA, que es la forma que `TASK_OP_DISCO` ya usa y que
+/// esta tabla existe para tener. Con su misma regla, ademas: **se apunta en
+/// CABINA antes y despues**, porque la primera operacion que cambia el estado
+/// de un aparato no puede ser silenciosa ni cuando funciona.
+///
+/// [!] Y lo que esta operacion NO puede hacer, por construccion: **transmitir.**
+/// `CR.TE` se queda apagado y no hay `RED_OP_*` que lo encienda. Un error aqui
+/// no puede molestar a nadie mas de la red -- que es lo que hace que el paso 1
+/// sea gratis.
+pub(crate) const TASK_OP_RED: u64 = 0x2C;
+
+/// **QUE CUENTA LA PLACA DE SI MISMA.** `arg0` = `PLACA_OP_*`, `arg1` = indice.
+///
+/// El companero del de arriba, y por el mismo motivo: el censo del firmware
+/// --que tablas hay, donde vive la config de PCIe, si hay IOMMU-- vivia solo en
+/// el shell de Ring 0, y `placa` desde el escritorio contestaba *"no es un
+/// comando ni una ruta"*.
+///
+/// ** Este NO cambia nada: contesta y no concede, igual que `INFO` y el klog.
+/// Por eso vive en `op_contar.rs` y no en `op_maquina.rs` -- el corte de este
+/// despachador es por la pregunta, y esta pregunta es *"que hay"*.
+pub(crate) const TASK_OP_PLACA: u64 = 0x2D;
+
+/// Las ordenes de la red. Espejo de `bmo_abi::...::RED_OP_*`.
+///
+/// ** `ARMAR` es la unica que cambia algo, y es idempotente: armar dos veces no
+/// arma dos anillos. `SONDEAR` solo vacia lo que ya llego.
+pub(crate) const RED_OP_ARMAR: u64 = 0x01;
+pub(crate) const RED_OP_SONDEAR: u64 = 0x02;
+
+/// Lo que contesta `RED_OP_ARMAR`.
+pub(crate) const RED_ARMADO_OK: u64 = 0;
+/// El enlace esta abajo: no hay cable, y sin cable no van a llegar tramas por
+/// correcto que sea todo lo demas. Se separa de un fallo del anillo a proposito.
+pub(crate) const RED_SIN_ENLACE: u64 = 1;
+/// El receptor no se pudo armar. CABINA dice por que.
+pub(crate) const RED_NO_ARMA: u64 = 2;
+/// No hay NIC que este kernel sepa leer.
+pub(crate) const RED_SIN_TARJETA: u64 = 3;
+
+/// Las preguntas de la placa. Espejo de `bmo_abi::...::PLACA_OP_*`.
+pub(crate) const PLACA_OP_CUANTAS: u64 = 0x01;
+/// `arg1` = indice de la tabla. Devuelve la firma empaquetada en los cuatro
+/// bytes bajos y las banderas arriba. Ver `op_contar::placa`.
+pub(crate) const PLACA_OP_TABLA: u64 = 0x02;
+/// La base de ECAM, o 0 si no hay MCFG.
+pub(crate) const PLACA_OP_ECAM: u64 = 0x03;
+/// Los registros del primer IOMMU, o 0 si no hay IVRS.
+pub(crate) const PLACA_OP_IOMMU: u64 = 0x04;
+
 /// Las subordenes. Espejo de `bmo_abi::...::ES_CREAR_*`, y `pub(crate)` por lo
 /// mismo que las de disco: una constante privada usada en un `match` de
 /// `mod.rs` se convierte en un nombre de variable que se traga todos los casos.

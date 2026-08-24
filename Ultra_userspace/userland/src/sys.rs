@@ -351,6 +351,34 @@ pub fn mi_padre() -> u32 {
 /// La otra mitad del mando. Un obrero en espera **gira**, no duerme --sacarlo de
 /// `hlt` pediria una IPI, y para atenderla haria falta GS por-CPU--, asi que con
 /// los doce en pie hay once nucleos al 100 %. Esto es lo que lo apaga.
+/// **Que es y en que esta el hilo logico `id`.**
+///
+/// *** Existe porque `12 de 12` es una mentira comoda: presenta doce cosas como
+/// si fueran doce iguales, y son **SEIS nucleos con dos hilos cada uno**. Un
+/// hilo SMT no es medio nucleo ni es un nucleo -- es un sitio mas para meter
+/// trabajo en el MISMO nucleo, y cuanto rinde depende de si la faena deja
+/// huecos.
+///
+/// Devuelve `(estado, tipo, nucleo_fisico, hilos_por_nucleo)`:
+///
+/// ```text
+///    estado   0 maestro, 1 obrero, 2 dormido, 3 ausente, 4 no se sabe
+///    tipo     1 = CORE, 2 = THREAD, 0 = no se sabe
+/// ```
+///
+/// [!] El nucleo fisico y los hilos por nucleo salen del **perfil del CPU**, no
+/// de un desplazamiento escrito a mano: que los hermanos SMT sean IDs
+/// consecutivos es un hecho de ESTA maquina (ley 24).
+pub fn smp_hilo(id: u32) -> (u32, u32, u32, u32) {
+    let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, id as u64, 3, 0).value;
+    (
+        (v & 0xFF) as u32,
+        ((v >> 8) & 0xFF) as u32,
+        ((v >> 16) & 0xFFFF) as u32,
+        ((v >> 32) & 0xFFFF) as u32,
+    )
+}
+
 pub fn smp_parar() {
     let _ = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 1, 0);
 }

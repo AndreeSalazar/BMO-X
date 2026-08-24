@@ -126,6 +126,11 @@ pub const OP_SMP_DESPERTAR: u32 = 0x1B;
 /// primera fue sellar-- y la unica que se lo dice al APARATO. Ninguna de sus
 /// ordenes lleva un LBA: ver el modulo [`crate::disco`].
 pub const OP_DISCO: u32 = 0x29;
+/// **Armar y sondear la red.** Ver `red.rs`: existe porque `net rx` vivia solo
+/// en Ring 0, y al shell de Ring 0 no se vuelve.
+pub const OP_RED: u32 = 0x2C;
+/// **Que cuenta la placa de si misma.** Contesta y no concede.
+pub const OP_PLACA: u32 = 0x2D;
 /// ** **CREAR UN FICHERO EN ESTRATOS.** `arg0` es la suborden (`ES_CREAR_*`).
 ///
 /// El nombre viaja por el renglon de [`OP_RUTA`] y el contenido por el suyo, de
@@ -626,6 +631,11 @@ mod dibujo;
 mod disco;
 mod entrada;
 mod memoria;
+/// ** LA RED desde donde vive el dueno: armar el receptor y sondearlo.
+///
+/// Existe porque `net rx` vivia SOLO en el shell de Ring 0, y a ese shell no se
+/// vuelve. Ver su cabecera.
+pub mod red;
 mod pantalla;
 mod proceso;
 /// [!!] **Lo que existe solo porque no hay driver de pantalla, y se borra entero
@@ -637,6 +647,8 @@ mod sys;
 /// ESTRATOS desde Ring 3. Sigue siendo `bmo::estratos::...`.
 pub mod estratos;
 
+pub use sys::smp_hilo;
+pub use red::{placa_cuantas, placa_ecam, placa_iommu, placa_tabla};
 pub use archivo::*;
 pub use dibujo::*;
 pub use disco::*;

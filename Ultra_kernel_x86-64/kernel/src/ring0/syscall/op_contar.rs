@@ -84,3 +84,64 @@ pub(super) fn autopsia_texto(arg0: u64, arg1: u64) -> BmoStatus {
         BmoStatus::ok_value(crate::ring0::core::autopsy::texto(informe, fila, arg1))
 }
 
+/// **QUE CUENTA LA PLACA DE SI MISMA.** Ver `TASK_OP_PLACA` en `ops.rs`.
+///
+/// ** Vive aqui y no en `op_maquina.rs` porque **no cambia nada**: contesta y
+/// no concede. El corte de este despachador es por la pregunta, y esta pregunta
+/// es *"que hay"*.
+///
+/// [!] Y por la puerta cabe UN numero, asi que las firmas de las tablas salen
+/// EMPAQUETADAS: los cuatro bytes de la firma abajo y las banderas arriba. Es
+/// la misma solucion que `INFO_NET_VENDOR_DEVICE`, y se dice aqui en vez de que
+/// el que lea el numero tenga que adivinarlo.
+///
+/// ```text
+///    bits  0..32   los cuatro caracteres de la firma, tal cual
+///    bit   32      la tabla paso su suma de comprobacion
+///    bit   33      es AML: un PROGRAMA, y aqui no se ejecuta
+/// ```
+pub(super) fn placa(arg0: u64, arg1: u64) -> BmoStatus {
+    use crate::ring0::plat::placa as p;
+    let rsdp = crate::ring0::plat::madt::rsdp_guardado();
+    match arg0 {
+        PLACA_OP_CUANTAS => match p::censar(rsdp) {
+            Some(c) => BmoStatus::ok_value(c.cuantas() as u64),
+            None => BmoStatus::ok_value(0),
+        },
+        PLACA_OP_TABLA => {
+            let Some(c) = p::censar(rsdp) else {
+                return BmoStatus::ok_value(0);
+            };
+            let Some(f) = c.filas().nth(arg1 as usize) else {
+                return BmoStatus::ok_value(0);
+            };
+            let firma = u32::from_le_bytes(f.firma) as u64;
+            let mut v = firma;
+            if f.creible {
+                v |= 1 << 32;
+            }
+            if f.programa {
+                v |= 1 << 33;
+            }
+            BmoStatus::ok_value(v)
+        }
+        // La base de ECAM. Cero = no hay MCFG, y entonces la config de PCIe se
+        // queda en 256 bytes por funcion: no es un fallo, es una respuesta.
+        PLACA_OP_ECAM => {
+            let mut r = [p::RangoEcam { base: 0, segmento: 0, bus_desde: 0, bus_hasta: 0 };
+                p::MAX_ECAM];
+            let n = p::ecam(rsdp, &mut r);
+            BmoStatus::ok_value(if n > 0 { r[0].base } else { 0 })
+        }
+        // Los registros del primer IOMMU. Cero = no hay IVRS, y eso significa
+        // que **nada limita adonde escribe un aparato con DMA**.
+        PLACA_OP_IOMMU => {
+            let mut v = [p::Ivhd {
+                tipo: 0, banderas: 0, largo: 0, id_dispositivo: 0, base_mmio: 0, segmento: 0,
+            }; p::MAX_IOMMU];
+            let n = p::iommu(rsdp, &mut v);
+            BmoStatus::ok_value(if n > 0 { v[0].base_mmio } else { 0 })
+        }
+        _ => unsupported(),
+    }
+}

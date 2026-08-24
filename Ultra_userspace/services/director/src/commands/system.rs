@@ -118,6 +118,64 @@ pub(crate) fn estratos_escribe(
 }
 
 pub(crate) fn net(dsk: &mut Desktop, _p: &bmo::Pantalla, what: &[u8]) -> After {
+    // *** `net rx` ARMA EL RECEPTOR, y desde aqui (2026-08-24).
+    //
+    // ** Hasta hoy esto solo informaba y el panel mandaba al shell de Ring 0.
+    // Y al shell de Ring 0 no se vuelve: un camino que solo existe alli es un
+    // camino que el dueno de su propia maquina no puede tomar.
+    //
+    // [!] Y no es "el escritorio toca la NIC": es `bmo::red::armar()`, o sea
+    // Ring 3 PIDE y el kernel DECIDE -- la misma forma que el disco. Ninguna
+    // operacion de esa puerta puede transmitir: `CR.TE` se queda apagado.
+    if what == b"rx" {
+        match bmo::red::armar() {
+            bmo::red::Armado::Ok => {
+                let n = bmo::red::sondear();
+                dsk.out.grid.with_ink(INK_GOOD);
+                dsk.out.grid.text(b"  receptor ARMADO
+");
+                dsk.out.grid.with_ink(INK_PLAIN);
+                dsk.out.grid.text(b"  tramas en esta vuelta: ");
+                dsk.out.grid.dec(n);
+                dsk.out.grid.text(b"
+");
+                if n == 0 {
+                    // ** CERO EN LA PRIMERA VUELTA ES LO ESPERADO, y decirlo es
+                    // lo que impide que el minuto siguiente se gaste buscando un
+                    // fallo en un driver que funciona.
+                    dsk.out.grid.with_ink(INK_PLAIN);
+                    dsk.out.grid.text(b"  cero de momento es normal: el anillo se acaba de armar.
+");
+                    dsk.out.grid.text(b"  vuelve a escribir `net rx` en unos segundos.
+");
+                    dsk.out.grid.with_ink(INK_PLAIN);
+                }
+            }
+            // ** Cada motivo por separado, porque mandan a mirar sitios
+            // distintos. "No funciona" no dice cual de los tres.
+            bmo::red::Armado::SinEnlace => {
+                dsk.out.grid.with_ink(INK_PLAIN);
+                dsk.out.grid.text(b"  el enlace esta ABAJO: enchufa el cable antes de armar nada.
+");
+                dsk.out.grid.with_ink(INK_PLAIN);
+            }
+            bmo::red::Armado::NoArma => {
+                dsk.out.grid.text(b"  el receptor no se pudo armar -- CABINA dice por que.
+");
+            }
+            bmo::red::Armado::SinTarjeta => {
+                dsk.out.grid.text(b"  no hay tarjeta que este kernel sepa leer.
+");
+            }
+            bmo::red::Armado::Raro(v) => {
+                dsk.out.grid.text(b"  el kernel contesto algo que no conozco: ");
+                dsk.out.grid.dec(v);
+                dsk.out.grid.text(b"
+");
+            }
+        }
+        return After::Settle;
+    }
     report_net(&mut dsk.out.grid, what);
     After::Settle
 }
@@ -355,4 +413,156 @@ pub(crate) fn reboot(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"  reiniciando...\n");
     paint_status(&p, &dsk.run_box, "reiniciando", INK_DIM);
     bmo::reiniciar();
+}
+
+/// **`placa` -- lo que el firmware le cuenta a BMO-X.**
+///
+/// ## Por que esto vive aqui y no solo en Ring 0 (2026-08-24)
+///
+/// Se cablo en el shell de Ring 0 y el dueno, que vive en el escritorio, recibio
+/// *"no es un comando ni una ruta"*. **Un camino que solo existe alli es un
+/// camino que el dueno de su propia maquina no puede tomar.**
+///
+/// ** Contesta y no concede: no cambia nada del firmware ni de la placa.
+///
+/// [!] Y la fila que hay que mirar NO es cuantas tablas hay: es cuantas **no
+/// pasan su suma de comprobacion**. En una placa sana es cero, y si no lo es lo
+/// que falla no es la placa -- es el mapeo de esas direcciones fisicas.
+pub(crate) fn placa(dsk: &mut Desktop, _p: &bmo::Pantalla) -> After {
+    let n = bmo::placa_cuantas();
+    if n == 0 {
+        dsk.out.grid.text(b"  sin XSDT que leer: el firmware no dio un RSDP de ACPI 2.0+
+");
+        return After::Settle;
+    }
+    let mut aml = 0u64;
+    let mut malas = 0u64;
+    for i in 0..n {
+        let v = bmo::placa_tabla(i);
+        if v == 0 {
+            continue;
+        }
+        let creible = v & (1 << 32) != 0;
+        let programa = v & (1 << 33) != 0;
+        if !creible { malas += 1; }
+        if programa { aml += 1; }
+        dsk.out.grid.text(if !creible {
+            b"  [!] "
+        } else if programa {
+            b"  AML "
+        } else {
+            b"      "
+        });
+        // Los cuatro caracteres de la firma, tal cual vinieron.
+        let f = ((v & 0xFFFF_FFFF) as u32).to_le_bytes();
+        dsk.out.grid.text(&f);
+        dsk.out.grid.text(b"
+");
+    }
+    dsk.out.grid.text(b"  tablas: ");
+    dsk.out.grid.dec(n);
+    dsk.out.grid.text(b"   AML (no se ejecutan): ");
+    dsk.out.grid.dec(aml);
+    dsk.out.grid.text(b"   sin suma valida: ");
+    dsk.out.grid.dec(malas);
+    dsk.out.grid.text(b"
+");
+
+    let ecam = bmo::placa_ecam();
+    if ecam == 0 {
+        dsk.out.grid.text(b"  sin MCFG: la config de PCIe se queda en 256 B por funcion.
+");
+    } else {
+        dsk.out.grid.text(b"  PCIe config en memoria: 0x");
+        dsk.out.grid.hex(ecam, 8);
+        dsk.out.grid.text(b"   (4096 B por funcion)
+");
+    }
+    let iommu = bmo::placa_iommu();
+    if iommu == 0 {
+        // *** Y esto no es una carencia menor: una capability dice que puede
+        // hacer un PROCESO, y no dice NADA de lo que puede hacer un APARATO.
+        dsk.out.grid.with_ink(INK_PLAIN);
+        dsk.out.grid.text(b"  [!] sin IVRS: nada limita adonde escribe un aparato con DMA.
+");
+        dsk.out.grid.with_ink(INK_PLAIN);
+    } else {
+        dsk.out.grid.text(b"  IOMMU: registros en 0x");
+        dsk.out.grid.hex(iommu, 8);
+        dsk.out.grid.text(b"   (leerla no la enciende)
+");
+    }
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"  el AML es un PROGRAMA de la placa. BMO-X se perfila: no lo ejecuta.
+");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    After::Settle
+}
+
+/// **EL CENSO HILO A HILO, CON SU NOMBRE.**
+///
+/// *** Peticion del dueno (2026-08-24): *"en `smp all` me gustaria que detalles
+/// TODO con nombres CORE y THREAD asi para no decir x12, eso es mentir si pongo
+/// asi"*.
+///
+/// Y tiene razon. **"12 de 12" presenta doce cosas como si fueran doce
+/// iguales**, y no lo son: son SEIS nucleos con dos hilos cada uno. Un hilo SMT
+/// no es medio nucleo ni es un nucleo -- es un sitio mas para meter trabajo en
+/// el MISMO nucleo, y cuanto rinde depende de si la faena deja huecos.
+///
+/// Es la misma queja que la de la aceleracion, en otro sitio: **un numero sin el
+/// perfil al lado no se puede juzgar.**
+fn tabla_de_hilos(s: &mut crate::scene::output::Output) {
+    let hilos = bmo::info(bmo::INFO_CPU_HILOS) as u32;
+    if hilos == 0 || hilos > 64 {
+        return;
+    }
+    let mut cores = 0u32;
+    let mut threads = 0u32;
+    let mut trabajando = 0u32;
+    let mut ultimo_fisico = u32::MAX;
+
+    for id in 0..hilos {
+        let (estado, tipo, fisico, _hpc) = bmo::smp_hilo(id);
+        // ** Una linea en blanco entre nucleos fisicos: es lo que hace que se
+        // VEA que los hermanos van de dos en dos, sin tener que contarlos.
+        if fisico != ultimo_fisico {
+            ultimo_fisico = fisico;
+            s.text(b"    CORE ");
+            s.dec(fisico as u64);
+            s.byte(b'\n');
+        }
+        s.text(b"      ");
+        match tipo {
+            1 => { cores += 1; s.text(b"CORE   "); }
+            2 => { threads += 1; s.text(b"THREAD "); }
+            _ => s.text(b"?      "),
+        }
+        s.text(b"#");
+        s.dec(id as u64);
+        s.text(b"  ");
+        match estado {
+            0 => { trabajando += 1; s.with_ink(INK_GOOD); s.text(b"MAESTRO (el BSP)"); s.with_ink(INK_PLAIN); }
+            1 => { trabajando += 1; s.with_ink(INK_GOOD); s.text(b"obrero, EN PIE"); s.with_ink(INK_PLAIN); }
+            // ** "Dormido" y "en pie" se cuentan distinto A PROPOSITO. El dueno
+            // escribio `smp stop`, luego `smp`, y leyo "12 de 12": las dos
+            // lineas eran ciertas y juntas decian una mentira.
+            2 => s.text(b"PARADO (sin IPI no vuelve)"),
+            3 => s.text(b"AUSENTE -- no contesto al llamarlo"),
+            _ => s.text(b"?"),
+        }
+        s.byte(b'\n');
+    }
+
+    // *** Y EL RESUMEN QUE NO ES UNA `x`.
+    s.text(b"    = ");
+    s.dec(cores as u64);
+    s.text(b" CORE + ");
+    s.dec(threads as u64);
+    s.text(b" THREAD, y ");
+    s.dec(trabajando as u64);
+    s.text(b" trabajando\n");
+    s.text(b"    [!] un THREAD no es medio CORE: es otro sitio para meter\n");
+    s.text(b"        trabajo en el MISMO nucleo. Lo que rinde depende de si\n");
+    s.text(b"        la faena deja huecos -- `smp test` da los DOS numeros.\n");
 }

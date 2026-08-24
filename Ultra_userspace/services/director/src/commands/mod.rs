@@ -97,6 +97,7 @@ pub(crate) enum Command<'a> {
     Report,
     /// El informe del ULTIMO fallo de Ring 3, tal como lo redacto el kernel.
     Autopsy,
+    Placa,
     Cpu,
     /// **El censo de extensiones**: que declara este silicio y que coge BMO.
     ///
@@ -368,7 +369,17 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // ** LA RED. `red`/`net` dan el informe entero; las demas cortan por
         // una sola pregunta, que es lo que se quiere teniendo el cable en la
         // mano. Ninguna transmite ni un byte -- son campos de INFORME.
-        b"red" | b"net" => Command::Net(b""),
+        // ** `net` a secas INFORMA; `net rx` ARMA el receptor. La misma forma
+        // que en el shell de Ring 0 --la palabra sola censa y el argumento
+        // actua-- y por el mismo motivo: armar deja a un aparato escribir en la
+        // memoria de esta maquina, y eso no se consigue tecleando el comando de
+        // diagnostico.
+        //
+        // *** Y hasta el 2026-08-24 este brazo TIRABA el argumento
+        // (`Command::Net(b"")`), asi que `net rx` desde el escritorio no armaba
+        // nada y el panel mandaba al shell de Ring 0 -- al que el dueno no
+        // vuelve. Ver `bmo::red`.
+        b"red" | b"net" => Command::Net(rest),
         b"mac" => Command::Net(b"mac"),
         b"enlace" | b"link" => Command::Net(b"link"),
         b"tramas" | b"frames" => Command::Net(b"frames"),
@@ -388,6 +399,10 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
             while j < arg.len() && arg[j] == b' ' { j += 1; }
             Command::Disco(sub, &arg[j..])
         }
+        // ** Lo que la PLACA cuenta de si misma: que tablas ofrece el
+        // firmware, donde vive la config de PCIe, si hay IOMMU. Contesta y no
+        // concede: no cambia nada.
+        b"placa" | b"firmware" => Command::Placa,
         b"cpu" | b"procesador" => Command::Cpu,
         // Los mismos dos nombres que el shell de Ring 0, para que lo que se
         // aprende en un sitio valga en el otro.
