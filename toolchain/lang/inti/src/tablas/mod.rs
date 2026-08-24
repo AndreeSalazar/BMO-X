@@ -441,6 +441,16 @@ impl Catalogo {
     /// contesta que si: una instalacion rota no puede convertirse en "nada
     /// compila". Es la misma cautela que `vacio()`.
     pub fn baja(&self, pieza: &str) -> bool {
+        // [!] Lo que la tabla NO NOMBRA baja, y eso no es indulgencia: la tabla
+        // vigila las piezas de `pleno`, y un `natural64` no es una de ellas --
+        // lleva bajando desde F2.
+        //
+        // ** Contestar que no a lo desconocido pondria en la lista de "no baja"
+        // a todo el lenguaje. El gate solo puede hablar de lo que vigila; para
+        // lo demas, la respuesta es que si.
+        if !self.vigiladas.contains(pieza) {
+            return true;
+        }
         self.bajan.is_empty() || self.bajan.contains(pieza)
     }
 

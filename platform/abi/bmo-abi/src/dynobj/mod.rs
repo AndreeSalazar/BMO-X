@@ -76,6 +76,7 @@
 //!    slots     las operaciones numeradas de un tipo, como los `TASK_OP_*`
 //!    lista     la primera instancia: `lista de T`
 //!    texto     la segunda: cadena UTF-8 inmutable
+//!    tabla     la tercera, y la primera con un ALGORITMO dentro
 //! ```
 //!
 //! Not here yet, and each has its reason:
@@ -91,6 +92,7 @@ pub mod header;
 /// de `header`, y lo que INTI le anade.
 pub mod lista;
 pub mod slots;
+pub mod tabla;
 pub mod texto;
 
 pub use header::{DynHeader, DynVarHeader};

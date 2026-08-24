@@ -266,7 +266,7 @@ compilador*, que es la diferencia entre un mes y un ano. Salio lo primero.
 | | que | por que va ahi |
 |---|---|---|
 | ~~1~~ | ~~**La foto del Ryzen**~~ | ✅ **HECHA (22-08).** M1, M2 y M3 corrieron en el Ryzen 5 5600X: `reglas`, `bits` y `atomicas` salieron a CERO y el informe se guardo en disco. Ver `PLAN_DE_PRUEBAS.md` seccion 4 |
-| 2 | **PLENO** | ⏳ **en marcha (23-08)**: `texto` mide, `numero` tiene disposicion --16 bytes, coeficiente `entero64` + escala-- y la puerta de `disposicion` esta abierta. Falta lo que vive en EJECUCION: monton, contador de referencias, y que `[bytes] llegan` admita `pleno` |
+| ~~2~~ | ~~**PLENO**~~ | ✅ **LAS CUATRO PIEZAS BAJAN A BYTES (23-08).** `texto` (literal en RoData + `junta`), `lista` (literal + Regla 2), `numero` (16 bytes, coeficiente + escala) y `tabla` (hash FNV-1a + sonda lineal). Un `pleno` con las cuatro compila y sale un `.ibex`. **Lo que queda no es `pleno`: es P4(b)** -- una trampa dentro de una libreria todavia vuelve como un numero |
 | 2b | **Los tipos de retorno** | `si hay_algo()` no se comprueba porque el tipo que devuelve una funcion no se resuelve todavia. ⭐ **Y desde el 23-08 es la fila que mas desbloquea**: la deduccion ya cubre el constructor, la copia y el literal de texto, y `x = f()` es el siguiente escalon |
 | ~~3~~ | ~~**La Regla 2**~~ | ✅ **HECHA (23-08)**. Nacio con `lista de T`, como estaba escrito: `sitio_de` compara el indice contra `cuantos` --que vive a un `mov` en la cabecera-- y el descenso la usa. **Las CUATRO llegan a bytes.** Y un `bufer` sigue sin comprobarse, que no es deuda: no existe la informacion |
 | 4 | **Congelar y tareas** | el eslabon que rompe el GIL |

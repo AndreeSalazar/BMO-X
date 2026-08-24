@@ -139,9 +139,15 @@ lista = true
 #  por medida en vez de por cuenta.
 numero = true
 decimal = true
-#  ** Ni forma, ni runtime, ni descenso. Es la unica de las cuatro que no ha
-#  empezado.
-tabla = false
+#  ** Entera desde el 23-08, y es la primera pieza con un ALGORITMO dentro:
+#  hash FNV-1a y sonda lineal sobre direccionamiento abierto. Lo que la separa de
+#  una lista de parejas es exactamente eso -- si buscara en lineal, el tipo no
+#  haria falta.
+#
+#  [!] La CLAVE es un `texto`, y de momento solo eso: el hash se calcula sobre
+#  BYTES, y un entero es un valor sin sitio donde durar. `tabla de entero64 a T`
+#  pide otra familia de hash y de comparacion, y se escribe con el caso delante.
+tabla = true
 
 # ===================================================================
 #  Lo que NO esta aqui, y es a proposito

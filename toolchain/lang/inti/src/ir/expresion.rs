@@ -613,11 +613,20 @@ impl Descenso<'_> {
                 self.sin_ancho += 1;
                 Valor::Const(Const::Nada)
             }
+            // ** UN LITERAL DE TABLA **SIN TIPO ESCRITO**, igual que la lista.
+            //
+            // El que SI lo dice se construye en `tabla_literal`, en el descenso
+            // de la asignacion. Aqui llega el que no, y sigue sin construirse:
+            // sin el tipo del destino no se sabe que es la clave ni el valor.
+            //
+            // [!] Las parejas SI se bajan, para que sus efectos ocurran. Lo que
+            // no se hace es inventar una tabla.
             Expr::Tabla(pares, _) => {
                 for (k, val) in pares {
                     self.expresion(k);
                     self.expresion(val);
                 }
+                self.sin_ancho += 1;
                 Valor::Const(Const::Nada)
             }
             Expr::OSiNo { intento, .. } => self.expresion(intento),

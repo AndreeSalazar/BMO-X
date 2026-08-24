@@ -461,6 +461,7 @@ mod objetos;
 mod reglas;
 mod signo;
 mod sonda;
+mod tabla;
 
 // ===================================================================
 //  ** QUE LAS DOS LISTAS NO SE SEPAREN

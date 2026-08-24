@@ -144,6 +144,62 @@ impl<'t> Descenso<'t> {
     /// holgura. Un literal se escribe entero: si despues crece, crecer es otra
     /// operacion y ya tiene su propio "no cabe". Reservar de mas "por si acaso"
     /// seria una politica de crecimiento metida donde no toca.
+    /// **Construye una `tabla de A a B` a partir de su literal**, si se puede.
+    ///
+    /// ```text
+    ///    m = monton de la tarea
+    ///    t = tabla_nueva(m, capacidad)
+    ///    pon(t, clave0, valor0)
+    ///    pon(t, clave1, valor1)
+    /// ```
+    ///
+    /// *** LA CAPACIDAD ES EL DOBLE DE LAS PAREJAS, y aqui si hay holgura -- al
+    /// reves que en la lista, donde es exacta.
+    ///
+    /// ** El motivo no es "por si crece": es que una tabla llena **no termina de
+    /// buscar**. Con el doble, la ocupacion queda al 50% y la sonda lineal
+    /// encuentra un hueco enseguida. Ajustarla seria pagar colisiones en cada
+    /// busqueda para ahorrar unos bytes una vez.
+    ///
+    /// [!] Y el minimo es 2: una tabla de una ranura no admitiria ni una pareja,
+    /// porque siempre queda una libre.
+    pub(super) fn tabla_literal(&mut self, destino: &Expr, valor: &Expr) -> Option<Valor> {
+        let Expr::Tabla(pares, _) = valor else {
+            return None;
+        };
+        // Que el destino sea una tabla es lo unico que hace falta saber: la
+        // clave es un `texto` y el valor cabe en una palabra.
+        if !matches!(
+            self.plano.tipo_de(destino, &self.tipos),
+            Some(crate::arbol::Tipo::Tabla(_, _))
+        ) {
+            return None;
+        }
+        let capacidad = (pares.len() as i64 * 2).max(2);
+
+        let m = self.temporal();
+        self.pon(Instr::MontonDeLaTarea { destino: m });
+        let t = self.temporal();
+        self.pon(Instr::Llama {
+            destino: Some(t),
+            que: Valor::Nombre("tabla_nueva".to_string()),
+            argumentos: vec![Valor::Temporal(m), Valor::Const(Const::Entero(capacidad))],
+        });
+        // [!] CLAVE Y LUEGO VALOR, en el orden escrito. La Regla 8 fija el orden
+        // de evaluacion, y una tabla literal no puede tener otro que el de al
+        // lado por el hecho de ser una tabla.
+        for (k, v) in pares {
+            let ck = self.expresion(k);
+            let cv = self.expresion(v);
+            self.pon(Instr::Llama {
+                destino: None,
+                que: Valor::Nombre("pon".to_string()),
+                argumentos: vec![Valor::Temporal(t), ck, cv],
+            });
+        }
+        Some(Valor::Temporal(t))
+    }
+
     pub(super) fn lista_literal(&mut self, destino: &Expr, valor: &Expr) -> Option<Valor> {
         let Expr::Lista(elementos, _) = valor else {
             return None;
@@ -402,7 +458,10 @@ impl<'t> Descenso<'t> {
                 //
                 // Asi que se construye donde el tipo ESTA ESCRITO, y donde no lo
                 // este sigue sin construirse -- y `expresion` lo dice.
-                if let Some(v) = self.lista_literal(destino, valor) {
+                if let Some(v) = self
+                    .lista_literal(destino, valor)
+                    .or_else(|| self.tabla_literal(destino, valor))
+                {
                     if let Expr::Nombre(n, _) = destino {
                         let l = self.local(n);
                         self.pon(Instr::Guarda { destino: l, valor: v });
