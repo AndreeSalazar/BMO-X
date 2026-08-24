@@ -357,6 +357,12 @@ pub fn main(ctx: &mut BootContext) {
     // una placa sana es cero, y si no lo es lo que falla no es la placa -- es el
     // mapeo de esas direcciones fisicas.
     crate::ring0::plat::placa::confesar(ctx.rsdp);
+
+    // ** Y ECAM, que se monta SOLO SI se cree. El careo lee el vendor/device de
+    // cada funcion del bus 0 por los dos caminos y exige que coincidan: si una
+    // sola discrepa, ECAM se queda apagado entero. Una ventana que acierta a
+    // veces es peor que ninguna.
+    crate::ring0::dev::pci::ecam_montar(ctx.rsdp);
     splash::intro_paso(58);
     // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
     // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un

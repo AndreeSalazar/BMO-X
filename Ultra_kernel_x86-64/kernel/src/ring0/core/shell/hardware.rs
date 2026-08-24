@@ -1037,6 +1037,58 @@ pub(crate) fn shell_placa() {
         }
     }
 
+
+    // === LO QUE ECAM DESBLOQUEA, SOBRE UN APARATO DE VERDAD ==========
+    //
+    // ** Se elige la NIC y no un aparato cualquiera porque es del que ya se sabe
+    // todo: bus, dispositivo, funcion, MAC y enlace, verificados en metal. Si la
+    // lista de capabilities de ESE aparato sale creible, ECAM sirve.
+    if !crate::ring0::dev::pci::hay_ecam() {
+        s_log("[placa] sin ECAM careado: las caps extendidas son INALCANZABLES, no ilegibles");
+    } else {
+        let (_, _, bus, dev, fun, _) = crate::ring0::dev::net::donde();
+        let mut caps = [crate::ring0::dev::pci::CapExt { id: 0, version: 0, offset: 0 }; 16];
+        let n = crate::ring0::dev::pci::caps_extendidas(bus, dev, fun, &mut caps);
+        if n == 0 {
+            s_log("[placa] la NIC no trae capabilities extendidas");
+        } else {
+            let mut b = [0u8; 80];
+            let mut o = 0usize;
+            txt(&mut b, &mut o, "[placa] la NIC trae ");
+            dec(&mut b, &mut o, n as u64);
+            txt(&mut b, &mut o, " caps extendidas (offset >= 0x100, fuera de los puertos)");
+            if let Ok(t) = core::str::from_utf8(&b[..o]) { s_log(t); }
+
+            let mut hay_acs = false;
+            for c in caps[..n].iter() {
+                let mut b = [0u8; 80];
+                let mut o = 0usize;
+                txt(&mut b, &mut o, "        0x");
+                hex(&mut b, &mut o, c.id as u64);
+                txt(&mut b, &mut o, " @0x");
+                hex(&mut b, &mut o, c.offset as u64);
+                txt(&mut b, &mut o, "  ");
+                txt(&mut b, &mut o, crate::ring0::dev::pci::nombre_cap_ext(c.id));
+                if let Ok(t) = core::str::from_utf8(&b[..o]) { s_log(t); }
+                if c.id == 0x000D {
+                    hay_acs = true;
+                }
+            }
+
+            // *** ACS, y por que se dice aunque hoy no se use.
+            //
+            // ** Sin ACS, dos funciones detras del mismo puente pueden hacer DMA
+            // la una contra la otra **sin que la IOMMU se entere**. Encender la
+            // IOMMU sin mirar esto es poner una puerta en una habitacion que
+            // tiene otra puerta -- y ese dato se sabe HOY, gratis, antes de
+            // escribir una linea del driver de IOMMU.
+            if !hay_acs {
+                s_log("[placa] [!] sin ACS: dos funciones del mismo puente podrian");
+                s_log("[placa]     hablarse saltandose la IOMMU. Importa el dia que se encienda");
+            }
+        }
+    }
+
     // El resumen, y la unica cifra que puede ser mala.
     {
         let mut b = [0u8; 80];

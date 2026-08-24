@@ -92,6 +92,273 @@ const CMD_BUS_MASTER: u32 = 1 << 2;
 /// llame tiene que quedarse entonces como estaba: encender las interrupciones de
 /// un aparato cuya senal no va a llegar a ninguna parte es peor que no
 /// encenderlas, porque el aparato se queda esperando a que alguien le conteste.
+// ===================================================================
+//  ECAM -- la configuracion de PCIe en memoria, y los 4096 bytes
+// ===================================================================
+//
+//  ## Por que hay DOS caminos y no se sustituye el viejo
+//
+//  ```text
+//     puertos 0xCF8/0xCFC   256 bytes por funcion.  Funciona, arranca la maquina
+//     ECAM (memoria)       4096 bytes por funcion.  Lo unico que alcanza las
+//                                                   capabilities extendidas
+//  ```
+//
+//  ** El camino de puertos NO se toca. Es el que enumera el disco, la NIC y el
+//  xHCI en cada arranque desde hace meses, y sustituirlo por uno nuevo el mismo
+//  dia que el nuevo se escribe es cambiar lo que funciona por lo que todavia no
+//  se ha visto funcionar. El nuevo se anade AL LADO y se gana el sitio.
+//
+//  ## *** Y COMO SE GANA EL SITIO: DOS TESTIGOS
+//
+//  La direccion base de ECAM sale del MCFG, o sea del firmware. Si esa base
+//  fuera la equivocada, leer por ella daria numeros -- **numeros plausibles**,
+//  porque cualquier memoria leida da un `u32`. Y entonces el fallo no seria una
+//  excepcion: seria un vendor id inventado, tres arranques mas tarde.
+//
+//  Asi que antes de creerse ECAM se lee **el mismo registro por los dos
+//  caminos** y se comparan. Es el metodo con el que se midio la puerta --dos
+//  instrumentos que coinciden validan el instrumento-- y aqui contesta la unica
+//  pregunta que importa: *la base que dio el firmware, lleva a donde dice?*
+
+/// La base de ECAM del segmento 0, y el rango de buses que cubre.
+/// `(base, bus_desde, bus_hasta)`. Base cero = no hay MCFG o no se creyo.
+static mut ECAM: (u64, u8, u8) = (0, 0, 0);
+
+/// **Se pudo creer el ECAM?** Falso hasta que los dos testigos coincidan.
+static mut ECAM_CREIBLE: bool = false;
+
+/// Donde cae el registro `off` de una funcion, en memoria fisica.
+///
+/// [!] `bus - bus_desde`: la ventana empieza en `bus_desde`, no en el bus 0. En
+/// una placa donde vale 0 --que son casi todas-- restar o no restar da lo mismo,
+/// y por eso el fallo no aparece hasta la placa que no lo es.
+unsafe fn ecam_addr(bus: u8, dev: u8, func: u8, off: u16) -> Option<u64> {
+    unsafe {
+        let (base, desde, hasta) = ECAM;
+        if base == 0 || bus < desde || bus > hasta {
+            return None;
+        }
+        if dev > 31 || func > 7 || off >= 4096 {
+            return None;
+        }
+        Some(
+            base + (((bus - desde) as u64) << 20)
+                + ((dev as u64) << 15)
+                + ((func as u64) << 12)
+                + off as u64,
+        )
+    }
+}
+
+/// Lee por ECAM **sin comprobar si se creyo**. Para el propio careo.
+unsafe fn ecam_read32_crudo(bus: u8, dev: u8, func: u8, off: u16) -> Option<u32> {
+    unsafe {
+        let a = ecam_addr(bus, dev, func, off)?;
+        let v = crate::ring0::mm::phys_to_virt(a) as *const u32;
+        Some(core::ptr::read_volatile(v))
+    }
+}
+
+/// **Monta ECAM y lo somete al careo.** Se llama una vez, al arrancar.
+///
+/// *** El careo es la parte que no se puede saltar. Lee el vendor/device de
+/// cada funcion que el camino de puertos ya encontro, y exige que ECAM diga lo
+/// mismo. Si UNA sola discrepa, ECAM se queda apagado entero: una ventana que
+/// acierta a veces es peor que ninguna, porque el dia que falla lo hace con un
+/// numero con pinta de buen dato.
+pub fn ecam_montar(rsdp: u64) {
+    use crate::ring0::plat::placa;
+
+    let mut r = [placa::RangoEcam { base: 0, segmento: 0, bus_desde: 0, bus_hasta: 0 };
+        placa::MAX_ECAM];
+    let n = placa::ecam(rsdp, &mut r);
+    // Se toma el segmento 0: es el unico que hay en una maquina de escritorio, y
+    // elegir "el primero" sin mirar el segmento seria acertar por costumbre.
+    let Some(cero) = r[..n].iter().find(|x| x.segmento == 0) else {
+        crate::ring0::cabina::count("pci", "sin MCFG: la config se queda en 256 B", 0);
+        return;
+    };
+    unsafe {
+        ECAM = (cero.base, cero.bus_desde, cero.bus_hasta);
+        ECAM_CREIBLE = false;
+    }
+
+    // === EL CAREO ===================================================
+    //
+    // Se recorre el bus 0 entero, que es donde vive el chipset y donde el
+    // camino de puertos ya sabe leer. Cada funcion presente tiene que dar el
+    // MISMO vendor/device por los dos caminos.
+    let mut vistas = 0u32;
+    let mut discrepan = 0u32;
+    for dev in 0u8..32 {
+        for func in 0u8..8 {
+            let por_puertos = cfg_read32(0, dev, func, 0x00);
+            // 0xFFFFFFFF es "aqui no hay nadie", y no se carea con nada.
+            if por_puertos == 0xFFFF_FFFF {
+                continue;
+            }
+            vistas += 1;
+            let por_memoria = unsafe { ecam_read32_crudo(0, dev, func, 0x00) };
+            match por_memoria {
+                Some(v) if v == por_puertos => {}
+                _ => discrepan += 1,
+            }
+            // Una funcion 0 que no es multifuncion no tiene 1..7.
+            if func == 0 {
+                let hdr = cfg_read32(0, dev, 0, 0x0C);
+                if (hdr >> 16) & 0x80 == 0 {
+                    break;
+                }
+            }
+        }
+    }
+
+    if vistas > 0 && discrepan == 0 {
+        unsafe { ECAM_CREIBLE = true };
+        crate::ring0::cabina::addr("pci", "ECAM montado y careado, base", cero.base);
+        crate::ring0::cabina::count("pci", "  ...funciones que coinciden por los 2 caminos", vistas as u64);
+    } else {
+        unsafe {
+            ECAM = (0, 0, 0);
+            ECAM_CREIBLE = false;
+        }
+        // *** Apagado ENTERO, no "con cuidado". Ver la cabecera de esta funcion.
+        crate::ring0::cabina::warn(
+            "pci",
+            "[!] ECAM NO coincide con los puertos: apagado. Funciones que discrepan",
+            discrepan as u64,
+        );
+    }
+}
+
+/// Se puede leer configuracion extendida?
+pub fn hay_ecam() -> bool {
+    unsafe { ECAM_CREIBLE }
+}
+
+/// **Lee configuracion PCIe, incluidos los 3.840 bytes que los puertos no
+/// alcanzan.**
+///
+/// ** El `off` es un `u16` y no un `u8`, y ahi esta la diferencia entera con
+/// [`cfg_read32`]: el techo de 256 de aquella funcion **esta en su tipo**, no en
+/// una comprobacion que se pueda olvidar.
+///
+/// `None` si ECAM no se pudo creer, o si el offset se sale. Y `None` es la
+/// respuesta correcta -- devolver `0xFFFFFFFF` seria indistinguible de una
+/// funcion que no existe, y devolver `0` seria un dato inventado.
+pub fn cfg_read32_ext(bus: u8, dev: u8, func: u8, off: u16) -> Option<u32> {
+    if !hay_ecam() {
+        return None;
+    }
+    unsafe { ecam_read32_crudo(bus, dev, func, off) }
+}
+
+// ===================================================================
+//  Las capabilities EXTENDIDAS -- el primer usuario de ECAM
+// ===================================================================
+//
+//  ** Existen para que ECAM no sea otra pieza escrita que no llama nadie. La
+//  lista empieza en el offset `0x100` --justo donde se acaba lo que alcanzan los
+//  puertos-- y esa direccion es literalmente la frontera entre los dos caminos.
+//
+//  ## *** Y dos de ellas deciden si la IOMMU sirve para algo
+//
+//  ```text
+//     ATS   el aparato puede usar direcciones VIRTUALES y cachear sus
+//           traducciones. Sin esto la IOMMU funciona, pero cada acceso del
+//           aparato pasa por una traduccion
+//
+//     ACS   *** el aparato NO deja que dos funciones detras del mismo puente
+//           se hablen ENTRE ELLAS saltandose la IOMMU
+//  ```
+//
+//  ** La segunda es la que importa y casi nunca se cuenta: **sin ACS, dos
+//  aparatos en el mismo puente pueden hacer DMA el uno contra el otro sin que la
+//  IOMMU se entere.** Encender la IOMMU sin mirar ACS es poner una puerta en una
+//  habitacion que tiene otra puerta.
+
+/// Donde empieza la lista de capabilities extendidas. Es exactamente donde se
+/// acaban los 256 bytes que alcanzan los puertos.
+pub const CAPS_EXT_INICIO: u16 = 0x100;
+
+/// Cuantas se recorren como mucho.
+///
+/// ** Un tope, porque la lista es una cadena de punteros que el APARATO
+/// escribe: una cadena que apunte a si misma dejaria el bucle girando en el
+/// arranque. Es la misma regla que el recorrido del IVRS -- **un bucle sobre
+/// datos que da el hardware tiene que terminar aunque el hardware mienta.**
+const MAX_CAPS: usize = 32;
+
+/// Que es una capability extendida, por su id.
+pub fn nombre_cap_ext(id: u16) -> &'static str {
+    match id {
+        0x0001 => "AER (errores del enlace, con detalle)",
+        0x0002 => "canales virtuales",
+        0x0003 => "numero de serie del aparato",
+        0x0004 => "presupuesto de energia",
+        0x000B => "del fabricante",
+        0x000D => "ACS -- impide que dos funciones se salten la IOMMU",
+        0x000E => "ARI (mas de 8 funciones)",
+        0x000F => "ATS -- el aparato traduce direcciones",
+        0x0010 => "SR-IOV (funciones virtuales)",
+        0x0018 => "LTR (latencia tolerable)",
+        0x0019 => "PCIe secundario",
+        0x001E => "subestados L1 de energia",
+        0x0025 => "DPC (contener un fallo del enlace)",
+        _ => "",
+    }
+}
+
+/// Una capability extendida encontrada.
+#[derive(Clone, Copy)]
+pub struct CapExt {
+    pub id: u16,
+    pub version: u8,
+    pub offset: u16,
+}
+
+/// **Recorre las capabilities extendidas de una funcion.** Devuelve cuantas.
+///
+/// `None` implicito: si ECAM no se pudo creer, devuelve 0 -- y eso es correcto,
+/// porque sin ECAM esas capabilities **no son ilegibles, son inalcanzables**.
+pub fn caps_extendidas(bus: u8, dev: u8, func: u8, salida: &mut [CapExt]) -> usize {
+    if !hay_ecam() || salida.is_empty() {
+        return 0;
+    }
+    let mut off = CAPS_EXT_INICIO;
+    let mut n = 0usize;
+    let mut vueltas = 0usize;
+    while off >= CAPS_EXT_INICIO && off < 4096 && n < salida.len() && vueltas < MAX_CAPS {
+        vueltas += 1;
+        let Some(cab) = cfg_read32_ext(bus, dev, func, off) else {
+            break;
+        };
+        // ** Cero o todo unos: no hay lista. Las dos significan lo mismo aqui y
+        // se miran las dos, porque un aparato sin capabilities extendidas puede
+        // contestar cualquiera de ellas.
+        if cab == 0 || cab == 0xFFFF_FFFF {
+            break;
+        }
+        let id = (cab & 0xFFFF) as u16;
+        salida[n] = CapExt {
+            id,
+            version: ((cab >> 16) & 0xF) as u8,
+            offset: off,
+        };
+        n += 1;
+        let siguiente = ((cab >> 20) & 0xFFF) as u16;
+        // ** Una siguiente que no avanza es una cadena que se muerde la cola.
+        // Cortarla aqui y no confiar solo en `MAX_CAPS` deja el motivo escrito
+        // en el sitio donde pasa.
+        if siguiente <= off {
+            break;
+        }
+        off = siguiente;
+    }
+    n
+}
+
 pub fn msi_activar(bus: u8, dev: u8, func: u8, vector: u8, apic_id: u8) -> bool {
     // Hay lista de capabilities? Bit 4 del registro de estado (offset 0x06).
     let status = cfg_read32(bus, dev, func, 0x04) >> 16;
