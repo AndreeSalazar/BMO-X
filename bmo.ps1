@@ -91,11 +91,45 @@ if (-not $Rapido) {
         #          dos ramas. Y ahi estan ahora las nueve de `calcgui`, que son
         #          las unicas que comprueban que un motor de COBOL lanzado por
         #          el escritorio contesta la cuenta que se le pidio.
-        $paquetes = @('bmo-c-front', 'bmo-cobol-front', 'bmo-uaudio', 'bmo-abi', 'bmo-fat32', 'bmo-uhid', 'bmo-net', 'bmo-ciudad',
-                      'bmo-trim', 'bmo-block', 'bmo-identify', 'bmo-disco-juicio', 'bmo-estratos', 'bmo-particiones',
-                      'bmo-maqueta-lex', 'bmo-maqueta-node', 'bmo-maqueta-cascade',
-                      'bmo-maqueta-layout', 'bmo-maqueta-verdict', 'bmo-maqueta-emit')
+        #   24-08  *** SE ACABO LA LISTA, Y ESTE ES EL MOTIVO
+        #
+        #          Al meter `bmo-cripto` toco anadirlo a mano, y de paso se
+        #          conto lo que la lista se estaba dejando fuera:
+        #
+        #            en el workspace   56 crates
+        #            en la lista       20
+        #            sin ejecutar     911 filas que EXISTEN Y PASAN
+        #
+        #          El banco cantaba 1315. El numero de verdad era 2226: se
+        #          callaba el 41%. Y lo que faltaba no era relleno -- eran
+        #          `bmo-inti-front` (274) y `bmo-inti-x86-64` (256), o sea
+        #          **INTI ENTERO**, la pieza mas nueva y la que mas se toca.
+        #
+        #          ** Es el mismo fallo que tuvo el guardian del contrato, que
+        #          leia dos ficheros de `syscall/` POR NOMBRE y se quedo ciego
+        #          cuando la carpeta paso a tener once. La forma se repite:
+        #
+        #            una lista escrita a mano no se queda obsoleta de golpe,
+        #            se queda obsoleta cada vez que alguien no se acuerda.
+        #
+        #          Asi que el banco ya no lleva lista: **le pregunta al
+        #          workspace**. Un crate nuevo entra probado por defecto en vez
+        #          de quedarse fuera por defecto, que es al reves de como
+        #          estaba y es la unica diferencia que importa.
+        #
+        # [!] Y lo que NO se puede probar aqui se dice con su razon, no se
+        #     omite en silencio. Omitir en silencio es como empezo esto.
+        $noSePueden = @{
+            'bmo-kernel' = 'binario bare-metal: enlazado como test, `panic_impl` sale dos veces'
+        }
+        $antes = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $meta = (cargo metadata --no-deps --format-version 1 2>$null | Out-String | ConvertFrom-Json)
+        $ErrorActionPreference = $antes
+        $paquetes = $meta.packages | ForEach-Object { $_.name } |
+                    Where-Object { -not $noSePueden.ContainsKey($_) } | Sort-Object
         $total = 0
+        $sinBanco = @()
         foreach ($p in $paquetes) {
             # [!] AQUI SE DECIDE POR CONTEO, NO POR FRASE NI POR CODIGO DE SALIDA.
             #
@@ -111,9 +145,18 @@ if (-not $Rapido) {
             #
             # Lo que SI funciona es sumar los numeros: `N passed` y `N failed`
             # salen del propio resumen de cargo y no dependen de como este shell
-            # trate stderr. Un paquete esta bien si paso alguna y no fallo
-            # ninguna; cero pasadas tambien es sospechoso --significa que no se
-            # llego a ejecutar-- y por eso cuenta como rojo.
+            # trate stderr. Un paquete esta bien si no fallo ninguna.
+            #
+            # ** 24-08 CERO PASADAS YA NO ES ROJO, y hubo que cambiarlo al
+            # quitar la lista. Con veinte crates elegidos a dedo, cero pasadas
+            # solo podia significar "no llego a ejecutar". Con los 55, hay
+            # crates que legitimamente no tienen banco de anfitrion --drivers
+            # no_std como `bmo-ahci` o `bmo-xhci`-- y matar por eso seria
+            # cambiar una mentira por otra.
+            #
+            # El discriminador bueno no era el conteo: es si COMPILO. Un `^error`
+            # en la salida es no haber llegado a ejecutar; cero filas habiendo
+            # compilado es no tener pruebas, que es otra cosa y se anota aparte.
             # [!] Y `Stop` se BAJA para esta linea, o el guion se muere en el
             # primer warning del compilador.
             #
@@ -130,14 +173,26 @@ if (-not $Rapido) {
             $ErrorActionPreference = $antes
             $n = ([regex]::Matches($salida, '(\d+) passed') | ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Sum).Sum
             $rojas = ([regex]::Matches($salida, '(\d+) failed') | ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Sum).Sum
-            if ($n -eq 0 -or $rojas -gt 0) {
+            $compilo = -not ([regex]::IsMatch($salida, '(?m)^error'))
+            if ($rojas -gt 0 -or -not $compilo) {
                 Write-Host $salida
-                Muere "banco de ${p}: $n pasadas, $rojas rojas"
+                Muere "banco de ${p}: $n pasadas, $rojas rojas, compilo=$compilo"
             }
+            if ($n -eq 0) { $sinBanco += $p; continue }
             $total += $n
             Bien "$p -- $n filas"
         }
-        Bien "$total filas en total, ninguna roja"
+        Bien "$total filas en total, ninguna roja  ($($paquetes.Count) crates preguntados)"
+        if ($sinBanco.Count -gt 0) {
+            # [-] No mata, pero se VE. Un crate sin una sola prueba compila y no
+            #     promete nada; que salga en la lista es lo que impide que se
+            #     quede asi para siempre sin que nadie lo note.
+            Write-Host "   [-] $($sinBanco.Count) crates compilan y no tienen ni una prueba:" -ForegroundColor Yellow
+            Write-Host "       $($sinBanco -join ', ')" -ForegroundColor Yellow
+        }
+        foreach ($k in $noSePueden.Keys) {
+            Write-Host "   [-] $k no se prueba aqui -- $($noSePueden[$k])" -ForegroundColor Yellow
+        }
     } finally { Pop-Location }
 } else {
     Write-Host "   (banco saltado: -Rapido)" -ForegroundColor Yellow
