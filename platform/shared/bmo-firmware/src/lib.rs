@@ -229,6 +229,207 @@ pub fn recortar(campo: &[u8]) -> &str {
     core::str::from_utf8(&campo[..fin]).unwrap_or("")
 }
 
+
+// ===================================================================
+//  MCFG -- donde vive la configuracion de PCIe EN MEMORIA
+// ===================================================================
+//
+//  ## Por que esta tabla vale mas que las otras
+//
+//  PCI clasico se lee por dos puertos de E/S (`0xCF8` / `0xCFC`), y ese camino
+//  **solo alcanza los primeros 256 bytes** del espacio de configuracion de cada
+//  funcion. Es lo que BMO-X usa hoy.
+//
+//  PCIe tiene **4096**. Los otros 3.840 bytes son las *capabilities extendidas*
+//  -- y ahi viven cosas que no son opcionales para lo que este sistema quiere
+//  hacer:
+//
+//  ```text
+//     AER          errores del enlace, con detalle
+//     ATS / PASID  lo que hace falta para que un aparato use direcciones
+//                  virtuales -- o sea, para una IOMMU util
+//     SR-IOV       funciones virtuales
+//     el enlace    ancho y velocidad negociados de verdad
+//  ```
+//
+//  *** Y no se llega a ellos "con mas cuidado": **no hay forma** por los
+//  puertos. Hace falta la direccion base que declara MCFG, y esa es toda la
+//  razon de que esta tabla exista.
+
+/// Un rango de buses y donde vive su configuracion, del MCFG.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RangoEcam {
+    /// Direccion FISICA donde empieza la ventana de configuracion.
+    pub base: u64,
+    /// Grupo de segmento PCI. En una maquina de escritorio es 0.
+    pub segmento: u16,
+    pub bus_desde: u8,
+    pub bus_hasta: u8,
+}
+
+/// Bytes de la cabecera del MCFG antes de la primera entrada: la cabecera ACPI
+/// comun mas ocho reservados.
+pub const MCFG_CABECERA: usize = CABECERA_LEN + 8;
+/// Bytes de cada entrada del MCFG.
+pub const MCFG_ENTRADA: usize = 16;
+
+impl RangoEcam {
+    /// **La direccion fisica de un registro de configuracion.**
+    ///
+    /// ```text
+    ///    base + ((bus - bus_desde) << 20) + (dev << 15) + (fun << 12) + offset
+    /// ```
+    ///
+    /// ** El `bus - bus_desde` es la parte que se olvida y no avisa: la ventana
+    /// empieza en `bus_desde`, no en el bus 0. En una placa donde `bus_desde`
+    /// es 0 --que son casi todas-- restar o no restar da lo mismo, **y por eso
+    /// el fallo no aparece hasta la placa que no lo es.**
+    ///
+    /// `None` si el bus no cae en este rango, o si el offset se sale de los
+    /// 4096 bytes que tiene una funcion.
+    pub fn direccion(&self, bus: u8, dispositivo: u8, funcion: u8, offset: u16) -> Option<u64> {
+        if bus < self.bus_desde || bus > self.bus_hasta {
+            return None;
+        }
+        if dispositivo > 31 || funcion > 7 || offset >= 4096 {
+            return None;
+        }
+        Some(
+            self.base
+                + (((bus - self.bus_desde) as u64) << 20)
+                + ((dispositivo as u64) << 15)
+                + ((funcion as u64) << 12)
+                + offset as u64,
+        )
+    }
+
+    /// Cuantos bytes ocupa la ventana entera de este rango. Un bus son 1 MiB.
+    pub fn mide(&self) -> u64 {
+        ((self.bus_hasta as u64) - (self.bus_desde as u64) + 1) << 20
+    }
+}
+
+/// **Lee las entradas del MCFG.** `bytes` es la tabla entera.
+///
+/// Devuelve cuantas escribio en `salida`. Un array y no un `Vec` porque esto se
+/// llama desde el arranque, sin monton.
+pub fn leer_mcfg(bytes: &[u8], salida: &mut [RangoEcam]) -> usize {
+    if bytes.len() < MCFG_CABECERA || salida.is_empty() {
+        return 0;
+    }
+    let largo = u32_en(bytes, 4) as usize;
+    let hasta = largo.min(bytes.len());
+    if hasta < MCFG_CABECERA {
+        return 0;
+    }
+    let cuantas = ((hasta - MCFG_CABECERA) / MCFG_ENTRADA).min(salida.len());
+    for i in 0..cuantas {
+        let o = MCFG_CABECERA + i * MCFG_ENTRADA;
+        let mut b = [0u8; 8];
+        b.copy_from_slice(&bytes[o..o + 8]);
+        salida[i] = RangoEcam {
+            base: u64::from_le_bytes(b),
+            segmento: u16::from_le_bytes([bytes[o + 8], bytes[o + 9]]),
+            bus_desde: bytes[o + 10],
+            bus_hasta: bytes[o + 11],
+        };
+    }
+    cuantas
+}
+
+// ===================================================================
+//  IVRS -- la IOMMU de AMD
+// ===================================================================
+//
+//  ## Por que esta tabla le importa a un sistema de capabilities
+//
+//  Una capability dice que puede hacer un PROCESO. **No dice nada de lo que
+//  puede hacer un APARATO**, y un aparato con DMA escribe donde le den la
+//  direccion -- sin pasar por el kernel, sin pasar por las tablas de pagina, y
+//  sin que nadie se entere.
+//
+//  *** O sea: **hoy el modelo de seguridad de BMO-X tiene un agujero del tamano
+//  de cualquier aparato con bus-master.** Un anillo de descriptores mal armado
+//  no da un fallo: da la tarjeta escribiendo en memoria de otro, y el sintoma
+//  tres arranques despues. Ya se piso esa mina con el PRDT de AHCI.
+//
+//  La IOMMU es lo unico que cierra eso: pone tablas de pagina **para los
+//  aparatos**, y un aparato que se salga de las suyas recibe un fallo en vez de
+//  escribir.
+//
+//  ** Esto solo LEE la tabla: dice si la hay y donde esta. Encenderla es otro
+//  trabajo, y grande. Pero saber que existe es lo que permite escribir el plan
+//  con un numero en vez de una intencion.
+
+/// Un bloque IVHD: **un** IOMMU, con donde vive.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Ivhd {
+    /// `0x10`, `0x11` o `0x40`. Los tres describen un IOMMU; cambian los campos
+    /// de detalle que traen detras.
+    pub tipo: u8,
+    pub banderas: u8,
+    /// Bytes de este bloque, incluidas sus entradas de dispositivo.
+    pub largo: u16,
+    /// El BDF del propio IOMMU dentro del bus PCI.
+    pub id_dispositivo: u16,
+    /// **Donde viven sus registros.** Direccion fisica.
+    pub base_mmio: u64,
+    pub segmento: u16,
+}
+
+/// Bytes de la cabecera del IVRS antes del primer IVHD: la cabecera ACPI comun,
+/// `IVinfo` (4) y ocho reservados.
+pub const IVRS_CABECERA: usize = CABECERA_LEN + 4 + 8;
+
+/// **Lee los bloques IVHD de un IVRS.** Devuelve cuantos escribio.
+///
+/// [!] Los campos de `IVinfo` **no se decodifican aqui**, y es deliberado: se
+/// devuelve crudo. Es la misma regla que `Identidad::phy` en el driver de red --
+/// *el byte entero es la prueba y las funciones son la opinion*. Decodificar
+/// bits de una especificacion que no se tiene delante es como se inventan
+/// campos que luego nadie puede refutar.
+pub fn leer_ivrs(bytes: &[u8], salida: &mut [Ivhd]) -> usize {
+    if bytes.len() < IVRS_CABECERA || salida.is_empty() {
+        return 0;
+    }
+    let largo = (u32_en(bytes, 4) as usize).min(bytes.len());
+    let mut o = IVRS_CABECERA;
+    let mut n = 0usize;
+    // ** El bucle avanza por el `largo` de cada bloque, asi que un largo de cero
+    // lo dejaria girando para siempre. Se corta, y ademas se limita por el tope
+    // de la salida: un bucle sobre datos de firmware tiene que terminar aunque
+    // el firmware mienta.
+    while o + 24 <= largo && n < salida.len() {
+        let tipo = bytes[o];
+        let banderas = bytes[o + 1];
+        let l = u16::from_le_bytes([bytes[o + 2], bytes[o + 3]]);
+        if l < 24 {
+            break;
+        }
+        let mut b = [0u8; 8];
+        b.copy_from_slice(&bytes[o + 8..o + 16]);
+        salida[n] = Ivhd {
+            tipo,
+            banderas,
+            largo: l,
+            id_dispositivo: u16::from_le_bytes([bytes[o + 4], bytes[o + 5]]),
+            base_mmio: u64::from_le_bytes(b),
+            segmento: u16::from_le_bytes([bytes[o + 16], bytes[o + 17]]),
+        };
+        n += 1;
+        o += l as usize;
+    }
+    n
+}
+
+/// El `IVinfo` crudo del IVRS. Cuatro bytes, sin interpretar.
+pub fn ivinfo(bytes: &[u8]) -> Option<u32> {
+    if bytes.len() < CABECERA_LEN + 4 {
+        return None;
+    }
+    Some(u32_en(bytes, CABECERA_LEN))
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -331,4 +532,168 @@ mod pruebas {
         t[4..8].copy_from_slice(&10u32.to_le_bytes());
         assert_eq!(revisar(&t), Err(Falta::LargoImposible));
     }
+
+    // ===============================================================
+    //  MCFG
+    // ===============================================================
+
+    fn mcfg(rangos: &[(u64, u16, u8, u8)]) -> Vec<u8> {
+        let largo = MCFG_CABECERA + rangos.len() * MCFG_ENTRADA;
+        let mut t = tabla(b"MCFG", b"ALASKA", largo);
+        for (i, (base, seg, d, h)) in rangos.iter().enumerate() {
+            let o = MCFG_CABECERA + i * MCFG_ENTRADA;
+            t[o..o + 8].copy_from_slice(&base.to_le_bytes());
+            t[o + 8..o + 10].copy_from_slice(&seg.to_le_bytes());
+            t[o + 10] = *d;
+            t[o + 11] = *h;
+        }
+        // Recuadrar la suma despues de escribir las entradas.
+        t[9] = 0;
+        let suma: u8 = t.iter().fold(0u8, |a, &b| a.wrapping_add(b));
+        t[9] = (0u8).wrapping_sub(suma);
+        t
+    }
+
+    #[test]
+    fn el_mcfg_da_la_ventana_de_configuracion() {
+        let t = mcfg(&[(0xE000_0000, 0, 0, 255)]);
+        assert!(revisar(&t).is_ok(), "la tabla tiene que seguir cuadrando");
+
+        let mut r = [RangoEcam { base: 0, segmento: 0, bus_desde: 0, bus_hasta: 0 }; 4];
+        assert_eq!(leer_mcfg(&t, &mut r), 1);
+        assert_eq!(r[0].base, 0xE000_0000);
+        assert_eq!(r[0].bus_hasta, 255);
+        // 256 buses de 1 MiB cada uno.
+        assert_eq!(r[0].mide(), 256 << 20);
+    }
+
+    /// *** LA CUENTA DEL ECAM, y el termino que se olvida sin avisar.
+    ///
+    /// ** `bus - bus_desde`: la ventana empieza en `bus_desde`, no en el bus 0.
+    /// En una placa donde `bus_desde` es 0 --que son casi todas-- restar o no
+    /// restar da lo mismo, **y por eso el fallo no aparece hasta la placa que no
+    /// lo es**. Esta prueba usa una ventana que NO empieza en cero justamente
+    /// para que el termino no se pueda quitar sin que algo se ponga rojo.
+    #[test]
+    fn la_direccion_resta_el_bus_de_inicio() {
+        let r = RangoEcam { base: 0xF000_0000, segmento: 0, bus_desde: 16, bus_hasta: 31 };
+
+        // El primer bus de la ventana cae en la base, no un desplazamiento mas alla.
+        assert_eq!(r.direccion(16, 0, 0, 0), Some(0xF000_0000));
+        // Un bus mas arriba es 1 MiB mas arriba.
+        assert_eq!(r.direccion(17, 0, 0, 0), Some(0xF010_0000));
+        // Dispositivo, funcion y offset se apilan dentro del megabyte del bus.
+        assert_eq!(r.direccion(16, 1, 0, 0), Some(0xF000_8000));
+        assert_eq!(r.direccion(16, 0, 1, 0), Some(0xF000_1000));
+        assert_eq!(r.direccion(16, 0, 0, 0x100), Some(0xF000_0100));
+
+        // Fuera del rango de buses: no es de este rango.
+        assert_eq!(r.direccion(15, 0, 0, 0), None);
+        assert_eq!(r.direccion(32, 0, 0, 0), None);
+    }
+
+    /// **Y los 4096 bytes son el limite**, que es el punto entero de ECAM: por
+    /// los puertos `0xCF8`/`0xCFC` solo se alcanzan 256.
+    #[test]
+    fn el_offset_llega_a_cuatro_mil_noventa_y_seis_y_no_mas() {
+        let r = RangoEcam { base: 0, segmento: 0, bus_desde: 0, bus_hasta: 0 };
+        assert!(r.direccion(0, 0, 0, 4095).is_some(), "el ultimo byte SI");
+        assert_eq!(r.direccion(0, 0, 0, 4096), None, "y uno mas ya no");
+        // 256 es donde se acaba el PCI clasico, y aqui esta dentro de sobra.
+        assert!(r.direccion(0, 0, 0, 256).is_some());
+        // Un dispositivo o funcion imposibles se dicen, no se envuelven.
+        assert_eq!(r.direccion(0, 32, 0, 0), None);
+        assert_eq!(r.direccion(0, 0, 8, 0), None);
+    }
+
+    #[test]
+    fn varios_rangos_se_leen_todos_y_el_tope_se_respeta() {
+        let t = mcfg(&[(0xE000_0000, 0, 0, 63), (0xE400_0000, 0, 64, 127)]);
+        let mut r = [RangoEcam { base: 0, segmento: 0, bus_desde: 0, bus_hasta: 0 }; 4];
+        assert_eq!(leer_mcfg(&t, &mut r), 2);
+        assert_eq!(r[1].bus_desde, 64);
+
+        // Con sitio para uno, se lee uno. Nada de escribir fuera.
+        let mut corto = [RangoEcam { base: 0, segmento: 0, bus_desde: 0, bus_hasta: 0 }; 1];
+        assert_eq!(leer_mcfg(&t, &mut corto), 1);
+    }
+
+    // ===============================================================
+    //  IVRS
+    // ===============================================================
+
+    fn ivrs(bloques: &[(u8, u16, u64)]) -> Vec<u8> {
+        let largo = IVRS_CABECERA + bloques.iter().map(|b| b.1 as usize).sum::<usize>();
+        let mut t = tabla(b"IVRS", b"AMD   ", largo);
+        let mut o = IVRS_CABECERA;
+        for (tipo, l, base) in bloques {
+            t[o] = *tipo;
+            t[o + 2..o + 4].copy_from_slice(&l.to_le_bytes());
+            t[o + 8..o + 16].copy_from_slice(&base.to_le_bytes());
+            o += *l as usize;
+        }
+        t[9] = 0;
+        let suma: u8 = t.iter().fold(0u8, |a, &b| a.wrapping_add(b));
+        t[9] = (0u8).wrapping_sub(suma);
+        t
+    }
+
+    /// **Si hay IVRS, hay IOMMU -- y esto dice DONDE.**
+    ///
+    /// ** Saber que existe no la enciende. Pero es lo que permite escribir el
+    /// plan con un numero en vez de una intencion, y es lo que hoy falta para
+    /// cerrar el agujero: una capability dice que puede hacer un PROCESO, y no
+    /// dice nada de lo que puede hacer un APARATO con DMA.
+    #[test]
+    fn el_ivrs_dice_donde_vive_la_iommu() {
+        let t = ivrs(&[(0x10, 40, 0xFEB8_0000)]);
+        assert!(revisar(&t).is_ok());
+
+        let mut v = [Ivhd { tipo: 0, banderas: 0, largo: 0, id_dispositivo: 0, base_mmio: 0, segmento: 0 }; 4];
+        assert_eq!(leer_ivrs(&t, &mut v), 1);
+        assert_eq!(v[0].tipo, 0x10);
+        assert_eq!(v[0].base_mmio, 0xFEB8_0000, "los registros del IOMMU");
+    }
+
+    /// *** UN BUCLE SOBRE DATOS DE FIRMWARE TIENE QUE TERMINAR AUNQUE EL
+    /// FIRMWARE MIENTA.
+    ///
+    /// ** El recorrido avanza por el `largo` de cada bloque. Un largo de CERO
+    /// dejaria el bucle girando para siempre, dentro del kernel, en el arranque
+    /// -- y el sintoma seria una maquina que no enciende, sin una linea que
+    /// diga por que.
+    #[test]
+    fn un_bloque_de_largo_cero_no_cuelga_el_recorrido() {
+        let mut t = ivrs(&[(0x10, 40, 0xFEB8_0000)]);
+        // Se pisa el largo del bloque con cero, a mano.
+        t[IVRS_CABECERA + 2] = 0;
+        t[IVRS_CABECERA + 3] = 0;
+
+        let mut v = [Ivhd { tipo: 0, banderas: 0, largo: 0, id_dispositivo: 0, base_mmio: 0, segmento: 0 }; 4];
+        // Lo que importa de esta prueba es que TERMINE.
+        assert_eq!(leer_ivrs(&t, &mut v), 0, "un largo imposible corta el recorrido");
+    }
+
+    #[test]
+    fn varios_iommu_se_leen_en_orden() {
+        let t = ivrs(&[(0x10, 32, 0xFEB8_0000), (0x11, 40, 0xFEC0_0000)]);
+        let mut v = [Ivhd { tipo: 0, banderas: 0, largo: 0, id_dispositivo: 0, base_mmio: 0, segmento: 0 }; 4];
+        assert_eq!(leer_ivrs(&t, &mut v), 2);
+        assert_eq!(v[1].base_mmio, 0xFEC0_0000);
+    }
+
+    /// El `IVinfo` se devuelve **crudo**, sin decodificar.
+    ///
+    /// ** Es la misma regla que `Identidad::phy` en el driver de red: *el byte
+    /// entero es la prueba y las funciones son la opinion*. Decodificar bits de
+    /// una especificacion que no se tiene delante es como se inventan campos
+    /// que luego nadie puede refutar.
+    #[test]
+    fn el_ivinfo_sale_crudo() {
+        let mut t = ivrs(&[(0x10, 32, 0)]);
+        t[CABECERA_LEN..CABECERA_LEN + 4].copy_from_slice(&0x0023_0F5Au32.to_le_bytes());
+        assert_eq!(ivinfo(&t), Some(0x0023_0F5A));
+        assert_eq!(ivinfo(&[0u8; 10]), None);
+    }
+
 }

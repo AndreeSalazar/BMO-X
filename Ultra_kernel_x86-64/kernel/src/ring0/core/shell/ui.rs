@@ -363,6 +363,12 @@ pub(crate) fn shell_read_line(buf: &mut [u8]) -> usize {
                     kb::KEY_F6 => b"tasks",
                     kb::KEY_F7 => b"mem",
                     kb::KEY_F8 => b"cabina",
+                    // ** F9 y F10 entraron el 2026-08-24, y F9 llevaba
+                    // PROMETIDA desde antes: `report.rs` decia *"el panel de F9
+                    // tiene su propia tecla"* sobre un panel que no existia.
+                    // Es la ley 8 --verde no es cableado-- en un comentario.
+                    kb::KEY_F9 => b"net",
+                    kb::KEY_F10 => b"placa",
                     _ => b"",
                 };
                 if !orden.is_empty() {
@@ -415,7 +421,7 @@ pub(crate) fn shell_help() {
     // en una fila de diez. Ver `shell_fallo`.
     row("fallos", |l| l.txt("fallo [0..3]   la autopsia de la ultima tarea de Ring 3 que murio"));
     row("nucleos", |l| l.txt("smp  (escribelo a secas y te dice sus opciones)"));
-    row("teclas", |l| l.txt("F1 ayuda  F2 consumo  F3 apps  F4 fallo  F5 info  F6 tareas  F7 mem  F8 cabina"));
+    row("teclas", |l| l.txt("F1 ayuda  F2 consumo  F3 apps  F4 fallo  F5 info  F6 tareas  F7 mem  F8 cabina  F9 red  F10 placa"));
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
     row("ring3", |l| l.txt("run <ruta>  bex  ktest"));
