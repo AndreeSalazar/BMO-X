@@ -898,3 +898,92 @@ pub(crate) fn shell_mem() {
         s_log("[mem] vmm selftest FAILED");
     }
 }
+
+/// **`placa` -- que le cuenta la placa base a BMO-X.**
+///
+/// ## Por que este comando existe, y por que solo LEE
+///
+/// Es el paso 0 del firmware, y tiene la misma forma que el de la red: cero
+/// escrituras, respuestas **predecibles**, y se compara contra lo que dice el
+/// otro sistema en la misma maquina. Predecir, leer, comparar.
+///
+/// *** Y la fila que hay que mirar no es cuantas tablas hay: es **cuantas no
+/// pasan su suma de comprobacion**. En una placa sana es cero. Si no lo es, lo
+/// que falla no es la placa -- es el mapeo de esas direcciones fisicas, y eso es
+/// un fallo del kernel disfrazado de firmware raro.
+pub(crate) fn shell_placa() {
+    use crate::ring0::plat::placa;
+
+    let rsdp = crate::ring0::plat::madt::rsdp_guardado();
+    let Some(c) = placa::censar(rsdp) else {
+        s_log("[placa] sin XSDT que leer: el firmware no dio un RSDP de ACPI 2.0+");
+        return;
+    };
+
+    fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
+        for &ch in t.as_bytes() { if *o < b.len() { b[*o] = ch; *o += 1; } }
+    }
+    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u64) {
+        let mut tmp = [0u8; 20];
+        let mut i = 0;
+        if v == 0 { tmp[0] = b'0'; i = 1; }
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
+    }
+
+    // Quien fabrico este firmware, dicho por el propio XSDT.
+    {
+        let (oem, modelo) = placa::oem_texto(&c);
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[placa] firmware de ");
+        txt(&mut b, &mut o, oem);
+        txt(&mut b, &mut o, ", tabla ");
+        txt(&mut b, &mut o, modelo);
+        if let Ok(t) = core::str::from_utf8(&b[..o]) { s_log(t); }
+    }
+
+    // Una linea por tabla: la firma, lo que mide, y QUE ES en castellano.
+    for f in c.filas() {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "  ");
+        // *** La marca va DELANTE del nombre, no detras: en una lista de
+        // veinte lineas, lo que se escanea con la vista es la primera columna.
+        txt(&mut b, &mut o, if !f.creible {
+            "[!] "
+        } else if f.programa {
+            " AML "
+        } else {
+            "     "
+        });
+        if let Ok(t) = core::str::from_utf8(&f.firma) { txt(&mut b, &mut o, t); }
+        txt(&mut b, &mut o, "  ");
+        dec(&mut b, &mut o, f.largo as u64);
+        txt(&mut b, &mut o, " B  ");
+        txt(&mut b, &mut o, f.que_es);
+        if let Ok(t) = core::str::from_utf8(&b[..o]) { s_log(t); }
+    }
+
+    // El resumen, y la unica cifra que puede ser mala.
+    {
+        let mut b = [0u8; 80];
+        let mut o = 0usize;
+        txt(&mut b, &mut o, "[placa] ");
+        dec(&mut b, &mut o, c.cuantas() as u64);
+        txt(&mut b, &mut o, " tablas, ");
+        dec(&mut b, &mut o, c.programas() as u64);
+        txt(&mut b, &mut o, " son AML (no se ejecutan), ");
+        dec(&mut b, &mut o, c.malas() as u64);
+        txt(&mut b, &mut o, " sin suma valida");
+        if let Ok(t) = core::str::from_utf8(&b[..o]) { s_log(t); }
+    }
+    if c.malas() > 0 {
+        s_log("[placa] [!] una tabla sin suma valida NO es una placa rara:");
+        s_log("[placa]     es memoria que no se leyo bien. Mira el mapeo.");
+    }
+    // ** Se dice SIEMPRE, no solo cuando hay AML: es la linea que explica en que
+    // se diferencia este sistema de uno generalista, y una explicacion que solo
+    // sale a veces no la lee nadie.
+    s_log("[placa] el AML es un PROGRAMA de la placa. BMO-X se perfila: no lo ejecuta");
+}

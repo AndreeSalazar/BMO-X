@@ -10,6 +10,12 @@ members = [
     # El unico BLAKE3 del sistema: firmas del BEF, bmo-verify y ESTRATOS
     # calculan la MISMA suma porque ejecutan el MISMO codigo.
     "platform/shared/bmo-hash",
+    # Lo que la PLACA BASE cuenta de si misma. Vive aqui y no dentro del kernel
+    # por lo mismo que `bmo-net`: leer memoria fisica es del kernel, pero decidir
+    # si esos 36 bytes son una tabla ACPI valida es interpretacion de bits, y
+    # eso SE PRUEBA en el anfitrion. Y trae la linea que separa a BMO-X de un
+    # sistema generalista: tablas estaticas SI, AML NUNCA.
+    "platform/shared/bmo-firmware",
     "platform/shared/bmo-channel",
     # La ciudad de neon del arranque: la dibuja la CPU, no se guarda.
     "platform/shared/bmo-ciudad",

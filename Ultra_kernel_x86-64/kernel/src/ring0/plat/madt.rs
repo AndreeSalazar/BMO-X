@@ -52,6 +52,15 @@ static RSDP: AtomicU64 = AtomicU64::new(0);
 
 /// Lo llama `phase::main` una vez. Solo guarda un numero: no lee la tabla, no
 /// toca hardware, y por eso puede estar en el camino de arranque sin discusion.
+/// El `rsdp` que se guardo al arrancar, para quien lo necesite y no tenga el
+/// `BootContext` delante.
+///
+/// ** Se expone en vez de guardarlo por segunda vez en otro modulo: dos sitios
+/// con el mismo puntero se separan el dia que alguien toca uno.
+pub fn rsdp_guardado() -> u64 {
+    RSDP.load(Ordering::SeqCst)
+}
+
 pub fn recordar(rsdp: u64) {
     RSDP.store(rsdp, Ordering::SeqCst);
 }

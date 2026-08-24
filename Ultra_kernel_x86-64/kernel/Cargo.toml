@@ -62,6 +62,9 @@ bmo-rtc = { path = "../../platform/drivers/rtc" }
 # enlace. Cero escrituras al aparato, cero dependencias propias. Quien la llama
 # es `dev/red.rs`.
 bmo-net = { path = "../../platform/drivers/net" }
+# Lo que la PLACA cuenta de si misma. La interpretacion de una cabecera ACPI se
+# prueba en el anfitrion; aqui solo se leen direcciones fisicas.
+bmo-firmware = { path = "../../platform/shared/bmo-firmware" }
 # La ciudad del arranque. La DIBUJA la CPU --cero bytes de datos-- y vive
 # fuera de las dos orillas porque es aritmetica pura: asi se puede probar en
 # el anfitrion, que es lo que un fondo de arranque nunca podia.

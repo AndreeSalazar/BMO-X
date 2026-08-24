@@ -89,6 +89,13 @@ pub mod plat {
     /// El censo de nucleos que da el firmware por ACPI. Es la fuente de los
     /// APIC IDs, y sustituye a la suposicion `0..hilos-1`.
     pub mod madt;
+    /// **El censo de la PLACA**: que tablas ofrece el firmware entero, cual pasa
+    /// su suma de comprobacion, y cuales son AML -- que aqui no se ejecuta.
+    ///
+    /// ** `madt` hace UNA pregunta (cuantos nucleos); esto hace el censo. Son
+    /// dos modulos porque el primero interpreta una tabla concreta y el segundo
+    /// no interpreta ninguna: solo dice que hay.
+    pub mod placa;
     pub mod reinicio;
     /// Despertar los otros nucleos. **No corre en el arranque**: lo pide la
     /// orden `smp`. Ver la cabecera del modulo para saber por que esto no podia
