@@ -12,11 +12,10 @@
   2011  toolchain/lang/cobol/src/parser.rs
   1761  toolchain/forge/bmo-lower/src/emu/mod.rs
   1621  toolchain/lang/cpp/src/parser.rs
-  1584  Ultra_kernel_x86-64/build.ps1
+  1606  Ultra_kernel_x86-64/build.ps1
   1435  platform/abi/bmo-abi/src/bef/validator.rs
   1345  Ultra_userspace/services/director/src/commands/reports.rs
   1196  toolchain/lang/c/src/parser/preprocessor.rs
-  1036  platform/drivers/storage/ahci/src/controller.rs
   1001  toolchain/lang/c/src/parser/declarations.rs
 
 # EXENTOS -- un "no" con motivo escrito, que se puede discutir.
@@ -39,3 +38,4 @@ Ultra_kernel_x86-64/build.ps1                              1571 -> 1578  el paso
 Ultra_kernel_x86-64/build.ps1                              1578 -> 1584  S3+S4 de INTI: el `.ibex` -- la extension deja de ser una etiqueta y pasa a ser un veredicto. [!] RECONSTRUIDO del historial el 24-08: esta subida se sello EN LOTE con el motivo de otro fichero, y ese motivo era falso aqui. Se quito y se puso el de verdad. Es el fallo que hizo que `--sellar` se niegue ahora si suben varios techos con un solo `--motivo`.
 platform/abi/bmo-abi/src/bef/validator.rs                  1416 -> 1435  P1: el gate exige el perfil que viaja DENTRO del `.bex` -- 19 lineas de comprobacion en el validador. [!] RECONSTRUIDO del historial el 24-08, por lo mismo que la linea de arriba: se habia sellado con un motivo que hablaba del emulador.
 toolchain/forge/bmo-lower/src/emu/mod.rs                   1689 -> 1761  AVX2: el decodificador VEX se partio a emu/vex.rs (125 lineas) y aun asi quedan +72 en mod.rs -- el campo ymm, el despacho de C4/C5 y las cinco filas de opcode, que son las que TIENEN que estar en el despachador. Partir mas seria mover el despacho fuera del despachador. [!] La subida es de un fichero de HERRAMIENTA (no corre en la maquina): bajo la regla del 24-08, si fuera de Ring 0 no habria motivo que valiera y habria que partirlo entero.
+Ultra_kernel_x86-64/build.ps1                              1584 -> 1606  el guardian del contrato de syscalls pasa de leer DOS ficheros por su nombre a leer la CARPETA: 22 lineas. Se quedo ciego con el reparto de syscall/mod.rs en cinco --las operaciones que se fueron a op_*.rs dejaron de existir para el-- y la leccion estaba escrita veinte lineas mas abajo, en este mismo fichero, de la vez anterior que paso. [!] Confirma lo que las tres SUBIDAS anteriores predijeron: cada guardian engorda build.ps1, asi que o se parte o esta lista tendra una entrada por guardian.
