@@ -188,18 +188,66 @@ pub fn releer() -> Option<bmo_net::Identidad> {
 // looked up in a page table. That is the lesson of Ep. 39 applied before the fact
 // rather than after: asking allows being answered wrong.
 
-/// Ring and buffers, once claimed. `0` = not started.
-static mut RX_RING_PHYS: u64 = 0;
-static mut RX_BUFS_PHYS: u64 = 0;
+/// **El plano del corral**, una vez reclamado. `None` = sin arrancar.
+///
+/// *** 2026-08-24: ANTES ERAN DOS RESERVAS Y UNA CUENTA A MANO.
+///
+/// El anillo iba por un lado, los buferes por otro, y la direccion de cada
+/// bufer se calculaba en el sitio --`bufs + i * RX_BUF_LEN`-- sin que nada
+/// comprobara que caia donde tenia que caer. Funcionaba. Y esa es exactamente
+/// la forma del bug caro: **la aritmetica que decide donde escribe un aparato
+/// no daba un fallo si estaba mal, daba una direccion.**
+///
+/// Ahora es UNA arena contigua y el reparto lo hace `bmo_net::anillo::Plan`,
+/// que vive en el crate del driver **porque alli hay banco de pruebas en el
+/// anfitrion**: nueve casos que comprueban que ningun bufer se sale, que
+/// ninguno pisa al vecino, que hay exactamente un `EOR`, y que un largo que
+/// desborda el contador no cuela.
+///
+/// [!] El kernel ya no calcula ninguna direccion de DMA. La pide y la comprueba.
+static mut PLANO: Option<bmo_net::anillo::Plan> = None;
 /// Which descriptor is next to be looked at. The card walks the ring in order and
 /// so do we.
 static mut RX_NEXT: usize = 0;
 /// Frames seen since the ring started. The number that answers the question.
 static mut RX_FRAMES: u64 = 0;
+/// Bytes de trama recibidos, **sin contar el FCS**: lo que se leyo de verdad.
+static mut RX_BYTES: u64 = 0;
+/// El reparto por protocolo: `[ARP, IPv4, IPv6, otros]`.
+///
+/// *** CUATRO CASILLAS Y NO UNA, y es lo que convierte "hay trafico" en una
+/// lectura. En una red domestica en reposo lo que llega es **ARP y broadcast**;
+/// si sale IPv4 sin que nadie haya pedido nada, hay alguien hablando. Un solo
+/// contador de tramas no distingue las dos cosas, y son la diferencia entre
+/// "el cable esta vivo" y "esta red tiene vecinos".
+static mut RX_TIPOS: [u64; 4] = [0; 4];
+/// Tramas mas cortas que una cabecera. Aparte: es cable o filtro, no trafico.
+static mut RX_CORTAS: u64 = 0;
+
+/// **El consumo del receptor.** `(tramas, bytes, [arp, ipv4, ipv6, otros], cortas)`.
+pub fn rx_consumo() -> (u64, u64, [u64; 4], u64) {
+    unsafe { (RX_FRAMES, RX_BYTES, RX_TIPOS, RX_CORTAS) }
+}
+
+/// **Lo que la TARJETA dice que perdio.** `None` si no hay NIC legible.
+///
+/// *** El unico numero de esta pagina que no lo lleva BMO-X. Un contador propio
+/// solo puede contar lo que cogio; lo que se perdio por no tener descriptor
+/// libre **solo lo sabe el silicio**. Sin esto, "40 tramas recibidas" es una
+/// cifra sin denominador.
+pub fn rx_perdidas() -> Option<u32> {
+    let mmio = unsafe { MMIO };
+    if mmio.is_null() {
+        return None;
+    }
+    // Solo lectura: escribir aqui pondria el contador a cero, y un instrumento
+    // que borra lo que mide al mirarlo no sirve para mirar dos veces.
+    Some(unsafe { core::ptr::read_volatile(mmio.add(bmo_net::reg_rx::MPC) as *const u32) })
+}
 
 /// Is the receiver armed?
 pub fn rx_activo() -> bool {
-    unsafe { RX_RING_PHYS != 0 }
+    unsafe { PLANO.is_some() }
 }
 
 /// Frames received since [`rx_start`].
@@ -221,8 +269,12 @@ unsafe fn w32(mmio: *mut u8, off: usize, v: u32) {
 }
 
 /// A pointer to descriptor `i` of the ring, in virtual space.
-unsafe fn desc(i: usize) -> *mut bmo_net::RxDesc {
-    let virt = mm::phys_to_virt(RX_RING_PHYS) as *mut bmo_net::RxDesc;
+///
+/// [!] `i` ya viene acotado por el bucle que llama, pero el plano es quien
+/// tiene la ultima palabra sobre donde empieza el anillo: aqui no se suma nada
+/// que no venga de el.
+unsafe fn desc(p: &bmo_net::anillo::Plan, i: usize) -> *mut bmo_net::RxDesc {
+    let virt = mm::phys_to_virt(p.descriptores()) as *mut bmo_net::RxDesc;
     virt.add(i)
 }
 
@@ -242,43 +294,80 @@ pub fn rx_start() -> bool {
         return true;
     }
 
-    // One page for the ring (16 x 16 = 256 bytes, and a page is 256-aligned with
-    // room to spare -- the card REQUIRES 256-byte alignment for RDSAR).
-    let ring = match crate::ring0::mm::phys::alloc_frames_contig(1) {
+    // *** UNA SOLA RESERVA, Y ES EL CORRAL.
+    //
+    // ** Antes eran dos --anillo por un lado, buferes por otro-- y entre las dos
+    // no habia ninguna relacion que se pudiera comprobar. Con una arena
+    // contigua hay UNA pregunta que lo decide todo: "esta esta direccion dentro
+    // de la arena?", y esa pregunta tiene una funcion con nombre y con tests.
+    //
+    // [!] La tarjeta escribe DONDE SE LE MANDE. Si todas las direcciones que se
+    // le dan estan dentro del corral, un error de cuenta mio corrompe mi propio
+    // bufer de red -- visible, reproducible, y sin llevarse nada por delante.
+    let bytes = bmo_net::anillo::bytes_necesarios();
+    let paginas = (bytes + mm::PAGE - 1) / mm::PAGE;
+    let arena = match crate::ring0::mm::phys::alloc_frames_contig(paginas) {
         Some(p) => p,
         None => {
-            crate::ring0::cabina::fault("red", "sin marco para el anillo de recepcion", 0);
+            crate::ring0::cabina::fault("red", "sin marcos contiguos para el corral de DMA", paginas);
             return false;
         }
     };
-    // And the buffers: 16 x 2048 = 32 KiB = 8 pages, contiguous so that buffer
-    // `i` is simply base + i * 2048.
-    let bytes = (bmo_net::RX_RING_LEN * bmo_net::RX_BUF_LEN as usize) as u64;
-    let pages = (bytes + mm::PAGE - 1) / mm::PAGE;
-    let bufs = match crate::ring0::mm::phys::alloc_frames_contig(pages) {
-        Some(p) => p,
-        None => {
-            crate::ring0::cabina::fault("red", "sin marcos para los bufers de recepcion", pages as u64);
+
+    // ** Y EL PLANO SE VALIDA ANTES DE TOCAR NADA. Un marco viene alineado a
+    // 4096 y `RDSAR` pide 256, asi que esto tendria que pasar siempre -- razon
+    // de mas para comprobarlo: lo que "tendria que pasar siempre" es justo lo
+    // que nadie mira el dia que deja de pasar.
+    let plan = match bmo_net::anillo::Plan::nuevo(arena, paginas * mm::PAGE) {
+        Ok(p) => p,
+        Err(e) => {
+            let cual = match e {
+                bmo_net::anillo::Falta::NoAlineada => 1,
+                bmo_net::anillo::Falta::Pequena => 2,
+                bmo_net::anillo::Falta::Desborda => 3,
+            };
+            crate::ring0::cabina::fault("red", "el corral no pasa su propia revision (1=alineacion 2=corta 3=desborda)", cual);
             return false;
         }
     };
 
     unsafe {
-        RX_RING_PHYS = ring;
-        RX_BUFS_PHYS = bufs;
+        PLANO = Some(plan);
         RX_NEXT = 0;
         RX_FRAMES = 0;
+        RX_BYTES = 0;
+        RX_TIPOS = [0; 4];
+        RX_CORTAS = 0;
 
-        // The ring, handed over descriptor by descriptor. The LAST one carries
-        // End Of Ring -- without it the card walks off the end and writes over
-        // whatever follows. That bit is the difference between a bug and
-        // corruption, so it is built by `to_card` and not by hand here.
+        // Los descriptores salen del plano ENTEROS, `EOR` incluido. El kernel no
+        // arma ninguno: copia lo que el modulo probado le da.
         for i in 0..bmo_net::RX_RING_LEN {
-            let buf = bufs + (i * bmo_net::RX_BUF_LEN as usize) as u64;
-            let last = i == bmo_net::RX_RING_LEN - 1;
-            let d = bmo_net::RxDesc::to_card(buf, bmo_net::RX_BUF_LEN, last);
-            core::ptr::write_volatile(desc(i), d);
+            match plan.descriptor(i) {
+                Some(d) => core::ptr::write_volatile(desc(&plan, i), d),
+                None => {
+                    // No puede pasar --`i` viene del propio largo del anillo--
+                    // y por eso si pasa hay que parar aqui y no seguir con un
+                    // anillo a medio armar, que es un anillo que la tarjeta
+                    // recorre igual.
+                    crate::ring0::cabina::fault("red", "el plano rechazo un descriptor que deberia existir", i as u64);
+                    PLANO = None;
+                    return false;
+                }
+            }
         }
+
+        // *** Y QUE LOS DESCRIPTORES ESTEN EN MEMORIA ANTES DE QUE LA TARJETA
+        // SEPA DONDE MIRAR.
+        //
+        // ** En x86 el DMA es coherente con la cache, asi que no hace falta
+        // vaciar nada -- y eso es UNA PROPIEDAD DE ESTA ARQUITECTURA, no una
+        // ley: en ARM habria que limpiar la linea a mano y este mismo codigo
+        // recibiria descriptores viejos. Se dice porque el dia que alguien
+        // porte esto, esta es la linea que hay que leer.
+        //
+        // Lo que si hace falta es que el COMPILADOR no mueva las escrituras de
+        // arriba por debajo del `RDSAR` de abajo. Eso es lo que ata la valla.
+        core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
 
         // -- The card, in the order the family wants it --------------------
         use bmo_net::{cr, reg_rx};
@@ -293,7 +382,7 @@ pub fn rx_start() -> bool {
             spins += 1;
             if spins > 1_000_000 {
                 crate::ring0::cabina::fault("red", "la NIC no termina su reset", spins as u64);
-                RX_RING_PHYS = 0;
+                PLANO = None;
                 return false;
             }
             core::hint::spin_loop();
@@ -312,8 +401,9 @@ pub fn rx_start() -> bool {
 
         // 4. Where the ring is, and how big a frame we accept.
         w16(mmio, reg_rx::RMS, bmo_net::RX_BUF_LEN);
-        w32(mmio, reg_rx::RDSAR_LO, (ring & 0xFFFF_FFFF) as u32);
-        w32(mmio, reg_rx::RDSAR_HI, (ring >> 32) as u32);
+        let anillo = plan.descriptores();
+        w32(mmio, reg_rx::RDSAR_LO, (anillo & 0xFFFF_FFFF) as u32);
+        w32(mmio, reg_rx::RDSAR_HI, (anillo >> 32) as u32);
 
         // 5. What gets accepted. Broadcast is the one that matters: it is what
         //    makes a plugged cable produce traffic with nobody doing anything.
@@ -326,7 +416,8 @@ pub fn rx_start() -> bool {
         w8(mmio, reg_rx::CR, (c & !cr::TE) | cr::RE);
     }
 
-    crate::ring0::cabina::addr("red", "receptor ARMADO, anillo en la fisica", ring);
+    crate::ring0::cabina::addr("red", "receptor ARMADO, corral en la fisica", plan.descriptores());
+    crate::ring0::cabina::bytes("red", "  ...y el corral mide", plan.bytes());
     true
 }
 
@@ -343,21 +434,45 @@ pub fn rx_poll() -> u32 {
         return 0;
     }
     let mut leidas = 0u32;
+    let plan = match unsafe { PLANO } {
+        Some(p) => p,
+        None => return 0,
+    };
     unsafe {
         // Bounded by the ring length: one turn never walks more than once around,
         // so a card that returns everything at once cannot keep this loop.
         for _ in 0..bmo_net::RX_RING_LEN {
-            let d = core::ptr::read_volatile(desc(RX_NEXT));
+            let d = core::ptr::read_volatile(desc(&plan, RX_NEXT));
             let largo = match d.frame_len() {
                 Some(l) => l,
                 None => break,
             };
-            let buf = mm::phys_to_virt(RX_BUFS_PHYS + (RX_NEXT * bmo_net::RX_BUF_LEN as usize) as u64)
-                as *const u8;
+            // *** Y AQUI SE PREGUNTA OTRA VEZ, aunque el plano ya lo hubiera
+            // garantizado al armar el anillo.
+            //
+            // ** No es paranoia repetida: `largo` **lo escribio la tarjeta**, y
+            // este es el unico sitio de todo el driver donde un numero venido de
+            // fuera decide cuanta memoria se lee. Una trama de 2049 bytes en un
+            // bufer de 2048 sale del corral por un byte, y ese byte se lo cree
+            // el parser de Ethernet como si fuera suyo.
+            let Some(buf_fis) = plan.bufer(RX_NEXT) else { break };
+            if !plan.contiene(buf_fis, largo as u64) {
+                crate::ring0::cabina::fault("red", "la tarjeta declara una trama que NO CABE en su bufer", largo as u64);
+                break;
+            }
+            let buf = mm::phys_to_virt(buf_fis) as *const u8;
             let trama = core::slice::from_raw_parts(buf, largo as usize);
             match bmo_net::EthHeader::parse(trama) {
                 Some(h) => {
                     RX_FRAMES = RX_FRAMES.wrapping_add(1);
+                    RX_BYTES = RX_BYTES.wrapping_add(largo as u64);
+                    let casilla = match h.ethertype {
+                        0x0806 => 0,
+                        0x0800 => 1,
+                        0x86DD => 2,
+                        _ => 3,
+                    };
+                    RX_TIPOS[casilla] = RX_TIPOS[casilla].wrapping_add(1);
 
                     // *** LA FOTO DEL PASO 1, y son CUATRO lineas y no dos.
                     //
@@ -406,18 +521,20 @@ pub fn rx_poll() -> u32 {
                 // Under fourteen bytes there is no header. Counted separately: a
                 // runt is a cable or a filter problem, not a missing frame.
                 None => {
+                    RX_CORTAS = RX_CORTAS.wrapping_add(1);
                     crate::ring0::cabina::count("red", "trama demasiado corta para tener cabecera", largo as u64);
                 }
             }
             // Give the descriptor back to the card, with EOR preserved on the
             // last one -- rebuilding it from scratch is what keeps that bit from
             // being lost on the first wrap.
-            let buf_phys = RX_BUFS_PHYS + (RX_NEXT * bmo_net::RX_BUF_LEN as usize) as u64;
-            let last = RX_NEXT == bmo_net::RX_RING_LEN - 1;
-            core::ptr::write_volatile(
-                desc(RX_NEXT),
-                bmo_net::RxDesc::to_card(buf_phys, bmo_net::RX_BUF_LEN, last),
-            );
+            // Devuelto al plano, `EOR` incluido: reconstruirlo desde el plano
+            // --y no a mano-- es lo que impide perder ese bit en la primera
+            // vuelta del anillo, que es el unico fallo de aqui que se sale del
+            // corral.
+            if let Some(nuevo) = plan.descriptor(RX_NEXT) {
+                core::ptr::write_volatile(desc(&plan, RX_NEXT), nuevo);
+            }
             RX_NEXT = (RX_NEXT + 1) % bmo_net::RX_RING_LEN;
             leidas += 1;
         }

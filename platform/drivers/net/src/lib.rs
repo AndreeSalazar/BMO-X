@@ -48,6 +48,11 @@
 // puede probar en el anfitrion, y es justo la parte que se equivoca en silencio.
 #![cfg_attr(not(test), no_std)]
 
+/// **El plano del anillo de recepcion y el corral del DMA.** Aparte porque es
+/// la aritmetica que decide donde puede escribir un aparato, y esa es la unica
+/// parte de un driver que se equivoca SIN dar un fallo.
+pub mod anillo;
+
 /// Seis bytes. El nombre existe para que una firma no diga `[u8; 6]` y deje al
 /// que lee adivinando si son bytes de MAC o de otra cosa.
 pub type Mac = [u8; 6];
@@ -410,6 +415,18 @@ pub mod reg_rx {
     pub const RDSAR_HI: usize = 0xE8;
     /// `CPlusCmd`, 16-bit. The C+ mode of the 8169/8168 family.
     pub const CPCR: usize = 0xE0;
+    /// **`MPC` -- Missed Packet Count**, 32 bits. Tramas que la tarjeta recibio
+    /// y **tuvo que tirar** porque no habia descriptor libre donde ponerlas.
+    ///
+    /// *** ES EL NUMERO HONESTO DE UN DRIVER DE RED, y no lo lleva el driver:
+    /// lo lleva el silicio. Un contador propio solo puede contar lo que se cogio
+    /// --nunca sabe lo que se perdio-- asi que "he recibido 40 tramas" es una
+    /// frase que no dice nada sin esto al lado. Si esto sube, el anillo es
+    /// pequeno o nadie llama a `rx_poll` bastante a menudo.
+    ///
+    /// ** Se pone a cero escribiendo, asi que **leerlo es destructivo si se
+    /// limpia**: aqui solo se lee.
+    pub const MPC: usize = 0x4C;
 }
 
 /// Bits of `CR` (`ChipCmd`).
