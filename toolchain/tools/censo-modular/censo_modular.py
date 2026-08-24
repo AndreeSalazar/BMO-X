@@ -409,6 +409,30 @@ def sellar(fichas, exentos, techos, subidas, motivo):
             print('    %s: %d -> %d (+%d)' % (ruta, viejo, nuevo, nuevo - viejo))
         print('    vuelve a intentarlo con `--motivo "por que sube"`.')
         return 1
+    # *** UN MOTIVO NO PUEDE EXPLICAR TRES SUBIDAS (2026-08-24).
+    #
+    # ** Aqui habia un bucle que pegaba el MISMO `--motivo` a cada fichero que
+    # subiera, y el 24-08 lo hizo de verdad: un sellado con el motivo del
+    # emulador (AVX2 y el decodificador VEX) quedo escrito **tambien** en
+    # `build.ps1` y en `bmo-abi/src/bef/validator.rs`, que habian crecido por
+    # cosas que no tenian nada que ver.
+    #
+    # *** Y eso convierte la lista de SUBIDAS en lo contrario de lo que es. Su
+    # propio comentario dice *"una lista de excusas que se puede leer entera es
+    # lo que hace que sea incomodo anadirle una"*. Una excusa copiada a tres
+    # sitios no es incomoda: es RUIDO, y a la tercera nadie la lee.
+    #
+    # La regla que faltaba: **un `--motivo` explica UNA subida.** Si suben
+    # varios, se sellan de uno en uno, cada uno con el suyo.
+    if len(suben) > 1 and motivo:
+        print('[X] suben %d techos y solo hay UN motivo:' % len(suben))
+        for ruta, viejo, nuevo in suben:
+            print('    %s: %d -> %d (+%d)' % (ruta, viejo, nuevo, nuevo - viejo))
+        print('    Un motivo explica UNA subida. Pegarlo a todas deja escrita')
+        print('    una excusa falsa en los otros, y la lista de SUBIDAS existe')
+        print('    justamente para que se pueda leer entera y creer.')
+        print('    Sella de uno en uno, cada uno con su por que.')
+        return 1
     for ruta, viejo, nuevo in suben:
         subidas.append('%-58s %d -> %d  %s' % (ruta, viejo, nuevo, motivo))
 
@@ -584,6 +608,31 @@ def main():
         print('\n[!] no hay linea base todavia: `--sellar` la graba.')
     elif nuevos or crecidos:
         print('\nL6a: %d nuevos, %d crecidos.' % (len(nuevos), len(crecidos)))
+        # *** UN "NO" QUE NO DICE A QUIEN LE HABLA ES UN "NO" QUE ASUSTA.
+        #
+        # ** Pregunta de Eddi (2026-08-24): *"no quiero imaginar que cuando los
+        # nuevos programadores entren a usar mi BMO-X les choque con el guardian
+        # que les limita"*. Y son DOS personas distintas que este mensaje tenia
+        # juntas:
+        #
+        #     escribe una APP para BMO-X   -> este guardian NO LE MIRA NUNCA.
+        #                                     Lee `git ls-files` de ESTE repo, y
+        #                                     su app no esta aqui. Lo que se le
+        #                                     exige son las siete R-APP, y
+        #                                     ninguna habla de lineas
+        #     contribuye A BMO-X           -> si, y tiene que ser asi: aqui el
+        #                                     fichero grande lo mantiene otro
+        #
+        # Decirlo en el momento del NO --y no en un documento que hay que ir a
+        # buscar-- es la diferencia entre una regla y un muro.
+        print('\n  [i] esto juzga SOLO los ficheros de este repo (`git ls-files`).')
+        print('      Si escribes una APP para BMO-X, este guardian no te mira:')
+        print('      lo que se te exige son las siete R-APP de META-APP_HARD.md,')
+        print('      y ninguna habla de cuantas lineas tiene tu fichero.')
+        r0 = [f for f in nuevos if f.anillo == RING0]
+        if r0:
+            print('      Y de los nuevos, %d son de RING 0: ahi no hay linea base' % len(r0))
+            print('      que valga, porque un fallo se lleva la maquina.')
         fallo = 1
     else:
         print('\nclean: ningun fichero nuevo por encima de %d y ninguno crecio.' % LIMITE)

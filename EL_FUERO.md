@@ -149,9 +149,43 @@ protege igual que el que se corre solo.
 | contrato de Ring 0 | el kernel y `bmo-abi` diciendo cosas distintas |
 | caras de MAQUETA | una cara generada que ya no corresponde a su `.maqueta` |
 
-★ El de L6a es un **trinquete y no un muro**: no juzga los dieciocho ficheros
-que ya incumplen --uno que grita sin motivo se apaga-- sino el delta contra su
-linea base. El arbol solo puede mejorar.
+★ El de L6a es un **trinquete y no un muro**: no juzga los ficheros que ya
+incumplen --uno que grita sin motivo se apaga-- sino el delta contra su linea
+base. El arbol solo puede mejorar.
+
+★★ **Y desde el 2026-08-24 distingue el ANILLO**, porque lo que cuesta un fallo
+no es igual en los dos: en Ring 3 mata la tarea y el kernel recupera la
+pantalla; en Ring 0 se lleva la maquina. El limite sigue siendo 1.000 para todo
+-- lo que cambia es que **en Ring 0 no hay linea base que valga**. Ver `L6a-bis`
+en [`META-KERNEL_HARD.md`](META-KERNEL_HARD.md).
+
+### 2.6b *** QUE LEYES VIAJAN CONTIGO, Y CUALES SON DE LA CASA
+
+> Pregunta del dueno, 2026-08-24: *"no quiero imaginar que cuando los nuevos
+> programadores entren a usar mi BMO-X les choque con el guardian que les
+> limita"*.
+
+Y hay que decirlo aqui, porque este documento presenta los guardianes bajo *"lo
+que se te concede"* y eso se puede leer al reves. **Son dos personas distintas:**
+
+| quien eres | que te aplica |
+|---|---|
+| **escribes una APP para BMO-X** | las siete `R-APP` de la seccion 3. **Ninguna habla de cuantas lineas tiene tu fichero** |
+| **contribuyes A BMO-X** | ademas, los seis guardianes -- y tiene que ser asi: aqui el fichero grande lo mantiene otro |
+
+★★ **Los guardianes leen `git ls-files` de ESTE repositorio.** Tu app no esta
+aqui, asi que **no la miran nunca**. Un `.bex` de 4.000 lineas de fuente arranca
+igual que uno de cuarenta: lo que el sistema le exige a una app es que declare
+lo que necesita y que no mienta, no que sea bonita por dentro.
+
+★ La diferencia dicha de una vez:
+
+```text
+   las reglas del CONTRATO   viajan: sin ellas tu app NO CORRE
+   las reglas de la CASA     no viajan: son como se mantiene ESTE arbol
+```
+
+L6a es de la casa. `R-APP1..7` son del contrato.
 
 ### 2.7 Las leyes
 
