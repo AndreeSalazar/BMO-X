@@ -492,6 +492,184 @@ porque las cuatro corrigen algo que se habia dicho mal:
 
 ---
 
+---
+
+# 8. *** QUE ES UN TOKEN/S, Y QUE PUEDE DAR ESTA MAQUINA
+
+> Pregunta del dueno (2026-08-24): *"que significan token/s? calcula que
+> potencial tiene BMO-X para eso, y en teoria con la GPU cuando venga."*
+
+## 8.1 -- Que es un token
+
+Un **token** es un trozo de palabra. No es una letra ni una palabra entera: el
+modelo parte el texto en piezas de tamano desigual --las comunes enteras, las
+raras en cachos-- y cada pieza es un token.
+
+```text
+   "BMO-X arranca"   ->   "BMO" "-" "X" " arr" "anca"     5 tokens
+```
+
+** Regla practica: **en castellano, 1 token es entre media y una palabra.** Y un
+humano lee comodo a unos **5-8 tokens por segundo**, asi que ese es el numero
+que separa *"se lee segun sale"* de *"hay que esperar"*.
+
+```text
+    < 3 tok/s     se nota la espera. Sirve para preguntas, no para charlar
+   5-10 tok/s     se lee segun sale. **Es el objetivo util**
+    > 20 tok/s    mas rapido de lo que nadie lee
+```
+
+## 8.2 -- *** LA FORMULA, y no es la que la gente espera
+
+La intuicion dice *"esto es calculo, hace falta potencia"*. **Y es falso para el
+caso que nos ocupa.**
+
+*** Para generar **UN** token, la maquina tiene que **leer los pesos enteros del
+modelo, una vez.** Cada uno. No hay atajo: cada peso participa.
+
+```text
+                     ancho de memoria (GB/s)
+   tokens/s  =  ---------------------------------
+                  lo que ocupa el modelo (GB)
+```
+
+** Asi que generar texto de uno en uno **NO esta limitado por el calculo: esta
+limitado por lo rapido que la memoria entrega bytes.** Un CPU que fuera diez
+veces mas rapido no daria ni un token mas.
+
+[!] Y de ahi sale la consecuencia que ordena todo lo demas: **lo que decide es
+CUANTO OCUPA EL MODELO**, y eso lo decide la cuantizacion:
+
+| formato | bits por peso | un modelo de 7.000 millones |
+|---|---|---|
+| f32 | 32 | ~28 GB |
+| f16 | 16 | ~14 GB |
+| Q8 | 8 | ~7 GB |
+| **Q4** | ~4,5 | **~4 GB** |
+
+*** Por eso los pesos van cuantizados y por eso `bits_y` y `desplaza` estan en
+la lista de piezas del motor: **desempaquetar Q4 no es una optimizacion, es la
+unica forma de que quepa y de que se lea a tiempo.**
+
+## 8.3 -- LO QUE ESTA MAQUINA DA, con lo que esta MEDIDO
+
+### El calculo: medido
+
+```text
+   [MEDIDO 24-08]  6 nucleos fisicos, 4.490 MHz de boost
+   [MEDIDO 23-08]  AVX2 con FMA: `funde_de_cuatro`
+```
+
+Un FMA de AVX2 hace **4 flotante64 x 2 operaciones = 8 por instruccion**, y un
+Zen 3 puede emitir dos por ciclo:
+
+```text
+   6 nucleos x 4,49 GHz x 8 x 2   =  ~430 GFLOP/s en f64
+   (en f32 serian ocho carriles: ~860)
+```
+
+Y un token de un modelo de 7.000 millones cuesta unos **14 GFLOP** (dos
+operaciones por peso). O sea:
+
+```text
+   430 / 14  =  ~30 tokens/s   <- SI EL CALCULO FUERA EL LIMITE
+```
+
+### El ancho de memoria: **NO MEDIDO, y es el que manda**
+
+*** Aqui hay que parar y decirlo, porque es la ley 11: **el ancho de memoria de
+esta maquina no se ha medido.** Se sabe que son 15.178 MiB y no se sabe a que
+velocidad ni en cuantos canales.
+
+```text
+   SI fueran 2 canales de DDR4-3200   ~51 GB/s en el papel
+                                      ~35-45 GB/s de verdad
+```
+
+Con eso, y **si se confirma**:
+
+| modelo | ocupa | tokens/s |
+|---|---|---|
+| 3B en Q4 | ~2 GB | **~20** |
+| 7B en Q4 | ~4 GB | **~10** |
+| 7B en Q8 | ~7 GB | ~6 |
+| 13B en Q4 | ~7,5 GB | ~5 |
+
+*** **Un 7B en Q4 daria unos 10 tokens/s, que esta en la banda util.** Y fijate
+en lo que dice la comparacion con el calculo: 30 por el lado del CPU contra 10
+por el lado de la memoria. **El CPU sobra tres veces.**
+
+> Esta maquina no necesita mas potencia para correr un asistente. Necesita que
+> el modelo QUEPA y que la memoria lo entregue.
+
+### [!] Y por eso hay un numero que hay que medir antes que nada
+
+**El ancho de memoria de este Ryzen.** Es una faena de una tarde --leer un
+bloque grande y cronometrarlo-- y **decide el resto**: si sale 45 GB/s, un 7B en
+Q4 va a la banda util; si sale 20, hay que bajar a un 3B.
+
+Sin ese numero, todo lo de arriba es aritmetica sobre un supuesto. Y este
+proyecto tiene una ley para eso: *se pregunta, no se supone.*
+
+## 8.4 -- Y CON LA GPU, cuando venga
+
+### Por que ayuda tanto, dicho con la formula delante
+
+No es que la GPU calcule mas --que tambien-- es que **su memoria entrega mucho
+mas rapido**:
+
+```text
+   DDR4 de escritorio    ~35-45 GB/s
+   GDDR6 de una tarjeta  varias veces eso
+```
+
+Y como `tokens/s = ancho / tamano`, multiplicar el ancho multiplica los tokens
+**directamente**.
+
+[!] **Y el numero exacto de la RX 9060 XT NO se pone aqui.** Su ancho de banda
+depende del bus y del tipo de memoria de la SKU concreta, y eso es justo lo que
+la ley 11 dice que se comprueba antes de escribirlo. Lo que si se puede decir
+sin inventar nada:
+
+```text
+   una tarjeta moderna de gama media entrega VARIAS VECES el ancho de un
+   escritorio de doble canal -> varias veces los tokens/s
+```
+
+### *** Y LOS 16 GB SON LA MITAD DEL ARGUMENTO, no el ancho
+
+```text
+   modelo que CABE en 16 GB de VRAM      va a velocidad de VRAM
+   modelo que NO cabe                    va a velocidad de PCIe, o sea LENTO
+```
+
+** Un 13B en Q4 (~7,5 GB) cabe de sobra. Un 30B en Q4 (~17 GB) **no cabe**, y
+uno que no cabe no va "un poco mas lento": va **mucho** peor, porque cada token
+tiene que traer pesos por el bus.
+
+*** Asi que los 16 GB no son "mas por si acaso": son **la frontera entre los
+modelos que corren a velocidad de tarjeta y los que no corren**.
+
+### [!] Pero eso sigue detras del PSP
+
+Todo lo de arriba supone una GPU que ya funciona en BMO-X. Y para eso hace falta
+el motor de COMPUTO, que es la meta B2 -- detras del PSP, que **no esta medido**
+(seccion 4.3). Medirlo son un dia de leer `amdgpu` y contar pasos.
+
+## 8.5 -- EL RESUMEN, en tres lineas
+
+```text
+   1. tokens/s = ancho de memoria / tamano del modelo. NO es potencia de calculo
+   2. este CPU SOBRA tres veces para un 7B: el limite es la memoria
+   3. la GPU multiplica el ancho, y sus 16 GB deciden QUE MODELOS caben
+```
+
+*** **Y la accion que sale de aqui no es comprar nada: es MEDIR el ancho de
+memoria de esta maquina.** Es una tarde, decide si el objetivo es un 3B o un 7B,
+y hasta que exista ese numero todo lo demas es aritmetica sobre un supuesto.
+
+---
+
 # El resumen en una frase
 
 > **Para que el asistente exista no falta ningun invento: falta trabajo. Lo que
