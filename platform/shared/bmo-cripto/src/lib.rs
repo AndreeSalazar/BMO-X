@@ -11,7 +11,7 @@
 //!    HMAC        [X] hoy      SHA-256 dos veces, con dos rellenos
 //!    HKDF        [X] hoy      HMAC en cadena: de un secreto salen las claves
 //!    X25519      [X] hoy      curva eliptica. LA pieza dificil
-//!    AES-GCM     --           o ChaCha20-Poly1305
+//!    AES-GCM     [X] hoy      cifrar y autenticar a la vez
 //!    TLS 1.3     --           la maquina de estados encima de todo lo anterior
 //!    X.509       --           ASN.1, fechas, cadena de confianza
 //! ```
@@ -67,7 +67,13 @@ pub mod campo25519;
 /// **X25519**: dos maquinas que nunca se han visto acaban con el mismo secreto,
 /// y quien escuchaba el cable no lo tiene.
 pub mod x25519;
+/// **AES-128 y AES-256**, solo cifrar bloques -- GCM nunca usa el inverso.
+pub mod aes;
+/// **AES-GCM**: cifrar y autenticar a la vez, que son dos cosas y una sola
+/// llamada. [!!] Y el nonce NO SE REPITE: ver su cabecera.
+pub mod gcm;
 
 pub use hmac::{expandir, extraer, hmac as hmac_sha256, iguales};
 pub use sha256::Sha256;
+pub use gcm::{abrir, sellar};
 pub use x25519::{secreto_a_publico, secreto_compartido, x25519};
