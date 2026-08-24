@@ -8,8 +8,8 @@
 //!
 //! ```text
 //!    SHA-256     [X] hoy      debajo de HMAC, de HKDF, del transcript de TLS
-//!    HMAC        --           SHA-256 dos veces, con dos rellenos
-//!    HKDF        --           HMAC en cadena: de un secreto salen las claves
+//!    HMAC        [X] hoy      SHA-256 dos veces, con dos rellenos
+//!    HKDF        [X] hoy      HMAC en cadena: de un secreto salen las claves
 //!    X25519      --           curva eliptica. LA pieza dificil
 //!    AES-GCM     --           o ChaCha20-Poly1305
 //!    TLS 1.3     --           la maquina de estados encima de todo lo anterior
@@ -59,5 +59,9 @@
 extern crate alloc;
 
 pub mod sha256;
+/// **HMAC-SHA256 y HKDF.** El primer sitio del arbol donde el TIEMPO que tarda
+/// algo es parte de si es correcto. Ver su cabecera.
+pub mod hmac;
 
+pub use hmac::{expandir, extraer, hmac as hmac_sha256, iguales};
 pub use sha256::Sha256;
