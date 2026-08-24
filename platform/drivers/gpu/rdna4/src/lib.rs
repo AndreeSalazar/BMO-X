@@ -6,9 +6,30 @@
 //! (`cpu_vendor/profile.rs` in the kernel: swapping hardware is a profile
 //! swap, never a kernel edit).
 //!
-//! Like every BMO driver, this runs in **Ring 3** as a BEX server behind
-//! a BMO Channel estuary. It will hold DEVICE + DISPLAY capabilities for
-//! its own MMIO ranges only. The Ring 0 kernel never gains GPU code.
+//! ## [!] DONDE VIVE: la intencion es Ring 3, y HOY NADIE VIVE AHI
+//!
+//! Este parrafo decia *"like every BMO driver, this runs in Ring 3"*, y era
+//! **falso sobre los demas** (comprobado el 2026-08-23):
+//!
+//! ```text
+//!    bmo_xhci   Ring 0: 5 ficheros   Ring 3: 0
+//!    bmo_uhid   Ring 0: 5 ficheros   Ring 3: 0
+//!    bmo_net    Ring 0: 1 fichero    Ring 3: 0
+//!    bmo_ahci   Ring 0: 3 ficheros   Ring 3: 0
+//! ```
+//!
+//! **Todos los drivers de aparato son crates de Rust que enlaza el kernel.**
+//! Solo los sistemas de ficheros (fat32, estratos) asoman por Ring 3.
+//!
+//! ** Era la ley 8 --*"verde no es cableado"*-- aplicada a una politica: estaba
+//! escrita, se citaba, y no la cumplia nadie. Se deja corregido porque la
+//! diferencia es grande: un driver de GPU en Ring 3 **seria el primero**, y eso
+//! es un trabajo de contrato (KIND_GPU, MMIO por capability, el estuario) que
+//! hay que contar aparte del driver.
+//!
+//! La intencion sigue en pie y el motivo tambien: un driver de GPU es de los
+//! mas grandes que tiene un sistema, y en Ring 3 **puede morirse sin llevarse
+//! la maquina**. Lo que cambia es que eso hay que construirlo, no heredarlo.
 //!
 //! =======================================================================
 //! EL PLAN DE ARRANQUE, escrito el 2026-08-02 para no reconstruirlo dentro
