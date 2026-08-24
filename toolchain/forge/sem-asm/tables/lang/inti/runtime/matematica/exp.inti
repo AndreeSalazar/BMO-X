@@ -1,0 +1,146 @@
+# EXP -- la exponencial, y la tarde que `potencias.inti` dejo apuntada.
+#
+# ===================================================================
+#  ** LA CITA QUE ABRE ESTE FICHERO
+# ===================================================================
+#
+# `potencias.inti` escribio esto el 2026-08-22, explicando por que solo hacia
+# exponentes enteros:
+#
+#     "pow(x, y) con y real se hace con exp(y * ln(x)), y eso son dos series
+#      con sus tablas de coeficientes y su analisis de error. Es una tarde bien
+#      empleada y NO ES ESTA TARDE."
+#
+# Hoy es esa tarde, y el motivo concreto es el softmax: un motor de inferencia
+# lo necesita en cada capa de atencion, y sin `exp` no hay motor.
+#
+# ===================================================================
+#  *** POR QUE ESTO SE ESCRIBE Y NO SE PORTA
+# ===================================================================
+#
+# La tentacion es traer `musl` o `openlibm` y darlo por hecho. Eso mete miles
+# de lineas de C con `errno`, modos de redondeo, casos denormales y banderas de
+# excepcion **para usar UNA funcion** -- y entra por la puerta que este proyecto
+# cerro a proposito.
+#
+# ** Un `exp` para inferencia no necesita ser el de IEEE. Necesita unas seis
+# cifras y ser rapido. Eso son treinta lineas, y escribirlas es MENOS trabajo
+# que portar las que no hacen falta.
+#
+# ===================================================================
+#  El metodo: partir el exponente en dos
+# ===================================================================
+#
+#     exp(x) = 2^k * exp(r),   con x = k*ln2 + r  y  |r| <= ln2/2
+#
+# ** Las dos mitades se calculan de formas distintas y esa es toda la idea:
+#
+#     2^k       se CONSTRUYE poniendo el exponente donde IEEE-754 lo guarda.
+#               Exacto, sin error, y sin bucle ni tabla
+#     exp(r)    se aproxima con un polinomio, y como `r` es pequeno el
+#               polinomio converge rapido
+#
+# Sin partirlo, un polinomio tendria que cubrir de -745 a +709 y no hay grado
+# que aguante eso.
+perfil llano
+usa matematica
+
+# 1 / ln(2). Multiplicar por esto y redondear da el `k` mas cercano.
+INV_LN2 = 1.4426950408889634
+
+# ln(2) PARTIDO EN DOS, y no es un adorno.
+#
+# *** `x - k*ln2` es una resta entre dos numeros parecidos, y ahi es donde la
+# coma flotante pierde cifras: si `ln2` se guarda en un solo `flotante64`, su
+# error se multiplica por `k` --que llega a 1000-- y se come la precision del
+# resultado antes de empezar.
+#
+# ** Partiendolo, `LN2_HI` tiene ceros en la cola de su mantisa, asi que
+# `k*LN2_HI` es EXACTO, y lo que queda por corregir cabe entero en `LN2_LO`.
+# Es el truco de siempre y es la diferencia entre seis cifras y tres.
+LN2_HI = 0.6931471803691238
+LN2_LO = 0.00000000019082149292705877
+
+# Los coeficientes del polinomio: 1/2, 1/6, 1/24, 1/120, 1/720.
+#
+# ** Es la serie de Taylor de `exp` en el cero, hasta el grado 6. Con
+# `|r| <= 0,347` el primer termino que se deja fuera vale `r^7/5040`, o sea unos
+# 1,2e-7 -- **siete cifras**, de sobra para lo que esto sirve.
+#
+# [!] Y son Taylor y no minimax a proposito. Un polinomio minimax da la misma
+# precision con un grado menos, y para calcularlo hace falta un Remez -- que es
+# otro programa. Cuando el numero diga que ese grado sobra, se cambia.
+C2 = 0.5
+C3 = 0.16666666666666666
+C4 = 0.041666666666666664
+C5 = 0.008333333333333333
+C6 = 0.001388888888888889
+
+# Los bordes, y por que estan escritos como numeros y no como `si falla`.
+#
+# ** `exp` no falla fuera de rango: SATURA, y eso es lo correcto. Por encima de
+# 709,78 el resultado no cabe en un `flotante64` y la respuesta de IEEE-754 es
+# el infinito; por debajo de -745,13 es el cero. Los dos son valores DEFINIDOS,
+# y devolverlos es mas util que atrapar -- un softmax con un valor muy negativo
+# quiere un cero, no una tarea muerta.
+TECHO = 709.78
+SUELO = -745.13
+
+# El patron de bits del infinito positivo de 64 bits.
+#
+# ** Se escribe asi porque no hay literal para el infinito, y `1.0 / 0.0` seria
+# pedirle a la Regla 3 que mire hacia otro lado. Los bits son explicitos y se
+# pueden comprobar.
+INFINITO = 9218868437227405312
+
+# **2 elevado a k**, exacto y sin bucle.
+#
+# *** Aqui esta la pieza que no existia hasta el 2026-08-24. Un `flotante64`
+# guarda su exponente en los bits 62..52 con sesgo 1023, asi que poner `k+1023`
+# ahi y llamar flotante a esos ocho bytes **da la potencia de dos clavada** --
+# sin error de redondeo, porque una potencia de dos se representa exacta.
+#
+# ** `flotante_de` no cuesta una sola instruccion en esta maquina: el emisor ya
+# lleva los flotantes en registros generales. Lo dice la tabla de la maquina,
+# que es donde ese hecho tiene que vivir.
+#
+# [!] `k` entra ya sumado el sesgo y comprobado por quien llama: aqui no se
+# vuelve a mirar porque `exp` ya recorto el rango, y comprobar dos veces lo
+# mismo es como se acaba con dos limites que se separan.
+funcion dos_elevado(sesgado es natural64) devuelve flotante64
+    devuelve flotante_de(sesgado desplaza izquierda 52)
+
+# **La exponencial.**
+#
+# Unas siete cifras, que es lo que pide un softmax. Ver la cabecera del fichero.
+funcion exp(x es flotante64) devuelve flotante64
+    # Los bordes primero: fuera de rango no se calcula nada.
+    si x > TECHO
+        devuelve flotante_de(INFINITO)
+    si x < SUELO
+        devuelve 0.0
+
+    # ** El redondeo al entero MAS CERCANO, escrito a mano porque `entero64`
+    # trunca hacia cero. Sumar medio antes de truncar redondea bien para los
+    # positivos y mal para los negativos, asi que el medio lleva el signo de
+    # `x` -- y por eso hay dos lineas y no una.
+    cambiante medio es flotante64 = 0.5
+    si x < 0.0
+        medio = -0.5
+    k es entero64 = entero64(x * INV_LN2 + medio)
+
+    # `r = x - k*ln2`, con el ln2 partido. Ver `LN2_HI`.
+    kf es flotante64 = flotante64(k)
+    cambiante r es flotante64 = x - kf * LN2_HI
+    r = r - kf * LN2_LO
+
+    # El polinomio, por Horner: menos multiplicaciones y menos error.
+    cambiante p es flotante64 = C6
+    p = C5 + r * p
+    p = C4 + r * p
+    p = C3 + r * p
+    p = C2 + r * p
+    p = 1.0 + r * p
+    p = 1.0 + r * p
+
+    devuelve p * dos_elevado(natural64(k + 1023))

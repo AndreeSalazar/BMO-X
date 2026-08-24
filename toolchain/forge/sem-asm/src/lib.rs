@@ -114,7 +114,26 @@ impl Intrinsics {
             // entradas sin `bytes` (p.ej. [meta]) no son intrinsecos
             let Some(arr) = entry.get("bytes").and_then(|v| v.as_array()) else { continue };
             let bytes: Vec<u8> = arr.iter().filter_map(toml_byte).collect();
-            if bytes.is_empty() { continue; }
+            // *** UN BYTE MAL ESCRITO NO PUEDE PARECERSE A UNA FILA VACIA.
+            //
+            // ** Aqui habia `if bytes.is_empty() { continue; }`, y juntaba dos
+            // casos que no son el mismo:
+            //
+            //    `bytes = [0x1234]`   un byte imposible. `toml_byte` lo tira, la
+            //                         lista queda vacia, Y LA FILA DESAPARECE
+            //                         entera -- en silencio, hasta que alguien
+            //                         la usa y su intrinseco "no existe"
+            //
+            //    `bytes = []`         una fila que cuesta CERO INSTRUCCIONES en
+            //                         esta maquina. `bits_de` y `flotante_de`
+            //                         son eso: reinterpretar un flotante como
+            //                         sus ocho bytes, que aqui no cuesta nada
+            //                         porque ya viven en registros generales
+            //
+            // Se separan comparando LARGOS: si se perdio alguno por el camino,
+            // la fila esta mal escrita y se salta. Si la lista venia vacia, es
+            // una decision y se acepta.
+            if bytes.len() != arr.len() { continue; }
             let args: Vec<String> = entry.get("args")
                 .and_then(|v| v.as_array())
                 .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())

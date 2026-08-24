@@ -180,7 +180,19 @@ impl Revision<'_> {
                 "Los ocho bytes de un flotante son signo, exponente y mantisa, no un                  numero en binario. Operarlos a bits no toca lo que parece que toca."
                     .to_string(),
             )
-            .con_hacer("usa `/` para dividir, o convierte a entero primero si lo que quieres son los bits"),
+            // *** ESTE CONSEJO ERA FALSO HASTA EL 2026-08-24.
+            //
+            // Decia *"convierte a entero primero si lo que quieres son los
+            // bits"*, y `entero64(3.5)` da **3**: convierte el VALOR. Los bits
+            // no se podian obtener por ningun camino, asi que el aviso mandaba
+            // a hacer algo que no hace lo que dice.
+            //
+            // ** Un consejo equivocado es peor que ninguno: manda a buscar por
+            // donde no es, y quien lo siga obtiene un numero pequeno donde
+            // esperaba un patron -- sin que nada se queje.
+            .con_hacer(
+                "usa `/` para dividir. Y si lo que quieres son los OCHO BYTES,                  eso es `bits_de(x)` -- no `entero64(x)`, que convierte el valor",
+            ),
         );
     }
 
