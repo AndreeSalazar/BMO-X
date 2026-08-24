@@ -133,6 +133,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-firmware"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-fontgen"
 version = "0.1.0"
 
@@ -202,6 +206,7 @@ dependencies = [
  "bmo-disco-juicio",
  "bmo-estratos",
  "bmo-fat32",
+ "bmo-firmware",
  "bmo-hash",
  "bmo-identify",
  "bmo-input",

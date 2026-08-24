@@ -345,6 +345,18 @@ pub fn main(ctx: &mut BootContext) {
     // sobre una suposicion. Ver `dev/red.rs`.
     crate::ring0::core::boot_timeline::mark("disk + ahci");
     crate::ring0::dev::net::init();
+
+    // *** EL CENSO DE LA PLACA. Cero escrituras, y va DESPUES de la NIC por lo
+    // mismo que ella: es una pregunta, no una configuracion.
+    //
+    // ** Hasta hoy a este firmware se le hacia UNA sola pregunta --cuantos
+    // nucleos, la MADT-- y todo lo demas que la placa cuenta de si misma
+    // estaba ahi y nadie lo miraba. Esto lo CUENTA; interpretarlo es otro paso.
+    //
+    // [!] Y la cifra que hay que mirar es la de tablas que NO pasan su suma: en
+    // una placa sana es cero, y si no lo es lo que falla no es la placa -- es el
+    // mapeo de esas direcciones fisicas.
+    crate::ring0::plat::placa::confesar(ctx.rsdp);
     splash::intro_paso(58);
     // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
     // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un

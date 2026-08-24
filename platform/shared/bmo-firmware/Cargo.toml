@@ -1,0 +1,17 @@
+[package]
+name = "bmo-firmware"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "Lo que la placa base le cuenta a BMO-X -- y lo que BMO-X se niega a escuchar"
+
+# Sin dependencias, y va a seguir asi.
+#
+# Existen crates de ACPI hechas (`acpi`, `aml`) y traerlas seria traer justo lo
+# que este crate existe para NO tener: un interprete de AML. La mitad que hace
+# falta --interpretar 36 bytes de cabecera-- cabe aqui y se prueba.
+[dependencies]
+
+[lib]
+name = "bmo_firmware"
+path = "src/lib.rs"

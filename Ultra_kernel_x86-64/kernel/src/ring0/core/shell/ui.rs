@@ -409,7 +409,7 @@ pub(crate) fn shell_help() {
     // arranque manda literalmente a "escribe ext". Una orden invisible es una
     // orden que no esta. Arreglado el 2026-08-16, y el propio fallo es el
     // argumento de por que las dos listas viven en este fichero.
-    row("sistema", |l| l.txt("info  cpu  ext  mem  consumo  apps  tasks  disk  net  ls  estratos  cabina  hist"));
+    row("sistema", |l| l.txt("info  cpu  ext  mem  consumo  apps  tasks  disk  net  placa  ls  estratos  cabina  hist"));
     // `fallo` en su propio renglon y con lo que hace escrito: es la orden que
     // hace falta el dia peor, y ese dia nadie se acuerda de una palabra suelta
     // en una fila de diez. Ver `shell_fallo`.
@@ -451,7 +451,7 @@ pub(crate) fn shell_help() {
 /// mantener a la vez son dos listas que un dia no dicen lo mismo.
 pub(crate) fn similar_command(texto: &str) -> Option<&'static str> {
     const ORDENES: &[&str] = &[
-        "help", "ls", "disk", "net", "red", "audio", "sonido", "cabina", "fallo", "estratos", "cpu",
+        "help", "ls", "disk", "net", "red", "placa", "firmware", "audio", "sonido", "cabina", "fallo", "estratos", "cpu",
         "ext", "extensiones", "consumo", "gasto", "w", "apps", "programas",
         "hist", "history", "layout", "cls", "clear", "info", "smp", "tasks", "mem",
         "ktest", "fb", "splash", "bex", "panic", "reboot", "halt",

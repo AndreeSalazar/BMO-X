@@ -79,6 +79,8 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
             super::hardware::shell_red(b"");
         } else if cmd.len() > 4 && (&cmd[..4] == b"net " || &cmd[..4] == b"red ") {
             super::hardware::shell_red(&cmd[4..]);
+        } else if cmd == b"placa" || cmd == b"firmware" {
+            super::hardware::shell_placa();
         } else if cmd == b"cabina" {
             super::screen::shell_cabina();
         } else if cmd == b"fallo" {
