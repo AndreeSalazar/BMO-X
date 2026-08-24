@@ -160,6 +160,49 @@ no teclee esas dos palabras se comporta exactamente como el de ayer.
 
 ---
 
+# 5b. Y EN EL MISMO ARRANQUE: `placa`
+
+Cuesta una palabra mas y es el paso 0 del **firmware**, con la misma forma: cero
+escrituras, respuesta predecible.
+
+```text
+   placa     <- o `firmware`
+```
+
+## Lo que tiene que salir
+
+```text
+   [placa] firmware de <OEM>, tabla <MODELO>
+        APIC   nnn B  el censo de nucleos (MADT)
+        FACP   nnn B  energia, reset y el RTC (FADT)
+        MCFG   nnn B  donde vive la config de PCIe en memoria
+    AML DSDT  nnnn B  [!] AML -- un PROGRAMA, y aqui no se ejecuta
+    AML SSDT  nnnn B  [!] AML -- un PROGRAMA, y aqui no se ejecuta
+        ...
+   [placa] NN tablas, M son AML (no se ejecutan), 0 sin suma valida
+```
+
+## *** LA CIFRA QUE HAY QUE MIRAR
+
+**No es cuantas tablas hay: es cuantas NO PASAN SU SUMA.** En una placa sana ese
+numero es **cero**.
+
+** Un puntero del XSDT que apunte a memoria que no es una tabla produce una
+cabecera con campos **plausibles** -- cuatro bytes cualesquiera parecen una
+firma, y un `u32` cualquiera parece un largo. Sin la suma, el censo se creeria
+cualquier cosa.
+
+[!] Y si sale mayor que cero, **lo que falla no es la placa**: es el mapeo de
+esas direcciones fisicas. Un fallo del kernel disfrazado de firmware raro.
+
+## Y la prediccion que se puede hacer sin arrancar
+
+El otro sistema de esta misma maquina lista las tablas ACPI. **Las firmas tienen
+que coincidir**, y el numero de SSDT tambien. Si BMO-X ve menos tablas que
+Windows, el XSDT se esta recorriendo corto.
+
+---
+
 # 6. Y SI SALE BIEN, QUE SE DESBLOQUEA
 
 ```text
