@@ -459,7 +459,7 @@ pub(crate) fn similar_command(texto: &str) -> Option<&'static str> {
     const ORDENES: &[&str] = &[
         "help", "ls", "disk", "net", "red", "placa", "firmware", "audio", "sonido", "cabina", "fallo", "estratos", "cpu",
         "ext", "extensiones", "consumo", "gasto", "w", "apps", "programas",
-        "hist", "history", "layout", "cls", "clear", "info", "smp", "tasks", "mem",
+        "hist", "history", "layout", "cls", "clear", "info", "smp", "banda", "tasks", "mem",
         "ktest", "fb", "splash", "bex", "panic", "reboot", "halt",
     ];
     // Solo el primer trozo: `run smp prueba` tambien tiene que reconocerse.

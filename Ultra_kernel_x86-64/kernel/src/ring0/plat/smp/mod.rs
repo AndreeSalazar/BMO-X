@@ -39,6 +39,7 @@
 pub mod lapic;
 pub mod map;
 /// El reparto de trabajo. Sin esto, los nucleos despiertos no sirven de nada.
+pub mod banda;
 pub mod crew;
 pub mod tramp;
 

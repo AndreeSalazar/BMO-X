@@ -47,6 +47,12 @@ pub mod placa;
 /// este por el CONJUNTO DE INSTRUCCIONES. Y `hardware.rs` es el que mas crece
 /// del shell; treinta y seis filas mas lo dejarian en mil lineas.
 pub mod extensions;
+/// **`banda`**: cuanto caudal da la memoria. Mismo grupo que [`hardware`]
+/// --solo mira-- y fichero propio porque contesta otra pregunta: aquel mide
+/// **cuanto acelera** repartir y esto mide **un caudal**, en bytes por segundo.
+/// El numero que produce no se compara con ninguno de este shell: se compara
+/// con el tamano de un modelo.
+pub mod banda;
 /// 2 -- toca el DISCO. El unico grupo donde un fallo se lleva datos.
 pub mod files;
 /// 3 -- PINTA. Se puede repetir, por eso va antes que lo irreversible.
