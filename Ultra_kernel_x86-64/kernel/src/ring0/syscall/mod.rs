@@ -19,6 +19,57 @@
 //!              foreign CR3), R-TIME1
 //! ```
 //!
+//! ## *** POR QUE SE PARTIO ESTE FICHERO, Y NO ES POR EL NUMERO (2026-08-24)
+//!
+//! ** Se partio **para poder optimizar ciclos despues**, y el orden importa:
+//! `OPTIMIZACION_MAESTRO.md` pone la optimizacion **la ultima**, detras de
+//! CORRECTO y MEDIDO. Este camino ya esta medido, y el numero es el que manda
+//! sobre todo el sistema:
+//!
+//! ```text
+//!    la puerta pelada          969 ciclos    (792 ticks = 214 ns)
+//!    resolver el handle      + 221
+//!    ------------------------------------
+//!    antes de hacer NADA    ~1.190 ciclos
+//!    el trabajo de OP_INFO      36 ciclos
+//! ```
+//!
+//! **El trabajo es el 3% y la burocracia el 97%**, y esto es lo que paga TODA
+//! app de Ring 3 en cada operacion. Es el camino mas caliente que tiene BMO-X.
+//!
+//! *** Y aqui esta el motivo del reparto: **cuando le llegue el turno a limar
+//! ciclos, hay que poder leer el camino entero sin bajar por cuarenta y cinco
+//! brazos.** Un despachador de 1.363 lineas se optimiza a ciegas; uno de 974
+//! con las familias fuera se lee de una sentada, y **se puede medir por
+//! familia** en vez de en bloque.
+//!
+//! [!] Lo que este reparto NO hace, y hay que decirlo: **no ha quitado un solo
+//! ciclo.** Los cuerpos son los mismos y el `match` sigue siendo el mismo
+//! `match`; lo unico que cambio es donde vive cada cuerpo. Confundir "ahora se
+//! lee" con "ahora es rapido" seria exactamente el error que la ley 0 de la
+//! optimizacion existe para evitar.
+//!
+//! ** Y la burocracia NO SE LIMA, SE EVITA: la via rapida son 58 instrucciones
+//! y un Zen 3 retira seis por ciclo -- ni contandolas a una por ciclo se llega
+//! a 969. Lo que cuesta son **las dos transiciones de privilegio**, y esas se
+//! pagan o no se pagan. Cuando llegue el dia, la mejora sera hacer MENOS
+//! operaciones, no operaciones mas baratas.
+//!
+//! ## [!] Y SIGUEN SIENDO **DOS** SYSCALLS. El reparto no toco eso.
+//!
+//! `NR_INVOKE` y `NR_WAIT`. Lo que se repartio son las **operaciones** --las
+//! filas del `match` de `invoke_current_task`-- que no son syscalls: son lo que
+//! se pide POR la puerta. La API crece dentro del par (clase de objeto,
+//! operacion) y el ABI no se mueve; ese es el congelamiento entero.
+//!
+//! *** Y el guardian que lo comprueba **se quedo ciego con este reparto**:
+//! leia `ops.rs` y `mod.rs` por su nombre, asi que las operaciones que se
+//! fueron a `op_*.rs` dejaron de existir para el. Arreglado el mismo dia --
+//! ahora lee la carpeta entera. La leccion ya estaba escrita en `build.ps1`
+//! de la vez anterior: *"un guardian que solo mira la mitad da una tranquilidad
+//! que no ha ganado"*.
+//!
+//!
 //! ** The `meta` of 60 was never going to be reached by tuning the two-arm
 //! `match`: most of what it measured was the thermometer. **The meter is now
 //! behind `--features metro_puerta` and the default build has no `rdtsc` here**
@@ -112,6 +163,9 @@ mod op_maquina;
 /// **Tomar y soltar un aparato exclusivo**: entrada, pantalla y audio. Es la
 /// puerta de los LIDERES -- ver `docs/identidad/LIDERES.md`.
 mod op_aparato;
+/// **Abrir algo y recibir un handle**: directorio, fichero, consola, el propio
+/// paquete. Las seis donde el handle ES el permiso.
+mod op_abrir;
 /// **La consola**: escribir y leer. Sale porque es la unica pareja que habla
 /// con una pantalla, y la mas caliente del sistema.
 mod op_consola;
@@ -150,48 +204,10 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         }
         TASK_OP_CONSOLE_WRITE => op_consola::console_write(arg0, arg1),
         TASK_OP_CONSOLE_READ => op_consola::console_read(arg0, arg1),
-        TASK_OP_DIR_ABRIR => {
-            let _ = arg0;
-            let pid = scheduler::current_pid();
-            let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::directory::open(pid, ruta) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        // El eslabon que faltaba: el kernel sabia leer y escribir archivos y
-        // Ring 3 no tenia con que pedirselo.
-        TASK_OP_ARCHIVO_ABRIR => {
-            let _ = arg0;
-            let pid = scheduler::current_pid();
-            let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::file::open(pid, ruta) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        TASK_OP_MI_PAQUETE => {
-            let pid = scheduler::current_pid();
-            // La ruta la sabe el KERNEL, no el programa. Si no la recuerda --los
-            // binarios que el propio kernel embebe no vienen de ninguna-- se
-            // dice que no, en vez de abrir cualquier cosa.
-            let Some(ruta) = crate::ring0::task::package::ruta_de(pid) else {
-                return BmoStatus::err(2);
-            };
-            match crate::ring0::obj::file::open(pid, ruta) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        TASK_OP_ARCHIVO_ASINC => {
-            let _ = arg0;
-            let pid = scheduler::current_pid();
-            let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::file::abrir_asinc(pid, ruta) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
+        TASK_OP_DIR_ABRIR => op_abrir::dir_abrir(arg0, arg1),
+        TASK_OP_ARCHIVO_ABRIR => op_abrir::archivo_abrir(arg0, arg1),
+        TASK_OP_MI_PAQUETE => op_abrir::mi_paquete(arg0, arg1),
+        TASK_OP_ARCHIVO_ASINC => op_abrir::archivo_asinc(arg0, arg1),
         TASK_OP_MI_PADRE => {
             let pid = scheduler::current_pid();
             // Se contesta en TID y no en pid: es lo unico que Ring 3 sabe usar,
@@ -203,22 +219,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 .unwrap_or(0);
             BmoStatus::ok_value(tid as u64)
         }
-        TASK_OP_ARCHIVO_CREAR => {
-            let _ = arg0;
-            let pid = scheduler::current_pid();
-            let ruta = ruta_tomar(pid);
-            match crate::ring0::obj::file::create(pid, ruta) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        TASK_OP_CONSOLA_CREAR => {
-            let _ = arg0;
-            match crate::ring0::obj::console::create(scheduler::current_pid()) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
+        TASK_OP_ARCHIVO_CREAR => op_abrir::archivo_crear(arg0, arg1),
+        TASK_OP_CONSOLA_CREAR => op_abrir::consola_crear(arg0, arg1),
         // Discover the caller's seeded estuary capability for index arg0.
         // The handle is the process's own; nothing new is granted here.
         TASK_OP_CHANNEL_OPEN => {

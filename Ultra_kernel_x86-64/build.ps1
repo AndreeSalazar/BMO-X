@@ -251,8 +251,30 @@ $kernelObj = @(Get-ChildItem -Path (Join-Path $root 'kernel\src\ring0\obj') -Fil
 if ($kernelObj.Count -eq 0) {
     Fail 'no hay ni un .rs en kernel\src\ring0\obj -- las operaciones de los handles no se pueden comprobar'
 }
-$kernelSyscalls = (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\ops.rs') -Raw) + "`n" +
-                  (Get-Content (Join-Path $root 'kernel\src\ring0\syscall\mod.rs') -Raw) + "`n" +
+# *** LA CARPETA ENTERA, Y NO DOS FICHEROS POR SU NOMBRE (2026-08-24).
+#
+# ** Aqui habia esto: `ops.rs` + `mod.rs` + $kernelObj. Dos ficheros nombrados
+# a mano.
+#
+# El 24-08 `syscall/mod.rs` se partio en cinco --op_maquina, op_aparato,
+# op_contar, op_consola-- y las operaciones que se fueron a esos cuatro
+# **dejaron de existir para este guardian en el acto**. Una que el ABI perdiera
+# no la habria cazado nadie.
+#
+# *** Y la leccion estaba escrita VEINTE LINEAS MAS ABAJO, en este mismo fichero,
+# de la vez anterior que paso: *"un guardian que solo mira la mitad da una
+# tranquilidad que no ha ganado"*. Volvio a pasar, y esta vez la victima fue el
+# reparto que lo provoco.
+#
+# Ahora se lee la CARPETA. Partir un fichero deja de poder cegar al guardian,
+# porque ya no hay ninguna lista de nombres que se pueda quedar corta.
+$kernelSyscallDir = Join-Path $root 'kernel\src\ring0\syscall'
+$kernelSyscallFiles = @(Get-ChildItem -Path $kernelSyscallDir -Filter '*.rs' -File -Recurse -ErrorAction SilentlyContinue)
+if ($kernelSyscallFiles.Count -lt 2) {
+    Fail ('apenas hay .rs en ' + $kernelSyscallDir + ' -- el contrato no se puede comprobar, y seguir seria fingir que si')
+}
+Write-Host ('    contrato: ' + $kernelSyscallFiles.Count + ' ficheros de syscall/ leidos') -ForegroundColor DarkGray
+$kernelSyscalls = (($kernelSyscallFiles | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n") + "`n" +
                   (($kernelObj | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n")
 # ** EL CONTRATO YA NO ES UN FICHERO: ES UNA CARPETA (2026-08-12).
 #

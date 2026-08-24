@@ -8,6 +8,12 @@
 
 pub mod storage_hal;
 pub mod controller;
+/// **Arrancar el HBA**: prepararlo, censar puertos y montar el DMA. Ocurre UNA
+/// vez por arranque, y ahi vive la mina de la PRDT.
+mod arranque;
+/// **Un comando**: emitirlo, esperarlo y saber en que quedo. Esto corre en cada
+/// lectura y en cada escritura del sistema.
+mod comando;
 
 pub use storage_hal::StorageHal;
 pub use controller::{AhciController, PortState, AhciPort, DiskError, read_sectors_phys, write_sectors_phys, flush_cache, identify_phys, probe, init_port_dma, controller, reset_ctrl, SIG_SATA_DISK, SECTOR};

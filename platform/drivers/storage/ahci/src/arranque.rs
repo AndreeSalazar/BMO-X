@@ -1,0 +1,393 @@
+//! **ARRANCAR EL HBA**: prepararlo, censar sus puertos y montar el DMA.
+//!
+//! ## Por que soy un fichero (L6b)
+//!
+//! Porque contesto una pregunta que ocurre **UNA VEZ por arranque**, y la de al
+//! lado --`comando.rs`-- ocurre en cada lectura y en cada escritura del sistema.
+//! Mezclarlas hacia que la funcion que decide si esta maquina tiene disco
+//! viviera entre las que lo leen.
+//!
+//! ## [!] Y aqui esta la mina que este driver ya piso
+//!
+//! Montar el DMA de un puerto es escribir tablas que el APARATO va a leer para
+//! decidir donde escribir el. Una PRDT mal armada no da un fallo: da **el disco
+//! escribiendo en memoria de otro**, y el sintoma tres arranques despues. Es el
+//! patron 4 de la casa, y por eso este camino esta junto y se lee entero.
+//!
+//! ** El reparto es MOVER TEXTO (L6d): ni una linea cambia de contenido.
+
+// ** Del hermano y no del crate: los nombres del HBA --registros, banderas, el
+// `CONTROLLER`-- viven en `controller.rs`, que es donde vive el hecho sobre el
+// chip. `use super::*` traeria la raiz del crate, que no los tiene.
+use core::sync::atomic::Ordering;
+use super::controller::*;
+use super::*;
+
+// -- Arranque del controlador ------------------------------------------------
+
+/// Prepara el HBA y hace censo de sus puertos. No toca ningun disco.
+pub unsafe fn probe(mmio_base: u64) -> bool {
+    if INIT_DONE.swap(true, Ordering::SeqCst) { return true; }
+    let hal = storage_hal::hal();
+    hal.log("[ahci] probing HBA\n");
+
+    // * SIN RESET DEL HBA, a proposito.
+    //
+    // La version anterior hacia `GHC.HR` nada mas entrar y leia el estado de
+    // los puertos justo despues: cero puertos con disco, siempre. Normal -- un
+    // reset del HBA TIRA TODOS LOS ENLACES SATA, y renegociar un enlace lleva
+    // decenas de milisegundos. Era preguntar "hay alguien?" un microsegundo
+    // despues de colgar el telefono.
+    //
+    // Y el reset no hacia falta para nada: el firmware UEFI ya arranco este
+    // HBA y dejo los enlaces establecidos para poder leer el arranque. Lo
+    // unico que hay que asegurar es el modo (algunas placas lo dejan en modo
+    // compatible IDE, donde los registros no significan lo que creemos) y
+    // apagar las interrupciones, porque este driver sondea.
+    hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) | GHC_AE);
+    hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) & !GHC_IE);
+    hba_write(mmio_base, HBA_IS, hba_read(mmio_base, HBA_IS)); // limpiar pendientes
+
+    let cap = hba_read(mmio_base, HBA_CAP);
+    // * `CAP.NP` son los bits [4:0]. NO los [24:20].
+    //
+    // Esto leia `(cap >> 20) & 0x1F`, que en este HBA (cap=0xEF36FF27) cae
+    // encima de `ISS` --la velocidad de interfaz soportada-- y daba 0x13: el
+    // driver se creia 20 puertos en un controlador de 8. Los puertos 8..19 no
+    // existen, y su espacio MMIO **alias-ea sobre los reales**: por eso el
+    // puerto 0x12 reportaba exactamente lo mismo que el 0x2 (ssts=0x133,
+    // sig=0x101). No eran dos discos ni un doble volcado del log -- era el
+    // MISMO registro leido dos veces por dos direcciones distintas.
+    //
+    // Y no era solo ruido en pantalla: `port_link_up` ESCRIBE. Cada puerto
+    // fantasma le mandaba un COMRESET por `PxSCTL` a un puerto real que ya
+    // estaba levantado, despues del censo. Tirar el enlace del disco justo
+    // despues de encontrarlo es una forma perfecta de que "a veces arranca".
+    //
+    // Windows nunca ensena esto porque lee `NP` de donde toca y ademas solo
+    // toca los puertos que `PI` declara.
+    let port_count = (cap & 0x1F) as u8 + 1;
+    let pi = hba_read(mmio_base, HBA_PI);
+    // Los registros del HBA, dichos en voz alta. Si CAP y PI salen 0x0 o
+    // 0xFFFFFFFF, el problema no son los puertos: es que no estamos leyendo
+    // el HBA (BAR equivocada, MMIO sin mapear). Sin estos dos numeros,
+    // "ningun puerto tiene disco" es una conclusion sin pruebas.
+    hal.log_hex("[ahci] cap=", cap as u64);
+    hal.log_hex(" pi=", pi as u64);
+    hal.log_hex(" ghc=", hba_read(mmio_base, HBA_GHC) as u64);
+    // `np` explicito: es el numero que decide cuantos puertos se tocan, y
+    // haberlo leido mal costo doce puertos fantasma. Si vuelve a salir raro,
+    // sale ANTES que sus consecuencias.
+    hal.log_hex(" np=", port_count as u64);
+    hal.log("\n");
+
+    let sss = cap & (1 << 27) != 0;
+
+    let mut ctrl = AhciController {
+        mmio_base, port_count, ports_implemented: pi,
+        ports: [AhciPort {
+            port_number: 0, state: PortState::Empty, signature: 0, ssts: 0, sctl: 0, cmd: 0,
+            command_list_phys: 0, fis_phys: 0, cmd_table_phys: 0,
+        }; 32],
+    };
+
+    // Primer intento: SUAVE. Se respeta lo que dejo el firmware y solo se
+    // renegocia el enlace de los puertos que esten caidos.
+    let mut active = census(&mut ctrl, pi, sss);
+
+    // Segundo intento: EL MARTILLO. Si NINGUN puerto levanto enlace, la
+    // hipotesis cambia -- no es que los discos no esten, es que el firmware
+    // dejo el controlador en un estado del que no sabemos sacarlo puerto a
+    // puerto. Ahi si toca resetear el HBA entero y rehacer el trabajo, esta
+    // vez esperando de verdad a que los enlaces vuelvan.
+    //
+    // Suave primero y martillo despues, nunca al reves: el reset destruye el
+    // trabajo que el firmware ya hizo, y si ese trabajo servia, mejor no
+    // tocarlo.
+    if active == 0 {
+        hal.log("[ahci] ningun enlace: reset completo del HBA y reintento\n");
+        hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) | GHC_HR);
+        let mut spun = 0u32;
+        while hba_read(mmio_base, HBA_GHC) & GHC_HR != 0 && spun < PORT_TIMEOUT {
+            spun += 1;
+            core::hint::spin_loop();
+        }
+        // El reset apaga AE: sin el, los registros dejan de significar lo que
+        // creemos.
+        hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) | GHC_AE);
+        hba_write(mmio_base, HBA_GHC, hba_read(mmio_base, HBA_GHC) & !GHC_IE);
+        hal.delay_ms(100); // que el HBA respire antes de tocarle los puertos
+        active = census(&mut ctrl, pi, sss);
+        hal.log_hex("[ahci] tras reset, puertos con enlace=", active as u64);
+        hal.log("\n");
+    }
+
+    CONTROLLER = Some(ctrl);
+    hal.log("[ahci] HBA listo\n");
+    true
+}
+
+/// Levanta el enlace de cada puerto y anota su estado. Devuelve cuantos
+/// quedaron con enlace vivo.
+///
+/// * NO SE CONFIA EN `PI`. El registro de puertos implementados lo escribe el
+/// firmware, y el firmware se equivoca: hay un caso conocido en Linux (Acer
+/// Switch Alpha 12) donde la BIOS reporta un mapa que hace al driver SALTARSE
+/// justo el puerto donde esta el disco, y el arreglo del kernel es ignorar el
+/// registro y forzar el valor bueno a mano. Aqui se recorren TODOS los puertos
+/// que `CAP.NP` dice que existen y se anota si `PI` los declaraba o no:
+/// saltarse el puerto del disco es peor que mirar uno de mas. En esta maquina
+/// eso se gana el pan -- el disco aparece en el puerto 2, que `PI=0x33` no
+/// declara.
+///
+/// * PERO EL LIMITE ES `CAP.NP`, Y ES UN LIMITE DURO. Lo que si es danino es
+/// pasarse de ahi: el espacio de puertos alias-ea, asi que un puerto que no
+/// existe no devuelve ceros, devuelve **otro puerto**, y escribirle es
+/// escribirle a ese. Desconfiar de `PI` es una decision; desconfiar de `NP`
+/// seria mandarle COMRESET a un disco vivo creyendo que se le habla al vacio.
+unsafe fn census(ctrl: &mut AhciController, pi: u32, sss: bool) -> u32 {
+    let hal = storage_hal::hal();
+    let mmio_base = ctrl.mmio_base;
+    let np = ctrl.port_count.min(32);
+    let mut active = 0u32;
+    let mut vacios = 0u32;
+
+    // ** LOS COMRESET PRIMERO, TODOS, Y LUEGO UNA SOLA ESPERA.
+    //
+    // Antes esto era `port_link_up(i)` dentro del bucle de abajo, y esa
+    // funcion hacia las dos cosas: pedir la renegociacion (escribir dos
+    // registros) y **esperar hasta 1,5 s** a que el enlace subiera. Con un
+    // puerto da igual. Con cuatro, tres de ellos vacios, son 4,5 segundos en
+    // fila -- y de esos, CERO son transferencia: son `delay_ms`.
+    //
+    // Medido en el Ryzen el 2026-08-14: `disk + ahci` costaba **10.640 ms de
+    // un arranque de 13.708**, con un solo disco en el puerto 2.
+    //
+    // Los enlaces negocian SOLOS y EN PARALELO: el COMRESET es una escritura y
+    // el PHY hace su trabajo aunque nadie mire. Esperarlos de uno en uno es
+    // hacer cola delante de cuatro cosas que ya estaban pasando a la vez.
+    //
+    // [!] El COMRESET se sigue mandando puerto a puerto y en el mismo orden --
+    // es la secuencia de la especificacion y no se toca. Lo unico que cambia
+    // es QUIEN espera: antes cada puerto, ahora todos juntos.
+    let mut esperando = 0u32;
+    for i in 0..np {
+        if port_kick(mmio_base, i, sss) {
+            esperando |= 1 << i;
+        }
+    }
+    if esperando != 0 {
+        esperar_enlaces(mmio_base, esperando, np);
+    }
+
+    for i in 0..np {
+        let declared = pi & (1 << i) != 0;
+        // La negociacion deja errores de estreno en PxSERR: se limpian, o el
+        // primer comando nacera con un error que no es suyo.
+        port_write(mmio_base, i, PORT_SERR, port_read(mmio_base, i, PORT_SERR));
+        let ssts = port_read(mmio_base, i, PORT_SSTS);
+        // Cada puerto dice su estado CRUDO aqui, en el driver, que es quien lo
+        // tiene delante. El `!` marca los que `PI` NO declaraba: si uno de
+        // esos trae disco, el firmware estaba mintiendo.
+        //
+        // Solo se imprimen los puertos que tienen ALGO que contar. Un HBA con
+        // 32 puertos y un disco escupia treinta lineas de ceros identicas que
+        // barrian el arranque entero fuera del panel -- y el panel es la unica
+        // ventana que hay, porque aqui no se puede hacer scroll hacia atras.
+        // Los vacios se cuentan y se resumen en una sola linea al final: el
+        // numero sigue estando, que es lo que importaba.
+        let algo = ssts != 0
+            || port_read(mmio_base, i, PORT_CMD) != 0
+            || port_read(mmio_base, i, PORT_SIG) != 0;
+        if algo {
+            hal.log(if declared { "[ahci] p" } else { "[ahci] !p" });
+            hal.log_hex("", i as u64);
+            hal.log_hex(" ssts=", ssts as u64);
+            hal.log_hex(" cmd=", port_read(mmio_base, i, PORT_CMD) as u64);
+            hal.log_hex(" sctl=", port_read(mmio_base, i, PORT_SCTL) as u64);
+            hal.log_hex(" sig=", port_read(mmio_base, i, PORT_SIG) as u64);
+            hal.log("\n");
+        } else {
+            vacios += 1;
+        }
+        // DET=3 es "dispositivo presente y comunicacion establecida": el unico
+        // estado en el que tiene sentido hablarle.
+        let state = match ssts & SSTS_DET {
+            0x03 => { active += 1; PortState::Active }
+            0x01 => PortState::Present,
+            _ => PortState::Empty,
+        };
+        ctrl.ports[i as usize] = AhciPort {
+            port_number: i, state, signature: port_read(mmio_base, i, PORT_SIG), ssts,
+            sctl: port_read(mmio_base, i, PORT_SCTL),
+            cmd: port_read(mmio_base, i, PORT_CMD),
+            command_list_phys: 0, fis_phys: 0, cmd_table_phys: 0,
+        };
+    }
+    // El resumen de los callados. El dato no se pierde: si algun dia "faltan"
+    // puertos, este numero dice cuantos se miraron y estaban en cero.
+    if vacios > 0 {
+        hal.log_hex("[ahci] puertos vacios (no se listan): ", vacios as u64);
+        hal.log("\n");
+    }
+    active
+}
+
+/// Levanta el enlace SATA de un puerto y devuelve su `PxSSTS` final.
+///
+/// * POR QUE HACE FALTA: el firmware UEFI uso este disco para arrancarnos y
+/// despues, al salir, PARO los puertos -- se ve en `PxCMD` con ST y FRE a
+/// cero. Un enlace parado reporta `DET=0`, que es indistinguible de "aqui no
+/// hay nada". Encender el disco (SUD) no basta: hay que renegociar el enlace,
+/// y eso se pide con un COMRESET por `PxSCTL`.
+///
+/// La secuencia es la de la especificacion, y cada espera es de TIEMPO REAL:
+/// contar vueltas de bucle mide la velocidad del CPU, no los milisegundos que
+/// el SATA necesita.
+/// ** SOLO PIDE. No espera. Devuelve `true` si hay que esperarle.
+///
+/// La espera vive fuera, en [`esperar_enlaces`], y compartida por todos los
+/// puertos. Ver el comentario de `census`: los PHY negocian en paralelo, y
+/// esperarlos de uno en uno costaba 1,5 s por puerto vacio.
+unsafe fn port_kick(mmio: u64, port: u8, sss: bool) -> bool {
+    let hal = storage_hal::hal();
+
+    // 1. Con el motor de comandos andando no se toca el PHY.
+    port_stop(mmio, port);
+
+    // 2. Arrancar el disco si el HBA usa spin-up escalonado (CAP.SSS): con el,
+    //    un puerto no negocia nada hasta que se le pide. SUD = Spin-Up Device,
+    //    POD = Power On Device.
+    if sss {
+        let cmd = port_read(mmio, port, PORT_CMD);
+        port_write(mmio, port, PORT_CMD, cmd | (1 << 1) | (1 << 2));
+        hal.delay_ms(10);
+    }
+
+    // 3. Ya esta? Si el enlace vino vivo del firmware, aqui se acaba y no hay
+    //    nada que esperar.
+    if port_read(mmio, port, PORT_SSTS) & SSTS_DET == 0x03 {
+        port_write(mmio, port, PORT_SERR, port_read(mmio, port, PORT_SERR));
+        return false;
+    }
+
+    // 4. COMRESET: DET=1 fuerza la renegociacion, y hay que sostenerlo al
+    //    menos 1 ms antes de soltarlo a 0.
+    let sctl = port_read(mmio, port, PORT_SCTL);
+    port_write(mmio, port, PORT_SCTL, (sctl & !0xF) | 0x1);
+    hal.delay_ms(2);
+    port_write(mmio, port, PORT_SCTL, sctl & !0xF);
+    true
+}
+
+/// **Una sola espera para todos los enlaces pedidos.**
+///
+/// Mismo tope que antes --1,5 s, que es lo que puede tardar un disco mecanico
+/// dormido-- pero UNA vez y no una por puerto. Y sale en cuanto todos han
+/// subido, que en una maquina con SSD son unas pocas vueltas.
+///
+/// El tope no se puede bajar "porque un SSD contesta rapido": el numero existe
+/// para el caso lento, y ese caso es real. Lo que estaba mal no era la
+/// duracion, era **pagarla en serie**.
+unsafe fn esperar_enlaces(mmio: u64, mut pendientes: u32, np: u8) {
+    let hal = storage_hal::hal();
+    for _ in 0..150 {
+        for i in 0..np {
+            if pendientes & (1 << i) == 0 {
+                continue;
+            }
+            if port_read(mmio, i, PORT_SSTS) & SSTS_DET == 0x03 {
+                pendientes &= !(1 << i);
+            }
+        }
+        if pendientes == 0 {
+            return;
+        }
+        hal.delay_ms(10);
+    }
+}
+
+/// Detiene el motor de comandos del puerto y espera a que pare de verdad.
+unsafe fn port_stop(mmio: u64, port: u8) -> bool {
+    let cmd = port_read(mmio, port, PORT_CMD);
+    port_write(mmio, port, PORT_CMD, cmd & !CMD_ST);
+    let mut spun = 0u32;
+    while port_read(mmio, port, PORT_CMD) & CMD_CR != 0 && spun < PORT_TIMEOUT {
+        spun += 1; core::hint::spin_loop();
+    }
+    let cmd = port_read(mmio, port, PORT_CMD);
+    port_write(mmio, port, PORT_CMD, cmd & !CMD_FRE);
+    while port_read(mmio, port, PORT_CMD) & CMD_FR != 0 && spun < PORT_TIMEOUT {
+        spun += 1; core::hint::spin_loop();
+    }
+    spun < PORT_TIMEOUT
+}
+
+/// Arranca el puerto en el orden que manda la especificacion: primero recibir
+/// FIS y, solo cuando eso corre, aceptar comandos.
+unsafe fn port_start(mmio: u64, port: u8) -> bool {
+    let cmd = port_read(mmio, port, PORT_CMD);
+    port_write(mmio, port, PORT_CMD, cmd | CMD_FRE);
+    let mut spun = 0u32;
+    while port_read(mmio, port, PORT_CMD) & CMD_FR == 0 && spun < PORT_TIMEOUT {
+        spun += 1; core::hint::spin_loop();
+    }
+    if spun >= PORT_TIMEOUT { return false; }
+    let cmd = port_read(mmio, port, PORT_CMD);
+    port_write(mmio, port, PORT_CMD, cmd | CMD_ST);
+    true
+}
+
+/// Reserva las estructuras DMA del puerto y lo deja listo para comandos.
+pub unsafe fn init_port_dma(port_idx: u8) -> bool {
+    #[allow(static_mut_refs)]
+    let ctrl = match CONTROLLER.as_mut() { Some(c) => c, None => return false };
+    if port_idx >= 32 { return false; }
+    let mmio = ctrl.mmio_base;
+    let port = &mut ctrl.ports[port_idx as usize];
+    if port.state != PortState::Active { return false; }
+    let hal = storage_hal::hal();
+
+    // El puerto tiene que estar PARADO antes de moverle las direcciones de sus
+    // estructuras: con el motor corriendo, se las lleva a medio cambiar.
+    if !port_stop(mmio, port_idx) {
+        hal.log("[ahci] el puerto no se detiene\n");
+        return false;
+    }
+
+    // Una pagina por estructura. Sobra sitio (la lista son 1 KiB y el area de
+    // FIS 256 B), pero la pagina es la unidad que entrega el asignador y asi
+    // las alineaciones que exige el HBA (1 KiB / 256 B / 128 B) salen solas.
+    let cl_phys = match hal.alloc_dma_pages(1) { Some(p) => p, None => return false };
+    let fis_phys = match hal.alloc_dma_pages(1) { Some(p) => p, None => return false };
+    let ct_phys = match hal.alloc_dma_pages(1) { Some(p) => p, None => return false };
+    core::ptr::write_bytes(hal.phys_to_virt(cl_phys), 0, 4096);
+    core::ptr::write_bytes(hal.phys_to_virt(fis_phys), 0, 4096);
+    core::ptr::write_bytes(hal.phys_to_virt(ct_phys), 0, 4096);
+
+    // Cabecera de la ranura 0 -> donde esta SU command table. Esto es lo que
+    // faltaba: sin CTBA en la cabecera, el HBA busca la orden en la direccion
+    // fisica 0.
+    let hdr = hal.phys_to_virt(cl_phys) as *mut u32;
+    hdr.add(2).write_volatile((ct_phys & 0xFFFF_FFFF) as u32); // CTBA
+    hdr.add(3).write_volatile((ct_phys >> 32) as u32);         // CTBAU
+
+    port.command_list_phys = cl_phys;
+    port.fis_phys = fis_phys;
+    port.cmd_table_phys = ct_phys;
+
+    port_write(mmio, port_idx, PORT_CLB, (cl_phys & 0xFFFF_FFFF) as u32);
+    port_write(mmio, port_idx, PORT_CLBU, (cl_phys >> 32) as u32);
+    port_write(mmio, port_idx, PORT_FB, (fis_phys & 0xFFFF_FFFF) as u32);
+    port_write(mmio, port_idx, PORT_FBU, (fis_phys >> 32) as u32);
+    // Errores heredados del arranque: se limpian antes de empezar (los bits de
+    // PxSERR son "escribe 1 para borrar").
+    port_write(mmio, port_idx, PORT_SERR, port_read(mmio, port_idx, PORT_SERR));
+    port_write(mmio, port_idx, PORT_IS, port_read(mmio, port_idx, PORT_IS));
+
+    if !port_start(mmio, port_idx) {
+        hal.log("[ahci] el puerto no arranca\n");
+        return false;
+    }
+    true
+}
