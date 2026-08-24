@@ -13,7 +13,6 @@
   1761  toolchain/forge/bmo-lower/src/emu/mod.rs
   1621  toolchain/lang/cpp/src/parser.rs
   1584  Ultra_kernel_x86-64/build.ps1
-  1584  platform/drivers/usb/xhci/src/lib.rs
   1435  platform/abi/bmo-abi/src/bef/validator.rs
   1363  Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs
   1345  Ultra_userspace/services/director/src/commands/reports.rs
