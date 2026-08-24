@@ -10,7 +10,7 @@
 //!    SHA-256     [X] hoy      debajo de HMAC, de HKDF, del transcript de TLS
 //!    HMAC        [X] hoy      SHA-256 dos veces, con dos rellenos
 //!    HKDF        [X] hoy      HMAC en cadena: de un secreto salen las claves
-//!    X25519      --           curva eliptica. LA pieza dificil
+//!    X25519      [X] hoy      curva eliptica. LA pieza dificil
 //!    AES-GCM     --           o ChaCha20-Poly1305
 //!    TLS 1.3     --           la maquina de estados encima de todo lo anterior
 //!    X.509       --           ASN.1, fechas, cadena de confianza
@@ -62,6 +62,12 @@ pub mod sha256;
 /// **HMAC-SHA256 y HKDF.** El primer sitio del arbol donde el TIEMPO que tarda
 /// algo es parte de si es correcto. Ver su cabecera.
 pub mod hmac;
+/// **La aritmetica de X25519**: numeros modulo `2^255 - 19`. Solo cuentas.
+pub mod campo25519;
+/// **X25519**: dos maquinas que nunca se han visto acaban con el mismo secreto,
+/// y quien escuchaba el cable no lo tiene.
+pub mod x25519;
 
 pub use hmac::{expandir, extraer, hmac as hmac_sha256, iguales};
 pub use sha256::Sha256;
+pub use x25519::{secreto_a_publico, secreto_compartido, x25519};
