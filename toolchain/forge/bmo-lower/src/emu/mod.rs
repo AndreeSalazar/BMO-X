@@ -228,6 +228,20 @@ pub struct Machine {
     /// solo se emite consigo mismo (para hacer 0.0), poner la mitad baja a
     /// cero es exactamente correcto.
     pub xmm: [u64; 16],
+    /// **Los `ymm` enteros: cuatro `flotante64` cada uno** (2026-08-23).
+    ///
+    /// ** Aparte de `xmm` y no ensanchandolo, a proposito. `xmm` guarda 64 bits
+    /// con un motivo escrito arriba --*"todo lo que BMO emite en coma flotante
+    /// es ESCALAR"*-- y eso sigue siendo verdad para todo menos estas cuatro
+    /// operaciones. Ensanchar `xmm` habria obligado a repasar cada sitio que lo
+    /// toca para nada.
+    ///
+    /// [!] Y no se solapan: AVX de verdad SI comparte los 128 bajos con SSE. Se
+    /// separan porque en BMO **nada mezcla los dos** -- el compilador no
+    /// vectoriza, asi que quien escribe AVX lo escribe en un bloque suyo. El dia
+    /// que alguien los mezcle, esto miente, y por eso `limpia_los_altos` existe
+    /// como fila propia y visible.
+    pub ymm: [[u64; 4]; 16],
     pub code: Vec<u8>,
     pub rip: usize,
     /// Texto que el kernel habria pintado.
@@ -380,6 +394,7 @@ impl Machine {
         let mut m = Self {
             regs: [0; 16],
             xmm: [0; 16],
+            ymm: [[0; 4]; 16],
             code,
             rip: 0,
             console: String::new(),
@@ -583,6 +598,104 @@ impl Machine {
     }
 
     /// Decodifica un ModRM y devuelve `(reg, destino)`.
+    /// **AVX2 sobre `ymm`: cuatro `flotante64` por instruccion.**
+    ///
+    /// Las formas que emite la tabla de intrinsecos, y solo esas:
+    ///
+    /// ```text
+    ///    C5 FD 10 /r     vmovupd ymm, [mem]      traer cuatro
+    ///    C5 FD 11 /r     vmovupd [mem], ymm      dejarlos
+    ///    C5 FD 58 /r     vaddpd  ymm, ymm, ymm
+    ///    C5 FD 5C /r     vsubpd
+    ///    C5 FD 59 /r     vmulpd
+    ///    C4 E2 F5 B8 /r  vfmadd231pd ymm, ymm, [mem]
+    ///    C5 F8 77        vzeroupper
+    /// ```
+    ///
+    /// ** `vfmadd231pd` lee el destino ANTES de escribirlo: el `231` dice
+    /// exactamente eso. Es la operacion de la que esta hecho un producto de
+    /// matrices, y la unica de las cuatro que justifica las otras tres.
+    fn vex(&mut self, primero: u8) {
+        // Con `C5` el segundo byte lleva R, vvvv, L y pp. Con `C4` son dos, y
+        // el primero ademas trae el mapa de opcodes.
+        let (vvvv, opcode, rex_r) = if primero == 0xC5 {
+            let b = self.fetch_u8();
+            let vvvv = ((!b >> 3) & 0xF) as usize;
+            let r = ((!b >> 7) & 1) as usize;
+            (vvvv, self.fetch_u8(), r)
+        } else {
+            let b1 = self.fetch_u8();
+            let b2 = self.fetch_u8();
+            let vvvv = ((!b2 >> 3) & 0xF) as usize;
+            let r = ((!b1 >> 7) & 1) as usize;
+            (vvvv, self.fetch_u8(), r)
+        };
+
+        // `vzeroupper` no lleva modrm: pone a cero la mitad alta de todos.
+        if opcode == 0x77 {
+            for y in self.ymm.iter_mut() {
+                y[2] = 0;
+                y[3] = 0;
+            }
+            return;
+        }
+
+        let (reg, rm) = self.modrm(rex_r, 0, 0);
+        let leer = |m: &Machine, o: &Operand| -> [u64; 4] {
+            match o {
+                Operand::Reg(i) => m.ymm[*i],
+                Operand::Mem(a) => [
+                    m.read_u64(*a),
+                    m.read_u64(a + 8),
+                    m.read_u64(a + 16),
+                    m.read_u64(a + 24),
+                ],
+            }
+        };
+
+        match opcode {
+            // vmovupd ymm, [mem]  -- traer
+            0x10 => self.ymm[reg] = leer(self, &rm),
+            // vmovupd [mem], ymm  -- dejar
+            0x11 => match rm {
+                Operand::Reg(i) => self.ymm[i] = self.ymm[reg],
+                Operand::Mem(a) => {
+                    let v = self.ymm[reg];
+                    for (k, x) in v.iter().enumerate() {
+                        self.write_u64(a + (k as u64) * 8, *x);
+                    }
+                }
+            },
+            // Las tres aritmeticas: `reg = vvvv <op> rm`, cuatro a la vez.
+            0x58 | 0x5C | 0x59 => {
+                let a = self.ymm[vvvv];
+                let b = leer(self, &rm);
+                for k in 0..4 {
+                    let x = f64::from_bits(a[k]);
+                    let y = f64::from_bits(b[k]);
+                    let r = match opcode {
+                        0x58 => x + y,
+                        0x5C => x - y,
+                        _ => x * y,
+                    };
+                    self.ymm[reg][k] = r.to_bits();
+                }
+            }
+            // vfmadd231pd: `reg = reg + vvvv * rm`. **Lee el destino primero.**
+            0xB8 => {
+                let acc = self.ymm[reg];
+                let a = self.ymm[vvvv];
+                let b = leer(self, &rm);
+                for k in 0..4 {
+                    let r = f64::from_bits(acc[k])
+                        + f64::from_bits(a[k]) * f64::from_bits(b[k]);
+                    self.ymm[reg][k] = r.to_bits();
+                }
+            }
+            otro => panic!("opcode VEX 0x{:02X} que BMO no emite", otro),
+        }
+    }
+
     fn modrm(&mut self, rex_r: usize, rex_x: usize, rex_b: usize) -> (usize, Operand) {
         let modrm = self.fetch_u8();
         let md = modrm >> 6;
@@ -743,6 +856,23 @@ impl Machine {
             byte = self.fetch_u8();
         }
         let _ = lock;
+
+        // *** VEX: LAS CUATRO OPERACIONES DE AVX2 (2026-08-23).
+        //
+        // ** Se emulan y NO se aparcan en `SOLO_EN_METAL`, y el motivo lo tiene
+        // escrito esa lista: *"emularlas seria inventarse una respuesta"* vale
+        // para `cpuid` o `wbinvd` --que describen un silicio que aqui no hay--
+        // y **no vale para sumar cuatro numeros**. Eso se puede hacer bien.
+        //
+        // Solo las formas que BMO emite: la tabla de intrinsecos lleva bytes
+        // FIJOS, asi que aqui no hace falta un decodificador de VEX completo.
+        // Lo que no cuadre revienta en el `panic` de siempre, que es lo que se
+        // quiere -- un emulador que adivina es peor que uno que para.
+        if byte == 0xC5 || byte == 0xC4 {
+            self.vex(byte);
+            return;
+        }
+
         let mut rex = 0u8;
         if (0x40..=0x4F).contains(&byte) {
             rex = byte;

@@ -460,6 +460,7 @@ mod monton;
 mod objetos;
 mod reglas;
 mod signo;
+mod simd;
 mod sonda;
 mod tabla;
 
