@@ -299,6 +299,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_SMP_DESPERTAR => op_maquina::smp_despertar(arg0, arg1),
         TASK_OP_ESTRATOS_SELLAR => op_maquina::estratos_sellar(arg0, arg1),
         TASK_OP_DISCO => op_maquina::disco(arg0, arg1),
+        // ** LOS DOS QUE LE DEVUELVEN AL DUENO SU MAQUINA (2026-08-24).
+        //
+        // `net rx` y `placa` existian SOLO en el shell de Ring 0, y al shell de
+        // Ring 0 no se vuelve. Un camino que solo existe alli es un camino que
+        // el dueno de su propia maquina no puede tomar.
+        TASK_OP_RED => op_maquina::red(arg0, arg1),
+        TASK_OP_PLACA => op_contar::placa(arg0, arg1),
         // ** CREAR UN FICHERO. La primera operacion del sistema que escribe
         // CONTENIDO en el almacen: `sellar` commitea sin datos y el recorte le
         // habla al aparato.

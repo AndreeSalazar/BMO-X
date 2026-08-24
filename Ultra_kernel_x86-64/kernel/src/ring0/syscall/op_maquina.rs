@@ -59,6 +59,62 @@ pub(super) fn smp_despertar(arg0: u64, arg1: u64) -> BmoStatus {
             // La prueba. Devuelve la aceleracion x100 --`842` son 8,42x--
             // porque por la puerta solo cabe un numero y una fraccion no
             // se puede mandar entera. El detalle en crudo va a CABINA.
+            // *** EL CENSO HILO A HILO, CON SU NOMBRE. (2026-08-24)
+            //
+            // Peticion del dueno, con estas palabras: *"en `smp all` me gustaria
+            // que detalles TODO con nombres CORE y THREAD asi para no decir x12,
+            // eso es mentir si pongo asi"*.
+            //
+            // *** Y tiene razon. "12 de 12" presenta doce cosas como si fueran
+            // doce iguales, y no lo son: son **SEIS nucleos con dos hilos cada
+            // uno**. Un hilo SMT no es medio nucleo ni es un nucleo: es un
+            // sitio mas para meter trabajo en el MISMO nucleo, y cuanto rinde
+            // depende de si la faena deja huecos.
+            //
+            // Es exactamente la misma queja que la de la aceleracion, en otro
+            // sitio: **un numero sin el perfil al lado no se puede juzgar.**
+            //
+            // El kernel ya sabia el nombre --`smp::tipo_de` lleva desde antes
+            // repartiendo CORE y THREAD por el APIC id-- y lo mandaba a CABINA
+            // como eventos sueltos. Lo que faltaba era **poder pedirlo**, para
+            // que el escritorio pueda pintar una tabla en vez de una x.
+            //
+            // Lo que devuelve, empaquetado porque por la puerta cabe UN numero:
+            //
+            //    bits  0..8    el estado: 0 maestro, 1 obrero, 2 dormido,
+            //                  3 ausente, 4 desconocido
+            //    bits  8..16   1 si es CORE, 2 si es THREAD, 0 si no se sabe
+            //    bits 16..32   el nucleo FISICO al que pertenece
+            //    bits 32..48   cuantos hilos por nucleo dice el PERFIL
+            3 => {
+                let id = if arg0 > 63 { 63 } else { arg0 as u32 };
+                let e = match smp::estado_de(id) {
+                    smp::Estado::Maestro => 0u64,
+                    smp::Estado::Obrero => 1,
+                    smp::Estado::Dormido => 2,
+                    smp::Estado::Ausente => 3,
+                    _ => 4,
+                };
+                let t = match smp::tipo_de(id) {
+                    "CORE" => 1u64,
+                    "THREAD" => 2,
+                    _ => 0,
+                };
+                // ** El nucleo fisico sale del PERFIL, no de un desplazamiento
+                // escrito a mano. Que los hermanos SMT sean IDs consecutivos es
+                // un hecho de ESTA maquina, y el sitio de un hecho de maquina es
+                // el perfil (ley 24). El dia que un CPU los reparta de otra
+                // forma, cambia el perfil y esta cuenta no se entera.
+                let (fisico, por_nucleo) =
+                    match (crate::ring0::cpu_vendor::profile::active().nucleos)() {
+                        Some(n) if n.nucleos > 0 && n.hilos >= n.nucleos => {
+                            let hpc = (n.hilos / n.nucleos) as u64;
+                            (if hpc > 0 { id as u64 / hpc } else { id as u64 }, hpc)
+                        }
+                        _ => (id as u64, 0),
+                    };
+                BmoStatus::ok_value(e | (t << 8) | (fisico << 16) | (por_nucleo << 32))
+            }
             2 => {
                 let (alive, _) = smp::alive();
                 let (uno, todos, partes) = crew::prueba(alive);
@@ -383,3 +439,52 @@ pub(super) fn disco(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
+/// **ARMAR Y SONDEAR LA RED.** Ver `TASK_OP_RED` en `ops.rs` para el por que.
+pub(super) fn red(arg0: u64, _arg1: u64) -> BmoStatus {
+    use crate::ring0::dev::net;
+    match arg0 {
+        RED_OP_ARMAR => {
+            // ** ANTES de obedecer, con quien lo pide. Misma regla que el
+            // disco: la primera operacion que cambia el estado de un aparato no
+            // puede ser silenciosa ni cuando funciona.
+            crate::ring0::cabina::info(
+                "red",
+                "armar el receptor, pedido por un proceso de Ring 3",
+                scheduler::current_pid() as u64,
+            );
+            let Some(id) = net::identidad() else {
+                crate::ring0::cabina::warn("red", "no hay tarjeta que este kernel sepa leer", 0);
+                return BmoStatus::ok_value(RED_SIN_TARJETA);
+            };
+            // *** SIN CABLE NO SE ARMA, y es un motivo propio.
+            //
+            // ** No es que el anillo falle: es que no van a llegar tramas por
+            // correcto que sea todo lo demas. Separarlo de un fallo del anillo
+            // es lo que impide pasar una tarde buscando un bug en un driver que
+            // funciona -- la leccion del `cero es lo esperado` del paso 1.
+            if !id.enlace_arriba() {
+                crate::ring0::cabina::warn("red", "el enlace esta ABAJO: enchufa el cable", 0);
+                return BmoStatus::ok_value(RED_SIN_ENLACE);
+            }
+            if !net::rx_start() {
+                crate::ring0::cabina::warn("red", "el receptor no se pudo armar", 0);
+                return BmoStatus::ok_value(RED_NO_ARMA);
+            }
+            // Y DESPUES, con lo que trajo la primera vuelta.
+            let n = net::rx_poll();
+            crate::ring0::cabina::count("red", "receptor ARMADO. tramas en la 1a vuelta", n as u64);
+            crate::ring0::cabina::count("red", "  ...y en total desde el arranque", net::rx_tramas());
+            BmoStatus::ok_value(RED_ARMADO_OK)
+        }
+        // ** Vaciar lo que llego. No cambia nada del aparato: devuelve los
+        // descriptores que la tarjeta ya uso, que es lo que hace que el anillo
+        // no se llene. Devuelve cuantas tramas se leyeron ESTA vez.
+        RED_OP_SONDEAR => {
+            if !net::rx_activo() {
+                return BmoStatus::ok_value(0);
+            }
+            BmoStatus::ok_value(net::rx_poll() as u64)
+        }
+        _ => unsupported(),
+    }
+}
