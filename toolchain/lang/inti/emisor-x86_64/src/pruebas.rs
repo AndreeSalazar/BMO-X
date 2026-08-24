@@ -1969,3 +1969,92 @@ funcion f(a es entero64, b es entero64) devuelve entero64
         e.katanas
     );
 }
+
+// ===================================================================
+//  *** `numero + numero` EN EL DESCENSO (2026-08-23)
+// ===================================================================
+
+/// ***`a + b` DE DOS `numero` LLAMA A `suma`, no emite un `add`.***
+///
+/// ** Un `numero` mide 16 bytes --coeficiente `entero64` mas escala-- asi que
+/// **no cabe en un registro**. Un `add` sumaria los ocho bytes bajos de cada uno
+/// --los coeficientes-- **ignorando las escalas**:
+///
+/// ```text
+///    1.5 + 0.25   con `add`    ->  (40, ?)   los coeficientes 15 y 25
+///                 con `suma`   ->  (175, 2)  = 1.75
+/// ```
+///
+/// Compilaria, correria, y daria otro numero. La familia de siempre.
+#[test]
+fn sumar_dos_numeros_llama_al_decimal_y_no_emite_un_add() {
+    let m = ir_de("perfil pleno\nusa decimal\n\nfuncion f(a es numero, b es numero) devuelve numero\n    devuelve a + b\n");
+    let f = m.funciones.iter().find(|f| f.nombre == "f").expect("sin `f`");
+    assert!(
+        f.instrucciones.iter().any(|i| matches!(
+            i,
+            Instr::Llama { que: Valor::Nombre(n), .. } if n == "suma"
+        )),
+        "`a + b` de numeros no llamo a `suma`: {:?}",
+        f.instrucciones
+    );
+    assert!(
+        !f.instrucciones.iter().any(|i| matches!(
+            i,
+            Instr::Binaria { op: bmo_inti_front::arbol::Op::Suma, .. }
+        )),
+        "quedo un `add`: eso suma coeficientes e ignora las escalas"
+    );
+}
+
+/// ***Y EL RESULTADO VIVE EN UNA LOCAL DE 16 BYTES, no en un temporal.***
+///
+/// ** Un temporal es UNA PALABRA, y esa es toda su definicion. El resultado de
+/// una suma decimal no cabe, asi que el descenso pide una local ANONIMA y pasa
+/// su direccion. Es la primera vez que INTI necesita una local de mas de una
+/// palabra -- y la que obligo al marco a repartir por MEDIDA en vez de por
+/// cuenta.
+#[test]
+fn el_resultado_decimal_vive_en_una_local_de_dieciseis_bytes() {
+    let m = ir_de("perfil pleno\nusa decimal\n\nfuncion f(a es numero, b es numero) devuelve numero\n    devuelve a + b\n");
+    let f = m.funciones.iter().find(|f| f.nombre == "f").unwrap();
+    assert!(
+        f.medidas_locales.iter().any(|x| *x == 16),
+        "no hay ninguna local de 16 bytes: {:?}",
+        f.medidas_locales
+    );
+    assert!(
+        f.instrucciones
+            .iter()
+            .any(|i| matches!(i, Instr::DireccionDeLocal { .. })),
+        "nadie pidio la direccion de la local"
+    );
+}
+
+/// ***EL MARCO NO PISA NADA.*** Dos `numero` seguidos ocupan 32 bytes, y el
+/// tercero cae DETRAS -- no encima de la segunda mitad del segundo.
+///
+/// ** Antes del 2026-08-23 el marco daba **una palabra a cada local**:
+/// `local(l) = -((l+1) * PALABRA)`. Con un `numero` de 16 bytes, la local de al
+/// lado caia dentro. En silencio, y con la direccion bien puesta.
+#[test]
+fn dos_numeros_seguidos_no_se_pisan_en_el_marco() {
+    let m = ir_de("perfil pleno\nusa decimal\n\nfuncion f devuelve entero32\n    a es numero = 1\n    b es numero = 2\n    c es entero64 = 7\n    devuelve 0\n");
+    let f = m.funciones.iter().find(|f| f.nombre == "f").unwrap();
+    let marco = crate::marco::Marco::de(f);
+
+    let sitios: Vec<i32> = (0..f.locales).map(|i| marco.local(bmo_inti_front::ir::Local(i))).collect();
+    // Cada local tiene que caber entre su sitio y el de la anterior.
+    for (i, medida) in f.medidas_locales.iter().enumerate() {
+        let m_i = if *medida == 0 { 8 } else { *medida as i32 };
+        let mio = sitios[i];
+        for (j, otro) in sitios.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            let m_j = f.medidas_locales.get(j).copied().unwrap_or(8).max(1) as i32;
+            let solapa = mio < *otro + m_j && *otro < mio + m_i;
+            assert!(!solapa, "la local {} y la {} se pisan: {} y {}", i, j, mio, otro);
+        }
+    }
+}

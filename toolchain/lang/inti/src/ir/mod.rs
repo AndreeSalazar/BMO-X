@@ -241,6 +241,8 @@ struct Descenso<'t> {
     metal: &'t [String],
     /// Los tipos declarados de la funcion que se esta bajando.
     tipos: std::collections::HashMap<String, crate::arbol::Tipo>,
+    /// Cuanto mide cada local, en el mismo orden que `locales`.
+    medidas_locales: Vec<u32>,
     /// **Cuantos literales de lista se quedaron sin construir** por no saber el
     /// ancho de su elemento.
     ///
@@ -280,6 +282,7 @@ impl<'t> Descenso<'t> {
             metal,
             tipos: std::collections::HashMap::new(),
             sin_ancho: 0,
+            medidas_locales: Vec::new(),
         }
     }
 
@@ -351,6 +354,14 @@ impl<'t> Descenso<'t> {
             crate::arbol::Tipo::Lista(dentro) => self.plano.medida_de(&dentro),
             _ => None,
         }
+    }
+
+    /// Es esta expresion un `numero`? -- el decimal exacto de `pleno`.
+    fn es_numero(&self, e: &Expr) -> bool {
+        matches!(
+            self.plano.tipo_de(e, &self.tipos),
+            Some(crate::arbol::Tipo::Nombre(ref n)) if n == "numero" || n == "decimal"
+        )
     }
 
     /// Es esta expresion un `texto`?
@@ -447,9 +458,42 @@ impl<'t> Descenso<'t> {
             Some(i) => Local(i as u32),
             None => {
                 self.locales.push(nombre.to_string());
+                // *** Y SE APUNTA CUANTO MIDE, que hasta hoy no hacia falta.
+                //
+                // El emisor le daba UNA PALABRA a cada local. Valia mientras
+                // todo lo que vivia en una cupiera en ocho bytes -- y `numero`
+                // mide 16, asi que su segunda mitad se habria comido la de al
+                // lado **en silencio**.
+                //
+                // ** La medida sale del TIPO, no de la maquina, y por eso la
+                // sabe el frontend: `disposicion` ya la calculo. Lo que sigue
+                // siendo del emisor es donde cae cada una.
+                let medida = self
+                    .tipos
+                    .get(nombre)
+                    .and_then(|t| self.plano.medida_de(t))
+                    .unwrap_or(0);
+                self.medidas_locales.push(medida);
                 Local((self.locales.len() - 1) as u32)
             }
         }
+    }
+
+    /// **Una local sin nombre, de `medida` bytes.**
+    ///
+    /// ** Hace falta desde que una operacion puede producir un valor que no cabe
+    /// en un registro: `a + b` de dos `numero` da 16 bytes, y esos tienen que
+    /// vivir en algun sitio del marco. Un temporal no sirve -- un temporal es
+    /// una palabra, y esa es toda su definicion.
+    ///
+    /// [!] El nombre lleva un caracter que el lexer no deja escribir, asi que no
+    /// puede chocar con una local del programa. Es la misma treta que el pozo de
+    /// textos usa para sus congelados, y por el mismo motivo.
+    fn local_anonima(&mut self, medida: u32) -> Local {
+        let nombre = format!(" tmp{}", self.locales.len());
+        self.locales.push(nombre);
+        self.medidas_locales.push(medida);
+        Local((self.locales.len() - 1) as u32)
     }
 
     fn busca_local(&self, nombre: &str) -> Option<Local> {
@@ -485,6 +529,7 @@ impl<'t> Descenso<'t> {
             nombre: f.nombre.clone(),
             parametros: f.parametros.len() as u32,
             locales: self.locales.len() as u32,
+            medidas_locales: self.medidas_locales,
             temporales: self.siguiente_temporal,
             instrucciones: self.instrucciones,
             sin_ancho: self.sin_ancho,
@@ -808,6 +853,53 @@ impl<'t> Descenso<'t> {
                 // ** El monton NO viaja en la expresion: un operador no tiene
                 // hueco donde llevarlo. Se coge con `Instr::MontonDeLaTarea`,
                 // que es ambiente -- como en cualquier lenguaje con objetos.
+                // *** `numero + numero` NO ES UNA SUMA DE REGISTROS (2026-08-23).
+                //
+                // Un `numero` mide 16 bytes --coeficiente `entero64` mas
+                // escala-- asi que **no cabe en un registro**. Bajarlo a un
+                // `add` sumaria los ocho bytes bajos de cada uno --los
+                // coeficientes-- **ignorando las escalas**: `0.1 + 0.2` daria
+                // `(3, ?)` con una escala inventada, y `1.5 + 0.25` daria
+                // `(40, ?)` en vez de `1.75`.
+                //
+                // ** Compilaria, correria, y daria otro numero. La familia de
+                // siempre.
+                //
+                // Lo que hace falta es `suma(destino, a, b)` de
+                // `runtime/decimal`: iguala escalas SUBIENDO --nunca bajando,
+                // que perderia digitos-- y deja el resultado donde se le diga.
+                //
+                // *** Y el destino es una LOCAL ANONIMA de 16 bytes. No puede
+                // ser un temporal: un temporal es una palabra, y esa es toda su
+                // definicion.
+                if matches!(op, Op::Suma | Op::Por) && self.es_numero(izquierda) && self.es_numero(derecha) {
+                    let i = self.expresion(izquierda);
+                    let d = self.expresion(derecha);
+                    let destino = self.local_anonima(16);
+                    let dir = self.temporal();
+                    self.pon(Instr::DireccionDeLocal {
+                        destino: dir,
+                        local: destino,
+                    });
+                    let t = self.temporal();
+                    self.pon(Instr::Llama {
+                        destino: Some(t),
+                        que: Valor::Nombre(
+                            if matches!(op, Op::Suma) { "suma" } else { "multiplica" }.to_string(),
+                        ),
+                        argumentos: vec![Valor::Temporal(dir), i, d],
+                    });
+                    // ** Lo que vale la expresion es la DIRECCION del resultado,
+                    // no lo que `suma` devolvio --que es un si/no--. Un `numero`
+                    // se pasa por direccion en todas partes, y esta es una mas.
+                    let r = self.temporal();
+                    self.pon(Instr::DireccionDeLocal {
+                        destino: r,
+                        local: destino,
+                    });
+                    return Valor::Temporal(r);
+                }
+
                 if matches!(op, Op::Suma) && self.es_texto(izquierda) && self.es_texto(derecha) {
                     // [!] IZQUIERDA PRIMERO. La Regla 8 fija el orden de
                     // evaluacion, y este camino no puede tener otro que el de

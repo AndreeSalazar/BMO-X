@@ -132,12 +132,13 @@ tipos_que_cuestan = ["numero", "decimal"]
 texto = true
 #  Literal, indice con Regla 2, `agrega` y `sitio_de`. Entero desde el 23-08.
 lista = true
-#  ** Tiene disposicion --16 bytes, coeficiente + escala-- y tiene runtime
-#  (`runtime/decimal`), pero **el descenso no lo usa**: `a + b` de dos `numero`
-#  todavia baja a una suma de enteros. Lo que falta es cablearlo, como se cablearon
-#  `texto` y `lista`.
-numero = false
-decimal = false
+#  ** Entero desde el 23-08: disposicion (16 bytes, coeficiente + escala),
+#  runtime (`runtime/decimal`) y descenso -- `a + b` llama a `suma`, que iguala
+#  escalas subiendo. Y trajo consigo la primera LOCAL de mas de una palabra: un
+#  `numero` no cabe en un registro, asi que el marco tuvo que aprender a repartir
+#  por medida en vez de por cuenta.
+numero = true
+decimal = true
 #  ** Ni forma, ni runtime, ni descenso. Es la unica de las cuatro que no ha
 #  empezado.
 tabla = false

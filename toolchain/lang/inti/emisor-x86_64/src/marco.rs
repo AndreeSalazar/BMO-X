@@ -76,6 +76,15 @@ pub enum Sitio {
 #[derive(Debug, Clone)]
 pub struct Marco {
     locales: u32,
+    /// **Donde cae cada local**, ya en desplazamiento negativo desde `rbp`.
+    ///
+    /// *** Antes esto no existia y el sitio se calculaba: `-((l+1) * PALABRA)`.
+    /// Valia mientras toda local midiera una palabra -- y `numero` mide 16, asi
+    /// que su segunda mitad se habria comido la local de al lado **en
+    /// silencio**, que es la clase de fallo que este proyecto persigue.
+    sitios_locales: Vec<i32>,
+    /// Lo que ocupan todas las locales juntas, ya alineado.
+    bytes_locales: i32,
     temporales: u32,
     /// Donde vive cada temporal, por indice.
     sitios: Vec<Sitio>,
@@ -93,8 +102,39 @@ impl Marco {
     /// `arch/<maquina>/inti.toml`. El dia que la tabla anada `r10` y `r11`,
     /// este fichero no cambia.
     pub fn con_registros(f: &FuncionIr, disponibles: &[u8]) -> Self {
+        // *** EL REPARTO DE LAS LOCALES, por MEDIDA y no por cuenta.
+        //
+        // Cada una se alinea a lo que pide --una palabra si no dice otra cosa--
+        // y el marco crece hacia abajo, asi que el desplazamiento se calcula
+        // ACUMULANDO y luego se niega.
+        //
+        // ** Una medida de 0 significa "no se sabe", y se le da una palabra: es
+        // lo que se hacia antes para todas, asi que un tipo del que no consta la
+        // medida no cambia de comportamiento por existir esta tabla.
+        let mut sitios_locales = Vec::with_capacity(f.locales as usize);
+        let mut cursor = 0i32;
+        for i in 0..f.locales as usize {
+            let medida = f
+                .medidas_locales
+                .get(i)
+                .copied()
+                .filter(|x| *x > 0)
+                .unwrap_or(PALABRA as u32) as i32;
+            let alineacion = medida.min(PALABRA).max(1);
+            cursor += medida;
+            // Redondear hacia arriba: el marco baja, asi que el sitio de esta
+            // local es el cursor NEGADO, y tiene que quedar alineado.
+            if cursor % alineacion != 0 {
+                cursor += alineacion - (cursor % alineacion);
+            }
+            sitios_locales.push(-cursor);
+        }
+        let bytes_locales = cursor;
+
         let mut m = Self {
             locales: f.locales,
+            sitios_locales,
+            bytes_locales,
             temporales: f.temporales,
             sitios: Vec::new(),
         };
@@ -114,14 +154,21 @@ impl Marco {
     /// que es la clase de dependencia que convierte un fallo del asignador en
     /// un fallo del marco.
     pub fn size(&self) -> i32 {
-        let bruto = (self.locales + self.temporales) as i32 * PALABRA;
+        let bruto = self.bytes_locales + self.temporales as i32 * PALABRA;
         (bruto + 15) & !15
     }
 
     /// El desplazamiento de una local desde `rbp`. Negativo: el marco crece
     /// hacia abajo, que es lo que dice `la_pila_crece` en la tabla.
     pub fn local(&self, l: Local) -> i32 {
-        -((l.0 as i32 + 1) * PALABRA)
+        self.sitios_locales
+            .get(l.0 as usize)
+            .copied()
+            // [!] El respaldo es la cuenta de antes, y solo se usa si alguien
+            // pregunta por una local que la IR no declaro. No deberia pasar, y
+            // si pasa es mejor un sitio coherente que un panico dentro del
+            // emisor.
+            .unwrap_or_else(|| -((l.0 as i32 + 1) * PALABRA))
     }
 
     /// Donde vive un temporal.
@@ -135,7 +182,13 @@ impl Marco {
     /// Su sitio en el marco, viva donde viva. Sirve para el reparto y para los
     /// que no consiguieron registro.
     pub fn en_pila(&self, t: Temporal) -> i32 {
-        -((self.locales as i32 + t.0 as i32 + 1) * PALABRA)
+        // ** DETRAS DE LAS LOCALES, y contando sus BYTES en vez de cuantas son.
+        //
+        // Antes multiplicaba `self.locales` por una palabra, que era lo mismo
+        // mientras toda local midiera una. Con un `numero` de 16 bytes ese
+        // calculo dejaba al primer temporal **encima de la segunda mitad** del
+        // ultimo `numero`.
+        -(self.bytes_locales + (t.0 as i32 + 1) * PALABRA)
     }
 
     /// Cuantos temporales viven en un registro. Es el numero que dice si el
@@ -297,6 +350,9 @@ fn tramos_de_vida(f: &FuncionIr) -> Vec<(usize, usize)> {
             // PNG el 22-08: un temporal que no cuenta como vivo se lleva el
             // registro de otro, y el programa no falla -- da otro numero.
             Instr::MontonDeLaTarea { destino } => toca(*destino, i, &mut tramos),
+            // Tiene destino, luego VIVE. Cuarta vez que esta lista crece con la
+            // IR, y la cuarta que el `match` cerrado obliga a acordarse.
+            Instr::DireccionDeLocal { destino, .. } => toca(*destino, i, &mut tramos),
             Instr::Lee {
                 destino, direccion, ..
             } => {
@@ -388,6 +444,7 @@ mod pruebas {
             temporales,
             instrucciones,
             sin_ancho: 0,
+            medidas_locales: Vec::new(),
         }
     }
 

@@ -274,6 +274,26 @@ pub enum Instr {
         /// Indice en `ModuloIr::congelados`.
         congelado: u32,
     },
+    /// **La DIRECCION de una local**, no su valor (2026-08-23).
+    ///
+    /// ## Por que hizo falta, y por que no es `Instr::Lee` al reves
+    ///
+    /// Todo lo que este emisor mueve cabe en un registro. Un `numero` no: mide
+    /// 16 bytes --coeficiente mas escala-- asi que **no se puede cargar**, solo
+    /// se puede senalar. Las operaciones sobre el trabajan por direccion:
+    /// `suma(destino, a, b)` recibe tres, y ninguna es un valor.
+    ///
+    /// ** Es la misma forma que ya usan `p.x` y `a[i]` --`direccion_de` devuelve
+    /// donde esta la cosa, no la cosa-- y por el mismo motivo: la misma cuenta
+    /// sirve para leer y para escribir.
+    ///
+    /// [!] Y es una instruccion y no un `Valor` por la razon de siempre en este
+    /// fichero: un `Valor` obligaria a los veintitres sitios que cargan uno a
+    /// saber calcular un `lea`. Siendo instruccion, el emisor la atiende en UNO.
+    DireccionDeLocal {
+        destino: Temporal,
+        local: Local,
+    },
     /// **La direccion del monton de ESTA TAREA** (2026-08-23).
     ///
     /// ## Por que es una instruccion y no un argumento mas
@@ -371,9 +391,28 @@ pub struct FuncionIr {
     /// guardarlos donde la maquina los deje al entrar -- pero **cuales son esos
     /// sitios es cosa suya**: aqui solo se dice cuantos.
     pub parametros: u32,
-    /// Cuantas ranuras locales pide. El TAMANO de cada una lo decide el emisor
-    /// con el perfil de la maquina: aqui solo se cuentan.
+    /// Cuantas ranuras locales pide.
     pub locales: u32,
+    /// **Cuanto mide cada local, en bytes.** Vacio = todas de una palabra.
+    ///
+    /// ## *** Por que esto tuvo que existir (2026-08-23)
+    ///
+    /// Aqui ponia *"el TAMANO de cada una lo decide el emisor con el perfil de
+    /// la maquina: aqui solo se cuentan"*, y el emisor le daba **una palabra a
+    /// cada una**: `local(l) = -((l+1) * PALABRA)`.
+    ///
+    /// Valia mientras todo lo que vivia en una local cupiera en ocho bytes. Y
+    /// `numero` mide **16** --coeficiente `entero64` mas escala-- asi que la
+    /// segunda mitad se habria comido la local de al lado. En silencio.
+    ///
+    /// ** No es una medida DE LA MAQUINA: es del TIPO, y el frontend la sabe
+    /// porque `disposicion` ya la calcula. Lo que sigue siendo del emisor es
+    /// donde cae cada una y como se alinea el marco.
+    ///
+    /// [!] Vacio significa *"todas de una palabra"*, que es lo que era verdad
+    /// hasta hoy -- asi que un banco que construya un `FuncionIr` a mano no
+    /// cambia de comportamiento por existir este campo.
+    pub medidas_locales: Vec<u32>,
     pub temporales: u32,
     pub instrucciones: Vec<Instr>,
     /// **Cuantos literales de lista se quedaron sin construir** por no saber el
