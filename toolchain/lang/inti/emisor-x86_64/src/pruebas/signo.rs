@@ -105,7 +105,7 @@ fn la_aritmetica_de_direcciones_no_lleva_signo() {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let m = ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let m = ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec()).valor;
 
     let sumas: Vec<bool> = m
         .funciones
@@ -121,4 +121,13 @@ fn la_aritmetica_de_direcciones_no_lleva_signo() {
         sumas.iter().all(|s| *s),
         "la aritmetica de direcciones perdio la marca de sin signo: {sumas:?}"
     );
+}
+
+/// La tabla de necesidades de las pruebas: **la incrustada**.
+///
+/// ** Y no la del disco a proposito. Una prueba que leyera `$BMO_MODS` diria
+/// cosas distintas segun quien la corra, que es justo lo que un test no puede
+/// hacer. La que se comprueba contra el disco es otra, y esta declarada aparte.
+fn nec() -> bmo_inti_front::necesidades::Necesidades {
+    bmo_inti_front::necesidades::Necesidades::por_defecto()
 }

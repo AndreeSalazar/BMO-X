@@ -1,0 +1,105 @@
+#  necesidades.toml -- lo que un programa de INTI declara que necesita.
+#
+#  == De donde sale esta tabla, y que problema mata ==
+#
+#  Hasta el 2026-08-23 el monton de una tarea median 4096 bytes escritos a mano
+#  en `arranque.rs`, y ese fichero llevaba su propia sentencia dentro:
+#
+#      "es un numero y no una tabla todavia a proposito -- el dia que haya un
+#       segundo caso se muda"
+#
+#  El segundo caso es cualquier programa que lea algo grande: un fichero, unos
+#  pesos, una imagen. Y la respuesta NO era subir el 4096, porque entonces un
+#  driver de `llano` que no toca un objeto en su vida paga el monton del
+#  programa mas glotona del sistema.
+#
+#  == *** LO QUE SE ESCRIBE AQUI NO ES UNA DEDUCCION ==
+#
+#  El compilador no mira el programa para adivinar cuanta memoria va a hacerle
+#  falta. **Lo dice el programa, con una linea, y con un motivo.** Esa es la
+#  misma regla que el resto del sistema: un contrato donde habria un cerebro.
+#
+#      necesita monton 64 megas "los pesos del modelo viven en RAM"
+#
+#  Y va al `.bex` como un requisito de verdad --seccion `Requisitos` (0x15), que
+#  llevaba en el formato desde antes y nadie rellenaba-- asi que el cargador
+#  puede **decir que no ANTES de la primera instruccion**, con el motivo del
+#  programa en la mano. Hasta hoy la unica respuesta posible era arrancarlo y
+#  verlo morir.
+#
+#  == Por que las clases estan aqui SI YA ESTAN EN EL ABI ==
+#
+#  Porque en `bmo_abi::bef::requisitos` estan los NUMEROS, que son contrato de
+#  fichero, y aqui estan los NOMBRES, que son del lenguaje. Un dialecto de INTI
+#  puede llamar `heap` al monton sin tocar el formato; lo que no puede es
+#  cambiarle el 8.
+#
+#  [!] Los numeros de abajo tienen que coincidir con los `CLASE_*` del ABI. Hay
+#  una prueba que lo comprueba, porque dos sitios que dicen el mismo numero se
+#  separan el dia que alguien toca uno.
+
+[meta]
+version = 1
+
+# ===================================================================
+#  El monton
+# ===================================================================
+[monton]
+
+#  Lo que se pide cuando el programa NO dice nada. Decision de Eddi (2026-08-23):
+#  una pagina. No es "poco por si acaso": es lo que basta para que un programa
+#  de `pleno` junte unos textos, y quien necesite mas lo dice.
+por_defecto = 4096
+
+#  *** EL TECHO, y el motivo es de la MAQUINA, no del gusto.
+#
+#  El arranque mete este numero en un registro. Hasta 4 GiB cabe en un inmediato
+#  de 32 bits --cinco bytes-- y por encima hace falta uno de 64, que son diez. El
+#  emisor sabe elegir, asi que el techo de verdad es el del tipo: `monton_nuevo`
+#  recibe un `natural64`.
+#
+#  ** Se pone en 64 GiB y no en 2^64 porque un numero que ninguna maquina de hoy
+#  puede conceder no es un limite, es una errata esperando. Quien tenga mas
+#  memoria que esto sube la linea y sabe por que la sube.
+maximo = 68719476736
+
+# ===================================================================
+#  Las unidades: para que el numero se pueda leer
+# ===================================================================
+#
+#  ** No son palabras clave. El parser lee un nombre y lo busca AQUI, asi que
+#  anadir `gigas` es una linea y cero Rust -- y un programa que escriba una
+#  unidad que no existe se entera al compilar, con la lista de las que si.
+[unidades]
+bytes = 1
+kilos = 1024
+megas = 1048576
+gigas = 1073741824
+
+# ===================================================================
+#  Las clases: que se puede pedir
+# ===================================================================
+#
+#  Hoy solo `monton` tiene efecto en el codigo que se emite. Las demas se
+#  escriben en el `.bex` y las contesta el cargador -- estan aqui porque el ABI
+#  ya las tiene numeradas y dejarlas fuera seria inventarse que no existen.
+[clases]
+#  0x0008 -- lo que la tarea reparte en ejecucion.
+monton    = { numero = 8, unidad = "bytes"    }
+#  0x0002 -- recursos residentes en RAM.
+recursos  = { numero = 2, unidad = "bytes"    }
+#  0x0003 -- la pantalla, en exclusiva.
+pantalla  = { numero = 3, unidad = "unidades" }
+#  0x0004 -- el aparato de audio.
+sonido    = { numero = 4, unidad = "unidades" }
+#  0x0005 -- teclado y raton.
+entrada   = { numero = 5, unidad = "unidades" }
+#  0x0007 -- huecos de proceso para los hijos que lance.
+procesos  = { numero = 7, unidad = "unidades" }
+
+#  [!] `memoria` (0x0001) NO ESTA, y su ausencia es la decision:
+#
+#  Es lo que tiene que existir antes de la primera instruccion --codigo, datos,
+#  pila-- y eso lo sabe el CARGADOR mirando el fichero, mejor de lo que lo sabe
+#  el programa. Dejar que se declare seria dejar que un programa mienta sobre su
+#  propio tamano.

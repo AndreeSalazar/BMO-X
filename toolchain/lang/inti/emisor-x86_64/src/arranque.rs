@@ -54,14 +54,29 @@ pub const PRINCIPAL: &str = "principal";
 /// Quien monta el monton de la tarea. Tambien es un nombre, no una palabra.
 pub const MONTON_NUEVO: &str = "monton_nuevo";
 
-/// **Cuanto mide el monton de una tarea recien nacida.** (2026-08-23)
+/// **Cuanto mide el monton de una tarea que NO dijo nada.** (2026-08-23)
 ///
-/// Decision de Eddi: **4096**, una pagina. Y es un numero y no una tabla
-/// todavia a proposito -- el dia que haya un segundo caso (una tarea que pida
-/// mas al arrancar) se muda a `[reparto]`, con el resto de lo que el arranque
-/// decide. Mover un dato a una tabla antes de que exista el segundo caso es como
-/// se acaba con tres tablas que dicen lo mismo.
-pub const MONTON_DE_LA_TAREA: u32 = 4096;
+/// *** ESTE NUMERO YA NO MANDA, y su historia es la razon de que se quede
+/// escrito. Durante un dia fue el unico: `pub const MONTON_DE_LA_TAREA: u32 =
+/// 4096`, con esta sentencia debajo --
+///
+/// ```text
+///     "el dia que haya un segundo caso (una tarea que pida mas al arrancar)
+///      se muda a una tabla"
+/// ```
+///
+/// El segundo caso es cualquier programa que lea algo grande, y llego el mismo
+/// dia. Ahora el numero lo trae `necesidades.toml` y lo puede subir el programa
+/// con una linea:
+///
+/// ```text
+///     necesita monton 64 megas "los pesos del modelo viven en RAM"
+/// ```
+///
+/// ** Se queda aqui como RESPALDO --lo que se pide si nadie carga la tabla-- y
+/// hay una prueba que exige que valga lo mismo que la tabla. Dos sitios que
+/// dicen el mismo numero se separan el dia que alguien toca uno.
+pub const MONTON_POR_DEFECTO: u64 = 4096;
 
 /// **Con que codigo muere una tarea que no consiguio su monton.**
 ///
@@ -96,7 +111,13 @@ pub struct Pendiente {
     pub slot_del_monton: Option<usize>,
 }
 
-pub fn emitir(out: &mut Vec<u8>, p: &Puerta, retorno: u8, con_monton: bool) -> Pendiente {
+pub fn emitir(
+    out: &mut Vec<u8>,
+    p: &Puerta,
+    retorno: u8,
+    con_monton: bool,
+    monton: u64,
+) -> Pendiente {
     let mut monton_nuevo = None;
     let mut slot_del_monton = None;
 
@@ -107,7 +128,17 @@ pub fn emitir(out: &mut Vec<u8>, p: &Puerta, retorno: u8, con_monton: bool) -> P
     // sabe mirando la IR --si nadie emitio `MontonDeLaTarea`, no hace falta--
     // y no por el perfil, que seria adivinar.
     if con_monton {
-        x86::mov_r32_imm32(out, p.argumentos[0], MONTON_DE_LA_TAREA);
+        // ** EL INMEDIATO SE ELIGE POR EL NUMERO, no por comodidad. Hasta 4 GiB
+        // cabe en uno de 32 bits --cinco bytes, y ademas se extiende con ceros,
+        // que es justo lo que quiere un tamano-- y por encima hacen falta diez.
+        // Emitir siempre el largo costaria cinco bytes en TODA tarea para que
+        // una minoria pueda pedir mas de 4 GiB.
+        let cuanto = if monton == 0 { MONTON_POR_DEFECTO } else { monton };
+        if cuanto <= u32::MAX as u64 {
+            x86::mov_r32_imm32(out, p.argumentos[0], cuanto as u32);
+        } else {
+            x86::mov_r64_imm64(out, p.argumentos[0], cuanto);
+        }
         out.push(0xE8); // call monton_nuevo
         monton_nuevo = Some(out.len());
         out.extend_from_slice(&[0, 0, 0, 0]);

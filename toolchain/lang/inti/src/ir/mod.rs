@@ -61,8 +61,9 @@ use crate::aviso::Cosecha;
 pub fn bajar(m: &Modulo) -> Cosecha<ModuloIr> {
     let plano = crate::disposicion::comprobar(m, crate::disposicion::Medidas::por_defecto()).valor;
     let tabla = crate::tablas::Modulos::por_defecto();
-    let metal = metal_que_declara(m, &bmo_mods::Roots::find(), &tabla);
-    bajar_con(m, &tabla, &plano, &metal)
+    let raices = bmo_mods::Roots::find();
+    let metal = metal_que_declara(m, &raices, &tabla);
+    bajar_con(m, &tabla, &plano, &metal, &crate::necesidades::Necesidades::cargar(&raices))
 }
 
 /// Los nombres que son una instruccion, segun lo que el FUENTE declaro.
@@ -112,8 +113,21 @@ pub fn bajar_con(
     tabla: &crate::tablas::Modulos,
     plano: &crate::disposicion::Plano,
     metal: &[String],
+    necesidades: &crate::necesidades::Necesidades,
 ) -> Cosecha<ModuloIr> {
     let mut salida = ModuloIr::default();
+
+    // *** LO QUE EL MODULO DECLARO QUE NECESITA, antes de bajar nada.
+    //
+    // ** Entra por parametro como las otras tablas, y no se carga aqui dentro,
+    // por lo mismo que `tabla` y `plano`: para que haya UNA respuesta a "cuanto
+    // monton pide esto" en todo el compilador. La leccion es de esta misma
+    // semana -- la deduccion de tipos existia y la IR no la usaba, asi que el
+    // compilador tenia dos respuestas a la misma pregunta y solo una era buena.
+    let pedidos = crate::necesidades::revisa(m, necesidades);
+    salida.monton = crate::necesidades::monton_de(&pedidos.valor, necesidades);
+    salida.necesita = pedidos.valor;
+    let mut avisos_necesita = pedidos.avisos;
 
     // *** LAS CONSTANTES CONGELADAS, ANTES QUE NADA.
     //
@@ -183,7 +197,7 @@ pub fn bajar_con(
         }
     }
 
-    Cosecha::nueva(salida)
+    Cosecha::con(salida, std::mem::take(&mut avisos_necesita))
 }
 
 

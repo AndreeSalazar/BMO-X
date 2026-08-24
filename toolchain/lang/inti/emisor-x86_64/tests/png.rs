@@ -50,7 +50,7 @@ fn emitido(texto: &str) -> bmo_inti_x86_64::Emitido {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = bmo_inti_front::ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec()).valor;
     bmo_inti_x86_64::emitir(&ir)
 }
 
@@ -146,4 +146,13 @@ fn el_escritor_de_png_no_se_ata_a_ninguna_maquina() {
         parte.arquitecturas
     );
     assert_eq!(parte.perfil, "llano");
+}
+
+/// La tabla de necesidades de las pruebas: **la incrustada**.
+///
+/// ** Y no la del disco a proposito. Una prueba que leyera `$BMO_MODS` diria
+/// cosas distintas segun quien la corra, que es justo lo que un test no puede
+/// hacer. La que se comprueba contra el disco es otra, y esta declarada aparte.
+fn nec() -> bmo_inti_front::necesidades::Necesidades {
+    bmo_inti_front::necesidades::Necesidades::por_defecto()
 }

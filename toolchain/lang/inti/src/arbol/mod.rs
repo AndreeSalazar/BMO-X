@@ -89,6 +89,34 @@ pub struct Pieza {
     pub hasta: usize,
 }
 
+/// **UNA LINEA `necesita`**, tal y como se escribio.
+///
+/// ```text
+///     necesita monton 64 megas "los pesos del modelo viven en RAM"
+///              ^^^^^^ ^^ ^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///              clase  n unidad motivo
+/// ```
+///
+/// ** NO ESTA RESUELTA. `clase` y `unidad` salen de aqui como los nombres que
+/// se teclearon; que existan lo decide `necesidades.toml` y lo comprueba otro.
+/// Es la misma linea que separa `Tipo::Nombre` de un tipo resuelto, y por el
+/// mismo motivo: un parser que tuviera que saber que clases hay declaradas para
+/// leer una linea es un parser que ya no se puede leer solo.
+///
+/// *** Y EL MOTIVO NO ES OPCIONAL EN EL FORMATO. `bef::requisitos::construir`
+/// se niega a escribir un requisito obligatorio sin motivo --*"no se puede
+/// contestar"*-- asi que aqui es `Option` solo para poder DECIRLO en la linea
+/// que falta, no porque valga estar vacio.
+#[derive(Debug, Clone)]
+pub struct Necesidad {
+    pub clase: String,
+    pub cantidad: String,
+    /// El nombre de la unidad, si se escribio. Sin ella, la de la clase.
+    pub unidad: Option<String>,
+    pub motivo: Option<String>,
+    pub sitio: Sitio,
+}
+
 /// Un fichero entero.
 #[derive(Debug, Clone)]
 pub struct Modulo {
@@ -96,6 +124,13 @@ pub struct Modulo {
     pub sitio_perfil: Sitio,
     /// Lo que se importa, en orden.
     pub usa: Vec<(String, Sitio)>,
+    /// **Lo que el programa declara que necesita**, en orden.
+    ///
+    /// ** Vive en el modulo y no en una declaracion mas porque no genera codigo
+    /// ni ocupa un nombre: es un dato SOBRE el fichero, como el perfil. Meterlo
+    /// en `declaraciones` lo habria hecho pasar por el resolvedor de nombres
+    /// para nada.
+    pub necesita: Vec<Necesidad>,
     pub declaraciones: Vec<Decl>,
     /// Las costuras: que trozo de `declaraciones` vino de donde. Vacio cuando
     /// el fichero no trajo nada, que es el caso de un fuente sin `usa`.

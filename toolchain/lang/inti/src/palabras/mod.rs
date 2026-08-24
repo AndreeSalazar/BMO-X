@@ -1,6 +1,6 @@
 //! `palabras` -- el vocabulario, que es un fichero y no un `match`.
 //!
-//! ## Por que esto es un modulo entero para 50 cadenas
+//! ## Por que esto es un modulo entero para 51 cadenas
 //!
 //! Porque es lo que hace que **el idioma sea una columna y no un fork**. Las
 //! palabras clave de INTI estan en castellano por una razon medida (los novatos
@@ -69,6 +69,7 @@ simbolos! {
     Llano => "LLANO",
     Pleno => "PLENO",
     Usa => "USA",
+    Necesita => "NECESITA",
     // declaraciones
     Funcion => "FUNCION",
     Devuelve => "DEVUELVE",
@@ -337,7 +338,7 @@ mod pruebas {
     #[test]
     fn el_modo_python_es_una_columna() {
         let v = Vocabulario::desde_texto(INCRUSTADO, Some("py")).expect("no carga");
-        assert_eq!(v.cuantas(), 50);
+        assert_eq!(v.cuantas(), 51);
         assert_eq!(v.reconocer("def"), Some(Simbolo::Funcion));
         assert_eq!(v.reconocer("return"), Some(Simbolo::Devuelve));
         assert_eq!(v.reconocer("class"), Some(Simbolo::Registro));
@@ -362,14 +363,14 @@ mod pruebas {
         let en_el_codigo = Simbolo::TODOS.len();
         assert_eq!(declaradas, en_la_tabla, "[meta].palabras no cuadra con [es]");
         assert_eq!(en_la_tabla, en_el_codigo, "[es] no cuadra con Simbolo::TODOS");
-        assert_eq!(en_el_codigo, 50);
+        assert_eq!(en_el_codigo, 51);
     }
 
     #[test]
     fn el_incrustado_carga() {
         let v = Vocabulario::por_defecto().expect("no carga");
         assert_eq!(v.idioma(), "es");
-        assert_eq!(v.cuantas(), 50);
+        assert_eq!(v.cuantas(), 51);
         assert_eq!(v.texto(Simbolo::Funcion), "funcion");
         assert_eq!(v.reconocer("mientras"), Some(Simbolo::Mientras));
         assert_eq!(v.reconocer("alumno"), None);
@@ -381,7 +382,7 @@ mod pruebas {
     fn el_ingles_es_una_columna() {
         let v = Vocabulario::desde_texto(INCRUSTADO, Some("en")).expect("no carga en ingles");
         assert_eq!(v.idioma(), "en");
-        assert_eq!(v.cuantas(), 50);
+        assert_eq!(v.cuantas(), 51);
         assert_eq!(v.reconocer("while"), Some(Simbolo::Mientras));
         assert_eq!(v.reconocer("mutable"), Some(Simbolo::Cambiante));
         // Y lo que ya no es palabra clave en ese dialecto:
@@ -425,7 +426,7 @@ mod pruebas {
     fn cargar_de_las_raices_no_puede_fallar() {
         let (v, origen) = Vocabulario::cargar(&Roots::find());
         let v = v.expect("ni la tabla ni el incrustado cargaron");
-        assert_eq!(v.cuantas(), 50);
+        assert_eq!(v.cuantas(), 51);
         match origen {
             Origen::Fichero(p) => assert!(p.ends_with(RUTA)),
             Origen::Incrustado => {}

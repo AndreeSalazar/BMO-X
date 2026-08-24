@@ -36,7 +36,7 @@
 [meta]
 version = 1
 idioma_por_defecto = "es"
-palabras = 50
+palabras = 51
 
 #  ** LA NUMERO 50 ES `bufer`, y se cuenta porque las palabras se cuentan.
 #
@@ -52,6 +52,23 @@ palabras = 50
 #
 #  Una palabra mas es un precio que se paga una vez y se ve. Una palabra con dos
 #  significados se paga cada vez que alguien lee un fichero.
+
+#  ** LA NUMERO 51 ES `necesita`, y entro el 2026-08-23 con el monton grande.
+#
+#  Hasta ese dia el monton de una tarea median 4096 bytes escritos a mano en el
+#  arranque, y el propio fichero decia que ahi habia una tabla esperando: *"el
+#  dia que haya un segundo caso se muda"*. El segundo caso llego, y resulto no
+#  ser una fila de tabla sino una palabra -- porque **cuanta memoria necesita un
+#  programa lo sabe el programa, no la instalacion**.
+#
+#  Se podria haber subido el numero y ya. Eso habria hecho que TODA tarea pague
+#  el monton de la mas glotona, incluido un driver de `llano` que no toca un
+#  objeto en su vida.
+#
+#  ** Y la palabra se llama como la seccion del formato que escribe: `Requisitos`
+#  (0x15) llevaba en el `.bex` desde antes y nadie la rellenaba. Un programa que
+#  dice lo que necesita se puede RECHAZAR AL CARGAR, con un motivo, en vez de
+#  morir en su primera instruccion -- que es lo que hacia hasta hoy.
 
 #  Las tildes son ALIAS: la version acentuada de una palabra lexa igual que la
 #  ASCII, asi que quien escribe con tildes no tropieza y el fichero canonico
@@ -69,6 +86,7 @@ PERFIL     = "perfil"
 LLANO      = "llano"
 PLENO      = "pleno"
 USA        = "usa"
+NECESITA   = "necesita"
 
 #  -- declaraciones ---------------------------------------------------
 FUNCION    = "funcion"
@@ -141,6 +159,7 @@ PERFIL     = "profile"
 LLANO      = "plain"
 PLENO      = "full"
 USA        = "use"
+NECESITA   = "needs"
 
 FUNCION    = "function"
 DEVUELVE   = "returns"
@@ -236,6 +255,7 @@ PERFIL     = "profile"
 LLANO      = "plain"
 PLENO      = "full"
 USA        = "import"
+NECESITA   = "requires"
 
 FUNCION    = "def"
 DEVUELVE   = "return"

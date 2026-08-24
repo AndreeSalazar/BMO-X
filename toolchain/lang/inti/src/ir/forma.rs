@@ -484,6 +484,18 @@ pub struct ModuloIr {
     pub textos: Vec<String>,
     /// **Las tablas congeladas del modulo**, en el orden en que se declararon.
     pub congelados: Vec<Congelado>,
+    /// **Lo que el modulo declaro que necesita**, ya comprobado contra la tabla.
+    ///
+    /// ** Va a la seccion `Requisitos` del `.bex` tal cual. No se filtra por lo
+    /// que este compilador sepa conceder: lo que no sea el monton lo contesta el
+    /// CARGADOR, y quitarlo aqui seria decidir en su nombre.
+    pub necesita: Vec<crate::necesidades::Pedido>,
+    /// **Cuanto monton pide la tarea al arrancar, en bytes.**
+    ///
+    /// *** Es lo que hasta el 2026-08-23 era un `4096` escrito a mano en
+    /// `arranque.rs`, con su propia sentencia dentro: *"el dia que haya un
+    /// segundo caso se muda"*.
+    pub monton: u64,
 }
 
 impl ModuloIr {

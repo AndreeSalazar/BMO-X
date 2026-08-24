@@ -233,7 +233,7 @@ fn un_binario_sin_mesa_no_pasa_la_exigencia() {
         bmo_inti_front::disposicion::Medidas::cargar(&raices),
     );
     let metal = bmo_inti_front::ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal).valor;
+    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal, &nec()).valor;
     let e = bmo_inti_x86_64::emitir(&ir);
     let mudo = bmo_inti_x86_64::empaquetar(&e, None).expect("el gate lo rechazo");
 
@@ -266,4 +266,13 @@ fn la_sonda_declara_las_reglas_que_lleva() {
     let codigo = paquete::seccion(&bex, SectionKind::Code).expect("sin Code");
     let n = katanas::revisar(tabla, codigo.len()).expect("la tabla no se sostiene");
     assert!(n > 0, "la sonda provoca las tres reglas y declaro {}", n);
+}
+
+/// La tabla de necesidades de las pruebas: **la incrustada**.
+///
+/// ** Y no la del disco a proposito. Una prueba que leyera `$BMO_MODS` diria
+/// cosas distintas segun quien la corra, que es justo lo que un test no puede
+/// hacer. La que se comprueba contra el disco es otra, y esta declarada aparte.
+fn nec() -> bmo_inti_front::necesidades::Necesidades {
+    bmo_inti_front::necesidades::Necesidades::por_defecto()
 }

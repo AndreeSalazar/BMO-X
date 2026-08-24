@@ -99,6 +99,12 @@ const ARGUMENTOS: [u8; 6] = [7, 6, 2, 1, 8, 9]; // rdi, rsi, rdx, rcx, r8, r9
 /// Lo que sale de emitir un modulo.
 pub struct Emitido {
     pub codigo: Vec<u8>,
+    /// **Lo que el modulo declaro que necesita**, tal y como llego de la IR.
+    ///
+    /// ** Se copia sin tocarla. Este crate no decide que se puede conceder --eso
+    /// es del cargador-- y filtrar aqui lo que no entienda seria borrar del
+    /// `.bex` justo lo que hay que preguntarle a otro.
+    pub necesita: Vec<bmo_inti_front::necesidades::Pedido>,
     /// Donde empieza cada funcion dentro del codigo.
     pub inicios: Vec<(String, usize)>,
     /// Cuantas comprobaciones anti-UB se emitieron **en bytes**.
@@ -232,6 +238,7 @@ pub fn emitir(m: &ModuloIr) -> Emitido {
 pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
     let mut salida = Emitido {
         codigo: Vec::new(),
+        necesita: Vec::new(),
         inicios: Vec::new(),
         katanas: Vec::new(),
         congelados: Vec::new(),
@@ -255,6 +262,7 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
     // este crate solo decide DONDE van. Convertirlas aqui seria decidir dos
     // veces lo mismo.
     salida.congelados = m.congelados.clone();
+    salida.necesita = m.necesita.clone();
 
     // *** Y LOS LITERALES DE LISTA QUE NO SE PUDIERON CONSTRUIR, SE DICEN.
     //
@@ -284,7 +292,7 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         .any(|i| matches!(i, Instr::MontonDeLaTarea { .. }));
 
     if m.funciones.iter().any(|f| f.nombre == arranque::PRINCIPAL) {
-        let p = arranque::emitir(&mut salida.codigo, &taller.puerta, IZQ, necesita_monton);
+        let p = arranque::emitir(&mut salida.codigo, &taller.puerta, IZQ, necesita_monton, m.monton);
         salida
             .huecos_de_llamada
             .push((p.principal, arranque::PRINCIPAL.to_string()));
@@ -765,6 +773,30 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
     // Compilaria, pasaria el gate, y moriria al primer `texto + texto`.
     if !relocs_data.is_empty() {
         b.add_section(BefSection::relocs(relocs_data));
+    }
+
+    // *** LO QUE EL PROGRAMA DECLARO QUE NECESITA -- la seccion que llevaba en
+    // el formato desde antes de INTI y que **nadie rellenaba**.
+    //
+    // ** Y esto es lo que cambia el trato con el cargador. Hasta el 2026-08-23
+    // un programa que necesitaba mas memoria de la que habia arrancaba igual y
+    // moria en su primera reserva con un 1004 -- un numero, sin frase. Con el
+    // requisito escrito, el kernel puede negarse ANTES de la primera
+    // instruccion y decir **el motivo que escribio el programa**.
+    //
+    // [!] TODOS OBLIGATORIOS, y por eso el motivo no es opcional: el ABI se
+    // niega a construir la seccion sin el (*"un requisito obligatorio sin motivo
+    // no se puede contestar"*). Que un requisito pueda ser opcional es una
+    // decision que se toma con el caso delante -- hoy no hay ninguno que valga
+    // decir "si puedes".
+    for n in &e.necesita {
+        b.requerir(bmo_abi::bef::writer::RequisitoDeclarado {
+            clase: n.clase,
+            unidad: n.unidad,
+            obligatorio: true,
+            cantidad: n.cantidad,
+            motivo: n.motivo.clone(),
+        });
     }
 
     // ** LO QUE EL BINARIO DICE DE SI MISMO, y llega HECHO.
