@@ -213,6 +213,43 @@ esas direcciones fisicas. Un fallo del kernel disfrazado de firmware raro.
 ** La direccion de ECAM en un AM4 suele ser `0xE0000000` o `0xF0000000`, y
 Windows la lista igual. Si BMO-X dice otra cosa, uno de los dos lee mal.
 
+## *** EL CAREO DE ECAM -- la linea que decide si se puede creer
+
+En el arranque, antes del comando:
+
+```text
+   pci:  ECAM montado y careado, base           =0x...
+   pci:    ...funciones que coinciden por los 2 caminos  =NN
+```
+
+** Se lee el vendor/device de cada funcion del bus 0 **por los dos caminos** --
+puertos y memoria-- y se exige que coincidan. Si UNA discrepa, ECAM se apaga
+entero y sale:
+
+```text
+   pci:  [!] ECAM NO coincide con los puertos: apagado. Funciones que discrepan =N
+```
+
+*** Y esa es la linea que hay que buscar. Si la base fuera la equivocada, leer
+por ella daria **numeros plausibles** --cualquier memoria leida da un `u32`-- y
+el fallo saldria tres arranques mas tarde como un vendor id inventado.
+
+## Y lo que ECAM desbloquea, sobre la NIC
+
+```text
+   [placa] la NIC trae N caps extendidas (offset >= 0x100, fuera de los puertos)
+           0x1 @0x100  AER (errores del enlace, con detalle)
+           0xD @0x...  ACS -- impide que dos funciones se salten la IOMMU
+           0xF @0x...  ATS -- el aparato traduce direcciones
+```
+
+| lo que sale | que significa |
+|---|---|
+| una lista de caps | **los 3.840 bytes que los puertos no alcanzan se leen** |
+| `ACS` en la lista | dos funciones del mismo puente no se pueden saltar la IOMMU |
+| **sin `ACS`** | [!] podrian. Importa el dia que la IOMMU se encienda |
+| `sin ECAM careado` | las caps no son ilegibles: son **inalcanzables** |
+
 ## Y la prediccion que se puede hacer sin arrancar
 
 El otro sistema de esta misma maquina lista las tablas ACPI. **Las firmas tienen
