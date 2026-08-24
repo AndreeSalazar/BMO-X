@@ -1729,6 +1729,70 @@ estan**, y esos son los que pesan.
 
 ---
 
+### 13c-bis. ***Y EL PUNTO 3 YA NO ES UN NUMERO ESCRITO A MANO*** (2026-08-23)
+
+El arranque de `pleno` pide un monton antes de llamar a `principal`. Durante un
+dia ese tamano fue **4096 escrito en `arranque.rs`**, con esta sentencia debajo
+del propio numero:
+
+> *"es un numero y no una tabla todavia a proposito -- el dia que haya un
+> segundo caso (una tarea que pida mas al arrancar) se muda"*
+
+El segundo caso es cualquier programa que lea algo grande: un fichero, unos
+pesos, una imagen. Y llego el mismo dia.
+
+```text
+    necesita monton 64 megas "los pesos del modelo viven en RAM"
+```
+
+**No se resolvio subiendo el 4096.** Eso habria hecho que un driver de `llano`
+--que no toca un objeto en su vida-- pague el monton del programa mas glotona
+del sistema. El punto 3 solo lo paga quien lo usa, y ahora tambien **solo en la
+cantidad que usa**.
+
+#### *** Y no es una deduccion: es un CONTRATO
+
+El compilador no recorre el programa contando reservas para adivinar cuanta
+memoria hara falta. Lo dice el programa, con una linea, **y con un motivo**.
+
+Es la misma regla que el perfil, que las katanas y que los requisitos de Ring 0:
+donde podria haber un cerebro, hay un contrato. Una deduccion que casi siempre
+acierta es una deduccion que, el dia que falla, falla sin que nadie sepa por que.
+
+#### Y llega a DOS sitios, no a uno
+
+| | |
+|---|---|
+| el inmediato del arranque | lo que se le pide al kernel al empezar |
+| la seccion `Requisitos` (0x15) | lo que el **CARGADOR** lee antes de arrancar |
+
+** La segunda es la que cambia el trato. Hasta el 2026-08-23, un programa que
+necesitaba mas memoria de la que habia **arrancaba igual** y moria en su primera
+reserva con un `1004`: un numero, sin frase. Con el requisito escrito, el kernel
+puede negarse **antes de la primera instruccion** y decir el motivo que escribio
+el programa -- que es lo unico que convierte un rechazo en algo contestable.
+
+`Requisitos` llevaba en el formato `.bex` desde antes de INTI y **nadie la
+rellenaba**.
+
+#### Las clases, y la que deliberadamente NO se puede pedir
+
+La tabla es `lang/inti/necesidades.toml`: `monton`, `recursos`, `pantalla`,
+`sonido`, `entrada`, `procesos`. Y `memoria` (0x0001) **no esta**.
+
+Su ausencia es la decision: `CLASE_MEMORIA` es lo que tiene que existir antes de
+la primera instruccion --codigo, datos, pila-- y eso lo sabe el cargador mirando
+el fichero, mejor de lo que lo sabe el programa. Dejarlo declarar seria dejar
+que un programa **mienta sobre su propio tamano**.
+
+Por eso el monton tiene clase propia (`CLASE_MONTON`, 0x0008) en vez de sumarse
+a la de memoria: son dos decisiones distintas y necesitan dos numeros distintos.
+Un sistema que no pueda dar el monton puede querer cargar el programa igual --y
+dejar que muera con su codigo--, mientras que no poder dar la pila es no poder
+cargarlo.
+
+---
+
 ## 13d. INTI Y BMO ABI -- que es cada uno, y por que no compiten
 
 > Pregunta de Eddi, 2026-08-21: *"es como hermano de BMO ABI, pero es INTI que
