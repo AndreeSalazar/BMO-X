@@ -8,7 +8,6 @@
 
 [TECHOS]
   2948  toolchain/lang/cobol/src/codegen.rs
-  2537  platform/drivers/storage/fat32/src/lib.rs
   2321  toolchain/lang/c/src/codegen/mod.rs
   2011  toolchain/lang/cobol/src/parser.rs
   1761  toolchain/forge/bmo-lower/src/emu/mod.rs
