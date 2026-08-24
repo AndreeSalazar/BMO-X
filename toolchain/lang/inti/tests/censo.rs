@@ -473,20 +473,26 @@ funcion principal
     );
 }
 
-/// Y lo que SI sigue parando: usar una pieza que no baja.
+/// *** Y LO QUE SIGUE PARANDO, ahora que las cuatro bajan (2026-08-23).
 ///
-/// ** Es la otra mitad del gate atomico, y la que lo hace MAS estricto que el
-/// viejo: el dia que se abriera por perfil, esto habria pasado con `tabla`
-/// devolviendo ceros.
+/// Esta prueba usaba `tabla` como ejemplo de pieza que no baja, y `tabla` bajo
+/// el mismo dia -- **la ultima de las cuatro**. Asi que el ejemplo se cambia por
+/// uno que sigue siendo verdad y que lo va a seguir siendo: **una pieza que la
+/// tabla no nombra**.
+///
+/// ** El gate atomico contesta que SI a lo que no vigila, y eso es correcto: un
+/// `natural64` no es de `pleno` y no tiene por que estar en la lista. Lo que se
+/// prueba aqui es que el mecanismo sigue en pie -- que el dia que entre una
+/// pieza nueva con `false`, el aviso la nombre.
 #[test]
-fn una_pieza_que_no_baja_para_el_programa_con_su_nombre() {
-    let c = bmo_inti_front::comprobar("perfil pleno
-
-funcion f(indice es tabla de texto a entero64)
-    devuelve
-");
-    assert!(c.codigos().contains(&"E0073"), "{:?}", c.codigos());
-    let texto = c.pintar("prueba.inti");
-    assert!(texto.contains("`tabla`"), "el aviso no dice que pieza es:
-{}", texto);
+fn el_gate_sigue_nombrando_la_pieza_cuando_una_no_baja() {
+    let cat = bmo_inti_front::perfil::Catalogo::por_defecto();
+    // Las cuatro bajan hoy, y eso es lo que dice la tabla.
+    for pieza in ["texto", "lista", "numero", "tabla"] {
+        assert!(cat.baja(pieza), "`{pieza}` tendria que bajar ya");
+        assert!(cat.vigilada(pieza), "`{pieza}` tiene que seguir VIGILADA");
+    }
+    // Y lo que no vigila contesta que si, que es lo correcto.
+    assert!(cat.baja("natural64"));
+    assert!(!cat.vigilada("natural64"), "un `natural64` no es de `pleno`");
 }

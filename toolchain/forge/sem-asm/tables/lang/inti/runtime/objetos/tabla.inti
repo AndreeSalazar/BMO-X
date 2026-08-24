@@ -1,0 +1,204 @@
+# LA TABLA EN EJECUCION -- y la primera decision de ALGORITMO del lenguaje.
+#
+# ## Lo que separa esto de las otras tres piezas
+#
+# `texto`, `lista` y `numero` eran disposiciones: donde cae cada byte. Una tabla
+# tambien tiene que decidir **como se busca**, y eso no se lee de una cabecera.
+#
+#     lineal      recorrer las parejas hasta dar con la clave    O(n)
+#     con hash    calcular donde deberia estar y mirar ahi       O(1) de media
+#
+# ** Se eligio el hash, y no por rendimiento en abstracto: **una tabla que busca
+# en lineal es una lista de parejas con otro nombre**, y entonces el tipo no
+# existe -- ya hay `lista`. Lo que hace que `tabla` sea un tipo aparte es
+# exactamente esto.
+#
+# ## La disposicion la declara `bmo_abi::dynobj::tabla`
+#
+#     cabecera (32 B, la misma que `lista`)
+#       16..24  cuantos      PAREJAS ocupadas
+#       24..32  capacidad    RANURAS que hay
+#
+#     ranura (24 B), desde el byte 32:
+#       +0      marca        0 = vacia. Si no, el hash de la clave
+#       +8      clave        referencia al objeto de la clave
+#       +16     valor
+#
+# *** Y `cuantos` NUNCA llega a `capacidad`. No es holgura: en direccionamiento
+# abierto, buscar una clave que no esta en una tabla llena **da vueltas para
+# siempre**. `pon` deja siempre una ranura libre, y el ABI lo exige al revisar.
+#
+# ## [!] LA CLAVE ES UN `texto`, y de momento solo eso
+#
+# El hash se calcula sobre BYTES, asi que la clave tiene que ser algo que
+# **tenga** bytes en un sitio que dure. Un `texto` los tiene --en `RoData` si es
+# literal, en el monton si se construyo-- y un entero no: es un valor, y guardar
+# la direccion de un temporal seria guardar basura.
+#
+# ** Se dice aqui en vez de fingir que vale para todo. `tabla de entero64 a T`
+# pide una segunda familia de hash y de comparacion, y esa se escribe con el
+# caso delante.
+perfil llano
+usa monton
+usa memoria
+
+# FNV-1a de 64 bits sobre `cuantos` bytes en `dir`.
+#
+# ## Por que FNV-1a y no algo mejor
+#
+# Porque es **cinco lineas y no tiene tabla**: un `xor` y un producto por vuelta.
+# Una funcion de hash mejor --SipHash, xxHash-- vale mas cuando las claves las
+# elige un atacante, y eso es una decision de SEGURIDAD que se toma con el caso
+# delante, no por adelantado.
+#
+# [!] Y el numero primo va escrito con su nombre: 1099511628211 es el de FNV-64.
+# Cambiarlo no rompe nada hoy y rompe TODO el dia que una tabla se guarde en
+# disco -- porque las marcas dejarian de coincidir con las claves.
+funcion revuelve(dir es natural64, cuantos es natural64) devuelve natural64
+    crudo
+        cambiante h es natural64 = 14695981039346656037
+        cambiante i es natural64 = 0
+        repite mientras i < cuantos
+            h = h bits_xor lee_natural8(dir + i)
+            h = h * 1099511628211
+            i = i + 1
+        # ** CERO ESTA RESERVADO: es "ranura vacia". Un hash que salga cero se
+        # sube a uno. Perder un valor de 2^64 no cambia nada; tener dos
+        # significados para el mismo byte, si.
+        si h = 0
+            devuelve 1
+        devuelve h
+
+# El hash de un `texto`: sobre sus bytes, que empiezan en el 24.
+funcion hash_de(clave es natural64) devuelve natural64
+    crudo
+        si clave = 0
+            devuelve 0
+        devuelve revuelve(clave + 24, lee_natural64(clave + 16))
+
+# Cuantas parejas hay.
+funcion parejas(t es natural64) devuelve natural64
+    crudo
+        si t = 0
+            devuelve 0
+        devuelve lee_natural64(t + 16)
+
+# Una tabla nueva y vacia, con `capacidad` ranuras.
+#
+# ** El monton entrega paginas a CERO, y de eso depende que las ranuras nazcan
+# vacias: la marca 0 es lo que significa "aqui no hay nada". Si algun dia el
+# monton dejara de limpiar, esta funcion tendria que barrerlas -- y se enteraria
+# porque las tablas nacerian llenas de basura.
+funcion tabla_nueva(monton es natural64, capacidad es natural64) devuelve natural64
+    crudo
+        si capacidad = 0
+            devuelve 0
+        nueva es natural64 = pide(monton, capacidad * 24 + 32)
+        si nueva = 0
+            devuelve 0
+        escribe_natural64(nueva, 1)
+        escribe_natural32(nueva + 8, 0)
+        escribe_natural32(nueva + 12, 0)
+        escribe_natural64(nueva + 16, 0)
+        escribe_natural64(nueva + 24, capacidad)
+        devuelve nueva
+
+# Son iguales estos dos textos? Byte a byte, sin normalizar nada.
+funcion misma_clave(a es natural64, b es natural64) devuelve natural64
+    crudo
+        si a = 0
+            devuelve 0
+        si b = 0
+            devuelve 0
+        na es natural64 = lee_natural64(a + 16)
+        si na no es lee_natural64(b + 16)
+            devuelve 0
+        cambiante i es natural64 = 0
+        repite mientras i < na
+            si lee_natural8(a + 24 + i) no es lee_natural8(b + 24 + i)
+                devuelve 0
+            i = i + 1
+        devuelve 1
+
+# *** LA RANURA DONDE VIVE --o VIVIRIA-- una clave.
+#
+# Devuelve su direccion, o 0 si la tabla esta llena. La sonda es LINEAL: si la
+# ranura calculada esta ocupada por otra clave, se mira la siguiente.
+#
+# ## Por que sonda lineal y no otra cosa
+#
+# Porque recorre la memoria HACIA DELANTE, y eso es lo unico que una cache
+# entiende sin ayuda. Las alternativas --sonda cuadratica, doble hash-- reparten
+# mejor las colisiones y saltan por la memoria; en una tabla que cabe en unas
+# paginas, saltar cuesta mas de lo que ahorra.
+#
+# *** Y EL BUCLE TERMINA porque `pon` no deja llenar la tabla: siempre queda al
+# menos una ranura vacia, y una ranura vacia es la condicion de parada. **Esa es
+# toda la razon de que el ABI exija `cuantos < capacidad`** -- sin ella, buscar
+# una clave que no esta seria un bucle infinito, no un error.
+funcion ranura_de(t es natural64, clave es natural64) devuelve natural64
+    crudo
+        si t = 0
+            devuelve 0
+        cap es natural64 = lee_natural64(t + 24)
+        si cap = 0
+            devuelve 0
+        h es natural64 = hash_de(clave)
+        cambiante i es natural64 = h resto cap
+        cambiante vueltas es natural64 = 0
+        repite mientras vueltas < cap
+            r es natural64 = t + 32 + i * 24
+            marca es natural64 = lee_natural64(r)
+            # Vacia: aqui iria. Es tambien donde para una busqueda que falla.
+            si marca = 0
+                devuelve r
+            # El hash primero: descarta sin mirar la clave, que es lo caro.
+            si marca = h
+                si misma_clave(lee_natural64(r + 8), clave) = 1
+                    devuelve r
+            i = i + 1
+            si i >= cap
+                i = 0
+            vueltas = vueltas + 1
+        devuelve 0
+
+# Busca una clave. Devuelve la direccion de su VALOR, o 0 si no esta.
+#
+# ** Devuelve la direccion y no el valor, por lo mismo que `sitio_de` en una
+# lista: la misma cuenta sirve para leer y para escribir, y devolver el valor
+# obligaria a una segunda funcion que repitiera la busqueda.
+funcion busca(t es natural64, clave es natural64) devuelve natural64
+    crudo
+        r es natural64 = ranura_de(t, clave)
+        si r = 0
+            devuelve 0
+        si lee_natural64(r) = 0
+            devuelve 0
+        devuelve r + 16
+
+# Pone una pareja. Devuelve 1 si entro, 0 si la tabla no tiene sitio.
+#
+# [!] NO CRECE SOLA. Cuando ya no queda margen contesta 0 en vez de rehacer la
+# tabla con el doble de ranuras -- y crecer una tabla no es "reservar y copiar"
+# como en una lista: es un RE-HASH, porque `i = h resto cap` cambia con `cap`.
+# Toda pareja se muda de sitio.
+funcion pon(t es natural64, clave es natural64, dato es natural64) devuelve natural64
+    crudo
+        si t = 0
+            devuelve 0
+        r es natural64 = ranura_de(t, clave)
+        si r = 0
+            devuelve 0
+        # Ya estaba: se pisa el valor y la cuenta no sube.
+        si lee_natural64(r) no es 0
+            escribe_natural64(r + 16, dato)
+            devuelve 1
+        # Nueva. Y aqui esta el margen: la ultima ranura libre NO se ocupa.
+        hay es natural64 = lee_natural64(t + 16)
+        si hay + 1 >= lee_natural64(t + 24)
+            devuelve 0
+        escribe_natural64(r, hash_de(clave))
+        escribe_natural64(r + 8, clave)
+        escribe_natural64(r + 16, dato)
+        escribe_natural64(t + 16, hay + 1)
+        devuelve 1

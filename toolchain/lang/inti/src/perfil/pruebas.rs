@@ -158,21 +158,31 @@ fn en_pleno_todo_eso_vale() {
     assert!(c.is_empty(), "en `pleno` esto ya no tiene nada que decir: {c:?}");
 }
 
-/// [!] Y lo que SIGUE diciendo algo: `tabla`, la unica de las cuatro que no ha
-/// empezado.
+/// *** LAS CUATRO PIEZAS DE `pleno` BAJAN A BYTES (2026-08-23).
 ///
-/// ** El gate atomico nombra la PIEZA, no el perfil. Ese es todo el cambio: el
-/// mismo programa con `tabla` se para, y sin ella compila.
+/// Esta prueba se llamaba `en_pleno_lo_unico_que_queda_es_la_tabla` y exigia que
+/// `tabla` diera `E0073`. Se puso roja el mismo dia: era la ultima.
+///
+/// ```text
+///    texto    literal en RoData, `a + b` a `junta`, monton montado
+///    lista    literal, indice con Regla 2, `agrega` y `sitio_de`
+///    numero   16 bytes, coeficiente + escala, `a + b` a `suma`
+///    tabla    hash FNV-1a y sonda lineal        <- la ultima
+/// ```
+///
+/// ** Y el gate no se aflojo para llegar aqui: hoy mira las PIEZAS en vez de la
+/// etiqueta, ademas rechaza lo que no llega a un byte, y exige que el perfil
+/// declarado cuadre con el resultante. Es mas estricto que ayer.
 #[test]
-fn en_pleno_lo_unico_que_queda_es_la_tabla() {
+fn las_cuatro_piezas_de_pleno_bajan() {
     let c = codigos_de(
         "perfil pleno
 
-funcion f(indice es tabla de texto a entero64)
+funcion f(indice es tabla de texto a entero64, notas es lista de numero, saludo es texto)
     devuelve
 ",
     );
-    assert_eq!(c, vec!["E0073"]);
+    assert!(c.is_empty(), "ya no queda ninguna pieza sin bajar: {c:?}");
 }
 
 // ===================================================================
