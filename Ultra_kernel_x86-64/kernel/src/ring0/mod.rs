@@ -72,6 +72,13 @@ pub mod task {
     /// De donde salio cada proceso, para que pueda leer su propia caja.
     pub mod package;
     pub mod percpu;
+    /// **Admitir un `.bex`**: de unos bytes a un proceso que puede correr.
+    ///
+    /// [!] Su funcion principal son **607 lineas**: este reparto la MOVIO, no la
+    /// desarmo. Partirla por dentro es un cambio de diseno --su estado local
+    /// compartido tiene que volverse una estructura-- y un hash no lo puede
+    /// demostrar. Ver la cabecera del fichero.
+    pub mod admitir;
     pub mod proc;
     pub mod scheduler;
 }
