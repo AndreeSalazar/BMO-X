@@ -516,6 +516,89 @@ excepcion, o dejar una de las dos en software.
               resultado.  Y `-2^63 entre -1` da `E1001`.
 ```
 
+---
+
+### ⚙ P4 -- LO QUE SE MIDIO EL 2026-08-23, y el diseno que sale de ahi
+
+Se fue a construirlo y salieron cuatro cosas. Tres cambian el plan.
+
+#### 1. ✅ P4(a) YA ESTABA HECHO, y nadie lo habia dicho
+
+`SectionKind::Katanas = 0x16` existe desde S1 (22-08), el emisor la escribe con
+`(codigo, offset, longitud)` por bloque, y `bmo-verify` la comprueba contra los
+bytes. Eso ES *"declarar donde esta"*.
+
+⚠ **Pero el kernel no la lee.** `grep Katanas` sobre `Ultra_kernel_x86-64/`: cero
+resultados. La mesa esta escrita, firmada y verificada, **y no la mira nadie al
+cargar**. Es la firma de fallo de siempre, en el sitio mas caro.
+
+#### 2. ★★★ LO QUE HACE P4(b) POSIBLE ES EL EPILOGO GENERICO
+
+La mesa dice `(codigo, offset, longitud)` -- **no dice a que funcion sirve cada
+bloque**. Asi que el kernel, ante un `#DE` en un `rip` cualquiera, no puede saber
+cual de los bloques es "el suyo".
+
+Y no le hace falta, **porque `epilogo` emite lo mismo para toda funcion**:
+
+```text
+   mov rsp, rbp
+   pop rbp
+   ret
+```
+
+Tres bytes que valen para cualquier marco. El `rbp` que hay al fallar ya es el de
+la funcion que fallo, asi que **aterrizar en CUALQUIER bloque con el codigo
+correcto la desmonta bien**.
+
+★ Esa decision se tomo por simplicidad y resulta ser la que paga P4(b) sin
+ampliar el formato. Hay una prueba que la fija --`el_epilogo_es_generico_y_p4b_
+depende_de_eso`-- porque el dia que alguien escriba `add rsp, N` en vez de
+`mov rsp, rbp`, **P4(b) se rompe en silencio**: el kernel desmontaria otro marco.
+
+#### 3. Y por eso la tarea NO necesita la mesa entera
+
+`MAX_KATANAS` son 4.096: no caben en una `Task`. Pero como cualquier bloque del
+mismo codigo sirve, **basta el PRIMERO de cada codigo**, y los codigos son
+cuatro:
+
+```text
+   Task gana:   atrapa: [u32; 4]    offset del bloque de cada regla, 0 = no hay
+                codigo_base: u64    donde aterrizo la seccion Code
+```
+
+Dieciseis bytes por tarea. El cargador rellena eso al inspeccionar --igual que ya
+apunta `RELOCS` y `SIGNATURE`, que tampoco se mapean-- y `faults.rs` lo consulta
+antes de matar.
+
+#### 4. ⚠ Y LA ARRUGA DEL `#DE` SE ESTRECHA, pero no se cierra
+
+El plan ya decia que `#DE` sirve a dos reglas. Lo que se sabe ahora:
+
+> **INTI comprueba las dos EN SOFTWARE** -- `Comprobacion::EntreCero` antes de
+> dividir y `Comprobacion::Cociente` para `-2^63 entre -1`. Asi que un `#DE` que
+> llegue al kernel **no viene de INTI**: viene de BMO C, que no comprueba nada.
+
+Eso cambia para quien es P4(b): no es la red de INTI, es **la red del resto del
+sistema** -- y la que hara falta el dia que se quiten comprobaciones por
+optimizacion.
+
+#### ⏳ Lo que queda, y por que no se hizo hoy
+
+```text
+   gate::KATANAS + inspect        apuntar la seccion, como RELOCS       datos
+   Task.atrapa + codigo_base      16 bytes por tarea                    datos
+   faults.rs: aterrizar           EN CONTEXTO DE EXCEPCION              [!]
+```
+
+⚠ Las dos primeras son fontaneria. La tercera corre **dentro del manejador de
+excepciones**, donde un fallo no da un test rojo: da una maquina que muere mal. Y
+el workspace **excluye `bmo-kernel` de las pruebas**, asi que no hay forma de
+comprobarlo sin el Ryzen.
+
+★ Se deja el diseno entero escrito --con las cuatro decisiones tomadas-- en vez
+de codigo de Ring 0 sin probar. Es la regla de esta casa: **el CONTRATO antes que
+el codigo**, y aqui el contrato es lo unico que se puede verificar leyendo.
+
 ### P5 -- LA KATANA DEL SILICIO
 
 Con P4 puesto, en `pleno`:
