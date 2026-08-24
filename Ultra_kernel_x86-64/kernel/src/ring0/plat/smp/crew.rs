@@ -242,6 +242,75 @@ fn faena_prueba(parte: u32, de: u32) {
     }
 }
 
+
+/// Vueltas de la faena de ANCHO. Menos que las de latencia porque cada vuelta
+/// hace ocho cuentas en vez de una: el tiempo de pared sale parecido.
+const VUELTAS_ANCHO: u64 = 50_000_000;
+
+/// *** LA SEGUNDA FAENA, Y ES LA QUE HACE HONESTO EL NUMERO (2026-08-24).
+///
+/// ## Por que una sola faena no puede contestar "cuanto acelera esta maquina"
+///
+/// La faena de arriba es **una cadena de dependencias, y lo dice su propio
+/// comentario**: cada vuelta necesita el resultado de la anterior. Eso la hace
+/// perfecta para comprobar que el reparto FUNCIONA -- y **la peor posible para
+/// predecir lo que va a dar un trabajo de verdad**:
+///
+/// ```text
+///    LATENCIA   una cadena, poco ILP. El nucleo esta casi parado esperando,
+///               asi que el segundo hilo SMT llena esos huecos
+///               -> hasta ~2x por nucleo. **El MEJOR caso**
+///
+///    ANCHO      cuentas independientes que saturan las unidades. El segundo
+///               hilo no encuentra hueco porque no lo hay
+///               -> ~1x por nucleo extra. **El caso REAL de un calculo denso**
+/// ```
+///
+/// *** Y esto salio de una medida: el 2026-08-24 el Ryzen dio **11,59x sobre 12
+/// hilos** --el 96,6%-- contra una prediccion escrita que decia *"~6x es el
+/// techo honesto, dos hilos SMT comparten unidades de ejecucion"*.
+///
+/// **La prediccion no estaba equivocada: la faena no era la que suponia.** Y un
+/// numero que solo vale para la faena que lo produjo, presentado como *"lo que
+/// acelera esta maquina"*, **es un numero deshonesto** -- por bueno que sea.
+///
+/// El dueno lo dijo con la palabra exacta: *"el SMP si no es honesto a base de
+/// Perfil no me sirve"*.
+///
+/// ## Ocho acumuladores, y por que ocho
+///
+/// Independientes, para que el CPU pueda lanzarlos a la vez y las unidades se
+/// llenen. Ocho es mas que los puertos de ejecucion de un Zen 3, que es
+/// justamente el punto: **la maquina tiene que quedarse sin sitio.**
+///
+/// [!] Y aqui SI se deja que el compilador vectorice, al reves que en la de
+/// latencia. No es un descuido: **un motor de inferencia vectoriza**, y una
+/// prueba que lo impidiera mediria un trabajo que nadie va a correr.
+fn faena_ancho(parte: u32, de: u32) {
+    let bloque = VUELTAS_ANCHO / de as u64;
+    let desde = bloque * parte as u64;
+    let hasta = if parte + 1 == de { VUELTAS_ANCHO } else { bloque * (parte as u64 + 1) };
+    let mut a: [u64; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+    let mut i = desde;
+    while i < hasta {
+        let mut k = 0usize;
+        while k < 8 {
+            a[k] = a[k].wrapping_add(i.wrapping_mul(k as u64 + 1));
+            k += 1;
+        }
+        i += 1;
+    }
+    // Que el resultado SALGA: sin esto el compilador puede tirar el bucle
+    // entero, y la prueba mediria lo rapido que es no hacer nada.
+    let mut h = 0u64;
+    for x in a.iter() {
+        h ^= *x;
+    }
+    if (parte as usize) < SUMAS.len() {
+        SUMAS[parte as usize].store(h, Ordering::SeqCst);
+    }
+}
+
 /// Corre la misma cuenta con **un** nucleo y con **todos**, y devuelve
 /// `(ticks_uno, ticks_todos, partes)`.
 ///
@@ -249,6 +318,16 @@ fn faena_prueba(parte: u32, de: u32) {
 /// segundo: contar en milisegundos daria dos numeros tan cercanos que la
 /// aceleracion saldria de la nada.
 pub fn prueba(obreros: u32) -> (u64, u64, u32) {
+    prueba_de(faena_prueba, obreros)
+}
+
+/// **La faena de ANCHO**: cuentas independientes que saturan las unidades.
+/// Es la que predice un calculo denso. Ver [`faena_ancho`].
+pub fn prueba_ancho(obreros: u32) -> (u64, u64, u32) {
+    prueba_de(faena_ancho, obreros)
+}
+
+fn prueba_de(faena: Faena, obreros: u32) -> (u64, u64, u32) {
     // ** CON EL RELOJ SERIALIZADO, y esa palabra costo una tanda de fotos.
     //
     // Con `rdtsc()` a secas --que lleva `options(nomem)`-- esto contesto
@@ -258,11 +337,11 @@ pub fn prueba(obreros: u32) -> (u64, u64, u32) {
     // ENTRE las dos lecturas. Ver `scheduler::rdtsc_serial`.
     use crate::ring0::task::scheduler::rdtsc_serial as reloj;
     let t0 = reloj();
-    repartir(faena_prueba, 0);
+    repartir(faena, 0);
     let uno = reloj().wrapping_sub(t0);
 
     let t1 = reloj();
-    let ok = repartir(faena_prueba, obreros);
+    let ok = repartir(faena, obreros);
     let todos = reloj().wrapping_sub(t1);
 
     // Si alguien no llego, el numero de "todos" mide una carrera incompleta y

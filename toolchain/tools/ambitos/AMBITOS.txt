@@ -117,6 +117,12 @@ fat              (1)
 fault            (1)
 fuero            (1)
 guardianes       (1)
+# ** Componente NUEVO el 2026-08-24: `platform/shared/bmo-cripto`. Es el octavo
+# escalon del plan --el unico que es un invento y no trabajo-- y va aparte de
+# `hash` a proposito: aquel es BLAKE3, que sirve para saber si dos ficheros son
+# el mismo. Esto es lo que decide si una firma vale, y confundir las dos cosas
+# es como se acaba usando un hash rapido donde hacia falta uno lento.
+cripto           (0)
 hash             (1)
 herencia         (1)
 hud              (1)
