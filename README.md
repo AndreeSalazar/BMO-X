@@ -19,7 +19,7 @@ Written from scratch in Rust -- the boot chain, the kernel, the drivers, the
 filesystem, and three native compilers. It boots on an AMD Ryzen 5 5600X and
 occupies **5.4 MiB of 14.8 GiB of RAM**.
 
-**1.560 commits - 1.032 files - 17 April to 22 August 2026 - one developer.**
+**1.596 commits - 1.064 files - 17 April to 23 August 2026 - one developer.**
 
 ---
 
@@ -187,6 +187,86 @@ anybody else's binaries. A program for BMO-X is compiled for BMO-X.
 
 ---
 
+## The second objective: **the day the card arrives, it gets profiled**
+
+The primary objective is banking on BMO-X. This is the one behind it, and it is
+stated here because the *shape* of the work is the point, not the hardware.
+
+> **Target: AMD Radeon RX 9060 XT 16GB** (Navi 44 / GFX1200), declared
+> 2026-08-02 in `platform/drivers/gpu/rdna4/`. A Ring 3 driver, like every other
+> driver here.
+
+### Why this is one day of work and not a project
+
+**BMO-X profiles hardware. It does not write generic drivers.** That is the law
+of the house, and it is why the estimate is not the one people expect:
+
+```text
+   hardware   ->  PROFILE    named exactly; swapping it swaps a table,
+                             never an edit to the kernel
+   software   ->  CONTRACT   names nobody, and therefore works for everyone
+```
+
+`amdgpu` is millions of lines because it supports fifteen years of cards:
+runtime block discovery, dozens of firmware sets, a register map per generation,
+power management for each. **That is the price of being generic, and it is not
+paid here.** What gets written is one device id, one firmware set, one register
+map. The same rule the CPU already follows -- *"swapping the CPU is a profile
+swap, never a kernel edit"* (`cpu_vendor/profile.rs`).
+
+The profile is also what makes the metal **testable**: it says *this card, this
+MAC, this register*, so the answer can be written down before looking and then
+compared. A driver that claims "any AMD card" has no experiment that can confirm
+or refute it.
+
+** So the arrival of the card is the trigger, and the work is filling in a
+profile that is already written and already waiting -- `PROFILE.pci_devices` is
+an empty list today, because **a profile refuses to claim a card it has never
+met**.
+
+### Why AMD, and it is not a preference
+
+The RTX 3060 came first, and that path was **reverse engineering**. With AMD the
+path is open, and that is the whole reason:
+
+| | |
+|---|---|
+| firmware | published in `linux-firmware`, and **redistributable** |
+| the RDNA ISA | **published by AMD** |
+| a reference driver | `amdgpu` is open and **can be read** |
+
+That turns the question from *"is it possible"* into *"how much"*.
+
+### Two goals, kept apart on purpose
+
+| | goal A | goal B |
+|---|---|---|
+| what | **SDMA**, the copy engine | command rings, compute, Vulkan |
+| size | *"the size of the AHCI driver"* | the long road |
+| why A is small | **the display is not touched**: it inherits the linear framebuffer UEFI left and skips DCN entirely | -- |
+| what it buys | the compositor blit -- which at 1600x1000 is DOOM's **entire** deficit | Vulkan in Ring 3 |
+
+Confusing *"make the blit fast"* with *"run Doom Eternal"* is the classic way to
+finish neither.
+
+### And the one piece that is honestly not measured
+
+Goal B has a wall: the **PSP**, the security processor that authenticates the
+microcode before the GPU will run. A profile shrinks *variants*; it does not
+shrink a handshake.
+
+**No number is given for it here, and that is deliberate.** The plan that
+describes it says *"do not write a schedule for this until you have looked at
+it"*, and the house rule is older than the plan: **a device is asked, never
+assumed**. Measuring it costs a day of reading `amdgpu` and counting the steps
+-- no hardware, no money -- and until that day the honest answer is *not
+measured*, which is not the same as *long*.
+
+The full reasoning: **[PLAN_VULKAN.md](platform/drivers/gpu/rdna4/PLAN_VULKAN.md)**
+and **[PLAN_EL_ASISTENTE.md](docs/plan/PLAN_EL_ASISTENTE.md)**.
+
+---
+
 ## How to be suspicious of it
 
 The claim worth checking is not "it works" -- it is that the things marked 🟢
@@ -195,7 +275,7 @@ were seen on the real machine and the things marked 🟡 say so.
 - `Ultra_kernel_x86-64\build.ps1 -BuildOnly` builds everything and runs the
   guards: sources are ASCII, and the syscall contract is compared across the
   kernel, the ABI and the userland runtime -- 49 operations, none by hand.
-- `cargo test --workspace --exclude bmo-kernel` -- **2.052 tests**.
+- `cargo test --workspace --exclude bmo-kernel` -- **2.167 tests**.
 - `cargo test -p bmo-c-front probe_` -- **nine axes, 143 cells, half a second**:
   the census of what the C compiler actually supports, including the rows that
   are still broken. A census that hides its red rows is worth nothing.
