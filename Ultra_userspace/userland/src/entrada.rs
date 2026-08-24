@@ -104,6 +104,29 @@ impl Entrada {
     ///
     /// El byte es **Latin-1**: la `n` llega como `0xF1`, que es justo el indice
     /// que entiende la fuente. Sin decodificador de por medio.
+    /// El evento CRUDO: **scancode** y si fue pulsar o soltar, empaquetado.
+    ///
+    /// `0` cuando no hay ninguno. No bloquea, igual que [`Entrada::tecla`].
+    ///
+    /// * Es OTRA COLA, no otra forma de leer la misma. Las dos se llenan del
+    /// mismo sondeo y leer una no consume la otra, asi que el compositor puede
+    /// cocinar caracteres para su linea de Ejecutar **y** reenviar los eventos
+    /// crudos a la app que tiene el foco, sin que ninguno le quite teclas al
+    /// otro.
+    ///
+    /// Y hace falta que sea el crudo: un caracter no tiene SOLTAR, y un
+    /// programa que reacciona a una tecla mantenida --andar en un juego-- no se
+    /// puede escribir sin ese flanco.
+    ///
+    /// ```text
+    ///    bit 8   hay evento
+    ///    bit 9   pulsada (1) o soltada (0)
+    ///    byte 0  el scancode, Set 1
+    /// ```
+    pub fn evento(&self) -> u64 {
+        invoke(self.cap, INPUT_OP_EVENTO_TECLA, 0, 0, 0).value
+    }
+
     pub fn tecla(&self) -> Option<u8> {
         let v = invoke(self.cap, INPUT_OP_TECLA, 0, 0, 0).value;
         if v & 0x100 != 0 {

@@ -33,6 +33,9 @@
 //! Written as `continue` that order is invisible; written as [`Key::Taken`] it
 //! is the first line of every handler's contract.
 
+/// **Las teclas de una app en ventana**: el orden de quien es cada tecla, y
+/// el buzon por donde viajan. Paso 2c de `docs/plan/PLAN_DIRECTOR.md`.
+pub(crate) mod app;
 pub(crate) mod editor;
 pub(crate) mod panels;
 pub(crate) mod shortcuts;
@@ -95,6 +98,16 @@ pub(crate) fn gather(dsk: &mut Desktop, e: &bmo::Entrada) -> Gathered {
     // solo si no llego ningun caracter mientras estaban pulsados.
     let combo = ctrl && m & bmo::MOD_ALT != 0;
     let alt_alone = m & bmo::MOD_ALT != 0 && !ctrl;
+
+    // ** LA COLA CRUDA, ANTES DE COCINAR NADA.
+    //
+    // Va aqui y no en la cascada de `dispatch` porque son DOS COLAS distintas
+    // y esta no pasa por ahi: la de abajo son caracteres --lo que se escribe en
+    // la linea de Ejecutar-- y esta son scancodes con su flanco. Las dos se
+    // llenan del mismo sondeo y leer una no le roba nada a la otra, asi que el
+    // escritorio puede seguir cocinando sus atajos mientras la app con foco
+    // recibe la tecla entera. Ver `keys::app`.
+    app::reenviar(dsk, e, m);
 
     // ** EL INVARIANTE DEL CAMPO: el cursor NUNCA pasa del texto.
     //

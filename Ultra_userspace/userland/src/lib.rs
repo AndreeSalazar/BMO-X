@@ -582,6 +582,12 @@ pub const INPUT_OP_EVENTOS: u32 = 0x02;
 pub const INPUT_OP_TECLA: u32 = 0x03;
 pub const INPUT_OP_MODIFICADORES: u32 = 0x04;
 pub const INPUT_OP_RUEDA: u32 = 0x05;
+/// El evento CRUDO de teclado: scancode y si fue pulsar o soltar.
+///
+/// Es la segunda cola de `KIND_ENTRADA`, y convive con [`INPUT_OP_TECLA`]: las
+/// dos se llenan del MISMO sondeo, y leer una no le roba nada a la otra. El
+/// gemelo en C es `BMO_ENTRADA_EVENTO_TECLA` de `<bmo/entrada.h>`.
+pub const INPUT_OP_EVENTO_TECLA: u32 = 0x06;
 
 /// Bits de la mascara de modificadores.
 pub const MOD_SHIFT: u8 = 1 << 0;
