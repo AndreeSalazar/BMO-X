@@ -246,7 +246,14 @@ que el dueno pidio-- y lo que separa un compositor de un relevo.
                           (vision, velocidad, tema)
    4  ESC                 cierra el menu.  NO cierra la ventana: para eso
                           esta el boton del marco
+   5  CLIC en una casilla del menu   la pone directamente, sin navegar
 ```
+
+★★ **El gesto 5 es el del RATON, y prueba dos cosas de una vez**: que el clic
+llega, y que las coordenadas se tradujeron bien. Si el valor que cambia **no es
+el de la casilla que se pulso**, no es que el clic no llegue -- es que el origen
+de la ventana no se resto igual al pintar que al golpear. Pulsar cerca de un
+borde es donde eso se ve antes.
 
 ★ Y mientras tanto, **sin tocar la ventana**: `F7` tiene que abrir las vitales y
 `Alt+Tab` tiene que conmutar. Esas son del escritorio y estan en una lista
@@ -262,6 +269,9 @@ cerrada.
 | responde la ventana **y ademas se escribe en Ejecutar** | las dos colas se estan cocinando las dos. El reparto esta en `desktop::keys::app` |
 | responde la ventana y **F7 ya no abre** | la lista cerrada del escritorio no se esta respetando: una app se quedo con las F |
 | el escritorio va **a tirones** mientras la ventana esta delante | no es el buzon: es el reparto de turno. `ray.bex` duerme 16 ms en ventana desde `bc3c018b` |
+| el clic **mueve al personaje** en vez de pulsar la casilla | el bit 63 no se esta mirando: los botones se estan leyendo como scancode. Es el fallo que `bmo_sup_es_raton` existe para impedir |
+| un clic en la **barra de titulo** llega a la app | `Table::golpe` tenia que haber contestado `None` fuera del contenido |
+| se arrastra la ventana **al pulsar dentro** | el clic esta llegando a `chrome.grab` y a la app a la vez |
 
 [!] El menu es de BARRAS y no de texto a proposito: REX no trae fuente para una
 app de C. Tres filas, tres segmentos cada una, y la fila senalada con su marca a

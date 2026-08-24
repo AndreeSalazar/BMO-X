@@ -58,6 +58,11 @@ const SC_F12: u8 = 0x58;
 
 /// Bit 8 del evento crudo: hay evento.
 const HAY: u64 = 0x100;
+/// Bit 9: la tecla BAJA, o el boton baja.
+const PULSADA: u64 = 0x200;
+/// Bit 63: esta ranura es un raton y no una tecla. El gemelo en C es
+/// `BMO_SUP_EV_RATON` de `<bmo/superficie.h>`.
+const RATON: u64 = 1 << 63;
 
 /// Cuantos eventos se sacan de la cola por vuelta.
 ///
@@ -81,6 +86,40 @@ fn del_escritorio(sc: u8, m: u8) -> bool {
         return true;
     }
     (SC_F1..=SC_F10).contains(&sc) || sc == SC_F11 || sc == SC_F12
+}
+
+/// **UN CLIC DENTRO DE UNA APP**, traducido a pixeles suyos y dejado en su
+/// buzon. `true` si entro.
+///
+/// ** LA DIFERENCIA CON UNA TECLA ES DE QUIEN DECIDE EL DESTINO, y por eso esto
+/// no mira el foco: una tecla va a quien tiene el foco, pero **un clic va a
+/// donde se pulso**. Preguntarle al foco aqui seria mandarle el clic a una
+/// ventana distinta de la que el dedo estaba tocando.
+///
+/// `Table::golpe` es quien contesta las dos cosas a la vez --en que app cayo y
+/// en que pixel SUYO-- y lleva desde el 19-08 escrito y sin llamar, con su
+/// `#[allow(dead_code)]` y el motivo al lado: *"2c.1 se entrega SOLA para que su
+/// fallo no se confunda con el del transporte"*. Este es el transporte.
+///
+/// ** Y CONTESTA `None` FUERA DEL CONTENIDO, que es lo que hace que un clic en
+/// la barra de titulo no llegue a la app: ahi el que manda es el marco. No hay
+/// una segunda comprobacion para eso -- es la misma funcion que ya recorta los
+/// pixeles, y por eso no puede haber un borde donde se ve una cosa y se pulsa
+/// otra.
+pub(crate) fn raton(dsk: &mut Desktop, p: &bmo::Pantalla, px: u32, py: u32, botones: u8) -> bool {
+    let Some((i, lx, ly)) = dsk.table.golpe(p, px, py) else {
+        return false;
+    };
+    let ev = RATON
+        | HAY
+        | PULSADA
+        | botones as u64
+        | (lx as u64 & 0xFFFF) << 16
+        | (ly as u64 & 0xFFFF) << 32;
+    match dsk.table.get_mut(i) {
+        Some(s) => s.publicar(ev),
+        None => false,
+    }
 }
 
 /// **Vaciar la cola cruda y dejar en su buzon lo que sea de la app con foco.**

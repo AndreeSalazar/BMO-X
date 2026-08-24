@@ -13,7 +13,7 @@
 
 use bmo_userland as bmo;
 
-use super::{calc, Desktop, Ventana};
+use super::{calc, keys, Desktop, Ventana};
 use crate::scene::calc::paint_calc;
 use crate::scene::{self, TASKBAR_H};
 use crate::{erase_window, uncover};
@@ -799,6 +799,11 @@ pub(crate) fn on_pointer(
                         // misma regla en dos sitios -- y ademas Alt+Tab se
                         // quedaria fuera, porque por aqui no pasa.
                         dsk.win.focus.clic_en(Ventana::App(i as u8));
+                        // Y el clic ENTRA, traducido a pixeles de la app. Ver
+                        // `keys::app::raton`: contesta que no si el punto cae
+                        // fuera del contenido, asi que la barra de titulo
+                        // sigue siendo del marco.
+                        keys::app::raton(dsk, &p, pos.x, pos.y, pos.botones);
                     }
                 }
             }

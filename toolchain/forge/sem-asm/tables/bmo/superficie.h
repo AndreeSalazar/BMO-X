@@ -140,6 +140,54 @@
  * pixel y por fotograma en el proceso que menos puede permitirsela. */
 #define BMO_SUP_BGRA32 0
 
+/* -- ** UNA RANURA PUEDE SER UNA TECLA O UN RATON, Y HAY QUE MIRARLO -----
+ *
+ * El bit 63 lo dice. Una TECLA es, bit a bit, lo mismo que devuelve
+ * `bmo_entrada_evento` --el kernel nunca enciende el 63-- asi que el codigo que
+ * ya sabia leer teclas sigue valiendo sin tocar una coma.
+ *
+ * [!] Y ESO ES JUSTO LO QUE LO HACE PELIGROSO SI NO SE MIRA. En un evento de
+ * raton el byte bajo son los BOTONES, no un scancode: una app que lea
+ * `e & 0xFF` sin preguntar por el bit 63 va a creer que se pulso la tecla
+ * numero 1 cada vez que alguien haga clic. Por eso el bit tiene su propia
+ * pregunta --`bmo_sup_es_raton`-- y no se deja al llamante recordarlo.
+ *
+ *    bit 63       1 = raton, 0 = tecla
+ *    bit 8        HAY, en los dos
+ *    bit 9        PULSADA: la tecla baja, o el boton baja
+ *    bits 0..7    el scancode, o la mascara de BOTONES (1 izq, 2 der)
+ *    bits 16..31  x dentro de la app, en pixeles suyos
+ *    bits 32..47  y
+ *
+ * ** Las coordenadas son SUYAS, no de la pantalla: el DIRECTOR ya resto el
+ * origen de la ventana antes de dejarlas ahi. Una app no sabe --ni tiene por
+ * que saber-- donde la pusieron.
+ *
+ * ** HOY SOLO VIAJA EL CLIC (el boton BAJANDO). Soltar no se publica todavia,
+ * asi que dentro de una app no se puede arrastrar. Esta dicho aqui y no
+ * escondido: media promesa contada entera es una limitacion; contada a medias
+ * es un fallo. */
+#define BMO_SUP_EV_RATON 0x8000000000000000ULL
+
+int bmo_sup_es_raton(unsigned long long e) {
+    if ((e & BMO_SUP_EV_RATON) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+int bmo_sup_raton_x(unsigned long long e) {
+    return (int)((e >> 16) & 0xFFFF);
+}
+
+int bmo_sup_raton_y(unsigned long long e) {
+    return (int)((e >> 32) & 0xFFFF);
+}
+
+int bmo_sup_raton_botones(unsigned long long e) {
+    return (int)(e & 0xFF);
+}
+
 /* Lo que ocupa el buzon antes de la primera ranura: cabeza y cola. */
 #define BMO_SUP_BUZON_CABECERA 8
 /* Lo que mide una ranura: un evento crudo. */
