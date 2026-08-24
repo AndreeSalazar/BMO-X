@@ -31,7 +31,7 @@ la ley 12 (cambiar el tipo de memoria de una region **es cambiar un contrato**).
 
 ---
 
-# 1. LA PREGUNTA QUE VA ANTES DE TODAS: ¿QUIEN PONE EL PRESUPUESTO?
+# 1. LA PREGUNTA QUE VA ANTES DE TODAS: QUIEN PONE EL PRESUPUESTO?
 
 Antes de tocar una linea por rendimiento hay que contestar **quien manda sobre
 el tiempo de ese camino**. Y casi nunca es el CPU.
