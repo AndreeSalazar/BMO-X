@@ -35,6 +35,8 @@ perfil pleno              # obligatorio, primera linea util
 usa entrada               # lo que se importa, uno por linea
 usa superficie
 
+necesita monton 64 megas "los pesos del modelo viven en RAM"
+
 # ---- de aqui abajo, declaraciones de nivel superior ----
 
 MAXIMO = 100              # constante: se CONGELA al cargar el modulo
@@ -54,6 +56,36 @@ Reglas del esqueleto:
   (`INTI_MAESTRO.md` sec. 4). Por eso un modulo se puede prestar a otra tarea
   sin cerrojos, y por eso **`cambiante` no vale en el nivel superior** (`E0002`).
 - `principal` es el punto de entrada. Un modulo sin `principal` es una libreria.
+- `necesita` declara lo que el programa **no puede sacar de si mismo**: cuanto
+  monton va a repartir, si quiere la pantalla en exclusiva, cuantos hijos va a
+  lanzar. Es opcional; sin el, el monton mide lo que diga
+  `lang/inti/necesidades.toml` (hoy 4096).
+- **`usa` y `necesita` van en cualquier orden entre ellos.** El orden entre dos
+  lineas de cabecera no significa nada, y lo que no significa nada no cambia el
+  resultado.
+
+### 1b. ** `necesita`: la forma, y por que el motivo es obligatorio
+
+```text
+necesita <clase> <cuanto> [<unidad>] "<el motivo>"
+
+   clase     monton, recursos, pantalla, sonido, entrada, procesos
+   unidad    bytes, kilos, megas, gigas   (si falta, la base de la clase)
+```
+
+** El motivo **no es opcional** (`E0132`), y no es rigor de estilo: esto se
+escribe en la seccion `Requisitos` del `.bex`, y el cargador puede **negarse a
+arrancar el programa por ello**. Un rechazo que no dice por que no se puede
+contestar -- y el ABI se niega por escrito a construir un requisito obligatorio
+sin motivo.
+
+** Y **no se deduce nada**. El compilador no cuenta las reservas del programa
+para adivinar el monton: lo dice el programa. Una deduccion que casi siempre
+acierta es una que, el dia que falla, falla sin que nadie sepa por que.
+
+[!] `memoria` --el codigo, los datos y la pila-- **no se puede pedir**. Eso lo
+sabe el cargador mirando el fichero, y dejarlo declarar seria dejar que un
+programa mienta sobre su propio tamano.
 
 ---
 

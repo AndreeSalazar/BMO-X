@@ -162,6 +162,7 @@ con **que la bloquea** y **como se sabe que quedo hecha**"*.
 | [`PLAN_LA_CARA_VIAJA.md`](plan/PLAN_LA_CARA_VIAJA.md) | la maquetacion como DATO, y que pasa si viaja |
 | [`PLAN_SEGURIDAD.md`](plan/PLAN_SEGURIDAD.md) | las casillas de su MAESTRO, medidas contra el codigo |
 | [`PLAN_EL_SILICIO.md`](plan/PLAN_EL_SILICIO.md) | que el PERFIL de INTI decida quien ejecuta las reglas: el programa o la CPU |
+| [`PLAN_EL_ASISTENTE.md`](plan/PLAN_EL_ASISTENTE.md) | **fusiona cuatro documentos**: que falta para que una IA local corra dentro de BMO-X, y donde estan de verdad los meses |
 
 ★ **El par MAESTRO + PLAN es la simetria de esta carpeta**, y hoy la tienen
 entera AUTOCURACION y SEGURIDAD. No es un defecto que a los demas les falte
