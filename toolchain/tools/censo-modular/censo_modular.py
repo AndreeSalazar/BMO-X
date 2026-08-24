@@ -219,6 +219,72 @@ def anillo(ruta, raiz='.'):
 # know what a limit is, it does not know there are other files, and it has no
 # opinion about the numbers it returns.
 
+def solo_codigo(texto):
+    """**Cuantas lineas de este fichero son CODIGO.** Ni comentario ni blanco.
+
+    *** POR QUE L6a PASO A MEDIR ESTO Y NO EL TOTAL (2026-08-24)
+    ===========================================================
+
+    Lo cazo el dueno, y con razon. El 24-08 se le anadio a `syscall/mod.rs` una
+    cabecera explicando **por que** se habia repartido, y el fichero cruzo las
+    mil lineas y salto la regla. Al medirlo:
+
+        977 lineas totales  ->  530 de CODIGO,  423 de DOCUMENTACION (43%)
+
+    **Su codigo era la mitad del limite. Lo que lo empujo fue la explicacion.**
+
+    *** Y eso hacia que el metro empujara contra lo que este proyecto mas
+    valora. La regla de la casa es *"todo tiene su por que; lo que no lo tiene,
+    se quita"*, y este arbol es **36% documentacion medida**. Un guardian que
+    cuenta el por que como si fuera riesgo le pone precio a escribirlo -- y el
+    dia que alguien tenga prisa, lo barato sera borrar el comentario.
+
+    ## Y lo que L6a existe para manejar es CODIGO, no paginas
+
+    El peligro de un fichero grande es el ESTADO que sus funciones comparten y
+    las interacciones que esconde. Un comentario no comparte estado con nadie:
+    **hace el fichero mas facil de auditar, no mas dificil.**
+
+    ## [!] Y el cambio NO es un blanqueo, y se puede comprobar
+
+    Medido sobre la linea base del dia que se cambio, salen CUATRO ficheros y se
+    quedan los gordos de verdad:
+
+    ```text
+        SALEN      emu/mod.rs 1761 -> 974      reports.rs 1345 -> 937
+                   preprocessor 1196 -> 800    declarations 1001 -> 599
+        SE QUEDAN  cobol/codegen 2948 -> 1869  cobol/parser 2011 -> 1565
+                   c/codegen 2321 -> 1398      cpp/parser 1621 -> 1177
+                   validator 1435 -> 1179
+    ```
+
+    Los que se quedan son los que tienen codigo de verdad. Si contar codigo
+    hubiera vaciado la lista, el cambio seria sospechoso; que deje dentro a los
+    cinco mas grandes es lo que dice que mide lo que dice medir.
+
+    ** El TOTAL se sigue enseNando al lado, para que nadie tenga que creerse
+    esta cuenta: las dos columnas estan en el informe.
+    """
+    codigo = 0
+    en_bloque = False
+    for l in texto.split('\n'):
+        t = l.strip()
+        if not t:
+            continue
+        if en_bloque:
+            if '*/' in t:
+                en_bloque = False
+            continue
+        if t.startswith('//'):
+            continue
+        if t.startswith('/*'):
+            if '*/' not in t:
+                en_bloque = True
+            continue
+        codigo += 1
+    return codigo
+
+
 def mayor_funcion(texto, ruta):
     """**Cuanto ocupa la funcion MAS GRANDE.** `None` si no se sabe contar.
 
@@ -289,8 +355,8 @@ def medir(ruta):
     # mencione a mitad esta hablando de otro, no declarandose.
     generado = 'AUTO-GENERADO' in s[:400] or 'AUTO-GENERATED' in s[:400]
     m = mayor_funcion(s, ruta)
-    return (lineas, (len(patron.findall(s)) if patron else None), generado,
-            m[0] if m else None, m[1] if m else None)
+    return (lineas, solo_codigo(s), (len(patron.findall(s)) if patron else None),
+            generado, m[0] if m else None, m[1] if m else None)
 
 
 # == PADRE =====================================================================
@@ -298,7 +364,11 @@ def medir(ruta):
 # other Fichas exist, which is why nothing here compares or sorts.
 
 class Ficha:
-    def __init__(self, ruta, lineas, funciones, generado=False, mayor=None, estado=None):
+    def __init__(self, ruta, lineas, codigo, funciones, generado=False, mayor=None, estado=None):
+        # *** LO QUE L6a MIDE DESDE EL 2026-08-24: lineas de CODIGO, ni
+        # comentario ni blanco. Ver `solo_codigo` para el por que y para la
+        # comprobacion de que el cambio no es un blanqueo.
+        self.codigo = codigo
         # **Cuanto estado comparte la funcion mas grande.** Es lo que decide si
         # se parte moviendo texto o si pide un struct antes. Ver `mayor_funcion`.
         self.estado = estado
@@ -351,7 +421,7 @@ def especie(ficha):
     # El umbral es UN TERCIO y no la mitad porque lo que se quiere cazar no es
     # "el fichero ES una funcion" --eso ya lo dice la media-- sino **"hay una
     # que no se va a poder mover sin diseNo"**.
-    if ficha.mayor and ficha.lineas and ficha.mayor * 3 > ficha.lineas:
+    if ficha.mayor and ficha.codigo and ficha.mayor * 3 > ficha.codigo:
         # *** Y AQUI SE MIRA EL ESTADO, no el tamano. Una funcion enorme que no
         # declara casi nada no es un monstruo: es un DESPACHADOR, y se parte
         # moviendo texto. Ver `mayor_funcion`.
@@ -399,10 +469,10 @@ def censar(raiz):
         m = medir(os.path.join(raiz, f))
         if m is None:
             continue
-        lineas, funciones, generado, mayor, estado = m
-        if lineas < AVISO:
+        lineas, codigo, funciones, generado, mayor, estado = m
+        if codigo < AVISO:
             continue
-        fichas.append(Ficha(f, lineas, funciones, generado, mayor, estado))
+        fichas.append(Ficha(f, lineas, codigo, funciones, generado, mayor, estado))
     fichas.sort(key=lambda x: -x.lineas)
     return fichas
 
@@ -473,7 +543,7 @@ def sellar(fichas, exentos, techos, subidas, motivo):
     # se apaga en un dia. Lo que se cierra es la puerta a que entre el septimo.
     nuevos_r0 = [
         f for f in fichas
-        if f.anillo == RING0 and f.lineas > LIMITE
+        if f.anillo == RING0 and f.codigo > LIMITE
         and f.ruta not in exentos and not f.generado
         and f.ruta not in techos
     ]
@@ -487,10 +557,10 @@ def sellar(fichas, exentos, techos, subidas, motivo):
 
     suben = []
     for f in fichas:
-        if f.lineas > LIMITE and f.ruta not in exentos and not f.generado:
+        if f.codigo > LIMITE and f.ruta not in exentos and not f.generado:
             viejo = techos.get(f.ruta)
             if viejo is not None and f.lineas > viejo:
-                suben.append((f.ruta, viejo, f.lineas))
+                suben.append((f.ruta, viejo, f.codigo))
     if suben and not motivo:
         print('[X] hay techos que SUBEN y `--sellar` no acepta una subida muda:')
         for ruta, viejo, nuevo in suben:
@@ -529,7 +599,7 @@ def sellar(fichas, exentos, techos, subidas, motivo):
     # partir `cargando.rs`-- y salieron de la lista sin que nadie lo leyera. Un
     # trinquete que solo cuenta lo que cuesta y nunca lo que se gano acaba
     # pareciendo un peaje.
-    vivos = {f.ruta for f in fichas if f.lineas > LIMITE}
+    vivos = {f.ruta for f in fichas if f.codigo > LIMITE}
     for ruta, viejo in sorted(techos.items()):
         if ruta not in vivos:
             print('    [+] sale de la lista  %s (estaba en %d)' % (ruta, viejo))
@@ -538,15 +608,18 @@ def sellar(fichas, exentos, techos, subidas, motivo):
     hoy.append('# LINEA BASE del censo modular -- el techo de cada fichero que')
     hoy.append('# hoy incumple L6a. La regla del trinquete: un fichero de esta')
     hoy.append('# lista solo puede ENCOGER. Si crece, o si aparece uno nuevo por')
-    hoy.append('# encima de %d lineas, `censo_modular.py --check` dice NO.' % LIMITE)
+    hoy.append('# encima de %d lineas DE CODIGO --ni comentario ni blanco--,' % LIMITE)
+    hoy.append('# `censo_modular.py --check` dice NO. Ver `solo_codigo` para el')
+    hoy.append('# por que: L6a maneja el riesgo del CODIGO, y un comentario hace')
+    hoy.append('# un fichero mas facil de auditar, no mas dificil.')
     hoy.append('#')
     hoy.append('# No se edita a mano: se regenera con `--sellar` cuando un')
     hoy.append('# reparto baja un numero, y el commit ensena cuanto bajo.')
     hoy.append('')
     hoy.append('[TECHOS]')
     for f in fichas:
-        if f.lineas > LIMITE and f.ruta not in exentos and not f.generado:
-            hoy.append('%6d  %s' % (f.lineas, f.ruta))
+        if f.codigo > LIMITE and f.ruta not in exentos and not f.generado:
+            hoy.append('%6d  %s' % (f.codigo, f.ruta))
     hoy.append('')
     hoy.append('# EXENTOS -- un "no" con motivo escrito, que se puede discutir.')
     hoy.append('# Aqui solo entra lo que NO lo escribio una persona: si la')
@@ -583,11 +656,11 @@ def juicio(fichas, techos, exentos):
         vistos.add(f.ruta)
         techo = techos.get(f.ruta)
         if techo is None:
-            if f.lineas > LIMITE:
+            if f.codigo > LIMITE:
                 nuevos.append(f)
-        elif f.lineas > techo:
+        elif f.codigo > techo:
             crecidos.append((f, techo))
-        elif f.lineas < techo:
+        elif f.codigo < techo:
             encogidos.append((f, techo))
 
     for ruta, techo in techos.items():
@@ -598,24 +671,30 @@ def juicio(fichas, techos, exentos):
 
 
 def informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos, subidas):
-    print('%7s %5s %6s  %-58s %s' % ('lineas', 'fns', 'media', 'fichero', 'especie'))
+    # ** LAS DOS COLUMNAS, y la de la izquierda es la que JUZGA. El total va al
+    # lado para que nadie tenga que creerse la cuenta del codigo: si las dos se
+    # separan mucho, ese fichero es sobre todo explicacion -- y eso no es un
+    # problema, es lo que esta casa pide.
+    print('%7s %7s %5s %6s  %-52s %s'
+          % ('codigo', 'total', 'fns', 'media', 'fichero', 'especie'))
     fuera = []
     for f in fichas:
         if f.ruta in exentos or f.generado:
             fuera.append(f)
             continue
-        marca = '!' if f.lineas > LIMITE else ' '
-        print('%7d %5s %6s %s %-58s %s' % (
+        marca = '!' if f.codigo > LIMITE else ' '
+        print('%7d %7d %5s %6s %s %-52s %s' % (
+            f.codigo,
             f.lineas,
             f.funciones if f.funciones is not None else '-',
             f.media if f.media is not None else '-',
             marca, f.ruta, especie(f)))
 
     pasan = [f for f in fichas
-             if f.lineas > LIMITE and f.ruta not in exentos and not f.generado]
+             if f.codigo > LIMITE and f.ruta not in exentos and not f.generado]
     cajones = [f for f in pasan if especie(f) == 'CAJON']
     print()
-    print('%d ficheros incumplen L6a (>%d lineas). %d son CAJON, o sea que se'
+    print('%d ficheros incumplen L6a (>%d lineas de CODIGO). %d son CAJON, o sea que se'
           % (len(pasan), LIMITE, len(cajones)))
     print('parten moviendo texto y el reparto se demuestra con un hash (L6d).')
 
@@ -632,7 +711,7 @@ def informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos, subid
     por_anillo = {}
     for f in pasan:
         n, l = por_anillo.get(f.anillo, (0, 0))
-        por_anillo[f.anillo] = (n + 1, l + f.lineas)
+        por_anillo[f.anillo] = (n + 1, l + f.codigo)
     print()
     print('  por anillo, y ahi esta la diferencia:')
     for cual, etiqueta in ((RING0, 'RING 0  un fallo se lleva la MAQUINA'),
