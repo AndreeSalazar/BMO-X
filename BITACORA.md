@@ -1004,6 +1004,52 @@ la misma persona que despues la incumplio.
    automatizarlo es que lo incumplio quien lo habia escrito**. Es la ley 20 otra
    vez, y que se repita es el argumento.
 
+24. **El HARDWARE se PERFILA; el SOFTWARE es AGNOSTICO. Y no es simetria: es
+   que no son el mismo problema.** (Enunciada por el dueno el 2026-08-23, al
+   cazar una estimacion que la incumplia.)
+
+   ```text
+      hardware   -> PERFIL      se nombra EXACTO, y estrenar otro es
+                                cambiar una tabla, nunca editar el nucleo
+      software   -> CONTRATO    no nombra a nadie, y por eso vale para todos
+   ```
+
+   **El motivo es de QUIEN MANDA sobre la cosa.** El hardware es un hecho que no
+   controlas: no puedes hacer que un Realtek se porte como un Intel, asi que
+   genericidad ahi significa una cadena de `if` que tiene que acertar con
+   tarjetas que **no tienes y no puedes probar**. Eso no es codigo flexible: es
+   **codigo no falsable**. El software lo defines tu -- dos syscalls congelados,
+   las palabras en una columna de TOML-- y ahi la genericidad no cuesta nada
+   porque el contrato lo pones tu.
+
+   *** Y el corolario que lo hace util: **un perfil se puede PREDECIR y un
+   driver generico no.** El perfil dice *"esta tarjeta, esta MAC, este
+   registro"*, y entonces se puede escribir la respuesta antes de mirar y
+   comparar -- que es el metodo de las cinco sondas (ley 4). Un driver que dice
+   *"cualquier AMD"* no tiene experimento que lo confirme ni que lo refute.
+   **El perfil es lo que hace que el metal se pueda probar.**
+
+   La evidencia estaba repartida en cuatro sitios y ninguno la nombraba:
+
+   | donde | que demuestra |
+   |---|---|
+   | los 287 borrados de `net/e1000` | era la NIC **de QEMU**, no la del Ryzen: no habria encendido un LED |
+   | `cpu_vendor/profile.rs` | tres sitios llamaban a `ryzen_5_5600x` **por su nombre** -- el contrato roto, y reparado |
+   | `tests/agnostico.rs` | el frontend tiene **prohibido nombrar una maquina**, hasta en la prosa |
+   | `rdna4: pci_devices: &[]` | el perfil **se niega a reclamar una tarjeta que no ha conocido** |
+
+   [!] **Y el bus NO es el aparato.** Enumerar PCIe es generico --es una
+   especificacion-- y los registros de un RTL8168 son un hecho sobre un chip.
+   Por eso "mapear los BAR" ya esta hecho y sirve para todo, y "arrancar el PSP
+   de un Navi 44" no se hereda de nadie.
+
+   *** La consecuencia que costo la leccion: **una estimacion generica es una
+   estimacion de OTRO PROYECTO.** Decir "meses" sobre el driver de GPU era
+   ponerle precio a `amdgpu` --cuatro millones de lineas para quince anos de
+   tarjetas-- cuando lo que aqui se escribe es un perfil de UNA. Y encima
+   incumplia la ley 11 dos veces: **se le supuso a un aparato al que no se le
+   habia preguntado.**
+
 ## Ep. 36 -- El `#elif` que entraba tambien, y DOOM compilando
 
 **Sintoma**: `no existe la funcion 'swapeLE16'`. Un nombre que **no esta escrito
