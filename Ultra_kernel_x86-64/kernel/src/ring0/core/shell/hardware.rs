@@ -161,6 +161,14 @@ pub(crate) fn shell_red(arg: &[u8]) {
     // deliberate. This is the first code that lets a device write into this
     // machine's memory on its own, so it must not be something you get by typing
     // the diagnostic command.
+    // *** EL CONSUMO, SIEMPRE. Es lo que F9 viene a ensenar.
+    //
+    // ** Y va aqui --antes del `return` de la palabra sola-- a proposito: F9
+    // escribe `net` a secas, o sea que ESTA es la pantalla que se ve al pulsar
+    // la tecla. Un terminal de red que hay que saber que lleva un argumento
+    // para dar un numero no es un terminal de red.
+    consumo_de_red();
+
     if arg != b"rx" {
         s_log("[red] `net rx` arma el receptor y enseNa las tramas que lleguen");
         s_log("[red] no se transmite nada: ver docs/maestro/RED_MAESTRO.md, paso 1");
@@ -192,6 +200,95 @@ pub(crate) fn shell_red(arg: &[u8]) {
         // seconds. Saying so is what stops the next minute being spent looking
         // for a bug in a driver that is working.
         s_log("[red] cero de momento es normal: vuelve a escribir `net rx` en unos segundos");
+    }
+}
+
+/// **El consumo del receptor**, y lo que la tarjeta dice que se perdio.
+///
+/// # *** LAS DOS FILAS QUE HACEN QUE ESTO SEA UNA MEDIDA
+///
+/// ```text
+///   cogidas   las que BMO-X leyo. Es lo unico que un driver puede contar
+///   perdidas  las que la TARJETA tiro por no haber descriptor libre.
+///             Este numero no lo lleva el software: lo lleva el silicio
+/// ```
+///
+/// ** Sin la segunda, la primera no tiene denominador. "40 tramas recibidas"
+/// suena a que la red funciona igual si por detras se perdieron cuatro que si
+/// se perdieron cuatro mil, y son dos sistemas distintos: uno anda y el otro
+/// tiene el anillo pequeno. La ley 11 pide medir, y medir solo lo que sali
+/// bien no es medir.
+///
+/// [!] `MPC` solo se LEE. Escribirlo lo pone a cero, y un instrumento que borra
+/// lo que mide al mirarlo no se puede mirar dos veces.
+fn consumo_de_red() {
+    use crate::ring0::dev::net;
+    fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
+        for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
+    }
+    fn dec(b: &mut [u8; 80], o: &mut usize, mut v: u64) {
+        let mut tmp = [0u8; 20];
+        let mut i = 0;
+        if v == 0 { tmp[0] = b'0'; i = 1; }
+        while v > 0 { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
+        while i > 0 { i -= 1; if *o < b.len() { b[*o] = tmp[i]; *o += 1; } }
+    }
+    fn fila(b: &[u8; 80], o: usize) {
+        if let Ok(s) = core::str::from_utf8(&b[..o]) { s_log(s); }
+    }
+
+    let mut b = [0u8; 80];
+    if !net::rx_activo() {
+        s_log("[red] receptor SIN ARMAR: no hay consumo que ensenar todavia");
+        s_log("[red]   `net rx` lo arma. No transmite nada.");
+        return;
+    }
+
+    let (tramas, bytes, tipos, cortas) = net::rx_consumo();
+    let mut o = 0usize;
+    txt(&mut b, &mut o, "[red] cogidas  ");
+    dec(&mut b, &mut o, tramas);
+    txt(&mut b, &mut o, " tramas, ");
+    dec(&mut b, &mut o, bytes);
+    txt(&mut b, &mut o, " bytes");
+    fila(&b, o);
+
+    let mut o = 0usize;
+    txt(&mut b, &mut o, "[red] perdidas ");
+    match net::rx_perdidas() {
+        // ** El cero se dice CON SU NOMBRE. Un contador que no aparece cuando
+        // vale cero deja al que mira sin saber si es que no se perdio nada o es
+        // que nadie lo mide, y esas dos cosas piden trabajos distintos.
+        Some(0) => txt(&mut b, &mut o, "0   (la tarjeta no tiro ninguna)"),
+        Some(n) => {
+            dec(&mut b, &mut o, n as u64);
+            txt(&mut b, &mut o, "   [!] llegaron y no habia descriptor libre");
+        }
+        None => txt(&mut b, &mut o, "-- (la tarjeta no se sabe leer)"),
+    }
+    fila(&b, o);
+
+    let mut o = 0usize;
+    txt(&mut b, &mut o, "[red] reparto  ARP ");
+    dec(&mut b, &mut o, tipos[0]);
+    txt(&mut b, &mut o, "  IPv4 ");
+    dec(&mut b, &mut o, tipos[1]);
+    txt(&mut b, &mut o, "  IPv6 ");
+    dec(&mut b, &mut o, tipos[2]);
+    txt(&mut b, &mut o, "  otros ");
+    dec(&mut b, &mut o, tipos[3]);
+    if cortas > 0 {
+        txt(&mut b, &mut o, "  cortas ");
+        dec(&mut b, &mut o, cortas);
+    }
+    fila(&b, o);
+
+    // ** UNA RED EN REPOSO HABLA ARP Y BROADCAST. Decirlo aqui es lo que
+    // convierte tres numeros en una lectura: si solo sube ARP, el cable esta
+    // vivo y nadie te habla; si sube IPv4 sin que hayas pedido nada, esta red
+    // tiene vecinos con cosas que decir.
+    if tramas > 0 && tipos[1] == 0 && tipos[2] == 0 {
+        s_log("[red]   solo ARP/broadcast: el cable vive y nadie habla contigo");
     }
 }
 
