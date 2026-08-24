@@ -363,6 +363,175 @@ emisor de MAQUETA nunca supo donde estaba la ventana.
 
 ---
 
+---
+
+# ★★★ 2c.3 -- `ray.bex` RECIBE UNA TECLA EN SU VENTANA. HECHO el 2026-08-23
+
+> Pedido asi por el dueno: *"solo iniciar con el DOOM en Ring 3 tiene que ser
+> como uso MUY GENERALES de app, ventanas, TODO ESO"*. Y con el remate que
+> convirtio la casilla en algo que se puede mirar: *"dale con menu y
+> configuracion con tecla"*.
+
+## ★★ LA ELECCION ENTRE A Y B SE DESHIZO SOLA, Y NO POR UN NUMERO
+
+La seccion 2c.2 dejaba dos caminos abiertos y le ponia a **B** un precio
+concreto:
+
+> *"la pagina del canal de la app tendria que estar mapeada en el DIRECTOR, y
+> eso es autoridad nueva sobre un proceso ajeno. No es un renombrado: es una
+> frontera de confianza mas."*
+
+**Eso ya no era cierto cuando se escribio.** `loan::take` mapea el bloque
+ofrecido y concede la capability con `RIGHT_READ | RIGHT_WRITE` -- o sea que
+desde el paso 2, el DIRECTOR **ya podia escribir** en la memoria de la app. La
+autoridad no hay que crearla: **la concede la propia app al ofrecer la
+superficie**, y lo unico que faltaba era un sitio acordado donde dejar la tecla.
+
+```text
+   coste de B, como estaba escrito     una frontera de confianza mas
+   coste de B, medido                  CERO. Ya estaba concedida.
+```
+
+★ Y con eso el numero que el plan decia que decidiria la eleccion --*"cuantos
+eventos por segundo"*-- **deja de existir**: B no cuesta un syscall por evento,
+asi que no hay frecuencia a partir de la cual deje de valer.
+
+## EL BUZON: donde vive, y por que ahi
+
+Dentro de la propia superficie, declarado en los dos `u32` que la cabecera
+`BSUP` tenia **reservados a cero** desde el primer dia:
+
+```text
+   24..28   BUZON: donde empieza, en bytes desde el principio. 0 = no hay
+   28..32   BUZON: cuantas ranuras (potencia de 2)
+
+   y el buzon, detras de los pixeles:
+    +0   CABEZA (u32)   la escribe el DIRECTOR
+    +4   COLA   (u32)   la escribe la app
+    +8   las ranuras, de 8 bytes: un evento CRUDO, el mismo `unsigned long
+         long` que devuelve `bmo_entrada_evento`
+```
+
+Es la misma decision que la cabecera y que `BICO` dentro del paquete: **el dato
+dice lo que es, y quien lo transporta no necesita entenderlo.** El kernel presta
+bytes y no se entera de que ahora hay un buzon dentro.
+
+★★ **Y ES OPCIONAL, que es lo que decide quien se queda las teclas.**
+`bmo_superficie_crear` sigue sin pedirlo; hay que llamar a
+`bmo_superficie_crear_con_buzon`. Una app que solo ensena --un reloj, un
+medidor-- no lo declara, y entonces el DIRECTOR no le manda nada y el escritorio
+conserva el teclado. **Pedirlo es decir "yo se leer".**
+
+## DE QUIEN ES UNA TECLA: el orden, escrito una vez
+
+La regla de la casa --*dos duenos para una tecla se resuelve con un ORDEN, nunca
+con una heuristica*-- aplicada en `desktop::keys::app`:
+
+```text
+   1. las del ESCRITORIO      F1..F12 y cualquier cosa con Alt pulsado
+   2. las de la APP con foco  todo lo demas, si declaro buzon
+   3. nadie                   y entonces se descartan
+```
+
+⚠ La lista del 1 es corta y **cerrada**. Una app que se quedara tambien con
+Alt+Tab y con las F seria el modelo viejo otra vez --el que entrega el aparato--
+y de ese no se vuelve sin el boton de reset. `Ctrl+Alt+ESC` no esta en la lista
+porque no le hace falta: vive en Ring 0.
+
+★ Y hay una cosa que **se drena siempre**, tenga foco una app o no: la cola
+cruda. Si solo se vaciara cuando hay a quien entregar, una racha tecleada contra
+el escritorio se quedaria dentro y la app que ganara el foco despues recibiria
+de golpe teclas viejas -- pulsaciones que el usuario dio a otra cosa. Una cola
+que solo se vacia a veces es peor que no tenerla.
+
+## ★ LAS DOS COLAS, que es lo que hace que esto no le quite nada al escritorio
+
+`KIND_ENTRADA` tiene **dos** colas y se llenan del mismo sondeo: la de
+CARACTERES --que el escritorio cocina para su linea de Ejecutar-- y la de
+EVENTOS CRUDOS, que es la que se reenvia. **Leer una no le roba nada a la otra**,
+asi que el escritorio sigue teniendo sus atajos mientras la app recibe la tecla
+entera, con su flanco.
+
+Y el flanco hacia falta: **un caracter no tiene SOLTAR.** Sin el, cada pulsacion
+contaria dos veces o ninguna, y no se puede escribir nada que reaccione a una
+tecla mantenida -- que es la mitad de lo que hace un juego.
+
+## COMO QUEDO, pieza a pieza
+
+```text
+   <bmo/superficie.h>          `..._crear_con_buzon` y `..._evento`. REX.
+   scene::surface::Header      el buzon pasa por la MISMA aduana que el resto
+                               de la cabecera: si no cabe en lo prestado, no
+                               existe -- y una app sin buzon no recibe nada
+   scene::surface::publicar    cuatro escrituras a memoria. Cero puertas
+   desktop::keys::app          el orden de quien es cada tecla, y el drenado
+   bmo::Entrada::evento()      la cola cruda, que en Rust no estaba expuesta
+   raycaster_C.c               el primer cliente: menu y ajustes
+```
+
+★★ **La aduana se queda donde ya estaba.** `Header::read` era *"la unica
+frontera de confianza del modulo, y va toda en una funcion a proposito"*, y el
+buzon se valida ahi dentro y no donde se escribe. Meter una segunda
+comprobacion en otro sitio seria abrir una segunda puerta que alguien tendria
+que acordarse de cerrar.
+
+Y la asimetria es deliberada en los dos sentidos: **ninguno de los dos se cree
+el indice del otro.** El DIRECTOR escribe con la CABEZA, que es suya y enmascara;
+la app lee con la COLA, que es suya y enmascara. Un indice con basura puede
+hacer que se pierda o se repita un evento --y solo le duele a quien lo escribio
+mal-- pero nunca que se lea o se escriba fuera del prestamo.
+
+## EL PRIMER CLIENTE: `ray.bex`, con menu y ajustes
+
+`M` abre el menu; flechas o `WASD` navegan y cambian; `ESC` lo cierra. Tres
+ajustes, y los tres se ven en el mismo fotograma:
+
+```text
+   campo de vision   estrecho / normal / ancho   toca el plano de camara
+   velocidad         lenta / normal / rapida     toca el paso
+   tema              noche / normal / claro      toca techo y suelo
+```
+
+★ No hay texto: **son barras**. REX no trae fuente para una app de C, y
+dibujarla aqui seria meter una fuente en un ejemplo. Una fila por ajuste, tantos
+segmentos encendidos como vale, y la fila senalada con su marca. Se lee de un
+vistazo y no promete un idioma que este programa no sabe escribir.
+
+★★ **Y lo que de verdad prueba el menu no es el menu**: es que una app en una
+caja tiene ESTADO que cambia con el teclado y se ve cambiar. Una tecla que mueve
+al personaje podria ser un movimiento inercial; una opcion que se queda puesta
+solo puede venir de una tecla que llego, se entendio y se guardo.
+
+⚠ Y `ESC` **no cierra la ventana**: solo sale cuando el programa tiene la
+pantalla entera. En una caja la salida es el boton del marco, que lo pone el
+DIRECTOR -- una app que decidiera cuando se la puede cerrar seria el modelo
+viejo.
+
+```text
+   aprobado:  `ray.bex` en una ventana, `M` abre el menu, las flechas cambian
+              un ajuste y se ve en el mismo fotograma; y el escritorio sigue
+              respondiendo a F7 y a Alt+Tab mientras tanto.
+```
+
+⚠ **Nada de esto lo ha visto un CPU.** Compila --`ray.bex` pasa de 19.437 a
+27.415 bytes-- y el DIRECTOR enlaza, pero un buzon entre dos procesos sobre
+memoria compartida es exactamente la clase de cosa que un emulador no prueba.
+Ver `../metal/PRUEBA_EN_METAL_0823.md`.
+
+## Lo que esto deja abierto, dicho por delante
+
+1. **El raton todavia no viaja por el buzon.** `bmo-golpe` sabe traducir el
+   clic desde 2c.1 y el buzon admitiria el evento sin cambiar de forma, pero
+   nadie lo publica: hoy solo van teclas.
+2. **El foco se le da a cualquier app**, tenga buzon o no. Una app que solo
+   ensena y se lleva el foco deja la linea de Ejecutar muda mientras este
+   delante. Se sabe como se arregla --preguntarle al buzon-- y no se hizo aqui
+   porque el foco significa DOS cosas a la vez (quien tiene las teclas, y quien
+   esta delante para Alt+Tab) y separarlas es otra casilla.
+3. **La app ve tambien los atajos del escritorio que no estan en la lista
+   cerrada.** Es el precio de que las dos colas sean independientes: no hay
+   forma de saber que caracter salio de que scancode.
+
 # PASO 3 -- Cerrar sin ser root ✅ HECHO el 2026-08-19
 
 *"opcion para cerrar fuerte"* suena a boton y es **autoridad**: matar un proceso

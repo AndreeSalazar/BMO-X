@@ -216,6 +216,69 @@ al centinela**, y en DOOM no hay tope. Ver `../plan/PLAN_DOOM.md`.
 
 ---
 
+---
+
+# 6 -- ★★★ `ray.bex` EN UNA VENTANA, Y SE PUEDE TOCAR
+
+**La prueba de app + ventanas entera, y no hace falta que DOOM juegue para
+hacerla.** Anadida el 23-08 con el paso 2c construido.
+
+```text
+   run c/ray.bex          desde la caja de Ejecutar, o doble clic en su icono
+```
+
+Aparece en una caja con su marco y sus tres botones. Hasta hoy ahi se acababa:
+se miraba y no se tocaba.
+
+## Que afirma
+
+Que una app en una ventana **recibe teclas**, que el escritorio **no las
+pierde**, y que las dos cosas pasan a la vez. Es el modelo general de app --lo
+que el dueno pidio-- y lo que separa un compositor de un relevo.
+
+## Los cuatro gestos, en orden
+
+```text
+   1  W A S D             se anda y se gira DENTRO de la caja
+   2  M                   se abre el menu: tres filas de barras
+   3  flechas             arriba/abajo cambian de fila; izq/der cambian el
+                          valor, y el mundo de detras cambia EN EL ACTO
+                          (vision, velocidad, tema)
+   4  ESC                 cierra el menu.  NO cierra la ventana: para eso
+                          esta el boton del marco
+```
+
+★ Y mientras tanto, **sin tocar la ventana**: `F7` tiene que abrir las vitales y
+`Alt+Tab` tiene que conmutar. Esas son del escritorio y estan en una lista
+cerrada.
+
+## Como se cae
+
+| Sintoma | Que significa |
+|---|---|
+| **se anda y el menu responde** | ✅ 2c entero. El buzon funciona entre dos procesos |
+| la ventana se ve y **no reacciona a nada** | el buzon no llego. Mirar si `ray.bex` se compilo con `crear_con_buzon`, y la aduana de `Header::read` |
+| reacciona pero **cada tecla cuenta dos veces** (se anda el doble, el menu salta dos filas) | se esta atendiendo tambien el SOLTAR. Es el `BMO_EVENTO_PULSADA` del bucle de entrada |
+| responde la ventana **y ademas se escribe en Ejecutar** | las dos colas se estan cocinando las dos. El reparto esta en `desktop::keys::app` |
+| responde la ventana y **F7 ya no abre** | la lista cerrada del escritorio no se esta respetando: una app se quedo con las F |
+| el escritorio va **a tirones** mientras la ventana esta delante | no es el buzon: es el reparto de turno. `ray.bex` duerme 16 ms en ventana desde `bc3c018b` |
+
+[!] El menu es de BARRAS y no de texto a proposito: REX no trae fuente para una
+app de C. Tres filas, tres segmentos cada una, y la fila senalada con su marca a
+la izquierda. **Si se ven las barras pero no se mueve la marca**, el menu se
+esta pintando y las teclas no llegan -- que es un fallo distinto de no ver nada.
+
+## Y lo que esta prueba deja abierto, para no buscarlo
+
+```text
+   el raton todavia NO viaja por el buzon      solo teclas
+   el foco se le da a cualquier app            aunque no tenga buzon
+   la app ve tambien los atajos que no estan   las dos colas son independientes
+   en la lista cerrada
+```
+
+---
+
 # Los arrastres, que no son de esta tanda pero se contestan en el mismo arranque
 
 No se repiten aqui enteros: viven donde se escribieron.

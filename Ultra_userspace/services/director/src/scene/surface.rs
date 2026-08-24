@@ -54,6 +54,13 @@ const HEADER_TAG: u64 = 32;
 /// permitirsela no es soporte, es una promesa que se paga en cada vuelta.
 const BGRA32: u32 = 0;
 
+/// Lo que ocupa el buzon antes de la primera ranura: cabeza y cola.
+/// El mismo numero que `BMO_SUP_BUZON_CABECERA` de `<bmo/superficie.h>`.
+const BUZON_TAG: u64 = 8;
+/// Lo que mide una ranura: un evento crudo, el mismo `u64` que devuelve
+/// `bmo_entrada_evento`.
+const BUZON_RANURA: u64 = 8;
+
 /// Cuantas apps pueden tener caja a la vez.
 ///
 /// Cuatro, y el numero no es arbitrario: el kernel tiene 16 ranuras de prestamo
@@ -69,6 +76,14 @@ pub(crate) struct Header {
     pub(crate) height: u32,
     pub(crate) stride: u32,
     pub(crate) sequence: u32,
+    /// Donde empieza el BUZON, en bytes desde `base`. **Cero = esta app no lee
+    /// teclas**, y eso decide que el escritorio se las quede.
+    ///
+    /// Ya validado: si esta a cero es que no lo pidio, o que lo que pidio no
+    /// cabia en lo prestado. Las dos cosas se contestan igual -- no hay buzon.
+    buzon: u64,
+    /// Cuantas ranuras tiene, ya comprobado que es potencia de dos.
+    ranuras: u32,
 }
 
 /// Un `u32` de la cabecera. `volatile` porque **lo escribe otro proceso**: sin
@@ -100,7 +115,25 @@ impl Header {
         if necesita > bytes {
             return None;
         }
-        Some(Header { width, height, stride, sequence: campo(base, 5) })
+        // ** EL BUZON PASA POR LA MISMA ADUANA, y por eso se valida aqui y no
+        // donde se escribe: la frontera de confianza de este modulo es UNA
+        // funcion, y meter una segunda comprobacion en otro sitio seria abrir
+        // una segunda puerta que alguien tendria que acordarse de cerrar.
+        //
+        // Un buzon que no cuadre no es un error que se le devuelva a la app:
+        // es un buzon que NO EXISTE. La app se queda como estaba --ensena y no
+        // se la toca-- y el escritorio conserva las teclas, que es el estado
+        // seguro. Decirle que no a una app rota es mas barato que confiar.
+        let (mut buzon, mut ranuras) = (campo(base, 6) as u64, campo(base, 7));
+        let cabe = buzon >= necesita
+            && ranuras >= 2
+            && ranuras & (ranuras - 1) == 0
+            && buzon.saturating_add(BUZON_TAG + ranuras as u64 * BUZON_RANURA) <= bytes;
+        if !cabe {
+            buzon = 0;
+            ranuras = 0;
+        }
+        Some(Header { width, height, stride, sequence: campo(base, 5), buzon, ranuras })
     }
 }
 
@@ -233,6 +266,52 @@ impl Surface {
     /// La superficie NO se repinta aqui: quien llama hace `compose` despues, y
     /// el orden importa -- el cromo pinta el cuerpo entero y borraria los
     /// pixeles de la app si fuera al reves.
+    /// **Dejar una tecla en el buzon de la app.** `true` si entro.
+    ///
+    /// Es el camino de vuelta entero, y son cuatro escrituras a memoria: cero
+    /// puertas. Se puede porque el bloque que la app OFRECIO se mapeo aqui con
+    /// derecho de escritura -- la autoridad la concedio ella al ofrecerlo, no
+    /// se inventa aqui.
+    ///
+    /// ** SI ESTA LLENO SE DESCARTA, y eso es la decision, no un descuido. La
+    /// alternativa es esperar a que la app lea, y una app colgada se llevaria
+    /// el escritorio por delante -- que es lo mismo que ya decide la secuencia
+    /// en el otro sentido. Un buzon lleno significa que la app no lee tan
+    /// rapido como escribes, y la tecla que se pierde es preferible al
+    /// escritorio que se para.
+    ///
+    /// ** Y NO SE CONFIA EN LA COLA aunque venga de la app: el indice con el
+    /// que se ESCRIBE es la cabeza, que es nuestra, y se enmascara aqui. Una
+    /// cola con basura puede hacer que se descarte de mas o de menos --cosa de
+    /// la app, y solo le duele a ella-- pero nunca que se escriba fuera del
+    /// prestamo.
+    pub(crate) fn publicar(&self, evento: u64) -> bool {
+        let Some(cab) = Header::read(self.base, self.bytes) else {
+            return false;
+        };
+        if cab.ranuras == 0 {
+            return false;
+        }
+        let mascara = cab.ranuras - 1;
+        let idx = self.base + cab.buzon;
+        let cabeza = unsafe { core::ptr::read_volatile(idx as *const u32) };
+        let cola = unsafe { core::ptr::read_volatile((idx + 4) as *const u32) };
+        let siguiente = (cabeza + 1) & mascara;
+        if siguiente == cola & mascara {
+            return false; // lleno
+        }
+        let ranura = idx + BUZON_TAG + (cabeza & mascara) as u64 * BUZON_RANURA;
+        unsafe { core::ptr::write_volatile(ranura as *mut u64, evento) };
+        // La ranura ANTES que la cabeza, y no al reves: la cabeza es lo que le
+        // dice a la app "hay algo ahi". Publicarla primero seria ensenar una
+        // ranura que todavia no se ha escrito. En x86 dos escrituras no se
+        // reordenan entre si; la barrera es para el COMPILADOR, que si puede.
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::Release);
+        unsafe { core::ptr::write_volatile(idx as *mut u32, siguiente) };
+        true
+    }
+
+
     pub(crate) fn paint_chrome(&self, p: &bmo::Pantalla) {
         self.chrome.paint_chrome(p, BOX_EDGE, BOX_BG, BOX_TITLE, ACCENT);
         p.rect(self.chrome.x + 10, self.chrome.y + 10, 8, 8, ACCENT);

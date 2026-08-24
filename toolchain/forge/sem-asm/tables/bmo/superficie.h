@@ -45,9 +45,52 @@
  *   12..16   stride en PIXELES, no en bytes (u32)
  *   16..20   formato: 0 = BGRA de 32 bits, que es el del framebuffer (u32)
  *   20..24   SECUENCIA: sube cada vez que el dibujo esta entero (u32)
- *   24..32   reservado, a cero
- *   32..     los pixeles
+ *   24..28   BUZON: donde empieza, en bytes desde el principio. 0 = no hay
+ *   28..32   BUZON: cuantas ranuras (potencia de 2)
+ *   32..     los pixeles, y detras de ellos el buzon si se pidio
  * ```
+ *
+ * == EL BUZON: el camino de vuelta, y por que no cuesta un syscall ==
+ *
+ * Una superficie deja que una app ENSENE. El buzon deja que la TOQUES.
+ *
+ * Y va aqui dentro, en el mismo bloque, por el mismo motivo que la cabecera:
+ * el kernel presta BYTES y no tiene por que saber que hay dentro. El bloque
+ * que la app ofrece se mapea en el DIRECTOR con **derecho de escritura** --lo
+ * concede la propia app al ofrecerlo, `RIGHT_READ | RIGHT_WRITE`-- asi que el
+ * DIRECTOR puede dejar una tecla ahi con un `mov`, igual que ya lee un pixel
+ * con un `mov`.
+ *
+ * ** CERO PUERTAS POR TECLA, Y NINGUNA OPERACION NUEVA DEL KERNEL. Una puerta
+ * son 969 ciclos (`docs/componente/LA_PUERTA_POR_DENTRO.md`); para una
+ * calculadora eso es gratis, pero para algo que siga al teclado a sesenta por
+ * segundo es el precio equivocado.
+ *
+ * == Es OPCIONAL, y eso es lo que decide quien se queda las teclas ==
+ *
+ * `bmo_superficie_crear` no pide buzon: una app que solo ensena --un reloj, un
+ * medidor-- no lo necesita, y el DIRECTOR **no le manda teclas**, o sea que el
+ * escritorio las conserva. Pedirlo es decir *"yo se leer"*, y el foco solo se
+ * le puede dar a quien lo dijo.
+ *
+ * == La forma del buzon ==
+ *
+ * ```text
+ *    +0   CABEZA (u32)   la escribe el DIRECTOR
+ *    +4   COLA   (u32)   la escribe la app
+ *    +8   las ranuras, de 8 bytes cada una
+ * ```
+ *
+ * Un escritor y un lector, cada uno con su indice: no hace falta cerrojo, por
+ * la misma razon que no lo hace falta la secuencia. Vacio es `cabeza == cola`;
+ * lleno es que la cabeza alcanzaria a la cola, y entonces **el DIRECTOR
+ * descarta** en vez de esperar -- un compositor que espere a una app colgada es
+ * una app rota llevandose el escritorio.
+ *
+ * ** Y una ranura es un evento CRUDO, el mismo `unsigned long long` que
+ * devuelve `bmo_entrada_evento`. No hay formato nuevo que aprender: el codigo
+ * que ya sabe leer una tecla de la pantalla exclusiva sirve tal cual dentro de
+ * una ventana.
  *
  * ** LA SECUENCIA ES EL UNICO CAMPO QUE NO ES OBVIO, y es el que hace que esto
  * funcione sin cerrojos.
@@ -96,6 +139,11 @@
  * copiando y no convirtiendo. Un formato distinto seria una conversion por
  * pixel y por fotograma en el proceso que menos puede permitirsela. */
 #define BMO_SUP_BGRA32 0
+
+/* Lo que ocupa el buzon antes de la primera ranura: cabeza y cola. */
+#define BMO_SUP_BUZON_CABECERA 8
+/* Lo que mide una ranura: un evento crudo. */
+#define BMO_SUP_BUZON_RANURA 8
 
 struct BMO_SUPERFICIE {
     unsigned long long base;   /* donde empieza el bloque, en MI espacio */
@@ -146,15 +194,33 @@ void bmo_superficie_lista(BMO_SUPERFICIE *s) {
  * pasa cuando el programa se lanza desde el shell de Ring 0, que no compone
  * nada. Un programa que quiera funcionar en los dos sitios comprueba el 0 y se
  * cae al camino de la pantalla exclusiva. */
-BMO_SUPERFICIE *bmo_superficie_crear(int ancho, int alto) {
+BMO_SUPERFICIE *bmo_superficie_crear_con_buzon(int ancho, int alto, int ranuras) {
     BMO_SUPERFICIE *s;
     unsigned long long bytes;
     unsigned long long padre;
+    unsigned long long buzon;
 
     if (ancho <= 0 || alto <= 0) {
         return 0;
     }
+    /* Las ranuras tienen que ser potencia de dos, porque el indice avanza con
+     * una mascara y no con un resto: `(i + 1) & (n - 1)`. Un numero que no lo
+     * sea daria una mascara que salta ranuras, y el sintoma seria teclas que se
+     * pierden de vez en cuando -- el peor fallo posible en una entrada.
+     * Un valor malo se trata como "sin buzon", que es la respuesta segura. */
+    if (ranuras < 2 || (ranuras & (ranuras - 1)) != 0) {
+        ranuras = 0;
+    }
     bytes = BMO_SUP_CABECERA + (unsigned long long)ancho * alto * 4;
+    buzon = 0;
+    if (ranuras > 0) {
+        /* El buzon va DETRAS de los pixeles. Delante habria que mover el
+         * origen de la imagen, y entonces `stride` dejaria de bastar para
+         * describirla. */
+        buzon = bytes;
+        bytes = bytes + BMO_SUP_BUZON_CABECERA
+              + (unsigned long long)ranuras * BMO_SUP_BUZON_RANURA;
+    }
 
     s = (BMO_SUPERFICIE *)malloc(48);
     if (s == 0) {
@@ -177,8 +243,15 @@ BMO_SUPERFICIE *bmo_superficie_crear(int ancho, int alto) {
     bmo_sup_poner(s->base, 3, (unsigned int)ancho); /* stride = ancho: sin relleno */
     bmo_sup_poner(s->base, 4, BMO_SUP_BGRA32);
     bmo_sup_poner(s->base, 5, 0); /* secuencia: nada que pintar todavia */
-    bmo_sup_poner(s->base, 6, 0);
-    bmo_sup_poner(s->base, 7, 0);
+    bmo_sup_poner(s->base, 6, (unsigned int)buzon);
+    bmo_sup_poner(s->base, 7, (unsigned int)ranuras);
+    if (ranuras > 0) {
+        /* Cabeza y cola a cero: el buzon nace vacio. Se escriben ANTES de
+         * ofrecer el bloque -- si se dejaran para despues, el DIRECTOR podria
+         * tomar la superficie y leer una cola con basura dentro. */
+        bmo_sup_poner(s->base, (int)(buzon / 4), 0);
+        bmo_sup_poner(s->base, (int)(buzon / 4) + 1, 0);
+    }
 
     padre = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_MI_PADRE, 0, 0, 0);
     if (padre == 0) {
@@ -189,6 +262,65 @@ BMO_SUPERFICIE *bmo_superficie_crear(int ancho, int alto) {
      * el kernel conoce -- la misma resta que hace `fread`. */
     bmo_valor(s->bloque, BMO_MEM_OFRECER, s->base - __bmo_bloque_base, bytes, padre);
     return s;
+}
+
+/* La superficie de siempre: sin buzon.
+ *
+ * Se queda con el nombre corto a proposito. Una app que solo ENSENA es el caso
+ * normal --un reloj, un medidor, un visor--, y pedir entrada tiene que costar
+ * escribirlo: quien no la lee no debe quitarle las teclas al escritorio.
+ */
+BMO_SUPERFICIE *bmo_superficie_crear(int ancho, int alto) {
+    return bmo_superficie_crear_con_buzon(ancho, alto, 0);
+}
+
+/* Sacar un evento del buzon. **0 si no hay ninguno**, y no bloquea.
+ *
+ * Devuelve el evento CRUDO, el mismo `unsigned long long` de
+ * `bmo_entrada_evento`: el bit 8 dice si hay, el 9 si es pulsada, y el byte
+ * bajo es el scancode.
+ *
+ *     unsigned long long e = bmo_superficie_evento(s);
+ *     if (e & BMO_EVENTO_HAY) {
+ *         int sc = (int)(e & 0xFF);
+ *     }
+ *
+ * ** POR QUE ESTO NO PUEDE LEER FUERA DEL BLOQUE, aunque la CABEZA venga de
+ * otro proceso: el indice con el que se lee es la COLA, que es NUESTRA y se
+ * enmascara aqui. La cabeza solo se usa para comparar --"hay algo?"--, asi que
+ * una cabeza con basura dentro puede hacer que se lea una ranura vieja, nunca
+ * que se lea fuera. Es la misma disciplina que el DIRECTOR aplica a nuestra
+ * cabecera, en el otro sentido.
+ */
+unsigned long long bmo_superficie_evento(BMO_SUPERFICIE *s) {
+    unsigned long long buz;
+    unsigned int ranuras;
+    unsigned int cabeza;
+    unsigned int cola;
+    unsigned long long *ranura;
+    unsigned long long e;
+    int idx;
+
+    if (s == 0) {
+        return 0;
+    }
+    buz = (unsigned long long)bmo_sup_leer(s->base, 6);
+    ranuras = bmo_sup_leer(s->base, 7);
+    if (buz == 0 || ranuras == 0) {
+        return 0;
+    }
+    idx = (int)(buz / 4);
+    cabeza = bmo_sup_leer(s->base, idx);
+    cola = bmo_sup_leer(s->base, idx + 1);
+    if (cola == cabeza) {
+        return 0; /* vacio */
+    }
+    ranura = (unsigned long long *)(s->base + buz + BMO_SUP_BUZON_CABECERA
+              + (unsigned long long)(cola & (ranuras - 1)) * BMO_SUP_BUZON_RANURA);
+    e = *ranura;
+    cola = (cola + 1) & (ranuras - 1);
+    bmo_sup_poner(s->base, idx + 1, cola);
+    return e;
 }
 
 #endif /* BMO_SUPERFICIE_H */
