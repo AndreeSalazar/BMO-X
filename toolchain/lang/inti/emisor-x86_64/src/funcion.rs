@@ -571,8 +571,52 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
     codigos.dedup();
     for codigo in codigos {
         let atrapa = out.len();
-        // El codigo se pone en el registro de retorno y se vuelve. Cuando haya
-        // errores como datos de verdad, esto construira el valor de error.
+        // *** P4(c) SE PROBO AQUI EL 2026-08-23, Y SE DEJO SIN APLICAR.
+        //
+        // ## Lo que hace hoy, y por que es un fallo de verdad
+        //
+        // El codigo se pone en el registro de retorno y la funcion VUELVE. Para
+        // quien llamo, **atrapar y devolver un numero son la misma cosa**:
+        //
+        //     sube(1e18, 18)   llamada a pelo   ->  atrapa, devuelve 1001
+        //     suma(c, a, b)    por dentro       ->  recibe 1001 como
+        //                                          coeficiente y sigue
+        //
+        // Y se hace mas caro cada dia: cuanto mas runtime se escribe en INTI
+        // --el monton, el contador, el decimal-- mas trampas viven dentro de una
+        // llamada. Hay una prueba que lo fija:
+        // `decimal::hoy_una_trampa_en_una_libreria_vuelve_como_un_numero`.
+        //
+        // ## El arreglo esta escrito y CABE EN DOS LINEAS
+        //
+        //     mov  <retorno>, codigo
+        //     ud2                        <- y NO vuelve
+        //
+        // `PLAN_EL_SILICIO.md` P4(c) lo nombra: *"un corte que no se puede
+        // confundir con un valor"*. Se aplico, compilo, y dejo el arbol en
+        // verde menos TRES pruebas.
+        //
+        // ## [!] Y LA TERCERA ES POR LO QUE NO SE APLICO
+        //
+        // `sondas/cpu.inti` --la que corrio en el Ryzen el 22-08 y dio
+        // `reglas = 0x00`-- tiene su diseno escrito en su propia cabecera:
+        //
+        //     "Una funcion que atrapa DEVUELVE EL CODIGO: la trampa pone el
+        //      numero en el registro de retorno y sale, asi que preguntar
+        //      'devolvio 1001?' es preguntar 'atrapo?'"
+        //
+        // **Esa premisa ES la ambiguedad que P4 existe para matar.** Con `ud2`
+        // la primera trampa mata la tarea, asi que las tres reglas ya no se
+        // pueden preguntar en una sola pasada: harian falta tres `.bex`, tres
+        // pasos de despliegue y tres lineas de informe.
+        //
+        // *** O sea que P4(c) no es una linea del emisor: es un cambio en la
+        // forma de la MEDIDA que produjo el mejor resultado de este proyecto. Y
+        // eso lo decide el dueno, no el compilador.
+        //
+        // El plan ya sabe cual es la salida completa: P4(b) --que el KERNEL
+        // aterrice en vez de enterrar-- y el error como dato. Con (b), la sonda
+        // vuelve a poder preguntar tres veces.
         x86::mov_r64_imm64(out, IZQ, codigo);
         epilogo(out);
         // ** Y se APUNTA DONDE QUEDO. Es el unico momento en toda la compilacion
