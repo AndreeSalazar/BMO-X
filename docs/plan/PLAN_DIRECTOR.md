@@ -591,6 +591,144 @@ funcion que recorta los pixeles.
    partir: el estado local tiene que volverse un struct antes de mover nada.
    **El proximo trabajo que toque el raton parte ese fichero primero.**
 
+---
+
+# ★★★ LOS CUATRO HUECOS DE 2c, CERRADOS (2026-08-23)
+
+> *"completa pero no toque el inti"*. Los cuatro que este plan dejo escritos, en
+> el orden en que dolian.
+
+## 1 -- `desktop/mouse.rs` PARTIDO, y la prueba de que es el mismo programa
+
+Estaba en **995 lineas, a cinco** de que L6a lo rechazara, y clasificado
+`GIGANTE`: dos funciones, media de 497. La especie cara, y el censo dice por
+que: *"el estado local tiene que volverse un struct primero, y eso es diseno"*.
+
+Ese struct es `Golpe` --posicion, los dos botones y Ctrl-- y una vez escrito el
+corte sale solo, porque **un puntero siempre esta sobre algo**:
+
+```text
+   mouse/mod.rs      365   el reparto: botones, `under_pointer`, la rueda, el
+                           realce de la calculadora y el Z-order
+   mouse/datos.rs    297   la ventana de ESTRATOS y su menu contextual
+   mouse/ventanas.rs 198   CABINA, la terminal y el sonido -- las tres con marco
+   mouse/apps.rs     146   la caja de una app
+   mouse/barra.rs     90   las fichas de la barra
+   mouse/iconos.rs    73   la rejilla del escritorio
+```
+
+★★ **Es el mismo corte que `desktop::keys`, y no por simetria**: las dos
+preguntas son la misma pregunta --*de quien es esta pulsacion*-- hecha con el
+dedo en un sitio distinto.
+
+★ **Y la calculadora se queda en `mod.rs`** porque no vive en una caja: se
+dibuja sobre el escritorio, asi que su pulsacion es del escritorio.
+
+### La verificacion, que en un GIGANTE no era obligatoria y se hizo igual
+
+```text
+   700 lineas movidas, y las 700 aparecen PALABRA POR PALABRA dentro de su
+   fichero nuevo.  Lo unico que cambia son tres `return;` -> `return true;`,
+   y la cabecera del modulo, que se reescribio a proposito.
+```
+
+L6d pide el hash para un `CAJON`; esto era `GIGANTE` y no lo pedia. Se compara
+igual: **un corte que se puede demostrar no hay que creerselo.**
+
+### [!] Los dos que devuelven `bool`, y por que no es un detalle
+
+`datos` y `apps` tenian `return` dentro. Ahi ese `return` cortaba **la vuelta
+entera del puntero**, no su bloque. Dejarlos como `return` al sacarlos los
+habria convertido en *"sal de esta funcion y sigue con lo de abajo"*, que es
+otro programa: la barra de tareas y el Z-order correrian detras de un clic que
+ya tenia dueno. Devuelven `true`, y quien llama corta.
+
+## 2 -- EL PUNTERO ES UN ESTADO, NO UN EVENTO
+
+El plan lo dejo escrito y al construirlo se confirmo entero. La cabecera del
+buzon crece de 8 a 16 bytes:
+
+```text
+   buzon +0   CABEZA (u32)                       el DIRECTOR
+         +4   COLA   (u32)                       la app
+         +8   PUNTERO: x en los 16 bajos, y en los altos   el DIRECTOR
+         +12  BOTONES en el byte 0, DENTRO en el byte 1    el DIRECTOR
+         +16  las ranuras
+```
+
+★★★ **El motivo, y es la frase que hay que recordar:**
+
+```text
+   un CLIC      es un HECHO.  Paso, y si se pierde no vuelve a pasar
+   la POSICION  es un ESTADO. Solo importa la ultima
+```
+
+Un anillo de 64 ranuras con algo que cambia sesenta veces por segundo se llena
+en un segundo, y entonces el DIRECTOR descarta **las nuevas** --que es lo
+correcto para un hecho-- o sea que la app leeria donde estuvo el raton hace un
+segundo creyendose que es ahora. **Un buzon lleno de posiciones no va lento:
+miente.**
+
+Por eso se PISA en un sitio fijo: dos escrituras por caja y por fotograma, y la
+app siempre lee lo ultimo.
+
+★ `dentro = 0` deja x e y **como estaban**. Es la ultima posicion buena, que es
+lo unico util que se puede dejar ahi -- ponerlas a cero diria que el puntero
+esta en la esquina, y eso es una posicion, no una ausencia.
+
+### Y el SOLTAR viaja, con su limite dicho
+
+Las dos caras del boton llegan al anillo. Lo que **no hay es CAPTURA**: el
+soltar se entrega a quien esta debajo del puntero en ese momento, no a quien
+recibio el clic. Si el dedo salio de la ventana antes de levantarse, ese soltar
+no llega -- y por eso hoy no se puede arrastrar algo hasta el borde desde dentro
+de una app.
+
+## 3 -- UNA APP QUE NO LEE NO SE QUEDA LAS TECLAS
+
+El sintoma: la cascada de `dispatch` descarta toda tecla cuando el foco no es la
+linea de Ejecutar --porque se supone que la ventana de delante ya tuvo su
+turno-- y **una app sin buzon no tiene turno ninguno**. La tecla no iba a ningun
+sitio y el escritorio se quedaba mudo mientras esa ventana estuviera delante.
+
+★★ **Se arregla en la tecla y NO en el foco**, y esa es la parte que importa. La
+tentacion es no darle el foco a una app que no lee. Pero el foco significa **dos
+cosas a la vez** --quien tiene las teclas, y quien esta delante para Alt+Tab-- y
+quitarle la segunda por culpa de la primera dejaria una ventana visible por la
+que el conmutador no pasa. Separar esas dos acepciones sigue siendo una casilla
+propia; lo que se arregla hoy es **a donde va la tecla**.
+
+## 4 -- LA REGLA DE LOS MODIFICADORES, dicha en positivo
+
+La primera version listaba las doce F y el Alt, y dejaba un hueco escrito: la
+app veia tambien los atajos que no estaban en la lista. Medido: `Ctrl+n` abre la
+consola de ESTRATOS **y ademas** le llegaba a la app -- una pulsacion haciendo
+dos cosas.
+
+```text
+   una tecla MODIFICADA (Ctrl o Alt)  es del que reparte ventanas
+   una tecla DESNUDA                  es de quien esta delante
+   mas las doce F, que no llevan modificador y nunca fueron de nadie mas
+```
+
+★ **Ampliarlo a Ctrl no es taparlo con una excepcion mas**: es que la lista deja
+de ser una lista y pasa a ser una REGLA -- y una regla no se queda vieja cuando
+manana alguien anada un atajo.
+
+[!] Su precio, dicho: **hoy una app no puede tener un `Ctrl+algo` propio.** Es
+el intercambio que hace cualquier compositor, y se puede revisar el dia que una
+app lo pida -- pero entonces sera una concesion con nombre, no un descuido.
+
+## Lo que sigue abierto DESPUES de esto
+
+```text
+   la CAPTURA del raton          soltar fuera de la ventana no llega
+   el foco significa DOS cosas   quien teclea, y quien esta delante
+   un `Ctrl+algo` de una app     hoy no se puede, y esta dicho por que
+   `main.rs` esta en 984         el siguiente de la lista, y por el mismo
+                                 camino que acaba de recorrer `mouse.rs`
+```
+
 # PASO 3 -- Cerrar sin ser root ✅ HECHO el 2026-08-19
 
 *"opcion para cerrar fuerte"* suena a boton y es **autoridad**: matar un proceso

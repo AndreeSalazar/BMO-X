@@ -261,7 +261,7 @@ void barra(unsigned int *fb, int stride, int x, int y, int w, int h, unsigned in
 }
 
 void menu_pinta(unsigned int *fb, int stride, int ancho, int alto, int sel,
-                int fov, int vel, int tema) {
+                int fov, int vel, int tema, int hov) {
     int px; int py; int ph;
     int f;
     int v;
@@ -280,6 +280,14 @@ void menu_pinta(unsigned int *fb, int stride, int ancho, int alto, int sel,
         if (f == 1) v = vel;
         if (f == 2) v = tema;
 
+        /* ** LA FILA BAJO EL RATON, y esta es la que prueba que el PUNTERO
+         * llega. Un clic podria explicarse por casualidad; que una fila se
+         * encienda al pasar por encima sin pulsar nada solo puede venir de una
+         * posicion que se esta leyendo de verdad, fotograma a fotograma. */
+        if (f == hov && f != sel) {
+            barra(fb, stride, px + 8, menu_fila_y(alto, f) - 2, MENU_ANCHO - 16,
+                  MENU_FILA_ALTO + 4, 0x00182430);
+        }
         /* La marca de la fila senalada. */
         if (f == sel) {
             barra(fb, stride, px + 10, menu_fila_y(alto, f), 6, MENU_FILA_ALTO, 0x0000E5FF);
@@ -309,26 +317,36 @@ void menu_pinta(unsigned int *fb, int stride, int ancho, int alto, int sel,
  *
  * ** Usa `menu_fila_y` y `menu_seg_x`, las mismas que pinta `menu_pinta`. No
  * hay una segunda cuenta que pueda desviarse de la primera. */
-int menu_golpe(int ancho, int alto, int mx, int my) {
+int menu_fila_en(int alto, int my) {
     int f;
-    int k;
     int y;
-    int x;
-
     f = 0;
     while (f < MENU_FILAS) {
         y = menu_fila_y(alto, f);
         if (my >= y && my < y + MENU_FILA_ALTO) {
-            k = 0;
-            while (k < 3) {
-                x = menu_seg_x(ancho, k);
-                if (mx >= x && mx < x + MENU_SEG_ANCHO) {
-                    return f * 4 + k;
-                }
-                k = k + 1;
-            }
+            return f;
         }
         f = f + 1;
+    }
+    return -1;
+}
+
+int menu_golpe(int ancho, int alto, int mx, int my) {
+    int f;
+    int k;
+    int x;
+
+    f = menu_fila_en(alto, my);
+    if (f < 0) {
+        return -1;
+    }
+    k = 0;
+    while (k < 3) {
+        x = menu_seg_x(ancho, k);
+        if (mx >= x && mx < x + MENU_SEG_ANCHO) {
+            return f * 4 + k;
+        }
+        k = k + 1;
     }
     return -1;
 }
@@ -383,7 +401,7 @@ int main() {
     int accion;
     unsigned long long ev;
     /* Lo que devuelve `menu_golpe`, ya partido. */
-    int g; int v;
+    int g; int v; int hov;
     /* ** EL CAMPO DE VISION SE REHACE DESDE LA DIRECCION, y por eso es una
      * BANDERA y no una cuenta repetida en cada sitio que lo cambia. El plano de
      * camara es perpendicular a la direccion: escalarlo por su cuenta lo
@@ -813,7 +831,16 @@ int main() {
          * tiene que taparlo todo. Y se pinta cada vuelta en vez de recordar si
          * ya estaba, porque el mundo se redibuja entero debajo -- guardar un
          * "ya lo pinte" seria guardar algo que el fotograma siguiente borra. */
-        if (menu == 1) menu_pinta(fb, stride, ancho, alto, sel, fov, vel, tema);
+        /* La fila bajo el raton, si es que el raton esta dentro. `dentro` se
+         * pregunta PRIMERO: cuando no lo esta, x e y conservan la ultima
+         * posicion buena y realzarian una fila que ya nadie senala. */
+        hov = -1;
+        if (menu == 1 && sup != 0) {
+            if (bmo_superficie_dentro(sup) == 1) {
+                hov = menu_fila_en(alto, bmo_superficie_puntero_y(sup));
+            }
+        }
+        if (menu == 1) menu_pinta(fb, stride, ancho, alto, sel, fov, vel, tema, hov);
 
         /* ** SEGUIMOS SIENDO LOS DUENOS DE LA PANTALLA?
          *

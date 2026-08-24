@@ -54,9 +54,10 @@ const HEADER_TAG: u64 = 32;
 /// permitirsela no es soporte, es una promesa que se paga en cada vuelta.
 const BGRA32: u32 = 0;
 
-/// Lo que ocupa el buzon antes de la primera ranura: cabeza y cola.
-/// El mismo numero que `BMO_SUP_BUZON_CABECERA` de `<bmo/superficie.h>`.
-const BUZON_TAG: u64 = 8;
+/// Lo que ocupa el buzon antes de la primera ranura: cabeza, cola y el estado
+/// del puntero. El mismo numero que `BMO_SUP_BUZON_CABECERA` de
+/// `<bmo/superficie.h>`.
+const BUZON_TAG: u64 = 16;
 /// Lo que mide una ranura: un evento crudo, el mismo `u64` que devuelve
 /// `bmo_entrada_evento`.
 const BUZON_RANURA: u64 = 8;
@@ -312,6 +313,40 @@ impl Surface {
     }
 
 
+    /// **Donde esta el puntero AHORA**, escrito en el sitio fijo del buzon.
+    ///
+    /// ** ESTO NO ES UN EVENTO Y POR ESO NO VA AL ANILLO. Un clic es un HECHO
+    /// --paso, y si se pierde no vuelve a pasar-- pero la posicion es un
+    /// ESTADO: solo importa la ultima. Un anillo de 64 ranuras con algo que
+    /// cambia sesenta veces por segundo se llena en un segundo, y entonces se
+    /// descartan las NUEVAS, que es lo correcto para un hecho y lo peor posible
+    /// para un estado: la app leeria donde estuvo el raton hace un segundo
+    /// creyendose que es ahora. **Un buzon lleno de posiciones no va lento:
+    /// miente.**
+    ///
+    /// Asi que se PISA. Cuesta dos escrituras por fotograma y por caja, y a
+    /// cambio la app siempre lee lo ultimo.
+    ///
+    /// `dentro` en `false` deja x e y **como estaban**: es la ultima posicion
+    /// buena, que es lo unico util que se puede dejar ahi. Ponerlas a cero
+    /// diria que el puntero esta en la esquina, y eso es una posicion, no una
+    /// ausencia.
+    pub(crate) fn puntero(&self, x: u32, y: u32, botones: u8, dentro: bool) {
+        let Some(cab) = Header::read(self.base, self.bytes) else {
+            return;
+        };
+        if cab.ranuras == 0 {
+            return;
+        }
+        let idx = self.base + cab.buzon;
+        if dentro {
+            let xy = (x & 0xFFFF) | (y & 0xFFFF) << 16;
+            unsafe { core::ptr::write_volatile((idx + 8) as *mut u32, xy) };
+        }
+        let est = botones as u32 | (dentro as u32) << 8;
+        unsafe { core::ptr::write_volatile((idx + 12) as *mut u32, est) };
+    }
+
     pub(crate) fn paint_chrome(&self, p: &bmo::Pantalla) {
         self.chrome.paint_chrome(p, BOX_EDGE, BOX_BG, BOX_TITLE, ACCENT);
         p.rect(self.chrome.x + 10, self.chrome.y + 10, 8, 8, ACCENT);
@@ -422,6 +457,38 @@ impl Table {
             }
         }
         None
+    }
+
+    /// **La caja `i` sabe leer teclas?** Lo dice su buzon.
+    ///
+    /// Existe para que el escritorio no se quede mudo: si la ventana de delante
+    /// no lee, las teclas tienen que seguir cayendo en la linea de Ejecutar en
+    /// vez de descartarse. Ver `desktop::keys::app::muda`.
+    pub(crate) fn lee_teclas(&self, i: usize) -> bool {
+        match self.sup.get(i).and_then(|s| s.as_ref()) {
+            Some(s) => Header::read(s.base, s.bytes).is_some_and(|c| c.ranuras > 0),
+            None => false,
+        }
+    }
+
+    /// **Le cuenta a cada caja donde esta el puntero**, una vez por vuelta.
+    ///
+    /// A la que lo tiene encima le deja la posicion en pixeles SUYOS; a las
+    /// demas les dice que no. Es lo que permite que una app realce lo que hay
+    /// bajo el raton sin esperar a que alguien pulse -- y sin que ninguna tenga
+    /// que adivinar donde la pusieron.
+    ///
+    /// Cuesta dos escrituras a memoria por caja y por fotograma. Ver
+    /// `Surface::puntero` para por que esto no viaja por el anillo.
+    pub(crate) fn puntero(&mut self, p: &bmo::Pantalla, px: u32, py: u32, botones: u8) {
+        let encima = self.golpe(p, px, py);
+        for (i, s) in self.sup.iter().enumerate() {
+            let Some(s) = s.as_ref() else { continue };
+            match encima {
+                Some((j, lx, ly)) if j == i => s.puntero(lx, ly, botones, true),
+                _ => s.puntero(0, 0, 0, false),
+            }
+        }
     }
 
     /// **Recoge lo que alguien haya ofrecido.** Devuelve `true` si nacio una

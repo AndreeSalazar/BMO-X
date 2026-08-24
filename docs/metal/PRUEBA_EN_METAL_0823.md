@@ -247,7 +247,18 @@ que el dueno pidio-- y lo que separa un compositor de un relevo.
    4  ESC                 cierra el menu.  NO cierra la ventana: para eso
                           esta el boton del marco
    5  CLIC en una casilla del menu   la pone directamente, sin navegar
+   6  MOVER el raton por el menu     la fila de debajo se realza SOLA, sin
+                                     pulsar nada
+   7  Ctrl+n con la ventana delante  abre la consola de ESTRATOS y NO le llega
+                                     a la app: una pulsacion, una cosa
 ```
+
+★★★ **El gesto 6 es el que prueba el PUNTERO**, que es lo que se anadio al
+final y lo que mas facil es que salga mal. Un clic podria explicarse por
+casualidad; **que una fila se encienda al pasar por encima sin pulsar nada solo
+puede venir de una posicion que se esta leyendo de verdad, fotograma a
+fotograma**. Y si al sacar el raton de la ventana la fila se queda encendida, lo
+que falla es `dentro`, no la posicion.
 
 ★★ **El gesto 5 es el del RATON, y prueba dos cosas de una vez**: que el clic
 llega, y que las coordenadas se tradujeron bien. Si el valor que cambia **no es
@@ -272,6 +283,8 @@ cerrada.
 | el clic **mueve al personaje** en vez de pulsar la casilla | el bit 63 no se esta mirando: los botones se estan leyendo como scancode. Es el fallo que `bmo_sup_es_raton` existe para impedir |
 | un clic en la **barra de titulo** llega a la app | `Table::golpe` tenia que haber contestado `None` fuera del contenido |
 | se arrastra la ventana **al pulsar dentro** | el clic esta llegando a `chrome.grab` y a la app a la vez |
+| la fila realzada **se queda encendida** al sacar el raton | `dentro` no se esta poniendo a 0. La posicion se lee bien, lo que falla es saber que ya no hay nadie encima |
+| la fila realzada **va con retraso** | seria el sintoma de que la posicion viaja por el anillo y no por el campo fijo. No deberia poder pasar: no hay ranura de posicion |
 
 [!] El menu es de BARRAS y no de texto a proposito: REX no trae fuente para una
 app de C. Tres filas, tres segmentos cada una, y la fila senalada con su marca a

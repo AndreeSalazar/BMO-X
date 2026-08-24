@@ -334,7 +334,10 @@ pub(crate) fn dispatch(
         //
         // Ninguna abierta --todas escondidas-- tampoco es "Ejecutar por
         // defecto": las teclas se descartan y vuelven al invocarla.
-        if !dsk.win.focus.es_para(Ventana::Run) {
+        // ** Y UNA APP QUE NO LEE NO SE QUEDA LAS TECLAS: caen en Ejecutar,
+        // que es donde caian antes de que existieran las cajas. Ver
+        // `app::muda` para por que esto no se arregla en el foco.
+        if !dsk.win.focus.es_para(Ventana::Run) && !app::muda(dsk) {
             continue;
         }
         if let Edit::Launch(target, n) = editor::on_key(dsk, p, c, g.ctrl) {

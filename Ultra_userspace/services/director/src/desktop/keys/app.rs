@@ -74,18 +74,53 @@ const POR_VUELTA: usize = 32;
 
 /// Esta tecla es del ESCRITORIO y no se reenvia?
 ///
+/// ** LA REGLA, DICHA EN POSITIVO: **una tecla MODIFICADA es del que reparte
+/// ventanas; una tecla DESNUDA es de quien esta delante.** Mas las doce F, que
+/// no llevan modificador y aun asi nunca fueron de nadie mas.
+///
+/// La primera version listaba solo las F y el Alt, y dejaba un hueco escrito:
+/// `Ctrl+n` abre la consola de ESTRATOS **y ademas** le llegaba a la app, o sea
+/// que una pulsacion hacia dos cosas. Ampliarlo a Ctrl no es taparlo con una
+/// excepcion mas: es que la lista deja de ser una lista y pasa a ser una regla,
+/// y una regla no se queda vieja cuando manana alguien anada un atajo.
+///
+/// [!] Y su precio, dicho: **hoy una app no puede tener un `Ctrl+algo` propio.**
+/// Es el intercambio que hace cualquier compositor, y se puede revisar el dia
+/// que una app lo pida -- pero entonces sera una concesion con nombre, no un
+/// descuido.
+///
 /// Se mira el SCANCODE y no el caracter porque son dos colas distintas: la
 /// cocida la lee `gather` para la linea de Ejecutar, y esta es la cruda. No hay
-/// forma de saber que caracter salio de que scancode, asi que la lista se
+/// forma de saber que caracter salio de que scancode, asi que la regla se
 /// escribe una vez, aqui, y se comprueba contra el scancode.
 fn del_escritorio(sc: u8, m: u8) -> bool {
-    // Con Alt pulsado no hay tecla de app: Alt+Tab conmuta, Alt+flechas mueve
-    // y Alt+M minimiza. Son del que reparte las ventanas, y quedarselas seria
-    // que la ventana de delante decidiera si se puede salir de ella.
-    if m & bmo::MOD_ALT != 0 {
+    // Alt: Alt+Tab conmuta, Alt+flechas mueve, Alt+M minimiza. Ctrl: los atajos
+    // de las ventanas del sistema. Quedarselos seria que la ventana de delante
+    // decidiera si se puede salir de ella.
+    if m & (bmo::MOD_ALT | bmo::MOD_CTRL) != 0 {
         return true;
     }
     (SC_F1..=SC_F10).contains(&sc) || sc == SC_F11 || sc == SC_F12
+}
+
+/// **La ventana de delante es una app que NO lee teclas?**
+///
+/// Si lo es, el escritorio se estaba quedando mudo: la cascada de `dispatch`
+/// descarta toda tecla cuando el foco no es la linea de Ejecutar --porque se
+/// supone que la ventana de delante ya tuvo su turno-- y una app sin buzon no
+/// tiene turno ninguno. La tecla no iba a ningun sitio.
+///
+/// ** SE ARREGLA AQUI Y NO EN EL FOCO, y esa es la parte que importa. La
+/// tentacion es no darle el foco a una app que no lee, pero el foco significa
+/// **dos cosas a la vez** --quien tiene las teclas, y quien esta delante para
+/// Alt+Tab-- y quitarle la segunda por culpa de la primera dejaria una ventana
+/// visible por la que el conmutador no pasa. Separar esas dos acepciones es una
+/// casilla propia; mientras tanto, lo que se arregla es a donde va la tecla.
+pub(crate) fn muda(dsk: &Desktop) -> bool {
+    match dsk.win.focus.actual() {
+        Some(Ventana::App(i)) => !dsk.table.lee_teclas(i as usize),
+        _ => false,
+    }
 }
 
 /// **UN CLIC DENTRO DE UNA APP**, traducido a pixeles suyos y dejado en su
@@ -101,18 +136,30 @@ fn del_escritorio(sc: u8, m: u8) -> bool {
 /// `#[allow(dead_code)]` y el motivo al lado: *"2c.1 se entrega SOLA para que su
 /// fallo no se confunda con el del transporte"*. Este es el transporte.
 ///
+/// ** NO HAY CAPTURA, y hay que decirlo: el soltar se entrega a quien esta
+/// debajo del puntero en ese momento, no a quien recibio el clic. Si sueltas
+/// fuera de la ventana, ese soltar no llega -- y por eso hoy no se puede
+/// arrastrar algo hasta el borde desde dentro de una app.
+///
 /// ** Y CONTESTA `None` FUERA DEL CONTENIDO, que es lo que hace que un clic en
 /// la barra de titulo no llegue a la app: ahi el que manda es el marco. No hay
 /// una segunda comprobacion para eso -- es la misma funcion que ya recorta los
 /// pixeles, y por eso no puede haber un borde donde se ve una cosa y se pulsa
 /// otra.
-pub(crate) fn raton(dsk: &mut Desktop, p: &bmo::Pantalla, px: u32, py: u32, botones: u8) -> bool {
+pub(crate) fn raton(
+    dsk: &mut Desktop,
+    p: &bmo::Pantalla,
+    px: u32,
+    py: u32,
+    botones: u8,
+    pulsada: bool,
+) -> bool {
     let Some((i, lx, ly)) = dsk.table.golpe(p, px, py) else {
         return false;
     };
     let ev = RATON
         | HAY
-        | PULSADA
+        | if pulsada { PULSADA } else { 0 }
         | botones as u64
         | (lx as u64 & 0xFFFF) << 16
         | (ly as u64 & 0xFFFF) << 32;
