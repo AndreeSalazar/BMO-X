@@ -129,6 +129,27 @@ imposible de no ver.
 **Las cuatro obligaciones:**
 
 - **L6a.** Un modulo que pase de ~1.000 lineas se parte. No es una sugerencia.
+- **L6a-bis (2026-08-24).** Y **el limite es el mismo, lo que cambia es la
+  salida de emergencia**: en `util` y en Ring 3 vale el trinquete --se puede
+  sellar un techo y desde ese dia solo puede encoger--, y en **Ring 0 no se
+  sella nada nuevo**. Un fichero del kernel que cruce las mil lineas para el
+  build, y no hay `--motivo` que valga.
+
+  *Regla de Eddi: "el guardian limita ESTRICTAMENTE hasta mil, y por que? porque
+  hablamos de Bare Metal Orquestal. Pero si es para Ring 3 como library OS,
+  okey."* El motivo esta dentro: **lo que cuesta un fallo depende del anillo.**
+  En Ring 3 un fallo mata la tarea y el kernel recupera la pantalla --verificado
+  en metal--; en Ring 0 se lleva la maquina, y ahi conviven 236 `static mut`
+  que en un fichero grande puede tocar cualquier funcion.
+
+  [!] **Y el anillo NO se decide por la carpeta.** Se midio el mismo dia:
+  `platform/drivers/storage/fat32/src/lib.rs` (2.537) y
+  `platform/drivers/usb/xhci/src/lib.rs` (1.584) viven bajo `platform/`,
+  **parecen Ring 3 y son Ring 0** -- son crates que enlaza el kernel. Una regla
+  por carpetas habria relajado el limite justo sobre los dos ficheros mas
+  grandes que corren en Ring 0. Asi que el anillo sale del **grafo de
+  dependencias del kernel**, que es un hecho: el dia que un driver se mude a
+  Ring 3 de verdad, su `Cargo.toml` sale de ese grafo y el censo se entera solo.
 - **L6b.** El corte se elige por **la pregunta que responde el fichero**, no por
   tamano ni por capas. Un fichero tiene que poder contestar *"por que soy un
   fichero y no un trozo del de al lado"*.
