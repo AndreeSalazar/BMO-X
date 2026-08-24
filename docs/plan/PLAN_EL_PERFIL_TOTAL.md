@@ -227,28 +227,95 @@ los tres primeros huecos son el mismo trabajo."*
 
 # 5. EL TECHO -- donde se acaba lo que esta maquina puede dar
 
-Ordenado, y con lo que cada escalon desbloquea:
+> **Reescrito el 2026-08-24 por la tarde**, despues de 39 commits. Tres escalones
+> cayeron, aparecio uno que no estaba, y **el primero dejo de ser uno para ser
+> tres cosas que caben en el MISMO arranque.**
+
+## 5.0 -- *** UN ARRANQUE, TRES FOTOS
+
+Esto es lo que mas desbloquea por lo que menos cuesta, y ya no es una foto:
 
 ```text
-   1. la foto de `net rx`            una tarde      la red empieza a existir
-   2. la foto de `smp prueba`        un arranque    el reparto deja de ser fe
-   3. KIND_RED + TX                  semanas        la primera trama que SALE
-   4. smoltcp en Ring 3              semanas        ping, y la medida contra Windows
-   5. isocronas en xHCI              semanas        suena, y hay plazos que cumplir
-   6. la puerta a los nucleos        semanas        una app usa los 12
-   7. `exp` en INTI                  dias           el motor de inferencia
-   8. el asistente local             semanas        la app insignia
-   ---------------------------------------------------------------------
-   9. criptografia                   MESES          y aqui esta EL TECHO
+   net           el censo. No toca nada
+   net rx        arma el receptor -- y ahora la foto trae DE, PARA, tipo y largo
+   placa         el censo del firmware: que tablas, ECAM, IOMMU
+   smp prueba    los tres testigos que llevan desde el 08-08 sin fotografiar
 ```
 
-*** **El techo tiene nombre y es la criptografia.** Todo lo de arriba es
-trabajo sobre lo que ya existe. El 9 es el unico que es un **invento**, y ademas
-es el que abre dos puertas a la vez -- internet y la firma del `.bex`.
+** Las cuatro son de LECTURA. `net rx` es la unica que configura algo, y lo que
+configura no transmite: un error no puede molestar a nadie mas de la red.
 
-Y hay una consecuencia que conviene ver ahora: **cuando se llegue al 8, esta
-maquina habra dado casi todo lo que tiene sin comprar nada.** Lo que quede
-pendiente sera criptografia (software, meses) y GPU (hardware que no esta).
+*** Y las tres respuestas estan **predichas por escrito** antes de arrancar, en
+`docs/metal/PRUEBA_RED_PASO_1.md`. Un resultado que no se predijo no distingue
+"funciono" de "salio algo".
+
+## 5.1 -- La escalera, con lo que cayo hoy
+
+```text
+   [X] `exp` en INTI            HECHO   y de camino salio que `-1.0` valia -4,0
+   [X] el monton grande         HECHO   `necesita monton 64 megas "por que"`
+   [X] AVX2 / `tabla`           HECHO
+   ---------------------------------------------------------------------
+   1. UN ARRANQUE, tres fotos       una tarde     ver 5.0
+   2. la puerta a los nucleos       semanas       *** LO UNICO que separa el
+                                                  motor de inferencia de existir
+   3. el asistente local            semanas       la app insignia
+   4. KIND_RED + TX                 semanas       la primera trama que SALE
+   5. smoltcp en Ring 3             semanas       ping, y la medida contra Windows
+   6. isocronas en xHCI             semanas       suena, y hay PLAZOS que cumplir
+   7. la IOMMU                      ?             *** NUEVO. Ver 5.2
+   ---------------------------------------------------------------------
+   8. criptografia                  MESES         y aqui sigue EL TECHO
+```
+
+*** **De las once piezas del motor de inferencia quedan DIEZ hechas.** La que
+falta es el escalon 2, y no es un invento: es una operacion en el ABI. `crew`
+reparte trabajo y corre 12 de 12 en metal; lo que no hay es camino para una
+funcion de Ring 3.
+
+[!] Y el escalon 2 va **detras de la foto de `smp prueba`**. Disenar la puerta
+sobre un reparto que contesto `0.00x` y nadie ha vuelto a mirar seria disenar
+sobre nada.
+
+## 5.2 -- *** EL ESCALON QUE APARECIO HOY: la IOMMU
+
+No estaba en ninguna escalera, y ahora tiene numero porque **se puede leer**:
+
+```text
+   [placa] IOMMU tipo 0x10  registros en 0x...
+           la NIC trae N caps extendidas (offset >= 0x100)
+           0xD  ACS -- impide que dos funciones se salten la IOMMU
+```
+
+** Y lo que abre no es rendimiento: es el agujero que hoy tiene el modelo de
+seguridad, y es la frase de portada del sistema puesta a prueba.
+
+> **Una capability dice que puede hacer un PROCESO. No dice NADA de lo que puede
+> hacer un APARATO.**
+
+Un aparato con bus-master escribe donde le den la direccion -- sin pasar por el
+kernel, sin pasar por las tablas de pagina, y sin que nadie se entere. Es la
+mina del PRDT de AHCI, y **sigue armada**.
+
+*** Y ACS es la mitad que casi nunca se cuenta: **sin ella, dos funciones detras
+del mismo puente pueden hacer DMA la una contra la otra sin que la IOMMU se
+entere.** Encenderla sin mirar ACS es poner una puerta en una habitacion que
+tiene otra puerta -- y ese dato sale del comando `placa`, gratis, antes de
+escribir una linea de driver.
+
+[!] El escalon lleva `?` y no un numero **a proposito**: encender un IOMMU es
+programar tablas de pagina para aparatos, y eso no se estima sin haberlo mirado.
+Es la ley 11 -- se pregunta, no se supone -- y es la misma leccion que costo el
+"meses" de la GPU.
+
+## 5.3 -- Lo que sigue sin cambiar
+
+*** **El techo tiene nombre y es la criptografia.** Todo lo de arriba es trabajo
+sobre lo que ya existe; el 8 es el unico que es un **invento**, y es el que abre
+dos puertas a la vez -- internet y la firma del `.bex`.
+
+Y cuando se llegue al 3, **esta maquina habra dado casi todo lo que tiene sin
+comprar nada.**
 
 ---
 
