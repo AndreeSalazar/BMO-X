@@ -193,8 +193,9 @@ The primary objective is banking on BMO-X. This is the one behind it, and it is
 stated here because the *shape* of the work is the point, not the hardware.
 
 > **Target: AMD Radeon RX 9060 XT 16GB** (Navi 44 / GFX1200), declared
-> 2026-08-02 in `platform/drivers/gpu/rdna4/`. A Ring 3 driver, like every other
-> driver here.
+> 2026-08-02 in `platform/drivers/gpu/rdna4/`. Intended as a **Ring 3** driver
+> -- and it would be the **first**: every device driver today is a Rust crate the
+> Ring 0 kernel links. That gap is stated, not glossed over.
 
 ### Why this is one day of work and not a project
 

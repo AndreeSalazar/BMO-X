@@ -399,8 +399,8 @@ Detras caen RRDS, ESDS y **KSDS** -- o sea el indice, o sea la banca.
 
 | # | Pieza | Tamano |
 |---|---|---|
-| 1 | Cablear el e1000: anillos TX/RX sobre las 287 lineas de esqueleto | semanas |
-| 2 | **smoltcp**: ARP, IPv4, ICMP, UDP, TCP | crate `no_std` **ya hecha** -- integrarla |
+| 1 | [!] **CORREGIDO 2026-08-24.** Decia *"cablear el e1000"*, y el e1000 **ya no existe**: era la NIC de QEMU y esta maquina lleva una **Realtek RTL8111/8168**. Las 287 lineas se borraron. Lo que hay es un perfil del aparato de verdad, con el paso 0 **verificado en el Ryzen** y el anillo RX escrito. Falta TX | ~300 lineas |
+| 2 | **smoltcp**: ARP, IPv4, ICMP, UDP, TCP | crate `no_std` **ya hecha** -- integrarla. ** Y traerla es CORRECTO por la ley 24: una pila TCP es **software**, no nombra ningun aparato. Traer un driver de NIC generico era lo incorrecto, y es la misma ley contestando distinto a los dos lados |
 | 3 | `KIND_SOCKET` y sus operaciones | dias |
 | 4 | DNS | dias |
 | 5 | **TLS** | ★ proyecto propio: criptografia, certificados, maquina de estados |
