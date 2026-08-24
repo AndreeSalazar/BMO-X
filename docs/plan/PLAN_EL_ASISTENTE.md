@@ -250,54 +250,125 @@ Ring 3, y se escribe en INTI por los mismos cuatro motivos.**
 
 ---
 
-# 4. LA GPU -- ayuda una RX 9060 XT?
+# 4. LA GPU -- reescrito el 2026-08-23 bajo la LEY 24
 
-## 4.1 -- Lo primero: esa tarjeta YA ES el objetivo declarado
+> **[!] Esta seccion decia "meses" y estaba mal medida.** No por optimismo ni
+> por pesimismo: **le puso precio al proyecto equivocado**. Lo dejo escrito el
+> dueno el mismo dia: *"si hablas de meses en RDNA4 SOLO UNO para perfilar con
+> todo generico ahi estas chocando"*.
+>
+> Se conserva el error porque el error es la leccion. Ver `BITACORA.md`, ley 24.
 
-No es una idea nueva. `rdna4/src/lib.rs` dice, desde el 2026-08-02:
+## 4.1 -- El choque, dicho entero
 
-> *Objetivo declarado: **RX 9060 XT 16GB** (Navi 44 / GFX1200).*
+`amdgpu` son millones de lineas. Son millones porque **soporta quince anos de
+tarjetas**: descubrimiento de bloques en tiempo de ejecucion, decenas de juegos
+de firmware, mapas de registros por generacion, gestion de energia para cada una.
 
-Con el motivo escrito: los blobs de firmware de AMD estan publicados y son
-redistribuibles, y hay un driver abierto que se puede leer. Eso decidio una
-pelea perdida antes con una RTX 3060.
+**Eso es el precio de ser generico, y BMO-X no lo paga en hardware.** Lo que
+aqui se escribe es un **perfil de UNA tarjeta**: un device id, un juego de
+blobs, un mapa de registros, una secuencia de arranque. Es lo mismo que
+`cpu_vendor/profile.rs` dice de un CPU -- *"estrenar otro CPU es cambiar un
+perfil, nunca editar el kernel"*.
 
-## 4.2 -- [!] PERO HAY DOS METAS, y solo una es alcanzable
+Estimar "meses" mirando `amdgpu` es **estimar otro proyecto**.
 
-Esto es lo que hay que ver antes de comprar, y el plan ya lo separa:
+## 4.2 -- Las seis piezas de B2, releidas por perfil
 
-| | meta A | meta B2 |
-|---|---|---|
-| que es | **SDMA**: el motor de copia | anillos GFX/compute, el 3D |
-| tamano | *"del tamano del driver de AHCI"* | *"un proyecto de anos"* |
-| por que es pequena | **no se toca el display**: se hereda el framebuffer del UEFI y se salta DCN entero | -- |
-| el muro | ninguno conocido | **el PSP** autentica el microcodigo |
-| sirve para el asistente? | [no] **NO** | [si] si |
-| sirve para DOOM? | [si] **es justo su cuello** | -- |
+`PLAN_VULKAN.md` ya las tenia contadas. Lo que faltaba era leerlas con la ley
+delante:
 
-## 4.3 -- La respuesta, sin adornos
+| # | pieza | lo generico | **lo que es un PERFIL** |
+|---|---|---|---|
+| 1 | enumerar PCIe, mapear BAR | el bus es una **especificacion** | -- ya hecho (xHCI, AHCI) |
+| 2 | **el PSP** | -- | ⚠ una secuencia, no una tabla. Ver 4.3 |
+| 3 | anillos + timbres | -- | **la forma es la de xHCI**, ya peleada en metal |
+| 4 | VRAM, GTT, tablas de pagina | `amdgpu` lo hace para 15 anos de aperturas | **UNA apertura, UN formato**: se conoce, se escribe |
+| 5 | SPIR-V -> ISA de RDNA | -- | **la ISA esta PUBLICADA**, y una ISA es una TABLA |
+| 6 | la API de Vulkan | ** SI es software: generico, y se reutiliza de B1 | -- |
 
-**Multiplicar matrices en una GPU necesita el motor de COMPUTO, y ese esta en la
-meta B2, detras del PSP.** Y el plan escribe sobre el PSP la frase que hay que
-respetar:
+*** **Y la fila 5 es la que mas cambia al mirarla asi.** "Escribir un compilador
+de sombreadores" suena a proyecto de anos. Pero `sem-asm` existe y su promesa
+esta escrita: *"anadir una instruccion = 1 entrada TOML, CERO Rust"*. Un
+`tables/arch/gfx1200/` es **la misma forma** que `tables/arch/x86_64/`, que ya
+tiene cuatro ficheros y 72 intrinsecos.
 
-> *"No escribas un plan de fechas sobre esto hasta haberlo mirado. Es
-> exactamente el tipo de cosa que parece de dos semanas y son seis meses."*
+No es que sea facil: es que **no es un proyecto nuevo, es una carpeta nueva en
+uno que ya funciona.** Y la fila 6 es software, o sea generica, o sea que se
+escribe una vez y no se vuelve a tocar al cambiar de tarjeta.
 
-Asi que:
+## 4.3 -- ⚠ EL PSP: lo unico que el perfil NO encoge, y por que
 
-- **Para el asistente: la GPU no ayuda todavia**, y lo que la separa de ayudar
-  es el proyecto mas grande que hay apuntado en este repo.
-- **Para DOOM: ayuda muchisimo, y es lo unico que ayuda.** La medida ya esta
-  tomada: a 1600x1000 el deficit ENTERO es el blit, ~300 MB/s al framebuffer.
-  Eso es literalmente lo que hace SDMA.
-- **Para tu Windows: manana.** `llama.cpp` con 16 GB de VRAM te da un asistente
-  potente sin escribir una linea.
+Un perfil recorta **variantes**. El PSP no es una variante: es un **apreton de
+manos con un procesador de seguridad**, y tiene los mismos pasos se soporte una
+tarjeta o cincuenta.
 
-> **Y la regla 4 del plan original manda antes que todo esto:** *"PRIMERO EL
-> NUMERO"*. El comando `perf` dice KiB por fotograma. **La respuesta puede
-> perfectamente ser que una GPU no compra nada** para lo que BMO-X hace hoy. Ese
-> numero se mira antes de gastar un sol.
+**Pero de ahi no sale un numero, y ese fue el error de verdad.** `PLAN_VULKAN.md`
+lo dejo escrito antes de que nadie estimara nada:
+
+> *"No escribas un plan de fechas sobre esto hasta haberlo mirado. Es exactamente
+> el tipo de cosa que parece de dos semanas y son seis meses."*
+
+Y se escribio una fecha igual. **Eso es la ley 11 incumplida** --*a un aparato se
+le pregunta, no se le supone*-- y esta citada en el fichero de al lado, dos
+lineas mas arriba de donde se rompio.
+
+### Lo que hay que hacer en su lugar, y es barato
+
+```text
+   leer la secuencia del PSP de Navi 4x en `amdgpu`, y CONTAR LOS PASOS
+   -> un dia de lectura, cero hardware, cero dinero
+```
+
+Eso convierte *"no se sabe"* en un numero. Hasta entonces la respuesta honesta
+sobre el PSP es **"no esta medido"**, y no es lo mismo que "es largo".
+
+## 4.4 -- Por que AMD, y por que no es una preferencia
+
+Palabras del dueno (2026-08-23): *"tenia RTX 3060 12G y lo use pero ingenieria
+inversa, la verdad es historia. Con AMD es el motivo, no me importa el costo,
+porque se que se puede y punto."*
+
+Y esa frase tiene el dato tecnico dentro: **con Nvidia el camino era ingenieria
+inversa**; con AMD el camino esta **abierto**:
+
+| | |
+|---|---|
+| firmware | publicado en `linux-firmware` y **redistribuible** |
+| ISA de RDNA | **publicada por AMD** |
+| driver de referencia | `amdgpu` es abierto y **se puede leer** |
+
+** Con eso, la pregunta deja de ser *"se puede?"* y pasa a ser *"cuanto"*. Y
+"cuanto" es lo que la seccion 4.3 dice que hay que medir en vez de suponer.
+
+## 4.5 -- Y donde vive: RING 3
+
+`rdna4/src/lib.rs` ya lo declara: *"como todo driver de BMO, esto corre en Ring
+3 como un servidor BEX detras de un estuario de Canal. Ring 0 nunca gana codigo
+de GPU."*
+
+** No es un detalle de colocacion. Un driver de GPU es de los mas grandes que
+tiene un sistema, y **aqui puede morirse sin llevarse la maquina** -- la misma
+decision que puso la pila TCP en Ring 3 (seccion 3.4). El kernel entrega el
+aparato y se aparta.
+
+## 4.6 -- Lo que sigue siendo verdad, y no cambia con la ley
+
+Dos cosas de la version anterior sobreviven enteras:
+
+1. **Las dos metas siguen separadas.** SDMA para el compositor (meta A) y el 3D
+   con computo (meta B2) son proyectos distintos, y confundirlos es *"la forma
+   clasica de no terminar ninguna de las dos"*. La meta A **no toca el display**
+   --hereda el framebuffer del UEFI y se salta DCN entero-- y por eso es del
+   tamano del driver de AHCI.
+
+2. **Manda la regla 4: PRIMERO EL NUMERO.** `perf` dice KiB por fotograma. La
+   respuesta puede ser que la GPU no compre nada para lo que BMO-X hace hoy. Eso
+   se mira antes de gastar un sol, y se vuelve a mirar despues.
+
+Y para DOOM la respuesta ya esta medida y no depende de nada de esto: a
+1600x1000 el deficit **entero** es el blit, ~300 MB/s al framebuffer. Eso es
+literalmente lo que hace SDMA.
 
 ---
 
@@ -374,21 +445,28 @@ en microsegundos, contra la que da Windows en el mismo cable.**
 | lo que se quiere | cuanto | que lo bloquea de verdad |
 |---|---|---|
 | un asistente local, sobre tus ficheros | **semanas** | nada de diseno: es trabajo |
-| que use los 12 nucleos | +semanas | una operacion de reparto en el ABI |
+| que use los 12 nucleos | +semanas | una operacion de reparto en el ABI, y la foto de `smp prueba` |
 | red que funciona y se mide | **semanas** | nada: el paso 0 ya esta en metal |
 | **buscar en internet** | **meses** | *** la CRIPTOGRAFIA, no la red |
-| que DOOM vaya fino | meses | SDMA (meta A) |
-| IA en la GPU | **el proyecto mas grande del repo** | el PSP (meta B2) |
+| que DOOM vaya fino | meta A (SDMA) | **no toca el display**: del tamano de AHCI |
+| Vulkan en Ring 3 (meta B2) | ⚠ **NO MEDIDO** | el PSP -- ver 4.3, y **es un dia de lectura** |
 
-**Y "meses" solo aparece dos veces**, en las dos cosas que son proyectos de
-verdad. Lo demas son semanas de trabajo sobre lo que ya existe.
+*** **La ultima fila NO dice "meses", y esa es la correccion.** Decia el
+proyecto mas grande del repo, y eso le ponia precio a `amdgpu` --generico,
+quince anos de tarjetas-- cuando lo que se escribe aqui es un perfil de UNA
+(ley 24). De las seis piezas de B2, **cuatro ya estan hechas, son tablas, o son
+software que se reutiliza**; la que no se sabe es el PSP, y no saberlo no es lo
+mismo que saber que es largo.
+
+**"Meses" queda en UNA sola casilla**: la criptografia. Y esa es la unica del
+cuadro que es un invento y no trabajo.
 
 ---
 
-# 7. LAS TRES COSAS QUE "MESES" ESCONDIA
+# 7. LAS CUATRO COSAS QUE "MESES" ESCONDIA
 
 Se escriben aparte porque son el motivo entero de que este documento exista, y
-porque las tres corrigen algo que se habia dicho mal:
+porque las cuatro corrigen algo que se habia dicho mal:
 
 1. **La red no esta a cero.** El paso 0 esta verificado en el Ryzen, con la MAC
    predicha antes de mirarla, y el anillo RX esta escrito. Lo que falta del lado
@@ -401,6 +479,16 @@ porque las tres corrigen algo que se habia dicho mal:
 3. *** **Lo que de verdad separa a BMO-X de internet es la criptografia, y esa
    deuda ya estaba apuntada en otro sitio con otro nombre.** Es la misma que
    impide firmar un `.bex`. Pagarla una vez cobra dos.
+
+4. *** **Y la cuarta la caza el dueno, sobre esta misma pagina (2026-08-23):**
+   el "meses" de la GPU le ponia precio a `amdgpu`, que es generico, cuando lo
+   que aqui se escribe es **un perfil de una tarjeta**. Es la ley 24, y no
+   estaba escrita -- su evidencia llevaba repartida en cuatro sitios del repo
+   sin que ninguno la nombrara.
+
+   ** La correccion util no es "es menos de lo que dijiste": es que **el PSP no
+   esta MEDIDO**, y convertir un desconocido en un numero era incumplir la ley
+   11 con la ley 11 citada dos lineas mas arriba.
 
 ---
 
