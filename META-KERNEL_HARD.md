@@ -104,7 +104,7 @@ El ABI, `USER_IMAGE_BASE`, los layouts congelados: constantes.
 La RAM, los nucleos, las MMIO, el tamano del framebuffer, el area de XSAVE: se
 le preguntan al silicio. **Nunca al reves.**
 
-### L6. ★ MODULAR -- y no es higiene: es INSTRUMENTACION
+### L6. ** MODULAR -- y no es higiene: es INSTRUMENTACION
 
 La regla favorita de la casa, y la que mas veces se ha pagado sola. Enunciada
 por el dueno el 2026-08-13:
@@ -128,7 +128,37 @@ imposible de no ver.
 
 **Las cuatro obligaciones:**
 
-- **L6a.** Un modulo que pase de ~1.000 lineas se parte. No es una sugerencia.
+- **L6a.** Un modulo que pase de ~1.000 lineas **DE CODIGO** se parte. No es una
+  sugerencia.
+
+  **** **Y "de codigo" entro el 2026-08-24, porque la regla mordio a quien la
+  cumplia.** Se le anadio a `syscall/mod.rs` una cabecera explicando POR QUE se
+  habia repartido, el fichero cruzo las mil, y salto el guardian. Al medirlo:
+
+  ```text
+      977 lineas totales  ->  530 de CODIGO,  423 de DOCUMENTACION (43%)
+  ```
+
+  Su codigo era **la mitad del limite**. Lo que lo empujo fue la explicacion.
+
+  ** Y eso hacia que el metro empujara contra lo que esta casa mas valora: la
+  regla del dueno es *"todo tiene su por que; lo que no lo tiene, se quita"*, y
+  este arbol es **36% documentacion medida**. Un guardian que cuenta el por que
+  como si fuera riesgo **le pone precio a escribirlo** -- y el dia que alguien
+  tenga prisa, lo barato sera borrar el comentario.
+
+  Lo que L6a maneja es el riesgo del CODIGO: el estado que las funciones
+  comparten y las interacciones que esconde. **Un comentario no comparte estado
+  con nadie.**
+
+  [!] Y el cambio **no es un blanqueo**, que es lo primero que hay que comprobar
+  cuando una regla se relaja. Salieron cuatro ficheros y se quedaron los cinco
+  mas grandes: `cobol/codegen` 2.948->1.869, `cobol/parser` 2.011->1.565,
+  `c/codegen` 2.321->1.398, `cpp/parser` 1.621->1.177, `validator` 1.435->1.179.
+  **Si contar codigo hubiera vaciado la lista, el cambio seria sospechoso.**
+
+  El censo ensena **las dos columnas** --codigo y total-- para que nadie tenga
+  que creerse la cuenta.
 - **L6a-bis (2026-08-24).** Y **el limite es el mismo, lo que cambia es la
   salida de emergencia**: en `util` y en Ring 3 vale el trinquete --se puede
   sellar un techo y desde ese dia solo puede encoger--, y en **Ring 0 no se
@@ -156,11 +186,11 @@ imposible de no ver.
 - **L6c.** Un fichero que declara una **simetria** (dos hermanas, tres ejes, N
   casos) hace visible el hueco. La cabecera lo dice en voz alta: *"el tercer eje
   que aparezca se escribe igual y al lado"*.
-- **L6d.** ★ **La prueba de que un reparto no cambio nada NO es que los tests
+- **L6d.** ** **La prueba de que un reparto no cambio nada NO es que los tests
   pasen** --pasaban antes--: es que **el compilador emita los mismos bytes**. 33
   `.bex` hasheados antes y despues, identicos.
 
-**★★ Y desde el 2026-08-18, L6a tiene las cinco piezas.** Le faltaban las tres
+****** Y desde el 2026-08-18, L6a tiene las cinco piezas.** Le faltaban las tres
 ultimas y por eso se incumplia sin ruido: `gui/main.rs` crecio 1.244 lineas
 entre el 08-04 y el 08-12 **teniendo ya un plan escrito para partirlo**.
 
@@ -173,14 +203,14 @@ entre el 08-04 y el 08-12 **teniendo ya un plan escrito para partirlo**.
                        una NUEVA de 1.101 lineas y una que CRECIO +5
 ```
 
-★ El juez es un **trinquete y no un muro**, y esa es la decision: dieciocho
+** El juez es un **trinquete y no un muro**, y esa es la decision: dieciocho
 ficheros incumplen L6a hoy, y un guardian que fallara con los dieciocho se
 apagaria el primer dia -- *"uno que grita sin motivo se desconecta, y entonces
 no protege nada"*, que ya estaba escrito en el guardian de los enlaces. Asi que
 no juzga el pasado: juzga **el delta**. Lo que hay se arregla cortando; lo que
 se prohibe es que aparezca otro.
 
-### L7. ★ LA HERENCIA: abuelo, padre, hijo y nieto
+### L7. ** LA HERENCIA: abuelo, padre, hijo y nieto
 
 L6 dice **cuando** partir. Esta dice **como se ordenan los trozos**, y es la que
 convierte una medida en algo que se puede refutar.
@@ -212,7 +242,7 @@ compra:**
    sonda para que **entre dos consecutivas cambie UNA SOLA COSA**. Sin esa
    separacion, la resta mezcla dos variables y cuatro tandas seguidas dan el
    mismo numero y la misma duda -- que es exactamente lo que paso.
-2. ★★ **Hace FALSABLE una medida.** La frase *"los 246 ciclos no pueden estar en
+2. **** **Hace FALSABLE una medida.** La frase *"los 246 ciclos no pueden estar en
    el stub porque **el stub no sabe que operacion se pidio**"* no es una
    intuicion: **es L7**. El abuelo ignora al padre por construccion, asi que un
    coste que dependa de la operacion no puede aparecer ahi. Sin la jerarquia esa
@@ -228,7 +258,7 @@ mal**: o el dato sube como parametro, o las dos son la misma generacion.
 *"Alli se puede PROBAR; este binario es `no_main` para un target sin sistema
 operativo y no corre un test."*
 
-**★★ L7c. La generacion se comprueba entre CRATES, nunca entre ficheros.**
+****** L7c. La generacion se comprueba entre CRATES, nunca entre ficheros.**
 Anadida el 2026-08-18, al ponerle metro a L7 y descubrir por que el metro obvio
 --leer los `use`-- habria condenado codigo correcto en su primera vuelta:
 
@@ -285,7 +315,7 @@ Y hay un dato que lo cambia todo: **un fallo a DRAM cuesta del orden de una
 puerta entera** (ver R-CACHE1). O sea que el eje CACHE no es paralelo al de
 ciclos: **es el sumando que no estas viendo**.
 
-### ★ "Ordenar por DONDE SE USA MAS" no es un eje: es el MULTIPLICADOR
+### ** "Ordenar por DONDE SE USA MAS" no es un eje: es el MULTIPLICADOR
 
 Es la pregunta que hay que contestar antes de usar la tabla, porque parece un
 eje y no lo es. *"Veces por segundo"* es el **segundo factor** de la aritmetica
@@ -297,7 +327,7 @@ del censo, y multiplica a unos ejes y a otros no:
 | CACHE | fallos por vez | **SI** -> fallos/s |
 | ENERGIA | julios por vez | **SI** -> vatios |
 | THROUGHPUT | ya es por segundo | **ya viene multiplicado** |
-| **TAMANO** | bytes, una vez | ★ **NO. Y es el unico** |
+| **TAMANO** | bytes, una vez | ** **NO. Y es el unico** |
 
 **Un binario ocupa lo mismo si se ejecuta una vez o un millon.** El tamano no se
 paga por uso: se paga por **tener que caber**. Por eso `MAX_BEX` y el marco de
@@ -330,7 +360,7 @@ suyo.
    > ENERGIA       un solo dueno declarado (el ocio y AXION)
 ```
 
-★ **CUMPLIR EL TECHO Y NO LA META NO ES ESTAR BIEN: ES ESTAR EN PLAZO.** Es la
+** **CUMPLIR EL TECHO Y NO LA META NO ES ESTAR BIEN: ES ESTAR EN PLAZO.** Es la
 frase de `presupuesto.rs` y vale para los cinco ejes.
 
 ### El estado real de los ejes, sin adornos
@@ -368,7 +398,7 @@ recoger lo que produce.
    [ANALISIS]  cruce syscall+sysretq             ~150 ciclos, IRREDUCIBLE
 ```
 
-★ Los ~150 del cruce no son un objetivo: **son el suelo**. Salen de que un
+** Los ~150 del cruce no son un objetivo: **son el suelo**. Salen de que un
 `rdtsc` mide 69 y `syscall`/`sysret` son de la misma familia microcodificada
 pero hacen mas, y coinciden con lo que Liedtke consiguio con L4 en un 486 en los
 noventa. **El coste de cruzar un anillo de privilegio es lo unico de esta cuenta
@@ -399,21 +429,21 @@ Y exige tres cosas mas que no son de rendimiento sino de verdad:
   mundo.
 - **R-CPU5.** Un resultado de rendimiento sin **doble testigo** no es un numero,
   es una opinion de un programa.
-- **R-CPU6.** ★ **UN NUMERO SIN SU UNIDAD NO ES UNA MEDIDA.** `rdtsc` cuenta
+- **R-CPU6.** ** **UN NUMERO SIN SU UNIDAD NO ES UNA MEDIDA.** `rdtsc` cuenta
   TICKS de un reloj invariante, no ciclos de nucleo: en esta maquina son 1,22
   ciclos por tick, o sea un 22% de diferencia entre lo que se imprime y lo que
   paga el CPU. **Se dan las dos**, y el presupuesto se juzga en la unidad en que
   se midio -- convertir antes de comparar contra un techo lo moveria cada vez
   que el CPU cambia de frecuencia, que es lo unico que un trinquete no puede
   hacer. Ver R-CENSO0 y `bmo-juicio::Reloj`.
-- **R-CPU7.** ★★ **ANTES DE OPTIMIZAR UN CAMINO, CONTAR SUS INSTRUCCIONES.** La
+- **R-CPU7.** **** **ANTES DE OPTIMIZAR UN CAMINO, CONTAR SUS INSTRUCCIONES.** La
   via rapida del stub son **58 instrucciones** y una puerta cuesta **969
   ciclos**: aun a un IPC de 1, el 94% del coste **no puede estar** en el numero
   de instrucciones. Esa resta tacha de golpe el trabajo de limar el ensamblador
   y deja la lista corta -- las transiciones de privilegio, los `swapgs` y la
   mitad Rust. Contar es gratis; suponer cuesta tandas.
 
-- **R-CPU8.** ★★ **UN PRESUPUESTO TIENE DUENO: LA MAQUINA EN QUE SE MIDIO.** Un
+- **R-CPU8.** **** **UN PRESUPUESTO TIENE DUENO: LA MAQUINA EN QUE SE MIDIO.** Un
   techo en ticks pertenece a un CPU y a un TSC concretos; el mismo kernel
   arranca en cualquier x86-64, y alli esos numeros no son estrictos ni laxos,
   son **de otra maquina** -- falsa regresion en un CPU mas lento, falso aprobado
@@ -421,14 +451,14 @@ Y exige tres cosas mas que no son de rendimiento sino de verdad:
   en el kernel, y declara familia, modelo y TSC. Si el silicio no cuadra, las
   filas contestan `sin declarar` y **el juez se calla**. Estrenar un CPU es
   copiar el perfil y pegar tres cifras medidas: cero lineas de kernel.
-- **R-CPU9.** ★ **UN "NO COINCIDE" LLEVA LOS DOS LADOS.** Lo esperado y lo leido,
+- **R-CPU9.** ** **UN "NO COINCIDE" LLEVA LOS DOS LADOS.** Lo esperado y lo leido,
   en el mismo campo. Un `bool` frena el trinquete y no lo arregla: obliga a leer
   codigo para saber si fallo el modelo o el reloj. Con los dos numeros delante,
   el arreglo es cambiar una cifra. *(Lo pago el mismo dia: el arbol declaraba el
   modelo de este chip en dos sitios con valores distintos --`19h/01h` y
   `19h/21h`-- y nadie habia leido nunca el byte.)*
 
-- **R-CPU10.** ★★ **EL SUELO SE MIDE, EL MULTIPLICADOR SE ESCRIBE.** Una medida
+- **R-CPU10.** **** **EL SUELO SE MIDE, EL MULTIPLICADOR SE ESCRIBE.** Una medida
   de rendimiento son dos cosas pegadas: el **suelo** del silicio (cruzar el
   anillo, que BMO no puede cambiar) y el **sobrecoste** que BMO anade encima.
   Solo el segundo es merito o culpa de este kernel, y **es el unico que sobrevive
@@ -437,14 +467,14 @@ Y exige tres cosas mas que no son de rendimiento sino de verdad:
   *Un presupuesto que se recalibrara solo entero se ceniria a lo que hubiera,
   **incluida una regresion**: la convertiria en la talla nueva y aprobaria
   siempre.* **Un trinquete que se ajusta solo no es un trinquete.**
-- **R-CPU11.** ★ **UNA CIFRA DERIVADA NO SE PRESENTA COMO MEDIDA.** Un techo
+- **R-CPU11.** ** **UNA CIFRA DERIVADA NO SE PRESENTA COMO MEDIDA.** Un techo
   sacado de `suelo x multiplicador` es una PRIMERA TALLA: sirve para tener
   trinquete el dia uno en una maquina nueva, y lo sustituye la medida en cuanto
   haya una tanda. Quien lo imprime dice cual de las dos es -- si no, una
   estimacion acaba citandose como un hecho, que es como nacieron los `~150`
   ciclos de cruce que este arbol arrastro cuatro tandas.
 
-★ Ver `docs/componente/LA_PUERTA_POR_DENTRO.md`: los once elementos de una puerta con su
+** Ver `docs/componente/LA_PUERTA_POR_DENTRO.md`: los once elementos de una puerta con su
 fichero, su coste **en ciclos**, y el experimento que decide cada uno.
 
 **EL PRECIO.** El `#GP(0)` en `xrstor64` costo cinco fotos y dos explicaciones
@@ -470,7 +500,7 @@ diseno el hardware.
    [SILICIO]   L3    32 MB, 16 vias, linea 64 B, COMPARTIDA por los 12 hilos
 ```
 
-★ **La linea de 64 B es el atomo de toda la maquina.** No existe "leer 8 bytes":
+** **La linea de 64 B es el atomo de toda la maquina.** No existe "leer 8 bytes":
 existe traer 64. Tocar un `u8` cuesta lo mismo que tocar los 64 vecinos, y
 tocar dos `u8` separados por 64 bytes cuesta el doble que tocarlos juntos.
 
@@ -531,7 +561,7 @@ hay Ring 3, no hay capabilities y no hay sistema operativo, hay un cargador.
 - **R-RAM2.** El estado que vive todo el programa va a `.bss`. La pila es para
   lo temporal. Con 64 KiB de pila o con 1 MiB, subir la pila **solo mueve el
   dia**.
-- **R-RAM3.** ★ Mover un struct a `.bss` **no baja la pila por si solo**. Lo que
+- **R-RAM3.** ** Mover un struct a `.bss` **no baja la pila por si solo**. Lo que
   la baja es que **ningun valor grande cruce una frontera de funcion**: ni como
   retorno, ni como argumento, ni como temporal de un literal. Las tres hay que
   cerrarlas, y se verifica midiendo **el marco maximo del binario funcion por
@@ -600,7 +630,7 @@ asi que lo que no se pinta, no ocurrio.
 
 - Es un **BAR de PCIe**, no RAM. Los MTRR del firmware lo dejan en UC: sin
   arreglo, cada pixel es una transaccion de bus.
-- ★ Ya esta arreglado: `s1_cpu::init_pat` deja **una entrada del PAT en
+- ** Ya esta arreglado: `s1_cpu::init_pat` deja **una entrada del PAT en
   Write-Combining**, que es el camino de `ioremap_wc()` de Linux. Con MTRR=UC y
   PAT=WC, el tipo efectivo es WC. La secuencia del manual (apagar cache, vaciar,
   desarmar MTRR, tirar TLB, escribir PAT, tirar TLB, rearmar, vaciar, encender)
@@ -617,7 +647,7 @@ asi que lo que no se pinta, no ocurrio.
 
 **LAS REGLAS.**
 
-- **R-FB1.** ★ **Del framebuffer NO SE LEE. Jamas.** Ni para mezclar, ni para
+- **R-FB1.** ** **Del framebuffer NO SE LEE. Jamas.** Ni para mezclar, ni para
   leer un pixel, ni para "ver que habia". El doble bufer vive en RAM; el
   framebuffer es de **una sola direccion**.
 - **R-FB2.** Se escribe **secuencial y por lineas completas**, para que el WC
@@ -627,7 +657,7 @@ asi que lo que no se pinta, no ocurrio.
 - **R-FB4.** Ningun camino que pinta corre bajo CR3 ajeno (es R-BUS2, y aqui se
   repite porque es donde mas veces ha reincidido).
 
-★ Ver `docs/componente/EL_COMPOSITOR_Y_EL_ESCANER.md`: los dos relojes que nadie
+** Ver `docs/componente/EL_COMPOSITOR_Y_EL_ESCANER.md`: los dos relojes que nadie
 sincroniza, y la aritmetica que dice que **volcar la pantalla entera (27,6 ms)
 dura mas que un frame de video (16,7 ms)** -- o sea que el escaner alcanzaria al
 volcado siempre, por construccion. Lo unico que hoy lo sostiene es que no se
@@ -647,7 +677,7 @@ serie**.
 **PARA QUE EXISTE.** Es el unico componente cuyo contenido sigue ahi cuando se
 va la luz. Todo lo demas es volatil por diseno.
 
-★ **Y en esta maquina el almacenamiento tiene una regla que no es tecnica:** el
+** **Y en esta maquina el almacenamiento tiene una regla que no es tecnica:** el
 NVMe es el Windows del dueno. BMO-X vive en el Kingston SATA. La escritura al
 NVMe esta **cerrada a proposito**.
 
@@ -680,17 +710,17 @@ microsegundos-milisegundos y **no se arregla con ciclos de CPU**.
   ciclos es trabajar en la columna equivocada.
 - **R-DISCO4.** Un enumerador que devuelve vacio se barre **por fuerza bruta**
   contra lo que declara el registro de capacidad, ignorando el mapa.
-- **R-DISCO5.** ★ Si un modulo tiene dos caminos al mismo dispositivo (uno lento
+- **R-DISCO5.** ** Si un modulo tiene dos caminos al mismo dispositivo (uno lento
   con copia, otro directo), **la conversion de coordenadas va en una funcion que
   ambos tengan que atravesar**.
 
-★ Ver `docs/componente/EL_DISCO_EXIGE.md`: **medio, ranura y aparato son tres
+** Ver `docs/componente/EL_DISCO_EXIGE.md`: **medio, ranura y aparato son tres
 preguntas distintas** --gira o no gira, cuantos comandos caben en vuelo, y que
 trae dentro-- y el arbol las trataba como una. Alli van `R-DISCO6..10` y el
 perfil de almacenamiento, con la doctrina de R-CPU8: se PREGUNTA lo que el
 aparato responde y se DECLARA solo lo que calla.
 
-★★ Y el hueco que destapo, porque es de este componente: **BMO-X no ha leido
+**** Y el hueco que destapo, porque es de este componente: **BMO-X no ha leido
 nunca la palabra 217 del IDENTIFY**, que es la que dice si el medio es
 rotacional. Se razona sobre TRIM y sobre colas sin haber comprobado el hecho del
 que dependen las dos. Es L5 incumplida, y esta a una lectura de 16 bits en un
@@ -720,7 +750,7 @@ el bus, no el CPU**.
    [HECHO]  un aparato tarda en engancharse lo que a el le da la gana
 ```
 
-★ Y la exigencia que convierte un descuido en un aparato muerto: **en un
+** Y la exigencia que convierte un descuido en un aparato muerto: **en un
 endpoint de interrupcion, el evento ES el permiso para volver a encolar.** Tirar
 un evento ajeno no pierde una pulsacion: **para la bomba para siempre**, dejando
 el endpoint en `Running` y sin un solo error.
@@ -739,7 +769,7 @@ el endpoint en `Running` y sin un solo error.
 - **R-USB4.** No se enciende una bomba mientras todavia se enumera.
 - **R-USB5.** Un recurso pedido en un camino que puede fallar **se devuelve en la
   MISMA funcion** que lo pidio.
-- **R-USB6.** ★★ **UNA AVERIA VIVA ES UN ESTADO, NO UN EVENTO.** Un `fault()` se
+- **R-USB6.** **** **UNA AVERIA VIVA ES UN ESTADO, NO UN EVENTO.** Un `fault()` se
   dice una vez e informa a quien ya estaba mirando; una averia que **sigue
   ocurriendo** necesita un indicador encendido mientras dure, y **en el sitio
   donde vive el dueno** -- el escritorio, no un log que hay que abrir.
@@ -753,13 +783,13 @@ el endpoint en `Running` y sin un solo error.
   endpoint parado**, asi que reintentar sin resucitar es tocar un timbre roto; y
   resetear sin recolocar el puntero deja el endpoint leyendo TRBs viejos.
 
-★ Ver `docs/componente/EL_TECLADO_EXIGE.md`: las **seis exigencias** del teclado con su
+** Ver `docs/componente/EL_TECLADO_EXIGE.md`: las **seis exigencias** del teclado con su
 estado y, sobre todo, **el numero que dice cual fallo**. Las seis estan puestas
 desde el 2026-08-17: R-USB6 son `INFO_USB_SALUD` + `INFO_USB_AVERIAS`
 (`dev/usb/salud.rs`) y la luz fija de la barra (`scene/testigo.rs`). Sin
 verificar en metal.
 
-- **R-USB8.** ★ **UN ESTADO QUE SE FOTOGRAFIA NECESITA UNA EDAD AL LADO.** La
+- **R-USB8.** ** **UN ESTADO QUE SE FOTOGRAFIA NECESITA UNA EDAD AL LADO.** La
   salud del bus se saca en el bombeo --el unico sitio con el PML4 del kernel
   cargado, que es donde se puede leer el Device Context y `USBSTS`-- y por tanto
   **se congela si el bombeo muere**, contestando *"todo bien"* justo el dia malo.
@@ -767,7 +797,7 @@ verificar en metal.
   preguntar**: es lo unico que envejece solo, o sea lo unico que puede delatar al
   que escribe la foto. Vale para cualquier telemetria cacheada, no solo para el
   USB.
-- **R-USB9.** ★ **UNA LUZ QUE SOLO APARECE CUANDO HAY AVERIA NO SE DISTINGUE DE
+- **R-USB9.** ** **UNA LUZ QUE SOLO APARECE CUANDO HAY AVERIA NO SE DISTINGUE DE
   UNA LUZ QUE NO FUNCIONA.** Si la primera vez que se ve es el dia del fallo,
   nadie sabe que aspecto tenia sana y lo que diga no se puede creer. El testigo
   se pinta **siempre**, tambien en verde -- la misma razon por la que la ficha de
@@ -805,7 +835,7 @@ este fichero puede existir**. Es el unico componente que se mide a si mismo.
   instrumento esta dentro. (De los ~90 ciclos de `dispatch`, buena parte **son
   los dos `rdtsc`**; por eso su meta de 60 pasa por sacar el metro de ahi, no
   por afinar un `match` de dos brazos.)
-- **R-TIME2.** ★ **Una ventana de medida no contiene una puerta de consola.** Se
+- **R-TIME2.** ** **Una ventana de medida no contiene una puerta de consola.** Se
   declara `cerrada_sin_imprimir`, y quien lo ponga en `false` **pierde el
   veredicto**, que es lo correcto. El juez no puede comprobarlo: los numeros de
   una ventana sucia son **coherentes y falsos**.
@@ -815,7 +845,7 @@ este fichero puede existir**. Es el unico componente que se mide a si mismo.
 - **R-TIME4.** Un contador es una **diferencia entre dos instantes**. Leerlo una
   vez da el total desde el arranque, y eso no es una medida de ahora.
 - **R-TIME5.** Dos testigos independientes o no hay numero.
-- **R-TIME6.** ★★ **UN TICK DE TSC NO ES UN CICLO DE NUCLEO, y la maquina lo
+- **R-TIME6.** **** **UN TICK DE TSC NO ES UN CICLO DE NUCLEO, y la maquina lo
   dice con sus dos instrumentos a la vez.** El TSC invariante cuenta a la
   frecuencia BASE --3.700 MHz-- mientras el nucleo corre a la que le deje el
   boost:
@@ -832,7 +862,7 @@ este fichero puede existir**. Es el unico componente que se mide a si mismo.
   razonable y es falso por un 22%. Es el patron 2 de la casa --un campo que
   viene en otra unidad-- y se pago aqui: la primera version de
   `docs/CENSO_DE_EJES.md` uso el denominador equivocado.
-- **R-TIME7.** ★ **Lo que cuesta una instruccion NO es una constante: depende de
+- **R-TIME7.** ** **Lo que cuesta una instruccion NO es una constante: depende de
   lo que tenga alrededor.** El mismo `rdtsc` midio **107 en un bucle de 4 ticks
   y 69 en uno de 43** -- en el bucle largo el CPU fuera de orden lo solapa con el
   trabajo de al lado. Se dan **los dos numeros**, nunca una media que no describe
@@ -865,7 +895,7 @@ enterarse de algo que ocurre mil veces por segundo.
 - **R-IRQ1.** Un manejador **apunta y sale**. No imprime, no pinta, no toma
   cerrojos largos, no llama a nada que cruce el bus mas de lo imprescindible.
 - **R-IRQ2.** Armar antes de abrir.
-- **R-IRQ3.** ★ **Guardar estado antes de decidir si el cambio ocurre es la
+- **R-IRQ3.** ** **Guardar estado antes de decidir si el cambio ocurre es la
   clase de bug, no el sintoma.** Un contexto anotado como vigente que el epilogo
   ya consumio es pila libre con una etiqueta mintiendo encima. El sello es de
   **un solo uso** y el epilogo lo borra.
@@ -887,7 +917,7 @@ son el mismo tema mirado dos veces.
 
 **QUE EXIGE, y aqui va la verdad incomoda.**
 
-★ **BMO-X no pone voltajes, y no deberia.** La cadena real es:
+** **BMO-X no pone voltajes, y no deberia.** La cadena real es:
 
 ```
    VRM de la placa  ->  entrega la corriente y fija el voltaje fisico
@@ -910,7 +940,7 @@ controla el voltaje" seria falso, y este documento no puede permitirselo.
 
 **LAS REGLAS.**
 
-- **R-PWR1.** ★ **Un nucleo que espera no gira: se para.** Un bucle de espera sin
+- **R-PWR1.** ** **Un nucleo que espera no gira: se para.** Un bucle de espera sin
   `HLT`/`MWAIT` es un calefactor que ademas roba presupuesto de boost a los
   nucleos que si trabajan. *"Un obrero que espera no duerme, GIRA"* era la frase;
   ahora tiene numero al lado.
@@ -923,7 +953,7 @@ controla el voltaje" seria falso, y este documento no puede permitirselo.
   En una maquina enchufada no se sacrifica latencia por vatios en ningun otro
   sitio. El dia que haya bateria, esta regla se reescribe **con su motivo**, no
   se amplia por costumbre.
-- **R-PWR5.** ★ Pedir P-states esta permitido; **tocar voltajes o subir limites
+- **R-PWR5.** ** Pedir P-states esta permitido; **tocar voltajes o subir limites
   electricos, NO.** No es una regla de estilo: un error de ciclos se diagnostica
   con una foto y se revierte con un commit; un error de voltaje se diagnostica
   con un chip muerto.
@@ -977,7 +1007,7 @@ mas trabajo por segundo es hacerlo en paralelo.
    [SILICIO]  L3 de 32 MB COMPARTIDA por los 12 hilos
 ```
 
-★ Eso ultimo es una ventaja real de este chip y hay que decirla: **la
+** Eso ultimo es una ventaja real de este chip y hay que decirla: **la
 comunicacion entre dos nucleos de esta maquina pasa por una L3 comun**, no por
 el Infinity Fabric entre dos CCD. Compartir datos entre nucleos aqui es
 comparativamente barato -- **siempre que no compartan LINEA de escritura**
@@ -1023,10 +1053,10 @@ Tres campos y ninguno es opcional:
 
 ### Las cuatro reglas de aplicacion
 
-- **A1.** ★ **Un cambio que mejora un eje y empeora otro trae LOS DOS numeros o
+- **A1.** ** **Un cambio que mejora un eje y empeora otro trae LOS DOS numeros o
   no entra.** Hoy una mejora se justifica con una medida; esto exige ademas la
   medida de lo que empeoro. Sin eso, "optimice" vuelve a ser una anecdota.
-- **A2.** ★ **Dos ejes en un mismo fichero significa que el fichero esta mal
+- **A2.** ** **Dos ejes en un mismo fichero significa que el fichero esta mal
   cortado.** Un `memcpy` no puede servir a la puerta (latencia) y al blit
   (caudal): o son dos, o uno declara que gana y el otro lo acata por escrito.
 - **A3.** **Cambiar el `[eje]` de un fichero es un commit aparte**, con su
@@ -1063,7 +1093,7 @@ vigila*. Y se prueba diciendo que no (L4).
 | C11 FIRMWARE | R-FW1..3 | no | no | drift guard | **el guardian ES el metro** |
 | C12 SMP | R-SMP1..3 | no | no | no | sin trabajo que repartir |
 
-★ **Esta tabla es la parte mas honesta del documento y la que hay que mirar
+** **Esta tabla es la parte mas honesta del documento y la que hay que mirar
 primero.** Dos componentes completos de doce. Lo demas son reglas correctas sin
 nadie que las obligue -- que es exactamente el estado en el que estaba el eje de
 ciclos hace una semana, y por eso se sabe cuanto cuesta arreglarlo.
