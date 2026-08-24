@@ -105,6 +105,20 @@ pub(crate) use ops::*;
 // la barre contra el ABI: esto no puede volver a pasar en silencio.
 
 
+/// **Las tres operaciones que MANDAN sobre la maquina**: nucleos, sello de
+/// ESTRATOS y administracion del disco. Ver su cabecera: la medida del estado
+/// compartido de este despachador dio CERO, y eso cambio el diagnostico.
+mod op_maquina;
+/// **Tomar y soltar un aparato exclusivo**: entrada, pantalla y audio. Es la
+/// puerta de los LIDERES -- ver `docs/identidad/LIDERES.md`.
+mod op_aparato;
+/// **La consola**: escribir y leer. Sale porque es la unica pareja que habla
+/// con una pantalla, y la mas caliente del sistema.
+mod op_consola;
+/// **Contar lo que el kernel sabe**: CABINA, `info`, klog y la autopsia. Las
+/// ocho que preguntan y NO cambian nada.
+mod op_contar;
+
 #[inline]
 fn unsupported() -> BmoStatus {
     BmoStatus::err(ERROR_UNSUPPORTED)
@@ -134,58 +148,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             scheduler::exit_current();
             BmoStatus::ok_value(0)
         }
-        // Bootstrap console: render up to 8 packed bytes (LE, NUL-stop) to
-        // the kernel's on-screen log + serial. This is how the first Ring 3
-        // program draws -- the whole point of the CPL3->CPL0 demo. It writes
-        // nothing but text and cannot escalate; the caller only ever paints
-        // into the kernel-owned console surface.
-        // La salida va a la consola ASIGNADA al proceso, si tiene una -- o al
-        // panel del kernel si no, exactamente como antes. Lo nuevo rodea a lo
-        // viejo en vez de romperlo: los cinco demos embebidos siguen hablando
-        // por el panel sin cambiar una linea.
-        TASK_OP_CONSOLE_WRITE => {
-            let pid = scheduler::current_pid();
-            match crate::ring0::obj::console::output_of(pid) {
-                Some(idx) => {
-                    // Desempaquetar aqui: el anillo guarda bytes, no palabras.
-                    // El cero corta, igual que en la consola del kernel.
-                    let w = arg0.to_le_bytes();
-                    let n = w.iter().position(|&b| b == 0).unwrap_or(8);
-                    crate::ring0::obj::console::write(idx, &w[..n]);
-                    // ** Y TAMBIEN AL ANILLO DEL KERNEL, que es la caja negra.
-                    //
-                    // Esto es una bifurcacion de ENTREGA, no de registro: la
-                    // consola asignada decide **quien lo lee en vivo**; el
-                    // anillo de `uconsole` es lo que el kernel se acuerda de que
-                    // dijo cada proceso, y eso no puede depender de a quien se
-                    // lo estuviera diciendo.
-                    //
-                    // Se cobro el 2026-08-14: DOOM murio con `#GP` tras imprimir
-                    // VEINTE lineas --hasta `I_Init: Setting up machine state.`--
-                    // y su autopsia decia:
-                    //
-                    //     ultimo    (no escribio nada)
-                    //
-                    // Falso, y de la peor clase: no callaba, **afirmaba**. Su
-                    // salida iba a la consola hija que le creo el escritorio, y
-                    // el anillo del kernel no la veia pasar. Un informe que dice
-                    // "no dijo nada" manda a mirar donde no es.
-                    crate::ring0::uconsole::write_packed(arg0);
-                }
-                None => crate::ring0::uconsole::write_packed(arg0),
-            }
-            BmoStatus::ok_value(0)
-        }
-        TASK_OP_CONSOLE_READ => {
-            let _ = arg0;
-            let pid = scheduler::current_pid();
-            match crate::ring0::obj::console::output_of(pid) {
-                Some(idx) => BmoStatus::ok_value(crate::ring0::obj::console::read_entry(idx)),
-                // Sin consola asignada no hay de donde leer. Cero = "nada", no
-                // error: un programa que sondea no debe morir por preguntar.
-                None => BmoStatus::ok_value(0),
-            }
-        }
+        TASK_OP_CONSOLE_WRITE => op_consola::console_write(arg0, arg1),
+        TASK_OP_CONSOLE_READ => op_consola::console_read(arg0, arg1),
         TASK_OP_DIR_ABRIR => {
             let _ = arg0;
             let pid = scheduler::current_pid();
@@ -283,87 +247,14 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 None => BmoStatus::err(endpoint::ERROR_ENDPOINT_DEAD),
             }
         }
-        // La pantalla. El espacio de direcciones en el que se mapea es el que
-        // esta cargado AHORA: durante un SYSCALL desde Ring 3, CR3 sigue
-        // siendo el del llamante -- el cambio de CR3 solo ocurre en un cambio
-        // de contexto, y aqui todavia no ha habido ninguno.
-        TASK_OP_INPUT_CLAIM => {
-            let _ = arg0;
-            match crate::ring0::obj::input::claim(scheduler::current_pid()) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        TASK_OP_FRAMEBUFFER_CLAIM => {
-            let _ = arg0;
-            match crate::ring0::obj::fb::claim(
-                scheduler::current_pid(),
-                crate::ring0::mm::vmm::read_cr3(),
-            ) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        // * SOLTAR la pantalla sin morirse. La pareja que le faltaba a
-        // `FRAMEBUFFER_CLAIM`: hasta hoy la unica forma de dejar de ser dueno
-        // era terminar, asi que el escritorio no podia prestarla ni queriendo y
-        // `ray.bex` se llevaba un "la pantalla ya tiene dueno".
-        //
-        // El `CR3` es el del llamante, igual que al reclamar -- y aqui importa
-        // mas, porque es de donde hay que DESMAPEAR: el proceso sigue vivo y
-        // dejarle las paginas seria dejarle escribir en una pantalla que ya no
-        // es suya.
-        TASK_OP_ENTRADA_SOLTAR => {
-            let _ = arg0;
-            match crate::ring0::obj::input::release(scheduler::current_pid()) {
-                Ok(()) => BmoStatus::ok_value(0),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        TASK_OP_PANTALLA_SOLTAR => {
-            let _ = arg0;
-            match crate::ring0::obj::fb::release(
-                scheduler::current_pid(),
-                crate::ring0::mm::vmm::read_cr3(),
-            ) {
-                Ok(()) => BmoStatus::ok_value(0),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        // * EL SONIDO. Sin CR3 y sin mapeos: aqui no se entrega memoria, se
-        // entrega el DERECHO -- que es justamente lo que hace que esta pieza se
-        // pueda escribir hoy, con el driver de HDA todavia sin existir.
-        // * CABINA. `arg0` = campo, `arg1` = que evento (0 = el mas reciente).
-        // Un campo que no existe contesta "no soportado" y no 0: un cero seria
-        // indistinguible de un evento cuyo valor ES cero.
-        TASK_OP_CABINA_INFO => {
-            match crate::ring0::cabina::campo(arg0, arg1) {
-                Some(v) => BmoStatus::ok_value(v),
-                None => unsupported(),
-            }
-        }
-        // `arg0` empaqueta `(evento << 32) | cual`, `arg1` es el trozo de 8 en
-        // 8. Los dos indices en un argumento porque la puerta tiene tres y dos
-        // ya estan ocupados -- la misma aritmetica que usa la autopsia.
-        TASK_OP_CABINA_TEXTO => {
-            let evento = arg0 >> 32;
-            let cual = arg0 & 0xFFFF_FFFF;
-            BmoStatus::ok_value(crate::ring0::cabina::texto(evento, cual, arg1))
-        }
-        TASK_OP_AUDIO_CLAIM => {
-            let _ = arg0;
-            match crate::ring0::obj::audio::claim(scheduler::current_pid()) {
-                Ok(handle) => BmoStatus::ok_value(handle),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
-        TASK_OP_AUDIO_RELEASE => {
-            let _ = arg0;
-            match crate::ring0::obj::audio::release(scheduler::current_pid()) {
-                Ok(()) => BmoStatus::ok_value(0),
-                Err(code) => BmoStatus::err(code),
-            }
-        }
+        TASK_OP_INPUT_CLAIM => op_aparato::input_claim(arg0, arg1),
+        TASK_OP_FRAMEBUFFER_CLAIM => op_aparato::framebuffer_claim(arg0, arg1),
+        TASK_OP_ENTRADA_SOLTAR => op_aparato::entrada_soltar(arg0, arg1),
+        TASK_OP_PANTALLA_SOLTAR => op_aparato::pantalla_soltar(arg0, arg1),
+        TASK_OP_CABINA_INFO => op_contar::cabina_info(arg0, arg1),
+        TASK_OP_CABINA_TEXTO => op_contar::cabina_texto(arg0, arg1),
+        TASK_OP_AUDIO_CLAIM => op_aparato::audio_claim(arg0, arg1),
+        TASK_OP_AUDIO_RELEASE => op_aparato::audio_release(arg0, arg1),
         // * Pedir memoria. Mismo comentario de CR3 que el framebuffer: durante
         // el syscall sigue cargado el espacio del llamante, que es justo donde
         // hay que mapear.
@@ -392,299 +283,20 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             ruta_push(scheduler::current_pid(), arg0);
             BmoStatus::ok_value(0)
         }
-        TASK_OP_INFO => {
-            BmoStatus::ok_value(crate::ring0::core::report::campo(arg0))
-        }
-        TASK_OP_INFO_TEXTO => {
-            BmoStatus::ok_value(crate::ring0::core::report::texto(arg0, arg1))
-        }
-        TASK_OP_KLOG_INFO => {
-            use crate::ring0::core::klog;
-            BmoStatus::ok_value(match arg0 {
-                0 => klog::disponibles(),
-                1 => klog::total(),
-                _ => 0,
-            })
-        }
-        TASK_OP_KLOG_TEXTO => {
-            BmoStatus::ok_value(crate::ring0::core::klog::texto(arg0, arg1))
-        }
-        // * LA AUTOPSIA. Contesta texto y nada mas, como el klog y como INFO:
-        // no concede una capability, no deja escribir, no deja mirar el espacio
-        // de nadie. Es la parte "meta" del metakernel puesta en una fila de
-        // tabla -- el sistema informa sobre si mismo.
-        TASK_OP_AUTOPSIA_INFO => {
-            use crate::ring0::core::autopsy;
-            BmoStatus::ok_value(match arg0 {
-                0 => autopsy::total(),
-                1 => autopsy::disponibles(),
-                2 => autopsy::renglones(arg1),
-                _ => 0,
-            })
-        }
-        TASK_OP_AUTOPSIA_TEXTO => {
-            // `arg0` trae los dos indices: informe arriba, fila abajo.
-            let informe = arg0 >> 32;
-            let fila = arg0 & 0xFFFF_FFFF;
-            BmoStatus::ok_value(crate::ring0::core::autopsy::texto(informe, fila, arg1))
-        }
-        // * Despertar nucleos DESDE Ring 3. Es la unica operacion de esta tabla
-        // que cambia el estado del hardware en vez de contestar una pregunta, y
-        // por eso conviene decir por que se acepta: no concede nada al llamante
-        // --los APs quedan parados y sin tocar el kernel-- y el resultado es un
-        // numero. Ver `plat/smp` y `docs/maestro/SMP_MAESTRO.md`.
-        //
-        // El aviso por nucleo se traga aqui: cruzar el borde de Ring 3 once
-        // veces para pintar una linea costaria mas que el propio bring-up. Lo
-        // que si queda es CABINA, que ya recibe el relato entero desde dentro.
-        // `arg0` = cuantos despertar (0 = solo censar, `u32::MAX` = todos).
-        // `arg1` = el modo: 0 despertar - 1 PARAR - 2 la prueba de reparto.
-        // Devuelve 1 si encontro un aparato de reproduccion. Los NUMEROS van a
-        // CABINA: son ocho y por la puerta cabe uno.
-        TASK_OP_AUDIO_CENSO => {
-            let hubo = unsafe { crate::ring0::dev::usb::audio::censar() };
-            BmoStatus::ok_value(hubo as u64)
-        }
-        TASK_OP_SMP_DESPERTAR => {
-            use crate::ring0::plat::smp::{self, crew};
-            let cuantos = if arg0 > u32::MAX as u64 { u32::MAX } else { arg0 as u32 };
-            match arg1 {
-                // Desactivar: los obreros vuelven a `hlt` y ahi se quedan.
-                1 => {
-                    crew::parar();
-                    crate::ring0::core::dashboard::dashboard_log("[smp] obreros PARADOS");
-                    BmoStatus::ok_value(0)
-                }
-                // La prueba. Devuelve la aceleracion x100 --`842` son 8,42x--
-                // porque por la puerta solo cabe un numero y una fraccion no
-                // se puede mandar entera. El detalle en crudo va a CABINA.
-                2 => {
-                    let (alive, _) = smp::alive();
-                    let (uno, todos, partes) = crew::prueba(alive);
-                    crate::ring0::cabina::info("smp", "ticks con UN nucleo", uno);
-                    crate::ring0::cabina::info("smp", "ticks con todos", todos);
-                    crate::ring0::cabina::info("smp", "partes que corrieron", partes as u64);
-                    // * LOS TRES TESTIGOS, siempre, salga bien o mal.
-                    //
-                    // En metal el 08-08 esto contesto `0.00x` y no habia nada
-                    // mas que mirar: "falto una parte" no dice cuantas
-                    // llegaron. Estos tres numeros parten el camino en los tres
-                    // sitios donde se puede romper -- entrar al bucle, ver la
-                    // ronda, terminar la faena-- y la diferencia entre dos
-                    // consecutivos senala el tramo culpable.
-                    let (entraron, vieron, hechos) = crew::testigos();
-                    crate::ring0::cabina::info("smp", "obreros que ENTRARON al bucle", entraron as u64);
-                    crate::ring0::cabina::info("smp", "obreros que VIERON la ronda", vieron as u64);
-                    crate::ring0::cabina::info("smp", "obreros que TERMINARON", hechos as u64);
-                    // ** Y LA MEDIDA, DENUNCIADA POR ELLA MISMA.
-                    //
-                    // El 08-11 esto dio `37` ticks para 400 millones de vueltas
-                    // con los once obreros entrando, viendo y terminando. Los
-                    // testigos decian que el reparto iba bien y el numero decia
-                    // que no, y **nadie sospecho del reloj**. Ahora lo dice el.
-                    crate::ring0::cabina::info("smp", "el hash que dejo la faena", crew::suma_testigo());
-                    if !crew::medida_creible(uno) {
-                        crate::ring0::cabina::fault(
-                            "smp",
-                            "esa medida es IMPOSIBLE para las vueltas que son: el cronometro miente, no el reparto",
-                            uno,
-                        );
-                    }
-                    if hechos < alive {
-                        crate::ring0::cabina::warn(
-                            "smp",
-                            "faltan obreros por terminar",
-                            (alive - hechos) as u64,
-                        );
-                    }
-                    // * Y la otra mitad del resultado, que no es la velocidad.
-                    // Doce nucleos calculando a la vez es justo el momento en
-                    // que un choque de cerrojo aparece si va a aparecer, y una
-                    // aceleracion contada sin mirar esto es media medida.
-                    // Ver `plat/spin.rs` y `docs/maestro/SMP_MAESTRO.md`.
-                    let (choques, pico) = crate::ring0::plat::spin::contention();
-                    if choques == 0 {
-                        crate::ring0::cabina::info("smp", "cerrojos: ni un choque", 0);
-                    } else {
-                        crate::ring0::cabina::warn(
-                            "smp",
-                            "CHOQUES de cerrojo: alguien entro en el kernel",
-                            choques as u64,
-                        );
-                        crate::ring0::cabina::warn(
-                            "smp",
-                            crate::ring0::plat::spin::worst(),
-                            pico as u64,
-                        );
-                    }
-                    crate::ring0::core::dashboard::dashboard_log("[smp] prueba de reparto hecha");
-                    if todos > 0 && partes > 0 {
-                        BmoStatus::ok_value(uno.saturating_mul(100) / todos)
-                    } else {
-                        BmoStatus::ok_value(0)
-                    }
-                }
-                _ => {
-                    let (alive, esperados) = smp::despertar(cuantos, |_| {});
-                    // ** EN QUE ESTA CADA NUCLEO, A CABINA.
-                    //
-                    // Lo pidio el dueno con estas palabras: *"que el smp asi
-                    // natural ayude a verify los cores y hilos: que se estan
-                    // usando, y que la cabina con filtros pueda decir que esta
-                    // ejecutando"*.
-                    //
-                    // La tabla ya existia en el shell de Ring 0, y al shell de
-                    // Ring 0 se llega cuando el escritorio NO arranca. Desde la
-                    // caja del escritorio no habia forma de verla. Ahora va a
-                    // CABINA, que es el sitio que se mira desde los dos lados y
-                    // el unico que tiene filtros.
-                    //
-                    // El valor de cada evento es `nucleo * 16 + estado`, que
-                    // cabe en un numero y se lee de un vistazo: la decena es el
-                    // nucleo y la unidad el estado.
-                    let hilos = match (crate::ring0::cpu_vendor::profile::active().nucleos)() {
-                        Some(t) => (t.hilos as u32).min(32),
-                        None => alive + 1,
-                    };
-                    // ** CORE o THREAD en el propio mensaje, y en ingles.
-                    //
-                    // Lo pidio el dueno para la vista y para los FILTROS, y esa
-                    // segunda mitad es la que manda: CABINA filtra por texto de
-                    // modulo y por gravedad, asi que meter la palabra **dentro
-                    // del mensaje** es lo que permite leer de un vistazo cuantos
-                    // de los que estan en pie son nucleos de verdad.
-                    //
-                    // Y hace falta: `12 hilos` no dice si son doce nucleos o
-                    // seis con SMT, y de eso depende cuantos obreros pedir --
-                    // calculo denso quiere seis, no doce.
-                    for id in 0..hilos {
-                        let e = smp::estado_de(id);
-                        let t = smp::tipo_de(id);
-                        // `CORE OBRERO` / `THREAD DORMIDO`: dos palabras, la
-                        // primera dice QUE es y la segunda EN QUE esta.
-                        let msg: &'static str = match (t, e) {
-                            ("CORE", smp::Estado::Maestro) => "CORE   MASTER",
-                            ("CORE", smp::Estado::Obrero) => "CORE   worker",
-                            ("CORE", smp::Estado::Dormido) => "CORE   asleep",
-                            ("CORE", smp::Estado::Ausente) => "CORE   ABSENT",
-                            ("CORE", _) => "CORE   -",
-                            ("THREAD", smp::Estado::Maestro) => "THREAD MASTER",
-                            ("THREAD", smp::Estado::Obrero) => "THREAD worker",
-                            ("THREAD", smp::Estado::Dormido) => "THREAD asleep",
-                            ("THREAD", smp::Estado::Ausente) => "THREAD ABSENT",
-                            ("THREAD", _) => "THREAD -",
-                            _ => "?      -",
-                        };
-                        crate::ring0::cabina::info("smp", msg, id as u64);
-                    }
-                    // ** Y el coste, que es el numero del ahorro. Hoy es
-                    // incomodo a proposito: el que espera GIRA, no duerme.
-                    let girando = smp::girando();
-                    if girando > 0 {
-                        crate::ring0::cabina::warn(
-                            "smp",
-                            "nucleos GIRANDO en vacio al 100% (con MWAIT serian 0)",
-                            girando as u64,
-                        );
-                    }
-                    // ** BIT 63 = LOS OBREROS ESTAN PARADOS.
-                    //
-                    // Cabe de sobra --`alive` no pasa de 32-- y hace falta
-                    // porque el numero solo mentia por omision: `smp stop`
-                    // seguido de `smp` contestaba `12 de 12`, que es cierto y se
-                    // lee como "el stop no hizo nada". Ring 3 pinta la mitad que
-                    // faltaba; el kernel no opina, solo dice el hecho.
-                    let parados = if crew::parados() { 1u64 << 63 } else { 0 };
-                    BmoStatus::ok_value(parados | ((alive as u64) << 32) | esperados as u64)
-                }
-            }
-        }
-        // * Escribe en el disco. Se apunta en CABINA ANTES y DESPUES, pase lo
-        // que pase: la primera operacion que cambia el almacen no puede ser
-        // silenciosa ni cuando funciona.
-        TASK_OP_ESTRATOS_SELLAR => {
-            crate::ring0::cabina::info(
-                "estratos",
-                "sellado pedido por un proceso de Ring 3",
-                scheduler::current_pid() as u64,
-            );
-            match crate::ring0::fsys::estratos::seal() {
-                Ok(g) => BmoStatus::ok_value(g),
-                Err(e) => {
-                    crate::ring0::cabina::warn("estratos", e.name(), 0);
-                    BmoStatus::ok_value(0)
-                }
-            }
-        }
-        // ** ADMINISTRAR EL DISCO, y por eso se apunta ANTES de obedecer.
-        //
-        // === Por que esto vive en la superficie y no es una orden de Ring 0 ===
-        //
-        // Porque al shell de Ring 0 **no se vuelve**: en cuanto el compositor
-        // reclama la entrada, ese shell deja de leer el teclado. Una orden que
-        // solo existe alli es codigo que el dueno de la maquina no puede usar --
-        // ya paso con `smp`, con `audio` y con `ext`, y las tres tuvieron que
-        // subir. Recortar el disco nace directamente arriba.
-        //
-        // === Y lo que NO cruza esta puerta ===
-        //
-        // El LBA. Ninguna orden de esta familia lo acepta: el rango lo calcula el
-        // kernel --la cola libre de ESTRATOS, que sale de `log_head`-- y lo
-        // vuelve a comprobar contra la ventana de escritura. Dejar que Ring 3
-        // dijera donde recortar seria un borrado apuntable a cualquier sector,
-        // incluida la ESP donde vive el arranque del dueno.
-        TASK_OP_DISCO => {
-            use crate::ring0::dev::disk::{self, Recorte};
-            match arg0 {
-                DISCO_OP_TRIM_LIBRE => {
-                    crate::ring0::cabina::info(
-                        "disk",
-                        "recorte de la cola libre pedido por un proceso de Ring 3",
-                        scheduler::current_pid() as u64,
-                    );
-                    // El rango sale del volumen, no del llamante. Sin volumen
-                    // montado --o con la cola vacia-- no hay nada que devolver, y
-                    // eso es un motivo propio: no es que el disco no pueda.
-                    let Some((lba, sectores)) = crate::ring0::fsys::estratos::cola_libre() else {
-                        return BmoStatus::ok_value(
-                            DISCO_TRIM_SIN_VOLUMEN << DISCO_TRIM_MOTIVO_SHIFT,
-                        );
-                    };
-                    let (motivo, hechos) = match disk::recortar(lba, sectores) {
-                        Recorte::Hecho { sectores, ordenes } => {
-                            crate::ring0::cabina::info("disk", "sectores devueltos al disco", sectores);
-                            crate::ring0::cabina::info("disk", "ordenes DATA SET MANAGEMENT", ordenes);
-                            (DISCO_TRIM_HECHO, sectores)
-                        }
-                        Recorte::SinDisco => (DISCO_TRIM_SIN_DISCO, 0),
-                        Recorte::NoLoSoporta => (DISCO_TRIM_NO_SOPORTADO, 0),
-                        // El motivo en palabras va a CABINA porque por la puerta
-                        // cabe un numero; el numero dice CUAL de las puertas.
-                        Recorte::SinPermiso(why) => {
-                            crate::ring0::cabina::warn("disk", why, lba);
-                            (DISCO_TRIM_SIN_PERMISO, 0)
-                        }
-                        Recorte::RangoImposible => (DISCO_TRIM_RANGO, 0),
-                        // ** Lo que SI se recorto viaja con el fallo. Un recorte a
-                        // medias no se deshace, y callarlo haria que el sistema
-                        // volviera a mandar lo que ya estaba hecho.
-                        Recorte::Fallo { sectores } => (DISCO_TRIM_FALLO, sectores),
-                    };
-                    BmoStatus::ok_value(
-                        (motivo << DISCO_TRIM_MOTIVO_SHIFT)
-                            | (hechos & DISCO_TRIM_SECTORES_MASK),
-                    )
-                }
-                // La barrera a mano. Este disco declara `SOLO_BARRERA` --no tiene
-                // condensadores-- asi que esto es literalmente lo unico que tiene
-                // para terminar lo que empezo.
-                DISCO_OP_BARRERA => BmoStatus::ok_value(disk::flush() as u64),
-                // Una orden que no existe se contesta con cero, igual que en el
-                // cursor: quien pregunte de mas se entera, y sin obligar al
-                // llamante a distinguir dos formas de "nada".
-                _ => BmoStatus::ok_value(0),
-            }
-        }
+        TASK_OP_INFO => op_contar::info(arg0, arg1),
+        TASK_OP_INFO_TEXTO => op_contar::info_texto(arg0, arg1),
+        TASK_OP_KLOG_INFO => op_contar::klog_info(arg0, arg1),
+        TASK_OP_KLOG_TEXTO => op_contar::klog_texto(arg0, arg1),
+        TASK_OP_AUTOPSIA_INFO => op_contar::autopsia_info(arg0, arg1),
+        TASK_OP_AUTOPSIA_TEXTO => op_contar::autopsia_texto(arg0, arg1),
+        TASK_OP_AUDIO_CENSO => op_aparato::audio_censo(arg0, arg1),
+        // ** Las tres que MANDAN sobre la maquina viven en `op_maquina.rs`.
+        // No se fueron por tamano: se fueron porque contestan la misma
+        // pregunta, y porque medir el estado compartido de este despachador
+        // dio CERO -- ver la cabecera de ese fichero.
+        TASK_OP_SMP_DESPERTAR => op_maquina::smp_despertar(arg0, arg1),
+        TASK_OP_ESTRATOS_SELLAR => op_maquina::estratos_sellar(arg0, arg1),
+        TASK_OP_DISCO => op_maquina::disco(arg0, arg1),
         // ** CREAR UN FICHERO. La primera operacion del sistema que escribe
         // CONTENIDO en el almacen: `sellar` commitea sin datos y el recorte le
         // habla al aparato.
