@@ -227,3 +227,53 @@ funcion f(a es entero64, b es entero64) devuelve entero64
         "la IR pide cuatro y el binario tiene que llevar cuatro"
     );
 }
+
+/// ***EL EPILOGO NO PUEDE DEPENDER DEL MARCO, y P4(b) es por que.***
+///
+/// # Lo que esta prueba protege, y no es lo que parece
+///
+/// `epilogo` emite `mov rsp, rbp; pop rbp; ret` -- **tres bytes que valen para
+/// cualquier funcion**, mida lo que mida su marco. Eso se eligio por simplicidad.
+///
+/// ## Y el 2026-08-23 resulto ser la pieza de la que depende P4(b)
+///
+/// `PLAN_EL_SILICIO.md` P4(b) pide que el KERNEL aterrice: ante un `#DE`, en vez
+/// de hacer autopsia, **mueve el `rip` al bloque de trampa declarado** y sigue.
+///
+/// Para eso el kernel tiene que elegir UN bloque. Y la mesa de katanas dice
+/// `(codigo, offset, longitud)` -- **no dice a que funcion sirve cada uno**. O
+/// sea que el kernel solo puede aterrizar en "cualquiera con ese codigo".
+///
+/// *** Eso funciona **solo porque el epilogo es generico**: el `rbp` que hay al
+/// fallar ya es el de la funcion que fallo, asi que `mov rsp, rbp; pop rbp; ret`
+/// la desmonta bien venga de donde venga el salto.
+///
+/// [!] El dia que alguien haga el epilogo dependiente del marco --por ejemplo
+/// `add rsp, N` en vez de `mov rsp, rbp`-- **P4(b) se rompe en silencio**: el
+/// kernel aterrizaria en un bloque que desmonta OTRO marco, y la pila se
+/// corrompe sin que nadie lo diga. Por eso esto se fija aqui y con el motivo.
+#[test]
+fn el_epilogo_es_generico_y_p4b_depende_de_eso() {
+    // Dos funciones con marcos MUY distintos: una sin locales y otra con ocho.
+    let e = emitido(concat!(
+        "perfil llano\n\n",
+        "funcion pequena(a es entero64) devuelve entero64\n    devuelve a\n\n",
+        "funcion grande(a es entero64) devuelve entero64\n",
+        "    b es entero64 = 1\n    c es entero64 = 2\n    d es entero64 = 3\n",
+        "    e es entero64 = 4\n    f es entero64 = 5\n    g es entero64 = 6\n",
+        "    devuelve a + b + c + d + e + f + g\n"
+    ));
+    // `mov rsp, rbp` = 48 89 EC, `pop rbp` = 5D, `ret` = C3.
+    const EPILOGO: [u8; 5] = [0x48, 0x89, 0xEC, 0x5D, 0xC3];
+    let cuantos = e.codigo.windows(5).filter(|w| *w == EPILOGO).count();
+    assert!(
+        cuantos >= 2,
+        "las dos funciones tienen que salir por el MISMO epilogo, byte a byte"
+    );
+    // Y ninguna desmonta su marco con un inmediato: eso lo ataria a su tamano.
+    // `add rsp, imm32` = 48 81 C4 ; `add rsp, imm8` = 48 83 C4.
+    assert!(
+        !e.codigo.windows(3).any(|w| w == [0x48, 0x81, 0xC4]),
+        "alguien desmonta el marco con `add rsp, imm32`: P4(b) se rompe"
+    );
+}
