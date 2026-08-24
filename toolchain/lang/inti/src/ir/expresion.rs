@@ -336,11 +336,20 @@ impl Descenso<'_> {
                 Valor::Temporal(t)
             }
             Expr::Unaria { op, valor, .. } => {
+                // ** Se pregunta ANTES de bajar, sobre el arbol, por lo mismo
+                // que en la binaria: una vez bajado ya no es mas que un valor,
+                // y un valor no dice de que tipo era.
+                let clase = if self.plano.es_flotante(valor, &self.tipos) {
+                    Clase::Flotante
+                } else {
+                    Clase::Entero
+                };
                 let v = self.expresion(valor);
                 let t = self.temporal();
                 self.pon(Instr::Unaria {
                     destino: t,
                     op: *op,
+                    clase,
                     valor: v,
                 });
                 Valor::Temporal(t)

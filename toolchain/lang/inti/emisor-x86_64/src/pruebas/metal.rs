@@ -42,6 +42,10 @@ fn cada_nombre_de_la_maquina_emite_bytes() {
 
     let mut mudos: Vec<String> = Vec::new();
     let mut probados = 0usize;
+    /// Las que salen a cero bytes A PROPOSITO. Se recogen para poder EXIGIR
+    /// cuantas hay: el dia que una fila se quede vacia por descuido, este
+    /// numero sube y la prueba lo dice.
+    let mut gratis: Vec<String> = Vec::new();
 
     for nombre in maquina.nombres_que_trae() {
         let Some(instruccion) = maquina.instruccion(&nombre) else {
@@ -58,6 +62,29 @@ fn cada_nombre_de_la_maquina_emite_bytes() {
         let e = emitido(&llamada_a(&nombre, def.args.len()));
         if !e.sin_emitir.is_empty() {
             mudos.extend(e.sin_emitir.iter().cloned());
+            continue;
+        }
+        // *** UNA FILA DE CERO BYTES ES UNA CATEGORIA, NO UN FALLO (2026-08-24).
+        //
+        // ** `bits_de` y `flotante_de` reinterpretan un `flotante64` como sus
+        // ocho bytes y al reves. En ESTA maquina eso **no cuesta una
+        // instruccion**, porque el emisor ya lleva los flotantes en registros
+        // generales -- solo cruzan a `xmm` para operarlos.
+        //
+        // Asi que hay que distinguir dos cosas que antes se veian igual:
+        //
+        //    no emite porque la fila esta ROTA        <- lo que este test caza
+        //    no emite porque aqui la conversion es    <- una fila legitima,
+        //    GRATIS y la tabla lo dice                   y la tabla es su sitio
+        //
+        // [!] Y la de cero bytes NO se salta la comprobacion: se le exige otra
+        // cosa, y mas fuerte -- que **el valor llegue de la entrada a la
+        // salida**. Eso es el contrato de una reinterpretacion, y se ejecuta en
+        // `flotante::los_bits_van_y_vuelven`. Sin ese cambio, este `windows(0)`
+        // reventaba y la fila no habria podido existir.
+        if def.bytes.is_empty() {
+            gratis.push(nombre.clone());
+            probados += 1;
             continue;
         }
         // Y que los bytes de la instruccion esten DE VERDAD dentro. Sin esto,
@@ -80,6 +107,16 @@ fn cada_nombre_de_la_maquina_emite_bytes() {
         mudos.join("\n  ")
     );
     assert!(probados >= 60, "solo se probaron {} nombres", probados);
+
+    // *** Y CUANTAS SALEN GRATIS ESTA FIJADO. Una fila que se quede sin bytes
+    // por descuido no puede colarse en esta categoria en silencio: el numero
+    // sube y esta linea se pone roja con el nombre delante.
+    gratis.sort();
+    assert_eq!(
+        gratis,
+        vec!["bits_de".to_string(), "flotante_de".to_string()],
+        "las filas de CERO bytes son exactamente dos, y son las dos          reinterpretaciones. Si aparece otra, o falta una, hay que mirarla"
+    );
 }
 
 /// Y la otra mitad: `usa binarios`, que es la que SE PORTA.

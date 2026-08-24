@@ -267,6 +267,10 @@ raiz    = "la raiz cuadrada de un flotante64"
 minimo  = "el menor de dos flotante64"
 maximo  = "el mayor de dos flotante64"
 absoluto = "el valor absoluto de un flotante64"
+#  ** Los BITS de un flotante, que NO son su valor. `entero64(3.5)` da 3;
+#  `bits_de(3.5)` da los ocho bytes. Ver `arch/x86_64/inti.toml`.
+bits_de     = "los ocho bytes de un flotante64, sin convertir su valor"
+flotante_de = "el flotante64 que forman esos ocho bytes"
 
 
 [entrada]

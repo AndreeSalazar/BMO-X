@@ -29,6 +29,10 @@
 #
 # El dia que haga falta el real, entra al lado y este no se toca: quien quiere
 # un entero no tiene por que pagar una serie.
+#
+# *** Y ESE DIA FUE EL 2026-08-24: `exp.inti`, al lado, y este fichero sin
+# tocar. Lo pidio el softmax de un motor de inferencia. La otra mitad --`ln`--
+# sigue sin escribirse, y con eso `pow` real sale de las dos.
 
 perfil llano
 usa matematica

@@ -264,6 +264,26 @@ funde_de_cuatro      = "avx_funde4"
 limpia_los_altos     = "avx_sin_altos"
 absoluto        = "absd"
 
+# -- ** los BITS de un flotante, que no son su valor -----------------
+#
+#  Hasta el 2026-08-24 no habia forma de mirar los ocho bytes de un
+#  `flotante64`. La regla `E0123` prohibe operarlos a bits --con razon: signo,
+#  exponente y mantisa no son un numero en binario-- y su consejo mandaba a
+#  *"convertir a entero primero"*.
+#
+#  *** Y ese consejo era FALSO. `entero64(3.5)` da `3`: convierte el VALOR. Los
+#  bits no se podian obtener por ningun camino, asi que el aviso mandaba a hacer
+#  algo que no hace lo que dice.
+#
+#  ** Estas dos lo arreglan, y en esta maquina cuestan CERO BYTES porque el
+#  emisor ya lleva los flotantes en registros generales. Ver `intrinsics.toml`.
+#
+#  Ninguna pide `crudo`: un patron de bits cualquiera leido como flotante da un
+#  NaN o un infinito, que son valores DEFINIDOS por IEEE-754. Al otro lado hay
+#  quien comprueba -- es el mismo razonamiento que `raiz(-1)`.
+bits_de         = "bits_de_flotante"
+flotante_de     = "flotante_de_bits"
+
 # -- tiempo y espera ------------------------------------------------
 lee_reloj       = "rdtsc"
 lee_reloj_serio = "rdtscp"

@@ -221,6 +221,26 @@ pub enum Instr {
     Unaria {
         destino: Temporal,
         op: OpUno,
+        /// *** DE QUE ARITMETICA ES, y hasta el 2026-08-24 NO SE DECIA.
+        ///
+        /// ** El emisor bajaba una negacion de ENTEROS para todo, y sobre un
+        /// `flotante64` eso es un complemento a dos del PATRON DE BITS. Negar
+        /// un flotante es otra cosa: se voltea UN bit, el de signo.
+        ///
+        /// [!] Y este comentario nombro un registro en su primera version. Lo
+        /// casco `agnostico.rs`, que prohibe que el frontend nombre una maquina
+        /// **hasta en la prosa** -- exactamente como ya le habia pasado a
+        /// `llega_a_bytes` unas lineas mas abajo. Se deja escrito porque
+        /// demuestra por que esa prueba mira los comentarios: el dia que el
+        /// frontend "sepa" de una maquina, lo va a saber primero quien lea.
+        ///
+        /// *** Y lo caro es que **acertaba a veces**. `-2.0` sale bien por
+        /// casualidad --el complemento a dos de `0x4000...0` resulta ser
+        /// `0xC000...0`, que es el sign-flip-- y `-1.0` daba **-4,0**. Un fallo
+        /// que funciona en la mitad de los casos es el que sobrevive.
+        ///
+        /// Lo encontro `exp` el dia que necesito `-1.0` de verdad.
+        clase: Clase,
         valor: Valor,
     },
     /// La comprobacion que hace que no haya comportamiento indefinido.

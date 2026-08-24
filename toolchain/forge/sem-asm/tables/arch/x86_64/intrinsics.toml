@@ -546,6 +546,38 @@ args = []
 #  Se hace asi y no con `andpd` a proposito: `andpd` necesitaria la mascara en
 #  memoria o en otro xmm, o sea una constante que alguien tiene que colocar. Esto
 #  no toca memoria y no pide SSE4.1 ni nada posterior a 1999.
+[bits_de_flotante]
+description = "Los BITS de un flotante64, sin tocar su valor: bits_de(x)"
+#  *** CERO BYTES, Y ESA ES LA FILA ENTERA.
+#
+#  ** El emisor de INTI lleva los `flotante64` en registros GENERALES: ocho
+#  bytes que se cargan con un `mov` como cualquier otro numero, y solo cruzan a
+#  `xmm` con un `movq` cuando hay que operarlos. Asi que en ESTA maquina,
+#  reinterpretar un flotante como sus bits **no cuesta una instruccion**.
+#
+#  *** Y por eso la fila existe, en vez de dejarlo pasar sin decir nada: el
+#  cambio es de TIPO, no de valor, y el compilador tiene que enterarse. Que el
+#  precio sea cero es un hecho de este silicio -- en una maquina donde los
+#  flotantes vivan en su propio banco, esta fila lleva un `movq` y **no cambia
+#  ni una linea de INTI**. Eso es exactamente para lo que esta tabla existe.
+#
+#  [!] NO es `entero64(x)`. Aquella convierte el VALOR --3,5 da 3, con la Regla
+#  12 vigilando-- y esta no convierte nada: entrega los mismos ocho bytes con
+#  otro nombre. Confundirlas da un numero enorme donde se esperaba uno pequeno.
+bytes = []
+args = ["rax"]
+returns = "rax"
+
+[flotante_de_bits]
+description = "El flotante64 que forman estos bits: flotante_de(n)"
+#  El camino de vuelta, y por el mismo motivo cuesta cero.
+#
+#  ** Con este se construye `2^k` sin tabla ni bucle: se pone el exponente donde
+#  IEEE-754 lo guarda y se llama flotante. Es lo que hace posible `exp`.
+bytes = []
+args = ["rax"]
+returns = "rax"
+
 [absd]
 description = "Valor absoluto de un flotante64: absoluto(x)"
 bytes = [

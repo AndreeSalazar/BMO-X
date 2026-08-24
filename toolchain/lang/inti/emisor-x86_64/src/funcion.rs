@@ -151,9 +151,32 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
                 guarda_temporal(out, IZQ, *destino, &marco);
             }
 
-            Instr::Unaria { destino, op, valor } => {
+            Instr::Unaria { destino, op, clase, valor } => {
                 carga(out, IZQ, valor, &marco);
                 match op {
+                    // *** NEGAR UN FLOTANTE NO ES NEGAR SUS BITS (2026-08-24).
+                    //
+                    // ** Aqui habia `neg rax` para todo. Sobre un `flotante64`
+                    // eso hace el complemento a dos del patron de bits, y el
+                    // patron de un flotante es signo + exponente + mantisa: el
+                    // complemento a dos los revuelve los tres.
+                    //
+                    // Negar un flotante es voltear UN bit -- el 63.
+                    //
+                    // *** Y lo que hizo que durara es que ACERTABA A VECES: el
+                    // complemento a dos de `0x4000...0` (2,0) da `0xC000...0`,
+                    // que resulta ser el sign-flip. Asi que `-2.0` salia bien y
+                    // `-1.0` daba **-4,0**. Lo encontro `exp`, el dia que
+                    // necesito un `-1.0` de verdad.
+                    bmo_inti_front::arbol::OpUno::Menos
+                        if matches!(clase, bmo_inti_front::ir::Clase::Flotante) =>
+                    {
+                        // `mov rcx, 1<<63` y `xor rax, rcx`. El inmediato no
+                        // cabe en 32 bits, asi que va por registro -- la misma
+                        // forma que usa `absd` para su mascara.
+                        x86::mov_r64_imm64(out, 1, 1u64 << 63);
+                        out.extend_from_slice(&[0x48, 0x31, 0xC8]); // xor rax, rcx
+                    }
                     bmo_inti_front::arbol::OpUno::Menos => x86::neg_r64(out, IZQ),
                     bmo_inti_front::arbol::OpUno::No => {
                         // `no x` sobre un logico: comparar con cero y quedarse
