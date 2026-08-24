@@ -38,6 +38,10 @@
 
 /// 1 -- pregunta al SILICIO y cuenta lo que contesta.
 pub mod hardware;
+/// **`placa`**: lo que el firmware cuenta de si mismo. Aparte de `hardware`
+/// porque contesta otra pregunta -- aquel ensena APARATOS y este ensena la
+/// TABLA que la placa dejo en memoria.
+pub mod placa;
 /// 1b -- el CENSO de extensiones. Mismo grupo que [`hardware`] --solo mira--
 /// pero fichero propio: aquel pregunta por un APARATO (disco, red, audio) y
 /// este por el CONJUNTO DE INSTRUCCIONES. Y `hardware.rs` es el que mas crece

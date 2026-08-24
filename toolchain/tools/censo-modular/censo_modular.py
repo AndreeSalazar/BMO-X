@@ -122,6 +122,98 @@ APERTURA = {
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'LINEA_BASE.txt')
 
 
+
+# == ABUELO: EL ANILLO =========================================================
+#
+# *** POR QUE EL LIMITE NO PUEDE SER EL MISMO PARA TODO (2026-08-24)
+#
+# Regla de Eddi: *"el guardian limita estrictamente hasta mil, y por que? porque
+# hablamos de Bare Metal Orquestal. Pero si es para Ring 3 como library OS,
+# okey."*
+#
+# Y tiene el motivo dentro: **lo que cuesta un fallo depende del anillo.**
+#
+#     Ring 0    un fallo se lleva la MAQUINA. Y ahi conviven 236 `static mut`:
+#               en un fichero grande, cada funcion puede tocarlos todos
+#     Ring 3    un fallo mata la TAREA. El kernel recupera la pantalla y
+#               imprime sus ultimas cuatro lineas -- verificado en metal
+#     util      no corre en la maquina. Un compilador con un fichero grande
+#               produce programas malos, que es caro; no cuelga un arranque
+#
+# == [!] Y AQUI ESTA LA TRAMPA QUE HAY QUE VER ANTES DE ESCRIBIR LA REGLA ======
+#
+# **El anillo NO se puede decidir por la carpeta.** Se midio el 2026-08-24:
+#
+#     platform/drivers/storage/fat32/src/lib.rs   2.537 lineas   RING 0
+#     platform/drivers/usb/xhci/src/lib.rs        1.584 lineas   RING 0
+#
+# Los dos viven bajo `platform/`, los dos PARECEN Ring 3, y los dos son crates
+# de Rust que **enlaza el kernel**. Una regla que dijera *"platform = Ring 3 =
+# mas laxo"* habria relajado el limite justo sobre los dos ficheros mas grandes
+# que corren en Ring 0. Lo contrario de lo que se pedia.
+#
+# *** Asi que el anillo sale del GRAFO DE DEPENDENCIAS DEL KERNEL, que es un
+# hecho y no una convencion: si el kernel lo enlaza, corre en Ring 0. El dia que
+# un driver se mude a Ring 3 de verdad --como dice la intencion de `rdna4`-- su
+# `Cargo.toml` deja de estar en ese grafo y esta funcion se entera sola.
+
+RING0, RING3, UTIL = 'ring0', 'ring3', 'util'
+
+_CRATES_R0 = None
+
+
+def _crates_del_kernel(raiz):
+    """Los crates que el kernel enlaza, transitivamente. Se calcula una vez."""
+    global _CRATES_R0
+    if _CRATES_R0 is not None:
+        return _CRATES_R0
+    vistos, pend = set(), [os.path.join(raiz, 'Ultra_kernel_x86-64', 'kernel')]
+    while pend:
+        d = os.path.normpath(pend.pop())
+        clave = os.path.relpath(d, raiz).replace(os.sep, '/')
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        cargo = os.path.join(d, 'Cargo.toml')
+        if not os.path.exists(cargo):
+            continue
+        try:
+            t = io.open(cargo, encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        for p in re.findall(r'path\s*=\s*"([^"]+)"', t):
+            pend.append(os.path.join(d, p))
+    _CRATES_R0 = vistos
+    return vistos
+
+
+def anillo(ruta, raiz='.'):
+    """Donde CORRE este fichero. Un hecho, no una opinion sobre el.
+
+    ** No mira la carpeta salvo para lo que no es un crate: mira si el kernel
+    enlaza el crate al que pertenece. Ver la cabecera de esta seccion.
+    """
+    r = ruta.replace(os.sep, '/')
+    # ** Un script NUNCA corre en la maquina, viva donde viva. BMO-X no tiene
+    # PowerShell ni Python, asi que `build.ps1` --que esta dentro de
+    # `Ultra_kernel_x86-64/`-- es herramienta y no Ring 0. Es un hecho sobre el
+    # lenguaje, no una convencion sobre la carpeta.
+    #
+    # [!] Se descubrio al estrenar esta funcion: el censo conto 7 ficheros de
+    # Ring 0 y uno era `build.ps1`. Una clasificacion que se equivoca en el
+    # primer informe no habria durado dos dias.
+    if r.endswith('.ps1') or r.endswith('.py'):
+        return UTIL
+    if r.startswith('toolchain/'):
+        return UTIL
+    for c in _crates_del_kernel(raiz):
+        if r.startswith(c + '/'):
+            return RING0
+    if r.startswith('Ultra_kernel_x86-64/'):
+        return RING0
+    return RING3
+
+
 # == ABUELO ====================================================================
 # The raw fact: how many lines and how many functions this file has. It does not
 # know what a limit is, it does not know there are other files, and it has no
@@ -148,6 +240,9 @@ def medir(ruta):
 
 class Ficha:
     def __init__(self, ruta, lineas, funciones, generado=False):
+        # ** El anillo se guarda en la ficha y no se pregunta cada vez: es un
+        # hecho sobre el fichero, igual que sus lineas.
+        self.anillo = anillo(ruta)
         self.ruta = ruta
         self.lineas = lineas
         self.funciones = funciones
@@ -263,6 +358,45 @@ def sellar(fichas, exentos, techos, subidas, motivo):
     Es la regla del dueno aplicada a la propia herramienta: **todo tiene su por
     que; lo que no lo tiene, se quita.**
     """
+    # *** PARA RING 0 NO HAY LINEA BASE NUEVA. NUNCA. (2026-08-24)
+    #
+    # Regla de Eddi: *"el guardian limita ESTRICTAMENTE hasta mil, y por que?
+    # porque hablamos de Bare Metal Orquestal. Pero si es para Ring 3 como
+    # library OS, okey."*
+    #
+    # ** Y la diferencia no esta en el NUMERO, esta en la SALIDA DE EMERGENCIA.
+    # El limite sigue siendo 1.000 para todo el arbol -- es la cifra que pone
+    # L6a y no se toca. Lo que cambia por anillo es si se puede pedir una
+    # excepcion:
+    #
+    #     util y Ring 3   el trinquete: un fichero nuevo se puede sellar, y
+    #                     desde ese dia solo puede ENCOGER
+    #     Ring 0          NO SE SELLA. Un fichero del kernel que cruce las mil
+    #                     lineas para el build, y no hay `--motivo` que valga
+    #
+    # *** El motivo es que lo que cuesta un fallo depende del anillo: en Ring 3
+    # un fallo mata la tarea --el kernel recupera la pantalla y escribe sus
+    # ultimas cuatro lineas, verificado en metal-- y en Ring 0 se lleva la
+    # maquina. Y ahi conviven 236 `static mut`: en un fichero grande, cada
+    # funcion puede tocarlos todos.
+    #
+    # [!] Los SEIS que ya estan --8.886 lineas de Ring 0-- se respetan: el
+    # trinquete no juzga el pasado, y un guardian que falle sobre lo que ya hay
+    # se apaga en un dia. Lo que se cierra es la puerta a que entre el septimo.
+    nuevos_r0 = [
+        f for f in fichas
+        if f.anillo == RING0 and f.lineas > LIMITE
+        and f.ruta not in exentos and not f.generado
+        and f.ruta not in techos
+    ]
+    if nuevos_r0:
+        print('[X] RING 0 no admite linea base nueva. Estos hay que partirlos:')
+        for f in nuevos_r0:
+            print('    %6d  %s' % (f.lineas, f.ruta))
+        print('    Un fallo en Ring 0 se lleva la maquina, no la tarea.')
+        print('    En Ring 3 el trinquete sigue valiendo; aqui no hay excepcion.')
+        return 1
+
     suben = []
     for f in fichas:
         if f.lineas > LIMITE and f.ruta not in exentos and not f.generado:
@@ -372,6 +506,33 @@ def informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos, subid
     print('%d ficheros incumplen L6a (>%d lineas). %d son CAJON, o sea que se'
           % (len(pasan), LIMITE, len(cajones)))
     print('parten moviendo texto y el reparto se demuestra con un hash (L6d).')
+
+    # *** Y DE QUE ANILLO SON, que es la mitad que faltaba (2026-08-24).
+    #
+    # ** Hasta hoy este censo trataba las diecisiete infracciones como la misma
+    # cosa. Y no lo son: un fichero de 1.200 lineas en el kernel y uno de 1.200
+    # en un compilador del anfitrion **cuestan distinto cuando fallan**.
+    #
+    # Lo que este bloque anade no es una regla nueva -- es la capacidad de DECIR
+    # cuales importan. Y lo primero que dijo, el dia que se escribio, fue que
+    # los dos ficheros mas grandes que corren en Ring 0 viven bajo `platform/` y
+    # **no parecen Ring 0 desde la carpeta**.
+    por_anillo = {}
+    for f in pasan:
+        n, l = por_anillo.get(f.anillo, (0, 0))
+        por_anillo[f.anillo] = (n + 1, l + f.lineas)
+    print()
+    print('  por anillo, y ahi esta la diferencia:')
+    for cual, etiqueta in ((RING0, 'RING 0  un fallo se lleva la MAQUINA'),
+                           (RING3, 'Ring 3  un fallo mata la TAREA'),
+                           (UTIL, 'util    no corre en la maquina')):
+        n, l = por_anillo.get(cual, (0, 0))
+        print('    %-38s %2d ficheros, %6d lineas' % (etiqueta, n, l))
+    if por_anillo.get(RING0, (0, 0))[0]:
+        print('    [!] los de RING 0 son los que hay que partir primero, y desde')
+        print('        el 2026-08-24 NO PUEDE ENTRAR NINGUNO MAS: `--sellar` se')
+        print('        niega a admitir un fichero de Ring 0 en la linea base.')
+
     for f in fuera:
         motivo = exentos.get(f.ruta) or 'lo emite una fabrica: dice AUTO-GENERADO'
         print('  [-] fuera del censo  %s (%d) -- %s' % (f.ruta, f.lineas, motivo))

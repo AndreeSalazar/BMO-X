@@ -11,11 +11,11 @@
   2537  platform/drivers/storage/fat32/src/lib.rs
   2321  toolchain/lang/c/src/codegen/mod.rs
   2011  toolchain/lang/cobol/src/parser.rs
-  1689  toolchain/forge/bmo-lower/src/emu/mod.rs
+  1761  toolchain/forge/bmo-lower/src/emu/mod.rs
   1621  toolchain/lang/cpp/src/parser.rs
+  1584  Ultra_kernel_x86-64/build.ps1
   1584  platform/drivers/usb/xhci/src/lib.rs
-  1578  Ultra_kernel_x86-64/build.ps1
-  1416  platform/abi/bmo-abi/src/bef/validator.rs
+  1435  platform/abi/bmo-abi/src/bef/validator.rs
   1363  Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs
   1345  Ultra_userspace/services/director/src/commands/reports.rs
   1204  Ultra_kernel_x86-64/kernel/src/ring0/dev/usb/mod.rs
@@ -41,3 +41,6 @@ toolchain/forge/bmo-lower/src/emu.rs                       2207 -> 2228  flags_a
 Ultra_kernel_x86-64/build.ps1                              1563 -> 1569  el SEXTO guardian (ambitos de commit): 5 lineas, y son irreducibles -- una llamada a `Guardian` son cuatro y la quinta dice donde esta el por que. [!] Y lo que esto destapa es otra cosa: build.ps1 lleva 1.568 lineas con 8 funciones (media 197) y el censo lo llama `desconocida` porque es PowerShell. Cada guardian nuevo lo engorda, asi que o se parte o esta lista tendra una entrada por guardian.
 Ultra_kernel_x86-64/build.ps1                              1569 -> 1571  el helper `Guardian` distingue por fin FALTA EL SCRIPT de NO HAY PYTHON: 2 lineas. Lo primero es del repo --un path mal escrito dejo el guardian de ambitos MUERTO y el build dijo COMPLETE igual-- y lo segundo del entorno. Es literalmente el fallo que este fichero ya tenia descrito tres veces: un guardian que lee menos no avisa de menos, avisa de nada.
 Ultra_kernel_x86-64/build.ps1                              1571 -> 1578  el paso que despliega la sonda de INTI: 7 lineas, y son las que hacen que `run inti/cpu.bex` exista. El .bex de cpu.inti se estaba dejando en una carpeta del repo y NUNCA LLEGABA AL FAT32 -- que es literalmente el fallo que este mismo bloque tiene escrito de cuando le paso a C: un lenguaje que compila y cuyo binario no se despliega esta a medias. Reusa `Compilar-Ejemplos`, asi que no anade logica: una fila de tabla, un Step y la llamada. [!] Y confirma lo que la SUBIDA anterior predijo -- cada paso nuevo engorda este fichero, asi que o se parte o esta lista tendra una entrada por paso.
+toolchain/forge/bmo-lower/src/emu/mod.rs                   1689 -> 1761  AVX2: el decodificador VEX se partio a emu/vex.rs (125 lineas) y aun asi quedan +72 en mod.rs -- el campo ymm, el despacho de C4/C5 y las cinco filas de opcode, que son las que TIENEN que estar en el despachador. Partir mas seria mover el despacho fuera del despachador. [!] La subida es de un fichero de HERRAMIENTA (no corre en la maquina): bajo la regla del 24-08, si fuera de Ring 0 no habria motivo que valiera y habria que partirlo entero.
+Ultra_kernel_x86-64/build.ps1                              1578 -> 1584  AVX2: el decodificador VEX se partio a emu/vex.rs (125 lineas) y aun asi quedan +72 en mod.rs -- el campo ymm, el despacho de C4/C5 y las cinco filas de opcode, que son las que TIENEN que estar en el despachador. Partir mas seria mover el despacho fuera del despachador. [!] La subida es de un fichero de HERRAMIENTA (no corre en la maquina): bajo la regla del 24-08, si fuera de Ring 0 no habria motivo que valiera y habria que partirlo entero.
+platform/abi/bmo-abi/src/bef/validator.rs                  1416 -> 1435  AVX2: el decodificador VEX se partio a emu/vex.rs (125 lineas) y aun asi quedan +72 en mod.rs -- el campo ymm, el despacho de C4/C5 y las cinco filas de opcode, que son las que TIENEN que estar en el despachador. Partir mas seria mover el despacho fuera del despachador. [!] La subida es de un fichero de HERRAMIENTA (no corre en la maquina): bajo la regla del 24-08, si fuera de Ring 0 no habria motivo que valiera y habria que partirlo entero.
