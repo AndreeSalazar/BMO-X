@@ -14,7 +14,6 @@
   1621  toolchain/lang/cpp/src/parser.rs
   1584  Ultra_kernel_x86-64/build.ps1
   1435  platform/abi/bmo-abi/src/bef/validator.rs
-  1363  Ultra_kernel_x86-64/kernel/src/ring0/syscall/mod.rs
   1345  Ultra_userspace/services/director/src/commands/reports.rs
   1196  toolchain/lang/c/src/parser/preprocessor.rs
   1036  platform/drivers/storage/ahci/src/controller.rs
