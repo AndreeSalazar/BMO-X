@@ -42,7 +42,7 @@ escribe `net`**. Si el enlace no se cae, lo que se esta leyendo no es el silicio
 # 2. LA SECUENCIA
 
 ```text
-   net           <- censo, no toca nada. Confirma MAC y enlace
+   net           <- censo, no toca nada. Confirma MAC y enlace. Tambien F9
    net rx        <- ARMA el receptor
    (esperar de 5 a 30 segundos)
    net rx        <- vuelve a mirar
@@ -166,7 +166,7 @@ Cuesta una palabra mas y es el paso 0 del **firmware**, con la misma forma: cero
 escrituras, respuesta predecible.
 
 ```text
-   placa     <- o `firmware`
+   placa     <- o `firmware`, o la tecla F10
 ```
 
 ## Lo que tiene que salir
@@ -194,6 +194,24 @@ cualquier cosa.
 
 [!] Y si sale mayor que cero, **lo que falla no es la placa**: es el mapeo de
 esas direcciones fisicas. Un fallo del kernel disfrazado de firmware raro.
+
+## Y las dos filas que se leen de verdad, no solo se cuentan
+
+```text
+   [placa] PCIe config en 0xE0000000  buses 0..255  (4096 B por funcion)
+   [placa] IOMMU tipo 0x10  registros en 0xFEB80000
+   [placa]     la hay y se sabe donde. ENCENDERLA es otro trabajo
+```
+
+| lo que sale | que significa |
+|---|---|
+| una direccion de ECAM | **se puede leer la config extendida de PCIe** -- AER, ATS, SR-IOV |
+| `sin MCFG` | PCI se queda en 256 B por funcion. No es un fallo, es una respuesta |
+| una direccion de IOMMU | la hay. Cerrar el agujero del DMA **es posible** |
+| `sin IVRS` | [!] nada limita adonde escribe un aparato con DMA |
+
+** La direccion de ECAM en un AM4 suele ser `0xE0000000` o `0xF0000000`, y
+Windows la lista igual. Si BMO-X dice otra cosa, uno de los dos lee mal.
 
 ## Y la prediccion que se puede hacer sin arrancar
 
