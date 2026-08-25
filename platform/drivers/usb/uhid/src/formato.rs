@@ -158,6 +158,32 @@ const MAX_IDS: usize = 16;
 /// cinco botones; ocho cubre cualquier informe sensato y acota el estado.
 const MAX_USOS: usize = 8;
 
+/// **Tope de elementos que un solo item Input puede declarar.**
+///
+/// # *** EL HUECO QUE ESTO TAPA (auditoria 2026-08-24)
+///
+/// `Report Count` **lo pone el aparato** y es un entero de 32 bits. Sin tope:
+///
+/// ```text
+///    un descriptor con Report Count = 0xFFFF_FFFF
+///      -> `for k in 0..4_294_967_295`
+///      -> y eso corre DENTRO de la enumeracion USB, en el kernel
+/// ```
+///
+/// ** No corrompe nada: cuelga. La maquina se queda parseando el descriptor de
+/// un raton, y el unico sintoma es que BMO-X deja de arrancar cuando ese
+/// aparato esta enchufado. **Un cuelgue no da autopsia**, asi que ni siquiera
+/// dice quien lo causo.
+///
+/// [!] Y no hace falta un atacante: un aparato con el firmware roto declara
+/// basura igual. La ley 11 dice que a un dispositivo se le pregunta -- **pero
+/// lo que conteste sigue siendo suyo, no nuestro.**
+///
+/// *** 256 y no un numero mayor porque un item real no pasa de decenas: los
+/// botones de un raton de juego son ocho o dieciseis, y el teclado BOOT declara
+/// seis. Un tope que solo corta lo imposible no protege de nada.
+const MAX_POR_ITEM: u32 = 256;
+
 /// Estado que un item `Input` consume y que los items globales/locales llenan.
 struct Estado {
     pagina: u32,
@@ -289,7 +315,11 @@ pub fn raton(desc: &[u8]) -> Option<Formato> {
             (0, 0x8) => {
                 let idx = (e.report_id as usize).min(MAX_IDS - 1);
                 let constante = datos & 1 != 0;
-                for k in 0..e.report_count as usize {
+                // ** EL TOPE, y va aqui y no al guardar `report_count`: el
+                // valor crudo sigue siendo el que el aparato dijo --y eso es lo
+                // que hay que poder ver si algun dia se imprime-- pero el bucle
+                // no lo obedece mas alla de lo posible. Ver `MAX_POR_ITEM`.
+                for k in 0..e.report_count.min(MAX_POR_ITEM) as usize {
                     let bit = bits_por_id[idx];
                     let campo = Campo { bit, bits: e.report_size.min(255) as u8 };
                     bits_por_id[idx] = bit.saturating_add(e.report_size.min(u16::MAX as u32) as u16);
@@ -542,5 +572,77 @@ mod tests {
         assert_eq!(b.x, f.x);
         assert_eq!(b.y, f.y);
         assert_eq!(b.botones.unwrap().bit, f.botones.unwrap().bit);
+    }
+}
+
+// ------------------------------------------------------------------------
+//  *** DESCRIPTORES HOSTILES (auditoria 2026-08-24)
+// ------------------------------------------------------------------------
+//
+// ** Estos no son "casos raros": son lo que llega cuando el aparato del otro
+// lado no colabora. Y a un driver de USB le llega SIEMPRE antes de que nadie
+// haya podido decidir si ese aparato es de fiar.
+
+#[cfg(test)]
+mod hostiles {
+    use super::*;
+
+    /// *** UN `Report Count` ENORME NO PUEDE COLGAR LA ENUMERACION.
+    ///
+    /// Sin tope esto son 4.294.967.295 vueltas dentro del kernel, y el sintoma
+    /// es que la maquina no arranca con ese aparato enchufado. **Un cuelgue no
+    /// da autopsia**: ni siquiera dice quien lo causo.
+    ///
+    /// El test vale por lo que TARDA: si el tope desapareciera, no falla --
+    /// se queda colgado, que es exactamente el fallo que describe.
+    #[test]
+    fn un_report_count_imposible_no_cuelga() {
+        let desc = [
+            0x05, 0x01, // Usage Page (Generic Desktop)
+            0x09, 0x02, // Usage (Mouse)
+            0xA1, 0x01, // Collection (Application)
+            0x75, 0x08, // Report Size (8)
+            0x95, 0xFF, 0xFF, 0xFF, 0xFF, // ** Report Count = 0xFFFFFFFF
+            0x81, 0x02, // Input (Data,Var,Abs)
+            0xC0, // End Collection
+        ];
+        // Lo que importa es que VUELVA.
+        let _ = raton(&desc);
+    }
+
+    /// Y un `Report Size` de cero con cuenta enorme: cada vuelta suma 0 bits,
+    /// asi que ni siquiera el saturado de `bits_por_id` cortaria el bucle.
+    #[test]
+    fn tamano_cero_con_cuenta_enorme_tampoco() {
+        let desc = [
+            0x05, 0x01, 0x09, 0x02, 0xA1, 0x01,
+            0x75, 0x00, // Report Size (0)
+            0x95, 0xFF, 0xFF, 0xFF, 0xFF, // Report Count = 0xFFFFFFFF
+            0x81, 0x02, 0xC0,
+        ];
+        let _ = raton(&desc);
+    }
+
+    /// [!] Un item largo (0xFE) que declara mas de lo que hay no puede leer
+    /// fuera del descriptor.
+    #[test]
+    fn un_item_largo_mentiroso_no_se_sale() {
+        let desc = [0xFE, 0xFF, 0x00];
+        assert_eq!(raton(&desc), None);
+        // Y truncado justo donde deja de haber bytes.
+        assert_eq!(raton(&[0xFE]), None);
+    }
+
+    /// Un item corto que dice traer cuatro bytes de datos y trae uno.
+    #[test]
+    fn un_item_corto_truncado_no_se_sale() {
+        // prefijo 0x07 = tipo Global, tag 0, tam 3 -> CUATRO bytes de datos.
+        assert_eq!(raton(&[0x07, 0x01]), None);
+    }
+
+    /// El descriptor vacio, que es el caso que siempre falta.
+    #[test]
+    fn el_descriptor_vacio_contesta_que_no() {
+        assert_eq!(raton(&[]), None);
     }
 }
