@@ -146,7 +146,7 @@ A `ring0/dev/disk/irq.rs`: `atender_irq`, `irq_estado`, `IRQ_ARMADA`, `IRQS`.
 
 * **Hecho cuando**: `mod.rs` no menciona interrupciones.
 
-### [ ] Paso 4 -- FAT32, EL OTRO MONOLITO (trabajo aparte)
+### [x] Paso 4 -- FAT32, EL OTRO MONOLITO  (HECHO el 2026-08-24)
 
 2.453 lineas en un fichero. **No entra en este plan**: es un reparto tan grande
 como el del compositor y merece su propia sesion, con el metodo del diff por

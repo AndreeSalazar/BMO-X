@@ -14,7 +14,7 @@
   1398  toolchain/lang/c/src/codegen/mod.rs
   1565  toolchain/lang/cobol/src/parser.rs
   1177  toolchain/lang/cpp/src/parser.rs
-  1534  Ultra_kernel_x86-64/build.ps1
+  1542  Ultra_kernel_x86-64/build.ps1
   1179  platform/abi/bmo-abi/src/bef/validator.rs
 
 # EXENTOS -- un "no" con motivo escrito, que se puede discutir.
@@ -38,3 +38,4 @@ Ultra_kernel_x86-64/build.ps1                              1578 -> 1584  S3+S4 d
 platform/abi/bmo-abi/src/bef/validator.rs                  1416 -> 1435  P1: el gate exige el perfil que viaja DENTRO del `.bex` -- 19 lineas de comprobacion en el validador. [!] RECONSTRUIDO del historial el 24-08, por lo mismo que la linea de arriba: se habia sellado con un motivo que hablaba del emulador.
 toolchain/forge/bmo-lower/src/emu/mod.rs                   1689 -> 1761  AVX2: el decodificador VEX se partio a emu/vex.rs (125 lineas) y aun asi quedan +72 en mod.rs -- el campo ymm, el despacho de C4/C5 y las cinco filas de opcode, que son las que TIENEN que estar en el despachador. Partir mas seria mover el despacho fuera del despachador. [!] La subida es de un fichero de HERRAMIENTA (no corre en la maquina): bajo la regla del 24-08, si fuera de Ring 0 no habria motivo que valiera y habria que partirlo entero.
 Ultra_kernel_x86-64/build.ps1                              1584 -> 1606  el guardian del contrato de syscalls pasa de leer DOS ficheros por su nombre a leer la CARPETA: 22 lineas. Se quedo ciego con el reparto de syscall/mod.rs en cinco --las operaciones que se fueron a op_*.rs dejaron de existir para el-- y la leccion estaba escrita veinte lineas mas abajo, en este mismo fichero, de la vez anterior que paso. [!] Confirma lo que las tres SUBIDAS anteriores predijeron: cada guardian engorda build.ps1, asi que o se parte o esta lista tendra una entrada por guardian.
+Ultra_kernel_x86-64/build.ps1                              1534 -> 1542  el SEPTIMO guardian (las casillas de los planes): 8 lineas. [!] Y es la CUARTA vez que este mismo bloque predice lo que acaba de pasar -- 'cada guardian nuevo lo engorda, o se parte o esta lista tendra una entrada por guardian'. Ya hay CINCO entradas de build.ps1. La prediccion dejo de serlo: son 1.542 lineas de codigo con 8 funciones (media 201) y el censo lo llama 'desconocida' porque es PowerShell, o sea que ni siquiera lo juzga bien. El siguiente guardian NO se anade: primero se parte este fichero.

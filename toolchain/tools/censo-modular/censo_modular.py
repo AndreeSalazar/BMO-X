@@ -559,7 +559,23 @@ def sellar(fichas, exentos, techos, subidas, motivo):
     for f in fichas:
         if f.codigo > LIMITE and f.ruta not in exentos and not f.generado:
             viejo = techos.get(f.ruta)
-            if viejo is not None and f.lineas > viejo:
+            # *** SE COMPARA `codigo` CONTRA `codigo` (2026-08-24).
+            # ** Aqui ponia `f.lineas > viejo`: las lineas TOTALES contra un
+            # techo que se guarda en lineas de CODIGO. Y total siempre es mayor
+            # --los comentarios cuentan-- asi que un fichero que no habia
+            # crecido ni una linea salia como subida:
+            #
+            #     validator.rs: 1179 -> 1179 (+0)
+            #
+            # *** Y eso no es cosmetico: con dos "subidas" en la lista, `--sellar`
+            # se niega pidiendo un motivo por cada una -- o sea que obliga a
+            # INVENTAR una excusa para un fichero que no cambio. Justo lo que la
+            # regla de arriba existe para impedir.
+            #
+            # ** Es el mismo patron que destapo la auditoria de seguridad del
+            # mismo dia, seis veces: **un limite comparado contra el numero
+            # equivocado.** No faltaba la comprobacion; comparaba mal.
+            if viejo is not None and f.codigo > viejo:
                 suben.append((f.ruta, viejo, f.codigo))
     if suben and not motivo:
         print('[X] hay techos que SUBEN y `--sellar` no acepta una subida muda:')

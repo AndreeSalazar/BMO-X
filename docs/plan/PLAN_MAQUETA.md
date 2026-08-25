@@ -294,15 +294,44 @@ estan en espanol.
 
 ```
    [x] 0   los dos libros: este y LA_MAQUETA_EXIGE.md
-   [ ] 1   abuelo   lexer de dos modos (marcado / estilo)
-   [ ] 2   padre    Node y Rule
-   [ ] 3   hijo     cascada por clase y etiqueta, ultimo gana
-   [ ] 4   nieto    maquetacion: bloque + flex en un eje
-   [ ] 5   bisnieto veredicto: las seis comprobaciones
+   [x] 1   abuelo   lexer de dos modos (marcado / estilo)
+   [x] 2   padre    Node y Rule
+   [x] 3   hijo     cascada por clase y etiqueta, ultimo gana
+   [x] 4   nieto    maquetacion: bloque + flex en un eje
+   [x] 5   bisnieto veredicto: las seis comprobaciones
    [x] 6   emisor A -> Rust generado, y calc.rs como primera victima
-   [ ] 7   ficheros dorados como oraculo
-   [ ] 8   emisor B -> recurso BEF 0x0B (arrastra "leer recursos en ejecucion")
-   [ ] 9   `<island>` cableada a una superficie BSUP
+   [ ] 7   ficheros dorados como oraculo   -> `toolchain/tools/maqueta/pruebas/`
+   [ ] 8   emisor B -> recurso BEF 0x0B     -> `toolchain/tools/maqueta/emit/src/`
+   [~] 9   `<island>` a una superficie BSUP  (parsea y viaja; falta el otro lado)
+```
+
+## ⚠ LAS CASILLAS MENTIAN, Y SE RECONTARON EL 2026-08-24
+
+Los cinco escalones de la cadena figuraban SIN HACER y estaban hechos, con su
+banco verde cada uno:
+
+```
+   lex  24    node  36    cascade  22    layout  20    verdict  20
+                                          = 122 filas, y ninguna roja
+```
+
+*** Y el propio `build.ps1` los ejercita en cada compilacion --"caras: 1
+.maqueta, y su Rust generado dice lo mismo"-- o sea que la tuberia entera
+funciona desde antes de que nadie marcara la casilla.
+
+** Lo que revelo el recuento no es que sobrara trabajo: es que **la adopcion es
+1**. El escritorio son 8.744 lineas de `scene/` y 500 salen de un `.maqueta`
+--el 5,7%, y esa una es la calculadora. La maquina esta pagada y no la usa casi
+nadie, que es una casilla que no existia porque nadie la habia escrito.
+
+** El 9 pasa a `[~]`: `island` viaja de `node` a `cascade` y a `layout`, y
+`Laid::islands` existe. Lo que NO hay es una superficie BSUP de verdad al otro
+lado. **Parsear no es cablear**, y llamarlo hecho seria el error que este
+recuento vino a arreglar.
+
+Y el 6 se cobro el mismo dia con la PALETA: `tema.maqueta` confesaba en su
+cabecera que era la fuente y las constantes de Rust la copia. Ya no hay copia.
+```
 ```
 
 **El escalon 6 es la prueba de que esto sirve, y tiene un numero -- afinado el

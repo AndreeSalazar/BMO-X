@@ -220,6 +220,14 @@ Guardian 'Validating L6a: no new module over the line' `
 
 # ** EL AMBITO de un commit, y SOLO el ambito. Trinquete como el de L6a, y no
 # mira la prosa: el por que entero esta en la cabecera de ambitos.py.
+# ** LAS CASILLAS DE LOS PLANES, que no las contaba nadie. El 24-08 se
+# recontaron a mano y OCHO de cincuenta y cuatro estaban mal -- cinco escalones
+# de MAQUETA figuraban sin hacer con su crate hecho y su banco verde. El por que
+# entero, y por que el primer intento de este guardian no cazo ninguna, esta en
+# la cabecera de casillas.py -- la leccion no es la que se fue a buscar.
+Guardian 'Validating plan checkboxes are verifiable' `
+    'toolchain\tools\casillas\casillas.py' 'las casillas' `
+    'casillas: una casilla no se puede comprobar (ver arriba)'
 Guardian 'Validating commit scopes' `
     'toolchain\tools\ambitos\ambitos.py' 'los ambitos de los commits' `
     'ambitos: un commit usa un ambito que no esta en AMBITOS.txt (ver arriba)'

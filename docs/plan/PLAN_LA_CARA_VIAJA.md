@@ -257,14 +257,14 @@ lleva el escritorio** -- que es la misma ley que ya rige las superficies.
 ## 8. LA ESCALERA
 
 ```
-   [ ] 1  el FORMATO en un crate sin E/S, probado entero en el anfitrion
+   [ ] 1  el FORMATO en un crate sin E/S -> `platform/shared/` (no existe hoy)
           (como `estratos` y `trim`: un formato mal empaquetado no da un fallo,
           da algo peor -- se lee mal y nadie se entera)
-   [ ] 2  emit/bef.rs -- el emisor B. NO toca ninguna generacion
-   [ ] 3  el LECTOR, con las cinco comprobaciones de la seccion 6
-   [ ] 4  leerlo desde un FICHERO suelto, y que la calculadora se pinte con el
-   [ ] 5  meterlo en la seccion 0x0B del .bex y leerlo desde ahi
-   [ ] 6  vigia de fichero: guardar el .maqueta y verlo cambiar sin reiniciar
+   [ ] 2  el emisor B -> `toolchain/tools/maqueta/emit/src/bef.rs` (no existe)
+   [ ] 3  el LECTOR, las cinco comprobaciones -> `Ultra_userspace/services/director/src/scene/`
+   [ ] 4  desde un FICHERO suelto, y que se pinte -> `scene/calc_gen.rs` deja de ser generado
+   [ ] 5  en la seccion 0x0B del .bex -> `toolchain/tools/bmo-pack/` ya escribe recursos
+   [ ] 6  vigia: guardar el .maqueta y verlo cambiar -> pide 4 y 5
    [ ] ~  la red. Otro dia, y ya no cambia nada de lo de arriba
 ```
 

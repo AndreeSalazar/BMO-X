@@ -308,13 +308,13 @@ de `c-gen`: programas minimos que compilan o no, y que se ejecutan.
       de esta casilla.
 - [ ] `wc -l` real sobre el tarball de CPython y sobre MicroPython. Sustituir
       los ordenes de magnitud de este documento por numeros.
-- [ ] **Entropia: una fila de `intrinsics.toml`** (`RDRAND` / `RDSEED`). Es la
+- [x] ~~**Entropia: una fila de `intrinsics.toml`** (`RDRAND` / `RDSEED`)~~ **YA ESTABA** (comprobado 24-08): `intrinsics.toml` trae `[rdrand]` y `[rdseed]` con sus opcodes (`0F C7 F0` y `0F C7 F8`). Y el 24-08 se cobro tambien del lado de Rust: `bmo_cripto::azar`. Era la
       pieza mas barata de la tabla y la usan tambien firma, `net` y ESTRATOS.
 - [x] ~~**La fecha real.**~~ ✅ **YA ESTABA** (comprobado el 16-08):
       `INFO_FECHA` + `ring0/dev/clock.rs`, que lee el CMOS al arrancar y suma
       los segundos por TSC con un calendario de verdad. Se dio por ausente sin
       mirar, que es el error que este documento existe para no cometer.
-- [ ] **`stat` y listar directorio desde Ring 3 sobre FAT32**, por UN camino y no
+- [~] **`stat` y listar directorio desde Ring 3 sobre FAT32**, por UN camino y no  ** LISTAR ya esta (24-08): `DIR_OP_SIGUIENTE`/`DIR_OP_NOMBRE` y `userland/archivo.rs` los usa. Falta el `stat` --tamano y tipo-- por ese mismo camino.
       por dos.
 - [ ] Medir si el monton de `<bmo/monton.h>` aguanta un patron de asignacion de
       interprete (muchos bloques pequenos, vida corta, sin orden). **Con una
