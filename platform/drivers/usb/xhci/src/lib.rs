@@ -100,6 +100,9 @@ const PORTSC_CSC: u32 = 1 << 17; const PORTSC_PRC: u32 = 1 << 21;
 const IMAN_IE: u32 = 1 << 1; #[allow(dead_code)] const IMAN_IP: u32 = 1 << 0;
 
 const TRB_NORMAL: u32 = 1;  const TRB_SETUP: u32 = 2;
+/// **TRB Isocrono (tipo 5).** El hermano del Normal, y el unico que puede llevar
+/// muestras a un endpoint de audio. Ver `queue_isoch_out`.
+const TRB_ISOCH: u32 = 5;
 const TRB_DATA: u32 = 3;    const TRB_STATUS: u32 = 4;
 const TRB_LINK: u32 = 6;    const TRB_ENABLE: u32 = 9;
 const TRB_DISABLE: u32 = 10;

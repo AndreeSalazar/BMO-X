@@ -32,6 +32,7 @@ juntas para que, si algo sale mal, se sepa de un vistazo que hay dentro.
 | 10 | `trim-paths` | nada visible | -- |
 | 11 | `red rx` desde el escritorio | (fuera de esta hoja) | -- |
 | 12 | **`cabina radar`** | pinta el barrido, y dice si algo se escapo | orden desconocida |
+| 13 | **el audio, paso 0** | `cabina` trae los cuatro numeros del audifono | ningun aparato reproduce |
 
 ⚠ **Las tres que pueden dejarte sin maquina son la 1, la 2 y la 8**, y las tres
 fallan de forma distinta: las dos primeras no arrancan, la tercera arranca y no
@@ -141,6 +142,41 @@ el 25-08 la tabla decia que ninguno, y era falso en tres de cuatro.
 - alguna en `No` -> el bit no se puso; mirar `s1_cpu/cpu/mod.rs`
 - **`Smap` en `Yes` y la maquina arrancando** es justo lo que hay que confirmar:
   significa que los dos caminos que tocaban Ring 3 se quitaron bien
+
+## 1.5 -- ★ EL AUDIO: los cuatro numeros, PREDICHOS antes de arrancar
+
+**Que afirma**: que el paso 0 de `PLAN_AUDIO` --parsear el descriptor
+AudioStreaming del audifono-- funciona en el aparato de verdad. Lleva escrito y
+cableado desde hace dias y **nadie lo ha ejecutado**.
+
+**No hay orden que teclear**: corre solo al enumerar el USB. Sale en `cabina`.
+
+**Lo que tiene que salir**, y el maestro lo predijo antes de mirar el aparato:
+
+```text
+   audio: interfaz AudioStreaming, alt      =1
+   audio: canales                           =2
+   audio: bits por muestra                  =16
+   audio: bytes por trama (wMaxPacketSize)  =192
+   audio: frecuencia elegida                =48000
+   audio: el endpoint isocrono es el DCI    =...
+```
+
+★★ **Los 192 son el numero que hay que cuadrar.** Una trama de 48 kHz / 16 bits
+/ 2 canales ocupa exactamente 192 bytes por milisegundo, y `bmo-sonido` lo
+calcula igual desde el otro lado. **Si el aparato dice otra cosa, ahi esta la
+respuesta antes de escribir el bucle que alimenta el tubo.**
+
+**Como se cae**:
+
+| lo que sale | que significa |
+|---|---|
+| los seis numeros | ✅ el paso 0 vale, y el 192 se puede cuadrar |
+| `ninguna frecuencia suya cabe en su propio paquete` | el descriptor se contradice; **no hay codigo que lo arregle** |
+| `puertos libres mirados, y ninguno reproduce` | o no esta enchufado, o el parser no lo reconoce |
+
+[!] Y no va a sonar nada todavia: **falta `SET_INTERFACE`** (A1 de `PLAN_AUDIO`),
+que es lo unico que separa esto de que salga un sonido.
 
 ## 1.4 -- `placa`
 
@@ -269,6 +305,7 @@ Con `guarda` queda en `A:\datos\SALIDA.TXT`, que es como se hizo la hoja del
    [ ] la salida de `sonda`     ENTERA, con su recuento
    [ ] la de `cabina fallos`    despues de todo lo demas
    [ ] la de `cabina radar`     *** LA MAS IMPORTANTE DE LA LISTA
+   [ ] las seis filas de `audio` con el audifono ENCHUFADO
 ```
 
 ★ **`cabina fallos` va el ultimo de la lista y se pide siempre**, salga bien o

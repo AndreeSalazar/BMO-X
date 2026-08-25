@@ -184,10 +184,12 @@ con **que la bloquea** y **como se sabe que quedo hecha**"*.
 | [`PLAN_SEGURIDAD.md`](plan/PLAN_SEGURIDAD.md) | las casillas de su MAESTRO, medidas contra el codigo |
 | [`PLAN_EL_SILICIO.md`](plan/PLAN_EL_SILICIO.md) | que el PERFIL de INTI decida quien ejecuta las reglas: el programa o la CPU |
 | [`PLAN_EL_PERFIL_TOTAL.md`](plan/PLAN_EL_PERFIL_TOTAL.md) | **todo lo que esta maquina da sin comprar nada**: el inventario perfilado, el plan total de la red, y donde esta el techo |
+| [`PLAN_AUDIO.md`](plan/PLAN_AUDIO.md) | las casillas de su MAESTRO. **Hoy BMO-X controla el volumen y no puede emitir una muestra** |
 | [`PLAN_EL_ASISTENTE.md`](plan/PLAN_EL_ASISTENTE.md) | **fusiona cuatro documentos**: que falta para que una IA local corra dentro de BMO-X, y donde estan de verdad los meses |
 
 ★ **El par MAESTRO + PLAN es la simetria de esta carpeta**, y hoy la tienen
-entera AUTOCURACION y SEGURIDAD. No es un defecto que a los demas les falte
+entera AUTOCURACION, SEGURIDAD y **AUDIO** -- este ultimo desde el 25-08, el dia
+que su maestro llego a codigo. No es un defecto que a los demas les falte
 --DOOM nunca necesito un maestro, y Python todavia no tiene casillas-- pero **el
 dia que un maestro llegue a codigo, su plan va aqui y con este nombre**.
 

@@ -1,0 +1,11 @@
+[package]
+name = "bmo-sonido"
+version = "1.0.0"
+edition = "2021"
+description = "Que hay dentro de un fichero de audio, y si este aparato lo puede tocar. Sin E/S."
+license = "Techne"
+
+# ** CERO DEPENDENCIAS, y el mismo motivo de siempre: lo consume Ring 3 --que no
+# tiene asignador-- y el anfitrion, que si. Aqui no se abre un fichero ni se
+# habla con un aparato: entran bytes y sale que son.
+[dependencies]
