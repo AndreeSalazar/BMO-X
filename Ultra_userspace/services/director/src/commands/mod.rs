@@ -121,6 +121,8 @@ pub(crate) enum Command<'a> {
     /// despierta. Es la unica orden de esta caja que puede tardar casi un
     /// segundo, y por eso el mensaje va ANTES de llamar.
     Smp(&'a [u8]),
+    /// **`banda`**: el ancho de banda de la memoria, por barrido.
+    Banda,
     /// **`audio`** -- le pregunta al aparato de audio como quiere las muestras.
     ///
     /// [!] Existia solo en el shell de Ring 0 y el dueno la escribio AQUI, que
@@ -415,6 +417,10 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // `smp N` despierta exactamente N. El caso sin argumento es el
         // inofensivo a proposito: ver `sys::smp_despertar`.
         b"smp" | b"nucleos" => Command::Smp(rest),
+        // ** `banda` entro el 2026-08-24 y ya existia... en el shell de Ring 0,
+        // al que desde aqui NO SE VUELVE. Estaba escrita, compilada y probada, y
+        // era inalcanzable desde el unico sitio donde el dueno trabaja.
+        b"banda" | b"memoria" => Command::Banda,
         b"audio" | b"sonido" => Command::Audio,
         b"help" | b"?" | b"ayuda" => Command::Help,
         // La puerta del que llega. `start` porque es la palabra que se

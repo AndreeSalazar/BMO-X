@@ -50,6 +50,54 @@ pub(super) fn smp_despertar(arg0: u64, arg1: u64) -> BmoStatus {
         use crate::ring0::plat::smp::{self, crew};
         let cuantos = if arg0 > u32::MAX as u64 { u32::MAX } else { arg0 as u32 };
         match arg1 {
+            // *** 4 y 5: EL ANCHO DE BANDA DE LA MEMORIA, DESDE RING 3.
+            //
+            // ** Entraron el 2026-08-24 porque `banda` se escribio solo para el
+            // shell de Ring 0 -- y al shell de Ring 0 el dueno NO VUELVE: vive
+            // en el escritorio. Una medida a la que no se puede llegar desde
+            // donde se trabaja es una medida que no existe.
+            //
+            // > Lo que solo es orden del kernel es codigo que el no puede usar.
+            //
+            // [!] Y son DOS y no una a proposito. Preparar reserva 256 MiB y los
+            // llena; medir corre el barrido. Si fueran la misma llamada, el
+            // coste de reservar caeria dentro del primer punto del barrido y ese
+            // punto saldria lento -- justo el que sirve de referencia para todos
+            // los demas. Separarlas es lo que mantiene la columna `x1` honesta.
+            4 => {
+                match crate::ring0::plat::smp::banda::preparar() {
+                    Ok((bytes, _veces)) => BmoStatus::ok_value(bytes),
+                    Err(_) => BmoStatus::ok_value(0),
+                }
+            }
+            5 => {
+                use crate::ring0::plat::smp::banda;
+                let i = cuantos as usize;
+                if i >= banda::PUNTOS.len() {
+                    return BmoStatus::ok_value(0);
+                }
+                let extra = banda::PUNTOS[i];
+                let (vivos, _) = smp::alive();
+                if extra > vivos {
+                    // No se mide un punto para el que no hay obreros: saldria el
+                    // numero de una carrera incompleta, que es el mas bonito de
+                    // todos y el unico que no significa nada.
+                    return BmoStatus::ok_value(0);
+                }
+                let (ticks, leidos, todos) = banda::medir(extra);
+                // El bus, otra vez: el barrido son decimas de segundo sin
+                // bombear el USB, y perder un evento de endpoint PARA LA BOMBA.
+                crate::ring0::dev::usb::rescatar_el_bus();
+                if !todos {
+                    return BmoStatus::ok_value(0);
+                }
+                match banda::mb_por_segundo(leidos, ticks) {
+                    Some(mb) if banda::creible(mb) => BmoStatus::ok_value(mb),
+                    // Un numero imposible sale como 0 y no como record. Ver
+                    // `banda::creible`.
+                    _ => BmoStatus::ok_value(0),
+                }
+            }
             // Desactivar: los obreros vuelven a `hlt` y ahi se quedan.
             1 => {
                 crew::parar();

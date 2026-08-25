@@ -66,6 +66,7 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::Apps => system::apps(dsk, p),
         Command::Memoria => system::memory(dsk, p),
         Command::Smp(arg) => system::smp(dsk, p, arg),
+        Command::Banda => system::banda(dsk, p),
         // ** El unico brazo del router que puede ACTUAR sobre el almacen, y por
         // eso las subordenes se separan aqui y no dentro de una funcion: en esta
         // lista se ve de un vistazo que `trim ya` es la unica que hace algo.
