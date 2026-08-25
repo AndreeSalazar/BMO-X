@@ -31,6 +31,7 @@ juntas para que, si algo sale mal, se sepa de un vistazo que hay dentro.
 | 9 | la MADT fuera del kernel | `smp all` -> `12 de 12` | faltan nucleos |
 | 10 | `trim-paths` | nada visible | -- |
 | 11 | `red rx` desde el escritorio | (fuera de esta hoja) | -- |
+| 12 | **`cabina radar`** | pinta el barrido, y dice si algo se escapo | orden desconocida |
 
 ⚠ **Las tres que pueden dejarte sin maquina son la 1, la 2 y la 8**, y las tres
 fallan de forma distinta: las dos primeras no arrancan, la tercera arranca y no
@@ -267,12 +268,35 @@ Con `guarda` queda en `A:\datos\SALIDA.TXT`, que es como se hizo la hoja del
    [ ] si DOOM arranco          si/no, y el mensaje exacto si no
    [ ] la salida de `sonda`     ENTERA, con su recuento
    [ ] la de `cabina fallos`    despues de todo lo demas
+   [ ] la de `cabina radar`     *** LA MAS IMPORTANTE DE LA LISTA
 ```
 
 ★ **`cabina fallos` va el ultimo de la lista y se pide siempre**, salga bien o
 mal la tanda. Es el unico sitio donde estan juntos todos los avisos que el kernel
 apunto durante el arranque -- incluidos los que no tumbaron nada y por eso no
 salieron por pantalla.
+
+### *** Y `cabina radar` ANTES QUE `cabina fallos`, aunque suene al reves
+
+`cabina fallos` filtra **los 48 que sobrevivieron en el anillo**. Un FALLO del
+arranque que ya se cayo **no sale**, y la respuesta es *"ni un aviso ni un
+fallo"* -- indistinguible de estar bien.
+
+`cabina radar` cuenta en el ORIGEN y **no pierde ninguno**, ni por giro ni por
+reentrancia. Lo que hay que mirar es la ultima linea:
+
+```text
+   nada se ha escapado: todo lo que paso sigue en el anillo    <- entonces
+                                                                 `fallos` dice
+                                                                 la verdad
+   [!] N clase(s) marcadas con ! : HUBO, y ya no se pueden leer <- entonces
+                                                                 `fallos` MIENTE
+                                                                 por omision
+```
+
+[!] Si sale la segunda, **traer el numero y la fila**: dice de que capa y de que
+gravedad se perdieron sucesos, y eso ya acota donde mirar aunque el detalle no
+exista. Y en ese caso `cabina` a secas ya no basta -- hay que volcar antes.
 
 ---
 

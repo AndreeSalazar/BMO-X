@@ -79,6 +79,138 @@ fn marca(sev: u64) -> &'static [u8] {
     }
 }
 
+/// Las ocho capas, en el orden de `cabina_core::Layer`.
+const CAPAS: [&[u8]; 8] = [
+    b"ring0", b"core", b"gpu", b"ring3", b"lang", b"fs", b"net", b"sec",
+];
+/// Las cinco severidades, en el orden de `cabina_core::Severity`.
+const SEVS: [&[u8]; 5] = [b"info", b"traza", b"aviso", b"FALLO", b"PANICO"];
+
+/// **`cabina radar`** -- el barrido: cuantos hubo de cada clase, y cuales YA NO
+/// SE PUEDEN LEER.
+///
+/// # La pregunta que ningun filtro puede contestar
+///
+/// `cabina fallos` mira los 48 del anillo. Un FALLO del arranque que ya se cayo
+/// **no sale**, y la respuesta es *"ni un aviso ni un fallo"* -- que es
+/// indistinguible de estar bien.
+///
+/// *** El barrido cuenta en el ORIGEN, antes del cerrojo del anillo, asi que
+/// tiene tambien lo que el anillo perdio -- por giro y por reentrancia.
+///
+/// ```text
+///    el ANILLO     el DETALLE de lo reciente. 48, y gira
+///    el BARRIDO    CUANTOS hubo de cada clase. No gira NUNCA
+/// ```
+///
+/// ** Y la marca `[fuera]` es lo que lo convierte en un radar: dice que de esa
+/// clase **hubo, y ya no se puede leer**. Saber que hay tres fallos ilegibles es
+/// accionable --vuelca antes, o mira el disco--. Creer que no hubo ninguno no.
+pub(crate) fn report_radar(s: &mut Output) {
+    section(s, b"cabina -- barrido");
+
+    let ventana = bmo::cabina_campo(bmo::CABINA_VENTANA, 0).unwrap_or(1);
+    let fuera = bmo::cabina_campo(bmo::CABINA_CLASES_FUERA, 0).unwrap_or(0);
+
+    s.with_ink(INK_ECHO);
+    s.text(b"    el anillo empieza en el evento ");
+    s.dec(ventana);
+    s.text(b" de ");
+    s.dec(bmo::cabina_total());
+    s.byte(b'\n');
+    s.with_ink(INK_PLAIN);
+
+    // La cabecera de columnas.
+    s.text(b"            ");
+    for nombre in SEVS {
+        s.text(b"  ");
+        s.text(nombre);
+        for _ in nombre.len()..6 {
+            s.byte(b' ');
+        }
+    }
+    s.byte(b'\n');
+
+    let mut vivas = 0u64;
+    for (c, capa) in CAPAS.iter().enumerate() {
+        // Una fila entera a cero no se pinta: ocho filas de ceros esconden la
+        // unica que tiene algo, que es justo lo que este panel evita.
+        let mut fila = [0u64; 5];
+        let mut algo = false;
+        for (v, celda) in fila.iter_mut().enumerate() {
+            *celda = bmo::cabina_campo(bmo::CABINA_BARRIDO_CUENTA, ((c as u64) << 8) | v as u64)
+                .unwrap_or(0);
+            if *celda > 0 {
+                algo = true;
+            }
+        }
+        if !algo {
+            continue;
+        }
+        vivas += 1;
+        s.text(b"    ");
+        s.text(capa);
+        for _ in capa.len()..8 {
+            s.byte(b' ');
+        }
+        for (v, celda) in fila.iter().enumerate() {
+            let ultimo = bmo::cabina_campo(bmo::CABINA_BARRIDO_ULTIMO, ((c as u64) << 8) | v as u64)
+                .unwrap_or(0);
+            // *** Fuera de ventana: hubo, y ya no se puede leer.
+            let perdido = *celda > 0 && ultimo != 0 && ultimo < ventana;
+            if perdido {
+                s.with_ink(INK_ERR);
+            } else if *celda > 0 && v >= 3 {
+                s.with_ink(INK_ERR);
+            } else if *celda > 0 && v == 2 {
+                s.with_ink(INK_GOOD);
+            } else {
+                s.with_ink(INK_ECHO);
+            }
+            s.text(b"  ");
+            if *celda == 0 {
+                s.text(b".     ");
+            } else {
+                s.dec(*celda);
+                let ancho = if *celda < 10 { 1 } else if *celda < 100 { 2 } else { 3 };
+                if perdido {
+                    s.text(b"!");
+                    for _ in (ancho + 1)..6 {
+                        s.byte(b' ');
+                    }
+                } else {
+                    for _ in ancho..6 {
+                        s.byte(b' ');
+                    }
+                }
+            }
+            s.with_ink(INK_PLAIN);
+        }
+        s.byte(b'\n');
+    }
+
+    if vivas == 0 {
+        s.with_ink(INK_ECHO);
+        s.text(b"    el kernel no ha apuntado nada todavia\n");
+        s.with_ink(INK_PLAIN);
+        return;
+    }
+
+    s.byte(b'\n');
+    if fuera == 0 {
+        s.with_ink(INK_GOOD);
+        s.text(b"    nada se ha escapado: todo lo que paso sigue en el anillo\n");
+    } else {
+        s.with_ink(INK_ERR);
+        s.text(b"    [!] ");
+        s.dec(fuera);
+        s.text(b" clase(s) marcadas con ! : HUBO, y ya no se pueden leer\n");
+        s.with_ink(INK_ECHO);
+        s.text(b"        la cuenta sobrevive; el detalle no. Vuelca antes.\n");
+    }
+    s.with_ink(INK_PLAIN);
+}
+
 /// **`cabina [N | todo | fallos]`** -- el anillo de eventos, el mas reciente
 /// arriba.
 ///

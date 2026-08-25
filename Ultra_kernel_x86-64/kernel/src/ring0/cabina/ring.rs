@@ -80,7 +80,20 @@ pub fn record(sev: Severity, module: &str, msg: &str, value: u64) {
 pub fn record_fmt(sev: Severity, module: &str, msg: &str, value: u64, fmt: Fmt) {
     let sitio = core::panic::Location::caller();
     let flags = irq_save();
+    let layer = Layer::from_module(module);
     unsafe {
+        // *** EL BARRIDO, ANTES DEL CERROJO Y ANTES DE PODER PERDER NADA.
+        //
+        // Es la unica linea de esta funcion que corre PASE LO QUE PASE. Si el
+        // anillo esta ocupado --una IRQ encima de un fault-- el evento se pierde
+        // de ahi, y aqui NO: un `fetch_add` no necesita cerrojo.
+        //
+        // ** Y el `seq` se le pasa YA sumado, porque el que genera la serie es
+        // el anillo. Dos sitios generando numeros de secuencia son dos series
+        // que se separan. Ver `cabina/radar.rs`.
+        EV_SEQ = EV_SEQ.wrapping_add(1);
+        super::radar::apunta(sev, layer, EV_SEQ);
+
         // Reentrancia (excepcion a media escritura): contar y salir. Nunca
         // dejar el anillo a medio escribir ni girar en un lock imposible.
         if BUSY {
@@ -90,12 +103,13 @@ pub fn record_fmt(sev: Severity, module: &str, msg: &str, value: u64, fmt: Fmt) 
         }
         BUSY = true;
 
-        let layer = Layer::from_module(module);
         let mut ev = Event::new(sev, layer, Entity::Module, module, 0, msg, value)
             .en(sitio.file(), sitio.line())
             .como(fmt);
         ev.intento = INTENTO_ACTUAL;
-        EV_SEQ = EV_SEQ.wrapping_add(1);
+        // Ya lo sumo el barrido, arriba. El evento y su cuenta llevan el MISMO
+        // numero, que es lo que permite preguntar despues si este todavia se
+        // puede leer.
         ev.seq = EV_SEQ;
         ev.tick_ns = crate::ring0::plat::timer::ticks();
         let arr = core::ptr::addr_of_mut!(EVENTS) as *mut Event;

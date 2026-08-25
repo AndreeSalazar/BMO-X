@@ -34,6 +34,8 @@ use cabina_core::event::Fmt;
 use crate::ring0::core::splash::splash_dashboard_log_color;
 
 /// THE RECORDER: the event ring everything else here reads from.
+/// EL BARRIDO: lo que no se escapa de ningun filtro. Ver su cabecera.
+pub mod radar;
 pub(crate) mod ring;
 pub(crate) use ring::*;
 /// THE ATTEMPT: the only thing in CABINA with a lifetime. Its `Drop` marks it
