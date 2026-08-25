@@ -1043,6 +1043,56 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
         s.byte(b'\n');
         return;
     }
+    // *** `red rx` -- ARMAR EL RECEPTOR, DESDE DONDE SE TRABAJA (2026-08-24)
+    //
+    // ** El syscall existia (`RED_OP_ARMAR`), el envoltorio de Ring 3 existia
+    // (`bmo::red::armar`), y el panel decia **"net rx en Ring 0"** -- o sea que
+    // mandaba al dueno a un sitio del que no se vuelve. Cuarta vez en la misma
+    // sesion que algo se escribe donde el no puede alcanzarlo.
+    //
+    // *** Y era el ULTIMO ESLABON: sin esto no se puede armar el receptor, sin
+    // receptor no llegan tramas, y sin tramas no hay ARP, ni IP, ni TCP. Toda
+    // la escalera de red estaba bloqueada por una linea que no existia.
+    if what == b"rx" {
+        match bmo::red::armar() {
+            bmo::red::Armado::Ok => {
+                let n = bmo::red::sondear();
+                label(s, b"receptor");
+                s.text(b"ARMADO");
+                s.byte(b'\n');
+                label(s, b"esta vuelta");
+                s.dec(n);
+                s.text(b" tramas");
+                if n == 0 {
+                    // ** Cero en la primera vuelta es LO ESPERADO, y decirlo
+                    // evita la tarde que se pierde buscando un bug en un driver
+                    // que funciona. Es la leccion escrita del paso 1.
+                    s.text(b"   (normal: el anillo se acaba de armar)");
+                }
+                s.byte(b'\n');
+                s.text(b"    vuelve a escribir `red rx` en unos segundos\n");
+            }
+            // [!] Sin cable NO es un fallo del anillo, y por eso tiene su
+            // propio motivo: no van a llegar tramas por correcto que sea todo
+            // lo demas.
+            bmo::red::Armado::SinEnlace => {
+                s.text(b"    el enlace esta ABAJO: enchufa el cable antes de armar nada\n");
+            }
+            bmo::red::Armado::NoArma => {
+                s.text(b"    el receptor no se pudo armar -- F11 dice por que\n");
+            }
+            bmo::red::Armado::SinTarjeta => {
+                s.text(b"    no hay tarjeta que este kernel sepa leer\n");
+            }
+            bmo::red::Armado::Raro(v) => {
+                s.text(b"    el kernel contesto algo que no conozco: ");
+                s.dec(v);
+                s.byte(b'\n');
+            }
+        }
+        return;
+    }
+
     if what == b"phy" {
         label(s, b"PHYstatus");
         s.text(b"0x");
