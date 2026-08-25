@@ -136,7 +136,54 @@ fn leer_byte_de_ring3(dir: u64) -> Option<u8> {
     if dir >= crate::ring0::mm::vmm::USER_STACK_BOTTOM {
         return None;
     }
-    Some(unsafe { core::ptr::read_volatile(dir as *const u8) })
+    Some(unsafe { con_permiso(|| core::ptr::read_volatile(dir as *const u8)) })
+}
+
+/// **Lee memoria de Ring 3 desde Ring 0, con permiso explicito.**
+///
+/// # *** POR QUE ESTO EXISTE, Y ES EL UNICO SITIO (2026-08-24)
+///
+/// `CR4.SMAP` le prohibe a Ring 0 tocar una pagina de Ring 3. Es una defensa
+/// contra el fallo mas caro de un kernel --seguir un puntero que el usuario
+/// controla sin darse cuenta-- y por eso se enciende.
+///
+/// ** Pero la autopsia SI tiene que leer memoria de usuario: su trabajo es
+/// contar que habia en la pila del proceso que acaba de romperse. Eso no es un
+/// descuido, es la funcion.
+///
+/// `stac` levanta la prohibicion para las instrucciones de dentro y `clac` la
+/// vuelve a poner. Que sea **un solo sitio con nombre** es lo que hace que la
+/// defensa siga valiendo: cualquier otro acceso a Ring 3 desde Ring 0 da fault,
+/// y el fault dice donde.
+///
+/// [!] Si el CPU no tiene SMAP, `stac`/`clac` son `#UD`. Por eso se pregunta
+/// primero -- y se pregunta UNA vez, no en cada palabra de la pila.
+#[inline]
+unsafe fn con_permiso<T>(f: impl FnOnce() -> T) -> T {
+    if smap_puesto() {
+        core::arch::asm!("stac", options(nomem, nostack));
+        let v = f();
+        core::arch::asm!("clac", options(nomem, nostack));
+        v
+    } else {
+        f()
+    }
+}
+
+/// `CR4.SMAP` esta encendido? Se mira una vez y se recuerda.
+fn smap_puesto() -> bool {
+    use core::sync::atomic::{AtomicU8, Ordering};
+    static ESTADO: AtomicU8 = AtomicU8::new(0);
+    match ESTADO.load(Ordering::Relaxed) {
+        1 => return true,
+        2 => return false,
+        _ => {}
+    }
+    let cr4: u64;
+    unsafe { core::arch::asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack)) };
+    let hay = cr4 & (1 << 21) != 0;
+    ESTADO.store(if hay { 1 } else { 2 }, Ordering::Relaxed);
+    hay
 }
 
 /// **Una palabra de la pila de un proceso muerto, o `None`.**
@@ -165,7 +212,7 @@ fn leer_palabra_de_ring3(dir: u64) -> Option<u64> {
     if dir < 0x1000 || dir >= 0x8000_0000 {
         return None;
     }
-    Some(unsafe { core::ptr::read_volatile(dir as *const u64) })
+    Some(unsafe { con_permiso(|| core::ptr::read_volatile(dir as *const u64)) })
 }
 /// Ancho de cada renglon. El de la ventana de datos, para que quepa sin cortar.
 const ANCHO: usize = 72;

@@ -733,11 +733,27 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 // Si el rango no cae dentro de un bloque conocido, `fisica_de`
                 // dice que no y se usa la VA de siempre: correcto y mas lento,
                 // que es el orden correcto de las dos cosas.
-                let destino = match crate::ring0::obj::memory::fisica_de(pid, base + desde, cuantos)
-                {
-                    Some(f) => crate::ring0::mm::phys_to_virt(f),
-                    None => base + desde,
+                // *** Y SI EL BLOQUE NO SE RECONOCE, SE PARA (2026-08-24).
+                //
+                // ** Aqui habia `None => base + desde`: si `fisica_de` no
+                // reconocia el rango, se caia a la **VA de Ring 3** y el kernel
+                // escribia por ahi. Funcionaba, y era el ultimo sitio del
+                // sistema donde Ring 0 tocaba una direccion de usuario.
+                //
+                // *** Y desde el arreglo de los limites de la misma manana ese
+                // camino ES INALCANZABLE: `bytes_de_bloque` ya garantizo que el
+                // rango cae dentro de ESTE bloque, que es justo lo que
+                // `fisica_de` comprueba. O sea que el respaldo no protegia de
+                // nada -- sostenia un caso que no puede ocurrir.
+                //
+                // [!] Quitarlo no es cosmetico: es lo que permite encender
+                // CR4.SMAP. Un respaldo que nunca se toma sigue siendo una
+                // linea que el CPU podria ejecutar.
+                let Some(fisica) = crate::ring0::obj::memory::fisica_de(pid, base + desde, cuantos)
+                else {
+                    return BmoStatus::err(1);
                 };
+                let destino = crate::ring0::mm::phys_to_virt(fisica);
                 let n = unsafe {
                     crate::ring0::obj::file::read_into(
                         resolved.object,
@@ -778,10 +794,18 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {
                     return BmoStatus::err(1);
                 }
+                // ** POR EL ESPEJO, igual que el de leer. Este era el caso
+                // peor de los dos: no tenia camino de physmap **en absoluto**,
+                // siempre dereferenciaba la VA del proceso. Mismo `fisica_de`,
+                // misma comprobacion, y el kernel deja de tocar Ring 3.
+                let Some(fisica) = crate::ring0::obj::memory::fisica_de(pid, base + desde, cuantos)
+                else {
+                    return BmoStatus::err(1);
+                };
                 let n = unsafe {
                     crate::ring0::obj::file::write_from(
                         resolved.object,
-                        (base + desde) as *const u8,
+                        crate::ring0::mm::phys_to_virt(fisica) as *const u8,
                         cuantos as usize,
                     )
                 };
