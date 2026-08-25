@@ -696,7 +696,15 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     Err(err) => return cap_err(err),
                 };
                 let base = bloque.object;
-                let tam = crate::ring0::obj::memory::handed_over_by(pid);
+                // *** EL TAMANO DE **ESTE** BLOQUE, no la suma de los del
+                // proceso. Ver `memory::bytes_de_bloque`: comparar contra el
+                // total dejaba leer 4 KiB fuera del bloque que el handle
+                // autoriza, y si esa VA no estaba mapeada el que fallaba era el
+                // KERNEL -- una app sin privilegios tumbando la maquina con dos
+                // numeros. Corregido el 2026-08-24.
+                let Some(tam) = crate::ring0::obj::memory::bytes_de_bloque(pid, base) else {
+                    return BmoStatus::err(1);
+                };
                 let desde = frame.r10;
                 let cuantos = frame.r8;
                 // La unica comprobacion, y cabe en una linea porque el rango lo
@@ -756,7 +764,15 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     Err(err) => return cap_err(err),
                 };
                 let base = bloque.object;
-                let tam = crate::ring0::obj::memory::handed_over_by(pid);
+                // *** EL TAMANO DE **ESTE** BLOQUE, no la suma de los del
+                // proceso. Ver `memory::bytes_de_bloque`: comparar contra el
+                // total dejaba leer 4 KiB fuera del bloque que el handle
+                // autoriza, y si esa VA no estaba mapeada el que fallaba era el
+                // KERNEL -- una app sin privilegios tumbando la maquina con dos
+                // numeros. Corregido el 2026-08-24.
+                let Some(tam) = crate::ring0::obj::memory::bytes_de_bloque(pid, base) else {
+                    return BmoStatus::err(1);
+                };
                 let desde = frame.r10;
                 let cuantos = frame.r8;
                 if desde.checked_add(cuantos).map_or(true, |fin| fin > tam) {

@@ -26,10 +26,10 @@
 //!    firmar un `.bex` pide curva eliptica + hash     <- LA MISMA
 //! ```
 //!
-//! Hoy `verify_ed25519` **dice que si a una firma de ceros**, y no lo llama
-//! nadie todavia. Se creian dos deudas y es una: **pagarla una vez cobra dos.**
-//!
-//! # La regla que gobierna todo lo que entre aqui
+//! Ed25519 sigue SIN ESCRIBIR --pide SHA-512 y aritmetica de Edwards-- pero
+//! desde el 24-08 ya no hay un `verify` que conteste que si a una firma de
+//! ceros: `examinar_ed25519` devuelve `SinFirmar` o `NoSePuedeComprobar`, y
+//! ninguna de las dos se puede confundir con una firma valida.
 //!
 //! *** **Una criptografia mal escrita no falla: funciona y no protege.** No hay
 //! ninguna otra parte del sistema donde eso sea verdad de esta forma -- un

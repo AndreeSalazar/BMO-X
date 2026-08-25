@@ -222,17 +222,52 @@ pub fn chain_hash(hashes: &[SectionHash]) -> [u8; 32] {
     blake3_256(&combined)
 }
 
-/// Verify an Ed25519 signature. Currently a stub -- relies on external
-/// ed25519-dalek or similar crate for actual verification.
-/// Returns true if sig_algo is None (unsigned binaries are allowed in dev).
-pub fn verify_ed25519(_sig: &Ed25519Signature, _message: &[u8]) -> bool {
-    // TODO: integrate ed25519-dalek when available
-    // In dev, allow unsigned binaries (all-zeros signature).
-    // Check if the signature is all zeros (unsigned).
-    let is_unsigned = _sig.sig.iter().all(|&b| b == 0) && _sig.pubkey.iter().all(|&b| b == 0);
-    if is_unsigned {
-        return true;
+/// Lo que se sabe de una firma. **No hay variante que diga "verificada"**, y esa
+/// ausencia es el punto entero de este tipo.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Firma {
+    /// Los 96 bytes son ceros: la imagen viene SIN FIRMAR. No es un fallo --asi
+    /// se construye hoy-- pero tampoco es una garantia de nada.
+    SinFirmar,
+    /// Trae una firma de verdad, y **aqui no se puede comprobar**: no hay
+    /// Ed25519 en el arbol todavia. Quien reciba esto tiene que RECHAZAR.
+    NoSePuedeComprobar,
+}
+
+/// **Que trae esta firma?** Y ojo al nombre: no dice `verify`.
+///
+/// # *** POR QUE ESTO YA NO DEVUELVE `bool` (2026-08-24)
+///
+/// Se llamaba `verify_ed25519` y devolvia `true` cuando los 96 bytes eran
+/// ceros. O sea que una funcion llamada **verificar** contestaba **si** a la
+/// ausencia total de firma:
+///
+/// ```text
+///    if verify_ed25519(&sig, msg) { ejecutar(); }   // <- parece correcto
+/// ```
+///
+/// ** Ese `if` es el ataque de *signature stripping* servido en bandeja: el
+/// atacante no rompe la criptografia, **borra la firma**, y el guardia dice que
+/// pase. Y lo peor es que la linea se lee bien; nadie la miraria dos veces.
+///
+/// Hoy no lo llamaba nadie, asi que no habia agujero -- habia una **trampa
+/// cargada esperando al primer cliente**. La auditoria del 24-08 la encontro.
+///
+/// [!] La correccion no es cambiar el `true` por un `false`: es QUITAR EL BOOL.
+/// Un booleano no puede distinguir "sin firmar" de "firmada y no comprobada", y
+/// esas dos cosas piden decisiones distintas. Con este `enum`, escribir el
+/// codigo peligroso obliga a nombrar la variante -- y nadie escribe
+/// `if matches!(x, Firma::NoSePuedeComprobar) { ejecutar() }` por descuido.
+///
+/// > Un guardia que puede decir que si por omision no es un guardia.
+pub fn examinar_ed25519(sig: &Ed25519Signature, _message: &[u8]) -> Firma {
+    let sin_firmar = sig.sig.iter().all(|&b| b == 0) && sig.pubkey.iter().all(|&b| b == 0);
+    if sin_firmar {
+        Firma::SinFirmar
+    } else {
+        // ** Hay Ed25519 que comprobar y no hay con que. SHA-256, HMAC, X25519
+        // y AES-GCM ya estan; Ed25519 pide SHA-512 y aritmetica de Edwards, que
+        // es el siguiente escalon y todavia no esta escrito.
+        Firma::NoSePuedeComprobar
     }
-    // Signed binaries: cannot verify yet, reject.
-    false
 }

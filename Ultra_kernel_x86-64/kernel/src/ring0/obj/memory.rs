@@ -431,6 +431,48 @@ pub fn process_died(pid: u32) {
 /// Lo usa `syscall.rs` para que **el disco escriba dentro del bloque del
 /// programa sin escala**: es el escalon 3 de `docs/identidad/LA_RAM.md` aplicado a leer
 /// ficheros, y la razon por la que [`Bloque`] guarda la fisica.
+/// **Cuantos bytes mide ESTE bloque**, el que empieza en `base`. `None` si ese
+/// proceso no tiene ninguno que empiece ahi.
+///
+/// # *** POR QUE EXISTE, Y ES UN FALLO REAL QUE ESTABA VIVO (2026-08-24)
+///
+/// El limite de `ARCH_OP_LEER_EN` y `ARCH_OP_ESCRIBIR_DE` se comprobaba contra
+/// [`handed_over_by`], que es **la suma de todos los bloques del proceso**:
+///
+/// ```text
+///    bloque A   4 KiB      entregados = 8192
+///    bloque B   4 KiB
+///
+///    leer_en(handle_de_A, desde=0, cuantos=8192)   ->  8192 <= 8192, PASA
+///    y el kernel escribe 8 KiB empezando en la base de A
+/// ```
+///
+/// ** Cuatro mil noventa y seis bytes fuera del bloque que el handle autoriza.
+/// El camino rapido no se traga esto --[`fisica_de`] valida bloque a bloque--
+/// pero el de respaldo escribe en la VA del proceso, y ahi no habia limite.
+///
+/// [!] Y lo peor no es que el proceso se corrompa a si mismo: si el rango cae en
+/// VA **sin mapear**, quien falla es el KERNEL, porque durante una syscall el
+/// kernel escribe con las tablas del llamante. Una app sin privilegios podia
+/// tumbar la maquina con dos numeros.
+///
+/// *** Es exactamente lo que la doctrina de `syscall/ops.rs` queria impedir --
+/// *"aqui no hay `copy_from_user`"*-- y se colo igual, no por un puntero sino
+/// por una **pareja desplazamiento+largo** comprobada contra el total
+/// equivocado. Un limite es tan bueno como el numero con el que se compara.
+pub fn bytes_de_bloque(pid: u32, base: u64) -> Option<u64> {
+    let slot = slot(pid)?;
+    unsafe {
+        let c = &(*core::ptr::addr_of!(CUENTAS))[slot];
+        for b in c.bloques.iter() {
+            if b.base != 0 && b.base == base {
+                return Some(b.bytes);
+            }
+        }
+    }
+    None
+}
+
 pub fn fisica_de(pid: u32, va: u64, len: u64) -> Option<u64> {
     let slot = slot(pid)?;
     let fin = va.checked_add(len)?;
