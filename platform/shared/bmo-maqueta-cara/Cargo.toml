@@ -1,0 +1,18 @@
+[package]
+name = "bmo-maqueta-cara"
+version = "1.0.0"
+edition = "2021"
+description = "El FORMATO de una cara maquetada que VIAJA. Sin E/S, sin alloc, sin dependencias."
+license = "Techne"
+
+# ** CERO DEPENDENCIAS, Y POR EL MISMO MOTIVO QUE `bmo-bex-gate`.
+#
+# Lo consumen dos mundos que no se ven entre ellos: el emisor, que corre en el
+# anfitrion con `std`, y el LECTOR, que corre en Ring 3 sin asignador. Una sola
+# dependencia que arrastrara `alloc` lo dejaria fuera del segundo, que es el
+# consumidor por el que existe.
+#
+# Y sin E/S a proposito, que es lo que pide `PLAN_LA_CARA_VIAJA.md`: un formato
+# que sepa abrir ficheros acaba abriendolos, y entonces ya no se puede probar en
+# el anfitrion sin montar un disco.
+[dependencies]

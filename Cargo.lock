@@ -245,6 +245,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-maqueta-cara"
+version = "1.0.0"
+
+[[package]]
 name = "bmo-maqueta-cascade"
 version = "0.1.0"
 dependencies = [
@@ -261,6 +265,7 @@ name = "bmo-maqueta-emit"
 version = "0.1.0"
 dependencies = [
  "bmo-dibujo",
+ "bmo-maqueta-cara",
  "bmo-maqueta-cascade",
  "bmo-maqueta-diag",
  "bmo-maqueta-layout",
