@@ -13,17 +13,21 @@
 //!    X25519      [X] 24-08    curva eliptica. LA pieza dificil
 //!    AES-GCM     [X] 24-08    cifrar y autenticar a la vez
 //!    el AZAR     [X] 24-08    RDRAND. Sin el, todo lo de arriba no sirve
+//!    SHA-512     [X] 25-08    y entro por UNA razon: Ed25519 lo exige
+//!    Ed25519     [X] 25-08    COMPROBAR una firma. Firmar NO, y a proposito
 //!    ----------------------------------------------------------------------
-//!    Ed25519     --           firmar. Pide SHA-512 y aritmetica de Edwards
 //!    TLS 1.3     --           la maquina de estados encima de todo lo anterior
 //!    X.509       --           ASN.1, fechas, cadena de confianza
 //! ```
 //!
-//! *** SEIS DE NUEVE, y las tres que faltan no son iguales de caras. Ed25519 es
-//! la que mas compra por lo que cuesta: `campo25519.rs` --la aritmetica modular
-//! sobre `2^255-19`, que es la parte que asusta-- **ya esta escrita y probada**
-//! para X25519. Lo que le falta a la firma es SHA-512 y la curva de Edwards
-//! encima de un campo que ya existe.
+//! *** OCHO DE DIEZ. Y la que parecia mas cara resulto que estaba medio pagada:
+//! `PLAN_SEGURIDAD` llamaba a Ed25519 *"LA pieza"* cuando no habia ni un hash en
+//! el arbol, pero **la aritmetica modular sobre `2^255-19` --la parte que
+//! asusta-- llevaba escrita y probada desde X25519.** Lo nuevo fue otra curva
+//! encima del mismo campo.
+//!
+//! ** Y lo que queda NO es criptografia de curvas: `TLS 1.3` es una maquina de
+//! estados y `X.509` es ASN.1 y fechas. **La aritmetica dificil esta hecha.**
 //!
 //! ## *** Y ABRE DOS PUERTAS CON LA MISMA LLAVE
 //!
@@ -74,6 +78,10 @@
 extern crate alloc;
 
 pub mod sha256;
+
+/// **SHA-512.** No es "el hermano grande de SHA-256": entra porque **Ed25519 lo
+/// exige por especificacion** (RFC 8032), y de nada mas cuelga hoy.
+pub mod sha512;
 /// **HMAC-SHA256 y HKDF.** El primer sitio del arbol donde el TIEMPO que tarda
 /// algo es parte de si es correcto. Ver su cabecera.
 pub mod hmac;
@@ -82,6 +90,11 @@ pub mod campo25519;
 /// **X25519**: dos maquinas que nunca se han visto acaban con el mismo secreto,
 /// y quien escuchaba el cable no lo tiene.
 pub mod x25519;
+
+/// **Ed25519 -- COMPROBAR una firma.** Firmar NO esta aqui y no va a estarlo:
+/// una maquina que puede firmar tiene dentro con que falsificar lo que ejecuta.
+/// Ver su cabecera.
+pub mod ed25519;
 /// **AES-128 y AES-256**, solo cifrar bloques -- GCM nunca usa el inverso.
 pub mod aes;
 /// **AES-GCM**: cifrar y autenticar a la vez, que son dos cosas y una sola
