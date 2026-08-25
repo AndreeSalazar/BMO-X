@@ -7,6 +7,11 @@ license = "Techne"
 
 [dependencies]
 bmo-maqueta-layout = { path = "../layout" }
+# ** El PADRE, y no sube de generacion: `emit` es EL CONSUMIDOR y no una
+# generacion de la cadena -- nadie de la cadena sabe que existe, asi que puede
+# leer de cualquier eslabon. La paleta necesita las REGLAS crudas (`Document`),
+# no la maquetacion: un color no tiene sitio, tiene nombre.
+bmo-maqueta-node = { path = "../node" }
 # EL recortador de la casa, y no uno propio. `bmo-dibujo` existe porque hubo dos
 # --el previsualizador recortaba, el kernel descartaba-- y se tiraban 2.625 de
 # 8.775 rectangulos por fotograma. Escribir aqui un tercero habria sido repetir
@@ -14,7 +19,6 @@ bmo-maqueta-layout = { path = "../layout" }
 bmo-dibujo = { path = "../../../../platform/shared/bmo-dibujo" }
 
 [dev-dependencies]
-bmo-maqueta-node = { path = "../node" }
 bmo-maqueta-cascade = { path = "../cascade" }
 bmo-maqueta-verdict = { path = "../verdict" }
 bmo-maqueta-diag = { path = "../diag" }

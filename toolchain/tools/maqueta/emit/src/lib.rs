@@ -37,4 +37,9 @@
 
 pub mod orden;
 pub mod recorte;
+/// **La PALETA**: los colores de un `.maqueta` como constantes de Rust.
+/// Aparte de [`rust`] porque contesta otra pregunta sobre el mismo fichero --
+/// aquel dice DONDE va cada caja y esto dice DE QUE COLOR es. Y el color lo
+/// comparten las diecisiete caras del escritorio; la maquetacion no.
+pub mod paleta;
 pub mod rust;

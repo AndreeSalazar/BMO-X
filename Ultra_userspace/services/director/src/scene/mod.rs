@@ -18,6 +18,10 @@ pub(crate) mod calc;
 /// La CARA de la calculadora, generada por MAQUETA desde
 /// `toolchain/tools/maqueta/pruebas/calc.maqueta`. No se edita a mano.
 pub(crate) mod calc_gen;
+/// **La PALETA, generada desde `tema/tema.maqueta`.** Ver su cabecera: hasta el
+/// 2026-08-24 ese fichero era la fuente y estas constantes la copia, escrito y
+/// confesado en su propia cabecera. Ya no hay copia.
+pub(crate) mod tema_gen;
 pub(crate) mod switcher;
 pub(crate) mod data;
 /// LA PESTANA `numeros`: como esta el almacen. Salio de `data.rs` por L6a, y
@@ -99,7 +103,7 @@ pub(crate) const BG: u32 = 0x0014_1A28;
 pub(crate) const TASKBAR: u32 = 0x000F_131D;
 /// El pelo de luz bajo la barra. Un borde entero seria una raya; esto separa.
 pub(crate) const TASKBAR_LINE: u32 = 0x0026_2F42;
-pub(crate) const ACCENT: u32 = 0x0060_A5FA;
+pub(crate) const ACCENT: u32 = tema_gen::ACCENT;
 
 pub(crate) const TASKBAR_H: u32 = 40;
 
@@ -365,24 +369,27 @@ pub(crate) const OUT_ROWS: usize = 32;
 /// 200 filas de 88 columnas son 17 KiB. La pantalla es de 8 MiB.
 pub(crate) const OUT_HIST: usize = 200;
 pub(crate) const OUT_TEXT: u32 = 0x00C5_CEDC;
-pub(crate) const OUT_ECHO: u32 = 0x0060_A5FA;
+/// El eco de lo que se escribe. **Es el mismo azul del acento**, y eso no se
+/// supo hasta generar la paleta: eran dos constantes con dos nombres y un solo
+/// color. Ahora se ve, porque las dos apuntan al mismo sitio.
+pub(crate) const OUT_ECHO: u32 = tema_gen::ACCENT;
 /// El cuerpo de una ventana. Mas claro que el escritorio: es lo que la pone
 /// delante sin necesidad de dibujarle un marco grueso.
-pub(crate) const BOX_BG: u32 = 0x001E_2534;
+pub(crate) const BOX_BG: u32 = tema_gen::BOX_FONDO;
 /// El borde. **Discreto a proposito**: era el mismo azul del acento, o sea un
 /// marco de neon alrededor de todo. Un borde grita cuando deberia susurrar --
 /// lo que separa la ventana del fondo es la sombra y el salto de tono, no una
 /// raya de color.
-pub(crate) const BOX_EDGE: u32 = 0x0033_3D52;
+pub(crate) const BOX_EDGE: u32 = tema_gen::BOX_BORDE;
 /// La barra de titulo: un peldano MAS claro que el cuerpo.
 pub(crate) const BOX_TITLE: u32 = 0x0027_3040;
 /// Los campos donde se escribe van hacia abajo, no hacia arriba: un hueco se
 /// lee como hundido y ahi es donde se mete texto.
-pub(crate) const FIELD_BG: u32 = 0x0016_1C28;
-pub(crate) const INK: u32 = 0x00E6_EDF6;
-pub(crate) const INK_DIM: u32 = 0x008A_9BB4;
-pub(crate) const INK_BAD: u32 = 0x00FF_8A7A;
-pub(crate) const INK_OK: u32 = 0x007E_E787;
+pub(crate) const FIELD_BG: u32 = tema_gen::FIELD_FONDO;
+pub(crate) const INK: u32 = tema_gen::INK;
+pub(crate) const INK_DIM: u32 = tema_gen::INK_DIM;
+pub(crate) const INK_BAD: u32 = tema_gen::INK_BAD;
+pub(crate) const INK_OK: u32 = tema_gen::INK_OK;
 
 /// Cuantos bytes de ruta caben. Es el mismo tope que el renglon del kernel
 /// (`PATH_MAX`), y no por casualidad: escribir mas de lo que el otro lado puede
