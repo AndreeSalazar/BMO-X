@@ -257,19 +257,44 @@ lleva el escritorio** -- que es la misma ley que ya rige las superficies.
 ## 8. LA ESCALERA
 
 ```
-   [ ] 1  el FORMATO en un crate sin E/S -> `platform/shared/` (no existe hoy)
-          (como `estratos` y `trim`: un formato mal empaquetado no da un fallo,
+   [ ] 1  el FORMATO en un crate sin E/S -> `platform/shared/bmo-maqueta-cara/`
+          [!] la CARPETA `platform/shared/` YA existe (9 crates; la estreno
+              bmo-cripto el 24-08). Lo que falta es esta crate de dentro
+          (como estratos y trim: un formato mal empaquetado no da un fallo,
           da algo peor -- se lee mal y nadie se entera)
-   [ ] 2  el emisor B -> `toolchain/tools/maqueta/emit/src/bef.rs` (no existe)
-   [ ] 3  el LECTOR, las cinco comprobaciones -> `Ultra_userspace/services/director/src/scene/`
-   [ ] 4  desde un FICHERO suelto, y que se pinte -> `scene/calc_gen.rs` deja de ser generado
-   [ ] 5  en la seccion 0x0B del .bex -> `toolchain/tools/bmo-pack/` ya escribe recursos
-   [ ] 6  vigia: guardar el .maqueta y verlo cambiar -> pide 4 y 5
-   [ ] ~  la red. Otro dia, y ya no cambia nada de lo de arriba
+   [ ] 2  el emisor B -> `toolchain/tools/maqueta/emit/src/bef.rs`
+          [!] esa carpeta ya tiene 5 ficheros (lib, orden, paleta, recorte,
+              rust). El que falta es ese, y solo ese
+   [ ] 3  el LECTOR, las cinco comprobaciones -> `Ultra_userspace/services/director/src/scene/cara.rs`
+          [!] scene/ tiene 20 ficheros y NINGUNO lee un .maqueta
+   [ ] 4  desde un FICHERO suelto, y que se pinte -> `Ultra_userspace/services/director/src/scene/cara_calc.rs`
+          [!] se marca cuando scene/calc_gen.rs DEJE de existir: la unica
+              casilla del arbol que se cobra BORRANDO algo. Hoy sigue generado
+   [ ] 5  en la seccion 0x0B del .bex -> `toolchain/tools/maqueta/pruebas/calc.dorado`
+          [!] bmo-pack YA escribe recursos y la 0x0B ya se indexa. Lo que falta
+              es LEERLA en ejecucion, que es el escalon 3
+   [ ] 6  vigia -> `Ultra_userspace/services/director/src/scene/vigia.rs`: guardar
+          el .maqueta y verlo cambiar sin recompilar. Pide 4 y 5
+   [ ] ~  la red: pide `KIND_RED`, que es el paso 2 de PLAN_EL_PERFIL_TOTAL (3.1).
+          Otro dia, y ya no cambia nada de lo de arriba
 ```
 
 **El escalon 4 es donde la idea queda demostrada**, y no hace falta llegar al 5
 para saber si funciona.
+
+## ⚠ LAS CASILLAS SE REESCRIBIERON EL 2026-08-25, Y NO PORQUE MINTIERAN
+
+Ninguna estaba hecha. Lo que estaba mal era **como estaban escritas**: tres
+nombraban una CARPETA (`platform/shared/`, `scene/`, `bmo-pack/`) y la carpeta
+existe, asi que el guardian de casillas no podia distinguir *"el escalon esta
+hecho"* de *"la carpeta donde ira ya existe"*. Y una --`platform/shared/` (no
+existe hoy)-- ademas ya era falsa: la estreno `bmo-cripto`.
+
+> **Una casilla apunta a lo que TIENE QUE APARECER, no al sitio donde aparecera.**
+> Un directorio existe desde el dia que alguien mete otra cosa dentro.
+
+Las dos ultimas (`6` y `~`) no citaban nada en absoluto y el guardian las
+denunciaba con razon: ahora dicen de que dependen y donde se mira.
 
 Ver `docs/plan/PLAN_MAQUETA.md` (como se construye MAQUETA),
 `docs/componente/LA_MAQUETA_EXIGE.md` (el contrato),

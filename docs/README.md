@@ -90,8 +90,8 @@ otro lo acata por escrito.
 ## 1. `componente/` -- que EXIGE cada pieza
 
 La forma de la ley aplicada a una sola pieza: no *"que hace BMO-X con el
-teclado"* sino **que exige el teclado de quien quiera leerlo**. Los tres se
-citan entre si por nombre y declaran que son la misma clase de documento.
+teclado"* sino **que exige el teclado de quien quiera leerlo**. Se citan entre
+si por nombre y declaran que son la misma clase de documento.
 
 | documento | componente de la ley | la cifra que lo ordena |
 |---|---|---|
@@ -99,10 +99,30 @@ citan entre si por nombre y declaran que son la misma clase de documento.
 | [`EL_COMPOSITOR_Y_EL_ESCANER.md`](componente/EL_COMPOSITOR_Y_EL_ESCANER.md) | C5 FRAMEBUFFER | volcar la pantalla = **27,6 ms** contra 16,7 de un frame |
 | [`EL_TECLADO_EXIGE.md`](componente/EL_TECLADO_EXIGE.md) | C7 USB | **seis exigencias**, y el numero que dice cual fallo |
 | [`EL_DISCO_EXIGE.md`](componente/EL_DISCO_EXIGE.md) | C6 DISCO | una busqueda de HDD = **59 millones de ciclos**; y la ranura 0 de 32 |
+| [`LA_MAQUETA_EXIGE.md`](componente/LA_MAQUETA_EXIGE.md) | ⚠ **ninguno** -- ver abajo | las **seis** comprobaciones del veredicto |
+
+### ⚠ El quinto no tiene componente, y estuvo SIN CITAR desde el 18-08
+
+`LA_MAQUETA_EXIGE.md` vive en esta carpeta, tiene la forma de los otros cuatro
+--*"que exige MAQUETA de quien la use"*-- y **este indice no lo nombraba**. Una
+semana entera de un fichero que solo existe si alguien abre la carpeta a mano,
+en el documento cuyo trabajo entero es mandar al lector a otro sitio.
+
+Y al escribirlo aparece la pregunta que lo explica: **los otros cuatro los firma
+el SILICIO y este no.** MAQUETA no es un componente de la maquina, es una pieza
+de software; su ley no la firma un chip sino `META-KERNEL_HARD.md` a traves de
+la forma, y por eso la columna del medio le sale vacia.
+
+*** Eso lo deja en una de dos, y hay que decidirlo en vez de dejarlo mudo:
+o `componente/` deja de significar *"los doce del silicio"* y pasa a significar
+*"que exige una pieza, sea de la maquina o no"* --y entonces la tabla de abajo
+es un subconjunto y no el indice--, o este fichero se va a `identidad/`. **Hoy
+esta sin decidir, y esta escrito para que lo este.**
 
 ### ★★ La simetria, y sus ocho huecos
 
-**La ley declara DOCE componentes y aqui hay CUATRO capitulos.** Eso no es una
+**La ley declara DOCE componentes y aqui hay CUATRO capitulos de silicio** (el
+quinto fichero, `LA_MAQUETA_EXIGE.md`, no es de ninguno -- ver arriba). Eso no es una
 carencia escondida: es la simetria que hace visible el hueco (L6c), y por eso se
 escribe la lista entera en vez de solo lo que existe.
 
@@ -207,14 +227,16 @@ comparten esta escrita en la primera:
 Y la segunda regla, que es de orden: **lo que no toca nada va primero, lo que no
 se deshace va al final.**
 
-| hoja | tanda | 
-|---|---|
-| [`VERIFICACION_METAL.md`](metal/VERIFICACION_METAL.md) | **2026-08-08** |
-| [`VERIFICACION_METAL_0809.md`](metal/VERIFICACION_METAL_0809.md) | **2026-08-09** |
-| [`PRUEBA_EN_METAL_0810.md`](metal/PRUEBA_EN_METAL_0810.md) | **2026-08-10** |
-| [`PRUEBA_EN_METAL.md`](metal/PRUEBA_EN_METAL.md) | ⚠ **2026-08-12** -- el nombre no lo dice |
-| [`PRUEBA_EN_METAL_0813.md`](metal/PRUEBA_EN_METAL_0813.md) | **2026-08-13** |
-| [`PRUEBA_EN_METAL_0823.md`](metal/PRUEBA_EN_METAL_0823.md) | **2026-08-23** -- ★ la vigente |
+| hoja | tanda | que es |
+|---|---|---|
+| [`VERIFICACION_METAL.md`](metal/VERIFICACION_METAL.md) | **2026-08-08** | la que fija la regla |
+| [`VERIFICACION_METAL_0809.md`](metal/VERIFICACION_METAL_0809.md) | **2026-08-09** | |
+| [`PRUEBA_EN_METAL_0810.md`](metal/PRUEBA_EN_METAL_0810.md) | **2026-08-10** | |
+| [`PRUEBA_EN_METAL.md`](metal/PRUEBA_EN_METAL.md) | ⚠ **2026-08-12** | el nombre no lo dice |
+| [`PRUEBA_EN_METAL_0813.md`](metal/PRUEBA_EN_METAL_0813.md) | **2026-08-13** | |
+| [`PRUEBA_EN_METAL_0823.md`](metal/PRUEBA_EN_METAL_0823.md) | **2026-08-23** | lo que se MANDA teclear |
+| [`PRUEBA_RED_PASO_1.md`](metal/PRUEBA_RED_PASO_1.md) | **2026-08-24** | la unica que PREDICE por escrito antes de arrancar |
+| [`PRUEBA_EN_METAL_0824.md`](metal/PRUEBA_EN_METAL_0824.md) | **2026-08-24** | ★ **la vigente**: lo que el Ryzen CONTESTO |
 
 ### ⚠ Las dos cosas que esta tabla existe para decir
 
@@ -229,17 +251,52 @@ presupuesto por perfil, el kernel de medida con interruptor) y lo que hay que
 traer de vuelta vive hoy repartido entre los mensajes de commit. **Escribir
 `metal/` para el 08-17 es la casilla abierta de esta carpeta.**
 
-**3. Y la del 08-23 SI la tiene, con una advertencia que va la primera.** Su
-seccion 0 dice que **el build no pasa el guardian de MODULAR**, o sea que hoy no
-sale imagen y ninguna de sus pruebas se puede hacer hasta que eso se decida. Una
-hoja que manda al Ryzen sin decir eso mandaria a nadie a ningun sitio.
+**3. El aviso del 08-23 -- ⚠ CADUCADO el 2026-08-25.** Su seccion 0 decia que
+*"el build no pasa el guardian de MODULAR"*, o sea que no salia imagen y ninguna
+de sus pruebas se podia hacer. **Eso se arreglo el 08-24**, y no con una
+excepcion: se partieron los ficheros. `fat32` 2.537 -> 918, `xhci` 1.583 -> 688,
+`ahci` 1.035 -> 378, y Ring 0 cumplio L6a entero por primera vez. Hoy el censo
+contesta `clean` -- *ningun fichero nuevo por encima de 1000 y ninguno crecio*.
+
+**4. Y las hojas se separaron en dos clases, que es lo que la tabla ensena
+ahora.** Hasta el 24-08 una hoja era *"lo que hay que teclear"*; desde
+`PRUEBA_RED_PASO_1.md` hay tambien hojas que **predicen la respuesta por escrito
+antes de arrancar**, y `PRUEBA_EN_METAL_0824.md` es la primera que anota lo que
+el Ryzen contesto **incluido lo que salio mal**.
+
+> *"Una hoja que solo apunta lo que funciono no es una medida: es un anuncio."*
+
+★ Esa pareja --predecir en un fichero, anotar en otro-- es la forma que se queda,
+y es la razon de que la columna nueva de la tabla diga *que es* cada hoja.
 
 ---
 
 ## 6. Los guardianes
 
-Dos, y los dos existen por la misma razon: **una regla que nadie mide se
-incumple sin que nada grite.**
+**Cinco**, y los cinco existen por la misma razon: **una regla que nadie mide se
+incumple sin que nada grite.** Los llama `Ultra_kernel_x86-64/build.ps1` en cada
+compilacion, y si no hay Python **avisan y siguen**: un portico que no se puede
+levantar no debe cerrar la puerta.
+
+| # | guardian | que regla mide | desde |
+|---|---|---|---|
+| 1 | `ascii-sweep` | la codificacion: no-ASCII donde la regla no lo permite | -- |
+| 2 | `enlaces` | las citas a documentos resuelven | 08-17 |
+| 3 | `censo-modular` | **L6a** (el tamano) y **L7** (la herencia) | 08-18 |
+| 4 | `casillas` | que una casilla `[ ]` diga DONDE MIRAR | 08-24 |
+| 5 | `ambitos` | el ambito del mensaje de commit | -- |
+
+⚠ **Esta seccion decia "Dos" y llevaba tres guardianes de retraso.** El sexto y
+el septimo se anadieron el 08-24 y este indice no se entero, que es exactamente
+el fallo que el guardian 4 existe para cazar en los planes -- cometido aqui, en
+el fichero que los presenta.
+
+[!] Y hay una linea escrita en `build.ps1` que este indice tiene que repetir
+porque es una decision, no una nota: **el siguiente guardian NO se anade.**
+`build.ps1` lleva cinco entradas suyas en la lista de techos levantados, son
+1.542 lineas con 8 funciones (media 201), y el censo lo llama `desconocida`
+porque es PowerShell -- o sea que ni siquiera lo juzga bien. **Primero se parte
+ese fichero.**
 
 ### 6.1 `toolchain/tools/censo-modular/` -- el metro de L6a y de L7
 
@@ -300,20 +357,37 @@ distinguir una cita de la **cita de una cita rota**, y tiene razon: si el
 ejemplo tiene forma de ruta, es una ruta. Se cazo a si mismo en el comentario
 que lo explica dentro de `build.ps1`.
 
-### ⚠ Lo que hoy le sale en rojo, y no lo puede arreglar solo
+### [X] Lo que le salia en rojo -- **RESUELTO**, y por el buen camino
+
+Este bloque decia que tres ficheros de codigo citaban el diseno completo de
+ESTRATOS con numero de seccion (*"seccion 10, paso 4"*) y que **ese documento no
+estaba en el repositorio**, ni con ese nombre ni con otro. Se planteo asi:
+
+> *"O el documento existe fuera del repo y hay que traerlo, o hay que corregir
+> las tres citas. **Lo que no se puede es dejarlo mudo.**"*
+
+**Se eligio traerlo**, que era la opcion buena de las dos:
 
 ```
-   platform/drivers/storage/estratos/src/lib.rs:3
-   platform/drivers/storage/estratos/src/objects.rs:3   -> platform/services/timeback/ESTRATOS.md
-   toolchain/tools/estratos-fmt/src/main.rs:3           -> ESTRATOS.md
+   platform/drivers/storage/estratos/ESTRATOS.md    <- el diseno, en la raiz
+                                                       de su propia crate
 ```
 
-Las tres citan el **diseno completo de ESTRATOS** con numero de section
-(*"section 10, paso 4"*, *"paso 4c del orden de construccion"*), y ese documento
-**no esta en el repositorio** -- ni con ese nombre ni con otro. La carpeta
-`platform/services/timeback/` tampoco existe: en `platform/services/` solo hay
-`cabina-core`.
+Y las tres citas se reescribieron para apuntar ahi. Hoy `enlaces --check`
+contesta:
 
-O el documento existe fuera del repo y hay que traerlo, o hay que corregir las
-tres citas. **Lo que no se puede es dejarlo mudo**: tres ficheros de codigo dicen
-que su diseno esta escrito en un sitio donde no hay nada.
+```
+   clean: las 876 citas a documentos resuelven
+   (4 externas: llevan esquema y no se comprueban)
+```
+
+★ **Por que se conserva el bloque en vez de borrarlo**: porque la eleccion era
+lo interesante. Corregir las citas habria puesto el arbol en verde **sin que el
+diseno existiera** -- el guardian se habria callado y el conocimiento seguiria
+perdido. Un indicador se puede apagar de dos maneras y solo una arregla algo.
+
+[!] La otra mitad de aquel aviso sigue en pie y no la resolvio esto: la carpeta
+`platform/services/timeback/` no existe (en `platform/services/` solo hay
+`cabina-core`). Ninguna cita apunta ya ahi, asi que el guardian no la ve -- pero
+el nombre aparece en la prosa del arbol, y **un guardian de citas no caza un
+nombre que nadie cita.**

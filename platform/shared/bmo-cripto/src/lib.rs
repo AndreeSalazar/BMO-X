@@ -7,14 +7,23 @@
 //! es este:
 //!
 //! ```text
-//!    SHA-256     [X] hoy      debajo de HMAC, de HKDF, del transcript de TLS
-//!    HMAC        [X] hoy      SHA-256 dos veces, con dos rellenos
-//!    HKDF        [X] hoy      HMAC en cadena: de un secreto salen las claves
-//!    X25519      [X] hoy      curva eliptica. LA pieza dificil
-//!    AES-GCM     [X] hoy      cifrar y autenticar a la vez
+//!    SHA-256     [X] 24-08    debajo de HMAC, de HKDF, del transcript de TLS
+//!    HMAC        [X] 24-08    SHA-256 dos veces, con dos rellenos
+//!    HKDF        [X] 24-08    HMAC en cadena: de un secreto salen las claves
+//!    X25519      [X] 24-08    curva eliptica. LA pieza dificil
+//!    AES-GCM     [X] 24-08    cifrar y autenticar a la vez
+//!    el AZAR     [X] 24-08    RDRAND. Sin el, todo lo de arriba no sirve
+//!    ----------------------------------------------------------------------
+//!    Ed25519     --           firmar. Pide SHA-512 y aritmetica de Edwards
 //!    TLS 1.3     --           la maquina de estados encima de todo lo anterior
 //!    X.509       --           ASN.1, fechas, cadena de confianza
 //! ```
+//!
+//! *** SEIS DE NUEVE, y las tres que faltan no son iguales de caras. Ed25519 es
+//! la que mas compra por lo que cuesta: `campo25519.rs` --la aritmetica modular
+//! sobre `2^255-19`, que es la parte que asusta-- **ya esta escrita y probada**
+//! para X25519. Lo que le falta a la firma es SHA-512 y la curva de Edwards
+//! encima de un campo que ya existe.
 //!
 //! ## *** Y ABRE DOS PUERTAS CON LA MISMA LLAVE
 //!
@@ -48,10 +57,16 @@
 //!    lo audite tiene que poder leer las lineas. **Una cadena de confianza que
 //!    empieza en un `Cargo.toml` no es una cadena de confianza.**
 //!
-//! [!] Y lo que este crate NO es todavia: no hay generador de numeros
-//! aleatorios. Sin el no hay claves, y **una clave predecible es peor que no
-//! cifrar** -- porque parece que si. Ese es su propio problema y su propia
-//! pagina, y hasta que exista aqui solo hay funciones deterministas.
+//! [!] Esta cabecera decia, hasta el 25-08: *"lo que este crate NO es todavia:
+//! no hay generador de numeros aleatorios (...) hasta que exista aqui solo hay
+//! funciones deterministas."* **Y `pub mod azar;` estaba veinte lineas mas
+//! abajo, en este mismo fichero.** El AZAR entro el mismo dia y la cabecera se
+//! quedo sin actualizar.
+//!
+//! *** Se deja escrito porque es la clase de fallo que este arbol persigue en
+//! todas partes menos en su propia prosa: **un documento que se contradice a si
+//! mismo dentro del mismo fichero.** No hace falta un guardian ni otra carpeta
+//! para cazarlo -- hace falta leer hasta abajo.
 
 #![cfg_attr(not(test), no_std)]
 
