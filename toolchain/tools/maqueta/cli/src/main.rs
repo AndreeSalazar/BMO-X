@@ -17,9 +17,26 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+
+    // *** `--paleta`: emitir los COLORES en vez de la maquetacion.
+    //
+    // ** Son dos preguntas sobre el mismo fichero --"donde va esto" y "de que
+    // color es"-- y `tema.maqueta` solo contesta la segunda: no tiene una sola
+    // caja. Pasarlo por el emisor de siempre daria un modulo que pinta el
+    // vacio, que compila y no sirve.
+    //
+    // [!] Y es una bandera y no un ejecutable aparte a proposito: el LEXER, el
+    // parser y los diagnosticos son los mismos, y un segundo binario habria
+    // acabado con su propia copia de `procedencia()` -- el fallo que un
+    // guardian ya cazo el 18-08.
+    let solo_paleta = args.first().map(|a| a == "--paleta").unwrap_or(false);
+    if solo_paleta {
+        args.remove(0);
+    }
+    let mut args = args.into_iter();
     let (Some(entrada), Some(salida)) = (args.next(), args.next()) else {
-        eprintln!("uso: maqueta <entrada.maqueta> <salida.rs>");
+        eprintln!("uso: maqueta [--paleta] <entrada.maqueta> <salida.rs>");
         return ExitCode::from(2);
     };
 
@@ -35,6 +52,19 @@ fn main() -> ExitCode {
         Ok(d) => d,
         Err(e) => return fallo(&entrada, &src, &e),
     };
+    // La paleta se emite del DOCUMENTO, antes de la cascada: un color con
+    // nombre no compite con nadie ni tiene sitio, asi que maquetarlo seria
+    // trabajo tirado -- y un `judge` sobre un arbol vacio, un reparo inventado.
+    if solo_paleta {
+        let codigo = bmo_maqueta_emit::paleta::paleta(&procedencia(&entrada), &doc);
+        if let Err(e) = std::fs::write(&salida, codigo) {
+            eprintln!("maqueta: no puedo escribir {salida}: {e}");
+            return ExitCode::from(2);
+        }
+        eprintln!("maqueta: paleta de {entrada} -> {salida}");
+        return ExitCode::SUCCESS;
+    }
+
     let cascada = match bmo_maqueta_cascade::cascade(&doc) {
         Ok(c) => c,
         Err(e) => return fallo(&entrada, &src, &e),
