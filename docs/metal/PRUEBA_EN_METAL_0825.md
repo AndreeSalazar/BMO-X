@@ -68,6 +68,9 @@ testigo discrepa **se dice aqui** en vez de morir en un log de Ring 0.
 | lo que sale | que significa |
 |---|---|
 | `6 fisicos / 12 hilos (2 por nucleo, MEDIDO)` y **sin** fila `[!] duda` | ✅ los cuatro testigos coinciden. El `27/54` era de la fuente vieja |
+
+★ **Y si sale la fila `[!] duda`, la orden siguiente es `cabina fallos`**, que
+dice cual de los cuatro testigos discrepo y con que numero. Ver 5.2.
 | lo mismo **con** fila `[!] duda` | el numero ya es bueno pero **un testigo sigue fuera de la fila**, y la fila dice cual |
 | **no** aparece `(N por nucleo, MEDIDO)` | la hoja 0x0B no contesto: se cayo al testigo heredado, y `fisicos` es una COPIA de `hilos`, no una division |
 | vuelve un numero imposible | ahora la fila `[!] duda` dice **por que** |
@@ -206,25 +209,34 @@ fila `[!] duda` dira cual de los cuatro testigos se salio de la fila.
 ★ Y el 12 del 24-08 sigue siendo lo que era: **un acierto que no se podia
 demostrar.** Ahora se podria.
 
-## 5.2 -- El detalle del careo NO llega al escritorio
+## 5.2 -- [X] El detalle del careo YA llega al escritorio (arreglado el 25-08)
 
-El careo apunta cuatro lineas en CABINA --que testigo, con que valor-- y **desde
-el escritorio no hay forma de leerlas**: no existe orden `cabina` en el
-escritorio, y `autopsia` ensena el ultimo fallo de Ring 3, que es otra cosa.
+Esta seccion decia que el careo apunta cuatro lineas en CABINA --que testigo, con
+que valor-- y que **desde el escritorio no habia forma de leerlas**: no existia
+orden `cabina`, y `autopsia` ensena el ultimo fallo de Ring 3, que es otra cosa.
+
+**Se escribio antes de la tanda, que es justo lo que esta hoja recomendaba.** La
+fontaneria estaba entera --`OP_CABINA_INFO`, `OP_CABINA_TEXTO`, los nueve campos
+y las cinco severidades, con sus envoltorios en `userland`-- y faltaba la orden.
 
 ```text
-   los BITS de duda    llegan     -> `INFO_CPU_TOPOLOGIA_DUDA`, y el panel los pinta
-   el DETALLE          NO llega   -> muere en el anillo de Ring 0
+   cabina          los ultimos 20, con severidad y color
+   cabina todo     los 48 del anillo
+   cabina fallos   solo WARNING y peores   <- la que se usa cuando algo fallo
 ```
 
-** Es el mismo caso que `banda`, y esta escrito en el propio despachador de
-ordenes: *"estaba escrita, compilada y probada, y era inalcanzable desde el unico
-sitio donde el dueno trabaja."* La fontaneria entera existe --`OP_CABINA_INFO`,
-`OP_CABINA_TEXTO` y sus nueve campos estan en `userland`-- y lo que falta es la
-orden.
+★ **Y eso cambia lo que hay que teclear en la prueba 1.1.** Si `cpu` ensena la
+fila `[!] duda`, la orden siguiente es `cabina fallos`, y ahi sale **cual** de
+los cuatro testigos se salio de la fila y **con que numero**:
 
-★★ **Por eso conviene escribir esa orden ANTES de esta tanda**: no hace falta
-hardware para escribirla, y con ella el mismo arranque contesta el doble.
+```text
+   [!] cpu   CPUID se contradice: hoja 0x0B contra la heredada  =NN
+   [!] cpu   la MADT declara otros hilos que CPUID              =NN
+   [X] cpu   el silicio NO dice lo que este perfil sabe que es  =NN
+```
+
+[!] Y hay que leer la cabecera del volcado: si dice que **se cayeron** eventos
+del anillo, lo que se esta viendo no es el principio del arranque.
 
 ## 5.3 -- La cara que viaja no se ve todavia
 

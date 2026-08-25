@@ -18,6 +18,8 @@ pub(crate) mod system;
 pub(crate) use dispatch::{dispatch, After};
 
 pub(crate) mod history;
+/// El anillo de eventos del kernel, leido desde aqui. Ver su cabecera.
+pub(crate) mod cabina;
 pub(crate) mod reports;
 /// Cuanto fiarse de los nucleos que ensena `reports`. Ver su cabecera.
 pub(crate) mod topologia;
@@ -99,6 +101,10 @@ pub(crate) enum Command<'a> {
     Report,
     /// El informe del ULTIMO fallo de Ring 3, tal como lo redacto el kernel.
     Autopsy,
+    /// **El anillo de eventos del kernel, con severidad.** Hermano de
+    /// [`Command::Autopsy`] y OTRA pregunta: aquel ensena el ultimo fallo de
+    /// Ring 3, este todo lo que el kernel apunto -- incluido lo que no fallo.
+    Cabina(&'a [u8]),
     Placa,
     Cpu,
     /// **El censo de extensiones**: que declara este silicio y que coge BMO.
@@ -370,6 +376,14 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // `fallo` ensena la ultima autopsia. Se guarda sola en `data/fallos.txt`
         // en cuanto ocurre -- esto es para mirarla sin salir del escritorio.
         b"fallo" | b"fallos" | b"autopsia" => Command::Autopsy,
+        // ** `cabina` entro el 2026-08-25 y ya existia... en el shell de Ring 0,
+        // al que desde aqui NO SE VUELVE. Tercera vez que pasa lo mismo, y la
+        // segunda en dos dias: ver `banda` mas abajo.
+        //
+        // [!] Y NO es `fallo` con otro nombre: `fallo` ensena la ultima autopsia
+        // de Ring 3, y esto el anillo entero del kernel. Juntarlos habria hecho
+        // que pedir uno tapara al otro.
+        b"cabina" | b"bitacora" | b"eventos" => Command::Cabina(rest),
         // ** LA RED. `red`/`net` dan el informe entero; las demas cortan por
         // una sola pregunta, que es lo que se quiere teniendo el cable en la
         // mano. Ninguna transmite ni un byte -- son campos de INFORME.
@@ -422,7 +436,11 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // ** `banda` entro el 2026-08-24 y ya existia... en el shell de Ring 0,
         // al que desde aqui NO SE VUELVE. Estaba escrita, compilada y probada, y
         // era inalcanzable desde el unico sitio donde el dueno trabaja.
-        b"banda" | b"memoria" => Command::Banda,
+        // [!] `memoria` NO se pone aqui: ya la reclama `mem` doce lineas mas
+        // arriba, y en un `match` gana la primera. El alias que habia era CODIGO
+        // MUERTO -- y la ironia es que estaba en la linea que se escribio para
+        // arreglar que `banda` fuera inalcanzable.
+        b"banda" | b"ancho" => Command::Banda,
         b"audio" | b"sonido" => Command::Audio,
         b"help" | b"?" | b"ayuda" => Command::Help,
         // La puerta del que llega. `start` porque es la palabra que se
