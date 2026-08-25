@@ -43,6 +43,19 @@
 //! **parar**, no apanarse.
 //!
 //! > Un generador roto que devuelve numeros es peor que uno que devuelve nada.
+//!
+//! # ** Y LA SALIDA VA POR SHA-256, NO CRUDA
+//!
+//! `RDRAND` es **una caja negra que nadie fuera de AMD ha visto por dentro**, y
+//! no hay forma de auditarla desde fuera: una salida sesgada se ve exactamente
+//! igual que una buena. Por eso se recogen 64 bytes crudos y se sacan 32
+//! hasheados -- cualquier sesgo o estructura muere ahi. Ver [`rellenar`].
+//!
+//! [!] Lo que eso **no** arregla: si `RDRAND` estuviera saboteado de verdad,
+//! hashear no salva nada. Linux mezcla `RDRAND` con otras fuentes justamente
+//! por eso. **BMO-X hoy se fia del CPU**, y es una decision --la maquina esta
+//! perfilada (ley 24) y el silicio es parte de la base de confianza-- no un
+//! descuido. Pero queda escrito.
 
 /// Cuantas veces se reintenta una instruccion que dice "todavia no".
 ///
@@ -203,24 +216,63 @@ pub fn u64() -> Result<u64, Motivo> {
 
 /// **Llena un bufer de azar.** Todo o nada.
 ///
-/// [!] Si falla a mitad, **el bufer se borra**. Un relleno a medias deja la
+/// # *** LA SALIDA DE `RDRAND` NO SALE DE AQUI TAL CUAL. VA POR SHA-256.
+///
+/// Y el motivo es el unico que importa en un generador de hardware:
+///
+/// > **`RDRAND` es una caja negra que no se puede auditar.** Nadie fuera de AMD
+/// > ha visto lo que hay dentro, y no hay forma de comprobarlo desde fuera:
+/// > una salida sesgada, o incluso una predecible, se ve **exactamente igual**
+/// > que una buena.
+///
+/// ** Por eso ningun sistema serio la usa cruda. Se recogen 64 bytes, se pasan
+/// por SHA-256 y salen 32. Eso hace tres cosas:
+///
+/// ```text
+///   1. cualquier SESGO --que un bit salga a 1 mas veces-- desaparece
+///   2. cualquier ESTRUCTURA en la salida no llega a la clave
+///   3. y si un dia se anade otra fuente, entra por el mismo sitio
+/// ```
+///
+/// [!] Lo que **no** arregla, dicho para que nadie se confie: si `RDRAND`
+/// estuviera saboteado de verdad --generando una secuencia que su autor puede
+/// predecir-- hashearla no salva nada. Contra eso no hay defensa desde dentro
+/// del CPU, y por eso Linux mezcla `RDRAND` con otras fuentes en vez de fiarse.
+/// BMO-X hoy **se fia**, y eso es una decision, no un descuido: es una maquina
+/// perfilada (ley 24) y el CPU es parte de la base de confianza. Pero se dice.
+///
+/// [!] Y si falla a mitad, **el bufer se borra**. Un relleno a medias deja la
 /// primera parte con azar bueno y el resto con lo que hubiera antes -- y una
 /// clave con la cola predecible parece una clave entera. Devolver el error no
-/// basta: hay que asegurarse de que lo que queda no se pueda confundir con una.
+/// basta.
 pub fn rellenar(dst: &mut [u8]) -> Result<(), Motivo> {
-    for trozo in dst.chunks_mut(8) {
-        match u64() {
-            Ok(v) => {
-                let b = v.to_le_bytes();
-                trozo.copy_from_slice(&b[..trozo.len()]);
-            }
-            Err(e) => {
-                for x in dst.iter_mut() {
-                    *x = 0;
+    let mut hecho = 0usize;
+    while hecho < dst.len() {
+        // ** DOS A UNO: 64 bytes crudos por cada 32 que salen. Es la proporcion
+        // de siempre para blanquear una fuente de la que no te fias del todo --
+        // si la mitad de la entropia que entra fuera basura, lo que sale sigue
+        // teniendo 256 bits de verdad.
+        let mut crudo = [0u8; 64];
+        for i in 0..8 {
+            match u64() {
+                Ok(v) => crudo[i * 8..i * 8 + 8].copy_from_slice(&v.to_le_bytes()),
+                Err(e) => {
+                    for x in dst.iter_mut() {
+                        *x = 0;
+                    }
+                    return Err(e);
                 }
-                return Err(e);
             }
         }
+        let h = crate::sha256::hash(&crudo);
+        // ** Y EL CRUDO SE BORRA. Vive en la pila y la pila se reutiliza: dejar
+        // ahi la entropia con la que se hizo una clave es dejar la clave.
+        for x in crudo.iter_mut() {
+            *x = 0;
+        }
+        let n = (dst.len() - hecho).min(32);
+        dst[hecho..hecho + n].copy_from_slice(&h[..n]);
+        hecho += n;
     }
     Ok(())
 }
