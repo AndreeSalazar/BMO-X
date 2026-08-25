@@ -189,22 +189,40 @@ pub fn of(f: Feat) -> Use {
         // entrada de tabla pone el bit 63**. `vmm.rs` no lo escribe en ningun
         // sitio, asi que el permiso existe y nadie lo usa.
         //
-        // *** LO QUE FALTA SON POCAS LINEAS, y las dos mitades ya estan: el
-        // cargador YA sabe que secciones son de codigo --`admitir.rs` calcula
-        // `writable = flags & SECTION_FLAG_EXEC == 0`-- y el CPU ya acepta el
-        // bit. Falta unir las dos en el mismo sitio donde se decide `writable`.
-        Feat::Nx => Use::No("EFER.NXE ARMADO en s1_cpu; ninguna PTE pone el bit 63 todavia"),
+        // *** Y SE COBRO EL MISMO DIA: `vmm.rs` pone el bit 63 en toda pagina
+        // escribible. La regla es literalmente W^X --escribible O ejecutable,
+        // nunca las dos-- y no hizo falta ni un parametro nuevo: el cargador ya
+        // calculaba `writable = flags & SECTION_FLAG_EXEC == 0`.
+        //
+        // ** Lo que compra es la mitad de una explotacion: quien consiga
+        // escribir ya no puede escribir instrucciones y saltar a ellas; tiene
+        // que armar la cadena con codigo que YA existe, que es otro orden de
+        // magnitud. Ver `PTE_NX`, y la trampa de `rodata` que hay anotada ahi.
+        Feat::Nx => Use::Yes("EFER.NXE en s1_cpu + PTE_NX en vmm.rs: W^X, escribible XOR ejecutable"),
         // `s1_cpu/cpu/mod.rs`: `if smep { cr4 |= 1 << 20 }`. Funciona solo: el
         // kernel nunca ejecuta una pagina de usuario, asi que no hay nada que
         // adaptar. Un desvio del flujo de Ring 0 hacia codigo de Ring 3 --el
         // final de casi toda cadena de explotacion-- da fault en vez de correr.
         Feat::Smep => Use::Yes("s1_cpu enciende CR4.SMEP: Ring 0 no puede EJECUTAR una pagina de Ring 3"),
-        // *** EL UNICO DE LOS CUATRO QUE DE VERDAD NO ESTA, y no es un bit
-        // suelto: el kernel SI escribe memoria de Ring 3 a proposito --el
-        // camino de `ARCH_OP_LEER_EN`-- asi que encenderlo pide `stac`/`clac`
-        // alrededor de cada uno de esos sitios. Sin eso, encenderlo rompe el
-        // disco. Es trabajo de dias, no un bit.
-        Feat::Smap => Use::No("CR4.SMAP sin encender; pide stac/clac donde el kernel escribe Ring 3"),
+        // *** EL ULTIMO DE LOS CUATRO, y no era un bit: el kernel SI tocaba
+        // memoria de Ring 3 en dos sitios y habia que quitarlos primero.
+        //
+        //   ARCH_OP_LEER_EN     tenia un respaldo `None => base + desde` que
+        //                       ya era INALCANZABLE desde el arreglo de los
+        //                       limites de la misma manana
+        //   ARCH_OP_ESCRIBIR_DE no tenia camino de espejo EN ABSOLUTO:
+        //                       siempre dereferenciaba la VA del proceso
+        //
+        // Los dos pasan ahora por el physmap, que ademas es el camino rapido.
+        //
+        // ** Y queda UN sitio que lee Ring 3 a proposito: la autopsia, cuyo
+        // trabajo es contar que habia en la pila del proceso roto. Lleva
+        // `stac`/`clac` con nombre propio en `autopsy::con_permiso`.
+        //
+        // *** Que sea UN SOLO sitio con permiso explicito es lo que hace que la
+        // prohibicion valga: cualquier otro acceso a Ring 3 desde Ring 0 da
+        // fault, y el fault dice donde.
+        Feat::Smap => Use::Yes("s1_cpu enciende CR4.SMAP; solo la autopsia levanta el permiso, con stac/clac"),
         // `s1_cpu/cpu/mod.rs`: `if umip { cr4 |= 1 << 11 }`. Ring 3 ya no puede
         // leer las bases de GDT/IDT/LDT/TR con SGDT y familia.
         Feat::Umip => Use::Yes("s1_cpu enciende CR4.UMIP: SGDT/SIDT/SLDT/STR ya no fugan del kernel"),

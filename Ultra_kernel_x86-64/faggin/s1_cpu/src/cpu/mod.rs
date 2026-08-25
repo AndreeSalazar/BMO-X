@@ -136,6 +136,7 @@ pub unsafe fn init_cr0_cr4() {
     let fsgs = ebx7 & (1 << 0) != 0;
     let smep = ebx7 & (1 << 7) != 0;
     let umip = ecx7 & (1 << 2) != 0;
+    let smap = ebx7 & (1 << 20) != 0;
 
     let cr4: u64; asm!("mov {}, cr4", out(reg) cr4);
     let mut cr4 = cr4;
@@ -144,6 +145,18 @@ pub unsafe fn init_cr0_cr4() {
     if fsgs { cr4 |= 1 << 16; }
     if smep { cr4 |= 1 << 20; }
     if umip { cr4 |= 1 << 11; }
+    // *** SMAP: Ring 0 no puede TOCAR una pagina de Ring 3 (2026-08-24).
+    //
+    // Es el cuarto de los bits de guardia y el ultimo en llegar, porque no era
+    // un bit: el kernel SI tocaba memoria de usuario en dos sitios y habia que
+    // quitarlos antes. Los dos eran `ARCH_OP_LEER_EN`/`ESCRIBIR_DE`, y los dos
+    // pasan ahora por el espejo fisico -- que ademas es mas rapido.
+    //
+    // ** El unico sitio que SIGUE leyendo Ring 3 a proposito es la autopsia, y
+    // por eso tiene `stac`/`clac` con nombre propio (`autopsy::con_permiso`).
+    // Un solo sitio con permiso explicito es lo que hace que la prohibicion
+    // valga: cualquier otro acceso da fault, y el fault dice donde.
+    if smap { cr4 |= 1 << 21; }
     asm!("mov cr4, {}", in(reg) cr4);
 
     // XCR0: x87 + SSE + AVX (Zen 3 has 256-bit AVX)
