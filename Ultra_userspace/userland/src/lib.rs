@@ -600,6 +600,23 @@ pub const AUDIO_OP_DEVICES: u32 = 0x01;
 pub const AUDIO_OP_BEEP: u32 = 0x02;
 pub const AUDIO_OP_VOLUME: u32 = 0x03;
 pub const AUDIO_OP_SILENCE: u32 = 0x04;
+
+/// **EL TUBO ISOCRONO**: abrirlo, armarlo y preguntarle. `arg0` dice que.
+///
+/// ```text
+///    0  esta abierto?          1 / 0
+///    1  ARMAR el silencio      1 si quedo armado
+///    2  callar                 1
+///    3  bytes por trama        el numero que cuadra con `wMaxPacketSize`
+///    4  frecuencia elegida     en Hz
+///    5  tramas encoladas       tiene que SUBIR SOLA mientras suene
+///    6  *** tramas TARDE       la cifra que separa "suena bien" de "chasquea"
+///    7  esta armado?           1 / 0
+/// ```
+///
+/// [!] Armar es TRAFICO, no configuracion: 250 latidos por segundo empujando
+/// tramas al bus. Por eso no se enciende solo al arrancar y hay que pedirlo.
+pub const AUDIO_OP_TUBO: u32 = 0x05;
 /// Bits que devuelve [`AUDIO_OP_DEVICES`].
 pub const DEVICE_SPEAKER: u64 = 1 << 0;
 pub const DEVICE_HDA: u64 = 1 << 1;

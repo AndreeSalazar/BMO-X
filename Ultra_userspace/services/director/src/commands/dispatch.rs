@@ -57,7 +57,7 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::EstratosEscribe(n, t) => system::estratos_escribe(dsk, p, n, t),
         Command::Net(what) => system::net(dsk, p, what),
         Command::Placa => system::placa(dsk, p),
-        Command::Audio => system::audio(dsk, p),
+        Command::Audio(a) => system::audio(dsk, p, a),
         Command::Autopsy => system::autopsy(dsk, p),
         Command::Cabina(a) => system::cabina(dsk, p, a),
         Command::Report => system::report(dsk, p),

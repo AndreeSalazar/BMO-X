@@ -100,6 +100,10 @@ pub unsafe fn censar() -> bool {
             }
         }
         cabina::count("audio", "el endpoint isocrono es el DCI", p.dci as u64);
+        // *** Y AQUI SE ABRE EL TUBO (A1, 25-08). Hasta hoy esta funcion
+        // terminaba con los seis numeros apuntados y **sin haberle dicho al
+        // aparato que se pusiera en su alt**, asi que el endpoint no existia.
+        abrir(slot, &p);
         return true;
     }
 
@@ -107,4 +111,248 @@ pub unsafe fn censar() -> bool {
     // puertos mirados se ven igual.
     cabina::count("audio", "puertos libres mirados, y ninguno reproduce", mirados);
     false
+}
+
+// ===================================================================
+//  A1 -- SET_INTERFACE: lo unico que separaba de que suene
+// ===================================================================
+
+/// `bEndpointType` del xHC para un endpoint **isocrono de salida**.
+///
+/// [!] La tabla del xHCI no es la del USB: aqui `1` es Isoch OUT, `4` Control,
+/// `5` Isoch IN y `7` Interrupt IN -- que es el que usa el teclado. Meter el
+/// numero del USB da un endpoint configurado del tipo equivocado, y eso no
+/// falla al configurarlo: falla al primer TRB.
+const EP_ISOCH_OUT: u8 = 1;
+
+/// `SET_INTERFACE`, peticion estandar 0x0B.
+const REQ_SET_INTERFACE: u8 = 0x0B;
+/// Host -> aparato, estandar, destinada a una INTERFAZ.
+const A_LA_INTERFAZ: u8 = 0x01;
+
+/// `SET_CUR`, peticion de clase para audio.
+const REQ_SET_CUR: u8 = 0x01;
+/// Host -> aparato, de CLASE, destinada a un ENDPOINT.
+const AL_ENDPOINT_DE_CLASE: u8 = 0x22;
+/// `SAMPLING_FREQ_CONTROL` en el byte alto de `wValue`.
+const CTRL_FRECUENCIA: u16 = 0x0100;
+
+/// Lo que quedo abierto, para que el bucle que alimente el tubo lo encuentre.
+static mut TUBO: Option<Tubo> = None;
+
+/// **Un tubo de audio abierto.** Todo lo que hace falta para empujar muestras.
+#[derive(Clone, Copy)]
+pub struct Tubo {
+    pub slot: u8,
+    pub dci: u8,
+    /// La frecuencia que se le pidio al aparato, en Hz.
+    pub frecuencia: u32,
+    /// Bytes que hay que entregar por intervalo. **Tiene que caber en
+    /// `max_packet`**, y eso se comprueba antes de abrir.
+    pub bytes_por_trama: u32,
+    pub max_packet: u16,
+}
+
+/// El tubo abierto, si lo hay.
+pub fn tubo() -> Option<Tubo> {
+    unsafe { TUBO }
+}
+
+/// **ABRIR EL TUBO: poner el aparato en el alt que trae el endpoint.**
+///
+/// # Por que esto es A1 y no un detalle
+///
+/// El paso 0 sabe **cual** es el alt setting. `queue_isoch_out` sabe encolar una
+/// trama. Y entre los dos faltaba esto: **nadie le habia dicho al aparato que se
+/// pusiera en ese alt**, asi que su endpoint isocrono no existia.
+///
+/// > Una interfaz AudioStreaming declara su endpoint **solo en los alt settings
+/// > distintos de cero**. El alt 0 existe para que un aparato de audio pueda
+/// > estar enchufado sin reservar ancho de banda isocrono en el bus.
+///
+/// # *** EL ORDEN DE LOS DOS PASOS, Y ES UNA DECISION
+///
+/// ```text
+///    1. configurar el endpoint en el xHC   el HOST se prepara
+///    2. SET_INTERFACE                      el APARATO empieza su reloj
+///    3. SET_CUR frecuencia                 solo si declara mas de una
+/// ```
+///
+/// Se hace en ese orden **para que el host este listo antes de que el aparato
+/// arranque**. Al reves hay una ventana en la que el aparato ya espera datos en
+/// cada microtrama y el xHC todavia no tiene ni anillo donde ponerlos.
+///
+/// [!] Y con `OUT` esa ventana no rompe nada --el aparato recibe silencio-- pero
+/// **cuenta como tramas tarde**, y entonces el primer numero que se mira al
+/// depurar estaria sucio desde antes de empezar. Ver `isoch_tarde`.
+///
+/// # La comprobacion que va antes de tocar el aparato
+///
+/// Que una trama de la frecuencia elegida **quepa en el paquete**. Si no cabe,
+/// no hay codigo correcto que lo arregle -- y decirlo aqui evita buscar el fallo
+/// en el bucle que todavia no existe.
+pub fn abrir(slot: u8, p: &bmo_uaudio::stream::Playback) -> bool {
+    let Some(frecuencia) = p.best_rate(48000) else {
+        cabina::fault("audio", "ninguna frecuencia suya cabe en su propio paquete", 0);
+        return false;
+    };
+    let bytes = p.bytes_per_interval(frecuencia);
+
+    // 1. El HOST primero. Ver la cabecera.
+    if !unsafe { bmo_xhci::configure_endpoint(slot, p.dci, EP_ISOCH_OUT, p.max_packet, p.interval) } {
+        cabina::fault("audio", "el xHC no configuro el endpoint isocrono, dci", p.dci as u64);
+        return false;
+    }
+    cabina::count("audio", "endpoint isocrono configurado, dci", p.dci as u64);
+
+    // 2. Y ahora el aparato. `wValue` = alt, `wIndex` = interfaz.
+    let mut vacio: [u8; 0] = [];
+    unsafe {
+        bmo_xhci::control_transfer(
+            slot,
+            A_LA_INTERFAZ,
+            REQ_SET_INTERFACE,
+            p.alt_setting as u16,
+            p.interface as u16,
+            &mut vacio,
+            false,
+        );
+    }
+    cabina::count("audio", "SET_INTERFACE, alt", p.alt_setting as u64);
+
+    // 3. La frecuencia, **solo si hay mas de una que elegir**.
+    //
+    // ** Un aparato de una sola frecuencia puede contestar STALL a esta
+    // peticion, y con razon: no hay nada que fijar. Mandarla igual dejaria un
+    // error en el log de cada arranque -- y un error que sale siempre deja de
+    // ser un error.
+    if p.rates().len() > 1 || p.continuous {
+        // Tres bytes, little-endian. UAC1 manda la frecuencia asi y no en
+        // cuatro: el cuarto byte no existe en el protocolo, no es relleno.
+        let mut hz = [
+            (frecuencia & 0xFF) as u8,
+            ((frecuencia >> 8) & 0xFF) as u8,
+            ((frecuencia >> 16) & 0xFF) as u8,
+        ];
+        unsafe {
+            bmo_xhci::control_transfer(
+                slot,
+                AL_ENDPOINT_DE_CLASE,
+                REQ_SET_CUR,
+                CTRL_FRECUENCIA,
+                p.endpoint as u16,
+                &mut hz,
+                false,
+            );
+        }
+        cabina::count("audio", "frecuencia pedida al aparato", frecuencia as u64);
+    } else {
+        cabina::count("audio", "una sola frecuencia: no hay nada que pedir", frecuencia as u64);
+    }
+
+    unsafe {
+        TUBO = Some(Tubo {
+            slot,
+            dci: p.dci,
+            frecuencia,
+            bytes_por_trama: bytes,
+            max_packet: p.max_packet,
+        });
+    }
+    cabina::bytes("audio", "TUBO ABIERTO -- bytes por trama", bytes as u64);
+    true
+}
+
+// ===================================================================
+//  A2 en marcha -- el silencio, que es lo unico que no puede sonar mal
+// ===================================================================
+
+/// Marco fisico lleno de ceros. **Uno solo, y lo apuntan todas las tramas.**
+///
+/// El silencio es el mismo silencio: no hace falta un bufer por trama. Cuando
+/// haya musica de verdad esto pasa a ser un anillo de bufers prestados (A4), y
+/// **esa es la unica diferencia** entre este bucle y el definitivo.
+static mut CEROS: u64 = 0;
+
+/// Esta el tubo empujando?
+static mut ARMADO: bool = false;
+
+/// **Cuantas tramas se encolan en cada latido del bus.**
+///
+/// El bus late cada 4 ms y una trama isocrona dura 1 ms, asi que hacen falta
+/// **cuatro** para cubrir el latido -- mas [`bmo_xhci::ISOCH_ADELANTO`] de
+/// colchon, porque un latido que llegue tarde no puede dejar el tubo seco.
+///
+/// [!] Y pasarse tampoco es gratis: cada trama de mas es latencia que el que
+/// escucha nota al parar la musica. Cuatro mas cuatro son 8 ms, que es lo que
+/// `AUDIO_MAESTRO` llama audio y no un problema.
+const TRAMAS_POR_LATIDO: usize = 4 + bmo_xhci::ISOCH_ADELANTO as usize;
+
+/// **Armar o desarmar el empuje de silencio.** `false` deja de alimentar.
+///
+/// *** ESTO NO SE ENCIENDE SOLO AL ARRANCAR, Y ES A PROPOSITO.
+///
+/// Abrir el tubo --A1-- configura y no manda nada: es seguro. Empujar tramas
+/// es trafico continuo en el bus a 250 latidos por segundo, y eso **no debe
+/// pasar en cada arranque mientras no haya nada que reproducir**.
+///
+/// Es la regla de las hojas de metal: lo que no toca nada va primero, y esto se
+/// pide **a proposito** o no ocurre.
+pub fn armar_silencio(si: bool) -> bool {
+    if unsafe { TUBO.is_none() } {
+        cabina::warn("audio", "no hay tubo abierto que armar", 0);
+        return false;
+    }
+    if si && unsafe { CEROS } == 0 {
+        let Some(f) = crate::ring0::mm::phys::alloc_frame() else {
+            cabina::fault("audio", "sin marco para el bufer de silencio", 0);
+            return false;
+        };
+        crate::ring0::mm::phys::zero_frame(f);
+        unsafe { CEROS = f };
+    }
+    unsafe { ARMADO = si };
+    cabina::count("audio", if si { "tubo ARMADO: empujando silencio" } else { "tubo callado" }, 0);
+    true
+}
+
+/// Esta armado?
+pub fn armado() -> bool {
+    unsafe { ARMADO }
+}
+
+/// **Empuja tramas y toca el timbre UNA vez.** La llama el hilo del bus.
+///
+/// # Por que el timbre va fuera del bucle
+///
+/// Tocar el timbre es un MMIO. Uno por trama serian 2.000 escrituras por segundo
+/// para mover 192 bytes cada una -- **el aviso costaria mas que el dato**. El
+/// xHC recorre el anillo entero desde donde estaba, asi que un solo timbre
+/// despues de encolar las ocho es exactamente igual de efectivo.
+pub fn latido() {
+    if !unsafe { ARMADO } {
+        return;
+    }
+    let Some(t) = tubo() else { return };
+    let ceros = unsafe { CEROS };
+    if ceros == 0 {
+        return;
+    }
+    // ** La trama mide lo que el aparato pidio, no lo que quepa en la pagina.
+    // Un `wMaxPacketSize` mas grande que la trama real es legal --el aparato
+    // acepta hasta ahi-- y mandarle de mas seria inventar muestras.
+    let largo = t.bytes_por_trama.min(t.max_packet as u32) as u16;
+    for _ in 0..TRAMAS_POR_LATIDO {
+        unsafe {
+            if !bmo_xhci::queue_isoch_out(t.slot, t.dci, ceros, largo) {
+                break;
+            }
+        }
+    }
+    unsafe { bmo_xhci::ring_doorbell(t.slot, t.dci) };
+}
+
+/// Los dos numeros que dicen si esto va bien. Ver `AUDIO_MAESTRO` parte 7.
+pub fn cuentas() -> (u64, u64) {
+    (bmo_xhci::isoch_encoladas(), bmo_xhci::isoch_tarde())
 }

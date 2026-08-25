@@ -137,7 +137,7 @@ pub(crate) enum Command<'a> {
     /// es donde se trabaja todos los dias. Contesto *"no es un comando ni una
     /// ruta"* y la prueba del paso 0 se quedo sin hacer. **Dos shells con dos
     /// vocabularios distintos son dos productos.**
-    Audio,
+    Audio(&'a [u8]),
     /// **LA RED** -- `red`, `net`, `mac`, `link`, `link`, `frames_rx`, `phy`.
     ///
     /// ** Siete palabras y no una, porque son siete PREGUNTAS distintas y una
@@ -441,7 +441,7 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // MUERTO -- y la ironia es que estaba en la linea que se escribio para
         // arreglar que `banda` fuera inalcanzable.
         b"banda" | b"ancho" => Command::Banda,
-        b"audio" | b"sonido" => Command::Audio,
+        b"audio" | b"sonido" => Command::Audio(rest),
         b"help" | b"?" | b"ayuda" => Command::Help,
         // La puerta del que llega. `start` porque es la palabra que se
         // teclea sin pensar cuando uno no sabe que teclear.

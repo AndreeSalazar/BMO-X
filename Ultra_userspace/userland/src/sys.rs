@@ -261,6 +261,22 @@ pub fn smp_despertar(cuantos: u32) -> (u32, u32) {
 /// Los OCHO numeros --canales, bits, frecuencias, wMaxPacketSize...-- van a
 /// CABINA y no aqui: por la puerta de un syscall cabe uno, y partirlos en ocho
 /// llamadas seria inventar un protocolo para un diagnostico.
+/// **Una pregunta al TUBO isocrono.** `que` es el campo; ver `AUDIO_OP_TUBO`.
+///
+/// [!] Reclama el aparato para preguntar y lo suelta despues. Es exclusivo, asi
+/// que **preguntar mientras algo suena devolveria un error** -- y eso es lo
+/// correcto: dos duenos de un endpoint isocrono no es una respuesta lenta, es
+/// audio partido.
+pub fn audio_tubo(que: u64) -> u64 {
+    let h = match invoke(CURRENT_TASK, OP_AUDIO_CLAIM, 0, 0, 0).valor() {
+        Some(h) => h,
+        None => return 0,
+    };
+    let v = invoke(h, AUDIO_OP_TUBO as u32, que, 0, 0).valor().unwrap_or(0);
+    let _ = invoke(CURRENT_TASK, OP_AUDIO_RELEASE, h, 0, 0);
+    v
+}
+
 pub fn audio_censo() -> bool {
     invoke(CURRENT_TASK, OP_AUDIO_CENSO, 0, 0, 0).value != 0
 }

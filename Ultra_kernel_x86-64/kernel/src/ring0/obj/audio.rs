@@ -101,6 +101,8 @@ pub const AUDIO_OP_BEEP: u64 = 0x02;
 pub const AUDIO_OP_VOLUME: u64 = 0x03;
 /// Callar ahora mismo.
 pub const AUDIO_OP_SILENCE: u64 = 0x04;
+/// El tubo isocrono: abrirlo, armarlo y preguntarle. Ver el ABI.
+pub const AUDIO_OP_TUBO: u64 = 0x05;
 
 /// Hay altavoz de PC (o al menos el puerto que lo controla: ver la nota del
 /// modulo -- que el puerto exista no prueba que haya un zumbador conectado).
@@ -284,6 +286,24 @@ pub fn operation(operation: u64, a0: u64, a1: u64) -> Option<u64> {
             // conversion vive en `bmo-uaudio`, que se prueba sin hardware.
             crate::ring0::dev::uaudio::set_volume(v);
             Some(v as u64)
+        }
+        // ** EL TUBO. Todo por `arg0` y no por cinco operaciones nuevas: la
+        // superficie esta congelada y esto son preguntas sobre UN aparato, que
+        // es exactamente lo que un handle de `KIND_AUDIO` ya representa.
+        AUDIO_OP_TUBO => {
+            use crate::ring0::dev::usb::audio as tubo;
+            let (encoladas, tarde) = tubo::cuentas();
+            Some(match a0 {
+                0 => tubo::tubo().is_some() as u64,
+                1 => tubo::armar_silencio(true) as u64,
+                2 => { tubo::armar_silencio(false); 1 }
+                3 => tubo::tubo().map(|t| t.bytes_por_trama as u64).unwrap_or(0),
+                4 => tubo::tubo().map(|t| t.frecuencia as u64).unwrap_or(0),
+                5 => encoladas,
+                6 => tarde,
+                7 => tubo::armado() as u64,
+                _ => 0,
+            })
         }
         AUDIO_OP_SILENCE => {
             bmo_audio::beep_ex(0, 0, 0);

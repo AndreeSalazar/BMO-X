@@ -33,6 +33,8 @@ juntas para que, si algo sale mal, se sepa de un vistazo que hay dentro.
 | 11 | `red rx` desde el escritorio | (fuera de esta hoja) | -- |
 | 12 | **`cabina radar`** | pinta el barrido, y dice si algo se escapo | orden desconocida |
 | 13 | **el audio, paso 0** | `cabina` trae los cuatro numeros del audifono | ningun aparato reproduce |
+| 14 | **el TUBO de audio (A1)** | `audio` dice `TUBO ABIERTO` | dice que no esta abierto |
+| 15 | **el silencio** | `audio silencio` -> `encoladas` SUBE, `tarde` = 0 | `tarde` sube |
 
 ⚠ **Las tres que pueden dejarte sin maquina son la 1, la 2 y la 8**, y las tres
 fallan de forma distinta: las dos primeras no arrancan, la tercera arranca y no
@@ -177,6 +179,44 @@ respuesta antes de escribir el bucle que alimenta el tubo.**
 
 [!] Y no va a sonar nada todavia: **falta `SET_INTERFACE`** (A1 de `PLAN_AUDIO`),
 que es lo unico que separa esto de que salga un sonido.
+
+## 1.6 -- ** EL TUBO, Y EL SILENCIO. La primera vez que este sistema emite algo
+
+**Que afirma**: que A1 y A2 funcionan -- que el aparato acepto ponerse en su alt,
+que el xHC configuro el endpoint isocrono, y que las tramas salen.
+
+```text
+   audio              -> tiene que decir TUBO ABIERTO, con frecuencia y
+                         bytes por trama
+   audio silencio     -> arma el empuje
+   audio              -> otra vez, y AHORA es donde se mira
+```
+
+**Lo que tiene que salir en la segunda vuelta**:
+
+```text
+   encoladas       sube sola, y rapido (250 latidos/s x 8 tramas)
+   tramas TARDE    0
+```
+
+★★ **El silencio no puede sonar mal, y esa es toda la idea.** Es la misma jugada
+que `net rx`: si el tubo aguanta ceros sin atascarse, esta vivo **sin haber
+arriesgado un solo ruido raro en tus oidos**.
+
+**Como se cae, y cada forma dice una cosa distinta**:
+
+| lo que sale | que significa |
+|---|---|
+| `TUBO ABIERTO` y `tarde` = 0 con `encoladas` subiendo | ✅ **A1 y A2 valen. El camino esta vivo** |
+| `el tubo NO esta abierto` | fallo A1: mirar `cabina` -- o el xHC no configuro, o el aparato no acepto el alt |
+| `encoladas` quieto | el latido del bus no llega, o `armar` no prendio |
+| **`tarde` sube** | el metronomo no llega. Es el numero que separa "suena bien" de "chasquea" |
+
+[!] `audio calla` lo para. Y **no se queda armado entre arranques**: no hay nada
+que persista, asi que reiniciar lo deja callado.
+
+⚠ **Ponte el audifono ANTES de `audio silencio`, no despues.** Si algo esta mal y
+sale ruido en vez de silencio, es mejor que este en la mesa que en un oido.
 
 ## 1.4 -- `placa`
 
