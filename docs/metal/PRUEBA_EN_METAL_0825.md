@@ -68,15 +68,15 @@ testigo discrepa **se dice aqui** en vez de morir en un log de Ring 0.
 | lo que sale | que significa |
 |---|---|
 | `6 fisicos / 12 hilos (2 por nucleo, MEDIDO)` y **sin** fila `[!] duda` | ✅ los cuatro testigos coinciden. El `27/54` era de la fuente vieja |
-
-★ **Y si sale la fila `[!] duda`, la orden siguiente es `cabina fallos`**, que
-dice cual de los cuatro testigos discrepo y con que numero. Ver 5.2.
 | lo mismo **con** fila `[!] duda` | el numero ya es bueno pero **un testigo sigue fuera de la fila**, y la fila dice cual |
 | **no** aparece `(N por nucleo, MEDIDO)` | la hoja 0x0B no contesto: se cayo al testigo heredado, y `fisicos` es una COPIA de `hilos`, no una division |
 | vuelve un numero imposible | ahora la fila `[!] duda` dice **por que** |
 
 [!] **La fila `[!] duda` solo sale si hay duda.** Que no salga es el resultado
 bueno, no una prueba que no corrio.
+
+★★ **Y si sale la fila `[!] duda`, la orden siguiente es `cabina fallos`**, que
+dice **cual** de los cuatro testigos discrepo y **con que numero**. Ver 5.2.
 
 ## 1.2 -- `consumo`
 
