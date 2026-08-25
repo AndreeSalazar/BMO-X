@@ -115,7 +115,23 @@ EXTS = (".md", ".rs", ".toml", ".ps1", ".py", ".c", ".h", ".txt")
 
 def tracked_files(root):
     out = subprocess.run(
-        ["git", "-C", root, "ls-files"],
+        # *** TAMBIEN LOS QUE AUN NO ESTAN COMMITEADOS (2026-08-24).
+        #
+        # ** `ls-files` a secas solo ve lo RASTREADO, y eso deja un punto
+        # ciego con forma de trampa: un fichero nuevo NO SE COMPRUEBA HASTA
+        # QUE YA ESTA COMMITEADO. O sea que el build pasa en verde, se hace
+        # el commit, y el guardian denuncia despues -- cuando la cita rota
+        # ya esta en el historial.
+        #
+        # *** Paso el mismo dia que se escribio esta linea: el test del
+        # contrato de arquitectura citaba el CONTRATO con una
+        # ruta que no resuelve, el build lo dio por bueno, y el fallo
+        # aparecio en la siguiente compilacion del dueno.
+        #
+        # `--others --exclude-standard` anade lo no rastreado SIN traerse
+        # `target/` ni lo demas que `.gitignore` ya descarta. Un guardian
+        # que solo mira el pasado avisa tarde.
+        ["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard"],
         capture_output=True, text=True, check=True,
     ).stdout.splitlines()
     return [f for f in out if f.endswith(EXTS)]
@@ -125,7 +141,23 @@ def index_basenames(root):
     """basename -> cuantas veces aparece en el repo."""
     seen = {}
     out = subprocess.run(
-        ["git", "-C", root, "ls-files"],
+        # *** TAMBIEN LOS QUE AUN NO ESTAN COMMITEADOS (2026-08-24).
+        #
+        # ** `ls-files` a secas solo ve lo RASTREADO, y eso deja un punto
+        # ciego con forma de trampa: un fichero nuevo NO SE COMPRUEBA HASTA
+        # QUE YA ESTA COMMITEADO. O sea que el build pasa en verde, se hace
+        # el commit, y el guardian denuncia despues -- cuando la cita rota
+        # ya esta en el historial.
+        #
+        # *** Paso el mismo dia que se escribio esta linea: el test del
+        # contrato de arquitectura citaba el CONTRATO con una
+        # ruta que no resuelve, el build lo dio por bueno, y el fallo
+        # aparecio en la siguiente compilacion del dueno.
+        #
+        # `--others --exclude-standard` anade lo no rastreado SIN traerse
+        # `target/` ni lo demas que `.gitignore` ya descarta. Un guardian
+        # que solo mira el pasado avisa tarde.
+        ["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard"],
         capture_output=True, text=True, check=True,
     ).stdout.splitlines()
     for f in out:
