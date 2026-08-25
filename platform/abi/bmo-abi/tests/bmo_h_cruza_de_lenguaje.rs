@@ -137,6 +137,8 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     ("BMO_INFO_TXT_EXT_NOTA", "INFO_TXT_EXT_NOTA", 0x06),
     ("BMO_INFO_CPU_HILOS", "INFO_CPU_HILOS", 0x06),
     ("BMO_INFO_CPU_NUCLEOS", "INFO_CPU_NUCLEOS", 0x07),
+    ("BMO_INFO_CPU_TOPOLOGIA_DUDA", "INFO_CPU_TOPOLOGIA_DUDA", 0x4D),
+    ("BMO_INFO_CPU_HILOS_POR_NUCLEO", "INFO_CPU_HILOS_POR_NUCLEO", 0x4E),
     ("BMO_INFO_TICKS", "INFO_TICKS", 0x0B),
     // A que velocidad va el nucleo DE VERDAD, y lo que gasta. El kernel sabia
     // medirlo y ningun programa de C podia preguntarlo: las filas existian en
@@ -280,6 +282,8 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_TXT_EXT_NOTA", s::INFO_TXT_EXT_NOTA),
         ("BMO_INFO_CPU_HILOS", s::INFO_CPU_HILOS),
         ("BMO_INFO_CPU_NUCLEOS", s::INFO_CPU_NUCLEOS),
+        ("BMO_INFO_CPU_TOPOLOGIA_DUDA", s::INFO_CPU_TOPOLOGIA_DUDA),
+        ("BMO_INFO_CPU_HILOS_POR_NUCLEO", s::INFO_CPU_HILOS_POR_NUCLEO),
         ("BMO_INFO_TICKS", s::INFO_TICKS),
     ];
     for (en_c, valor_real) in reales {

@@ -19,6 +19,8 @@ pub(crate) use dispatch::{dispatch, After};
 
 pub(crate) mod history;
 pub(crate) mod reports;
+/// Cuanto fiarse de los nucleos que ensena `reports`. Ver su cabecera.
+pub(crate) mod topologia;
 
 // -- La linea de comandos ------------------------------------------------
 

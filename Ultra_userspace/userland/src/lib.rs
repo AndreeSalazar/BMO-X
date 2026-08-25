@@ -317,6 +317,34 @@ pub const INFO_CPU_EXT_AVERIAS: u64 = 0x34;
 
 pub const INFO_CPU_HILOS: u64 = 0x06;
 pub const INFO_CPU_NUCLEOS: u64 = 0x07;
+
+/// **CUANTO FIARSE del par `INFO_CPU_NUCLEOS` / `INFO_CPU_HILOS`.** Un mapa de
+/// bits, y `0` significa *"los tres testigos dicen lo mismo"*.
+///
+/// ```text
+///    bit 0   las dos hojas de CPUID se contradicen
+///    bit 1   los hilos por nucleo NO se pudieron medir
+///    bit 2   *** el PERFIL desmiente al silicio: no es este chip
+///    bit 3   la MADT declara otros hilos que CPUID
+/// ```
+///
+/// # Por que un panel necesita esto (2026-08-25)
+///
+/// Ese dia el escritorio pinto `27 fisicos / 54 logicos` en un 6/12 y **no tenia
+/// forma de saber que dudar**: los dos campos de arriba son `u64` pelados y un
+/// numero malo se pinta igual de nitido que uno bueno.
+///
+/// *** El aviso existia --en el log del arranque, y solo si alguien tecleaba
+/// `smp`-- y ahi no lo ve nadie: **el dueno vive en el escritorio y al shell de
+/// Ring 0 no se vuelve.** Un diagnostico al que no se llega desde donde se ve el
+/// sintoma no es un diagnostico.
+pub const INFO_CPU_TOPOLOGIA_DUDA: u64 = 0x4D;
+
+/// Hilos por nucleo, **medidos** (`CPUID.0B.0:EBX`). `0` = no se pudo medir.
+///
+/// Existe porque `nucleos` se calculaba dividiendo entre un 2 escrito a mano, y
+/// con eso la comprobacion `hilos == nucleos * 2` no podia fallar nunca.
+pub const INFO_CPU_HILOS_POR_NUCLEO: u64 = 0x4E;
 pub const INFO_TAREAS_TOTAL: u64 = 0x08;
 pub const INFO_TAREAS_LISTAS: u64 = 0x09;
 /// * Quien tiene la pantalla: su `pid`, o **`0` si no la tiene nadie**.

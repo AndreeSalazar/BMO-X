@@ -391,22 +391,51 @@ que se ENSENA, no lo que se hace.**
 > **El careo existe y vive dentro de `smp`. Los paneles no lo consultan: leen el
 > perfil crudo.** El segundo testigo ya esta en la casa y no se le pregunta.
 
-### Las tres casillas, en orden
+### [X] Las tres casillas -- **HECHAS el 2026-08-25**
 
 ```
-   [ ] a  que el arranque DIGA si la MADT y el CPUID discreparon (2026-08-25)
-          -> un campo nuevo de INFO en ring0/core/report.rs
-          [!] el aviso YA se emite en smp/mod.rs, pero muere en el log de
-              arranque: al escritorio no llega
-   [ ] b  que `total_cores` se MIDA en vez de dividir entre dos (2026-08-25)
-          -> ryzen_5_5600x/topology.rs: CPUID 0x8000001E:EBX[15:8] da los
-          hilos por nucleo. Y con eso `hermanos()` pasa a PODER fallar, que
-          es el punto entero
-   [ ] c  un TOPE del perfil: un 5600X que diga 54 hilos es MALO (2026-08-25)
-          -> ryzen_5_5600x/mod.rs, donde `nucleos()` publica la topologia
-          [!] el perfil ya nombra la maquina EXACTA (ley 24). Que la nombre
-              tambien para DESMENTIRLA
+   [X] a  el careo corre EN EL ARRANQUE y llega al ESCRITORIO   (2026-08-25)
+   [X] b  `total_cores` se MIDE: CPUID.0B.0:EBX                  (2026-08-25)
+   [X] c  el perfil declara (6,12) y DESMIENTE al silicio        (2026-08-25)
 ```
+
+**a** -- El careo existia y vivia dentro de `smp::despertar()`, a la que **solo
+se llega tecleando `smp`**. Por eso no dijo nada el 25-08. Ahora corre desde
+`phase::main`, sin que nadie lo pida, y sube al escritorio por dos campos
+nuevos del ABI: `INFO_CPU_TOPOLOGIA_DUDA` (0x4D) y `INFO_CPU_HILOS_POR_NUCLEO`
+(0x4E).
+
+> Una comprobacion que hay que invocar no protege del caso en el que nadie la
+> invoca -- y ese es justo el caso en el que hace falta.
+
+**b** -- *** **El segundo testigo ya estaba dentro de la funcion y se tiraba al
+suelo.** `detect_bsp` leia la hoja 0x0B **dos veces** y descartaba las dos
+respuestas (`_smt_count`, `_core_count`) para luego coger la hoja heredada y
+dividir entre dos.
+
+[!] Y las dos lineas descartadas **ademas estaban mal**: en la hoja 0x0B el
+conteo vive en `EBX[15:0]`, y `ECX[15:8]` es el **tipo de nivel**. Leian el tipo
+creyendo que leian una cuenta. Que estuvieran descartadas es lo unico que
+impidio que se notara -- **un dato que no se usa no se comprueba nunca**. Del
+mismo tiron: el x2APIC ID se cogia de `EAX` (que es el desplazamiento) en vez de
+`EDX`. Se pudo arreglar sin riesgo porque `bsp`, `linear()` y `cpu_count` **no
+los lee nadie**.
+
+**c** -- El perfil declara `topologia_esperada: Some((6, 12))` y **no corrige:
+grita**. Corregirlo dejaria un sistema que ensena el numero bueno y esconde que
+su fuente esta rota, que es exactamente como se llego hasta aqui. Es la doctrina
+que `xsave_componentes` ya tenia escrita: se hardcodean los CONTRATOS, se le
+preguntan los HECHOS al silicio.
+
+### ⚠ Lo que esto NO arregla, y hay que decirlo
+
+**No se sabe por que el 25-08 dio 54 y el 24-08 dio 12.** Este trabajo no lo
+averigua: lo hace **visible la proxima vez**. Si vuelve a pasar, el escritorio
+dira cual de los cuatro testigos se salio de la fila, y entonces habra por donde
+empezar.
+
+★ Y el 12 del 24-08 sigue siendo lo que era: **un acierto que no se podia
+demostrar.** Ahora se podria.
 
 ### [!] Y las tres casillas destaparon un limite del guardian de casillas
 

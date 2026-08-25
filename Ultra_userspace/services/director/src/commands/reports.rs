@@ -243,7 +243,7 @@ pub(crate) fn report_consumo(s: &mut Output) {
     subregla(s, b"cpu");
     let hilos = bmo::info(bmo::INFO_CPU_HILOS);
     let vivos = bmo::info(bmo::INFO_SMP_VIVOS);
-    fila(s, b"nucleos", bmo::info(bmo::INFO_CPU_NUCLEOS), b"fisicos", b"");
+    fila(s, b"nucleos", bmo::info(bmo::INFO_CPU_NUCLEOS), b"fisicos", super::topologia::duda_nota());
     fila(s, b"hilos", hilos, b"logicos", b"");
     // `SMP_VIVOS` cuenta los APs, o sea SIN el BSP; el que mira quiere el total.
     fila_de(s, b"en pie", vivos + 1, hilos, b"`smp all` levanta los demas");
@@ -321,7 +321,10 @@ pub(crate) fn report_cpu(s: &mut Output) {
     s.dec(bmo::info(bmo::INFO_CPU_NUCLEOS));
     s.text(b" fisicos / ");
     s.dec(bmo::info(bmo::INFO_CPU_HILOS));
-    s.text(b" hilos\n");
+    s.text(b" hilos");
+    // De donde sale ese `fisicos`, y la duda si la hay. Vive fuera porque
+    // es OTRA pregunta -- y porque metido aqui este fichero cruzo L6a.
+    super::topologia::detalle(s, label);
 
     // ** QUE SABE MEDIR ESTE PERFIL, antes de ensenar ninguna medida.
     //
