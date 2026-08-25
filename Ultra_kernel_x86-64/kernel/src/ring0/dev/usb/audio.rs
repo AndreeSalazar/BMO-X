@@ -343,8 +343,23 @@ pub fn latido() {
     // acepta hasta ahi-- y mandarle de mas seria inventar muestras.
     let largo = t.bytes_por_trama.min(t.max_packet as u32) as u16;
     for _ in 0..TRAMAS_POR_LATIDO {
+        // *** LAS MUESTRAS DE VERDAD PRIMERO, Y SI NO HAY, SILENCIO **CONTADO**.
+        //
+        // Un hueco no se deja vacio: el endpoint tiene una cita cada
+        // milisegundo y no esperar es todo el trato. Lo que cambia es que **se
+        // apunta**, porque "sono un clic" y "el productor no llego a tiempo"
+        // son dos cosas distintas y solo este contador las separa.
+        let (donde, n) = match siguiente_trama(largo as u64) {
+            Some(t) => t,
+            None => {
+                if unsafe { PRESTADO.is_some() } {
+                    unsafe { HUECOS = HUECOS.wrapping_add(1) };
+                }
+                (ceros, largo)
+            }
+        };
         unsafe {
-            if !bmo_xhci::queue_isoch_out(t.slot, t.dci, ceros, largo) {
+            if !bmo_xhci::queue_isoch_out(t.slot, t.dci, donde, n) {
                 break;
             }
         }
@@ -355,4 +370,154 @@ pub fn latido() {
 /// Los dos numeros que dicen si esto va bien. Ver `AUDIO_MAESTRO` parte 7.
 pub fn cuentas() -> (u64, u64) {
     (bmo_xhci::isoch_encoladas(), bmo_xhci::isoch_tarde())
+}
+
+/// **Tramas que salieron en silencio porque el productor no llego.**
+///
+/// *** Y NO ES LO MISMO QUE `tramas tarde`, aunque las dos se oigan igual:
+///
+/// ```text
+///    tarde    el xHC no llego a su cita        -> el problema es del BUS
+///    huecos   nadie habia escrito la trama     -> el problema es de la APP
+/// ```
+///
+/// Sin separarlas, un audio que chasquea manda a mirar el driver cuando la mitad
+/// de las veces el que llega tarde es quien produce las muestras.
+static mut HUECOS: u64 = 0;
+
+/// Cuantas tramas salieron en silencio por falta de muestras.
+pub fn huecos() -> u64 {
+    unsafe { HUECOS }
+}
+
+// ===================================================================
+//  A4 -- EL BUFER PRESTADO. Cero copias, y por que SMAP no estorba
+// ===================================================================
+//
+// `AUDIO_MAESTRO` parte 4, y hay que decidirlo ANTES de escribir el primer
+// `write` porque despues cuesta deshacerlo:
+//
+//    MAL   `audio_escribir(&muestras)` -> el kernel copia 192 bytes a su
+//          anillo. Mil veces por segundo, mil cruces de puerta y mil copias
+//
+//    BIEN  la app pide un bloque, lo llena de PCM, y lo OFRECE. El aparato
+//          lee de ahi. **La app escribe donde el aparato va a leer**
+//
+// *** Y AQUI HAY UNA COSA QUE SOLO SE VE DESPUES DE SMAP:
+//
+// Desde el 25-08 Ring 0 **no puede tocar memoria de Ring 3**. Un diseno que
+// hiciera al kernel LEER las muestras del bufer de la app estaria muerto desde
+// esa manana -- daria `#PF` en la primera trama.
+//
+// ** Este no lee nada. El TRB isocrono lleva una direccion **FISICA** y quien
+// va a buscar los bytes es **el xHC por DMA**, no el CPU. El kernel solo
+// traduce una VA a su fisica una vez, al ofrecer.
+//
+//    el que lee no es el CPU  ->  SMAP no tiene nada que decir
+//
+// [!] Y eso lo hace posible que `KIND_MEMORIA` entregue marcos **contiguos**:
+// `Bloque` guarda una `fisica` y los bytes van seguidos detras. Si fueran
+// paginas sueltas haria falta un TRB por pagina y el corte no caeria en la
+// frontera de una trama.
+
+/// El bufer que una app ofrecio, ya traducido a fisica.
+#[derive(Clone, Copy)]
+struct Prestado {
+    /// El pid que lo ofrecio. Si muere, se suelta.
+    pid: u32,
+    /// La base FISICA. Los `bytes` siguientes van seguidos.
+    fisica: u64,
+    bytes: u64,
+    /// **Hasta donde ha escrito la app.** Lo mueve ella.
+    escrito: u64,
+    /// **Por donde va el tubo.** Lo mueve el latido.
+    leido: u64,
+}
+
+static mut PRESTADO: Option<Prestado> = None;
+
+/// **Adoptar el bufer de una app.** `va` y `bytes` son del bloque que ella pidio.
+///
+/// Devuelve `false` si esa VA no es suya -- que es lo que impide que una app
+/// ofrezca la memoria de otra: `fisica_de` busca en SUS bloques y en ninguno mas.
+pub fn ofrecer(pid: u32, va: u64, bytes: u64) -> bool {
+    let Some(fisica) = crate::ring0::obj::memory::fisica_de(pid, va, bytes) else {
+        cabina::warn("audio", "esa memoria no es de quien la ofrece, pid", pid as u64);
+        return false;
+    };
+    if unsafe { TUBO.is_none() } {
+        cabina::warn("audio", "no hay tubo abierto al que ofrecer", 0);
+        return false;
+    }
+    unsafe { PRESTADO = Some(Prestado { pid, fisica, bytes, escrito: 0, leido: 0 }) };
+    cabina::bytes("audio", "bufer PRESTADO al tubo, bytes", bytes);
+    true
+}
+
+/// La app dice **hasta donde ha escrito**. Es uno de los dos numeros que cruzan.
+///
+/// [!] Solo puede CRECER dentro de la vuelta. Un `escrito` que retroceda seria
+/// la app pisando lo que el aparato todavia no ha leido, y eso se oye.
+pub fn escrito(pid: u32, hasta: u64) -> bool {
+    unsafe {
+        match PRESTADO.as_mut() {
+            Some(p) if p.pid == pid && hasta <= p.bytes => {
+                p.escrito = hasta;
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Y el tubo dice **por donde va**. El otro numero.
+pub fn leido() -> u64 {
+    unsafe { PRESTADO.map(|p| p.leido).unwrap_or(0) }
+}
+
+/// Cuantos bytes hay listos y sin entregar.
+pub fn pendientes() -> u64 {
+    unsafe {
+        match PRESTADO {
+            Some(p) => p.escrito.saturating_sub(p.leido),
+            None => 0,
+        }
+    }
+}
+
+/// Soltar el prestamo. Lo llama tambien la muerte del proceso.
+pub fn soltar(pid: u32) {
+    unsafe {
+        if let Some(p) = PRESTADO {
+            if p.pid == pid {
+                PRESTADO = None;
+                cabina::count("audio", "bufer prestado SOLTADO, pid", pid as u64);
+            }
+        }
+    }
+}
+
+/// **Una trama del bufer prestado**, o `None` si no hay nada listo.
+///
+/// Devuelve la fisica de donde empieza y cuantos bytes son, y **avanza el
+/// indice**. No copia ni un byte: lo que se devuelve es una direccion.
+fn siguiente_trama(largo: u64) -> Option<(u64, u16)> {
+    unsafe {
+        let p = PRESTADO.as_mut()?;
+        let hay = p.escrito.checked_sub(p.leido)?;
+        if hay < largo {
+            // ** MEDIA TRAMA NO SE MANDA. Entregar los bytes que hay y rellenar
+            // con lo que fuera es inventar muestras -- y lo que se inventa en
+            // audio no se ve, se OYE. Mejor una trama de silencio.
+            return None;
+        }
+        let desde = p.fisica + p.leido;
+        p.leido += largo;
+        // La vuelta al principio: el bufer es circular por acuerdo con la app,
+        // que reinicia su `escrito` al mismo tiempo.
+        if p.leido >= p.bytes {
+            p.leido = 0;
+        }
+        Some((desde, largo as u16))
+    }
 }

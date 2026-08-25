@@ -20,7 +20,7 @@
 | **1** -- `SET_INTERFACE` | poner el alt que trae el endpoint | ✅ **HECHO 25-08**, sin ejecutar |
 | **2** -- el TRB isocrono | mandar silencio | ✅ **escrito 25-08**, sin ejecutar |
 | **3** -- WAV | PCM en un sobre. Cero decodificador | ✅ **HECHO 25-08**, 12 pruebas |
-| **4** -- el bufer prestado | `MEM_OP_OFRECER` y dos indices | ⛔ falta |
+| **4** -- el bufer prestado | dos indices, y CERO copias | ✅ **HECHO 25-08**, sin ejecutar |
 | **5** -- MP3 | encima del mismo tubo | ⛔ falta, **y va el ultimo** |
 
 ★★ **Y la fila que importa cambio el 25-08: el camino entero esta escrito.**
@@ -156,10 +156,68 @@ en `u64` que cada largo quepa -- que lo escribe el fichero, o sea otro.
 variante habria sido la puerta por la que entra el resampler, que la parte 8 del
 maestro rechaza por escrito.
 
-## ⛔ A4 -- el bufer prestado
+## [X] A4 -- el bufer prestado -- **HECHO el 25-08, ANTES de MP3**
 
-`MEM_OP_OFRECER` y dos indices. Puede hacerse a la vez que el A5; lo que no puede
-es hacerse mucho despues, o el bucle nacera copiando.
+La parte 4 del maestro avisaba: *"si esto se hace en el paso 3, nace bien. Si se
+hace despues, **hay que deshacer una copia**"*. Se hizo antes.
+
+```text
+   MAL   `audio_escribir(&muestras)` -> el kernel copia 192 bytes a su anillo.
+         Mil veces por segundo, mil cruces de puerta y mil copias
+   BIEN  la app pide un bloque, lo llena de PCM y lo OFRECE.
+         **La app escribe donde el aparato va a leer**
+```
+
+### *** Y AQUI HAY ALGO QUE SOLO SE VE DESPUES DE SMAP
+
+Desde el 25-08 Ring 0 **no puede tocar memoria de Ring 3**. Un diseno que hiciera
+al kernel **leer** las muestras del bufer de la app estaria muerto desde esa
+misma manana: `#PF` en la primera trama.
+
+★★ **Este no lee nada.** El TRB isocrono lleva una direccion **FISICA**, y quien
+va a buscar los bytes es **el xHC por DMA** -- no el CPU. El kernel solo traduce
+una VA a su fisica **una vez**, al ofrecer.
+
+> **El que lee no es el CPU, asi que SMAP no tiene nada que decir.**
+
+[!] Y lo hace posible que `KIND_MEMORIA` entregue marcos **contiguos**: `Bloque`
+guarda una `fisica` y los bytes van seguidos detras. Con paginas sueltas haria
+falta un TRB por pagina y el corte no caeria en la frontera de una trama.
+
+### Los dos numeros que cruzan, y ninguno mas
+
+```text
+   escrito   lo mueve la APP:   "he llenado hasta aqui"
+   leido     lo mueve el TUBO:  "voy por alla"
+```
+
+** `escrito` se comprueba contra el tamano del bloque, y el tamano **lo dice el
+bloque, no la app**: preguntarselo a ella seria dejar que declare un tamano que
+no tiene. Y `fisica_de` busca en **sus** bloques y en ninguno mas, que es lo que
+impide ofrecer la memoria de otro.
+
+### *** MEDIA TRAMA NO SE MANDA
+
+Si hay menos bytes de los que pide una trama, **no se entrega lo que hay
+rellenando el resto**: sale una trama de silencio y se cuenta. Inventar muestras
+no se ve -- **se oye**.
+
+### Y el tercer contador, que separa dos culpas
+
+```text
+   tarde    el xHC no llego a su cita       -> el problema es del BUS
+   huecos   nadie escribio la trama         -> el problema es de la APP
+```
+
+★ Los dos se oyen igual: un clic. **Sin separarlos, un audio que chasquea manda a
+mirar el driver cuando la mitad de las veces el que llega tarde es quien
+produce.** Los dos salen en `audio`, con su etiqueta al lado.
+
+### Y se suelta al morir
+
+`revoke_all` suelta el prestamo. Sin eso, **el aparato seguiria leyendo por DMA
+marcos de un proceso que ya no existe** -- que es peor que un fallo: es un ruido
+que no para y que no tiene dueno a quien pedirle que pare.
 
 ## ⛔ A5 -- MP3, y **por que va el ultimo aunque sea lo que se pidio**
 
@@ -200,9 +258,9 @@ todavia no hay decodificador"* -- dos respuestas que mandan a sitios distintos.
    --------------------------------------------------------------------------
    [X] A1  SET_INTERFACE               hecho, sin ejecutar
    [X] A2b el silencio, a peticion     hecho, sin ejecutar
+   [X] A4  el bufer prestado           hecho ANTES de MP3, que era el aviso
    --------------------------------------------------------------------------
-   A4  el bufer prestado               a la vez que A5, no despues
-   A5  MP3                             el ultimo, y sin rehacer nada
+   A5  MP3                             lo unico que queda, y sin rehacer nada
 ```
 
 ★★ **Lo que separa hoy de que suene ya no es codigo: es un ARRANQUE.** Todo el

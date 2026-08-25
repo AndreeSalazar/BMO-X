@@ -297,6 +297,11 @@ pub fn revoke_all(pid: u32) {
     // pedirle que lo quite. Un pitido continuo que solo para reiniciando es la
     // maquina de rehen, igual que el teclado secuestrado, con otro aparato.
     crate::ring0::obj::audio::process_died(pid);
+    // ** Y el bufer que le hubiera prestado al tubo de audio. Sin esto, el
+    // aparato seguiria leyendo por DMA marcos de un proceso que ya no existe --
+    // que es peor que un fallo: es un ruido que no para y que no tiene dueno a
+    // quien pedirle que pare.
+    crate::ring0::dev::usb::audio::soltar(pid);
     // Sus bloques de memoria no hay que desmapearlos --el espacio entero se
     // destruye--, pero SI hay que soltar el contador de peticiones: sin esto un
     // pid reutilizado heredaria las del muerto y no podria pedir nada.

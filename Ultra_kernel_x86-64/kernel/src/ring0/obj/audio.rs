@@ -302,6 +302,29 @@ pub fn operation(operation: u64, a0: u64, a1: u64) -> Option<u64> {
                 5 => encoladas,
                 6 => tarde,
                 7 => tubo::armado() as u64,
+                // ** A4: el bufer prestado. `a1` lleva el dato cuando hace falta.
+                8 => {
+                    // Ofrecer: `a1` es la VA del bloque. Los bytes los dice el
+                    // propio bloque -- preguntarselos a la app seria dejar que
+                    // ella declare un tamano que no tiene.
+                    let pid = crate::ring0::task::scheduler::current_pid();
+                    match crate::ring0::obj::memory::bytes_de_bloque(pid, a1) {
+                        Some(n) => tubo::ofrecer(pid, a1, n) as u64,
+                        None => 0,
+                    }
+                }
+                9 => {
+                    let pid = crate::ring0::task::scheduler::current_pid();
+                    tubo::escrito(pid, a1) as u64
+                }
+                10 => tubo::leido(),
+                11 => tubo::pendientes(),
+                12 => tubo::huecos(),
+                13 => {
+                    let pid = crate::ring0::task::scheduler::current_pid();
+                    tubo::soltar(pid);
+                    1
+                }
                 _ => 0,
             })
         }
