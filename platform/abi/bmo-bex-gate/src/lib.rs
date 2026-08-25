@@ -514,6 +514,67 @@ pub mod reloc {
     pub const ADDEND: usize = 16;
 }
 
+/// **CABE ESTA RELOCATION DENTRO DE LA SECCION QUE DICE PARCHEAR?**
+///
+/// # Por que esta regla vive AQUI y no en el cargador (2026-08-25)
+///
+/// El toolchain juzga un `.bex` con DOS capas --`revisar()` y
+/// `bmo_abi::bef::validator`-- y el cargador del kernel solo con la primera.
+/// Esta comprobacion vivia unicamente en la segunda, o sea que **un `.bex`
+/// copiado a mano al FAT32 entraba sin que nadie mirara sus relocations**.
+///
+/// La respuesta obvia era anadirle la comprobacion al kernel. Es la
+/// equivocada: serian **dos copias de la misma decision**, que es exactamente
+/// el problema que `bmo-bex-gate` se creo el 2026-08-10 para terminar.
+///
+/// ```text
+///    la REGLA        vive aqui, una vez, sin alloc y sin dependencias
+///    los DATOS       los pone cada llamante, porque cada uno tiene otros
+/// ```
+///
+/// [!] Y hacen falta los dos, porque `revisar()` **no puede** hacerlo: en el
+/// kernel recibe solo el PROLOGO del fichero, y la tabla de relocations vive
+/// mucho mas alla --la de DOOM son 30.840 bytes al final--. No es que no se
+/// quisiera: es que ahi todavia no estan esos bytes. Por eso la regla es una
+/// funcion suelta y no una linea mas dentro de `revisar`.
+///
+/// # Que pasa si no se comprueba
+///
+/// Las secciones se colocan **seguidas** desde `USER_IMAGE_BASE`, asi que un
+/// `offset` mas grande que su seccion no se sale de la imagen: **cae en la
+/// SIGUIENTE**. El cargador comprueba que el destino este dentro de la pagina
+/// que esta parcheando --lo esta-- y escribe.
+///
+/// > Una reloc que dice `.data + 0x9000` en una `.data` de 0x400 no falla:
+/// > **acierta en otra seccion.** Y como el hash de cada seccion se cierra
+/// > ANTES de parchear, tampoco lo caza el hash.
+///
+/// No es una fuga fuera del proceso --el marco es suyo-- pero si es un
+/// programa que se corrompe a si mismo en silencio, que es la clase de fallo
+/// que tarda semanas en atribuirse.
+///
+/// # Los parametros, y por que `mem` y `fichero` son dos
+///
+/// Una `.bss` ocupa en memoria y no en el fichero, y una `.data` con relleno
+/// tiene `mem_size > file_size`. Se parchea sobre lo que hay **en memoria**,
+/// asi que manda `mem`; se pasa `fichero` porque una seccion cuyo `mem` fuera
+/// menor ya seria invalida y aqui se ve gratis.
+///
+/// `parche` son los bytes que la relocation escribe: 8 para `SeccionAbs64`.
+pub fn reloc_cabe(offset: u64, parche: u64, fichero: u64, mem: u64) -> bool {
+    // El tope es el mayor de los dos: `validator` lo hace asi desde el
+    // principio y aqui se conserva el mismo criterio A PROPOSITO -- dos jueces
+    // que dan veredictos distintos sobre el mismo fichero son peor que uno.
+    let tope = if mem > fichero { mem } else { fichero };
+    match offset.checked_add(parche) {
+        // ** El desbordamiento es un NO, no un panico. `offset` viene del
+        // fichero, o sea de fuera: `u64::MAX` es un valor que alguien puede
+        // escribir, y en `release` un `+` normal daria la vuelta y diria que si.
+        None => false,
+        Some(fin) => fin <= tope,
+    }
+}
+
 /// Bytes que ocupa una entrada de la tabla de secciones.
 pub const SECTION_ENTRY_SIZE: usize = 48;
 

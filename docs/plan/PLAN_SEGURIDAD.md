@@ -211,16 +211,105 @@ casillas. Y las dos veces la comprobacion estaba una etapa mas abajo.
 > **Un `grep` que no encuentra prueba que no esta AHI. No prueba que no este.**
 
 **Lo que SI queda abierto, y es la mitad de verdad de esta casilla**: el que no
-lo usa es **el kernel**. El cargador admite un `.bex` sin pasarlo por el mismo
-juicio que lo emitio, asi que un fichero que no salio de este toolchain --uno
-copiado a mano al FAT32-- entra por un camino que nadie verifico.
+lo usa es **el kernel**.
 
-**Que la bloquea**: nada tecnico. `bmo-verify` delega en `bmo-abi::bef::validator`,
-que el kernel ya enlaza.
+---
 
-**Como se sabe que quedo hecha**: se corrompe un `.bex` **ya escrito** en el disco
-y el **cargador** lo rechaza nombrando la seccion mala -- no el compilador, que
-ese caso ya lo cubre.
+### [X] C5.1 -- las relocations, juzgadas al CARGAR -- **HECHA el 25-08**
+
+Al abrirlo, la casilla resulto estar mal planteada **otra vez**, y en la
+direccion contraria a la primera.
+
+**Lo que se creia**: *"el kernel no llama a `bmo-verify`; hay que cablearselo."*
+
+**Lo que hay**: el kernel **no puede** llamarlo --`bmo-verify` delega en
+`bmo_abi::bef::validator`, que usa `alloc`, y en Ring 0 no hay a quien pedirle
+memoria-- y eso **ya estaba resuelto el 2026-08-10**: existe `bmo-bex-gate`, sin
+`alloc` y sin dependencias, que es el juez comun. El kernel lo llama. Los dos
+gates comparten juez.
+
+★ Asi que el hueco no era *"el kernel no verifica"*. Era mas fino y mas concreto:
+
+```text
+   al EMITIR    bmo_bex_gate::revisar()  +  validator::validate()   DOS capas
+   al CARGAR    bmo_bex_gate::revisar()                             UNA
+```
+
+### *** Y en la capa que falta habia UNA comprobacion que importa
+
+De las catorce familias que `validator` anade, trece producen **un programa
+roto**, no un kernel comprometido. La que no:
+
+> **`validate_reloc_section`: que `offset + 8` quepa dentro de la seccion que la
+> relocation dice parchear.**
+
+[!] Y lo que la hace grave es que **no se sale de la imagen**: las secciones se
+colocan seguidas desde `USER_IMAGE_BASE`, o sea que un offset pasado de rosca
+**cae dentro de la SIGUIENTE**. La unica comprobacion que el cargador tenia
+--*"cae en la pagina que estoy parcheando"*-- se cumplia, y escribia.
+
+```text
+   una reloc que dice `.data + 0x9000` en una `.data` de 0x400
+      no falla: ACIERTA EN OTRA SECCION
+```
+
+Y el hash tampoco lo caza: el de cada seccion **se cierra antes de parchear**.
+
+** No es una fuga fuera del proceso --el marco es suyo, y el write esta acotado
+a la pagina-- pero si es un programa que se corrompe a si mismo en silencio, que
+es la clase de fallo que tarda semanas en atribuirse a nada.
+
+### La regla se escribio en el GATE, y no en el cargador
+
+Anadirle la comprobacion al kernel era lo obvio y era lo equivocado: serian
+**dos copias de la misma decision**, que es el problema que `bmo-bex-gate` se
+creo para terminar.
+
+```text
+   la REGLA    `gate::reloc_cabe`, una vez, sin alloc y sin dependencias
+   los DATOS   los pone cada llamante, porque cada uno tiene otros
+```
+
+[!] Y hacen falta los dos, porque `revisar()` **no puede** hacerlo: en el kernel
+recibe solo el **prologo** del fichero, y la tabla de relocations vive mucho mas
+alla --la de DOOM son 30.840 bytes--. No es que no se quisiera: ahi todavia no
+estan esos bytes.
+
+### ⚠ Y una tercera copia que NO se junto, a proposito
+
+`validator` sigue con su version de la regla. Delegar habria hecho que
+`bmo-abi` dependiera de `bmo-bex-gate`, y su `Cargo.toml` lo prohibe por escrito:
+
+> *"No es dependencia de la libreria -- **el contrato no depende de la puerta**."*
+
+Delegar habria invertido esa flecha en silencio. Asi que las dos copias siguen,
+**atadas por una prueba** (`tests/gate_y_validador_no_se_separan.rs`) que le hace
+la misma pregunta a las dos y exige la misma respuesta.
+
+> Cuando la arquitectura no deja juntar dos copias de una decision, lo que queda
+> no es confiar: es **atarlas por fuera**.
+
+### *** LA VERIFICACION QUE MAS VALIO: no rechaza nada, y por UN BYTE
+
+Antes de cablear la regla se midieron **todos los `.bex` del arbol** contra ella
+--los 5 que el kernel EMBEBE (que no pasan por el escritor) y los 19 de
+staging--. Ninguno se rechaza. Pero la mas ajustada sale asi:
+
+```text
+   .data de doom.bex     151.560 bytes = 0x25008
+   la reloc #706         offset 0x25000, ocho bytes, acaba en 0x25008
+   holgura               CERO
+```
+
+★★ **Un `<` en vez de un `<=` no habria fallado ninguna prueba: habria dejado de
+cargar DOOM.** Y el sintoma no seria *"relocation invalida"*, seria que el
+programa mas grande del arbol deja de arrancar por un byte. Esos numeros estan
+hoy dentro de la prueba del gate, para que si alguien afila la regla se entere
+antes de llegar al Ryzen.
+
+**Como se sabe que quedo hecha**: un `.bex` con una reloc fuera de su seccion es
+rechazado **por el cargador** nombrando el offset, y no por el compilador --que
+ese caso ya lo cubria--.
 
 ## C6 -- los parsers de dispositivo no tienen sonda
 

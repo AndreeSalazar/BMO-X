@@ -353,3 +353,78 @@ fn los_recursos_no_cuentan_para_lo_que_hay_que_leer() {
         "el millon de bytes de recursos NO hay que traerlos para ejecutar"
     );
 }
+
+// -- ** `reloc_cabe`: la regla que el cargador no tenia (2026-08-25) ---------
+//
+// Cinco casos, y el que importa es el tercero: **no se sale de la imagen, se
+// mete en la seccion de al lado.** Ese es el que el cargador dejaba pasar,
+// porque su unica comprobacion era "cae en la pagina que estoy parcheando", y
+// caia.
+
+/// El caso bueno, y el borde exacto: ocho bytes que acaban justo en el final de
+/// la seccion SI caben.
+///
+/// # *** ESTE BORDE NO ES TEORICO: ES DOOM, Y NO SOBRA NI UN BYTE
+///
+/// Se midieron las 1.285 relocations de `doom.bex` contra esta regla antes de
+/// cablearla, para saber si rechazaba algo que hoy funciona. Ninguna. Pero la
+/// mas ajustada sale asi:
+///
+/// ```text
+///    .data de DOOM        151.560 bytes = 0x25008
+///    la reloc #706        offset 0x25000, ocho bytes, acaba en 0x25008
+///    holgura              CERO
+/// ```
+///
+/// > **Un `<` en vez de un `<=` no habria fallado una prueba: habria dejado de
+/// > cargar DOOM.** Y el sintoma no seria "relocation invalida", seria que el
+/// > programa mas grande del arbol deja de arrancar por un byte.
+///
+/// El codegen pone punteros al final de `.data` porque es donde caen; que la
+/// ultima acabe justo en el limite no es casualidad, es lo normal.
+#[test]
+fn una_reloc_que_acaba_justo_en_el_borde_cabe() {
+    assert!(super::reloc_cabe(0x3F8, 8, 0x400, 0x400), "0x3F8 + 8 = 0x400, y la seccion son 0x400");
+    assert!(super::reloc_cabe(0, 8, 0x400, 0x400));
+    // Los numeros de verdad de `doom.bex`, reloc #706. Si esto se pone rojo,
+    // DOOM no arranca.
+    assert!(
+        super::reloc_cabe(0x25000, 8, 0x25008, 0x25008),
+        "la reloc mas ajustada de DOOM: holgura CERO y es legal"
+    );
+}
+
+/// Un byte mas alla del borde NO cabe. Es el reverso del de arriba y va al lado
+/// a proposito: los dos juntos fijan el `<=` y ninguno de los dos solo lo hace.
+#[test]
+fn un_solo_byte_de_mas_no_cabe() {
+    assert!(!super::reloc_cabe(0x3F9, 8, 0x400, 0x400), "acabaria en 0x401");
+}
+
+/// *** EL CASO QUE ESTO EXISTE PARA CAZAR.
+///
+/// Una `.data` de 0x400 con una reloc en 0x9000. No se sale de la imagen: las
+/// secciones van seguidas, asi que **cae dentro de otra**. El cargador
+/// comprobaba que el destino estuviera en la pagina que estaba parcheando --lo
+/// estaba-- y escribia ocho bytes en la seccion del vecino.
+#[test]
+fn una_reloc_que_apunta_a_la_seccion_de_al_lado_no_cabe() {
+    assert!(!super::reloc_cabe(0x9000, 8, 0x400, 0x400));
+}
+
+/// Una `.bss` no ocupa en el fichero y si en memoria, y se parchea sobre lo que
+/// hay EN MEMORIA. Con el tope puesto en `file_size` esto diria que no, y
+/// rechazaria programas correctos.
+#[test]
+fn manda_el_tamano_en_memoria_y_no_el_del_fichero() {
+    assert!(super::reloc_cabe(0x100, 8, 0, 0x1000), "una .bss: 0 en fichero, 0x1000 en memoria");
+}
+
+/// **El desbordamiento es un NO, no un panico.** `offset` viene del fichero, o
+/// sea de fuera: `u64::MAX` es un valor que alguien puede escribir a mano, y un
+/// `+` normal en `release` daria la vuelta y contestaria que SI cabe.
+#[test]
+fn un_offset_imposible_no_da_la_vuelta() {
+    assert!(!super::reloc_cabe(u64::MAX, 8, 0x400, 0x400));
+    assert!(!super::reloc_cabe(u64::MAX - 3, 8, u64::MAX, u64::MAX));
+}
