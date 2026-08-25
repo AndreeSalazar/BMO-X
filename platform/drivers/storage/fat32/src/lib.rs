@@ -191,6 +191,11 @@ pub fn mount(dev: &'static dyn BlockDevice, escribible: bool, part_lba: u64) -> 
     let total = bpb.total_sectors;
     if total <= data_start { return None; }
     let max_cluster = (total - data_start) / spc as u32 + 1;
+    // ** Y EL RAIZ TAMBIEN VIENE DEL DISCO. Es el quinto productor y el mas
+    // facil de olvidar porque se lee una sola vez, al montar -- pero un
+    // `root_cluster` de 0 o 1 en el BPB manda a leer un LBA cualquiera en la
+    // PRIMERA operacion que se haga con el volumen.
+    if bpb.root_cluster < 2 || bpb.root_cluster > max_cluster { return None; }
     Some(FatVolume { dev, escribible, part_lba, fs_type: FsType::Fat32, bytes_per_sector: bpb.bytes_per_sector, sectors_per_cluster: spc,
         num_fats, fat_start, fat_size_sectors, data_start, root_cluster: bpb.root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512], fat_cache_lba: SIN_CACHE })
 }
@@ -387,7 +392,39 @@ impl FatVolume {
     /// necesita para diagnostico.
     pub fn partition_lba(&self) -> u64 { self.part_lba }
 
+    /// **Existe este cluster en este volumen?**
+    ///
+    /// # *** LO QUE ESTO IMPIDE, Y ESTABA VIVO (auditoria 2026-08-24)
+    ///
+    /// Los numeros de cluster **vienen del disco**, y el disco puede ser de
+    /// otro. La numeracion de FAT empieza en 2 --el 0 y el 1 estan reservados--
+    /// asi que [`cluster_to_lba`](Self::cluster_to_lba) hace `cluster - 2`:
+    ///
+    /// ```text
+    ///    una entrada de directorio con first_cluster = 0
+    ///      -> 0 - 2 da la vuelta al contador: 0xFFFF_FFFF_FFFF_FFFE
+    ///      -> por sectores_por_cluster, vuelve a dar la vuelta
+    ///      -> y sale un LBA CUALQUIERA de ese disco
+    /// ```
+    ///
+    /// ** El camino de ESCRITURA ya lo comprobaba (`escribir.rs`, `cluster < 2
+    /// || cluster > max_cluster`). El de LECTURA no -- y leer un sector
+    /// arbitrario no rompe nada visible: **devuelve datos de otra particion**
+    /// como si fueran del fichero que se pidio.
+    ///
+    /// *** Se comprueba en los CINCO SITIOS DONDE NACE un cluster --la cadena
+    /// de la FAT, las dos clases de entrada de directorio y el `root_cluster`
+    /// del BPB-- y no en `cluster_to_lba`, que tiene dieciocho llamantes y
+    /// devuelve un `u64` que no puede decir que no. Cerrar en el origen es
+    /// cuatro comprobaciones; cerrar en el destino serian dieciocho.
+    #[inline]
+    fn cluster_valido(&self, cluster: u32) -> bool {
+        cluster >= 2 && cluster <= self.max_cluster
+    }
+
+    /// [!] **PRECONDICION: `cluster_valido(cluster)`.** Ver ahi por que.
     fn cluster_to_lba(&self, cluster: u32) -> u64 {
+        debug_assert!(self.cluster_valido(cluster), "cluster fuera de rango en cluster_to_lba");
         self.data_start as u64 + (cluster as u64 - 2) * self.sectors_per_cluster as u64
     }
 
@@ -403,6 +440,11 @@ impl FatVolume {
         match entry {
             0 => None,
             n if n >= 0x0FFF_FFF7 => None,
+            // ** EL TOPE, que faltaba. Un `1` o un numero mayor que los clusters
+            // que este volumen tiene son los dos casos que `cluster_to_lba`
+            // convierte en un LBA de cualquier sitio. Una FAT corrupta --o
+            // fabricada-- los trae, y hasta hoy pasaban.
+            n if !self.cluster_valido(n) => None,
             n => Some(n),
         }
     }
@@ -463,8 +505,17 @@ impl FatVolume {
                         return Some(EntradaDir {
                             lba: lba + s,
                             offset: i * 32,
-                            first_cluster: (de.first_cluster_hi as u32) << 16
-                                | de.first_cluster_lo as u32,
+                            first_cluster: {
+                                // Los dos medios vienen del disco. Un cero aqui
+                                // es un fichero vacio legitimo; cualquier otro
+                                // valor fuera de rango es basura, y se corta.
+                                let c = (de.first_cluster_hi as u32) << 16
+                                    | de.first_cluster_lo as u32;
+                                if c != 0 && !self.cluster_valido(c) {
+                                    return None;
+                                }
+                                c
+                            },
                             size: de.file_size,
                         });
                     }
@@ -507,6 +558,9 @@ impl FatVolume {
                                     &*(self.buf[sec_offset..].as_ptr() as *const ExFatStreamEntry)
                                 };
                                 let first_cluster = stream.first_cluster;
+                                if first_cluster != 0 && !self.cluster_valido(first_cluster) {
+                                    return None;
+                                }
                                 let name_len = stream.name_length as usize;
                                 let data_len = stream.valid_data_length as u32;
                                 // Next entry should be Filename (0xC1)

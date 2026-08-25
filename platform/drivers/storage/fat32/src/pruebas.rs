@@ -842,3 +842,60 @@ fn sin_escritor_no_se_guarda() {
     let r = v.save_file_in_dir(2, &name("NOPE    TXT"), b"x");
     assert!(matches!(r, Err(WriteError::ReadOnly)), "{r:?}");
 }
+
+// ------------------------------------------------------------------------
+//  *** LOS CLUSTERS QUE VIENEN DEL DISCO Y NO EXISTEN (auditoria 2026-08-24)
+// ------------------------------------------------------------------------
+
+/// **Un cluster 0 o 1 no puede convertirse en un LBA.**
+///
+/// La numeracion de FAT empieza en 2, asi que `cluster_to_lba` hace
+/// `cluster - 2`. Con un 0 eso da la vuelta al contador y sale un sector
+/// **cualquiera del disco** -- que despues se devuelve como si fuera el
+/// contenido del fichero que se pidio.
+///
+/// ** No es un fallo hipotetico de un disco roto: los numeros de cluster los
+/// escribe QUIEN FORMATEO EL VOLUMEN, y ese puede no ser esta maquina.
+#[test]
+fn los_clusters_reservados_no_son_clusters() {
+    let (_g, v) = volumen();
+    assert!(!v.cluster_valido(0), "el 0 esta reservado");
+    assert!(!v.cluster_valido(1), "el 1 esta reservado");
+    assert!(v.cluster_valido(2), "el 2 es el primero de verdad");
+}
+
+/// Y por arriba: mas alla de los clusters que el volumen TIENE.
+#[test]
+fn un_cluster_que_no_existe_se_rechaza() {
+    let (_g, v) = volumen();
+    let ultimo = v.max_cluster;
+    assert!(v.cluster_valido(ultimo), "el ultimo tiene que valer");
+    assert!(!v.cluster_valido(ultimo + 1), "uno mas alla no existe");
+    assert!(!v.cluster_valido(u32::MAX), "y el tope tampoco");
+}
+
+/// [!] Y la cadena de la FAT tampoco entrega uno imposible.
+///
+/// Es el productor que mas veces se recorre --una vez por cluster de cada
+/// fichero-- y por eso el tope va DENTRO de `read_fat_entry` y no en cada
+/// bucle que la llama.
+#[test]
+fn la_cadena_de_la_fat_no_entrega_un_cluster_imposible() {
+    let (_g, mut v) = volumen();
+    // Se envenena la entrada del cluster 2 con un numero que no existe pero
+    // que NO es una marca de fin de cadena (aquellas son >= 0x0FFF_FFF7).
+    let fat_lba = v.fat_start as u64 + v.partition_lba();
+    let mut sector = [0u8; 512];
+    assert!(v.dev.read(fat_lba, 1, &mut sector).is_ok());
+    let veneno: u32 = 0x00FF_FFF0;
+    assert!(veneno < 0x0FFF_FFF7, "el veneno tiene que parecer un cluster");
+    sector[8..12].copy_from_slice(&veneno.to_le_bytes());
+    assert!(v.dev.write(fat_lba, 1, &sector).is_ok());
+    v.fat_cache_lba = SIN_CACHE;
+
+    assert_eq!(
+        v.read_fat_entry(2),
+        None,
+        "*** la cadena entrego un cluster que este volumen no tiene"
+    );
+}
