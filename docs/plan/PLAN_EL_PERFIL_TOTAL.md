@@ -170,7 +170,16 @@ contra los que da Windows en la misma maquina y el mismo cable.**
 
 # 4. LOS OTROS PERFILES QUE ESTA MAQUINA ADMITE
 
-## 4.1 -- Sonido de verdad: transferencias isocronas
+## 4.1 -- ⚠ Sonido de verdad: transferencias isocronas -- **SIGUE PENDIENTE (25-08)**
+
+> Se relee el 2026-08-25 y **no ha cambiado nada**: `bmo-xhci` sabe control e
+> interrupt, y reproducir sigue pidiendo **isocronas**. Es el escalon 6 y es lo
+> unico de la escalera que no lo bloquea otra cosa: se puede hacer hoy.
+>
+> ★ Y lo que compra no es solo oir. Las isocronas son transferencias **con
+> presupuesto de tiempo**, o sea la primera vez que este sistema tiene que
+> cumplir un PLAZO. Eso ejercita el planificador de una forma que nada mas lo
+> hace, y ese ejercicio es lo que hace falta antes de que llegue el video.
 
 Hoy el volumen del audifono se manda por control transfer. **Reproducir pide
 isocronas**, que `bmo-xhci` no tiene: sabe control e interrupt.
@@ -264,7 +273,11 @@ configura no transmite: un error no puede molestar a nadie mas de la red.
    3. el asistente local            semanas       la app insignia
    4. KIND_RED + TX                 semanas       la primera trama que SALE
    5. smoltcp en Ring 3             semanas       ping, y la medida contra Windows
-   6. isocronas en xHCI             semanas       suena, y hay PLAZOS que cumplir
+   6. isocronas en xHCI             semanas       *** EL AUDIO. Hoy BMO-X
+                                                  CONTROLA EL VOLUMEN Y NO
+                                                  PUEDE EMITIR UNA MUESTRA.
+                                                  ~400 lineas en `bmo-xhci`,
+                                                  y trae los PLAZOS
    7. la IOMMU                      ?             *** NUEVO. Ver 5.2
    ---------------------------------------------------------------------
    8. criptografia                  ** YA NO SON MESES: 6 de 9 piezas puestas

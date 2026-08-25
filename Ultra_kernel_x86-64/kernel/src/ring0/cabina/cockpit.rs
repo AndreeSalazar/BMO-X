@@ -343,6 +343,11 @@ pub const CABINA_TICK: u64 = 0x07;
 /// De que INTENTO salio el evento. `0` = de ninguno. Ver `bmo-abi`: es lo que
 /// permite que la ventana de Ring 3 filtre por ACCION y no solo por gravedad.
 pub const CABINA_ATTEMPT: u64 = 0x08;
+// ** EL BARRIDO. Ver `cabina/radar.rs`: cuenta lo que el anillo pierde.
+pub const CABINA_BARRIDO_CUENTA: u64 = 0x10;
+pub const CABINA_BARRIDO_ULTIMO: u64 = 0x11;
+pub const CABINA_VENTANA: u64 = 0x12;
+pub const CABINA_CLASES_FUERA: u64 = 0x13;
 
 /// Que texto se pide en `TASK_OP_CABINA_TEXTO`.
 pub const CABINA_TXT_MODULE: u64 = 0x00;
@@ -358,11 +363,36 @@ pub fn disponibles() -> u64 {
 ///
 /// Devuelve `None` para un campo que no existe, que el syscall traduce a "no
 /// soportado" -- y no 0, que seria indistinguible de un evento con valor cero.
+/// **El `seq` mas bajo que sigue dentro del anillo.**
+///
+/// Todo evento con un `seq` menor que este existio y **ya no se puede leer**.
+/// Con menos de 48 eventos desde el arranque no se ha caido nada todavia, y
+/// entonces la ventana empieza en el 1.
+///
+/// [!] `EV_SEQ` es el ULTIMO entregado, no el siguiente. Con 48 eventos justos,
+/// el mas viejo es el `1` -- y un `+1` de mas aqui diria que el primero se cayo
+/// cuando sigue ahi.
+fn primer_seq_visible() -> u64 {
+    let total = event_total();
+    if total <= super::ring::EVENT_RING as u64 {
+        1
+    } else {
+        total - super::ring::EVENT_RING as u64 + 1
+    }
+}
+
 pub fn campo(campo: u64, n: u64) -> Option<u64> {
     match campo {
         CABINA_TOTAL => Some(event_total()),
         CABINA_LOST => Some(event_lost()),
         CABINA_AVAILABLE => Some(disponibles()),
+        // ** LOS CUATRO DEL BARRIDO. Van ANTES del `_`, que resuelve un evento
+        // del anillo: estos NO son de un evento, son de todos los que hubo --
+        // incluidos los que el anillo ya no tiene.
+        CABINA_BARRIDO_CUENTA => Some(super::radar::cuenta((n >> 8) as usize, (n & 0xFF) as usize)),
+        CABINA_BARRIDO_ULTIMO => Some(super::radar::ultimo((n >> 8) as usize, (n & 0xFF) as usize)),
+        CABINA_VENTANA => Some(primer_seq_visible()),
+        CABINA_CLASES_FUERA => Some(super::radar::clases_fuera_de_ventana(primer_seq_visible())),
         _ => {
             let ev = event_back(n as usize)?;
             match campo {

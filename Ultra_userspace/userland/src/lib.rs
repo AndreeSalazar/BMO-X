@@ -551,6 +551,39 @@ pub const CABINA_TICK: u64 = 0x07;
 /// por ACCION -- todo lo que produjo una sola pulsacion -- y no solo por
 /// gravedad. Ver `bmo-abi`.
 pub const CABINA_INTENTO: u64 = 0x08;
+
+/// **EL BARRIDO: cuantos hubo de cada clase, y NUNCA se pierde ninguno.**
+///
+/// `n` empaqueta `(capa << 8) | severidad`. Ocho capas por cinco severidades.
+///
+/// # Por que esto existe, y por que un filtro no lo sustituye
+///
+/// El anillo son 48 eventos y gira. Un filtro --*"ensename los fallos"*-- solo
+/// puede mirar lo que sobrevivio, asi que **un FAULT del arranque contesta
+/// "ninguno" cuando ya se cayo**. Y esa respuesta es indistinguible de estar
+/// bien, que es lo mas caro que puede decir un sistema de vigilancia.
+///
+/// *** El barrido se incrementa en `record` **antes del cerrojo del anillo**, asi
+/// que cuenta tambien lo que el anillo va a perder -- por giro y por reentrancia.
+///
+/// > Lo que se pierde del anillo no se pierde de la cuenta.
+pub const CABINA_BARRIDO_CUENTA: u64 = 0x10;
+
+/// El `seq` del **ultimo** evento de esa clase. `0` = no hubo ninguno.
+///
+/// Con [`CABINA_VENTANA`] contesta la pregunta que importa cuando algo va mal:
+/// **todavia se puede leer, o solo queda la cuenta?**
+pub const CABINA_BARRIDO_ULTIMO: u64 = 0x11;
+
+/// **El `seq` mas bajo que sigue dentro del anillo.** Todo lo anterior existio y
+/// ya no se puede leer.
+pub const CABINA_VENTANA: u64 = 0x12;
+
+/// Cuantas clases tienen **todo** fuera del anillo. `0` = no se ha escapado nada.
+///
+/// Es el barrido resumido en un numero: el que se mira primero.
+pub const CABINA_CLASES_FUERA: u64 = 0x13;
+
 pub const CABINA_TXT_MODULO: u64 = 0x00;
 pub const CABINA_TXT_MENSAJE: u64 = 0x01;
 /// Severidades, en el orden de `cabina_core::Severity`.

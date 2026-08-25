@@ -213,7 +213,14 @@ pub(crate) fn autopsy(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// porque los dos leen la caja negra, y son OTRA pregunta cada uno: aquel el
 /// ultimo fallo de Ring 3, este todo lo que el kernel apunto.
 pub(crate) fn cabina(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
-    super::cabina::report_cabina(&mut dsk.out.grid, arg);
+    // ** `radar` es OTRO panel, no un filtro mas: el anillo contesta *que paso*
+    // y el barrido *cuanto hubo*. Meterlo como filtro habria dado a entender que
+    // ensena un subconjunto de lo mismo, y ensena lo que el anillo YA NO TIENE.
+    if arg == b"radar" || arg == b"barrido" {
+        super::cabina::report_radar(&mut dsk.out.grid);
+    } else {
+        super::cabina::report_cabina(&mut dsk.out.grid, arg);
+    }
     paint_status(&p, &dsk.run_box, "la caja negra del kernel", INK_DIM);
     dsk.field.n = 0;
     After::Settle
