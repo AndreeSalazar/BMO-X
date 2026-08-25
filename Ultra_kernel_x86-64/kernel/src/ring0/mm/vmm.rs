@@ -55,6 +55,53 @@ pub const PTE_NUESTRA: u64 = 1 << 9;
 /// por eso lleva nombre propio: en una PDE seria `PS` y convertiria la entrada
 /// en una pagina de 2 MiB.
 pub const PTE_PAT_4K: u64 = 1 << 7;
+/// **El bit 63: esta pagina NO se ejecuta.**
+///
+/// # *** W^X, Y AQUI NO HACE FALTA NI UN PARAMETRO NUEVO (2026-08-24)
+///
+/// La regla se llama `W^X` --escribible O ejecutable, nunca las dos-- y esa
+/// frase es literalmente la condicion que ya se pasa a esta funcion:
+///
+/// ```text
+///    map_page(.., writable = true)   -> datos, pila, canal, framebuffer
+///    map_page(.., writable = false)  -> el codigo del .bex, y solo el
+/// ```
+///
+/// ** El cargador ya lo calculaba: `writable = flags & SECTION_FLAG_EXEC == 0`.
+/// O sea que la informacion de que es codigo lleva ahi desde el principio, y
+/// solo faltaba escribir el otro lado de la moneda en la tabla de paginas.
+///
+/// *** LO QUE COMPRA, Y ES LA MITAD DE UNA EXPLOTACION: sin esto, quien
+/// consiga escribir en cualquier sitio escribe instrucciones y salta a ellas.
+/// Con esto tiene que construir la cadena con trozos de codigo que YA existen
+/// --ROP-- que es un trabajo de otro orden de magnitud.
+///
+/// [!] Y el codigo se escribe POR EL PHYSMAP, no por la VA del proceso
+/// (`admitir.rs` usa `phys_to_virt`), asi que mapear la seccion de codigo sin
+/// permiso de escritura no estorba a cargarla. Esa decision ya estaba tomada.
+///
+/// # [!!] LA TRAMPA PARA EL QUE VENGA A CERRAR `rodata`
+///
+/// Hoy hay DOS estados y por eso basta un `bool`: escribible-y-no-ejecutable, o
+/// ejecutable-y-no-escribible. `rodata` cae en el primero -- **se mapea
+/// escribible**, que no es correcto pero como mucho deja que un programa
+/// corrompa sus propias constantes; no cruza ninguna frontera.
+///
+/// *** Y quien vaya a arreglarlo tiene que saber esto ANTES de tocarlo:
+///
+/// ```text
+///    "rodata no deberia ser escribible"   ->  writable = false
+///    y con la regla de aqui, eso lo vuelve EJECUTABLE
+/// ```
+///
+/// ** O sea que el arreglo obvio abre un agujero peor que el que cierra: una
+/// region de datos que el programa controla y que ademas se puede ejecutar es
+/// exactamente lo que W^X existe para impedir.
+///
+/// Hacen falta TRES estados, y eso es un parametro mas en `map_page_tipo` y en
+/// sus cuatro llamantes. No es dificil; es que no se puede hacer a medias.
+pub const PTE_NX: u64 = 1 << 63;
+
 const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
 
 pub const USER_IMAGE_BASE: u64 = 0x0000_0000_4000_0000;
@@ -238,6 +285,42 @@ pub fn map_page_wc(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> R
     map_page_tipo(pml4, va, pa, user, writable, true, false)
 }
 
+/// **Se puede usar el bit NX?** Se lee `EFER.NXE` una vez y se recuerda.
+///
+/// ** Si sale que NO, se dice por CABINA con gravedad de fallo y se deja de
+/// marcar. Degradar en silencio seria lo peor de las dos opciones: ni protege
+/// ni se entera nadie -- y este arbol ya tiene escrito lo que pasa con eso en
+/// `bmo_cripto::azar`, que por lo mismo se niega a tener respaldo.
+fn nx_disponible() -> bool {
+    use core::sync::atomic::{AtomicU8, Ordering};
+    static ESTADO: AtomicU8 = AtomicU8::new(0); // 0 sin mirar, 1 si, 2 no
+    match ESTADO.load(Ordering::Relaxed) {
+        1 => return true,
+        2 => return false,
+        _ => {}
+    }
+    // `IA32_EFER` = 0xC000_0080, y el bit 11 es NXE.
+    let lo: u32;
+    let hi: u32;
+    unsafe {
+        core::arch::asm!("rdmsr", in("ecx") 0xC000_0080u32, out("eax") lo, out("edx") hi,
+                         options(nomem, nostack));
+    }
+    let _ = hi;
+    let hay = lo & (1 << 11) != 0;
+    if hay {
+        ESTADO.store(1, Ordering::Relaxed);
+    } else {
+        ESTADO.store(2, Ordering::Relaxed);
+        crate::ring0::cabina::fault(
+            "mm",
+            "EFER.NXE APAGADO: W^X no se puede aplicar y toda pagina sera ejecutable",
+            lo as u64,
+        );
+    }
+    hay
+}
+
 fn map_page_tipo(
     pml4: u64,
     va: u64,
@@ -278,6 +361,18 @@ fn map_page_tipo(
     }
     if nuestra {
         entry |= PTE_NUESTRA;
+    }
+    // *** W^X. Ver `PTE_NX`: escribible y ejecutable son excluyentes, y la
+    // condicion ya venia calculada desde el cargador.
+    //
+    // [!] Se pregunta si `EFER.NXE` esta puesto, y no se supone. Con NXE en
+    // cero el bit 63 es RESERVADO: cada pagina marcada asi daria `#PF` por bit
+    // reservado y **no arrancaria nada**. `s1_cpu` lo enciende, asi que esto
+    // tendria que ser siempre cierto -- razon de mas para preguntarlo, porque
+    // lo que "tendria que ser siempre cierto" es lo que nadie mira el dia que
+    // deja de serlo. Si no esta, `nx_disponible()` lo GRITA por CABINA.
+    if writable && nx_disponible() {
+        entry |= PTE_NX;
     }
     let old = pt[i1];
     pt[i1] = entry;
