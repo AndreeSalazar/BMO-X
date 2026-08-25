@@ -103,6 +103,13 @@
 /* Distingue "no llega nada" de "no estamos escuchando". */
 #define BMO_INFO_NET_RX_ARMADO      0x2C
 #define BMO_INFO_NET_RX_TRAMAS      0x2D
+#define BMO_INFO_NET_RX_BYTES       0x4A
+/* Lo que la TARJETA tiro por no haber descriptor libre. Es el unico
+   contador de red que no lleva BMO-X, y sin el "40 tramas" no tiene
+   denominador: suena igual si se perdieron cuatro que cuatro mil. */
+#define BMO_INFO_NET_RX_PERDIDAS    0x4B
+/* arp | ipv4<<16 | ipv6<<32 | otros<<48. Por la puerta cabe UN valor. */
+#define BMO_INFO_NET_RX_TIPOS       0x4C
 #define BMO_INFO_NET_PCI            0x2E
 
 /* El METRO de la puerta: cuantas puertas ha servido el kernel y cuantos ciclos

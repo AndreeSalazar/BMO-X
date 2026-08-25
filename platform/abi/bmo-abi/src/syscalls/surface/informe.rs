@@ -141,6 +141,16 @@ pub const INFO_NET_RX_ARMADO: u64 = 0x2C;
 
 /// Tramas recibidas desde que se armo. **La cifra que dice si el cable vive.**
 pub const INFO_NET_RX_TRAMAS: u64 = 0x2D;
+/// Bytes de trama recibidos, sin el FCS: lo que se leyo de verdad.
+pub const INFO_NET_RX_BYTES: u64 = 0x4A;
+/// **`MPC`: las tramas que la TARJETA tiro** por no haber descriptor
+/// libre. Es el unico contador de red que no lleva BMO-X -- lo lleva el
+/// silicio, y sin el, "40 tramas recibidas" es una cifra sin denominador.
+pub const INFO_NET_RX_PERDIDAS: u64 = 0x4B;
+/// El reparto por protocolo, empaquetado: `arp | ipv4<<16 | ipv6<<32 |
+/// otros<<48`, 16 bits cada uno. Mismo criterio que `INFO_NET_PCI`, que
+/// tambien mete tres numeros en uno: por la puerta cabe UN valor.
+pub const INFO_NET_RX_TIPOS: u64 = 0x4C;
 
 /// Donde esta en el bus: `bus << 16 | dispositivo << 8 | funcion`.
 ///
