@@ -40,6 +40,10 @@ use super::*;
 use crate::ring0::mm::{self, phys, vmm};
 use crate::ring0::obj::channel;
 use crate::ring0::task::{bex, landing, scheduler};
+// La REGLA de si una reloc cabe en su seccion vive en el gate, que es el mismo
+// juez que usa el toolchain. Aqui se ponen los DATOS, que es lo unico que este
+// modulo tiene y aquel no.
+use bmo_bex_gate as gate;
 use crate::ring0::plat::trap;
 
 /// **DE DONDE SALEN LOS BYTES DE UNA SECCION.** Un cargador, dos origenes.
@@ -212,7 +216,10 @@ pub(crate) fn admit_payload_desde(
     // `2` = rodata), que **no** es el de `SECTION_*`. La traduccion se hace aqui,
     // en un solo sitio, porque es exactamente donde se cruzarian las dos
     // numeraciones.
-    let va_por_codigo_reloc = |cod: u8| -> Option<u64> {
+    // ** Devuelve el INDICE y no la VA desde el 2026-08-25: con la VA sola no se
+    // puede comprobar si la reloc CABE en su seccion, y esa comprobacion la
+    // tenia el toolchain y el cargador no. Ver `gate::reloc_cabe`.
+    let seccion_por_codigo_reloc = |cod: u8| -> Option<usize> {
         let buscado = match cod {
             0 => bex::SECTION_CODE,
             1 => bex::SECTION_DATA,
@@ -221,7 +228,7 @@ pub(crate) fn admit_payload_desde(
         };
         for i in 0..plan.section_count {
             if plan.sections[i].kind == buscado {
-                return Some(va_de[i]);
+                return Some(i);
             }
         }
         None
@@ -496,14 +503,38 @@ pub(crate) fn admit_payload_desde(
                 crate::ring0::cabina::fault("proc", "tipo de relocation DESCONOCIDO", rel.kind as u64);
                     return None;
                 }
-                let (Some(base_donde), Some(base_destino)) = (
-                    va_por_codigo_reloc(rel.donde_sec),
-                    va_por_codigo_reloc(rel.destino_sec),
+                let (Some(i_donde), Some(i_destino)) = (
+                    seccion_por_codigo_reloc(rel.donde_sec),
+                    seccion_por_codigo_reloc(rel.destino_sec),
                 ) else {
                     log("[proc] FATAL: relocation a una seccion que no existe\n");
                 crate::ring0::cabina::fault("proc", "relocation a una seccion que NO EXISTE", ((rel.donde_sec as u64) << 8) | rel.destino_sec as u64);
                     return None;
                 };
+                // *** CABE ESTA RELOC EN LA SECCION QUE DICE PARCHEAR? (25-08)
+                //
+                // El toolchain lo comprobaba --`validator::validate_reloc_section`--
+                // y el cargador NO, asi que un `.bex` que no salio de este
+                // toolchain entraba con sus relocations sin que nadie las mirara.
+                //
+                // ** Y NO SE SALE DE LA IMAGEN: las secciones van seguidas desde
+                // `USER_IMAGE_BASE`, o sea que un offset pasado de rosca CAE EN
+                // LA SIGUIENTE. La unica comprobacion que habia --"cae en la
+                // pagina que estoy parcheando"-- se cumplia, y se escribia.
+                //
+                // Y el hash tampoco lo caza: se cierra ANTES de parchear.
+                let sec_donde = plan.sections[i_donde];
+                if !gate::reloc_cabe(rel.donde_off, 8, sec_donde.file_size, sec_donde.mem_size) {
+                    log("[proc] FATAL: relocation fuera de su seccion
+");
+                    crate::ring0::cabina::fault(
+                        "proc",
+                        "una relocation se sale de la seccion que dice parchear",
+                        rel.donde_off,
+                    );
+                    return None;
+                }
+                let (base_donde, base_destino) = (va_de[i_donde], va_de[i_destino]);
                 let donde_va = base_donde.wrapping_add(rel.donde_off);
                 // No cae en esta pagina: no es cosa de esta vuelta.
                 if donde_va < pagina_va || donde_va >= pagina_va + mm::PAGE {

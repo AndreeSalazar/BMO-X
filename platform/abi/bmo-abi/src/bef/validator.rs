@@ -874,6 +874,29 @@ fn validate_reloc_section(
                     Some(_) => 4,
                     None => 4,
                 };
+                // ** LA MISMA REGLA VIVE EN `bmo-bex-gate::reloc_cabe` (25-08).
+                //
+                // Esta comprobacion existia SOLO aqui, y **el cargador del
+                // kernel no llama a este validador**: no puede, porque este
+                // crate usa `alloc` y en Ring 0 no hay a quien pedirle memoria.
+                // Usa `bmo-bex-gate`, que es el juez sin alloc. Resultado: un
+                // `.bex` que no saliera de este toolchain entraba con sus
+                // relocations sin que nadie las mirara.
+                //
+                // *** Y NO SE ARREGLO HACIENDO QUE ESTO DELEGUE, aunque era lo
+                // primero que se intento. `bmo-bex-gate` es **dev-dependency a
+                // proposito** de este crate, y su Cargo.toml dice por que:
+                //
+                // > *"No es dependencia de la libreria -- el contrato no
+                // > depende de la puerta."*
+                //
+                // Delegar habria invertido esa flecha en silencio. La regla se
+                // escribio en el gate --que es a quien el kernel SI llama-- y
+                // aqui se queda la copia, **atada por una prueba**: ver
+                // `reloc_cabe_dice_lo_mismo_que_este_validador` en
+                // `tests/gate_y_validador_no_se_separan.rs`. Las dos copias
+                // pueden existir; lo que no pueden es DIVERGIR sin que el banco
+                // se ponga rojo.
                 let end = rel.offset as usize + patch_size;
                 if end > te.file_size as usize && end > te.mem_size as usize {
                     r.error_at(idx, format!(
