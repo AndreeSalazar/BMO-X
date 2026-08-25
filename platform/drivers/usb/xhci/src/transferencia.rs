@@ -529,6 +529,111 @@ pub unsafe fn queue_interrupt_in(slot: u8, dci: u8, buf_phys: u64, len: u16) -> 
 }
 
 // ===================================================================
+//  Queue ISOCHRONOUS OUT transfer -- las muestras
+// ===================================================================
+
+/// **Cuantas tramas se dejan sin entregar antes de decir que se llego tarde.**
+///
+/// Una isocrona tiene una cita: el xHC la entrega en SU microtrama y si no hay
+/// datos, **no espera** -- manda silencio y sigue. Ese es el trato entero: se
+/// pierde la muestra, no el tiempo.
+pub const ISOCH_ADELANTO: u16 = 4;
+
+/// **Encolar una trama de muestras a un endpoint isocrono OUT.**
+///
+/// El hermano de [`queue_interrupt_in`], y **no es el mismo con otro numero**.
+/// Estas son las cuatro diferencias, que son justo donde se equivoca quien copia
+/// la funcion de al lado:
+///
+/// ```text
+///    1. el tipo es 5 (Isoch), no 1 (Normal)
+///    2. lleva FRAME ID: en que microtrama quiere el aparato estos bytes
+///    3. lleva SIA -- *Start Isoch ASAP*-- que le dice al xHC que lo ponga en
+///       la primera microtrama libre en vez de exigir un frame id exacto
+///    4. TBC/TLBC: cuantas rafagas lleva la trama. Con un paquete por
+///       intervalo son cero, y **cero no es "no aplica": es el valor**
+/// ```
+///
+/// # *** POR QUE SIA Y NO UN FRAME ID CALCULADO
+///
+/// Calcular el frame id exige leer el `MFINDEX` del controlador, sumarle un
+/// adelanto y acertar antes de que el reloj avance. **Si se falla el numero, el
+/// xHC contesta `Isoch Buffer Overrun` o tira la trama** -- y las dos se oyen
+/// igual: un clic.
+///
+/// Con `SIA` la cita la elige el controlador, que es el que tiene el reloj
+/// delante. Se pierde control sobre la latencia exacta y se gana no fallar la
+/// cita, y `AUDIO_MAESTRO` ya decidio ese cambio por escrito:
+///
+/// > *"Primero que suene sin huecos. Un audio puntual con 40 ms de retardo es
+/// > audio; uno con 5 ms y clics, no."*
+///
+/// [!] Y el dia que la latencia importe, esto es lo que hay que cambiar --
+/// **no antes**, y midiendo `tramas tarde` para saber si se gano algo.
+///
+/// # Lo que esta funcion NO hace
+///
+/// **No toca el timbre.** Encolar y avisar son dos cosas: quien alimenta el
+/// tubo quiere poner varias tramas de adelanto y tocar UNA vez, y un timbre por
+/// trama seria un MMIO por cada 192 bytes de audio.
+pub unsafe fn queue_isoch_out(slot: u8, dci: u8, buf_phys: u64, len: u16) -> bool {
+    let ring = match ep_ring_mut(slot, dci) { Some(r) => r, None => return false };
+    let idx = ring.enqueue;
+    let b = idx * 4;
+    ring.ring_virt.add(b).write_volatile((buf_phys & 0xFFFF_FFFF) as u32);
+    ring.ring_virt.add(b + 1).write_volatile(((buf_phys >> 32) & 0xFFFF_FFFF) as u32);
+    // dw2: los 17 bits bajos son el largo. TD Size (21:17) va a CERO -- con una
+    // sola trama por TD no hay paquetes pendientes que declarar.
+    ring.ring_virt.add(b + 2).write_volatile(len as u32);
+    // dw3: tipo en 15:10, IOC en el 5, SIA en el 31, frame id en 30:20 (que con
+    // SIA puesto el xHC ignora), TBC en 8:7 y TLBC en 17:16 -- los dos a cero.
+    let ctl = (TRB_ISOCH << 10) | (1 << 5) | (1 << 31);
+    ring.ring_virt.add(b + 3).write_volatile(ctl | if ring.pcs { 1 } else { 0 });
+    ring.enqueue = idx + 1;
+    if ring.enqueue >= LAST_TRB_IDX {
+        // El mismo cierre del anillo que el Normal, y por el mismo motivo: si el
+        // Link TRB se queda con el ciclo viejo, el xHC llega ahi, ve un ciclo
+        // que no es el suyo, y **se para para siempre**. En audio eso no es un
+        // fallo visible: es que deja de sonar y nadie sabe por que.
+        let lb = LAST_TRB_IDX * 4;
+        let dw3 = ring.ring_virt.add(lb + 3).read_volatile();
+        let dw3 = (dw3 & !1) | if ring.pcs { 1 } else { 0 };
+        ring.ring_virt.add(lb + 3).write_volatile(dw3);
+        ring.enqueue = 0;
+        ring.pcs = !ring.pcs;
+    }
+    ISOCH_ENCOLADAS = ISOCH_ENCOLADAS.wrapping_add(1);
+    true
+}
+
+/// Cuantas tramas isocronas se han encolado desde el arranque.
+///
+/// ** Tiene que SUBIR SOLA mientras algo suene. Un numero quieto con el tubo
+/// abierto significa que quien lo alimenta dejo de hacerlo, que es distinto de
+/// que el aparato no acepte -- y eso ultimo lo dice `ISOCH_TARDE`.
+pub fn isoch_encoladas() -> u64 {
+    unsafe { ISOCH_ENCOLADAS }
+}
+
+/// **Tramas que el controlador no pudo entregar a tiempo.**
+///
+/// *** LA CIFRA DE TODA LA PAGINA DE AUDIO. `AUDIO_MAESTRO` lo dice: un audio que
+/// va bien y uno que chasquea **se distinguen por este contador y por nada
+/// mas** -- a oido son "suena raro" y "suena bien", que no es un diagnostico.
+pub fn isoch_tarde() -> u64 {
+    unsafe { ISOCH_TARDE }
+}
+
+/// Lo apunta el bucle de eventos cuando el xHC contesta `Isoch Buffer Overrun`
+/// (`CC 31`) o `Missed Service Error` (`CC 10`).
+pub fn apunta_isoch_tarde() {
+    unsafe { ISOCH_TARDE = ISOCH_TARDE.wrapping_add(1) };
+}
+
+static mut ISOCH_ENCOLADAS: u64 = 0;
+static mut ISOCH_TARDE: u64 = 0;
+
+// ===================================================================
 //  Public non-blocking event poll
 // ===================================================================
 
@@ -579,6 +684,19 @@ pub unsafe fn poll_transfer_event() -> Option<(u8, u8, u8)> {
             let ep = ((ev.3 >> 16) & 0x1F) as u8;
             let cc = (ev.2 >> 24) as u8;
             LAST_SLOT = slot; LAST_EP = ep; LAST_CC = cc;
+            // *** LAS DOS FORMAS DE LLEGAR TARDE A UNA CITA ISOCRONA.
+            //
+            //    10  Missed Service Error   el xHC no llego a servir el TD en
+            //                               su microtrama
+            //    31  Isoch Buffer Overrun   el aparato pidio y no habia
+            //
+            // Se cuentan aqui --el unico sitio por donde pasan TODOS los
+            // eventos-- y no en el que alimenta el tubo, porque ese no los ve.
+            // Es la cifra que separa "suena bien" de "suena raro", y sin ella
+            // esas dos frases son todo el diagnostico que hay.
+            if cc == 10 || cc == 31 {
+                apunta_isoch_tarde();
+            }
             return Some((slot, ep, cc));
         }
         // -- Cambio de puerto: enchufaron o desenchufaron algo --

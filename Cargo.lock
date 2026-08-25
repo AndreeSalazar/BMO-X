@@ -361,6 +361,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-sonido"
+version = "1.0.0"
+
+[[package]]
 name = "bmo-trim"
 version = "0.1.0"
 

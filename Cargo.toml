@@ -32,6 +32,8 @@ members = [
     "platform/shared/bmo-dibujo",
     # El formato de una cara maquetada que viaja. Ver PLAN_LA_CARA_VIAJA.md.
     "platform/shared/bmo-maqueta-cara",
+    # Que hay dentro de un fichero de audio. Ver AUDIO_MAESTRO paso 3.
+    "platform/shared/bmo-sonido",
     # LA RESTA: un clic de pantalla -> un clic de la app. Vive aqui y no dentro
     # del compositor por lo mismo que el juez de las medidas: aqui se PRUEBA.
     # Paso 2c.1 de `docs/plan/PLAN_DIRECTOR.md`.
