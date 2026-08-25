@@ -178,7 +178,10 @@ pub(crate) fn shell_run(arg: &[u8]) {
     // Tener dos versiones del gate de firma era tener dos versiones que se
     // separan en cuanto alguien toque una. Al shell le queda lo suyo, que es
     // contarlo en filas.
-    let inf = launch::ruta(path);
+    // ** DE SISTEMA: esto lo teclea el dueno en el shell de RING 0. Quien pide
+    // el lanzamiento ya esta al otro lado de la frontera, asi que no hay nada
+    // que conceder que no tuviera.
+    let inf = launch::ruta(path, crate::ring0::task::autoridad::DE_SISTEMA);
 
     if inf.res == Err(launch::Fallo::RutaVacia) {
         s_log("[run] uso: run c/holac.bex   (o A:/c/holac.bex)");

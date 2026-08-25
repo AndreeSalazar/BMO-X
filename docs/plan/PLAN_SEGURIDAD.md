@@ -284,25 +284,95 @@ RFC con sus claves secretas y **salen las firmas del RFC byte a byte**.
 > Un firmador comprobado solo con su propio verificador es un par de funciones
 > que se creen la una a la otra.
 
-## C4 -- `EJECUTAR` y `REINICIAR` no piden ninguna capability
+## [X] C4 -- `EJECUTAR` y `REINICIAR` -- **HECHA el 2026-08-25**, y no con una capability
 
-**Donde**: declarado por el propio kernel, `syscall/ops.rs:200`:
+**Que habia**: el propio kernel lo llevaba declarado en `syscall/ops.rs`:
 
 > *"**Limitacion declarada**: hoy no esta atada a una capability, igual que
-> `EJECUTAR`. Cualquier tarea de Ring 3 puede llamarla. [...] las dos
-> operaciones quieren la misma capability el dia que exista."*
+> `EJECUTAR`. Cualquier tarea de Ring 3 puede llamarla."*
 
-**Que significa**: cualquier `.bex` que corra puede lanzar otro `.bex`, o
-reiniciar la maquina. Con el gate de firma puesto, lo primero esta acotado
---solo puede lanzar lo que pase el gate-- pero lo segundo no: reiniciar es
-gratis para cualquiera.
+**Cualquier `.bex` que corriera podia reiniciar la maquina.** No hacia falta un
+fallo: bastaba con pedirlo.
 
-**Que la bloquea**: decidir **quien la concede**. Hoy el escritorio lanza hijos
-todo el rato, asi que la capability tiene que llegarle a el sin que se la pueda
-pasar a lo que lanza. Es un problema de delegacion, no de comprobacion.
+### *** LO QUE LA BLOQUEABA ERA LA DELEGACION, Y SE QUITO EN VEZ DE RESOLVERLA
 
-**Como se sabe que quedo hecha**: `sonda.bex` gana un empujon octavo --pedir
-reiniciar sin tenerla-- y el kernel lo niega y sigue en pie.
+La casilla lo tenia bien identificado:
+
+> *"el escritorio lanza hijos todo el rato, asi que la capability tiene que
+> llegarle a el sin que se la pueda pasar a lo que lanza."*
+
+Y con un handle **eso no se puede**: un handle se pasa. Es lo que los hace utiles
+--`KIND_CONSOLA` viaja del lanzador al hijo y por eso un terminal existe-- y es
+justo lo que aqui habia que impedir.
+
+```text
+   una CAPABILITY   la tienes, y puedes darla    -> se delega
+   la AUTORIDAD     te la dio quien te creo      -> NO se delega
+```
+
+★★ **Asi que no se resolvio la delegacion: se quito.** La autoridad no viaja de
+padre a hijo por ningun camino, **porque no hay ninguna operacion que la mueva**.
+Se fija al crear el proceso y solo la puede fijar Ring 0.
+
+### Quien la tiene, y por que el tercero no puede fingirlo
+
+```text
+   el escritorio       lo arranca el KERNEL (core/desktop.rs)     SI
+   `run` del shell 0   lo teclea el dueno en Ring 0               SI
+   un hijo de Ring 3   lo lanza otro proceso                      NO
+```
+
+**Los dos primeros tienen algo que el tercero no puede fingir: quien pidio el
+lanzamiento estaba en Ring 0.** Un `.bex` no puede llegar ahi --esa es la
+frontera entera del sistema-- asi que no puede darse lo que esto concede.
+
+** Y se comprobo antes de escribir una linea: **solo el director usa
+`OP_EJECUTAR` y `OP_REINICIAR`** en todo Ring 3. Ninguna app las llama, asi que
+cerrar la puerta no le quita nada a nadie que la usara.
+
+### Los detalles que la hacen cerrada y no aparente
+
+- **`fijar` se llama en los DOS caminos** por los que nace un pid dentro de
+  `launch` -- por rangos y por buffer. Uno sin fijar dejaria procesos con la
+  autoridad del muerto que uso ese hueco antes.
+- **`olvidar` va la primera en `revoke_all`**, y es la unica forma que quedaba de
+  colarse: que muera el escritorio, que su hueco lo coja un `.bex` cualquiera, y
+  que ese nazca pudiendo reiniciar. No se ve hasta que la maquina lleva horas
+  encendida.
+- **No hay `conceder_mas`.** Si existiera, el camino para escalar seria llamarla.
+- **La autoridad es un parametro de `launch::ruta`**, no algo que esa funcion
+  deduzca. Los tres llamantes viven en sitios distintos del sistema y **el unico
+  que sabe cual toca es cada uno**; deducirlo dentro habria concedido o negado al
+  cuarto llamante sin que nadie lo escribiera.
+
+### La prueba: `sonda.bex` gana DOS empujones, no uno
+
+La casilla pedia el octavo --pedir reiniciar sin tenerla--. Se pusieron dos, **y
+el orden importa**:
+
+```text
+   8. lanzar otro programa sin autoridad    inofensivo si la defensa falla
+   9. reiniciar sin autoridad               *** si la defensa falla, LA MAQUINA
+                                            SE REINICIA AQUI MISMO
+```
+
+⚠ **El 9 va el ultimo a proposito.** Si el kernel no se defiende, la sonda no
+llega a su recuento y todo lo que iba a decir se pierde con ella. Es la regla de
+las hojas de metal aplicada dentro de un programa: *lo que no toca nada va
+primero, lo que no se deshace va al final*.
+
+★ Y si se reinicia, **eso es el resultado**: una sonda que no llega a su recuento
+ya dijo lo que habia que saber.
+
+### [!] Lo que esto NO es, y hay que dejarlo escrito
+
+**No es una jerarquia de privilegios y no debe convertirse en una.** Son dos bits
+para las dos operaciones que **no tienen objeto** sobre el que colgar un handle.
+Todo lo demas del sistema sigue siendo capabilities, y eso es lo correcto: una
+autoridad ambiental no se puede acotar, y por eso hay exactamente dos.
+
+> El dia que aparezca una tercera, la primera pregunta es si esa operacion **de
+> verdad no tiene objeto** -- o si es que todavia no se ha encontrado cual es.
 
 ## ⚠ C5 -- `bmo-verify` -- **LA CASILLA MIDIO EL SITIO EQUIVOCADO** (25-08)
 
@@ -635,10 +705,33 @@ esperan a ese reparto** -- este guardian, y el siguiente que haga falta.
                                         mitad que nadie habia escrito
    [~] C7  compilacion reproducible     la mitad medible HECHA 25-08; la otra
                                         pide una SEGUNDA MAQUINA
+   [X] C4  EJECUTAR y REINICIAR         HECHA 25-08. No con una capability:
+                                        la delegacion no se resolvio, se QUITO
+   [~] C6  la sonda de dispositivos     la MADT sale del kernel y gana 7 pruebas
    --------------------------------------------------------------------------
-   C4  la capability de EJECUTAR        pide resolver delegacion
-   C6  la sonda de dispositivos         la mas cara; despues de la red
 ```
+
+## *** LAS SIETE, CERRADAS O A MEDIAS -- 2026-08-25
+
+```text
+   [X] C1  la firma de ceros            24-08
+   [X] C2  los cuatro bits de guardia   25-08
+   [X] C3  Ed25519 + el ANCLA           25-08
+   [X] C4  EJECUTAR y REINICIAR         25-08
+   [X] C5  las relocs, al CARGAR        25-08
+   [~] C6  los parsers                  la MADT si; placa.rs y net siguen dentro
+   [~] C7  reproducible                 la mitad medible; la otra pide OTRA MAQUINA
+```
+
+★★ **Y las dos que quedan a medias no lo estan por falta de codigo**: a C6 le
+falta sacar dos ficheros mas de Ring 0 --el mismo movimiento, ya demostrado-- y a
+C7 le falta **una segunda maquina**, que no se escribe.
+
+[!] Este plan se escribio el 18-08 diciendo que C6 era *"la mas cara de todas"* y
+que C3 era *"LA pieza"*. **Las dos estaban mal calibradas, y en direcciones
+opuestas**: C3 tenia media pieza ya pagada por X25519, y lo caro de C6 no era el
+aparato sino el sitio. La leccion no es que las estimaciones fallen -- es que
+**las dos fallaron por no haber ido a mirar**.
 
 *** **De las siete casillas quedan DOS, y las dos estaban al final por el mismo
 motivo**: no las bloquea escribir codigo. A C4 la bloquea decidir como se delega

@@ -215,8 +215,36 @@ int main() {
         }
     }
 
+    /* == 8. LANZAR OTRO PROGRAMA SIN AUTORIDAD ==
+     * C4 de PLAN_SEGURIDAD, cerrada el 2026-08-25. Hasta ese dia CUALQUIER
+     * .bex podia lanzar otro y reiniciar la maquina: no hacia falta un fallo,
+     * bastaba con pedirlo.
+     *
+     * Esta sonda la lanzo el escritorio, y el escritorio NO PUEDE PASARLE su
+     * autoridad -- no es una capability, es un atributo que fija Ring 0 al
+     * nacer. Asi que aqui tiene que salir un no. */
+    printf("\n8. lanzar otro programa sin tener autoridad\n");
+    debe_negar("ejecutar desde un hijo",
+               bmo_codigo(BMO_TAREA_ACTUAL, BMO_OP_EJECUTAR, 0, 0, 0));
+
+    /* == 9. REINICIAR SIN AUTORIDAD -- Y VA LA ULTIMA A PROPOSITO ==
+     * Es el mismo gate que la 8 y el empujon mas peligroso de toda la sonda:
+     * **si el kernel NO se defiende, la maquina se reinicia aqui mismo** y
+     * todo lo que esta prueba iba a decir se pierde con ella.
+     *
+     * Por eso va detras de las otras ocho y no antes. Es la regla de las hojas
+     * de metal aplicada dentro de un programa: lo que no toca nada va primero,
+     * y lo que no se deshace va al final.
+     *
+     * ** Y si se reinicia, ESO ES EL RESULTADO: una sonda que no llega a su
+     * recuento ya dijo lo que habia que saber. */
+    printf("\n9. reiniciar la maquina sin tener autoridad\n");
+    printf("   (si esto reinicia, el agujero es este)\n");
+    debe_negar("reiniciar desde un hijo",
+               bmo_codigo(BMO_TAREA_ACTUAL, BMO_OP_REINICIAR, 0, 0, 0));
+
     /* == EL RECUENTO ==
-     * Que esta linea salga es la prueba de fondo: el kernel aguanto los siete
+     * Que esta linea salga es la prueba de fondo: el kernel aguanto los nueve
      * bloques de empujones sin caerse. */
     printf("\n== SONDA COMPLETA ==\n");
     printf("defensas correctas: %d\n", pasadas);

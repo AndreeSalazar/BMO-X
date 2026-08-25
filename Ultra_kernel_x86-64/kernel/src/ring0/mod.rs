@@ -66,6 +66,9 @@ pub mod task {
     pub mod landing;
     /// EN QUIEN confia esta maquina. El ancla de la firma. Ver su cabecera.
     pub mod confianza;
+    /// Que puede pedir un proceso que NO sea un objeto. Ver su cabecera: son
+    /// dos bits, no se delegan, y no deben ser tres.
+    pub mod autoridad;
     pub mod bex;
     /// **Quien lanzo a quien.** Un pid y nada mas: lo justo para que una app
     /// pueda ofrecerle su superficie al que la puso en pantalla.

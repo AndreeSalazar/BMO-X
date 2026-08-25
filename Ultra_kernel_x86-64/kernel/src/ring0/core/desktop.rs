@@ -98,7 +98,9 @@ pub(crate) fn start_desktop() {
     use crate::ring0::task::launch;
 
     unsafe { DESKTOP_ATTEMPTS += 1 };
-    let inf = launch::ruta(COMPOSITOR_PATH);
+    // ** DE SISTEMA: lo arranca el KERNEL. Es el escritorio, y es el unico
+    // proceso de Ring 3 que puede reiniciar la maquina o lanzar a otro.
+    let inf = launch::ruta(COMPOSITOR_PATH, crate::ring0::task::autoridad::DE_SISTEMA);
     match inf.res {
         Ok(tid) => {
             // * Arrancar y no decir su pid es un caso RARO, y por eso mismo
