@@ -56,7 +56,24 @@ impl<'a> ExportTable<'a> {
         if section_bytes.len() < needed {
             return Err("export table demasiado pequena");
         }
-        let ptr = section_bytes.as_ptr() as *const ExportEntry;
+        // *** LA ALINEACION, QUE AQUI FALTABA (auditoria 2026-08-24).
+        //
+        // `imports.rs`, `symbols.rs` y `sections.rs` la comprueban; este era el
+        // unico de los cuatro que no. Y no es formalismo: `from_raw_parts`
+        // **exige** que el puntero este alineado al tipo, y un `.bex` decide
+        // donde empieza su seccion. En x86 una lectura desalineada funciona por
+        // accidente, asi que el fallo no se ve nunca aqui -- se ve el dia que
+        // esto corra en otro sitio, o cuando el compilador use una instruccion
+        // que si lo exija.
+        //
+        // ** Cuatro ficheros que hacen lo mismo y uno que se olvido una linea es
+        // la forma clasica: nadie los lee juntos. Por eso la auditoria los miro
+        // en fila.
+        let raw_ptr = section_bytes.as_ptr();
+        if (raw_ptr as usize) % core::mem::align_of::<ExportEntry>() != 0 {
+            return Err("export table pointer mal alineado");
+        }
+        let ptr = raw_ptr as *const ExportEntry;
         let entries = unsafe { core::slice::from_raw_parts(ptr, entry_count as usize) };
         let strings = &section_bytes[needed..];
         Ok(Self { entries, strings })

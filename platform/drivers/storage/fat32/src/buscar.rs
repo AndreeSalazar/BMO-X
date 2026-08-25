@@ -83,6 +83,9 @@ impl FatVolume {
                                     &*(self.buf[sec_offset..].as_ptr() as *const ExFatStreamEntry)
                                 };
                                 let first_cluster = stream.first_cluster;
+                                if first_cluster != 0 && !self.cluster_valido(first_cluster) {
+                                    return None;
+                                }
                                 let name_len = stream.name_length as usize;
                                 if sec + 1 <= secondary_count {
                                     let name_offset = entry_offset + ((sec + 1) as usize) * 32;

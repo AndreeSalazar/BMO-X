@@ -184,9 +184,25 @@ pub struct SectionTable<'a> {
 
 impl<'a> SectionTable<'a> {
     pub fn parse(bytes: &'a [u8], offset: u64, count: u32) -> Result<Self, &'static str> {
+        // *** LAS DOS SUMAS SE HACEN CON `checked_` (auditoria 2026-08-24).
+        //
+        // `offset` es un `u64` que **viene del fichero**, y con `off + needed`
+        // a secas la comprobacion se puede saltar sola:
+        //
+        // ```text
+        //    offset = 0xFFFF_FFFF_FFFF_FFF0
+        //      -> off + needed da la vuelta al contador y sale pequeno
+        //      -> "cabe", dice el if
+        //      -> y `bytes.as_ptr().add(off)` es un puntero a cualquier sitio
+        // ```
+        //
+        // ** Un limite que se calcula con una suma que puede desbordar no es un
+        // limite: es una suma. Y el `.add()` de despues ya seria UB aunque el
+        // `from_raw_parts` no llegara a leer nada.
         let off = offset as usize;
-        let needed = count as usize * SectionEntry::SIZE;
-        if off + needed > bytes.len() {
+        let needed = (count as usize).checked_mul(SectionEntry::SIZE).ok_or("section table: cuenta imposible")?;
+        let fin = off.checked_add(needed).ok_or("section table: el rango da la vuelta")?;
+        if fin > bytes.len() {
             return Err("section table fuera de rango");
         }
         let raw_ptr = unsafe { bytes.as_ptr().add(off) };
