@@ -218,6 +218,7 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"    apps          que programa tiene RAM pedida\n");
     dsk.out.grid.text(b"    ext           que ofrece el silicio y que coge BMO\n");
     dsk.out.grid.text(b"    fallo         la ultima autopsia de Ring 3\n");
+    dsk.out.grid.text(b"    cabina        TODO lo que el kernel apunto  (todo | fallos | N)\n");
     dsk.out.grid.with_ink(INK_ECHO);
     dsk.out.grid.text(b"  LA MAQUINA --------------------------------------------------\n");
     dsk.out.grid.with_ink(INK_PLAIN);

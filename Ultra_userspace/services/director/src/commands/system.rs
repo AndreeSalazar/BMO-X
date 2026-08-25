@@ -209,6 +209,16 @@ pub(crate) fn autopsy(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     After::Settle
 }
 
+/// **`cabina`** -- el anillo de eventos del kernel. Vive al lado de [`autopsy`]
+/// porque los dos leen la caja negra, y son OTRA pregunta cada uno: aquel el
+/// ultimo fallo de Ring 3, este todo lo que el kernel apunto.
+pub(crate) fn cabina(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
+    super::cabina::report_cabina(&mut dsk.out.grid, arg);
+    paint_status(&p, &dsk.run_box, "la caja negra del kernel", INK_DIM);
+    dsk.field.n = 0;
+    After::Settle
+}
+
 pub(crate) fn report(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     report_system(&mut dsk.out.grid);
     paint_status(&p, &dsk.run_box, "informe del sistema", INK_DIM);

@@ -59,6 +59,7 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::Placa => system::placa(dsk, p),
         Command::Audio => system::audio(dsk, p),
         Command::Autopsy => system::autopsy(dsk, p),
+        Command::Cabina(a) => system::cabina(dsk, p, a),
         Command::Report => system::report(dsk, p),
         Command::Cpu => system::cpu(dsk, p),
         Command::Ext => system::ext(dsk, p),
