@@ -1098,12 +1098,57 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
     if armed { s.text(b"ARMADO"); } else { s.text(b"apagado   (net rx en Ring 0)"); }
     s.byte(b'\n');
 
-    label(s, b"tramas");
+    label(s, b"cogidas");
     s.dec(frames_rx);
+    s.text(b" tramas, ");
+    s.dec(bmo::info(bmo::INFO_NET_RX_BYTES));
+    s.text(b" bytes");
     if armed && frames_rx == 0 {
         s.text(b"   (escuchando y nadie habla todavia)");
     }
     s.byte(b'\n');
+
+    // *** LA FILA QUE HACE QUE ESTO SEA UNA MEDIDA Y NO UN VOLCADO.
+    //
+    // ** Un contador propio solo puede contar lo que se COGIO. Lo que llego
+    // y se tiro por no haber descriptor libre no lo sabe el software: lo
+    // lleva el silicio, en `MPC`. Sin esta fila, "40 tramas" suena igual si
+    // por detras se perdieron cuatro que cuatro mil -- y son dos sistemas
+    // distintos: uno anda y el otro tiene el anillo pequeno.
+    //
+    // [!] El cero se dice CON SU NOMBRE. Una fila que desaparece cuando vale
+    // cero deja al que mira sin saber si es que no se perdio nada o es que
+    // nadie lo mide, y esas dos cosas piden trabajos distintos.
+    if armed {
+        let perdidas = bmo::info(bmo::INFO_NET_RX_PERDIDAS);
+        label(s, b"perdidas");
+        s.dec(perdidas);
+        if perdidas == 0 {
+            s.text(b"   (la tarjeta no tiro ninguna)");
+        } else {
+            s.text(b"   [!] llegaron y no habia descriptor libre");
+        }
+        s.byte(b'\n');
+
+        // ** CUATRO CASILLAS Y NO UNA. En una red domestica en reposo lo que
+        // llega es ARP y broadcast; si sale IPv4 sin que nadie haya pedido
+        // nada, hay alguien hablando. Un solo contador no separa "el cable
+        // esta vivo" de "esta red tiene vecinos".
+        let t = bmo::info(bmo::INFO_NET_RX_TIPOS);
+        label(s, b"reparto");
+        s.text(b"ARP ");
+        s.dec(t & 0xFFFF);
+        s.text(b"  IPv4 ");
+        s.dec((t >> 16) & 0xFFFF);
+        s.text(b"  IPv6 ");
+        s.dec((t >> 32) & 0xFFFF);
+        s.text(b"  otros ");
+        s.dec((t >> 48) & 0xFFFF);
+        s.byte(b'\n');
+        if frames_rx > 0 && (t >> 16) & 0xFFFF == 0 && (t >> 32) & 0xFFFF == 0 {
+            s.text(b"    solo ARP/broadcast: el cable vive y nadie habla contigo\n");
+        }
+    }
 
     // ** Y lo que NO hace, dicho aqui y no en un README.
     s.text(b"    transmitir: CERRADO a proposito (CR.TE apagado)\n");

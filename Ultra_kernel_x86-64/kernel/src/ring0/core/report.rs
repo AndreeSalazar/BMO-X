@@ -105,6 +105,9 @@ const INFO_NET_PHY_CRUDO: u64 = 0x2A;
 const INFO_NET_MEGABITS: u64 = 0x2B;
 const INFO_NET_RX_ARMADO: u64 = 0x2C;
 const INFO_NET_RX_TRAMAS: u64 = 0x2D;
+const INFO_NET_RX_BYTES: u64 = 0x4A;
+const INFO_NET_RX_PERDIDAS: u64 = 0x4B;
+const INFO_NET_RX_TIPOS: u64 = 0x4C;
 const INFO_NET_PCI: u64 = 0x2E;
 
 // El metro de la puerta: cuantas y cuantos ciclos dentro de `dispatch`. Se
@@ -359,6 +362,21 @@ pub fn campo(n: u64) -> u64 {
             .unwrap_or(0),
         INFO_NET_RX_ARMADO => crate::ring0::dev::net::rx_activo() as u64,
         INFO_NET_RX_TRAMAS => crate::ring0::dev::net::rx_tramas(),
+        INFO_NET_RX_BYTES => crate::ring0::dev::net::rx_consumo().1,
+        // ** El unico contador de red que NO lleva BMO-X. Un contador propio
+        // solo puede contar lo que se cogio -- lo que se perdio por no haber
+        // descriptor libre solo lo sabe el silicio. `None` sale como cero: no
+        // hay tarjeta que preguntar, que es distinto de "no se perdio nada" y
+        // por eso `INFO_NET_RX_ARMADO` va al lado.
+        INFO_NET_RX_PERDIDAS => crate::ring0::dev::net::rx_perdidas().unwrap_or(0) as u64,
+        INFO_NET_RX_TIPOS => {
+            let (_, _, t, _) = crate::ring0::dev::net::rx_consumo();
+            // Se recortan a 16 bits cada uno. Un contador que desborda su
+            // casilla y se lleva por delante al vecino diria que llegaron
+            // millones de tramas de otro protocolo, y eso es peor que saturar.
+            let c = |v: u64| v.min(0xFFFF);
+            c(t[0]) | (c(t[1]) << 16) | (c(t[2]) << 32) | (c(t[3]) << 48)
+        }
         INFO_NET_PCI => {
             let (_, _, bus, dev, fun, _) = crate::ring0::dev::net::donde();
             ((bus as u64) << 16) | ((dev as u64) << 8) | (fun as u64)

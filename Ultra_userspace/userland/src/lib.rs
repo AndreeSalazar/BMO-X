@@ -230,6 +230,9 @@ pub const INFO_NET_MEGABITS: u64 = 0x2B;
 /// Distingue *"no llega nada"* de *"no estamos escuchando"*.
 pub const INFO_NET_RX_ARMADO: u64 = 0x2C;
 pub const INFO_NET_RX_TRAMAS: u64 = 0x2D;
+pub const INFO_NET_RX_BYTES: u64 = 0x4A;
+pub const INFO_NET_RX_PERDIDAS: u64 = 0x4B;
+pub const INFO_NET_RX_TIPOS: u64 = 0x4C;
 pub const INFO_NET_PCI: u64 = 0x2E;
 
 /// El metro de la puerta: puertas servidas y ciclos dentro de `dispatch`.

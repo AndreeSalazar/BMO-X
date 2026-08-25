@@ -86,6 +86,9 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     ("BMO_INFO_NET_MEGABITS", "INFO_NET_MEGABITS", 0x2B),
     ("BMO_INFO_NET_RX_ARMADO", "INFO_NET_RX_ARMADO", 0x2C),
     ("BMO_INFO_NET_RX_TRAMAS", "INFO_NET_RX_TRAMAS", 0x2D),
+    ("BMO_INFO_NET_RX_BYTES", "INFO_NET_RX_BYTES", 0x4A),
+    ("BMO_INFO_NET_RX_PERDIDAS", "INFO_NET_RX_PERDIDAS", 0x4B),
+    ("BMO_INFO_NET_RX_TIPOS", "INFO_NET_RX_TIPOS", 0x4C),
     ("BMO_INFO_NET_PCI", "INFO_NET_PCI", 0x2E),
     // El metro de la puerta. Cruza porque quien lo lee es un programa de C
     // (`c/coste.bex`) y el que lo sirve es el kernel: dos lados, un numero.
@@ -246,6 +249,9 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_INFO_NET_MEGABITS", s::INFO_NET_MEGABITS),
         ("BMO_INFO_NET_RX_ARMADO", s::INFO_NET_RX_ARMADO),
         ("BMO_INFO_NET_RX_TRAMAS", s::INFO_NET_RX_TRAMAS),
+        ("BMO_INFO_NET_RX_BYTES", s::INFO_NET_RX_BYTES),
+        ("BMO_INFO_NET_RX_PERDIDAS", s::INFO_NET_RX_PERDIDAS),
+        ("BMO_INFO_NET_RX_TIPOS", s::INFO_NET_RX_TIPOS),
         ("BMO_INFO_NET_PCI", s::INFO_NET_PCI),
         ("BMO_INFO_SYSCALL_CUENTA", s::INFO_SYSCALL_CUENTA),
         ("BMO_INFO_SYSCALL_CICLOS", s::INFO_SYSCALL_CICLOS),
