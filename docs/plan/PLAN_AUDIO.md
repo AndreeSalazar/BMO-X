@@ -17,15 +17,18 @@
 | paso del maestro | que es | estado |
 |---|---|---|
 | **0** -- el aparato dice quien es | parsear AudioStreaming | ✅ **HECHO Y CABLEADO**, sin foto |
-| **1** -- `SET_INTERFACE` | poner el alt que trae el endpoint | ⛔ **falta** |
+| **1** -- `SET_INTERFACE` | poner el alt que trae el endpoint | ✅ **HECHO 25-08**, sin ejecutar |
 | **2** -- el TRB isocrono | mandar silencio | ✅ **escrito 25-08**, sin ejecutar |
 | **3** -- WAV | PCM en un sobre. Cero decodificador | ✅ **HECHO 25-08**, 12 pruebas |
 | **4** -- el bufer prestado | `MEM_OP_OFRECER` y dos indices | ⛔ falta |
 | **5** -- MP3 | encima del mismo tubo | ⛔ falta, **y va el ultimo** |
 
-★★ **Y la fila que importa: hoy BMO-X CONTROLA EL VOLUMEN Y NO PUEDE EMITIR UNA
-MUESTRA.** Lo que falta para que suene no es un driver -- es el paso 1 y un
-bucle que alimente el tubo.
+★★ **Y la fila que importa cambio el 25-08: el camino entero esta escrito.**
+Descriptor, endpoint, alt, frecuencia, TRB isocrono y el bucle que alimenta.
+
+⚠ **Lo que separa de que suene ya no es codigo: es un ARRANQUE.** Nada de esto ha
+corrido nunca en el Ryzen, y el primer numero que lo dira es `encoladas` subiendo
+con `tarde` en cero.
 
 ---
 
@@ -53,20 +56,51 @@ mirarlo.
    audio: el endpoint isocrono es el DCI    =...
 ```
 
-## ⛔ A1 -- `SET_INTERFACE`: EL BLOQUEANTE DE VERDAD
+## [X] A1 -- `SET_INTERFACE` -- **HECHO el 25-08**
 
-**Que falta**: pedirle al aparato el alt setting que trae el endpoint isocrono
+**Que era**: pedirle al aparato el alt setting que trae el endpoint isocrono
 (`SET_INTERFACE`, request 0x0B) y configurar ese endpoint en el xHC.
 
-*** **Este es el que separa "escrito" de "suena".** El paso 0 sabe cual es el
-alt; el paso 2 sabe encolar una trama. **Nadie le ha dicho al aparato que se
-ponga en ese alt**, asi que el endpoint no existe todavia.
+*** **Era el que separaba "escrito" de "suena".** El paso 0 sabia cual era el
+alt; el paso 2 sabia encolar una trama. Y **nadie le habia dicho al aparato que
+se pusiera en ese alt**, asi que su endpoint no existia.
 
-**Que la bloquea**: nada tecnico. `bmo-xhci` ya sabe mandar peticiones de
-control --las usa el volumen-- y ya sabe configurar endpoints.
+**Como quedo**: `dev/usb/audio.rs::abrir`, y son tres pasos **en este orden**:
 
-**Como se sabe que quedo hecha**: `cabina` dice que el endpoint quedo
-configurado, y su DCI coincide con el que declaro el descriptor.
+```text
+   1. configurar el endpoint en el xHC   el HOST se prepara
+   2. SET_INTERFACE (0x0B)               el APARATO empieza su reloj
+   3. SET_CUR frecuencia                 solo si declara mas de una
+```
+
+★★ **El orden es una decision.** Se prepara el host antes de que el aparato
+arranque su reloj: al reves hay una ventana en la que el aparato ya espera datos
+en cada microtrama y el xHC no tiene ni anillo donde ponerlos. Con `OUT` eso no
+rompe nada --recibe silencio-- pero **cuenta como tramas tarde**, y entonces el
+primer numero que se mira al depurar estaria sucio desde antes de empezar.
+
+** Y el paso 3 solo se manda **si hay mas de una frecuencia que elegir**: un
+aparato de una sola puede contestar STALL, con razon, y un error que sale en cada
+arranque deja de ser un error.
+
+[!] `EP_ISOCH_OUT = 1`, y la tabla del xHCI **no es la del USB**: aqui `1` es
+Isoch OUT, `5` Isoch IN y `7` Interrupt IN --el del teclado--. Meter el numero
+del USB da un endpoint del tipo equivocado, y eso no falla al configurarlo:
+falla al primer TRB.
+
+## [X] A2b -- EL SILENCIO, y se pide a proposito
+
+`audio silencio` arma el empuje; `audio calla` lo para. El hilo del bus encola
+**ocho tramas por latido** --cuatro para cubrir los 4 ms, mas cuatro de
+colchon-- y toca el timbre **una vez**.
+
+*** **Y no se enciende solo al arrancar.** Abrir el tubo es configuracion y es
+seguro; empujar tramas es **trafico continuo a 250 latidos por segundo**, y eso
+no debe pasar en cada arranque mientras no haya nada que reproducir. Es la regla
+de las hojas de metal metida en el codigo.
+
+** El timbre va FUERA del bucle: uno por trama serian 2.000 escrituras MMIO por
+segundo para mover 192 bytes cada una -- **el aviso costaria mas que el dato**.
 
 ## [X] A2 -- el TRB isocrono -- **ESCRITO el 25-08**, y sin ejecutar
 
@@ -164,10 +198,17 @@ todavia no hay decodificador"* -- dos respuestas que mandan a sitios distintos.
    [X] A2  el TRB isocrono             escrito, sin ejecutar
    [X] A3  WAV                         hecho, 12 pruebas
    --------------------------------------------------------------------------
-   A1  SET_INTERFACE                   *** LO UNICO QUE SEPARA DE QUE SUENE
+   [X] A1  SET_INTERFACE               hecho, sin ejecutar
+   [X] A2b el silencio, a peticion     hecho, sin ejecutar
+   --------------------------------------------------------------------------
    A4  el bufer prestado               a la vez que A5, no despues
    A5  MP3                             el ultimo, y sin rehacer nada
 ```
+
+★★ **Lo que separa hoy de que suene ya no es codigo: es un ARRANQUE.** Todo el
+camino --descriptor, endpoint, alt, frecuencia, TRB isocrono y el bucle que
+alimenta-- esta escrito y **nada de ello ha corrido nunca**. El primer numero que
+lo dira es `encoladas` subiendo con `tarde` en cero.
 
 ★ **A1 va primero de lo que queda y no es discutible**: con A0, A2 y A3 hechos,
 lo unico que impide que salga un sonido es que **nadie le ha dicho al aparato que

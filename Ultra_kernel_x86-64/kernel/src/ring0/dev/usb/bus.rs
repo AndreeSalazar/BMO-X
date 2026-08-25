@@ -108,6 +108,16 @@ pub(super) fn pump_bus() {
         vmm::switch_to(kpml4);
     }
     bombear_interno();
+    // *** EL AUDIO COME AQUI, y no en su propio hilo.
+    //
+    // Una trama isocrona dura 1 ms y este latido son 4, asi que se encolan
+    // varias de golpe -- ver `audio::latido`. Un hilo aparte a 1 kHz seria un
+    // segundo consumidor del mismo anillo de transferencias, y dos productores
+    // sobre un anillo sin cerrojo es como se corrompe uno.
+    //
+    // [!] Y no hace nada si nadie lo armo: abrir el tubo es seguro, empujar
+    // tramas es trafico. Ver `audio::armar_silencio`.
+    super::audio::latido();
     // ** LA FOTO DE SALUD SE SACA AQUI DENTRO, y ese es su sitio exacto: leer
     // el estado de un endpoint recorre el Device Context y `USBSTS` es MMIO, y
     // las dos cosas solo estan mapeadas en el PML4 que acabamos de cargar.

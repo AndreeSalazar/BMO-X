@@ -180,7 +180,42 @@ pub(crate) fn net(dsk: &mut Desktop, _p: &bmo::Pantalla, what: &[u8]) -> After {
     After::Settle
 }
 
-pub(crate) fn audio(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
+/// **`audio [silencio | calla]`** -- el aparato, y el TUBO.
+///
+/// # Los dos numeros que hay que mirar, y por que estos
+///
+/// `AUDIO_MAESTRO` parte 7 lo deja escrito: **`tramas tarde` es la fila de esta
+/// pagina**. Un audio que va bien y uno que chasquea se distinguen por ese
+/// contador y por nada mas -- a oido son *"suena raro"* y *"suena bien"*, que no
+/// es un diagnostico.
+///
+/// [!] Y `silencio` es TRAFICO, no configuracion: 250 latidos por segundo
+/// empujando tramas al bus. Por eso se pide a proposito y no se enciende solo.
+pub(crate) fn audio(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
+    if arg == b"silencio" || arg == b"prueba" {
+        let ok = bmo::audio_tubo(1);
+        dsk.out.grid.with_ink(if ok != 0 { INK_GOOD } else { INK_ERR });
+        if ok != 0 {
+            dsk.out.grid.text(b"  tubo ARMADO: empujando SILENCIO' + N + '");
+            dsk.out.grid.with_ink(INK_PLAIN);
+            dsk.out.grid.text(b"  el silencio no puede sonar mal. Mira `audio` otra vez:' + N + '");
+            dsk.out.grid.text(b"  encoladas tiene que SUBIR y tarde quedarse en 0' + N + '");
+        } else {
+            dsk.out.grid.text(b"  no hay tubo abierto que armar (mira `cabina`)' + N + '");
+            dsk.out.grid.with_ink(INK_PLAIN);
+        }
+        paint_status(&p, &dsk.run_box, "audio", INK_DIM);
+        dsk.field.n = 0;
+        return After::Settle;
+    }
+    if arg == b"calla" || arg == b"para" {
+        bmo::audio_tubo(2);
+        dsk.out.grid.text(b"  tubo callado' + N + '");
+        paint_status(&p, &dsk.run_box, "audio", INK_DIM);
+        dsk.field.n = 0;
+        return After::Settle;
+    }
+
     let had_any = bmo::audio_censo();
     if had_any {
         dsk.out.grid.with_ink(INK_GOOD);
@@ -196,6 +231,36 @@ pub(crate) fn audio(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
         // se dice aqui y no solo en CABINA.
         dsk.out.grid.text(b"  F11 dice CUANTOS puertos se miraron: si es 0, el fallo\n");
         dsk.out.grid.text(b"  es del censo; si es >0, el aparato no es UAC1\n");
+    }
+
+    // ** EL TUBO, que es lo que decide si esto va a sonar.
+    if bmo::audio_tubo(0) != 0 {
+        dsk.out.grid.with_ink(INK_GOOD);
+        dsk.out.grid.text(b"  TUBO ABIERTO' + N + '");
+        dsk.out.grid.with_ink(INK_PLAIN);
+        dsk.out.grid.text(b"    frecuencia      ");
+        dsk.out.grid.dec(bmo::audio_tubo(4));
+        dsk.out.grid.text(b" Hz' + N + '");
+        dsk.out.grid.text(b"    bytes por trama ");
+        dsk.out.grid.dec(bmo::audio_tubo(3));
+        dsk.out.grid.text(b"' + N + '");
+        dsk.out.grid.text(b"    encoladas       ");
+        dsk.out.grid.dec(bmo::audio_tubo(5));
+        dsk.out.grid.text(b"' + N + '");
+        // *** LA FILA. Ver la cabecera.
+        let tarde = bmo::audio_tubo(6);
+        dsk.out.grid.text(b"    tramas TARDE    ");
+        dsk.out.grid.with_ink(if tarde == 0 { INK_GOOD } else { INK_ERR });
+        dsk.out.grid.dec(tarde);
+        dsk.out.grid.with_ink(INK_PLAIN);
+        dsk.out.grid.text(b"' + N + '");
+        if bmo::audio_tubo(7) == 0 {
+            dsk.out.grid.text(b"  escribe `audio silencio` para empujar y ver si sube' + N + '");
+        }
+    } else {
+        dsk.out.grid.with_ink(INK_ERR);
+        dsk.out.grid.text(b"  el tubo NO esta abierto: no puede sonar nada todavia' + N + '");
+        dsk.out.grid.with_ink(INK_PLAIN);
     }
     paint_status(&p, &dsk.run_box, "audio", INK_DIM);
     dsk.field.n = 0;
