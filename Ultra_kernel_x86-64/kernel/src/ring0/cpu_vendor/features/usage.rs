@@ -75,15 +75,38 @@ pub fn of(f: Feat) -> Use {
         Feat::Adx => Use::No("aritmetica de precision multiple; no hay"),
 
         // ================= azar =================
-        // ** Lo mas barato del tablero: RDRAND NO es privilegiado, lo ejecuta
-        // Ring 3. Es una fila de intrinsics.toml y CERO kernel.
-        Feat::Rdrand => Use::No("firma con clave, ESTRATOS, red, y el hash de Python"),
+        // *** COBRADO EL 2026-08-24, y era lo mas barato del tablero: RDRAND no
+        // es privilegiado, asi que Ring 3 lo ejecuta sin pasar por ninguna
+        // puerta. Cero kernel. Llevaba meses sin cliente porque no habia
+        // criptografia que lo pidiera -- y el mismo dia que la hubo, se pago.
+        //
+        // ** `bmo_cripto::azar` NO TIENE RESPALDO a proposito. Si esto falla,
+        // devuelve el motivo y quien pedia una clave PARA. Un respaldo que
+        // nadie ve convierte "no hay azar" en "hay azar malo", y lo segundo no
+        // se nota hasta que alguien entra.
+        Feat::Rdrand => Use::Yes("bmo-cripto: claves de X25519, nonces de GCM, y la firma del .bex"),
         Feat::Rdseed => Use::No("semilla de verdad; RDRAND llega antes y basta"),
 
         // ================= criptografia =================
-        Feat::Aes => Use::No("ESTRATOS descarta el cifrado a proposito"),
-        Feat::Pclmul => Use::No("sin cifrado ni CRC de hardware, no tiene cliente"),
-        Feat::Sha => Use::No("el gate hashea con BLAKE3, no con SHA-256"),
+        //
+        // *** LAS TRES CAMBIARON DE SENTIDO EL 2026-08-24 Y NINGUNA SE ENCIENDE
+        // TODAVIA -- pero lo que decian ya no era cierto, y una tabla que dice
+        // "no tiene cliente" sobre algo que SI lo tiene es peor que una casilla
+        // vacia: cierra la pregunta.
+        //
+        // ** Y las tres apuntan al mismo sitio: `aes.rs` y `gcm.rs` estan
+        // escritos en software y **miran tablas indexadas por el dato** --la
+        // S-box de AES, y el producto de GHASH si se hiciera con tabla--, o
+        // sea que quien comparta el CPU puede medir que lineas de cache se
+        // tocaron. AES-NI y PCLMUL no tienen esa exposicion porque no miran
+        // ninguna tabla: la ronda entera es una instruccion.
+        //
+        // [!] O sea que esto no es "ir mas rapido". Es la unica forma de que el
+        // cifrado de este sistema deje de tener ese canal abierto, y por eso el
+        // motivo de cada fila dice el CLIENTE y no la ganancia.
+        Feat::Aes => Use::No("bmo-cripto/aes.rs, y quitaria el canal de cache de la S-box"),
+        Feat::Pclmul => Use::No("el producto de GHASH en GF(2^128): bmo-cripto/gcm.rs"),
+        Feat::Sha => Use::No("bmo-cripto/sha256.rs, que ya pasa los vectores de NIST"),
 
         // ================= estado extendido =================
         Feat::Xsave => Use::Yes("entry.rs: el xrstor64 de TODA puerta, y el timer"),

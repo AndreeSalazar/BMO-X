@@ -72,6 +72,10 @@ pub mod aes;
 /// **AES-GCM**: cifrar y autenticar a la vez, que son dos cosas y una sola
 /// llamada. [!!] Y el nonce NO SE REPITE: ver su cabecera.
 pub mod gcm;
+/// **El AZAR**, de `RDRAND`. Lo unico que le faltaba a todo lo de arriba para
+/// servir de algo: una clave predecible es PEOR que no cifrar.
+/// [!!] Y no tiene respaldo a proposito -- ver su cabecera.
+pub mod azar;
 
 pub use hmac::{expandir, extraer, hmac as hmac_sha256, iguales};
 pub use sha256::Sha256;
