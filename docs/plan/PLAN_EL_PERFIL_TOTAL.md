@@ -30,7 +30,7 @@ acaba escribiendo un driver de e1000 para una maquina que lleva una Realtek.
 
 | aparato | lo que es, EXACTO | estado | donde vive |
 |---|---|---|---|
-| CPU | **AMD Ryzen 5 5600X** | [si] **PERFILADO**, 952 lineas / 9 ficheros | `cpu_vendor/ryzen_5_5600x/` |
+| CPU | **AMD Ryzen 5 5600X** | [si] **PERFILADO**, 952 lineas / 9 ficheros -- ⚠ pero su TOPOLOGIA no es de fiar: ver 5.4 | `cpu_vendor/ryzen_5_5600x/` |
 | RAM | 14,8 GiB, y BMO-X ocupa 5,4 MiB | [si] en metal | `mm/` |
 | Disco | AHCI/SATA + FAT32 + ESTRATOS | [si] lee **y escribe** en metal | `bmo-ahci`, 1.103 lineas |
 | USB | xHCI + HID, teclado y raton propios | [si] en metal | `bmo-xhci`, 1.871 lineas |
@@ -255,18 +255,36 @@ configura no transmite: un error no puede molestar a nadie mas de la red.
    [X] `exp` en INTI            HECHO   y de camino salio que `-1.0` valia -4,0
    [X] el monton grande         HECHO   `necesita monton 64 megas "por que"`
    [X] AVX2 / `tabla`           HECHO
+   [X] 1. UN ARRANQUE, tres fotos       HECHO 24/25-08. Ver 5.0 y las dos hojas
    ---------------------------------------------------------------------
-   1. UN ARRANQUE, tres fotos       una tarde     ver 5.0
    2. la puerta a los nucleos       semanas       *** LO UNICO que separa el
                                                   motor de inferencia de existir
+                                                  [!] Y VOLVIO A BLOQUEARSE.
+                                                  Ver 5.4
    3. el asistente local            semanas       la app insignia
    4. KIND_RED + TX                 semanas       la primera trama que SALE
    5. smoltcp en Ring 3             semanas       ping, y la medida contra Windows
    6. isocronas en xHCI             semanas       suena, y hay PLAZOS que cumplir
    7. la IOMMU                      ?             *** NUEVO. Ver 5.2
    ---------------------------------------------------------------------
-   8. criptografia                  MESES         y aqui sigue EL TECHO
+   8. criptografia                  ** YA NO SON MESES: 6 de 9 piezas puestas
+                                    el 24-08. Ver 5.5. El techo BAJO
 ```
+
+## 5.1.1 -- El escalon 1, cerrado: las cuatro fotos salieron
+
+```text
+   net / red rx   [X]  16 tramas, 7.967 bytes, 0 perdidas. IPv4 16
+   placa          [X]  el censo del firmware: tablas, ECAM, IOMMU tipo 0x10
+   smp prueba     [X]  0,99x dormidos -> 11,59x con `smp all`
+```
+
+** Y el 11,59x trajo su propia correccion, que esta anotada en la hoja del
+24-08: **es cierto Y no se puede extrapolar.** La faena del banco esta ligada a
+LATENCIA, y ahi los dos hilos SMT se rellenan los huecos; el motor de inferencia
+esta ligado a THROUGHPUT (matmul con AVX2, unidades saturadas) y ahi el techo
+sigue siendo **~6x**. Medir el reparto con un producto de matrices es lo que
+dira el numero que importa, y **es una faena distinta de la que corre hoy**.
 
 *** **De las once piezas del motor de inferencia quedan DIEZ hechas.** La que
 falta es el escalon 2, y no es un invento: es una operacion en el ABI. `crew`
@@ -307,6 +325,149 @@ escribir una linea de driver.
 programar tablas de pagina para aparatos, y eso no se estima sin haberlo mirado.
 Es la ley 11 -- se pregunta, no se supone -- y es la misma leccion que costo el
 "meses" de la GPU.
+
+## 5.4 -- ⚠⚠ EL ESCALON 2, BLOQUEADO OTRA VEZ: la topologia dio 27/54
+
+El 2026-08-25, en el mismo arranque que cerro la red, el panel contesto:
+
+```text
+   nucleos    27 fisicos
+   hilos      54 logicos
+   en pie      1 de 54
+```
+
+**Este CPU es 6/12.** No hay ningun Ryzen 5 5600X de 27 nucleos.
+
+### De donde sale el numero, y es UN solo sitio
+
+`cpu_vendor/ryzen_5_5600x/topology.rs`, y no hay segunda fuente:
+
+```rust
+   let total_threads = core_count_u32() as u32;   // CPUID.1:EBX[23:16]
+   let total_cores   = total_threads / 2;         //  <-- NO SE MIDE
+```
+
+Se lee **una vez** al arrancar, se cachea en `CPU_TOPOLOGY`, y de ahi salen
+`INFO_CPU_NUCLEOS` e `INFO_CPU_HILOS` para todo el sistema. **Ni un limite, ni
+un careo, ni una segunda opinion.**
+
+### *** LA COMPROBACION QUE EXISTE NO PUEDE FALLAR NUNCA
+
+`plat/smp/mod.rs` tiene una funcion `hermanos()` que valida la topologia asi:
+
+```rust
+   if hilos != nucleos * 2 { ... }    // "SMT esta encendido"
+```
+
+Con 54 y 27 esa condicion **pasa**. Y pasa siempre, con cualquier basura, porque
+`nucleos` esta DEFINIDO como `hilos / 2` doce ficheros mas atras:
+
+```text
+   nucleos := hilos / 2        y luego se comprueba que    hilos == nucleos * 2
+```
+
+> **Un testigo que solo se puede confirmar a si mismo no es un testigo.**
+> La comprobacion no fallo: es que no puede.
+
+Es la misma clase de fallo que la tabla de seguridad del 25-08 y que C5 de
+`PLAN_SEGURIDAD.md` -- **un limite comparado contra el numero equivocado**, tres
+veces en dos dias. Ya no es una casualidad: es un patron de este arbol.
+
+### ★ Lo que SI esta bien hecho, y es lo que salva el arranque
+
+`plat/smp` **ya carea contra un segundo testigo**: la MADT de ACPI, que es la
+lista de nucleos que declara la placa. Y cuando no coinciden, grita:
+
+```text
+   "el firmware declara otros hilos que el silicio (BIOS?)"
+```
+
+O sea que **el bring-up NO despierta 54 fantasmas**: despierta los que declara
+la MADT, y el `hilos-1` solo se usa cuando no hay MADT. **Lo que esta roto es lo
+que se ENSENA, no lo que se hace.**
+
+*** Y de ahi sale la casilla, que es de una linea de diseno y no de codigo:
+
+> **El careo existe y vive dentro de `smp`. Los paneles no lo consultan: leen el
+> perfil crudo.** El segundo testigo ya esta en la casa y no se le pregunta.
+
+### Las tres casillas, en orden
+
+```
+   [ ] a  que el arranque DIGA si la MADT y el CPUID discreparon (2026-08-25)
+          -> un campo nuevo de INFO en ring0/core/report.rs
+          [!] el aviso YA se emite en smp/mod.rs, pero muere en el log de
+              arranque: al escritorio no llega
+   [ ] b  que `total_cores` se MIDA en vez de dividir entre dos (2026-08-25)
+          -> ryzen_5_5600x/topology.rs: CPUID 0x8000001E:EBX[15:8] da los
+          hilos por nucleo. Y con eso `hermanos()` pasa a PODER fallar, que
+          es el punto entero
+   [ ] c  un TOPE del perfil: un 5600X que diga 54 hilos es MALO (2026-08-25)
+          -> ryzen_5_5600x/mod.rs, donde `nucleos()` publica la topologia
+          [!] el perfil ya nombra la maquina EXACTA (ley 24). Que la nombre
+              tambien para DESMENTIRLA
+```
+
+### [!] Y las tres casillas destaparon un limite del guardian de casillas
+
+Las tres se escribieron primero citando su fichero entre comillas, como manda la
+regla, y el guardian las denuncio: *"nombran algo que ya existe"*. Con razon
+segun su regla, y **equivocandose**, porque las tres **modifican** un fichero que
+tiene que existir de antes.
+
+```text
+   casilla que hace APARECER un fichero   -> el guardian la sabe comprobar
+   casilla que CAMBIA un fichero          -> no puede: la citada siempre existe
+```
+
+Se resolvieron con la otra senal que el guardian acepta --**la fecha de la
+medida**-- y eso es correcto: dice contra que arranque se comprueban. Pero la
+mitad de las casillas de este arbol son del segundo tipo, asi que **el guardian
+mide bien las que crean y no sabe mirar las que arreglan.** Queda escrito aqui y
+no en su codigo porque **cambiarlo es una decision, no un arreglo**: hoy el
+guardian no tiene ni un falso positivo, y eso es lo que lo mantiene encendido.
+
+[!] **La `c` es la ley 24 cobrando lo que promete.** Un driver generico no puede
+saber que 54 esta mal --cualquier numero es plausible--; **un PERFIL si**, porque
+dice de que chip es. Un perfil que no se atreve a desmentir al silicio es un
+driver generico con el nombre puesto.
+
+⚠ **Y hasta que `a` este, este documento no puede decir si la causa es el
+silicio, el firmware o el kernel.** El 24-08 el mismo codigo dio 12. Lo unico
+honesto que se puede escribir hoy es que **el numero no es reproducible**, y que
+nadie lo va a saber mientras solo lo mire un testigo.
+
+*** Por eso el escalon 2 vuelve a estar bloqueado: repartir trabajo entre
+nucleos empieza por saber cuantos hay, y hoy el sistema **no lo sabe y no lo
+sabia tampoco cuando dijo 12** -- acerto sin poder demostrarlo.
+
+---
+
+## 5.5 -- El escalon 8 bajo de altura: 6 de 9
+
+El techo se llamaba criptografia y se estimo en MESES. El 24-08 entro
+`platform/shared/bmo-cripto`, **2.605 lineas, cada pieza contra sus vectores
+oficiales**:
+
+```text
+   SHA-256   [X]     HMAC  [X]     HKDF  [X]
+   X25519    [X]     AES-GCM [X]   el AZAR (RDRAND) [X]
+   ----------------------------------------------------
+   Ed25519   --      TLS 1.3 --    X.509 --
+```
+
+** Y la que mas compra por lo que queda es **Ed25519**: `campo25519.rs` --la
+aritmetica modular sobre `2^255-19`, que es la parte que asusta-- **ya esta
+escrita y probada** para X25519. A la firma le falta SHA-512 y la curva de
+Edwards encima de un campo que ya existe.
+
+*** **Eso mueve la frase de portada de este documento.** Seguia diciendo que el
+techo es la criptografia y que es *"el unico escalon que es un invento"*. Sigue
+siendo el unico invento; **ya no esta entero por inventar.** Y cobra dos veces,
+como estaba escrito: la misma curva que pide HTTPS es la que pide firmar el
+`.bex`.
+
+---
 
 ## 5.3 -- Lo que sigue sin cambiar
 

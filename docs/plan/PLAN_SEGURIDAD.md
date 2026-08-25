@@ -1,6 +1,10 @@
 # PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo
 
-> Escrito el **2026-08-18**, auditando el arbol tal como esta hoy. El **por que**
+> Escrito el **2026-08-18** y **RELEIDO CONTRA EL CODIGO el 2026-08-25**: de las
+> siete casillas, **dos estaban hechas y una estaba mal medida**. Lo que cambio
+> va marcado con su fecha; lo que sigue abierto se dejo como estaba.
+>
+> Escrito auditando el arbol tal como estaba entonces. El **por que**
 > de cada eleccion --de que copiar y de que seria un error copiar-- vive en
 > [`SEGURIDAD_MAESTRO.md`](../maestro/SEGURIDAD_MAESTRO.md). Aqui solo hay
 > casillas: **que falta, que la bloquea, y como se sabe que quedo hecha.**
@@ -15,11 +19,12 @@
 | superficie | que la protege hoy | que le falta |
 |---|---|---|
 | **`.bex` al ejecutar** | BLAKE3 por seccion al aterrizar, y el gate rechaza sin firma en ESTRATOS | **autoria**: no hay clave |
+| **`.bex` al EMITIR** | `bmo-verify`, que llaman los **cinco** frontends antes de escribir | que lo use el **kernel** (ver C5) |
 | **`.bex` en FAT32** | nada: `veredicto` es `None` y el gate no corre | -- (limitacion del formato, ver C5) |
 | **Syscalls** | capabilities con derechos, `sonda.bex` los empuja | `EJECUTAR` y `REINICIAR` sin atar |
-| **Memoria del proceso** | separacion de anillos | **NX, SMEP, SMAP, UMIP: los cuatro apagados** |
+| **Memoria del proceso** | separacion de anillos, y ★ **los CUATRO bits encendidos** (25-08): NX/W^X, SMEP, SMAP, UMIP | ASLR, y esta fuera a proposito (ver 4) |
 | **Dispositivos** (HID, GPT, MADT) | se parsean sin desconfiar | ninguna sonda |
-| **Red** | no existe | superficie CERO, y es la unica linea buena de la tabla |
+| **Red** | ⚠ **ya NO es cero** (25-08): el anillo RX recibio 16 tramas / 7.967 bytes en metal. Lo que la acota hoy: **no se transmite**, y el DMA va a un corral | la que deja de ser la linea buena de la tabla. Ver 4 |
 
 ---
 
@@ -42,7 +47,18 @@ omision, y porque tres de estas cuatro **no se anaden despues**:
 
 # 2. LAS CASILLAS
 
-## ★★ C1 -- `verify_ed25519` devuelve `true` a una firma de ceros
+## [X] C1 -- `verify_ed25519` devuelve `true` a una firma de ceros -- **HECHA el 24-08**
+
+> **Como quedo**: la funcion ya no existe con ese nombre ni con ese tipo. Hoy es
+> `examinar_ed25519` y devuelve un `enum Firma` con **dos** variantes --
+> `SinFirmar` y `NoSePuedeComprobar`-- y **ninguna de las dos se puede confundir
+> con una firma valida**. Es mas fuerte que lo que esta casilla pedia: se pidio
+> que devolviera `false`, y lo que se hizo fue **quitar el `bool`**, porque un
+> `bool` obliga a elegir entre dos mentiras cuando la respuesta honesta es *"no
+> lo se"*. Sigue sin llamarla nadie.
+>
+> Lo de abajo se conserva porque **describe la trampa**, que es lo que hay que
+> recordar el dia que C3 la cablee.
 
 **Donde**: `platform/abi/bmo-abi/src/bef/signing.rs:228`.
 
@@ -74,7 +90,33 @@ verificacion de verdad, y quien quiera permitir binarios sin firmar lo decide
 excepcion repartida tapa el sintoma que se vio, no el que viene; es la misma
 leccion que `verdict::es_fragmento` de MAQUETA.
 
-## ★★ C2 -- los cuatro bits que el CPU regala y nadie enciende
+## [X] C2 -- los cuatro bits que el CPU regala y nadie enciende -- **HECHA el 25-08**
+
+> ★★ **Y esta casilla estaba MAL MEDIDA: tres de los cuatro ya estaban puestos.**
+> `SMEP` (`cr4 |= 1 << 20`) y `UMIP` (`cr4 |= 1 << 11`) los pone `s1_cpu/cpu/mod.rs`
+> desde hace meses, y `EFER.NXE` lo pone `s1_cpu/cpu/zen3.rs`. La fila de la
+> tabla se escribio mirando **el kernel**, y los bits los enciende **otra etapa**.
+>
+> ```text
+>    NX / W^X   [X] 25-08   EFER.NXE ya estaba; faltaba el PTE_NX en `vmm.rs`
+>    SMEP       [X] ya estaba   Ring 0 no EJECUTA una pagina de Ring 3
+>    SMAP       [X] 25-08   y no fue un bit: habia DOS sitios que tocaban Ring 3
+>    UMIP       [X] ya estaba   SGDT/SIDT/SLDT/STR ya no fugan del kernel
+> ```
+>
+> ⚠ **La leccion es de este documento, no del codigo**: una tabla equivocada no
+> deja un hueco, **CIERRA LA PREGUNTA** -- nadie vuelve a mirar lo que ya esta
+> contestado. Y por eso esta casilla, hecha, se conserva entera en vez de
+> borrarse.
+>
+> ★ Lo que W^X compro, dicho sin adornos: **la mitad de una explotacion.** Quien
+> logre escribir en cualquier sitio ya no puede escribir instrucciones y saltar a
+> ellas; tiene que armar la cadena con codigo que YA existe (ROP). Y con SMEP, el
+> destino habitual de esa cadena --saltar a codigo de Ring 3-- tambien esta
+> cerrado. Y SMAP fue el unico que costo dias: no es un bit, es **quitarle al
+> kernel dos caminos que ya usaba**, y el permiso que queda vive en UN sitio con
+> nombre (`autopsy::con_permiso`). Un permiso repartido por seis sitios no es un
+> permiso: es la regla apagada.
 
 **Donde**: `kernel/src/ring0/cpu_vendor/features/usage.rs:142-146`. La tabla del
 propio kernel ya los declara sin uso:
@@ -140,20 +182,45 @@ pasar a lo que lanza. Es un problema de delegacion, no de comprobacion.
 **Como se sabe que quedo hecha**: `sonda.bex` gana un empujon octavo --pedir
 reiniciar sin tenerla-- y el kernel lo niega y sigue en pie.
 
-## C5 -- `bmo-verify` existe y NO esta cableado a la construccion
+## ⚠ C5 -- `bmo-verify` -- **LA CASILLA MIDIO EL SITIO EQUIVOCADO** (25-08)
 
-**Donde**: la herramienta esta en `toolchain/forge/bmo-verify`. `grep` sobre
-`build.ps1` y `bmo.ps1`: **cero menciones**.
+**Lo que decia**: *"`grep` sobre `build.ps1` y `bmo.ps1`: cero menciones (...) el
+build no lo llama nunca. Un binario mal formado se descubre en el Ryzen."*
 
-**Que significa**: hay un verificador de `.bex` escrito y el build no lo llama
-nunca. Un binario mal formado se descubre en el Ryzen y no en la maquina de
-construir, que es donde sale barato.
+**El grep era cierto y la conclusion falsa.** `bmo-verify` no se llama desde el
+script de construccion porque **se llama desde dentro de los compiladores**, que
+es antes y es mejor:
 
-**Que la bloquea**: nada. Es una linea en `build.ps1` sobre cada `.bex`
-producido, igual que ya se hace con el ASCII y con la cara de MAQUETA.
+```text
+   toolchain/lang/ada/Cargo.toml       bmo-verify = { path = ... }
+   toolchain/lang/c/Cargo.toml         idem
+   toolchain/lang/cobol/Cargo.toml     idem
+   toolchain/lang/cpp/Cargo.toml       idem
+   toolchain/lang/inti/emisor-x86_64/  idem
+```
 
-**Como se sabe que quedo hecha**: se corrompe un `.bex` a proposito y **el build
-falla**, no el arranque.
+Los **cinco** frontends lo llaman **antes de escribir el `.bex`**, y
+`CONTRIBUTING.md` lo declara desde el 2 de agosto. Un `.bex` mal formado no llega
+al Ryzen: no llega ni a existir.
+
+★★ **Es EXACTAMENTE el mismo fallo que C2**, cometido por el mismo documento el
+mismo dia: se busco la comprobacion **donde a uno le parecia que tenia que
+estar**, no se encontro, y se escribio que no existia. Dos veces en siete
+casillas. Y las dos veces la comprobacion estaba una etapa mas abajo.
+
+> **Un `grep` que no encuentra prueba que no esta AHI. No prueba que no este.**
+
+**Lo que SI queda abierto, y es la mitad de verdad de esta casilla**: el que no
+lo usa es **el kernel**. El cargador admite un `.bex` sin pasarlo por el mismo
+juicio que lo emitio, asi que un fichero que no salio de este toolchain --uno
+copiado a mano al FAT32-- entra por un camino que nadie verifico.
+
+**Que la bloquea**: nada tecnico. `bmo-verify` delega en `bmo-abi::bef::validator`,
+que el kernel ya enlaza.
+
+**Como se sabe que quedo hecha**: se corrompe un `.bex` **ya escrito** en el disco
+y el **cargador** lo rechaza nombrando la seccion mala -- no el compilador, que
+ese caso ya lo cubre.
 
 ## C6 -- los parsers de dispositivo no tienen sonda
 
@@ -190,14 +257,24 @@ BLAKE3.
 # 3. EL ORDEN, y por que es ese
 
 ```
-   C1  el stub que dice que si          cinco minutos, y tapa una trampa futura
-   C5  cablear bmo-verify               una linea, y mueve fallos al build
-   C2  UMIP y SMEP                      un bit cada uno
-   C2  NX y SMAP                        piden repasar mapeos y copias
+   [X] C1  el stub que dice que si      HECHA 24-08. Y sin `bool`, que es mas
+   [X] C2  UMIP y SMEP                  ya estaban puestos. La tabla mentia
+   [X] C2  NX / W^X y SMAP              HECHAS 25-08. SMAP costo dos caminos
+   --------------------------------------------------------------------------
+   C5  el gate en el CARGADOR           el compilador ya lo hace; el kernel no
    C3  Ed25519                          LA pieza; dias, y con vectores
    C4  la capability de EJECUTAR        pide resolver delegacion
    C6  la sonda de dispositivos         la mas cara; despues de la red
 ```
+
+★★ **Y el orden cambio de dueno: hoy la que manda es C3.** No por gravedad, sino
+porque **es la unica que ya no esta sola**: `platform/shared/bmo-cripto` existe
+desde el 24-08 con SHA-256, HMAC, HKDF, X25519 y AES-GCM, todos contra sus
+vectores oficiales. Ed25519 pide SHA-512 y aritmetica de Edwards -- y `campo25519.rs`,
+que es la parte que asusta, **ya esta escrita y probada** para X25519.
+
+> El dia que se escribio esta lista, C3 era *"LA pieza"* y no habia ni un hash en
+> el arbol. Hoy le falta **la mitad de una pieza**.
 
 ★ **El criterio no es la gravedad: es lo que cuesta descubrir el fallo mas
 tarde.** C1 y C5 son casi gratis y las dos evitan que algo pase inadvertido; C6
@@ -214,6 +291,20 @@ probarla.
   encadena BMO-X a la llave de otro.
 - **Cifrado del volumen** -- fuera del alcance acotado de ESTRATOS, que ya lo
   declara junto a RAID, cuotas y ACLs.
-- **Cualquier cosa de red** -- la superficie es cero hoy. Cuando deje de serlo,
-  este plan se relee entero: es el unico cambio que mueve todas las casillas a la
-  vez.
+- **Cualquier cosa de red** -- ⚠ **y esto es lo que acaba de caducar.** Este plan
+  decia *"la superficie es cero hoy. Cuando deje de serlo, este plan se relee
+  entero: es el unico cambio que mueve todas las casillas a la vez."*
+
+  **Dejo de serlo el 2026-08-25.** BMO-X leyo 16 tramas y 7.967 bytes que puso
+  otra maquina en el cable. La condicion que este documento escribio para
+  releerse entero **se cumplio**, y el aviso queda aqui puesto por su propia
+  regla.
+
+  ★ Lo que todavia la acota, y hay que decirlo para no asustar de mas: **no se
+  transmite** --un fallo no puede molestar a nadie mas de la red-- y el DMA de
+  la tarjeta va contra un corral acotado. O sea que hay superficie de
+  **entrada**, que es la que importa: bytes de un tercero parseados por codigo
+  propio, que es la definicion de C6 y ya no es hipotetica.
+
+  [!] **La relectura entera NO se hizo en esta pasada, a peticion del dueno**
+  (*"no toques en RED"*). Queda como la primera casilla de la siguiente.

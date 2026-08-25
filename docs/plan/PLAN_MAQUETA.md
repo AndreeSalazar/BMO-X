@@ -300,8 +300,12 @@ estan en espanol.
    [x] 4   nieto    maquetacion: bloque + flex en un eje
    [x] 5   bisnieto veredicto: las seis comprobaciones
    [x] 6   emisor A -> Rust generado, y calc.rs como primera victima
-   [ ] 7   ficheros dorados como oraculo   -> `toolchain/tools/maqueta/pruebas/`
-   [ ] 8   emisor B -> recurso BEF 0x0B     -> `toolchain/tools/maqueta/emit/src/`
+   [ ] 7   ficheros dorados como oraculo -> `toolchain/tools/maqueta/pruebas/calc.dorado`
+           [!] la carpeta existe y tiene UN fichero: calc.maqueta. O sea la
+               ENTRADA del oraculo, y no su respuesta esperada
+   [ ] 8   emisor B -> recurso BEF 0x0B -> `toolchain/tools/maqueta/emit/src/bef.rs`
+           [!] MISMO escalon que el 2 de PLAN_LA_CARA_VIAJA: se marcan juntos,
+               o uno de los dos documentos miente
    [~] 9   `<island>` a una superficie BSUP  (parsea y viaja; falta el otro lado)
 ```
 
