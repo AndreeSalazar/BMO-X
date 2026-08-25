@@ -30,6 +30,8 @@ members = [
     # rectangulos por fotograma tirados y el 7,2% de la pantalla sin escribir.
     # Un solo recorte para las tres orillas.
     "platform/shared/bmo-dibujo",
+    # El formato de una cara maquetada que viaja. Ver PLAN_LA_CARA_VIAJA.md.
+    "platform/shared/bmo-maqueta-cara",
     # LA RESTA: un clic de pantalla -> un clic de la app. Vive aqui y no dentro
     # del compositor por lo mismo que el juez de las medidas: aqui se PRUEBA.
     # Paso 2c.1 de `docs/plan/PLAN_DIRECTOR.md`.

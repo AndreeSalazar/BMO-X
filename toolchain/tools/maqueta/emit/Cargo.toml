@@ -17,6 +17,12 @@ bmo-maqueta-node = { path = "../node" }
 # 8.775 rectangulos por fotograma. Escribir aqui un tercero habria sido repetir
 # ese fallo dentro de la herramienta que existe para que no se repitan.
 bmo-dibujo = { path = "../../../../platform/shared/bmo-dibujo" }
+# ** EL FORMATO de la cara que viaja, y NO una copia local de sus offsets.
+#
+# Lo consume tambien el LECTOR, que corre en Ring 3 sin asignador. Si el emisor
+# tuviera los suyos serian dos formatos con el mismo nombre -- y un formato mal
+# empaquetado no da un fallo, da algo peor: se lee mal y nadie se entera.
+bmo-maqueta-cara = { path = "../../../../platform/shared/bmo-maqueta-cara" }
 
 [dev-dependencies]
 bmo-maqueta-cascade = { path = "../cascade" }

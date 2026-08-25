@@ -303,9 +303,12 @@ estan en espanol.
    [ ] 7   ficheros dorados como oraculo -> `toolchain/tools/maqueta/pruebas/calc.dorado`
            [!] la carpeta existe y tiene UN fichero: calc.maqueta. O sea la
                ENTRADA del oraculo, y no su respuesta esperada
-   [ ] 8   emisor B -> recurso BEF 0x0B -> `toolchain/tools/maqueta/emit/src/bef.rs`
-           [!] MISMO escalon que el 2 de PLAN_LA_CARA_VIAJA: se marcan juntos,
-               o uno de los dos documentos miente
+   [X] 8   emisor B -> recurso BEF 0x0B -> `toolchain/tools/maqueta/emit/src/bef.rs`
+           HECHO 25-08, y con el 1 de PLAN_LA_CARA_VIAJA delante: el FORMATO
+           salio a `platform/shared/bmo-maqueta-cara` antes que el emisor,
+           porque un emisor dueno del formato deja al lector deduciendolo
+           [!] MISMO escalon que el 2 de PLAN_LA_CARA_VIAJA: se marcaron
+               juntos, que era la condicion escrita
    [~] 9   `<island>` a una superficie BSUP  (parsea y viaja; falta el otro lado)
 ```
 

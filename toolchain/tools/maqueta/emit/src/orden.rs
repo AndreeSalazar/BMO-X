@@ -124,6 +124,49 @@ fn trazos_de(f: &Frame, estado: Estado, de: &str, out: &mut Vec<Orden>) {
     }
 }
 
+/// **Una region que se puede pulsar**, y como se llama.
+///
+/// # Por que vive aqui y no en el emisor que la escribe
+///
+/// Por lo mismo que `lista`: es una respuesta a *"que hay"*, no a *"como se
+/// escribe"*. Si cada destino dedujera por su cuenta que cajas son pulsables,
+/// serian **tres deducciones de la misma cosa** -- y el dia que una se
+/// desviara, el boton estaria en un sitio en el codigo generado y en otro en el
+/// recurso, con el mismo `.maqueta` de origen.
+///
+/// [!] Y OJO CON EL NOMBRE: esto **no** es `bmo-golpe`, que es la RESTA --
+/// convertir un clic de pantalla en un clic de app-- y vive en Ring 3. Esto es
+/// *donde* se puede pulsar y *como se llama*, decidido en el anfitrion. Dos
+/// preguntas, dos sitios, y la palabra se repite porque el plan la usa asi.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Golpe {
+    pub r: Rect,
+    /// El `#id` de la caja, con la almohadilla incluida.
+    pub nombre: String,
+}
+
+/// Las regiones pulsables: **las cajas que tienen `#id`, y solo esas**.
+///
+/// * El criterio no es un invento de aqui: es el mismo que usa `trazos_de` para
+/// decidir si una caja aporta ordenes de `Encima`. Una caja sin `id` no puede
+/// recibir su realce **porque nadie puede nombrarla para pedirlo**, y por la
+/// misma razon nadie puede recibir su pulsacion.
+///
+/// > Si las dos reglas se separaran, habria cajas que se iluminan al pasar por
+/// > encima y no hacen nada al pulsarlas.
+pub fn golpes(l: &Laid) -> Vec<Golpe> {
+    let mut out = Vec::new();
+    for f in l.all() {
+        if let Some(id) = &f.id {
+            out.push(Golpe {
+                r: f.rect,
+                nombre: format!("#{id}"),
+            });
+        }
+    }
+    out
+}
+
 /// Como se llama una caja: su `id`, su isla, o su etiqueta.
 pub fn nombre_de(f: &Frame) -> String {
     if let Some(id) = &f.id {

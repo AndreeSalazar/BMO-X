@@ -128,7 +128,51 @@ ficheros. La red solo cambia **por donde llega**.
 
 ## 3. EL FORMATO, Y LO QUE CUESTA
 
-Medido sobre la calculadora ya compilada: **28 cajas, 17 golpes, 1 isla**.
+> ⚠ **MEDIDO el 2026-08-25, y la estimacion de este documento estaba MAL.**
+> Se conserva debajo con su error a la vista, porque el motivo del fallo es lo
+> util.
+
+### Lo que salio de verdad
+
+```text
+   cabecera           20 B
+   83 trazos x 20   1660 B   <- el 81% del fichero
+   20 golpes x 12    240 B
+   cadenas           121 B   con las repetidas puestas UNA vez
+                    ------
+   LA CARA DE LA CALCULADORA   2.041 B
+```
+
+### *** POR QUE LA CUENTA A MANO FALLO POR 2,1x
+
+Este documento contaba **28 cajas**. El formato guarda **83 trazos**: por tres.
+
+```text
+   una caja con borde y fondo    ->  DOS rects concentricos
+   una caja con texto            ->  y ademas un trazo de letras
+   una caja con `:hover`         ->  otra vez, para el estado Encima
+```
+
+★★ **El error no fue el tamano de cada registro --ese se acerto-- sino la
+UNIDAD.** Se conto lo que se ve en el `.maqueta` (cajas) y lo que viaja es lo que
+se pinta (trazos), y entre las dos cosas hay un emisor que la cuenta a mano no
+modelo.
+
+> Una estimacion en la unidad equivocada no se equivoca un poco:
+> se equivoca por el factor que separa las dos unidades.
+
+Y lo que **si** se cumplio es la tesis, que era lo que el numero servia para
+defender: **sigue siendo dos kilobytes.** Para comparar, en el mismo arbol el
+`.bex` de una app pequena son decenas de KiB y un solo fotograma de 1920x1080
+son 8,3 MB. La cara de una app cabe **cuatro mil veces** en un fotograma.
+
+★ Y sale pequeno por donde se dijo: **lo caro se quedo en el anfitrion.** Un
+navegador tendria que mandar el documento *y* traer el motor que lo maqueta.
+
+[!] Las cadenas son solo el 6% porque se guardan **sin repetir**: diecisiete
+botones que dicen `#boton0`..`#boton9` no pagan diecisiete veces.
+
+### La cuenta que este documento hizo a mano, y que se equivoco
 
 ```
    cabecera        magico 4 + version 2 + ancho 2 + alto 2 + cuentas 6   =   16 B
@@ -137,15 +181,8 @@ Medido sobre la calculadora ya compilada: **28 cajas, 17 golpes, 1 isla**.
    17 golpes       rect (8) + indice de nombre (2)                       =  170 B
    nombres         ~5 B x 18                                             =   90 B
                                                                           -------
-   LA CARA ENTERA DE LA CALCULADORA                                       ~ 950 B
+   LO QUE SE PREDIJO                                                      ~ 950 B
 ```
-
-★ **Menos de un kilobyte.** Y no es que salga pequeno por apretarlo: sale pequeno
-porque **lo caro se quedo en el anfitrion**. Un navegador tendria que mandar el
-documento *y* traer el motor que lo maqueta.
-
-Para comparar, en el mismo arbol: el `.bex` de una app pequena son decenas de
-KiB, y un solo fotograma de 1920x1080 son 8,3 MB.
 
 ---
 
@@ -257,14 +294,13 @@ lleva el escritorio** -- que es la misma ley que ya rige las superficies.
 ## 8. LA ESCALERA
 
 ```
-   [ ] 1  el FORMATO en un crate sin E/S -> `platform/shared/bmo-maqueta-cara/`
-          [!] la CARPETA `platform/shared/` YA existe (9 crates; la estreno
-              bmo-cripto el 24-08). Lo que falta es esta crate de dentro
-          (como estratos y trim: un formato mal empaquetado no da un fallo,
-          da algo peor -- se lee mal y nadie se entera)
-   [ ] 2  el emisor B -> `toolchain/tools/maqueta/emit/src/bef.rs`
-          [!] esa carpeta ya tiene 5 ficheros (lib, orden, paleta, recorte,
-              rust). El que falta es ese, y solo ese
+   [X] 1  el FORMATO en un crate sin E/S -> `platform/shared/bmo-maqueta-cara/`
+          HECHO 25-08. `no_std`, cero dependencias, y **las cinco
+          comprobaciones de la seccion 6 dentro**, con una prueba que tumba
+          cada una. 14 pruebas
+   [X] 2  el emisor B -> `toolchain/tools/maqueta/emit/src/bef.rs`
+          HECHO 25-08. Traduce y no decide, como `rust.rs`. La cara de la
+          calculadora va y VUELVE: 5 pruebas de ida y vuelta
    [ ] 3  el LECTOR, las cinco comprobaciones -> `Ultra_userspace/services/director/src/scene/cara.rs`
           [!] scene/ tiene 20 ficheros y NINGUNO lee un .maqueta
    [ ] 4  desde un FICHERO suelto, y que se pinte -> `Ultra_userspace/services/director/src/scene/cara_calc.rs`
