@@ -102,6 +102,20 @@ pub fn init() {
         MMIO = mmio;
     }
 
+
+    // ================================================================
+    //  *** LO QUE LA PLACA OFRECE PARA ESTA TARJETA (2026-08-24)
+    // ================================================================
+    //
+    //  El dueno lo pidio asi: *"a base de lo que la placa ofrece, recuerda que
+    //  llame y que datos DAN y exprimir"*. Y la placa da dos cosas que hoy no
+    //  se estaban ni mirando -- las dos deciden lo que se puede hacer despues.
+    //
+    //  ** No se PROGRAMA nada aqui. Se lee y se cuenta, que es el paso 0 de
+    //  siempre: predecir, leer, comparar. Encender MSI el mismo dia que se
+    //  descubre que existe seria cambiar dos cosas a la vez.
+    la_placa_dice(&loc);
+
     crate::ring0::cabina::mac("red", "MAC", id.mac_u64());
     if !id.creible() {
         // Ceros o unos no dicen "tarjeta rota": dicen que la lectura no llego al
@@ -540,4 +554,85 @@ pub fn rx_poll() -> u32 {
         }
     }
     leidas
+}
+
+
+/// **Que declara la placa sobre esta NIC**, leido y contado. No cambia nada.
+///
+/// # Las dos preguntas que deciden la red de manana
+///
+/// ```text
+///    MSI?          hoy el driver SONDEA. Con MSI la tarjeta AVISA, y eso es
+///                  lo que TCP necesita: un RTT medido con un bucle de sondeo
+///                  mide el bucle, no la red
+///    ancho PCIe    cuanto cabe por el bus. El enlace Ethernet son 10 Mbit
+///                  hoy, asi que el bus SOBRA -- pero el dia que no,
+///                  este numero es el que lo dice
+/// ```
+///
+/// *** Y la capability extendida solo se alcanza por ECAM, o sea por el MCFG,
+/// o sea **porque la placa lo conto**. Por el camino de puertos de siempre
+/// --256 bytes-- estos registros no existen. Es literalmente exprimir lo que
+/// el firmware dio.
+///
+/// [!] Si ECAM no se creyo, se dice y no se inventa. Un numero de un sitio en
+/// el que no se confia es peor que la ausencia del numero.
+fn la_placa_dice(loc: &pci::NetLoc) {
+    // La lista encadenada de capabilities vive en los 256 bytes de siempre, asi
+    // que MSI se puede preguntar aunque ECAM no este.
+    let estado = pci::cfg_read32(loc.bus, loc.dev, loc.func, 0x04) >> 16;
+    if estado & (1 << 4) == 0 {
+        crate::ring0::cabina::warn("red", "la NIC no anuncia NINGUNA capability", estado as u64);
+        return;
+    }
+    let mut off = (pci::cfg_read32(loc.bus, loc.dev, loc.func, 0x34) & 0xFC) as u8;
+    let mut msi = false;
+    let mut pcie_off = 0u8;
+    // ** Acotado a 48 saltos: una lista encadenada que un aparato construye mal
+    // puede apuntarse a si misma, y un bucle infinito en el arranque no da
+    // autopsia. Mismo motivo que el tope del Report Count de HID.
+    for _ in 0..48 {
+        if off < 0x40 {
+            break;
+        }
+        let cab = pci::cfg_read32(loc.bus, loc.dev, loc.func, off);
+        match (cab & 0xFF) as u8 {
+            0x05 => msi = true,
+            0x10 => pcie_off = off,
+            _ => {}
+        }
+        off = ((cab >> 8) & 0xFC) as u8;
+    }
+
+    // *** LA FILA QUE ABRE LA PUERTA DE TCP. Hoy `rx_poll` sondea; con MSI la
+    // tarjeta escribe en memoria y el CPU llega solo. Un RTT medido con un
+    // bucle de sondeo mide el bucle.
+    if msi {
+        crate::ring0::cabina::info("red", "la placa OFRECE MSI: la NIC puede avisar sin sondeo", 1);
+    } else {
+        crate::ring0::cabina::warn("red", "sin MSI: solo queda sondear", 0);
+    }
+
+    if pcie_off == 0 {
+        return;
+    }
+    // `Link Status` esta en +0x12 de la capability PCI Express. Los 4 bits
+    // bajos son la velocidad y los 6 siguientes el ancho.
+    let ls = pci::cfg_read32(loc.bus, loc.dev, loc.func, pcie_off + 0x10) >> 16;
+    let gen = (ls & 0xF) as u64;
+    let carriles = ((ls >> 4) & 0x3F) as u64;
+    crate::ring0::cabina::count("red", "PCIe: generacion del enlace", gen);
+    crate::ring0::cabina::count("red", "PCIe: carriles", carriles);
+
+    // Y lo que SOLO se alcanza por ECAM, o sea gracias al MCFG.
+    if !pci::hay_ecam() {
+        crate::ring0::cabina::warn("red", "sin ECAM: las capabilities extendidas no se pueden leer", 0);
+        return;
+    }
+    let mut ext = [pci::CapExt { id: 0, version: 0, offset: 0 }; 16];
+    let n = pci::caps_extendidas(loc.bus, loc.dev, loc.func, &mut ext);
+    crate::ring0::cabina::count("red", "capabilities EXTENDIDAS (solo por ECAM)", n as u64);
+    for c in ext.iter().take(n) {
+        crate::ring0::cabina::id("red", pci::nombre_cap_ext(c.id), c.id as u64);
+    }
 }
