@@ -21,7 +21,7 @@
 //! cuales un emisor no puede ni empezar.
 //!
 //! [!] NO comprueba que los bytes sean correctos. Eso no lo puede decir un
-//! test: lo dice el silicio. Ver `tables/arch/CONTRATO.md`.
+//! test: lo dice el silicio. Ver `toolchain/forge/sem-asm/tables/arch/CONTRATO.md`.
 
 use std::path::{Path, PathBuf};
 
@@ -56,7 +56,7 @@ fn cada_arquitectura_trae_sus_cuatro_tablas() {
         for fichero in ["instructions.toml", "intrinsics.toml", "abi.toml", "inti.toml"] {
             assert!(
                 dir.join(fichero).is_file(),
-                "*** a la arquitectura `{nombre}` le falta `{fichero}`. Ver tables/arch/CONTRATO.md"
+                "*** a la arquitectura `{nombre}` le falta `{fichero}`. Ver toolchain/forge/sem-asm/tables/arch/CONTRATO.md"
             );
         }
     }
@@ -108,7 +108,7 @@ fn el_abi_trae_lo_que_decide_una_llamada() {
         ] {
             assert!(
                 t.lines().any(|l| l.trim_start().starts_with(campo)),
-                "*** `{nombre}/abi.toml` no declara `{campo}`. Ver tables/arch/CONTRATO.md"
+                "*** `{nombre}/abi.toml` no declara `{campo}`. Ver toolchain/forge/sem-asm/tables/arch/CONTRATO.md"
             );
         }
     }
@@ -151,7 +151,7 @@ fn el_contrato_todavia_no_esta_probado_por_un_segundo_chip() {
         cuantas, 1,
         "*** hay {cuantas} arquitecturas: el contrato ya se puede COMPROBAR.\n\
          Toca sacar `RESPALDO` de marco.rs y la seleccion de operaciones.rs a\n\
-         tablas -- ver tables/arch/CONTRATO.md seccion 3 -- y despues cambiar\n\
+         tablas -- ver toolchain/forge/sem-asm/tables/arch/CONTRATO.md seccion 3 -- y despues cambiar\n\
          este test por el que compare las dos."
     );
 }
