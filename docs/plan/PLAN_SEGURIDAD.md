@@ -447,21 +447,102 @@ mas cara de todas las de este plan y por eso va la ultima.
 escribio las defensas**, asi que prueba lo que se nos ocurrio atacar. La primera
 prueba que no se escribe uno mismo llega con la RED.
 
-## C7 -- compilacion reproducible, y el precedente que ya la empezo
+## [~] C7 -- compilacion reproducible -- **la mitad medible, HECHA el 25-08**
 
-**Que falta**: que el mismo fuente de al mismo binario en dos maquinas
-distintas, para que un artefacto se pueda comparar y, con el tiempo, para poder
-hacer *diverse double-compiling* al toolchain.
+**Que pedia**: que el mismo fuente de al mismo binario en dos maquinas
+distintas, para poder comparar un artefacto y, con el tiempo, hacer *diverse
+double-compiling* al toolchain.
 
-★★ **Y esto no arranca de cero: MAQUETA ya se llevo la leccion.** El emisor
-recibia la ruta *tal como se tecleo*, asi que generar la misma cara con ruta
-relativa y con ruta absoluta daba **dos artefactos distintos**. La frase que
-salio de ahi vale para todo el arbol:
+### [!] Lo primero: UNA maquina no puede contestar esa pregunta
 
-> **un artefacto que depende de quien lo genera NO SE PUEDE COMPARAR**
+```text
+   compilar dos veces AQUI    pasa siempre, incluso con la ruta dentro
+   compilar en OTRA maquina   es la prueba, y no hay otra maquina
+```
 
-**Como se sabe que quedo hecha**: un `.bex` construido dos veces da el mismo
-BLAKE3.
+*** **Y la trampa esta en el primero.** Compilar dos veces en la misma casa da
+verde aunque el binario lleve incrustada la ruta del que lo construyo: **la ruta
+es la misma en las dos pasadas.** Un banco asi certifica lo que no mira.
+
+### Lo que SI se pudo medir, y lo que salio
+
+Cinco programas, dos pasadas cada uno, tres frontends -- y ademas por ruta
+relativa, absoluta y con otro nombre de salida:
+
+```text
+   ray (30.597 B)  sonda  banco  batch  cierre     los cinco REPRODUCIBLES
+   ruta relativa / absoluta / con punto            IDENTICO byte a byte
+```
+
+** Los frontends de C, COBOL y Ada **ya eran deterministas**, y ya eran
+independientes de la ruta -- que es justo lo que MAQUETA tuvo que arreglar. Eso
+no se sabia: se suponia.
+
+### *** Y ENTONCES APARECIO LO QUE LAS DOS PASADAS NO PODIAN VER
+
+```text
+   d.bex    off=0x87f32  'C:\Users\Salazar\Documents\BMO\...\recorte.rs'
+   d.bex    off=0x88466  'C:\Users\Salazar\Documents\BMO\...\foco.rs'
+   gui.bex  las mismas dos
+```
+
+Son `core::panic::Location`: los mete `panic!`, `assert!` o un indice fuera de
+rango, y llevan la ruta **tal y como la vio el compilador**.
+
+> **Dos maquinas producian `d.bex` distintos a partir del mismo fuente**, y el
+> binario llevaba el nombre de un usuario a todo el que lo recibiera.
+
+* Es la leccion de MAQUETA otra vez, y su frase vale sin cambiar una palabra:
+*"un artefacto que depende de quien lo genera NO SE PUEDE COMPARAR"*.
+
+### Como se cerro, y por que NO se borro la ruta
+
+`trim-paths = "all"` en `Ultra_userspace/Cargo.toml`. Medido despues:
+
+```text
+   d.bex   0 rutas de esta maquina    (antes: 2)
+   y el fichero SIGUE nombrado:  /cargo/deps/bmo-dibujo-0.1.0/src/recorte.rs
+```
+
+[!] **No se borra la ruta: se reescribe.** Un `Location` vacio dejaria las
+autopsias sin saber de que fichero hablan, y eso es exactamente lo que `fallo`
+existe para decir. **La reproducibilidad no se compra a costa del diagnostico.**
+
+** El kernel y el arranque UEFI ya salian limpios; se comprobo en vez de
+suponerlo, y el guardian los vigila igual -- **un guardian que solo mire lo que
+ya se sabe sucio no es un trinquete, es una lista de arreglos hechos.**
+
+### El guardian: `toolchain/tools/procedencia/procedencia.py`
+
+```bash
+python toolchain/tools/procedencia/procedencia.py --check
+```
+
+Mide el **proxy** que una sola maquina si puede medir: que ningun artefacto lleve
+dentro nada que solo exista aqui. No demuestra que sea reproducible; **demuestra
+que no es irreproducible por el motivo mas comun**, y por el unico que ademas
+filtra quien lo construyo.
+
+### [!!] Y NO ESTA CABLEADO AL BUILD, A PROPOSITO
+
+`LINEA_BASE.txt` y `docs/README.md` lo tienen sellado por escrito:
+
+> *"Ya hay CINCO entradas de build.ps1 (...) **El siguiente guardian NO se anade:
+> primero se parte este fichero.**"*
+
+Son 1.613 lineas de PowerShell con 5 llamadas a `Guardian`, y el censo lo llama
+`desconocida` porque no sabe juzgar PowerShell. Cablear este habria sido la sexta
+entrada, y la primera vez que esa regla se la salta **quien la escribio**.
+
+*** Asi que queda escrito lo que cuesta no partirlo: **hoy son DOS las cosas que
+esperan a ese reparto** -- este guardian, y el siguiente que haga falta.
+
+### Lo que sigue abierto de C7
+
+- **La otra maquina.** Es la mitad que no se puede hacer aqui, y sin ella esto es
+  un proxy y no una prueba.
+- **El toolchain a si mismo.** *Diverse double-compiling* pide compilar los
+  compiladores con otro compilador. Esta mas lejos y no lo bloquea nada de hoy.
 
 ---
 
@@ -472,11 +553,24 @@ BLAKE3.
    [X] C2  UMIP y SMEP                  ya estaban puestos. La tabla mentia
    [X] C2  NX / W^X y SMAP              HECHAS 25-08. SMAP costo dos caminos
    --------------------------------------------------------------------------
-   C5  el gate en el CARGADOR           el compilador ya lo hace; el kernel no
-   C3  Ed25519                          LA pieza; dias, y con vectores
+   [X] C5  las relocs, al CARGAR        HECHA 25-08. La regla, en el gate comun
+   [X] C3  Ed25519                      HECHA 25-08. Y el ANCLA, que era la
+                                        mitad que nadie habia escrito
+   [~] C7  compilacion reproducible     la mitad medible HECHA 25-08; la otra
+                                        pide una SEGUNDA MAQUINA
+   --------------------------------------------------------------------------
    C4  la capability de EJECUTAR        pide resolver delegacion
    C6  la sonda de dispositivos         la mas cara; despues de la red
 ```
+
+*** **De las siete casillas quedan DOS, y las dos estaban al final por el mismo
+motivo**: no las bloquea escribir codigo. A C4 la bloquea decidir como se delega
+una capability sin que el escritorio se la pueda pasar a lo que lanza; a C6, que
+un informe HID malo hay que INYECTARLO.
+
+[!] Y C6 gano urgencia sin que nadie la tocara: su nota decia *"la primera prueba
+que no se escribe uno mismo llega con la RED"*. **Llego el 25-08** -- 16 tramas
+de otra maquina, parseadas por codigo propio.
 
 ★★ **Y el orden cambio de dueno: hoy la que manda es C3.** No por gravedad, sino
 porque **es la unica que ya no esta sola**: `platform/shared/bmo-cripto` existe
