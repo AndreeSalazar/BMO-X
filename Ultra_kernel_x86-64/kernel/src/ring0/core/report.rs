@@ -139,6 +139,9 @@ const INFO_SUELO_CRUCE: u64 = 0x3E;
 
 const INFO_CPU_HILOS: u64 = 0x06;
 const INFO_CPU_NUCLEOS: u64 = 0x07;
+// ** Los dos que dicen CUANTO fiarse de los dos de arriba. Ver el ABI.
+const INFO_CPU_TOPOLOGIA_DUDA: u64 = 0x4D;
+const INFO_CPU_HILOS_POR_NUCLEO: u64 = 0x4E;
 /// * Quien tiene la pantalla: su `pid`, o `0` si no la tiene nadie.
 ///
 /// Existe para que el escritorio pueda PRESTARLA y esperar. Hacia falta
@@ -383,6 +386,11 @@ pub fn campo(n: u64) -> u64 {
         }
         INFO_CPU_HILOS => cpu_topo().map(|t| t.hilos as u64).unwrap_or(0),
         INFO_CPU_NUCLEOS => cpu_topo().map(|t| t.nucleos as u64).unwrap_or(0),
+        // * Se lee de un atomico, no se recalcula: esto lo pide un panel que se
+        // repinta, y enumerar la MADT por fotograma seria un impuesto. El careo
+        // corre UNA vez, en `phase::main`.
+        INFO_CPU_TOPOLOGIA_DUDA => crate::ring0::cpu_vendor::profile::duda() as u64,
+        INFO_CPU_HILOS_POR_NUCLEO => cpu_topo().map(|t| t.hilos_por_nucleo as u64).unwrap_or(0),
         INFO_TAREAS_TOTAL => crate::ring0::task::scheduler::counts().0 as u64,
         INFO_TAREAS_LISTAS => crate::ring0::task::scheduler::counts().1 as u64,
         INFO_PANTALLA_DUENO => crate::ring0::obj::fb::owner().unwrap_or(0) as u64,

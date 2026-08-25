@@ -302,6 +302,14 @@ pub fn main(ctx: &mut BootContext) {
     // acto donde el kernel despierta hardware -- antes vivia dentro del render y
     // clavaba ~65k lecturas de config PCI en el primer frame del cockpit.
     crate::ring0::cabina::boot_probe();
+    // *** Y SE CAREA LA TOPOLOGIA, aqui y no cuando alguien teclee `smp`.
+    //
+    // Va justo detras de `boot_probe` porque necesita lo mismo que el: que ACPI
+    // este localizada, para poder preguntarle a la MADT. Y va SIEMPRE, sin que
+    // nadie lo pida, que es la unica diferencia que importa -- el careo ya
+    // existia dentro de `smp::despertar()` y por eso no dijo nada el 25-08,
+    // cuando un 6/12 se ensenaba como 27/54 en todos los paneles.
+    crate::ring0::cpu_vendor::profile::carear_topologia();
     splash::intro_paso(25);
     // * Y se le pregunta al CPU si sabe medirse a si mismo. UNA vez: despues
     // `INFO_CPU_HZ_REAL` solo mira una bandera, porque lo va a pedir un panel

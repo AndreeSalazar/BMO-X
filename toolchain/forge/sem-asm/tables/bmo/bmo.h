@@ -250,6 +250,11 @@
 
 #define BMO_INFO_CPU_HILOS 0x06
 #define BMO_INFO_CPU_NUCLEOS 0x07
+/* Cuanto fiarse del par de arriba. 0 = los tres testigos coinciden.
+   bit 0 CPUID se contradice | bit 1 hilos/nucleo sin medir
+   bit 2 el PERFIL desmiente | bit 3 la MADT discrepa            */
+#define BMO_INFO_CPU_TOPOLOGIA_DUDA 0x4D
+#define BMO_INFO_CPU_HILOS_POR_NUCLEO 0x4E
 #define BMO_INFO_TICKS 0x0B
 
 /* -- A QUE VELOCIDAD VA ESTO DE VERDAD ------------------------------

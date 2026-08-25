@@ -36,6 +36,19 @@ pub struct Nucleos {
     pub ccx: u32,
     /// Chiplets.
     pub ccd: u32,
+
+    // -- ** LO QUE SUBE DESDE EL 2026-08-25: no el numero, la CONFIANZA -----
+    //
+    // El contrato subia cuatro numeros y ninguno decia de donde venia. Con eso,
+    // un `27 fisicos / 54 logicos` sube igual de limpio que un 6/12: el que lo
+    // recibe no tiene forma de saber que uno se midio y el otro se supuso.
+    /// **Hilos por nucleo, medidos.** `0` = no se pudo medir, y entonces
+    /// `nucleos` es el mismo numero que `hilos` en vez de una division
+    /// inventada. Un cero aqui es una respuesta, no un fallo.
+    pub hilos_por_nucleo: u32,
+    /// **Las dos fuentes del silicio no coinciden.** Quien lo lea tiene que
+    /// desconfiar del numero entero, no elegir el que le guste.
+    pub discrepan: bool,
 }
 
 /// Everything Ring 0 is allowed to know about the CPU it runs on.
@@ -97,6 +110,21 @@ pub struct CpuProfile {
     /// XSAVE -- se hardcodean los contratos, se preguntan los hechos.
     pub nucleos: fn() -> Option<Nucleos>,
 
+    // -- ** EL TOPE DEL PERFIL (2026-08-25) --------------------------------
+    //
+    // Es la ley 24 cobrando lo que promete. Un driver generico **no puede**
+    // saber que 54 hilos esta mal: cualquier numero es plausible cuando no
+    // sabes de que chip hablas. Un PERFIL si puede, porque su primera linea
+    // dice `Ryzen 5 5600X`.
+    //
+    // [!] Y NO CORRIGE: avisa. Es la misma doctrina que `xsave_componentes`
+    // --se hardcodean los CONTRATOS, se le preguntan los HECHOS al silicio--.
+    // Un perfil que sobreescribiera lo que midio el CPU seria un kernel que
+    // miente con mas confianza, que es peor que uno que se equivoca.
+    /// Lo que este chip EXACTO tiene: `(nucleos, hilos)`. `None` = el perfil no
+    /// se atreve a decirlo, y entonces no hay nada contra que carear.
+    pub topologia_esperada: Option<(u32, u32)>,
+
     // -- ** LO QUE ESTE PERFIL SABE MEDIR DE SI MISMO (2026-08-12) ----------
     //
     // === El fallo de capas que esto corrige ===
@@ -157,6 +185,126 @@ pub struct CpuProfile {
     /// la cabecera de este fichero prohibe, y lo que ya se rompio una vez en
     /// tres sitios.
     pub identidad: fn() -> Option<(u8, u8)>,
+}
+
+/// **EL CAREO DE LA TOPOLOGIA, en el arranque y sin que nadie lo pida.**
+///
+/// # Por que existe: el 27/54 del 2026-08-25
+///
+/// El escritorio contesto `27 fisicos / 54 logicos` en un 6/12, y **ningun
+/// aviso salio**. No porque el careo no existiera --`plat::smp` compara CPUID
+/// contra la MADT desde hace semanas-- sino porque vivia **dentro de
+/// `despertar()`**, y a `despertar()` solo se llega tecleando `smp`.
+///
+/// ```text
+///    el careo existia   ->  pero solo corria si el DUENO lo pedia
+///    el numero malo     ->  se ensenaba en CADA panel, desde el arranque
+/// ```
+///
+/// *** **Una comprobacion que hay que invocar no protege del caso en el que
+/// nadie la invoca.** Y ese es justo el caso en el que hace falta: el dueno mira
+/// el panel porque quiere el dato, no porque sospeche del dato.
+///
+/// # Los tres testigos, y que significa que discrepen
+///
+/// ```text
+///    CPUID.0B     lo que el silicio TIENE          manda
+///    CPUID.1      el conteo heredado               CAREA
+///    la MADT      lo que el firmware DECLARA       CAREA
+///    el PERFIL    de que chip es esto              DESMIENTE
+/// ```
+///
+/// Ninguno corrige a otro. **Los cuatro hablan y el que lee decide**, que es lo
+/// contrario de lo que habia: un solo numero, sin origen, que se creia entero.
+pub fn carear_topologia() {
+    use crate::ring0::cabina;
+
+    let p = active();
+    let Some(n) = (p.nucleos)() else {
+        cabina::warn("cpu", "sin topologia: el perfil no ha contestado", 0);
+        // Sin topologia no hay nada que carear, y eso ES una duda: se marcan
+        // los cuatro bits. El silencio y "no se pudo preguntar" no se pueden
+        // ver igual desde Ring 3.
+        DUDA.store(0b1111, Ordering::Release);
+        return;
+    };
+
+    let mut duda = 0u32;
+
+    // -- 1. Las dos fuentes del SILICIO ------------------------------------
+    if n.discrepan {
+        duda |= DUDA_CPUID;
+        cabina::warn("cpu", "CPUID se contradice: hoja 0x0B contra la heredada", n.hilos as u64);
+    }
+    if n.hilos_por_nucleo == 0 {
+        duda |= DUDA_SIN_MEDIR;
+        // No es un fallo: es "no se pudo medir". Pero tiene que verse, porque
+        // significa que `nucleos` NO es una division sino una copia de `hilos`.
+        cabina::warn("cpu", "hilos por nucleo SIN MEDIR: nucleos no es fiable", n.nucleos as u64);
+    }
+
+    // -- 2. *** EL PERFIL DESMINTIENDO AL SILICIO (la ley 24 cobrando) -----
+    //
+    // Aqui es donde un 54 se cae. Y no se corrige a 12: se GRITA. Corregirlo
+    // dejaria un sistema que ensena el numero bueno y esconde que su fuente
+    // esta rota -- que es exactamente como se llego hasta aqui.
+    if let Some((nucleos_ok, hilos_ok)) = p.topologia_esperada {
+        if n.hilos != hilos_ok || n.nucleos != nucleos_ok {
+            duda |= DUDA_PERFIL;
+            cabina::fault("cpu", "el silicio NO dice lo que este perfil sabe que es", n.hilos as u64);
+            cabina::count("cpu", "el perfil esperaba estos hilos", hilos_ok as u64);
+        }
+    }
+
+    // -- 3. El FIRMWARE, que es el tercer testigo y el unico independiente --
+    //
+    // ** Esto ya lo hacia `plat::smp`, y se hace TAMBIEN aqui a proposito: alli
+    // contesta a "a quien despierto", aqui a "me puedo creer el numero". Son
+    // dos preguntas distintas con la misma comparacion, y la segunda no puede
+    // depender de que alguien haga la primera.
+    if let Some(c) = crate::ring0::plat::madt::censo() {
+        let declarados = c.ids().len() as u32;
+        if declarados != n.hilos {
+            duda |= DUDA_MADT;
+            cabina::warn("cpu", "la MADT declara otros hilos que CPUID", declarados as u64);
+        }
+    } else {
+        cabina::warn("cpu", "sin MADT: el silicio se queda sin quien lo contradiga", 0);
+    }
+
+    // -- 4. Y la foto, siempre, discrepen o no ------------------------------
+    //
+    // [!] Se apunta AUNQUE todo cuadre. Una linea que solo aparece cuando algo
+    // va mal no deja ver que el dia anterior iba bien -- y esa comparacion es
+    // justo la que faltaba el 25-08, cuando el mismo codigo habia dicho 12.
+    cabina::count("cpu", "hilos", n.hilos as u64);
+    cabina::count("cpu", "nucleos fisicos", n.nucleos as u64);
+    cabina::count("cpu", "hilos por nucleo", n.hilos_por_nucleo as u64);
+
+    // ** Y el veredicto se GUARDA, porque el panel del escritorio lo va a pedir
+    // en cada repintado y no puede volver a enumerar la MADT por fotograma.
+    // Ver `INFO_CPU_TOPOLOGIA_DUDA`.
+    DUDA.store(duda, Ordering::Release);
+}
+
+/// Los cuatro bits de [`duda`], y el mismo orden que declara el ABI.
+pub const DUDA_CPUID: u32 = 1 << 0;
+pub const DUDA_SIN_MEDIR: u32 = 1 << 1;
+pub const DUDA_PERFIL: u32 = 1 << 2;
+pub const DUDA_MADT: u32 = 1 << 3;
+
+/// [!] Arranca en `DUDA_SIN_MEDIR` **a proposito**: mientras `carear_topologia`
+/// no haya corrido, la respuesta honesta no es "todo bien" sino "todavia no se
+/// ha mirado". Un cero por defecto habria hecho que el panel afirmara que los
+/// testigos coinciden **antes de que nadie los hubiera comparado** -- que es
+/// exactamente la clase de silencio que costo el 27/54.
+static DUDA: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(DUDA_SIN_MEDIR);
+
+use core::sync::atomic::Ordering;
+
+/// El mapa de bits del ultimo careo. Lo sirve `INFO_CPU_TOPOLOGIA_DUDA`.
+pub fn duda() -> u32 {
+    DUDA.load(Ordering::Acquire)
 }
 
 /// **Una lectura cruda de los contadores de energia.**

@@ -63,6 +63,11 @@ pub static PROFILE: super::profile::CpuProfile = super::profile::CpuProfile {
     // -- y `xsave::init` se planta al arrancar si algun dia no cubriera.
     xsave_area: 2440,
     nucleos: nucleos,
+    // ** Lo que ESTE chip es, escrito para poder DESMENTIR al silicio. Un
+    // Ryzen 5 5600X es 6/12 y no hay ninguno que no lo sea: si CPUID contesta
+    // otra cosa, la respuesta esta mal -- y esto es lo unico en todo el arbol
+    // que tiene derecho a afirmarlo, porque es lo unico que sabe que chip es.
+    topologia_esperada: Some((6, 12)),
     // El LECTOR de energia de este silicio. Un perfil sin RAPL pondria `None` y
     // la terminal lo diria con palabras en vez de pintar 0 W -- ver el campo
     // `energia` de `CpuProfile`, donde esta el porque de que sea `Option`.
@@ -97,5 +102,8 @@ fn nucleos() -> Option<super::profile::Nucleos> {
         hilos: t.total_threads,
         ccx: t.total_ccxs,
         ccd: t.total_ccds,
+        // ** Y suben tambien las dos que dicen CUANTO fiarse. Ver `Nucleos`.
+        hilos_por_nucleo: t.hilos_por_nucleo,
+        discrepan: t.discrepan,
     })
 }
