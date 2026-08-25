@@ -73,6 +73,9 @@
 #define BMO_OP_ENTRADA_RECLAMAR 0x0A
 #define BMO_OP_RUTA 0x0B
 #define BMO_OP_EJECUTAR 0x0C
+/* Reiniciar la maquina. Desde el 25-08 pide AUTORIDAD, y solo la tiene quien
+   arranco desde Ring 0. Ver task/autoridad.rs.                            */
+#define BMO_OP_REINICIAR 0x12
 #define BMO_OP_CONSOLA_LEER 0x0F
 #define BMO_OP_ARCHIVO_ABRIR 0x10
 #define BMO_OP_ARCHIVO_CREAR 0x11

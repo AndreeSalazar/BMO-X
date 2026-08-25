@@ -72,6 +72,7 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     // Ficheros y lanzamiento.
     ("BMO_OP_RUTA", "TASK_OP_RUTA", 0x0B),
     ("BMO_OP_EJECUTAR", "TASK_OP_EJECUTAR", 0x0C),
+    ("BMO_OP_REINICIAR", "TASK_OP_REINICIAR", 0x12),
     ("BMO_OP_ARCHIVO_ABRIR", "TASK_OP_ARCHIVO_ABRIR", 0x10),
     ("BMO_OP_ARCHIVO_CREAR", "TASK_OP_ARCHIVO_CREAR", 0x11),
     // Preguntar por el sistema.
@@ -238,6 +239,7 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_OP_SONIDO_SOLTAR", s::TASK_OP_AUDIO_RELEASE),
         ("BMO_OP_RUTA", s::TASK_OP_RUTA),
         ("BMO_OP_EJECUTAR", s::TASK_OP_EJECUTAR),
+        ("BMO_OP_REINICIAR", s::TASK_OP_REINICIAR),
         ("BMO_OP_ARCHIVO_ABRIR", s::TASK_OP_ARCHIVO_ABRIR),
         ("BMO_OP_ARCHIVO_CREAR", s::TASK_OP_ARCHIVO_CREAR),
         ("BMO_OP_INFO", s::TASK_OP_INFO),

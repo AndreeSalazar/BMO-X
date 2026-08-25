@@ -104,6 +104,7 @@ use core::arch::{asm, naked_asm};
 use crate::ring0::obj::cap;
 use crate::ring0::obj::channel;
 use crate::ring0::obj::endpoint;
+use crate::ring0::task::autoridad;
 use crate::ring0::task::percpu;
 use crate::ring0::task::scheduler;
 use crate::ring0::plat::trap::TrapFrame;
@@ -400,10 +401,27 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             })
         }
         TASK_OP_REINICIAR => {
+            let pid = scheduler::current_pid();
+            // *** C4: HASTA HOY ESTO LO PODIA PEDIR CUALQUIERA.
+            //
+            // No hacia falta un fallo -- bastaba con llamar. Ahora hace falta la
+            // AUTORIDAD, que solo se fija al nacer y solo desde Ring 0: ver
+            // `task/autoridad.rs`.
+            if !autoridad::tiene(pid, autoridad::REINICIAR) {
+                crate::ring0::cabina::warn(
+                    "ring3",
+                    "un proceso SIN autoridad pidio reiniciar la maquina",
+                    pid as u64,
+                );
+                return BmoStatus::err_with_flags(
+                    cap::ERROR_PERMISSION_DENIED,
+                    cap::FLAG_NEEDS_CAP,
+                );
+            }
             crate::ring0::cabina::warn(
                 "ring3",
-                "reinicio pedido por un proceso de Ring 3",
-                scheduler::current_pid() as u64,
+                "reinicio pedido por un proceso CON autoridad",
+                pid as u64,
             );
             crate::ring0::plat::reinicio::ahora();
         }
@@ -414,6 +432,20 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_EJECUTAR => {
             let _ = arg0;
             let pid = scheduler::current_pid();
+            // ** La misma puerta que REINICIAR, y por eso la misma llave: el
+            // kernel ya lo tenia escrito -- *"las dos operaciones quieren la
+            // misma capability el dia que exista"*.
+            if !autoridad::tiene(pid, autoridad::LANZAR) {
+                crate::ring0::cabina::warn(
+                    "ring3",
+                    "un proceso SIN autoridad quiso lanzar otro programa",
+                    pid as u64,
+                );
+                return BmoStatus::err_with_flags(
+                    cap::ERROR_PERMISSION_DENIED,
+                    cap::FLAG_NEEDS_CAP,
+                );
+            }
             // Se resuelve ANTES de lanzar: si el handle es basura, mejor no
             // haber creado un proceso que despues habla al vacio.
             let consola_idx = if arg1 == 0 {
@@ -425,7 +457,13 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                     Err((code, flags)) => return cap_err((code, flags)),
                 }
             };
-            let informe = crate::ring0::task::launch::ruta(ruta_tomar(pid));
+            // *** NINGUNA. Aqui esta la delegacion, cerrada: un proceso de Ring 3
+            // lanza, y lo que lanza NO hereda lo que el tiene. La autoridad no
+            // viaja porque no hay ninguna operacion que la mueva.
+            let informe = crate::ring0::task::launch::ruta(
+                ruta_tomar(pid),
+                autoridad::NINGUNA,
+            );
             match informe.res {
                 Ok(tid) => {
                     if let (Some(idx), Some(hijo)) = (consola_idx, informe.pid) {

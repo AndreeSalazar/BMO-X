@@ -196,7 +196,18 @@ const PROLOGO: usize = 2048;
 static EN_USO: AtomicBool = AtomicBool::new(false);
 
 /// Carga y admite. No pinta, no bloquea, no reintenta.
-pub fn ruta(path: &str) -> Informe {
+/// `autoridad` es lo que el proceso nuevo va a PODER pedir, y se pasa aqui a
+/// proposito en vez de deducirse dentro: los tres llamantes de esta funcion
+/// estan en sitios distintos del sistema --el arranque, el shell de Ring 0 y el
+/// syscall de Ring 3-- y **el unico que sabe cual toca es cada uno de ellos**.
+///
+/// *** Un parametro obliga a decidirlo en el sitio y a que se vea en el `git
+/// diff`. Deducirlo aqui --*"si viene del shell, entonces..."*-- habria metido
+/// en esta funcion un conocimiento que no tiene, y el dia que aparezca un cuarto
+/// llamante se lo habria concedido o negado sin que nadie lo escribiera.
+///
+/// Ver `task/autoridad.rs`.
+pub fn ruta(path: &str, autoridad: u64) -> Informe {
     let vacio = |f: Fallo| Informe { origen: "", bytes: 0, firma: None, pid: None, res: Err(f) };
 
     let path = path.trim();
@@ -249,7 +260,7 @@ pub fn ruta(path: &str) -> Informe {
     // apunta al soltarse que el intento **quedo abierto**. Un lanzamiento que
     // desaparece sin decir como acabo era, hasta hoy, silencio.
     let testigo = crate::ring0::cabina::intento("lanzar");
-    let informe = con_buffer(path);
+    let informe = con_buffer(path, autoridad);
     testigo.cerrar(informe.res.is_ok());
     // Se devuelve SIEMPRE y por un solo camino: volver a Ring 3 con el CR3 del
     // kernel puesto seria mucho peor que el fallo original -- la tarea seguiria
@@ -465,7 +476,7 @@ impl Fuente {
 
 /// El cuerpo, ya con el buffer tomado. Separado para que el `EN_USO` se suelte
 /// por un solo camino pase lo que pase.
-fn con_buffer(path: &str) -> Informe {
+fn con_buffer(path: &str, autoridad: u64) -> Informe {
     // ** EL PROLOGO NO SALE DE LA MESA, SALE DE LA PILA (2026-08-10).
     //
     // Estaba leyendose en los primeros 2 KB del bufer de 4 MiB, o sea que **el
@@ -570,6 +581,11 @@ fn con_buffer(path: &str) -> Informe {
         crate::ring0::cabina::info("lanzar", "bytes DIRECTOS del disco al marco", d1 - d0);
         if let Some(pid) = pid {
             crate::ring0::task::package::recordar(pid, path);
+            // La misma linea que en el camino de abajo, y **tiene que estar en
+            // los dos**: son las dos unicas puertas por las que nace un pid
+            // desde aqui, y una sin fijar dejaria procesos con autoridad cero
+            // -- o peor, con la del muerto que uso ese hueco antes.
+            crate::ring0::task::autoridad::fijar(pid, autoridad);
         }
         return Informe { origen, bytes: tam, firma: None, pid, res };
     }
@@ -755,6 +771,12 @@ fn con_buffer(path: &str) -> Informe {
     // basura que solo se limpia cuando ese pid se reutilice.
     if let Some(pid) = pid {
         crate::ring0::task::package::recordar(pid, path);
+        // *** LA AUTORIDAD, FIJADA AL NACER Y SOLO AQUI.
+        //
+        // Es lo unico que impide que un `.bex` reinicie la maquina, y no es una
+        // capability a proposito: un handle se PASA, y esto no se puede pasar.
+        // Ver `task/autoridad.rs`.
+        crate::ring0::task::autoridad::fijar(pid, autoridad);
     }
     Informe { origen, bytes: n, firma: veredicto, pid, res }
 }

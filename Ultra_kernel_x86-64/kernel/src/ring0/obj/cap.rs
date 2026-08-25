@@ -278,6 +278,14 @@ pub fn revoke(pid: u32, handle: u64) -> bool {
 /// clientes bloqueados para siempre -- el fallo que hace inservible cualquier
 /// IPC bloqueante.
 pub fn revoke_all(pid: u32) {
+    // *** LA AUTORIDAD SE OLVIDA LA PRIMERA, y por el mismo motivo que el
+    // contador de peticiones dos parrafos mas abajo: **un pid reutilizado
+    // heredaria la del muerto.**
+    //
+    // Y esa es la unica forma que quedaba de colarse: morir el escritorio, que
+    // su hueco lo coja un `.bex` cualquiera, y que ese nazca pudiendo reiniciar
+    // la maquina. No se ve hasta que la maquina lleva horas encendida.
+    crate::ring0::task::autoridad::olvidar(pid);
     crate::ring0::obj::endpoint::process_died(pid);
     // Si tenia la pantalla, el kernel la recupera aqui. Corre en TODAS las
     // salidas --EXIT voluntario y muerte por fault-- asi que un compositor que

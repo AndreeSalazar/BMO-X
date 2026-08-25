@@ -13,6 +13,34 @@
 
 # 0. LO QUE HAY QUE SABER ANTES DE ARRANCAR
 
+## 0.0 -- ★★ LO QUE SE ACUMULO SIN PISAR EL METAL, EN UNA LISTA
+
+Esta tanda no es de un commit: son **once** que nadie ha ejecutado. Van aqui
+juntas para que, si algo sale mal, se sepa de un vistazo que hay dentro.
+
+| # | que entro | como se ve si esta bien | si falla |
+|---|---|---|---|
+| 1 | **W^X** (`PTE_NX`) | arranca | ⛔ pantalla negra |
+| 2 | **SMAP** | arranca | ⛔ `#PF` en el primer syscall que copie |
+| 3 | los cuatro bits de guardia | `ext` -> cuatro `Yes` | fila en `No` |
+| 4 | **la topologia careada** | `cpu` -> `6 / 12 (2 por nucleo, MEDIDO)` | fila `[!] duda` |
+| 5 | **`cabina`** en el escritorio | `cabina` pinta el anillo | orden desconocida |
+| 6 | la reloc dentro de su seccion | DOOM se juega | ⛔ DOOM no carga |
+| 7 | **el gate de AUTORIA** | nada cambia (todo `sig_algo=0`) | un `.bex` no admite |
+| 8 | **la AUTORIDAD** (C4) | `sonda` niega 8 y 9 | ⛔ el escritorio no lanza |
+| 9 | la MADT fuera del kernel | `smp all` -> `12 de 12` | faltan nucleos |
+| 10 | `trim-paths` | nada visible | -- |
+| 11 | `red rx` desde el escritorio | (fuera de esta hoja) | -- |
+
+⚠ **Las tres que pueden dejarte sin maquina son la 1, la 2 y la 8**, y las tres
+fallan de forma distinta: las dos primeras no arrancan, la tercera arranca y no
+te deja lanzar nada. Estan desarrolladas justo debajo.
+
+★ **Y el orden de la tanda no es el de esta tabla.** Aqui estan por lo que son;
+abajo estan por lo que cuestan si salen mal.
+
+
+
 ## 0.1 -- Esta tanda trae DOS cosas que pueden impedir el arranque
 
 No es alarmismo: son las dos unicas del lote que tocan como se mapea la memoria
@@ -30,7 +58,22 @@ pantalla se queda negra, **no haya que buscar**.
 ★ **Los dos fallan RUIDOSAMENTE y en el arranque**, que es la forma buena de
 fallar. Lo que ninguno de los dos puede hacer es corromper el disco.
 
-## 0.2 -- Y una que puede impedir que un programa CARGUE, no que arranque
+## 0.2 -- ⚠ Y UNA TERCERA, DE LA TARDE DEL 25-08: la AUTORIDAD
+
+`EJECUTAR` y `REINICIAR` pasan a pedir **autoridad**, que solo se fija al nacer y
+solo desde Ring 0. El escritorio la tiene --lo arranca el kernel-- y lo que el
+lanza, no.
+
+```text
+   si esto esta mal    el escritorio NO PUEDE LANZAR NADA ni reiniciar
+   como se ve          escribes `calc` y contesta un error de permiso
+```
+
+★ No impide arrancar y **no se lleva la maquina**: el escritorio sigue en pie y
+lo dice. Pero es lo primero que hay que probar despues de que aparezca el
+escritorio, porque si falla, la tanda entera se queda sin poder lanzar programas.
+
+## 0.3 -- Y una que puede impedir que un programa CARGUE, no que arranque
 
 El cargador comprueba desde el 25-08 que cada relocation quepa en la seccion que
 dice parchear. Se midieron los 24 `.bex` del arbol contra la regla y **ninguno se
@@ -132,7 +175,35 @@ no ajustar el `.bex`. El numero que acompana es el `offset` de la reloc culpable
 y con el se sabe en un minuto si el fallo es el borde (`<` en vez de `<=`) o
 otra cosa.
 
-## 2.2 -- `ray` y la calculadora
+## 2.2 -- ★★ `sonda` -- LOS DOS EMPUJONES NUEVOS, Y EL ULTIMO ES EL PELIGROSO
+
+**Que afirma**: que C4 quedo cerrada -- que un `.bex` lanzado por el escritorio
+**no puede lanzar otro ni reiniciar la maquina**.
+
+`sonda.bex` gana los empujones **8** y **9**:
+
+```text
+   8. lanzar otro programa sin autoridad    [ok] negado (codigo 3)
+   9. reiniciar sin autoridad               [ok] negado (codigo 3)
+```
+
+⚠⚠ **EL 9 ES EL EMPUJON MAS PELIGROSO DE TODA LA TANDA.** Si el kernel no se
+defiende, **la maquina se reinicia en ese momento** -- y con ella se pierde todo
+lo que la sonda iba a decir. Por eso va el ultimo dentro del propio programa.
+
+**Como se cae, y las dos formas dicen cosas distintas**:
+
+| lo que pasa | que significa |
+|---|---|
+| `[ok] negado` en los dos, y sale el recuento | ✅ C4 cerrada |
+| `[FALLO] el kernel DEJO PASAR` en el 8 | la autoridad no se comprueba en `EJECUTAR` |
+| **la maquina se reinicia sola** | la autoridad no se comprueba en `REINICIAR`. **Ese es el resultado**, aunque no salga el recuento |
+| `sonda` no arranca | esto es del gate, no de C4: mirar `cabina` |
+
+★ **Y la prueba de que el escritorio SI la tiene se hace sin querer**: si has
+podido escribir `sonda` para llegar aqui, `EJECUTAR` con autoridad ya funciono.
+
+## 2.3 -- `ray` y la calculadora
 
 **Que afirma**: lo mismo con los programas pequenos. `ray.bex` trae UNA
 relocation; si DOOM pasa y este no, el fallo es de las tablas pequenas.
@@ -194,7 +265,14 @@ Con `guarda` queda en `A:\datos\SALIDA.TXT`, que es como se hizo la hoja del
    [ ] la de `placa`            las capabilities extendidas de la NIC
    [ ] `smp all` + `smp prueba` los dos numeros
    [ ] si DOOM arranco          si/no, y el mensaje exacto si no
+   [ ] la salida de `sonda`     ENTERA, con su recuento
+   [ ] la de `cabina fallos`    despues de todo lo demas
 ```
+
+★ **`cabina fallos` va el ultimo de la lista y se pide siempre**, salga bien o
+mal la tanda. Es el unico sitio donde estan juntos todos los avisos que el kernel
+apunto durante el arranque -- incluidos los que no tumbaron nada y por eso no
+salieron por pantalla.
 
 ---
 
