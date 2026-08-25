@@ -448,5 +448,190 @@ pub fn verificar(publica: &[u8; CLAVE], mensaje: &[u8], firma: &[u8; FIRMA]) -> 
     comprimir(&izquierda) == r_bytes
 }
 
+// ===========================================================================
+//  FIRMAR -- detras de una bandera, y apagada
+// ===========================================================================
+//
+// *** TODO LO QUE HAY DE AQUI ABAJO NO SE COMPILA EN EL KERNEL.
+//
+// Vive detras de la bandera `firmar`, que `Cargo.toml` deja apagada y explica.
+// La regla es la de `PLAN_SEGURIDAD.md` C3: la clave privada no baja a la
+// maquina, asi que la maquina no necesita saber firmar.
+//
+// ** Y entonces por que esta escrito. Por dos razones, y ninguna es "por
+// completitud":
+//
+//   1. **Sin firmador no se puede probar el verificador contra nada propio.**
+//      Los cuatro vectores del RFC son cuatro; con esto se firma cualquier cosa
+//      y se comprueba que se verifica -- y sobre todo, que el GATE del cargador
+//      rechaza lo que tiene que rechazar.
+//   2. La herramienta de firmar del anfitrion --que hara falta el dia que un
+//      `.bex` se firme de verdad-- usara esto en vez de escribirlo otra vez.
+//
+// [!] Y lo que lo hace fiable es que se comprueba **al reves**: firma los
+// mensajes de los vectores del RFC con sus claves secretas, y tiene que salir
+// la misma firma **byte a byte**. Un firmador comprobado solo con su propio
+// verificador es un par de funciones que se creen la una a la otra.
+
+/// Aritmetica sobre `L`, el orden del grupo. Solo hace falta para firmar.
+///
+/// ** VA POR DIVISION LARGA EN BINARIO: lento y **obviamente correcto**. La
+/// version rapida --limbos de 21 bits, la de las implementaciones de
+/// referencia-- es cuatro veces mas larga y no se puede leer. Esto corre en el
+/// anfitrion, una vez por firma: no hay presupuesto que gastar aqui, y
+/// `OPTIMIZACION_MAESTRO` dice que optimizar es LO ULTIMO.
+#[cfg(feature = "firmar")]
+mod escalar {
+    use super::L;
+
+    /// `a >= b`, los dos de 32 bytes little-endian.
+    fn mayor_o_igual(a: &[u8; 32], b: &[u8; 32]) -> bool {
+        for i in (0..32).rev() {
+            if a[i] != b[i] {
+                return a[i] > b[i];
+            }
+        }
+        true
+    }
+
+    /// `a -= b`. El llamante garantiza `a >= b`.
+    fn resta(a: &mut [u8; 32], b: &[u8; 32]) {
+        let mut prestamo = 0i16;
+        for i in 0..32 {
+            let v = a[i] as i16 - b[i] as i16 - prestamo;
+            if v < 0 {
+                a[i] = (v + 256) as u8;
+                prestamo = 1;
+            } else {
+                a[i] = v as u8;
+                prestamo = 0;
+            }
+        }
+    }
+
+    /// **`x mod L`**, con `x` de 64 bytes. Division larga: se recorre `x` del
+    /// bit mas alto al mas bajo, doblando el resto y restando `L` cuando cabe.
+    pub fn reducir(x: &[u8; 64]) -> [u8; 32] {
+        let mut r = [0u8; 32];
+        for bit in (0..512).rev() {
+            let mut acarreo = 0u8;
+            for byte in r.iter_mut() {
+                let nuevo = (*byte >> 7) & 1;
+                *byte = (*byte << 1) | acarreo;
+                acarreo = nuevo;
+            }
+            // ** No puede salir nada por arriba: `r < L < 2^253`, asi que
+            // doblarlo cabe de sobra en 32 bytes.
+            debug_assert_eq!(acarreo, 0, "el resto no puede desbordar 32 bytes");
+            r[0] |= (x[bit / 8] >> (bit % 8)) & 1;
+            if mayor_o_igual(&r, &L) {
+                resta(&mut r, &L);
+            }
+        }
+        r
+    }
+
+    /// `(a * b + c) mod L`. Escolar: 32x32 bytes en 64, se suma `c`, se reduce.
+    pub fn muladd(a: &[u8; 32], b: &[u8; 32], c: &[u8; 32]) -> [u8; 32] {
+        let mut p = [0u32; 64];
+        for i in 0..32 {
+            for j in 0..32 {
+                p[i + j] += a[i] as u32 * b[j] as u32;
+            }
+        }
+        for i in 0..32 {
+            p[i] += c[i] as u32;
+        }
+        let mut out = [0u8; 64];
+        let mut acarreo = 0u32;
+        for i in 0..64 {
+            let v = p[i] + acarreo;
+            out[i] = (v & 0xFF) as u8;
+            acarreo = v >> 8;
+        }
+        debug_assert_eq!(acarreo, 0, "un producto de 32x32 bytes cabe en 64");
+        reducir(&out)
+    }
+}
+
+/// **El recorte de la clave**, y no es cosmetico.
+///
+/// ```text
+///    a[0]  &= 248   los tres bits bajos a cero -> el escalar es multiplo de 8
+///    a[31] &= 127   se quita el bit 255
+///    a[31] |= 64    y se FUERZA el 254
+/// ```
+///
+/// Lo primero mata el cofactor: cualquier componente de torsion pequena queda
+/// multiplicada por 8 y desaparece -- **es la misma amenaza que `orden_pequeno`
+/// cierra en el otro lado**. Lo ultimo fija la longitud del escalar, para que
+/// una escalera de tiempo constante haga siempre las mismas vueltas.
+#[cfg(feature = "firmar")]
+fn recortar(h: &[u8; 64]) -> [u8; 32] {
+    let mut a = [0u8; 32];
+    a.copy_from_slice(&h[..32]);
+    a[0] &= 248;
+    a[31] &= 127;
+    a[31] |= 64;
+    a
+}
+
+/// La clave publica que corresponde a una semilla secreta de 32 bytes.
+///
+/// [!] `secreta` es LA SEMILLA, no el par de 64 bytes que algunas librerias
+/// llaman *secret key*. De ella salen dos cosas por SHA-512: el escalar `a` y el
+/// `prefijo` con el que se saca el `nonce`.
+#[cfg(feature = "firmar")]
+pub fn publica_de(secreta: &[u8; 32]) -> [u8; CLAVE] {
+    let h = sha512::hash(secreta);
+    let a = recortar(&h);
+    let base = descomprimir(&BASE).expect("el generador es una constante buena");
+    comprimir(&por_escalar(&a, &base))
+}
+
+/// **FIRMAR** (RFC 8032, 5.1.6). Solo con la bandera `firmar`.
+///
+/// # El `nonce` NO es aleatorio, y esa es la propiedad que salva a Ed25519
+///
+/// ```text
+///    r = SHA-512(prefijo || mensaje)  mod L
+/// ```
+///
+/// Sale del **mensaje** y de una mitad de la clave, asi que dos firmas del mismo
+/// mensaje son identicas y dos mensajes distintos dan `r` distintos **sin que
+/// haga falta un generador de azar**.
+///
+/// *** Y aqui importa mas que en otro sitio: en ECDSA, dos firmas que repitan el
+/// `nonce` **revelan la clave privada**. Ed25519 lo hace imposible por
+/// construccion, y por eso este fichero no llama a `azar.rs` ni una vez.
+#[cfg(feature = "firmar")]
+pub fn firmar(secreta: &[u8; 32], mensaje: &[u8]) -> [u8; FIRMA] {
+    let h = sha512::hash(secreta);
+    let a = recortar(&h);
+    let base = descomprimir(&BASE).expect("el generador es una constante buena");
+    let publica = comprimir(&por_escalar(&a, &base));
+
+    let mut hr = sha512::Sha512::nuevo();
+    hr.mete(&h[32..]);
+    hr.mete(mensaje);
+    let r = escalar::reducir(&hr.cierra());
+
+    let punto_r = comprimir(&por_escalar(&r, &base));
+
+    let mut hk = sha512::Sha512::nuevo();
+    hk.mete(&punto_r);
+    hk.mete(&publica);
+    hk.mete(mensaje);
+    let k = escalar::reducir(&hk.cierra());
+
+    // S = (k * a + r) mod L
+    let s = escalar::muladd(&k, &a, &r);
+
+    let mut out = [0u8; FIRMA];
+    out[..32].copy_from_slice(&punto_r);
+    out[32..].copy_from_slice(&s);
+    out
+}
+
 #[cfg(test)]
 mod pruebas;

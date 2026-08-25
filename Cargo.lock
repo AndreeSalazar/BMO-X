@@ -137,6 +137,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-firma"
+version = "1.0.0"
+dependencies = [
+ "bmo-cripto",
+]
+
+[[package]]
 name = "bmo-firmware"
 version = "0.1.0"
 
@@ -210,6 +217,7 @@ dependencies = [
  "bmo-disco-juicio",
  "bmo-estratos",
  "bmo-fat32",
+ "bmo-firma",
  "bmo-firmware",
  "bmo-hash",
  "bmo-identify",

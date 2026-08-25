@@ -38,6 +38,13 @@ bmo-trim = { path = "../../platform/drivers/storage/trim" }
 # de ficheros: es del que carga. Sigue siendo UNA sola implementacion del hash,
 # la misma que usa `bmo-abi`; lo que cambia es que quien la necesita la pide.
 bmo-hash = { path = "../../platform/shared/bmo-hash" }
+# ** DE QUIEN es un .bex. Sin `alloc`, y `bmo-cripto` va DENTRO de el.
+#
+# [!] Se coge la de firma y NO `bmo-cripto` a secas, a proposito: asi el kernel
+# no puede llamar a `ed25519::firmar` ni por accidente -- que ademas esta detras
+# de una bandera que aqui no se enciende. Dos cerrojos para la misma puerta, y
+# el de arriba es el que se ve en este fichero.
+bmo-firma = { path = "../../platform/abi/bmo-firma" }
 # EL RECORTE, y es el mismo que el de Ring 3 y el del previsualizador. Antes el
 # kernel tenia el suyo escrito a mano dentro de `splash.rs` y no coincidia: el
 # de aqui DESCARTABA el rectangulo si una esquina se salia, en vez de

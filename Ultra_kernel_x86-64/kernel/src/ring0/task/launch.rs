@@ -52,9 +52,18 @@ impl Fallo {
             Fallo::Ocupado => "hay otro lanzamiento en curso",
             Fallo::NoSeEncuentra(e) => e,
             Fallo::NoSePudoLeer => "esta en ESTRATOS pero no se pudo leer",
-            Fallo::FirmaMala => "la firma NO cuadra: ejecucion rechazada",
-            Fallo::SinFirma => "sin firma no hay ejecucion",
-            Fallo::NoAdmitido => "el .bex no paso la admision",
+            // ** LOS DOS DEL GATE DE INTEGRIDAD, y ahora DICEN CUAL Y DONDE.
+            //
+            // Decian *"la firma NO cuadra"* y *"sin firma no hay ejecucion"*.
+            // Sonaban bien y mandaban a ningun sitio: desde el 25-08 hay DOS
+            // gates --uno de integridad y otro de autoria-- y "la firma" ya no
+            // nombra a uno solo. Un mensaje que no distingue el eje hace que se
+            // vaya a mirar el ancla cuando lo que fallo fue el disco.
+            Fallo::FirmaMala => "`:firma` de ESTRATOS NO cuadra con los bytes: lo tocaron o llego mal",
+            Fallo::SinFirma => "el nodo de ESTRATOS no trae `:firma`, y desde ESTRATOS no se ejecuta sin ella",
+            // Y este manda al sitio donde SI esta el motivo, que desde el 25-08
+            // se alcanza desde el escritorio.
+            Fallo::NoAdmitido => "el .bex no paso la admision -- el motivo exacto, en `cabina`",
         }
     }
 
@@ -669,7 +678,21 @@ fn con_buffer(path: &str) -> Informe {
         crate::ring0::cabina::warn("disk", "veces que hubo que quitarle el disco a un muerto", robos as u64);
     }
 
-    // -- El gate: sin firma buena no hay ejecucion --
+    // -- EL PRIMER GATE: INTEGRIDAD. Y desde el 25-08 hay DOS --
+    //
+    // ```text
+    //    aqui               `:firma` de ESTRATOS   -> llego lo que se escribio
+    //    task/admitir.rs    Ed25519 + el ANCLA     -> lo escribio QUIEN YO DIGO
+    // ```
+    //
+    // ** Son dos preguntas y por eso son dos sitios. Este corre ANTES --sobre el
+    // nodo, sin haber leido la imagen entera-- y el otro necesita la seccion
+    // `Signature`, que vive al final del fichero. Juntarlos habria obligado a
+    // traer el fichero entero para contestar la barata.
+    //
+    // [!] Y ninguno sustituye al otro. Un fichero puede llegar intacto y estar
+    // firmado por un desconocido; y uno firmado por quien toca puede llegar a
+    // medias. Un gate solo dejaria una de las dos sin contestar.
     //
     // section 7 del diseno de ESTRATOS: `open(nodo, EJECUTAR)` comprueba `:firma` y
     // si no cuadra NO entrega un handle ejecutable. Se aplica antes de admitir

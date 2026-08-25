@@ -12,6 +12,22 @@ description = "El techo del plan: la criptografia de BMO-X, escrita y con sus ve
 # cadena de confianza: es una promesa de otro.
 [dependencies]
 
+# ** LA UNICA MANIVELA DEL CRATE, Y ESTA APAGADA A PROPOSITO.
+#
+# `firmar` compila el firmador de Ed25519. **El kernel NO la enciende, y no es
+# una omision**: `PLAN_SEGURIDAD.md` C3 dice donde vive la clave privada --
+#
+#     "En la maquina no. Vive donde se firma, que es el anfitrion, y a BMO-X
+#      solo baja la publica."
+#
+# Una maquina que puede firmar tiene dentro con que falsificar lo que ejecuta.
+# Que sea una bandera y no un `cfg(test)` es lo que permite que la herramienta de
+# firmar del anfitrion --que todavia no existe-- la use sin duplicar el codigo, y
+# que el kernel siga sin poder aunque alguien se despiste.
+[features]
+default = []
+firmar = []
+
 [lib]
 name = "bmo_cripto"
 path = "src/lib.rs"

@@ -222,4 +222,29 @@ impl<'a> Firmas<'a> {
     pub fn cuantos(&self) -> usize {
         self.cuantos
     }
+
+    /// **LA CADENA: el hash de todos los digests, en el orden en que estan.**
+    ///
+    /// Es **lo que se firma**. `digest_de` busca por seccion y no vale aqui: la
+    /// firma cubre la tabla tal y como quedo escrita, asi que hay que
+    /// recorrerla por POSICION.
+    ///
+    /// # Por que no se puede firmar cada seccion por separado
+    ///
+    /// Se podria, y seria peor. Con una firma por seccion, quitar una seccion
+    /// entera del fichero deja las demas firmas cuadrando -- y una imagen a la
+    /// que le falta un trozo pasaria el control **sin que ninguna firma
+    /// fallara**. La cadena ata el conjunto: sobra o falta una, y cambia.
+    ///
+    /// [!] Y se calcula por trozos, sin juntar nada en un buffer: son 32 bytes
+    /// por seccion y en Ring 0 no hay a quien pedirle memoria. `bmo-abi` hace lo
+    /// mismo con un `Vec` porque alli lo hay.
+    pub fn cadena(&self) -> Option<[u8; DIGEST]> {
+        let mut h = bmo_hash::Hasher::new();
+        for k in 0..self.cuantos {
+            let e = Self::CAB + k * Self::ENTRADA;
+            h.update(self.firma.get(e + 8..e + 8 + DIGEST)?);
+        }
+        Some(h.finalize())
+    }
 }

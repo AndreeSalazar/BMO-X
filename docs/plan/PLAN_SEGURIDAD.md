@@ -206,15 +206,83 @@ escrito, y el agujero habria entrado con los cuatro vectores del RFC en verde.
   dos; esta es **mas estricta**. Si algun dia una firma valida en otro sitio se
   rechaza aqui, esa es la primera linea que releer.
 
-### ⚠ Y LO QUE FALTA PARA QUE ESTO SIRVA DE ALGO
+### [X] Y CABLEADO AL CARGADOR EL MISMO DIA -- pero no como se penso
 
-**No lo llama nadie todavia.** El formato ya lo esperaba --`SigAlgorithm::Ed25519
-= 1`, `Ed25519Signature` de 96 B y `chain_hash`, que es exactamente lo que hay
-que firmar-- pero el gate del cargador sigue mirando solo el BLAKE3 por seccion.
+La casilla decia *"no lo llama nadie todavia"*. Se fue a cablear, y al mirar el
+formato aparecio lo que convertia el cableado obvio en un control inutil:
 
-★ Es la MISMA forma de C1: una pieza correcta que no cambia nada hasta que se
-cablea. La diferencia es que ahora, cuando se cablee, **lo que hay debajo dice la
-verdad**.
+```text
+   Ed25519Signature = sig[64] || pubkey[32]
+```
+
+⚠⚠ **La clave publica viaja DENTRO de la firma.** Comprobarla contra esa clave
+siempre da que si, porque **el firmante eligio las dos cosas**. Cualquiera se
+genera un par, firma el binario y mete su clave al lado.
+
+> Una firma que trae su propia clave demuestra que **nadie la ha tocado desde que
+> se firmo**. No demuestra **quien la firmo**.
+
+★★ **Y es la MISMA forma, por tercera vez en dos dias:**
+
+```text
+   C1 (24-08)   `verify_ed25519` decia SI a una firma de ceros
+   C3 (25-08)   la firma de ceros PASABA otra vez, por matematicas
+   el cableado  la firma cuadraria... con la clave que trajo el firmante
+```
+
+### Lo que se hizo en su lugar: el ANCLA
+
+```text
+   bmo-firma                        la ARITMETICA. Sin opinion, sin alloc
+   task/confianza.rs                LA OPINION: en quien confia esta maquina
+```
+
+Y el reparto es el que C1 dejo escrito el dia que se arreglo:
+
+> *"quien quiera permitir binarios sin firmar lo decide **arriba, en la
+> politica, donde se ve** -- no dentro del verificador."*
+
+### Los cuatro noes, y cada uno manda a un sitio distinto
+
+| veredicto | que significa | donde mirar |
+|---|---|---|
+| `SoloIntegridad` | `sig_algo = 0`: hashes y nada mas. **Lo de hoy** | -- |
+| `Firmado{clave}` | cuadra Y esta en el ancla. **Dice CUAL** | -- |
+| `NoCuadra` | la firma no es de estos bytes | el fichero |
+| ★ `AutorDesconocido` | **firma impecable, clave que no conozco** | el ancla |
+| `AlgoritmoDesconocido` | firmado con algo que no implemento | el emisor |
+| `SeccionRota` | la seccion no mide lo que promete | el escritor |
+
+** `AlgoritmoDesconocido` **se rechaza en vez de ignorarse**: un `.bex` que
+declara un algoritmo que este sistema no entiende puede estar firmado
+perfectamente por otro, y tratarlo como *"sin firma"* seria degradarlo en
+silencio a un control mas flojo.
+
+### ⚠ Y HOY NO CAMBIA LA CONDUCTA DE NADA, a proposito
+
+Se midieron los 24 `.bex` del arbol: **19 traen seccion `Signature` y los 19
+tienen `sig_algo = 0`**. Todos dan `SoloIntegridad`, y con `exige_firma() =
+false` todos siguen arrancando igual.
+
+★ **Encender la firma es una decision con nombre y tiene orden**, escrito en
+`confianza.rs`: primero una clave en el ancla, despues un `.bex` firmado con ella
+que arranque, y **al final** `exige_firma()`. Al reves, la maquina deja de
+arrancar y el motivo parece del cargador.
+
+[!] Y una deuda que nace con esto y hay que decirla: **anadir una clave al ancla
+concede ejecucion a todo lo que esa clave firme, para siempre. No hay
+revocacion.** Escribirla antes de la primera clave seria construir la puerta
+antes de la casa; despues de la segunda seria tarde.
+
+### El firmador existe, y el kernel no puede llamarlo
+
+Hizo falta para poder probar el gate --un gate no se comprueba contra firmas que
+no existen-- y vive detras de la bandera `firmar` de `bmo-cripto`, que el kernel
+no enciende. Se comprueba **al reves**: firma los mensajes de los vectores del
+RFC con sus claves secretas y **salen las firmas del RFC byte a byte**.
+
+> Un firmador comprobado solo con su propio verificador es un par de funciones
+> que se creen la una a la otra.
 
 ## C4 -- `EJECUTAR` y `REINICIAR` no piden ninguna capability
 

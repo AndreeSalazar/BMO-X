@@ -242,3 +242,105 @@ fn el_orden_del_grupo_lleva_el_generador_al_neutro() {
     let r = por_escalar(&L, &b);
     assert_eq!(comprimir(&r), comprimir(&NEUTRO), "[L]B tiene que ser el neutro");
 }
+
+// ===========================================================================
+//  EL FIRMADOR -- comprobado AL REVES
+// ===========================================================================
+
+/// Las semillas secretas de los mismos cuatro vectores, en el mismo orden.
+#[cfg(feature = "firmar")]
+const SEMILLAS: &[&str] = &[
+    "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+    "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+    "c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
+    "833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42",
+];
+
+/// *** **LA CLAVE PUBLICA SE DERIVA, Y TIENE QUE SALIR LA DEL VECTOR.**
+///
+/// Es la primera mitad del firmador y la que sostiene la otra: si `publica_de`
+/// diera otra clave, `firmar` produciria firmas coherentes consigo mismas que
+/// **no verificaria nadie mas en el mundo**.
+#[cfg(feature = "firmar")]
+#[test]
+fn la_publica_derivada_es_la_del_rfc() {
+    for (i, semilla) in SEMILLAS.iter().enumerate() {
+        let (pk, _, _) = VECTORES[i];
+        assert_eq!(
+            publica_de(&k32(semilla)),
+            k32(pk),
+            "la publica del vector {i} tiene que salir de su semilla"
+        );
+    }
+}
+
+/// *** **FIRMAR LOS VECTORES TIENE QUE DAR LA MISMA FIRMA, BYTE A BYTE.**
+///
+/// Esta es la prueba que hace que el firmador valga para probar el gate. Un
+/// firmador comprobado solo contra su propio verificador es un par de funciones
+/// que se creen la una a la otra: las dos pueden estar mal del mismo modo y el
+/// banco sale verde.
+///
+/// ** Y se puede exigir igualdad EXACTA porque en Ed25519 el `nonce` no es
+/// aleatorio: sale del mensaje y de la clave. Firmar dos veces da lo mismo. En
+/// ECDSA esta prueba no se podria escribir.
+#[cfg(feature = "firmar")]
+#[test]
+fn firmar_los_vectores_da_las_firmas_del_rfc() {
+    for (i, semilla) in SEMILLAS.iter().enumerate() {
+        let (_, msg, sig) = VECTORES[i];
+        assert_eq!(
+            firmar(&k32(semilla), &hex(msg))[..],
+            k64(sig)[..],
+            "la firma del vector {i} tiene que salir identica"
+        );
+    }
+}
+
+/// Y la vuelta entera: firmar algo cualquiera y que el verificador lo acepte.
+/// Con el mensaje vacio y con uno largo, que son los dos bordes del relleno de
+/// SHA-512.
+#[cfg(feature = "firmar")]
+#[test]
+fn lo_que_se_firma_aqui_se_verifica_aqui() {
+    let semilla = k32(SEMILLAS[0]);
+    let pk = publica_de(&semilla);
+    for largo in [0usize, 1, 31, 32, 111, 112, 128, 1000] {
+        let msg: alloc::vec::Vec<u8> = (0..largo).map(|i| (i % 251) as u8).collect();
+        let s = firmar(&semilla, &msg);
+        assert!(verificar(&pk, &msg, &s), "un mensaje de {largo} bytes");
+        // Y un bit del mensaje lo tumba, para que la prueba no pase por dar
+        // siempre que si.
+        if largo > 0 {
+            let mut otro = msg.clone();
+            otro[largo / 2] ^= 1;
+            assert!(!verificar(&pk, &otro, &s), "con {largo} bytes y uno cambiado");
+        }
+    }
+}
+
+/// **La reduccion mod L, en sus bordes.** `L` reduce a cero y `L-1` se queda
+/// igual: son los dos sitios donde una division larga se equivoca por uno.
+#[cfg(feature = "firmar")]
+#[test]
+fn la_reduccion_mod_l_acierta_en_los_bordes() {
+    let mut x = [0u8; 64];
+    // L en 64 bytes -> tiene que dar 0.
+    x[..32].copy_from_slice(&L);
+    assert_eq!(super::escalar::reducir(&x), [0u8; 32], "L mod L = 0");
+
+    // L-1 -> se queda igual.
+    let mut menos_uno = L;
+    menos_uno[0] -= 1;
+    let mut y = [0u8; 64];
+    y[..32].copy_from_slice(&menos_uno);
+    assert_eq!(super::escalar::reducir(&y), menos_uno, "(L-1) mod L = L-1");
+
+    // 0 -> 0, y 1 -> 1.
+    assert_eq!(super::escalar::reducir(&[0u8; 64]), [0u8; 32]);
+    let mut uno = [0u8; 64];
+    uno[0] = 1;
+    let mut esperado = [0u8; 32];
+    esperado[0] = 1;
+    assert_eq!(super::escalar::reducir(&uno), esperado);
+}

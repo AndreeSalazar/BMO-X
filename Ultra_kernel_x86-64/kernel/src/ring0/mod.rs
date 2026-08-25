@@ -64,6 +64,8 @@ pub mod task {
     /// seccion; esto los comprueba en el momento en que la seccion termina de
     /// caer en la memoria del proceso, no despues sobre un bufer.
     pub mod landing;
+    /// EN QUIEN confia esta maquina. El ancla de la firma. Ver su cabecera.
+    pub mod confianza;
     pub mod bex;
     /// **Quien lanzo a quien.** Un pid y nada mas: lo justo para que una app
     /// pueda ofrecerle su superficie al que la puso en pantalla.
