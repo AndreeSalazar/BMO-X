@@ -1,0 +1,22 @@
+[package]
+name = "bmo-firma"
+version = "1.0.0"
+edition = "2021"
+description = "La DECISION de si un .bex esta firmado por alguien en quien confio. Sin alloc."
+license = "Techne"
+
+# ** UNA sola dependencia, y es la aritmetica.
+#
+# Mismo motivo que `bmo-bex-gate`: lo consumen dos mundos que no se ven entre
+# ellos -- el toolchain (con `alloc`, en Windows) y Ring 0 (sin asignador, en el
+# metal). `bmo-cripto` no tiene dependencias ni usa `alloc`, asi que no cierra
+# ninguna de las dos puertas.
+#
+# [!] Y se coge SIN la bandera `firmar`. Este crate DECIDE, no firma.
+[dependencies]
+bmo-cripto = { path = "../../shared/bmo-cripto" }
+
+[dev-dependencies]
+# Para las pruebas SI hace falta firmar: no se puede comprobar un gate contra
+# firmas que no existen. Ver la cabecera de `lib.rs`.
+bmo-cripto = { path = "../../shared/bmo-cripto", features = ["firmar"] }

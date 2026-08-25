@@ -39,7 +39,7 @@ use super::*;
 // movido necesita los nombres que usaba donde estaba.
 use crate::ring0::mm::{self, phys, vmm};
 use crate::ring0::obj::channel;
-use crate::ring0::task::{bex, landing, scheduler};
+use crate::ring0::task::{bex, confianza, landing, scheduler};
 // La REGLA de si una reloc cabe en su seccion vive en el gate, que es el mismo
 // juez que usa el toolchain. Aqui se ponen los DATOS, que es lo unico que este
 // modulo tiene y aquel no.
@@ -265,6 +265,59 @@ pub(crate) fn admit_payload_desde(
     } else {
         None
     };
+
+    // ===================================================================
+    //  *** EL GATE DE AUTORIA (2026-08-25)
+    // ===================================================================
+    //
+    // Hasta hoy el cargador sabia contestar UNA pregunta: *"llego lo que se
+    // escribio"*. Los hashes por seccion la contestan, y `:firma` de ESTRATOS
+    // tambien. Ninguna de las dos contesta la otra: **quien lo escribio.**
+    //
+    // ** Y CABLEAR Ed25519 A SECAS NO LA HABRIA CONTESTADO TAMPOCO, porque el
+    // formato guarda `sig[64] || pubkey[32]`: la clave publica viaja DENTRO de
+    // la firma, asi que la comprobacion siempre cuadra -- el firmante eligio las
+    // dos cosas. Lo que la convierte en una respuesta es el ANCLA.
+    //
+    // Ver `task/confianza.rs`, que es donde vive la opinion, y `bmo-firma`, que
+    // solo hace la aritmetica.
+    //
+    // [!] Va AQUI y no en `launch.rs` porque aqui es donde la seccion de firma
+    // ya esta en memoria. En `launch` solo hay el prologo, y la seccion
+    // `Signature` esta al final del fichero.
+    if let Some(f) = firmas.as_ref() {
+        let mut ancla = [[0u8; confianza::CLAVE]; 8];
+        let cuantas = confianza::claves(&mut ancla);
+        let tam_firma = plan.firma_file_size as usize;
+        match f.cadena() {
+            None => {
+                // La tabla no da para leer sus propios digests. No se puede
+                // decir ni que si ni que no, asi que se dice que no.
+                crate::ring0::cabina::fault(
+                    "firma",
+                    "la tabla de hashes no deja calcular la cadena",
+                    f.cuantos() as u64,
+                );
+                return None;
+            }
+            Some(cadena) => {
+                let v = bmo_firma::examinar(&buf_firma[..tam_firma], &cadena, &ancla[..cuantas]);
+                if !v.permite_ejecutar(confianza::exige_firma()) {
+                    // ** El motivo lo pone el VEREDICTO, no este sitio. Cada uno
+                    // manda a mirar algo distinto -- "no cuadra" al fichero,
+                    // "autor desconocido" al ancla-- y aplanarlos a "no paso el
+                    // gate" seria devolver la pregunta al que ya la hizo.
+                    crate::ring0::cabina::fault("firma", v.motivo(), f.cuantos() as u64);
+                    return None;
+                }
+                if let bmo_firma::Veredicto::Firmado { clave } = v {
+                    // Y cuando SI, se dice QUIEN. Un `si` no distingue a nadie.
+                    crate::ring0::cabina::info("firma", confianza::nombre(clave), clave as u64);
+                }
+            }
+        }
+    }
+
     let mut sin_firma = 0usize;
 
     // * PASE 2: reservar, copiar, CERRAR, PARCHEAR y mapear.
