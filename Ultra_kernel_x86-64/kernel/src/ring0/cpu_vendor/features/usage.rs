@@ -169,10 +169,45 @@ pub fn of(f: Feat) -> Use {
         // componente es el CPU y el numero son cuatro bits que regala y nadie
         // enciende. Eso es lo que significa Meta-Kernel; el linaje de
         // microkernel es de donde venimos, no lo que juzga.
-        Feat::Nx => Use::No("nadie toca EFER.NXE: TODA pagina que BMO mapea es ejecutable"),
-        Feat::Smep => Use::No("impide que Ring 0 EJECUTE una pagina de Ring 3. Un bit de CR4"),
-        Feat::Smap => Use::No("impide que Ring 0 LEA una de Ring 3 sin querer. Otro bit"),
-        Feat::Umip => Use::No("esconde SGDT/SIDT/SLDT a Ring 3; fuga de direcciones del kernel"),
+        // *** ESTAS CUATRO FILAS DECIAN QUE NO Y TRES ERAN FALSAS (2026-08-24).
+        //
+        // Se escribieron mirando el KERNEL, y los bits los pone `s1_cpu`, que
+        // es otra etapa y otro fichero. La tabla que existe para ser la verdad
+        // sobre que hace BMO-X con cada bit del CPU llevaba meses diciendo que
+        // no hacia nada con tres que SI estan puestos.
+        //
+        // ** Y el coste no fue teorico: con esta tabla delante se le dijo al
+        // dueno que "BMO-X no tiene ni una mitigacion". Falso. Tiene dos
+        // funcionando y una tercera armada sin usar.
+        //
+        // > Una tabla equivocada no deja un hueco: **cierra la pregunta.**
+        //   Nadie vuelve a mirar lo que ya esta contestado.
+
+        // `s1_cpu/cpu/zen3.rs`: `EFER |= EFER_NXE`. El mecanismo ESTA armado.
+        //
+        // [!] Y aun asi toda pagina es ejecutable, por otro motivo: **ninguna
+        // entrada de tabla pone el bit 63**. `vmm.rs` no lo escribe en ningun
+        // sitio, asi que el permiso existe y nadie lo usa.
+        //
+        // *** LO QUE FALTA SON POCAS LINEAS, y las dos mitades ya estan: el
+        // cargador YA sabe que secciones son de codigo --`admitir.rs` calcula
+        // `writable = flags & SECTION_FLAG_EXEC == 0`-- y el CPU ya acepta el
+        // bit. Falta unir las dos en el mismo sitio donde se decide `writable`.
+        Feat::Nx => Use::No("EFER.NXE ARMADO en s1_cpu; ninguna PTE pone el bit 63 todavia"),
+        // `s1_cpu/cpu/mod.rs`: `if smep { cr4 |= 1 << 20 }`. Funciona solo: el
+        // kernel nunca ejecuta una pagina de usuario, asi que no hay nada que
+        // adaptar. Un desvio del flujo de Ring 0 hacia codigo de Ring 3 --el
+        // final de casi toda cadena de explotacion-- da fault en vez de correr.
+        Feat::Smep => Use::Yes("s1_cpu enciende CR4.SMEP: Ring 0 no puede EJECUTAR una pagina de Ring 3"),
+        // *** EL UNICO DE LOS CUATRO QUE DE VERDAD NO ESTA, y no es un bit
+        // suelto: el kernel SI escribe memoria de Ring 3 a proposito --el
+        // camino de `ARCH_OP_LEER_EN`-- asi que encenderlo pide `stac`/`clac`
+        // alrededor de cada uno de esos sitios. Sin eso, encenderlo rompe el
+        // disco. Es trabajo de dias, no un bit.
+        Feat::Smap => Use::No("CR4.SMAP sin encender; pide stac/clac donde el kernel escribe Ring 3"),
+        // `s1_cpu/cpu/mod.rs`: `if umip { cr4 |= 1 << 11 }`. Ring 3 ya no puede
+        // leer las bases de GDT/IDT/LDT/TR con SGDT y familia.
+        Feat::Umip => Use::Yes("s1_cpu enciende CR4.UMIP: SGDT/SIDT/SLDT/STR ya no fugan del kernel"),
     }
 }
 
