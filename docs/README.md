@@ -236,7 +236,8 @@ se deshace va al final.**
 | [`PRUEBA_EN_METAL_0813.md`](metal/PRUEBA_EN_METAL_0813.md) | **2026-08-13** | |
 | [`PRUEBA_EN_METAL_0823.md`](metal/PRUEBA_EN_METAL_0823.md) | **2026-08-23** | lo que se MANDA teclear |
 | [`PRUEBA_RED_PASO_1.md`](metal/PRUEBA_RED_PASO_1.md) | **2026-08-24** | la unica que PREDICE por escrito antes de arrancar |
-| [`PRUEBA_EN_METAL_0824.md`](metal/PRUEBA_EN_METAL_0824.md) | **2026-08-24** | ★ **la vigente**: lo que el Ryzen CONTESTO |
+| [`PRUEBA_EN_METAL_0824.md`](metal/PRUEBA_EN_METAL_0824.md) | **2026-08-24** | lo que el Ryzen CONTESTO |
+| [`PRUEBA_EN_METAL_0825.md`](metal/PRUEBA_EN_METAL_0825.md) | **2026-08-25** | ★ **la vigente**: lo que hay que teclear, y las DOS que pueden impedir el arranque |
 
 ### ⚠ Las dos cosas que esta tabla existe para decir
 
