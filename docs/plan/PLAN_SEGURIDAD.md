@@ -142,25 +142,79 @@ mapeos y copias.
 pasan de `No` a `Yes` con su motivo; y **la sonda gana un empujon nuevo**: un
 `.bex` que salte a una pagina de datos suya tiene que morir, no ejecutarla.
 
-## C3 -- Ed25519 de verdad, que es LA pieza
+## [X] C3 -- Ed25519 -- **HECHA el 2026-08-25**, y era media pieza
 
-**Que falta**: la aritmetica de curva (campo sobre `2^255-19` mas SHA-512) y el
-`verify` encima. El formato **ya la espera**: `SigAlgorithm::Ed25519 = 1` y
-`Ed25519Signature` (96 B) existen en `bef/signing.rs`, y `chain_hash` ya encadena
-los hashes de seccion, que es exactamente lo que hay que firmar.
+**Como quedo**: `platform/shared/bmo-cripto/src/ed25519.rs`, con los **cuatro
+vectores de RFC 8032 7.1** verificando y seis pruebas negativas. Y `sha512.rs`
+debajo, con los vectores de FIPS 180-4 -- entro por esto y solo por esto.
 
-**Que la bloquea**: nada tecnico -- son dias de trabajo. Lo que la condiciona es
-**que se pruebe contra los vectores oficiales (RFC 8032) o no vale nada**, y la
-regla del maestro: ninguna constante entra sin su vector al lado.
+### ★ La casilla decia "LA pieza" y ya estaba medio pagada
 
-⚠ Y una decision que hay que tomar antes de escribir una linea: **donde vive la
-clave privada**. En la maquina no, o vuelve el problema de 4.2 del maestro. Vive
-donde se firma, que es el anfitrion, y a BMO-X solo baja la publica.
+Se escribio cuando no habia ni un hash en el arbol. Para cuando le llego el
+turno:
 
-**Como se sabe que quedo hecha**: los vectores del RFC pasan; un `.bex` firmado
-arranca; el mismo con un byte cambiado **en la seccion de codigo** es rechazado
-por firma y no por hash --que son dos rechazos distintos y hay que distinguirlos--;
-y C1 ya no puede devolver `true` por omision.
+```text
+   el campo 2^255-19    YA ESTABA, escrito y probado para X25519
+   SHA-512              se escribio el mismo dia. Vectores de NIST
+   la curva de Edwards  lo unico de verdad nuevo
+```
+
+**La aritmetica modular --la parte que asusta-- llevaba semanas hecha.** Lo que
+faltaba era otra curva encima del mismo campo.
+
+### ⚠ Y FIRMAR NO ESTA, QUE ES LA DECISION Y NO UNA OBRA A MEDIAS
+
+Esta casilla ya lo tenia escrito, y se cumplio al pie de la letra:
+
+> *"En la maquina no, o vuelve el problema de 4.2 del maestro. Vive donde se
+> firma, que es el anfitrion, y a BMO-X solo baja la publica."*
+
+Una maquina que puede firmar **tiene dentro con que falsificar lo que ejecuta**.
+BMO-X solo necesita saber decir que no.
+
+### *** LO QUE UNA PRUEBA DESTAPO, Y ES C1 OTRA VEZ POR OTRA PUERTA
+
+Se escribio una prueba con la firma de ceros --la de C1-- y **fallo en la primera
+pasada**: `verificar` decia que SI. Y no era un fallo de la curva, era la curva
+funcionando:
+
+```text
+   32 bytes a cero  ->  y = 0  ->  x2 = (0-1)/(0+1) = -1
+                    ->  y -1 SI tiene raiz en este campo
+```
+
+Una clave de ceros **es un punto de verdad**: uno de orden 4. Con `S = 0` la
+ecuacion se queda en `[-k]T == T`, que se cumple **una de cada cuatro veces**
+segun lo que salga del hash. Con el mensaje del vector 1 salio.
+
+> C1 decia: *"para pasar el control no hay que falsificar una firma, hay que
+> BORRARLA."* Se quito el `if is_unsigned { return true; }`, y la misma entrada
+> volvia a pasar -- ahora **por matematicas en vez de por un atajo**.
+>
+> ★★ **Un agujero tapado por arriba y abierto por abajo.**
+
+Se cierra rechazando los puntos de orden pequeno --`[8]P == O`, tres doblados--
+en la clave publica **y** en la `R`. Y la leccion es de metodo: **esa prueba se
+escribio por historia, no por sospecha.** Sin la memoria de C1 no se habria
+escrito, y el agujero habria entrado con los cuatro vectores del RFC en verde.
+
+### Lo que esta pieza NO promete
+
+- **No es de tiempo constante, y no tiene por que serlo**: verificar no toca
+  ningun secreto. Los tres datos --clave publica, mensaje y firma-- son publicos.
+- **Se usa `[S]B = R + [k]A` y no la de los ochos.** RFC 8032 5.1.7 permite las
+  dos; esta es **mas estricta**. Si algun dia una firma valida en otro sitio se
+  rechaza aqui, esa es la primera linea que releer.
+
+### ⚠ Y LO QUE FALTA PARA QUE ESTO SIRVA DE ALGO
+
+**No lo llama nadie todavia.** El formato ya lo esperaba --`SigAlgorithm::Ed25519
+= 1`, `Ed25519Signature` de 96 B y `chain_hash`, que es exactamente lo que hay
+que firmar-- pero el gate del cargador sigue mirando solo el BLAKE3 por seccion.
+
+★ Es la MISMA forma de C1: una pieza correcta que no cambia nada hasta que se
+cablea. La diferencia es que ahora, cuando se cablee, **lo que hay debajo dice la
+verdad**.
 
 ## C4 -- `EJECUTAR` y `REINICIAR` no piden ninguna capability
 
