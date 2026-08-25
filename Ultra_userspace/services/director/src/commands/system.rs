@@ -196,12 +196,12 @@ pub(crate) fn audio(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
         let ok = bmo::audio_tubo(1);
         dsk.out.grid.with_ink(if ok != 0 { INK_GOOD } else { INK_ERR });
         if ok != 0 {
-            dsk.out.grid.text(b"  tubo ARMADO: empujando SILENCIO' + N + '");
+            dsk.out.grid.text(b"  tubo ARMADO: empujando SILENCIO\n");
             dsk.out.grid.with_ink(INK_PLAIN);
-            dsk.out.grid.text(b"  el silencio no puede sonar mal. Mira `audio` otra vez:' + N + '");
-            dsk.out.grid.text(b"  encoladas tiene que SUBIR y tarde quedarse en 0' + N + '");
+            dsk.out.grid.text(b"  el silencio no puede sonar mal. Mira `audio` otra vez:\n");
+            dsk.out.grid.text(b"  encoladas tiene que SUBIR y tarde quedarse en 0\n");
         } else {
-            dsk.out.grid.text(b"  no hay tubo abierto que armar (mira `cabina`)' + N + '");
+            dsk.out.grid.text(b"  no hay tubo abierto que armar (mira `cabina`)\n");
             dsk.out.grid.with_ink(INK_PLAIN);
         }
         paint_status(&p, &dsk.run_box, "audio", INK_DIM);
@@ -210,7 +210,7 @@ pub(crate) fn audio(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
     }
     if arg == b"calla" || arg == b"para" {
         bmo::audio_tubo(2);
-        dsk.out.grid.text(b"  tubo callado' + N + '");
+        dsk.out.grid.text(b"  tubo callado\n");
         paint_status(&p, &dsk.run_box, "audio", INK_DIM);
         dsk.field.n = 0;
         return After::Settle;
@@ -236,30 +236,50 @@ pub(crate) fn audio(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
     // ** EL TUBO, que es lo que decide si esto va a sonar.
     if bmo::audio_tubo(0) != 0 {
         dsk.out.grid.with_ink(INK_GOOD);
-        dsk.out.grid.text(b"  TUBO ABIERTO' + N + '");
+        dsk.out.grid.text(b"  TUBO ABIERTO\n");
         dsk.out.grid.with_ink(INK_PLAIN);
         dsk.out.grid.text(b"    frecuencia      ");
         dsk.out.grid.dec(bmo::audio_tubo(4));
-        dsk.out.grid.text(b" Hz' + N + '");
+        dsk.out.grid.text(b" Hz\n");
         dsk.out.grid.text(b"    bytes por trama ");
         dsk.out.grid.dec(bmo::audio_tubo(3));
-        dsk.out.grid.text(b"' + N + '");
+        dsk.out.grid.text(b"\n");
         dsk.out.grid.text(b"    encoladas       ");
         dsk.out.grid.dec(bmo::audio_tubo(5));
-        dsk.out.grid.text(b"' + N + '");
-        // *** LA FILA. Ver la cabecera.
+        dsk.out.grid.text(b"\n");
+        // *** LAS DOS FILAS, Y SON DISTINTAS AUNQUE SUENEN IGUAL.
+        //
+        //    tarde    el xHC no llego a su cita   -> el problema es del BUS
+        //    huecos   nadie escribio la trama     -> el problema es de la APP
+        //
+        // Sin separarlas, un audio que chasquea manda a mirar el driver cuando
+        // la mitad de las veces el que llega tarde es quien produce.
         let tarde = bmo::audio_tubo(6);
         dsk.out.grid.text(b"    tramas TARDE    ");
         dsk.out.grid.with_ink(if tarde == 0 { INK_GOOD } else { INK_ERR });
         dsk.out.grid.dec(tarde);
         dsk.out.grid.with_ink(INK_PLAIN);
-        dsk.out.grid.text(b"' + N + '");
+        dsk.out.grid.text(b"   (el bus)\n");
+        let huecos = bmo::audio_tubo(12);
+        dsk.out.grid.text(b"    huecos          ");
+        dsk.out.grid.with_ink(if huecos == 0 { INK_GOOD } else { INK_ERR });
+        dsk.out.grid.dec(huecos);
+        dsk.out.grid.with_ink(INK_PLAIN);
+        dsk.out.grid.text(b"   (el que produce)\n");
+        // ** El bufer prestado, si lo hay. Sin prestamo no se pinta: una fila
+        // de ceros sobre algo que nadie ofrecio no dice nada.
+        let pend = bmo::audio_tubo(11);
+        if pend > 0 || bmo::audio_tubo(10) > 0 {
+            dsk.out.grid.text(b"    sin entregar    ");
+            dsk.out.grid.dec(pend);
+            dsk.out.grid.text(b" bytes\n");
+        }
         if bmo::audio_tubo(7) == 0 {
-            dsk.out.grid.text(b"  escribe `audio silencio` para empujar y ver si sube' + N + '");
+            dsk.out.grid.text(b"  escribe `audio silencio` para empujar y ver si sube\n");
         }
     } else {
         dsk.out.grid.with_ink(INK_ERR);
-        dsk.out.grid.text(b"  el tubo NO esta abierto: no puede sonar nada todavia' + N + '");
+        dsk.out.grid.text(b"  el tubo NO esta abierto: no puede sonar nada todavia\n");
         dsk.out.grid.with_ink(INK_PLAIN);
     }
     paint_status(&p, &dsk.run_box, "audio", INK_DIM);
