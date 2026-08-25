@@ -153,67 +153,74 @@ unsafe fn find_by(xsdt_addr: u64, sig: &[u8; 4]) -> Option<u64> {
     }
 }
 
-// Tipos de entrada de la MADT que nos importan.
-const ENTRADA_LAPIC: u8 = 0;
-const ENTRADA_X2APIC: u8 = 9;
-/// Bit 0 de las banderas: el nucleo se puede usar. Bit 1 es *online capable*
-/// (se podria enchufar en caliente), y a ese **no se le manda un SIPI**.
-const HABILITADO: u32 = 1;
-
 /// **Enumera los APIC IDs que declara el firmware.**
 ///
 /// `rsdp` sale del `BootContext`. Devuelve `None` si no hay tabla que leer --y
 /// entonces quien llame decide que hacer, que es distinto de devolver una lista
 /// vacia y dejar que parezca *"esta maquina tiene cero nucleos"*.
+///
+/// # *** EL PASEO POR LAS ENTRADAS YA NO ESTA AQUI (2026-08-25, C6)
+///
+/// Vivia entero en este fichero, y por eso **tenia cero pruebas**: `madt.rs`
+/// esta dentro del kernel, que es `no_std` para una maquina sin sistema
+/// operativo, y ahi no corre un test.
+///
+/// Y el paseo es justo la parte peligrosa: recorre entradas cuya longitud la
+/// escribe **la placa**, en el arranque, y su respuesta decide a que APIC IDs se
+/// les manda INIT-SIPI-SIPI -- la unica operacion de todo el sistema que cambia
+/// el hardware de forma que no se deshace sin reiniciar.
+///
+/// ```text
+///    lo que se queda AQUI    llegar a la tabla: RSDP -> XSDT -> APIC
+///                            eso pide leer memoria fisica, y es del kernel
+///    lo que se fue           interpretar sus bytes -> `bmo_firmware::leer_madt`
+///                            eso es una funcion pura, y ahora tiene 7 pruebas
+/// ```
+///
+/// ** Es el mismo reparto que ya tenian MCFG e IVRS en ese crate. La MADT era la
+/// unica de las tres que se habia quedado dentro -- y la mas peligrosa.
+///
+/// [!] Y C6 decia que esta casilla era la mas cara porque *"un informe HID malo
+/// hay que INYECTARLO"*. Para la MADT era falso: **lo que impedia probarla no era
+/// el aparato, era el sitio.**
 pub fn enumerar(rsdp: u64) -> Option<Censo> {
     if rsdp == 0 {
         return None;
     }
-    unsafe {
+    let (madt, len) = unsafe {
         let x = xsdt(rsdp)?;
         let madt = find_by(x, b"APIC")?;
-        let len = largo(madt) as u64;
+        let len = largo(madt) as usize;
         if len < 44 {
             return None;
         }
+        (madt, len)
+    };
 
-        let mut c = Censo { ids: [0; MAX], n: 0, apagados: 0 };
-        // La cabecera son 36 bytes de SDT + 4 de la direccion del LAPIC + 4 de
-        // banderas. Las entries empiezan en 44.
-        let mut off = 44u64;
-        while off + 2 <= len {
-            let tipo: u8 = fis(madt + off);
-            let elen: u8 = fis(madt + off + 1);
-            // Una entrada de longitud 0 haria un bucle infinito sobre una tabla
-            // corrupta. Se corta y se dice por el que llama, no aqui.
-            if elen < 2 {
-                break;
-            }
-            let (id, banderas) = match tipo {
-                ENTRADA_LAPIC if elen >= 8 => {
-                    let id: u8 = fis(madt + off + 3);
-                    let f: u32 = fis(madt + off + 4);
-                    (Some(id as u32), f)
-                }
-                ENTRADA_X2APIC if elen >= 16 => {
-                    let id: u32 = fis(madt + off + 4);
-                    let f: u32 = fis(madt + off + 8);
-                    (Some(id), f)
-                }
-                _ => (None, 0),
-            };
-            if let Some(id) = id {
-                if banderas & HABILITADO != 0 {
-                    if c.n < MAX {
-                        c.ids[c.n] = id;
-                        c.n += 1;
-                    }
-                } else {
-                    c.apagados += 1;
-                }
-            }
-            off += elen as u64;
+    // ** LA TABLA COMO REBANADA, y de ahi en adelante no hay `unsafe`.
+    //
+    // Un `&[u8]` no pide alineacion, asi que esto no reintroduce el problema que
+    // `read_unaligned` resolvia: lo que estaba desalineado eran las entradas de
+    // 8 bytes del XSDT, y esas siguen leyendose arriba.
+    let bytes = unsafe { core::slice::from_raw_parts((HIGH_MEM_BASE + madt) as *const u8, len) };
+
+    let mut declarados = [bmo_firmware::NucleoDeclarado { apic: 0, habilitado: false }; MAX];
+    let n = bmo_firmware::leer_madt(bytes, &mut declarados);
+
+    let mut c = Censo { ids: [0; MAX], n: 0, apagados: 0 };
+    for d in &declarados[..n] {
+        if d.habilitado {
+            c.ids[c.n] = d.apic;
+            c.n += 1;
+        } else {
+            // Se cuentan y no se llaman. Un hueco sin explicar es peor que un
+            // numero: `smp` lo dice por CABINA.
+            c.apagados += 1;
         }
-        if c.n == 0 { None } else { Some(c) }
+    }
+    if c.n == 0 {
+        None
+    } else {
+        Some(c)
     }
 }

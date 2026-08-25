@@ -430,6 +430,122 @@ pub fn ivinfo(bytes: &[u8]) -> Option<u32> {
     Some(u32_en(bytes, CABECERA_LEN))
 }
 
+// ===================================================================
+//  MADT -- el censo de nucleos, y la que faltaba
+// ===================================================================
+//
+// *** POR QUE ESTA LLEGA LA ULTIMA, Y ESO ES EL HALLAZGO
+//
+// `MCFG` e `IVRS` se leen aqui, como funciones puras sobre `&[u8]`, con sus
+// pruebas. **La MADT no**: se quedo dentro de `kernel/ring0/plat/madt.rs`,
+// soldada al physmap con `read_unaligned` sobre direcciones fisicas.
+//
+// ```text
+//    MCFG    bmo-firmware, pura, con pruebas     [X]
+//    IVRS    bmo-firmware, pura, con pruebas     [X]
+//    MADT    dentro del kernel, CERO pruebas     <- y es la mas peligrosa
+// ```
+//
+// ** Y es la mas peligrosa de las tres por lo que se hace con su respuesta: el
+// MCFG dice donde leer registros y el IVRS dice si hay IOMMU. **La MADT decide a
+// que APIC IDs se les manda INIT-SIPI-SIPI**, que es la unica operacion de todo
+// el sistema que cambia el hardware de forma que no se deshace sin reiniciar.
+//
+// C6 de `PLAN_SEGURIDAD.md` decia que esta casilla era la mas cara porque *"un
+// informe HID malo hay que INYECTARLO"*. Para la MADT eso resulto ser falso: lo
+// que la hacia imposible de probar no era el aparato, era **estar dentro de Ring
+// 0**. Es L7b otra vez, la misma que ya saco `bmo-golpe` y `bmo-input`.
+//
+// > Lo que no se puede probar no es el firmware: es el sitio donde se lee.
+
+/// Un nucleo, tal y como lo declara la MADT.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NucleoDeclarado {
+    /// El APIC ID. `u32` porque las entradas x2APIC lo traen de 32 bits.
+    pub apic: u32,
+    /// **Se le puede mandar un SIPI.** Bit 0 de las banderas.
+    ///
+    /// [!] El bit 1 es *online capable* --se podria enchufar en caliente-- y a
+    /// ese **no se le manda nada**. Confundirlos manda IPIs a un nucleo que no
+    /// esta, y la IPI perdida y el nucleo que no contesta se ven IGUAL desde
+    /// fuera: *"faltan nucleos"*.
+    pub habilitado: bool,
+}
+
+/// Bytes de cabecera antes de la primera entrada: los 36 del SDT, mas 4 de la
+/// direccion del LAPIC y 4 de banderas.
+pub const MADT_CABECERA: usize = CABECERA_LEN + 8;
+
+const MADT_LAPIC: u8 = 0;
+const MADT_X2APIC: u8 = 9;
+
+/// **Lee los nucleos que declara la MADT.** `bytes` es la tabla entera.
+///
+/// Devuelve cuantos escribio en `salida`. Un array y no un `Vec`, igual que sus
+/// dos hermanas: esto se llama sin monton.
+///
+/// # Las cuatro formas en que una MADT hostil puede hacer dano
+///
+/// ```text
+///    1. `largo` mayor que los bytes que hay   -> se lee fuera de la tabla
+///    2. una entrada de longitud CERO          -> bucle infinito EN EL ARRANQUE
+///    3. una entrada que se sale por el final  -> se leen bytes de la de al lado
+///    4. mas nucleos de los que caben          -> se escribe fuera de `salida`
+/// ```
+///
+/// *** **La 2 es la unica que no da un dato malo: cuelga la maquina.** Y cuelga
+/// en el arranque, antes de que haya autopsia -- o sea que el sintoma es una
+/// pantalla negra sin una linea. Es el mismo tope que el recorrido de
+/// capabilities de PCI lleva por el mismo motivo.
+///
+/// [!] Y la 1 hace falta porque **`largo` lo escribe la placa**: la cabecera de
+/// una tabla ACPI declara su propio tamano, y creerselo es leer donde diga.
+pub fn leer_madt(bytes: &[u8], salida: &mut [NucleoDeclarado]) -> usize {
+    if bytes.len() < MADT_CABECERA || salida.is_empty() {
+        return 0;
+    }
+    // ** El `min`: manda lo que HAY, no lo que la tabla dice que hay.
+    let largo = u32_en(bytes, 4) as usize;
+    let hasta = largo.min(bytes.len());
+    if hasta < MADT_CABECERA {
+        return 0;
+    }
+
+    let mut n = 0usize;
+    let mut off = MADT_CABECERA;
+    while off + 2 <= hasta {
+        let tipo = bytes[off];
+        let elen = bytes[off + 1] as usize;
+        // ** EL TOPE QUE IMPIDE EL CUELGUE. Una entrada de longitud 0 --o de 1,
+        // que tampoco avanza mas alla de su propia cabecera-- dejaria `off`
+        // quieto para siempre.
+        if elen < 2 {
+            break;
+        }
+        // Y una que se salga por el final no se lee a medias: se corta.
+        if off + elen > hasta {
+            break;
+        }
+        let leido = match tipo {
+            MADT_LAPIC if elen >= 8 => Some((bytes[off + 3] as u32, u32_en(bytes, off + 4))),
+            MADT_X2APIC if elen >= 16 => Some((u32_en(bytes, off + 4), u32_en(bytes, off + 8))),
+            // Cualquier otro tipo se SALTA contandolo por su longitud. No se
+            // rechaza la tabla: ACPI define veinte tipos y una placa puede traer
+            // los que quiera, incluidos los que se inventen despues.
+            _ => None,
+        };
+        if let Some((apic, banderas)) = leido {
+            if n >= salida.len() {
+                break;
+            }
+            salida[n] = NucleoDeclarado { apic, habilitado: banderas & 1 != 0 };
+            n += 1;
+        }
+        off += elen;
+    }
+    n
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -694,6 +810,135 @@ mod pruebas {
         t[CABECERA_LEN..CABECERA_LEN + 4].copy_from_slice(&0x0023_0F5Au32.to_le_bytes());
         assert_eq!(ivinfo(&t), Some(0x0023_0F5A));
         assert_eq!(ivinfo(&[0u8; 10]), None);
+    }
+
+    // === MADT: la que faltaba, y sus cuatro formas de hacer dano ==========
+
+    /// Arma una MADT con las entradas dadas: `(tipo, largo, apic, banderas)`.
+    fn madt(entradas: &[(u8, u8, u32, u32)]) -> Vec<u8> {
+        let mut t = vec![0u8; MADT_CABECERA];
+        t[..4].copy_from_slice(b"APIC");
+        for &(tipo, elen, apic, banderas) in entradas {
+            let ini = t.len();
+            t.extend_from_slice(&vec![0u8; elen as usize]);
+            t[ini] = tipo;
+            t[ini + 1] = elen;
+            if tipo == 0 && elen >= 8 {
+                t[ini + 3] = apic as u8;
+                t[ini + 4..ini + 8].copy_from_slice(&banderas.to_le_bytes());
+            } else if tipo == 9 && elen >= 16 {
+                t[ini + 4..ini + 8].copy_from_slice(&apic.to_le_bytes());
+                t[ini + 8..ini + 12].copy_from_slice(&banderas.to_le_bytes());
+            }
+        }
+        let n = t.len() as u32;
+        t[4..8].copy_from_slice(&n.to_le_bytes());
+        t
+    }
+
+    fn hueco() -> [NucleoDeclarado; 8] {
+        [NucleoDeclarado { apic: 0, habilitado: false }; 8]
+    }
+
+    /// El caso bueno: seis nucleos habilitados y uno que no.
+    #[test]
+    fn una_madt_normal_da_sus_nucleos() {
+        let t = madt(&[
+            (0, 8, 0, 1),
+            (0, 8, 1, 1),
+            (0, 8, 2, 1),
+            (0, 8, 3, 0), // listado y NO habilitado
+            (9, 16, 0x1000, 1),
+        ]);
+        let mut v = hueco();
+        assert_eq!(leer_madt(&t, &mut v), 5);
+        assert_eq!(v[0], NucleoDeclarado { apic: 0, habilitado: true });
+        assert_eq!(v[3], NucleoDeclarado { apic: 3, habilitado: false });
+        assert_eq!(v[4], NucleoDeclarado { apic: 0x1000, habilitado: true }, "x2APIC de 32 bits");
+    }
+
+    /// *** **LA QUE CUELGA LA MAQUINA: una entrada de longitud CERO.**
+    ///
+    /// No da un dato malo -- deja `off` quieto y el bucle no acaba nunca. Y
+    /// pasa **en el arranque**, antes de que haya autopsia: el sintoma es una
+    /// pantalla negra sin una linea.
+    ///
+    /// ** Si esta prueba entra en bucle, no falla: se queda colgada. Y eso es
+    /// justo lo que se esta comprobando, asi que el banco entero se para -- que
+    /// es un aviso mas ruidoso que un rojo.
+    #[test]
+    fn una_entrada_de_longitud_cero_no_cuelga() {
+        let mut t = madt(&[(0, 8, 0, 1), (0, 8, 1, 1)]);
+        t[MADT_CABECERA + 8 + 1] = 0; // el `largo` de la segunda entrada
+        let mut v = hueco();
+        // Se queda con la primera y CORTA. Lo importante es que conteste.
+        assert_eq!(leer_madt(&t, &mut v), 1);
+
+        // Y el `1`, que tampoco avanza mas alla de su propia cabecera.
+        let mut t = madt(&[(0, 8, 0, 1), (0, 8, 1, 1)]);
+        t[MADT_CABECERA + 8 + 1] = 1;
+        assert_eq!(leer_madt(&t, &mut v), 1);
+    }
+
+    /// **Una tabla que declara mas largo del que tiene.** El `largo` lo escribe
+    /// la placa, y creerselo es leer donde diga.
+    #[test]
+    fn un_largo_mentiroso_no_lee_fuera() {
+        let mut t = madt(&[(0, 8, 7, 1)]);
+        t[4..8].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+        let mut v = hueco();
+        // Manda lo que HAY: la unica entrada real, y para.
+        assert_eq!(leer_madt(&t, &mut v), 1);
+        assert_eq!(v[0].apic, 7);
+    }
+
+    /// **Una entrada que se sale por el final** no se lee a medias.
+    #[test]
+    fn una_entrada_que_se_pasa_del_final_se_corta() {
+        let mut t = madt(&[(0, 8, 1, 1), (0, 8, 2, 1)]);
+        // La segunda dice medir 40 y solo quedan 8.
+        t[MADT_CABECERA + 8 + 1] = 40;
+        let mut v = hueco();
+        assert_eq!(leer_madt(&t, &mut v), 1, "solo la primera");
+    }
+
+    /// **Mas nucleos de los que caben en `salida`**: se para, no se sale.
+    #[test]
+    fn mas_nucleos_de_los_que_caben_no_escriben_fuera() {
+        let muchos: Vec<(u8, u8, u32, u32)> = (0..40).map(|i| (0u8, 8u8, i as u32, 1u32)).collect();
+        let t = madt(&muchos);
+        let mut v = [NucleoDeclarado { apic: 0, habilitado: false }; 4];
+        assert_eq!(leer_madt(&t, &mut v), 4);
+        assert_eq!(v[3].apic, 3);
+    }
+
+    /// **Un tipo desconocido se SALTA por su longitud**, no rechaza la tabla.
+    /// ACPI define veinte tipos y una placa puede traer los que quiera --
+    /// incluidos los que se inventen despues de escribir esto.
+    #[test]
+    fn un_tipo_que_no_conozco_no_tira_la_tabla() {
+        let t = madt(&[(0, 8, 1, 1), (0xFE, 12, 0, 0), (0, 8, 2, 1)]);
+        let mut v = hueco();
+        assert_eq!(leer_madt(&t, &mut v), 2);
+        assert_eq!(v[1].apic, 2, "el de despues del desconocido sigue saliendo");
+    }
+
+    /// Una tabla truncada, byte a byte, **no puede estallar ni colgarse**.
+    #[test]
+    fn ninguna_tabla_truncada_tumba_el_parser() {
+        let t = madt(&[(0, 8, 1, 1), (9, 16, 0x2000, 1), (0, 8, 2, 0)]);
+        let mut v = hueco();
+        for n in 0..t.len() {
+            let _ = leer_madt(&t[..n], &mut v);
+        }
+        // Y con cada byte cambiado.
+        for i in 0..t.len() {
+            for x in [0x00u8, 0x01, 0xFF] {
+                let mut c = t.clone();
+                c[i] = x;
+                let _ = leer_madt(&c, &mut v);
+            }
+        }
     }
 
 }

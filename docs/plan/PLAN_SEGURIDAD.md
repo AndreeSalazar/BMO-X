@@ -433,19 +433,96 @@ antes de llegar al Ryzen.
 rechazado **por el cargador** nombrando el offset, y no por el compilador --que
 ese caso ya lo cubria--.
 
-## C6 -- los parsers de dispositivo no tienen sonda
+## [~] C6 -- los parsers de dispositivo -- **la premisa era FALSA casi entera**
 
-**Que falta**: informes HID del USB, tablas del firmware (MADT), y la GPT se
-parsean **sin desconfiar del que los emite**. `sonda.bex` empuja los syscalls y
-nada empuja esto.
+**Que decia**: que los informes HID, las tablas del firmware y la GPT se parsean
+sin desconfiar del que los emite, y que era *"la casilla mas cara de todas"*
+porque **un informe HID malo hay que INYECTARLO**.
 
-**Que la bloquea**: que un informe HID malo hay que **inyectarlo**, y eso pide
-o un aparato programable o un camino de pruebas dentro del kernel. Es la casilla
-mas cara de todas las de este plan y por eso va la ultima.
+### [!] Lo primero que aparecio al ir a hacerla: el censo
 
-★ Y el limite que ya estaba escrito: **la sonda la escribio el mismo lado que
-escribio las defensas**, asi que prueba lo que se nos ocurrio atacar. La primera
-prueba que no se escribe uno mismo llega con la RED.
+```text
+   platform/drivers/usb/uhid                40 pruebas
+   platform/drivers/usb/uaudio              25
+   platform/drivers/net                     24
+   platform/drivers/storage/fat32           24
+   platform/drivers/storage/particiones      7
+   ------------------------------------------------
+   kernel/ring0/plat/madt.rs                 0     219 lineas
+   kernel/ring0/plat/placa.rs                0     350
+   kernel/ring0/dev/net/mod.rs               0     637
+```
+
+**120 pruebas fuera del kernel. Cero dentro.** Y las de fuera **ya son
+adversarias**, no de camino feliz:
+
+```text
+   un_descriptor_truncado_no_da_formato
+   un_aparato_que_no_sabemos_adoptar_no_gira_para_siempre
+   un_tamano_de_entrada_absurdo_se_rechaza_en_vez_de_leer_en_diagonal
+   un_sector_corto_no_se_parsea_a_medias
+```
+
+★ Y el `Report Count` de HID --el caso que C6 nombraba como *"hay que
+inyectarlo"*-- **tiene tope desde la auditoria del 24-08**, con su motivo
+escrito: `MAX_POR_ITEM = 256`, porque `0xFFFF_FFFF` no corrompe nada, **cuelga**,
+y un cuelgue no da autopsia.
+
+### *** LO QUE DE VERDAD NO TENIA SONDA, Y NO ERA POR EL APARATO
+
+```text
+   MCFG    bmo-firmware, pura, con pruebas     [X]
+   IVRS    bmo-firmware, pura, con pruebas     [X]
+   MADT    dentro del kernel, CERO pruebas     <- y es la mas peligrosa
+```
+
+**Las tres tablas del firmware, y solo una se habia quedado dentro.** Es L6c en
+su forma mas util: la simetria hace visible el hueco.
+
+★★ Y la MADT es la peor de las tres por lo que se hace con su respuesta:
+
+> El MCFG dice **donde leer** registros. El IVRS dice **si hay** IOMMU. La MADT
+> decide **a que APIC IDs se les manda INIT-SIPI-SIPI** -- la unica operacion de
+> todo el sistema que cambia el hardware de forma que no se deshace sin
+> reiniciar.
+
+> **Lo que impedia probarla no era el aparato: era el sitio.** Es L7b otra vez,
+> la misma que ya sacaron `bmo-golpe` y `bmo-input` de Ring 0.
+
+### Lo que se hizo: `bmo_firmware::leer_madt`, con siete pruebas
+
+El paseo por las entradas salio a `bmo-firmware` --donde ya vivian sus dos
+hermanas-- y `madt.rs` se queda con lo unico que solo el kernel puede hacer:
+llegar a la tabla (RSDP -> XSDT -> APIC) leyendo memoria fisica.
+
+**Las cuatro formas en que una MADT hostil puede hacer dano, cada una con su
+prueba**:
+
+| lo que la tabla hace | lo que pasaria | prueba |
+|---|---|---|
+| declara un `largo` mayor del que tiene | se lee fuera de la tabla | `un_largo_mentiroso_no_lee_fuera` |
+| ★ una entrada de longitud **CERO** | **bucle infinito EN EL ARRANQUE** | `una_entrada_de_longitud_cero_no_cuelga` |
+| una entrada que se sale por el final | se leen bytes de la de al lado | `una_entrada_que_se_pasa_del_final_se_corta` |
+| mas nucleos de los que caben | se escribe fuera del array | `mas_nucleos_de_los_que_caben_no_escriben_fuera` |
+
+⚠ **La segunda es la unica que no da un dato malo: cuelga.** Y cuelga antes de
+que haya autopsia, asi que el sintoma es una pantalla negra sin una linea -- el
+mismo fallo que el tope de `Report Count` y que los 48 saltos del recorrido de
+capabilities de PCI.
+
+** Y un tipo de entrada desconocido **se salta contandolo**, no tira la tabla:
+ACPI define veinte y una placa puede traer los que quiera, incluidos los que se
+inventen despues de escribir esto.
+
+### Lo que sigue abierto de C6
+
+- **`placa.rs` (350 lineas) y `dev/net/mod.rs` (637)** siguen dentro del kernel
+  con cero pruebas. El mismo reparto vale para los dos, y el segundo es el que
+  ahora recibe bytes de un tercero **de verdad**.
+- ★ **El limite que C6 ya tenia escrito sigue en pie, y se cumplio**: *"la sonda
+  la escribio el mismo lado que escribio las defensas (...) la primera prueba que
+  no se escribe uno mismo llega con la RED."* **Llego el 25-08**: 16 tramas que
+  puso otra maquina en el cable. Ninguna prueba de este arbol las escribio.
 
 ## [~] C7 -- compilacion reproducible -- **la mitad medible, HECHA el 25-08**
 
