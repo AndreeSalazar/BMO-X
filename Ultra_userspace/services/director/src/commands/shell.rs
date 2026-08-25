@@ -223,6 +223,8 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.with_ink(INK_PLAIN);
     dsk.out.grid.text(b"    smp           los nucleos    (all | N | test | stop)\n");
     dsk.out.grid.text(b"    red           tarjeta, enlace y tramas   (mac|link|tramas|phy)\n");
+    dsk.out.grid.text(b"    banda         el ancho de banda de la RAM, y el techo de\n");
+    dsk.out.grid.text(b"                  tokens/s que sale de el  (pide `smp all` antes)\n");
     dsk.out.grid.text(b"    audio         como quiere las muestras el aparato\n");
     dsk.out.grid.text(b"    reboot        reinicia la maquina\n");
     dsk.out.grid.with_ink(INK_ECHO);
@@ -233,8 +235,16 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"    TAB completa            Ctrl+A / Ctrl+E   inicio / fin\n");
     dsk.out.grid.text(b"    Ctrl+K corta al final   Ctrl+W borra palabra   Ctrl+U linea\n");
     dsk.out.grid.text(b"    Ctrl+Alt esconde o invoca esta ventana\n");
-    dsk.out.grid.text(b"    F11 CABINA (el kernel)      F12 ESTRATOS (el almacen)
-");
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  LAS TECLAS --------------------------------------------------\n");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"    F1..F10 ESCRIBEN la orden y la ejecutan, asi que queda en\n");
+    dsk.out.grid.text(b"    el historial: la flecha arriba te ensena como se llama.\n");
+    dsk.out.grid.text(b"    F11 y F12 no escriben nada -- ABREN UNA VENTANA.\n");
+    dsk.out.grid.text(b"      ver           F1 help   F2 info    F3 consumo  F4 apps\n");
+    dsk.out.grid.text(b"      la maquina    F5 red    F6 smp     F7 banda    F8 ext\n");
+    dsk.out.grid.text(b"      cuando falla  F9 fallo  F10 disco\n");
+    dsk.out.grid.text(b"      ventanas      F11 CABINA (el kernel)   F12 ESTRATOS\n");
     dsk.out.grid.with_ink(INK_ECHO);
     dsk.out.grid.text(b"  y si no sabes por donde empezar:  guia\n");
     paint_status(&p, &dsk.run_box, "listo", INK_DIM);

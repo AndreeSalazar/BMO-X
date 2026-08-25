@@ -11,7 +11,7 @@ use bmo_userland as bmo;
 use super::After;
 use crate::desktop::Desktop;
 use crate::commands::reports::{report_autopsy, report_cpu, report_memory, report_net, report_system};
-use crate::scene::output::{INK_ERR, INK_GOOD, INK_PLAIN};
+use crate::scene::output::{INK_ECHO, INK_ERR, INK_GOOD, INK_PLAIN};
 use crate::scene::{paint_status, INK, INK_DIM};
 use crate::text::decimal;
 use crate::paint_output;
@@ -258,6 +258,161 @@ pub(crate) fn memory(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// nada: para entonces la espera ya paso, y lo que
 /// el dueno habria visto es un escritorio congelado
 /// sin motivo.
+/// **`banda` -- el ancho de banda de la memoria, y lo que decide el modelo.**
+///
+/// # Por que un BARRIDO y no un numero
+///
+/// Un modelo de lenguaje lee sus pesos **enteros por cada token**, asi que
+/// `tokens/s = ancho de banda / bytes del modelo`. Y un solo nucleo de este CPU
+/// **no satura la DDR4**: tiene un numero limitado de fallos de cache en vuelo.
+/// Lo que hay que buscar no es un maximo, es **donde la curva deja de subir**.
+///
+/// *** Y por eso hacen falta los obreros. Con `1 de 12` en pie esto mide un
+/// nucleo y ya, que es la mitad larga de la respuesta. `smp all` primero.
+pub(crate) fn banda(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
+    let mut b = [0u8; 10];
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"  BANDA ------------------------------------------------------
+");
+    dsk.out.grid.with_ink(INK_PLAIN);
+
+    let (vivos, _, _) = bmo::smp_censo(0);
+    if vivos == 0 {
+        // ** No es un error, es la mitad de la medida faltando. Y se dice
+        // ANTES de gastar medio segundo reservando 256 MiB para un barrido que
+        // solo va a tener un punto.
+        dsk.out.grid.with_ink(INK_ERR);
+        dsk.out.grid.text(b"    solo el BSP en pie: esto mediria UN nucleo
+");
+        dsk.out.grid.with_ink(INK_PLAIN);
+        dsk.out.grid.text(b"    escribe `smp all` y vuelve. Un nucleo NO satura la RAM.
+");
+        paint_status(&p, &dsk.run_box, "banda: faltan obreros", INK_DIM);
+        dsk.field.n = 0;
+        dsk.field.cur = 0;
+        return After::NextKey;
+    }
+
+    dsk.out.grid.text(b"    reservando el banco (256 MiB)...
+");
+    paint_output(&p, &dsk.run_box, &dsk.out.grid);
+    p.volcar();
+    let bytes = bmo::banda_preparar();
+    if bytes == 0 {
+        dsk.out.grid.with_ink(INK_ERR);
+        dsk.out.grid.text(b"    el banco no llega a 4x el L3: mediria CACHE, no RAM
+");
+        dsk.out.grid.with_ink(INK_PLAIN);
+        dsk.out.grid.text(b"    F11 dice el motivo exacto
+");
+        paint_status(&p, &dsk.run_box, "banda: sin banco", INK_DIM);
+        dsk.field.n = 0;
+        dsk.field.cur = 0;
+        return After::NextKey;
+    }
+    dsk.out.grid.text(b"    banco         ");
+    let k = decimal(bytes / (1024 * 1024), &mut b);
+    dsk.out.grid.text(&b[..k]);
+    dsk.out.grid.text(b" MiB   (el L3 son 32: no cabe, y esa es la idea)
+");
+    dsk.out.grid.text(b"    midiendo (esto tarda)...
+");
+    paint_output(&p, &dsk.run_box, &dsk.out.grid);
+    p.volcar();
+
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"    partes        MB/s        x el de 1 parte
+");
+    dsk.out.grid.with_ink(INK_PLAIN);
+
+    // Los mismos puntos que declara el kernel: 1, 2, 4, 6, 8, 12 partes.
+    const PARTES: [u64; 6] = [1, 2, 4, 6, 8, 12];
+    let mut base = 0u64;
+    let mut techo = 0u64;
+    for i in 0..PARTES.len() {
+        let mb = bmo::banda_punto(i as u32);
+        if mb == 0 {
+            continue;
+        }
+        if base == 0 {
+            base = mb;
+        }
+        if mb > techo {
+            techo = mb;
+        }
+        dsk.out.grid.text(b"    ");
+        let k = decimal(PARTES[i], &mut b);
+        for _ in k..4 { dsk.out.grid.byte(b' '); }
+        dsk.out.grid.text(&b[..k]);
+        dsk.out.grid.text(b"       ");
+        let k = decimal(mb, &mut b);
+        for _ in k..6 { dsk.out.grid.byte(b' '); }
+        dsk.out.grid.text(&b[..k]);
+        dsk.out.grid.text(b"      ");
+        let x100 = mb * 100 / base;
+        let k = decimal(x100 / 100, &mut b);
+        dsk.out.grid.text(&b[..k]);
+        dsk.out.grid.byte(b'.');
+        if x100 % 100 < 10 { dsk.out.grid.byte(b'0'); }
+        let k = decimal(x100 % 100, &mut b);
+        dsk.out.grid.text(&b[..k]);
+        dsk.out.grid.byte(b'\n');
+
+
+        paint_output(&p, &dsk.run_box, &dsk.out.grid);
+        p.volcar();
+    }
+
+    if techo == 0 {
+        dsk.out.grid.with_ink(INK_ERR);
+        dsk.out.grid.text(b"    ni un punto valido. F11 dice por que.
+");
+        dsk.out.grid.with_ink(INK_PLAIN);
+        paint_status(&p, &dsk.run_box, "banda: sin medida", INK_DIM);
+        dsk.field.n = 0;
+        dsk.field.cur = 0;
+        return After::NextKey;
+    }
+
+    // *** Y LA TRADUCCION, que es a lo que se venia. TECHO y no prediccion:
+    // supone leer los pesos a la velocidad maxima de la maquina, y un motor de
+    // verdad se queda entre el 60% y el 80%. Lo que SI es cierto es que no
+    // puede pasarlo -- y por eso sirve para elegir el modelo ANTES de escribir
+    // el motor.
+    dsk.out.grid.with_ink(INK_ECHO);
+    dsk.out.grid.text(b"    techo de tokens/s  (un modelo lee sus pesos ENTEROS por token)
+");
+    dsk.out.grid.with_ink(INK_PLAIN);
+    const MODELOS: [(&[u8], u64); 3] = [
+        (b"1B en 4 bits ( 700 MB)", 700),
+        (b"3B en 4 bits (1700 MB)", 1700),
+        (b"7B en 4 bits (3700 MB)", 3700),
+    ];
+    for (nombre, mb_modelo) in MODELOS {
+        dsk.out.grid.text(b"      ");
+        dsk.out.grid.text(nombre);
+        dsk.out.grid.text(b"  ->  ");
+        let x100 = techo * 100 / mb_modelo;
+        let k = decimal(x100 / 100, &mut b);
+        dsk.out.grid.text(&b[..k]);
+        dsk.out.grid.byte(b'.');
+        if x100 % 100 < 10 { dsk.out.grid.byte(b'0'); }
+        let k = decimal(x100 % 100, &mut b);
+        dsk.out.grid.text(&b[..k]);
+        dsk.out.grid.text(b" tokens/s
+");
+    }
+    dsk.out.grid.with_ink(INK_PLAIN);
+    dsk.out.grid.text(b"    TECHO, no prediccion: un motor real se queda en el 60-80%
+");
+    dsk.out.grid.with_ink(INK_PLAIN);
+
+    paint_status(&p, &dsk.run_box, "banda", INK_DIM);
+    dsk.field.n = 0;
+    dsk.field.cur = 0;
+    After::NextKey
+}
+
 pub(crate) fn smp(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
     // * El CONTROL, y el reparto de quien decide:
     // aqui solo se traduce lo que el dueno escribio

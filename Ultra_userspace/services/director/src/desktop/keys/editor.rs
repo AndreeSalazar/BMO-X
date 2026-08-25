@@ -351,7 +351,72 @@ match c {
     //
     // El resto de navegacion se ignora, pero EXPLICITAMENTE:
     // dejarlas caer al comodin las dibujaria como basura.
-    0x89..=0x9F => {}
+    // *** F1..F10 -- LAS TECLAS DEL ESCRITORIO. (2026-08-24)
+    //
+    // # La regla que ordena las doce, y es UNA
+    //
+    // ```text
+    //    F1..F10   ESCRIBEN UNA ORDEN y la ejecutan. Queda en el historial:
+    //              flecha arriba y ahi esta, escrita. Se aprende el nombre
+    //    F11 F12   ABREN UNA VENTANA. No escriben nada
+    // ```
+    //
+    // ** Esa linea es todo el diseno. Una tecla que escribe es una tecla que
+    // ENSENA --pulsas F7, ves `banda`, y manana lo escribes tu-- y una que abre
+    // una ventana no puede ensenar nada porque no hay orden que aprender. Que
+    // las dos clases no se mezclen en la misma fila es lo que hace que la tabla
+    // se lea sin memorizarla.
+    //
+    // # Y agrupadas por LA PREGUNTA, no por el orden en que se anadieron
+    //
+    // ```text
+    //    VER            F1 help    F2 info    F3 consumo   F4 apps
+    //    LA MAQUINA     F5 red     F6 smp     F7 banda     F8 ext
+    //    CUANDO FALLA   F9 fallo   F10 disco
+    //    VENTANAS       F11 CABINA           F12 ESTRATOS
+    // ```
+    //
+    // *** La tercera fila existe porque el dia malo nadie se acuerda de una
+    // palabra suelta en una lista de diez. Es el mismo motivo por el que
+    // `fallo` tiene renglon propio en el `help` del shell de Ring 0.
+    //
+    // [!] Y se EJECUTAN, no se dejan escritas. La `F2` de la ventana de datos
+    // deja el cursor puesto porque le falta un dato --el nombre nuevo-- y aqui
+    // no falta ninguno: dejar `info` escrito y esperar un Enter seria pedir dos
+    // pulsaciones para lo que cabe en una.
+    //
+    // ** Se reentra por `` a proposito, en vez de copiar el camino de Enter.
+    // Ese camino hace el eco, empuja al historial, copia la linea y despacha; un
+    // atajo que hiciera "casi lo mismo" seria una segunda version de la orden
+    // mas usada del escritorio, y las dos versiones se separan.
+    f @ 0x89..=0x92 => {
+        let orden: &[u8] = match f {
+            0x89 => b"help",
+            0x8A => b"info",
+            0x8B => b"consumo",
+            0x8C => b"apps",
+            0x8D => b"red",
+            0x8E => b"smp",
+            0x8F => b"banda",
+            0x90 => b"ext",
+            // La del dia malo.
+            0x91 => b"fallo",
+            0x92 => b"disco",
+            _ => b"",
+        };
+        if !orden.is_empty() {
+            let k = orden.len().min(PATH_MAX);
+            dsk.field.path[..k].copy_from_slice(&orden[..k]);
+            dsk.field.n = k;
+            dsk.field.cur = k;
+            dsk.tick.repaint_field = true;
+            return on_key(dsk, p, b'\r', false);
+        }
+    }
+    // F11 y F12 no llegan aqui --se atienden arriba-- y el resto de la
+    // navegacion se ignora EXPLICITAMENTE: dejarlas caer al comodin las
+    // dibujaria como basura.
+    0x93..=0x9F => {}
     // Todo lo demas imprimible, incluido el Latin-1 alto: la
     // `n` llega como 0xF1 y la fuente la tiene.
     c if c >= 0x20 => {

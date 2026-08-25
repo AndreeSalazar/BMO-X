@@ -392,6 +392,29 @@ pub fn smp_prueba() -> u64 {
     invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 2, 0).value
 }
 
+/// **Reserva y llena el banco del ancho de banda.** Devuelve sus bytes, o `0`.
+///
+/// Un `0` no es "no hay memoria": es que el banco no llegaba a cuatro veces el
+/// L3, y por debajo de eso la medida seria de CACHE y no de RAM. La razon
+/// exacta la dice CABINA.
+///
+/// [!] Se llama UNA vez antes del barrido. Si se llamara dentro, el coste de
+/// llenar 256 MiB caeria en el primer punto -- que es el que sirve de
+/// referencia a todos los demas.
+pub fn banda_preparar() -> u64 {
+    invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 4, 0).value
+}
+
+/// **Un punto del barrido**, en MB/s. `0` = ese punto no se pudo medir.
+///
+/// `i` indexa los puntos que el kernel declara: 1, 2, 4, 6, 8 y 12 partes.
+/// Devuelve `0` si no hay obreros bastantes para ese punto, si falto alguna
+/// parte, o si el numero salio **imposible** -- por encima de lo que ninguna
+/// DDR4 de dos canales puede dar, que significa que se midio cache.
+pub fn banda_punto(i: u32) -> u64 {
+    invoke(CURRENT_TASK, OP_SMP_DESPERTAR, i as u64, 5, 0).value
+}
+
 /// **Cierra una transaccion vacia en ESTRATOS.** Devuelve la generacion nueva,
 /// o **0** si no se pudo.
 ///
