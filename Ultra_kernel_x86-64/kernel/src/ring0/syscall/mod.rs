@@ -295,6 +295,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_AUDIO_CENSO => op_aparato::audio_censo(arg0, arg1),
         TASK_OP_APARATO_TOMAR => op_aparato::aparato_tomar(arg0, arg1),
         TASK_OP_APARATO_SOLTAR => op_aparato::aparato_soltar(arg0, arg1),
+        TASK_OP_LATIDO_TOMAR => op_aparato::latido_tomar(arg0, arg1),
         // ** Las tres que MANDAN sobre la maquina viven en `op_maquina.rs`.
         // No se fueron por tamano: se fueron porque contestan la misma
         // pregunta, y porque medir el estado compartido de este despachador
@@ -940,6 +941,12 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     None => unsupported(),
                 }
             }
+            cap::KIND_LATIDO => {
+                match crate::ring0::obj::latido::operation(frame.rsi) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
             // El audio no tiene `object`: la capability no apunta a nada, ES el
             // derecho. Lo que viaja son los argumentos -- frecuencia y duracion.
             cap::KIND_AUDIO => {
@@ -977,6 +984,29 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
         if r.kind == cap::KIND_ENDPOINT {
             let res = endpoint::wait_for(r.object as usize, pid, deadline);
             return BmoStatus { code: res.code, flags: 0, value: res.value };
+        }
+        // *** S3 DEL SUELO: DORMIR HASTA QUE LATE EL HARDWARE.
+        //
+        // `frame.rsi` es el testigo que el llamante vio (`LATIDO_OP_CUENTA`), y
+        // `wait_current_checked` lo compara **bajo el cerrojo del
+        // planificador**, que es el mismo que toma `on_timer` para subirlo. Por
+        // eso un latido no se puede colar entre la comparacion y el bloqueo:
+        // no es una carrera que se gane casi siempre, es una que no existe.
+        //
+        // ** Y esto es la pieza que faltaba para bajar un driver a Ring 3. La
+        // fuente es el reloj porque es la unica que no pide un aparato -- ver
+        // la decision 3 de `docs/plan/PLAN_SUELO_RING3.md`. El dia que la
+        // fuente sea la IRQ de una tarjeta, este brazo no cambia: cambia quien
+        // llama a `tic()`.
+        if r.kind == cap::KIND_LATIDO {
+            let visto = frame.rsi;
+            let seq = scheduler::wait_current_checked(
+                crate::ring0::obj::latido::LLAVE,
+                deadline,
+                visto,
+                crate::ring0::obj::latido::cuenta,
+            );
+            return BmoStatus::ok_value(seq);
         }
     }
     // ** AQUI NO HAY UN BRAZO PARA `KIND_ARCHIVO`, Y ESO ES UNA DECISION.

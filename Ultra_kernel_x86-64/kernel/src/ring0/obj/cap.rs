@@ -107,6 +107,19 @@ pub const KIND_REPLY: u8 = 0x71;
 /// seria regalar un dato que solo sirve para construir un DMA.
 pub const KIND_MMIO: u8 = 0x74;
 
+/// **EL LATIDO DEL HARDWARE.** El suelo de Ring 3, pieza S3.
+///
+/// El derecho a que `WAIT` despierte **cuando late el reloj**, en vez de cuando
+/// se acaba un plazo. Ver `obj/latido.rs`.
+///
+/// ** No es exclusivo, y esa es la diferencia con la pantalla, el audio y la
+/// ventana de un aparato: el reloj no se gasta. Y no concede autoridad -- un
+/// proceso ya podia dormir con `WAIT(0, _, timeout)`; lo que cambia es la
+/// PRECISION del despertar, no el permiso.
+///
+/// `0x75` esta libre en esta tabla y en la de `bmo-abi`, que es el peaje 2.
+pub const KIND_LATIDO: u8 = 0x75;
+
 /// **[X] ERA `0x80`, Y ESO LO HACIA IMPOSIBLE DE RESOLVER** (2026-08-26).
 ///
 /// `HANDLE_KIND_MASK` son **siete bits**. Con `0x80`:
@@ -154,6 +167,7 @@ const _: () = {
     assert!(KIND_ENDPOINT as u64 <= HANDLE_KIND_MASK);
     assert!(KIND_REPLY as u64 <= HANDLE_KIND_MASK);
     assert!(KIND_MMIO as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_LATIDO as u64 <= HANDLE_KIND_MASK);
     assert!(KIND_TAREA as u64 <= HANDLE_KIND_MASK);
 };
 

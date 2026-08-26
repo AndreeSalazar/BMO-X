@@ -405,6 +405,19 @@ pub(crate) const APARATO_OP_BASE: u64 = 0x01;
 /// Bytes mapeados. Hoy una pagina, y se pregunta en vez de suponerse: el dia que
 /// sean dos, el que lo pregunta no cambia.
 pub(crate) const APARATO_OP_BYTES: u64 = 0x02;
+
+// -- S3 del suelo de Ring 3: el latido -------------------------------------
+
+/// **Tomar el LATIDO**: el derecho a que `WAIT` despierte cuando late el reloj.
+/// Devuelve un handle `KIND_LATIDO` con solo `RIGHT_WAIT`.
+pub(crate) const TASK_OP_LATIDO_TOMAR: u64 = 0x30;
+
+/// Cuantos latidos van desde el arranque, sin dormirse.
+///
+/// ** Es lo que se pasa como `visto` a `WAIT`, y por eso existe: sin poder
+/// preguntar el testigo ANTES de esperar, la primera espera se duerme contra un
+/// numero inventado y puede perderse un latido -- o no despertar nunca.
+pub(crate) const LATIDO_OP_CUENTA: u64 = 0x01;
 /// Tomar lo que otro proceso me haya ofrecido. Espejo de `...::TASK_OP_TOMAR`.
 pub(crate) const TASK_OP_TOMAR: u64 = 0x1C;
 /// **Reclamar el SONIDO.** Devuelve un handle `KIND_AUDIO`: el derecho a hacer
