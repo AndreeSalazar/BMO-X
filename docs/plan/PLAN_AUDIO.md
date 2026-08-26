@@ -17,7 +17,7 @@
 | paso del maestro | que es | estado |
 |---|---|---|
 | **0** -- el aparato dice quien es | parsear AudioStreaming | ⚠ **el parser vale; el CENSO miraba donde no era.** Arreglado 25-08 |
-| **1** -- `SET_INTERFACE` | poner el alt que trae el endpoint | ✅ **HECHO 25-08**, sin ejecutar |
+| **1** -- `SET_INTERFACE` | poner el alt que trae el endpoint | ⛔ **EL RYZEN LO NEGO el 25-08.** Ver A1 |
 | **2** -- el TRB isocrono | mandar silencio | ✅ **escrito 25-08**, sin ejecutar |
 | **3** -- WAV | PCM en un sobre. Cero decodificador | ✅ **HECHO 25-08**, 12 pruebas |
 | **4** -- el bufer prestado | dos indices, y CERO copias | ✅ **HECHO 25-08**, sin ejecutar |
@@ -26,9 +26,15 @@
 ★★ **Y la fila que importa cambio el 25-08: el camino entero esta escrito.**
 Descriptor, endpoint, alt, frecuencia, TRB isocrono y el bucle que alimenta.
 
-⚠ **Lo que separa de que suene ya no es codigo: es un ARRANQUE.** Nada de esto ha
-corrido nunca en el Ryzen, y el primer numero que lo dira es `encoladas` subiendo
-con `tarde` en cero.
+⚠⚠ **PERO EL 25-08 POR LA TARDE EL RYZEN CONTESTO, Y DIJO QUE NO** (26-08). El
+aparato aparece, los ocho numeros salen, y `el tubo NO esta abierto`. O sea que
+**A1 no estaba hecho: estaba escrito.** La diferencia es la que este documento
+lleva repitiendo desde su primera linea, y esta vez la pago el.
+
+★ Lo que se encontro leyendo esta en A1. Y lo que se aprendio del proceso vale
+mas que el fallo: **la linea que decia POR QUE salia por el cable de serie**, o
+sea a un sitio al que el dueno no vuelve. Un fallo que solo se puede diagnosticar
+desde Ring 0 es un fallo que no se puede diagnosticar.
 
 ---
 
@@ -94,7 +100,7 @@ mirarlo.
    audio: el endpoint isocrono es el DCI    =...
 ```
 
-## [X] A1 -- `SET_INTERFACE` -- **HECHO el 25-08**
+## [ ] A1 -- `SET_INTERFACE` -- ⛔ **EL RYZEN LO NEGO. Corregido el 26-08, sin ejecutar**
 
 **Que era**: pedirle al aparato el alt setting que trae el endpoint isocrono
 (`SET_INTERFACE`, request 0x0B) y configurar ese endpoint en el xHC.
@@ -125,6 +131,60 @@ arranque deja de ser un error.
 Isoch OUT, `5` Isoch IN y `7` Interrupt IN --el del teclado--. Meter el numero
 del USB da un endpoint del tipo equivocado, y eso no falla al configurarlo:
 falla al primer TRB.
+
+★ Y desde el 26-08 ese numero **ya no se escribe aqui**: se pide al driver
+(`bmo_xhci::EP_TYPE_ISOCH_OUT`). Era una copia de una tabla del controlador, y el
+driver la necesita para si mismo -- ver abajo.
+
+### ⛔ LO QUE CONTESTO EL METAL, Y LO QUE SE ENCONTRO (26-08)
+
+```text
+   aparato de reproduccion HALLADO
+   los ocho numeros estan en F11
+   el tubo NO esta abierto: no puede sonar nada todavia
+```
+
+`abrir()` solo puede fallar en dos sitios y uno se descarta solo: si el
+descriptor se contradijera, la linea `ninguna frecuencia suya cabe en su propio
+paquete` habria salido en F11. **Fue `configure_endpoint`.**
+
+*** **Y lo que se encontro leyendo el driver es un `3` que vale para el
+teclado**: `configure_endpoint` escribia `CErr = 3` en DW1 del Endpoint Context
+para TODOS los endpoints.
+
+> xHCI 6.2.3.5 -- *"CErr ... shall be set to '0' for Isoch endpoints."*
+
+No es estilo. Una transferencia isocrona **no se reintenta** --la muestra llega a
+tiempo o no existe-- asi que un contador de reintentos ahi es un campo con un
+valor que el hardware declara imposible. Un xHC estricto contesta **Parameter
+Error (cc=17)**. Y que el de AMD lo es ya estaba demostrado en el mismo fichero:
+con `CH=1` encadenando las etapas de control contestaba Transaction Error donde
+QEMU lo toleraba.
+
+** Y el segundo numero clavado, que no da error sino **tramas tarde**: el
+`Average TRB Length` estaba en `8`, el tamano de un informe de teclado boot. Para
+192 bytes cada milisegundo es declarar **24 veces menos ancho de banda del que se
+va a gastar**.
+
+### [!] Y LA PARTE QUE NO ES DEL AUDIO: el `cc` no llegaba a nadie
+
+El codigo de terminacion se escribia con `h.log`. Desde el escritorio, *"el xHC
+no configuro"* y *"el aparato no acepto el alt"* se ven igual, y son dos sitios
+distintos. Ahora `last_cfg_ep_cc()` lo apunta y `usb/audio.rs` lo pone en CABINA:
+
+```text
+    8  ancho de banda    el intervalo no cabe en la agenda periodica
+   17  parametro         algun campo del contexto no vale
+   19  ya corria         sale si se pide `audio` dos veces seguidas
+```
+
+⚠ **Y un aviso para la proxima prueba**: `audio` dos veces seguidas puede dar
+`19` legitimamente, porque reconfigura un endpoint que ya corre. Si sale 19,
+reiniciar y pedirlo **una sola vez**.
+
+★ Ademas se comprueba el estado del endpoint despues de configurarlo:
+**configurado no es corriendo**, y esa distincion ya costo el teclado una vez --
+todo verde y ni un evento.
 
 ## [X] A2b -- EL SILENCIO, y se pide a proposito
 
@@ -294,7 +354,7 @@ todavia no hay decodificador"* -- dos respuestas que mandan a sitios distintos.
    [X] A2  el TRB isocrono             escrito, sin ejecutar
    [X] A3  WAV                         hecho, 12 pruebas
    --------------------------------------------------------------------------
-   [X] A1  SET_INTERFACE               hecho, sin ejecutar
+   [ ] A1  SET_INTERFACE               EL METAL LO NEGO; corregido 26-08
    [X] A2b el silencio, a peticion     hecho, sin ejecutar
    [X] A4  el bufer prestado           hecho ANTES de MP3, que era el aviso
    --------------------------------------------------------------------------

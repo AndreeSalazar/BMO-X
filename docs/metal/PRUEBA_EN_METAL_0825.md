@@ -512,6 +512,52 @@ Lo que contestan los tres numeros:
 calculadora se murio sola y el `vmm` solo estaba recogiendo. Si cae en otro
 sitio, son el mismo fallo visto dos veces.
 
+### ★★ Y EL `rip` YA SE PUEDE LEER A MEDIAS, CON LO QUE SE VE
+
+Las imagenes de Ring 3 empiezan en `USER_IMAGE_BASE = 0x4000_0000`, y las
+secciones van **de pagina en pagina**. Con eso, los digitos que SI se vieron ya
+dicen algo:
+
+| lo que salga | offset dentro de la imagen | que significa |
+|---|---|---|
+| `0x40000...` | 0 -- 4 KiB | la **primera pagina**: es donde vive el codigo |
+| `0x40001...` | 4 -- 8 KiB | la **segunda**: rodata o data. **No es codigo** |
+| `0x4001....` | 64 -- 128 KiB | fuera de toda imagen pequena |
+
+*** **Y `calcgui.bex` mide 3.768 bytes ENTEROS**, cabecera incluida. Su seccion
+de codigo no llega a una pagina. Asi que **cualquier `rip` que no empiece por
+`0x40000` esta fuera de su codigo**, y lo que salio empieza por `0x4001`.
+
+★ Si el numero entero lo confirma, el fallo **no es del kernel**: el motor de
+COBOL salto donde no debia, y el `#GP` del `vmm` es lo que vino detras. Son dos
+fallos, no uno -- y hasta hoy se estaban leyendo como el mismo.
+
+[!] La otra lectura posible, y por eso hace falta el numero y no la deduccion:
+`d.bex` --el escritorio-- mide 595 KiB, y ahi `0x4001....` **si** cae dentro.
+Pero el escritorio siguio en pie y el panel decia `task=3/3`, asi que el muerto
+no era el. **El numero entero cierra la discusion en un segundo.**
+
+### Y la linea NUEVA que sale desde el 26-08
+
+Cada fallo del `vmm` trae ahora una segunda linea:
+
+```text
+   vmm: y estaba en tabla|casilla  =NNNNNNN
+```
+
+Es la tabla (alineada a 4 KiB) con la casilla metida en sus doce bits bajos. Lo
+que hay que mirar es **si las tres dicen la misma tabla**:
+
+| | |
+|---|---|
+| **la misma tabla**, tres casillas | ese marco NO es una tabla: se esta leyendo el dato de otro como si fuera un PD -> mirar el **ASIGNADOR** |
+| **tres tablas distintas** | las tablas son tablas y lo que esta mal es lo que se escribio -> mirar **quien escribe las entradas** |
+
+★★ Y hay una pista que ya apunta a la primera: `get_or_create` escribe
+`fisica | 0x7` o `| 0x3`. **No hay ningun camino en `vmm.rs` que escriba un `1`
+pelado**, y el Ryzen enseno dos. Un valor que ese fichero no sabe producir no
+salio de ese fichero.
+
 ## 4.6.4 -- ⚠ `audio`: el aparato SI, el tubo NO
 
 ```text
