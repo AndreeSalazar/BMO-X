@@ -24,3 +24,15 @@ pub const PAGE: u64 = 4096;
 pub const fn phys_to_virt(phys: u64) -> u64 {
     phys + HIGH_MEM_BASE
 }
+
+/// El camino de vuelta del physmap. **Solo vale para direcciones que salieron
+/// de [`phys_to_virt`]**, y por eso lleva el nombre entero en vez de llamarse
+/// `virt_to_phys`: no traduce una virtual cualquiera --para eso esta
+/// `vmm::translate`-- deshace una suma.
+///
+/// Existe porque los drivers guardan la VIRTUAL con la que trabajan y ceder un
+/// aparato necesita la FISICA. Restar a mano en el sitio que la necesita es como
+/// se acaba teniendo dos constantes.
+pub const fn virt_to_phys_physmap(virt: u64) -> u64 {
+    virt.wrapping_sub(HIGH_MEM_BASE)
+}

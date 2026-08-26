@@ -140,6 +140,24 @@ pub const OP_ES_GESTO: u32 = 0x2A;
 /// **El censo de audio**: que el aparato diga como quiere las muestras.
 /// Devuelve 1 si encontro uno; los ocho numeros van a CABINA.
 pub const OP_AUDIO_CENSO: u32 = 0x28;
+// -- S1 del suelo de Ring 3: la ventana de un aparato ----------------------
+//
+// *** El argumento es QUE APARATO, y no una direccion. Ver
+// `docs/plan/PLAN_SUELO_RING3.md`: un proceso que pudiera nombrar una fisica
+// estaria pidiendo ser el kernel.
+
+/// **Toma la ventana de registros de un aparato.** `arg0` = cual (0 = xHCI).
+/// Devuelve un handle `KIND_MMIO` de **solo lectura**.
+pub const OP_APARATO_TOMAR: u32 = 0x2E;
+/// Devuelve la ventana sin morirse.
+pub const OP_APARATO_SOLTAR: u32 = 0x2F;
+/// Donde quedo mapeada, en MI espacio.
+pub const APARATO_OP_BASE: u32 = 0x01;
+/// Cuantos bytes son. Se pregunta en vez de suponerse.
+pub const APARATO_OP_BYTES: u32 = 0x02;
+/// El controlador xHCI. La lista es cerrada: lo que no esta aqui no se nombra.
+pub const APARATO_XHCI: u64 = 0;
+
 /// **Toma lo que otro proceso me ofrecio.** Ver [`crate::sys::tomar_prestado`].
 pub const OP_TOMAR: u32 = 0x1C;
 /// Operacion sobre un bloque PROPIO: ofrecer un trozo a otra tarea.

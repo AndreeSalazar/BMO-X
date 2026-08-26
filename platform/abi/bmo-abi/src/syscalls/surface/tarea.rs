@@ -138,6 +138,48 @@ pub const TASK_OP_ENTRADA_SOLTAR: u64 = 0x1E;
 /// porque por la puerta cabe uno. Paso 0 de `docs/maestro/AUDIO_MAESTRO.md`.
 pub const TASK_OP_AUDIO_CENSO: u64 = 0x28;
 
+// -- S1 del suelo de Ring 3: LA VENTANA DE UN APARATO -----------------------
+//
+// *** EL ARGUMENTO ES QUE APARATO, Y NO UNA DIRECCION. Es la decision entera y
+// va escrita en el contrato, no solo en el kernel:
+//
+// > Un proceso que puede decir *"mapeame la fisica 0x1000"* es un proceso que
+// > esta pidiendo ser el kernel.
+//
+// Con esa operacion, en tres pasos --mapear donde viven las tablas de pagina,
+// ponerse el bit U/S, quitar el NX-- los siete muros del aislamiento caen a la
+// vez. No por un bug: por la operacion funcionando como se pidio.
+//
+// Asi que el proceso nombra un aparato de una lista CERRADA, la fisica sale del
+// censo del kernel, y aun asi pasa por `bmo-mmio-juicio` antes de mapearse. Ver
+// `docs/plan/PLAN_SUELO_RING3.md` y `docs/identidad/EL_AISLAMIENTO.md`.
+
+/// **Tomar la ventana de registros de un aparato.**
+///
+/// `arg0` = cual. Hoy la lista es de uno: `0` = el controlador xHCI.
+///
+/// Devuelve un handle `KIND_MMIO`, y lo que concede hoy es menos de lo que el
+/// nombre sugiere, a proposito:
+///
+/// ```text
+///    UNA pagina      la primera del BAR
+///    SOLO LECTURA    la pagina se mapea sin escritura, y sin RIGHT_WRITE
+///    exclusiva       un dueno a la vez, como la pantalla y el audio
+/// ```
+///
+/// ** Escribir en un aparato desde Ring 3 es otra decision, y va **despues** de
+/// que leer este probado en metal.
+pub const TASK_OP_APARATO_TOMAR: u64 = 0x2E;
+
+/// Devolverla sin morirse. La pareja de [`TASK_OP_APARATO_TOMAR`], por el mismo
+/// motivo que `PANTALLA_SOLTAR`: sin ella, la unica forma de soltar un aparato
+/// seria terminar.
+///
+/// [!] Y si el proceso muere sin soltarla, el kernel la recupera igual
+/// (`revoke_all`). Un driver que revienta no puede dejar su aparato ocupado
+/// hasta el proximo reinicio.
+pub const TASK_OP_APARATO_SOLTAR: u64 = 0x2F;
+
 pub const TASK_OP_INFO: u64 = 0x13;
 
 /// Un dato de TEXTO. `arg0` = campo (`INFO_TXT_*`), `arg1` = que trozo.

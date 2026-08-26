@@ -53,6 +53,9 @@ pub mod obj {
     /// `KIND_MEMORIA`: bloques que un proceso PIDE. No es un asignador -- ver
     /// la cabecera del modulo.
     pub mod memory;
+    /// `KIND_MMIO`: una ventana de registros de un aparato, cedida a Ring 3.
+    /// Pieza S1 del suelo -- ver `docs/plan/PLAN_SUELO_RING3.md`.
+    pub mod mmio;
     /// `KIND_TAREA`: un hijo que YO lance. Cerrar es una operacion de su
     /// handle, no un poder del que cierra -- paso 3 de `PLAN_DIRECTOR.md`.
     pub mod tarea;

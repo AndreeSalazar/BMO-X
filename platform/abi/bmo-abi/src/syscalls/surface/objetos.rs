@@ -269,6 +269,23 @@ pub const FB_OP_STRIDE: u64 = 0x03;
 /// con un `rep stosd` sin multiplicar nada.
 pub const FB_OP_BYTES: u64 = 0x04;
 
+// -- Las dos de la VENTANA DE UN APARATO (`KIND_MMIO`) ----------------------
+//
+// Son dos y no cuatro porque un aparato no tiene geometria: tiene una direccion
+// y un tamano. Lo que hay dentro lo sabe el driver, y el kernel no.
+
+/// Direccion virtual, **en el espacio del proceso**, donde quedo la ventana.
+///
+/// [!] Virtual, **nunca la fisica**. Un driver no necesita la fisica para leer
+/// sus registros, y darsela seria regalar el unico dato que sirve para armar un
+/// DMA a mano. La fisica se concede aparte, con su propia capability, cuando
+/// haga falta -- pieza S2 de `docs/plan/PLAN_SUELO_RING3.md`.
+pub const APARATO_OP_BASE: u64 = 0x01;
+
+/// Bytes mapeados. Hoy una pagina, y se PREGUNTA en vez de suponerse: el dia que
+/// sean dos, quien lo pregunta no cambia.
+pub const APARATO_OP_BYTES: u64 = 0x02;
+
 pub const ARCH_OP_LEER: u64 = 0x01;
 
 /// Saca hasta 7 bytes **sin pasar del salto de linea**:
