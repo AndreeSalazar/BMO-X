@@ -18,12 +18,20 @@
 
 | # | pieza | estado | quien la necesita |
 |---|---|---|---|
-| **S1** | MMIO por direccion fisica | molde en `obj::fb::claim` | todo driver |
-| **S2** | memoria DMA con fisica conocida | molde en `MEM_OP_OFRECER` + `vmm::translate` | todo driver, y `RED_MAESTRO` paso 2 |
-| **S3** | una IRQ que despierta a un proceso | **no existe** | todo driver que no quiera sondear |
+| **S1** | MMIO por direccion fisica | ✅ **HECHO 26-08** (`ce45036c`), sin ejecutar | todo driver |
+| **S2** | memoria DMA con fisica conocida | ✅ **HECHO 26-08**, sin ejecutar | todo driver, y `RED_MAESTRO` paso 2 |
+| **S3** | una IRQ que despierta a un proceso | ⛔ **falta, y es la unica sin molde** | todo driver que no quiera sondear |
 
 ★ Ninguna de las tres baja codigo a Ring 3. Construyen el suelo, y esa es justo
 la parte que un plan optimista se salta.
+
+★★ **Y S2 costo una linea, que es el dato de la semana.** El plan decia *"el
+molde YA EXISTE"* y se quedaba corto: existia entero. Los bloques ya salian de
+`alloc_frames_contig`, la fisica ya se guardaba en `Bloque.fisica`, y la
+traduccion --con su comprobacion de limites-- ya estaba escrita para el prestamo
+del audio. Lo unico que faltaba era **una fila en la tabla de operaciones**. La
+pieza que un driver necesita para armar un anillo de DMA llevaba semanas hecha y
+no salia por la puerta.
 
 ---
 
@@ -153,6 +161,20 @@ El manejador de Ring 0 se queda en **decenas de lineas** y no sabe lo que es un
 TRB. Eso es lo que permite bajar las 2.143 lineas del xHCI sin hundir la
 latencia.
 
+## 3.1b -- ★ Y hay mas suelo del que este plan supuso
+
+Escribiendo S1 y S2 salio esto, y cambia el tamano de S3: **el stub de
+interrupcion del disco ya esta preparado para cambiar de tarea.** Lo dice
+`plat/irq.rs` con todas las letras, de cuando se escribio:
+
+> *"Se devuelve el MISMO contexto: este manejador todavia no cambia de tarea. El
+> dia que alguien duerma esperando al disco, aqui se llamara al planificador y
+> esta linea pasara a devolver el que el elija -- **el stub ya esta preparado
+> para eso, que es la mitad del trabajo**."*
+
+Asi que S3 no empieza en cero: empieza en un manejador que ya guarda el estado,
+ya manda el EOI, y ya devuelve una pila que el planificador puede cambiar.
+
 ## 3.2 -- Las tres cosas que ese manejador tiene que hacer bien
 
 | | por que |
@@ -165,6 +187,21 @@ latencia.
 su linea enmascarada deja el aparato mudo para siempre.** Al morir el proceso,
 el kernel tiene que desenmascarar o dejar la linea marcada como huerfana. Es
 `R-APP6` --*muere sin llevarse a nadie*-- aplicado a una IRQ.
+
+## 3.2b -- ⚠ LAS TRES DECISIONES DE S3, ANTES DEL CODIGO
+
+Igual que S1 tuvo la suya --*el proceso no nombra una direccion*--, S3 tiene
+tres, y las tres son de seguridad. Van escritas antes de tocar nada:
+
+| # | la pregunta | por que no se puede improvisar |
+|---|---|---|
+| 1 | **quien puede pedir una IRQ?** | pedir una linea por su numero es lo mismo que pedir una fisica por su numero: se pide **el aparato que ya se tiene**, y la linea sale del censo del kernel. Una IRQ es de un aparato, y el aparato ya tiene dueno por `KIND_MMIO` |
+| 2 | **que pasa con la linea si el driver muere ENMASCARADA?** | el aparato se queda mudo hasta reiniciar. Al morir el proceso, el kernel **desenmascara**, o la linea queda marcada como huerfana con su nombre. Es `R-APP6` aplicado a una interrupcion |
+| 3 | **con que vector se PRUEBA?** | el del disco esta tomado, y el del xHC lo usa el teclado. La primera prueba **no debe pedir un aparato**: se hace con el TIMER, que ya late, y cuenta despertares. Sin driver, sin aparato, sin riesgo |
+
+★★ **Y la 3 es la que decide si esto se puede probar sin arriesgar la maquina.**
+Un mecanismo nuevo se estrena con la pieza mas barata de equivocarse -- la misma
+regla que hizo que el primero en bajar a Ring 3 sea `uaudio` y no `xhci`.
 
 ## 3.3 -- El precio, que ya esta medido
 
@@ -201,13 +238,13 @@ desde fuera; no hace el kernel mas correcto por dentro.
 
 # 5. EL ORDEN, Y COMO SE PRUEBA CADA UNO
 
-### Paso 1 -- el juez, con sus pruebas  (`bmo-mmio-juicio`)
+### [X] Paso 1 -- el juez, con sus pruebas  (`bmo-mmio-juicio`)  (26-08)
 
 Funcion pura, en el anfitrion, cero riesgo. **Y se cablea en el mismo commit que
 su llamante** -- la regla de la casa es *cablear o borrar*, y una libreria
 huerfana ya costo once crates en este arbol.
 
-### Paso 2 -- `KIND_MMIO`: conceder, mapear, soltar
+### [X] Paso 2 -- `KIND_MMIO`: conceder, mapear, soltar  (26-08)
 
 **Como se prueba en metal**: un `.bex` que mapea el registro de version del xHC
 y lo imprime. **Cero escrituras.** Si lee lo mismo que dice `cabina`, el camino
@@ -216,9 +253,13 @@ esta vivo.
 ★ Y la prueba de que el juez vale es la contraria: pedir un rango que pise RAM
 tiene que salir con **su nombre**, no con un fault.
 
-### Paso 3 -- la fisica del bloque, y la promesa por escrito
+### [X] Paso 3 -- la fisica del bloque, y la promesa por escrito  (26-08)
 
-### Paso 4 -- la IRQ sobre `WAIT`
+`MEM_OP_FISICA`. La promesa --*"no se mueve"*-- cuesta cero hoy y se escribio
+**por eso**: una propiedad verdadera por accidente deja de serlo sin que nadie lo
+note.
+
+### Paso 4 -- la IRQ sobre `WAIT`  <- LO SIGUIENTE, y sus tres decisiones en 3.2b
 
 **Como se prueba**: un `.bex` que hace `WAIT` sobre el timer y cuenta 250
 despertares en un segundo. Sin driver, sin aparato, sin riesgo.
