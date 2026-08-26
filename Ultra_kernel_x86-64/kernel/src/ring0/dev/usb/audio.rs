@@ -126,7 +126,14 @@ pub unsafe fn censar() -> bool {
 /// `5` Isoch IN y `7` Interrupt IN -- que es el que usa el teclado. Meter el
 /// numero del USB da un endpoint configurado del tipo equivocado, y eso no
 /// falla al configurarlo: falla al primer TRB.
-const EP_ISOCH_OUT: u8 = 1;
+///
+/// ** Y desde el 2026-08-25 el numero NO se escribe aqui: se pide al driver.
+/// Era una copia de una tabla del controlador, y una tabla copiada es una tabla
+/// que un dia deja de coincidir con su original sin que nadie lo note. El
+/// driver ademas lo NECESITA para si mismo --`CErr` vale 0 en isocrono y 3 en
+/// todo lo demas-- asi que si el tipo viviera solo aqui, el que decide no seria
+/// el que sabe.
+const EP_ISOCH_OUT: u8 = bmo_xhci::EP_TYPE_ISOCH_OUT;
 
 /// `SET_INTERFACE`, peticion estandar 0x0B.
 const REQ_SET_INTERFACE: u8 = 0x0B;
@@ -203,10 +210,33 @@ pub fn abrir(slot: u8, p: &bmo_uaudio::stream::Playback) -> bool {
 
     // 1. El HOST primero. Ver la cabecera.
     if !unsafe { bmo_xhci::configure_endpoint(slot, p.dci, EP_ISOCH_OUT, p.max_packet, p.interval) } {
-        cabina::fault("audio", "el xHC no configuro el endpoint isocrono, dci", p.dci as u64);
+        cabina::fault("audio", "el xHC nego el endpoint isocrono, dci", p.dci as u64);
+        // *** Y EL CODIGO, QUE ES LO UNICO QUE DICE CUAL DE LAS CINCO CAUSAS.
+        //
+        // El 2026-08-25 esta linea salio sin el numero --se escribia por el
+        // cable de serie-- y desde el escritorio *"el xHC no configuro"* y
+        // *"el aparato no acepto el alt"* se ven igual. Son dos sitios
+        // distintos: uno es nuestro contexto, el otro es el audifono.
+        //
+        //    8 = ancho de banda   17 = un campo del contexto   19 = ya corria
+        cabina::fault("audio", "cfg_ep lo nego con cc", bmo_xhci::last_cfg_ep_cc() as u64);
         return false;
     }
     cabina::count("audio", "endpoint isocrono configurado, dci", p.dci as u64);
+    // ** CONFIGURADO NO ES CORRIENDO, y esa distincion ya costo el teclado.
+    //
+    // El Configure Endpoint puede contestar Success y dejar el endpoint fuera de
+    // la agenda periodica: entonces no hay timbre que lo despierte y las tramas
+    // no salen nunca. Es exactamente la cara que tenia el teclado mudo con
+    // `Interval` mal codificado -- todo verde, y ni un evento.
+    //
+    // Se AVISA y no se aborta: el estado sale del Device Context que mantiene el
+    // xHC, y preferimos un tubo abierto con una advertencia al lado que ningun
+    // tubo y ninguna pista. Estado: 1 = Running.
+    let estado = unsafe { bmo_xhci::ep_state(slot, p.dci) };
+    if estado != 1 {
+        cabina::warn("audio", "el endpoint isocrono no quedo Running, estado", estado as u64);
+    }
 
     // 2. Y ahora el aparato. `wValue` = alt, `wIndex` = interfaz.
     let mut vacio: [u8; 0] = [];
