@@ -94,3 +94,93 @@ fn en_el_desbordamiento_el_gate_es_mas_estricto_y_es_a_proposito() {
         "un offset imposible no puede caber"
     );
 }
+
+/// **LA VERSION DEL ABI, QUE ES LA OTRA COPIA -- y la que tenia la grieta.**
+///
+/// # Lo que se encontro el 2026-08-26
+///
+/// `bmo-abi` declara la regla en la misma frase que la define:
+///
+/// > *"Major versions are incompatible; minor versions are additive."*
+///
+/// Y el cargador --que es quien de verdad decide, porque el kernel llama al
+/// gate y no a este crate-- la tenia escrita a mano y **de otra forma**:
+///
+/// ```text
+///    if !((abi_mayor == 1 || abi_mayor == 2) && abi_menor == 0)
+/// ```
+///
+/// *** `abi_menor == 0` no es aditivo: es exacto. El dia que el ABI subiera a
+/// `2.1` --o sea el primer dia que se "mejorase" de la forma que el contrato
+/// declara segura-- un `.bex` de `2.1` habria sido rechazado por el cargador
+/// mientras el contrato decia que tenia que entrar.
+///
+/// No habia hecho dano porque nadie ha subido el menor nunca. Eso no es que
+/// estuviera bien: es que todavia no se habia cobrado.
+///
+/// ** Esta prueba barre TODO el espacio pequeno de versiones en vez de mirar
+/// las de hoy. Comprobar `(2,0)` no habria encontrado nada -- ahi las dos
+/// copias coincidian. Lo que separa dos reglas no es el caso que se usa: es el
+/// que todavia no.
+#[test]
+fn el_gate_y_el_contrato_admiten_las_mismas_versiones_del_abi() {
+    for mayor in 0u8..=4 {
+        for menor in 0u8..=4 {
+            let gate = bmo_bex_gate::abi_admisible(mayor, menor);
+            let contrato = bmo_abi::supports_abi((mayor, menor));
+            assert_eq!(
+                gate, contrato,
+                "el cargador y el contrato discrepan en el ABI {}.{}: \
+                 el gate dice {} y `supports_abi` {}",
+                mayor, menor, gate, contrato
+            );
+        }
+    }
+}
+
+/// **Y que la regla sea DE VERDAD aditiva en el menor**, no solo igual en los
+/// dos sitios. Dos copias equivocadas de la misma forma tambien coinciden.
+#[test]
+fn el_menor_es_aditivo_en_los_dos() {
+    let (mayor, menor) = bmo_abi::BMO_ABI_VERSION;
+    for m in 0..=menor {
+        assert!(
+            bmo_abi::supports_abi((mayor, m)),
+            "el contrato tendria que admitir {}.{}", mayor, m
+        );
+        assert!(
+            bmo_bex_gate::abi_admisible(mayor, m),
+            "el cargador tendria que admitir {}.{}", mayor, m
+        );
+    }
+    assert!(
+        !bmo_bex_gate::abi_admisible(mayor, menor + 1),
+        "un binario que pide mas menor del que hay NO puede entrar: pide algo que \
+         este sistema no implementa"
+    );
+}
+
+/// **LA PRUEBA QUE DE VERDAD HABRIA CAZADO LA GRIETA.**
+///
+/// Las dos de arriba comparan las dos copias entre si, y eso **no basta**: con
+/// el menor de hoy en cero, `menor <= 0` y `menor == 0` contestan lo mismo en
+/// todas las versiones que existen. Las dos copias podian estar de acuerdo *y
+/// las dos equivocadas*.
+///
+/// Aqui se le pregunta a la REGLA, con unos limites inventados, la unica
+/// pregunta que la distingue: **si este sistema fuera el 2.2, entraria un
+/// binario compilado contra el 2.1?** El contrato dice que si --el menor es
+/// aditivo-- y una comprobacion de igualdad diria que no.
+#[test]
+fn el_menor_es_aditivo_de_verdad_y_no_solo_por_casualidad() {
+    // Un sistema hipotetico 2.2, con el 1.0 heredado.
+    let admite = |mayor, menor| bmo_bex_gate::admisible_con(mayor, menor, 2, 2, 1, 0);
+
+    assert!(admite(2, 0), "2.0 tiene que entrar en un sistema 2.2");
+    assert!(admite(2, 1), "*** 2.1 tiene que entrar en un sistema 2.2: EL MENOR ES ADITIVO");
+    assert!(admite(2, 2), "2.2 es el de casa");
+    assert!(!admite(2, 3), "2.3 pide algo que este sistema no implementa");
+    assert!(!admite(3, 0), "un mayor distinto es incompatible por definicion");
+    assert!(admite(1, 0), "el heredado sigue entrando");
+    assert!(!admite(1, 1), "pero solo hasta su propio menor");
+}
