@@ -107,7 +107,55 @@ pub const KIND_REPLY: u8 = 0x71;
 /// seria regalar un dato que solo sirve para construir un DMA.
 pub const KIND_MMIO: u8 = 0x74;
 
-pub const KIND_TAREA: u8 = 0x80;
+/// **[X] ERA `0x80`, Y ESO LO HACIA IMPOSIBLE DE RESOLVER** (2026-08-26).
+///
+/// `HANDLE_KIND_MASK` son **siete bits**. Con `0x80`:
+///
+/// ```text
+///    encode:   (0x80 & 0x7F) << 56   ->  el campo kind del handle vale 0
+///    resolve:  slot.kind (0x80) != kind (0)  ->  ERROR_INVALID_HANDLE
+/// ```
+///
+/// *** No fallaba a veces: **fallaba SIEMPRE.** Todo handle `KIND_TAREA` --el
+/// hijo que un proceso lanza, o sea el paso 3 de `PLAN_DIRECTOR.md`-- se
+/// rechazaba como invalido en cuanto alguien lo usaba, y el mensaje decia
+/// *"handle invalido"*, que manda a mirar al que llama.
+///
+/// ** Y es exactamente la clase de fallo que este arbol ya tiene fichada: **un
+/// numero que no cabe en su campo compila.** El `#GP(0x18)` del 16-08 fue el
+/// mismo error con otra forma, y la cabecera de `HANDLE_KIND_SHIFT` lo predijo
+/// veinte lineas mas arriba: *"un desplazamiento mal puesto COMPILA, devuelve
+/// handle invalido, y se lee como un permiso denegado"*.
+///
+/// [!] Cambiar este numero **no rompe compatibilidad con nada**: no habia un
+/// solo handle de este tipo que funcionara. `0x55` esta libre en esta tabla y en
+/// la de `bmo-abi`.
+pub const KIND_TAREA: u8 = 0x55;
+
+// -- *** EL PORTICO QUE IMPIDE QUE VUELVA A PASAR --------------------------
+//
+// Una comprobacion en tiempo de COMPILACION, y no una prueba: no hay donde
+// correr una prueba en Ring 0, y este fallo no se ve ejecutando -- se ve cuando
+// alguien usa el handle, semanas despues, con un mensaje que manda a otro sitio.
+//
+// ** El coste de anadir una fila aqui al declarar un `KIND_` nuevo es cinco
+// segundos. El de olvidarla ya esta medido: una familia entera de capabilities
+// que nunca resolvio.
+const _: () = {
+    assert!(KIND_FRAMEBUFFER as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_AUDIO as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_INPUT as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_CONSOLE as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_DIRECTORIO as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_ARCHIVO as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_MEMORIA as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_PRESTADO as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_CHANNEL as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_ENDPOINT as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_REPLY as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_MMIO as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_TAREA as u64 <= HANDLE_KIND_MASK);
+};
 
 // Rights bits (mirror of bmo-abi BmoCap ids: bit N = capability N).
 pub const RIGHT_READ: u64 = 1 << 0;
