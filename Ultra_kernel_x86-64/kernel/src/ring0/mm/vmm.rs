@@ -641,6 +641,19 @@ fn caminable(fisica: u64, nivel: &'static str, cruda: u64, tabla: u64, casilla: 
     // hay ningun camino que escriba un `1` pelado**, y el Ryzen enseno dos. Un
     // valor que este fichero no sabe producir no salio de este fichero.
     crate::ring0::cabina::fault("vmm", "y estaba en tabla|casilla", tabla | casilla as u64);
+    // *** Y AQUI SE LEVANTA LA PATADA (2026-08-26).
+    //
+    // Esto no es una app portandose mal: son **las tablas de pagina del kernel
+    // diciendo algo imposible**. `get_or_create` escribe `fisica | 0x7` o `| 0x3`
+    // y nada mas, asi que un valor que este fichero no sabe producir no salio de
+    // este fichero -- y mientras no se sepa de donde sale, seguir dejandole la
+    // pantalla a Ring 3 es apostar.
+    //
+    // ** Solo se APUNTA. Esto corre desde `reap`, o sea con el cerrojo del
+    // planificador en la mano y las interrupciones apagadas: hacer el rescate
+    // aqui volveria a tomar ese cerrojo y seria un abrazo mortal. Quien lo
+    // recoge es el hilo del bus. Ver `core/emergencia.rs`.
+    crate::ring0::core::emergencia::declarar(nivel, cruda);
     false
 }
 

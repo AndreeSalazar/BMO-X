@@ -274,6 +274,52 @@ pub fn rescue() -> Option<u32> {
     Some(actual)
 }
 
+/// **LA PATADA: el rescate que SI echa al escritorio.**
+///
+/// Devuelve el `pid` al que se le quito, o `None` si la pantalla ya era del
+/// kernel.
+///
+/// # En que se diferencia de [`rescue`], y es lo unico que cambia
+///
+/// ```text
+///    rescue()                  protege al PRIMER dueno (el escritorio)
+///    rescate_de_emergencia()   no protege a nadie
+/// ```
+///
+/// *** Y la diferencia no es de potencia: es de QUIEN LO PIDE.
+///
+/// `rescue` la dispara una tecla, o sea una persona, que puede haberse
+/// equivocado -- y por eso no se le deja tirar la casa. Esto lo dispara el
+/// kernel **despues de haber visto que su propia contabilidad esta danada**
+/// (`core/emergencia.rs`). Un kernel que ya no se fia de Ring 3 y aun asi le
+/// deja la pantalla no esta siendo prudente: esta apostando.
+///
+/// # [!] Y esto MATA al escritorio, dicho sin rodeos
+///
+/// Se desmapea, asi que su siguiente pixel es un `#PF` y la tarea cae. No es un
+/// efecto secundario que se tolera: **es la respuesta correcta a "ya no es
+/// tuya"**, la misma que ya documenta [`rescue`]. Lo que hace que se pueda pagar
+/// ese precio es que hay donde aterrizar -- `run_shell` es un bucle que no
+/// retorna y sigue leyendo el teclado.
+pub fn rescate_de_emergencia() -> Option<u32> {
+    let actual = OWNER.load(Ordering::SeqCst);
+    if actual == NO_OWNER {
+        // La pantalla ya es del kernel. No es un fallo: es que la corrupcion
+        // llego cuando nadie la tenia, y entonces no hay nada que quitar.
+        return None;
+    }
+    let aspace = crate::ring0::task::scheduler::cr3_de_pid(actual)?;
+    if release(actual, aspace).is_err() {
+        return None;
+    }
+    crate::ring0::cabina::warn(
+        "fb",
+        "pantalla RECUPERADA por la patada del kernel",
+        actual as u64,
+    );
+    Some(actual)
+}
+
 /// El proceso `pid` murio (o salio). Si era el dueno, el kernel recupera la
 /// pantalla. Lo llama `cap::revoke_all`, que corre en TODAS las salidas --
 /// EXIT voluntario y muerte por fault.

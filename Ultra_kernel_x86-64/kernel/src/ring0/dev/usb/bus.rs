@@ -147,6 +147,13 @@ pub extern "C" fn bus_thread(_arg: u64) -> ! {
     loop {
         pump_bus();
         watch_rescue();
+        // ** LA PATADA, en el mismo sitio y por la misma razon que el rescate.
+        //
+        // Este hilo es el unico que despierta solo, cada 4 ms, y **sin ningun
+        // cerrojo en la mano**. Quien declara una corrupcion corre con el
+        // cerrojo del planificador puesto y no puede hacer el trabajo alli.
+        // Ver `core/emergencia.rs`.
+        crate::ring0::core::emergencia::atender();
         unsafe {
             BUS_TURNS = BUS_TURNS.wrapping_add(1);
             // El latido se sella DESPUES de la vuelta, no antes: lo que
