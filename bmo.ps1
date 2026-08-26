@@ -56,6 +56,38 @@ function Muere($m)  { Write-Host "   [X] $m" -ForegroundColor Red; exit 1 }
 
 Write-Host "BMO-X -- comprobar y construir" -ForegroundColor White
 
+# -- 0. EL CONTRATO, QUE ES MAS BARATO QUE EL BANCO ---------------------
+#
+# Va PRIMERO porque tarda medio segundo y puede decir que no a la clase de fallo
+# mas cara del arbol: algo que entra en la superficie sin pagar el peaje. Un
+# numero de operacion mal escrito no falla al compilar ni al cargar -- **hace
+# otra cosa**, y el banco de pruebas no lo ve.
+#
+# ** Y VIVE AQUI Y NO EN `build.ps1` A PROPOSITO. Aquel fichero lleva cuatro
+# avisos escritos de su propia mano --*"el siguiente guardian NO se anade:
+# primero se parte este fichero"*-- y el censo modular lo respalda con el
+# numero. Meterlo alli habria sido anadir un guardian mientras se ignora el que
+# ya existe.
+#
+# [!] Ademas es su sitio por lo que ESTE guion es: `build.ps1` CONSTRUYE; esto
+# COMPRUEBA ANTES. Un contrato se comprueba, no se construye.
+$contrato = Join-Path $raiz 'toolchain\tools\contrato\contrato.py'
+if (-not (Test-Path $contrato)) { Muere 'guardian MUERTO: falta toolchain\tools\contrato\contrato.py' }
+$py = (Get-Command python -ErrorAction SilentlyContinue)
+if ($py) {
+    Titulo 'El contrato de compatibilidad'
+    $env:PYTHONIOENCODING = 'utf-8'
+    # La AUTOPRUEBA primero: una regla que no sabe decir que no, no protege nada.
+    $salida = & $py.Source $contrato --autoprueba
+    if ($LASTEXITCODE -ne 0) { $salida | ForEach-Object { Write-Host "   $_" }; Muere 'las reglas del contrato no saben decir que NO' }
+    $salida | Where-Object { $_ -match 'clean:' } | ForEach-Object { Bien ($_ -replace '^clean: ','') }
+    $salida = & $py.Source $contrato --check
+    if ($LASTEXITCODE -ne 0) { $salida | ForEach-Object { Write-Host "   $_" -ForegroundColor Red }; Muere 'algo entro en la superficie sin pagar el peaje' }
+    $salida | Where-Object { $_ -match 'clean:|\[i\]' } | ForEach-Object { Bien ($_ -replace '^clean: ','') }
+} else {
+    Write-Host '   [!] python no encontrado: el contrato NO se comprueba' -ForegroundColor Yellow
+}
+
 # -- 1. EL BANCO, ANTES QUE NADA ----------------------------------------
 #
 # Se corre primero porque es lo mas barato que puede decir que no. El banco de

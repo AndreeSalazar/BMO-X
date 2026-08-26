@@ -1,0 +1,29 @@
+# LINEA BASE del contrato -- los numeros que USAN LAS DOS TABLAS.
+#
+# El kernel (`obj/cap.rs`) y `bmo-abi` (`handle/kind.rs`) son dos listas de la
+# misma taxonomia en dos crates que no se hablan. Cuando un numero aparece en
+# las dos, es una AFIRMACION de que significan lo mismo -- y hoy hay cinco donde
+# eso es falso.
+#
+# ** ESTA LISTA ESTA PARA ENCOGERSE. Es un trinquete, como el de L6a: lo que ya
+# esta aqui se tolera con su motivo escrito al lado; un numero NUEVO en las dos
+# tablas para el build hasta que alguien decida cual de las dos cosas es.
+#
+# Hoy no hace dano porque el `kind` del handle **solo lo interpreta el kernel**:
+# el ABI declara la taxonomia y no la usa para resolver nada. Es deuda, no
+# fallo. El dia que alguien de Ring 3 mire ese byte, deja de serlo.
+#
+# Formato:  numero  nombre_kernel  nombre_abi  nota
+# Se regenera con `--sellar`, y la nota se escribe A MANO: una herramienta no
+# puede saber si `KIND_ARCHIVO` y `File` son el mismo objeto.
+
+0x0F KIND_FRAMEBUFFER   Framebuffer        COINCIDEN -- y `build.ps1` ya fijaba este por su nombre
+0x10 KIND_AUDIO         AudioEngine        COINCIDEN -- y `build.ps1` ya fijaba este por su nombre
+0x20 KIND_INPUT         InputDevice        COINCIDEN
+0x30 KIND_CONSOLE       NetSocket          DIVERGEN -- la consola del kernel contra un socket que no existe
+0x40 KIND_DIRECTORIO    File               DIVERGEN -- y CRUZADO con 0x41: directorio aqui, fichero alli
+0x41 KIND_ARCHIVO       Directory          DIVERGEN -- el otro lado del cruce de 0x40
+0x50 KIND_MEMORIA       Process            DIVERGEN -- un bloque de memoria contra un proceso
+0x51 KIND_PRESTADO      Thread             DIVERGEN -- lo prestado contra un hilo que no existe
+0x60 KIND_CHANNEL       Channel            COINCIDEN -- y `build.ps1` ya fijaba este por su nombre
+0x74 KIND_MMIO          MmioWindow         COINCIDEN -- elegido libre en las DOS el 2026-08-26

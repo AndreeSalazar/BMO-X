@@ -188,31 +188,71 @@ funcionara.
 | un `kind` que no quepa en su campo | `const _: ()` en `cap.rs` | ✅ **desde hoy** |
 | el ABI y el gate diciendo versiones distintas | `gate_y_validador_no_se_separan.rs` | ✅ **desde hoy** |
 | una relocation fuera de su seccion | el mismo fichero | ✅ |
-| **el `kind` del kernel contra el de `bmo-abi`** | **NADIE** | ⛔ **y ya han divergido** |
+| un `kind` del kernel chocando con otro del ABI | `contrato.py` R2 | ✅ **desde hoy**, con trinquete |
+| que cada regla del contrato **sepa decir que NO** | `contrato.py --autoprueba` | ✅ 17 casos |
 | **una operacion que cambia de SIGNIFICADO sin cambiar de numero** | NADIE | ⛔ no lo puede ver una herramienta |
 
-## 6.1 -- ⚠ La deuda de la penultima fila, con nombres
+## 6.1 -- ⚠ La deuda, con nombres y con trinquete
 
 Las dos tablas de kinds --`cap.rs` en el kernel y `HandleKind` en `bmo-abi`--
-**ya dicen cosas distintas en seis codigos**:
+son dos listas de la misma taxonomia en dos crates que no se hablan. **Diez
+numeros aparecen en las dos, y en cinco eso es falso**:
 
 ```text
    0x30   kernel: CONSOLE       abi: NetSocket
    0x40   kernel: DIRECTORIO    abi: File
-   0x41   kernel: ARCHIVO       abi: Directory     <- ademas CRUZADOS
+   0x41   kernel: ARCHIVO       abi: Directory     <- ademas CRUZADOS con 0x40
    0x50   kernel: MEMORIA       abi: Process
    0x51   kernel: PRESTADO      abi: Thread
-   0x70   kernel: ENDPOINT      abi: (no existe)
 ```
+
+Y otros tres son del kernel y el ABI no los nombra: `KIND_TAREA` (0x55),
+`KIND_ENDPOINT` (0x70) y `KIND_REPLY` (0x71).
 
 ★ Hoy no hace dano porque **el `kind` del handle solo lo interpreta el kernel**:
 el ABI declara la taxonomia y no la usa para resolver nada. Es deuda, no fallo --
 y esta escrita aqui para que el dia que alguien de Ring 3 mire el byte del
 `kind`, sepa que esa tabla no es la que manda.
 
+★★ **Y desde el 2026-08-26 la deuda tiene trinquete.** Las cinco estan selladas
+en `toolchain/tools/contrato/LINEA_BASE.txt` con su motivo escrito al lado, y un
+numero NUEVO en las dos tablas para la comprobacion hasta que alguien decida
+cual de las dos cosas es. **La lista solo puede encoger.**
+
 [!] Por eso `KIND_MMIO` entro con `0x74`, **libre en las dos**. Anadir a una
 divergencia que ya existe es la unica forma de que deje de ser deuda y pase a
 ser fallo.
+
+---
+
+# 6.2 -- ★ Y LAS REGLAS DEJARON DE SER PROSA
+
+Las cinco viven en `toolchain/tools/contrato/contrato.py`, **aisladas**, y es lo
+que permite aplicarlas en vez de recordarlas:
+
+| regla | que dice que NO |
+|---|---|
+| **R1** | un `kind` que no cabe en `HANDLE_KIND_MASK` |
+| **R2** | un numero nuevo en las dos tablas de kinds, sin sellar |
+| **R3** | una operacion del kernel que el ABI no tiene, o con otro numero |
+| **R4** | lo mismo para el userland, que es el lado que de verdad viaja |
+| **R5** | dos operaciones de la MISMA familia con el mismo numero |
+
+*** Y el tribunal se juzga a si mismo: `--autoprueba` corre las cinco contra
+tablas hechas para romper **exactamente una** y falla si alguna se queda
+callada. Es el peaje 5 aplicado al que cobra los peajes.
+
+[!] Su primera version de R5 daba **cinco falsos positivos** --metia
+`DISCO_OP_TRIM_LIBRE` y `DISCO_TRIM_SIN_DISCO` en la misma familia por compartir
+prefijo-- y esos dos casos se quedaron como prueba. *"Un fallo FALSO es la peor
+clase de guardian"*: se apaga en una semana, y entonces deja de avisar tambien
+de lo verdadero.
+
+★ **Y no vive en `build.ps1`.** Ese fichero lleva cuatro avisos escritos de su
+propia mano --*"el siguiente guardian NO se anade: primero se parte este
+fichero"*-- y el censo modular lo respalda. Vive en `bmo.ps1`, que ademas es su
+sitio: aquel CONSTRUYE, este COMPRUEBA ANTES. **Un contrato se comprueba, no se
+construye.**
 
 ---
 
@@ -222,5 +262,5 @@ ser fallo.
    lo que se congela   dos puertas, los numeros dados, BEF1, el mayor, R-APP
    lo que crece        operaciones, kinds, secciones, cabeceras, el menor
    el peaje            seis cosas, y la mas cara es lo que se decide NO conceder
-   quien vigila        cinco guardianes automaticos, y DOS huecos con nombre
+   quien vigila        siete guardianes automaticos, y UN hueco con nombre
 ```
