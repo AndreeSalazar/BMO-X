@@ -607,6 +607,67 @@ sola vez.
 
 ---
 
+# 4.7 -- ★★ TERCERA VUELTA (26-08): `red`, `audio` y `save` CONTESTAN, y calc deja al dueno atrapado
+
+## 4.7.1 -- Lo que salio bien, y son tres ordenes enteras
+
+```text
+   red     tarjeta, bus, MAC, enlace ARRIBA a 10 Mbit, PHYstatus 0x87 crudo
+   audio   aparato de reproduccion HALLADO, los ocho numeros en F11
+   save    consumo entero: 6/12 nucleos, 4495 MHz medidos, 58,5 W, 15.161 MiB
+```
+
+★ **El enlace bajo de 100 a 10 Mbit.** No es un fallo del sistema --el numero
+sale del PHY, y `PHYstatus 0x87` es el crudo que lo demuestra-- pero conviene
+apuntarlo: es cable o puerto, y `RED_MAESTRO` ya avisaba de no optimizar para un
+gigabit que este cable no da. Ahora ni siquiera da los 100.
+
+[!] `transmitir: CERRADO a proposito (CR.TE apagado)` y `receptor apagado` son
+las dos respuestas correctas: el paso 1 de la red se cerro y **nada mas se ha
+abierto**.
+
+## 4.7.2 -- ⚠ Y LO QUE DEJO AL DUENO ATRAPADO
+
+Abrio `calc`, tecleo `10 * 60 =`, el motor de COBOL se murio -- y con sus
+palabras:
+
+> *"para sorpresa la pantalla no se limpio ni me manda al Kernel con terminal"*
+
+★★ **Y `Ctrl+Alt+Esc` tampoco le habria servido, y no es un bug.** `fb::rescue`
+se niega a echar al PRIMER dueno --el escritorio-- desde el 12-08, y lo dice con
+todas las letras: *"si echara al escritorio, la tecla de emergencia seria la
+tecla de romper la maquina"*.
+
+*** A ese razonamiento le faltaba un dato: **`run_shell` no se para nunca.** Hay
+donde aterrizar.
+
+## 4.7.3 -- Lo que cambio (26-08), y las dos mitades
+
+| | que |
+|---|---|
+| **automatica** | `core/emergencia.rs`. Si `vmm::caminable` rechaza una entrada de tabla, el kernel **recupera la pantalla, echa a quien la tenga, y lo explica en cuatro lineas** |
+| **manual** | `Ctrl+Alt+Esc` gana un escalon: la 1a pulsacion avisa, la 2a en 3 segundos echa al escritorio |
+
+⚠ **La automatica NO se dispara porque una app se muera.** Eso es el aislamiento
+funcionando. Se dispara cuando las tablas de pagina del kernel dicen algo
+imposible -- o sea cuando el kernel deja de fiarse de si mismo.
+
+★ **Y por eso este arranque importa mas que los anteriores**: la corrupcion del
+`vmm` ya salio DOS veces con `calc`. Si sale una tercera, **la patada va a
+saltar** y la prueba pasa a ser doble:
+
+```text
+   1. salta la patada?          la pantalla vuelve al panel del kernel
+   2. dice POR QUE?             cuatro lineas con el motivo y su numero
+   3. sigue el shell vivo?      escribir `cabina fallos` tiene que contestar
+```
+
+[!] Si la patada salta y **el shell no contesta**, eso es peor que el problema
+que arregla, y hay que revertirla. Es la unica forma de que esto salga mal, y
+por eso se dice antes.
+
+---
+
 # 5. ⚠ LO QUE ESTA TANDA **NO** PUEDE CONTESTAR, Y HAY QUE DECIRLO
 
 ## 5.1 -- Por que el 25-08 salio 27/54
