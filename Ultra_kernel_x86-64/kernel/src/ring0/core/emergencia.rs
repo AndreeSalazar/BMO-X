@@ -164,6 +164,21 @@ pub fn atender() -> bool {
 /// enterrar una maquina que funciona.
 fn anunciar(quien: Option<u32>) {
     use crate::ring0::core::dashboard::dashboard_log;
+    // *** SE LIMPIA LA PANTALLA, Y NO ES COSMETICA (2026-08-26).
+    //
+    // La primera version recuperaba la pantalla y escribia encima. El dueno lo
+    // vio y lo dijo en una linea: **"eso no se limpio"**. Y tenia razon en algo
+    // que no es de estetica:
+    //
+    // > Los pixeles del escritorio muerto siguen ahi. Lo que queda en pantalla
+    // > es una foto de una cosa que ya no existe, con cuatro renglones del
+    // > kernel encima. **Parece que el escritorio sigue vivo y no responde**,
+    // > que es exactamente el sintoma del que se venia huyendo.
+    //
+    // `splash_dashboard_init` rellena la pantalla y repinta el marco del panel,
+    // que es donde el shell de Ring 0 ya escribe. Asi lo que se ve DESPUES de la
+    // patada es el sitio al que se ha vuelto, no el escombro del que se sale.
+    crate::ring0::core::splash::splash_dashboard_init();
     dashboard_log("");
     dashboard_log("*** EL KERNEL RECUPERO LA MAQUINA (patada de emergencia) ***");
     let mut l = crate::ring0::cabina::format::Buf::new();
@@ -183,4 +198,5 @@ fn anunciar(quien: Option<u32>) {
     }
     dashboard_log(l2.as_str());
     dashboard_log("   el shell de Ring 0 sigue vivo: escribe `cabina fallos`");
+    dashboard_log("   y `escritorio` levanta el de Ring 3 otra vez");
 }

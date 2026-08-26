@@ -131,6 +131,8 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
             super::files::shell_bex();
         } else if cmd == b"panic" {
             super::danger::shell_panic();
+        } else if cmd == b"escritorio" || cmd == b"gui" || cmd == b"desktop" {
+            shell_escritorio();
         } else if cmd == b"reboot" {
             super::danger::shell_reboot();
         } else if cmd == b"halt" {
@@ -140,4 +142,41 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
         }
         shell_prompt();
     }
+}
+
+/// **`escritorio`** -- levantar el servidor de Ring 3 otra vez.
+///
+/// # Por que hacia falta, y lo dijo el metal
+///
+/// Hasta el 2026-08-26 el escritorio se lanzaba en UN sitio: al arrancar, dentro
+/// de `run_shell`, y como mucho un reintento si se habia muerto. O sea que si el
+/// dueno acababa en este shell --por la patada, por el rescate, o porque el
+/// escritorio se cayo mas tarde-- **la unica forma de recuperarlo era reiniciar
+/// la maquina**.
+///
+/// El dueno lo pidio con las dos salidas juntas: *"eso no se limpio o debe
+/// reiniciar el servidor del RING 3"*. La primera la resuelve
+/// `core/emergencia.rs`; esta es la segunda.
+///
+/// # ** Y respeta el tope de intentos, que no es burocracia
+///
+/// `DESKTOP_MAX_ATTEMPTS` existe porque un relanzamiento automatico en bucle
+/// convierte un fallo en un parpadeo infinito: el escritorio arranca, se cae,
+/// arranca, se cae, y la pantalla no llega a mostrar el motivo de nada.
+///
+/// *** Pero un tope pensado para el ARRANQUE no vale para una orden que teclea
+/// una persona. Que el sistema no lo reintente solo mas de dos veces es correcto;
+/// que le diga "no" a alguien que lo esta pidiendo a proposito, no. Asi que la
+/// orden **suma su intento y no se deja frenar por el tope** -- y lo dice, para
+/// que el numero siga contando la verdad.
+fn shell_escritorio() {
+    use super::super::desktop::{desktop_died, start_desktop, DESKTOP_ATTEMPTS};
+    if !desktop_died() && unsafe { DESKTOP_ATTEMPTS } > 0 {
+        // Ya hay uno vivo. Levantarlo otra vez daria DOS escritorios peleandose
+        // por la pantalla, que es peor que no tener ninguno.
+        s_log("el escritorio ya esta vivo (si no responde: Ctrl+Alt+Esc dos veces)");
+        return;
+    }
+    s_log("levantando el escritorio de Ring 3...");
+    start_desktop();
 }
