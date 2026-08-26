@@ -20,7 +20,7 @@
 |---|---|---|---|
 | **S1** | MMIO por direccion fisica | ✅ **HECHO 26-08** (`ce45036c`), sin ejecutar | todo driver |
 | **S2** | memoria DMA con fisica conocida | ✅ **HECHO 26-08**, sin ejecutar | todo driver, y `RED_MAESTRO` paso 2 |
-| **S3** | una IRQ que despierta a un proceso | ⛔ **falta, y es la unica sin molde** | todo driver que no quiera sondear |
+| **S3** | una IRQ que despierta a un proceso | ✅ **HECHO 26-08 con el RELOJ**, sin ejecutar. Con un aparato de verdad falta la decision 2 | todo driver que no quiera sondear |
 
 ★ Ninguna de las tres baja codigo a Ring 3. Construyen el suelo, y esa es justo
 la parte que un plan optimista se salta.
@@ -259,10 +259,44 @@ tiene que salir con **su nombre**, no con un fault.
 **por eso**: una propiedad verdadera por accidente deja de serlo sin que nadie lo
 note.
 
-### Paso 4 -- la IRQ sobre `WAIT`  <- LO SIGUIENTE, y sus tres decisiones en 3.2b
+### [X] Paso 4 -- la IRQ sobre `WAIT`  (26-08)  `KIND_LATIDO`
+
+Y aqui paso lo mismo que en S2, por tercera vez: **la cadena ya estaba escrita**
+en cuatro sitios que nadie habia juntado, y los cuatro lo decian. Lo que faltaba
+era un OBJETO al que agarrarse -- `WAIT` necesita un handle.
+
+```text
+   visto = INVOKE(h, LATIDO_OP_CUENTA)      cuantos van
+   visto = WAIT(h, visto, 0)                duerme hasta el siguiente
+```
+
+⚠ **Lo que sigue abierto es la decision 2**, y es obligatoria antes de la
+primera IRQ de un aparato de verdad: que pasa con una linea ENMASCARADA cuyo
+driver muere. El latido no la necesita --no enmascara nada-- y por eso pudo ir
+primero. **Sortear un problema no es haberlo resuelto.**
 
 **Como se prueba**: un `.bex` que hace `WAIT` sobre el timer y cuenta 250
 despertares en un segundo. Sin driver, sin aparato, sin riesgo.
+
+### Paso 4b -- ⚠ LA DECISION 2, que es lo unico que queda del suelo
+
+Antes de la primera IRQ de un aparato:
+
+```text
+   el driver de Ring 3 muere con su linea enmascarada
+   -> el aparato se queda mudo hasta reiniciar
+```
+
+Las dos salidas, y hay que elegir una **antes** de escribir el codigo:
+
+| salida | lo que cuesta |
+|---|---|
+| el kernel **desenmascara** al morir | la linea vuelve a dispararse sin nadie que la atienda: hay que enmascararla otra vez al segundo aviso, o el kernel se ahoga |
+| la linea queda **huerfana** con su nombre en CABINA | el aparato sigue mudo, pero se sabe **por que** y quien lo dejo asi |
+
+★ La segunda es la de esta casa --*convertir una maquina muerta en una linea que
+dice el nivel y el valor*-- pero deja el aparato inservible hasta reiniciar. La
+primera se parece mas a lo que hace un sistema que se recupera solo.
 
 ### Paso 5 -- el primero que baja de verdad: `usb/uaudio`
 
