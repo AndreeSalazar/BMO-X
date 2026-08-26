@@ -189,8 +189,8 @@ pub const TASK_OP_KLOG_TEXTO: u64 = 0x17;
 /// muerte: vector, codigo de error, la direccion que se toco, el `rip`, la
 /// pila, **que programa era** y lo ultimo que llego a escribir.
 ///
-/// Existe porque la linea que dejaba CABINA --`fault en CPL3: tarea eliminada,
-/// BMO sigue vivo` con el `rip` detras-- alcanza para saber QUE paso y no para
+/// Existe porque la linea que dejaba CABINA --`CPL3: tarea eliminada, BMO sigue
+/// vivo` con el `rip` detras-- alcanza para saber QUE paso y no para
 /// saber DONDE. Un fallo que no se puede mandar a nadie se cuenta de memoria, y
 /// contar un fallo de memoria es como se pierden los fallos.
 ///

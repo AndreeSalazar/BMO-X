@@ -90,6 +90,30 @@ impl Buf {
         self.o += escrito;
     }
 
+    /// Cuanto se lleva escrito. Lo necesita quien tiene que REPARTIR el ancho
+    /// de una linea entre varias piezas antes de escribir ninguna.
+    pub(crate) fn len(&self) -> usize { self.o }
+
+    /// Texto **que cede**: escribe como mucho `max` caracteres, y si no cabe
+    /// entero deja un `~` en el ultimo para que se vea que falta algo.
+    ///
+    /// # Por que existe, y por que la marca no es opcional
+    ///
+    /// Recortar en silencio es lo que convirtio una frase en una mentira: una
+    /// linea cortada se lee como una linea completa, y entonces `=1100` se lee
+    /// como el valor `0x1100` en vez de como *"los cuatro primeros digitos de
+    /// algo que no cabia"*. Las dos cosas mandan a mirar sitios distintos.
+    pub(crate) fn txt_max(&mut self, s: &str, max: usize) {
+        if max == 0 { return; }
+        if s.len() <= max { self.txt(s); return; }
+        // `is_char_boundary` no hace falta: la consola es de un byte por
+        // caracter y todos los mensajes del kernel son ASCII (regla del
+        // proyecto, la vigila `ascii-sweep`). Aun asi se corta por bytes, que es
+        // lo unico que esta funcion promete.
+        self.txt(&s[..max - 1]);
+        self.txt("~");
+    }
+
     /// Texto a ancho fijo (recorta o rellena) -- columnas estables.
     pub(crate) fn pad(&mut self, s: &str, width: usize) {
         let n = s.len().min(width);

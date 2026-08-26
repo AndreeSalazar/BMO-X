@@ -411,7 +411,14 @@ pub fn process_died(pid: u32) {
         (*core::ptr::addr_of_mut!(CUENTAS))[slot] = FREE_SLOT;
     }
     if devueltos > 0 {
-        crate::ring0::cabina::info("mem", "marcos devueltos al morir el pid", devueltos);
+        // ** DECIA "marcos" Y CONTABA BYTES, Y ADEMAS EN HEXADECIMAL.
+        //
+        // En el Ryzen del 25-08 salio `marcos devueltos al morir el pid
+        // =870000`. Ochocientos setenta mil marcos serian 3,4 GiB; son
+        // 0x870000 BYTES, o sea 8,4 MiB, que es lo que gasta la calculadora.
+        // La palabra decia una unidad y el numero traia otra, en una base que
+        // no se anuncia. `bytes` es el mismo dato dicho como lo que es.
+        crate::ring0::cabina::bytes("mem", "memoria devuelta al morir el pid", devueltos);
     }
     // ** Y si algo NO se pudo devolver, se dice. Un bloque retenido es correcto
     // --lo sostiene el que lo tomo prestado-- pero es RAM que sigue fuera, y una

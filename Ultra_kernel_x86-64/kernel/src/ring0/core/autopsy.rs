@@ -8,7 +8,7 @@
 //! se ve en CABINA como una linea roja:
 //!
 //! ```text
-//!   FAULT ring3: fault en CPL3: tarea eliminada, BMO sigue vivo =4000105
+//!   FAULT ring3: CPL3: tarea eliminada, BMO sigue vivo =4000105
 //! ```
 //!
 //! Una linea. Con el `rip` y nada mas. Y eso alcanza para saber QUE paso y no

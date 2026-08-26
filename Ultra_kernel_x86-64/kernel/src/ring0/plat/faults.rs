@@ -288,7 +288,13 @@ extern "C" fn fault_dispatch(
         // de faults sirve precisamente porque la maquina sigue viva despues, y
         // entonces alguien puede leer que mato a la tarea. `record` es seguro
         // aqui (guard de reentrancia, sin locks que puedan colgarse).
-        crate::ring0::cabina::fault("ring3", "fault en CPL3: tarea eliminada, BMO sigue vivo", rip);
+        // ** La frase se acorto el 2026-08-25 y el motivo es aritmetica, no
+        // estilo: con la anterior --45 columnas-- el `rip` no cabia en la fila
+        // de 80 del panel y salio `=4001`, o sea cinco digitos de una direccion
+        // de diez. El unico dato de esta linea, cortado por la mitad. Ver
+        // `cabina/cockpit.rs`, donde el ancho ya se reparte con el numero
+        // primero, y `mm/vmm.rs`, que tenia el mismo problema el mismo dia.
+        crate::ring0::cabina::fault("ring3", "CPL3: tarea eliminada, BMO sigue vivo", rip);
         // ** Y EL VEREDICTO EN LA PANTALLA, no solo dentro de la autopsia.
         //
         // La linea de arriba es la que se ve sin pedir nada, y hasta hoy era un

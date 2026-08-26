@@ -32,7 +32,23 @@ use super::texto::{draw_str, text_width, CHAR_H, CHAR_W, FONT_H};
 const DASH_HEADER_H:  u32 = 44;  // top bar height
 const DASH_FOOTER_H:  u32 = 36;  // bottom prompt bar height
 const DASH_LOG_TOP:   u32 = 78;  // y of first log line
-const DASH_LOG_W:     u32 = 80;  // max chars per line
+/// Caracteres que caben en una fila de la bitacora. **Es un TOPE DURO**: lo que
+/// pase de aqui no se recorta con puntos suspensivos, se deja de pintar.
+///
+/// *** Y por eso es publico desde el 2026-08-25. Quien COMPONE la linea --el
+/// cockpit de CABINA-- tiene que saber cuanto sitio hay ANTES de escribirla. El
+/// 25-08 no lo sabia, y en el Ryzen quedo asi:
+///
+/// ```text
+///    FAULT vmm: una entrada de PD no apunta a memoria alcanzable =1100
+///                                                                 ^^^^
+///                       cuatro de los dieciseis digitos de la entrada culpable
+/// ```
+///
+/// El mensaje ocupaba 48 columnas, el prefijo 26, y al numero --que era EL DATO,
+/// el unico motivo por el que esa linea existe-- le quedaban cuatro. Un ancho
+/// que solo conoce el que PINTA no puede defender al que INFORMA.
+pub const DASH_LOG_W: u32 = 80;  // max chars per line
 const DASH_ROWS_MAX:  usize = 64; // tope duro (protege los buffers de filas)
 
 /// Filas de log que CABEN de verdad en el panel, segun el alto REAL del
