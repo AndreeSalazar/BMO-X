@@ -52,14 +52,44 @@ pub fn of(f: Feat) -> Use {
         Feat::Sse41 => Use::No("nada lo pide todavia"),
         Feat::Sse42 => Use::No("su CRC32 serviria al gate, pero el hash es BLAKE3"),
 
-        // ** AVX esta HABILITADO y sin emisor. XCR0=0b111 incluye AVX, o sea
-        // que el kernel ya guarda y restaura YMM en cada puerta -- se paga su
-        // coste desde el primer dia. Lo que falta no es kernel: `sem-asm`
-        // compone REX/ModRM y AVX usa prefijo VEX (C5/C4), asi que hoy no hay
-        // forma de emitir una sola instruccion AVX ni como intrinseco.
-        Feat::Avx => Use::No("XCR0 lo habilita y NADIE lo emite: sem-asm no sabe VEX"),
-        Feat::Avx2 => Use::No("BLAKE3 saca ~3x con el; pide VEX en sem-asm"),
-        Feat::Fma => Use::No("no hay codigo numerico que lo pida"),
+        // *** ESTAS TRES FILAS DECIAN QUE NO SE PODIA, Y DEJO DE SER CIERTO EL
+        // 2026-08-23. Corregidas el 26-08.
+        //
+        // Decian: *"sem-asm compone REX/ModRM y AVX usa prefijo VEX (C5/C4),
+        // asi que hoy no hay forma de emitir una sola instruccion AVX ni como
+        // intrinseco."* Y era verdad cuando se escribio. Tres dias despues
+        // entraron **cinco filas VEX** en `intrinsics.toml` --`avx_suma4`,
+        // `avx_resta4`, `avx_por4`, `avx_funde4` y `avx_sin_altos`-- y nadie
+        // volvio aqui.
+        //
+        // ** LA CABECERA DE ESTE MODULO YA TENIA LA REGLA, Y SOLO LA MITAD:
+        //
+        // > *"A `Yes` without a place named is a `Yes` that lies."*
+        //
+        // Le faltaba el espejo, que es peor: **un `No` cuyo motivo dejo de ser
+        // cierto no dice "todavia no": dice "no se puede".** Quien lea esta
+        // tabla buscando si puede vectorizar algo concluye que no hay forma, y
+        // deja de mirar -- con la instruccion ya escrita y probada a dos
+        // carpetas de distancia.
+        //
+        // [!] Y el estado real de las tres no es "hecho": es **construido y sin
+        // un solo cliente**. Cero llamadas en todo el arbol. Eso es exactamente
+        // lo que estas filas tienen que decir ahora, porque es lo que separa
+        // "no se puede" de "nadie lo ha pedido todavia".
+        Feat::Avx => Use::No("SI se puede desde el 23-08 (5 filas VEX en intrinsics.toml): CERO clientes"),
+        Feat::Avx2 => Use::No("igual que AVX: emisor listo, sin clientes. BLAKE3 sacaria ~3x"),
+        // *** LA UNICA DE LAS TRES QUE TIENE UN DESTINO ESCRITO.
+        //
+        // `avx_funde4` es `vfmadd231pd`: cuatro flotante64, multiplicar y
+        // acumular, en una instruccion. La propia tabla lo dice -- *"es la
+        // operacion de la que esta hecho un producto de matrices"*-- y el
+        // motor de inferencia de `PLAN_EL_ASISTENTE.md` esta hecho de eso.
+        //
+        // [!] Y aun asi el asistente NO esta limitado por aqui: su parte 8
+        // demuestra que un token lo decide el ANCHO DE MEMORIA, no el calculo.
+        // 30 tokens/s por el lado del CPU contra ~10 por el de la memoria: **el
+        // CPU sobra tres veces.** Esta fila es potencia disponible, no el cuello.
+        Feat::Fma => Use::No("`avx_funde4` = vfmadd231pd, escrita y sin usar. Es el matmul del asistente"),
         Feat::F16c => Use::No("no hay medios flotantes en ningun formato de BMO"),
 
         // ================= bits: contar y escanear =================
