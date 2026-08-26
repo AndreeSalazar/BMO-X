@@ -431,6 +431,136 @@ dia: ahora recorre slots, como el camino del volumen.
 
 ---
 
+# 4.6 -- ★★ SEGUNDA VUELTA (25-08, tarde): LOS DOS QUE FALLARON
+
+Se lanzo `calc` y se pidio `audio`. **Las dos cosas que hacian falta saber, se
+supieron** -- y las dos fallaron de la forma buena: la maquina siguio viva y lo
+dijo por pantalla. Lo que sigue es lo que se leyo, lo que significa, y lo que
+cambio despues.
+
+## 4.6.1 -- `calc`: la autoridad SI funciona, y el kernel YA NO SE MUERE
+
+```text
+   141  INFO   mem:   marcos devueltos al morir el pid    =870000
+   142  FAULT  ring3: fault en CPL3: tarea eliminada      =4001
+   143  FAULT  vmm:   una entrada de PD ... alcanzable    =1100
+   144  FAULT  vmm:   una entrada de PD ... alcanzable    =1     <
+   145  FAULT  vmm:   una entrada de PD ... alcanzable    =1     <
+   146  INFO   mm:    hojas devueltas al reciclar         =AF
+```
+
+★★ **Eso cierra la duda de 4.5 sin teclear nada mas.** La calculadora arranco,
+pinto su cara y acepto un `60` -- o sea `EJECUTAR` con autoridad (C4) funciona, y
+con ella la mitad de la tanda que dependia de poder lanzar algo.
+
+★★ **Y el `#GP` de `destroy_address_space` esta DOMADO.** El commit `c41b44e8`
+prometia *"ahora dice donde en vez de matar"* y es exactamente lo que hizo: tres
+entradas de PD rechazadas, el reciclaje siguio (175 hojas, 8,4 MiB), BMO vivo.
+
+## 4.6.2 -- ⚠ PERO LOS DOS NUMEROS QUE IMPORTABAN LLEGARON CORTADOS
+
+Y esto no se ve mirando: **hay que contar columnas.**
+
+```text
+   la fila de la bitacora            80 columnas
+   el prefijo (seq, tick, sev, mod)  26  (28 si el modulo es `ring3`)
+   el mensaje de la linea 143        48
+   el " ="                            2
+   -------------------------------------
+   lo que le quedaba al NUMERO        4  de los 16 digitos de una entrada
+```
+
+*** **`=1100` no es la entrada: son los cuatro primeros digitos de la entrada.**
+Y `=4001` no es el `rip` de la calculadora: son sus cinco primeros digitos. Las
+dos lineas se leen como si estuvieran completas, y como valores completos mandan
+a mirar donde no es.
+
+[!] Las que dicen `=1` **si estan enteras** -- el `<` que va detras es el
+principio de `<vmm.rs:627>`, que es lo que el panel pone en cada FAULT. Y `1` es
+un numero muy concreto: **una entrada de PD PRESENTE que apunta a la fisica 0**,
+sin escritura ni usuario. Eso no lo escribe ningun camino de `map_page`.
+
+**Lo que cambio (misma tarde)**:
+
+| donde | que |
+|---|---|
+| `cabina/cockpit.rs` | la fila se reparte ANTES de escribirla: **el valor no cede nunca**, el sitio cede primero, el mensaje cede el ultimo y deja un `~` |
+| `splash/tablero.rs` | `DASH_LOG_W` deja de ser privado: un ancho que solo conoce el que PINTA no puede defender al que INFORMA |
+| `mm/vmm.rs` | las cuatro frases pasan a `PD: entrada fuera del physmap` -- y el NIVEL va delante, que es lo que hay que salvar si algun dia hay que recortar |
+| `plat/faults.rs` | igual con la del `rip` |
+
+## 4.6.3 -- ★ LO QUE HAY QUE TRAER LA PROXIMA VEZ, Y ES UNA SOLA COSA
+
+```text
+   calc            y cerrarla (o dejar que muera)
+   cabina fallos   <- Y AQUI ESTAN LOS DOS NUMEROS ENTEROS
+```
+
+★★ **`cabina fallos` los daba ENTEROS desde el primer dia** --lo escribe en
+decimal y el escritorio no tiene 80 columnas--. La hoja pedia `cabina fallos`
+al final de la lista de 4; **con esas tres entradas de PD delante, es la primera.**
+
+Lo que contestan los tres numeros:
+
+| lo que salga | que significa |
+|---|---|
+| la entrada de 143 con **bits altos** (>= 2^46) | basura en una entrada por lo demas bien formada |
+| las dos de `=1` | una PD presente apuntando a la fisica 0 |
+| el `rip` entero de 142 | **donde** murio la calculadora, que es lo unico que dice si el `#GP` es causa o consecuencia |
+
+[!] Y el orden importa: si el `rip` cae dentro de la imagen de `calc`, la
+calculadora se murio sola y el `vmm` solo estaba recogiendo. Si cae en otro
+sitio, son el mismo fallo visto dos veces.
+
+## 4.6.4 -- ⚠ `audio`: el aparato SI, el tubo NO
+
+```text
+   aparato de reproduccion HALLADO
+   los ocho numeros estan en F11
+   el tubo NO esta abierto: no puede sonar nada todavia
+```
+
+★ **El censo por SLOTS funciono** (prueba 17 de la lista de 0.0): el `=0` del
+mediodia era *"no llegue a mirar"* y ya no lo es. Lo que fallo es **A1**, o sea
+`abrir()`, y solo puede fallar en dos sitios:
+
+```text
+   best_rate      el descriptor se contradice   -> lo habria dicho en F11
+   configure_ep   el xHC nego el endpoint       <- este
+```
+
+*** **Y el codigo que dice CUAL de las cinco causas fue se escribia por el cable
+de serie.** Desde el escritorio no existe: es la regla de esta casa --*"lo que
+solo es orden del kernel es codigo que el dueno no puede usar"*-- aplicada al
+unico numero que resolvia la pregunta.
+
+**Lo que cambio (misma tarde)**:
+
+| donde | que |
+|---|---|
+| `xhci/transferencia.rs` | **`CErr` deja de ser `3` fijo**. xHCI 6.2.3.5: en un endpoint isocrono *shall be 0*. Una isocrona no se reintenta -- la muestra llega a tiempo o no existe-- asi que un contador de reintentos ahi es un campo invalido, y un xHC estricto (el de AMD ya lo demostro con `CH=1`) contesta **Parameter Error (cc=17)** |
+| `xhci/transferencia.rs` | el **Average TRB Length** deja de ser `8` fijo (el tamano de un informe de teclado). Para 192 bytes cada ms es pedir **24 veces menos ancho de banda del que se va a gastar**, y eso no sale como error: sale como `tramas TARDE` |
+| `xhci/transferencia.rs` | `last_cfg_ep_cc()` -- el codigo se APUNTA, y quien llama lo pone en CABINA con el nombre de su aparato |
+| `usb/audio.rs` | `cfg_ep lo nego con cc =NN` en CABINA, y un aviso si el endpoint **no quedo Running** (configurado no es corriendo: esa distincion ya costo el teclado una vez) |
+
+★ **La correccion de `CErr` es la apuesta, y el `cc` es el arbitro.** Si el
+proximo `audio` dice `TUBO ABIERTO`, era eso. Si vuelve a negar, **ahora sale el
+numero** y las cinco causas dejan de verse iguales:
+
+```text
+    8  ancho de banda   el intervalo no cabe en la agenda periodica
+   17  parametro        algun campo del contexto sigue mal
+   19  ya corria        el endpoint estaba configurado (pasa al repetir `audio`)
+   4/11 transaccion/TRB
+   254 el controlador no contesto
+```
+
+⚠ **Y `audio` dos veces seguidas puede dar `19` legitimamente**: la segunda
+vuelta reconfigura un endpoint que ya corre. Si sale 19, reiniciar y pedirlo una
+sola vez.
+
+---
+
 # 5. ⚠ LO QUE ESTA TANDA **NO** PUEDE CONTESTAR, Y HAY QUE DECIRLO
 
 ## 5.1 -- Por que el 25-08 salio 27/54
