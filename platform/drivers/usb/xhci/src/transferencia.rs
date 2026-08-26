@@ -172,6 +172,20 @@ fn ep_ring_mut(slot: u8, dci: u8) -> Option<&'static mut EpRing> {
 //  Configure Endpoint
 // ===================================================================
 
+/// **EP Type del Endpoint Context (xHCI 6.2.3.4), y NO es el del USB.**
+///
+/// Vive aqui --y no en cada driver-- porque es la tabla del CONTROLADOR: quien
+/// la copie a mano en su fichero acaba teniendo dos, y el dia que no coincidan
+/// el endpoint queda configurado del tipo equivocado. Eso no falla al
+/// configurarlo: falla al primer TRB, que es el peor sitio donde enterarse.
+///
+/// ```text
+///    1  Isoch OUT      4  Control      5  Isoch IN      7  Interrupt IN
+/// ```
+pub const EP_TYPE_ISOCH_OUT: u8 = 1;
+/// Ver [`EP_TYPE_ISOCH_OUT`].
+pub const EP_TYPE_ISOCH_IN: u8 = 5;
+
 /// Convierte el `bInterval` del descriptor de endpoint al campo **Interval**
 /// del Endpoint Context.
 ///
@@ -218,6 +232,37 @@ static mut LAST_EP_SPEED: u8 = 0;
 /// `(bInterval_del_descriptor, Interval_programado, speed_del_slot)`.
 pub fn last_ep_timing() -> (u8, u8, u8) {
     unsafe { (LAST_EP_BINTERVAL, LAST_EP_INTERVAL, LAST_EP_SPEED) }
+}
+
+/// Completion Code del ultimo Configure Endpoint. `0xFE` = el controlador no
+/// contesto nada.
+static mut LAST_CFG_EP_CC: u8 = 0xFF;
+
+/// **Por que el Configure Endpoint dijo que no.**
+///
+/// # Esto existe por la regla del escritorio, no por comodidad
+///
+/// El codigo se escribia con `h.log`, o sea **por el cable de serie**. El dueno
+/// de esta maquina trabaja en el escritorio y al shell de Ring 0 no vuelve: un
+/// dato que solo sale por serie, para el, no existe. El 2026-08-25 el audifono
+/// se quedo sin tubo y lo unico que llego a la pantalla fue *"el xHC no
+/// configuro el endpoint isocrono"* -- la frase, sin el numero que dice cual de
+/// las cinco causas fue.
+///
+/// ```text
+///     0  Success
+///     4  Transaction Error
+///     8  Bandwidth Error     el intervalo pedido no cabe en la agenda periodica
+///    11  Trb Error
+///    17  Parameter Error     algun campo del contexto no vale  <- CErr en isoch
+///    19  Context State Error el endpoint ya estaba configurado y corriendo
+///   0xFE  el controlador no contesto
+/// ```
+///
+/// ** Un driver no puede decidir que hacer con esto y no lo intenta: lo APUNTA.
+/// Quien llama sabe a que aparato pertenece y lo pone en CABINA con su nombre.
+pub fn last_cfg_ep_cc() -> u8 {
+    unsafe { LAST_CFG_EP_CC }
 }
 
 /// Estado del endpoint leido del **Device Context** (el que mantiene el xHC,
@@ -294,8 +339,25 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     LAST_EP_INTERVAL = enc;
     LAST_EP_SPEED = speed;
     ep.add(0).write_volatile((enc as u32) << 16); // DW0: Interval in bits 23:16
+    // *** CErr (DW1 bits 2:1) NO ES UNA CONSTANTE, Y ESO COSTO EL AUDIO.
+    //
+    // xHCI 6.2.3.5: *"CErr ... shall be set to '0' for Isoch endpoints."* No es
+    // una recomendacion de estilo: una transferencia isocrona **no se
+    // reintenta** --la muestra llega a tiempo o no existe-- asi que un contador
+    // de reintentos en un endpoint isocrono es un campo con un valor que el
+    // hardware declara imposible.
+    //
+    // ** Aqui iba `3` fijo para TODOS. En el teclado (interrupcion) es correcto
+    // y lleva meses funcionando; en el endpoint isocrono del audifono es un
+    // parametro invalido, y un xHC estricto --el de AMD lo es, ya lo demostro
+    // con `CH=1` en las etapas de control-- contesta **Parameter Error (cc=17)**
+    // al Configure Endpoint. El endpoint no queda configurado, `abrir` devuelve
+    // `false`, y el escritorio dice *"el tubo NO esta abierto"* sin poder decir
+    // por que.
+    let isocrono = ep_type == EP_TYPE_ISOCH_OUT || ep_type == EP_TYPE_ISOCH_IN;
+    let cerr: u32 = if isocrono { 0 } else { 3 };
     ep.add(1).write_volatile(
-        ((max_pkt as u32) << 16) | ((ep_type as u32) << 3) | (3 << 1)
+        ((max_pkt as u32) << 16) | ((ep_type as u32) << 3) | (cerr << 1)
     );
     ep.add(2).write_volatile((dq & 0xFFFF_FFFF) as u32);
     ep.add(3).write_volatile(((dq >> 32) & 0xFFFF_FFFF) as u32);
@@ -306,7 +368,17 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     // payload por intervalo = max_pkt (8 bytes). Con esto el DCI del teclado
     // deberia empezar a postear Transfer Events al presionar teclas.
     let max_esit = max_pkt as u32; // interrupt LS/FS/HS boot: 1 paquete por ESIT
-    ep.add(4).write_volatile((max_esit << 16) | 8);
+    // ** Y el Average TRB Length tampoco es una constante.
+    //
+    // Es lo que el xHC usa para presupuestar el bus, y estaba clavado en `8` --
+    // el tamano de un informe de teclado boot. Para un endpoint isocrono que
+    // entrega 192 bytes cada milisegundo, declarar 8 es pedir **veinticuatro
+    // veces menos ancho de banda del que se va a gastar**. El sintoma no es un
+    // error: son tramas que llegan tarde, o sea justo el contador que
+    // `AUDIO_MAESTRO` puso en la portada. Un numero mal declarado que se ve
+    // como un chasquido en un oido.
+    let avg_trb = if isocrono { max_pkt as u32 } else { 8 };
+    ep.add(4).write_volatile((max_esit << 16) | avg_trb);
 
     let trb = Trb {
         dw0: (in_phys & 0xFFFF_FFFF) as u32,
@@ -323,6 +395,7 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     match ev {
         Some((_, _, dw2, _)) => {
             let cc = (dw2 >> 24) & 0xFF;
+            LAST_CFG_EP_CC = cc as u8;
             if cc != CC_SUCCESS {
                 // El CODIGO, no un "FAIL" mudo. Los que importan aqui:
                 // 4=Transaction Error, 8=Bandwidth Error (el intervalo pedido
@@ -334,6 +407,7 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
             cc == CC_SUCCESS
         }
         None => {
+            LAST_CFG_EP_CC = 0xFE;
             h.log("[xhci] cfg_ep sin respuesta del controlador\n");
             false
         }
