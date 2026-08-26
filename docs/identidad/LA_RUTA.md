@@ -140,6 +140,80 @@ en la puerta dice por que; una ruta revocada por no cuadrar tiene que decir
 **que declaro y que hizo**, los dos lados. Un `bool` frena sin decir como
 arreglarlo.
 
+## 3.4 -- ★★ LA MAQUINA YA ESTA CONSTRUIDA, Y NO SE LLAMA RAYOS X
+
+> Segunda idea del dueno, el mismo dia: *"la maquina del aeropuerto no necesita
+> verificar ni estorbar, sino que esta viendo como rayos X todo el tiempo, en
+> categorias diferentes"*.
+
+**La forma es correcta y la palabra hay que corregirla**, porque la diferencia
+decide lo que este sistema puede prometer.
+
+```text
+   RAYOS X    esta EN EL CAMINO. La maleta pasa por dentro. Ve ANTES,
+              y por eso puede parar la maleta -- pero estorba, aunque poco
+   RADAR      NO esta en el camino. Ve DESPUES, y a todos a la vez,
+              sin tocar a ninguno
+```
+
+*** BMO-X no puede tener rayos X en la ruta: estar en el camino **es** la
+burocracia que se acaba de quitar. Lo que si puede tener --y ya tiene-- es un
+radar.
+
+### Y la palabra ya estaba elegida en el arbol
+
+`cabina/radar.rs` existe desde el 25-08, y no es una metafora suelta: es
+**exactamente la maquina** que el dueno describe.
+
+| lo que hace | por que sirve aqui |
+|---|---|
+| cuenta en el **ORIGEN**, antes del cerrojo del anillo | un `fetch_add`. No estorba a nadie |
+| una matriz de **capa x severidad** (8 x 5 = 40) | son las *"categorias diferentes"* |
+| **ninguna cuenta gira jamas** | lo que paso sigue contado aunque el detalle se pierda |
+
+Y trae escrita la frase que explica por que un vigilante que filtra no vale:
+
+> *"Un radar que pierde un contacto y dibuja la pantalla vacia no es un radar con
+> menos alcance. Es una pantalla."*
+
+★ O sea que la respuesta a *"tiene sentido?"* es mas fuerte que un si: **la
+maquina esta hecha, funciona, y hoy solo mira a una cosa -- al kernel.** Lo que
+falta es una segunda matriz con la misma forma, mirando a los procesos.
+
+## 3.5 -- LAS CINCO CATEGORIAS, Y LO QUE CUESTA CADA UNA
+
+El dueno dijo cinco. Salen cinco, y **cuatro ya se cuentan hoy**: no hay que
+anadir trabajo al camino, hay que **leer lo que ya se cuenta**.
+
+| # | categoria | quien lo cuenta YA | que significa que no cuadre |
+|---|---|---|---|
+| 1 | **puertas** | `syscall/meter.rs`, histograma por clase | declaro que iba a ir por la ruta y esta cruzando la frontera igual |
+| 2 | **memoria** | `phys::stats()` + `obj::memory` | pidio un bloque y sigue pidiendo |
+| 3 | **tiempo** | el quantum del planificador | no cede: se come su turno entero, siempre |
+| 4 | **aparatos** | los atomicos de `fb`, `input`, `audio`, `mmio` | tiene la pantalla y no la suelta |
+| 5 | **la ruta** | ver abajo -- **y es la unica que parecia imposible** | le dieron un anillo y no lo esta atendiendo |
+
+### *** LA QUINTA: no se cuentan los bytes, se leen los DOS INDICES
+
+Esta es la que parecia obligar a estar en el camino, y no obliga.
+
+En todo anillo hay ya **dos numeros en memoria compartida** que dicen hasta
+donde llego cada lado. Leerlos son dos cargas y **no toca un solo byte del
+dato**:
+
+```rust
+   // dev/usb/audio.rs, y ya existe
+   pub fn pendientes() -> u64 { p.escrito.saturating_sub(p.leido) }
+```
+
+★★ **Eso es el radar aplicado a la ruta.** No se escanea el equipaje: se mira la
+silueta. Y no es un plan -- el tubo del audio ya expone `escrito`, `leido`,
+`pendientes` y `huecos`, que son exactamente las cuatro caras de esa silueta.
+
+[!] Y por eso las categorias son cinco y no cincuenta. **Una categoria solo vale
+si alguien ya la cuenta**, o si contarla es leer dos numeros que ya existen. Todo
+lo demas es un vigilante en el camino con otro nombre.
+
 ---
 
 # 4. ⚠ Y LO QUE ESTA RUTA **NO** VA A HACER MAS RAPIDO
@@ -236,7 +310,16 @@ a obligatorio.
   las nombra y dice que les falta.
 - **Que medir la memoria mejore el numero.** Lo que hace es convertir una
   estimacion en un hecho, y puede salir peor de lo esperado.
-- **Que el tiempo 4 sea barato.** Vigilar sin estorbar es dificil: un vigilante
-  que mira en el camino del dato **es la burocracia que se acaba de quitar**.
-  Tiene que mirar desde fuera, y eso significa que ve tarde. Cuanto tarde es la
-  pregunta que ese paso tendra que contestar con un numero.
+- **Que el radar llegue a tiempo para todo.** Mira desde fuera, o sea que **ve
+  TARDE**. El hilo del bus late cada 4 ms, y esa es su resolucion.
+
+```text
+   una app que abusa de un recurso     4 ms de retraso no cambia nada
+   una tarjeta escribiendo por DMA     4 ms es una eternidad
+```
+
+  *** Y esa segunda fila **no la arregla ningun radar**, por bueno que sea: la
+  tarjeta no pasa por la MMU, asi que cuando el dato aparece ya esta escrito.
+  Eso solo lo cierra una IOMMU. **El radar cubre el abuso de recursos y no
+  cubre la corrupcion**, y confundir las dos seria vender lo primero como si
+  fuera lo segundo.
