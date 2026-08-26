@@ -180,6 +180,26 @@ pub const TASK_OP_APARATO_TOMAR: u64 = 0x2E;
 /// hasta el proximo reinicio.
 pub const TASK_OP_APARATO_SOLTAR: u64 = 0x2F;
 
+// -- S3 del suelo de Ring 3: EL LATIDO --------------------------------------
+
+/// **Tomar el LATIDO**: el derecho a que `WAIT` despierte cuando late el reloj.
+///
+/// Devuelve un handle `KIND_LATIDO` con solo `RIGHT_WAIT`. No lleva argumentos
+/// y **no es exclusivo**: el reloj no se gasta, y cien procesos pueden esperarlo
+/// a la vez.
+///
+/// # Como se usa, y por que hacen falta los dos pasos
+///
+/// ```text
+///    visto = INVOKE(h, LATIDO_OP_CUENTA)      cuantos van
+///    visto = WAIT(h, visto, timeout_ns)       duerme hasta el siguiente
+/// ```
+///
+/// *** Preguntar ANTES es obligatorio. Sin el testigo, la primera espera se
+/// duerme contra un numero inventado: si acierta por debajo vuelve en el acto y
+/// si acierta por encima **no despierta nunca**.
+pub const TASK_OP_LATIDO_TOMAR: u64 = 0x30;
+
 pub const TASK_OP_INFO: u64 = 0x13;
 
 /// Un dato de TEXTO. `arg0` = campo (`INFO_TXT_*`), `arg1` = que trozo.

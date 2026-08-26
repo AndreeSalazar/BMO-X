@@ -500,8 +500,32 @@ pub fn on_timer() {
     let _g = SCHED_LOCK.lock();
     let s = sched();
     let now = rdtsc();
+    // *** S3 DEL SUELO: EL LATIDO, Y SE SUBE ANTES DE MIRAR A QUIEN DESPERTAR.
+    //
+    // El orden no es estilo. `wait_current_checked` compara el testigo **con
+    // este mismo cerrojo en la mano**, asi que subirlo primero garantiza que el
+    // que estaba a punto de dormirse ve el numero nuevo y no se duerme. Al
+    // reves habria una ventana --testigo viejo, tarea ya bloqueada, latido ya
+    // servido-- y eso es un aviso perdido: la tarea espera al SIGUIENTE.
+    crate::ring0::obj::latido::tic();
     for task in &mut s.tasks {
         if task.state == TaskState::Blocked && task.wait_deadline != 0 && now >= task.wait_deadline {
+            task.wait_deadline = 0;
+            task.wait_key = 0;
+            task.state = TaskState::Ready;
+        // ** Y AQUI, EN LA MISMA VUELTA, LOS QUE ESPERAN EL LATIDO.
+        //
+        // No se llama a `wake_by_key`: eso volveria a tomar `SCHED_LOCK`, que
+        // esta funcion ya tiene, y un `SpinLock` no es reentrante. Seria un
+        // abrazo mortal en la ruta que corre 250 veces por segundo.
+        //
+        // [!] Y que esto pueda hacerse desde un manejador de interrupcion no es
+        // suerte: `SpinLock::lock` hace `cli`, asi que mientras alguien tiene el
+        // cerrojo del planificador **las interrupciones estan apagadas** y el
+        // latido no puede llegar en mitad de una seccion critica.
+        } else if task.state == TaskState::Blocked
+            && task.wait_key == crate::ring0::obj::latido::LLAVE
+        {
             task.wait_deadline = 0;
             task.wait_key = 0;
             task.state = TaskState::Ready;

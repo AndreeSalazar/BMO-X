@@ -80,6 +80,17 @@ pub enum HandleKind {
     /// escrita aqui. Que las dos hayan divergido es una deuda anotada, no una
     /// licencia para ensancharla.
     MmioWindow = 0x74,
+
+    /// **El latido del hardware.** Pieza S3 del suelo de Ring 3.
+    ///
+    /// El derecho a que `WAIT` despierte **cuando late el reloj**, en vez de
+    /// cuando se acaba un plazo. Es lo que permite que un driver de Ring 3
+    /// espere una interrupcion sin sondear.
+    ///
+    /// ** No es exclusivo --el reloj no se gasta-- y no concede autoridad: un
+    /// proceso ya podia dormir con `WAIT(0, _, timeout)`. Lo que cambia es la
+    /// PRECISION del despertar, no el permiso.
+    Latido = 0x75,
 }
 
 impl HandleKind {
@@ -144,6 +155,7 @@ impl HandleKind {
             0x54 => Some(Self::Port),
             0x60 => Some(Self::Channel),
             0x74 => Some(Self::MmioWindow),
+            0x75 => Some(Self::Latido),
             _ => None,
         }
     }

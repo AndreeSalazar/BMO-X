@@ -286,6 +286,13 @@ pub const APARATO_OP_BASE: u64 = 0x01;
 /// sean dos, quien lo pregunta no cambia.
 pub const APARATO_OP_BYTES: u64 = 0x02;
 
+/// **Cuantos latidos van desde el arranque**, sin dormirse.
+///
+/// Es el testigo que se le pasa a `WAIT`. Solo sube y no se reinicia nunca: un
+/// contador que da la vuelta convierte *"espera al siguiente"* en *"espera para
+/// siempre"*.
+pub const LATIDO_OP_CUENTA: u64 = 0x01;
+
 pub const ARCH_OP_LEER: u64 = 0x01;
 
 /// Saca hasta 7 bytes **sin pasar del salto de linea**:

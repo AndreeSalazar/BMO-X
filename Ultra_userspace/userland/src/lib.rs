@@ -155,6 +155,11 @@ pub const OP_APARATO_SOLTAR: u32 = 0x2F;
 pub const APARATO_OP_BASE: u32 = 0x01;
 /// Cuantos bytes son. Se pregunta en vez de suponerse.
 pub const APARATO_OP_BYTES: u32 = 0x02;
+/// **Toma el LATIDO**: `WAIT` despierta cuando late el reloj, no cuando vence
+/// un plazo. Ver [`crate::sys::latido_tomar`].
+pub const OP_LATIDO_TOMAR: u32 = 0x30;
+/// Cuantos latidos van. Es el testigo que se le pasa a `WAIT`.
+pub const LATIDO_OP_CUENTA: u32 = 0x01;
 /// El controlador xHCI. La lista es cerrada: lo que no esta aqui no se nombra.
 pub const APARATO_XHCI: u64 = 0;
 

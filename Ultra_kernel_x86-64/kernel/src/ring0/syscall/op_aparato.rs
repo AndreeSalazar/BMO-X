@@ -131,6 +131,18 @@ pub(super) fn aparato_tomar(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
+//// * TOMAR EL LATIDO (S3 del suelo de Ring 3).
+////
+//// No lleva argumentos y no es exclusivo: el reloj no se gasta. Cien procesos
+//// pueden esperarlo a la vez y los cien despiertan.
+pub(super) fn latido_tomar(arg0: u64, arg1: u64) -> BmoStatus {
+        let _ = (arg0, arg1);
+        match crate::ring0::obj::latido::claim(scheduler::current_pid()) {
+            Ok(handle) => BmoStatus::ok_value(handle),
+            Err(code) => BmoStatus::err(code),
+        }
+}
+
 pub(super) fn aparato_soltar(arg0: u64, arg1: u64) -> BmoStatus {
         let _ = (arg0, arg1);
         match crate::ring0::obj::mmio::release(

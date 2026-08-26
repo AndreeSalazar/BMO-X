@@ -46,6 +46,9 @@ pub mod obj {
     pub mod endpoint;
     pub mod fb;
     pub mod input;
+    /// `KIND_LATIDO`: el derecho a que `WAIT` despierte cuando LATE el
+    /// hardware. Pieza S3 del suelo -- ver `docs/plan/PLAN_SUELO_RING3.md`.
+    pub mod latido;
     /// `KIND_PRESTADO`: un proceso cede un trozo de SU memoria a otro. El
     /// kernel mueve paginas y **no sabe para que** -- el lienzo, el audio y los
     /// bloques grandes entre procesos salen todos de aqui.

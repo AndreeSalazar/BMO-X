@@ -27,3 +27,4 @@
 0x51 KIND_PRESTADO      Thread             DIVERGEN -- lo prestado contra un hilo que no existe
 0x60 KIND_CHANNEL       Channel            COINCIDEN -- y `build.ps1` ya fijaba este por su nombre
 0x74 KIND_MMIO          MmioWindow         COINCIDEN -- elegido libre en las DOS el 2026-08-26
+0x75 KIND_LATIDO        Latido             COINCIDEN -- S3 del suelo, libre en las DOS el 2026-08-26

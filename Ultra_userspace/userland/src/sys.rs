@@ -326,6 +326,43 @@ pub fn memoria_fisica(handle: u64) -> Option<u64> {
     invoke(handle, MEM_OP_FISICA, 0, 0, 0).valor()
 }
 
+// -- S3 del suelo de Ring 3: el latido --------------------------------------
+
+/// **Toma el LATIDO** (S3 del suelo de Ring 3).
+///
+/// El derecho a que [`wait`] despierte **cuando late el reloj**, en vez de
+/// cuando vence un plazo. No es exclusivo: el reloj no se gasta.
+///
+/// ```text
+///    let h = latido_tomar()?;
+///    let mut visto = latido_cuenta(h)?;
+///    loop { visto = latido_esperar(h, visto, 0); }
+/// ```
+pub fn latido_tomar() -> Option<u64> {
+    invoke(CURRENT_TASK, OP_LATIDO_TOMAR, 0, 0, 0).valor()
+}
+
+/// Cuantos latidos van desde el arranque, **sin dormirse**.
+///
+/// *** Preguntarlo ANTES de la primera espera es obligatorio. Sin el testigo,
+/// `latido_esperar` se duerme contra un numero inventado: por debajo vuelve en
+/// el acto, y por encima **no despierta nunca**.
+pub fn latido_cuenta(handle: u64) -> Option<u64> {
+    invoke(handle, LATIDO_OP_CUENTA, 0, 0, 0).valor()
+}
+
+/// Duerme hasta que el contador pase de `visto`. Devuelve el testigo nuevo.
+///
+/// `timeout_ns = 0` es sin plazo: despierta el latido y nada mas.
+///
+/// [!] El testigo se compara **bajo el cerrojo del planificador**, que es el
+/// mismo que toma el reloj para subirlo. Un latido no se puede colar entre la
+/// comparacion y el bloqueo: no es una carrera que se gane casi siempre, es una
+/// que no existe.
+pub fn latido_esperar(handle: u64, visto: u64, timeout_ns: u64) -> u64 {
+    wait(handle, visto, timeout_ns).value
+}
+
 
 pub fn smp_censo(cuantos: u32) -> (u32, u32, bool) {
     let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, cuantos as u64, 0, 0).value;
