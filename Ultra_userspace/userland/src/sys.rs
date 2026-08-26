@@ -311,6 +311,21 @@ pub fn aparato_soltar() -> bool {
     invoke(CURRENT_TASK, OP_APARATO_SOLTAR, 0, 0, 0).ok()
 }
 
+/// **Donde vive de verdad este bloque** (S2 del suelo de Ring 3).
+///
+/// La direccion que hay que escribir en un descriptor para que una tarjeta
+/// escriba ahi por DMA: la tarjeta no pasa por la MMU y ve fisicas.
+///
+/// El bloque es CONTIGUO, asi que esta fisica mas un desplazamiento es la
+/// fisica de ese desplazamiento. `None` si el handle no es un bloque tuyo.
+///
+/// [!] Un numero solo es peligroso si algo lo acepta como orden. Hoy, en este
+/// sistema, lo unico que lo haria es un aparato haciendo DMA -- y ningun proceso
+/// de Ring 3 puede darle ordenes todavia.
+pub fn memoria_fisica(handle: u64) -> Option<u64> {
+    invoke(handle, MEM_OP_FISICA, 0, 0, 0).valor()
+}
+
 
 pub fn smp_censo(cuantos: u32) -> (u32, u32, bool) {
     let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, cuantos as u64, 0, 0).value;
