@@ -549,6 +549,53 @@ pub fn fisica_exacta(pml4: u64, va: u64) -> Option<u64> {
 /// estar en vigor**. Quien llama tiene que garantizarlo, y por eso esto vive en
 /// `reap` --que corre despues del cambio de contexto-- y no en `revoke_all`,
 /// que corre todavia dentro del syscall del moribundo y con SU CR3 puesto.
+/// **Se puede caminar por esta direccion fisica?**
+///
+/// # *** POR QUE ESTO EXISTE: el #GP del 2026-08-25
+///
+/// El dueno multiplico en la calculadora, la app murio, y **el kernel murio
+/// detras** con un `#GP` en esta funcion:
+///
+/// ```text
+///    vec=0x0D  err=0x00000000
+///    rip=0x0000000000410849     <- 313 bytes dentro de destroy_address_space
+/// ```
+///
+/// `err=0` en un `#GP` de Ring 0 dentro de una funcion que solo calcula
+/// direcciones significa una cosa: **una direccion NO CANONICA**. Y aqui las
+/// unicas direcciones que se calculan salen de `phys_to_virt` sobre valores
+/// leidos de las tablas de pagina.
+///
+/// ## La aritmetica que lo permite, y no es obvia
+///
+/// ```text
+///    ADDR_MASK        cubre 52 bits   -> hasta ~4 PB
+///    HIGH_MEM_BASE    0xFFFF_8000_..  -> canonico solo si phys < 2^47
+/// ```
+///
+/// *** **`ADDR_MASK` deja pasar direcciones que el physmap no puede alcanzar.**
+/// Una entrada con basura en los bits 48-51 sobrevive a la mascara, se suma a
+/// `HIGH_MEM_BASE`, cae en el agujero no canonico, y el procesador para la
+/// maquina entera.
+///
+/// [!] **Y esto NO dice de donde sale la basura.** No se sabe todavia: las siete
+/// banderas de este fichero viven en los bits 0-9 y el 63, asi que una entrada
+/// bien formada no puede tener nada en el 48. Lo que esto hace es convertir una
+/// maquina muerta en **una linea que dice el nivel y el valor** -- que es lo
+/// unico que permitira averiguarlo.
+///
+/// > Un kernel que se cae desmontando a un muerto no deja autopsia: se lleva por
+/// > delante al que la iba a escribir.
+const FISICA_MAX: u64 = 1 << 46;
+
+fn caminable(fisica: u64, nivel: &'static str, cruda: u64) -> bool {
+    if fisica != 0 && fisica < FISICA_MAX {
+        return true;
+    }
+    crate::ring0::cabina::fault("vmm", nivel, cruda);
+    false
+}
+
 pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
     let mut hojas = 0u64;
     let mut tablas = 0u64;
@@ -556,6 +603,9 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
     let e0 = user[0];
     if e0 & PTE_PRESENT != 0 {
         let pdpt_phys = e0 & ADDR_MASK;
+        if !caminable(pdpt_phys, "una entrada de PML4 no apunta a memoria alcanzable", e0) {
+            return (hojas, tablas);
+        }
         let pdpt = table(pdpt_phys);
         for i3 in 1..512 {
             let e = pdpt[i3];
@@ -563,6 +613,9 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                 continue;
             }
             let pd_phys = e & ADDR_MASK;
+            if !caminable(pd_phys, "una entrada de PDPT no apunta a memoria alcanzable", e) {
+                continue;
+            }
             let pd = table(pd_phys);
             for i2 in 0..512 {
                 let e2 = pd[i2];
@@ -571,6 +624,9 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                 }
                 // ** Y AQUI SE BAJA UN NIVEL MAS, que es lo que faltaba.
                 let pt_phys = e2 & ADDR_MASK;
+                if !caminable(pt_phys, "una entrada de PD no apunta a memoria alcanzable", e2) {
+                    continue;
+                }
                 let pt = table(pt_phys);
                 for i1 in 0..512 {
                     let hoja = pt[i1];
@@ -578,6 +634,11 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                         continue;
                     }
                     let marco = hoja & ADDR_MASK;
+                    // ** La hoja tambien: `zero_frame` escribe por el physmap, y
+                    // una hoja con basura mata igual que una tabla.
+                    if !caminable(marco, "una HOJA no apunta a memoria alcanzable", hoja) {
+                        continue;
+                    }
                     // Se limpia por el mismo motivo que en `obj::memory`: el
                     // asignador no limpia al entregar, asi que si no se limpia
                     // al devolver, el siguiente programa lee lo del anterior.
