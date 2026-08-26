@@ -425,6 +425,14 @@ pub(crate) fn shell_help() {
     row("edicion", |l| l.txt("flechas  Inicio/Fin  Supr  ^A ^E ^U ^K ^W ^C ^L"));
     row("video", |l| l.txt("fb  splash  cls"));
     row("ring3", |l| l.txt("run <ruta>  bex  ktest"));
+    // ** `escritorio` va en su propia fila y no metido entre las de `ring3`.
+    //
+    // Es la orden que se busca justo cuando se ha llegado aqui sin querer --por
+    // la patada del kernel o por dos `Ctrl+Alt+Esc`-- y quien esta en esa
+    // situacion no lee una fila de diez palabras: busca la suya. Una fila con
+    // una sola orden es la que se encuentra el dia peor.
+    row("volver", |l| l.txt("escritorio   levanta otra vez el de Ring 3"));
+    row("rescate", |l| l.txt("Ctrl+Alt+Esc  quita la pantalla; DOS veces en 3s echa al escritorio"));
     row("poder", |l| l.txt("reboot  halt  panic"));
     row("ayuda", |l| l.txt("help"));
 }
