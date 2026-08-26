@@ -609,11 +609,38 @@ const FISICA_MAX: u64 = 1 << 46;
 /// no volver a gastar el ancho que ahora se reparte bien. **El nivel va primero
 /// en la frase a proposito** -- si algun dia hay que recortar otra vez, lo que
 /// sobrevive tiene que ser lo que distingue `PD` de `PDPT`.
-fn caminable(fisica: u64, nivel: &'static str, cruda: u64) -> bool {
+fn caminable(fisica: u64, nivel: &'static str, cruda: u64, tabla: u64, casilla: usize) -> bool {
     if fisica != 0 && fisica < FISICA_MAX {
         return true;
     }
     crate::ring0::cabina::fault("vmm", nivel, cruda);
+    // *** Y LA SEGUNDA LINEA, QUE ES LA QUE DECIDE ENTRE LAS DOS CAUSAS.
+    //
+    // La entrada cruda dice QUE hay ahi. No dice **donde estaba**, y sin eso las
+    // dos explicaciones posibles se ven exactamente igual:
+    //
+    // ```text
+    //    tres casillas malas en LA MISMA tabla   -> ese marco NO es una tabla:
+    //                                               se esta leyendo el dato de
+    //                                               otro como si fuera un PD
+    //    tres casillas malas en TRES tablas      -> las tablas son tablas y lo
+    //                                               que esta mal es lo que se
+    //                                               escribio en ellas
+    // ```
+    //
+    // ** La primera apunta al ASIGNADOR (un marco entregado dos veces); la
+    // segunda al que ESCRIBE las entradas. Son dos ficheros distintos, y hasta
+    // hoy habia que elegir a ciegas.
+    //
+    // Los dos numeros viajan en uno: una tabla esta alineada a 4 KiB, asi que
+    // sus doce bits bajos estan a cero, y una casilla de 0..511 cabe en nueve.
+    // Empaquetar aqui es lo mismo que hace `pci` con `bus:dev.func` y el MMIO.
+    //
+    // [!] Y esto refuerza la sospecha que ya hay sobre la mesa: `get_or_create`
+    // escribe `fisica | 0x7` (PRESENT|WRITABLE|USER) o `| 0x3` sin usuario. **No
+    // hay ningun camino que escriba un `1` pelado**, y el Ryzen enseno dos. Un
+    // valor que este fichero no sabe producir no salio de este fichero.
+    crate::ring0::cabina::fault("vmm", "y estaba en tabla|casilla", tabla | casilla as u64);
     false
 }
 
@@ -624,7 +651,7 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
     let e0 = user[0];
     if e0 & PTE_PRESENT != 0 {
         let pdpt_phys = e0 & ADDR_MASK;
-        if !caminable(pdpt_phys, "PML4: entrada fuera del physmap", e0) {
+        if !caminable(pdpt_phys, "PML4: entrada fuera del physmap", e0, pml4, 0) {
             return (hojas, tablas);
         }
         let pdpt = table(pdpt_phys);
@@ -634,7 +661,7 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                 continue;
             }
             let pd_phys = e & ADDR_MASK;
-            if !caminable(pd_phys, "PDPT: entrada fuera del physmap", e) {
+            if !caminable(pd_phys, "PDPT: entrada fuera del physmap", e, pdpt_phys, i3) {
                 continue;
             }
             let pd = table(pd_phys);
@@ -645,7 +672,7 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                 }
                 // ** Y AQUI SE BAJA UN NIVEL MAS, que es lo que faltaba.
                 let pt_phys = e2 & ADDR_MASK;
-                if !caminable(pt_phys, "PD: entrada fuera del physmap", e2) {
+                if !caminable(pt_phys, "PD: entrada fuera del physmap", e2, pd_phys, i2) {
                     continue;
                 }
                 let pt = table(pt_phys);
@@ -657,7 +684,7 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                     let marco = hoja & ADDR_MASK;
                     // ** La hoja tambien: `zero_frame` escribe por el physmap, y
                     // una hoja con basura mata igual que una tabla.
-                    if !caminable(marco, "HOJA: entrada fuera del physmap", hoja) {
+                    if !caminable(marco, "HOJA: entrada fuera del physmap", hoja, pt_phys, i1) {
                         continue;
                     }
                     // Se limpia por el mismo motivo que en `obj::memory`: el
