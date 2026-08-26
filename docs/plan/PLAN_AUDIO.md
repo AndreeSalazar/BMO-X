@@ -16,7 +16,7 @@
 
 | paso del maestro | que es | estado |
 |---|---|---|
-| **0** -- el aparato dice quien es | parsear AudioStreaming | ✅ **HECHO Y CABLEADO**, sin foto |
+| **0** -- el aparato dice quien es | parsear AudioStreaming | ⚠ **el parser vale; el CENSO miraba donde no era.** Arreglado 25-08 |
 | **1** -- `SET_INTERFACE` | poner el alt que trae el endpoint | ✅ **HECHO 25-08**, sin ejecutar |
 | **2** -- el TRB isocrono | mandar silencio | ✅ **escrito 25-08**, sin ejecutar |
 | **3** -- WAV | PCM en un sobre. Cero decodificador | ✅ **HECHO 25-08**, 12 pruebas |
@@ -34,7 +34,45 @@ con `tarde` en cero.
 
 # 1. LAS CASILLAS
 
-## [X] A0 -- el aparato dice quien es -- **YA ESTABA, y nadie lo habia visto**
+## [!] A0 -- **EL RYZEN CONTESTO, Y EL CENSO MIRABA DONDE NO ERA** (2026-08-25)
+
+La primera foto del audio en metal:
+
+```text
+   audio: ningun aparato de reproduccion en los puertos libres
+   audio: puertos libres mirados, y ninguno reproduce  =0
+```
+
+★★ **CERO. No es que mirara y no encontrara: no llego a mirar nada.** Y esa
+distincion --que esa linea existe para dar-- resolvio el fallo sola.
+
+### Dos caminos buscando el mismo aparato, mirando cosas distintas
+
+```text
+   el VOLUMEN        recorria SLOTS 1..8   -> lo encontraba desde hace dias
+   la REPRODUCCION   recorria PUERTOS      -> no lo veia nunca
+```
+
+El audifono **ya estaba enumerado** --por eso el volumen funciona-- asi que tenia
+slot, su puerto no figuraba libre, y `direccionar_puerto` no puede re-direccionar
+lo que ya tiene direccion. Los dos filtros lo descartaban antes de leer un byte.
+
+> El aparato estaba ahi. El censo de reproduccion miraba donde no estaba.
+
+### Como quedo
+
+Los dos caminos recorren **slots**, y **comparten el lector de descriptores**
+(`uaudio::leer_configuracion`). No se escribio un segundo lector:
+
+*** **Dos lectores del mismo descriptor son dos sitios donde ese descriptor se
+puede leer distinto.** Es la misma leccion que `bmo-bex-gate` y que `reloc_cabe`,
+por tercera vez esta semana.
+
+** Y la linea de diagnostico se conserva con el nombre cambiado --`slots mirados,
+y ninguno reproduce`-- porque fue la que lo resolvio. Un `0` ahi seguira
+significando *"no llegue a mirar"*, que es otro sitio donde buscar.
+
+## [X] A0b -- el paso 0, tal y como estaba escrito
 
 Al ir a hacer el paso 0 resulto que **estaba hecho y cableado**:
 `bmo_uaudio::stream::find_playback` son 509 lineas con **25 pruebas**, y
