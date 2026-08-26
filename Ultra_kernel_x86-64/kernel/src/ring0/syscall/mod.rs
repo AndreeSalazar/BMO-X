@@ -293,6 +293,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_AUTOPSIA_INFO => op_contar::autopsia_info(arg0, arg1),
         TASK_OP_AUTOPSIA_TEXTO => op_contar::autopsia_texto(arg0, arg1),
         TASK_OP_AUDIO_CENSO => op_aparato::audio_censo(arg0, arg1),
+        TASK_OP_APARATO_TOMAR => op_aparato::aparato_tomar(arg0, arg1),
+        TASK_OP_APARATO_SOLTAR => op_aparato::aparato_soltar(arg0, arg1),
         // ** Las tres que MANDAN sobre la maquina viven en `op_maquina.rs`.
         // No se fueron por tamano: se fueron porque contestan la misma
         // pregunta, y porque medir el estado compartido de este despachador
@@ -928,6 +930,12 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
             }
             cap::KIND_FRAMEBUFFER => {
                 match crate::ring0::obj::fb::operation(resolved.object, frame.rsi) {
+                    Some(v) => BmoStatus::ok_value(v),
+                    None => unsupported(),
+                }
+            }
+            cap::KIND_MMIO => {
+                match crate::ring0::obj::mmio::operation(resolved.object, frame.rsi) {
                     Some(v) => BmoStatus::ok_value(v),
                     None => unsupported(),
                 }

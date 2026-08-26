@@ -111,3 +111,35 @@ pub(super) fn audio_censo(arg0: u64, arg1: u64) -> BmoStatus {
         BmoStatus::ok_value(hubo as u64)
 }
 
+//// * TOMAR LA VENTANA DE UN APARATO (S1 del suelo de Ring 3).
+////
+//// `arg0` = cual, de la lista cerrada de `obj::mmio`. **No es una direccion**, y
+//// esa es la decision entera: ver la cabecera de `obj/mmio.rs`.
+////
+//// El `CR3` es el del llamante --igual que al reclamar la pantalla-- porque es
+//// ahi donde hay que mapear: durante un SYSCALL desde Ring 3 el cambio de CR3
+//// todavia no ha ocurrido.
+pub(super) fn aparato_tomar(arg0: u64, arg1: u64) -> BmoStatus {
+        let _ = arg1;
+        match crate::ring0::obj::mmio::claim(
+            scheduler::current_pid(),
+            crate::ring0::mm::vmm::read_cr3(),
+            arg0,
+        ) {
+            Ok(handle) => BmoStatus::ok_value(handle),
+            Err(code) => BmoStatus::err(code),
+        }
+}
+
+pub(super) fn aparato_soltar(arg0: u64, arg1: u64) -> BmoStatus {
+        let _ = (arg0, arg1);
+        match crate::ring0::obj::mmio::release(
+            scheduler::current_pid(),
+            crate::ring0::mm::vmm::read_cr3(),
+        ) {
+            Ok(()) => BmoStatus::ok_value(0),
+            Err(code) => BmoStatus::err(code),
+        }
+}
+
+

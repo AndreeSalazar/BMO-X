@@ -222,6 +222,7 @@ dependencies = [
  "bmo-hash",
  "bmo-identify",
  "bmo-input",
+ "bmo-mmio-juicio",
  "bmo-net",
  "bmo-particiones",
  "bmo-rtc",
@@ -311,6 +312,10 @@ dependencies = [
  "bmo-maqueta-layout",
  "bmo-maqueta-node",
 ]
+
+[[package]]
+name = "bmo-mmio-juicio"
+version = "0.1.0"
 
 [[package]]
 name = "bmo-mods"

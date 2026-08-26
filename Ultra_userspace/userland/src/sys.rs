@@ -280,6 +280,37 @@ pub fn audio_tubo(que: u64) -> u64 {
 pub fn audio_censo() -> bool {
     invoke(CURRENT_TASK, OP_AUDIO_CENSO, 0, 0, 0).value != 0
 }
+/// **Toma la ventana de registros de un aparato** (S1 del suelo de Ring 3).
+///
+/// `cual` sale de la lista cerrada de `lib.rs` (hoy: [`crate::APARATO_XHCI`]).
+/// Devuelve el handle, o `None` si no hay aparato, no esta en pie, ya lo tiene
+/// otro, o **el juez de la cesion dijo que no** -- y en ese ultimo caso el
+/// motivo con su nombre esta en CABINA, porque en un codigo de error no cabe
+/// *"pisa la RAM que empieza en 0x100000"*.
+///
+/// [!] La ventana es de **SOLO LECTURA**. Escribir en un aparato desde Ring 3
+/// es otra decision y va despues de que leer este probado en metal.
+pub fn aparato_tomar(cual: u64) -> Option<u64> {
+    invoke(CURRENT_TASK, OP_APARATO_TOMAR, cual, 0, 0).valor()
+}
+
+/// Donde quedo la ventana, en MI espacio de direcciones.
+pub fn aparato_base(handle: u64) -> Option<u64> {
+    invoke(handle, APARATO_OP_BASE, 0, 0, 0).valor()
+}
+
+/// Cuantos bytes se mapearon.
+pub fn aparato_bytes(handle: u64) -> Option<u64> {
+    invoke(handle, APARATO_OP_BYTES, 0, 0, 0).valor()
+}
+
+/// Devolverla sin morirse. Si el proceso muere sin llamar a esto, el kernel la
+/// recupera igual -- pero un driver que la suelta deja el aparato disponible
+/// **antes** de morir, que es la diferencia entre reintentar y reiniciar.
+pub fn aparato_soltar() -> bool {
+    invoke(CURRENT_TASK, OP_APARATO_SOLTAR, 0, 0, 0).ok()
+}
+
 
 pub fn smp_censo(cuantos: u32) -> (u32, u32, bool) {
     let v = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, cuantos as u64, 0, 0).value;

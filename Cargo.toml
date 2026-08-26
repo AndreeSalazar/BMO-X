@@ -22,6 +22,12 @@ members = [
     # eso SE PRUEBA en el anfitrion. Y trae la linea que separa a BMO-X de un
     # sistema generalista: tablas estaticas SI, AML NUNCA.
     "platform/shared/bmo-firmware",
+    # El juez de la CESION: se puede dar este rango fisico a un proceso de Ring
+    # 3? Vive aqui y no en el kernel por lo mismo que `bmo-bex-gate`: un
+    # veredicto que solo se puede comprobar arrancando la maquina no es un
+    # veredicto comprobado -- y este es de los que no avisan al equivocarse,
+    # porque ceder una pagina de mas no da un fault: da una ventana.
+    "platform/shared/bmo-mmio-juicio",
     "platform/shared/bmo-channel",
     # La ciudad de neon del arranque: la dibuja la CPU, no se guarda.
     "platform/shared/bmo-ciudad",

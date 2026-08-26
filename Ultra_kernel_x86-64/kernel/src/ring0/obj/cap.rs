@@ -85,6 +85,28 @@ pub const KIND_REPLY: u8 = 0x71;
 /// proceso ajeno no es una autoridad del DIRECTOR: es tener su handle. Los tid
 /// no se reciclan (`next_tid` solo sube), asi que un handle viejo nunca acaba
 /// nombrando a otro proceso.
+/// **UNA VENTANA DE MMIO DE UN APARATO.** El suelo de Ring 3, pieza S1.
+///
+/// # Por que 0x74 y no un numero cualquiera
+///
+/// Porque `HANDLE_KIND_MASK` son **7 bits**: un `kind` por encima de `0x7F` no
+/// cabe en el handle y se codificaria truncado. Y 0x74 esta libre en las dos
+/// tablas --esta y la de `bmo-abi`-- que es lo minimo que se le puede pedir a un
+/// numero que vive en dos sitios.
+///
+/// # Lo que este kind concede HOY, y lo que no
+///
+/// ```text
+///    RIGHT_READ    si    -- la pagina se mapea SOLO LECTURA
+///    RIGHT_WRITE   no    -- escribir en un aparato es otra decision, y va
+///                           despues de que leer este probado en metal
+/// ```
+///
+/// *** El `object` de la capability es la **direccion virtual** donde quedo, no
+/// la fisica. Un proceso no necesita la fisica para leer sus registros, y darsela
+/// seria regalar un dato que solo sirve para construir un DMA.
+pub const KIND_MMIO: u8 = 0x74;
+
 pub const KIND_TAREA: u8 = 0x80;
 
 // Rights bits (mirror of bmo-abi BmoCap ids: bit N = capability N).
@@ -292,6 +314,13 @@ pub fn revoke_all(pid: u32) {
     // revienta no deja la maquina ciega.
     crate::ring0::obj::fb::process_died(pid);
     crate::ring0::obj::input::process_died(pid);
+    // ** Y la ventana de un aparato, por el mismo motivo exacto. Sin esta linea,
+    // un driver de Ring 3 que reventara dejaria su aparato marcado como ocupado
+    // **para siempre**, y volver a pedirlo pediria reiniciar la maquina.
+    //
+    // Es `R-APP6` --*muere sin llevarse a nadie*-- y aqui el "nadie" es el
+    // proximo que lo pida. Ver `obj/mmio.rs`.
+    crate::ring0::obj::mmio::process_died(pid);
     // Y el sonido, que ademas hay que CALLAR: un proceso que muere en mitad de
     // un tono deja el bit del altavoz puesto y no queda nadie vivo a quien
     // pedirle que lo quite. Un pitido continuo que solo para reiniciando es la

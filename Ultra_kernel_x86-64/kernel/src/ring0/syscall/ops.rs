@@ -383,6 +383,28 @@ pub(crate) const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
 /// Dos shells con dos vocabularios distintos son dos productos, y el que se usa
 /// todos los dias es el de Ring 3.
 pub(crate) const TASK_OP_AUDIO_CENSO: u64 = 0x28;
+
+// -- S1 del suelo de Ring 3: la ventana de un aparato ----------------------
+//
+// *** El argumento es QUE APARATO, y no una direccion. Un proceso que pudiera
+// nombrar una fisica estaria pidiendo ser el kernel: mapea donde viven las
+// tablas de pagina, se pone el bit U/S, quita el NX, y los siete muros caen a
+// la vez. Ver `obj/mmio.rs` y `docs/plan/PLAN_SUELO_RING3.md`.
+
+/// **Tomar la ventana de registros de un aparato.** `arg0` = cual, de la lista
+/// cerrada de `obj::mmio` (hoy: 0 = el controlador xHCI). Devuelve un handle
+/// `KIND_MMIO` con **solo lectura**.
+pub(crate) const TASK_OP_APARATO_TOMAR: u64 = 0x2E;
+/// Devolverla sin morirse. La pareja de [`TASK_OP_APARATO_TOMAR`], y por el
+/// mismo motivo que `PANTALLA_SOLTAR`: sin ella la unica forma de soltar un
+/// aparato seria terminar.
+pub(crate) const TASK_OP_APARATO_SOLTAR: u64 = 0x2F;
+
+/// Direccion virtual, **en el espacio del proceso**, donde quedo la ventana.
+pub(crate) const APARATO_OP_BASE: u64 = 0x01;
+/// Bytes mapeados. Hoy una pagina, y se pregunta en vez de suponerse: el dia que
+/// sean dos, el que lo pregunta no cambia.
+pub(crate) const APARATO_OP_BYTES: u64 = 0x02;
 /// Tomar lo que otro proceso me haya ofrecido. Espejo de `...::TASK_OP_TOMAR`.
 pub(crate) const TASK_OP_TOMAR: u64 = 0x1C;
 /// **Reclamar el SONIDO.** Devuelve un handle `KIND_AUDIO`: el derecho a hacer

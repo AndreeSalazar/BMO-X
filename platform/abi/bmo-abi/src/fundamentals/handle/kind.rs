@@ -65,6 +65,21 @@ pub enum HandleKind {
     /// Estuario BMO Channel: pagina compartida Ring 0 <-> Ring 3.
     /// El objeto que `CHANNEL_KICK`/`WAIT` resuelven en el kernel.
     Channel = 0x60,
+
+    // --- Aparatos crudos (0x70..0x7F) --------------------------------
+    /// **Una ventana de registros de un aparato, cedida a Ring 3.**
+    ///
+    /// Pieza S1 del suelo de `docs/plan/PLAN_SUELO_RING3.md`. La concede
+    /// `TASK_OP_APARATO_TOMAR`, y lo importante es lo que **no** hay:
+    /// ninguna operacion acepta una direccion fisica. El proceso nombra un
+    /// aparato de una lista cerrada y el kernel saca la fisica de su censo.
+    ///
+    /// [!] Aqui hay dos vecinos que este enum todavia no nombra --el kernel usa
+    /// `0x70` para su endpoint y `0x71` para su reply-- y por eso este empieza
+    /// en `0x74`: para no chocar con una tabla que ya existe aunque no este
+    /// escrita aqui. Que las dos hayan divergido es una deuda anotada, no una
+    /// licencia para ensancharla.
+    MmioWindow = 0x74,
 }
 
 impl HandleKind {
@@ -128,6 +143,7 @@ impl HandleKind {
             0x53 => Some(Self::Futex),
             0x54 => Some(Self::Port),
             0x60 => Some(Self::Channel),
+            0x74 => Some(Self::MmioWindow),
             _ => None,
         }
     }

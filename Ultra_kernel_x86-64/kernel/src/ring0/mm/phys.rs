@@ -28,6 +28,38 @@ static mut FREE_FRAMES: u64 = 0;
 static mut HINT: usize = 0;
 static LOCK: SpinLock = SpinLock::new("phys");
 
+// -- *** EL MAPA SE GUARDA, Y NO SE GUARDABA -------------------------------
+//
+// `init` recorria el mapa del arranque, marcaba los marcos libres y lo TIRABA.
+// Con eso basta para asignar memoria: el mapa de bits ya sabe que marco esta
+// libre. Lo que el mapa de bits **no puede contestar nunca** es la otra
+// pregunta, y es la que hace falta para ceder un aparato a Ring 3:
+//
+// ```text
+//    esta libre este marco?      lo contesta el mapa de bits
+//    es RAM esta direccion?      NO lo contesta: una direccion de RAM reservada
+//                                y una que no es memoria se ven IGUAL ahi
+// ```
+//
+// ** Y esa distincion es el veto que sostiene la cesion entera: si un rango que
+// se cede pisa RAM usable, Ring 3 gana una ventana a la memoria del kernel. Ver
+// `bmo_mmio_juicio::Veto::PisaRam`.
+//
+// Se guardan solo los tramos USABLES, que son los unicos contra los que se
+// juzga, y en el mismo tope que trae el arranque.
+const MAX_TRAMOS: usize = boot_context::MAX_MEMORY_ENTRIES;
+static mut TRAMOS: [bmo_mmio_juicio::Tramo; MAX_TRAMOS] =
+    [bmo_mmio_juicio::Tramo { base: 0, bytes: 0, es_ram: false }; MAX_TRAMOS];
+static mut TRAMOS_N: usize = 0;
+
+/// **Los tramos de RAM usable que declaro el arranque.**
+///
+/// Para el juez de la cesion, y no para asignar: quien asigna usa el mapa de
+/// bits. Ver la nota de arriba.
+pub fn tramos() -> &'static [bmo_mmio_juicio::Tramo] {
+    unsafe { core::slice::from_raw_parts(core::ptr::addr_of!(TRAMOS) as *const _, TRAMOS_N) }
+}
+
 extern "C" {
     /// End of the kernel image in memory (identity-mapped 1:1 at 0x400000).
     static __bss_end: u8;
@@ -78,9 +110,24 @@ pub fn init(ctx: &BootContext) {
     }
 
     // 2. Free the usable entries (kind == 1), clipped to [0, 4 GiB).
+    unsafe { TRAMOS_N = 0 };
     for e in ctx.memory_map[..ctx.memory_map_count as usize].iter() {
         if e.kind != 1 || e.size == 0 {
             continue;
+        }
+        // ** El tramo se apunta ENTERO y sin recortar al physmap, a proposito.
+        //
+        // El bucle de abajo recorta a `MAX_PHYS` porque el asignador no puede
+        // entregar lo que el physmap no alcanza. El JUEZ es otra pregunta: una
+        // direccion de RAM que este por encima de los 16 GiB sigue siendo RAM, y
+        // cederla seguiria siendo una ventana. Recortar aqui seria dejar un
+        // agujero por el que se cede memoria de verdad.
+        unsafe {
+            if TRAMOS_N < MAX_TRAMOS {
+                (*core::ptr::addr_of_mut!(TRAMOS))[TRAMOS_N] =
+                    bmo_mmio_juicio::Tramo { base: e.base, bytes: e.size, es_ram: true };
+                TRAMOS_N += 1;
+            }
         }
         let mut base = (e.base + PAGE - 1) & !(PAGE - 1);
         let mut end = (e.base + e.size) & !(PAGE - 1);
