@@ -955,6 +955,33 @@ pub const CABINA_VENTANA: u64 = 0x12;
 /// Es el barrido resumido en un numero: el que se mira primero.
 pub const CABINA_CLASES_FUERA: u64 = 0x13;
 
+/// **Cuantos hubo de esta clase en el ULTIMO SEGUNDO cerrado.**
+///
+/// # Por que hace falta si ya esta la cuenta total
+///
+/// Porque un total no puede decir *"esta pasando AHORA"*:
+///
+/// ```text
+///    cuenta = 400 FAULT de `vmm`   puede ser
+///                                    - una tanda de hace media hora, resuelta
+///                                    - cuatrocientos por segundo, ahora mismo
+/// ```
+///
+/// *** Y esas dos cosas piden lo contrario: la primera es forense y la segunda
+/// es una emergencia. **Un numero que no distingue una emergencia de un
+/// recuerdo solo sirve para contarla luego.**
+///
+/// El indice es el mismo que `CABINA_BARRIDO_CUENTA`: `(capa << 8) | severidad`.
+pub const CABINA_BARRIDO_RITMO: u64 = 0x14;
+
+/// Cuantas ventanas de un segundo se han cerrado desde el arranque.
+///
+/// [!] **Sin esto, un ritmo de cero es ambiguo**: puede ser *"no paso nada en el
+/// ultimo segundo"* o *"todavia no ha pasado un segundo entero"*. La primera es
+/// tranquilizadora y la segunda no dice nada, y un panel que las pinte igual
+/// esta mintiendo la mitad de las veces.
+pub const CABINA_VENTANAS: u64 = 0x15;
+
 pub const CABINA_TXT_MODULO: u64 = 0x00;
 
 pub const CABINA_TXT_MENSAJE: u64 = 0x01;

@@ -392,6 +392,12 @@ pub const CABINA_BARRIDO_CUENTA: u64 = 0x10;
 pub const CABINA_BARRIDO_ULTIMO: u64 = 0x11;
 pub const CABINA_VENTANA: u64 = 0x12;
 pub const CABINA_CLASES_FUERA: u64 = 0x13;
+/// **Cuantos hubo de esta clase en el ULTIMO SEGUNDO cerrado.** Ver
+/// `radar::ritmo`: un total no distingue una emergencia de un recuerdo.
+pub const CABINA_BARRIDO_RITMO: u64 = 0x14;
+/// Cuantas ventanas de un segundo se han cerrado. **Sin esto un ritmo de cero
+/// es ambiguo**: puede ser "no paso nada" o "todavia no ha pasado un segundo".
+pub const CABINA_VENTANAS: u64 = 0x15;
 
 /// Que texto se pide en `TASK_OP_CABINA_TEXTO`.
 pub const CABINA_TXT_MODULE: u64 = 0x00;
@@ -430,13 +436,15 @@ pub fn campo(campo: u64, n: u64) -> Option<u64> {
         CABINA_TOTAL => Some(event_total()),
         CABINA_LOST => Some(event_lost()),
         CABINA_AVAILABLE => Some(disponibles()),
-        // ** LOS CUATRO DEL BARRIDO. Van ANTES del `_`, que resuelve un evento
+        // ** LOS SEIS DEL BARRIDO. Van ANTES del `_`, que resuelve un evento
         // del anillo: estos NO son de un evento, son de todos los que hubo --
         // incluidos los que el anillo ya no tiene.
         CABINA_BARRIDO_CUENTA => Some(super::radar::cuenta((n >> 8) as usize, (n & 0xFF) as usize)),
         CABINA_BARRIDO_ULTIMO => Some(super::radar::ultimo((n >> 8) as usize, (n & 0xFF) as usize)),
         CABINA_VENTANA => Some(primer_seq_visible()),
         CABINA_CLASES_FUERA => Some(super::radar::clases_fuera_de_ventana(primer_seq_visible())),
+        CABINA_BARRIDO_RITMO => Some(super::radar::ritmo((n >> 8) as usize, (n & 0xFF) as usize)),
+        CABINA_VENTANAS => Some(super::radar::ventanas()),
         _ => {
             let ev = event_back(n as usize)?;
             match campo {

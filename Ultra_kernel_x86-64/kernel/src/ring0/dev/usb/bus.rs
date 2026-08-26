@@ -154,6 +154,15 @@ pub extern "C" fn bus_thread(_arg: u64) -> ! {
         // cerrojo del planificador puesto y no puede hacer el trabajo alli.
         // Ver `core/emergencia.rs`.
         crate::ring0::core::emergencia::atender();
+        // ** Y EL RITMO DEL RADAR, en el mismo turno y por la misma razon.
+        //
+        // Cerrar la ventana son 40 restas UNA VEZ POR SEGUNDO -- este hilo late
+        // 250 veces, asi que 249 de cada 250 vueltas esto es una comparacion y
+        // se va. El propio radar decide si toca: aqui solo se le da la hora.
+        crate::ring0::cabina::radar::cerrar_ventana(
+            scheduler::rdtsc(),
+            scheduler::tsc_freq(),
+        );
         unsafe {
             BUS_TURNS = BUS_TURNS.wrapping_add(1);
             // El latido se sella DESPUES de la vuelta, no antes: lo que

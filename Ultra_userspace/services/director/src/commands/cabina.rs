@@ -197,6 +197,59 @@ pub(crate) fn report_radar(s: &mut Output) {
     }
 
     s.byte(b'\n');
+
+    // -- *** EL RITMO: lo que esta pasando AHORA, y no lo que paso ---------
+    //
+    // La matriz de arriba son TOTALES, y un total no distingue una tanda de
+    // hace media hora de cuatrocientos por segundo ahora mismo. Las dos piden
+    // lo contrario: la primera es forense, la segunda es una emergencia.
+    //
+    // ** Se pinta APARTE y no como otra columna de la matriz a proposito: la
+    // pregunta "que hubo" y la pregunta "que esta pasando" se miran en
+    // momentos distintos, y mezclarlas en la misma rejilla hace que ninguna
+    // se lea.
+    let ventanas = bmo::cabina_campo(bmo::CABINA_VENTANAS, 0).unwrap_or(0);
+    if ventanas == 0 {
+        // [!] Cero ventanas NO es "todo tranquilo": es que todavia no ha
+        // pasado un segundo entero, o que el TSC no esta medido. Decirlo evita
+        // leer un panel vacio como una buena noticia.
+        s.with_ink(INK_ECHO);
+        s.text(b"    el ritmo todavia no se puede decir: ninguna ventana cerrada\n");
+        s.with_ink(INK_PLAIN);
+    } else {
+        let mut activas = 0u64;
+        for (c, capa) in CAPAS.iter().enumerate() {
+            for (v, sev) in SEVS.iter().enumerate() {
+                let r = bmo::cabina_campo(
+                    bmo::CABINA_BARRIDO_RITMO,
+                    ((c as u64) << 8) | v as u64,
+                )
+                .unwrap_or(0);
+                if r == 0 {
+                    continue;
+                }
+                activas += 1;
+                s.with_ink(if v >= 3 { INK_ERR } else { INK_ECHO });
+                s.text(b"    AHORA  ");
+                s.text(capa);
+                for _ in capa.len()..8 {
+                    s.byte(b' ');
+                }
+                s.text(sev);
+                s.text(b"  ");
+                s.dec(r);
+                s.text(b" por segundo\n");
+                s.with_ink(INK_PLAIN);
+            }
+        }
+        if activas == 0 {
+            s.with_ink(INK_GOOD);
+            s.text(b"    en el ultimo segundo no paso NADA de ninguna clase\n");
+            s.with_ink(INK_PLAIN);
+        }
+    }
+
+    s.byte(b'\n');
     if fuera == 0 {
         s.with_ink(INK_GOOD);
         s.text(b"    nada se ha escapado: todo lo que paso sigue en el anillo\n");
