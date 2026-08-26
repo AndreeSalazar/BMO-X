@@ -55,6 +55,89 @@ pub const CABECERA: usize = 48;
 pub const ENTRADA: usize = 48;
 /// La unica version mayor que este sistema lee.
 pub const VERSION_MAYOR: u16 = 1;
+
+// -- La version del ABI que admite este cargador -----------------------------
+//
+// *** POR QUE ESTOS CUATRO NUMEROS ESTAN AQUI Y NO SE PIDEN A `bmo-abi`.
+//
+// Porque este crate tiene CERO DEPENDENCIAS y ese es su punto entero: lo
+// consumen el toolchain (con `alloc`, en Windows) y Ring 0 (sin asignador, en
+// el metal). Depender de `bmo-abi` lo dejaria fuera del kernel, que es justo el
+// consumidor por el que existe.
+//
+// ** Y la flecha tampoco se puede invertir: `bmo-abi` es el CONTRATO y esto es
+// UNA PUERTA. Que el contrato dependa de una puerta impide que exista otra.
+//
+// [!] Asi que son dos copias de la misma decision, a sabiendas, **y atadas por
+// una prueba**: `bmo-abi/tests/gate_y_validador_no_se_separan.rs` le pregunta
+// lo mismo a las dos y exige la misma respuesta. Es la forma que ya usa este
+// arbol cuando la arquitectura no deja juntar dos reglas.
+
+/// Version MAYOR del ABI que implementa este sistema.
+pub const ABI_MAYOR: u8 = 2;
+/// Version MENOR mas alta que entiende del mayor en curso.
+pub const ABI_MENOR: u8 = 0;
+/// El mayor anterior, que se sigue admitiendo.
+pub const ABI_MAYOR_HEREDADO: u8 = 1;
+/// Y su menor mas alta.
+pub const ABI_MENOR_HEREDADO: u8 = 0;
+
+/// **Puede correr aqui un binario que pide `mayor.menor`?**
+///
+/// # [!] LA GRIETA QUE ESTO CIERRA (2026-08-26)
+///
+/// Aqui ponia, escrito a mano dentro de la comprobacion:
+///
+/// ```text
+///    if !((abi_mayor == 1 || abi_mayor == 2) && abi_menor == 0)
+/// ```
+///
+/// `abi_menor == 0` **no es aditivo: es exacto.** Y `bmo-abi` declara justo lo
+/// contrario en la misma frase que define la regla:
+///
+/// > *"Major versions are incompatible; minor versions are additive."*
+///
+/// *** O sea que el dia que el ABI subiera a `2.1` --el primer dia que se
+/// "mejorase" de la forma que el propio contrato declara segura-- un `.bex`
+/// compilado contra `2.1` habria sido **rechazado por el cargador** mientras el
+/// contrato decia que tenia que entrar.
+///
+/// No habia hecho dano porque **nadie ha subido el menor nunca**. Es el perfil
+/// exacto de fallo que este arbol ya conoce: dos sitios que dicen lo mismo, uno
+/// se queda atras, y el dia que se separan no lo nota nadie.
+pub const fn abi_admisible(mayor: u8, menor: u8) -> bool {
+    admisible_con(mayor, menor, ABI_MAYOR, ABI_MENOR, ABI_MAYOR_HEREDADO, ABI_MENOR_HEREDADO)
+}
+
+/// **La misma regla, separada de los numeros de hoy.**
+///
+/// # *** POR QUE ESTA PARTIDA EN DOS, Y NO ES ESTILO
+///
+/// Porque la version de hoy es `2.0`, o sea que **el menor maximo es cero**. Una
+/// prueba que solo pueda preguntar por las versiones que existen no distingue
+/// `menor <= 0` de `menor == 0`: las dos contestan exactamente lo mismo en todo
+/// el espacio de versiones reales.
+///
+/// > Lo que separa dos reglas no es el caso que se usa: es el que todavia no.
+///
+/// Con los limites como argumentos, una prueba puede preguntar *"y si el menor
+/// maximo fuera 2, entraria un binario de 2.1?"* -- que es la pregunta que la
+/// grieta del 26-08 habria contestado mal, y que ninguna cifra de hoy formula.
+///
+/// [!] Este arbol ya tiene la cicatriz de lo contrario: nueve pruebas de coma
+/// flotante en verde y **ninguna que ejecute la ruta**. Una prueba que no puede
+/// ver el fallo no es una prueba, es una firma.
+pub const fn admisible_con(
+    mayor: u8,
+    menor: u8,
+    mayor_max: u8,
+    menor_max: u8,
+    mayor_heredado: u8,
+    menor_heredado: u8,
+) -> bool {
+    (mayor == mayor_max && menor <= menor_max)
+        || (mayor == mayor_heredado && menor <= menor_heredado)
+}
 /// x86-64.
 pub const ARCH_X86_64: u8 = 0x01;
 /// Little-endian.
@@ -325,7 +408,7 @@ pub fn revisar(prologo: &[u8], tam_fichero: usize) -> Result<Revisada<'_>, Falta
     if cpu != 0 {
         return Err(Falta::ExtensionDeCpuQueNoSePreserva);
     }
-    if !((abi_mayor == 1 || abi_mayor == 2) && abi_menor == 0) {
+    if !abi_admisible(abi_mayor, abi_menor) {
         return Err(Falta::OtraVersionDelAbi);
     }
     if flags & FLAG_EJECUTABLE == 0 {
