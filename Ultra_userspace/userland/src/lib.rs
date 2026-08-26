@@ -162,6 +162,9 @@ pub const APARATO_XHCI: u64 = 0;
 pub const OP_TOMAR: u32 = 0x1C;
 /// Operacion sobre un bloque PROPIO: ofrecer un trozo a otra tarea.
 pub const MEM_OP_OFRECER: u32 = 0x03;
+/// **Donde vive de verdad el bloque**, para escribirlo en un descriptor de DMA.
+/// Solo el dueno. Ver [`crate::sys::memoria_fisica`].
+pub const MEM_OP_FISICA: u32 = 0x04;
 /// **Quien me lanzo**, como TID. `0` si nadie -- ver [`crate::sys::mi_padre`].
 pub const OP_MI_PADRE: u32 = 0x26;
 

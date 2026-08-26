@@ -72,6 +72,40 @@ pub const MEM_OP_BASE: u64 = 0x01;
 /// Cuantos bytes se le han entregado a este proceso.
 pub const MEM_OP_BYTES: u64 = 0x02;
 
+/// **La direccion FISICA del bloque.** Pieza S2 del suelo de Ring 3.
+///
+/// # Para que sirve, y para que NO
+///
+/// Un driver de Ring 3 que quiera hablar por DMA tiene que escribir en un
+/// descriptor la direccion **que ve la tarjeta**, y la tarjeta no pasa por la
+/// MMU: ve fisicas. Sin esto no hay forma de construir un anillo de recepcion,
+/// que es literalmente el paso 2 de `docs/maestro/RED_MAESTRO.md`.
+///
+/// ** Y no vale para nada mas. Una fisica es UN NUMERO: solo es peligrosa si
+/// algo la acepta como orden, y en este sistema lo unico que lo haria es un
+/// aparato haciendo DMA -- que es un problema que ya existe y no uno nuevo. Ver
+/// la parte 4 de `docs/plan/PLAN_SUELO_RING3.md`.
+///
+/// # *** LAS DOS COSAS QUE HACEN QUE ESTE NUMERO NO SEA UNA MENTIRA
+///
+/// 1. **El bloque es CONTIGUO.** Sale de `alloc_frames_contig`, asi que la
+///    fisica del primer marco mas un desplazamiento es la fisica de ese
+///    desplazamiento. Si los marcos estuvieran sueltos, contestar "la fisica del
+///    bloque" seria cierto para la primera pagina y falso para el resto -- y el
+///    fallo lo pagaria la tarjeta escribiendo en memoria de otro.
+///
+/// 2. **No se mueve.** Hoy nada mueve un marco despues de asignarlo: no hay
+///    intercambio a disco, ni compactacion, ni paginas grandes que se partan.
+///    ** Y por eso justamente se escribe: la promesa cuesta CERO hoy, y el dia
+///    que alguien anada cualquiera de esas tres, esta linea es lo que le dice
+///    que hay un contrato que respetar. Una propiedad verdadera por accidente
+///    deja de serlo sin que nadie lo note.
+///
+/// [!] Solo la contesta el DUENO del bloque, porque es una operacion sobre su
+/// propia capability. Saber donde vive la memoria del vecino no le hace falta a
+/// nadie.
+pub const MEM_OP_FISICA: u64 = 0x04;
+
 pub const ERROR_TOO_BIG: u32 = 0xE001;
 pub const ERROR_NO_RAM: u32 = 0xE002;
 pub const ERROR_TOO_MANY: u32 = 0xE003;
@@ -499,6 +533,22 @@ pub fn operation(base: u64, operation: u64, pid: u32) -> Option<u64> {
     match operation {
         MEM_OP_BASE => Some(base),
         MEM_OP_BYTES => Some(handed_over_by(pid)),
+        // ** `None` y no `Some(0)` si no se encuentra el bloque: cero es una
+        // fisica valida --el primer marco de la maquina-- asi que devolverlo
+        // como "no lo se" seria mandar a un driver a programar un DMA contra el
+        // vector de interrupciones. `None` sale por la puerta como "esa
+        // operacion no existe aqui", que es lo que de verdad pasa.
+        // ** SE REUSA `fisica_de`, que ya existia para el prestamo del audio.
+        //
+        // Y trae de regalo lo unico que hacia falta y no se ve: comprueba que
+        // `[va, va+len)` **cae dentro del bloque**. Una version escrita a mano
+        // aqui habria devuelto la fisica del primer marco sin mirar el largo, y
+        // eso es correcto para una pagina y falso para un anillo de DMA.
+        //
+        // `len = 1` porque lo que se pregunta es "donde empieza": el largo del
+        // bloque ya lo contesta `MEM_OP_BYTES`, y pedir dos numeros por dos
+        // caminos distintos es como se acaban desacoplando.
+        MEM_OP_FISICA => fisica_de(pid, base, 1),
         _ => None,
     }
 }

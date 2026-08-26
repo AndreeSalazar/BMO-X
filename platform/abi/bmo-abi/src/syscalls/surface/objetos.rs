@@ -517,6 +517,35 @@ pub const MEM_OP_BASE: u64 = 0x01;
 /// Cuantos bytes se le han entregado en total a este proceso.
 pub const MEM_OP_BYTES: u64 = 0x02;
 
+/// **La direccion FISICA del bloque.** Pieza S2 del suelo de Ring 3.
+///
+/// # Para que sirve, y para que NO
+///
+/// Un driver de Ring 3 que hable por DMA tiene que escribir en un descriptor la
+/// direccion **que ve la tarjeta**, y la tarjeta no pasa por la MMU: ve fisicas.
+/// Sin esto no hay forma de construir un anillo de recepcion, que es el paso 2
+/// de `docs/maestro/RED_MAESTRO.md`.
+///
+/// ** Y no vale para nada mas. Una fisica es UN NUMERO: solo es peligrosa si
+/// algo la acepta como orden, y aqui lo unico que lo haria es un aparato
+/// haciendo DMA -- un problema que ya existe y no uno nuevo.
+///
+/// # *** LAS DOS COSAS QUE HACEN QUE ESTE NUMERO NO SEA UNA MENTIRA
+///
+/// 1. **El bloque es CONTIGUO** (`alloc_frames_contig`), asi que la fisica del
+///    primer marco mas un desplazamiento es la fisica de ese desplazamiento. Con
+///    los marcos sueltos, este numero seria cierto para la primera pagina y
+///    falso para el resto -- y lo pagaria la tarjeta, escribiendo en memoria de
+///    otro.
+/// 2. **No se mueve.** Hoy nada mueve un marco: no hay intercambio, ni
+///    compactacion, ni paginas grandes que se partan. La promesa cuesta cero y
+///    se escribe **por eso**: una propiedad verdadera por accidente deja de
+///    serlo sin que nadie lo note.
+///
+/// [!] Solo la contesta el DUENO del bloque: es una operacion sobre su propia
+/// capability. Saber donde vive la memoria del vecino no le hace falta a nadie.
+pub const MEM_OP_FISICA: u64 = 0x04;
+
 /// `INVOKE` operations accepted by a channel (estuary) capability.
 pub const CHANNEL_OP_GET_SEQ: u64 = 0x01;
 
