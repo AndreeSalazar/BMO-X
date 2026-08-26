@@ -29,7 +29,9 @@
 
 use crate::ring0::cabina;
 
-/// **Walks the untaken ports and reports the first playback pipe it finds.**
+/// **Walks the enumerated SLOTS and reports the first playback pipe it finds.**
+///
+/// [!] Decia *"the untaken ports"* y por eso no encontraba nada: ver el cuerpo.
 ///
 /// Returns `true` if it found one. Everything it learns goes to CABINA, because
 /// the point of this step is a photograph that can be compared against what the
@@ -40,39 +42,37 @@ use crate::ring0::cabina;
 /// Touches xHC MMIO: has to run with the kernel CR3 loaded. The `audio` command
 /// goes through [`super::pump_bus`]'s wrapper for that reason.
 pub unsafe fn censar() -> bool {
-    let ctrl = match bmo_xhci::controller() {
-        Some(c) => c,
-        None => {
-            cabina::warn("audio", "no hay controlador xHCI: no hay a quien preguntar", 0);
-            return false;
-        }
-    };
-    let max_ports = ctrl.max_ports;
-
+    // ** POR SLOTS, NO POR PUERTOS LIBRES (2026-08-25, medido en el Ryzen).
+    //
+    // Esto recorria `0..max_ports` saltandose los que HID tuviera tomados, y
+    // llamaba a `direccionar_puerto`. En el metal contesto:
+    //
+    //    audio: puertos libres mirados, y ninguno reproduce  =0
+    //
+    // *** CERO. No es que mirara y no encontrara: **no llego a mirar nada.**
+    //
+    // El audifono YA estaba enumerado --el volumen funciona desde hace dias, y
+    // ese camino lo encuentra-- asi que tenia slot, su puerto no estaba libre, y
+    // re-direccionarlo no se puede.
+    //
+    // ```text
+    //    el VOLUMEN        recorria slots 1..8   -> lo encontraba
+    //    la REPRODUCCION   recorria puertos      -> no lo veia nunca
+    // ```
+    //
+    // ** Dos caminos que buscan el mismo aparato mirando cosas distintas. Ahora
+    // los dos recorren slots, y **usan el mismo lector de descriptores** --
+    // `uaudio::leer_configuracion`-- porque dos lectores del mismo descriptor
+    // son dos sitios donde ese descriptor se puede leer distinto.
+    let mut buf = [0u8; crate::ring0::dev::uaudio::DESCRIPTOR_MAX];
     let mut mirados = 0u64;
-    for port in 0..max_ports {
-        // ** LOS PUERTOS DE OTRO NO SE TOCAN. Ver la cabecera.
-        let ocupado = {
-            let hid = &*core::ptr::addr_of!(super::HID);
-            hid.puertos().tomado(port)
-        };
-        if ocupado {
+
+    for slot in 1u8..=8 {
+        let Some(n) = crate::ring0::dev::uaudio::leer_configuracion(slot, &mut buf) else {
             continue;
-        }
-        let slot = match bmo_uhid::enumera::direccionar_puerto(port) {
-            Some(s) => s,
-            None => continue,
         };
         mirados += 1;
-        let mut cfg = [0u8; bmo_uhid::enumera::MAX_CFG];
-        let largo = match bmo_uhid::enumera::leer_descriptores(slot, &mut cfg) {
-            Some((_, n)) => n,
-            None => {
-                cabina::warn("audio", "un aparato no dejo leer su descriptor, puerto", port as u64);
-                continue;
-            }
-        };
-        let Some(p) = bmo_uaudio::stream::find_playback(&cfg[..largo]) else {
+        let Some(p) = bmo_uaudio::stream::find_playback(&buf[..n]) else {
             continue;
         };
 
@@ -100,16 +100,19 @@ pub unsafe fn censar() -> bool {
             }
         }
         cabina::count("audio", "el endpoint isocrono es el DCI", p.dci as u64);
-        // *** Y AQUI SE ABRE EL TUBO (A1, 25-08). Hasta hoy esta funcion
-        // terminaba con los seis numeros apuntados y **sin haberle dicho al
-        // aparato que se pusiera en su alt**, asi que el endpoint no existia.
+        cabina::count("audio", "y vive en el slot", slot as u64);
+        // *** Y AQUI SE ABRE EL TUBO (A1).
         abrir(slot, &p);
         return true;
     }
 
-    // Decir "no hay" y decir "no mire" son cosas distintas, y sin el numero de
-    // puertos mirados se ven igual.
-    cabina::count("audio", "puertos libres mirados, y ninguno reproduce", mirados);
+    // ** DECIR "no hay" Y DECIR "no mire" SON COSAS DISTINTAS, y sin el numero
+    // de slots mirados se ven igual. Esa distincion es la que resolvio este
+    // fallo: el `=0` de la version anterior dijo exactamente donde estaba.
+    cabina::count("audio", "slots mirados, y ninguno reproduce", mirados);
+    if mirados == 0 {
+        cabina::warn("audio", "ningun slot contesto su descriptor: no hay nada enumerado", 0);
+    }
     false
 }
 

@@ -36,6 +36,7 @@ juntas para que, si algo sale mal, se sepa de un vistazo que hay dentro.
 | 14 | **el TUBO de audio (A1)** | `audio` dice `TUBO ABIERTO` | dice que no esta abierto |
 | 15 | **el silencio** | `audio silencio` -> `encoladas` SUBE, `tarde` = 0 | `tarde` sube |
 | 16 | **el bufer prestado (A4)** | `audio` ensena `huecos` aparte de `tarde` | -- |
+| 17 | **el censo de audio POR SLOTS** | `audio` encuentra el audifono | `slots mirados =0` |
 
 ⚠ **Las tres que pueden dejarte sin maquina son la 1, la 2 y la 8**, y las tres
 fallan de forma distinta: las dos primeras no arrancan, la tercera arranca y no
@@ -387,6 +388,46 @@ reentrancia. Lo que hay que mirar es la ultima linea:
 [!] Si sale la segunda, **traer el numero y la fila**: dice de que capa y de que
 gravedad se perdieron sucesos, y eso ya acota donde mirar aunque el detalle no
 exista. Y en ese caso `cabina` a secas ya no basta -- hay que volcar antes.
+
+---
+
+# 4.5 -- ★★ LO QUE EL RYZEN YA CONTESTO (primera vuelta, 25-08)
+
+```text
+   nucleos    6 fisicos
+   hilos     12 logicos       y SIN fila de duda
+   en pie     1 de 12
+```
+
+## Lo que esas tres lineas cierran de golpe
+
+★★ **La fila de `nucleos` no lleva nota de duda, y `duda_nota()` solo calla si
+los CUATRO bits estan a cero.** Asi que de un tiron queda demostrado:
+
+| lo que se prueba | por que |
+|---|---|
+| el careo **corrio** | si no, el bit `SIN_MEDIR` daria texto |
+| la hoja **0x0B contesto** | `hilos_por_nucleo` se MIDIO, no se supuso |
+| las dos hojas de CPUID **coinciden** | el bit `CPUID` esta a cero |
+| **la MADT coincide** con CPUID | el bit `MADT` esta a cero -- y eso confirma en metal el `leer_madt` que salio del kernel a `bmo-firmware` (C6) |
+
+** Y que la maquina ARRANQUE descarta las dos primeras de la lista de 0.0: **W^X
+y SMAP no la tumbaron.**
+
+⚠ **Lo que sigue SIN probar de esa lista**: `EJECUTAR` con autoridad (C4).
+`audio` y `save` son ordenes internas, no lanzamientos. **Basta con escribir
+`calc` una vez.**
+
+## Y el audio: el `=0` que resolvio el fallo
+
+```text
+   audio: puertos libres mirados, y ninguno reproduce  =0
+```
+
+★★ **Cero no era "mire y no habia": era "no llegue a mirar".** Esa distincion la
+da esa linea a proposito, y fue la que lo resolvio -- el audifono ya estaba
+enumerado, tenia slot, y el censo recorria PUERTOS LIBRES. Arreglado el mismo
+dia: ahora recorre slots, como el camino del volumen.
 
 ---
 

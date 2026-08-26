@@ -103,7 +103,7 @@ pub fn buscar() {
 
 /// Cuanto descriptor de configuracion cabe. **512 y no 256**: ver
 /// [`leer_configuracion`].
-const DESCRIPTOR_MAX: usize = 512;
+pub(crate) const DESCRIPTOR_MAX: usize = 512;
 
 /// Lee el descriptor de configuracion ENTERO de un slot, en dos pasos.
 ///
@@ -122,7 +122,17 @@ const DESCRIPTOR_MAX: usize = 512;
 /// Asi que primero se piden los **9 bytes de la cabecera**, que traen
 /// `wTotalLength`, y luego se pide exactamente eso. Es lo que hace cualquier
 /// pila USB, y por el mismo motivo.
-fn leer_configuracion(slot: u8, buf: &mut [u8; DESCRIPTOR_MAX]) -> Option<usize> {
+/// **Se comparte con el censo de reproduccion a proposito (2026-08-25).**
+///
+/// Los dos caminos del audio buscan el MISMO aparato, y hasta hoy lo buscaban de
+/// formas distintas: este por slots --aparatos ya enumerados-- y el de
+/// reproduccion por puertos libres. En el Ryzen eso dio `puertos libres mirados
+/// =0`: el audifono ya tenia slot, asi que su puerto no estaba libre y **el
+/// censo de reproduccion no llego a mirarlo nunca**.
+///
+/// *** Dos lectores del mismo descriptor son dos sitios donde ese descriptor se
+/// puede leer distinto. Hay uno.
+pub(crate) fn leer_configuracion(slot: u8, buf: &mut [u8; DESCRIPTOR_MAX]) -> Option<usize> {
     let mut cab = [0u8; 9];
     let n = unsafe { bmo_xhci::get_config_descriptor(slot, 0, &mut cab) };
     if n < 9 {
