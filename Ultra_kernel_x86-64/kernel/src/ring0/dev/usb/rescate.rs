@@ -84,13 +84,87 @@ pub(super) fn tecla_del_dueno(t: Option<u8>) -> Option<u8> {
 fn rescue_owner() -> bool {
     match crate::ring0::obj::fb::rescue() {
         Some(pid) => {
-            // Input goes BEHIND the screen: if only one could be done, the one
-            // that matters is the one that gives the picture back.
             let _ = crate::ring0::obj::input::release(pid);
             crate::ring0::cabina::warn("input", "entrada RESCATADA por el teclado", pid as u64);
+            unsafe { PRIMER_INTENTO = 0 };
             true
         }
-        // Nobody to rescue: the ESC belongs to whoever pressed it.
+        // Nadie a quien rescatar. Y hasta el 2026-08-26 eso era el final de la
+        // historia -- ver `segunda_llamada`.
+        None => segunda_llamada(),
+    }
+}
+
+/// Cuando se pidio ayuda y no habia a quien rescatar. `0` = no hay intento vivo.
+static mut PRIMER_INTENTO: u64 = 0;
+
+/// Segundos que dura la ventana de la segunda llamada.
+///
+/// Tres: bastante para pulsar el atajo dos veces a conciencia, poco para que dos
+/// pulsaciones separadas por un cafe cuenten como una insistencia.
+const VENTANA_S: u64 = 3;
+
+/// **LA SEGUNDA LLAMADA: `Ctrl+Alt+Esc` otra vez, y esta SI echa al escritorio.**
+///
+/// # El agujero que esto cierra, y lo conto el metal
+///
+/// El 2026-08-26 el dueno abrio la calculadora, tecleo `10 * 60 =`, el motor de
+/// COBOL se murio, y **`Ctrl+Alt+Esc` no hizo nada**. No era un bug: `fb::rescue`
+/// se niega a echar al PRIMER dueno --el escritorio-- porque *"seria la tecla de
+/// romper la maquina"*.
+///
+/// *** A ese razonamiento le faltaba un dato: **`run_shell` no se para nunca.**
+/// Es un bucle que no retorna y que sigue leyendo el teclado mientras el
+/// escritorio corre. Hay donde aterrizar, asi que quitarle la pantalla al
+/// escritorio no es romper la maquina -- es volver al sitio del que se salio.
+///
+/// # Por que DOS pulsaciones y no una
+///
+/// Porque las dos cosas son verdad a la vez:
+///
+/// ```text
+///    una pulsacion    puede ser un error, y tirar el escritorio por un error
+///                     es exactamente lo que la version anterior evitaba
+///    dos seguidas     ya no es un error: es alguien diciendo "de verdad"
+/// ```
+///
+/// La primera no hace nada visible salvo apuntar la hora y dejarlo dicho en
+/// CABINA. La segunda, dentro de la ventana, da la patada.
+///
+/// [!] Y el ESC **se traga igual en la primera**, aunque no rescate a nadie. Si
+/// se entregara, la aplicacion recibiria un ESC que el usuario no le mando -- y
+/// en un dialogo eso es un "cancelar" que nadie pulso.
+fn segunda_llamada() -> bool {
+    use crate::ring0::task::scheduler;
+    let ahora = scheduler::rdtsc();
+    let hz = scheduler::tsc_freq();
+    let anterior = unsafe { PRIMER_INTENTO };
+    // Sin TSC medido no hay ventana que medir. Se trata como primera llamada
+    // siempre: **mejor no dar la patada que darla sin querer.** Es la regla de
+    // los jueces de esta casa -- cuando falta un dato, la respuesta es la que no
+    // asume.
+    let dentro = hz != 0 && anterior != 0 && ahora.wrapping_sub(anterior) < hz * VENTANA_S;
+    if !dentro {
+        unsafe { PRIMER_INTENTO = ahora };
+        crate::ring0::cabina::warn(
+            "input",
+            "la pantalla la tiene el ESCRITORIO: pulsa otra vez para echarlo",
+            0,
+        );
+        // Se traga el ESC igual. Ver la nota de arriba.
+        return true;
+    }
+    unsafe { PRIMER_INTENTO = 0 };
+    match crate::ring0::obj::fb::rescate_de_emergencia() {
+        Some(pid) => {
+            let _ = crate::ring0::obj::input::release(pid);
+            crate::ring0::cabina::warn(
+                "input",
+                "SEGUNDA llamada: el escritorio pierde la pantalla",
+                pid as u64,
+            );
+            true
+        }
         None => false,
     }
 }

@@ -156,6 +156,9 @@ pub mod core {
     /// write to. It owns the panel MINUS the band at the bottom, which is
     /// CABINA's; without that split the two erased each other.
     pub mod dashboard;
+    /// **LA PATADA**: cuando el kernel deja de fiarse de Ring 3 y recupera la
+    /// maquina por su cuenta. Es POLITICA, no driver.
+    pub mod emergencia;
     /// **THE DESKTOP SUPERVISOR** -- launch it, notice it died, decide about
     /// retrying. The launching happens at boot; the DECIDING does not, which
     /// is why it is no longer inside the file named after the boot phases.
