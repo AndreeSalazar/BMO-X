@@ -92,6 +92,99 @@ static CUENTA: [[AtomicU32; SEVERIDADES]; CAPAS] = [FILA32; CAPAS];
 /// El `seq` del ultimo de cada clase. `0` = no hubo ninguno.
 static ULTIMO: [[AtomicU64; SEVERIDADES]; CAPAS] = [FILA64; CAPAS];
 
+// -- *** EL RITMO: cuantos POR SEGUNDO, y no cuantos desde el arranque -----
+//
+// # El agujero que esto tapa, y no se ve mirando el barrido
+//
+// `CUENTA` no gira nunca, y esa es su virtud: lo que paso sigue contado. Pero
+// tiene el defecto exacto de esa virtud -- **un total no puede decir "esta
+// pasando AHORA"**:
+//
+// ```text
+//    cuenta = 400 FAULT de `vmm`     puede ser
+//                                      - una tanda de hace media hora, resuelta
+//                                      - cuatrocientos por segundo, ahora mismo
+// ```
+//
+// *** Y esas dos cosas piden lo contrario: la primera es forense --se mira
+// despues-- y la segunda es una emergencia. **Un numero que no distingue una
+// emergencia de un recuerdo no sirve para actuar**, solo para contarlo luego.
+//
+// Es literalmente el limite que tenia la patada: sabe reaccionar a UN suceso
+// (`vmm::caminable` falla), y no sabe ver una tormenta.
+//
+// # Como se saca sin poner nada en el camino
+//
+// Restando. Una vez por segundo se copia `CUENTA` a `ANTERIOR` y la diferencia
+// es `RITMO`. **Son 40 restas por segundo**: al lado del `fetch_add` que ya se
+// paga en cada evento, esto es gratis.
+//
+// [!] Y lo hace el hilo del bus, no el camino del evento. Es la misma regla de
+// siempre: quien ve el hecho lo APUNTA; quien puede pensar lo recoge en su
+// turno. Ver `dev/usb/bus.rs`.
+
+/// Lo que valia `CUENTA` en el ultimo cierre de ventana.
+static ANTERIOR: [[AtomicU32; SEVERIDADES]; CAPAS] = [FILA32; CAPAS];
+/// Cuantos hubo de cada clase en el ULTIMO segundo cerrado.
+static RITMO: [[AtomicU32; SEVERIDADES]; CAPAS] = [FILA32; CAPAS];
+/// El TSC del ultimo cierre. `0` = todavia no se ha cerrado ninguna ventana.
+static ULTIMO_CIERRE: AtomicU64 = AtomicU64::new(0);
+/// Cuantas ventanas se han cerrado. Sin esto, un ritmo de cero no distingue
+/// *"no paso nada"* de *"la ventana no ha llegado a cerrarse todavia"*.
+static VENTANAS: AtomicU32 = AtomicU32::new(0);
+
+/// **Cierra la ventana del segundo, si ha pasado uno.** Devuelve `true` si la
+/// cerro.
+///
+/// `hz` es la frecuencia del TSC. **Si vale cero no se cierra nada**: sin reloj
+/// medido no hay segundo que medir, y un ritmo calculado sobre un intervalo
+/// desconocido es un numero inventado con cara de dato. Es la regla de los
+/// jueces de esta casa -- cuando falta el dato, la respuesta es la que no asume.
+pub fn cerrar_ventana(ahora: u64, hz: u64) -> bool {
+    if hz == 0 {
+        return false;
+    }
+    let previo = ULTIMO_CIERRE.load(Ordering::Relaxed);
+    if previo == 0 {
+        // La primera vez solo se marca el instante: no hay intervalo anterior
+        // contra el que restar, y publicar el total del arranque como si fuera
+        // un ritmo diria que la maquina esta ardiendo en su primer segundo.
+        ULTIMO_CIERRE.store(ahora, Ordering::Relaxed);
+        return false;
+    }
+    if ahora.wrapping_sub(previo) < hz {
+        return false;
+    }
+    for c in 0..CAPAS {
+        for s in 0..SEVERIDADES {
+            let total = CUENTA[c][s].load(Ordering::Relaxed);
+            let antes = ANTERIOR[c][s].swap(total, Ordering::Relaxed);
+            RITMO[c][s].store(total.wrapping_sub(antes), Ordering::Relaxed);
+        }
+    }
+    ULTIMO_CIERRE.store(ahora, Ordering::Relaxed);
+    VENTANAS.fetch_add(1, Ordering::Relaxed);
+    true
+}
+
+/// Cuantos eventos de esta clase hubo en el **ultimo segundo cerrado**.
+pub fn ritmo(capa: usize, sev: usize) -> u64 {
+    match RITMO.get(capa).and_then(|f| f.get(sev)) {
+        Some(c) => c.load(Ordering::Relaxed) as u64,
+        None => 0,
+    }
+}
+
+/// Cuantas ventanas de un segundo se han cerrado desde el arranque.
+///
+/// ** Se publica porque **`ritmo() == 0` es ambiguo sin esto**: puede ser "no
+/// paso nada en el ultimo segundo" o "todavia no ha pasado un segundo entero".
+/// La primera es tranquilizadora y la segunda no dice nada, y un panel que las
+/// pinte igual esta mintiendo la mitad de las veces.
+pub fn ventanas() -> u64 {
+    VENTANAS.load(Ordering::Relaxed) as u64
+}
+
 /// **Apunta un evento en el barrido.** Se llama desde `record` **antes** del
 /// cerrojo del anillo, y por eso cuenta tambien lo que el anillo va a perder.
 ///

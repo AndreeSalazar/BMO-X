@@ -609,6 +609,11 @@ pub const CABINA_VENTANA: u64 = 0x12;
 ///
 /// Es el barrido resumido en un numero: el que se mira primero.
 pub const CABINA_CLASES_FUERA: u64 = 0x13;
+/// Cuantos hubo de esta clase en el ULTIMO SEGUNDO. Indice `(capa << 8) | sev`.
+/// Un total no distingue una emergencia de un recuerdo.
+pub const CABINA_BARRIDO_RITMO: u64 = 0x14;
+/// Cuantas ventanas de un segundo van. Sin esto un ritmo de 0 es ambiguo.
+pub const CABINA_VENTANAS: u64 = 0x15;
 
 pub const CABINA_TXT_MODULO: u64 = 0x00;
 pub const CABINA_TXT_MENSAJE: u64 = 0x01;
