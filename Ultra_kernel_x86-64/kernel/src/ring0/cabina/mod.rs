@@ -31,7 +31,7 @@
 
 use cabina_core::{TelemetrySnapshot, Event, Severity, Layer, Entity};
 use cabina_core::event::Fmt;
-use crate::ring0::core::splash::splash_dashboard_log_color;
+use crate::ring0::core::splash::{splash_dashboard_log_color, DASH_LOG_W};
 
 /// THE RECORDER: the event ring everything else here reads from.
 /// EL BARRIDO: lo que no se escapa de ningun filtro. Ver su cabecera.

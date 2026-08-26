@@ -137,7 +137,34 @@ pub fn render_hud() {
                 r.txt(" t"); r.hex(ev.tick_ns, 5);
                 r.txt(" "); r.pad(ev.severity.name(), 5);
                 r.txt(" "); r.txt(ev.module_str()); r.txt(": ");
-                r.txt(ev.msg_str());
+
+                // *** LA COLA SE COMPONE PRIMERO, AUNQUE SE PINTE LA ULTIMA.
+                //
+                // Hasta el 2026-08-25 esto escribia mensaje, luego numero, y
+                // dejaba que el ancho de la fila cortara donde llegase. El corte
+                // cae SIEMPRE por la derecha, o sea siempre encima del numero --
+                // que es la unica parte de la linea que no se puede deducir
+                // leyendo el codigo. En el Ryzen salio asi:
+                //
+                // ```text
+                //    FAULT vmm: una entrada de PD no apunta a memoria alc..=1100
+                //    FAULT ring3: fault en CPL3: tarea eliminada, BMO ...  =4001
+                // ```
+                //
+                // Los dos numeros estaban cortados y ninguno de los dos lo
+                // decia: `=1100` son los cuatro primeros digitos de una entrada
+                // de 16, y `=4001` los cinco primeros del `rip` que mato a la
+                // calculadora. Se leen como valores completos, y como valores
+                // completos mandan a mirar donde no es.
+                //
+                // ** El reparto, y el orden en que cada pieza cede:
+                //
+                // ```text
+                //    el VALOR      no cede nunca. Es el motivo de la linea
+                //    el SITIO      cede primero: el fichero se puede buscar
+                //    el MENSAJE    cede el ultimo, y con `~` para que se vea
+                // ```
+                let mut cola = Buf::new();
                 // El `value` del evento se guardaba y se TIRABA al pintar. Es
                 // justo el dato duro (direccion MMIO, slot, codigo de estado)
                 // que convierte una frase en una pista.
@@ -147,7 +174,7 @@ pub fn render_hud() {
                 // `400DF4`, `100` en vez de `64`, y una direccion con su offset
                 // dentro de la pagina -- que es literalmente el bug de la
                 // relocation partida, dicho por la propia linea.
-                if ev.value != 0 { r.txt(" ="); r.value_of(&ev); }
+                if ev.value != 0 { cola.txt(" ="); cola.value_of(&ev); }
                 // ** Y DE DONDE SALIO, pero SOLO cuando duele.
                 //
                 // Un `INFO` que sale sesenta veces por segundo no necesita
@@ -159,12 +186,29 @@ pub fn render_hud() {
                 // eventos que menos falta hacen, y la pantalla es de 80
                 // columnas: cada caracter que se gasta en ruido es uno que le
                 // falta al mensaje.
+                let mut sitio = Buf::new();
                 if matches!(ev.severity, Severity::Fault | Severity::Panic) {
                     let f = ev.fichero_str();
                     if !f.is_empty() {
-                        r.txt("  <"); r.txt(f); r.txt(":"); r.dec(ev.linea as u64); r.txt(">");
+                        sitio.txt("  <"); sitio.txt(f); sitio.txt(":");
+                        sitio.dec(ev.linea as u64); sitio.txt(">");
                     }
                 }
+                let ancho = DASH_LOG_W as usize;
+                let gastado = r.len() + cola.len();
+                // [!] El sitio entra SOLO si despues de ponerlo cabe el mensaje
+                // ENTERO. No es tacaneria de columnas: un mensaje recortado a la
+                // mitad no distingue `PD: entrada fuera del physmap` de `PDPT:
+                // ...`, y esos son dos niveles distintos de la tabla de paginas
+                // -- o sea dos fallos distintos con la misma cara. El fichero se
+                // encuentra buscando la frase; la frase, si se pierde, no la
+                // encuentra nadie. Y el volcado de `cabina` lo lleva igualmente,
+                // que no tiene 80 columnas.
+                let cabe_el_sitio = gastado + sitio.len() + ev.msg_str().len() <= ancho;
+                let hueco = ancho.saturating_sub(gastado + if cabe_el_sitio { sitio.len() } else { 0 });
+                r.txt_max(ev.msg_str(), hueco);
+                r.txt(cola.as_str());
+                if cabe_el_sitio { r.txt(sitio.as_str()); }
                 splash_dashboard_log_color(row, r.as_str(), ev_color(&ev));
             }
             None => splash_dashboard_log_color(row, "", C_DIM),

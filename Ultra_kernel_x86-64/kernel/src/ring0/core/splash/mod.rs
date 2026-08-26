@@ -86,6 +86,7 @@ pub use escena::{
 pub use tablero::{
     dash_rows, splash_dash_rule, splash_dashboard_init, splash_dashboard_log,
     splash_dashboard_log_color, splash_dashboard_prompt, splash_status_right,
+    DASH_LOG_W,
 };
 
 // -- Pantalla de fallo ---------------------------------------------------
