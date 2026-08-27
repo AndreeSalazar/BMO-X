@@ -422,8 +422,47 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     l.s("  err=0x"); l.hex(error, 8);
     inf.push(l);
 
+    // *** `err` EN PALABRAS, Y NO SOLO EN HEXADECIMAL (2026-08-26).
+    //
+    // El volcado del Ryzen decia `err=0x00000002` y ese numero contesta TRES
+    // preguntas de golpe -- pero solo si quien lo mira se sabe la tabla de
+    // memoria. Un dato que hay que descodificar a mano en una foto es un dato
+    // que se lee mal a las dos de la manana.
+    //
+    // Y para un `#PF` las tres deciden a donde se va a mirar:
+    //
+    //    bit 0  presente     0 = la pagina NO ESTA. 1 = esta y no se permitio
+    //    bit 1  escritura    1 = ESCRIBIENDO. 0 = leyendo
+    //    bit 2  usuario      1 = fue Ring 3. 0 = fue el KERNEL
+    //    bit 4  instruccion  1 = era buscar codigo, no un dato
+    if vector == 14 {
+        let mut l = Line::new();
+        l.s("  ");
+        l.s(if error & 1 == 0 { "no-presente" } else { "proteccion" });
+        l.s(if error & 2 != 0 { "  ESCRIBIENDO" } else { "  leyendo" });
+        l.s(if error & 4 != 0 { "  desde Ring 3" } else { "  desde el KERNEL" });
+        if error & 16 != 0 {
+            l.s("  (buscando codigo)");
+        }
+        inf.push(l);
+    }
+
     let mut l = Line::new();
     l.s("rip=0x"); l.hex(rip, 16);
+    // ** UN `rip` DE CERO NO ES UNA DIRECCION: ES UN "NO LO SE".
+    //
+    // El 26-08 el Ryzen enseno `rip=0x0` junto a un `err` que decia
+    // **escribiendo, y no buscando codigo**. Las dos cosas no pueden ser
+    // ciertas a la vez: para escribir hace falta una instruccion, y una
+    // instruccion en la direccion cero se habria traido primero -- lo que
+    // habria puesto el bit 4.
+    //
+    // *** Asi que ese cero no era donde fallo: era lo que el manejador
+    // encontro al mirar. **Y un cero sin etiqueta se lee como un dato**, que
+    // es lo que mando a buscar un salto a la direccion cero que nunca hubo.
+    if rip == 0 {
+        l.s("   <- CERO NO ES UNA DIRECCION: no se pudo leer");
+    }
     inf.push(l);
 
     let mut l = Line::new();
@@ -435,6 +474,23 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     // donde estaba el CPU de verdad.
     let mut l = Line::new();
     l.s("rsp=0x"); l.hex(fault_rsp, 16);
+    // ** Y DE QUIEN ES ESA PILA, que es la pregunta siguiente y no se contestaba.
+    //
+    // El volcado del 26-08 traia `rsp=0xFFFF800000B84C50`. Eso es el physmap, o
+    // sea la pila de un HILO DEL KERNEL (`spawn_kernel` las direcciona asi) --
+    // no la de una tarea de Ring 3. Ese dato estaba delante y **habia que
+    // saberselo**: el rango del physmap no viene escrito en la pantalla.
+    //
+    // *** Y sin saber CUAL hilo, "un hilo del kernel" no acota nada. Ahora lo
+    // dice: hay dos, y el que late cada 4 ms es el del bus.
+    l.s("   ");
+    l.s(if fault_rsp >= 0xFFFF_8000_0000_0000 { "pila de HILO DEL KERNEL" } else { "pila baja" });
+    inf.push(l);
+
+    let (tid, es_user) = crate::ring0::task::scheduler::quien_corre();
+    let mut l = Line::new();
+    l.s("corria tid="); l.hex(tid as u64, 2);
+    l.s(if es_user { "  (Ring 3)" } else { "  (Ring 0)" });
     inf.push(l);
 
     // Ultimo cambio a tarea de usuario: el contexto que entrego el
@@ -478,6 +534,24 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     // Si ese RSP cae en un rango plausible, los 5 operandos del iretq que el
     // CPU intento cargar. Basura aqui => el planificador entrego un contexto
     // podrido; coherentes => el problema es el destino.
+    // *** Y AQUI ESTABA LA MITAD DEL PROBLEMA DE LEER EL VOLCADO DEL 26-08.
+    //
+    // Estas cinco palabras solo SON un marco de `iretq` si el fallo ocurrio en
+    // el epilogo de un cambio de contexto. Si el kernel revienta en cualquier
+    // otro sitio --dentro de un hilo, en mitad de una funcion-- lo que hay en
+    // `rsp` son variables locales, y leerlas como un marco es leer ruido.
+    //
+    // El Ryzen enseno esto:
+    //
+    //    iq rip=000000000000 cs=0000 ss=0000
+    //
+    // ** `cs=0000` es IMPOSIBLE en un marco de verdad: el selector de codigo
+    // nunca es nulo. O sea que esas dos lineas no decian "el contexto estaba
+    // corrupto" --que es como se leen-- decian **"esto no era un marco"**.
+    //
+    // *** Cinco ceros presentados como hechos mandan a buscar una corrupcion
+    // que no existe. Es el mismo fallo que el `=1100` de la bitacora con otra
+    // cara: **el instrumento contestando algo que no sabe.**
     let mapped = fault_rsp >= 0xFFFF_8000_0000_0000
         || (fault_rsp >= 0x1000 && fault_rsp < 0x1_0000_0000);
     if mapped {
@@ -491,15 +565,32 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
                 p.add(4).read_volatile(),
             )
         };
-        let mut l = Line::new();
-        l.s("iq rip="); l.hex(irip, 12);
-        l.s(" cs="); l.hex(ics, 4);
-        l.s(" ss="); l.hex(iss, 4);
-        inf.push(l);
-        let mut l = Line::new();
-        l.s("iq rsp="); l.hex(irsp, 12);
-        l.s(" rfl="); l.hex(irfl, 6);
-        inf.push(l);
+        // El unico juez barato que distingue un marco de cinco palabras
+        // cualesquiera: **el selector de codigo**. La GDT de esta casa es
+        // `[0]=nulo [1]=codigo0 [2]=datos0 [3]=datos3 [4]=codigo3`, asi que un
+        // `cs` de un marco valido solo puede ser `0x08` o `0x23`. Cualquier
+        // otra cosa --y sobre todo el cero-- significa que ahi no hay marco.
+        let parece_marco = ics == 0x08 || ics == 0x23;
+        if parece_marco {
+            let mut l = Line::new();
+            l.s("iq rip="); l.hex(irip, 12);
+            l.s(" cs="); l.hex(ics, 4);
+            l.s(" ss="); l.hex(iss, 4);
+            inf.push(l);
+            let mut l = Line::new();
+            l.s("iq rsp="); l.hex(irsp, 12);
+            l.s(" rfl="); l.hex(irfl, 6);
+            inf.push(l);
+        } else {
+            // ** Y se DICE que no se mira, en vez de callar. Una linea que
+            // falta se lee como "no habia nada que decir"; esta dice "hay algo
+            // ahi y NO es lo que estas lineas saben leer", que manda a otro
+            // sitio -- al hilo, no al planificador.
+            let mut l = Line::new();
+            l.s("iq: en rsp no hay marco de iretq (cs=0x"); l.hex(ics, 4);
+            l.s("). El fallo no es de un cambio de contexto");
+            inf.push(l);
+        }
     }
 
     pantalla_de_fallo(name, &inf)
