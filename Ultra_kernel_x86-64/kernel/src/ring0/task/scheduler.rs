@@ -484,6 +484,26 @@ pub fn tid_state(tid: u32) -> u8 {
 ///
 /// Devolver 0 salvo que este `Blocked` convierte ese error en un no-op en vez
 /// de en una corrupcion silenciosa de otro contexto.
+/// **Quien estaba corriendo**: `(tid, es_user)`. Para la pantalla de fallo.
+///
+/// # SIN CERROJO, y es deliberado
+///
+/// Esto lo llama el manejador de faults. Si tomara `SCHED_LOCK` y el fallo
+/// hubiera ocurrido **con ese cerrojo en la mano** --que es donde vive
+/// `destroy_address_space`, entre otros-- la pantalla de fallo se colgaria
+/// girando en un cerrojo que ya nadie va a soltar.
+///
+/// *** Y eso convierte un volcado legible en una maquina muerta y muda, que es
+/// exactamente lo contrario de para lo que existe esa pantalla.
+///
+/// Leer sin cerrojo puede dar un valor a medias. **Para un diagnostico eso es
+/// aceptable y colgarse no**: el mismo criterio que ya usa `context_rsp_of`.
+pub fn quien_corre() -> (u32, bool) {
+    let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
+    let t = &s.tasks[s.current];
+    (t.tid, t.is_user)
+}
+
 pub fn context_rsp_of(tid: u32) -> u64 {
     let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
     for t in &s.tasks {
