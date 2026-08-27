@@ -3,6 +3,10 @@
 //!
 //! generacion: nieto
 //!
+//! [cuesta]  MAQUINA -- por herencia, no por lo que hace. No toca hardware ni
+//!           tiene un solo `unsafe`, pero `obj/mmio.rs` DECIDE con su
+//!           respuesta. Instrumentar no contagia el coste; decidir si (L6e)
+//!
 //! El plan y el por que: `docs/plan/PLAN_SUELO_RING3.md`. El censo que lo pidio:
 //! `docs/maestro/RING3_MAESTRO.md`.
 //!

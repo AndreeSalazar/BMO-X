@@ -1,6 +1,11 @@
 //! **LA PATADA: el kernel recupera la maquina sin que nadie se lo pida.**
 //!
 //! generacion: nieto -- es POLITICA, no driver. No habla con ningun aparato:
+//!
+//! [cuesta]  APARATO -- decide QUITARLE la pantalla a quien la tenga. Un
+//!           disparo de mas deja al dueno sin escritorio hasta que teclee
+//!           `escritorio`; uno de menos lo deja mirando una foto de algo que
+//!           ya no existe. Por eso la lista de disparadores es de UNA fila
 //! decide **cuando el kernel deja de fiarse de Ring 3**.
 //!
 //! # De donde sale, con la fecha y las palabras

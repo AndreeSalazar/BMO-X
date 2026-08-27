@@ -2,6 +2,10 @@
 //!
 //! generacion: nieto -- no sabe quien lo llamo ni por que.
 //!
+//! [cuesta]  TAREA -- si el testigo se compara mal, alguien duerme de mas o
+//!           se despierta de menos. No concede nada que no se tuviera: un
+//!           proceso ya podia dormir con `WAIT(0, _, timeout)`
+//!
 //! Pieza **S3** del suelo de `docs/plan/PLAN_SUELO_RING3.md`, y la unica de las
 //! tres que el plan daba por *"no existe"*.
 //!
