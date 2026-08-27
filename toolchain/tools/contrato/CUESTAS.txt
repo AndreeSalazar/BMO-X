@@ -1,0 +1,18 @@
+# EL SUELO DE L6e -- cuantos ficheros declaran `[cuesta]`.
+#
+# La ley esta en `META-KERNEL_HARD.md`, L6e (MODULAR PRECISA): el corte se elige
+# tambien por lo que cuesta que la pieza se equivoque, y la cabecera lo declara.
+#
+# ** Esto NO exige la etiqueta a los ~150 ficheros de `ring0`. Exige dos cosas
+# mas pequenas: que quien la declare use el vocabulario cerrado, y que este
+# numero **no baje nunca**. Cada fichero nuevo que la ponga sube el suelo, y el
+# suelo no se vuelve a bajar.
+#
+# El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
+# comentario: esta para leerlo, no para juzgarlo.
+
+4
+# APARATO   Ultra_kernel_x86-64/kernel/src/ring0/core/emergencia.rs
+# TAREA     Ultra_kernel_x86-64/kernel/src/ring0/obj/latido.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/obj/mmio.rs
+# MAQUINA   platform/shared/bmo-mmio-juicio/src/lib.rs

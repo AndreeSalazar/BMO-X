@@ -81,7 +81,17 @@ OBJ_KERNEL = "Ultra_kernel_x86-64/kernel/src/ring0/obj"
 SURFACE_ABI = "platform/abi/bmo-abi/src/syscalls/surface"
 USERLAND = "Ultra_userspace/userland/src/lib.rs"
 
+# -- L6e: MODULAR PRECISA. El vocabulario CERRADO de lo que cuesta un fallo.
+#
+# Ordenado de barato a peor. Es cerrado a proposito: una clase inventada al
+# vuelo hace que dos ficheros que cuestan lo mismo lo digan de dos formas, y
+# entonces la etiqueta deja de poder compararse -- que era todo el punto.
+#
+# La ley y de donde sale cada clase: `META-KERNEL_HARD.md`, L6e.
+COSTES = ("NADA", "TAREA", "APARATO", "DATO", "MAQUINA", "PUERTA")
+
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "LINEA_BASE.txt")
+CUESTAS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CUESTAS.txt")
 
 
 def raiz():
@@ -149,7 +159,7 @@ def mascara(txt):
 
 
 # ===========================================================================
-#  LAS CINCO REGLAS. Cada una devuelve una lista de quejas.
+#  LAS SEIS REGLAS. Cada una devuelve una lista de quejas.
 # ===========================================================================
 
 def r1_caben_en_su_campo(kern, abi, mask):
@@ -249,6 +259,41 @@ def _familia(nombre):
     return "_".join(partes[:2]) if len(partes) > 2 else nombre
 
 
+RE_CUESTA = re.compile(r"^//!\s*\[cuesta\]\s+(\w+)", re.M)
+
+
+def r6_el_coste_declarado(declarantes, minimo):
+    """L6e -- MODULAR PRECISA: si lo declaras, usa el vocabulario. Y no bajes.
+
+    # Por que es un trinquete y no un muro
+
+    Hay ~150 ficheros solo en `ring0`. Exigirles la etiqueta a todos de golpe
+    seria un guardian que grita 150 veces el primer dia, y **uno que grita sin
+    motivo se apaga en una semana** -- lo dice el guardian de los enlaces y lo
+    repite L6a. Asi que se exigen dos cosas mucho mas pequenas:
+
+      * quien la declare, que la declare BIEN (vocabulario cerrado);
+      * y que el numero de los que la declaran **no baje nunca**.
+
+    *** La segunda es la que hace que la ley avance sola: cada fichero nuevo que
+    la ponga sube el suelo, y el suelo no se puede volver a bajar.
+    """
+    quejas = []
+    for ruta, clase in sorted(declarantes.items()):
+        if clase not in COSTES:
+            quejas.append(
+                "%s declara [cuesta] %s, que no esta en el vocabulario. "
+                "Las clases son: %s" % (ruta, clase, ", ".join(COSTES))
+            )
+    if len(declarantes) < minimo:
+        quejas.append(
+            "los ficheros que declaran [cuesta] bajaron de %d a %d. "
+            "La ley L6e solo puede avanzar: si uno se borro, sella con --sellar"
+            % (minimo, len(declarantes))
+        )
+    return quejas
+
+
 def r5_sin_numeros_repetidos(ops_kernel):
     """Dos operaciones con el mismo numero: una de las dos entra en el brazo de
     la otra, y ninguna de las dos falla en voz alta."""
@@ -313,6 +358,21 @@ def _parecen_lo_mismo(nk, na):
     """
     return nk.replace("KIND_", "").replace("_", "").lower()[:4] == na.replace("_", "").lower()[:4]
 
+
+CABECERA_CUESTAS = """# EL SUELO DE L6e -- cuantos ficheros declaran `[cuesta]`.
+#
+# La ley esta en `META-KERNEL_HARD.md`, L6e (MODULAR PRECISA): el corte se elige
+# tambien por lo que cuesta que la pieza se equivoque, y la cabecera lo declara.
+#
+# ** Esto NO exige la etiqueta a los ~150 ficheros de `ring0`. Exige dos cosas
+# mas pequenas: que quien la declare use el vocabulario cerrado, y que este
+# numero **no baje nunca**. Cada fichero nuevo que la ponga sube el suelo, y el
+# suelo no se vuelve a bajar.
+#
+# El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
+# comentario: esta para leerlo, no para juzgarlo.
+
+"""
 
 CABECERA_BASE = """# LINEA BASE del contrato -- los numeros que USAN LAS DOS TABLAS.
 #
@@ -394,16 +454,63 @@ def autoprueba():
         False,
     )
 
+    # R6 -- L6e: una clase inventada, y un suelo que baja.
+    exige("R6(clase inventada)", r6_el_coste_declarado({"x.rs": "CARISIMO"}, 0))
+    exige("R6(clase buena)", r6_el_coste_declarado({"x.rs": "MAQUINA"}, 0), False)
+    exige("R6(el suelo baja)", r6_el_coste_declarado({"x.rs": "NADA"}, 5))
+    exige("R6(el suelo sube)", r6_el_coste_declarado({"x.rs": "NADA", "y.rs": "TAREA"}, 1), False)
+
     if fallos:
         for f in fallos:
             print("  [X] " + f)
         print("autoprueba: %d regla(s) no saben decir que NO" % len(fallos))
         return 1
-    print("clean: las cinco reglas saben decir que NO (17 casos)")
+    print("clean: las SEIS reglas saben decir que NO (21 casos)")
     return 0
 
 
 # ===========================================================================
+
+def declarantes_de_coste():
+    """Todo `.rs` del arbol que lleve `[cuesta]` en su cabecera.
+
+    Se barre por PATRON y no por lista, que es la leccion que ya costo tres
+    operaciones del directorio sin contrato: un fichero nuevo entra solo.
+    """
+    hallados = {}
+    raiz_ = raiz()
+    for sub in ("Ultra_kernel_x86-64", "platform", "Ultra_userspace", "toolchain"):
+        base = os.path.join(raiz_, sub)
+        if not os.path.isdir(base):
+            continue
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = [d for d in dirnames if d not in ("target", ".git")]
+            for n in filenames:
+                if not n.endswith(".rs"):
+                    continue
+                ruta = os.path.join(dirpath, n)
+                with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+                    cab = f.read(4000)
+                m = RE_CUESTA.search(cab)
+                if m:
+                    rel = os.path.relpath(ruta, raiz_).replace(os.sep, "/")
+                    hallados[rel] = m.group(1)
+    return hallados
+
+
+def minimo_de_costes():
+    if not os.path.exists(CUESTAS):
+        return 0
+    with open(CUESTAS, "r", encoding="utf-8") as f:
+        for linea in f:
+            linea = linea.strip()
+            if linea and not linea.startswith("#"):
+                try:
+                    return int(linea.split()[0])
+                except ValueError:
+                    return 0
+    return 0
+
 
 def cargar():
     cap = leer(CAP_KERNEL)
@@ -428,6 +535,8 @@ def comprobar():
     quejas += [("R3 operacion del kernel sin contrato", q) for q in r3_operaciones_kernel(ops_kernel, ops_abi)]
     quejas += [("R4 operacion del userland sin contrato", q) for q in r4_operaciones_userland(ops_user, ops_abi)]
     quejas += [("R5 dos operaciones con el mismo numero", q) for q in r5_sin_numeros_repetidos(ops_kernel)]
+    decl = declarantes_de_coste()
+    quejas += [("R6 L6e el coste declarado", q) for q in r6_el_coste_declarado(decl, minimo_de_costes())]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -446,6 +555,8 @@ def comprobar():
     if divergen:
         print("clean: %d divergencia(s) en la linea base -- toleradas, y solo pueden bajar"
               % divergen)
+    print("clean: %d fichero(s) declaran [cuesta] (L6e) y ninguno inventa una clase"
+          % len(decl))
     return 0
 
 
@@ -462,6 +573,13 @@ def main():
     if a.sellar:
         kern, abi, _, _, _, _ = cargar()
         n = linea_base_escribir(kern, abi, linea_base_leer())
+        decl = declarantes_de_coste()
+        with open(CUESTAS, "w", encoding="utf-8", newline="\n") as f:
+            f.write(CABECERA_CUESTAS)
+            f.write("%d\n" % len(decl))
+            for ruta, clase in sorted(decl.items()):
+                f.write("# %-9s %s\n" % (clase, ruta))
+        print("sellado el suelo de L6e: %d fichero(s) declaran [cuesta]" % len(decl))
         print("sellada la linea base: %d numero(s) en las dos tablas" % n)
         print("[!] revisa las notas A MANO: una herramienta no sabe si KIND_ARCHIVO y File")
         print("    son el mismo objeto.")

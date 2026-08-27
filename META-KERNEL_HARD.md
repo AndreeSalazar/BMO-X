@@ -189,6 +189,62 @@ imposible de no ver.
 - **L6d.** ** **La prueba de que un reparto no cambio nada NO es que los tests
   pasen** --pasaban antes--: es que **el compilador emita los mismos bytes**. 33
   `.bex` hasheados antes y despues, identicos.
+- **L6e. MODULAR PRECISA (2026-08-26).** El corte se elige **tambien** por lo que
+  cuesta que esa pieza se equivoque, y **la cabecera lo declara**:
+
+  ```text
+     //! [cuesta]  MAQUINA -- calcula direcciones para el physmap
+  ```
+
+  Peticion del dueno, con sus palabras: *"Modular MAS precisas, la siguiente
+  evolucion de Modulo (...) saber como se declara entre ellas, cual es el
+  potencial que falle. Eso, porque si ese es el potencial del fallo, es la razon
+  de MODULAR precisas."*
+
+  **El vocabulario es CERRADO**, ordenado de barato a peor, y cada clase es algo
+  que a este proyecto ya le ha pasado:
+
+  | clase | que cuesta que se equivoque | donde ya paso |
+  |---|---|---|
+  | `NADA` | un numero mal en un panel. Se ve y se arregla | el `=1100` de la bitacora |
+  | `TAREA` | muere una tarea de Ring 3. BMO sigue | `CPL3: tarea eliminada` |
+  | `APARATO` | un aparato queda inservible hasta reiniciar | el teclado secuestrado |
+  | `DATO` | se pierde o se corrompe trabajo de alguien | la ventana de escritura del disco |
+  | `MAQUINA` | pantalla azul | el `#GP` de `destroy_address_space` |
+  | `PUERTA` | rompe binarios que YA existen | `KIND_TAREA = 0x80` |
+
+  ★★ **Y la regla que hace que esto CORTE en vez de solo documentar:**
+
+  > **Un fichero cuya cabecera necesita declarar DOS clases esta mal cortado. El
+  > corte va justo por donde cambia el coste.**
+
+  Es el mismo truco que L6c: alli una simetria declarada hace visible el hueco;
+  aqui **un coste declarado hace visible la costura**. Un fichero que sabe decir
+  *"esta mitad mata una tarea y esta otra mata la maquina"* acaba de decir donde
+  se parte.
+
+  ★ **Y la segunda regla, que es la que ordena las dependencias:**
+
+  > **Instrumentar no contagia el coste. DECIDIR si.**
+
+  `vmm` (MAQUINA) llama a `cabina` (NADA) para apuntar, y `cabina` sigue
+  costando nada: si se equivoca, sale un numero feo. Pero `vmm` llamando a
+  `bmo-mmio-juicio` para **decidir** si un rango se cede hace que ese juez
+  **cueste MAQUINA**, y por eso tiene 23 pruebas y cero `unsafe`. La diferencia
+  no es quien llama a quien: es si la respuesta cambia lo que pasa.
+
+  ** Esto no es una idea nueva del 26-08: **es la que el arbol ya usaba sin
+  nombre.** `bmo-mmio-juicio` salio del kernel porque *"ceder una pagina de mas
+  no da un fault: da una ventana"*; `bmo-disco-juicio` porque *"equivocarse aqui
+  no da un fault en pantalla, se lleva el trabajo de alguien"*; y **L6a-bis
+  existe por exactamente este motivo** -- *"lo que cuesta un fallo no es igual en
+  los dos anillos"*. Tres cortes decididos por el coste, y ninguna ley que lo
+  dijera.
+
+  [!] **Ratchet y no muro**, igual que L6a: no se exige a los 150 ficheros de
+  `ring0`. Lo que se exige es que **el que lo declare use el vocabulario**, y que
+  **el numero de los que lo declaran no baje**. Lo vigila
+  `toolchain/tools/contrato/contrato.py`.
 
 ****** Y desde el 2026-08-18, L6a tiene las cinco piezas.** Le faltaban las tres
 ultimas y por eso se incumplia sin ruido: `gui/main.rs` crecio 1.244 lineas
