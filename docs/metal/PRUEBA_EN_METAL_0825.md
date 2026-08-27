@@ -668,6 +668,82 @@ por eso se dice antes.
 
 ---
 
+# 4.8 -- ⚠⚠ CUARTA VUELTA (26-08): DOOM y una PANTALLA AZUL, descifrada
+
+```text
+   vec=0x0E  err=0x00000002
+   rip=0x0000000000000000
+   cr2=0x00000008FFFFFFFF
+   rsp=0xFFFF800000B84C50
+   sw88 c=800000B89B00 b=800000B89F60 n=800000B89F60
+   gs b=000000A73040 k=000000000000 pc=000000A73040
+   ticks=0000DA88
+   iq rip=000000000000 cs=0000 ss=0000
+```
+
+## 4.8.1 -- Lo que SI dice, y son cuatro cosas
+
+| linea | que prueba |
+|---|---|
+| `err=0x02` | **no-presente + ESCRIBIENDO + desde el KERNEL**, y el bit 4 a cero: **no era buscar codigo** |
+| `rsp=0xFFFF8000...` | es el **physmap**, o sea la pila de un **HILO DEL KERNEL**. No es una tarea de Ring 3 |
+| `gs b == pc` (`0xA73040`) | **GS esta bien.** No es un `swapgs` descolocado |
+| `sw88 b == n` | la ranura del contexto **no la piso nadie**. El planificador entrego lo que dijo |
+
+★ Y `rpc` todo a cero significa que **el camino del RPC nunca se uso**: queda
+descartado entero.
+
+## 4.8.2 -- ★★ Y LO QUE PARECIA DECIR Y NO DECIA
+
+```text
+   rip=0x0     se lee como "salto a la direccion cero"
+   err bit 4   dice que NO hubo ninguna busqueda de codigo
+```
+
+**Las dos no pueden ser ciertas.** Un salto a cero se caza al TRAER la
+instruccion, y eso pone el bit 4. O sea que ese cero no era donde fallo: era lo
+que el manejador **encontro al mirar**.
+
+*** Y `iq cs=0000` lo confirma: **un selector de codigo nunca es nulo en un
+marco de verdad.** Esas dos lineas no decian *"el contexto estaba corrupto"* --
+que es como se leen-- decian **"esto no es un marco"**: en `rsp` habia cinco
+palabras de una pila corriente, leidas como si fueran un `iretq`.
+
+[!] Arreglado el mismo dia: `err` sale en palabras, un `rip` de cero se etiqueta,
+el bloque `iq` solo sale si `cs` es `0x08` o `0x23`, y el informe dice **de quien
+es la pila y que `tid` corria**.
+
+## 4.8.3 -- QUE HAY QUE MIRAR EN EL PROXIMO ARRANQUE
+
+★★ **Y lo primero es saber QUE BUILD hay puesto**, porque cambia la lista de
+sospechosos. El discriminador es de una orden:
+
+```text
+   help   ->  si sale la fila `volver   escritorio`, es el build del 26-08
+              si no sale, es anterior y la patada NO estaba dentro
+```
+
+Con el build del 26-08, la pantalla azul trae dos lineas nuevas que acotan sola:
+
+```text
+   corria tid=NN  (Ring 0)              <- CUAL de los dos hilos del kernel
+   rsp=...   pila de HILO DEL KERNEL
+```
+
+| lo que salga | a donde manda |
+|---|---|
+| el `tid` del **hilo del bus** | a lo que ese hilo hace: `pump_bus`, el rescate, y --si es el build del 26-08-- **la patada y el ritmo del radar** |
+| otro `tid` | a `ktest`, o a una tarea que no deberia estar en una pila del physmap |
+| `iq: en rsp no hay marco` | confirmado: **no es un cambio de contexto**. No mirar al planificador |
+
+⚠ **Y el sospechoso que hay que decir en voz alta**: el hilo del bus gano DOS
+llamadas el 26-08, y una de ellas --`emergencia::atender`-- **repinta la pantalla
+entera** si hubo corrupcion antes. Un `#PF` de escritura desde el kernel encaja
+con eso. **No esta demostrado**: encaja, que es otra cosa, y la linea del `tid`
+es lo que lo va a decidir.
+
+---
+
 # 5. ⚠ LO QUE ESTA TANDA **NO** PUEDE CONTESTAR, Y HAY QUE DECIRLO
 
 ## 5.1 -- Por que el 25-08 salio 27/54
