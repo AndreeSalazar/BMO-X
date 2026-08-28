@@ -10,7 +10,8 @@ use bmo_userland as bmo;
 
 use super::After;
 use crate::desktop::Desktop;
-use crate::commands::reports::{report_autopsy, report_cpu, report_memory, report_net, report_system};
+use crate::commands::red::report_net;
+use crate::commands::reports::{report_autopsy, report_cpu, report_memory, report_system};
 use crate::scene::output::{INK_ECHO, INK_ERR, INK_GOOD, INK_PLAIN};
 use crate::scene::{paint_status, INK, INK_DIM};
 use crate::text::decimal;

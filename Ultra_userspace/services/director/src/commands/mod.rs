@@ -20,6 +20,7 @@ pub(crate) use dispatch::{dispatch, After};
 pub(crate) mod history;
 /// El anillo de eventos del kernel, leido desde aqui. Ver su cabecera.
 pub(crate) mod cabina;
+pub(crate) mod red;
 pub(crate) mod reports;
 /// Cuanto fiarse de los nucleos que ensena `reports`. Ver su cabecera.
 pub(crate) mod topologia;
