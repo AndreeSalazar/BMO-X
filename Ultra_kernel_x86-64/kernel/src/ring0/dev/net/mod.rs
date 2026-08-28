@@ -419,13 +419,28 @@ pub fn rx_start() -> bool {
         w32(mmio, reg_rx::RDSAR_LO, (anillo & 0xFFFF_FFFF) as u32);
         w32(mmio, reg_rx::RDSAR_HI, (anillo >> 32) as u32);
 
-        // 5. What gets accepted. Broadcast is the one that matters: it is what
+        // 5. La tabla de multicast, ANTES del filtro que la usa.
+        //
+        //    *** ESTO FALTABA, Y ERA LA MITAD DE `AM` (2026-08-28).
+        //
+        //    ** `rx_config()` pide multicast desde el primer dia, pero el reset
+        //    deja `MAR` a ceros y ningun bit de esa tabla deja pasar nada. O
+        //    sea: un filtro pedido que no admitia ni una trama. Y lo que mas
+        //    suena en una LAN parada es multicast --mDNS, SSDP-- asi que la
+        //    foto del paso 1 se estaba pidiendo con el grifo medio cerrado.
+        //
+        //    [!] Va antes de `RCR` a proposito: la tabla tiene que estar puesta
+        //    cuando se enciende el filtro que la consulta, no despues.
+        w32(mmio, reg_rx::MAR0, bmo_net::mar_todos());
+        w32(mmio, reg_rx::MAR0 + 4, bmo_net::mar_todos());
+
+        // 6. What gets accepted. Broadcast is the one that matters: it is what
         //    makes a plugged cable produce traffic with nobody doing anything.
         w32(mmio, reg_rx::RCR, bmo_net::rx_config());
 
         w8(mmio, reg_rx::CFG9346, 0x00);
 
-        // 6. And only now, the receiver. TE stays OFF.
+        // 7. And only now, the receiver. TE stays OFF.
         let c = r8(mmio, reg_rx::CR);
         w8(mmio, reg_rx::CR, (c & !cr::TE) | cr::RE);
     }
