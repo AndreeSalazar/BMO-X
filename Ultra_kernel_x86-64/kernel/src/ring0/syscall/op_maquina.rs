@@ -500,7 +500,23 @@ pub(super) fn red(arg0: u64, _arg1: u64) -> BmoStatus {
                 "armar el receptor, pedido por un proceso de Ring 3",
                 scheduler::current_pid() as u64,
             );
-            let Some(id) = net::identidad() else {
+            // ** AL APARATO, AHORA -- `releer()` y no `identidad()`.
+            //
+            // *** Esto se armaba mirando LA FOTO DEL ARRANQUE, y esa foto
+            // contesta la pregunta equivocada de las dos maneras:
+            //
+            // ```text
+            //    cable quitado despues de arrancar  ->  armaba igual, y el
+            //                                           motivo "sin enlace"
+            //                                           no salia nunca
+            //    cable puesto despues de arrancar   ->  se NEGABA a armar con
+            //                                           el cable enchufado
+            // ```
+            //
+            // ** Y aqui no vale el argumento del panel: esto no se repinta a
+            // 60 Hz, se TECLEA una vez. Una lectura de MMIO por orden del
+            // dueno es exactamente lo que hay que gastar.
+            let Some(id) = net::releer() else {
                 crate::ring0::cabina::warn("red", "no hay tarjeta que este kernel sepa leer", 0);
                 return BmoStatus::ok_value(RED_SIN_TARJETA);
             };
