@@ -28,6 +28,26 @@ use crate::{invoke, CURRENT_TASK, OP_RED};
 pub const RED_OP_ARMAR: u64 = 0x01;
 pub const RED_OP_SONDEAR: u64 = 0x02;
 
+/// **El bit de enlace dentro de `INFO_NET_PHY_CRUDO`.**
+///
+/// === Por que este numero vive en Ring 3 y no solo en el driver ===
+///
+/// Porque el crudo se entrega **sin interpretar** a proposito, y quien recibe
+/// un byte crudo necesita poder decir una cosa sobre el sin volver a preguntar:
+/// *"esto de aqui es el enlace"*. Es el unico bit que se mira desde este lado.
+///
+/// ** Y sirve para una sola cosa, que es la que importa: **cazar la
+/// contradiccion**. `INFO_NET_MEGABITS` sale de la foto del arranque --lo pinta
+/// un panel que se repinta-- y el crudo sale del aparato AHORA. El dia que uno
+/// diga ARRIBA y el otro diga ABAJO, el que tiene razon es el crudo, y decirlo
+/// en pantalla es lo que separa *"la red esta bien"* de *"eso es de hace un
+/// rato"*.
+///
+/// [!] Los bits de velocidad --10/100/1000-- NO se traen aqui. Interpretar la
+/// velocidad es opinion del driver y ya la da `INFO_NET_MEGABITS`; duplicar esa
+/// tabla en dos lados es como se consiguen dos verdades distintas.
+pub const PHY_ENLACE_ARRIBA: u64 = 0x02;
+
 /// Por que no se pudo armar. `Ok` es que si.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Armado {

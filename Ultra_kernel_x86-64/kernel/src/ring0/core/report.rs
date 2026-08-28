@@ -332,13 +332,32 @@ pub fn campo(n: u64) -> u64 {
         // == LA RED ==================================================
         //
         // ** `identidad()` devuelve la foto CACHEADA del arranque; `releer()`
-        // vuelve a preguntarle al aparato. Aqui se usa la cacheada a proposito:
-        // un panel que se repinta sesenta veces por segundo no debe tocar el
-        // BAR de una NIC sesenta veces por segundo.
+        // vuelve a preguntarle al aparato. Aqui se usan LAS DOS, y el reparto
+        // no es un gusto: **lo decide quien lee cada campo**.
         //
-        // [!] La consecuencia hay que saberla: si desenchufas el cable, ESTOS
-        // campos no cambian. El que relee es la orden `net` del shell de Ring 0,
-        // y el panel de F9 tiene su propia tecla para pedirlo.
+        // ```text
+        //    MAC, MEGABITS   los pinta `splash`, que se REPINTA. Cacheados: un
+        //                    panel a 60 Hz no puede tocar el BAR de una NIC
+        //                    60 veces por segundo
+        //    PHY_CRUDO       lo lee SOLO la orden `red`, que se TECLEA. Vivo
+        // ```
+        //
+        // *** Y por que el crudo tenia que ser el vivo, y no otro:
+        //
+        // > La fila se llama *"PHYstatus crudo: la prueba, no la opinion"*, y
+        // > una prueba que devuelve la foto del arranque **no puede fallar**.
+        // > Desenchufar el cable y escribir `red` tiene que mover ese byte; si
+        // > no lo mueve, lo que se esta leyendo no es el silicio -- y eso hay
+        // > que saberlo ANTES de montar un anillo de DMA encima.
+        //
+        // ** Hasta el 2026-08-28 el crudo tambien salia de la cache, y el unico
+        // sitio donde la NIC se releia de verdad era la orden `net` del shell
+        // de Ring 0 -- o sea **un sitio al que el dueno no vuelve**. Es la
+        // misma forma del arreglo de `net rx` del 24-08, y ya van varias.
+        //
+        // [!] El precedente de que un INFO puede tocar MMIO ya estaba al lado:
+        // `INFO_NET_RX_PERDIDAS` lee `MPC` del aparato, y lo lee esta misma
+        // orden tecleada. Lo que no puede hacerlo es lo que pinta `splash`.
         INFO_NET_PRESENTE => crate::ring0::dev::net::hay() as u64,
         INFO_NET_VENDOR_DEVICE => {
             let (v, d, _, _, _, _) = crate::ring0::dev::net::donde();
@@ -356,10 +375,14 @@ pub fn campo(n: u64) -> u64 {
                 v
             })
             .unwrap_or(0),
-        INFO_NET_PHY_CRUDO => crate::ring0::dev::net::identidad()
+        // ** AL APARATO, AHORA. Ver el reparto de arriba: este campo es la
+        // prueba, y una prueba cacheada no prueba nada.
+        INFO_NET_PHY_CRUDO => crate::ring0::dev::net::releer()
             .map(|i| i.phy as u64)
             .unwrap_or(0),
         // Cero es *"no hay enlace"*, y es una respuesta -- no un fallo.
+        //
+        // [!] Este SI se queda cacheado, y no por descuido: lo pinta `splash`.
         INFO_NET_MEGABITS => crate::ring0::dev::net::identidad()
             .map(|i| if i.enlace_arriba() { i.megabits() as u64 } else { 0 })
             .unwrap_or(0),

@@ -252,6 +252,16 @@ fn consumo_de_red() {
     dec(&mut b, &mut o, bytes);
     txt(&mut b, &mut o, " bytes");
     fila(&b, o);
+    // *** Y DE DONDE SALE ESE NUMERO, porque un cero aqui se lee mal.
+    //
+    // ** Este contador **solo sube cuando alguien mira el anillo**, y el unico
+    // que mira es `net rx`. La palabra sola censa y no sondea --es la regla de
+    // la casa-- asi que un cero en esta fila no dice "nadie habla": dice "nadie
+    // ha mirado desde la ultima vez". La diferencia manda a sitios distintos y
+    // ya costo una foto del paso 1 (28-08).
+    if tramas == 0 {
+        s_log("[red]   ese cero es de la ultima vez que se SONDEO: `net rx` mira el anillo");
+    }
 
     let mut o = 0usize;
     txt(&mut b, &mut o, "[red] perdidas ");
