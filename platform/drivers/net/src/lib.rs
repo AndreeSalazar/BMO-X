@@ -400,6 +400,20 @@ pub mod reg_rx {
     pub const CR: usize = 0x37;
     /// `RxConfig`, 32-bit. Which frames are accepted, and the DMA burst.
     pub const RCR: usize = 0x44;
+    /// **`MAR0..MAR7` -- el filtro de multicast**, ocho bytes leidos como dos
+    /// dwords. Cada bit es una casilla del hash CRC de la MAC de destino.
+    ///
+    /// *** Y ES LA MITAD QUE FALTABA DE `rcr::AM` (2026-08-28).
+    ///
+    /// ** `AM` no dice *"acepta multicast"*: dice *"acepta el multicast que
+    /// pase por ESTA tabla"*. Y el reset deja la tabla **a ceros**, o sea que
+    /// hasta hoy `AM` estaba puesto y no dejaba entrar ni una trama. Compilaba,
+    /// se leia como una promesa y no hacia lo que decia.
+    ///
+    /// [!] Y no es un detalle de adorno: en una LAN en reposo lo que mas suena
+    /// es **multicast** --mDNS, SSDP, IGMP--, no broadcast. La foto del paso 1
+    /// se estaba pidiendo con la mitad del trafico apagado.
+    pub const MAR0: usize = 0x08;
     /// `Cfg9346`, 8-bit. The lock that guards the config registers.
     pub const CFG9346: usize = 0x50;
     /// `IntrMask`, 16-bit. Left at zero: this driver POLLS.
@@ -447,7 +461,8 @@ pub mod rcr {
     pub const AAP: u32 = 1 << 0;
     /// Accept Physical Match: frames addressed to our own MAC.
     pub const APM: u32 = 1 << 1;
-    /// Accept Multicast.
+    /// Accept Multicast. **No vale sola**: la tabla `MAR0..MAR7` decide cual, y
+    /// el reset la deja a ceros. Ver [`reg_rx::MAR0`].
     pub const AM: u32 = 1 << 2;
     /// Accept Broadcast. **This is the one that makes step 1 work**: ARP queries
     /// and mDNS are broadcast, so a plugged cable produces traffic without
@@ -464,11 +479,44 @@ pub mod rcr {
 /// **Promiscuous (`AAP`) is deliberately left out.** It would show more traffic
 /// and it is tempting for a first test, but it also means this machine listens to
 /// everything that crosses its port -- and turning that on by default is a
-/// decision about the product, not about the driver. Broadcast alone already
-/// guarantees ARP, mDNS and DHCP, which is more than enough for the question this
-/// step is asking.
+/// decision about the product, not about the driver.
+///
+/// *** Y LA FRASE QUE HABIA AQUI ERA FALSA (corregida el 2026-08-28):
+///
+/// > *"Broadcast alone already guarantees ARP, mDNS and DHCP"*
+///
+/// **mDNS no es broadcast, es multicast** --`224.0.0.251`, o sea la MAC
+/// `01:00:5E:00:00:FB`--. Con `AB` solo entran ARP y DHCP, que en una LAN en
+/// reposo pueden tardar minutos. Lo que suena cada pocos segundos es justo lo
+/// que la frase daba por cubierto y no lo estaba.
+///
+/// [!] `AM` esta puesto, pero **no basta**: sin escribir `MAR0..MAR7` la tabla
+/// de multicast queda a ceros desde el reset y no entra ninguna. Eso lo hace
+/// [`mar_todos`], y quien no lo llame tiene un `AM` de adorno.
 pub const fn rx_config() -> u32 {
     rcr::AB | rcr::AM | rcr::APM | rcr::MXDMA_UNLIMITED | rcr::RXFTH_NONE
+}
+
+/// **La tabla de multicast, entera abierta.** Los ocho bytes de `MAR`, en dos
+/// dwords.
+///
+/// === Por que todas las casillas y no un hash calculado ===
+///
+/// Porque calcular el hash CRC de una MAC sirve para **filtrar**, y aqui no hay
+/// nada que filtrar todavia: no hay pila IP, nadie se ha suscrito a ningun
+/// grupo, y el paso 1 lo que quiere es **ver llegar una trama**. Una tabla
+/// calculada para un conjunto vacio de suscripciones da exactamente los ceros
+/// que ya habia.
+///
+/// ** Y lo que esto NO es: promiscuo. Sigue sin entrar el trafico **unicast de
+/// terceros** --el que va a la MAC del vecino--, que es la linea que separa
+/// *"escucho lo que va a todos"* de *"escucho lo de todos"*. `AAP` sigue
+/// apagado, y el destino de cada trama sale impreso para poder comprobarlo.
+///
+/// [!] El dia que exista `KIND_RED` y alguien se suscriba a un grupo, esto se
+/// estrecha: la funcion se queda, el valor deja de ser `!0`.
+pub const fn mar_todos() -> u32 {
+    !0
 }
 
 /// Size of each receive buffer.
@@ -687,6 +735,24 @@ mod tests {
         assert_eq!(c & rcr::AAP, 0, "listening to everything is a product decision");
         assert_ne!(c & rcr::AB, 0, "broadcast is what makes a plugged cable produce traffic");
         assert_ne!(c & rcr::APM, 0, "and our own address, obviously");
+    }
+
+    /// *** `AM` PUESTO SIN `MAR` ES UN FILTRO QUE NO DEJA PASAR NADA.
+    ///
+    /// ** El reset deja los ocho bytes de `MAR` a ceros, y con la tabla vacia
+    /// ninguna trama multicast cruza por mucho que `AM` este pedido. Estuvo asi
+    /// desde el primer dia: **compilaba, se leia como una promesa, y el aparato
+    /// no admitia ni una**. Este test ata las dos mitades para que no se pueda
+    /// volver a pedir la una sin la otra.
+    ///
+    /// [!] Y abrir el multicast NO es abrir el unicast de terceros. Son dos
+    /// lineas distintas y solo la segunda es promiscuidad: la de arriba lo
+    /// guarda.
+    #[test]
+    fn pedir_multicast_obliga_a_abrir_su_tabla() {
+        assert_ne!(rx_config() & rcr::AM, 0, "si esto se quita, `mar_todos` sobra");
+        assert_eq!(mar_todos(), !0, "la tabla entera: no hay suscripciones que filtrar todavia");
+        assert_eq!(rx_config() & rcr::AAP, 0, "y abrir multicast sigue sin ser promiscuo");
     }
 
     /// *** EL DESTINO ES LO QUE PRUEBA EL FILTRO, y por eso se mira.
