@@ -269,3 +269,89 @@ Windows, el XSDT se esta recorriendo corto.
 ** El paso 2 es la razon de que el 1 vaya antes. Un contrato escrito mirando una
 trama de verdad no se parece a uno escrito mirando un documento -- y `KIND_RED`
 va a durar mas que este mes.
+
+---
+
+# 7. LA VUELTA DEL 27-08: LA FOTO NO SE SACO, Y NO FUE LA TARJETA
+
+El Ryzen ejecuto el paso 1 y trajo esto (volcado por `save` a `datos/`):
+
+```text
+   receptor      ARMADO
+   cogidas       0 tramas, 0 bytes   (escuchando y nadie habla todavia)
+   perdidas      0   (la tarjeta no tiro ninguna)
+   reparto       ARP 0  IPv4 0  IPv6 0  otros 0
+   enlace        ARRIBA, 10 Mbit     PHYstatus 0x87
+```
+
+La secuencia tecleada fue **`red rx` y despues `red`**. Y ahi esta el fallo, que
+no era del driver:
+
+> **`red` a secas NO SONDEA.** Lee la casilla del contador y no toca el anillo.
+> El unico que mira el anillo es `red rx` --`RED_OP_SONDEAR`--, asi que ese
+> segundo cero **no podia subir por mucho que hablara la red**.
+
+*** Y la pantalla lo remataba diciendo `(escuchando y nadie habla todavia)`, que
+es una afirmacion sobre la RED hecha con un dato que solo habla del SOFTWARE. Es
+el mismo defecto que la pantalla azul del 26-08: **un cero presentado como un
+hecho**.
+
+## 7.1 -- Lo que se arreglo antes de volver a arrancar (2026-08-28)
+
+| que | donde | por que |
+|---|---|---|
+| el `PHYstatus` se lee **AHORA** | `report.rs`, `INFO_NET_PHY_CRUDO` | la fila se llama *"la prueba, no la opinion"* y devolvia la foto del arranque: **una prueba que no puede fallar** |
+| armar mira el enlace **VIVO** | `op_maquina.rs`, `RED_OP_ARMAR` | miraba la foto del arranque: armaba con el cable quitado, y se negaba con el cable puesto despues |
+| el cero dice **de que es** | `commands/red.rs` | `(sin sondear: red rx es quien mira el anillo)` |
+| la contradiccion, dicha | `commands/red.rs` | `enlace` es del arranque y el crudo es de ahora; cuando no cuadran, **manda el crudo** |
+| `MAR0..MAR7` se escriben | `dev/net/mod.rs` | `AM` estaba pedido y **la tabla de multicast estaba a ceros desde el reset**: ni una trama multicast entraba |
+
+*** El del multicast es el que mas cambia lo que se va a ver. En una LAN parada
+lo que suena cada pocos segundos es **mDNS y SSDP, que son multicast**; el ARP
+broadcast puede tardar minutos. La foto se estaba pidiendo con el grifo medio
+cerrado, y el comentario del driver afirmaba lo contrario --*"broadcast alone
+already guarantees mDNS"*-- que es falso: mDNS va a `01:00:5E:00:00:FB`.
+
+## 7.2 -- ★ LA SECUENCIA NUEVA, Y AHORA SI SE PUEDE TIRAR AL SUELO
+
+```text
+   red            <- censo. Apunta el PHYstatus
+   (DESENCHUFA EL CABLE)
+   red            <- el PHYstatus TIENE que moverse (bit 1 a cero)
+   (ENCHUFALO)
+   red rx         <- arma
+   red rx         <- espera 30 s y VUELVE A ESCRIBIR ESTO, no `red`
+   red rx         <- y otra vez
+```
+
+[!] **La linea que importa es la segunda.** Hasta hoy esa prueba solo se podia
+hacer con `net` en el shell de Ring 0 --o sea en un sitio al que el dueno no
+vuelve-- y por eso llevaba semanas sin hacerse.
+
+## 7.3 -- Y los 10 Mbit, que siguen abiertos
+
+El paso 0 leyo **100 Mbps** (`PHYstatus 0b1011`) y esta vuelta **10 Mbit**
+(`0x87` = enlace + 10M + full duplex). Los dos salen del mismo registro, asi que
+**el registro responde a la realidad** -- eso ya descarta *"el BAR no lleva a los
+sitio"*. Lo que queda por descartar es el cable o el puerto: 10 Mbit full duplex
+en una LAN moderna es un par roto o un puerto viejo, y un puerto sin switch vivo
+detras no manda broadcast que capturar.
+
+## 7.4 -- Y si con todo esto sigue en cero
+
+Entonces si toca mirar el silicio, y el numero que decide es **`perdidas`
+(`MPC`)**:
+
+| `cogidas` | `perdidas` | quien es |
+|---|---|---|
+| 0 | **0** | la MAC no acepto NI UNA: el filtro (`RCR`), `RE` sin encender, o no hay trafico |
+| 0 | **sube** | llegan y el ANILLO no las recoge: descriptores, `RDSAR` o el `OWN` |
+
+*** Esa tabla es la razon de que la fila `perdidas` exista. Sin ella, los dos
+fallos se ven iguales y mandan a leer el fichero equivocado.
+
+** Y el sospechoso que queda sin tocar, dicho en voz alta: **`CPCR` (0xE0)**
+esta definido en `bmo-net` y **no lo escribe nadie**. Es el registro del modo C+
+de la familia 8169/8168. No se ha tocado a proposito -- cambiar dos cosas a la
+vez es como se pierde una tarde-- pero es el primero de la lista si `MPC` dice
+que la MAC no acepta nada.
