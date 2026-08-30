@@ -80,7 +80,7 @@ kernel's `_start`.
 |                    Ring 3 -- Applications                   |
 |  +----------+ +----------+ +----------+ +----------+       |
 |  |Compositor| |  COBOL   | |    C     | |   Ada    |       |
-|  | gui.bex  | | programs | | programs | | programs |       |
+|  |  d.bex   | | programs | | programs | | programs |       |
 |  +----+-----+ +----+-----+ +----+-----+ +----+-----+       |
 |       +------------+-------+----+------------+             |
 |                            |  SYSCALL / SYSRET             |
@@ -232,7 +232,7 @@ The first Ring 3 program lived and died through **9 calls on 1 single door**
   paints with `mov` and the kernel steps aside
 - **RPC endpoint** (`KIND_ENDPOINT` + `KIND_REPLY`): two Ring 3 processes
   talking through the kernel, without touching the two syscalls
-- **Compositor in Ring 3**, loaded from `sys/gui.bex` -- changing the desktop
+- **Compositor in Ring 3**, loaded from `sys/d.bex` -- changing the desktop
   does not recompile the kernel
 
 **Languages**
@@ -413,7 +413,7 @@ UEFI Firmware
                             enter Ring 3
     5. timer::init()      <- LAPIC tick: the scheduler becomes preemptive
     6. PCI -> xHCI (keyboard and mouse) -> AHCI -> GPT -> FAT32 -> ESTRATOS
-    7. lanzar::ruta("sys/gui.bex")   <- the compositor, from DISK
+    7. lanzar::ruta("sys/d.bex")     <- DIRECTOR, the compositor, from DISK
   -> Ring 3: the desktop. If it fails to start, the machine stays in the kernel
     shell and CABINA says why
 ```
@@ -464,7 +464,7 @@ What gets deployed:
 
 ```
 EFI\BOOT\    BOOTX64.EFI (with the stages and kernel inside) + BMO-MANIFEST.TXT
-sys\         gui.bex          the compositor
+sys\         d.bex            DIRECTOR, the compositor
 cobol\ c\ ada\                the example programs, by language
 datos\       the .txt files those programs read
 ```

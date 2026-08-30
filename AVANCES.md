@@ -1026,7 +1026,7 @@ Hay **tres estados**, y confundirlos es lo que hace que uno se sienta perdido:
 | **CABINA** (telemetria omnisciente) | ✅ **viva**: cockpit + color semantico + bitacora de eventos (narrador) + deteccion de disco PCI |
 | **`KIND_FRAMEBUFFER`** (la pantalla es una capability) | ✅ Ring 3 pinta con `mov`; el kernel contesta 4 preguntas y se aparta |
 | **`KIND_INPUT`** (raton, teclado **y modificadores**) | ✅ en metal; `Ctrl+Alt` detectado sin romper `AltGr` |
-| **Compositor** (Ultra_userspace/services/gui) | ✅ **se carga de `sys/gui.bex`**, fuera del kernel (123 KiB; el tope son 256) |
+| **Compositor** (Ultra_userspace/services/director) | ✅ **se carga de `sys/d.bex`**, fuera del kernel. ⚠ Se llamaba `gui.bex` y el crate `services/gui`; los dos cambiaron el 19-08 (paso 5 de `PLAN_DIRECTOR.md`) y esta fila lo dijo mal hasta el 28-08 |
 | **Terminal de Ring 3** (caja Win+R + comandos) | ✅ **corre**: historial, TAB que completa, editor de linea con cursor, portapapeles, `ls`, `Ctrl+Alt` para invocar |
 | **`KIND_CONSOLE`** (la salida es una capability, en LOS DOS sentidos) | ✅ el hijo escribe y el terminal lee; el terminal escribe y el hijo lee (`ACCEPT`) |
 | **`KIND_DIRECTORIO`** (preguntar que hay en el disco) | ✅ `ls` en el terminal, iteracion sin cursor en el driver |
@@ -1402,8 +1402,8 @@ desde hace tiempo y son parte de la deuda tecnica anotada.
 ```bash
 cd Ultra_kernel_x86-64; .\build.ps1 -Data A
 ```
-El `.bex` del compositor sale a `staging\BMO-DATA\sys\gui.bex` en cada build y
-de ahi se copia. `RUTA_COMPOSITOR` en `phase.rs` es `sys/gui.bex` (8.3: el
+El `.bex` del compositor sale a `staging\BMO-DATA\sys\d.bex` en cada build y
+de ahi se copia. `COMPOSITOR_PATH` en `core/desktop.rs` es `sys/d.bex` (8.3: el
 driver FAT32 no lee nombres largos y no recorta) -- la ruta de dentro del
 volumen es el contrato entre el build y el arranque, y el resto va por
 categorias: `cobol/ c/ ada/ datos/`. El mapa completo, en
