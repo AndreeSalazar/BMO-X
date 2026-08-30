@@ -650,7 +650,28 @@ pub const ISOCH_ADELANTO: u16 = 4;
 /// **No toca el timbre.** Encolar y avisar son dos cosas: quien alimenta el
 /// tubo quiere poner varias tramas de adelanto y tocar UNA vez, y un timbre por
 /// trama seria un MMIO por cada 192 bytes de audio.
-pub unsafe fn queue_isoch_out(slot: u8, dci: u8, buf_phys: u64, len: u16) -> bool {
+/// # *** `avisar` -- EL IOC, Y POR QUE NO VA EN TODAS (2026-08-30)
+///
+/// Esto ponia **IOC en cada trama**, y con el tubo abierto eso son del orden de
+/// **2.000 eventos por segundo** en el anillo de eventos del xHC. El dueno lo
+/// vio como *"al escribir fallo y se congelo todo"*, y el congelado no era del
+/// audio: el hilo que drena ese anillo es **el mismo que sondea el teclado**.
+///
+/// ** Un driver de audio no pide interrupcion cada milisegundo. La pide en el
+/// ULTIMO TRB de un TD, o cada N tramas, porque lo que necesita saber no es
+/// *"llego esta"* sino *"vamos por aqui"*. Encolar ocho y que avise una baja el
+/// trafico del anillo un 87,5% sin perder nada de lo que se mide.
+///
+/// [!] Y LO QUE NO SE PIERDE, dicho porque es la unica duda que importa: **los
+/// eventos de ERROR llegan igual**. `Missed Service Error` (cc=10) e
+/// `Isoch Buffer Overrun` (cc=31) los posta el xHC porque son errores, no
+/// porque nadie los haya pedido -- el IOC solo gobierna el aviso de las que van
+/// BIEN. `tramas TARDE` sigue contando lo mismo.
+///
+/// ** Si algun dia se demuestra que este controlador no postea un error sin
+/// IOC, el sintoma seria `tarde` en cero con audio que chasquea, y la vuelta
+/// atras es una linea: `avisar` a `true` siempre.
+pub unsafe fn queue_isoch_out(slot: u8, dci: u8, buf_phys: u64, len: u16, avisar: bool) -> bool {
     let ring = match ep_ring_mut(slot, dci) { Some(r) => r, None => return false };
     let idx = ring.enqueue;
     let b = idx * 4;
@@ -661,7 +682,10 @@ pub unsafe fn queue_isoch_out(slot: u8, dci: u8, buf_phys: u64, len: u16) -> boo
     ring.ring_virt.add(b + 2).write_volatile(len as u32);
     // dw3: tipo en 15:10, IOC en el 5, SIA en el 31, frame id en 30:20 (que con
     // SIA puesto el xHC ignora), TBC en 8:7 y TLBC en 17:16 -- los dos a cero.
-    let ctl = (TRB_ISOCH << 10) | (1 << 5) | (1 << 31);
+    //
+    // ** El bit 5 ya no es fijo: lo decide quien encola. Ver la cabecera.
+    let ioc = if avisar { 1u32 << 5 } else { 0 };
+    let ctl = (TRB_ISOCH << 10) | ioc | (1 << 31);
     ring.ring_virt.add(b + 3).write_volatile(ctl | if ring.pcs { 1 } else { 0 });
     ring.enqueue = idx + 1;
     if ring.enqueue >= LAST_TRB_IDX {
