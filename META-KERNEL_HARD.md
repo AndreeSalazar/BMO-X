@@ -340,14 +340,31 @@ imposible de no ver.
 
   ```text
      1. DECLARAR NO ES OPCIONAL   `[cuesta]` y `[riesgo]` son obligatorios
-     2. TIENE QUE SABER DECIR NO  banco de pruebas propio, o no entra (L4)
+     2. DICE QUIEN LO PRUEBA      `//! [prueba]  <crate>`, y ese crate existe
      3. NINGUN NUMERO SUELTO      todo tope sale de la constante que lo define
      4. TOPE DURO DE 300 LINEAS   un juez que no cabe en una pantalla no es
                                   un juez: es un sitio donde esconder un `if`
   ```
 
   ★ La 3 es la que habria cazado lo del 30-08 sin arrancar la maquina:
-  `FISICA_MAX = 1 << 46` era un literal donde `PHYSMAP_SIZE` ya existia.
+  `FISICA_MAX = 1 << 46` era un literal donde `PHYSMAP_SIZE` ya existia. Y la
+  forma buena de cumplirla no es vigilar el numero: es **quitarlo**. El juez que
+  nacio ese dia --`bmo-fisica-juicio`-- no tiene ni una constante de tamano: el
+  espejo se le pasa en cada llamada, asi que no puede tener un numero suelto
+  porque no tiene ningun numero.
+
+  ★★ **Y la 2 se corrigio el mismo dia que se escribio, porque era hueca.**
+  Decia *"banco de pruebas propio"* -- y **el kernel no puede tener pruebas**:
+  `bmo.ps1` lo excluye del banco con su motivo escrito (*"binario bare-metal:
+  enlazado como test, `panic_impl` sale dos veces"*). O sea que la regla habria
+  aceptado un `#[cfg(test)]` **que no corre nunca**, que es la peor clase de
+  garantia: la que se ve.
+
+  La casa ya tenia la respuesta buena y lleva meses usandola --`bmo-mmio-juicio`,
+  `bmo-disco-juicio`, `bmo-bex-gate`--: **el juez sale a un crate propio, sin
+  dependencias y sin `unsafe`, que SI corre bajo `cargo test`**, y la pieza de
+  Ring 0 dice cual es. R8 comprueba que ese crate exista: un nombre que no
+  resuelve es la misma mentira con otra cara.
 
   [!] **La 3 no la comprueba la maquina, y hay que decirlo.** Un juez que
   intentara distinguir `1 << 46` de una constante legitima acabaria adivinando,
