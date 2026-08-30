@@ -485,6 +485,27 @@ extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u64, fault_rs
     // dice: hay dos, y el que late cada 4 ms es el del bus.
     l.s("   ");
     l.s(if fault_rsp >= 0xFFFF_8000_0000_0000 { "pila de HILO DEL KERNEL" } else { "pila baja" });
+    // *** Y DE CUAL, QUE ES LO QUE ESTE COMENTARIO YA PROMETIA Y NO HACIA.
+    //
+    // ** Arriba pone *"Ahora lo dice: hay dos, y el que late cada 4 ms es el
+    // del bus"*. No lo decia. Dos pantallas azules --26-08 y 30-08-- salieron
+    // con `pila de HILO DEL KERNEL` a secas, teniendo el `rsp` delante y la
+    // tabla de tareas con `stack_phys` en cada fila desde siempre.
+    //
+    // *** Y no es lo mismo que la linea de abajo. `corria tid=` es **lo que el
+    // planificador cree**; esto es **sobre que pila estaba el CPU**. Hoy las dos
+    // salieron distintas --`tid=05 (Ring 3)` sobre una pila de kernel-- y esa
+    // diferencia no es un error de ninguna de las dos: es el hallazgo.
+    if let Some((duenno, user)) = crate::ring0::task::scheduler::duenno_de_pila(fault_rsp) {
+        l.s(" de tid=");
+        l.hex(duenno as u64, 2);
+        l.s(if user { " (Ring 3)" } else { " (Ring 0)" });
+    } else if fault_rsp >= 0xFFFF_8000_0000_0000 {
+        // [!] Que no sea de nadie tambien es una respuesta, y de las caras: una
+        // pila del physmap que no pertenece a ninguna tarea viva significa que
+        // el `rsp` esta pisado, o que su tarea ya se reciclo debajo.
+        l.s(" -- de NADIE VIVO");
+    }
     inf.push(l);
 
     let (tid, es_user) = crate::ring0::task::scheduler::quien_corre();

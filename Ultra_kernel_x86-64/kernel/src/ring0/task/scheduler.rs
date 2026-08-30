@@ -504,6 +504,51 @@ pub fn quien_corre() -> (u32, bool) {
     (t.tid, t.is_user)
 }
 
+/// **De quien es la pila donde se estrello.** `(tid, es_de_usuario)`, o `None`.
+///
+/// # *** POR QUE NO VALE `quien_corre()` PARA ESTO (2026-08-30)
+///
+/// La pantalla azul de hoy dijo las dos cosas a la vez:
+///
+/// ```text
+///    rsp=0xFFFF800000B87C50   pila de HILO DEL KERNEL
+///    corria tid=05  (Ring 3)
+/// ```
+///
+/// Y no se contradicen: `quien_corre` da **el que el planificador cree que esta
+/// corriendo**, y la pila dice **sobre que estaba el CPU de verdad**. Cuando un
+/// hilo del kernel revienta, esas dos no tienen por que ser la misma, y hasta
+/// hoy la pantalla solo sabia dar la primera.
+///
+/// *** Y LO PEOR ES QUE LA CABECERA DE `faults.rs` YA PROMETIA ESTO:
+///
+/// > *"sin saber CUAL hilo, 'un hilo del kernel' no acota nada. **Ahora lo
+/// > dice**: hay dos, y el que late cada 4 ms es el del bus."*
+///
+/// El comentario lo daba por hecho y el codigo imprimia `pila de HILO DEL
+/// KERNEL` a secas. Dos pantallas azules --26-08 y 30-08-- se gastaron sin
+/// saber cual de los dos hilos era, y las dos tenian el `rsp` delante.
+///
+/// ** El dato estaba en la tabla desde siempre: cada tarea guarda `stack_phys`
+/// y `stack_pages` porque `reap` los necesita para devolver los marcos. Lo
+/// unico que faltaba era preguntar al reves -- de la direccion al dueno.
+///
+/// [!] Sin cerrojo, por lo mismo que `quien_corre`: esto lo llama la pantalla
+/// de fallo, y colgarse ahi convierte un volcado legible en una maquina muda.
+pub fn duenno_de_pila(rsp: u64) -> Option<(u32, bool)> {
+    let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
+    for t in &s.tasks {
+        if t.stack_phys == 0 || t.stack_pages == 0 {
+            continue;
+        }
+        let base = mm::phys_to_virt(t.stack_phys);
+        if rsp >= base && rsp < base + t.stack_pages * mm::PAGE {
+            return Some((t.tid, t.is_user));
+        }
+    }
+    None
+}
+
 pub fn context_rsp_of(tid: u32) -> u64 {
     let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
     for t in &s.tasks {
