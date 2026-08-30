@@ -375,7 +375,22 @@ pub fn latido() {
     // Un `wMaxPacketSize` mas grande que la trama real es legal --el aparato
     // acepta hasta ahi-- y mandarle de mas seria inventar muestras.
     let largo = t.bytes_por_trama.min(t.max_packet as u32) as u16;
-    for _ in 0..TRAMAS_POR_LATIDO {
+    for i in 0..TRAMAS_POR_LATIDO {
+        // *** UNA SOLA PIDE AVISO POR LATIDO, Y ES LA ULTIMA.
+        //
+        // ** Antes lo pedian las OCHO --`queue_isoch_out` ponia IOC fijo-- y
+        // eso son ~2.000 eventos por segundo en el anillo del xHC. El anillo
+        // lo drena `uhid::poll`, o sea **el mismo hilo que sondea el teclado**,
+        // asi que el precio de esa cifra no lo pagaba el audio: lo pagaba la
+        // maquina entera dejando de responder.
+        //
+        // Con una de ocho, el trafico baja un 87,5% y no se pierde nada de lo
+        // que se mide: los errores --`Missed Service` y `Buffer Overrun`-- los
+        // posta el xHC por ser errores, no por que se los pidan.
+        //
+        // [!] La ULTIMA y no la primera: lo que interesa saber es que la tanda
+        // entera entro, y eso lo dice el aviso de la de atras.
+        let avisar = i + 1 == TRAMAS_POR_LATIDO;
         // *** LAS MUESTRAS DE VERDAD PRIMERO, Y SI NO HAY, SILENCIO **CONTADO**.
         //
         // Un hueco no se deja vacio: el endpoint tiene una cita cada
@@ -392,7 +407,7 @@ pub fn latido() {
             }
         };
         unsafe {
-            if !bmo_xhci::queue_isoch_out(t.slot, t.dci, donde, n) {
+            if !bmo_xhci::queue_isoch_out(t.slot, t.dci, donde, n, avisar) {
                 break;
             }
         }
