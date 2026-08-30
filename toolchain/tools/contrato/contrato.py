@@ -118,6 +118,16 @@ CRITIC_DIR = "Ultra_kernel_x86-64/kernel/src/ring0/critic"
 # un `if`. El numero es de la casa (L6a son 1.000 para un modulo cualquiera) y
 # aqui baja a la tercera parte a proposito.
 CRITIC_TOPE = 300
+# Los CARRILES, y son el NOMBRE DEL FICHERO. La carpeta asigna: no hace falta
+# una etiqueta dentro que diga lo que la ruta ya dice, y una etiqueta que puede
+# contradecir a su fichero es una fuente de verdad de mas.
+#
+#    roja      un fallo para la maquina y no deja autopsia
+#    amarilla  va a cambiar, y al cambiar ARRASTRA a otro
+#
+# El verde NO esta: es todo lo demas, y un carril que contiene casi todo no
+# informa de nada. Ver `META-KERNEL_HARD.md`, L6g.
+VIAS = ("roja", "amarilla")
 
 
 def raiz():
@@ -344,6 +354,16 @@ def r8_lo_que_vive_en_critic(ficheros):
     quejas = []
     for ruta in sorted(ficheros):
         txt, lineas = ficheros[ruta]
+        # *** EL NOMBRE DEL FICHERO ES EL CARRIL. Un `.rs` en critic/ que no se
+        # llame como un carril es una pieza que entro sin letrero, y el letrero
+        # es para lo que existe la carpeta: *"si un dia quiero cambiar, como
+        # podre identificar?"*.
+        tallo = ruta.rsplit("/", 1)[-1][:-3]
+        if tallo not in VIAS:
+            quejas.append(
+                "%s vive en critic/ y su nombre no es un carril. Los carriles "
+                "son: %s (L6g)" % (ruta, ", ".join(v + ".rs" for v in VIAS))
+            )
         if not RE_CUESTA.search(txt):
             quejas.append("%s vive en critic/ y no declara [cuesta] (L6g regla 1)" % ruta)
         if not RE_RIESGO.search(txt):
@@ -605,13 +625,19 @@ def autoprueba():
     RI = "//! [riesgo] AJENO" + chr(10)
     BA = "#[cfg(test)] mod t {}" + chr(10)
     bueno = (CU + RI + BA, 10)
-    exige("R8(completo)", r8_lo_que_vive_en_critic({"critic/j.rs": bueno}), False)
-    exige("R8(sin cuesta)", r8_lo_que_vive_en_critic({"critic/j.rs": (RI + BA, 10)}))
-    exige("R8(sin riesgo)", r8_lo_que_vive_en_critic({"critic/j.rs": (CU + BA, 10)}))
-    exige("R8(sin banco)", r8_lo_que_vive_en_critic({"critic/j.rs": (CU + RI, 10)}))
+    exige("R8(completo)", r8_lo_que_vive_en_critic({"critic/roja.rs": bueno}), False)
+    exige("R8(sin cuesta)", r8_lo_que_vive_en_critic({"critic/roja.rs": (RI + BA, 10)}))
+    exige("R8(sin riesgo)", r8_lo_que_vive_en_critic({"critic/roja.rs": (CU + BA, 10)}))
+    exige("R8(sin banco)", r8_lo_que_vive_en_critic({"critic/roja.rs": (CU + RI, 10)}))
     exige("R8(demasiado largo)",
-          r8_lo_que_vive_en_critic({"critic/j.rs": (bueno[0], CRITIC_TOPE + 1)}))
+          r8_lo_que_vive_en_critic({"critic/roja.rs": (bueno[0], CRITIC_TOPE + 1)}))
     exige("R8(vacia)", r8_lo_que_vive_en_critic({}), False)
+    # *** Y el que de verdad guarda la idea: una pieza correcta en todo lo demas
+    # pero SIN LETRERO. Sin este caso, `critic/` seria una carpeta cualquiera.
+    exige("R8(nombre que no es carril)",
+          r8_lo_que_vive_en_critic({"critic/jueces.rs": bueno}))
+    exige("R8(carril amarilla)",
+          r8_lo_que_vive_en_critic({"critic/amarilla.rs": bueno}), False)
 
     if fallos:
         for f in fallos:
