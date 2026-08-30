@@ -799,7 +799,31 @@ pub fn registrar(
             ultima[..n].copy_from_slice(&b[..n]);
             largo = n;
         });
-        renglones[8].bytes(&ultima[..largo]);
+        // *** Y SI NO CABE, QUE SE VEA. (2026-08-30)
+        //
+        // ** El renglon mide `ANCHO` y la etiqueta gasta diez, asi que del
+        // mensaje del programa entran **62 caracteres**. Lo que sobra se caia
+        // sin decirlo, y eso ya costo un rato el 30-08: DOOM imprimio
+        //
+        // ```text
+        //    [heap] tras P_SetupLevel: 1 ROTOS de 1590 bloques, 1 REMENDADOS
+        // ```
+        //
+        // -- 63 caracteres-- y en la pantalla salio `... 1 REMENDADO`. **Una
+        // sola letra**. Y con esa letra de menos la palabra sigue siendo una
+        // palabra valida, asi que la linea se lee como completa: parecia que el
+        // binario del disco era mas viejo que el fuente.
+        //
+        // *** Un corte que no se ve no es una linea corta: es una linea que
+        // dice otra cosa. La flecha cuesta un caracter --se come el ultimo del
+        // mensaje-- y a cambio nadie vuelve a creerse un final que no existe.
+        let cabe = ANCHO.saturating_sub(10);
+        if largo > cabe {
+            renglones[8].bytes(&ultima[..cabe.saturating_sub(1)]);
+            renglones[8].s(">");
+        } else {
+            renglones[8].bytes(&ultima[..largo]);
+        }
     } else {
         renglones[8].s("(no escribio nada)");
     }
