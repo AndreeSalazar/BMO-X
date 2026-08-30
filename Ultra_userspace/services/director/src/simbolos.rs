@@ -257,6 +257,45 @@ pub fn anotar(linea: &[u8], ruta: &[u8], out: &mut [u8]) -> usize {
             i += 1;
             continue;
         }
+        // *** UN `+0x` PEGADO A UN CERO NO ES UN DESPLAZAMIENTO EN LA IMAGEN.
+        //
+        // ** El 2026-08-30 DOOM murio con esto en pantalla:
+        //
+        // ```text
+        //    veredicto *** PUNTERO NULO en 0+0x2c
+        //              -> bmo_valor+0x2c
+        // ```
+        //
+        // Las dos lineas se contradicen y la segunda la escribio ESTA funcion.
+        // `0+0x2c` es *"base cero, campo 0x2c"* -- el desplazamiento de un
+        // CAMPO dentro de una estructura, no una posicion dentro del binario.
+        // Se resolvio igual porque aqui se buscaba `+0x` sin mirar a que estaba
+        // pegado.
+        //
+        // *** Y no fallo por casualidad, falla SIEMPRE: en todo `.bex` de esta
+        // casa las primeras funciones son las del runtime, linkadas antes que
+        // nada:
+        //
+        // ```text
+        //    0x0    bmo_valor    0x53 bytes
+        //    0x53   bmo_codigo   0x50
+        //    0xA3   bmo_pid      0x4E
+        // ```
+        //
+        // Asi que **cualquier puntero nulo con campo menor de 0x53, en
+        // cualquier programa, decia `bmo_valor`** y mandaba a leer el runtime.
+        // Un nombre equivocado no es ruido: es una tarde.
+        //
+        // [!] Se mira que el cero sea el numero ENTERO --que lo de antes no sea
+        // otro digito-- para no tragarse un `0x40075030+0x2c` legitimo.
+        if i > 0 && linea[i - 1] == b'0' {
+            let anterior = if i >= 2 { linea[i - 2] } else { b' ' };
+            let es_digito = anterior.is_ascii_hexdigit() || anterior == b'x';
+            if !es_digito {
+                i += 3;
+                continue;
+            }
+        }
         let mut j = i + 3;
         let mut desp = 0u64;
         while j < linea.len() {
