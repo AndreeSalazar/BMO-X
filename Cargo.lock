@@ -148,6 +148,10 @@ name = "bmo-firmware"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-fisica-juicio"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-fontgen"
 version = "0.1.0"
 
@@ -219,6 +223,7 @@ dependencies = [
  "bmo-fat32",
  "bmo-firma",
  "bmo-firmware",
+ "bmo-fisica-juicio",
  "bmo-hash",
  "bmo-identify",
  "bmo-input",

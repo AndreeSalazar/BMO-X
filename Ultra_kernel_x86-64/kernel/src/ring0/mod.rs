@@ -201,5 +201,8 @@ pub mod svc;
 /// La superficie congelada. Tres puertas y ni una mas.
 pub mod syscall;
 /// La caja negra: lo que el sistema confiesa de si mismo.
+/// **Los CARRILES** (L6g): las piezas que no se pueden tocar sin mirar a otra.
+/// Ver `critic/LEEME.md`.
+pub mod critic;
 pub mod cabina;
 pub mod uconsole;

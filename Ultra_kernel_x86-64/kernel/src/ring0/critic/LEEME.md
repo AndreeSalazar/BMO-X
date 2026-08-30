@@ -42,7 +42,7 @@ que van juntas. Es `ESPEJO` de L6f, ascendido de etiqueta a carril.
 
 ```text
    1. DECLARAR NO ES OPCIONAL   `[cuesta]` y `[riesgo]` son obligatorios
-   2. TIENE QUE SABER DECIR NO  banco de pruebas propio, o no entra (L4)
+   2. DICE QUIEN LO PRUEBA      `//! [prueba]  <crate>`, y ese existe
    3. NINGUN NUMERO SUELTO      todo tope sale de la constante que lo define
    4. TOPE DURO DE 300 LINEAS   la tercera parte de lo que L6a deja a un
                                 modulo cualquiera
@@ -54,9 +54,20 @@ intentara distinguir `1 << 46` de una constante legitima acabaria adivinando, y
 humana; esta escrita para que se pueda citar. R8 cobra las otras tres y que el
 nombre del fichero sea un carril.
 
-## Por que estan vacios
+## ** LA REGLA 2 SE CORRIGIO SOLA, EL MISMO DIA
 
-Porque **la mudanza paga L6d**: un reparto se demuestra con el compilador
+Decia *"banco de pruebas propio"*, y **el kernel no puede tener pruebas**:
+`bmo.ps1` lo excluye del banco con su motivo escrito. La regla habria aceptado
+un `#[cfg(test)]` **que no corre nunca** -- la peor clase de garantia, la que se
+ve. Ahora la pieza NOMBRA a su juez, y el juez vive donde si se puede probar.
+
+## Estado
+
+`amarilla.rs` ya tiene inquilinos: `caminable` y `zero_frame`, con
+`bmo-fisica-juicio` de probador (6 pruebas, una con la direccion exacta de la
+pantalla azul del 30-08). `roja.rs` sigue sin existir.
+
+Y las que falten entran despacio, porque **la mudanza paga L6d**: un reparto se demuestra con el compilador
 emitiendo los mismos bytes, no con los tests pasando. Una pieza entra **de una
 en una y con su hash**.
 
