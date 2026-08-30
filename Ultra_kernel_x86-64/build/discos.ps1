@@ -170,6 +170,49 @@ if ($Data) {
     }
     if ($copiados -eq 0) { Fail 'staging\BMO-DATA esta vacio' }
 
+    # -- * LO QUE HAY EN EL DISCO Y NO LO PUSO ESTE DEPLOY --------------
+    #
+    # ** Este deploy NO BORRA, y esa decision es buena: en BMO-DATA puede haber
+    # cosas que no salen de aqui. Pero su precio estaba OCULTO -- un `.bex`
+    # copiado hace semanas se queda en el disco para siempre, y el lanzador
+    # recorre `apps\`, asi que sigue saliendo COMO ICONO del escritorio al lado
+    # de los buenos. Un clic ahi arranca un binario de otra epoca.
+    #
+    # * Paso el 2026-08-28: `apps\doom640.bex` era del 14-08 y llevaba catorce
+    # dias con icono. El guardian de `staging` lo decia en CADA build; el disco
+    # no lo decia nunca -- y el disco es el que se pulsa.
+    #
+    # [!] Y esto SOLO MIRA. No borra, no propone borrar y no falla: imprime la
+    # lista y decide el dueno. Es la misma regla de veinte lineas mas arriba
+    # --un deploy no tiene derecho a decidir sobre lo que no puso el-- pero
+    # ahora con la cuenta delante en vez de en la cabeza de nadie.
+    #
+    # ** Y se compara por RUTA RELATIVA, no por fecha. La fecha es lo que usa el
+    # guardian de `staging` y alli vale, porque alli todo lo produce este build;
+    # aqui no: un fichero legitimo que el build de hoy no toco tiene fecha vieja
+    # y no sobra. Lo que decide es si SALIO DE ESTE STAGING.
+    $mios = @{}
+    foreach ($f in Get-ChildItem -Path $dataSrc -Recurse -File) {
+        $mios[$f.FullName.Substring($dataSrc.Length).TrimStart([char]'\').ToUpper()] = $true
+    }
+    $ajenos = @(Get-ChildItem -Path $dataRoot -Recurse -File -Filter '*.bex' -ErrorAction SilentlyContinue |
+        Where-Object { -not $mios.ContainsKey($_.FullName.Substring($dataRoot.Length).TrimStart([char]'\').ToUpper()) })
+    if ($ajenos.Count -gt 0) {
+        Write-Host ''
+        Write-Host ('  [!] {0} .bex en {1} que este deploy NO ha puesto:' -f $ajenos.Count, $dataRoot) -ForegroundColor Yellow
+        foreach ($a in $ajenos) {
+            $rel = $a.FullName.Substring($dataRoot.Length)
+            # Los de `apps\` se marcan aparte: son los unicos que el lanzador
+            # convierte en icono, o sea los unicos que se pueden PULSAR.
+            $icono = if ($rel.ToUpper().StartsWith('APPS\')) { '  <- SALE COMO ICONO' } else { '' }
+            Write-Host ('      {0}   ({1} B, {2:yyyy-MM-dd}){3}' -f `
+                $rel, $a.Length, $a.LastWriteTime, $icono) -ForegroundColor Yellow
+        }
+        Write-Host '      Se quitan A MANO. Aqui no se borra nada.' -ForegroundColor Yellow
+    } else {
+        Write-Host ('  ' + $dataRoot + ': ningun .bex que este deploy no haya puesto') -ForegroundColor DarkGray
+    }
+
     Write-Host ''
     Write-Host ('  === BMO-DATA VERIFICADO (' + $copiados + ' archivos) ===') -ForegroundColor Green
     Write-Host ''
