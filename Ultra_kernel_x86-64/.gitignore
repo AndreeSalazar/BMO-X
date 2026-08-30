@@ -2,3 +2,8 @@
 /staging/
 **/*.rs.bk
 Cargo.lock
+
+# Binarios que ningun build produce ya, apartados de `staging` para que no se
+# desplieguen ni salgan como icono. No se borran: `doom640.bex` es el DOOM de
+# 640x400 y `gui.bex` el compositor anterior a `d.bex`. Ver BITACORA, Ep. 43.
+/viejos/
