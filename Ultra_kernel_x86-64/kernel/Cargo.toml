@@ -76,6 +76,9 @@ bmo-firmware = { path = "../../platform/shared/bmo-firmware" }
 # ceder una pagina de mas no da un fault, da una ventana -- y eso no se puede
 # comprobar arrancando la maquina.
 bmo-mmio-juicio = { path = "../../platform/shared/bmo-mmio-juicio" }
+# El juez del physmap. Ver `ring0/critic/amarilla.rs`: nacio de dos pantallas
+# azules seguidas por el mismo techo escrito a mano en el sitio equivocado.
+bmo-fisica-juicio = { path = "../../platform/shared/bmo-fisica-juicio" }
 # La ciudad del arranque. La DIBUJA la CPU --cero bytes de datos-- y vive
 # fuera de las dos orillas porque es aritmetica pura: asi se puede probar en
 # el anfitrion, que es lo que un fondo de arranque nunca podia.

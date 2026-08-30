@@ -28,6 +28,9 @@ members = [
     # veredicto comprobado -- y este es de los que no avisan al equivocarse,
     # porque ceder una pagina de mas no da un fault: da una ventana.
     "platform/shared/bmo-mmio-juicio",
+    # El juez del physmap. Nacio el 2026-08-30, de dos pantallas azules
+    # seguidas por el mismo techo escrito a mano en el sitio equivocado.
+    "platform/shared/bmo-fisica-juicio",
     "platform/shared/bmo-channel",
     # La ciudad de neon del arranque: la dibuja la CPU, no se guarda.
     "platform/shared/bmo-ciudad",

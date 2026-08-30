@@ -330,6 +330,9 @@ def r6_el_coste_declarado(declarantes, minimo):
     return quejas
 
 
+# L6g regla 2: quien PRUEBA a esta pieza. Ver `r8_lo_que_vive_en_critic`.
+RE_PRUEBA = re.compile(r"^//!\s*\[prueba\]\s+([a-z0-9-]+)", re.M)
+
 RE_RIESGO = re.compile(r"^//!\s*\[riesgo\]\s+([A-Z ]+)", re.M)
 
 
@@ -354,6 +357,9 @@ def r8_lo_que_vive_en_critic(ficheros):
     quejas = []
     for ruta in sorted(ficheros):
         txt, lineas = ficheros[ruta]
+        # `mod.rs` declara el modulo; no es una pieza y no lleva letrero.
+        if ruta.endswith("/mod.rs"):
+            continue
         # *** EL NOMBRE DEL FICHERO ES EL CARRIL. Un `.rs` en critic/ que no se
         # llame como un carril es una pieza que entro sin letrero, y el letrero
         # es para lo que existe la carpeta: *"si un dia quiero cambiar, como
@@ -368,11 +374,38 @@ def r8_lo_que_vive_en_critic(ficheros):
             quejas.append("%s vive en critic/ y no declara [cuesta] (L6g regla 1)" % ruta)
         if not RE_RIESGO.search(txt):
             quejas.append("%s vive en critic/ y no declara [riesgo] (L6g regla 1)" % ruta)
-        if "#[cfg(test)]" not in txt:
+        # *** REGLA 2, CORREGIDA POR LA REALIDAD EL MISMO DIA (2026-08-30).
+        #
+        # Decia `#[cfg(test)]` dentro del fichero, y **el kernel no puede tener
+        # pruebas**: `bmo.ps1` lo excluye del banco con su motivo escrito
+        # --*"binario bare-metal: enlazado como test, `panic_impl` sale dos
+        # veces"*--. O sea que esta regla habria aceptado un bloque de pruebas
+        # QUE NO CORRE NUNCA, que es la peor clase de garantia: la que se ve.
+        #
+        # ** La casa ya tenia la respuesta buena y lleva meses usandola:
+        # `bmo-mmio-juicio`, `bmo-disco-juicio`, `bmo-bex-gate`. **El juez sale
+        # a un crate propio, sin dependencias y sin `unsafe`, que SI corre bajo
+        # `cargo test`**, y la pieza de Ring 0 dice cual es.
+        #
+        #     //! [prueba]  bmo-fisica-juicio
+        #
+        # Y se comprueba que ese crate EXISTE. Un nombre que no resuelve es la
+        # misma mentira con otra cara.
+        m = RE_PRUEBA.search(txt)
+        if not m:
             quejas.append(
-                "%s vive en critic/ y no tiene banco de pruebas. Una pieza que "
-                "guarda tiene que saber decir NO (L6g regla 2)" % ruta
+                "%s vive en critic/ y no dice quien lo prueba. Se declara "
+                "`//! [prueba]  <crate>`, y ese crate es donde vive el juez con "
+                "su banco (L6g regla 2)" % ruta
             )
+        else:
+            nombre = m.group(1).strip()
+            d = os.path.join(raiz(), "platform", "shared", nombre)
+            if not os.path.isdir(d):
+                quejas.append(
+                    "%s declara [prueba] %s y ese crate no existe en "
+                    "platform/shared/ (L6g regla 2)" % (ruta, nombre)
+                )
         if lineas > CRITIC_TOPE:
             quejas.append(
                 "%s tiene %d lineas de codigo y el tope de critic/ es %d "
@@ -623,12 +656,20 @@ def autoprueba():
     # dentro es lo primero que se rompe al hacerlo.
     CU = "//! [cuesta] MAQUINA" + chr(10)
     RI = "//! [riesgo] AJENO" + chr(10)
-    BA = "#[cfg(test)] mod t {}" + chr(10)
+    BA = "//! [prueba]  bmo-mmio-juicio" + chr(10)
     bueno = (CU + RI + BA, 10)
     exige("R8(completo)", r8_lo_que_vive_en_critic({"critic/roja.rs": bueno}), False)
     exige("R8(sin cuesta)", r8_lo_que_vive_en_critic({"critic/roja.rs": (RI + BA, 10)}))
     exige("R8(sin riesgo)", r8_lo_que_vive_en_critic({"critic/roja.rs": (CU + BA, 10)}))
-    exige("R8(sin banco)", r8_lo_que_vive_en_critic({"critic/roja.rs": (CU + RI, 10)}))
+    exige("R8(sin probador)", r8_lo_que_vive_en_critic({"critic/roja.rs": (CU + RI, 10)}))
+    # *** Y el caso que guarda la regla entera: DICE quien lo prueba, y ese
+    # crate no existe. Un nombre que no resuelve es la misma mentira con otra
+    # cara, y sin esta prueba la regla 2 se cumpliria escribiendo cualquier cosa.
+    exige("R8(probador inventado)",
+          r8_lo_que_vive_en_critic(
+              {"critic/roja.rs": (CU + RI + "//! [prueba]  bmo-no-existe" + chr(10), 10)}))
+    exige("R8(mod.rs no lleva letrero)",
+          r8_lo_que_vive_en_critic({"critic/mod.rs": ("", 5)}), False)
     exige("R8(demasiado largo)",
           r8_lo_que_vive_en_critic({"critic/roja.rs": (bueno[0], CRITIC_TOPE + 1)}))
     exige("R8(vacia)", r8_lo_que_vive_en_critic({}), False)

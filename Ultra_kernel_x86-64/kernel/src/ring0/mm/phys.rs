@@ -275,45 +275,11 @@ pub fn free_frame(phys: u64) {
     }
 }
 
-/// Zero a frame through the physmap.
+/// Zero a frame through the physmap. -- MUDADA A `critic/amarilla.rs`.
 ///
-/// # *** LA MISMA COTA QUE `free_frame`, Y AQUI SE ESCRIBE (2026-08-30)
-///
-/// Esto no tenia ninguna. Y las dos funciones se llaman **una detras de otra**,
-/// en cuatro sitios distintos, sobre el mismo numero:
-///
-/// ```text
-///    mm::phys::zero_frame(marco);   <- 4 KiB ESCRITOS, sin comprobar nada
-///    mm::phys::free_frame(marco);   <- rechaza >= MAX_PHYS
-/// ```
-///
-/// ** Dos jueces del mismo valor con dos criterios, y el que NO comprobaba era
-/// el que escribe. Es la forma exacta del fallo que paro la maquina el mismo
-/// dia --`caminable` a 64 TiB contra `free_frame` a 16 GiB-- encontrada a
-/// proposito buscando el gemelo. La ley que lo nombra es L6f, clase `ESPEJO`.
-///
-/// ## Lo que costaria, y son dos cosas distintas
-///
-/// ```text
-///    fuera del physmap    #PF de escritura desde el kernel -> pantalla azul
-///    dentro y del vecino  4 KiB de memoria viva a cero, EN SILENCIO
-/// ```
-///
-/// *** La segunda es la peor y es la que no da ninguna pantalla. Por eso la
-/// cota va aqui dentro y no en los ocho llamantes: un guardian que hay que
-/// acordarse de poner no es un guardian.
-///
-/// [!] No puede estorbar a nadie: el asignador **no entrega** marcos por encima
-/// de `MAX_PHYS`, asi que un `phys` que no pase por aqui no salio de el.
-pub fn zero_frame(phys: u64) {
-    if phys % PAGE != 0 || phys >= MAX_PHYS {
-        crate::ring0::cabina::fault("mm", "zero_frame sobre un marco que no existe", phys);
-        return;
-    }
-    unsafe {
-        core::ptr::write_bytes(phys_to_virt(phys) as *mut u8, 0, PAGE as usize);
-    }
-}
+/// ** Se fue al CARRIL AMARILLO (L6g) el 2026-08-30 con `vmm::caminable`. No
+/// por ser peligrosa: por **no poder tocarse sin la otra**. Ver el fichero.
+pub use crate::ring0::critic::amarilla::zero_frame;
 
 /// `(total_usable_frames, free_frames)`.
 pub fn stats() -> (u64, u64) {
