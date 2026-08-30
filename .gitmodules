@@ -1,6 +1,0 @@
-[submodule "crates_Personal/llfree-rs"]
-	path = crates_Personal/llfree-rs
-	url = https://github.com/luhsra/llfree-rs.git
-[submodule "crates_Personal/goblin"]
-	path = crates_Personal/goblin
-	url = https://github.com/m4b/goblin.git
