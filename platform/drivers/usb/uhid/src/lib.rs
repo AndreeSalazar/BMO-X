@@ -84,6 +84,16 @@ pub struct UsbHidHal {
     /// llegando con una direccion que no es la que creemos y por eso nadie
     /// rearma. Antes se descartaban sin contarlos.
     huerfanos: u32,
+    /// **Vueltas en las que el anillo de eventos no se pudo vaciar entero.**
+    ///
+    /// *** Un cero aqui dice que el bus va sobrado. Cualquier otra cosa dice que
+    /// ALGO produce eventos mas rapido de lo que este hilo late, y el primer
+    /// sospechoso tiene nombre: el tubo de audio pone `IOC` en cada trama.
+    ///
+    /// ** Existe porque el bucle que lo cuenta ANTES NO TENIA COTA. Sin este
+    /// numero, acotarlo seria cambiar un congelado por un misterio: nadie
+    /// sabria si el tope se toca o no.
+    saturados: u32,
     /// Que puertos ya dieron un aparato y cuantas veces se ha intentado cada
     /// uno. Ver [`puertos`]: sin esto, la re-enumeracion reactiva se comia a si
     /// misma reseteando el puerto del teclado que ya estaba funcionando.
@@ -138,6 +148,7 @@ impl UsbHidHal {
             raton: None,
             inicializado: false,
             huerfanos: 0,
+            saturados: 0,
             puertos: Puertos::nuevo(),
             puerto_teclado: None,
             puerto_raton: None,
@@ -209,6 +220,9 @@ impl UsbHidHal {
 
     /// Eventos que llegaron y no eran de nadie. Ver el campo.
     pub fn huerfanos(&self) -> u32 { self.huerfanos }
+
+    /// Vueltas que se quedaron a medias. Ver [`Self::saturados`].
+    pub fn saturados(&self) -> u32 { self.saturados }
 
     /// Estan los dos con transferencia encolada?
     ///
@@ -638,8 +652,50 @@ impl InputHal for UsbHidHal {
             return 0;
         }
         let mut n = 0usize;
+        // *** ESTE BUCLE NO TENIA COTA, Y AHORA TIENE UN PRODUCTOR QUE CORRE
+        // *** MAS QUE EL (2026-08-30).
+        //
+        // ** `while let ... poll_transfer_event()` sale cuando el anillo de
+        // eventos se vacia, y hasta el 25-08 eso pasaba siempre: los unicos que
+        // ponian eventos ahi eran el teclado y el raton, a 250 Hz entre los dos.
+        //
+        // El tubo de audio cambio la aritmetica. `queue_isoch_out` pone **IOC en
+        // CADA trama** --`(1 << 5)`-- y `audio::latido` encola
+        // `TRAMAS_POR_LATIDO` por latido: del orden de 2.000 eventos por segundo
+        // por ese anillo, contra dos por sondeo que habia antes.
+        //
+        // *** Y LO QUE LO HACE GRAVE ES DE QUIEN ES ESTE HILO. El del bus es el
+        // MISMO que sondea el teclado. Un bucle aqui que no termine no se ve
+        // como "el audio falla": se ve como **la maquina congelada**, porque lo
+        // que deja de responder es el teclado. Es lo que el dueno vio al abrir
+        // el tubo: *"al escribir fallo y se congelo todo"*.
+        //
+        // ** La leccion ya estaba escrita EN ESTA CASA, en el driver de red:
+        //
+        //   > "Bounded by the ring length: one turn never walks more than once
+        //   >  around, so a card that returns everything at once cannot keep
+        //   >  this loop."
+        //
+        // `rx_poll` la aprendio y este no. Misma forma, otro anillo.
+        //
+        // [!] Acotar NO PIERDE eventos: lo que no se atienda esta vuelta sigue
+        // en el anillo y se atiende en la siguiente, 4 ms despues. Lo unico que
+        // se pierde es la garantia de vaciarlo de una vez, que nunca fue una
+        // garantia -- era una suposicion sobre cuantos productores habia.
+        //
+        // El tope es generoso a proposito: cuatro veces lo que un latido de
+        // audio puede haber encolado. Si se llega a el, es que algo produce mas
+        // rapido de lo que el bus late, y **eso es un hallazgo**, no una tarde
+        // perdida: `saturados` lo cuenta.
+        const TOPE_POR_VUELTA: usize = 64;
+        let mut vueltas = 0usize;
         unsafe {
             while let Some((slot, ep, cc)) = bmo_xhci::poll_transfer_event() {
+                vueltas += 1;
+                if vueltas > TOPE_POR_VUELTA {
+                    self.saturados = self.saturados.wrapping_add(1);
+                    break;
+                }
                 // * Aunque no quede sitio para mas eventos, el informe hay que
                 // ATENDERLO: atender es lo que rearma la transferencia, y sin
                 // rearmar el periferico se para para siempre. Se le pasa la

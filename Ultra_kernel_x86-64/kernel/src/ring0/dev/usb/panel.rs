@@ -30,11 +30,11 @@ pub fn xfer_stats() -> (u32, u32, u32) {
 /// transferencia encolada esta enumerado, con el endpoint en `Running`, y mudo
 /// para siempre. El tercero cuenta los Transfer Events que no eran de ningun
 /// periferico conocido -- antes se descartaban sin dejar rastro.
-pub fn reparto_stats() -> (bool, bool, u32) {
+pub fn reparto_stats() -> (bool, bool, u32, u32) {
     unsafe {
         let hid = &*core::ptr::addr_of!(HID);
         let (k, r) = hid.bombeando();
-        (k, r, hid.huerfanos())
+        (k, r, hid.huerfanos(), hid.saturados())
     }
 }
 

@@ -340,10 +340,17 @@ pub fn render_hud() {
     // normales (restos de la enumeracion); si sube **mientras se teclea**, el
     // informe llega con una direccion distinta de la que creemos y por eso
     // nadie rearma.
-    let (bomba_k, bomba_r, huerfanos) = crate::ring0::dev::usb::reparto_stats();
+    let (bomba_k, bomba_r, huerfanos, saturados) = crate::ring0::dev::usb::reparto_stats();
     r.txt(" bmb="); r.txt(if bomba_k { "k+" } else { "k-" });
     r.txt(if bomba_r { "r+" } else { "r-" });
     r.txt(" hu="); r.dec(huerfanos as u64);
+    // *** `sat` -- vueltas en las que el anillo de eventos NO se vacio entero.
+    //
+    // ** Cero = el bus va sobrado. Subiendo = algo produce eventos mas rapido
+    // de lo que este hilo late, y el primer sospechoso tiene nombre: el tubo de
+    // audio pone `IOC` en CADA trama. Va pegado a `hu` porque los dos salen del
+    // mismo bucle y se leen juntos.
+    r.txt(" sat="); r.dec(saturados as u64);
     r.txt("  (ev=0 -> USB - ev sube y x/y quietos -> formato del informe)");
     let raton_color = if !mouse { C_DIM } else if mev > 0 { C_OK } else { C_FAULT };
     splash_dashboard_log_color(total - 1, r.as_str(), raton_color);
