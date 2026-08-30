@@ -90,8 +90,24 @@ USERLAND = "Ultra_userspace/userland/src/lib.rs"
 # La ley y de donde sale cada clase: `META-KERNEL_HARD.md`, L6e.
 COSTES = ("NADA", "TAREA", "APARATO", "DATO", "MAQUINA", "PUERTA")
 
+# -- L6f: MODULAR PRECISA NIVEL 2. Por que ESA pieza es la que va a fallar.
+#
+# *** L6e contesta "que cuesta si se equivoca". Esto contesta la otra mitad:
+# **por que es probable que se equivoque**. Son preguntas distintas y la
+# segunda es la que ahorra el tiempo -- un fallo no dice en que fichero mirar,
+# y con esto la lista de sospechosos deja de ser el arbol entero.
+#
+# Peticion del dueno, con sus palabras: *"no se trata de cortar codigo sino ES
+# capturar cual de ellas SON potenciales que pueden sufrir bug y eso elimina la
+# posibilidad de la aguja en el pajar."*
+#
+# CERRADO por el mismo motivo que `COSTES`, y cada clase es un fallo que este
+# proyecto YA PAGO. Ver `META-KERNEL_HARD.md`, L6f.
+RIESGOS = ("AJENO", "ESPEJO", "SILENCIO", "RELOJ", "UNICO")
+
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "LINEA_BASE.txt")
 CUESTAS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CUESTAS.txt")
+RIESGOS_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RIESGOS.txt")
 
 
 def raiz():
@@ -159,7 +175,7 @@ def mascara(txt):
 
 
 # ===========================================================================
-#  LAS SEIS REGLAS. Cada una devuelve una lista de quejas.
+#  LAS SIETE REGLAS. Cada una devuelve una lista de quejas.
 # ===========================================================================
 
 def r1_caben_en_su_campo(kern, abi, mask):
@@ -294,6 +310,53 @@ def r6_el_coste_declarado(declarantes, minimo):
     return quejas
 
 
+RE_RIESGO = re.compile(r"^//!\s*\[riesgo\]\s+([A-Z ]+)", re.M)
+
+
+def r7_el_riesgo_declarado(declarantes, minimo):
+    """L6f -- MODULAR PRECISA NIVEL 2: por que ESA pieza es la que va a fallar.
+
+    # La diferencia con R6, que no es un matiz
+
+    `[cuesta]` dice **cuanto duele** si la pieza se equivoca. `[riesgo]` dice
+    **por que se va a equivocar**. Un fichero puede costar `MAQUINA` y no tener
+    ningun riesgo declarado: es caro y es tranquilo. Y al reves.
+
+    *** Y la que sirve el dia del fallo es esta. Una pantalla azul da un `rip`,
+    y de ahi sale UNA funcion; lo que no da es en cual de sus cuatro niveles
+    mirar. La clase lo dice: `AJENO` manda al numero que entro de fuera,
+    `ESPEJO` manda a buscar al otro que juzga lo mismo. El 2026-08-30 esas dos
+    eran exactamente las dos respuestas.
+
+    # Se admiten VARIAS clases, y no es una comodidad
+
+    Un mismo trozo puede esconder dos agujas --`destroy_address_space` es
+    `AJENO` y `ESPEJO` a la vez-- y obligar a elegir una haria que la etiqueta
+    mintiera por la mitad. Cada palabra se juzga contra el vocabulario por
+    separado, asi que la comparabilidad no se pierde.
+
+    # Trinquete, igual que L6e
+
+    No se le exige la etiqueta a nadie. Se exige que quien la ponga use el
+    vocabulario, y que el numero de los que la ponen **no baje nunca**.
+    """
+    quejas = []
+    for ruta, clases in sorted(declarantes.items()):
+        for clase in clases:
+            if clase not in RIESGOS:
+                quejas.append(
+                    "%s declara [riesgo] %s, que no esta en el vocabulario. "
+                    "Las clases son: %s" % (ruta, clase, ", ".join(RIESGOS))
+                )
+    if len(declarantes) < minimo:
+        quejas.append(
+            "los ficheros que declaran [riesgo] bajaron de %d a %d. "
+            "La ley L6f solo puede avanzar: si uno se borro, sella con --sellar"
+            % (minimo, len(declarantes))
+        )
+    return quejas
+
+
 def r5_sin_numeros_repetidos(ops_kernel):
     """Dos operaciones con el mismo numero: una de las dos entra en el brazo de
     la otra, y ninguna de las dos falla en voz alta."""
@@ -374,6 +437,21 @@ CABECERA_CUESTAS = """# EL SUELO DE L6e -- cuantos ficheros declaran `[cuesta]`.
 
 """
 
+CABECERA_RIESGOS = """# EL SUELO DE L6f -- cuantos ficheros declaran `[riesgo]`.
+#
+# La ley esta en `META-KERNEL_HARD.md`, L6f (MODULAR PRECISA NIVEL 2). L6e dice
+# lo que CUESTA que una pieza se equivoque; esto dice POR QUE es probable que se
+# equivoque, que es la mitad que sirve el dia del fallo.
+#
+# ** Un `rip` da UNA funcion. Lo que no da es en cual de sus cuatro niveles
+# mirar. La clase lo dice, y por eso el vocabulario es cerrado: son los sitios
+# donde este proyecto ya encontro la aguja.
+#
+# El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
+# comentario: esta para leerlo, no para juzgarlo.
+
+"""
+
 CABECERA_BASE = """# LINEA BASE del contrato -- los numeros que USAN LAS DOS TABLAS.
 #
 # El kernel (`obj/cap.rs`) y `bmo-abi` (`handle/kind.rs`) son dos listas de la
@@ -403,8 +481,10 @@ CABECERA_BASE = """# LINEA BASE del contrato -- los numeros que USAN LAS DOS TAB
 def autoprueba():
     """Cada regla contra una tabla hecha para romperla EXACTAMENTE a ella."""
     fallos = []
+    casos = [0]
 
     def exige(nombre, quejas, debe_quejarse=True):
+        casos[0] += 1
         if debe_quejarse and not quejas:
             fallos.append("la regla %s NO dijo nada y tenia que decir que NO" % nombre)
         if not debe_quejarse and quejas:
@@ -460,22 +540,40 @@ def autoprueba():
     exige("R6(el suelo baja)", r6_el_coste_declarado({"x.rs": "NADA"}, 5))
     exige("R6(el suelo sube)", r6_el_coste_declarado({"x.rs": "NADA", "y.rs": "TAREA"}, 1), False)
 
+    # R7 -- L6f: lo mismo, y ademas que la SEGUNDA clase tambien se juzgue.
+    exige("R7(clase inventada)", r7_el_riesgo_declarado({"x.rs": ("RARO",)}, 0))
+    exige("R7(clase buena)", r7_el_riesgo_declarado({"x.rs": ("AJENO",)}, 0), False)
+    # *** La que de verdad importa: dos clases, la primera buena y la segunda no.
+    # Un juez que solo mire la primera palabra deja pasar la mitad de cada linea.
+    exige("R7(la segunda tambien se mira)", r7_el_riesgo_declarado({"x.rs": ("AJENO", "RARO")}, 0))
+    exige("R7(dos buenas)", r7_el_riesgo_declarado({"x.rs": ("AJENO", "ESPEJO")}, 0), False)
+    exige("R7(el suelo baja)", r7_el_riesgo_declarado({"x.rs": ("AJENO",)}, 5))
+
     if fallos:
         for f in fallos:
             print("  [X] " + f)
         print("autoprueba: %d regla(s) no saben decir que NO" % len(fallos))
         return 1
-    print("clean: las SEIS reglas saben decir que NO (21 casos)")
+    # ** El numero se CUENTA, no se escribe. La version anterior decia "21
+    # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
+    # que dice un numero viejo con toda la confianza del mundo.
+    print("clean: las SIETE reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 
 # ===========================================================================
 
-def declarantes_de_coste():
-    """Todo `.rs` del arbol que lleve `[cuesta]` en su cabecera.
+def _declarantes(regex, leer_grupo):
+    """Todo `.rs` del arbol cuya cabecera case con `regex`.
 
     Se barre por PATRON y no por lista, que es la leccion que ya costo tres
     operaciones del directorio sin contrato: un fichero nuevo entra solo.
+
+    ** UN barrido y no dos. Cuando entro L6f esto estaba a punto de ser la
+    segunda copia del mismo `os.walk` con otra expresion regular, que es
+    exactamente lo que L6e dice que no se haga: tres copias de una regla son
+    tres sitios donde arreglarla, y el dia que alguien arregle dos se notara en
+    el tercero.
     """
     hallados = {}
     raiz_ = raiz()
@@ -491,17 +589,28 @@ def declarantes_de_coste():
                 ruta = os.path.join(dirpath, n)
                 with open(ruta, "r", encoding="utf-8", errors="replace") as f:
                     cab = f.read(4000)
-                m = RE_CUESTA.search(cab)
+                m = regex.search(cab)
                 if m:
                     rel = os.path.relpath(ruta, raiz_).replace(os.sep, "/")
-                    hallados[rel] = m.group(1)
+                    hallados[rel] = leer_grupo(m.group(1))
     return hallados
 
 
-def minimo_de_costes():
-    if not os.path.exists(CUESTAS):
+def declarantes_de_coste():
+    """Los `[cuesta]` -- L6e. Una clase por fichero."""
+    return _declarantes(RE_CUESTA, lambda g: g)
+
+
+def declarantes_de_riesgo():
+    """Los `[riesgo]` -- L6f. VARIAS clases por fichero, separadas por espacios."""
+    return _declarantes(RE_RIESGO, lambda g: tuple(g.split()))
+
+
+def _suelo(ruta):
+    """El primer numero util de un fichero de trinquete. Ausente = 0."""
+    if not os.path.exists(ruta):
         return 0
-    with open(CUESTAS, "r", encoding="utf-8") as f:
+    with open(ruta, "r", encoding="utf-8") as f:
         for linea in f:
             linea = linea.strip()
             if linea and not linea.startswith("#"):
@@ -510,6 +619,14 @@ def minimo_de_costes():
                 except ValueError:
                     return 0
     return 0
+
+
+def minimo_de_costes():
+    return _suelo(CUESTAS)
+
+
+def minimo_de_riesgos():
+    return _suelo(RIESGOS_TXT)
 
 
 def cargar():
@@ -537,6 +654,8 @@ def comprobar():
     quejas += [("R5 dos operaciones con el mismo numero", q) for q in r5_sin_numeros_repetidos(ops_kernel)]
     decl = declarantes_de_coste()
     quejas += [("R6 L6e el coste declarado", q) for q in r6_el_coste_declarado(decl, minimo_de_costes())]
+    ries = declarantes_de_riesgo()
+    quejas += [("R7 L6f el riesgo declarado", q) for q in r7_el_riesgo_declarado(ries, minimo_de_riesgos())]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -557,6 +676,8 @@ def comprobar():
               % divergen)
     print("clean: %d fichero(s) declaran [cuesta] (L6e) y ninguno inventa una clase"
           % len(decl))
+    print("clean: %d fichero(s) declaran [riesgo] (L6f) -- %d clase(s) en total"
+          % (len(ries), sum(len(c) for c in ries.values())))
     return 0
 
 
@@ -579,7 +700,14 @@ def main():
             f.write("%d\n" % len(decl))
             for ruta, clase in sorted(decl.items()):
                 f.write("# %-9s %s\n" % (clase, ruta))
+        ries = declarantes_de_riesgo()
+        with open(RIESGOS_TXT, "w", encoding="utf-8", newline="\n") as f:
+            f.write(CABECERA_RIESGOS)
+            f.write("%d\n" % len(ries))
+            for ruta, clases in sorted(ries.items()):
+                f.write("# %-18s %s\n" % (" ".join(clases), ruta))
         print("sellado el suelo de L6e: %d fichero(s) declaran [cuesta]" % len(decl))
+        print("sellado el suelo de L6f: %d fichero(s) declaran [riesgo]" % len(ries))
         print("sellada la linea base: %d numero(s) en las dos tablas" % n)
         print("[!] revisa las notas A MANO: una herramienta no sabe si KIND_ARCHIVO y File")
         print("    son el mismo objeto.")

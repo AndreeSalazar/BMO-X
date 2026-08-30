@@ -11,8 +11,11 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-4
+7
 # APARATO   Ultra_kernel_x86-64/kernel/src/ring0/core/emergencia.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/phys.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm.rs
 # TAREA     Ultra_kernel_x86-64/kernel/src/ring0/obj/latido.rs
 # MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/obj/mmio.rs
+# APARATO   platform/drivers/net/src/lib.rs
 # MAQUINA   platform/shared/bmo-mmio-juicio/src/lib.rs

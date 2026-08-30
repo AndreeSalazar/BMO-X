@@ -246,6 +246,60 @@ imposible de no ver.
   **el numero de los que lo declaran no baje**. Lo vigila
   `toolchain/tools/contrato/contrato.py`.
 
+- **L6f. MODULAR PRECISA NIVEL 2 (2026-08-30).** L6e dice **cuanto duele** que
+  una pieza se equivoque. Esta dice **por que es probable que se equivoque**, y
+  la cabecera tambien lo declara:
+
+  ```text
+     //! [riesgo]  AJENO ESPEJO
+  ```
+
+  Peticion del dueno, con sus palabras: *"no se trata de cortar codigo sino ES
+  capturar cual de ellas SON potenciales que pueden sufrir bug y eso elimina la
+  posibilidad de la aguja en el pajar."*
+
+  ★★ **Por que las dos preguntas no son la misma.** Un fichero puede costar
+  `MAQUINA` y ser tranquilo: hace una cosa, con numeros que calcula el mismo, y
+  nadie mas los juzga. Y uno que cuesta `TAREA` puede ser un avispero. El coste
+  ordena **que se revisa con mas cuidado**; el riesgo ordena **donde se mira
+  primero cuando ya ha fallado**, que es otro dia y otra pregunta.
+
+  El vocabulario es **CERRADO**, y cada clase es un sitio donde este proyecto ya
+  encontro la aguja:
+
+  | clase | por que ESA pieza falla | donde ya paso |
+  |---|---|---|
+  | `AJENO` | dereferencia numeros que escribio otro | el `cr3` de una tarea muerta en `destroy_address_space` |
+  | `ESPEJO` | dos sitios juzgan lo mismo y pueden discrepar | `free_frame` (16 GiB) contra `caminable` (64 TiB) |
+  | `SILENCIO` | equivocarse no falla: sigue, y da un dato malo | `rcr::AM` pedido con la tabla `MAR` a ceros |
+  | `RELOJ` | depende de que algo llegue a tiempo | las tramas `TARDE` del tubo de audio |
+  | `UNICO` | se hace una vez y no se deshace | el despliegue al disco |
+
+  ★★ **Y la prueba de que esto no es papel: el 2026-08-30 lo contesto entero.**
+  La pantalla azul dio un `rip`, el `rip` dio UNA funcion -- y de sus cuatro
+  niveles anidados no dijo nada. Las dos clases de esa funcion dijeron el resto:
+
+  ```text
+     AJENO   -> mira el numero que entro de fuera   -> el `pml4` sin juez
+     ESPEJO  -> busca al otro que juzga lo mismo    -> los dos techos
+  ```
+
+  Las dos eran ciertas y las dos eran el bug. **Eso es lo que se compra: la
+  aguja deja de estar en el pajar y pasa a estar en una lista de cinco.**
+
+  ★ **Se admiten VARIAS clases en una linea**, al reves que en L6e. No es una
+  comodidad: una pieza puede esconder dos agujas de verdad, y obligar a elegir
+  una hace que la etiqueta mienta por la mitad. Cada palabra se juzga por
+  separado, asi que la comparabilidad no se pierde.
+
+  [!] **Y NO cambia la regla de corte de L6e.** Dos `[cuesta]` en una cabecera
+  siguen diciendo que el fichero esta mal cortado; dos `[riesgo]` no dicen eso
+  -- dicen que hay dos sitios por donde mirar. Confundirlas partiria ficheros
+  que estan bien.
+
+  [!] Trinquete y no muro, con el mismo juez: `contrato.py`, regla R7, suelo en
+  `RIESGOS.txt`.
+
 ****** Y desde el 2026-08-18, L6a tiene las cinco piezas.** Le faltaban las tres
 ultimas y por eso se incumplia sin ruido: `gui/main.rs` crecio 1.244 lineas
 entre el 08-04 y el 08-12 **teniendo ya un plan escrito para partirlo**.
