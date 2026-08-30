@@ -96,7 +96,7 @@ fn atender_enchufe(puerto: u8) {
         // Aqui se pregunta el hecho y se apunta en CABINA. Un `k-` es un
         // teclado enumerado con el endpoint en Running y **sin nadie que
         // le pida nada**, que es exactamente el sintoma que se sufrio.
-        let (bomba_k, bomba_r, _) = panel::reparto_stats();
+        let (bomba_k, bomba_r, _, _) = panel::reparto_stats();
         let bombas = ((bomba_k as u64) << 8) | bomba_r as u64;
         crate::ring0::cabina::bits("usb", "  ...y su bomba encolada k:r", bombas);
         if !bomba_k {
