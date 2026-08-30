@@ -300,6 +300,59 @@ imposible de no ver.
   [!] Trinquete y no muro, con el mismo juez: `contrato.py`, regla R7, suelo en
   `RIESGOS.txt`.
 
+- **L6g. CRITIC -- el nivel 3, y aqui las reglas SI cambian (2026-08-30).** Los
+  niveles 1 y 2 etiquetan. Este **muda**: las piezas cuyo fallo no se puede
+  deshacer salen de donde estan y viven en `ring0/critic/`, **un fichero por
+  categoria**, y dentro de esa carpeta rigen otras reglas.
+
+  Peticion del dueno: *"cambiar las piezas MAS criticas (...) en carpetas
+  especiales `Critic` con cada categoria (...) **No quiero sorpresas**"*.
+
+  ★★ **Por que MUDAR y no solo etiquetar, que es la pregunta honesta.** Porque
+  una etiqueta es opcional --L6e y L6f son trinquetes: obligan al que la pone,
+  no al que no-- y una CARPETA es un sitio donde el guardian puede exigir. Lo
+  que compra el nivel 3 no es orden: es **jurisdiccion**.
+
+  Y el 2026-08-30 dio la prueba de que hace falta. Tres fallos, los tres en
+  Ring 0, los tres en piezas de la misma naturaleza:
+
+  | pieza | que era | como fallaba |
+  |---|---|---|
+  | `vmm::caminable` | el juez de si una fisica se puede tocar | techo `1 << 46` donde existia `PHYSMAP_SIZE` |
+  | `phys::zero_frame` | el que escribe 4 KiB | **sin cota**, al lado de `free_frame` que si la tiene |
+  | `uhid::poll` | el que drena el anillo | `while let` sin tope, con un productor nuevo encima |
+
+  ** Las tres son **JUECES Y COTAS**: funciones cortas que deciden si algo
+  peligroso puede pasar. Las tres vivian dentro de ficheros grandes, leyendose
+  como codigo normal. Y las tres estaban mal de una forma que compila.
+
+  ### Las cuatro reglas que cambian dentro de `critic/`
+
+  ```text
+     1. DECLARAR NO ES OPCIONAL   `[cuesta]` y `[riesgo]` son obligatorios
+     2. TIENE QUE SABER DECIR NO  banco de pruebas propio, o no entra (L4)
+     3. NINGUN NUMERO SUELTO      todo tope sale de la constante que lo define
+     4. TOPE DURO DE 300 LINEAS   un juez que no cabe en una pantalla no es
+                                  un juez: es un sitio donde esconder un `if`
+  ```
+
+  ★ La 3 es la que habria cazado lo del 30-08 sin arrancar la maquina:
+  `FISICA_MAX = 1 << 46` era un literal donde `PHYSMAP_SIZE` ya existia, y los
+  dos jueces del mismo numero discrepaban en 4.096 veces.
+
+  ★★ **Y la 2 es la que hace que esto no sea mudanza decorativa.** Mover codigo
+  no lo arregla; obligarle a demostrar que sabe rechazar, si. Es la misma L4
+  que ya se le exige a los guardianes, aplicada a las piezas que guardan.
+
+  [!] **Y la mudanza NO es libre: paga L6d.** Un reparto se demuestra con el
+  compilador emitiendo los mismos bytes, no con los tests pasando. Una pieza
+  entra en `critic/` **de una en una y con su hash**, nunca en lote. Mover
+  medio Ring 0 de golpe para hacerlo mas seguro es exactamente la clase de
+  cambio que mete el fallo que venia a evitar.
+
+  [!] Solo Ring 0. Un fallo de Ring 3 mata la tarea y hay autopsia; aqui no hay
+  nadie debajo que la escriba. Lo vigila `contrato.py`, regla R8.
+
 ****** Y desde el 2026-08-18, L6a tiene las cinco piezas.** Le faltaban las tres
 ultimas y por eso se incumplia sin ruido: `gui/main.rs` crecio 1.244 lineas
 entre el 08-04 y el 08-12 **teniendo ya un plan escrito para partirlo**.
