@@ -1,0 +1,17 @@
+# EL SUELO DE L6f -- cuantos ficheros declaran `[riesgo]`.
+#
+# La ley esta en `META-KERNEL_HARD.md`, L6f (MODULAR PRECISA NIVEL 2). L6e dice
+# lo que CUESTA que una pieza se equivoque; esto dice POR QUE es probable que se
+# equivoque, que es la mitad que sirve el dia del fallo.
+#
+# ** Un `rip` da UNA funcion. Lo que no da es en cual de sus cuatro niveles
+# mirar. La clase lo dice, y por eso el vocabulario es cerrado: son los sitios
+# donde este proyecto ya encontro la aguja.
+#
+# El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
+# comentario: esta para leerlo, no para juzgarlo.
+
+3
+# ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/phys.rs
+# AJENO ESPEJO       Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm.rs
+# SILENCIO           platform/drivers/net/src/lib.rs

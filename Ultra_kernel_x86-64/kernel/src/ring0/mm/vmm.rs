@@ -1,5 +1,19 @@
 //! Virtual memory: address spaces built on the `s2_mem` physmap.
 //!
+//! [cuesta]  MAQUINA -- calcula direcciones para el physmap y las
+//!           dereferencia. Ya ha parado la maquina DOS veces: el `#GP` del
+//!           25-08 y el `#PF` del 30-08, las dos en `destroy_address_space`.
+//!
+//! [riesgo]  AJENO ESPEJO
+//!           AJENO  -- los numeros que camina no los escribe este fichero:
+//!                     salen de las tablas de pagina y del `cr3` de una ranura
+//!                     de tarea MUERTA. `caminable` existe por eso, y el
+//!                     30-08 se vio que el argumento de entrada era el unico
+//!                     que no pasaba por el.
+//!           ESPEJO -- `phys::free_frame` juzga LA MISMA direccion fisica con
+//!                     su propio techo. El 30-08 no coincidian --16 GiB contra
+//!                     64 TiB-- y el flojo era el que dereferencia.
+//!
 //! Every user address space is a private PML4 that shares the kernel half
 //! (PML4[256..512] -- the physmap and future kernel higher-half mappings) and
 //! owns a private PDPT under PML4[0]. Entry 0 of that PDPT is a copy of the

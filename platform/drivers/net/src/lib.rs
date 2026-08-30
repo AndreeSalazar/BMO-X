@@ -1,5 +1,14 @@
 //! **RED -- de momento, solo RECONOCER.**
 //!
+//! [cuesta]  APARATO -- programa el filtro y el anillo de una NIC. Un bit de
+//!           mas y la tarjeta escribe en memoria que no es suya.
+//!
+//! [riesgo]  SILENCIO -- aqui equivocarse NO falla: sigue. `rcr::AM` estaba
+//!           pedido desde el primer dia con la tabla `MAR` a ceros, o sea un
+//!           filtro que no admitia ni una trama. Compilaba, se leia como una
+//!           promesa, y el sintoma fue `0 tramas` -- que se leyo como "la red
+//!           esta callada". Lo que no falla en voz alta se cobra en tardes.
+//!
 //! ## Que habia aqui antes, y por que se borro
 //!
 //! 287 lineas de driver de **Intel e1000** que no llamaba nadie. La NIC de esta

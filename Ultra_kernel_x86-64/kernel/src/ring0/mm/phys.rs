@@ -1,5 +1,13 @@
 //! Bitmap physical frame allocator (4 KiB frames, physical < PHYSMAP_SIZE).
 //!
+//! [cuesta]  MAQUINA -- entregar dos veces el mismo marco no da un fallo: da
+//!           dos duenos del mismo byte, y el sintoma tres arranques despues.
+//!
+//! [riesgo]  ESPEJO -- `MAX_PHYS` es el techo de lo que el physmap alcanza, y
+//!           NO es el unico sitio que lo decide: `vmm::caminable` juzga la
+//!           misma direccion. El 30-08 los dos numeros no eran el mismo y la
+//!           maquina se paro. Si este techo cambia, ese cambia con el.
+//!
 //! Source of truth: the BootContext memory map *after* `s2_mem` already
 //! carved out its page-table pool (so the tables that built the physmap can
 //! never be handed out). On top of the map we apply the kernel's own
