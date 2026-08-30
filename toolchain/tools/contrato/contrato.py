@@ -109,6 +109,16 @@ BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "LINEA_BASE.txt"
 CUESTAS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CUESTAS.txt")
 RIESGOS_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RIESGOS.txt")
 
+# -- L6f nivel 3: CRITIC. Donde viven las piezas cuyo fallo no se deshace.
+#
+# *** Esta carpeta no es orden: es JURISDICCION. Una etiqueta obliga al que la
+# pone; un sitio obliga al que entra. Ver `META-KERNEL_HARD.md`, L6g.
+CRITIC_DIR = "Ultra_kernel_x86-64/kernel/src/ring0/critic"
+# Un juez que no cabe en una pantalla no es un juez: es un sitio donde esconder
+# un `if`. El numero es de la casa (L6a son 1.000 para un modulo cualquiera) y
+# aqui baja a la tercera parte a proposito.
+CRITIC_TOPE = 300
+
 
 def raiz():
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
@@ -175,7 +185,7 @@ def mascara(txt):
 
 
 # ===========================================================================
-#  LAS SIETE REGLAS. Cada una devuelve una lista de quejas.
+#  LAS OCHO REGLAS. Cada una devuelve una lista de quejas.
 # ===========================================================================
 
 def r1_caben_en_su_campo(kern, abi, mask):
@@ -311,6 +321,44 @@ def r6_el_coste_declarado(declarantes, minimo):
 
 
 RE_RIESGO = re.compile(r"^//!\s*\[riesgo\]\s+([A-Z ]+)", re.M)
+
+
+def r8_lo_que_vive_en_critic(ficheros):
+    """L6g -- CRITIC: dentro de esta carpeta las reglas son otras.
+
+    `ficheros` es `{ruta: (texto, lineas_de_codigo)}` de todo `.rs` bajo
+    `critic/`. Se comprueban las tres cosas que una maquina puede comprobar:
+
+      1. declara `[cuesta]` Y `[riesgo]` -- aqui no son trinquete, son peaje;
+      2. trae banco de pruebas -- L4: una pieza que guarda tiene que saber
+         decir NO, y demostrarlo;
+      3. no pasa de `CRITIC_TOPE` lineas.
+
+    ** La cuarta regla de la ley --ningun numero suelto: todo tope sale de la
+    constante que lo define-- **no se comprueba aqui y hay que decirlo**. Un
+    juez que intentara distinguir `1 << 46` de una constante legitima acabaria
+    adivinando, y un guardian que adivina es peor que ninguno: da permiso con
+    autoridad. Esa regla la cobra la revision humana, y esta escrita para que
+    se pueda citar.
+    """
+    quejas = []
+    for ruta in sorted(ficheros):
+        txt, lineas = ficheros[ruta]
+        if not RE_CUESTA.search(txt):
+            quejas.append("%s vive en critic/ y no declara [cuesta] (L6g regla 1)" % ruta)
+        if not RE_RIESGO.search(txt):
+            quejas.append("%s vive en critic/ y no declara [riesgo] (L6g regla 1)" % ruta)
+        if "#[cfg(test)]" not in txt:
+            quejas.append(
+                "%s vive en critic/ y no tiene banco de pruebas. Una pieza que "
+                "guarda tiene que saber decir NO (L6g regla 2)" % ruta
+            )
+        if lineas > CRITIC_TOPE:
+            quejas.append(
+                "%s tiene %d lineas de codigo y el tope de critic/ es %d "
+                "(L6g regla 4)" % (ruta, lineas, CRITIC_TOPE)
+            )
+    return quejas
 
 
 def r7_el_riesgo_declarado(declarantes, minimo):
@@ -549,6 +597,22 @@ def autoprueba():
     exige("R7(dos buenas)", r7_el_riesgo_declarado({"x.rs": ("AJENO", "ESPEJO")}, 0), False)
     exige("R7(el suelo baja)", r7_el_riesgo_declarado({"x.rs": ("AJENO",)}, 5))
 
+    # R8 -- L6g: las cuatro exigencias de critic/, cada una por separado. Se
+    # arman por trozos y no con literales de varias lineas: el fichero que
+    # contiene esta prueba se lee y se parchea a menudo, y una cadena con saltos
+    # dentro es lo primero que se rompe al hacerlo.
+    CU = "//! [cuesta] MAQUINA" + chr(10)
+    RI = "//! [riesgo] AJENO" + chr(10)
+    BA = "#[cfg(test)] mod t {}" + chr(10)
+    bueno = (CU + RI + BA, 10)
+    exige("R8(completo)", r8_lo_que_vive_en_critic({"critic/j.rs": bueno}), False)
+    exige("R8(sin cuesta)", r8_lo_que_vive_en_critic({"critic/j.rs": (RI + BA, 10)}))
+    exige("R8(sin riesgo)", r8_lo_que_vive_en_critic({"critic/j.rs": (CU + BA, 10)}))
+    exige("R8(sin banco)", r8_lo_que_vive_en_critic({"critic/j.rs": (CU + RI, 10)}))
+    exige("R8(demasiado largo)",
+          r8_lo_que_vive_en_critic({"critic/j.rs": (bueno[0], CRITIC_TOPE + 1)}))
+    exige("R8(vacia)", r8_lo_que_vive_en_critic({}), False)
+
     if fallos:
         for f in fallos:
             print("  [X] " + f)
@@ -557,7 +621,7 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las SIETE reglas saben decir que NO (%d casos)" % casos[0])
+    print("clean: las OCHO reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 
@@ -594,6 +658,35 @@ def _declarantes(regex, leer_grupo):
                     rel = os.path.relpath(ruta, raiz_).replace(os.sep, "/")
                     hallados[rel] = leer_grupo(m.group(1))
     return hallados
+
+
+def ficheros_de_critic():
+    """`{ruta: (texto, lineas_de_codigo)}` de todo `.rs` bajo `critic/`.
+
+    Las lineas de CODIGO son las que no son comentario ni estan en blanco: el
+    mismo criterio del censo modular. En esta casa los comentarios pesan mas
+    que el codigo y contarlos convertiria el tope en una multa por explicarse.
+    """
+    d = os.path.join(raiz(), CRITIC_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return {}
+    fuera = {}
+    for dirpath, dirnames, filenames in os.walk(d):
+        dirnames[:] = [x for x in dirnames if x not in ("target", ".git")]
+        for n in sorted(filenames):
+            if not n.endswith(".rs"):
+                continue
+            ruta = os.path.join(dirpath, n)
+            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+                txt = f.read()
+            codigo = 0
+            for l in txt.splitlines():
+                t = l.strip()
+                if t and not t.startswith("//") and not t.startswith("/*") and not t.startswith("*"):
+                    codigo += 1
+            rel = os.path.relpath(ruta, raiz()).replace(os.sep, "/")
+            fuera[rel] = (txt, codigo)
+    return fuera
 
 
 def declarantes_de_coste():
@@ -656,6 +749,8 @@ def comprobar():
     quejas += [("R6 L6e el coste declarado", q) for q in r6_el_coste_declarado(decl, minimo_de_costes())]
     ries = declarantes_de_riesgo()
     quejas += [("R7 L6f el riesgo declarado", q) for q in r7_el_riesgo_declarado(ries, minimo_de_riesgos())]
+    crit = ficheros_de_critic()
+    quejas += [("R8 L6g lo que vive en critic/", q) for q in r8_lo_que_vive_en_critic(crit)]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -678,6 +773,14 @@ def comprobar():
           % len(decl))
     print("clean: %d fichero(s) declaran [riesgo] (L6f) -- %d clase(s) en total"
           % (len(ries), sum(len(c) for c in ries.values())))
+    if crit:
+        print("clean: %d pieza(s) en critic/ (L6g), todas declaradas y con banco"
+              % len(crit))
+    else:
+        # ** Decirlo aunque este vacia. Una carpeta con jurisdiccion y sin
+        # inquilinos no es un fallo --las piezas entran de una en una, con su
+        # hash-- pero un silencio aqui se leeria como "no hay guardian".
+        print("clean: critic/ (L6g) esta vacia -- ninguna pieza ha mudado todavia")
     return 0
 
 
