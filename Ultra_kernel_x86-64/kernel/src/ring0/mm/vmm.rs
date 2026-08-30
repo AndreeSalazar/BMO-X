@@ -586,7 +586,51 @@ pub fn fisica_exacta(pml4: u64, va: u64) -> Option<u64> {
 ///
 /// > Un kernel que se cae desmontando a un muerto no deja autopsia: se lleva por
 /// > delante al que la iba a escribir.
-const FISICA_MAX: u64 = 1 << 46;
+///
+/// # *** Y VOLVIO A MATAR LA MAQUINA EL 2026-08-30. El techo estaba mal.
+///
+/// Misma funcion, segunda pantalla azul. El dueno abrio DOOM y salio esto:
+///
+/// ```text
+///    vec=0x0E  err=0x00000000   no-presente  leyendo  desde el KERNEL
+///    rip=0x00000000004111B5     <- +0x385 dentro de destroy_address_space
+///    cr2=0xFFFFBD352B3AC000
+///    corria tid=02  (Ring 0)    <- `reap`, el que desmonta al muerto
+/// ```
+///
+/// Y la resta lo dice entero:
+///
+/// ```text
+///    cr2 - HIGH_MEM_BASE  =  0x3D352B3AC000  =  61,2 TiB
+///    FISICA_MAX (antes)   =  1 << 46         =  64   TiB   <- LO DEJABA PASAR
+///    PHYSMAP_SIZE         =  0x4_0000_0000   =  16   GiB   <- lo que hay
+/// ```
+///
+/// *** **El guardian del 25-08 no cerro el agujero: cambio la excepcion.** Con
+/// `2^46` se acaban las direcciones NO CANONICAS --y con ellas el `#GP`-- pero
+/// queda abierto todo el tramo de **16 GiB a 64 TiB**, donde la direccion SI es
+/// canonica, `phys_to_virt` la calcula sin quejarse, y no la mapea nadie. Eso
+/// es un `#PF` de no-presente leyendo desde el kernel, que es exactamente la
+/// pantalla de arriba. Un techo 4.096 veces mas alto de lo que existe no es un
+/// techo.
+///
+/// ## Y el numero correcto ya estaba escrito en DOS sitios
+///
+/// ```text
+///    mm/mod.rs      "the allocator MUST never hand out a frame at or above
+///                    this address -- the kernel could not touch it through
+///                    phys_to_virt"
+///    phys.rs        MAX_PHYS = PHYSMAP_SIZE, y `free_frame` YA rechaza con el
+/// ```
+///
+/// ** O sea que `free_frame` y `caminable` juzgan LA MISMA direccion fisica con
+/// dos techos distintos --16 GiB y 64 TiB-- y **el flojo era el que
+/// dereferencia**. El que solo apunta un bit en un mapa era el estricto.
+///
+/// [!] Y la frase que esta funcion imprime ya decia el techo bueno desde el
+/// primer dia: *"entrada fuera del physmap"*. El mensaje y la comprobacion no
+/// hablaban de lo mismo, y gano el mensaje.
+const FISICA_MAX: u64 = crate::ring0::mm::PHYSMAP_SIZE;
 
 /// ** Y LAS CUATRO FRASES SE ACORTARON EL 2026-08-25, POR UN MOTIVO MEDIDO.
 ///
@@ -660,6 +704,22 @@ fn caminable(fisica: u64, nivel: &'static str, cruda: u64, tabla: u64, casilla: 
 pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
     let mut hojas = 0u64;
     let mut tablas = 0u64;
+    // *** LA UNICA DIRECCION QUE ENTRA DE FUERA, Y ERA LA UNICA SIN JUEZ.
+    //
+    // ** Los cuatro niveles de abajo --PDPT, PD, PT y la hoja-- pasan por
+    // `caminable`. Este no: `pml4` es el `cr3` que `reap` saca de la ranura de
+    // una tarea MUERTA, o sea el valor con mas motivos para estar pisado de
+    // todos los que toca esta funcion, y era el unico que se dereferenciaba a
+    // ciegas. Un guardian que vigila las cuatro puertas de dentro y deja la de
+    // la calle abierta no es un guardian.
+    //
+    // [!] Y si no es caminable NO SE LIBERA. `free_frame` lo rechazaria solo
+    // --tiene el techo bueno-- pero devolver aqui deja el numero en CABINA en
+    // vez de dejarlo pasar en silencio: una tarea que muere con el `cr3` roto
+    // es un hallazgo, no una limpieza mas.
+    if !caminable(pml4, "PML4: el CR3 de la tarea no es caminable", pml4, 0, 0) {
+        return (hojas, tablas);
+    }
     let user = table(pml4);
     let e0 = user[0];
     if e0 & PTE_PRESENT != 0 {
