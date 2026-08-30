@@ -300,33 +300,43 @@ imposible de no ver.
   [!] Trinquete y no muro, con el mismo juez: `contrato.py`, regla R7, suelo en
   `RIESGOS.txt`.
 
-- **L6g. CRITIC -- el nivel 3, y aqui las reglas SI cambian (2026-08-30).** Los
-  niveles 1 y 2 etiquetan. Este **muda**: las piezas cuyo fallo no se puede
-  deshacer salen de donde estan y viven en `ring0/critic/`, **un fichero por
-  categoria**, y dentro de esa carpeta rigen otras reglas.
+- **L6g. LOS CARRILES -- el nivel 3 (2026-08-30).** El nivel 2 **lista**; este
+  **ordena**. Las piezas de Ring 0 que importan se mudan a `ring0/critic/`, y
+  alli se reparten en **carriles**, un fichero por carril.
 
-  Peticion del dueno: *"cambiar las piezas MAS criticas (...) en carpetas
-  especiales `Critic` con cada categoria (...) **No quiero sorpresas**"*.
+  Peticion del dueno, y su imagen: *"algo de letrero de autopista (...) son para
+  facilitar en orden si un dia quiero cambiar, **como podre identificar?**
+  imaginate que sin eso seria dificil"*.
 
-  ★★ **Por que MUDAR y no solo etiquetar, que es la pregunta honesta.** Porque
-  una etiqueta es opcional --L6e y L6f son trinquetes: obligan al que la pone,
-  no al que no-- y una CARPETA es un sitio donde el guardian puede exigir. Lo
-  que compra el nivel 3 no es orden: es **jurisdiccion**.
+  ★★ **Y el eje NO es de que TIPO es la pieza: es QUE CUESTA CAMBIARLA.** Es la
+  correccion que hizo falta -- la primera version de esta ley repartia por
+  naturaleza (jueces, duenos, fronteras) y eso contesta *"que hace"*, que ya lo
+  contesta el nombre del fichero. La pregunta que no tenia respuesta era otra, y
+  es la unica que se hace de verdad:
 
-  Y el 2026-08-30 dio la prueba de que hace falta. Tres fallos, los tres en
-  Ring 0, los tres en piezas de la misma naturaleza:
+  > **Voy a tocar esto. Que arrastro?**
 
-  | pieza | que era | como fallaba |
+  ### Los carriles
+
+  | carril | que dice | que exige antes de tocar |
   |---|---|---|
-  | `vmm::caminable` | el juez de si una fisica se puede tocar | techo `1 << 46` donde existia `PHYSMAP_SIZE` |
-  | `phys::zero_frame` | el que escribe 4 KiB | **sin cota**, al lado de `free_frame` que si la tiene |
-  | `uhid::poll` | el que drena el anillo | `while let` sin tope, con un productor nuevo encima |
+  | **ROJA** | un fallo aqui **para la maquina y no deja autopsia**: no hay nadie debajo que la escriba | las cuatro reglas de abajo, y el hash de L6d |
+  | **AMARILLA** | **va a cambiar**, y al cambiar **arrastra a otro** | la cabecera nombra a quien arrastra, y se tocan JUNTOS |
+  | *(verde)* | se cambia sola: nadie depende de su forma | nada. **Y por eso no tiene fichero**: es todo lo demas |
 
-  ** Las tres son **JUECES Y COTAS**: funciones cortas que deciden si algo
-  peligroso puede pasar. Las tres vivian dentro de ficheros grandes, leyendose
-  como codigo normal. Y las tres estaban mal de una forma que compila.
+  ★ **El verde no esta en la carpeta a proposito.** Un carril que contiene "casi
+  todo" no informa de nada, y llenar `critic/` con lo que no es critico haria
+  que abrirla dejara de contestar la pregunta. Se entra en la autopista, no se
+  vive en ella.
 
-  ### Las cuatro reglas que cambian dentro de `critic/`
+  ★★ **AMARILLA es el carril que este proyecto necesitaba y no tenia.** El
+  30-08, `phys::free_frame` y `vmm::caminable` juzgaban el mismo numero con dos
+  techos distintos --16 GiB contra 64 TiB-- y **cambiar uno sin el otro fue el
+  bug**. Eso no es una pieza critica: son DOS piezas atadas, y lo que faltaba
+  era el letrero que dijera que van juntas. Es `ESPEJO` de L6f, ascendido de
+  etiqueta a carril.
+
+  ### Las cuatro reglas de dentro de `critic/`
 
   ```text
      1. DECLARAR NO ES OPCIONAL   `[cuesta]` y `[riesgo]` son obligatorios
@@ -337,21 +347,21 @@ imposible de no ver.
   ```
 
   ★ La 3 es la que habria cazado lo del 30-08 sin arrancar la maquina:
-  `FISICA_MAX = 1 << 46` era un literal donde `PHYSMAP_SIZE` ya existia, y los
-  dos jueces del mismo numero discrepaban en 4.096 veces.
+  `FISICA_MAX = 1 << 46` era un literal donde `PHYSMAP_SIZE` ya existia.
 
-  ★★ **Y la 2 es la que hace que esto no sea mudanza decorativa.** Mover codigo
-  no lo arregla; obligarle a demostrar que sabe rechazar, si. Es la misma L4
-  que ya se le exige a los guardianes, aplicada a las piezas que guardan.
+  [!] **La 3 no la comprueba la maquina, y hay que decirlo.** Un juez que
+  intentara distinguir `1 << 46` de una constante legitima acabaria adivinando,
+  y **un guardian que adivina da permiso con autoridad**. Esa la cobra la
+  revision humana; esta escrita para que se pueda citar. `contrato.py` (R8)
+  cobra las otras tres, y que el nombre del fichero sea un carril del
+  vocabulario.
 
-  [!] **Y la mudanza NO es libre: paga L6d.** Un reparto se demuestra con el
-  compilador emitiendo los mismos bytes, no con los tests pasando. Una pieza
-  entra en `critic/` **de una en una y con su hash**, nunca en lote. Mover
-  medio Ring 0 de golpe para hacerlo mas seguro es exactamente la clase de
-  cambio que mete el fallo que venia a evitar.
+  [!] **La mudanza paga L6d**: se demuestra con el compilador emitiendo los
+  mismos bytes, no con los tests pasando. Una pieza entra **de una en una y con
+  su hash**, nunca en lote. Mover medio Ring 0 de golpe para hacerlo mas seguro
+  es exactamente la clase de cambio que mete el fallo que venia a evitar.
 
-  [!] Solo Ring 0. Un fallo de Ring 3 mata la tarea y hay autopsia; aqui no hay
-  nadie debajo que la escriba. Lo vigila `contrato.py`, regla R8.
+  [!] Solo Ring 0. Un fallo de Ring 3 mata la tarea y hay autopsia; aqui no.
 
 ****** Y desde el 2026-08-18, L6a tiene las cinco piezas.** Le faltaban las tres
 ultimas y por eso se incumplia sin ruido: `gui/main.rs` crecio 1.244 lineas
