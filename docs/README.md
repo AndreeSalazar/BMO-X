@@ -165,6 +165,8 @@ Los ocho declaran seguir el metodo de `SMP_MAESTRO.md`.
 | [`PYTHON_MAESTRO.md`](maestro/PYTHON_MAESTRO.md) | 08-16 | que hace falta de verdad, y no son los 2 syscalls |
 | [`SEGURIDAD_MAESTRO.md`](maestro/SEGURIDAD_MAESTRO.md) | 08-18 | integridad no es autoria, y que backdoor puede esconderse aqui |
 | [`IPC_MAESTRO.md`](maestro/IPC_MAESTRO.md) | 08-18 | serializar no es enmarcar, y donde acaba un mensaje |
+| [`INTI_MAESTRO.md`](maestro/INTI_MAESTRO.md) | 08-19 | el lenguaje de BMO-X: no es el quinto frontend, es el unico que no le debe nada a nadie |
+| [`RING3_MAESTRO.md`](maestro/RING3_MAESTRO.md) | 08-26 | el censo de lo que corre con privilegio, y que baja |
 
 ---
 
@@ -186,6 +188,8 @@ con **que la bloquea** y **como se sabe que quedo hecha**"*.
 | [`PLAN_EL_PERFIL_TOTAL.md`](plan/PLAN_EL_PERFIL_TOTAL.md) | **todo lo que esta maquina da sin comprar nada**: el inventario perfilado, el plan total de la red, y donde esta el techo |
 | [`PLAN_AUDIO.md`](plan/PLAN_AUDIO.md) | las casillas de su MAESTRO. **Hoy BMO-X controla el volumen y no puede emitir una muestra** |
 | [`PLAN_EL_ASISTENTE.md`](plan/PLAN_EL_ASISTENTE.md) | **fusiona cuatro documentos**: que falta para que una IA local corra dentro de BMO-X, y donde estan de verdad los meses |
+| [`PLAN_SUELO_RING3.md`](plan/PLAN_SUELO_RING3.md) | las tres cosas que hay que construir ANTES de bajar nada de Ring 0 |
+| [`PLAN_MEDIOS.md`](plan/PLAN_MEDIOS.md) | VLC medido: es Nivel 3, y lo que se pide detras del nombre son cuatro escalones |
 
 ★ **El par MAESTRO + PLAN es la simetria de esta carpeta**, y hoy la tienen
 entera AUTOCURACION, SEGURIDAD y **AUDIO** -- este ultimo desde el 25-08, el dia
@@ -208,6 +212,10 @@ suya (...) copiarlas seria heredar sus deudas sin heredar sus motivos."*
 | [`LIDERES.md`](identidad/LIDERES.md) | un aparato exclusivo va a UN proceso, que lo REPARTE |
 | [`QUE_DESBLOQUEA.md`](identidad/QUE_DESBLOQUEA.md) | lo que desbloquea apps es la SUPERFICIE, no el lenguaje |
 | [`ENTRAR_EN_SU_ECOSISTEMA.md`](identidad/ENTRAR_EN_SU_ECOSISTEMA.md) | tres caminos, y solo uno toca la identidad |
+| [`EL_AISLAMIENTO.md`](identidad/EL_AISLAMIENTO.md) | una app que revienta NO es lo mismo que una pantalla azul |
+| [`LA_COMPATIBILIDAD.md`](identidad/LA_COMPATIBILIDAD.md) | las tablas de lo que no se puede romper, y el PEAJE que se olvida |
+| [`LA_RUTA.md`](identidad/LA_RUTA.md) | se paga en la puerta una vez, y despues no hay puerta |
+| [`LOS_TRES_VERTICES.md`](identidad/LOS_TRES_VERTICES.md) | de que esta hecho BMO-X, y por que esos tres |
 | [`LIENZO.md`](identidad/LIENZO.md) | ⚠ **SUPERADO** por `plan/PLAN_DIRECTOR.md` -- se conserva a proposito |
 
 [!] `LIENZO.md` **no se borra y no se arregla**: su conclusion se cayo y el
