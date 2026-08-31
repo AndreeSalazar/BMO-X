@@ -409,6 +409,30 @@ pub struct ProgramRecord {
     pub code_bytes: u32,
     pub sections: u8,
     pub entry_va: u64,
+    /// **Donde empieza y cuanto mide la seccion EJECUTABLE**, en el espacio del
+    /// proceso.
+    ///
+    /// # *** POR QUE SE GUARDA, y lo enseno DOOM el 2026-08-31
+    ///
+    /// La autopsia de Ring 3 imprime un rastro de llamadas leyendo la pila y
+    /// quedandose con las palabras que caen "en la imagen". Y "en la imagen"
+    /// era **todo lo que hay entre la base y la pila**: codigo, datos, bss y el
+    /// monton entero. O sea que un puntero a un buffer contaba como retorno.
+    ///
+    /// ```text
+    ///    pila  +0x137c98 +0x137568 +0x297b9
+    ///          -> I_GetTicks+0x9
+    /// ```
+    ///
+    /// Tres direcciones y UN nombre: las otras dos caian a 1,2 MiB, que en DOOM
+    /// es la zona de memoria. **Ocupaban dos de las tres plazas del renglon con
+    /// datos**, y las plazas son tres porque no caben mas en 72 columnas.
+    ///
+    /// [!] `0` en los dos campos = no se supo. La autopsia vuelve entonces al
+    /// criterio ancho: una direccion de mas es peor que ninguna, pero ninguna
+    /// linea es peor que las dos.
+    pub code_va: u64,
+    pub code_len: u64,
     /// `false` = el BEX no paso la admision (formato, memoria, slots).
     pub admitted: bool,
 }
@@ -416,7 +440,8 @@ pub struct ProgramRecord {
 const MAX_PROGRAMS: usize = 8;
 const EMPTY_RECORD: ProgramRecord = ProgramRecord {
     tag: "", name: "", pid: 0, tid: 0,
-    image_bytes: 0, code_bytes: 0, sections: 0, entry_va: 0, admitted: false,
+    image_bytes: 0, code_bytes: 0, sections: 0, entry_va: 0,
+    code_va: 0, code_len: 0, admitted: false,
 };
 static mut PROGRAMS: [ProgramRecord; MAX_PROGRAMS] = [EMPTY_RECORD; MAX_PROGRAMS];
 static mut PROGRAM_COUNT: usize = 0;
@@ -451,7 +476,8 @@ pub(crate) fn record_open(tag: &'static str, name: &'static str, pid: u32, image
         }
         PROGRAMS[PROGRAM_COUNT] = ProgramRecord {
             tag, name, pid, tid: 0, image_bytes,
-            code_bytes: 0, sections: 0, entry_va: 0, admitted: false,
+            code_bytes: 0, sections: 0, entry_va: 0,
+            code_va: 0, code_len: 0, admitted: false,
         };
         PROGRAM_COUNT += 1;
     }
@@ -469,6 +495,19 @@ pub(crate) unsafe fn record_mut(pid: u32) -> Option<&'static mut ProgramRecord> 
     for i in 0..n {
         let r = &mut *arr.add(i);
         if r.pid == pid { return Some(r); }
+    }
+    None
+}
+
+/// **Donde vive el codigo EJECUTABLE de `pid`**, o `None` si no se sabe.
+///
+/// Lo usa la autopsia para no confundir un puntero a datos con un retorno. Ver
+/// [`ProgramRecord::code_va`].
+pub fn rango_de_codigo(pid: u32) -> Option<(u64, u64)> {
+    for r in programs() {
+        if r.pid == pid && r.code_len > 0 {
+            return Some((r.code_va, r.code_len));
+        }
     }
     None
 }
