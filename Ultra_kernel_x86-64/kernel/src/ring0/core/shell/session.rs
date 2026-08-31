@@ -174,7 +174,36 @@ fn shell_escritorio() {
     if !desktop_died() && unsafe { DESKTOP_ATTEMPTS } > 0 {
         // Ya hay uno vivo. Levantarlo otra vez daria DOS escritorios peleandose
         // por la pantalla, que es peor que no tener ninguno.
-        s_log("el escritorio ya esta vivo (si no responde: Ctrl+Alt+Esc dos veces)");
+        //
+        // ** PERO "vivo" Y "se le ve" NO SON LA MISMA COSA, y esa diferencia es
+        // un callejon sin salida que se cazo el 2026-08-31.
+        //
+        // Un programa lanzado con `run` desde AQUI --DOOM, `ray.bex`-- reclama
+        // la pantalla y al morir se la devuelve al KERNEL, no al escritorio:
+        // por este camino no hay nadie que la recupere, y esta dicho desde el
+        // 14-08... en la salida del build, que se lee una vez en la vida.
+        //
+        // Lo que queda entonces es un escritorio VIVO y CIEGO. Y esta orden
+        // contestaba *"ya esta vivo"*, que es verdad y no sirve de nada: manda
+        // a esperar a algo que no va a pasar. La unica salida era acordarse de
+        // Ctrl+Alt+Esc, o sea **matarlo a mano**.
+        //
+        // > El dueno lo dijo asi: *"se siente que tengo que hacer manual y matar
+        // > el servidor de Ring 3 para volver a entrar"*. Tenia razon, y la
+        // > maquina sabia por que sin decirlo.
+        //
+        // Ahora se pregunta. `fb::owner()` es UNA lectura atomica y la respuesta
+        // parte el caso en dos estados que piden cosas distintas.
+        if crate::ring0::obj::fb::owner().is_none() {
+            // La pantalla es del kernel y el escritorio sigue vivo: esta ahi,
+            // corriendo, sin nada donde pintar.
+            s_log("el escritorio esta VIVO pero CIEGO: la pantalla la tiene el kernel");
+            s_log("  (paso 1) Ctrl+Alt+Esc lo echa    (paso 2) `escritorio` lo levanta");
+            s_log("  para la proxima: lanza los programas graficos desde su ICONO,");
+            s_log("  que es el unico camino que le devuelve la pantalla al morir");
+            return;
+        }
+        s_log("el escritorio ya esta vivo y tiene la pantalla (si no responde: Ctrl+Alt+Esc)");
         return;
     }
     s_log("levantando el escritorio de Ring 3...");
