@@ -169,6 +169,7 @@ impl Scheduler {
                     "pila de hilo liberada, base fisica",
                     stack_phys,
                 );
+                anotar_muerta(self.tasks[i].tid, stack_phys, stack_pages);
                 for p in 0..stack_pages {
                     phys::free_frame(stack_phys + p * mm::PAGE);
                 }
@@ -205,6 +206,81 @@ impl Scheduler {
             }
             self.tasks[i] = Task::EMPTY;
         }
+    }
+}
+
+
+/* -- ** LA MORGUE: las ultimas pilas de kernel que se liberaron -------------
+ *
+ * ** Nace de una pantalla azul que se repite y que el dueno sabe provocar:
+ * matar el servidor de Ring 3 y volver a entrar. Sale asi, dos arranques
+ * seguidos, con el mismo vecindario:
+ *
+ * ```text
+ *    #PF  err=0x02  no-presente ESCRIBIENDO desde el KERNEL
+ *    rip=0x0        <- CERO NO ES UNA DIRECCION
+ *    cr2=0x8FFFFFFF <- un hueco: NADA se mapea ahi, nunca
+ *    rsp=0xFFFF800000B88C50   pila de HILO DEL KERNEL -- de NADIE VIVO
+ *    corria tid=05 (Ring 3)
+ *    iq: en rsp no hay marco de iretq (cs=0x0000)
+ * ```
+ *
+ * *** Y `de NADIE VIVO` es honesto: `spawn_user` SI guarda la pila de kernel de
+ * una tarea de Ring 3 en `stack_phys`, asi que `duenno_de_pila` la habria visto
+ * si su duena estuviera viva. No lo esta. Alguien libero esa pila y el kernel
+ * siguio corriendo encima.
+ *
+ * == Por que un registro y no mas razonamiento ==
+ *
+ * Se han leido `exit_and_park`, `reap`, `schedule_locked` y las dos rutas de
+ * muerte, y **todas quedan bien por inspeccion**: `reap` corre al final de
+ * `schedule_locked`, que todavia esta en la pila SALIENTE, y la guarda del
+ * `rsp` la protege. O sea que el razonamiento dice que esto no puede pasar, y
+ * la maquina dice que pasa.
+ *
+ * > Cuando la lectura y el metal se contradicen, el que se equivoca es la
+ * > lectura. Lo que hace falta no es otra teoria: es un NOMBRE.
+ *
+ * ** Asi que cada pila que se libera deja su ficha, y la pantalla azul la
+ * consulta. `de NADIE VIVO` pasa a ser **`fue de tid=NN, liberada en el tick
+ * NNNN`** -- y con eso, quien la libero y cuando dejan de ser una hipotesis.
+ *
+ * [!] Ocho fichas y anillo: esto se escribe con el cerrojo del planificador en
+ * la mano y las interrupciones apagadas. Nada que pueda crecer, nada que pueda
+ * asignar, nada que pueda tomar otro cerrojo.
+ *
+ * [!] Y se lee SIN cerrojo desde la pantalla de fallo, a proposito: la maquina
+ * ya esta rota y colgarse ahi cambia un volcado legible por un silencio. Una
+ * ficha a medias es aceptable para un diagnostico. */
+#[derive(Clone, Copy)]
+pub(super) struct PilaMuerta {
+    pub tid: u32,
+    pub base: u64,
+    pub paginas: u64,
+    pub tick: u64,
+}
+
+pub(super) const MORGUE_FICHAS: usize = 8;
+
+pub(super) static mut MORGUE: [PilaMuerta; MORGUE_FICHAS] = [PilaMuerta {
+    tid: 0,
+    base: 0,
+    paginas: 0,
+    tick: 0,
+}; MORGUE_FICHAS];
+
+pub(super) static mut MORGUE_N: usize = 0;
+
+fn anotar_muerta(tid: u32, base: u64, paginas: u64) {
+    unsafe {
+        let n = MORGUE_N % MORGUE_FICHAS;
+        MORGUE[n] = PilaMuerta {
+            tid,
+            base,
+            paginas,
+            tick: crate::ring0::plat::timer::ticks(),
+        };
+        MORGUE_N = MORGUE_N.wrapping_add(1);
     }
 }
 

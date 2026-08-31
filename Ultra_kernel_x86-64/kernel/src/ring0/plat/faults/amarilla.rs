@@ -168,7 +168,20 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
         // [!] Que no sea de nadie tambien es una respuesta, y de las caras: una
         // pila del physmap que no pertenece a ninguna tarea viva significa que
         // el `rsp` esta pisado, o que su tarea ya se reciclo debajo.
+        // ** Y SI SE SABE DE QUIEN FUE, SE DICE. (2026-08-31)
+        //
+        // `de NADIE VIVO` era cierto y era un callejon: decia que la pila no
+        // tiene duena y no decia quien la solto. La morgue del planificador
+        // guarda las ocho ultimas liberadas con su tid y su tick, asi que la
+        // pregunta *"quien pisa aqui?"* se contesta en la propia pantalla, sin
+        // tener que ir a CABINA con la maquina parada.
         l.s(" -- de NADIE VIVO");
+        if let Some((tid, tick)) = crate::ring0::task::scheduler::fue_de_quien(fault_rsp) {
+            l.s(", fue de tid=");
+            l.hex(tid as u64, 2);
+            l.s(" liberada en tick ");
+            l.hex(tick, 8);
+        }
     }
     inf.push(l);
 
