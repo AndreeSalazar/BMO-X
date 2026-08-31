@@ -80,9 +80,9 @@ impl Task {
 
 
 pub(super) struct Scheduler {
-    pub(super)tasks: [Task; MAX_TASKS],
-    pub(super)current: usize,
-    pub(super)next_tid: u32,
+    pub(super) tasks: [Task; MAX_TASKS],
+    pub(super) current: usize,
+    pub(super) next_tid: u32,
 }
 
 
@@ -142,6 +142,31 @@ impl Scheduler {
                 if rsp_ahora >= base && rsp_ahora < top {
                     continue; // es el suelo que estamos pisando
                 }
+                // *** EL TESTIGO QUE FALTA PARA CERRAR LO DEL 30-08.
+                //
+                // ** La guarda de arriba protege UNA pila: la de quien corre
+                // `reap`. Y `exit_and_park` deja hilos que se marcan muertos y
+                // **siguen sentados en la suya** dando `hlt`. Esa guarda no los
+                // puede ver: son `Exited`, no son el actual, y su `rsp` no es
+                // el nuestro.
+                //
+                // La pantalla azul del 30-08 encaja campo por campo --escritura,
+                // no-presente, desde el kernel, en pila de hilo del kernel y
+                // **de NADIE VIVO**-- pero encajar no es demostrar. Esta linea
+                // lo demuestra o lo tumba en un arranque:
+                //
+                //     si sale `pila liberada de tid=NN base=0xB87000` y despues
+                //     la azul dice `rsp=0xFFFF800000B87C50`, es el MISMO marco
+                //     y el caso esta cerrado.
+                //
+                // [!] `cabina` desde aqui es seguro y ya esta probado: `reap`
+                // llama a `destroy_address_space`, que llama a `caminable`, que
+                // apunta en CABINA. No se toma ningun cerrojo nuevo.
+                crate::ring0::cabina::addr(
+                    "sched",
+                    "pila de hilo liberada, base fisica",
+                    stack_phys,
+                );
                 for p in 0..stack_pages {
                     phys::free_frame(stack_phys + p * mm::PAGE);
                 }
