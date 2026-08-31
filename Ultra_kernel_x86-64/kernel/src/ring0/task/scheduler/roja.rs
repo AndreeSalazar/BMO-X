@@ -465,6 +465,30 @@ pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
     // `reap` frees it as `stack_phys + p*PAGE` -- both are only sound when
     // the frames really are physical neighbors.
     let stack_base = phys::alloc_frames_contig(TASK_STACK_PAGES)?;
+    // *** LA OTRA MITAD DEL TESTIGO. Ver `reap`.
+    //
+    // ** La cabecera de `reap` lleva escrito desde el 14-08 COMO se cobra una
+    // pila liberada de mas:
+    //
+    //   > "No revienta en el acto: revienta cuando el siguiente
+    //   >  `alloc_frames_contig` --UNA PILA NUEVA, un buffer de DMA del AHCI--
+    //   >  escribe encima. Ese retraso es justo lo que lo hace dificil de
+    //   >  encontrar."
+    //
+    // *** Y el 2026-08-30 el dueno reprodujo esa frase con las manos: DOOM
+    // entero SIN morir, **cerrar Ring 3**, volver a entrar a `d.bex` --que pasa
+    // por aqui-- y DOOM otra vez. La azul salio en la segunda.
+    //
+    // Asi que aqui se apunta la base que se ENTREGA. Con la de `reap` al lado,
+    // las dos lineas lo cierran sin necesidad de que la maquina se pare:
+    //
+    //     sched: pila de hilo liberada, base fisica  0x...B87000
+    //     sched: pila NUEVA para un hilo, base       0x...B87000   <- el MISMO
+    //
+    // ** Si los dos numeros coinciden, la pila se recicla debajo de alguien que
+    // seguia encima. Si NO coinciden, la hipotesis se cae aqui y hay que buscar
+    // en otro sitio -- que es para lo que sirve un testigo y no una teoria.
+    crate::ring0::cabina::addr("sched", "pila NUEVA para un hilo, base", stack_base);
     let stack_top = mm::phys_to_virt(stack_base) + TASK_STACK_PAGES * mm::PAGE;
     let context = unsafe { trap::fabricate(stack_top, entry, arg, false, 0) };
 
