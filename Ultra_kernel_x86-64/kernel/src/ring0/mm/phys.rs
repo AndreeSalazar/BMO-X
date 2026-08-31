@@ -8,6 +8,17 @@
 //!           misma direccion. El 30-08 los dos numeros no eran el mismo y la
 //!           maquina se paro. Si este techo cambia, ese cambia con el.
 //!
+//! ** NO SE PARTE: es ROJO de arriba abajo (L6g). `init`, `reserve_range`,
+//! `alloc_frame`, `alloc_frames_contig` y `free_frame` escriben el bitmap, y
+//! entregar dos veces el mismo marco es la clase de fallo que aparece tres
+//! arranques despues. Lo unico que solo MIRA son `tramos()` y `stats()`: dos
+//! funciones de cuatro lineas.
+//!
+//! *** Y esa es exactamente la razon de no partirlo. Un `verde.rs` con dos
+//! lectores dentro no informa de nada, y **tres ficheros donde solo hay un
+//! carril es la aguja mejor escondida**. Un modulo lleva los carriles que
+//! TIENE; este tiene uno.
+//!
 //! Source of truth: the BootContext memory map *after* `s2_mem` already
 //! carved out its page-table pool (so the tables that built the physmap can
 //! never be handed out). On top of the map we apply the kernel's own
