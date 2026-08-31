@@ -129,6 +129,24 @@ CRITIC_TOPE = 300
 # informa de nada. Ver `META-KERNEL_HARD.md`, L6g.
 VIAS = ("roja", "amarilla")
 
+# -- L6g, LA OTRA MITAD: los carriles POR MODULO. -----------------------------
+#
+# ** `critic/` de arriba es una CARPETA GLOBAL, y por eso sus carriles no
+# incluyen el verde: alli dentro todo es critico por definicion. Pero el modelo
+# que de verdad usa el arbol --y el que pidio el dueno-- es otro: **un fichero
+# de Ring 0 se parte DENTRO DE SU PROPIA CARPETA**, y ahi el verde es la mitad
+# del mensaje. `mm/vmm/verde.rs` no dice "esto no importa": dice **"esto se
+# puede tocar sin miedo"**, que es justo lo que hace falta saber el dia que la
+# maquina esta rota y hay que cambiar algo deprisa.
+#
+# *** Y hasta hoy la ley se cobraba EN EL UNICO SITIO QUE USA EL MODELO VIEJO y
+# en ninguno de los cuatro que usan el bueno. `mm/vmm/`, `plat/faults/`,
+# `task/scheduler/` y `obj/fb/` son doce ficheros con letrero y sin guardian:
+# los doce lo declaran hoy porque se escribieron a mano, y el primero que se
+# anadiera sin `[cuesta]` no lo habria dicho nadie.
+VIAS_MODULO = ("roja", "amarilla", "verde")
+RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
+
 
 def raiz():
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
@@ -195,7 +213,7 @@ def mascara(txt):
 
 
 # ===========================================================================
-#  LAS OCHO REGLAS. Cada una devuelve una lista de quejas.
+#  LAS NUEVE REGLAS. Cada una devuelve una lista de quejas.
 # ===========================================================================
 
 def r1_caben_en_su_campo(kern, abi, mask):
@@ -680,6 +698,29 @@ def autoprueba():
     exige("R8(carril amarilla)",
           r8_lo_que_vive_en_critic({"critic/amarilla.rs": bueno}), False)
 
+    # -- R9: los carriles POR MODULO ---------------------------------------
+    #
+    # ** El caso que justifica la regla entera es el tercero: un `.rs` sin
+    # nombre de carril viviendo entre carriles. Los otros dos son el letrero;
+    # ese es la carpeta.
+    sano = {"roja.rs": CU + RI, "verde.rs": CU + RI, "mod.rs": ""}
+    exige("R9(carpeta sana)",
+          r9_los_carriles_del_modulo({"mm/vmm": sano}), False)
+    exige("R9(carril sin cuesta)",
+          r9_los_carriles_del_modulo({"mm/vmm": {"roja.rs": RI}}))
+    exige("R9(carril sin riesgo)",
+          r9_los_carriles_del_modulo({"mm/vmm": {"roja.rs": CU}}))
+    exige("R9(colado entre carriles)",
+          r9_los_carriles_del_modulo(
+              {"mm/vmm": {"roja.rs": CU + RI, "ayudas.rs": CU + RI}}))
+    # El verde SI es un carril aqui, y en `critic/` no. No es una incoherencia:
+    # son dos jurisdicciones con dos listas, y este caso lo deja fijado.
+    exige("R9(el verde es carril de modulo)",
+          r9_los_carriles_del_modulo({"obj/fb": {"verde.rs": CU + RI}}), False)
+    exige("R9(mod.rs no lleva letrero)",
+          r9_los_carriles_del_modulo({"obj/fb": {"mod.rs": ""}}), False)
+    exige("R9(sin carpetas)", r9_los_carriles_del_modulo({}), False)
+
     if fallos:
         for f in fallos:
             print("  [X] " + f)
@@ -688,7 +729,7 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las OCHO reglas saben decir que NO (%d casos)" % casos[0])
+    print("clean: las NUEVE reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 
@@ -725,6 +766,79 @@ def _declarantes(regex, leer_grupo):
                     rel = os.path.relpath(ruta, raiz_).replace(os.sep, "/")
                     hallados[rel] = leer_grupo(m.group(1))
     return hallados
+
+
+def r9_los_carriles_del_modulo(carpetas):
+    """L6g -- los carriles dentro del modulo. `{carpeta: {fichero: texto}}`.
+
+    Dos exigencias, y las dos son de LETRERO, no de tamano:
+
+      1. **una carpeta de carriles no mezcla.** Si hay un `roja.rs`, todo `.rs`
+         de al lado (menos `mod.rs`) es un carril. Un `ayudas.rs` colado entre
+         carriles es exactamente la aguja volviendo al pajar: una pieza sin
+         semaforo en el sitio donde el semaforo es la razon de existir.
+      2. **un carril declara lo que cuesta y por que falla** (L6e y L6f). El
+         nombre del fichero dice el color; el `[cuesta]` dice a que atenerse.
+
+    ** Lo que NO se exige aqui, y hay que decirlo: ni el tope de 300 lineas ni
+    el `[prueba]`. Los dos son de `critic/`, que guarda JUECES -- piezas
+    pequenas, puras y con banco. Un carril de modulo no es un juez: es la mitad
+    de un fichero de Ring 0 que ya existia. `task/scheduler/roja.rs` son 744
+    lineas de cambio de contexto y no puede ser otra cosa. Poner el tope de un
+    juez a un carril seria pedirle a la ley que mienta.
+    """
+    quejas = []
+    for carpeta in sorted(carpetas):
+        for n in sorted(carpetas[carpeta]):
+            if n == "mod.rs":
+                continue
+            tallo = n[:-3]
+            if tallo not in VIAS_MODULO:
+                quejas.append(
+                    "%s/%s esta en una carpeta de carriles y no es uno. Los "
+                    "carriles son: %s (L6g)"
+                    % (carpeta, n, ", ".join(v + ".rs" for v in VIAS_MODULO))
+                )
+                continue
+            txt = carpetas[carpeta][n]
+            if not RE_CUESTA.search(txt):
+                quejas.append("%s/%s es un carril y no declara [cuesta] (L6e)" % (carpeta, n))
+            if not RE_RIESGO.search(txt):
+                quejas.append("%s/%s es un carril y no declara [riesgo] (L6f)" % (carpeta, n))
+    return quejas
+
+
+def carpetas_de_carriles():
+    """`{carpeta: {fichero: texto}}` de toda carpeta de Ring 0 con carriles.
+
+    Una carpeta ES de carriles si tiene al menos un `.rs` con nombre de carril.
+    No hay lista que mantener: **el arbol se declara solo**, que es lo que hace
+    que partir un fichero manana ya venga vigilado sin tocar esto.
+
+    [!] `critic/` se salta a proposito: lo juzga R8, con reglas mas duras (tope
+    y banco de pruebas). Dos jueces sobre el mismo fichero darian dos veredictos
+    para un solo hecho.
+    """
+    d = os.path.join(raiz(), RING0_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return {}
+    critic = os.path.join(raiz(), CRITIC_DIR.replace("/", os.sep))
+    fuera = {}
+    for dirpath, dirnames, filenames in os.walk(d):
+        dirnames[:] = [x for x in dirnames if x not in ("target", ".git")]
+        if os.path.abspath(dirpath).startswith(os.path.abspath(critic)):
+            continue
+        rs = [n for n in filenames if n.endswith(".rs")]
+        if not any(n[:-3] in VIAS_MODULO for n in rs):
+            continue
+        rel = os.path.relpath(dirpath, raiz()).replace(os.sep, "/")
+        grupo = {}
+        for n in sorted(rs):
+            with open(os.path.join(dirpath, n), "r", encoding="utf-8",
+                      errors="replace") as f:
+                grupo[n] = f.read()
+        fuera[rel] = grupo
+    return fuera
 
 
 def ficheros_de_critic():
@@ -818,6 +932,9 @@ def comprobar():
     quejas += [("R7 L6f el riesgo declarado", q) for q in r7_el_riesgo_declarado(ries, minimo_de_riesgos())]
     crit = ficheros_de_critic()
     quejas += [("R8 L6g lo que vive en critic/", q) for q in r8_lo_que_vive_en_critic(crit)]
+    vias = carpetas_de_carriles()
+    quejas += [("R9 L6g los carriles del modulo", q)
+               for q in r9_los_carriles_del_modulo(vias)]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -848,6 +965,9 @@ def comprobar():
         # inquilinos no es un fallo --las piezas entran de una en una, con su
         # hash-- pero un silencio aqui se leeria como "no hay guardian".
         print("clean: critic/ (L6g) esta vacia -- ninguna pieza ha mudado todavia")
+    if vias:
+        print("clean: %d carpeta(s) de carriles (L6g), %d carril(es), todos con letrero"
+              % (len(vias), sum(len([n for n in g if n != "mod.rs"]) for g in vias.values())))
     return 0
 
 
