@@ -335,6 +335,10 @@ pub(crate) fn admit_payload_desde(
     // * PASE 2: reservar, copiar, CERRAR, PARCHEAR y mapear.
     let mut entry_va: u64 = 0;
     let mut code_bytes: u32 = 0;
+    // Donde queda la seccion EJECUTABLE. Se sabia aqui y se tiraba; la
+    // autopsia la necesita para distinguir un retorno de un puntero a datos.
+    let mut code_va: u64 = 0;
+    let mut code_len: u64 = 0;
     let total_relocs = bex::cuantas_relocs(plan.relocs_file_size);
 
     // ** Y LA TABLA DE RELOCATIONS TAMBIEN SE CIERRA, antes de aplicar ni una.
@@ -715,6 +719,8 @@ pub(crate) fn admit_payload_desde(
         }
         if s.kind == bex::SECTION_CODE {
             entry_va = va_start + plan.entry_offset;
+            code_va = va_start;
+            code_len = s.mem_size;
         }
         code_bytes = code_bytes.saturating_add(s.mem_size as u32);
     }
@@ -816,6 +822,8 @@ pub(crate) fn admit_payload_desde(
             r.sections = plan.section_count as u8;
             r.entry_va = entry_va;
             r.code_bytes = code_bytes;
+            r.code_va = code_va;
+            r.code_len = code_len;
             r.admitted = true;
         }
     }

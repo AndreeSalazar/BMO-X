@@ -387,6 +387,48 @@ fn en_la_imagen(dir: u64, r: &mut Renglon) -> bool {
     false
 }
 
+/// **Y esta ademas exige que sea CODIGO.** Para el rastro de llamadas.
+///
+/// # *** POR QUE HACEN FALTA LAS DOS, y lo enseno DOOM el 2026-08-31
+///
+/// La de arriba contesta *"cae dentro del programa?"*, y para el `rip` eso es
+/// la pregunta correcta: un `rip` fuera del codigo es justo lo que hay que
+/// poder ensenar. Pero el renglon de la PILA hace otra pregunta --*"esto es un
+/// retorno?"*-- y ahi el criterio ancho miente:
+///
+/// ```text
+///    pila  +0x137c98 +0x137568 +0x297b9
+///          -> I_GetTicks+0x9
+/// ```
+///
+/// Tres direcciones, UN nombre. Las otras dos caian a 1,2 MiB, que en DOOM es
+/// **la zona de memoria**: punteros a buffers que estaban en la pila como
+/// locales. No hay simbolo que ponerles porque no son codigo -- y aun asi
+/// ocuparon dos de las TRES plazas del renglon, que son tres porque no caben
+/// mas en 72 columnas.
+///
+/// > Un rastro de llamadas con dos tercios de datos no es un rastro corto: es
+/// > un rastro que tapa el suyo.
+///
+/// [!] Si no se sabe donde esta el codigo se vuelve al criterio ancho, y esa
+/// eleccion tiene motivo: **una direccion de mas es peor que ninguna, pero
+/// ninguna linea es peor que las dos.** Un informe que se calla no se puede
+/// discutir.
+fn es_codigo(dir: u64, pid: u32, r: &mut Renglon) -> bool {
+    match crate::ring0::task::proc::rango_de_codigo(pid) {
+        Some((base, largo)) => {
+            if dir >= base && dir < base + largo {
+                use crate::ring0::mm::vmm::USER_IMAGE_BASE;
+                r.s("+");
+                r.hex(dir - USER_IMAGE_BASE);
+                return true;
+            }
+            false
+        }
+        None => en_la_imagen(dir, r),
+    }
+}
+
 /// **EL VEREDICTO: por que paso, en una frase.**
 ///
 /// # Por que hacia falta, y no era mas informacion
@@ -754,9 +796,13 @@ pub fn registrar(
     // unica pregunta que quedaba abierta.
     //
     // Ahora se recorren hasta 24 palabras y **solo se imprimen las que dicen
-    // algo**: las que caen en la imagen (matriculas, con su `+desplazamiento`
+    // algo**: las que caen en el CODIGO (matriculas, con su `+desplazamiento`
     // para `--map`) y, si no hay ninguna, un resumen de que se vio. Una pila con
     // locales por delante del marco deja de tapar el rastro.
+    //
+    // ** "En el codigo" y no "en la imagen", desde el 2026-08-31. La diferencia
+    // la enseno DOOM: con el criterio ancho, dos de las tres plazas se las
+    // llevaban punteros al monton. Ver `es_codigo`.
     //
     // [!] Y las NO CANONICAS se cuentan aparte, porque son un diagnostico en si
     // mismas: desreferenciar una direccion cuyos bits 63:48 no son copia del 47
@@ -778,7 +824,7 @@ pub fn registrar(
         // dos primeras son las que nombran al llamante y a su llamante.
         if hallados < 3 {
             let antes = renglones[10].n;
-            if en_la_imagen(v, &mut renglones[10]) {
+            if es_codigo(v, pid, &mut renglones[10]) {
                 renglones[10].s(" ");
                 hallados += 1;
             } else {
