@@ -194,13 +194,10 @@ pub(super) fn get_or_create(t: &mut [u64; 512], idx: usize, flags: u64) -> Resul
 /// estar en vigor**. Quien llama tiene que garantizarlo, y por eso esto vive en
 /// `reap` --que corre despues del cambio de contexto-- y no en `revoke_all`,
 /// que corre todavia dentro del syscall del moribundo y con SU CR3 puesto.
-/// **Se puede caminar por esta direccion fisica?** -- MUDADA A `critic/amarilla.rs`.
-///
-/// ** Se fue al CARRIL AMARILLO (L6g) el 2026-08-30, junto a `phys::zero_frame`:
-/// las dos juzgan el mismo numero y **cambiar una sin la otra fue el bug de ese
-/// dia**. Lo que queda aqui es la llamada; el por que, el historial entero y el
-/// banco de pruebas estan alli.
-use crate::ring0::critic::amarilla::caminable;
+/// **Se puede caminar por esta direccion fisica?** -- vive en el CARRIL
+/// AMARILLO de al lado, con su gemela `phys::zero_frame`: las dos juzgan el
+/// mismo numero, y cambiar una sin la otra fue el bug del 30-08.
+use super::amarilla::caminable;
 
 pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
     let mut hojas = 0u64;
