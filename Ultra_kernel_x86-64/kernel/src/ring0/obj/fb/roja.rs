@@ -1,62 +1,42 @@
-//! `KIND_FRAMEBUFFER` -- la pantalla como capability.
+//! **CARRIL ROJO** -- QUIEN tiene la pantalla, y el mapeo.
 //!
-//! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
-//! cuanto SABE esta pieza, no quien importa a quien, y por eso el
-//! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).
-//! no sabe: quien lo llamo ni por que
+//! [cuesta]  MAQUINA -- aqui se concede, se suelta, se rescata y se desmapea
+//!           el framebuffer. Equivocarse deja la maquina CIEGA: dos duenos
+//!           pintando el mismo sitio, o ninguno y sin panel al que volver.
 //!
-//! ## Que es esto, y por que no es "un syscall para dibujar"
+//! [riesgo]  AJENO ESPEJO
+//!           AJENO  -- `process_died` corre DENTRO del syscall del que se
+//!                     muere, o sea bajo SU `cr3`, y el framebuffer vive a
+//!                     ~3,5 GiB. Pintar aqui sin cambiar a la del kernel es un
+//!                     `#PF`; y el reporte de faults tambien pinta, o sea
+//!                     `#PF` recursivo en IST1: congelacion muda. Costo dos
+//!                     sesiones y la danza de CR3 sigue escrita ahi dentro.
+//!           ESPEJO -- `OWNER`, `HANDLE` e `info::ceder_fb` son TRES sitios
+//!                     que dicen la misma cosa. Soltar uno sin los otros deja
+//!                     un kernel que cree que tiene pantalla y no la tiene.
 //!
-//! La tentacion evidente seria `INVOKE(fb, DRAW_RECT, x, y, w, h)`. Seria mas
-//! facil de escribir y seria un error de diseno: cada pixel cruzaria el
-//! anillo, el kernel acabaria con un motor de dibujo dentro, y BMO-X seria un
-//! monolito con la etiqueta de microkernel puesta encima.
-//!
-//! Lo que hace este modulo es lo contrario. Un proceso Ring 3 **reclama** la
-//! pantalla una vez; el kernel le mapea el framebuffer en su espacio de
-//! direcciones con U/S y R/W, le dice donde quedo y con que geometria, y a
-//! partir de ahi **no vuelve a intervenir**. El compositor escribe pixeles con
-//! `mov`, no con `syscall`. Ese es el momento library-OS: no se optimiza el
-//! cruce de frontera, se borra la frontera.
-//!
-//! ## Exclusiva, y el kernel se calla
-//!
-//! Un solo proceso la tiene a la vez. Al concederla, el kernel **cede la
-//! pantalla**: `info::has_fb()` pasa a ser falso y con eso se apagan de golpe
-//! todos los caminos de dibujo de Ring 0 --panel, CABINA, logs de drivers--
-//! porque todos preguntan por ahi. Dos duenos pintando el mismo framebuffer no
-//! es compartir, es parpadeo.
-//!
-//! Se recupera sola: `cap::revoke_all` la suelta cuando el proceso muere, por
-//! la razon que sea, y el kernel vuelve a tener pantalla. Un compositor que
-//! se cae no deja la maquina ciega.
-//!
-//! ## Lo que este modulo TODAVIA NO decide
-//!
-//! * Hoy la reclama el primero que la pide. Eso no es cero-confianza, es
-//! orden de llegada -- y esta escrito aqui para que se vea, no escondido. La
-//! autoridad correcta es una bandera en el contenedor BEF verificada por el
-//! gate al admitir el programa: "este binario declara que quiere la pantalla".
-//! Cuando esa bandera exista, la comprobacion entra en `claim` y esta nota
-//! se borra. Mientras tanto, el unico proceso que la pide es el que tu
-//! arrancas.
+//! ** La linea con el verde de al lado, en una frase: aqui se cambia **quien
+//! la tiene**; alli solo se contesta **que forma tiene**.
 
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-
 use crate::ring0::obj::cap;
 use crate::ring0::mm::{self, vmm};
+use super::verde::{mapped_bytes, ERROR_BUSY, ERROR_NO_SCREEN};
 
 /// Nadie la tiene. Los pid validos son 0..MAX_PROCS, asi que hace falta un
 /// centinela que no pueda ser un pid.
-const NO_OWNER: u32 = u32::MAX;
+pub(super) const NO_OWNER: u32 = u32::MAX;
 
-static OWNER: AtomicU32 = AtomicU32::new(NO_OWNER);
+
+pub(super) static OWNER: AtomicU32 = AtomicU32::new(NO_OWNER);
+
 /// El handle que se le concedio al dueno, para poder revocarlo si lo SUELTA.
 ///
 /// Se guarda porque `release` tiene que revocarlo y `cap` no ofrece "revoca todo
 /// lo de este tipo" -- solo por handle o todo lo del proceso, y lo segundo se
 /// llevaria por delante su entrada y su consola. Vale `0` cuando no hay dueno.
 static HANDLE: AtomicU64 = AtomicU64::new(0);
+
 /// * El PRIMER proceso que reclamo la pantalla. Nunca se borra.
 ///
 /// Es el compositor: la reclama al arrancar, antes que nadie. Se guarda para que
@@ -69,35 +49,6 @@ static HANDLE: AtomicU64 = AtomicU64::new(0);
 /// `WANTS_SCREEN`.
 static FIRST_OWNER: AtomicU32 = AtomicU32::new(NO_OWNER);
 
-/// Ya la tiene otro proceso.
-pub const ERROR_BUSY: u32 = 16;
-/// Esta maquina arranco sin GOP: no hay pantalla que ceder.
-pub const ERROR_NO_SCREEN: u32 = 17;
-
-// Operaciones sobre un handle KIND_FRAMEBUFFER.
-//
-// Cada una devuelve UN `u64` porque eso es lo que cabe en `BmoStatus.value`.
-// Los campos que van juntos viajan empaquetados en vez de gastar una llamada
-// por numero: son datos que se leen una vez al arrancar el compositor.
-/// Direccion virtual (en el espacio del proceso) donde quedo mapeada.
-pub const FB_OP_BASE: u64 = 0x01;
-/// `(ancho << 32) | alto`, en pixeles.
-pub const FB_OP_DIMS: u64 = 0x02;
-/// `(stride << 32) | formato`. El stride va en PIXELES, no en bytes -- es el
-/// mismo numero que usa el kernel, y convertirlo aqui seria inventar una
-/// unidad distinta a los dos lados de la frontera.
-pub const FB_OP_STRIDE: u64 = 0x03;
-/// Bytes mapeados en total. Es lo que hace falta para un `rep stosd` que
-/// llene la pantalla entera sin multiplicar nada.
-pub const FB_OP_BYTES: u64 = 0x04;
-
-/// Bytes que ocupa el framebuffer, redondeado a pagina.
-fn mapped_bytes() -> u64 {
-    let alto = unsafe { crate::info::FB_HEIGHT } as u64;
-    let stride = unsafe { crate::info::FB_STRIDE } as u64;
-    let crudo = alto * stride * 4;
-    (crudo + mm::PAGE - 1) & !(mm::PAGE - 1)
-}
 
 /// Concede la pantalla al proceso `pid` y la mapea en `aspace`.
 ///
@@ -167,6 +118,7 @@ pub fn claim(pid: u32, aspace: u64) -> Result<u64, u32> {
     Ok(handle)
 }
 
+
 /// * SOLTAR LA PANTALLA SIN MORIRSE. El dueno la devuelve y sigue vivo.
 ///
 /// # Por que faltaba, y que desbloquea
@@ -223,6 +175,7 @@ pub fn release(pid: u32, aspace: u64) -> Result<(), u32> {
     Ok(())
 }
 
+
 /// ** EL RESCATE. Le quita la pantalla al dueno actual **sin pedirle permiso**.
 ///
 /// Devuelve el `pid` al que se la quito, o `None` si no habia nada que rescatar.
@@ -274,6 +227,7 @@ pub fn rescue() -> Option<u32> {
     Some(actual)
 }
 
+
 /// **LA PATADA: el rescate que SI echa al escritorio.**
 ///
 /// Devuelve el `pid` al que se le quito, o `None` si la pantalla ya era del
@@ -319,6 +273,7 @@ pub fn rescate_de_emergencia() -> Option<u32> {
     );
     Some(actual)
 }
+
 
 /// El proceso `pid` murio (o salio). Si era el dueno, el kernel recupera la
 /// pantalla. Lo llama `cap::revoke_all`, que corre en TODAS las salidas --
@@ -405,30 +360,4 @@ pub fn process_died(pid: u32) {
     }
 }
 
-/// Pid del dueno actual, o `None`.
-pub fn owner() -> Option<u32> {
-    match OWNER.load(Ordering::SeqCst) {
-        NO_OWNER => None,
-        pid => Some(pid),
-    }
-}
 
-/// Despacho de las operaciones sincronas sobre la capability ya resuelta.
-/// `base` es el objeto que guarda la capability: la VA donde se mapeo.
-pub fn operation(base: u64, operation: u64) -> Option<u64> {
-    let (ancho, alto, stride, formato) = unsafe {
-        (
-            crate::info::FB_WIDTH as u64,
-            crate::info::FB_HEIGHT as u64,
-            crate::info::FB_STRIDE as u64,
-            crate::info::FB_PIXEL_FORMAT as u64,
-        )
-    };
-    match operation {
-        FB_OP_BASE => Some(base),
-        FB_OP_DIMS => Some((ancho << 32) | alto),
-        FB_OP_STRIDE => Some((stride << 32) | formato),
-        FB_OP_BYTES => Some(mapped_bytes()),
-        _ => None,
-    }
-}
