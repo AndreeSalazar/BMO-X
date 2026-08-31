@@ -240,6 +240,31 @@ pub fn duenno_de_pila(rsp: u64) -> Option<(u32, bool)> {
 }
 
 
+/// **De quien FUE esta pila, si ya no es de nadie.** `(tid, tick)`.
+///
+/// Se pregunta cuando `duenno_de_pila` contesta `None`, que es el caso caro: el
+/// kernel corriendo sobre una pila que alguien devolvio. Ver la morgue en
+/// `roja.rs`.
+///
+/// [!] Sin cerrojo, y decidido: lo llama la pantalla de fallo. Un dato de hace
+/// un tick sirve para un diagnostico; no arrancar la pantalla, no.
+pub fn fue_de_quien(rsp: u64) -> Option<(u32, u64)> {
+    unsafe {
+        let m = &*core::ptr::addr_of!(super::roja::MORGUE);
+        for f in m.iter() {
+            if f.paginas == 0 {
+                continue;
+            }
+            let base = mm::phys_to_virt(f.base);
+            if rsp >= base && rsp < base + f.paginas * mm::PAGE {
+                return Some((f.tid, f.tick));
+            }
+        }
+    }
+    None
+}
+
+
 pub fn context_rsp_of(tid: u32) -> u64 {
     let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
     for t in &s.tasks {
