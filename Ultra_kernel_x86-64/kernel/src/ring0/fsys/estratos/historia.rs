@@ -1,5 +1,7 @@
 //! **LA HISTORIA DEL VOLUMEN**: la cadena de versiones, hacia atras.
 //!
+//! [carril]  VERDE     la cadena de versiones, hacia atras
+//!
 //! === Que hay que leer, y por que no hacia falta formato nuevo ===
 //!
 //! Cada estrato guarda un puntero a su PADRE. Recorrer esa cadena **es**

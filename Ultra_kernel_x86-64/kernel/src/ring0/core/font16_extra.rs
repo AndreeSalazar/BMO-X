@@ -1,3 +1,8 @@
+// [carril]  VERDE     los glifos que le faltaban a la tabla de al lado
+// [!] `//` y no `//!` a proposito: esto NO es un modulo. `texto.rs` lo
+// mete con `include!` DENTRO de un `static`, o sea que su contenido es una
+// EXPRESION, y una expresion no admite documentacion de modulo.
+
 // AUTO-GENERADO por toolchain/tools/fontgen -- NO editar a mano.
 // Byte Latin-1 de cada glifo extra, en el orden en que estan en
 // font16_data.rs a partir del indice 95.

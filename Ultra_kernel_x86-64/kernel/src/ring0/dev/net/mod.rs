@@ -1,5 +1,7 @@
 //! **La tarjeta de red: encontrarla y preguntarle quien es.** Nada mas.
 //!
+//! [carril]  AMARILLO  la tarjeta de red: EN OBRAS, y por eso amarilla
+//!
 //! ## Por que este modulo no hace nada todavia, a proposito
 //!
 //! El paso siguiente --anillos de descriptores, DMA, tramas-- es el mas

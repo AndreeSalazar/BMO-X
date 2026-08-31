@@ -1,5 +1,7 @@
 //! **ENCENDER EL BUS USB**: esperar a que un puerto declare algo, y enumerar.
 //!
+//! [carril]  ROJO      encender el bus y enumerar: sin esto no hay teclado
+//!
 //! ## Por que soy un fichero (L6b)
 //!
 //! Porque contesto una pregunta que ocurre **UNA VEZ** y las de al lado ocurren

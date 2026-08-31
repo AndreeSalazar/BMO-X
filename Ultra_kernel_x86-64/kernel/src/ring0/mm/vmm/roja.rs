@@ -1,5 +1,7 @@
 //! **CARRIL ROJO** -- un fallo aqui para la maquina y no deja autopsia.
 //!
+//! [carril]  ROJO      el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//!
 //! [cuesta]  MAQUINA -- aqui vive el CR3 del kernel y el desmontaje de un
 //!           espacio muerto. Ya paro la maquina DOS veces: el `#GP` del 25-08
 //!           y el `#PF` del 30-08, las dos en `destroy_address_space`.

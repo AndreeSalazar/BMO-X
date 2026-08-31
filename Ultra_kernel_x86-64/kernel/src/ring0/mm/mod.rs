@@ -1,5 +1,7 @@
 //! Memory management: physical frames (`phys`) + virtual address spaces (`vmm`).
 //!
+//! [carril]  ROJO      PHYSMAP_SIZE vive aqui, y es el numero del espejo
+//!
 //! The physmap installed by `s2_mem` (physical 0..16 GiB mirrored at
 //! `HIGH_MEM_BASE`) is the single mechanism Ring 0 uses to touch page-table
 //! memory. No temporary mappings, no remap dances.

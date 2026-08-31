@@ -1,5 +1,7 @@
 //! Endpoint RPC: un proceso Ring 3 puede ser SERVIDOR.
 //!
+//! [carril]  AMARILLO  un proceso de Ring 3 como SERVIDOR
+//!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el
 //! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).

@@ -1,5 +1,7 @@
 //! Virtual memory: address spaces built on the `s2_mem` physmap.
 //!
+//! [carril]  ROJO      el reparto, y hereda el color del carril que manda
+//!
 //! [cuesta]  MAQUINA -- calcula direcciones para el physmap y las
 //!           dereferencia. Ya ha parado la maquina DOS veces: el `#GP` del
 //!           25-08 y el `#PF` del 30-08, las dos en `destroy_address_space`.

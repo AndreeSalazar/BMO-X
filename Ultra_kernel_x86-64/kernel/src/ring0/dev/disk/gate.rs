@@ -1,4 +1,6 @@
 //! **THE IDENTITY GATE** -- the eighty lines that decide whether this machine
+//!
+//! [carril]  ROJO      las ochenta lineas que deciden si este disco es el suyo
 //! may write to this disk at all.
 //!
 //! === Why this is a file of its own, and it is the clearest case in the tree ===

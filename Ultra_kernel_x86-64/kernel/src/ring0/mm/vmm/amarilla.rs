@@ -1,5 +1,7 @@
 //! **CARRIL AMARILLO** -- va a cambiar, y al cambiar ARRASTRA A OTRO.
 //!
+//! [carril]  AMARILLO  el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//!
 //! [cuesta]  MAQUINA -- escribe entradas de tabla de paginas. Un bit de mas
 //!           en `map_page_tipo` es una ventana, no un fallo.
 //!

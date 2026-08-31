@@ -1,5 +1,7 @@
 //! Ring 0 Capability Engine (F3).
 //!
+//! [carril]  ROJO      el motor de capabilities: quien puede que
+//!
 //! generacion: hijo -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el
 //! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).

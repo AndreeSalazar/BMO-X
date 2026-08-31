@@ -1,5 +1,7 @@
 //! Reiniciar la maquina. Tres intentos, del mas limpio al mas bruto.
 //!
+//! [carril]  ROJO      reiniciar la maquina, del mas limpio al mas bruto
+//!
 //! ## Por que tres y no uno
 //!
 //! El `reboot` del shell hacia **solo** el pulso del 8042 (`0xFE` al puerto

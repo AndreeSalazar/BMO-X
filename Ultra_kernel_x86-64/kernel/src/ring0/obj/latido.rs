@@ -2,6 +2,8 @@
 //!
 //! generacion: nieto -- no sabe quien lo llamo ni por que.
 //!
+//! [carril]  AMARILLO  una interrupcion que despierta a Ring 3
+//!
 //! [cuesta]  TAREA -- si el testigo se compara mal, alguien duerme de mas o
 //!           se despierta de menos. No concede nada que no se tuviera: un
 //!           proceso ya podia dormir con `WAIT(0, _, timeout)`

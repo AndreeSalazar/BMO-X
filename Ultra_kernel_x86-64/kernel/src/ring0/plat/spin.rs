@@ -1,5 +1,7 @@
 //! IRQ-saving spinlock for short Ring 0 critical sections.
 //!
+//! [carril]  ROJO      el cerrojo. Tomarlo dos veces es un abrazo mortal
+//!
 //! The guard saves RFLAGS and clears IF while held, then restores IF only
 //! if it was set on entry. This makes the lock safe to take from both
 //! interrupt and non-interrupt context on the BSP, and SMP-ready once

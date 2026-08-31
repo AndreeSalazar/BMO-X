@@ -1,5 +1,7 @@
 //! `syscall::presupuesto` -- **lo que una puerta TIENE PERMITIDO costar.**
 //!
+//! [carril]  AMARILLO  lo que una puerta tiene permitido costar
+//!
 //! ```text
 //!    [eje]     NINGUNO -- una tabla de constantes; no corre en la puerta
 //!    [camino]  P1 la puerta, pero se LEE desde Ring 3, no en el camino

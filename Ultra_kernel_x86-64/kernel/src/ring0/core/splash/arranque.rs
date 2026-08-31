@@ -1,5 +1,7 @@
 //! **EL ARRANQUE** -- el panel de bienvenida y la barra de progreso.
 //!
+//! [carril]  VERDE     el panel de bienvenida y su barra
+//!
 //! Es la pantalla de antes de la CABINA: el logo, el titulo, la barra y la
 //! linea de estado. La otra mitad del arranque --la ciudad y el gato-- vive en
 //! `escena.rs`; esta es la parte sobria, la que se ve si la intro no llega a

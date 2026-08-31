@@ -1,5 +1,7 @@
 //! **QUE PUEDE PEDIR UN PROCESO QUE NO SEA UN OBJETO.** C4, y la delegacion.
 //!
+//! [carril]  ROJO      que puede pedir un proceso que no sea un objeto
+//!
 //! # El agujero, dicho por el propio kernel
 //!
 //! `syscall/ops.rs` lo llevaba declarado:

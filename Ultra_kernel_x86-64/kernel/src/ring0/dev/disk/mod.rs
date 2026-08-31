@@ -1,5 +1,7 @@
 //! Disco: el puente entre Ring 0 y el driver AHCI/SATA.
 //!
+//! [carril]  ROJO      el puente con el AHCI: DMA sobre el disco del dueno
+//!
 //! El kernel no sabe de puertos SATA ni de FIS: eso vive en `bmo-ahci`. Aqui
 //! solo se le prestan al driver los tres servicios que no puede tener por su
 //! cuenta (memoria DMA contigua, traduccion fisica->virtual y una salida de

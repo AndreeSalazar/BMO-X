@@ -1,5 +1,7 @@
 //! **LA ESCENA** -- la intro de arranque, pintada.
 //!
+//! [carril]  VERDE     la intro; se toca por gusto y no rompe nada
+//!
 //! ## El reparto con `bmo-ciudad`, que es lo que hace que esto se pueda ajustar
 //!
 //! `bmo-ciudad` sabe **que hay en pantalla en el milisegundo N**: el guion, el

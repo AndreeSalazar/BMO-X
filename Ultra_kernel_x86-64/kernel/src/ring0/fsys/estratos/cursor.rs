@@ -1,5 +1,7 @@
 //! **THE CURSOR** -- ESTRATOS walked from Ring 3.
 //!
+//! [carril]  AMARILLO  ESTRATOS caminado desde Ring 3
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because it is the FRONTIER. Everything else in this folder is the kernel

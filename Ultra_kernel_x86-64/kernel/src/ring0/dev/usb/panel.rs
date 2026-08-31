@@ -1,5 +1,7 @@
 //! **Lo que CABINA lee del USB.** Solo lectura, y eso es el contrato.
 //!
+//! [carril]  VERDE     solo lectura, y eso es el contrato
+//!
 //! Salio de `dev/usb/mod.rs` el 2026-08-12. Se puede sacar solo porque **ni una
 //! de estas funciones cambia un byte de estado**: son ventanas. Tenerlas juntas
 //! y aparte hace visible una regla que antes habia que confiar en que se

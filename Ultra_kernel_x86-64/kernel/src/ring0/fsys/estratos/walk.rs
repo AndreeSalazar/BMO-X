@@ -1,5 +1,7 @@
 //! **FOLLOWING THE POINTERS** -- how ESTRATOS reads a chain of blocks.
 //!
+//! [carril]  AMARILLO  seguir punteros por una cadena de bloques
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because it is the part with no policy in it at all: given a block number,

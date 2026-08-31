@@ -1,3 +1,8 @@
+// [carril]  VERDE     una fuente de 8x16, en una tabla
+// [!] `//` y no `//!` a proposito: esto NO es un modulo. `texto.rs` lo
+// mete con `include!` DENTRO de un `static`, o sea que su contenido es una
+// EXPRESION, y una expresion no admite documentacion de modulo.
+
 // AUTO-GENERADO por toolchain/tools/fontgen -- NO editar a mano.
 // Regenerar: cargo run -p bmo-fontgen
 // Glifos 8x16 (arte en filas 2..14), trazos 2px nativos.

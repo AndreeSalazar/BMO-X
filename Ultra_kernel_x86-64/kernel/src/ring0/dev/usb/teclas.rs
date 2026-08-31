@@ -1,4 +1,6 @@
 //! **LA COLA CRUDA DE TECLAS Y EL ESTADO DEL TECLADO**: scancodes,
+//!
+//! [carril]  AMARILLO  la cola cruda y el estado del teclado
 //! modificadores, LEDs, repeticion y el puntero.
 //!
 //! ## Por que soy un fichero (L6b)

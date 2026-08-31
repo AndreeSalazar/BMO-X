@@ -1,5 +1,7 @@
 //! Fixed-capacity scheduler with real context switching at trap boundaries.
 //!
+//! [carril]  VERDE     el reparto de los dos carriles de al lado
+//!
 //! Design rule: **a context switch only ever happens at a trap boundary**
 //! (timer IRQ or SYSCALL). Voluntary operations from kernel tasks just mark
 //! state and park in a `hlt` loop; the next trap commits the switch through

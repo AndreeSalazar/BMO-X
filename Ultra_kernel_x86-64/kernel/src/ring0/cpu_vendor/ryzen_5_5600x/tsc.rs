@@ -1,5 +1,7 @@
 //! TSC calibration for the Ryzen 5 5600X.
 //!
+//! [carril]  AMARILLO  calibra el TSC, y TODO lo que mide tiempo cuelga de el
+//!
 //! Recovers the legacy `tsc_calibration.rs` from the deleted
 //! `crates_Personal/ring0/cpu_vendor_profile/.../tsc_calibration.rs`,
 //! simplified: we use CPUID 0x15 (Core Crystal Clock) if available

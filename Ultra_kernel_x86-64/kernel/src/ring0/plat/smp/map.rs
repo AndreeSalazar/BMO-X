@@ -1,5 +1,7 @@
 //! **El mapa de la memoria baja** que usa el bring-up, y la GDT del AP.
 //!
+//! [carril]  ROJO      el mapa de memoria baja del bring-up y la GDT del AP
+//!
 //! Esta en su propio fichero porque es *el dato*, no el codigo: son las
 //! direcciones que el trampolin lleva escritas a mano --no puede llamar a nada--
 //! y que el BSP rellena desde Rust. Los dos lados tienen que decir lo mismo, y

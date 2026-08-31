@@ -1,5 +1,7 @@
 //! **CARRIL ROJO** -- lo que CAMBIA el estado del planificador.
 //!
+//! [carril]  ROJO      el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//!
 //! [cuesta]  MAQUINA -- aqui vive el cambio de contexto y `reap`. Un fallo no
 //!           mata una tarea: deja la maquina sin nadie a quien darle el CPU, o
 //!           con dos duenos del mismo marco.

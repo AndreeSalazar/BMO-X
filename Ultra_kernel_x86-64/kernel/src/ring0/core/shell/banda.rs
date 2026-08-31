@@ -1,5 +1,7 @@
 //! **`banda` -- cuanto ancho de banda tiene de verdad esta memoria.**
 //!
+//! [carril]  AMARILLO  la medida de ancho de banda, y una medida se afina
+//!
 //! ## Por que fichero propio (L6b)
 //!
 //! Por la razon buena, no por la del tamano: contesta **otra pregunta**.

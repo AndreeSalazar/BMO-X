@@ -1,5 +1,7 @@
 //! **De donde salio cada proceso** -- para que pueda leer su propia caja.
 //!
+//! [carril]  VERDE     de donde salio cada proceso
+//!
 //! ## Que problema resuelve
 //!
 //! Un `.bex` puede llevar sus datos dentro (la seccion `Resources`, ver

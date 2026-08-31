@@ -1,5 +1,7 @@
 //! Ring 3 process creation from BEX images (F2).
 //!
+//! [carril]  ROJO      crear un proceso de Ring 3 desde una imagen
+//!
 //! Pipeline: BootContext payload -> `bex::inspect` (validated mapping plan)
 //! -> fresh user address space -> frames copied/zeroed per section -> user
 //! stack -> 16 BMO Channel estuaries mapped U/S -> fabricated Ring 3 trap

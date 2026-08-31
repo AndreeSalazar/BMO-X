@@ -1,5 +1,7 @@
 //! **MOVING THE BYTES** -- read, DMA, and the bounce buffer.
 //!
+//! [carril]  ROJO      mueve los bytes: DMA y bounce buffer
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because it is the only part of the driver with a **physical** problem

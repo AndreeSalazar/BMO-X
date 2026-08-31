@@ -1,5 +1,7 @@
 //! El estado extendido del CPU: que hay, cuanto ocupa y si el perfil acerto.
 //!
+//! [carril]  ROJO      XSAVE/XRSTOR. El #GP del 25-08 salio de aqui
+//!
 //! ## Por que existe este modulo
 //!
 //! Hoy el cambio de contexto usa `FXSAVE`, que guarda 512 bytes: x87 y SSE.

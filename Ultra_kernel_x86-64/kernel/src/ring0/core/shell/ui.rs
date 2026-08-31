@@ -1,5 +1,7 @@
 //! **THE RING 0 SHELL: screen, line editor and built-ins.**
 //!
+//! [carril]  AMARILLO  pantalla, editor de linea y built-ins
+//!
 //! === Why this is here and not in `phase.rs` ===
 //!
 //! Because `core/shell/` already existed --`hardware`, `ficheros`, `pantalla`,

@@ -1,4 +1,6 @@
 //! **ABRIR ALGO Y RECIBIR UN HANDLE**: un directorio, un fichero, la consola,
+//!
+//! [carril]  AMARILLO  abrir algo y recibir un handle
 //! el propio paquete.
 //!
 //! ## Por que estas seis van juntas (L6b)

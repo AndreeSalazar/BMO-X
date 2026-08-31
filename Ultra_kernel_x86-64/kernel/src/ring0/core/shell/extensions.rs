@@ -1,5 +1,7 @@
 //! **`ext` -- que ofrece este silicio y que coge BMO.**
 //!
+//! [carril]  VERDE     lista lo que el silicio ofrece
+//!
 //! Grupo 1 del shell, como `hardware`: solo PREGUNTA. Si se equivoca da un
 //! numero raro y nada mas.
 //!

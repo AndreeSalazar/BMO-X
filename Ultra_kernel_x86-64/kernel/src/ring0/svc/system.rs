@@ -1,5 +1,7 @@
 //! System service -- estuary 0. The first real capability service.
 //!
+//! [carril]  AMARILLO  el primer servicio de verdad, estuario 0
+//!
 //! By-value operations only (no user pointers): liveness, time and
 //! scheduler telemetry. The completion entry echoes the request opcode
 //! so Ring 3 can correlate responses.

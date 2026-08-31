@@ -1,5 +1,7 @@
 //! `KIND_INPUT` -- el raton como capability.
 //!
+//! [carril]  ROJO      ceder la pantalla sin la entrada dejo a ray.bex encerrado
+//!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el
 //! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).

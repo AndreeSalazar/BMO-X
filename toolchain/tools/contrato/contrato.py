@@ -145,6 +145,24 @@ VIAS = ("roja", "amarilla")
 # los doce lo declaran hoy porque se escribieron a mano, y el primero que se
 # anadiera sin `[cuesta]` no lo habria dicho nadie.
 VIAS_MODULO = ("roja", "amarilla", "verde")
+
+# -- EL SEMAFORO, y es lo que el dueno pidio con esas palabras ---------------
+#
+#    ROJO      critico. Cambiarlo puede parar la maquina o corromperla callando
+#    AMARILLO  posible cambio: esta en obras, o es un instrumento que si se
+#              equivoca no falla -- CONVENCE, que es peor
+#    VERDE     normal y seguro. Se puede jugar
+#
+# ** El `[carril]` no es lo mismo que el `[cuesta]` y por eso son dos etiquetas.
+# `[cuesta]` dice **que se pierde si esto falla**; `[carril]` dice **que arriesgo
+# si lo TOCO**. `core/autopsy.rs` es la prueba de que no coinciden: su coste es
+# NADA --no rompe nada al fallar-- y su carril es AMARILLO, porque si miente
+# manda la investigacion al sitio equivocado. Ya paso tres veces en una semana.
+SEMAFORO = ("ROJO", "AMARILLO", "VERDE")
+# El nombre del fichero de un carril y su etiqueta tienen que decir lo mismo.
+# Es lo que caza un renombrado a medias, que es como una pieza cambia de color
+# sin que nadie lo decida.
+COLOR_DEL_NOMBRE = {"roja": "ROJO", "amarilla": "AMARILLO", "verde": "VERDE"}
 RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 
 
@@ -213,7 +231,7 @@ def mascara(txt):
 
 
 # ===========================================================================
-#  LAS NUEVE REGLAS. Cada una devuelve una lista de quejas.
+#  LAS DIEZ REGLAS. Cada una devuelve una lista de quejas.
 # ===========================================================================
 
 def r1_caben_en_su_campo(kern, abi, mask):
@@ -721,6 +739,21 @@ def autoprueba():
           r9_los_carriles_del_modulo({"obj/fb": {"mod.rs": ""}}), False)
     exige("R9(sin carpetas)", r9_los_carriles_del_modulo({}), False)
 
+    # -- R10: el semaforo ---------------------------------------------------
+    CA = "//! [carril]  ROJO      porque si" + chr(10)
+    exige("R10(con color)", r10_el_semaforo({"plat/spin.rs": CA}), False)
+    exige("R10(sin color)", r10_el_semaforo({"plat/spin.rs": "//! un fichero"}))
+    exige("R10(color inventado)",
+          r10_el_semaforo({"plat/spin.rs": "//! [carril]  AZUL x" + chr(10)}))
+    # *** El que de verdad guarda algo: un `verde.rs` que dice ROJO. Es un
+    # renombrado a medias, y es como una pieza cambia de color sin que nadie lo
+    # decida -- justo lo contrario de para lo que existe un semaforo.
+    exige("R10(el nombre y la etiqueta se contradicen)",
+          r10_el_semaforo({"obj/fb/verde.rs": CA}))
+    exige("R10(el nombre y la etiqueta coinciden)",
+          r10_el_semaforo({"obj/fb/roja.rs": CA}), False)
+    exige("R10(sin ficheros)", r10_el_semaforo({}), False)
+
     if fallos:
         for f in fallos:
             print("  [X] " + f)
@@ -729,7 +762,7 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las NUEVE reglas saben decir que NO (%d casos)" % casos[0])
+    print("clean: las DIEZ reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 
@@ -766,6 +799,73 @@ def _declarantes(regex, leer_grupo):
                     rel = os.path.relpath(ruta, raiz_).replace(os.sep, "/")
                     hallados[rel] = leer_grupo(m.group(1))
     return hallados
+
+
+# `//!` o `//`. Los dos ficheros de fuente los mete `texto.rs` con `include!`
+# dentro de un `static`, o sea que su contenido es una EXPRESION y no admite
+# documentacion de modulo. El letrero es obligatorio igual: lo que cambia es el
+# vehiculo, no el deber.
+RE_CARRIL = re.compile(r"^//!? \[carril\]\s+(\S+)", re.M)
+
+
+def r10_el_semaforo(ficheros):
+    """L6g -- **TODO fichero de Ring 0 lleva su color**. `{ruta: texto}`.
+
+    Es el trabajo del 2026-08-31, y el dueno lo dijo mejor que la ley: *"es como
+    poner titulos"*. No hay que partir 162 ficheros -- hay que **etiquetarlos**,
+    para que el dia que haya que cambiar algo deprisa se sepa de un vistazo si
+    se puede jugar o si hay que ir con las dos manos.
+
+    Tres exigencias:
+
+      1. declara `[carril]`. Sin excepciones y sin trinquete: un fichero NUEVO
+         sin color es exactamente la sorpresa que esto viene a evitar.
+      2. el color es uno de los tres. Inventarse un cuarto es volver a no tener
+         semaforo.
+      3. si el fichero SE LLAMA como un carril, el nombre y la etiqueta dicen lo
+         mismo. Caza el renombrado a medias -- que es como una pieza cambia de
+         color sin que nadie lo haya decidido.
+
+    [!] Sin trinquete a proposito, al reves que L6a. Un trinquete tolera lo que
+    ya estaba mal; aqui no hay nada que tolerar porque **se empieza en 162 de
+    162**, y una regla que se cumple entera el primer dia no necesita suelo.
+    """
+    quejas = []
+    for ruta in sorted(ficheros):
+        m = RE_CARRIL.search(ficheros[ruta])
+        if not m:
+            quejas.append("%s no declara [carril]. Los colores son: %s (L6g)"
+                          % (ruta, ", ".join(SEMAFORO)))
+            continue
+        color = m.group(1)
+        if color not in SEMAFORO:
+            quejas.append("%s dice [carril] %s, que no es un color. Son: %s (L6g)"
+                          % (ruta, color, ", ".join(SEMAFORO)))
+            continue
+        tallo = ruta.rsplit("/", 1)[-1][:-3]
+        debido = COLOR_DEL_NOMBRE.get(tallo)
+        if debido and color != debido:
+            quejas.append(
+                "%s se llama `%s.rs` y declara [carril] %s. El nombre y la "
+                "etiqueta tienen que decir lo mismo (L6g)" % (ruta, tallo, color))
+    return quejas
+
+
+def ficheros_de_ring0():
+    """`{ruta: texto}` de todo `.rs` de Ring 0. El semaforo los cubre TODOS."""
+    d = os.path.join(raiz(), RING0_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return {}
+    fuera = {}
+    for dirpath, dirnames, filenames in os.walk(d):
+        dirnames[:] = [x for x in dirnames if x not in ("target", ".git")]
+        for n in sorted(filenames):
+            if not n.endswith(".rs"):
+                continue
+            ruta = os.path.join(dirpath, n)
+            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+                fuera[os.path.relpath(ruta, raiz()).replace(os.sep, "/")] = f.read()
+    return fuera
 
 
 def r9_los_carriles_del_modulo(carpetas):
@@ -935,6 +1035,8 @@ def comprobar():
     vias = carpetas_de_carriles()
     quejas += [("R9 L6g los carriles del modulo", q)
                for q in r9_los_carriles_del_modulo(vias)]
+    r0 = ficheros_de_ring0()
+    quejas += [("R10 L6g el semaforo de Ring 0", q) for q in r10_el_semaforo(r0)]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -968,6 +1070,14 @@ def comprobar():
     if vias:
         print("clean: %d carpeta(s) de carriles (L6g), %d carril(es), todos con letrero"
               % (len(vias), sum(len([n for n in g if n != "mod.rs"]) for g in vias.values())))
+    if r0:
+        colores = {c: 0 for c in SEMAFORO}
+        for txt in r0.values():
+            m = RE_CARRIL.search(txt)
+            if m and m.group(1) in colores:
+                colores[m.group(1)] += 1
+        print("clean: el semaforo cubre los %d ficheros de Ring 0 -- %s"
+              % (len(r0), "  ".join("%s %d" % (c, colores[c]) for c in SEMAFORO)))
     return 0
 
 

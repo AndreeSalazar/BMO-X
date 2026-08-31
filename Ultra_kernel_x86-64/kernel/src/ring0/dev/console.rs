@@ -1,5 +1,7 @@
 //! Serial port (COM1: 0x3F8) ??? debug output.
 //!
+//! [carril]  VERDE     el puerto serie: escribir bytes y ya
+//!
 //! This is the lowest-level output device; every other subsystem
 //! (logger, diagnostics, ring3 debug print) routes through here.
 

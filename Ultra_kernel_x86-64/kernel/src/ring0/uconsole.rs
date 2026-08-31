@@ -1,5 +1,7 @@
 //! Ring 3 bootstrap console.
 //!
+//! [carril]  AMARILLO  la consola de arranque de Ring 3
+//!
 //! The frozen syscall surface exposes no "print" call -- text output is a
 //! capability operation. Until a real display-server estuary exists, the
 //! first Ring 3 program needs *some* auditable door to prove the CPL3->CPL0

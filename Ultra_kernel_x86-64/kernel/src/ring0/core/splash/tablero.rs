@@ -1,5 +1,7 @@
 //! **EL TABLERO** -- el panel persistente: la CABINA.
 //!
+//! [carril]  VERDE     el panel persistente, pintado
+//!
 //! Cuando el arranque termina, la pantalla no se apaga: se queda con un panel
 //! vivo que es el equivalente visual del shell serie. Muestra el estado del
 //! sistema, las ultimas lineas del log del kernel y un prompt, y lo que se

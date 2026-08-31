@@ -1,5 +1,7 @@
 //! **CARRIL VERDE** -- se cambia solo: nadie depende de su forma.
 //!
+//! [carril]  VERDE     el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//!
 //! [cuesta]  NADA -- son numeros que los define el manual de Intel y una
 //!           disposicion de direcciones que solo mira este modulo. Cambiar un
 //!           valor de aqui rompe la compilacion, no la maquina.

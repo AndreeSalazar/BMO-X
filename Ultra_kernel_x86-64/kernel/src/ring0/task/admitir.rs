@@ -1,5 +1,7 @@
 //! **ADMITIR UN `.bex`**: de unos bytes a un proceso que puede correr.
 //!
+//! [carril]  ROJO      que bytes se convierten en codigo ejecutable, y con que permisos
+//!
 //! [cuesta]  MAQUINA -- decide que bytes se convierten en codigo ejecutable y
 //!           con que permisos. Un fallo aqui no da un `#PF`: da un programa
 //!           corriendo con mas de lo que pidio.

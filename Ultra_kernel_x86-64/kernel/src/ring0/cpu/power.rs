@@ -1,5 +1,7 @@
 //! **Cuanto consume esta maquina, en milivatios.**
 //!
+//! [carril]  VERDE     lee los contadores de energia
+//!
 //! Escalon 2 de la seccion 9 de `docs/maestro/AXION_MAESTRO.md`, y el que convierte una
 //! frase de AXION en una medida:
 //!

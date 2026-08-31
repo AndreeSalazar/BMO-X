@@ -1,5 +1,7 @@
 //! BSP local-APIC periodic tick on the unified trap frame.
 //!
+//! [carril]  ROJO      el tick del LAPIC: sin el no hay planificador
+//!
 //! `s2_mem` calibrates and starts LAPIC vector 48. Ring 0 replaces that
 //! vector's boot-time halt stub with this handler, which shares the exact
 //! frame layout and epilogue with the SYSCALL entry: contexts captured here

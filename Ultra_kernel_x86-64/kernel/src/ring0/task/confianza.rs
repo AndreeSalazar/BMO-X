@@ -1,5 +1,7 @@
 //! **EN QUIEN CONFIA ESTA MAQUINA.** El ancla, y hoy esta vacia.
 //!
+//! [carril]  ROJO      el ancla de confianza de esta maquina
+//!
 //! # Por que este fichero existe, y por que estaba a punto de no existir
 //!
 //! El 2026-08-25 se escribio Ed25519 y se fue a cablearlo al gate del cargador.

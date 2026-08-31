@@ -1,5 +1,7 @@
 //! **EL RELOJ** -- el TSC, y lo unico que el dibujo necesita de el.
 //!
+//! [carril]  VERDE     lo unico que el dibujo necesita del TSC
+//!
 //! ## Por que es un modulo y no dos lineas sueltas en medio del dibujo
 //!
 //! Porque no es dibujo. Estaba en mitad de `splash.rs` entre `fill_rect` y la

@@ -1,5 +1,7 @@
 //! # BOOT TIMELINE -- where the boot time actually goes
 //!
+//! [carril]  VERDE     cuenta a donde se fue el tiempo de arranque
+//!
 //! ## Why this exists
 //!
 //! The owner asked to make boot faster, and pointed at the kernel log: *"the

@@ -1,5 +1,7 @@
 //! Ring 0 -- el suelo sobre el que se apoya todo lo demas.
 //!
+//! [carril]  VERDE     el reparto de Ring 0 entero
+//!
 //! ## Como esta repartido, y por que asi
 //!
 //! Esto eran **24 archivos sueltos** en un solo directorio. No es que fuera

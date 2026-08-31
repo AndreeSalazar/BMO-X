@@ -1,5 +1,7 @@
 //! **UN NIVEL de la ruta**: donde esta, como se llama, y QUE HAY DENTRO.
 //!
+//! [carril]  VERDE     un nivel de la ruta y que hay dentro
+//!
 //! === Por que existe este fichero ===
 //!
 //! El cursor guardaba la ruta como una pila de punteros y **un solo listado**:

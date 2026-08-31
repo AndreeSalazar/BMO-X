@@ -1,5 +1,7 @@
 //! **El log del kernel, GUARDADO** -- para que Ring 3 pueda leerlo.
 //!
+//! [carril]  VERDE     guardar el log para que Ring 3 pueda leerlo
+//!
 //! === El hueco que tapa ===
 //!
 //! Hasta ahora las lineas del `KERNEL LOG` se pintaban **directamente en el

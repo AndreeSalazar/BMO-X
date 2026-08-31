@@ -1,5 +1,7 @@
 //! Ring 0 boot phases - orchestrator for the kernel entry path.
 //!
+//! [carril]  ROJO      el ORDEN de las fases de arranque; una fuera de sitio no arranca
+//!
 //! In Ultra_kernel_x86-64's minimal Ring 0 base we keep only what's necessary:
 //! the splash animation, the framebuffer init, and a serial shell.
 //! All GDT/IDT/CPU/MM/IRQ/SMP subsystems live in the faggin stages

@@ -1,4 +1,6 @@
 //! **Las ventanas de escritura: donde SE PUEDE escribir.** El estado; la
+//!
+//! [carril]  ROJO      donde SE PUEDE escribir: la valla que protege el NVMe de Windows
 //! decision vive en `bmo_block::ventana`.
 //!
 //! Paso 2 de `docs/plan/PLAN_ALMACENAMIENTO.md`. De las siete preguntas que

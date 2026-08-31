@@ -1,5 +1,7 @@
 //! **Lo que NO SE DESHACE.** `ktest`, `panic`, `reboot` y `halt`.
 //!
+//! [carril]  ROJO      `panic`, `reboot` y `halt`: lo que NO se deshace
+//!
 //! # Por que estas cuatro tienen fichero propio siendo veintiseis lineas
 //!
 //! Porque el tamano no es el criterio. Estas cuatro comparten la unica

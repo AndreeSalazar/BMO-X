@@ -1,4 +1,6 @@
 //! **LAS TRES OPERACIONES QUE MANDAN SOBRE LA MAQUINA**: los nucleos, el sello
+//!
+//! [carril]  ROJO      los nucleos, el sueno y la red: manda sobre la maquina
 //! de ESTRATOS y la administracion del disco.
 //!
 //! ## Por que salen del despachador (L6a, L6b)

@@ -1,5 +1,7 @@
 //! **DIRECTORIES** -- names, and what they point at.
 //!
+//! [carril]  VERDE     nombres, y a donde apuntan
+//!
 //! === Why this is a file of its own ===
 //!
 //! It is the smallest piece of ESTRATOS and the only one that deals in NAMES.

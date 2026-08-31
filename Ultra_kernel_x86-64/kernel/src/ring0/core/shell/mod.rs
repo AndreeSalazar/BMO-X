@@ -1,5 +1,7 @@
 //! **Las ordenes del shell de Ring 0**, repartidas por lo que hacen.
 //!
+//! [carril]  VERDE     reparto de las ordenes por lo que hacen
+//!
 //! # Por que existe esta carpeta
 //!
 //! `phase.rs` tenia **27 funciones `shell_*` dentro**, y ocupaban 1.480 de sus

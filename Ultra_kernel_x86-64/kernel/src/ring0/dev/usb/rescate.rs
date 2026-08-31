@@ -1,5 +1,7 @@
 //! **El atajo que le devuelve la maquina al dueno: `Ctrl+Alt+Esc`.**
 //!
+//! [carril]  ROJO      Ctrl+Alt+Esc. Es el ultimo recurso: si falla, no hay otro
+//!
 //! Salio de `dev/usb/mod.rs` el 2026-08-12. Se puede sacar solo porque **es
 //! POLITICA y no driver**: no habla con el xHC ni con un endpoint, decide que
 //! pasa cuando un programa se queda la pantalla y la entrada.

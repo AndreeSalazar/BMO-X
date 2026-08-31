@@ -1,5 +1,7 @@
 //! **Las ordenes que tocan el DISCO.** `ls`, `estratos`, `run` y `bex`.
 //!
+//! [carril]  AMARILLO  las ordenes que tocan disco; el trabajo lo hace `launch`
+//!
 //! # Por que estas cuatro van juntas, y por que van las SEGUNDAS
 //!
 //! Porque son **el unico grupo donde un fallo se lleva datos**. Las de
